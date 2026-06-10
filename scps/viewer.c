@@ -1012,7 +1012,7 @@ static void ui_row(SDL_Renderer *ren, int x, int *y, int pw, const char *cat,
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SB_RAIL_W   46
 #define SB_DRAWER_W 380
-typedef enum { SBT_ECO=0, SBT_DEMO, SBT_STOCKS, SBT_ARMEE, SBT_FILTRES, SBT_COUNT } SbTab;
+typedef enum { SBT_ECO=0, SBT_DEMO, SBT_STOCKS, SBT_ARMEE, SBT_FILTRES, SBT_DIPLO, SBT_COUNT } SbTab;
 typedef struct {
     int     tab;                  /* -1 = replié */
     int     eco_sub;              /* 0 Commerce · 1 Marché · 2 Import/Export */
@@ -1023,7 +1023,7 @@ typedef struct {
     MapLens lens;                 /* lentille readout (LENS_NONE = vues classiques) */
     bool    purge_arm;            /* purge : 1er clic ARME, 2e confirme (acte irréversible) */
 } Sidebar;
-static Sidebar g_sb = { -1, 1, {0,0,0,0,0}, 0.f, -1, false, LENS_NONE, false };
+static Sidebar g_sb = { -1, 1, {0,0,0,0,0,0}, 0.f, -1, false, LENS_NONE, false };
 
 /* cibles cliquables du tiroir (reconstruites chaque frame, comme zone_add) */
 enum { SBH_TAB=1, SBH_ECOSUB, SBH_EMBARGO, SBH_RELOC_SRC, SBH_RELOC_DST, SBH_RELOC_CLR,
@@ -1032,7 +1032,9 @@ enum { SBH_TAB=1, SBH_ECOSUB, SBH_EMBARGO, SBH_RELOC_SRC, SBH_RELOC_DST, SBH_REL
        SBH_CHIP_CUR,
        SBH_NAVY_BUILD /* a=HullType */, SBH_SAIL /* a=région-cible */, SBH_NAVY_CONV /* a=1 vers pirate */,
        SBH_LEV_REPRESS, SBH_LEV_ASSIM, SBH_LEV_PURGE, SBH_LEV_EMBARGO,
-       SBH_LEV_CONTRAT /* a=SuzContrat, b=pays cible */ };
+       SBH_LEV_CONTRAT /* a=SuzContrat, b=pays cible */,
+       SBH_DECLARE /* a=pays cible (déclarer la guerre, CB inhérent) */,
+       SBH_PEACE   /* a=pays cible (négocier la paix : arbitrage IA exposé) */ };
 typedef struct { SDL_Rect r; int kind, a, b; } SbHit;
 static SbHit g_sbhits[120]; static int g_nsbhits;
 static void sbhit_reset(void){ g_nsbhits=0; }
@@ -1468,6 +1470,59 @@ static void sb_panel_armee(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s
 }
 
 /* ── panneau FILTRES : chips → ViewMode existants + lentilles readout ──────── */
+/* §terrain — mot FACE-JOUEUR du casus belli (jamais diplo_cb_name, qui est télémétrie). */
+static StrId cb_str(CasusBelli cb){
+    switch(cb){ case CB_TERRITORIAL:   return STR_CB_TERRITORIAL;
+                case CB_RELIGIOUS:     return STR_CB_RELIGIOUS;
+                case CB_ECONOMIC:      return STR_CB_ECONOMIC;
+                case CB_SUBJUGATION:   return STR_CB_SUBJUGATION;
+                case CB_ANTIPIRATERIE: return STR_CB_ANTIPIRATERIE;
+                default:               return STR_DIPLO_SANS_CB; }
+}
+/* §terrain — DIPLOMATIE (le joueur belligérant) : les pays VIVANTS, leur statut, et
+ * les verbes : DÉCLARER (si un casus belli inhérent tient) · NÉGOCIER (en guerre).
+ * Membrane : on LIT diplo (statut, score, CB, rancune) et on pose des ACTIONS ;
+ * l'arbitrage de la paix est l'IA exposée — aucune logique diplomatique nouvelle. */
+static void sb_panel_diplo(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, World *world){
+    (void)w;
+    int me=s->player, bottom=y+h;
+    int off=g_sb.scroll[SBT_DIPLO], idx=0;
+    for (int c=0; c<world->n_countries && y<bottom-30; c++){
+        if (c==me || world->country[c].role==POLITY_UNCLAIMED) continue;
+        if (idx++ < off) continue;
+        DiploStatus st=diplo_status(s->dp,me,c);
+        const char *sw = (st==DIPLO_WAR)            ? tr(STR_DIPLO_GUERRE)
+                       : (st==DIPLO_ALLIED)         ? tr(STR_DIPLO_ALLIE)
+                       : (diplo_suzerain(s->dp,c)==me) ? tr(STR_DIPLO_VASSAL)
+                       : (diplo_suzerain(s->dp,me)==c) ? tr(STR_DIPLO_SUZERAIN)
+                       :                              tr(STR_DIPLO_NEUTRE);
+        SDL_Color nc = (st==DIPLO_WAR)   ? (SDL_Color){0xe0,0x6a,0x4a,0xff}
+                     : (st==DIPLO_ALLIED)? (SDL_Color){0x6a,0xc0,0x8a,0xff} : COL_PARCH;
+        draw_text(ren,g_font_small,x+10, y, nc, sb_country_name(world,c));
+        draw_text(ren,g_font_small,x+150,y, COL_DIM, sw);
+        if (diplo_rancor(s->dp,c,me) > 1.f)
+            draw_text(ren,g_font_small,x+250,y, (SDL_Color){0xc0,0x80,0x50,0xff}, tr(STR_DIPLO_RANCUNE));
+        y+=15;
+        if (st==DIPLO_WAR){
+            char sz[48], num[16];
+            snprintf(num,sizeof num,"%+d",(int)diplo_war_score(s->dp,me,c));
+            tr_fmt(sz,sizeof sz,STR_DIPLO_SCORE_FMT,num);
+            draw_text(ren,g_font_small,x+12,y+2,COL_DIM,sz);
+            (void)sb_chip(ren,x+150,y, tr(STR_DIPLO_NEGOCIER), false, SBH_PEACE, c, 0, NULL);
+        } else if (st==DIPLO_NEUTRAL && diplo_can_declare(s->dp,me,c)){
+            CasusBelli cb=diplo_casus_belli(world,s->econ,s->wp,s->dp,me,c,RES_NONE);
+            if (cb!=CB_NONE){
+                char mz[64]; tr_fmt(mz,sizeof mz,STR_DIPLO_MOTIF_FMT, tr(cb_str(cb)));
+                draw_text(ren,g_font_small,x+12,y+2,COL_DIM,mz);
+                (void)sb_chip(ren,x+150,y, tr(STR_DIPLO_DECLARER), false, SBH_DECLARE, c, (int)cb, NULL);
+            } else {
+                draw_text(ren,g_font_small,x+12,y+2,COL_PANEL2,tr(STR_DIPLO_SANS_CB));
+            }
+        }
+        y+=18;
+    }
+}
+
 static void sb_panel_filtres(SDL_Renderer *ren, int x, int y, int w, int h, ViewMode mode){
     (void)w; (void)h;
     struct { const char *grp; struct { const char *lbl; int mode; } it[7]; int n; } G[3]={
@@ -1597,6 +1652,9 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
             case SBT_DEMO: content=22+3*15+8+16+15+6*15+24; break;
             case SBT_ARMEE: content=22+16+24+6*16+3*17+8; break;
             case SBT_FILTRES: content=3*40+15+24+30; break;
+            case SBT_DIPLO:{ int nn=0; for(int c=0;c<world->n_countries;c++)
+                                if(c!=s->player && world->country[c].role!=POLITY_UNCLAIMED) nn++;
+                             if(nn>16)nn=16; content=22+nn*30+8; } break;
             default: break;
         }
         int dh=32+content+96;                          /* titre + contenu + zone Leviers */
@@ -1605,9 +1663,10 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
         if (dh<200)   dh=200;
         panel_bg(ren,dx,dy,dw,dh);
         if (g_sb.anim>0.95f){
-            static const char *TITRE[SBT_COUNT]={"ÉCONOMIE","DÉMOGRAPHIE","STOCKS","ARMÉE","FILTRES DE CARTE"};
+            static const char *TITRE[SBT_COUNT]={"ÉCONOMIE","DÉMOGRAPHIE","STOCKS","ARMÉE","FILTRES DE CARTE",NULL};
             if (g_sb.tab>=0&&g_sb.tab<SBT_COUNT)
-                draw_text(ren,g_font,dx+10,dy+8,COL_COPPER,TITRE[g_sb.tab]);
+                draw_text(ren,g_font,dx+10,dy+8,COL_COPPER,
+                          (g_sb.tab==SBT_DIPLO)? tr(STR_DIPLO_TITRE) : TITRE[g_sb.tab]);
             int py=dy+32, ph=dy+dh-96;          /* on réserve la zone basse aux LEVIERS */
             switch(g_sb.tab){
                 case SBT_ECO:     sb_panel_eco   (ren,dx,py,dw,ph,s,world); break;
@@ -1615,6 +1674,7 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
                 case SBT_STOCKS:  sb_panel_stocks(ren,dx,py,dw,ph,s,world); break;
                 case SBT_ARMEE:   sb_panel_armee (ren,dx,py,dw,ph,s,world,selected); break;
                 case SBT_FILTRES: sb_panel_filtres(ren,dx,py,dw,ph,mode); break;
+                case SBT_DIPLO:   sb_panel_diplo (ren,dx,py,dw,ph,s,world); break;
                 default: break;
             }
             sb_panel_leviers(ren, dx, dy+dh-92, dw, s, world, selected);   /* zone basse : toujours là */
@@ -1623,19 +1683,20 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
     /* rail (toujours visible, par-dessus) */
     fill_rect(ren,0,0,SB_RAIL_W,win_h,(SDL_Color){0x0c,0x12,0x1d,0xfa});
     fill_rect(ren,SB_RAIL_W-1,0,1,win_h,COL_PANEL2);
-    static const char *IC[SBT_COUNT] ={"E","D","S","A","F"};
+    static const char *IC[SBT_COUNT] ={"E","D","S","A","F","G"};
     static const char *NM[SBT_COUNT] ={"Économie (E) — commerce, marché, import/export",
                                        "Démographie (D) — classes, peuples, relocalisation",
                                        "Stocks (S) — tensions, couverture, exploiter",
                                        "Armée (A) — levée, campagne, posture",
-                                       "Filtres (F) — vues de carte & lentilles d'empire"};
+                                       "Filtres (F) — vues de carte & lentilles d'empire",
+                                       NULL /* DIPLO : hover en STR_* (migré) */};
     for (int t=0;t<SBT_COUNT;t++){
         int by=52+t*44;
         bool actif=(g_sb.tab==t);
         if (actif) fill_rect(ren,0,by-6,SB_RAIL_W,32,(SDL_Color){0x2a,0x20,0x14,0xff});
         draw_text(ren,g_font_big,14,by,actif?COL_COPPER:COL_DIM,IC[t]);
         sbhit_add((SDL_Rect){0,by-6,SB_RAIL_W,32}, SBH_TAB, t, 0);
-        zone_add((SDL_Rect){0,by-6,SB_RAIL_W,32}, NM[t]);
+        zone_add((SDL_Rect){0,by-6,SB_RAIL_W,32}, (t==SBT_DIPLO)? tr(STR_RAIL_DIPLO) : NM[t]);
     }
 }
 
@@ -1649,6 +1710,11 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
         return (mx < SB_RAIL_W + ((g_sb.tab>=0)?dw:0));   /* le tiroir absorbe le clic perdu */
     }
     SbHit *hh=&g_sbhits[hit]; *dirty=true;
+    /* §terrain — OBSERVATEUR (joueur vaincu) : LECTURE SEULE. On laisse la NAVIGATION et
+     * les VUES (onglets, sous-onglets, modes/lentilles de carte), on bloque tout ACTE. */
+    if (g_observer && hh->kind!=SBH_TAB && hh->kind!=SBH_ECOSUB
+        && hh->kind!=SBH_CHIP_MODE && hh->kind!=SBH_CHIP_LENS && hh->kind!=SBH_CHIP_CUR)
+        return true;
     if (hh->kind!=SBH_LEV_PURGE) g_sb.purge_arm=false;   /* tout autre clic DÉSARME la purge */
     switch(hh->kind){
         case SBH_TAB:      g_sb.tab=(g_sb.tab==hh->a)?-1:hh->a; break;
@@ -1735,6 +1801,33 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
         case SBH_CHIP_MODE: *mode=(ViewMode)hh->a; g_sb.lens=LENS_NONE; break;
         case SBH_CHIP_LENS: g_sb.lens=(g_sb.lens==(MapLens)hh->a)?LENS_NONE:(MapLens)hh->a; break;
         case SBH_CHIP_CUR:  g_sb.show_currents=!g_sb.show_currents; break;
+        /* §terrain — LE JOUEUR BELLIGÉRANT : déclarer (CB inhérent) · négocier (arbitrage IA exposé).
+         * Retour console (outillage) ; le joueur LIT l'effet sur le panneau Diplomatie + la carte
+         * (statut, score, occupations). Aucune logique diplomatique nouvelle : settle/reparations. */
+        case SBH_DECLARE:
+            diplo_declare_war_cb(s->dp, s->player, hh->a, (CasusBelli)hh->b);
+            printf("\n[scps] GUERRE déclarée à %s (motif : %s) — porte tes armées sur sa frontière.\n",
+                   sb_country_name(world,hh->a), diplo_cb_name((CasusBelli)hh->b));
+            break;
+        case SBH_PEACE: {
+            int me=s->player, en=hh->a;
+            float ms=diplo_war_score(s->dp, me, en);                 /* score du point de vue du joueur */
+            bool en_ensl=(en>=0&&en<SCPS_MAX_COUNTRY)? s->ts[en].unlocked[TECH_ESCLAVAGE] : false;
+            bool me_ensl=s->ts[me].unlocked[TECH_ESCLAVAGE];
+            if (ms >= 20.f){                                         /* le joueur DOMINE : il dicte (peut TUER l'ennemi) */
+                int got=diplo_settle(s->dp, world, s->econ, s->wl, me, en, me_ensl);
+                printf("\n[scps] PAIX imposée à %s : %d région(s) cédée(s).\n", sb_country_name(world,en), got);
+            } else if (ms <= -20.f){                                 /* le joueur est SANS ESPOIR : capitulation */
+                diplo_reparations(s->dp, world, s->econ, me, en);
+                diplo_settle(s->dp, world, s->econ, s->wl, en, me, en_ensl);
+                printf("\n[scps] CAPITULATION devant %s (réparations versées).\n", sb_country_name(world,en));
+            } else if (s->dp->war_years[me][en] >= 2.f){             /* match nul ASSEZ saigné → paix blanche */
+                diplo_settle(s->dp, world, s->econ, s->wl, me, en, false);
+                printf("\n[scps] PAIX BLANCHE avec %s.\n", sb_country_name(world,en));
+            } else {                                                 /* trop tôt : l'ennemi refuse */
+                printf("\n[scps] %s REFUSE : la guerre n'a pas assez saigné.\n", sb_country_name(world,en));
+            }
+        } break;
         default: break;
     }
     return true;
@@ -2371,6 +2464,11 @@ static void save_ppm(const char *path, const uint32_t *px, int w, int h) {
  * (le menu vit avec « Charger » grisé — l'ordre du brief lui-même).
  * ═══════════════════════════════════════════════════════════════════════════ */
 static bool g_pause_menu=false, g_quit_confirm=false, g_show_tuto=false;
+/* §terrain — LA DÉFAITE DU JOUEUR : son royaume réduit à 0 région (polity_death).
+ * g_defeat fige les entrées ; deux sorties : OBSERVER (le monde continue, lecture
+ * seule) ou MENU. g_observer survit à « Observer » (le joueur n'agit plus). */
+static bool g_defeat=false, g_observer=false;
+static int  g_defeat_year=0;
 static int  g_tuto_page=0;
 static int  g_setup_ethos=5, g_setup_race=(int)RACE_HUMAIN, g_setup_terre=5;  /* défauts : Pacifiste? non → voir tables */
 static char g_open_terre_line[120]="";
@@ -2383,7 +2481,8 @@ static bool g_game_started=false;            /* une partie a commencé (→ conf
 enum { SH_SLOT_SAVE=100, SH_SLOT_LOAD, SH_PICK_CLOSE, SH_LOADC_YES, SH_LOADC_NO,
        SH_MENU_ITEM=1, SH_SLIDER_DN, SH_SLIDER_UP, SH_SEED_DICE, SH_PICK_ETHOS,
        SH_PICK_RACE, SH_PICK_TERRE, SH_FORGER, SH_BACK, SH_OPEN_GO, SH_OPEN_REROLL,
-       SH_PM_ITEM, SH_QC_YES, SH_QC_NO, SH_TUTO_PREV, SH_TUTO_NEXT };
+       SH_PM_ITEM, SH_QC_YES, SH_QC_NO, SH_TUTO_PREV, SH_TUTO_NEXT,
+       SH_DEFEAT /* a=0 observer · a=1 menu */ };
 typedef struct { SDL_Rect r; int kind, a; } ShellHit;
 static ShellHit g_shhits[80]; static int g_nshhits;
 static void shhit_reset(void){ g_nshhits=0; }
@@ -2851,6 +2950,18 @@ static void shell_draw(SDL_Renderer *ren,int win_w,int win_h,World *w,Sim *s,
         sh_button(ren,bx,by,200,tr(STR_PM_MENU),false,false,SH_PM_ITEM,2); by+=32;
         sh_button(ren,bx,by,200,tr(STR_PM_QUITTER),false,false,SH_PM_ITEM,3);
     }
+    /* §terrain — ÉCRAN DE DÉFAITE : sobre, deux sorties (Observer · Menu). */
+    if (g_defeat){
+        fill_rect(ren,0,0,win_w,win_h,(SDL_Color){0x05,0x06,0x09,0xcc});
+        int bx=win_w/2-110, by=win_h/2-70;
+        panel_bg(ren,bx-24,by-24,268,178);
+        draw_text(ren,g_font_big,bx,by-8,(SDL_Color){0xe0,0x6a,0x4a,0xff},tr(STR_DEFAITE_TITRE)); by+=34;
+        { char yz[16], ln[96]; snprintf(yz,sizeof yz,"%d",g_defeat_year);
+          tr_fmt(ln,sizeof ln,STR_DEFAITE_LIGNE,yz);
+          draw_text(ren,g_font,bx,by,COL_DIM,ln); } by+=36;
+        sh_button(ren,bx,by,220,tr(STR_DEFAITE_OBSERVER),false,false,SH_DEFEAT,0); by+=34;
+        sh_button(ren,bx,by,220,tr(STR_DEFAITE_MENU),false,false,SH_DEFEAT,1);
+    }
     if (g_save_pick||g_load_pick){
         int pw=460, px=(win_w-pw)/2, py=win_h/2-90;
         fill_rect(ren,0,0,win_w,win_h,(SDL_Color){0x05,0x08,0x0e,0x99});
@@ -3189,7 +3300,7 @@ int main(int argc, char **argv) {
                     pan_sy = ev.button.y;
                 } else if (ev.button.button == SDL_BUTTON_LEFT) {
                     /* LE SHELL capte d'abord (menu/création/ouverture + surcouches). */
-                    if (g_quit_confirm||g_show_tuto||g_pause_menu||g_save_pick||g_load_pick||g_load_confirm>=0||g_gs!=GS_PLAYING){
+                    if (g_quit_confirm||g_show_tuto||g_pause_menu||g_save_pick||g_load_pick||g_load_confirm>=0||g_defeat||g_gs!=GS_PLAYING){
                         int hit=-1;
                         for (int i2=0;i2<g_nshhits;i2++){ SDL_Rect *r2=&g_shhits[i2].r;
                             if (ev.button.x>=r2->x&&ev.button.x<r2->x+r2->w&&ev.button.y>=r2->y&&ev.button.y<r2->y+r2->h){ hit=i2; break; } }
@@ -3211,7 +3322,11 @@ int main(int argc, char **argv) {
                                         if (rc==0){ seed=params.seed; g_load_pick=0; g_pause_menu=false;
                                             g_game_started=true; speed=SPEED_PAUSE; g_sbc.day=-1; selected=-1;
                                             sh_center_capital(world,&sim,&cam,win_w,win_h);
-                                            g_gs=GS_PLAYING; }
+                                            g_gs=GS_PLAYING;
+                                            g_defeat=false; g_observer=false;          /* §terrain : save d'un joueur péri → défaite */
+                                            if (sim.player>=0 && sim.player<world->n_countries
+                                                && world->country[sim.player].role==POLITY_UNCLAIMED){
+                                                g_defeat=true; g_defeat_year=sim.year; } }
                                         else printf("\n[scps] %s\n", rc==2?"Sauvegarde d'une ère antérieure — refusée poliment.":"Slot illisible.");
                                     }
                                     break;
@@ -3219,7 +3334,12 @@ int main(int argc, char **argv) {
                                     int rc=game_load(sh2->a, world, &sim, &params);
                                     if (rc==0){ seed=params.seed; g_pause_menu=false; speed=SPEED_PAUSE;
                                         g_sbc.day=-1; selected=-1; g_game_started=true;
-                                        sh_center_capital(world,&sim,&cam,win_w,win_h); g_gs=GS_PLAYING; }
+                                        sh_center_capital(world,&sim,&cam,win_w,win_h); g_gs=GS_PLAYING;
+                                        /* §terrain : une save où le joueur a péri → ré-poser la défaite. */
+                                        g_defeat=false; g_observer=false;
+                                        if (sim.player>=0 && sim.player<world->n_countries
+                                            && world->country[sim.player].role==POLITY_UNCLAIMED){
+                                            g_defeat=true; g_defeat_year=sim.year; } }
                                     else printf("\n[scps] %s\n", rc==2?"Sauvegarde d'une ère antérieure — refusée poliment.":"Slot illisible.");
                                     g_load_confirm=-1;
                                 } break;
@@ -3227,6 +3347,10 @@ int main(int argc, char **argv) {
                                 case SH_QC_NO:  g_quit_confirm=false; break;
                                 case SH_TUTO_PREV: if(g_tuto_page>0)g_tuto_page--; break;
                                 case SH_TUTO_NEXT: if(g_tuto_page<6)g_tuto_page++; break;
+                                case SH_DEFEAT:
+                                    if (sh2->a==0){ g_defeat=false; g_observer=true; } /* OBSERVER : le monde continue, lecture seule */
+                                    else { g_defeat=false; g_observer=false; g_gs=GS_MENU; speed=SPEED_PAUSE; }  /* MENU */
+                                    break;
                                 case SH_MENU_ITEM:
                                     if (sh2->a==0){ g_stage=params; g_gs=GS_SETUP; }
                                     else if (sh2->a==1){ g_load_pick=1; }
@@ -3252,7 +3376,7 @@ int main(int argc, char **argv) {
                                     sh_draw_litanie(ren,win_w,win_h,params.seed); SDL_RenderPresent(ren);
                                     regen=true; g_pending_open=true;
                                     break;
-                                case SH_OPEN_GO: g_gs=GS_PLAYING; g_game_started=true; break;   /* la pause TIENT : Espace sera le premier geste */
+                                case SH_OPEN_GO: g_gs=GS_PLAYING; g_game_started=true; g_defeat=false; g_observer=false; break;   /* la pause TIENT : Espace sera le premier geste */
                                 case SH_PM_ITEM:
                                     if (sh2->a==0) g_pause_menu=false;
                                     else if (sh2->a==4){ g_save_pick=1; }
@@ -3522,6 +3646,12 @@ int main(int argc, char **argv) {
                 int steps=0;
                 while (day_accum >= 1.0 && steps < 40) { sim_day(&sim, world); day_accum -= 1.0; steps++; }
                 if (steps>0) dirty = true;                      /* propriété/overlays peuvent changer */
+                /* §terrain — LA DÉFAITE : le royaume du joueur réduit à 0 région (polity_death
+                 * a posé role=UNCLAIMED). On fige une fois ; « Observer » lève le verrou. */
+                if (!g_defeat && !g_observer && sim.player>=0 && sim.player<world->n_countries
+                    && world->country[sim.player].role==POLITY_UNCLAIMED){
+                    g_defeat=true; g_defeat_year=sim.year; speed=SPEED_PAUSE; dirty=true;
+                }
             } else day_accum = 0.0;
         }
 

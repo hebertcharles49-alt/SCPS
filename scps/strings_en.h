@@ -160,4 +160,32 @@
     X(STR_TUTO_SUIV, "suiv. ▶") \
     X(STR_TUTO_PAGEFMT, "{0} / 7") \
     X(STR_OCCUPEE_PAR, "Occupied by {0}") \
+    X(STR_RAIL_DIPLO, "Diplomacy (G) — living realms · wars · casus belli") \
+    X(STR_DIPLO_TITRE, "DIPLOMACY") \
+    X(STR_DIPLO_NEUTRE, "Neutral") \
+    X(STR_DIPLO_ALLIE, "Allied") \
+    X(STR_DIPLO_GUERRE, "At war") \
+    X(STR_DIPLO_VASSAL, "Vassal") \
+    X(STR_DIPLO_SUZERAIN, "Suzerain") \
+    X(STR_DIPLO_DECLARER, "Declare war") \
+    X(STR_DIPLO_NEGOCIER, "Negotiate peace") \
+    X(STR_DIPLO_SANS_CB, "No ground for war holds (no casus belli)") \
+    X(STR_DIPLO_SCORE_FMT, "score {0}") \
+    X(STR_DIPLO_RANCUNE, "bitter grievance") \
+    X(STR_DIPLO_MOTIF_FMT, "cause: {0}") \
+    X(STR_CB_TERRITORIAL, "claimed border") \
+    X(STR_CB_RELIGIOUS, "religious schism") \
+    X(STR_CB_ECONOMIC, "monopolised good") \
+    X(STR_CB_SUBJUGATION, "subjugation") \
+    X(STR_CB_ANTIPIRATERIE, "raiding to curb") \
+    X(STR_PAIX_REFUS, "The enemy refuses: the war has not bled enough") \
+    X(STR_JRN_GUERRE_PAR, "War declared by {0}") \
+    X(STR_JRN_GUERRE_CONTRE, "War declared on {0}") \
+    X(STR_JRN_PAIX, "Peace signed with {0}") \
+    X(STR_JRN_CAPITULE, "Capitulation to {0}") \
+    X(STR_JRN_MORT, "{0} has vanished from the map") \
+    X(STR_DEFAITE_TITRE, "DEFEAT") \
+    X(STR_DEFAITE_LIGNE, "Year {0} — your realm is no more") \
+    X(STR_DEFAITE_OBSERVER, "Observe the world") \
+    X(STR_DEFAITE_MENU, "Main menu") \
 

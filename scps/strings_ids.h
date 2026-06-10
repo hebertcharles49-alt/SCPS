@@ -165,5 +165,33 @@
     X(STR_TUTO_SUIV, "suiv. ▶") \
     X(STR_TUTO_PAGEFMT, "{0} / 7") \
     X(STR_OCCUPEE_PAR, "Occupée par {0}") \
+    X(STR_RAIL_DIPLO, "Diplomatie (G) — pays vivants · guerres · casus belli") \
+    X(STR_DIPLO_TITRE, "DIPLOMATIE") \
+    X(STR_DIPLO_NEUTRE, "Neutre") \
+    X(STR_DIPLO_ALLIE, "Allié") \
+    X(STR_DIPLO_GUERRE, "En guerre") \
+    X(STR_DIPLO_VASSAL, "Vassal") \
+    X(STR_DIPLO_SUZERAIN, "Suzerain") \
+    X(STR_DIPLO_DECLARER, "Déclarer la guerre") \
+    X(STR_DIPLO_NEGOCIER, "Négocier la paix") \
+    X(STR_DIPLO_SANS_CB, "Aucune raison de guerre ne tient (pas de casus belli)") \
+    X(STR_DIPLO_SCORE_FMT, "score {0}") \
+    X(STR_DIPLO_RANCUNE, "rancune vive") \
+    X(STR_DIPLO_MOTIF_FMT, "motif : {0}") \
+    X(STR_CB_TERRITORIAL, "frontière revendiquée") \
+    X(STR_CB_RELIGIOUS, "schisme religieux") \
+    X(STR_CB_ECONOMIC, "bien monopolisé") \
+    X(STR_CB_SUBJUGATION, "assujettissement") \
+    X(STR_CB_ANTIPIRATERIE, "course à réprimer") \
+    X(STR_PAIX_REFUS, "L'ennemi refuse : la guerre n'a pas assez saigné") \
+    X(STR_JRN_GUERRE_PAR, "Guerre déclarée par {0}") \
+    X(STR_JRN_GUERRE_CONTRE, "Guerre déclarée à {0}") \
+    X(STR_JRN_PAIX, "Paix signée avec {0}") \
+    X(STR_JRN_CAPITULE, "Capitulation devant {0}") \
+    X(STR_JRN_MORT, "{0} a disparu de la carte") \
+    X(STR_DEFAITE_TITRE, "DÉFAITE") \
+    X(STR_DEFAITE_LIGNE, "An {0} — votre royaume n'est plus") \
+    X(STR_DEFAITE_OBSERVER, "Observer le monde") \
+    X(STR_DEFAITE_MENU, "Menu principal") \
 
 #endif /* SCPS_STRINGS_IDS_H */
