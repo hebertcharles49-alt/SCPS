@@ -422,6 +422,18 @@ static double country_gold(const WorldEconomy *e, int c){
     double g=0.0; for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c) g+=e->region[r].treasury;
     return g;
 }
+/* Population PAR CLASSE d'un pays (somme des strates de ses régions). */
+static void country_class_pop(const WorldEconomy *e, int c, double out[CLASS_COUNT]){
+    for (int k=0;k<CLASS_COUNT;k++) out[k]=0.0;
+    for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c)
+        for (int k=0;k<CLASS_COUNT;k++) out[k]+=e->region[r].strata[k].pop;
+}
+/* ENTREPÔTS d'un pays : stock agrégé par bien (toutes ses régions). */
+static void country_stocks(const WorldEconomy *e, int c, double out[RES_COUNT]){
+    for (int g=0;g<RES_COUNT;g++) out[g]=0.0;
+    for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c)
+        for (int g=0;g<RES_COUNT;g++) out[g]+=e->region[r].stock[g];
+}
 static float avg_price(const WorldEconomy *e, Resource res){
     double s=0.0; int n=0;
     for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized){ s+=e->region[r].price[res]; n++; }
@@ -553,6 +565,8 @@ int main(int argc, char **argv){
     long tot_ligues=0, tot_frondes=0, tot_indep=0, tot_renvers=0, tot_ecrase=0;   /* fronde */
     long tot_bt=0, tot_btj=0, tot_routs=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
+    long tot_emp_n=0, tot_emp_hub=0;   /* par-empire : moyennes de fin de sim */
+    double tot_emp_gold=0, tot_emp_flux=0, tot_emp_imp=0, tot_emp_exp=0, tot_emp_expgold=0;
     long tot_captured=0, tot_worstcorr=0; int worlds_with_capture=0;   /* §C3 : le rot, agrégé */
     int  worlds_with_ironorder=0, worlds_with_uprising=0;
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
@@ -610,7 +624,12 @@ int main(int argc, char **argv){
                k+1, seed, n_emp, n_city, cont, s.econ->n_regions);
 
         int snap[4]={years/5, years*2/5, years*3/5, years*4/5}, si=0;  /* instantanés mis à l'échelle */
+        /* photo des trésors au seuil de la DERNIÈRE année → flux d'or net par MOIS
+         * (un pays né en cours d'année part de 0 : son flux englobe sa dotation). */
+        double gold_y0[SCPS_MAX_COUNTRY]={0};
         for (int yr=0; yr<years; yr++){
+            if (yr==years-1)
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++) gold_y0[c]=country_gold(s.econ,c);
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
             for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++){
@@ -666,7 +685,9 @@ int main(int argc, char **argv){
                    w->country[tp].name, treg, share, r.m_stabilite.value, r.m_prosperite.value,
                    r.m_legitimite.value, r.m_cohesion.value, label_assise(r.assise));
 
-        /* MÉTRIQUES PAR EMPIRE (chaque empire vivant, trié par taille) — métriques 0-100. */
+        /* MÉTRIQUES PAR EMPIRE (chaque empire vivant, trié par taille) — métriques 0-100,
+         * puis le DÉTAIL : population par classe · or (trésor + flux/mois) · armée ·
+         * usage du marché inter-pays (hub, routes, import/export) · entrepôts. */
         {
             int idx[SCPS_MAX_COUNTRY], ne=0;
             for (int c=0;c<w->n_countries;c++){ PolityRole rl=w->country[c].role;
@@ -681,6 +702,34 @@ int main(int argc, char **argv){
                        w->country[c].name, regions_of(s.econ,c), ai_country_population(w,s.econ,c)/1000.0,
                        cr.m_stabilite.value, cr.m_prosperite.value, cr.m_legitimite.value, cr.m_cohesion.value,
                        cr.corruption, ctech, (c==tp)?" ★":"");
+                /* pyramide de classes (E0.7) + or : trésor & flux net de la dernière année */
+                double cp[CLASS_COUNT]; country_class_pop(s.econ, c, cp);
+                double cpt=cp[0]+cp[1]+cp[2]; if (cpt<1) cpt=1;
+                double g1=country_gold(s.econ,c), flux=(g1-gold_y0[c])/12.0;
+                printf("                    classes : J %.1fk (%.0f%%) · B %.1fk (%.0f%%) · É %.1fk (%.0f%%) | or %.0f (%+.1f/mois, dern. année) · armée %.0f (%ld rgt)\n",
+                       cp[CLASS_LABORER]/1000.0,   100*cp[CLASS_LABORER]/cpt,
+                       cp[CLASS_BOURGEOIS]/1000.0, 100*cp[CLASS_BOURGEOIS]/cpt,
+                       cp[CLASS_ELITE]/1000.0,     100*cp[CLASS_ELITE]/cpt,
+                       g1, flux, diplo_mil_power(w,s.econ,c), warhost_units(s.host,c));
+                /* usage du marché inter-pays (dernier tick annuel) + entrepôts (top 4) */
+                double vimp=0, vexp=0;
+                for (int g=1;g<RES_COUNT;g++){ vimp+=intertrade_import_vol(c,g); vexp+=intertrade_export_vol(c,g); }
+                bool hub=intertrade_country_has_centre(s.econ,c);
+                int  nrt=intertrade_active_routes(s.econ,s.rn,s.dp,c);
+                double stk[RES_COUNT]; country_stocks(s.econ,c,stk);
+                double stot=0; for (int g=1;g<RES_COUNT;g++) stot+=stk[g];
+                int o4[4]={-1,-1,-1,-1};
+                for (int g=1;g<RES_COUNT;g++)
+                    for (int t=0;t<4;t++)
+                        if (o4[t]<0 || stk[g]>stk[o4[t]]){ for (int u=3;u>t;u--) o4[u]=o4[u-1]; o4[t]=g; break; }
+                printf("                    marché : hub %s · %d route(s) · import %.1f · export %.1f (+%.0f or/an) | stocks Σ %.0f —",
+                       hub?"OUI":"non", nrt, vimp, vexp, intertrade_export_gold(c), stot);
+                for (int t=0;t<4;t++) if (o4[t]>=0 && stk[o4[t]]>=0.5)
+                    printf(" %s %.0f", resource_name((Resource)o4[t]), stk[o4[t]]);
+                printf("\n");
+                tot_emp_n++; tot_emp_gold+=g1; tot_emp_flux+=flux;
+                tot_emp_imp+=vimp; tot_emp_exp+=vexp; tot_emp_expgold+=intertrade_export_gold(c);
+                if (hub) tot_emp_hub++;
             }
         }
         /* VIVIER DE CITÉS-ÉTATS : combien du pool initial reste DISPONIBLE (vivant). */
@@ -932,6 +981,10 @@ int main(int argc, char **argv){
     printf("   alliances actives (fin de sim) %ld   (moy. %.1f/sim ; la diplomatie respire)\n", tot_alliances, (double)tot_alliances/nsims);
     printf("   satisfaction moy (AVEC distribution) : Laborer %.0f%% · Bourgeois %.0f%% · Élite %.0f%% | commerce/an moy %.0f\n",
            tot_sat[CLASS_LABORER]/nsims, tot_sat[CLASS_BOURGEOIS]/nsims, tot_sat[CLASS_ELITE]/nsims, tot_trade/nsims);
+    printf("   par empire (fin de sim) ..... trésor moy %.0f or · flux moy %+.1f or/mois (dern. année) · import moy %.1f · export moy %.1f (+%.0f or/an) · hub tenu %ld/%ld\n",
+           tot_emp_n? tot_emp_gold/tot_emp_n:0.0,  tot_emp_n? tot_emp_flux/tot_emp_n:0.0,
+           tot_emp_n? tot_emp_imp /tot_emp_n:0.0,  tot_emp_n? tot_emp_exp /tot_emp_n:0.0,
+           tot_emp_n? tot_emp_expgold/tot_emp_n:0.0, tot_emp_hub, tot_emp_n);
     printf("   provinces transférées à la paix %ld   (moy. %.1f/sim ; la propriété ne change qu'au RÈGLEMENT)\n", tot_conq, (double)tot_conq/nsims);
     printf("   occupations (terrain) ....... %ld posée(s) · %ld levée(s)   (les sièges tiennent le sol entre deux paix)\n", g_tot_occ_posed, g_tot_occ_lifted);
     printf("   pays absorbés (morts) ....... %ld   (moy. %.1f/sim)\n", tot_absorbed, (double)tot_absorbed/nsims);
