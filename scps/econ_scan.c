@@ -39,7 +39,7 @@ int main(int argc,char**argv){
         world_generate(w,&p); econ_init(e,w); gen_population(w,e);
         for (int y=0;y<years;y++){
             for (int m=0;m<12;m++) econ_tick(e,1.f/12.f);
-            econ_colonize_tick(e,w); world_tick(w,e,1.f);
+            econ_colonize_tick(e,w,-1); world_tick(w,e,1.f);
         }
         for (int r=0;r<e->n_regions;r++){
             RegionEconomy *re=&e->region[r];

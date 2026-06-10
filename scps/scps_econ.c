@@ -604,7 +604,7 @@ void econ_init(WorldEconomy *e, const World *w) {
             if (cap_reg<0||cap_reg>=e->n_regions) continue;
             RegionEconomy *re=&e->region[cap_reg];
             if (!re->active) continue;
-            econ_seed_population(re, re->cap_pop);
+            econ_seed_population(re, fminf(re->cap_pop, 4000.f));   /* P2.12 : 4000 par empire (capitale seule) */
             re->colonized=true;
             re->owner=(int16_t)cid;
 
@@ -1177,10 +1177,11 @@ static void colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid) {
     dst->owner=(int16_t)cid;
 }
 
-int econ_colonize_tick(WorldEconomy *e, const World *w) {
+int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
     int founded=0;
 
     for (int cid=0; cid<w->n_countries; cid++) {
+        if (cid==skip_cid) continue;          /* P2.14 : le JOUEUR colonise à la MAIN (action explicite) */
         const Country *ct=&w->country[cid];
         PolityRole role=ct->role;
 

@@ -260,7 +260,7 @@ float econ_off_culture_fraction(const ProvincePop *pp);
  * vierges voisines ; les cités-états colonisent leurs propres territoires
  * non encore peuplés. À appeler après econ_tick(). Renvoie le nb de régions
  * nouvellement colonisées ce tick. */
-int econ_colonize_tick(WorldEconomy *e, const World *w);
+int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid);
 /* Fonde une colonie de `cid` sur `dst` depuis `src` (pop essaimée, owner posé).
  * Exposé pour la colonisation OUTRE-MER (scps_navy §8) — même acte fondateur. */
 void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid);

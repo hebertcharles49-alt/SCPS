@@ -716,7 +716,7 @@ static void sim_day(Sim *s, World *w) {
     }
     /* — annuel (le tour stratégique) — */
     if (s->day % 365 == 364) {
-        econ_colonize_tick(s->econ, w);
+        econ_colonize_tick(s->econ, w, s->player);
         econ_migrate_tick(s->econ, w);
         world_tick(w, s->econ, 1.0f);
         legitimacy_tick(s->wl, w, s->econ, s->ts);
@@ -1860,10 +1860,29 @@ static bool sidebar_wheel(int mx, int my, int wheel_y){
     return true;
 }
 
+/* P2.14 — COLONISER : bouton + cibles (la région vierge sélectionnée, adjacente au
+ * territoire du joueur). g_colonize_src = la région possédée la plus peuplée d'où
+ * partent les colons (réutilise econ_colonize_from : 100 colons s'installent). */
+#define COLONIZE_GOLD_COST 40.f
+static SDL_Rect g_colonize_btn; static int g_colonize_dst=-1, g_colonize_src=-1;
+static int player_colonize_src(const Sim *s, int dst_reg){
+    if (dst_reg<0 || dst_reg>=s->econ->n_regions) return -1;
+    const RegionEconomy *d=&s->econ->region[dst_reg];
+    if (d->colonized || !d->active) return -1;                 /* déjà possédée / morte */
+    int best=-1; float bestpop=0.f;
+    for (int r=0;r<s->econ->n_regions;r++){
+        if (!s->econ->adj[r][dst_reg]) continue;
+        const RegionEconomy *re=&s->econ->region[r];
+        if (re->owner!=s->player || !re->colonized) continue;
+        float pop=0.f; for(int c=0;c<CLASS_COUNT;c++) pop+=re->strata[c].pop;
+        if (pop>bestpop){ bestpop=pop; best=r; }
+    }
+    return best;
+}
 static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
                                 const World *w, const WorldEconomy *econ,
                                 const WorldProsperity *wp, const WorldLegitimacy *wl,
-                                const ModifierStack *drift, int pid) {
+                                const ModifierStack *drift, int pid, const Sim *s) {
     ProvinceReadout p = province_readout(w, econ, wp, wl, pid);
     (void)win_w;
     int pw=312, px=0, py=102, ph=win_h-py-26;   /* à GAUCHE, sous le bandeau + alertes (§7) */
@@ -2157,6 +2176,22 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
                  "Intégrer : métabolise lentement (capacité + ouverture + légitimité + temps) — durable et vrai, "
                  "mais long (∝ la distance culturelle : le gouffre prend des générations).");
         y += 20;
+    }
+    /* P2.14 — COLONISER : région VIERGE sélectionnée, adjacente au territoire du
+     * joueur → bouton (coût en or + 100 colons de la région la plus peuplée). */
+    if (s && pid>=0 && pid<w->n_provinces){
+        int dreg=w->province[pid].region;
+        int src=player_colonize_src(s, dreg);
+        if (src>=0){
+            TTF_Font *fb=g_font_small?g_font_small:g_font;
+            int by=py+ph-28; char cb[72];
+            snprintf(cb,sizeof cb,"Coloniser  (%.0f or · 100 colons)", COLONIZE_GOLD_COST);
+            int bw=text_w(fb,cb)+18;
+            fill_rect(ren, x, by, bw, 22, (SDL_Color){0x16,0x1e,0x2c,0xff});
+            draw_box (ren, x, by, bw, 22, COL_COPPER);
+            draw_text(ren, fb, x+9, by+4, COL_COPPER, cb);
+            g_colonize_btn=(SDL_Rect){x,by,bw,22}; g_colonize_dst=dreg; g_colonize_src=src;
+        }
     }
 }
 
@@ -3363,14 +3398,14 @@ int main(int argc, char **argv) {
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
-                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset();
+                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1;
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_topbar(ren, win_w, &sim, world, cid, speed);
                 draw_outliner(ren, win_w, win_h, &sim, world, selected);            /* §6 : l'outliner */
                 draw_mode_buttons(ren, win_h, smode);                     /* §5 : modes de carte */
                 draw_minimap(ren, &mm_pb, win_w, win_h, &cam);            /* §5 : la minicarte */
-                draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected);
+                draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected, &sim);
                 if (shot_sidebar) draw_sidebar(ren, win_w, win_h, &sim, world, smode, selected);
             }
         }
@@ -3580,6 +3615,20 @@ int main(int argc, char **argv) {
                           cam.ox = wx - win_w/(2.f*cam.scale); cam.oy = wy - win_h/(2.f*cam.scale);
                           dirty=true; break;
                       } }
+                    /* P2.14 — clic « Coloniser » : prélève l'or sur la capitale, 100 colons
+                     * de la région la plus peuplée (econ_colonize_from) ; la région devient nue. */
+                    if (g_colonize_dst>=0 && g_colonize_src>=0 && sim.ready &&
+                        ev.button.x>=g_colonize_btn.x && ev.button.x<g_colonize_btn.x+g_colonize_btn.w &&
+                        ev.button.y>=g_colonize_btn.y && ev.button.y<g_colonize_btn.y+g_colonize_btn.h){
+                        int cp=world->country[sim.player].capital_prov;
+                        int creg=(cp>=0&&cp<world->n_provinces)? world->province[cp].region : -1;
+                        if (creg>=0 && sim.econ->region[creg].treasury>=COLONIZE_GOLD_COST){
+                            sim.econ->region[creg].treasury-=COLONIZE_GOLD_COST;
+                            econ_colonize_from(sim.econ, g_colonize_src, g_colonize_dst, sim.player);
+                            printf("\n[scps] Coloniser : région %d colonisée (100 colons, %.0f or).\n", g_colonize_dst, COLONIZE_GOLD_COST);
+                        } else printf("\n[scps] Coloniser : trésor insuffisant (%.0f or requis).\n", COLONIZE_GOLD_COST);
+                        dirty=true; break;
+                    }
                     /* §4 panneau : un clic sur un SLOT de bâtiment bâtit l'édifice
                      * (payé au marché, en jours) — pas de bouton « Bâtir ». */
                     int hit=-1;
@@ -3917,7 +3966,7 @@ int main(int argc, char **argv) {
          * membrane (bandes + mots). Le viewer ne touche aucun flottant SCPS. */
         if (sim.ready && g_font) {
             int mx2,my2; SDL_GetMouseState(&mx2,&my2);
-            zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset();
+            zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1;
             int cid = country_for_panel(world, selected);
             if (g_gs!=GS_PLAYING) {                              /* le SHELL tient l'écran */
                 shell_draw(ren,win_w,win_h,world,&sim,&g_stage);
@@ -3937,7 +3986,7 @@ int main(int argc, char **argv) {
                 draw_mode_buttons(ren, win_h, mode);                      /* §5 : modes de carte */
                 draw_minimap(ren, &mm_pb, win_w, win_h, &cam);            /* §5 : la minicarte */
                 if (selected >= 0)
-                    draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected);
+                    draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected, &sim);
                 draw_sidebar(ren, win_w, win_h, &sim, world, mode, selected);   /* §sidebar : rail + tiroir d'empire */
                 if (g_diplo_target>=0) draw_diplo_popup(ren, win_w, world, &sim);  /* P0.3 */
             }

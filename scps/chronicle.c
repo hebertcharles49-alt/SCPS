@@ -211,7 +211,7 @@ static void sim_day(Sim *s, World *w) {
         }
     }
     if (s->day % 365 == 364) {
-        econ_colonize_tick(s->econ, w); econ_migrate_tick(s->econ, w);
+        econ_colonize_tick(s->econ, w, -1); econ_migrate_tick(s->econ, w);
         world_tick(w, s->econ, 1.0f);
         legitimacy_tick(s->wl, w, s->econ, s->ts);
         trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
