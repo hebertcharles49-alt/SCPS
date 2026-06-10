@@ -817,6 +817,7 @@ static void sim_rebuild(Sim *s, World *w) {
     diplo_seed_rng(s->dp, w->seed);   /* la fronde tire sa graine du MONDE (sinon même séquence à chaque partie) */
     routes_init(s->rn);
     intertrade_reset();   /* embargos décrétés + flux : RAZ par partie */
+    intertrade_seed_centres(s->econ);   /* P3.20 : les Centres commerciaux (hubs du réseau) */
     /* RAZ PLEINE PLAGE : n_countries grandit par sécession ; à la RÉGÉNÉRATION (touche R)
      * les slots hauts gardaient ai_on/TechState périmés d'un monde précédent (cf. chronicle). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ s->ai_on[c]=false; tech_state_init(&s->ts[c], false); }
@@ -1185,6 +1186,15 @@ static int sb_capital_region(const Sim *s, const World *w){
     return (cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
 }
 
+/* P3.20 — NOM d'un Centre commercial : on RÉCUPÈRE le pattern de nommage existant
+ * (place_make_name, le syllabaire par RACE de scps_world) flavoré par la culture
+ * DOMINANTE de la région ; déterministe par région, décorrélé des noms d'empire. */
+static void region_make_name(char *out, int n, const WorldEconomy *e, int region){
+    SpeciesArchetype race = (e && region>=0 && region<e->n_regions)
+                          ? e->region[region].culture.race : RACE_HUMAIN;
+    place_make_name(out, n, race, (uint32_t)region ^ 0x5EEDu);
+}
+
 /* ── panneau ÉCONOMIE : Commerce · Marché · Import/Export ─────────────────── */
 static void sb_panel_eco(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, const World *world){
     static char buf[64][120]; int nb=0;
@@ -1244,6 +1254,10 @@ static void sb_panel_eco(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, 
             y+=15;
         }
     } else {
+        /* P3.20 — accès au RÉSEAU : tient-on un Centre commercial ? (sinon, coupé) */
+        bool net = intertrade_country_has_centre(s->econ, me);
+        draw_text(ren,g_font_small,x+10,y, net?(SDL_Color){0x8c,0xd0,0x9c,0xff}:sense_color(0.12f),
+                  net?tr(STR_CENTRE_RESEAU_OUVERT):tr(STR_CENTRE_RESEAU_FERME)); y+=16;
         draw_text(ren,g_font_small,x+10,y,COL_DIM,"bien            import (de)        export (vers)"); y+=16;
         int shown=0, off=g_sb.scroll[SBT_ECO];
         for (int g=1, seen=0; g<RES_COUNT && y<h-20; g++){
@@ -2033,6 +2047,11 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
     snprintf(line,sizeof line, "%ld habitants", p.ames);
     draw_text(ren, g_font, x, y, COL_PARCH, line);
     zone_add((SDL_Rect){x-2,y-2,rw,19}, "Le nombre total d'habitants de la province."); y += 22;
+    { int creg=(pid>=0&&pid<w->n_provinces)?w->province[pid].region:-1;   /* P3.20 : badge Centre commercial */
+      if (creg>=0 && intertrade_has_centre(creg)){
+          draw_text(ren, g_font, x, y, COL_COPPER, "◆ Centre commercial");
+          zone_add((SDL_Rect){x-2,y-2,rw,19}, tr(STR_CENTRE_COMMERCIAL)); y += 20;
+      } }
     { int breg=(pid>=0&&pid<w->n_provinces)?w->province[pid].region:-1;   /* coques §7 : la balafre SE VOIT */
       if (breg>=0 && breg<econ->n_regions && econ->region[breg].balafre_days>0.f){
           char bal[64];
@@ -2678,6 +2697,44 @@ static void draw_army_markers(SDL_Renderer *ren, const Cam *cam, const Sim *s,
                      "%s (%s) — %ld hommes · %s",
                      w->country[c].name, people, paquets*100, campaign_phase_name(ph));
         zone_add((SDL_Rect){sx-rr-2, sy-rr-2, 2*rr+4, 2*rr+16}, g_army_tip[c]);
+    }
+}
+
+/* P3.20 — LES CENTRES COMMERCIAUX sur la carte (NOTIFIER le carrefour) : un losange
+ * cuivré au carrefour, « ◆ Marché de <lieu> » ; le liseré dit qui le TIENT (couleur
+ * d'empire) — un point stratégique à voir et à disputer. Survol = le rôle + l'accès. */
+static void draw_centre_markers(SDL_Renderer *ren, const Cam *cam, const Sim *s,
+                                const World *w, int win_w, int win_h){
+    static char tip[SCPS_MAX_REG][128];
+    for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
+        if (!intertrade_has_centre(r)) continue;
+        int sx, sy;
+        if (!region_screen_pos(w, cam, r, &sx, &sy)) continue;
+        if (sx<-20||sy<-20||sx>win_w+20||sy>win_h+20) continue;
+        int owner=s->econ->region[r].owner;
+        SDL_Color oc = (owner>=0 && owner<w->n_countries)
+            ? (SDL_Color){(uint8_t)((w->country[owner].color>>16)&0xFF),
+                          (uint8_t)((w->country[owner].color>>8)&0xFF),
+                          (uint8_t)(w->country[owner].color&0xFF),0xFF}
+            : (SDL_Color){0x70,0x70,0x70,0xFF};
+        /* le losange : carré tourné 45° (4 triangles autour du centre) — cuivre + liseré d'empire. */
+        int rad=6;
+        for (int dy=-rad;dy<=rad;dy++){ int wdt=rad-(dy<0?-dy:dy);
+            SDL_SetRenderDrawColor(ren,COL_COPPER.r,COL_COPPER.g,COL_COPPER.b,0xFF);
+            SDL_RenderDrawLine(ren, sx-wdt, sy+dy, sx+wdt, sy+dy); }
+        SDL_SetRenderDrawColor(ren,oc.r,oc.g,oc.b,0xFF);                 /* liseré : qui le tient */
+        SDL_RenderDrawLine(ren,sx,sy-rad-2, sx+rad+2,sy); SDL_RenderDrawLine(ren,sx+rad+2,sy, sx,sy+rad+2);
+        SDL_RenderDrawLine(ren,sx,sy+rad+2, sx-rad-2,sy); SDL_RenderDrawLine(ren,sx-rad-2,sy, sx,sy-rad-2);
+        char nm[32]; region_make_name(nm,sizeof nm,s->econ,r);
+        if (g_font_small && cam->scale>1.6f){                            /* nom au zoom (sinon trop dense) */
+            char lab[48]; snprintf(lab,sizeof lab,"\xe2\x97\x86 Marche de %s", nm);
+            int lw=text_w(g_font_small,lab);
+            fill_rect(ren, sx-lw/2-2, sy+rad+2, lw+4, 13, (SDL_Color){0x0f,0x16,0x22,0xcc});
+            draw_text(ren, g_font_small, sx-lw/2, sy+rad+2, COL_COPPER, lab);
+        }
+        snprintf(tip[r],sizeof tip[r],"Marche de %s\x1f%s\x1f" "Centre commercial : le tenir = commercer.",
+                 nm, (owner>=0&&owner<w->n_countries)?w->country[owner].name:"sans maitre");
+        zone_add((SDL_Rect){sx-rad-2,sy-rad-2,2*rad+4,2*rad+4}, tip[r]);
     }
 }
 
@@ -3548,6 +3605,7 @@ int main(int argc, char **argv) {
                 zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1;
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
+                draw_centre_markers(ren, &cam, &sim, world, win_w, win_h);  /* P3.20 : les Centres commerciaux */
                 draw_topbar(ren, win_w, &sim, world, cid, speed);
                 draw_outliner(ren, win_w, win_h, &sim, world, selected);            /* §6 : l'outliner */
                 draw_mode_buttons(ren, win_h, smode);                     /* §5 : modes de carte */
@@ -4135,6 +4193,7 @@ int main(int argc, char **argv) {
             } else {
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
+                draw_centre_markers(ren, &cam, &sim, world, win_w, win_h);  /* P3.20 : les Centres commerciaux */
                 draw_topbar(ren, win_w, &sim, world, cid, speed);
                 draw_outliner(ren, win_w, win_h, &sim, world, selected);            /* §6 : « ce que je possède » */
                 draw_mode_buttons(ren, win_h, mode);                      /* §5 : modes de carte */

@@ -62,6 +62,14 @@ float intertrade_pair_value (int cid, int other);  /* valeur échangée avec ce 
 void  intertrade_order_embargo(int cid, int target, bool on);
 bool  intertrade_embargoed    (int cid, int target);   /* l'un OU l'autre a décrété */
 void  intertrade_reset(void);
+
+/* ---- CENTRES COMMERCIAUX (P3.20) — hubs du réseau inter-régional ------------
+ * Un par batch de ~4-5 régions, planté là où le FLUX est le plus fort (carrefour
+ * + côte). Un pays sans Centre commercial dans son territoire est COUPÉ du réseau
+ * inter-pays — il faut en conquérir un. À semer après econ_init (géographique). */
+void  intertrade_seed_centres   (const WorldEconomy *e);
+bool  intertrade_has_centre     (int region);                       /* cette région est-elle un hub ? */
+bool  intertrade_country_has_centre(const WorldEconomy *e, int cid);/* ce pays tient-il un hub ? */
 /* sauvegarde (shell §6) : le module possède sa sérialisation — embargos décrétés
  * (les flux du dernier tick se recalculent, eux). */
 void  intertrade_save(FILE *f);

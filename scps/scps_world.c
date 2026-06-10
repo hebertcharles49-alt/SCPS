@@ -3180,25 +3180,32 @@ uint32_t country_race_color(SpeciesArchetype race, int cid){
 /* P1.9 — NOM D'EMPIRE procédural = f(RACE, ETHOS) : syllabaire par race (racine +
  * suffixe) + ÉPITHÈTE d'ethos. Déterministe par pays (donc par graine). « Horde
  * Grukgor » (orque dominateur) · « Sylve Aeriel » (elfe) · « Couronne Aldwic ». */
+/* Syllabaire par RACE (racine + suffixe) — partagé : toponymes ET noms d'empire. */
+static const char *NAME_ROOT[RACE_COUNT][8] = {
+    {"Aer","Syl","Lór","Thal","Elen","Cael","Mith","Vael"},   /* ELFE */
+    {"Gron","Dur","Khaz","Bral","Thrum","Kar","Bor","Dhûr"},  /* NAIN */
+    {"Tik","Zen","Pyx","Fizz","Cog","Bel","Nim","Vex"},       /* GNOME */
+    {"Ald","Bren","Cael","Dorn","Estr","Far","Gual","Marn"},  /* HUMAIN */
+    {"Bram","Tuck","Fal","Hob","Mer","Pip","Wyn","Bre"},      /* HALFELIN */
+    {"Gruk","Mor","Karg","Drog","Nazg","Urk","Brak","Gho"},   /* ORQUE */
+};
+static const char *NAME_SUFF[RACE_COUNT][4] = {
+    {"iel","wen","dor","ond"}, {"gan","din","mar","rok"}, {"il","ex","top","yn"},
+    {"or","wic","yan","red"},  {"ling","wick","by","ton"},  {"nak","dush","rak","gor"},
+};
+/* TOPONYME (lieu) : racine+suffixe du syllabaire de la RACE, SANS épithète d'éthos
+ * (réservée aux empires). Déterministe par `seed` — sert aux Centres commerciaux. */
+void place_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed){
+    int r=(race>=0&&race<RACE_COUNT)?(int)race:RACE_HUMAIN;
+    uint32_t h=(seed*2654435761u)^0x9E3779B9u;
+    snprintf(out,(size_t)n,"%s%s", NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3]);
+}
 void country_make_name(char *out, int n, SpeciesArchetype race, Ethos ethos, int cid){
-    static const char *ROOT[RACE_COUNT][8] = {
-        {"Aer","Syl","Lór","Thal","Elen","Cael","Mith","Vael"},   /* ELFE */
-        {"Gron","Dur","Khaz","Bral","Thrum","Kar","Bor","Dhûr"},  /* NAIN */
-        {"Tik","Zen","Pyx","Fizz","Cog","Bel","Nim","Vex"},       /* GNOME */
-        {"Ald","Bren","Cael","Dorn","Estr","Far","Gual","Marn"},  /* HUMAIN */
-        {"Bram","Tuck","Fal","Hob","Mer","Pip","Wyn","Bre"},      /* HALFELIN */
-        {"Gruk","Mor","Karg","Drog","Nazg","Urk","Brak","Gho"},   /* ORQUE */
-    };
-    static const char *SUFF[RACE_COUNT][4] = {
-        {"iel","wen","dor","ond"}, {"gan","din","mar","rok"}, {"il","ex","top","yn"},
-        {"or","wic","yan","red"},  {"ling","wick","by","ton"},  {"nak","dush","rak","gor"},
-    };
     static const char *EPI[ETHOS_COUNT] = {   /* DOMINATEUR..PACIFISTE */
         "Horde","Clans","Ordre","Couronne","Ligue","Havre" };
-    int r=(race>=0&&race<RACE_COUNT)?(int)race:RACE_HUMAIN;
     int e=(ethos>=0&&ethos<ETHOS_COUNT)?(int)ethos:ETHOS_ORDRE;
-    uint32_t h=((uint32_t)cid*2654435761u)^0x9E3779B9u;
-    snprintf(out,(size_t)n,"%s %s%s", EPI[e], ROOT[r][(h>>3)&7], SUFF[r][(h>>9)&3]);
+    char core[24]; place_make_name(core,sizeof core, race, (uint32_t)cid);
+    snprintf(out,(size_t)n,"%s %s", EPI[e], core);
 }
 
 /* ════════════════════════════════════════════════════════════════════════

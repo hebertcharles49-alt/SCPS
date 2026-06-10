@@ -51,6 +51,8 @@ uint32_t province_palette(int id);
 uint32_t country_race_color(SpeciesArchetype race, int cid);
 /* P1.9 — nom d'empire procédural = f(race, ethos), déterministe par pays. */
 void country_make_name(char *out, int n, SpeciesArchetype race, Ethos ethos, int cid);
+/* P3.20 — TOPONYME procédural (lieu) : syllabaire de la RACE, sans épithète d'éthos. */
+void place_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed);
 
 /* ── LA MER (brief mer §4) : le mouvement directionnel sur le champ de courants ──
  * coût(tuile, direction) = base / (1 + k·max(0, v̂·d̂)) × (1 + m·max(0, −v̂·d̂)) ;

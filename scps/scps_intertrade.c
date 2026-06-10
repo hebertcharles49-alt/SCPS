@@ -85,6 +85,7 @@ static int16_t g_expt_to [SCPS_MAX_COUNTRY][RES_COUNT];
 static float  g_gold[SCPS_MAX_COUNTRY];
 static float  g_pair[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
 static bool   g_embargo[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* [qui décrète][contre qui] */
+static bool   g_centre[SCPS_MAX_REG];   /* P3.20 : cette région EST un Centre commercial (hub) */
 
 void intertrade_reset(void){
     memset(g_imp,0,sizeof g_imp);   memset(g_expt,0,sizeof g_expt);
@@ -103,6 +104,48 @@ static void flows_clear(void){
 }
 static inline bool cid_ok(int c){ return c>=0 && c<SCPS_MAX_COUNTRY; }
 
+/* ── P3.20 — CENTRES COMMERCIAUX (les hubs du réseau inter-régional) ──────────
+ * Des POINTS STRATÉGIQUES, un par batch de ~4-5 régions, plantés là où le FLUX
+ * est le plus fort (carrefour : degré d'adjacence + débouché côtier). Un pays
+ * SANS Centre commercial dans son territoire n'a PAS accès au réseau d'échanges
+ * inter-pays : il faut en CONQUÉRIR un (le thème du module). Seedés déterministes
+ * (glouton, sans rng) ; sérialisés ; identiques au même monde à graine égale.   */
+static float region_flow_score(const WorldEconomy *e, int r){
+    int deg=0; for (int s=0;s<e->n_regions;s++) if (s!=r && e->adj[r][s]) deg++;
+    float c=(float)deg;                       /* carrefour : plus de voisins = plus de flux */
+    if (e->region[r].coastal) c+=2.5f;         /* débouché maritime : un grand multiplicateur de flux */
+    return c;
+}
+void intertrade_seed_centres(const WorldEconomy *e){
+    memset(g_centre,0,sizeof g_centre);
+    if (!e) return;
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    static bool claimed[SCPS_MAX_REG];
+    memset(claimed,0,sizeof claimed);
+    int remaining=n;
+    while (remaining>0){
+        int best=-1; float bestc=-1.f;                 /* le carrefour le plus fort, non encore couvert */
+        for (int r=0;r<n;r++){ if(claimed[r]) continue;
+            float c=region_flow_score(e,r); if(c>bestc){bestc=c;best=r;} }
+        if (best<0) break;
+        g_centre[best]=true; claimed[best]=true; remaining--;
+        int taken=0;                                   /* le BATCH : jusqu'à 4 voisins s'y rattachent (centre+~4=5) */
+        for (int s=0;s<n && taken<4;s++){
+            if (claimed[s]||!e->adj[best][s]) continue;
+            claimed[s]=true; remaining--; taken++;
+        }
+    }
+}
+bool intertrade_has_centre(int region){
+    return (region>=0&&region<SCPS_MAX_REG)?g_centre[region]:false;
+}
+bool intertrade_country_has_centre(const WorldEconomy *e, int cid){
+    if (!e||!cid_ok(cid)) return false;
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
+        if (g_centre[r] && e->region[r].owner==cid) return true;
+    return false;
+}
+
 void  intertrade_order_embargo(int cid, int target, bool on){
     if (cid_ok(cid) && cid_ok(target) && cid!=target) g_embargo[cid][target]=on;
 }
@@ -119,8 +162,9 @@ float intertrade_pair_value (int cid,int other){
     return (cid_ok(cid)&&cid_ok(other))? g_pair[cid][other] : 0.f;
 }
 
-void intertrade_save(FILE *f){ fwrite(g_embargo,sizeof g_embargo,1,f); }
-bool intertrade_load(FILE *f){ return fread(g_embargo,sizeof g_embargo,1,f)==1; }
+void intertrade_save(FILE *f){ fwrite(g_embargo,sizeof g_embargo,1,f); fwrite(g_centre,sizeof g_centre,1,f); }
+bool intertrade_load(FILE *f){ return fread(g_embargo,sizeof g_embargo,1,f)==1
+                                   && fread(g_centre,sizeof g_centre,1,f)==1; }
 
 static bool pair_at_peace(const DiploState *dp, int ca, int cb){
     return !dp || diplo_status(dp, ca, cb) != DIPLO_WAR;
@@ -130,6 +174,10 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
     g_last_value = 0.f;
     flows_clear();
     if (!e || !rn) return;
+    /* P3.20 — quels pays tiennent un Centre commercial ? (sans : pas de réseau) */
+    bool has_centre[SCPS_MAX_COUNTRY]; memset(has_centre,0,sizeof has_centre);
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
+        if (g_centre[r]){ int o=e->region[r].owner; if(cid_ok(o)) has_centre[o]=true; }
     for (int i=0;i<rn->n;i++){
         const TradeRoute *rt=&rn->route[i];
         if (!rt->open) continue;
@@ -137,6 +185,7 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
         if (ra<0||rb<0||ra>=e->n_regions||rb>=e->n_regions) continue;
         int ca=e->region[ra].owner, cb=e->region[rb].owner;
         if (ca<0||cb<0||ca==cb) continue;            /* intra-pays : déjà couvert par scps_trade */
+        if (!has_centre[ca] || !has_centre[cb]) continue;  /* P3.20 : pas de Centre commercial → pas de réseau */
         bool pact=diplo_trade_pact(dp,ca,cb);        /* cité marchande : route GARANTIE */
         if (!pact && !pair_at_peace(dp,ca,cb)) continue;      /* EMBARGO : guerre commerciale */
         if (!pact && intertrade_embargoed(ca,cb)) continue;   /* EMBARGO DÉCRÉTÉ (joueur/IA) */

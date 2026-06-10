@@ -209,5 +209,8 @@
     X(STR_FACTION_ETHOS_5, "le petit peuple — pain, paix, sécurité du quotidien") \
     X(STR_FACTION_HOV_FMT, "{0} · {1}. Satisfaction {2}% = leur adhésion au régime ; part {3}% = leur poids politique.") \
     X(STR_FACTION_HOV_COUP, " — ALIÉNÉE & PUISSANTE : le coup couve.") \
+    X(STR_CENTRE_RESEAU_OUVERT, "Réseau inter-pays OUVERT (un Centre commercial tenu)") \
+    X(STR_CENTRE_RESEAU_FERME, "Réseau inter-pays FERMÉ — aucun Centre commercial (en conquérir un)") \
+    X(STR_CENTRE_COMMERCIAL, "Centre commercial — hub du réseau inter-régional (le tenir = commercer)") \
 
 #endif /* SCPS_STRINGS_IDS_H */

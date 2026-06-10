@@ -204,4 +204,7 @@
     X(STR_FACTION_ETHOS_5, "the common folk — bread, peace, daily safety") \
     X(STR_FACTION_HOV_FMT, "{0} · {1}. Satisfaction {2}% = their buy-in to the regime; share {3}% = their political weight.") \
     X(STR_FACTION_HOV_COUP, " — ALIENATED & POWERFUL: a coup is brewing.") \
+    X(STR_CENTRE_RESEAU_OUVERT, "Inter-country network OPEN (a Trade Hub held)") \
+    X(STR_CENTRE_RESEAU_FERME, "Inter-country network CLOSED — no Trade Hub (conquer one)") \
+    X(STR_CENTRE_COMMERCIAL, "Trade Hub — node of the inter-regional network (hold it = trade)") \
 
