@@ -2303,7 +2303,7 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
         struct { const char *name,*abbr,*eff,*todo; float lvl; bool special; int edi; } S[8] = {
             {"Ordre","Or",  "monte la capacité du royaume (K)",       "Tribunal : ordre & administration",            b.K_inst,  false, EDI_TRIBUNAL},
             {"Vivres","Vi", "loge et nourrit la croissance",         "Grenier : nourrir & loger",                    b.food_cap,false, EDI_GRENIER},
-            {"Foi","Fo",    "apaise l'agitation, soutient la légitimité","Temple : apaiser & légitimer",              b.faith,   false, EDI_TEMPLE},
+            {"Foi","Fo",    "apaise l'agitation, soutient la légitimité","Sanctuaire : apaiser & légitimer",          b.faith,   false, EDI_SANCTUAIRE},
             {"Savoir","Sa", "accélère la recherche locale",          "Bibliothèque : hâter le savoir",               b.savoir,  false, EDI_BIBLIOTHEQUE},
             {"Marché","Ma", "capte la prospérité locale (PE)",       "Marché : capter la prospérité",                b.PE_infra,false, EDI_MARCHE},
             {"Ouvert.","Ov","perméabilité aux échanges",             "Port : perméer aux échanges",                  b.P_open,  false, EDI_PORT},
@@ -2322,22 +2322,32 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
                                round_box(ren, sx-2, sy-2, sw+4, sw+4, COL_COPPER, 7); } /* …épaissi vers l'extérieur */
             int aw=text_w(g_font_small, S[i].abbr);
             draw_text(ren, g_font_small, sx+(sw-aw)/2, sy+sw/2-7, built?COL_PANEL:COL_DIM, S[i].abbr);
-            /* P6.33 — format STRICT : « nom ↑ (édifice) » · titre, puis les lignes de
-             * coût (ressource/quantité de la recette), et RIEN d'autre (colonne effet vide). */
-            const EdificeDef *ed = edifice_def((Edifice)S[i].edi);
-            int hn = snprintf(bhov[i],sizeof bhov[i], "%s %s (%s)\x1f",
-                              S[i].name, built?"↑":"→", edifice_name((Edifice)S[i].edi));
-            bool anyc=false;
-            if (ed) for (int c=0;c<BUILD_RES_MAX && hn<(int)sizeof bhov[i]-2;c++){
-                if (ed->cost.qty[c] <= 0.f) continue;
-                hn += snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "%s%-7s %.0f",
-                               anyc?"\n":"", resource_name(ed->cost.res[c]), ed->cost.qty[c]);
-                anyc=true;
+            /* E1bis.11 — FAMILLE ↑ : le slot offre le PALIER BÂTISSABLE (base si rien,
+             * sinon le ↑ du palier en place ; « complet » au sommet). Singleton = tel quel. */
+            Edifice base=(Edifice)S[i].edi;
+            bool family=(base==EDI_TRIBUNAL||base==EDI_SANCTUAIRE||base==EDI_BIBLIOTHEQUE||base==EDI_GARNISON);
+            Edifice tgt = family && reg>=0 ? edifice_next_buildable(econ,reg,base) : base;
+            bool maxed = (tgt>=EDIFICE_COUNT);
+            bool up = family && !maxed && tgt!=base;     /* un palier est déjà en place → c'est un ↑ */
+            /* P6.33 — format STRICT : « nom ↑ (édifice) », puis les lignes de coût, rien d'autre. */
+            if (maxed){
+                snprintf(bhov[i],sizeof bhov[i], "%s — au sommet (rien à bâtir)\x1f\x1f", S[i].name);
+            } else {
+                const EdificeDef *ed = edifice_def(tgt);
+                int hn = snprintf(bhov[i],sizeof bhov[i], "%s %s (%s)\x1f",
+                                  S[i].name, up?"↑":"→", edifice_name(tgt));
+                bool anyc=false;
+                if (ed) for (int c=0;c<BUILD_RES_MAX && hn<(int)sizeof bhov[i]-2;c++){
+                    if (ed->cost.qty[c] <= 0.f) continue;
+                    hn += snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "%s%-7s %.0f",
+                                   anyc?"\n":"", resource_name(ed->cost.res[c]), ed->cost.qty[c]);
+                    anyc=true;
+                }
+                if (!anyc) hn += snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "—");
+                snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "\x1f");
             }
-            if (!anyc) hn += snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "—");
-            snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "\x1f");      /* colonne EFFET vide : rien d'autre */
             zone_add((SDL_Rect){sx,sy,sw,sw}, bhov[i]);
-            if (reg>=0) bslot_add((SDL_Rect){sx,sy,sw,sw}, reg, S[i].edi);   /* cliquable */
+            if (reg>=0 && !maxed) bslot_add((SDL_Rect){sx,sy,sw,sw}, reg, tgt);   /* cliquable → pose le ↑ */
         }
         y = sy0 + 2*(sw+8) + 4;
     }
@@ -2972,7 +2982,7 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 7u            /* v7 : P3.19 — LBuilding.dev (développement) ; LaborState change de taille */
+#define SAVE_VERSION 8u            /* v8 : E1bis.11 — RegionEconomy.edi_built (masque édifices) */
 #define SAVE_F_CRYPT 1u
 typedef struct {
     uint32_t magic, version;

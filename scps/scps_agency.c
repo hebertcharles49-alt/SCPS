@@ -14,13 +14,16 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
     /* {name, jours, delta, recette} — la recette monte avec le TIER : bois (palier 0)
      * → bois+métal (palier 1) → métal+précieux (palier 2). Achetée AU MARCHÉ en or. */
     /* Institutionnel → K (ce qui métabolise la distance, tient la diversité). */
+    /* E1bis.11 — FAMILLES ↑ : les paliers d'upgrade portent un delta CUMULÉ (il
+     * REMPLACE le précédent, jamais ne s'empile) ; la progression de l'IA (par
+     * niveau) reste à l'identique → balance NEUTRE. */
     [EDI_TRIBUNAL]     = { "Tribunal",      180,  { .K_inst=1.0f }, {{RES_WOOD},{40}} },
-    [EDI_CHANCELLERIE] = { "Chancellerie",  365,  { .K_inst=1.5f }, {{RES_WOOD,RES_METAL},{50,25}} },
-    [EDI_ACADEMIE]     = { "Académie",      1800, { .K_inst=1.5f, .P_open=0.5f }, {{RES_METAL,RES_PRECIOUS_METAL},{60,40}} },  /* §7 : tier 3 → métal-préc 15→40 */
+    [EDI_CHANCELLERIE] = { "Chancellerie",  365,  { .K_inst=2.5f }, {{RES_WOOD,RES_METAL},{50,25}} },  /* ↑ Tribunal : 1.0+1.5 */
+    [EDI_ACADEMIE]     = { "Académie",      1800, { .K_inst=4.0f, .P_open=0.5f }, {{RES_METAL,RES_PRECIOUS_METAL},{60,40}} },  /* ↑ Chancellerie : 2.5+1.5 */
     /* Coercitif → H (tient l'ordre par la force — ronge L, voie fragile). */
     [EDI_GARNISON]     = { "Garnison",      180,  { .H_coerc=1.0f }, {{RES_WOOD,RES_METAL},{40,20}} },
-    [EDI_FORTERESSE]   = { "Forteresse",    1100, { .H_coerc=2.0f }, {{RES_WOOD,RES_METAL},{60,50}} },
-    [EDI_CITADELLE]    = { "Citadelle",     2200, { .H_coerc=3.0f }, {{RES_METAL,RES_TOOLS},{100,30}} },
+    [EDI_FORTERESSE]   = { "Forteresse",    1100, { .H_coerc=3.0f }, {{RES_WOOD,RES_METAL},{60,50}} },  /* ↑ Garnison : 1.0+2.0 */
+    [EDI_CITADELLE]    = { "Citadelle",     2200, { .H_coerc=6.0f }, {{RES_METAL,RES_TOOLS},{100,30}} },/* ↑ Forteresse : 3.0+3.0 */
     /* Ouverture → P (porte d'assimilation, contact, routes maritimes). */
     [EDI_PORT]         = { "Port",          540,  { .P_open=1.0f, .port=1.0f }, {{RES_WOOD,RES_METAL},{80,20}} },
     [EDI_CARAVANSERAIL]= { "Caravansérail", 365,  { .P_open=0.7f }, {{RES_WOOD},{45}} },
@@ -33,11 +36,11 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
     [EDI_AQUEDUC]      = { "Aqueduc",       540,  { .food_cap=1.2f }, {{RES_WOOD,RES_METAL},{30,40}} },
     /* Foi → SOUTIENT L (sacraliser le trône apaise sans réprimer — §4 du catalogue). */
     [EDI_SANCTUAIRE]   = { "Sanctuaire",    150,  { .faith=1.0f }, {{RES_WOOD},{30}} },
-    [EDI_TEMPLE]       = { "Temple",        600,  { .faith=2.0f }, {{RES_WOOD,RES_METAL},{50,30}} },
-    [EDI_CATHEDRALE]   = { "Cathédrale",    2000, { .faith=3.5f }, {{RES_METAL,RES_PRECIOUS_METAL},{70,40}} },  /* §7 : tier 3 → métal-préc 25→40 */
+    [EDI_TEMPLE]       = { "Temple",        600,  { .faith=3.0f }, {{RES_WOOD,RES_METAL},{50,30}} },  /* ↑ Sanctuaire : 1.0+2.0 */
+    [EDI_CATHEDRALE]   = { "Cathédrale",    2000, { .faith=6.5f }, {{RES_METAL,RES_PRECIOUS_METAL},{70,40}} },  /* ↑ Temple : 3.0+3.5 */
     /* Savoir → recherche (le monastère sacralise ET étudie — §5 du catalogue). */
     [EDI_BIBLIOTHEQUE] = { "Bibliothèque",  500,  { .savoir=1.5f }, {{RES_WOOD,RES_METAL},{40,20}} },
-    [EDI_MONASTERE]    = { "Monastère",     900,  { .savoir=1.0f, .faith=1.0f }, {{RES_WOOD,RES_METAL},{50,15}} },
+    [EDI_MONASTERE]    = { "Monastère",     900,  { .savoir=2.5f, .faith=1.0f }, {{RES_WOOD,RES_METAL},{50,15}} },  /* ↑ Bibliothèque : savoir 1.5+1.0 */
     /* Commerce → PE local (capte le flux ; la banque finance l'État). */
     [EDI_COMPTOIR]     = { "Comptoir",      200,  { .PE_infra=0.8f }, {{RES_WOOD},{30}} },
     [EDI_BANQUE]       = { "Banque",        700,  { .PE_infra=1.4f }, {{RES_METAL,RES_PRECIOUS_METAL},{40,40}} },  /* §7 : tier 3 → métal-préc 20→40 */
@@ -45,6 +48,70 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
 
 const EdificeDef *edifice_def(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?&EDIFICES[e]:NULL; }
 const char       *edifice_name(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?EDIFICES[e].name:"?"; }
+
+/* ── E1bis.11 — FAMILLES ↑ ───────────────────────────────────────────────────
+ * Le palier précédent d'un édifice familial (EDIFICE_COUNT = base ou singleton). */
+Edifice edifice_prev(Edifice e){
+    switch(e){
+        case EDI_CHANCELLERIE: return EDI_TRIBUNAL;
+        case EDI_ACADEMIE:     return EDI_CHANCELLERIE;
+        case EDI_FORTERESSE:   return EDI_GARNISON;
+        case EDI_CITADELLE:    return EDI_FORTERESSE;
+        case EDI_TEMPLE:       return EDI_SANCTUAIRE;
+        case EDI_CATHEDRALE:   return EDI_TEMPLE;
+        case EDI_MONASTERE:    return EDI_BIBLIOTHEQUE;
+        default:               return EDIFICE_COUNT;
+    }
+}
+Edifice edifice_succ(Edifice e){   /* palier SUIVANT (EDIFICE_COUNT = sommet/singleton) */
+    switch(e){
+        case EDI_TRIBUNAL:    return EDI_CHANCELLERIE;
+        case EDI_CHANCELLERIE:return EDI_ACADEMIE;
+        case EDI_GARNISON:    return EDI_FORTERESSE;
+        case EDI_FORTERESSE:  return EDI_CITADELLE;
+        case EDI_SANCTUAIRE:  return EDI_TEMPLE;
+        case EDI_TEMPLE:      return EDI_CATHEDRALE;
+        case EDI_BIBLIOTHEQUE:return EDI_MONASTERE;
+        default:             return EDIFICE_COUNT;
+    }
+}
+/* le palier BÂTISSABLE d'une famille (base `b`) dans la région : on remonte la
+ * chaîne tant que le palier est bâti, et l'on renvoie le premier NON bâti (le ↑ à
+ * poser), ou EDIFICE_COUNT si le sommet est déjà atteint. */
+Edifice edifice_next_buildable(const WorldEconomy *econ, int region, Edifice base){
+    if (region<0||region>=econ->n_regions) return base;
+    uint32_t built=econ->region[region].edi_built;
+    Edifice e=base;
+    while (e<EDIFICE_COUNT){
+        if (!(built & (1u<<e))) return e;          /* ce palier manque → c'est lui qu'on pose */
+        Edifice s=edifice_succ(e);
+        if (s>=EDIFICE_COUNT) return EDIFICE_COUNT;  /* sommet déjà bâti */
+        e=s;
+    }
+    return EDIFICE_COUNT;
+}
+/* membre d'une FAMILLE ↑ (base ou palier) : on suit son masque & on gâte la pose.
+ * Les autres (Grenier, Marché, Port, Entrepôt, Comptoir, Caravansérail, Irrigation,
+ * Aqueduc, Banque) restent des poses INDÉPENDANTES (s'empilent — l'IA en dépend). */
+static bool edi_is_family(Edifice e){
+    switch(e){
+        case EDI_TRIBUNAL: case EDI_CHANCELLERIE: case EDI_ACADEMIE:
+        case EDI_GARNISON: case EDI_FORTERESSE:   case EDI_CITADELLE:
+        case EDI_SANCTUAIRE: case EDI_TEMPLE:     case EDI_CATHEDRALE:
+        case EDI_BIBLIOTHEQUE: case EDI_MONASTERE: return true;
+        default: return false;
+    }
+}
+/* La pose est-elle BLOQUÉE ? Un membre déjà bâti (on passe à l'↑) ou un ↑ sans son
+ * palier précédent → refus. Un singleton n'est jamais bloqué. */
+bool edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e){
+    if (region<0 || region>=econ->n_regions || !edi_is_family(e)) return false;
+    uint32_t built = econ->region[region].edi_built;
+    if (built & (1u<<e)) return true;                       /* déjà bâti : pas de doublon */
+    Edifice p = edifice_prev(e);
+    if (p<EDIFICE_COUNT && !(built & (1u<<p))) return true;  /* ↑ sans le palier précédent */
+    return false;
+}
 
 /* ---- Coût des bâtiments (§1) : matériaux ACHETÉS au marché en or ------- */
 #define BUILD_MIN_PRICE 0.20f   /* plancher de prix : même un bien abondant n'est jamais gratuit */
@@ -77,6 +144,7 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
 bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e){
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return false;
     if (e==EDI_PORT && !econ->region[region].coastal) return false;   /* un port se bâtit SUR la côte (mer §5) */
+    if (edifice_build_blocked(econ, region, e)) return false;          /* E1bis.11 : ↑ exige le palier précédent (pas de doublon) */
     RegionEconomy *re=&econ->region[region];
     float gold = agency_build_gold(econ, region, e);
     if (gold > re->treasury) return false;        /* pas l'or → pas de chantier (garde, comme colonize) */
@@ -228,6 +296,11 @@ static void apply_delta(ProvBuild *b, const ProvBuild *d){
     b->port    += d->port;
     b->PE_infra+= d->PE_infra; b->food_cap += d->food_cap;
 }
+static void remove_delta(ProvBuild *b, const ProvBuild *d){   /* E1bis.11 : l'↑ EFFACE le palier précédent */
+    b->K_inst  -= d->K_inst;  b->H_coerc -= d->H_coerc;  b->P_open -= d->P_open;
+    b->port    -= d->port;
+    b->PE_infra-= d->PE_infra; b->food_cap -= d->food_cap;
+}
 
 static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack *drift,
                          const BuildOrder *o){
@@ -235,9 +308,16 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
     if (reg<0 || reg>=econ->n_regions) return;
     RegionEconomy *re=&econ->region[reg];
     switch (o->kind){
-        case AGY_BUILD:
-            apply_delta(&re->build, &EDIFICES[(Edifice)o->param].delta);
-            break;
+        case AGY_BUILD: {
+            Edifice e=(Edifice)o->param;
+            Edifice prev=edifice_prev(e);                          /* E1bis.11 : ↑ REMPLACE le palier précédent */
+            if (prev<EDIFICE_COUNT && (re->edi_built & (1u<<prev))){
+                remove_delta(&re->build, &EDIFICES[prev].delta);
+                re->edi_built &= ~(1u<<prev);
+            }
+            apply_delta(&re->build, &EDIFICES[e].delta);
+            if (e<32) re->edi_built |= (1u<<e);                    /* on suit l'édifice posé (masque) */
+        } break;
         case AGY_CLEAR:
             re->build.food_cap += CLEAR_FOOD_GAIN;
             /* dérive du substrat vers l'agriculture (impérialisme sur la terre) */

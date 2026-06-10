@@ -56,6 +56,12 @@ typedef struct {
 
 const EdificeDef *edifice_def(Edifice e);
 const char       *edifice_name(Edifice e);
+/* E1bis.11 — FAMILLES ↑ : palier précédent (EDIFICE_COUNT = base/singleton) ; et
+ * la pose est-elle bloquée (membre déjà bâti, ou ↑ sans son palier) — pour l'UI. */
+Edifice edifice_prev(Edifice e);
+Edifice edifice_succ(Edifice e);   /* palier suivant (EDIFICE_COUNT = sommet/singleton) */
+Edifice edifice_next_buildable(const WorldEconomy *econ, int region, Edifice base);  /* le ↑ à poser */
+bool    edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e);
 
 /* Le PRIX en OR de la recette au marché de la région (Σ qty × prix courant) — un
  * nombre de jeu (affichable). Sert au garde de construction ET à l'UI. */

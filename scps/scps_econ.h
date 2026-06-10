@@ -167,6 +167,7 @@ typedef struct {
     PopCulture culture;   /* profil culturel DOMINANT (synchronisé sur le plus gros groupe) */
     ProvincePop pop;      /* les GROUPES de la province (clé de voûte) — n_groups=0 si non attaché */
     ProvBuild  build;     /* densité institutionnelle bâtie par le joueur */
+    uint32_t   edi_built; /* E1bis.11 : masque des ÉDIFICES bâtis (par-édifice → upgrades familiales) */
     float      route_pe;  /* PE apporté par les routes commerciales (transitoire) */
 
     float      raw_cap[RES_COUNT];   /* extraction max/tick par matière première */
