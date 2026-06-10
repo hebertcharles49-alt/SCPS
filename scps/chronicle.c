@@ -568,6 +568,7 @@ int main(int argc, char **argv){
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
     long tot_emp_n=0, tot_emp_hub=0;   /* par-empire : moyennes de fin de sim */
     double tot_emp_gold=0, tot_emp_flux=0, tot_emp_imp=0, tot_emp_exp=0, tot_emp_expgold=0;
+    long tot_tier_y[3]={0,0,0}; int tot_tier_n[3]={0,0,0};   /* E1 §9 : fenêtres d'accession */
     long tot_captured=0, tot_worstcorr=0; int worlds_with_capture=0;   /* §C3 : le rot, agrégé */
     int  worlds_with_ironorder=0, worlds_with_uprising=0;
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
@@ -613,6 +614,7 @@ int main(int argc, char **argv){
 
         int age_year[AGE_COUNT]; AgeSnap age_snap[AGE_COUNT];
         for (int a=0;a<AGE_COUNT;a++){ age_year[a]=-1; age_snap[a].year=-1; }
+        int tier_year[3]={-1,-1,-1};   /* E1 §9 : année du PREMIER édifice 360/540/960 j bâti */
         int war_onsets=0, prev_wars=0, peak_wars=0;
         int peak_rev=0, peak_rev_year=0;
         int min_living=c0;
@@ -638,6 +640,19 @@ int main(int argc, char **argv){
                 if (po>=0 && no>=0 && no!=po) conq_prov += w->region[r].n_provinces;
                 prev_owner[r]=no;
             }
+            /* E1 §9 — fenêtres d'ACCESSION : l'année où le premier édifice de chaque
+             * palier (360/540/960 j) s'achève quelque part. La loi des prix se LIT. */
+            if (tier_year[0]<0 || tier_year[1]<0 || tier_year[2]<0)
+                for (int r=0;r<s.econ->n_regions;r++){
+                    uint32_t built=s.econ->region[r].edi_built;
+                    if (!built) continue;
+                    for (int e2=0;e2<EDIFICE_COUNT;e2++){
+                        if (!(built&(1u<<e2))) continue;
+                        int d=edifice_def((Edifice)e2)->days;
+                        int ti = (d==360)?0:(d==540)?1:(d==960)?2:-1;
+                        if (ti>=0 && tier_year[ti]<0) tier_year[ti]=s.year;
+                    }
+                }
             /* âges : on imprime À L'AVÈNEMENT → la ligne du temps est chronologique */
             for (int a=0;a<AGE_COUNT;a++)
                 if (age_year[a]<0 && ages_dawned(s.ev,(AgeId)a)){
@@ -766,6 +781,9 @@ int main(int argc, char **argv){
         print_building_census(s.econ);
         printf("              expansion : %d prov colonisées · %d prov TRANSFÉRÉES à la paix · armée finale %.0f\n",
                colonized_provinces(w,s.econ), conq_prov, total_army(w,s.econ));
+        /* E1 §9 — la loi prix/durée se LIT : année du premier édifice par palier. */
+        printf("              accession (1er édifice bâti) : 360 j an %d · 540 j an %d · 960 j an %d  (-1 = jamais)\n",
+               tier_year[0], tier_year[1], tier_year[2]);
         /* TÉLÉMÉTRIE PAR ÂGE : le marché, l'or par empire et la tech à chaque avènement. */
         { bool any=false; for (int a=0;a<AGE_COUNT;a++) if (age_snap[a].year>=0) any=true;
           if (any){
@@ -965,6 +983,7 @@ int main(int argc, char **argv){
           tot_disarm+=disarmed; tot_warpir+=s.dp->n_war_antipirate; tot_balafres+=balafres;
           tot_intercepts+=intercepts; tot_drowned+=drowned; }
 
+        for (int t=0;t<3;t++) if (tier_year[t]>=0){ tot_tier_y[t]+=tier_year[t]; tot_tier_n[t]++; }
         tot_alliances += n_alliances;
         tot_wars += war_onsets; tot_absorbed += absorbed; tot_emerged += emerged; tot_peakrev += peak_rev; tot_ages += nages;
         tot_conq += conq_prov;
@@ -986,6 +1005,10 @@ int main(int argc, char **argv){
            tot_emp_n? tot_emp_gold/tot_emp_n:0.0,  tot_emp_n? tot_emp_flux/tot_emp_n:0.0,
            tot_emp_n? tot_emp_imp /tot_emp_n:0.0,  tot_emp_n? tot_emp_exp /tot_emp_n:0.0,
            tot_emp_n? tot_emp_expgold/tot_emp_n:0.0, tot_emp_hub, tot_emp_n);
+    printf("   accession (E1 §9) ........... 360 j an %.1f (%d/%d) · 540 j an %.1f (%d/%d) · 960 j an %.1f (%d/%d)  (moy. du 1er bâti)\n",
+           tot_tier_n[0]? (double)tot_tier_y[0]/tot_tier_n[0]:-1.0, tot_tier_n[0], nsims,
+           tot_tier_n[1]? (double)tot_tier_y[1]/tot_tier_n[1]:-1.0, tot_tier_n[1], nsims,
+           tot_tier_n[2]? (double)tot_tier_y[2]/tot_tier_n[2]:-1.0, tot_tier_n[2], nsims);
     printf("   provinces transférées à la paix %ld   (moy. %.1f/sim ; la propriété ne change qu'au RÈGLEMENT)\n", tot_conq, (double)tot_conq/nsims);
     printf("   occupations (terrain) ....... %ld posée(s) · %ld levée(s)   (les sièges tiennent le sol entre deux paix)\n", g_tot_occ_posed, g_tot_occ_lifted);
     printf("   pays absorbés (morts) ....... %ld   (moy. %.1f/sim)\n", tot_absorbed, (double)tot_absorbed/nsims);

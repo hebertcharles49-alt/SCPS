@@ -25,8 +25,8 @@ static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v
 typedef struct { float supplies, wood, metal; int days; } HullCost;
 static const HullCost HULLS[HULL_COUNT]={
     [HULL_WAR]      ={ 30.f, 40.f, 25.f, 420 },
-    [HULL_TRANSPORT]={ 20.f, 30.f,  0.f, 270 },
-    [HULL_MERCHANT] ={ 15.f, 25.f,  0.f, 200 },
+    [HULL_TRANSPORT]={ 20.f, 30.f,  0.f, 180 },   /* E1 : coque LÉGÈRE — alignée au palier 180 j */
+    [HULL_MERCHANT] ={ 15.f, 25.f,  0.f, 180 },   /* E1 : coque LÉGÈRE — alignée au palier 180 j */
     [HULL_PIRATE]   ={  6.f,  8.f,  0.f,  60 },   /* la CONVERSION coûte peu : c'est sa nature */
 };
 int navy_hull_crew(HullType t){ return (t==HULL_WAR)?NAVY_CREW_WAR:NAVY_CREW_LIGHT; }

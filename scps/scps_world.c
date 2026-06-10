@@ -3101,6 +3101,7 @@ const char *resource_name(Resource r) {
         [RES_GOLD]="Or",[RES_PRECIOUS_METAL]="Métaux précieux",[RES_PEARL]="Perle",
         [RES_ARCANE_CRYSTAL]="Cristal arcanique",[RES_CELESTIAL_IRON]="Fer céleste",
         [RES_MUREX]="Murex",[RES_INDIGO]="Indigo",
+        [RES_CLAY]="Argile",[RES_STONE]="Pierre",   /* E1 : matériaux de construction réels */
         /* production */
         [RES_CLOTH]="Étoffe",[RES_NAVAL_SUPPLIES]="Fournitures navales",[RES_WINE]="Vin",[RES_BEER]="Bière",
         [RES_PRECIOUS_WARE]="Bien précieux",[RES_PRECIOUS_CLOTH]="Étoffe précieuse",[RES_PAPER]="Papier",
@@ -3121,6 +3122,7 @@ uint32_t resource_color(Resource r) {
         [RES_GOLD]=0xFFFFD000u,[RES_PRECIOUS_METAL]=0xFF80E0E0u,[RES_PEARL]=0xFFF0E0E8u,
         [RES_ARCANE_CRYSTAL]=0xFF8040C0u,[RES_CELESTIAL_IRON]=0xFFA0C0FFu,
         [RES_MUREX]=0xFF902870u,[RES_INDIGO]=0xFF304890u,   /* pourpre · bleu indigo */
+        [RES_CLAY]=0xFFB06A4Au,[RES_STONE]=0xFF9A9A9Au,     /* terre cuite · gris pierre */
         /* production */
         [RES_CLOTH]=0xFFC8B0C0u,[RES_NAVAL_SUPPLIES]=0xFF386848u,[RES_WINE]=0xFF902848u,[RES_BEER]=0xFFC08020u,
         [RES_PRECIOUS_WARE]=0xFF60C0C0u,[RES_PRECIOUS_CLOTH]=0xFFE8E0F0u,[RES_PAPER]=0xFFF0E8D0u,

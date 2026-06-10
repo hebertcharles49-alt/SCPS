@@ -33,10 +33,14 @@ int main(int argc,char**argv){
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
     econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    /* P3.20 — la GÂCHE du réseau : sans Centre commercial, pas de commerce
+     * inter-pays. On sème les hubs (géographiques) et l'on teste ENTRE hubs. */
+    intertrade_reset();
+    intertrade_seed_centres(econ);
 
-    /* deux régions peuplées que l'on attribue à DEUX pays distincts. */
+    /* deux régions-HUB que l'on attribue à DEUX pays distincts. */
     int ra=-1, rb=-1;
-    for(int r=0;r<econ->n_regions;r++) if(econ->region[r].culture.settled){ if(ra<0)ra=r; else {rb=r;break;} }
+    for(int r=0;r<econ->n_regions;r++) if(intertrade_has_centre(r)){ if(ra<0)ra=r; else {rb=r;break;} }
     if(ra<0||rb<0){ printf(" (monde trop vide)\n"); return 0; }
     int g=8;   /* un bien quelconque : on pose nous-mêmes stock & prix */
 

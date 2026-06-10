@@ -56,8 +56,10 @@ static float elite_sat_with_luxe(WorldEconomy *e, int r, float subsistance, Reso
     re->culture.subsistance=subsistance; re->owner=0;
     re->n_bld=0; re->coercion=0.f; re->over_tax=0.f;
     for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
-    re->strata[CLASS_LABORER].pop=1000.f; re->strata[CLASS_LABORER].wealth=1e6f;
-    re->strata[CLASS_BOURGEOIS].pop=200.f;re->strata[CLASS_BOURGEOIS].wealth=1e6f;
+    /* §besoins progressifs : le palier STATUT (rang 4) ne se débloque qu'au tier 4
+     * de capitale (pop ≥ 4000) — la région du banc doit être une VRAIE ville. */
+    re->strata[CLASS_LABORER].pop=3500.f; re->strata[CLASS_LABORER].wealth=1e6f;
+    re->strata[CLASS_BOURGEOIS].pop=400.f;re->strata[CLASS_BOURGEOIS].wealth=1e6f;
     re->strata[CLASS_ELITE].pop=200.f;    re->strata[CLASS_ELITE].wealth=1e6f;
     re->stock[RES_GRAIN]=1e5f; re->stock[RES_FISH]=1e5f; re->stock[RES_WOOD]=1e5f;
     re->stock[RES_CLOTH]=1e5f; re->stock[RES_PAPER]=1e5f; re->stock[RES_SALT]=1e5f; re->stock[RES_FUR]=1e5f;

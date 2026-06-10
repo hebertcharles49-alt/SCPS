@@ -44,6 +44,8 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_PEARL]         = 12.0f,   /* perle : prix habituel d'une ressource précieuse (≈ métal préc.) */
     [RES_MUREX]         = 11.0f,   /* teinture pourpre — rare comme une précieuse (gate du luxe-tissu) */
     [RES_INDIGO]        = 10.0f,   /* teinture bleue — bas-pays chaud (gate alternatif du luxe-tissu) */
+    [RES_CLAY]          = 0.6f,    /* E1 : vrac de construction — bon marché, partout un peu */
+    [RES_STONE]         = 0.8f,    /* E1 : vrac de construction — le relief le donne */
     /* manufacturés */
     [RES_CLOTH]         = 4.5f,
     [RES_TUNIQUE]       = 5.5f,    /* vêtement fini du commun — étoffe + façon (un cran au-dessus du tissu) */
@@ -449,6 +451,14 @@ void econ_init(WorldEconomy *e, const World *w) {
             if (r>RES_NONE && r<RES_PROD_FIRST) re->raw_cap[r] += base*1.5f;   /* P3.18 : dominante franche */
             Resource r2=pv->resource2;                      /* §6b : 2e brute, mineure ×0.4 */
             if (r2>RES_NONE && r2<RES_PROD_FIRST) re->raw_cap[r2] += base*0.5f;
+            /* E1 — matériaux de construction LUS de la géo : la pierre sort du
+             * relief, l'argile des terres d'eau. Francs là où la terre les donne. */
+            Biome bd=pv->biome_dominant;
+            if (bd==BIO_HILLS||bd==BIO_HIGHLANDS||bd==BIO_MOUNTAINS||bd==BIO_PEAK
+                ||bd==BIO_VOLCANO||pv->height_avg>0.55f)
+                re->raw_cap[RES_STONE] += base*0.5f;
+            if (bd==BIO_MARSH||bd==BIO_BOG||bd==BIO_MANGROVE)
+                re->raw_cap[RES_CLAY]  += base*0.5f;
         }
 
         /* Subsistance locale : vivres et bois de feu dimensionnés pour couvrir
@@ -461,6 +471,11 @@ void econ_init(WorldEconomy *e, const World *w) {
          * nourrissent plus). */
         re->raw_cap[RES_GRAIN] += subsist * (1.15f + 0.70f*reg_hab[rid]);
         re->raw_cap[RES_WOOD]  += subsist * 0.12f;   /* P3.18 : socle bois MINIME (chauffe) — le bois d'œuvre vient des forêts (dominante) + commerce */
+        /* E1 — socles de CONSTRUCTION minimes : l'alluvion et le moellon se trouvent
+         * partout un peu (on bâtit partout) ; les gisements francs viennent du relief
+         * et des terres d'eau (ci-dessus), le reste du COMMERCE. */
+        re->raw_cap[RES_CLAY]  += subsist * 0.08f;
+        re->raw_cap[RES_STONE] += subsist * 0.05f;
         re->coastal = coastal;                       /* lu par la marine (rade) et l'agency (gate du Port) */
         re->estuary = false;                         /* posé au balayage des cellules ci-dessous */
         if (coastal) re->raw_cap[RES_FISH] += subsist * 0.10f;   /* socle côtier minime : le poisson vient surtout des biomes halieutiques (§2) */
@@ -565,7 +580,11 @@ void econ_init(WorldEconomy *e, const World *w) {
         const Cell *c=&w->cell[i];
         if (!c->coast || c->river<40) continue;
         int r=c->region;
-        if (r>=0 && r<e->n_regions) e->region[r].estuary=true;
+        if (r>=0 && r<e->n_regions){
+            /* E1 : la plaine alluviale d'un estuaire est une argilière naturelle. */
+            if (!e->region[r].estuary) e->region[r].raw_cap[RES_CLAY] += 1.5f;
+            e->region[r].estuary=true;
+        }
     }
 
     /* ---- Adjacence de régions (terre, 4-connexe) pour la colonisation ---- *

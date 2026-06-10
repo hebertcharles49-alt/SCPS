@@ -11,39 +11,46 @@
 #include <string.h>
 
 static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
-    /* {name, jours, delta, recette} — la recette monte avec le TIER : bois (palier 0)
-     * → bois+métal (palier 1) → métal+précieux (palier 2). Achetée AU MARCHÉ en or. */
+    /* {name, jours, delta, recette} — E1 : LA LOI PRIX/DURÉE, 4 paliers :
+     *   180 j : bois 40 · argile 20            (6 mois — l'édifice du quotidien)
+     *   360 j : bois 80 · pierre 40 · métal 20 (12 mois — l'institution qui s'élève)
+     *   540 j : pierre 100 · métal 60 · outils 20             (18 mois — l'œuvre)
+     *   960 j : pierre 180 · métal 120 · outils 60 · préc. 30 (32 mois — le monument)
+     * Ajustements fins ±25 % par édifice autorisés (un grenier mange du sel, une
+     * banque du précieux) — la LOI prime : même palier ≈ même ordre de prix.
+     * L'or payé = Σ qty × prix de marché courant (agency_build_gold, inchangé),
+     * × multiplicateurs géo/étendue existants. Deltas E1bis.11 INCHANGÉS. */
     /* Institutionnel → K (ce qui métabolise la distance, tient la diversité). */
-    /* E1bis.11 — FAMILLES ↑ : les paliers d'upgrade portent un delta CUMULÉ (il
-     * REMPLACE le précédent, jamais ne s'empile) ; la progression de l'IA (par
-     * niveau) reste à l'identique → balance NEUTRE. */
-    [EDI_TRIBUNAL]     = { "Tribunal",      180,  { .K_inst=1.0f }, {{RES_WOOD},{40}} },
-    [EDI_CHANCELLERIE] = { "Chancellerie",  365,  { .K_inst=2.5f }, {{RES_WOOD,RES_METAL},{50,25}} },  /* ↑ Tribunal : 1.0+1.5 */
-    [EDI_ACADEMIE]     = { "Académie",      1800, { .K_inst=4.0f, .P_open=0.5f }, {{RES_METAL,RES_PRECIOUS_METAL},{60,40}} },  /* ↑ Chancellerie : 2.5+1.5 */
+    [EDI_TRIBUNAL]     = { "Tribunal",      180, { .K_inst=1.0f }, {{RES_WOOD,RES_CLAY},{40,20}} },
+    [EDI_CHANCELLERIE] = { "Chancellerie",  360, { .K_inst=2.5f }, {{RES_WOOD,RES_STONE,RES_METAL},{80,40,20}} },  /* ↑ Tribunal : 1.0+1.5 */
+    [EDI_ACADEMIE]     = { "Académie",      960, { .K_inst=4.0f, .P_open=0.5f },
+                           {{RES_STONE,RES_METAL,RES_TOOLS,RES_PRECIOUS_METAL},{160,100,75,30}} },  /* ↑ Chancellerie : 2.5+1.5 ; le savoir mange de l'OUTIL (+25 %) */
     /* Coercitif → H (tient l'ordre par la force — ronge L, voie fragile). */
-    [EDI_GARNISON]     = { "Garnison",      180,  { .H_coerc=1.0f }, {{RES_WOOD,RES_METAL},{40,20}} },
-    [EDI_FORTERESSE]   = { "Forteresse",    1100, { .H_coerc=3.0f }, {{RES_WOOD,RES_METAL},{60,50}} },  /* ↑ Garnison : 1.0+2.0 */
-    [EDI_CITADELLE]    = { "Citadelle",     2200, { .H_coerc=6.0f }, {{RES_METAL,RES_TOOLS},{100,30}} },/* ↑ Forteresse : 3.0+3.0 */
+    [EDI_GARNISON]     = { "Garnison",      360, { .H_coerc=1.0f }, {{RES_WOOD,RES_STONE,RES_METAL},{80,40,20}} },
+    [EDI_FORTERESSE]   = { "Forteresse",    540, { .H_coerc=3.0f }, {{RES_STONE,RES_METAL,RES_TOOLS},{120,60,20}} },  /* ↑ Garnison : 1.0+2.0 ; +20 % pierre (remparts) */
+    [EDI_CITADELLE]    = { "Citadelle",     960, { .H_coerc=6.0f },
+                           {{RES_STONE,RES_METAL,RES_TOOLS,RES_PRECIOUS_METAL},{200,150,60,20}} },  /* ↑ Forteresse : 3.0+3.0 ; martiale (+pierre +métal, −préc.) */
     /* Ouverture → P (porte d'assimilation, contact, routes maritimes). */
-    [EDI_PORT]         = { "Port",          540,  { .P_open=1.0f, .port=1.0f }, {{RES_WOOD,RES_METAL},{80,20}} },
-    [EDI_CARAVANSERAIL]= { "Caravansérail", 365,  { .P_open=0.7f }, {{RES_WOOD},{45}} },
+    [EDI_PORT]         = { "Port",          360, { .P_open=1.0f, .port=1.0f }, {{RES_WOOD,RES_STONE,RES_METAL},{100,40,25}} },  /* +25 % bois (quais) */
+    [EDI_CARAVANSERAIL]= { "Caravansérail", 180, { .P_open=0.7f }, {{RES_WOOD,RES_CLAY},{45,25}} },  /* +12 % (cours, écuries) */
     /* Prospérité → PE local (capte le carrefour). */
-    [EDI_MARCHE]       = { "Marché",        180,  { .PE_infra=1.0f }, {{RES_WOOD},{35}} },
-    [EDI_ENTREPOT]     = { "Entrepôt",      270,  { .PE_infra=0.7f }, {{RES_WOOD},{45}} },
+    [EDI_MARCHE]       = { "Marché",        180, { .PE_infra=1.0f }, {{RES_WOOD,RES_CLAY},{40,15}} },
+    [EDI_ENTREPOT]     = { "Entrepôt",      180, { .PE_infra=0.7f }, {{RES_WOOD,RES_CLAY},{50,20}} },  /* +25 % bois (halles) */
     /* Croissance → food (nourrit la pop ; l'aqueduc : santé urbaine → croissance). */
-    [EDI_GRENIER]      = { "Grenier",       90,   { .food_cap=1.0f }, {{RES_WOOD,RES_SALT},{25,18}} },  /* le sel CONSERVE : input passif du grenier (et débouché du sel) */
-    [EDI_IRRIGATION]   = { "Irrigation",    270,  { .food_cap=1.5f }, {{RES_WOOD,RES_METAL},{30,15}} },
-    [EDI_AQUEDUC]      = { "Aqueduc",       540,  { .food_cap=1.2f }, {{RES_WOOD,RES_METAL},{30,40}} },
+    [EDI_GRENIER]      = { "Grenier",       180, { .food_cap=1.0f }, {{RES_WOOD,RES_CLAY,RES_SALT},{40,15,10}} },  /* le sel CONSERVE (débouché du sel) */
+    [EDI_IRRIGATION]   = { "Irrigation",    360, { .food_cap=1.5f }, {{RES_WOOD,RES_STONE,RES_METAL},{90,30,20}} },  /* +12 % bois (canaux) */
+    [EDI_AQUEDUC]      = { "Aqueduc",       540, { .food_cap=1.2f }, {{RES_STONE,RES_METAL,RES_TOOLS},{125,45,20}} },  /* +25 % pierre (arches) */
     /* Foi → SOUTIENT L (sacraliser le trône apaise sans réprimer — §4 du catalogue). */
-    [EDI_SANCTUAIRE]   = { "Sanctuaire",    150,  { .faith=1.0f }, {{RES_WOOD},{30}} },
-    [EDI_TEMPLE]       = { "Temple",        600,  { .faith=3.0f }, {{RES_WOOD,RES_METAL},{50,30}} },  /* ↑ Sanctuaire : 1.0+2.0 */
-    [EDI_CATHEDRALE]   = { "Cathédrale",    2000, { .faith=6.5f }, {{RES_METAL,RES_PRECIOUS_METAL},{70,40}} },  /* ↑ Temple : 3.0+3.5 */
+    [EDI_SANCTUAIRE]   = { "Sanctuaire",    180, { .faith=1.0f }, {{RES_WOOD,RES_CLAY},{35,20}} },  /* −12 % (humble) */
+    [EDI_TEMPLE]       = { "Temple",        540, { .faith=3.0f }, {{RES_STONE,RES_METAL,RES_TOOLS},{100,50,25}} },  /* ↑ Sanctuaire : 1.0+2.0 */
+    [EDI_CATHEDRALE]   = { "Cathédrale",    960, { .faith=6.5f },
+                           {{RES_STONE,RES_METAL,RES_TOOLS,RES_PRECIOUS_METAL},{180,120,45,40}} },  /* ↑ Temple : 3.0+3.5 ; +33 % précieux (l'éclat) */
     /* Savoir → recherche (le monastère sacralise ET étudie — §5 du catalogue). */
-    [EDI_BIBLIOTHEQUE] = { "Bibliothèque",  500,  { .savoir=1.5f }, {{RES_WOOD,RES_METAL},{40,20}} },
-    [EDI_MONASTERE]    = { "Monastère",     900,  { .savoir=2.5f, .faith=1.0f }, {{RES_WOOD,RES_METAL},{50,15}} },  /* ↑ Bibliothèque : savoir 1.5+1.0 */
+    [EDI_BIBLIOTHEQUE] = { "Bibliothèque",  360, { .savoir=1.5f }, {{RES_WOOD,RES_STONE,RES_METAL},{80,35,15}} },  /* −12 % (le papier pèse peu) */
+    [EDI_MONASTERE]    = { "Monastère",     540, { .savoir=2.5f, .faith=1.0f }, {{RES_STONE,RES_METAL,RES_TOOLS},{90,50,20}} },  /* ↑ Bibliothèque : savoir 1.5+1.0 ; −10 % (la règle est frugale) */
     /* Commerce → PE local (capte le flux ; la banque finance l'État). */
-    [EDI_COMPTOIR]     = { "Comptoir",      200,  { .PE_infra=0.8f }, {{RES_WOOD},{30}} },
-    [EDI_BANQUE]       = { "Banque",        700,  { .PE_infra=1.4f }, {{RES_METAL,RES_PRECIOUS_METAL},{40,40}} },  /* §7 : tier 3 → métal-préc 20→40 */
+    [EDI_COMPTOIR]     = { "Comptoir",      180, { .PE_infra=0.8f }, {{RES_WOOD,RES_CLAY},{40,20}} },
+    [EDI_BANQUE]       = { "Banque",        540, { .PE_infra=1.4f }, {{RES_STONE,RES_METAL,RES_PRECIOUS_METAL},{100,60,15}} },  /* la banque mange du PRÉCIEUX (pas d'outils) */
 };
 
 const EdificeDef *edifice_def(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?&EDIFICES[e]:NULL; }
@@ -228,6 +235,11 @@ bool agency_order_relocate(AgencyState *a, int region, int dst_region){
     if (region<0 || dst_region<0 || region==dst_region) return false;
     return enqueue(a, AGY_RELOCATE, region, dst_region, RELOC_DAYS);
 }
+#define COLONIZE_DAYS 180   /* E1 : le convoi colonisateur marche 6 mois */
+bool agency_order_colonize(AgencyState *a, int dst_region, int src_region){
+    if (dst_region<0 || src_region<0 || dst_region==src_region) return false;
+    return enqueue(a, AGY_COLONIZE, dst_region, src_region, COLONIZE_DAYS);
+}
 
 /* ── LES TROIS LEVIERS INTÉRIEURS (§2) ─────────────────────────────────────── */
 #define REPRESS_DAYS    30
@@ -372,6 +384,13 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
             purge_slice(econ, wl, reg);
             g_n_purge++;
             break;
+        case AGY_COLONIZE: {
+            /* E1 : le convoi ARRIVE — la région se peuple depuis sa source. Si la
+             * source a changé de couronne en route, le convoi s'est perdu. */
+            int src=o->param;
+            if (src>=0 && src<econ->n_regions && econ->region[src].owner>=0)
+                econ_colonize_from(econ, src, reg, econ->region[src].owner);
+        } break;
     }
 }
 

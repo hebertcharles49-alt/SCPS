@@ -3899,12 +3899,13 @@ int main(int argc, char **argv) {
                     if (g_colonize_dst>=0 && g_colonize_src>=0 && sim.ready &&
                         ev.button.x>=g_colonize_btn.x && ev.button.x<g_colonize_btn.x+g_colonize_btn.w &&
                         ev.button.y>=g_colonize_btn.y && ev.button.y<g_colonize_btn.y+g_colonize_btn.h){
-                        /* E0.3 : l'or sort du TRÉSOR UNIQUE (topbar), plus du trésor régional caché. */
-                        if (sim.labor->stock[LR_GOLD]>=(long)COLONIZE_GOLD_COST){
+                        /* E0.3 : l'or sort du TRÉSOR UNIQUE (topbar). E1 : le convoi
+                         * MARCHE 180 jours — la région ne se peuple qu'à l'arrivée. */
+                        if (sim.labor->stock[LR_GOLD]>=(long)COLONIZE_GOLD_COST
+                            && agency_order_colonize(sim.ag, g_colonize_dst, g_colonize_src)){
                             sim.labor->stock[LR_GOLD]-=(long)COLONIZE_GOLD_COST;
                             sim.labor->treasury=sim.labor->stock[LR_GOLD];
-                            econ_colonize_from(sim.econ, g_colonize_src, g_colonize_dst, sim.player);
-                            printf("\n[scps] Coloniser : région %d colonisée (100 colons, %.0f or).\n", g_colonize_dst, COLONIZE_GOLD_COST);
+                            printf("\n[scps] Coloniser : convoi parti vers la région %d (100 colons, %.0f or, 180 j).\n", g_colonize_dst, COLONIZE_GOLD_COST);
                         } else printf("\n[scps] Coloniser : trésor insuffisant (%.0f or requis).\n", COLONIZE_GOLD_COST);
                         dirty=true; break;
                     }

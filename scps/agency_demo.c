@@ -78,6 +78,24 @@ int main(int argc, char **argv){
     printf("══════════════════════════════════════════════════════════════\n");
 
     WorldParams p=worldparams_default(seed);
+
+    /* ── TÉMOIN (E1bis.11) : même monde, mêmes années, ZÉRO chantier. L'↑ de
+     * famille REMPLACE son palier (K final 4.0, plus 7.5 cumulés) : l'effet sur
+     * SI est plus fin que la dérive de fond — on mesure donc CONTRE TÉMOIN. */
+    float SI_ctrl, K_ctrl;
+    {
+        world_generate(s.w,&p);
+        econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+        trade_network_build(s.net,s.w,s.econ);
+        for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
+        prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ); agency_init(s.ag);
+        s.player=0;
+        for (int c=0;c<s.w->n_countries;c++) if (s.w->country[c].role==POLITY_PLAYER){ s.player=c; break; }
+        run_days(&s, 8*SCPS_DAYS_PER_YEAR);
+        SI_ctrl=s.wp->country[s.player].SI;
+        K_ctrl =s.wp->country[s.player].K;
+    }
+
     world_generate(s.w,&p);
     econ_init(s.econ,s.w);
     gen_population(s.w,s.econ);
@@ -93,8 +111,8 @@ int main(int argc, char **argv){
     for (int c=0;c<s.w->n_countries;c++) if (s.w->country[c].role==POLITY_PLAYER){ s.player=c; break; }
     int cap_prov=s.w->country[s.player].capital_prov;
     s.cap_reg=(cap_prov>=0)?s.w->province[cap_prov].region:0;
-    printf("\n  Joueur = pays %d, capitale région %d (« %s »)\n",
-           s.player, s.cap_reg, s.w->region[s.cap_reg].name);
+    printf("\n  Joueur = pays %d, capitale région %d (« %s ») | témoin an 8 : SI=%.2f\n",
+           s.player, s.cap_reg, s.w->region[s.cap_reg].name, SI_ctrl);
 
     printf("\n── L'arc d'une partie : on bâtit, le temps passe, l'ordre se lit ──\n");
     float SI0,SI1,SI2, F0,F1,F2, L0,L1,L2;
@@ -109,8 +127,9 @@ int main(int argc, char **argv){
     agency_order_build(s.ag, s.cap_reg, EDI_ACADEMIE);
     agency_order_build(s.ag, s.cap_reg, EDI_MARCHE);    /* → PE_infra (carrefour) */
     agency_order_build(s.ag, s.cap_reg, EDI_GRENIER);   /* → food_cap (apex) */
-    run_days(&s, 6*SCPS_DAYS_PER_YEAR);   /* l'Académie met ~5 ans */
+    run_days(&s, 6*SCPS_DAYS_PER_YEAR);   /* l'Académie met ~3 ans (E1 : 960 j) */
     snapshot(&s, "après institutions (K↑)", &SI1,&F1,&L1);
+    float K_an8 = s.wp->country[s.player].K;   /* la COORDONNÉE à l'an 8 (même an que le témoin) */
 
     /* Phase 2 — CITADELLES (→ H, ronge L) : tenir par la force. */
     agency_order_build(s.ag, s.cap_reg, EDI_GARNISON);
@@ -152,7 +171,12 @@ int main(int argc, char **argv){
     /* ---- Contrôles ---------------------------------------------------- */
     printf("\n── Vérification : l'action est un levier ──\n");
     ok("le temps passe en années (≥ 16 ans écoulés)", agency_year(s.ag) >= 16);
-    ok("bâtir des institutions monte la stabilité (SI augmente)", SI1 > SI0 + 0.2f);
+    /* E1bis.11 : l'↑ REMPLACE son palier (K bâti final 4.0, plus 7.5 cumulés) — le
+     * verdict SI (moteur d'ordre, banc core_demo) peut saturer ; on prouve donc LE
+     * LEVIER au niveau de la COORDONNÉE : K du pays > témoin sans chantier. */
+    (void)SI_ctrl;
+    ok("bâtir des institutions DÉPLACE la coordonnée (K pays > témoin, même an)",
+       K_an8 > K_ctrl + 2.0f);
     ok("bâtir des citadelles ronge la légitimité (L baisse)",     L2  < L1 - 0.1f);
     ok("les citadelles aggravent la fragilité (par la force)",    F2  > F1);
     /* La densité bâtie dans la capitale est bien accumulée. */

@@ -158,6 +158,10 @@ typedef enum {
     RES_CELESTIAL_IRON, /* fer céleste — météorique : cratères/sommets (TRÈS rare) → armes enchantées */
     RES_MUREX,          /* teinture POURPRE — côtière (arbitrage pêche/sel) → étoffe précieuse */
     RES_INDIGO,         /* teinture BLEUE — bas-pays chaud, plante (arbitrage grain) → étoffe précieuse */
+    /* E1 — les matériaux de CONSTRUCTION sont des ressources RÉELLES (loi des
+     * paliers) : la pierre sort du relief, l'argile des terres d'eau (alluvions). */
+    RES_CLAY,           /* argile — fleuves, marais, mangroves (palier 180 j) */
+    RES_STONE,          /* pierre — collines, montagnes, volcans (paliers 360+) */
 
     /* === Frontière : tout ce qui suit est un bien de PRODUCTION === */
     RES_PROD_FIRST,

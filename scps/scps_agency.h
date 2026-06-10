@@ -41,7 +41,7 @@ typedef enum {
  * les y ACHÈTE en OR (à leur prix courant) — le manque renchérit (rareté = prix). Le
  * coût monte avec le TIER (plus, et des matériaux plus avancés : bois → bois+métal →
  * métal+précieux), pas avec l'étendue (un grenier coûte pareil partout). */
-#define BUILD_RES_MAX 3
+#define BUILD_RES_MAX 4   /* E1 : le palier 960 j porte 4 composantes (pierre·métal·outils·précieux) */
 typedef struct {
     Resource res[BUILD_RES_MAX];
     float    qty[BUILD_RES_MAX];
@@ -69,7 +69,7 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e);
 
 /* Familles d'action de province (le motif s'étend). */
 typedef enum { AGY_BUILD = 0, AGY_CLEAR, AGY_EXPLOIT, AGY_RELOCATE,
-               AGY_REPRESS, AGY_ASSIMILATE, AGY_PURGE } ActionKind;
+               AGY_REPRESS, AGY_ASSIMILATE, AGY_PURGE, AGY_COLONIZE } ActionKind;
 
 /* Une action en cours (file par pays/province). */
 typedef struct {
@@ -111,6 +111,10 @@ bool agency_order_exploit(AgencyState *a, int region, Resource res);
  * ordre. À terme : econ_relocate_pop (la coercition monte à la source — le coût,
  * affiché AVANT). Joueur et IA passent par le MÊME actionneur, jamais l'appel direct. */
 bool agency_order_relocate(AgencyState *a, int region, int dst_region);
+/* E1 — COLONISER PREND 180 JOURS : le convoi part (payé à l'ordre), la région
+ * n'est peuplée qu'à l'arrivée (econ_colonize_from au terme — 100 colons depuis
+ * src). Si src a changé de couronne entre-temps, le convoi se perd (abandon). */
+bool agency_order_colonize(AgencyState *a, int dst_region, int src_region);
 #define AGY_RELOC_POP 300   /* familles déplacées par ordre (l'ensemencement mesuré) */
 /* Annule un ordre encore en cours (index dans order[]) — la file est VISIBLE (struct
  * publique) et un chantier non fini se révoque. */

@@ -28,7 +28,8 @@ static float g_vol_down=0.f, g_vol_up=0.f;
 static float g_bulk_down=0.f, g_bulk_up=0.f, g_prec_down=0.f, g_prec_up=0.f;
 static int   g_nprec_up=0;     /* ÉVÉNEMENTS précieux à contre-courant (la niche du luxe) */
 static inline bool it_is_bulk(int g){
-    return g==RES_GRAIN||g==RES_WOOD||g==RES_COAL||g==RES_LIVESTOCK;
+    return g==RES_GRAIN||g==RES_WOOD||g==RES_COAL||g==RES_LIVESTOCK
+         ||g==RES_CLAY ||g==RES_STONE;   /* E1 : les matériaux de construction voyagent en vrac */
 }
 static inline bool it_is_precious(int g){
     return g==RES_PRECIOUS_CLOTH||g==RES_PRECIOUS_WARE||g==RES_REMEDE
