@@ -2178,8 +2178,9 @@ static char g_ohov[80][200];
 static bool g_right_hidden = false;          /* P0.4 : Domaine (sidebar droite) replié (mémorisé en session) */
 static SDL_Rect g_right_chevron;             /* P0.4 : bouton de repli (cliquable) */
 static int  g_diplo_target = -1;             /* P0.3 : pays cible du panneau diplo (right-clic), -1 = fermé */
-static void draw_outliner(SDL_Renderer *ren, int win_w, int win_h, const Sim *s, const World *w){
+static void draw_outliner(SDL_Renderer *ren, int win_w, int win_h, const Sim *s, const World *w, int selected){
     int player=s->player; if (player<0) return;
+    int selreg=(selected>=0 && selected<w->n_provinces)? w->province[selected].region : -1;  /* P1.11 */
     /* P0.4 — chevron de repli, TOUJOURS présent (coin haut-droit) : « » replie, « replie « déplie. */
     g_right_chevron = (SDL_Rect){win_w-22, 86, 20, 22};
     fill_rect(ren, g_right_chevron.x, g_right_chevron.y, 20,22, COL_PANEL2);
@@ -2210,6 +2211,7 @@ static void draw_outliner(SDL_Renderer *ren, int win_w, int win_h, const Sim *s,
             if (re->owner!=player) continue;
             long pop=region_pop_of(re);
             if (capitale_max_tier(pop)!=tier) continue;
+            if (r==selreg) fill_rect(ren, x-2, y-1, rw+2, 15, (SDL_Color){0x3a,0x2c,0x1a,0xff});  /* P1.11 : ligne sélectionnée */
             int pid=(r<w->n_regions && w->region[r].n_provinces>0)? w->region[r].province_ids[0]:-1;
             Resource res=(pid>=0 && pid<w->n_provinces)? w->province[pid].resource:RES_NONE;
             fill_rect(ren, x+2, y+2, 9,9, SLICE_PAL[((int)res)&7]); draw_box(ren,x+2,y+2,9,9,COL_DIM);  /* icône-ressource */
@@ -3365,7 +3367,7 @@ int main(int argc, char **argv) {
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_topbar(ren, win_w, &sim, world, cid, speed);
-                draw_outliner(ren, win_w, win_h, &sim, world);            /* §6 : l'outliner */
+                draw_outliner(ren, win_w, win_h, &sim, world, selected);            /* §6 : l'outliner */
                 draw_mode_buttons(ren, win_h, smode);                     /* §5 : modes de carte */
                 draw_minimap(ren, &mm_pb, win_w, win_h, &cam);            /* §5 : la minicarte */
                 draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected);
@@ -3616,7 +3618,12 @@ int main(int argc, char **argv) {
                             ev.button.y>=rw->y && ev.button.y<rw->y+rw->h){ orhit=i; break; }
                     }
                     if (orhit==-2) break;                       /* marteau cliqué */
-                    if (orhit>=0){ selected = g_orows[orhit].prov; dirty=true; break; }   /* saut à la région */
+                    if (orhit>=0){ selected = g_orows[orhit].prov;   /* P1.11 : sélectionne ET CENTRE la région */
+                        if (selected>=0 && selected<world->n_provinces){
+                            cam.ox=(float)world->province[selected].seed_x - (float)win_w/(2.f*cam.scale);
+                            cam.oy=(float)world->province[selected].seed_y - (float)win_h/(2.f*cam.scale);
+                        }
+                        dirty=true; break; }
                     /* P0.2 — clic CARTE seulement HORS panneau (priorité panneau > carte) */
                     if (over_panel(ev.button.x, ev.button.y, win_w, win_h, selected)) break;
                     /* Sinon : sélectionner la province au clic (détail province) */
@@ -3824,9 +3831,10 @@ int main(int argc, char **argv) {
                                                             : faith_tint((int)cu->rel_branch);
                 }
                 rp.region_tint = g_region_tint;
-            } else if (mode==VIEW_COUNTRIES && sim.ready) {
-                /* P1.6 — carte politique : teinte par OWNER COURANT (couleur d'empire
-                 * race-famille) ; région non-colonisée = 0 → terrain atténué (render). */
+            } else if ((mode==VIEW_COUNTRIES || mode==VIEW_TERRAIN) && sim.ready) {
+                /* P1.6 — carte politique : teinte par OWNER COURANT (race-famille),
+                 * non-colonisé = 0 → terrain nu. P1.7 — en vue RELIEF, render_map n'en
+                 * garde QUE le liseré de frontière (la souveraineté se lit sur le relief). */
                 static uint32_t g_owner_tint[SCPS_MAX_REG];
                 for (int r=0;r<sim.econ->n_regions && r<SCPS_MAX_REG;r++){
                     int ow=sim.econ->region[r].owner;
@@ -3925,7 +3933,7 @@ int main(int argc, char **argv) {
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_topbar(ren, win_w, &sim, world, cid, speed);
-                draw_outliner(ren, win_w, win_h, &sim, world);            /* §6 : « ce que je possède » */
+                draw_outliner(ren, win_w, win_h, &sim, world, selected);            /* §6 : « ce que je possède » */
                 draw_mode_buttons(ren, win_h, mode);                      /* §5 : modes de carte */
                 draw_minimap(ren, &mm_pb, win_w, win_h, &cam);            /* §5 : la minicarte */
                 if (selected >= 0)

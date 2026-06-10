@@ -259,14 +259,24 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
         if (mode==VIEW_COUNTRIES && c->border_reg && !c->border_country)
             terrain = lerp_color(terrain, 0xFF202838u, 0.30f);
     }
+    /* P1.7 — VUE TERRAIN/RELIEF : liseré COULEUR-PAYS sur la frontière des
+     * territoires POSSÉDÉS (le viewer passe region_tint = couleur de l'owner ;
+     * 0 = non-possédé → pas de liseré). On lit la souveraineté sans quitter le relief. */
+    if (mode==VIEW_TERRAIN && region_tint && c->region>=0 && region_tint[c->region]!=0u && c->border_reg){
+        terrain = lerp_color(terrain, region_tint[c->region], 0.66f);
+    }
 
-    /* ---- Province sélectionnée : surligné jaune ---------------------- */
-    if (selected_prov >= 0 && c->province == selected_prov) {
-        if (c->border_prov) {
-            terrain = lerp_color(terrain, 0xFFFFDD00u, 0.80f);
-        } else {
-            /* Très léger tint doré sur l'intérieur */
-            terrain = lerp_color(terrain, 0xFFFFDD00u, 0.12f);
+    /* ---- Sélection (P1.11) : toute la RÉGION du clic surlignée — liseré doré
+     *      sur sa frontière, intérieur teinté, la province exacte renforcée. -- */
+    if (selected_prov >= 0 && selected_prov < SCPS_MAX_PROV) {
+        int selreg = w->province[selected_prov].region;
+        if (c->region >= 0 && c->region == selreg) {
+            if (c->border_reg)
+                terrain = lerp_color(terrain, 0xFFFFDD00u, 0.85f);          /* contour de la RÉGION */
+            else if (c->province == selected_prov && c->border_prov)
+                terrain = lerp_color(terrain, 0xFFFFDD00u, 0.55f);          /* la province exacte */
+            else
+                terrain = lerp_color(terrain, 0xFFFFDD00u, 0.12f);          /* intérieur de la région */
         }
     }
 
