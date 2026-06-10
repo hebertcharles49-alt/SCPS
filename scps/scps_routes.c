@@ -9,7 +9,6 @@
 #include <string.h>
 #include <math.h>
 
-static inline float clampf(float v,float lo,float hi){return v<lo?lo:(v>hi?hi:v);}
 static inline float absf(float v){return v<0?-v:v;}
 
 void routes_init(RouteNetwork *rn){ memset(rn,0,sizeof(*rn)); }

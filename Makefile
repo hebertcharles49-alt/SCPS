@@ -12,6 +12,11 @@ CFLAGS  += -MMD -MP
 # Vendoring single-header (third_party/) : un chemin d'inclusion, des objets
 # committés. Aucun gestionnaire de paquets, aucun lien dynamique nouveau.
 CFLAGS  += -Ithird_party
+# Durcissement (défense en profondeur, surtout le chemin qui lit des sauvegardes) :
+# canari de pile + contrôles _FORTIFY des fonctions mémoire/chaîne. Gratuit en
+# perf à cette échelle, et reste muet sous -Wall -Wextra (code sans appel non borné).
+HARDEN  := -fstack-protector-strong -D_FORTIFY_SOURCE=2
+CFLAGS  += $(HARDEN)
 OBJDIR  := build
 
 # miniz (MIT, vendoré) : on n'emploie que crc32 + deflate (zlib mz_compress/
@@ -374,10 +379,15 @@ determinism: chronicle
 # Compile les sources d'un bloc AVEC les sanitizers (compile + link ensemble),
 # pour traquer double-free, use-after-free, hors-bornes et comportement indéfini :
 #   make asan && ./chronicle_asan 7 1 40 6 12
-CHRONICLE_SRCS := $(patsubst $(OBJDIR)/scps_%.o,scps/%.c,$(CHRONICLE_OBJS))
+# tp_miniz.o ne matche pas le motif scps_%.o : on le FILTRE et on ajoute miniz.c
+# (avec ses flags) à la main — sinon CHRONICLE_SRCS garde « build/tp_miniz.o »
+# (un objet, pas une source) et miniz.h reste introuvable faute de -Ithird_party.
+CHRONICLE_SRCS := $(patsubst $(OBJDIR)/scps_%.o,scps/%.c,\
+                    $(filter-out $(OBJDIR)/tp_miniz.o,$(CHRONICLE_OBJS)))
 asan: $(CHRONICLE_SRCS)
 	$(CC) -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
-	      -Wall -Wextra -std=c99 $(CHRONICLE_SRCS) -o chronicle_asan -lm
+	      -Wall -Wextra -std=c99 -Ithird_party $(MINIZ_FLAGS) \
+	      $(CHRONICLE_SRCS) third_party/miniz.c -o chronicle_asan -lm
 
 # ---- Métriques de jeu (0-100), Influence, Diplomates & Révolte -----------
 # La membrane projette les coordonnées en nombres+mots ; le statecraft est SIM

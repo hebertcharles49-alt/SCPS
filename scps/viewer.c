@@ -2597,22 +2597,30 @@ static bool save_sane(const World *w, const Sim *s, int player){
     for (int i=0;i<w->n_rivers;i++)
         if (w->river[i].len<0 || w->river[i].len>SCPS_RIVER_MAXLEN) return false;
     if (player<0 || player>=w->n_countries) return false;
+    /* Bornes BASSES autant que hautes : -1 est le seul négatif légitime (sentinelle
+     * « mer / non-possédé / aucun ») — on le tolère là où il a un sens, on rejette
+     * tout index plus négatif (un save forgé ne peut alors sortir du domaine [-1,n)
+     * que le moteur sait déjà traiter). province.region/country, eux, sont TOUJOURS
+     * assignés : on y rejette dès < 0. */
     for (int i=0;i<SCPS_N;i++){ const Cell *c=&w->cell[i];
+        if (c->province < -1 || c->region    < -1 ||
+            c->country  < -1 || c->continent < -1) return false;
         if (c->province >= w->n_provinces || c->region    >= w->n_regions ||
             c->country  >= w->n_countries || c->continent >= w->n_continents) return false; }
     for (int p=0;p<w->n_provinces;p++){ const Province *pr=&w->province[p];
+        if (pr->region < 0 || pr->country < 0) return false;
         if (pr->region >= w->n_regions || pr->country >= w->n_countries) return false; }
     for (int r=0;r<w->n_regions;r++){ const Region *rg=&w->region[r];
-        if (rg->n_provinces<0 || rg->n_provinces>12 || rg->country>=w->n_countries) return false;
+        if (rg->n_provinces<0 || rg->n_provinces>12 || rg->country< -1 || rg->country>=w->n_countries) return false;
         for (int k=0;k<rg->n_provinces;k++)
             if (rg->province_ids[k]<0 || rg->province_ids[k]>=w->n_provinces) return false; }
     for (int c=0;c<w->n_countries;c++){ const Country *ct=&w->country[c];
-        if (ct->n_regions<0 || ct->n_regions>12 || ct->capital_prov>=w->n_provinces) return false;
+        if (ct->n_regions<0 || ct->n_regions>12 || ct->capital_prov< -1 || ct->capital_prov>=w->n_provinces) return false;
         for (int k=0;k<ct->n_regions;k++)
             if (ct->region_ids[k]<0 || ct->region_ids[k]>=w->n_regions) return false; }
     if (s->econ->n_regions<0 || s->econ->n_regions>SCPS_MAX_REG) return false;
     for (int r=0;r<s->econ->n_regions;r++){ const RegionEconomy *re=&s->econ->region[r];
-        if (re->owner >= w->n_countries) return false;
+        if (re->owner < -1 || re->owner >= w->n_countries) return false;
         if (re->pop.n_groups<0 || re->pop.n_groups>SCPS_MAX_GROUPS) return false; }
     if (s->rn->n<0 || s->rn->n>SCPS_MAX_ROUTES) return false;
     for (int i=0;i<s->rn->n;i++){ const TradeRoute *rt=&s->rn->route[i];
@@ -2621,11 +2629,11 @@ static bool save_sane(const World *w, const Sim *s, int player){
         if (!a->active) continue;
         if (a->owner<0 || a->owner>=w->n_countries) return false;
         if (a->loc <0 || a->loc >=s->econ->n_regions) return false;
-        if (a->dest>=s->econ->n_regions || a->next>=s->econ->n_regions) return false; }
+        if (a->dest< -1 || a->dest>=s->econ->n_regions || a->next< -1 || a->next>=s->econ->n_regions) return false; }
     for (int i=0;i<SCPS_MAX_COUNTRY;i++){ const Navy *nv=&s->navy->n[i];
         for (int t=0;t<HULL_COUNT;t++) if (nv->hull[t]<0 || nv->hull[t]>100000) return false;
         if (nv->at_sea<0 || nv->build_hull<-1 || nv->build_hull>=HULL_COUNT) return false;
-        if (nv->home_port>=s->econ->n_regions) return false; }
+        if (nv->home_port< -1 || nv->home_port>=s->econ->n_regions) return false; }
     return true;
 }
 /* charge un slot. 0 = ok ; 1 = absent/corrompu ; 2 = « ère antérieure » (version). */

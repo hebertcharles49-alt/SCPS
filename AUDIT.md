@@ -5,6 +5,12 @@ source du moteur (`scps/`), le `Makefile`, l'outillage (chronicle, bancs) et les
 bibliothèques vendorées (`third_party/`). Le visualiseur SDL (`viewer.c`) n'a pas
 pu être *exécuté* (SDL2 absent de l'environnement d'audit) mais a été relu.
 
+## Statut des correctifs (appliqués)
+
+A1 (Makefile `asan`) ✅ · B1 (`save_sane` bornes basses) ✅ · B3 (durcissement) ✅ ·
+C1 (`nmar` affiché) ✅ · C2 (`clampf` retiré) ✅ · B2 rétracté (faux constat). Bancs
+verts, 0 warning, ASan muet, déterminisme tenu après correctifs.
+
 ## Verdict global
 
 **Code de très haute qualité, sain.** Discipline défensive remarquable : aucune
@@ -72,14 +78,13 @@ save-scumming, pas sécurité » — un save forgé n'attaque que la machine du 
 `< -1` pour les champs à sentinelle) — sûr, et supprime la dépendance au fait que
 *chaque futur* consommateur pense à garder.
 
-**B2 · `strncpy` sans terminaison NUL explicite.** `scps_world.c:1842` :
-`strncpy(rg->name, rg->name_hum, sizeof(rg->name)-1);`. Repose sur le dernier
-octet de `rg->name` déjà à 0. Inoffensif aujourd'hui (sources courtes, struct
-issue de worldgen) mais idiome fragile. Reco : `rg->name[sizeof(rg->name)-1]=0;`.
+**B2 · ~~`strncpy` sans terminaison NUL~~ — FAUX CONSTAT (rétracté).** Relecture
+du contexte : `scps_world.c:1843` fait déjà `rg->name[sizeof(rg->name)-1]='\0';`
+juste après le `strncpy`. L'idiome est correct. Rien à corriger.
 
-**B3 · Build release sans flags de durcissement.** `Makefile:8`. `-O2 -Wall -Wextra`
+**B3 · Build release sans flags de durcissement.** `Makefile`. `-O2 -Wall -Wextra`
 sans `-fstack-protector-strong` ni `-D_FORTIFY_SOURCE=2`. Défense en profondeur
-quasi gratuite, surtout sur le chemin qui lit des sauvegardes. Reco facultative.
+quasi gratuite, surtout sur le chemin qui lit des sauvegardes.
 
 ### C — Hygiène / cosmétique
 

@@ -866,8 +866,8 @@ int main(int argc, char **argv){
           intertrade_asym_stats(&vd,&vu,&bd,&bu,&pd,&pu);
           int nfluv=0, nmar=0;
           for (int i=0;i<s.rn->n;i++){ if (s.rn->route[i].fluvial) nfluv++; if (s.rn->route[i].maritime&&s.rn->route[i].open) nmar++; }
-          printf("              commerce asym. : aval %.2f vs amont %.2f (ratio %.1fx) - vrac %.2f/%.2f - précieux %.2f/%.2f (aval/amont, %d remontée(s) de luxe) - %d route(s) fluviale(s)\n",
-                 vd, vu, (vu>0.01f)?vd/vu:0.f, bd, bu, pd, pu, intertrade_precious_upstream_events(), nfluv);
+          printf("              commerce asym. : aval %.2f vs amont %.2f (ratio %.1fx) - vrac %.2f/%.2f - précieux %.2f/%.2f (aval/amont, %d remontée(s) de luxe) - %d route(s) fluviale(s), %d maritime(s) ouverte(s)\n",
+                 vd, vu, (vu>0.01f)?vd/vu:0.f, bd, bu, pd, pu, intertrade_precious_upstream_events(), nfluv, nmar);
           /* le Carrefour des EMBOUCHURES : les estuaires doivent monter d'eux-mêmes */
           { int top_est=0;
             for (int r=0;r<s.econ->n_regions;r++){
