@@ -174,6 +174,18 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
 bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e){
     return agency_build_acct(a, econ, region, e, NULL);
 }
+TechId edifice_gate_tech(Edifice e){
+    switch (e){
+        case EDI_COMPTOIR: return TECH_COMPTOIRS;
+        case EDI_ENTREPOT: return TECH_HALLES;
+        default:           return TECH_COUNT;
+    }
+}
+bool edifice_unlocked(const TechState *ts, Edifice e){
+    if (!ts) return true;
+    TechId t=edifice_gate_tech(e);
+    return (t>=TECH_COUNT) || ts->unlocked[t];
+}
 
 /* Constantes des actions non-bâtiment (calibrables). */
 #define CLEAR_DAYS        200
@@ -338,6 +350,7 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
             }
             apply_delta(&re->build, &EDIFICES[e].delta);
             if (e<32) re->edi_built |= (1u<<e);                    /* on suit l'édifice posé (masque) */
+            if (e==EDI_ENTREPOT && re->n_entrepot<250) re->n_entrepot++;   /* E2 §11 : chaque entrepôt +500 de cap */
         } break;
         case AGY_CLEAR:
             re->build.food_cap += CLEAR_FOOD_GAIN;

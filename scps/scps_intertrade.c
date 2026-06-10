@@ -6,6 +6,7 @@
  * la guerre coupe le robinet (embargo).
  */
 #include "scps_intertrade.h"
+#include "scps_agency.h"   /* E2 §10 : lire EDI_COMPTOIR dans le masque d'édifices bâtis */
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -205,10 +206,17 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
         if (!pact && intertrade_embargoed(ca,cb)) continue;   /* EMBARGO DÉCRÉTÉ (joueur/IA) */
         RegionEconomy *A=&e->region[ra], *B=&e->region[rb];
         float cap=rt->capacity>0.f?rt->capacity:1.f;
+        /* E2 §10 — le COMPTOIR branche la province au réseau : à chaque bout
+         * CONNECTÉ (Centre commercial, ou Comptoir bâti), la marge de transport
+         * tombe d'un tiers. Sans Comptoir ni Centre : marge IT_TRANSPORT pleine —
+         * la province commerce mal (lecture d'édifice, jamais un bonus plat). */
+        float conn_mult = 1.f;
+        if ((ra<SCPS_MAX_REG && g_centre[ra]) || (e->region[ra].edi_built & (1u<<EDI_COMPTOIR))) conn_mult *= 0.67f;
+        if ((rb<SCPS_MAX_REG && g_centre[rb]) || (e->region[rb].edi_built & (1u<<EDI_COMPTOIR))) conn_mult *= 0.67f;
         for (int g=1; g<RES_COUNT; g++){
             float pa=A->price[g], pb=B->price[g];
             bool a_to_b=(pa<pb);                      /* le bien va du bon marché vers le cher */
-            float cost=it_transport_frac(rt,a_to_b)*((pa+pb)*0.5f);
+            float cost=it_transport_frac(rt,a_to_b)*((pa+pb)*0.5f)*conn_mult;
             if (fabsf(pa-pb) <= cost) continue;       /* marge trop mince POUR CE SENS → rien ne bouge */
             RegionEconomy *src=a_to_b?A:B, *dst=a_to_b?B:A;     /* on achète au moins cher */
             float vol=fminf(cap*it_volume_mult(rt,a_to_b), src->stock[g]*IT_EXPORT_FRAC);

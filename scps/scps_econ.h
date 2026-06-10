@@ -86,6 +86,11 @@ typedef struct {
                                       * évinçaient les rares — joaillerie, fonderie, outillage —
                                       * d'où leur pénurie. Désormais auto-calé : plus de désync). */
 
+/* E2 §11 — plafond de STOCK régional par ressource : base sans Entrepôt, +cap
+ * par Entrepôt bâti. Lu par econ_tick (clamp), l'UI (jauge) et l'IA stockeuse. */
+#define ECON_STOCK_CAP_BASE     200.f
+#define ECON_STOCK_CAP_ENTREPOT 500.f
+
 /* ---- Profil culturel de la population d'une région --------------------- *
  * Distinct de la géographie : ce sont les gens qui ont une culture, pas la
  * terre. Initialisé depuis le biome dominant à la génération (gen_population),
@@ -174,10 +179,11 @@ typedef struct {
     Building   bld[ECON_MAX_BLD];
     int        n_bld;
 
-    float      stock [RES_COUNT];    /* entrepôt régional */
+    float      stock [RES_COUNT];    /* entrepôt régional — PLAFONNÉ : 200/ressource + 500 par Entrepôt bâti (E2 §11) */
     float      price [RES_COUNT];    /* prix de marché courant */
     float      demand[RES_COUNT];    /* demande agrégée (dernier tick) */
     float      supply[RES_COUNT];    /* offre agrégée (dernier tick) */
+    uint8_t    n_entrepot;           /* E2 §11 : Entrepôts BÂTIS ici (chacun +500 de cap de stock) */
 
     float      treasury;             /* taxe captée par les élites (cumul) */
     float      tech;                 /* recherche cumulée */

@@ -2034,6 +2034,11 @@ static bool sidebar_wheel(int mx, int my, int wheel_y){
 static SDL_Rect g_colonize_btn; static int g_colonize_dst=-1, g_colonize_src=-1;
 #define CENTRE_RELOC_COST 250.f   /* P3.20 : relocaliser un Centre commercial (balance later) */
 static SDL_Rect g_reloc_btn; static int g_reloc_dst=-1;
+/* E2 §10 — bâtir un COMPTOIR ici (branche la province au réseau marchand). */
+static SDL_Rect g_comptoir_btn; static int g_comptoir_reg=-1;
+/* E2 §12 — achat/vente manuels au marché intérieur (lots de 10, prix courant). */
+typedef struct { SDL_Rect r; int res; bool sell; } TradeBtn;
+static TradeBtn g_trade_btn[16]; static int g_ntrade=0;
 static int player_colonize_src(const Sim *s, int dst_reg){
     if (dst_reg<0 || dst_reg>=s->econ->n_regions) return -1;
     const RegionEconomy *d=&s->econ->region[dst_reg];
@@ -2251,6 +2256,54 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
         y += 4;
     }
 
+    /* E2 §12 — MARCHÉ : achat/vente MANUELS au prix courant. L'or sort et entre
+     * par le TRÉSOR UNIQUE ; acheter tire la demande (prix ↑), vendre la détend
+     * (prix ↓) — l'offre/demande déjà en place, rien de neuf. Régions du joueur. */
+    {
+        int reg=(pid>=0&&pid<w->n_provinces)?w->province[pid].region:-1;
+        if (s && reg>=0 && reg<econ->n_regions && econ->region[reg].owner==s->player){
+            ui_section(ren, x, &y, tr(STR_PAN_MARCHE));
+            char pb[24], l[112];
+            snprintf(pb,sizeof pb,"%.2f",labor_material_price(s->labor));
+            tr_fmt(l,sizeof l, STR_MARCHE_PRIX_FMT, pb);
+            draw_text(ren,g_font,x,y,COL_PARCH,l);
+            zone_add((SDL_Rect){x-2,y-2,rw,19}, tr(STR_MARCHE_PRIX_HOV));
+            y+=20;
+            /* le plafond de stock de la RÉGION (E2 §11) : Entrepôts bâtis ici */
+            { const RegionEconomy *re3=&econ->region[reg];
+              float capv=ECON_STOCK_CAP_BASE+ECON_STOCK_CAP_ENTREPOT*(float)re3->n_entrepot;
+              float smax=0.f; for (int g2=1;g2<RES_COUNT;g2++) if (re3->stock[g2]>smax) smax=re3->stock[g2];
+              char c0[16],c1[16],c2[8],lv[112];
+              snprintf(c0,sizeof c0,"%.0f",smax); snprintf(c1,sizeof c1,"%.0f",capv);
+              snprintf(c2,sizeof c2,"%d",(int)re3->n_entrepot);
+              tr_fmt(lv,sizeof lv, STR_ENTREPOT_CAP_FMT, c0,c1,c2);
+              ui_row(ren,x,&y,rw, tr(STR_ROW_ENTREPOTS), lv,
+                     re3->n_entrepot>0?COL_PARCH:COL_DIM, tr(STR_ENTREPOT_HOV)); }
+            /* les lots : une ligne par ressource négociable, [−10] vendre · [+10] acheter */
+            static const LRes TRADE_RES[7]={ LR_FOOD,LR_BOIS,LR_ARGILE,LR_CALCAIRE,LR_PIERRE,LR_METAL,LR_OUTILS };
+            static char thov[7][160];
+            for (int i=0;i<7;i++){
+                LRes r3=TRADE_RES[i];
+                char st[24]; snprintf(st,sizeof st,"%ld",s->labor->stock[r3]);
+                draw_text(ren,g_font,x,y,COL_DIM,lres_name(r3));
+                draw_text(ren,g_font,x+104,y,COL_PARCH,st);
+                int bx=x+rw-44;
+                fill_round(ren,bx,y,18,16,COL_PANEL2,3);  round_box(ren,bx,y,18,16,COL_EDGE,3);
+                draw_text(ren,g_font_small?g_font_small:g_font,bx+5,y+1,COL_PARCH,"-");
+                fill_round(ren,bx+22,y,18,16,COL_PANEL2,3); round_box(ren,bx+22,y,18,16,COL_EDGE,3);
+                draw_text(ren,g_font_small?g_font_small:g_font,bx+27,y+1,COL_COPPER,"+");
+                if (g_ntrade<14){
+                    g_trade_btn[g_ntrade++]=(TradeBtn){ (SDL_Rect){bx,y,18,16},    (int)r3, true  };
+                    g_trade_btn[g_ntrade++]=(TradeBtn){ (SDL_Rect){bx+22,y,18,16}, (int)r3, false };
+                }
+                tr_fmt(thov[i],sizeof thov[i], STR_MARCHE_ROW_HOV, lres_name(r3), st);
+                zone_add((SDL_Rect){x-2,y-2,rw-48,18}, thov[i]);
+                y += 18;
+            }
+            y += 4;
+        }
+    }
+
     /* Le seuil de révolte reste signalé (gameplay) ; lignée/foi vivent dans les
      * camemberts, l'agitation dans le survol de l'humeur — surface non dense. */
     if (p.seuil_revolte) {
@@ -2334,7 +2387,17 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             Edifice tgt = family && reg>=0 ? edifice_next_buildable(econ,reg,base) : base;
             bool maxed = (tgt>=EDIFICE_COUNT);
             bool up = family && !maxed && tgt!=base;     /* un palier est déjà en place → c'est un ↑ */
+            /* E2 §13 — édifice GATÉ par l'arbre : le slot se VERROUILLE tant que la
+             * tech n'est pas acquise (le hover nomme la porte, pas la recette). */
+            bool locked = s && !maxed && !edifice_unlocked(&s->ts[s->player], tgt);
             /* P6.33 — format STRICT : « nom ↑ (édifice) », puis les lignes de coût, rien d'autre. */
+            if (locked){
+                TechId gt=edifice_gate_tech(tgt);
+                tr_fmt(bhov[i],sizeof bhov[i], STR_SLOT_VERROU_FMT, S[i].name,
+                       gt<TECH_COUNT?tech_name(gt):"?");
+                zone_add((SDL_Rect){sx,sy,sw,sw}, bhov[i]);
+                continue;                                    /* pas cliquable tant que verrouillé */
+            }
             if (maxed){
                 snprintf(bhov[i],sizeof bhov[i], "%s — au sommet (rien à bâtir)\x1f\x1f", S[i].name);
             } else {
@@ -2384,6 +2447,26 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             draw_box (ren, x, by, bw, 22, COL_COPPER);
             draw_text(ren, fb, x+9, by+4, COL_COPPER, cb);
             g_colonize_btn=(SDL_Rect){x,by,bw,22}; g_colonize_dst=dreg; g_colonize_src=src;
+        }
+    }
+    /* E2 §10 — BÂTIR UN COMPTOIR ici : région possédée, non-hub, sans comptoir,
+     * tech « Comptoirs marchands » acquise. Il branche la province au réseau. */
+    if (s && pid>=0 && pid<w->n_provinces){
+        int dreg=w->province[pid].region;
+        if (dreg>=0 && dreg<econ->n_regions && econ->region[dreg].owner==s->player
+            && !intertrade_has_centre(dreg)
+            && !(econ->region[dreg].edi_built & (1u<<EDI_COMPTOIR))
+            && edifice_unlocked(&s->ts[s->player], EDI_COMPTOIR)){
+            TTF_Font *fb=g_font_small?g_font_small:g_font;
+            int by=py+ph-54; char c0[16], cb[96];
+            snprintf(c0,sizeof c0,"%.0f", agency_build_gold(econ,dreg,EDI_COMPTOIR));
+            tr_fmt(cb,sizeof cb, STR_BTN_COMPTOIR_FMT, c0);
+            int bw=text_w(fb,cb)+18;
+            fill_rect(ren, x, by, bw, 22, (SDL_Color){0x16,0x1e,0x2c,0xff});
+            draw_box (ren, x, by, bw, 22, COL_COPPER);
+            draw_text(ren, fb, x+9, by+4, COL_COPPER, cb);
+            zone_add((SDL_Rect){x,by,bw,22}, tr(STR_COMPTOIR_HOV));
+            g_comptoir_btn=(SDL_Rect){x,by,bw,22}; g_comptoir_reg=dreg;
         }
     }
     /* P3.20 — RELOCALISER un Centre commercial vers CETTE région (possédée, non-hub),
@@ -3669,7 +3752,7 @@ int main(int argc, char **argv) {
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
-                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1;
+                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_ntrade=0;
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_centre_markers(ren, &cam, &sim, world, win_w, win_h);  /* P3.20 : les Centres commerciaux */
@@ -3924,6 +4007,33 @@ int main(int argc, char **argv) {
                         } else printf("\n[scps] Relocalisation refusée (trésor insuffisant ou pas de hub).\n");
                         dirty=true; break;
                     }
+                    /* E2 §10 — clic « Bâtir un Comptoir » : payé du trésor unique. */
+                    if (g_comptoir_reg>=0 && sim.ready &&
+                        ev.button.x>=g_comptoir_btn.x && ev.button.x<g_comptoir_btn.x+g_comptoir_btn.w &&
+                        ev.button.y>=g_comptoir_btn.y && ev.button.y<g_comptoir_btn.y+g_comptoir_btn.h){
+                        if (agency_build_acct(sim.ag, sim.econ, g_comptoir_reg, EDI_COMPTOIR,
+                                              &sim.labor->stock[LR_GOLD]))
+                            printf("\n[scps] Comptoir mis en chantier (région %d, 180 j) — la province se branche au réseau.\n", g_comptoir_reg);
+                        else
+                            printf("\n[scps] Comptoir : trésor insuffisant.\n");
+                        dirty=true; break;
+                    }
+                    /* E2 §12 — clic sur un lot du MARCHÉ : acheter/vendre 10 au prix courant. */
+                    { int th=-1;
+                      for (int i=0;i<g_ntrade;i++){ SDL_Rect *r=&g_trade_btn[i].r;
+                          if (ev.button.x>=r->x && ev.button.x<r->x+r->w &&
+                              ev.button.y>=r->y && ev.button.y<r->y+r->h){ th=i; break; } }
+                      if (th>=0){
+                          LRes r3=(LRes)g_trade_btn[th].res;
+                          if (g_trade_btn[th].sell){
+                              long g=labor_sell_market(sim.labor,r3,10);
+                              printf("\n[scps] Marché : vendu %s ×10 → +%ld or.\n", lres_name(r3), g);
+                          } else {
+                              long c=labor_pump_market(sim.labor,r3,10);
+                              printf("\n[scps] Marché : acheté %s ×10 → −%ld or.\n", lres_name(r3), c);
+                          }
+                          dirty=true; break;
+                      } }
                     /* §4 panneau : un clic sur un SLOT de bâtiment bâtit l'édifice
                      * (payé au marché, en jours) — pas de bouton « Bâtir ». */
                     int hit=-1;
@@ -4264,7 +4374,7 @@ int main(int argc, char **argv) {
          * membrane (bandes + mots). Le viewer ne touche aucun flottant SCPS. */
         if (sim.ready && g_font) {
             int mx2,my2; SDL_GetMouseState(&mx2,&my2);
-            zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1;
+            zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_ntrade=0;
             int cid = country_for_panel(world, selected);
             if (g_gs!=GS_PLAYING) {                              /* le SHELL tient l'écran */
                 shell_draw(ren,win_w,win_h,world,&sim,&g_stage);

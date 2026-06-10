@@ -212,5 +212,15 @@
     X(STR_CENTRE_RESEAU_OUVERT, "Réseau inter-pays OUVERT (un Centre commercial tenu)") \
     X(STR_CENTRE_RESEAU_FERME, "Réseau inter-pays FERMÉ — aucun Centre commercial (en conquérir un)") \
     X(STR_CENTRE_COMMERCIAL, "Centre commercial — hub du réseau inter-régional (le tenir = commercer)") \
+    X(STR_PAN_MARCHE, "MARCHÉ") \
+    X(STR_MARCHE_PRIX_FMT, "prix courant {0} or l'unité") \
+    X(STR_MARCHE_PRIX_HOV, "Le prix du marché intérieur : la demande le tire, l'offre et la vente le détendent. Acheter et vendre se font à CE prix.") \
+    X(STR_MARCHE_ROW_HOV, "{0} — en réserve {1}. Acheter ou vendre par lots de 10 au prix courant (l'or sort et entre par le trésor).") \
+    X(STR_SLOT_VERROU_FMT, "{0} — verrouillé ({1})") \
+    X(STR_BTN_COMPTOIR_FMT, "Bâtir un Comptoir ici  ({0} or)") \
+    X(STR_COMPTOIR_HOV, "Le Comptoir branche la province au Centre commercial le plus proche : la marge de transport tombe d'un tiers à ce bout des routes marchandes.") \
+    X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Entrepôts ×{2}") \
+    X(STR_ROW_ENTREPOTS, "Entrepôts") \
+    X(STR_ENTREPOT_HOV, "Sans Entrepôt, le stock régional sature à 200 par ressource (le surplus se perd) ; chaque Entrepôt bâti ajoute +500. Stocker bas, vendre haut.") \
 
 #endif /* SCPS_STRINGS_IDS_H */

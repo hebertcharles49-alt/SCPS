@@ -384,6 +384,18 @@ long labor_pump_market(LaborEcon *e, LRes res, long amount){
     e->market.demand  += (float)amount;   /* pomper TIRE la demande → le prix monte */
     return cost;
 }
+long labor_sell_market(LaborEcon *e, LRes res, long amount){
+    if (amount<=0 || res<0 || res>=LR_COUNT || res==LR_GOLD) return 0;
+    if (amount > e->stock[res]) amount = e->stock[res];
+    if (amount<=0) return 0;
+    float price = labor_material_price(e);
+    long gain = (long)(amount*price + 0.5f);
+    e->stock[res]     -= amount;          /* E2 §12 : on vend du STOCK réel */
+    e->stock[LR_GOLD] += gain; e->treasury=e->stock[LR_GOLD];
+    e->market.demand  -= (float)amount;   /* vendre DÉTEND la demande → le prix retombe */
+    if (e->market.demand < 0.f) e->market.demand = 0.f;
+    return gain;
+}
 
 /* ===================================================================== */
 /* POPULATION — le POOL et sa répartition (topbar)                        */

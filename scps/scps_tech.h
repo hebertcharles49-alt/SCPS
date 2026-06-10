@@ -59,6 +59,8 @@ typedef enum {
     /* SOCIÉTÉ · Production (croissance / commerce / impôt) */
     TECH_COLLECTE_NOURRITURE,/* ◎ base */
     TECH_IRRIGATION, TECH_COMMERCE, TECH_CADASTRE, TECH_ABONDANCE,
+    TECH_COMPTOIRS,          /* E2 §13 : débloque le Comptoir (branche au Centre commercial) */
+    TECH_HALLES,             /* E2 §13 : débloque l'Entrepôt (+500 de cap de stock chacun) */
     /* SOCIÉTÉ · Armée (levée — faustien : l'esclavage) */
     TECH_CASERNE,            /* ◎ base */
     TECH_CONSCRIPTION, TECH_ORGANISATION, TECH_ESCLAVAGE, TECH_CASTE_MARTIALE,

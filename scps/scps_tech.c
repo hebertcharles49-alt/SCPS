@@ -110,6 +110,13 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0.5f,0, 1.5f,0, 0, 0, 0, 0, 0, false },
 [TECH_ABONDANCE] = { "Abondance","Grenier d'abondance", THM_SOCIETE,FN_PRODUCTION,3, TECH_COMMERCE, false,false,RACE_HALFELIN,
     0,1.0f,0, 3.0f,0, 0, -0.5f, 0, 0, 0, false },
+/* E2 §13 — la branche MARCHANDE : le Comptoir branche la province au Centre
+ * commercial (marge de transport réduite) ; les Halles ouvrent l'Entrepôt
+ * (+500 de cap de stock chacun) — le jeu de marché (stocker bas, vendre haut). */
+[TECH_COMPTOIRS] = { "Comptoirs marchands","Comptoir", THM_SOCIETE,FN_PRODUCTION,1, TECH_COLLECTE_NOURRITURE, false,false,UNIV,
+    0,0,0, 0.8f,0, 0, 0, 0, 0, 0, false },
+[TECH_HALLES] = { "Halles & entrepôts","Entrepôt (cap de stock)", THM_SOCIETE,FN_PRODUCTION,2, TECH_COMPTOIRS, false,false,UNIV,
+    0,0,0, 1.2f,0, 0, 0, 0, 0, 0, false },
 /* ---- SOCIÉTÉ · ARMÉE (levée — faustien : l'esclavage) ---------------- */
 [TECH_CASERNE] = { "Caserne","Caserne", THM_SOCIETE,FN_ARMEE,0, NONE, false,false,UNIV,
     0,0,0, 0,0.5f, 0, 0, 0, 0, 0, false },

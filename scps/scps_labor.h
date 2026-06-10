@@ -183,6 +183,10 @@ long  labor_food_balance  (const LaborEcon *e);    /* collecte − bouche − ra
 float labor_material_price(const LaborEcon *e);             /* prix temps réel (demande) */
 /* E0.6 — la pompe livre la ressource DEMANDÉE (plus du bois en dur) → coût or. */
 long  labor_pump_market   (LaborEcon *e, LRes res, long amount);
+/* E2 §12 — la VENTE manuelle : l'inverse de la pompe. Vend jusqu'à `amount` du
+ * stock au prix courant (or ← trésor unique) ; vendre DÉTEND la demande (le prix
+ * retombe). Renvoie l'or encaissé. */
+long  labor_sell_market   (LaborEcon *e, LRes res, long amount);
 
 /* ---- Population : le POOL et sa répartition (topbar) ------------------ */
 long        labor_pop_total   (const LaborEcon *e);   /* le pool total */

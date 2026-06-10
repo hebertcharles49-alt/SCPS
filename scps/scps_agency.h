@@ -18,6 +18,7 @@
 #include "scps_world.h"       /* World (biome) */
 #include "scps_legitimacy.h"  /* WorldLegitimacy (défrichement ronge L) */
 #include "scps_demography.h"  /* leviers intérieurs : coercition (Kuran), groupes, ModifierStack */
+#include "scps_tech.h"        /* TechState : édifices gatés par l'arbre (E2 §13) */
 #include <stdio.h>
 
 #define SCPS_DAYS_PER_YEAR 365
@@ -99,6 +100,11 @@ bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e);
  * fourni (le trésor labor) au lieu du trésor régional — la topbar dit VRAI.
  * gold_acct NULL ≡ agency_build. Les matériaux sortent toujours du marché régional. */
 bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct);
+/* E2 §13 — édifices GATÉS par l'arbre : Comptoir ← « Comptoirs marchands »,
+ * Entrepôt ← « Halles & entrepôts ». Tout le reste est libre. ts NULL = libre
+ * (bancs d'essai, voies basses). */
+bool   edifice_unlocked (const TechState *ts, Edifice e);
+TechId edifice_gate_tech(Edifice e);   /* le nœud qui l'ouvre (TECH_COUNT = libre) — pour l'UI */
 /* §4 Défrichement : convertit la terre → food, dérive la SUBSISTANCE locale vers
  * l'agriculture (impérialisme culturel sur la terre), et ronge L en niche
  * forestière (les peuples de la forêt voient leur monde rasé). */

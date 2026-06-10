@@ -1238,6 +1238,13 @@ void econ_tick(WorldEconomy *e, float dt) {
 
         for (int r=0;r<RES_COUNT;r++){ re->supply[r]=supply[r]; re->demand[r]=demand[r]; }
 
+        /* E2 §11 — LE PLAFOND DE STOCK : sans Entrepôt, l'entrepôt régional sature à
+         * ~200/ressource (le surplus se perd — greniers pleins, denrées qui tournent) ;
+         * chaque Entrepôt BÂTI ajoute +500. C'est lui qui ouvre le jeu de marché :
+         * stocker quand c'est bas, vendre quand c'est haut. */
+        { float cap = ECON_STOCK_CAP_BASE + ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;
+          for (int r=1;r<RES_COUNT;r++) if (re->stock[r]>cap) re->stock[r]=cap; }
+
         /* Diaspora : bonus tech par innovation culturelle accumulée.
          * S'absorbe progressivement (acculturation, demi-vie ~50 ticks). */
         if (re->diaspora_pop > 0.f) {
