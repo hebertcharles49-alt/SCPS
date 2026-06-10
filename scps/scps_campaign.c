@@ -609,11 +609,5 @@ ArmyComposition campaign_composition(const Campaign *c, int o){
     return z;
 }
 
-const char *army_host_word(long paquets){
-    if (paquets<=0)   return "—";
-    if (paquets<8)    return "éclaireurs";   /* une poignée */
-    if (paquets<25)   return "détachement";
-    if (paquets<70)   return "troupe";
-    if (paquets<160)  return "armée";
-    return "horde";                          /* une marée */
-}
+/* (army_host_word RETIRÉ — P1.10 : l'effectif EXACT s'affiche, plus de mot de
+ * brouillard ; l'asymétrie d'information ennemie tombe.) */

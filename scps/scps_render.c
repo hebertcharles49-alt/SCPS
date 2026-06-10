@@ -207,9 +207,16 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
     if (mode == VIEW_REGIONS && c->region >= 0) {
         terrain = alpha_over(terrain, w->region[c->region].color, 0.45f);
     }
-    /* ---- Overlay pays ------------------------------------------------ */
-    if (mode == VIEW_COUNTRIES && c->country >= 0) {
-        terrain = alpha_over(terrain, w->country[c->country].color, 0.52f);
+    /* ---- Overlay pays (P1.6 : carte politique = OWNER COURANT seulement) ---
+     * Le viewer passe region_tint = couleur de l'occupant POLITIQUE par région
+     * (0 = non-colonisé). On ne peint QUE owner≥0 ; le reste = terrain ATTÉNUÉ
+     * (jamais une couleur pleine). region_tint NULL → repli statique (captures). */
+    if (mode == VIEW_COUNTRIES) {
+        uint32_t oc = (region_tint && c->region>=0) ? region_tint[c->region]
+                    : (c->country>=0 ? w->country[c->country].color : 0u);
+        if (oc) terrain = alpha_over(terrain, oc, 0.62f);
+        /* non-colonisé (oc==0) : AUCUN voile — le TERRAIN nu + les lignes noires du
+         * Voronoi (frontières de territoire, dessinées plus bas) le disent. */
     }
     /* ---- Overlay continents ------------------------------------------ */
     if (mode == VIEW_CONTINENTS && c->continent >= 0) {

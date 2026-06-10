@@ -2459,11 +2459,10 @@ static void draw_army_markers(SDL_Renderer *ren, const Cam *cam, const Sim *s,
         draw_box (ren, sx-rr-1, sy-rr-1, 2*rr+2, 2*rr+2, COL_PARCH);
         if (ph==FA_SIEGE) draw_ring(ren, sx, sy, (float)(rr+3), COL_COPPER);   /* halo de siège */
 
-        /* étiquette : les SIENNES → le NOMBRE D'HOMMES (multiple de 100) ; l'ENNEMIE
-         * → le MOT de taille (asymétrie). Jamais « 12 » : on lève par paquets de 100. */
+        /* P1.10 — effectif EXACT sur TOUTE armée visible (amie comme ennemie) : le
+         * nombre d'hommes, jamais un mot de brouillard. */
         char lab[24];
-        if (mine) snprintf(lab, sizeof lab, "%ld", paquets*100);
-        else      snprintf(lab, sizeof lab, "%s", army_host_word(paquets));
+        snprintf(lab, sizeof lab, "%ld", paquets*100);
         if (g_font_small){
             int lw=text_w(g_font_small, lab);
             SDL_Color labbg = { 0x0f,0x16,0x22,0xcc };
@@ -2471,19 +2470,19 @@ static void draw_army_markers(SDL_Renderer *ren, const Cam *cam, const Sim *s,
             draw_text(ren, g_font_small, sx-lw/2, sy+rr+1, COL_PARCH, lab);
         }
 
-        /* survol : détail pour les siennes, taille seule pour l'ennemie. */
+        /* survol : effectif exact + composition (P1.10 — plus de mot de taille). */
         const char *people = army_people(w, s->econ, s->drift, c);
         ArmyComposition cp = campaign_composition(s->camp, c);
         if (mine)
             snprintf(g_army_tip[c], sizeof g_army_tip[c],
-                     "%s (%s) — %s · %ld hommes : inf %ld · arch %ld · cav %ld%s · %s",
-                     w->country[c].name, people, army_host_word(paquets), paquets*100,
+                     "%s (%s) — %ld hommes : inf %ld · arch %ld · cav %ld%s · %s",
+                     w->country[c].name, people, paquets*100,
                      cp.infanterie*100, cp.archers*100, cp.cavalerie*100,
                      cp.mages? " · mages":"", campaign_phase_name(ph));
         else
             snprintf(g_army_tip[c], sizeof g_army_tip[c],
-                     "%s (%s) — %s (%s) · armée ENNEMIE : on en juge la taille, pas le détail",
-                     w->country[c].name, people, army_host_word(paquets), campaign_phase_name(ph));
+                     "%s (%s) — %ld hommes · %s",
+                     w->country[c].name, people, paquets*100, campaign_phase_name(ph));
         zone_add((SDL_Rect){sx-rr-2, sy-rr-2, 2*rr+4, 2*rr+16}, g_army_tip[c]);
     }
 }
@@ -3300,6 +3299,13 @@ int main(int argc, char **argv) {
                 for (int r=0;r<sim.econ->n_regions && r<SCPS_MAX_REG;r++)
                     tnt[r]=ethos_tint((int)sim.econ->region[r].culture.ethos);
                 rp.region_tint = tnt;
+            } else if (smode==VIEW_COUNTRIES && sim.ready){    /* P1.6 : owner courant, non-colonisé = terrain */
+                static uint32_t ot[SCPS_MAX_REG];
+                for (int r=0;r<sim.econ->n_regions && r<SCPS_MAX_REG;r++){
+                    int ow=sim.econ->region[r].owner;
+                    ot[r]=(ow>=0 && ow<world->n_countries && sim.econ->region[r].colonized)? world->country[ow].color : 0u;
+                }
+                rp.region_tint = ot;
             }
             /* §terrain : la capture montre aussi l'OCCUPATION (hachure de l'occupant). */
             rp.occupier_tint = NULL;
@@ -3778,6 +3784,16 @@ int main(int argc, char **argv) {
                                                             : faith_tint((int)cu->rel_branch);
                 }
                 rp.region_tint = g_region_tint;
+            } else if (mode==VIEW_COUNTRIES && sim.ready) {
+                /* P1.6 — carte politique : teinte par OWNER COURANT (couleur d'empire
+                 * race-famille) ; région non-colonisée = 0 → terrain atténué (render). */
+                static uint32_t g_owner_tint[SCPS_MAX_REG];
+                for (int r=0;r<sim.econ->n_regions && r<SCPS_MAX_REG;r++){
+                    int ow=sim.econ->region[r].owner;
+                    g_owner_tint[r] = (ow>=0 && ow<world->n_countries && sim.econ->region[r].colonized)
+                                    ? world->country[ow].color : 0u;
+                }
+                rp.region_tint = g_owner_tint;
             }
             /* OCCUPATION (brief terrain §membrane) : la carte politique HACHURE les
              * régions TENUES par les armes de la couleur de l'occupant — la propriété,

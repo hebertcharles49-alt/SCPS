@@ -136,12 +136,12 @@ int main(int argc,char**argv){
     mix.units[mix.n_units].type=U_ARCHER; mix.units[mix.n_units].count=5; mix.n_units++;
     campaign_order(camp, econ, A, frontier, target, &mix);
     ArmyComposition cp = campaign_composition(camp, A);
-    printf("   composition : %ld inf · %ld arch · %ld cav · %ld mages (total %ld) — taille « %s »\n",
-           cp.infanterie, cp.archers, cp.cavalerie, cp.mages, cp.total, army_host_word(cp.total));
+    printf("   composition : %ld inf · %ld arch · %ld cav · %ld mages (total %ld régiments)\n",
+           cp.infanterie, cp.archers, cp.cavalerie, cp.mages, cp.total);
     ok("la composition se range par grand type d'arme (inf 35, arch 5, cav 8)",
        cp.infanterie==35 && cp.archers==5 && cp.cavalerie==8 && cp.total==48);
-    ok("le mot de taille grandit avec les effectifs (asymétrie d'info ennemie)",
-       army_host_word(3)[0] && strcmp(army_host_word(5), army_host_word(200))!=0);
+    ok("l'effectif EXACT se lit (P1.10 : la somme des armes = le total, 4800 hommes)",
+       cp.infanterie+cp.archers+cp.cavalerie+cp.mages==cp.total && cp.total*100==4800);
 
 done:
     printf("\n══════════════════════════════════════════════════════════════\n");

@@ -2234,6 +2234,14 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
         printf(" %s(%.0f)", species_name(crace[ord[k]]),
                sphere_distance(psph,species_sphere(crace[ord[k]])));
     printf(" … %d cités-états isolats→%s\n", n_cs, species_name(exotic));
+
+    /* P1.5 — recolore chaque EMPIRE par sa FAMILLE DE RACE (race de sa capitale). */
+    for (int c=0;c<w->n_countries;c++){
+        int cp=w->country[c].capital_prov;
+        int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
+        SpeciesArchetype rc=(cr>=0&&cr<econ->n_regions)? econ->region[cr].culture.race : RACE_HUMAIN;
+        w->country[c].color = country_race_color(rc, c);
+    }
 }
 
 /* ========================================================================
@@ -3132,6 +3140,33 @@ uint32_t province_palette(int id) {
     float s=0.42f+0.14f*sinf((float)id*0.53f+1.f);
     float l=0.50f+0.10f*cosf((float)id*0.71f+2.f);
     float q=(l<0.5f)?l*(1+s):l+s-l*s, p=2*l-q;
+    uint8_t r=(uint8_t)(hue2rgb_f(p,q,h+1.f/3)*255);
+    uint8_t g=(uint8_t)(hue2rgb_f(p,q,h      )*255);
+    uint8_t bv=(uint8_t)(hue2rgb_f(p,q,h-1.f/3)*255);
+    return 0xFF000000u|((uint32_t)r<<16)|((uint32_t)g<<8)|bv;
+}
+
+/* P1.5 — couleur d'EMPIRE par FAMILLE DE RACE + variante par pays (déterministe) :
+ * humains BLEUS · elfes VERTS · nains GRIS-ROUGE · orques MARRONS · halfelins
+ * JAUNES · gnomes TURQUOISE. La teinte dit la RACE ; la variante distingue les
+ * empires d'une même race (couleur UNIE par entité). */
+uint32_t country_race_color(SpeciesArchetype race, int cid){
+    float baseh, s, l;                       /* h en TOURS [0..1] (comme hue2rgb_f) */
+    switch(race){
+        case RACE_HUMAIN:   baseh=0.585f; s=0.55f; l=0.52f; break;  /* bleu */
+        case RACE_ELFE:     baseh=0.355f; s=0.48f; l=0.46f; break;  /* vert */
+        case RACE_NAIN:     baseh=0.020f; s=0.30f; l=0.46f; break;  /* gris-rouge */
+        case RACE_ORQUE:    baseh=0.072f; s=0.55f; l=0.34f; break;  /* marron */
+        case RACE_HALFELIN: baseh=0.133f; s=0.66f; l=0.56f; break;  /* jaune */
+        case RACE_GNOME:    baseh=0.500f; s=0.46f; l=0.48f; break;  /* turquoise */
+        default:            baseh=0.820f; s=0.38f; l=0.50f; break;  /* violet (exotiques) */
+    }
+    uint32_t hsh=(uint32_t)cid*2654435761u;
+    float dh=(((hsh>>8)&0xFF)/255.f-0.5f)*0.06f;       /* ±0.03 tour (~±11°) */
+    float dl=(((hsh>>16)&0xFF)/255.f-0.5f)*0.22f;      /* ±0.11 clarté */
+    float h=baseh+dh; if(h<0)h+=1.f; if(h>=1.f)h-=1.f;
+    float ll=l+dl; if(ll<0.26f)ll=0.26f; if(ll>0.72f)ll=0.72f;
+    float q=(ll<0.5f)?ll*(1+s):ll+s-ll*s, p=2*ll-q;
     uint8_t r=(uint8_t)(hue2rgb_f(p,q,h+1.f/3)*255);
     uint8_t g=(uint8_t)(hue2rgb_f(p,q,h      )*255);
     uint8_t bv=(uint8_t)(hue2rgb_f(p,q,h-1.f/3)*255);

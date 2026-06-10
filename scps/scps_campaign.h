@@ -149,9 +149,7 @@ const char *campaign_phase_name   (FieldPhase ph);
 typedef struct { long infanterie, archers, cavalerie, mages, total; } ArmyComposition;
 ArmyComposition campaign_composition(const Campaign *c, int owner);
 
-/* Mot de TAILLE d'une troupe (asymétrie d'information : on montre ce MOT pour une
- * armée ennemie, pas son décompte exact). « éclaireurs » → « horde ». */
-const char *army_host_word(long paquets);
+/* (army_host_word RETIRÉ — P1.10 : effectif EXACT affiché sur toute armée.) */
 
 /* ---- RENFORT (« remplir ») — recompléter une armée en TERRITOIRE AMI -------- */
 /* Peut-on renforcer l'armée de `owner` ? (active ET la région où elle se tient lui
