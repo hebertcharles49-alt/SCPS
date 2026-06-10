@@ -2165,8 +2165,17 @@ static bool region_free_slot(const RegionEconomy *re){
     return b->K_inst<0.3f||b->food_cap<0.3f||b->faith<0.3f||b->savoir<0.3f||b->PE_infra<0.3f||b->P_open<0.3f;
 }
 static char g_ohov[80][200];
+static bool g_right_hidden = false;          /* P0.4 : Domaine (sidebar droite) replié (mémorisé en session) */
+static SDL_Rect g_right_chevron;             /* P0.4 : bouton de repli (cliquable) */
+static int  g_diplo_target = -1;             /* P0.3 : pays cible du panneau diplo (right-clic), -1 = fermé */
 static void draw_outliner(SDL_Renderer *ren, int win_w, int win_h, const Sim *s, const World *w){
     int player=s->player; if (player<0) return;
+    /* P0.4 — chevron de repli, TOUJOURS présent (coin haut-droit) : « » replie, « replie « déplie. */
+    g_right_chevron = (SDL_Rect){win_w-22, 86, 20, 22};
+    fill_rect(ren, g_right_chevron.x, g_right_chevron.y, 20,22, COL_PANEL2);
+    draw_box (ren, g_right_chevron.x, g_right_chevron.y, 20,22, COL_COPPER);
+    draw_text(ren, g_font, g_right_chevron.x+5, g_right_chevron.y+2, COL_COPPER, g_right_hidden?"\xC2\xAB":"\xC2\xBB");
+    if (g_right_hidden) return;               /* replié : on n'affiche que le chevron */
     int pw=234, px=win_w-pw, py=102, ph=win_h-py-26;
     panel_bg(ren, px,py, pw,ph);
     fill_rect(ren, px,py, 2,ph, COL_COPPER);          /* liseré cuivre sur le bord intérieur (gauche) */
@@ -2265,6 +2274,49 @@ static void minimap_fit(float *scale, float *ox, float *oy){
 }
 static void minimap_rect(int win_w, int win_h, SDL_Rect *r){
     r->x=win_w-MM_W-12; r->y=win_h-MM_H-36; r->w=MM_W; r->h=MM_H;
+}
+/* P0.2 — PRIORITÉ D'ENTRÉE : panneau > carte. Le curseur est-il au-dessus d'un
+ * panneau persistant ? (topbar · rail+tiroir gauche · Domaine droit · panneau de
+ * province · minicarte · boutons de mode). Si oui : aucun hover ni clic CARTE.
+ * g_right_hidden replie le Domaine (P0.4, déclaré plus haut). */
+static bool over_panel(int mx, int my, int win_w, int win_h, int selected){
+    if (my < 78) return true;                                              /* topbar */
+    int drawer = (g_sb.tab>=0)? (int)(SB_DRAWER_W*g_sb.anim) : 0;
+    if (mx < SB_RAIL_W + drawer) return true;                             /* rail + tiroir gauche */
+    if (!g_right_hidden && mx >= win_w-234 && my >= 102 && my < win_h-26) return true;  /* Domaine (droite) */
+    if (mx >= win_w-22 && my >= 86 && my < 110) return true;             /* chevron du Domaine */
+    if (selected>=0 && mx < 312 && my >= 102 && my < win_h-26) return true;             /* panneau province (gauche) */
+    if (mx >= win_w-MM_W-12 && my >= win_h-MM_H-36) return true;         /* minicarte (coin bas-droit) */
+    if (my >= win_h-62 && my < win_h-30 && mx >= 318 && mx < 640) return true;          /* boutons de mode (bas) */
+    if (g_diplo_target>=0 && mx>=win_w-272 && my>=86) return true;                       /* popup diplo (P0.3) */
+    return false;
+}
+/* P0.3 — PANNEAU DIPLOMATIQUE rapide (clic-droit sur une région étrangère) : le
+ * SQUELETTE — nom · race · statut · menace (+ score si en guerre). Les ACTIONS
+ * viendront avec l'arc guerre (emplacement réservé) ; ici, lecture seule. */
+static void draw_diplo_popup(SDL_Renderer *ren, int win_w, const World *w, const Sim *s){
+    int cid=g_diplo_target; if (cid<0||cid>=w->n_countries) return;
+    int pw=260, ph=170, px=win_w-pw-12, py=92;
+    panel_bg(ren, px,py, pw,ph);
+    fill_rect(ren, px,py, pw,3, COL_COPPER);
+    TTF_Font *fs=g_font_small?g_font_small:g_font;
+    int x=px+14, y=py+12; char buf[96];
+    draw_text(ren, g_font, x, y, COL_COPPER, sb_country_name(w,cid)); y+=24;
+    int cr=(w->country[cid].capital_prov>=0)? w->province[w->country[cid].capital_prov].region : -1;
+    const char *race=(cr>=0 && cr<s->econ->n_regions)? species_name(s->econ->region[cr].culture.race) : "—";
+    tr_fmt(buf,sizeof buf,STR_DIPLO_RACE_FMT,race);                draw_text(ren,fs,x,y,COL_PARCH,buf); y+=17;
+    DiploStatus st=diplo_status(s->dp,s->player,cid);
+    const char *sw=(st==DIPLO_WAR)?tr(STR_DIPLO_GUERRE):(st==DIPLO_ALLIED)?tr(STR_DIPLO_ALLIE):
+                   (diplo_suzerain(s->dp,cid)==s->player)?tr(STR_DIPLO_VASSAL):
+                   (diplo_suzerain(s->dp,s->player)==cid)?tr(STR_DIPLO_SUZERAIN):tr(STR_DIPLO_NEUTRE);
+    tr_fmt(buf,sizeof buf,STR_DIPLO_STATUT_FMT,sw);               draw_text(ren,fs,x,y,COL_PARCH,buf); y+=17;
+    Relation rel=diplo_relation(w,s->econ,s->wp,s->dp,s->player,cid);
+    float th=rel.threat; if(th<0.f)th=0.f; if(th>1.f)th=1.f;
+    char nb[16]; snprintf(nb,sizeof nb,"%.0f",th*100.f);
+    tr_fmt(buf,sizeof buf,STR_DIPLO_MENACE_FMT,nb);               draw_text(ren,fs,x,y,COL_DIM,buf); y+=17;
+    if (st==DIPLO_WAR){ char ns[16]; snprintf(ns,sizeof ns,"%+d",(int)diplo_war_score(s->dp,s->player,cid));
+        tr_fmt(buf,sizeof buf,STR_DIPLO_SCORE_FMT,ns);            draw_text(ren,fs,x,y,COL_DIM,buf); y+=17; }
+    draw_text(ren,fs,x,py+ph-22,COL_PANEL2,tr(STR_DIPLO_ACTIONS));
 }
 static void draw_minimap(SDL_Renderer *ren, PixBuf *mm, int win_w, int win_h, const Cam *cam){
     SDL_Rect m; minimap_rect(win_w,win_h,&m);
@@ -3039,11 +3091,20 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    /* P0.1 — fenêtre à la taille de l'ÉCRAN au lancement (plein écran fenêtré,
+     * respecte la barre des tâches) ; le layout suit la taille réelle (resize).
+     * En mode capture (--shot), on garde WIN_W×WIN_H pour des images stables. */
+    int initw = WIN_W, inith = WIN_H;
+    Uint32 winflags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    if (!shot){
+        SDL_DisplayMode dm;
+        if (SDL_GetCurrentDisplayMode(0, &dm)==0){ initw=dm.w; inith=dm.h; }
+        winflags |= SDL_WINDOW_MAXIMIZED;
+    }
     SDL_Window *win = SDL_CreateWindow(
         "SCPS — Moteur de carte",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        WIN_W, WIN_H,
-        SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+        initw, inith, winflags);
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!win || !ren) { fprintf(stderr,"SDL: %s\n",SDL_GetError()); return 1; }
@@ -3096,6 +3157,9 @@ int main(int argc, char **argv) {
     sim.ai_on= (bool*)            calloc(SCPS_MAX_COUNTRY, sizeof(bool));
 
     int win_w = WIN_W, win_h = WIN_H;
+    SDL_GetWindowSize(win, &win_w, &win_h);            /* P0.1 : taille RÉELLE (maximisée) */
+    if (win_w < 640) win_w = WIN_W;                    /* garde-fous */
+    if (win_h < 480) win_h = WIN_H;
     PixBuf pb = pixbuf_create(ren, win_w, win_h);
     PixBuf mm_pb = pixbuf_create(ren, MM_W, MM_H);   /* §5 : la minicarte (taille fixe) */
 
@@ -3127,6 +3191,7 @@ int main(int argc, char **argv) {
 
     /* Pan à la souris */
     bool  panning = false;
+    int   rdown_x = 0, rdown_y = 0;       /* P0.3 : position du clic-droit (clic vs glissé) */
     int   pan_sx = 0, pan_sy = 0;
 
     printf("[scps] Génération (graine %u)…\n", seed);
@@ -3309,6 +3374,7 @@ int main(int argc, char **argv) {
                     panning = true;
                     pan_sx = ev.button.x;
                     pan_sy = ev.button.y;
+                    rdown_x = ev.button.x; rdown_y = ev.button.y;   /* P0.3 : départ (clic vs glissé) */
                 } else if (ev.button.button == SDL_BUTTON_LEFT) {
                     /* LE SHELL capte d'abord (menu/création/ouverture + surcouches). */
                     if (g_quit_confirm||g_show_tuto||g_pause_menu||g_save_pick||g_load_pick||g_load_confirm>=0||g_defeat||g_gs!=GS_PLAYING){
@@ -3399,12 +3465,19 @@ int main(int argc, char **argv) {
                         }
                         dirty=true; break;
                     }
+                    if (g_diplo_target>=0){ g_diplo_target=-1; dirty=true; }   /* P0.3 : un clic-gauche ferme le popup diplo */
                     /* cran de VITESSE cliquable (topbar) */
                     if (g_gs==GS_PLAYING && ev.button.x>=g_speed_zone.x && ev.button.x<g_speed_zone.x+g_speed_zone.w
                         && ev.button.y>=g_speed_zone.y && ev.button.y<g_speed_zone.y+g_speed_zone.h){
                         speed=(GameSpeed)((speed+1)%SPEED_COUNT);
                         if (speed!=SPEED_PAUSE) g_last_speed=speed;
                         dirty=true; break;
+                    }
+                    /* P0.4 — chevron : replier / déplier le Domaine (droite) */
+                    if (g_gs==GS_PLAYING && sim.ready && !show_tree &&
+                        ev.button.x>=g_right_chevron.x && ev.button.x<g_right_chevron.x+g_right_chevron.w &&
+                        ev.button.y>=g_right_chevron.y && ev.button.y<g_right_chevron.y+g_right_chevron.h){
+                        g_right_hidden = !g_right_hidden; dirty=true; break;
                     }
                     /* SIDEBAR d'abord (rail + tiroir) : la décision capte le clic. */
                     if (sim.ready && !show_tree) {
@@ -3498,7 +3571,9 @@ int main(int argc, char **argv) {
                     }
                     if (orhit==-2) break;                       /* marteau cliqué */
                     if (orhit>=0){ selected = g_orows[orhit].prov; dirty=true; break; }   /* saut à la région */
-                    /* Sinon : sélectionner la province au clic */
+                    /* P0.2 — clic CARTE seulement HORS panneau (priorité panneau > carte) */
+                    if (over_panel(ev.button.x, ev.button.y, win_w, win_h, selected)) break;
+                    /* Sinon : sélectionner la province au clic (détail province) */
                     int cx = (int)(ev.button.x / cam.scale + cam.ox);
                     int cy = (int)(ev.button.y / cam.scale + cam.oy);
                     if (cx>=0&&cx<SCPS_W&&cy>=0&&cy<SCPS_H) {
@@ -3518,6 +3593,22 @@ int main(int argc, char **argv) {
                 if (ev.button.button == SDL_BUTTON_MIDDLE ||
                     ev.button.button == SDL_BUTTON_RIGHT)
                     panning = false;
+                /* P0.3 — CLIC-DROIT (sans glissé) sur une région ÉTRANGÈRE, hors panneau →
+                 * panneau diplomatique (squelette : nom, race, relation, statut). */
+                if (ev.button.button == SDL_BUTTON_RIGHT && g_gs==GS_PLAYING && sim.ready
+                    && abs(ev.button.x-rdown_x)<5 && abs(ev.button.y-rdown_y)<5
+                    && !over_panel(ev.button.x,ev.button.y,win_w,win_h,selected)){
+                    int cx=(int)(ev.button.x/cam.scale+cam.ox), cy=(int)(ev.button.y/cam.scale+cam.oy);
+                    g_diplo_target=-1;
+                    if (cx>=0&&cy>=0&&cx<SCPS_W&&cy<SCPS_H){
+                        int rg=(int)scps_cellc(world,cx,cy)->region;
+                        if (rg>=0 && rg<sim.econ->n_regions){
+                            int ow=sim.econ->region[rg].owner;
+                            if (ow>=0 && ow!=sim.player && ow<world->n_countries) g_diplo_target=ow;
+                        }
+                    }
+                    dirty=true;
+                }
                 break;
 
             case SDL_MOUSEMOTION:
@@ -3540,7 +3631,8 @@ int main(int argc, char **argv) {
                 switch (ev.key.keysym.sym) {
                 case SDLK_ESCAPE:
                     /* L'ÉCHELLE ESC : fermer la couche du dessus — JAMAIS quitter l'appli. */
-                    if      (g_quit_confirm){ g_quit_confirm=false; }
+                    if      (g_diplo_target>=0){ g_diplo_target=-1; }   /* P0.3 : ferme le popup diplo */
+                    else if (g_quit_confirm){ g_quit_confirm=false; }
                     else if (g_load_confirm>=0){ g_load_confirm=-1; }
                     else if (g_save_pick||g_load_pick){ g_save_pick=g_load_pick=0; }
                     else if (g_show_tuto)   { g_show_tuto=false; }
@@ -3738,7 +3830,7 @@ int main(int argc, char **argv) {
         if (g_gs==GS_PLAYING && g_font_small && sim.ready){
             int hmx,hmy; SDL_GetMouseState(&hmx,&hmy);
             int hcx=(int)(hmx/cam.scale+cam.ox), hcy=(int)(hmy/cam.scale+cam.oy);
-            if (hcx>=0&&hcy>=0&&hcx<SCPS_W&&hcy<SCPS_H){
+            if (!over_panel(hmx,hmy,win_w,win_h,selected) && hcx>=0&&hcy>=0&&hcx<SCPS_W&&hcy<SCPS_H){  /* P0.2 : pas de hover carte sous un panneau */
                 const Cell *hc=scps_cellc(world,hcx,hcy);
                 if (hc->sea){
                     char sw[64]; const char *dir="";
@@ -3782,11 +3874,12 @@ int main(int argc, char **argv) {
                 if (selected >= 0)
                     draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected);
                 draw_sidebar(ren, win_w, win_h, &sim, world, mode, selected);   /* §sidebar : rail + tiroir d'empire */
+                if (g_diplo_target>=0) draw_diplo_popup(ren, win_w, world, &sim);  /* P0.3 */
             }
             shell_draw(ren,win_w,win_h,world,&sim,&g_stage);     /* surcouches : pause · tuto · confirmation */
             /* mer au survol : le MOT (repli de plus basse priorité — ajouté en dernier) */
             { int cx3=(int)(mx2/cam.scale+cam.ox), cy3=(int)(my2/cam.scale+cam.oy);
-              if (cx3>=0&&cy3>=0&&cx3<SCPS_W&&cy3<SCPS_H){
+              if (!over_panel(mx2,my2,win_w,win_h,selected) && cx3>=0&&cy3>=0&&cx3<SCPS_W&&cy3<SCPS_H){  /* P0.2 */
                   const Cell *cc=scps_cellc(world,cx3,cy3);
                   if (cc->sea!=SEA_NONE){
                       static char seahov[96];

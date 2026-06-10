@@ -178,6 +178,10 @@
     X(STR_DIPLO_SCORE_FMT, "score {0}") \
     X(STR_DIPLO_RANCUNE, "rancune vive") \
     X(STR_DIPLO_MOTIF_FMT, "motif : {0}") \
+    X(STR_DIPLO_RACE_FMT, "Race : {0}") \
+    X(STR_DIPLO_STATUT_FMT, "Statut : {0}") \
+    X(STR_DIPLO_MENACE_FMT, "Menace : {0}%") \
+    X(STR_DIPLO_ACTIONS, "Actions — onglet Diplomatie (G)") \
     X(STR_CB_TERRITORIAL, "frontière revendiquée") \
     X(STR_CB_RELIGIOUS, "schisme religieux") \
     X(STR_CB_ECONOMIC, "bien monopolisé") \

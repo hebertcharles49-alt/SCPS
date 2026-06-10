@@ -173,6 +173,10 @@
     X(STR_DIPLO_SCORE_FMT, "score {0}") \
     X(STR_DIPLO_RANCUNE, "bitter grievance") \
     X(STR_DIPLO_MOTIF_FMT, "cause: {0}") \
+    X(STR_DIPLO_RACE_FMT, "Race: {0}") \
+    X(STR_DIPLO_STATUT_FMT, "Status: {0}") \
+    X(STR_DIPLO_MENACE_FMT, "Threat: {0}%") \
+    X(STR_DIPLO_ACTIONS, "Actions — Diplomacy tab (G)") \
     X(STR_CB_TERRITORIAL, "claimed border") \
     X(STR_CB_RELIGIOUS, "religious schism") \
     X(STR_CB_ECONOMIC, "monopolised good") \
