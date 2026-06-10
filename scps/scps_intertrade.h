@@ -50,6 +50,10 @@ int   intertrade_active_routes(const WorldEconomy *e, const RouteNetwork *rn,
  * AVANT de le décréter). Tout est tangible : volume, or, identifiants. */
 float intertrade_import_vol (int cid, int good);
 float intertrade_export_vol (int cid, int good);
+/* P3.20/E3 — valeur du commerce PASSÉE PAR CE CENTRE au dernier tick (chaque
+ * échange crédite le Centre de chacun des deux pays pour moitié). Sert à lire
+ * la part des cités-états dans le commerce mondial (les premiers hubs vivants). */
+float intertrade_centre_value(int region);
 int   intertrade_import_from(int cid, int good);   /* pays-source dominant (-1 si aucun) */
 int   intertrade_export_to  (int cid, int good);   /* pays-client dominant (-1 si aucun) */
 float intertrade_export_gold(int cid);             /* or encaissé à l'export (dernier tick) */

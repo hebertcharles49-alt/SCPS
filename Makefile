@@ -343,6 +343,16 @@ CHRONICLE_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o \
 chronicle: $(CHRONICLE_OBJS)
 	$(CC) $(CHRONICLE_OBJS) -o $@ -lm $(OMPFLAG)
 
+# ---- Banc PERMANENT de l'arc « une économie » : 4 bornes auto-vérifiées ----
+#   1. pop d'un hameau ×[1.1..2.5] en 10 ans   2. conso == pop/100
+#   3. flux d'or ≠ constante (variance > 0)    4. premier 360 j payé ≤ an 4
+AUDIT_OBJS := $(filter-out $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS)) $(OBJDIR)/scps_audit_eco.o
+audit_eco: $(AUDIT_OBJS)
+	$(CC) $(AUDIT_OBJS) -o $@ -lm $(OMPFLAG)
+audit: audit_eco
+	./audit_eco 7 10
+.PHONY: audit
+
 # ---- Banc audio : le mixeur procédural sort du son (build §9.6) -----------
 AUDIO_DEMO_OBJS := $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_audio_demo.o
 audio_demo: $(AUDIO_DEMO_OBJS)

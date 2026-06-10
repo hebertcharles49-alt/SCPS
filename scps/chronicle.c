@@ -574,6 +574,7 @@ int main(int argc, char **argv){
     long tot_tier_y[3]={0,0,0}; int tot_tier_n[3]={0,0,0};   /* E1 §9 : fenêtres d'accession */
     double tot_spec_vol=0, tot_spec_gold=0; long tot_spec_ent=0;   /* E3 §16 : l'IA stockeuse */
     double tot_sd0=0, tot_sd1=0; int tot_sd0_n=0, tot_sd1_n=0;     /* σ avant/après (moy. des sims) */
+    double tot_hub_cs=0, tot_hub_all=0;   /* P3.20 : part des cités-états dans le commerce (via Centres) */
     long tot_captured=0, tot_worstcorr=0; int worlds_with_capture=0;   /* §C3 : le rot, agrégé */
     int  worlds_with_ironorder=0, worlds_with_uprising=0;
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
@@ -772,6 +773,19 @@ int main(int argc, char **argv){
               if (w->country[c].role==POLITY_CITY_STATE && regions_of(s.econ,c)>0) cs++;
           printf("              vivier cités-états : %d disponibles / %d au départ (%d absorbées)\n",
                  cs, n_city, n_city-cs); }
+        /* P3.20/E3 — LES PREMIERS HUBS VIVANTS : part du commerce mondial passée
+         * par les Centres des CITÉS-ÉTATS (valeur du dernier tick annuel). */
+        { double cs_val=0, all_val=0;
+          for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++){
+              float v=intertrade_centre_value(r);
+              if (v<=0.f) continue;
+              all_val+=v;
+              int o=s.econ->region[r].owner;
+              if (o>=0 && o<w->n_countries && w->country[o].role==POLITY_CITY_STATE) cs_val+=v;
+          }
+          printf("              hubs : %.0f%% du commerce mondial passe par les Centres des cités-états (%.0f / %.0f)\n",
+                 all_val>0? 100.0*cs_val/all_val : 0.0, cs_val, all_val);
+          tot_hub_cs+=cs_val; tot_hub_all+=all_val; }
 
         /* POPULATION : totale + par continent (les 4 plus peuplés). */
         {
@@ -1045,6 +1059,8 @@ int main(int argc, char **argv){
     printf("   l'IA stockeuse (E3 §16) ..... %ld entrepôt(s) · vol spéculé %.0f (%.1f/sim) · or net %+.0f | σ prix avant %.3f → après %.3f (les stocks doivent LISSER)\n",
            tot_spec_ent, tot_spec_vol, tot_spec_vol/nsims, tot_spec_gold,
            tot_sd0_n? tot_sd0/tot_sd0_n : 0.0, tot_sd1_n? tot_sd1/tot_sd1_n : 0.0);
+    printf("   hubs des cités-états ........ %.0f%% du commerce mondial passe par leurs Centres (les premiers hubs vivants)\n",
+           tot_hub_all>0? 100.0*tot_hub_cs/tot_hub_all : 0.0);
     printf("   provinces transférées à la paix %ld   (moy. %.1f/sim ; la propriété ne change qu'au RÈGLEMENT)\n", tot_conq, (double)tot_conq/nsims);
     printf("   occupations (terrain) ....... %ld posée(s) · %ld levée(s)   (les sièges tiennent le sol entre deux paix)\n", g_tot_occ_posed, g_tot_occ_lifted);
     printf("   pays absorbés (morts) ....... %ld   (moy. %.1f/sim)\n", tot_absorbed, (double)tot_absorbed/nsims);

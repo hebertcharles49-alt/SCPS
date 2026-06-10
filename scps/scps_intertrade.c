@@ -88,6 +88,7 @@ static float  g_gold[SCPS_MAX_COUNTRY];
 static float  g_pair[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
 static bool   g_embargo[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* [qui décrète][contre qui] */
 static bool   g_centre[SCPS_MAX_REG];   /* P3.20 : cette région EST un Centre commercial (hub) */
+static float  g_centre_val[SCPS_MAX_REG]; /* valeur du commerce passée par chaque Centre (dernier tick) */
 
 void intertrade_reset(void){
     memset(g_imp,0,sizeof g_imp);   memset(g_expt,0,sizeof g_expt);
@@ -99,6 +100,7 @@ void intertrade_reset(void){
 }
 static void flows_clear(void){
     g_vol_down=g_vol_up=0.f; g_bulk_down=g_bulk_up=0.f; g_prec_down=g_prec_up=0.f; g_nprec_up=0;
+    memset(g_centre_val,0,sizeof g_centre_val);
     memset(g_imp,0,sizeof g_imp);   memset(g_expt,0,sizeof g_expt);
     memset(g_imp_best,0,sizeof g_imp_best); memset(g_expt_best,0,sizeof g_expt_best);
     memset(g_imp_from,-1,sizeof g_imp_from); memset(g_expt_to,-1,sizeof g_expt_to);
@@ -231,6 +233,11 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             float value=vol*dst->price[g];
             src->treasury += value*IT_MARGIN_TO_GOLD;           /* l'exportateur encaisse l'or */
             g_last_value += value;
+            /* la valeur PASSE par les Centres des deux couronnes (moitié chacun) —
+             * la part des cités-états dans le commerce mondial se lit là. */
+            { int cca=intertrade_country_centre(e,ca), ccb=intertrade_country_centre(e,cb);
+              if (cca>=0&&cca<SCPS_MAX_REG) g_centre_val[cca]+=value*0.5f;
+              if (ccb>=0&&ccb<SCPS_MAX_REG) g_centre_val[ccb]+=value*0.5f; }
             /* comptabilité des flux (sidebar) : qui exporte/importe quoi, vers/depuis qui */
             { int cs=(src==A)?ca:cb, cd=(dst==A)?ca:cb;
               if (cid_ok(cs)&&cid_ok(cd)){
@@ -247,6 +254,9 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
 }
 
 float intertrade_imports_value(const WorldEconomy *e){ (void)e; return g_last_value; }
+float intertrade_centre_value(int region){
+    return (region>=0&&region<SCPS_MAX_REG)? g_centre_val[region] : 0.f;
+}
 /* COMMERCE ASYMÉTRIQUE — lecteurs (chronicle §6) : volumes par sens et leur
  * composition. L'aval doit charrier le VRAC ; la remontée, le PRÉCIEUX. */
 void intertrade_asym_stats(float *vdown, float *vup,

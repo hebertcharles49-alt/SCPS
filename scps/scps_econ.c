@@ -89,7 +89,12 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     [BLD_BREWERY]   = { RES_GRAIN, 1.2f, RES_NONE,          0.f, RES_BEER,           1.0f, 0.8f },
     /* JOAILLERIE : OR, ou PERLE en repli (2× la quantité par bijou — littoral).
      * Sortie TEMPÉRÉE (1.0→0.5) et intrant plus lourd (1.5→2.0) : l'orfèvrerie
-     * surinondait (couv ×170) → on vise un surplus DOUX, pas un raz-de-marée. */
+     * surinondait (couv ×170) → on vise un surplus DOUX, pas un raz-de-marée.
+     * AUDIT (arc une économie) : « joaillerie sortie 0 » dans les scans courts
+     * N'EST PAS un câblage mort — la chaîne est branchée (social_demo §2b le
+     * prouve) ; la sortie est GATÉE par la demande d'élite, et le palier STATUT
+     * ne se débloque qu'au tier 4 de capitale (≥4000 âmes) : un bien de GRANDES
+     * cités — rare tant que la démographie n'y est pas. Design assumé. */
     [BLD_JEWELER]   = { RES_GOLD,  0.8f, RES_NONE,          0.f, RES_PRECIOUS_WARE,  0.5f, 1.2f, RES_PEARL, 1.6f },  /* SURCADENCE : l'or/perle est un FILIGRANE — une once rend assez de bijoux pour servir une cour + dégager un surplus à exporter (ratio 2× perle conservé) */
     /* ÉTOFFE PRÉCIEUSE — désormais GATÉE PAR LA TEINTURE (murex côtier, ou indigo du
      * bas-pays chaud en repli), comme l'orfèvrerie l'est par l'or. Recette 1:4 :
