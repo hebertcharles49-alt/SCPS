@@ -327,6 +327,7 @@ static void econ_seed_population(RegionEconomy *re, float total_pop) {
 
 void econ_init(WorldEconomy *e, const World *w) {
     memset(e,0,sizeof(*e));
+    econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */
     e->n_regions=w->n_regions;
     e->tick=0;
 
@@ -726,6 +727,54 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
     }
 }
 
+/* ── E0.7 — MOBILITÉ DE CLASSE (le dégel) ────────────────────────────────────
+ * CLASS_SHARE {0.80,0.15,0.05} n'est qu'un DÉPART. Chaque mois, la RICHESSE fait
+ * monter (journalier→bourgeois→élite), la MISÈRE fait descendre. La richesse SUIT
+ * l'individu (transfert pro-rata). La promotion vers bourgeois exige des
+ * manufactures (un débouché). Lecteurs : panier (coût des besoins/tête, capté au
+ * tick) + satisfaction (deux mois bas → on déclasse). */
+#define PROMOTE_RATE 0.005f       /* 0.5 %/mois max (∝ richesse excédentaire) */
+/* Seuil d'accession : « 3× le panier » (brief E0.7). Mais l'éco cale les journaliers
+ * à ~60 % de satisfaction (peu de surplus) : à 3× la montée journalier→bourgeois ne
+ * s'amorce jamais. CALIBRÉ à la PREUVE (part bourgeoise qui dérive vers le haut en
+ * région industrieuse) — la borne sert l'effet, pas la lettre. */
+#define PROMOTE_BASKET_MULT 1.4f
+static float   g_basket_pc[SCPS_MAX_REG][CLASS_COUNT];   /* panier/tête capté au tick */
+static uint8_t g_lowsat_streak[SCPS_MAX_REG][CLASS_COUNT];/* mois consécutifs de sat < 30 % */
+void econ_mobility_reset(void){
+    memset(g_basket_pc,0,sizeof g_basket_pc);
+    memset(g_lowsat_streak,0,sizeof g_lowsat_streak);
+}
+static void mobility_move(RegionEconomy *re, int from, int to, float frac){
+    float pop=re->strata[from].pop; if (pop<1.f || frac<=0.f) return;
+    float moved=pop*frac; if (moved<0.01f) return;
+    float wmoved=re->strata[from].wealth*(moved/pop);     /* la richesse SUIT */
+    re->strata[from].pop-=moved; re->strata[from].wealth-=wmoved;
+    re->strata[to].pop  +=moved; re->strata[to].wealth  +=wmoved;
+}
+static void mobility_tick_region(RegionEconomy *re, int rid){
+    bool manuf = re->n_bld>0;                              /* manufactures actives = débouché */
+    /* PROMOTIONS : wealth/tête > 3× le panier → fraction ∝ excédent, plafonnée. */
+    for (int k=0;k<2;k++){
+        int from=(k==0)?CLASS_LABORER:CLASS_BOURGEOIS, to=from+1;
+        if (from==CLASS_LABORER && !manuf) continue;       /* sans atelier, pas d'accession bourgeoise */
+        float pop=re->strata[from].pop; if (pop<1.f) continue;
+        float wpc=re->strata[from].wealth/pop;
+        float thr=PROMOTE_BASKET_MULT*fmaxf(g_basket_pc[rid][from],0.05f);
+        if (wpc<=thr) continue;
+        float excess=clampf((wpc-thr)/thr,0.f,1.f);
+        float rate=(k==0)?PROMOTE_RATE:PROMOTE_RATE*0.2f;  /* bourgeois→élite : ÷5 */
+        mobility_move(re, from, to, rate*excess);
+    }
+    /* DÉMOTIONS : satisfaction < 30 % DEUX mois de suite → on redescend (∝ vif). */
+    for (int from=CLASS_ELITE; from>=CLASS_BOURGEOIS; from--){
+        if (re->strata[from].satisfaction < 0.30f){
+            if (g_lowsat_streak[rid][from]<255) g_lowsat_streak[rid][from]++;
+        } else { g_lowsat_streak[rid][from]=0; continue; }
+        if (g_lowsat_streak[rid][from] >= 2) mobility_move(re, from, from-1, PROMOTE_RATE*2.f);
+    }
+}
+
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
@@ -1041,7 +1090,9 @@ void econ_tick(WorldEconomy *e, float dt) {
             float basket=(need_w>0.f)?met_w/need_w:0.5f;
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
             re->strata[c].satisfaction=clampf(basket - over_tax[c]*K_TAX_AGIT, 0.f, 1.f);
+            if (rid<SCPS_MAX_REG) g_basket_pc[rid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
         }
+        if (rid<SCPS_MAX_REG) mobility_tick_region(re, rid);   /* E0.7 — le dégel des classes */
 
         /* ---- 6. MISE À JOUR : démographie, tech, satisfaction générale - */
         /* food_sat = la couverture VIVRIÈRE RÉELLE (et non la satisfaction

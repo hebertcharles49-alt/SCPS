@@ -496,7 +496,10 @@ static void labor_staff(LaborEcon *e){
 /* DÉVELOPPEMENT (P3.19) : un bâtiment PLEIN, là où il reste de la main-d'œuvre
  * libre ET un surplus alimentaire, monte de niveau PEU À PEU (accumulateur ∝ surplus).
  * Plus de slots → la passe de staffing les remplit → la prod et les flux montent.
- * Un seul bâtiment se développe par province et par tick (croissance organique). */
+ * Un seul bâtiment se développe par province et par tick (croissance organique).
+ * E1bis.12 — la montée n'est PLUS gratuite : le niveau n coûte 20·n bois + 10·n
+ * argile au stock du PAYS ; le dev-accumulateur reste le TEMPS. Recette non payable
+ * → le dev ATTEND AU SEUIL (pas de dette, pas de saut). */
 #define DEV_THRESH 900u
 static void labor_develop(LaborEcon *e){
     long bal = labor_food_balance(e);                       /* surplus = on peut grandir (la GÂCHE) */
@@ -509,8 +512,16 @@ static void labor_develop(LaborEcon *e){
             LBuilding *bd=&p->bld[b];
             if (bd->level>=5) continue;
             if (bd->jobs_filled < building_job_slots(bd->level)) continue;   /* pas encore plein */
-            if ((unsigned)bd->dev + (unsigned)inc >= DEV_THRESH){ bd->level++; bd->dev=0; }
-            else bd->dev=(uint16_t)(bd->dev+inc);
+            if ((unsigned)bd->dev + (unsigned)inc >= DEV_THRESH){
+                long n = bd->level+1;                        /* niveau visé */
+                long need_b = 20*n, need_a = 10*n;           /* E1bis.12 : recette de montée */
+                if (e->stock[LR_BOIS]>=need_b && e->stock[LR_ARGILE]>=need_a){
+                    e->stock[LR_BOIS]-=need_b; e->stock[LR_ARGILE]-=need_a;
+                    bd->level++; bd->dev=0;                  /* PAYÉ → niveau monté */
+                } else {
+                    bd->dev = (uint16_t)DEV_THRESH;          /* le TEMPS est prêt ; on ATTEND la recette (pas de dette) */
+                }
+            } else bd->dev=(uint16_t)(bd->dev+inc);
             break;                                           /* un seul par province/tick */
         }
     }

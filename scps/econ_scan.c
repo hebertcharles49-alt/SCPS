@@ -65,6 +65,9 @@ int main(int argc,char**argv){
     for (int c=0;c<CLASS_COUNT;c++)
         printf("  satisfaction %-10s %5.1f %%   · richesse Σ %10.0f\n",
                CN[c], pop_w[c]>0?100.0*sat_w[c]/pop_w[c]:-1.0, wealth_w[c]);
+    { double tp=pop_w[0]+pop_w[1]+pop_w[2]; if (tp<1) tp=1;   /* E0.7 — la PART de classe (départ 80/15/5) */
+      printf("  PART de pop (E0.7 mobilité) : Laborer %.1f%% · Bourgeois %.1f%% · Élite %.1f%%\n",
+             100.0*pop_w[0]/tp, 100.0*pop_w[1]/tp, 100.0*pop_w[2]/tp); }
     if (np>0)
         printf("  marché : grain %.2f · étoffe %.2f · orfèvrerie %.2f · vin %.2f · outils %.2f\n",
                pg/np, pc/np, pw/np, pv/np, pt/np);

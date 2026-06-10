@@ -241,6 +241,9 @@ void econ_init(WorldEconomy *e, const World *w);
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
  * production/consommation s'équilibrent par tick (satisfaction préservée). */
 void econ_tick(WorldEconomy *e, float dt);
+/* E0.7 — RAZ de la mobilité de classe (panier capté + séries de mauvaise sat.) ;
+ * appelé à chaque nouvelle partie/sim depuis econ_init. */
+void econ_mobility_reset(void);
 
 /* §B1 — pousse le bonus de PRODUCTION (techs Forge/Société/Savoir·Production) du PAYS
  * propriétaire vers chaque région (re->tech_prod), lu par econ_tick pour abonder prod_mult.
