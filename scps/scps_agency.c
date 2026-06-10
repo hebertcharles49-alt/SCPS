@@ -141,14 +141,20 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
     return gold * agency_extent_mult(econ, region);   /* §7 : indexé sur l'étendue du pays */
 }
 
-bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e){
+bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct){
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return false;
     if (e==EDI_PORT && !econ->region[region].coastal) return false;   /* un port se bâtit SUR la côte (mer §5) */
     if (edifice_build_blocked(econ, region, e)) return false;          /* E1bis.11 : ↑ exige le palier précédent (pas de doublon) */
     RegionEconomy *re=&econ->region[region];
     float gold = agency_build_gold(econ, region, e);
-    if (gold > re->treasury) return false;        /* pas l'or → pas de chantier (garde, comme colonize) */
-    re->treasury -= gold;                          /* on PAIE le marché en or */
+    if (gold_acct){                                /* E0.3 : le TRÉSOR UNIQUE paie (la topbar dit vrai) */
+        long lcost=(long)ceilf(gold);
+        if (*gold_acct < lcost) return false;
+        *gold_acct -= lcost;
+    } else {
+        if (gold > re->treasury) return false;     /* pas l'or → pas de chantier (garde, comme colonize) */
+        re->treasury -= gold;                      /* on PAIE le marché en or */
+    }
     const BuildCost *c=&EDIFICES[e].cost;          /* … et l'on CONSOMME les matériaux du marché */
     float mult = agency_extent_mult(econ, region); /* §7 : un grand pays consomme plus */
     for (int k=0;k<BUILD_RES_MAX;k++){
@@ -157,6 +163,9 @@ bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e){
         re->stock[r] -= c->qty[k]*mult; if (re->stock[r] < 0.f) re->stock[r]=0.f;
     }
     return agency_order_build(a, region, e);       /* enfile le chantier (durée existante) */
+}
+bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e){
+    return agency_build_acct(a, econ, region, e, NULL);
 }
 
 /* Constantes des actions non-bâtiment (calibrables). */

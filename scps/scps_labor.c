@@ -21,9 +21,16 @@
 #define BASE_PRICE       1.0f
 #define PRICE_MIN        0.5f
 #define PRICE_MAX        5.0f
-#define TAX_LABORER      0.01f
-#define TAX_ARTISAN      0.03f
-#define TAX_ELITE        0.08f
+/* E0.3 — taxes par tête et par JOUR, créditées au trésor unique à chaque tick.
+ * Recalées ÷10 (l'ancien barème, jamais appelé, aurait noyé le marché) : cible
+ * ~60-70 % du revenu early en taxes, le reste venant des marchés bâtis. */
+#define TAX_LABORER      0.001f
+#define TAX_ARTISAN      0.003f
+#define TAX_ELITE        0.008f
+/* E0.3 — le SOLDE : 0.5 or + 1 nourriture (ration de campagne, EN SUS de la
+ * bouche universelle) par 100 enrôlés et par jour. Démobiliser prend son sens. */
+#define SOLDE_GOLD_PER100 0.5f
+#define SOLDE_FOOD_PER100 1L
 #define COLONIZE_MAT     100
 #define COLONIZE_FOOD    50
 #define POP_DEV_BASE     1.0f
@@ -163,6 +170,7 @@ static bool biome_mtn   (Biome b){ return b==BIO_MOUNTAINS||b==BIO_PEAK||b==BIO_
 void labor_init(LaborEcon *e, const World *w){
     memset(e, 0, sizeof(*e));
     e->market.price = BASE_PRICE; e->market.supply = 1.f;
+    labor_publish_capitals(NULL);   /* E0.4 : registre des capitales bâties — RAZ par partie */
 
     /* accumulateurs par province */
     static double fsum[SCPS_MAX_PROV]; static int pcells[SCPS_MAX_PROV], rmax[SCPS_MAX_PROV];
@@ -201,22 +209,54 @@ void labor_init(LaborEcon *e, const World *w){
 }
 
 /* ===================================================================== */
-/* DÉPART CANONIQUE (§1)                                                  */
+/* DÉPART CANONIQUE (§1, refondu E0.5)                                    */
 /* ===================================================================== */
+/* le plus petit niveau dont la capacité couvre `slots` (plafonné à 5) */
+static int collector_level_for(long slots){
+    for (int l=0;l<=5;l++) if ((long)building_job_slots(l)>=slots) return l;
+    return 5;
+}
+/* E0.5/E0.2 — pose 1-3 collecteurs DIMENSIONNÉS pour nourrir `pop` bouches
+ * (pop/100 nourriture/j) à la fertilité du lieu : ~15-20 % de la pop aux champs
+ * à fertilité médiane. Les jobs sont pré-remplis (société établie, pas un camp). */
+static void seed_collectors(LaborEcon *e, LProvince *p, long pop){
+    float per_slot = COLLECTOR_BASE + COLLECTOR_GEO*e->g_fert[p->prov];
+    if (per_slot < 1.f) per_slot = 1.f;
+    long need = (long)ceilf((float)(pop/POP_PER_SLOT) / per_slot);   /* slots à remplir */
+    if (need < 1) need = 1;
+    long max_slots = pop/POP_PER_SLOT;            /* on ne staffe pas plus que la pop */
+    if (need > max_slots) need = max_slots;
+    for (int k=0; k<3 && need>0 && p->n_bld<LAB_BUILDINGS_PER_PROV; k++){
+        int  lvl   = collector_level_for(need);
+        long fill  = building_job_slots(lvl); if (fill>need) fill=need;
+        p->bld[p->n_bld++] = (LBuilding){ LB_COLLECTOR, lvl, (int)fill, 0 };
+        need -= fill;
+    }
+}
+/* la meilleure EXTRACTION que la géo du lieu offre (motif de seed_from_world) */
+static LBuildType best_extraction(const LaborEcon *e, int pid){
+    LBuildType ex = LB_QUARRY;
+    if      (e->g_pres[pid][LR_METAL] >0.3f) ex=LB_MINE;
+    else if (e->g_pres[pid][LR_BOIS]  >0.3f) ex=LB_SAWMILL;
+    else if (e->g_pres[pid][LR_ARGILE]>0.3f) ex=LB_CLAYPIT;
+    return ex;
+}
 void labor_seed_start(LaborEcon *e, int prov0){
     e->n_prov=1;
     LProvince *p=&e->prov[0];
     memset(p,0,sizeof(*p));
-    p->prov=prov0; p->colonized=true;
+    p->prov=prov0; p->region=-1; p->colonized=true;
     p->pop=4000;
     p->cap_tier=capitale_max_tier(p->pop); p->prod_mult=1.f;   /* capitale développée (la pop débloque) */
     p->pop_by_class[LAB_LABORER]=3200; p->pop_by_class[LAB_ARTISAN]=600; p->pop_by_class[LAB_ELITE]=200;
-    /* 2 collecteurs + 2 ateliers, niveau 0 (1 slot chacun), REMPLIS. */
-    p->bld[0]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
-    p->bld[1]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
-    p->bld[2]=(LBuilding){ LB_WORKSHOP,  0, 1, 0 };
-    p->bld[3]=(LBuilding){ LB_WORKSHOP,  0, 1, 0 };
-    p->n_bld=4;
+    /* collecteurs DIMENSIONNÉS (la bouche est totale désormais) + l'extraction que
+     * la géo OFFRE + un atelier gaté intrants (la dépendance au commerce est voulue).
+     * PAS de marché : le commerce early passe par les Centres commerciaux (P3.20). */
+    seed_collectors(e, p, p->pop);
+    if (p->n_bld<LAB_BUILDINGS_PER_PROV)
+        p->bld[p->n_bld++]=(LBuilding){ best_extraction(e,prov0), 1, 2, 0 };
+    if (p->n_bld<LAB_BUILDINGS_PER_PROV)
+        p->bld[p->n_bld++]=(LBuilding){ LB_WORKSHOP, 0, 1, 0 };
     e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_BOIS]=200; e->stock[LR_OUTILS]=100;
     e->treasury=200;
 }
@@ -230,6 +270,7 @@ void labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *eco
     memset(e->stock,0,sizeof e->stock); memset(e->flow,0,sizeof e->flow);
     e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_BOIS]=200; e->stock[LR_OUTILS]=100;
     e->market.supply=1.f; e->market.price=BASE_PRICE; e->treasury=200;
+    e->tax_acc=0.f; e->solde_acc=0.f;
 
     for (int r=0; r<econ->n_regions && e->n_prov<LAB_MAX_PROV; r++){
         if (econ->region[r].owner!=cid || !econ->region[r].culture.settled) continue;
@@ -241,20 +282,18 @@ void labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *eco
         if (pop<100) pop=100;
         LProvince *p=&e->prov[e->n_prov++];
         memset(p,0,sizeof(*p));
-        p->prov=pid; p->colonized=true; p->pop=pop;
+        p->prov=pid; p->region=r; p->colonized=true; p->pop=pop;   /* E0.1 : adossée à SA région (resync) */
         p->cap_tier=capitale_max_tier(pop); p->prod_mult=1.f;   /* capitale développée que la pop débloque */
         p->pop_by_class[LAB_LABORER]=pop*8/10;       /* repli ; les classes ÉMERGENT au 1er tick (§5) */
         p->pop_by_class[LAB_ARTISAN]=pop*15/100;
         p->pop_by_class[LAB_ELITE]  =pop - p->pop_by_class[LAB_LABORER] - p->pop_by_class[LAB_ARTISAN];
-        /* Bâtiments choisis sur la GÉO réelle : collecteur + marché + extraction. */
-        p->bld[0]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
-        p->bld[1]=(LBuilding){ LB_MARKET,    0, 1, 0 };
-        LBuildType ex = LB_QUARRY;
-        if      (e->g_pres[pid][LR_METAL] >0.3f) ex=LB_MINE;
-        else if (e->g_pres[pid][LR_BOIS]  >0.3f) ex=LB_SAWMILL;
-        else if (e->g_pres[pid][LR_ARGILE]>0.3f) ex=LB_CLAYPIT;
-        p->bld[2]=(LBuilding){ ex, 0, 1, 0 };
-        p->n_bld=3;
+        /* Bâtiments sur la GÉO réelle : collecteurs DIMENSIONNÉS (E0.2 : la bouche
+         * est la pop totale) + marché (ville établie) + extraction du lieu. */
+        seed_collectors(e, p, pop);
+        if (p->n_bld<LAB_BUILDINGS_PER_PROV)
+            p->bld[p->n_bld++]=(LBuilding){ LB_MARKET, 0, 1, 0 };
+        if (p->n_bld<LAB_BUILDINGS_PER_PROV)
+            p->bld[p->n_bld++]=(LBuilding){ best_extraction(e,pid), 0, 1, 0 };
     }
 }
 
@@ -316,12 +355,19 @@ long labor_food_collected(const LaborEcon *e){
     return (long)(f+0.5);
 }
 long labor_food_consumed(const LaborEcon *e){
-    long slots=0;
-    for (int i=0;i<e->n_prov;i++) for (int b=0;b<e->prov[i].n_bld;b++)
-        slots += e->prov[i].bld[b].jobs_filled;          /* pop EMPLOYÉE (§2) */
-    return (long)(slots*FOOD_PER_SLOT);
+    /* E0.2 — LA BOUCHE UNIQUE : pop TOTALE/100 × 1.0/j. Employés, libres, armée,
+     * admin — TOUS mangent. La famine redevient possible. */
+    return (long)((float)(labor_pop_total(e)/POP_PER_SLOT)*FOOD_PER_SLOT);
 }
-long labor_food_balance(const LaborEcon *e){ return labor_food_collected(e) - labor_food_consumed(e); }
+void labor_army_upkeep(const LaborEcon *e, long *gold_j, long *food_j){
+    long packs = labor_pop_in_army(e)/POP_PER_SLOT;
+    if (gold_j) *gold_j = (long)(SOLDE_GOLD_PER100*(float)packs + 0.5f);
+    if (food_j) *food_j = packs*SOLDE_FOOD_PER100;
+}
+long labor_food_balance(const LaborEcon *e){
+    long ration; labor_army_upkeep(e,NULL,&ration);
+    return labor_food_collected(e) - labor_food_consumed(e) - ration;
+}
 
 /* ===================================================================== */
 /* MARCHÉ & PRIX DYNAMIQUE (§7)                                           */
@@ -329,13 +375,13 @@ long labor_food_balance(const LaborEcon *e){ return labor_food_collected(e) - la
 float labor_material_price(const LaborEcon *e){
     return BASE_PRICE * clampf(e->market.demand / fmaxf(e->market.supply,1.f), PRICE_MIN, PRICE_MAX);
 }
-long labor_pump_market(LaborEcon *e, long amount){
-    if (amount<=0) return 0;
+long labor_pump_market(LaborEcon *e, LRes res, long amount){
+    if (amount<=0 || res<0 || res>=LR_COUNT || res==LR_GOLD) return 0;
     float price = labor_material_price(e);
     long cost = (long)(amount*price + 0.5f);
-    e->stock[LR_BOIS] += amount;       /* P3.16 : pompe du BOIS (construction réelle) */
-    e->stock[LR_GOLD]      -= cost; e->treasury=e->stock[LR_GOLD];
-    e->market.demand       += (float)amount;   /* pomper TIRE la demande → le prix monte */
+    e->stock[res]     += amount;       /* E0.6 : la pompe livre la ressource DEMANDÉE */
+    e->stock[LR_GOLD] -= cost; e->treasury=e->stock[LR_GOLD];
+    e->market.demand  += (float)amount;   /* pomper TIRE la demande → le prix monte */
     return cost;
 }
 
@@ -400,7 +446,7 @@ bool labor_colonize(LaborEcon *e, int prov){
     e->stock[LR_BOIS]-=cost.materials; e->stock[LR_FOOD]-=cost.food;
     LProvince *p=&e->prov[e->n_prov++];
     memset(p,0,sizeof(*p));
-    p->prov=prov; p->colonized=true; p->pop=500; p->pop_by_class[LAB_LABORER]=500;
+    p->prov=prov; p->region=-1; p->colonized=true; p->pop=500; p->pop_by_class[LAB_LABORER]=500;
     p->cap_tier=1; p->prod_mult=1.f;                /* la capitale obligatoire dès la colonie (§1) */
     return true;
 }
@@ -436,38 +482,49 @@ static long run_workshop(LaborEcon *e, int jobs){
     return made;
 }
 
-/* Croissance de la pop, GATÉE par la nourriture (§2). Elle s'applique au POOL
- * TOTAL : les pop engagées (jobs, armée) se reproduisent comme les autres — elles
- * ne disparaissent pas du pool. La famine STOPPE puis inverse la croissance. */
-#define GROWTH_PERMIL    20         /* +2 %/tick quand la nourriture suit (sous le seuil log) */
-#define LABOR_LOG_THRESH 10000L     /* au-delà : la croissance devient LOGARITHMIQUE (rendements décroissants) */
-#define LABOR_POP_MAX    1000000000L/* garde-fou DUR : sans la dampe log + ce plafond, la croissance
-                                     * journalière (+2 %/labor_tick) emballait la pop jusqu'au DÉBORDEMENT
-                                     * de `long` (UBSan : pop·20 hors-bornes) — et la somme warhost avec. */
-static void pop_growth(LaborEcon *e){
-    bool famine = (e->stock[LR_FOOD] <= 0);
+/* E0.1 — LA CROISSANCE A QUITTÉ LABOR. Un seul propriétaire : la démographie du
+ * monde (econ_tick fait croître les strates à 0.5-6 %/AN, modulé nourriture/
+ * société/capacité, famine → négatif). labor RELIT — resync mensuel ci-dessous. */
+void labor_resync_pop(LaborEcon *e, const WorldEconomy *econ){
+    if (!e || !econ) return;
     for (int i=0;i<e->n_prov;i++){
         LProvince *p=&e->prov[i];
-        if (p->pop<=0) continue;
-        /* CROISSANCE : +2 % sous 10k/province ; au-delà, LOGARITHMIQUE — la pop continue de
-         * monter mais de moins en moins vite (le delta croît en ln(pop), donc le TAUX s'effondre)
-         * → fin de l'emballement exponentiel, pop bornée, plus de débordement de `long`. */
-        long delta;
-        if (famine)                       delta = -(p->pop/100 + 1);
-        else if (p->pop <= LABOR_LOG_THRESH) delta = p->pop / (1000/GROWTH_PERMIL);   /* ≡ +2 %, overflow-safe (pop/50) */
-        else {
-            float over = logf((float)p->pop / (float)LABOR_LOG_THRESH);  /* 0 au seuil, croît lentement */
-            delta = (long)((float)(LABOR_LOG_THRESH/(1000/GROWTH_PERMIL)) * (1.0f + over));  /* continu au seuil (=200) */
+        if (p->region<0 || p->region>=econ->n_regions) continue;   /* autonome : pop figée */
+        const RegionEconomy *re=&econ->region[p->region];
+        long pop=(long)(re->strata[CLASS_LABORER].pop
+                      + re->strata[CLASS_BOURGEOIS].pop
+                      + re->strata[CLASS_ELITE].pop);
+        if (pop<0) pop=0;
+        p->pop=pop;
+        if (p->pop_in_army>p->pop) p->pop_in_army=p->pop;   /* l'armée ne dépasse pas le pool */
+        /* la pop a pu DÉCROÎTRE : les emplois excédentaires se vident (du dernier
+         * bâtiment au premier) — un slot ne travaille pas sans bras. */
+        long max_slots=p->pop/POP_PER_SLOT, have=0;
+        for (int b=0;b<p->n_bld;b++) have+=p->bld[b].jobs_filled;
+        for (int b=p->n_bld-1;b>=0 && have>max_slots;b--){
+            long drop=have-max_slots;
+            if (drop>p->bld[b].jobs_filled) drop=p->bld[b].jobs_filled;
+            p->bld[b].jobs_filled-=(int)drop; have-=drop;
         }
-        if (delta==0 && !famine) delta=1;
-        /* LOGEMENT = capacité CONFORTABLE : au-delà, la pop croît encore (gatée par la
-         * nourriture) mais MOINS VITE, et le surpeuplement monte l'agitation (§agitation). */
-        if (!famine && p->house_cap>0 && p->pop >= p->house_cap) delta = (delta+1)/2;   /* surpeuplé : ralenti */
-        long np=p->pop+delta; if (np<0) np=0; if (np>LABOR_POP_MAX) np=LABOR_POP_MAX;   /* plancher 0, plafond dur */
-        long d=np-p->pop; p->pop=np;
-        p->pop_by_class[LAB_LABORER]+=d;                 /* la croissance gonfle la masse */
-        if (p->pop_by_class[LAB_LABORER]<0) p->pop_by_class[LAB_LABORER]=0;
+        /* les classes ré-émergeront au prochain tick (capitale_mobility_tick) */
     }
+}
+
+/* E0.4 — le registre des capitales BÂTIES (tier payé, pas tier débloqué) : publié
+ * par le viewer après le tick labor, LU par le moteur de révolte (mal-logés/
+ * mal-servis réels du joueur). -1 = région non gouvernée par le modèle labor. */
+static int8_t g_cap_tier_reg[SCPS_MAX_REG];
+void labor_publish_capitals(const LaborEcon *e){
+    memset(g_cap_tier_reg, -1, sizeof g_cap_tier_reg);
+    if (!e) return;
+    for (int i=0;i<e->n_prov;i++){
+        const LProvince *p=&e->prov[i];
+        if (p->region>=0 && p->region<SCPS_MAX_REG)
+            g_cap_tier_reg[p->region]=(int8_t)(p->cap_tier<1?1:(p->cap_tier>7?7:p->cap_tier));
+    }
+}
+int labor_region_cap_tier(int region){
+    return (region>=0 && region<SCPS_MAX_REG)? (int)g_cap_tier_reg[region] : -1;
 }
 
 /* P3.19 — main-d'œuvre LIBRE d'une province (pop − armée − admin − déjà employés). */
@@ -555,18 +612,33 @@ void labor_tick(LaborEcon *e){
         for (int b=0;b<p->n_bld;b++) if (p->bld[b].type==LB_WORKSHOP)
             supply_mat += (float)run_workshop(e, p->bld[b].jobs_filled);
     }
-    /* 3. NOURRITURE : la collecte a été ajoutée en passe 1 ; on retire la conso.
-     * Net du tick = collecte − conso = balance (famine si négatif → gate la croissance). */
-    e->stock[LR_FOOD] -= labor_food_consumed(e);
+    /* 3. NOURRITURE (E0.2) : la collecte a été ajoutée en passe 1 ; on retire LA
+     * BOUCHE (pop totale/100) + la RATION de l'armée. Plancher 0 : on ne mange pas
+     * ce qui n'existe pas — le déficit se LIT au flux (la famine du joueur). */
+    { long ration_g, ration_f; labor_army_upkeep(e,&ration_g,&ration_f);
+      e->stock[LR_FOOD] -= labor_food_consumed(e) + ration_f;
+      if (e->stock[LR_FOOD]<0) e->stock[LR_FOOD]=0;
 
-    /* 4. MARCHÉ : l'offre de matériaux du tick met à jour le prix. */
+      /* 4. TAXES (E0.3) : le trésor unique ENCAISSE chaque jour — par classe, par
+       * tête (accumulateurs : les fractions ne se perdent pas). Puis le SOLDE sort. */
+      (void)ration_g;   /* le reader arrondit pour l'UI ; le débit exact passe par solde_acc */
+      float tax_today=0.f;
+      for (int i=0;i<e->n_prov;i++) tax_today += labor_taxes(&e->prov[i]);
+      e->tax_acc += tax_today;
+      long tg=(long)e->tax_acc; e->tax_acc-=(float)tg;
+      e->stock[LR_GOLD] += tg;
+      e->solde_acc += SOLDE_GOLD_PER100*(float)(labor_pop_in_army(e)/POP_PER_SLOT);
+      long sg=(long)e->solde_acc; e->solde_acc-=(float)sg;
+      e->stock[LR_GOLD] -= sg;
+      if (e->stock[LR_GOLD]<0) e->stock[LR_GOLD]=0; }   /* l'armée impayée ne crée pas de dette (pas encore de désertion) */
+
+    /* 5. MARCHÉ : l'offre de matériaux du tick met à jour le prix. */
     e->market.supply = fmaxf(1.f, supply_mat);
     e->market.price  = labor_material_price(e);
     e->treasury      = e->stock[LR_GOLD];
 
-    /* 5. CROISSANCE de la pop, gatée par la nourriture ET par le LOGEMENT de la
-     * capitale (plafond). 6. on RE-ÉMERGE les classes (la pop a bougé). 7. flux. */
-    pop_growth(e);
+    /* 6. (E0.1 : PLUS de croissance ici — la démographie monde possède la pop ;
+     * labor_resync_pop la relit chaque mois.) On RE-ÉMERGE les classes, puis dev. */
     for (int i=0;i<e->n_prov;i++) capitale_mobility_tick(&e->prov[i]);
     labor_develop(e);                                       /* P3.19 : les bâtiments pleins se développent (ouvre des slots) */
     for (int r=0;r<LR_COUNT;r++) e->flow[r]=e->stock[r]-before[r];

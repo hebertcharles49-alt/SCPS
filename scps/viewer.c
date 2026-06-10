@@ -736,6 +736,11 @@ static void sim_day(Sim *s, World *w) {
         }
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f);
+        /* E0.1 — la pop a UN propriétaire (la démographie monde) : labor RELIT les
+         * strates chaque mois. E0.4 — il PUBLIE ses capitales bâties : le moteur de
+         * révolte lit le tier PAYÉ (croître sans bâtir devient un grief réel). */
+        labor_resync_pop(s->labor, s->econ);
+        labor_publish_capitals(s->labor);
         /* — conquête du mois : un peuple passé sous une couronne ÉTRANGÈRE devient
          *   restif (intégration à zéro, L au plancher) → terreau de sécession. */
         for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
@@ -2982,7 +2987,8 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 8u            /* v8 : E1bis.11 — RegionEconomy.edi_built (masque édifices) */
+#define SAVE_VERSION 9u            /* v9 : arc « une économie » — LProvince.region, accumulateurs
+                                    * de taxes/solde (LaborEcon), solde d'armée. Ère antérieure. */
 #define SAVE_F_CRYPT 1u
 typedef struct {
     uint32_t magic, version;
@@ -3893,10 +3899,10 @@ int main(int argc, char **argv) {
                     if (g_colonize_dst>=0 && g_colonize_src>=0 && sim.ready &&
                         ev.button.x>=g_colonize_btn.x && ev.button.x<g_colonize_btn.x+g_colonize_btn.w &&
                         ev.button.y>=g_colonize_btn.y && ev.button.y<g_colonize_btn.y+g_colonize_btn.h){
-                        int cp=world->country[sim.player].capital_prov;
-                        int creg=(cp>=0&&cp<world->n_provinces)? world->province[cp].region : -1;
-                        if (creg>=0 && sim.econ->region[creg].treasury>=COLONIZE_GOLD_COST){
-                            sim.econ->region[creg].treasury-=COLONIZE_GOLD_COST;
+                        /* E0.3 : l'or sort du TRÉSOR UNIQUE (topbar), plus du trésor régional caché. */
+                        if (sim.labor->stock[LR_GOLD]>=(long)COLONIZE_GOLD_COST){
+                            sim.labor->stock[LR_GOLD]-=(long)COLONIZE_GOLD_COST;
+                            sim.labor->treasury=sim.labor->stock[LR_GOLD];
                             econ_colonize_from(sim.econ, g_colonize_src, g_colonize_dst, sim.player);
                             printf("\n[scps] Coloniser : région %d colonisée (100 colons, %.0f or).\n", g_colonize_dst, COLONIZE_GOLD_COST);
                         } else printf("\n[scps] Coloniser : trésor insuffisant (%.0f or requis).\n", COLONIZE_GOLD_COST);
@@ -3907,12 +3913,12 @@ int main(int argc, char **argv) {
                     if (g_reloc_dst>=0 && sim.ready &&
                         ev.button.x>=g_reloc_btn.x && ev.button.x<g_reloc_btn.x+g_reloc_btn.w &&
                         ev.button.y>=g_reloc_btn.y && ev.button.y<g_reloc_btn.y+g_reloc_btn.h){
-                        int cp=world->country[sim.player].capital_prov;
-                        int creg=(cp>=0&&cp<world->n_provinces)? world->province[cp].region : -1;
                         int from=intertrade_country_centre(sim.econ, sim.player);
-                        if (creg>=0 && from>=0 && sim.econ->region[creg].treasury>=CENTRE_RELOC_COST
+                        /* E0.3 : payé du TRÉSOR UNIQUE (topbar). */
+                        if (from>=0 && sim.labor->stock[LR_GOLD]>=(long)CENTRE_RELOC_COST
                             && intertrade_relocate_centre(from, g_reloc_dst)){
-                            sim.econ->region[creg].treasury-=CENTRE_RELOC_COST;
+                            sim.labor->stock[LR_GOLD]-=(long)CENTRE_RELOC_COST;
+                            sim.labor->treasury=sim.labor->stock[LR_GOLD];
                             printf("\n[scps] Centre commercial relocalisé : région %d → %d (%.0f or).\n", from, g_reloc_dst, CENTRE_RELOC_COST);
                         } else printf("\n[scps] Relocalisation refusée (trésor insuffisant ou pas de hub).\n");
                         dirty=true; break;
@@ -3924,7 +3930,9 @@ int main(int argc, char **argv) {
                         if (ev.button.x>=r->x && ev.button.x<r->x+r->w &&
                             ev.button.y>=r->y && ev.button.y<r->y+r->h){ hit=i; break; } }
                     if (hit>=0){
-                        if (sim.ready && agency_build(sim.ag, sim.econ, g_bslots[hit].reg, g_bslots[hit].edifice))
+                        /* E0.3 : l'or du chantier sort du TRÉSOR UNIQUE (la topbar dit vrai). */
+                        if (sim.ready && agency_build_acct(sim.ag, sim.econ, g_bslots[hit].reg,
+                                                           g_bslots[hit].edifice, &sim.labor->stock[LR_GOLD]))
                             printf("\n[scps] Bâtir %s (région %d) — payé au marché, construit en jours.\n",
                                    edifice_name(g_bslots[hit].edifice), g_bslots[hit].reg);
                         else
@@ -3947,7 +3955,8 @@ int main(int argc, char **argv) {
                         if (g_orows[i].hammer_reg>=0 && hm->w>0 &&
                             ev.button.x>=hm->x && ev.button.x<hm->x+hm->w &&
                             ev.button.y>=hm->y && ev.button.y<hm->y+hm->h){
-                            if (sim.ready) agency_build(sim.ag, sim.econ, g_orows[i].hammer_reg, EDI_TRIBUNAL);
+                            if (sim.ready) agency_build_acct(sim.ag, sim.econ, g_orows[i].hammer_reg,
+                                                             EDI_TRIBUNAL, &sim.labor->stock[LR_GOLD]);
                             dirty=true; orhit=-2; break;
                         }
                         SDL_Rect *rw=&g_orows[i].row;
@@ -4065,7 +4074,7 @@ int main(int argc, char **argv) {
                 case SDLK_b:
                     if (sim.ready && selected>=0 && selected<world->n_provinces) {
                         int reg = world->province[selected].region;
-                        if (reg>=0 && agency_build(sim.ag, sim.econ, reg, EDI_TRIBUNAL))
+                        if (reg>=0 && agency_build_acct(sim.ag, sim.econ, reg, EDI_TRIBUNAL, &sim.labor->stock[LR_GOLD]))
                             printf("\n[scps] Action : Tribunal mis en file (région %d) — payé au marché, construit en jours.\n", reg);
                         else
                             printf("\n[scps] Tribunal : trésor insuffisant pour acheter les matériaux.\n");

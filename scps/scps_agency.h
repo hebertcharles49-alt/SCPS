@@ -93,8 +93,12 @@ bool agency_order_build  (AgencyState *a, int region, Edifice e);
 
 /* Bâtir EN PAYANT (§1) : achète la recette AU MARCHÉ (or du trésor régional ; le
  * marché est consommé), PUIS enfile le chantier. Refuse — pas de chantier — si le
- * trésor ne couvre pas. C'est la voie de la sim vive (IA, joueur). */
+ * trésor ne couvre pas. C'est la voie de la sim vive (IA). */
 bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e);
+/* E0.3 — LE TRÉSOR UNIQUE du joueur : même chantier, mais l'or sort du COMPTE
+ * fourni (le trésor labor) au lieu du trésor régional — la topbar dit VRAI.
+ * gold_acct NULL ≡ agency_build. Les matériaux sortent toujours du marché régional. */
+bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct);
 /* §4 Défrichement : convertit la terre → food, dérive la SUBSISTANCE locale vers
  * l'agriculture (impérialisme culturel sur la terre), et ronge L en niche
  * forestière (les peuples de la forêt voient leur monde rasé). */

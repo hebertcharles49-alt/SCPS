@@ -140,6 +140,7 @@ static void sim_day(Sim *s, World *w) {
         econ_tick(s->econ, 1.f/12.f);
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f);
+        labor_resync_pop(s->labor, s->econ);   /* E0.1 : labor RELIT la pop (le monde la possède) */
         /* — conquête du mois : un peuple passé sous une couronne ÉTRANGÈRE devient
          *   restif (intégration à zéro, L au plancher) → terreau de sécession. */
         for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){

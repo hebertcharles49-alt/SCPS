@@ -125,10 +125,10 @@ long army_fabricate_weapon(ArmyState *a, LaborEcon *e, ArmWeapon wp, long qty){
     const WeaponRecipe *R=&WEAPONS[wp];
     long made=0;
     for (long k=0;k<qty;k++){
-        /* manque de MATÉRIAUX → on pompe le marché (temps réel) ; manque d'un
-         * brut (métal/bois/outils) → il faut l'extraire d'abord (pas de levée). */
-        if (e->stock[R->cost_a]<1 && R->cost_a==LR_BOIS) labor_pump_market(e,1);
-        if (e->stock[R->cost_b]<1 && R->cost_b==LR_BOIS) labor_pump_market(e,1);
+        /* manque d'un intrant → on pompe le marché AU PRIX COURANT (E0.6 : la pompe
+         * livre la ressource demandée — bois, métal, outils… plus de bois en dur). */
+        if (e->stock[R->cost_a]<1) labor_pump_market(e,R->cost_a,1);
+        if (e->stock[R->cost_b]<1) labor_pump_market(e,R->cost_b,1);
         if (e->stock[R->cost_a]<1 || e->stock[R->cost_b]<1) break;   /* intrants épuisés */
         e->stock[R->cost_a]-=1; e->stock[R->cost_b]-=1;
         a->weapons[wp]+=1; made++;
@@ -155,7 +155,7 @@ long army_recruit(ArmyState *a, LaborEcon *e, UnitType t, long count){
     const UnitDef *d=&UNITS[t];
     /* coût matériaux (pompe si manque) */
     long mat = count*RECRUIT_MAT;
-    if (e->stock[LR_BOIS] < mat) labor_pump_market(e, mat - e->stock[LR_BOIS]);
+    if (e->stock[LR_BOIS] < mat) labor_pump_market(e, LR_BOIS, mat - e->stock[LR_BOIS]);
     if (e->stock[LR_BOIS] < mat) return 0;
     e->stock[LR_BOIS] -= mat;
     a->weapons[d->weapon]  -= count;                 /* consomme les armes */

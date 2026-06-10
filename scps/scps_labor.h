@@ -56,8 +56,9 @@ typedef struct {
 
 typedef struct {
     int       prov;          /* id de province (pour les lectures géo) */
+    int       region;        /* région du MONDE adossée (E0 : la pop se RELIT des strates) ; -1 = autonome */
     bool      colonized;     /* possédée (développement plein) vs marge exploitée */
-    long      pop;           /* le POOL démographique TOTAL (jamais réduit par l'emploi) */
+    long      pop;           /* le POOL démographique TOTAL — PROPRIÉTÉ de la démographie monde (resync), jamais grandi ici */
     long      pop_by_class[LAB_CLASS_COUNT];   /* ÉMERGE des emplois (§capitale §4), jamais posé */
     long      pop_in_army;   /* enrôlés (paquets de 100) — assignés, PAS retirés du pool */
     LBuilding bld[LAB_BUILDINGS_PER_PROV];
@@ -88,7 +89,9 @@ typedef struct {
     long      stock[LR_COUNT];
     long      flow [LR_COUNT];   /* net/jour du dernier tick (pour la topbar) */
     LMarket   market;
-    long      treasury;         /* or */
+    long      treasury;         /* or (miroir de stock[LR_GOLD] — LE trésor unique E0.3) */
+    float     tax_acc;          /* fractions de taxes en attente (créditées par entiers) */
+    float     solde_acc;        /* fractions de solde en attente (débitées par entiers) */
     /* géo précalculée par province du monde (relue, jamais posée) */
     float     g_fert[SCPS_MAX_PROV];   /* fertilité moyenne [0..1] */
     float     g_flow[SCPS_MAX_PROV];   /* flux commercial (carrefour) */
@@ -97,7 +100,10 @@ typedef struct {
 
 /* ---- Cycle de vie ----------------------------------------------------- */
 void labor_init(LaborEcon *e, const World *w);            /* relit la géo ; éco vide */
-/* Le départ canonique (§1) : 4000 pop, 2 ateliers + 2 collecteurs, 200/200/200. */
+/* Le départ canonique (§1, refondu E0.5) : 4000 pop, extraction posée sur la GÉO
+ * réelle + collecteurs DIMENSIONNÉS pour nourrir la bouche totale ; PAS de marché
+ * (le commerce early passe par les Centres commerciaux — design P3.20) ; l'atelier
+ * reste gaté intrants (la dépendance au commerce est VOULUE). */
 void labor_seed_start(LaborEcon *e, int prov0);
 void labor_tick(LaborEcon *e);                            /* la boucle §11 */
 
@@ -106,6 +112,18 @@ void labor_tick(LaborEcon *e);                            /* la boucle §11 */
  * l'économie existante, bâtiments choisis sur la GÉO réelle de chaque province).
  * L'économie des populations devient alors celle d'un pays du monde. */
 void  labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *econ, int cid);
+/* E0.1 — LA POP A UN SEUL PROPRIÉTAIRE (la démographie monde) : resync MENSUEL du
+ * pool de chaque province labor depuis les strates de sa région adossée. labor ne
+ * fait plus naître personne — il RELIT. (Province autonome region=-1 : pop figée.) */
+void  labor_resync_pop(LaborEcon *e, const WorldEconomy *econ);
+/* E0.4 — L'AGITATION EST CONSOMMÉE : publie le tier de capitale RÉELLEMENT BÂTI
+ * par région (registre module) ; le moteur de révolte le lit (mal-logés/mal-servis
+ * du tier payé, pas du tier que la pop débloquerait). -1 = région non gouvernée. */
+void  labor_publish_capitals(const LaborEcon *e);
+int   labor_region_cap_tier(int region);
+/* E0.3 — LE SOLDE DE L'ARMÉE (lecture) : coût/jour des enrôlés — 0.5 or + 1
+ * nourriture (ration de campagne, EN SUS de la bouche universelle) par 100. */
+void  labor_army_upkeep(const LaborEcon *e, long *gold_j, long *food_j);
 /* Indice de prospérité [0..10] que l'économie PRODUIT (sécurité alimentaire +
  * revenu et matériaux par tête). Se projette sur la métrique Prospérité 0-100
  * (la même que voit le joueur) — le pont avec la membrane/les métriques. */
@@ -154,14 +172,17 @@ float labor_market_output(const LaborEcon *e, int prov, int jobs_filled);
 float province_trade_flow(const LaborEcon *e, int prov);
 float province_fertility (const LaborEcon *e, int prov);
 
-/* ---- Nourriture & famine (§2) ----------------------------------------- */
+/* ---- Nourriture & famine (§2, refondu E0.2) ---------------------------- */
 long  labor_food_collected(const LaborEcon *e);   /* somme des collecteurs/greniers */
-long  labor_food_consumed (const LaborEcon *e);    /* pop EMPLOYÉE × conso */
-long  labor_food_balance  (const LaborEcon *e);    /* collecte − conso (net/jour) */
+/* LA BOUCHE UNIQUE : pop TOTALE/100 × 1.0/j — employés, libres, armée, admin,
+ * tous mangent. (La ration de campagne de l'armée s'AJOUTE : labor_army_upkeep.) */
+long  labor_food_consumed (const LaborEcon *e);
+long  labor_food_balance  (const LaborEcon *e);    /* collecte − bouche − ration d'armée (net/jour) */
 
 /* ---- Le marché & le prix dynamique (§7) ------------------------------- */
 float labor_material_price(const LaborEcon *e);             /* prix temps réel (demande) */
-long  labor_pump_market   (LaborEcon *e, long amount);     /* achète le manque → coût or */
+/* E0.6 — la pompe livre la ressource DEMANDÉE (plus du bois en dur) → coût or. */
+long  labor_pump_market   (LaborEcon *e, LRes res, long amount);
 
 /* ---- Population : le POOL et sa répartition (topbar) ------------------ */
 long        labor_pop_total   (const LaborEcon *e);   /* le pool total */

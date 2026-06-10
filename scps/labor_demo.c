@@ -4,14 +4,18 @@
  *   make labor_demo && ./labor_demo [graine]
  *
  * Prouve les deux principes (la prod scale sur les JOBS REMPLIS ; les sorties
- * LISENT la géo) et les sept points du cahier :
+ * LISENT la géo) et les règles de l'arc « une économie, un trésor, une bouche » :
  *   1. Jobs, pas bâtiments : doubler les jobs double la prod ; un bâtiment vide = 0.
  *   2. Géo du marché : un marché au désert ~+0.3 ; le même florissant ~+15.
- *   3. Départ cohérent : 4000 pop, 2 ateliers + 2 collecteurs, 200/200/200 → +4 sans géo.
- *   4. Chaîne : produire des matériaux occupe 300 pop ; sans intrants, rien.
- *   5. Marché dynamique : forte demande → prix monte ; pomper coûte au prix courant.
+ *   3. Départ canonique E0.5 : 4000 pop, collecteurs DIMENSIONNÉS sur la géo,
+ *      PAS de marché, atelier gaté intrants ; BOUCHE UNIQUE = pop/100 (E0.2).
+ *   4. Chaîne : produire des outils occupe 300 pop ; sans intrants, rien.
+ *   5. Marché dynamique : prix par la demande ; la pompe livre la ressource
+ *      DEMANDÉE au prix courant (E0.6).
  *   6. Niveaux : un bâtiment niveau 6 offre 2200 pop de jobs.
  *   7. Plein dev : province pleine à Prospérité 100 → pop +15 % plus vite.
+ *   8. E0.1/E0.3 : labor ne fait plus NAÎTRE personne (resync depuis le monde) ;
+ *      les taxes tombent chaque jour au trésor unique ; le solde de l'armée sort.
  */
 #include "scps_world.h"
 #include "scps_econ.h"
@@ -68,26 +72,35 @@ int main(int argc, char **argv){
     ok("le même marché rend une misère à la marge et une fortune au carrefour (lit le flux)",
        mf > 8.0f && md < mf/6.0f);
 
-    /* ═══ 3. DÉPART COHÉRENT (4000 pop, 2+2, 200/200/200, +4 sans géo) ══ */
-    printf("\n── 3. Le départ canonique : net +4 nourriture sans la géographie ──\n");
+    /* ═══ 3. DÉPART CANONIQUE E0.5 (géo-posé, bouche unique, viable) ═════ */
+    printf("\n── 3. Le départ canonique E0.5 : collecteurs dimensionnés, pas de marché ──\n");
     labor_seed_start(e, 0);
-    int ncol=0, nate=0;
+    int ncol=0, nate=0, nmar=0, next_=0;
     for (int b=0;b<e->prov[0].n_bld;b++){
-        if (e->prov[0].bld[b].type==LB_COLLECTOR) ncol++;
-        if (e->prov[0].bld[b].type==LB_WORKSHOP)  nate++;
+        LBuildType t=e->prov[0].bld[b].type;
+        if (t==LB_COLLECTOR) ncol++;
+        else if (t==LB_WORKSHOP) nate++;
+        else if (t==LB_MARKET) nmar++;
+        else next_++;
     }
-    float fert0=e->g_fert[0];
-    e->g_fert[0]=0.f;                                   /* on retire le bonus géo */
-    long bal_nogeo=labor_food_balance(e);
-    e->g_fert[0]=fert0;                                 /* on restaure la géo */
-    long bal_geo=labor_food_balance(e);
-    printf("   pop=%ld  collecteurs=%d ateliers=%d  stock F/Or/Bois=%ld/%ld/%ld  | net food: sans géo=%ld, avec géo=%ld\n",
-           e->prov[0].pop, ncol, nate, e->stock[LR_FOOD], e->stock[LR_GOLD], e->stock[LR_BOIS], bal_nogeo, bal_geo);
-    ok("4000 pop, 2 collecteurs + 2 ateliers, départ 200 F/Or/Bois (P3.16 : plus de matériaux)",
-       e->prov[0].pop==4000 && ncol==2 && nate==2 &&
+    long bouche=labor_food_consumed(e), collecte=labor_food_collected(e);
+    printf("   pop=%ld  collecteurs=%d extraction=%d ateliers=%d marchés=%d | bouche %ld/j · collecte %ld/j · stock F/Or/Bois=%ld/%ld/%ld\n",
+           e->prov[0].pop, ncol, next_, nate, nmar, bouche, collecte,
+           e->stock[LR_FOOD], e->stock[LR_GOLD], e->stock[LR_BOIS]);
+    ok("4000 pop, 200 F/Or/Bois ; l'extraction est posée sur la GÉO réelle (E0.5)",
+       e->prov[0].pop==4000 && ncol>=1 && next_==1 && nate==1 &&
        e->stock[LR_FOOD]==200 && e->stock[LR_GOLD]==200 && e->stock[LR_BOIS]==200);
-    ok("net = +4 nourriture SANS bonus géographique (le plancher)", bal_nogeo==4);
-    ok("la géographie ne fait QU'AJOUTER (jamais retirer la base)", bal_geo>=4);
+    ok("PAS de marché au départ — le commerce early passe par les Centres (P3.20)", nmar==0);
+    ok("LA BOUCHE UNIQUE (E0.2) : conso == pop/100 (tous mangent, employés ou non)",
+       bouche == e->prov[0].pop/100);
+    ok("le départ est VIABLE : les collecteurs dimensionnés couvrent la bouche",
+       labor_food_balance(e) >= 0);
+    { long fields=0;
+      for (int b=0;b<e->prov[0].n_bld;b++)
+          if (e->prov[0].bld[b].type==LB_COLLECTOR) fields+=e->prov[0].bld[b].jobs_filled;
+      printf("   pop aux champs : %ld%% (cible ~15-25 %%)\n", fields*POP_PER_SLOT*100/e->prov[0].pop);
+      ok("~15-25 %% de la pop aux champs (1 slot nourrit 400-800 âmes selon la fertilité)",
+         fields*POP_PER_SLOT*100/e->prov[0].pop >= 10 && fields*POP_PER_SLOT*100/e->prov[0].pop <= 30); }
 
     /* ═══ 4. LA CHAÎNE D'OUTILS (P3.16 : bois + métal + atelier = 300 pop) ═══ */
     printf("\n── 4. Les OUTILS sortent d'une CHAÎNE (bois + métal + atelier = 300 pop) ──\n");
@@ -125,11 +138,14 @@ int main(int argc, char **argv){
     ok("forte demande (tout le monde bâtit) → le prix MONTE", price_high > price_low);
     long gold_before=e->stock[LR_GOLD];
     float price_now=labor_material_price(e);
-    long cost=labor_pump_market(e, 20);            /* on POMPE 20 de bois au prix courant */
+    long cost=labor_pump_market(e, LR_BOIS, 20);   /* on POMPE 20 de bois au prix courant */
     printf("   pomper 20 (bois) au prix %.2f → coût %ld or (stock or %ld→%ld, bois +20)\n",
            price_now, cost, gold_before, e->stock[LR_GOLD]);
     ok("pomper le manque coûte au PRIX COURANT (montant × prix)",
        cost==(long)(20*price_now+0.5f) && e->stock[LR_GOLD]==gold_before-cost && e->stock[LR_BOIS]==20);
+    long cmetal=labor_pump_market(e, LR_METAL, 5);   /* E0.6 : la pompe livre la ressource DEMANDÉE */
+    ok("E0.6 : la pompe livre la ressource DEMANDÉE (métal, plus du bois en dur)",
+       cmetal>0 && e->stock[LR_METAL]==5);
 
     /* ═══ 6. LES NIVEAUX — les jobs qui scalent ════════════════════════ */
     printf("\n── 6. Six niveaux ; capacité de jobs cumulée 100→1000 ──\n");
@@ -152,11 +168,11 @@ int main(int argc, char **argv){
     ok("sinon (pas pleine, ou Prospérité < 100) → vitesse normale",
        near_f(labor_pop_dev_speed(&full,80),1.0f,0.001f) && near_f(labor_pop_dev_speed(&partial,100),1.0f,0.001f));
 
-    /* ═══ 8. LA POP EST UN POOL — libre · en job · en armée ════════════ */
-    printf("\n── 8. Topbar pop : la main-d'œuvre engagée reste dans le pool et se reproduit ──\n");
+    /* ═══ 8. LA POP EST UN POOL — et le monde en est le PROPRIÉTAIRE (E0.1) ═══ */
+    printf("\n── 8. E0.1/E0.3 : pop relue du monde · taxes quotidiennes · solde d'armée ──\n");
     memset(e,0,sizeof(*e)); labor_init(e,w); e->n_prov=1;
     LProvince *pp=&e->prov[0]; memset(pp,0,sizeof(*pp));
-    pp->prov=0; pp->colonized=true; pp->pop=1000; pp->pop_by_class[LAB_LABORER]=1000;
+    pp->prov=0; pp->region=-1; pp->colonized=true; pp->pop=1000; pp->pop_by_class[LAB_LABORER]=1000;
     /* on AFFECTE tout : 6 collecteurs (600 en job) + 400 enrôlés → 0 libre. */
     for (int b=0;b<6;b++) pp->bld[b]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
     pp->n_bld=6; pp->pop_in_army=400;
@@ -167,22 +183,53 @@ int main(int argc, char **argv){
        k0.total==1000 && k0.in_jobs==600 && k0.in_army==400 && k0.free==0 &&
        (k0.free+k0.in_jobs+k0.in_army)==k0.total);
     long pop_before=labor_pop_total(e);
-    labor_tick(e);                                       /* un jour : prod, nourriture, croissance */
+    for (int t=0;t<30;t++) labor_tick(e);                /* un MOIS : prod, bouche, taxes, solde */
     PopBreakdown k1=labor_pop_breakdown(e);
-    printf("   après un jour (libre=0 au départ) :\n");
+    printf("   après un mois (libre=0 au départ) :\n");
     labor_print_topbar(e);
-    ok("la pop ENGAGÉE se reproduit : le pool croît même avec 0 libre", k1.total > pop_before);
-    ok("emploi & armée sont des AFFECTATIONS (inchangées) ; les nouveau-nés sont libres",
-       k1.in_jobs==600 && k1.in_army==400 && k1.free==(k1.total-1000));
-    /* Famine : un site SANS collecteur épuise sa nourriture → la croissance
-     * s'inverse (la nourriture gate la croissance, §2). */
-    memset(e,0,sizeof(*e)); labor_init(e,w); e->n_prov=1;
-    LProvince *pf=&e->prov[0]; memset(pf,0,sizeof(*pf));
-    pf->prov=0; pf->colonized=true; pf->pop=1000; pf->pop_by_class[LAB_LABORER]=1000;
-    for (int b=0;b<3;b++) pf->bld[b]=(LBuilding){ LB_WORKSHOP, 0, 1, 0 };   /* consomment, ne collectent pas */
-    pf->n_bld=3; e->stock[LR_FOOD]=2;
-    long pf0=labor_pop_total(e); labor_tick(e); long pf1=labor_pop_total(e);
-    ok("la famine (nourriture épuisée) stoppe et inverse la croissance", pf1 < pf0);
+    ok("E0.1 : labor ne fait plus NAÎTRE personne — le pool est stable sans le monde",
+       k1.total == pop_before);
+    ok("emploi & armée restent des AFFECTATIONS (inchangées)",
+       k1.in_jobs==600 && k1.in_army==400);
+    /* E0.3 — le SOLDE : 400 enrôlés → 2 or + 4 nourriture par jour (0.5+1 par 100). */
+    { long sg, sf; labor_army_upkeep(e,&sg,&sf);
+      printf("   solde : %ld or/j + %ld ration(s)/j pour 400 enrôlés\n", sg, sf);
+      ok("E0.3 : le solde vaut 0.5 or + 1 ration par 100 enrôlés et par jour", sg==2 && sf==4); }
+    /* E0.3 — les TAXES tombent chaque jour au trésor unique. */
+    { memset(e,0,sizeof(*e)); labor_init(e,w);
+      labor_seed_start(e, 0);
+      long g0=e->stock[LR_GOLD];
+      for (int t=0;t<10;t++) labor_tick(e);
+      printf("   taxes : or %ld → %ld en 10 jours (4000 âmes, sans marché ni armée)\n", g0, e->stock[LR_GOLD]);
+      ok("E0.3 : les taxes par classe CRÉDITENT le trésor unique chaque jour",
+         e->stock[LR_GOLD] > g0+20); }
+    /* E0.1 — RESYNC : la pop labor RELIT les strates de sa région adossée. */
+    { WorldEconomy *we=malloc(sizeof(WorldEconomy));
+      if (we){
+        memset(we,0,sizeof(*we)); we->n_regions=6;
+        we->region[5].strata[CLASS_LABORER].pop=800.f;
+        we->region[5].strata[CLASS_BOURGEOIS].pop=150.f;
+        we->region[5].strata[CLASS_ELITE].pop=50.f;
+        memset(e,0,sizeof(*e)); labor_init(e,w); e->n_prov=1;
+        LProvince *pr=&e->prov[0]; memset(pr,0,sizeof(*pr));
+        pr->prov=0; pr->region=5; pr->colonized=true; pr->pop=99; pr->pop_by_class[LAB_LABORER]=99;
+        for (int b=0;b<6;b++) pr->bld[b]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
+        pr->n_bld=6;
+        labor_resync_pop(e,we);
+        long after1=pr->pop;
+        we->region[5].strata[CLASS_LABORER].pop=250.f;   /* la peste : la région s'effondre */
+        we->region[5].strata[CLASS_BOURGEOIS].pop=40.f;
+        we->region[5].strata[CLASS_ELITE].pop=10.f;
+        labor_resync_pop(e,we);
+        long slots=0; for (int b=0;b<pr->n_bld;b++) slots+=pr->bld[b].jobs_filled;
+        printf("   resync : pop 99 → %ld, puis effondrement → %ld (emplois réduits à %ld slots)\n",
+               after1, pr->pop, slots);
+        ok("E0.1 : labor RELIT la pop des strates de sa région (1000 puis 300)",
+           after1==1000 && pr->pop==300);
+        ok("E0.1 : la pop effondrée VIDE les emplois excédentaires (3 slots pour 300 âmes)",
+           slots==3);
+        free(we);
+      } else { ok("(OOM resync — ignoré)", true); ok("(idem)", true); } }
 
     /* ═══ 9. INTÉGRATION — l'économie d'un VRAI pays lit sa géographie ══ */
     printf("\n── 9. Intégration : seeder un pays du monde ; la richesse suit la terre ──\n");
