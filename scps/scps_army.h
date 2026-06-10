@@ -100,7 +100,7 @@ const char        *weapon_name(ArmWeapon wp);
 void army_init(ArmyState *a);
 
 /* Fabrique des armes : consomme les intrants matériaux dans l'économie (chaîne).
- * Pompe le marché des matériaux si le manque est en LR_MATERIALS. Renvoie le
+ * Pompe le marché si le manque est en LR_BOIS (P3.16 : ressources réelles). Renvoie le
  * nombre d'armes effectivement fabriquées. */
 long army_fabricate_weapon(ArmyState *a, LaborEcon *e, ArmWeapon wp, long qty);
 

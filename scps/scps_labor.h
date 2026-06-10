@@ -27,9 +27,9 @@ typedef enum { LAB_LABORER=0, LAB_ARTISAN, LAB_ELITE, LAB_CLASS_COUNT } LaborCla
 
 /* ---- Ressources (topbar + secondaires + stratégiques) (§3) ------------ */
 typedef enum {
-    LR_FOOD=0, LR_GOLD, LR_MATERIALS,                       /* topbar */
-    LR_BOIS, LR_ARGILE, LR_CALCAIRE, LR_PIERRE, LR_METAL,   /* brutes secondaires */
-    LR_OUTILS,                                              /* stratégique */
+    LR_FOOD=0, LR_GOLD,                                     /* topbar (P3.16 : LR_MATERIALS retiré) */
+    LR_BOIS, LR_ARGILE, LR_CALCAIRE, LR_PIERRE, LR_METAL,   /* brutes secondaires (ressources RÉELLES) */
+    LR_OUTILS,                                              /* stratégique (le raffiné : ateliers) */
     LR_COUNT
 } LRes;
 

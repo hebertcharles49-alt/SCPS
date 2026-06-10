@@ -48,9 +48,9 @@ static const WeaponRecipe WEAPONS[W_COUNT] = {
     [W_EPEE]      = { LR_METAL,  LR_OUTILS,     3 },
     [W_ARC]       = { LR_BOIS,   LR_OUTILS,     2 },
     [W_ARBALETE]  = { LR_BOIS,   LR_OUTILS,     4 },
-    [W_MONTURE_L] = { LR_OUTILS, LR_MATERIALS,  3 },
+    [W_MONTURE_L] = { LR_OUTILS, LR_BOIS,  3 },
     [W_MONTURE_H] = { LR_METAL,  LR_OUTILS,     5 },
-    [W_BATON]     = { LR_OUTILS, LR_MATERIALS,  4 },
+    [W_BATON]     = { LR_OUTILS, LR_BOIS,  4 },
 };
 const WeaponRecipe *weapon_recipe(ArmWeapon wp){ return (wp>=0&&wp<W_COUNT)?&WEAPONS[wp]:NULL; }
 static const char *WNAMES[W_COUNT]={ "Pique","Lance","Épée","Arc","Arbalète","Monture légère","Destrier","Bâton" };
@@ -127,8 +127,8 @@ long army_fabricate_weapon(ArmyState *a, LaborEcon *e, ArmWeapon wp, long qty){
     for (long k=0;k<qty;k++){
         /* manque de MATÉRIAUX → on pompe le marché (temps réel) ; manque d'un
          * brut (métal/bois/outils) → il faut l'extraire d'abord (pas de levée). */
-        if (e->stock[R->cost_a]<1 && R->cost_a==LR_MATERIALS) labor_pump_market(e,1);
-        if (e->stock[R->cost_b]<1 && R->cost_b==LR_MATERIALS) labor_pump_market(e,1);
+        if (e->stock[R->cost_a]<1 && R->cost_a==LR_BOIS) labor_pump_market(e,1);
+        if (e->stock[R->cost_b]<1 && R->cost_b==LR_BOIS) labor_pump_market(e,1);
         if (e->stock[R->cost_a]<1 || e->stock[R->cost_b]<1) break;   /* intrants épuisés */
         e->stock[R->cost_a]-=1; e->stock[R->cost_b]-=1;
         a->weapons[wp]+=1; made++;
@@ -155,9 +155,9 @@ long army_recruit(ArmyState *a, LaborEcon *e, UnitType t, long count){
     const UnitDef *d=&UNITS[t];
     /* coût matériaux (pompe si manque) */
     long mat = count*RECRUIT_MAT;
-    if (e->stock[LR_MATERIALS] < mat) labor_pump_market(e, mat - e->stock[LR_MATERIALS]);
-    if (e->stock[LR_MATERIALS] < mat) return 0;
-    e->stock[LR_MATERIALS] -= mat;
+    if (e->stock[LR_BOIS] < mat) labor_pump_market(e, mat - e->stock[LR_BOIS]);
+    if (e->stock[LR_BOIS] < mat) return 0;
+    e->stock[LR_BOIS] -= mat;
     a->weapons[d->weapon]  -= count;                 /* consomme les armes */
     /* prélève la pop : AFFECTÉE à l'armée, mais toujours dans le POOL (se reproduit). */
     a->pop_by_class_in_army[d->from] += count*POP_PER_UNIT;

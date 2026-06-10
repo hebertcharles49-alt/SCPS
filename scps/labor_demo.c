@@ -81,38 +81,38 @@ int main(int argc, char **argv){
     long bal_nogeo=labor_food_balance(e);
     e->g_fert[0]=fert0;                                 /* on restaure la géo */
     long bal_geo=labor_food_balance(e);
-    printf("   pop=%ld  collecteurs=%d ateliers=%d  stock F/O/M=%ld/%ld/%ld  | net food: sans géo=%ld, avec géo=%ld\n",
-           e->prov[0].pop, ncol, nate, e->stock[LR_FOOD], e->stock[LR_GOLD], e->stock[LR_MATERIALS], bal_nogeo, bal_geo);
-    ok("4000 pop, 2 collecteurs + 2 ateliers, 200/200/200 au stock",
+    printf("   pop=%ld  collecteurs=%d ateliers=%d  stock F/Or/Bois=%ld/%ld/%ld  | net food: sans géo=%ld, avec géo=%ld\n",
+           e->prov[0].pop, ncol, nate, e->stock[LR_FOOD], e->stock[LR_GOLD], e->stock[LR_BOIS], bal_nogeo, bal_geo);
+    ok("4000 pop, 2 collecteurs + 2 ateliers, départ 200 F/Or/Bois (P3.16 : plus de matériaux)",
        e->prov[0].pop==4000 && ncol==2 && nate==2 &&
-       e->stock[LR_FOOD]==200 && e->stock[LR_GOLD]==200 && e->stock[LR_MATERIALS]==200);
+       e->stock[LR_FOOD]==200 && e->stock[LR_GOLD]==200 && e->stock[LR_BOIS]==200);
     ok("net = +4 nourriture SANS bonus géographique (le plancher)", bal_nogeo==4);
     ok("la géographie ne fait QU'AJOUTER (jamais retirer la base)", bal_geo>=4);
 
-    /* ═══ 4. LA CHAÎNE DE MATÉRIAUX (300 pop ; sans intrants, rien) ═════ */
-    printf("\n── 4. Les matériaux sortent d'une CHAÎNE (bois + argile + atelier = 300 pop) ──\n");
-    /* Une province : scierie + argilière + atelier, 1 job chacun. */
+    /* ═══ 4. LA CHAÎNE D'OUTILS (P3.16 : bois + métal + atelier = 300 pop) ═══ */
+    printf("\n── 4. Les OUTILS sortent d'une CHAÎNE (bois + métal + atelier = 300 pop) ──\n");
+    /* Une province : scierie + mine + atelier, 1 job chacun. */
     memset(e,0,sizeof(*e)); labor_init(e,w); e->n_prov=1;
     LProvince *pc=&e->prov[0];
     memset(pc,0,sizeof(*pc)); pc->prov=0; pc->colonized=true; pc->n_bld=3;
     pc->bld[0]=(LBuilding){ LB_SAWMILL, 0, 1 };
-    pc->bld[1]=(LBuilding){ LB_CLAYPIT, 0, 1 };
+    pc->bld[1]=(LBuilding){ LB_MINE,    0, 1 };
     pc->bld[2]=(LBuilding){ LB_WORKSHOP,0, 1 };
-    e->g_pres[0][LR_BOIS]=1.f; e->g_pres[0][LR_ARGILE]=1.f;   /* la géo fournit bois & argile */
+    e->g_pres[0][LR_BOIS]=1.f; e->g_pres[0][LR_METAL]=1.f;    /* la géo fournit bois & métal */
     long chain_pop = (pc->bld[0].jobs_filled+pc->bld[1].jobs_filled+pc->bld[2].jobs_filled)*POP_PER_SLOT;
-    long mat_before=e->stock[LR_MATERIALS];
+    long mat_before=e->stock[LR_OUTILS];
     for (int t=0;t<3;t++) labor_tick(e);
-    long mat_after=e->stock[LR_MATERIALS];
-    printf("   chaîne = %ld pop (scierie+argilière+atelier) → matériaux %ld→%ld\n", chain_pop, mat_before, mat_after);
+    long mat_after=e->stock[LR_OUTILS];
+    printf("   chaîne = %ld pop (scierie+mine+atelier) → outils %ld→%ld\n", chain_pop, mat_before, mat_after);
     ok("la chaîne complète occupe 300 pop (3 jobs)", chain_pop==300);
-    ok("avec intrants (bois+argile extraits), l'atelier PRODUIT des matériaux", mat_after>mat_before);
-    /* Sans intrants : un atelier seul, stock de bruts vide → 0 matériau. */
+    ok("avec intrants (bois+métal extraits), l'atelier RAFFINE des outils", mat_after>mat_before);
+    /* Sans intrants : un atelier seul, stock de bruts vide → 0 outil. */
     memset(e,0,sizeof(*e)); labor_init(e,w); e->n_prov=1;
     memset(&e->prov[0],0,sizeof(LProvince));
     e->prov[0].prov=0; e->prov[0].colonized=true; e->prov[0].n_bld=1;
     e->prov[0].bld[0]=(LBuilding){ LB_WORKSHOP, 0, 1 };       /* atelier seul, aucun brut */
-    long m0=e->stock[LR_MATERIALS]; labor_tick(e); long m1=e->stock[LR_MATERIALS];
-    ok("sans intrants, l'atelier ne produit AUCUN matériau", m1==m0);
+    long m0=e->stock[LR_OUTILS]; labor_tick(e); long m1=e->stock[LR_OUTILS];
+    ok("sans intrants, l'atelier ne raffine AUCUN outil", m1==m0);
 
     /* ═══ 5. LE MARCHÉ DYNAMIQUE (demande → prix ; pomper coûte) ════════ */
     printf("\n── 5. Le prix des matériaux est GÉNÉRÉ par la demande ──\n");
@@ -125,11 +125,11 @@ int main(int argc, char **argv){
     ok("forte demande (tout le monde bâtit) → le prix MONTE", price_high > price_low);
     long gold_before=e->stock[LR_GOLD];
     float price_now=labor_material_price(e);
-    long cost=labor_pump_market(e, 20);            /* on POMPE 20 matériaux au prix courant */
-    printf("   pomper 20 matériaux au prix %.2f → coût %ld or (stock or %ld→%ld, matériaux +20)\n",
+    long cost=labor_pump_market(e, 20);            /* on POMPE 20 de bois au prix courant */
+    printf("   pomper 20 (bois) au prix %.2f → coût %ld or (stock or %ld→%ld, bois +20)\n",
            price_now, cost, gold_before, e->stock[LR_GOLD]);
     ok("pomper le manque coûte au PRIX COURANT (montant × prix)",
-       cost==(long)(20*price_now+0.5f) && e->stock[LR_GOLD]==gold_before-cost && e->stock[LR_MATERIALS]==20);
+       cost==(long)(20*price_now+0.5f) && e->stock[LR_GOLD]==gold_before-cost && e->stock[LR_BOIS]==20);
 
     /* ═══ 6. LES NIVEAUX — les jobs qui scalent ════════════════════════ */
     printf("\n── 6. Six niveaux ; capacité de jobs cumulée 100→1000 ──\n");

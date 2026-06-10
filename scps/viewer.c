@@ -885,7 +885,7 @@ static void draw_topbar(SDL_Renderer *ren, int win_w, const Sim *s, const World 
     x0=x; x = draw_res(ren,x,yA, lres_name(LR_FOOD),      s->labor->stock[LR_FOOD],      (float)s->labor->flow[LR_FOOD],
                  "Vivres (clic → Subsistance & démographie). La famine stoppe la croissance de la population.");
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_SUBSISTANCE);
-    x0=x; x = draw_res(ren,x,yA, lres_name(LR_MATERIALS), s->labor->stock[LR_MATERIALS], (float)s->labor->flow[LR_MATERIALS],
+    x0=x; x = draw_res(ren,x,yA, lres_name(LR_OUTILS), s->labor->stock[LR_OUTILS], (float)s->labor->flow[LR_OUTILS],
                  "Matériaux (clic → Chaînes de production & stock du marché). Bâtir, coloniser et armer en consomment.");
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_CHAINES);
     x = topbar_sep(ren, x, yA);
@@ -2719,7 +2719,7 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 5u            /* v5 : LE TERRAIN — occupation réelle (DiploState.occupier) + FieldArmy.taken_region ; la propriété change à la paix (diplo_settle) */
+#define SAVE_VERSION 6u            /* v6 : P3.16 — LR_MATERIALS retiré (LaborState change de taille) */
 #define SAVE_F_CRYPT 1u
 typedef struct {
     uint32_t magic, version;

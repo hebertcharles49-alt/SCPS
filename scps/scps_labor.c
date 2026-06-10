@@ -34,9 +34,8 @@ static const int LEVEL_JOBS[6] = { 100,100,200,300,500,1000 };  /* capacité AJO
  * qui combine (job) → la sortie. 300 pop = les trois étages. */
 typedef struct { LRes in_a, in_b, out; int stages_pop; } Recipe;
 static const Recipe RECIPES[] = {
-    { LR_ARGILE, LR_BOIS,     LR_MATERIALS, 300 },
-    { LR_BOIS,   LR_CALCAIRE, LR_MATERIALS, 300 },
-    { LR_ARGILE, LR_CALCAIRE, LR_MATERIALS, 300 },
+    /* P3.16 — plus de « matériaux » : l'atelier RAFFINE des outils (bois+métal).
+     * La construction consomme désormais des ressources RÉELLES + or, pas un blob. */
     { LR_BOIS,   LR_METAL,    LR_OUTILS,    300 },
 };
 #define N_RECIPES ((int)(sizeof(RECIPES)/sizeof(RECIPES[0])))
@@ -218,7 +217,7 @@ void labor_seed_start(LaborEcon *e, int prov0){
     p->bld[2]=(LBuilding){ LB_WORKSHOP,  0, 1 };
     p->bld[3]=(LBuilding){ LB_WORKSHOP,  0, 1 };
     p->n_bld=4;
-    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_MATERIALS]=200;
+    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_BOIS]=200; e->stock[LR_OUTILS]=100;
     e->treasury=200;
 }
 
@@ -229,7 +228,7 @@ void labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *eco
     /* on garde la géo précalculée (labor_init) ; on (ré)installe l'économie. */
     e->n_prov=0;
     memset(e->stock,0,sizeof e->stock); memset(e->flow,0,sizeof e->flow);
-    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_MATERIALS]=200;
+    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_BOIS]=200; e->stock[LR_OUTILS]=100;
     e->market.supply=1.f; e->market.price=BASE_PRICE; e->treasury=200;
 
     for (int r=0; r<econ->n_regions && e->n_prov<LAB_MAX_PROV; r++){
@@ -263,9 +262,9 @@ float labor_prosperity_index(const LaborEcon *e){
     long pop = labor_pop_total(e); if (pop<1) pop=1;
     float per100  = (float)pop/100.f;
     float foodsec = (labor_food_balance(e) >= 0) ? 3.0f : 0.0f;   /* le pain d'abord */
-    float gold_pc = (float)e->flow[LR_GOLD]      / per100;        /* revenu par tête */
-    float mat_pc  = (float)e->flow[LR_MATERIALS] / per100;        /* matériaux par tête */
-    float idx = foodsec + clampf(gold_pc*5.0f, 0.f, 4.f) + clampf(mat_pc*4.0f, 0.f, 3.f);
+    float gold_pc = (float)e->flow[LR_GOLD]   / per100;          /* revenu par tête */
+    float out_pc  = (float)e->flow[LR_OUTILS] / per100;          /* P3.16 : OUTILS par tête (le raffiné) */
+    float idx = foodsec + clampf(gold_pc*5.0f, 0.f, 4.f) + clampf(out_pc*8.0f, 0.f, 3.f);
     return clampf(idx, 0.f, 10.f);
 }
 
@@ -290,7 +289,7 @@ static float per_job_output(const LaborEcon *e, int wprov, LBuildType t, LRes *o
         case LB_CLAYPIT:   *out=LR_ARGILE;    return EXTRACT_BASE * e->g_pres[wprov][LR_ARGILE];
         case LB_QUARRY:    *out=LR_CALCAIRE;  return EXTRACT_BASE * e->g_pres[wprov][LR_CALCAIRE];
         case LB_MINE:      *out=LR_METAL;     return EXTRACT_BASE * e->g_pres[wprov][LR_METAL];
-        case LB_WORKSHOP:  *out=LR_MATERIALS; return WORKSHOP_BASE;   /* potentiel ; gaté par intrants */
+        case LB_WORKSHOP:  *out=LR_OUTILS;    return WORKSHOP_BASE;   /* P3.16 : l'atelier raffine des OUTILS (gaté par les intrants) */
         default:           *out=LR_COUNT;     return 0.f;
     }
 }
@@ -334,7 +333,7 @@ long labor_pump_market(LaborEcon *e, long amount){
     if (amount<=0) return 0;
     float price = labor_material_price(e);
     long cost = (long)(amount*price + 0.5f);
-    e->stock[LR_MATERIALS] += amount;
+    e->stock[LR_BOIS] += amount;       /* P3.16 : pompe du BOIS (construction réelle) */
     e->stock[LR_GOLD]      -= cost; e->treasury=e->stock[LR_GOLD];
     e->market.demand       += (float)amount;   /* pomper TIRE la demande → le prix monte */
     return cost;
@@ -366,9 +365,9 @@ PopBreakdown labor_pop_breakdown(const LaborEcon *e){
 }
 void labor_print_topbar(const LaborEcon *e){
     PopBreakdown k=labor_pop_breakdown(e);
-    printf("   TOPBAR  Or %ld (%+ld/j) · Nourriture %ld (%+ld/j) · Matériaux %ld (%+ld/j)\n",
+    printf("   TOPBAR  Or %ld (%+ld/j) · Nourriture %ld (%+ld/j) · Outils %ld (%+ld/j)\n",
            e->stock[LR_GOLD], e->flow[LR_GOLD], e->stock[LR_FOOD], e->flow[LR_FOOD],
-           e->stock[LR_MATERIALS], e->flow[LR_MATERIALS]);
+           e->stock[LR_OUTILS], e->flow[LR_OUTILS]);
     printf("           Pop %ld :  libre %ld · en job %ld · en armée %ld\n",
            k.total, k.free, k.in_jobs, k.in_army);
 }
@@ -392,13 +391,13 @@ ColonizeCost labor_colonize_cost(const LaborEcon *e, int prov){
     return c;
 }
 bool labor_can_colonize(const LaborEcon *e, ColonizeCost cost){
-    return e->stock[LR_MATERIALS]>=cost.materials && e->stock[LR_FOOD]>=cost.food;
+    return e->stock[LR_BOIS]>=cost.materials && e->stock[LR_FOOD]>=cost.food;
 }
 bool labor_colonize(LaborEcon *e, int prov){
     if (e->n_prov>=LAB_MAX_PROV) return false;
     ColonizeCost cost=labor_colonize_cost(e,prov);
     if (!labor_can_colonize(e,cost)) return false;
-    e->stock[LR_MATERIALS]-=cost.materials; e->stock[LR_FOOD]-=cost.food;
+    e->stock[LR_BOIS]-=cost.materials; e->stock[LR_FOOD]-=cost.food;
     LProvince *p=&e->prov[e->n_prov++];
     memset(p,0,sizeof(*p));
     p->prov=prov; p->colonized=true; p->pop=500; p->pop_by_class[LAB_LABORER]=500;
@@ -518,7 +517,7 @@ void labor_tick(LaborEcon *e){
 /* LIBELLÉS                                                              */
 /* ===================================================================== */
 const char *lres_name(LRes r){
-    static const char *N[LR_COUNT]={ "Nourriture","Or","Matériaux","Bois","Argile",
+    static const char *N[LR_COUNT]={ "Nourriture","Or","Bois","Argile",
                                      "Calcaire","Pierre","Métal","Outils" };
     return (r>=0&&r<LR_COUNT)?N[r]:"?";
 }
