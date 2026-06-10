@@ -3059,10 +3059,12 @@ int main(int argc, char **argv) {
     /* Police diégétique (SDL_ttf) — DejaVu couvre les accents français. */
     if (TTF_Init() != 0) fprintf(stderr, "TTF_Init: %s\n", TTF_GetError());
     static const char *font_paths[] = {
+        "DejaVuSans.ttf",                /* police BUNDLÉE à côté de l'exe (Windows/portable) */
+        "fonts/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/dejavu/DejaVuSans.ttf",
         "/Library/Fonts/Arial.ttf",
-        "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/arial.ttf",    /* repli système Windows (couvre les accents FR) */
     };
     for (size_t i=0; i<sizeof(font_paths)/sizeof(font_paths[0]) && !g_font; i++) {
         g_font     = TTF_OpenFont(font_paths[i], 14);
@@ -3234,6 +3236,14 @@ int main(int argc, char **argv) {
                     tnt[r]=ethos_tint((int)sim.econ->region[r].culture.ethos);
                 rp.region_tint = tnt;
             }
+            /* §terrain : la capture montre aussi l'OCCUPATION (hachure de l'occupant). */
+            rp.occupier_tint = NULL;
+            { static uint32_t g_shot_occ[SCPS_MAX_REG]; bool anyo=false;
+              for (int r=0;r<sim.econ->n_regions && r<SCPS_MAX_REG;r++){
+                  int occ=sim.dp->occupier[r];
+                  if (occ>=0 && occ<world->n_countries){ g_shot_occ[r]=world->country[occ].color; anyo=true; }
+                  else g_shot_occ[r]=0u; }
+              if (anyo) rp.occupier_tint = g_shot_occ; }
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);

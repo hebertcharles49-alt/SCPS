@@ -1,0 +1,43 @@
+SCPS — Moteur de grande stratégie (Sphères Culturelles & Perméabilité Systémique)
+================================================================================
+
+Un monde généré PAR le modèle : culture, prospérité, stabilité et guerre sont
+calculées par les équations SCPS, pas par des règles ad hoc. La guerre se gagne
+sur le terrain (sièges → occupation), la conquête se règle à la table de paix,
+et les royaumes peuvent mourir.
+
+CONTENU
+-------
+  scps_viewer.exe   Le visualiseur interactif (carte vivante + interface d'empire).
+  chronicle.exe     Balayage headless : la télémétrie d'équilibre (console).
+  core_demo.exe     Banc du cœur vérifié (35 contrôles).
+  SDL2.dll          \
+  SDL2_ttf.dll       > requis par le visualiseur (déjà présents — ne rien faire).
+  DejaVuSans.ttf    /
+
+LANCER
+------
+  Double-clic sur SCPS (menu Démarrer / bureau), ou scps_viewer.exe.
+  Le jeu démarre au menu ; « Jouer » forge un monde et l'OUVRE en pause.
+
+COMMANDES (visualiseur)
+-----------------------
+  Espace            pause / reprise
+  + / -             accélérer / ralentir le temps
+  Molette           zoom carte ; clic-droit/milieu glissé : déplacer
+  Onglets (rail gauche) :
+    E  Économie     D  Démographie   S  Stocks   A  Armée
+    F  Filtres (vues de carte & lentilles)       G  Diplomatie
+  Diplomatie (G)    déclarer la guerre (si un casus belli tient), négocier la
+                    paix sur une guerre active ; les régions OCCUPÉES sont
+                    hachurées de la couleur de l'occupant sur la carte politique.
+  F12               capture d'écran (PNG, dossier screenshots\)
+
+OUTILS HEADLESS (invite de commandes)
+-------------------------------------
+  chronicle.exe <graine> <sims> <années> [empires] [cités]
+      ex. : chronicle.exe 7 5 200 8 16
+  core_demo.exe       (doit afficher « 35 réussis, 0 échoués »)
+
+CONFIGURATION REQUISE : Windows 10/11 64 bits. Aucune installation de
+runtime tierce (SDL2 fourni, dépendances C statiques).
