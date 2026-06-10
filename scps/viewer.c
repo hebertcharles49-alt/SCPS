@@ -2485,7 +2485,7 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 4u            /* v4 : LA MER — flotte (NAVY), port réel (ProvBuild.port), routes en jours de mer (v3 courants) */
+#define SAVE_VERSION 5u            /* v5 : LE TERRAIN — occupation réelle (DiploState.occupier) + FieldArmy.taken_region ; la propriété change à la paix (diplo_settle) */
 #define SAVE_F_CRYPT 1u
 typedef struct {
     uint32_t magic, version;
@@ -2645,6 +2645,12 @@ static bool save_sane(const World *w, const Sim *s, int player){
         for (int t=0;t<HULL_COUNT;t++) if (nv->hull[t]<0 || nv->hull[t]>100000) return false;
         if (nv->at_sea<0 || nv->build_hull<-1 || nv->build_hull>=HULL_COUNT) return false;
         if (nv->home_port< -1 || nv->home_port>=s->econ->n_regions) return false; }
+    /* §terrain (v5) : l'OCCUPATION et la dernière réduction non récoltée se revalident —
+     * un occupier forgé indexerait w->country, un taken_region forgé econ->region. */
+    for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++)
+        if (s->dp->occupier[r] < -1 || s->dp->occupier[r] >= w->n_countries) return false;
+    for (int i=0;i<SCPS_MAX_COUNTRY;i++)
+        if (s->camp->army[i].taken_region < -1 || s->camp->army[i].taken_region >= s->econ->n_regions) return false;
     return true;
 }
 /* charge un slot. 0 = ok ; 1 = absent/corrompu ; 2 = « ère antérieure » (version). */
