@@ -41,6 +41,11 @@ typedef struct {
      * (la membrane : le viewer calcule les couleurs diégétiques depuis l'éco et les
      * passe ; le renderer ne lit aucun flottant SCPS). NULL = pas de teinte. */
     const uint32_t *region_tint;
+    /* OCCUPATION (brief terrain) : couleur de l'OCCUPANT par région (ARGB), 0 = libre.
+     * Posée en HACHURE sur la carte politique (la région est TENUE, pas possédée — la
+     * propriété ne change qu'à la paix). Membrane : le viewer lit dp->occupier, passe
+     * des couleurs de pays ; le renderer ne lit aucun flottant SCPS. NULL = aucune. */
+    const uint32_t *occupier_tint;
 } RenderParams;
 
 /* ---- Rendu principal --------------------------------------------------

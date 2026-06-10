@@ -2109,6 +2109,11 @@ static void draw_outliner(SDL_Renderer *ren, int win_w, int win_h, const Sim *s,
                             nm,(long)re->strata[0].pop,(long)re->strata[1].pop,(long)re->strata[2].pop);
                 if (inc.n>0) n+=snprintf(g_ohov[oi]+n,(size_t)(sizeof g_ohov[oi])-n," · produit +%.1f %s/j",inc.line[0].per_day,inc.line[0].source);
                 n+=snprintf(g_ohov[oi]+n,(size_t)(sizeof g_ohov[oi])-n, ham?" · slot libre (marteau : bâtir)":" · complet");
+                int occ=s->dp->occupier[r];   /* §terrain : une de NOS régions TENUE par l'ennemi (à libérer) */
+                if (occ>=0 && occ!=player && occ<w->n_countries){
+                    char occn[80]; tr_fmt(occn,sizeof occn,STR_OCCUPEE_PAR,w->country[occ].name);
+                    n+=snprintf(g_ohov[oi]+n,(size_t)(sizeof g_ohov[oi])-n," · %s",occn);
+                }
                 zone_add((SDL_Rect){x,y-1,rw,14}, g_ohov[oi]);
                 orow_add((SDL_Rect){x,y-1,rw-pzw-17,14}, hr, pid, ham?r:-1);
                 oi++;
@@ -3540,6 +3545,21 @@ int main(int argc, char **argv) {
                                                             : faith_tint((int)cu->rel_branch);
                 }
                 rp.region_tint = g_region_tint;
+            }
+            /* OCCUPATION (brief terrain §membrane) : la carte politique HACHURE les
+             * régions TENUES par les armes de la couleur de l'occupant — la propriété,
+             * elle, ne bascule qu'à la paix. On lit dp->occupier, on passe des couleurs
+             * de PAYS (aucun flottant SCPS). cell_color ne l'applique qu'en vue politique. */
+            rp.occupier_tint = NULL;
+            if (sim.ready){
+                static uint32_t g_occ_tint[SCPS_MAX_REG];
+                bool any=false;
+                for (int r=0;r<sim.econ->n_regions && r<SCPS_MAX_REG;r++){
+                    int occ=sim.dp->occupier[r];
+                    if (occ>=0 && occ<world->n_countries){ g_occ_tint[r]=world->country[occ].color; any=true; }
+                    else g_occ_tint[r]=0u;
+                }
+                if (any) rp.occupier_tint = g_occ_tint;
             }
             render_map(world, pb.pixels, pb.w, pb.h, &rp, rmode);
             pixbuf_upload(&pb);

@@ -164,5 +164,6 @@
     X(STR_TUTO_PREC, "◀ préc.") \
     X(STR_TUTO_SUIV, "suiv. ▶") \
     X(STR_TUTO_PAGEFMT, "{0} / 7") \
+    X(STR_OCCUPEE_PAR, "Occupée par {0}") \
 
 #endif /* SCPS_STRINGS_IDS_H */

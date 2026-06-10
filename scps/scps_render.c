@@ -107,7 +107,8 @@ static uint32_t biome_blend(const World *w, int cx, int cy, float fx, float fy) 
 
 /* ---- Rendu d'une cellule individuelle -------------------------------- */
 static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
-                            ViewMode mode, int selected_prov, const uint32_t *region_tint) {
+                            ViewMode mode, int selected_prov, const uint32_t *region_tint,
+                            const uint32_t *occupier_tint) {
     const Cell *c = scps_cellc(w, cx, cy);
     float h = c->height;
 
@@ -219,6 +220,14 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
     if ((mode == VIEW_CULTURE || mode == VIEW_FAITH) && region_tint && c->region >= 0) {
         terrain = alpha_over(terrain, region_tint[c->region], 0.55f);
     }
+    /* ---- Overlay OCCUPATION (brief terrain) : HACHURE de la couleur de l'occupant
+     *      sur la carte politique (la région est TENUE par les armes, pas possédée —
+     *      la propriété ne bascule qu'à la paix). Bandes diagonales 2/4 cellules. */
+    if (occupier_tint && c->region >= 0 && occupier_tint[c->region] != 0u &&
+        (mode==VIEW_POLITICAL || mode==VIEW_REGIONS || mode==VIEW_COUNTRIES) &&
+        (((cx + cy) & 3) < 2)) {
+        terrain = alpha_over(terrain, occupier_tint[c->region], 0.60f);
+    }
 
     /* ---- Rivières (overlay bleu) ------------------------------------- */
     if (c->river > 70 && !c->lake) {
@@ -278,7 +287,7 @@ void render_map(const World *w, uint32_t *pixels, int pw, int ph,
                 col = 0xFF080C10u;
             } else {
                 /* position fractionnaire dans la cellule → fondu bilinéaire */
-                col = cell_color(w, cx, cy, wx-(float)cx, wy-(float)cy, mode, p->selected_prov, p->region_tint);
+                col = cell_color(w, cx, cy, wx-(float)cx, wy-(float)cy, mode, p->selected_prov, p->region_tint, p->occupier_tint);
             }
             pixels[sy * pw + sx] = col;
         }
