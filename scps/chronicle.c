@@ -707,6 +707,12 @@ int main(int argc, char **argv){
                  csat[CLASS_LABORER], csat[CLASS_BOURGEOIS], csat[CLASS_ELITE], tradev);
           for (int c=0;c<CLASS_COUNT;c++) tot_sat[c]+=csat[c];
           tot_trade += tradev; }
+        { double cp[CLASS_COUNT]={0};   /* E0.7 parts de classe + E1bis.10 friche */
+          for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].colonized)
+              for (int c=0;c<CLASS_COUNT;c++) cp[c]+=s.econ->region[r].strata[c].pop;
+          double tp=cp[0]+cp[1]+cp[2]; if(tp<1)tp=1;
+          printf("              classes (E0.7, départ 80/15/5) : Laborer %.0f%% · Bourgeois %.0f%% · Élite %.0f%% | friche (E1bis.10) : %ld rég impayée(s)\n",
+                 100*cp[0]/tp, 100*cp[1]/tp, 100*cp[2]/tp, econ_friche_count()); }
         print_building_census(s.econ);
         printf("              expansion : %d prov colonisées · %d prov TRANSFÉRÉES à la paix · armée finale %.0f\n",
                colonized_provinces(w,s.econ), conq_prov, total_army(w,s.econ));

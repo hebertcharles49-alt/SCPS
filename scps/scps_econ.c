@@ -733,6 +733,19 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * l'individu (transfert pro-rata). La promotion vers bourgeois exige des
  * manufactures (un débouché). Lecteurs : panier (coût des besoins/tête, capté au
  * tick) + satisfaction (deux mois bas → on déclasse). */
+/* ── E1bis.10 — ENTRETIEN par région (la loi continue) ───────────────────────
+ * Le modèle agrège les édifices en deltas (pas de registre par-édifice) : on lit
+ * donc l'INFRASTRUCTURE bâtie (Σ deltas) comme proxy du prix de revient cumulé.
+ * entretien/j = build_gold / ENTRETIEN_DIV (l'édifice se repaie en ~13 mois) ;
+ * IMPAYÉ (trésor ≤ 0) → la région se met EN FRICHE (prod entaillée) jusqu'à
+ * régularisation. Calibré pour qu'un revenu de taxes typique tienne l'entretien. */
+#define ENTRETIEN_DIV         400.f
+#define BUILD_GOLD_PER_DELTA  35.f    /* delta de ProvBuild → or de revient (proxy d'audit) */
+#define FRICHE_FACTOR         0.6f    /* production entaillée tant que l'entretien n'est pas payé */
+static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien impayé) */
+static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
+long econ_friche_count(void){ return g_n_friche; }
+
 #define PROMOTE_RATE 0.005f       /* 0.5 %/mois max (∝ richesse excédentaire) */
 /* Seuil d'accession : « 3× le panier » (brief E0.7). Mais l'éco cale les journaliers
  * à ~60 % de satisfaction (peu de surplus) : à 3× la montée journalier→bourgeois ne
@@ -744,6 +757,7 @@ static uint8_t g_lowsat_streak[SCPS_MAX_REG][CLASS_COUNT];/* mois consécutifs d
 void econ_mobility_reset(void){
     memset(g_basket_pc,0,sizeof g_basket_pc);
     memset(g_lowsat_streak,0,sizeof g_lowsat_streak);
+    memset(g_friche,0,sizeof g_friche); g_n_friche=0;
 }
 static void mobility_move(RegionEconomy *re, int from, int to, float frac){
     float pop=re->strata[from].pop; if (pop<1.f || frac<=0.f) return;
@@ -752,9 +766,16 @@ static void mobility_move(RegionEconomy *re, int from, int to, float frac){
     re->strata[from].pop-=moved; re->strata[from].wealth-=wmoved;
     re->strata[to].pop  +=moved; re->strata[to].wealth  +=wmoved;
 }
+/* plafond DOUX d'une classe (part de pop) : sans lui, l'accession court sur 250 ans
+ * jusqu'à 30-40 % de noblesse. Le taux s'éteint quand la cible approche son plafond.
+ * L'élite a droit à de la marge (les bâtiments type K — admin/capitale — EMPLOIENT
+ * des nobles : + d'élite est normal) ; le plafond ne coupe que l'emballement. */
+#define SHARE_CAP_BOURGEOIS 0.32f
+#define SHARE_CAP_ELITE     0.20f
 static void mobility_tick_region(RegionEconomy *re, int rid){
     bool manuf = re->n_bld>0;                              /* manufactures actives = débouché */
-    /* PROMOTIONS : wealth/tête > 3× le panier → fraction ∝ excédent, plafonnée. */
+    float totp = re->strata[0].pop+re->strata[1].pop+re->strata[2].pop; if (totp<1.f) totp=1.f;
+    /* PROMOTIONS : wealth/tête > seuil → fraction ∝ excédent, ÉTEINTE au plafond doux. */
     for (int k=0;k<2;k++){
         int from=(k==0)?CLASS_LABORER:CLASS_BOURGEOIS, to=from+1;
         if (from==CLASS_LABORER && !manuf) continue;       /* sans atelier, pas d'accession bourgeoise */
@@ -764,7 +785,9 @@ static void mobility_tick_region(RegionEconomy *re, int rid){
         if (wpc<=thr) continue;
         float excess=clampf((wpc-thr)/thr,0.f,1.f);
         float rate=(k==0)?PROMOTE_RATE:PROMOTE_RATE*0.2f;  /* bourgeois→élite : ÷5 */
-        mobility_move(re, from, to, rate*excess);
+        float cap=(to==CLASS_ELITE)?SHARE_CAP_ELITE:SHARE_CAP_BOURGEOIS;
+        float damp=clampf(1.f - (re->strata[to].pop/totp)/cap, 0.f, 1.f);  /* plafond doux */
+        mobility_move(re, from, to, rate*excess*damp);
     }
     /* DÉMOTIONS : satisfaction < 30 % DEUX mois de suite → on redescend (∝ vif). */
     for (int from=CLASS_ELITE; from>=CLASS_BOURGEOIS; from--){
@@ -778,6 +801,7 @@ static void mobility_tick_region(RegionEconomy *re, int rid){
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
+    g_n_friche=0;                      /* E1bis.10 : recompte les régions en friche ce tick */
 
     for (int rid=0; rid<e->n_regions; rid++) {
         RegionEconomy *re=&e->region[rid];
@@ -824,6 +848,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * entaillée ~1 an ; l'immunité au raid décroît en parallèle. */
         if (re->balafre_days>0.f){ re->balafre_days-=dt*365.f; prod_mult*=0.5f; }
         if (re->raid_cd_days>0.f)  re->raid_cd_days-=dt*365.f;
+        if (rid<SCPS_MAX_REG && g_friche[rid]) prod_mult*=FRICHE_FACTOR;  /* E1bis.10 : entretien IMPAYÉ → friche */
 
         /* ---- 1. EXTRACTION = COLLECTE PASSIVE (∝ JOURNALIERS × TERRAIN) -
          * La récolte suit les BRAS qui occupent la tuile, pas le seul terrain : plus de
@@ -954,6 +979,18 @@ void econ_tick(WorldEconomy *e, float dt) {
             over_tax[c]   = (STATE_TAX_AMBITION>seuil)?(STATE_TAX_AMBITION-seuil):0.f;
         }
         re->over_tax = clampf(over_tax[CLASS_LABORER], 0.f, 1.f);   /* grief des laboureurs → révolte */
+
+        /* E1bis.10 — ENTRETIEN : l'infra bâtie se paie chaque tick ; impayé → FRICHE. */
+        if (rid<SCPS_MAX_REG){
+            float infra = re->build.K_inst + re->build.H_coerc + re->build.P_open
+                        + re->build.PE_infra + re->build.food_cap + re->build.port;
+            float upkeep = (infra*BUILD_GOLD_PER_DELTA/ENTRETIEN_DIV) * 365.f * dt;
+            re->treasury -= upkeep;
+            bool fr = (re->treasury < 0.f);
+            if (fr) re->treasury = 0.f;
+            g_friche[rid]=fr;
+            if (fr) g_n_friche++;
+        }
 
         /* §B (TRÉSOR MORT) — l'État REDÉPENSE : il ne hoarde plus, il CIRCULE. Une masse
          * salariale réabonde la richesse des classes AU PRORATA de l'impôt qu'elles ont

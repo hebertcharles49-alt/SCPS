@@ -242,8 +242,10 @@ void econ_init(WorldEconomy *e, const World *w);
  * production/consommation s'équilibrent par tick (satisfaction préservée). */
 void econ_tick(WorldEconomy *e, float dt);
 /* E0.7 — RAZ de la mobilité de classe (panier capté + séries de mauvaise sat.) ;
- * appelé à chaque nouvelle partie/sim depuis econ_init. */
+ * appelé à chaque nouvelle partie/sim depuis econ_init. (RAZ aussi la friche E1bis.10.) */
 void econ_mobility_reset(void);
+/* E1bis.10 — régions EN FRICHE (entretien impayé) au dernier econ_tick (télémétrie). */
+long econ_friche_count(void);
 
 /* §B1 — pousse le bonus de PRODUCTION (techs Forge/Société/Savoir·Production) du PAYS
  * propriétaire vers chaque région (re->tech_prod), lu par econ_tick pour abonder prod_mult.
