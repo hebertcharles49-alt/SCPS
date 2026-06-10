@@ -51,6 +51,7 @@ typedef struct {
     LBuildType type;
     int        level;        /* 0..5 (six niveaux) */
     int        jobs_filled;  /* slots occupés (≤ capacité du niveau) */
+    uint16_t   dev;          /* P3.19 : accumulateur de DÉVELOPPEMENT (plein+surplus → +niveau) */
 } LBuilding;
 
 typedef struct {

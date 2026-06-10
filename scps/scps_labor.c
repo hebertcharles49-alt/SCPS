@@ -212,10 +212,10 @@ void labor_seed_start(LaborEcon *e, int prov0){
     p->cap_tier=capitale_max_tier(p->pop); p->prod_mult=1.f;   /* capitale développée (la pop débloque) */
     p->pop_by_class[LAB_LABORER]=3200; p->pop_by_class[LAB_ARTISAN]=600; p->pop_by_class[LAB_ELITE]=200;
     /* 2 collecteurs + 2 ateliers, niveau 0 (1 slot chacun), REMPLIS. */
-    p->bld[0]=(LBuilding){ LB_COLLECTOR, 0, 1 };
-    p->bld[1]=(LBuilding){ LB_COLLECTOR, 0, 1 };
-    p->bld[2]=(LBuilding){ LB_WORKSHOP,  0, 1 };
-    p->bld[3]=(LBuilding){ LB_WORKSHOP,  0, 1 };
+    p->bld[0]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
+    p->bld[1]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
+    p->bld[2]=(LBuilding){ LB_WORKSHOP,  0, 1, 0 };
+    p->bld[3]=(LBuilding){ LB_WORKSHOP,  0, 1, 0 };
     p->n_bld=4;
     e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_BOIS]=200; e->stock[LR_OUTILS]=100;
     e->treasury=200;
@@ -247,13 +247,13 @@ void labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *eco
         p->pop_by_class[LAB_ARTISAN]=pop*15/100;
         p->pop_by_class[LAB_ELITE]  =pop - p->pop_by_class[LAB_LABORER] - p->pop_by_class[LAB_ARTISAN];
         /* Bâtiments choisis sur la GÉO réelle : collecteur + marché + extraction. */
-        p->bld[0]=(LBuilding){ LB_COLLECTOR, 0, 1 };
-        p->bld[1]=(LBuilding){ LB_MARKET,    0, 1 };
+        p->bld[0]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
+        p->bld[1]=(LBuilding){ LB_MARKET,    0, 1, 0 };
         LBuildType ex = LB_QUARRY;
         if      (e->g_pres[pid][LR_METAL] >0.3f) ex=LB_MINE;
         else if (e->g_pres[pid][LR_BOIS]  >0.3f) ex=LB_SAWMILL;
         else if (e->g_pres[pid][LR_ARGILE]>0.3f) ex=LB_CLAYPIT;
-        p->bld[2]=(LBuilding){ ex, 0, 1 };
+        p->bld[2]=(LBuilding){ ex, 0, 1, 0 };
         p->n_bld=3;
     }
 }
@@ -470,9 +470,56 @@ static void pop_growth(LaborEcon *e){
     }
 }
 
+/* P3.19 — main-d'œuvre LIBRE d'une province (pop − armée − admin − déjà employés). */
+static long prov_free_pop(const LProvince *p){
+    long employed=0; for (int b=0;b<p->n_bld;b++) employed += (long)p->bld[b].jobs_filled*POP_PER_SLOT;
+    long admin = capitale_admin_pop(p->cap_tier);
+    long fr = p->pop - p->pop_in_army - admin - employed;
+    return fr>0?fr:0;
+}
+/* STAFFING ADDITIF (P3.19) : remplit les slots VIDES avec la main-d'œuvre libre —
+ * jamais ne RETIRE un emploi posé (un job est une affectation). Sans pop libre ni
+ * slot vide : sans effet. C'est lui qui fait MONTER la prod quand la pop croît ou
+ * qu'un bâtiment se développe → les flux VIVENT. */
+static void labor_staff(LaborEcon *e){
+    for (int i=0;i<e->n_prov;i++){
+        LProvince *p=&e->prov[i];
+        long free_slots = prov_free_pop(p)/POP_PER_SLOT;
+        for (int b=0;b<p->n_bld && free_slots>0;b++){
+            int empty = building_job_slots(p->bld[b].level) - p->bld[b].jobs_filled;
+            if (empty<=0) continue;
+            int take = (free_slots<(long)empty)?(int)free_slots:empty;
+            p->bld[b].jobs_filled += take; free_slots -= take;
+        }
+    }
+}
+/* DÉVELOPPEMENT (P3.19) : un bâtiment PLEIN, là où il reste de la main-d'œuvre
+ * libre ET un surplus alimentaire, monte de niveau PEU À PEU (accumulateur ∝ surplus).
+ * Plus de slots → la passe de staffing les remplit → la prod et les flux montent.
+ * Un seul bâtiment se développe par province et par tick (croissance organique). */
+#define DEV_THRESH 900u
+static void labor_develop(LaborEcon *e){
+    long bal = labor_food_balance(e);                       /* surplus = on peut grandir (la GÂCHE) */
+    if (bal<=0) return;
+    int inc = 6;                                            /* cadence FIXE ; la demande de travail (pop) PACE le reste */
+    for (int i=0;i<e->n_prov;i++){
+        LProvince *p=&e->prov[i];
+        if (prov_free_pop(p) < POP_PER_SLOT) continue;       /* pas de demande de travail : on ne sur-bâtit pas */
+        for (int b=0;b<p->n_bld;b++){
+            LBuilding *bd=&p->bld[b];
+            if (bd->level>=5) continue;
+            if (bd->jobs_filled < building_job_slots(bd->level)) continue;   /* pas encore plein */
+            if ((unsigned)bd->dev + (unsigned)inc >= DEV_THRESH){ bd->level++; bd->dev=0; }
+            else bd->dev=(uint16_t)(bd->dev+inc);
+            break;                                           /* un seul par province/tick */
+        }
+    }
+}
+
 void labor_tick(LaborEcon *e){
     long before[LR_COUNT]; memcpy(before, e->stock, sizeof before);
     float supply_mat=0.f;
+    labor_staff(e);                                          /* P3.19 : la main-d'œuvre libre garnit les slots vides */
 
     /* 0. CAPITALE : améliorer si la pop le débloque & la recette est payable, puis
      *    faire ÉMERGER les classes des emplois (tier→Nobles, ateliers→Bourgeois) et
@@ -510,6 +557,7 @@ void labor_tick(LaborEcon *e){
      * capitale (plafond). 6. on RE-ÉMERGE les classes (la pop a bougé). 7. flux. */
     pop_growth(e);
     for (int i=0;i<e->n_prov;i++) capitale_mobility_tick(&e->prov[i]);
+    labor_develop(e);                                       /* P3.19 : les bâtiments pleins se développent (ouvre des slots) */
     for (int r=0;r<LR_COUNT;r++) e->flow[r]=e->stock[r]-before[r];
 }
 

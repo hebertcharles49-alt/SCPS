@@ -2864,7 +2864,7 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 6u            /* v6 : P3.16 — LR_MATERIALS retiré (LaborState change de taille) */
+#define SAVE_VERSION 7u            /* v7 : P3.19 — LBuilding.dev (développement) ; LaborState change de taille */
 #define SAVE_F_CRYPT 1u
 typedef struct {
     uint32_t magic, version;

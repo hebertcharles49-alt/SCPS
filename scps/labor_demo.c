@@ -45,7 +45,7 @@ int main(int argc, char **argv){
     e->n_prov=1;
     memset(&e->prov[0],0,sizeof(LProvince));
     e->prov[0].prov=0; e->prov[0].colonized=true; e->prov[0].n_bld=1;
-    e->prov[0].bld[0]=(LBuilding){ LB_COLLECTOR, 0, 0 };   /* niveau 0, VIDE */
+    e->prov[0].bld[0]=(LBuilding){ LB_COLLECTOR, 0, 0, 0 };   /* niveau 0, VIDE */
     LRes res;
     float out0=labor_building_output(e,0,0,&res);
     e->prov[0].bld[0].jobs_filled=1; float out1=labor_building_output(e,0,0,&res);
@@ -95,9 +95,9 @@ int main(int argc, char **argv){
     memset(e,0,sizeof(*e)); labor_init(e,w); e->n_prov=1;
     LProvince *pc=&e->prov[0];
     memset(pc,0,sizeof(*pc)); pc->prov=0; pc->colonized=true; pc->n_bld=3;
-    pc->bld[0]=(LBuilding){ LB_SAWMILL, 0, 1 };
-    pc->bld[1]=(LBuilding){ LB_MINE,    0, 1 };
-    pc->bld[2]=(LBuilding){ LB_WORKSHOP,0, 1 };
+    pc->bld[0]=(LBuilding){ LB_SAWMILL, 0, 1, 0 };
+    pc->bld[1]=(LBuilding){ LB_MINE,    0, 1, 0 };
+    pc->bld[2]=(LBuilding){ LB_WORKSHOP,0, 1, 0 };
     e->g_pres[0][LR_BOIS]=1.f; e->g_pres[0][LR_METAL]=1.f;    /* la géo fournit bois & métal */
     long chain_pop = (pc->bld[0].jobs_filled+pc->bld[1].jobs_filled+pc->bld[2].jobs_filled)*POP_PER_SLOT;
     long mat_before=e->stock[LR_OUTILS];
@@ -110,7 +110,7 @@ int main(int argc, char **argv){
     memset(e,0,sizeof(*e)); labor_init(e,w); e->n_prov=1;
     memset(&e->prov[0],0,sizeof(LProvince));
     e->prov[0].prov=0; e->prov[0].colonized=true; e->prov[0].n_bld=1;
-    e->prov[0].bld[0]=(LBuilding){ LB_WORKSHOP, 0, 1 };       /* atelier seul, aucun brut */
+    e->prov[0].bld[0]=(LBuilding){ LB_WORKSHOP, 0, 1, 0 };       /* atelier seul, aucun brut */
     long m0=e->stock[LR_OUTILS]; labor_tick(e); long m1=e->stock[LR_OUTILS];
     ok("sans intrants, l'atelier ne raffine AUCUN outil", m1==m0);
 
@@ -158,7 +158,7 @@ int main(int argc, char **argv){
     LProvince *pp=&e->prov[0]; memset(pp,0,sizeof(*pp));
     pp->prov=0; pp->colonized=true; pp->pop=1000; pp->pop_by_class[LAB_LABORER]=1000;
     /* on AFFECTE tout : 6 collecteurs (600 en job) + 400 enrôlés → 0 libre. */
-    for (int b=0;b<6;b++) pp->bld[b]=(LBuilding){ LB_COLLECTOR, 0, 1 };
+    for (int b=0;b<6;b++) pp->bld[b]=(LBuilding){ LB_COLLECTOR, 0, 1, 0 };
     pp->n_bld=6; pp->pop_in_army=400;
     e->stock[LR_FOOD]=500;                               /* pas de famine */
     PopBreakdown k0=labor_pop_breakdown(e);
@@ -179,7 +179,7 @@ int main(int argc, char **argv){
     memset(e,0,sizeof(*e)); labor_init(e,w); e->n_prov=1;
     LProvince *pf=&e->prov[0]; memset(pf,0,sizeof(*pf));
     pf->prov=0; pf->colonized=true; pf->pop=1000; pf->pop_by_class[LAB_LABORER]=1000;
-    for (int b=0;b<3;b++) pf->bld[b]=(LBuilding){ LB_WORKSHOP, 0, 1 };   /* consomment, ne collectent pas */
+    for (int b=0;b<3;b++) pf->bld[b]=(LBuilding){ LB_WORKSHOP, 0, 1, 0 };   /* consomment, ne collectent pas */
     pf->n_bld=3; e->stock[LR_FOOD]=2;
     long pf0=labor_pop_total(e); labor_tick(e); long pf1=labor_pop_total(e);
     ok("la famine (nourriture épuisée) stoppe et inverse la croissance", pf1 < pf0);
@@ -261,7 +261,7 @@ int main(int argc, char **argv){
             capitale_mobility_tick(cp);
             ok("sans atelier : 0 Bourgeois ; les Nobles ÉMERGENT de la capitale (tier 3 → 300)",
                cp->pop_by_class[LAB_ARTISAN]==0 && cp->pop_by_class[LAB_ELITE]==300);
-            cp->bld[0]=(LBuilding){LB_WORKSHOP,2,2}; cp->n_bld=1;
+            cp->bld[0]=(LBuilding){LB_WORKSHOP,2,2, 0 }; cp->n_bld=1;
             capitale_mobility_tick(cp);
             printf("   3000 hab, capitale tier 3 + 1 atelier : Nobles %ld · Bourgeois %ld · Journaliers %ld\n",
                    cp->pop_by_class[LAB_ELITE], cp->pop_by_class[LAB_ARTISAN], cp->pop_by_class[LAB_LABORER]);
