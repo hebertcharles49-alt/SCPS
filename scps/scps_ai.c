@@ -636,13 +636,25 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
         }
     } else if (a->credit_trade>=1.f){
         a->credit_trade -= 1.f;
-        int p = ai_pick_trade_partner(econ, rn, a->home_region, a->cid);
-        if (p>=0 && routes_order(rn, w, econ, a->home_region, p, false)){
-            a->stats.routes++;
-            faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);   /* §4 : le négoce AVANCE les Marchands */
-        } else if (a->home_region>=0 && agency_build(ag, econ, a->home_region, EDI_MARCHE)){
-            a->stats.builds_other++;                       /* pas de partenaire : on bâtit le carrefour */
+        /* E3 — les Halles acquises : l'Entrepôt du HUB passe AVANT la énième route
+         * (une fois — le jeu de stock s'ouvre, puis le négoce reprend son cours). */
+        int hub = intertrade_country_centre(econ, a->cid);
+        if (hub<0 || hub>=econ->n_regions || econ->region[hub].owner!=a->cid) hub=a->home_region;
+        if (a->has_halles && hub>=0 && hub<econ->n_regions
+            && econ->region[hub].n_entrepot<1
+            && econ->region[hub].treasury>400.f
+            && agency_build(ag, econ, hub, EDI_ENTREPOT)){
+            a->stats.builds_other++;
             faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);
+        } else {
+            int p = ai_pick_trade_partner(econ, rn, a->home_region, a->cid);
+            if (p>=0 && routes_order(rn, w, econ, a->home_region, p, false)){
+                a->stats.routes++;
+                faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);   /* §4 : le négoce AVANCE les Marchands */
+            } else if (a->home_region>=0 && agency_build(ag, econ, a->home_region, EDI_MARCHE)){
+                a->stats.builds_other++;                   /* pas de partenaire : on bâtit le carrefour */
+                faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);
+            }
         }
     }
 }
@@ -1139,6 +1151,53 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     a->can_enslave = ts->unlocked[TECH_ESCLAVAGE];   /* §4c : le gate de l'esclavage suit la tech */
     if (a->cid>=0 && a->cid<SCPS_MAX_COUNTRY) g_ai_enslave[a->cid]=a->can_enslave;  /* cache pour le règlement d'un TIERS */
     a->has_creuset = ts->unlocked[TECH_INTEGRATION]; /* §leviers : le Creuset forme mieux */
+    a->has_halles  = ts->unlocked[TECH_HALLES];      /* E3 : l'IA stockeuse exige les Halles */
+}
+
+/* ===================================================================== */
+/* E3 — L'IA STOCKEUSE : acheter bas vers l'entrepôt, vendre haut          */
+/* ===================================================================== */
+#define SPEC_BUY_BAND   0.80f   /* prix < 0.8 × moyenne mobile → acheter */
+#define SPEC_SELL_BAND  1.30f   /* prix > 1.3 × moyenne mobile → vendre */
+#define SPEC_GOLD_FLOOR 350.f   /* le trésor JAMAIS saigné : la spéculation est un emploi du surplus */
+void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
+    if (!a || !econ) return;
+    int hub = intertrade_country_centre(econ, a->cid);
+    if (hub<0) hub = a->home_region;
+    if (hub<0 || hub>=econ->n_regions) return;
+    RegionEconomy *re=&econ->region[hub];
+    if (re->owner != a->cid) return;
+    /* la moyenne mobile (~1 an) s'entretient TOUJOURS — même sans entrepôt
+     * (l'IA apprend ses prix avant d'avoir les murs pour jouer). */
+    for (int g=1; g<RES_COUNT; g++){
+        float p=re->price[g];
+        a->spec_avg[g] = (a->spec_avg[g]<=0.f)? p : a->spec_avg[g]*(11.f/12.f) + p*(1.f/12.f);
+    }
+    if (re->n_entrepot<1) return;            /* sans Entrepôt : cap 200, pas de jeu */
+    float space = ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;   /* l'aile spéculative */
+    float held=0.f; for (int g=1;g<RES_COUNT;g++) held+=a->hoard[g];
+    float cap_stock = ECON_STOCK_CAP_BASE + ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;
+    for (int g=1; g<RES_COUNT; g++){
+        float p=re->price[g], xb=a->spec_avg[g];
+        if (xb<=0.f || p<=0.f) continue;
+        if (p < SPEC_BUY_BAND*xb && re->treasury > SPEC_GOLD_FLOOR && held < space){
+            float vol = fminf(re->stock[g]*0.25f, space-held);                       /* le bien QUITTE le marché ouvert */
+            vol = fminf(vol, (re->treasury-SPEC_GOLD_FLOOR)*0.25f/fmaxf(p,0.05f));   /* jamais la famine d'or */
+            if (vol>=1.f){
+                re->stock[g]-=vol; a->hoard[g]+=vol; held+=vol;
+                re->treasury -= vol*p;
+                a->stats.spec_vol+=vol; a->stats.spec_gold-=vol*p; a->stats.spec_buys++;
+            }
+        } else if (p > SPEC_SELL_BAND*xb && a->hoard[g]>=1.f){
+            float vol = a->hoard[g]*0.5f;
+            float room = cap_stock - re->stock[g]; if (vol>room) vol=room;           /* l'entrepôt ne déborde pas */
+            if (vol>=1.f){
+                a->hoard[g]-=vol; re->stock[g]+=vol;                                  /* le bien REVIENT au marché */
+                re->treasury += vol*p;
+                a->stats.spec_vol+=vol; a->stats.spec_gold+=vol*p; a->stats.spec_sells++;
+            }
+        }
+    }
 }
 
 /* ===================================================================== */

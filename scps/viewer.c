@@ -741,6 +741,8 @@ static void sim_day(Sim *s, World *w) {
          * révolte lit le tier PAYÉ (croître sans bâtir devient un grief réel). */
         labor_resync_pop(s->labor, s->econ);
         labor_publish_capitals(s->labor);
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)   /* E3 : l'IA stockeuse (mensuel) */
+            if (s->ai_on[c]) ai_speculate_tick(&s->ai[c], s->econ);
         /* — conquête du mois : un peuple passé sous une couronne ÉTRANGÈRE devient
          *   restif (intégration à zéro, L au plancher) → terreau de sécession. */
         for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){

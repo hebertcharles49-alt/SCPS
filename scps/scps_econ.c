@@ -764,6 +764,7 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
 static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien impayé) */
 static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
+float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
 
 #define PROMOTE_RATE 0.005f       /* 0.5 %/mois max (∝ richesse excédentaire) */
 /* Seuil d'accession : « 3× le panier » (brief E0.7). Mais l'éco cale les journaliers

@@ -68,6 +68,10 @@ typedef struct {
     int techs;           /* technologies recherchées (l'arbre vivant) */
     int techs_faustian;  /* dont des bouts FAUSTIENS (la pente arcanique) */
     int relocations;     /* ensemencements de pop pour combler une pénurie (peupler sa province-ressource) */
+    /* E3 — l'IA stockeuse : la preuve chiffrée de l'arbitrage. */
+    float spec_vol;      /* volume total spéculé (achats + ventes) */
+    float spec_gold;     /* or NET de l'arbitrage (ventes − achats) */
+    int   spec_buys, spec_sells;
 } AiStats;
 
 /* ---- L'ACTEUR : une personnalité (poids de la fiche) + un rythme ----------- */
@@ -101,6 +105,12 @@ typedef struct {
     int      peace_lock_until;   /* après une consolidation : pas de guerre avant */
     bool     can_enslave;        /* §4c : l'Économie servile (TECH_ESCLAVAGE) débloquée ? */
     bool     has_creuset;        /* §leviers : Droit d'intégration (TECH_INTEGRATION) — forme mieux */
+    bool     has_halles;         /* E3 : « Halles & entrepôts » débloquée ? (gate de l'IA stockeuse) */
+
+    /* E3 — L'IA STOCKEUSE : moyenne mobile (~1 an) des prix de sa région-hub et
+     * la RÉSERVE spéculative tenue dans ses Entrepôts (retirée du marché ouvert). */
+    float    spec_avg[RES_COUNT];
+    float    hoard[RES_COUNT];
 
     uint32_t rng;            /* graine perso (jitter, départage) */
     AiStats  stats;
@@ -132,6 +142,14 @@ float  ai_aggression(const AiActor *a, const AiView *v);
 void   ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
                WorldLegitimacy *wl, AgencyState *ag, RouteNetwork *rn,
                DiploState *diplo, int day);
+
+/* E3 — L'IA STOCKEUSE (tick MENSUEL) : lit le prix courant de sa région-hub vs
+ * sa moyenne mobile (~1 an, par ressource). Bas (<0.8 x̄) + trésor sain →
+ * ACHÈTE vers l'entrepôt (le bien QUITTE le marché ouvert) ; haut (>1.3 x̄) →
+ * VEND la réserve. Gatée par l'Entrepôt (sinon cap 200 : pas de jeu). Les
+ * priorités existantes sont INTACTES : la spéculation est un emploi du surplus,
+ * jamais de la famine d'or. Les stocks doivent LISSER les prix. */
+void   ai_speculate_tick(AiActor *a, WorldEconomy *econ);
 
 /* RECHERCHE (1 JOUR) : à sa cadence, l'empire accumule des points (rendement
  * Savoir × population) et déverrouille UN nœud choisi par ses BUTS + le PENCHANT

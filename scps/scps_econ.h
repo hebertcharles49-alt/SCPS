@@ -253,6 +253,9 @@ void econ_tick(WorldEconomy *e, float dt);
 void econ_mobility_reset(void);
 /* E1bis.10 — régions EN FRICHE (entretien impayé) au dernier econ_tick (télémétrie). */
 long econ_friche_count(void);
+/* E3 §16 — le prix d'ANCRE d'un bien (BASE_PRICE) : pour normaliser les indices
+ * de prix (télémétrie du lissage par les stocks). 0 si hors borne. */
+float econ_base_price(Resource r);
 
 /* §B1 — pousse le bonus de PRODUCTION (techs Forge/Société/Savoir·Production) du PAYS
  * propriétaire vers chaque région (re->tech_prod), lu par econ_tick pour abonder prod_mult.

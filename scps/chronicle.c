@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <math.h>   /* sqrt : σ du lissage des prix (E3 §16) */
 
 #define CORR_CAPTURED 30   /* §C3 : seuil « polity tenue par une faction » (corr 0-100) */
 
@@ -141,6 +142,8 @@ static void sim_day(Sim *s, World *w) {
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f);
         labor_resync_pop(s->labor, s->econ);   /* E0.1 : labor RELIT la pop (le monde la possède) */
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)   /* E3 : l'IA stockeuse (mensuel) */
+            if (s->ai_on[c]) ai_speculate_tick(&s->ai[c], s->econ);
         /* — conquête du mois : un peuple passé sous une couronne ÉTRANGÈRE devient
          *   restif (intégration à zéro, L au plancher) → terreau de sécession. */
         for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
@@ -569,6 +572,8 @@ int main(int argc, char **argv){
     long tot_emp_n=0, tot_emp_hub=0;   /* par-empire : moyennes de fin de sim */
     double tot_emp_gold=0, tot_emp_flux=0, tot_emp_imp=0, tot_emp_exp=0, tot_emp_expgold=0;
     long tot_tier_y[3]={0,0,0}; int tot_tier_n[3]={0,0,0};   /* E1 §9 : fenêtres d'accession */
+    double tot_spec_vol=0, tot_spec_gold=0; long tot_spec_ent=0;   /* E3 §16 : l'IA stockeuse */
+    double tot_sd0=0, tot_sd1=0; int tot_sd0_n=0, tot_sd1_n=0;     /* σ avant/après (moy. des sims) */
     long tot_captured=0, tot_worstcorr=0; int worlds_with_capture=0;   /* §C3 : le rot, agrégé */
     int  worlds_with_ironorder=0, worlds_with_uprising=0;
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
@@ -615,6 +620,10 @@ int main(int argc, char **argv){
         int age_year[AGE_COUNT]; AgeSnap age_snap[AGE_COUNT];
         for (int a=0;a<AGE_COUNT;a++){ age_year[a]=-1; age_snap[a].year=-1; }
         int tier_year[3]={-1,-1,-1};   /* E1 §9 : année du PREMIER édifice 360/540/960 j bâti */
+        /* E3 §16 — le LISSAGE par les stocks : σ d'un indice de prix (panier
+         * grain·métal·outils, normalisé par les ancres), échantillonné chaque
+         * année, AVANT vs APRÈS l'existence du premier Entrepôt au monde. */
+        double sg_n[2]={0,0}, sg_mean[2]={0,0}, sg_m2[2]={0,0};
         int war_onsets=0, prev_wars=0, peak_wars=0;
         int peak_rev=0, peak_rev_year=0;
         int min_living=c0;
@@ -640,6 +649,16 @@ int main(int argc, char **argv){
                 if (po>=0 && no>=0 && no!=po) conq_prov += w->region[r].n_provinces;
                 prev_owner[r]=no;
             }
+            /* E3 §16 — échantillon ANNUEL de l'indice de prix (Welford), classé
+             * avant/après l'existence du premier Entrepôt (le lissage se mesure). */
+            { bool any_ent=false;
+              for (int r=0;r<s.econ->n_regions && !any_ent;r++)
+                  if (s.econ->region[r].n_entrepot>0) any_ent=true;
+              float idx = (avg_price(s.econ,RES_GRAIN)/econ_base_price(RES_GRAIN)
+                         + avg_price(s.econ,RES_METAL)/econ_base_price(RES_METAL)
+                         + avg_price(s.econ,RES_TOOLS)/econ_base_price(RES_TOOLS))/3.f;
+              int b = any_ent?1:0;
+              sg_n[b]+=1.0; double d=idx-sg_mean[b]; sg_mean[b]+=d/sg_n[b]; sg_m2[b]+=d*(idx-sg_mean[b]); }
             /* E1 §9 — fenêtres d'ACCESSION : l'année où le premier édifice de chaque
              * palier (360/540/960 j) s'achève quelque part. La loi des prix se LIT. */
             if (tier_year[0]<0 || tier_year[1]<0 || tier_year[2]<0)
@@ -784,6 +803,20 @@ int main(int argc, char **argv){
         /* E1 §9 — la loi prix/durée se LIT : année du premier édifice par palier. */
         printf("              accession (1er édifice bâti) : 360 j an %d · 540 j an %d · 960 j an %d  (-1 = jamais)\n",
                tier_year[0], tier_year[1], tier_year[2]);
+        /* E3 §16 — l'IA stockeuse : volumes, or d'arbitrage, et LE LISSAGE (σ). */
+        { float sv=0, sgold=0; int sb=0, ss=0, nent=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++) if (s.ai_on[c]){
+              sv+=s.ai[c].stats.spec_vol; sgold+=s.ai[c].stats.spec_gold;
+              sb+=s.ai[c].stats.spec_buys; ss+=s.ai[c].stats.spec_sells; }
+          for (int r=0;r<s.econ->n_regions;r++) nent+=s.econ->region[r].n_entrepot;
+          double sd0=(sg_n[0]>1)? sqrt(sg_m2[0]/(sg_n[0]-1)) : 0.0;
+          double sd1=(sg_n[1]>1)? sqrt(sg_m2[1]/(sg_n[1]-1)) : 0.0;
+          printf("              spéculation (E3) : %d entrepôt(s) · vol %.0f (%.1f/an) · or net %+.0f · %d achat(s)/%d vente(s) | σ prix avant %.3f (%d ans) → après %.3f (%d ans)\n",
+                 nent, sv, sv/(float)years, sgold, sb, ss,
+                 sd0, (int)sg_n[0], sd1, (int)sg_n[1]);
+          tot_spec_vol+=sv; tot_spec_gold+=sgold; tot_spec_ent+=nent;
+          if (sg_n[0]>1){ tot_sd0+=sd0; tot_sd0_n++; }
+          if (sg_n[1]>1){ tot_sd1+=sd1; tot_sd1_n++; } }
         /* TÉLÉMÉTRIE PAR ÂGE : le marché, l'or par empire et la tech à chaque avènement. */
         { bool any=false; for (int a=0;a<AGE_COUNT;a++) if (age_snap[a].year>=0) any=true;
           if (any){
@@ -1009,6 +1042,9 @@ int main(int argc, char **argv){
            tot_tier_n[0]? (double)tot_tier_y[0]/tot_tier_n[0]:-1.0, tot_tier_n[0], nsims,
            tot_tier_n[1]? (double)tot_tier_y[1]/tot_tier_n[1]:-1.0, tot_tier_n[1], nsims,
            tot_tier_n[2]? (double)tot_tier_y[2]/tot_tier_n[2]:-1.0, tot_tier_n[2], nsims);
+    printf("   l'IA stockeuse (E3 §16) ..... %ld entrepôt(s) · vol spéculé %.0f (%.1f/sim) · or net %+.0f | σ prix avant %.3f → après %.3f (les stocks doivent LISSER)\n",
+           tot_spec_ent, tot_spec_vol, tot_spec_vol/nsims, tot_spec_gold,
+           tot_sd0_n? tot_sd0/tot_sd0_n : 0.0, tot_sd1_n? tot_sd1/tot_sd1_n : 0.0);
     printf("   provinces transférées à la paix %ld   (moy. %.1f/sim ; la propriété ne change qu'au RÈGLEMENT)\n", tot_conq, (double)tot_conq/nsims);
     printf("   occupations (terrain) ....... %ld posée(s) · %ld levée(s)   (les sièges tiennent le sol entre deux paix)\n", g_tot_occ_posed, g_tot_occ_lifted);
     printf("   pays absorbés (morts) ....... %ld   (moy. %.1f/sim)\n", tot_absorbed, (double)tot_absorbed/nsims);
