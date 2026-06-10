@@ -1231,27 +1231,35 @@ static void sb_panel_eco(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, 
             nb++; shown++; y+=16;
         }
     } else if (g_sb.eco_sub==1){
-        /* P3.21 — la COULEUR de la ligne porte l'état du marché ; le MOT (« engorgé »…)
-         * ne survit qu'au survol (plus de colonne « état » répétée). */
-        draw_text(ren,g_font_small,x+10,y,COL_DIM,"bien            prix(or)  tend."); y+=16;
+        /* P3.21 — la COULEUR porte l'état ; le mot va au survol. P3.20 — la colonne
+         * « échange » : net du RÉSEAU vs notre marché de référence (↓ on importe /
+         * achète · ↑ on exporte / vend). */
+        draw_text(ren,g_font_small,x+10,y,COL_DIM,"bien          prix(or) tend.  échange"); y+=16;
         int idx[RES_COUNT], n=0;
         for (int g=1;g<RES_COUNT;g++) if (g_sbc.dem[g]>0.05f||g_sbc.sup[g]>0.05f) idx[n++]=g;
         for (int i=1;i<n;i++){ int k=idx[i],j=i;        /* tri : tension d'abord */
             while(j>0 && (int)band_marche(g_sbc.dem[idx[j-1]],g_sbc.sup[idx[j-1]]+g_sbc.stk[idx[j-1]])
                        > (int)band_marche(g_sbc.dem[k],g_sbc.sup[k]+g_sbc.stk[k])){ idx[j]=idx[j-1]; j--; }
             idx[j]=k; }
-        static char mhov[RES_COUNT][96];
+        static char mhov[RES_COUNT][120];
         int off=g_sb.scroll[SBT_ECO]; if(off>n-1)off=n>0?n-1:0; if(off<0)off=0;
         for (int i=off;i<n && y<h-20;i++){
             int g=idx[i];
             BandMarche m=band_marche(g_sbc.dem[g], g_sbc.sup[g]+g_sbc.stk[g]);
             float d=g_sbc.prix[g]-g_sbc.prix_prev[g];
             const char *tend=(d>0.02f)?"\xe2\x96\xb2":(d<-0.02f)?"\xe2\x96\xbc":"\xc2\xb7";
-            snprintf(buf[nb],120,"%-14.14s %7.2f   %s",
-                     resource_name((Resource)g), g_sbc.prix[g], tend);
+            float net=intertrade_import_vol(me,g)-intertrade_export_vol(me,g);  /* +import / -export */
+            char ie[16];
+            if (net> 0.5f) snprintf(ie,sizeof ie,"\xe2\x86\x93%.0f", net);       /* ↓ on importe */
+            else if (net<-0.5f) snprintf(ie,sizeof ie,"\xe2\x86\x91%.0f", -net); /* ↑ on exporte */
+            else snprintf(ie,sizeof ie,"\xc2\xb7");
+            snprintf(buf[nb],120,"%-12.12s %7.2f  %s  %s",
+                     resource_name((Resource)g), g_sbc.prix[g], tend, ie);
             draw_text(ren,g_font_small,x+12,y,sb_marche_col(m),buf[nb]); nb++;
-            snprintf(mhov[g],sizeof mhov[g],"%s — marché %s",resource_name((Resource)g),label_marche(m));
-            zone_add((SDL_Rect){x+8,y-1,w-16,15}, mhov[g]);    /* le mot d'état : au survol */
+            snprintf(mhov[g],sizeof mhov[g],"%s — marché %s · réseau : %s",
+                     resource_name((Resource)g), label_marche(m),
+                     net>0.5f?"on IMPORTE (on achète)":net<-0.5f?"on EXPORTE (on vend)":"équilibré");
+            zone_add((SDL_Rect){x+8,y-1,w-16,15}, mhov[g]);
             y+=15;
         }
     } else if (g_sb.eco_sub==2){
