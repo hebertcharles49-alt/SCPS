@@ -2235,12 +2235,16 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
                sphere_distance(psph,species_sphere(crace[ord[k]])));
     printf(" … %d cités-états isolats→%s\n", n_cs, species_name(exotic));
 
-    /* P1.5 — recolore chaque EMPIRE par sa FAMILLE DE RACE (race de sa capitale). */
+    /* P1.5/P1.9 — recolore ET RENOMME chaque EMPIRE par sa famille de RACE + son
+     * ETHOS dominant (lus de sa capitale). Déterministe par graine. */
     for (int c=0;c<w->n_countries;c++){
         int cp=w->country[c].capital_prov;
         int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
-        SpeciesArchetype rc=(cr>=0&&cr<econ->n_regions)? econ->region[cr].culture.race : RACE_HUMAIN;
+        bool ok=(cr>=0&&cr<econ->n_regions);
+        SpeciesArchetype rc=ok? econ->region[cr].culture.race  : RACE_HUMAIN;
+        Ethos            ec=ok? econ->region[cr].culture.ethos : ETHOS_ORDRE;
         w->country[c].color = country_race_color(rc, c);
+        country_make_name(w->country[c].name, (int)sizeof w->country[c].name, rc, ec, c);
     }
 }
 
@@ -3171,6 +3175,30 @@ uint32_t country_race_color(SpeciesArchetype race, int cid){
     uint8_t g=(uint8_t)(hue2rgb_f(p,q,h      )*255);
     uint8_t bv=(uint8_t)(hue2rgb_f(p,q,h-1.f/3)*255);
     return 0xFF000000u|((uint32_t)r<<16)|((uint32_t)g<<8)|bv;
+}
+
+/* P1.9 — NOM D'EMPIRE procédural = f(RACE, ETHOS) : syllabaire par race (racine +
+ * suffixe) + ÉPITHÈTE d'ethos. Déterministe par pays (donc par graine). « Horde
+ * Grukgor » (orque dominateur) · « Sylve Aeriel » (elfe) · « Couronne Aldwic ». */
+void country_make_name(char *out, int n, SpeciesArchetype race, Ethos ethos, int cid){
+    static const char *ROOT[RACE_COUNT][8] = {
+        {"Aer","Syl","Lór","Thal","Elen","Cael","Mith","Vael"},   /* ELFE */
+        {"Gron","Dur","Khaz","Bral","Thrum","Kar","Bor","Dhûr"},  /* NAIN */
+        {"Tik","Zen","Pyx","Fizz","Cog","Bel","Nim","Vex"},       /* GNOME */
+        {"Ald","Bren","Cael","Dorn","Estr","Far","Gual","Marn"},  /* HUMAIN */
+        {"Bram","Tuck","Fal","Hob","Mer","Pip","Wyn","Bre"},      /* HALFELIN */
+        {"Gruk","Mor","Karg","Drog","Nazg","Urk","Brak","Gho"},   /* ORQUE */
+    };
+    static const char *SUFF[RACE_COUNT][4] = {
+        {"iel","wen","dor","ond"}, {"gan","din","mar","rok"}, {"il","ex","top","yn"},
+        {"or","wic","yan","red"},  {"ling","wick","by","ton"},  {"nak","dush","rak","gor"},
+    };
+    static const char *EPI[ETHOS_COUNT] = {   /* DOMINATEUR..PACIFISTE */
+        "Horde","Clans","Ordre","Couronne","Ligue","Havre" };
+    int r=(race>=0&&race<RACE_COUNT)?(int)race:RACE_HUMAIN;
+    int e=(ethos>=0&&ethos<ETHOS_COUNT)?(int)ethos:ETHOS_ORDRE;
+    uint32_t h=((uint32_t)cid*2654435761u)^0x9E3779B9u;
+    snprintf(out,(size_t)n,"%s %s%s", EPI[e], ROOT[r][(h>>3)&7], SUFF[r][(h>>9)&3]);
 }
 
 /* ════════════════════════════════════════════════════════════════════════

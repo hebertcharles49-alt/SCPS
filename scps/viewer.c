@@ -214,6 +214,16 @@ static void draw_text(SDL_Renderer *ren, TTF_Font *f, int x, int y, SDL_Color co
     if (tx) { SDL_RenderCopy(ren, tx, NULL, &d); SDL_DestroyTexture(tx); }
 }
 static int text_w(TTF_Font *f, const char *s){ int w=0; if (f&&s) TTF_SizeUTF8(f,s,&w,NULL); return w; }
+/* P1.8 — texte avec ALPHA (fondu) : TTF_Blended ne lit pas col.a, on module la texture. */
+static void draw_text_a(SDL_Renderer *ren, TTF_Font *f, int x, int y, SDL_Color col, Uint8 a, const char *s){
+    if (!f || !s || !s[0]) return;
+    SDL_Surface *su = TTF_RenderUTF8_Blended(f, s, col);
+    if (!su) return;
+    SDL_Texture *tx = SDL_CreateTextureFromSurface(ren, su);
+    SDL_Rect d = { x, y, su->w, su->h };
+    SDL_FreeSurface(su);
+    if (tx){ SDL_SetTextureAlphaMod(tx, a); SDL_RenderCopy(ren, tx, NULL, &d); SDL_DestroyTexture(tx); }
+}
 static void fill_rect(SDL_Renderer *ren, int x,int y,int w,int h, SDL_Color c) {
     SDL_SetRenderDrawColor(ren, c.r,c.g,c.b,c.a);
     SDL_Rect r={x,y,w,h}; SDL_RenderFillRect(ren,&r);
@@ -2487,6 +2497,35 @@ static void draw_army_markers(SDL_Renderer *ren, const Cam *cam, const Sim *s,
     }
 }
 
+/* P1.8 — ÉTIQUETTE de NOM D'EMPIRE au DÉZOOM, centrée sur le territoire (centroïde
+ * des régions possédées), en FONDU selon le zoom (pleine au dézoom, s'efface en
+ * zoomant pour ne pas encombrer). Le nom est procédural (P1.9). */
+static void draw_empire_labels(SDL_Renderer *ren, const Cam *cam, const Sim *s,
+                               const World *w, int win_w, int win_h){
+    if (!g_font_small) return;
+    float fade=(6.5f - cam->scale)/3.5f; if (fade<=0.f) return; if (fade>1.f) fade=1.f;
+    Uint8 a=(Uint8)(fade*235.f);
+    for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++){
+        if (w->country[c].role==POLITY_UNCLAIMED) continue;
+        long ax=0, ay=0; int n=0;                            /* centroïde des régions POSSÉDÉES */
+        for (int r=0;r<s->econ->n_regions;r++){
+            if (s->econ->region[r].owner!=c) continue;
+            const Region *R=&w->region[r];
+            for (int k=0;k<R->n_provinces && k<12;k++){
+                int pid=R->province_ids[k]; if (pid<0||pid>=w->n_provinces) continue;
+                ax+=w->province[pid].seed_x; ay+=w->province[pid].seed_y; n++;
+            }
+        }
+        if (n<2) continue;
+        int sx=(int)(((float)ax/n - cam->ox)*cam->scale);
+        int sy=(int)(((float)ay/n - cam->oy)*cam->scale);
+        if (sx<60||sy<86||sx>win_w-60||sy>win_h-70) continue;   /* hors champ / sous les panneaux */
+        const char *nm=w->country[c].name; int lw=text_w(g_font_small,nm);
+        fill_rect(ren, sx-lw/2-3, sy-7, lw+6, 14, (SDL_Color){0x08,0x0c,0x14,(Uint8)(a*0.66f)});
+        draw_text_a(ren, g_font_small, sx-lw/2, sy-6, (SDL_Color){0xf2,0xe8,0xd0,0xff}, a, nm);
+    }
+}
+
 /* Une armée de campagne EST-ELLE en mouvement quelque part ? (sert au mode --war
  * pour laisser une guerre mûrir avant la capture.) */
 static bool any_field_army(const Sim *s, const World *w){
@@ -3323,6 +3362,7 @@ int main(int argc, char **argv) {
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
                 zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset();
+                draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_topbar(ren, win_w, &sim, world, cid, speed);
                 draw_outliner(ren, win_w, win_h, &sim, world);            /* §6 : l'outliner */
@@ -3882,6 +3922,7 @@ int main(int argc, char **argv) {
             if (show_tree) {                                    /* superposition de l'arbre (Tab) */
                 draw_tech_tree(ren, win_w, win_h, sim.econ, sim.ts, world, cid);
             } else {
+                draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_topbar(ren, win_w, &sim, world, cid, speed);
                 draw_outliner(ren, win_w, win_h, &sim, world);            /* §6 : « ce que je possède » */
