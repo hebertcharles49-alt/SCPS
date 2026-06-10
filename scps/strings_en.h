@@ -196,4 +196,12 @@
     X(STR_ARMEE_DEMOB_HOV, "Disband the army: the WEAPONS are consumed (no materials refunded); the men RETURN to their place of origin and become labour again.") \
     X(STR_ARMEE_LEVY_LOCK_GUERRE, "Locked: build the BARRACKS (tech tree) to open the war footing.") \
     X(STR_ARMEE_LEVY_LOCK_MASSE, "Locked: CONSCRIPTION (after the Barracks) opens the mass levy.") \
+    X(STR_FACTION_ETHOS_0, "the way of force — army, war, expansion") \
+    X(STR_FACTION_ETHOS_1, "the way of gold — routes, markets, profit") \
+    X(STR_FACTION_ETHOS_2, "the way of order — law, administration, stability") \
+    X(STR_FACTION_ETHOS_3, "the way of tradition — land, faith, continuity") \
+    X(STR_FACTION_ETHOS_4, "the way of the forbidden — arcana, risk, taboo crossed") \
+    X(STR_FACTION_ETHOS_5, "the common folk — bread, peace, daily safety") \
+    X(STR_FACTION_HOV_FMT, "{0} · {1}. Satisfaction {2}% = their buy-in to the regime; share {3}% = their political weight.") \
+    X(STR_FACTION_HOV_COUP, " — ALIENATED & POWERFUL: a coup is brewing.") \
 

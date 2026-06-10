@@ -201,5 +201,13 @@
     X(STR_ARMEE_DEMOB_HOV, "Dissoudre l'armée : les ARMES sont consommées (aucun matériau rendu) ; les hommes RENTRENT à leur point d'origine et redeviennent main-d'œuvre.") \
     X(STR_ARMEE_LEVY_LOCK_GUERRE, "Verrouillé : bâtir la CASERNE (arbre de tech) ouvre le pied de guerre.") \
     X(STR_ARMEE_LEVY_LOCK_MASSE, "Verrouillé : la CONSCRIPTION (après la Caserne) ouvre la levée en masse.") \
+    X(STR_FACTION_ETHOS_0, "la voie de la force — armée, guerre, expansion") \
+    X(STR_FACTION_ETHOS_1, "la voie de l'or — routes, marchés, profit") \
+    X(STR_FACTION_ETHOS_2, "la voie de l'ordre — lois, administration, stabilité") \
+    X(STR_FACTION_ETHOS_3, "la voie de la tradition — terre, foi, continuité") \
+    X(STR_FACTION_ETHOS_4, "la voie de l'interdit — arcane, risque, tabou franchi") \
+    X(STR_FACTION_ETHOS_5, "le petit peuple — pain, paix, sécurité du quotidien") \
+    X(STR_FACTION_HOV_FMT, "{0} · {1}. Satisfaction {2}% = leur adhésion au régime ; part {3}% = leur poids politique.") \
+    X(STR_FACTION_HOV_COUP, " — ALIÉNÉE & PUISSANTE : le coup couve.") \
 
 #endif /* SCPS_STRINGS_IDS_H */

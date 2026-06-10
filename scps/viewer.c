@@ -1000,7 +1000,7 @@ static void draw_topbar(SDL_Renderer *ren, int win_w, const Sim *s, const World 
         int ord[6]={0,1,2,3,4,5};
         for (int i=0;i<6;i++) for (int j=i+1;j<6;j++)
             if (fc.faction[ord[j]].satisfaction > fc.faction[ord[i]].satisfaction){ int t=ord[i];ord[i]=ord[j];ord[j]=t; }
-        static char fhov[6][160];
+        static char fhov[6][256];
         for (int k=0;k<6;k++){
             int f=ord[k];
             fill_round(ren, xc, yC+2, 10, 10, FCOL[f], 3);        /* pastille d'identité arrondie */
@@ -1011,9 +1011,12 @@ static void draw_topbar(SDL_Renderer *ren, int win_w, const Sim *s, const World 
             draw_text(ren, fs, xc+13+aw+4, yC, sense_color(fc.faction[f].satisfaction/100.f), pz);
             int total = 13+aw+4+text_w(fs,pz);
             bool coup = (!fc.faction[f].aligned && fc.faction[f].part >= 25);
-            snprintf(fhov[k],sizeof fhov[k], "%s — satisfaction %d%% · part de pouvoir %d%%%s",
-                     fc.faction[f].name, fc.faction[f].satisfaction, fc.faction[f].part,
-                     coup ? " · ALIÉNÉE & PUISSANTE : le coup couve." : "");
+            /* P6.32 — QUI ils sont (l'éthos) + ce que MESURE le % (adhésion · poids). */
+            char sz[8], pp[8]; snprintf(sz,sizeof sz,"%d",fc.faction[f].satisfaction);
+            snprintf(pp,sizeof pp,"%d",fc.faction[f].part);
+            char body[200]; tr_fmt(body,sizeof body, STR_FACTION_HOV_FMT,
+                                   fc.faction[f].name, tr_band(STR_FACTION_ETHOS_0,f,6), sz, pp);
+            snprintf(fhov[k],sizeof fhov[k], "%s%s", body, coup?tr(STR_FACTION_HOV_COUP):"");
             zone_add((SDL_Rect){xc-2,yC-2, total+6, 20}, fhov[k]);
             xc += total + 14;
         }
@@ -1217,22 +1220,28 @@ static void sb_panel_eco(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, 
             nb++; shown++; y+=16;
         }
     } else if (g_sb.eco_sub==1){
-        draw_text(ren,g_font_small,x+10,y,COL_DIM,"bien            prix(or)  tend.  état"); y+=16;
+        /* P3.21 — la COULEUR de la ligne porte l'état du marché ; le MOT (« engorgé »…)
+         * ne survit qu'au survol (plus de colonne « état » répétée). */
+        draw_text(ren,g_font_small,x+10,y,COL_DIM,"bien            prix(or)  tend."); y+=16;
         int idx[RES_COUNT], n=0;
         for (int g=1;g<RES_COUNT;g++) if (g_sbc.dem[g]>0.05f||g_sbc.sup[g]>0.05f) idx[n++]=g;
         for (int i=1;i<n;i++){ int k=idx[i],j=i;        /* tri : tension d'abord */
             while(j>0 && (int)band_marche(g_sbc.dem[idx[j-1]],g_sbc.sup[idx[j-1]]+g_sbc.stk[idx[j-1]])
                        > (int)band_marche(g_sbc.dem[k],g_sbc.sup[k]+g_sbc.stk[k])){ idx[j]=idx[j-1]; j--; }
             idx[j]=k; }
+        static char mhov[RES_COUNT][96];
         int off=g_sb.scroll[SBT_ECO]; if(off>n-1)off=n>0?n-1:0; if(off<0)off=0;
         for (int i=off;i<n && y<h-20;i++){
             int g=idx[i];
             BandMarche m=band_marche(g_sbc.dem[g], g_sbc.sup[g]+g_sbc.stk[g]);
             float d=g_sbc.prix[g]-g_sbc.prix_prev[g];
             const char *tend=(d>0.02f)?"\xe2\x96\xb2":(d<-0.02f)?"\xe2\x96\xbc":"\xc2\xb7";
-            snprintf(buf[nb],120,"%-14.14s %7.2f   %s    %s",
-                     resource_name((Resource)g), g_sbc.prix[g], tend, label_marche(m));
-            draw_text(ren,g_font_small,x+12,y,sb_marche_col(m),buf[nb]); nb++; y+=15;
+            snprintf(buf[nb],120,"%-14.14s %7.2f   %s",
+                     resource_name((Resource)g), g_sbc.prix[g], tend);
+            draw_text(ren,g_font_small,x+12,y,sb_marche_col(m),buf[nb]); nb++;
+            snprintf(mhov[g],sizeof mhov[g],"%s — marché %s",resource_name((Resource)g),label_marche(m));
+            zone_add((SDL_Rect){x+8,y-1,w-16,15}, mhov[g]);    /* le mot d'état : au survol */
+            y+=15;
         }
     } else {
         draw_text(ren,g_font_small,x+10,y,COL_DIM,"bien            import (de)        export (vers)"); y+=16;
@@ -2259,10 +2268,20 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
                                round_box(ren, sx-2, sy-2, sw+4, sw+4, COL_COPPER, 7); } /* …épaissi vers l'extérieur */
             int aw=text_w(g_font_small, S[i].abbr);
             draw_text(ren, g_font_small, sx+(sw-aw)/2, sy+sw/2-7, built?COL_PANEL:COL_DIM, S[i].abbr);
-            if (built) snprintf(bhov[i],sizeof bhov[i],
-                       "%s — bâti : %s. Clic : améliorer ou remplacer.", S[i].name, S[i].eff?S[i].eff:"—");
-            else       snprintf(bhov[i],sizeof bhov[i],
-                       "%s — vide. À bâtir : %s. Clic : bâtir (payé au marché, construit en jours).", S[i].name, S[i].todo);
+            /* P6.33 — format STRICT : « nom ↑ (édifice) » · titre, puis les lignes de
+             * coût (ressource/quantité de la recette), et RIEN d'autre (colonne effet vide). */
+            const EdificeDef *ed = edifice_def((Edifice)S[i].edi);
+            int hn = snprintf(bhov[i],sizeof bhov[i], "%s %s (%s)\x1f",
+                              S[i].name, built?"↑":"→", edifice_name((Edifice)S[i].edi));
+            bool anyc=false;
+            if (ed) for (int c=0;c<BUILD_RES_MAX && hn<(int)sizeof bhov[i]-2;c++){
+                if (ed->cost.qty[c] <= 0.f) continue;
+                hn += snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "%s%-7s %.0f",
+                               anyc?"\n":"", resource_name(ed->cost.res[c]), ed->cost.qty[c]);
+                anyc=true;
+            }
+            if (!anyc) hn += snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "—");
+            snprintf(bhov[i]+hn,sizeof bhov[i]-hn, "\x1f");      /* colonne EFFET vide : rien d'autre */
             zone_add((SDL_Rect){sx,sy,sw,sw}, bhov[i]);
             if (reg>=0) bslot_add((SDL_Rect){sx,sy,sw,sw}, reg, S[i].edi);   /* cliquable */
         }
@@ -2505,6 +2524,17 @@ static void draw_mode_buttons(SDL_Renderer *ren, int win_h, ViewMode cur){
     }
 }
 
+/* P6.33 — découpe d'une recette MULTILIGNE pour la boîte de survol : copie la ligne
+ * courante (jusqu'à '\n' ou la fin) dans `out` (borné), renvoie le début de la
+ * suivante (ou NULL). Évite toute ambiguïté d'indentation dans les boucles. */
+static const char *hov_next_line(const char *ls, char *out, int cap){
+    const char *nl=strchr(ls,'\n');
+    int len = nl ? (int)(nl-ls) : (int)strlen(ls);
+    if (len>cap-1) len=cap-1;
+    memcpy(out,ls,(size_t)len); out[len]='\0';
+    return nl ? nl+1 : NULL;
+}
+
 /* Survol = définition : le hover de la zone sous le curseur, en pied d'écran. */
 static void draw_hover_footer(SDL_Renderer *ren, int win_w, int win_h, int mx, int my){
     const char *def = zone_hit(mx,my);
@@ -2528,9 +2558,18 @@ static void draw_hover_footer(SDL_Renderer *ren, int win_w, int win_h, int mx, i
     } else {
         snprintf(left,sizeof left,"%s",s1+1);
     }
-    int wt=text_w(g_font_big,title), wl=text_w(g_font,left), wr=text_w(g_font,right);
-    int gap=46, inner=wl+gap+wr; if (wt>inner) inner=wt;
-    int bw=inner+24, bh=58, bx=mx+16, by=my+10;
+    /* le PRIX (gauche) peut être MULTILIGNE : une ligne ressource/quantité par '\n'
+     * (P6.33 — recette de bâtiment). On mesure la plus large, on empile, la boîte suit. */
+    int wt=text_w(g_font_big,title), wr=text_w(g_font,right);
+    int wl=0, nlines=0;
+    { const char *ls=left; char line[120];
+      while (ls && *ls){ const char *next=hov_next_line(ls,line,120);
+          int wln=text_w(g_font,line);
+          if (wln>wl) wl=wln;
+          nlines++; ls=next; } }
+    if (nlines<1) nlines=1;
+    int gap=46, inner=wl+(right[0]?gap+wr:0); if (wt>inner) inner=wt;
+    int rowh=18, bw=inner+24, bh=33+nlines*rowh+5, bx=mx+16, by=my+10;
     if (bx+bw>win_w-4) bx=win_w-bw-4;
     if (bx<4) bx=4;
     if (by+bh>win_h-4) by=win_h-bh-4;
@@ -2538,7 +2577,10 @@ static void draw_hover_footer(SDL_Renderer *ren, int win_w, int win_h, int mx, i
     panel_bg(ren, bx,by, bw,bh);
     draw_text(ren, g_font_big, bx+12, by+6,  COL_COPPER, title);
     fill_rect(ren, bx+10, by+27, bw-20, 1, COL_PANEL2);         /* la ligne de séparation */
-    draw_text(ren, g_font, bx+12, by+33, COL_PARCH, left);                    /* PRIX à gauche */
+    { const char *ls=left; int ry=by+33; char line[120];        /* PRIX à gauche (empilé) */
+      while (ls && *ls){ const char *next=hov_next_line(ls,line,120);
+          draw_text(ren, g_font, bx+12, ry, COL_PARCH, line);
+          ry+=rowh; ls=next; } }
     if (right[0]) draw_text(ren, g_font, bx+bw-12-wr, by+33,
                             (SDL_Color){0x8c,0xd0,0x9c,0xff}, right);          /* EFFET à droite (vert doux) */
 }
