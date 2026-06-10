@@ -190,7 +190,7 @@ void labor_init(LaborEcon *e, const World *w){
         e->g_flow[pr] = 0.1f + (coast?1.8f:0.f) + riv01*1.5f + fert*1.6f;
         /* Présence de ressource [0..1] — lue des biomes + ressource dominante. */
         e->g_pres[pr][LR_BOIS]     = clampf((float)nforest[pr]/n*2.f, 0.f, 1.f);
-        e->g_pres[pr][LR_ARGILE]   = clampf(riv01*1.2f, 0.f, 1.f);          /* argile au fleuve */
+        e->g_pres[pr][LR_ARGILE]   = 0.15f + clampf(riv01*1.4f, 0.f, 1.f);  /* P3.17 : 0.15 PARTOUT, jusqu'à 1.15 en plaine alluviale (fleuve) */
         e->g_pres[pr][LR_CALCAIRE] = clampf((float)nhill[pr]/n*2.f, 0.f, 1.f);
         e->g_pres[pr][LR_PIERRE]   = clampf((float)(nhill[pr]+nmtn[pr])/n*1.5f, 0.f, 1.f);
         Resource rr=w->province[pr].resource;

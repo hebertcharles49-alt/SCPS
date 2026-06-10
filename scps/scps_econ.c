@@ -440,12 +440,14 @@ void econ_init(WorldEconomy *e, const World *w) {
             if (pid<0||pid>=w->n_provinces) continue;
             const Province *pv=&w->province[pid];
             if (pv->coastal) coastal=true;
-            /* débit proportionnel à la surface de la province (brutes seules) */
+            /* débit proportionnel à la surface (P3.18 : la SPÉCIALISATION — le brut
+             * DOMINANT de la province est franc, la 2e brute mineure ; le reste vient
+             * du COMMERCE, plus jamais du sol). */
             float base = 1.5f + pv->area*0.05f;
             Resource r=pv->resource;
-            if (r>RES_NONE && r<RES_PROD_FIRST) re->raw_cap[r] += base;
+            if (r>RES_NONE && r<RES_PROD_FIRST) re->raw_cap[r] += base*1.5f;   /* P3.18 : dominante franche */
             Resource r2=pv->resource2;                      /* §6b : 2e brute, mineure ×0.4 */
-            if (r2>RES_NONE && r2<RES_PROD_FIRST) re->raw_cap[r2] += base*0.4f;
+            if (r2>RES_NONE && r2<RES_PROD_FIRST) re->raw_cap[r2] += base*0.5f;
         }
 
         /* Subsistance locale : vivres et bois de feu dimensionnés pour couvrir
@@ -457,7 +459,7 @@ void econ_init(WorldEconomy *e, const World *w) {
          * pondéré par la FERTILITÉ moyenne de la région (les bonnes terres
          * nourrissent plus). */
         re->raw_cap[RES_GRAIN] += subsist * (1.15f + 0.70f*reg_hab[rid]);
-        re->raw_cap[RES_WOOD]  += subsist * 0.44f;   /* §6a : socle bois +10 % (intrant + chauffe) */
+        re->raw_cap[RES_WOOD]  += subsist * 0.12f;   /* P3.18 : socle bois MINIME (chauffe) — le bois d'œuvre vient des forêts (dominante) + commerce */
         re->coastal = coastal;                       /* lu par la marine (rade) et l'agency (gate du Port) */
         re->estuary = false;                         /* posé au balayage des cellules ci-dessous */
         if (coastal) re->raw_cap[RES_FISH] += subsist * 0.10f;   /* socle côtier minime : le poisson vient surtout des biomes halieutiques (§2) */
