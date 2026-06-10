@@ -426,6 +426,16 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                    DiploState *dp, uint32_t *rng, float dt_days){
     if (dt_days<=0.f) return;
 
+    /* §terrain : une armée dont le PAYS est MORT (annexé → role UNCLAIMED) se DISSOUT
+     * — pas de zombie en campagne. (warhost/marine se taisent par le même skip ailleurs.) */
+    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+        FieldArmy *a=&c->army[i];
+        if (a->active && a->owner>=0 && a->owner<w->n_countries
+            && w->country[a->owner].role==POLITY_UNCLAIMED){
+            a->active=false; a->phase=FA_IDLE; a->dest=a->next=-1; a->taken_region=-1;
+        }
+    }
+
     /* 1. batailles : paires hostiles (en guerre) partageant une région. */
     for (int i=0;i<SCPS_MAX_COUNTRY;i++){
         if (!c->army[i].active) continue;

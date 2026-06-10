@@ -379,21 +379,28 @@ int main(int argc, char **argv){
             re->stock[RES_ARMS]=800.f; re->build.H_coerc=24.f; re->strata[CLASS_LABORER].pop=4000.f; }
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
+        /* §terrain : les armées INVESTISSENT R (campagne abstraite ici) — c'est le
+         * RÈGLEMENT qui décide, borné par le budget : R défendu coûte plus que le
+         * budget marginal ne couvre → 0 transfert → R survit. */
+        diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
         for (int k=0;k<8;k++){ act[0].peace_lock_until=0; act[0].credit_war=20.f;
             act[0].next_strat_day=dW; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,dW); }
         int rB=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rB++;
-        ok("R bien défendu (parité) : budget marginal → R survit", rB>=1);
+        ok("R bien défendu (parité) : budget marginal → R survit (occupé, pas annexé)", rB>=1);
 
         /* (B) R DÉSARMÉ (domination écrasante) → budget large ≥ sa valeur → R ANNEXÉ. */
         for (int i=0;i<2;i++){ RegionEconomy *re=&s.econ->region[rr[i]];
             re->stock[RES_ARMS]=0.f; re->build.H_coerc=0.f; re->strata[CLASS_LABORER].pop=40.f; }
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
+        /* §terrain : R DÉSARMÉ entièrement occupé → au règlement, le budget écrasant
+         * (≥ valeur totale) transfère TOUT → R à 0 région → MORT (polity_death). */
+        diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
         for (int k=0;k<10;k++){ act[0].peace_lock_until=0; act[0].credit_war=20.f;
             act[0].next_strat_day=dW; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,dW); }
         int rA=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rA++;
-        ok("R désarmé (domination écrasante) : le Dominateur ANNEXE R (0 région)",
-           rcount==2 && rA==0);
+        ok("R désarmé (domination écrasante) : le Dominateur ANNEXE R → R MEURT (0 région)",
+           rcount==2 && rA==0 && s.w->country[R].role==POLITY_UNCLAIMED);
     }
 
     /* ---- LE FREIN — au niveau de la fonction (déterministe) --------------- */

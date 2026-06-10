@@ -446,10 +446,9 @@ void diplo_make_peace   (DiploState *d,int a,int b){
         d->battle_score[a][b]=d->battle_score[b][a]=0.f;   /* le bras-de-fer se solde */
         d->conquered[a][b]=d->conquered[b][a]=0;
         d->conq_value[a][b]=d->conq_value[b][a]=0.f;       /* §5 : le budget dépensé se solde */
-        /* l'occupation ne survit pas à la paix : toute région de la paire encore
-         * tenue est relâchée (diplo_settle a déjà transféré ce qui devait l'être). */
-        for (int r=0;r<SCPS_MAX_REG;r++)
-            if (d->occupier[r]==a || d->occupier[r]==b) d->occupier[r]=-1;
+        /* NB : les occupations de la paire sont effacées par diplo_settle (qui a econ
+         * pour les CADRER au couple) — make_peace ne touche pas occupier[] (sinon il
+         * relâcherait à tort les occupations d'un TIERS encore en guerre). */
     }
 }
 bool diplo_can_declare(const DiploState *d,int a,int b){
@@ -628,45 +627,11 @@ CasusBelli diplo_casus_belli(const World *w, const WorldEconomy *econ, const Wor
     return CB_NONE;   /* aucune raison ne tient → pas de guerre */
 }
 
-/* ---- guerre : conquête ------------------------------------------------ */
-bool diplo_conquer_region(DiploState *d, World *w, WorldEconomy *econ,
-                          WorldLegitimacy *wl, int conqueror, int region, bool conqueror_enslaves){
-    if (conqueror<0||conqueror>=w->n_countries) return false;
-    if (region<0||region>=econ->n_regions) return false;
-    RegionEconomy *re=&econ->region[region];
-    if (!re->culture.settled) return false;          /* rien à conquérir */
-    int defender=re->owner;
-    if (defender==conqueror) return false;           /* déjà à nous */
-    if (defender>=0 && diplo_status(d,conqueror,defender)!=DIPLO_WAR) return false;
-    float price = diplo_province_price(econ, region);  /* §5 : son prix INTACT (avant le saccage) */
-    re->owner = conqueror;            /* transfert : la diversité suit (compute_profile) */
-    re->colonized = true;
-    re->revolt_scar = 1.0f;           /* la conquête CONVULSE : −50 % dévelop. quelques années */
-    if (conqueror<SCPS_MAX_COUNTRY){
-        d->momentum[conqueror] += MOMENTUM_PER_CONQ;   /* la fulgurance EFFRAIE (→ coalition) */
-        if (defender>=0 && defender<SCPS_MAX_COUNTRY){
-            d->conquered[conqueror][defender]++;        /* OCCUPATION : pousse le score de guerre */
-            d->conq_value[conqueror][defender] += price;/* §5 : budget de score DÉPENSÉ sur cette prise */
-            d->rancor[defender][conqueror] += RANCOR_PER_LOSS;  /* §6 le DÉPOSSÉDÉ garde rancune */
-            /* §5 LÉGITIMITÉ : au-delà de ce que la domination militaire justifie (la
-             * revendication), la prise est de la SUREXPANSION — surcroît de fulgurance
-             * (le monde se ligue) et plaie plus profonde (intégration déjà à zéro). */
-            if (d->conquered[conqueror][defender] > diplo_war_claim(d,w,econ,conqueror,defender)){
-                d->momentum[conqueror] += CLAIM_ILLEGIT_MOM;
-                d->rancor[defender][conqueror] += RANCOR_ILLEGIT;  /* l'agression nue creuse le grief */
-                re->revolt_scar = 1.0f;
-            }
-        }
-    }
-    legitimacy_on_conquest(wl, region);   /* L au plancher, intégration à zéro */
-    /* SACCAGE : la prise DÉPOUILLE la province (or + production → trésor de
-     * l'occupant), 1×/5 ans. Le butin afflue vers la capitale du conquérant. */
-    int dst=-1, cp=w->country[conqueror].capital_prov;
-    if (cp>=0 && cp<w->n_provinces) dst=w->province[cp].region;
-    diplo_pillage_region(econ, region, dst);
-    diplo_enslave_capture(w, econ, conqueror, region, conqueror_enslaves);   /* §4c : gate = TECH_ESCLAVAGE */
-    return true;
-}
+/* ---- guerre : conquête ------------------------------------------------ *
+ * diplo_conquer_region RETIRÉ (brief terrain) : la propriété ne change plus EN
+ * GUERRE. Le transfert vit désormais à la PAIX (settle_transfer / diplo_settle,
+ * plus haut), borné par le budget — l'occupation (diplo_occupy) tient le terrain
+ * entre-temps. Le corps (bascule, saccage, captifs, rancune) est intact, déplacé. */
 
 /* ---- guerre : OCCUPATION RÉELLE (brief terrain) ----------------------- */
 bool diplo_occupy(DiploState *d, const WorldEconomy *econ, int occ, int region){
@@ -694,6 +659,116 @@ void diplo_liberate(DiploState *d, const WorldEconomy *econ, int region){
     if (owner>=0 && owner<SCPS_MAX_COUNTRY && prev<SCPS_MAX_COUNTRY && d->conquered[prev][owner]>0)
         d->conquered[prev][owner]--;
     d->occupier[region] = -1;
+}
+
+/* ---- guerre : RÈGLEMENT À LA PAIX (brief terrain) --------------------- */
+/* le transfert d'UNE région occupée au vainqueur — le corps de l'ex-conquête,
+ * DÉPLACÉ DANS LE TEMPS (de la guerre à la table de paix). Comportement identique :
+ * bascule de propriété, cicatrice, fulgurance, rancune, légitimité, saccage, captifs. */
+static void settle_transfer(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
+                            int winner, int loser, int region, bool winner_enslaves){
+    RegionEconomy *re=&econ->region[region];
+    float price = diplo_province_price(econ, region);   /* prix INTACT (avant le saccage) */
+    re->owner = winner;                                 /* la diversité suit le transfert */
+    re->colonized = true;
+    re->revolt_scar = 1.0f;                             /* la prise CONVULSE (−50 % dévelop.) */
+    if (winner>=0 && winner<SCPS_MAX_COUNTRY){
+        d->momentum[winner] += MOMENTUM_PER_CONQ;       /* la fulgurance EFFRAIE (→ coalition) */
+        if (loser>=0 && loser<SCPS_MAX_COUNTRY){
+            d->conq_value[winner][loser] += price;      /* §5 : budget de score DÉPENSÉ */
+            d->rancor[loser][winner] += RANCOR_PER_LOSS;/* §6 : le dépossédé garde rancune */
+        }
+    }
+    legitimacy_on_conquest(wl, region);                 /* L au plancher, intégration à zéro */
+    int dst=-1, cp=w->country[winner].capital_prov;
+    if (cp>=0 && cp<w->n_provinces) dst=w->province[cp].region;
+    diplo_pillage_region(econ, region, dst);            /* saccage : or+production → capitale */
+    diplo_enslave_capture(w, econ, winner, region, winner_enslaves);  /* §4c : gate = TECH_ESCLAVAGE */
+    d->occupier[region] = -1;                           /* possédée : ce n'est plus une occupation */
+}
+/* régions PEUPLÉES possédées par cid. */
+static int settle_regions_of(const WorldEconomy *econ, int cid){
+    if (!econ||cid<0) return 0;
+    int n=0;
+    for (int r=0;r<econ->n_regions;r++)
+        if (econ->region[r].owner==cid && econ->region[r].culture.settled) n++;
+    return n;
+}
+/* la région r touche-t-elle le territoire du vainqueur ? (pas d'exclave gratuite) */
+static bool settle_adj_winner(const WorldEconomy *econ, int winner, int r){
+    for (int s=0;s<econ->n_regions;s++)
+        if (econ->adj[r][s] && econ->region[s].owner==winner) return true;
+    return false;
+}
+/* LA MORT D'UN PAYS (brief terrain) : 0 région → extinction. role=UNCLAIMED (les
+ * autres systèmes la skippent déjà : ai/warhost/missions/factions/navy), relations
+ * résolues (paix silencieuse, griefs éteints), vassalité rompue dans les deux sens
+ * (ses vassaux LIBÉRÉS), occupations soldées. La population reste : la mémoire = revolt. */
+static void polity_death(DiploState *d, World *w, WorldEconomy *econ, int dead){
+    if (!d||!w||!econ||dead<0||dead>=w->n_countries||dead>=SCPS_MAX_COUNTRY) return;
+    w->country[dead].role = POLITY_UNCLAIMED;            /* seul poseur runtime (worldgen sinon) */
+    for (int o=0;o<SCPS_MAX_COUNTRY;o++){
+        if (o==dead) continue;
+        d->status[dead][o]=d->status[o][dead]=DIPLO_NEUTRAL;
+        d->war_years[dead][o]=d->war_years[o][dead]=0.f;
+        d->truce[dead][o]=d->truce[o][dead]=0.f;
+        d->cb[dead][o]=d->cb[o][dead]=CB_NONE;
+        d->battle_score[dead][o]=d->battle_score[o][dead]=0.f;
+        d->conquered[dead][o]=d->conquered[o][dead]=0;
+        d->conq_value[dead][o]=d->conq_value[o][dead]=0.f;
+        d->rancor[dead][o]=d->rancor[o][dead]=0.f;
+        d->pirate_rancor[dead][o]=d->pirate_rancor[o][dead]=0.f;
+    }
+    d->momentum[dead]=0.f; d->faustian[dead]=0.f; d->pirate_disarm[dead]=0;
+    d->suzerain[dead]=-1; d->contrat[dead]=CONTRAT_NONE;            /* plus le vassal de personne */
+    for (int v=0;v<SCPS_MAX_COUNTRY;v++)                            /* ses vassaux : LIBÉRÉS */
+        if (d->suzerain[v]==dead){ d->suzerain[v]=-1; d->contrat[v]=CONTRAT_NONE;
+                                   d->v_grief[v]=0.f; d->v_ligue[v]=0; }
+    if (d->fronde_suz==dead || d->fronde_lead==dead){ d->fronde_suz=-1; d->fronde_lead=-1; }
+    for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
+        if (d->occupier[r]==dead) d->occupier[r]=-1;                /* il ne tient plus rien */
+}
+/* RÈGLEMENT (brief terrain) : à la paix, le vainqueur ANNEXE les régions qu'il OCCUPE
+ * du vaincu, bornées par le budget de guerre (§5) — adjacentes d'abord, puis prix
+ * croissant. Le reste des occupations (deux sens) est RELÂCHÉ ; la paix solde le
+ * bras-de-fer ; un vaincu à 0 région MEURT. Renvoie le nombre de régions transférées. */
+int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
+                 int winner, int loser, bool winner_enslaves){
+    if (!d||!w||!econ) return 0;
+    int transferred=0;
+    if (winner>=0 && winner<w->n_countries && loser>=0 && loser<w->n_countries && winner!=loser){
+        float budget = diplo_war_budget(d,w,econ,winner,loser);
+        int list[SCPS_MAX_REG], n=0;
+        for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
+            if (d->occupier[r]==winner && econ->region[r].owner==loser
+                && econ->region[r].culture.settled) list[n++]=r;
+        /* tri : adjacentes au vainqueur d'abord, puis prix croissant (insertion, n petit). */
+        for (int i=1;i<n;i++){
+            int r=list[i]; bool ra=settle_adj_winner(econ,winner,r); float rp=diplo_province_price(econ,r);
+            int j=i-1;
+            while (j>=0){
+                bool ja=settle_adj_winner(econ,winner,list[j]); float jp=diplo_province_price(econ,list[j]);
+                if ((!ja && ra) || (ja==ra && jp>rp)){ list[j+1]=list[j]; j--; } else break;
+            }
+            list[j+1]=r;
+        }
+        for (int k=0;k<n;k++){
+            int r=list[k]; float price=diplo_province_price(econ,r);
+            if (d->conq_value[winner][loser] + price > budget) break;   /* budget épuisé */
+            settle_transfer(d,w,econ,wl,winner,loser,r,winner_enslaves);
+            transferred++;
+        }
+    }
+    /* effacer les occupations de la PAIRE (deux sens) — le non-transféré est relâché. */
+    if (winner>=0&&loser>=0&&winner<w->n_countries&&loser<w->n_countries)
+        for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++){
+            int occ=d->occupier[r], own=econ->region[r].owner;
+            if ((occ==winner&&own==loser)||(occ==loser&&own==winner)) d->occupier[r]=-1;
+        }
+    diplo_make_peace(d, winner, loser);          /* solde conquered/conq_value/cb/score + trêve */
+    if (loser>=0  && loser<w->n_countries  && settle_regions_of(econ,loser)==0)  polity_death(d,w,econ,loser);
+    if (winner>=0 && winner<w->n_countries && settle_regions_of(econ,winner)==0) polity_death(d,w,econ,winner);
+    return transferred;
 }
 
 /* ---- guerre : ESCLAVAGE (§4c) — déporter la population prise ----------- *

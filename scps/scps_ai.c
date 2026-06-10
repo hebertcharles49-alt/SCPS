@@ -4,7 +4,7 @@
  * Tout ce que fait l'IA passe par les verbes du JOUEUR :
  *   agency_order_build   (bâtir K/H/food/PE)
  *   routes_order         (ouvrir une route — la cloche f(D̄))
- *   diplo_declare_war / diplo_conquer_region / diplo_make_peace
+ *   diplo_declare_war / diplo_settle (la paix transfère l'occupé) / diplo_make_peace
  * Elle ne touche jamais l'état directement : elle pousse des leviers, le moteur
  * d'ordre fait le reste. La personnalité sort de la fiche ; le frein sort de la
  * coordonnée de consolidation. Aucune branche « si pays==X ».
@@ -44,6 +44,7 @@
 #define AI_RANCOR_W       3.0f   /* §6 biais de RECONQUÊTE : on vise qui nous a pris nos terres */
 #define AI_CRUSADE_W      4.0f   /* croisade : l'orthodoxe vise qui développe le faustien (chance ∝ ferveur) */
 #define AI_ANNEX_FRAC     0.6f   /* §5 : un budget ≥ 60 % de la valeur du pays = victoire décisive → annexion */
+#define AI_WAR_EXHAUST    8.0f   /* terrain : une guerre qui traîne SANS occupation (8 ans) s'éteint en paix blanche */
 /* §4 — leviers : chaque ACTE est un vote. Une politique tenue accumule vers le cap. */
 #define AI_LEVER_TECH     0.05f  /* franchir l'interdit (tech faustienne) → Transgresseurs */
 #define AI_LEVER_WAR      0.05f  /* conquérir → Conquérants */
@@ -365,23 +366,8 @@ static int ai_pick_ally(const AiActor *a, const World *w, const WorldEconomy *ec
     return best;
 }
 
-/* Une région ennemie adjacente à conquérir (suppose la guerre déjà déclarée). */
-static int ai_pick_enemy_region(const WorldEconomy *econ, const DiploState *diplo, int cid){
-    /* §5 : la province ennemie adjacente la MOINS CHÈRE d'abord (on dépense le budget
-     * de score efficacement : l'arrière-pays avant le cœur développé). */
-    int best=-1; float bestp=0.f;
-    for (int r=0; r<econ->n_regions; r++) if (econ->region[r].owner==cid)
-        for (int s=0; s<econ->n_regions; s++){
-            const RegionEconomy *re = &econ->region[s];
-            if (!econ->adj[r][s]) continue;
-            if (re->owner<0 || re->owner==cid) continue;
-            if (!re->culture.settled) continue;
-            if (diplo_status(diplo, cid, re->owner)!=DIPLO_WAR) continue;
-            float price = diplo_province_price(econ, s);
-            if (best<0 || price<bestp){ best=s; bestp=price; }
-        }
-    return best;
-}
+/* (ai_pick_enemy_region retiré : l'IA ne désigne plus de cible de conquête abstraite —
+ * le TERRAIN décide qui occupe quoi ; le règlement §terrain transfère l'occupé.) */
 
 static float content_dist(const PopCulture *a, const PopCulture *b){
     float dv=fabsf(a->valeurs-b->valeurs),   ds=fabsf(a->subsistance-b->subsistance);
@@ -672,6 +658,21 @@ static Resource ai_war_want(const AiView *v){
 static int ai_owned_regions(const WorldEconomy *econ, int cid){
     int n=0; for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid) n++; return n;
 }
+/* Cache module : TECH_ESCLAVAGE par pays (synchronisé en recherche, ligne ~1148) — pour
+ * résoudre winner_enslaves d'un TIERS au règlement (p.ex. b vainqueur à la capitulation,
+ * dont ai_strat_turn n'a pas l'acteur sous la main). Dérivé de la tech : non sauvegardé. */
+static bool g_ai_enslave[SCPS_MAX_COUNTRY];
+static bool ai_enslaves(int cid){ return (cid>=0&&cid<SCPS_MAX_COUNTRY) ? g_ai_enslave[cid] : false; }
+/* §terrain : valeur cumulée des régions du `loser` que `winner` OCCUPE (ce que le
+ * règlement pourra transférer) — l'arbitrage « budget couvert par les occupations ». */
+static float ai_occupied_value(const DiploState *d, const WorldEconomy *econ, int winner, int loser){
+    if (!d||!econ) return 0.f;
+    float v=0.f;
+    for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
+        if (d->occupier[r]==winner && econ->region[r].owner==loser)
+            v += diplo_province_price(econ, r);
+    return v;
+}
 /* (Le « coup de grâce » par surcoût de capitale est désormais SUBSUMÉ par le §5 combat :
  * la capitale, cœur développé, coûte cher → seule une victoire décisive — budget de score
  * couvrant tout le territoire — l'arrache. Voir diplo_province_price / diplo_war_budget.) */
@@ -688,7 +689,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             a->credit_consolidate -= 1.f;
             for (int b=0; b<w->n_countries; b++)
                 if (b!=a->cid && diplo_status(diplo, a->cid, b)==DIPLO_WAR)
-                    diplo_make_peace(diplo, a->cid, b);
+                    diplo_settle(diplo, w, econ, wl, a->cid, b, a->can_enslave);  /* solde : garde l'occupé, relâche le reste */
             a->peace_lock_until = day + AI_PEACE_LOCK;       /* hystérésis : on digère */
             a->stats.consolidations++;
         }
@@ -708,7 +709,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
              * budget enfle d'occupation à mesure qu'il prend → annexion. Sinon on capitule. */
             if (diplo_war_budget(diplo,w,econ,b,a->cid) >= AI_ANNEX_FRAC*diplo_country_value(econ,a->cid)) continue;
             diplo_reparations(diplo, w, econ, a->cid, b);               /* le vaincu indemnise le vainqueur */
-            diplo_make_peace(diplo, a->cid, b);                         /* capitulation */
+            diplo_settle(diplo, w, econ, wl, b, a->cid, ai_enslaves(b)); /* capitulation : b ANNEXE ce qu'il occupe (peut nous TUER) */
         }
     }
 
@@ -724,55 +725,45 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
     for (int b=0; b<w->n_countries; b++)
         if (b!=a->cid && diplo_status(diplo, a->cid, b)==DIPLO_WAR) at_war++;
     if (at_war>0){
-        int enemy=-1;
-        for (int b=0; b<w->n_countries; b++)
-            if (b!=a->cid && diplo_status(diplo, a->cid, b)==DIPLO_WAR){ enemy=b; break; }
-        CasusBelli goal = (enemy>=0)? diplo_war_goal(diplo, a->cid, enemy) : CB_TERRITORIAL;
-        int er = ai_pick_enemy_region(econ, diplo, a->cid);
-        if (er>=0){
-            int victim = econ->region[er].owner;
-            /* §5 COMBAT — LE SCORE DE GUERRE EST UN BUDGET dépensé sur des provinces
-             * TARIFÉES par leur valeur développée. On n'achète une province que si le
-             * budget couvre le prix cumulé : un cœur développé (cher) exige une victoire
-             * DÉCISIVE ; sous le budget, il est PROTÉGÉ (on signe). Petits pays bon marché
-             * → absorbables ; grands cœurs riches → tempérés par la conséquence, sans plafond. */
-            float price  = diplo_province_price(econ, er);
-            float budget = (victim>=0)? diplo_war_budget(diplo, w, econ, a->cid, victim) : 0.f;
-            float spent  = (victim>=0 && victim<SCPS_MAX_COUNTRY)? diplo->conq_value[a->cid][victim] : 0.f;
-            bool territorial = (goal==CB_TERRITORIAL || goal==CB_NONE);
-            if (territorial && victim>=0 && spent + price > budget){
-                /* trop cher pour cette victoire → on banque le gain ET, du budget restant
-                 * (« les 95 % »), on VIDE les coffres du vaincu, puis on signe. */
-                diplo_loot(w, econ, a->cid, victim, budget - spent);
-                diplo_reparations(diplo, w, econ, a->cid, victim);
-                ai_impose_contract(a, w, econ, diplo, victim);   /* §leviers : imposer plutôt qu'annexer */
-                diplo_make_peace(diplo, a->cid, victim);
-            } else if (diplo_conquer_region(diplo, w, econ, wl, a->cid, er, a->can_enslave)){
-                a->credit_war -= 1.f; a->stats.conquests++;
-                faction_lever_apply(a->cid, FAC_CONQUERANT, AI_LEVER_WAR);  /* §4 : la guerre AVANCE les Conquérants */
-                /* non-territorial (humiliation/source/foi) : SATISFAIT par UNE prise.
-                 * territorial : on poursuit tant que le budget de score n'est pas épuisé
-                 * (la prochaine province, si trop chère, déclenchera la paix ci-dessus). */
-                if (!territorial && enemy>=0){
-                    diplo_reparations(diplo, w, econ, a->cid, enemy);
-                    if (goal==CB_SUBJUGATION && diplo_suzerain(diplo,enemy)<0)
-                        diplo_set_vassal(diplo, a->cid, enemy, CONTRAT_SERVAGE);   /* la vassalité EST le but */
-                    else ai_impose_contract(a, w, econ, diplo, enemy);
-                    diplo_make_peace(diplo, a->cid, enemy);
-                }
+        /* §terrain — LA GUERRE SE GAGNE SUR LE TERRAIN : l'IA ne CONQUIERT plus en
+         * guerre. Ses ARMÉES occupent (couche sim) ; ici elle ARBITRE quand RÉGLER.
+         * La propriété ne change qu'à la PAIX (diplo_settle), bornée par le budget §5 :
+         *   - but NON-territorial : UNE région tenue = point fait → règle ;
+         *   - territorial : on presse tant que la valeur occupée < budget (on peut
+         *     s'offrir plus) ; quand elle le COUVRE → on encaisse (settle) ;
+         *   - ÉPUISEMENT : une guerre qui traîne se solde (gains partiels encaissés,
+         *     ou paix blanche si rien d'occupé). loot/réparations/contrats AU RÈGLEMENT. */
+        for (int b=0; b<w->n_countries; b++){
+            if (b==a->cid || diplo_status(diplo, a->cid, b)!=DIPLO_WAR) continue;
+            CasusBelli goal = diplo_war_goal(diplo, a->cid, b);
+            bool  territorial = (goal==CB_TERRITORIAL || goal==CB_NONE);
+            int   occ       = (b<SCPS_MAX_COUNTRY)? diplo->conquered[a->cid][b] : 0;
+            int   b_regions = ai_owned_regions(econ, b);     /* ce qu'il reste à presser */
+            float budget    = diplo_war_budget(diplo, w, econ, a->cid, b);
+            float occ_value = ai_occupied_value(diplo, econ, a->cid, b);
+            float wy        = (b<SCPS_MAX_COUNTRY)? diplo->war_years[a->cid][b] : 0.f;
+
+            bool settle=false;
+            if (occ>=1){
+                if (!territorial)              settle=true;  /* humiliation/source/vassalité : une prise suffit */
+                else if (occ >= b_regions)     settle=true;  /* tout l'ennemi OCCUPÉ → décisif : encaisser (le budget borne le transfert, peut TUER) */
+                else if (occ_value >= budget)  settle=true;  /* occupé tout ce que la victoire s'offre → encaisser */
+                else if (wy > AI_WAR_EXHAUST)  settle=true;  /* gains partiels mais guerre figée → on encaisse */
+            } else if (wy > AI_WAR_EXHAUST){
+                settle=true;                                 /* rien d'occupé, la guerre traîne → paix blanche */
             }
-        } else {
-            /* plus de territoire ennemi adjacent : la guerre est GAGNÉE → le budget restant
-             * VIDE les coffres, indemnité au passage, et l'on signe (autre cible plus tard). */
-            for (int b=0; b<w->n_countries; b++)
-                if (b!=a->cid && diplo_status(diplo, a->cid, b)==DIPLO_WAR){
-                    float lo = diplo_war_budget(diplo,w,econ,a->cid,b)
-                             - ((b<SCPS_MAX_COUNTRY)? diplo->conq_value[a->cid][b] : 0.f);
-                    diplo_loot(w, econ, a->cid, b, lo);
-                    diplo_reparations(diplo, w, econ, a->cid, b);
-                    ai_impose_contract(a, w, econ, diplo, b);    /* §leviers : imposer plutôt qu'annexer */
-                    diplo_make_peace(diplo, a->cid, b);
-                }
+            if (!settle) continue;                           /* sinon : on laisse les armées travailler */
+
+            float leftover = budget - occ_value; if (leftover<0.f) leftover=0.f;
+            diplo_loot(w, econ, a->cid, b, leftover);        /* le budget non pris en TERRE vide les coffres */
+            diplo_reparations(diplo, w, econ, a->cid, b);
+            if (goal==CB_SUBJUGATION && diplo_suzerain(diplo,b)<0 && occ>=1)
+                diplo_set_vassal(diplo, a->cid, b, CONTRAT_SERVAGE);  /* la vassalité EST le but */
+            else
+                ai_impose_contract(a, w, econ, diplo, b);    /* §leviers : imposer plutôt qu'annexer */
+            int got = diplo_settle(diplo, w, econ, wl, a->cid, b, a->can_enslave);  /* la propriété change ICI */
+            a->credit_war -= 1.f; a->stats.conquests += got;
+            if (got>0) faction_lever_apply(a->cid, FAC_CONQUERANT, AI_LEVER_WAR);    /* §4 : prendre AVANCE les Conquérants */
         }
         return;
     }
@@ -1146,6 +1137,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         }
     }
     a->can_enslave = ts->unlocked[TECH_ESCLAVAGE];   /* §4c : le gate de l'esclavage suit la tech */
+    if (a->cid>=0 && a->cid<SCPS_MAX_COUNTRY) g_ai_enslave[a->cid]=a->can_enslave;  /* cache pour le règlement d'un TIERS */
     a->has_creuset = ts->unlocked[TECH_INTEGRATION]; /* §leviers : le Creuset forme mieux */
 }
 

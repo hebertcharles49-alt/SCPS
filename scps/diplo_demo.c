@@ -98,7 +98,17 @@ int main(int argc,char**argv){
         printf("   → guerre au pays #%d, conquête de la région %d (« %s », D∞=%.1f de nous)\n",
                tgt_owner, target, w->region[target].name, best);
         diplo_declare_war(dp,player,tgt_owner);
-        bool took=diplo_conquer_region(dp,w,econ,wl,player,target,false);
+        /* §terrain : l'armée INVESTIT la région (occupation), la PAIX la transfère —
+         * bornée par le budget §5. On assure la domination (cible désarmée, joueur armé)
+         * pour que la prise ait lieu, puis on RÈGLE : la région passe au joueur. */
+        for(int r=0;r<econ->n_regions;r++){
+            if(econ->region[r].owner==tgt_owner){ econ->region[r].stock[RES_ARMS]=0.f;
+                econ->region[r].stock[RES_GUNPOWDER]=0.f; econ->region[r].stock[RES_ENCHANTED_ARMS]=0.f; }
+            else if(econ->region[r].owner==player) econ->region[r].stock[RES_ARMS]=2000.f;
+        }
+        diplo_occupy(dp,econ,player,target);
+        int got=diplo_settle(dp,w,econ,wl,player,tgt_owner,false);
+        bool took=(got>0 && econ->region[target].owner==player);
 
         /* recalcul : la région conquise est désormais à nous → diversité. */
         for(int t=0;t<3;t++){ legitimacy_tick(wl,w,econ,ts); prosperity_tick(wp,w,econ,net,ts,wl); }
@@ -298,23 +308,23 @@ int main(int argc,char**argv){
             ok("un casus belli non-territorial ne vaut qu'UNE prise (pas d'annexion étendue)",
                diplo_war_claim(dp,w,econ,A,B)==1);
 
-            /* SUREXPANSION : prendre AU-DELÀ de la revendication = surcroît de fulgurance.
-             * On garde B FORT (surarmé, plusieurs régions) → revendication=1 STABLE même
-             * après une prise → la 2e prise est ILLÉGITIME. */
+            /* BORNAGE PAR LE BUDGET (§terrain — « plus d'exclaves gratuites ») : on OCCUPE
+             * DEUX régions de B, mais B reste FORT (surarmé) → budget marginal → la PAIX ne
+             * transfère que ce que le budget couvre, PAS tout l'occupé. La surexpansion n'est
+             * plus PUNIE après coup : elle est STRUCTURELLEMENT bornée à la table. */
             for(int r=0;r<econ->n_regions;r++){
                 econ->region[r].stock[RES_ARMS]=econ->region[r].stock[RES_GUNPOWDER]=0.f;
                 econ->region[r].stock[RES_ENCHANTED_ARMS]=(econ->region[r].owner==B)?6000.f:0.f;
             }
             diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
-            int claim=diplo_war_claim(dp,w,econ,A,B);
-            dp->conquered[A][B]=claim;                   /* pile à la limite légitime */
-            int Br=-1; for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==B && econ->region[r].culture.settled){Br=r;break;}
-            if(Br>=0 && claim==1){
-                float mom0=dp->momentum[A];
-                diplo_conquer_region(dp,w,econ,wl,A,Br,false);  /* la prise (claim+1) = ILLÉGITIME */
-                ok("prendre AU-DELÀ de la revendication = SUREXPANSION (fulgurance ↑↑ → coalition)",
-                   dp->momentum[A] > mom0 + 2.0f);        /* base 1 + surcharge 2 → > 2 prouve la surcharge */
-            } else ok("(pas de cible nette pour le test de surexpansion)", true);
+            int Br1=-1,Br2=-1;
+            for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==B && econ->region[r].culture.settled){ if(Br1<0)Br1=r; else if(Br2<0){Br2=r;break;} }
+            if(Br1>=0 && Br2>=0){
+                diplo_occupy(dp,econ,A,Br1); diplo_occupy(dp,econ,A,Br2);   /* deux régions INVESTIES */
+                int got=diplo_settle(dp,w,econ,wl,A,B,false);               /* B surarmé → budget marginal */
+                ok("le budget BORNE la prise : B surarmé → la paix ne transfère pas tout l'occupé (pas d'exclave gratuite)",
+                   got < 2);
+            } else ok("(pas de cible nette pour le test de bornage)", true);
 
             /* RÉPARATIONS : le vaincu net indemnise le vainqueur ∝ score. */
             diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
@@ -391,23 +401,30 @@ int main(int argc,char**argv){
             diplo_tick(dp, 365.f*30.f);
             ok("sur une génération, la rancune est OUBLIÉE (→ 0)", diplo_rancor(dp,A,P)==0.f);
 
-            /* CONQUÊTE (en dernier : mute B) — la prise POSE la rancune ; une prise
-             * ILLÉGITIME la CREUSE. B surarmé → revendication=1 stable. */
+            /* CONQUÊTE (en dernier : mute B) — la prise (au RÈGLEMENT) POSE la rancune
+             * sur le dépossédé, ∝ ce qui lui est ARRACHÉ. A dominant → la paix transfère. */
             if(B>=0 && Bn>=2){
                 int Br1=-1,Br2=-1;
                 for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==B && econ->region[r].culture.settled){ if(Br1<0)Br1=r; else {Br2=r;break;} }
-                /* perte LÉGITIME (dans la revendication) : la rancune = la seule perte. */
+                for(int r=0;r<econ->n_regions;r++){          /* A dominant (B désarmé) → la paix transfère */
+                    if(econ->region[r].owner==B){ econ->region[r].stock[RES_ARMS]=0.f;
+                        econ->region[r].stock[RES_ENCHANTED_ARMS]=0.f; econ->region[r].stock[RES_GUNPOWDER]=0.f; }
+                    else if(econ->region[r].owner==A) econ->region[r].stock[RES_ARMS]=3000.f;
+                }
+                /* UNE perte (occuper puis régler) : la rancune se POSE (B garde ≥1 région). */
                 diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
-                diplo_conquer_region(dp,w,econ,wl,A,Br1,false);
-                float rancor_loss=diplo_rancor(dp,B,A);
-                /* perte ILLÉGITIME (occupation forcée BIEN au-delà du légitime) : rancune CREUSÉE. */
-                diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
-                dp->conquered[A][B]=20;                          /* surexpansion manifeste */
-                diplo_conquer_region(dp,w,econ,wl,A,Br2,false);
-                float rancor_illegit=diplo_rancor(dp,B,A);
-                ok("perdre une province POSE la rancune sur le dépossédé", rancor_loss >= 0.9f);
-                ok("une prise ILLÉGITIME CREUSE la rancune (perte + agression nue)",
-                   rancor_illegit >= rancor_loss + 0.9f);
+                diplo_occupy(dp,econ,A,Br1); diplo_settle(dp,w,econ,wl,A,B,false);
+                float rancor_one=diplo_rancor(dp,B,A);
+                econ->region[Br1].owner=(int16_t)B;          /* on rend Br1 à B */
+                ok("perdre une province POSE la rancune sur le dépossédé", rancor_one >= 0.9f);
+                /* DEUX pertes → rancune plus PROFONDE — seulement si B SURVIT (Bn≥3) : un B
+                 * ANÉANTI verrait sa rancune éteinte par sa MORT (on teste le dépossédé vivant). */
+                if(Bn>=3 && Br2>=0){
+                    diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
+                    diplo_occupy(dp,econ,A,Br1); diplo_occupy(dp,econ,A,Br2); diplo_settle(dp,w,econ,wl,A,B,false);
+                    ok("perdre PLUS de terres CREUSE la rancune (∝ ce qui est arraché)",
+                       diplo_rancor(dp,B,A) >= rancor_one + 0.9f);
+                } else ok("(monde trop petit pour la rancune ∝ pertes : B survivrait à peine)", true);
             } else ok("(pas assez de provinces pour la rancune de conquête)", true);
         }
     }

@@ -57,6 +57,8 @@ typedef struct {
 } Sim;
 
 static int regions_of(const WorldEconomy *e, int c);   /* défini plus bas */
+/* compteurs de FLUX d'occupation (§terrain) — cumul tous-sims, posés par le harvest. */
+static long g_tot_occ_posed=0, g_tot_occ_lifted=0;
 
 /* Les armées de CAMPAGNE : chaque pays mobilisé ET en guerre projette sa force vers
  * le front ennemi adjacent (marche §1 → siège → bataille §2/§3). NON-INVASIF : la
@@ -106,8 +108,12 @@ static void sim_campaign_year(Sim *s, World *w) {
         if (a->taken_region<0) continue;
         int reg=a->taken_region; a->taken_region=-1;
         if (reg<0 || reg>=s->econ->n_regions) continue;
-        if (s->econ->region[reg].owner==a->owner) diplo_liberate(s->dp, s->econ, reg);
-        else                                      diplo_occupy  (s->dp, s->econ, a->owner, reg);
+        if (s->econ->region[reg].owner==a->owner){
+            if (s->dp->occupier[reg]>=0) g_tot_occ_lifted++;   /* une occupation réellement levée */
+            diplo_liberate(s->dp, s->econ, reg);
+        } else {
+            if (diplo_occupy(s->dp, s->econ, a->owner, reg)) g_tot_occ_posed++;
+        }
     }
 }
 
@@ -595,7 +601,7 @@ int main(int argc, char **argv){
         int peak_rev=0, peak_rev_year=0;
         int min_living=c0;
         /* suivi des transferts de propriété : conquête vs colonisation */
-        int conq_prov=0;                              /* provinces PRISES de force (cumul) */
+        int conq_prov=0;                              /* provinces TRANSFÉRÉES à la paix (cumul) — la propriété ne change qu'au règlement */
         int16_t prev_owner[SCPS_MAX_REG];
         for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++) prev_owner[r]=s.econ->region[r].owner;
 
@@ -631,7 +637,7 @@ int main(int argc, char **argv){
             if (si<4 && s.year>=snap[si]){
                 int treg=0; top_power(w,s.econ,&treg);
                 int ap,as_; empire_avg(w,s.econ,s.wp,s.ts,&ap,&as_);
-                printf("   an %3d : %2d pays | pop %5.0fk | armée %5.0f | colonisées %3d prov | prises %3d prov | 1er empire %2d rég | prosp %2d stab %2d | %2d révolté(s)\n",
+                printf("   an %3d : %2d pays | pop %5.0fk | armée %5.0f | colonisées %3d prov | transf. paix %3d prov | 1er empire %2d rég | prosp %2d stab %2d | %2d révolté(s)\n",
                        snap[si], lv, total_pop(s.econ)/1000.0, total_army(w,s.econ),
                        colonized_provinces(w,s.econ), conq_prov, treg, ap, as_, rv);
                 si++;
@@ -701,7 +707,7 @@ int main(int argc, char **argv){
           for (int c=0;c<CLASS_COUNT;c++) tot_sat[c]+=csat[c];
           tot_trade += tradev; }
         print_building_census(s.econ);
-        printf("              expansion : %d prov colonisées · %d prov PRISES de force · armée finale %.0f\n",
+        printf("              expansion : %d prov colonisées · %d prov TRANSFÉRÉES à la paix · armée finale %.0f\n",
                colonized_provinces(w,s.econ), conq_prov, total_army(w,s.econ));
         /* TÉLÉMÉTRIE PAR ÂGE : le marché, l'or par empire et la tech à chaque avènement. */
         { bool any=false; for (int a=0;a<AGE_COUNT;a++) if (age_snap[a].year>=0) any=true;
@@ -919,7 +925,8 @@ int main(int argc, char **argv){
     printf("   alliances actives (fin de sim) %ld   (moy. %.1f/sim ; la diplomatie respire)\n", tot_alliances, (double)tot_alliances/nsims);
     printf("   satisfaction moy (AVEC distribution) : Laborer %.0f%% · Bourgeois %.0f%% · Élite %.0f%% | commerce/an moy %.0f\n",
            tot_sat[CLASS_LABORER]/nsims, tot_sat[CLASS_BOURGEOIS]/nsims, tot_sat[CLASS_ELITE]/nsims, tot_trade/nsims);
-    printf("   provinces prises de force ... %ld   (moy. %.1f/sim)\n", tot_conq, (double)tot_conq/nsims);
+    printf("   provinces transférées à la paix %ld   (moy. %.1f/sim ; la propriété ne change qu'au RÈGLEMENT)\n", tot_conq, (double)tot_conq/nsims);
+    printf("   occupations (terrain) ....... %ld posée(s) · %ld levée(s)   (les sièges tiennent le sol entre deux paix)\n", g_tot_occ_posed, g_tot_occ_lifted);
     printf("   pays absorbés (morts) ....... %ld   (moy. %.1f/sim)\n", tot_absorbed, (double)tot_absorbed/nsims);
     printf("   pays émergés (sécession) .... %ld   (moy. %.1f/sim ; la carte politique respire)\n", tot_emerged, (double)tot_emerged/nsims);
     printf("   nœuds de tech débloqués ..... %ld   (moy. %.1f/sim ; %ld faustiens)\n", tot_techs, (double)tot_techs/nsims, tot_faustian);

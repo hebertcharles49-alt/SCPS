@@ -170,12 +170,8 @@ float diplo_war_widening_cost(const World *w, const WorldEconomy *econ,
 int   diplo_perceived_hegemon(const World *w, const WorldEconomy *econ,
                               const WorldProsperity *wp, const DiploState *d, int self);
 
-/* Conquête (§5) : transfère une région ennemie au conquérant (suppose la guerre
- * et l'issue militaire favorable). L'owner change → la diversité du conquérant
- * monte ; L de la région s'effondre (puis réintègre sur des générations).
- * Renvoie true si la conquête a lieu. */
-bool diplo_conquer_region(DiploState *d, World *w, WorldEconomy *econ,
-                          WorldLegitimacy *wl, int conqueror, int region, bool conqueror_enslaves);
+/* (diplo_conquer_region RETIRÉ — brief terrain : plus de transfert EN GUERRE. La
+ * propriété change à la PAIX via diplo_settle ; l'occupation tient le terrain.) */
 
 /* OCCUPATION (brief terrain) — `occ` prend militairement `region` (siège réel mené
  * à terme par la couche sim) : exige DIPLO_WAR avec son propriétaire, déloge un
@@ -185,6 +181,16 @@ bool diplo_occupy   (DiploState *d, const WorldEconomy *econ, int occ, int regio
 /* LIBÉRATION — l'occupation de `region` tombe (le propriétaire l'a reprise, ou la
  * paix l'efface) : occupier[region]=-1 et conquered de l'ex-occupant décrémenté. */
 void diplo_liberate (DiploState *d, const WorldEconomy *econ, int region);
+
+/* RÈGLEMENT À LA PAIX (brief terrain) — c'est ICI, et nulle part en guerre, que la
+ * PROPRIÉTÉ change : le vainqueur annexe les régions du vaincu qu'il OCCUPE, triées
+ * (adjacentes d'abord, puis prix croissant) et BORNÉES par diplo_war_budget (§5) ;
+ * le reste des occupations (deux sens) est relâché, la paix solde le bras-de-fer.
+ * Un vaincu réduit à 0 région MEURT (role→UNCLAIMED, relations & vassalité dénouées).
+ * `winner_enslaves` = le vainqueur a-t-il l'Économie servile (résolu par l'appelant).
+ * Renvoie le nombre de régions transférées (0 = paix blanche). */
+int  diplo_settle   (DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
+                     int winner, int loser, bool winner_enslaves);
 
 /* SACCAGE (§4) — une province PRISE est DÉPOUILLÉE une fois : l'or de ses coffres
  * et ~6 mois de production (entrepôt valorisé) sont fondus dans le trésor de
