@@ -83,7 +83,8 @@ static float posture_siege_mult(int p);
 
 void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ){
     memset(c,0,sizeof(*c));
-    for (int i=0;i<SCPS_MAX_COUNTRY;i++) c->army[i].posture=FA_STANDARD;   /* défaut : standard */
+    for (int i=0;i<SCPS_MAX_COUNTRY;i++){ c->army[i].posture=FA_STANDARD;  /* défaut : standard */
+                                          c->army[i].taken_region=-1; }    /* memset→0 = région 0 valide : remettre -1 */
     c->n_regions = econ->n_regions;
     for (int r=0; r<econ->n_regions && r<SCPS_MAX_REG; r++){
         const Region *R=&w->region[r];
@@ -124,7 +125,7 @@ bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
     FieldArmy *a=&c->army[owner];
     a->active=true; a->owner=owner; a->loc=from_region; a->dest=target_region;
     a->force=*src_force;                                  /* copie du détachement */
-    a->taken=0; a->legs=0; a->battles=0;
+    a->taken=0; a->legs=0; a->battles=0; a->taken_region=-1;
     if (from_region==target_region){                     /* déjà sur place */
         a->phase=FA_IDLE; a->next=-1; a->days_left=0.f; a->leg_days=0.f; return true;
     }
@@ -160,7 +161,7 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
     FieldArmy *a=&c->army[owner];
     a->active=true; a->owner=owner; a->loc=from_region; a->dest=target_region; a->next=-1;
     a->force=*src_force;
-    a->taken=0; a->legs=0; a->battles=0;
+    a->taken=0; a->legs=0; a->battles=0; a->taken_region=-1;
     a->phase=FA_EMBARK;
     a->leg_days = 4.f + (float)packets/15.f;            /* charger 1 000 hommes prend des jours */
     a->days_left= a->leg_days;
@@ -465,10 +466,12 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
                 a->loc=to; a->legs++;
                 if (force_units(&a->force)<=0){ a->active=false; a->phase=FA_IDLE; break; }
                 if (a->loc==a->dest){
-                    if (e->region[a->loc].owner==a->owner){       /* notre terre : rien à réduire */
+                    bool ours = (e->region[a->loc].owner==a->owner);  /* même index que partout : pas de borne neuve */
+                    int  occ  = dp ? dp->occupier[a->loc] : -1;
+                    if (occ==a->owner || (ours && occ<0)){        /* déjà tenue par nous, ou notre terre LIBRE : rien à réduire */
                         a->phase=FA_IDLE; a->dest=-1; a->next=-1; break;
                     }
-                    a->phase=FA_SIEGE; a->next=-1;                /* l'ennemi : on assiège */
+                    a->phase=FA_SIEGE; a->next=-1;                /* ennemie, OU notre terre OCCUPÉE : on assiège (libération) */
                     a->days_left = siege_days(region_defense(e,a->loc),
                                               region_food_months(e,a->loc),
                                               terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]))
@@ -484,7 +487,8 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
             } else if (a->phase==FA_SIEGE){
                 if (t < a->days_left){ a->days_left-=t; t=0.f; break; }
                 t -= a->days_left; a->days_left=0.f;
-                a->taken++;                                      /* RÉDUITE (enregistré, pas appliqué à econ) */
+                a->taken++;                                      /* RÉDUITE (cumul) */
+                a->taken_region=a->loc;                          /* à récolter : occupation/libération (couche sim) */
                 a->phase=FA_IDLE; a->dest=-1;
                 break;
             } else if (a->phase==FA_EMBARK){                     /* mer §6 : on charge au port */

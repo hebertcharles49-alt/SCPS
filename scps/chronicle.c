@@ -98,6 +98,17 @@ static void sim_campaign_year(Sim *s, World *w) {
     }
     campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f);  /* une année de campagne */
     campaign_release_transports(s->camp, s->navy);                    /* les transports rentrent à la rade */
+    /* RÉCOLTE (couche sim) : chaque siège mené à terme (taken_region) pose une
+     * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
+     * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne est restée lectrice. */
+    for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
+        FieldArmy *a=&s->camp->army[i];
+        if (a->taken_region<0) continue;
+        int reg=a->taken_region; a->taken_region=-1;
+        if (reg<0 || reg>=s->econ->n_regions) continue;
+        if (s->econ->region[reg].owner==a->owner) diplo_liberate(s->dp, s->econ, reg);
+        else                                      diplo_occupy  (s->dp, s->econ, a->owner, reg);
+    }
 }
 
 static void sim_day(Sim *s, World *w) {

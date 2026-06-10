@@ -62,6 +62,7 @@ void diplo_init(DiploState *d){
     memset(d,0,sizeof(*d));
     memset(g_intim_cd,0,sizeof g_intim_cd);
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) d->suzerain[c]=-1;   /* tous libres au départ */
+    for (int r=0;r<SCPS_MAX_REG;r++)     d->occupier[r]=-1;   /* aucune région occupée */
     d->fronde_suz=-1; d->fronde_lead=-1; d->fronde_rng=0x9E3779B9u;
 }
 /* La graine du MONDE entre dans la fronde : sans elle, chaque partie rejouait la
@@ -445,6 +446,10 @@ void diplo_make_peace   (DiploState *d,int a,int b){
         d->battle_score[a][b]=d->battle_score[b][a]=0.f;   /* le bras-de-fer se solde */
         d->conquered[a][b]=d->conquered[b][a]=0;
         d->conq_value[a][b]=d->conq_value[b][a]=0.f;       /* §5 : le budget dépensé se solde */
+        /* l'occupation ne survit pas à la paix : toute région de la paire encore
+         * tenue est relâchée (diplo_settle a déjà transféré ce qui devait l'être). */
+        for (int r=0;r<SCPS_MAX_REG;r++)
+            if (d->occupier[r]==a || d->occupier[r]==b) d->occupier[r]=-1;
     }
 }
 bool diplo_can_declare(const DiploState *d,int a,int b){
@@ -661,6 +666,34 @@ bool diplo_conquer_region(DiploState *d, World *w, WorldEconomy *econ,
     diplo_pillage_region(econ, region, dst);
     diplo_enslave_capture(w, econ, conqueror, region, conqueror_enslaves);   /* §4c : gate = TECH_ESCLAVAGE */
     return true;
+}
+
+/* ---- guerre : OCCUPATION RÉELLE (brief terrain) ----------------------- */
+bool diplo_occupy(DiploState *d, const WorldEconomy *econ, int occ, int region){
+    if (!d || !econ) return false;
+    if (occ<0    || occ>=SCPS_MAX_COUNTRY)   return false;
+    if (region<0 || region>=econ->n_regions || region>=SCPS_MAX_REG) return false;
+    int owner = econ->region[region].owner;
+    if (owner<0 || owner>=SCPS_MAX_COUNTRY)  return false;   /* terre vierge : rien à tenir */
+    if (owner==occ)                          return false;   /* déjà à nous */
+    if (diplo_status(d,occ,owner)!=DIPLO_WAR) return false;  /* on n'occupe qu'en guerre AVEC le propriétaire */
+    int prev = d->occupier[region];
+    if (prev==occ) return false;                             /* on la tient déjà */
+    if (prev>=0 && prev<SCPS_MAX_COUNTRY && d->conquered[prev][owner]>0)
+        d->conquered[prev][owner]--;                         /* on DÉLOGE le tiers occupant */
+    d->occupier[region] = (int16_t)occ;
+    d->conquered[occ][owner]++;                              /* l'occupation pousse le score */
+    return true;
+}
+void diplo_liberate(DiploState *d, const WorldEconomy *econ, int region){
+    if (!d || !econ) return;
+    if (region<0 || region>=econ->n_regions || region>=SCPS_MAX_REG) return;
+    int prev = d->occupier[region];
+    if (prev<0) return;                                      /* déjà libre */
+    int owner = econ->region[region].owner;
+    if (owner>=0 && owner<SCPS_MAX_COUNTRY && prev<SCPS_MAX_COUNTRY && d->conquered[prev][owner]>0)
+        d->conquered[prev][owner]--;
+    d->occupier[region] = -1;
 }
 
 /* ---- guerre : ESCLAVAGE (§4c) — déporter la population prise ----------- *

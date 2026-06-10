@@ -55,8 +55,13 @@ typedef struct DiploState {
      * batailles (∝ avantage militaire, PLAFONNÉ +50) + occupation (provinces prises,
      * l'autre +50→+100) ; le défenseur pousse vers −100 par l'attrition. */
     float       battle_score[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];  /* [-100 .. +50] */
-    int16_t     conquered  [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* régions prises ce conflit (occupation) */
-    float       conq_value [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* §5 combat : PRIX cumulé des provinces prises (budget de score dépensé) */
+    int16_t     conquered  [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* régions OCCUPÉES ce conflit (= sièges réels tenus) → pousse le score */
+    float       conq_value [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* §5 combat : PRIX cumulé des provinces TRANSFÉRÉES à la paix (budget de score dépensé) */
+    /* OCCUPATION RÉELLE (brief « la guerre se gagne sur le terrain ») : occupier[r]
+     * = le pays qui TIENT militairement la région r (siège mené à terme), -1 = libre.
+     * La propriété (region.owner) ne change PAS à l'occupation — seulement à la paix
+     * (diplo_settle). conquered[occ][owner] = Σ régions de owner tenues par occ. */
+    int16_t     occupier   [SCPS_MAX_REG];
     /* RANCUNE NATIONALE (§6) — rancor[a][b] = grief de a contre b qui lui a PRIS des
      * terres. ASYMÉTRIQUE, SURVIT à la paix (le grief reste), décroît sur une
      * génération. Donne à a un casus belli territorial (irrédentisme, sans adjacence)
@@ -171,6 +176,15 @@ int   diplo_perceived_hegemon(const World *w, const WorldEconomy *econ,
  * Renvoie true si la conquête a lieu. */
 bool diplo_conquer_region(DiploState *d, World *w, WorldEconomy *econ,
                           WorldLegitimacy *wl, int conqueror, int region, bool conqueror_enslaves);
+
+/* OCCUPATION (brief terrain) — `occ` prend militairement `region` (siège réel mené
+ * à terme par la couche sim) : exige DIPLO_WAR avec son propriétaire, déloge un
+ * tiers occupant (son occupation tombe), pose occupier[region]=occ et pousse le
+ * score (conquered[occ][owner]++). NE CHANGE PAS la propriété. false si non éligible. */
+bool diplo_occupy   (DiploState *d, const WorldEconomy *econ, int occ, int region);
+/* LIBÉRATION — l'occupation de `region` tombe (le propriétaire l'a reprise, ou la
+ * paix l'efface) : occupier[region]=-1 et conquered de l'ex-occupant décrémenté. */
+void diplo_liberate (DiploState *d, const WorldEconomy *econ, int region);
 
 /* SACCAGE (§4) — une province PRISE est DÉPOUILLÉE une fois : l'or de ses coffres
  * et ~6 mois de production (entrepôt valorisé) sont fondus dans le trésor de

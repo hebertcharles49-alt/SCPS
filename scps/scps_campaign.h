@@ -48,7 +48,9 @@ typedef struct {
     float      leg_days;    /* durée totale de l'étape en cours (pour l'attrition) */
     ArmyState  force;       /* la composition (détachement) */
     /* journal (UI/IA) */
-    int        taken;       /* régions RÉDUITES (sièges menés à terme) */
+    int        taken;       /* régions RÉDUITES (sièges menés à terme) — cumul */
+    int        taken_region;/* dernière région réduite NON ENCORE récoltée (-1 = aucune) :
+                             * la couche sim la lit → occupation/libération, puis remet -1 */
     int        legs;        /* étapes de marche franchies */
     int        battles;     /* batailles livrées */
     int        posture;     /* §5 sidebar : 0 prudente · 1 standard · 2 agressive (module marche/siège) */
