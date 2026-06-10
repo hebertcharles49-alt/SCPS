@@ -197,5 +197,9 @@
     X(STR_DEFAITE_LIGNE, "An {0} — votre royaume n'est plus") \
     X(STR_DEFAITE_OBSERVER, "Observer le monde") \
     X(STR_DEFAITE_MENU, "Menu principal") \
+    X(STR_ARMEE_DEMOB, "[démobiliser]  {0} régiments rentrent au foyer") \
+    X(STR_ARMEE_DEMOB_HOV, "Dissoudre l'armée : les ARMES sont consommées (aucun matériau rendu) ; les hommes RENTRENT à leur point d'origine et redeviennent main-d'œuvre.") \
+    X(STR_ARMEE_LEVY_LOCK_GUERRE, "Verrouillé : bâtir la CASERNE (arbre de tech) ouvre le pied de guerre.") \
+    X(STR_ARMEE_LEVY_LOCK_MASSE, "Verrouillé : la CONSCRIPTION (après la Caserne) ouvre la levée en masse.") \
 
 #endif /* SCPS_STRINGS_IDS_H */

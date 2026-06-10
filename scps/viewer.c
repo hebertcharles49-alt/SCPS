@@ -1094,7 +1094,7 @@ static Sidebar g_sb = { -1, 1, {0,0,0,0,0,0}, 0.f, -1, false, LENS_NONE, false }
 /* cibles cliquables du tiroir (reconstruites chaque frame, comme zone_add) */
 enum { SBH_TAB=1, SBH_ECOSUB, SBH_EMBARGO, SBH_RELOC_SRC, SBH_RELOC_DST, SBH_RELOC_CLR,
        SBH_EXPLOIT, SBH_LEVY, SBH_POSTURE, SBH_CHIP_MODE, SBH_CHIP_LENS, SBH_REFILL,
-       SBH_MARCH, SBH_MUSTER, SBH_CANCEL,
+       SBH_MARCH, SBH_MUSTER, SBH_CANCEL, SBH_DEMOB /* P4.24 : démobiliser */,
        SBH_CHIP_CUR,
        SBH_NAVY_BUILD /* a=HullType */, SBH_SAIL /* a=région-cible */, SBH_NAVY_CONV /* a=1 vers pirate */,
        SBH_LEV_REPRESS, SBH_LEV_ASSIM, SBH_LEV_PURGE, SBH_LEV_EMBARGO,
@@ -1162,6 +1162,15 @@ static int sb_chip(SDL_Renderer *ren, int x, int y, const char *txt, bool actif,
     draw_text(ren,g_font_small,x+7,y+2, actif?COL_COPPER:COL_DIM, txt);
     sbhit_add((SDL_Rect){x,y,w,17}, kind, a, b);
     if (hov) zone_add((SDL_Rect){x,y,w,17}, hov);
+    return x+w+5;
+}
+/* chip VERROUILLÉ : grisé, AUCUN hit (non cliquable) ; le hover dit POURQUOI. */
+static int sb_chip_locked(SDL_Renderer *ren, int x, int y, const char *txt, const char *why){
+    int w=text_w(g_font_small,txt)+14;
+    fill_rect(ren,x,y,w,17,(SDL_Color){0x10,0x12,0x16,0xff});
+    draw_box (ren,x,y,w,17,(SDL_Color){0x33,0x30,0x2a,0xff});
+    draw_text(ren,g_font_small,x+7,y+2,(SDL_Color){0x55,0x52,0x4a,0xff}, txt);
+    if (why) zone_add((SDL_Rect){x,y,w,17}, why);
     return x+w+5;
 }
 static const char *sb_country_name(const World *w, int cid){
@@ -1382,6 +1391,15 @@ static void sb_panel_stocks(SDL_Renderer *ren, int x, int y, int w, int h, Sim *
     }
 }
 
+/* P4.23 — la CASERNE GÂTE la levée : sans elle, plafond GARDE ; la Caserne ouvre
+ * le PIED DE GUERRE ; la Conscription, la LEVÉE EN MASSE. (L'IA reste à GARDE —
+ * le palier supérieur est l'avantage que le joueur PAIE en techs.) */
+static int player_max_levy(const TechState *ts){
+    if (ts && ts->unlocked[TECH_CONSCRIPTION]) return WH_LEVY_MASSE;
+    if (ts && ts->unlocked[TECH_CASERNE])      return WH_LEVY_GUERRE;
+    return WH_LEVY_GARDE;
+}
+
 /* ── panneau ARMÉE : jauge de levée + armée de campagne (posture, ordres) ──── */
 static void sb_panel_armee(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, const World *world, int selected){
     static char buf[32][140]; int nb=0;
@@ -1391,13 +1409,16 @@ static void sb_panel_armee(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s
     snprintf(buf[nb],140,"force mobilisée : %ld régiments", units);
     draw_text(ren,g_font,x+10,y,COL_PARCH,buf[nb]); nb++; y+=22;
     draw_text(ren,g_font_small,x+10,y,COL_DIM,"jauge de levée :"); y+=16;
-    { int cx=x+12;
+    { int cx=x+12; int maxl=player_max_levy(&s->ts[me]);   /* P4.23 : la caserne ouvre les crans */
       static const char *HV[4]={
         "Levée basse : on rend les bras à l'économie (mobilisation 0.4×).",
         "Garde : l'entretien normal du temps de paix (1×).",
         "Pied de guerre : la mobilisation presse (1.6×).",
         "LEVÉE EN MASSE (2.6×) : on force la main des familles — la coercition montera à la capitale." };
-      for (int l=0;l<4;l++) cx=sb_chip(ren,cx,y,warhost_levy_name(l), lv==l, SBH_LEVY,l,0,HV[l]);
+      const char *LK[4]={ 0,0, tr(STR_ARMEE_LEVY_LOCK_GUERRE), tr(STR_ARMEE_LEVY_LOCK_MASSE) };
+      for (int l=0;l<4;l++)
+          cx = (l<=maxl) ? sb_chip(ren,cx,y,warhost_levy_name(l), lv==l, SBH_LEVY,l,0,HV[l])
+                         : sb_chip_locked(ren,cx,y,warhost_levy_name(l), LK[l]);
     } y+=24;
     if (campaign_active(s->camp, me)){
         int loc=campaign_location(s->camp, me);
@@ -1405,7 +1426,7 @@ static void sb_panel_armee(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s
         ArmyComposition comp=campaign_composition(s->camp, me);
         snprintf(buf[nb],140,"armée de campagne — région %d · %s", loc, campaign_phase_name(ph));
         draw_text(ren,g_font_small,x+10,y,COL_COPPER,buf[nb]); nb++; y+=15;
-        snprintf(buf[nb],140,"  inf %ld · arch %ld · cav %ld · mages %ld  (Σ %ld paquets)",
+        snprintf(buf[nb],140,"  inf %ld · arch %ld · cav %ld · mages %ld  (Σ %ld régiments)",
                  comp.infanterie, comp.archers, comp.cavalerie, comp.mages, comp.total);
         draw_text(ren,g_font_small,x+10,y,COL_PARCH,buf[nb]); nb++; y+=16;
         draw_text(ren,g_font_small,x+10,y,COL_DIM,"posture :"); y+=15;
@@ -1418,7 +1439,7 @@ static void sb_panel_armee(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s
         } y+=24;
         if (campaign_can_refill(s->camp, s->econ, me)){
             long men=0, mat=0; campaign_refill_cost(s->camp, me, &men, &mat);
-            snprintf(buf[nb],140,"[renforcer]  +1 paquet/type — %ld hommes · %ld matériaux", men, mat);
+            snprintf(buf[nb],140,"[renforcer]  +1 régiment/type — %ld hommes · %ld matériaux", men, mat);
             draw_text(ren,g_font_small,x+12,y,COL_PARCH,buf[nb]); nb++;
             sbhit_add((SDL_Rect){x+8,y-2,w-16,15}, SBH_REFILL, 0,0);
             zone_add((SDL_Rect){x+8,y-2,w-16,15},"Recompléter en territoire AMI : on lève des hommes et l'on fabrique les armes (payé sur l'économie).");
@@ -1442,6 +1463,20 @@ static void sb_panel_armee(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s
             sbhit_add((SDL_Rect){x+8,y-2,w-16,15}, SBH_MUSTER, cr, 0);
             zone_add((SDL_Rect){x+8,y-2,w-16,15},"Déployer la force mobilisée en ARMÉE DE CAMPAGNE au camp de la capitale — elle marchera sur ordre.");
         }
+    }
+    /* P4.24 — DÉMOBILISER : l'armée se dissout. Les ARMES sont CONSOMMÉES (aucun
+     * matériau rendu) ; les hommes RENTRENT à leur point d'origine (la capitale) et
+     * redeviennent main-d'œuvre (topbar : « en armée » → « libre »). */
+    if ((campaign_active(s->camp, me) || units>0) && nb<32){
+        long camp=campaign_units(s->camp,me);
+        long tot = (units>camp)?units:camp;
+        y+=18;
+        char tnum[16]; snprintf(tnum,sizeof tnum,"%ld",tot);
+        tr_fmt(buf[nb],140, STR_ARMEE_DEMOB, tnum);
+        draw_text(ren,g_font_small,x+12,y,COL_PARCH,buf[nb]); nb++;
+        sbhit_add((SDL_Rect){x+8,y-2,w-16,15}, SBH_DEMOB, 0,0);
+        zone_add((SDL_Rect){x+8,y-2,w-16,15}, tr(STR_ARMEE_DEMOB_HOV));
+        y+=17;
     }
     /* ── LA FLOTTE (mer §5) : coques · chantier · rade — et l'embarquement ── */
     y+=8;
@@ -1809,8 +1844,10 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
                        resource_name((Resource)hh->b), hh->a);
             break;
         case SBH_LEVY:
-            warhost_set_levy(s->host, s->player, hh->a);
-            printf("\n[scps] Levée : %s.\n", warhost_levy_name(hh->a));
+            if (hh->a <= player_max_levy(&s->ts[s->player])){       /* P4.23 : garde-fou (le palier verrouillé n'a pas de hit) */
+                warhost_set_levy(s->host, s->player, hh->a);
+                printf("\n[scps] Levée : %s.\n", warhost_levy_name(hh->a));
+            }
             break;
         case SBH_POSTURE:  campaign_set_posture(s->camp, s->player, hh->a); break;
         case SBH_REFILL: {
@@ -1841,6 +1878,21 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
             if (hh->a>=0 && campaign_order(s->camp, s->econ, s->player, hh->a, hh->a, &s->host->army[s->player]))
                 printf("\n[scps] L'ost se rassemble au camp de la capitale (région %d).\n", hh->a);
             break;
+        case SBH_DEMOB: {                                  /* P4.24 — DÉMOBILISER */
+            long camp = campaign_disband(s->camp, s->player);     /* l'armée de campagne quitte la carte */
+            long res  = warhost_disband(s->host, s->player);      /* la réserve levée se dissout (jauge → garde) */
+            long packets = (res>camp)?res:camp;                   /* (la campagne est une COPIE : ne pas doubler) */
+            /* POPULATIONS → POINT D'ORIGINE : la main-d'œuvre réservée repasse en
+             * civils (la capitale = le foyer de levée). Les ARMES sont CONSOMMÉES :
+             * aucun matériau/or n'est rendu (coût irrécupérable). */
+            long home = packets*POP_PER_SLOT;
+            for (int p=0; p<s->labor->n_prov; p++){
+                long *pia=&s->labor->prov[p].pop_in_army;
+                long back=(*pia<home)?*pia:home; *pia-=back; home-=back;
+                if (home<=0) break;
+            }
+            printf("\n[scps] Démobilisation : %ld régiments rentrent au foyer ; les armes sont consommées.\n", packets);
+        } break;
         case SBH_CANCEL:   agency_cancel(s->ag, hh->a); break;
         case SBH_LEV_REPRESS:
             g_sb.purge_arm=false;

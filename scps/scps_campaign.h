@@ -142,6 +142,11 @@ const char *campaign_posture_name (int posture);
 FieldPhase  campaign_phase        (const Campaign *c, int owner);
 long        campaign_units        (const Campaign *c, int owner);  /* paquets de 100 */
 int         campaign_taken        (const Campaign *c, int owner);  /* régions réduites */
+/* DÉMOBILISER (§4 sidebar) : dissout l'armée de campagne — elle quitte la carte,
+ * ses hommes rentrent (la restitution à la pop est faite par l'appelant, qui tient
+ * la comptabilité de main-d'œuvre). Renvoie les paquets de 100 dissous (0 si rien).
+ * La POSTURE (réglage joueur) est préservée. */
+long        campaign_disband      (Campaign *c, int owner);
 const char *campaign_phase_name   (FieldPhase ph);
 
 /* Composition d'une armée par GRAND TYPE d'arme (paquets de 100) — pour le survol

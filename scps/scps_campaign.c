@@ -550,6 +550,19 @@ long campaign_units(const Campaign *c, int o){
 int campaign_taken(const Campaign *c, int o){
     return (o>=0 && o<SCPS_MAX_COUNTRY) ? c->army[o].taken : 0;
 }
+long campaign_disband(Campaign *c, int o){
+    if (!c || o<0 || o>=SCPS_MAX_COUNTRY) return 0;
+    FieldArmy *a=&c->army[o];
+    long packets = force_units(&a->force);            /* ce qu'on dissout (UI / restitution) */
+    int posture = a->posture;                          /* on garde le réglage joueur */
+    army_init(&a->force);                              /* la composition s'évapore */
+    a->active=false; a->loc=-1; a->dest=-1; a->next=-1; a->phase=FA_IDLE;
+    a->days_left=0.f; a->leg_days=0.f; a->taken=0; a->taken_region=-1;
+    a->legs=0; a->battles=0; a->broken_days=0;
+    a->sail_transports=0; a->sail_days=0.f; a->land_at_port=false; a->intercept_done=false;
+    a->posture=posture;
+    return packets;
+}
 const char *campaign_phase_name(FieldPhase ph){
     switch (ph){
         case FA_IDLE:  return "Au repos";

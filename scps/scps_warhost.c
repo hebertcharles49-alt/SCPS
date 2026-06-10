@@ -36,6 +36,13 @@ long warhost_units(const WarHost *h, int cid){
     long n=0; for (int u=0;u<h->army[cid].n_units;u++) n += h->army[cid].units[u].count;
     return n;
 }
+long warhost_disband(WarHost *h, int cid){
+    if (!h || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
+    long n=warhost_units(h,cid);
+    army_init(&h->army[cid]);          /* la réserve levée se dissout */
+    h->levy[cid]=WH_LEVY_GARDE;        /* on relâche la jauge (sinon re-levée immédiate) */
+    return n;
+}
 
 /* Semer le labor transitoire depuis le pays (pop par classe par province), puis
  * DOTER la capacité matérielle de guerre ∝ population (on ne tick pas le labor :

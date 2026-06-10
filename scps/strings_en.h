@@ -192,4 +192,8 @@
     X(STR_DEFAITE_LIGNE, "Year {0} — your realm is no more") \
     X(STR_DEFAITE_OBSERVER, "Observe the world") \
     X(STR_DEFAITE_MENU, "Main menu") \
+    X(STR_ARMEE_DEMOB, "[disband]  {0} regiments return home") \
+    X(STR_ARMEE_DEMOB_HOV, "Disband the army: the WEAPONS are consumed (no materials refunded); the men RETURN to their place of origin and become labour again.") \
+    X(STR_ARMEE_LEVY_LOCK_GUERRE, "Locked: build the BARRACKS (tech tree) to open the war footing.") \
+    X(STR_ARMEE_LEVY_LOCK_MASSE, "Locked: CONSCRIPTION (after the Barracks) opens the mass levy.") \
 

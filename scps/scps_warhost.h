@@ -50,4 +50,8 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
 
 long warhost_units (const WarHost *h, int cid);   /* paquets de 100 levés (UI/IA) */
 
+/* DÉMOBILISER la réserve levée (§4) : l'armée du pays se dissout, la jauge retombe
+ * à GARDE (sinon le pied de guerre re-lève aussitôt). Renvoie les paquets dissous. */
+long warhost_disband(WarHost *h, int cid);
+
 #endif /* SCPS_WARHOST_H */
