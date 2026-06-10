@@ -70,6 +70,8 @@ void  intertrade_reset(void);
 void  intertrade_seed_centres   (const WorldEconomy *e);
 bool  intertrade_has_centre     (int region);                       /* cette région est-elle un hub ? */
 bool  intertrade_country_has_centre(const WorldEconomy *e, int cid);/* ce pays tient-il un hub ? */
+int   intertrade_country_centre (const WorldEconomy *e, int cid);   /* 1re région-hub du pays (-1) */
+bool  intertrade_relocate_centre(int from, int to);                 /* déplace un hub (coût: appelant) */
 /* sauvegarde (shell §6) : le module possède sa sérialisation — embargos décrétés
  * (les flux du dernier tick se recalculent, eux). */
 void  intertrade_save(FILE *f);

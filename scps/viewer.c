@@ -1202,7 +1202,8 @@ static void sb_panel_eco(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, 
     int cx=x+10;
     cx=sb_chip(ren,cx,y,"Commerce",   g_sb.eco_sub==0, SBH_ECOSUB,0,0,"Les routes marchandes vivantes — et l'EMBARGO, qui se décrète ici.");
     cx=sb_chip(ren,cx,y,"Marché",     g_sb.eco_sub==1, SBH_ECOSUB,1,0,"La table des biens : prix en or, tendance, état du marché en mots.");
-    (void)sb_chip(ren,cx,y,"Imp/Exp", g_sb.eco_sub==2, SBH_ECOSUB,2,0,"Ce que le pays importe et exporte (volumes, partenaires, or encaissé).");
+    cx=sb_chip(ren,cx,y,"Imp/Exp", g_sb.eco_sub==2, SBH_ECOSUB,2,0,"Ce que le pays importe et exporte (volumes, partenaires, or encaissé).");
+    (void)sb_chip(ren,cx,y,"Réseau", g_sb.eco_sub==3, SBH_ECOSUB,3,0,"Tous les Centres commerciaux du monde, nommés — le tenir = commercer (l'utilité des cités-états).");
     y+=24;
     if (g_sb.eco_sub==0){
         int routes=intertrade_active_routes(s->econ, s->rn, s->dp, me);
@@ -1253,7 +1254,7 @@ static void sb_panel_eco(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, 
             zone_add((SDL_Rect){x+8,y-1,w-16,15}, mhov[g]);    /* le mot d'état : au survol */
             y+=15;
         }
-    } else {
+    } else if (g_sb.eco_sub==2){
         /* P3.20 — accès au RÉSEAU : tient-on un Centre commercial ? (sinon, coupé) */
         bool net = intertrade_country_has_centre(s->econ, me);
         draw_text(ren,g_font_small,x+10,y, net?(SDL_Color){0x8c,0xd0,0x9c,0xff}:sense_color(0.12f),
@@ -1271,6 +1272,30 @@ static void sb_panel_eco(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, 
                      ev, ev>0.05f?sb_country_name(world,to):"—");
             draw_text(ren,g_font_small,x+12,y,COL_PARCH,buf[nb]); nb++; y+=15; shown++;
         }
+    } else {
+        /* P3.20 — TOUS les Centres commerciaux, nommés par lieu : on voit le RÉSEAU
+         * entier et QUI tient chaque hub (une petite cité-état qui en tient un est
+         * un partenaire précieux : l'utilité des cités-états). */
+        bool net=intertrade_country_has_centre(s->econ, me);
+        draw_text(ren,g_font_small,x+10,y, net?(SDL_Color){0x8c,0xd0,0x9c,0xff}:sense_color(0.12f),
+                  net?tr(STR_CENTRE_RESEAU_OUVERT):tr(STR_CENTRE_RESEAU_FERME)); y+=18;
+        static char chov[SCPS_MAX_REG][112]; int seen=0, off=g_sb.scroll[SBT_ECO], shown=0;
+        for (int r=0;r<s->econ->n_regions && y<h-18 && nb<64;r++){
+            if (!intertrade_has_centre(r)) continue;
+            if (seen++ < off) continue;
+            int o=s->econ->region[r].owner;
+            char nm[24]; region_make_name(nm,sizeof nm,s->econ,r);
+            const char *own=(o>=0&&o<world->n_countries)?world->country[o].name:"libre";
+            bool mine=(o==me), war=(o>=0&&o!=me)&&diplo_status(s->dp,me,o)==DIPLO_WAR;
+            snprintf(buf[nb],120,"Marché de %-10.10s  %-13.13s", nm, own);
+            SDL_Color col = mine?COL_COPPER : war?(SDL_Color){0xd0,0x50,0x40,0xff}:COL_PARCH;
+            draw_text(ren,g_font_small,x+12,y,col,buf[nb]); nb++;
+            snprintf(chov[r],sizeof chov[r],"Centre commercial tenu par %s%s — un hub du réseau.",
+                     own, mine?" (vous)":war?" — EN GUERRE":"");
+            zone_add((SDL_Rect){x+8,y-1,w-16,15}, chov[r]);
+            y+=15; shown++;
+        }
+        if (shown==0) draw_text(ren,g_font_small,x+12,y,COL_DIM,"(aucun Centre commercial connu)");
     }
 }
 
@@ -1994,6 +2019,8 @@ static bool sidebar_wheel(int mx, int my, int wheel_y){
  * partent les colons (réutilise econ_colonize_from : 100 colons s'installent). */
 #define COLONIZE_GOLD_COST 40.f
 static SDL_Rect g_colonize_btn; static int g_colonize_dst=-1, g_colonize_src=-1;
+#define CENTRE_RELOC_COST 250.f   /* P3.20 : relocaliser un Centre commercial (balance later) */
+static SDL_Rect g_reloc_btn; static int g_reloc_dst=-1;
 static int player_colonize_src(const Sim *s, int dst_reg){
     if (dst_reg<0 || dst_reg>=s->econ->n_regions) return -1;
     const RegionEconomy *d=&s->econ->region[dst_reg];
@@ -2334,6 +2361,22 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             draw_box (ren, x, by, bw, 22, COL_COPPER);
             draw_text(ren, fb, x+9, by+4, COL_COPPER, cb);
             g_colonize_btn=(SDL_Rect){x,by,bw,22}; g_colonize_dst=dreg; g_colonize_src=src;
+        }
+    }
+    /* P3.20 — RELOCALISER un Centre commercial vers CETTE région (possédée, non-hub),
+     * si le joueur en tient un ailleurs : le hub se DÉPLACE (il ne meurt jamais). */
+    if (s && pid>=0 && pid<w->n_provinces){
+        int dreg=w->province[pid].region;
+        if (dreg>=0 && dreg<econ->n_regions && econ->region[dreg].owner==s->player
+            && !intertrade_has_centre(dreg) && intertrade_country_centre(econ, s->player)>=0){
+            TTF_Font *fb=g_font_small?g_font_small:g_font;
+            int by=py+ph-28; char cb[80];
+            snprintf(cb,sizeof cb,"Relocaliser un Centre commercial ici  (%.0f or)", CENTRE_RELOC_COST);
+            int bw=text_w(fb,cb)+18;
+            fill_rect(ren, x, by, bw, 22, (SDL_Color){0x16,0x1e,0x2c,0xff});
+            draw_box (ren, x, by, bw, 22, COL_COPPER);
+            draw_text(ren, fb, x+9, by+4, COL_COPPER, cb);
+            g_reloc_btn=(SDL_Rect){x,by,bw,22}; g_reloc_dst=dreg;
         }
     }
 }
@@ -2727,12 +2770,12 @@ static void draw_centre_markers(SDL_Renderer *ren, const Cam *cam, const Sim *s,
         SDL_RenderDrawLine(ren,sx,sy+rad+2, sx-rad-2,sy); SDL_RenderDrawLine(ren,sx-rad-2,sy, sx,sy-rad-2);
         char nm[32]; region_make_name(nm,sizeof nm,s->econ,r);
         if (g_font_small && cam->scale>1.6f){                            /* nom au zoom (sinon trop dense) */
-            char lab[48]; snprintf(lab,sizeof lab,"\xe2\x97\x86 Marche de %s", nm);
+            char lab[48]; snprintf(lab,sizeof lab,"\xe2\x97\x86 Marché de %s", nm);
             int lw=text_w(g_font_small,lab);
             fill_rect(ren, sx-lw/2-2, sy+rad+2, lw+4, 13, (SDL_Color){0x0f,0x16,0x22,0xcc});
             draw_text(ren, g_font_small, sx-lw/2, sy+rad+2, COL_COPPER, lab);
         }
-        snprintf(tip[r],sizeof tip[r],"Marche de %s\x1f%s\x1f" "Centre commercial : le tenir = commercer.",
+        snprintf(tip[r],sizeof tip[r],"Marché de %s\x1f%s\x1f" "Centre commercial : le tenir = commercer.",
                  nm, (owner>=0&&owner<w->n_countries)?w->country[owner].name:"sans maitre");
         zone_add((SDL_Rect){sx-rad-2,sy-rad-2,2*rad+4,2*rad+4}, tip[r]);
     }
@@ -3602,7 +3645,7 @@ int main(int argc, char **argv) {
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
-                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1;
+                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1;
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_centre_markers(ren, &cam, &sim, world, win_w, win_h);  /* P3.20 : les Centres commerciaux */
@@ -3839,6 +3882,21 @@ int main(int argc, char **argv) {
                             econ_colonize_from(sim.econ, g_colonize_src, g_colonize_dst, sim.player);
                             printf("\n[scps] Coloniser : région %d colonisée (100 colons, %.0f or).\n", g_colonize_dst, COLONIZE_GOLD_COST);
                         } else printf("\n[scps] Coloniser : trésor insuffisant (%.0f or requis).\n", COLONIZE_GOLD_COST);
+                        dirty=true; break;
+                    }
+                    /* P3.20 — RELOCALISER un Centre commercial vers la région sélectionnée :
+                     * le hub le plus proche du joueur S'Y DÉPLACE (il ne meurt pas), payé en or. */
+                    if (g_reloc_dst>=0 && sim.ready &&
+                        ev.button.x>=g_reloc_btn.x && ev.button.x<g_reloc_btn.x+g_reloc_btn.w &&
+                        ev.button.y>=g_reloc_btn.y && ev.button.y<g_reloc_btn.y+g_reloc_btn.h){
+                        int cp=world->country[sim.player].capital_prov;
+                        int creg=(cp>=0&&cp<world->n_provinces)? world->province[cp].region : -1;
+                        int from=intertrade_country_centre(sim.econ, sim.player);
+                        if (creg>=0 && from>=0 && sim.econ->region[creg].treasury>=CENTRE_RELOC_COST
+                            && intertrade_relocate_centre(from, g_reloc_dst)){
+                            sim.econ->region[creg].treasury-=CENTRE_RELOC_COST;
+                            printf("\n[scps] Centre commercial relocalisé : région %d → %d (%.0f or).\n", from, g_reloc_dst, CENTRE_RELOC_COST);
+                        } else printf("\n[scps] Relocalisation refusée (trésor insuffisant ou pas de hub).\n");
                         dirty=true; break;
                     }
                     /* §4 panneau : un clic sur un SLOT de bâtiment bâtit l'édifice

@@ -145,6 +145,19 @@ bool intertrade_country_has_centre(const WorldEconomy *e, int cid){
         if (g_centre[r] && e->region[r].owner==cid) return true;
     return false;
 }
+int intertrade_country_centre(const WorldEconomy *e, int cid){
+    if (!e||!cid_ok(cid)) return -1;
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
+        if (g_centre[r] && e->region[r].owner==cid) return r;
+    return -1;
+}
+/* RELOCALISER un Centre commercial (coût en or côté appelant) : le hub se DÉPLACE
+ * de `from` vers `to` — il ne meurt pas, il bouge. `to` ne doit pas déjà en être un. */
+bool intertrade_relocate_centre(int from, int to){
+    if (from<0||from>=SCPS_MAX_REG||to<0||to>=SCPS_MAX_REG) return false;
+    if (!g_centre[from] || g_centre[to]) return false;
+    g_centre[from]=false; g_centre[to]=true; return true;
+}
 
 void  intertrade_order_embargo(int cid, int target, bool on){
     if (cid_ok(cid) && cid_ok(target) && cid!=target) g_embargo[cid][target]=on;
