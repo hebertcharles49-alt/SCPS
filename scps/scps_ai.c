@@ -51,7 +51,7 @@
 #define AI_LEVER_BUILD    0.035f /* bâtir une famille d'édifices → la faction afférente */
 /* ---- Recherche (l'arbre de tech vivant) ------------------------------- */
 #define AI_RESEARCH_CADENCE 365  /* ~1 an entre déverrouillages potentiels */
-#define AI_RESEARCH_RATE    14.f /* points/an de base, × rendement Savoir × f(pop) */
+#define AI_RESEARCH_RATE    42.f /* P5.29 : ×3 pour suivre le coût ×3 → rythme IA inchangé */
 #define AI_RESEARCH_POPREF  8000.f /* population qui DOUBLE l'assiette de recherche */
 #define AI_TECH_PENCHANT    2.0f  /* biais vers le thème de SA race (penchant, pas « si ») */
 #define AI_TECH_SIGNATURE   1.5f  /* prime à une signature accessible (la sienne / greffée) */

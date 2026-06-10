@@ -351,6 +351,10 @@ static void zone_add(SDL_Rect r, const char *def);   /* (défini plus bas — su
 static char g_tree_hov[TECH_COUNT][240];
 static int  g_tree_x[TECH_COUNT], g_tree_y[TECH_COUNT], g_tree_demo;
 static int  g_tree_open = -1;                 /* tech dont l'anneau de SOUS-TECHS est ouvert (clic) ; -1 = aucun */
+/* P5.26 — RECHERCHE DU JOUEUR : la TechId visée (clic sur l'arbre), -1 = aucune.
+ * File de 1 : une seule recherche à la fois, comme l'IA. Déclarée ICI car l'arbre
+ * (draw_tech_tree) ET la boucle (sim_day) la lisent — l'en-tête montre la cible. */
+static int  g_research_target=-1;
 #define SYNC_HOV_SZ 200
 static char g_sync_hov[SYNC_COUNT][SYNC_HOV_SZ];   /* survol 2-colonnes des sous-techs */
 static int  sync_children(int techid, int *out){   /* indices des nœuds syncrétiques pendant de `techid` */
@@ -467,14 +471,17 @@ static void draw_tech_tree(SDL_Renderer *ren, int win_w, int win_h,
             }
         }
     }
-    char hdr[220];
-    snprintf(hdr,sizeof hdr,"ARBRE DE TECH — %s   ·   %d points de recherche   ·   SURVOLE = effet & prix · CLIC = sous-techs",
-             w->country[cid].name, tr.points);
+    /* P5.30 — l'en-tête porte le STRICT NÉCESSAIRE (pays · points · cible en cours) ;
+     * les LÉGENDES de prose (anneaux, couleurs, cadres) sont PURGÉES du bas — tout
+     * vit désormais au survol (nœud → effet & prix ; secteurs déjà labellisés). */
+    char hdr[260];
+    if (g_research_target>=0 && g_research_target<TECH_COUNT && tr.points>=0)
+        snprintf(hdr,sizeof hdr,"ARBRE DE TECH — %s   ·   %d points de recherche   ·   en cours : %s",
+                 w->country[cid].name, tr.points, tech_node((TechId)g_research_target)?tech_node((TechId)g_research_target)->name:"—");
+    else
+        snprintf(hdr,sizeof hdr,"ARBRE DE TECH — %s   ·   %d points de recherche   ·   clic = lancer · survol = effet & prix",
+                 w->country[cid].name, tr.points);
     draw_text(ren,g_font_big,18,12,COL_COPPER,hdr);
-    draw_text(ren,g_font,18,win_h-40,COL_DIM,
-      "anneau = tier · 3 secteurs = thèmes · cadre rouge = faustien · cadre gris = orphelin · cercle cuivré = a des SOUS-TECHS (clic → anneau de diffusion)");
-    draw_text(ren,g_font,18,win_h-22,COL_DIM,
-      "Savoir (bleu) · Forge (cuivre) · Société (vert)  —  vif = acquis · clair = disponible · sombre = verrouillé");
 }
 
 /* ---- Zones de survol → « un mot, une définition » --------------------- */
@@ -628,6 +635,28 @@ static GameState g_gs = GS_MENU;
  * continue, sidebar en lecture seule) ou MENU. g_observer survit à « Observer ». */
 static bool g_defeat=false, g_observer=false;
 static int  g_defeat_year=0;
+/* P5.27 — INCOME SAVOIR passif (points/MOIS) : lit les bâtiments STAFFÉS de la
+ * capitale (province-siège = prov[0] de l'éco du travail), pondérés PAR TIER —
+ * T1 0.5 · T2 1 · T3 1.5 · T4 2 /mois, bâtiment plein, PRORATISÉ au staffing
+ * (jobs_filled / slots du niveau). La capitale elle-même (structure tierée :
+ * ses lettrés) compte comme une source, plafond T4. Lecteur de l'éco du
+ * travail — jamais un bonus plat ; pop n'entre PAS (elle ne sert qu'au coût). */
+static float player_savoir_income_month(const LaborEcon *lab){
+    if (!lab || lab->n_prov<1) return 0.f;
+    const LProvince *cap=&lab->prov[0];
+    int ct=cap->cap_tier; if(ct<1)ct=1; if(ct>4)ct=4;
+    float m = 0.5f*(float)ct;                                   /* la capitale : ses nobles/lettrés */
+    for (int b=0;b<cap->n_bld;b++){
+        const LBuilding *bd=&cap->bld[b];
+        if (bd->type==LB_NONE) continue;
+        int slots=building_job_slots(bd->level); if(slots<1)slots=1;
+        float staffing=(float)bd->jobs_filled/(float)slots;
+        staffing = staffing<0.f ? 0.f : (staffing>1.f ? 1.f : staffing);
+        int tier=bd->level+1; if(tier<1)tier=1; if(tier>4)tier=4;
+        m += 0.5f*(float)tier*staffing;                         /* 0.5·tier /mois, au prorata */
+    }
+    return m;
+}
 
 static void sim_day(Sim *s, World *w) {
     /* — quotidien — */
@@ -643,6 +672,28 @@ static void sim_day(Sim *s, World *w) {
     for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){    /* les voisins VIVENT (cadence étalée) */
         ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
         ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->wp, s->day);  /* l'arbre vivant */
+    }
+    /* P5.26/27/28 — RECHERCHE DU JOUEUR : la cible (clic sur l'arbre) progresse,
+     * payée par l'INCOME SAVOIR (bâtiments staffés de la capitale, par tier — P5.27)
+     * × rendement des INSTITUTIONS Savoir (Scriptorium/Académie/Université) × CLOCHE
+     * DE PROSPÉRITÉ (P5.28, lecteur core — jamais un bonus plat) ; coût ×3 (P5.29). File de 1. */
+    if (g_research_target>=0 && s->player>=0 && s->player<w->n_countries){
+        int pl=s->player;
+        float pop = ai_country_population(w, s->econ, pl);
+        unsigned access = ai_race_access(w, s->econ, pl);
+        if (!tech_can_research(&s->ts[pl], (TechId)g_research_target, access)){
+            g_research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
+        } else {
+            float month   = player_savoir_income_month(s->labor);          /* P5.27 : capital par tier × staffing */
+            float yield   = tech_research_yield(&s->ts[pl]);               /* institutions Savoir : ×1..2.5 */
+            CountryReadout cr = country_readout(s->wp, s->ts, w, pl);
+            float prosp = 0.4f + (float)cr.m_prosperite.value/100.f*1.2f;   /* P5.28 : ×[0.4..1.6] selon la prospérité */
+            s->ts[pl].research_points += (month/30.4f) * yield * prosp;     /* /mois → /jour */
+            if (s->ts[pl].research_points >= tech_cost((TechId)g_research_target, pop)){
+                tech_research(&s->ts[pl], (TechId)g_research_target, access);   /* DÉBLOQUÉ */
+                s->ts[pl].research_points = 0.f; g_research_target=-1;          /* file de 1 : terminé */
+            }
+        }
     }
     world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, 1);
     labor_tick(s->labor);
@@ -3581,7 +3632,14 @@ int main(int argc, char **argv) {
                             int dx=ev.button.x-g_tree_x[i], dy=ev.button.y-g_tree_y[i];
                             if (dx*dx+dy*dy <= 11*11){ hit=i; break; }
                         }
-                        g_tree_open = (hit>=0 && hit!=g_tree_open) ? hit : -1;  /* bascule / ferme */
+                        /* P5.26 — clic sur une tech ACCESSIBLE → la recherche SE LANCE (file de 1). */
+                        if (hit>=0 && sim.ready && sim.player>=0 && sim.player<world->n_countries){
+                            unsigned acc = ai_race_access(world, sim.econ, sim.player);
+                            if (tech_can_research(&sim.ts[sim.player], (TechId)hit, acc)){
+                                g_research_target=hit; sim.ts[sim.player].research_points=0.f;
+                            }
+                        }
+                        g_tree_open = (hit>=0 && hit!=g_tree_open) ? hit : -1;  /* bascule l'anneau de sous-techs */
                         dirty=true; break;
                     }
                     /* §1 : le bandeau est un SOMMAIRE — un clic sur une RESSOURCE ouvre

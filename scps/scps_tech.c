@@ -23,7 +23,7 @@
  * est une affaire de STRATÉGIE, pas de volume (uniforme du nain au géant). COST_SCALE relève
  * l'ensemble pour qu'un empire ne s'offre que ~40-60 % de l'arbre sur 200 ans → il se SPÉCIALISE
  * (magie OU industrie OU négoce, pas tout). La spine Savoir·Production reste l'accélérateur. */
-#define COST_SCALE       4.8f    /* relève le coût : vise une fraction d'arbre < 100 % (surface d'équilibrage) */
+#define COST_SCALE       14.4f   /* P5.29 : coût des techs ×3 (T2 216→~650) — l'income suit (IA ×3, joueur par tier) */
 #define POP_REF          5000.f  /* pop de référence : coût = BASE × COST_SCALE × pop/POP_REF */
 #define COST_POP_FLOOR   0.5f    /* plancher pop : un tout petit empire paie au moins BASE×SCALE×0.5 (jamais ~gratuit) */
 static const float BASE_COST[6] = { 0.f, 40.f, 90.f, 160.f, 260.f, 400.f }; /* par tier (rayon) */
