@@ -95,12 +95,12 @@ int main(void){
     printf("\n── 6. Orphelines de race (greffe par la population / conquête) ──\n");
     TechState f; tech_state_init(&f,false);
     research(&f,TECH_ARMURERIE,human); research(&f,TECH_POUDRIERE,human);   /* prérequis de la Forge à runes */
-    ok("SANS Nains : la Forge à runes (signature naine) est ORPHELINE → inaccessible",
-       !tech_can_research(&f,TECH_FORGE_RUNES,human));
-    ok("AVEC des Nains dans la population : la Forge à runes se GREFFE",
-       tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(RACE_NAIN)));
-    ok("un empire NAIN la recherche NATIVEMENT (sur son propre arbre)",
-       tech_can_research(&f,TECH_FORGE_RUNES, tech_race_bit(RACE_NAIN)));
+    ok("NAIN sans ARCANE : la Forge à runes (runique × arcane) reste INSUFFISANTE",
+       !tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(RACE_NAIN)));
+    ok("NAIN + ARCANE (elfe en contact) : la Forge à runes se GREFFE (combo §syncrétique)",
+       tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(RACE_NAIN)|tech_race_bit(RACE_ELFE)));
+    ok("un empire NAIN+ELFE la recherche (native naine + combo elfe réunis)",
+       tech_can_research(&f,TECH_FORGE_RUNES, tech_race_bit(RACE_NAIN)|tech_race_bit(RACE_ELFE)));
     ok("la signature HALFELINE (Abondance) est la MOINS faustienne (charge nulle)",
        !tech_node(TECH_ABONDANCE)->faustian && tech_node(TECH_ABONDANCE)->charge==0.f &&
        tech_node(TECH_ABONDANCE)->native==RACE_HALFELIN);
