@@ -613,6 +613,11 @@ static void sim_campaign_year(Sim *s, World *w) {
 /* État de l'écran (déclaré tôt : sim_day gate l'alerte audio sur GS_PLAYING). */
 typedef enum { GS_MENU=0, GS_SETUP, GS_OPENING, GS_PLAYING } GameState;
 static GameState g_gs = GS_MENU;
+/* §terrain — LA DÉFAITE DU JOUEUR : son royaume réduit à 0 région (polity_death).
+ * g_defeat fige les entrées (écran de fin) ; deux sorties : OBSERVER (le monde
+ * continue, sidebar en lecture seule) ou MENU. g_observer survit à « Observer ». */
+static bool g_defeat=false, g_observer=false;
+static int  g_defeat_year=0;
 
 static void sim_day(Sim *s, World *w) {
     /* — quotidien — */
@@ -1652,9 +1657,10 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
             case SBT_DEMO: content=22+3*15+8+16+15+6*15+24; break;
             case SBT_ARMEE: content=22+16+24+6*16+3*17+8; break;
             case SBT_FILTRES: content=3*40+15+24+30; break;
-            case SBT_DIPLO:{ int nn=0; for(int c=0;c<world->n_countries;c++)
-                                if(c!=s->player && world->country[c].role!=POLITY_UNCLAIMED) nn++;
-                             if(nn>16)nn=16; content=22+nn*30+8; } break;
+            case SBT_DIPLO:{ int nn=0;
+                             for(int c=0;c<world->n_countries;c++){
+                                 if(c!=s->player && world->country[c].role!=POLITY_UNCLAIMED) nn++; }
+                             content=22+(nn>16?16:nn)*30+8; } break;
             default: break;
         }
         int dh=32+content+96;                          /* titre + contenu + zone Leviers */
@@ -2464,11 +2470,6 @@ static void save_ppm(const char *path, const uint32_t *px, int w, int h) {
  * (le menu vit avec « Charger » grisé — l'ordre du brief lui-même).
  * ═══════════════════════════════════════════════════════════════════════════ */
 static bool g_pause_menu=false, g_quit_confirm=false, g_show_tuto=false;
-/* §terrain — LA DÉFAITE DU JOUEUR : son royaume réduit à 0 région (polity_death).
- * g_defeat fige les entrées ; deux sorties : OBSERVER (le monde continue, lecture
- * seule) ou MENU. g_observer survit à « Observer » (le joueur n'agit plus). */
-static bool g_defeat=false, g_observer=false;
-static int  g_defeat_year=0;
 static int  g_tuto_page=0;
 static int  g_setup_ethos=5, g_setup_race=(int)RACE_HUMAIN, g_setup_terre=5;  /* défauts : Pacifiste? non → voir tables */
 static char g_open_terre_line[120]="";
