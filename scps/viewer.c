@@ -1337,7 +1337,7 @@ static void sb_panel_armee(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s
     int me=s->player;
     long units=warhost_units(s->host, me);
     int lv=warhost_levy(s->host, me);
-    snprintf(buf[nb],140,"force mobilisée : %ld paquet(s) de 100", units);
+    snprintf(buf[nb],140,"force mobilisée : %ld régiments", units);
     draw_text(ren,g_font,x+10,y,COL_PARCH,buf[nb]); nb++; y+=22;
     draw_text(ren,g_font_small,x+10,y,COL_DIM,"jauge de levée :"); y+=16;
     { int cx=x+12;
@@ -1398,10 +1398,13 @@ static void sb_panel_armee(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s
       int port=navy_best_port(world, s->econ, me);
       draw_text(ren,g_font_small,x+10,y,COL_DIM,"Flotte"); y+=15;
       if (port<0){
-          draw_text(ren,g_font_small,x+12,y,COL_DIM,
-                    s->econ->region[sb_capital_region(s,world)].coastal
-                    ? "aucune rade — bâtir un Port (panneau Bâtir)"
-                    : "pays sans côte — la mer est ailleurs"); y+=17;
+          /* P4.25 — donnée seule (« Flotte 0 ») ; l'explication vit en hover. */
+          draw_text(ren,g_font_small,x+12,y,COL_DIM,"0");
+          zone_add((SDL_Rect){x+8,y-2,300,15},
+                   s->econ->region[sb_capital_region(s,world)].coastal
+                   ? "Aucune rade : bâtir un Port (panneau Bâtir) ouvre la mer."
+                   : "Pays sans accès à la mer d'ici : la flotte n'a pas de rade.");
+          y+=17;
       } else {
           snprintf(buf[nb],140,"%d combat · %d transport(s) (%d en mer) · %d marchand(s) · %d pirate(s)",
                    nv->hull[HULL_WAR], nv->hull[HULL_TRANSPORT], nv->at_sea, nv->hull[HULL_MERCHANT], nv->hull[HULL_PIRATE]);
@@ -2108,10 +2111,9 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             ui_row(ren,x,&y,rw,"Statut", l, COL_COPPER,
                    "L'ossature administrative. La pop DÉBLOQUE le tier, une recette de plus en plus précieuse le PAIE ; le tier nomme la taille.");
             long libres = house - pop;
-            if (libres>=0) snprintf(l,sizeof l, "%ld libres / %ld", libres, house);
-            else           snprintf(l,sizeof l, "complet · manque %ld → agitation", -libres);
+            snprintf(l,sizeof l, "%ld/%ld", pop, house);   /* P6.34 : occupés/capacité compact ; la COULEUR porte l'état */
             ui_row(ren,x,&y,rw,"Logement", l, libres>=0?COL_PARCH:sense_color(0.12f),
-                   "Le LOGEMENT délivré par la capitale (au prorata des paquets de Nobles en poste). Surpeuplé = grogne.");
+                   "Logement délivré par la capitale (au prorata des Nobles en poste) : occupés / capacité. Surpeuplé (rouge) = grogne.");
             snprintf(l,sizeof l, "%ld", serv);
             ui_row(ren,x,&y,rw,"Services", l, serv>=pop?COL_PARCH:sense_color(0.30f),
                    "Les SERVICES délivrés ; sous-équipé, le contentement baisse.");
