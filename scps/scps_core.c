@@ -46,6 +46,13 @@ float scps_clock(const ScpsFiche *a, const ScpsFiche *b) {
 /* ===================================================================== */
 float scps_bell(float D_bar) { return D_bar * (10.f - D_bar) / 25.f; }
 
+/* GATE BABEL (arc « le monde se fracture », A2) — la connectivité C n'est
+ * FÉCONDE que si l'ouverture P l'accompagne. C·σ(P−4) : un régime hyper-connecté
+ * mais fermé (P pourri) n'est plus RÉCOMPENSÉ de ses liens — sa connectivité ne
+ * porte alors que la rupture (la part déstabilisante de C, pression/dereal, reste
+ * brute : elle, on la garde). σ(P−4) ≈ 0.018 à P=0, 0.5 à P=4, 0.98 à P=8. */
+float scps_babel_gate(float C, float P) { return C * scps_sigmoid(P - 4.f); }
+
 float scps_metabolisation(float P, float D_inf, float K) {
     return scps_sigmoid(0.8f * (P - D_inf) + 0.35f * (K - 5.f));
 }

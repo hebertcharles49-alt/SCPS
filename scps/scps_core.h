@@ -62,6 +62,10 @@ float scps_clock(const ScpsFiche *a, const ScpsFiche *b);
 float scps_bell(float D_bar);                                   /* f(D̄)=D̄(10−D̄)/25 */
 float scps_metabolisation(float P, float D_inf, float K);       /* σ(0.8(P−D∞)+0.35(K−5)) */
 float scps_PE(float C, float P, float K, float D_bar, float D_inf);
+/* Gate Babel (A2) : C effectif = C·σ(P−4) là où C RÉCOMPENSE (la prospérité).
+ * Un régime connecté mais fermé ne tire plus de bénéfice de ses liens — sa
+ * connectivité ne transmet alors que la rupture (terme brut, côté pression). */
+float scps_babel_gate(float C, float P);
 
 /* ===================================================================== */
 /* §2.4 — ORDRE INTERNE : état → diagnostic                              */

@@ -208,12 +208,19 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
         float C = clampf(cp->C + wp->age_C_bonus, 0.f, 10.f);
         float flux_f = (ts_c ? tech_flux(ts_c) : 0.f) + wp->age_breach_flux;
 
+        /* GATE BABEL (A2) : la connectivité ne RÉCOMPENSE (PE interne + externe)
+         * qu'à hauteur de l'ouverture — C_pe = C·σ(P−4). Un régime fermé mais
+         * hyper-connecté ne tire plus de prospérité de ses liens. La part BRUTE
+         * de C (déstabilisante : pression/déréalisation dans scps_order, st.C
+         * plus bas) reste intacte — c'est volontaire (la rupture, elle, transite). */
+        float C_pe = scps_babel_gate(C, P);
+
         /* PE interne */
         float d_bar_int = cp->profile.D_bar_int;
         float d_inf_int = cp->profile.D_inf_int;
         float fdb_int   = bell_f(d_bar_int);
         float metro_int = sigmoid(0.8f * (P - d_inf_int) + 0.35f * (K - 5.f));
-        cp->PE_interne  = 10.f * (C / 10.f) * fdb_int * metro_int;
+        cp->PE_interne  = 10.f * (C_pe / 10.f) * fdb_int * metro_int;
 
         /* PE externe : somme sur les voisins */
         cp->PE_externe = 0.f;
@@ -231,7 +238,7 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
             if (ds   > d_inf_ext) d_inf_ext = ds;
             if (dp_a > d_inf_ext) d_inf_ext = dp_a;
             if (dr   > d_inf_ext) d_inf_ext = dr;
-            cp->PE_externe += PE_contact(C, K, P, d_inf_ext, d_inf_ext);
+            cp->PE_externe += PE_contact(C_pe, K, P, d_inf_ext, d_inf_ext);   /* A2 : C porté par le gate Babel */
         }
 
         cp->P_potentiel = cp->PE_interne + cp->PE_externe;
