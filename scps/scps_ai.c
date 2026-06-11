@@ -1276,22 +1276,22 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
 
     if (econ_due){
         ai_econ_turn(a, w, econ, &v, ag, rn, brake);
-        /* I5 — L'AUDIT DES OFFICES : un État dont la CORRUPTION dépasse 50 réprime la
+        /* I5 — L'AUDIT DES OFFICES : un État dont la CORRUPTION dépasse 40 réprime la
          * capture des factions — coût (50+8·corr)·IPM (×2 si une faction TIENT l'État),
-         * corr −20, et la légitimité MONTE de 0.3 (l'assainissement applaudi). Cooldown
-         * 5 ans. (Sous 50, ce serait une chasse aux sorcières qui INQUIÈTE — L −0.3 — donc
-         * l'IA s'en garde ; le levier reste ouvert au joueur via l'UI.) Un sink en or
-         * de plus : la probité se paie. */
+         * corr −20. La légitimité MONTE de 0.3 si corr>50 (l'assainissement applaudi),
+         * sinon BAISSE de 0.3 (la chasse aux sorcières inquiète) : l'IA accepte ce coût
+         * de réputation entre 40 et 50 pour casser la capture tôt. Cooldown 5 ans. Un
+         * sink en or de plus : la probité se paie. */
         if (day >= a->next_audit_day){
             int corr = faction_corruption_0_100(a->cid);
             int cr = (a->home_region>=0 && a->home_region<econ->n_regions) ? a->home_region : -1;
-            if (corr > 50 && cr>=0){
+            if (corr > 40 && cr>=0){
                 bool held = faction_capture_total(a->cid) > 0.4f;            /* une faction TIENT → elle résiste */
                 float cost = (50.f + 8.f*(float)corr) * econ_world_ipm(econ) * (held?2.f:1.f);
                 if (econ->region[cr].treasury >= cost){
                     econ->region[cr].treasury -= cost;
                     faction_audit(a->cid);
-                    if (wl) wl->L[cr] = fminf(10.f, wl->L[cr] + 0.3f);       /* l'assainissement applaudi */
+                    if (wl) wl->L[cr] = clampf(wl->L[cr] + (corr>50?0.3f:-0.3f), 0.f, 10.f);
                     a->next_audit_day = day + 5*SCPS_DAYS_PER_YEAR;
                 }
             }

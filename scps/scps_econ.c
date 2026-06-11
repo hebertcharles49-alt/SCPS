@@ -787,6 +787,7 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * (prod 0.6× → moins d'impôt → friche). Distinct du seuil de HOARDING (COURT_FLOOR), bien
  * plus haut, au-dessus duquel mordent les ponctions anti-thésaurisation (faste/admin/IPM). */
 #define SINK_FLOOR           500.f
+#define DEF_UPKEEP_MULT      1.5f    /* I3 — la famille défensive (H) s'entretient ×1.5 */
 static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien/encadrement impayé) */
 static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
@@ -1086,7 +1087,10 @@ void econ_tick(WorldEconomy *e, float dt) {
         float opf  = tune_f("SINK_FLOOR", SINK_FLOOR);    /* I3bis — plancher de SUBSISTANCE (friche) */
         float hof  = tune_f("COURT_FLOOR", COURT_FLOOR);  /* seuil de HOARDING : les ponctions ne mordent qu'au-dessus */
         if (rid<SCPS_MAX_REG){
-            float infra = re->build.K_inst + re->build.H_coerc + re->build.P_open
+            /* I3 — DÉFENSIF : la famille Garnison/Forteresse/Citadelle (re->build.H_coerc)
+             * s'entretient ×1.5 (remparts à réparer, garnisons à nourrir) ; le reste suit
+             * la loi commune. (On lit le delta H agrégé : pas besoin de la liste d'édifices.) */
+            float infra = re->build.K_inst + re->build.H_coerc*DEF_UPKEEP_MULT + re->build.P_open
                         + re->build.PE_infra + re->build.food_cap + re->build.port;
             /* ENTRETIEN DE BASE — maintenir l'infra bâtie. PAS d'IPM ici : la subsistance
              * ne paie pas la surtaxe d'un monde cher. L'entretien ne mord QUE le SURPLUS
