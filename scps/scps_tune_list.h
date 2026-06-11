@@ -39,6 +39,7 @@
     X(BT_RUPTURE,             0.20f) \
     /* §B3 — le palier 540 (l'accession) */ \
     X(REGIMENT_PAY,           1.5f) \
+    X(REGIMENT_PRICE,        12.0f) \
     X(NAVY_UPKEEP_GOLD,       1.5f) \
     X(AI_SAVOIR_K,            2.5f) \
     /* §spéculation (E3) — les bandes du stockeur IA */ \

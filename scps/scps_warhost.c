@@ -111,8 +111,11 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
           if (u>0 && crp>=0 && crp<econ->n_regions){
               /* warhost_tick est ANNUEL (dt=1 an) → ×12 : REGIMENT_PAY est MENSUEL.
                * 80 rgt × 1.5 × 12 = 1440/an = 120/mois. */
+              /* I1 — la JAUGE renchérit la solde : pied de guerre ×1.25, levée en masse ×1.5
+               * (tenir plus d'hommes sous les armes coûte plus que proportionnellement). */
+              float lvmult = (h->levy[c]==WH_LEVY_GUERRE)?1.25f : (h->levy[c]==WH_LEVY_MASSE)?1.5f : 1.f;
               float pay = (float)u * tune_f("REGIMENT_PAY",1.5f) * econ_world_ipm(econ)
-                        * (at_war?1.5f:1.f) * dt * 12.f;
+                        * (at_war?1.5f:1.f) * lvmult * dt * 12.f;
               float paid = fminf(pay, econ->region[crp].treasury);
               econ->region[crp].treasury -= paid;
               econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
@@ -161,6 +164,19 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 }
             }
         }
+        /* I1 — le PRIX du régiment au RECRUTEMENT (sink d'ENTRÉE : lever des hommes coûte
+         * enfin quelque chose) : payé pour les paquets NETS levés ce tick, depuis la capitale. */
+        { long grown = warhost_units(h,c) - cur;
+          if (grown > 0){
+              int cpp2=w->country[c].capital_prov;
+              int crp2=(cpp2>=0&&cpp2<w->n_provinces)?w->province[cpp2].region:-1;
+              if (crp2>=0 && crp2<econ->n_regions){
+                  float price = (float)grown * tune_f("REGIMENT_PRICE",12.f) * econ_world_ipm(econ);
+                  float paid = fminf(price, econ->region[crp2].treasury);
+                  econ->region[crp2].treasury -= paid;
+                  econ_flux_add(c, FX_SOLDE, -paid);
+              }
+          } }
         /* déposer la force en ARMES sur la capitale → nourrit diplo_mil_power. */
         long units = warhost_units(h, c);
         int cp = w->country[c].capital_prov;
