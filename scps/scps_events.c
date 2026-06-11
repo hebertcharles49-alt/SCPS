@@ -131,6 +131,9 @@ float events_drought_risk(const EventsState *ev, int region){
 float events_fire_risk(const EventsState *ev, int region){
     if (region<0||region>=SCPS_MAX_REG) return 0.f;
     const RegionGeo *g=&ev->geo[region];
+    if (g->forest < 0.01f) return 0.f;   /* K4a : un feu de FORÊT exige de la forêt — STRICTEMENT nul
+                                          * sous une couverture négligeable (une trace d'arbres ne brûle pas
+                                          * en incendie de forêt ; un feu de steppe/urbain serait un AUTRE événement). */
     float dry = (1.f - g->rainfall) * (0.5f + 0.5f*g->temp);
     return clampf(g->forest * dry, 0.f, 1.f);
 }
