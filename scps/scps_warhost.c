@@ -80,6 +80,12 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               float pay = (float)u * tune_f("REGIMENT_PAY",1.5f) * econ_world_ipm(econ)
                         * (at_war?1.5f:1.f) * dt;
               econ->region[crp].treasury = fmaxf(0.f, econ->region[crp].treasury - pay);
+              /* IG — LA GARDE DE BUDGET (le garde-fou anti-famine) : si la capitale ne
+               * couvre plus ~3 mois de solde, on DÉGRAISSE (jauge −1) — l'armée cesse de
+               * croître et fond, plutôt qu'étrangler le trésor en spirale de friche.
+               * En paix seulement : on ne désarme pas sous le feu. */
+              if (!at_war && pay>0.f && econ->region[crp].treasury < pay*3.f && h->levy[c]>0)
+                  h->levy[c] -= 1;
           } }
         /* la JAUGE DE LEVÉE module la cadence : basse 0.4× · garde 1× · guerre 1.6× ·
          * masse 2.6× — et la levée en masse FORCE LA MAIN (coercition à la capitale). */
