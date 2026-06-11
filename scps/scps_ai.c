@@ -401,6 +401,39 @@ static int ai_pick_trade_partner(const WorldEconomy *econ, const RouteNetwork *r
     return best;
 }
 
+/* H3 — L'IA VEUT LA MER. Un port VRAI tenu par le pays (le quai d'où part la coque). */
+static bool ai_true_port(const WorldEconomy *econ, int r){
+    return r>=0 && r<econ->n_regions && econ->region[r].build.port>0.f && econ->region[r].coastal;
+}
+static int ai_owned_port(const WorldEconomy *econ, int cid){
+    int best=-1; float bp=-1.f;
+    for (int r=0;r<econ->n_regions;r++)
+        if (econ->region[r].owner==cid && ai_true_port(econ,r) && econ->region[r].route_pe>bp){
+            bp=econ->region[r].route_pe; best=r; }
+    return best;
+}
+/* Un port ÉTRANGER, neuf (pas déjà relié à `myport`). routes_order valide la portée
+ * de courants (≤ SEA_ROUTE_MAX_DAYS). Seuil ÷2 vs terre : on accepte le partenaire le
+ * plus PROCHE culturellement OU le plus aval — la 1re liaison crée le marché. */
+static int ai_pick_sea_partner(const WorldEconomy *econ, const RouteNetwork *rn,
+                               int myport, int cid){
+    if (!ai_true_port(econ,myport)) return -1;
+    const PopCulture *hc=&econ->region[myport].culture;
+    int best=-1; float bestgap=1e9f;
+    for (int r=0;r<econ->n_regions;r++){
+        if (r==myport || econ->region[r].owner==cid) continue;
+        if (!ai_true_port(econ,r) || !econ->region[r].culture.settled) continue;
+        if (rn){ bool deja=false;
+            for (int i=0;i<rn->n;i++){ const TradeRoute *t=&rn->route[i];
+                if ((t->ra==myport&&t->rb==r)||(t->ra==r&&t->rb==myport)){ deja=true; break; } }
+            if (deja) continue; }
+        float gap=fabsf(content_dist(hc,&econ->region[r].culture)-5.f);
+        if (econ->region[r].estuary) gap-=0.6f;          /* l'aval vaut plus */
+        if (gap<bestgap){ bestgap=gap; best=r; }
+    }
+    return best;
+}
+
 /* Progression institutionnelle K : Tribunal → Chancellerie → Académie. */
 static Edifice ai_next_k_edifice(const WorldEconomy *econ, int region){
     if (region<0 || region>=econ->n_regions) return EDI_TRIBUNAL;
@@ -660,6 +693,15 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 a->stats.builds_other++;                   /* pas de partenaire : on bâtit le carrefour */
                 faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);
             }
+            /* H3 — et la MER : si elle tient un port et qu'un port étranger est à portée
+             * de courants, elle ouvre une route MARITIME (seuil ÷2 : la 1re liaison crée
+             * le marché). C'est ce qui ranime le large entre continents séparés (G0.6). */
+            { int mp=ai_owned_port(econ,a->cid);
+              int sp=(mp>=0)?ai_pick_sea_partner(econ,rn,mp,a->cid):-1;
+              if (sp>=0 && routes_order(rn,w,econ,mp,sp,true)){
+                  a->stats.routes++;
+                  faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);
+              } }
         }
     }
 }
