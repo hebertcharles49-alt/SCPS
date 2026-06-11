@@ -32,6 +32,7 @@
     X(BT_CHOC_MORTS,          0.008f) \
     X(BT_RUPTURE,             0.20f) \
     /* §B3 — le palier 540 (l'accession) */ \
+    X(REGIMENT_PAY,           1.5f) \
     X(AI_SAVOIR_K,            2.5f) \
     /* §spéculation (E3) — les bandes du stockeur IA */ \
     X(SPEC_BUY_BAND,          0.80f) \

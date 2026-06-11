@@ -2,6 +2,7 @@
  * scps_warhost.c — la mobilisation par pays (voir scps_warhost.h)
  */
 #include "scps_warhost.h"
+#include "scps_tune.h"   /* Arc I1 : solde de régiment calibrable */
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -69,6 +70,17 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
         bool at_war=false;
         for (int b=0;b<w->n_countries;b++)
             if (b!=c && diplo_status(dp,c,b)==DIPLO_WAR){ at_war=true; break; }
+        /* I1 — LA SOLDE suit le régiment : ~10 % du prix moyen/mois × IPM, ×1.5 EN GUERRE.
+         * Payée chaque tick pour TOUS les régiments → démobiliser devient une décision
+         * économique (une armée de 80 rgt ≈ 100-160/mois). */
+        { long u = warhost_units(h,c);
+          int cpp = w->country[c].capital_prov;
+          int crp = (cpp>=0&&cpp<w->n_provinces)?w->province[cpp].region:-1;
+          if (u>0 && crp>=0 && crp<econ->n_regions){
+              float pay = (float)u * tune_f("REGIMENT_PAY",1.5f) * econ_world_ipm(econ)
+                        * (at_war?1.5f:1.f) * dt;
+              econ->region[crp].treasury = fmaxf(0.f, econ->region[crp].treasury - pay);
+          } }
         /* la JAUGE DE LEVÉE module la cadence : basse 0.4× · garde 1× · guerre 1.6× ·
          * masse 2.6× — et la levée en masse FORCE LA MAIN (coercition à la capitale). */
         static const float LEVY_MULT[4]={0.4f,1.0f,1.6f,2.6f};
