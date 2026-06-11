@@ -767,7 +767,15 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
 #define ENTRETIEN_DIV         400.f
 #define BUILD_GOLD_PER_DELTA  35.f    /* delta de ProvBuild → or de revient (proxy d'audit) */
 #define FRICHE_FACTOR         0.6f    /* production entaillée tant que l'entretien n'est pas payé */
-static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien impayé) */
+/* H7 — ENCADREMENT DES MANUFACTURES (la racine du robinet d'or) : chaque niveau de
+ * manufacture active coûte 0.05 or/jour × IPM. Les 55 scieries ne tournent plus gratis. */
+#define MANUF_UPKEEP_DAY      0.05f   /* encadrement impayé → la région passe en friche (0.6× prod), comme l'entretien */
+/* G0.4 — TRAIN DE VIE DE COUR : le trésor est PAR RÉGION (un pays en a plusieurs) →
+ * seuil par région calé pour mordre au-delà d'un trésor-pays ~10k (le faste freine le
+ * hoarding). 1 %/mois du surplus. */
+#define COURT_FLOOR         4000.f
+#define COURT_RATE          0.010f
+static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien/encadrement impayé) */
 static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
@@ -1048,17 +1056,27 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
         re->over_tax = clampf(over_tax[CLASS_LABORER], 0.f, 1.f);   /* grief des laboureurs → révolte */
 
-        /* E1bis.10 — ENTRETIEN : l'infra bâtie se paie chaque tick ; impayé → FRICHE. */
+        /* E1bis.10 — ENTRETIEN : l'infra bâtie se paie chaque tick ; impayé → FRICHE.
+         * G0.4 : l'entretien suit l'IPM (un monde cher coûte plus cher à tenir). */
+        float ipmf = (e->ipm>0.f)? e->ipm : 1.f;
         if (rid<SCPS_MAX_REG){
             float infra = re->build.K_inst + re->build.H_coerc + re->build.P_open
                         + re->build.PE_infra + re->build.food_cap + re->build.port;
-            float upkeep = (infra*BUILD_GOLD_PER_DELTA/ENTRETIEN_DIV) * 365.f * dt;
+            float upkeep = (infra*BUILD_GOLD_PER_DELTA/ENTRETIEN_DIV) * 365.f * dt * ipmf;
             re->treasury -= upkeep;
+            /* H7 — ENCADREMENT DES MANUFACTURES (×IPM) : la racine du robinet d'or. */
+            float mlev=0.f; for (int i=0;i<re->n_bld;i++) mlev += re->bld[i].level;
+            float mcost = mlev * MANUF_UPKEEP_DAY * 365.f * dt * ipmf;
+            re->treasury -= mcost;
             bool fr = (re->treasury < 0.f);
             if (fr) re->treasury = 0.f;
             g_friche[rid]=fr;
             if (fr) g_n_friche++;
         }
+        /* G0.4 — le FASTE de cour : au-delà de 10k, 0.5 %/mois du surplus se dépense
+         * (frein au hoarding — un trésor qui gonfle finance le prestige). */
+        if (re->treasury > COURT_FLOOR)
+            re->treasury -= (re->treasury - COURT_FLOOR) * COURT_RATE * (dt*12.f);
 
         /* §B (TRÉSOR MORT) — l'État REDÉPENSE : il ne hoarde plus, il CIRCULE. Une masse
          * salariale réabonde la richesse des classes AU PRORATA de l'impôt qu'elles ont
