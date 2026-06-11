@@ -598,6 +598,7 @@ int main(int argc, char **argv){
     int  worlds_hegemon_cracked=0;   /* A5 : sims où un hégémon ≥10 rég est passé sous Stab 50 OU a subi coup/renversement */
     long tot_hegemon_floor=0; int n_hegemon_sims=0;   /* Stab plancher des hégémons (la fragilité A1 les rend mortels) */
     long tot_dir_fired[DIR_EV_COUNT]={0}; long tot_dir_destab=0, tot_dir_stab=0, tot_dir_overcap=0;   /* §F : le directeur, agrégé */
+    double tot_ipm=0.0, max_ipm=0.0;   /* §C : l'inflation monétaire, agrégée */
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
     double tot_supplies=0, tot_saildays=0;
     long tot_raids=0, tot_prises=0, tot_navals=0, tot_disarm=0, tot_warpir=0, tot_balafres=0;
@@ -1128,6 +1129,11 @@ int main(int argc, char **argv){
                  director_temperature(s.ev), D->fired_destab, top_d>=0?director_event_name(top_d):"—", top_dn,
                  D->fired_stab, top_s>=0?director_event_name(top_s):"—", top_sn, D->neg_over_cap);
         }
+        /* §C — l'inflation monétaire : l'IPM final (1.0 = neutre ; >1 = les prix ont
+         * monté, l'or a flué plus vite que les biens). 1.00 partout = effet inerte. */
+        { float ipm=econ_world_ipm(s.econ); tot_ipm+=ipm; if(ipm>max_ipm)max_ipm=ipm;
+          printf("              inflation (C) : IPM final %.2f%s\n", ipm,
+                 ipm>=1.20f?" — l'or a dilué la monnaie":(ipm<=0.85f?" — les biens ont fait baisser les prix":"")); }
         if (hash_mode) printf("HASH %u %08x\n", seed, chronicle_sim_hash(seed, &s, w));
     }
 
@@ -1196,6 +1202,8 @@ int main(int argc, char **argv){
       for (int e=0;e<DIR_EV_COUNT;e++) if (tot_dir_fired[e]>0)
           printf(" %s×%ld", director_event_name(e), tot_dir_fired[e]);
       printf("\n"); }
+    printf("   inflation (C) ............... IPM final moyen %.2f · pic %.2f (1.00 = neutre ; SCPS_IPM=0 le retire)\n",
+           tot_ipm/nsims, max_ipm);
     printf("══════════════════════════════════════════════════════════════════════\n");
 
     free(w); free(s.econ); free(s.wp); free(s.wl); free(s.net); free(s.ts); free(s.sc);

@@ -38,6 +38,13 @@
 #include "scps_species.h"   /* couche biologique : race + traits (leviers) */
 #include "scps_tech.h"      /* TechState : §B1 abonde prod_mult par les techs de production */
 
+/* §C — L'INTERRUPTEUR de l'inflation monétaire. 1 = active ; 0 = RETIRE tout effet
+ * (l'IPM reste à 1.0, le multiplieur de prix est l'identité — la variable est gardée
+ * facile à virer, l'idée étant peut-être mauvaise). Un seul define à basculer. */
+#ifndef SCPS_IPM
+#define SCPS_IPM 1
+#endif
+
 /* ---- Strates sociales ------------------------------------------------- */
 typedef enum {
     CLASS_LABORER = 0,
@@ -233,6 +240,12 @@ typedef struct {
     int           n_regions;
     int           tick;
 
+    /* §C — INFLATION MONÉTAIRE (indice des prix monétaires). Un seul interrupteur :
+     * SCPS_IPM (cf. plus bas). Quand il vaut 0, `ipm` reste à 1.0 et le multiplieur
+     * de prix devient l'identité — la fonctionnalité est INERTE, facile à retirer. */
+    float         ipm;            /* indice des prix [~1.0] : trop d'or / trop peu de biens → >1 */
+    float         ipm_ref;        /* ratio or/biens de RÉFÉRENCE (capté au 1er tick ; 0 = pas encore) */
+
     /* Adjacence de régions (terre, 4-connexe) — calculée à l'init, sert à
      * la colonisation (expansion vers une région vierge voisine). */
     uint8_t       adj[SCPS_MAX_REG][SCPS_MAX_REG];
@@ -248,6 +261,10 @@ void econ_init(WorldEconomy *e, const World *w);
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
  * production/consommation s'équilibrent par tick (satisfaction préservée). */
 void econ_tick(WorldEconomy *e, float dt);
+
+/* §C — l'indice des prix monétaires mondial [~1.0] (1.0 = neutre / IPM désactivé).
+ * Lecture seule, pour la télémétrie (chronique) et l'UI. */
+float econ_world_ipm(const WorldEconomy *e);
 /* E0.7 — RAZ de la mobilité de classe (panier capté + séries de mauvaise sat.) ;
  * appelé à chaque nouvelle partie/sim depuis econ_init. (RAZ aussi la friche E1bis.10.) */
 void econ_mobility_reset(void);

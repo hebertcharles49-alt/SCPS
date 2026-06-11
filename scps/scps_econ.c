@@ -337,6 +337,7 @@ void econ_init(WorldEconomy *e, const World *w) {
     econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */
     e->n_regions=w->n_regions;
     e->tick=0;
+    e->ipm=1.f; e->ipm_ref=0.f;         /* §C : IPM neutre, référence non encore captée */
 
     /* ---- Passe 1 : capacité et habitabilité de chaque région ------------- *
      * reg_hab = habitabilité moyenne pondérée par la surface (province).
@@ -833,10 +834,42 @@ static void mobility_tick_region(RegionEconomy *re, int rid){
     }
 }
 
+/* §C — bornes de l'inflation : douce et bornée (jamais d'emballement). */
+#define IPM_LO       0.85f   /* déflation plancher (−15 %) — bande DOUCE (effet volontairement modeste) */
+#define IPM_HI       1.35f   /* inflation plafond (+35 %)  — un rescale uniforme est presque inerte ; on borne court */
+#define IPM_INERTIA  0.9987f /* l'IPM répond sur ~1,5 an (demi-vie) */
+#define IPM_REF_INER 0.9996f /* la TENDANCE glisse sur ~5 ans : l'IPM mesure l'ÉCART à la tendance,
+                              * pas le stock — un afflux d'or BRUSQUE (Filon/Débase) le fait monter
+                              * puis il mean-reverte ; le thésaurisation LENTE ne compte pas (la
+                              * référence la rattrape). Sans ça, or(stock)/pib(flux) dérive sans fin. */
+
+float econ_world_ipm(const WorldEconomy *e){ return (e && e->ipm>0.f)? e->ipm : 1.f; }
+
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
     g_n_friche=0;                      /* E1bis.10 : recompte les régions en friche ce tick */
+
+#if SCPS_IPM
+    /* §C — INFLATION MONÉTAIRE (un seul interrupteur). L'IPM = indice des prix :
+     * trop d'OR (Σtrésor) pour trop peu de BIENS (ΣPIB) → les prix montent. On lit
+     * l'état AGRÉGÉ du tick précédent, normalisé par le ratio de RÉFÉRENCE capté au
+     * 1er tick → IPM≈1 au départ ; glisse lentement, reste borné. Le couplage aux
+     * événements (§F) ÉMERGE : le Filon/la Débase injectent de l'or → IPM↑ ; les
+     * Moissons font des biens → IPM↓ — aucun hook dédié. */
+    { double gold=0.0, goods=0.0;
+      for (int r=0;r<e->n_regions;r++){ if (!e->region[r].colonized) continue;
+          gold  += e->region[r].treasury;
+          goods += e->region[r].gdp; }
+      if (goods>1.0){
+          float ratio = (float)(gold/goods);
+          if (e->ipm_ref<=0.f) e->ipm_ref = ratio;                          /* amorce la tendance */
+          float target = clampf(ratio/e->ipm_ref, IPM_LO, IPM_HI);          /* écart à la tendance */
+          e->ipm     = clampf(e->ipm*IPM_INERTIA + target*(1.f-IPM_INERTIA), IPM_LO, IPM_HI);
+          e->ipm_ref = e->ipm_ref*IPM_REF_INER + ratio*(1.f-IPM_REF_INER);  /* la tendance suit, lentement */
+      }
+    }
+#endif
 
     for (int rid=0; rid<e->n_regions; rid++) {
         RegionEconomy *re=&e->region[rid];
@@ -1075,11 +1108,13 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
 
         /* ---- 5. MARCHÉ : prix puis allocation au budget ---------------- */
-        /* Prix : converge vers base × demande/(stock+offre). */
+        /* Prix : converge vers base × IPM × demande/(stock+offre). Le facteur IPM
+         * (§C) est 1.0 quand SCPS_IPM=0 → multiplieur identité, effet RETIRÉ. */
+        float infl = (e->ipm>0.f)? e->ipm : 1.f;   /* garde-fou : jamais 0 (econ non initialisé) */
         for (int r=0;r<RES_COUNT;r++) {
             if (BASE_PRICE[r]<=0.f) continue;
             float avail=re->stock[r]+supply[r];
-            float target=BASE_PRICE[r]*clampf(demand[r]/(avail+EPS),0.2f,6.f);
+            float target=BASE_PRICE[r]*infl*clampf(demand[r]/(avail+EPS),0.2f,6.f);
             re->price[r]=re->price[r]*PRICE_INERTIA + target*(1.f-PRICE_INERTIA);
             re->price[r]=clampf(re->price[r],BASE_PRICE[r]*0.15f,BASE_PRICE[r]*8.f);
         }
