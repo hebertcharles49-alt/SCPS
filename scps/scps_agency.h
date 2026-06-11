@@ -151,6 +151,8 @@ void agency_levier_stats(int *repress, int *assim, int *purges, long *purge_dead
 /* sauvegarde : les statiques du module (coûts différés + chronique des leviers). */
 void agency_save(FILE *f);
 bool agency_load(FILE *f);
+/* DIAGNOSTIC G0.3 — dump par édifice (bâtis / bloqués au palier / sans or) sur stderr. */
+void agency_edi_dump(void);
 
 /* Avance de `days` jours : progresse les chantiers ; à l'achèvement, applique
  * l'effet (déplace une coordonnée que le moteur LIT). `drift` (pile de dérive

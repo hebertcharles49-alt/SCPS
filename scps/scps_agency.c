@@ -124,6 +124,8 @@ bool edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e){
 /* ---- Coût des bâtiments (§1) : matériaux ACHETÉS au marché en or ------- */
 #define BUILD_MIN_PRICE 0.20f   /* plancher de prix : même un bien abondant n'est jamais gratuit */
 #define IMPORT_TOLL_FRAC 0.30f  /* I6 : part de la marge versée en PÉAGE au hub tiers emprunté */
+/* DIAGNOSTIC G0.3 — pourquoi les paliers ne montent pas : compteurs par édifice. */
+static long g_edi_made[EDIFICE_COUNT], g_edi_blocked[EDIFICE_COUNT], g_edi_nogold[EDIFICE_COUNT];
 
 /* §7 — l'ÉTENDUE du pays RENCHÉRIT ses institutions (le frein tall/wide qui manquait) :
  * facteur ×(1 + 0.15·n_régions du pays) sur le coût matériaux. Un grand empire paie
@@ -156,15 +158,15 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
 bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct){
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return false;
     if (e==EDI_PORT && !econ->region[region].coastal) return false;   /* un port se bâtit SUR la côte (mer §5) */
-    if (edifice_build_blocked(econ, region, e)) return false;          /* E1bis.11 : ↑ exige le palier précédent (pas de doublon) */
+    if (edifice_build_blocked(econ, region, e)){ g_edi_blocked[e]++; return false; }  /* E1bis.11 : ↑ exige le palier précédent (pas de doublon) */
     RegionEconomy *re=&econ->region[region];
     float gold = agency_build_gold(econ, region, e);
     if (gold_acct){                                /* E0.3 : le TRÉSOR UNIQUE paie (la topbar dit vrai) */
         long lcost=(long)ceilf(gold);
-        if (*gold_acct < lcost) return false;
+        if (*gold_acct < lcost){ g_edi_nogold[e]++; return false; }
         *gold_acct -= lcost;
     } else {
-        if (gold > re->treasury) return false;     /* pas l'or → pas de chantier (garde, comme colonize) */
+        if (gold > re->treasury){ g_edi_nogold[e]++; return false; }   /* pas l'or → pas de chantier */
         re->treasury -= gold;                      /* on PAIE le marché en or */
     }
     /* I6 — LE PÉAGE : un achat importé via le hub d'un TIERS lui verse une part de la
@@ -183,7 +185,9 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
         if (r<=RES_NONE || r>=RES_COUNT || c->qty[k]<=0.f) continue;
         re->stock[r] -= c->qty[k]*mult; if (re->stock[r] < 0.f) re->stock[r]=0.f;
     }
-    return agency_order_build(a, region, e);       /* enfile le chantier (durée existante) */
+    bool ok=agency_order_build(a, region, e);      /* enfile le chantier (durée existante) */
+    if (ok) g_edi_made[e]++;
+    return ok;
 }
 bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e){
     return agency_build_acct(a, econ, region, e, NULL);
@@ -213,6 +217,13 @@ bool edifice_unlocked(const TechState *ts, Edifice e){
 /* coûts SCPS différés (drainés par le harnais vers TechState) + chronique */
 static float g_pend_charge[SCPS_MAX_COUNTRY], g_pend_fract[SCPS_MAX_COUNTRY], g_pend_H[SCPS_MAX_COUNTRY];
 static int   g_n_repress, g_n_assim, g_n_purge; static long g_purge_dead;
+void agency_edi_dump(void){
+    fprintf(stderr,"[EDI] par édifice — made / blocked(palier précédent) / nogold :\n");
+    for (int e=0;e<EDIFICE_COUNT;e++)
+        if (g_edi_made[e]||g_edi_blocked[e]||g_edi_nogold[e])
+            fprintf(stderr,"  %-14s %4dj  made=%-5ld blocked=%-6ld nogold=%-6ld\n",
+                    EDIFICES[e].name, EDIFICES[e].days, g_edi_made[e], g_edi_blocked[e], g_edi_nogold[e]);
+}
 
 void agency_init(AgencyState *a){
     memset(a,0,sizeof(*a));
@@ -221,6 +232,8 @@ void agency_init(AgencyState *a){
     memset(g_pend_fract, 0,sizeof g_pend_fract);
     memset(g_pend_H,     0,sizeof g_pend_H);
     g_n_repress=g_n_assim=g_n_purge=0; g_purge_dead=0;
+    memset(g_edi_made,0,sizeof g_edi_made); memset(g_edi_blocked,0,sizeof g_edi_blocked);
+    memset(g_edi_nogold,0,sizeof g_edi_nogold);
 }
 
 void agency_save(FILE *f){
@@ -342,11 +355,13 @@ static void apply_delta(ProvBuild *b, const ProvBuild *d){
     b->K_inst  += d->K_inst;  b->H_coerc += d->H_coerc;  b->P_open += d->P_open;
     b->port    += d->port;
     b->PE_infra+= d->PE_infra; b->food_cap += d->food_cap;
-}
+    b->savoir  += d->savoir;  b->faith   += d->faith;     /* G0.3 : savoir/faith étaient OUBLIÉS — */
+}                                                          /* d'où les chaînes bloquées (Biblio→Monastère, Sanct.→Cathédrale) */
 static void remove_delta(ProvBuild *b, const ProvBuild *d){   /* E1bis.11 : l'↑ EFFACE le palier précédent */
     b->K_inst  -= d->K_inst;  b->H_coerc -= d->H_coerc;  b->P_open -= d->P_open;
     b->port    -= d->port;
     b->PE_infra-= d->PE_infra; b->food_cap -= d->food_cap;
+    b->savoir  -= d->savoir;  b->faith   -= d->faith;
 }
 
 static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack *drift,
