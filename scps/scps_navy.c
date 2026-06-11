@@ -8,6 +8,8 @@
  * voit la flotte et la production tire).
  */
 #include "scps_navy.h"
+#include "scps_tune.h"   /* Arc I9 : entretien naval calibrable */
+#include "scps_econ.h"   /* econ_world_ipm */
 #include <string.h>
 #include <math.h>
 
@@ -161,6 +163,13 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days)
             n->starve_days+=dt_days;
         } else {
             RegionEconomy *re=&econ->region[n->home_port];
+            /* I9 — LA MARINE SE PAIE (le sink en OR ; les fournitures en biens restent) :
+             * ~1.5 or/mois par coque × IPM. Impayé → la flotte affame (starve_days →
+             * désarmement existant plus bas) — c'est le « désarme des coques » d'IG. */
+            { float gold = (float)hulls * tune_f("NAVY_UPKEEP_GOLD",1.5f)
+                         * econ_world_ipm(econ) * (dt_days/30.f);
+              if (re->treasury >= gold) re->treasury -= gold;
+              else { re->treasury=0.f; n->starve_days += dt_days; } }
             float need=need_y*(dt_days/365.f);
             re->demand[RES_NAVAL_SUPPLIES]+=need;         /* la demande se VOIT au marché */
             if (re->stock[RES_NAVAL_SUPPLIES]>=need){
