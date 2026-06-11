@@ -22,6 +22,7 @@ struct EventCtx {
     Statecraft      *sc;
     RouteNetwork    *rn;
     const TechState *ts;
+    DiploState      *dp;   /* §F : guerres (T) + rancune (Amnistie) ; peut être NULL */
 };
 
 /* ---- Utilitaires ------------------------------------------------------ */
@@ -323,7 +324,7 @@ static void fire_event(EventCtx *cx, int evid, int subject){
 void events_strike(EventsState *ev, World *w, WorldEconomy *econ,
                    WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                    int region, EvId shock){
-    EventCtx cx={ev,w,econ,wl,wp,sc,NULL,NULL};
+    EventCtx cx={ev,w,econ,wl,wp,sc,NULL,NULL,NULL};
     if (shock<0||shock>=EVID_COUNT) return;
     apply_effect(&cx, EVENTS[shock].scope, region, &EVENTS[shock].options[0].eff);
     ev->last_id=shock; ev->last_name=EVENTS[shock].name; ev->n_fired++;
@@ -348,7 +349,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
         EvEffect e = EVENTS[EVID_PLAGUE].options[0].eff;
         e.pop_mult = mult;
         e.d_agitation = 18.f - 3.f*h;
-        EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL};
+        EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL};
         apply_effect(&cx, EV_PROVINCE, r, &e);
         infected++;
         if (h>=4) continue;                         /* portée bornée */
@@ -370,7 +371,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
 /* ===================================================================== */
 int events_match_political(const EventsState *ev, World *w, WorldEconomy *econ,
                            WorldLegitimacy *wl, Statecraft *sc, int region){
-    EventCtx cx={ (EventsState*)ev, w, econ, wl, NULL, sc, NULL, NULL };
+    EventCtx cx={ (EventsState*)ev, w, econ, wl, NULL, sc, NULL, NULL, NULL };
     static const int order[4]={ EVID_INTEG_DOMINATEUR, EVID_INTEG_MERCANTILE,
                                 EVID_INTEG_BUREAUCRATE, EVID_INTEG_ANCIEN };
     for (int i=0;i<4;i++){
@@ -501,7 +502,7 @@ static bool age_trig_ordrefer(const EventsState *ev, World *w, WorldProsperity *
 }
 
 static void age_dawn(EventsState *ev, AgeId a, World *w, WorldEconomy *econ, WorldProsperity *wp){
-    EventCtx cx={ev,w,econ,NULL,wp,NULL,NULL,NULL};
+    EventCtx cx={ev,w,econ,NULL,wp,NULL,NULL,NULL,NULL};
     EvEffect e; memset(&e,0,sizeof e); e.pop_mult=1.f; e.unlock_branch=-1;
     switch(a){
         case AGE_COMMERCE: e.d_C_global=1.0f; e.unlock_branch=THM_SOCIETE; e.unlock_tier=3; break;
@@ -553,6 +554,250 @@ bool  ages_tier_open(const EventsState *ev, TechTheme br, int tier){
 float ages_breach_pressure(const EventsState *ev){ return ev->ages.breach_pressure; }
 
 /* ===================================================================== */
+/* LE DIRECTEUR D'ÉVÉNEMENTS (§F) — stabilise / déstabilise, sans s'acharner */
+/* ===================================================================== */
+/* Le principe (F0) : chaque événement DIRIGÉ est un CHOC sur des variables
+ * EXISTANTES (L, agitation, K, trésor, fertilité, rancune…), appliqué par le
+ * même apply_effect que tout le reste. Le DIRECTEUR (F1) lit la TEMPÉRATURE du
+ * monde et tire dans le pool qui MANQUE : monde chaud (chaos) → stabilisateur ;
+ * monde froid (ronron) → déstabilisateur. L'ANTI-ACHARNEMENT (F2) borne dur :
+ * 15 ans de repos par province, 5 ans par pays, jamais deux négatifs d'affilée
+ * sur la même cible, jamais plus de 3 négatifs par province et par siècle. */
+#define DIR_CHECK_DAYS  365          /* le directeur scanne une fois l'an */
+#define DIR_PROV_CD    (15*365)      /* repos de 15 ans par province */
+#define DIR_PAYS_CD     (5*365)      /* repos de 5 ans par pays */
+#define DIR_FAM_DAYS    (3*365)      /* un type d'événement reste « actif » 3 ans (jamais deux de même famille) */
+#define DIR_T_HOT       0.55f        /* T au-dessus → APAISER */
+#define DIR_T_COLD      0.32f        /* T en dessous → REMUER */
+#define DIR_NEG_CAP     3            /* ≤ 3 événements négatifs / province / siècle */
+#define DIR_CENTURY    (100*365)
+
+const char *director_event_name(int id){
+    static const char *N[DIR_EV_COUNT]={
+        "La Mort du Charismatique","La Peste Fluviale","Les Enfants du Palais","Le Filon",
+        "L'Année Sans Été","Le Schisme dirigé","La Débase",
+        "Le Concile","La Réformatrice","Le Cadastre","La Décennie des Moissons",
+        "La Paix du Marchand","Le Héros Culturel","L'Amnistie" };
+    return (id>=0&&id<DIR_EV_COUNT)?N[id]:"?";
+}
+bool  director_is_destab(int id){ return (id>=0&&id<DIR_EV_COUNT) && id<DIR_STAB_FIRST; }
+int   director_fired(const EventsState *ev,int id){ return (id>=0&&id<DIR_EV_COUNT)?ev->director.fired[id]:0; }
+float director_temperature(const EventsState *ev){ return ev->director.last_T; }
+
+/* ---- LA TEMPÉRATURE T (F1) : 0 = ronron, 1 = chaos ---------------------- */
+static int dir_wars_active(const DiploState *dp, const World *w){
+    if (!dp) return 0;
+    int n=0;
+    for (int a=0;a<w->n_countries;a++) for (int b=a+1;b<w->n_countries;b++)
+        if (diplo_status(dp,a,b)==DIPLO_WAR) n++;
+    return n;
+}
+static float director_compute_T(const EventCtx *cx){
+    float meanSI = w_mean_SI(cx->w, cx->wp);                 /* 10 stable … 0 chaos */
+    float chaos  = clampf((10.f-meanSI)/10.f, 0.f, 1.f);
+    int nliv=0; for (int c=0;c<cx->w->n_countries;c++) if (cx->w->country[c].role!=POLITY_UNCLAIMED) nliv++;
+    float rev  = nliv? clampf((float)events_count_revolutionary(cx->w,cx->wp)/(float)nliv,0.f,1.f):0.f;
+    float frac = clampf(w_mean_fracture(cx->w,cx->wp)/10.f, 0.f, 1.f);
+    float wars = nliv? clampf((float)dir_wars_active(cx->dp,cx->w)/(float)nliv,0.f,1.f):0.f;
+    return clampf(0.40f*chaos + 0.25f*rev + 0.20f*frac + 0.15f*wars, 0.f, 1.f);
+}
+
+/* ---- ANTI-ACHARNEMENT (F2) --------------------------------------------- */
+static bool dir_ok_region(const Director *D, int day, int r, bool negative){
+    if (r<0||r>=SCPS_MAX_REG) return false;
+    if (D->prov_cd_until[r] > day) return false;                  /* la province se repose */
+    if (negative && D->prov_last_neg[r]==1) return false;         /* jamais deux négatifs d'affilée */
+    if (negative && D->prov_neg_century[r] >= DIR_NEG_CAP) return false; /* plafond du siècle */
+    return true;
+}
+static bool dir_ok_pays(const Director *D, int day, int c){
+    return c>=0 && c<SCPS_MAX_COUNTRY && D->pays_cd_until[c] <= day;
+}
+static void dir_touch(Director *D, int day, int r, int owner, bool negative){
+    if (r>=0 && r<SCPS_MAX_REG){
+        D->prov_cd_until[r]  = day + DIR_PROV_CD;
+        D->prov_last_neg[r]  = negative ? 1 : 0;
+        if (negative){
+            if (D->prov_neg_century[r] < 255) D->prov_neg_century[r]++;
+            if (D->prov_neg_century[r] > DIR_NEG_CAP) D->neg_over_cap++;   /* DOIT rester 0 (preuve F2) */
+        }
+    }
+    if (owner>=0 && owner<SCPS_MAX_COUNTRY) D->pays_cd_until[owner] = day + DIR_PAYS_CD;
+}
+
+/* ---- Les CHOCS (F3/F4), via le même apply_effect que tout le module ---- */
+static void dir_country_eff(EventCtx *cx, int cid, float dL, float dAgit, float dK, float dTreasury){
+    EvEffect e; memset(&e,0,sizeof e); e.pop_mult=1.f;
+    e.d_L=dL; e.d_agitation=dAgit; e.d_K_inst=dK; e.d_treasury=dTreasury;
+    apply_effect(cx, EV_COUNTRY, cid, &e);
+}
+static void dir_region_eff(EventCtx *cx, int r, float dL, float dAgit, float dTreasury, float popMult){
+    EvEffect e; memset(&e,0,sizeof e); e.pop_mult=(popMult<=0.f)?1.f:popMult;
+    e.d_L=dL; e.d_agitation=dAgit; e.d_treasury=dTreasury;
+    apply_effect(cx, EV_PROVINCE, r, &e);
+}
+
+/* Trouve un SUJET valide pour l'événement `id` (lit l'état du monde + anti-acharnement).
+ * subject = pays (scope pays), région (scope région), continent (scope continent),
+ * ou a·MAX+b (Amnistie). Renvoie false si rien d'éligible. */
+static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
+    Director *D=&cx->ev->director; World *w=cx->w; WorldEconomy *econ=cx->econ; WorldProsperity *wp=cx->wp;
+    uint32_t *rng=&cx->ev->rng;
+    bool neg = director_is_destab(id);
+    int nc=w->n_countries, nr=econ->n_regions;
+    int s0;
+    switch(id){
+        case DIR_CHARISMA: case DIR_PALAIS: case DIR_SCHISME: case DIR_DEBASE:
+        case DIR_CONCILE: case DIR_REFORME: case DIR_CADASTRE: case DIR_MARCHAND:
+            s0=(int)(frand(rng)*(float)nc);
+            for (int i=0;i<nc;i++){ int c=(s0+i)%nc;
+                if (w->country[c].role==POLITY_UNCLAIMED) continue;
+                if (!dir_ok_pays(D,day,c)) continue;
+                if (id==DIR_CHARISMA && !(wp->country[c].L>6.f && wp->country[c].K<4.f)) continue;
+                if (id==DIR_PALAIS   && !(wp->country[c].L<5.f)) continue;
+                if (id==DIR_SCHISME  && !EVENTS[EVID_SCHISM].trigger(cx,c)) continue;
+                if (id==DIR_DEBASE){ int cr=cap_region(w,c); if (cr<0||econ->region[cr].treasury>=200.f) continue; }
+                if (id==DIR_CADASTRE && !(wp->country[c].K>=6.f)) continue;
+                if (id==DIR_REFORME  && !(wp->country[c].L<5.f)) continue;
+                if (id==DIR_MARCHAND && w->country[c].role!=POLITY_CITY_STATE) continue;
+                /* anti-acharnement (F2) : un événement pays NÉGATIF frappe la capitale
+                 * → il subit AUSSI le repos 15 ans + le plafond 3-négatifs/siècle de
+                 * cette province (sinon la même capitale encaissait un coup tous les
+                 * 5 ans — le cooldown pays — et dépassait le plafond). */
+                if (neg){ int cr=cap_region(w,c); if (!dir_ok_region(D,day,cr,true)) continue; }
+                *out=c; return true;
+            }
+            return false;
+        case DIR_FILON:
+            s0=(int)(frand(rng)*(float)nr);
+            for (int i=0;i<nr;i++){ int r=(s0+i)%nr;
+                if (!econ->region[r].colonized) continue;
+                if (cx->ev->geo[r].relief < 0.5f) continue;       /* la montagne */
+                if (!dir_ok_region(D,day,r,neg)) continue;
+                *out=r; return true;
+            }
+            return false;
+        case DIR_HEROS:
+            s0=(int)(frand(rng)*(float)nr);
+            for (int i=0;i<nr;i++){ int r=(s0+i)%nr;
+                if (!econ->region[r].colonized) continue;
+                if (econ->region[r].pop.n_groups < 2) continue;   /* une région composite (syncrétique) */
+                if (!dir_ok_region(D,day,r,false)) continue;
+                *out=r; return true;
+            }
+            return false;
+        case DIR_PESTE: {
+            int best=-1; float bv=0.5f;                            /* l'estuaire-carrefour : meilleure route_pe */
+            for (int r=0;r<nr;r++){ if (!econ->region[r].colonized) continue;
+                if (!dir_ok_region(D,day,r,neg)) continue;
+                if (econ->region[r].route_pe>bv){ bv=econ->region[r].route_pe; best=r; } }
+            if (best<0) return false;
+            *out=best; return true;
+        }
+        case DIR_ANNEE: case DIR_MOISSONS: {
+            int ncont=w->n_continents; if (ncont<1) return false;
+            s0=(int)(frand(rng)*(float)ncont);
+            for (int i=0;i<ncont;i++){ int ct=(s0+i)%ncont;
+                for (int r=0;r<nr && r<w->n_regions;r++)
+                    if (w->region[r].continent==ct && econ->region[r].colonized && dir_ok_region(D,day,r,neg)){ *out=ct; return true; }
+            }
+            return false;
+        }
+        case DIR_AMNISTIE: {
+            if (!cx->dp) return false;
+            s0=(int)(frand(rng)*(float)nc);
+            for (int i=0;i<nc;i++){ int a=(s0+i)%nc;
+                if (w->country[a].role==POLITY_UNCLAIMED || !dir_ok_pays(D,day,a)) continue;
+                for (int b=0;b<nc;b++){ if (b==a||w->country[b].role==POLITY_UNCLAIMED) continue;
+                    if (diplo_status(cx->dp,a,b)==DIPLO_WAR) continue;   /* on éponge APRÈS la guerre, pas pendant */
+                    if (cx->dp->rancor[a][b]>1.0f && dir_ok_pays(D,day,b)){ *out=a*SCPS_MAX_COUNTRY+b; return true; } }
+            }
+            return false;
+        }
+    }
+    return false;
+}
+
+/* Applique l'effet de `id` sur `subject` et POSE l'anti-acharnement. */
+static void dir_apply(EventCtx *cx, int id, int subject, int day){
+    Director *D=&cx->ev->director; World *w=cx->w; WorldEconomy *econ=cx->econ;
+    switch(id){
+        case DIR_CHARISMA: dir_country_eff(cx,subject,-2.0f,20.f,0.f,0.f);    dir_touch(D,day,cap_region(w,subject),subject,true); break;
+        case DIR_PALAIS:   dir_country_eff(cx,subject,-1.5f,25.f,0.f,0.f);    dir_touch(D,day,cap_region(w,subject),subject,true); break;
+        case DIR_DEBASE:   dir_country_eff(cx,subject,-1.0f, 5.f,0.f,2000.f); dir_touch(D,day,cap_region(w,subject),subject,true); break;
+        case DIR_SCHISME:  fire_event(cx,EVID_SCHISM,subject);                dir_touch(D,day,cap_region(w,subject),subject,true); break;
+        case DIR_FILON:
+            dir_region_eff(cx,subject,0.f,15.f,3000.f,1.f);   /* la ruée : or local + agitation */
+            if (econ->region[subject].build.H_coerc<1.f) econ->region[subject].revolt_scar=1.f;  /* camps sauvages si la poigne manque */
+            dir_touch(D,day,subject,econ->region[subject].owner,true); break;
+        case DIR_PESTE:
+            events_plague_spread(cx->ev,w,econ,cx->wl,cx->sc,cx->rn,subject);  /* suit les ROUTES (C est le vecteur) */
+            dir_touch(D,day,subject,econ->region[subject].owner,true); break;
+        case DIR_HEROS:
+            dir_region_eff(cx,subject,1.0f,-10.f,0.f,1.f);    /* cohésion + (L), grogne − */
+            dir_touch(D,day,subject,econ->region[subject].owner,false); break;
+        case DIR_ANNEE: { int ct=subject;
+            for (int r=0;r<econ->n_regions && r<w->n_regions;r++)
+                if (w->region[r].continent==ct && econ->region[r].colonized && dir_ok_region(D,day,r,true)){
+                    dir_region_eff(cx,r,0.f,8.f,0.f,1.f);
+                    econ->region[r].build.food_cap=fmaxf(0.f, econ->region[r].build.food_cap-2.f);  /* fertilité ↓ → famines */
+                    dir_touch(D,day,r,econ->region[r].owner,true);
+                } } break;
+        case DIR_MOISSONS: { int ct=subject;
+            for (int r=0;r<econ->n_regions && r<w->n_regions;r++)
+                if (w->region[r].continent==ct && econ->region[r].colonized && dir_ok_region(D,day,r,false)){
+                    econ->region[r].build.food_cap += 1.5f;          /* fertilité ↑ (IPM ↓ émergera en §C) */
+                    dir_touch(D,day,r,econ->region[r].owner,false);
+                } } break;
+        case DIR_CONCILE:  dir_country_eff(cx,subject, 1.5f,-8.f,0.f,0.f);  dir_touch(D,day,cap_region(w,subject),subject,false); break;
+        case DIR_REFORME:  dir_country_eff(cx,subject, 1.0f,-10.f,1.5f,0.f);dir_touch(D,day,cap_region(w,subject),subject,false); break;
+        case DIR_CADASTRE: dir_country_eff(cx,subject, 0.5f,-5.f,0.5f,0.f); dir_touch(D,day,cap_region(w,subject),subject,false); break;
+        case DIR_MARCHAND:
+            dir_country_eff(cx,subject, 0.5f,-6.f,0.f,0.f);
+            if (cx->wp) cx->wp->age_C_bonus=clampf(cx->wp->age_C_bonus+0.2f,0.f,5.f);   /* le négoce relie (C ↑) */
+            dir_touch(D,day,cap_region(w,subject),subject,false); break;
+        case DIR_AMNISTIE: { int a=subject/SCPS_MAX_COUNTRY, b=subject%SCPS_MAX_COUNTRY;
+            if (cx->dp){ cx->dp->rancor[a][b]*=0.5f; cx->dp->rancor[b][a]*=0.5f; }   /* la rancune ÷2 */
+            dir_country_eff(cx,a,1.f,0.f,0.f,0.f); dir_country_eff(cx,b,1.f,0.f,0.f,0.f);
+            dir_touch(D,day,cap_region(w,a),a,false); dir_touch(D,day,cap_region(w,b),b,false); } break;
+    }
+}
+
+/* La boucle du directeur : siècle glissant → cadence → T → pool → tir (un seul). */
+static void director_tick(EventCtx *cx, int days){
+    (void)days;
+    Director *D=&cx->ev->director; int day=cx->ev->ages.days_elapsed;
+    if (day - D->century_base_day >= DIR_CENTURY){       /* le siècle tourne : on oublie les vieux coups */
+        memset(D->prov_neg_century,0,sizeof D->prov_neg_century);
+        D->century_base_day=day;
+    }
+    if (day < D->next_check_day) return;
+    D->next_check_day = day + DIR_CHECK_DAYS;
+    float T = director_compute_T(cx); D->last_T=T;
+    int want;
+    if      (T > DIR_T_HOT)  want=+1;                    /* trop chaud → stabilisateur */
+    else if (T < DIR_T_COLD) want=-1;                    /* trop froid → déstabilisateur */
+    else return;                                         /* zone saine : on laisse le monde vivre */
+    bool want_destab=(want<0);
+    int lo = want_destab?0:DIR_STAB_FIRST;
+    int hi = want_destab?DIR_STAB_FIRST:DIR_EV_COUNT;
+    int span=hi-lo; if (span<1) return;
+    int off=(int)(frand(&cx->ev->rng)*(float)span); if (off>=span) off=span-1;
+    for (int k=0;k<span;k++){
+        int id=lo + (off+k)%span;
+        if (D->fam_active_until[id] > day) continue;     /* jamais deux du même type actifs */
+        int subject=-1;
+        if (dir_eligible(cx,id,day,&subject)){
+            dir_apply(cx,id,subject,day);
+            D->fam_active_until[id]=day+DIR_FAM_DAYS;
+            D->fired[id]++; if (want_destab) D->fired_destab++; else D->fired_stab++;
+            cx->ev->last_id=-1; cx->ev->last_name=director_event_name(id); cx->ev->n_fired++;
+            return;                                       /* un seul événement dirigé par scan */
+        }
+    }
+}
+
+/* ===================================================================== */
 /* LA BOUCLE (§5)                                                        */
 /* ===================================================================== */
 static float mtth_p(float mtth_days, int days){
@@ -561,8 +806,8 @@ static float mtth_p(float mtth_days, int days){
 }
 void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
                        WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
-                       RouteNetwork *rn, const TechState ts[], int days){
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts};
+                       RouteNetwork *rn, const TechState ts[], DiploState *dp, int days){
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp};
     ev->ages.days_elapsed += days;          /* horloge de jeu (rythme des âges) */
 
     /* 1. CHOCS GÉO — à risque, par région, sur leur cadence (1/risk accélère). */
@@ -598,6 +843,10 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
         if (EVENTS[EVID_SCHISM].trigger(&cx,c) &&
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SCHISM].mtth_days,days)) fire_event(&cx,EVID_SCHISM,c);
     }
+
+    /* 2bis. LE DIRECTEUR (§F) — lit la TEMPÉRATURE du monde, puis stabilise ou
+     * déstabilise (sans jamais s'acharner). Cadence ~annuelle (sa propre échéance). */
+    director_tick(&cx, days);
 
     /* 3. ÂGES — scan d'interprétation du monde. */
     events_check_ages(ev,w,econ,wp,wl,ts);

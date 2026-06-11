@@ -149,7 +149,7 @@ static void sim_day(Sim *s, World *w) {
         ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
         ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->wp, s->day);  /* l'arbre vivant */
     }
-    world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, 1);
+    world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1);
     labor_tick(s->labor);
     navy_tick(s->navy, w, s->econ, 1.f);   /* chantier + entretien (la chaîne navale TIRE) */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
@@ -597,6 +597,7 @@ int main(int argc, char **argv){
     int  worlds_with_ironorder=0, worlds_with_uprising=0;
     int  worlds_hegemon_cracked=0;   /* A5 : sims où un hégémon ≥10 rég est passé sous Stab 50 OU a subi coup/renversement */
     long tot_hegemon_floor=0; int n_hegemon_sims=0;   /* Stab plancher des hégémons (la fragilité A1 les rend mortels) */
+    long tot_dir_fired[DIR_EV_COUNT]={0}; long tot_dir_destab=0, tot_dir_stab=0, tot_dir_overcap=0;   /* §F : le directeur, agrégé */
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
     double tot_supplies=0, tot_saildays=0;
     long tot_raids=0, tot_prises=0, tot_navals=0, tot_disarm=0, tot_warpir=0, tot_balafres=0;
@@ -1112,6 +1113,21 @@ int main(int argc, char **argv){
                  hegemon_max_reg, hegemon_max_reg>=10?hegemon_stab_floor:-1,
                  cracked?" — CRAQUÉ (sous 50 ou coup/renversement)":"");
         }
+        /* LE DIRECTEUR (§F) : combien d'événements dirigés, par pool, et le plus
+         * fréquent de chaque famille ; la température finale ; l'anti-acharnement
+         * (le dépassement DOIT rester 0). */
+        { const Director *D=&s.ev->director;
+          int top_d=-1,top_dn=0, top_s=-1,top_sn=0;
+          for (int e=0;e<DIR_EV_COUNT;e++){
+              if (director_is_destab(e)){ if (D->fired[e]>top_dn){top_dn=D->fired[e];top_d=e;} }
+              else                      { if (D->fired[e]>top_sn){top_sn=D->fired[e];top_s=e;} }
+              tot_dir_fired[e]+=D->fired[e];
+          }
+          tot_dir_destab+=D->fired_destab; tot_dir_stab+=D->fired_stab; tot_dir_overcap+=D->neg_over_cap;
+          printf("              directeur (F) : T finale %.2f · %d déstabilisateur(s) (top : %s ×%d) · %d stabilisateur(s) (top : %s ×%d) · acharnement %d (DOIT être 0)\n",
+                 director_temperature(s.ev), D->fired_destab, top_d>=0?director_event_name(top_d):"—", top_dn,
+                 D->fired_stab, top_s>=0?director_event_name(top_s):"—", top_sn, D->neg_over_cap);
+        }
         if (hash_mode) printf("HASH %u %08x\n", seed, chronicle_sim_hash(seed, &s, w));
     }
 
@@ -1174,6 +1190,12 @@ int main(int argc, char **argv){
            worlds_with_uprising, nsims, worlds_with_ironorder, nsims);
     printf("   hégémon MORTEL (A5) .......... %d/%d sims où un empire ≥10 rég est passé sous Stab 50 OU a subi coup/renversement · Stab plancher moy %ld (la fragilité A1 mord)\n",
            worlds_hegemon_cracked, nsims, n_hegemon_sims? tot_hegemon_floor/n_hegemon_sims : -1);
+    printf("   directeur (F) ............... %ld déstabilisateur(s) · %ld stabilisateur(s) (%.1f/%.1f par sim) · acharnement %ld (DOIT être 0)\n",
+           tot_dir_destab, tot_dir_stab, (double)tot_dir_destab/nsims, (double)tot_dir_stab/nsims, tot_dir_overcap);
+    { printf("      par événement :");
+      for (int e=0;e<DIR_EV_COUNT;e++) if (tot_dir_fired[e]>0)
+          printf(" %s×%ld", director_event_name(e), tot_dir_fired[e]);
+      printf("\n"); }
     printf("══════════════════════════════════════════════════════════════════════\n");
 
     free(w); free(s.econ); free(s.wp); free(s.wl); free(s.net); free(s.ts); free(s.sc);

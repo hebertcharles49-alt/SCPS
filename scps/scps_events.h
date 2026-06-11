@@ -23,6 +23,7 @@
 #include "scps_statecraft.h"
 #include "scps_routes.h"
 #include "scps_tech.h"
+#include "scps_diplo.h"   /* §F : le directeur lit les guerres (T) et l'Amnistie ÉPONGE la rancune */
 
 /* ===================================================================== */
 /* CADRE D'ÉVÈNEMENT (data-driven)                                        */
@@ -78,6 +79,36 @@ typedef enum {
 } EvId;
 
 /* ===================================================================== */
+/* LE DIRECTEUR D'ÉVÉNEMENTS (§F) — stabilise / déstabilise, sans s'acharner */
+/* ===================================================================== */
+/* Les 14 événements DIRIGÉS : 7 déstabilisateurs (le monde ronronne → on remue)
+ * puis 7 stabilisateurs (le monde brûle → on apaise). Chacun = un CHOC sur des
+ * variables EXISTANTES (P/C/I/H/K/L/fertilité/or/foi/fracture/rancune), aucun
+ * système neuf — le motif world_events_tick/apply_effect est réemployé tel quel. */
+typedef enum {
+    DIR_CHARISMA = 0, DIR_PESTE, DIR_PALAIS, DIR_FILON, DIR_ANNEE, DIR_SCHISME, DIR_DEBASE,
+    DIR_CONCILE, DIR_REFORME, DIR_CADASTRE, DIR_MOISSONS, DIR_MARCHAND, DIR_HEROS, DIR_AMNISTIE,
+    DIR_EV_COUNT
+} DirEvId;
+#define DIR_STAB_FIRST DIR_CONCILE   /* [0..DIR_STAB_FIRST) déstabilisent ; [DIR_STAB_FIRST..) apaisent */
+
+/* L'état du directeur : cadence, anti-acharnement (F2), télémétrie (F5). Tout est
+ * en JOURS de jeu (cumul des ticks) — déterministe, sérialisable. */
+typedef struct {
+    int     next_check_day;                       /* le directeur scanne à cette échéance (~annuel) */
+    int     prov_cd_until [SCPS_MAX_REG];          /* anti-acharnement : province en repos jusqu'à ce jour (15 ans) */
+    int     pays_cd_until [SCPS_MAX_COUNTRY];      /* pays en repos jusqu'à ce jour (5 ans) */
+    signed char prov_last_neg[SCPS_MAX_REG];       /* 1 si le dernier ciblage de cette province fut NÉGATIF (jamais deux d'affilée) */
+    int     fam_active_until[DIR_EV_COUNT];        /* un événement de ce type ne rejoue pas tant qu'il est actif */
+    unsigned char prov_neg_century[SCPS_MAX_REG];  /* nb d'événements négatifs subis dans le siècle courant (preuve F2 : ≤3) */
+    int     century_base_day;                      /* début du siècle courant (remet prov_neg_century à zéro) */
+    int     fired[DIR_EV_COUNT];                   /* télémétrie : occurrences par événement */
+    int     fired_stab, fired_destab;
+    int     neg_over_cap;                          /* fois où une province a dépassé 3 négatifs/siècle (DOIT rester 0) */
+    float   last_T;                                /* dernière température mondiale [0..1] (UI/télémétrie) */
+} Director;
+
+/* ===================================================================== */
 /* ÂGES — déclenchés par une LECTURE du monde (§4)                        */
 /* ===================================================================== */
 typedef enum {
@@ -118,6 +149,7 @@ typedef struct {
 typedef struct {
     RegionGeo   geo[SCPS_MAX_REG];   /* la géo RELUE par région (le worldgen exposé) */
     AgesState   ages;
+    Director    director;            /* §F : le directeur d'événements (dirigés) */
     uint32_t    rng;
     const char *last_name;           /* dernier évènement déclenché (UI/journal) */
     int         last_id;
@@ -132,10 +164,18 @@ typedef struct {
 void events_init(EventsState *ev, const World *w, uint32_t seed);
 
 /* La boucle (§5) : chocs géo (à risque) + évènements (mtth par sujet, trigger
- * lit la fiche) + scan d'âges périodique. Mute le monde via les leviers. */
+ * lit la fiche) + LE DIRECTEUR (§F) + scan d'âges. Mute le monde via les leviers.
+ * `dp` peut être NULL (le directeur tourne sans le terme « guerres » de T et sans
+ * l'Amnistie). */
 void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
                        WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
-                       RouteNetwork *rn, const TechState ts[], int days);
+                       RouteNetwork *rn, const TechState ts[], DiploState *dp, int days);
+
+/* ---- LE DIRECTEUR (§F) : lecteurs (UI / télémétrie) -------------------- */
+float       director_temperature(const EventsState *ev);          /* dernière T [0..1] (0 ronron, 1 chaos) */
+const char *director_event_name(int dir_id);                      /* nom diégétique d'un événement dirigé */
+int         director_fired(const EventsState *ev, int dir_id);     /* occurrences d'un événement dirigé */
+bool        director_is_destab(int dir_id);                        /* déstabilisateur ? */
 
 /* ---- Lecteurs de RISQUE géo (relisent la géo ; 0 = la géo l'interdit) -- */
 float events_quake_risk  (const EventsState *ev, int region);

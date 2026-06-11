@@ -708,7 +708,7 @@ static void sim_day(Sim *s, World *w) {
             }
         }
     }
-    world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, 1);
+    world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1);
     labor_tick(s->labor);
     navy_tick(s->navy, w, s->econ, 1.f);   /* chantier + entretien : la chaîne navale TIRE */
     /* — mensuel : ÉCONOMIE + réputation diplomatique (O(n²)) + démographie, tous
@@ -3085,9 +3085,9 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 10u           /* v10 : arc « le monde se fracture » — AiActor.spec_cd[] (B1).
-                                    * v9 était l'arc « une économie » (LProvince.region, accumulateurs
-                                    * taxes/solde, solde d'armée). Ère antérieure à chaque bump. */
+#define SAVE_VERSION 11u           /* v11 : arc « le monde se fracture » — EventsState.director (§F).
+                                    * v10 = AiActor.spec_cd[] (B1) ; v9 = arc « une économie ».
+                                    * Ère antérieure à chaque bump (struct sérialisée plus large). */
 #define SAVE_F_CRYPT 1u
 typedef struct {
     uint32_t magic, version;

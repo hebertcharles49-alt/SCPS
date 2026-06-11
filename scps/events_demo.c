@@ -257,9 +257,40 @@ int main(int argc, char **argv){
     /* Intégration : la boucle complète tourne sans incident et FAIT des choses. */
     int fired0=s.ev->n_fired;
     for (int yr=0; yr<40; yr++)
-        world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,365);
+        world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
     printf("\n   (boucle 40 ans : %d évènements déclenchés au total)\n", s.ev->n_fired);
     ok("la boucle world_events_tick tourne et déclenche des évènements", s.ev->n_fired>fired0);
+
+    /* ═══ 7. LE DIRECTEUR (§F) — répond à la TEMPÉRATURE, sans s'acharner ═══ */
+    printf("\n── 7. Le directeur stabilise/déstabilise selon la température (F1/F2) ──\n");
+    events_init(s.ev,s.w,seed);                          /* état directeur propre */
+    /* (a) MONDE FROID (ronron) : SI au plafond, aucune révolution → T basse → le
+     *     directeur REMUE. On rend quelques pays éligibles à un déstabilisateur
+     *     (légitimité basse → « Les Enfants du Palais »). */
+    for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=10.f; s.wp->country[c].fracture=0.f; s.wp->country[c].mode=0; }
+    for (int c=0;c<s.wp->n_countries && c<3;c++) s.wp->country[c].L=3.f;   /* Légit < 50 */
+    int destab0=s.ev->director.fired_destab, stab_during_cold0=s.ev->director.fired_stab;
+    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+    float T_cold=director_temperature(s.ev);
+    int destab_cold=s.ev->director.fired_destab-destab0, stab_cold=s.ev->director.fired_stab-stab_during_cold0;
+    printf("   monde froid : T=%.2f → %d déstabilisateur(s), %d stabilisateur(s)\n", T_cold, destab_cold, stab_cold);
+    ok("monde en RONRON (T basse) → le directeur DÉSTABILISE (jamais l'inverse)",
+       T_cold<0.32f && destab_cold>0 && stab_cold==0);
+    /* (b) MONDE CHAUD (chaos) : SI au plancher, moitié en révolution, fracture haute
+     *     → T haute → le directeur APAISE (« Le Concile » est toujours éligible). */
+    int stab0=s.ev->director.fired_stab, destab_during_hot0=s.ev->director.fired_destab;
+    for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=1.5f; s.wp->country[c].fracture=6.f; s.wp->country[c].mode=(c%2)?2:0; }
+    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+    float T_hot=director_temperature(s.ev);
+    int stab_hot=s.ev->director.fired_stab-stab0, destab_hot=s.ev->director.fired_destab-destab_during_hot0;
+    printf("   monde chaud : T=%.2f → %d stabilisateur(s), %d déstabilisateur(s)\n", T_hot, stab_hot, destab_hot);
+    ok("monde en CHAOS (T haute) → le directeur STABILISE (jamais l'inverse)",
+       T_hot>0.55f && stab_hot>0 && destab_hot==0);
+    /* (c) ANTI-ACHARNEMENT (F2) : sur ces 160 scans, aucune province n'a dépassé
+     *     3 événements négatifs par siècle (le compteur de dépassement reste 0). */
+    printf("   anti-acharnement : %d dépassement(s) du plafond 3-négatifs/siècle\n", s.ev->director.neg_over_cap);
+    ok("ANTI-ACHARNEMENT : aucune province > 3 négatifs/siècle (cooldown 15 ans + alternance)",
+       s.ev->director.neg_over_cap==0);
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
