@@ -431,7 +431,11 @@ static Edifice ai_next_savoir_edifice(const WorldEconomy *econ, int region){
     return (econ->region[region].build.savoir < 1.5f) ? EDI_BIBLIOTHEQUE : EDI_MONASTERE;
 }
 #define AI_FAITH_L 3.0f   /* consentement DÉFAILLANT (Légit<30) → le trône se SACRALISE */
-#define AI_SAVOIR_K 5.0f  /* institutions MÛRES (K élevé) → on investit le SAVOIR (recherche) */
+#define AI_SAVOIR_K 2.5f  /* B3 : dès la Chancellerie (K≥2.5) posée, un centre établi se dote
+                           * d'une ŒUVRE DE SAVOIR (Bibliothèque 360 → Monastère 540 — qui
+                           * consomme des OUTILS, §B2) AVANT de couronner par l'Académie (960).
+                           * Sinon le métabolisme K SAUTE le palier 540 (360→960) — la chronique
+                           * montrait le 960 bâti sans jamais toucher le 540. */
 
 /* ===================================================================== */
 /* TOURS DE DÉCISION                                                       */
