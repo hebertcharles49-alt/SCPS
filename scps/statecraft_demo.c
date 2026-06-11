@@ -138,10 +138,10 @@ int main(int argc, char **argv){
 
     /* Vivier limité : on remplit jusqu'au plafond, le suivant échoue. */
     int cap=statecraft_missions_cap(s.sc,player);
-    int sent=2, fails=0;
+    int fails=0;
     for (int k=0;k<cap+3;k++){
         int tgt=(player+1)%s.w->n_countries;
-        if (statecraft_send(s.sc,s.w,s.econ,player,DIP_RELATIONS,tgt)) sent++; else fails++;
+        if (!statecraft_send(s.sc,s.w,s.econ,player,DIP_RELATIONS,tgt)) fails++;
     }
     printf("   Vivier : plafond %d, missions actives %d, refus %d\n",
            cap, statecraft_missions_active(s.sc,player), fails);

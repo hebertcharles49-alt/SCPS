@@ -66,13 +66,12 @@ int main(int argc, char **argv) {
     }
     /* Décompte des régions colonisées */
     int n_col=0, n_active=0;
-    float total_diaspora=0.f, total_coercion=0.f;
+    float total_diaspora=0.f;
     for (int rid=0;rid<e->n_regions;rid++){
         if (e->region[rid].active) n_active++;
         if (e->region[rid].colonized) {
             n_col++;
             total_diaspora += e->region[rid].diaspora_pop;
-            total_coercion += e->region[rid].coercion;
         }
     }
     printf("    colonisation : %d fondations, %d/%d régions peuplées\n",

@@ -81,13 +81,13 @@ typedef struct {
 static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* TEXTILE : intrant allégé (2.0→1.5) et sortie relevée (1.0→1.8) → la pénurie
      * d'étoffe (couv 22%) se résorbe ; la laine est mieux dispatchée (scps_world). */
-    [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f },  /* rendement étoffe relevé (1.8→2.8) : l'étoffe nourrit DEUX chaînes (tunique + précieuse 1:4) — il en faut plus */
-    [BLD_SAWMILL]   = { RES_WOOD,  2.0f, RES_NONE,          0.f, RES_NAVAL_SUPPLIES, 1.0f, 0.8f },
-    [BLD_PAPERMILL] = { RES_WOOD,  1.5f, RES_NONE,          0.f, RES_PAPER,          1.0f, 0.7f },
+    [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_NONE, 0.f },  /* rendement étoffe relevé (1.8→2.8) : l'étoffe nourrit DEUX chaînes (tunique + précieuse 1:4) — il en faut plus */
+    [BLD_SAWMILL]   = { RES_WOOD,  2.0f, RES_NONE,          0.f, RES_NAVAL_SUPPLIES, 1.0f, 0.8f, RES_NONE, 0.f },
+    [BLD_PAPERMILL] = { RES_WOOD,  1.5f, RES_NONE,          0.f, RES_PAPER,          1.0f, 0.7f, RES_NONE, 0.f },
     /* VIN : sucre allégé (2.0→1.6), sortie relevée (1.0→1.4) ; le sucre tropical est
      * mieux dispatché (scps_world) → la pénurie de vin (couv 25%) se résorbe. */
-    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 0.9f },
-    [BLD_BREWERY]   = { RES_GRAIN, 1.2f, RES_NONE,          0.f, RES_BEER,           1.0f, 0.8f },
+    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 0.9f, RES_NONE, 0.f },
+    [BLD_BREWERY]   = { RES_GRAIN, 1.2f, RES_NONE,          0.f, RES_BEER,           1.0f, 0.8f, RES_NONE, 0.f },
     /* JOAILLERIE : OR, ou PERLE en repli (2× la quantité par bijou — littoral).
      * Sortie TEMPÉRÉE (1.0→0.5) et intrant plus lourd (1.5→2.0) : l'orfèvrerie
      * surinondait (couv ×170) → on vise un surplus DOUX, pas un raz-de-marée.
@@ -105,27 +105,27 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     [BLD_WEAVER_LUX]= { RES_MUREX, 0.1f, RES_CLOTH, 4.0f, RES_PRECIOUS_CLOTH, 1.0f, 1.1f, RES_INDIGO, 0.1f },  /* SURCADENCE : un bain de teinture colore beaucoup → l'étoffe précieuse suit la cour ; la teinture PLACE-gate, l'étoffe 1:4 (surplus après tunique) borne le volume */
     /* TUNIQUE — la chaîne SÉPARÉE des journaliers : étoffe → tunique (1:1). Bien fini
      * propre au commun → plus de prix-exclusion par le luxe sur le même tissu. */
-    [BLD_TUNIC]     = { RES_CLOTH, 1.0f, RES_NONE,          0.f, RES_TUNIQUE,       1.0f, 0.8f },
+    [BLD_TUNIC]     = { RES_CLOTH, 1.0f, RES_NONE,          0.f, RES_TUNIQUE,       1.0f, 0.8f, RES_NONE, 0.f },
     /* ARCANE : on BRÛLE le cristal pour raffiner l'essence (mana). Sa combustion
      * nourrit la Brèche (couplée plus bas dans econ_tick → arcane_charge). */
-    [BLD_MAGE_WORKSHOP]={ RES_ARCANE_CRYSTAL, 1.0f, RES_NONE, 0.f, RES_ESSENCE,    1.0f, 1.3f },
+    [BLD_MAGE_WORKSHOP]={ RES_ARCANE_CRYSTAL, 1.0f, RES_NONE, 0.f, RES_ESSENCE,    1.0f, 1.3f, RES_NONE, 0.f },
     /* ARCANE militaire : le fer céleste + l'essence → armes enchantées (la Forge
      * supérieure). Consomme donc l'essence de l'atelier de mage (chaîne arcane). */
-    [BLD_CELESTIAL_FORGE]={ RES_CELESTIAL_IRON, 1.0f, RES_ESSENCE, 1.0f, RES_ENCHANTED_ARMS, 1.0f, 1.4f },
+    [BLD_CELESTIAL_FORGE]={ RES_CELESTIAL_IRON, 1.0f, RES_ESSENCE, 1.0f, RES_ENCHANTED_ARMS, 1.0f, 1.4f, RES_NONE, 0.f },
     /* Épine dorsale de production : fer + charbon → métal → (métal + bois) outils. */
-    [BLD_FOUNDRY]   = { RES_IRON,  1.5f, RES_COAL, 1.0f, RES_METAL, 1.0f, 1.0f },
-    [BLD_TOOLWORKS] = { RES_METAL, 1.0f, RES_WOOD, 1.0f, RES_TOOLS, 1.0f, 0.9f },
+    [BLD_FOUNDRY]   = { RES_IRON,  1.5f, RES_COAL, 1.0f, RES_METAL, 1.0f, 1.0f, RES_NONE, 0.f },
+    [BLD_TOOLWORKS] = { RES_METAL, 1.0f, RES_WOOD, 1.0f, RES_TOOLS, 1.0f, 0.9f, RES_NONE, 0.f },
     /* CHARBONNIÈRE : 2 bois → 1 charbon. Le charbon minier est rare et co-localisé
      * avec le fer (gate de la fonderie) ; la charbonnière le PRODUIT du bois (abondant)
      * → la fonderie tourne partout où il y a du fer, et la chaîne métal/outils respire. */
-    [BLD_CHARCOAL]  = { RES_WOOD,  2.0f, RES_NONE, 0.f, RES_COAL,  1.0f, 0.8f },
+    [BLD_CHARCOAL]  = { RES_WOOD,  2.0f, RES_NONE, 0.f, RES_COAL,  1.0f, 0.8f, RES_NONE, 0.f },
     /* §B2 FOREUSE ARCANIQUE : transmute l'ESSENCE en FER en masse (0.5 essence → 8 fer).
      * L'issue faustienne à la famine de fer ; gatée par la tech (charge) + l'essence (rare). */
-    [BLD_FOREUSE]   = { RES_ESSENCE, 0.5f, RES_NONE, 0.f, RES_IRON, 8.0f, 1.4f },
+    [BLD_FOREUSE]   = { RES_ESSENCE, 0.5f, RES_NONE, 0.f, RES_IRON, 8.0f, 1.4f, RES_NONE, 0.f },
     /* Chaînes militaires de base + santé (compléter le roster de production). */
-    [BLD_ARMORY]    = { RES_IRON,      1.2f, RES_NONE, 0.f, RES_ARMS,      1.0f, 1.0f },
-    [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f },
-    [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 0.8f },
+    [BLD_ARMORY]    = { RES_IRON,      1.2f, RES_NONE, 0.f, RES_ARMS,      1.0f, 1.0f, RES_NONE, 0.f },
+    [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
+    [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 0.8f, RES_NONE, 0.f },
 };
 
 /* Besoins par tête et par strate (unités/100 hab/tick). Le grain (vivres)
