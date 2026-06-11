@@ -9,7 +9,7 @@ Unicode true
 SetCompressor /SOLID lzma
 
 !define APPNAME      "SCPS"
-!define APPVER       "1.0.0"
+!define APPVER       "1.1.0"
 !define PUBLISHER    "SCPS"
 !define DESC         "Moteur de grande stratégie — Sphères Culturelles & Perméabilité Systémique"
 !define EXENAME      "scps_viewer.exe"
@@ -55,6 +55,9 @@ Section "SCPS (requis)" SecCore
   File "chronicle.exe"
   File "core_demo.exe"
   File "LISEZMOI.txt"
+  ; Texte joueur ÉDITABLE (FR par défaut) : édite-le ou traduis-le, F4 recharge
+  ; à chaud. Absent → le jeu garde ses libellés compilés. (Généré par --dump-lang.)
+  File "scps_lang.txt"
 
   ; Clés de désinstallation (Ajout/Suppression de programmes)
   WriteRegStr HKLM "Software\${APPNAME}" "InstallDir" "$INSTDIR"
@@ -95,6 +98,7 @@ Section "Uninstall"
   Delete "$INSTDIR\SDL2_ttf.dll"
   Delete "$INSTDIR\DejaVuSans.ttf"
   Delete "$INSTDIR\LISEZMOI.txt"
+  Delete "$INSTDIR\scps_lang.txt"
   Delete "$INSTDIR\Uninstall.exe"
   ; les sauvegardes/captures éventuelles créées à côté de l'exe
   RMDir /r "$INSTDIR\saves"

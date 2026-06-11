@@ -4,13 +4,16 @@ SCPS — Moteur de grande stratégie (Sphères Culturelles & Perméabilité Syst
 Un monde généré PAR le modèle : culture, prospérité, stabilité et guerre sont
 calculées par les équations SCPS, pas par des règles ad hoc. La guerre se gagne
 sur le terrain (sièges → occupation), la conquête se règle à la table de paix,
-et les royaumes peuvent mourir.
+et les royaumes peuvent mourir. Un DIRECTEUR d'événements lit la « température »
+du monde et le remue ou l'apaise (peste, schisme, filon, concile, moissons…)
+sans jamais s'acharner sur la même province.
 
 CONTENU
 -------
   scps_viewer.exe   Le visualiseur interactif (carte vivante + interface d'empire).
   chronicle.exe     Balayage headless : la télémétrie d'équilibre (console).
   core_demo.exe     Banc du cœur vérifié (35 contrôles).
+  scps_lang.txt     TOUT le texte du jeu, éditable (et traduisible) — voir plus bas.
   SDL2.dll          \
   SDL2_ttf.dll       > requis par le visualiseur (déjà présents — ne rien faire).
   DejaVuSans.ttf    /
@@ -31,13 +34,25 @@ COMMANDES (visualiseur)
   Diplomatie (G)    déclarer la guerre (si un casus belli tient), négocier la
                     paix sur une guerre active ; les régions OCCUPÉES sont
                     hachurées de la couleur de l'occupant sur la carte politique.
+  F4                recharger scps_lang.txt à chaud (édition de texte en direct)
   F12               capture d'écran (PNG, dossier screenshots\)
+
+TEXTE ÉDITABLE & TRADUCTION (scps_lang.txt)
+-------------------------------------------
+  Tout le texte lisible par le joueur vit dans scps_lang.txt, une ligne par
+  libellé : « IDENTIFIANT <tabulation> texte ». Édite le texte après la
+  tabulation, sauvegarde, et appuie sur F4 dans le jeu — le changement est
+  immédiat. Le jeu fonctionne SANS ce fichier (libellés par défaut compilés) ;
+  un identifiant supprimé ou inconnu retombe simplement sur le défaut.
+  TRADUIRE : copie le fichier, traduis la colonne de texte, garde-le à côté de
+  scps_viewer.exe. (Régénérer la liste complète : scps_viewer.exe --dump-lang.)
 
 OUTILS HEADLESS (invite de commandes)
 -------------------------------------
   chronicle.exe <graine> <sims> <années> [empires] [cités]
       ex. : chronicle.exe 7 5 200 8 16
   core_demo.exe       (doit afficher « 35 réussis, 0 échoués »)
+  scps_viewer.exe --dump-lang   (réécrit scps_lang.txt : tous les libellés)
 
 CONFIGURATION REQUISE : Windows 10/11 64 bits. Aucune installation de
 runtime tierce (SDL2 fourni, dépendances C statiques).

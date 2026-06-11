@@ -64,6 +64,9 @@ for f in /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /usr/share/fonts/dejavu
   [ -f "$f" ] && { cp "$f" "$DIST/"; break; }
 done
 cp "$HERE/LISEZMOI.txt" "$DIST/"
+# Texte joueur éditable / traduisible (FR par défaut, versionné). Absent → le jeu
+# garde ses libellés compilés ; un ID périmé retombe sur le défaut (robuste).
+[ -f "$ROOT/scps_lang.txt" ] && cp "$ROOT/scps_lang.txt" "$DIST/"
 "$STRIP" "$DIST"/*.exe "$DIST"/*.dll 2>/dev/null || true
 
 # --- 4. empaquetage NSIS ----------------------------------------------------
