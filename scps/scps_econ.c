@@ -793,6 +793,24 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
 static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien/encadrement impayé) */
 static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
+
+/* I0 — L'INSTRUMENT : décomposition du flux d'or par empire. */
+static double g_flux[SCPS_MAX_COUNTRY][FX_COUNT];
+void econ_flux_add(int cid, FluxComp comp, float amount){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||comp<0||comp>=FX_COUNT) return;
+    g_flux[cid][comp] += amount;
+}
+double econ_flux_get(int cid, FluxComp comp){
+    return (cid>=0&&cid<SCPS_MAX_COUNTRY&&comp>=0&&comp<FX_COUNT) ? g_flux[cid][comp] : 0.0;
+}
+void econ_flux_reset(void){ memset(g_flux,0,sizeof g_flux); }
+const char *econ_flux_name(FluxComp comp){
+    static const char *N[FX_COUNT]={
+        "taxes","export","péages+",
+        "entretien","cour","admin","encadr.",
+        "soldes","marine","audits","péages−","invest.","conseil" };
+    return (comp>=0&&comp<FX_COUNT)?N[comp]:"?";
+}
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
 
 #define PROMOTE_RATE 0.005f       /* 0.5 %/mois max (∝ richesse excédentaire) */
@@ -1082,6 +1100,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             over_tax[c]   = (STATE_TAX_AMBITION>seuil)?(STATE_TAX_AMBITION-seuil):0.f;
         }
         re->over_tax = clampf(over_tax[CLASS_LABORER], 0.f, 1.f);   /* grief des laboureurs → révolte */
+        if (re->owner>=0) econ_flux_add(re->owner, FX_TAX, coll_tot);   /* I0 : la ligne des taxes */
 
         /* E1bis.10 — ENTRETIEN : l'infra bâtie se paie chaque tick ; impayé → FRICHE.
          * G0.4 : l'entretien suit l'IPM (un monde cher coûte plus cher à tenir). */
@@ -1108,7 +1127,9 @@ void econ_tick(WorldEconomy *e, float dt) {
              * d'impôt) n'est PAS en friche : elle sous-finance sans la falaise de prod. */
             bool fr = (base_up > re->treasury);
             float surplus = re->treasury - opf;
-            if (surplus > 0.f) re->treasury -= fminf(base_up, surplus);   /* payé du surplus, la réserve tient */
+            float paid_up = (surplus > 0.f) ? fminf(base_up, surplus) : 0.f;
+            re->treasury -= paid_up;                                       /* payé du surplus, la réserve tient */
+            if (re->owner>=0) econ_flux_add(re->owner, FX_UPKEEP, -paid_up);  /* I0 : entretien édifices */
             g_friche[rid] = fr;
             if (fr) g_n_friche++;
             /* SURCOÛTS ANTI-HOARDING (G0.4 surtaxe IPM sur l'entretien + H7 encadrement des
@@ -1119,14 +1140,15 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float mlev=0.f; for (int i=0;i<re->n_bld;i++) mlev += re->bld[i].level;
                 float surcharge = base_up*(ipmf-1.f)                                  /* la part IPM de l'entretien */
                                 + mlev*tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY)*365.f*dt*ipmf;
-                if (surcharge>0.f) re->treasury -= fminf(surcharge, re->treasury - hof);
+                if (surcharge>0.f){ float pay=fminf(surcharge, re->treasury - hof); re->treasury -= pay;
+                    if (re->owner>=0) econ_flux_add(re->owner, FX_ENCADR, -pay); }  /* I0 : surtaxe IPM + encadrement */
             }
         }
         /* G0.4 — le FASTE de cour : au-delà de 10k, 0.5 %/mois du surplus se dépense
          * (frein au hoarding — un trésor qui gonfle finance le prestige). */
         { float cf=tune_f("COURT_FLOOR",COURT_FLOOR);
-          if (re->treasury > cf)
-              re->treasury -= (re->treasury - cf) * tune_f("COURT_RATE",COURT_RATE) * (dt*12.f); }
+          if (re->treasury > cf){ float court=(re->treasury - cf) * tune_f("COURT_RATE",COURT_RATE) * (dt*12.f);
+              re->treasury -= court; if (re->owner>=0) econ_flux_add(re->owner, FX_COURT, -court); } }
         /* I3 — ADMIN : la part de cette région dans la bureaucratie du pays. Total pays =
          * base × n^exp ; par région = base × n^(exp−1). Croît avec la TAILLE (×IPM). Du
          * SURPLUS au-dessus du seuil de hoarding : l'admin pèse sur les grands trésors, pas
@@ -1135,7 +1157,8 @@ void econ_tick(WorldEconomy *e, float dt) {
             int nreg=rcount[re->owner]; if (nreg<1) nreg=1;
             float admin = tune_f("ADMIN_BASE",ADMIN_BASE)
                         * powf((float)nreg, tune_f("ADMIN_EXP",ADMIN_EXP)-1.f) * ipmf * (dt*12.f);
-            re->treasury = fmaxf(hof, re->treasury - admin);
+            float before=re->treasury; re->treasury = fmaxf(hof, re->treasury - admin);
+            econ_flux_add(re->owner, FX_ADMIN, -(before - re->treasury));   /* I0 : la ligne admin */
         }
 
         /* §B (TRÉSOR MORT) — l'État REDÉPENSE : il ne hoarde plus, il CIRCULE. Une masse

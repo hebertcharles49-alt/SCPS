@@ -272,6 +272,19 @@ float econ_world_ipm(const WorldEconomy *e);
 void econ_mobility_reset(void);
 /* E1bis.10 — régions EN FRICHE (entretien impayé) au dernier econ_tick (télémétrie). */
 long econ_friche_count(void);
+/* I0 — L'INSTRUMENT : décomposition du flux d'or par empire (le robinet, ligne à ligne).
+ * Chaque puits/source incrémente sa composante ; le chronicle RAZ par fenêtre et publie
+ * la moyenne par empire. Signe : revenus +, dépenses −. Lecture seule, diagnostic. */
+typedef enum {
+    FX_TAX=0, FX_EXPORT, FX_TOLL_RECV,                /* revenus (+) */
+    FX_UPKEEP, FX_COURT, FX_ADMIN, FX_ENCADR,         /* dépenses (−) : édifices/cour/admin/manuf */
+    FX_SOLDE, FX_NAVY, FX_AUDIT, FX_TOLL_PAID, FX_INVEST, FX_CONSEIL,
+    FX_COUNT
+} FluxComp;
+void   econ_flux_add(int cid, FluxComp comp, float amount);   /* incrémente (signé par convention ci-dessus) */
+double econ_flux_get(int cid, FluxComp comp);                 /* cumul depuis le dernier reset */
+void   econ_flux_reset(void);                                 /* RAZ (début de fenêtre de mesure) */
+const char *econ_flux_name(FluxComp comp);                    /* libellé court (français, outillage) */
 /* E3 §16 — le prix d'ANCRE d'un bien (BASE_PRICE) : pour normaliser les indices
  * de prix (télémétrie du lissage par les stocks). 0 si hors borne. */
 float econ_base_price(Resource r);

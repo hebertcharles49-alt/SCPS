@@ -168,8 +168,10 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days)
              * désarmement existant plus bas) — c'est le « désarme des coques » d'IG. */
             { float gold = (float)hulls * tune_f("NAVY_UPKEEP_GOLD",1.5f)
                          * econ_world_ipm(econ) * (dt_days/30.f);
+              float paid = fminf(gold, re->treasury);
               if (re->treasury >= gold) re->treasury -= gold;
-              else { re->treasury=0.f; n->starve_days += dt_days; } }
+              else { re->treasury=0.f; n->starve_days += dt_days; }
+              econ_flux_add(c, FX_NAVY, -paid); }            /* I0 : la ligne marine */
             float need=need_y*(dt_days/365.f);
             re->demand[RES_NAVAL_SUPPLIES]+=need;         /* la demande se VOIT au marché */
             if (re->stock[RES_NAVAL_SUPPLIES]>=need){

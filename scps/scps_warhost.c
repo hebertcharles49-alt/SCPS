@@ -113,7 +113,9 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                * 80 rgt × 1.5 × 12 = 1440/an = 120/mois. */
               float pay = (float)u * tune_f("REGIMENT_PAY",1.5f) * econ_world_ipm(econ)
                         * (at_war?1.5f:1.f) * dt * 12.f;
-              econ->region[crp].treasury = fmaxf(0.f, econ->region[crp].treasury - pay);
+              float paid = fminf(pay, econ->region[crp].treasury);
+              econ->region[crp].treasury -= paid;
+              econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
               /* IG — LA GARDE DE BUDGET (le garde-fou anti-famine) : si la capitale ne
                * couvre plus ~3 mois de la solde (pay annuel ×0.25), on DÉGRAISSE (jauge −1)
                * — l'armée cesse de croître et fond, plutôt qu'étrangler le trésor en spirale

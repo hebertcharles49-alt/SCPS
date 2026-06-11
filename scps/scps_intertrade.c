@@ -260,6 +260,7 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             src->stock[g]-=vol; dst->stock[g]+=vol;             /* le bien remonte la pente de prix */
             float value=vol*dst->price[g];
             src->treasury += value*IT_MARGIN_TO_GOLD;           /* l'exportateur encaisse l'or */
+            if (src->owner>=0) econ_flux_add(src->owner, FX_EXPORT, value*IT_MARGIN_TO_GOLD);  /* I0 */
             g_last_value += value;
             /* la valeur PASSE par les Centres des deux couronnes (moitié chacun) —
              * la part des cités-états dans le commerce mondial se lit là. */

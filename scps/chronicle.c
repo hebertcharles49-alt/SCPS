@@ -685,8 +685,10 @@ int main(int argc, char **argv){
          * (un pays né en cours d'année part de 0 : son flux englobe sa dotation). */
         double gold_y0[SCPS_MAX_COUNTRY]={0};
         for (int yr=0; yr<years; yr++){
-            if (yr==years-1)
+            if (yr==years-1){
                 for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++) gold_y0[c]=country_gold(s.econ,c);
+                econ_flux_reset();   /* I0 : la décomposition du flux porte sur la DERNIÈRE année */
+            }
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
             for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++){
@@ -1166,6 +1168,18 @@ int main(int argc, char **argv){
            tot_emp_n? tot_emp_gold/tot_emp_n:0.0,  tot_emp_n? tot_emp_flux/tot_emp_n:0.0,
            tot_emp_n? tot_emp_imp /tot_emp_n:0.0,  tot_emp_n? tot_emp_exp /tot_emp_n:0.0,
            tot_emp_n? tot_emp_expgold/tot_emp_n:0.0, tot_emp_hub, tot_emp_n);
+    /* I0 — LA DÉCOMPOSITION DU FLUX (dernière sim · dernière année · moyenne par empire ·
+     * or/mois) : l'instrument du robinet, ligne à ligne. Quand une bande échoue, c'est ICI
+     * qu'on lit la ligne dominante — pas un taux au hasard. */
+    { int ne=0; double comp[FX_COUNT]={0};
+      for (int c=0;c<SCPS_MAX_COUNTRY;c++){ bool act=false;
+          for (int k=0;k<FX_COUNT;k++){ double v=econ_flux_get(c,(FluxComp)k); comp[k]+=v; if(v!=0.0) act=true; }
+          if (act) ne++; }
+      if (ne>0){
+          printf("   flux décomposé (I0, dern. année · or/mois/empire) :");
+          for (int k=0;k<FX_COUNT;k++) printf(" %s %+.1f", econ_flux_name((FluxComp)k), comp[k]/ne/12.0);
+          printf("\n");
+      } }
     printf("   accession (E1 §9) ........... 360 j an %.1f (%d/%d) · 540 j an %.1f (%d/%d) · 960 j an %.1f (%d/%d)  (moy. du 1er bâti)\n",
            tot_tier_n[0]? (double)tot_tier_y[0]/tot_tier_n[0]:-1.0, tot_tier_n[0], nsims,
            tot_tier_n[1]? (double)tot_tier_y[1]/tot_tier_n[1]:-1.0, tot_tier_n[1], nsims,

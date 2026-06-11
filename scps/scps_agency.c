@@ -171,7 +171,10 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
      * marge (transfert, pas destruction — les cités-états deviennent banquières). */
     if (re->import_margin > 1.f && re->import_toll_region >= 0 && re->import_toll_region < econ->n_regions){
         float base = gold / re->import_margin;
-        econ->region[re->import_toll_region].treasury += (gold - base) * IMPORT_TOLL_FRAC;
+        float toll = (gold - base) * IMPORT_TOLL_FRAC;
+        econ->region[re->import_toll_region].treasury += toll;
+        if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
+        int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
     }
     const BuildCost *c=&EDIFICES[e].cost;          /* … et l'on CONSOMME les matériaux du marché */
     float mult = agency_extent_mult(econ, region); /* §7 : un grand pays consomme plus */

@@ -1290,6 +1290,7 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
                 float cost = (50.f + 8.f*(float)corr) * econ_world_ipm(econ) * (held?2.f:1.f);
                 if (econ->region[cr].treasury >= cost){
                     econ->region[cr].treasury -= cost;
+                    econ_flux_add(a->cid, FX_AUDIT, -cost);    /* I0 : la ligne audits */
                     faction_audit(a->cid);
                     if (wl) wl->L[cr] = clampf(wl->L[cr] + (corr>50?0.3f:-0.3f), 0.f, 10.f);
                     a->next_audit_day = day + 5*SCPS_DAYS_PER_YEAR;
