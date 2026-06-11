@@ -3528,8 +3528,18 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--curshot")) { shot=true; shot_cur=true; }   /* carte + champ des courants */
         else if (!strcmp(argv[i], "--war"))  { shot = true; shot_war  = true; }  /* §4 : capturer les armées sur la carte */
         else if (!strcmp(argv[i], "--culture")) { shot = true; shot_culture = true; }  /* §5 : vue culture */
+        else if (!strcmp(argv[i], "--dump-lang")) {   /* écrit scps_lang.txt (tout le texte joueur, éditable) puis sort */
+            int nw = lang_dump_file("scps_lang.txt");
+            printf("[scps] scps_lang.txt écrit (%d entrées) — édite le texte, relance le jeu.\n", nw);
+            return nw>0 ? 0 : 1;
+        }
         else { shot_seed = (uint32_t)strtoul(argv[i], NULL, 10); have_shot_seed = true; }
     }
+
+    /* §SURCHARGE TEXTE : si scps_lang.txt est présent, il REMPLACE le texte joueur
+     * (par ID). Absent → défauts compilés. Rupture assumée de zéro-asset, display-only. */
+    { int nov = lang_load_file("scps_lang.txt");
+      if (nov>0) printf("[scps] scps_lang.txt chargé : %d libellé(s) surchargé(s).\n", nov); }
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
@@ -4207,6 +4217,12 @@ int main(int argc, char **argv) {
                             printf("\n[scps] Tribunal : trésor insuffisant pour acheter les matériaux.\n");
                     }
                     break;
+                case SDLK_F4: {  /* §SURCHARGE : recharge scps_lang.txt À CHAUD (édition temps-réel du texte) */
+                    lang_clear_overrides();
+                    int nov = lang_load_file("scps_lang.txt");
+                    printf("[scps] scps_lang.txt rechargé : %d libellé(s) surchargé(s).\n", nov>0?nov:0);
+                    dirty=true; break;
+                }
                 case SDLK_F12:   viewer_screenshot(ren); break;   /* capture PNG horodatée */
 #ifdef SCPS_DEV
                 case SDLK_F3:    g_dev_overlay=!g_dev_overlay; break;   /* §6 : l'inspecteur brut */

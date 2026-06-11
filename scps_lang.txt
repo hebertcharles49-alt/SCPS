@@ -1,0 +1,241 @@
+# scps_lang.txt — TOUT le texte joueur, éditable. Format : STR_ID<TAB>texte
+# Édite après la tabulation, relance le jeu (le binaire garde ses défauts si ce fichier manque).
+# Une langue = un fichier (copie, traduis, charge). '#' ou ligne vide = ignoré.
+
+STR_BANDE_STAB_0	Submergée
+STR_BANDE_STAB_1	Vacillante
+STR_BANDE_STAB_2	Tenue
+STR_BANDE_STAB_3	Assurée
+STR_BANDE_STAB_4	Inébranlable
+STR_BANDE_ASSISE_0	Consentie
+STR_BANDE_ASSISE_1	Partagée
+STR_BANDE_ASSISE_2	Contrainte
+STR_BANDE_ASSISE_3	Tyrannique
+STR_BANDE_LEGIT_0	Usurpée
+STR_BANDE_LEGIT_1	Contestée
+STR_BANDE_LEGIT_2	Tolérée
+STR_BANDE_LEGIT_3	Reconnue
+STR_BANDE_LEGIT_4	Sacrée
+STR_BANDE_CONCORDE_0	Unie
+STR_BANDE_CONCORDE_1	Murmurante
+STR_BANDE_CONCORDE_2	Fracturée
+STR_BANDE_CONCORDE_3	Sécession
+STR_BANDE_PROSP_0	Misère
+STR_BANDE_PROSP_1	Disette
+STR_BANDE_PROSP_2	Suffisance
+STR_BANDE_PROSP_3	Aisance
+STR_BANDE_PROSP_4	Opulence
+STR_BANDE_SAVOIR_0	Obscurité
+STR_BANDE_SAVOIR_1	Lueur
+STR_BANDE_SAVOIR_2	Foyer
+STR_BANDE_SAVOIR_3	Phare
+STR_BANDE_PRESAGE_0	Calme
+STR_BANDE_PRESAGE_1	Frémissement
+STR_BANDE_PRESAGE_2	Ombre grandissante
+STR_BANDE_PRESAGE_3	Le seuil
+STR_BANDE_STATURE_0	Désert
+STR_BANDE_STATURE_1	Hameau
+STR_BANDE_STATURE_2	Bourg
+STR_BANDE_STATURE_3	Cité
+STR_BANDE_STATURE_4	Métropole
+STR_BANDE_FLUX_0	Exode
+STR_BANDE_FLUX_1	Saignée
+STR_BANDE_FLUX_2	Stable
+STR_BANDE_FLUX_3	Afflux
+STR_BANDE_FLUX_4	Ruée
+STR_BANDE_AISANCE_0	Misère
+STR_BANDE_AISANCE_1	Suffisance
+STR_BANDE_AISANCE_2	Aisance
+STR_BANDE_AISANCE_3	Faste
+STR_BANDE_CARREFOUR_0	—
+STR_BANDE_CARREFOUR_1	Florissante
+STR_BANDE_CARREFOUR_2	Bouillonnante
+STR_BANDE_CARREFOUR_3	En surchauffe
+STR_BANDE_HUMEUR_0	Révoltée
+STR_BANDE_HUMEUR_1	Frondeuse
+STR_BANDE_HUMEUR_2	Tiède
+STR_BANDE_HUMEUR_3	Loyale
+STR_BANDE_HUMEUR_4	Dévouée
+STR_BANDE_LIGNEE_0	Du même sang
+STR_BANDE_LIGNEE_1	Cousine
+STR_BANDE_LIGNEE_2	Sœur lointaine
+STR_BANDE_LIGNEE_3	Étrangère
+STR_BANDE_LIGNEE_4	Hérétique proche
+STR_BANDE_LIGNEE_5	Inassimilable
+STR_BANDE_AGITATION_0	Calme
+STR_BANDE_AGITATION_1	Frémissante
+STR_BANDE_AGITATION_2	Agitée
+STR_BANDE_AGITATION_3	Insurgée
+STR_BANDE_FOI_0	Dévote
+STR_BANDE_FOI_1	Tiède
+STR_BANDE_FOI_2	Hérétique
+STR_BANDE_SEDITION_0	Concorde
+STR_BANDE_SEDITION_1	Murmures
+STR_BANDE_SEDITION_2	Tendue
+STR_BANDE_SEDITION_3	Séditieuse
+STR_FORGE_0	Forge rudimentaire
+STR_FORGE_1	Forge artisanale
+STR_FORGE_2	Manufacture
+STR_FORGE_3	Industrie
+STR_PROF_0	hors de portée
+STR_PROF_1	savoir de surface
+STR_PROF_2	savoir-faire d'atelier
+STR_PROF_3	art profond
+STR_PROF_4	secret jalousement gardé
+STR_ACCES_0	lointain
+STR_ACCES_1	à portée
+STR_ACCES_2	imminent
+STR_ACCES_3	acquis
+STR_MORAL_0	ferme
+STR_MORAL_1	éprouvé
+STR_MORAL_2	vacillant
+STR_MORAL_3	rompu
+STR_FIDELITE_0	fidèle
+STR_FIDELITE_1	tiède
+STR_FIDELITE_2	frondeur
+STR_FIDELITE_3	ligueur
+STR_MARCHE_0	marché mort
+STR_MARCHE_1	pénurie sévère
+STR_MARCHE_2	tendu
+STR_MARCHE_3	sain
+STR_MARCHE_4	engorgé
+STR_LENS_0	—
+STR_LENS_1	Prospérité
+STR_LENS_2	Humeur
+STR_LENS_3	Marché
+STR_HOVER_STAB	La solidité de l'ordre : un royaume assuré encaisse les chocs, un royaume vacillant cède au premier vent.
+STR_HOVER_ASSISE	Sur quoi repose l'obéissance : l'adhésion des cœurs, ou le seul poids des armes.
+STR_HOVER_LEGIT	Le droit reconnu au trône de régner ; sacrée, nul ne la conteste — usurpée, chacun guette la chute.
+STR_HOVER_CONCORDE	L'unité des peuples sous une même couronne ; quand les coutures lâchent, les marges rêvent d'indépendance.
+STR_HOVER_PROSP	La richesse qui circule et qu'on parvient à lever ; un royaume opulent rayonne, une disette le vide.
+STR_HOVER_SAVOIR	Le savoir né aux carrefours des cultures ; il nourrit les arts et les arcanes.
+STR_HOVER_PRESAGE	Ce que la quête de puissance attire ; plus on force l'arcane, plus l'ombre s'épaissit.
+STR_HOVER_STATURE	L'ampleur de l'établissement humain, du hameau perdu à la cité grouillante.
+STR_HOVER_FLUX	Le mouvement des âmes : un afflux gonfle la province, un exode la vide.
+STR_HOVER_AISANCE	La richesse qui circule ici ; les carrefours prospèrent, les culs-de-sac s'étiolent.
+STR_HOVER_CARREFOUR	Quand des cultures se croisent ici, la richesse afflue — jusqu'à ce que le flux déborde et que la ville-monde se déchire.
+STR_HOVER_HUMEUR	Le cœur de la province envers la couronne ; loyale, elle paie sans broncher — frondeuse, elle attend l'étincelle.
+STR_HOVER_LIGNEE	Ce qui la lie à la culture du trône ; le même sang se gouverne aisément, l'inassimilable jamais sans la force.
+STR_HOVER_AGITATION	La colère qui monte dans la province ; soutenue, elle vire à la révolte — qu'apaisent la stabilité du royaume, la garnison et la légitimité.
+STR_HOVER_FOI	La ferveur de la province envers le culte du trône ; dévote, elle nourrit la légitimité sacrée — hérétique, elle couve le schisme.
+STR_HOVER_SEDITION	La tension d'une faction forte dont les valeurs s'opposent à la direction du régime ; séditieuse, elle complote le coup d'État pour imposer son éthos.
+STR_TUTO_TITLE_0	1 · Ce monde se lit.
+STR_TUTO_TITLE_1	2 · Le temps coule en jours.
+STR_TUTO_TITLE_2	3 · Ton empire.
+STR_TUTO_TITLE_3	4 · Décider coûte.
+STR_TUTO_TITLE_4	5 · Les autres.
+STR_TUTO_TITLE_5	6 · Le savoir voyage.
+STR_TUTO_TITLE_6	7 · La Brèche.
+STR_TUTO_PAGE_0	Ici, pas de pourcentages cachés : l'état des choses se dit en MOTS.
+Une province est Unie ou Fracturée, un peuple Loyal ou Frondeur,
+un marché Sain ou En pénurie. Survole : tout se définit en bas d'écran.
+STR_TUTO_PAGE_1	En haut à droite : la date, l'âge du monde, la vitesse.
+ESPACE met en pause — et en pause, tu peux tout consulter,
+tout ordonner. Rien ne presse jamais que toi.
+STR_TUTO_PAGE_2	En haut : ton or, tes vivres, tes matériaux, et la santé de ta couronne —
+Stabilité, Légitimité, Cohésion, Prospérité. Clique une province pour la voir
+de près ; ouvre la BARRE DE GAUCHE pour l'empire entier :
+Économie, Démographie, Stocks, Armée, Filtres.
+STR_TUTO_PAGE_3	Tout ordre — bâtir, exploiter, déplacer, lever — entre dans une FILE
+et prend des JOURS. Le prix s'affiche AVANT. Certains leviers rapportent
+vite et coûtent longtemps : mater une révolte tait la rue, pas la colère.
+STR_TUTO_PAGE_4	Tes voisins vivent : ils commercent, s'allient, jalousent.
+On peut les lier — l'allié, le protégé, le serf, la cité marchande —
+et chaque lien a son prix. Un embargo est une arme ; une guerre se gagne
+sur le champ, au MORAL, pas au nombre.
+STR_TUTO_PAGE_5	Ton arbre a un cœur et un cercle : le cœur se recherche,
+le CERCLE se gagne par le contact — commerce, frontières, peuples gouvernés.
+Une culture qu'on assimile est un savoir qu'on tarit.
+Choisis ce que tu fonds et ce que tu gardes distinct.
+STR_TUTO_PAGE_6	Certaines voies sont plus que puissantes — elles sont AVIDES.
+Chaque pacte sombre, chaque forge interdite, chaque culte imposé CHARGE le monde.
+La Brèche n'interdit rien : elle attend. Ton empire tombera — ils tombent tous.
+La seule question est COMMENT, et ce que tu laisseras debout.
+STR_MENU_SOUS_TITRE	un monde qui ne vous attend pas — et qui se lit
+STR_MENU_JOUER	Jouer
+STR_MENU_CHARGER	Charger
+STR_MENU_TUTORIEL	Tutoriel
+STR_MENU_QUITTER	Quitter
+STR_MENU_LANGUE	Langue : {0}
+STR_SETUP_TITRE	FORGER UN MONDE
+STR_PAUSE_TITRE	PAUSE
+STR_PM_REPRENDRE	Reprendre
+STR_PM_SAUVER	Sauver
+STR_PM_TUTORIEL	Tutoriel
+STR_PM_MENU	Menu principal
+STR_PM_QUITTER	Quitter
+STR_PICK_SAUVER	SAUVER — choisir un slot
+STR_PICK_CHARGER	CHARGER — choisir un slot
+STR_SLOT_LINE	Slot {0} — {1}
+STR_SLOT_ANCIEN	Slot {0} — sauvegarde d'une ère antérieure
+STR_SLOT_VIDE	Slot {0} — vide
+STR_TUTO_PREC	◀ préc.
+STR_TUTO_SUIV	suiv. ▶
+STR_TUTO_PAGEFMT	{0} / 7
+STR_OCCUPEE_PAR	Occupée par {0}
+STR_RAIL_DIPLO	Diplomatie (G) — pays vivants · guerres · casus belli
+STR_DIPLO_TITRE	DIPLOMATIE
+STR_DIPLO_NEUTRE	Neutre
+STR_DIPLO_ALLIE	Allié
+STR_DIPLO_GUERRE	En guerre
+STR_DIPLO_VASSAL	Vassal
+STR_DIPLO_SUZERAIN	Suzerain
+STR_DIPLO_DECLARER	Déclarer la guerre
+STR_DIPLO_NEGOCIER	Négocier la paix
+STR_DIPLO_SANS_CB	Aucune raison de guerre ne tient (pas de casus belli)
+STR_DIPLO_SCORE_FMT	score {0}
+STR_DIPLO_RANCUNE	rancune vive
+STR_DIPLO_MOTIF_FMT	motif : {0}
+STR_DIPLO_RACE_FMT	Race : {0}
+STR_DIPLO_STATUT_FMT	Statut : {0}
+STR_DIPLO_MENACE_FMT	Menace : {0}%
+STR_DIPLO_ACTIONS	Actions — onglet Diplomatie (G)
+STR_CB_TERRITORIAL	frontière revendiquée
+STR_CB_RELIGIOUS	schisme religieux
+STR_CB_ECONOMIC	bien monopolisé
+STR_CB_SUBJUGATION	assujettissement
+STR_CB_ANTIPIRATERIE	course à réprimer
+STR_PAIX_REFUS	L'ennemi refuse : la guerre n'a pas assez saigné
+STR_JRN_GUERRE_PAR	Guerre déclarée par {0}
+STR_JRN_GUERRE_CONTRE	Guerre déclarée à {0}
+STR_JRN_PAIX	Paix signée avec {0}
+STR_JRN_CAPITULE	Capitulation devant {0}
+STR_JRN_MORT	{0} a disparu de la carte
+STR_DEFAITE_TITRE	DÉFAITE
+STR_DEFAITE_LIGNE	An {0} — votre royaume n'est plus
+STR_DEFAITE_OBSERVER	Observer le monde
+STR_DEFAITE_MENU	Menu principal
+STR_ARMEE_DEMOB	[démobiliser]  {0} régiments rentrent au foyer
+STR_ARMEE_DEMOB_HOV	Dissoudre l'armée : les ARMES sont consommées (aucun matériau rendu) ; les hommes RENTRENT à leur point d'origine et redeviennent main-d'œuvre.
+STR_ARMEE_LEVY_LOCK_GUERRE	Verrouillé : bâtir la CASERNE (arbre de tech) ouvre le pied de guerre.
+STR_ARMEE_LEVY_LOCK_MASSE	Verrouillé : la CONSCRIPTION (après la Caserne) ouvre la levée en masse.
+STR_FACTION_ETHOS_0	la voie de la force — armée, guerre, expansion
+STR_FACTION_ETHOS_1	la voie de l'or — routes, marchés, profit
+STR_FACTION_ETHOS_2	la voie de l'ordre — lois, administration, stabilité
+STR_FACTION_ETHOS_3	la voie de la tradition — terre, foi, continuité
+STR_FACTION_ETHOS_4	la voie de l'interdit — arcane, risque, tabou franchi
+STR_FACTION_ETHOS_5	le petit peuple — pain, paix, sécurité du quotidien
+STR_FACTION_HOV_FMT	{0} · {1}. Satisfaction {2}% = leur adhésion au régime ; part {3}% = leur poids politique.
+STR_FACTION_HOV_COUP	 — ALIÉNÉE & PUISSANTE : le coup couve.
+STR_CENTRE_RESEAU_OUVERT	Réseau inter-pays OUVERT (un Centre commercial tenu)
+STR_CENTRE_RESEAU_FERME	Réseau inter-pays FERMÉ — aucun Centre commercial (en conquérir un)
+STR_CENTRE_COMMERCIAL	Centre commercial — hub du réseau inter-régional (le tenir = commercer)
+STR_PAN_MARCHE	MARCHÉ
+STR_MARCHE_PRIX_FMT	prix courant {0} or l'unité
+STR_MARCHE_PRIX_HOV	Le prix du marché intérieur : la demande le tire, l'offre et la vente le détendent. Acheter et vendre se font à CE prix.
+STR_MARCHE_ROW_HOV	{0} — en réserve {1}. Acheter ou vendre par lots de 10 au prix courant (l'or sort et entre par le trésor).
+STR_SLOT_VERROU_FMT	{0} — verrouillé ({1})
+STR_BTN_COMPTOIR_FMT	Bâtir un Comptoir ici  ({0} or)
+STR_COMPTOIR_HOV	Le Comptoir branche la province au Centre commercial le plus proche : la marge de transport tombe d'un tiers à ce bout des routes marchandes.
+STR_ENTREPOT_CAP_FMT	stock {0}/{1} — Entrepôts ×{2}
+STR_ROW_ENTREPOTS	Entrepôts
+STR_ENTREPOT_HOV	Sans Entrepôt, le stock régional sature à 200 par ressource (le surplus se perd) ; chaque Entrepôt bâti ajoute +500. Stocker bas, vendre haut.
+STR_MER_CABOTAGE	cabotage · vitesse fixe
+STR_MER_MORTE	eaux mortes · ×3 temps
+STR_MER_VIVE	eaux vives
+STR_MER_COURANT	courant · porté ÷2,2 · contre ×2,5
+STR_MER_DIR_FMT	{0} · {1}
+STR_MER_DIR_EST	vers le levant
+STR_MER_DIR_OUEST	vers le couchant
+STR_MER_DIR_SUD	vers le sud
+STR_MER_DIR_NORD	vers le nord

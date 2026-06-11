@@ -39,6 +39,18 @@ const char *lang_name(Lang l);   /* « Français » / « English » (face-joueur
 /* Une PLAGE d'ids (mots de bande, pages de tuto) : base + idx, borné. */
 const char *tr_band(StrId base, int idx, int count);
 
+/* §SURCHARGE PAR FICHIER (brief « tout le texte joueur éditable » ; rupture
+ * ASSUMÉE de zéro-asset). Un fichier externe surcharge n'importe quel STR_* par
+ * son ID ; les défauts compilés restent (le binaire tourne sans le fichier).
+ * Display-only : le moteur/déterminisme n'y touchent pas. Sert aussi de TRADUCTION.
+ *   - lang_load_file : charge les surcharges ; renvoie le nb chargé, -1 si absent.
+ *   - lang_dump_file : écrit la liste ÉDITABLE complète (point de départ).
+ *   - lang_id_name   : "STR_…" d'un id (l'« adresse » du brief). */
+int  lang_load_file(const char *path);
+int  lang_dump_file(const char *path);
+void lang_clear_overrides(void);
+const char *lang_id_name(StrId id);
+
 /* Chaînes PARAMÉTRÉES : emplacements POSITIONNELS {0}..{9} — l'ordre des mots
  * n'est pas universel (l'anglais peut inverser sans toucher l'appelant).
  * Substitution bornée, sans allocation. Les arguments sont des chaînes ; le
