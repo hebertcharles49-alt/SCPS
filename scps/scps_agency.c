@@ -123,6 +123,7 @@ bool edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e){
 
 /* ---- Coût des bâtiments (§1) : matériaux ACHETÉS au marché en or ------- */
 #define BUILD_MIN_PRICE 0.20f   /* plancher de prix : même un bien abondant n'est jamais gratuit */
+#define IMPORT_TOLL_FRAC 0.30f  /* I6 : part de la marge versée en PÉAGE au hub tiers emprunté */
 
 /* §7 — l'ÉTENDUE du pays RENCHÉRIT ses institutions (le frein tall/wide qui manquait) :
  * facteur ×(1 + 0.15·n_régions du pays) sur le coût matériaux. Un grand empire paie
@@ -146,7 +147,10 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
         float price = re->price[r]; if (price < BUILD_MIN_PRICE) price = BUILD_MIN_PRICE;
         gold += c->qty[k] * price;       /* le manque renchérit : la rareté monte le prix */
     }
-    return gold * agency_extent_mult(econ, region);   /* §7 : indexé sur l'étendue du pays */
+    /* I6 — le marché n'est pas 1:1 : la marge d'import (ÉCRITE par intertrade selon
+     * l'accès à un Centre) renchérit l'achat. Champ econ, lu ici : zéro dépendance neuve. */
+    float margin = (re->import_margin > 0.f) ? re->import_margin : 1.f;
+    return gold * agency_extent_mult(econ, region) * margin;   /* §7 étendue · I6 marge */
 }
 
 bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct){
@@ -162,6 +166,12 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
     } else {
         if (gold > re->treasury) return false;     /* pas l'or → pas de chantier (garde, comme colonize) */
         re->treasury -= gold;                      /* on PAIE le marché en or */
+    }
+    /* I6 — LE PÉAGE : un achat importé via le hub d'un TIERS lui verse une part de la
+     * marge (transfert, pas destruction — les cités-états deviennent banquières). */
+    if (re->import_margin > 1.f && re->import_toll_region >= 0 && re->import_toll_region < econ->n_regions){
+        float base = gold / re->import_margin;
+        econ->region[re->import_toll_region].treasury += (gold - base) * IMPORT_TOLL_FRAC;
     }
     const BuildCost *c=&EDIFICES[e].cost;          /* … et l'on CONSOMME les matériaux du marché */
     float mult = agency_extent_mult(econ, region); /* §7 : un grand pays consomme plus */

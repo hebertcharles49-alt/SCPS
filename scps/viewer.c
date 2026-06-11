@@ -3085,8 +3085,10 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 12u           /* v12 : arc « la carte se raconte » — G0.1 anti-acharnement
-                                    * multi-échelle (Director.cont_cd_until[]/last_fired_day[]).
+#define SAVE_VERSION 13u           /* v13 : ère « les puits d'or / le joueur en scène » (arcs I/H) —
+                                    * AiActor.next_audit_day (I5) + RegionEconomy.import_margin/
+                                    * import_toll_region (I6) ; ride les futurs champs I7/I8/H5/H6.
+                                    * v12 : G0.1 anti-acharnement multi-échelle (Director.cont_cd_until[]).
                                     * v11 = EventsState.director (§F) ; v10 = AiActor.spec_cd[] (B1).
                                     * Ère antérieure à chaque bump (struct sérialisée plus large). */
 #define SAVE_F_CRYPT 1u

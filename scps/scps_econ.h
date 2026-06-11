@@ -181,6 +181,8 @@ typedef struct {
     ProvBuild  build;     /* densité institutionnelle bâtie par le joueur */
     uint32_t   edi_built; /* E1bis.11 : masque des ÉDIFICES bâtis (par-édifice → upgrades familiales) */
     float      route_pe;  /* PE apporté par les routes commerciales (transitoire) */
+    float      import_margin;     /* I6 : marge d'achat au marché (1.0 défaut) — ÉCRITE par intertrade, LUE par agency */
+    int16_t    import_toll_region;/* I6 : région-Centre qui touche le péage (-1 si aucun) — transitoire */
 
     float      raw_cap[RES_COUNT];   /* extraction max/tick par matière première */
     Building   bld[ECON_MAX_BLD];

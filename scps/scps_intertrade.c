@@ -7,6 +7,7 @@
  */
 #include "scps_intertrade.h"
 #include "scps_agency.h"   /* E2 §10 : lire EDI_COMPTOIR dans le masque d'édifices bâtis */
+#include "scps_tune.h"     /* I6 : marges d'import calibrables */
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -195,6 +196,33 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
     bool has_centre[SCPS_MAX_COUNTRY]; memset(has_centre,0,sizeof has_centre);
     for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
         if (g_centre[r]){ int o=e->region[r].owner; if(cid_ok(o)) has_centre[o]=true; }
+
+    /* I6 — LE MARCHÉ N'EST PAS 1:1 : la marge d'achat de chaque région = l'ACCÈS de son
+     * propriétaire à un Centre. La couche commerce ÉCRIT re->import_margin, agency la LIT
+     * (zéro inversion de couche). Via SON hub/Comptoir → ×1.3 ; via un hub TIERS (si côtier
+     * pour l'atteindre) → ×1.8 + un péage versé à ce hub ; enclavé sans hub → ×2.0 ;
+     * monde SANS aucun Centre → 1:1 (le marché-hub n'existe pas). */
+    {
+        bool own_hub[SCPS_MAX_COUNTRY], coast[SCPS_MAX_COUNTRY]; int any_centre=0;
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++){ own_hub[c]=has_centre[c]; coast[c]=false; if(has_centre[c]) any_centre=1; }
+        for (int r=0;r<e->n_regions;r++){ int o=e->region[r].owner; if(!cid_ok(o)) continue;
+            if (e->region[r].edi_built & (1u<<EDI_COMPTOIR)) own_hub[o]=true;
+            if (e->region[r].coastal) coast[o]=true; }
+        int tc_owner=-1, tc_region=-1;
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (has_centre[c]){ tc_owner=c; break; }
+        if (tc_owner>=0) tc_region=intertrade_country_centre(e,tc_owner);
+        float m_own=tune_f("IMPORT_MARGIN_OWN",1.3f), m_third=tune_f("IMPORT_MARGIN_THIRD",1.8f),
+              m_none=tune_f("IMPORT_MARGIN_NONE",2.0f);
+        for (int r=0;r<e->n_regions;r++){
+            RegionEconomy *re=&e->region[r];
+            re->import_margin=1.f; re->import_toll_region=-1;
+            int o=re->owner;
+            if (!any_centre || o<0) continue;
+            if (own_hub[o])              re->import_margin=m_own;
+            else if (tc_owner>=0 && coast[o]){ re->import_margin=m_third; re->import_toll_region=(int16_t)tc_region; }
+            else                         re->import_margin=m_none;
+        }
+    }
     for (int i=0;i<rn->n;i++){
         const TradeRoute *rt=&rn->route[i];
         if (!rt->open) continue;

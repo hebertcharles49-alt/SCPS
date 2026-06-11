@@ -21,6 +21,11 @@
     X(ADMIN_BASE,             0.4f) \
     X(ADMIN_EXP,              1.3f) \
     X(SINK_FLOOR,           500.0f) \
+    /* I6 — le marché n'est pas 1:1 : marge d'import sur les achats de chantier */ \
+    X(IMPORT_MARGIN_OWN,      1.3f) \
+    X(IMPORT_MARGIN_THIRD,    1.8f) \
+    X(IMPORT_MARGIN_NONE,     2.0f) \
+    X(IMPORT_TOLL_FRAC,       0.30f) \
     /* §G0.1 — le directeur (les fenêtres de température) */ \
     X(DIR_T_HOT,              0.50f) \
     X(DIR_T_COLD,             0.32f) \

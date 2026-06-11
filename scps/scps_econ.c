@@ -349,6 +349,8 @@ void econ_init(WorldEconomy *e, const World *w) {
     float cty_cap[SCPS_MAX_COUNTRY]={0};
     for (int rid=0; rid<w->n_regions; rid++) {
         const Region *rg=&w->region[rid];
+        e->region[rid].import_margin = 1.f;          /* I6 : marché 1:1 par défaut (intertrade l'ajuste) */
+        e->region[rid].import_toll_region = -1;
         float cap=0.f, area=0.f, hab_w=0.f;
         for (int k=0;k<rg->n_provinces;k++) {
             int pid=rg->province_ids[k];
