@@ -534,6 +534,16 @@ static uint32_t chronicle_sim_hash(uint32_t seed, const Sim *s, const World *w){
     return (uint32_t)h.crc;
 }
 
+/* Arc J2 — collecte pour les MÉDIANES (flux d'or, trésor) sur tout le balayage. */
+static double g_flux_all[8192], g_treas_all[8192];
+static int    g_flux_n;
+static int dcmp(const void *a, const void *b){ double x=*(const double*)a-*(const double*)b; return (x<0)?-1:(x>0); }
+static double dmedian(double *v, int n){
+    if (n<=0) return -1.0;
+    qsort(v, n, sizeof *v, dcmp);
+    return (n&1)? v[n/2] : 0.5*(v[n/2-1]+v[n/2]);
+}
+
 int main(int argc, char **argv){
     tune_init();   /* Arc J : lit SCPS_TUNE une fois (nom inconnu → exit 2). */
     /* positionnels FILTRÉS de l'option --hash (le harnais de déterminisme). */
@@ -795,6 +805,7 @@ int main(int argc, char **argv){
                 double cp[CLASS_COUNT]; country_class_pop(s.econ, c, cp);
                 double cpt=cp[0]+cp[1]+cp[2]; if (cpt<1) cpt=1;
                 double g1=country_gold(s.econ,c), flux=(g1-gold_y0[c])/12.0;
+                if (g_flux_n<8192){ g_flux_all[g_flux_n]=flux; g_treas_all[g_flux_n]=g1; g_flux_n++; }  /* J2 : pour la médiane */
                 printf("                    classes : J %.1fk (%.0f%%) · B %.1fk (%.0f%%) · É %.1fk (%.0f%%) | or %.0f (%+.1f/mois, dern. année) · armée %.0f (%ld rgt)\n",
                        cp[CLASS_LABORER]/1000.0,   100*cp[CLASS_LABORER]/cpt,
                        cp[CLASS_BOURGEOIS]/1000.0, 100*cp[CLASS_BOURGEOIS]/cpt,
@@ -1214,6 +1225,36 @@ int main(int argc, char **argv){
     printf("   inflation (C) ............... IPM final moyen %.2f · pic %.2f (1.00 = neutre ; SCPS_IPM=0 le retire)\n",
            tot_ipm/nsims, max_ipm);
     printf("══════════════════════════════════════════════════════════════════════\n");
+
+    /* ═══ Arc J2 — SORTIE MACHINE (CSV, opt-in via SCPS_CSV=chemin) ═══════════
+     * Une ligne SUMMARY par balayage. stdout INCHANGÉ (le CSV va au fichier).
+     * Colonnes STABLES (le pilote J3 les lit par nom). « jamais » = -1. */
+    { const char *csv = getenv("SCPS_CSV");
+      if (csv && *csv){
+        double flux_med  = dmedian(g_flux_all,  g_flux_n);
+        double tresor_med= dmedian(g_treas_all, g_flux_n);
+        double acc360 = tot_tier_n[0]? (double)tot_tier_y[0]/tot_tier_n[0] : -1.0;
+        double acc540 = tot_tier_n[1]? (double)tot_tier_y[1]/tot_tier_n[1] : -1.0;
+        double acc960 = tot_tier_n[2]? (double)tot_tier_y[2]/tot_tier_n[2] : -1.0;
+        double ratio  = (tot_mchoc>0)? (double)tot_mpour/(double)tot_mchoc : -1.0;
+        long top_fired=0, tot_fired=0;
+        for (int e=0;e<DIR_EV_COUNT;e++){ tot_fired+=tot_dir_fired[e]; if (tot_dir_fired[e]>top_fired) top_fired=tot_dir_fired[e]; }
+        double top_share = tot_fired? 100.0*top_fired/tot_fired : -1.0;
+        FILE *cf = fopen(csv, "ab");
+        if (cf){
+            fseek(cf, 0, SEEK_END);
+            if (ftell(cf)==0)   /* fichier neuf → en-tête */
+                fprintf(cf, "row,seed,sims,years,tune,flux_or_med,tresor_med,ipm_final,ipm_pic,"
+                            "acc360,acc540,acc960,ratio_poursuite,batailles,top_event_share,"
+                            "n_stab,n_destab,acharnement,hegemon_cracked\n");
+            fprintf(cf, "SUMMARY,%u,%d,%d,\"%s\",%.3f,%.1f,%.3f,%.3f,%.2f,%.2f,%.2f,%.3f,%ld,%.1f,%ld,%ld,%ld,%d\n",
+                    base, nsims, years, tune_active_string(),
+                    flux_med, tresor_med, tot_ipm/nsims, max_ipm,
+                    acc360, acc540, acc960, ratio, tot_bt, top_share,
+                    tot_dir_stab, tot_dir_destab, tot_dir_overcap, worlds_hegemon_cracked);
+            fclose(cf);
+        }
+      } }
 
     free(w); free(s.econ); free(s.wp); free(s.wl); free(s.net); free(s.ts); free(s.sc);
     free(s.ag); free(s.ev); free(s.drift); free(s.labor); free(s.dp); free(s.rn);
