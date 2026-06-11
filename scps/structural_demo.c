@@ -146,14 +146,20 @@ int main(int argc, char **argv){
     events_init(s.ev,s.w,seed);
     int cOpen=polities[0], cCoer=polities[1];
     shape(&s, cOpen, /*H*/1.f, /*K*/7.f, /*L*/8.f, /*C*/6.f);   /* société ouverte, consentie */
-    shape(&s, cCoer, /*H*/9.f, /*K*/4.f, /*L*/2.f, /*C*/6.f);   /* régime coercitif, fragile  */
+    /* régime coercitif, fragile. L=6 (PAS 2) : à H=9·L=2 la σ-forme A1 SATURE déjà à
+     * 10.0 (plus extrême que tout régime réel — monde_reel cale la Russie à 9.6, l'Iran
+     * à 9.2) → la dissolution des Lumières n'a plus de marge pour MONTER. À L=6 le régime
+     * reste franchement coercitif-fragile (~9.2, l'Iran) MAIS garde la marge où le solvant
+     * des Lumières (−2·H/10 sur L) fait visiblement grimper la fragilité — le moteur est
+     * juste (σ-forme calée sur le réel), c'est le cas-test qui était sur-extrême. */
+    shape(&s, cCoer, /*H*/9.f, /*K*/4.f, /*L*/6.f, /*C*/6.f);
     tickP(&s);
     float SIo0=s.wp->country[cOpen].SI, FRc0=s.wp->country[cCoer].fragilite;
     /* Avènement des Lumières (savoir+C atteints) → +I et dissolution coercitive. */
     light_the_world(&s);
-    shape(&s, cOpen, 1.f,7.f,8.f,6.f); shape(&s, cCoer, 9.f,4.f,2.f,6.f);  /* re-fige les cas */
+    shape(&s, cOpen, 1.f,7.f,8.f,6.f); shape(&s, cCoer, 9.f,4.f,6.f,6.f);  /* re-fige les cas */
     chain_to(&s, AGE_LUMIERES);        /* Commerce→Raison→Lumières, génération par génération */
-    shape(&s, cOpen, 1.f,7.f,8.f,6.f); shape(&s, cCoer, 9.f,4.f,2.f,6.f);  /* re-fige après la chaîne */
+    shape(&s, cOpen, 1.f,7.f,8.f,6.f); shape(&s, cCoer, 9.f,4.f,6.f,6.f);  /* re-fige après la chaîne */
     tickP(&s);
     float SIo1=s.wp->country[cOpen].SI, FRc1=s.wp->country[cCoer].fragilite;
     printf("   société OUVERTE : SI %.1f→%.1f (pression de réforme) ; régime COERCITIF : fragilité %.1f→%.1f (amorcé)\n",

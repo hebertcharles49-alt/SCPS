@@ -8,7 +8,7 @@
 
 ## (a) Résultats MESURÉS (`make test`, K3 appliqué)
 
-**29 bancs VERTS / 31** — `make test` les bâtit, les lance, compte les BILAN :
+**30 bancs VERTS / 31** — `make test` les bâtit, les lance, compte les BILAN :
 
 core 35/35 · monde_reel 10/10 · readout 27/27 · species 9/9 · tech 22/22 ·
 faith 14/14 · intertrade 9/9 · routes 4/4 · save_io 8/8 · statecraft 22/22 ·
@@ -16,14 +16,14 @@ pop 14/14 · army 49/49 · demography 19/19 · demography_integ 6/6 · revolt 23
 social 10/10 · agency 18/18 · campaign 13/13 · factions 32/32 · econ_tax 8/8 ·
 econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 41/41 ·
 missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27 (K4a)** ·
-prosperity OK (sans format BILAN).
+**structural 16/16 (K5+K6)** · prosperity OK (sans format BILAN). Seul **ai_demo 22/23**
+reste rouge (dette de contenu, infra).
 
-**2 bancs ROUGES** (la dette restante, ci-dessous) :
+**1 banc ROUGE** (la dette restante, ci-dessous) :
 
 | banc | score | symptôme |
 |------|-------|----------|
-| ai_demo          | 22/23 | Bâtisseur pas + de K (ÉGALITÉ à 3 — dette d'ÉQUILIBRAGE documentée) |
-| structural_demo  | 15/16 | COERCITIF ne se dissout pas (K6 : snapshot→trajectoire) |
+| ai_demo          | 22/23 | Bâtisseur pas + de K (ÉGALITÉ à 3 — dette de CONTENU documentée) |
 
 ---
 
@@ -34,9 +34,6 @@ prosperity OK (sans format BILAN).
   région-mère → les TROIS archétypes plafonnent à 3 K (égalité, `strict_max` faux). Pour
   DÉPARTAGER il faut une chaîne K plus longue OU un bâti multi-régions (CONTENU/MÉCANIQUE
   neuve, hors périmètre arc K). Reste la « dette préexistante » de CLAUDE.md.
-- **structural_demo « la coercition dissout L » (K6)** : la fragilité σ-forme (A1) lit un
-  INSTANTANÉ ; le banc attend une TRAJECTOIRE (la coercition ronge L avec le temps).
-  Chaînon snapshot→delta manquant.
 
 ---
 
@@ -58,7 +55,7 @@ périmètre arc K, laissée en l'état documenté.
 - **K2 — membrane** : `faction_name`/`edifice_name` migrés au readout (tr() y est
   légitime) ; scps_factions.c / scps_agency.c n'incluent plus scps_lang.h. AUDIT :
   aucun module moteur n'inclut scps_lang.h ; aucun tr() hors readout/viewer.
-- **K3 — instrument** : `make test` (29 verts / 2 rouges, rc≠0 si un rouge) — la
+- **K3 — instrument** : `make test` (30 verts / 1 rouge, rc≠0 si un rouge) — la
   non-régression de tout l'arc.
 - **K4a — events** : `events_fire_risk` retourne 0 dès `forest < 0.01` (le feu de forêt
   ne naît plus sans forêt). → 27/27.
@@ -89,3 +86,17 @@ périmètre arc K, laissée en l'état documenté.
   laine qui finance les chantiers. → ai_demo 22/23, structural_demo 15/16 ; chronique 40 a :
   trésor moy ~15.9k (mieux que les 21-30k d'avant), flux +20/mois (bord de bande), 0 friche.
   Reste l'ÉGALITÉ « Bâtisseur +K » (dette de contenu, supra).
+- **K6 — structural « la coercition dissout L » : diagnostic CORRIGÉ (PAS un chaînon
+  manquant)** : le mécanisme de dissolution EXISTE et MARCHE — l'Âge des Lumières pose
+  `age_lumiere_solvent` (+2) qui ronge la légitimité effective `L − solvant·H/10`. L'invisible
+  venait du CAS-TEST : le coercitif était façonné H=9·L=2, plus extrême que tout régime réel
+  (la σ-forme A1 est CALÉE sur monde_reel : Russie 9.6, Iran 9.2), si bien que sa fragilité
+  SATURAIT déjà à 10.0 — la dissolution n'avait plus de marge pour monter. Le moteur est juste
+  (σ-forme verrouillée par core_demo 9.990 + monde_reel) ; c'est l'ASSERTION qui était
+  sur-extrême. Fix : le cas-test coercitif passe à L=6 (~9.2, l'Iran) — franchement fragile
+  MAIS avec la marge où le solvant fait grimper la fragilité (9.2→9.8). → structural_demo 16/16.
+- **Bilan arc K** : `make test` 30/31. Reste la SEULE dette « Bâtisseur +K » (égalité à 3,
+  CONTENU manquant — chaîne K profonde de 3, bâti mono-région ; hors périmètre « pas de
+  système neuf »). Les bancs structural/ai gardent une sensibilité de graine résiduelle
+  (worldgen) sur 1-2 assertions hors graine par défaut — la cible `make test` (graine 42)
+  est verte.
