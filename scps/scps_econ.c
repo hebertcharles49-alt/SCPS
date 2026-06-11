@@ -887,9 +887,14 @@ void econ_tick(WorldEconomy *e, float dt) {
     /* I3 — ADMIN : compte les régions par pays (le multiplicateur de TAILLE :
      * l'hégémon paie sa bureaucratie, les petits respirent). */
     int rcount[SCPS_MAX_COUNTRY]={0};
-    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
         if (e->region[r].colonized && e->region[r].owner>=0 && e->region[r].owner<SCPS_MAX_COUNTRY)
             rcount[e->region[r].owner]++;
+        /* K4b — le timer anti-saccage décroît pour TOUTE région (c'est un compteur, pas de
+         * la production) : une province non colonisée mais sacquée se rouvre quand même
+         * après ~5 ans. (Avant : décrément gaté par colonized → jamais pour l'incolonisée.) */
+        e->region[r].pillage_cd = fmaxf(0.f, e->region[r].pillage_cd - dt);
+    }
 
     for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++) {
         RegionEconomy *re=&e->region[rid];
@@ -1272,7 +1277,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* CICATRICE DE RÉVOLTE : une province récemment soulevée se développe mal —
          * −50 % de croissance tant que la plaie n'est pas refermée (fade ~4 ans). */
         re->revolt_scar = fmaxf(0.f, re->revolt_scar - 0.25f*dt);
-        re->pillage_cd  = fmaxf(0.f, re->pillage_cd  - dt);   /* le saccage se rouvre après ~5 ans */
+        /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE région — pas seulement colonisée.) */
         net_growth *= (1.f - 0.5f*re->revolt_scar);
         net_growth *= dt;   /* cumulatif → suit le pas (mensuel : 1/12 d'an) */
 
