@@ -574,6 +574,7 @@ int main(int argc, char **argv){
     long tot_tier_y[3]={0,0,0}; int tot_tier_n[3]={0,0,0};   /* E1 §9 : fenêtres d'accession */
     double tot_spec_vol=0, tot_spec_gold=0; long tot_spec_ent=0;   /* E3 §16 : l'IA stockeuse */
     double tot_sd0=0, tot_sd1=0; int tot_sd0_n=0, tot_sd1_n=0;     /* σ avant/après (moy. des sims) */
+    double tot_sp0=0, tot_sp1=0; int tot_sp0_n=0, tot_sp1_n=0;     /* σ SPATIAL : à entrepôt vs sans */
     double tot_hub_cs=0, tot_hub_all=0;   /* P3.20 : part des cités-états dans le commerce (via Centres) */
     long tot_captured=0, tot_worstcorr=0; int worlds_with_capture=0;   /* §C3 : le rot, agrégé */
     int  worlds_with_ironorder=0, worlds_with_uprising=0;
@@ -625,6 +626,12 @@ int main(int argc, char **argv){
          * grain·métal·outils, normalisé par les ancres), échantillonné chaque
          * année, AVANT vs APRÈS l'existence du premier Entrepôt au monde. */
         double sg_n[2]={0,0}, sg_mean[2]={0,0}, sg_m2[2]={0,0};
+        /* … et la mesure CAUSALE (le temps long charrie guerres et âges) : le σ
+         * TEMPOREL PAR RÉGION (Welford par région, échantillon annuel), moyenné
+         * ensuite par seau — régions À entrepôt vs SANS, même monde même époque :
+         * l'amortisseur se lit là où il est bâti, pas dans la dispersion géo. */
+        static double pr_n[SCPS_MAX_REG], pr_mean[SCPS_MAX_REG], pr_m2[SCPS_MAX_REG];
+        memset(pr_n,0,sizeof pr_n); memset(pr_mean,0,sizeof pr_mean); memset(pr_m2,0,sizeof pr_m2);
         int war_onsets=0, prev_wars=0, peak_wars=0;
         int peak_rev=0, peak_rev_year=0;
         int min_living=c0;
@@ -659,7 +666,17 @@ int main(int argc, char **argv){
                          + avg_price(s.econ,RES_METAL)/econ_base_price(RES_METAL)
                          + avg_price(s.econ,RES_TOOLS)/econ_base_price(RES_TOOLS))/3.f;
               int b = any_ent?1:0;
-              sg_n[b]+=1.0; double d=idx-sg_mean[b]; sg_mean[b]+=d/sg_n[b]; sg_m2[b]+=d*(idx-sg_mean[b]); }
+              sg_n[b]+=1.0; double d=idx-sg_mean[b]; sg_mean[b]+=d/sg_n[b]; sg_m2[b]+=d*(idx-sg_mean[b]);
+              /* σ temporel PAR RÉGION : chaque région colonisée suit SON indice
+               * d'une année à l'autre (le seau se tranche en fin de sim). */
+              for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++){
+                  const RegionEconomy *re2=&s.econ->region[r];
+                  if (!re2->colonized) continue;
+                  double ir = (re2->price[RES_GRAIN]/econ_base_price(RES_GRAIN)
+                             + re2->price[RES_METAL]/econ_base_price(RES_METAL)
+                             + re2->price[RES_TOOLS]/econ_base_price(RES_TOOLS))/3.0;
+                  pr_n[r]+=1.0; double d2=ir-pr_mean[r]; pr_mean[r]+=d2/pr_n[r]; pr_m2[r]+=d2*(ir-pr_mean[r]);
+              } }
             /* E1 §9 — fenêtres d'ACCESSION : l'année où le premier édifice de chaque
              * palier (360/540/960 j) s'achève quelque part. La loi des prix se LIT. */
             if (tier_year[0]<0 || tier_year[1]<0 || tier_year[2]<0)
@@ -825,12 +842,29 @@ int main(int argc, char **argv){
           for (int r=0;r<s.econ->n_regions;r++) nent+=s.econ->region[r].n_entrepot;
           double sd0=(sg_n[0]>1)? sqrt(sg_m2[0]/(sg_n[0]-1)) : 0.0;
           double sd1=(sg_n[1]>1)? sqrt(sg_m2[1]/(sg_n[1]-1)) : 0.0;
+          /* moyenne des σ TEMPORELS par région, tranchée ENTRE CENTRES COMMERCIAUX
+           * seulement (même classe de région — l'IA bâtit l'entrepôt là où ça
+           * brasse : comparer un hub à un arrière-pays mesurerait la hubness). */
+          double sp0=0, sp1=0; int np0=0, np1=0;
+          for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++){
+              if (pr_n[r]<=10.0) continue;                /* trop jeune : pas de σ honnête */
+              if (!intertrade_has_centre(r)) continue;    /* centres vs centres, rien d'autre */
+              double sd=sqrt(pr_m2[r]/(pr_n[r]-1.0));
+              if (s.econ->region[r].n_entrepot>0){ sp1+=sd; np1++; }
+              else                                { sp0+=sd; np0++; }
+          }
+          sp0 = np0? sp0/np0 : 0.0;
+          sp1 = np1? sp1/np1 : 0.0;
           printf("              spéculation (E3) : %d entrepôt(s) · vol %.0f (%.1f/an) · or net %+.0f · %d achat(s)/%d vente(s) | σ prix avant %.3f (%d ans) → après %.3f (%d ans)\n",
                  nent, sv, sv/(float)years, sgold, sb, ss,
                  sd0, (int)sg_n[0], sd1, (int)sg_n[1]);
+          printf("              lissage CENTRES (même époque, même classe) : σ centres À entrepôt %.3f vs centres SANS %.3f\n",
+                 sp1, sp0);
           tot_spec_vol+=sv; tot_spec_gold+=sgold; tot_spec_ent+=nent;
           if (sg_n[0]>1){ tot_sd0+=sd0; tot_sd0_n++; }
-          if (sg_n[1]>1){ tot_sd1+=sd1; tot_sd1_n++; } }
+          if (sg_n[1]>1){ tot_sd1+=sd1; tot_sd1_n++; }
+          if (np1>0){ tot_sp1+=sp1; tot_sp1_n++; }
+          if (np0>0){ tot_sp0+=sp0; tot_sp0_n++; } }
         /* TÉLÉMÉTRIE PAR ÂGE : le marché, l'or par empire et la tech à chaque avènement. */
         { bool any=false; for (int a=0;a<AGE_COUNT;a++) if (age_snap[a].year>=0) any=true;
           if (any){
@@ -1059,6 +1093,8 @@ int main(int argc, char **argv){
     printf("   l'IA stockeuse (E3 §16) ..... %ld entrepôt(s) · vol spéculé %.0f (%.1f/sim) · or net %+.0f | σ prix avant %.3f → après %.3f (les stocks doivent LISSER)\n",
            tot_spec_ent, tot_spec_vol, tot_spec_vol/nsims, tot_spec_gold,
            tot_sd0_n? tot_sd0/tot_sd0_n : 0.0, tot_sd1_n? tot_sd1/tot_sd1_n : 0.0);
+    printf("   lissage CENTRES (E3 §16) .... σ centres À entrepôt %.3f vs centres SANS %.3f (même époque, même classe — la mesure causale)\n",
+           tot_sp1_n? tot_sp1/tot_sp1_n : 0.0, tot_sp0_n? tot_sp0/tot_sp0_n : 0.0);
     printf("   hubs des cités-états ........ %.0f%% du commerce mondial passe par leurs Centres (les premiers hubs vivants)\n",
            tot_hub_all>0? 100.0*tot_hub_cs/tot_hub_all : 0.0);
     printf("   provinces transférées à la paix %ld   (moy. %.1f/sim ; la propriété ne change qu'au RÈGLEMENT)\n", tot_conq, (double)tot_conq/nsims);
