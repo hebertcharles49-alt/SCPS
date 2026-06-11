@@ -218,10 +218,10 @@ const char *campaign_posture_name(int p){
  * vraie réserve, la poursuite fait l'essentiel des morts, le bras-de-fer est nourri. */
 #define BT_CHOC_J      3      /* jours de choc par cycle */
 #define BT_ACCALMIE_J  2      /* jours d'accalmie */
-#define BT_RUPTURE     0.25f  /* la réserve rompt sous 25 % de l'ouverture */
+#define BT_RUPTURE     0.20f  /* H4 : la réserve rompt sous 20 % (était 25) — le choc dure 1-2 cycles de plus */
 #define BT_RECUP       0.015f /* l'accalmie rend 1.5 %/j de l'ouverture (+0.7 % chez soi) */
 #define BT_DMG_K       0.050f /* étalonnage du dégât de moral par jour de choc */
-#define BT_CHOC_MORTS  0.002f /* pertes du CHOC : ~0.4 %/j des paquets (des dizaines) */
+#define BT_CHOC_MORTS  0.008f /* H4 : pertes du CHOC ~1.6 %/j (était 0.4) — la bataille TUE, la curée ne fauche plus seule */
 #define BT_MAX_JOURS   120    /* au-delà : les deux camps se délitent (nul sanglant) */
 #define BT_BRISEE_J    45     /* une armée en déroute est INAPTE ce temps */
 
@@ -301,10 +301,12 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     int ia=bt->a, ib=bt->b;
     FieldArmy *L=&c->army[loser_side?ib:ia], *V=&c->army[loser_side?ia:ib];
     float vfrac=(loser_side? bt->resA/(bt->resA0+1.f) : bt->resB/(bt->resB0+1.f));
-    float P=0.18f + ((V->posture==FA_AGRESSIVE)?0.12f:(V->posture==FA_PRUDENTE)?-0.08f:0.f)
-          + 0.10f*vfrac;
-    if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.10f;   /* la montagne couvre la fuite */
-    P=fminf(0.45f,fmaxf(0.05f,P));
+    /* H4 — la curée PLAFONNE : ≤ 22 % de la force en déroute (était 45 %), poussée
+     * surtout par la posture agressive (proxy de la poursuite de cavalerie). */
+    float P=0.10f + ((V->posture==FA_AGRESSIVE)?0.10f:(V->posture==FA_PRUDENTE)?-0.05f:0.f)
+          + 0.06f*vfrac;
+    if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.06f;   /* la montagne couvre la fuite */
+    P=fminf(0.22f,fmaxf(0.04f,P));
     long lp=force_units(&L->force);
     long pursued=kill_packets(&L->force,(long)((float)lp*P+0.5f));
     c->dead_pursuit += pursued*100;                                    /* la curée : l'essentiel des morts */
