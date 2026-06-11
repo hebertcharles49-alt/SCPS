@@ -116,8 +116,17 @@ static int find_group(const ProvincePop *pp, int drift_id){
     return -1;
 }
 
+/* G0.2 — anti-concession-systématique : un pays ne CÈDE qu'une fois par décennie ;
+ * au-delà (ou s'il n'a rien à céder), il RÉPRIME (l'écrasement tranche). */
+#define CONCEDE_CD_DAYS    (10*365)  /* déjà concédé → refus pendant 10 ans */
+#define CONCEDE_TREAS_FLOOR  200.f   /* … et il faut DE QUOI céder : trésor … */
+#define CONCEDE_L_FLOOR        3.f   /* … OU légitimité au-dessus du plancher */
+#define CONCEDE_GOLD         150.f   /* prix de l'apaisement (acheter la paix) */
+static float g_concede_cd[SCPS_MAX_COUNTRY];   /* jours avant qu'une nouvelle concession soit possible, par pays */
+
 void revolt_init(RevoltState *rs){ memset(rs,0,sizeof *rs); rs->last_spawned=-1;
     memset(g_coup_grace,0,sizeof g_coup_grace);   /* §C2 : répit pays remis à zéro par sim */
+    memset(g_concede_cd,0,sizeof g_concede_cd);   /* G0.2 : cooldown de concession par sim */
 }
 
 void revolt_on_conquest(RevoltState *rs, int region){
@@ -248,7 +257,8 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
     float ctens[SCPS_MAX_COUNTRY]; EthosFaction cfac[SCPS_MAX_COUNTRY];
     char  cdone[SCPS_MAX_COUNTRY]; memset(cdone,0,sizeof cdone);
     /* §C2 : le répit post-coup s'écoule (par pays). */
-    for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (g_coup_grace[c]>0.f) g_coup_grace[c]-=(float)days;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){ if (g_coup_grace[c]>0.f) g_coup_grace[c]-=(float)days;
+                                          if (g_concede_cd[c]>0.f) g_concede_cd[c]-=(float)days; }  /* G0.2 */
     /* SUREXTENSION : on compte les régions par pays UNE fois (cache O(n)). */
     int owned[SCPS_MAX_COUNTRY]; memset(owned,0,sizeof owned);
     for (int r=0;r<econ->n_regions;r++){ int o=econ->region[r].owner;
@@ -447,7 +457,30 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                         g_coup_grace[rb->owner]=COUP_GRACE_DAYS;   /* §C2 : répit du nouveau régime */
                     rs->n_coup++; rb->outcome=OUT_COUP;
                     break; }
-                default: {  /* REBEL_CLASS : la couronne CÈDE (concession) */
+                default: {  /* REBEL_CLASS : la couronne CÈDE — SI elle peut (G0.2) */
+                    int cid=rb->owner;
+                    int capr=(cid>=0&&cid<w->n_countries)?w->country[cid].capital_prov:-1;
+                    capr=(capr>=0&&capr<w->n_provinces)?w->province[capr].region:-1;
+                    float treas=(capr>=0&&capr<econ->n_regions)?econ->region[capr].treasury:0.f;
+                    float capL =(capr>=0&&capr<SCPS_MAX_REG)?wl->L[capr]:0.f;
+                    bool can_concede = (cid<0||cid>=SCPS_MAX_COUNTRY||g_concede_cd[cid]<=0.f)  /* pas déjà concédé ce décennie */
+                                    && (treas>CONCEDE_TREAS_FLOOR || capL>CONCEDE_L_FLOOR);     /* … et de quoi céder */
+                    if (!can_concede){
+                        /* REFUS : la couronne RÉPRIME plutôt que de céder encore (l'écrasement tranche). */
+                        long killed=(long)((float)rb->mobilized*CRUSH_KILL);
+                        rs->pop_lost += killed; rs->n_crushed++;
+                        demobilize(econ, rb, rb->mobilized-killed);
+                        int gi=find_group(&re->pop, rb->drift_id);
+                        if (gi>=0){ re->pop.groups[gi].L=clampf(re->pop.groups[gi].L-2.f,0.f,10.f);
+                                    re->pop.groups[gi].agit_base=clampf(re->pop.groups[gi].agit_base+15.f,0.f,100.f); }
+                        re->coercion=1.f;
+                        if (rb->region<SCPS_MAX_REG) wl->L[rb->region]*=0.75f;
+                        rb->outcome=OUT_CRUSHED;
+                        break;
+                    }
+                    if (capr>=0&&capr<econ->n_regions && treas>CONCEDE_TREAS_FLOOR)
+                        econ->region[capr].treasury=fmaxf(0.f, econ->region[capr].treasury-CONCEDE_GOLD);  /* acheter la paix */
+                    if (cid>=0&&cid<SCPS_MAX_COUNTRY) g_concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
                     re->satisfaction=clampf(re->satisfaction+0.20f,0.f,1.f);
                     re->coercion=fmaxf(0.f, re->coercion-0.4f);
                     int gi=find_group(&re->pop, rb->drift_id);

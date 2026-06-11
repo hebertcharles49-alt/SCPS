@@ -99,13 +99,16 @@ typedef struct {
     int     prov_cd_until [SCPS_MAX_REG];          /* anti-acharnement : province en repos jusqu'à ce jour (15 ans) */
     int     pays_cd_until [SCPS_MAX_COUNTRY];      /* pays en repos jusqu'à ce jour (5 ans) */
     signed char prov_last_neg[SCPS_MAX_REG];       /* 1 si le dernier ciblage de cette province fut NÉGATIF (jamais deux d'affilée) */
-    int     fam_active_until[DIR_EV_COUNT];        /* un événement de ce type ne rejoue pas tant qu'il est actif */
+    int     fam_active_until[DIR_EV_COUNT];        /* G0.1 : même ÉVÉNEMENT ne rejoue pas avant ≥15 ans (monde) */
+    int     cont_cd_until[SCPS_MAX_CONTINENT];     /* G0.1 : événement continent-large ≥25 ans sur le même continent */
+    int     last_fired_day[DIR_EV_COUNT];          /* G0.1 : tirage sans remise — poids ÷4 pendant 30 ans après un tir */
     unsigned char prov_neg_century[SCPS_MAX_REG];  /* nb d'événements négatifs subis dans le siècle courant (preuve F2 : ≤3) */
     int     century_base_day;                      /* début du siècle courant (remet prov_neg_century à zéro) */
     int     fired[DIR_EV_COUNT];                   /* télémétrie : occurrences par événement */
     int     fired_stab, fired_destab;
     int     neg_over_cap;                          /* fois où une province a dépassé 3 négatifs/siècle (DOIT rester 0) */
     float   last_T;                                /* dernière température mondiale [0..1] (UI/télémétrie) */
+    float   max_T;                                 /* G0.1 : T maximale atteinte (preuve : ≥1 stabilisateur si > 0.5) */
 } Director;
 
 /* ===================================================================== */

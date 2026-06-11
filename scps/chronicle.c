@@ -598,6 +598,7 @@ int main(int argc, char **argv){
     int  worlds_hegemon_cracked=0;   /* A5 : sims où un hégémon ≥10 rég est passé sous Stab 50 OU a subi coup/renversement */
     long tot_hegemon_floor=0; int n_hegemon_sims=0;   /* Stab plancher des hégémons (la fragilité A1 les rend mortels) */
     long tot_dir_fired[DIR_EV_COUNT]={0}; long tot_dir_destab=0, tot_dir_stab=0, tot_dir_overcap=0;   /* §F : le directeur, agrégé */
+    int  worlds_dir_topok=0, worlds_dir_stabok=0, tot_dir_toppct=0;   /* G0.1 preuves : top ≤30 % · stabilisateur si T>0.5 */
     double tot_ipm=0.0, max_ipm=0.0;   /* §C : l'inflation monétaire, agrégée */
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
     double tot_supplies=0, tot_saildays=0;
@@ -1118,16 +1119,18 @@ int main(int argc, char **argv){
          * fréquent de chaque famille ; la température finale ; l'anti-acharnement
          * (le dépassement DOIT rester 0). */
         { const Director *D=&s.ev->director;
-          int top_d=-1,top_dn=0, top_s=-1,top_sn=0;
-          for (int e=0;e<DIR_EV_COUNT;e++){
-              if (director_is_destab(e)){ if (D->fired[e]>top_dn){top_dn=D->fired[e];top_d=e;} }
-              else                      { if (D->fired[e]>top_sn){top_sn=D->fired[e];top_s=e;} }
-              tot_dir_fired[e]+=D->fired[e];
-          }
+          int top_e=-1,top_n=0, total=0;
+          for (int e=0;e<DIR_EV_COUNT;e++){ total+=D->fired[e]; if (D->fired[e]>top_n){top_n=D->fired[e];top_e=e;} tot_dir_fired[e]+=D->fired[e]; }
+          int toppct = total? (100*top_n)/total : 0;
+          /* G0.1 preuves : top ≤30 % · ≥1 stabilisateur si T a franchi 0.5 · distribution. */
+          bool stab_ok = (D->max_T<=0.5f) || (D->fired_stab>0);
+          if (toppct<=30) worlds_dir_topok++;
+          if (stab_ok) worlds_dir_stabok++;
           tot_dir_destab+=D->fired_destab; tot_dir_stab+=D->fired_stab; tot_dir_overcap+=D->neg_over_cap;
-          printf("              directeur (F) : T finale %.2f · %d déstabilisateur(s) (top : %s ×%d) · %d stabilisateur(s) (top : %s ×%d) · acharnement %d (DOIT être 0)\n",
-                 director_temperature(s.ev), D->fired_destab, top_d>=0?director_event_name(top_d):"—", top_dn,
-                 D->fired_stab, top_s>=0?director_event_name(top_s):"—", top_sn, D->neg_over_cap);
+          if (toppct>tot_dir_toppct) tot_dir_toppct=toppct;
+          printf("              directeur (F) : T fin %.2f (pic %.2f) · %d total — top %s %d%% (≤30) · %d déstab · %d stab%s · acharnement %d (=0)\n",
+                 director_temperature(s.ev), D->max_T, total, top_e>=0?director_event_name(top_e):"—", toppct,
+                 D->fired_destab, D->fired_stab, stab_ok?"":" ✗(T>0.5 sans stab)", D->neg_over_cap);
         }
         /* §C — l'inflation monétaire : l'IPM final (1.0 = neutre ; >1 = les prix ont
          * monté, l'or a flué plus vite que les biens). 1.00 partout = effet inerte. */
@@ -1202,6 +1205,8 @@ int main(int argc, char **argv){
       for (int e=0;e<DIR_EV_COUNT;e++) if (tot_dir_fired[e]>0)
           printf(" %s×%ld", director_event_name(e), tot_dir_fired[e]);
       printf("\n"); }
+    printf("      G0.1 preuves : top ≤30%% dans %d/%d sims (pire %d%%) · stabilisateur-si-T>0.5 dans %d/%d\n",
+           worlds_dir_topok, nsims, tot_dir_toppct, worlds_dir_stabok, nsims);
     printf("   inflation (C) ............... IPM final moyen %.2f · pic %.2f (1.00 = neutre ; SCPS_IPM=0 le retire)\n",
            tot_ipm/nsims, max_ipm);
     printf("══════════════════════════════════════════════════════════════════════\n");

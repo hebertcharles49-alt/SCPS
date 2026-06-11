@@ -566,8 +566,10 @@ float ages_breach_pressure(const EventsState *ev){ return ev->ages.breach_pressu
 #define DIR_CHECK_DAYS  365          /* le directeur scanne une fois l'an */
 #define DIR_PROV_CD    (15*365)      /* repos de 15 ans par province */
 #define DIR_PAYS_CD     (5*365)      /* repos de 5 ans par pays */
-#define DIR_FAM_DAYS    (3*365)      /* un type d'événement reste « actif » 3 ans (jamais deux de même famille) */
-#define DIR_FAM_DAYS_WIDE (9*365)    /* les événements CONTINENTAUX (Année, Moissons) sont vastes → bien plus rares */
+#define DIR_FAM_DAYS    (15*365)     /* G0.1 : même ÉVÉNEMENT (famille) ≥ 15 ans avant de rejouer (monde) */
+#define DIR_CONT_CD     (25*365)     /* G0.1 : même CONTINENT, événement continent-large ≥ 25 ans */
+#define DIR_SOFT_DAYS   (30*365)     /* G0.1 : tirage sans remise — fenêtre de pénalité après un tir */
+#define DIR_SOFT_DIV    0.25f        /* G0.1 : … poids ÷4 dans cette fenêtre */
 #define DIR_T_HOT       0.50f        /* T au-dessus → APAISER (abaissé : les stabilisateurs jouent dès la tension) */
 #define DIR_T_COLD      0.32f        /* T en dessous → REMUER */
 #define DIR_NEG_CAP     3            /* ≤ 3 événements négatifs / province / siècle */
@@ -593,14 +595,30 @@ static int dir_wars_active(const DiploState *dp, const World *w){
         if (diplo_status(dp,a,b)==DIPLO_WAR) n++;
     return n;
 }
+/* G0.1 — T lit la CRISE, pas la moyenne séculaire : un seul hégémon qui craque
+ * (worst élevé) ou une vague de révoltes (part en crise / révolution) doit la
+ * faire MONTER — sinon T restait à 0.14 pendant l'effondrement d'un géant. Échelle
+ * instantanée (le scan est annuel → fenêtre courte par construction). */
 static float director_compute_T(const EventCtx *cx){
-    float meanSI = w_mean_SI(cx->w, cx->wp);                 /* 10 stable … 0 chaos */
-    float chaos  = clampf((10.f-meanSI)/10.f, 0.f, 1.f);
-    int nliv=0; for (int c=0;c<cx->w->n_countries;c++) if (cx->w->country[c].role!=POLITY_UNCLAIMED) nliv++;
-    float rev  = nliv? clampf((float)events_count_revolutionary(cx->w,cx->wp)/(float)nliv,0.f,1.f):0.f;
-    float frac = clampf(w_mean_fracture(cx->w,cx->wp)/10.f, 0.f, 1.f);
-    float wars = nliv? clampf((float)dir_wars_active(cx->dp,cx->w)/(float)nliv,0.f,1.f):0.f;
-    return clampf(0.40f*chaos + 0.25f*rev + 0.20f*frac + 0.15f*wars, 0.f, 1.f);
+    World *w=cx->w; WorldProsperity *wp=cx->wp;
+    int nc = (w->n_countries < wp->n_countries)? w->n_countries : wp->n_countries;
+    int nliv=0, ncrisis=0; float worst=0.f, sumchaos=0.f, sumfrac=0.f;
+    for (int c=0;c<nc;c++){
+        if (w->country[c].role==POLITY_UNCLAIMED) continue;
+        nliv++;
+        float chaos = clampf((10.f - wp->country[c].SI)/10.f, 0.f, 1.f);   /* SI 0..10 */
+        sumchaos += chaos; if (chaos>worst) worst=chaos;
+        if (wp->country[c].SI < 5.f) ncrisis++;                            /* en difficulté */
+        sumfrac  += wp->country[c].fracture;
+    }
+    if (nliv==0) return 0.f;
+    float meanchaos  = sumchaos/(float)nliv;
+    float crisisfrac = (float)ncrisis/(float)nliv;
+    float rev  = clampf((float)events_count_revolutionary(w,wp)/(float)nliv, 0.f,1.f);
+    float frac = clampf((sumfrac/(float)nliv)/10.f, 0.f, 1.f);
+    float wars = clampf((float)dir_wars_active(cx->dp,w)/(float)nliv, 0.f, 1.f);
+    float T = 0.35f*worst + 0.25f*crisisfrac + 0.15f*rev + 0.10f*meanchaos + 0.08f*frac + 0.07f*wars;
+    return clampf(T, 0.f, 1.f);
 }
 
 /* ---- ANTI-ACHARNEMENT (F2) --------------------------------------------- */
@@ -699,6 +717,7 @@ static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
             int ncont=w->n_continents; if (ncont<1) return false;
             s0=(int)(frand(rng)*(float)ncont);
             for (int i=0;i<ncont;i++){ int ct=(s0+i)%ncont;
+                if (ct>=0 && ct<SCPS_MAX_CONTINENT && D->cont_cd_until[ct] > day) continue;  /* G0.1 : repos continent ≥25 ans */
                 for (int r=0;r<nr && r<w->n_regions;r++)
                     if (w->region[r].continent==ct && econ->region[r].colonized && dir_ok_region(D,day,r,neg)){ *out=ct; return true; }
             }
@@ -738,6 +757,7 @@ static void dir_apply(EventCtx *cx, int id, int subject, int day){
             dir_region_eff(cx,subject,1.0f,-10.f,0.f,1.f);    /* cohésion + (L), grogne − */
             dir_touch(D,day,subject,econ->region[subject].owner,false); break;
         case DIR_ANNEE: { int ct=subject;
+            if (ct>=0 && ct<SCPS_MAX_CONTINENT) D->cont_cd_until[ct]=day+DIR_CONT_CD;  /* G0.1 : repos continent 25 ans */
             for (int r=0;r<econ->n_regions && r<w->n_regions;r++)
                 if (w->region[r].continent==ct && econ->region[r].colonized && dir_ok_region(D,day,r,true)){
                     dir_region_eff(cx,r,0.f,8.f,0.f,1.f);
@@ -745,6 +765,7 @@ static void dir_apply(EventCtx *cx, int id, int subject, int day){
                     dir_touch(D,day,r,econ->region[r].owner,true);
                 } } break;
         case DIR_MOISSONS: { int ct=subject;
+            if (ct>=0 && ct<SCPS_MAX_CONTINENT) D->cont_cd_until[ct]=day+DIR_CONT_CD;  /* G0.1 : repos continent 25 ans */
             for (int r=0;r<econ->n_regions && r<w->n_regions;r++)
                 if (w->region[r].continent==ct && econ->region[r].colonized && dir_ok_region(D,day,r,false)){
                     econ->region[r].build.food_cap += 1.5f;          /* fertilité ↑ (IPM ↓ émergera en §C) */
@@ -774,7 +795,7 @@ static void director_tick(EventCtx *cx, int days){
     }
     if (day < D->next_check_day) return;
     D->next_check_day = day + DIR_CHECK_DAYS;
-    float T = director_compute_T(cx); D->last_T=T;
+    float T = director_compute_T(cx); D->last_T=T; if (T>D->max_T) D->max_T=T;
     int want;
     if      (T > DIR_T_HOT)  want=+1;                    /* trop chaud → stabilisateur */
     else if (T < DIR_T_COLD) want=-1;                    /* trop froid → déstabilisateur */
@@ -784,22 +805,28 @@ static void director_tick(EventCtx *cx, int days){
     int hi = want_destab?DIR_STAB_FIRST:DIR_EV_COUNT;
     int span=hi-lo; if (span<1) return;
     int off=(int)(frand(&cx->ev->rng)*(float)span); if (off>=span) off=span-1;
-    /* VARIÉTÉ (rééquilibrage) : parmi les éligibles, on prend le MOINS JOUÉ (et non
-     * le premier) — sinon l'Année Sans Été, presque toujours éligible (continent-large),
-     * monopolisait. L'ordre de balayage tourne (off) → départage stable et déterministe. */
-    int pick=-1, pick_subj=-1, pick_fired=2147483647;
+    /* G0.1 — TIRAGE SANS REMISE : parmi les éligibles (qui passent déjà les cooldowns
+     * durs famille 15 ans / continent 25 ans), tirage ALÉATOIRE PONDÉRÉ ; un événement
+     * joué dans les 30 dernières années pèse ÷4. Aucun type ne peut donc monopoliser
+     * (top ≤ 30 % des tirages). L'ordre de balayage tourne (off) → déterministe. */
+    int   eid[DIR_EV_COUNT], esub[DIR_EV_COUNT], ncand=0;
+    float ew[DIR_EV_COUNT], wsum=0.f;
     for (int k=0;k<span;k++){
         int id=lo + (off+k)%span;
-        if (D->fam_active_until[id] > day) continue;     /* jamais deux du même type actifs */
+        if (D->fam_active_until[id] > day) continue;     /* même événement : repos ≥15 ans */
         int subject=-1;
-        if (dir_eligible(cx,id,day,&subject) && D->fired[id] < pick_fired){
-            pick_fired=D->fired[id]; pick=id; pick_subj=subject;
-        }
+        if (!dir_eligible(cx,id,day,&subject)) continue;
+        float wgt = 1.f;
+        if (D->fired[id]>0 && day - D->last_fired_day[id] < DIR_SOFT_DAYS) wgt *= DIR_SOFT_DIV;  /* ÷4 pendant 30 ans après un tir */
+        eid[ncand]=id; esub[ncand]=subject; ew[ncand]=wgt; wsum+=wgt; ncand++;
     }
-    if (pick<0) return;                                  /* rien d'éligible ce scan */
+    if (ncand<1 || wsum<=0.f) return;                    /* rien d'éligible ce scan */
+    float r = frand(&cx->ev->rng)*wsum; int ci=0;
+    for (; ci<ncand-1; ci++){ if (r < ew[ci]) break; r -= ew[ci]; }
+    int pick=eid[ci], pick_subj=esub[ci];
     dir_apply(cx,pick,pick_subj,day);
-    /* les événements continentaux (vastes) se reposent BEAUCOUP plus longtemps. */
-    D->fam_active_until[pick] = day + ((pick==DIR_ANNEE||pick==DIR_MOISSONS)?DIR_FAM_DAYS_WIDE:DIR_FAM_DAYS);
+    D->fam_active_until[pick] = day + DIR_FAM_DAYS;       /* repos famille 15 ans (continent : +25 ans via cont_cd) */
+    D->last_fired_day[pick]   = day;                      /* … et pénalité ÷4 pour 30 ans */
     D->fired[pick]++; if (want_destab) D->fired_destab++; else D->fired_stab++;
     cx->ev->last_id=-1; cx->ev->last_name=director_event_name(pick); cx->ev->n_fired++;
 }
