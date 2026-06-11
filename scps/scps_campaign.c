@@ -8,6 +8,7 @@
  * de la conquête abstraite.
  */
 #include "scps_campaign.h"
+#include "scps_tune.h"   /* Arc J : constantes de calibrage surchargeables */
 #include "scps_navy.h"   /* réservation de transports (accès aux champs, pas d'appel) */
 #include "scps_labor.h"   /* capitale_defense / capitale_max_tier : la défense passive de la capitale */
 #include <math.h>
@@ -306,7 +307,7 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     float P=0.10f + ((V->posture==FA_AGRESSIVE)?0.10f:(V->posture==FA_PRUDENTE)?-0.05f:0.f)
           + 0.06f*vfrac;
     if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.06f;   /* la montagne couvre la fuite */
-    P=fminf(0.22f,fmaxf(0.04f,P));
+    P=fminf(tune_f("CUREE_CAP",0.22f),fmaxf(0.04f,P));
     long lp=force_units(&L->force);
     long pursued=kill_packets(&L->force,(long)((float)lp*P+0.5f));
     c->dead_pursuit += pursued*100;                                    /* la curée : l'essentiel des morts */
@@ -370,15 +371,15 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         float tot=pA+pB+1e-3f;
         bt->resB -= bt->resB0*BT_DMG_K*(2.f*pA/tot);
         bt->resA -= bt->resA0*BT_DMG_K*(2.f*pB/tot);
-        bt->lossB += (float)force_units(&B->force)*BT_CHOC_MORTS*(2.f*pA/tot);
-        bt->lossA += (float)force_units(&A->force)*BT_CHOC_MORTS*(2.f*pB/tot);
+        bt->lossB += (float)force_units(&B->force)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pA/tot);
+        bt->lossA += (float)force_units(&A->force)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pB/tot);
         long mB=0,mA=0;
         if (bt->lossB>=1.f){ mB=kill_packets(&B->force,(long)bt->lossB); bt->lossB-=(float)mB; }
         if (bt->lossA>=1.f){ mA=kill_packets(&A->force,(long)bt->lossA); bt->lossA-=(float)mA; }
         c->dead_choc += (mA+mB)*100;
         bt_score(dp,(pA>=pB)?A->owner:B->owner,(pA>=pB)?B->owner:A->owner,0.35f);  /* le jour gagné pèse un peu */
-        if (bt->resA<=BT_RUPTURE*bt->resA0){ bt_rout(c,w,e,dp,bt,0); bt_end(c,bt); return; }
-        if (bt->resB<=BT_RUPTURE*bt->resB0){ bt_rout(c,w,e,dp,bt,1); bt_end(c,bt); return; }
+        if (bt->resA<=tune_f("BT_RUPTURE",BT_RUPTURE)*bt->resA0){ bt_rout(c,w,e,dp,bt,0); bt_end(c,bt); return; }
+        if (bt->resB<=tune_f("BT_RUPTURE",BT_RUPTURE)*bt->resB0){ bt_rout(c,w,e,dp,bt,1); bt_end(c,bt); return; }
     } else {
         float rA=BT_RECUP + ((e->region[bt->loc].owner==A->owner)?0.007f:0.f);
         float rB=BT_RECUP + ((e->region[bt->loc].owner==B->owner)?0.007f:0.f);

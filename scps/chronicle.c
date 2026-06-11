@@ -8,6 +8,7 @@
  * empires qui croissent, pays absorbés. Aucune entrée joueur — on regarde le
  * monde vivre par les seuls acteurs IA et le moteur d'ordre.
  */
+#include "scps_tune.h"
 #include "scps_world.h"
 #include "scps_econ.h"
 #include "scps_trade.h"
@@ -534,12 +535,15 @@ static uint32_t chronicle_sim_hash(uint32_t seed, const Sim *s, const World *w){
 }
 
 int main(int argc, char **argv){
+    tune_init();   /* Arc J : lit SCPS_TUNE une fois (nom inconnu → exit 2). */
     /* positionnels FILTRÉS de l'option --hash (le harnais de déterminisme). */
     const char *pos[8]; int np=0, hash_mode=0;
     for (int i=1;i<argc;i++){
         if (!strcmp(argv[i],"--hash")) hash_mode=1;
+        else if (!strcmp(argv[i],"--tunables")){ tune_list(stdout); return 0; }  /* Arc J : liste nom·défaut·actif */
         else if (np<8) pos[np++]=argv[i];
     }
+    tune_print_active(stderr);   /* surcharges actives en tête (stderr → stdout reste byte-identique sans env) */
     uint32_t base = (np>0)?(uint32_t)strtoul(pos[0],NULL,10):20240607u;
     int nsims     = (np>1)?atoi(pos[1]):10;      /* sim i : 2+i empires, 5+i cités (2→11 / 5→14) */
     int years     = (np>2)?atoi(pos[2]):200;

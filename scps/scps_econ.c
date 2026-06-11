@@ -6,6 +6,7 @@
  * la simulation — l'aléa est dans la génération du monde, pas dans l'éco.
  */
 #include "scps_econ.h"
+#include "scps_tune.h"    /* Arc J : constantes de calibrage surchargeables (SCPS_TUNE) */
 #include "scps_world.h"   /* resource_name(), subsistance_for_biome() */
 #include "scps_culture.h" /* culture_content_distance() pour la novelty diaspora */
 #include "scps_labor.h"   /* capitale_* : la productivité de la capitale booste la prod réelle */
@@ -1062,11 +1063,11 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (rid<SCPS_MAX_REG){
             float infra = re->build.K_inst + re->build.H_coerc + re->build.P_open
                         + re->build.PE_infra + re->build.food_cap + re->build.port;
-            float upkeep = (infra*BUILD_GOLD_PER_DELTA/ENTRETIEN_DIV) * 365.f * dt * ipmf;
+            float upkeep = (infra*BUILD_GOLD_PER_DELTA/tune_f("ENTRETIEN_DIV",ENTRETIEN_DIV)) * 365.f * dt * ipmf;
             re->treasury -= upkeep;
             /* H7 — ENCADREMENT DES MANUFACTURES (×IPM) : la racine du robinet d'or. */
             float mlev=0.f; for (int i=0;i<re->n_bld;i++) mlev += re->bld[i].level;
-            float mcost = mlev * MANUF_UPKEEP_DAY * 365.f * dt * ipmf;
+            float mcost = mlev * tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY) * 365.f * dt * ipmf;
             re->treasury -= mcost;
             bool fr = (re->treasury < 0.f);
             if (fr) re->treasury = 0.f;
@@ -1075,8 +1076,9 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
         /* G0.4 — le FASTE de cour : au-delà de 10k, 0.5 %/mois du surplus se dépense
          * (frein au hoarding — un trésor qui gonfle finance le prestige). */
-        if (re->treasury > COURT_FLOOR)
-            re->treasury -= (re->treasury - COURT_FLOOR) * COURT_RATE * (dt*12.f);
+        { float cf=tune_f("COURT_FLOOR",COURT_FLOOR);
+          if (re->treasury > cf)
+              re->treasury -= (re->treasury - cf) * tune_f("COURT_RATE",COURT_RATE) * (dt*12.f); }
 
         /* §B (TRÉSOR MORT) — l'État REDÉPENSE : il ne hoarde plus, il CIRCULE. Une masse
          * salariale réabonde la richesse des classes AU PRORATA de l'impôt qu'elles ont

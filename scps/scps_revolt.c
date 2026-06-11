@@ -8,6 +8,7 @@
  * concession ; l'échec se paie en morts et en raideur.
  */
 #include "scps_revolt.h"
+#include "scps_tune.h"   /* Arc J : calibrage */
 #include "scps_species.h"   /* species_name */
 #include "scps_culture.h"   /* ethos_name (via culture nom) */
 #include "scps_factions.h"  /* §5 : la tension de coup d'une faction forte aliénée */
@@ -479,7 +480,7 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                         break;
                     }
                     if (capr>=0&&capr<econ->n_regions && treas>CONCEDE_TREAS_FLOOR)
-                        econ->region[capr].treasury=fmaxf(0.f, econ->region[capr].treasury-CONCEDE_GOLD);  /* acheter la paix */
+                        econ->region[capr].treasury=fmaxf(0.f, econ->region[capr].treasury-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));  /* acheter la paix */
                     if (cid>=0&&cid<SCPS_MAX_COUNTRY) g_concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
                     re->satisfaction=clampf(re->satisfaction+0.20f,0.f,1.f);
                     re->coercion=fmaxf(0.f, re->coercion-0.4f);
@@ -493,9 +494,9 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                     { float lean[FAC_COUNT]; group_ethos_lean(&rb->culture, lean);
                       int wf=0; for (int f=1;f<FAC_COUNT;f++) if (lean[f]>lean[wf]) wf=f;
                       faction_concede(rb->owner, (EthosFaction)wf); }
-                    re->build.K_inst = fmaxf(0.f, re->build.K_inst - C3_K_HOLLOW);
+                    re->build.K_inst = fmaxf(0.f, re->build.K_inst - tune_f("C3_K_HOLLOW",C3_K_HOLLOW));
                     if (rb->region<SCPS_MAX_REG)
-                        wl->L[rb->region] = clampf(wl->L[rb->region]-C3_L_HOLLOW, 0.f, 10.f);
+                        wl->L[rb->region] = clampf(wl->L[rb->region]-tune_f("C3_L_HOLLOW",C3_L_HOLLOW), 0.f, 10.f);
                     rs->n_concession++; rb->outcome=OUT_CONCESSION;
                     break; }
             }

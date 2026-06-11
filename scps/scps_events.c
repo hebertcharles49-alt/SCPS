@@ -9,6 +9,7 @@
 #include "scps_events.h"
 #include <string.h>
 #include <math.h>
+#include "scps_tune.h"
 
 /* ===================================================================== */
 /* Le bundle de pointeurs systèmes passé aux triggers/effets             */
@@ -799,8 +800,8 @@ static void director_tick(EventCtx *cx, int days){
     D->next_check_day = day + DIR_CHECK_DAYS;
     float T = director_compute_T(cx); D->last_T=T; if (T>D->max_T) D->max_T=T;
     int want;
-    if      (T > DIR_T_HOT)  want=+1;                    /* trop chaud → stabilisateur */
-    else if (T < DIR_T_COLD) want=-1;                    /* trop froid → déstabilisateur */
+    if      (T > tune_f("DIR_T_HOT",DIR_T_HOT))  want=+1;                    /* trop chaud → stabilisateur */
+    else if (T < tune_f("DIR_T_COLD",DIR_T_COLD)) want=-1;                    /* trop froid → déstabilisateur */
     else return;                                         /* zone saine : on laisse le monde vivre */
     bool want_destab=(want<0);
     int lo = want_destab?0:DIR_STAB_FIRST;

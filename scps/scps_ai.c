@@ -10,6 +10,7 @@
  * coordonnée de consolidation. Aucune branche « si pays==X ».
  */
 #include "scps_ai.h"
+#include "scps_tune.h"   /* Arc J : calibrage */
 #include "scps_tech.h"
 #include "scps_species.h"
 #include "scps_factions.h"   /* l'éthos effectif + la fracture de valeurs (frein interne §6) */
@@ -626,7 +627,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             const ProvBuild *bd = (hr>=0&&hr<econ->n_regions)?&econ->region[hr].build:NULL;
             if (bd && v->L < AI_FAITH_L && bd->faith < 5.0f)
                 e = ai_next_faith_edifice(econ, hr);       /* consentement défaillant → foi */
-            else if (bd && bd->K_inst >= AI_SAVOIR_K && bd->savoir < 2.5f)
+            else if (bd && bd->K_inst >= tune_f("AI_SAVOIR_K",AI_SAVOIR_K) && bd->savoir < 2.5f)
                 e = ai_next_savoir_edifice(econ, hr);      /* institutions mûres → savoir */
             else
                 e = ai_next_k_edifice(econ, hr);           /* le métabolisme par défaut : K */
@@ -1194,17 +1195,17 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
         if (a->spec_cd[g]>0) continue;                        /* B1 — ce bien se repose */
         float p=re->price[g], xb=a->spec_avg[g];
         if (xb<=0.f || p<=0.f) continue;
-        if (p < SPEC_BUY_BAND*xb && re->treasury > SPEC_GOLD_FLOOR && held < space){
+        if (p < tune_f("SPEC_BUY_BAND",SPEC_BUY_BAND)*xb && re->treasury > tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR) && held < space){
             float vol = fminf(re->stock[g]*SPEC_VOL_FRAC, space-held);                /* ≤ 5 % du stock — le bien QUITTE le marché */
             vol = fminf(vol, SPEC_VOL_ABS);                                           /* ≤ 50 unités (plafond dur) */
-            vol = fminf(vol, (re->treasury-SPEC_GOLD_FLOOR)*0.25f/fmaxf(p,0.05f));    /* jamais la famine d'or */
+            vol = fminf(vol, (re->treasury-tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR))*0.25f/fmaxf(p,0.05f));    /* jamais la famine d'or */
             if (vol>=1.f){
                 re->stock[g]-=vol; a->hoard[g]+=vol; held+=vol;
                 re->treasury -= vol*p;
                 a->stats.spec_vol+=vol; a->stats.spec_gold-=vol*p; a->stats.spec_buys++;
                 a->spec_cd[g]=SPEC_COOLDOWN;
             }
-        } else if (p > SPEC_SELL_BAND*xb && a->hoard[g]>=1.f){
+        } else if (p > tune_f("SPEC_SELL_BAND",SPEC_SELL_BAND)*xb && a->hoard[g]>=1.f){
             float vol = fminf(a->hoard[g]*SPEC_SELL_FRAC, SPEC_VOL_ABS);              /* filet : 15 % du magot, ≤ 50 u */
             float room = cap_stock - re->stock[g]; if (vol>room) vol=room;            /* l'entrepôt ne déborde pas */
             if (vol>=1.f){
