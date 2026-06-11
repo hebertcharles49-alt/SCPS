@@ -85,3 +85,6 @@ audio_demo
 build_dev/
 scps_viewer_dev
 audit_eco
+
+# Arc J : cache du calibrateur (régénéré)
+tools/results.csv

@@ -545,3 +545,10 @@ lang-check:
 	  if [ $$n -lt $$b ]; then echo "  (reflux : abaisser scps/lang_baseline.txt à $$n)"; fi; \
 	fi
 .PHONY: lang-check
+
+# ---- calibrate-smoke : le pilote de calibrage (Arc J3) tourne de bout en bout ----
+calibrate-smoke: chronicle
+	@python3 tools/calibrate.py --param ENTRETIEN_DIV:300:500:200 \
+	  --target flux_or_med:-5:20 --target tresor_med::12000 \
+	  --sims 1 --years 20 --seeds 7 --jobs 2 --yes
+.PHONY: calibrate-smoke
