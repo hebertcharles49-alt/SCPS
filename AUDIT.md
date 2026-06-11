@@ -37,12 +37,13 @@ reste rouge (dette de contenu, infra).
 
 ---
 
-## (c) Recommandations (ordre de correction)
+## (c) Recommandations (ordre de correction) — arc K BOUCLÉ
 
-K4a (events) → K4b (diplo) → K4c (warhost) → **K5** (racine IA = la spirale de friche, FAIT) →
-**K6** (érosion endogène `L -= k·coercition·dt`, bornée, réversible) → K7 (hygiène : clang
-clean, ASan). La dette « Bâtisseur +K » demande du CONTENU (chaîne K plus longue) — hors
-périmètre arc K, laissée en l'état documenté.
+K4a (events) ✓ → K4b (diplo) ✓ → K4c (warhost) ✓ → **K5** (racine IA = la spirale de
+friche) ✓ → **K6** (coercitif : cas-test sur-extrême, pas un chaînon manquant) ✓ → K7
+(hygiène : clang 0 warning, ASan muet) ✓. `make test` 30/31. La dette « Bâtisseur +K »
+demande du CONTENU (chaîne K plus longue / bâti multi-régions) — hors périmètre « pas de
+système neuf », laissée en l'état documenté (déjà signalée dans CLAUDE.md).
 
 ---
 
@@ -95,8 +96,13 @@ périmètre arc K, laissée en l'état documenté.
   (σ-forme verrouillée par core_demo 9.990 + monde_reel) ; c'est l'ASSERTION qui était
   sur-extrême. Fix : le cas-test coercitif passe à L=6 (~9.2, l'Iran) — franchement fragile
   MAIS avec la marge où le solvant fait grimper la fragilité (9.2→9.8). → structural_demo 16/16.
-- **Bilan arc K** : `make test` 30/31. Reste la SEULE dette « Bâtisseur +K » (égalité à 3,
+- **K7 — hygiène** : clang `-Wall -Wextra` 0 warning sur tout `scps/*.c` (15 recettes sans
+  repli initialisent explicitement `alt1` = zéro-init intentionnel ; 2 variables mortes
+  retirées) ; GCC 0 warning ; ASan+UBSan muets sur `chronicle_asan` ; déterminisme
+  byte-identique (md5 inchangé avant/après) ; `lang-check` OK (64, base) ; membrane propre.
+- **Bilan arc K** : `make test` 30/31 — la SEULE rouge est « Bâtisseur +K » (égalité à 3,
   CONTENU manquant — chaîne K profonde de 3, bâti mono-région ; hors périmètre « pas de
-  système neuf »). Les bancs structural/ai gardent une sensibilité de graine résiduelle
-  (worldgen) sur 1-2 assertions hors graine par défaut — la cible `make test` (graine 42)
-  est verte.
+  système neuf »). Preuves : 0 warning GCC+clang · ASan muet · déterminisme · lang-check ·
+  membrane · gold band 40 a en bande (trésor ~15.9k, flux +20). Les bancs structural/ai
+  gardent une sensibilité de graine résiduelle (worldgen) sur 1-2 assertions hors graine
+  par défaut — la cible `make test` (graine 42) est verte.
