@@ -66,8 +66,12 @@ static const float DDIST[8]={1.f,1.414f,1.f,1.414f,1.f,1.414f,1.f,1.414f};
  * Plaques tectoniques (Voronoï) + FBM → relief de base
  * ====================================================================== */
 #define N_PLATES   18
-#define DRIFT_PX   45.f    /* dérive FAIBLE : les masses restent SOUDÉES (peu de continents,
-                            * du contact → de l'interaction) ; on garde la taille (R0m). */
+#define DRIFT_PX   60.f    /* §D — LE MONDE SE FRACTURE : dérive MESURÉE (+33 % vs l'ancien 45).
+                            * Le supercontinent se sépare en continents plus DISTINCTS — plus de
+                            * mer entre eux (le large devient un acteur, cf. §E) et des unités
+                            * continentales nettes (les chocs continentaux du directeur, §F, visent
+                            * juste). On NE touche pas land_amount : même terre totale, plus séparée
+                            * — on garde des fronts de contact (collision), pas un archipel. */
 
 /* La plaque a une MÉMOIRE : elle dérive d'une position d'origine (le
  * supercontinent) vers sa position actuelle. cx,cy = ce que voit tout l'aval ;

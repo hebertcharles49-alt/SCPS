@@ -217,11 +217,11 @@
     X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Warehouses ×{2}") \
     X(STR_ROW_ENTREPOTS, "Warehouses") \
     X(STR_ENTREPOT_HOV, "Without a Warehouse, regional stock saturates at 200 per resource (surplus is lost); each Warehouse built adds +500. Buy low, sell high.") \
-    X(STR_MER_CABOTAGE, "coastal sailing — slow but safe") \
-    X(STR_MER_MORTE,    "dead waters — nothing pushes a ship along") \
-    X(STR_MER_VIVE,     "lively waters — the swell helps those who read it") \
-    X(STR_MER_COURANT,  "bearing current — a river within the sea") \
-    X(STR_MER_DIR_FMT,  "{0} {1}") \
+    X(STR_MER_CABOTAGE, "coastal · fixed speed") \
+    X(STR_MER_MORTE,    "dead waters · ×3 time") \
+    X(STR_MER_VIVE,     "lively waters") \
+    X(STR_MER_COURANT,  "current · with ÷2.2 · against ×2.5") \
+    X(STR_MER_DIR_FMT,  "{0} · {1}") \
     X(STR_MER_DIR_EST,  "eastward") \
     X(STR_MER_DIR_OUEST,"westward") \
     X(STR_MER_DIR_SUD,  "southward") \

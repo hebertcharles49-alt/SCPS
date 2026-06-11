@@ -222,11 +222,11 @@
     X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Entrepôts ×{2}") \
     X(STR_ROW_ENTREPOTS, "Entrepôts") \
     X(STR_ENTREPOT_HOV, "Sans Entrepôt, le stock régional sature à 200 par ressource (le surplus se perd) ; chaque Entrepôt bâti ajoute +500. Stocker bas, vendre haut.") \
-    X(STR_MER_CABOTAGE, "cabotage — lent mais sûr") \
-    X(STR_MER_MORTE,    "eaux mortes — rien ne pousse un navire") \
-    X(STR_MER_VIVE,     "eaux vives — la houle aide qui sait la lire") \
-    X(STR_MER_COURANT,  "courant porteur — un fleuve dans la mer") \
-    X(STR_MER_DIR_FMT,  "{0} {1}") \
+    X(STR_MER_CABOTAGE, "cabotage · vitesse fixe") \
+    X(STR_MER_MORTE,    "eaux mortes · ×3 temps") \
+    X(STR_MER_VIVE,     "eaux vives") \
+    X(STR_MER_COURANT,  "courant · porté ÷2,2 · contre ×2,5") \
+    X(STR_MER_DIR_FMT,  "{0} · {1}") \
     X(STR_MER_DIR_EST,  "vers le levant") \
     X(STR_MER_DIR_OUEST,"vers le couchant") \
     X(STR_MER_DIR_SUD,  "vers le sud") \
