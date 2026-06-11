@@ -1,131 +1,73 @@
 # AUDIT — SCPS (moteur de grande stratégie C99)
 
-Audit de reprise (« on récupère à partir d'ici »). Périmètre : les 121 fichiers
-source du moteur (`scps/`), le `Makefile`, l'outillage (chronicle, bancs) et les
-bibliothèques vendorées (`third_party/`). Le visualiseur SDL (`viewer.c`) n'a pas
-pu être *exécuté* (SDL2 absent de l'environnement d'audit) mais a été relu.
+> État POST-arc K (« état vérifiable »). Source de vérité = les bancs (`make test`),
+> jamais ce fichier. Daté : 2026-06-11. Build : gcc 13 · -O2 -Wall -Wextra -std=c99
+> + durcissement (`-fstack-protector-strong -D_FORTIFY_SOURCE=2`).
 
-## Statut des correctifs (appliqués)
+---
 
-A1 (Makefile `asan`) ✅ · B1 (`save_sane` bornes basses) ✅ · B3 (durcissement) ✅ ·
-C1 (`nmar` affiché) ✅ · C2 (`clampf` retiré) ✅ · B2 rétracté (faux constat). Bancs
-verts, 0 warning, ASan muet, déterminisme tenu après correctifs.
+## (a) Résultats MESURÉS (`make test`, K3 appliqué)
 
-## Verdict global
+**26 bancs VERTS / 31** — `make test` les bâtit, les lance, compte les BILAN :
 
-**Code de très haute qualité, sain.** Discipline défensive remarquable : aucune
-fonction de chaîne non bornée, aucun VLA/`alloca`, aucun `system()`, indices
-re-validés au point d'usage, RNG correctement borné, gardes anti-division. La
-batterie de bancs auto-vérifiants et la télémétrie headless constituent un filet
-solide. Les constats ci-dessous sont **mineurs** : un bug d'outillage (cible
-`asan` cassée) et des durcissements, **aucune faille mémoire** détectée.
+core 35/35 · monde_reel 10/10 · readout 27/27 · species 9/9 · tech 22/22 ·
+faith 14/14 · intertrade 9/9 · routes 4/4 · save_io 8/8 · statecraft 22/22 ·
+pop 14/14 · army 49/49 · demography 19/19 · demography_integ 6/6 · revolt 23/23 ·
+social 10/10 · agency 18/18 · campaign 13/13 · factions 32/32 · econ_tax 8/8 ·
+econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 41/41 ·
+missions 8/8 · prosperity OK (sans format BILAN).
 
-## Tableau de bord (mesuré dans cet environnement — gcc 13.3 / clang 18 / valgrind 3.22)
+**5 bancs ROUGES** (la dette, ci-dessous) :
 
-| Contrôle | Résultat |
-|---|---|
-| `make core_demo` + tous les bancs (`-Wall -Wextra`, gcc) | **0 warning**, build vert |
-| `./core_demo` (cœur §2) | **35 / 35** |
-| Bancs auto-vérifiants (diplo, army, labor, revolt, econ, …) | **0 échec** |
-| `./ai_demo` | 22 / 23 — l'unique échec = la **dette documentée** (« le Bâtisseur bâtit le PLUS de K »), pas une régression |
-| `make determinism` (5 graines × 12 ans, `--hash`) | **hashes stables** ; télémétrie identique entre deux runs |
-| ASan + UBSan (chronicle 40 ans, 6 empires, 12 cités) | **0 erreur** ; balayage étendu (60 ans, 16 cités) muet sur la portion exécutée |
-| Valgrind memcheck (runs complets 5 et 8 ans) | **0 erreur, 0 fuite** (definitely/indirectly/possibly = 0) |
-| GCC `-fanalyzer` sur **tout le moteur** | **0 warning** (les seuls remontés sont dans les *bancs*, cf. C5) |
+| banc | score | symptôme |
+|------|-------|----------|
+| ai_demo          | 20/23 | Mercantile pas + de routes · Bâtisseur pas + de K · Dominateur pas + agressif |
+| structural_demo  | 13/16 | Dominateur ne SERRE pas (H) · Bureaucrate ne RÉFORME pas (K) · COERCITIF ne se dissout pas |
+| diplo_demo       | 48/49 | après ~5 ans la province redevient saccageable (cooldown) |
+| events_demo      | 26/27 | « feu de forêt » présent là où forest==0 |
+| warhost_demo     | 3/4   | la paix lève MOINS que la guerre — non vérifié |
 
-## Constats
+---
 
-### A — Outillage
+## (b) Dette connue (hypothèses de racine, à trancher avant correctif)
 
-**A1 · Cible Makefile `asan` cassée (impossible à construire).** `Makefile:378-380`.
-Deux défauts cumulés :
-1. La règle ne passe pas `-Ithird_party` → `chronicle.c` n'inclut pas `miniz.h`
-   (`fatal error: miniz.h: No such file or directory`).
-2. `CHRONICLE_SRCS` (`Makefile:377`) dérive les sources par
-   `patsubst $(OBJDIR)/scps_%.o,scps/%.c,...`, motif qui **ne matche pas**
-   `$(OBJDIR)/tp_miniz.o` : la variable contient donc `build/tp_miniz.o` (un
-   objet, pas une source) et `miniz.c` n'est jamais compilé dans le binaire ASan.
+- **ai_demo + structural_demo (6 assertions, UNE racine présumée — K5)** : le crédit de
+  largeur (arc B3) + la garde de budget (arc IG) ont APLATI les archétypes — tout le
+  monde diversifie, plus personne ne maximise son thème/éthos. À INSTRUMENTER avant de
+  toucher 6 endroits (part du score : largeur vs biais d'éthos).
+- **structural_demo « la coercition dissout L » (K6)** : la fragilité σ-forme (A1) lit un
+  INSTANTANÉ ; le banc attend une TRAJECTOIRE (la coercition ronge L avec le temps).
+  Chaînon snapshot→delta manquant.
+- **diplo_demo (K4b)** : suspect n°1 — la migration tune (arc J) a pu changer le défaut
+  ou l'UNITÉ d'une constante de cooldown (jours/mois/ticks). Comparer `--tunables` au
+  défaut attendu par le test.
+- **events_demo (K4a)** : la formule de risque d'incendie garde une composante non nulle
+  sans forêt. Décision : gater sur forest>0 (« strictement nul ») sauf wildfire de
+  steppe explicitement voulu.
+- **warhost_demo (K4c)** : la solde de régiment (arc I1) devait rendre la paix
+  démobilisante PAR LE COÛT ; le couplage levée↔guerre/solde n'est pas aligné sur
+  l'intention (paix = moins d'hommes sous les armes).
 
-Conséquence : `make asan` échoue, alors que `CLAUDE.md` en fait le filet mémoire
-de référence (« ASan+UBSan doivent rester muets »). *Note : pour cet audit, un
-binaire ASan corrigé a été reconstruit à la main — il tourne muet.*
+---
 
-Correctif suggéré :
-```make
-CHRONICLE_SRCS := $(patsubst $(OBJDIR)/scps_%.o,scps/%.c,\
-                    $(filter-out $(OBJDIR)/tp_miniz.o,$(CHRONICLE_OBJS)))
-asan: $(CHRONICLE_SRCS)
-	$(CC) -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
-	      -Wall -Wextra -std=c99 -Ithird_party \
-	      $(CHRONICLE_SRCS) third_party/miniz.c -o chronicle_asan -lm
-```
+## (c) Recommandations (ordre de correction)
 
-### B — Robustesse / durcissement (sévérité faible)
+K4a (events, localisé) → K4b (diplo, cooldown) → K4c (warhost, levée) → **K5** (racine IA :
+TESTER avant de fixer ; fix unique = pondérer le crédit de largeur par l'éthos ; re-tester
+les 6 ensemble) → **K6** (érosion endogène `L -= k·coercition·dt`, bornée, réversible ;
+dépend de K5 pour le fork Dominateur/Bureaucrate) → K7 (hygiène : clang clean, ASan).
+Ne PAS entamer un nouveau système tant que `make test` n'est pas 31/31.
 
-**B1 · `save_sane()` ne valide que la borne HAUTE de plusieurs index signés.**
-`viewer.c:2591-2630`. Les champs `Province.region/country`, `Country.capital_prov`,
-`RegionEconomy.owner`, `Cell.{province,region,country,continent}` sont `int16_t`/`int`
-signés mais testés uniquement `>= n` (pas `< 0`, hors sentinelle `-1` légitime).
-Le commentaire du chargeur affirme pourtant neutraliser les fichiers **forgés**
-(l'empreinte FNV n'est pas un MAC). Un index négatif forgé (≠ −1) passe donc
-`save_sane`.
+---
 
-**Sévérité faible, et déjà atténué** : (i) modèle de menace assumé « anti
-save-scumming, pas sécurité » — un save forgé n'attaque que la machine du joueur ;
-(ii) la plupart des consommateurs re-gardent `cp < 0` au point d'usage
-(p. ex. `scps_diplo.c:463/674`, `scps_ai.c:889/928`, `scps_demography.c:73`,
-`scps_econ.c:602`). Reco : rendre `save_sane` **symétrique** (rejeter `< 0`, ou
-`< -1` pour les champs à sentinelle) — sûr, et supprime la dépendance au fait que
-*chaque futur* consommateur pense à garder.
+## (d) Correctifs DÉJÀ intégrés (arc K)
 
-**B2 · ~~`strncpy` sans terminaison NUL~~ — FAUX CONSTAT (rétracté).** Relecture
-du contexte : `scps_world.c:1843` fait déjà `rg->name[sizeof(rg->name)-1]='\0';`
-juste après le `strncpy`. L'idiome est correct. Rien à corriger.
-
-**B3 · Build release sans flags de durcissement.** `Makefile`. `-O2 -Wall -Wextra`
-sans `-fstack-protector-strong` ni `-D_FORTIFY_SOURCE=2`. Défense en profondeur
-quasi gratuite, surtout sur le chemin qui lit des sauvegardes.
-
-### C — Hygiène / cosmétique
-
-**C1 · `nmar` calculé puis jamais affiché.** `chronicle.c:867-868`. Le nombre de
-routes **maritimes** est compté mais la ligne de télémétrie n'imprime que `nfluv`
-(fluvial) → donnée silencieusement perdue (et « variable set but not used » sous
-clang). Soit l'afficher, soit le retirer.
-
-**C2 · Propreté clang sous `-Wextra` (le dépôt est *gcc*-propre, pas *clang*-propre).**
-- `scps_econ.c` (~15×, table `RECIPE`) : `-Wmissing-field-initializers` sur le
-  champ `alt1` omis. **Bénin** — `alt1` non initialisé vaut `RES_NONE` (0) =
-  « pas de repli », exactement l'intention. Cosmétique.
-- `scps_routes.c:12` : fonction `clampf` définie mais inutilisée (`-Wunused-function`).
-
-**C3 · `-fanalyzer` : aucun défaut dans le moteur.** Les 145 remontées sont
-**toutes** dans les *bancs* (`events_demo.c`, `statecraft_demo.c`) : 144 fuites
-« à la sortie » (programmes courts qui n'`free` pas avant `return` — l'OS
-récupère, inoffensif) + 1 `use-of-uninitialized-value` à `ai_demo.c:126` qui est
-un **faux positif** (le garde `if (npol<3) return 1;` précède la lecture de
-`polity[0..2]` ; l'analyseur ne corrèle pas `npol` au nombre d'écritures).
-
-## Points forts (à préserver)
-
-- **La membrane / discipline d'index** : `n_regions ≤ SCPS_MAX_REG` etc. garantis
-  par `save_sane`, puis les BFS/flood-fill (`scps_campaign.c:37`, `scps_events.c`,
-  `scps_world.c`) bornent leurs files par le domaine avec tableau « visité » →
-  jamais de débordement.
-- **RNG borné proprement** : `rng_f() ∈ [0,1)` *strict* (`scps_world.c:40`,
-  `16777215/16777216`) → la macro `PICK` (`:1749`) n'a pas d'off-by-one.
-- **Crypto honnête** : ChaCha20 (réf. compacte correcte) + empreinte FNV-1a du
-  clair, périmètre explicitement cadré (« obfuscation, pas secret ») ;
-  plafond `SAVE_MAX_PAYLOAD` (256 Mo) contre le `malloc` géant sur en-tête forgé ;
-  sections taguées + vérif de taille exacte (`sv_r`).
-- **Déterminisme** tenu (réductions éco/sim + worldgen), OpenMP `schedule(static)`
-  opt-in et isolé en worldgen.
-
-## Recommandations priorisées
-
-1. **(A1)** Réparer la cible `asan` du Makefile — restaure le filet mémoire documenté.
-2. **(B1)** Rendre `save_sane` symétrique (bornes basses) — durcit le chargeur
-   conformément à son intention affichée.
-3. **(C1)** Trancher sur `nmar` (afficher ou retirer).
-4. **(B2/B3/C2)** Terminaison NUL explicite, flags de durcissement, propreté clang —
-   au fil de l'eau.
+- **K1 — build/linkage** : `faction_name→tr()` (G4) rendait scps_factions.o dépendant de
+  scps_lang.o ; 12 listes `_OBJS` linkaient factions sans lang → « undefined reference to
+  tr ». Corrigé par liste (multi-ligne, sans double). `ifdef DEV/WIN` → `ifeq ($(VAR),1)`
+  (le piège « DEV=false = dev »). Cible `scps` : message clair si SDL absent.
+- **K2 — membrane** : `faction_name`/`edifice_name` migrés au readout (tr() y est
+  légitime) ; scps_factions.c / scps_agency.c n'incluent plus scps_lang.h. AUDIT :
+  aucun module moteur n'inclut scps_lang.h ; aucun tr() hors readout/viewer.
+- **K3 — instrument** : `make test` (26 verts / 5 rouges, rc≠0 si un rouge) — la
+  non-régression de tout l'arc.

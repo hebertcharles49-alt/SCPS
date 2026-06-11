@@ -559,3 +559,8 @@ calibrate-smoke: chronicle
 	  --target flux_or_med:-5:20 --target tresor_med::12000 \
 	  --sims 1 --years 20 --seeds 7 --jobs 2 --yes
 .PHONY: calibrate-smoke
+
+# ---- make test : tous les bancs non-SDL (Arc K3.3) ; rc≠0 si un rouge ----
+test:
+	@bash tools/run_tests.sh
+.PHONY: test
