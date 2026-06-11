@@ -1110,9 +1110,12 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (rid<SCPS_MAX_REG){
             /* I3 — DÉFENSIF : la famille Garnison/Forteresse/Citadelle (re->build.H_coerc)
              * s'entretient ×1.5 (remparts à réparer, garnisons à nourrir) ; le reste suit
-             * la loi commune. (On lit le delta H agrégé : pas besoin de la liste d'édifices.) */
+             * la loi commune. (On lit le delta H agrégé : pas besoin de la liste d'édifices.)
+             * I4 : faith + savoir COMPTENT désormais — les monuments (Cathédrale, Académie,
+             * Monastère) se paient chaque jour (G0.3.3 les fait enfin monter). */
             float infra = re->build.K_inst + re->build.H_coerc*DEF_UPKEEP_MULT + re->build.P_open
-                        + re->build.PE_infra + re->build.food_cap + re->build.port;
+                        + re->build.PE_infra + re->build.food_cap + re->build.port
+                        + re->build.faith + re->build.savoir;
             /* ENTRETIEN DE BASE — maintenir l'infra bâtie. PAS d'IPM ici : la subsistance
              * ne paie pas la surtaxe d'un monde cher. L'entretien ne mord QUE le SURPLUS
              * au-dessus de la réserve d'exploitation : un État garde toujours de quoi
