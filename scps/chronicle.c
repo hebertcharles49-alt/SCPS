@@ -152,7 +152,7 @@ static void sim_day(Sim *s, World *w) {
     }
     world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1);
     labor_tick(s->labor);
-    navy_tick(s->navy, w, s->econ, 1.f);   /* chantier + entretien (la chaîne navale TIRE) */
+    navy_tick(s->navy, w, s->econ, s->dp, 1.f);   /* chantier + entretien (la chaîne navale TIRE) */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
     if (s->day % 30 == 29) {
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */

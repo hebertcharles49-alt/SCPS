@@ -10,6 +10,7 @@
 #include "scps_navy.h"
 #include "scps_tune.h"   /* Arc I9 : entretien naval calibrable */
 #include "scps_econ.h"   /* econ_world_ipm */
+#include "scps_diplo.h"  /* I9 : country_at_war → entretien ×1.5 en guerre */
 #include <string.h>
 #include <math.h>
 
@@ -134,9 +135,12 @@ bool navy_convert(NavyState *ns, const World *w, WorldEconomy *econ, int cid, bo
     return true;
 }
 
-void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days){
+void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploState *dp, float dt_days){
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         Navy *n=&ns->n[c];
+        bool at_war=false;                               /* I9 : la marine en guerre coûte ×1.5 */
+        if (dp) for (int b=0;b<w->n_countries && b<SCPS_MAX_COUNTRY;b++)
+            if (b!=c && diplo_status(dp,c,b)==DIPLO_WAR){ at_war=true; break; }
         /* la rade suit la vie du pays (port perdu/conquis → meilleure rade restante) */
         if (n->home_port>=0 && (n->home_port>=econ->n_regions
             || econ->region[n->home_port].owner!=c
@@ -167,7 +171,7 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days)
              * ~1.5 or/mois par coque × IPM. Impayé → la flotte affame (starve_days →
              * désarmement existant plus bas) — c'est le « désarme des coques » d'IG. */
             { float gold = (float)hulls * tune_f("NAVY_UPKEEP_GOLD",1.5f)
-                         * econ_world_ipm(econ) * (dt_days/30.f);
+                         * econ_world_ipm(econ) * (at_war?1.5f:1.f) * (dt_days/30.f);
               float paid = fminf(gold, re->treasury);
               if (re->treasury >= gold) re->treasury -= gold;
               else { re->treasury=0.f; n->starve_days += dt_days; }

@@ -81,7 +81,8 @@ const char *navy_hull_name(HullType t);
 /* Avance de dt jours : chantier, entretien (consomme les fournitures de la rade
  * et REGISTRE la demande — le marché voit la flotte), décay si l'entretien
  * meurt de faim (> 1 an : une coque pourrit par an). */
-void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days);
+struct DiploState;
+void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploState *dp, float dt_days);
 
 /* Capacité d'emport LIBRE en paquets de 100 (10 par transport, moins l'engagé). */
 int  navy_transport_packets_free(const NavyState *ns, int cid);
