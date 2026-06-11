@@ -567,7 +567,8 @@ float ages_breach_pressure(const EventsState *ev){ return ev->ages.breach_pressu
 #define DIR_PROV_CD    (15*365)      /* repos de 15 ans par province */
 #define DIR_PAYS_CD     (5*365)      /* repos de 5 ans par pays */
 #define DIR_FAM_DAYS    (3*365)      /* un type d'événement reste « actif » 3 ans (jamais deux de même famille) */
-#define DIR_T_HOT       0.55f        /* T au-dessus → APAISER */
+#define DIR_FAM_DAYS_WIDE (9*365)    /* les événements CONTINENTAUX (Année, Moissons) sont vastes → bien plus rares */
+#define DIR_T_HOT       0.50f        /* T au-dessus → APAISER (abaissé : les stabilisateurs jouent dès la tension) */
 #define DIR_T_COLD      0.32f        /* T en dessous → REMUER */
 #define DIR_NEG_CAP     3            /* ≤ 3 événements négatifs / province / siècle */
 #define DIR_CENTURY    (100*365)
@@ -783,18 +784,24 @@ static void director_tick(EventCtx *cx, int days){
     int hi = want_destab?DIR_STAB_FIRST:DIR_EV_COUNT;
     int span=hi-lo; if (span<1) return;
     int off=(int)(frand(&cx->ev->rng)*(float)span); if (off>=span) off=span-1;
+    /* VARIÉTÉ (rééquilibrage) : parmi les éligibles, on prend le MOINS JOUÉ (et non
+     * le premier) — sinon l'Année Sans Été, presque toujours éligible (continent-large),
+     * monopolisait. L'ordre de balayage tourne (off) → départage stable et déterministe. */
+    int pick=-1, pick_subj=-1, pick_fired=2147483647;
     for (int k=0;k<span;k++){
         int id=lo + (off+k)%span;
         if (D->fam_active_until[id] > day) continue;     /* jamais deux du même type actifs */
         int subject=-1;
-        if (dir_eligible(cx,id,day,&subject)){
-            dir_apply(cx,id,subject,day);
-            D->fam_active_until[id]=day+DIR_FAM_DAYS;
-            D->fired[id]++; if (want_destab) D->fired_destab++; else D->fired_stab++;
-            cx->ev->last_id=-1; cx->ev->last_name=director_event_name(id); cx->ev->n_fired++;
-            return;                                       /* un seul événement dirigé par scan */
+        if (dir_eligible(cx,id,day,&subject) && D->fired[id] < pick_fired){
+            pick_fired=D->fired[id]; pick=id; pick_subj=subject;
         }
     }
+    if (pick<0) return;                                  /* rien d'éligible ce scan */
+    dir_apply(cx,pick,pick_subj,day);
+    /* les événements continentaux (vastes) se reposent BEAUCOUP plus longtemps. */
+    D->fam_active_until[pick] = day + ((pick==DIR_ANNEE||pick==DIR_MOISSONS)?DIR_FAM_DAYS_WIDE:DIR_FAM_DAYS);
+    D->fired[pick]++; if (want_destab) D->fired_destab++; else D->fired_stab++;
+    cx->ev->last_id=-1; cx->ev->last_name=director_event_name(pick); cx->ev->n_fired++;
 }
 
 /* ===================================================================== */
