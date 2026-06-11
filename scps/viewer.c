@@ -4370,18 +4370,21 @@ int main(int argc, char **argv) {
             if (!over_panel(hmx,hmy,win_w,win_h,selected) && hcx>=0&&hcy>=0&&hcx<SCPS_W&&hcy<SCPS_H){  /* P0.2 : pas de hover carte sous un panneau */
                 const Cell *hc=scps_cellc(world,hcx,hcy);
                 if (hc->sea){
-                    char sw[64]; const char *dir="";
+                    /* §E — la mer LISIBLE : le MOT de la classe (table FR/EN), et pour
+                     * les eaux qui portent, le SENS du courant — jamais un vecteur nu. */
+                    const char *cls = hc->sea==SEA_CABOTAGE?tr(STR_MER_CABOTAGE):
+                                      hc->sea==SEA_MORTE   ?tr(STR_MER_MORTE):
+                                      hc->sea==SEA_VIVE    ?tr(STR_MER_VIVE):
+                                                            tr(STR_MER_COURANT);
+                    char sw[96];
                     if (hc->sea==SEA_COURANT||hc->sea==SEA_VIVE){
                         int ax=hc->cur_vx, ay=hc->cur_vy;
-                        dir = (abs(ax)>=abs(ay)) ? (ax>=0?" vers l'est":" vers l'ouest")
-                                                 : (ay>=0?" vers le sud":" vers le nord");
+                        const char *dir = (abs(ax)>=abs(ay)) ? (ax>=0?tr(STR_MER_DIR_EST):tr(STR_MER_DIR_OUEST))
+                                                             : (ay>=0?tr(STR_MER_DIR_SUD):tr(STR_MER_DIR_NORD));
+                        tr_fmt(sw,sizeof sw, STR_MER_DIR_FMT, cls, dir);
+                    } else {
+                        snprintf(sw,sizeof sw,"%s",cls);
                     }
-                    snprintf(sw,sizeof sw,"%s%s",
-                             hc->sea==SEA_CABOTAGE?"cabotage — lent mais sûr":
-                             hc->sea==SEA_MORTE   ?"eaux mortes — rien ne pousse un navire":
-                             hc->sea==SEA_VIVE    ?"eaux vives":
-                                                   "courant favorable",
-                             (hc->sea==SEA_COURANT||hc->sea==SEA_VIVE)?dir:"");
                     draw_text(ren,g_font_small,hmx+14,hmy+10,COL_PARCH,sw);
                 }
             }
