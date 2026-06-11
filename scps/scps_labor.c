@@ -31,6 +31,11 @@
  * bouche universelle) par 100 enrôlés et par jour. Démobiliser prend son sens. */
 #define SOLDE_GOLD_PER100 0.5f
 #define SOLDE_FOOD_PER100 1L
+/* I2 — LE SALAIRE DES JOBS : chaque slot REMPLI (100 employés) coûte 0.02 or/j au
+ * trésor labor (0.6/mois ; 50 slots = 30/mois) → l'industrialisation du domaine porte
+ * une masse salariale. Impayé → le staffing GÈLE (plus d'embauche ; pas de licenciement
+ * brutal). C'est le pendant « civil » de la solde de l'armée (SOLDE_GOLD_PER100). */
+#define WAGE_GOLD_PER100  0.02f
 #define COLONIZE_MAT     100
 #define COLONIZE_FOOD    50
 #define POP_DEV_BASE     1.0f
@@ -551,6 +556,7 @@ static long prov_free_pop(const LProvince *p){
  * slot vide : sans effet. C'est lui qui fait MONTER la prod quand la pop croît ou
  * qu'un bâtiment se développe → les flux VIVENT. */
 static void labor_staff(LaborEcon *e){
+    if (e->staffing_frozen) return;   /* I2 — masse salariale impayée : on n'embauche plus (les slots tenus restent) */
     for (int i=0;i<e->n_prov;i++){
         LProvince *p=&e->prov[i];
         long free_slots = prov_free_pop(p)/POP_PER_SLOT;
@@ -642,7 +648,16 @@ void labor_tick(LaborEcon *e){
       e->solde_acc += SOLDE_GOLD_PER100*(float)(labor_pop_in_army(e)/POP_PER_SLOT);
       long sg=(long)e->solde_acc; e->solde_acc-=(float)sg;
       e->stock[LR_GOLD] -= sg;
-      if (e->stock[LR_GOLD]<0) e->stock[LR_GOLD]=0; }   /* l'armée impayée ne crée pas de dette (pas encore de désertion) */
+      if (e->stock[LR_GOLD]<0) e->stock[LR_GOLD]=0;   /* l'armée impayée ne crée pas de dette (pas encore de désertion) */
+
+      /* I2 — SALAIRE DES JOBS : la masse salariale des slots remplis sort chaque jour.
+       * Impayée (le trésor ne couvre pas) → on GÈLE l'embauche au tick suivant (le
+       * staffing s'arrête, sans licencier) ; l'or ne tombe pas en dette négative. */
+      e->wage_acc += WAGE_GOLD_PER100*(float)(labor_pop_employed(e)/POP_PER_SLOT);
+      long wg=(long)e->wage_acc; e->wage_acc-=(float)wg;
+      e->staffing_frozen = (wg > e->stock[LR_GOLD]);
+      e->stock[LR_GOLD] -= wg;
+      if (e->stock[LR_GOLD]<0) e->stock[LR_GOLD]=0; }
 
     /* 5. MARCHÉ : l'offre de matériaux du tick met à jour le prix. */
     e->market.supply = fmaxf(1.f, supply_mat);

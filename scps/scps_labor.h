@@ -92,6 +92,8 @@ typedef struct {
     long      treasury;         /* or (miroir de stock[LR_GOLD] — LE trésor unique E0.3) */
     float     tax_acc;          /* fractions de taxes en attente (créditées par entiers) */
     float     solde_acc;        /* fractions de solde en attente (débitées par entiers) */
+    float     wage_acc;         /* I2 — fractions du salaire des jobs (débitées par entiers) */
+    bool      staffing_frozen;  /* I2 — masse salariale impayée → on n'embauche plus (pas de licenciement) */
     /* géo précalculée par province du monde (relue, jamais posée) */
     float     g_fert[SCPS_MAX_PROV];   /* fertilité moyenne [0..1] */
     float     g_flow[SCPS_MAX_PROV];   /* flux commercial (carrefour) */

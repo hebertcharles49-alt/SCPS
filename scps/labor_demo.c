@@ -329,6 +329,32 @@ int main(int argc, char **argv){
         } else ok("(OOM capitale — ignoré)", true);
     }
 
+    /* ═══ I2 — LE SALAIRE DES JOBS (masse salariale + gel à l'impayé) ═══ */
+    printf("\n── I2. Le salaire des jobs : masse salariale, gel du staffing à l'impayé ──\n");
+    {
+        LaborEcon *le=malloc(sizeof(LaborEcon));
+        if (le){
+            labor_init(le,w); labor_seed_start(le,0);
+            for (int t=0;t<6;t++) labor_tick(le);            /* peuple les slots */
+            long emp0=labor_pop_employed(le);
+            ok("I2 : le domaine EMPLOIE (slots remplis > 0, masse salariale payée)",
+               emp0>0 && !le->staffing_frozen);
+            /* on VIDE les jobs (la pop redevient libre) puis on GÈLE, trésor plein
+             * (on ISOLE l'effet du gel) : le tick ne ré-embauche PAS. */
+            for (int i=0;i<le->n_prov;i++) for (int b=0;b<le->prov[i].n_bld;b++) le->prov[i].bld[b].jobs_filled=0;
+            le->staffing_frozen=true; le->stock[LR_GOLD]=10000000L;
+            labor_tick(le);
+            long emp_frozen=labor_pop_employed(le);
+            ok("I2 : staffing GELÉ → aucune ré-embauche (les slots vidés le restent)", emp_frozen==0);
+            /* on DÉGÈLE, trésor plein : la masse salariale est payée → le staffing regarnit. */
+            le->staffing_frozen=false; le->stock[LR_GOLD]=10000000L;
+            labor_tick(le);
+            ok("I2 : trésor plein → le gel se lève, le staffing REGARNIT (emploi remonte)",
+               labor_pop_employed(le)>emp_frozen);
+            free(le);
+        } else { ok("(OOM I2 — ignoré)",true); ok("(idem)",true); ok("(idem)",true); }
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");
