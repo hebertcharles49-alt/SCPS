@@ -102,6 +102,7 @@ typedef struct {
     int      next_interior_day;  /* §leviers : cadence des leviers intérieurs (mater/former/purger) */
     int      next_embargo_day;   /* §leviers : cadence de la guerre commerciale (Mercantile) */
     int      next_purge_ok_day;  /* §leviers : la purge est RARE — long verrou par pays */
+    int      next_audit_day;     /* I5 — l'audit des offices : cooldown 5 ans par pays */
     int      peace_lock_until;   /* après une consolidation : pas de guerre avant */
     bool     can_enslave;        /* §4c : l'Économie servile (TECH_ESCLAVAGE) débloquée ? */
     bool     has_creuset;        /* §leviers : Droit d'intégration (TECH_INTEGRATION) — forme mieux */

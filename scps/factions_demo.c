@@ -211,6 +211,22 @@ int main(void){
         ok("l'âge des Soulèvements s'avance pour les Communautaires", age_patron(5)==FAC_COMMUNAUTAIRE);
     }
 
+    /* ═══ I5 — L'AUDIT DES OFFICES : réprimer la capture (corr −20) ══════ */
+    printf("\n── I5. L'audit des offices : l'État réprime la capture (corruption −20) ──\n");
+    {
+        faction_levers_reset();
+        int cid=3;
+        for (int k=0;k<13;k++) faction_concede(cid, FAC_MARCHAND);   /* les Marchands gorgent l'État */
+        int corr0=faction_corruption_0_100(cid);
+        ok("la capture répétée CORROMPT l'État (corruption > 50)", corr0>50);
+        int ret=faction_audit(cid);
+        int corr1=faction_corruption_0_100(cid);
+        printf("   corruption %d → audit → %d (rendu AVANT = %d)\n", corr0, corr1, ret);
+        ok("l'audit rend la corruption AVANT et la RÉPRIME (~−20 points)",
+           ret==corr0 && corr1<=corr0-18 && corr1<corr0);
+        ok("l'audit n'efface pas tout d'un coup (la capture résiduelle demeure)", corr1>0);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

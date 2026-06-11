@@ -117,6 +117,7 @@ float faction_grievance(int cid, EthosFaction f);                 /* 0-1 : la ra
 void         faction_concede(int cid, EthosFaction winner);       /* une concession gorge la faction gagnante */
 float        faction_capture_total(int cid);                      /* le « rot » 0..1 (malus noble, K creusé) */
 int          faction_corruption_0_100(int cid);                   /* l'indice de Corruption (écran) */
+int          faction_audit(int cid);                              /* I5 — réprime la capture (−20 pts) ; rend la corruption AVANT */
 EthosFaction faction_captor(int cid);                             /* la faction qui tient l'État (survol) */
 
 /* La distribution EFFECTIVE = base (groupes) + stance des leviers, normalisée. C'est

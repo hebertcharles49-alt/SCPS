@@ -210,6 +210,19 @@ float faction_capture_total(int cid){
 }
 /* La métrique CORRUPTION (0-100) — le visage chiffré de la capture (l'écran). */
 int faction_corruption_0_100(int cid){ return (int)(100.f*faction_capture_total(cid)+0.5f); }
+/* I5 — L'AUDIT DES OFFICES : l'État RÉPRIME la capture (−20 points de corruption,
+ * raboté au prorata sur toutes les factions). Renvoie la corruption AVANT (0-100) —
+ * l'appelant (qui tient le trésor + la légitimité) en tire le coût et l'effet sur L. */
+int faction_audit(int cid){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY) return 0;
+    int before = faction_corruption_0_100(cid);
+    float raw=0.f; for (int f=0;f<FAC_COUNT;f++) raw+=g_capture[cid][f];
+    if (raw>1e-4f){
+        float keep = (raw-0.20f)/raw; if (keep<0.f) keep=0.f;   /* −0.20 de capture = −20 points */
+        for (int f=0;f<FAC_COUNT;f++) g_capture[cid][f]*=keep;
+    }
+    return before;
+}
 /* La faction qui TIENT l'État (capture la plus haute) — pour le survol. */
 EthosFaction faction_captor(int cid){
     if (cid<0||cid>=SCPS_MAX_COUNTRY) return FAC_COMMUNAUTAIRE;
