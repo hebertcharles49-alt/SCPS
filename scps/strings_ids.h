@@ -231,5 +231,25 @@
     X(STR_MER_DIR_OUEST,"vers le couchant") \
     X(STR_MER_DIR_SUD,  "vers le sud") \
     X(STR_MER_DIR_NORD, "vers le nord") \
+    X(STR_EDI_TRIBUNAL,     "Tribunal") \
+    X(STR_EDI_CHANCELLERIE, "Chancellerie") \
+    X(STR_EDI_ACADEMIE,     "Académie") \
+    X(STR_EDI_GARNISON,     "Garnison") \
+    X(STR_EDI_FORTERESSE,   "Forteresse") \
+    X(STR_EDI_CITADELLE,    "Citadelle") \
+    X(STR_EDI_PORT,         "Port") \
+    X(STR_EDI_CARAVANSERAIL,"Caravansérail") \
+    X(STR_EDI_MARCHE,       "Marché") \
+    X(STR_EDI_ENTREPOT,     "Entrepôt") \
+    X(STR_EDI_GRENIER,      "Grenier") \
+    X(STR_EDI_IRRIGATION,   "Irrigation") \
+    X(STR_EDI_AQUEDUC,      "Aqueduc") \
+    X(STR_EDI_SANCTUAIRE,   "Sanctuaire") \
+    X(STR_EDI_TEMPLE,       "Temple") \
+    X(STR_EDI_CATHEDRALE,   "Cathédrale") \
+    X(STR_EDI_BIBLIOTHEQUE, "Bibliothèque") \
+    X(STR_EDI_MONASTERE,    "Monastère") \
+    X(STR_EDI_COMPTOIR,     "Comptoir") \
+    X(STR_EDI_BANQUE,       "Banque") \
 
 #endif /* SCPS_STRINGS_IDS_H */

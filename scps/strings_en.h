@@ -226,4 +226,24 @@
     X(STR_MER_DIR_OUEST,"westward") \
     X(STR_MER_DIR_SUD,  "southward") \
     X(STR_MER_DIR_NORD, "northward") \
+    X(STR_EDI_TRIBUNAL,     "Courthouse") \
+    X(STR_EDI_CHANCELLERIE, "Chancellery") \
+    X(STR_EDI_ACADEMIE,     "Academy") \
+    X(STR_EDI_GARNISON,     "Garrison") \
+    X(STR_EDI_FORTERESSE,   "Fortress") \
+    X(STR_EDI_CITADELLE,    "Citadel") \
+    X(STR_EDI_PORT,         "Port") \
+    X(STR_EDI_CARAVANSERAIL,"Caravanserai") \
+    X(STR_EDI_MARCHE,       "Market") \
+    X(STR_EDI_ENTREPOT,     "Warehouse") \
+    X(STR_EDI_GRENIER,      "Granary") \
+    X(STR_EDI_IRRIGATION,   "Irrigation") \
+    X(STR_EDI_AQUEDUC,      "Aqueduct") \
+    X(STR_EDI_SANCTUAIRE,   "Shrine") \
+    X(STR_EDI_TEMPLE,       "Temple") \
+    X(STR_EDI_CATHEDRALE,   "Cathedral") \
+    X(STR_EDI_BIBLIOTHEQUE, "Library") \
+    X(STR_EDI_MONASTERE,    "Monastery") \
+    X(STR_EDI_COMPTOIR,     "Trading Post") \
+    X(STR_EDI_BANQUE,       "Bank") \
 
