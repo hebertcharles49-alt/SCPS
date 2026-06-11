@@ -578,6 +578,8 @@ int main(int argc, char **argv){
     double tot_hub_cs=0, tot_hub_all=0;   /* P3.20 : part des cités-états dans le commerce (via Centres) */
     long tot_captured=0, tot_worstcorr=0; int worlds_with_capture=0;   /* §C3 : le rot, agrégé */
     int  worlds_with_ironorder=0, worlds_with_uprising=0;
+    int  worlds_hegemon_cracked=0;   /* A5 : sims où un hégémon ≥10 rég est passé sous Stab 50 OU a subi coup/renversement */
+    long tot_hegemon_floor=0; int n_hegemon_sims=0;   /* Stab plancher des hégémons (la fragilité A1 les rend mortels) */
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
     double tot_supplies=0, tot_saildays=0;
     long tot_raids=0, tot_prises=0, tot_navals=0, tot_disarm=0, tot_warpir=0, tot_balafres=0;
@@ -635,6 +637,7 @@ int main(int argc, char **argv){
         int war_onsets=0, prev_wars=0, peak_wars=0;
         int peak_rev=0, peak_rev_year=0;
         int min_living=c0;
+        int hegemon_max_reg=0, hegemon_stab_floor=100;   /* A5 : le plus grand empire & son plancher de Stabilité */
         /* suivi des transferts de propriété : conquête vs colonisation */
         int conq_prov=0;                              /* provinces TRANSFÉRÉES à la paix (cumul) — la propriété ne change qu'au règlement */
         int16_t prev_owner[SCPS_MAX_REG];
@@ -705,6 +708,15 @@ int main(int argc, char **argv){
             if (rv>peak_rev){ peak_rev=rv; peak_rev_year=s.year; }
             int lv = living_countries(w, s.econ);
             if (lv<min_living) min_living=lv;
+            /* A5 — L'HÉGÉMON EST-IL MORTEL ? Le plus grand empire, dès qu'il tient
+             * ≥10 régions, voit-il sa Stabilité passer sous 50 ? (la fragilité A1
+             * rend le géant coercitif cassable — avant, il restait lisse à jamais). */
+            { int hr=0, ht=top_power(w,s.econ,&hr);
+              if (ht>=0 && hr>=10){
+                  int hs=country_readout(s.wp,s.ts,w,ht).m_stabilite.value;
+                  if (hr>hegemon_max_reg) hegemon_max_reg=hr;
+                  if (hs<hegemon_stab_floor) hegemon_stab_floor=hs;
+              } }
             /* instantané tous les 50 ans — les courbes DANS LE TEMPS :
              * population · armée totale · provinces colonisées · prises de force */
             if (si<4 && s.year>=snap[si]){
@@ -1072,6 +1084,17 @@ int main(int argc, char **argv){
         tot_concession += s.rs->n_concession; tot_crushed += s.rs->n_crushed; tot_revdead += s.rs->pop_lost;
         if (age_year[AGE_ORDRE_FER]>=0)   worlds_with_ironorder++;
         if (age_year[AGE_SOULEVEMENTS]>=0) worlds_with_uprising++;
+        /* A5 — L'HÉGÉMON MORTEL : ce monde a-t-il vu un grand empire (≥10 rég)
+         * passer sous Stabilité 50 OU subir un coup/renversement ? (preuve que
+         * la fragilité A1 mord : le géant n'est plus éternellement lisse.) */
+        { bool cracked = (hegemon_max_reg>=10 && hegemon_stab_floor<50)
+                       || s.rs->n_coup>0 || s.dp->n_renvers>0;
+          if (cracked) worlds_hegemon_cracked++;
+          if (hegemon_max_reg>=10){ tot_hegemon_floor+=hegemon_stab_floor; n_hegemon_sims++; }
+          printf("              hégémon (A5) : 1er empire %d rég · Stabilité plancher %d%s\n",
+                 hegemon_max_reg, hegemon_max_reg>=10?hegemon_stab_floor:-1,
+                 cracked?" — CRAQUÉ (sous 50 ou coup/renversement)":"");
+        }
         if (hash_mode) printf("HASH %u %08x\n", seed, chronicle_sim_hash(seed, &s, w));
     }
 
@@ -1132,6 +1155,8 @@ int main(int argc, char **argv){
     printf("   morts au combat (révoltes) .. %ld   (moy. %.0f/sim)\n", tot_revdead, (double)tot_revdead/nsims);
     printf("   sims atteignant les Soulèvements : %d/%d   l'Ordre de Fer : %d/%d\n",
            worlds_with_uprising, nsims, worlds_with_ironorder, nsims);
+    printf("   hégémon MORTEL (A5) .......... %d/%d sims où un empire ≥10 rég est passé sous Stab 50 OU a subi coup/renversement · Stab plancher moy %ld (la fragilité A1 mord)\n",
+           worlds_hegemon_cracked, nsims, n_hegemon_sims? tot_hegemon_floor/n_hegemon_sims : -1);
     printf("══════════════════════════════════════════════════════════════════════\n");
 
     free(w); free(s.econ); free(s.wp); free(s.wl); free(s.net); free(s.ts); free(s.sc);
