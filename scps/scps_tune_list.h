@@ -18,6 +18,8 @@
     X(MANUF_UPKEEP_DAY,       0.05f) \
     X(COURT_FLOOR,         4000.0f) \
     X(COURT_RATE,             0.010f) \
+    X(ADMIN_BASE,             0.4f) \
+    X(ADMIN_EXP,              1.3f) \
     /* §G0.1 — le directeur (les fenêtres de température) */ \
     X(DIR_T_HOT,              0.50f) \
     X(DIR_T_COLD,             0.32f) \

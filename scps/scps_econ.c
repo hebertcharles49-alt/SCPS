@@ -776,6 +776,10 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * hoarding). 1 %/mois du surplus. */
 #define COURT_FLOOR         4000.f
 #define COURT_RATE          0.010f
+/* I3 — ADMIN : coût mensuel d'un pays = ADMIN_BASE × n_régions^ADMIN_EXP × IPM
+ * (2 rég ≈ 1 · 16 rég ≈ 15 · 25 rég ≈ 27). Réparti sur ses régions. */
+#define ADMIN_BASE             0.4f
+#define ADMIN_EXP              1.3f
 static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien/encadrement impayé) */
 static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
@@ -880,7 +884,14 @@ void econ_tick(WorldEconomy *e, float dt) {
     }
 #endif
 
-    for (int rid=0; rid<e->n_regions; rid++) {
+    /* I3 — ADMIN : compte les régions par pays (le multiplicateur de TAILLE :
+     * l'hégémon paie sa bureaucratie, les petits respirent). */
+    int rcount[SCPS_MAX_COUNTRY]={0};
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
+        if (e->region[r].colonized && e->region[r].owner>=0 && e->region[r].owner<SCPS_MAX_COUNTRY)
+            rcount[e->region[r].owner]++;
+
+    for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++) {
         RegionEconomy *re=&e->region[rid];
         if (!re->active || !re->colonized) continue;
 
@@ -1079,6 +1090,14 @@ void econ_tick(WorldEconomy *e, float dt) {
         { float cf=tune_f("COURT_FLOOR",COURT_FLOOR);
           if (re->treasury > cf)
               re->treasury -= (re->treasury - cf) * tune_f("COURT_RATE",COURT_RATE) * (dt*12.f); }
+        /* I3 — ADMIN : la part de cette région dans la bureaucratie du pays. Total pays =
+         * base × n^exp ; par région = base × n^(exp−1). Croît avec la TAILLE (×IPM). */
+        if (rid<SCPS_MAX_REG && re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){
+            int nreg=rcount[re->owner]; if (nreg<1) nreg=1;
+            float admin = tune_f("ADMIN_BASE",ADMIN_BASE)
+                        * powf((float)nreg, tune_f("ADMIN_EXP",ADMIN_EXP)-1.f) * ipmf * (dt*12.f);
+            re->treasury = fmaxf(0.f, re->treasury - admin);
+        }
 
         /* §B (TRÉSOR MORT) — l'État REDÉPENSE : il ne hoarde plus, il CIRCULE. Une masse
          * salariale réabonde la richesse des classes AU PRORATA de l'impôt qu'elles ont
