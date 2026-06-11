@@ -5,7 +5,7 @@
  *
  * Rejoue les quatre scénarios du moteur vérifié (scps_core) À TRAVERS la
  * membrane, et prouve :
- *   1. Test décisif de fidélité : coercitif-fragile → « Tenue · Contrainte »
+ *   1. Test décisif de fidélité : coercitif-fragile → « Tenue · Tyrannique »
  *      (stable en apparence, condamné en vérité) — la signature SCPS vivante
  *      ET cachée, sans un seul nombre.
  *   2. Couverture du lexique : aucune bande sans mot ni définition.
@@ -59,10 +59,14 @@ int main(void) {
     CountryReadout rC = show("Ancien régime divers (France 1789)",    C, 3.f, 4.f, 0.f);
     CountryReadout rD = show("Empire homogène écrasé",                D, 2.f, 1.f, 6.f);
 
-    /* ---- 1. TEST DÉCISIF : coercitif-fragile = Tenue · Contrainte ---- */
+    /* ---- 1. TEST DÉCISIF : coercitif-fragile = Tenue · (Tyrannique) ----
+     * La membrane ne MENT pas que l'ordre est solide (la Stabilité reste
+     * plafonnée à « Tenue » malgré un SI élevé) ; mais avec la fragilité A1,
+     * un ordre H=9/L=1 (URSS tardive/apartheid) se lit enfin « Tyrannique »
+     * et non « Contrainte » — l'ancienne forme sous-estimait la poigne. */
     printf("\n── Test décisif de fidélité ──\n");
-    ok("coercitif-fragile → Stabilité « Tenue »",  rB.stabilite == ST_TENU);
-    ok("coercitif-fragile → Assise « Contrainte »", rB.assise    == AS_CONTRAINTE);
+    ok("coercitif-fragile → Stabilité « Tenue » (le SI haut ne berne pas)",  rB.stabilite == ST_TENU);
+    ok("coercitif-fragile extrême (H=9,L=1) → Assise « Tyrannique » (A1)", rB.assise == AS_TYRANNIQUE);
     ok("coercitif-fragile → augure « par la peur seule »",
        rB.augure && strstr(rB.augure, "peur"));
 

@@ -10,7 +10,13 @@
  *
  * Les quatre scénarios d'ordre interne exercent les quatre modes de §2.5 :
  * consenti, coercitif-fragile, submergé→révolution, submergé→sécession.
- */
+ *
+ * A1 (arc « le monde se fracture ») — la FRAGILITÉ a changé de forme. Elle ne se
+ * lit plus comme un ratio coercition/R (algébriquement plafonné sous 5 pour les
+ * autocraties à K élevé) mais comme une sigmoïde des ÉCARTS de l'ordre :
+ *     fragilité = 10 · σ( 0.9·(H−L) + 0.3·(H−P) − 1.5 )
+ * Les valeurs attendues des cas (A) et (B) sont recalculées en conséquence ; le
+ * banc monde_reel (make monde_reel) étalonne la forme sur des régimes réels. */
 #include "scps_core.h"
 #include <stdio.h>
 #include <math.h>
@@ -104,7 +110,9 @@ int main(void) {
     check("dereal",    oA.dereal,     0.000f);
     check("S",         oA.S,          1.705f);
     check("SI",        oA.SI,         9.821f);
-    check("fragilité", oA.fragilite,  0.249f);
+    /* A1 — fragilité = 10·σ(0.9(H−L)+0.3(H−P)−1.5) = 10·σ(0.9·−6+0.3·−2−1.5)
+     *     = 10·σ(−7.5) ≈ 0.006 (H=2 ≪ L=8 : la poigne ne porte rien). */
+    check("fragilité", oA.fragilite,  0.006f);
     check_mode("mode", scps_mode(&oA), SCPS_CONSENTI);
 
     /* (B) COERCITIF-FRAGILE (type URSS tardive / apartheid) — SI≥5 mais tenu
@@ -114,7 +122,9 @@ int main(void) {
     ScpsOrder oB = scps_order(&B);
     dump_order(&B, &oB);
     check("SI (≥5, tient)",  oB.SI,        8.677f);
-    check("fragilité (≥5)",  oB.fragilite, 5.612f);
+    /* A1 — H=9 ≫ L=1, P=5 : 10·σ(0.9·8+0.3·4−1.5)=10·σ(6.9)≈9.99. L'URSS
+     *     tardive sort ENFIN franchement coercitive (l'ancienne forme plafonnait). */
+    check("fragilité (≥5)",  oB.fragilite, 9.990f);
     check_mode("mode", scps_mode(&oB), SCPS_COERCITIF_FRAGILE);
 
     /* (C) SUBMERGÉ → SÉCESSION (ancien régime / France 1789 : très divers,

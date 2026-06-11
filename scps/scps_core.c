@@ -70,10 +70,17 @@ ScpsOrder scps_order(const ScpsState *s) {
     o.fracture      = 0.55f * (s->D_bar / 10.f) * (10.f - s->L);
     o.S             = o.pression + 0.5625f * o.dereal + o.fracture;
     o.SI            = 10.f * scps_sigmoid(0.8f * (o.R - o.S));
-    /* R ≥ ~0.9 dès que K,F>0 ; garde-fou anti-division par zéro pour le cas
-     * limite K=F=0 (état sans aucune institution). */
-    float Rden      = o.R > 1e-6f ? o.R : 1e-6f;
-    o.fragilite     = 10.f * (0.6f * o.coercition) / Rden;
+    /* FRAGILITÉ — nouvelle forme (arc « le monde se fracture », A1). L'ancienne
+     * (10·0.6·coercition/R) était ALGÉBRIQUEMENT plafonnée sous 5 pour toute
+     * autocratie à K élevé : coercition ≤ K' et R ∝ K' la regonflait au
+     * dénominateur, donc un géant coercitif (URSS tardive, Chine) ne pouvait
+     * JAMAIS sortir fragile — le diagnostic mentait. On la lit désormais sur les
+     * ÉCARTS de l'ordre : la poigne qui dépasse le consentement (H−L) et
+     * l'ouverture (H−P), une sigmoïde centrée pour que H≈L≈P donne ~consenti.
+     *     fragilité = 10 · σ( 0.9·(H−L) + 0.3·(H−P) − 1.5 )
+     * Étalonnée sur le banc monde_reel : Chine 6.5 · Russie 9.6 · Iran 9.2 →
+     * COERCITIF_FRAGILE ; Scandinavie/UE-cœur/Japon < 1 → CONSENTI. */
+    o.fragilite     = 10.f * scps_sigmoid(0.9f*(s->H - s->L) + 0.3f*(s->H - s->P) - 1.5f);
     return o;
 }
 

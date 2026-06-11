@@ -86,6 +86,13 @@ CORE_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_core_demo.o
 core_demo: $(CORE_DEMO_OBJS)
 	$(CC) $(CORE_DEMO_OBJS) -o $@ -lm
 
+# ---- Banc d'étalonnage de la fragilité (A1) sur des régimes réels ---------
+# La forme 10·σ(0.9(H−L)+0.3(H−P)−1.5) doit TRIER : autocraties → coercitif-
+# fragile, démocraties → consenti, submergés → révolution/sécession.
+MONDE_REEL_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_monde_reel.o
+monde_reel: $(MONDE_REEL_OBJS)
+	$(CC) $(MONDE_REEL_OBJS) -o $@ -lm
+
 # ---- Membrane diégétique (flottants SCPS → mots) — banc d'essai headless --
 # Prouve le test décisif « Tenue · Contrainte » et la couverture du lexique.
 READOUT_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
@@ -512,11 +519,11 @@ social_demo: $(SOCIAL_DEMO_OBJS)
 
 clean:
 	rm -rf $(OBJDIR) scps_viewer scps_viewer.exe scps_dump scps_batch econ_demo \
-	       tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo core_demo readout_demo species_demo \
+	       tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo core_demo monde_reel readout_demo species_demo \
 	       chronicle chronicle_asan econ_scan \
 	       out_*.ppm montage.bmp
 
-.PHONY: all scps run_scps clean core_demo readout_demo species_demo scps_dump scps_batch asan \
+.PHONY: all scps run_scps clean core_demo monde_reel readout_demo species_demo scps_dump scps_batch asan \
         econ_demo tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo
 
 # Inclusion des fichiers de dépendances générés (-MMD). Le tiret ignore leur
