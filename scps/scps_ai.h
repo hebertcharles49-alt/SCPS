@@ -111,6 +111,8 @@ typedef struct {
      * la RÉSERVE spéculative tenue dans ses Entrepôts (retirée du marché ouvert). */
     float    spec_avg[RES_COUNT];
     float    hoard[RES_COUNT];
+    uint8_t  spec_cd[RES_COUNT];   /* B1 — cooldown par bien (ticks mensuels) : un bien
+                                    * agité au tick t se repose au tick t+1 (anti-oscillation). */
 
     uint32_t rng;            /* graine perso (jitter, départage) */
     AiStats  stats;

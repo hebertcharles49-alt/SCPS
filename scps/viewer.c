@@ -584,6 +584,19 @@ static void sim_campaign_year(Sim *s, World *w) {
         if (campaign_active(s->camp,c) && campaign_phase(s->camp,c)!=FA_IDLE) continue;
         if (warhost_units(s->host, c) <= 0) continue;
         int frontier=-1, target=-1;
+        /* B5 — PRIORITÉ DE LIBÉRATION : reprendre par les armes une de mes régions
+         * tenue par un occupant ennemi (le siège mené à terme y lève l'occupation). */
+        for (int r=0; r<s->econ->n_regions && frontier<0; r++) {
+            if (s->econ->region[r].owner!=c) continue;
+            int occ=s->dp->occupier[r];
+            if (occ<0 || occ==c || diplo_status(s->dp,c,occ)!=DIPLO_WAR) continue;
+            for (int sn=0; sn<s->econ->n_regions; sn++) {
+                if (!s->econ->adj[r][sn]) continue;
+                if (s->econ->region[sn].owner!=c || s->dp->occupier[sn]>=0) continue;
+                frontier=sn; target=r; break;
+            }
+        }
+        /* sinon : une frontière chaude (région ennemie adjacente — l'offensive). */
         for (int r=0; r<s->econ->n_regions && frontier<0; r++) {
             if (s->econ->region[r].owner!=c) continue;
             for (int sn=0; sn<s->econ->n_regions; sn++) {
@@ -3072,8 +3085,9 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 9u            /* v9 : arc « une économie » — LProvince.region, accumulateurs
-                                    * de taxes/solde (LaborEcon), solde d'armée. Ère antérieure. */
+#define SAVE_VERSION 10u           /* v10 : arc « le monde se fracture » — AiActor.spec_cd[] (B1).
+                                    * v9 était l'arc « une économie » (LProvince.region, accumulateurs
+                                    * taxes/solde, solde d'armée). Ère antérieure à chaque bump. */
 #define SAVE_F_CRYPT 1u
 typedef struct {
     uint32_t magic, version;

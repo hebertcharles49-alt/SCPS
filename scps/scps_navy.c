@@ -485,16 +485,25 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
             }
         }
 
-        /* 6. LE BLOCUS : mouillé devant le port ennemi, il COUPE ses liens. */
+        /* 6. LE BLOCUS : mouillé devant le port ennemi, il COUPE ses liens.
+         * B6 — le BLOCUS FANTÔME : on ne ferme les liens et ne COMPTE les jours
+         * QUE si la guerre est ACTIVE entre c et la cible (DIPLO_WAR). Sans cette
+         * garde au point d'accumulation, un blocus survivait à la paix (la mission
+         * n'était relue qu'au prochain tick) et gonflait blocus_days hors guerre —
+         * 27-34k jours fantômes sans une seule bataille au balayage. */
         if (n->mission==NAVY_BLOCUS && n->mission_target>=0){
             int t=n->mission_target;
-            for (int i=0;i<rn->n;i++){
-                TradeRoute *rt=&rn->route[i];
-                if (!rt->open||!rt->maritime) continue;
-                if (econ->region[rt->ra].owner==t || econ->region[rt->rb].owner==t)
-                    rt->pirate_press=99.f;                              /* le lien est tenu fermé */
+            if (t<SCPS_MAX_COUNTRY && diplo_status(dp,c,t)==DIPLO_WAR){
+                for (int i=0;i<rn->n;i++){
+                    TradeRoute *rt=&rn->route[i];
+                    if (!rt->open||!rt->maritime) continue;
+                    if (econ->region[rt->ra].owner==t || econ->region[rt->rb].owner==t)
+                        rt->pirate_press=99.f;                          /* le lien est tenu fermé */
+                }
+                n->blocus_days+=dt_days;
+            } else {
+                n->mission=NAVY_RADE; n->mission_target=-1;             /* la paix lève le blocus, net */
             }
-            n->blocus_days+=dt_days;
         }
     }
 }

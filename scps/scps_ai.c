@@ -1157,9 +1157,17 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
 /* ===================================================================== */
 /* E3 — L'IA STOCKEUSE : acheter bas vers l'entrepôt, vendre haut          */
 /* ===================================================================== */
-#define SPEC_BUY_BAND   0.80f   /* prix < 0.8 × moyenne mobile → acheter */
-#define SPEC_SELL_BAND  1.30f   /* prix > 1.3 × moyenne mobile → vendre */
+/* B1 — la spéculation LISSE, elle ne secoue pas. L'ancien réglage (25 % du stock
+ * aspiré, 50 % du magot dumpé par tick) faisait MONTER la variance des prix
+ * (σ 0.025→0.029) : l'IA s'auto-impactait. Désormais des gestes MENUS, bornés en
+ * volume, avec un cooldown par bien, bandes symétriques. */
+#define SPEC_BUY_BAND   0.80f   /* prix < 0.80 × moyenne mobile → acheter */
+#define SPEC_SELL_BAND  1.25f   /* prix > 1.25 × moyenne mobile → vendre (symétrique : 1/0.8) */
 #define SPEC_GOLD_FLOOR 350.f   /* le trésor JAMAIS saigné : la spéculation est un emploi du surplus */
+#define SPEC_VOL_FRAC   0.05f   /* B1 — au plus 5 % du stock régional par geste (était 25 %) */
+#define SPEC_VOL_ABS    50.f    /* B1 — et au plus 50 unités par geste (plafond dur) */
+#define SPEC_SELL_FRAC  0.15f   /* B1 — vente EN FILET : 15 % du magot par tick (était 50 %) */
+#define SPEC_COOLDOWN   1        /* B1 — repos d'un tick (≈30 j) après un geste sur un bien */
 void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
     if (!a || !econ) return;
     int hub = intertrade_country_centre(econ, a->cid);
@@ -1172,29 +1180,34 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
     for (int g=1; g<RES_COUNT; g++){
         float p=re->price[g];
         a->spec_avg[g] = (a->spec_avg[g]<=0.f)? p : a->spec_avg[g]*(11.f/12.f) + p*(1.f/12.f);
+        if (a->spec_cd[g]>0) a->spec_cd[g]--;   /* le repos s'écoule, même sans entrepôt */
     }
     if (re->n_entrepot<1) return;            /* sans Entrepôt : cap 200, pas de jeu */
     float space = ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;   /* l'aile spéculative */
     float held=0.f; for (int g=1;g<RES_COUNT;g++) held+=a->hoard[g];
     float cap_stock = ECON_STOCK_CAP_BASE + ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;
     for (int g=1; g<RES_COUNT; g++){
+        if (a->spec_cd[g]>0) continue;                        /* B1 — ce bien se repose */
         float p=re->price[g], xb=a->spec_avg[g];
         if (xb<=0.f || p<=0.f) continue;
         if (p < SPEC_BUY_BAND*xb && re->treasury > SPEC_GOLD_FLOOR && held < space){
-            float vol = fminf(re->stock[g]*0.25f, space-held);                       /* le bien QUITTE le marché ouvert */
-            vol = fminf(vol, (re->treasury-SPEC_GOLD_FLOOR)*0.25f/fmaxf(p,0.05f));   /* jamais la famine d'or */
+            float vol = fminf(re->stock[g]*SPEC_VOL_FRAC, space-held);                /* ≤ 5 % du stock — le bien QUITTE le marché */
+            vol = fminf(vol, SPEC_VOL_ABS);                                           /* ≤ 50 unités (plafond dur) */
+            vol = fminf(vol, (re->treasury-SPEC_GOLD_FLOOR)*0.25f/fmaxf(p,0.05f));    /* jamais la famine d'or */
             if (vol>=1.f){
                 re->stock[g]-=vol; a->hoard[g]+=vol; held+=vol;
                 re->treasury -= vol*p;
                 a->stats.spec_vol+=vol; a->stats.spec_gold-=vol*p; a->stats.spec_buys++;
+                a->spec_cd[g]=SPEC_COOLDOWN;
             }
         } else if (p > SPEC_SELL_BAND*xb && a->hoard[g]>=1.f){
-            float vol = a->hoard[g]*0.5f;
-            float room = cap_stock - re->stock[g]; if (vol>room) vol=room;           /* l'entrepôt ne déborde pas */
+            float vol = fminf(a->hoard[g]*SPEC_SELL_FRAC, SPEC_VOL_ABS);              /* filet : 15 % du magot, ≤ 50 u */
+            float room = cap_stock - re->stock[g]; if (vol>room) vol=room;            /* l'entrepôt ne déborde pas */
             if (vol>=1.f){
                 a->hoard[g]-=vol; re->stock[g]+=vol;                                  /* le bien REVIENT au marché */
                 re->treasury += vol*p;
                 a->stats.spec_vol+=vol; a->stats.spec_gold+=vol*p; a->stats.spec_sells++;
+                a->spec_cd[g]=SPEC_COOLDOWN;
             }
         }
     }

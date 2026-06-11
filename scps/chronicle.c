@@ -71,6 +71,23 @@ static void sim_campaign_year(Sim *s, World *w) {
         if (campaign_active(s->camp,c) && campaign_phase(s->camp,c)!=FA_IDLE) continue; /* déjà en route */
         if (warhost_units(s->host, c) <= 0) continue;                                   /* rien à projeter */
         int frontier=-1, target=-1;
+        /* B5 — PRIORITÉ DE LIBÉRATION : une de mes régions tenue par un occupant
+         * ENNEMI (occupier[r] hostile) est la cible n°1. J'y marche depuis une
+         * région voisine que je tiens ENCORE (et qui n'est pas elle-même occupée) :
+         * le siège mené à terme y LÈVE l'occupation (récolte plus bas → diplo_liberate).
+         * Sans ça, les armées ne ciblaient que l'offensive → 1100 occupations posées
+         * pour 1-4 levées : le sol repris ne l'était jamais par les armes. */
+        for (int r=0; r<s->econ->n_regions && frontier<0; r++) {
+            if (s->econ->region[r].owner!=c) continue;
+            int occ=s->dp->occupier[r];
+            if (occ<0 || occ==c || diplo_status(s->dp,c,occ)!=DIPLO_WAR) continue;
+            for (int sn=0; sn<s->econ->n_regions; sn++) {
+                if (!s->econ->adj[r][sn]) continue;
+                if (s->econ->region[sn].owner!=c || s->dp->occupier[sn]>=0) continue;
+                frontier=sn; target=r; break;                       /* libérer MA région */
+            }
+        }
+        /* sinon : une frontière chaude (région ENNEMIE adjacente — l'offensive). */
         for (int r=0; r<s->econ->n_regions && frontier<0; r++) {
             if (s->econ->region[r].owner!=c) continue;
             for (int sn=0; sn<s->econ->n_regions; sn++) {
