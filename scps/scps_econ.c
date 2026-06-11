@@ -776,7 +776,12 @@ float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRIC
  * à ~60 % de satisfaction (peu de surplus) : à 3× la montée journalier→bourgeois ne
  * s'amorce jamais. CALIBRÉ à la PREUVE (part bourgeoise qui dérive vers le haut en
  * région industrieuse) — la borne sert l'effet, pas la lettre. */
-#define PROMOTE_BASKET_MULT 1.4f
+#define PROMOTE_BASKET_MULT       1.4f   /* journalier → bourgeois : 1.4× le panier */
+#define PROMOTE_BASKET_MULT_ELITE 2.5f   /* B4 — bourgeois → élite : 2.5× (l'élite se MÉRITE,
+                                          * elle ne se gonfle plus à 13 % au même seuil que B) */
+#define PROMOTE_SAT_GATE          0.50f  /* B4 — jamais de promotion VERS une strate dont la
+                                          * satisfaction est < 50 % (on ne grossit pas une élite
+                                          * misérable — la cause du « 13 % à la pire satisfaction ») */
 static float   g_basket_pc[SCPS_MAX_REG][CLASS_COUNT];   /* panier/tête capté au tick */
 static uint8_t g_lowsat_streak[SCPS_MAX_REG][CLASS_COUNT];/* mois consécutifs de sat < 30 % */
 void econ_mobility_reset(void){
@@ -796,7 +801,7 @@ static void mobility_move(RegionEconomy *re, int from, int to, float frac){
  * L'élite a droit à de la marge (les bâtiments type K — admin/capitale — EMPLOIENT
  * des nobles : + d'élite est normal) ; le plafond ne coupe que l'emballement. */
 #define SHARE_CAP_BOURGEOIS 0.32f
-#define SHARE_CAP_ELITE     0.20f
+#define SHARE_CAP_ELITE     0.11f   /* B4 — resserré (0.20→0.11) : l'élite visait 5-9 %, pas 13-20 % */
 static void mobility_tick_region(RegionEconomy *re, int rid){
     bool manuf = re->n_bld>0;                              /* manufactures actives = débouché */
     float totp = re->strata[0].pop+re->strata[1].pop+re->strata[2].pop; if (totp<1.f) totp=1.f;
@@ -804,9 +809,14 @@ static void mobility_tick_region(RegionEconomy *re, int rid){
     for (int k=0;k<2;k++){
         int from=(k==0)?CLASS_LABORER:CLASS_BOURGEOIS, to=from+1;
         if (from==CLASS_LABORER && !manuf) continue;       /* sans atelier, pas d'accession bourgeoise */
+        /* B4 — la porte de SATISFACTION : on ne promeut JAMAIS vers une strate
+         * déjà sous 50 % (sinon on gonfle une élite misérable — le rouge du brief). */
+        if (re->strata[to].satisfaction < PROMOTE_SAT_GATE) continue;
         float pop=re->strata[from].pop; if (pop<1.f) continue;
         float wpc=re->strata[from].wealth/pop;
-        float thr=PROMOTE_BASKET_MULT*fmaxf(g_basket_pc[rid][from],0.05f);
+        /* B4 — seuils SÉPARÉS : 1.4× pour J→B, 2.5× pour B→É (l'élite se mérite). */
+        float mult=(k==0)?PROMOTE_BASKET_MULT:PROMOTE_BASKET_MULT_ELITE;
+        float thr=mult*fmaxf(g_basket_pc[rid][from],0.05f);
         if (wpc<=thr) continue;
         float excess=clampf((wpc-thr)/thr,0.f,1.f);
         float rate=(k==0)?PROMOTE_RATE:PROMOTE_RATE*0.2f;  /* bourgeois→élite : ÷5 */
