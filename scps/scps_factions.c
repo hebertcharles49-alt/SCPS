@@ -6,18 +6,11 @@
  * on en tire un profil de factions. Les passes suivantes feront agir ce profil.
  */
 #include "scps_factions.h"
-#include "scps_lang.h"      /* noms de factions face-joueur → STR_* (éditables/traduisibles) */
 #include <stdio.h>
 #include "scps_species.h"   /* SpeciesArchetype */
 #include <string.h>         /* memset (reset des stances) */
 
-const char *faction_name(EthosFaction f){
-    static const StrId ID[FAC_COUNT] = {
-        STR_FAC_CONQUERANT, STR_FAC_MARCHAND, STR_FAC_LEGISTE,
-        STR_FAC_GARDIEN, STR_FAC_TRANSGRESSEUR, STR_FAC_COMMUNAUTAIRE
-    };
-    return (f>=0 && f<FAC_COUNT) ? tr(ID[f]) : "?";
-}
+/* K2 — faction_name() a MIGRÉ au readout (membrane : le moteur n'expose que l'enum). */
 
 float class_clout(SocialClass k){
     /* Qui gouverne compte : l'élite pèse bien plus que la masse laborieuse. */

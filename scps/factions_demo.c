@@ -9,6 +9,7 @@
  * classe pèse — l'élite qui gouverne amplifie son éthos.
  */
 #include "scps_factions.h"
+#include "scps_readout.h"   /* K2 : faction_name vit au readout */
 #include <stdio.h>
 #include <string.h>
 

@@ -24,6 +24,12 @@
 #include "scps_world.h"
 #include "scps_prosperity.h"   /* WorldProsperity, WorldLegitimacy, WorldEconomy */
 
+/* K2 — LA MEMBRANE : les noms face-joueur (factions, édifices) vivent au readout,
+ * où tr() est légitime ; le moteur n'expose que l'enum. Signés en `int` (compatible
+ * enum) pour ne PAS tirer scps_factions.h/scps_agency.h dans ce header (cycle BandHumeur). */
+const char *faction_name(int ethos_faction);   /* EthosFaction → mot diégétique (tr) */
+const char *edifice_name(int edifice);          /* Edifice → mot diégétique (tr) */
+
 /* ===================================================================== */
 /* BANDES QUALITATIVES — jamais un nombre                                 */
 /* ===================================================================== */

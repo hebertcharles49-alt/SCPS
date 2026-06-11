@@ -6,7 +6,6 @@
  * des coordonnées (K/H/P…), jamais des bonus plats.
  */
 #include "scps_agency.h"
-#include "scps_lang.h"   /* noms d'édifice face-joueur → STR_* (éditables/traduisibles) */
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -55,19 +54,8 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
 };
 
 const EdificeDef *edifice_def(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?&EDIFICES[e]:NULL; }
-/* Le nom d'édifice est FACE-JOUEUR → il naît en table (STR_*), donc éditable et
- * traduisible via scps_lang.txt (le défaut FR reste celui de EDIFICES[].name). */
-static const StrId EDI_STR[EDIFICE_COUNT]={
-    [EDI_TRIBUNAL]=STR_EDI_TRIBUNAL, [EDI_CHANCELLERIE]=STR_EDI_CHANCELLERIE, [EDI_ACADEMIE]=STR_EDI_ACADEMIE,
-    [EDI_GARNISON]=STR_EDI_GARNISON, [EDI_FORTERESSE]=STR_EDI_FORTERESSE, [EDI_CITADELLE]=STR_EDI_CITADELLE,
-    [EDI_PORT]=STR_EDI_PORT, [EDI_CARAVANSERAIL]=STR_EDI_CARAVANSERAIL,
-    [EDI_MARCHE]=STR_EDI_MARCHE, [EDI_ENTREPOT]=STR_EDI_ENTREPOT,
-    [EDI_GRENIER]=STR_EDI_GRENIER, [EDI_IRRIGATION]=STR_EDI_IRRIGATION, [EDI_AQUEDUC]=STR_EDI_AQUEDUC,
-    [EDI_SANCTUAIRE]=STR_EDI_SANCTUAIRE, [EDI_TEMPLE]=STR_EDI_TEMPLE, [EDI_CATHEDRALE]=STR_EDI_CATHEDRALE,
-    [EDI_BIBLIOTHEQUE]=STR_EDI_BIBLIOTHEQUE, [EDI_MONASTERE]=STR_EDI_MONASTERE,
-    [EDI_COMPTOIR]=STR_EDI_COMPTOIR, [EDI_BANQUE]=STR_EDI_BANQUE,
-};
-const char       *edifice_name(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?tr(EDI_STR[e]):"?"; }
+/* K2 — edifice_name() a MIGRÉ au readout (membrane : le moteur n'expose que l'enum
+ * Edifice + EDIFICES[].name comme défaut FR de référence ; la traduction vit au readout). */
 
 /* ── E1bis.11 — FAMILLES ↑ ───────────────────────────────────────────────────
  * Le palier précédent d'un édifice familial (EDIFICE_COUNT = base ou singleton). */

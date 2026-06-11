@@ -56,7 +56,6 @@ typedef struct {
 } EdificeDef;
 
 const EdificeDef *edifice_def(Edifice e);
-const char       *edifice_name(Edifice e);
 /* E1bis.11 — FAMILLES ↑ : palier précédent (EDIFICE_COUNT = base/singleton) ; et
  * la pose est-elle bloquée (membre déjà bâti, ou ↑ sans son palier) — pour l'UI. */
 Edifice edifice_prev(Edifice e);

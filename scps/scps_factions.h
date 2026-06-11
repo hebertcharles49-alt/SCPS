@@ -34,7 +34,6 @@ typedef enum {
     FAC_COUNT
 } EthosFaction;
 
-const char *faction_name(EthosFaction f);   /* mot diégétique (membrane) */
 
 /* ===================================================================== */
 /* PENCHANT D'ÉTHOS D'UN GROUPE — d'où viennent les factions (§2)          */

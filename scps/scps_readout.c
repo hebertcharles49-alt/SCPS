@@ -12,10 +12,35 @@
  */
 #include "scps_readout.h"
 #include "scps_lang.h"   /* la table de chaînes : les MOTS vivent dans les tables compilées */
-#include "scps_factions.h"   /* la balance des factions-éthos (§9) */
+#include "scps_factions.h"   /* EthosFaction (la balance des factions-éthos, §9) */
+#include "scps_agency.h"     /* K2 : Edifice — les noms d'édifices vivent ICI (readout), pas au moteur */
 #include <stddef.h>   /* NULL */
 #include <string.h>   /* memset */
 #include <math.h>     /* roundf */
+
+/* K2 — LA MEMBRANE : les noms FACE-JOUEUR (factions, édifices) naissent au readout,
+ * où tr() est légitime. Le moteur (scps_factions, scps_agency) n'expose que l'ENUM.
+ * Restaure CLAUDE.md (G4 avait migré tr() dans le moteur — violation). */
+const char *faction_name(int f){
+    static const StrId ID[FAC_COUNT] = {
+        STR_FAC_CONQUERANT, STR_FAC_MARCHAND, STR_FAC_LEGISTE,
+        STR_FAC_GARDIEN, STR_FAC_TRANSGRESSEUR, STR_FAC_COMMUNAUTAIRE
+    };
+    return (f>=0 && f<FAC_COUNT) ? tr(ID[f]) : "?";
+}
+const char *edifice_name(int e){
+    static const StrId ID[EDIFICE_COUNT]={
+        [EDI_TRIBUNAL]=STR_EDI_TRIBUNAL, [EDI_CHANCELLERIE]=STR_EDI_CHANCELLERIE, [EDI_ACADEMIE]=STR_EDI_ACADEMIE,
+        [EDI_GARNISON]=STR_EDI_GARNISON, [EDI_FORTERESSE]=STR_EDI_FORTERESSE, [EDI_CITADELLE]=STR_EDI_CITADELLE,
+        [EDI_PORT]=STR_EDI_PORT, [EDI_CARAVANSERAIL]=STR_EDI_CARAVANSERAIL,
+        [EDI_MARCHE]=STR_EDI_MARCHE, [EDI_ENTREPOT]=STR_EDI_ENTREPOT,
+        [EDI_GRENIER]=STR_EDI_GRENIER, [EDI_IRRIGATION]=STR_EDI_IRRIGATION, [EDI_AQUEDUC]=STR_EDI_AQUEDUC,
+        [EDI_SANCTUAIRE]=STR_EDI_SANCTUAIRE, [EDI_TEMPLE]=STR_EDI_TEMPLE, [EDI_CATHEDRALE]=STR_EDI_CATHEDRALE,
+        [EDI_BIBLIOTHEQUE]=STR_EDI_BIBLIOTHEQUE, [EDI_MONASTERE]=STR_EDI_MONASTERE,
+        [EDI_COMPTOIR]=STR_EDI_COMPTOIR, [EDI_BANQUE]=STR_EDI_BANQUE,
+    };
+    return (e>=0&&e<EDIFICE_COUNT) ? tr(ID[e]) : "?";
+}
 
 static inline float rclampf(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
