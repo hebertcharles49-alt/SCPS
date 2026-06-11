@@ -654,21 +654,36 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
         } else {
             /* RÉFORME : on métabolise (K). Mais un trône au consentement bas se
              * SACRALISE d'abord (la foi soutient L) ; institutions mûres, on
-             * investit le SAVOIR (la recherche). §4-§5 du catalogue. */
-            Edifice e;
+             * investit le SAVOIR (la recherche). §4-§5 du catalogue.
+             * L6 (K5.b) — LE CRÉDIT DE LARGEUR EST PONDÉRÉ PAR L'ÉTHOS : on n'est
+             * payé que de SA largeur. Dominateur/Honneur bâtissent la POIGNE tant
+             * qu'elle est basse (H — l'armée est leur institution) ; le Mercantile
+             * bâtit le RÉSEAU (marchés — le comptoir est son académie) ; le
+             * Bureaucrate ne quitte JAMAIS K pour le détour savoir (l'institution
+             * pure — la Citadelle jamais, le savoir après l'Académie). */
+            Ethos eth = ai_capital_ethos(w, econ, a->cid);
             int hr = a->home_region;
             const ProvBuild *bd = (hr>=0&&hr<econ->n_regions)?&econ->region[hr].build:NULL;
-            if (bd && v->L < AI_FAITH_L && bd->faith < 5.0f)
-                e = ai_next_faith_edifice(econ, hr);       /* consentement défaillant → foi */
-            else if (bd && bd->K_inst >= tune_f("AI_SAVOIR_K",AI_SAVOIR_K) && bd->savoir < 2.5f)
-                e = ai_next_savoir_edifice(econ, hr);      /* institutions mûres → savoir */
-            else
+            Edifice e; int kind = 0;                       /* 0 = voie K (builds_k) · 1 = H · 2 = réseau */
+            if (bd && v->L < AI_FAITH_L && bd->faith < 5.0f){
+                e = ai_next_faith_edifice(econ, hr);       /* consentement défaillant → foi (universel) */
+            } else if ((eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && bd && bd->H_coerc < 3.0f){
+                e = ai_next_h_edifice(econ, hr); kind = 1; /* la largeur du conquérant : la POIGNE */
+            } else if (eth==ETHOS_MERCANTILE){
+                e = EDI_MARCHE; kind = 2;                  /* la largeur du marchand : le RÉSEAU, toujours */
+            } else if (bd && eth!=ETHOS_BUREAUCRATE
+                       && bd->K_inst >= tune_f("AI_SAVOIR_K",AI_SAVOIR_K) && bd->savoir < 2.5f){
+                e = ai_next_savoir_edifice(econ, hr);      /* institutions mûres → savoir (pas le Bureaucrate : K pur) */
+            } else {
                 e = ai_next_k_edifice(econ, hr);           /* le métabolisme par défaut : K */
-            if (a->home_region>=0 && agency_build(ag, econ, a->home_region, e)){
+            }
+            if (hr>=0 && agency_build(ag, econ, hr, e)){
                 /* développement institutionnel PROACTIF (la marque du Bâtisseur)
                  * vs DIGESTION imposée par le frein — on ne les confond pas. */
-                if (brake > AI_BRAKE_HARD) a->stats.builds_other++;
-                else                       a->stats.builds_k++;
+                if      (kind==1)               a->stats.builds_h++;
+                else if (kind==2)               a->stats.builds_other++;
+                else if (brake > AI_BRAKE_HARD) a->stats.builds_other++;
+                else                            a->stats.builds_k++;
                 faction_lever_apply(a->cid, ai_lever_for_edifice(e), AI_LEVER_BUILD);  /* §4 : la famille d'édifice vote */
             }
         }

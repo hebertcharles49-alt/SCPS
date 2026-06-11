@@ -8,7 +8,7 @@
 
 ## (a) Résultats MESURÉS (`make test`, K3 appliqué)
 
-**30 bancs VERTS / 31** — `make test` les bâtit, les lance, compte les BILAN :
+**31 bancs VERTS / 31** — `make test` les bâtit, les lance, compte les BILAN :
 
 core 35/35 · monde_reel 10/10 · readout 27/27 · species 9/9 · tech 22/22 ·
 faith 14/14 · intertrade 9/9 · routes 4/4 · save_io 8/8 · statecraft 22/22 ·
@@ -16,24 +16,19 @@ pop 14/14 · army 49/49 · demography 19/19 · demography_integ 6/6 · revolt 23
 social 10/10 · agency 18/18 · campaign 13/13 · factions 32/32 · econ_tax 8/8 ·
 econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 41/41 ·
 missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27 (K4a)** ·
-**structural 16/16 (K5+K6)** · prosperity OK (sans format BILAN). Seul **ai_demo 22/23**
-reste rouge (dette de contenu, infra).
+**structural 16/16 (K5+K6)** · **ai 23/23 (L6)** · prosperity OK (sans format BILAN).
 
-**1 banc ROUGE** (la dette restante, ci-dessous) :
-
-| banc | score | symptôme |
-|------|-------|----------|
-| ai_demo          | 22/23 | Bâtisseur pas + de K (ÉGALITÉ à 3 — dette de CONTENU documentée) |
+**0 banc rouge** — L6 a fermé la dernière dette (ci-dessous).
 
 ---
 
 ## (b) Dette connue (hypothèses de racine, à trancher avant correctif)
 
-- **ai_demo « Bâtisseur bâtit le PLUS de K » (ÉGALITÉ, dette d'équilibrage)** : la chaîne
-  K est PROFONDE de 3 (Tribunal→Chancellerie→Académie) et l'IA ne bâtit que dans sa
-  région-mère → les TROIS archétypes plafonnent à 3 K (égalité, `strict_max` faux). Pour
-  DÉPARTAGER il faut une chaîne K plus longue OU un bâti multi-régions (CONTENU/MÉCANIQUE
-  neuve, hors périmètre arc K). Reste la « dette préexistante » de CLAUDE.md.
+- **ai_demo « Bâtisseur +K » : RÉSOLU (L6/K5.b)** : la racine n'était pas la profondeur de
+  chaîne mais le crédit de largeur NON pondéré — la même cascade foi→savoir→K payait tout
+  le monde d'aller voir ailleurs. Fix : la largeur suit l'éthos (Dominateur/Honneur → H
+  tant que la poigne est basse · Mercantile → le réseau, toujours · Bureaucrate → K pur,
+  jamais le détour savoir ; la foi de crise reste universelle). → 23/23 sur 4 graines.
 
 ---
 
