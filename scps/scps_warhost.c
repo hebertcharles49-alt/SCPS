@@ -8,7 +8,8 @@
 #include <string.h>
 
 #define WH_BATCH_WAR    7.0f   /* paquets fabriqués/levés par an en guerre */
-#define WH_BATCH_PEACE  1.5f   /* entretien minimal en paix */
+#define WH_BATCH_PEACE  1.5f   /* cadence d'entretien de la GARNISON en paix */
+#define WH_GARRISON_UNITS 4.0f /* garnison de paix à la jauge GARDE (× LEVY_MULT) */
 #define WH_ARMS_PER_UNIT 2.0f  /* armes déposées par paquet levé (→ mil_power) */
 
 void warhost_init(WarHost *h){
@@ -60,6 +61,37 @@ static long seed_scratch(LaborEcon *e, const World *w, const WorldEconomy *econ,
     return elite;
 }
 
+/* LEVER `batch` paquets dans le scratch déjà semé : piquiers (masse) + épéistes,
+ * cavalerie si l'élite est là. La fabrication précède l'enrôlement (pas d'arme,
+ * pas d'unité). */
+static void wh_levy_batch(ArmyState *a, LaborEcon *sc, long batch, long elite){
+    if (batch<=0) return;
+    army_fabricate_weapon(a, sc, W_PIQUE, batch);
+    army_fabricate_weapon(a, sc, W_EPEE,  batch/2 + 1);
+    army_recruit(a, sc, U_PIQUIER, batch);
+    army_recruit(a, sc, U_EPEISTE, batch/2 + 1);
+    if (elite > 200){
+        army_fabricate_weapon(a, sc, W_MONTURE_H, batch/3 + 1);
+        army_recruit(a, sc, U_CAV_LOURDE, batch/3 + 1);
+    }
+}
+
+/* DÉMOBILISER `n` paquets : les unités fondent (de la dernière vers la première)
+ * et la pop affectée RETOURNE au pool (re-recrutable si la guerre revient). */
+static void wh_shed(ArmyState *a, long n){
+    for (int i=a->n_units-1; i>=0 && n>0; i--){
+        long take = a->units[i].count; if (take>n) take=n;
+        a->units[i].count -= take; n -= take;
+        LaborClass cl = unit_def(a->units[i].type)->from;
+        a->pop_by_class_in_army[cl] -= take*POP_PER_UNIT;
+        if (a->pop_by_class_in_army[cl] < 0) a->pop_by_class_in_army[cl] = 0;
+        if (a->units[i].count<=0){                 /* compacter : retirer l'unité vide */
+            for (int j=i;j<a->n_units-1;j++) a->units[j]=a->units[j+1];
+            a->n_units--;
+        }
+    }
+}
+
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                   const DiploState *dp, float dt){
     if (!h || !h->scratch || dt<=0.f) return;
@@ -93,8 +125,6 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
          * masse 2.6× — et la levée en masse FORCE LA MAIN (coercition à la capitale). */
         static const float LEVY_MULT[4]={0.4f,1.0f,1.6f,2.6f};
         int lv=h->levy[c]; if(lv<0)lv=0; if(lv>3)lv=3;
-        float batchf = (at_war?WH_BATCH_WAR:WH_BATCH_PEACE)*LEVY_MULT[lv]*dt;
-        long  batch  = (long)(batchf+0.5f);
         if (lv==WH_LEVY_MASSE){
             int cpm=w->country[c].capital_prov;
             int crm=(cpm>=0&&cpm<w->n_provinces)?w->province[cpm].region:-1;
@@ -103,17 +133,31 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 cre->coercion = fminf(1.f, cre->coercion + 0.08f*dt);   /* le prix de la masse */
             }
         }
-        if (batch<=0) continue;
-
-        long elite = seed_scratch(h->scratch, w, econ, c);
-        /* fabriquer puis lever : piquiers (masse) + épéistes ; cavalerie si élite. */
-        army_fabricate_weapon(&h->army[c], h->scratch, W_PIQUE, batch);
-        army_fabricate_weapon(&h->army[c], h->scratch, W_EPEE,  batch/2 + 1);
-        army_recruit(&h->army[c], h->scratch, U_PIQUIER, batch);
-        army_recruit(&h->army[c], h->scratch, U_EPEISTE, batch/2 + 1);
-        if (elite > 200){
-            army_fabricate_weapon(&h->army[c], h->scratch, W_MONTURE_H, batch/3 + 1);
-            army_recruit(&h->army[c], h->scratch, U_CAV_LOURDE, batch/3 + 1);
+        /* GUERRE = MOBILISER · PAIX = DÉMOBILISER. La guerre lève au pied de guerre
+         * vers le plafond de pop (la cadence rate-limite la montée) ; la paix tend
+         * vers une GARNISON ∝ jauge (le « plancher de levée ») — au-dessus on
+         * dégraisse, en-dessous on complète à l'entretien. C'est ce qui fait que la
+         * paix tient MOINS d'hommes sous les armes que la guerre (et la solde I1 en
+         * abaisse la jauge quand le trésor ne suit plus : démobiliser PAR LE COÛT). */
+        long cur = warhost_units(h,c);
+        if (at_war){
+            long batch = (long)(WH_BATCH_WAR*LEVY_MULT[lv]*dt + 0.5f);
+            if (batch>0){
+                long elite = seed_scratch(h->scratch, w, econ, c);
+                wh_levy_batch(&h->army[c], h->scratch, batch, elite);
+            }
+        } else {
+            long garrison = (long)(WH_GARRISON_UNITS*LEVY_MULT[lv] + 0.5f);
+            if (cur > garrison){
+                wh_shed(&h->army[c], (cur - garrison + 1)/2);   /* ~moitié/an vers la garnison */
+            } else if (cur < garrison){
+                long batch = (long)(WH_BATCH_PEACE*LEVY_MULT[lv]*dt + 0.5f);
+                long deficit = garrison - cur; if (batch>deficit) batch=deficit;
+                if (batch>0){
+                    long elite = seed_scratch(h->scratch, w, econ, c);
+                    wh_levy_batch(&h->army[c], h->scratch, batch, elite);
+                }
+            }
         }
         /* déposer la force en ARMES sur la capitale → nourrit diplo_mil_power. */
         long units = warhost_units(h, c);
