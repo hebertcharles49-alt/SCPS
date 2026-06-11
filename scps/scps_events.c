@@ -672,10 +672,12 @@ static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
             for (int i=0;i<nc;i++){ int c=(s0+i)%nc;
                 if (w->country[c].role==POLITY_UNCLAIMED) continue;
                 if (!dir_ok_pays(D,day,c)) continue;
-                if (id==DIR_CHARISMA && !(wp->country[c].L>6.f && wp->country[c].K<4.f)) continue;
+                /* H8 — fenêtres ÉLARGIES : chaque événement doit pouvoir se déclencher quelque part. */
+                if (id==DIR_CHARISMA){ int rc=0; for (int r=0;r<nr;r++) if (econ->region[r].owner==c) rc++;
+                                       if (!(wp->country[c].L>6.f || (wp->country[c].K<4.f && rc>=5))) continue; }  /* L haut OU (K bas ET ≥5 rég) */
                 if (id==DIR_PALAIS   && !(wp->country[c].L<5.f)) continue;
                 if (id==DIR_SCHISME  && !EVENTS[EVID_SCHISM].trigger(cx,c)) continue;
-                if (id==DIR_DEBASE){ int cr=cap_region(w,c); if (cr<0||econ->region[cr].treasury>=200.f) continue; }
+                if (id==DIR_DEBASE){ int cr=cap_region(w,c); if (cr<0||econ->region[cr].treasury>=2000.f) continue; }  /* trésor bas (élargi 200→2000) */
                 if (id==DIR_CADASTRE && !(wp->country[c].K>=6.f)) continue;
                 if (id==DIR_REFORME  && !(wp->country[c].L<5.f)) continue;
                 if (id==DIR_MARCHAND && w->country[c].role!=POLITY_CITY_STATE) continue;
@@ -691,7 +693,7 @@ static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
             s0=(int)(frand(rng)*(float)nr);
             for (int i=0;i<nr;i++){ int r=(s0+i)%nr;
                 if (!econ->region[r].colonized) continue;
-                if (cx->ev->geo[r].relief < 0.5f) continue;       /* la montagne */
+                if (cx->ev->geo[r].relief < 0.25f) continue;      /* H8 : tout relief à métal/pierre (élargi 0.5→0.25) */
                 if (!dir_ok_region(D,day,r,neg)) continue;
                 *out=r; return true;
             }
