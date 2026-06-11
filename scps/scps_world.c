@@ -66,7 +66,7 @@ static const float DDIST[8]={1.f,1.414f,1.f,1.414f,1.f,1.414f,1.f,1.414f};
  * Plaques tectoniques (Voronoï) + FBM → relief de base
  * ====================================================================== */
 #define N_PLATES   18
-#define DRIFT_PX   60.f    /* §D — LE MONDE SE FRACTURE : dérive MESURÉE (+33 % vs l'ancien 45).
+#define DRIFT_PX   120.f    /* §D — LE MONDE SE FRACTURE : dérive MESURÉE (+33 % vs l'ancien 45).
                             * Le supercontinent se sépare en continents plus DISTINCTS — plus de
                             * mer entre eux (le large devient un acteur, cf. §E) et des unités
                             * continentales nettes (les chocs continentaux du directeur, §F, visent
@@ -535,7 +535,7 @@ static void volcanoes_init(const float *height, float seed_f) {
         float dx = g_plates[sp.cont_plate].cx - sp.x;
         float dy = g_plates[sp.cont_plate].cy - sp.y;
         float d  = sqrtf(dx*dx+dy*dy); if (d < 1.f) d = 1.f;
-        float arc    = 14.f + rng_f() * 12.f;   /* profondeur d'arc volcanique */
+        float arc    = 28.f + rng_f() * 24.f;   /* profondeur d'arc volcanique */
         float jitter = (rng_f() - 0.5f) * 10.f; /* jitter le long de la chaîne */
         float tx = -dy/d, ty = dx/d;             /* tangente à la frontière */
         int vx = (int)(sp.x + dx/d*arc + tx*jitter);
@@ -557,7 +557,7 @@ static void volcanoes_init(const float *height, float seed_f) {
         if (glen < 1e-4f) { ghx=0.f; ghy=1.f; glen=1.f; }
         g_volc[g_nvolc].cx   = (float)vx;
         g_volc[g_nvolc].cy   = (float)vy;
-        g_volc[g_nvolc].r    = 9.f + rng_f() * 14.f;
+        g_volc[g_nvolc].r    = 18.f + rng_f() * 28.f;
         g_volc[g_nvolc].peak = 0.08f + rng_f() * 0.12f;
         g_volc[g_nvolc].fdx  = -ghx/glen;   /* pointe vers le bas */
         g_volc[g_nvolc].fdy  = -ghy/glen;
@@ -1057,7 +1057,7 @@ static void step_ghost_negative(float *height, float seed_f) {
  * Sortie [0..1] : 0 = côte/mer, 1 = intérieur profond.
  * Pilote l'assèchement et l'amplitude thermique loin des côtes.
  * ====================================================================== */
-#define OCEAN_DIST_SCALE 70.f   /* cellules pour saturer à 1.0 */
+#define OCEAN_DIST_SCALE 140.f   /* cellules pour saturer à 1.0 */
 
 static void compute_ocean_distance(const float *height, float *odist) {
     const float BIG=1e9f;
@@ -1301,7 +1301,7 @@ static Biome assign_biome(float h, float m, float t) {
  * résultent d'une forme qui suit la vallée, pas un disque parfait.
  * Seules les dépressions bien encaissées (altitude > SEA_LEVEL+0.020) sont
  * retenues — évite de noyer les plaines côtières. */
-#define MAX_LAKE_CELLS 25
+#define MAX_LAKE_CELLS 100
 static void fill_lakes(float *height, Cell *cells) {
     bool *inlake=(bool*)calloc(SCPS_N,sizeof(bool));
     int   batch[MAX_LAKE_CELLS];
@@ -1419,7 +1419,7 @@ static void compute_fertility(float *height, float *moisture, float *temperature
  * rencontrent, la frontière tombe sur l'obstacle → fleuves et montagnes
  * deviennent des frontières naturelles, sans les tracer à la main.
  * ====================================================================== */
-#define MIN_PROV_DIST 9      /* serré → territoires nombreux (place pour 4 niveaux) */
+#define MIN_PROV_DIST 18     /* serré → territoires nombreux (place pour 4 niveaux) */
 
 static int g_pseedx[SCPS_MAX_PROV];
 static int g_pseedy[SCPS_MAX_PROV];

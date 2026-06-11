@@ -14,8 +14,13 @@
 #include <stdbool.h>
 
 /* ---- Dimensions -------------------------------------------------------- */
-#define SCPS_W           512
-#define SCPS_H           256
+/* §carte plus grande & plus DÉTAILLÉE (×4 cellules), MÊME nb de régions : la
+ * majorité du bruit lit des coords NORMALISÉES (nx=x/SCPS_W) → continents/climat/
+ * côtes gardent leur taille relative ; on met à l'échelle les constantes en PIXELS
+ * absolus (dérive, océan, volcans, lacs, ESPACEMENT des provinces) pour que le
+ * MONDE reste le même, juste rendu plus fin. */
+#define SCPS_W           1024
+#define SCPS_H           512
 #define SCPS_N           (SCPS_W * SCPS_H)
 
 /* Hiérarchie territoriale (doc §3) :
@@ -30,7 +35,7 @@
 #define SCPS_REG_TARGET_MAX 3
 #define SCPS_CTY_TARGET_MIN 1   /* régions par pays : viser ~40 pays (15 empires + 20 cités) */
 #define SCPS_CTY_TARGET_MAX 3
-#define SCPS_RIVER_MAXLEN 768
+#define SCPS_RIVER_MAXLEN 1536  /* §carte ×2 linéaire : fleuves 2× plus longs (mêmes bassins, plus fins) */
 
 /* ---- Seuils de hauteur (0..1) ----------------------------------------- */
 #define SEA_LEVEL     0.43f
