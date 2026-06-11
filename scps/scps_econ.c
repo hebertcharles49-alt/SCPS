@@ -780,6 +780,13 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * (2 rég ≈ 1 · 16 rég ≈ 15 · 25 rég ≈ 27). Réparti sur ses régions. */
 #define ADMIN_BASE             0.4f
 #define ADMIN_EXP              1.3f
+/* I3bis — RÉSERVE D'EXPLOITATION : le trésor d'une région ne descend JAMAIS sous ce
+ * plancher par les dépenses (entretien, redépense d'État) — un État garde toujours de
+ * quoi fonctionner (bâtir un grenier, amorcer une route). Sans cette réserve, une thune
+ * fine se vide à 0 et s'enferme : à 0 on ne bâtit plus rien → famine/friche perpétuelle
+ * (prod 0.6× → moins d'impôt → friche). Distinct du seuil de HOARDING (COURT_FLOOR), bien
+ * plus haut, au-dessus duquel mordent les ponctions anti-thésaurisation (faste/admin/IPM). */
+#define SINK_FLOOR           500.f
 static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien/encadrement impayé) */
 static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
@@ -1076,19 +1083,38 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* E1bis.10 — ENTRETIEN : l'infra bâtie se paie chaque tick ; impayé → FRICHE.
          * G0.4 : l'entretien suit l'IPM (un monde cher coûte plus cher à tenir). */
         float ipmf = (e->ipm>0.f)? e->ipm : 1.f;
+        float opf  = tune_f("SINK_FLOOR", SINK_FLOOR);    /* I3bis — plancher de SUBSISTANCE (friche) */
+        float hof  = tune_f("COURT_FLOOR", COURT_FLOOR);  /* seuil de HOARDING : les ponctions ne mordent qu'au-dessus */
         if (rid<SCPS_MAX_REG){
             float infra = re->build.K_inst + re->build.H_coerc + re->build.P_open
                         + re->build.PE_infra + re->build.food_cap + re->build.port;
-            float upkeep = (infra*BUILD_GOLD_PER_DELTA/tune_f("ENTRETIEN_DIV",ENTRETIEN_DIV)) * 365.f * dt * ipmf;
-            re->treasury -= upkeep;
-            /* H7 — ENCADREMENT DES MANUFACTURES (×IPM) : la racine du robinet d'or. */
-            float mlev=0.f; for (int i=0;i<re->n_bld;i++) mlev += re->bld[i].level;
-            float mcost = mlev * tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY) * 365.f * dt * ipmf;
-            re->treasury -= mcost;
-            bool fr = (re->treasury < 0.f);
-            if (fr) re->treasury = 0.f;
-            g_friche[rid]=fr;
+            /* ENTRETIEN DE BASE — maintenir l'infra bâtie. PAS d'IPM ici : la subsistance
+             * ne paie pas la surtaxe d'un monde cher. L'entretien ne mord QUE le SURPLUS
+             * au-dessus de la réserve d'exploitation : un État garde toujours de quoi
+             * fonctionner (bâtir un grenier, amorcer une route), il ne se vide pas jusqu'au
+             * dernier sou en friche perpétuelle (0.6× prod → moins d'impôt → friche → spirale).
+             * La FRICHE ne frappe que le SURBÂTI : quand l'entretien DÉPASSE le surplus
+             * disponible, l'État a trop construit pour ses moyens → la prod s'entaille. */
+            float base_up = (infra*BUILD_GOLD_PER_DELTA/tune_f("ENTRETIEN_DIV",ENTRETIEN_DIV)) * 365.f * dt;
+            /* FRICHE = SURBÂTI CATASTROPHIQUE : l'entretien dépasse TOUT le trésor (pas juste
+             * le surplus au-dessus de la réserve) — l'État ne peut littéralement pas tenir son
+             * infra. Une région qui repose sur sa réserve d'exploitation (peu d'infra, peu
+             * d'impôt) n'est PAS en friche : elle sous-finance sans la falaise de prod. */
+            bool fr = (base_up > re->treasury);
+            float surplus = re->treasury - opf;
+            if (surplus > 0.f) re->treasury -= fminf(base_up, surplus);   /* payé du surplus, la réserve tient */
+            g_friche[rid] = fr;
             if (fr) g_n_friche++;
+            /* SURCOÛTS ANTI-HOARDING (G0.4 surtaxe IPM sur l'entretien + H7 encadrement des
+             * manufactures) : du SURPLUS au-dessus du seuil de HOARDING SEULEMENT — jamais une
+             * réserve d'exploitation. Un trésor qui GONFLE paie un monde cher et ses
+             * manufactures ; une bourse de fonctionnement (le bas de laine qui bâtit) non. */
+            if (re->treasury > hof){
+                float mlev=0.f; for (int i=0;i<re->n_bld;i++) mlev += re->bld[i].level;
+                float surcharge = base_up*(ipmf-1.f)                                  /* la part IPM de l'entretien */
+                                + mlev*tune_f("MANUF_UPKEEP_DAY",MANUF_UPKEEP_DAY)*365.f*dt*ipmf;
+                if (surcharge>0.f) re->treasury -= fminf(surcharge, re->treasury - hof);
+            }
         }
         /* G0.4 — le FASTE de cour : au-delà de 10k, 0.5 %/mois du surplus se dépense
          * (frein au hoarding — un trésor qui gonfle finance le prestige). */
@@ -1096,12 +1122,14 @@ void econ_tick(WorldEconomy *e, float dt) {
           if (re->treasury > cf)
               re->treasury -= (re->treasury - cf) * tune_f("COURT_RATE",COURT_RATE) * (dt*12.f); }
         /* I3 — ADMIN : la part de cette région dans la bureaucratie du pays. Total pays =
-         * base × n^exp ; par région = base × n^(exp−1). Croît avec la TAILLE (×IPM). */
-        if (rid<SCPS_MAX_REG && re->owner>=0 && re->owner<SCPS_MAX_COUNTRY){
+         * base × n^exp ; par région = base × n^(exp−1). Croît avec la TAILLE (×IPM). Du
+         * SURPLUS au-dessus du seuil de hoarding : l'admin pèse sur les grands trésors, pas
+         * sur le bas de laine qui finance les chantiers (sinon l'État ne bootstrappe jamais). */
+        if (rid<SCPS_MAX_REG && re->owner>=0 && re->owner<SCPS_MAX_COUNTRY && re->treasury>hof){
             int nreg=rcount[re->owner]; if (nreg<1) nreg=1;
             float admin = tune_f("ADMIN_BASE",ADMIN_BASE)
                         * powf((float)nreg, tune_f("ADMIN_EXP",ADMIN_EXP)-1.f) * ipmf * (dt*12.f);
-            re->treasury = fmaxf(0.f, re->treasury - admin);
+            re->treasury = fmaxf(hof, re->treasury - admin);
         }
 
         /* §B (TRÉSOR MORT) — l'État REDÉPENSE : il ne hoarde plus, il CIRCULE. Une masse
@@ -1111,7 +1139,13 @@ void econ_tick(WorldEconomy *e, float dt) {
          * solde subventionne l'expansion (§1). Sans cette sortie, le trésor ×16 asséchait
          * les classes à richesse ~0 → 15 % de satisfaction même quand les biens existent. */
         float depense = re->treasury * STATE_SPEND_RATE * dt;
-        if (depense > re->treasury) depense = re->treasury;
+        /* I3bis — la redépense LAISSE la réserve d'exploitation : un État ne se vide pas
+         * jusqu'au dernier sou (sinon, à trésor 0, il ne peut plus rien bâtir — pas même
+         * un grenier — et s'enferme dans la famine). Il circule le SURPLUS, garde de quoi
+         * fonctionner. */
+        float spendable = re->treasury - opf;
+        if (depense > spendable) depense = spendable;
+        if (depense < 0.f) depense = 0.f;
         re->treasury -= depense;
         float payroll = depense * PAYROLL_FRACTION;
         if (coll_tot > 1e-6f)

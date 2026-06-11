@@ -20,6 +20,7 @@
     X(COURT_RATE,             0.010f) \
     X(ADMIN_BASE,             0.4f) \
     X(ADMIN_EXP,              1.3f) \
+    X(SINK_FLOOR,           500.0f) \
     /* §G0.1 — le directeur (les fenêtres de température) */ \
     X(DIR_T_HOT,              0.50f) \
     X(DIR_T_COLD,             0.32f) \

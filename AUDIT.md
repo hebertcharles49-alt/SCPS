@@ -18,21 +18,22 @@ econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 41/41 ·
 missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27 (K4a)** ·
 prosperity OK (sans format BILAN).
 
-**2 bancs ROUGES** (la dette IA, ci-dessous — K5/K6) :
+**2 bancs ROUGES** (la dette restante, ci-dessous) :
 
 | banc | score | symptôme |
 |------|-------|----------|
-| ai_demo          | 20/23 | Mercantile pas + de routes · Bâtisseur pas + de K · Dominateur pas + agressif |
-| structural_demo  | 13/16 | Dominateur ne SERRE pas (H) · Bureaucrate ne RÉFORME pas (K) · COERCITIF ne se dissout pas |
+| ai_demo          | 22/23 | Bâtisseur pas + de K (ÉGALITÉ à 3 — dette d'ÉQUILIBRAGE documentée) |
+| structural_demo  | 15/16 | COERCITIF ne se dissout pas (K6 : snapshot→trajectoire) |
 
 ---
 
 ## (b) Dette connue (hypothèses de racine, à trancher avant correctif)
 
-- **ai_demo + structural_demo (6 assertions, UNE racine présumée — K5)** : le crédit de
-  largeur (arc B3) + la garde de budget (arc IG) ont APLATI les archétypes — tout le
-  monde diversifie, plus personne ne maximise son thème/éthos. À INSTRUMENTER avant de
-  toucher 6 endroits (part du score : largeur vs biais d'éthos).
+- **ai_demo « Bâtisseur bâtit le PLUS de K » (ÉGALITÉ, dette d'équilibrage)** : la chaîne
+  K est PROFONDE de 3 (Tribunal→Chancellerie→Académie) et l'IA ne bâtit que dans sa
+  région-mère → les TROIS archétypes plafonnent à 3 K (égalité, `strict_max` faux). Pour
+  DÉPARTAGER il faut une chaîne K plus longue OU un bâti multi-régions (CONTENU/MÉCANIQUE
+  neuve, hors périmètre arc K). Reste la « dette préexistante » de CLAUDE.md.
 - **structural_demo « la coercition dissout L » (K6)** : la fragilité σ-forme (A1) lit un
   INSTANTANÉ ; le banc attend une TRAJECTOIRE (la coercition ronge L avec le temps).
   Chaînon snapshot→delta manquant.
@@ -41,11 +42,10 @@ prosperity OK (sans format BILAN).
 
 ## (c) Recommandations (ordre de correction)
 
-K4a (events, localisé) → K4b (diplo, cooldown) → K4c (warhost, levée) → **K5** (racine IA :
-TESTER avant de fixer ; fix unique = pondérer le crédit de largeur par l'éthos ; re-tester
-les 6 ensemble) → **K6** (érosion endogène `L -= k·coercition·dt`, bornée, réversible ;
-dépend de K5 pour le fork Dominateur/Bureaucrate) → K7 (hygiène : clang clean, ASan).
-Ne PAS entamer un nouveau système tant que `make test` n'est pas 31/31.
+K4a (events) → K4b (diplo) → K4c (warhost) → **K5** (racine IA = la spirale de friche, FAIT) →
+**K6** (érosion endogène `L -= k·coercition·dt`, bornée, réversible) → K7 (hygiène : clang
+clean, ASan). La dette « Bâtisseur +K » demande du CONTENU (chaîne K plus longue) — hors
+périmètre arc K, laissée en l'état documenté.
 
 ---
 
@@ -75,3 +75,17 @@ Ne PAS entamer un nouveau système tant que `make test` n'est pas 31/31.
   (`WH_GARRISON_UNITS`) — au-dessus on dégraisse (`wh_shed`, la pop retourne au pool),
   en-dessous on complète à l'entretien. La solde I1 reste le COÛT qui, via la garde IG,
   abaisse la jauge → la garnison → démobilise PAR LE COÛT. → 4/4 (8 graines vérifiées).
+- **K5 — IA gelée : diagnostic CORRIGÉ (PAS le crédit de largeur)** : l'instrumentation
+  montre les archétypes NON aplatis mais GELÉS — les ponctions d'or arc I (admin/cour/
+  encadrement/surtaxe IPM) vidaient le trésor d'une capitale-test isolée à 0 → la région
+  tombait en FRICHE (prod 0.6×) → satisfaction effondrée → pression fiscale (I) montée →
+  SI<5 → frein de consolidation BLOQUÉ à 1 (le Dominateur consolide au lieu de conquérir ;
+  le Mercantile, à trésor 0, ne peut bâtir son grenier → verrou de famine, 0 route). Fix
+  (scps_econ.c) : (1) RÉSERVE D'EXPLOITATION `SINK_FLOOR` — entretien & redépense d'État ne
+  vident jamais sous ce plancher (un État garde de quoi bâtir/amorcer) ; (2) FRICHE = surbâti
+  CATASTROPHIQUE seulement (entretien > TOUT le trésor), plus la falaise sur une thune fine ;
+  (3) les ponctions anti-thésaurisation (admin/cour/encadrement/surtaxe IPM) ne mordent qu'AU-
+  DESSUS du seuil de HOARDING (`COURT_FLOOR`) — elles saignent les gros trésors, pas le bas de
+  laine qui finance les chantiers. → ai_demo 22/23, structural_demo 15/16 ; chronique 40 a :
+  trésor moy ~15.9k (mieux que les 21-30k d'avant), flux +20/mois (bord de bande), 0 friche.
+  Reste l'ÉGALITÉ « Bâtisseur +K » (dette de contenu, supra).
