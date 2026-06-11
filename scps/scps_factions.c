@@ -6,15 +6,17 @@
  * on en tire un profil de factions. Les passes suivantes feront agir ce profil.
  */
 #include "scps_factions.h"
+#include "scps_lang.h"      /* noms de factions face-joueur → STR_* (éditables/traduisibles) */
 #include <stdio.h>
 #include "scps_species.h"   /* SpeciesArchetype */
 #include <string.h>         /* memset (reset des stances) */
 
 const char *faction_name(EthosFaction f){
-    static const char *N[FAC_COUNT] = {
-        "Conquérants", "Marchands", "Légistes", "Gardiens", "Transgresseurs", "Communautaires"
+    static const StrId ID[FAC_COUNT] = {
+        STR_FAC_CONQUERANT, STR_FAC_MARCHAND, STR_FAC_LEGISTE,
+        STR_FAC_GARDIEN, STR_FAC_TRANSGRESSEUR, STR_FAC_COMMUNAUTAIRE
     };
-    return (f>=0 && f<FAC_COUNT) ? N[f] : "?";
+    return (f>=0 && f<FAC_COUNT) ? tr(ID[f]) : "?";
 }
 
 float class_clout(SocialClass k){

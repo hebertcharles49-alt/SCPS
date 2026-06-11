@@ -251,5 +251,11 @@
     X(STR_EDI_MONASTERE,    "Monastère") \
     X(STR_EDI_COMPTOIR,     "Comptoir") \
     X(STR_EDI_BANQUE,       "Banque") \
+    X(STR_FAC_CONQUERANT,    "Conquérants") \
+    X(STR_FAC_MARCHAND,      "Marchands") \
+    X(STR_FAC_LEGISTE,       "Légistes") \
+    X(STR_FAC_GARDIEN,       "Gardiens") \
+    X(STR_FAC_TRANSGRESSEUR, "Transgresseurs") \
+    X(STR_FAC_COMMUNAUTAIRE, "Communautaires") \
 
 #endif /* SCPS_STRINGS_IDS_H */

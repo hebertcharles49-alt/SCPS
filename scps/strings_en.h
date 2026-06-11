@@ -246,4 +246,10 @@
     X(STR_EDI_MONASTERE,    "Monastery") \
     X(STR_EDI_COMPTOIR,     "Trading Post") \
     X(STR_EDI_BANQUE,       "Bank") \
+    X(STR_FAC_CONQUERANT,    "Conquerors") \
+    X(STR_FAC_MARCHAND,      "Merchants") \
+    X(STR_FAC_LEGISTE,       "Legalists") \
+    X(STR_FAC_GARDIEN,       "Guardians") \
+    X(STR_FAC_TRANSGRESSEUR, "Transgressors") \
+    X(STR_FAC_COMMUNAUTAIRE, "Communalists") \
 
