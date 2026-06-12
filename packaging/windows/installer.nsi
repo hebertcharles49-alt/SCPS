@@ -58,6 +58,9 @@ Section "SCPS (requis)" SecCore
   ; Texte joueur ÉDITABLE (FR par défaut) : édite-le ou traduis-le, F4 recharge
   ; à chaud. Absent → le jeu garde ses libellés compilés. (Généré par --dump-lang.)
   File "scps_lang.txt"
+  ; Planche d'icônes (512×512, magenta transparent) — display-only, chargée au
+  ; lancement ; absente → le visualiseur retombe sur ses glyphes vectoriels.
+  File "scps_sprites.bmp"
 
   ; Clés de désinstallation (Ajout/Suppression de programmes)
   WriteRegStr HKLM "Software\${APPNAME}" "InstallDir" "$INSTDIR"
@@ -99,6 +102,7 @@ Section "Uninstall"
   Delete "$INSTDIR\DejaVuSans.ttf"
   Delete "$INSTDIR\LISEZMOI.txt"
   Delete "$INSTDIR\scps_lang.txt"
+  Delete "$INSTDIR\scps_sprites.bmp"
   Delete "$INSTDIR\Uninstall.exe"
   ; les sauvegardes/captures éventuelles créées à côté de l'exe
   RMDir /r "$INSTDIR\saves"

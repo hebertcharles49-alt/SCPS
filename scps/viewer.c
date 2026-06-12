@@ -3636,8 +3636,8 @@ int main(int argc, char **argv) {
 
     /* §SPRITES (contrat 184) : la planche scps_sprites.bmp à côté du binaire,
      * fond MAGENTA FF00FF → transparent (colorkey). ABSENTE → g_sprite_tex NULL
-     * et le rendu vectoriel actuel reste tel quel (display-only, même régime de
-     * rupture « zéro asset » que scps_lang.txt). */
+     * et le rendu vectoriel actuel reste tel quel (display-only, même régime
+     * éditable que scps_lang.txt). */
     { SDL_Surface *ss = SDL_LoadBMP("scps_sprites.bmp");
       if (ss){
           SDL_SetColorKey(ss, SDL_TRUE, SDL_MapRGB(ss->format, SPRITE_KEY_R, SPRITE_KEY_G, SPRITE_KEY_B));

@@ -67,6 +67,9 @@ cp "$HERE/LISEZMOI.txt" "$DIST/"
 # Texte joueur éditable / traduisible (FR par défaut, versionné). Absent → le jeu
 # garde ses libellés compilés ; un ID périmé retombe sur le défaut (robuste).
 [ -f "$ROOT/scps_lang.txt" ] && cp "$ROOT/scps_lang.txt" "$DIST/"
+# Planche de sprites (512×512, magenta transparent) — display-only. Absente → le
+# visualiseur retombe sur ses glyphes vectoriels (le binaire tourne sans elle).
+[ -f "$ROOT/scps_sprites.bmp" ] && cp "$ROOT/scps_sprites.bmp" "$DIST/"
 "$STRIP" "$DIST"/*.exe "$DIST"/*.dll 2>/dev/null || true
 
 # --- 4. empaquetage NSIS ----------------------------------------------------

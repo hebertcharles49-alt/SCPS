@@ -7,10 +7,10 @@
  * 0xFF00FF rendu transparent au chargement (colorkey SDL). VIEWER-ONLY :
  * aucun module moteur n'inclut ce fichier (membrane — l'image est du rendu).
  *
- * Chargement (rupture « zéro asset » ASSUMÉE, même régime que scps_lang.txt) :
- * `scps_sprites.bmp` à côté du binaire ; ABSENT → g_sprite_tex==NULL et le
- * rendu actuel (glyphes vectoriels) reste tel quel. L'asset est DISPLAY-ONLY :
- * le moteur et le déterminisme n'y touchent jamais.
+ * Chargement : `scps_sprites.bmp` à côté du binaire ; ABSENT → g_sprite_tex==NULL
+ * et le rendu actuel (glyphes vectoriels) reste tel quel. L'asset est DISPLAY-ONLY :
+ * le moteur et le déterminisme n'y touchent jamais (même régime éditable que
+ * scps_lang.txt — le binaire tourne sans le fichier).
  *
  * Les NOMS suivent la position dans la grille (id = ligne×16 + colonne).
  * La légende ci-dessous est calée sur la planche livrée ; si la légende

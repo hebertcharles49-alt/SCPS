@@ -16,7 +16,6 @@
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
 - **On lit des coordonnées, on n'assigne jamais de modificateur** : un effet passe par les entrées du moteur (K, P, H…), jamais par un bonus plat.
-- **Binaire unique, zéro asset** : aucune donnée chargée du disque (stb_perlin vendorisé, polices système, langues compilées).
 
 ## Langue (brief table de chaînes)
 

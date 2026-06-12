@@ -32,6 +32,7 @@ CONTENU
   chronicle.exe     Balayage headless : la télémétrie d'équilibre (console).
   core_demo.exe     Banc du cœur vérifié (35 contrôles).
   scps_lang.txt     TOUT le texte du jeu, éditable (et traduisible) — voir plus bas.
+  scps_sprites.bmp  Planche d'icônes (512×512) — chargée au lancement ; absente → glyphes vectoriels.
   SDL2.dll          \
   SDL2_ttf.dll       > requis par le visualiseur (déjà présents — ne rien faire).
   DejaVuSans.ttf    /
