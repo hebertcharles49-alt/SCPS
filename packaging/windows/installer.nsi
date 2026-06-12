@@ -9,7 +9,7 @@ Unicode true
 SetCompressor /SOLID lzma
 
 !define APPNAME      "SCPS"
-!define APPVER       "1.1.0"
+!define APPVER       "1.2.0"
 !define PUBLISHER    "SCPS"
 !define DESC         "Moteur de grande stratégie — Sphères Culturelles & Perméabilité Systémique"
 !define EXENAME      "scps_viewer.exe"

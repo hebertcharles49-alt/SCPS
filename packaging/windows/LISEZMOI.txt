@@ -1,5 +1,6 @@
 SCPS — Moteur de grande stratégie (Sphères Culturelles & Perméabilité Systémique)
 ================================================================================
+Version 1.2.0
 
 Un monde généré PAR le modèle : culture, prospérité, stabilité et guerre sont
 calculées par les équations SCPS, pas par des règles ad hoc. La guerre se gagne
@@ -7,6 +8,23 @@ sur le terrain (sièges → occupation), la conquête se règle à la table de p
 et les royaumes peuvent mourir. Un DIRECTEUR d'événements lit la « température »
 du monde et le remue ou l'apaise (peste, schisme, filon, concile, moissons…)
 sans jamais s'acharner sur la même province.
+
+NOUVEAUTÉS v1.2.0
+-----------------
+  FOURCHES TECHNOLOGIQUES : l'arbre de tech se ramifie au fil des forks culturels
+    (15 gabarits, 3 variantes par embranchement). Chaque civilisation suit sa propre
+    trajectoire — il n'y a plus qu'un seul arbre universel.
+  MARINE & COLONISATION : les empires côtiers bâtissent des ports, des coques de
+    transport et colonisent les rivages accessibles. La course (piraterie) arme les
+    griefs et forge les casus belli.
+  GUERRE OUTRE-MER : l'IA déclare la guerre à travers les océans une fois ports et
+    casus belli réunis (CB économique, subjugation, anti-piraterie…).
+  BÂTIMENTS AVANCÉS : Alambic (distillation d'essence purifiée), le Puits de mana
+    (charge arcane), nouvelles merveilles de faction.
+  SCORE MULTIPLICATIF : la progression technologique combine souche × éthos × credo
+    × matière ; chaque civilisation a une vitesse de recherche unique.
+  NOTE DE SAUVEGARDE : les fichiers de sauvegarde v1.1.x (format SAVE v13-v15) ne
+    sont PAS compatibles avec v1.2.0 (SAVE v16). Commencez une nouvelle partie.
 
 CONTENU
 -------
@@ -49,8 +67,9 @@ TEXTE ÉDITABLE & TRADUCTION (scps_lang.txt)
 
 OUTILS HEADLESS (invite de commandes)
 -------------------------------------
-  chronicle.exe <graine> <sims> <années> [empires] [cités]
+  chronicle.exe <graine> <sims> <années> [empires] [cités] [continents]
       ex. : chronicle.exe 7 5 200 8 16
+      ex. : chronicle.exe 42 1 100 6 10 2   (bi-continental, 16 pays)
   core_demo.exe       (doit afficher « 35 réussis, 0 échoués »)
   scps_viewer.exe --dump-lang   (réécrit scps_lang.txt : tous les libellés)
 
