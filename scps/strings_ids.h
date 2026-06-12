@@ -254,6 +254,23 @@
     X(STR_EDI_PORT_MARCHAND,"Port marchand") \
     X(STR_EDI_BIBLIO_MIL,   "Bibliothèque militaire") \
     X(STR_EDI_OBSERVATOIRE, "Observatoire") \
+    /* M7 (forks §25) — la CHRONIQUE des fourches : 3 variantes par fork, {0}=lieu
+     * (tirage au seed — le monde ne radote pas ; lignes de causalité, pas de prose). */ \
+    X(STR_FORK_ARSENAL_0,      "Les maîtres de guerre de {0} transforment les quais en Arsenal.") \
+    X(STR_FORK_ARSENAL_1,      "{0} arme ses quais : l'Arsenal s'élève.") \
+    X(STR_FORK_ARSENAL_2,      "À {0}, la rade devient Arsenal — la flotte avant le négoce.") \
+    X(STR_FORK_AMIRAUTE_0,     "La Chancellerie de {0} impose une doctrine maritime : l'Amirauté naît.") \
+    X(STR_FORK_AMIRAUTE_1,     "{0} dote sa rade d'une Amirauté — la mer entre aux registres.") \
+    X(STR_FORK_AMIRAUTE_2,     "L'Amirauté de {0} prend la mer en main.") \
+    X(STR_FORK_PORT_MARCH_0,   "Les marchands de {0} obtiennent privilèges et entrepôts : le Port marchand devient le cœur de la cité.") \
+    X(STR_FORK_PORT_MARCH_1,   "{0} ouvre ses quais au négoce : le Port marchand l'emporte.") \
+    X(STR_FORK_PORT_MARCH_2,   "Au Port marchand de {0}, tout s'achète — même la paix.") \
+    X(STR_FORK_FORGE_0,        "Le Fer céleste est confié aux forgerons-runiers de {0}. La victoire se rapproche ; le réel, moins stable.") \
+    X(STR_FORK_FORGE_1,        "{0} allume sa Forge de Runes — le flux s'épaissit.") \
+    X(STR_FORK_FORGE_2,        "À {0}, le métal tombé du ciel devient arme. Le flux s'en souvient.") \
+    X(STR_FORK_ALAMBIC_0,      "Le Salpêtre distillé à {0} réduit les accidents de flux — les guildes réclament leur part.") \
+    X(STR_FORK_ALAMBIC_1,      "{0} distille la stabilité : l'Alambic apaise le flux.") \
+    X(STR_FORK_ALAMBIC_2,      "L'Alambic de {0} vend le calme — au prix du salpêtre.") \
     X(STR_EDI_COMPTOIR,     "Comptoir") \
     X(STR_EDI_BANQUE,       "Banque") \
     X(STR_FAC_CONQUERANT,    "Conquérants") \

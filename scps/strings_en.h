@@ -249,6 +249,22 @@
     X(STR_EDI_PORT_MARCHAND,"Merchant Harbour") \
     X(STR_EDI_BIBLIO_MIL,   "War Library") \
     X(STR_EDI_OBSERVATOIRE, "Observatory") \
+    /* M7 — fork chronicle templates (3 variants each, {0}=place). */ \
+    X(STR_FORK_ARSENAL_0,      "The war-masters of {0} turn the docks into an Arsenal.") \
+    X(STR_FORK_ARSENAL_1,      "{0} arms its docks: the Arsenal rises.") \
+    X(STR_FORK_ARSENAL_2,      "At {0}, the harbour becomes an Arsenal — fleet before trade.") \
+    X(STR_FORK_AMIRAUTE_0,     "The Chancellery of {0} imposes a maritime doctrine: the Admiralty is born.") \
+    X(STR_FORK_AMIRAUTE_1,     "{0} grants its harbour an Admiralty — the sea enters the registers.") \
+    X(STR_FORK_AMIRAUTE_2,     "The Admiralty of {0} takes the sea in hand.") \
+    X(STR_FORK_PORT_MARCH_0,   "The merchants of {0} win privileges and warehouses: the Merchant Harbour becomes the heart of the city.") \
+    X(STR_FORK_PORT_MARCH_1,   "{0} opens its docks to trade: the Merchant Harbour prevails.") \
+    X(STR_FORK_PORT_MARCH_2,   "At the Merchant Harbour of {0}, everything is for sale — even peace.") \
+    X(STR_FORK_FORGE_0,        "The Celestial Iron is entrusted to the rune-smiths of {0}. Victory draws near; reality, less steady.") \
+    X(STR_FORK_FORGE_1,        "{0} lights its Rune Forge — the flux thickens.") \
+    X(STR_FORK_FORGE_2,        "At {0}, sky-fallen metal becomes a weapon. The flux remembers.") \
+    X(STR_FORK_ALAMBIC_0,      "Saltpetre distilled at {0} curbs flux accidents — the guilds claim their share.") \
+    X(STR_FORK_ALAMBIC_1,      "{0} distils stability: the Alembic soothes the flux.") \
+    X(STR_FORK_ALAMBIC_2,      "The Alembic of {0} sells calm — priced in saltpetre.") \
     X(STR_EDI_COMPTOIR,     "Trading Post") \
     X(STR_EDI_BANQUE,       "Bank") \
     X(STR_FAC_CONQUERANT,    "Conquerors") \
