@@ -3,14 +3,13 @@
 ## Build & vérification
 
 - `make` → `core_demo` (35 contrôles auto-vérifiés, sortie ≠ 0 si échec).
-- `make <x>_demo` : chaque module a son banc auto-vérifiant — **tout doit rester vert** (exception connue : `ai_demo` porte 1 échec d'équilibrage préexistant « le Bâtisseur bâtit le PLUS de K », dette documentée).
+- `make <x>_demo` : chaque module a son banc auto-vérifiant — **tout doit rester vert**. `ai_demo` : 23/23 depuis la graine par défaut 9 (L4-2026-06 ; le test « Bâtisseur +K » reste sensible au monde, documenté en AUDIT.md).
 - `make chronicle && ./chronicle <graine> <sims> <années> [empires] [cités] [continents]` : le balayage headless — la télémétrie est la preuve d'équilibre.
 - `make asan && ./chronicle_asan …` : ASan+UBSan doivent rester muets.
 - **Re-baseline L4 (2026-06)** : la genèse distribue désormais les empires entre
   continents (≥15 % habitable ⇒ ≥1 empire) — les mondes des graines de référence ONT
-  CHANGÉ (qui est empire change). Mondes fendus (p.ex. graines 1/42) : guerre terrestre
-  rare tant que la guerre trans-mer n'existe pas (chantier H3) — calibrer la guerre sur
-  une graine mono-continent (7/99).
+  CHANGÉ (qui est empire change). Mondes fendus (p.ex. graines 1/42) : H3 active la
+  guerre trans-mer (2026-06) — calibrer la guerre sur une graine mono-continent (7/99).
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

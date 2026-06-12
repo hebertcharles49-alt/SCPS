@@ -46,8 +46,10 @@
 #define AI_CRUSADE_W      4.0f   /* croisade : l'orthodoxe vise qui développe le faustien (chance ∝ ferveur) */
 #define AI_ANNEX_FRAC     0.6f   /* §5 : un budget ≥ 60 % de la valeur du pays = victoire décisive → annexion */
 #define AI_WAR_EXHAUST    8.0f   /* terrain : une guerre qui traîne SANS occupation (8 ans) s'éteint en paix blanche */
-/* §H3 — guerre outre-mer : même portée que les routes marchandes (60 j de courants). */
-#define AI_SEA_WAR_MAX_DAYS 60.f  /* portée max de la guerre trans-mer */
+/* §H3 — guerre outre-mer : portée = tout chemin de courants existant (campaign_order_sea
+ * ne plafonne pas la distance — c'est la pénalité de score qui rend la traversée longue
+ * moins attractive). Seuil large : world_sea_days < 0 = bassins séparés = injoignable. */
+#define AI_SEA_WAR_MAX_DAYS 400.f /* portée max de la guerre trans-mer (toute mer accessible) */
 #define AI_SEA_WAR_PENALTY  0.60f /* pénalité logistique : une cible outre-mer vaut 60 % d'une cible terrestre */
 /* §4 — leviers : chaque ACTE est un vote. Une politique tenue accumule vers le cap. */
 #define AI_LEVER_TECH     0.05f  /* franchir l'interdit (tech faustienne) → Transgresseurs */
