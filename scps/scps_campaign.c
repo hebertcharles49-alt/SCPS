@@ -252,7 +252,7 @@ const char *campaign_posture_name(int p){
 #define BT_RUPTURE     0.20f  /* H4 : la réserve rompt sous 20 % (était 25) — le choc dure 1-2 cycles de plus */
 #define BT_RECUP       0.015f /* l'accalmie rend 1.5 %/j de l'ouverture (+0.7 % chez soi) */
 #define BT_DMG_K       0.050f /* étalonnage du dégât de moral par jour de choc */
-#define BT_CHOC_MORTS  0.0045f /* L3 (calibré arc J, graine 7 1×30) : ratio poursuite/choc 2.6x ∈ [2,5] — la curée domine, le choc tue encore */
+#define BT_CHOC_MORTS  0.006f  /* L3/L4 (recalibré L4-2026-06, graine 7 1×30 nouvelle genèse) : ratio poursuite/choc 2.4x ∈ [2,5] — la curée domine, le choc tue encore */
 #define BT_MAX_JOURS   120    /* au-delà : les deux camps se délitent (nul sanglant) */
 #define BT_BRISEE_J    45     /* une armée en déroute est INAPTE ce temps */
 

@@ -1895,14 +1895,31 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
     /* --- Niveau 2 : régions → pays --- */
     int ncty=agglomerate(radj,nreg,rcont,SCPS_CTY_TARGET_MIN,SCPS_CTY_TARGET_MAX,rgrp);
     if (ncty>SCPS_MAX_COUNTRY) ncty=SCPS_MAX_COUNTRY;
+    /* Régions orphelines (rgrp[r] hors plafond après cap) : redistribuer au voisin
+     * valide, ou au pays le moins peuplé en dernier recours. */
+    { int tmp_sz[SCPS_MAX_COUNTRY]={0};
+      for (int r=0;r<nreg;r++) if (rgrp[r]>=0&&rgrp[r]<ncty) tmp_sz[rgrp[r]]++;
+      for (int r=0;r<nreg;r++) {
+          if (rgrp[r]>=0&&rgrp[r]<ncty) continue;
+          int best=-1;
+          for (int r2=0;r2<nreg&&best<0;r2++)
+              if (radj[r*nreg+r2] && rgrp[r2]>=0 && rgrp[r2]<ncty) best=rgrp[r2];
+          if (best<0) {
+              int mn=0x7FFFFFFF;
+              for (int c2=0;c2<ncty;c2++) if (tmp_sz[c2]<mn){ mn=tmp_sz[c2]; best=c2; }
+          }
+          rgrp[r]=(best>=0)?best:0;
+          if (best>=0&&best<SCPS_MAX_COUNTRY) tmp_sz[best]++;
+      }
+    }
     for (int c=0;c<ncty;c++){ w->country[c].n_regions=0; w->country[c].capital_prov=-1; }
     for (int r=0;r<nreg;r++) {
-        int c=rgrp[r]; if(c<0||c>=SCPS_MAX_COUNTRY) c=0;
+        int c=rgrp[r]; if(c<0||c>=ncty) c=0;
         w->region[r].country=(int16_t)c;
         Country *ct=&w->country[c];
         ct->continent=w->region[r].continent;
-        if (ct->n_regions<12) ct->region_ids[ct->n_regions++]=(int16_t)r;
-        else fprintf(stderr,"scps_world: pays %d sature region_ids (12) — région %d non listée\n",c,r);
+        if (ct->n_regions<32) ct->region_ids[ct->n_regions++]=(int16_t)r;
+        else fprintf(stderr,"scps_world: pays %d sature region_ids (32) — région %d non listée\n",c,r);
     }
     w->n_countries=ncty;
 

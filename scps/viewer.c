@@ -3143,7 +3143,8 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 15u           /* v15 : arc M — les fourches (RegionEconomy.last_pole/pole_since_day,
+#define SAVE_VERSION 16u           /* v16 : Country.region_ids[12→32] (mondes fragmentés dépassaient 12).
+                                    * v15 : arc M — les fourches (RegionEconomy.last_pole/pole_since_day,
                                     * +5 édifices, BLD_ALAMBIC + RES_ESSENCE_PURIFIEE : RES_COUNT change).
                                     * v14 : arc L — le ralliement (FieldArmy.rally_*, Campaign.n_rallies).
                                     * v13 : ère « les puits d'or / le joueur en scène » (arcs I/H) —
@@ -3292,7 +3293,7 @@ static bool save_sane(const World *w, const Sim *s, int player){
         for (int k=0;k<rg->n_provinces;k++)
             if (rg->province_ids[k]<0 || rg->province_ids[k]>=w->n_provinces) return false; }
     for (int c=0;c<w->n_countries;c++){ const Country *ct=&w->country[c];
-        if (ct->n_regions<0 || ct->n_regions>12 || ct->capital_prov< -1 || ct->capital_prov>=w->n_provinces) return false;
+        if (ct->n_regions<0 || ct->n_regions>32 || ct->capital_prov< -1 || ct->capital_prov>=w->n_provinces) return false;
         for (int k=0;k<ct->n_regions;k++)
             if (ct->region_ids[k]<0 || ct->region_ids[k]>=w->n_regions) return false; }
     if (s->econ->n_regions<0 || s->econ->n_regions>SCPS_MAX_REG) return false;

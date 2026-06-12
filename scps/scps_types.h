@@ -251,10 +251,11 @@ typedef enum {
     POLITY_UNCLAIMED     /* terres vierges colonisables (pays sans départ) */
 } PolityRole;
 
-/* ---- Pays : 3-5 régions contiguës ------------------------------------- */
+/* ---- Pays : capacité 32 régions (agglomération peut dépasser 12 en cas de
+ * monde fragmenté → SAVE_VERSION v16 étend la borne à 32) ---------------- */
 typedef struct {
     int        n_regions;
-    int16_t    region_ids[12];
+    int16_t    region_ids[32];
     int16_t    continent;
     int        capital_prov;      /* province-capitale (plus fertile) */
     PolityRole role;              /* joueur / antagoniste / cité-état / vierge */

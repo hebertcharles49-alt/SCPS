@@ -95,7 +95,7 @@ static const char *posture_word(const AiActor *a){
 static bool strict_max(float x,float y,float z){ return x>y && x>z; }
 
 int main(int argc, char **argv){
-    uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
+    uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):9u;
 
     Sim s={0};
     s.w =(World*)malloc(sizeof(World));            s.econ=(WorldEconomy*)malloc(sizeof(WorldEconomy));
@@ -161,6 +161,9 @@ int main(int argc, char **argv){
         }
     }
 
+    /* Partenaire commercial du Mercantile : planter un pays actif adjacent pour que
+     * l'IA puisse ouvrir des routes (sinon, si polity[1] est géographiquement isolé,
+     * le Mercantile bâtit en boucle des marchés faute de voisin — test non pertinent). */
     /* SUBSTRAT ÉGAL — « la SEULE différence = la fiche ». La graine assigne au hasard
      * des capitales inégales (une riche qui bâtit, une dépeuplée qui reste inerte),
      * ce qui BROUILLE la lecture des archétypes. On dote donc les trois capitales à
@@ -177,6 +180,7 @@ int main(int argc, char **argv){
         re->stock[RES_WOOD]=900.f; re->stock[RES_METAL]=900.f;
         re->stock[RES_TOOLS]=600.f; re->stock[RES_GRAIN]=900.f;
         re->build.H_coerc = fmaxf(re->build.H_coerc, 2.0f);   /* garnison → projeter la force */
+        re->build.food_cap = fmaxf(re->build.food_cap, 3.f);   /* vivre sans grenier d'urgence — substrat indépendant du monde */
         if (re->strata[CLASS_LABORER].pop<300.f) re->strata[CLASS_LABORER].pop=500.f;
     }
 

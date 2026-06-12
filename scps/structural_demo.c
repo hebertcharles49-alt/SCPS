@@ -221,6 +221,9 @@ int main(int argc, char **argv){
          * monde. L'IA lit ces valeurs telles quelles (ai_observe, sans re-tick). */
         if (cidB<s.wp->n_countries){ s.wp->country[cidB].SI=2.0f; s.wp->country[cidB].fragilite=7.0f; }
         if (cidD<s.wp->n_countries){ s.wp->country[cidD].SI=2.0f; s.wp->country[cidD].fragilite=7.0f; }
+        /* trésor garanti : le test mesure la DÉCISION, pas la solvabilité du monde */
+        if (rB>=0 && rB<s.econ->n_regions) s.econ->region[rB].treasury=5000.f;
+        if (rD>=0 && rD<s.econ->n_regions) s.econ->region[rD].treasury=5000.f;
         AgencyState ag; agency_init(&ag);
         AiActor aB, aD;
         ai_actor_init(&aB, s.w, s.econ, cidB, seed^0xBu);

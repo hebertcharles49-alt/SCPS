@@ -41,8 +41,11 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
   l'attaquant re-cible ; la campagne respire au mois) — graine 7 : 2 → **84 batailles**.
 - **L2** le ralliement (40-60 %, 30-60 j, une fois/guerre, noyau survivant) — SAVE 14.
 - **L3** calibré par grille (arc J) : BT_CHOC_MORTS 0.008 → **0.0045** ⇒ ratio
-  poursuite/choc **2.6x ∈ [2,5]** (graine 7). Traçabilité : SCPS_TUNE="BT_CHOC_MORTS=0.0045".
+  poursuite/choc **2.6x ∈ [2,5]** (graine 7, ancienne genèse). Traçabilité : SCPS_TUNE="BT_CHOC_MORTS=0.0045".
   Leçons : CUREE_CAP ne mord pas (P<cap) ; <0.004 = falaise d'entiers (0 mort de choc).
+- **L4-recal** (2026-06) genèse L4 (redistribution orphelins) invalide L3 pour graine 7 :
+  0.0045 → ratio 88x. Regrille 0.0045→0.02 → point cible : **BT_CHOC_MORTS=0.006** ⇒ ratio
+  **2.4x ∈ [2,5]** (graine 7, 1×30). Traçabilité : SCPS_TUNE="BT_CHOC_MORTS=0.006".
 - **L4** la genèse peuple les continents (5 graines prouvées ; re-baseline notée CLAUDE.md).
 - **L5** colonies outre-mer (portes ×2, Port+coque, ≤20 j de courants, traversée comptée).
 - **M0-M7 v1** : design doc versé · ETHOS_FN verbatim · pôle par factions (Transgresseur
