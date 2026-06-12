@@ -1964,6 +1964,39 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
                 w->country[ord[i]].role=POLITY_ANTAGONIST;
             for (int i=N_EMPIRE; i<N_EMPIRE+N_CITY && i<ncty; i++)
                 w->country[ord[i]].role=POLITY_CITY_STATE;
+
+            /* L4 — PEUPLER LES CONTINENTS : les rôles suivent le POIDS global, donc
+             * tout s'agglutine sur le grand continent et les autres restent VIERGES
+             * (mer morte : 0 hab, 0 traversée). Post-passe DÉTERMINISTE : tout
+             * continent portant ≥ 15 % des terres habitables (aire de provinces,
+             * proxy) reçoit ≥ 1 EMPIRE — on y PROMEUT son pays le plus pesant, en
+             * DÉGRADANT l'antagoniste assigné le plus faible (comptes préservés). */
+            {
+                float hab[SCPS_MAX_CONTINENT]={0}; float hab_tot=0.f;
+                for (int p2=0;p2<np;p2++){
+                    int r2=w->province[p2].region; if (r2<0||r2>=nreg) continue;
+                    int ci2=w->region[r2].continent; if (ci2<0||ci2>=w->n_continents||ci2>=SCPS_MAX_CONTINENT) continue;
+                    hab[ci2]+=w->province[p2].area; hab_tot+=w->province[p2].area;
+                }
+                for (int ci2=0; ci2<w->n_continents && ci2<SCPS_MAX_CONTINENT && hab_tot>0.f; ci2++){
+                    if (hab[ci2]/hab_tot < 0.15f) continue;
+                    bool seeded=false;
+                    for (int c2=0;c2<ncty && !seeded;c2++)
+                        if (w->country[c2].continent==ci2 && w->country[c2].role!=POLITY_UNCLAIMED) seeded=true;
+                    if (seeded) continue;
+                    /* le plus pesant du continent vide (l'ordre ord[] est déjà trié) */
+                    int promote=-1;
+                    for (int i=0;i<ncty && promote<0;i++)
+                        if (w->country[ord[i]].continent==ci2) promote=ord[i];
+                    if (promote<0) continue;                       /* continent sans pays : rien à faire */
+                    /* l'antagoniste assigné le plus FAIBLE rend son rôle (jamais le joueur) */
+                    int demote=-1;
+                    for (int i=ncty-1;i>=1 && demote<0;i--)
+                        if (w->country[ord[i]].role==POLITY_ANTAGONIST) demote=ord[i];
+                    if (demote>=0) w->country[demote].role=POLITY_UNCLAIMED;
+                    w->country[promote].role=POLITY_ANTAGONIST;
+                }
+            }
         }
     }
 
@@ -3020,7 +3053,20 @@ void world_generate(World *w, const WorldParams *P) {
 
     printf("[scps] hiérarchie...   "); fflush(stdout);
     build_hierarchy(w, P->n_empires, P->n_city_states);
-    printf("ok (%d rég. %d pays)\n",w->n_regions,w->n_countries);
+    printf("ok (%d rég. %d pays ; par continent :",w->n_regions,w->n_countries);
+    { float hab[SCPS_MAX_CONTINENT]={0}; float hab_tot=0.f;
+      for (int p2=0;p2<w->n_provinces;p2++){
+          int r2=w->province[p2].region; if (r2<0||r2>=w->n_regions) continue;
+          int ci2=w->region[r2].continent; if (ci2<0||ci2>=w->n_continents||ci2>=SCPS_MAX_CONTINENT) continue;
+          hab[ci2]+=w->province[p2].area; hab_tot+=w->province[p2].area;
+      }
+      for (int ci=0; ci<w->n_continents && ci<SCPS_MAX_CONTINENT; ci++){
+          int n_assigned=0;
+          for (int c=0;c<w->n_countries;c++)
+              if (w->country[c].continent==ci && w->country[c].role!=POLITY_UNCLAIMED) n_assigned++;
+          printf(" C%d=%d(%.0f%%)",ci,n_assigned, hab_tot>0.f?100.f*hab[ci]/hab_tot:0.f);
+      } }                                                  /* L4 : « aucun continent ≥15 % vide » */
+    printf(")\n");
 
     printf("[scps] flags rendu...  "); fflush(stdout);
     compute_render_flags(w,height);       printf("ok\n");
