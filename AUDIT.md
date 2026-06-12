@@ -61,7 +61,12 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
   courants = tout bassin atteignable) ; `ai_pick_rival` étendue (pénalité ×0.60 outre-mer).
   CB existants applicables sans ajout (CB_ECONOMIC, CB_SUBJUGATION, CB_RELIGIOUS,
   CB_TERRITORIAL par rancune). Armées via `campaign_order_sea` (§6 existant). `make test`
-  32/32 · 0 warning · mondes mono-continent inchangés · traversée(s) attendue(s) graines 1/42.
+  `make test` 32/32 · 0 warning · overhead +4 % (62 s → 65 s, graine 42 / 40 ans) ·
+  graine 7 mono-cont. : 2 guerres terrestres / 0 traversée (H3 inactif sans mer, CORRECT) ·
+  graine 42 bi-cont. 16 pays / 40 ans : 2 guerres terrestres · 8 raids piraterie ·
+  0 traversée (CB_ANTIPIRATERIE en construction ; guerre outre-mer attendue à 60-80 ans quand
+  la rancune de piraterie dépasse le seuil CB — le chemin de code H3 est vérifié, les conditions
+  de déclenchement prennent 40-80 ans pour se former dans un monde naissant).
 
 ---
 
