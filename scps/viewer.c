@@ -44,6 +44,15 @@
 #include "scps_navy.h"     /* la flotte (mer §5) : coques, chantier, entretien, outre-mer */
 #include "scps_lang.h"     /* la table de chaînes : tout mot face-joueur vient des tables */
 #include "scps_sprites.h"  /* le contrat 184 : planche 512×512, magenta=transparent (display-only) */
+/* La planche chargée (NULL = absente → glyphes vectoriels actuels). Display-only. */
+static SDL_Texture *g_sprite_tex = NULL;
+/* Dessine la cellule `id` de la planche à (x,y), taille `px` (32 = natif). */
+static inline void sprite_draw(SDL_Renderer *ren, int id, int x, int y, int px){
+    if (!g_sprite_tex || id<0 || id>=SPR_COUNT) return;
+    SDL_Rect src = SPRITE_RECT(id);
+    SDL_Rect dst = { x, y, px, px };
+    SDL_RenderCopy(ren, g_sprite_tex, &src, &dst);
+}
 #include "stb_image_write.h"  /* F12 : capture d'écran PNG (vendoré) */
 #include "scps_audio.h"       /* la prise audio (miniaudio) — preuve de vie sur alerte */
 #ifdef SCPS_DEV
