@@ -1,5 +1,6 @@
 # scps_lang.txt — TOUT le texte joueur, éditable. Format : STR_ID<TAB>texte
 # Édite après la tabulation, relance le jeu (le binaire garde ses défauts si ce fichier manque).
+# Une valeur tient sur UNE ligne : \n = saut de ligne, \t = tabulation, \\ = antislash.
 # Une langue = un fichier (copie, traduis, charge). '#' ou ligne vide = ignoré.
 
 STR_BANDE_STAB_0	Submergée
@@ -126,31 +127,13 @@ STR_TUTO_TITLE_3	4 · Décider coûte.
 STR_TUTO_TITLE_4	5 · Les autres.
 STR_TUTO_TITLE_5	6 · Le savoir voyage.
 STR_TUTO_TITLE_6	7 · La Brèche.
-STR_TUTO_PAGE_0	Ici, pas de pourcentages cachés : l'état des choses se dit en MOTS.
-Une province est Unie ou Fracturée, un peuple Loyal ou Frondeur,
-un marché Sain ou En pénurie. Survole : tout se définit en bas d'écran.
-STR_TUTO_PAGE_1	En haut à droite : la date, l'âge du monde, la vitesse.
-ESPACE met en pause — et en pause, tu peux tout consulter,
-tout ordonner. Rien ne presse jamais que toi.
-STR_TUTO_PAGE_2	En haut : ton or, tes vivres, tes matériaux, et la santé de ta couronne —
-Stabilité, Légitimité, Cohésion, Prospérité. Clique une province pour la voir
-de près ; ouvre la BARRE DE GAUCHE pour l'empire entier :
-Économie, Démographie, Stocks, Armée, Filtres.
-STR_TUTO_PAGE_3	Tout ordre — bâtir, exploiter, déplacer, lever — entre dans une FILE
-et prend des JOURS. Le prix s'affiche AVANT. Certains leviers rapportent
-vite et coûtent longtemps : mater une révolte tait la rue, pas la colère.
-STR_TUTO_PAGE_4	Tes voisins vivent : ils commercent, s'allient, jalousent.
-On peut les lier — l'allié, le protégé, le serf, la cité marchande —
-et chaque lien a son prix. Un embargo est une arme ; une guerre se gagne
-sur le champ, au MORAL, pas au nombre.
-STR_TUTO_PAGE_5	Ton arbre a un cœur et un cercle : le cœur se recherche,
-le CERCLE se gagne par le contact — commerce, frontières, peuples gouvernés.
-Une culture qu'on assimile est un savoir qu'on tarit.
-Choisis ce que tu fonds et ce que tu gardes distinct.
-STR_TUTO_PAGE_6	Certaines voies sont plus que puissantes — elles sont AVIDES.
-Chaque pacte sombre, chaque forge interdite, chaque culte imposé CHARGE le monde.
-La Brèche n'interdit rien : elle attend. Ton empire tombera — ils tombent tous.
-La seule question est COMMENT, et ce que tu laisseras debout.
+STR_TUTO_PAGE_0	Ici, pas de pourcentages cachés : l'état des choses se dit en MOTS.\nUne province est Unie ou Fracturée, un peuple Loyal ou Frondeur,\nun marché Sain ou En pénurie. Survole : tout se définit en bas d'écran.
+STR_TUTO_PAGE_1	En haut à droite : la date, l'âge du monde, la vitesse.\nESPACE met en pause — et en pause, tu peux tout consulter,\ntout ordonner. Rien ne presse jamais que toi.
+STR_TUTO_PAGE_2	En haut : ton or, tes vivres, tes matériaux, et la santé de ta couronne —\nStabilité, Légitimité, Cohésion, Prospérité. Clique une province pour la voir\nde près ; ouvre la BARRE DE GAUCHE pour l'empire entier :\nÉconomie, Démographie, Stocks, Armée, Filtres.
+STR_TUTO_PAGE_3	Tout ordre — bâtir, exploiter, déplacer, lever — entre dans une FILE\net prend des JOURS. Le prix s'affiche AVANT. Certains leviers rapportent\nvite et coûtent longtemps : mater une révolte tait la rue, pas la colère.
+STR_TUTO_PAGE_4	Tes voisins vivent : ils commercent, s'allient, jalousent.\nOn peut les lier — l'allié, le protégé, le serf, la cité marchande —\net chaque lien a son prix. Un embargo est une arme ; une guerre se gagne\nsur le champ, au MORAL, pas au nombre.
+STR_TUTO_PAGE_5	Ton arbre a un cœur et un cercle : le cœur se recherche,\nle CERCLE se gagne par le contact — commerce, frontières, peuples gouvernés.\nUne culture qu'on assimile est un savoir qu'on tarit.\nChoisis ce que tu fonds et ce que tu gardes distinct.
+STR_TUTO_PAGE_6	Certaines voies sont plus que puissantes — elles sont AVIDES.\nChaque pacte sombre, chaque forge interdite, chaque culte imposé CHARGE le monde.\nLa Brèche n'interdit rien : elle attend. Ton empire tombera — ils tombent tous.\nLa seule question est COMMENT, et ce que tu laisseras debout.
 STR_MENU_SOUS_TITRE	un monde qui ne vous attend pas — et qui se lit
 STR_MENU_JOUER	Jouer
 STR_MENU_CHARGER	Charger
@@ -257,6 +240,26 @@ STR_EDI_TEMPLE	Temple
 STR_EDI_CATHEDRALE	Cathédrale
 STR_EDI_BIBLIOTHEQUE	Bibliothèque
 STR_EDI_MONASTERE	Monastère
+STR_EDI_ARSENAL	Arsenal
+STR_EDI_AMIRAUTE	Amirauté
+STR_EDI_PORT_MARCHAND	Port marchand
+STR_EDI_BIBLIO_MIL	Bibliothèque militaire
+STR_EDI_OBSERVATOIRE	Observatoire
+STR_FORK_ARSENAL_0	Les maîtres de guerre de {0} transforment les quais en Arsenal.
+STR_FORK_ARSENAL_1	{0} arme ses quais : l'Arsenal s'élève.
+STR_FORK_ARSENAL_2	À {0}, la rade devient Arsenal — la flotte avant le négoce.
+STR_FORK_AMIRAUTE_0	La Chancellerie de {0} impose une doctrine maritime : l'Amirauté naît.
+STR_FORK_AMIRAUTE_1	{0} dote sa rade d'une Amirauté — la mer entre aux registres.
+STR_FORK_AMIRAUTE_2	L'Amirauté de {0} prend la mer en main.
+STR_FORK_PORT_MARCH_0	Les marchands de {0} obtiennent privilèges et entrepôts : le Port marchand devient le cœur de la cité.
+STR_FORK_PORT_MARCH_1	{0} ouvre ses quais au négoce : le Port marchand l'emporte.
+STR_FORK_PORT_MARCH_2	Au Port marchand de {0}, tout s'achète — même la paix.
+STR_FORK_FORGE_0	Le Fer céleste est confié aux forgerons-runiers de {0}. La victoire se rapproche ; le réel, moins stable.
+STR_FORK_FORGE_1	{0} allume sa Forge de Runes — le flux s'épaissit.
+STR_FORK_FORGE_2	À {0}, le métal tombé du ciel devient arme. Le flux s'en souvient.
+STR_FORK_ALAMBIC_0	Le Salpêtre distillé à {0} réduit les accidents de flux — les guildes réclament leur part.
+STR_FORK_ALAMBIC_1	{0} distille la stabilité : l'Alambic apaise le flux.
+STR_FORK_ALAMBIC_2	L'Alambic de {0} vend le calme — au prix du salpêtre.
 STR_EDI_COMPTOIR	Comptoir
 STR_EDI_BANQUE	Banque
 STR_FAC_CONQUERANT	Conquérants
@@ -265,3 +268,5 @@ STR_FAC_LEGISTE	Légistes
 STR_FAC_GARDIEN	Gardiens
 STR_FAC_TRANSGRESSEUR	Transgresseurs
 STR_FAC_COMMUNAUTAIRE	Communautaires
+STR_FATAL_TITRE	SCPS — échec au démarrage
+STR_FATAL_SDL	SCPS n'a pas pu initialiser l'affichage.\n\n{0}

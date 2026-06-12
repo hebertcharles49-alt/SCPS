@@ -273,4 +273,6 @@
     X(STR_FAC_GARDIEN,       "Guardians") \
     X(STR_FAC_TRANSGRESSEUR, "Transgressors") \
     X(STR_FAC_COMMUNAUTAIRE, "Communalists") \
+    X(STR_FATAL_TITRE, "SCPS — startup failed") \
+    X(STR_FATAL_SDL,   "SCPS could not initialize the display.\n\n{0}") \
 

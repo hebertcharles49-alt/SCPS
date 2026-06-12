@@ -3578,6 +3578,16 @@ static void shell_draw(SDL_Renderer *ren,int win_w,int win_h,World *w,Sim *s,
     }
 }
 
+/* Échec fatal au démarrage : une BOÎTE native. L'exe est -mwindows (aucune
+ * console) — un « return 1 » muet ressemble à « ça ne se lance pas ». La boîte
+ * SDL est best-effort (elle marche même si l'init vidéo a échoué). {0}=détail SDL. */
+static void fatal_box(const char *detail) {
+    char m[512];
+    tr_fmt(m, sizeof m, STR_FATAL_SDL, detail ? detail : "");
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, tr(STR_FATAL_TITRE), m, NULL);
+    fprintf(stderr, "[scps] démarrage : %s\n", detail ? detail : "(inconnu)");
+}
+
 int main(int argc, char **argv) {
     bool shot = false, shot_tree = false, shot_war = false, shot_culture = false, shot_sidebar = false;
     int  shot_shell = 0;
@@ -3607,7 +3617,7 @@ int main(int argc, char **argv) {
       if (nov>0) printf("[scps] scps_lang.txt chargé : %d libellé(s) surchargé(s).\n", nov); }
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
+        fatal_box(SDL_GetError());
         return 1;
     }
 
@@ -3625,9 +3635,17 @@ int main(int argc, char **argv) {
         "SCPS — Moteur de carte",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         initw, inith, winflags);
+    if (!win) { fatal_box(SDL_GetError()); return 1; }
+    /* Rendu : on PRÉFÈRE l'accéléré + vsync, mais on RETOMBE sur le logiciel.
+     * Sans ce repli, une machine sans accélération GPU (machine virtuelle,
+     * bureau distant, pilote graphique absent/obsolète) renvoyait ren=NULL →
+     * sortie muette = le « ça ne se lance pas » signalé. Le logiciel marche
+     * partout (CPU) : mieux vaut lent que rien. */
     SDL_Renderer *ren = SDL_CreateRenderer(win, -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (!win || !ren) { fprintf(stderr,"SDL: %s\n",SDL_GetError()); return 1; }
+    if (!ren) ren = SDL_CreateRenderer(win, -1, 0);                     /* sans vsync */
+    if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE); /* repli ultime */
+    if (!ren) { fatal_box(SDL_GetError()); return 1; }
     SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
 
     /* La prise audio (§5) : ouvre un device si présent ; sinon MUET, sans erreur

@@ -51,9 +51,13 @@ const char *lang_id_name(StrId id){ return (id>=0&&id<STR__COUNT)?TABLE_NAME[id]
 void lang_clear_overrides(void){
     for (int i=0;i<STR__COUNT;i++){ free(g_override[i]); g_override[i]=NULL; }
 }
-static StrId lang_id_from_name(const char *name){
-    for (int i=0;i<STR__COUNT;i++) if (strcmp(TABLE_NAME[i],name)==0) return (StrId)i;
-    return (StrId)-1;
+/* Renvoie l'index, ou -1 si inconnu. SIGNÉ exprès : StrId est un enum à valeurs
+ * toutes ≥0, donc le compilateur le rend NON SIGNÉ — un « StrId k=...; if(k<0) »
+ * serait TOUJOURS faux et déréférencerait g_override[(unsigned)-1] (hors borne,
+ * plantage au démarrage dès qu'un ID périmé traîne dans scps_lang.txt). */
+static int lang_id_from_name(const char *name){
+    for (int i=0;i<STR__COUNT;i++) if (strcmp(TABLE_NAME[i],name)==0) return i;
+    return -1;
 }
 
 void lang_set(Lang l){ if (l>=0 && l<LANG_COUNT) g_lang=l; }
@@ -121,19 +125,49 @@ int lang_load_file(const char *path){
         char *id=p;                                    /* l'ID : jusqu'au 1er séparateur */
         while (*p && *p!=' ' && *p!='\t' && *p!='\n' && *p!='\r') p++;
         if (!*p || *p=='\n' || *p=='\r'){ continue; }  /* pas de texte → ignore */
-        *p++='\0';
-        while (*p==' '||*p=='\t') p++;                 /* saute le séparateur ID↔texte */
+        char sep=*p; *p++='\0';                        /* termine l'ID sur le séparateur */
+        /* Le dump pose UNE tabulation : le texte commence alors JUSTE après — les
+         * espaces de tête sont SIGNIFICATIFS et préservés (p.ex. " — …"). Si l'ID a
+         * été clos par un espace (fichier édité à la main), on saute le blanc résiduel. */
+        if (sep!='\t') while (*p==' '||*p=='\t') p++;
         char *txt=p;
         size_t L=strlen(txt);                          /* retire le saut de ligne final */
         while (L>0 && (txt[L-1]=='\n'||txt[L-1]=='\r')) txt[--L]='\0';
-        StrId k=lang_id_from_name(id);
-        if (k<0) continue;                             /* ID inconnu : on ignore */
+        /* dé-échappe \n \r \t \\ EN PLACE : le dump pose ces séquences pour qu'une
+         * valeur (même multi-ligne, p.ex. une page de tutoriel) tienne sur UNE
+         * ligne physique « ID<TAB>valeur » et se relise sans ambiguïté. */
+        { char *w=txt;
+          for (const char *r=txt; *r; r++){
+              if (*r=='\\' && r[1]){
+                  r++;
+                  switch (*r){ case 'n': *w++='\n'; break; case 'r': *w++='\r'; break;
+                               case 't': *w++='\t'; break; case '\\': *w++='\\'; break;
+                               default:  *w++='\\'; *w++=*r; break; }  /* inconnue : littérale */
+              } else *w++=*r;
+          }
+          *w='\0'; L=(size_t)(w-txt); }
+        int k=lang_id_from_name(id);
+        if (k<0) continue;                             /* ID inconnu : on ignore (robuste aux versions) */
         free(g_override[k]);
         g_override[k]=malloc(L+1);
         if (g_override[k]){ memcpy(g_override[k],txt,L+1); n++; }
     }
     fclose(f);
     return n;
+}
+
+/* Écrit s en ÉCHAPPANT \ \n \r \t — pour que toute valeur (même multi-ligne)
+ * tienne sur UNE ligne physique « ID<TAB>valeur » (le chargeur dé-échappe). */
+static void lang_fputs_escaped(FILE *f, const char *s){
+    for (; *s; s++){
+        switch (*s){
+            case '\\': fputs("\\\\", f); break;
+            case '\n': fputs("\\n",  f); break;
+            case '\r': fputs("\\r",  f); break;
+            case '\t': fputs("\\t",  f); break;
+            default:   fputc((unsigned char)*s, f);
+        }
+    }
 }
 
 /* Écrit la liste ÉDITABLE complète (ID <TAB> texte de la langue courante) — le
@@ -143,9 +177,13 @@ int lang_dump_file(const char *path){
     if (!f) return -1;
     fputs("# scps_lang.txt — TOUT le texte joueur, éditable. Format : STR_ID<TAB>texte\n"
           "# Édite après la tabulation, relance le jeu (le binaire garde ses défauts si ce fichier manque).\n"
+          "# Une valeur tient sur UNE ligne : \\n = saut de ligne, \\t = tabulation, \\\\ = antislash.\n"
           "# Une langue = un fichier (copie, traduis, charge). '#' ou ligne vide = ignoré.\n\n", f);
-    for (int i=0;i<STR__COUNT;i++)
-        fprintf(f, "%s\t%s\n", TABLE_NAME[i], tr((StrId)i));
+    for (int i=0;i<STR__COUNT;i++){
+        fputs(TABLE_NAME[i], f); fputc('\t', f);
+        lang_fputs_escaped(f, tr((StrId)i));           /* échappe \n \t \\ → UNE ligne physique */
+        fputc('\n', f);
+    }
     fclose(f);
     return STR__COUNT;
 }

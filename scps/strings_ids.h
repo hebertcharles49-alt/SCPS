@@ -279,5 +279,8 @@
     X(STR_FAC_GARDIEN,       "Gardiens") \
     X(STR_FAC_TRANSGRESSEUR, "Transgresseurs") \
     X(STR_FAC_COMMUNAUTAIRE, "Communautaires") \
+    /* Échec fatal au démarrage (boîte SDL native, avant toute fenêtre de jeu) — {0}=détail SDL. */ \
+    X(STR_FATAL_TITRE, "SCPS — échec au démarrage") \
+    X(STR_FATAL_SDL,   "SCPS n'a pas pu initialiser l'affichage.\n\n{0}") \
 
 #endif /* SCPS_STRINGS_IDS_H */
