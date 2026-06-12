@@ -125,6 +125,60 @@ int main(int argc,char**argv){
            camp2->army[A].battles, camp2->army[B].battles);
     ok("les deux forces se sont CROISÉES sur la région et ont LIVRÉ BATAILLE", fought);
 
+    /* ═══ 3b. L1 — L'INTERCEPTION : l'assiégeant se fait surprendre ═════ */
+    printf("\n── 3b. L1 : un assiégeant se fait INTERCEPTER par le défenseur ──\n");
+    campaign_init(camp2, w, econ);
+    campaign_order(camp2, econ, A, frontier, target, &invader);     /* A marche, puis ASSIÈGE */
+    { int guard=0;
+      while (campaign_phase(camp2,A)!=FA_SIEGE && ++guard<800){
+          uint32_t rng=0xC0FFEEu+(uint32_t)guard*2654435761u;
+          campaign_tick(camp2, w, econ, &dp, &rng, 5.f);
+      } }
+    ok("l'assaillant est EN SIÈGE sur la région du défenseur (interceptable)",
+       campaign_phase(camp2,A)==FA_SIEGE && camp2->army[A].loc==target);
+    /* la garnison de B fait une SORTIE sur sa propre place assiégée (le verbe L1). */
+    bool sortie = campaign_order(camp2, econ, B, target, target, &defender);
+    int intercepted=0;
+    for (int it=0; it<200 && !intercepted; it++){
+        uint32_t rng=0xBADBEEFu+(uint32_t)it*40503u;
+        campaign_tick(camp2, w, econ, &dp, &rng, 5.f);
+        if (camp2->army[B].battles>0) intercepted=1;
+    }
+    ok("le défenseur INTERCEPTE l'assiégeant : la bataille s'engage sous les murs",
+       sortie && intercepted && camp2->n_battles>0);
+
+    /* ═══ 3c. L2 — LE RALLIEMENT : l'armée brisée se reforme ════════════ */
+    printf("\n── 3c. L2 : une armée en déroute se REFORME (40-60 %%, 30-60 j, une fois/guerre) ──\n");
+    campaign_init(camp2, w, econ);
+    { ArmyState david   = make_force(6,4,1);          /* le petit qui va rompre */
+      ArmyState goliath = make_force(40,25,12);       /* l'écrasant */
+      long u_pre_A=40+25+12, u_pre_B=6+4+1;
+      campaign_order(camp2, econ, B, target, target, &david);
+      campaign_order(camp2, econ, A, frontier, target, &goliath);
+      /* le banc prouve LE RALLIEMENT, pas le vainqueur (l'équilibre du choc = L3) :
+       * on suit CELUI QUI ROMPT, quel que soit le camp. */
+      long after_rout=-1; int RT=-1, guard=0;
+      while (camp2->n_rallies==0 && ++guard<600){      /* déroute PUIS ralliement (30-60 j après) */
+          uint32_t rng=0xFEEDFACEu+(uint32_t)guard*40503u;
+          campaign_tick(camp2, w, econ, &dp, &rng, 5.f);
+          if (camp2->n_routs>0 && RT<0){
+              RT = camp2->army[A].rally_used ? A : B;
+              after_rout = campaign_units(camp2,RT);
+          }
+      }
+      long u_pre = (RT==A)? u_pre_A : u_pre_B;
+      ok("une DÉROUTE survient, et le ralliement se CONSOMME (une fois/guerre)",
+         camp2->n_routs>0 && camp2->n_rallies>0 && RT>=0 && camp2->army[RT].rally_used);
+      ok("le NOYAU survit à la curée (l'armée ne s'évapore plus)", after_rout>=1);
+      long reformed=(RT>=0)?campaign_units(camp2,RT):0;
+      printf("   le rompu : avant %ld → après curée %ld → reformé %ld (cap 60 %% de l'avant-déroute)\n",
+             u_pre, after_rout, reformed);
+      ok("la re-formation TOMBE (ralliement compté, brisure levée)",
+         camp2->n_rallies>0 && RT>=0 && camp2->army[RT].broken_days==0);
+      ok("le CAP est respecté : reformé ≤ 60 % de l'avant-déroute, et ≥ le noyau",
+         RT>=0 && reformed>=after_rout && reformed<=(long)(0.6f*(float)u_pre)+1);
+    }
+
     /* ═══ 4. LECTEURS (membrane : tangibles) ═══════════════════════════ */
     printf("\n── 4. Lecteurs de campagne (mots & nombres tangibles, pour l'UI §4) ──\n");
     ok("les phases ont des noms diégétiques distincts (repos / marche / siège)",

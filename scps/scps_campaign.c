@@ -137,6 +137,36 @@ bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
     return true;
 }
 
+/* L1 — la REDIRECTION : nouvelle cible, MÊME force (les pertes restent payées). */
+bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
+                       int owner, int target_region){
+    if (owner<0 || owner>=SCPS_MAX_COUNTRY) return false;
+    FieldArmy *a=&c->army[owner];
+    if (!a->active || a->phase==FA_BATTLE || a->phase>=FA_EMBARK) return false;  /* épinglée / en mer */
+    if (a->broken_days>0) return false;                                          /* brisée : elle fuit */
+    if (target_region<0 || target_region>=econ->n_regions) return false;
+    if (force_units(&a->force)<=0) return false;
+    if (a->loc==target_region){
+        /* sur place : on re-décide comme une ARRIVÉE (mêmes règles que la marche). */
+        bool ours=(econ->region[a->loc].owner==a->owner);
+        int  occ = dp ? dp->occupier[a->loc] : -1;
+        a->dest=target_region;
+        if (occ==a->owner || (ours && occ<0)){ a->phase=FA_IDLE; a->dest=-1; a->next=-1; return true; }
+        a->phase=FA_SIEGE; a->next=-1;
+        a->days_left = siege_days(region_defense(econ,a->loc), region_food_months(econ,a->loc),
+                                  terrain_defense_mult(c->reg_biome[a->loc], c->reg_height[a->loc]))
+                     * posture_siege_mult(a->posture);
+        return true;
+    }
+    int hop=next_hop(c, econ, a->loc, target_region);
+    if (hop<0) return false;                                                     /* injoignable par terre */
+    a->dest=target_region; a->next=hop; a->phase=FA_MARCH;
+    a->leg_days  = army_step_days(&a->force, c->reg_biome[hop], c->reg_height[hop], false, false)
+                 * posture_march_mult(a->posture);
+    a->days_left = a->leg_days;
+    return true;
+}
+
 /* ── L'EMBARQUEMENT (mer §6) : port → mer → côte, tout en jours ─────────── */
 bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
                         struct NavyState *navy, int owner,
@@ -309,9 +339,19 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.06f;   /* la montagne couvre la fuite */
     P=fminf(tune_f("CUREE_CAP",0.22f),fmaxf(0.04f,P));
     long lp=force_units(&L->force);
-    long pursued=kill_packets(&L->force,(long)((float)lp*P+0.5f));
+    long to_kill=(long)((float)lp*P+0.5f);
+    if (!L->rally_used && to_kill>=lp) to_kill=lp-1;   /* L2 : le NOYAU survit pour se rallier */
+    long pursued=kill_packets(&L->force,to_kill);
     c->dead_pursuit += pursued*100;                                    /* la curée : l'essentiel des morts */
     c->n_routs++;
+    /* L2 — LE RALLIEMENT : les fuyards se reformeront (40-60 % de l'avant-déroute,
+     * 30-60 j) — une fois par guerre. Déterministe : dérivé de l'effectif. */
+    if (!L->rally_used && force_units(&L->force)>0 && lp>0){
+        L->rally_used   = true;
+        L->rally_days   = 30.f + (float)(lp % 31);                     /* 30-60 j */
+        L->rally_packets= (int)((float)lp * (0.40f + 0.01f*(float)(lp % 21)));  /* 40-60 % */
+        if (L->rally_packets < 1) L->rally_packets = 1;
+    }
     bt_score(dp, V->owner, L->owner, 6.f+fminf(12.f,(float)pursued*0.6f));
     L->broken_days=BT_BRISEE_J;
     L->phase=FA_IDLE; L->dest=-1; L->next=-1;
@@ -378,8 +418,12 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         if (bt->lossA>=1.f){ mA=kill_packets(&A->force,(long)bt->lossA); bt->lossA-=(float)mA; }
         c->dead_choc += (mA+mB)*100;
         bt_score(dp,(pA>=pB)?A->owner:B->owner,(pA>=pB)?B->owner:A->owner,0.35f);  /* le jour gagné pèse un peu */
+        /* L3/H4.2 — LE CHOC TIENT : pas de test de déroute avant CHOC_ROUNDS_BONUS
+         * chocs livrés (les batailles durent, le positionnement compte). */
+        if ((float)bt->chocs >= tune_f("CHOC_ROUNDS_BONUS",2.f)){
         if (bt->resA<=tune_f("BT_RUPTURE",BT_RUPTURE)*bt->resA0){ bt_rout(c,w,e,dp,bt,0); bt_end(c,bt); return; }
         if (bt->resB<=tune_f("BT_RUPTURE",BT_RUPTURE)*bt->resB0){ bt_rout(c,w,e,dp,bt,1); bt_end(c,bt); return; }
+        }
     } else {
         float rA=BT_RECUP + ((e->region[bt->loc].owner==A->owner)?0.007f:0.f);
         float rB=BT_RECUP + ((e->region[bt->loc].owner==B->owner)?0.007f:0.f);
@@ -462,6 +506,44 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
       }
       for (int i=0;i<SCPS_MAX_COUNTRY;i++)
           if (c->army[i].broken_days>0){ c->army[i].broken_days-= nd; if (c->army[i].broken_days<0) c->army[i].broken_days=0; }
+      /* L2 — LE RALLIEMENT : le compte à rebours s'égrène ; à zéro, les fuyards se
+       * REFORMENT — l'effectif remonte à la cible (40-60 % de l'avant-déroute, JAMAIS
+       * au-dessus : les déserteurs reviennent, les morts non), la brisure se lève. */
+      for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+          FieldArmy *a2=&c->army[i];
+          if (a2->rally_days<=0.f) continue;
+          a2->rally_days -= (float)nd;
+          if (a2->rally_days>0.f) continue;
+          a2->rally_days=0.f;
+          long cur=force_units(&a2->force);
+          if (!a2->active || cur<=0){ a2->rally_packets=0; continue; }  /* morte en route : rien à rallier */
+          if (cur < a2->rally_packets){
+              /* remonte chaque unité au prorata vers la cible (composition conservée) */
+              float k2=(float)a2->rally_packets/(float)cur;
+              long total=0;
+              for (int u=0;u<a2->force.n_units;u++){
+                  a2->force.units[u].count=(long)((float)a2->force.units[u].count*k2);
+                  if (a2->force.units[u].count<1) a2->force.units[u].count=1;
+                  total+=a2->force.units[u].count;
+              }
+              while (total>a2->rally_packets && a2->force.n_units>0){   /* cap STRICT : jamais au-dessus */
+                  for (int u=0;u<a2->force.n_units && total>a2->rally_packets;u++)
+                      if (a2->force.units[u].count>1){ a2->force.units[u].count--; total--; }
+                  if (total>a2->rally_packets) break;                   /* tout à 1 : on s'arrête */
+              }
+          }
+          a2->broken_days=0;                                            /* reformée : apte au combat */
+          a2->rally_packets=0;
+          c->n_rallies++;
+      }
+      /* L2 — « une fois par GUERRE » : la paix relâche le ralliement consommé. */
+      if (dp) for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+          if (!c->army[i].rally_used || c->army[i].rally_days>0.f) continue;
+          bool at_war=false;
+          for (int b=0;b<SCPS_MAX_COUNTRY;b++)
+              if (b!=i && diplo_status(dp,i,b)==DIPLO_WAR){ at_war=true; break; }
+          if (!at_war) c->army[i].rally_used=false;
+      }
     }
 
     /* 2. avancement : on consomme dt_days à travers les étapes ET le siège. */

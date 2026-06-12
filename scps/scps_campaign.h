@@ -55,6 +55,12 @@ typedef struct {
     int        battles;     /* batailles livrées */
     int        posture;     /* §5 sidebar : 0 prudente · 1 standard · 2 agressive (module marche/siège) */
     int        broken_days; /* armée BRISÉE (déroute) : inapte au combat tant que > 0 (se reconstitue) */
+    /* L2 — LE RALLIEMENT (H4.3) : une armée en déroute ne s'évapore plus — elle se
+     * reforme à 40-60 % de son effectif d'avant-déroute après 30-60 j, UNE fois par
+     * armée et par guerre (rally_used se relâche à la paix). SAVE_VERSION 14. */
+    bool       rally_used;     /* le ralliement de cette guerre est consommé */
+    float      rally_days;     /* compte à rebours avant la re-formation (0 = aucun) */
+    int        rally_packets;  /* effectif-cible de la re-formation (paquets de 100) */
     /* LA TRAVERSÉE (mer §6) */
     int        sail_transports;  /* transports réservés (rendus au débarquement) */
     float      sail_days;        /* jours de mer du trajet ordonné (volta comprise) */
@@ -90,6 +96,7 @@ typedef struct Campaign {
     FieldBattle battle[CAMPAIGN_MAX_BATTLES];   /* les champs où l'on s'accroche */
     /* télémétrie (chronicle §8) — cumul sim */
     int   n_battles, n_routs, n_disengage, n_reinforce, n_stalemate;
+    int   n_rallies;                      /* L2 : armées reformées après déroute */
     long  dead_choc, dead_pursuit;        /* LA vérif : la poursuite doit DOMINER */
     long  battle_days;                    /* Σ durées (jours) */
     int   n_sails;                        /* mer §10 : traversées ordonnées */
@@ -127,6 +134,15 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *econ,
 /* Rend les transports d'une armée débarquée/morte à la flotte (appelé par le
  * harnais APRÈS campaign_tick : campaign ne LIE pas la marine — il marque). */
 void campaign_release_transports(Campaign *c, struct NavyState *navy);
+
+/* L1 — REDIRIGER une armée DÉJÀ déployée vers une nouvelle cible SANS recopier la
+ * force (les pertes restent payées ; un siège en cours est ABANDONNÉ). Refus si
+ * l'armée est épinglée en bataille, en mer, brisée, ou la cible injoignable.
+ * Sur place : re-décide comme une arrivée (notre terre libre → IDLE ; ennemie ou
+ * occupée → SIÈGE). C'est le verbe de l'interception : le défenseur marche À LA
+ * RENCONTRE de l'assiégeant, l'attaquant ne dort pas après une prise. */
+bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *dp,
+                       int owner, int target_region);
 
 /* ---- Lecteurs (membrane : tangibles) ---------------------------------- */
 bool        campaign_active       (const Campaign *c, int owner);
