@@ -244,6 +244,11 @@
     X(STR_EDI_CATHEDRALE,   "Cathedral") \
     X(STR_EDI_BIBLIOTHEQUE, "Library") \
     X(STR_EDI_MONASTERE,    "Monastery") \
+    X(STR_EDI_ARSENAL,      "Arsenal") \
+    X(STR_EDI_AMIRAUTE,     "Admiralty") \
+    X(STR_EDI_PORT_MARCHAND,"Merchant Harbour") \
+    X(STR_EDI_BIBLIO_MIL,   "War Library") \
+    X(STR_EDI_OBSERVATOIRE, "Observatory") \
     X(STR_EDI_COMPTOIR,     "Trading Post") \
     X(STR_EDI_BANQUE,       "Bank") \
     X(STR_FAC_CONQUERANT,    "Conquerors") \

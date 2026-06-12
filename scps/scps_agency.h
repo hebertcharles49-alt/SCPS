@@ -34,6 +34,11 @@ typedef enum {
     EDI_SANCTUAIRE, EDI_TEMPLE, EDI_CATHEDRALE,         /* → foi (SOUTIENT L) */
     EDI_BIBLIOTHEQUE, EDI_MONASTERE,                    /* → savoir (recherche ; le monastère aussi foi) */
     EDI_COMPTOIR, EDI_BANQUE,                           /* → PE (commerce) */
+    /* M5 (forks, design §9) — les FOURCHES v1. Maritime : le successeur du PORT
+     * fork sur le pôle (Arsenal/Amirauté/Port marchand — §24). Savoir : la BASE
+     * fork (Bibliothèque militaire / Bibliothèque→Monastère / Observatoire). */
+    EDI_ARSENAL, EDI_AMIRAUTE, EDI_PORT_MARCHAND,       /* ↑ Port, par pôle (M/O/F) */
+    EDI_BIBLIO_MIL, EDI_OBSERVATOIRE,                   /* savoir martial / fluide (l'Ordre garde Bibliothèque→Monastère) */
     EDIFICE_COUNT
 } Edifice;
 
@@ -153,6 +158,18 @@ void agency_save(FILE *f);
 bool agency_load(FILE *f);
 /* DIAGNOSTIC G0.3 — dump par édifice (bâtis / bloqués au palier / sans or) sur stderr. */
 void agency_edi_dump(void);
+
+/* ── M3 (forks §8) — LA SUCCESSION CONTEXTUELLE + L'HYSTÉRÉSIS ──────────────
+ * edifice_fork_successor : la variante de `base` sous un pôle (EDIFICE_COUNT si
+ * base non forkée). edifice_region_pole : le pôle VALIDÉ d'une région (lu des
+ * factions de SA population ; un candidat divergent doit tenir ≥ 360 j — champs
+ * RegionEconomy.last_pole/pole_since_day). edifice_succ_ctx : les deux composées.
+ * Un fork bâti ne se reconvertit JAMAIS (les frères sont bloqués — voir
+ * edifice_build_blocked). Entrepôt et Comptoir restent UNIVERSELS. */
+#include "scps_factions.h"   /* TechPole (le pôle vient des factions) */
+Edifice  edifice_fork_successor(Edifice base, TechPole pole);
+TechPole edifice_region_pole(const World *w, WorldEconomy *econ, int region, int day);
+Edifice  edifice_succ_ctx(const World *w, WorldEconomy *econ, int region, Edifice base, int day);
 
 /* Avance de `days` jours : progresse les chantiers ; à l'achèvement, applique
  * l'effet (déplace une coordonnée que le moteur LIT). `drift` (pile de dérive

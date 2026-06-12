@@ -185,6 +185,7 @@ typedef enum {
     RES_GUNPOWDER,              /* poudre (salpêtre + charbon → Poudrière) → puissance militaire */
     RES_REMEDE,                 /* remèdes (simples → Apothicaire) → santé (besoin de confort) */
     RES_TUNIQUE,                /* TUNIQUE — vêtement fini des JOURNALIERS (étoffe → tunique 1:1) */
+    RES_ESSENCE_PURIFIEE,       /* M6 (forks §10) : salpêtre distillé (Alambic) — le PUITS-DE-FLUX (consommée, elle neutralise la charge arcane) */
     RES_COUNT
 } Resource;
 

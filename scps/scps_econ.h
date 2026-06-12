@@ -78,6 +78,7 @@ typedef enum {
     BLD_TUNIC,         /* étoffe → TUNIQUE (1:1) — vêtement fini des journaliers (chaîne séparée du luxe) */
     BLD_CHARCOAL,      /* 2 bois → 1 charbon (charbonnière, tech de base) — libère la fonderie de la rareté du charbon minier */
     BLD_FOREUSE,       /* §B2 FAUSTIEN : essence → GROS rendement de FER (foreuse arcanique) — l'issue à la famine de matière, payée en charge (tech) */
+    BLD_ALAMBIC,       /* M6 (forks §10, pôle FLUIDE) : salpêtre → essence purifiée — le PUITS-DE-FLUX (vendre la stabilité) */
     BLD_TYPE_COUNT
 } BuildingType;
 
@@ -183,6 +184,11 @@ typedef struct {
     float      route_pe;  /* PE apporté par les routes commerciales (transitoire) */
     float      import_margin;     /* I6 : marge d'achat au marché (1.0 défaut) — ÉCRITE par intertrade, LUE par agency */
     int16_t    import_toll_region;/* I6 : région-Centre qui touche le péage (-1 si aucun) — transitoire */
+    /* M3 (forks §8) — L'HYSTÉRÉSIS DU PÔLE : last_pole = le pôle VALIDÉ (celui que
+     * les forks lisent) ; pole_since_day = depuis quand un pôle DIFFÉRENT s'observe
+     * (0 = aligné). Un candidat doit tenir ≥ 360 j avant de devenir le pôle lu. */
+    int8_t     last_pole;         /* TechPole validé (POLE_ORDRE par défaut) */
+    int32_t    pole_since_day;    /* jour où le candidat divergent est apparu (0 = aucun) */
 
     float      raw_cap[RES_COUNT];   /* extraction max/tick par matière première */
     Building   bld[ECON_MAX_BLD];
@@ -337,5 +343,12 @@ const char *social_class_name(SocialClass c);
 const char *building_name(BuildingType b);
 /* Recette d'un bâtiment (intrants → extrant) — pour la perception IA. */
 void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resource *out);
+/* M6 (forks §14) — le DELTA DE FLUX d'une manufacture arcane : Forge Céleste +1.2 ·
+ * Atelier du Mage +0.8 · Alambic −0.3 (le puits) · 0 sinon. Table de design, lue par
+ * le banc ; le PUITS est branché dans econ_tick (l'essence purifiée neutralise la charge). */
+float econ_bld_flux_delta(BuildingType b);
+/* M6 — la MATIÈRE gate la manufacture arcane : Forge ↔ fer céleste, Atelier ↔ cristal,
+ * Alambic ↔ salpêtre (raw_cap de la région). true pour les manufactures ordinaires. */
+bool  econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b);
 
 #endif /* SCPS_ECON_H */

@@ -3146,7 +3146,7 @@ const char *resource_name(Resource r) {
         [RES_GRAIN]="Céréales",[RES_LIVESTOCK]="Bétail",[RES_WOOL]="Laine",[RES_FISH]="Poisson",[RES_FUR]="Fourrure",
         [RES_SALT]="Sel",[RES_COTTON]="Coton",[RES_SUGAR]="Sucre",[RES_WOOD]="Bois",[RES_MED_HERBS]="Herbes médicinales",
         /* brutes minérales & rares */
-        [RES_COPPER]="Cuivre",[RES_IRON]="Fer",[RES_COAL]="Charbon",[RES_SULFUR]="Soufre",[RES_SALTPETER]="Salpêtre",
+        [RES_COPPER]="Cuivre",[RES_IRON]="Fer",[RES_COAL]="Charbon",[RES_SULFUR]="Soufre",[RES_SALTPETER]="Salpêtre",[RES_ESSENCE_PURIFIEE]="Essence purifiée",
         [RES_GOLD]="Or",[RES_PRECIOUS_METAL]="Métaux précieux",[RES_PEARL]="Perle",
         [RES_ARCANE_CRYSTAL]="Cristal arcanique",[RES_CELESTIAL_IRON]="Fer céleste",
         [RES_MUREX]="Murex",[RES_INDIGO]="Indigo",

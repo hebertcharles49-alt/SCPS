@@ -51,6 +51,21 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
     /* Commerce → PE local (capte le flux ; la banque finance l'État). */
     [EDI_COMPTOIR]     = { "Comptoir",      180, { .PE_infra=0.8f }, {{RES_WOOD,RES_CLAY},{40,20}} },
     [EDI_BANQUE]       = { "Banque",        540, { .PE_infra=1.4f }, {{RES_STONE,RES_METAL,RES_PRECIOUS_METAL},{100,60,15}} },  /* la banque mange du PRÉCIEUX (pas d'outils) */
+    /* M5 (forks §9.3/§9.5) — LES FOURCHES v1. Maritime (540 j, ↑ Port — le fork
+     * REMPLACE le Port, delta port conservé) : l'Arsenal projette (H), l'Amirauté
+     * institue (K), le Port marchand capte (PE). Savoir (360 j, BASES alternatives
+     * à la Bibliothèque) : la Bibliothèque militaire arme le savoir (H), 
+     * l'Observatoire ouvre le ciel (P). Deltas §14 mappés sur ProvBuild. */
+    [EDI_ARSENAL]      = { "Arsenal",       540, { .port=1.0f, .H_coerc=1.2f },
+                           {{RES_STONE,RES_METAL,RES_TOOLS},{110,70,25}} },
+    [EDI_AMIRAUTE]     = { "Amirauté",      540, { .port=1.0f, .K_inst=0.8f, .H_coerc=0.4f },
+                           {{RES_STONE,RES_METAL,RES_TOOLS},{100,60,25}} },
+    [EDI_PORT_MARCHAND]= { "Port marchand", 540, { .port=1.0f, .PE_infra=1.5f },
+                           {{RES_STONE,RES_METAL,RES_TOOLS},{90,50,20}} },
+    [EDI_BIBLIO_MIL]   = { "Bibliothèque militaire", 360, { .savoir=1.2f, .H_coerc=0.4f },
+                           {{RES_WOOD,RES_STONE,RES_METAL},{80,35,15}} },
+    [EDI_OBSERVATOIRE] = { "Observatoire",  360, { .savoir=1.5f, .P_open=0.3f },
+                           {{RES_WOOD,RES_STONE,RES_METAL},{70,40,20}} },
 };
 
 const EdificeDef *edifice_def(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?&EDIFICES[e]:NULL; }
@@ -68,6 +83,8 @@ Edifice edifice_prev(Edifice e){
         case EDI_TEMPLE:       return EDI_SANCTUAIRE;
         case EDI_CATHEDRALE:   return EDI_TEMPLE;
         case EDI_MONASTERE:    return EDI_BIBLIOTHEQUE;
+        case EDI_ARSENAL: case EDI_AMIRAUTE: case EDI_PORT_MARCHAND:
+                               return EDI_PORT;            /* M5 : la fourche ↑ le Port */
         default:               return EDIFICE_COUNT;
     }
 }
@@ -98,6 +115,61 @@ Edifice edifice_next_buildable(const WorldEconomy *econ, int region, Edifice bas
     }
     return EDIFICE_COUNT;
 }
+/* ── M3 (forks §8) — LA SUCCESSION CONTEXTUELLE + L'HYSTÉRÉSIS ────────────── */
+/* La variante de `base` sous un pôle (EDIFICE_COUNT si base non forkée). Seul le
+ * PORT fork son successeur en v1 (§23.1) ; le savoir fork à la BASE (routing IA). */
+Edifice edifice_fork_successor(Edifice base, TechPole pole){
+    if (base==EDI_PORT){
+        switch(pole){
+            case POLE_MARTIAL: return EDI_ARSENAL;
+            case POLE_ORDRE:   return EDI_AMIRAUTE;
+            case POLE_FLUIDE:  return EDI_PORT_MARCHAND;
+            default:           return EDIFICE_COUNT;
+        }
+    }
+    return EDIFICE_COUNT;
+}
+/* Le pôle VALIDÉ d'une région : lu des factions de SA population, tie-breaks §7
+ * (capitale → pôle impérial, lu de la capitale du propriétaire ; port ; frontière),
+ * et l'HYSTÉRÉSIS — un candidat divergent doit tenir ≥ 360 j avant d'être lu
+ * (RegionEconomy.last_pole = validé · pole_since_day = depuis quand on diverge). */
+#define POLE_HOLD_DAYS 360
+static TechPole region_pole_raw(const World *w, const WorldEconomy *econ, int region, int imperial){
+    const RegionEconomy *re=&econ->region[region];
+    float wgt[FAC_COUNT];
+    faction_weights_of(&re->pop, 1, wgt);
+    bool port=(re->build.port>0.f) || (re->edi_built & (1u<<EDI_PORT));
+    bool border=false;
+    for (int sn=0; sn<econ->n_regions && !border; sn++)
+        if (econ->adj[region][sn] && econ->region[sn].owner>=0
+            && econ->region[sn].owner!=re->owner) border=true;
+    (void)w;
+    return faction_pole_of(wgt, imperial, port, border);
+}
+TechPole edifice_region_pole(const World *w, WorldEconomy *econ, int region, int day){
+    if (!econ || region<0 || region>=econ->n_regions) return POLE_ORDRE;
+    RegionEconomy *re=&econ->region[region];
+    /* le pôle impérial (tie-break capitale) : la capitale du propriétaire, SANS
+     * récursion (elle se lit elle-même avec imperial=-1). */
+    int imperial=-1;
+    if (w && re->owner>=0 && re->owner<w->n_countries){
+        int cp=w->country[re->owner].capital_prov;
+        int cr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+        if (cr==region) imperial=-1;                       /* JE SUIS la capitale */
+        else if (cr>=0 && cr<econ->n_regions) imperial=(int)region_pole_raw(w,econ,cr,-1);
+    }
+    TechPole cur = region_pole_raw(w, econ, region, imperial);
+    if ((int)cur == (int)re->last_pole){ re->pole_since_day=0; return cur; }
+    if (re->pole_since_day==0){ re->pole_since_day=day>0?day:1; return (TechPole)re->last_pole; }
+    if (day - re->pole_since_day >= POLE_HOLD_DAYS){
+        re->last_pole=(int8_t)cur; re->pole_since_day=0; return cur;     /* le candidat a TENU */
+    }
+    return (TechPole)re->last_pole;                        /* il n'a pas tenu 360 j : on garde */
+}
+Edifice edifice_succ_ctx(const World *w, WorldEconomy *econ, int region, Edifice base, int day){
+    return edifice_fork_successor(base, edifice_region_pole(w, econ, region, day));
+}
+
 /* membre d'une FAMILLE ↑ (base ou palier) : on suit son masque & on gâte la pose.
  * Les autres (Grenier, Marché, Port, Entrepôt, Comptoir, Caravansérail, Irrigation,
  * Aqueduc, Banque) restent des poses INDÉPENDANTES (s'empilent — l'IA en dépend). */
@@ -107,13 +179,37 @@ static bool edi_is_family(Edifice e){
         case EDI_GARNISON: case EDI_FORTERESSE:   case EDI_CITADELLE:
         case EDI_SANCTUAIRE: case EDI_TEMPLE:     case EDI_CATHEDRALE:
         case EDI_BIBLIOTHEQUE: case EDI_MONASTERE: return true;
+        case EDI_ARSENAL: case EDI_AMIRAUTE: case EDI_PORT_MARCHAND:
+        case EDI_BIBLIO_MIL: case EDI_OBSERVATOIRE: return true;   /* M5 */
         default: return false;
     }
 }
 /* La pose est-elle BLOQUÉE ? Un membre déjà bâti (on passe à l'↑) ou un ↑ sans son
  * palier précédent → refus. Un singleton n'est jamais bloqué. */
+/* M3 (forks §8) — les FRÈRES d'une fourche : dès qu'un membre est bâti dans la
+ * région, les autres branches y sont BLOQUÉES (reconversion = démolition, hors v1).
+ * Maritime : Arsenal/Amirauté/Port marchand. Savoir : Bibliothèque militaire /
+ * Bibliothèque (→ Monastère, la branche Ordre) / Observatoire. */
+static uint32_t edi_brothers_mask(Edifice e){
+    const uint32_t MAR = (1u<<EDI_ARSENAL)|(1u<<EDI_AMIRAUTE)|(1u<<EDI_PORT_MARCHAND);
+    const uint32_t SAV = (1u<<EDI_BIBLIO_MIL)|(1u<<EDI_BIBLIOTHEQUE)|(1u<<EDI_OBSERVATOIRE)|(1u<<EDI_MONASTERE);
+    switch(e){
+        case EDI_ARSENAL: case EDI_AMIRAUTE: case EDI_PORT_MARCHAND: return MAR;
+        case EDI_BIBLIO_MIL: case EDI_BIBLIOTHEQUE: case EDI_OBSERVATOIRE: return SAV;
+        default: return 0u;
+    }
+}
 bool edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e){
     if (region<0 || region>=econ->n_regions || !edi_is_family(e)) return false;
+    { uint32_t bro = edi_brothers_mask(e);
+      if (bro){
+          uint32_t built = econ->region[region].edi_built & bro & ~(1u<<e);
+          /* un FRÈRE (autre branche) déjà bâti → bloqué — SAUF son propre palier
+           * précédent dans la même branche (Bibliothèque → Monastère reste licite). */
+          Edifice p0 = edifice_prev(e);
+          if (p0 < EDIFICE_COUNT) built &= ~(1u<<p0);
+          if (built) return true;
+      } }
     uint32_t built = econ->region[region].edi_built;
     if (built & (1u<<e)) return true;                       /* déjà bâti : pas de doublon */
     Edifice p = edifice_prev(e);

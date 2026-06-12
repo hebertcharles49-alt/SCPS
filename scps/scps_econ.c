@@ -122,6 +122,10 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* §B2 FOREUSE ARCANIQUE : transmute l'ESSENCE en FER en masse (0.5 essence → 8 fer).
      * L'issue faustienne à la famine de fer ; gatée par la tech (charge) + l'essence (rare). */
     [BLD_FOREUSE]   = { RES_ESSENCE, 0.5f, RES_NONE, 0.f, RES_IRON, 8.0f, 1.4f, RES_NONE, 0.f },
+    /* M6 (forks §10) — L'ALAMBIC (pôle Fluide) : le salpêtre DISTILLÉ devient essence
+     * purifiée — le puits-de-flux (sa consommation neutralise la charge arcane). Le
+     * salpêtre nourrit DÉJÀ la poudre : une ressource, deux doctrines opposées. */
+    [BLD_ALAMBIC]   = { RES_SALTPETER, 1.2f, RES_NONE, 0.f, RES_ESSENCE_PURIFIEE, 1.0f, 0.9f, RES_NONE, 0.f },
     /* Chaînes militaires de base + santé (compléter le roster de production). */
     [BLD_ARMORY]    = { RES_IRON,      1.2f, RES_NONE, 0.f, RES_ARMS,      1.0f, 1.0f, RES_NONE, 0.f },
     [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
@@ -303,7 +307,7 @@ const char *building_name(BuildingType b) {
         [BLD_TEXTILE]="Manufacture textile",[BLD_SAWMILL]="Scierie navale",[BLD_PAPERMILL]="Papeterie",
         [BLD_WINERY]="Domaine viticole",[BLD_BREWERY]="Brasserie",[BLD_JEWELER]="Joaillerie",
         [BLD_WEAVER_LUX]="Atelier d'étoffe précieuse",[BLD_MAGE_WORKSHOP]="Atelier de mage",
-        [BLD_CELESTIAL_FORGE]="Forge céleste",[BLD_FOUNDRY]="Haut-fourneau",[BLD_TOOLWORKS]="Atelier d'outillage",
+        [BLD_CELESTIAL_FORGE]="Forge céleste",[BLD_FOUNDRY]="Haut-fourneau",[BLD_TOOLWORKS]="Atelier d'outillage",[BLD_ALAMBIC]="Alambic",
         [BLD_ARMORY]="Armurerie",[BLD_POWDERMILL]="Poudrière",[BLD_APOTHECARY]="Apothicaire",
         [BLD_TUNIC]="Atelier de tunique",[BLD_CHARCOAL]="Charbonnière",[BLD_FOREUSE]="Foreuse arcanique",
     };
@@ -351,6 +355,8 @@ void econ_init(WorldEconomy *e, const World *w) {
         const Region *rg=&w->region[rid];
         e->region[rid].import_margin = 1.f;          /* I6 : marché 1:1 par défaut (intertrade l'ajuste) */
         e->region[rid].import_toll_region = -1;
+        e->region[rid].last_pole = 1;                /* M3 : POLE_ORDRE par défaut (sinon memset→MARTIAL) */
+        e->region[rid].pole_since_day = 0;
         float cap=0.f, area=0.f, hab_w=0.f;
         for (int k=0;k<rg->n_provinces;k++) {
             int pid=rg->province_ids[k];
@@ -536,6 +542,9 @@ void econ_init(WorldEconomy *e, const World *w) {
         if (re->raw_cap[RES_IRON] > 0.f) region_ensure_building(re,BLD_ARMORY);
         if (re->raw_cap[RES_SALTPETER] > 0.f && re->raw_cap[RES_COAL] > 0.f)
             region_ensure_building(re,BLD_POWDERMILL);
+        /* M6 — l'ALAMBIC au salpêtre (le SALPÊTRE CONTESTÉ §10 : la poudrière ci-dessus
+         * et l'alambic puisent la même ressource — deux doctrines, un gisement). */
+        if (re->raw_cap[RES_SALTPETER] > 0.f) region_ensure_building(re,BLD_ALAMBIC);
         /* Santé : apothicaire là où poussent les simples (herbes médicinales). */
         if (re->raw_cap[RES_MED_HERBS] > 0.f) region_ensure_building(re,BLD_APOTHECARY);
 
@@ -793,6 +802,31 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
 static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien/encadrement impayé) */
 static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
+
+/* M6 (forks §14) — la table des deltas de flux arcanes (design, lue par le banc).
+ * Le PUITS (alambic, négatif) est branché dans econ_tick : l'essence purifiée
+ * consommée NEUTRALISE la charge arcane (0.5 charge par unité). L'accrual mage
+ * existant reste inchangé (calibré par econ_arcane_demo) — la table dit le SIGNE
+ * et l'ORDRE (forge > mage > 0 > alambic), le moteur branche le puits. */
+float econ_bld_flux_delta(BuildingType b){
+    switch(b){
+        case BLD_CELESTIAL_FORGE: return  1.2f;
+        case BLD_MAGE_WORKSHOP:   return  0.8f;
+        case BLD_ALAMBIC:         return -0.3f;
+        default:                  return  0.f;
+    }
+}
+/* M6 — la MATIÈRE gate l'arcane (design §4.2 : la rareté EST le verrou). */
+bool econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b){
+    if (!e || region<0 || region>=e->n_regions) return false;
+    const RegionEconomy *re=&e->region[region];
+    switch(b){
+        case BLD_CELESTIAL_FORGE: return re->raw_cap[RES_CELESTIAL_IRON] > 0.f;
+        case BLD_MAGE_WORKSHOP:   return re->raw_cap[RES_ARCANE_CRYSTAL] > 0.f;
+        case BLD_ALAMBIC:         return re->raw_cap[RES_SALTPETER]      > 0.f;
+        default:                  return true;
+    }
+}
 
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire. */
 static double g_flux[SCPS_MAX_COUNTRY][FX_COUNT];
@@ -1065,6 +1099,17 @@ void econ_tick(WorldEconomy *e, float dt) {
             labor_used+=b->workers;
             /* ARCANE : brûler le cristal pour l'essence nourrit la Brèche. */
             if (b->type==BLD_MAGE_WORKSHOP) re->arcane_charge += out;
+            /* M6 — LE PUITS-DE-FLUX : l'essence purifiée produite ici se CONSOMME
+             * sur place pour NEUTRALISER la charge (l'Alambic vend la stabilité :
+             * |delta| = 0.3 charge éteinte par unité distillée, si charge il y a). */
+            if (b->type==BLD_ALAMBIC && re->arcane_charge > 0.f){
+                float quench = fminf(re->stock[RES_ESSENCE_PURIFIEE],
+                                     re->arcane_charge / 0.3f);
+                if (quench > 0.f){
+                    re->stock[RES_ESSENCE_PURIFIEE] -= quench;
+                    re->arcane_charge = fmaxf(0.f, re->arcane_charge - quench*0.3f);
+                }
+            }
 
             /* Valeur ajoutée = valeur sortie − valeur intrants */
             float val_out=out*re->price[rc->out];

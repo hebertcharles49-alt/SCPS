@@ -3171,7 +3171,9 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 14u           /* v14 : arc L — le ralliement (FieldArmy.rally_*, Campaign.n_rallies).
+#define SAVE_VERSION 15u           /* v15 : arc M — les fourches (RegionEconomy.last_pole/pole_since_day,
+                                    * +5 édifices, BLD_ALAMBIC + RES_ESSENCE_PURIFIEE : RES_COUNT change).
+                                    * v14 : arc L — le ralliement (FieldArmy.rally_*, Campaign.n_rallies).
                                     * v13 : ère « les puits d'or / le joueur en scène » (arcs I/H) —
                                     * AiActor.next_audit_day (I5) + RegionEconomy.import_margin/
                                     * import_toll_region (I6) ; ride les futurs champs I7/I8/H5/H6.
