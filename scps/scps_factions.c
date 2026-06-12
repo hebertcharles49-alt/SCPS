@@ -90,6 +90,28 @@ EthosFaction faction_weights_of(const ProvincePop *provs, int n, float out[FAC_C
     return finalize(acc, out);
 }
 
+/* M2 (design §7) — LE PÔLE D'UNE RÉGION, lu des poids de factions. Transgresseur
+ * EXCLU (orthogonal — il nourrit l'appétit faustien, pas la fourche). Tie-breaks
+ * §7 dans l'ordre : capitale → pôle impérial · portuaire → Fluide · frontalière →
+ * Martial · sinon → Ordre. */
+TechPole faction_pole_of(const float wgt[FAC_COUNT], int imperial_pole, bool port, bool border){
+    float martial = wgt[FAC_CONQUERANT] + 0.8f*wgt[FAC_GARDIEN];
+    float ordre   = wgt[FAC_LEGISTE]    + 0.8f*wgt[FAC_COMMUNAUTAIRE];
+    float fluide  = wgt[FAC_MARCHAND];
+    const float EPSL = 0.02f;                          /* l'égalité : à deux centièmes près */
+    float top = martial; if (ordre>top) top=ordre; if (fluide>top) top=fluide;
+    int n_top = (martial>=top-EPSL) + (ordre>=top-EPSL) + (fluide>=top-EPSL);
+    if (n_top<=1){
+        if (martial>=top) return POLE_MARTIAL;
+        if (fluide >=top) return POLE_FLUIDE;
+        return POLE_ORDRE;
+    }
+    if (imperial_pole>=0 && imperial_pole<POLE_COUNT) return (TechPole)imperial_pole;  /* capitale */
+    if (port)   return POLE_FLUIDE;
+    if (border) return POLE_MARTIAL;
+    return POLE_ORDRE;
+}
+
 EthosFaction country_faction_weights(const World *w, const WorldEconomy *econ, int cid,
                                      float out[FAC_COUNT]){
     double acc[FAC_COUNT]={0};

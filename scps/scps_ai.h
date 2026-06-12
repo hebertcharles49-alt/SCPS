@@ -160,6 +160,9 @@ void   ai_speculate_tick(AiActor *a, WorldEconomy *econ);
  * L'ACCÈS de race (sa population) débloque les orphelines → diffusion par conquête. */
 void   ai_research_step(AiActor *a, TechState *ts, const World *w,
                         const WorldEconomy *econ, const WorldProsperity *wp, int day);
+/* M1 (design §6) — l'argmax de la ligne ETHOS_FN d'un éthos (le banc §24 le prouve :
+ * Dominateur→ARMÉE · Bureaucrate→RENFORCEMENT · Mercantile→PRODUCTION). */
+TechFunction ai_ethos_pref_func(Ethos e);
 
 /* Masque des races présentes dans la population de l'empire (sa propre race +
  * conquises/migrées) → l'accès aux techs orphelines. Exposé pour le banc d'essai. */

@@ -55,6 +55,32 @@
 #define AI_RESEARCH_RATE    42.f /* P5.29 : ×3 pour suivre le coût ×3 → rythme IA inchangé */
 #define AI_RESEARCH_POPREF  8000.f /* population qui DOUBLE l'assiette de recherche */
 #define AI_TECH_PENCHANT    2.0f  /* biais vers le thème de SA race (penchant, pas « si ») */
+/* ── M1 (design §6, VERBATIM) — ETHOS_FN[ETHOS][FN] : l'éthos pèse la FONCTION.
+ * Indexée sur l'enum réel TechFunction (FN_PRODUCTION=0, FN_ARMEE, FN_RENFORCEMENT)
+ * par initialiseurs désignés — l'inversion de colonnes est impossible. */
+static const float ETHOS_FN[ETHOS_COUNT][FN_COUNT] = {
+    [ETHOS_DOMINATEUR]  = { [FN_ARMEE]=2.5f, [FN_RENFORCEMENT]=0.8f, [FN_PRODUCTION]=0.6f },
+    [ETHOS_HONNEUR]     = { [FN_ARMEE]=2.2f, [FN_RENFORCEMENT]=1.0f, [FN_PRODUCTION]=0.6f },
+    [ETHOS_ORDRE]       = { [FN_ARMEE]=1.2f, [FN_RENFORCEMENT]=2.0f, [FN_PRODUCTION]=1.0f },
+    [ETHOS_BUREAUCRATE] = { [FN_ARMEE]=0.7f, [FN_RENFORCEMENT]=2.2f, [FN_PRODUCTION]=1.3f },
+    [ETHOS_MERCANTILE]  = { [FN_ARMEE]=0.7f, [FN_RENFORCEMENT]=1.0f, [FN_PRODUCTION]=2.3f },
+    [ETHOS_PACIFISTE]   = { [FN_ARMEE]=0.4f, [FN_RENFORCEMENT]=1.2f, [FN_PRODUCTION]=2.4f },
+};
+/* M1/M4 — l'argmax de la ligne d'éthos (banc §24 : ai_prefers_func). */
+TechFunction ai_ethos_pref_func(Ethos e){
+    if (e<0||e>=ETHOS_COUNT) return FN_RENFORCEMENT;
+    TechFunction best=FN_PRODUCTION;
+    for (int f=1;f<FN_COUNT;f++) if (ETHOS_FN[e][f]>ETHOS_FN[e][best]) best=(TechFunction)f;
+    return best;
+}
+/* M4 — l'appétit faustien du CREDO (design §3) : CREDO_FAUST[credo]·(0.6+0.08·valeurs).
+ * Pluraliste tolère (1.0) ; Évangéliste se méfie (0.7) ; Purificateur abhorre (0.4). */
+static float ai_faustian_appetite(Credo cr, float valeurs){
+    static const float CREDO_FAUST[CREDO_COUNT]={ [CREDO_PLURALISTE]=1.0f,
+        [CREDO_EVANGELISTE]=0.7f, [CREDO_PURIFICATEUR]=0.4f };
+    float k=(cr>=0&&cr<CREDO_COUNT)?CREDO_FAUST[cr]:1.f;
+    return k*(0.6f+0.08f*valeurs);
+}
 #define AI_TECH_SIGNATURE   1.5f  /* prime à une signature accessible (la sienne / greffée) */
 #define AI_TECH_FAUSTIAN    2.5f  /* tolérance faustienne = w_faustian − frein (sinon on évite) */
 #define AI_FOREUSE_HUNGER   5.0f  /* §4 : la FAMINE DE FER rend la foreuse arcanique irrésistible (surpasse le frein faustien) */
@@ -1158,6 +1184,20 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
     TechTheme affinity = tech_race_affinity(ai_capital_race(w,econ,a->cid));
     Ethos eth = ai_capital_ethos(w,econ,a->cid);           /* §éthos : biais de coût par fonction */
     float faith_stance = ai_faith_stance(w,econ,a->cid);   /* §4 : orthodoxe interdit, culte sacralise */
+    /* M4 (design §3) — les signaux du score MULTIPLICATIF : credo+valeurs de la
+     * capitale (l'appétit faustien) et la MATIÈRE (un pays sans matière arcane va
+     * moins loin dans le faustien — la carte gate la profondeur, pas un verrou). */
+    Credo credo=CREDO_PLURALISTE; float valeurs=5.f;
+    { int cp2=w->country[a->cid].capital_prov;
+      int cr2=(cp2>=0&&cp2<w->n_provinces)?w->province[cp2].region:-1;
+      if (cr2>=0&&cr2<econ->n_regions){ credo=econ->region[cr2].culture.credo;
+                                        valeurs=econ->region[cr2].culture.valeurs; } }
+    bool has_arcane_raw=false;
+    for (int r=0;r<econ->n_regions && !has_arcane_raw;r++)
+        if (econ->region[r].owner==a->cid &&
+            (econ->region[r].raw_cap[RES_CELESTIAL_IRON]>0.1f ||
+             econ->region[r].raw_cap[RES_ARCANE_CRYSTAL]>0.1f ||
+             econ->region[r].raw_cap[RES_SALTPETER]>0.1f)) has_arcane_raw=true;
     TechId best=TECH_COUNT; float bestscore=-1e30f;
     for (int i=0;i<TECH_COUNT;i++){
         TechId id=(TechId)i;
@@ -1172,8 +1212,14 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
         if (n->func==FN_RENFORCEMENT){ score += 1.0f*a->w_build + 0.4f*n->dK + 0.3f*n->dL;
             if (n->dFracture<0.f) score += 0.05f*v.fracture; }                 /* anti-fracture si fracturé */
         if (n->theme==THM_SOCIETE && n->func==FN_RENFORCEMENT) score += 0.6f*a->w_faith;
-        /* PENCHANT de race — biais, jamais un gate. */
-        if (n->theme==affinity)    score += AI_TECH_PENCHANT;
+        /* M4 — LE SCORE MULTIPLICATIF (design §3) REMPLACE le biais plat de thème :
+         * souche(thème) × éthos(FN) × credo(faustien) × matière. Le plancher +0.4
+         * garde une pente même sans besoin aigu (la curiosité du domaine). */
+        { float mult = ETHOS_FN[eth][n->func]
+                     * ((n->theme==affinity) ? 1.6f : 1.0f)
+                     * (n->faustian ? ai_faustian_appetite(credo, valeurs) : 1.0f)
+                     * ((n->faustian && !has_arcane_raw) ? 0.6f : 1.0f);
+          score = (score + 0.4f) * mult; }
         if (n->native!=RACE_COUNT) score += AI_TECH_SIGNATURE;     /* une signature accessible se prend */
         /* FREIN — le faustien rapproche la Brèche : pris seulement si la pente l'emporte. */
         if (n->faustian){          /* la pente faustienne, FREINÉE ou BÉNIE par la foi (§4) */

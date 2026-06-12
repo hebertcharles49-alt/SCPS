@@ -341,6 +341,11 @@ AI_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_readout.o $(OBJD
 ai_demo: $(AI_DEMO_OBJS)
 	$(CC) $(AI_DEMO_OBJS) -o $@ -lm
 
+# ---- Les fourches (arc M) : éthos→fonction, factions→pôle -----------------
+FORKS_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_ai_demo.o,$(AI_DEMO_OBJS)) $(OBJDIR)/scps_forks_demo.o
+forks_demo: $(FORKS_DEMO_OBJS)
+	$(CC) $(FORKS_DEMO_OBJS) -o $@ -lm
+
 CHRONICLE_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
                   $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                   $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \

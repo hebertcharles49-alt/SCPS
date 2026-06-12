@@ -60,6 +60,16 @@ EthosFaction country_faction_weights(const World *w, const WorldEconomy *econ, i
 /* Variante directe sur un jeu de provinces (bancs d'essai / sous-ensembles). */
 EthosFaction faction_weights_of(const ProvincePop *provs, int n, float out[FAC_COUNT]);
 
+/* ── M2 (arc M, design §7) — LE PÔLE TECHNOLOGIQUE D'UNE RÉGION ─────────────
+ * Lu des poids de factions (normalisés) : martial = Conquérant + 0.8·Gardien ·
+ * ordre = Légiste + 0.8·Communautaire · fluide = Marchand. FAC_TRANSGRESSEUR est
+ * VOLONTAIREMENT absent (orthogonal : il nourrit l'appétit faustien, pas la
+ * fourche). Égalité (à ε) → tie-breaks §7 dans l'ordre : capitale → pôle
+ * impérial (`imperial_pole` ≥ 0) ; portuaire → Fluide ; frontalière → Martial ;
+ * sinon → Ordre. */
+typedef enum { POLE_MARTIAL=0, POLE_ORDRE, POLE_FLUIDE, POLE_COUNT } TechPole;
+TechPole faction_pole_of(const float wgt[FAC_COUNT], int imperial_pole, bool port, bool border);
+
 /* ===================================================================== */
 /* L'ÉTHOS EFFECTIF — la résultante que le moteur LIT (§3)                 */
 /* ===================================================================== */
