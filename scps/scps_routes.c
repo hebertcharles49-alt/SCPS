@@ -36,9 +36,14 @@ bool routes_order(RouteNetwork *rn, const World *w, const WorldEconomy *econ,
         int ax,ay,bx,by;
         if (!world_region_sea_anchor(w,ra,&ax,&ay)) return false;
         if (!world_region_sea_anchor(w,rb,&bx,&by)) return false;
-        float aller=world_sea_days(w,ax,ay,bx,by);
-        float retour=world_sea_days(w,bx,by,ax,ay);
-        if (aller<0.f || retour<0.f) return false;            /* bassins séparés */
+        /* Borne = 2× le plafond : la route est rejetée si la MOYENNE des deux sens
+         * dépasse SEA_ROUTE_MAX_DAYS ; or un sens > 2× le plafond force déjà la moyenne
+         * au-delà (l'autre sens ≥ 0) → rejet certain. Tout sens ≤ borne (le seul cas
+         * acceptable) est donc calculé EXACTEMENT : décision et valeurs inchangées, mais
+         * on cesse de balayer l'océan entier pour les paires lointaines (le coût d'amorce). */
+        float aller =world_sea_days_capped(w,ax,ay,bx,by, 2.f*SEA_ROUTE_MAX_DAYS);
+        float retour=world_sea_days_capped(w,bx,by,ax,ay, 2.f*SEA_ROUTE_MAX_DAYS);
+        if (aller<0.f || retour<0.f) return false;            /* bassins séparés ou trop loin */
         sea_days=0.5f*(aller+retour);                          /* la route vit dans les DEUX sens */
         if (sea_days>SEA_ROUTE_MAX_DAYS) return false;         /* des eaux mortes le rendent « loin » */
     }
@@ -52,8 +57,8 @@ bool routes_order(RouteNetwork *rn, const World *w, const WorldEconomy *econ,
     if (maritime && w){
         int ax,ay,bx,by;
         if (world_region_sea_anchor(w,ra,&ax,&ay) && world_region_sea_anchor(w,rb,&bx,&by)){
-            t->days_ab=world_sea_days(w,ax,ay,bx,by);
-            t->days_ba=world_sea_days(w,bx,by,ax,ay);
+            t->days_ab=world_sea_days_capped(w,ax,ay,bx,by, 2.f*SEA_ROUTE_MAX_DAYS);  /* route acceptée : legs < borne → exact */
+            t->days_ba=world_sea_days_capped(w,bx,by,ax,ay, 2.f*SEA_ROUTE_MAX_DAYS);
         }
     }
     /* LA VOIE D'EAU INTÉRIEURE (commerce asym. §4) : si les deux régions vivent

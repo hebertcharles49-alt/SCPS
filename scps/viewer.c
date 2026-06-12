@@ -880,6 +880,12 @@ static void sim_day(Sim *s, World *w) {
 /* (Ré)initialise la partie VIVANTE : monde déjà généré, on installe TOUS les
  * sous-systèmes, on attache les GROUPES démographiques, on amorce ~3 ans, puis
  * la partie avance par sim_day (plus de snapshot figé). */
+/* — Progression de l'amorce, lue par l'écran de chargement (thread principal) pendant
+ *   que le worker simule. volatile : écrit par le worker, lu par l'UI — monotone, course
+ *   bénigne (seul l'affichage en dépend, pas le moteur). */
+#define GEN_BOOT_DAYS (3*365)
+static volatile int g_gen_phase = 0;   /* 0 = façonnage du monde · 1 = amorce · 2 = fini */
+static volatile int g_gen_day   = 0;   /* jour d'amorce courant (0..GEN_BOOT_DAYS) */
 static void sim_rebuild(Sim *s, World *w) {
     if (!s->econ || !s->wp || !s->wl || !s->net || !s->ts || !s->sc
         || !s->ag || !s->ev || !s->drift || !s->labor || !s->rs || !s->host || !s->camp || !s->navy) return;
@@ -924,7 +930,7 @@ static void sim_rebuild(Sim *s, World *w) {
     for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++)   /* photo des propriétaires (conquête) */
         s->prev_owner_mo[r]=s->econ->region[r].owner;
     s->day=0; s->year=0;
-    for (int t=0; t<3*365; t++) sim_day(s, w);           /* amorce : une carte déjà vivante */
+    for (int t=0; t<GEN_BOOT_DAYS; t++){ sim_day(s, w); g_gen_day=t+1; }   /* amorce : une carte déjà vivante */
     s->ready = true;
 }
 
@@ -3588,6 +3594,39 @@ static void fatal_box(const char *detail) {
     fprintf(stderr, "[scps] démarrage : %s\n", detail ? detail : "(inconnu)");
 }
 
+/* — Le worker de génération : façonne le monde puis l'amorce (3 ans). AUCUNE primitive
+ *   SDL ici. Le thread principal ne TOUCHE pas world/sim tant que la phase n'est pas 2
+ *   (SDL_WaitThread fait la barrière mémoire). Déterminisme inchangé : même calcul,
+ *   simplement hors du thread d'affichage. */
+typedef struct { World *w; WorldParams *p; Sim *s; } GenCtx;
+static int SDLCALL gen_worker(void *data){
+    GenCtx *g=(GenCtx*)data;
+    g_gen_phase=0; world_generate(g->w, g->p);
+    g_gen_phase=1; sim_rebuild(g->s, g->w);
+    g_gen_phase=2;
+    return 0;
+}
+/* L'écran de chargement : fond sombre, libellé de phase, barre de progression — réelle
+ * pour l'amorce, balayage indéterminé pour le façonnage (qui n'a pas de jauge fine). */
+static void loading_paint(SDL_Renderer *ren, int W, int H){
+    fill_rect(ren, 0,0, W,H, (SDL_Color){0x0a,0x0d,0x14,0xff});
+    int phase=g_gen_phase;
+    const char *label=tr(phase==0 ? STR_LOADING_MONDE : STR_LOADING_EVEIL);
+    draw_text(ren, g_font_big, (W-text_w(g_font_big,label))/2, H/2-48, COL_PARCH, label);
+    int bw=W/3; if (bw<240) bw=240; int bh=18, bx=(W-bw)/2, by=H/2;
+    fill_rect(ren, bx-2,by-2, bw+4, bh+4, COL_PANEL2);          /* cadre */
+    fill_rect(ren, bx,by, bw,bh, COL_PANEL);                    /* fond de barre */
+    if (phase==0){                                             /* indéterminé : un bloc qui va-et-vient */
+        int seg=bw/5, span=bw-seg, pos=(int)((SDL_GetTicks()/6)%(unsigned)(2*span));
+        if (pos>span) pos=2*span-pos;
+        fill_rect(ren, bx+pos,by, seg,bh, COL_COPPER);
+    } else {                                                    /* amorce : progression réelle (jours) */
+        float frac=(float)g_gen_day/(float)GEN_BOOT_DAYS;
+        if (frac<0.f) frac=0.f; else if (frac>1.f) frac=1.f;
+        fill_rect(ren, bx,by, (int)(bw*frac),bh, COL_COPPER);
+    }
+    SDL_RenderPresent(ren);
+}
 int main(int argc, char **argv) {
     bool shot = false, shot_tree = false, shot_war = false, shot_culture = false, shot_sidebar = false;
     int  shot_shell = 0;
@@ -3745,8 +3784,29 @@ int main(int argc, char **argv) {
     int   pan_sx = 0, pan_sy = 0;
 
     printf("[scps] Génération (graine %u)…\n", seed);
-    world_generate(world, &params);
-    sim_rebuild(&sim, world);   /* peuple + simule 30 ans (bandeau + panneau) */
+    if (shot){
+        world_generate(world, &params);
+        sim_rebuild(&sim, world);   /* capture headless : synchrone, pas d'écran de chargement */
+    } else {
+        /* Genèse + amorce sur un THREAD : le thread principal reste réactif — il pompe
+         * les évènements (plus de « ne répond pas ») et peint la progression. */
+        GenCtx gctx = { world, &params, &sim };
+        SDL_Thread *gth = SDL_CreateThread(gen_worker, "scps-genese", &gctx);
+        if (!gth){ world_generate(world,&params); sim_rebuild(&sim,world); }   /* repli : pas de thread → synchrone */
+        else {
+            bool gen_quit=false;
+            while (g_gen_phase < 2 && !gen_quit){
+                SDL_Event e;
+                while (SDL_PollEvent(&e))
+                    if (e.type==SDL_QUIT) gen_quit=true;
+                int ow=win_w, oh=win_h; SDL_GetRendererOutputSize(ren,&ow,&oh);
+                loading_paint(ren, ow, oh);
+                SDL_Delay(16);
+            }
+            if (gen_quit) return 0;          /* fermé pendant la genèse : le process sort (worker tué proprement à l'exit) */
+            SDL_WaitThread(gth, NULL);        /* fini : on récupère le worker (barrière → world/sim visibles) */
+        }
+    }
     g_gs = shot ? GS_PLAYING : GS_MENU;      /* le jeu COMMENCE au menu (le monde respire derrière) */
     g_stage = params;
 

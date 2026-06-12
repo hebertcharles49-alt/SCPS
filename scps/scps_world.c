@@ -3306,9 +3306,36 @@ static float sea_step_days(const World *w, int i, int dx, int dy, int j){
 }
 
 /* Dijkstra directionnel sur les cellules marines — tas binaire d'indices. */
-static float g_sea_dist[SCPS_N];
-static int   g_sea_heap[SCPS_N];  static int g_sea_hn;
-static int   g_sea_pos [SCPS_N];                /* -1 = hors tas */
+static float    g_sea_dist[SCPS_N];
+static int      g_sea_heap[SCPS_N];  static int g_sea_hn;
+static int      g_sea_pos [SCPS_N];                /* -1 = hors tas */
+/* Init PARESSEUSE par époque : une cellule pas « vue » dans l'époque courante vaut
+ * dist ∞ / hors-tas. Évite le RAZ O(SCPS_N) (524 288 cellules) à CHAQUE appel —
+ * world_sea_days est invoqué en masse à l'amorce (1095 sim_day × routage maritime).
+ * Résultat strictement identique : c'est le MÊME Dijkstra, init différée. */
+static uint32_t g_sea_seen[SCPS_N];  static uint32_t g_sea_epoch=0;
+static void sea_visit(int i){
+    if (g_sea_seen[i]!=g_sea_epoch){ g_sea_seen[i]=g_sea_epoch; g_sea_dist[i]=1e30f; g_sea_pos[i]=-1; }
+}
+/* MÉMO (s,t)→jours, PAR SEED : world_sea_days est interrogé en masse sur les MÊMES
+ * paires d'ancres (routes, marine, IA) à l'amorce. Cache DÉTERMINISTE (rend la même
+ * valeur), hors sauvegarde — comme g_anchor. val ≥0 = distance exacte ; -1 = bassins
+ * séparés (définitif). Un échec BORNÉ (au-delà du cap) n'est PAS mémorisé (ambigu :
+ * séparé ou simplement loin). Accès strictement mono-thread (le worker de génération
+ * est joint avant que la boucle de jeu n'appelle à son tour). */
+#define SEA_MEMO_BITS  17
+#define SEA_MEMO_SLOTS (1u<<SEA_MEMO_BITS)
+#define SEA_MEMO_PROBE 6
+#define SEA_MEMO_EMPTY 0xFFFFFFFFFFFFFFFFull
+static uint64_t g_sea_memo_key[SEA_MEMO_SLOTS];
+static float    g_sea_memo_val[SEA_MEMO_SLOTS];
+static uint32_t g_sea_memo_seed=0;  static int g_sea_memo_ready=0;
+static uint32_t sea_memo_hash(uint64_t k){ k*=0x9E3779B97F4A7C15ull; return (uint32_t)(k>>(64-SEA_MEMO_BITS))&(SEA_MEMO_SLOTS-1); }
+static void sea_memo_check(uint32_t seed){
+    if (g_sea_memo_ready && g_sea_memo_seed==seed) return;
+    for (uint32_t i=0;i<SEA_MEMO_SLOTS;i++) g_sea_memo_key[i]=SEA_MEMO_EMPTY;
+    g_sea_memo_seed=seed; g_sea_memo_ready=1;
+}
 static void sea_heap_up(int k){
     while (k>0){ int p=(k-1)/2;
         if (g_sea_dist[g_sea_heap[p]]<=g_sea_dist[g_sea_heap[k]]) break;
@@ -3331,22 +3358,43 @@ static int  sea_heap_pop(void){
     return top;
 }
 
-float world_sea_days(const World *w, int ax, int ay, int bx, int by){
+/* cap_days < 0 → sans borne (distance exacte, comportement d'origine). cap_days ≥ 0
+ * → Dijkstra pope par distance CROISSANTE, donc dès qu'on dépasse la borne la cible
+ * est hors d'atteinte DANS CE RAYON et on rend -1. La borne coupe l'exploration des
+ * paires LOINTAINES (le gros du coût à l'amorce : des routes rejetées qui balayaient
+ * tout l'océan pour découvrir « trop loin »). */
+float world_sea_days_capped(const World *w, int ax, int ay, int bx, int by, float cap_days){
     if (ax<0||ay<0||bx<0||by<0||ax>=SCPS_W||ay>=SCPS_H||bx>=SCPS_W||by>=SCPS_H) return -1.f;
     int s=scps_idx(ax,ay), t=scps_idx(bx,by);
     if (!w->cell[s].sea || !w->cell[t].sea) return -1.f;
-    for (int i=0;i<SCPS_N;i++){ g_sea_dist[i]=1e30f; g_sea_pos[i]=-1; }
-    g_sea_hn=0; g_sea_dist[s]=0.f; sea_heap_push(s);
+    /* mémo : la même paire revient des centaines de fois sur 1095 jours d'amorce. */
+    sea_memo_check(w->seed);
+    uint64_t mk=((uint64_t)(uint32_t)s<<32)|(uint32_t)t;
+    uint32_t mbase=sea_memo_hash(mk); int mfree=-1;
+    for (int p=0;p<SEA_MEMO_PROBE;p++){
+        uint32_t sl=(mbase+(uint32_t)p)&(SEA_MEMO_SLOTS-1);
+        if (g_sea_memo_key[sl]==mk){
+            float v=g_sea_memo_val[sl];
+            if (v<0.f) return -1.f;                              /* séparés : injoignable à tout cap */
+            return (cap_days<0.f || v<=cap_days) ? v : -1.f;     /* exact : dans le rayon demandé ? */
+        }
+        if (g_sea_memo_key[sl]==SEA_MEMO_EMPTY){ mfree=(int)sl; break; }
+    }
+    if (++g_sea_epoch==0){ memset(g_sea_seen,0,sizeof g_sea_seen); g_sea_epoch=1; }  /* nouvelle époque (wrap géré) */
+    g_sea_hn=0; sea_visit(s); g_sea_dist[s]=0.f; sea_heap_push(s);
     static const int DX[8]={1,-1,0,0,1,1,-1,-1}, DY[8]={0,0,1,-1,1,-1,1,-1};
+    float result=-1.f;
     while (g_sea_hn>0){
         int i=sea_heap_pop();
-        if (i==t) return g_sea_dist[i];
+        if (cap_days>=0.f && g_sea_dist[i]>cap_days) break;   /* au-delà du rayon : injoignable */
+        if (i==t){ result=g_sea_dist[i]; break; }
         int x=i%SCPS_W, y=i/SCPS_W;
         for (int k=0;k<8;k++){
             int X=x+DX[k], Y=y+DY[k];
             if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) continue;
             int j=scps_idx(X,Y);
             if (!w->cell[j].sea) continue;
+            sea_visit(j);                                  /* dist[j]/pos[j] à jour pour cette époque */
             float nd=g_sea_dist[i]+sea_step_days(w,i,DX[k],DY[k],j);
             if (nd<g_sea_dist[j]){
                 g_sea_dist[j]=nd;
@@ -3354,7 +3402,15 @@ float world_sea_days(const World *w, int ax, int ay, int bx, int by){
             }
         }
     }
-    return -1.f;   /* bassins séparés */
+    /* mémorise : distance EXACTE, ou bassins séparés (-1) SEULEMENT si calcul sans
+     * borne (un -1 borné est ambigu et resterait à recalculer si le cap grandit). */
+    if (mfree>=0 && (result>=0.f || cap_days<0.f)){
+        g_sea_memo_key[mfree]=mk; g_sea_memo_val[mfree]=(result>=0.f)?result:-1.f;
+    }
+    return result;   /* -1 = bassins séparés OU au-delà de la borne */
+}
+float world_sea_days(const World *w, int ax, int ay, int bx, int by){
+    return world_sea_days_capped(w, ax, ay, bx, by, -1.f);   /* sans borne : exact */
 }
 
 /* ── L'avant-port d'une région : cellule de MER au pied de sa côte. DÉRIVÉ du

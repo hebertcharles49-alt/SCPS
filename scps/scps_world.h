@@ -62,6 +62,9 @@ void place_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed);
 /* Jours de mer entre deux cellules MARINES (Dijkstra directionnel, 8 voisins).
  * < 0 si injoignable (bassins séparés / cellule terrestre). */
 float world_sea_days(const World *w, int ax, int ay, int bx, int by);
+/* Variante BORNÉE : explore au plus cap_days jours (cap_days<0 = sans borne, exact).
+ * Au-delà du rayon → -1. Identique à world_sea_days pour toute cible à ≤ cap_days. */
+float world_sea_days_capped(const World *w, int ax, int ay, int bx, int by, float cap_days);
 
 /* Ancre marine d'une RÉGION (l'avant-port) : la cellule de mer adjacente à la
  * côte de la région, la plus proche du germe de sa meilleure province côtière.

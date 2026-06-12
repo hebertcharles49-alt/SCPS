@@ -275,4 +275,6 @@
     X(STR_FAC_COMMUNAUTAIRE, "Communalists") \
     X(STR_FATAL_TITRE, "SCPS — startup failed") \
     X(STR_FATAL_SDL,   "SCPS could not initialize the display.\n\n{0}") \
+    X(STR_LOADING_MONDE, "Shaping the world…") \
+    X(STR_LOADING_EVEIL, "The world awakens — years are passing…") \
 
