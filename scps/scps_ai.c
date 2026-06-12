@@ -306,22 +306,21 @@ static bool countries_adjacent(const WorldEconomy *econ, int a, int b){
             if (econ->region[s].owner==b && econ->adj[r][s]) return true;
     return false;
 }
-/* H3 — ADJACENCE MARITIME : a peut frapper b si a a un port côtier et que b
- * possède une côte atteignable par les courants (≤ AI_SEA_WAR_MAX_DAYS).
- * Les armées transitent par campaign_order_sea (déjà implémenté §6). */
+/* H3 — ADJACENCE MARITIME : a peut frapper b si l'un de ses ports côtiers est
+ * à portée de courants d'une côte de b (≤ AI_SEA_WAR_MAX_DAYS).
+ * On teste TOUS les ports de a (un pays peut s'étendre sur deux océans). */
 static bool countries_sea_adjacent(const World *w, const WorldEconomy *econ, int a, int b){
-    int ax=-1, ay=-1;
-    for (int r=0; r<econ->n_regions && ax<0; r++){
+    for (int r=0; r<econ->n_regions; r++){
         if (econ->region[r].owner!=a || !econ->region[r].coastal || econ->region[r].build.port<=0.f) continue;
-        if (world_region_sea_anchor(w,r,&ax,&ay)) break;
-    }
-    if (ax<0) return false;
-    for (int s=0; s<econ->n_regions; s++){
-        if (econ->region[s].owner!=b || !econ->region[s].coastal) continue;
-        int bx,by;
-        if (!world_region_sea_anchor(w,s,&bx,&by)) continue;
-        float d=world_sea_days(w,ax,ay,bx,by);
-        if (d>=0.f && d<=AI_SEA_WAR_MAX_DAYS) return true;
+        int ax,ay;
+        if (!world_region_sea_anchor(w,r,&ax,&ay)) continue;
+        for (int s=0; s<econ->n_regions; s++){
+            if (econ->region[s].owner!=b || !econ->region[s].coastal) continue;
+            int bx,by;
+            if (!world_region_sea_anchor(w,s,&bx,&by)) continue;
+            float d=world_sea_days(w,ax,ay,bx,by);
+            if (d>=0.f && d<=AI_SEA_WAR_MAX_DAYS) return true;
+        }
     }
     return false;
 }
