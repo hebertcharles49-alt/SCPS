@@ -43,6 +43,7 @@
 #include "scps_missions.h"  /* missions décennales : rythme + injection de ressources */
 #include "scps_navy.h"     /* la flotte (mer §5) : coques, chantier, entretien, outre-mer */
 #include "scps_lang.h"     /* la table de chaînes : tout mot face-joueur vient des tables */
+#include "scps_sprites.h"  /* le contrat 184 : planche 512×512, magenta=transparent (display-only) */
 #include "stb_image_write.h"  /* F12 : capture d'écran PNG (vendoré) */
 #include "scps_audio.h"       /* la prise audio (miniaudio) — preuve de vie sur alerte */
 #ifdef SCPS_DEV
@@ -579,7 +580,27 @@ typedef struct {
  * le front ennemi adjacent (marche §1 → siège → bataille §2/§3). NON-INVASIF : lit
  * econ, ne change JAMAIS la propriété des régions — les armées VIVENT sur la carte
  * (la fondation que l'UI §4 dessine). */
-static void sim_campaign_year(Sim *s, World *w) {
+/* L1 — PRIORITÉ DÉFENSE (jumelle de chronicle) : un siège ennemi sur MON sol →
+ * mon armée marche À LA RENCONTRE (redirection en route ; une armée fraîche fait
+ * SORTIR la garnison de la place assiégée elle-même). */
+static void sim_campaign_defense(Sim *s, World *w) {
+    (void)w;
+    for (int k=0; k<SCPS_MAX_COUNTRY; k++) {
+        const FieldArmy *en=&s->camp->army[k];
+        if (!en->active || en->phase!=FA_SIEGE) continue;
+        if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
+        int def=s->econ->region[en->loc].owner;
+        if (def<0 || def>=SCPS_MAX_COUNTRY || def==en->owner) continue;
+        if (diplo_status(s->dp,def,en->owner)!=DIPLO_WAR) continue;
+        if (campaign_active(s->camp,def) && campaign_phase(s->camp,def)!=FA_IDLE){
+            campaign_redirect(s->camp, s->econ, s->dp, def, en->loc);
+        } else if (warhost_units(s->host,def)>0){
+            campaign_order(s->camp, s->econ, def, en->loc, en->loc, &s->host->army[def]);
+        }
+    }
+}
+
+static void sim_campaign_orders(Sim *s, World *w) {
     for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++) {
         if (campaign_active(s->camp,c) && campaign_phase(s->camp,c)!=FA_IDLE) continue;
         if (warhost_units(s->host, c) <= 0) continue;
@@ -625,18 +646,46 @@ static void sim_campaign_year(Sim *s, World *w) {
             }
         }
     }
-    campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f);
-    campaign_release_transports(s->camp, s->navy);   /* les transports rentrent à la rade */
-    /* RÉCOLTE (couche sim, jumelle de chronicle) : un siège mené à terme pose une
-     * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
-     * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne reste lectrice. */
-    for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
-        FieldArmy *a=&s->camp->army[i];
-        if (a->taken_region<0) continue;
-        int reg=a->taken_region; a->taken_region=-1;
-        if (reg<0 || reg>=s->econ->n_regions) continue;
-        if (s->econ->region[reg].owner==a->owner) diplo_liberate(s->dp, s->econ, reg);
-        else                                      diplo_occupy  (s->dp, s->econ, a->owner, reg);
+}
+
+static void sim_campaign_year(Sim *s, World *w) {
+    /* L1 — la campagne RESPIRE AU MOIS (jumelle de chronicle) : la défense
+     * intercepte en route, la récolte tombe au fil de l'an, l'attaquant re-cible. */
+    for (int month=0; month<12; month++){
+        if (month==0) sim_campaign_orders(s, w);
+        sim_campaign_defense(s, w);
+        campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f/12.f);
+        campaign_release_transports(s->camp, s->navy);   /* les transports rentrent à la rade */
+        /* RÉCOLTE (couche sim, jumelle de chronicle) : un siège mené à terme pose une
+         * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
+         * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne reste lectrice. */
+        for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
+            FieldArmy *a=&s->camp->army[i];
+            if (a->taken_region<0) continue;
+            int reg=a->taken_region; a->taken_region=-1;
+            if (reg<0 || reg>=s->econ->n_regions) continue;
+            if (s->econ->region[reg].owner==a->owner) diplo_liberate(s->dp, s->econ, reg);
+            else                                      diplo_occupy  (s->dp, s->econ, a->owner, reg);
+            /* L1 — l'attaquant ne dort pas : l'assiégeant de NOTRE sol d'abord,
+             * sinon la frontière suivante. */
+            int ntgt=-1;
+            for (int k=0;k<SCPS_MAX_COUNTRY && ntgt<0;k++){
+                const FieldArmy *en=&s->camp->army[k];
+                if (!en->active || en->phase!=FA_SIEGE || en->owner==a->owner) continue;
+                if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
+                if (s->econ->region[en->loc].owner!=a->owner) continue;
+                if (diplo_status(s->dp,a->owner,en->owner)!=DIPLO_WAR) continue;
+                ntgt=en->loc;
+            }
+            for (int sn=0; sn<s->econ->n_regions && ntgt<0; sn++){
+                if (!s->econ->adj[reg][sn]) continue;
+                int ob=s->econ->region[sn].owner;
+                if (ob<0||ob==a->owner||diplo_status(s->dp,a->owner,ob)!=DIPLO_WAR) continue;
+                if (s->dp->occupier[sn]==a->owner) continue;
+                ntgt=sn;
+            }
+            if (ntgt>=0) campaign_redirect(s->camp, s->econ, s->dp, a->owner, ntgt);
+        }
     }
 }
 
@@ -788,6 +837,34 @@ static void sim_day(Sim *s, World *w) {
     /* — annuel (le tour stratégique) — */
     if (s->day % 365 == 364) {
         econ_colonize_tick(s->econ, w, s->player);
+        /* L5 — COLONIES OUTRE-MER (jumelle de chronicle ; le JOUEUR colonise à la
+         * main) : continent saturé OU côte vide ≤ 20 j de mer → Port + coque, coût ×2. */
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            PolityRole role=w->country[c].role;
+            if (c==s->player || (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST)) continue;
+            int adj_col=0;
+            for (int r=0;r<s->econ->n_regions && adj_col<2;r++){
+                if (s->econ->region[r].owner!=c || !s->econ->region[r].colonized) continue;
+                for (int sn=0;sn<s->econ->n_regions && adj_col<2;sn++)
+                    if (s->econ->adj[r][sn] && s->econ->region[sn].active && !s->econ->region[sn].colonized) adj_col++;
+            }
+            int port=navy_best_port(w,s->econ,c);
+            if (port<0 || navy_transport_packets_free(s->navy,c)<=0) continue;
+            int best=-1; float best_days=21.f, best_score=-1.f;
+            for (int rd=0;rd<s->econ->n_regions;rd++){
+                RegionEconomy *dst=&s->econ->region[rd];
+                if (!dst->active || dst->colonized || !dst->coastal) continue;
+                if (s->econ->adj[port][rd]) continue;
+                float days=navy_sea_days_regions(w, port, rd);
+                if (days<=0.f || days>20.f) continue;
+                if (adj_col>=2 && days>12.f) continue;
+                float score=dst->cap_pop*0.001f - days*0.05f;
+                if (score>best_score){ best_score=score; best=rd; best_days=days; }
+            }
+            if (best>=0 && econ_colonize_overseas(s->econ, port, best, c)){
+                s->camp->n_sails++; s->camp->sail_days_sum+=best_days;
+            }
+        }
         econ_migrate_tick(s->econ, w);
         world_tick(w, s->econ, 1.0f);
         legitimacy_tick(s->wl, w, s->econ, s->ts);
@@ -3085,7 +3162,8 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 13u           /* v13 : ère « les puits d'or / le joueur en scène » (arcs I/H) —
+#define SAVE_VERSION 14u           /* v14 : arc L — le ralliement (FieldArmy.rally_*, Campaign.n_rallies).
+                                    * v13 : ère « les puits d'or / le joueur en scène » (arcs I/H) —
                                     * AiActor.next_audit_day (I5) + RegionEconomy.import_margin/
                                     * import_toll_region (I6) ; ride les futurs champs I7/I8/H5/H6.
                                     * v12 : G0.1 anti-acharnement multi-échelle (Director.cont_cd_until[]).
@@ -3571,6 +3649,18 @@ int main(int argc, char **argv) {
     /* La prise audio (§5) : ouvre un device si présent ; sinon MUET, sans erreur
      * (conteneur/serveur sans carte → le release tourne quand même). */
     if (!audio_init()) fprintf(stderr,"[scps] audio : aucun device — silence.\n");
+
+    /* §SPRITES (contrat 184) : la planche scps_sprites.bmp à côté du binaire,
+     * fond MAGENTA FF00FF → transparent (colorkey). ABSENTE → g_sprite_tex NULL
+     * et le rendu vectoriel actuel reste tel quel (display-only, même régime de
+     * rupture « zéro asset » que scps_lang.txt). */
+    { SDL_Surface *ss = SDL_LoadBMP("scps_sprites.bmp");
+      if (ss){
+          SDL_SetColorKey(ss, SDL_TRUE, SDL_MapRGB(ss->format, SPRITE_KEY_R, SPRITE_KEY_G, SPRITE_KEY_B));
+          g_sprite_tex = SDL_CreateTextureFromSurface(ren, ss);
+          SDL_FreeSurface(ss);
+          if (g_sprite_tex) printf("[scps] scps_sprites.bmp chargée (contrat %d cellules).\n", SPR_COUNT);
+      } else fprintf(stderr,"[scps] sprites : scps_sprites.bmp absente — glyphes vectoriels.\n"); }
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
 #endif

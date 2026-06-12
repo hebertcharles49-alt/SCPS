@@ -1454,6 +1454,24 @@ static void colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid) {
     dst->owner=(int16_t)cid;
 }
 
+/* L5 — COLONIE OUTRE-MER : mêmes PORTES que l'essaimage terrestre (pop, vivres,
+ * cible vierge), mais le COÛT EN POP est ×2 — le convoi maritime saigne la
+ * mère-patrie deux fois plus. L'appelant (harnais) a vérifié Port + coque +
+ * portée de courants ; ici vivent les portes et le prix. */
+bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid){
+    if (src_rid<0||src_rid>=e->n_regions||dst_rid<0||dst_rid>=e->n_regions) return false;
+    RegionEconomy *src=&e->region[src_rid], *dst=&e->region[dst_rid];
+    if (!dst->active || dst->colonized) return false;
+    if (!src->colonized || src->owner!=cid) return false;
+    float spop=0.f; for (int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
+    if (spop<COLONY_MIN_POP*2.f || src->food_sat<COLONY_FOOD_GATE) return false;  /* ×2 : il faut le double */
+    float extra=fminf(COLONY_COST_POP, spop*0.25f);     /* la 2e ponction (coût ×2) */
+    for (int c=0;c<CLASS_COUNT;c++)
+        src->strata[c].pop -= extra*(src->strata[c].pop/fmaxf(spop,EPS));
+    colonize_from(e, src_rid, dst_rid, cid);            /* la 1re ponction + la fondation */
+    return true;
+}
+
 int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
     int founded=0;
 

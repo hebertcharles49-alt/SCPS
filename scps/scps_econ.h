@@ -308,6 +308,9 @@ float econ_off_culture_fraction(const ProvincePop *pp);
  * non encore peuplés. À appeler après econ_tick(). Renvoie le nb de régions
  * nouvellement colonisées ce tick. */
 int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid);
+/* L5 — colonie OUTRE-MER : mêmes portes (pop/vivres/cible vierge) mais coût pop ×2.
+ * L'appelant (harnais) a vérifié Port + coque + portée de courants. */
+bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid);
 /* Fonde une colonie de `cid` sur `dst` depuis `src` (pop essaimée, owner posé).
  * Exposé pour la colonisation OUTRE-MER (scps_navy §8) — même acte fondateur. */
 void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid);

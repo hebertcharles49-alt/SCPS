@@ -67,7 +67,29 @@ static long g_tot_occ_posed=0, g_tot_occ_lifted=0;
  * campagne LIT econ, ne change JAMAIS la propriété des régions — la conquête
  * abstraite (prix/volume) reste seule maîtresse du qui-tient-quoi ; ici, les armées
  * VIVENT seulement sur la carte (la fondation que l'UI §4 dessinera). */
-static void sim_campaign_year(Sim *s, World *w) {
+/* L1 — PRIORITÉ DÉFENSE (mensuelle) : une de MES régions subit un SIÈGE ennemi →
+ * mon armée marche À LA RENCONTRE (redirection en route autorisée ; une armée
+ * fraîche SORT de la place assiégée elle-même — la garnison fait une sortie).
+ * C'est le chaînon manquant des batailles : l'assiégeant est interceptable
+ * (le test de paires accroche FA_SIEGE), mais personne n'y ALLAIT. */
+static void sim_campaign_defense(Sim *s, World *w) {
+    (void)w;
+    for (int k=0; k<SCPS_MAX_COUNTRY; k++) {
+        const FieldArmy *en=&s->camp->army[k];
+        if (!en->active || en->phase!=FA_SIEGE) continue;
+        if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
+        int def=s->econ->region[en->loc].owner;
+        if (def<0 || def>=SCPS_MAX_COUNTRY || def==en->owner) continue;
+        if (diplo_status(s->dp,def,en->owner)!=DIPLO_WAR) continue;
+        if (campaign_active(s->camp,def) && campaign_phase(s->camp,def)!=FA_IDLE){
+            campaign_redirect(s->camp, s->econ, s->dp, def, en->loc);     /* on déroute l'armée en route */
+        } else if (warhost_units(s->host,def)>0){
+            campaign_order(s->camp, s->econ, def, en->loc, en->loc, &s->host->army[def]);  /* la sortie */
+        }
+    }
+}
+
+static void sim_campaign_orders(Sim *s, World *w) {
     for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++) {
         if (campaign_active(s->camp,c) && campaign_phase(s->camp,c)!=FA_IDLE) continue; /* déjà en route */
         if (warhost_units(s->host, c) <= 0) continue;                                   /* rien à projeter */
@@ -117,21 +139,51 @@ static void sim_campaign_year(Sim *s, World *w) {
             }
         }
     }
-    campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f);  /* une année de campagne */
-    campaign_release_transports(s->camp, s->navy);                    /* les transports rentrent à la rade */
-    /* RÉCOLTE (couche sim) : chaque siège mené à terme (taken_region) pose une
-     * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
-     * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne est restée lectrice. */
-    for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
-        FieldArmy *a=&s->camp->army[i];
-        if (a->taken_region<0) continue;
-        int reg=a->taken_region; a->taken_region=-1;
-        if (reg<0 || reg>=s->econ->n_regions) continue;
-        if (s->econ->region[reg].owner==a->owner){
-            if (s->dp->occupier[reg]>=0) g_tot_occ_lifted++;   /* une occupation réellement levée */
-            diplo_liberate(s->dp, s->econ, reg);
-        } else {
-            if (diplo_occupy(s->dp, s->econ, a->owner, reg)) g_tot_occ_posed++;
+}
+
+static void sim_campaign_year(Sim *s, World *w) {
+    /* L1 — la campagne RESPIRE AU MOIS : la défense intercepte en route, la récolte
+     * tombe au fil de l'an et l'attaquant re-cible sans attendre janvier. (Le test
+     * de paires de campaign_tick s'évalue désormais 12×/an — deux armées qui se
+     * croisent se TROUVENT ; l'ordre frais de projection reste annuel.) */
+    for (int month=0; month<12; month++){
+        if (month==0) sim_campaign_orders(s, w);            /* les ordres frais : annuels (inchangé) */
+        sim_campaign_defense(s, w);                          /* L1 : la défense marche À LA RENCONTRE */
+        campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f/12.f);
+        campaign_release_transports(s->camp, s->navy);       /* les transports rentrent à la rade */
+        /* RÉCOLTE (couche sim) : chaque siège mené à terme (taken_region) pose une
+         * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
+         * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne est restée lectrice. */
+        for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
+            FieldArmy *a=&s->camp->army[i];
+            if (a->taken_region<0) continue;
+            int reg=a->taken_region; a->taken_region=-1;
+            if (reg<0 || reg>=s->econ->n_regions) continue;
+            if (s->econ->region[reg].owner==a->owner){
+                if (s->dp->occupier[reg]>=0) g_tot_occ_lifted++;   /* une occupation réellement levée */
+                diplo_liberate(s->dp, s->econ, reg);
+            } else {
+                if (diplo_occupy(s->dp, s->econ, a->owner, reg)) g_tot_occ_posed++;
+            }
+            /* L1 — L'ATTAQUANT NE DORT PAS : après la prise, re-cibler — l'armée
+             * ennemie qui assiège NOTRE sol d'abord, sinon la frontière suivante. */
+            int ntgt=-1;
+            for (int k=0;k<SCPS_MAX_COUNTRY && ntgt<0;k++){
+                const FieldArmy *en=&s->camp->army[k];
+                if (!en->active || en->phase!=FA_SIEGE || en->owner==a->owner) continue;
+                if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
+                if (s->econ->region[en->loc].owner!=a->owner) continue;
+                if (diplo_status(s->dp,a->owner,en->owner)!=DIPLO_WAR) continue;
+                ntgt=en->loc;
+            }
+            for (int sn=0; sn<s->econ->n_regions && ntgt<0; sn++){
+                if (!s->econ->adj[reg][sn]) continue;
+                int ob=s->econ->region[sn].owner;
+                if (ob<0||ob==a->owner||diplo_status(s->dp,a->owner,ob)!=DIPLO_WAR) continue;
+                if (s->dp->occupier[sn]==a->owner) continue;        /* déjà tenue : au suivant */
+                ntgt=sn;
+            }
+            if (ntgt>=0) campaign_redirect(s->camp, s->econ, s->dp, a->owner, ntgt);
         }
     }
 }
@@ -234,6 +286,36 @@ static void sim_day(Sim *s, World *w) {
     }
     if (s->day % 365 == 364) {
         econ_colonize_tick(s->econ, w, -1); econ_migrate_tick(s->econ, w);
+        /* L5 — LES COLONIES OUTRE-MER (G0.6b/H3.3) : un empire dont le continent
+         * SATURE (< 2 régions colonisables adjacentes) OU avec une côte vide à
+         * ≤ 20 j de mer d'un de ses ports, colonise PAR-DELÀ la mer — Port + coque
+         * exigés, coût ×2 (econ_colonize_overseas), UNE traversée consommée. */
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            PolityRole role=w->country[c].role;
+            if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+            int adj_col=0;
+            for (int r=0;r<s->econ->n_regions && adj_col<2;r++){
+                if (s->econ->region[r].owner!=c || !s->econ->region[r].colonized) continue;
+                for (int sn=0;sn<s->econ->n_regions && adj_col<2;sn++)
+                    if (s->econ->adj[r][sn] && s->econ->region[sn].active && !s->econ->region[sn].colonized) adj_col++;
+            }
+            int port=navy_best_port(w,s->econ,c);
+            if (port<0 || navy_transport_packets_free(s->navy,c)<=0) continue;   /* Port + coque */
+            int best=-1; float best_days=21.f, best_score=-1.f;
+            for (int rd=0;rd<s->econ->n_regions;rd++){
+                RegionEconomy *dst=&s->econ->region[rd];
+                if (!dst->active || dst->colonized || !dst->coastal) continue;
+                if (s->econ->adj[port][rd]) continue;                /* l'adjacent relève de la voie terrestre */
+                float days=navy_sea_days_regions(w, port, rd);
+                if (days<=0.f || days>20.f) continue;                /* portée de courants : ≤ 20 j */
+                if (adj_col>=2 && days>12.f) continue;               /* non saturé : seulement le TRÈS proche */
+                float score=dst->cap_pop*0.001f - days*0.05f;
+                if (score>best_score){ best_score=score; best=rd; best_days=days; }
+            }
+            if (best>=0 && econ_colonize_overseas(s->econ, port, best, c)){
+                s->camp->n_sails++; s->camp->sail_days_sum+=best_days;   /* la traversée du convoi */
+            }
+        }
         world_tick(w, s->econ, 1.0f);
         legitimacy_tick(s->wl, w, s->econ, s->ts);
         trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
@@ -598,7 +680,7 @@ int main(int argc, char **argv){
     long tot_repress=0, tot_assim=0, tot_purge=0, tot_purge_dead=0;       /* leviers intérieurs */
     long tot_serv=0, tot_prot=0, tot_conc=0, tot_cite=0, tot_defect=0;    /* suzeraineté */
     long tot_ligues=0, tot_frondes=0, tot_indep=0, tot_renvers=0, tot_ecrase=0;   /* fronde */
-    long tot_bt=0, tot_btj=0, tot_routs=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
+    long tot_bt=0, tot_btj=0, tot_routs=0, tot_rallies=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
     long tot_emp_n=0, tot_emp_hub=0;   /* par-empire : moyennes de fin de sim */
     double tot_emp_gold=0, tot_emp_flux=0, tot_emp_imp=0, tot_emp_exp=0, tot_emp_expgold=0;
@@ -991,11 +1073,11 @@ int main(int argc, char **argv){
 
         /* BATAILLES DANS LE TEMPS (§8) : durées, déroutes, et LA vérif — la poursuite
          * doit dominer le choc, sinon on a juste ralenti l'ancien modèle. */
-        printf("              batailles : %d livrée(s) · %.0f j en moy. · %d déroute(s) · %d décrochage(s) · %d renfort(s) · %d nul(s) | morts : %ld au CHOC vs %ld en POURSUITE\n",
+        printf("              batailles : %d livrée(s) · %.0f j en moy. · %d déroute(s) · %d ralliement(s) · %d décrochage(s) · %d renfort(s) · %d nul(s) | morts : %ld au CHOC vs %ld en POURSUITE\n",
                s.camp->n_battles, s.camp->n_battles? (double)s.camp->battle_days/s.camp->n_battles:0.0,
-               s.camp->n_routs, s.camp->n_disengage, s.camp->n_reinforce, s.camp->n_stalemate,
+               s.camp->n_routs, s.camp->n_rallies, s.camp->n_disengage, s.camp->n_reinforce, s.camp->n_stalemate,
                s.camp->dead_choc, s.camp->dead_pursuit);
-        tot_bt+=s.camp->n_battles; tot_btj+=s.camp->battle_days; tot_routs+=s.camp->n_routs;
+        tot_bt+=s.camp->n_battles; tot_btj+=s.camp->battle_days; tot_routs+=s.camp->n_routs; tot_rallies+=s.camp->n_rallies;
         tot_mchoc+=s.camp->dead_choc; tot_mpour+=s.camp->dead_pursuit;
         tot_deseng+=s.camp->n_disengage; tot_renf+=s.camp->n_reinforce; tot_nul+=s.camp->n_stalemate;
           tot_repress+=rep; tot_assim+=ass; tot_purge+=pur; tot_purge_dead+=dead;
@@ -1207,8 +1289,8 @@ int main(int argc, char **argv){
            tot_serv, tot_prot, tot_conc, tot_cite, tot_defect);
     printf("   fronde vassale .............. %ld ligue(s) · %ld fronde(s) → %ld indép. · %ld renversement(s) · %ld écrasée(s)  (les TROIS fins doivent exister)\n",
            tot_ligues, tot_frondes, tot_indep, tot_renvers, tot_ecrase);
-    printf("   batailles dans le temps ..... %ld livrées · %.0f j/bataille · %ld déroutes · %ld décrochages · %ld renforts · %ld nuls | morts choc %ld vs POURSUITE %ld (ratio %.1fx — la poursuite doit dominer)\n",
-           tot_bt, tot_bt? (double)tot_btj/tot_bt:0.0, tot_routs, tot_deseng, tot_renf, tot_nul,
+    printf("   batailles dans le temps ..... %ld livrées · %.0f j/bataille · %ld déroutes · %ld ralliement(s) · %ld décrochages · %ld renforts · %ld nuls | morts choc %ld vs POURSUITE %ld (ratio %.1fx — la poursuite doit dominer)\n",
+           tot_bt, tot_bt? (double)tot_btj/tot_bt:0.0, tot_routs, tot_rallies, tot_deseng, tot_renf, tot_nul,
            tot_mchoc, tot_mpour, tot_mchoc? (double)tot_mpour/tot_mchoc:0.0);
     printf("   syncrétisme culturel ........ %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus race ; la diffusion par contact DIVERGE)\n",
            (double)tot_sync/(nsims>0?nsims:1), (double)tot_sync_distinct/(nsims>0?nsims:1));
