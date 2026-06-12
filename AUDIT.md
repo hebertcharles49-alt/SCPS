@@ -55,13 +55,13 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
   forks_demo **34/34**. RESTE (hors v1 ou passe UI) : routage IA du savoir forké, journal
   des forks (bande UI), §23.3 interdit (cristallisation, navires, uint64).
 - Transverse : make test **32/32** · 0 warning GCC+clang · ASan muet · déterminisme ·
-  lang-check 64 · SAVE 13→15 (I/H : 13 · rally : 14 · forks : 15).
+  lang-check 64 · SAVE 13→16 (I/H : 13 · rally : 14 · forks : 15 · region_ids[32] : 16).
 - **H3 — guerre trans-mer (2026-06)** : `countries_sea_adjacent` ajoutée dans scps_ai.c
-  (port côtier → courants ≤ 60 j → côte ennemie) ; `ai_pick_rival` étendue pour inclure
-  les cibles outre-mer avec pénalité ×0.60 (logistique dure). Les CB existants (CB_ECONOMIC,
-  CB_SUBJUGATION, CB_RELIGIOUS, CB_TERRITORIAL par rancune) s'appliquent sans ajout. Les
-  armées transitent via `campaign_order_sea` (déjà implémenté §6 — transports, FA_EMBARK/
-  FA_SAIL/FA_LAND). `make test` 32/32 · 0 warning · mondes mono-continent inchangés.
+  (TOUS les ports côtiers de a testés contre toutes les côtes de b, portée ≤ 400 j de
+  courants = tout bassin atteignable) ; `ai_pick_rival` étendue (pénalité ×0.60 outre-mer).
+  CB existants applicables sans ajout (CB_ECONOMIC, CB_SUBJUGATION, CB_RELIGIOUS,
+  CB_TERRITORIAL par rancune). Armées via `campaign_order_sea` (§6 existant). `make test`
+  32/32 · 0 warning · mondes mono-continent inchangés · traversée(s) attendue(s) graines 1/42.
 
 ---
 
