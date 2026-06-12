@@ -652,7 +652,7 @@ static void ai_impose_contract(AiActor *a, const World *w, WorldEconomy *econ,
 
 /* Économie : commercer OU bâtir (le frein réoriente l'énergie vers le K). */
 static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const AiView *v,
-                         AgencyState *ag, RouteNetwork *rn, float brake){
+                         AgencyState *ag, RouteNetwork *rn, float brake, int day){
     /* Famine d'abord : un peuple affamé ne bâtit ni cours ni comptoir. */
     if (v->food < AI_FOOD_FLOOR && a->home_region>=0){
         if (agency_build(ag, econ, a->home_region, EDI_GRENIER)) a->stats.builds_other++;
@@ -712,6 +712,15 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 } else if (bd && eth!=ETHOS_BUREAUCRATE
                            && bd->K_inst >= tune_f("AI_SAVOIR_K",AI_SAVOIR_K) && bd->savoir < 2.5f){
                     e = ai_next_savoir_edifice(econ, hr);  /* institutions mûres → savoir (pas le Bureaucrate : K pur) */
+                    /* M5 — le savoir FORK à la BASE sur le pôle de la région (hystérésé) :
+                     * martial → Bibliothèque militaire · fluide → Observatoire · l'Ordre
+                     * garde Bibliothèque→Monastère. Branche close (frère bâti) → K. */
+                    if (e==EDI_BIBLIOTHEQUE){
+                        TechPole p = edifice_region_pole(w, econ, hr, day);
+                        if      (p==POLE_MARTIAL) e=EDI_BIBLIO_MIL;
+                        else if (p==POLE_FLUIDE)  e=EDI_OBSERVATOIRE;
+                    }
+                    if (hr>=0 && edifice_build_blocked(econ,hr,e)) e=ai_next_k_edifice(econ,hr);
                 } else {
                     e = ai_next_k_edifice(econ, hr);       /* le métabolisme par défaut : K */
                 }
@@ -1348,7 +1357,7 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
     float brake = ai_consolidation_pressure(&v);
 
     if (econ_due){
-        ai_econ_turn(a, w, econ, &v, ag, rn, brake);
+        ai_econ_turn(a, w, econ, &v, ag, rn, brake, day);
         /* I5 — L'AUDIT DES OFFICES : un État dont la CORRUPTION dépasse 40 réprime la
          * capture des factions — coût (50+8·corr)·IPM (×2 si une faction TIENT l'État),
          * corr −20. La légitimité MONTE de 0.3 si corr>50 (l'assainissement applaudi),
