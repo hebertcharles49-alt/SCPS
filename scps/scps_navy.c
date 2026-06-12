@@ -241,10 +241,11 @@ int navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float 
             float score=dst->cap_pop*0.001f/(1.f+days/15.f); /* les courants RAPPROCHENT */
             if (score>bscore){ bscore=score; best=rd; bdays=days; }
         }
-        (void)bdays;
-        if (best>=0){
-            econ_colonize_from(econ,port,best,cid);
+        if (best>=0 && econ_colonize_overseas(econ,port,best,cid)){
+            /* L5 — le convoi coûte ×2 en pop (econ_colonize_overseas) et CONSOMME
+             * une traversée (télémétrie agrégée par le harnais avec celles des armées). */
             n->colony_cd=NAVY_COLONY_CD;
+            ns->n_colony_sails++; ns->colony_sail_days+=bdays;
             founded++;
         }
     }

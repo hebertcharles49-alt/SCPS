@@ -56,7 +56,13 @@ typedef struct {
     long  drowned;             /* paquets d'armée NOYÉS par l'interception     */
 } Navy;
 
-typedef struct NavyState { Navy n[SCPS_MAX_COUNTRY]; } NavyState;
+typedef struct NavyState {
+    Navy n[SCPS_MAX_COUNTRY];
+    /* L5 — télémétrie : traversées des CONVOIS coloniaux (le harnais les agrège
+     * aux traversées d'armées — « la mer sert enfin »). */
+    int   n_colony_sails;
+    float colony_sail_days;
+} NavyState;
 
 void navy_init(NavyState *ns);
 

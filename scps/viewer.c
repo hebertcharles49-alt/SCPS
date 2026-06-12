@@ -846,34 +846,6 @@ static void sim_day(Sim *s, World *w) {
     /* — annuel (le tour stratégique) — */
     if (s->day % 365 == 364) {
         econ_colonize_tick(s->econ, w, s->player);
-        /* L5 — COLONIES OUTRE-MER (jumelle de chronicle ; le JOUEUR colonise à la
-         * main) : continent saturé OU côte vide ≤ 20 j de mer → Port + coque, coût ×2. */
-        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-            PolityRole role=w->country[c].role;
-            if (c==s->player || (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST)) continue;
-            int adj_col=0;
-            for (int r=0;r<s->econ->n_regions && adj_col<2;r++){
-                if (s->econ->region[r].owner!=c || !s->econ->region[r].colonized) continue;
-                for (int sn=0;sn<s->econ->n_regions && adj_col<2;sn++)
-                    if (s->econ->adj[r][sn] && s->econ->region[sn].active && !s->econ->region[sn].colonized) adj_col++;
-            }
-            int port=navy_best_port(w,s->econ,c);
-            if (port<0 || navy_transport_packets_free(s->navy,c)<=0) continue;
-            int best=-1; float best_days=21.f, best_score=-1.f;
-            for (int rd=0;rd<s->econ->n_regions;rd++){
-                RegionEconomy *dst=&s->econ->region[rd];
-                if (!dst->active || dst->colonized || !dst->coastal) continue;
-                if (s->econ->adj[port][rd]) continue;
-                float days=navy_sea_days_regions(w, port, rd);
-                if (days<=0.f || days>20.f) continue;
-                if (adj_col>=2 && days>12.f) continue;
-                float score=dst->cap_pop*0.001f - days*0.05f;
-                if (score>best_score){ best_score=score; best=rd; best_days=days; }
-            }
-            if (best>=0 && econ_colonize_overseas(s->econ, port, best, c)){
-                s->camp->n_sails++; s->camp->sail_days_sum+=best_days;
-            }
-        }
         econ_migrate_tick(s->econ, w);
         world_tick(w, s->econ, 1.0f);
         legitimacy_tick(s->wl, w, s->econ, s->ts);

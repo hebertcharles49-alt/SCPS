@@ -286,36 +286,6 @@ static void sim_day(Sim *s, World *w) {
     }
     if (s->day % 365 == 364) {
         econ_colonize_tick(s->econ, w, -1); econ_migrate_tick(s->econ, w);
-        /* L5 — LES COLONIES OUTRE-MER (G0.6b/H3.3) : un empire dont le continent
-         * SATURE (< 2 régions colonisables adjacentes) OU avec une côte vide à
-         * ≤ 20 j de mer d'un de ses ports, colonise PAR-DELÀ la mer — Port + coque
-         * exigés, coût ×2 (econ_colonize_overseas), UNE traversée consommée. */
-        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-            PolityRole role=w->country[c].role;
-            if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
-            int adj_col=0;
-            for (int r=0;r<s->econ->n_regions && adj_col<2;r++){
-                if (s->econ->region[r].owner!=c || !s->econ->region[r].colonized) continue;
-                for (int sn=0;sn<s->econ->n_regions && adj_col<2;sn++)
-                    if (s->econ->adj[r][sn] && s->econ->region[sn].active && !s->econ->region[sn].colonized) adj_col++;
-            }
-            int port=navy_best_port(w,s->econ,c);
-            if (port<0 || navy_transport_packets_free(s->navy,c)<=0) continue;   /* Port + coque */
-            int best=-1; float best_days=21.f, best_score=-1.f;
-            for (int rd=0;rd<s->econ->n_regions;rd++){
-                RegionEconomy *dst=&s->econ->region[rd];
-                if (!dst->active || dst->colonized || !dst->coastal) continue;
-                if (s->econ->adj[port][rd]) continue;                /* l'adjacent relève de la voie terrestre */
-                float days=navy_sea_days_regions(w, port, rd);
-                if (days<=0.f || days>20.f) continue;                /* portée de courants : ≤ 20 j */
-                if (adj_col>=2 && days>12.f) continue;               /* non saturé : seulement le TRÈS proche */
-                float score=dst->cap_pop*0.001f - days*0.05f;
-                if (score>best_score){ best_score=score; best=rd; best_days=days; }
-            }
-            if (best>=0 && econ_colonize_overseas(s->econ, port, best, c)){
-                s->camp->n_sails++; s->camp->sail_days_sum+=best_days;   /* la traversée du convoi */
-            }
-        }
         world_tick(w, s->econ, 1.0f);
         legitimacy_tick(s->wl, w, s->econ, s->ts);
         trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
@@ -1149,11 +1119,13 @@ int main(int argc, char **argv){
               if (w->region[r].continent != w->province[cp].continent) col_om++;
           }
           printf("              mer : %ld coque(s) bâtie(s) · %.0f fournitures navales consommées · %d traversée(s) (%.0f j/trav.) · %d route(s) maritime(s) · %ld colonie(s) outre-mer\n",
-                 hulls, sup, s.camp->n_sails,
-                 (s.camp->n_sails>0)?(double)s.camp->sail_days_sum/s.camp->n_sails:0.0,
+                 hulls, sup, s.camp->n_sails + s.navy->n_colony_sails,
+                 (s.camp->n_sails + s.navy->n_colony_sails>0)
+                   ? ((double)s.camp->sail_days_sum + s.navy->colony_sail_days)
+                     / (s.camp->n_sails + s.navy->n_colony_sails) : 0.0,
                  searoutes, col_om);
-          tot_hulls+=hulls; tot_supplies+=sup; tot_sails+=s.camp->n_sails;
-          tot_saildays+=s.camp->sail_days_sum; tot_searoutes+=searoutes; tot_colonies_om+=col_om; }
+          tot_hulls+=hulls; tot_supplies+=sup; tot_sails+=s.camp->n_sails + s.navy->n_colony_sails;
+          tot_saildays+=s.camp->sail_days_sum + s.navy->colony_sail_days; tot_searoutes+=searoutes; tot_colonies_om+=col_om; }
         { long raids=0, prises=0, navals=0, disarmed=0; double loot=0, blocj=0; int pirates=0, nids=0;
           long intercepts=0, drowned=0, crews=0;
           for (int c=0;c<SCPS_MAX_COUNTRY;c++){ const Navy *nv=&s.navy->n[c];
