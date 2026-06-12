@@ -56,9 +56,12 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
   des forks (bande UI), §23.3 interdit (cristallisation, navires, uint64).
 - Transverse : make test **32/32** · 0 warning GCC+clang · ASan muet · déterminisme ·
   lang-check 64 · SAVE 13→15 (I/H : 13 · rally : 14 · forks : 15).
-- **Dette guerre trans-mer** : sur les mondes fendus par L4 (graines 1/42), 0 guerre
-  terrestre possible entre continents — les déclarations exigent l'adjacence terrestre.
-  Chantier H3 (la mer veut vivre) : étendre countries_adjacent/CB à la portée navale.
+- **H3 — guerre trans-mer (2026-06)** : `countries_sea_adjacent` ajoutée dans scps_ai.c
+  (port côtier → courants ≤ 60 j → côte ennemie) ; `ai_pick_rival` étendue pour inclure
+  les cibles outre-mer avec pénalité ×0.60 (logistique dure). Les CB existants (CB_ECONOMIC,
+  CB_SUBJUGATION, CB_RELIGIOUS, CB_TERRITORIAL par rancune) s'appliquent sans ajout. Les
+  armées transitent via `campaign_order_sea` (déjà implémenté §6 — transports, FA_EMBARK/
+  FA_SAIL/FA_LAND). `make test` 32/32 · 0 warning · mondes mono-continent inchangés.
 
 ---
 

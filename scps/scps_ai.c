@@ -46,6 +46,9 @@
 #define AI_CRUSADE_W      4.0f   /* croisade : l'orthodoxe vise qui développe le faustien (chance ∝ ferveur) */
 #define AI_ANNEX_FRAC     0.6f   /* §5 : un budget ≥ 60 % de la valeur du pays = victoire décisive → annexion */
 #define AI_WAR_EXHAUST    8.0f   /* terrain : une guerre qui traîne SANS occupation (8 ans) s'éteint en paix blanche */
+/* §H3 — guerre outre-mer : même portée que les routes marchandes (60 j de courants). */
+#define AI_SEA_WAR_MAX_DAYS 60.f  /* portée max de la guerre trans-mer */
+#define AI_SEA_WAR_PENALTY  0.60f /* pénalité logistique : une cible outre-mer vaut 60 % d'une cible terrestre */
 /* §4 — leviers : chaque ACTE est un vote. Une politique tenue accumule vers le cap. */
 #define AI_LEVER_TECH     0.05f  /* franchir l'interdit (tech faustienne) → Transgresseurs */
 #define AI_LEVER_WAR      0.05f  /* conquérir → Conquérants */
@@ -301,6 +304,25 @@ static bool countries_adjacent(const WorldEconomy *econ, int a, int b){
             if (econ->region[s].owner==b && econ->adj[r][s]) return true;
     return false;
 }
+/* H3 — ADJACENCE MARITIME : a peut frapper b si a a un port côtier et que b
+ * possède une côte atteignable par les courants (≤ AI_SEA_WAR_MAX_DAYS).
+ * Les armées transitent par campaign_order_sea (déjà implémenté §6). */
+static bool countries_sea_adjacent(const World *w, const WorldEconomy *econ, int a, int b){
+    int ax=-1, ay=-1;
+    for (int r=0; r<econ->n_regions && ax<0; r++){
+        if (econ->region[r].owner!=a || !econ->region[r].coastal || econ->region[r].build.port<=0.f) continue;
+        if (world_region_sea_anchor(w,r,&ax,&ay)) break;
+    }
+    if (ax<0) return false;
+    for (int s=0; s<econ->n_regions; s++){
+        if (econ->region[s].owner!=b || !econ->region[s].coastal) continue;
+        int bx,by;
+        if (!world_region_sea_anchor(w,s,&bx,&by)) continue;
+        float d=world_sea_days(w,ax,ay,bx,by);
+        if (d>=0.f && d<=AI_SEA_WAR_MAX_DAYS) return true;
+    }
+    return false;
+}
 
 /* Meilleure cible de guerre : voisine, qu'on peut battre (pas de suicide),
  * pondérée par la menace qu'elle fait peser + un schisme si l'on est zélote. */
@@ -311,7 +333,9 @@ static int ai_pick_rival(const AiActor *a, const World *w, const WorldEconomy *e
     for (int b=0; b<w->n_countries; b++){
         if (b==a->cid) continue;
         if (w->country[b].role==POLITY_UNCLAIMED) continue;
-        if (!countries_adjacent(econ, a->cid, b)) continue;
+        bool land_adj = countries_adjacent(econ, a->cid, b);
+        bool sea_adj  = !land_adj && w && countries_sea_adjacent(w, econ, a->cid, b); /* H3 */
+        if (!land_adj && !sea_adj) continue;
         if (diplo_status(diplo, a->cid, b)==DIPLO_ALLIED) continue;  /* on ne frappe pas un allié */
         if (!diplo_can_declare(diplo, a->cid, b)) continue;          /* TRÊVE : on n'enchaîne pas */
         if (diplo_casus_belli(w,econ,wp,diplo,a->cid,b,want)==CB_NONE) continue;  /* PAS DE CB → pas de guerre */
@@ -336,6 +360,7 @@ static int ai_pick_rival(const AiActor *a, const World *w, const WorldEconomy *e
                     + crusade
                     - rel.alliance
                     - AI_WIDEN_W * widen;
+        if (sea_adj) score *= AI_SEA_WAR_PENALTY; /* H3 : outre-mer = logistique plus dure */
         if (score > bestscore){ bestscore=score; best=b; }
     }
     return best;
