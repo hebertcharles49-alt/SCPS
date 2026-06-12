@@ -32,6 +32,33 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
 
 ---
 
+## (c bis) Arcs L + M v1 (2026-06-12) — BOUCLÉS, preuves au banc
+
+- **L6** ai_demo 23/23 (largeur pondérée par l'éthos ; correctif post-gate : la largeur du
+  conquérant est l'ARSENAL — acheter des armes — pas la garnison qui blindait le monde et
+  tuait l'opportunisme : 1×30 mesuré à 0 guerre, corrigé).
+- **L1** l'interception (campaign_redirect ; défense mensuelle → sortie de garnison ;
+  l'attaquant re-cible ; la campagne respire au mois) — graine 7 : 2 → **84 batailles**.
+- **L2** le ralliement (40-60 %, 30-60 j, une fois/guerre, noyau survivant) — SAVE 14.
+- **L3** calibré par grille (arc J) : BT_CHOC_MORTS 0.008 → **0.0045** ⇒ ratio
+  poursuite/choc **2.6x ∈ [2,5]** (graine 7). Traçabilité : SCPS_TUNE="BT_CHOC_MORTS=0.0045".
+  Leçons : CUREE_CAP ne mord pas (P<cap) ; <0.004 = falaise d'entiers (0 mort de choc).
+- **L4** la genèse peuple les continents (5 graines prouvées ; re-baseline notée CLAUDE.md).
+- **L5** colonies outre-mer (portes ×2, Port+coque, ≤20 j de courants, traversée comptée).
+- **M0-M7 v1** : design doc versé · ETHOS_FN verbatim · pôle par factions (Transgresseur
+  orthogonal) · succession contextuelle + hystérésis 360 j + frères bloqués · +5 édifices
+  (SAVE 15) · Alambic + essence purifiée + LE PUITS (charge 0.28→0.00 au banc) · score
+  tech multiplicatif (souche×éthos×credo×matière) · 15 gabarits §25 (3 variantes/fork).
+  forks_demo **34/34**. RESTE (hors v1 ou passe UI) : routage IA du savoir forké, journal
+  des forks (bande UI), §23.3 interdit (cristallisation, navires, uint64).
+- Transverse : make test **32/32** · 0 warning GCC+clang · ASan muet · déterminisme ·
+  lang-check 64 · SAVE 13→15 (I/H : 13 · rally : 14 · forks : 15).
+- **Dette guerre trans-mer** : sur les mondes fendus par L4 (graines 1/42), 0 guerre
+  terrestre possible entre continents — les déclarations exigent l'adjacence terrestre.
+  Chantier H3 (la mer veut vivre) : étendre countries_adjacent/CB à la portée navale.
+
+---
+
 ## (c) Recommandations (ordre de correction) — arc K BOUCLÉ
 
 K4a (events) ✓ → K4b (diplo) ✓ → K4c (warhost) ✓ → **K5** (racine IA = la spirale de
