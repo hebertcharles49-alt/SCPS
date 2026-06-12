@@ -108,7 +108,7 @@ static uint32_t biome_blend(const World *w, int cx, int cy, float fx, float fy) 
 /* ---- Rendu d'une cellule individuelle -------------------------------- */
 static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
                             ViewMode mode, int selected_prov, const uint32_t *region_tint,
-                            const uint32_t *occupier_tint) {
+                            const uint32_t *occupier_tint, bool screen_strokes) {
     const Cell *c = scps_cellc(w, cx, cy);
     float h = c->height;
 
@@ -242,10 +242,14 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
         terrain = alpha_over(terrain, 0xFF3888D8u, rs * 0.72f);
     }
 
-    /* ---- Frontières (selon le niveau affiché) ------------------------ */
+    /* ---- Frontières (selon le niveau affiché) ------------------------
+     * N3.1 : si l'appelant trace les frontières en STROKES espace écran
+     * (screen_strokes), le bake n'en peint AUCUNE — la hiérarchie pays(5px) /
+     * région(3px) / province(2px) vit par-dessus, en largeur ÉCRAN constante.
+     * Sans strokes (minicarte, outils) : bake historique 1 cellule. */
     bool political = (mode==VIEW_POLITICAL||mode==VIEW_REGIONS||
                       mode==VIEW_COUNTRIES||mode==VIEW_CONTINENTS);
-    if (political) {
+    if (political && !screen_strokes) {
         if (mode==VIEW_CONTINENTS) {
             /* pas de frontière interne, juste le trait de côte (géré ailleurs) */
         } else if (mode==VIEW_COUNTRIES && c->border_country) {
@@ -304,7 +308,7 @@ void render_map(const World *w, uint32_t *pixels, int pw, int ph,
                 col = 0xFF080C10u;
             } else {
                 /* position fractionnaire dans la cellule → fondu bilinéaire */
-                col = cell_color(w, cx, cy, wx-(float)cx, wy-(float)cy, mode, p->selected_prov, p->region_tint, p->occupier_tint);
+                col = cell_color(w, cx, cy, wx-(float)cx, wy-(float)cy, mode, p->selected_prov, p->region_tint, p->occupier_tint, p->screen_strokes);
             }
             pixels[sy * pw + sx] = col;
         }

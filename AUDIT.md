@@ -32,6 +32,30 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
 
 ---
 
+## (c ter) N3.1 — Frontières hiérarchiques, zoom-stables (2026-06-12)
+
+- **Fix 1 (flags symétriques)** : `compute_render_flags` compare aux QUATRE voisins
+  (E,W,N,S) sur la PLEINE grille (hors-grille = id -1) — fini le trait peint « à
+  l'intérieur » d'un seul côté de la couture (inversion sur relief) et la dernière
+  rangée/colonne nues. Ces flags restent pour la sélection/vue ressources/minicarte ;
+  la hiérarchie politique ne les emprunte plus.
+- **Fix 2 (strokes espace écran)** : trois listes de SEGMENTS (arêtes en coins de
+  cellule, niveau le plus FORT du joint : pays > région > province, riveraines ra/rb
+  stockées), extraites au BAKE et rebâties au seul changement de souveraineté (photo
+  owner-effectif + seed, memcmp par frame) — jamais par frame. Tracé batché
+  `SDL_RenderGeometry` (un appel par niveau ; repli 3 lignes parallèles < 2.0.18) :
+  province **2 px** 0xFF1A2230, région **3 px** 0xFF141A26 (vue Régions), pays
+  **5 px** 0xFF0A0E16 — largeur ÉCRAN constante à tout zoom, bouts ronds (hexagone)
+  aux extrémités ⇒ pas de trou aux jonctions ≥3. Contour de pays FERMÉ : pays↔pays,
+  bord externe vers vierge/mer (côte politique) et bords de carte. Z-order strict :
+  terrain → prov → région → pays (domine) → sélection dorée (strokes) → glyphes →
+  étiquettes. `RenderParams.screen_strokes` coupe le bake 1-cellule sur la carte
+  principale (minicarte/outils : bake historique inchangé).
+- **Membrane** : ids seulement (région/province/owner), zéro flottant SCPS ; rien en
+  SAVE (recalculé au chargement). Preuves : capture `--shot` graine 7 — contours pays
+  5 px fermés (îles comprises), jonctions pleines, sélection au-dessus ; 32/32 bancs ·
+  0 warning · lang-check 64.
+
 ## (c bis) Arcs L + M v1 (2026-06-12) — BOUCLÉS, preuves au banc
 
 - **L6** ai_demo 23/23 (largeur pondérée par l'éthos ; correctif post-gate : la largeur du

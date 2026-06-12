@@ -46,6 +46,11 @@ typedef struct {
      * propriété ne change qu'à la paix). Membrane : le viewer lit dp->occupier, passe
      * des couleurs de pays ; le renderer ne lit aucun flottant SCPS. NULL = aucune. */
     const uint32_t *occupier_tint;
+    /* N3.1 — true : l'appelant trace les frontières politiques en STROKES espace
+     * écran (largeur constante au zoom) par-dessus ce rendu → le bake N'EN PEINT
+     * PLUS (sinon double trait). false (défaut) : comportement historique — bake
+     * 1 cellule (minicarte, outils headless, captures sans strokes). */
+    bool screen_strokes;
 } RenderParams;
 
 /* ---- Rendu principal --------------------------------------------------

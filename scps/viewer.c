@@ -581,6 +581,196 @@ typedef struct {
     bool             ready;
 } Sim;
 
+/* ═══ N3.1 — FRONTIÈRES en espace écran ════════════════════════════════════
+ * Les flags par cellule ne savent faire qu'UNE cellule de large (la hiérarchie
+ * pays/province n'y était qu'un fondu). Ici : les frontières sont des LISTES DE
+ * SEGMENTS en coordonnées de COIN de cellule, extraites au BAKE (rebâties au
+ * changement de propriétaire, jamais par frame), puis STROKÉES par-dessus le
+ * terrain en LARGEUR ÉCRAN CONSTANTE — pays 5 px, région 3 px, province 2 px,
+ * à TOUT zoom. Recalculable au chargement → rien en sauvegarde. Membrane : on
+ * ne lit que des IDS (région/province/owner), jamais un flottant SCPS. */
+typedef struct { uint16_t x0,y0,x1,y1; int16_t ra,rb; } BSeg;  /* arête (coins, unités-cellule) + régions riveraines (-1 = mer/vierge) */
+enum { BL_PROV=0, BL_REG=1, BL_CTY=2, BL_COUNT=3 };            /* niveau le plus FORT du joint : pays > région > province */
+static BSeg   *g_bseg[BL_COUNT];
+static int     g_bseg_n[BL_COUNT], g_bseg_cap[BL_COUNT];
+static int16_t g_bseg_own[SCPS_MAX_REG+1];   /* photo owner-effectif + n_regions : l'invalidation */
+static uint32_t g_bseg_seed = 0;             /* régénération (R) → monde neuf → rebâtir */
+static bool    g_bseg_built = false;
+
+static void bseg_push(int lvl, int x0,int y0,int x1,int y1, int ra,int rb){
+    if (g_bseg_n[lvl] >= g_bseg_cap[lvl]){
+        int nc = g_bseg_cap[lvl] ? g_bseg_cap[lvl]*2 : 4096;
+        BSeg *nb = (BSeg*)realloc(g_bseg[lvl], (size_t)nc*sizeof(BSeg));
+        if (!nb) return;                                /* OOM : frontière incomplète, pas de crash */
+        g_bseg[lvl]=nb; g_bseg_cap[lvl]=nc;
+    }
+    BSeg *sg=&g_bseg[lvl][g_bseg_n[lvl]++];
+    sg->x0=(uint16_t)x0; sg->y0=(uint16_t)y0; sg->x1=(uint16_t)x1; sg->y1=(uint16_t)y1;
+    sg->ra=(int16_t)ra;  sg->rb=(int16_t)rb;
+}
+/* L'owner EFFECTIF d'une cellule — la MÊME lecture que la teinte politique
+ * (owner valide d'une région colonisée), -1 sinon (mer, terre vierge). */
+static int bseg_owner_of(const Sim *s, const World *w, const Cell *c){
+    if (!c || c->region<0 || c->region>=s->econ->n_regions || c->region>=SCPS_MAX_REG) return -1;
+    int ow=s->econ->region[c->region].owner;
+    return (ow>=0 && ow<w->n_countries && s->econ->region[c->region].colonized) ? ow : -1;
+}
+static void bseg_build(const World *w, const Sim *s){
+    for (int l=0;l<BL_COUNT;l++) g_bseg_n[l]=0;
+    /* Balayage des joints E et S : chaque arête interne vue UNE fois (dédup par
+     * construction). Hors-grille = voisin owner -1 → le contour d'un pays se FERME
+     * aussi au bord de carte. Le joint est classé à son niveau le plus FORT
+     * (country > region > prov) : un joint partagé n'est jamais tracé deux fois. */
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        const Cell *a=scps_cellc(w,x,y);
+        int own_a=bseg_owner_of(s,w,a);
+        for (int d=0;d<2;d++){                          /* d : 0 = arête EST, 1 = arête SUD */
+            int nx2=x+(d==0), ny2=y+(d==1);
+            const Cell *b=(nx2<SCPS_W && ny2<SCPS_H) ? scps_cellc(w,nx2,ny2) : NULL;
+            int own_b = b ? bseg_owner_of(s,w,b) : -1;
+            int rga=a->region,   rgb=b?b->region:-1;
+            int pva=a->province, pvb=b?b->province:-1;
+            int lvl=-1;
+            if (own_a!=own_b && (own_a>=0||own_b>=0)) lvl=BL_CTY;  /* pays↔pays OU contour externe (vierge/mer = côte politique) */
+            else if (rga!=rgb && rga>=0 && rgb>=0)    lvl=BL_REG;
+            else if (pva!=pvb && pva>=0 && pvb>=0)    lvl=BL_PROV;
+            if (lvl<0) continue;
+            if (d==0) bseg_push(lvl, x+1,y,   x+1,y+1, rga,rgb);   /* arête verticale partagée */
+            else      bseg_push(lvl, x,  y+1, x+1,y+1, rga,rgb);   /* arête horizontale partagée */
+        }
+        /* bords OUEST/NORD de la grille : jamais vus par le balayage E/S */
+        if (x==0 && own_a>=0) bseg_push(BL_CTY, 0,y, 0,y+1, a->region,-1);
+        if (y==0 && own_a>=0) bseg_push(BL_CTY, x,0, x+1,0, a->region,-1);
+    }
+    g_bseg_built=true;
+}
+/* Rebâtit SEULEMENT si la photo de souveraineté a changé (colonisation, conquête à
+ * la paix, sécession) ou si le monde a été régénéré — jamais par frame. */
+static void bseg_check(const World *w, const Sim *s){
+    int16_t now[SCPS_MAX_REG+1];
+    int nr=s->econ->n_regions; if (nr>SCPS_MAX_REG) nr=SCPS_MAX_REG;
+    for (int r=0;r<SCPS_MAX_REG;r++){
+        int ow=-1;
+        if (r<nr){ ow=s->econ->region[r].owner;
+                   if (!(ow>=0 && ow<w->n_countries && s->econ->region[r].colonized)) ow=-1; }
+        now[r]=(int16_t)ow;
+    }
+    now[SCPS_MAX_REG]=(int16_t)nr;
+    if (g_bseg_built && g_bseg_seed==w->seed && memcmp(now,g_bseg_own,sizeof now)==0) return;
+    memcpy(g_bseg_own,now,sizeof now); g_bseg_seed=w->seed;
+    bseg_build(w,s);
+}
+
+/* ── Tracé : quads batchés (UN SDL_RenderGeometry par niveau — AA correct,
+ *    largeur écran exacte). Repli < SDL 2.0.18 : 3 lignes parallèles. ── */
+#if SDL_VERSION_ATLEAST(2,0,18)
+static SDL_Vertex *g_bv;  static int g_bv_n,  g_bv_cap;
+static int        *g_bvi; static int g_bvi_n, g_bvi_cap;
+static bool bv_reserve(int nv,int ni){
+    if (g_bv_n+nv>g_bv_cap){ int nc=g_bv_cap?g_bv_cap*2:8192; while(nc<g_bv_n+nv)nc*=2;
+        SDL_Vertex *p=(SDL_Vertex*)realloc(g_bv,(size_t)nc*sizeof(SDL_Vertex)); if(!p)return false; g_bv=p; g_bv_cap=nc; }
+    if (g_bvi_n+ni>g_bvi_cap){ int nc=g_bvi_cap?g_bvi_cap*2:16384; while(nc<g_bvi_n+ni)nc*=2;
+        int *p=(int*)realloc(g_bvi,(size_t)nc*sizeof(int)); if(!p)return false; g_bvi=p; g_bvi_cap=nc; }
+    return true;
+}
+static void bv_quad(float ax,float ay,float bx,float by,float hw,SDL_Color col){
+    float dx=bx-ax, dy=by-ay, L=sqrtf(dx*dx+dy*dy); if (L<0.001f) return;
+    float nx=-dy/L*hw, ny=dx/L*hw;
+    if (!bv_reserve(4,6)) return;
+    int b0=g_bv_n;
+    SDL_Vertex *v=&g_bv[g_bv_n]; g_bv_n+=4;
+    v[0].position.x=ax+nx; v[0].position.y=ay+ny; v[1].position.x=ax-nx; v[1].position.y=ay-ny;
+    v[2].position.x=bx+nx; v[2].position.y=by+ny; v[3].position.x=bx-nx; v[3].position.y=by-ny;
+    for (int i=0;i<4;i++){ v[i].color=col; v[i].tex_coord.x=0; v[i].tex_coord.y=0; }
+    int *ix=&g_bvi[g_bvi_n]; g_bvi_n+=6;
+    ix[0]=b0; ix[1]=b0+1; ix[2]=b0+2; ix[3]=b0+2; ix[4]=b0+1; ix[5]=b0+3;
+}
+/* Bout ROND (hexagone plein, rayon ½ largeur) : posé aux extrémités de segment —
+ * aux jonctions ≥3 frontières il bouche le trou de coin, en ligne droite il
+ * disparaît SOUS le trait. La couleur du niveau le plus fort domine (tracé après). */
+static void bv_disc(float cx,float cy,float r,SDL_Color col){
+    if (!bv_reserve(7,18)) return;
+    int b0=g_bv_n;
+    SDL_Vertex *v=&g_bv[g_bv_n]; g_bv_n+=7;
+    v[0].position.x=cx; v[0].position.y=cy;
+    for (int i=0;i<6;i++){
+        float a=(float)i*1.04719755f;   /* π/3 (M_PI n'est pas C99 strict) */
+        v[1+i].position.x=cx+cosf(a)*r; v[1+i].position.y=cy+sinf(a)*r;
+    }
+    for (int i=0;i<7;i++){ v[i].color=col; v[i].tex_coord.x=0; v[i].tex_coord.y=0; }
+    int *ix=&g_bvi[g_bvi_n]; g_bvi_n+=18;
+    for (int i=0;i<6;i++){ ix[i*3]=b0; ix[i*3+1]=b0+1+i; ix[i*3+2]=b0+1+((i+1)%6); }
+}
+static void bv_flush(SDL_Renderer *ren){
+    if (g_bv_n) SDL_RenderGeometry(ren,NULL,g_bv,g_bv_n,g_bvi,g_bvi_n);
+    g_bv_n=0; g_bvi_n=0;
+}
+#endif
+typedef struct { const Cam *cam; int win_w,win_h; } BView;
+static void bseg_stroke_one(SDL_Renderer *ren, const BView *bv, const BSeg *sg, float wpx, SDL_Color col){
+    float X0=((float)sg->x0-bv->cam->ox)*bv->cam->scale, Y0=((float)sg->y0-bv->cam->oy)*bv->cam->scale;
+    float X1=((float)sg->x1-bv->cam->ox)*bv->cam->scale, Y1=((float)sg->y1-bv->cam->oy)*bv->cam->scale;
+    if ((X0<-wpx&&X1<-wpx)||(X0>bv->win_w+wpx&&X1>bv->win_w+wpx)||
+        (Y0<-wpx&&Y1<-wpx)||(Y0>bv->win_h+wpx&&Y1>bv->win_h+wpx)) return;   /* cull viewport */
+#if SDL_VERSION_ATLEAST(2,0,18)
+    bv_quad(X0,Y0,X1,Y1,wpx*0.5f,col);
+    if (wpx>=3.f){ bv_disc(X0,Y0,wpx*0.5f,col); bv_disc(X1,Y1,wpx*0.5f,col); }  /* bouts ronds (jonctions) */
+    (void)ren;
+#else
+    SDL_SetRenderDrawColor(ren,col.r,col.g,col.b,col.a);
+    float dx=X1-X0, dy=Y1-Y0, L=sqrtf(dx*dx+dy*dy); if (L<0.001f) return;
+    float nx=-dy/L, ny=dx/L;
+    int n=(int)wpx; if (n<1) n=1;
+    for (int i=0;i<n;i++){
+        float off=((float)i-(float)(n-1)*0.5f);
+        SDL_RenderDrawLine(ren,(int)(X0+nx*off),(int)(Y0+ny*off),(int)(X1+nx*off),(int)(Y1+ny*off));
+    }
+#endif
+}
+static void bseg_draw_level(SDL_Renderer *ren, const BView *bv, int lvl, float wpx, uint32_t argb){
+    SDL_Color col={ (Uint8)(argb>>16),(Uint8)(argb>>8),(Uint8)argb,(Uint8)(argb>>24) };
+    for (int i=0;i<g_bseg_n[lvl];i++) bseg_stroke_one(ren,bv,&g_bseg[lvl][i],wpx,col);
+#if SDL_VERSION_ATLEAST(2,0,18)
+    bv_flush(ren);
+#endif
+}
+/* La SÉLECTION (z-order §2c : AU-DESSUS des strokes politiques) : le contour de la
+ * région choisie, doré — tous niveaux confondus (une seule rive est la région). */
+static void bseg_draw_selection(SDL_Renderer *ren, const BView *bv, int selreg){
+    SDL_Color gold={0xFF,0xDD,0x00,0xFF};
+    for (int lvl=0;lvl<BL_COUNT;lvl++)
+        for (int i=0;i<g_bseg_n[lvl];i++){
+            const BSeg *sg=&g_bseg[lvl][i];
+            if ((sg->ra==selreg) == (sg->rb==selreg)) continue;   /* XOR : exactement une rive */
+            bseg_stroke_one(ren,bv,sg,3.f,gold);
+        }
+#if SDL_VERSION_ATLEAST(2,0,18)
+    bv_flush(ren);
+#endif
+}
+/* Le point d'entrée par frame : transforme + stroke (quelques milliers de segments,
+ * négligeable). Z-ORDER STRICT : province (2px) DESSOUS → région (3px) → pays (5px)
+ * DOMINE (couvre les joints coïncidents) → sélection dorée. Strokes JAMAIS sur la
+ * mer libre : un segment n'existe qu'au joint d'une terre administrée. */
+static void borders_draw(SDL_Renderer *ren, const Cam *cam, const World *w, const Sim *s,
+                         ViewMode mode, int selected_prov, int win_w, int win_h){
+    if (!s->ready) return;
+    if (mode!=VIEW_POLITICAL && mode!=VIEW_REGIONS && mode!=VIEW_COUNTRIES) return;
+    bseg_check(w,s);
+    BView bv={ cam, win_w, win_h };
+    if (mode==VIEW_POLITICAL){
+        bseg_draw_level(ren,&bv,BL_PROV,2.f,0xFF1A2230u);
+        bseg_draw_level(ren,&bv,BL_REG, 2.f,0xFF1A2230u);   /* en Politique, une limite de région EST une limite de province (pas de 3px ici — il ne vit qu'en vue Régions) */
+    } else if (mode==VIEW_REGIONS){
+        bseg_draw_level(ren,&bv,BL_REG,3.f,0xFF141A26u);
+    }
+    bseg_draw_level(ren,&bv,BL_CTY,5.f,0xFF0A0E16u);        /* en DERNIER : domine */
+    if (selected_prov>=0 && selected_prov<w->n_provinces){
+        int selreg=w->province[selected_prov].region;
+        if (selreg>=0) bseg_draw_selection(ren,&bv,selreg);
+    }
+}
+
 /* UN JOUR de jeu vivant (§1). Chaque sous-système avance à SA cadence calibrée :
  * agency/évènements/statecraft/labor en JOURS ; l'économie/légitimité/prospérité/
  * démographie à l'ANNÉE (comme les bancs d'essai — on ne dérègle pas le pacing).
@@ -3629,6 +3819,7 @@ static void loading_paint(SDL_Renderer *ren, int W, int H){
 }
 int main(int argc, char **argv) {
     bool shot = false, shot_tree = false, shot_war = false, shot_culture = false, shot_sidebar = false;
+    bool shot_political = false; float shot_zoom = 1.f;   /* N3.1 : capture vue Politique ± zoom */
     int  shot_shell = 0;
     bool savetest = false;
     bool shot_cur = false;
@@ -3642,6 +3833,8 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--curshot")) { shot=true; shot_cur=true; }   /* carte + champ des courants */
         else if (!strcmp(argv[i], "--war"))  { shot = true; shot_war  = true; }  /* §4 : capturer les armées sur la carte */
         else if (!strcmp(argv[i], "--culture")) { shot = true; shot_culture = true; }  /* §5 : vue culture */
+        else if (!strcmp(argv[i], "--political")) { shot = true; shot_political = true; } /* N3.1 : hiérarchie 5/2 px mesurable */
+        else if (!strcmp(argv[i], "--zoom") && i+1<argc) { shot_zoom = (float)atof(argv[++i]); } /* N3.1 : preuve zoom-stable */
         else if (!strcmp(argv[i], "--dump-lang")) {   /* écrit scps_lang.txt (tout le texte joueur, éditable) puis sort */
             int nw = lang_dump_file("scps_lang.txt");
             printf("[scps] scps_lang.txt écrit (%d entrées) — édite le texte, relance le jeu.\n", nw);
@@ -3860,6 +4053,7 @@ int main(int argc, char **argv) {
         int cid = country_for_panel(world, -1);
         int pcap = (cid>=0 && cid<world->n_countries) ? world->country[cid].capital_prov : -1;
         selected = (pcap>=0) ? pcap : 0;
+        if (shot_zoom > 1.f) cam_zoom(&cam, shot_zoom, win_w*0.5f, win_h*0.5f);  /* N3.1 : zoom AVANT la photo caméra */
         rp.cam_ox=cam.ox; rp.cam_oy=cam.oy; rp.cam_scale=cam.scale; rp.selected_prov=selected;
         SDL_RenderClear(ren);
         if (shot_cur) {
@@ -3898,7 +4092,8 @@ int main(int argc, char **argv) {
             if (shot_war)                    /* §4 : laisse une guerre mûrir → des armées sur la carte */
                 for (int y=0; y<120 && !any_field_army(&sim, world); y++)
                     for (int d=0; d<365; d++) sim_day(&sim, world);
-            ViewMode smode = shot_culture ? VIEW_CULTURE : VIEW_COUNTRIES;
+            ViewMode smode = shot_culture ? VIEW_CULTURE
+                           : shot_political ? VIEW_POLITICAL : VIEW_COUNTRIES;
             rp.region_tint = NULL;
             if (shot_sidebar){                       /* démo sidebar : tiroir Stocks + lentille Marché */
                 g_sb.tab=SBT_STOCKS; g_sb.anim=1.f; g_sb.lens=LENS_MARCHE;
@@ -3926,10 +4121,12 @@ int main(int argc, char **argv) {
                   if (occ>=0 && occ<world->n_countries){ g_shot_occ[r]=world->country[occ].color; anyo=true; }
                   else g_shot_occ[r]=0u; }
               if (anyo) rp.occupier_tint = g_shot_occ; }
+            rp.screen_strokes = (smode==VIEW_POLITICAL||smode==VIEW_REGIONS||smode==VIEW_COUNTRIES);  /* N3.1 */
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1;
+            if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
+            if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false;
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
@@ -4502,11 +4699,15 @@ int main(int argc, char **argv) {
                 }
                 if (any) rp.occupier_tint = g_occ_tint;
             }
+            /* N3.1 : la carte principale trace ses frontières politiques en STROKES
+             * écran (après le blit) → le bake n'en peint plus pour ces modes. */
+            rp.screen_strokes = (rmode==VIEW_POLITICAL||rmode==VIEW_REGIONS||rmode==VIEW_COUNTRIES);
             render_map(world, pb.pixels, pb.w, pb.h, &rp, rmode);
             pixbuf_upload(&pb);
             /* §5 : la minicarte — le monde entier en petit (même mode + teinte). */
             if (mm_pb.pixels){
                 RenderParams mmp = rp; mmp.selected_prov = -1;
+                mmp.screen_strokes = false;        /* la minicarte garde le bake 1 cellule (pas de strokes dessus) */
                 minimap_fit(&mmp.cam_scale, &mmp.cam_ox, &mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, rmode);
                 pixbuf_upload(&mm_pb);
@@ -4516,6 +4717,13 @@ int main(int argc, char **argv) {
 
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
+        /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
+         * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
+         * SOUS la sélection/glyphes/étiquettes (z-order §2c). */
+        if (sim.ready && g_gs==GS_PLAYING){
+            ViewMode smode2 = (g_sb.lens!=LENS_NONE) ? VIEW_CULTURE : mode;
+            borders_draw(ren, &cam, world, &sim, smode2, selected, win_w, win_h);
+        }
         /* ── filtre COURANTS : lignes de flux sur la mer (les MORTES = le creux) ── */
         if (g_sb.show_currents && g_gs==GS_PLAYING){
             for (int sy=8; sy<win_h-8; sy+=14) for (int sx=8; sx<win_w-8; sx+=14){

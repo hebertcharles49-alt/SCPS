@@ -2044,18 +2044,31 @@ static void compute_render_flags(World *w, float *height) {
         }
     }
 
-    /* Frontières par niveau (compare avec voisins E et S) */
-    for (int y=0;y<SCPS_H-1;y++) for (int x=0;x<SCPS_W-1;x++) {
-        Cell *c  =&w->cell[scps_idx(x,y)];
-        Cell *ce =&w->cell[scps_idx(x+1,y)];
-        Cell *cs =&w->cell[scps_idx(x,y+1)];
-        c->border_prov=(c->province!=ce->province && (c->province>=0||ce->province>=0))
-                      ||(c->province!=cs->province && (c->province>=0||cs->province>=0));
-        c->border_reg =(c->region!=ce->region && (c->region>=0||ce->region>=0))
-                      ||(c->region!=cs->region && (c->region>=0||cs->region>=0));
-        c->border_country=(c->country!=ce->country && (c->country>=0||ce->country>=0))
-                         ||(c->country!=cs->country && (c->country>=0||cs->country>=0));
-        c->border_continent=(c->continent!=ce->continent)||(c->continent!=cs->continent);
+    /* Frontières par niveau — SYMÉTRIQUES (N3.1, Fix 1) : une cellule est frontière
+     * si UN de ses QUATRE voisins (E,W,N,S) diffère. L'ancien balayage E/S ne
+     * marquait qu'UN côté de la couture (trait peint « à l'intérieur » d'une
+     * province sur relief pentu — l'inversion) et laissait la dernière
+     * rangée/colonne nues. Pleine grille 0..W,0..H ; hors-grille = id voisin -1.
+     * Ces flags restent utiles (sélection, vue ressources, minicarte) mais ne
+     * portent plus la hiérarchie politique — elle se trace en STROKES espace
+     * écran dans le viewer (largeur constante au zoom, Fix 2). */
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
+        Cell *c=&w->cell[scps_idx(x,y)];
+        c->border_prov=c->border_reg=c->border_country=c->border_continent=false;
+        static const int NDX[4]={1,-1,0,0}, NDY[4]={0,0,1,-1};
+        for (int d=0;d<4;d++){
+            int nx2=x+NDX[d], ny2=y+NDY[d];
+            int pv=-1, rg=-1, ct=-1;
+            bool ingrid=(nx2>=0&&ny2>=0&&nx2<SCPS_W&&ny2<SCPS_H);
+            if (ingrid){
+                const Cell *n=&w->cell[scps_idx(nx2,ny2)];
+                pv=n->province; rg=n->region; ct=n->country;
+                if (c->continent!=n->continent) c->border_continent=true;
+            }
+            if (c->province!=pv && (c->province>=0||pv>=0)) c->border_prov=true;
+            if (c->region  !=rg && (c->region  >=0||rg>=0)) c->border_reg=true;
+            if (c->country !=ct && (c->country >=0||ct>=0)) c->border_country=true;
+        }
     }
 
     /* Hillshading — lumière NW (convention cartographique standard)
