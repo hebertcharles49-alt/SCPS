@@ -269,6 +269,9 @@ void econ_init(WorldEconomy *e, const World *w);
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
  * production/consommation s'équilibrent par tick (satisfaction préservée). */
 void econ_tick(WorldEconomy *e, float dt);
+/* Q1 — LE CONSEIL : pose le multiplicateur d'un siège (0=Savoir 1=Société 2=Industrie)
+ * pour un pays. Rafraîchi chaque tick par la couche sim depuis l'état conseil. 1.0=neutre. */
+void econ_set_council_mult(int cid, int seat, float m);
 
 /* §C — l'indice des prix monétaires mondial [~1.0] (1.0 = neutre / IPM désactivé).
  * Lecture seule, pour la télémétrie (chronique) et l'UI. */

@@ -237,6 +237,27 @@ int main(int argc, char **argv){
            statecraft_agitation(s.sc,rCalm), calm_fired?"OUI":"non");
     ok("une province légitime et garnisonnée ne se révolte pas", !calm_fired);
 
+    /* ── Q1 — LE CONSEIL : nommer monte le multiplicateur ET coûte ; renvoyer rétablit ── */
+    {
+        statecraft_init(s.sc, s.w);
+        int cid=0, seat=0;                              /* siège Savoir */
+        ok("Conseil : siège vacant → multiplicateur NEUTRE (1.0)",
+           statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f);
+        int best=0, bt=0;                               /* nomme le candidat de plus haut tier */
+        for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seat,sl); if(t>bt){bt=t;best=sl;} }
+        statecraft_council_hire(s.sc, cid, seat, best);
+        ok("Conseil : NOMMER monte le multiplicateur (>1) et pourvoit le siège",
+           statecraft_council_seat_mult(s.sc,seed,cid,seat)>1.f && statecraft_council_seated(s.sc,cid,seat)==best);
+        ok("Conseil : le conseiller a un COÛT mensuel (>0, ×IPM)",
+           statecraft_council_cost(s.sc,seed,cid,1.f)>0.f);
+        ok("Conseil : candidats DÉTERMINISTES (même seed → même tier)",
+           statecraft_council_cand_tier(seed,cid,seat,best)==bt);
+        statecraft_council_dismiss(s.sc, cid, seat);
+        ok("Conseil : RENVOYER rétablit le neutre (1.0) sans coût",
+           statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f
+           && statecraft_council_seated(s.sc,cid,seat)<0 && statecraft_council_cost(s.sc,seed,cid,1.f)==0.f);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

@@ -968,6 +968,9 @@ static void sim_day(Sim *s, World *w) {
      * au pas dt=1/12 → même rythme annuel, mais plus fluide qu'un saut yearly — */
     if (s->day % 30 == 29) {
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
+        statecraft_council_apply(s->sc, w, s->econ, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or */
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+            if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c);   /* Q1 : l'IA pourvoit son siège d'éthos */
         econ_tick(s->econ, 1.f/12.f);
         navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
         navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng,
@@ -3344,7 +3347,8 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 16u           /* v16 : Country.region_ids[12→32] (mondes fragmentés dépassaient 12).
+#define SAVE_VERSION 17u           /* v17 : Q1 — Statecraft.council[pays][3] (état conseil persistant).
+                                    * v16 : Country.region_ids[12→32] (mondes fragmentés dépassaient 12).
                                     * v15 : arc M — les fourches (RegionEconomy.last_pole/pole_since_day,
                                     * +5 édifices, BLD_ALAMBIC + RES_ESSENCE_PURIFIEE : RES_COUNT change).
                                     * v14 : arc L — le ralliement (FieldArmy.rally_*, Campaign.n_rallies).

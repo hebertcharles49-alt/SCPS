@@ -847,6 +847,21 @@ const char *econ_flux_name(FluxComp comp){
 }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
 
+/* Q1 — LE CONSEIL (I7) : multiplicateurs PAR PAYS, rafraîchis chaque tick par la
+ * couche sim depuis l'état conseil (statecraft). Transitoire (pas en SAVE — l'état
+ * persistant, lui, vit dans Statecraft). seat : 0=Savoir 1=Société 2=Industrie.
+ * Valeur ≤0 (jamais posée) = neutre 1.0. LECTEUR des valeurs existantes, jamais une pose. */
+static float g_council_mult[SCPS_MAX_COUNTRY][3];
+void econ_set_council_mult(int cid, int seat, float m){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=3) return;
+    g_council_mult[cid][seat]=m;
+}
+static inline float council_m(int owner, int seat){
+    if (owner<0||owner>=SCPS_MAX_COUNTRY) return 1.f;
+    float v=g_council_mult[owner][seat];
+    return (v>0.f)? v : 1.f;
+}
+
 #define PROMOTE_RATE 0.005f       /* 0.5 %/mois max (∝ richesse excédentaire) */
 /* Seuil d'accession : « 3× le panier » (brief E0.7). Mais l'éco cale les journaliers
  * à ~60 % de satisfaction (peu de surplus) : à 3× la montée journalier→bourgeois ne
@@ -898,7 +913,7 @@ static void mobility_tick_region(RegionEconomy *re, int rid){
         float rate=(k==0)?PROMOTE_RATE:PROMOTE_RATE*0.2f;  /* bourgeois→élite : ÷5 */
         float cap=(to==CLASS_ELITE)?SHARE_CAP_ELITE:SHARE_CAP_BOURGEOIS;
         float damp=clampf(1.f - (re->strata[to].pop/totp)/cap, 0.f, 1.f);  /* plafond doux */
-        mobility_move(re, from, to, rate*excess*damp);
+        mobility_move(re, from, to, rate*excess*damp*council_m(re->owner,1));  /* Q1 : siège Société */
     }
     /* DÉMOTIONS : satisfaction < 30 % DEUX mois de suite → on redescend (∝ vif). */
     for (int from=CLASS_ELITE; from>=CLASS_BOURGEOIS; from--){
@@ -1416,7 +1431,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * bibliothèque/le monastère BÂTI (densité de savoir) accélère la cadence. */
         PopStratum *el=&re->strata[CLASS_ELITE];
         float savoir_mult = 1.f + 0.25f*re->build.savoir;   /* +25 % de recherche / point bâti */
-        re->tech += el->wealth*TECH_RATE*el->satisfaction*savoir_mult*(1.f-rot)*dt;  /* §C3 : élite capturée recherche moins */
+        re->tech += el->wealth*TECH_RATE*el->satisfaction*savoir_mult*council_m(re->owner,0)*(1.f-rot)*dt;  /* §C3 ; Q1 siège Savoir */
 
         /* §1 (CISEAU) — l'offre SUIT le signal-prix : chaque manufacture s'étend ∝ la
          * PÉNURIE de son bien (prix AU-DESSUS de la base). À l'équilibre (prix=base) elle
@@ -1439,7 +1454,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             float lim_est = (rc->labor>0.f)? re->bld[i].workers/rc->labor : cap;
             if (cap > EPS && lim_est < 0.70f*cap) continue;   /* sous-utilisé → goulet en amont, pas ici */
             float pression = clampf(re->price[out]/BASE_PRICE[out] - 1.f, 0.f, EXPANSION_PRESSION_CAP);
-            re->bld[i].level += BASE_EXPANSION * pression * dt;   /* ∝ pénurie, auto-amortie */
+            re->bld[i].level += BASE_EXPANSION * pression * council_m(re->owner,2) * dt;   /* ∝ pénurie ; Q1 siège Industrie */
         }
 
         for (int r=0;r<RES_COUNT;r++){ re->supply[r]=supply[r]; re->demand[r]=demand[r]; }

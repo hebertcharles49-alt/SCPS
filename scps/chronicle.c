@@ -212,6 +212,9 @@ static void sim_day(Sim *s, World *w) {
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
     if (s->day % 30 == 29) {
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
+        statecraft_council_apply(s->sc, w, s->econ, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or */
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+            if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c);   /* Q1 : l'IA pourvoit son siège d'éthos */
         econ_tick(s->econ, 1.f/12.f);
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f);

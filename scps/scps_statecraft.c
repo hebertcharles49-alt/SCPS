@@ -8,6 +8,8 @@
  */
 #include "scps_statecraft.h"
 #include "scps_readout.h"   /* metric_agitation / metric_stability (réutilisés) */
+#include "scps_lang.h"      /* Q1 : STR_COUNCIL_NAME_* (noms de candidats) */
+#include "scps_culture.h"   /* Q1 : ETHOS_* (l'IA recrute selon l'éthos) */
 #include <string.h>
 
 /* ---- Calibrage --------------------------------------------------------- */
@@ -61,12 +63,106 @@ const char *dip_mission_name(DipMission m){
 void statecraft_init(Statecraft *sc, const World *w){
     memset(sc, 0, sizeof(*sc));
     sc->n_countries = w->n_countries;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)                /* Q1 : memset→0 = slot 0 valide : tous VACANTS (-1) */
+        for (int s=0;s<SC_COUNCIL_SEATS;s++) sc->council[c][s]=-1;
     for (int c=0;c<w->n_countries;c++){
         sc->influence[c]   = 35.f;             /* une réputation initiale modeste */
         sc->prestige[c]    = 8.f;
         sc->staff[c].count = SC_BASE_DIPLOMATS;
         for (int b=0;b<w->n_countries;b++) sc->opinion[c][b]=0.f;
     }
+}
+
+/* ═══ Q1 — LE CONSEIL (I7) ═══════════════════════════════════════════════════
+ * 3 sièges (Savoir/Société/Industrie). Chaque siège propose SC_COUNCIL_CANDS
+ * candidats DÉTERMINISTES (tier + nom dérivés du seed) ; le joueur/IA en NOMME un
+ * (council[cid][seat] = slot) ou RENVOIE (-1). L'effet est un MULTIPLICATEUR lecteur
+ * (×savoir / ×promo / ×manuf), le coût une ponction mensuelle (×IPM). Rien d'autre. */
+static const float SC_SEAT_BASE[SC_COUNCIL_SEATS] = { 0.20f, 0.12f, 0.15f }; /* +20/+12/+15 % à tier-effet 1 */
+static const float SC_TIER_EFFET[4] = { 0.f, 1.0f, 1.5f, 2.0f };            /* index = tier 1..3 */
+static const float SC_TIER_COST [4] = { 0.f, 8.f, 16.f, 28.f };             /* or/mois, ×IPM */
+
+static uint32_t sc_hash(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
+    uint32_t h = a*2654435761u ^ b*40503u ^ c*2246822519u ^ d*3266489917u;
+    h ^= h>>16; h *= 2246822519u; h ^= h>>13; h *= 3266489917u; h ^= h>>16;
+    return h;
+}
+int statecraft_council_cand_tier(uint32_t seed, int cid, int seat, int slot){
+    uint32_t h = sc_hash(seed^0xC0FFEEu, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot) % 100u;
+    return (h<55)?1:(h<85)?2:3;   /* 55 % tier1 · 30 % tier2 · 15 % tier3 (les grands sont rares) */
+}
+int statecraft_council_cand_name(uint32_t seed, int cid, int seat, int slot){
+    uint32_t h = sc_hash(seed^0x5EAB011u, (uint32_t)cid, (uint32_t)(seat*7+slot), 0x9E37u);
+    return (int)STR_COUNCIL_NAME_0 + (int)(h % (uint32_t)SC_COUNCIL_NAMES);
+}
+int statecraft_council_seated(const Statecraft *sc, int cid, int seat){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return -1;
+    int s=sc->council[cid][seat];
+    return (s>=0 && s<SC_COUNCIL_CANDS) ? s : -1;
+}
+void statecraft_council_hire(Statecraft *sc, int cid, int seat, int slot){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
+    if (slot<0||slot>=SC_COUNCIL_CANDS) return;
+    sc->council[cid][seat]=(int8_t)slot;
+}
+void statecraft_council_dismiss(Statecraft *sc, int cid, int seat){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
+    sc->council[cid][seat]=-1;
+}
+float statecraft_council_seat_mult(const Statecraft *sc, uint32_t seed, int cid, int seat){
+    int slot=statecraft_council_seated(sc,cid,seat);
+    if (slot<0) return 1.f;
+    int tier=statecraft_council_cand_tier(seed,cid,seat,slot);
+    return 1.f + SC_SEAT_BASE[seat]*SC_TIER_EFFET[tier];
+}
+float statecraft_council_cost(const Statecraft *sc, uint32_t seed, int cid, float ipm){
+    if (ipm<=0.f) ipm=1.f;
+    float tot=0.f;
+    for (int s=0;s<SC_COUNCIL_SEATS;s++){
+        int slot=statecraft_council_seated(sc,cid,s);
+        if (slot<0) continue;
+        tot += SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,s,slot) ] * ipm;
+    }
+    return tot;
+}
+void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy *e, uint32_t seed, float dt_year){
+    if (!sc||!w||!e) return;
+    float ipm = econ_world_ipm(e);
+    for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++){
+        for (int s=0;s<SC_COUNCIL_SEATS;s++)
+            econ_set_council_mult(c, s, statecraft_council_seat_mult(sc,seed,c,s));   /* LECTEUR : ×savoir/×promo/×manuf */
+        float cost = statecraft_council_cost(sc,seed,c,ipm) * dt_year * 12.f;          /* or/mois × mois écoulés */
+        if (cost<=0.f) continue;
+        int cap=w->country[c].capital_prov;                                            /* ponction au trésor de la couronne */
+        int cr =(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
+        if (cr>=0 && cr<e->n_regions){ e->region[cr].treasury -= cost; econ_flux_add(c, FX_CONSEIL, -cost); }
+    }
+}
+/* Q1 — IA du conseil : l'éthos de la capitale privilégie un siège ; on le pourvoit
+ * du MEILLEUR candidat tenable dans la GARDE DE BUDGET (≤ 6 mois de loyer en réserve).
+ * Une nomination à la fois ; no-op si déjà pourvu ou trésor trop court. */
+static int sc_ethos_seat(int ethos){
+    switch (ethos){
+        case ETHOS_BUREAUCRATE: case ETHOS_PACIFISTE: return 0;  /* Savoir */
+        case ETHOS_ORDRE:                              return 1;  /* Société */
+        default:                                       return 2;  /* Industrie (Dominateur/Honneur/Mercantile) */
+    }
+}
+void statecraft_council_ai(Statecraft *sc, const World *w, const WorldEconomy *e, uint32_t seed, int cid){
+    if (!sc||!w||!e||cid<0||cid>=SCPS_MAX_COUNTRY) return;
+    int cap=w->country[cid].capital_prov;
+    int cr =(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
+    if (cr<0||cr>=e->n_regions || !e->region[cr].culture.settled) return;
+    int seat=sc_ethos_seat((int)e->region[cr].culture.ethos);
+    if (statecraft_council_seated(sc,cid,seat)>=0) return;                 /* déjà pourvu */
+    float tres=e->region[cr].treasury, ipm=econ_world_ipm(e);
+    int best=-1, bestt=0;
+    for (int slot=0; slot<SC_COUNCIL_CANDS; slot++){
+        int t=statecraft_council_cand_tier(seed,cid,seat,slot);
+        if (SC_TIER_COST[t]*ipm*6.f > tres) continue;                     /* hors garde de budget (6 mois) */
+        if (t>bestt){ bestt=t; best=slot; }
+    }
+    if (best>=0) statecraft_council_hire(sc,cid,seat,best);
 }
 
 /* ---- Lecteurs ---------------------------------------------------------- */

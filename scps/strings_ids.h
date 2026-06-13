@@ -285,5 +285,27 @@
     /* Écran de chargement (genèse + amorce sur un thread — l'UI reste réactive). */ \
     X(STR_LOADING_MONDE, "Façonnage du monde…") \
     X(STR_LOADING_EVEIL, "Le monde s'éveille — des années passent…") \
+    /* Q1 — Le Conseil (I7) : sièges, effets, candidats (maisons), libellés UI. */ \
+    X(STR_COUNCIL_TITRE, "CONSEIL") \
+    X(STR_COUNCIL_SEAT_0, "Savoir") \
+    X(STR_COUNCIL_SEAT_1, "Société") \
+    X(STR_COUNCIL_SEAT_2, "Industrie") \
+    X(STR_COUNCIL_EFF_0, "recherche") \
+    X(STR_COUNCIL_EFF_1, "promotion") \
+    X(STR_COUNCIL_EFF_2, "manufactures") \
+    X(STR_COUNCIL_VACANT, "— siège vacant —") \
+    X(STR_COUNCIL_NOMMER, "Nommer") \
+    X(STR_COUNCIL_RENVOYER, "Renvoyer") \
+    X(STR_COUNCIL_SEAT_FMT, "{0} — +{1}% {2}") \
+    X(STR_COUNCIL_SEATED_FMT, "{0} · tier {1} · {2} or/mois") \
+    X(STR_COUNCIL_CAND_FMT, "{0} · tier {1} · {2} or") \
+    X(STR_COUNCIL_NAME_0, "Maison Vœrn") \
+    X(STR_COUNCIL_NAME_1, "Comptoir Aldric") \
+    X(STR_COUNCIL_NAME_2, "Guilde Harmel") \
+    X(STR_COUNCIL_NAME_3, "Banque Orlec") \
+    X(STR_COUNCIL_NAME_4, "Maison Tessari") \
+    X(STR_COUNCIL_NAME_5, "Cercle Velmor") \
+    X(STR_COUNCIL_NAME_6, "Loge Brask") \
+    X(STR_COUNCIL_NAME_7, "Syndic Dovric") \
 
 #endif /* SCPS_STRINGS_IDS_H */

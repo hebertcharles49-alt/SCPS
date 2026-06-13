@@ -41,6 +41,11 @@
 #define SC_MAX_DIPLOMATS   12
 #define SC_BASE_DIPLOMATS  3      /* vivier de départ (avant bonus d'Influence) */
 
+/* ---- Q1 — LE CONSEIL (I7) : 3 sièges, conseillers tier 1-3 ------------- */
+#define SC_COUNCIL_SEATS  3    /* 0 = Savoir (+20 % savoir) · 1 = Société (+12 % promo) · 2 = Industrie (+15 % manuf) */
+#define SC_COUNCIL_CANDS  3    /* candidats tirés au seed par siège (licenciables) */
+#define SC_COUNCIL_NAMES  8    /* taille de la bande STR_COUNCIL_NAME_* (maisons) */
+
 typedef enum {
     DIP_IDLE = 0,
     DIP_RELATIONS,   /* ~180 j — améliore l'opinion (lent, continu)            */
@@ -70,8 +75,26 @@ typedef struct {
     float           agitation  [SCPS_MAX_REG];                   /* 0..100 soutenue */
     float           unrest_days[SCPS_MAX_REG];                   /* temps au-dessus du seuil */
     bool            revolt_fired[SCPS_MAX_REG];                  /* a basculé ce tick */
+    int8_t          council[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS]; /* Q1 : slot pourvu par siège (-1 = vacant) */
     int             n_countries;
 } Statecraft;
+
+/* Q1 — LE CONSEIL. Les candidats (tier 1-3 + nom) sont DÉTERMINISTES (dérivés du seed)
+ * → régénérés au chargement, jamais sérialisés ; seul le siège POURVU (council[]) persiste.
+ * Les multiplicateurs sont des LECTEURS (×savoir/×promo/×manuf), jamais des poses. */
+int   statecraft_council_cand_tier(uint32_t seed, int cid, int seat, int slot);   /* effet : 1/2/3 → ×1 / ×1.5 / ×2 */
+int   statecraft_council_cand_name(uint32_t seed, int cid, int seat, int slot);   /* StrId du nom (maison) */
+int   statecraft_council_seated   (const Statecraft *sc, int cid, int seat);      /* slot pourvu, -1 sinon */
+void  statecraft_council_hire     (Statecraft *sc, int cid, int seat, int slot);
+void  statecraft_council_dismiss  (Statecraft *sc, int cid, int seat);
+float statecraft_council_seat_mult(const Statecraft *sc, uint32_t seed, int cid, int seat); /* 1+base·effet ; 1 si vacant */
+float statecraft_council_cost     (const Statecraft *sc, uint32_t seed, int cid, float ipm); /* or/mois total (×IPM) */
+/* Applique le conseil à l'éco pour le tick (mensuel) : pousse les multiplicateurs LECTEURS
+ * et ponctionne le coût (×IPM) sur le trésor de la capitale, ligne FX_CONSEIL. Appelé
+ * IDENTIQUEMENT par viewer ET chronicle (mêmes décisions de monde). dt_year = 1/12. */
+void  statecraft_council_apply    (const Statecraft *sc, const World *w, WorldEconomy *e, uint32_t seed, float dt_year);
+/* L'IA pourvoit le siège que son éthos privilégie, dans la garde de budget (no-op sinon). */
+void  statecraft_council_ai       (Statecraft *sc, const World *w, const WorldEconomy *e, uint32_t seed, int cid);
 
 void statecraft_init(Statecraft *sc, const World *w);
 

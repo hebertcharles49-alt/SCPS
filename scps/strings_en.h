@@ -277,4 +277,25 @@
     X(STR_FATAL_SDL,   "SCPS could not initialize the display.\n\n{0}") \
     X(STR_LOADING_MONDE, "Shaping the world…") \
     X(STR_LOADING_EVEIL, "The world awakens — years are passing…") \
+    X(STR_COUNCIL_TITRE, "COUNCIL") \
+    X(STR_COUNCIL_SEAT_0, "Knowledge") \
+    X(STR_COUNCIL_SEAT_1, "Society") \
+    X(STR_COUNCIL_SEAT_2, "Industry") \
+    X(STR_COUNCIL_EFF_0, "research") \
+    X(STR_COUNCIL_EFF_1, "promotion") \
+    X(STR_COUNCIL_EFF_2, "manufactures") \
+    X(STR_COUNCIL_VACANT, "— seat vacant —") \
+    X(STR_COUNCIL_NOMMER, "Appoint") \
+    X(STR_COUNCIL_RENVOYER, "Dismiss") \
+    X(STR_COUNCIL_SEAT_FMT, "{0} — +{1}% {2}") \
+    X(STR_COUNCIL_SEATED_FMT, "{0} · tier {1} · {2} gold/mo") \
+    X(STR_COUNCIL_CAND_FMT, "{0} · tier {1} · {2} gold") \
+    X(STR_COUNCIL_NAME_0, "House Vœrn") \
+    X(STR_COUNCIL_NAME_1, "Aldric Counting-house") \
+    X(STR_COUNCIL_NAME_2, "Harmel Guild") \
+    X(STR_COUNCIL_NAME_3, "Orlec Bank") \
+    X(STR_COUNCIL_NAME_4, "House Tessari") \
+    X(STR_COUNCIL_NAME_5, "Velmor Circle") \
+    X(STR_COUNCIL_NAME_6, "Brask Lodge") \
+    X(STR_COUNCIL_NAME_7, "Dovric Syndic") \
 
