@@ -737,7 +737,6 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
     if (!d||!w||!econ) return 0;
     int transferred=0;
     if (winner>=0 && winner<w->n_countries && loser>=0 && loser<w->n_countries && winner!=loser){
-        float budget = diplo_war_budget(d,w,econ,winner,loser);
         int list[SCPS_MAX_REG], n=0;
         for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
             if (d->occupier[r]==winner && econ->region[r].owner==loser
@@ -752,10 +751,13 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
             }
             list[j+1]=r;
         }
+        /* P2 — ON GARDE CE QU'ON OCCUPE : toute région tenue par les armes au règlement
+         * est CÉDÉE (region.owner ← occupier). Plus de plafond de budget sur la TERRE — le
+         * sol pris au siège ne se rend pas à la paix (sinon la guerre ne change RIEN : on
+         * mesurait 4 occupations posées, 0 transférée). Le budget borne encore le BUTIN
+         * (or, côté IA), jamais le sol ; un vaincu vidé de ses régions MEURT (plus bas). */
         for (int k=0;k<n;k++){
-            int r=list[k]; float price=diplo_province_price(econ,r);
-            if (d->conq_value[winner][loser] + price > budget) break;   /* budget épuisé */
-            settle_transfer(d,w,econ,wl,winner,loser,r,winner_enslaves);
+            settle_transfer(d,w,econ,wl,winner,loser,list[k],winner_enslaves);
             transferred++;
         }
     }
