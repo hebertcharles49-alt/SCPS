@@ -117,7 +117,11 @@ static void sim_campaign_orders(Sim *s, World *w) {
                 if (!s->econ->adj[r][sn]) continue;
                 int ob=s->econ->region[sn].owner;
                 if (ob<0 || ob==c || diplo_status(s->dp,c,ob)!=DIPLO_WAR) continue;
-                frontier=r; target=sn; break;                       /* une frontière chaude */
+                /* P3/doctrine — on n'attaque qu'avec un AVANTAGE DE FORCE (≥1.2× le
+                 * défenseur) : sinon l'assaut s'use sur le relief et la guerre tourne à
+                 * vide. (La LIBÉRATION de NOTRE sol, plus haut, n'est PAS soumise au seuil.) */
+                if ((float)warhost_units(s->host,c) < tune_f("BT_ATK_RATIO",1.2f)*(float)warhost_units(s->host,ob)) continue;
+                frontier=r; target=sn; break;                       /* une frontière chaude OÙ l'on PÈSE */
             }
         }
         if (frontier>=0){

@@ -32,6 +32,41 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
 
 ---
 
+## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
+
+Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde
+passait FA_IDLE (le vainqueur décrochait au lieu de presser), et même quand un
+siège partait, le défenseur (toujours plus fort) gagnait le secours et le siège
+ne tombait jamais. Mesuré au profileur : assaillant ~797 de réserve vs défenseur
+~1290, le défenseur l'emportait 217/217.
+
+- **P1 — le vainqueur PRESSE** : `bt_end` désigne le vainqueur (principal en lice,
+  non brisé, moral le plus haut) et l'envoie ASSIÉGER la région contestée
+  (`bt_press_siege`) au lieu de décrocher ; `bt_rout` ne remet plus le vainqueur
+  en IDLE. Pas de presse hors guerre (paix éclatée).
+- **P2 — le siège TOMBE** : un secours défait laisse la place sans espoir → elle
+  capitule en `BT_RELIEF_FALL` (30 j, ≤ la fenêtre `BT_BRISEE_J`=45 j où l'armée
+  ennemie gît brisée). Sans ça, le secours se reformait et resettait le siège à
+  l'infini. `days_left` est sérialisé ⇒ sauver/recharger fidèle, **0 bump SAVE**.
+  La chaîne siège→`taken_region`→`diplo_occupy`/`diplo_liberate`→transfert à la
+  paix était intacte ; il manquait juste que le siège FINISSE.
+- **P3 / calibrage (valeurs dirigées)** : bonus défensif LÉGER `BT_DEF_EDGE`=0.10
+  (le secours doit pouvoir l'emporter) ; curée ALLÉGÉE (cap 0.22→0.12, socle 0.06 —
+  les armées survivent, la guerre s'inscrit dans la durée) ; doctrine d'attaque
+  `BT_ATK_RATIO`=1.2 (on n'assaille qu'avec 1,2× le défenseur — fin de l'usure à
+  vide) ; décrochage l'EXCEPTION `BT_DECROCHE`=0.22 (la bataille se DÉCIDE).
+- **Preuve (chronique 1×60 graine 7)** : occupations **14 posées** · provinces
+  **transférées à la paix 18** · **2 sécessions** (la carte respire) · **0 %
+  décrochage** (39 batailles, 39 déroutes) · 7 guerres. `make test` **32/32** ·
+  0 warning · campaign_demo 19/19 (banc de ralliement re-calé sur la curée légère :
+  le noyau survivant peut dépasser 60 %, le ralliement ne réduit jamais).
+- **Réserve** : ratio poursuite/choc **0,7×** (cible brief [2,5]). Il était DÉJÀ
+  sous la cible (1,7×) avant l'arc ; réduire la poursuite (consigne) fait dominer
+  le choc, et sous `BT_CHOC_MORTS`≈0.006 les morts de choc se quantifient à 0 (pas
+  de milieu lisse). Tension ASSUMÉE : le modèle « batailles décisives mais non
+  annihilantes » (armées qui survivent → guerres qui durent → terrain qui change
+  de main) prime sur l'aspiration « la poursuite domine » de l'ancien modèle.
+
 ## (c ter) N3.1 — Frontières hiérarchiques, zoom-stables (2026-06-12)
 
 - **Fix 1 (flags symétriques)** : `compute_render_flags` compare aux QUATRE voisins

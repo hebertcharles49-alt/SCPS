@@ -303,6 +303,10 @@ static float bt_terrainA(const Campaign *c, const WorldEconomy *e, int loc, int 
             float adv=terrain_combat_bonus(c->reg_biome[loc]);
             bool bridged=e->region[loc].route_pe>0.f;
             if (c->reg_river[loc] && !bridged) adv*=RIVER_COMBAT_EDGE;
+            /* P3 — le bonus défensif reste LÉGER (~10 % max) : le relief (qui charge
+             * les assiégeants) doit pouvoir l'emporter, sinon le défenseur gagne TOUT
+             * et la guerre ne prend jamais de terrain (217 batailles, 0 occupation). */
+            adv=fminf(adv, 1.f + tune_f("BT_DEF_EDGE",0.10f));
             terrainA=(defender<0)?adv:(1.f/adv);
         }
     }
@@ -316,12 +320,52 @@ static void bt_score(DiploState *dp, int win, int lose, float pts){
     else if (diplo_war_goal(dp,lose,win)!=CB_NONE)
         dp->battle_score[lose][win] = fmaxf(-100.f, dp->battle_score[lose][win]-pts);
 }
-static void bt_end(Campaign *c, FieldBattle *bt){
+/* P1 — LE VAINQUEUR PRESSE : il tient le champ → il ASSIÈGE la région contestée au
+ * lieu de décrocher en FA_IDLE (la racine des 0 occupations : 217 batailles, 0 siège).
+ * Cible SEULEMENT si loc vaut un siège (ennemie, OU nôtre mais OCCUPÉE → libération) —
+ * exactement les règles de l'arrivée de marche (151-159). false = rien à réduire (on
+ * tient déjà la région, ou c'est notre terre libre : le défenseur reste, re-ordonnable). */
+static bool bt_press_siege(Campaign *c, const WorldEconomy *e, const DiploState *dp,
+                           FieldArmy *V, int loc){
+    if (!V->active || V->broken_days>0 || force_units(&V->force)<=0) return false;
+    if (loc<0 || loc>=e->n_regions) return false;
+    bool ours = (e->region[loc].owner==V->owner);
+    int  occ  = dp ? dp->occupier[loc] : -1;
+    if (occ==V->owner || (ours && occ<0)) return false;
+    V->loc=loc; V->dest=loc; V->next=-1; V->phase=FA_SIEGE;
+    /* P2 — le RELIEF est défait : la place, privée d'espoir de secours, CAPITULE vite.
+     * On borne le compte de siège à BT_RELIEF_FALL (≤ la fenêtre où l'armée ennemie gît
+     * BRISÉE : BT_BRISEE_J=45 j) — sans quoi le secours se reforme et revient resetter
+     * le siège, qui ne tombe JAMAIS (la racine des 0 occupations MALGRÉ des batailles
+     * gagnées). days_left est sérialisé → sauver/recharger reste fidèle (pas de bump). */
+    float full = siege_days(region_defense(e,loc), region_food_months(e,loc),
+                            terrain_defense_mult(c->reg_biome[loc], c->reg_height[loc]))
+               * posture_siege_mult(V->posture);
+    V->days_left = fminf(full, tune_f("BT_RELIEF_FALL",30.f));
+    return true;
+}
+static void bt_end(Campaign *c, const WorldEconomy *e, const DiploState *dp, FieldBattle *bt){
+    /* Le VAINQUEUR = le principal encore en lice (FA_BATTLE, actif, NON brisé) au moral
+     * restant le plus haut ; il PRESSE (assiège la région contestée). Les autres — le
+     * brisé déjà en fuite, les renforts, ou le nul de stalemate (les DEUX brisés) —
+     * rentrent au repos. Aucun vainqueur si la PAIX a éclaté (on n'assiège pas hors guerre). */
+    int victor=-1;
+    if (bt->a>=0 && bt->b>=0
+        && diplo_status(dp,c->army[bt->a].owner,c->army[bt->b].owner)==DIPLO_WAR){
+        FieldArmy *A=&c->army[bt->a], *B=&c->army[bt->b];
+        float fA=bt->resA/(bt->resA0+1.f), fB=bt->resB/(bt->resB0+1.f);
+        bool okA=(A->phase==FA_BATTLE && A->active && A->broken_days==0);
+        bool okB=(B->phase==FA_BATTLE && B->active && B->broken_days==0);
+        if      (okA && (!okB || fA>=fB)) victor=bt->a;
+        else if (okB)                     victor=bt->b;
+    }
     int ids[4]={bt->a,bt->b,bt->helpA,bt->helpB};
     for (int k=0;k<4;k++){
         if (ids[k]<0) continue;
         FieldArmy *A=&c->army[ids[k]];
-        if (A->phase==FA_BATTLE) A->phase=FA_IDLE;
+        if (A->phase!=FA_BATTLE) continue;
+        if (ids[k]==victor && bt_press_siege(c,e,dp,A,bt->loc)) continue;  /* P1 : il presse */
+        A->phase=FA_IDLE;
     }
     bt->active=false;
 }
@@ -332,12 +376,13 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     int ia=bt->a, ib=bt->b;
     FieldArmy *L=&c->army[loser_side?ib:ia], *V=&c->army[loser_side?ia:ib];
     float vfrac=(loser_side? bt->resA/(bt->resA0+1.f) : bt->resB/(bt->resB0+1.f));
-    /* H4 — la curée PLAFONNE : ≤ 22 % de la force en déroute (était 45 %), poussée
-     * surtout par la posture agressive (proxy de la poursuite de cavalerie). */
-    float P=0.10f + ((V->posture==FA_AGRESSIVE)?0.10f:(V->posture==FA_PRUDENTE)?-0.05f:0.f)
-          + 0.06f*vfrac;
-    if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.06f;   /* la montagne couvre la fuite */
-    P=fminf(tune_f("CUREE_CAP",0.22f),fmaxf(0.04f,P));
+    /* P3 — la curée est ALLÉGÉE (plafond ≤ 12 %, socle 6 %) : une armée battue SURVIT
+     * pour revenir — la guerre s'inscrit dans la DURÉE (ré-assauts) au lieu d'annihiler
+     * l'assaillant au premier choc. Toujours poussée par la posture agressive. */
+    float P=0.06f + ((V->posture==FA_AGRESSIVE)?0.08f:(V->posture==FA_PRUDENTE)?-0.03f:0.f)
+          + 0.04f*vfrac;
+    if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.04f;   /* la montagne couvre la fuite */
+    P=fminf(tune_f("CUREE_CAP",0.12f),fmaxf(0.03f,P));
     long lp=force_units(&L->force);
     long to_kill=(long)((float)lp*P+0.5f);
     if (!L->rally_used && to_kill>=lp) to_kill=lp-1;   /* L2 : le NOYAU survit pour se rallier */
@@ -364,13 +409,10 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
                        L->days_left=L->leg_days; }
       } }
     if (force_units(&L->force)<=0){ L->active=false; L->phase=FA_IDLE; }
-    V->phase=FA_IDLE;                                  /* le vainqueur reprend sa route */
-    if (V->dest>=0 && V->dest!=V->loc){
-        int hop=next_hop(c,e,V->loc,V->dest);
-        if (hop>=0){ V->next=hop; V->phase=FA_MARCH;
-                     V->leg_days=army_step_days(&V->force,c->reg_biome[hop],c->reg_height[hop],false,false);
-                     V->days_left=V->leg_days; }
-    }
+    /* P1 — le vainqueur V reste EN LICE (FA_BATTLE) : bt_end, appelé juste après, le
+     * fait PRESSER le siège de la région contestée au lieu de décrocher (avant : V→IDLE
+     * et la guerre se vidait — 217 batailles pour 0 occupation). */
+    (void)V;
 }
 /* MARCHE AU CANON : un allié/suzerain/vassal ADJACENT et dispo rejoint le camp. */
 static void bt_reinforce(Campaign *c, const WorldEconomy *e, const DiploState *dp, FieldBattle *bt){
@@ -398,8 +440,8 @@ static void bt_reinforce(Campaign *c, const WorldEconomy *e, const DiploState *d
 static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploState *dp,
                    FieldBattle *bt, uint32_t *rng){
     FieldArmy *A=&c->army[bt->a], *B=&c->army[bt->b];
-    if (!A->active||!B->active){ bt_end(c,bt); return; }
-    if (diplo_status(dp,A->owner,B->owner)!=DIPLO_WAR){ bt_end(c,bt); return; }   /* la paix a éclaté */
+    if (!A->active||!B->active){ bt_end(c,e,dp,bt); return; }
+    if (diplo_status(dp,A->owner,B->owner)!=DIPLO_WAR){ bt_end(c,e,dp,bt); return; }   /* la paix a éclaté */
     bt->days++; c->battle_days++;
     int ph=bt->cycle % (BT_CHOC_J+BT_ACCALMIE_J);
     if (ph<BT_CHOC_J){
@@ -421,8 +463,8 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         /* L3/H4.2 — LE CHOC TIENT : pas de test de déroute avant CHOC_ROUNDS_BONUS
          * chocs livrés (les batailles durent, le positionnement compte). */
         if ((float)bt->chocs >= tune_f("CHOC_ROUNDS_BONUS",2.f)){
-        if (bt->resA<=tune_f("BT_RUPTURE",BT_RUPTURE)*bt->resA0){ bt_rout(c,w,e,dp,bt,0); bt_end(c,bt); return; }
-        if (bt->resB<=tune_f("BT_RUPTURE",BT_RUPTURE)*bt->resB0){ bt_rout(c,w,e,dp,bt,1); bt_end(c,bt); return; }
+        if (bt->resA<=tune_f("BT_RUPTURE",BT_RUPTURE)*bt->resA0){ bt_rout(c,w,e,dp,bt,0); bt_end(c,e,dp,bt); return; }
+        if (bt->resB<=tune_f("BT_RUPTURE",BT_RUPTURE)*bt->resB0){ bt_rout(c,w,e,dp,bt,1); bt_end(c,e,dp,bt); return; }
         }
     } else {
         float rA=BT_RECUP + ((e->region[bt->loc].owner==A->owner)?0.007f:0.f);
@@ -431,7 +473,12 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         bt->resB=fminf(bt->resB0, bt->resB+bt->resB0*rB);
         if (ph==BT_CHOC_J){                            /* DÉCROCHER : en ordre, poursuite réduite */
             float fA=bt->resA/(bt->resA0+1.f), fB=bt->resB/(bt->resB0+1.f);
-            float sA=(A->posture==FA_PRUDENTE)?0.50f:0.38f, sB=(B->posture==FA_PRUDENTE)?0.50f:0.38f;
+            /* P3 — le décrochage est l'EXCEPTION : on ne rompt qu'à moral BAS (seuil
+             * abaissé, tunable). Sinon la bataille se DÉCIDE (déroute) — c'est ce qui
+             * fait tomber les sièges et prendre le terrain (avant : 98 % de décrochages,
+             * 0 occupation). Posture prudente = plus prompte à rompre (+0.10). */
+            float base=tune_f("BT_DECROCHE",0.22f);
+            float sA=(A->posture==FA_PRUDENTE)?base+0.10f:base, sB=(B->posture==FA_PRUDENTE)?base+0.10f:base;
             int who=(fA<sA && fA<fB-0.08f)?0:(fB<sB && fB<fA-0.08f)?1:-1;
             if (who>=0){
                 FieldArmy *L=&c->army[who?bt->b:bt->a], *V=&c->army[who?bt->a:bt->b];
@@ -440,7 +487,7 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
                 c->dead_pursuit+=pursued*100; c->n_disengage++;
                 bt_score(dp,V->owner,L->owner,2.f);
                 L->phase=FA_IDLE; L->dest=-1; L->next=-1; L->broken_days=10;
-                bt_end(c,bt); return;
+                bt_end(c,e,dp,bt); return;
             }
         }
     }
@@ -449,7 +496,7 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         int up=(bt->resA/(bt->resA0+1.f)>=bt->resB/(bt->resB0+1.f))?1:0;
         bt_score(dp, up?A->owner:B->owner, up?B->owner:A->owner, 2.f);
         A->broken_days=15; B->broken_days=15;
-        bt_end(c,bt); return;
+        bt_end(c,e,dp,bt); return;
     }
     bt->cycle++;
 }
@@ -582,7 +629,7 @@ void campaign_tick(Campaign *c, const World *w, const WorldEconomy *e,
             } else if (a->phase==FA_SIEGE){
                 if (t < a->days_left){ a->days_left-=t; t=0.f; break; }
                 t -= a->days_left; a->days_left=0.f;
-                a->taken++;                                      /* RÉDUITE (cumul) */
+                a->taken++;
                 a->taken_region=a->loc;                          /* à récolter : occupation/libération (couche sim) */
                 a->phase=FA_IDLE; a->dest=-1;
                 break;

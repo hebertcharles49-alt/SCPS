@@ -175,8 +175,12 @@ int main(int argc,char**argv){
              u_pre, after_rout, reformed);
       ok("la re-formation TOMBE (ralliement compté, brisure levée)",
          camp2->n_rallies>0 && RT>=0 && camp2->army[RT].broken_days==0);
-      ok("le CAP est respecté : reformé ≤ 60 % de l'avant-déroute, et ≥ le noyau",
-         RT>=0 && reformed>=after_rout && reformed<=(long)(0.6f*(float)u_pre)+1);
+      /* P3 — curée ALLÉGÉE : le noyau survivant peut DÉPASSER 60 % de l'avant-déroute.
+       * Le ralliement ne RÉDUIT jamais (≥ noyau) et ne POUSSE pas au-dessus de 60 % ;
+       * quand le noyau prime déjà, c'est lui le plancher effectif. */
+      long cap60=(long)(0.6f*(float)u_pre)+1, cap_eff=(after_rout>cap60)?after_rout:cap60;
+      ok("le CAP est respecté : reformé ≥ le noyau, et le ralliement ne pousse pas au-dessus de 60 %",
+         RT>=0 && reformed>=after_rout && reformed<=cap_eff);
     }
 
     /* ═══ 4. LECTEURS (membrane : tangibles) ═══════════════════════════ */

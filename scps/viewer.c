@@ -823,6 +823,11 @@ static void sim_campaign_orders(Sim *s, World *w) {
                 if (!s->econ->adj[r][sn]) continue;
                 int ob=s->econ->region[sn].owner;
                 if (ob<0 || ob==c || diplo_status(s->dp,c,ob)!=DIPLO_WAR) continue;
+                /* P3/doctrine — on n'attaque qu'avec un AVANTAGE DE FORCE (≥1.2× le
+                 * défenseur) : sinon l'assaut s'use sur le relief (la LIBÉRATION de
+                 * notre sol, plus haut, n'est pas soumise au seuil). 1.2 = défaut du
+                 * tunable BT_ATK_RATIO côté chronique (mêmes décisions en partie). */
+                if ((float)warhost_units(s->host,c) < 1.2f*(float)warhost_units(s->host,ob)) continue;
                 frontier=r; target=sn; break;
             }
         }
