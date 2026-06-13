@@ -764,7 +764,7 @@ static void borders_draw(SDL_Renderer *ren, const Cam *cam, const World *w, cons
     } else if (mode==VIEW_REGIONS){
         bseg_draw_level(ren,&bv,BL_REG,3.f,0xFF141A26u);
     }
-    bseg_draw_level(ren,&bv,BL_CTY,5.f,0xFF0A0E16u);        /* en DERNIER : domine */
+    bseg_draw_level(ren,&bv,BL_CTY,4.f,0xFF0A0E16u);        /* en DERNIER : domine (4px) */
     if (selected_prov>=0 && selected_prov<w->n_provinces){
         int selreg=w->province[selected_prov].region;
         if (selreg>=0) bseg_draw_selection(ren,&bv,selreg);
