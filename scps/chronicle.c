@@ -874,6 +874,11 @@ int main(int argc, char **argv){
                     sup[RES_ARMS_HEAVY],sup[RES_ARMS_RANGED],sup[RES_FIREARM],sup[RES_MAGE_STAFF],sup[RES_ALCHEMIST_KIT],sup[RES_ENCHANTED_ARMS]);
             fprintf(stderr,"[FORGEDIAG] TROUPES (paquets) : hallebardier %ld · arquebusier %ld · alchimiste %ld · garde runique %ld · archer %ld · cav lourde %ld\n",
                     u[U_HALLEBARDIER],u[U_ARQUEBUSIER],u[U_ALCHIMISTE],u[U_GARDE_RUNIQUE],u[U_ARCHER],u[U_CAV_LOURDE]);
+            { double dem[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)dem[g]=0.0;
+              for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
+                  for(int g=0;g<RES_COUNT;g++) dem[g]+=s.econ->region[r].demand[g]; }
+              fprintf(stderr,"[FORGEDIAG] MANUFACTURÉ produit/tick : étoffe %.0f · métal %.0f · outils %.0f · armes lég %.0f | RAW consommé (demande) : fer %.0f · bois %.0f · charbon %.0f · laine %.0f\n",
+                    sup[RES_CLOTH],sup[RES_METAL],sup[RES_TOOLS],sup[RES_ARMS_LIGHT], dem[RES_IRON],dem[RES_WOOD],dem[RES_COAL],dem[RES_WOOL]); }
             /* POURQUOI 0 ? — la fabrique se bâtit si prix_sortie ≥ 1.8×base (pénurie) ET intrants dispo.
              * On regarde le MAX (sur régions poss.) du prix des armes neuves vs le seuil, + le bois. */
             double pmh=0,pmr=0,pmf=0,dmh=0,dmr=0,df=0,woodmax=0,woodsup=0;
