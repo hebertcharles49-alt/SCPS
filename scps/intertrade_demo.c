@@ -90,6 +90,42 @@ int main(int argc,char**argv){
     ok("même couronne aux deux bouts → pas de route INTER-pays (rien ne passe ici)",
        econ->region[rb].stock[g]==0.f);
 
+    /* ---- 5. ACHAT DIRECT AU MARCHÉ (l'actionneur de l'UI) : le joueur À 0 achète son
+     *         bois AU PRIX, et UNIQUEMENT s'il est dispo ---- */
+    printf("\n── 5. Achat direct au marché : un joueur à 0 pompe son bois (au prix, si dispo) ──\n");
+    /* pr = une région NON-Centre voisine de ra (son hub sera ra, distance 1) ; on la donne
+     * au joueur (pays 0) qui tient AUSSI le Centre ra → marché RÉGIONAL de proximité. */
+    econ->region[ra].owner=0;
+    int pr=-1;
+    for (int r=0;r<econ->n_regions;r++)
+        if (r!=ra && !intertrade_has_centre(r) && econ->adj[ra][r]){ pr=r; break; }
+    if (pr<0){ printf("   (pas de voisin non-Centre pour ra — test sauté)\n"); }
+    else {
+        econ->region[pr].owner=0;
+        econ->region[pr].price[RES_WOOD]=1.0f;
+        econ->region[pr].stock[RES_WOOD]=0.f;          /* le joueur n'a RIEN */
+        econ->region[pr].treasury=100000.f;
+        econ->region[ra].stock[RES_WOOD]=500.f;        /* le marché (Centre ra) EN a */
+        intertrade_tick(econ,&rn,&dp);                 /* (re)bâtit la carte + écrit pr.import_margin */
+        ok("pr est bien rattaché au Centre ra (son marché régional)", intertrade_region_hub(pr)==ra);
+        float marge=econ->region[pr].import_margin; if(marge<1.f)marge=1.f;
+        float tres0=econ->region[pr].treasury, hub0=econ->region[ra].stock[RES_WOOD];
+        long spent=0; long got=intertrade_market_buy(econ,pr,RES_WOOD,50,0,&spent);
+        printf("   achat 50 bois : reçu %ld · payé %ld or · marge ×%.2f · prix attendu %ld\n",
+               got, spent, marge, (long)(50*1.0f*marge+0.5f));
+        ok("le joueur REÇOIT son bois (50)", got==50 && econ->region[pr].stock[RES_WOOD]==50.f);
+        ok("il a PAYÉ au prix courant×marge (le pump du trésor)",
+           spent==(long)(50*1.0f*marge+0.5f) && econ->region[pr].treasury < tres0);
+        ok("le bien VIENT du marché (le Centre ra se DÉPLÉTÉ de 50)",
+           econ->region[ra].stock[RES_WOOD]==hub0-50.f);
+        /* UNIQUEMENT s'il est dispo : marché vidé → achat nul, trésor intact */
+        econ->region[ra].stock[RES_WOOD]=0.f;
+        float tres1=econ->region[pr].treasury;
+        long got2=intertrade_market_buy(econ,pr,RES_WOOD,50,0,&spent);
+        ok("marché VIDE → aucun achat (« uniquement s'il est dispo »), trésor intact",
+           got2==0 && spent==0 && econ->region[pr].treasury==tres1);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

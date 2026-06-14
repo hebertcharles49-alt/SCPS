@@ -212,6 +212,10 @@
     X(STR_MARCHE_PRIX_FMT, "current price {0} gold per unit") \
     X(STR_MARCHE_PRIX_HOV, "The domestic market price: demand pulls it up, supply and selling ease it. Buying and selling happen at THIS price.") \
     X(STR_MARCHE_ROW_HOV, "{0} — in reserve {1}. Buy or sell in lots of 10 at the current price (gold flows through the treasury).") \
+    X(STR_MARCHE_HDR_LOCAL,  "good            stock     ref.price") \
+    X(STR_MARCHE_HDR_MARCHE, "good          price   avail") \
+    X(STR_MARCHE_BUY_HOV,    "Buy (pumps the treasury) \xe2\x80\x94 step 10, Shift = 100.") \
+    X(STR_MARCHE_SELL_HOV,   "Sell to the market \xe2\x80\x94 step 10, Shift = 100.") \
     X(STR_SLOT_VERROU_FMT, "{0} — locked ({1})") \
     X(STR_BTN_COMPTOIR_FMT, "Build a Trading Post here  ({0} gold)") \
     X(STR_COMPTOIR_HOV, "The Trading Post links the province to the nearest Trade Hub: the transport margin drops by a third at this end of merchant routes.") \

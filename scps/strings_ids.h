@@ -217,6 +217,10 @@
     X(STR_MARCHE_PRIX_FMT, "prix courant {0} or l'unité") \
     X(STR_MARCHE_PRIX_HOV, "Le prix du marché intérieur : la demande le tire, l'offre et la vente le détendent. Acheter et vendre se font à CE prix.") \
     X(STR_MARCHE_ROW_HOV, "{0} — en réserve {1}. Acheter ou vendre par lots de 10 au prix courant (l'or sort et entre par le trésor).") \
+    X(STR_MARCHE_HDR_LOCAL,  "bien            stock      prix r\xc3\xa9""f.") \
+    X(STR_MARCHE_HDR_MARCHE, "bien          prix    dispo") \
+    X(STR_MARCHE_BUY_HOV,    "Acheter (pompe le tr\xc3\xa9sor) \xe2\x80\x94 palier 10, Maj = 100.") \
+    X(STR_MARCHE_SELL_HOV,   "Vendre au march\xc3\xa9 \xe2\x80\x94 palier 10, Maj = 100.") \
     X(STR_SLOT_VERROU_FMT, "{0} — verrouillé ({1})") \
     X(STR_BTN_COMPTOIR_FMT, "Bâtir un Comptoir ici  ({0} or)") \
     X(STR_COMPTOIR_HOV, "Le Comptoir branche la province au Centre commercial le plus proche : la marge de transport tombe d'un tiers à ce bout des routes marchandes.") \

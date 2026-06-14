@@ -273,6 +273,70 @@ void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty)
     }
 }
 
+/* #5 (action joueur) — l'ACHAT/VENTE DIRECT AU MARCHÉ (l'actionneur que l'UI appelle ;
+ * jamais une écriture directe côté viewer). Le joueur, à `region`, pompe `want` unités de
+ * `good` depuis un étage : tier 0 = RÉGIONAL (le Centre le plus proche), tier 1 = MONDIAL
+ * (le réseau des Centres, exige un accès direct : le pays tient un Centre). Il paie le prix
+ * courant × marge (×2 au mondial — la double taxe), DÉPLÉTÉ le marché, crédite SON stock,
+ * débite SON trésor. N'achète QUE le disponible ET le finançable. Renvoie les unités
+ * obtenues (*spent = l'or débité). La carte des hubs est rafraîchie si besoin. */
+#define MARKET_MIN_PRICE 0.2f
+long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int tier, long *spent){
+    if (spent) *spent=0;
+    if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||want<=0) return 0;
+    if (g_hub_dirty){ hub_map_build(e); global_cache_refresh(e); g_hub_dirty=false; }   /* carte/cache sûrs hors tick */
+    RegionEconomy *re=&e->region[region];
+    int hub=g_hub_of[region];
+    if (hub<0) return 0;                                          /* aucun marché atteignable */
+    float base=re->import_margin; if (base<1.f) base=1.f;
+    float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
+    float avail, mult;
+    if (tier<=0){ avail=e->region[hub].stock[good]; mult=base; }              /* régional */
+    else { if (!intertrade_country_has_centre(e, re->owner)) return 0;        /* pas d'accès mondial DIRECT */
+           avail=g_global_cache[good]; mult=base*2.f; }                       /* mondial : double taxe */
+    if (avail<1.f) return 0;                                      /* rien à acheter : « uniquement s'il est dispo » */
+    float up=price*mult; if (up<1e-4f) up=1e-4f;
+    long qty=want;
+    if (qty>(long)avail) qty=(long)avail;                        /* borné par le disponible */
+    long can=(long)(re->treasury/up); if (qty>can) qty=can;      /* borné par le trésor */
+    if (qty<=0) return 0;
+    float cost=(float)qty*up;
+    re->treasury -= cost;                                         /* PUMP du trésor */
+    re->stock[good] += (float)qty;                               /* le bien entre au stock */
+    if (tier<=0){ e->region[hub].stock[good]-=(float)qty; if(e->region[hub].stock[good]<0.f)e->region[hub].stock[good]=0.f; }
+    else {
+        long rem=qty;
+        for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && rem>0;r++){
+            if (!g_centre[r]) continue;
+            long t=(long)e->region[r].stock[good]; if (t>rem) t=rem;
+            e->region[r].stock[good]-=(float)t; rem-=t;
+        }
+    }
+    if (spent) *spent=(long)(cost+0.5f);
+    return qty;
+}
+/* la VENTE, l'inverse : on lâche `want` du stock propre AU marché (régional/mondial), on
+ * encaisse au prix courant (sans marge — on vend au prix, on n'achète pas), le bien
+ * rejoint le Centre. Renvoie les unités vendues (*gained = l'or encaissé). */
+long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, int tier, long *gained){
+    if (gained) *gained=0;
+    if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||want<=0) return 0;
+    if (g_hub_dirty){ hub_map_build(e); global_cache_refresh(e); g_hub_dirty=false; }
+    RegionEconomy *re=&e->region[region];
+    int hub=g_hub_of[region];
+    if (hub<0) return 0;
+    if (tier>0 && !intertrade_country_has_centre(e, re->owner)) return 0;
+    long qty=want; if (qty>(long)re->stock[good]) qty=(long)re->stock[good];
+    if (qty<=0) return 0;
+    float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
+    float gain=(float)qty*price;
+    re->stock[good]-=(float)qty;
+    re->treasury+=gain;
+    e->region[hub].stock[good]+=(float)qty;                      /* le bien rejoint le marché */
+    if (gained) *gained=(long)(gain+0.5f);
+    return qty;
+}
+
 void  intertrade_order_embargo(int cid, int target, bool on){
     if (cid_ok(cid) && cid_ok(target) && cid!=target) g_embargo[cid][target]=on;
 }

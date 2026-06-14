@@ -1364,10 +1364,11 @@ static void ui_row(SDL_Renderer *ren, int x, int *y, int pw, const char *cat,
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SB_RAIL_W   46
 #define SB_DRAWER_W 380
-typedef enum { SBT_ECO=0, SBT_DEMO, SBT_STOCKS, SBT_ARMEE, SBT_FILTRES, SBT_DIPLO, SBT_ETAT, SBT_COUNT } SbTab;
+typedef enum { SBT_ECO=0, SBT_DEMO, SBT_STOCKS, SBT_MARCHE, SBT_ARMEE, SBT_FILTRES, SBT_DIPLO, SBT_ETAT, SBT_COUNT } SbTab;
 typedef struct {
     int     tab;                  /* -1 = replié */
     int     eco_sub;              /* 0 Commerce · 1 Marché · 2 Import/Export */
+    int     marche_sub;           /* #5 : 0 Stock local · 1 Marché régional · 2 Marché global */
     int     scroll[SBT_COUNT];
     float   anim;                 /* 0..1 — glissement du tiroir (~150 ms) */
     int     reloc_src;            /* étape 1 de la relocalisation (-1 = pas choisie) */
@@ -1375,7 +1376,7 @@ typedef struct {
     MapLens lens;                 /* lentille readout (LENS_NONE = vues classiques) */
     bool    purge_arm;            /* purge : 1er clic ARME, 2e confirme (acte irréversible) */
 } Sidebar;
-static Sidebar g_sb = { -1, 1, {0,0,0,0,0,0}, 0.f, -1, false, LENS_NONE, false };
+static Sidebar g_sb = { -1, 1, 1, {0,0,0,0,0,0,0,0}, 0.f, -1, false, LENS_NONE, false };
 
 /* cibles cliquables du tiroir (reconstruites chaque frame, comme zone_add) */
 enum { SBH_TAB=1, SBH_ECOSUB, SBH_EMBARGO, SBH_RELOC_SRC, SBH_RELOC_DST, SBH_RELOC_CLR,
@@ -1387,7 +1388,10 @@ enum { SBH_TAB=1, SBH_ECOSUB, SBH_EMBARGO, SBH_RELOC_SRC, SBH_RELOC_DST, SBH_REL
        SBH_LEV_CONTRAT /* a=SuzContrat, b=pays cible */,
        SBH_DECLARE /* a=pays cible (déclarer la guerre, CB inhérent) */,
        SBH_PEACE   /* a=pays cible (négocier la paix : arbitrage IA exposé) */,
-       SBH_COUNCIL /* Q1 : a=siège(0..2), b=slot candidat à NOMMER (≥0) ou -1 = RENVOYER */ };
+       SBH_COUNCIL /* Q1 : a=siège(0..2), b=slot candidat à NOMMER (≥0) ou -1 = RENVOYER */,
+       SBH_MARCHE_SUB /* #5 : a=sous-onglet marché (0 local · 1 régio · 2 global) */,
+       SBH_BUY  /* #5 : a=bien, b=tier (0 régio · 1 global) — pompe au marché */,
+       SBH_SELL /* #5 : a=bien, b=tier — vend au marché */ };
 typedef struct { SDL_Rect r; int kind, a, b; } SbHit;
 static SbHit g_sbhits[120]; static int g_nsbhits;
 static void sbhit_reset(void){ g_nsbhits=0; }
@@ -1588,6 +1592,85 @@ static void sb_panel_eco(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, 
         }
         if (shown==0) draw_text(ren,g_font_small,x+12,y,COL_DIM,"(aucun Centre commercial connu)");
     }
+}
+
+/* ── panneau MARCHÉ (#5) : Stock local · Marché régional · Marché global ──────
+ * La chaîne joueur → cité-état → mondial, RENDUE. Trois étages : ce qu'on DÉTIENT,
+ * le marché de la cité-état la plus proche (régional), le réseau mondial (grisé sans
+ * Centre direct). Sur les deux marchés : ACHAT (▲) / VENTE (▼) en direct — par
+ * paliers de 10, Maj = 100 — via l'actionneur intertrade_market_buy/sell (jamais une
+ * écriture directe). L'ancre des transactions = la région-CAPITALE du joueur. */
+static void sb_panel_marche(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, const World *world){
+    static char buf[64][120]; int nb=0;
+    int me=s->player;
+    int cap=sb_capital_region(s, world);
+    bool hasglobal=intertrade_country_has_centre(s->econ, me);
+    int hub=(cap>=0)?intertrade_region_hub(cap):-1;
+    /* les trois sous-onglets (le global GRISÉ si pas d'accès DIRECT) */
+    int cx=x+10;
+    cx=sb_chip(ren,cx,y,"Stock local", g_sb.marche_sub==0, SBH_MARCHE_SUB,0,0,
+               "Ce que VOTRE pays détient (stock cumulé).");
+    cx=sb_chip(ren,cx,y,"Régional",    g_sb.marche_sub==1, SBH_MARCHE_SUB,1,0,
+               "Le marché de la cité-état la plus proche — on y achète à la marge de proximité.");
+    if (hasglobal)
+        (void)sb_chip(ren,cx,y,"Global", g_sb.marche_sub==2, SBH_MARCHE_SUB,2,0,
+                      "Le marché MONDIAL (réseau des Centres) — la double taxe.");
+    else { (void)sb_chip_locked(ren,cx,y,"Global",
+               "Sans Centre commercial, pas d'accès DIRECT au marché mondial — il en faut un (conquis ou bâti).");
+           if (g_sb.marche_sub==2) g_sb.marche_sub=1; }
+    y+=24;
+    int sub=g_sb.marche_sub;
+    if (cap<0){ draw_text(ren,g_font_small,x+10,y,COL_DIM,"(pas de capitale — aucun marché)"); return; }
+    if (sub>=1 && hub<0){ draw_text(ren,g_font_small,x+10,y,COL_DIM,
+            "(aucun marché de cité-état atteignable — enclavé)"); return; }
+    const RegionEconomy *cre=&s->econ->region[cap];
+    float marge=cre->import_margin; if (marge<1.f) marge=1.f;
+    if (sub==0){
+        /* ce que le pays DÉTIENT (agrégat) — informatif, sans bouton */
+        snprintf(buf[nb],120,"stock du pays · %d région(s)", g_sbc.n_reg);
+        draw_text(ren,g_font_small,x+10,y,COL_COPPER,buf[nb]); nb++; y+=18;
+        draw_text(ren,g_font_small,x+10,y,COL_DIM,tr(STR_MARCHE_HDR_LOCAL)); y+=16;
+        for (int g=1; g<RES_COUNT && y<h-16; g++){
+            if (g_sbc.stk[g]<0.5f) continue;
+            snprintf(buf[nb],120,"%-12.12s %9.0f   %7.2f", resource_name((Resource)g),
+                     g_sbc.stk[g], g_sbc.prix[g]);
+            draw_text(ren,g_font_small,x+12,y,COL_PARCH,buf[nb]); nb++; y+=15;
+        }
+        return;
+    }
+    /* marché RÉGIONAL (tier 0) ou MONDIAL (tier 1) — prix vif + achat/vente */
+    int tier=(sub==2)?1:0;
+    float pxmult=(sub==2)?marge*2.f:marge;   /* mondial = double taxe */
+    snprintf(buf[nb],120, sub==2 ? "marché mondial · marge ×%.2f (double taxe)"
+                                 : "via cité-état · marge ×%.2f (distance incluse)", pxmult);
+    draw_text(ren,g_font_small,x+10,y,COL_COPPER,buf[nb]); nb++; y+=16;
+    draw_text(ren,g_font_small,x+10,y,COL_DIM,"\xe2\x96\xb2 achat  \xe2\x96\xbc vente   ( Maj = \xc3\x97" "100 )"); y+=15;
+    draw_text(ren,g_font_small,x+10,y,COL_DIM,tr(STR_MARCHE_HDR_MARCHE)); y+=15;
+    int off=g_sb.scroll[SBT_MARCHE]; if(off<0)off=0;
+    int seen=0;
+    for (int g=1; g<RES_COUNT && y<h-16; g++){
+        float avail=(sub==2)?intertrade_global_stock(s->econ,g):s->econ->region[hub].stock[g];
+        if (avail<0.5f) continue;                       /* on ne liste que le DISPONIBLE */
+        if (seen++ < off) continue;
+        float price=cre->price[g]; if (price<0.2f) price=0.2f;
+        float unit=price*pxmult;
+        SDL_Color col=(s->econ->region[cap].treasury>=unit)?COL_PARCH:(SDL_Color){0x9a,0x6a,0x55,0xff};
+        snprintf(buf[nb],120,"%-11.11s %6.2f %7.0f", resource_name((Resource)g), unit, avail);
+        draw_text(ren,g_font_small,x+12,y,col,buf[nb]); nb++;
+        /* boutons ACHAT (▲) / VENTE (▼) — actionneurs, hit par bien+tier */
+        int bx=x+w-58;
+        fill_rect(ren,bx,y-1,22,15,(SDL_Color){0x1c,0x2a,0x1c,0xff}); draw_box(ren,bx,y-1,22,15,(SDL_Color){0x4a,0x7a,0x4a,0xff});
+        draw_text(ren,g_font_small,bx+6,y,(SDL_Color){0x9a,0xd0,0x9a,0xff},"\xe2\x96\xb2");
+        sbhit_add((SDL_Rect){bx,y-1,22,15}, SBH_BUY, g, tier);
+        zone_add((SDL_Rect){bx,y-1,22,15},tr(STR_MARCHE_BUY_HOV));
+        int sx=x+w-32;
+        fill_rect(ren,sx,y-1,22,15,(SDL_Color){0x2a,0x1c,0x1c,0xff}); draw_box(ren,sx,y-1,22,15,(SDL_Color){0x7a,0x4a,0x4a,0xff});
+        draw_text(ren,g_font_small,sx+6,y,(SDL_Color){0xd0,0x9a,0x9a,0xff},"\xe2\x96\xbc");
+        sbhit_add((SDL_Rect){sx,y-1,22,15}, SBH_SELL, g, tier);
+        zone_add((SDL_Rect){sx,y-1,22,15},tr(STR_MARCHE_SELL_HOV));
+        (void)nb; y+=16;
+    }
+    if (seen==0) draw_text(ren,g_font_small,x+12,y,COL_DIM,"(marché vide — rien à acheter ici)");
 }
 
 /* ── panneau DÉMOGRAPHIE : classes, peuples, croissance + RELOCALISATION ───── */
@@ -2127,6 +2210,13 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
         switch(g_sb.tab){
             case SBT_STOCKS:{ int nn=0; for(int g=1;g<RES_COUNT;g++) if (sb_good_alive(g)) nn++;
                               content=20+nn*15+8; } break;
+            case SBT_MARCHE:{ int nn=0;
+                if (g_sb.marche_sub==0){ for(int g=1;g<RES_COUNT;g++) if (g_sbc.stk[g]>=0.5f) nn++; }
+                else { int cap=sb_capital_region(s,world); int hub=(cap>=0)?intertrade_region_hub(cap):-1;
+                       for(int g=1;g<RES_COUNT;g++){ float a=(g_sb.marche_sub==2)?intertrade_global_stock(s->econ,g)
+                                                          :((hub>=0)?s->econ->region[hub].stock[g]:0.f);
+                                                     if(a>=0.5f) nn++; } }
+                content=24+18+16+15+nn*16+8; } break;
             case SBT_ECO:{ int nn=0;
                 if (g_sb.eco_sub==1){ for(int g=1;g<RES_COUNT;g++) if (g_sbc.dem[g]>0.05f||g_sbc.sup[g]>0.05f) nn++; }
                 else if (g_sb.eco_sub==2){ for(int g=1;g<RES_COUNT;g++) if (intertrade_import_vol(s->player,g)>0.05f||intertrade_export_vol(s->player,g)>0.05f) nn++; }
@@ -2150,7 +2240,7 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
         if (dh<200)   dh=200;
         panel_bg(ren,dx,dy,dw,dh);
         if (g_sb.anim>0.95f){
-            static const char *TITRE[SBT_COUNT]={"ÉCONOMIE","DÉMOGRAPHIE","STOCKS","ARMÉE","FILTRES DE CARTE",NULL,NULL};
+            static const char *TITRE[SBT_COUNT]={"ÉCONOMIE","DÉMOGRAPHIE","STOCKS","MARCHÉ","ARMÉE","FILTRES DE CARTE",NULL,NULL};
             if (g_sb.tab>=0&&g_sb.tab<SBT_COUNT)
                 draw_text(ren,g_font,dx+10,dy+8,COL_COPPER,
                           (g_sb.tab==SBT_DIPLO)? tr(STR_DIPLO_TITRE) :
@@ -2160,6 +2250,7 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
                 case SBT_ECO:     sb_panel_eco   (ren,dx,py,dw,ph,s,world); break;
                 case SBT_DEMO:    sb_panel_demo  (ren,dx,py,dw,ph,s,world); break;
                 case SBT_STOCKS:  sb_panel_stocks(ren,dx,py,dw,ph,s,world); break;
+                case SBT_MARCHE:  sb_panel_marche(ren,dx,py,dw,ph,s,world); break;
                 case SBT_ARMEE:   sb_panel_armee (ren,dx,py,dw,ph,s,world,selected); break;
                 case SBT_FILTRES: sb_panel_filtres(ren,dx,py,dw,ph,mode); break;
                 case SBT_DIPLO:   sb_panel_diplo (ren,dx,py,dw,ph,s,world); break;
@@ -2172,10 +2263,11 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
     /* rail (toujours visible, par-dessus) */
     fill_rect(ren,0,0,SB_RAIL_W,win_h,(SDL_Color){0x0c,0x12,0x1d,0xfa});
     fill_rect(ren,SB_RAIL_W-1,0,1,win_h,COL_PANEL2);
-    static const char *IC[SBT_COUNT] ={"E","D","S","A","F","G","C"};   /* C = Conseil (ÉTAT, Q1) */
+    static const char *IC[SBT_COUNT] ={"E","D","S","M","A","F","G","C"};   /* M = Marché (#5) · C = Conseil (Q1) */
     static const char *NM[SBT_COUNT] ={"Économie (E) — commerce, marché, import/export",
                                        "Démographie (D) — classes, peuples, relocalisation",
                                        "Stocks (S) — tensions, couverture, exploiter",
+                                       "Marché (M) — stock local · régional · global ; achat/vente direct",
                                        "Armée (A) — levée, campagne, posture",
                                        "Filtres (F) — vues de carte & lentilles d'empire",
                                        NULL /* DIPLO : hover en STR_* (migré) */,
@@ -2203,13 +2295,29 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
     SbHit *hh=&g_sbhits[hit]; *dirty=true;
     /* §terrain — OBSERVATEUR (joueur vaincu) : LECTURE SEULE. On laisse la NAVIGATION et
      * les VUES (onglets, sous-onglets, modes/lentilles de carte), on bloque tout ACTE. */
-    if (g_observer && hh->kind!=SBH_TAB && hh->kind!=SBH_ECOSUB
+    if (g_observer && hh->kind!=SBH_TAB && hh->kind!=SBH_ECOSUB && hh->kind!=SBH_MARCHE_SUB
         && hh->kind!=SBH_CHIP_MODE && hh->kind!=SBH_CHIP_LENS && hh->kind!=SBH_CHIP_CUR)
         return true;
     if (hh->kind!=SBH_LEV_PURGE) g_sb.purge_arm=false;   /* tout autre clic DÉSARME la purge */
     switch(hh->kind){
         case SBH_TAB:      g_sb.tab=(g_sb.tab==hh->a)?-1:hh->a; break;
         case SBH_ECOSUB:   g_sb.eco_sub=hh->a; break;
+        case SBH_MARCHE_SUB: g_sb.marche_sub=hh->a; break;       /* #5 : navigation des étages */
+        case SBH_BUY: case SBH_SELL: {                           /* #5 : achat/vente DIRECT (actionneur) */
+            int cap=sb_capital_region(s, world);
+            int step=(SDL_GetModState()&KMOD_SHIFT)?100:10;      /* Maj = palier de 100 */
+            long org=0;
+            if (hh->kind==SBH_BUY){ long got=intertrade_market_buy(s->econ, cap, hh->a, step, hh->b, &org);
+                if (got>0) printf("\n[scps] Achat : %ld %s au marché %s (−%ld or).\n",
+                                  got, resource_name((Resource)hh->a), hh->b?"mondial":"régional", org);
+                else printf("\n[scps] Achat refusé (%s indisponible ou trésor insuffisant).\n",
+                            resource_name((Resource)hh->a));
+            } else { long sold=intertrade_market_sell(s->econ, cap, hh->a, step, hh->b, &org);
+                if (sold>0) printf("\n[scps] Vente : %ld %s au marché %s (+%ld or).\n",
+                                   sold, resource_name((Resource)hh->a), hh->b?"mondial":"régional", org);
+            }
+            break;
+        }
         case SBH_EMBARGO:
             intertrade_order_embargo(s->player, hh->a, hh->b!=0);
             printf("\n[scps] %s contre %s — le négoce %s.\n",
@@ -3886,6 +3994,7 @@ static void loading_paint(SDL_Renderer *ren, int W, int H){
 }
 int main(int argc, char **argv) {
     bool shot = false, shot_tree = false, shot_war = false, shot_culture = false, shot_sidebar = false, shot_council = false;
+    bool shot_market = false;   /* #5 : capture du tiroir MARCHÉ (achat/vente direct) */
     bool shot_political = false; float shot_zoom = 1.f;   /* N3.1 : capture vue Politique ± zoom */
     int  shot_shell = 0;
     bool savetest = false;
@@ -3895,6 +4004,7 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "--shot")) shot = true;
         else if (!strcmp(argv[i], "--tree")) { shot = true; shot_tree = true; }
         else if (!strcmp(argv[i], "--sidebar")) { shot = true; shot_sidebar = true; }   /* tiroir Stocks + lentille Marché */
+        else if (!strcmp(argv[i], "--market")) { shot = true; shot_market = true; }      /* #5 : tiroir MARCHÉ (achat/vente) */
         else if (!strcmp(argv[i], "--council")) { shot = true; shot_council = true; }   /* Q1 : section ÉTAT (Conseil) */
         else if (!strcmp(argv[i], "--shellshot") && i+1<argc) { shot=true; shot_shell=1+atoi(argv[++i]); }  /* 1=menu 2=setup 3=ouverture */
         else if (!strcmp(argv[i], "--savetest")) savetest=true;   /* vérif sauvegarde : sauver-recharger = continuation identique */
@@ -4168,6 +4278,13 @@ int main(int argc, char **argv) {
                 static uint32_t lt[SCPS_MAX_REG];
                 map_lens_tints(sim.econ, sim.wl, g_sb.lens, lt);
                 rp.region_tint = lt; smode = VIEW_CULTURE;
+            } else if (shot_market){                 /* #5 : démo MARCHÉ — tiroir ouvert (étage via SCPS_MARCHE_SUB, défaut régional) */
+                g_sb.tab=SBT_MARCHE; g_sb.anim=1.f; g_sb.marche_sub=1;
+                const char *ms=getenv("SCPS_MARCHE_SUB"); if (ms){ int v=atoi(ms); if(v>=0&&v<=2) g_sb.marche_sub=v; }
+                if (g_sb.marche_sub==2 && !intertrade_country_has_centre(sim.econ, sim.player)){
+                    for (int r=0;r<sim.econ->n_regions;r++) if (intertrade_has_centre(r)){ sim.player=sim.econ->region[r].owner; break; }
+                    g_sbc.day=-1;   /* démo : joueur tenant un Centre → l'étage GLOBAL s'ouvre */
+                }
             } else if (shot_council){                /* Q1 : démo Conseil — un siège POURVU, deux vacants */
                 int best=0,bt=0; for(int sl=0;sl<SC_COUNCIL_CANDS;sl++){ int t=statecraft_council_cand_tier(world->seed,sim.player,0,sl); if(t>bt){bt=t;best=sl;} }
                 statecraft_council_hire(sim.sc, sim.player, 0, best);   /* siège Savoir pourvu (montre « Renvoyer ») */
@@ -4211,7 +4328,7 @@ int main(int argc, char **argv) {
                 draw_mode_buttons(ren, win_h, smode);                     /* §5 : modes de carte */
                 draw_minimap(ren, &mm_pb, win_w, win_h, &cam);            /* §5 : la minicarte */
                 draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected, &sim);
-                if (shot_sidebar || shot_council) draw_sidebar(ren, win_w, win_h, &sim, world, smode, selected);
+                if (shot_sidebar || shot_council || shot_market) draw_sidebar(ren, win_w, win_h, &sim, world, smode, selected);
             }
         }
         SDL_RenderPresent(ren);

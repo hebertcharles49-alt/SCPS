@@ -86,6 +86,13 @@ float intertrade_buy_cost      (const WorldEconomy *e, int region, int good, flo
 void  intertrade_market_consume(WorldEconomy *e, int region, int good, float qty);
 int   intertrade_region_hub    (int region);
 float intertrade_global_stock  (const WorldEconomy *e, int good);
+/* ACTIONNEUR joueur (UI) — achat/vente direct au marché à 2 étages (tier 0 = régional /
+ * Centre le plus proche ; tier 1 = mondial / réseau, exige un Centre du pays). L'achat
+ * débite le trésor au prix courant×marge (×2 au mondial), crédite le stock, DÉPLÉTÉ le
+ * marché — borné par le disponible ET le trésor. La vente est l'inverse (au prix, sans
+ * marge). Renvoient les unités échangées ; *or = l'or débité (achat) / encaissé (vente). */
+long  intertrade_market_buy (WorldEconomy *e, int region, int good, long want, int tier, long *spent);
+long  intertrade_market_sell(WorldEconomy *e, int region, int good, long want, int tier, long *gained);
 /* sauvegarde (shell §6) : le module possède sa sérialisation — embargos décrétés
  * (les flux du dernier tick se recalculent, eux). */
 void  intertrade_save(FILE *f);
