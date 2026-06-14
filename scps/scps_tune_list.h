@@ -51,6 +51,12 @@
     X(SPEC_GOLD_FLOOR,      350.0f) \
     /* P-bis — déclaration de paix : score décisif & timeout de paix blanche */ \
     X(AI_WAR_DECISIVE,       50.0f) \
-    X(AI_WAR_EXHAUST,        10.0f)
+    X(AI_WAR_EXHAUST,        10.0f) \
+    /* Q6 re-baseline — le DOUBLEMENT 48k→96k. Capacité d'accueil VISÉE par rôle
+     * (l'apex vers lequel la pop croît) & graine mondiale de l'an 0 (répartie au
+     * prorata du cap). La pop passe de la graine (~48k) à ~96k au siècle. */ \
+    X(EMPIRE_CAP,         10800.0f) \
+    X(CITY_CAP,            5400.0f) \
+    X(SEED_POP,           48000.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

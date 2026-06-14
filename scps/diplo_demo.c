@@ -75,9 +75,26 @@ int main(int argc,char**argv){
 
     /* ---- 2. La guerre monte la diversité ----------------------------- */
     printf("\n── 2. Territoire CONTRE diversité ──\n");
-    const PopCulture *pcap=NULL;
+    int cap_reg=-1;
     { int cp=w->country[player].capital_prov;
-      if(cp>=0){int cr=w->province[cp].region; if(cr>=0)pcap=&econ->region[cr].culture;} }
+      if(cp>=0) cap_reg=w->province[cp].region; }
+    /* RE-BASELINE : la genèse distribue désormais les empires sur PLUSIEURS régions
+     * (≥1 empire par continent habitable), donc le joueur naît déjà DIVERS (D̄≈4-5).
+     * Or ce banc isole l'effet de LA conquête : il veut un conquérant homogène (D̄≈0)
+     * qui, en avalant UNE culture lointaine, voit son D̄ BONDIR. On restaure donc la
+     * prémisse — on rabat le joueur sur sa SEULE capitale, culturellement UNIE : chaque
+     * autre région possédée reçoit la culture de la capitale (mono-groupe pur). La
+     * lecture redevient nette : 0 → un saut franc, pas une dilution dans le bruit. */
+    if(cap_reg>=0){
+        PopCulture capc=econ->region[cap_reg].culture;
+        for(int r=0;r<econ->n_regions;r++){
+            RegionEconomy*re=&econ->region[r];
+            if(re->owner!=player || r==cap_reg) continue;
+            re->culture=capc;                 /* même culture que le cœur → D̄=0 entre régions */
+            memset(&re->pop,0,sizeof re->pop);  /* pas de groupes hérités divergents */
+        }
+    }
+    const PopCulture *pcap = (cap_reg>=0)? &econ->region[cap_reg].culture : NULL;
 
     /* cible : la région PEUPLÉE la plus LOINTAINE culturellement, hors joueur. */
     int target=-1; float best=-1.f; int tgt_owner=-1;
@@ -90,6 +107,8 @@ int main(int argc,char**argv){
     if(target<0){ printf("   (pas de cible peuplée ennemie — monde trop vide)\n"); }
     else {
         CountryProsperity*cp=&wp->country[player];
+        /* re-mesurer APRÈS l'homogénéisation : le profil (D̄_int) ne bouge qu'au tick. */
+        for(int t=0;t<3;t++){ legitimacy_tick(wl,w,econ,ts); prosperity_tick(wp,w,econ,net,ts,wl); }
         float Dbar0=cp->profile.D_bar_int, frac0=cp->fracture;
         CountryReadout r0=country_readout(wp,ts,w,player);
         printf("   AVANT : Concorde=%-12s  [dev D̄_int=%.2f fracture=%.2f]\n",
@@ -99,12 +118,19 @@ int main(int argc,char**argv){
                tgt_owner, target, w->region[target].name, best);
         diplo_declare_war(dp,player,tgt_owner);
         /* §terrain : l'armée INVESTIT la région (occupation), la PAIX la transfère —
-         * bornée par le budget §5. On assure la domination (cible désarmée, joueur armé)
-         * pour que la prise ait lieu, puis on RÈGLE : la région passe au joueur. */
+         * bornée par le budget §5. On assure la domination (cible désarmée, joueur
+         * SURARMÉ) pour que la prise ait lieu, puis on RÈGLE : la région passe au joueur.
+         * À la nouvelle échelle, les deux pays pèsent des MILLIERS d'âmes : le mil_power
+         * est dominé par la population (parité ⇒ ratio≈0.5 ⇒ budget nul). On sépare donc
+         * franchement la force par l'ARMEMENT — le terme qui survit à la masse : on désarme
+         * la cible (stocks → 0) et on surarme le joueur (armes enchantées + de base, près
+         * de leur plafond) → ratio≈0.7 ⇒ budget ≫ prix. On ne touche QUE les stocks (pas
+         * le H_coerc), pour ne rien laisser fuir dans les scénarios de §5/§8 plus bas. */
         for(int r=0;r<econ->n_regions;r++){
             if(econ->region[r].owner==tgt_owner){ econ->region[r].stock[RES_ARMS]=0.f;
                 econ->region[r].stock[RES_GUNPOWDER]=0.f; econ->region[r].stock[RES_ENCHANTED_ARMS]=0.f; }
-            else if(econ->region[r].owner==player) econ->region[r].stock[RES_ARMS]=2000.f;
+            else if(econ->region[r].owner==player){
+                econ->region[r].stock[RES_ENCHANTED_ARMS]=8000.f; econ->region[r].stock[RES_ARMS]=8000.f; }
         }
         diplo_occupy(dp,econ,player,target);
         int got=diplo_settle(dp,w,econ,wl,player,tgt_owner,false);

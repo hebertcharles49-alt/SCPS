@@ -2822,13 +2822,15 @@ WorldParams worldparams_default(uint32_t seed) {
     p.seed         = seed;
     p.n_continents = 6;      /* doc §3 — assez pour archipels & ponts type Béringie */
     p.land_amount  = 0.5f;
-    p.world_age    = 0.5f;
+    p.world_age    = 0.7f;   /* Q6 — RÉVEILLER LA MER : dérive ↑ (la Pangée se FEND en 2-5 masses,
+                              * peuplées par continent ≥15% via L4) ⇒ traversées/colonies/commerce
+                              * maritime cessent d'être à zéro. RE-BASELINE des graines (cf. CLAUDE.md). */
     p.erosion      = 0.5f;
     p.mountains    = 0.5f;
     p.temperature  = 0.5f;
     p.humidity     = 0.5f;
-    p.n_empires    = 15;
-    p.n_city_states= 20;
+    p.n_empires    = 6;      /* Q6 re-baseline : 6 empires + 12 cités-états sur les continents séparés */
+    p.n_city_states= 12;
     return p;
 }
 

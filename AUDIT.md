@@ -55,6 +55,39 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
   2 sécessions). NOTE : sans cavalerie la poursuite d'infanterie est bornée — À RECALIBRER
   vers [2,5] à l'arc UNITÉS MONTÉES (charge + poursuite ×2-3). make test 32/32.
 
+## (c 6) Q6 — le DOUBLEMENT démographique 48k→96k (2026-06-14)
+
+- **Cible (joueur)** : monde âgé (`world_age=0.7`, la Pangée FEND), **6 empires + 12
+  cités-états**, an-0 = **48 000** hab, **doublement vers ~96k à l'an 100** — PUR
+  (aucun taux de croissance touché ; la guerre REDISTRIBUE la capacité, ne la crée ni
+  ne la détruit). Tolérance **±5 %**, l'an-100 est l'instantané du DOUBLEMENT (la pop est
+  un jeune en pleine croissance, pas un monde saturé).
+- **Capacité d'accueil par RÔLE** (`econ_init` Passe 2, tunables registre J) : la cible
+  VIT dans les polités RÉELLES, pas la friche — `EMPIRE_CAP` 10800 / `CITY_CAP` 5400
+  (apex) / friche 200. **Fuite COLMATÉE** : `cty_cap` ne somme que les régions VIVABLES
+  (zone morte tranchée en Passe 1 — ≥35 % d'aire à habitabilité nulle OU moyenne < 12 % —
+  et RÉUTILISÉE en Passe 3) ⇒ la cible se répartit en plein sur l'actif, `cap_pop_sum`
+  = Σ cibles EXACT.
+- **Graine DÉCOUPLÉE du cap** : `SEED_POP` (48000) réparti au prorata du cap_pop des
+  régions de polité ⇒ an-0 = 48k PILE (fini le déficit « empire né sur terre morte ») et
+  la pop AMORCÉE sous son plafond CROÎT vers l'apex. La capitale (région la plus riche,
+  tuile nourricière) reçoit mécaniquement la plus grosse part.
+- **Dispatch CONSERVATIF** (`colonize_from`) : les colons détachés ARRIVENT (graine =
+  prélevé, plancher `COLONY_SEED_POP`) — plus de saignée du convoi terrestre (la mer garde
+  son surcoût ×2 via `econ_colonize_overseas`). Le déclin de colonisation disparaît.
+- **Mesuré** (an-100, graines 7/42/9/99, graine an-0 = 48k PILE) : **106/88/110/98k →
+  moyenne ≈ 100k** à `EMPIRE_CAP=11000` ; recentré à **10800** (≈ 97k). `food_sat ≈ 0.95`
+  (la NOURRITURE ne borne pas — le socle vivrier suit cap_pop). Variance assumée : mondes
+  fendus (7/42) remplissent ~15 % de moins que cohésifs (9/99) — c'est la guerre/géo, pas
+  un bug (« interaction is the point »).
+- **Tension reconnue** : sous taux de croissance FIGÉ, un doublement logistique depuis la
+  ½-capacité ne peut être À LA FOIS robuste (cap = 96k strict) ET pile 96k à l'an-100 — on
+  a tranché POUR l'an-100 (apex > 96k, le monde traverse 96k en montant). ⚠ Pop & TAILLE
+  des pays ≫ qu'avant → l'équilibre guerre/diplo (prix de province, budget §5 ∝ pop) se
+  RELIT à cette échelle (bancs diplo/ai/campaign re-baselinés).
+- Diag env : `SCPS_CAPDIAG` — an-0 (cap_pop_sum, graine, comptes de rôles) + an-100
+  (remplissage colonisé/actif, food_sat). À RETIRER ou garder comme `SCPS_CSV` (preuve).
+
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
 Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde

@@ -161,9 +161,12 @@ int main(int argc,char**argv){
       while (camp2->n_rallies==0 && ++guard<600){      /* déroute PUIS ralliement (30-60 j après) */
           uint32_t rng=0xFEEDFACEu+(uint32_t)guard*40503u;
           campaign_tick(camp2, w, econ, &dp, &rng, 5.f);
-          if (camp2->n_routs>0 && RT<0){
-              RT = camp2->army[A].rally_used ? A : B;
-              after_rout = campaign_units(camp2,RT);
+          if (camp2->n_routs>0){
+              if (RT<0) RT = camp2->army[A].rally_used ? A : B;
+              long now = campaign_units(camp2,RT);   /* le NOYAU = le CREUX réel (curée finie),
+                                                        pas le 1er tick : la curée court encore
+                                                        quelques pas avant que le ralliement parte. */
+              if (after_rout<0 || now<after_rout) after_rout = now;
           }
       }
       long u_pre = (RT==A)? u_pre_A : u_pre_B;

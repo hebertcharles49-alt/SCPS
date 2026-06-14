@@ -12,6 +12,7 @@
 #include "scps_labor.h"   /* capitale_* : la productivité de la capitale booste la prod réelle */
 #include "scps_factions.h"/* §C3 : faction_capture_total → le « rot » qui mine l'efficacité noble */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
@@ -350,6 +351,7 @@ void econ_init(WorldEconomy *e, const World *w) {
      * et les déserts hyperarides ont cap_pop ≈ 0, reflétant la réalité.     */
     float reg_cap[SCPS_MAX_REG]={0};
     float reg_hab[SCPS_MAX_REG]={0};
+    bool  reg_impass[SCPS_MAX_REG]={0};   /* zone morte (déterminée ici, RÉUTILISÉE en Passe 3) */
     float cty_cap[SCPS_MAX_COUNTRY]={0};
     for (int rid=0; rid<w->n_regions; rid++) {
         const Region *rg=&w->region[rid];
@@ -357,7 +359,7 @@ void econ_init(WorldEconomy *e, const World *w) {
         e->region[rid].import_toll_region = -1;
         e->region[rid].last_pole = 1;                /* M3 : POLE_ORDRE par défaut (sinon memset→MARTIAL) */
         e->region[rid].pole_since_day = 0;
-        float cap=0.f, area=0.f, hab_w=0.f;
+        float cap=0.f, area=0.f, hab_w=0.f, dead_area=0.f;
         for (int k=0;k<rg->n_provinces;k++) {
             int pid=rg->province_ids[k];
             if (pid<0||pid>=w->n_provinces) continue;
@@ -369,25 +371,42 @@ void econ_init(WorldEconomy *e, const World *w) {
             cap  += a * (0.25f + 0.75f*clampf(subs/10.f,0.f,1.f));
             hab_w += pv->habitability * a;
             area += a;
+            if (pv->habitability < 0.01f) dead_area += a;   /* glacier/pic/volcan/désert hyperaride */
         }
         if (area<1.f) continue;
         float hab = hab_w / area;   /* habitabilité pondérée par surface */
         reg_hab[rid] = hab;
         reg_cap[rid] = cap * hab;   /* la capacité est nulle pour les zones mortes */
+        /* Zone morte : ≥35 % d'aire à habitabilité nulle (barrière même diluée par
+         * une vallée) OU habitabilité moyenne < 12 % (désert hyperaride sans pic). */
+        reg_impass[rid] = (dead_area/area >= 0.35f) || (hab < 0.12f);
         int cid=rg->country;
-        if (cid>=0 && cid<SCPS_MAX_COUNTRY) cty_cap[cid]+=reg_cap[rid];
+        /* La capacité-pays ne compte que les terres VIVABLES → la cible (Passe 2)
+         * se répartit sur les seules régions actives : aucune part « fuite » dans
+         * une zone morte. cap_pop_sum vaut alors EXACTEMENT Σ cibles. */
+        if (cid>=0 && cid<SCPS_MAX_COUNTRY && !reg_impass[rid]) cty_cap[cid]+=reg_cap[rid];
     }
 
-    /* ---- Passe 2 : cible par pays (4000 majeur ≥4 régions, 2000 satellite) */
+    /* ---- Passe 2 : capacité d'accueil par RÔLE (Q6 re-baseline) -----------
+     * La capacité d'accueil VIT dans les polités RÉELLES, pas dans la friche :
+     *   EMPIRE     → 8000 (graine 4000 dans la capitale → DOUBLE à terme) ;
+     *   CITÉ-ÉTAT  → 4000 (graine 2000 répartie         → double) ;
+     *   VIERGE     → 200  (frontière colonisable, négligeable pour le total).
+     * 6×8000 + 12×4000 = 96 000 : la population mondiale CONVERGE vers ~96k
+     * par la seule croissance (pas de bidouille du taux), la guerre ne fait que
+     * REDISTRIBUER cette capacité (conquête) sans la créer. */
+    float empire_cap = tune_f("EMPIRE_CAP", 10800.f);
+    float city_cap   = tune_f("CITY_CAP",    5400.f);
     float cty_target[SCPS_MAX_COUNTRY]={0};
-    int   cty_nreg  [SCPS_MAX_COUNTRY]={0};
-    for (int rid=0; rid<w->n_regions; rid++) {
-        int cid=w->region[rid].country;
-        if (cid>=0 && cid<SCPS_MAX_COUNTRY) cty_nreg[cid]++;
+    for (int cid=0; cid<SCPS_MAX_COUNTRY && cid<w->n_countries; cid++) {
+        if (cty_cap[cid]<=0.f) continue;
+        switch (w->country[cid].role) {
+            case POLITY_PLAYER:
+            case POLITY_ANTAGONIST: cty_target[cid]=empire_cap; break;
+            case POLITY_CITY_STATE: cty_target[cid]=city_cap;   break;
+            default:                cty_target[cid]= 200.f;      break;  /* friche vierge */
+        }
     }
-    for (int cid=0; cid<SCPS_MAX_COUNTRY; cid++)
-        if (cty_cap[cid]>0.f)
-            cty_target[cid] = (cty_nreg[cid]>=4) ? 4000.f : 2000.f;
 
     /* ---- Passe 3 : peuplement de chaque région --------------------------- */
     for (int rid=0; rid<w->n_regions; rid++) {
@@ -400,22 +419,11 @@ void econ_init(WorldEconomy *e, const World *w) {
             if (pid<0||pid>=w->n_provinces) continue;
             area_sum += w->province[pid].area;
         }
-        /* Zones mortes / infranchissables : glacier, pic, volcan, désert hyperaride.
-         * Deux critères combinés :
-         *  a) fraction de la surface à habitabilité nulle (hab_base=0 : GLACIER/PEAK/VOLCANO) ≥ 35%
-         *  b) habitabilité moyenne de la région < 12%
-         * Le critère (a) détecte les barrières même quand une vallée habitable
-         * dilue la moyenne. Le critère (b) attrape les déserts hyperarides sans pic. */
-        float dead_area=0.f;
-        for (int k=0;k<rg->n_provinces;k++){
-            int pid=rg->province_ids[k];
-            if (pid<0||pid>=w->n_provinces) continue;
-            if (w->province[pid].habitability < 0.01f)
-                dead_area += (float)w->province[pid].area;
-        }
-        bool mostly_dead = (area_sum>0.f && dead_area/area_sum >= 0.35f);
-        bool very_low    = (reg_hab[rid] < 0.12f);
-        bool is_impass   = mostly_dead || very_low;
+        /* Zone morte / infranchissable (glacier, pic, volcan, désert hyperaride) :
+         * déjà tranchée en Passe 1 (≥35 % d'aire à habitabilité nulle, ou moyenne
+         * < 12 %) et RÉUTILISÉE ici — même verdict que le calcul de cty_cap, donc
+         * aucune part de cible ne fuite dans une région qu'on déclare ensuite morte. */
+        bool is_impass = reg_impass[rid];
 
         re->habitability = reg_hab[rid];
         if (area_sum<1.f || reg_cap[rid]<=0.f || is_impass) {
@@ -626,50 +634,56 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
-    /* ---- Peuplement initial : monde quasi vide ----------------------------- *
-     * JOUEUR / ANTAGONISTE : seule la région-capitale est peuplée à cap_pop.
-     *   Le reste de leur territoire est vierge → ils colonisent.
-     * CITÉ-ÉTAT : TOUTES leurs régions sont peuplées à pop réduite (2000 / n_regs
-     *   par région, plafonnée à cap_pop). Elles colonisent ensuite leurs propres
-     *   territoires vacants mais n'en sortent jamais.
-     * Tout le reste du monde est vierge et colonisable. */
+    /* ---- Peuplement initial : la GRAINE mondiale, le reste vierge ---------- *
+     * Q6 re-baseline — le DOUBLEMENT 48k→96k. On répartit une graine TOTALE fixe
+     * (SEED_POP ≈ 48k) sur toutes les régions actives des polités (empire +
+     * cité-état), AU PRORATA de leur cap_pop. Chaque région démarre donc sous
+     * son apex (cap_pop, lui-même VISÉ plus haut : EMPIRE_CAP/CITY_CAP) et CROÎT
+     * vers lui ; le monde traverse ~96k au siècle (seul moteur : la croissance,
+     * aucun taux trafiqué — la capacité visée, elle, est calibrée).
+     *   · La capitale (région la plus riche, sur tuile nourricière) reçoit
+     *     MÉCANIQUEMENT la plus grosse part (∝ son cap).
+     *   · Graine DÉCOUPLÉE du cap → Σ graines = SEED_POP PILE (plus de déficit,
+     *     même si une polité tombe sur une terre maigre).
+     *   · La friche vierge reste à zéro : frontière que les empires colonisent
+     *     (gain TERRITORIAL ; négligeable en pop, cap 200/pays).
+     * Membrane : on n'ajoute pas un bonus, on AMORCE la pop sous son plafond. */
+    double polity_cap=0.0;
+    for (int cid=0; cid<w->n_countries; cid++) {
+        PolityRole role=w->country[cid].role;
+        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST && role!=POLITY_CITY_STATE) continue;
+        const Country *ct=&w->country[cid];
+        for (int ri=0; ri<ct->n_regions; ri++){
+            int rid=ct->region_ids[ri];
+            if (rid>=0&&rid<e->n_regions&&e->region[rid].active) polity_cap+=e->region[rid].cap_pop;
+        }
+    }
+    float seed_frac = (polity_cap>0.0) ? (float)(tune_f("SEED_POP",48000.f)/polity_cap) : 0.5f;
+    if (seed_frac>1.f) seed_frac=1.f;   /* jamais au-dessus du plafond (sinon famine d'amorçage) */
     for (int cid=0; cid<w->n_countries; cid++) {
         const Country *ct=&w->country[cid];
         PolityRole role=ct->role;
-
-        if (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) {
-            int cap_prov=ct->capital_prov;
-            if (cap_prov<0||cap_prov>=w->n_provinces) continue;
-            int cap_reg=w->province[cap_prov].region;
-            if (cap_reg<0||cap_reg>=e->n_regions) continue;
-            RegionEconomy *re=&e->region[cap_reg];
+        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST && role!=POLITY_CITY_STATE) continue;
+        for (int ri=0; ri<ct->n_regions; ri++){
+            int rid=ct->region_ids[ri];
+            if (rid<0||rid>=e->n_regions) continue;
+            RegionEconomy *re=&e->region[rid];
             if (!re->active) continue;
-            econ_seed_population(re, fminf(re->cap_pop, 4000.f));   /* P2.12 : 4000 par empire (capitale seule) */
+            econ_seed_population(re, re->cap_pop*seed_frac);   /* graine ∝ cap → croît vers l'apex */
             re->colonized=true;
             re->owner=(int16_t)cid;
-
-        } else if (role==POLITY_CITY_STATE) {
-            /* Compter les régions actives du pays */
-            int n_act=0;
-            for (int ri=0;ri<ct->n_regions;ri++){
-                int rid=ct->region_ids[ri];
-                if (rid>=0&&rid<e->n_regions&&e->region[rid].active) n_act++;
-            }
-            if (n_act==0) continue;
-            /* 2000 pop répartis uniformément (plafond = cap_pop de chaque région).
-             * À 3 régions → ~667/reg ; à 5 → ~400/reg. Les régions vierges seront
-             * colonisées depuis les régions sœurs (econ_colonize_tick). */
-            float pop_per_reg = 2000.f / (float)n_act;
-            for (int ri=0;ri<ct->n_regions;ri++){
-                int rid=ct->region_ids[ri];
-                if (rid<0||rid>=e->n_regions) continue;
-                RegionEconomy *re=&e->region[rid];
-                if (!re->active) continue;
-                econ_seed_population(re, fminf(re->cap_pop, pop_per_reg));
-                re->colonized=true;
-                re->owner=(int16_t)cid;
-            }
         }
+    }
+
+    if (getenv("SCPS_CAPDIAG")) {
+        double capsum=0, seedsum=0; int nact=0, nrole[4]={0};
+        for (int r=0;r<e->n_regions;r++){
+            if (e->region[r].active){ capsum+=e->region[r].cap_pop; nact++; }
+            for (int c=0;c<CLASS_COUNT;c++) seedsum+=e->region[r].strata[c].pop;
+        }
+        for (int c=0;c<w->n_countries;c++){ int rr=w->country[c].role; if(rr>=0&&rr<4) nrole[rr]++; }
+        fprintf(stderr,"[CAPDIAG] active=%d cap_pop_sum=%.0f seed_pop=%.0f | PLAYER=%d ANTAG=%d CS=%d UNCL=%d\n",
+                nact, capsum, seedsum, nrole[0],nrole[1],nrole[2],nrole[3]);
     }
 }
 
@@ -1508,7 +1522,11 @@ static void colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid) {
     float take=fminf(COLONY_COST_POP, spop*0.25f);
     for (int c=0;c<CLASS_COUNT;c++)
         src->strata[c].pop -= take*(src->strata[c].pop/fmaxf(spop,EPS));
-    econ_seed_population(dst, COLONY_SEED_POP);
+    /* DISPATCH conservatif (terre) : les colons détachés ARRIVENT — on essaime
+     * tout ce qu'on a prélevé (plancher = graine minimale), pas de saignée du
+     * convoi → la colonisation REDISTRIBUE la pop sans la détruire (la mer, elle,
+     * garde son surcoût ×2 via econ_colonize_overseas, prélevé en amont). */
+    econ_seed_population(dst, fmaxf(take, COLONY_SEED_POP));
     dst->colonized=true;
     dst->culture.settled=true;   /* la culture de biome (gen_population) s'active */
     dst->owner=(int16_t)cid;

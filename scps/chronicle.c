@@ -920,6 +920,20 @@ int main(int argc, char **argv){
             printf("              population : %.0fk au total ; par continent :", total_pop(s.econ)/1000.0);
             for (int i=0;i<cont && i<4;i++) printf(" C%d %.0fk", ord[i], pc[ord[i]]/1000.0);
             printf("\n");
+            if (getenv("SCPS_CAPDIAG")) {
+                double poptot=0, cap_col=0, cap_act=0, fsat_w=0, fsat_p=0; int ncol=0, nact=0;
+                for (int r=0;r<s.econ->n_regions;r++){
+                    const RegionEconomy *re=&s.econ->region[r];
+                    double p=0; for(int cc=0;cc<CLASS_COUNT;cc++) p+=re->strata[cc].pop;
+                    poptot+=p;
+                    if (re->active)   { nact++; cap_act+=re->cap_pop; }
+                    if (re->colonized){ ncol++; cap_col+=re->cap_pop; fsat_w+=re->food_sat*p; fsat_p+=p; }
+                }
+                fprintf(stderr,"[FILLDIAG] pop=%.0f | colonisées=%d/%d cap_col=%.0f cap_act=%.0f | remplissage_col=%.0f%% cap_act=%.0f%% | food_sat=%.2f\n",
+                        poptot, ncol, nact, cap_col, cap_act,
+                        cap_col>0?100.0*poptot/cap_col:0, cap_act>0?100.0*poptot/cap_act:0,
+                        fsat_p>0?fsat_w/fsat_p:0);
+            }
         }
         /* EXPANSION : provinces colonisées (vierges peuplées) vs PRISES de force. */
         int n_alliances = active_alliances(w, s.econ, s.dp);

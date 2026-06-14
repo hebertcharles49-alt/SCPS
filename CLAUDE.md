@@ -10,6 +10,19 @@
   continents (≥15 % habitable ⇒ ≥1 empire) — les mondes des graines de référence ONT
   CHANGÉ (qui est empire change). Mondes fendus (p.ex. graines 1/42) : H3 active la
   guerre trans-mer (2026-06) — calibrer la guerre sur une graine mono-continent (7/99).
+- **Re-baseline Q6 (2026-06-14) — le DOUBLEMENT démographique 48k→96k** : monde âgé
+  (`world_age=0.7` : la Pangée FEND, la mer s'éveille), genèse à **6 empires + 12
+  cités-états**. An-0 = **48 000** hab PILE (`SEED_POP`, réparti au prorata du cap_pop) ;
+  la pop CROÎT vers ~96k à l'an 100 (moyenne 4 graines ≈ 97k, **±5 %** ; les mondes
+  fendus 7/42 remplissent ~15 % de moins que les cohésifs 9/99). **Seul moteur = la
+  croissance** (AUCUN taux touché) ; la guerre REDISTRIBUE la capacité, ne la crée ni
+  ne la détruit. Capacité d'accueil VISÉE par RÔLE, tunable (registre J) : `EMPIRE_CAP`
+  10800 / `CITY_CAP` 5400 (apex ; l'an-100 ≈ la cible) · friche vierge 200. Math
+  COLMATÉE : la cible se répartit sur les seules régions ACTIVES (zones mortes tranchées
+  en Passe 1, RÉUTILISÉES en Passe 3) ⇒ `cap_pop_sum` = Σ cibles EXACT, graine = `SEED_POP`
+  EXACT (plus de déficit « pays sur terre morte »). ⚠ Pop & TAILLE des pays ≫ qu'avant
+  (l'équilibre guerre/diplo se relit à cette échelle). Diag env : `SCPS_CAPDIAG` (an-0 :
+  cap_pop_sum/graine/rôles ; an-100 : remplissage/food_sat).
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables
