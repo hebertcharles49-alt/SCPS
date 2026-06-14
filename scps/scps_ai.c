@@ -784,17 +784,16 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
         if (agency_build(ag, econ, a->home_region, EDI_GRENIER)) a->stats.builds_other++;
         return;
     }
-    /* F-arc — un peuple NOURRI POSE sa fabrique militaire par doctrine (tier + or) : c'est ce qui
-     * fait apparaître les fabriques d'armes neuves (l'IA les CHOISIT, ne les attend pas du marché). */
-    ai_build_manufacture(a, w, econ);
-    /* …et il DÉVELOPPE le civil : il transforme le brut qu'il extrait (remplir les slots). */
-    ai_build_civmanuf(a, econ);
-
+    /* Le chantier (militaire · manufacture civile · bâtiment civil) est PONDÉRÉ PAR LE TEMPÉRAMENT
+     * dans le seau « bâtir » plus bas — plus de fabrique INCONDITIONNELLE chaque tour. */
     a->credit_trade += a->w_trade * (1.f - 0.5f*brake);
     a->credit_build += a->w_build + 0.8f*brake;           /* le frein POUSSE à consolider */
 
     /* On décharge le seau le plus plein (≥ 1). */
-    if (a->credit_build>=1.f && a->credit_build>=a->credit_trade){
+    /* MERCANTILE — les ROUTES EN PRIO : si le seau commerce est prêt, le marchand OUVRE sa route
+     * AVANT de bâtir (sa largeur, c'est le réseau). Les autres décident au seau le plus plein. */
+    bool merc_prio = (a->w_trade>=a->w_build && a->w_trade>=a->w_expand) && a->credit_trade>=1.f;
+    if (!merc_prio && a->credit_build>=1.f && a->credit_build>=a->credit_trade){
         a->credit_build -= 1.f;
         /* LE FORK (§ Soulèvements/Ordre de Fer) : sous une crise OUVERTE, un
          * tempérament COERCITIF (appétit de conquête haut) SERRE — il bâtit du H
@@ -809,17 +808,27 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 faction_lever_apply(a->cid, ai_lever_for_edifice(e), AI_LEVER_BUILD);  /* §4 : bâtir = voter */
             }
         } else {
-            /* RÉFORME : on métabolise (K). Mais un trône au consentement bas se
-             * SACRALISE d'abord (la foi soutient L) ; institutions mûres, on
-             * investit le SAVOIR (la recherche). §4-§5 du catalogue.
-             * L6 (K5.b) — LE CRÉDIT DE LARGEUR EST PONDÉRÉ PAR L'ÉTHOS : on n'est
-             * payé que de SA largeur. Dominateur/Honneur fourbissent L'ARSENAL
-             * (des ARMES au marché — l'asymétrie OFFENSIVE qui nourrit mil_power
-             * et l'opportunisme ; PAS des murs : la garnison symétrique blindait
-             * le monde entier et tuait toute proie « plus faible » — 1×30 mesuré
-             * à 0 guerre) ; le Mercantile bâtit le RÉSEAU (marchés) ; le
-             * Bureaucrate ne quitte JAMAIS K pour le détour savoir (l'institution
-             * pure — la Citadelle jamais, le savoir après l'Académie). */
+            /* DOCTRINE-PONDÉRÉ — le chantier (hors crise) suit le TEMPÉRAMENT : Bâtisseur (w_build)
+             * ½ bâtiment civil · ¼ manuf mil · ¼ manuf civile ; Mercantile (w_trade) ½ manuf civile ·
+             * ¼ civil · ¼ mil (ses ROUTES sont déjà priorisées par credit_trade, plus haut) ; Dominateur
+             * (w_expand) ½ mil · ¼ manuf civile · ¼ civil. Seuils CUMULÉS [mil, +civmanuf] ; civil = reste. */
+            float t_mil, t_civm;
+            if (a->w_build >= a->w_trade && a->w_build >= a->w_expand){ t_mil=0.25f; t_civm=0.50f; }  /* Bâtisseur : ½ civil */
+            else if (a->w_trade >= a->w_expand){                        t_mil=0.25f; t_civm=0.75f; }  /* Mercantile : ½ manuf civile */
+            else {                                                      t_mil=0.50f; t_civm=0.75f; }  /* Dominateur : ½ militaire */
+            /* tirage DÉTERMINISTE sur (jour × pays) — sans TOUCHER au rng perso (ne décale pas la
+             * séquence dont dépendent les routes/départages) : déterministe, bien distribué par tour. */
+            uint32_t hh=(uint32_t)day*2654435761u+(uint32_t)a->cid*40503u; hh^=hh>>13; hh*=0x5bd1e995u; hh^=hh>>15;
+            float roll=(float)(hh & 0xFFFFFFu)/(float)0x1000000;
+            if (roll < t_mil){
+                ai_build_manufacture(a, w, econ);            /* l'arsenal militaire (tier + or, par doctrine) */
+            } else if (roll < t_civm){
+                ai_build_civmanuf(a, econ);                  /* la manufacture civile (remplir les slots) */
+            } else {
+            /* le BÂTIMENT CIVIL (la voie existante) : on métabolise (K) ; un trône au consentement bas
+             * se SACRALISE d'abord (la foi soutient L) ; institutions mûres → SAVOIR. Dominateur/Honneur
+             * fourbissent L'ARSENAL (armes au marché → mil_power) ; le Mercantile bâtit le RÉSEAU
+             * (marchés) ; le Bureaucrate ne quitte JAMAIS K (l'institution pure). */
             Ethos eth = ai_capital_ethos(w, econ, a->cid);
             int hr = a->home_region;
             const ProvBuild *bd = (hr>=0&&hr<econ->n_regions)?&econ->region[hr].build:NULL;
@@ -864,6 +873,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                     faction_lever_apply(a->cid, ai_lever_for_edifice(e), AI_LEVER_BUILD);  /* §4 : la famille d'édifice vote */
                 }
             }
+            }   /* fin du tiers BÂTIMENT CIVIL (pondéré par doctrine) */
         }
     } else if (a->credit_trade>=1.f){
         a->credit_trade -= 1.f;
