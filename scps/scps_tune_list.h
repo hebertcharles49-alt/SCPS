@@ -92,6 +92,9 @@
      * seuil d'entropie MONDE qui arme le signal terminal (capstone §27). */ \
     X(FAUST_SPAWN_CHARGE,     0.15f) \
     X(CHARGE_DECAY,           0.04f) \
-    X(ENTROPY_TERMINAL,       4000.0f)
+    X(ENTROPY_TERMINAL,       4000.0f) \
+    /* FAU5 : au-DESSUS de cette proximité de Brèche (tech_crisis_proximity), l'IA NE cède PLUS à
+     * l'échappatoire faustienne du bois/nourriture (prudence) ; en-dessous + famine, OUI. */ \
+    X(FAUST_BRECHE_CAUTION,   0.55f)
 
 #endif /* SCPS_TUNE_LIST_H */

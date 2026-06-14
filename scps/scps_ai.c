@@ -1330,6 +1330,18 @@ static TechId ai_step_toward(const TechState *ts, TechId target, unsigned access
     return TECH_COUNT;
 }
 
+/* FAU0.6 — LE DÉTECTEUR DE FAMINE GÉNÉRALISÉ (généralise AI_FOREUSE_HUNGER au-delà du fer) :
+ * l'empire est-il en PÉNURIE du bien `g` ? (demande > offre soutenue ET stock bas, sur tout le
+ * pays). Lu des MÊMES données que la membrane — fer/bois (intrants) ET nourriture (subsistance). */
+static bool ai_resource_famine(const WorldEconomy *econ, int cid, Resource g){
+    if (g<=RES_NONE||g>=RES_COUNT) return false;
+    float stock=0.f, demand=0.f, supply=0.f;
+    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
+        stock+=econ->region[r].stock[g]; demand+=econ->region[r].demand[g]; supply+=econ->region[r].supply[g];
+    }
+    return demand > supply*1.15f + 1.f && stock < demand;
+}
+
 void ai_research_step(AiActor *a, TechState *ts, const World *w,
                       const WorldEconomy *econ, const RouteNetwork *rn,
                       const WorldProsperity *wp, int day){
@@ -1349,6 +1361,22 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     if (pick!=TECH_FOREUSE && tech_can_research(ts, TECH_FOREUSE, access)){
         AiView vg = ai_observe(wp, w, econ, a->cid);
         if (vg.chain_gap==RES_IRON) return;        /* on garde les points : la foreuse d'abord */
+    }
+    /* FAU5 — LA PENTE TOURNE : la famine de BOIS/NOURRITURE court à son transmuteur (réplicateur/
+     * corne), MAIS l'IA PÈSE l'échappatoire contre la Brèche — au BORD (proximité de crise élevée)
+     * elle N'Y CÈDE PAS ; loin du seuil et désespérée, OUI. Jamais sans la tech. (≠ la foreuse,
+     * §4/S3, qui garde son ressort propre.) Beeline via ai_step_toward (à travers TECH_ALCHIMIE). */
+    if (tech_crisis_proximity(ts) < tune_f("FAUST_BRECHE_CAUTION",0.55f)){
+        TechId tgt = ai_resource_famine(econ,a->cid,RES_WOOD)  ? TECH_TRANSMUTATION
+                   : ai_resource_famine(econ,a->cid,RES_GRAIN) ? TECH_FORGE_RUNES : TECH_COUNT;
+        if (tgt!=TECH_COUNT && !ts->unlocked[tgt]){
+            TechId step=ai_step_toward(ts, tgt, access);
+            if (step!=TECH_COUNT){
+                float sc=tech_cost(step,pop)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
+                if (ts->research_points < sc) return;      /* on ÉPARGNE pour le pas suivant */
+                pick=step;                                 /* on AVANCE vers l'échappatoire */
+            }
+        }
     }
     /* S1 — LA GREFFE CULTURELLE (la cristallisation de Venise) : un empire INVESTISSEUR
      * (mercantile/bâtisseur) ÉPARGNE pour acquérir le métier-signature d'un archétype qu'il a
