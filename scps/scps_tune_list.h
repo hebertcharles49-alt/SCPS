@@ -85,6 +85,13 @@
     X(SYNC_TRADE_YIELDREF,    5.0f) \
     /* S2 (syncrétisme) — la CRISTALLISATION culturelle suit le contact : fraction du fossé
      * de contenu comblée/an par un contact commercial maritime SOUTENU (porte-modulée). */ \
-    X(SYNC_FUSE_RATE,         0.10f)
+    X(SYNC_FUSE_RATE,         0.10f) \
+    /* FAU (faustien — la pente vers la Brèche). FAUST_SPAWN_CHARGE : charge ajoutée par unité
+     * de sortie d'un transmuteur (le VOLUME = la fracture). CHARGE_DECAY : décrue passive/tick
+     * de l'entropie régionale hors péché (≪ accumulation sous spawn soutenu). ENTROPY_TERMINAL :
+     * seuil d'entropie MONDE qui arme le signal terminal (capstone §27). */ \
+    X(FAUST_SPAWN_CHARGE,     0.15f) \
+    X(CHARGE_DECAY,           0.04f) \
+    X(ENTROPY_TERMINAL,       4000.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

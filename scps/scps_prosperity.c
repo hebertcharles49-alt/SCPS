@@ -16,6 +16,7 @@
 #include "scps_prosperity.h"
 #include "scps_culture.h"
 #include "scps_core.h"        /* scps_order : le moteur d'ordre interne §2.4 vérifié */
+#include "scps_tune.h"        /* FAU0 : ENTROPY_TERMINAL (seuil terminal calibrable) */
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -164,6 +165,22 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
     int NC = w->n_countries;
     wp->n_countries = NC;
 
+    /* FAU0 #1/#5 — L'ENTROPIE MONDIALE CUMULÉE + LE SIGNAL TERMINAL : barre Entropie du
+     * monde (Σ des entropies régionales), épicentre (la région la plus saturée = foyer des
+     * apocalypses §27), et le drapeau « seuil terminal franchi ». Le faustien ne fait que la
+     * déréalisation pour l'instant ; le capstone branchera le sélecteur de fin ICI. */
+    {
+        float esum=0.f, emax=0.f; int epi=-1;
+        for (int r=0;r<econ->n_regions;r++){
+            float fc=econ->region[r].faust_charge;
+            esum+=fc; if (fc>emax){ emax=fc; epi=r; }
+        }
+        wp->entropy=esum; wp->entropy_epicenter=epi;
+        if (esum >= tune_f("ENTROPY_TERMINAL",4000.f)) wp->entropy_terminal=true;
+        /* compteurs de conso monde (FAU0 #3, cachés) = Σ régional — lus par le capstone */
+        for (int k=0;k<3;k++){ double s=0.0; for (int r=0;r<econ->n_regions;r++) s+=econ->region[r].faust_consumed[k]; wp->faust_consumed[k]=s; }
+    }
+
     /* ---- Passe 1 : profil culturel + C (SI calculée en passe 3) ---------- */
     for (int cid = 0; cid < NC; cid++) {
         CountryProsperity *cp = &wp->country[cid];
@@ -287,22 +304,24 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
          * agrège les édifices du pays sur K/P/H, plafond ±5 (rendements
          * décroissants). Un Tribunal monte K, une Citadelle monte H. */
         {
-            float bK=0.f, bP=0.f, bH=0.f, bPE=0.f, bArcane=0.f;
+            float bK=0.f, bP=0.f, bH=0.f, bPE=0.f, bArcane=0.f, bEntropy=0.f;
             for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid) {
                 bK  += econ->region[r].build.K_inst;
                 bP  += econ->region[r].build.P_open;
                 bH  += econ->region[r].build.H_coerc;
                 bPE += econ->region[r].build.PE_infra;   /* marchés/entrepôts → PE capté */
                 bPE += econ->region[r].route_pe;         /* routes commerciales (cloche f(D̄)) */
-                bArcane += econ->region[r].arcane_charge;/* essence brûlée → Brèche */
+                bArcane  += econ->region[r].arcane_charge; /* IMMÉDIAT : essence/spawn brûlés CE tick (comme avant) */
+                bEntropy += econ->region[r].faust_charge;  /* FAU1 : entropie CUMULÉE des TRANSMUTEURS (la pente) */
             }
             st.K = clampf(st.K + clampf(bK,0.f,5.f), 0.f, 10.f);
             st.P = clampf(st.P + clampf(bP,0.f,5.f), 0.f, 10.f);
             st.H = clampf(st.H + clampf(bH,0.f,5.f), 0.f, 10.f);
             cp->P_potentiel += clampf(bPE,0.f,8.f);    /* infrastructure + carrefour commercial */
-            /* ARCANE (le fil faustien) : brûler le cristal/essence MONTE le flux
-             * faustien → surchauffe → déréalisation → rapproche la Brèche. */
-            st.flux_faustien = clampf(st.flux_faustien + clampf(bArcane*0.5f,0.f,6.f), 0.f, 10.f);
+            /* ARCANE (le fil faustien) : l'IMMÉDIAT (essence/spawn du tick, ×0.5 comme avant —
+             * la non-régression du mage) + l'entropie CUMULÉE des transmuteurs (FAU1, la pente :
+             * ∝ volume de spawn intégré, refonte passive quand on cesse). Deeper+more = fracture. */
+            st.flux_faustien = clampf(st.flux_faustien + clampf(bArcane*0.5f + bEntropy*0.05f,0.f,6.f), 0.f, 10.f);
         }
 
         /* ---- ÂGES STRUCTURELS : on POUSSE les entrées globales du moteur ---- *

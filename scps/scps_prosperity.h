@@ -71,6 +71,14 @@ typedef struct {
     float             age_L_penalty;    /* Soulèvements : la légitimité ne porte plus (− L) */
     float             age_H_bonus;      /* Ordre de Fer : la poigne (+ H) */
     float             age_myth_homogen; /* Ordre de Fer : le mythe nie la diversité (− D̄ effectif) */
+    /* FAU0 — FONDATIONS PARTAGÉES (faustien × capstone §27). L'ENTROPIE MONDIALE CUMULÉE :
+     * toute activité faustienne l'incrémente, la décrue passive la grignote ; le capstone la
+     * lira comme barre Entropie + seuil terminal. Les compteurs de conso (cachés) disent le
+     * VOLUME par rare (le sélecteur d'apocalypse). L'épicentre = qui a maxé. */
+    float             entropy;           /* FAU0 #1 : Σ des faust_charge régionales (barre Entropie monde) */
+    double            faust_consumed[3]; /* FAU0 #3 : conso cumulée monde (0 essence · 1 flux · 2 fer céleste) */
+    bool              entropy_terminal;  /* FAU0 #5 : le seuil terminal est-il franchi ? (signal pour le capstone) */
+    int               entropy_epicenter; /* FAU0 #5 : région à l'entropie MAX (épicentre des apocalypses) ; -1 = aucun */
 } WorldProsperity;
 
 void prosperity_init(WorldProsperity *wp, const World *w);

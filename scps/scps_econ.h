@@ -234,7 +234,9 @@ typedef struct {
 
     /* ARCANE (§ fil arcane) : essence brûlée ce tick par les ateliers de mage.
      * prosperity_tick l'agrège dans le flux faustien → déréalisation/Brèche. */
-    float      arcane_charge;
+    float      arcane_charge;       /* FAU0 : activité faustienne CE tick (reset/tick, += par faust_charge_add) */
+    float      faust_charge;        /* FAU0/FAU1 : entropie CUMULÉE de la région (accumule l'activité, décrue passive) */
+    float      faust_consumed[3];   /* FAU0 #3 : conso cumulée (0 essence/foreuse · 1 flux/réplicateur · 2 fer céleste/corne) — caché */
 
     float      habitability;          /* habitabilité moyenne [0..1] — héritée des provinces */
     bool       active;               /* terre habitable (colonisable) */
@@ -358,6 +360,7 @@ void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resour
  * le banc ; le PUITS est branché dans econ_tick (l'essence purifiée neutralise la charge). */
 float econ_bld_flux_delta(BuildingType b);
 bool  bld_is_faustian(BuildingType b);   /* FAU0 #4 : les 3 transmuteurs (foreuse/réplicateur/corne) */
+void  faust_charge_add(RegionEconomy *re, float amount);  /* FAU0 #2 : le hook de charge UNIQUE */
 /* M6 — la MATIÈRE gate la manufacture arcane : Forge ↔ fer céleste, Atelier ↔ cristal,
  * Alambic ↔ salpêtre (raw_cap de la région). true pour les manufactures ordinaires. */
 bool  econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b);

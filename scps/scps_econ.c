@@ -868,6 +868,12 @@ bool econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b){
 bool bld_is_faustian(BuildingType b){
     return b==BLD_FOREUSE || b==BLD_REPLICATEUR || b==BLD_CORNE;
 }
+/* FAU0 #2 — LE HOOK DE CHARGE UNIQUE : un seul robinet que TOUT faustien appelle (atelier de
+ * mage, les 3 transmuteurs, et plus tard la merveille du capstone). Ajoute à l'activité du tick
+ * (arcane_charge) ; l'accumulation/décrue vers l'entropie cumulée (faust_charge) est au tick. */
+void faust_charge_add(RegionEconomy *re, float amount){
+    if (re && amount>0.f) re->arcane_charge += amount;
+}
 
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire. */
 static double g_flux[SCPS_MAX_COUNTRY][FX_COUNT];
@@ -1089,7 +1095,12 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
 
         /* ---- 2. MANUFACTURE -------------------------------------------- */
-        re->arcane_charge=0.f;   /* essence brûlée CE tick (→ flux faustien) */
+        /* FAU1/RETRAIT — la DÉCRUE PASSIVE de l'entropie CUMULÉE (transmuteurs) : aucun
+         * stabilisateur actif ; elle refonte lentement chaque tick (CHARGE_DECAY ≪ accumulation
+         * sous spawn soutenu) → dabbler puis cesser = récupérable, spawn continu = fracture.
+         * L'IMMÉDIAT (arcane_charge : mage + spawn du tick) est remis à zéro (per-tick, comme avant). */
+        re->faust_charge = fmaxf(0.f, re->faust_charge - tune_f("CHARGE_DECAY", 0.04f));
+        re->arcane_charge=0.f;
         for (int i=0;i<re->n_bld;i++) {
             Building *b=&re->bld[i];
             const Recipe *rc=&RECIPE[b->type];
@@ -1154,8 +1165,17 @@ void econ_tick(WorldEconomy *e, float dt) {
             supply[rc->out]+=out;
             b->workers=rc->labor*lim;
             labor_used+=b->workers;
-            /* ARCANE : brûler le cristal pour l'essence nourrit la Brèche. */
-            if (b->type==BLD_MAGE_WORKSHOP) re->arcane_charge += out;
+            /* FAU0/FAU2 — LA CHARGE FAUSTIENNE (hook UNIQUE faust_charge_add) : le mage (essence)
+             * ET les transmuteurs (chaque spawn ∝ output = le VOLUME) nourrissent la Brèche. Les
+             * transmuteurs comptent aussi le rare consommé (capteur caché du capstone §27). */
+            if (b->type==BLD_MAGE_WORKSHOP) faust_charge_add(re, out);   /* arcane ordinaire : IMMÉDIAT seul (per-tick, comme avant) */
+            else if (bld_is_faustian(b->type)){
+                float spawn = out * tune_f("FAUST_SPAWN_CHARGE", 0.15f);
+                faust_charge_add(re, spawn);     /* l'IMMÉDIAT (flux du tick) */
+                re->faust_charge += spawn;       /* FAU1 : et l'entropie CUMULÉE (la pente vers la Brèche) */
+                int k=(b->type==BLD_FOREUSE)?0:(b->type==BLD_REPLICATEUR)?1:2;   /* essence · flux · fer céleste */
+                re->faust_consumed[k] += lim*rc->q1;
+            }
             /* F-arc RETRAIT — LE PUITS-DE-FLUX EST COUPÉ : l'Alambic ne quenche PLUS la charge.
              * AUCUN mécanisme ACTIF ne fait reculer la charge par design (modèle Stellaris) ;
              * seule la décrue PASSIVE (CHARGE_DECAY, FAU0/FAU1) la grignote hors péché. */

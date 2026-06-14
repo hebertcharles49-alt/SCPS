@@ -346,11 +346,14 @@ float tech_crisis_proximity(const TechState *s) {
     if (s->crisis_triggered) return 1.0f;
     return 1.0f - expf(-s->charge/CRISIS_SCALE);
 }
-/* Somme des charges des nœuds ARCANES pris (Savoir faustien = l'ampleur du dragon). */
+/* FAU4 GAP — la charge-de-PROFONDEUR somme TOUS les nœuds faustiens pris, quelle que soit la
+ * branche (Savoir, Forge OU Société). Le modèle 3-branches veut qu'un Martial/Forge profond
+ * (forge runique) pèse sur l'entropie comme un Savoir profond — sinon la symétrie des trois
+ * apocalypses ment. (Avant : THM_SAVOIR seul.) */
 static float arcane_charge(const TechState *s) {
     float m=0.f;
     for (int i=0;i<TECH_COUNT;i++)
-        if (s->unlocked[i] && NODES[i].theme==THM_SAVOIR && NODES[i].faustian) m+=NODES[i].charge;
+        if (s->unlocked[i] && NODES[i].faustian) m+=NODES[i].charge;
     return m;
 }
 float tech_shock_amplitude(const TechState *s) {
