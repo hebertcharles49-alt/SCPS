@@ -127,7 +127,7 @@
     X(STR_HOVER_HUMEUR, "Le cœur de la province envers la couronne ; loyale, elle paie sans broncher — frondeuse, elle attend l'étincelle.") \
     X(STR_HOVER_LIGNEE, "Ce qui la lie à la culture du trône ; le même sang se gouverne aisément, l'inassimilable jamais sans la force.") \
     X(STR_HOVER_AGITATION, "La colère qui monte dans la province ; soutenue, elle vire à la révolte — qu'apaisent la stabilité du royaume, la garnison et la légitimité.") \
-    X(STR_HOVER_FOI, "La ferveur de la province envers le culte du trône ; dévote, elle nourrit la légitimité sacrée — hérétique, elle couve le schisme.") \
+    X(STR_HOVER_FOI, "L'adhésion de la province à l'idéologie du trône ; convaincue, elle nourrit la légitimité — dissidente, elle couve le schisme.") \
     X(STR_HOVER_SEDITION, "La tension d'une faction forte dont les valeurs s'opposent à la direction du régime ; séditieuse, elle complote le coup d'État pour imposer son éthos.") \
     X(STR_TUTO_TITLE_0, "1 · Ce monde se lit.") \
     X(STR_TUTO_TITLE_1, "2 · Le temps coule en jours.") \
@@ -190,7 +190,7 @@
     X(STR_DIPLO_MENACE_FMT, "Menace : {0}%") \
     X(STR_DIPLO_ACTIONS, "Actions — onglet Diplomatie (G)") \
     X(STR_CB_TERRITORIAL, "frontière revendiquée") \
-    X(STR_CB_RELIGIOUS, "schisme religieux") \
+    X(STR_CB_RELIGIOUS, "schisme idéologique") \
     X(STR_CB_ECONOMIC, "bien monopolisé") \
     X(STR_CB_SUBJUGATION, "assujettissement") \
     X(STR_CB_ANTIPIRATERIE, "course à réprimer") \
@@ -211,7 +211,7 @@
     X(STR_FACTION_ETHOS_0, "la voie de la force — armée, guerre, expansion") \
     X(STR_FACTION_ETHOS_1, "la voie de l'or — routes, marchés, profit") \
     X(STR_FACTION_ETHOS_2, "la voie de l'ordre — lois, administration, stabilité") \
-    X(STR_FACTION_ETHOS_3, "la voie de la tradition — terre, foi, continuité") \
+    X(STR_FACTION_ETHOS_3, "la voie de la tradition — terre, idéologie, continuité") \
     X(STR_FACTION_ETHOS_4, "la voie de l'interdit — arcane, risque, tabou franchi") \
     X(STR_FACTION_ETHOS_5, "le petit peuple — pain, paix, sécurité du quotidien") \
     X(STR_FACTION_HOV_FMT, "{0} · {1}. Satisfaction {2}% = leur adhésion au régime ; part {3}% = leur poids politique.") \

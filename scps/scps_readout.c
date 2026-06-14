@@ -729,7 +729,7 @@ static const char *const TECH_UTILITY[TECH_COUNT] = {
     [TECH_IRRIGATION]        = "+nourriture & +logements (greniers)",
     [TECH_COMMERCE]          = "+or (commerce, marché, banque)",
     [TECH_CADASTRE]          = "+or (l'impôt)",
-    [TECH_ABONDANCE]         = "+croissance & +or (l'abondance halfeline)",
+    [TECH_ABONDANCE]         = "+croissance & +or (l'abondance agraire)",
     /* Société · Armée — la levée */
     [TECH_CASERNE]           = "permet de recruter de l'infanterie",
     [TECH_CONSCRIPTION]      = "+armée (la levée en masse)",
@@ -738,7 +738,7 @@ static const char *const TECH_UTILITY[TECH_COUNT] = {
     [TECH_CASTE_MARTIALE]    = "⚠ +armée (caste guerrière) — rapproche la Brèche",
     /* Société · Renforcement — services, foi, intégration */
     [TECH_CHANCELLERIE]      = "+services (administration) & +stabilité",
-    [TECH_FOI]               = "+légitimité & services religieux (temple → cathédrale)",
+    [TECH_FOI]               = "+légitimité & services idéologiques (temple → cathédrale)",
     [TECH_INTEGRATION]       = "+cohésion (l'assimilation des peuples)",
     [TECH_CULTE_IMPERIAL]    = "⚠ +cohésion forcée — rapproche la Brèche",
 };

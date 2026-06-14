@@ -259,11 +259,11 @@ static const EventDef EVENTS[EVID_COUNT] = {
           { .d_L=0.6f, .d_influence=3.f, .unlock_branch=-1 }, 0.5f },
         { "Régence contestée", "Deux partis se disputent le trône ; le royaume retient son souffle.",
           { .d_L=-1.0f, .d_agitation=15.f, .unlock_branch=-1 }, 0.5f } }, 2 },
-    [EVID_SCHISM] = { EVID_SCHISM, EV_COUNTRY, "Une foi se déchire",
+    [EVID_SCHISM] = { EVID_SCHISM, EV_COUNTRY, "Une idéologie se déchire",
         trig_schism, 7000.f, NULL, {
-        { "Tolérer les deux rites", "On laisse coexister les chapelles : la paix, au prix de l'unité.",
+        { "Tolérer les deux courants", "On laisse coexister les doctrines : la paix, au prix de l'unité.",
           { .d_agitation=-10.f, .d_L=-0.3f, .unlock_branch=-1 }, 0.5f },
-        { "Imposer l'orthodoxie", "Un seul rite, par la force s'il le faut — et l'hérésie gronde.",
+        { "Imposer l'orthodoxie", "Une seule doctrine, par la force s'il le faut — et la dissidence gronde.",
           { .d_H_coerc=1.0f, .d_coercion=0.3f, .d_agitation=10.f, .unlock_branch=-1 }, 0.5f } }, 2 },
 };
 
@@ -583,7 +583,7 @@ const char *director_event_name(int id){
     static const char *N[DIR_EV_COUNT]={
         "La Mort du Charismatique","La Peste Fluviale","Les Enfants du Palais","Le Filon",
         "L'Année Sans Été","Le Schisme dirigé","La Débase",
-        "Le Concile","La Réformatrice","Le Cadastre","La Décennie des Moissons",
+        "Le Congrès","La Réformatrice","Le Cadastre","La Décennie des Moissons",
         "La Paix du Marchand","Le Héros Culturel","L'Amnistie" };
     return (id>=0&&id<DIR_EV_COUNT)?N[id]:"?";
 }

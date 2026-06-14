@@ -122,7 +122,7 @@
     X(STR_HOVER_HUMEUR, "Le cœur de la province envers la couronne ; loyale, elle paie sans broncher — frondeuse, elle attend l'étincelle.") \
     X(STR_HOVER_LIGNEE, "Ce qui la lie à la culture du trône ; le même sang se gouverne aisément, l'inassimilable jamais sans la force.") \
     X(STR_HOVER_AGITATION, "La colère qui monte dans la province ; soutenue, elle vire à la révolte — qu'apaisent la stabilité du royaume, la garnison et la légitimité.") \
-    X(STR_HOVER_FOI, "La ferveur de la province envers le culte du trône ; dévote, elle nourrit la légitimité sacrée — hérétique, elle couve le schisme.") \
+    X(STR_HOVER_FOI, "The province's adherence to the throne's ideology; convinced, it feeds legitimacy — dissident, it breeds schism.") \
     X(STR_HOVER_SEDITION, "La tension d'une faction forte dont les valeurs s'opposent à la direction du régime ; séditieuse, elle complote le coup d'État pour imposer son éthos.") \
     X(STR_TUTO_TITLE_0, "1 · Ce monde se lit.") \
     X(STR_TUTO_TITLE_1, "2 · Le temps coule en jours.") \
@@ -185,7 +185,7 @@
     X(STR_DIPLO_MENACE_FMT, "Threat: {0}%") \
     X(STR_DIPLO_ACTIONS, "Actions — Diplomacy tab (G)") \
     X(STR_CB_TERRITORIAL, "claimed border") \
-    X(STR_CB_RELIGIOUS, "religious schism") \
+    X(STR_CB_RELIGIOUS, "ideological schism") \
     X(STR_CB_ECONOMIC, "monopolised good") \
     X(STR_CB_SUBJUGATION, "subjugation") \
     X(STR_CB_ANTIPIRATERIE, "raiding to curb") \
@@ -206,7 +206,7 @@
     X(STR_FACTION_ETHOS_0, "the way of force — army, war, expansion") \
     X(STR_FACTION_ETHOS_1, "the way of gold — routes, markets, profit") \
     X(STR_FACTION_ETHOS_2, "the way of order — law, administration, stability") \
-    X(STR_FACTION_ETHOS_3, "the way of tradition — land, faith, continuity") \
+    X(STR_FACTION_ETHOS_3, "the way of tradition — land, ideology, continuity") \
     X(STR_FACTION_ETHOS_4, "the way of the forbidden — arcana, risk, taboo crossed") \
     X(STR_FACTION_ETHOS_5, "the common folk — bread, peace, daily safety") \
     X(STR_FACTION_HOV_FMT, "{0} · {1}. Satisfaction {2}% = their buy-in to the regime; share {3}% = their political weight.") \
