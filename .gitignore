@@ -89,3 +89,4 @@ audit_eco
 # Arc J : cache du calibrateur (régénéré)
 tools/results.csv
 forks_demo
+a.out
