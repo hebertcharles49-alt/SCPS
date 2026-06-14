@@ -46,7 +46,7 @@ void warhost_free(WarHost *h);
 /* Mobilisation (dt en ANNÉES) : chaque pays vivant lève des troupes ∝ son pied de
  * guerre ; la force se dépose en armes sur sa capitale (→ mil_power). */
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
-                  const DiploState *dp, float dt_years);
+                  const DiploState *dp, const TechState *ts, float dt_years);  /* ts[SCPS_MAX_COUNTRY] : F8 gate de variété */
 
 long warhost_units (const WarHost *h, int cid);   /* paquets de 100 levés (UI/IA) */
 

@@ -87,15 +87,22 @@ static long seed_scratch(LaborEcon *e, const World *w, const WorldEconomy *econ,
 /* LEVER `batch` paquets dans le scratch déjà semé : piquiers (masse) + épéistes,
  * cavalerie si l'élite est là. La fabrication précède l'enrôlement (pas d'arme,
  * pas d'unité). */
-static void wh_levy_batch(ArmyState *a, LaborEcon *sc, WorldEconomy *econ, int cid, long batch, long elite){
+static void wh_levy_batch(ArmyState *a, LaborEcon *sc, WorldEconomy *econ,
+                          const TechState *t, int cid, long batch, long elite){
     if (batch<=0) return;
-    /* F6 Option B — la levée REMPLIT le tampon de combat depuis les armes MACRO (RES_ARMS_*) : la
-     * fabrique (F2, ex. l'armurerie auto-bâtie sur le fer) produit l'arme depuis le FER, la levée la
-     * draine → le prix du fer monte sous militarisation (la preuve F8). Léger : piquier + épéiste ;
-     * lourd : cav lourde si l'élite est là (gatée par le stock d'armes LOURDES → fabrique dédiée). */
-    wh_arm_unit(a, sc, econ, cid, U_PIQUIER, batch);
-    wh_arm_unit(a, sc, econ, cid, U_EPEISTE, batch/2 + 1);
-    if (elite > 200) wh_arm_unit(a, sc, econ, cid, U_CAV_LOURDE, batch/3 + 1);
+    /* F6/F8 — la levée REMPLIT le tampon de combat depuis les armes MACRO (RES_ARMS_*), et lève la
+     * VARIÉTÉ selon la TECH (F7) : noyau léger (piquier+épéiste) + TRAIT (archer), puis les unités
+     * GATÉES quand la tech est là (hallebardier, arquebusier ; garde runique si l'élite). Chaque type
+     * tire SA catégorie d'armes → fabrique spécialisée → FER (la demande diverse, la preuve F8). */
+    wh_arm_unit(a, sc, econ, cid, U_PIQUIER, (batch+1)/2);
+    wh_arm_unit(a, sc, econ, cid, U_EPEISTE, batch/4 + 1);
+    wh_arm_unit(a, sc, econ, cid, U_ARCHER,  batch/4 + 1);                  /* trait ← atelier d'arc */
+    if (unit_recruitable(t, U_HALLEBARDIER)) wh_arm_unit(a, sc, econ, cid, U_HALLEBARDIER, batch/6 + 1);
+    if (unit_recruitable(t, U_ARQUEBUSIER))  wh_arm_unit(a, sc, econ, cid, U_ARQUEBUSIER,  batch/6 + 1);
+    if (elite > 200){
+        wh_arm_unit(a, sc, econ, cid, U_CAV_LOURDE, batch/6 + 1);
+        if (unit_recruitable(t, U_GARDE_RUNIQUE)) wh_arm_unit(a, sc, econ, cid, U_GARDE_RUNIQUE, batch/8 + 1);
+    }
 }
 
 /* DÉMOBILISER `n` paquets : les unités fondent (de la dernière vers la première), la pop affectée
@@ -121,7 +128,7 @@ static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
 }
 
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
-                  const DiploState *dp, float dt){
+                  const DiploState *dp, const TechState *ts, float dt){
     if (!h || !h->scratch || dt<=0.f) return;
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].capital_prov<0) continue;
@@ -177,7 +184,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
             long batch = (long)(WH_BATCH_WAR*LEVY_MULT[lv]*dt + 0.5f);
             if (batch>0){
                 long elite = seed_scratch(h->scratch, w, econ, c);
-                wh_levy_batch(&h->army[c], h->scratch, econ, c, batch, elite);
+                wh_levy_batch(&h->army[c], h->scratch, econ, ts?&ts[c]:NULL, c, batch, elite);
             }
         } else {
             long garrison = (long)(WH_GARRISON_UNITS*LEVY_MULT[lv] + 0.5f);
@@ -188,7 +195,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 long deficit = garrison - cur; if (batch>deficit) batch=deficit;
                 if (batch>0){
                     long elite = seed_scratch(h->scratch, w, econ, c);
-                    wh_levy_batch(&h->army[c], h->scratch, econ, c, batch, elite);
+                    wh_levy_batch(&h->army[c], h->scratch, econ, ts?&ts[c]:NULL, c, batch, elite);
                 }
             }
         }

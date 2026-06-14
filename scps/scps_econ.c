@@ -892,11 +892,14 @@ void faust_charge_add(RegionEconomy *re, float amount){
  * (plafonnée par le stock). UN SEUL ROBINET : levée (warhost) ET renfort (campaign) y passent. */
 long econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need){
     if (!econ || need<=0 || arm<=RES_NONE || arm>=RES_COUNT) return 0;
+    int nown=0; for (int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==cid) nown++;
+    float dshare = nown ? (float)need/(float)nown : 0.f;
     long got=0;
-    for (int r=0;r<econ->n_regions && got<need;r++){
+    for (int r=0;r<econ->n_regions;r++){
         if (econ->region[r].owner!=cid) continue;
-        long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
-        econ->region[r].stock[arm]-=(float)take; econ->region[r].demand[arm]+=(float)take; got+=take;
+        econ->region[r].demand[arm] += dshare;   /* F8 BOOTSTRAP : la DEMANDE (want) — la fabrique bâtit/produit même stock VIDE → consomme le fer */
+        if (got<need){ long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
+            econ->region[r].stock[arm]-=(float)take; got+=take; }
     }
     return got;
 }
