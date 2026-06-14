@@ -521,16 +521,21 @@ void econ_init(WorldEconomy *e, const World *w) {
         re->estuary = false;                         /* posé au balayage des cellules ci-dessous */
         if (coastal) re->raw_cap[RES_FISH] += subsist * 0.10f;   /* socle côtier minime : le poisson vient surtout des biomes halieutiques (§2) */
 
-        /* ARCANE — le cristal sourd des NŒUDS telluriques : TRÈS rare, lié aux
-         * failles profondes/volcaniques (proxy : présence de soufre ou de métal
-         * précieux). Seule une fraction des régions concernées porte un nœud. */
-        if ((re->raw_cap[RES_SULFUR]>0.f || re->raw_cap[RES_PRECIOUS_METAL]>0.f)
-            && ((uint32_t)(rid*2654435761u) % 4u)==0u)
-            re->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;
-        /* Fer céleste — météorique : ENCORE plus rare, lié aux sommets/cratères
-         * (proxy : minerai de fer en relief), ~1 région concernée sur 9. */
-        if (re->raw_cap[RES_IRON]>0.f && ((uint32_t)(rid*40503u+7u) % 9u)==0u)
-            re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;
+        /* ARCANE — le cristal sourd des NŒUDS telluriques (proxy : soufre ou métal précieux).
+         * NŒUD RICHE (rare, 1/4) + VOILE DIFFUS de 0.2 sur TOUTE région porteuse du proxy : la
+         * chaîne arcane (essence → bâton de mage) trouve de quoi nourrir un paquet sans devenir
+         * commune. Le voile ne BÂTIT PAS d'atelier (seuil d'implantation relevé à >0.5). */
+        if (re->raw_cap[RES_SULFUR]>0.f || re->raw_cap[RES_PRECIOUS_METAL]>0.f){
+            re->raw_cap[RES_ARCANE_CRYSTAL] += 0.2f;                                   /* voile diffus */
+            if (((uint32_t)(rid*2654435761u) % 4u)==0u) re->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* + nœud riche */
+        }
+        /* Fer céleste — météorique (proxy : minerai de fer en relief). Idem : nœud riche (1/9) +
+         * voile diffus de 0.2 sur toute région ferrifère → la Forge céleste (fer céleste → armes
+         * enchantées) franchit enfin le seuil d'un paquet de Garde runique. */
+        if (re->raw_cap[RES_IRON]>0.f){
+            re->raw_cap[RES_CELESTIAL_IRON] += 0.2f;                                   /* voile diffus */
+            if (((uint32_t)(rid*40503u+7u) % 9u)==0u) re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* + nœud riche */
+        }
 
         /* ---- Manufactures : implantées là où l'intrant est extrait dans
          *      la région (cohérence géographique de la chaîne de prod). */
@@ -560,10 +565,11 @@ void econ_init(WorldEconomy *e, const World *w) {
             region_ensure_building(re,BLD_FOUNDRY);
             region_ensure_building(re,BLD_TOOLWORKS);
         }
-        /* ARCANE : un atelier de mage s'élève au nœud tellurique (cristal). */
-        if (re->raw_cap[RES_ARCANE_CRYSTAL] > 0.f) region_ensure_building(re,BLD_MAGE_WORKSHOP);
-        /* ARCANE militaire : une forge céleste là où tombe le fer céleste. */
-        if (re->raw_cap[RES_CELESTIAL_IRON] > 0.f) region_ensure_building(re,BLD_CELESTIAL_FORGE);
+        /* ARCANE : un atelier de mage s'élève au NŒUD tellurique (cristal RICHE >0.5 — pas sur le
+         * voile diffus, qui n'est qu'un gisement à exploiter/commercer, pas un site d'atelier). */
+        if (re->raw_cap[RES_ARCANE_CRYSTAL] > 0.5f) region_ensure_building(re,BLD_MAGE_WORKSHOP);
+        /* ARCANE militaire : une forge céleste là où tombe le fer céleste EN NŒUD (>0.5). */
+        if (re->raw_cap[RES_CELESTIAL_IRON] > 0.5f) region_ensure_building(re,BLD_CELESTIAL_FORGE);
         /* Militaire de base : armurerie au fer, poudrière au salpêtre+charbon. */
         if (re->raw_cap[RES_IRON] > 0.f) region_ensure_building(re,BLD_ARMORY);
         if (re->raw_cap[RES_SALTPETER] > 0.f && re->raw_cap[RES_COAL] > 0.f)

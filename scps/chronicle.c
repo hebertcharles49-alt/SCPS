@@ -899,6 +899,15 @@ int main(int argc, char **argv){
                   if(re->raw_cap[RES_COPPER]>0.f){cu++;rcu+=re->raw_cap[RES_COPPER];} spu+=re->supply[RES_COPPER]; }
               fprintf(stderr,"[FORGEDIAG] RAW SPÉCIAUX (carte, %d rég) : fer céleste %d rég·cap %.1f·extr %.1f | cristal arcane %d·%.1f·%.1f | salpêtre %d·%.1f·%.1f | cuivre %d·%.1f·%.1f\n",
                     s.econ->n_regions, cc,rcc,spc, ca,rca,spa, cs,rcs,sps, cu,rcu,spu); }
+            { int nemp=0,caserne=0,poudr=0,runes=0,magie=0,alch=0;   /* la DEMANDE : qui peut RECRUTER (tech débloquée) */
+              for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){ if(!s.ai_on[c])continue; nemp++;
+                  if(s.ts[c].unlocked[TECH_CASERNE])      caserne++;
+                  if(s.ts[c].unlocked[TECH_POUDRIERE])    poudr++;
+                  if(s.ts[c].unlocked[TECH_FORGE_RUNES])  runes++;
+                  if(s.ts[c].unlocked[TECH_MAGIE_BATAILLE])magie++;
+                  if(s.ts[c].unlocked[TECH_ALCHIMIE])     alch++; }
+              fprintf(stderr,"[FORGEDIAG] TECH MILITAIRES (%d empires) : caserne→hallebardier %d · poudrière→arquebusier %d · forge runes→garde %d · magie→mage %d · alchimie→alchimiste %d\n",
+                    nemp, caserne,poudr,runes,magie,alch); }
             { double dem[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)dem[g]=0.0;
               for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
                   for(int g=0;g<RES_COUNT;g++) dem[g]+=s.econ->region[r].demand[g]; }

@@ -173,8 +173,8 @@ void intertrade_seed_centres(const World *w, WorldEconomy *e){
  * (econ_arms_take → intertrade_market_pull). À semer APRÈS intertrade_seed_centres. */
 void intertrade_seed_citystate_arms(const World *w, WorldEconomy *e){
     if (!w||!e) return;
-    static const BuildingType ARMS[5]={ BLD_ARMORY_HEAVY, BLD_BOWYER, BLD_MAGE_WORKSHOP,
-                                        BLD_CELESTIAL_FORGE, BLD_ALAMBIC };
+    static const BuildingType ARMS[6]={ BLD_ARMORY_HEAVY, BLD_BOWYER, BLD_MAGE_WORKSHOP,
+                                        BLD_CELESTIAL_FORGE, BLD_ALAMBIC, BLD_ARQUEBUS };
     int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
     for (int c=0;c<w->n_countries;c++){
         if (w->country[c].role!=POLITY_CITY_STATE) continue;
@@ -184,19 +184,14 @@ void intertrade_seed_citystate_arms(const World *w, WorldEconomy *e){
         if (best<0) continue;
         uint32_t h = w->seed ^ (uint32_t)c*2654435761u;   /* mélange déterministe seed×index */
         h ^= h>>13; h *= 0x5bd1e995u; h ^= h>>15;
-        BuildingType b = ARMS[h % 5u];
+        BuildingType b = ARMS[h % 6u];
         econ_build_manufacture(e, best, b);
-        RegionEconomy *re=&e->region[best];               /* l'intrant brut : la fabrique doit MORDRE */
-        switch(b){
-          case BLD_ARMORY_HEAVY:    { if(re->raw_cap[RES_IRON]<15.f)           re->raw_cap[RES_IRON]=15.f; } break;
-          case BLD_BOWYER:          { if(re->raw_cap[RES_IRON]<10.f)           re->raw_cap[RES_IRON]=10.f;
-                                      if(re->raw_cap[RES_WOOD]<15.f)           re->raw_cap[RES_WOOD]=15.f; } break;
-          case BLD_MAGE_WORKSHOP:   { if(re->raw_cap[RES_ARCANE_CRYSTAL]<15.f) re->raw_cap[RES_ARCANE_CRYSTAL]=15.f; } break;
-          case BLD_CELESTIAL_FORGE: { if(re->raw_cap[RES_CELESTIAL_IRON]<15.f) re->raw_cap[RES_CELESTIAL_IRON]=15.f;
-                                      if(re->raw_cap[RES_COAL]<10.f)           re->raw_cap[RES_COAL]=10.f; } break;
-          case BLD_ALAMBIC:         { if(re->raw_cap[RES_SALTPETER]<15.f)      re->raw_cap[RES_SALTPETER]=15.f; } break;
-          default: break;
-        }
+        /* L'ARMURIER À POUDRE bâtit TOUTE la chaîne (3 manufactures, demandée) : charbonnière
+         * (bois→charbon) → poudrière (salpêtre+charbon→poudre) → arquebuserie (fer+poudre→feu).
+         * On NE FORCE PAS les ressources (discipline : on ne lit que la géographie) — la chaîne
+         * MORD là où le salpêtre/fer/bois NATURELS la nourrissent (la genèse répartit ces gisements). */
+        if (b==BLD_ARQUEBUS){ econ_build_manufacture(e, best, BLD_POWDERMILL);
+                              econ_build_manufacture(e, best, BLD_CHARCOAL); }
     }
     refresh_centres(e);
 }
