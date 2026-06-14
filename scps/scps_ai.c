@@ -100,6 +100,7 @@ static float ai_faustian_appetite(Credo cr, float valeurs){
 #define AI_RELOC_SEED      300.f  /* §reloc : ensemencement type (~EXTRACT_POP_REF) — pousse la cible d'une bande d'intensité */
 #define AI_RELOC_FLOOR     100.f  /* pop minimale pour qualifier source/cible (jamais peupler le vide) */
 #define AI_RELOC_COOLDOWN  1300   /* ~3.5 ans entre deux ensemencements (ENSEMENCER, pas pomper) */
+#define AI_COLONY_FLOOR   1000.f  /* §dév : palier de pop visé par colonie (remplir les jobs → optimum démographique) */
 #define AI_FAITH_FAUSTIAN   3.0f  /* §4 : l'orthodoxie INTERDIT le faustien, le culte le SACRALISE */
 
 /* ---- Utilitaires ------------------------------------------------------ */
@@ -574,13 +575,26 @@ static void ai_relocate_turn(AiActor *a, WorldEconomy *econ, const AiView *v, in
         if (lab>src_pop){ src_pop=lab; src=r; }            /* réservoir = la plus peuplée */
     }
     if (src<0 || src_pop < 2.0f*AI_RELOC_FLOOR) return;   /* pas de réservoir → on ne vide pas un hameau */
-    /* CIBLE : province possédée portant un raw dont l'empire est COURT, la plus SOUS-PEUPLÉE
-     * (marge d'intensité), habitable. score = manque × marge × richesse du gisement. */
     int tgt=-1; float best=0.f;
+    /* §dév — D'ABORD LE PALIER : on PEUPLE la colonie la plus SOUS le seuil (min(1000, cap_pop)) pour
+     * REMPLIR LES JOBS de ses manufactures et viser l'OPTIMUM démographique. La cible = le plus gros
+     * déficit au palier (habitable, ≠ réservoir, sous sa capacité d'accueil). */
     for (int r=0;r<econ->n_regions;r++){
         RegionEconomy *re=&econ->region[r];
         if (re->owner!=a->cid || !re->colonized || re->impassable || r==src) continue;
         if (re->habitability < 0.20f) continue;            /* jamais l'infranchissable/quasi-mort */
+        float pop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        float floor=fminf(AI_COLONY_FLOOR, re->cap_pop);   /* le palier, borné par la capacité d'accueil */
+        if (pop >= floor) continue;                        /* déjà au palier (ou cap atteint) */
+        float deficit=floor-pop;
+        if (deficit > best){ best=deficit; tgt=r; }
+    }
+    /* SINON — la logique d'origine : combler une PÉNURIE de raw qu'on SOUS-EXTRAIT (la montagne de fer
+     * à moitié vide). score = manque × marge × richesse du gisement, la plus sous-peuplée. */
+    if (tgt<0) for (int r=0;r<econ->n_regions;r++){
+        RegionEconomy *re=&econ->region[r];
+        if (re->owner!=a->cid || !re->colonized || re->impassable || r==src) continue;
+        if (re->habitability < 0.20f) continue;
         float lab=re->strata[CLASS_LABORER].pop;
         if (lab > 2.0f*AI_RELOC_SEED) continue;            /* déjà bien peuplée → pas de marge */
         float margin = (AI_RELOC_SEED - lab)/AI_RELOC_SEED; if (margin<0.f) margin=0.f;
@@ -592,7 +606,7 @@ static void ai_relocate_turn(AiActor *a, WorldEconomy *econ, const AiView *v, in
             if (score > best){ best=score; tgt=r; }
         }
     }
-    if (tgt<0) return;                                     /* aucune province-ressource sous-exploitée à amorcer */
+    if (tgt<0) return;                                     /* rien à peupler ni à amorcer */
     if (frand(&a->rng) > w_reloc) return;                  /* la volonté n'emporte pas ce tour-ci */
     float seed = fminf(0.25f*src_pop, AI_RELOC_SEED);      /* ensemencement mesuré (≤ une bande) */
     if (seed < AI_RELOC_FLOOR) return;
@@ -724,6 +738,44 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
     }
 }
 
+/* L'IA DÉVELOPPE — la VOLONTÉ de bâtir. Un empire ne THÉSAURISE pas le brut (le bien manufacturé
+ * vaut plus) : il POSE la fabrique qui TRANSFORME le raw qu'il extrait. On REMPLIT LES SLOTS — pour
+ * chaque région possédée qui extrait un intrant brut SANS la manufacture qui le mange, on la bâtit
+ * (peu importe laquelle ; la moins chère T1 d'abord, gisement le + riche d'abord), tier-gatée par la
+ * taille de la province. Une par tour. C'est ce qui convertit la terre en ateliers — et appelle les
+ * bras (la relocalisation suit). Le marché écoule, le raw ne dort plus en stock. */
+static void ai_build_civmanuf(AiActor *a, WorldEconomy *econ){
+    int cap=a->home_region; if (cap<0||cap>=econ->n_regions) return;
+    RegionEconomy *cre=&econ->region[cap];
+    int br=-1; BuildingType bb=BLD_TYPE_COUNT; float bestcap=0.5f;
+    for (int r=0;r<econ->n_regions;r++){
+        RegionEconomy *re=&econ->region[r];
+        if (re->owner!=a->cid || !re->colonized) continue;
+        float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        int rtier=capitale_max_tier((long)rpop);
+        for (int b=0;b<BLD_TYPE_COUNT;b++){
+            if (bld_is_faustian((BuildingType)b)) continue;          /* pas les transmuteurs (charge/tech) */
+            if (rtier < bld_min_tier((BuildingType)b)) continue;      /* province trop petite pour cette fabrique */
+            Resource in1,in2,out; building_recipe((BuildingType)b,&in1,&in2,&out);
+            if (out==RES_NONE || in1==RES_NONE) continue;            /* pas une manufacture à intrant */
+            /* le CIVIL seulement : l'armement & l'arcane sont la voie DOCTRINALE (ai_build_manufacture,
+             * tier-gatée, mesurée) — les semer partout gonflait mil_power (poudre/armes lues par la
+             * diplomatie) → emballement des guerres. Le civil métabolise le brut sans armer le monde. */
+            if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
+                || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX) continue;
+            if (re->raw_cap[in1] <= bestcap) continue;               /* l'intrant doit être EXTRAIT ici (et + riche) */
+            bool have=false; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==(BuildingType)b){ have=true; break; }
+            if (have) continue;                                       /* slot déjà rempli */
+            bestcap=re->raw_cap[in1]; br=r; bb=(BuildingType)b;
+        }
+    }
+    if (br<0) return;                                                /* tous les slots-ressource sont remplis */
+    float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(econ);  /* T1 : la moins chère (le développement de base) */
+    if (cre->treasury < cost) return;                                /* puissance éco insuffisante */
+    cre->treasury-=cost; econ_flux_add(a->cid, FX_SOLDE, -cost);
+    if (econ_build_manufacture(econ, br, bb)) a->stats.builds_other++;
+}
+
 /* Économie : commercer OU bâtir (le frein réoriente l'énergie vers le K). */
 static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const AiView *v,
                          AgencyState *ag, RouteNetwork *rn, float brake, int day){
@@ -735,6 +787,8 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
     /* F-arc — un peuple NOURRI POSE sa fabrique militaire par doctrine (tier + or) : c'est ce qui
      * fait apparaître les fabriques d'armes neuves (l'IA les CHOISIT, ne les attend pas du marché). */
     ai_build_manufacture(a, w, econ);
+    /* …et il DÉVELOPPE le civil : il transforme le brut qu'il extrait (remplir les slots). */
+    ai_build_civmanuf(a, econ);
 
     a->credit_trade += a->w_trade * (1.f - 0.5f*brake);
     a->credit_build += a->w_build + 0.8f*brake;           /* le frein POUSSE à consolider */

@@ -908,6 +908,16 @@ int main(int argc, char **argv){
                   if(s.ts[c].unlocked[TECH_ALCHIMIE])     alch++; }
               fprintf(stderr,"[FORGEDIAG] TECH MILITAIRES (%d empires) : caserne→hallebardier %d · poudrière→arquebusier %d · forge runes→garde %d · magie→mage %d · alchimie→alchimiste %d\n",
                     nemp, caserne,poudr,runes,magie,alch); }
+            { int ncol=0,under=0; double tpop=0,rawk=0,goods=0;   /* DÉV : colonies peuplées ? raw processé ? */
+              for (int r=0;r<s.econ->n_regions;r++){ RegionEconomy *re=&s.econ->region[r];
+                  if(re->owner<0||!re->colonized)continue;
+                  ncol++;
+                  double pop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+                  tpop+=pop; if(pop<1000.0)under++;
+                  rawk += re->stock[RES_IRON]+re->stock[RES_WOOD]+re->stock[RES_COAL]+re->stock[RES_WOOL]+re->stock[RES_GRAIN];
+                  goods+= re->supply[RES_CLOTH]+re->supply[RES_METAL]+re->supply[RES_TOOLS]+re->supply[RES_PAPER]; }
+              fprintf(stderr,"[FORGEDIAG] DÉV : %d colonies · pop moy %.0f · %d sous 1000 hab | stock RAW %.0f · biens manuf/tick %.0f (le raw doit DESCENDRE, les biens MONTER)\n",
+                    ncol, ncol?tpop/ncol:0.0, under, rawk, goods); }
             { double dem[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)dem[g]=0.0;
               for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
                   for(int g=0;g<RES_COUNT;g++) dem[g]+=s.econ->region[r].demand[g]; }
