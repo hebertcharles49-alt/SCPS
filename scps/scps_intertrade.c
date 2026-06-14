@@ -366,10 +366,6 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
     g_last_value = 0.f;
     flows_clear();
     if (!e || !rn) return;
-    /* P3.20 — quels pays tiennent un Centre commercial ? (sans : pas de réseau) */
-    bool has_centre[SCPS_MAX_COUNTRY]; memset(has_centre,0,sizeof has_centre);
-    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
-        if (g_centre[r]){ int o=e->region[r].owner; if(cid_ok(o)) has_centre[o]=true; }
 
     /* #5 — LE MARCHÉ À 2 ÉTAGES (étage local). Chaque région se branche au marché de la
      * cité-état la PLUS PROCHE (hub_map_build), à RENDEMENT DÉGRESSIF : la marge d'achat
@@ -405,7 +401,10 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
         if (ra<0||rb<0||ra>=e->n_regions||rb>=e->n_regions) continue;
         int ca=e->region[ra].owner, cb=e->region[rb].owner;
         if (ca<0||cb<0||ca==cb) continue;            /* intra-pays : déjà couvert par scps_trade */
-        if (!has_centre[ca] || !has_centre[cb]) continue;  /* P3.20 : pas de Centre commercial → pas de réseau */
+        /* M1 — LE COMMERCE RÉGIONAL (empire↔empire, le long des routes) N'EXIGE PAS de
+         * Centre : il coule à la paix, hors embargo, AMÉLIORÉ par Marché/Comptoir (conn_mult
+         * ci-dessous). Le gate « il faut un Centre » est la signature de la strate GLOBALE
+         * (le réseau des cités-états), géré ailleurs — pas une condition du régional. */
         bool pact=diplo_trade_pact(dp,ca,cb);        /* cité marchande : route GARANTIE */
         if (!pact && !pair_at_peace(dp,ca,cb)) continue;      /* EMBARGO : guerre commerciale */
         if (!pact && intertrade_embargoed(ca,cb)) continue;   /* EMBARGO DÉCRÉTÉ (joueur/IA) */
