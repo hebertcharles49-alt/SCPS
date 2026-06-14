@@ -904,6 +904,31 @@ long econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need){
     return got;
 }
 
+/* F-arc (bâti DÉLIBÉRÉ des manufactures) — le TIER de capitale (T1-7) requis pour poser une
+ * manufacture : les fabriques avancées (armes lourdes/feu, arcane, transmuteurs) exigent une ville
+ * mûre (le joueur spawn T4). Les manufactures de base : T1 (suite hameau). */
+int bld_min_tier(BuildingType b){
+    switch(b){
+        case BLD_ARMORY_HEAVY: case BLD_BOWYER:                 return 2;
+        case BLD_ARQUEBUS: case BLD_MAGE_WORKSHOP:              return 3;
+        case BLD_CELESTIAL_FORGE: case BLD_ALAMBIC:             return 4;
+        case BLD_FOREUSE: case BLD_REPLICATEUR: case BLD_CORNE: return 5;
+        default:                                                return 1;   /* manufactures de base */
+    }
+}
+/* POSER une manufacture DÉLIBÉRÉMENT (le joueur/IA la choisit ; pas d'auto-bâti). L'appelant a vérifié
+ * le tier + payé l'or. Renvoie true si bâtie (ou déjà présente). */
+bool econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b){
+    if (!econ || region<0 || region>=econ->n_regions) return false;
+    RegionEconomy *re=&econ->region[region];
+    int bi=region_ensure_building(re, b);
+    if (bi<0) return false;
+    /* une fabrique DÉLIBÉRÉE (payée) naît SUBSTANTIELLE — un vrai atelier, pas une semence : elle
+     * produit assez pour armer des régiments (la prod plafonne de toute façon sur l'intrant + les bras). */
+    if (re->bld[bi].level < 5.f) re->bld[bi].level = 5.f;
+    return true;
+}
+
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire. */
 static double g_flux[SCPS_MAX_COUNTRY][FX_COUNT];
 void econ_flux_add(int cid, FluxComp comp, float amount){

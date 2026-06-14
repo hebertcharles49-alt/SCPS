@@ -95,6 +95,9 @@
     X(ENTROPY_TERMINAL,       4000.0f) \
     /* FAU5 : au-DESSUS de cette proximité de Brèche (tech_crisis_proximity), l'IA NE cède PLUS à
      * l'échappatoire faustienne du bois/nourriture (prudence) ; en-dessous + famine, OUI. */ \
-    X(FAUST_BRECHE_CAUTION,   0.55f)
+    X(FAUST_BRECHE_CAUTION,   0.55f) \
+    /* F-arc : coût d'or de base (× tier × IPM) pour qu'une IA POSE une manufacture militaire — la
+     * « puissance économique » qui gate « combien de fabriques je peux poser ». */ \
+    X(MANUF_BUILD_COST,       50.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

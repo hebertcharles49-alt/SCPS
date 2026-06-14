@@ -15,7 +15,9 @@
 #include "scps_species.h"
 #include "scps_factions.h"   /* l'éthos effectif + la fracture de valeurs (frein interne §6) */
 #include "scps_intertrade.h" /* §leviers : l'embargo — la guerre commerciale du Mercantile */
+#include "scps_labor.h"      /* F-arc : capitale_max_tier (le tier de capitale qui gate les manufactures) */
 #include <string.h>
+#include <stdlib.h>
 #include <math.h>
 
 #define AI_ETHOS_FRACTURE_W     0.7f  /* poids du frein INTERNE : une politique déchirée se consolide (§6) */
@@ -682,6 +684,46 @@ static void ai_impose_contract(AiActor *a, const World *w, WorldEconomy *econ,
     if (c!=CONTRAT_NONE) diplo_set_vassal(dp, a->cid, loser, c);
 }
 
+/* F-arc — POSER LES MANUFACTURES MILITAIRES PAR DOCTRINE (bâti DÉLIBÉRÉ, gaté par le TIER de
+ * capitale + la PUISSANCE ÉCONOMIQUE = l'or). « Combien puis-je poser ? » = ce que le trésor paie ;
+ * « par doctrine » : MARTIALE (Dominateur/Honneur) → lourd + feu · ARCANIQUE (appétit faustien) →
+ * forge céleste + atelier de mage · FLUIDE → atelier d'arc (trait). Une fabrique par tour ; les
+ * troupes suivent à la levée (warhost, par doctrine). Pas d'auto-bâti : c'est un CHOIX payé. */
+static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ){
+    int cap=a->home_region;
+    if (cap<0 || cap>=econ->n_regions) return;
+    RegionEconomy *cre=&econ->region[cap];
+    /* « Quelle puissance économique ? » = le TIER de capitale (taille, T1 hameau … T7 mégapole) gate
+     * CE QU'on peut poser ; le trésor gate COMBIEN. (Le tier PAYÉ du labor n'est pas maintenu ici.) */
+    float cpop=cre->strata[CLASS_LABORER].pop+cre->strata[CLASS_BOURGEOIS].pop+cre->strata[CLASS_ELITE].pop;
+    int tier=capitale_max_tier((long)cpop);
+    Ethos eth=ai_capital_ethos(w, econ, a->cid);
+    BuildingType want[2]; int nw=0;
+    if (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR){ want[nw++]=BLD_ARMORY_HEAVY; want[nw++]=BLD_ARQUEBUS; }  /* martiale : lourd + feu */
+    else if (a->w_faustian > 0.30f){ want[nw++]=BLD_CELESTIAL_FORGE; want[nw++]=BLD_MAGE_WORKSHOP; }          /* arcanique */
+    else { want[nw++]=BLD_BOWYER; }                                                                           /* fluide : trait */
+    for (int k=0;k<nw;k++){
+        BuildingType b=want[k];
+        if (tier < bld_min_tier(b)) continue;                  /* empire pas assez développé (T-gate) */
+        /* POSER dans la région-RESSOURCE (l'intrant primaire) — sinon la fabrique ne produit pas
+         * (régions spécialisées) : fer pour l'armurerie/arc/arquebuse, cristal/fer céleste pour l'arcane. */
+        Resource in=(b==BLD_MAGE_WORKSHOP)?RES_ARCANE_CRYSTAL:(b==BLD_CELESTIAL_FORGE)?RES_CELESTIAL_IRON:RES_IRON;
+        int best=-1; float bestcap=0.1f;
+        for (int r=0;r<econ->n_regions;r++){
+            if (econ->region[r].owner!=a->cid) continue;
+            bool have=false; for (int i=0;i<econ->region[r].n_bld;i++) if (econ->region[r].bld[i].type==b){ have=true; break; }
+            if (have) continue;
+            if (econ->region[r].raw_cap[in] > bestcap){ bestcap=econ->region[r].raw_cap[in]; best=r; }
+        }
+        if (best<0) continue;                                  /* pas de région avec l'intrant (ou déjà bâtie partout) */
+        float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
+        if (cre->treasury < cost) continue;                    /* puissance éco insuffisante → pas le chantier */
+        cre->treasury-=cost; econ_flux_add(a->cid, FX_SOLDE, -cost);
+        if (econ_build_manufacture(econ, best, b)) a->stats.builds_other++;
+        return;                                                /* une fabrique par tour */
+    }
+}
+
 /* Économie : commercer OU bâtir (le frein réoriente l'énergie vers le K). */
 static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const AiView *v,
                          AgencyState *ag, RouteNetwork *rn, float brake, int day){
@@ -690,6 +732,9 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
         if (agency_build(ag, econ, a->home_region, EDI_GRENIER)) a->stats.builds_other++;
         return;
     }
+    /* F-arc — un peuple NOURRI POSE sa fabrique militaire par doctrine (tier + or) : c'est ce qui
+     * fait apparaître les fabriques d'armes neuves (l'IA les CHOISIT, ne les attend pas du marché). */
+    ai_build_manufacture(a, w, econ);
 
     a->credit_trade += a->w_trade * (1.f - 0.5f*brake);
     a->credit_build += a->w_build + 0.8f*brake;           /* le frein POUSSE à consolider */
