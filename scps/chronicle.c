@@ -849,14 +849,16 @@ int main(int argc, char **argv){
                years, c1, absorbed, emerged, min_living, nages, war_onsets, peak_wars, peak_rev, peak_rev_year);
         /* FAU/F8 — la boucle faustienne (transmuteurs + entropie) ET la demande de fer (forge
          * militaire). Conso cumulée par rare ; entropie monde ; prix moyen du fer (la preuve F8). */
-        { double pir=0.0; int npr=0; long fract=0;
+        { double pir=0.0, pmax=0.0, arms=0.0; int npr=0; long fract=0;
           for (int r=0;r<s.econ->n_regions;r++){ if (s.econ->region[r].owner<0) continue;
-              pir += s.econ->region[r].price[RES_IRON]; npr++; }
+              double p=s.econ->region[r].price[RES_IRON]; pir+=p; if(p>pmax)pmax=p; npr++;
+              arms += s.econ->region[r].supply[RES_ARMS_LIGHT]+s.econ->region[r].supply[RES_ARMS_HEAVY]
+                    + s.econ->region[r].supply[RES_ARMS_RANGED]+s.econ->region[r].supply[RES_FIREARM]; }
           for (int c=0;c<w->n_countries;c++) if (s.ai_on[c] && tech_crisis_proximity(&s.ts[c])>0.85f) fract++;
-          printf("              faustien : entropie monde %.0f%s · conso foreuse %.0f · réplicateur %.0f · corne %.0f · %ld empire(s) au bord de la Brèche | FER prix moyen %.1f (base %.1f)\n",
+          printf("              faustien : entropie monde %.0f%s · conso foreuse %.0f · réplicateur %.0f · corne %.0f · %ld empire(s) au bord de la Brèche | FER prix moy %.1f / max %.1f (base %.1f) · armes produites %.0f\n",
                  (double)s.wp->entropy, s.wp->entropy_terminal?" [TERMINAL]":"",
                  s.wp->faust_consumed[0], s.wp->faust_consumed[1], s.wp->faust_consumed[2],
-                 fract, npr?pir/npr:0.0, (double)econ_base_price(RES_IRON)); }
+                 fract, npr?pir/npr:0.0, pmax, (double)econ_base_price(RES_IRON), arms); }
         if (tp>=0)
             printf("              1er empire « %s » : %d régions (%d%% des terres) | Stabilité %d  Prospérité %d  Légitimité %d  Cohésion %d — Assise %s\n",
                    w->country[tp].name, treg, share, r.m_stabilite.value, r.m_prosperite.value,

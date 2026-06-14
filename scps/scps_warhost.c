@@ -13,35 +13,26 @@
 #define WH_ARMS_PER_UNIT 8.0f  /* F6 : force d'armée/paquet → mil_stock (calé pour retrouver l'ordre de
                                 * grandeur de l'ancien stock RES_ARMS plafonné, après découplage) */
 
-/* F5/F6 — la catégorie d'ARME ÉCONOMIQUE (RES_*) que consomme une unité (100 armes = 100 hommes).
- * Catégorie PARTAGÉE : léger ← piquier/lancier/épéiste/cav légère ; lourd ← cav lourde/hallebardier ;
- * trait ← archer/arbalétrier ; feu ← arquebusier ; mage/alchimiste/garde runique chacun le sien. */
-static Resource unit_res_arm(UnitType t){
-    switch(t){
-        case U_PIQUIER: case U_LANCIER: case U_EPEISTE: case U_CAV_LEGERE: return RES_ARMS_LIGHT;
-        case U_CAV_LOURDE: case U_HALLEBARDIER:                             return RES_ARMS_HEAVY;
-        case U_ARCHER: case U_ARBALETE:                                     return RES_ARMS_RANGED;
-        case U_ARQUEBUSIER:                                                 return RES_FIREARM;
-        case U_MAGE:                                                        return RES_MAGE_STAFF;
-        case U_ALCHIMISTE:                                                  return RES_ALCHEMIST_KIT;
-        case U_GARDE_RUNIQUE:                                               return RES_ENCHANTED_ARMS;
-        default:                                                            return RES_NONE;
-    }
-}
-/* F6 — CONSOMME les armes RÉELLES du stock de l'empire (100/paquet, puisées région par région) et
- * RENVOIE le nombre de paquets QU'ON PEUT lever (plafonné par le stock). Stock nul → 0 (pas de levée).
- * C'est la pression neuve : la levée tire la demande d'armes → de fer (la preuve F8). */
+/* unit_res_arm (la catégorie d'arme macro d'une unité) vit dans scps_army.c — un seul point de
+ * vérité, partagé entre le warhost (levée/démob) et le campaign (renfort). */
+/* F6 (Option B) — CONSOMME les armes MACRO (RES_ARMS_*, le marché économique où vit le prix du fer)
+ * du stock de l'empire (100/paquet, région par région) et RENVOIE le nombre de paquets QU'ON PEUT
+ * lever (plafonné par le stock — macro nul → 0, pas de levée). La levée tire la demande d'armes →
+ * de fer via les fabriques (F2) : LA preuve F8. */
 static long wh_arms_take(WorldEconomy *econ, int cid, UnitType t, long want){
     if (want<=0) return 0;
     Resource arm=unit_res_arm(t);
     if (arm==RES_NONE) return want;                 /* pas de catégorie → pas de gate (sécurité) */
-    long need=want*POP_PER_UNIT, got=0;
-    for (int r=0;r<econ->n_regions && got<need;r++){
-        if (econ->region[r].owner!=cid) continue;
-        long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
-        econ->region[r].stock[arm]-=(float)take; got+=take;
-    }
-    return got/POP_PER_UNIT;
+    return econ_arms_take(econ, cid, arm, want*POP_PER_UNIT) / POP_PER_UNIT;
+}
+/* F6 Option B — ARMER un paquet : puise les armes MACRO (RES_ARMS_*, source) → remplit le TAMPON de
+ * combat a->weapons[W_*] (que le combat lit, INCHANGÉ) → enrôle. La source du tampon bascule de la
+ * fabrication LRes (absorbée) vers le marché macro où la fabrique consomme le fer. */
+static void wh_arm_unit(ArmyState *a, LaborEcon *sc, WorldEconomy *econ, int cid, UnitType t, long want){
+    const UnitDef *d=unit_def(t); if(!d || want<=0) return;
+    long got=wh_arms_take(econ, cid, t, want);
+    a->weapons[d->weapon] += got;                   /* le tampon de combat, rempli depuis le macro */
+    army_recruit(a, sc, t, got);
 }
 
 void warhost_init(WarHost *h){
@@ -98,31 +89,30 @@ static long seed_scratch(LaborEcon *e, const World *w, const WorldEconomy *econ,
  * pas d'unité). */
 static void wh_levy_batch(ArmyState *a, LaborEcon *sc, WorldEconomy *econ, int cid, long batch, long elite){
     if (batch<=0) return;
-    /* F6 — la levée CONSOMME les armes RÉELLES de sa catégorie (100/paquet, stock de l'empire) :
-     * c'est la pression neuve qui tire la demande d'armes → de FER (la preuve F8). Consommation
-     * SOUPLE (on prélève ce qui existe, sans affamer l'armée — l'IA stockpile en amont, F8) :
-     * la fabrique d'armes du joueur/IA alimente le stock, la levée le draine. */
-    army_fabricate_weapon(a, sc, W_PIQUE, batch);     army_recruit(a, sc, U_PIQUIER, batch);
-    wh_arms_take(econ, cid, U_PIQUIER, batch);
-    long epe=batch/2 + 1;
-    army_fabricate_weapon(a, sc, W_EPEE,  epe);       army_recruit(a, sc, U_EPEISTE, epe);
-    wh_arms_take(econ, cid, U_EPEISTE, epe);
-    if (elite > 200){
-        long cav=batch/3 + 1;
-        army_fabricate_weapon(a, sc, W_MONTURE_H, cav); army_recruit(a, sc, U_CAV_LOURDE, cav);
-        wh_arms_take(econ, cid, U_CAV_LOURDE, cav);
-    }
+    /* F6 Option B — la levée REMPLIT le tampon de combat depuis les armes MACRO (RES_ARMS_*) : la
+     * fabrique (F2, ex. l'armurerie auto-bâtie sur le fer) produit l'arme depuis le FER, la levée la
+     * draine → le prix du fer monte sous militarisation (la preuve F8). Léger : piquier + épéiste ;
+     * lourd : cav lourde si l'élite est là (gatée par le stock d'armes LOURDES → fabrique dédiée). */
+    wh_arm_unit(a, sc, econ, cid, U_PIQUIER, batch);
+    wh_arm_unit(a, sc, econ, cid, U_EPEISTE, batch/2 + 1);
+    if (elite > 200) wh_arm_unit(a, sc, econ, cid, U_CAV_LOURDE, batch/3 + 1);
 }
 
-/* DÉMOBILISER `n` paquets : les unités fondent (de la dernière vers la première)
- * et la pop affectée RETOURNE au pool (re-recrutable si la guerre revient). */
-static void wh_shed(ArmyState *a, long n){
+/* DÉMOBILISER `n` paquets : les unités fondent (de la dernière vers la première), la pop affectée
+ * RETOURNE au pool (re-recrutable), ET les ARMES RETOURNENT au stock macro (F6, Option B) — le fer
+ * dépensé à la mobilisation est RÉCUPÉRÉ au licenciement (réutilisable, pas de gaspillage) : la
+ * demande de fer suit la CROISSANCE de l'armée, pas son maintien. */
+static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
     for (int i=a->n_units-1; i>=0 && n>0; i--){
         long take = a->units[i].count; if (take>n) take=n;
+        UnitType t = a->units[i].type;
         a->units[i].count -= take; n -= take;
-        LaborClass cl = unit_def(a->units[i].type)->from;
+        LaborClass cl = unit_def(t)->from;
         a->pop_by_class_in_army[cl] -= take*POP_PER_UNIT;
         if (a->pop_by_class_in_army[cl] < 0) a->pop_by_class_in_army[cl] = 0;
+        Resource arm=unit_res_arm(t);
+        if (arm!=RES_NONE && econ) for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
+            econ->region[r].stock[arm]+=(float)(take*POP_PER_UNIT); break; }   /* armes rendues au stock */
         if (a->units[i].count<=0){                 /* compacter : retirer l'unité vide */
             for (int j=i;j<a->n_units-1;j++) a->units[j]=a->units[j+1];
             a->n_units--;
@@ -192,7 +182,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
         } else {
             long garrison = (long)(WH_GARRISON_UNITS*LEVY_MULT[lv] + 0.5f);
             if (cur > garrison){
-                wh_shed(&h->army[c], (cur - garrison + 1)/2);   /* ~moitié/an vers la garnison */
+                wh_shed(&h->army[c], econ, c, (cur - garrison + 1)/2);   /* ~moitié/an vers la garnison */
             } else if (cur < garrison){
                 long batch = (long)(WH_BATCH_PEACE*LEVY_MULT[lv]*dt + 0.5f);
                 long deficit = garrison - cur; if (batch>deficit) batch=deficit;

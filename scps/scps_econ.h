@@ -367,6 +367,7 @@ void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resour
 float econ_bld_flux_delta(BuildingType b);
 bool  bld_is_faustian(BuildingType b);   /* FAU0 #4 : les 3 transmuteurs (foreuse/réplicateur/corne) */
 void  faust_charge_add(RegionEconomy *re, float amount);  /* FAU0 #2 : le hook de charge UNIQUE */
+long  econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need);  /* F6 : conso d'armes macro (levée/renfort) */
 /* M6 — la MATIÈRE gate la manufacture arcane : Forge ↔ fer céleste, Atelier ↔ cristal,
  * Alambic ↔ salpêtre (raw_cap de la région). true pour les manufactures ordinaires. */
 bool  econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b);

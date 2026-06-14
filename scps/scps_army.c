@@ -60,6 +60,20 @@ TechId unit_tech_gate(UnitType t){
         default:              return TECH_COUNT;          /* base : toujours recrutable */
     }
 }
+/* F5/F6 — la catégorie d'ARME ÉCONOMIQUE (RES_*) que consomme une unité (100 armes = 100 hommes).
+ * UN SEUL POINT DE VÉRITÉ (lu par le warhost à la levée/démob ET le campaign au renfort). */
+Resource unit_res_arm(UnitType t){
+    switch(t){
+        case U_PIQUIER: case U_LANCIER: case U_EPEISTE: case U_CAV_LEGERE: return RES_ARMS_LIGHT;
+        case U_CAV_LOURDE: case U_HALLEBARDIER:                             return RES_ARMS_HEAVY;
+        case U_ARCHER: case U_ARBALETE:                                     return RES_ARMS_RANGED;
+        case U_ARQUEBUSIER:                                                 return RES_FIREARM;
+        case U_MAGE:                                                        return RES_MAGE_STAFF;
+        case U_ALCHIMISTE:                                                  return RES_ALCHEMIST_KIT;
+        case U_GARDE_RUNIQUE:                                               return RES_ENCHANTED_ARMS;
+        default:                                                            return RES_NONE;
+    }
+}
 bool unit_recruitable(const TechState *ts, UnitType t){
     TechId g=unit_tech_gate(t);
     return (g==TECH_COUNT) || (ts && ts->unlocked[g]);

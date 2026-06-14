@@ -59,6 +59,10 @@ int main(int argc,char**argv){
     diplo_declare_war(&dp, ca, cb);
 
     WarHost h; warhost_init(&h);
+    /* F6 Option B : lever puise les armes MACRO (RES_ARMS_*) — on en sème (les fabriques les
+     * auraient produites depuis le fer) sinon pas de levée. */
+    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==ca||econ->region[r].owner==cb){
+        econ->region[r].stock[RES_ARMS_LIGHT]=5000.f; econ->region[r].stock[RES_ARMS_HEAVY]=2000.f; }
     float arms0=capital_arms(w,econ,ca);
     /* 3 ans : assez pour que le PIED DE GUERRE (WH_BATCH_WAR=7/an) lève son plafond,
      * mais trop court pour que l'ENTRETIEN de paix (WH_BATCH_PEACE=1.5/an) le rattrape.

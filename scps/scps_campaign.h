@@ -181,6 +181,6 @@ bool campaign_can_refill(const Campaign *c, const WorldEconomy *econ, int owner)
 void campaign_refill_cost(const Campaign *c, int owner, long *men, long *mat);
 /* RENFORCE l'armée : +1 paquet par type d'unité (fabrique l'arme en pompant le
  * marché si besoin, lève la pop), payé sur l'éco `labor`. Renvoie les paquets ajoutés. */
-int  campaign_refill(Campaign *c, int owner, LaborEcon *labor);
+int  campaign_refill(Campaign *c, int owner, WorldEconomy *econ, LaborEcon *labor);  /* F6 : pompe les armes macro */
 
 #endif /* SCPS_CAMPAIGN_H */

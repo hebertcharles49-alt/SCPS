@@ -887,6 +887,20 @@ void faust_charge_add(RegionEconomy *re, float amount){
     if (re && amount>0.f) re->arcane_charge += amount;
 }
 
+/* F6 (Option B) — CONSOMME `need` armes MACRO (RES_*) du stock de l'empire (région par région),
+ * REGISTRE la demande (→ la fabrique produit → consomme le FER) et RENVOIE la quantité prélevée
+ * (plafonnée par le stock). UN SEUL ROBINET : levée (warhost) ET renfort (campaign) y passent. */
+long econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need){
+    if (!econ || need<=0 || arm<=RES_NONE || arm>=RES_COUNT) return 0;
+    long got=0;
+    for (int r=0;r<econ->n_regions && got<need;r++){
+        if (econ->region[r].owner!=cid) continue;
+        long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
+        econ->region[r].stock[arm]-=(float)take; econ->region[r].demand[arm]+=(float)take; got+=take;
+    }
+    return got;
+}
+
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire. */
 static double g_flux[SCPS_MAX_COUNTRY][FX_COUNT];
 void econ_flux_add(int cid, FluxComp comp, float amount){

@@ -2369,7 +2369,7 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
             break;
         case SBH_POSTURE:  campaign_set_posture(s->camp, s->player, hh->a); break;
         case SBH_REFILL: {
-            int got=campaign_refill(s->camp, s->player, s->labor);
+            int got=campaign_refill(s->camp, s->player, s->econ, s->labor);
             printf("\n[scps] Renfort : %d paquet(s) levés en territoire ami.\n", got);
         } break;
         case SBH_MARCH: {
@@ -4692,7 +4692,7 @@ int main(int argc, char **argv) {
                     if (g_refill_owner>=0 &&
                         ev.button.x>=g_refill_btn.x && ev.button.x<g_refill_btn.x+g_refill_btn.w &&
                         ev.button.y>=g_refill_btn.y && ev.button.y<g_refill_btn.y+g_refill_btn.h){
-                        int added = campaign_refill(sim.camp, g_refill_owner, sim.labor);
+                        int added = campaign_refill(sim.camp, g_refill_owner, sim.econ, sim.labor);
                         printf("\n[scps] Remplir : +%d paquet(s) levé(s) (territoire ami, payé au marché).\n", added);
                         dirty=true; break;
                     }
