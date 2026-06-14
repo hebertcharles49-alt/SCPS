@@ -88,7 +88,12 @@ static float ai_faustian_appetite(Credo cr, float valeurs){
     return k*(0.6f+0.08f*valeurs);
 }
 #define AI_TECH_SIGNATURE   1.5f  /* prime à une signature accessible (la sienne / greffée) */
-#define AI_TECH_FAUSTIAN    2.5f  /* tolérance faustienne = w_faustian − frein (sinon on évite) */
+#define AI_FAUST_QUEST      0.80f /* S3 : SEUIL d'appétit pour QUÊTER l'emblème faustien (forge runique ×
+                                   * arcane) — l'empire le PLUS faustien-enclin du monde (l'appétit plafonne
+                                   * ~0.84 sans Dominateur pluraliste) ; le filtre S1 écarte les marchands */
+#define AI_TECH_FAUSTIAN    1.2f  /* S3 : tolérance faustienne RÉCONCILIÉE (2.5→1.2) — l'appétit d'un
+                                   * Transgresseur/culte (×1.4 + bénédiction) peut enfin RENCONTRER le
+                                   * frein ; la charge → Brèche garde le franchissement RARE et coûteux */
 #define AI_FOREUSE_HUNGER   5.0f  /* §4 : la FAMINE DE FER rend la foreuse arcanique irrésistible (surpasse le frein faustien) */
 #define AI_RELOC_SEED      300.f  /* §reloc : ensemencement type (~EXTRACT_POP_REF) — pousse la cible d'une bande d'intensité */
 #define AI_RELOC_FLOOR     100.f  /* pop minimale pour qualifier source/cible (jamais peupler le vide) */
@@ -1311,6 +1316,20 @@ float ai_research_income(const TechState *ts, float pop){
     return (AI_RESEARCH_RATE/365.f) * tech_research_yield(ts) * (1.f + pop/AI_RESEARCH_POPREF);
 }
 
+/* S3 — LE PROCHAIN PAS vers une cible (beeline) : remonte la chaîne de prérequis de `target`
+ * et renvoie le nœud LE PLUS PROFOND non encore acquis qui soit RECHERCHABLE (accès + prérequis).
+ * TECH_COUNT si la cible est déjà acquise OU si le pas suivant reste verrouillé (archétype/ruine). */
+static TechId ai_step_toward(const TechState *ts, TechId target, unsigned access){
+    if (target<0||target>=TECH_COUNT||ts->unlocked[target]) return TECH_COUNT;
+    TechId chain[24]; int nc=0; TechId t=target;
+    while (t>=0 && t<TECH_COUNT && nc<24){ chain[nc++]=t; t=tech_node(t)->prereq; }
+    for (int i=nc-1;i>=0;i--){                 /* de la racine VERS la cible : le 1er non-acquis = le pas suivant */
+        if (ts->unlocked[chain[i]]) continue;
+        return tech_can_research(ts, chain[i], access) ? chain[i] : TECH_COUNT;
+    }
+    return TECH_COUNT;
+}
+
 void ai_research_step(AiActor *a, TechState *ts, const World *w,
                       const WorldEconomy *econ, const RouteNetwork *rn,
                       const WorldProsperity *wp, int day){
@@ -1355,6 +1374,29 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             if (sig!=TECH_COUNT){
                 if (ts->research_points < sigcost) return;                    /* pas les moyens : on ÉPARGNE (et TIENT) */
                 pick = sig;                                                   /* assez de Savoir : on ACQUIERT la greffe */
+            }
+        }
+    }
+    /* S3 — LA QUÊTE FAUSTIENNE DE L'EMBLÈME (forge runique × arcane = métallurgiste × ésotérique).
+     * Le verrou n'était PAS le frein (déjà franchissable) mais la PROFONDEUR : l'emblème est tier-3
+     * derrière la Poudrière, jamais atteinte par l'IA gloutonne, et AUCUN empire n'est assez
+     * transgressif pour s'y forcer. Un empire à fort APPÉTIT faustien (pluraliste à HAUTES valeurs
+     * OU culte — ai_faustian_appetite ≥ seuil), DEUX archétypes en main (S1 : commerce/gouvernance),
+     * BEELINE la chaîne (Poudrière → Forge à runes) en épargnant à chaque pas. RARE (la porte
+     * d'appétit) et COÛTEUX (la charge → Brèche borne les conséquences) ; on NE touche PAS la
+     * foreuse. Le frein AI_TECH_FAUSTIAN abaissé (2.5→1.2) scelle la rencontre appétit/frein. */
+    if (!ts->unlocked[TECH_FORGE_RUNES]
+        && (access & tech_race_bit(RACE_NAIN)) && (access & tech_race_bit(RACE_ELFE))){
+        Credo cr=CREDO_PLURALISTE; float val=5.f;
+        { int cp=w->country[a->cid].capital_prov;
+          int crg=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+          if (crg>=0&&crg<econ->n_regions){ cr=econ->region[crg].culture.credo; val=econ->region[crg].culture.valeurs; } }
+        if (ai_faustian_appetite(cr, val) >= AI_FAUST_QUEST){               /* la SOIF d'interdit (rare) */
+            TechId step=ai_step_toward(ts, TECH_FORGE_RUNES, access);
+            if (step!=TECH_COUNT){
+                float sc=tech_cost(step,pop)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
+                if (ts->research_points < sc) return;                      /* on ÉPARGNE pour le pas suivant */
+                pick=step;                                                 /* on AVANCE vers l'emblème */
             }
         }
     }

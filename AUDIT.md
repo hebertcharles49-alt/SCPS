@@ -180,6 +180,25 @@ au lien), ASan muet, viewer 0-warning, lang-check 64, déterminisme HASH 7 de6e2
 Mondes stables (6 pays, 0 absorbés, commerce ~inchangé) ; S1 tient (archétypes > 0 partout). La
 COMBINAISON forge runique × arcane reste 0 → S3 (frein faustien).
 
+## (c 10) S3 — le frein faustien réconcilié → l'emblème s'allume (forge runique × arcane) (2026-06-14)
+
+Diagnostic affiné (instrumentation FAUSTDIAG, retirée) : même S1 ouvrant les DEUX archétypes (NAIN+ELFE
+accessibles chez TOUS), l'emblème (TECH_FORGE_RUNES, faustien) restait à 0 — non par le frein (l'appétit
+d'un culte/pluraliste ×1.4 + la bénédiction le franchit déjà), mais par DEUX murs : (1) la PROFONDEUR —
+l'emblème est tier-3 derrière la Poudrière, jamais atteinte par l'IA gloutonne (le mur de S1) ; (2)
+l'absence de Transgresseur — w_faustian plafonne ~0.18, l'appétit ~0.84, aucun empire n'est assez fou.
+
+Deux gestes (scps_ai.c) : (1) AI_TECH_FAUSTIAN 2.5→1.2 (la rencontre appétit/frein que demandait le
+brief) ; (2) la QUÊTE de l'emblème — l'empire le PLUS faustien-enclin du monde (ai_faustian_appetite ≥
+0.80, écarté des marchands/bâtisseurs par le filtre S1) BEELINE la chaîne (ai_step_toward : Poudrière →
+Forge à runes) en épargnant à chaque pas. On NE touche PAS la foreuse (AI_FOREUSE_HUNGER intact).
+
+Preuve (1×100) : combo forge runique × arcane seed 7/9/11/19 = 3/1/2/1 (ex-0 sur toutes) ; faustiens
+déverrouillés > 0. La charge → Brèche la garde COÛTEUSE mais BORNÉE : mondes stables (6-8 pays, 0
+absorbé), âges éveillés inchangés (2, pas de Brèche en masse). make test 32/32, ASan muet, viewer
+0-warning, lang-check 64. SAVE non bumpé. L'arc Syncrétisme est bouclé : le commerce réveille
+l'archétype (S1), cristallise la culture (S2), et allume l'emblème faustien (S3).
+
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
 Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde

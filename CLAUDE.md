@@ -96,6 +96,17 @@
   « cristallisation(s) culturelle(s) par contact ». Mondes **STABLES** (6 pays, 0 absorbés, commerce
   ~inchangé). **SAVE NON bumpé** (origine + pile de dérive déjà sérialisées). Les 2 bancs démographie
   gagnent `scps_diplo.o`/`scps_routes.o` au lien.
+- **S3 (2026-06-14) — LE FREIN FAUSTIEN RÉCONCILIÉ → L'EMBLÈME S'ALLUME (forge runique × arcane)** :
+  même S1 ouvrant les DEUX archétypes (NAIN+ELFE accessibles partout), l'emblème (`TECH_FORGE_RUNES`,
+  faustien, **tier-3 derrière la Poudrière**) restait à **0** — non par le frein (déjà franchissable)
+  mais par la **PROFONDEUR** (l'IA gloutonne n'atteint jamais le tier-3) ET l'absence d'empire assez
+  transgressif (`w_faustian` plafonne ~0.18, appétit ~0.84). Deux gestes (`scps_ai.c`) : (1)
+  `AI_TECH_FAUSTIAN` abaissé **2.5→1.2** (la rencontre appétit/frein demandée) ; (2) la **QUÊTE** de
+  l'emblème — l'empire le plus faustien-enclin (`ai_faustian_appetite ≥ 0.80`, écarté des marchands
+  par le filtre S1) **BEELINE** la chaîne (Poudrière → Forge à runes, `ai_step_toward`) en épargnant
+  à chaque pas. On **NE touche PAS** la foreuse (son ressort propre). ⚠ **RE-BASELINE** : combo
+  seed 7/9/11/19 = **3/1/2/1** (ex-0) ; la **charge → Brèche** la garde COÛTEUSE mais **BORNÉE**
+  (mondes stables, 0 absorbé, âges inchangés). **SAVE non bumpé**.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables
