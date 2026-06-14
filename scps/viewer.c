@@ -1364,7 +1364,7 @@ static void ui_row(SDL_Renderer *ren, int x, int *y, int pw, const char *cat,
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SB_RAIL_W   46
 #define SB_DRAWER_W 380
-typedef enum { SBT_ECO=0, SBT_DEMO, SBT_STOCKS, SBT_ARMEE, SBT_FILTRES, SBT_DIPLO, SBT_COUNT } SbTab;
+typedef enum { SBT_ECO=0, SBT_DEMO, SBT_STOCKS, SBT_ARMEE, SBT_FILTRES, SBT_DIPLO, SBT_ETAT, SBT_COUNT } SbTab;
 typedef struct {
     int     tab;                  /* -1 = replié */
     int     eco_sub;              /* 0 Commerce · 1 Marché · 2 Import/Export */
@@ -1386,7 +1386,8 @@ enum { SBH_TAB=1, SBH_ECOSUB, SBH_EMBARGO, SBH_RELOC_SRC, SBH_RELOC_DST, SBH_REL
        SBH_LEV_REPRESS, SBH_LEV_ASSIM, SBH_LEV_PURGE, SBH_LEV_EMBARGO,
        SBH_LEV_CONTRAT /* a=SuzContrat, b=pays cible */,
        SBH_DECLARE /* a=pays cible (déclarer la guerre, CB inhérent) */,
-       SBH_PEACE   /* a=pays cible (négocier la paix : arbitrage IA exposé) */ };
+       SBH_PEACE   /* a=pays cible (négocier la paix : arbitrage IA exposé) */,
+       SBH_COUNCIL /* Q1 : a=siège(0..2), b=slot candidat à NOMMER (≥0) ou -1 = RENVOYER */ };
 typedef struct { SDL_Rect r; int kind, a, b; } SbHit;
 static SbHit g_sbhits[120]; static int g_nsbhits;
 static void sbhit_reset(void){ g_nsbhits=0; }
@@ -2003,6 +2004,48 @@ static void sb_panel_filtres(SDL_Renderer *ren, int x, int y, int w, int h, View
  * la province SÉLECTIONNÉE, à toi) + Couronne (embargo · contrats — cible : le pays
  * de la sélection). Chaque bouton : coût AVANT (survol), ordre en file/en jours.
  * La PURGE exige DEUX clics — un acte irréversible mérite deux temps. */
+/* ── Q1 — LE CONSEIL (I7) : la section ÉTAT. Trois sièges (Savoir/Société/Industrie) ;
+ *   un siège vacant propose ses candidats (nom·tier·coût) en chips « Nommer », un siège
+ *   pourvu montre son conseiller + « Renvoyer ». Le clic appelle l'API EXISTANTE
+ *   (statecraft_council_hire/_dismiss) — celle que l'IA utilise déjà. Pur câblage UI. ── */
+static void sb_panel_conseil(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, World *world){
+    (void)h;
+    int cid=s->player; uint32_t seed=world->seed;
+    float ipm=econ_world_ipm(s->econ);
+    static const int seat_pct[SC_COUNCIL_SEATS]={20,12,15};   /* effets de base (affichage) */
+    int ry=y+2;
+    for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
+        char pc[8]; snprintf(pc,sizeof pc,"%d",seat_pct[seat]);
+        char hd[96]; tr_fmt(hd,sizeof hd,STR_COUNCIL_SEAT_FMT,
+                            tr((StrId)(STR_COUNCIL_SEAT_0+seat)), pc, tr((StrId)(STR_COUNCIL_EFF_0+seat)));
+        draw_text(ren,g_font,x+10,ry,COL_COPPER,hd); ry+=18;
+        int slot=statecraft_council_seated(s->sc,cid,seat);
+        if (slot>=0){
+            int tier=statecraft_council_cand_tier(seed,cid,seat,slot);
+            int nm  =statecraft_council_cand_name(seed,cid,seat,slot);
+            char ts[8];  snprintf(ts,sizeof ts,"%d",tier);
+            char cs[12]; snprintf(cs,sizeof cs,"%.0f",statecraft_council_cand_cost(seed,cid,seat,slot,ipm));
+            char line[96]; tr_fmt(line,sizeof line,STR_COUNCIL_SEATED_FMT, tr((StrId)nm), ts, cs);
+            draw_text(ren,g_font_small,x+16,ry+2,COL_PARCH,line);
+            sb_chip(ren,x+w-80,ry,tr(STR_COUNCIL_RENVOYER),false,SBH_COUNCIL,seat,-1,
+                    "Renvoyer ce conseiller : le siège redevient vacant, le coût mensuel cesse.");
+            ry+=22;
+        } else {
+            draw_text(ren,g_font_small,x+16,ry+2,COL_DIM,tr(STR_COUNCIL_VACANT)); ry+=18;
+            for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
+                int tier=statecraft_council_cand_tier(seed,cid,seat,sl);
+                int nm  =statecraft_council_cand_name(seed,cid,seat,sl);
+                char ts[8];  snprintf(ts,sizeof ts,"%d",tier);
+                char cs[12]; snprintf(cs,sizeof cs,"%.0f",statecraft_council_cand_cost(seed,cid,seat,sl,ipm));
+                char lab[64]; tr_fmt(lab,sizeof lab,STR_COUNCIL_CAND_FMT, tr((StrId)nm), ts, cs);
+                sb_chip(ren,x+16,ry,lab,false,SBH_COUNCIL,seat,sl,
+                        "Nommer ce conseiller (tier = effet ×1 / ×1.5 / ×2 ; coût mensuel ×IPM).");
+                ry+=19;
+            }
+        }
+        ry+=6;
+    }
+}
 static void sb_panel_leviers(SDL_Renderer *ren, int x, int y, int w, Sim *s,
                              const World *world, int selected){
     fill_rect(ren,x+6,y-4,w-12,1,COL_PANEL2);
@@ -2098,6 +2141,7 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
                              for(int c=0;c<world->n_countries;c++){
                                  if(c!=s->player && world->country[c].role!=POLITY_UNCLAIMED) nn++; }
                              content=22+(nn>16?16:nn)*30+8; } break;
+            case SBT_ETAT: content=3*(18+18+3*19+6); break;   /* Q1 : 3 sièges, pire cas (vacants) */
             default: break;
         }
         int dh=32+content+96;                          /* titre + contenu + zone Leviers */
@@ -2106,10 +2150,11 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
         if (dh<200)   dh=200;
         panel_bg(ren,dx,dy,dw,dh);
         if (g_sb.anim>0.95f){
-            static const char *TITRE[SBT_COUNT]={"ÉCONOMIE","DÉMOGRAPHIE","STOCKS","ARMÉE","FILTRES DE CARTE",NULL};
+            static const char *TITRE[SBT_COUNT]={"ÉCONOMIE","DÉMOGRAPHIE","STOCKS","ARMÉE","FILTRES DE CARTE",NULL,NULL};
             if (g_sb.tab>=0&&g_sb.tab<SBT_COUNT)
                 draw_text(ren,g_font,dx+10,dy+8,COL_COPPER,
-                          (g_sb.tab==SBT_DIPLO)? tr(STR_DIPLO_TITRE) : TITRE[g_sb.tab]);
+                          (g_sb.tab==SBT_DIPLO)? tr(STR_DIPLO_TITRE) :
+                          (g_sb.tab==SBT_ETAT) ? tr(STR_COUNCIL_TITRE) : TITRE[g_sb.tab]);
             int py=dy+32, ph=dy+dh-96;          /* on réserve la zone basse aux LEVIERS */
             switch(g_sb.tab){
                 case SBT_ECO:     sb_panel_eco   (ren,dx,py,dw,ph,s,world); break;
@@ -2118,6 +2163,7 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
                 case SBT_ARMEE:   sb_panel_armee (ren,dx,py,dw,ph,s,world,selected); break;
                 case SBT_FILTRES: sb_panel_filtres(ren,dx,py,dw,ph,mode); break;
                 case SBT_DIPLO:   sb_panel_diplo (ren,dx,py,dw,ph,s,world); break;
+                case SBT_ETAT:    sb_panel_conseil(ren,dx,py,dw,ph,s,world); break;   /* Q1 */
                 default: break;
             }
             sb_panel_leviers(ren, dx, dy+dh-92, dw, s, world, selected);   /* zone basse : toujours là */
@@ -2126,20 +2172,22 @@ static void draw_sidebar(SDL_Renderer *ren, int win_w, int win_h, Sim *s, World 
     /* rail (toujours visible, par-dessus) */
     fill_rect(ren,0,0,SB_RAIL_W,win_h,(SDL_Color){0x0c,0x12,0x1d,0xfa});
     fill_rect(ren,SB_RAIL_W-1,0,1,win_h,COL_PANEL2);
-    static const char *IC[SBT_COUNT] ={"E","D","S","A","F","G"};
+    static const char *IC[SBT_COUNT] ={"E","D","S","A","F","G","C"};   /* C = Conseil (ÉTAT, Q1) */
     static const char *NM[SBT_COUNT] ={"Économie (E) — commerce, marché, import/export",
                                        "Démographie (D) — classes, peuples, relocalisation",
                                        "Stocks (S) — tensions, couverture, exploiter",
                                        "Armée (A) — levée, campagne, posture",
                                        "Filtres (F) — vues de carte & lentilles d'empire",
-                                       NULL /* DIPLO : hover en STR_* (migré) */};
+                                       NULL /* DIPLO : hover en STR_* (migré) */,
+                                       NULL /* ÉTAT : hover en STR_* (Q1) */};
     for (int t=0;t<SBT_COUNT;t++){
         int by=52+t*44;
         bool actif=(g_sb.tab==t);
         if (actif) fill_rect(ren,0,by-6,SB_RAIL_W,32,(SDL_Color){0x2a,0x20,0x14,0xff});
         draw_text(ren,g_font_big,14,by,actif?COL_COPPER:COL_DIM,IC[t]);
         sbhit_add((SDL_Rect){0,by-6,SB_RAIL_W,32}, SBH_TAB, t, 0);
-        zone_add((SDL_Rect){0,by-6,SB_RAIL_W,32}, (t==SBT_DIPLO)? tr(STR_RAIL_DIPLO) : NM[t]);
+        zone_add((SDL_Rect){0,by-6,SB_RAIL_W,32}, (t==SBT_DIPLO)? tr(STR_RAIL_DIPLO) :
+                 (t==SBT_ETAT)? tr(STR_COUNCIL_TITRE) : NM[t]);
     }
 }
 
@@ -2288,6 +2336,10 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
                 printf("\n[scps] %s REFUSE : la guerre n'a pas assez saigné.\n", sb_country_name(world,en));
             }
         } break;
+        case SBH_COUNCIL:                                    /* Q1 : NOMMER (b≥0) ou RENVOYER (b=-1) un conseiller */
+            if (hh->b>=0) statecraft_council_hire(s->sc, s->player, hh->a, hh->b);
+            else          statecraft_council_dismiss(s->sc, s->player, hh->a);
+            break;
         default: break;
     }
     return true;
@@ -3833,7 +3885,7 @@ static void loading_paint(SDL_Renderer *ren, int W, int H){
     SDL_RenderPresent(ren);
 }
 int main(int argc, char **argv) {
-    bool shot = false, shot_tree = false, shot_war = false, shot_culture = false, shot_sidebar = false;
+    bool shot = false, shot_tree = false, shot_war = false, shot_culture = false, shot_sidebar = false, shot_council = false;
     bool shot_political = false; float shot_zoom = 1.f;   /* N3.1 : capture vue Politique ± zoom */
     int  shot_shell = 0;
     bool savetest = false;
@@ -3843,6 +3895,7 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "--shot")) shot = true;
         else if (!strcmp(argv[i], "--tree")) { shot = true; shot_tree = true; }
         else if (!strcmp(argv[i], "--sidebar")) { shot = true; shot_sidebar = true; }   /* tiroir Stocks + lentille Marché */
+        else if (!strcmp(argv[i], "--council")) { shot = true; shot_council = true; }   /* Q1 : section ÉTAT (Conseil) */
         else if (!strcmp(argv[i], "--shellshot") && i+1<argc) { shot=true; shot_shell=1+atoi(argv[++i]); }  /* 1=menu 2=setup 3=ouverture */
         else if (!strcmp(argv[i], "--savetest")) savetest=true;   /* vérif sauvegarde : sauver-recharger = continuation identique */
         else if (!strcmp(argv[i], "--curshot")) { shot=true; shot_cur=true; }   /* carte + champ des courants */
@@ -4115,6 +4168,10 @@ int main(int argc, char **argv) {
                 static uint32_t lt[SCPS_MAX_REG];
                 map_lens_tints(sim.econ, sim.wl, g_sb.lens, lt);
                 rp.region_tint = lt; smode = VIEW_CULTURE;
+            } else if (shot_council){                /* Q1 : démo Conseil — un siège POURVU, deux vacants */
+                int best=0,bt=0; for(int sl=0;sl<SC_COUNCIL_CANDS;sl++){ int t=statecraft_council_cand_tier(world->seed,sim.player,0,sl); if(t>bt){bt=t;best=sl;} }
+                statecraft_council_hire(sim.sc, sim.player, 0, best);   /* siège Savoir pourvu (montre « Renvoyer ») */
+                g_sb.tab=SBT_ETAT; g_sb.anim=1.f;
             } else if (smode==VIEW_CULTURE){
                 static uint32_t tnt[SCPS_MAX_REG];
                 for (int r=0;r<sim.econ->n_regions && r<SCPS_MAX_REG;r++)
@@ -4154,7 +4211,7 @@ int main(int argc, char **argv) {
                 draw_mode_buttons(ren, win_h, smode);                     /* §5 : modes de carte */
                 draw_minimap(ren, &mm_pb, win_w, win_h, &cam);            /* §5 : la minicarte */
                 draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected, &sim);
-                if (shot_sidebar) draw_sidebar(ren, win_w, win_h, &sim, world, smode, selected);
+                if (shot_sidebar || shot_council) draw_sidebar(ren, win_w, win_h, &sim, world, smode, selected);
             }
         }
         SDL_RenderPresent(ren);

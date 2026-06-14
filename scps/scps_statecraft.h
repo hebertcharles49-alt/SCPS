@@ -89,6 +89,7 @@ void  statecraft_council_hire     (Statecraft *sc, int cid, int seat, int slot);
 void  statecraft_council_dismiss  (Statecraft *sc, int cid, int seat);
 float statecraft_council_seat_mult(const Statecraft *sc, uint32_t seed, int cid, int seat); /* 1+base·effet ; 1 si vacant */
 float statecraft_council_cost     (const Statecraft *sc, uint32_t seed, int cid, float ipm); /* or/mois total (×IPM) */
+float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, float ipm);  /* coût d'UN candidat (×IPM), pour l'UI */
 /* Applique le conseil à l'éco pour le tick (mensuel) : pousse les multiplicateurs LECTEURS
  * et ponctionne le coût (×IPM) sur le trésor de la capitale, ligne FX_CONSEIL. Appelé
  * IDENTIQUEMENT par viewer ET chronicle (mêmes décisions de monde). dt_year = 1/12. */

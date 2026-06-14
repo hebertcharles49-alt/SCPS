@@ -125,6 +125,11 @@ float statecraft_council_cost(const Statecraft *sc, uint32_t seed, int cid, floa
     }
     return tot;
 }
+float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, float ipm){
+    if (ipm<=0.f) ipm=1.f;
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS||slot<0||slot>=SC_COUNCIL_CANDS) return 0.f;
+    return SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,seat,slot) ] * ipm;
+}
 void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy *e, uint32_t seed, float dt_year){
     if (!sc||!w||!e) return;
     float ipm = econ_world_ipm(e);
