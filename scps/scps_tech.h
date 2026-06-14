@@ -66,9 +66,11 @@ typedef enum {
     TECH_CONSCRIPTION, TECH_ORGANISATION, TECH_ESCLAVAGE, TECH_CASTE_MARTIALE,
     /* SOCIÉTÉ · Renforcement (K / L / intégration — la spine métabolisante) */
     TECH_CHANCELLERIE, TECH_FOI, TECH_INTEGRATION, TECH_CULTE_IMPERIAL,
-    /* F3 (alchimie & FAUSTIEN) — appendu (index stable, SAVE bump) : gate de l'Alambic
-     * (salpêtre → flux + nécessaire d'alchimiste) et du Réplicateur ligneux (FAU4). */
+    /* F3 (alchimie & FAUSTIEN) — appendus (index stable, SAVE bump). TECH_ALCHIMIE gate
+     * l'Alambic (bénigne). TECH_TRANSMUTATION (FAUSTIENNE) gate le Réplicateur ligneux ;
+     * la Corne divine réutilise TECH_FORGE_RUNES (métallurgie céleste, FAU4). */
     TECH_ALCHIMIE,
+    TECH_TRANSMUTATION,
     TECH_COUNT
 } TechId;
 

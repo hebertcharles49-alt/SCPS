@@ -78,7 +78,11 @@ typedef enum {
     BLD_TUNIC,         /* étoffe → TUNIQUE (1:1) — vêtement fini des journaliers (chaîne séparée du luxe) */
     BLD_CHARCOAL,      /* 2 bois → 1 charbon (charbonnière, tech de base) — libère la fonderie de la rareté du charbon minier */
     BLD_FOREUSE,       /* §B2 FAUSTIEN : essence → GROS rendement de FER (foreuse arcanique) — l'issue à la famine de matière, payée en charge (tech) */
-    BLD_ALAMBIC,       /* M6 (forks §10, pôle FLUIDE) : salpêtre → essence purifiée — le PUITS-DE-FLUX (vendre la stabilité) */
+    BLD_ALAMBIC,       /* F3 : salpêtre → flux + nécessaire d'alchimiste (gate TECH_ALCHIMIE) */
+    /* === FAU2 — LES TRANSMUTEURS (le doigt dedans) : stabilisent un bien vital, chaque
+     * spawn AJOUTE de la charge → la pente vers la Brèche. La Foreuse (fer) existe déjà. === */
+    BLD_REPLICATEUR,   /* FAU2 : flux → BOIS (gate faustien TECH_TRANSMUTATION) */
+    BLD_CORNE,         /* FAU2 : fer céleste → NOURRITURE (gate faustien TECH_FORGE_RUNES) */
     BLD_TYPE_COUNT
 } BuildingType;
 
@@ -205,6 +209,8 @@ typedef struct {
     float      tech_prod;            /* §B1 : multiplicateur de prod issu des techs de PRODUCTION du pays (1 = aucun) */
     bool       tech_foreuse;         /* §B2 : le pays a-t-il débloqué la foreuse arcanique ? (gate de BLD_FOREUSE) */
     bool       tech_alchimie;        /* F3 : le pays a-t-il débloqué l'alchimie ? (gate de BLD_ALAMBIC) */
+    bool       tech_replicateur;     /* FAU4 : TECH_TRANSMUTATION débloquée ? (gate de BLD_REPLICATEUR) */
+    bool       tech_corne;           /* FAU4 : TECH_FORGE_RUNES débloquée ? (gate de BLD_CORNE) */
     float      gdp;                  /* valeur produite au dernier tick */
     float      satisfaction;         /* satisfaction générale [0..1] */
     float      food_sat;             /* satisfaction alimentaire [0..1] (grain+fish) */
@@ -351,6 +357,7 @@ void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resour
  * Atelier du Mage +0.8 · Alambic −0.3 (le puits) · 0 sinon. Table de design, lue par
  * le banc ; le PUITS est branché dans econ_tick (l'essence purifiée neutralise la charge). */
 float econ_bld_flux_delta(BuildingType b);
+bool  bld_is_faustian(BuildingType b);   /* FAU0 #4 : les 3 transmuteurs (foreuse/réplicateur/corne) */
 /* M6 — la MATIÈRE gate la manufacture arcane : Forge ↔ fer céleste, Atelier ↔ cristal,
  * Alambic ↔ salpêtre (raw_cap de la région). true pour les manufactures ordinaires. */
 bool  econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b);

@@ -142,6 +142,10 @@ static const TechNode NODES[TECH_COUNT] = {
  * les TRANSMUTEURS (FAU2) et leur gate dédié (FAU4). Tier 2, peu profonde (atteignable). */
 [TECH_ALCHIMIE] = { "Alchimie","Alambic", THM_SOCIETE,FN_PRODUCTION,2, TECH_COMMERCE, false,false,UNIV,
     0,0,0, 1.0f,0, 0, 0, 0, 0.10f, 0, false },
+/* FAU4 — TRANSMUTATION (FAUSTIENNE, gate du Réplicateur ligneux : flux → bois). Profonde
+ * (tier 3, derrière l'Alchimie) → charge de base élevée (paroxysme = pression de Brèche). */
+[TECH_TRANSMUTATION] = { "Transmutation","Réplicateur ligneux", THM_SOCIETE,FN_PRODUCTION,3, TECH_ALCHIMIE, true,false,UNIV,
+    0,0,0, 2.0f,0, 0, 0, 1.0f, 0.30f, 1.2f, false },
 };
 
 /* ====================================================================== */

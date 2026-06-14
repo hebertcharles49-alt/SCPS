@@ -130,6 +130,10 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
      * soldat alchimiste). NE QUENCHE PLUS la charge (RETRAIT F-arc). Le salpêtre nourrit DÉJÀ
      * la poudre : une ressource, deux doctrines. */
     [BLD_ALAMBIC]   = { RES_SALTPETER, 1.2f, RES_NONE, 0.f, RES_FLUX, 1.0f, 0.9f, RES_ALCHEMIST_KIT, 0.3f },
+    /* FAU2 — LES TRANSMUTEURS : comme la Foreuse (essence → fer), ils stabilisent un bien
+     * vital à GROS rendement — l'échappatoire à la famine, payée en CHARGE (chaque spawn). */
+    [BLD_REPLICATEUR]={ RES_FLUX,         0.5f, RES_NONE, 0.f, RES_WOOD,  8.0f, 1.4f, RES_NONE, 0.f },  /* flux → BOIS */
+    [BLD_CORNE]     = { RES_CELESTIAL_IRON,0.5f, RES_NONE, 0.f, RES_GRAIN, 8.0f, 1.4f, RES_NONE, 0.f },  /* fer céleste → NOURRITURE */
     /* Chaînes militaires de base + santé (compléter le roster de production). */
     [BLD_ARMORY]    = { RES_IRON,      1.2f, RES_NONE, 0.f, RES_ARMS,      1.0f, 1.0f, RES_NONE, 0.f },
     [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
@@ -314,6 +318,7 @@ const char *building_name(BuildingType b) {
         [BLD_CELESTIAL_FORGE]="Forge céleste",[BLD_FOUNDRY]="Haut-fourneau",[BLD_TOOLWORKS]="Atelier d'outillage",[BLD_ALAMBIC]="Alambic",
         [BLD_ARMORY]="Armurerie",[BLD_POWDERMILL]="Poudrière",[BLD_APOTHECARY]="Apothicaire",
         [BLD_TUNIC]="Atelier de tunique",[BLD_CHARCOAL]="Charbonnière",[BLD_FOREUSE]="Foreuse arcanique",
+        [BLD_REPLICATEUR]="Réplicateur ligneux",[BLD_CORNE]="Corne divine",
     };
     return (b>=0&&b<BLD_TYPE_COUNT&&N[b])?N[b]:"?";
 }
@@ -757,6 +762,8 @@ static void econ_build_tick(WorldEconomy *e){
             if (rc->out<=RES_NONE || rc->out>=RES_COUNT || BASE_PRICE[rc->out]<=0.f) continue;
             if (b==BLD_FOREUSE && !re->tech_foreuse) continue;                   /* §B2 : foreuse gatée par la tech faustienne */
             if (b==BLD_ALAMBIC && !re->tech_alchimie) continue;                  /* F3 : alambic gaté par TECH_ALCHIMIE */
+            if (b==BLD_REPLICATEUR && !re->tech_replicateur) continue;           /* FAU4 : gate TECH_TRANSMUTATION */
+            if (b==BLD_CORNE && !re->tech_corne) continue;                       /* FAU4 : gate TECH_FORGE_RUNES */
             if (re->price[rc->out] < BASE_PRICE[rc->out]*NF_SHORTAGE) continue;   /* output pas en pénurie ICI */
             bool feed1 = (rc->in1==RES_NONE)
                       || avail[rc->in1] > NF_REALM_MIN || re->stock[rc->in1] >= NF_STOCK_MIN
@@ -783,6 +790,8 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
                       : 1.f;
         re->tech_foreuse = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FOREUSE] : false;  /* §B2 : gate de BLD_FOREUSE */
         re->tech_alchimie = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_ALCHIMIE] : false; /* F3 : gate de BLD_ALAMBIC */
+        re->tech_replicateur = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_TRANSMUTATION] : false; /* FAU4 : gate de BLD_REPLICATEUR */
+        re->tech_corne = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FORGE_RUNES] : false;          /* FAU4 : gate de BLD_CORNE */
     }
 }
 
@@ -835,6 +844,9 @@ float econ_bld_flux_delta(BuildingType b){
         case BLD_CELESTIAL_FORGE: return  1.2f;
         case BLD_MAGE_WORKSHOP:   return  0.8f;
         case BLD_ALAMBIC:         return  0.f;   /* F-arc RETRAIT : plus un puits — distillation neutre */
+        case BLD_FOREUSE:         return  1.0f;  /* FAU2 transmuteur (fer) — source de charge */
+        case BLD_REPLICATEUR:     return  0.6f;  /* FAU2 transmuteur (bois) */
+        case BLD_CORNE:           return  1.2f;  /* FAU2 transmuteur (nourriture) — fer céleste, le plus profond */
         default:                  return  0.f;
     }
 }
@@ -846,8 +858,15 @@ bool econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b){
         case BLD_CELESTIAL_FORGE: return re->raw_cap[RES_CELESTIAL_IRON] > 0.f;
         case BLD_MAGE_WORKSHOP:   return re->raw_cap[RES_ARCANE_CRYSTAL] > 0.f;
         case BLD_ALAMBIC:         return re->raw_cap[RES_SALTPETER]      > 0.f;
-        default:                  return true;
+        case BLD_CORNE:           return re->raw_cap[RES_CELESTIAL_IRON] > 0.f;  /* FAU2 : la Corne exige le fer céleste */
+        default:                  return true;                                   /* Réplicateur : flux produit (feed-check) */
     }
+}
+/* FAU0 #4 — LE PRÉDICAT « TRANSMUTEUR FAUSTIEN » (un seul point de vérité) : les trois
+ * échappatoires qui transmutent un bien vital en payant la charge. La décrue passive (FAU1)
+ * et les compteurs de conso (FAU0 #3) s'y accrochent, pas des if type==... épars. */
+bool bld_is_faustian(BuildingType b){
+    return b==BLD_FOREUSE || b==BLD_REPLICATEUR || b==BLD_CORNE;
 }
 
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire. */
