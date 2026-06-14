@@ -24,12 +24,20 @@
 /* ---- Types d'unité ---------------------------------------------------- */
 typedef enum {
     U_PIQUIER=0, U_LANCIER, U_EPEISTE, U_ARCHER, U_ARBALETE,
-    U_CAV_LEGERE, U_CAV_LOURDE, U_MAGE, U_COUNT
+    U_CAV_LEGERE, U_CAV_LOURDE, U_MAGE,
+    /* F5 — extension du roster (appendus avant U_COUNT : indices préservés, SAVE bump) */
+    U_HALLEBARDIER,  /* lourd, anti-cavalerie ← RES_ARMS_HEAVY */
+    U_ARQUEBUSIER,   /* feu, perce l'armure ← RES_FIREARM */
+    U_ALCHIMISTE,    /* soutien Fluide ← RES_ALCHEMIST_KIT */
+    U_GARDE_RUNIQUE, /* élite arcane mêlée ← RES_ENCHANTED_ARMS */
+    U_COUNT
 } UnitType;
 
 /* ---- Armes fabriquées (matériaux → arme) ------------------------------ */
 typedef enum {
-    W_PIQUE=0, W_LANCE, W_EPEE, W_ARC, W_ARBALETE, W_MONTURE_L, W_MONTURE_H, W_BATON, W_COUNT
+    W_PIQUE=0, W_LANCE, W_EPEE, W_ARC, W_ARBALETE, W_MONTURE_L, W_MONTURE_H, W_BATON,
+    W_HALLEBARDE, W_ARQUEBUSE, W_ALCHIMIE, W_RUNES,   /* F5 (appendus avant W_COUNT) */
+    W_COUNT
 } ArmWeapon;
 
 /* Recette d'arme : deux intrants matériaux + un temps (jours). */

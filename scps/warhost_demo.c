@@ -23,7 +23,7 @@ static void ok(const char*w,bool c){ printf("   %s %s\n",c?"✓":"✗",w); if(c)
 
 static float capital_arms(const World*w,const WorldEconomy*e,int c){
     int cp=w->country[c].capital_prov; if(cp<0) return 0.f;
-    int r=w->province[cp].region; return (r>=0&&r<e->n_regions)?e->region[r].stock[RES_ARMS]:0.f;
+    int r=w->province[cp].region; return (r>=0&&r<e->n_regions)?e->region[r].mil_stock:0.f;  /* F6 : canal de force d'armée (ex-RES_ARMS) */
 }
 
 int main(int argc,char**argv){

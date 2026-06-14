@@ -241,6 +241,7 @@ typedef struct {
     float      arcane_charge;       /* FAU0 : activité faustienne CE tick (reset/tick, += par faust_charge_add) */
     float      faust_charge;        /* FAU0/FAU1 : entropie CUMULÉE de la région (accumule l'activité, décrue passive) */
     float      faust_consumed[3];   /* FAU0 #3 : conso cumulée (0 essence/foreuse · 1 flux/réplicateur · 2 fer céleste/corne) — caché */
+    float      mil_stock;           /* F6 : canal de FORCE D'ARMÉE (warhost → diplo_mil_power), DÉCOUPLÉ du RES_ARMS économique que la levée consomme */
 
     float      habitability;          /* habitabilité moyenne [0..1] — héritée des provinces */
     bool       active;               /* terre habitable (colonisable) */

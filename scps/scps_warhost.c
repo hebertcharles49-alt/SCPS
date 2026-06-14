@@ -10,7 +10,39 @@
 #define WH_BATCH_WAR    7.0f   /* paquets fabriqués/levés par an en guerre */
 #define WH_BATCH_PEACE  1.5f   /* cadence d'entretien de la GARNISON en paix */
 #define WH_GARRISON_UNITS 4.0f /* garnison de paix à la jauge GARDE (× LEVY_MULT) */
-#define WH_ARMS_PER_UNIT 2.0f  /* armes déposées par paquet levé (→ mil_power) */
+#define WH_ARMS_PER_UNIT 8.0f  /* F6 : force d'armée/paquet → mil_stock (calé pour retrouver l'ordre de
+                                * grandeur de l'ancien stock RES_ARMS plafonné, après découplage) */
+
+/* F5/F6 — la catégorie d'ARME ÉCONOMIQUE (RES_*) que consomme une unité (100 armes = 100 hommes).
+ * Catégorie PARTAGÉE : léger ← piquier/lancier/épéiste/cav légère ; lourd ← cav lourde/hallebardier ;
+ * trait ← archer/arbalétrier ; feu ← arquebusier ; mage/alchimiste/garde runique chacun le sien. */
+static Resource unit_res_arm(UnitType t){
+    switch(t){
+        case U_PIQUIER: case U_LANCIER: case U_EPEISTE: case U_CAV_LEGERE: return RES_ARMS_LIGHT;
+        case U_CAV_LOURDE: case U_HALLEBARDIER:                             return RES_ARMS_HEAVY;
+        case U_ARCHER: case U_ARBALETE:                                     return RES_ARMS_RANGED;
+        case U_ARQUEBUSIER:                                                 return RES_FIREARM;
+        case U_MAGE:                                                        return RES_MAGE_STAFF;
+        case U_ALCHIMISTE:                                                  return RES_ALCHEMIST_KIT;
+        case U_GARDE_RUNIQUE:                                               return RES_ENCHANTED_ARMS;
+        default:                                                            return RES_NONE;
+    }
+}
+/* F6 — CONSOMME les armes RÉELLES du stock de l'empire (100/paquet, puisées région par région) et
+ * RENVOIE le nombre de paquets QU'ON PEUT lever (plafonné par le stock). Stock nul → 0 (pas de levée).
+ * C'est la pression neuve : la levée tire la demande d'armes → de fer (la preuve F8). */
+static long wh_arms_take(WorldEconomy *econ, int cid, UnitType t, long want){
+    if (want<=0) return 0;
+    Resource arm=unit_res_arm(t);
+    if (arm==RES_NONE) return want;                 /* pas de catégorie → pas de gate (sécurité) */
+    long need=want*POP_PER_UNIT, got=0;
+    for (int r=0;r<econ->n_regions && got<need;r++){
+        if (econ->region[r].owner!=cid) continue;
+        long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
+        econ->region[r].stock[arm]-=(float)take; got+=take;
+    }
+    return got/POP_PER_UNIT;
+}
 
 void warhost_init(WarHost *h){
     memset(h->army, 0, sizeof(h->army));
@@ -64,15 +96,21 @@ static long seed_scratch(LaborEcon *e, const World *w, const WorldEconomy *econ,
 /* LEVER `batch` paquets dans le scratch déjà semé : piquiers (masse) + épéistes,
  * cavalerie si l'élite est là. La fabrication précède l'enrôlement (pas d'arme,
  * pas d'unité). */
-static void wh_levy_batch(ArmyState *a, LaborEcon *sc, long batch, long elite){
+static void wh_levy_batch(ArmyState *a, LaborEcon *sc, WorldEconomy *econ, int cid, long batch, long elite){
     if (batch<=0) return;
-    army_fabricate_weapon(a, sc, W_PIQUE, batch);
-    army_fabricate_weapon(a, sc, W_EPEE,  batch/2 + 1);
-    army_recruit(a, sc, U_PIQUIER, batch);
-    army_recruit(a, sc, U_EPEISTE, batch/2 + 1);
+    /* F6 — la levée CONSOMME les armes RÉELLES de sa catégorie (100/paquet, stock de l'empire) :
+     * c'est la pression neuve qui tire la demande d'armes → de FER (la preuve F8). Consommation
+     * SOUPLE (on prélève ce qui existe, sans affamer l'armée — l'IA stockpile en amont, F8) :
+     * la fabrique d'armes du joueur/IA alimente le stock, la levée le draine. */
+    army_fabricate_weapon(a, sc, W_PIQUE, batch);     army_recruit(a, sc, U_PIQUIER, batch);
+    wh_arms_take(econ, cid, U_PIQUIER, batch);
+    long epe=batch/2 + 1;
+    army_fabricate_weapon(a, sc, W_EPEE,  epe);       army_recruit(a, sc, U_EPEISTE, epe);
+    wh_arms_take(econ, cid, U_EPEISTE, epe);
     if (elite > 200){
-        army_fabricate_weapon(a, sc, W_MONTURE_H, batch/3 + 1);
-        army_recruit(a, sc, U_CAV_LOURDE, batch/3 + 1);
+        long cav=batch/3 + 1;
+        army_fabricate_weapon(a, sc, W_MONTURE_H, cav); army_recruit(a, sc, U_CAV_LOURDE, cav);
+        wh_arms_take(econ, cid, U_CAV_LOURDE, cav);
     }
 }
 
@@ -149,7 +187,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
             long batch = (long)(WH_BATCH_WAR*LEVY_MULT[lv]*dt + 0.5f);
             if (batch>0){
                 long elite = seed_scratch(h->scratch, w, econ, c);
-                wh_levy_batch(&h->army[c], h->scratch, batch, elite);
+                wh_levy_batch(&h->army[c], h->scratch, econ, c, batch, elite);
             }
         } else {
             long garrison = (long)(WH_GARRISON_UNITS*LEVY_MULT[lv] + 0.5f);
@@ -160,7 +198,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 long deficit = garrison - cur; if (batch>deficit) batch=deficit;
                 if (batch>0){
                     long elite = seed_scratch(h->scratch, w, econ, c);
-                    wh_levy_batch(&h->army[c], h->scratch, batch, elite);
+                    wh_levy_batch(&h->army[c], h->scratch, econ, c, batch, elite);
                 }
             }
         }
@@ -177,11 +215,13 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                   econ_flux_add(c, FX_SOLDE, -paid);
               }
           } }
-        /* déposer la force en ARMES sur la capitale → nourrit diplo_mil_power. */
+        /* F6 — la FORCE D'ARMÉE sur la capitale → nourrit diplo_mil_power, par un CANAL DÉDIÉ
+         * (re->mil_stock) découplé du RES_ARMS économique : la levée consomme les armes du marché
+         * (la demande de fer), mais la puissance militaire reflète l'ARMÉE, pas le stock résiduel. */
         long units = warhost_units(h, c);
         int cp = w->country[c].capital_prov;
         int crr = (cp>=0 && cp<w->n_provinces) ? w->province[cp].region : -1;
-        if (crr>=0 && crr<econ->n_regions && units>0)
-            econ->region[crr].stock[RES_ARMS] += (float)units * WH_ARMS_PER_UNIT * dt;
+        if (crr>=0 && crr<econ->n_regions)
+            econ->region[crr].mil_stock = (float)units * WH_ARMS_PER_UNIT;
     }
 }

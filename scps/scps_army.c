@@ -37,6 +37,12 @@ static const UnitDef UNITS[U_COUNT] = {
     [U_CAV_LEGERE]= { "Cav. légère", LAB_ELITE,   W_MONTURE_L, 0.50f,  90.f, 8.f, 6.f },
     [U_CAV_LOURDE]= { "Cav. lourde", LAB_ELITE,   W_MONTURE_H, 0.70f, 115.f, 6.f, 7.f },
     [U_MAGE]      = { "Mage",        LAB_ELITE,   W_BATON,     0.30f,  65.f, 4.f, 6.f },
+    /* F5 — les neuves : hallebardier (anti-cav lourd), arquebusier (feu perce-armure),
+     * alchimiste (soutien Fluide), garde runique (élite arcane mêlée). */
+    [U_HALLEBARDIER]={ "Hallebardier", LAB_LABORER, W_HALLEBARDE, 0.50f, 110.f, 2.f, 4.f },
+    [U_ARQUEBUSIER]= { "Arquebusier",  LAB_LABORER, W_ARQUEBUSE,  0.35f,  80.f, 2.f, 4.f },
+    [U_ALCHIMISTE] = { "Alchimiste",   LAB_LABORER, W_ALCHIMIE,   0.30f,  75.f, 3.f, 5.f },
+    [U_GARDE_RUNIQUE]={"Garde runique",LAB_ELITE,   W_RUNES,      0.65f, 120.f, 4.f, 7.f },
 };
 const UnitDef *unit_def(UnitType t){ return (t>=0&&t<U_COUNT)?&UNITS[t]:NULL; }
 const char    *unit_name(UnitType t){ return (t>=0&&t<U_COUNT)?UNITS[t].name:"?"; }
@@ -51,9 +57,14 @@ static const WeaponRecipe WEAPONS[W_COUNT] = {
     [W_MONTURE_L] = { LR_OUTILS, LR_BOIS,  3 },
     [W_MONTURE_H] = { LR_METAL,  LR_OUTILS,     5 },
     [W_BATON]     = { LR_OUTILS, LR_BOIS,  4 },
+    [W_HALLEBARDE]= { LR_METAL,  LR_BOIS,   3 },   /* F5 */
+    [W_ARQUEBUSE] = { LR_METAL,  LR_OUTILS, 5 },
+    [W_ALCHIMIE]  = { LR_OUTILS, LR_BOIS,   3 },
+    [W_RUNES]     = { LR_METAL,  LR_OUTILS, 6 },
 };
 const WeaponRecipe *weapon_recipe(ArmWeapon wp){ return (wp>=0&&wp<W_COUNT)?&WEAPONS[wp]:NULL; }
-static const char *WNAMES[W_COUNT]={ "Pique","Lance","Épée","Arc","Arbalète","Monture légère","Destrier","Bâton" };
+static const char *WNAMES[W_COUNT]={ "Pique","Lance","Épée","Arc","Arbalète","Monture légère","Destrier","Bâton",
+    "Hallebarde","Arquebuse","Nécessaire d'alchimiste","Armes runiques" };
 const char *weapon_name(ArmWeapon wp){ return (wp>=0&&wp<W_COUNT)?WNAMES[wp]:"?"; }
 
 /* ===================================================================== */
@@ -73,6 +84,12 @@ static void build_matrix(void){
         {U_CAV_LEGERE,U_ARCHER},  {U_CAV_LEGERE,U_ARBALETE}, {U_CAV_LEGERE,U_MAGE}, /* la vitesse croque les tireurs */
         {U_CAV_LOURDE,U_EPEISTE}, {U_CAV_LOURDE,U_ARCHER},      /* le choc enfonce la piétaille */
         {U_MAGE,U_PIQUIER},{U_MAGE,U_LANCIER},{U_MAGE,U_EPEISTE},{U_MAGE,U_ARCHER},{U_MAGE,U_CAV_LOURDE}, /* le mage écrase les 2/3 */
+        /* F5 — les neuves dans le réseau de contres : */
+        {U_HALLEBARDIER,U_CAV_LEGERE},{U_HALLEBARDIER,U_CAV_LOURDE},   /* la hallebarde brise la charge (anti-cav) */
+        {U_ARQUEBUSIER,U_CAV_LOURDE},{U_ARQUEBUSIER,U_GARDE_RUNIQUE},  /* l'arquebuse PERCE l'armure (lourde + runique) */
+        {U_GARDE_RUNIQUE,U_EPEISTE},{U_GARDE_RUNIQUE,U_PIQUIER},{U_GARDE_RUNIQUE,U_HALLEBARDIER}, /* l'élite arcane défait la piétaille */
+        {U_ALCHIMISTE,U_PIQUIER},{U_ALCHIMISTE,U_HALLEBARDIER},        /* le feu alchimique cuit les formations lentes */
+        {U_CAV_LEGERE,U_ARQUEBUSIER},{U_CAV_LEGERE,U_ALCHIMISTE},      /* la vitesse croque les tireurs/soutiens */
     };
     int n=(int)(sizeof(C)/sizeof(C[0]));
     for (int k=0;k<n;k++){

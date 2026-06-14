@@ -509,7 +509,7 @@ float diplo_mil_power(const World *w, const WorldEconomy *econ, int cid){
         pop += re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
         H   += re->build.H_coerc;
         arms+= re->stock[RES_ENCHANTED_ARMS];                      /* armes enchantées (Forge céleste) */
-        kit += re->stock[RES_ARMS] + re->stock[RES_GUNPOWDER];     /* armes & poudre (Armurerie/Poudrière) */
+        kit += re->mil_stock + re->stock[RES_GUNPOWDER];           /* F6 : FORCE D'ARMÉE (canal dédié) + poudre — découplé du RES_ARMS que la levée consomme */
     }
     const PopCulture *pc=cap_culture(w,econ,cid);
     float race_coerc=0.f, mart=0.f;
