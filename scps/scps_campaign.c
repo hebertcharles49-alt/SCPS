@@ -369,6 +369,16 @@ static void bt_end(Campaign *c, const WorldEconomy *e, const DiploState *dp, Fie
     }
     bt->active=false;
 }
+/* la part MONTÉE d'une force [0..1] : la cavalerie court-sus aux fuyards — c'est ELLE
+ * qui fait la poursuite. Dominante dans la compo ⇒ la curée doit l'emporter sur le choc. */
+static float army_cav_frac(const ArmyState *a){
+    long cav=0, tot=0;
+    for (int i=0;i<a->n_units;i++){
+        long n=a->units[i].count; if (n<=0) continue; tot+=n;
+        if (a->units[i].type==U_CAV_LEGERE || a->units[i].type==U_CAV_LOURDE) cav+=n;
+    }
+    return tot>0 ? (float)cav/(float)tot : 0.f;
+}
 /* la DÉROUTE : la poursuite fauche (posture, moral restant, terrain de fuite) ; le
  * vaincu fuit BRISÉ vers sa capitale ; le score encaisse le grand swing. */
 static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploState *dp,
@@ -378,11 +388,16 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     float vfrac=(loser_side? bt->resA/(bt->resA0+1.f) : bt->resB/(bt->resB0+1.f));
     /* P3 — la curée est ALLÉGÉE (plafond ≤ 12 %, socle 6 %) : une armée battue SURVIT
      * pour revenir — la guerre s'inscrit dans la DURÉE (ré-assauts) au lieu d'annihiler
-     * l'assaillant au premier choc. Toujours poussée par la posture agressive. */
+     * l'assaillant au premier choc. Toujours poussée par la posture agressive.
+     * H4/L4 — LA CAVALERIE FAIT LA POURSUITE : la part montée du VAINQUEUR pousse la curée
+     * ET en RELÈVE le plafond → cavalerie DOMINANTE ⇒ la poursuite DOMINE le choc ;
+     * infanterie pure ⇒ le choc peut primer (le slugfest frontal). */
+    float cavf=army_cav_frac(&V->force);
     float P=0.06f + ((V->posture==FA_AGRESSIVE)?0.08f:(V->posture==FA_PRUDENTE)?-0.03f:0.f)
-          + 0.04f*vfrac;
+          + 0.04f*vfrac + tune_f("CAV_PURSUIT",0.45f)*cavf;
     if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.04f;   /* la montagne couvre la fuite */
-    P=fminf(tune_f("CUREE_CAP",0.22f),fmaxf(0.03f,P));   /* défaut = registre (0.22) ; la base P borne en pratique */
+    float cap=tune_f("CUREE_CAP",0.22f) + tune_f("CAV_CUREE_CAP",0.40f)*cavf;  /* la cavalerie relève le plafond de curée */
+    P=fminf(cap,fmaxf(0.03f,P));
     long lp=force_units(&L->force);
     long to_kill=(long)((float)lp*P+0.5f);
     if (!L->rally_used && to_kill>=lp) to_kill=lp-1;   /* L2 : le NOYAU survit pour se rallier */

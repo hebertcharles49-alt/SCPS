@@ -34,8 +34,12 @@
     X(C3_L_HOLLOW,            0.30f) \
     X(CONCEDE_GOLD,         150.0f) \
     /* §H4/L3 — la curée & le choc (le ratio poursuite/choc se CALIBRE, registre J).
-     * Alias spec L3 : CHOC_KILL_RATE≡BT_CHOC_MORTS · CUREE_CAP_FRAC≡CUREE_CAP. */ \
+     * Alias spec L3 : CHOC_KILL_RATE≡BT_CHOC_MORTS · CUREE_CAP_FRAC≡CUREE_CAP.
+     * H4/L4 : la CAVALERIE fait la poursuite — sa part dans la force du vainqueur pousse
+     * la curée (CAV_PURSUIT/part) et en relève le plafond (CAV_CUREE_CAP/part). */ \
     X(CUREE_CAP,              0.22f) \
+    X(CAV_PURSUIT,            0.45f) \
+    X(CAV_CUREE_CAP,          0.40f) \
     X(BT_DMG_K,               0.057f) \
     X(BT_CHOC_MORTS,          0.006f) \
     X(BT_RUPTURE,             0.20f) \

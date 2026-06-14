@@ -97,7 +97,7 @@ typedef struct Campaign {
     /* télémétrie (chronicle §8) — cumul sim */
     int   n_battles, n_routs, n_disengage, n_reinforce, n_stalemate;
     int   n_rallies;                      /* L2 : armées reformées après déroute */
-    long  dead_choc, dead_pursuit;        /* LA vérif : la poursuite doit DOMINER */
+    long  dead_choc, dead_pursuit;        /* LA vérif : la poursuite DOMINE le choc si cavalerie dominante */
     long  battle_days;                    /* Σ durées (jours) */
     int   n_sails;                        /* mer §10 : traversées ordonnées */
     float sail_days_sum;                  /* Σ jours de mer des traversées */
