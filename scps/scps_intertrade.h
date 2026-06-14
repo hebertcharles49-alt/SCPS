@@ -76,6 +76,16 @@ bool  intertrade_has_centre     (int region);                       /* cette ré
 bool  intertrade_country_has_centre(const WorldEconomy *e, int cid);/* ce pays tient-il un hub ? */
 int   intertrade_country_centre (const WorldEconomy *e, int cid);   /* 1re région-hub du pays (-1) */
 bool  intertrade_relocate_centre(int from, int to);                 /* déplace un hub (coût: appelant) */
+/* #5 — LE PUMP À 2 ÉTAGES (marché LOCAL cité-état la plus proche → marché MONDIAL via
+ * Centre, double taxe). Les achats touchent de VRAIS stocks (ils ne pompent pas dans
+ * le vide) : `intertrade_buy_cost` DEVISE le sourcing d'un bien (stock propre ×1 →
+ * Centre local ×marge → autres Centres ×marge×2), `intertrade_market_consume` le
+ * DÉPLÉTÉ dans le même ordre. `intertrade_region_hub` : le Centre de rattachement
+ * (-1 = autarcie). `intertrade_global_stock` : profondeur du marché mondial. */
+float intertrade_buy_cost      (const WorldEconomy *e, int region, int good, float qty, float unit_price);
+void  intertrade_market_consume(WorldEconomy *e, int region, int good, float qty);
+int   intertrade_region_hub    (int region);
+float intertrade_global_stock  (const WorldEconomy *e, int good);
 /* sauvegarde (shell §6) : le module possède sa sérialisation — embargos décrétés
  * (les flux du dernier tick se recalculent, eux). */
 void  intertrade_save(FILE *f);

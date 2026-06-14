@@ -90,6 +90,15 @@ static float  g_pair[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
 static bool   g_embargo[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* [qui décrète][contre qui] */
 static bool   g_centre[SCPS_MAX_REG];   /* P3.20 : cette région EST un Centre commercial (hub) */
 static float  g_centre_val[SCPS_MAX_REG]; /* valeur du commerce passée par chaque Centre (dernier tick) */
+/* #5 — LA CARTE DU MARCHÉ LOCAL : chaque région se relie à la cité-état (Centre) la
+ * PLUS PROCHE. g_hub_of = la région-Centre de rattachement (-1 = aucune atteignable :
+ * autarcie) ; g_hub_dist = la distance (sauts) qui porte le rendement DÉGRESSIF.
+ * Recalculé à chaque tick (les Centres bougent peu, mais la possession évolue). */
+static int16_t g_hub_of  [SCPS_MAX_REG];
+static int16_t g_hub_dist[SCPS_MAX_REG];
+static bool    g_hub_dirty = true;          /* #5 : la carte des hubs ne dépend QUE des positions des Centres (statiques entre conquêtes) — on ne la RECALCULE qu'à un changement (seed/relocate), pas chaque jour */
+static float   g_global_cache[RES_COUNT];   /* #5 : profondeur du marché mondial (Σ stocks des Centres), CALCULÉE 1×/tick (le devis d'achat la LIT en O(1), pas de re-somme dans la boucle chaude de l'IA) */
+#define IT_SEA_HOPS 4   /* une région côtière sans hub par terre atteint un marché d'outre-mer à ce coût */
 
 void intertrade_reset(void){
     memset(g_imp,0,sizeof g_imp);   memset(g_expt,0,sizeof g_expt);
@@ -97,6 +106,8 @@ void intertrade_reset(void){
     memset(g_imp_from,-1,sizeof g_imp_from); memset(g_expt_to,-1,sizeof g_expt_to);
     memset(g_gold,0,sizeof g_gold); memset(g_pair,0,sizeof g_pair);
     memset(g_embargo,0,sizeof g_embargo);
+    memset(g_hub_of,-1,sizeof g_hub_of); memset(g_hub_dist,0,sizeof g_hub_dist);  /* #5 : autarcie tant qu'aucun tick n'a bâti la carte */
+    memset(g_global_cache,0,sizeof g_global_cache); g_hub_dirty=true;
     g_last_value=0.f;
 }
 static void flows_clear(void){
@@ -146,6 +157,7 @@ void intertrade_seed_centres(const World *w, const WorldEconomy *e){
         g_centre[best]=true; claimed[best]=true;
         for (int s=0;s<n;s++) if (e->adj[best][s]) claimed[s]=true;   /* espacement : on réserve les voisins */
     }
+    g_hub_dirty=true;   /* #5 : les Centres ont (re)bougé → la carte des hubs se recalcule au prochain tick */
 }
 bool intertrade_has_centre(int region){
     return (region>=0&&region<SCPS_MAX_REG)?g_centre[region]:false;
@@ -167,7 +179,98 @@ int intertrade_country_centre(const WorldEconomy *e, int cid){
 bool intertrade_relocate_centre(int from, int to){
     if (from<0||from>=SCPS_MAX_REG||to<0||to>=SCPS_MAX_REG) return false;
     if (!g_centre[from] || g_centre[to]) return false;
-    g_centre[from]=false; g_centre[to]=true; return true;
+    g_centre[from]=false; g_centre[to]=true; g_hub_dirty=true; return true;   /* #5 : hub déplacé → carte à refaire */
+}
+
+/* #5 — RATTACHER CHAQUE RÉGION À SON MARCHÉ LOCAL (la cité-état la plus proche).
+ * BFS MULTI-SOURCE sur l'adjacence depuis TOUS les Centres à la fois : la 1re vague
+ * qui touche une région donne le hub le plus proche + la distance (sauts). Une 2e
+ * passe relie les régions CÔTIÈRES non atteintes par terre au marché d'outre-mer
+ * (un Centre côtier, au coût forfaitaire d'une traversée). Déterministe (ordre
+ * d'index pour les ex æquo), recalculé chaque tick. */
+static void hub_map_build(const WorldEconomy *e){
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    static int16_t q[SCPS_MAX_REG]; int qh=0,qt=0;
+    for (int r=0;r<SCPS_MAX_REG;r++){ g_hub_of[r]=-1; g_hub_dist[r]=0; }
+    for (int r=0;r<n;r++) if (g_centre[r]){ g_hub_of[r]=(int16_t)r; q[qt++]=(int16_t)r; }
+    while (qh<qt){
+        int r=q[qh++];
+        for (int s=0;s<n;s++){
+            if (!e->adj[r][s] || g_hub_of[s]>=0) continue;     /* déjà rattaché (ou source) → on garde le plus proche */
+            g_hub_of[s]=g_hub_of[r]; g_hub_dist[s]=(int16_t)(g_hub_dist[r]+1); q[qt++]=(int16_t)s;
+        }
+    }
+    int sea_hub=-1; for (int r=0;r<n;r++) if (g_centre[r] && e->region[r].coastal){ sea_hub=r; break; }
+    if (sea_hub>=0) for (int r=0;r<n;r++)
+        if (g_hub_of[r]<0 && e->region[r].coastal){ g_hub_of[r]=(int16_t)sea_hub; g_hub_dist[r]=IT_SEA_HOPS; }
+}
+/* profondeur du marché mondial mise en cache (1×/tick, bon marché) : la somme des stocks
+ * de tous les Centres, lue en O(1) par le devis d'achat (la boucle d'évaluation de l'IA). */
+static void global_cache_refresh(const WorldEconomy *e){
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    memset(g_global_cache,0,sizeof g_global_cache);
+    for (int r=0;r<n;r++) if (g_centre[r])
+        for (int g=1; g<RES_COUNT; g++) g_global_cache[g] += e->region[r].stock[g];
+}
+
+/* #5 (lecteurs) — le hub local d'une région ; le stock du MARCHÉ MONDIAL = le réseau
+ * des cités-états (la somme des stocks de tous les Centres : pas un pool parallèle à
+ * resynchroniser, le réseau LUI-MÊME est le marché global ; un VRAI stock, drainé par
+ * les achats, alimenté par la production qui converge vers les hubs). */
+int   intertrade_region_hub(int region){ return (region>=0&&region<SCPS_MAX_REG)?g_hub_of[region]:-1; }
+float intertrade_global_stock(const WorldEconomy *e, int good){
+    (void)e; return (good>RES_NONE && good<RES_COUNT)? g_global_cache[good] : 0.f;   /* cache 1×/tick */
+}
+/* LES 3 ÉTAGES D'UN APPROVISIONNEMENT : combien sortira du stock PROPRE (production
+ * sur place, marge nue), du marché LOCAL (le Centre le plus proche, marge de base),
+ * du marché MONDIAL (les autres Centres, DOUBLE marge). Pur (pas de mutation). */
+static void market_split(float own, float local, float glob, float qty,
+                         float *po, float *pl, float *pg){
+    float t = own  <qty?own  :qty; *po=t; qty-=t; if(qty<0)qty=0;
+    t       = local<qty?local:qty; *pl=t; qty-=t; if(qty<0)qty=0;
+    t       = glob <qty?glob :qty; *pg=t;
+}
+/* #5 — LE COÛT DU PUMP À 2 ÉTAGES (devis, sans mutation). Sourcer `qty` de `good` dans
+ * `region` : stock propre (×1) → marché LOCAL cité-état (×marge de base, distance déjà
+ * incluse) → marché MONDIAL (×marge×2 : la double taxe) → pénurie introuvable (×marge×2).
+ * `unit_price` = le prix de marché local du bien (lu par l'appelant). */
+float intertrade_buy_cost(const WorldEconomy *e, int region, int good, float qty, float unit_price){
+    if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||qty<=0.f) return 0.f;
+    const RegionEconomy *re=&e->region[region];
+    float base = re->import_margin; if (base<1.f) base=1.f;
+    int hub = (region<SCPS_MAX_REG)? g_hub_of[region] : -1;
+    float own   = re->stock[good];
+    float local = (hub>=0 && hub!=region)? e->region[hub].stock[good] : 0.f;
+    /* le mondial = le réseau (cache 1×/tick) MOINS l'étage local déjà compté (le hub, et
+     * la région elle-même si elle est un Centre) ; O(1), pas de re-somme dans l'IA. */
+    float glob  = 0.f;
+    if (hub>=0){ glob = g_global_cache[good] - local;
+        if (region<SCPS_MAX_REG && g_centre[region]) glob -= own;
+        if (glob<0.f) glob=0.f; }
+    float po,pl,pg; market_split(own,local,glob,qty,&po,&pl,&pg);
+    float deficit = qty-(po+pl+pg); if (deficit<0) deficit=0;
+    return unit_price * (po + pl*base + (pg+deficit)*base*2.f);
+}
+/* #5 — CONSOMMER au marché à 2 étages (mutation) : DÉPLÉTÉ d'abord le stock propre,
+ * puis le Centre le plus proche (marché local), puis les autres Centres (marché
+ * mondial). Les achats touchent de VRAIS stocks → la production a une destination.
+ * Le reliquat introuvable n'est pas inventé (pénurie : on a payé, le marché était vide). */
+void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty){
+    if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||qty<=0.f) return;
+    RegionEconomy *re=&e->region[region];
+    int hub = (region<SCPS_MAX_REG)? g_hub_of[region] : -1;
+    float t = re->stock[good]<qty?re->stock[good]:qty; re->stock[good]-=t; qty-=t;   /* 1. propre */
+    if (qty<=1e-3f) return;
+    if (hub>=0 && hub!=region){                                                       /* 2. marché local */
+        t = e->region[hub].stock[good]<qty?e->region[hub].stock[good]:qty;
+        e->region[hub].stock[good]-=t; qty-=t;
+    }
+    if (qty<=1e-3f || hub<0) return;
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){                  /* 3. marché mondial */
+        if (!g_centre[r]||r==hub||r==region) continue;
+        t = e->region[r].stock[good]<qty?e->region[r].stock[good]:qty;
+        e->region[r].stock[good]-=t; qty-=t;
+    }
 }
 
 void  intertrade_order_embargo(int cid, int target, bool on){
@@ -187,7 +290,8 @@ float intertrade_pair_value (int cid,int other){
 }
 
 void intertrade_save(FILE *f){ fwrite(g_embargo,sizeof g_embargo,1,f); fwrite(g_centre,sizeof g_centre,1,f); }
-bool intertrade_load(FILE *f){ return fread(g_embargo,sizeof g_embargo,1,f)==1
+bool intertrade_load(FILE *f){ g_hub_dirty=true;   /* #5 : Centres rechargés → carte des hubs à refaire */
+                               return fread(g_embargo,sizeof g_embargo,1,f)==1
                                    && fread(g_centre,sizeof g_centre,1,f)==1; }
 
 static bool pair_at_peace(const DiploState *dp, int ca, int cb){
@@ -203,30 +307,31 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
     for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
         if (g_centre[r]){ int o=e->region[r].owner; if(cid_ok(o)) has_centre[o]=true; }
 
-    /* I6 — LE MARCHÉ N'EST PAS 1:1 : la marge d'achat de chaque région = l'ACCÈS de son
-     * propriétaire à un Centre. La couche commerce ÉCRIT re->import_margin, agency la LIT
-     * (zéro inversion de couche). Via SON hub/Comptoir → ×1.3 ; via un hub TIERS (si côtier
-     * pour l'atteindre) → ×1.8 + un péage versé à ce hub ; enclavé sans hub → ×2.0 ;
-     * monde SANS aucun Centre → 1:1 (le marché-hub n'existe pas). */
+    /* #5 — LE MARCHÉ À 2 ÉTAGES (étage local). Chaque région se branche au marché de la
+     * cité-état la PLUS PROCHE (hub_map_build), à RENDEMENT DÉGRESSIF : la marge d'achat
+     * = base × (1 + MARKET_DIST_FALLOFF·distance). Base : via SON hub/Comptoir → ×1.3 ;
+     * via le hub d'un TIERS (la cité-état hôte) → ×1.8 + un péage versé à ce hub ;
+     * aucun hub atteignable → enclavé ×2.0 ; monde SANS aucun Centre → 1:1. La couche
+     * commerce ÉCRIT re->import_margin ; agency la LIT (+ la double taxe locale/mondiale
+     * par bien via intertrade_buy_margin). Le 2e étage (mondial) est dans buy_margin. */
+    if (g_hub_dirty){ hub_map_build(e); g_hub_dirty=false; }   /* BFS seulement à un changement de Centres */
+    global_cache_refresh(e);                                   /* la profondeur du marché, elle, bouge chaque tick */
     {
-        bool own_hub[SCPS_MAX_COUNTRY], coast[SCPS_MAX_COUNTRY]; int any_centre=0;
-        for (int c=0;c<SCPS_MAX_COUNTRY;c++){ own_hub[c]=has_centre[c]; coast[c]=false; if(has_centre[c]) any_centre=1; }
-        for (int r=0;r<e->n_regions;r++){ int o=e->region[r].owner; if(!cid_ok(o)) continue;
-            if (e->region[r].edi_built & (1u<<EDI_COMPTOIR)) own_hub[o]=true;
-            if (e->region[r].coastal) coast[o]=true; }
-        int tc_owner=-1, tc_region=-1;
-        for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (has_centre[c]){ tc_owner=c; break; }
-        if (tc_owner>=0) tc_region=intertrade_country_centre(e,tc_owner);
+        int any_centre=0;
+        for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++) if (g_centre[r]){ any_centre=1; break; }
         float m_own=tune_f("IMPORT_MARGIN_OWN",1.3f), m_third=tune_f("IMPORT_MARGIN_THIRD",1.8f),
-              m_none=tune_f("IMPORT_MARGIN_NONE",2.0f);
+              m_none=tune_f("IMPORT_MARGIN_NONE",2.0f), dfall=tune_f("MARKET_DIST_FALLOFF",0.12f);
         for (int r=0;r<e->n_regions;r++){
             RegionEconomy *re=&e->region[r];
             re->import_margin=1.f; re->import_toll_region=-1;
             int o=re->owner;
             if (!any_centre || o<0) continue;
-            if (own_hub[o])              re->import_margin=m_own;
-            else if (tc_owner>=0 && coast[o]){ re->import_margin=m_third; re->import_toll_region=(int16_t)tc_region; }
-            else                         re->import_margin=m_none;
+            int hub = (r<SCPS_MAX_REG)? g_hub_of[r] : -1;
+            if (hub<0){ re->import_margin=m_none; continue; }     /* aucun marché atteignable : enclavé */
+            bool own = (e->region[hub].owner==o) || (re->edi_built & (1u<<EDI_COMPTOIR));
+            int d = (r<SCPS_MAX_REG)? g_hub_dist[r] : 0; if (d>8) d=8;   /* rendement dégressif, plafonné */
+            re->import_margin = (own?m_own:m_third) * (1.f + dfall*(float)d);
+            if (!own) re->import_toll_region=(int16_t)hub;        /* péage à la cité-état hôte (la plus proche) */
         }
     }
     for (int i=0;i<rn->n;i++){

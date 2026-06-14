@@ -28,11 +28,21 @@
   **#5 (étape 1) — les cités-états TIENNENT le marché mondial** : les Centres (hubs
   du commerce mondial) sont RARES, **N marchés = N(cités-états)/2**, plantés sur les
   meilleures cités-états (carrefour), espacés → **100 % du commerce mondial** passe
-  par leurs Centres. `intertrade_seed_centres(w,e)`. Cascade ASSUMÉE : marchés rares →
-  accès marchand plus dur → développement plus lent → `EMPIRE_CAP` recalé 10300→**13000**
-  (le doublement ~96k tient). À VENIR (#5 suite) : le **pump à 2 étages** (marché LOCAL
-  cité-état à rendement dégressif + marché MONDIAL via Centre, double taxe : `stock_market`
-  local & global) ; et la nourriture ∝ fertilité (régions stériles-riches ⇒ import).
+  par leurs Centres. `intertrade_seed_centres(w,e)`.
+  **#5 (étape 2) — le PUMP À 2 ÉTAGES** (la chaîne joueur → cité-état → mondial) : chaque
+  région se branche au marché de la cité-état (Centre) la **plus proche** (BFS multi-source
+  sur l'adjacence, `hub_map_build`), à **rendement dégressif** (`MARKET_DIST_FALLOFF`/saut).
+  Un achat de chantier est SOURCÉ pour de vrai (`intertrade_buy_cost`/`_market_consume`,
+  lus par `agency_build_*`) : **stock PROPRE** de la région (×1, production sur place) →
+  **marché LOCAL** = le stock du Centre le plus proche (×marge, péage à la cité-état hôte)
+  → **marché MONDIAL** = le réseau des autres Centres (×marge×2, la **double taxe** quand
+  le bien manque au local). Les achats **DÉPLÉTENT** ces stocks (pas dans le vide) ; la
+  production y converge ⇒ elle a une destination. Chaque entité jouable garde SON stock
+  par région (jamais drainé par autrui — seuls les Centres, le marché, sont partagés).
+  Effet net POP-NEUTRE : le doublement tient (~100-102k year-100, seed 9) à `EMPIRE_CAP`
+  **INCHANGÉ (13000)** — l'achat sur stock PROPRE reste ×1, ce qui compense le surcoût
+  distance/double-taxe (le surcoût frappe l'import, pas la production locale). À VENIR
+  (#5 suite) : la nourriture ∝ fertilité (régions stériles-riches ⇒ import).
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

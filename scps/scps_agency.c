@@ -6,6 +6,7 @@
  * des coordonnées (K/H/P…), jamais des bonus plats.
  */
 #include "scps_agency.h"
+#include "scps_intertrade.h"   /* #5 : le marché à 2 étages (devis + déplétion des stocks) */
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -234,21 +235,31 @@ static float agency_extent_mult(const WorldEconomy *econ, int region){
     return 1.f + 0.15f*(float)n;
 }
 
-float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
+/* #5 — LE DEVIS DU CHANTIER, marché à 2 étages. Pour chaque matériau, la quantité
+ * réellement consommée (qty × étendue) est SOURCÉE au marché : stock propre (×1) →
+ * Centre local (×marge de base, distance incluse) → marché mondial (×marge×2). La
+ * couche commerce calcule (intertrade_buy_cost), agency LIT. `base_out` (option) = le
+ * coût NU (sans marge) → sert à router le péage vers la cité-état hôte. */
+static float agency_build_gold_ex(const WorldEconomy *econ, int region, Edifice e, float *base_out){
+    if (base_out) *base_out=0.f;
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return 0.f;
     const RegionEconomy *re=&econ->region[region];
     const BuildCost *c=&EDIFICES[e].cost;
-    float gold=0.f;
+    float ext = agency_extent_mult(econ, region);   /* §7 : un grand empire paie plus */
+    float gold=0.f, base=0.f;
     for (int k=0;k<BUILD_RES_MAX;k++){
         Resource r=c->res[k];
         if (r<=RES_NONE || r>=RES_COUNT || c->qty[k]<=0.f) continue;
         float price = re->price[r]; if (price < BUILD_MIN_PRICE) price = BUILD_MIN_PRICE;
-        gold += c->qty[k] * price;       /* le manque renchérit : la rareté monte le prix */
+        float qy = c->qty[k]*ext;
+        gold += intertrade_buy_cost(econ, region, r, qy, price);   /* propre/local/mondial + marges */
+        base += qy*price;                                          /* le nu (marge 1) pour le péage */
     }
-    /* I6 — le marché n'est pas 1:1 : la marge d'import (ÉCRITE par intertrade selon
-     * l'accès à un Centre) renchérit l'achat. Champ econ, lu ici : zéro dépendance neuve. */
-    float margin = (re->import_margin > 0.f) ? re->import_margin : 1.f;
-    return gold * agency_extent_mult(econ, region) * margin;   /* §7 étendue · I6 marge */
+    if (base_out) *base_out=base;
+    return gold;
+}
+float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
+    return agency_build_gold_ex(econ, region, e, NULL);
 }
 
 bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct){
@@ -256,7 +267,8 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
     if (e==EDI_PORT && !econ->region[region].coastal) return false;   /* un port se bâtit SUR la côte (mer §5) */
     if (edifice_build_blocked(econ, region, e)){ g_edi_blocked[e]++; return false; }  /* E1bis.11 : ↑ exige le palier précédent (pas de doublon) */
     RegionEconomy *re=&econ->region[region];
-    float gold = agency_build_gold(econ, region, e);
+    float base_gold=0.f;
+    float gold = agency_build_gold_ex(econ, region, e, &base_gold);
     if (gold_acct){                                /* E0.3 : le TRÉSOR UNIQUE paie (la topbar dit vrai) */
         long lcost=(long)ceilf(gold);
         if (*gold_acct < lcost){ g_edi_nogold[e]++; return false; }
@@ -265,21 +277,21 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
         if (gold > re->treasury){ g_edi_nogold[e]++; return false; }   /* pas l'or → pas de chantier */
         re->treasury -= gold;                      /* on PAIE le marché en or */
     }
-    /* I6 — LE PÉAGE : un achat importé via le hub d'un TIERS lui verse une part de la
-     * marge (transfert, pas destruction — les cités-états deviennent banquières). */
-    if (re->import_margin > 1.f && re->import_toll_region >= 0 && re->import_toll_region < econ->n_regions){
-        float base = gold / re->import_margin;
-        float toll = (gold - base) * IMPORT_TOLL_FRAC;
+    /* I6/#5 — LE PÉAGE : la marge au-dessus du nu (transport + double taxe mondiale)
+     * versée à la cité-état hôte (le hub le plus proche) — transfert, pas destruction :
+     * les cités-états deviennent banquières du réseau. */
+    if (gold > base_gold + 0.01f && re->import_toll_region >= 0 && re->import_toll_region < econ->n_regions){
+        float toll = (gold - base_gold) * IMPORT_TOLL_FRAC;
         econ->region[re->import_toll_region].treasury += toll;
         if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
         int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
     }
-    const BuildCost *c=&EDIFICES[e].cost;          /* … et l'on CONSOMME les matériaux du marché */
+    const BuildCost *c=&EDIFICES[e].cost;          /* … et l'on POMPE les matériaux du marché (vrais stocks) */
     float mult = agency_extent_mult(econ, region); /* §7 : un grand pays consomme plus */
     for (int k=0;k<BUILD_RES_MAX;k++){
         Resource r=c->res[k];
         if (r<=RES_NONE || r>=RES_COUNT || c->qty[k]<=0.f) continue;
-        re->stock[r] -= c->qty[k]*mult; if (re->stock[r] < 0.f) re->stock[r]=0.f;
+        intertrade_market_consume(econ, region, r, c->qty[k]*mult);   /* #5 : propre → local → mondial */
     }
     bool ok=agency_order_build(a, region, e);      /* enfile le chantier (durée existante) */
     if (ok) g_edi_made[e]++;

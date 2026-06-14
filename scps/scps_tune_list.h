@@ -60,6 +60,9 @@
     X(EMPIRE_CAP,         13000.0f) \
     X(CITY_CAP,            6500.0f) \
     X(SEED_POP,           48000.0f) \
-    X(HOUSE_MANUF,          100.0f)
+    X(HOUSE_MANUF,          100.0f) \
+    /* #5 — le PUMP À 2 ÉTAGES : le marché local de la cité-état la plus proche sert à
+     * RENDEMENT DÉGRESSIF (la marge d'achat monte de MARKET_DIST_FALLOFF par saut). */ \
+    X(MARKET_DIST_FALLOFF,    0.12f)
 
 #endif /* SCPS_TUNE_LIST_H */
