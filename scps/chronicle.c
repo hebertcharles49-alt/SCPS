@@ -329,7 +329,7 @@ static void sim_init(Sim *s, World *w) {
     statecraft_init(s->sc, w); agency_init(s->ag); diplo_init(s->dp); routes_init(s->rn);
     diplo_seed_rng(s->dp, w->seed);   /* la fronde tire sa graine du monde (séquence par sim) */
     intertrade_reset();   /* embargos décrétés + flux inter-pays : RAZ par sim */
-    intertrade_seed_centres(s->econ);   /* P3.20 : les Centres commerciaux (hubs) — géographiques */
+    intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs) — géographiques */
     /* RAZ PLEINE PLAGE (SCPS_MAX_COUNTRY, pas n_countries) : n_countries GRANDIT par
      * sécession en cours de sim — la sim suivante repart plus bas. Sans ça, les slots
      * hauts gardent ai_on=true + un acteur/TechState PÉRIMÉS d'un autre monde : un pays

@@ -25,8 +25,14 @@
   Le **readout** (viewer) reflète l'eff_cap moteur : les logements MONTENT quand on bâtit.
   ⚠ Pop & taille des pays ≫ qu'avant ; `ai_demo` a deux contrôles SENSIBLES AU MONDE
   (aggression/routes réalisées) rendus ROBUSTES. Diag : `SCPS_CAPDIAG` (`Σmanuf_lvl`).
-  À VENIR (#5) : « le commerce nourrit le marché » (cités-états = hubs alimentaires)
-  demande de DÉCOUPLER la nourriture de `cap_pop` (∝ fertilité) — increment distinct.
+  **#5 (étape 1) — les cités-états TIENNENT le marché mondial** : les Centres (hubs
+  du commerce mondial) sont RARES, **N marchés = N(cités-états)/2**, plantés sur les
+  meilleures cités-états (carrefour), espacés → **100 % du commerce mondial** passe
+  par leurs Centres. `intertrade_seed_centres(w,e)`. Cascade ASSUMÉE : marchés rares →
+  accès marchand plus dur → développement plus lent → `EMPIRE_CAP` recalé 10300→**13000**
+  (le doublement ~96k tient). À VENIR (#5 suite) : le **pump à 2 étages** (marché LOCAL
+  cité-état à rendement dégressif + marché MONDIAL via Centre, double taxe : `stock_market`
+  local & global) ; et la nourriture ∝ fertilité (régions stériles-riches ⇒ import).
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

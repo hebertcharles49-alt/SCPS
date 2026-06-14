@@ -1099,7 +1099,7 @@ static void sim_rebuild(Sim *s, World *w) {
     diplo_seed_rng(s->dp, w->seed);   /* la fronde tire sa graine du MONDE (sinon même séquence à chaque partie) */
     routes_init(s->rn);
     intertrade_reset();   /* embargos décrétés + flux : RAZ par partie */
-    intertrade_seed_centres(s->econ);   /* P3.20 : les Centres commerciaux (hubs du réseau) */
+    intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs du réseau) */
     /* RAZ PLEINE PLAGE : n_countries grandit par sécession ; à la RÉGÉNÉRATION (touche R)
      * les slots hauts gardaient ai_on/TechState périmés d'un monde précédent (cf. chronicle). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ s->ai_on[c]=false; tech_state_init(&s->ts[c], false); }

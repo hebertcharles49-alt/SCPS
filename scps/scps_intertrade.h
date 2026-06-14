@@ -71,7 +71,7 @@ void  intertrade_reset(void);
  * Un par batch de ~4-5 régions, planté là où le FLUX est le plus fort (carrefour
  * + côte). Un pays sans Centre commercial dans son territoire est COUPÉ du réseau
  * inter-pays — il faut en conquérir un. À semer après econ_init (géographique). */
-void  intertrade_seed_centres   (const WorldEconomy *e);
+void  intertrade_seed_centres   (const World *w, const WorldEconomy *e);
 bool  intertrade_has_centre     (int region);                       /* cette région est-elle un hub ? */
 bool  intertrade_country_has_centre(const WorldEconomy *e, int cid);/* ce pays tient-il un hub ? */
 int   intertrade_country_centre (const WorldEconomy *e, int cid);   /* 1re région-hub du pays (-1) */

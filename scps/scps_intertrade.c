@@ -121,24 +121,30 @@ static float region_flow_score(const WorldEconomy *e, int r){
     if (e->region[r].coastal) c+=2.5f;         /* débouché maritime : un grand multiplicateur de flux */
     return c;
 }
-void intertrade_seed_centres(const WorldEconomy *e){
+void intertrade_seed_centres(const World *w, const WorldEconomy *e){
     memset(g_centre,0,sizeof g_centre);
     if (!e) return;
     int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
     static bool claimed[SCPS_MAX_REG];
     memset(claimed,0,sizeof claimed);
-    int remaining=n;
-    while (remaining>0){
-        int best=-1; float bestc=-1.f;                 /* le carrefour le plus fort, non encore couvert */
-        for (int r=0;r<n;r++){ if(claimed[r]) continue;
-            float c=region_flow_score(e,r); if(c>bestc){bestc=c;best=r;} }
-        if (best<0) break;
-        g_centre[best]=true; claimed[best]=true; remaining--;
-        int taken=0;                                   /* le BATCH : jusqu'à 4 voisins s'y rattachent (centre+~4=5) */
-        for (int s=0;s<n && taken<4;s++){
-            if (claimed[s]||!e->adj[best][s]) continue;
-            claimed[s]=true; remaining--; taken++;
+    /* P5 — N MARCHÉS = N(cités-états)/2 : les Centres sont RARES et plantés sur les
+     * MEILLEURES cités-états (carrefour : adjacence + débouché côtier), ESPACÉS — chaque
+     * hub RÉSERVE ses voisins pour que deux marchés ne se collent pas → un réseau peu
+     * dense mais RÉPARTI. Le joueur s'y GREFFE pour le marché régional puis global. */
+    int n_cs=0;
+    if (w) for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_CITY_STATE) n_cs++;
+    int n_markets = n_cs/2;
+    for (int k=0; k<n_markets; k++){
+        int best=-1; float bestc=-1.f;
+        for (int r=0;r<n;r++){
+            if (claimed[r]) continue;
+            int o=e->region[r].owner;
+            if (o<0||o>=w->n_countries||w->country[o].role!=POLITY_CITY_STATE) continue;
+            float c=region_flow_score(e,r); if(c>bestc){bestc=c;best=r;}
         }
+        if (best<0) break;                              /* plus de cité-état candidate */
+        g_centre[best]=true; claimed[best]=true;
+        for (int s=0;s<n;s++) if (e->adj[best][s]) claimed[s]=true;   /* espacement : on réserve les voisins */
     }
 }
 bool intertrade_has_centre(int region){

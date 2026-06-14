@@ -395,8 +395,8 @@ void econ_init(WorldEconomy *e, const World *w) {
      * 6×8000 + 12×4000 = 96 000 : la population mondiale CONVERGE vers ~96k
      * par la seule croissance (pas de bidouille du taux), la guerre ne fait que
      * REDISTRIBUER cette capacité (conquête) sans la créer. */
-    float empire_cap = tune_f("EMPIRE_CAP", 10300.f);
-    float city_cap   = tune_f("CITY_CAP",    5150.f);
+    float empire_cap = tune_f("EMPIRE_CAP", 13000.f);
+    float city_cap   = tune_f("CITY_CAP",    6500.f);
     float cty_target[SCPS_MAX_COUNTRY]={0};
     for (int cid=0; cid<SCPS_MAX_COUNTRY && cid<w->n_countries; cid++) {
         if (cty_cap[cid]<=0.f) continue;

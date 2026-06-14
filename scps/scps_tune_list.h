@@ -57,8 +57,8 @@
      * grenier + logements BÂTIS (manufactures, +HOUSE_MANUF/niveau, plafonné à
      * ½·cap_pop). La graine ensemence ½·cap_pop ; bâtir double la région vers son
      * plein → le monde passe de ~48k à ~96k au siècle (la nourriture suit cap_pop). */ \
-    X(EMPIRE_CAP,         10300.0f) \
-    X(CITY_CAP,            5150.0f) \
+    X(EMPIRE_CAP,         13000.0f) \
+    X(CITY_CAP,            6500.0f) \
     X(SEED_POP,           48000.0f) \
     X(HOUSE_MANUF,          100.0f)
 

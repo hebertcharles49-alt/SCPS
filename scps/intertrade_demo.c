@@ -36,7 +36,7 @@ int main(int argc,char**argv){
     /* P3.20 — la GÂCHE du réseau : sans Centre commercial, pas de commerce
      * inter-pays. On sème les hubs (géographiques) et l'on teste ENTRE hubs. */
     intertrade_reset();
-    intertrade_seed_centres(econ);
+    intertrade_seed_centres(w, econ);
 
     /* deux régions-HUB que l'on attribue à DEUX pays distincts. */
     int ra=-1, rb=-1;
