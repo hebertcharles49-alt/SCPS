@@ -67,6 +67,11 @@
     X(HOUSE_MANUF,          100.0f) \
     /* #5 — le PUMP À 2 ÉTAGES : le marché local de la cité-état la plus proche sert à
      * RENDEMENT DÉGRESSIF (la marge d'achat monte de MARKET_DIST_FALLOFF par saut). */ \
-    X(MARKET_DIST_FALLOFF,    0.12f)
+    X(MARKET_DIST_FALLOFF,    0.12f) \
+    /* M4 — l'arbitrage des cités-états (leur moteur), BORNÉ : volume/tick capé, spread
+     * MINIMAL pour agir, part CAPTÉE du spread → pas de runaway spéculatif. */ \
+    X(ARB_VOL_CAP,            3.0f) \
+    X(ARB_MIN_SPREAD,         0.20f) \
+    X(ARB_CAPTURE,            0.35f)
 
 #endif /* SCPS_TUNE_LIST_H */

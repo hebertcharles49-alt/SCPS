@@ -23,6 +23,10 @@ static void ok(const char*w,bool c){ printf("   %s %s\n",c?"✓":"✗",w); if(c)
 
 int main(int argc,char**argv){
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
+    /* M4 — ce banc ISOLE le commerce de ROUTES (inter-pays). On coupe la passe d'arbitrage
+     * des cités-états (ARB_VOL_CAP=0), qui sinon importerait du RÉSEAU vers nos Centres de
+     * test (comportement légitime, mais hors sujet ici ; sa preuve est la chronique). */
+    setenv("SCPS_TUNE","ARB_VOL_CAP=0",1);
     World*w=malloc(sizeof(World)); WorldEconomy*econ=malloc(sizeof(WorldEconomy));
     if(!w||!econ){fprintf(stderr,"OOM\n");return 1;}
 

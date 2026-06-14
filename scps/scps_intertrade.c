@@ -477,6 +477,36 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             B->price[g]+=(mid-B->price[g])*IT_PRICE_CONV;
         }
     }
+    /* M4 — L'ARBITRAGE DES CITÉS-ÉTATS (leur MOTEUR : elles vivent du commerce, pas de
+     * l'impôt). Chaque Centre IMPORTE un volume BORNÉ des biens où son marché LOCAL paie
+     * plus cher que le Centre le moins cher du réseau ; il encaisse une PART du spread
+     * (l'exportateur source encaisse aussi son or), DÉPLÉTÉ la source, stocke son local ;
+     * les prix CONVERGENT. Volume/tick CAPÉ + spread MINIMAL + on ne vide jamais la source
+     * → pas de runaway spéculatif ; σ prix reste borné. */
+    { float vcap=tune_f("ARB_VOL_CAP",3.f), minsp=tune_f("ARB_MIN_SPREAD",0.20f), cap=tune_f("ARB_CAPTURE",0.35f);
+      int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+      for (int h=0;h<n;h++){ if(!g_centre[h]) continue; RegionEconomy *H=&e->region[h];
+        for (int g=1; g<RES_COUNT; g++){
+            float lp=H->price[g]; int src=-1; float sp=lp; int ho=H->owner;
+            for (int c=0;c<n;c++){ if(c==h||!g_centre[c]) continue;
+                int co=e->region[c].owner;
+                if (!cid_ok(co)||!cid_ok(ho)||co==ho) continue;          /* INTER-pays seulement (l'intra = scps_trade) */
+                if (!pair_at_peace(dp,ho,co) || intertrade_embargoed(ho,co)) continue;  /* ni guerre ni embargo */
+                if (e->region[c].price[g]<sp && e->region[c].stock[g]>1.f){ sp=e->region[c].price[g]; src=c; } }
+            if (src<0 || lp<=sp*(1.f+minsp)) continue;            /* spread trop mince → rien */
+            float vol=vcap; if (vol>e->region[src].stock[g]*0.20f) vol=e->region[src].stock[g]*0.20f;  /* ne vide pas la source */
+            if (vol<0.5f) continue;
+            e->region[src].stock[g]-=vol; H->stock[g]+=vol;      /* le Centre stocke son marché local */
+            e->region[src].treasury += vol*sp*IT_MARGIN_TO_GOLD; /* l'exportateur source encaisse l'or */
+            float profit=vol*(lp-sp)*cap;                        /* le CE encaisse une PART BORNÉE du spread */
+            H->treasury += profit; g_centre_val[h]+=profit;
+            if (H->owner>=0) econ_flux_add(H->owner, FX_EXPORT, profit);
+            float mid=(lp+sp)*0.5f;                               /* les prix CONVERGENT (local baisse, source monte) */
+            H->price[g]            += (mid-lp)*IT_PRICE_CONV;
+            e->region[src].price[g]+= (mid-sp)*IT_PRICE_CONV;
+        }
+      }
+    }
 }
 
 float intertrade_imports_value(const WorldEconomy *e){ (void)e; return g_last_value; }
