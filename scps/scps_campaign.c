@@ -251,7 +251,7 @@ const char *campaign_posture_name(int p){
 #define BT_ACCALMIE_J  2      /* jours d'accalmie */
 #define BT_RUPTURE     0.20f  /* H4 : la réserve rompt sous 20 % (était 25) — le choc dure 1-2 cycles de plus */
 #define BT_RECUP       0.015f /* l'accalmie rend 1.5 %/j de l'ouverture (+0.7 % chez soi) */
-#define BT_DMG_K       0.050f /* étalonnage du dégât de moral par jour de choc */
+#define BT_DMG_K       0.057f /* P3-bis : calibré → ratio poursuite/choc 1.3x ∈ [0.8,1.8] (graine 7, 1×60 ; SANS cavalerie) */
 #define BT_CHOC_MORTS  0.006f  /* L3/L4 (recalibré L4-2026-06, graine 7 1×30 nouvelle genèse) : ratio poursuite/choc 2.4x ∈ [2,5] — la curée domine, le choc tue encore */
 #define BT_MAX_JOURS   120    /* au-delà : les deux camps se délitent (nul sanglant) */
 #define BT_BRISEE_J    45     /* une armée en déroute est INAPTE ce temps */
@@ -382,7 +382,7 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     float P=0.06f + ((V->posture==FA_AGRESSIVE)?0.08f:(V->posture==FA_PRUDENTE)?-0.03f:0.f)
           + 0.04f*vfrac;
     if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.04f;   /* la montagne couvre la fuite */
-    P=fminf(tune_f("CUREE_CAP",0.12f),fmaxf(0.03f,P));
+    P=fminf(tune_f("CUREE_CAP",0.22f),fmaxf(0.03f,P));   /* défaut = registre (0.22) ; la base P borne en pratique */
     long lp=force_units(&L->force);
     long to_kill=(long)((float)lp*P+0.5f);
     if (!L->rally_used && to_kill>=lp) to_kill=lp-1;   /* L2 : le NOYAU survit pour se rallier */
@@ -451,8 +451,9 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         float pB=side_power(&B->force)/tA *((B->posture==FA_AGRESSIVE)?1.10f:(B->posture==FA_PRUDENTE)?0.92f:1.f);
         pA*=0.85f+0.30f*xs01(rng); pB*=0.85f+0.30f*xs01(rng);
         float tot=pA+pB+1e-3f;
-        bt->resB -= bt->resB0*BT_DMG_K*(2.f*pA/tot);
-        bt->resA -= bt->resA0*BT_DMG_K*(2.f*pB/tot);
+        float dmgk=tune_f("BT_DMG_K",BT_DMG_K);
+        bt->resB -= bt->resB0*dmgk*(2.f*pA/tot);
+        bt->resA -= bt->resA0*dmgk*(2.f*pB/tot);
         bt->lossB += (float)force_units(&B->force)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pA/tot);
         bt->lossA += (float)force_units(&A->force)*tune_f("BT_CHOC_MORTS",BT_CHOC_MORTS)*(2.f*pB/tot);
         long mB=0,mA=0;

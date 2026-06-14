@@ -36,6 +36,7 @@
     /* §H4/L3 — la curée & le choc (le ratio poursuite/choc se CALIBRE, registre J).
      * Alias spec L3 : CHOC_KILL_RATE≡BT_CHOC_MORTS · CUREE_CAP_FRAC≡CUREE_CAP. */ \
     X(CUREE_CAP,              0.22f) \
+    X(BT_DMG_K,               0.057f) \
     X(BT_CHOC_MORTS,          0.006f) \
     X(BT_RUPTURE,             0.20f) \
     X(CHOC_ROUNDS_BONUS,      2.0f) \

@@ -46,8 +46,14 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
   12 → 9/11 ; **10 ans retenu → 10 occ · 4 transferts · 2 sécessions** (MODÉRÉ : la carte
   change sans tout emporter). UI : le popup diplo affiche « Paix : score X/50 ou X/10 ans ».
 - make test **32/32** · 0 warning · lang-check 64 · pas de bump SAVE (pure logique).
-- Réserve : ratio poursuite/choc encore hors cible — c'est l'objet de **P3** (cible révisée
-  [0,8 ; 1,8] sans cavalerie).
+- **P3 — ratio poursuite/choc recalibré** (cible révisée **[0,8 ; 1,8]**, SANS cavalerie) :
+  `BT_DMG_K` rendu tunable + grille (registre J). Le ratio est très SENSIBLE à `BT_DMG_K`
+  (dégât de moral/jour → durée de bataille → morts de choc, quantifiés en paquets) :
+  0.054→0.5× · **0.057→1.3×** · 0.060→1.6× · 0.063→0.5× (graine 7, 1×60). `CUREE_CAP`
+  sans effet (la base P borne avant le cap). **Point figé : `SCPS_TUNE="BT_DMG_K=0.057"`**
+  (devenu le défaut) → ratio **1.3×**, 0 décrochage, conquête P2-bis intacte (4 transferts,
+  2 sécessions). NOTE : sans cavalerie la poursuite d'infanterie est bornée — À RECALIBRER
+  vers [2,5] à l'arc UNITÉS MONTÉES (charge + poursuite ×2-3). make test 32/32.
 
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
