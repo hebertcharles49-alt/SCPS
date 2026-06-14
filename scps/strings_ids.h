@@ -178,6 +178,12 @@
     X(STR_DIPLO_SCORE_FMT, "score {0}") \
     X(STR_DIPLO_PAIX_FMT, "Paix : score {0}/50 ou {1}/10 ans") \
     X(STR_DIPLO_RANCUNE, "rancune vive") \
+    X(STR_PACT_ACTIF,  "pacte commercial \xe2\x9c\x93") \
+    X(STR_PACT_GLOBAL, "pacte \xe2\x9c\x93 \xc2\xb7 acc\xc3\xa8s march\xc3\xa9 global") \
+    X(STR_PACT_AUCUN,  "pas de pacte commercial") \
+    X(STR_PACT_SIGN,   "Signer un pacte") \
+    X(STR_PACT_BREAK,  "Rompre le pacte") \
+    X(STR_PACT_HOV,    "Pacte commercial : acc\xc3\xa8s R\xc3\x89""CIPROQUE au march\xc3\xa9 GLOBAL du partenaire si l'un tient un Centre. R\xc3\xa9vocable.") \
     X(STR_DIPLO_MOTIF_FMT, "motif : {0}") \
     X(STR_DIPLO_RACE_FMT, "Race : {0}") \
     X(STR_DIPLO_STATUT_FMT, "Statut : {0}") \

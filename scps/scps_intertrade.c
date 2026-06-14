@@ -97,6 +97,7 @@ static float  g_centre_val[SCPS_MAX_REG]; /* valeur du commerce passée par chaq
 static int16_t g_hub_of  [SCPS_MAX_REG];
 static int16_t g_hub_dist[SCPS_MAX_REG];
 static bool    g_hub_dirty = true;          /* #5 : la carte des hubs ne dépend QUE des positions des Centres (statiques entre conquêtes) — on ne la RECALCULE qu'à un changement (seed/relocate), pas chaque jour */
+static bool    g_global_access[SCPS_MAX_COUNTRY];  /* M3 : pays ayant accès au marché GLOBAL (Centre propre OU pacte avec un porteur de Centre) — recalculé 1×/tick */
 static float   g_global_cache[RES_COUNT];   /* #5 : profondeur du marché mondial (Σ stocks des Centres), CALCULÉE 1×/tick (le devis d'achat la LIT en O(1), pas de re-somme dans la boucle chaude de l'IA) */
 #define IT_SEA_HOPS 4   /* une région côtière sans hub par terre atteint un marché d'outre-mer à ce coût */
 
@@ -177,6 +178,9 @@ int intertrade_country_centre(const WorldEconomy *e, int cid){
         if (g_centre[r] && e->region[r].owner==cid) return r;
     return -1;
 }
+/* M3 — un pays a-t-il accès au marché GLOBAL ? (Centre propre OU pacte avec un porteur).
+ * Lit le cache recalculé 1×/tick par intertrade_tick (O(1)). */
+bool intertrade_has_global_access(int cid){ return cid_ok(cid) && g_global_access[cid]; }
 /* RELOCALISER un Centre commercial (coût en or côté appelant) : le hub se DÉPLACE
  * de `from` vers `to` — il ne meurt pas, il bouge. `to` ne doit pas déjà en être un.
  * M2 — on déplace le BÂTIMENT (edi_built) ; g_centre en re-dérive. */
@@ -298,7 +302,8 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
     float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
     float avail, mult;
     if (tier<=0){ avail=e->region[hub].stock[good]; mult=base; }              /* régional */
-    else { if (!intertrade_country_has_centre(e, re->owner)) return 0;        /* pas d'accès mondial DIRECT */
+    else { if (!intertrade_country_has_centre(e, re->owner)                   /* M3 : accès mondial = */
+               && !(cid_ok(re->owner)&&g_global_access[re->owner])) return 0; /* Centre propre OU pacte */
            avail=g_global_cache[good]; mult=base*2.f; }                       /* mondial : double taxe */
     if (avail<1.f) return 0;                                      /* rien à acheter : « uniquement s'il est dispo » */
     float up=price*mult; if (up<1e-4f) up=1e-4f;
@@ -331,7 +336,8 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
     RegionEconomy *re=&e->region[region];
     int hub=g_hub_of[region];
     if (hub<0) return 0;
-    if (tier>0 && !intertrade_country_has_centre(e, re->owner)) return 0;
+    if (tier>0 && !intertrade_country_has_centre(e, re->owner)
+        && !(cid_ok(re->owner)&&g_global_access[re->owner])) return 0;   /* M3 : Centre OU pacte */
     long qty=want; if (qty>(long)re->stock[good]) qty=(long)re->stock[good];
     if (qty<=0) return 0;
     float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
@@ -373,6 +379,16 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
     flows_clear();
     if (!e || !rn) return;
     refresh_centres(e);   /* M2 : g_centre suit le BÂTI (Centres conquis/bâtis/relocalisés) */
+    /* M3 — ACCÈS AU MARCHÉ GLOBAL : on tient un Centre, OU on a un PACTE commercial avec un
+     * pays qui en tient un (réciproque). Précalcul O(R)+O(pays²) (les readers lisent en O(1)). */
+    { bool hc[SCPS_MAX_COUNTRY]; for (int c=0;c<SCPS_MAX_COUNTRY;c++) hc[c]=false;
+      for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
+          if (g_centre[r]){ int o=e->region[r].owner; if(cid_ok(o)) hc[o]=true; }
+      for (int c=0;c<SCPS_MAX_COUNTRY;c++) g_global_access[c]=hc[c];
+      if (dp) for (int a=0;a<SCPS_MAX_COUNTRY;a++) if (!g_global_access[a])
+          for (int b=0;b<SCPS_MAX_COUNTRY;b++)
+              if (b!=a && hc[b] && diplo_trade_pact(dp,a,b)){ g_global_access[a]=true; break; }
+    }
 
     /* #5 — LE MARCHÉ À 2 ÉTAGES (étage local). Chaque région se branche au marché de la
      * cité-état la PLUS PROCHE (hub_map_build), à RENDEMENT DÉGRESSIF : la marge d'achat

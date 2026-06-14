@@ -1391,7 +1391,8 @@ enum { SBH_TAB=1, SBH_ECOSUB, SBH_EMBARGO, SBH_RELOC_SRC, SBH_RELOC_DST, SBH_REL
        SBH_COUNCIL /* Q1 : a=siège(0..2), b=slot candidat à NOMMER (≥0) ou -1 = RENVOYER */,
        SBH_MARCHE_SUB /* #5 : a=sous-onglet marché (0 local · 1 régio · 2 global) */,
        SBH_BUY  /* #5 : a=bien, b=tier (0 régio · 1 global) — pompe au marché */,
-       SBH_SELL /* #5 : a=bien, b=tier — vend au marché */ };
+       SBH_SELL /* #5 : a=bien, b=tier — vend au marché */,
+       SBH_PACT /* M3 : a=pays partenaire, b=1 signer / 0 rompre un pacte commercial */ };
 typedef struct { SDL_Rect r; int kind, a, b; } SbHit;
 static SbHit g_sbhits[120]; static int g_nsbhits;
 static void sbhit_reset(void){ g_nsbhits=0; }
@@ -1604,7 +1605,7 @@ static void sb_panel_marche(SDL_Renderer *ren, int x, int y, int w, int h, Sim *
     static char buf[64][120]; int nb=0;
     int me=s->player;
     int cap=sb_capital_region(s, world);
-    bool hasglobal=intertrade_country_has_centre(s->econ, me);
+    bool hasglobal=intertrade_has_global_access(me);   /* M3 : Centre propre OU pacte commercial */
     int hub=(cap>=0)?intertrade_region_hub(cap):-1;
     /* les trois sous-onglets (le global GRISÉ si pas d'accès DIRECT) */
     int cx=x+10;
@@ -2029,6 +2030,17 @@ static void sb_panel_diplo(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s
         if (diplo_rancor(s->dp,c,me) > 1.f)
             draw_text(ren,g_font_small,x+250,y, (SDL_Color){0xc0,0x80,0x50,0xff}, tr(STR_DIPLO_RANCUNE));
         y+=15;
+        /* M3 — LE PACTE COMMERCIAL (hors guerre) : statut RÉCIPROQUE + signer/rompre.
+         * Il ouvre l'accès au marché GLOBAL du partenaire si l'un tient un Centre. */
+        if (st!=DIPLO_WAR){
+            bool pact=diplo_trade_pact(s->dp,me,c);
+            bool phub=intertrade_country_has_centre(s->econ,c);
+            draw_text(ren,g_font_small,x+12,y+2, pact?(SDL_Color){0x8c,0xc0,0x9c,0xff}:COL_PANEL2,
+                      pact?(phub?tr(STR_PACT_GLOBAL):tr(STR_PACT_ACTIF)):tr(STR_PACT_AUCUN));
+            (void)sb_chip(ren,x+210,y, pact?tr(STR_PACT_BREAK):tr(STR_PACT_SIGN), pact,
+                          SBH_PACT, c, pact?0:1, tr(STR_PACT_HOV));
+            y+=18;
+        }
         if (st==DIPLO_WAR){
             char sz[48], num[16];
             snprintf(num,sizeof num,"%+d",(int)diplo_war_score(s->dp,me,c));
@@ -2318,6 +2330,11 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
             }
             break;
         }
+        case SBH_PACT:                                           /* M3 : signer/rompre un pacte commercial (réciproque) */
+            diplo_set_trade_pact(s->dp, s->player, hh->a, hh->b!=0);
+            printf("\n[scps] Pacte commercial %s avec %s — accès RÉCIPROQUE au marché global (si l'un tient un Centre).\n",
+                   hh->b? "SIGNÉ":"ROMPU", sb_country_name(world, hh->a));
+            break;
         case SBH_EMBARGO:
             intertrade_order_embargo(s->player, hh->a, hh->b!=0);
             printf("\n[scps] %s contre %s — le négoce %s.\n",
@@ -3535,7 +3552,8 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 17u           /* v17 : Q1 — Statecraft.council[pays][3] (état conseil persistant).
+#define SAVE_VERSION 18u           /* v18 : M3 — DiploState.trade_pact[pays][pays] (le pacte commercial réciproque).
+                                    * v17 : Q1 — Statecraft.council[pays][3] (état conseil persistant).
                                     * v16 : Country.region_ids[12→32] (mondes fragmentés dépassaient 12).
                                     * v15 : arc M — les fourches (RegionEconomy.last_pole/pole_since_day,
                                     * +5 édifices, BLD_ALAMBIC + RES_ESSENCE_PURIFIEE : RES_COUNT change).
@@ -4017,6 +4035,7 @@ static void loading_paint(SDL_Renderer *ren, int W, int H){
 int main(int argc, char **argv) {
     bool shot = false, shot_tree = false, shot_war = false, shot_culture = false, shot_sidebar = false, shot_council = false;
     bool shot_market = false;   /* #5 : capture du tiroir MARCHÉ (achat/vente direct) */
+    bool shot_diplo = false;    /* M3 : capture du tiroir DIPLO (pacte commercial) */
     bool shot_political = false; float shot_zoom = 1.f;   /* N3.1 : capture vue Politique ± zoom */
     int  shot_shell = 0;
     bool savetest = false;
@@ -4027,6 +4046,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--tree")) { shot = true; shot_tree = true; }
         else if (!strcmp(argv[i], "--sidebar")) { shot = true; shot_sidebar = true; }   /* tiroir Stocks + lentille Marché */
         else if (!strcmp(argv[i], "--market")) { shot = true; shot_market = true; }      /* #5 : tiroir MARCHÉ (achat/vente) */
+        else if (!strcmp(argv[i], "--diplo")) { shot = true; shot_diplo = true; }        /* M3 : tiroir DIPLO (pacte commercial) */
         else if (!strcmp(argv[i], "--council")) { shot = true; shot_council = true; }   /* Q1 : section ÉTAT (Conseil) */
         else if (!strcmp(argv[i], "--shellshot") && i+1<argc) { shot=true; shot_shell=1+atoi(argv[++i]); }  /* 1=menu 2=setup 3=ouverture */
         else if (!strcmp(argv[i], "--savetest")) savetest=true;   /* vérif sauvegarde : sauver-recharger = continuation identique */
@@ -4307,6 +4327,13 @@ int main(int argc, char **argv) {
                     for (int r=0;r<sim.econ->n_regions;r++) if (intertrade_has_centre(r)){ sim.player=sim.econ->region[r].owner; break; }
                     g_sbc.day=-1;   /* démo : joueur tenant un Centre → l'étage GLOBAL s'ouvre */
                 }
+            } else if (shot_diplo){                  /* M3 : démo DIPLO — un pacte SIGNÉ pour montrer l'affichage */
+                g_sb.tab=SBT_DIPLO; g_sb.anim=1.f;
+                for (int c=0;c<world->n_countries;c++)
+                    if (c!=sim.player && world->country[c].role!=POLITY_UNCLAIMED
+                        && diplo_status(sim.dp,sim.player,c)!=DIPLO_WAR){
+                        diplo_set_trade_pact(sim.dp, sim.player, c, true); break;   /* 1 pacte actif (le reste « pas de pacte ») */
+                    }
             } else if (shot_council){                /* Q1 : démo Conseil — un siège POURVU, deux vacants */
                 int best=0,bt=0; for(int sl=0;sl<SC_COUNCIL_CANDS;sl++){ int t=statecraft_council_cand_tier(world->seed,sim.player,0,sl); if(t>bt){bt=t;best=sl;} }
                 statecraft_council_hire(sim.sc, sim.player, 0, best);   /* siège Savoir pourvu (montre « Renvoyer ») */
@@ -4350,7 +4377,7 @@ int main(int argc, char **argv) {
                 draw_mode_buttons(ren, win_h, smode);                     /* §5 : modes de carte */
                 draw_minimap(ren, &mm_pb, win_w, win_h, &cam);            /* §5 : la minicarte */
                 draw_province_panel(ren, win_w, win_h, world, sim.econ, sim.wp, sim.wl, sim.drift, selected, &sim);
-                if (shot_sidebar || shot_council || shot_market) draw_sidebar(ren, win_w, win_h, &sim, world, smode, selected);
+                if (shot_sidebar || shot_council || shot_market || shot_diplo) draw_sidebar(ren, win_w, win_h, &sim, world, smode, selected);
             }
         }
         SDL_RenderPresent(ren);

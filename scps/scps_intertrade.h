@@ -74,6 +74,7 @@ void  intertrade_reset(void);
 void  intertrade_seed_centres   (const World *w, WorldEconomy *e);   /* M2 : pose le bâti EDI_TRADE_CENTER sur la meilleure région de chaque cité-état */
 bool  intertrade_has_centre     (int region);                       /* cette région est-elle un hub ? */
 bool  intertrade_country_has_centre(const WorldEconomy *e, int cid);/* ce pays tient-il un hub ? */
+bool  intertrade_has_global_access(int cid);                        /* M3 : Centre propre OU pacte commercial avec un porteur (cache 1×/tick) */
 int   intertrade_country_centre (const WorldEconomy *e, int cid);   /* 1re région-hub du pays (-1) */
 bool  intertrade_relocate_centre(WorldEconomy *e, int from, int to);/* déplace le BÂTIMENT-hub (coût: appelant) */
 /* #5 — LE PUMP À 2 ÉTAGES (marché LOCAL cité-état la plus proche → marché MONDIAL via

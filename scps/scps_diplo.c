@@ -91,8 +91,14 @@ int diplo_vassal_count(const DiploState *d, int cid){
 }
 bool diplo_trade_pact(const DiploState *d, int a, int b){
     if (!d||a<0||b<0||a>=SCPS_MAX_COUNTRY||b>=SCPS_MAX_COUNTRY) return false;
-    return (d->suzerain[a]==b && d->contrat[a]==CONTRAT_CITE)
+    return d->trade_pact[a][b]                                /* M3 : le pacte commercial SIGNÉ (réciproque) */
+        || (d->suzerain[a]==b && d->contrat[a]==CONTRAT_CITE) /* ou le lien de cité-état (vassalité commerçante) */
         || (d->suzerain[b]==a && d->contrat[b]==CONTRAT_CITE);
+}
+/* M3 — signer/rompre un pacte commercial : RÉCIPROQUE (les deux sens à la fois). */
+void diplo_set_trade_pact(DiploState *d, int a, int b, bool on){
+    if (!d||a<0||b<0||a==b||a>=SCPS_MAX_COUNTRY||b>=SCPS_MAX_COUNTRY) return;
+    d->trade_pact[a][b]=d->trade_pact[b][a]=(uint8_t)(on?1:0);
 }
 void diplo_set_vassal(DiploState *d, int suz, int vas, SuzContrat c){
     if (!d||suz<0||vas<0||suz==vas||suz>=SCPS_MAX_COUNTRY||vas>=SCPS_MAX_COUNTRY) return;

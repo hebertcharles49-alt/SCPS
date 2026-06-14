@@ -84,6 +84,10 @@ typedef struct DiploState {
     int16_t     suzerain   [SCPS_MAX_COUNTRY];   /* -1 = libre */
     int8_t      contrat    [SCPS_MAX_COUNTRY];   /* SuzContrat du lien (porté par le vassal) */
     int n_servage, n_protectorat, n_concordat, n_cite, n_defections;   /* chronique (cumul sim) */
+    /* M3 — LE PACTE COMMERCIAL : un accord RÉCIPROQUE (trade_pact[a][b]==trade_pact[b][a])
+     * signé dans l'UI diplo. Il GARANTIT la route (comme la cité-état) ET, surtout, ouvre
+     * l'ACCÈS AU MARCHÉ GLOBAL du partenaire : si l'un tient un Centre, l'autre y accède. */
+    uint8_t  trade_pact[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
     /* ── LA FRONDE VASSALE (brief fronde) — grief (combustible) × ratio (oxygène) ── */
     float    v_grief [SCPS_MAX_COUNTRY];  /* grief du vassal envers son maître [0..1] */
     float    v_loyal [SCPS_MAX_COUNTRY];  /* jours de LOYAUTÉ ACHETÉE (bloque l'entrée en ligue) */
@@ -108,8 +112,11 @@ int         diplo_suzerain    (const DiploState *d, int cid);   /* -1 = libre */
 SuzContrat  diplo_contrat     (const DiploState *d, int cid);
 int         diplo_vassal_count(const DiploState *d, int cid);
 const char *diplo_contrat_name(SuzContrat c);
-/* Route GARANTIE (cité-état commerciale) : ni guerre ni embargo ne coupent ce lien. */
+/* Route GARANTIE (pacte commercial OU cité-état) : ni guerre ni embargo ne coupent ce
+ * lien ; le pacte ouvre AUSSI l'accès au marché global du partenaire (M3). */
 bool        diplo_trade_pact  (const DiploState *d, int a, int b);
+/* M3 — signer/rompre un pacte commercial RÉCIPROQUE (les deux sens). */
+void        diplo_set_trade_pact(DiploState *d, int a, int b, bool on);
 /* Tick ANNUEL : TRIBUTS (servage lourd 8 %/an + coercition chez le serf ; protectorat
  * léger 2 %), APPEL du protecteur (les guerres du protégé l'appellent), DÉFECTION
  * (ratio de force < ~1.15 → dénonciation ; le serf part en guerre), ACCEPTATION par
