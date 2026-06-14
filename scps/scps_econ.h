@@ -215,6 +215,7 @@ typedef struct {
     bool       tech_alchimie;        /* F3 : le pays a-t-il débloqué l'alchimie ? (gate de BLD_ALAMBIC) */
     bool       tech_replicateur;     /* FAU4 : TECH_TRANSMUTATION débloquée ? (gate de BLD_REPLICATEUR) */
     bool       tech_corne;           /* FAU4 : TECH_FORGE_RUNES débloquée ? (gate de BLD_CORNE) */
+    bool       tech_arquebus;        /* F7 : TECH_POUDRIERE débloquée ? (gate de BLD_ARQUEBUS) */
     float      gdp;                  /* valeur produite au dernier tick */
     float      satisfaction;         /* satisfaction générale [0..1] */
     float      food_sat;             /* satisfaction alimentaire [0..1] (grain+fish) */

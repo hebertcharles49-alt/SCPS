@@ -774,6 +774,7 @@ static void econ_build_tick(WorldEconomy *e){
             if (b==BLD_ALAMBIC && !re->tech_alchimie) continue;                  /* F3 : alambic gaté par TECH_ALCHIMIE */
             if (b==BLD_REPLICATEUR && !re->tech_replicateur) continue;           /* FAU4 : gate TECH_TRANSMUTATION */
             if (b==BLD_CORNE && !re->tech_corne) continue;                       /* FAU4 : gate TECH_FORGE_RUNES */
+            if (b==BLD_ARQUEBUS && !re->tech_arquebus) continue;                 /* F7 : gate TECH_POUDRIERE */
             if (re->price[rc->out] < BASE_PRICE[rc->out]*NF_SHORTAGE) continue;   /* output pas en pénurie ICI */
             bool feed1 = (rc->in1==RES_NONE)
                       || avail[rc->in1] > NF_REALM_MIN || re->stock[rc->in1] >= NF_STOCK_MIN
@@ -802,6 +803,7 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
         re->tech_alchimie = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_ALCHIMIE] : false; /* F3 : gate de BLD_ALAMBIC */
         re->tech_replicateur = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_TRANSMUTATION] : false; /* FAU4 : gate de BLD_REPLICATEUR */
         re->tech_corne = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FORGE_RUNES] : false;          /* FAU4 : gate de BLD_CORNE */
+        re->tech_arquebus = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_POUDRIERE] : false;          /* F7 : gate de BLD_ARQUEBUS */
     }
 }
 

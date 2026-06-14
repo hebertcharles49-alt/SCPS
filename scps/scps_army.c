@@ -47,6 +47,24 @@ static const UnitDef UNITS[U_COUNT] = {
 const UnitDef *unit_def(UnitType t){ return (t>=0&&t<U_COUNT)?&UNITS[t]:NULL; }
 const char    *unit_name(UnitType t){ return (t>=0&&t<U_COUNT)?UNITS[t].name:"?"; }
 
+/* F7 — LA TECH QUI DÉBLOQUE UNE UNITÉ (fabrique ET unité gatées) : arquebusier ← Poudrière,
+ * garde runique ← Forge à runes, mage ← Magie de bataille, alchimiste ← Alchimie, hallebardier
+ * ← Caserne (infanterie de base). Les 8 unités v13 restent SANS gate (TECH_COUNT = toujours). */
+TechId unit_tech_gate(UnitType t){
+    switch(t){
+        case U_ARQUEBUSIER:   return TECH_POUDRIERE;
+        case U_GARDE_RUNIQUE: return TECH_FORGE_RUNES;
+        case U_MAGE:          return TECH_MAGIE_BATAILLE;
+        case U_ALCHIMISTE:    return TECH_ALCHIMIE;
+        case U_HALLEBARDIER:  return TECH_CASERNE;
+        default:              return TECH_COUNT;          /* base : toujours recrutable */
+    }
+}
+bool unit_recruitable(const TechState *ts, UnitType t){
+    TechId g=unit_tech_gate(t);
+    return (g==TECH_COUNT) || (ts && ts->unlocked[g]);
+}
+
 /* ---- Recettes d'armes (§1) -------------------------------------------- */
 static const WeaponRecipe WEAPONS[W_COUNT] = {
     [W_PIQUE]     = { LR_BOIS,   LR_METAL,      2 },

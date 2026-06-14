@@ -104,6 +104,8 @@ const UnitDef     *unit_def(UnitType t);
 const WeaponRecipe*weapon_recipe(ArmWeapon wp);
 const char        *unit_name(UnitType t);
 const char        *weapon_name(ArmWeapon wp);
+TechId             unit_tech_gate(UnitType t);                 /* F7 : la tech qui débloque l'unité (TECH_COUNT = aucune) */
+bool               unit_recruitable(const TechState *ts, UnitType t);  /* F7 : recrutable (tech acquise) ? */
 
 void army_init(ArmyState *a);
 
