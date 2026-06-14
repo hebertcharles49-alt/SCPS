@@ -874,6 +874,18 @@ int main(int argc, char **argv){
                     sup[RES_ARMS_HEAVY],sup[RES_ARMS_RANGED],sup[RES_FIREARM],sup[RES_MAGE_STAFF],sup[RES_ALCHEMIST_KIT],sup[RES_ENCHANTED_ARMS]);
             fprintf(stderr,"[FORGEDIAG] TROUPES (paquets) : hallebardier %ld · arquebusier %ld · alchimiste %ld · garde runique %ld · archer %ld · cav lourde %ld\n",
                     u[U_HALLEBARDIER],u[U_ARQUEBUSIER],u[U_ALCHIMISTE],u[U_GARDE_RUNIQUE],u[U_ARCHER],u[U_CAV_LOURDE]);
+            /* POURQUOI 0 ? — la fabrique se bâtit si prix_sortie ≥ 1.8×base (pénurie) ET intrants dispo.
+             * On regarde le MAX (sur régions poss.) du prix des armes neuves vs le seuil, + le bois. */
+            double pmh=0,pmr=0,pmf=0,dmh=0,dmr=0,df=0,woodmax=0,woodsup=0;
+            for (int r=0;r<s.econ->n_regions;r++){
+                if(s.econ->region[r].owner<0) continue;
+                const RegionEconomy*re=&s.econ->region[r];
+                pmh=fmax(pmh,re->price[RES_ARMS_HEAVY]); pmr=fmax(pmr,re->price[RES_ARMS_RANGED]); pmf=fmax(pmf,re->price[RES_FIREARM]);
+                dmh=fmax(dmh,re->demand[RES_ARMS_HEAVY]); dmr=fmax(dmr,re->demand[RES_ARMS_RANGED]); df=fmax(df,re->demand[RES_FIREARM]);
+                woodmax=fmax(woodmax,re->raw_cap[RES_WOOD]+re->supply[RES_WOOD]); woodsup+=re->supply[RES_WOOD];
+            }
+            fprintf(stderr,"[FORGEDIAG] BÂTIR ? seuil pénurie = 1.8×base | LOURDE prix_max %.2f (seuil %.1f) dem_max %.2f | TRAIT prix %.2f (seuil %.1f) dem %.2f | FEU prix %.2f (seuil %.1f) dem %.2f | BOIS max %.1f sup %.1f\n",
+                    pmh,1.8*econ_base_price(RES_ARMS_HEAVY),dmh, pmr,1.8*econ_base_price(RES_ARMS_RANGED),dmr, pmf,1.8*econ_base_price(RES_FIREARM),df, woodmax,woodsup);
         }
         if (tp>=0)
             printf("              1er empire « %s » : %d régions (%d%% des terres) | Stabilité %d  Prospérité %d  Légitimité %d  Cohésion %d — Assise %s\n",
