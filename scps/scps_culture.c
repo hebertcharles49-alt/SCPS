@@ -67,11 +67,13 @@ const char *structure_name(Structure s){
     return (s>=0&&s<STRUCT_COUNT)?N[s]:"?";
 }
 const char *credo_name(Credo c){
-    static const char*N[CREDO_COUNT]={"Pluraliste","Évangéliste","Purificateur"};
+    /* GR2 — le CREDO (posture idéologique), reskin pur (mêmes valeurs). */
+    static const char*N[CREDO_COUNT]={"pluraliste","pros\xc3\xa9lyte","loyaliste"};
     return (c>=0&&c<CREDO_COUNT)?N[c]:"?";
 }
 const char *religion_branch_name(ReligionBranch b){
-    static const char*N[REL_BRANCH_COUNT]={"Animiste","Abrahamique","Dharmique","Sinique"};
+    /* GR2 — la VISION du monde (idéologie), reskin pur (mêmes valeurs). */
+    static const char*N[REL_BRANCH_COUNT]={"naturaliste","universaliste","cyclique","ritualiste"};
     return (b>=0&&b<REL_BRANCH_COUNT)?N[b]:"?";
 }
 const char *martial_name(MartialTrait m){

@@ -2593,15 +2593,15 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             draw_pie(ren, cx1, cyc, pr_, cper, ccol, ng);
             draw_pie(ren, cx2, cyc, pr_, rper, rcol, nr);
             draw_text(ren, g_font_small, cx1-pr_, cyc+pr_+3, COL_DIM, "Culture");
-            draw_text(ren, g_font_small, cx2-pr_, cyc+pr_+3, COL_DIM, "Religion");
+            draw_text(ren, g_font_small, cx2-pr_, cyc+pr_+3, COL_DIM, "Idéologie");   /* GR2 : ex-Religion */
             /* survols : les compositions détaillées (mots, pas un flottant SCPS). */
             static char chov[320], rhov[320]; int cn=0, rn2=0;
             cn += snprintf(chov+cn, sizeof chov-cn, "Culture : ");
             for (int i=0;i<ng && cn<(int)sizeof chov-48;i++)
                 cn += snprintf(chov+cn, sizeof chov-cn, "%s%d%% %s (%s — %s)",
                                i?" · ":"", gr[i].percent, gr[i].culture, gr[i].race, label_humeur(gr[i].loyaute));
-            rn2 += snprintf(rhov+rn2, sizeof rhov-rn2, "Religion · culte du trône : %s — ",
-                            religion_branch_name(crown->rel_branch));
+            rn2 += snprintf(rhov+rn2, sizeof rhov-rn2, "Idéologie · doctrine du trône : %s %s — ",
+                            credo_name(crown->credo), religion_branch_name(crown->rel_branch));  /* GR2 : credo × vision CUMULÉS */
             for (int i=0;i<nr && rn2<(int)sizeof rhov-40;i++)
                 rn2 += snprintf(rhov+rn2, sizeof rhov-rn2, "%s%d%% %s", i?" · ":"", rper[i], rnm[i]);
             zone_add((SDL_Rect){cx1-pr_,cyc-pr_,2*pr_+4,2*pr_+14}, chov);

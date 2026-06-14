@@ -420,7 +420,7 @@ CasusBelli diplo_war_goal(const DiploState *d,int a,int b){
     return (CasusBelli)d->cb[a][b];
 }
 const char *diplo_cb_name(CasusBelli cb){
-    switch(cb){ case CB_TERRITORIAL: return "territorial"; case CB_RELIGIOUS: return "religieux";
+    switch(cb){ case CB_TERRITORIAL: return "territorial"; case CB_RELIGIOUS: return "idéologique";  /* GR2 : ex-religieux */
                 case CB_ECONOMIC: return "économique"; case CB_SUBJUGATION: return "assujettissement";
                 case CB_ANTIPIRATERIE: return "anti-piraterie";
                 default: return "aucun"; }
