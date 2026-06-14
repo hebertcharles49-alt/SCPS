@@ -2736,9 +2736,9 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
               ui_row(ren,x,&y,rw, tr(STR_ROW_ENTREPOTS), lv,
                      re3->n_entrepot>0?COL_PARCH:COL_DIM, tr(STR_ENTREPOT_HOV)); }
             /* les lots : une ligne par ressource négociable, [−10] vendre · [+10] acheter */
-            static const LRes TRADE_RES[7]={ LR_FOOD,LR_BOIS,LR_ARGILE,LR_CALCAIRE,LR_PIERRE,LR_METAL,LR_OUTILS };
-            static char thov[7][160];
-            for (int i=0;i<7;i++){
+            static const LRes TRADE_RES[6]={ LR_FOOD,LR_BOIS,LR_ARGILE,LR_PIERRE,LR_METAL,LR_OUTILS };   /* M6 : calcaire coupé */
+            static char thov[6][160];
+            for (int i=0;i<6;i++){
                 LRes r3=TRADE_RES[i];
                 char st[24]; snprintf(st,sizeof st,"%ld",s->labor->stock[r3]);
                 draw_text(ren,g_font,x,y,COL_DIM,lres_name(r3));
@@ -3552,7 +3552,8 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 18u           /* v18 : M3 — DiploState.trade_pact[pays][pays] (le pacte commercial réciproque).
+#define SAVE_VERSION 19u           /* v19 : M6 — LR_CALCAIRE coupé (LaborEcon.stock[LR_COUNT] 8→7).
+                                    * v18 : M3 — DiploState.trade_pact[pays][pays] (le pacte commercial réciproque).
                                     * v17 : Q1 — Statecraft.council[pays][3] (état conseil persistant).
                                     * v16 : Country.region_ids[12→32] (mondes fragmentés dépassaient 12).
                                     * v15 : arc M — les fourches (RegionEconomy.last_pole/pole_since_day,

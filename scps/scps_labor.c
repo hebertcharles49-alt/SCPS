@@ -204,8 +204,7 @@ void labor_init(LaborEcon *e, const World *w){
         /* Présence de ressource [0..1] — lue des biomes + ressource dominante. */
         e->g_pres[pr][LR_BOIS]     = clampf((float)nforest[pr]/n*2.f, 0.f, 1.f);
         e->g_pres[pr][LR_ARGILE]   = 0.15f + clampf(riv01*1.4f, 0.f, 1.f);  /* P3.17 : 0.15 PARTOUT, jusqu'à 1.15 en plaine alluviale (fleuve) */
-        e->g_pres[pr][LR_CALCAIRE] = clampf((float)nhill[pr]/n*2.f, 0.f, 1.f);
-        e->g_pres[pr][LR_PIERRE]   = clampf((float)(nhill[pr]+nmtn[pr])/n*1.5f, 0.f, 1.f);
+        e->g_pres[pr][LR_PIERRE]   = clampf((float)(nhill[pr]+nmtn[pr])/n*1.5f, 0.f, 1.f);  /* M6 : la carrière (ex-calcaire) lit le relief */
         Resource rr=w->province[pr].resource;
         float metal = (rr==RES_IRON||rr==RES_COPPER||rr==RES_GOLD||rr==RES_COAL||rr==RES_PRECIOUS_METAL)?0.8f:0.f;
         if ((float)nmtn[pr]/n*1.5f > metal) metal=clampf((float)nmtn[pr]/n*1.5f,0.f,1.f);
@@ -331,7 +330,7 @@ static float per_job_output(const LaborEcon *e, int wprov, LBuildType t, LRes *o
         case LB_MARKET:    *out=LR_GOLD;      return MARKET_BASE * e->g_flow[wprov];
         case LB_SAWMILL:   *out=LR_BOIS;      return EXTRACT_BASE * e->g_pres[wprov][LR_BOIS];
         case LB_CLAYPIT:   *out=LR_ARGILE;    return EXTRACT_BASE * e->g_pres[wprov][LR_ARGILE];
-        case LB_QUARRY:    *out=LR_CALCAIRE;  return EXTRACT_BASE * e->g_pres[wprov][LR_CALCAIRE];
+        case LB_QUARRY:    *out=LR_PIERRE;    return EXTRACT_BASE * e->g_pres[wprov][LR_PIERRE];   /* M6 : la carrière produit la PIERRE (calcaire fondu) */
         case LB_MINE:      *out=LR_METAL;     return EXTRACT_BASE * e->g_pres[wprov][LR_METAL];
         case LB_WORKSHOP:  *out=LR_OUTILS;    return WORKSHOP_BASE;   /* P3.16 : l'atelier raffine des OUTILS (gaté par les intrants) */
         default:           *out=LR_COUNT;     return 0.f;
@@ -676,7 +675,7 @@ void labor_tick(LaborEcon *e){
 /* ===================================================================== */
 const char *lres_name(LRes r){
     static const char *N[LR_COUNT]={ "Nourriture","Or","Bois","Argile",
-                                     "Calcaire","Pierre","Métal","Outils" };
+                                     "Pierre","Métal","Outils" };   /* M6 : calcaire coupé */
     return (r>=0&&r<LR_COUNT)?N[r]:"?";
 }
 const char *lbuild_name(LBuildType b){
