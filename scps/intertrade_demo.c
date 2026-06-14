@@ -131,6 +131,22 @@ int main(int argc,char**argv){
            got2==0 && spent==0 && econ->region[pr].treasury==tres1);
     }
 
+    /* ---- 6. V2 — ANTI-EXPLOIT : capitale = son PROPRE Centre (hub==region) ----
+     *         une transaction same-region ne crée NI stock NI or (tue l'or infini). */
+    printf("\n── 6. Anti-exploit : capitale = hub → transaction same-region NULLE ──\n");
+    /* ra EST un Centre → g_hub_of[ra]==ra. On le possède, on le dote, on tente buy+sell. */
+    econ->region[ra].owner=0;
+    econ->region[ra].stock[RES_WOOD]=200.f;
+    econ->region[ra].price[RES_WOOD]=2.f;
+    econ->region[ra].treasury=5000.f;
+    intertrade_tick(econ,&rn,&dp);                 /* (re)bâtit la carte : ra est son propre hub */
+    float s0=econ->region[ra].stock[RES_WOOD], t0=econ->region[ra].treasury;
+    long xp=0;
+    long xb=intertrade_market_buy (econ,ra,RES_WOOD,50,0,&xp);   /* tier 0, hub==ra */
+    long xs=intertrade_market_sell(econ,ra,RES_WOOD,50,0,&xp);   /* tier 0, hub==ra */
+    ok("V2 : buy/sell same-region REFUSÉS (0) et NI stock NI trésor ne bougent (or infini TUÉ)",
+       xb==0 && xs==0 && econ->region[ra].stock[RES_WOOD]==s0 && econ->region[ra].treasury==t0);
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

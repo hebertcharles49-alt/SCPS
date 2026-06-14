@@ -109,6 +109,8 @@ void intertrade_reset(void){
     memset(g_embargo,0,sizeof g_embargo);
     memset(g_hub_of,-1,sizeof g_hub_of); memset(g_hub_dist,0,sizeof g_hub_dist);  /* #5 : autarcie tant qu'aucun tick n'a bâti la carte */
     memset(g_global_cache,0,sizeof g_global_cache); g_hub_dirty=true;
+    memset(g_centre,0,sizeof g_centre);                 /* V2 : pas de FUITE de Centres entre parties d'une même session viewer */
+    memset(g_global_access,0,sizeof g_global_access);   /* V2 : ni d'accès global hérité */
     g_last_value=0.f;
 }
 static void flows_clear(void){
@@ -298,13 +300,17 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
     RegionEconomy *re=&e->region[region];
     int hub=g_hub_of[region];
     if (hub<0) return 0;                                          /* aucun marché atteignable */
+    if (tier<=0 && hub==region) return 0;                        /* V2 : pas de marché LOCAL avec SOI-MÊME (anti-exploit) */
     float base=re->import_margin; if (base<1.f) base=1.f;
     float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
     float avail, mult;
     if (tier<=0){ avail=e->region[hub].stock[good]; mult=base; }              /* régional */
     else { if (!intertrade_country_has_centre(e, re->owner)                   /* M3 : accès mondial = */
                && !(cid_ok(re->owner)&&g_global_access[re->owner])) return 0; /* Centre propre OU pacte */
-           avail=g_global_cache[good]; mult=base*2.f; }                       /* mondial : double taxe */
+           avail=g_global_cache[good];                                        /* mondial : le réseau… */
+           if (region<SCPS_MAX_REG && g_centre[region]) avail-=e->region[region].stock[good];  /* V2 : …MOINS son propre stock (sinon sur-tirage) */
+           if (avail<0.f) avail=0.f;
+           mult=base*2.f; }                                                  /* double taxe */
     if (avail<1.f) return 0;                                      /* rien à acheter : « uniquement s'il est dispo » */
     float up=price*mult; if (up<1e-4f) up=1e-4f;
     long qty=want;
@@ -318,11 +324,12 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
     else {
         long rem=qty;
         for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && rem>0;r++){
-            if (!g_centre[r]) continue;
+            if (!g_centre[r] || r==region) continue;             /* V2 : JAMAIS sa propre région */
             long t=(long)e->region[r].stock[good]; if (t>rem) t=rem;
             e->region[r].stock[good]-=(float)t; rem-=t;
         }
     }
+    g_global_cache[good]-=(float)qty; if(g_global_cache[good]<0.f)g_global_cache[good]=0.f;  /* V2.2 : cache à jour (anti sur-tirage intra-tick) */
     if (spent) *spent=(long)(cost+0.5f);
     return qty;
 }
@@ -336,15 +343,20 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
     RegionEconomy *re=&e->region[region];
     int hub=g_hub_of[region];
     if (hub<0) return 0;
+    if (tier<=0 && hub==region) return 0;                        /* V2 : pas de vente LOCALE à SOI-MÊME (anti-exploit) */
     if (tier>0 && !intertrade_country_has_centre(e, re->owner)
         && !(cid_ok(re->owner)&&g_global_access[re->owner])) return 0;   /* M3 : Centre OU pacte */
+    int dep=hub;                                                 /* V2 : on ne DÉPOSE jamais dans sa propre région */
+    if (dep==region){ dep=-1; for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++) if (g_centre[r] && r!=region){ dep=r; break; } }
+    if (dep<0) return 0;                                         /* aucun autre Centre où déposer → refus */
     long qty=want; if (qty>(long)re->stock[good]) qty=(long)re->stock[good];
     if (qty<=0) return 0;
     float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
     float gain=(float)qty*price;
     re->stock[good]-=(float)qty;
     re->treasury+=gain;
-    e->region[hub].stock[good]+=(float)qty;                      /* le bien rejoint le marché */
+    e->region[dep].stock[good]+=(float)qty;                      /* le bien rejoint le marché (un AUTRE Centre) */
+    g_global_cache[good]+=(float)qty;                            /* V2.2 : cache à jour */
     if (gained) *gained=(long)(gain+0.5f);
     return qty;
 }
