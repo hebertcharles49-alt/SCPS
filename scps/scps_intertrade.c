@@ -212,9 +212,23 @@ static void hub_map_build(const WorldEconomy *e){
             g_hub_of[s]=g_hub_of[r]; g_hub_dist[s]=(int16_t)(g_hub_dist[r]+1); q[qt++]=(int16_t)s;
         }
     }
-    int sea_hub=-1; for (int r=0;r<n;r++) if (g_centre[r] && e->region[r].coastal){ sea_hub=r; break; }
-    if (sea_hub>=0) for (int r=0;r<n;r++)
-        if (g_hub_of[r]<0 && e->region[r].coastal){ g_hub_of[r]=(int16_t)sea_hub; g_hub_dist[r]=IT_SEA_HOPS; }
+    /* V3 — LA PASSERELLE DE MER, ROBUSTE : on ne dépend plus d'UN Centre côtier. Toute
+     * côte DÉJÀ branchée à un marché par terre (un Centre côtier OU un relais terrestre
+     * vers un Centre de l'intérieur) est une porte ; la MEILLEURE (la plus proche d'un
+     * marché, plus petit g_hub_dist) sert de passerelle aux côtes encore orphelines, au
+     * coût d'une traversée. Sans aucune côte branchée → la côte reste enclavée (m_none),
+     * mais plus aucun Centre côtier unique ne fait seul la loi sur toutes les mers. */
+    int sea_gw=-1, sea_gw_dist=0;
+    for (int r=0;r<n;r++)
+        if (g_hub_of[r]>=0 && e->region[r].coastal && (sea_gw<0 || g_hub_dist[r]<sea_gw_dist)){
+            sea_gw=r; sea_gw_dist=g_hub_dist[r];
+        }
+    if (sea_gw>=0){ int16_t hub=g_hub_of[sea_gw];
+        for (int r=0;r<n;r++)
+            if (g_hub_of[r]<0 && e->region[r].coastal){
+                g_hub_of[r]=hub; g_hub_dist[r]=(int16_t)(sea_gw_dist+IT_SEA_HOPS);
+            }
+    }
 }
 /* profondeur du marché mondial mise en cache (1×/tick, bon marché) : la somme des stocks
  * de tous les Centres, lue en O(1) par le devis d'achat (la boucle d'évaluation de l'IA). */

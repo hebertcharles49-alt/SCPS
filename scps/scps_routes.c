@@ -18,7 +18,9 @@ static bool has_true_port(const WorldEconomy *econ, int r){
     return (r>=0 && r<econ->n_regions
             && econ->region[r].build.port > 0.f && econ->region[r].coastal);
 }
-#define SEA_ROUTE_MAX_DAYS 60.f   /* au-delà, le partenaire est « trop loin » (surface d'équilibrage) */
+#define SEA_ROUTE_MAX_DAYS 60.f   /* V3 — plus un plafond de REJET : la portée de référence du rendement
+                                   * maritime (2× = la borne du calcul de distance ET la distance virtuelle
+                                   * d'un lien hors-portée — le lien existe, ténu). */
 
 bool routes_order(RouteNetwork *rn, const World *w, const WorldEconomy *econ,
                   int ra, int rb, bool maritime){
@@ -31,21 +33,21 @@ bool routes_order(RouteNetwork *rn, const World *w, const WorldEconomy *econ,
     if (!econ->region[ra].culture.settled || !econ->region[rb].culture.settled) return false;
     float sea_days=0.f;
     if (maritime){
-        if (!has_true_port(econ,ra) || !has_true_port(econ,rb)) return false;  /* port→port */
+        if (!has_true_port(econ,ra) || !has_true_port(econ,rb)) return false;  /* DEUX PORTS : la condition RÉELLE */
         if (!w) return false;
         int ax,ay,bx,by;
         if (!world_region_sea_anchor(w,ra,&ax,&ay)) return false;
         if (!world_region_sea_anchor(w,rb,&bx,&by)) return false;
-        /* Borne = 2× le plafond : la route est rejetée si la MOYENNE des deux sens
-         * dépasse SEA_ROUTE_MAX_DAYS ; or un sens > 2× le plafond force déjà la moyenne
-         * au-delà (l'autre sens ≥ 0) → rejet certain. Tout sens ≤ borne (le seul cas
-         * acceptable) est donc calculé EXACTEMENT : décision et valeurs inchangées, mais
-         * on cesse de balayer l'océan entier pour les paires lointaines (le coût d'amorce). */
-        float aller =world_sea_days_capped(w,ax,ay,bx,by, 2.f*SEA_ROUTE_MAX_DAYS);
-        float retour=world_sea_days_capped(w,bx,by,ax,ay, 2.f*SEA_ROUTE_MAX_DAYS);
-        if (aller<0.f || retour<0.f) return false;            /* bassins séparés ou trop loin */
-        sea_days=0.5f*(aller+retour);                          /* la route vit dans les DEUX sens */
-        if (sea_days>SEA_ROUTE_MAX_DAYS) return false;         /* des eaux mortes le rendent « loin » */
+        /* V3 — L'INTERACTION EST VIRTUELLE : deux ports SUFFISENT au lien. La distance de
+         * mer ne FERME plus la route (le monde re-baseliné a écarté les côtes — la plus
+         * proche d'un voisin tombait à 72 j, hors du vieux plafond de 60). Elle ne fait que
+         * MODULER le rendement (routes_advance : yield ∝ 1/(1+sea_days/40) — loin = ténu,
+         * jamais nul). Hors de portée du calcul (bassins séparés / au-delà de la borne) :
+         * distance VIRTUELLE = la borne (le lien le plus mince), pas un rejet. */
+        float cap=2.f*SEA_ROUTE_MAX_DAYS;
+        float aller =world_sea_days_capped(w,ax,ay,bx,by, cap);
+        float retour=world_sea_days_capped(w,bx,by,ax,ay, cap);
+        sea_days = (aller<0.f || retour<0.f) ? cap : 0.5f*(aller+retour);   /* la route vit dans les DEUX sens */
     }
     TradeRoute *t=&rn->route[rn->n++];
     t->ra=ra; t->rb=rb; t->maritime=maritime;

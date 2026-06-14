@@ -248,26 +248,31 @@ static void sim_day(Sim *s, World *w) {
             if (hr<0||hr>=s->econ->n_regions) continue;
             RegionEconomy *re=&s->econ->region[hr];
             if (re->owner!=c) continue;
-            if (re->coastal && re->build.port<=0.f && re->treasury>400.f){
-                agency_build(s->ag, s->econ, hr, EDI_PORT);
+            /* V3 — la rade s'ouvre sur la MEILLEURE CÔTE (capitale côtière, sinon la côte
+             * la plus peuplée) : un empire à capitale enclavée participe enfin à la mer. */
+            int pr=navy_best_coast(w,s->econ,c);
+            if (pr>=0 && s->econ->region[pr].build.port<=0.f && s->econ->region[pr].treasury>400.f){
+                agency_build(s->ag, s->econ, pr, EDI_PORT);
             } else if (navy_best_port(w,s->econ,c)>=0 && s->navy->n[c].build_hull<0){
                 if (s->navy->n[c].hull[HULL_TRANSPORT]<2 && re->treasury>500.f)
                     navy_order_build(s->navy, w, s->econ, c, HULL_TRANSPORT);
                 else if (s->navy->n[c].hull[HULL_MERCHANT]<1 && re->treasury>700.f)
                     navy_order_build(s->navy, w, s->econ, c, HULL_MERCHANT);
             }
-            /* la route maritime : un partenaire porté, joignable, pas le même pays —
-             * et la SOBRIÉTÉ : trois liens maritimes au plus par pays. */
-            if (s->day%180==29 && navy_region_is_port(w,s->econ,hr)){
+            /* la route maritime : depuis la RADE (le meilleur port, pas forcément la
+             * capitale) vers un partenaire PORTÉ d'un autre pays — et la SOBRIÉTÉ :
+             * trois liens maritimes au plus par rade. */
+            int hp=navy_best_port(w,s->econ,c);
+            if (s->day%180==29 && hp>=0){
                 int mine=0;
                 for (int i=0;i<s->rn->n;i++){
                     const TradeRoute *t=&s->rn->route[i];
-                    if (t->maritime && (t->ra==hr||t->rb==hr)) mine++;
+                    if (t->maritime && (t->ra==hp||t->rb==hp)) mine++;
                 }
                 for (int r2=0;r2<s->econ->n_regions && mine<3;r2++){
                     if (s->econ->region[r2].owner==c||s->econ->region[r2].owner<0) continue;
                     if (!navy_region_is_port(w,s->econ,r2)) continue;
-                    if (routes_order(s->rn, w, s->econ, hr, r2, true)){ mine++; break; }
+                    if (routes_order(s->rn, w, s->econ, hp, r2, true)){ mine++; break; }
                 }
             }
         }

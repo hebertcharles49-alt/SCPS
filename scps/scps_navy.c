@@ -76,6 +76,27 @@ int navy_best_port(const World *w, const WorldEconomy *econ, int cid){
     }
     return best;
 }
+/* V3 — la meilleure CÔTE du pays pour y asseoir une rade (capitale côtière d'abord,
+ * sinon la région côtière la plus peuplée), qu'un port y soit DÉJÀ bâti ou non.
+ * -1 si le pays n'a aucune région côtière : un empire à capitale enclavée ouvre
+ * ainsi quand même sa fenêtre sur la mer (sans cela, pas de port → pas de flotte,
+ * pas de route maritime, pas de colonie). */
+int navy_best_coast(const World *w, const WorldEconomy *econ, int cid){
+    if (cid<0 || cid>=w->n_countries) return -1;
+    int cap_reg=-1;
+    { int cp=w->country[cid].capital_prov;
+      if (cp>=0 && cp<w->n_provinces) cap_reg=w->province[cp].region; }
+    if (cap_reg>=0 && cap_reg<econ->n_regions && econ->region[cap_reg].owner==cid
+        && region_coastal(w,cap_reg)) return cap_reg;
+    int best=-1; float bpop=-1.f;
+    for (int r=0;r<econ->n_regions;r++){
+        const RegionEconomy *re=&econ->region[r];
+        if (re->owner!=cid || !region_coastal(w,r)) continue;
+        float pop=0.f; for (int c=0;c<CLASS_COUNT;c++) pop+=re->strata[c].pop;
+        if (pop>bpop){ bpop=pop; best=r; }
+    }
+    return best;
+}
 
 float navy_build_gold(const WorldEconomy *econ, int region, HullType t){
     if (t<0||t>=HULL_COUNT||region<0||region>=econ->n_regions) return 0.f;

@@ -50,6 +50,22 @@
   **INCHANGÉ (13000)** — l'achat sur stock PROPRE reste ×1, ce qui compense le surcoût
   distance/double-taxe (le surcoût frappe l'import, pas la production locale). À VENIR
   (#5 suite) : la nourriture ∝ fertilité (régions stériles-riches ⇒ import).
+- **V3 (2026-06-14) — LIBÉRER LE MARITIME RÉGIONAL (l'interaction est VIRTUELLE)** : le monde
+  re-baseliné (Q6/L4 : Pangée fendue, empires écartés) avait mis les côtes étrangères les plus
+  proches **hors** du vieux plafond de mer (72 j sur seed 7 > 60 j) ⇒ **0 route maritime**. La
+  règle joueur : **deux ports + deux marchés + (pacte OU même empire) = commerce** ; la distance
+  ne **FERME** plus la route — elle ne fait que **MODULER le rendement** (`routes_advance` :
+  yield ∝ `1/(1+sea_days/40)`, loin = ténu, jamais nul ; hors-portée du calcul ⇒ distance
+  VIRTUELLE = la borne). `routes_order` maritime ne garde donc que **DEUX PORTS** comme
+  condition réelle. **`navy_best_coast`** ouvre une rade sur la meilleure côte (capitale côtière,
+  sinon la côte la + peuplée) ⇒ un empire à **capitale enclavée** participe enfin à la mer ;
+  l'IA navale (chronicle + viewer) bâtit le port là et trace ses routes depuis CE port. La
+  **passerelle de mer** de `hub_map_build` est ROBUSTIFIÉE : toute côte déjà branchée à un marché
+  par terre (Centre OU relais) fait porte — plus de dépendance à UN seul Centre côtier.
+  ⚠ **RE-BASELINE** (le monde change : routes maritimes seed 7/11/19 = **6/18/20**, ex-0/3/0 ;
+  commerce terrestre seed 7 **monte** 4493→4866). Sobriété : **3 routes/pays** ⇒ seed 7 (2 empires)
+  plafonne à 6. SAVE **non bumpé**. Colonies outre-mer = f(géographie : côte vierge cross-continent)
+  + paix (transports libres) — émergent, non forcé.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

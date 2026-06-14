@@ -71,6 +71,9 @@ bool navy_region_is_port(const World *w, const WorldEconomy *econ, int region);
 /* La meilleure rade du pays (capitale portuaire d'abord, sinon la plus peuplée).
  * -1 si le pays n'a aucun port. */
 int  navy_best_port(const World *w, const WorldEconomy *econ, int cid);
+/* La meilleure CÔTE où ASSEOIR une rade (capitale côtière d'abord, sinon la côte
+ * la plus peuplée), qu'un port y soit bâti ou non — -1 si le pays est enclavé. */
+int  navy_best_coast(const World *w, const WorldEconomy *econ, int cid);
 
 /* Commande une coque au chantier de la meilleure rade : achète la recette AU
  * MARCHÉ (fournitures navales + bois [+ métal pour la guerre]) en OR du trésor

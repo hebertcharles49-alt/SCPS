@@ -108,6 +108,33 @@ mesuré sur ce build, pas supposé.
 - Diag env : `SCPS_CAPDIAG` — an-0 (cap_pop_sum, graine, comptes de rôles) + an-100
   (remplissage colonisé/actif, food_sat). À RETIRER ou garder comme `SCPS_CSV` (preuve).
 
+## (c 7) V3 — libérer le maritime régional, l'interaction VIRTUELLE (2026-06-14)
+
+Racine MESURÉE (instrumentation `routes_order`, retirée depuis) : sur seed 7, **0 route
+maritime** non par une gâche Centre/pacte (le code n'en a aucune sur le régional depuis M1)
+mais parce que le monde re-baseliné (Q6/L4) a écarté les côtes — **145 paires de ports
+étrangers testées, 0 sous le plafond de 60 j** (la plus proche à **72 j**), 91 cross-bassin,
+54 entre 60-120 j. Le plafond de mer (rejet dur) était l'unique verrou.
+
+Règle joueur (donnée en cours d'arc) : **deux ports + deux marchés + (pacte OU même empire)
+= commerce, l'interaction est VIRTUELLE**. Donc :
+- `routes_order` maritime ne **rejette plus sur la distance** : deux ports = lien. La distance
+  ne MODULE que le rendement (`routes_advance` : `yield ∝ 1/(1+sea_days/40)`) — le « rendement
+  dégressif sur les jours de mer » demandé ; hors-portée du calcul ⇒ distance virtuelle = borne.
+- `navy_best_coast` (neuf) : la rade s'ouvre sur la meilleure côte (capitale côtière, sinon la
+  + peuplée) ⇒ les empires à capitale enclavée participent ; l'IA navale (chronicle + viewer)
+  bâtit le port là et trace depuis CE port (plus la seule capitale).
+- `hub_map_build` : passerelle de mer ROBUSTE (toute côte branchée par terre fait porte — plus
+  d'UN Centre côtier unique).
+
+Preuve (1×100 ans) : routes maritimes **6 / 18 / 20** (seeds 7/11/19, ex-**0 / 3 / 0**) ;
+commerce terrestre seed 7 **4493 → 4866** (ne régresse pas, monte). `make test` **32/32**,
+ASan+UBSan muets, déterminisme `HASH 7 322534ab` reproductible, viewer 0-warning, lang-check
+64, SAVE non bumpé. Sobriété **3 routes/pays** ⇒ seed 7 (genèse = **2 empires**) plafonne à 6 :
+pour viser ~10-15 il faudrait enrôler les cités-états (marchés) OU relever la sobriété — laissé
+au choix. Colonies outre-mer (cross-continent) 0/5/0 : f(côte vierge d'un AUTRE continent) +
+paix (transports libres), émergent — non forcé.
+
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
 Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde
