@@ -181,16 +181,21 @@ typedef enum {
     RES_TOOLS,                  /* métal + bois → outils (Atelier) → MULTIPLICATEUR de productivité */
     RES_ESSENCE,                /* ARCANE : mana raffiné (cristal brûlé) → sa combustion MONTE la Brèche */
     RES_ENCHANTED_ARMS,         /* armes/armures enchantées (fer céleste + essence) → puissance militaire */
-    RES_ARMS,                   /* armes & armures (fer → Armurerie) → puissance militaire de BASE */
+    RES_ARMS,                   /* armes LÉGÈRES (fer → Armurerie légère) ; RES_ARMS_LIGHT en alias F1 */
     RES_GUNPOWDER,              /* poudre (salpêtre + charbon → Poudrière) → puissance militaire */
     RES_REMEDE,                 /* remèdes (simples → Apothicaire) → santé (besoin de confort) */
     RES_TUNIQUE,                /* TUNIQUE — vêtement fini des JOURNALIERS (étoffe → tunique 1:1) */
     RES_ESSENCE_PURIFIEE,       /* M6 (forks §10) : salpêtre distillé (Alambic) — héritage M6, le PUITS-DE-FLUX est COUPÉ (F-arc RETRAIT) */
-    /* === F-arc (alchimie & FAUSTIEN) — appendus (SAVE bump) === */
+    /* === F-arc (forge militaire & FAUSTIEN) — appendus en FIN (indices préservés, SAVE bump) === */
     RES_FLUX,                   /* F3 : Alambic (salpêtre distillé) — intrant du Réplicateur ligneux (flux → bois) */
-    RES_ALCHEMIST_KIT,          /* F3 : nécessaire d'alchimiste (Alambic, secondaire) — débloque le soldat alchimiste */
+    RES_ALCHEMIST_KIT,          /* F1/F3 : nécessaire d'alchimiste (Alambic, secondaire) — débloque le soldat alchimiste */
+    RES_ARMS_HEAVY,             /* F1 : armes LOURDES (fer ×3 → Armurerie lourde) — cav lourde, hallebardier */
+    RES_ARMS_RANGED,            /* F1 : armes de TRAIT (fer + bois → Atelier d'arc) — archer, arbalétrier */
+    RES_FIREARM,                /* F1 : armes à FEU (cuivre+fer+poudre → Arquebuserie) — arquebusier */
+    RES_MAGE_STAFF,             /* F1/F3 : bâton de mage (Atelier de mage, secondaire) — mage */
     RES_COUNT
 } Resource;
+#define RES_ARMS_LIGHT RES_ARMS   /* F1 : alias SAVE-safe — RES_ARMS EST l'arme légère (slot préservé) */
 
 /* ---- Province (entité politique de base) ------------------------------- */
 typedef struct {

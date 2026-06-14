@@ -60,7 +60,11 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_ARCANE_CRYSTAL]= 16.0f,   /* résidu rare des nœuds telluriques */
     [RES_ESSENCE]       = 34.0f,   /* mana raffiné — très haute valeur */
     [RES_FLUX]          = 12.0f,   /* F3 : salpêtre distillé (Alambic) — intrant du Réplicateur (flux → bois) */
-    [RES_ALCHEMIST_KIT] = 20.0f,   /* F3 : nécessaire d'alchimiste (Alambic, secondaire) — débloque le soldat alchimiste */
+    [RES_ALCHEMIST_KIT] = 34.0f,   /* F1 : nécessaire d'alchimiste (Alambic, secondaire) — soldat alchimiste */
+    [RES_ARMS_HEAVY]    = 14.0f,   /* F1 : armes lourdes (fer ×3) */
+    [RES_ARMS_RANGED]   = 10.0f,   /* F1 : armes de trait (fer + bois) */
+    [RES_FIREARM]       = 16.0f,   /* F1 : armes à feu (cuivre + fer + poudre) */
+    [RES_MAGE_STAFF]    = 30.0f,   /* F1 : bâton de mage (atelier de mage, secondaire) */
     [RES_CELESTIAL_IRON]= 20.0f,   /* météorique — très rare */
     [RES_ENCHANTED_ARMS]= 46.0f,   /* armes enchantées — la Forge supérieure */
     [RES_METAL]         = 5.0f,    /* fonte/acier — intrant */
@@ -79,12 +83,13 @@ typedef struct {
     Resource alt1; float alt1_q;  /* intrant de REPLI pour in1, à SA PROPRE quantité
                                    * (perle pour l'or : 2× le métal par bijou). On puise
                                    * in1 d'abord, le repli ensuite. RES_NONE = aucun. */
+    Resource out2; float qout2;   /* F3 : sortie SECONDAIRE (arme arcane) ∝ production. RES_NONE = aucune. */
 } Recipe;
 
 static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* TEXTILE : intrant allégé (2.0→1.5) et sortie relevée (1.0→1.8) → la pénurie
      * d'étoffe (couv 22%) se résorbe ; la laine est mieux dispatchée (scps_world). */
-    [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_NONE, 0.f },  /* rendement étoffe relevé (1.8→2.8) : l'étoffe nourrit DEUX chaînes (tunique + précieuse 1:4) — il en faut plus */
+    [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_COTTON, 1.5f },  /* F4 : laine OU COTON (repli) → étoffe — le coton inerte gagne un débouché, aucune région bloquée */
     [BLD_SAWMILL]   = { RES_WOOD,  2.0f, RES_COPPER,        0.2f, RES_NAVAL_SUPPLIES, 1.0f, 0.8f, RES_NONE, 0.f },  /* M5 : le naval EXIGE du cuivre (clous/doublage) — il ne sort plus sans */
     [BLD_PAPERMILL] = { RES_WOOD,  1.5f, RES_NONE,          0.f, RES_PAPER,          1.0f, 0.7f, RES_NONE, 0.f },
     /* VIN : sucre allégé (2.0→1.6), sortie relevée (1.0→1.4) ; le sucre tropical est
@@ -109,12 +114,12 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* TUNIQUE — la chaîne SÉPARÉE des journaliers : étoffe → tunique (1:1). Bien fini
      * propre au commun → plus de prix-exclusion par le luxe sur le même tissu. */
     [BLD_TUNIC]     = { RES_CLOTH, 1.0f, RES_NONE,          0.f, RES_TUNIQUE,       1.0f, 0.8f, RES_NONE, 0.f },
-    /* ARCANE : on BRÛLE le cristal pour raffiner l'essence (mana). Sa combustion
-     * nourrit la Brèche (couplée plus bas dans econ_tick → arcane_charge). */
-    [BLD_MAGE_WORKSHOP]={ RES_ARCANE_CRYSTAL, 1.0f, RES_NONE, 0.f, RES_ESSENCE,    1.0f, 1.3f, RES_NONE, 0.f },
-    /* ARCANE militaire : le fer céleste + l'essence → armes enchantées (la Forge
-     * supérieure). Consomme donc l'essence de l'atelier de mage (chaîne arcane). */
-    [BLD_CELESTIAL_FORGE]={ RES_CELESTIAL_IRON, 1.0f, RES_ESSENCE, 1.0f, RES_ENCHANTED_ARMS, 1.0f, 1.4f, RES_NONE, 0.f },
+    /* ARCANE (F3) : on BRÛLE le cristal → ESSENCE (primaire) + BÂTON DE MAGE (secondaire, débloque
+     * le mage). Sa combustion nourrit la Brèche (econ_tick → faust_charge_add). */
+    [BLD_MAGE_WORKSHOP]={ RES_ARCANE_CRYSTAL, 1.0f, RES_NONE, 0.f, RES_ESSENCE,    1.0f, 1.3f, RES_NONE, 0.f, RES_MAGE_STAFF, 0.2f },
+    /* ARCANE militaire (F3) : fer céleste ×2 + charbon → ARMES ENCHANTÉES (l'arme EST le primaire,
+     * consommée par la Garde runique). Gate TECH_FORGE_RUNES (F7). */
+    [BLD_CELESTIAL_FORGE]={ RES_CELESTIAL_IRON, 2.0f, RES_COAL, 1.0f, RES_ENCHANTED_ARMS, 1.0f, 1.4f, RES_NONE, 0.f },
     /* Épine dorsale de production : fer + charbon → métal → (métal + bois) outils. */
     [BLD_FOUNDRY]   = { RES_IRON,  1.5f, RES_COAL, 1.0f, RES_METAL, 1.0f, 1.0f, RES_COPPER, 3.0f },  /* M5 : le CUIVRE alimente la fonderie en REPLI du fer, à DEMI-rendement (3 cuivre = 1 métal vs 1.5 fer) */
     [BLD_TOOLWORKS] = { RES_METAL, 1.0f, RES_WOOD, 1.0f, RES_TOOLS, 1.0f, 0.9f, RES_NONE, 0.f },
@@ -129,13 +134,17 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
      * intrant du Réplicateur ligneux) + le nécessaire d'ALCHIMISTE (secondaire, débloque le
      * soldat alchimiste). NE QUENCHE PLUS la charge (RETRAIT F-arc). Le salpêtre nourrit DÉJÀ
      * la poudre : une ressource, deux doctrines. */
-    [BLD_ALAMBIC]   = { RES_SALTPETER, 1.2f, RES_NONE, 0.f, RES_FLUX, 1.0f, 0.9f, RES_ALCHEMIST_KIT, 0.3f },
+    [BLD_ALAMBIC]   = { RES_SALTPETER, 1.2f, RES_NONE, 0.f, RES_FLUX, 1.0f, 0.9f, RES_NONE, 0.f, RES_ALCHEMIST_KIT, 0.3f },
     /* FAU2 — LES TRANSMUTEURS : comme la Foreuse (essence → fer), ils stabilisent un bien
      * vital à GROS rendement — l'échappatoire à la famine, payée en CHARGE (chaque spawn). */
     [BLD_REPLICATEUR]={ RES_FLUX,         0.5f, RES_NONE, 0.f, RES_WOOD,  8.0f, 1.4f, RES_NONE, 0.f },  /* flux → BOIS */
     [BLD_CORNE]     = { RES_CELESTIAL_IRON,0.5f, RES_NONE, 0.f, RES_GRAIN, 8.0f, 1.4f, RES_NONE, 0.f },  /* fer céleste → NOURRITURE */
     /* Chaînes militaires de base + santé (compléter le roster de production). */
-    [BLD_ARMORY]    = { RES_IRON,      1.2f, RES_NONE, 0.f, RES_ARMS,      1.0f, 1.0f, RES_NONE, 0.f },
+    [BLD_ARMORY]    = { RES_IRON,      1.2f, RES_NONE, 0.f, RES_ARMS_LIGHT, 1.0f, 1.0f, RES_NONE, 0.f },  /* F2 : armurerie LÉGÈRE (RES_ARMS) */
+    /* F2 — FABRIQUES SÉPARÉES (régions spécialisées) : chaque catégorie d'arme = un bâtiment. */
+    [BLD_ARMORY_HEAVY]={ RES_IRON,     3.0f, RES_NONE, 0.f, RES_ARMS_HEAVY, 1.0f, 1.1f, RES_NONE, 0.f },  /* fer ×3 → lourdes */
+    [BLD_BOWYER]    = { RES_IRON,      1.0f, RES_WOOD, 1.0f, RES_ARMS_RANGED,1.0f, 0.9f, RES_NONE, 0.f },  /* fer + bois → trait */
+    [BLD_ARQUEBUS]  = { RES_IRON,      1.0f, RES_GUNPOWDER, 2.0f, RES_FIREARM, 1.0f, 1.1f, RES_COPPER, 1.0f },  /* fer + poudre (cuivre repli) → feu */
     [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
     [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 0.8f, RES_NONE, 0.f },
 };
@@ -316,9 +325,10 @@ const char *building_name(BuildingType b) {
         [BLD_WINERY]="Domaine viticole",[BLD_BREWERY]="Brasserie",[BLD_JEWELER]="Joaillerie",
         [BLD_WEAVER_LUX]="Atelier d'étoffe précieuse",[BLD_MAGE_WORKSHOP]="Atelier de mage",
         [BLD_CELESTIAL_FORGE]="Forge céleste",[BLD_FOUNDRY]="Haut-fourneau",[BLD_TOOLWORKS]="Atelier d'outillage",[BLD_ALAMBIC]="Alambic",
-        [BLD_ARMORY]="Armurerie",[BLD_POWDERMILL]="Poudrière",[BLD_APOTHECARY]="Apothicaire",
+        [BLD_ARMORY]="Armurerie légère",[BLD_POWDERMILL]="Poudrière",[BLD_APOTHECARY]="Apothicaire",
         [BLD_TUNIC]="Atelier de tunique",[BLD_CHARCOAL]="Charbonnière",[BLD_FOREUSE]="Foreuse arcanique",
         [BLD_REPLICATEUR]="Réplicateur ligneux",[BLD_CORNE]="Corne divine",
+        [BLD_ARMORY_HEAVY]="Armurerie lourde",[BLD_BOWYER]="Atelier d'arc",[BLD_ARQUEBUS]="Arquebuserie",
     };
     return (b>=0&&b<BLD_TYPE_COUNT&&N[b])?N[b]:"?";
 }
@@ -1163,6 +1173,9 @@ void econ_tick(WorldEconomy *e, float dt) {
             out *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
             re->stock[rc->out]+=out;
             supply[rc->out]+=out;
+            /* F3 — SORTIE SECONDAIRE (arme arcane : kit alchimiste, bâton de mage) ∝ production. */
+            if (rc->out2!=RES_NONE){ float o2=lim*rc->qout2*prod_mult*(1.f-0.5f*re->revolt_scar);
+                re->stock[rc->out2]+=o2; supply[rc->out2]+=o2; }
             b->workers=rc->labor*lim;
             labor_used+=b->workers;
             /* FAU0/FAU2 — LA CHARGE FAUSTIENNE (hook UNIQUE faust_charge_add) : le mage (essence)

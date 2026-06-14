@@ -83,6 +83,10 @@ typedef enum {
      * spawn AJOUTE de la charge → la pente vers la Brèche. La Foreuse (fer) existe déjà. === */
     BLD_REPLICATEUR,   /* FAU2 : flux → BOIS (gate faustien TECH_TRANSMUTATION) */
     BLD_CORNE,         /* FAU2 : fer céleste → NOURRITURE (gate faustien TECH_FORGE_RUNES) */
+    /* === F2 — FABRIQUES D'ARMES CONVENTIONNELLES (bâtiments séparés, régions spécialisées) === */
+    BLD_ARMORY_HEAVY,  /* F2 : fer ×3 → armes LOURDES */
+    BLD_BOWYER,        /* F2 : fer + bois → armes de TRAIT */
+    BLD_ARQUEBUS,      /* F2 : fer + poudre (cuivre repli) → armes à FEU (gate TECH_POUDRIERE, F7) */
     BLD_TYPE_COUNT
 } BuildingType;
 
