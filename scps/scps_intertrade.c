@@ -132,32 +132,35 @@ static float region_flow_score(const WorldEconomy *e, int r){
     if (e->region[r].coastal) c+=2.5f;         /* débouché maritime : un grand multiplicateur de flux */
     return c;
 }
-void intertrade_seed_centres(const World *w, const WorldEconomy *e){
-    memset(g_centre,0,sizeof g_centre);
+/* M2 — g_centre DÉRIVE DU BÂTI : une région EST un Centre SSI EDI_TRADE_CENTER y est
+ * posé (edi_built). Le flag spawné a disparu — le hub est CAUSAL (un bâtiment), donc
+ * conquérable (le bâti voyage avec la région) et persistant. On ne marque la carte des
+ * hubs « dirty » QUE si un Centre apparaît/disparaît (perf : pas de BFS chaque tick). */
+static void refresh_centres(const WorldEconomy *e){
     if (!e) return;
     int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
-    static bool claimed[SCPS_MAX_REG];
-    memset(claimed,0,sizeof claimed);
-    /* P5 — N MARCHÉS = N(cités-états)/2 : les Centres sont RARES et plantés sur les
-     * MEILLEURES cités-états (carrefour : adjacence + débouché côtier), ESPACÉS — chaque
-     * hub RÉSERVE ses voisins pour que deux marchés ne se collent pas → un réseau peu
-     * dense mais RÉPARTI. Le joueur s'y GREFFE pour le marché régional puis global. */
-    int n_cs=0;
-    if (w) for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_CITY_STATE) n_cs++;
-    int n_markets = n_cs/2;
-    for (int k=0; k<n_markets; k++){
+    for (int r=0;r<n;r++){
+        bool now = ((e->region[r].edi_built >> EDI_TRADE_CENTER) & 1u) != 0;
+        if (now != g_centre[r]){ g_centre[r]=now; g_hub_dirty=true; }
+    }
+}
+void intertrade_seed_centres(const World *w, WorldEconomy *e){
+    if (!e) return;
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    /* M2 — CHAQUE cité-état NAÎT avec un Centre commercial BÂTI sur sa MEILLEURE région
+     * (carrefour : adjacence + débouché côtier) : POLITY_CITY_STATE = hub PAR NATURE,
+     * garanti dès l'an 0 (pas de cold-start du global). C'est un BÂTIMENT (edi_built),
+     * pas un flag → g_centre en dérive ; un EMPIRE marchand côtier peut AUSSI en bâtir un. */
+    if (w) for (int c=0;c<w->n_countries;c++){
+        if (w->country[c].role!=POLITY_CITY_STATE) continue;
         int best=-1; float bestc=-1.f;
         for (int r=0;r<n;r++){
-            if (claimed[r]) continue;
-            int o=e->region[r].owner;
-            if (o<0||o>=w->n_countries||w->country[o].role!=POLITY_CITY_STATE) continue;
-            float c=region_flow_score(e,r); if(c>bestc){bestc=c;best=r;}
+            if (e->region[r].owner!=c) continue;
+            float fc=region_flow_score(e,r); if(fc>bestc){bestc=fc;best=r;}
         }
-        if (best<0) break;                              /* plus de cité-état candidate */
-        g_centre[best]=true; claimed[best]=true;
-        for (int s=0;s<n;s++) if (e->adj[best][s]) claimed[s]=true;   /* espacement : on réserve les voisins */
+        if (best>=0) e->region[best].edi_built |= (1u<<EDI_TRADE_CENTER);
     }
-    g_hub_dirty=true;   /* #5 : les Centres ont (re)bougé → la carte des hubs se recalcule au prochain tick */
+    refresh_centres(e);
 }
 bool intertrade_has_centre(int region){
     return (region>=0&&region<SCPS_MAX_REG)?g_centre[region]:false;
@@ -175,11 +178,14 @@ int intertrade_country_centre(const WorldEconomy *e, int cid){
     return -1;
 }
 /* RELOCALISER un Centre commercial (coût en or côté appelant) : le hub se DÉPLACE
- * de `from` vers `to` — il ne meurt pas, il bouge. `to` ne doit pas déjà en être un. */
-bool intertrade_relocate_centre(int from, int to){
-    if (from<0||from>=SCPS_MAX_REG||to<0||to>=SCPS_MAX_REG) return false;
-    if (!g_centre[from] || g_centre[to]) return false;
-    g_centre[from]=false; g_centre[to]=true; g_hub_dirty=true; return true;   /* #5 : hub déplacé → carte à refaire */
+ * de `from` vers `to` — il ne meurt pas, il bouge. `to` ne doit pas déjà en être un.
+ * M2 — on déplace le BÂTIMENT (edi_built) ; g_centre en re-dérive. */
+bool intertrade_relocate_centre(WorldEconomy *e, int from, int to){
+    if (!e||from<0||from>=e->n_regions||to<0||to>=e->n_regions) return false;
+    if (!((e->region[from].edi_built>>EDI_TRADE_CENTER)&1u) || ((e->region[to].edi_built>>EDI_TRADE_CENTER)&1u)) return false;
+    e->region[from].edi_built &= ~(1u<<EDI_TRADE_CENTER);
+    e->region[to].edi_built   |=  (1u<<EDI_TRADE_CENTER);
+    refresh_centres(e); return true;
 }
 
 /* #5 — RATTACHER CHAQUE RÉGION À SON MARCHÉ LOCAL (la cité-état la plus proche).
@@ -366,6 +372,7 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
     g_last_value = 0.f;
     flows_clear();
     if (!e || !rn) return;
+    refresh_centres(e);   /* M2 : g_centre suit le BÂTI (Centres conquis/bâtis/relocalisés) */
 
     /* #5 — LE MARCHÉ À 2 ÉTAGES (étage local). Chaque région se branche au marché de la
      * cité-état la PLUS PROCHE (hub_map_build), à RENDEMENT DÉGRESSIF : la marge d'achat

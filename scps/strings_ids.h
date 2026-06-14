@@ -224,6 +224,8 @@
     X(STR_SLOT_VERROU_FMT, "{0} — verrouillé ({1})") \
     X(STR_BTN_COMPTOIR_FMT, "Bâtir un Comptoir ici  ({0} or)") \
     X(STR_COMPTOIR_HOV, "Le Comptoir branche la province au Centre commercial le plus proche : la marge de transport tombe d'un tiers à ce bout des routes marchandes.") \
+    X(STR_BTN_CENTER_FMT, "B\xc3\xa2tir un Centre commercial  ({0} or)") \
+    X(STR_CENTER_HOV, "Le Centre commercial fait de cette province un HUB du r\xc3\xa9seau GLOBAL : on y ach\xc3\xa8te/vend au march\xc3\xa9 mondial. C\xc3\xb4tier/estuaire + vocation marchande requis.") \
     X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Entrepôts ×{2}") \
     X(STR_ROW_ENTREPOTS, "Entrepôts") \
     X(STR_ENTREPOT_HOV, "Sans Entrepôt, le stock régional sature à 200 par ressource (le surplus se perd) ; chaque Entrepôt bâti ajoute +500. Stocker bas, vendre haut.") \

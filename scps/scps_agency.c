@@ -67,6 +67,11 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
                            {{RES_WOOD,RES_STONE,RES_METAL},{80,35,15}} },
     [EDI_OBSERVATOIRE] = { "Observatoire",  360, { .savoir=1.5f, .P_open=0.3f },
                            {{RES_WOOD,RES_STONE,RES_METAL},{70,40,20}} },
+    /* M2 — LE CENTRE COMMERCIAL : le hub du réseau GLOBAL, bâti COÛTEUX (œuvre côtière/
+     * estuaire). Une cité-état EN naît (l'expression de son rôle) ; un empire marchand
+     * côtier peut en bâtir un et devenir hub. g_centre DÉRIVE de ce bâti (plus un flag). */
+    [EDI_TRADE_CENTER] = { "Centre commercial", 540, { .PE_infra=2.0f, .P_open=0.5f },
+                           {{RES_STONE,RES_METAL,RES_PRECIOUS_METAL},{160,90,40}} },
 };
 
 const EdificeDef *edifice_def(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?&EDIFICES[e]:NULL; }
@@ -265,6 +270,8 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
 bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct){
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return false;
     if (e==EDI_PORT && !econ->region[region].coastal) return false;   /* un port se bâtit SUR la côte (mer §5) */
+    if (e==EDI_TRADE_CENTER && !econ->region[region].coastal && !econ->region[region].estuary)
+        return false;                                                 /* M2 : un Centre = un débouché (côtier/estuaire) */
     if (edifice_build_blocked(econ, region, e)){ g_edi_blocked[e]++; return false; }  /* E1bis.11 : ↑ exige le palier précédent (pas de doublon) */
     RegionEconomy *re=&econ->region[region];
     float base_gold=0.f;

@@ -39,6 +39,7 @@ typedef enum {
      * fork (Bibliothèque militaire / Bibliothèque→Monastère / Observatoire). */
     EDI_ARSENAL, EDI_AMIRAUTE, EDI_PORT_MARCHAND,       /* ↑ Port, par pôle (M/O/F) */
     EDI_BIBLIO_MIL, EDI_OBSERVATOIRE,                   /* savoir martial / fluide (l'Ordre garde Bibliothèque→Monastère) */
+    EDI_TRADE_CENTER,                                   /* M2 : le Centre commercial — hub du réseau GLOBAL (causal : g_centre DÉRIVE de ce bâti, plus un flag) */
     EDIFICE_COUNT
 } Edifice;
 

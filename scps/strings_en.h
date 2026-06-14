@@ -219,6 +219,8 @@
     X(STR_SLOT_VERROU_FMT, "{0} — locked ({1})") \
     X(STR_BTN_COMPTOIR_FMT, "Build a Trading Post here  ({0} gold)") \
     X(STR_COMPTOIR_HOV, "The Trading Post links the province to the nearest Trade Hub: the transport margin drops by a third at this end of merchant routes.") \
+    X(STR_BTN_CENTER_FMT, "Build a Trade Centre  ({0} gold)") \
+    X(STR_CENTER_HOV, "A Trade Centre makes this province a HUB of the GLOBAL network: buy/sell on the world market here. Requires coastal/estuary + mercantile vocation.") \
     X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Warehouses ×{2}") \
     X(STR_ROW_ENTREPOTS, "Warehouses") \
     X(STR_ENTREPOT_HOV, "Without a Warehouse, regional stock saturates at 200 per resource (surplus is lost); each Warehouse built adds +500. Buy low, sell high.") \

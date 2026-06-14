@@ -2473,6 +2473,8 @@ static SDL_Rect g_colonize_btn; static int g_colonize_dst=-1, g_colonize_src=-1;
 static SDL_Rect g_reloc_btn; static int g_reloc_dst=-1;
 /* E2 §10 — bâtir un COMPTOIR ici (branche la province au réseau marchand). */
 static SDL_Rect g_comptoir_btn; static int g_comptoir_reg=-1;
+/* M2 — bâtir un CENTRE COMMERCIAL ici (devient un hub du réseau global). */
+static SDL_Rect g_center_btn; static int g_center_reg=-1;
 /* E2 §12 — achat/vente manuels au marché intérieur (lots de 10, prix courant). */
 typedef struct { SDL_Rect r; int res; bool sell; } TradeBtn;
 static TradeBtn g_trade_btn[16]; static int g_ntrade=0;
@@ -2904,6 +2906,26 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             draw_text(ren, fb, x+9, by+4, COL_COPPER, cb);
             zone_add((SDL_Rect){x,by,bw,22}, tr(STR_COMPTOIR_HOV));
             g_comptoir_btn=(SDL_Rect){x,by,bw,22}; g_comptoir_reg=dreg;
+        }
+    }
+    /* M2 — BÂTIR UN CENTRE COMMERCIAL ici : région possédée, CÔTIÈRE/ESTUAIRE, à vocation
+     * MARCHANDE, sans Centre encore → l'empire se fait hub du réseau GLOBAL (causalité). */
+    if (s && pid>=0 && pid<w->n_provinces){
+        int dreg=w->province[pid].region;
+        if (dreg>=0 && dreg<econ->n_regions && econ->region[dreg].owner==s->player
+            && !intertrade_has_centre(dreg)
+            && (econ->region[dreg].coastal || econ->region[dreg].estuary)
+            && econ->region[dreg].culture.ethos==ETHOS_MERCANTILE){
+            TTF_Font *fb=g_font_small?g_font_small:g_font;
+            int by=py+ph-80; char c0[16], cb[96];
+            snprintf(c0,sizeof c0,"%.0f", agency_build_gold(econ,dreg,EDI_TRADE_CENTER));
+            tr_fmt(cb,sizeof cb, STR_BTN_CENTER_FMT, c0);
+            int bw=text_w(fb,cb)+18;
+            fill_rect(ren, x, by, bw, 22, (SDL_Color){0x16,0x1e,0x2c,0xff});
+            draw_box (ren, x, by, bw, 22, COL_COPPER);
+            draw_text(ren, fb, x+9, by+4, COL_COPPER, cb);
+            zone_add((SDL_Rect){x,by,bw,22}, tr(STR_CENTER_HOV));
+            g_center_btn=(SDL_Rect){x,by,bw,22}; g_center_reg=dreg;
         }
     }
     /* P3.20 — RELOCALISER un Centre commercial vers CETTE région (possédée, non-hub),
@@ -4319,7 +4341,7 @@ int main(int argc, char **argv) {
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
-                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_ntrade=0;
+                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_center_reg=-1; g_ntrade=0;
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_centre_markers(ren, &cam, &sim, world, win_w, win_h);  /* P3.20 : les Centres commerciaux */
@@ -4567,7 +4589,7 @@ int main(int argc, char **argv) {
                         int from=intertrade_country_centre(sim.econ, sim.player);
                         /* E0.3 : payé du TRÉSOR UNIQUE (topbar). */
                         if (from>=0 && sim.labor->stock[LR_GOLD]>=(long)CENTRE_RELOC_COST
-                            && intertrade_relocate_centre(from, g_reloc_dst)){
+                            && intertrade_relocate_centre(sim.econ, from, g_reloc_dst)){
                             sim.labor->stock[LR_GOLD]-=(long)CENTRE_RELOC_COST;
                             sim.labor->treasury=sim.labor->stock[LR_GOLD];
                             printf("\n[scps] Centre commercial relocalisé : région %d → %d (%.0f or).\n", from, g_reloc_dst, CENTRE_RELOC_COST);
@@ -4583,6 +4605,17 @@ int main(int argc, char **argv) {
                             printf("\n[scps] Comptoir mis en chantier (région %d, 180 j) — la province se branche au réseau.\n", g_comptoir_reg);
                         else
                             printf("\n[scps] Comptoir : trésor insuffisant.\n");
+                        dirty=true; break;
+                    }
+                    /* M2 — clic « Bâtir un Centre commercial » : payé du trésor unique. */
+                    if (g_center_reg>=0 && sim.ready &&
+                        ev.button.x>=g_center_btn.x && ev.button.x<g_center_btn.x+g_center_btn.w &&
+                        ev.button.y>=g_center_btn.y && ev.button.y<g_center_btn.y+g_center_btn.h){
+                        if (agency_build_acct(sim.ag, sim.econ, g_center_reg, EDI_TRADE_CENTER,
+                                              &sim.labor->stock[LR_GOLD]))
+                            printf("\n[scps] Centre commercial mis en chantier (région %d, 540 j) — l'empire se fait hub du réseau global.\n", g_center_reg);
+                        else
+                            printf("\n[scps] Centre commercial : trésor insuffisant ou recette manquante.\n");
                         dirty=true; break;
                     }
                     /* E2 §12 — clic sur un lot du MARCHÉ : acheter/vendre 10 au prix courant. */
@@ -4961,7 +4994,7 @@ int main(int argc, char **argv) {
          * membrane (bandes + mots). Le viewer ne touche aucun flottant SCPS. */
         if (sim.ready && g_font) {
             int mx2,my2; SDL_GetMouseState(&mx2,&my2);
-            zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_ntrade=0;
+            zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_center_reg=-1; g_ntrade=0;
             int cid = country_for_panel(world, selected);
             if (g_gs!=GS_PLAYING) {                              /* le SHELL tient l'écran */
                 shell_draw(ren,win_w,win_h,world,&sim,&g_stage);
