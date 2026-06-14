@@ -1107,6 +1107,8 @@ static void sim_rebuild(Sim *s, World *w) {
     routes_init(s->rn);
     intertrade_reset();   /* embargos décrétés + flux : RAZ par partie */
     intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs du réseau) */
+    intertrade_seed_citystate_arms(w, s->econ);   /* F-arc : chaque cité-état naît armurier (les empires y pompent leurs armes) */
+    econ_set_arms_pump(intertrade_market_pull);   /* F-arc : la levée s'arme au marché (propre→Centre cité-état→mondial) */
     /* RAZ PLEINE PLAGE : n_countries grandit par sécession ; à la RÉGÉNÉRATION (touche R)
      * les slots hauts gardaient ai_on/TechState périmés d'un monde précédent (cf. chronicle). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ s->ai_on[c]=false; tech_state_init(&s->ts[c], false); }

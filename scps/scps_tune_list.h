@@ -98,6 +98,11 @@
     X(FAUST_BRECHE_CAUTION,   0.55f) \
     /* F-arc : coût d'or de base (× tier × IPM) pour qu'une IA POSE une manufacture militaire — la
      * « puissance économique » qui gate « combien de fabriques je peux poser ». */ \
-    X(MANUF_BUILD_COST,       50.0f)
+    X(MANUF_BUILD_COST,       50.0f) \
+    /* F-arc ARSENAL : une manufacture d'ARMES verse ×N au STOCK (l'arsenal que la levée POMPE via
+     * econ_arms_take ; le recrutement = stock/POP_PER_UNIT). Le marché (supply/prix), la valeur
+     * ajoutée (PIB) et la charge faustienne restent sur la sortie de BASE → l'éco & la Brèche
+     * INCHANGÉES ; seul l'arsenal de guerre enfle, ce qu'il faut pour lever les régiments. */ \
+    X(MANUF_ARMS_MULT,        10.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

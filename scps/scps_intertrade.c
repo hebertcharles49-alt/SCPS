@@ -165,6 +165,41 @@ void intertrade_seed_centres(const World *w, WorldEconomy *e){
     }
     refresh_centres(e);
 }
+
+/* F-arc — CHAQUE CITÉ-ÉTAT NAÎT ARMURIER. Sur sa MEILLEURE région (le Centre, même critère que
+ * _seed_centres → la fabrique et le hub coïncident), on POSE une manufacture d'armes tirée AU SORT
+ * (déterministe : graine × index), et on GARANTIT son intrant brut (raw_cap) pour qu'elle morde.
+ * Les cités-états deviennent les ARMURIERS du monde : les empires y pompent leurs armes spécialisées
+ * (econ_arms_take → intertrade_market_pull). À semer APRÈS intertrade_seed_centres. */
+void intertrade_seed_citystate_arms(const World *w, WorldEconomy *e){
+    if (!w||!e) return;
+    static const BuildingType ARMS[5]={ BLD_ARMORY_HEAVY, BLD_BOWYER, BLD_MAGE_WORKSHOP,
+                                        BLD_CELESTIAL_FORGE, BLD_ALAMBIC };
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    for (int c=0;c<w->n_countries;c++){
+        if (w->country[c].role!=POLITY_CITY_STATE) continue;
+        int best=-1; float bestc=-1.f;
+        for (int r=0;r<n;r++){ if (e->region[r].owner!=c) continue;
+            float fc=region_flow_score(e,r); if(fc>bestc){bestc=fc;best=r;} }
+        if (best<0) continue;
+        uint32_t h = w->seed ^ (uint32_t)c*2654435761u;   /* mélange déterministe seed×index */
+        h ^= h>>13; h *= 0x5bd1e995u; h ^= h>>15;
+        BuildingType b = ARMS[h % 5u];
+        econ_build_manufacture(e, best, b);
+        RegionEconomy *re=&e->region[best];               /* l'intrant brut : la fabrique doit MORDRE */
+        switch(b){
+          case BLD_ARMORY_HEAVY:    { if(re->raw_cap[RES_IRON]<15.f)           re->raw_cap[RES_IRON]=15.f; } break;
+          case BLD_BOWYER:          { if(re->raw_cap[RES_IRON]<10.f)           re->raw_cap[RES_IRON]=10.f;
+                                      if(re->raw_cap[RES_WOOD]<15.f)           re->raw_cap[RES_WOOD]=15.f; } break;
+          case BLD_MAGE_WORKSHOP:   { if(re->raw_cap[RES_ARCANE_CRYSTAL]<15.f) re->raw_cap[RES_ARCANE_CRYSTAL]=15.f; } break;
+          case BLD_CELESTIAL_FORGE: { if(re->raw_cap[RES_CELESTIAL_IRON]<15.f) re->raw_cap[RES_CELESTIAL_IRON]=15.f;
+                                      if(re->raw_cap[RES_COAL]<10.f)           re->raw_cap[RES_COAL]=10.f; } break;
+          case BLD_ALAMBIC:         { if(re->raw_cap[RES_SALTPETER]<15.f)      re->raw_cap[RES_SALTPETER]=15.f; } break;
+          default: break;
+        }
+    }
+    refresh_centres(e);
+}
 bool intertrade_has_centre(int region){
     return (region>=0&&region<SCPS_MAX_REG)?g_centre[region]:false;
 }
@@ -297,6 +332,29 @@ void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty)
         t = e->region[r].stock[good]<qty?e->region[r].stock[good]:qty;
         e->region[r].stock[good]-=t; qty-=t;
     }
+}
+
+/* F-arc — POMPE D'ARMES : même cascade que _market_consume (propre → Centre local de la cité-état
+ * la + proche → réseau mondial des Centres) mais RENVOIE le total prélevé. La levée doit savoir ce
+ * qu'elle a pu armer ; les cités-états (armuriers du monde) fournissent ce que la région ne fait pas. */
+float intertrade_market_pull(WorldEconomy *e, int region, int good, float want){
+    if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||want<=0.f) return 0.f;
+    if (g_hub_dirty){ hub_map_build(e); g_hub_dirty=false; }   /* carte sûre même hors tick (levée annuelle) */
+    RegionEconomy *re=&e->region[region];
+    int hub = g_hub_of[region];
+    float got=0.f, t;
+    t = re->stock[good]<want?re->stock[good]:want; re->stock[good]-=t; got+=t; want-=t;   /* 1. propre */
+    if (want>1e-3f && hub>=0 && hub!=region){                                              /* 2. marché local */
+        t = e->region[hub].stock[good]<want?e->region[hub].stock[good]:want;
+        e->region[hub].stock[good]-=t; got+=t; want-=t;
+    }
+    if (want>1e-3f && hub>=0) for (int r=0;r<e->n_regions && r<SCPS_MAX_REG; r++){          /* 3. marché mondial */
+        if (!g_centre[r]||r==hub||r==region) continue;
+        t = e->region[r].stock[good]<want?e->region[r].stock[good]:want;
+        e->region[r].stock[good]-=t; got+=t; want-=t;
+        if (want<=1e-3f) break;
+    }
+    return got;
 }
 
 /* #5 (action joueur) — l'ACHAT/VENTE DIRECT AU MARCHÉ (l'actionneur que l'UI appelle ;

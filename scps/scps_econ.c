@@ -880,12 +880,26 @@ bool econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b){
 bool bld_is_faustian(BuildingType b){
     return b==BLD_FOREUSE || b==BLD_REPLICATEUR || b==BLD_CORNE;
 }
+/* F-arc ARSENAL — une SORTIE d'ARMEMENT (les 7 biens militaires : armes légères/lourdes/trait/feu,
+ * armes enchantées, bâton de mage, kit d'alchimiste). Sert à reconnaître une manufacture D'ARMES :
+ * sa sortie verse ×MANUF_ARMS_MULT au STOCK (l'arsenal que la levée pompe), sans toucher au marché. */
+static int res_is_arm(int r){
+    return r==RES_ARMS || r==RES_ARMS_HEAVY || r==RES_ARMS_RANGED || r==RES_FIREARM
+        || r==RES_MAGE_STAFF || r==RES_ALCHEMIST_KIT || r==RES_ENCHANTED_ARMS;
+}
 /* FAU0 #2 — LE HOOK DE CHARGE UNIQUE : un seul robinet que TOUT faustien appelle (atelier de
  * mage, les 3 transmuteurs, et plus tard la merveille du capstone). Ajoute à l'activité du tick
  * (arcane_charge) ; l'accumulation/décrue vers l'entropie cumulée (faust_charge) est au tick. */
 void faust_charge_add(RegionEconomy *re, float amount){
     if (re && amount>0.f) re->arcane_charge += amount;
 }
+
+/* F-arc — LA POMPE D'ARMES, branchée par l'APPLICATION (chronicle/viewer) via econ_set_arms_pump :
+ * un crochet (WorldEconomy*, region, good, want)→prélevé qui source les armes propre→Centre→mondial.
+ * Le MOTEUR ne dépend donc PAS du sous-système commerce (les bancs unitaires gardent le stock propre
+ * seul) ; seule l'app câble le marché des cités-états. */
+static float (*g_arms_pump)(WorldEconomy*, int, int, float) = NULL;
+void econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float)){ g_arms_pump = pump; }
 
 /* F6 (Option B) — CONSOMME `need` armes MACRO (RES_*) du stock de l'empire (région par région),
  * REGISTRE la demande (→ la fabrique produit → consomme le FER) et RENVOIE la quantité prélevée
@@ -898,7 +912,13 @@ long econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need){
     for (int r=0;r<econ->n_regions;r++){
         if (econ->region[r].owner!=cid) continue;
         econ->region[r].demand[arm] += dshare;   /* F8 BOOTSTRAP : la DEMANDE (want) — la fabrique bâtit/produit même stock VIDE → consomme le fer */
-        if (got<need){ long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
+        if (got>=need) continue;
+        /* #5 — POMPE D'ARMES (branchée par l'app via econ_set_arms_pump) : stock PROPRE de la région
+         * → Centre de la cité-état la + proche → réseau mondial. Les cités-états (armuriers) fournissent
+         * l'arme spécialisée que la région ne fabrique pas. Sans pompe (bancs unitaires) : stock PROPRE
+         * seul — le comportement d'origine, sans dépendance au sous-système commerce. */
+        if (g_arms_pump) got += (long)g_arms_pump(econ, r, (int)arm, (float)(need-got));
+        else { long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
             econ->region[r].stock[arm]-=(float)take; got+=take; }
     }
     return got;
@@ -1215,11 +1235,20 @@ void econ_tick(WorldEconomy *e, float dt) {
             if (rc->in2!=RES_NONE){ re->stock[rc->in2]-=lim*rc->q2; demand[rc->in2]+=lim*rc->q2; val_in+=lim*rc->q2*re->price[rc->in2]; }
             float out=lim*rc->qout*prod_mult;   /* outils → productivité */
             out *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
-            re->stock[rc->out]+=out;
+            /* F-arc ARSENAL — la manufacture d'ARMES verse ×MANUF_ARMS_MULT au STOCK (l'arsenal que
+             * la levée POMPE : recrutement = stock/POP_PER_UNIT). Le marché (supply → prix), la valeur
+             * ajoutée (PIB plus bas) et la charge faustienne restent sur la sortie de BASE `out` → l'éco
+             * & la Brèche INCHANGÉES ; seul l'arsenal de guerre enfle, ce qu'il faut pour les régiments.
+             * EXCLU : les armes enchantées — SEUL armement que diplo_mil_power lit (multiplicateur de
+             * qualité) ; les gonfler ×10 emballe la course aux armements (guerres). Les autres sont du
+             * pur carburant de levée, invisibles à la puissance militaire perçue. */
+            float arms_mult = (res_is_arm(rc->out)   && rc->out !=RES_ENCHANTED_ARMS) ? tune_f("MANUF_ARMS_MULT", 10.f) : 1.f;
+            re->stock[rc->out]+=out*arms_mult;
             supply[rc->out]+=out;
             /* F3 — SORTIE SECONDAIRE (arme arcane : kit alchimiste, bâton de mage) ∝ production. */
             if (rc->out2!=RES_NONE){ float o2=lim*rc->qout2*prod_mult*(1.f-0.5f*re->revolt_scar);
-                re->stock[rc->out2]+=o2; supply[rc->out2]+=o2; }
+                float m2 = (res_is_arm(rc->out2) && rc->out2!=RES_ENCHANTED_ARMS) ? tune_f("MANUF_ARMS_MULT", 10.f) : 1.f;
+                re->stock[rc->out2]+=o2*m2; supply[rc->out2]+=o2; }
             b->workers=rc->labor*lim;
             labor_used+=b->workers;
             /* FAU0/FAU2 — LA CHARGE FAUSTIENNE (hook UNIQUE faust_charge_add) : le mage (essence)

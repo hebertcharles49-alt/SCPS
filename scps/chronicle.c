@@ -61,6 +61,7 @@ typedef struct {
 static int regions_of(const WorldEconomy *e, int c);   /* défini plus bas */
 /* compteurs de FLUX d'occupation (§terrain) — cumul tous-sims, posés par le harvest. */
 static long g_tot_occ_posed=0, g_tot_occ_lifted=0;
+static long g_peak_u[U_COUNT];   /* FORGEDIAG : pic d'effectif debout par type d'unité (sur tout le siècle, pas le seul snapshot) */
 
 /* Les armées de CAMPAGNE : chaque pays mobilisé ET en guerre projette sa force vers
  * le front ennemi adjacent (marche §1 → siège → bataille §2/§3). NON-INVASIF : la
@@ -309,6 +310,13 @@ static void sim_day(Sim *s, World *w) {
          * + attrition qui saigne les armes). */
         warhost_tick(s->host, w, s->econ, s->dp, s->ts, 1.0f);   /* la mobilisation : les armées vivent */
         sim_campaign_year(s, w);                           /* … et MARCHENT : campagne sur la carte */
+        if (getenv("SCPS_FORGEDIAG")){   /* pic d'effectif par type sur tout le siècle (démasque la démob) */
+            long yu[U_COUNT]; memset(yu,0,sizeof yu);
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+                for (int i=0;i<s->host->army[c].n_units;i++){ int ty=s->host->army[c].units[i].type;
+                    if (ty>=0&&ty<U_COUNT) yu[ty]+=s->host->army[c].units[i].count; }
+            for (int t=0;t<U_COUNT;t++) if (yu[t]>g_peak_u[t]) g_peak_u[t]=yu[t];
+        }
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             diplo_set_faustian(s->dp, c, s->ts[c].charge);  /* souillure faustienne → croisades */
         diplo_tick(s->dp, 365.f);
@@ -337,6 +345,8 @@ static void sim_init(Sim *s, World *w) {
     intertrade_reset();   /* embargos décrétés + flux inter-pays : RAZ par sim */
     demography_contact_reset();   /* S2 : compteur de cristallisations culturelles par contact */
     intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs) — géographiques */
+    intertrade_seed_citystate_arms(w, s->econ);   /* F-arc : chaque cité-état naît armurier (manufacture d'armes aléatoire sur son Centre) */
+    econ_set_arms_pump(intertrade_market_pull);   /* F-arc : la levée s'arme au marché (propre→Centre cité-état→mondial) */
     /* RAZ PLEINE PLAGE (SCPS_MAX_COUNTRY, pas n_countries) : n_countries GRANDIT par
      * sécession en cours de sim — la sim suivante repart plus bas. Sans ça, les slots
      * hauts gardent ai_on=true + un acteur/TechState PÉRIMÉS d'un autre monde : un pays
@@ -872,8 +882,23 @@ int main(int argc, char **argv){
                     bld[BLD_ARMORY_HEAVY],bld[BLD_BOWYER],bld[BLD_ARQUEBUS],bld[BLD_REPLICATEUR],bld[BLD_CORNE],bld[BLD_MAGE_WORKSHOP],bld[BLD_CELESTIAL_FORGE]);
             fprintf(stderr,"[FORGEDIAG] ARMES produites/tick : lourde %.1f · trait %.1f · feu %.1f · bâton %.1f · kit %.1f · enchantées %.1f\n",
                     sup[RES_ARMS_HEAVY],sup[RES_ARMS_RANGED],sup[RES_FIREARM],sup[RES_MAGE_STAFF],sup[RES_ALCHEMIST_KIT],sup[RES_ENCHANTED_ARMS]);
-            fprintf(stderr,"[FORGEDIAG] TROUPES (paquets) : hallebardier %ld · arquebusier %ld · alchimiste %ld · garde runique %ld · archer %ld · cav lourde %ld\n",
-                    u[U_HALLEBARDIER],u[U_ARQUEBUSIER],u[U_ALCHIMISTE],u[U_GARDE_RUNIQUE],u[U_ARCHER],u[U_CAV_LOURDE]);
+            fprintf(stderr,"[FORGEDIAG] TROUPES (snapshot an %d) : hallebardier %ld · arquebusier %ld · alchimiste %ld · garde runique %ld · archer %ld · cav lourde %ld | piquier %ld · épéiste %ld\n",
+                    s.year,u[U_HALLEBARDIER],u[U_ARQUEBUSIER],u[U_ALCHIMISTE],u[U_GARDE_RUNIQUE],u[U_ARCHER],u[U_CAV_LOURDE],u[U_PIQUIER],u[U_EPEISTE]);
+            fprintf(stderr,"[FORGEDIAG] PIC (sur le siècle) : hallebardier %ld · arquebusier %ld · alchimiste %ld · garde runique %ld · archer %ld · cav lourde %ld | piquier %ld · épéiste %ld\n",
+                    g_peak_u[U_HALLEBARDIER],g_peak_u[U_ARQUEBUSIER],g_peak_u[U_ALCHIMISTE],g_peak_u[U_GARDE_RUNIQUE],g_peak_u[U_ARCHER],g_peak_u[U_CAV_LOURDE],g_peak_u[U_PIQUIER],g_peak_u[U_EPEISTE]);
+            { double stk[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)stk[g]=0.0;
+              for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
+                  for(int g=0;g<RES_COUNT;g++) stk[g]+=s.econ->region[r].stock[g]; }
+              fprintf(stderr,"[FORGEDIAG] ARSENAL (stock, an %d) : lég %.0f · lourde %.0f · trait %.0f · feu %.0f · enchantées %.0f (seuil 1 paquet = %d)\n",
+                    s.year,stk[RES_ARMS_LIGHT],stk[RES_ARMS_HEAVY],stk[RES_ARMS_RANGED],stk[RES_FIREARM],stk[RES_ENCHANTED_ARMS],POP_PER_UNIT); }
+            { int cc=0,ca=0,cs=0,cu=0; double rcc=0,rca=0,rcs=0,rcu=0,spc=0,spa=0,sps=0,spu=0;   /* RAW spéciaux sur TOUTE la carte (≠ owned) */
+              for (int r=0;r<s.econ->n_regions;r++){ RegionEconomy *re=&s.econ->region[r];
+                  if(re->raw_cap[RES_CELESTIAL_IRON]>0.f){cc++;rcc+=re->raw_cap[RES_CELESTIAL_IRON];} spc+=re->supply[RES_CELESTIAL_IRON];
+                  if(re->raw_cap[RES_ARCANE_CRYSTAL]>0.f){ca++;rca+=re->raw_cap[RES_ARCANE_CRYSTAL];} spa+=re->supply[RES_ARCANE_CRYSTAL];
+                  if(re->raw_cap[RES_SALTPETER]>0.f){cs++;rcs+=re->raw_cap[RES_SALTPETER];} sps+=re->supply[RES_SALTPETER];
+                  if(re->raw_cap[RES_COPPER]>0.f){cu++;rcu+=re->raw_cap[RES_COPPER];} spu+=re->supply[RES_COPPER]; }
+              fprintf(stderr,"[FORGEDIAG] RAW SPÉCIAUX (carte, %d rég) : fer céleste %d rég·cap %.1f·extr %.1f | cristal arcane %d·%.1f·%.1f | salpêtre %d·%.1f·%.1f | cuivre %d·%.1f·%.1f\n",
+                    s.econ->n_regions, cc,rcc,spc, ca,rca,spa, cs,rcs,sps, cu,rcu,spu); }
             { double dem[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)dem[g]=0.0;
               for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
                   for(int g=0;g<RES_COUNT;g++) dem[g]+=s.econ->region[r].demand[g]; }
