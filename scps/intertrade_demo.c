@@ -7,6 +7,7 @@
  * la pente de prix, l'exportateur encaisse l'or) ; la GUERRE l'EMBARGO (guerre
  * commerciale) ; l'intra-pays n'est pas du commerce inter-pays.
  */
+#define _POSIX_C_SOURCE 200809L   /* V1 : setenv visible sous -std=c99 strict (portable) */
 #include "scps_world.h"
 #include "scps_econ.h"
 #include "scps_culture.h"

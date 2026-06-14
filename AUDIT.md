@@ -11,14 +11,20 @@
 **32 bancs VERTS / 32** — `make test` les bâtit, les lance, compte les BILAN :
 
 core 35/35 · monde_reel 10/10 · readout 27/27 · species 9/9 · tech 22/22 ·
-faith 14/14 · intertrade 9/9 · routes 4/4 · save_io 8/8 · statecraft 22/22 ·
+faith 14/14 · intertrade 14/14 · routes 4/4 · save_io 8/8 · statecraft 22/22 ·
 pop 14/14 · army 49/49 · demography 19/19 · demography_integ 6/6 · revolt 23/23 ·
-social 10/10 · agency 18/18 · campaign 13/13 · factions 32/32 · econ_tax 8/8 ·
-econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 41/41 ·
+social 10/10 · agency 18/18 · campaign 19/19 · factions 32/32 · econ_tax 8/8 ·
+econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 44/44 ·
 missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27 (K4a)** ·
 **structural 16/16 (K5+K6)** · **ai 23/23 (L6)** · **forks 34/34 (M)** · prosperity OK (sans format BILAN).
 
 **0 banc rouge** — H3 maintient 32/32.
+
+**V1 (2026-06, build PORTABLE)** : `make test` 32/32 et `make chronicle` **0 warning** —
+`intertrade_demo` 14/14 (le `setenv` du banc est rendu visible sous `-std=c99` strict via
+`#define _POSIX_C_SOURCE 200809L` ; la chaîne « Mécaniste » dé-malformée — l'octet `\xa9`
+était suivi d'un `c` (chiffre hex) → échappement avalé, corrigé en UTF-8 source). Statut
+mesuré sur ce build, pas supposé.
 
 ---
 

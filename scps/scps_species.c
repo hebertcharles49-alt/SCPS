@@ -166,8 +166,8 @@ Sphere species_sphere(SpeciesArchetype r){
 }
 const char *species_name(SpeciesArchetype r){
     /* GR1 — l'HÉRITAGE par FONCTION (mêmes valeurs/ordre que l'ex-race). */
-    static const char *N[HERITAGE_COUNT]={"\xc3\x89sot\xc3\xa9rique","M\xc3\xa9tallurgiste",
-                                          "M\xc3\xa9caniste","Adaptatif","Agraire","Clanique"};
+    static const char *N[HERITAGE_COUNT]={"Ésotérique","Métallurgiste",
+                                          "Mécaniste","Adaptatif","Agraire","Clanique"};
     return (r>=0&&r<HERITAGE_COUNT)?N[r]:"?";
 }
 
