@@ -6,6 +6,13 @@
 - `make <x>_demo` : chaque module a son banc auto-vérifiant — **tout doit rester vert**. `ai_demo` : 23/23 depuis la graine par défaut 9 (L4-2026-06 ; le test « Bâtisseur +K » reste sensible au monde, documenté en AUDIT.md).
 - `make chronicle && ./chronicle <graine> <sims> <années> [empires] [cités] [continents]` : le balayage headless — la télémétrie est la preuve d'équilibre.
 - `make asan && ./chronicle_asan …` : ASan+UBSan doivent rester muets.
+- **Re-baseline GR4 (2026-06)** : l'HÉRITAGE (ex-race) est DÉBRAYÉ de la géo — assigné
+  par hash déterministe (graine × index pays), décorrélé du biome. Le biome décide
+  toujours TERRAIN & RESSOURCES, plus QUEL héritage s'installe (« orques des forêts »
+  possibles). Les noms SUIVENT l'héritage (country/region_make_name lisent culture.race).
+  ⚠ Les mondes des graines de référence ONT CHANGÉ (qui porte quel héritage change ;
+  chronique re-baselinée). GR1-GR3 (reskin race→héritage, religion→idéologie) sont PURS
+  (hash chronique IDENTIQUE) ; SEUL GR4 bouge le monde.
 - **Re-baseline L4 (2026-06)** : la genèse distribue désormais les empires entre
   continents (≥15 % habitable ⇒ ≥1 empire) — les mondes des graines de référence ONT
   CHANGÉ (qui est empire change). Mondes fendus (p.ex. graines 1/42) : H3 active la
