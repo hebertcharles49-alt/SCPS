@@ -72,6 +72,16 @@
      * MINIMAL pour agir, part CAPTÉE du spread → pas de runaway spéculatif. */ \
     X(ARB_VOL_CAP,            3.0f) \
     X(ARB_MIN_SPREAD,         0.20f) \
-    X(ARB_CAPTURE,            0.35f)
+    X(ARB_CAPTURE,            0.35f) \
+    /* S1 (syncrétisme) — LE COMMERCE OUVRE L'ARCHÉTYPE (Venise ← Grèce) : un contact
+     * COMMERCIAL soutenu (route OUVERTE) avec une polity qui PORTE l'archétype X creuse
+     * la profondeur de contact, sommée sur les ENTITÉS distinctes. La MER pèse FORT
+     * (SEA_W > LAND_W : Venise/Hanse/Gujarat). Seuils : MÉTIER (diffusion) puis PROFOND
+     * (= l'accès recherche, la porte d'archétype). YIELDREF module par le VOLUME. */ \
+    X(SYNC_TRADE_SEA_W,       2.0f) \
+    X(SYNC_TRADE_LAND_W,      1.0f) \
+    X(SYNC_TRADE_METIER,      1.0f) \
+    X(SYNC_TRADE_PROFOND,     2.0f) \
+    X(SYNC_TRADE_YIELDREF,    5.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

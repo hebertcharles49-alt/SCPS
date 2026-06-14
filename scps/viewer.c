@@ -371,12 +371,13 @@ static int  sync_children(int techid, int *out){   /* indices des nœuds syncré
     int n=0; for (int k=0;k<SYNC_COUNT;k++) if ((int)tech_sync_node(k)->parent==techid) out[n++]=k; return n;
 }
 static void draw_tech_tree(SDL_Renderer *ren, int win_w, int win_h,
-                           WorldEconomy *econ, TechState *ts, World *w, int cid){
+                           WorldEconomy *econ, TechState *ts, World *w,
+                           const RouteNetwork *rn, int cid){
     fill_rect(ren, 0,0, win_w, win_h, (SDL_Color){0x0a,0x0e,0x16,0xff});
     if (cid<0 || cid>=w->n_countries) return;
     TechTreeReadout tr;
-    ai_sync_refresh(w, econ, &ts[cid], cid);   /* §syncrétique : cercle à jour à l'image (hors cadence IA) */
-    unsigned acc = ai_race_access(w, econ, cid);
+    ai_sync_refresh(w, econ, rn, &ts[cid], cid);   /* §syncrétique : cercle à jour à l'image (hors cadence IA) */
+    unsigned acc = ai_race_access(w, econ, rn, cid);
     float    pop = ai_country_population(w, econ, cid);
     tech_tree_readout(&ts[cid], acc, pop, &tr);
 
@@ -937,7 +938,7 @@ static void sim_day(Sim *s, World *w) {
     routes_advance(s->rn, w, s->econ, 1);
     for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){    /* les voisins VIVENT (cadence étalée) */
         ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
-        ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->wp, s->day);  /* l'arbre vivant */
+        ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
     }
     /* P5.26/27/28 — RECHERCHE DU JOUEUR : la cible (clic sur l'arbre) progresse,
      * payée par l'INCOME SAVOIR (bâtiments staffés de la capitale, par tier — P5.27)
@@ -946,7 +947,7 @@ static void sim_day(Sim *s, World *w) {
     if (g_research_target>=0 && s->player>=0 && s->player<w->n_countries){
         int pl=s->player;
         float pop = ai_country_population(w, s->econ, pl);
-        unsigned access = ai_race_access(w, s->econ, pl);
+        unsigned access = ai_race_access(w, s->econ, s->rn, pl);
         if (!tech_can_research(&s->ts[pl], (TechId)g_research_target, access)){
             g_research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
         } else {
@@ -4309,7 +4310,7 @@ int main(int argc, char **argv) {
             shell_draw(ren,win_w,win_h,world,&sim,&g_stage);
         } else if (shot_tree && sim.ready && g_font) {
             g_tree_open = TECH_CONSCRIPTION;                                  /* démo : un anneau de sous-techs ouvert (à gauche, loin du survol) */
-            draw_tech_tree(ren, win_w, win_h, sim.econ, sim.ts, world, cid);   /* l'arbre concentrique du pays */
+            draw_tech_tree(ren, win_w, win_h, sim.econ, sim.ts, world, sim.rn, cid);   /* l'arbre concentrique du pays */
             if (g_tree_demo>=0){                                              /* démo : un survol (boîte 2 colonnes) */
                 draw_box(ren, g_tree_x[g_tree_demo]-9, g_tree_y[g_tree_demo]-9, 18,18, COL_PARCH);
                 draw_hover_footer(ren, win_w, win_h, g_tree_x[g_tree_demo], g_tree_y[g_tree_demo]);
@@ -4558,7 +4559,7 @@ int main(int argc, char **argv) {
                         }
                         /* P5.26 — clic sur une tech ACCESSIBLE → la recherche SE LANCE (file de 1). */
                         if (hit>=0 && sim.ready && sim.player>=0 && sim.player<world->n_countries){
-                            unsigned acc = ai_race_access(world, sim.econ, sim.player);
+                            unsigned acc = ai_race_access(world, sim.econ, sim.rn, sim.player);
                             if (tech_can_research(&sim.ts[sim.player], (TechId)hit, acc)){
                                 g_research_target=hit; sim.ts[sim.player].research_points=0.f;
                             }
@@ -5038,7 +5039,7 @@ int main(int argc, char **argv) {
                 continue;                                        /* pas de HUD hors partie */
             }
             if (show_tree) {                                    /* superposition de l'arbre (Tab) */
-                draw_tech_tree(ren, win_w, win_h, sim.econ, sim.ts, world, cid);
+                draw_tech_tree(ren, win_w, win_h, sim.econ, sim.ts, world, sim.rn, cid);
             } else {
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */

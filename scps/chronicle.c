@@ -204,7 +204,7 @@ static void sim_day(Sim *s, World *w) {
     routes_advance(s->rn, w, s->econ, 1);
     for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){
         ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
-        ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->wp, s->day);  /* l'arbre vivant */
+        ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
     }
     world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1);
     labor_tick(s->labor);

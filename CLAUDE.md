@@ -66,6 +66,22 @@
   commerce terrestre seed 7 **monte** 4493→4866). Sobriété : **3 routes/pays** ⇒ seed 7 (2 empires)
   plafonne à 6. SAVE **non bumpé**. Colonies outre-mer = f(géographie : côte vierge cross-continent)
   + paix (transports libres) — émergent, non forcé.
+- **S1 (2026-06-14) — LE COMMERCE OUVRE L'ARCHÉTYPE (la cristallisation de Venise)** : deux
+  ajouts à la diffusion syncrétique. (1) `ai_archetype_depth` gagne un **CHEMIN COMMERCIAL** :
+  une route **OUVERTE** où l'empire est partie et dont l'AUTRE bout PORTE un archétype creuse la
+  profondeur de contact — la **MER pèse fort** (`SYNC_TRADE_SEA_W` > `_LAND_W`), sommée sur les
+  **ENTITÉS distinctes** (registre J : SEA_W 2 · LAND_W 1 · MÉTIER 1 · PROFOND 2 · YIELDREF 5).
+  Ça ouvre la porte d'un archétype qu'on NE gouverne PAS (Venise ← Grèce, sans conquérir). (2) Le
+  VRAI verrou n'était pas la porte (la gouvernance des héritages ÉPARS post-GR4 l'ouvre déjà
+  largement : `accès[444440]`) mais la **RECHERCHE** : les signatures sont **tier-3 (~2300 pts)** et
+  l'IA gloutonne ne paie JAMAIS le tier-3 (elle prend toujours le moins cher). La **GREFFE
+  CULTURELLE** (`ai_research_step`) fait **ÉPARGNER** un empire INVESTISSEUR (mercantile/bâtisseur)
+  pour la signature accessible la moins chère — **MÊME ressort que la foreuse** — bornée à ≤ 2
+  greffes, **NON-faustienne** (le faustien = S3). ⚠ **RE-BASELINE syncrétique** : nœuds profonds
+  seed 7/9/11/19 = **2/2/6/2** (ex-0) ; le « 0/6 archétypes » DÉCOLLE. Profondeur d'arbre (41 %),
+  spécialisation, commerce **INCHANGÉS** (la greffe REMPLACE du tout-venant, elle n'ajoute pas de
+  recherche). **SAVE non bumpé** (l'accès se recalcule). `ai_research_step`/`ai_race_access`/
+  `ai_sync_refresh` prennent désormais le `RouteNetwork`.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

@@ -1145,7 +1145,7 @@ static float region_cohesion(const RegionEconomy *re){
         si+=wq*re->pop.groups[g].integration; sw+=wq; }
     return (sw>0.0)?(float)(si/sw):1.0f;
 }
-static void ai_archetype_depth(const World *w, const WorldEconomy *econ, int cid, unsigned char depth[ARCH_COUNT]){
+static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid, unsigned char depth[ARCH_COUNT]){
     PopCulture cen[RACE_COUNT]; bool present[RACE_COUNT];
     world_archetype_centroids(econ, cen, present);
     for (int r=0;r<ARCH_COUNT;r++) depth[r]=PROF_NONE;
@@ -1185,23 +1185,62 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, int cid
             if (bears) depth[ar]=(unsigned char)ch;
         }
     }
+    /* S1 — LE CHEMIN COMMERCIAL vers l'archétype (Venise ← Grèce, sans conquérir). Un
+     * contact COMMERCIAL soutenu — une route OUVERTE (≥120 j de mer rien que pour s'établir)
+     * où JE suis partie et dont l'AUTRE bout, à un AUTRE pays, PORTE l'archétype — creuse la
+     * profondeur. La MER pèse FORT (SEA_W>LAND_W : Venise, la Hanse, le Gujarat) ; le VOLUME
+     * module ; et l'on SOMME sur les ENTITÉS distinctes (le meilleur lien par partenaire) →
+     * plus de partenaires porteurs = plus profond. Franchir PROFOND ouvre la porte d'archétype
+     * (l'accès recherche) SANS gouverner — c'est la différence avec la conquête. */
+    if (rn){
+        static float gbest[ARCH_COUNT][SCPS_MAX_COUNTRY];
+        for (int a=0;a<ARCH_COUNT;a++) for (int o=0;o<SCPS_MAX_COUNTRY;o++) gbest[a][o]=0.f;
+        float sea_w=tune_f("SYNC_TRADE_SEA_W",2.0f), land_w=tune_f("SYNC_TRADE_LAND_W",1.0f);
+        float yref=tune_f("SYNC_TRADE_YIELDREF",5.0f); if(yref<1e-3f)yref=1e-3f;
+        for (int i=0;i<rn->n;i++){
+            const TradeRoute *t=&rn->route[i];
+            if (!t->open) continue;                              /* une relation TENUE, pas d'un tour */
+            if (t->ra<0||t->rb<0||t->ra>=econ->n_regions||t->rb>=econ->n_regions) continue;
+            int oa=econ->region[t->ra].owner, ob=econ->region[t->rb].owner, far;
+            if      (oa==cid && ob!=cid && ob>=0 && ob<SCPS_MAX_COUNTRY) far=t->rb;
+            else if (ob==cid && oa!=cid && oa>=0 && oa<SCPS_MAX_COUNTRY) far=t->ra;
+            else continue;                                       /* JE dois être partie, l'autre un AUTRE pays */
+            int po=econ->region[far].owner; if (po<0||po>=SCPS_MAX_COUNTRY) continue;
+            const RegionEconomy *fr=&econ->region[far];
+            if (!fr->active || !fr->colonized) continue;
+            float vol=t->yield/yref; if(vol>1.f)vol=1.f; if(vol<0.f)vol=0.f;     /* le VOLUME module */
+            float wgt=(t->maritime?sea_w:land_w)*(0.5f+0.5f*vol);                /* la MER pèse FORT */
+            for (int ar=0; ar<ARCH_COUNT; ar++){
+                bool bears = culture_bears_arch(&fr->culture, ar, cen, present);
+                for (int g=0; g<fr->pop.n_groups && !bears; g++)
+                    bears = culture_bears_arch(&fr->pop.groups[g].culture, ar, cen, present);
+                if (bears && wgt>gbest[ar][po]) gbest[ar][po]=wgt;              /* le MEILLEUR lien par ENTITÉ */
+            }
+        }
+        float prof=tune_f("SYNC_TRADE_PROFOND",2.0f), met=tune_f("SYNC_TRADE_METIER",1.0f);
+        for (int ar=0; ar<ARCH_COUNT; ar++){
+            float score=0.f; for (int o=0;o<SCPS_MAX_COUNTRY;o++) score+=gbest[ar][o];   /* SOMME des entités distinctes */
+            Profondeur ch = (score>=prof)?PROF_PROFOND : (score>=met)?PROF_METIER : (score>0.f)?PROF_SURFACE : PROF_NONE;
+            if (depth[ar] < (unsigned char)ch) depth[ar]=(unsigned char)ch;
+        }
+    }
 }
 /* Masque des ARCHÉTYPES profonds (bit par race-signature) recherchables : une signature
  * de l'arbre de base (nœud profond) exige l'archétype atteint au SECRET/PROFOND — donc
  * par GOUVERNANCE ou par SOI. Le commerce/la frontière (surface/métier) n'ouvrent QUE
  * les nœuds syncrétiques peu profonds (tech_sync_tick). La race seule n'ouvre rien. */
-unsigned ai_race_access(const World *w, const WorldEconomy *econ, int cid){
-    unsigned char depth[ARCH_COUNT]; ai_archetype_depth(w, econ, cid, depth);
+unsigned ai_race_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid){
+    unsigned char depth[ARCH_COUNT]; ai_archetype_depth(w, econ, rn, cid, depth);
     unsigned m=0;
     for (int r=0;r<RACE_COUNT;r++) if (depth[r]>=(unsigned char)PROF_PROFOND) m|=tech_race_bit((SpeciesArchetype)r);
     return m;
 }
 /* §syncrétique — rafraîchit le cercle d'un empire : cache la profondeur de contact par
  * archétype (lue par la membrane) et loquette les nœuds de diffusion atteints. */
-void ai_sync_refresh(const World *w, const WorldEconomy *econ, TechState *ts, int cid){
+void ai_sync_refresh(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, TechState *ts, int cid){
     if (!ts) return;
     unsigned char adepth[ARCH_COUNT];
-    ai_archetype_depth(w, econ, cid, adepth);
+    ai_archetype_depth(w, econ, rn, cid, adepth);
     for (int r=0;r<ARCH_COUNT;r++) ts->arch_depth[r]=adepth[r];
     tech_sync_tick(ts, adepth);                                 /* §8 : diffusion par contact (auto-latch) */
 }
@@ -1273,7 +1312,8 @@ float ai_research_income(const TechState *ts, float pop){
 }
 
 void ai_research_step(AiActor *a, TechState *ts, const World *w,
-                      const WorldEconomy *econ, const WorldProsperity *wp, int day){
+                      const WorldEconomy *econ, const RouteNetwork *rn,
+                      const WorldProsperity *wp, int day){
     if (!ts || day < a->next_research_day) return;
     a->next_research_day = day + AI_RESEARCH_CADENCE;
     float pop = ai_country_population(w, econ, a->cid);
@@ -1281,7 +1321,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     float income = (AI_RESEARCH_RATE/365.f)*AI_RESEARCH_CADENCE
                  * tech_research_yield(ts) * (1.f + pop/AI_RESEARCH_POPREF);
     ts->research_points += income;
-    ai_sync_refresh(w, econ, ts, a->cid);                       /* §4-13 : cache la profondeur + loquette la diffusion */
+    ai_sync_refresh(w, econ, rn, ts, a->cid);                   /* §4-13 : cache la profondeur + loquette la diffusion (+ S1 : le commerce) */
     unsigned access=0;
     for (int r=0;r<RACE_COUNT;r++) if (ts->arch_depth[r]>=(unsigned char)PROF_PROFOND) access|=tech_race_bit((SpeciesArchetype)r);
     TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, pop);
@@ -1290,6 +1330,33 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     if (pick!=TECH_FOREUSE && tech_can_research(ts, TECH_FOREUSE, access)){
         AiView vg = ai_observe(wp, w, econ, a->cid);
         if (vg.chain_gap==RES_IRON) return;        /* on garde les points : la foreuse d'abord */
+    }
+    /* S1 — LA GREFFE CULTURELLE (la cristallisation de Venise) : un empire INVESTISSEUR
+     * (mercantile/bâtisseur) ÉPARGNE pour acquérir le métier-signature d'un archétype qu'il a
+     * ATTEINT — par le COMMERCE (ma route maritime, S1) ou la gouvernance —, au lieu d'éparpiller.
+     * Sans ce ressort les signatures (tier-3, chères) ne sont JAMAIS payées (l'IA gloutonne prend
+     * toujours le moins cher) : c'est le MÊME mécanisme que la foreuse. Il TIENT les points jusqu'à
+     * l'acquérir (pas de fuite). Borné : NON-faustien (le faustien = S3) et ≤ 2 greffes (le 2e
+     * archétype) — la guerre n'INTERROMPT pas (l'investisseur, peu belliqueux, finit sa greffe). */
+    if (a->w_trade > 0.5f || a->w_build > 0.5f){
+        int got=0;
+        for (int id=0; id<TECH_COUNT; id++)
+            if (ts->unlocked[id] && tech_node((TechId)id)->native!=RACE_COUNT) got++;
+        if (got < 2){
+            Ethos eg = ai_capital_ethos(w,econ,a->cid);
+            TechId sig=TECH_COUNT; float sigcost=1e30f;
+            for (int id=0; id<TECH_COUNT; id++){
+                const TechNode *tn=tech_node((TechId)id);
+                if (tn->native==RACE_COUNT || tn->faustian || ts->unlocked[id]) continue;
+                if (!tech_can_research(ts, (TechId)id, access)) continue;     /* accessible (accès+prérequis) */
+                float cc=tech_cost((TechId)id, pop)*ai_tech_cost_mult(eg, tn);
+                if (cc<sigcost){ sig=(TechId)id; sigcost=cc; }                /* la moins chère d'abord */
+            }
+            if (sig!=TECH_COUNT){
+                if (ts->research_points < sigcost) return;                    /* pas les moyens : on ÉPARGNE (et TIENT) */
+                pick = sig;                                                   /* assez de Savoir : on ACQUIERT la greffe */
+            }
+        }
     }
     if (pick!=TECH_COUNT){
         float cost = tech_cost(pick, pop) * ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(pick));

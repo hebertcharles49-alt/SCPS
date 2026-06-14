@@ -135,6 +135,31 @@ pour viser ~10-15 il faudrait enrôler les cités-états (marchés) OU relever l
 au choix. Colonies outre-mer (cross-continent) 0/5/0 : f(côte vierge d'un AUTRE continent) +
 paix (transports libres), émergent — non forcé.
 
+## (c 8) S1 — le commerce ouvre l'archétype, mais le vrai verrou est la RECHERCHE (2026-06-14)
+
+Le diagnostic donné (« la porte d'archétype n'est franchie que par la gouvernance ») est
+INCOMPLET — l'instrumentation (retirée) le montre : post-GR4 les héritages sont ÉPARS, l'empire
+en gouverne PLUSIEURS, donc l'accès est DÉJÀ large (`accès[444440]`, depth_max 4/SECRET). Le
+vrai verrou est en AVAL : les signatures d'archétype sont toutes **tier-3 (~2300 pts)** et l'IA
+gloutonne (`ai_pick_tech` saute l'inabordable, prend le moins cher) ne PAIE JAMAIS le tier-3 —
+seule la foreuse passait, par sa LOGIQUE D'ÉPARGNE dédiée. D'où « 0/6 archétypes » éternel
+(même pour SON propre héritage).
+
+Deux ajouts (`scps_ai.c`) : (1) **le chemin commercial** — `ai_archetype_depth(+rn)` : une route
+OUVERTE où l'empire est partie et dont l'autre bout PORTE un archétype creuse la profondeur (la
+MER pèse fort, somme sur entités distinctes ; registre J). C'est la PORTE d'un archétype qu'on NE
+gouverne PAS (Venise ← Grèce). (2) **la greffe culturelle** — `ai_research_step` fait ÉPARGNER un
+empire investisseur (mercantile/bâtisseur) pour la signature accessible la moins chère (même
+ressort que la foreuse), bornée à ≤ 2 greffes, NON-faustienne (le faustien = S3). C'est CE
+ressort, pas la porte, qui décolle le compteur.
+
+Preuve (1×100) : nœuds profonds seed 7/9/11/19 = **2/2/6/2** (ex-0). `make test` **32/32**, ASan
+muet, viewer 0-warning, lang-check 64, **déterminisme `HASH 7 322534ab` (IDENTIQUE à V3 à 8 ans
+— S1 ne perturbe pas le début ; la greffe mûrit au siècle)**. Profondeur d'arbre (41 %),
+spécialisation (déjà 6 Société en V3, pas une régression S1) et commerce INCHANGÉS — la greffe
+REMPLACE du tout-venant. SAVE non bumpé. À VENIR : S2 (cristallisation culturelle par contact),
+S3 (frein faustien réconcilié → la COMBINAISON forge runique × arcane, encore 0).
+
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
 Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde
