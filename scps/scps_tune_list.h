@@ -52,11 +52,14 @@
     /* P-bis — déclaration de paix : score décisif & timeout de paix blanche */ \
     X(AI_WAR_DECISIVE,       50.0f) \
     X(AI_WAR_EXHAUST,        10.0f) \
-    /* Q6 re-baseline — le DOUBLEMENT 48k→96k. Capacité d'accueil VISÉE par rôle
-     * (l'apex vers lequel la pop croît) & graine mondiale de l'an 0 (répartie au
-     * prorata du cap). La pop passe de la graine (~48k) à ~96k au siècle. */ \
-    X(EMPIRE_CAP,         10800.0f) \
-    X(CITY_CAP,            5400.0f) \
-    X(SEED_POP,           48000.0f)
+    /* Q6 re-baseline — le DOUBLEMENT 48k→96k PAR LE DÉVELOPPEMENT. cap_pop = la
+     * taille PLEINE nourrie (socle vivrier) ; eff_cap = ½·cap_pop (plancher) +
+     * grenier + logements BÂTIS (manufactures, +HOUSE_MANUF/niveau, plafonné à
+     * ½·cap_pop). La graine ensemence ½·cap_pop ; bâtir double la région vers son
+     * plein → le monde passe de ~48k à ~96k au siècle (la nourriture suit cap_pop). */ \
+    X(EMPIRE_CAP,         10300.0f) \
+    X(CITY_CAP,            5150.0f) \
+    X(SEED_POP,           48000.0f) \
+    X(HOUSE_MANUF,          100.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

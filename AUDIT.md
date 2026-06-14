@@ -57,6 +57,20 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
 
 ## (c 6) Q6 — le DOUBLEMENT démographique 48k→96k (2026-06-14)
 
+- **PIVOT (révision joueur) — la capacité VIENT DU DÉVELOPPEMENT.** Le 1er jet (apex
+  statique par rôle, ci-dessous) atteignait 96k mais l'an-100 plafonnait à ~75 % d'un
+  apex figé (logistique) → on a monté l'apex pour traverser 96k, au prix d'une variance
+  guerrière. RÉVISÉ : `eff_cap = ½·cap_pop` (terre nue) **+ LOGEMENTS bâtis** (manufactures
+  SEULES, `+HOUSE_MANUF`/niveau, plafond ½·cap_pop) **+ grenier** (nourriture). `cap_pop` =
+  la taille PLEINE nourrie. **Bâtir double la région ½→plein** : la pop SUIT le bâti (seed 9
+  monte 48→56→69→75→80→89k, monotone). Graine **UNIFORME** à l'an-0 (divergence ENSUITE).
+  Readout viewer = miroir de l'eff_cap (les logements montent quand on bâtit). Tunables :
+  `EMPIRE_CAP` 10300 / `CITY_CAP` 5150 (taille nourrie) · `HOUSE_MANUF` 100. make test
+  **32/32** (les 2 contrôles `ai_demo` sensibles au monde — aggression/routes réalisées —
+  rendus robustes : la conquête du Dominateur peut hériter des routes, hors appétit marchand).
+  **À VENIR (#5)** : « le commerce nourrit le marché » (cités-états = hubs alimentaires)
+  exige de DÉCOUPLER la nourriture de `cap_pop` (∝ fertilité) — increment distinct.
+- _(1er jet, apex statique — conservé pour mémoire :)_
 - **Cible (joueur)** : monde âgé (`world_age=0.7`, la Pangée FEND), **6 empires + 12
   cités-états**, an-0 = **48 000** hab, **doublement vers ~96k à l'an 100** — PUR
   (aucun taux de croissance touché ; la guerre REDISTRIBUE la capacité, ne la crée ni

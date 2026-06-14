@@ -395,8 +395,8 @@ void econ_init(WorldEconomy *e, const World *w) {
      * 6×8000 + 12×4000 = 96 000 : la population mondiale CONVERGE vers ~96k
      * par la seule croissance (pas de bidouille du taux), la guerre ne fait que
      * REDISTRIBUER cette capacité (conquête) sans la créer. */
-    float empire_cap = tune_f("EMPIRE_CAP", 10800.f);
-    float city_cap   = tune_f("CITY_CAP",    5400.f);
+    float empire_cap = tune_f("EMPIRE_CAP", 10300.f);
+    float city_cap   = tune_f("CITY_CAP",    5150.f);
     float cty_target[SCPS_MAX_COUNTRY]={0};
     for (int cid=0; cid<SCPS_MAX_COUNTRY && cid<w->n_countries; cid++) {
         if (cty_cap[cid]<=0.f) continue;
@@ -648,18 +648,21 @@ void econ_init(WorldEconomy *e, const World *w) {
      *   · La friche vierge reste à zéro : frontière que les empires colonisent
      *     (gain TERRITORIAL ; négligeable en pop, cap 200/pays).
      * Membrane : on n'ajoute pas un bonus, on AMORCE la pop sous son plafond. */
-    double polity_cap=0.0;
+    /* Distribution UNIFORME à l'an-0 (Q6) : la même pop dans chaque région de polité
+     * (SEED_POP réparti à parts ÉGALES), bornée par le plancher ½·cap_pop (la terre nue,
+     * = eff_cap quand rien n'est bâti) → pas de famine d'amorçage. À l'an-0 nul ne domine ;
+     * la DIVERGENCE vient ENSUITE du bâti (qui développe ses manufactures grossit). */
+    int n_pr=0;
     for (int cid=0; cid<w->n_countries; cid++) {
         PolityRole role=w->country[cid].role;
         if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST && role!=POLITY_CITY_STATE) continue;
         const Country *ct=&w->country[cid];
         for (int ri=0; ri<ct->n_regions; ri++){
             int rid=ct->region_ids[ri];
-            if (rid>=0&&rid<e->n_regions&&e->region[rid].active) polity_cap+=e->region[rid].cap_pop;
+            if (rid>=0&&rid<e->n_regions&&e->region[rid].active) n_pr++;
         }
     }
-    float seed_frac = (polity_cap>0.0) ? (float)(tune_f("SEED_POP",48000.f)/polity_cap) : 0.5f;
-    if (seed_frac>1.f) seed_frac=1.f;   /* jamais au-dessus du plafond (sinon famine d'amorçage) */
+    float seed_per = (n_pr>0) ? tune_f("SEED_POP",48000.f)/(float)n_pr : 0.f;
     for (int cid=0; cid<w->n_countries; cid++) {
         const Country *ct=&w->country[cid];
         PolityRole role=ct->role;
@@ -669,7 +672,7 @@ void econ_init(WorldEconomy *e, const World *w) {
             if (rid<0||rid>=e->n_regions) continue;
             RegionEconomy *re=&e->region[rid];
             if (!re->active) continue;
-            econ_seed_population(re, re->cap_pop*seed_frac);   /* graine ∝ cap → croît vers l'apex */
+            econ_seed_population(re, fminf(seed_per, re->cap_pop*0.5f));   /* uniforme, sous le plancher */
             re->colonized=true;
             re->owner=(int16_t)cid;
         }
@@ -953,6 +956,7 @@ void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
     g_n_friche=0;                      /* E1bis.10 : recompte les régions en friche ce tick */
+    const float house_manuf = tune_f("HOUSE_MANUF", 100.f);   /* Q6 : logements par niveau de manufacture (hors boucle chaude) */
 
 #if SCPS_IPM
     /* §C — INFLATION MONÉTAIRE (un seul interrupteur). L'IPM = indice des prix :
@@ -1423,8 +1427,16 @@ void econ_tick(WorldEconomy *e, float dt) {
 
         float total_pop_now=0.f;
         for (int c=0;c<CLASS_COUNT;c++) total_pop_now+=re->strata[c].pop;
-        /* Les greniers/irrigation bâtis (food_cap) étendent l'apex démographique. */
-        float eff_cap = re->cap_pop + re->build.food_cap*250.f;
+        /* Q6 — la CAPACITÉ VIENT DU DÉVELOPPEMENT. Plancher = ½·cap_pop (la terre nue) ;
+         * les LOGEMENTS bâtis la doublent vers son plein (cap_pop = la taille nourrie) :
+         *   · MANUFACTURES uniquement (pas académie/marché…) : +HOUSE_MANUF par niveau,
+         *     plafonné à ½·cap_pop (≈ 25 ateliers·100 quand cap_pop≈5000) ;
+         *   · le GRENIER garde son rôle NOURRITURE (food_cap·250), pas logement.
+         * Bâtir = la seule façon de remplir la moitié haute → la pop SUIT le bâti. */
+        float manuf_h=0.f;
+        for (int bi=0; bi<re->n_bld; bi++) manuf_h += re->bld[bi].level;
+        manuf_h = fminf(manuf_h * house_manuf, re->cap_pop*0.5f);
+        float eff_cap = re->cap_pop*0.5f + manuf_h + re->build.food_cap*250.f;
         float cap_factor = fmaxf(0.f, 1.f - total_pop_now/(eff_cap*1.1f));
         net_growth *= cap_factor;
 

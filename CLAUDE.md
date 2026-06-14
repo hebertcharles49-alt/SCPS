@@ -10,19 +10,23 @@
   continents (≥15 % habitable ⇒ ≥1 empire) — les mondes des graines de référence ONT
   CHANGÉ (qui est empire change). Mondes fendus (p.ex. graines 1/42) : H3 active la
   guerre trans-mer (2026-06) — calibrer la guerre sur une graine mono-continent (7/99).
-- **Re-baseline Q6 (2026-06-14) — le DOUBLEMENT démographique 48k→96k** : monde âgé
-  (`world_age=0.7` : la Pangée FEND, la mer s'éveille), genèse à **6 empires + 12
-  cités-états**. An-0 = **48 000** hab PILE (`SEED_POP`, réparti au prorata du cap_pop) ;
-  la pop CROÎT vers ~96k à l'an 100 (moyenne 4 graines ≈ 97k, **±5 %** ; les mondes
-  fendus 7/42 remplissent ~15 % de moins que les cohésifs 9/99). **Seul moteur = la
-  croissance** (AUCUN taux touché) ; la guerre REDISTRIBUE la capacité, ne la crée ni
-  ne la détruit. Capacité d'accueil VISÉE par RÔLE, tunable (registre J) : `EMPIRE_CAP`
-  10800 / `CITY_CAP` 5400 (apex ; l'an-100 ≈ la cible) · friche vierge 200. Math
-  COLMATÉE : la cible se répartit sur les seules régions ACTIVES (zones mortes tranchées
-  en Passe 1, RÉUTILISÉES en Passe 3) ⇒ `cap_pop_sum` = Σ cibles EXACT, graine = `SEED_POP`
-  EXACT (plus de déficit « pays sur terre morte »). ⚠ Pop & TAILLE des pays ≫ qu'avant
-  (l'équilibre guerre/diplo se relit à cette échelle). Diag env : `SCPS_CAPDIAG` (an-0 :
-  cap_pop_sum/graine/rôles ; an-100 : remplissage/food_sat).
+- **Re-baseline Q6 (2026-06-14) — la capacité VIENT DU DÉVELOPPEMENT (48k→96k)** : monde
+  âgé (`world_age=0.7` : la Pangée FEND, la mer s'éveille), genèse à **6 empires + 12
+  cités-états**. An-0 = **48 000** hab, distribution **UNIFORME** (même pop par région,
+  sous le plancher) ; à l'an-100 ça DIVERGE (le bâti). La pop ne croît plus vers un apex
+  figé mais vers ce que le **BÂTI porte** : `eff_cap = ½·cap_pop` (la terre nue) **+
+  LOGEMENTS bâtis** (manufactures UNIQUEMENT, `+HOUSE_MANUF`/niveau, plafond ½·cap_pop ≈
+  25 ateliers·100) **+ grenier** (qui garde son rôle NOURRITURE). `cap_pop` = la taille
+  PLEINE nourrie (le socle vivrier suit `cap_pop`). **Bâtir double la région ½→plein** ⇒
+  le monde passe de 48k à ~96k au siècle par la seule CONSTRUCTION (la pop SUIT le bâti ;
+  aucun taux de croissance touché ; la guerre redistribue). Tunables (registre J) :
+  `EMPIRE_CAP` 10300 / `CITY_CAP` 5150 (taille nourrie) · `HOUSE_MANUF` 100 · `SEED_POP`
+  48000. `cap_pop_sum` exact (zones mortes tranchées en Passe 1, RÉUTILISÉES en Passe 3).
+  Le **readout** (viewer) reflète l'eff_cap moteur : les logements MONTENT quand on bâtit.
+  ⚠ Pop & taille des pays ≫ qu'avant ; `ai_demo` a deux contrôles SENSIBLES AU MONDE
+  (aggression/routes réalisées) rendus ROBUSTES. Diag : `SCPS_CAPDIAG` (`Σmanuf_lvl`).
+  À VENIR (#5) : « le commerce nourrit le marché » (cités-états = hubs alimentaires)
+  demande de DÉCOUPLER la nourriture de `cap_pop` (∝ fertilité) — increment distinct.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

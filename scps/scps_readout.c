@@ -654,9 +654,14 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
         float faith    = re ? re->build.faith    : 0.f;
         float cap_pop  = re ? re->cap_pop        : 0.f;
         float H        = re ? re->build.H_coerc  : 0.f;
-        /* LOGEMENTS : capacité d'accueil (porteuse du site + greniers/aqueducs bâtis) ;
-         * chaque âme occupe UN logement → places libres = capacité − population. */
-        long house_cap = (long)(cap_pop + food_cap*250.f);
+        /* LOGEMENTS (Q6) : la capacité VIENT DU BÂTI. Plancher = ½·cap_pop (la terre
+         * nue) ; les MANUFACTURES la doublent vers son plein (+100/niveau, plafond
+         * ½·cap_pop) ; le grenier/aqueduc gardent leur rôle NOURRITURE. Le joueur VOIT
+         * donc ses places libres monter quand il bâtit. (Miroir de l'eff_cap moteur.) */
+        float manuf_h=0.f;
+        if (re) for (int bi=0;bi<re->n_bld;bi++) manuf_h += re->bld[bi].level;
+        manuf_h = fminf(manuf_h*100.f, cap_pop*0.5f);
+        long house_cap = (long)(cap_pop*0.5f + manuf_h + food_cap*250.f);
         pr.logements_cap    = house_cap;
         pr.logements_libres = house_cap - (long)pop;
         /* SERVICES : chaque point d'édifice civique (admin/savoir/foi) sert ~700 âmes ;
