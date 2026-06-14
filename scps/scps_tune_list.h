@@ -47,6 +47,9 @@
     /* §spéculation (E3) — les bandes du stockeur IA */ \
     X(SPEC_BUY_BAND,          0.80f) \
     X(SPEC_SELL_BAND,         1.25f) \
-    X(SPEC_GOLD_FLOOR,      350.0f)
+    X(SPEC_GOLD_FLOOR,      350.0f) \
+    /* P-bis — déclaration de paix : score décisif & timeout de paix blanche */ \
+    X(AI_WAR_DECISIVE,       50.0f) \
+    X(AI_WAR_EXHAUST,        10.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

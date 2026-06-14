@@ -376,32 +376,29 @@ int main(int argc, char **argv){
         for (int t=0;t<6;t++){ legitimacy_tick(s.wl,s.w,s.econ,s.ts);
             prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl); }
         act[0].next_econ_day=INT_MAX;                 /* gèle l'éco, isole la stratégie */
-        int dW=2*horizon;
 
-        /* (A) P2 — ON GARDE CE QU'ON OCCUPE, ET SEULEMENT ÇA : R défendu (parité), mais une
-         * SEULE de ses régions est INVESTIE → au règlement elle est CÉDÉE (la parité ne
-         * protège plus le SOL pris), R garde la non-investie. Le budget ne borne plus la
-         * terre. Réglé en direct (diplo_settle) : déterministe. */
+        /* (A) R BIEN DÉFENDU (parité militaire) → budget marginal → R survit (occupé, pas
+         * annexé) : le prix log-compressé (P-bis) d'une province défendue dépasse encore le
+         * budget marginal → 0 transfert au règlement. Réglé en direct (déterministe). */
         for (int i=0;i<2;i++){ RegionEconomy *re=&s.econ->region[rr[i]];
             re->stock[RES_ARMS]=800.f; re->build.H_coerc=24.f; re->strata[CLASS_LABORER].pop=4000.f; }
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
-        diplo_occupy(s.dp, s.econ, cidD, rr[0]);                    /* UNE seule région investie */
-        diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, false);
+        diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
+        int gotA=diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, false);
         int rB=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rB++;
-        ok("on garde ce qu'on occupe : l'investie est cédée (parité ou pas), la NON-investie reste à R",
-           s.econ->region[rr[0]].owner==cidD && s.econ->region[rr[1]].owner==R && rB==1);
+        ok("R bien défendu (parité) : budget marginal → R survit (occupé, pas tout annexé)",
+           gotA < rcount && rB>=1);
 
-        /* (B) R DÉSARMÉ (domination écrasante) → budget large ≥ sa valeur → R ANNEXÉ. */
+        /* (B) R DÉSARMÉ (domination écrasante) → budget large ≥ sa valeur (prix log FAIBLE,
+         * province nue) → au règlement le vainqueur ANNEXE TOUT l'occupé → R à 0 région →
+         * MORT (polity_death). Réglé en direct (déterministe). */
         for (int i=0;i<2;i++){ RegionEconomy *re=&s.econ->region[rr[i]];
             re->stock[RES_ARMS]=0.f; re->build.H_coerc=0.f; re->strata[CLASS_LABORER].pop=40.f; }
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
-        /* §terrain : R DÉSARMÉ entièrement occupé → au règlement, le budget écrasant
-         * (≥ valeur totale) transfère TOUT → R à 0 région → MORT (polity_death). */
         diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
-        for (int k=0;k<10;k++){ act[0].peace_lock_until=0; act[0].credit_war=20.f;
-            act[0].next_strat_day=dW; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,dW); }
+        diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, false);
         int rA=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rA++;
         ok("R désarmé (domination écrasante) : le Dominateur ANNEXE R → R MEURT (0 région)",
            rcount==2 && rA==0 && s.w->country[R].role==POLITY_UNCLAIMED);

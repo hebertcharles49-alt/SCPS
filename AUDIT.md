@@ -32,6 +32,23 @@ missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27
 
 ---
 
+## (c 5) Arc P-bis — la paix DÉCLARÉE & le prix juste (2026-06-14)
+
+- **P2 — l'occupation devient territoire** : la cession de l'occupé existait (diplo_settle)
+  mais un PLAFOND DE BUDGET la bloquait (4 occupations, 0 transférée). Itérations :
+  (a) retrait du plafond → 46 transferts (EXCESSIF) ; (b) **prix de province log-compressé**
+  (cumul bâti+pop, hard-cap 80, un hameau de 100 âmes ≈ 5) → le budget §5 borne de nouveau,
+  mais sur une échelle saine ; (c) **PAIX DÉCLARÉE** (règle lisible) : score ≥ 50 ET ≥ 1
+  région tenue → décisive (on encaisse l'occupé) ; OU **10 ans** → paix blanche. Le « ET
+  occupé » laisse les SIÈGES aboutir (le score-batailles touche 50 avant qu'une place tombe).
+  Tunables `AI_WAR_DECISIVE` (50) / `AI_WAR_EXHAUST` (10 ans).
+- **Calibrage du timeout** (chronique 1×60 seed 7) : 5 ans → 0 occ ; 8 → 4 occ/0 transf ;
+  12 → 9/11 ; **10 ans retenu → 10 occ · 4 transferts · 2 sécessions** (MODÉRÉ : la carte
+  change sans tout emporter). UI : le popup diplo affiche « Paix : score X/50 ou X/10 ans ».
+- make test **32/32** · 0 warning · lang-check 64 · pas de bump SAVE (pure logique).
+- Réserve : ratio poursuite/choc encore hors cible — c'est l'objet de **P3** (cible révisée
+  [0,8 ; 1,8] sans cavalerie).
+
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
 Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde

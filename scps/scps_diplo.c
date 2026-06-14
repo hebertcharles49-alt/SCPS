@@ -751,13 +751,16 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
             }
             list[j+1]=r;
         }
-        /* P2 — ON GARDE CE QU'ON OCCUPE : toute région tenue par les armes au règlement
-         * est CÉDÉE (region.owner ← occupier). Plus de plafond de budget sur la TERRE — le
-         * sol pris au siège ne se rend pas à la paix (sinon la guerre ne change RIEN : on
-         * mesurait 4 occupations posées, 0 transférée). Le budget borne encore le BUTIN
-         * (or, côté IA), jamais le sol ; un vaincu vidé de ses régions MEURT (plus bas). */
+        /* P2 — le vainqueur ANNEXE l'occupé qu'il peut S'OFFRIR : le budget de guerre (§5)
+         * borne la cession, mais sur un PRIX désormais log-compressé et capé (un hameau ≈ 5)
+         * → des prises MODÉRÉES (ni 0 par prix démesuré, ni la carte entière en un coup).
+         * Adjacent d'abord (tri ci-dessus), prix croissant ; le reste de l'occupation est
+         * RELÂCHÉ. Un vaincu vidé de toutes ses régions MEURT (polity_death, plus bas). */
+        float budget = diplo_war_budget(d,w,econ,winner,loser);
         for (int k=0;k<n;k++){
-            settle_transfer(d,w,econ,wl,winner,loser,list[k],winner_enslaves);
+            int r=list[k]; float price=diplo_province_price(econ,r);
+            if (d->conq_value[winner][loser] + price > budget) break;   /* budget épuisé */
+            settle_transfer(d,w,econ,wl,winner,loser,r,winner_enslaves);
             transferred++;
         }
     }
@@ -909,22 +912,29 @@ int diplo_war_claim(const DiploState *d, const World *w, const WorldEconomy *eco
     return 1 + (int)(CLAIM_DOM*fmaxf(0.f, ratio-0.5f));  /* territorial : ∝ domination */
 }
 
-/* ---- §5 COMBAT : le PRIX d'une province (∝ valeur développée) ---------- */
-#define PRICE_BASE   4.f    /* un arrière-pays nu : ~5-8 */
-#define PRICE_BUILT  0.9f   /* par point de densité bâtie (K/H/P/food/foi/savoir) */
-#define PRICE_PROS   1.2f   /* par point de prospérité locale */
-#define PRICE_POP    0.002f /* par âme (un cœur peuplé coûte plus) — une GROSSE province ~40 */
+/* ---- §5 COMBAT : le PRIX d'une province (sur 100, valeur cumulée bâti+pop) ---
+ * Échelle 0..80 (hard-cap), COMPRESSÉE au logarithme : un hameau de 100 âmes ≈ 5,
+ * et la valeur sature — la conquête d'une grande province ne déborde plus le budget
+ * de guerre (sinon : prix linéaire non borné → 0 transfert OU annexion en masse). */
+#define PRICE_FLOOR    2.f    /* un arrière-pays nu : plancher */
+#define PRICE_CAP      80.f   /* hard-cap (sur 100) : aucune province ne vaut plus */
+#define PRICE_BUILT_EQ 40.f   /* 1 point de densité bâtie ≈ 40 âmes (l'édifice vaut du monde) */
+#define PRICE_LOG_K    16.6f  /* calage : un hameau (100 âmes, nu) → log10(2)·16.6 ≈ 5 pts */
 float diplo_province_price(const WorldEconomy *econ, int region){
-    if (!econ || region<0 || region>=econ->n_regions) return PRICE_BASE;
+    if (!econ || region<0 || region>=econ->n_regions) return PRICE_FLOOR;
     const RegionEconomy *re=&econ->region[region];
     const ProvBuild *b=&re->build;
     float built = b->K_inst + b->H_coerc + b->PE_infra + b->food_cap + b->faith + b->savoir;
     float pop   = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
                 + re->strata[CLASS_ELITE].pop;
-    float dev   = PRICE_BUILT*built + PRICE_PROS*re->prosperity + PRICE_POP*pop;
+    if (built<0.f) built=0.f;
+    if (pop<0.f)   pop=0.f;
+    float val   = pop + built*PRICE_BUILT_EQ;                    /* bâti compté en équivalent-âmes */
+    float price = PRICE_LOG_K * log10f(1.f + val/100.f);        /* logarithme : compresse le haut */
     /* le SACCAGE effondre la valeur (revolt_scar) → la province pillée coûte moins. */
-    float scar = (re->revolt_scar>0.f) ? (1.f - 0.45f*clampf(re->revolt_scar,0.f,1.f)) : 1.f;
-    return PRICE_BASE + dev*scar;
+    float scar  = (re->revolt_scar>0.f) ? (1.f - 0.45f*clampf(re->revolt_scar,0.f,1.f)) : 1.f;
+    price *= scar;
+    return clampf(price, PRICE_FLOOR, PRICE_CAP);
 }
 #define BUDGET_DOM    300.f  /* valeur achetable par cran de domination militaire (au-delà de 0.5) */
 #define BUDGET_SCORE  0.40f  /* … + une prime du score accumulé (une victoire décisive prend plus) */

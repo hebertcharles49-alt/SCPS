@@ -171,6 +171,7 @@
     X(STR_DIPLO_NEGOCIER, "Negotiate peace") \
     X(STR_DIPLO_SANS_CB, "No ground for war holds (no casus belli)") \
     X(STR_DIPLO_SCORE_FMT, "score {0}") \
+    X(STR_DIPLO_PAIX_FMT, "Peace: score {0}/50 or {1}/10 yrs") \
     X(STR_DIPLO_RANCUNE, "bitter grievance") \
     X(STR_DIPLO_MOTIF_FMT, "cause: {0}") \
     X(STR_DIPLO_RACE_FMT, "Race: {0}") \

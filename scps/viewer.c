@@ -2931,7 +2931,13 @@ static void draw_diplo_popup(SDL_Renderer *ren, int win_w, const World *w, const
     char nb[16]; snprintf(nb,sizeof nb,"%.0f",th*100.f);
     tr_fmt(buf,sizeof buf,STR_DIPLO_MENACE_FMT,nb);               draw_text(ren,fs,x,y,COL_DIM,buf); y+=17;
     if (st==DIPLO_WAR){ char ns[16]; snprintf(ns,sizeof ns,"%+d",(int)diplo_war_score(s->dp,s->player,cid));
-        tr_fmt(buf,sizeof buf,STR_DIPLO_SCORE_FMT,ns);            draw_text(ren,fs,x,y,COL_DIM,buf); y+=17; }
+        tr_fmt(buf,sizeof buf,STR_DIPLO_SCORE_FMT,ns);            draw_text(ren,fs,x,y,COL_DIM,buf); y+=17;
+        /* P-bis — la PAIX SE DÉCLARE : score ≥ 50 (décisive : on encaisse l'occupé) OU 10 ans
+         * (paix blanche). Le joueur voit où en est la guerre. */
+        char sc2[16], yr2[16];
+        snprintf(sc2,sizeof sc2,"%d",(int)diplo_war_score(s->dp,s->player,cid));
+        snprintf(yr2,sizeof yr2,"%.0f",s->dp->war_years[s->player][cid]);
+        tr_fmt(buf,sizeof buf,STR_DIPLO_PAIX_FMT,sc2,yr2);        draw_text(ren,fs,x,y,COL_COPPER,buf); y+=17; }
     draw_text(ren,fs,x,py+ph-22,COL_PANEL2,tr(STR_DIPLO_ACTIONS));
 }
 static void draw_minimap(SDL_Renderer *ren, PixBuf *mm, int win_w, int win_h, const Cam *cam){

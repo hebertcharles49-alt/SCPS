@@ -45,7 +45,8 @@
 #define AI_RANCOR_W       3.0f   /* §6 biais de RECONQUÊTE : on vise qui nous a pris nos terres */
 #define AI_CRUSADE_W      4.0f   /* croisade : l'orthodoxe vise qui développe le faustien (chance ∝ ferveur) */
 #define AI_ANNEX_FRAC     0.6f   /* §5 : un budget ≥ 60 % de la valeur du pays = victoire décisive → annexion */
-#define AI_WAR_EXHAUST    8.0f   /* terrain : une guerre qui traîne SANS occupation (8 ans) s'éteint en paix blanche */
+#define AI_WAR_EXHAUST   10.0f   /* 10 ANS de guerre → la paix est déclarée (paix BLANCHE si le score n'a pas tranché) */
+#define AI_WAR_DECISIVE   50.f   /* score de guerre ≥ 50 (terrain gagné/occupé) → paix DÉCISIVE : on encaisse l'occupé */
 /* §H3 — guerre outre-mer : portée = tout chemin de courants existant (campaign_order_sea
  * ne plafonne pas la distance — c'est la pénalité de score qui rend la traversée longue
  * moins attractive). Seuil large : world_sea_days < 0 = bassins séparés = injoignable. */
@@ -883,23 +884,20 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
         for (int b=0; b<w->n_countries; b++){
             if (b==a->cid || diplo_status(diplo, a->cid, b)!=DIPLO_WAR) continue;
             CasusBelli goal = diplo_war_goal(diplo, a->cid, b);
-            bool  territorial = (goal==CB_TERRITORIAL || goal==CB_NONE);
             int   occ       = (b<SCPS_MAX_COUNTRY)? diplo->conquered[a->cid][b] : 0;
-            int   b_regions = ai_owned_regions(econ, b);     /* ce qu'il reste à presser */
             float budget    = diplo_war_budget(diplo, w, econ, a->cid, b);
             float occ_value = ai_occupied_value(diplo, econ, a->cid, b);
             float wy        = (b<SCPS_MAX_COUNTRY)? diplo->war_years[a->cid][b] : 0.f;
 
-            bool settle=false;
-            if (occ>=1){
-                if (!territorial)              settle=true;  /* humiliation/source/vassalité : une prise suffit */
-                else if (occ >= b_regions)     settle=true;  /* tout l'ennemi OCCUPÉ → décisif : encaisser (le budget borne le transfert, peut TUER) */
-                else if (occ_value >= budget)  settle=true;  /* occupé tout ce que la victoire s'offre → encaisser */
-                else if (wy > AI_WAR_EXHAUST)  settle=true;  /* gains partiels mais guerre figée → on encaisse */
-            } else if (wy > AI_WAR_EXHAUST){
-                settle=true;                                 /* rien d'occupé, la guerre traîne → paix blanche */
-            }
-            if (!settle) continue;                           /* sinon : on laisse les armées travailler */
+            /* PAIX DÉCLARÉE (règle nette, lisible à l'UI) : score ≥ 50 ET au moins une
+             * région TENUE → victoire DÉCISIVE, on encaisse l'occupé (diplo_settle, borné
+             * par le budget §5) ; OU 5 ANS écoulés → la guerre s'éteint en PAIX BLANCHE
+             * (rien d'occupé → ~0 transfert). Le « ET occupé » laisse les SIÈGES aboutir :
+             * sans lui, le score-batailles touche 50 avant qu'une place tombe → 0 prise. */
+            float wscore   = (b<SCPS_MAX_COUNTRY)? diplo_war_score(diplo, a->cid, b) : 0.f;
+            bool  decisive = (wscore >= tune_f("AI_WAR_DECISIVE",AI_WAR_DECISIVE) && occ >= 1);
+            bool  exhausted= (wy     >= tune_f("AI_WAR_EXHAUST",AI_WAR_EXHAUST));
+            if (!decisive && !exhausted) continue;           /* sinon : on laisse les armées travailler */
 
             float leftover = budget - occ_value; if (leftover<0.f) leftover=0.f;
             diplo_loot(w, econ, a->cid, b, leftover);        /* le budget non pris en TERRE vide les coffres */

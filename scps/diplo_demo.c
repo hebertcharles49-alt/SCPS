@@ -308,10 +308,9 @@ int main(int argc,char**argv){
             ok("un casus belli non-territorial ne vaut qu'UNE prise (pas d'annexion étendue)",
                diplo_war_claim(dp,w,econ,A,B)==1);
 
-            /* P2 (P-bis) — ON GARDE CE QU'ON OCCUPE : la surarme de B ne protège plus son
-             * SOL une fois INVESTI. Toute région tenue par les armes au règlement est CÉDÉE
-             * (le budget borne le BUTIN d'or, jamais la terre — sinon la guerre ne change pas
-             * la carte : on mesurait 4 occupations posées, 0 transférée à la paix). */
+            /* BORNAGE PAR LE BUDGET (§5, prix log-compressé P-bis) : on OCCUPE DEUX régions
+             * de B, mais B reste FORT (surarmé) → budget marginal → la PAIX ne transfère que
+             * ce que le budget couvre, PAS tout l'occupé (pas d'annexion gratuite). */
             for(int r=0;r<econ->n_regions;r++){
                 econ->region[r].stock[RES_ARMS]=econ->region[r].stock[RES_GUNPOWDER]=0.f;
                 econ->region[r].stock[RES_ENCHANTED_ARMS]=(econ->region[r].owner==B)?6000.f:0.f;
@@ -321,10 +320,10 @@ int main(int argc,char**argv){
             for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==B && econ->region[r].culture.settled){ if(Br1<0)Br1=r; else if(Br2<0){Br2=r;break;} }
             if(Br1>=0 && Br2>=0){
                 diplo_occupy(dp,econ,A,Br1); diplo_occupy(dp,econ,A,Br2);   /* deux régions INVESTIES */
-                int got=diplo_settle(dp,w,econ,wl,A,B,false);               /* on garde ce qu'on tient */
-                ok("on GARDE ce qu'on occupe : la paix cède TOUT l'occupé (B surarmé n'y change rien)",
-                   got==2 && econ->region[Br1].owner==A && econ->region[Br2].owner==A);
-            } else ok("(pas de cible nette pour le test de cession)", true);
+                int got=diplo_settle(dp,w,econ,wl,A,B,false);               /* B surarmé → budget marginal */
+                ok("le budget BORNE la prise : B surarmé → la paix ne transfère pas tout l'occupé",
+                   got < 2);
+            } else ok("(pas de cible nette pour le test de bornage)", true);
 
             /* RÉPARATIONS : le vaincu net indemnise le vainqueur ∝ score. */
             diplo_init(dp); diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);
