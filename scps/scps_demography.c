@@ -9,6 +9,9 @@
 #include "scps_demography.h"
 #include "scps_culture.h"   /* ethos_name */
 #include "scps_labor.h"     /* capitale_max_tier : les emplois nobles dont la classe émerge (§pop précise) */
+#include "scps_routes.h"    /* S2 : le contact COMMERCIAL porte la cristallisation culturelle */
+#include "scps_diplo.h"     /* S2 : la guerre coupe le contact */
+#include "scps_tune.h"      /* S2 : le rythme de fusion calibrable */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -433,6 +436,87 @@ static void demography_emerge_classes(RegionEconomy *re){
         g->pop_by_class[CLASS_BOURGEOIS]=a;
         g->pop_by_class[CLASS_LABORER]=g->count-e-a;
     }
+}
+
+/* S2 — LA CRISTALLISATION CULTURELLE SUIT LE CONTACT (pas que la cohabitation). Le moteur
+ * `culture_syncretize` (le mutant hybride : substrat A sous élite B) était DORMANT — seul le
+ * banc l'appelait. On le RÉVEILLE : une région en CONTACT COMMERCIAL soutenu (route OUVERTE,
+ * à la paix) avec un partenaire d'un AUTRE pays voit sa culture dominante dériver vers la
+ * sienne — la MER porte plus loin (poids ×2) —, jugée par la MÊME porte métabolique que la
+ * prospérité de contact (`culture_can_syncretize` : σ(0.8(P−D∞)+0.35(K−5)), INCHANGÉE). Quand
+ * la distance franchit le seuil de fusion, l'hybride CRISTALLISE (le banc de la chronique le
+ * compte). Pas de mur de distance — il faut juste plus de P+K et du TEMPS (générations). On
+ * NE crée PAS d'état sérialisé : la dérive s'écrit dans les axes de culture existants. */
+static void pc_to_culture(const PopCulture *p, Culture *c){
+    memset(c,0,sizeof *c);
+    c->langue=p->langue; c->valeurs=p->valeurs; c->subsistance=p->subsistance;
+    c->parente=p->parente; c->religion=p->religion; c->ethos=p->ethos; c->lifeway=p->lifeway;
+    c->structure=p->structure; c->credo=p->credo; c->rel_branch=p->rel_branch;
+    c->martial=p->martial; c->econ=p->econ; c->age=p->age; c->is_hybrid=false;
+}
+static void culture_to_pc(const Culture *c, PopCulture *p){
+    p->langue=c->langue; p->valeurs=c->valeurs; p->subsistance=c->subsistance;
+    p->parente=c->parente; p->religion=c->religion; p->ethos=c->ethos; p->lifeway=c->lifeway;
+    p->structure=c->structure; p->credo=c->credo; p->rel_branch=c->rel_branch;
+    p->martial=c->martial; p->econ=c->econ; p->age=c->age;   /* settled/race PRÉSERVÉS */
+}
+static long g_contact_cryst = 0;   /* cristallisations par contact, cumul de la sim (télémétrie) */
+void demography_contact_reset(void){ g_contact_cryst = 0; }
+long demography_contact_count(void){ return g_contact_cryst; }
+int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
+                            const RouteNetwork *rn, const DiploState *dp,
+                            float P, float K, float ypt){
+    if (!e || !rn) return 0;
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    float fuse_rate=tune_f("SYNC_FUSE_RATE",0.10f);            /* fraction du fossé comblée/an (mer soutenue) */
+    float inner=FUSE_EPS*0.5f;                                  /* la bande de FRANCHISSEMENT (compté une fois) */
+    int cryst=0;
+    for (int r=0;r<n;r++){
+        RegionEconomy *re=&e->region[r];
+        if (re->pop.n_groups<=0 || !re->culture.settled || re->owner<0) continue;
+        int partner=-1; bool sea=false;                        /* le MEILLEUR partenaire-route étranger */
+        for (int i=0;i<rn->n;i++){
+            const TradeRoute *t=&rn->route[i];
+            if (!t->open || t->ra<0||t->rb<0||t->ra>=n||t->rb>=n) continue;
+            int far;
+            if      (t->ra==r) far=t->rb;
+            else if (t->rb==r) far=t->ra;
+            else continue;
+            int fo=e->region[far].owner;
+            if (fo<0 || fo==re->owner) continue;               /* un AUTRE pays */
+            if (dp && diplo_status(dp,re->owner,fo)==DIPLO_WAR) continue;   /* la guerre coupe le contact */
+            if (e->region[far].pop.n_groups<=0 || !e->region[far].culture.settled) continue;
+            if (t->maritime){ partner=far; sea=true; break; }  /* la MER d'abord (porte plus loin) */
+            if (partner<0) partner=far;
+        }
+        if (partner<0) continue;
+        PopGroup *dom=(PopGroup*)province_dominant(&re->pop); if(!dom) continue;
+        const PopGroup *pd=province_dominant(&e->region[partner].pop); if(!pd) continue;
+        PopCulture a=group_culture_effective(dom, drift);      /* EFFECTIVE = origine + dérive DURABLE */
+        PopCulture b=group_culture_effective(pd, drift);
+        Culture ca,cb; pc_to_culture(&a,&ca); pc_to_culture(&b,&cb);
+        SyncFeasibility f=culture_can_syncretize(&ca,&cb,P,K);
+        if (!f.feasible) continue;                             /* porte fermée : plus de P+K requis */
+        float d=content_dist(&a,&b);
+        if (d>=inner && d<FUSE_EPS){                           /* FRANCHISSEMENT → l'hybride cristallise */
+            Culture h;
+            if (culture_syncretize(&ca,&cb,&h)){               /* l'ORIGINE porte la fusion (durable) */
+                PopCulture hpc=dom->origin; culture_to_pc(&h,&hpc); dom->origin=hpc;
+                if (drift){ GroupDrift cur=modstack_group_drift(drift,dom->drift_id);
+                    GroupDrift neg={-cur.dCv,-cur.dCs,-cur.dCp,-cur.dCr,0.f};   /* la dérive culture revient à plat (l'origine EST l'hybride) */
+                    modstack_accumulate_drift(drift, dom->drift_id, neg, false); }
+                dom->culture=group_culture_effective(dom, drift);   /* rafraîchit le cache (= l'hybride) */
+                cryst++;
+            }
+        } else if (d>=FUSE_EPS && drift){                      /* encore loin : la dérive DURABLE vers le partenaire (générations) */
+            float rate=fuse_rate*f.openness*(sea?1.f:0.5f)*ypt; if(rate>0.5f)rate=0.5f;
+            GroupDrift step={ (b.valeurs-a.valeurs)*rate, (b.subsistance-a.subsistance)*rate,
+                              (b.parente-a.parente)*rate, (b.religion-a.religion)*rate, 0.f };
+            modstack_accumulate_drift(drift, dom->drift_id, step, false);   /* DURABLE (métabolisé), comme l'assimilation */
+        }
+    }
+    g_contact_cryst += cryst;
+    return cryst;
 }
 
 void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,

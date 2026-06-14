@@ -21,6 +21,8 @@
 #include "scps_econ.h"       /* PopGroup, ProvincePop, PopCulture, SocialClass */
 #include "scps_species.h"    /* SpeciesArchetype, Sphere */
 #include "scps_modifier.h"   /* la pile de dérive (assimilation/suppression) */
+#include "scps_routes.h"     /* S2 : RouteNetwork (contact commercial) */
+#include "scps_diplo.h"      /* S2 : DiploState (la guerre coupe le contact) */
 #include "scps_readout.h"    /* BandHumeur — la loyauté en MOT (membrane) */
 
 /* PopGroup / ProvincePop sont définis dans scps_econ.h (bas niveau) : ainsi
@@ -105,6 +107,16 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift);
  * (= groupe dominant). Le verdict reste au pays (scps_order inchangé). */
 void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
                      ModifierStack *drift, float P, float K, float dt);
+
+/* S2 — LA CRISTALLISATION CULTURELLE PAR CONTACT (réveille `culture_syncretize`) : une
+ * région en contact COMMERCIAL soutenu (route ouverte, à la paix) avec un autre pays voit
+ * sa culture dominante dériver vers la sienne (la MER porte plus loin), jugée par la porte
+ * métabolique INCHANGÉE ; au franchissement du seuil, l'hybride cristallise. Renvoie le
+ * nombre de cristallisations CE pas. À appeler au pas ANNUEL (ypt = années/pas). */
+int demography_contact_tick(WorldEconomy *e, ModifierStack *drift, const RouteNetwork *rn,
+                            const DiploState *dp, float P, float K, float ypt);
+void demography_contact_reset(void);   /* RAZ du compteur de cristallisations (par sim) */
+long demography_contact_count(void);   /* cristallisations par contact cumulées (télémétrie) */
 
 /* Dépose `amount` du groupe dominant du pays `cid` (sa culture régnante) dans la
  * région conquise `region` → minorité de colons sous une couronne étrangère, OU

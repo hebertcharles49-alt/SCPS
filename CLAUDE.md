@@ -82,6 +82,20 @@
   spécialisation, commerce **INCHANGÉS** (la greffe REMPLACE du tout-venant, elle n'ajoute pas de
   recherche). **SAVE non bumpé** (l'accès se recalcule). `ai_research_step`/`ai_race_access`/
   `ai_sync_refresh` prennent désormais le `RouteNetwork`.
+- **S2 (2026-06-14) — LA CRISTALLISATION CULTURELLE SUIT LE CONTACT (réveil de `culture_syncretize`)** :
+  le mutant hybride `culture_syncretize` (substrat A sous élite B) était **DORMANT** — seul le banc
+  l'appelait ; la fusion VIVE (`assimilation_tick`) ne tire que vers la dominante LOCALE
+  (intra-province ≈ « co-gouvernées »). `demography_contact_tick` (neuf, annuel) le RÉVEILLE : une
+  région en CONTACT COMMERCIAL soutenu (route **OUVERTE**, à la **PAIX**) avec un AUTRE pays voit sa
+  culture dominante dériver vers la sienne — **DURABLE** (pile de dérive, comme l'assimilation), la
+  **MER** porte plus loin (×2) —, jugée par la MÊME porte métabolique **INCHANGÉE**
+  (`culture_can_syncretize` σ(0.8(P−D∞)+0.35(K−5))). Au franchissement de `FUSE_EPS`, l'hybride
+  **CRISTALLISE dans l'ORIGINE** (substrat durable) + la dérive culture remise à plat. Tunable
+  `SYNC_FUSE_RATE` (registre J). ⚠ **RE-BASELINE** : cristallisations seed 7/9/11/19 = **5/1/0/4**
+  (ex-0, dormant ; seed 11 = partenaires trop lointains en 100 ans) ; télémétrie neuve
+  « cristallisation(s) culturelle(s) par contact ». Mondes **STABLES** (6 pays, 0 absorbés, commerce
+  ~inchangé). **SAVE NON bumpé** (origine + pile de dérive déjà sérialisées). Les 2 bancs démographie
+  gagnent `scps_diplo.o`/`scps_routes.o` au lien.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

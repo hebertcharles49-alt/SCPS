@@ -1056,6 +1056,7 @@ static void sim_day(Sim *s, World *w) {
         trade_network_build(s->net, w, s->econ);
         trade_tick(s->econ, s->net);
         intertrade_tick(s->econ, s->rn, s->dp);   /* grandes routes marchandes (goods inter-pays + embargo) */
+        demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f);   /* S2 : la cristallisation suit le contact (annuel) */
         prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl);
         /* Diplomatie annuelle : usure de guerre, fonte des trêves/momentum, score de guerre. */
         warhost_tick(s->host, w, s->econ, s->dp, 1.0f);   /* la mobilisation : les armées vivent */

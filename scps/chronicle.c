@@ -302,6 +302,7 @@ static void sim_day(Sim *s, World *w) {
         legitimacy_tick(s->wl, w, s->econ, s->ts);
         trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
         intertrade_tick(s->econ, s->rn, s->dp);   /* grandes routes marchandes (goods inter-pays + embargo) */
+        demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f);   /* S2 : la cristallisation suit le contact (annuel) */
         prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl);
         /* DIPLOMATIE annuelle : usure de guerre, FONTE des trêves & du momentum
          * (la guerre peut reprendre après le répit), et le SCORE DE GUERRE (bras-de-fer
@@ -334,6 +335,7 @@ static void sim_init(Sim *s, World *w) {
     statecraft_init(s->sc, w); agency_init(s->ag); diplo_init(s->dp); routes_init(s->rn);
     diplo_seed_rng(s->dp, w->seed);   /* la fronde tire sa graine du monde (séquence par sim) */
     intertrade_reset();   /* embargos décrétés + flux inter-pays : RAZ par sim */
+    demography_contact_reset();   /* S2 : compteur de cristallisations culturelles par contact */
     intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs) — géographiques */
     /* RAZ PLEINE PLAGE (SCPS_MAX_COUNTRY, pas n_countries) : n_countries GRANDIT par
      * sécession en cours de sim — la sim suivante repart plus bas. Sans ça, les slots
@@ -1117,8 +1119,8 @@ int main(int argc, char **argv){
           }
           int distinct=0; for (int ar=0;ar<RACE_COUNT;ar++) distinct+=arch_reached[ar];   /* ar : ne pas masquer le r extérieur (-Wshadow) */
           if (nemp>0){
-              printf("              syncrétisme : %d nœud(s) profond(s) (gouvernance) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane\n",
-                     sync_total, diff_total, distinct, (int)RACE_COUNT, nmin, nmax, combo);
+              printf("              syncrétisme : %d nœud(s) profond(s) (gouvernance) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane · %ld cristallisation(s) culturelle(s) par contact (S2)\n",
+                     sync_total, diff_total, distinct, (int)RACE_COUNT, nmin, nmax, combo, demography_contact_count());
               tot_sync += sync_total; tot_sync_distinct += distinct;
           }
         }

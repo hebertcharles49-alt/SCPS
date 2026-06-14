@@ -82,6 +82,9 @@
     X(SYNC_TRADE_LAND_W,      1.0f) \
     X(SYNC_TRADE_METIER,      1.0f) \
     X(SYNC_TRADE_PROFOND,     2.0f) \
-    X(SYNC_TRADE_YIELDREF,    5.0f)
+    X(SYNC_TRADE_YIELDREF,    5.0f) \
+    /* S2 (syncrétisme) — la CRISTALLISATION culturelle suit le contact : fraction du fossé
+     * de contenu comblée/an par un contact commercial maritime SOUTENU (porte-modulée). */ \
+    X(SYNC_FUSE_RATE,         0.10f)
 
 #endif /* SCPS_TUNE_LIST_H */

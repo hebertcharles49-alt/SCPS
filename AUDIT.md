@@ -160,6 +160,26 @@ spécialisation (déjà 6 Société en V3, pas une régression S1) et commerce I
 REMPLACE du tout-venant. SAVE non bumpé. À VENIR : S2 (cristallisation culturelle par contact),
 S3 (frein faustien réconcilié → la COMBINAISON forge runique × arcane, encore 0).
 
+## (c 9) S2 — la cristallisation culturelle suit le contact (réveil de culture_syncretize) (2026-06-14)
+
+Le diagnostic donné (« culture_can_syncretize exige des cultures CO-GOUVERNÉES ») est INCOMPLET :
+`culture_syncretize` (le mutant hybride) n'était appelé NULLE PART dans la sim — seul `culture_demo`
+le touchait (DORMANT). La fusion VIVE du moteur, `assimilation_tick`, ne tire que vers la dominante
+LOCALE (intra-province = co-gouvernées) ; il n'y avait donc AUCUN chemin par le contact inter-pays.
+
+`demography_contact_tick` (neuf, annuel — chronicle + viewer) le réveille : une région en contact
+commercial soutenu (route OUVERTE, à la paix) avec un AUTRE pays dérive sa culture dominante vers la
+sienne, via la PILE DE DÉRIVE (durable, comme l'assimilation — pas une écriture du cache, qui était
+écrasée chaque mois), la MER portant plus loin (×2), jugée par la porte métabolique INCHANGÉE. Au
+franchissement de FUSE_EPS, l'hybride cristallise dans l'ORIGINE (substrat durable) + la dérive
+culture remise à plat (négation du delta accumulé). Pas d'état neuf sérialisé ⇒ SAVE non bumpé.
+
+Preuve (1×100) : cristallisations seed 7/9/11/19 = 5/1/0/4 (ex-0 ; seed 11 : partenaires trop
+lointains — D∞ > FUSE_EPS en 100 ans). make test 32/32 (les 2 bancs démographie gagnent diplo/routes
+au lien), ASan muet, viewer 0-warning, lang-check 64, déterminisme HASH 7 de6e2229 reproductible.
+Mondes stables (6 pays, 0 absorbés, commerce ~inchangé) ; S1 tient (archétypes > 0 partout). La
+COMBINAISON forge runique × arcane reste 0 → S3 (frein faustien).
+
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
 Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde
