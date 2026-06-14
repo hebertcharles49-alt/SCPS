@@ -859,6 +859,22 @@ int main(int argc, char **argv){
                  (double)s.wp->entropy, s.wp->entropy_terminal?" [TERMINAL]":"",
                  s.wp->faust_consumed[0], s.wp->faust_consumed[1], s.wp->faust_consumed[2],
                  fract, npr?pir/npr:0.0, pmax, (double)econ_base_price(RES_IRON), arms); }
+        if (getenv("SCPS_FORGEDIAG")){
+            long bld[BLD_TYPE_COUNT]; memset(bld,0,sizeof bld);
+            double sup[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)sup[g]=0.0;
+            for (int r=0;r<s.econ->n_regions;r++){ if (s.econ->region[r].owner<0) continue;
+                for (int b=0;b<s.econ->region[r].n_bld;b++){ int ty=s.econ->region[r].bld[b].type; if(ty>=0&&ty<BLD_TYPE_COUNT)bld[ty]++; }
+                for (int g=0;g<RES_COUNT;g++) sup[g]+=s.econ->region[r].supply[g]; }
+            long u[U_COUNT]; memset(u,0,sizeof u);
+            for (int c=0;c<w->n_countries;c++) for (int i=0;i<s.host->army[c].n_units;i++){
+                int ty=s.host->army[c].units[i].type; if(ty>=0&&ty<U_COUNT) u[ty]+=s.host->army[c].units[i].count; }
+            fprintf(stderr,"[FORGEDIAG] FABRIQUES : lourde %ld · arc %ld · arquebuserie %ld · réplicateur %ld · corne %ld | mage %ld · forge céleste %ld\n",
+                    bld[BLD_ARMORY_HEAVY],bld[BLD_BOWYER],bld[BLD_ARQUEBUS],bld[BLD_REPLICATEUR],bld[BLD_CORNE],bld[BLD_MAGE_WORKSHOP],bld[BLD_CELESTIAL_FORGE]);
+            fprintf(stderr,"[FORGEDIAG] ARMES produites/tick : lourde %.1f · trait %.1f · feu %.1f · bâton %.1f · kit %.1f · enchantées %.1f\n",
+                    sup[RES_ARMS_HEAVY],sup[RES_ARMS_RANGED],sup[RES_FIREARM],sup[RES_MAGE_STAFF],sup[RES_ALCHEMIST_KIT],sup[RES_ENCHANTED_ARMS]);
+            fprintf(stderr,"[FORGEDIAG] TROUPES (paquets) : hallebardier %ld · arquebusier %ld · alchimiste %ld · garde runique %ld · archer %ld · cav lourde %ld\n",
+                    u[U_HALLEBARDIER],u[U_ARQUEBUSIER],u[U_ALCHIMISTE],u[U_GARDE_RUNIQUE],u[U_ARCHER],u[U_CAV_LOURDE]);
+        }
         if (tp>=0)
             printf("              1er empire « %s » : %d régions (%d%% des terres) | Stabilité %d  Prospérité %d  Légitimité %d  Cohésion %d — Assise %s\n",
                    w->country[tp].name, treg, share, r.m_stabilite.value, r.m_prosperite.value,
