@@ -59,6 +59,8 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_PAPER]         = 5.5f,
     [RES_ARCANE_CRYSTAL]= 16.0f,   /* résidu rare des nœuds telluriques */
     [RES_ESSENCE]       = 34.0f,   /* mana raffiné — très haute valeur */
+    [RES_FLUX]          = 12.0f,   /* F3 : salpêtre distillé (Alambic) — intrant du Réplicateur (flux → bois) */
+    [RES_ALCHEMIST_KIT] = 20.0f,   /* F3 : nécessaire d'alchimiste (Alambic, secondaire) — débloque le soldat alchimiste */
     [RES_CELESTIAL_IRON]= 20.0f,   /* météorique — très rare */
     [RES_ENCHANTED_ARMS]= 46.0f,   /* armes enchantées — la Forge supérieure */
     [RES_METAL]         = 5.0f,    /* fonte/acier — intrant */
@@ -123,10 +125,11 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* §B2 FOREUSE ARCANIQUE : transmute l'ESSENCE en FER en masse (0.5 essence → 8 fer).
      * L'issue faustienne à la famine de fer ; gatée par la tech (charge) + l'essence (rare). */
     [BLD_FOREUSE]   = { RES_ESSENCE, 0.5f, RES_NONE, 0.f, RES_IRON, 8.0f, 1.4f, RES_NONE, 0.f },
-    /* M6 (forks §10) — L'ALAMBIC (pôle Fluide) : le salpêtre DISTILLÉ devient essence
-     * purifiée — le puits-de-flux (sa consommation neutralise la charge arcane). Le
-     * salpêtre nourrit DÉJÀ la poudre : une ressource, deux doctrines opposées. */
-    [BLD_ALAMBIC]   = { RES_SALTPETER, 1.2f, RES_NONE, 0.f, RES_ESSENCE_PURIFIEE, 1.0f, 0.9f, RES_NONE, 0.f },
+    /* F3 — L'ALAMBIC (GATE TECH_ALCHIMIE) : le salpêtre DISTILLÉ donne le FLUX (primaire,
+     * intrant du Réplicateur ligneux) + le nécessaire d'ALCHIMISTE (secondaire, débloque le
+     * soldat alchimiste). NE QUENCHE PLUS la charge (RETRAIT F-arc). Le salpêtre nourrit DÉJÀ
+     * la poudre : une ressource, deux doctrines. */
+    [BLD_ALAMBIC]   = { RES_SALTPETER, 1.2f, RES_NONE, 0.f, RES_FLUX, 1.0f, 0.9f, RES_ALCHEMIST_KIT, 0.3f },
     /* Chaînes militaires de base + santé (compléter le roster de production). */
     [BLD_ARMORY]    = { RES_IRON,      1.2f, RES_NONE, 0.f, RES_ARMS,      1.0f, 1.0f, RES_NONE, 0.f },
     [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
@@ -550,9 +553,9 @@ void econ_init(WorldEconomy *e, const World *w) {
         if (re->raw_cap[RES_IRON] > 0.f) region_ensure_building(re,BLD_ARMORY);
         if (re->raw_cap[RES_SALTPETER] > 0.f && re->raw_cap[RES_COAL] > 0.f)
             region_ensure_building(re,BLD_POWDERMILL);
-        /* M6 — l'ALAMBIC au salpêtre (le SALPÊTRE CONTESTÉ §10 : la poudrière ci-dessus
-         * et l'alambic puisent la même ressource — deux doctrines, un gisement). */
-        if (re->raw_cap[RES_SALTPETER] > 0.f) region_ensure_building(re,BLD_ALAMBIC);
+        /* F3 — l'ALAMBIC n'est PLUS auto-bâti à la géographie : il est GATÉ par TECH_ALCHIMIE
+         * (le salpêtre nourrit la poudre sans tech ; l'alchimie le distille en flux AVEC tech).
+         * Bâti par la boucle de demande (gatée par re->tech_alchimie) quand le flux est requis. */
         /* Santé : apothicaire là où poussent les simples (herbes médicinales). */
         if (re->raw_cap[RES_MED_HERBS] > 0.f) region_ensure_building(re,BLD_APOTHECARY);
 
@@ -753,6 +756,7 @@ static void econ_build_tick(WorldEconomy *e){
             const Recipe *rc=&RECIPE[b];
             if (rc->out<=RES_NONE || rc->out>=RES_COUNT || BASE_PRICE[rc->out]<=0.f) continue;
             if (b==BLD_FOREUSE && !re->tech_foreuse) continue;                   /* §B2 : foreuse gatée par la tech faustienne */
+            if (b==BLD_ALAMBIC && !re->tech_alchimie) continue;                  /* F3 : alambic gaté par TECH_ALCHIMIE */
             if (re->price[rc->out] < BASE_PRICE[rc->out]*NF_SHORTAGE) continue;   /* output pas en pénurie ICI */
             bool feed1 = (rc->in1==RES_NONE)
                       || avail[rc->in1] > NF_REALM_MIN || re->stock[rc->in1] >= NF_STOCK_MIN
@@ -778,6 +782,7 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
                       ? 1.f + tech_prod_bonus(&ts[o]) + tech_eff_bonus(&ts[o])
                       : 1.f;
         re->tech_foreuse = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FOREUSE] : false;  /* §B2 : gate de BLD_FOREUSE */
+        re->tech_alchimie = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_ALCHIMIE] : false; /* F3 : gate de BLD_ALAMBIC */
     }
 }
 
@@ -824,12 +829,12 @@ long econ_friche_count(void){ return g_n_friche; }
  * Le PUITS (alambic, négatif) est branché dans econ_tick : l'essence purifiée
  * consommée NEUTRALISE la charge arcane (0.5 charge par unité). L'accrual mage
  * existant reste inchangé (calibré par econ_arcane_demo) — la table dit le SIGNE
- * et l'ORDRE (forge > mage > 0 > alambic), le moteur branche le puits. */
+ * et l'ORDRE (forge > mage > 0). F-arc : l'alambic n'est PLUS un puits (0). */
 float econ_bld_flux_delta(BuildingType b){
     switch(b){
         case BLD_CELESTIAL_FORGE: return  1.2f;
         case BLD_MAGE_WORKSHOP:   return  0.8f;
-        case BLD_ALAMBIC:         return -0.3f;
+        case BLD_ALAMBIC:         return  0.f;   /* F-arc RETRAIT : plus un puits — distillation neutre */
         default:                  return  0.f;
     }
 }
@@ -1132,17 +1137,9 @@ void econ_tick(WorldEconomy *e, float dt) {
             labor_used+=b->workers;
             /* ARCANE : brûler le cristal pour l'essence nourrit la Brèche. */
             if (b->type==BLD_MAGE_WORKSHOP) re->arcane_charge += out;
-            /* M6 — LE PUITS-DE-FLUX : l'essence purifiée produite ici se CONSOMME
-             * sur place pour NEUTRALISER la charge (l'Alambic vend la stabilité :
-             * |delta| = 0.3 charge éteinte par unité distillée, si charge il y a). */
-            if (b->type==BLD_ALAMBIC && re->arcane_charge > 0.f){
-                float quench = fminf(re->stock[RES_ESSENCE_PURIFIEE],
-                                     re->arcane_charge / 0.3f);
-                if (quench > 0.f){
-                    re->stock[RES_ESSENCE_PURIFIEE] -= quench;
-                    re->arcane_charge = fmaxf(0.f, re->arcane_charge - quench*0.3f);
-                }
-            }
+            /* F-arc RETRAIT — LE PUITS-DE-FLUX EST COUPÉ : l'Alambic ne quenche PLUS la charge.
+             * AUCUN mécanisme ACTIF ne fait reculer la charge par design (modèle Stellaris) ;
+             * seule la décrue PASSIVE (CHARGE_DECAY, FAU0/FAU1) la grignote hors péché. */
 
             /* Valeur ajoutée = valeur sortie − valeur intrants */
             float val_out=out*re->price[rc->out];

@@ -122,8 +122,10 @@ int main(void){
         } else { for(int i=0;i<12;i++) ok("(OOM M3 — ignoré)",true); }
     }
 
-    /* ═══ M6 — l'Alambic : gate matière, table de flux, LE PUITS ═══════════ */
-    printf("\n── M6. L'Alambic distille le salpêtre — et NEUTRALISE la charge arcane ──\n");
+    /* ═══ M6/F3 — l'Alambic : gate matière, table de flux, DISTILLE LE FLUX ═══
+     * F-arc RETRAIT : le puits-de-flux est COUPÉ — l'Alambic ne neutralise plus la
+     * charge ; il distille le salpêtre en FLUX (+ nécessaire d'alchimiste). */
+    printf("\n── M6/F3. L'Alambic distille le salpêtre en FLUX (le puits est COUPÉ) ──\n");
     {
         WorldEconomy *e=calloc(1,sizeof(WorldEconomy));
         if (e){
@@ -144,25 +146,26 @@ int main(void){
             ok("l'Alambic exige le salpêtre (présent ici)", econ_bld_can_build(e,0,BLD_ALAMBIC));
             ok("table de flux : Forge (+1.2) > Atelier du Mage (+0.8)",
                econ_bld_flux_delta(BLD_CELESTIAL_FORGE) > econ_bld_flux_delta(BLD_MAGE_WORKSHOP));
-            ok("table de flux : l'Alambic est un PUITS (delta < 0)",
-               econ_bld_flux_delta(BLD_ALAMBIC) < 0.f);
-            /* LE PUITS EN MARCHE : même région, mage SEUL vs mage+alambic — la charge
-             * du tick chute quand l'alambic distille (l'essence purifiée la neutralise). */
+            ok("F-arc RETRAIT : l'Alambic n'est PLUS un puits (delta ≥ 0)",
+               econ_bld_flux_delta(BLD_ALAMBIC) >= 0.f);
+            /* L'ALAMBIC EN MARCHE : il distille le salpêtre → FLUX (la supply du Réplicateur).
+             * Et il ne PURGE plus la charge : le mage+alambic ne fait pas chuter la charge. */
             re->bld[0]=(Building){BLD_MAGE_WORKSHOP,1.f,0.f}; re->n_bld=1;
             re->stock[RES_ARCANE_CRYSTAL]=50.f;
             econ_tick(e,1.f/12.f);
             float charge_seul=re->arcane_charge;
             re->bld[1]=(Building){BLD_ALAMBIC,1.f,0.f}; re->n_bld=2;
             re->stock[RES_ARCANE_CRYSTAL]=50.f; re->stock[RES_SALTPETER]=50.f;
-            re->stock[RES_ESSENCE_PURIFIEE]=20.f;
+            re->stock[RES_FLUX]=0.f;
             econ_tick(e,1.f/12.f);
-            float charge_purgee=re->arcane_charge;
-            printf("   charge arcane du tick : mage seul %.2f → mage+alambic %.2f\n",
-                   charge_seul, charge_purgee);
-            ok("LE PUITS : la charge arcane chute quand l'alambic distille (§24)",
-               charge_seul > 0.f && charge_purgee < charge_seul);
+            float charge_apres=re->arcane_charge;
+            printf("   flux distillé : %.2f · charge mage seul %.2f → mage+alambic %.2f (plus de purge)\n",
+                   re->stock[RES_FLUX], charge_seul, charge_apres);
+            ok("F3 : l'Alambic DISTILLE le flux (salpêtre → flux)", re->stock[RES_FLUX] > 0.f);
+            ok("F-arc RETRAIT : l'Alambic ne PURGE plus la charge (≥ mage seul)",
+               charge_seul > 0.f && charge_apres >= charge_seul - 0.001f);
             free(e);
-        } else { for(int i=0;i<6;i++) ok("(OOM M6 — ignoré)",true); }
+        } else { for(int i=0;i<7;i++) ok("(OOM M6 — ignoré)",true); }
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

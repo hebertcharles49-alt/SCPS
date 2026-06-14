@@ -185,7 +185,10 @@ typedef enum {
     RES_GUNPOWDER,              /* poudre (salpêtre + charbon → Poudrière) → puissance militaire */
     RES_REMEDE,                 /* remèdes (simples → Apothicaire) → santé (besoin de confort) */
     RES_TUNIQUE,                /* TUNIQUE — vêtement fini des JOURNALIERS (étoffe → tunique 1:1) */
-    RES_ESSENCE_PURIFIEE,       /* M6 (forks §10) : salpêtre distillé (Alambic) — le PUITS-DE-FLUX (consommée, elle neutralise la charge arcane) */
+    RES_ESSENCE_PURIFIEE,       /* M6 (forks §10) : salpêtre distillé (Alambic) — héritage M6, le PUITS-DE-FLUX est COUPÉ (F-arc RETRAIT) */
+    /* === F-arc (alchimie & FAUSTIEN) — appendus (SAVE bump) === */
+    RES_FLUX,                   /* F3 : Alambic (salpêtre distillé) — intrant du Réplicateur ligneux (flux → bois) */
+    RES_ALCHEMIST_KIT,          /* F3 : nécessaire d'alchimiste (Alambic, secondaire) — débloque le soldat alchimiste */
     RES_COUNT
 } Resource;
 

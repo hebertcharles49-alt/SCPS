@@ -204,6 +204,7 @@ typedef struct {
     float      tech;                 /* recherche cumulée */
     float      tech_prod;            /* §B1 : multiplicateur de prod issu des techs de PRODUCTION du pays (1 = aucun) */
     bool       tech_foreuse;         /* §B2 : le pays a-t-il débloqué la foreuse arcanique ? (gate de BLD_FOREUSE) */
+    bool       tech_alchimie;        /* F3 : le pays a-t-il débloqué l'alchimie ? (gate de BLD_ALAMBIC) */
     float      gdp;                  /* valeur produite au dernier tick */
     float      satisfaction;         /* satisfaction générale [0..1] */
     float      food_sat;             /* satisfaction alimentaire [0..1] (grain+fish) */

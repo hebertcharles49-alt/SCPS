@@ -3160,6 +3160,7 @@ const char *resource_name(Resource r) {
         [RES_PRECIOUS_WARE]="Bien précieux",[RES_PRECIOUS_CLOTH]="Étoffe précieuse",[RES_PAPER]="Papier",
         [RES_METAL]="Métal",[RES_TOOLS]="Outils",[RES_ESSENCE]="Essence",[RES_ENCHANTED_ARMS]="Armes enchantées",
         [RES_ARMS]="Armes",[RES_GUNPOWDER]="Poudre",[RES_REMEDE]="Remèdes",[RES_TUNIQUE]="Tunique",
+        [RES_FLUX]="Flux",[RES_ALCHEMIST_KIT]="Nécessaire d'alchimiste",
     };
     return (r>=0&&r<RES_COUNT)?(N[(int)r]?N[(int)r]:"?"):"?";
 }
@@ -3181,6 +3182,7 @@ uint32_t resource_color(Resource r) {
         [RES_PRECIOUS_WARE]=0xFF60C0C0u,[RES_PRECIOUS_CLOTH]=0xFFE8E0F0u,[RES_PAPER]=0xFFF0E8D0u,
         [RES_METAL]=0xFFA0A0B0u,[RES_TOOLS]=0xFFB08040u,[RES_ESSENCE]=0xFF40E0C0u,[RES_ENCHANTED_ARMS]=0xFFC0A0FFu,
         [RES_ARMS]=0xFF707080u,[RES_GUNPOWDER]=0xFF505050u,[RES_REMEDE]=0xFF60B080u,[RES_TUNIQUE]=0xFFB8A088u,
+        [RES_FLUX]=0xFF50C0E0u,[RES_ALCHEMIST_KIT]=0xFF9070C0u,
     };
     return (r>=0&&r<RES_COUNT)?C[(int)r]:0xFFFF00FFu;
 }

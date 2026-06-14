@@ -137,6 +137,11 @@ static const TechNode NODES[TECH_COUNT] = {
     0,1.0f,0, 0,0, 0, -3.0f, 0, 0, 0, false },
 [TECH_CULTE_IMPERIAL] = { "Culte impérial","Mythe homogénéisant", THM_SOCIETE,FN_RENFORCEMENT,4, TECH_FOI, true,false,UNIV,
     1.0f,2.0f,0, 0,0, 0, -2.0f, 0, 0.50f, 3.0f, false },
+/* F3 — ALCHIMIE (gate de l'Alambic) : la distillation du salpêtre en FLUX + nécessaire
+ * d'alchimiste. NON-faustienne — c'est la SUPPLY bénigne ; la charge faustienne vivra sur
+ * les TRANSMUTEURS (FAU2) et leur gate dédié (FAU4). Tier 2, peu profonde (atteignable). */
+[TECH_ALCHIMIE] = { "Alchimie","Alambic", THM_SOCIETE,FN_PRODUCTION,2, TECH_COMMERCE, false,false,UNIV,
+    0,0,0, 1.0f,0, 0, 0, 0, 0.10f, 0, false },
 };
 
 /* ====================================================================== */

@@ -3559,7 +3559,9 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 19u           /* v19 : M6 — LR_CALCAIRE coupé (LaborEcon.stock[LR_COUNT] 8→7).
+#define SAVE_VERSION 20u           /* v20 : F-arc (alchimie & FAUSTIEN) — RES_FLUX + RES_ALCHEMIST_KIT
+                                    * appendus (RES_COUNT change) + TECH_ALCHIMIE (unlocked[TECH_COUNT]).
+                                    * v19 : M6 — LR_CALCAIRE coupé (LaborEcon.stock[LR_COUNT] 8→7).
                                     * v18 : M3 — DiploState.trade_pact[pays][pays] (le pacte commercial réciproque).
                                     * v17 : Q1 — Statecraft.council[pays][3] (état conseil persistant).
                                     * v16 : Country.region_ids[12→32] (mondes fragmentés dépassaient 12).
