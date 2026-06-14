@@ -83,7 +83,7 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* TEXTILE : intrant allégé (2.0→1.5) et sortie relevée (1.0→1.8) → la pénurie
      * d'étoffe (couv 22%) se résorbe ; la laine est mieux dispatchée (scps_world). */
     [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_NONE, 0.f },  /* rendement étoffe relevé (1.8→2.8) : l'étoffe nourrit DEUX chaînes (tunique + précieuse 1:4) — il en faut plus */
-    [BLD_SAWMILL]   = { RES_WOOD,  2.0f, RES_NONE,          0.f, RES_NAVAL_SUPPLIES, 1.0f, 0.8f, RES_NONE, 0.f },
+    [BLD_SAWMILL]   = { RES_WOOD,  2.0f, RES_COPPER,        0.2f, RES_NAVAL_SUPPLIES, 1.0f, 0.8f, RES_NONE, 0.f },  /* M5 : le naval EXIGE du cuivre (clous/doublage) — il ne sort plus sans */
     [BLD_PAPERMILL] = { RES_WOOD,  1.5f, RES_NONE,          0.f, RES_PAPER,          1.0f, 0.7f, RES_NONE, 0.f },
     /* VIN : sucre allégé (2.0→1.6), sortie relevée (1.0→1.4) ; le sucre tropical est
      * mieux dispatché (scps_world) → la pénurie de vin (couv 25%) se résorbe. */
@@ -114,7 +114,7 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
      * supérieure). Consomme donc l'essence de l'atelier de mage (chaîne arcane). */
     [BLD_CELESTIAL_FORGE]={ RES_CELESTIAL_IRON, 1.0f, RES_ESSENCE, 1.0f, RES_ENCHANTED_ARMS, 1.0f, 1.4f, RES_NONE, 0.f },
     /* Épine dorsale de production : fer + charbon → métal → (métal + bois) outils. */
-    [BLD_FOUNDRY]   = { RES_IRON,  1.5f, RES_COAL, 1.0f, RES_METAL, 1.0f, 1.0f, RES_NONE, 0.f },
+    [BLD_FOUNDRY]   = { RES_IRON,  1.5f, RES_COAL, 1.0f, RES_METAL, 1.0f, 1.0f, RES_COPPER, 3.0f },  /* M5 : le CUIVRE alimente la fonderie en REPLI du fer, à DEMI-rendement (3 cuivre = 1 métal vs 1.5 fer) */
     [BLD_TOOLWORKS] = { RES_METAL, 1.0f, RES_WOOD, 1.0f, RES_TOOLS, 1.0f, 0.9f, RES_NONE, 0.f },
     /* CHARBONNIÈRE : 2 bois → 1 charbon. Le charbon minier est rare et co-localisé
      * avec le fer (gate de la fonderie) ; la charbonnière le PRODUIT du bois (abondant)
