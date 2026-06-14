@@ -165,8 +165,10 @@ Sphere species_sphere(SpeciesArchetype r){
     return (r>=0&&r<RACE_COUNT)?RACE_SPHERE[r]:SPHERE_HOMMES;
 }
 const char *species_name(SpeciesArchetype r){
-    static const char *N[RACE_COUNT]={"Elfe","Nain","Gnome","Humain","Halfelin","Orque"};
-    return (r>=0&&r<RACE_COUNT)?N[r]:"?";
+    /* GR1 — l'HÉRITAGE par FONCTION (mêmes valeurs/ordre que l'ex-race). */
+    static const char *N[HERITAGE_COUNT]={"\xc3\x89sot\xc3\xa9rique","M\xc3\xa9tallurgiste",
+                                          "M\xc3\xa9caniste","Adaptatif","Agraire","Clanique"};
+    return (r>=0&&r<HERITAGE_COUNT)?N[r]:"?";
 }
 
 /* Builds par défaut (un trait par catégorie ; Physique, Social, Intellectuel). */

@@ -185,7 +185,7 @@
     X(STR_PACT_BREAK,  "Rompre le pacte") \
     X(STR_PACT_HOV,    "Pacte commercial : acc\xc3\xa8s R\xc3\x89""CIPROQUE au march\xc3\xa9 GLOBAL du partenaire si l'un tient un Centre. R\xc3\xa9vocable.") \
     X(STR_DIPLO_MOTIF_FMT, "motif : {0}") \
-    X(STR_DIPLO_RACE_FMT, "Race : {0}") \
+    X(STR_DIPLO_RACE_FMT, "H\xc3\xa9ritage : {0}") \
     X(STR_DIPLO_STATUT_FMT, "Statut : {0}") \
     X(STR_DIPLO_MENACE_FMT, "Menace : {0}%") \
     X(STR_DIPLO_ACTIONS, "Actions — onglet Diplomatie (G)") \

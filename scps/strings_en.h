@@ -180,7 +180,7 @@
     X(STR_PACT_BREAK,  "Break the pact") \
     X(STR_PACT_HOV,    "Trade pact: RECIPROCAL access to the partner's GLOBAL market if either holds a Centre. Revocable.") \
     X(STR_DIPLO_MOTIF_FMT, "cause: {0}") \
-    X(STR_DIPLO_RACE_FMT, "Race: {0}") \
+    X(STR_DIPLO_RACE_FMT, "Heritage: {0}") \
     X(STR_DIPLO_STATUT_FMT, "Status: {0}") \
     X(STR_DIPLO_MENACE_FMT, "Threat: {0}%") \
     X(STR_DIPLO_ACTIONS, "Actions — Diplomacy tab (G)") \

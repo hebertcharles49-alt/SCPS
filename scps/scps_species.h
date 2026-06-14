@@ -83,10 +83,22 @@ const char     *category_name(TraitCategory c);
 /* ===================================================================== */
 /* ESPÈCES & BUILDS                                                       */
 /* ===================================================================== */
+/* GR1 — L'HÉRITAGE (ex-« race ») : une FONCTION, plus une espèce. L'ORDRE et les VALEURS
+ * sont PRÉSERVÉS (SAVE-safe ; aucune formule touchée) — seuls les noms changent. */
 typedef enum {
-    RACE_ELFE = 0, RACE_NAIN, RACE_GNOME, RACE_HUMAIN, RACE_HALFELIN, RACE_ORQUE,
-    RACE_COUNT
+    HERITAGE_ESOTERIQUE = 0, HERITAGE_METALLURGISTE, HERITAGE_MECANISTE,
+    HERITAGE_ADAPTATIF, HERITAGE_AGRAIRE, HERITAGE_CLANIQUE,
+    HERITAGE_COUNT
 } SpeciesArchetype;
+/* Alias de transition : l'ancien lexique RACE_* reste utilisable (mêmes valeurs) tant
+ * que le moteur n'est pas entièrement migré — GR3 autorise les noms d'enum internes. */
+#define RACE_ELFE     HERITAGE_ESOTERIQUE
+#define RACE_NAIN     HERITAGE_METALLURGISTE
+#define RACE_GNOME    HERITAGE_MECANISTE
+#define RACE_HUMAIN   HERITAGE_ADAPTATIF
+#define RACE_HALFELIN HERITAGE_AGRAIRE
+#define RACE_ORQUE    HERITAGE_CLANIQUE
+#define RACE_COUNT    HERITAGE_COUNT
 
 /* Un build = un trait par catégorie (indexé par TraitCategory). */
 typedef struct { TraitId trait[CAT_COUNT]; } SpeciesBuild;
