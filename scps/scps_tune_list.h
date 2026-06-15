@@ -56,6 +56,12 @@
     /* P-bis — déclaration de paix : score décisif & timeout de paix blanche */ \
     X(AI_WAR_DECISIVE,       50.0f) \
     X(AI_WAR_EXHAUST,        10.0f) \
+    /* §war-smoothing — lisse la distribution des guerres : SOCLE d'appétit (les mondes consolidés
+     * voient quand même la guerre) ÷ (1 + SATURATION × paires en guerre) (les mondes fendus ne
+     * spiralent plus). */ \
+    X(AI_WAR_BASELINE,        0.05f) \
+    X(AI_WAR_SATURATION,      0.20f) \
+    X(AI_WAR_CAP,             3.0f) \
     /* Q6 re-baseline — le DOUBLEMENT 48k→96k PAR LE DÉVELOPPEMENT. cap_pop = la
      * taille PLEINE nourrie (socle vivrier) ; eff_cap = ½·cap_pop (plancher) +
      * grenier + logements BÂTIS (manufactures, +HOUSE_MANUF/niveau, plafonné à

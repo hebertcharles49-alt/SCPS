@@ -123,6 +123,7 @@ typedef struct {
  * fiche de la culture-capitale, décale les cadences (seed = jitter). */
 void   ai_actor_init(AiActor *a, const World *w, const WorldEconomy *econ,
                      int cid, uint32_t seed);
+void   ai_ensure_dominator(AiActor *ai, const bool *ai_on, int n);   /* §war : ≥1 Dominateur/monde (sinon atonie) */
 
 /* Dérive la personnalité depuis la fiche (publique pour le banc d'essai). */
 void   ai_derive_weights(AiActor *a, const PopCulture *self);

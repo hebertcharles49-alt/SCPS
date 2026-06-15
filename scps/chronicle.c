@@ -392,6 +392,7 @@ static void sim_init(Sim *s, World *w) {
                        && w->country[c].capital_prov>=0);
         if (s->ai_on[c]) ai_actor_init(&s->ai[c], w, s->econ, c, w->seed ^ (uint32_t)(c*2654435761u));
     }
+    ai_ensure_dominator(s->ai, s->ai_on, w->n_countries);   /* §war : un monde tout en alliances reste atone */
     demography_attach(w, s->econ, s->drift);
     demography_dyn_id_rebase(s->econ);   /* compteur de drift_id : repart au socle par sim */
     revolt_init(s->rs); warhost_init(s->host); missions_init(s->missions);

@@ -159,6 +159,24 @@ void ai_derive_weights(AiActor *a, const PopCulture *self){
     a->w_base[3]=a->w_faith;  a->w_base[4]=a->w_faustian;
 }
 
+/* §war — GARANTIR UN DOMINATEUR par monde : si AUCUN empire piloté n'a l'appétit de conquête
+ * (w_expand ≥ AI_CONQUEROR_W), on HISSE le plus belliqueux au rang de Dominateur (socle ET courant,
+ * pour que la glisse §3 le TIENNE) — sinon un monde tout en alliances reste atone (0 guerre). Un
+ * seul suffit à amorcer la dynamique ; les mondes fendus en ont déjà (hautes valeurs) → intacts. */
+void ai_ensure_dominator(AiActor *ai, const bool *ai_on, int n){
+    if (!ai||!ai_on) return;
+    int best=-1; float bw=-1.f; bool have=false;
+    for (int c=0;c<n && c<SCPS_MAX_COUNTRY;c++){
+        if (!ai_on[c]) continue;
+        if (ai[c].w_expand >= AI_CONQUEROR_W){ have=true; break; }
+        if (ai[c].w_expand > bw){ bw=ai[c].w_expand; best=c; }
+    }
+    if (!have && best>=0){
+        float d=AI_CONQUEROR_W+0.12f;            /* franchement Dominateur (au-dessus du seuil de proie) */
+        ai[best].w_expand=d; ai[best].w_base[0]=d;
+    }
+}
+
 /* §3 — L'ÉTHOS EFFECTIF GLISSE : la personnalité du pays n'est plus figée à sa
  * culture de trône, elle suit la RÉSULTANTE de ses factions. On module le socle
  * par l'ÉCART entre le penchant du PEUPLE (distribution enracinée) et celui du
@@ -297,6 +315,16 @@ float ai_consolidation_pressure(const AiView *v){
 }
 
 #define NEED_W 0.7f   /* poids de la pression de besoin sur l'agression (surface d'équilibrage) */
+/* §war-smoothing — l'intensité guerrière du MONDE : le nombre de PAIRES de pays en guerre.
+ * Sert à LISSER la distribution (monde fendu → beaucoup de proies → spirale à 25 ; monde consolidé
+ * → atone) : plus il y a de guerres, MOINS un empire en ajoute (saturation). */
+static int ai_world_war_pairs(const World *w, const DiploState *d){
+    int n=0;
+    for (int a=0;a<w->n_countries && a<SCPS_MAX_COUNTRY;a++)
+        for (int b=a+1;b<w->n_countries && b<SCPS_MAX_COUNTRY;b++)
+            if (diplo_status(d,a,b)==DIPLO_WAR) n++;
+    return n;
+}
 float ai_aggression(const AiActor *a, const AiView *v){
     float brake = ai_consolidation_pressure(v);
     float base  = a->w_expand + 0.5f*a->w_faith;
@@ -983,9 +1011,17 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
 
     if (day < a->peace_lock_until) return;                  /* on tient la paix (digestion) */
 
-    /* Appétit agressif, gaté par le frein (mou) et nourri par la foi. */
-    a->credit_war += ai_aggression(a, v);
+    /* Appétit agressif, gaté par le frein (mou) et nourri par la foi — puis LISSÉ : un SOCLE (les
+     * mondes consolidés voient AUSSI la guerre, pas l'atonie) ÷ la SATURATION mondiale (les mondes
+     * fendus ne SPIRALENT plus à 25 : plus il y a de guerres en cours, moins on en ajoute). */
+    { float aggr = ai_aggression(a, v) + tune_f("AI_WAR_BASELINE", 0.05f);
+      aggr /= (1.f + tune_f("AI_WAR_SATURATION", 0.20f) * (float)ai_world_war_pairs(w, diplo));
+      a->credit_war += aggr; }
     if (a->credit_war < 1.f) return;
+    /* §war-smoothing — CAP mondial : au-delà de N paires en guerre, on N'EN OUVRE PLUS (le monde
+     * fendu ne SPIRALE plus à 25 ; la saturation seule ne faisait que RETARDER). Les mondes
+     * consolidés (peu de guerres) ne l'atteignent jamais → eux gardent leur appétit (socle). */
+    if (ai_world_war_pairs(w, diplo) >= (int)tune_f("AI_WAR_CAP", 3.f)) return;
 
     /* Déjà en guerre ? Priorité : ENCAISSER (conquérir une région ennemie). On
      * ne multiplie pas les fronts — un seul à la fois. */
@@ -1543,6 +1579,31 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             }
         }
     }
+    /* DOCTRINE MILITAIRE (S4) — l'empire BEELINE la tech de SON unité de doctrine (sinon l'IA
+     * gloutonne ne paie jamais ces tiers, et la chaîne d'armes F-arc n'a aucun consommateur — les
+     * unités avancées n'apparaissent jamais) : MARTIAL (Dominateur/Honneur) → Poudrière (arquebusier) ;
+     * ARCANE (appétit faustien) → Magie de bataille (mage) puis Alchimie (alchimiste). Même ressort
+     * d'épargne que la foreuse/S3. La Forge runique reste S3 (l'emblème) → on lui cède la priorité ;
+     * Caserne→hallebardier est déjà commune. Épargne bornée : on AVANCE d'un pas par tour. */
+    { Ethos eth=ai_capital_ethos(w,econ,a->cid);
+      TechId tgt=TECH_COUNT;
+      if (eth==ETHOS_DOMINATEUR||eth==ETHOS_HONNEUR){
+          if (!ts->unlocked[TECH_POUDRIERE]) tgt=TECH_POUDRIERE;
+      } else if (a->w_faustian>0.30f){
+          bool s3=(access&tech_race_bit(RACE_NAIN))&&(access&tech_race_bit(RACE_ELFE))&&!ts->unlocked[TECH_FORGE_RUNES];
+          if (!s3){                                              /* sinon la Forge runique (S3) a la priorité */
+              if      (!ts->unlocked[TECH_MAGIE_BATAILLE]) tgt=TECH_MAGIE_BATAILLE;
+              else if (!ts->unlocked[TECH_ALCHIMIE])       tgt=TECH_ALCHIMIE;
+          }
+      }
+      if (tgt!=TECH_COUNT){
+          TechId step=ai_step_toward(ts, tgt, access);
+          if (step!=TECH_COUNT){
+              float sc=tech_cost(step,pop)*ai_tech_cost_mult(eth, tech_node(step));
+              if (ts->research_points < sc) return;              /* on ÉPARGNE pour le pas suivant */
+              pick=step;                                         /* on AVANCE vers la tech d'unité */
+          }
+      } }
     if (pick!=TECH_COUNT){
         float cost = tech_cost(pick, pop) * ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(pick));
         if (ts->research_points >= cost && tech_research(ts, pick, access)){
