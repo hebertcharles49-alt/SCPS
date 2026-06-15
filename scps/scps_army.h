@@ -40,9 +40,6 @@ typedef enum {
     W_COUNT
 } ArmWeapon;
 
-/* Recette d'arme : deux intrants matériaux + un temps (jours). */
-typedef struct { LRes cost_a, cost_b; int days; } WeaponRecipe;
-
 /* Définition statique d'un type d'unité. */
 typedef struct {
     const char *name;
@@ -101,7 +98,6 @@ typedef struct {
 /* API                                                                   */
 /* ===================================================================== */
 const UnitDef     *unit_def(UnitType t);
-const WeaponRecipe*weapon_recipe(ArmWeapon wp);
 const char        *unit_name(UnitType t);
 const char        *weapon_name(ArmWeapon wp);
 TechId             unit_tech_gate(UnitType t);                 /* F7 : la tech qui débloque l'unité (TECH_COUNT = aucune) */
@@ -110,16 +106,11 @@ Resource           unit_res_arm(UnitType t);                   /* F5/F6 : la cat
 
 void army_init(ArmyState *a);
 
-/* Fabrique des armes : consomme les intrants matériaux dans l'économie (chaîne).
- * Pompe le marché si le manque est en LR_BOIS (P3.16 : ressources réelles). Renvoie le
- * nombre d'armes effectivement fabriquées. */
-long army_fabricate_weapon(ArmyState *a, LaborEcon *e, ArmWeapon wp, long qty);
-
 /* Peut-on lever `count` unités de ce type ? (pop libre de la bonne CLASSE +
  * armes en stock). Renvoie false sinon — ce n'est pas un bouton. */
 bool army_can_recruit(const ArmyState *a, const LaborEcon *e, UnitType t, long count);
-/* Lève l'unité : prélève la pop (affectée, PAS retirée du pool), consomme les
- * armes + un coût matériaux (pompe si manque). Renvoie le nb réellement levé. */
+/* Lève l'unité : prélève la pop (affectée, PAS retirée du pool) et consomme les
+ * armes du tampon (rempli au préalable depuis le marché macro). Renvoie le nb levé. */
 long army_recruit(ArmyState *a, LaborEcon *e, UnitType t, long count);
 
 /* ---- Le pierre-feuille-ciseaux (§3) ----------------------------------- */

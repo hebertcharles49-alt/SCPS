@@ -25,11 +25,11 @@
 /* ---- Classes sociales : taxes + troupes (§8) -------------------------- */
 typedef enum { LAB_LABORER=0, LAB_ARTISAN, LAB_ELITE, LAB_CLASS_COUNT } LaborClass;
 
-/* ---- Ressources (topbar + secondaires + stratégiques) (§3) ------------ */
+/* ---- Ressources (P-arc : la couche MATÉRIAU labor a été ÉRADIQUÉE — le matériau
+ * vit désormais dans le pool éco, Σ stock des régions du même propriétaire ; il ne
+ * reste que les deux ressources PROPRES à labor) (§3) ------------------- */
 typedef enum {
-    LR_FOOD=0, LR_GOLD,                                     /* topbar (P3.16 : LR_MATERIALS retiré) */
-    LR_BOIS, LR_ARGILE, LR_PIERRE, LR_METAL,                /* M6 : calcaire COUPÉ (la carrière fond dans la PIERRE) */
-    LR_OUTILS,                                              /* stratégique (le raffiné : ateliers) */
+    LR_FOOD=0, LR_GOLD,
     LR_COUNT
 } LRes;
 
@@ -201,7 +201,7 @@ void        labor_print_topbar(const LaborEcon *e);   /* or·nourriture·matéri
 float labor_taxes(const LProvince *p);
 
 /* ---- Colonisation (§6) ------------------------------------------------ */
-typedef struct { long materials, food; } ColonizeCost;
+typedef struct { long food; } ColonizeCost;   /* P-arc : coût matériau retiré (pool éco) */
 ColonizeCost labor_colonize_cost(const LaborEcon *e, int prov);
 bool         labor_can_colonize (const LaborEcon *e, ColonizeCost cost);
 bool         labor_colonize     (LaborEcon *e, int prov);

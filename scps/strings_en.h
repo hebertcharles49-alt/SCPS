@@ -229,6 +229,12 @@
     X(STR_CENTER_HOV, "A Trade Centre makes this province a HUB of the GLOBAL network: buy/sell on the world market here. Requires coastal/estuary + mercantile vocation.") \
     X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Warehouses ×{2}") \
     X(STR_ROW_ENTREPOTS, "Warehouses") \
+    X(STR_TOPBAR_MATERIAUX, "Materials") \
+    X(STR_RES_BOIS, "Wood") \
+    X(STR_RES_ARGILE, "Clay") \
+    X(STR_RES_PIERRE, "Stone") \
+    X(STR_RES_METAL, "Metal") \
+    X(STR_RES_OUTILS, "Tools") \
     X(STR_ENTREPOT_HOV, "Without a Warehouse, regional stock saturates at 200 per resource (surplus is lost); each Warehouse built adds +500. Buy low, sell high.") \
     X(STR_MER_CABOTAGE, "coastal · fixed speed") \
     X(STR_MER_MORTE,    "dead waters · ×3 time") \

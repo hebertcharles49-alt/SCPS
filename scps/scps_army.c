@@ -1,9 +1,9 @@
 /*
  * scps_army.c — recrutement, armes, contres, combat au dé (voir scps_army.h)
  *
- * Une unité coûte pop (classe) + armes fabriquées + matériaux + temps. Le combat
- * est non déterministe : un jet de dé par contact, pondéré par le contre (table
- * redondante) et les stats. Le contre prime sur la qualité brute.
+ * Une unité coûte pop (classe) + armes (le tampon rempli au marché macro) + temps.
+ * Le combat est non déterministe : un jet de dé par contact, pondéré par le contre
+ * (table redondante) et les stats. Le contre prime sur la qualité brute.
  */
 #include "scps_army.h"
 #include <string.h>
@@ -17,7 +17,6 @@
 #define M_BEAT          2.0f   /* le contre frappe fort (prime sur la qualité) */
 #define M_LOSE          0.5f
 #define M_NEUTRAL       1.0f
-#define RECRUIT_MAT     1      /* coût matériaux par paquet de 100 (hors arme) */
 /* §2 — la bataille dans le temps (utilisés par resolve_battle, plus bas) */
 #define ROUND_DAYS      0.18f  /* chaque manche de mêlée ≈ un sixième de jour */
 #define PURSUIT_DAYS    2.5f   /* la poursuite s'étire sur quelques jours (éparpille le vainqueur) */
@@ -79,22 +78,10 @@ bool unit_recruitable(const TechState *ts, UnitType t){
     return (g==TECH_COUNT) || (ts && ts->unlocked[g]);
 }
 
-/* ---- Recettes d'armes (§1) -------------------------------------------- */
-static const WeaponRecipe WEAPONS[W_COUNT] = {
-    [W_PIQUE]     = { LR_BOIS,   LR_METAL,      2 },
-    [W_LANCE]     = { LR_BOIS,   LR_METAL,      2 },
-    [W_EPEE]      = { LR_METAL,  LR_OUTILS,     3 },
-    [W_ARC]       = { LR_BOIS,   LR_OUTILS,     2 },
-    [W_ARBALETE]  = { LR_BOIS,   LR_OUTILS,     4 },
-    [W_MONTURE_L] = { LR_OUTILS, LR_BOIS,  3 },
-    [W_MONTURE_H] = { LR_METAL,  LR_OUTILS,     5 },
-    [W_BATON]     = { LR_OUTILS, LR_BOIS,  4 },
-    [W_HALLEBARDE]= { LR_METAL,  LR_BOIS,   3 },   /* F5 */
-    [W_ARQUEBUSE] = { LR_METAL,  LR_OUTILS, 5 },
-    [W_ALCHIMIE]  = { LR_OUTILS, LR_BOIS,   3 },
-    [W_RUNES]     = { LR_METAL,  LR_OUTILS, 6 },
-};
-const WeaponRecipe *weapon_recipe(ArmWeapon wp){ return (wp>=0&&wp<W_COUNT)?&WEAPONS[wp]:NULL; }
+/* ---- Noms d'armes (§1) ------------------------------------------------- *
+ * P-arc : la RECETTE matériau (ex-WEAPONS/weapon_recipe) est ÉRADIQUÉE — le tampon
+ * de combat a->weapons[W_*] se remplit désormais des armes MACRO (RES_ARMS_*) à la
+ * levée (warhost), plus de fabrication LRes. Seuls les NOMS subsistent (UI/preview). */
 static const char *WNAMES[W_COUNT]={ "Pique","Lance","Épée","Arc","Arbalète","Monture légère","Destrier","Bâton",
     "Hallebarde","Arquebuse","Nécessaire d'alchimiste","Armes runiques" };
 const char *weapon_name(ArmWeapon wp){ return (wp>=0&&wp<W_COUNT)?WNAMES[wp]:"?"; }
@@ -169,22 +156,6 @@ ArmyDoctrine army_doctrine(const TechState *t){
     return d;
 }
 
-long army_fabricate_weapon(ArmyState *a, LaborEcon *e, ArmWeapon wp, long qty){
-    if (wp<0||wp>=W_COUNT||qty<=0) return 0;
-    const WeaponRecipe *R=&WEAPONS[wp];
-    long made=0;
-    for (long k=0;k<qty;k++){
-        /* manque d'un intrant → on pompe le marché AU PRIX COURANT (E0.6 : la pompe
-         * livre la ressource demandée — bois, métal, outils… plus de bois en dur). */
-        if (e->stock[R->cost_a]<1) labor_pump_market(e,R->cost_a,1);
-        if (e->stock[R->cost_b]<1) labor_pump_market(e,R->cost_b,1);
-        if (e->stock[R->cost_a]<1 || e->stock[R->cost_b]<1) break;   /* intrants épuisés */
-        e->stock[R->cost_a]-=1; e->stock[R->cost_b]-=1;
-        a->weapons[wp]+=1; made++;
-    }
-    return made;
-}
-
 static long class_free(const ArmyState *a, const LaborEcon *e, LaborClass cl){
     long pool=0; for (int i=0;i<e->n_prov;i++) pool+=e->prov[i].pop_by_class[cl];
     long assigned = a->pop_by_class_in_army[cl];
@@ -202,11 +173,6 @@ bool army_can_recruit(const ArmyState *a, const LaborEcon *e, UnitType t, long c
 long army_recruit(ArmyState *a, LaborEcon *e, UnitType t, long count){
     if (!army_can_recruit(a,e,t,count)) return 0;
     const UnitDef *d=&UNITS[t];
-    /* coût matériaux (pompe si manque) */
-    long mat = count*RECRUIT_MAT;
-    if (e->stock[LR_BOIS] < mat) labor_pump_market(e, LR_BOIS, mat - e->stock[LR_BOIS]);
-    if (e->stock[LR_BOIS] < mat) return 0;
-    e->stock[LR_BOIS] -= mat;
     a->weapons[d->weapon]  -= count;                 /* consomme les armes */
     /* prélève la pop : AFFECTÉE à l'armée, mais toujours dans le POOL (se reproduit). */
     a->pop_by_class_in_army[d->from] += count*POP_PER_UNIT;

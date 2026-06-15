@@ -16,8 +16,8 @@
 #define GRANARY_BASE     6.0f   /* grenier : lit la fertilité */
 #define FOOD_PER_SLOT    1.0f   /* 100 pop EMPLOYÉE consomment 1 nourriture (§2) */
 #define MARKET_BASE      3.0f   /* or = MARKET_BASE × flux × jobs (désert→0.3, floris→15) */
-#define EXTRACT_BASE     5.0f   /* brute/slot × présence de ressource */
-#define WORKSHOP_BASE    1.0f   /* matériaux/slot (gaté par les intrants) */
+/* P-arc : EXTRACT_BASE / WORKSHOP_BASE (sortie/slot des bâtiments matériau) tombés
+ * avec la couche matériau labor — l'extraction & l'atelier sont désormais inertes. */
 #define BASE_PRICE       1.0f
 #define PRICE_MIN        0.5f
 #define PRICE_MAX        5.0f
@@ -36,21 +36,15 @@
  * une masse salariale. Impayé → le staffing GÈLE (plus d'embauche ; pas de licenciement
  * brutal). C'est le pendant « civil » de la solde de l'armée (SOLDE_GOLD_PER100). */
 #define WAGE_GOLD_PER100  0.02f
-#define COLONIZE_MAT     100
-#define COLONIZE_FOOD    50
+#define COLONIZE_FOOD    50     /* P-arc : COLONIZE_MAT retiré (coût matériau → pool éco) */
 #define POP_DEV_BASE     1.0f
 
 static const int LEVEL_JOBS[6] = { 100,100,200,300,500,1000 };  /* capacité AJOUTÉE par niveau */
 
-/* La chaîne de matériaux (§4) : extraire A (job) + extraire B (job) + atelier
- * qui combine (job) → la sortie. 300 pop = les trois étages. */
-typedef struct { LRes in_a, in_b, out; int stages_pop; } Recipe;
-static const Recipe RECIPES[] = {
-    /* P3.16 — plus de « matériaux » : l'atelier RAFFINE des outils (bois+métal).
-     * La construction consomme désormais des ressources RÉELLES + or, pas un blob. */
-    { LR_BOIS,   LR_METAL,    LR_OUTILS,    300 },
-};
-#define N_RECIPES ((int)(sizeof(RECIPES)/sizeof(RECIPES[0])))
+/* P-arc : la chaîne de matériaux labor (extraction + atelier → outils) a été
+ * ÉRADIQUÉE — le matériau vit désormais dans le pool éco (Σ stock des régions du
+ * même propriétaire). Les bâtiments d'extraction/atelier (LB_SAWMILL…LB_WORKSHOP)
+ * restent dans l'enum mais sont INERTES (per_job_output ne leur rend plus rien). */
 
 static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
 
@@ -104,18 +98,19 @@ float capitale_prodmult(int tier, long admin_pop){
     if (actifs<0) actifs=0;
     return 1.f + CAP_PROD_PER_TIER * (float)actifs;
 }
-/* Recette d'amélioration vers `to_tier` : DE PLUS EN PLUS PRÉCIEUSE (bois → métal
- * → outils ; les paliers exotiques approximés par l'outil, le plus précieux du
- * module labor). Même BuildCost-logique que le reste. */
+/* Recette d'amélioration vers `to_tier` : DE PLUS EN PLUS CHÈRE. P-arc : la couche
+ * matériau labor étant ÉRADIQUÉE (elle vit dans le pool éco), la capitale se paie
+ * désormais en OR (le trésor unique) — coût croissant par tier, même logique de
+ * palier que l'ancienne recette bois→métal→outils. */
 CapCost capitale_upgrade_cost(int to_tier){
     switch (to_tier){
-        case 2:  return (CapCost){ LR_BOIS,  LR_BOIS,   400, 0   };   /* bois */
-        case 3:  return (CapCost){ LR_BOIS,  LR_METAL,  400, 200 };   /* bois + métal */
-        case 4:  return (CapCost){ LR_METAL, LR_OUTILS, 400, 200 };   /* métal + outils */
-        case 5:  return (CapCost){ LR_METAL, LR_OUTILS, 600, 400 };   /* + (joaillerie) */
-        case 6:  return (CapCost){ LR_OUTILS,LR_METAL,  800, 600 };   /* + (fer céleste) */
-        case 7:  return (CapCost){ LR_OUTILS,LR_OUTILS, 1200,0   };   /* + (essence) : le plus précieux */
-        default: return (CapCost){ LR_BOIS,  LR_BOIS,   200, 0   };   /* tier 1 : fondation */
+        case 2:  return (CapCost){ LR_GOLD, LR_GOLD,  400,  0 };
+        case 3:  return (CapCost){ LR_GOLD, LR_GOLD,  600,  0 };
+        case 4:  return (CapCost){ LR_GOLD, LR_GOLD,  800,  0 };
+        case 5:  return (CapCost){ LR_GOLD, LR_GOLD, 1000,  0 };
+        case 6:  return (CapCost){ LR_GOLD, LR_GOLD, 1400,  0 };
+        case 7:  return (CapCost){ LR_GOLD, LR_GOLD, 1800,  0 };   /* la métropole : le plus cher */
+        default: return (CapCost){ LR_GOLD, LR_GOLD,  200,  0 };   /* tier 1 : fondation */
     }
 }
 bool capitale_upgrade(LProvince *p, LaborEcon *e){
@@ -124,10 +119,11 @@ bool capitale_upgrade(LProvince *p, LaborEcon *e){
     if (p->cap_tier >= maxt) return false;             /* la pop ne débloque pas plus haut */
     int to = p->cap_tier + 1;
     CapCost c = capitale_upgrade_cost(to);
-    if (e->stock[c.a] < c.qa) return false;            /* recette non payable (produire d'abord) */
+    if (e->stock[c.a] < c.qa) return false;            /* recette non payable (le trésor d'abord) */
     if (c.qb>0 && e->stock[c.b] < c.qb) return false;
     e->stock[c.a] -= c.qa;
     if (c.qb>0) e->stock[c.b] -= c.qb;
+    e->treasury = e->stock[LR_GOLD];                   /* le trésor unique reste le miroir de l'or */
     p->cap_tier = to;                                  /* PAYÉ → tier monté */
     return true;
 }
@@ -168,29 +164,21 @@ float capitale_unrest(const LProvince *p){
 /* ===================================================================== */
 /* labor_init — RELIT la géographie du worldgen en agrégats par province  */
 /* ===================================================================== */
-static bool biome_forest(Biome b){ return b==BIO_FOREST||b==BIO_WOODS||b==BIO_JUNGLE||b==BIO_MANGROVE; }
-static bool biome_hills (Biome b){ return b==BIO_HILLS||b==BIO_HIGHLANDS; }
-static bool biome_mtn   (Biome b){ return b==BIO_MOUNTAINS||b==BIO_PEAK||b==BIO_VOLCANO; }
-
 void labor_init(LaborEcon *e, const World *w){
     memset(e, 0, sizeof(*e));
     e->market.price = BASE_PRICE; e->market.supply = 1.f;
     labor_publish_capitals(NULL);   /* E0.4 : registre des capitales bâties — RAZ par partie */
 
-    /* accumulateurs par province */
+    /* accumulateurs par province (P-arc : les comptes de biome forêt/colline/montagne
+     * sont tombés avec la couche matériau — seules fertilité & rivière sont relues). */
     static double fsum[SCPS_MAX_PROV]; static int pcells[SCPS_MAX_PROV], rmax[SCPS_MAX_PROV];
-    static int nforest[SCPS_MAX_PROV], nhill[SCPS_MAX_PROV], nmtn[SCPS_MAX_PROV];
     memset(fsum,0,sizeof fsum); memset(pcells,0,sizeof pcells); memset(rmax,0,sizeof rmax);
-    memset(nforest,0,sizeof nforest); memset(nhill,0,sizeof nhill); memset(nmtn,0,sizeof nmtn);
 
     for (int i=0;i<SCPS_N;i++){
         const Cell *c=&w->cell[i]; int pr=c->province;
         if (pr<0||pr>=SCPS_MAX_PROV) continue;
         pcells[pr]++; fsum[pr]+=c->fertility;
         if (c->river>rmax[pr]) rmax[pr]=c->river;
-        if (biome_forest(c->biome)) nforest[pr]++;
-        if (biome_hills(c->biome))  nhill[pr]++;
-        if (biome_mtn(c->biome))    nmtn[pr]++;
     }
     for (int pr=0; pr<w->n_provinces && pr<SCPS_MAX_PROV; pr++){
         int n=pcells[pr]; if (n<=0) continue;
@@ -201,14 +189,9 @@ void labor_init(LaborEcon *e, const World *w){
         /* Le FLUX commercial (le carrefour) : la géographie des flux fait le
          * marchand — côte + fleuve + bonne terre. Désert intérieur ~0.1. */
         e->g_flow[pr] = 0.1f + (coast?1.8f:0.f) + riv01*1.5f + fert*1.6f;
-        /* Présence de ressource [0..1] — lue des biomes + ressource dominante. */
-        e->g_pres[pr][LR_BOIS]     = clampf((float)nforest[pr]/n*2.f, 0.f, 1.f);
-        e->g_pres[pr][LR_ARGILE]   = 0.15f + clampf(riv01*1.4f, 0.f, 1.f);  /* P3.17 : 0.15 PARTOUT, jusqu'à 1.15 en plaine alluviale (fleuve) */
-        e->g_pres[pr][LR_PIERRE]   = clampf((float)(nhill[pr]+nmtn[pr])/n*1.5f, 0.f, 1.f);  /* M6 : la carrière (ex-calcaire) lit le relief */
-        Resource rr=w->province[pr].resource;
-        float metal = (rr==RES_IRON||rr==RES_COPPER||rr==RES_GOLD||rr==RES_COAL||rr==RES_PRECIOUS_METAL)?0.8f:0.f;
-        if ((float)nmtn[pr]/n*1.5f > metal) metal=clampf((float)nmtn[pr]/n*1.5f,0.f,1.f);
-        e->g_pres[pr][LR_METAL]    = metal;
+        /* P-arc : la présence de ressource MATÉRIAU (bois/argile/pierre/métal) ne se
+         * lit plus ici — la couche matériau labor a été éradiquée (elle vit dans le
+         * pool éco). Seuls fertilité (collecteurs) et flux (marché) restent lus. */
     }
 }
 
@@ -237,14 +220,10 @@ static void seed_collectors(LaborEcon *e, LProvince *p, long pop){
         need -= fill;
     }
 }
-/* la meilleure EXTRACTION que la géo du lieu offre (motif de seed_from_world) */
-static LBuildType best_extraction(const LaborEcon *e, int pid){
-    LBuildType ex = LB_QUARRY;
-    if      (e->g_pres[pid][LR_METAL] >0.3f) ex=LB_MINE;
-    else if (e->g_pres[pid][LR_BOIS]  >0.3f) ex=LB_SAWMILL;
-    else if (e->g_pres[pid][LR_ARGILE]>0.3f) ex=LB_CLAYPIT;
-    return ex;
-}
+/* P-arc : « la meilleure extraction de la géo » est tombée avec la couche matériau.
+ * Les bâtiments d'extraction sont INERTES (per_job_output ne leur rend rien) ; on
+ * pose un emplacement neutre (LB_QUARRY) pour garder le motif d'une cité établie. */
+#define SEED_EXTRACTION LB_QUARRY
 void labor_seed_start(LaborEcon *e, int prov0){
     e->n_prov=1;
     LProvince *p=&e->prov[0];
@@ -258,10 +237,10 @@ void labor_seed_start(LaborEcon *e, int prov0){
      * PAS de marché : le commerce early passe par les Centres commerciaux (P3.20). */
     seed_collectors(e, p, p->pop);
     if (p->n_bld<LAB_BUILDINGS_PER_PROV)
-        p->bld[p->n_bld++]=(LBuilding){ best_extraction(e,prov0), 1, 2, 0 };
+        p->bld[p->n_bld++]=(LBuilding){ SEED_EXTRACTION, 1, 2, 0 };
     if (p->n_bld<LAB_BUILDINGS_PER_PROV)
         p->bld[p->n_bld++]=(LBuilding){ LB_WORKSHOP, 0, 1, 0 };
-    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_BOIS]=200; e->stock[LR_OUTILS]=100;
+    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200;
     e->treasury=200;
 }
 
@@ -272,7 +251,7 @@ void labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *eco
     /* on garde la géo précalculée (labor_init) ; on (ré)installe l'économie. */
     e->n_prov=0;
     memset(e->stock,0,sizeof e->stock); memset(e->flow,0,sizeof e->flow);
-    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200; e->stock[LR_BOIS]=200; e->stock[LR_OUTILS]=100;
+    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200;
     e->market.supply=1.f; e->market.price=BASE_PRICE; e->treasury=200;
     e->tax_acc=0.f; e->solde_acc=0.f;
 
@@ -292,12 +271,13 @@ void labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *eco
         p->pop_by_class[LAB_ARTISAN]=pop*15/100;
         p->pop_by_class[LAB_ELITE]  =pop - p->pop_by_class[LAB_LABORER] - p->pop_by_class[LAB_ARTISAN];
         /* Bâtiments sur la GÉO réelle : collecteurs DIMENSIONNÉS (E0.2 : la bouche
-         * est la pop totale) + marché (ville établie) + extraction du lieu. */
+         * est la pop totale) + marché (ville établie) + un emplacement d'extraction
+         * (P-arc : inerte, le matériau vit dans le pool éco). */
         seed_collectors(e, p, pop);
         if (p->n_bld<LAB_BUILDINGS_PER_PROV)
             p->bld[p->n_bld++]=(LBuilding){ LB_MARKET, 0, 1, 0 };
         if (p->n_bld<LAB_BUILDINGS_PER_PROV)
-            p->bld[p->n_bld++]=(LBuilding){ best_extraction(e,pid), 0, 1, 0 };
+            p->bld[p->n_bld++]=(LBuilding){ SEED_EXTRACTION, 0, 1, 0 };
     }
 }
 
@@ -306,8 +286,9 @@ float labor_prosperity_index(const LaborEcon *e){
     float per100  = (float)pop/100.f;
     float foodsec = (labor_food_balance(e) >= 0) ? 3.0f : 0.0f;   /* le pain d'abord */
     float gold_pc = (float)e->flow[LR_GOLD]   / per100;          /* revenu par tête */
-    float out_pc  = (float)e->flow[LR_OUTILS] / per100;          /* P3.16 : OUTILS par tête (le raffiné) */
-    float idx = foodsec + clampf(gold_pc*5.0f, 0.f, 4.f) + clampf(out_pc*8.0f, 0.f, 3.f);
+    /* P-arc : le terme « outils par tête » est tombé avec la couche matériau labor ;
+     * son poids (3) repasse au REVENU → l'échelle [0..10] et le pain restent intacts. */
+    float idx = foodsec + clampf(gold_pc*5.0f, 0.f, 7.0f);
     return clampf(idx, 0.f, 10.f);
 }
 
@@ -328,11 +309,9 @@ static float per_job_output(const LaborEcon *e, int wprov, LBuildType t, LRes *o
         case LB_COLLECTOR: *out=LR_FOOD;      return COLLECTOR_BASE + COLLECTOR_GEO*e->g_fert[wprov];
         case LB_GRANARY:   *out=LR_FOOD;      return GRANARY_BASE * e->g_fert[wprov];
         case LB_MARKET:    *out=LR_GOLD;      return MARKET_BASE * e->g_flow[wprov];
-        case LB_SAWMILL:   *out=LR_BOIS;      return EXTRACT_BASE * e->g_pres[wprov][LR_BOIS];
-        case LB_CLAYPIT:   *out=LR_ARGILE;    return EXTRACT_BASE * e->g_pres[wprov][LR_ARGILE];
-        case LB_QUARRY:    *out=LR_PIERRE;    return EXTRACT_BASE * e->g_pres[wprov][LR_PIERRE];   /* M6 : la carrière produit la PIERRE (calcaire fondu) */
-        case LB_MINE:      *out=LR_METAL;     return EXTRACT_BASE * e->g_pres[wprov][LR_METAL];
-        case LB_WORKSHOP:  *out=LR_OUTILS;    return WORKSHOP_BASE;   /* P3.16 : l'atelier raffine des OUTILS (gaté par les intrants) */
+        /* P-arc : extraction (scierie/argilière/carrière/mine) & atelier sont INERTES —
+         * le matériau labor a été éradiqué (il vit dans le pool éco). Sentinelle = aucune
+         * sortie (le garde `o<LR_COUNT` du tick saute ces emplacements). */
         default:           *out=LR_COUNT;     return 0.f;
     }
 }
@@ -427,9 +406,10 @@ PopBreakdown labor_pop_breakdown(const LaborEcon *e){
 }
 void labor_print_topbar(const LaborEcon *e){
     PopBreakdown k=labor_pop_breakdown(e);
-    printf("   TOPBAR  Or %ld (%+ld/j) · Nourriture %ld (%+ld/j) · Outils %ld (%+ld/j)\n",
-           e->stock[LR_GOLD], e->flow[LR_GOLD], e->stock[LR_FOOD], e->flow[LR_FOOD],
-           e->stock[LR_OUTILS], e->flow[LR_OUTILS]);
+    /* P-arc : la colonne « Outils » est tombée (couche matériau labor éradiquée — le
+     * matériau vit dans le pool éco). Restent les deux ressources propres : Or, Nourriture. */
+    printf("   TOPBAR  Or %ld (%+ld/j) · Nourriture %ld (%+ld/j)\n",
+           e->stock[LR_GOLD], e->flow[LR_GOLD], e->stock[LR_FOOD], e->flow[LR_FOOD]);
     printf("           Pop %ld :  libre %ld · en job %ld · en armée %ld\n",
            k.total, k.free, k.in_jobs, k.in_army);
 }
@@ -447,19 +427,20 @@ float labor_taxes(const LProvince *p){
 /* COLONISATION (§6)                                                      */
 /* ===================================================================== */
 ColonizeCost labor_colonize_cost(const LaborEcon *e, int prov){
-    ColonizeCost c; c.materials=COLONIZE_MAT; c.food=COLONIZE_FOOD;
-    /* une bonne terre coûte plus cher à réclamer (la géo, encore). */
-    if (prov>=0&&prov<SCPS_MAX_PROV) c.materials += (long)(e->g_flow[prov]*15.f);
+    /* P-arc : le coût MATÉRIAU de la colonisation est tombé (couche matériau éradiquée) ;
+     * réclamer une terre ne coûte plus que des VIVRES (le convoi). */
+    (void)e; (void)prov;
+    ColonizeCost c; c.food=COLONIZE_FOOD;
     return c;
 }
 bool labor_can_colonize(const LaborEcon *e, ColonizeCost cost){
-    return e->stock[LR_BOIS]>=cost.materials && e->stock[LR_FOOD]>=cost.food;
+    return e->stock[LR_FOOD]>=cost.food;
 }
 bool labor_colonize(LaborEcon *e, int prov){
     if (e->n_prov>=LAB_MAX_PROV) return false;
     ColonizeCost cost=labor_colonize_cost(e,prov);
     if (!labor_can_colonize(e,cost)) return false;
-    e->stock[LR_BOIS]-=cost.materials; e->stock[LR_FOOD]-=cost.food;
+    e->stock[LR_FOOD]-=cost.food;
     LProvince *p=&e->prov[e->n_prov++];
     memset(p,0,sizeof(*p));
     p->prov=prov; p->region=-1; p->colonized=true; p->pop=500; p->pop_by_class[LAB_LABORER]=500;
@@ -482,21 +463,9 @@ float labor_pop_dev_speed(const LProvince *p, int prosperity_0_100){
 /* ===================================================================== */
 /* PRODUCTION & CHAÎNES (§4) — le cœur de la boucle                       */
 /* ===================================================================== */
-/* Un atelier combine : pour chaque slot rempli, trouve une recette dont les
- * DEUX intrants sont en stock, les consomme → 1 sortie. Sans intrants, rien. */
-static long run_workshop(LaborEcon *e, int jobs){
-    long made=0;
-    for (int j=0;j<jobs;j++){
-        for (int r=0;r<N_RECIPES;r++){
-            const Recipe *R=&RECIPES[r];
-            if (e->stock[R->in_a]>=1 && e->stock[R->in_b]>=1){
-                e->stock[R->in_a]-=1; e->stock[R->in_b]-=1; e->stock[R->out]+=1; made++;
-                break;
-            }
-        }
-    }
-    return made;
-}
+/* P-arc : run_workshop (l'atelier qui raffinait des outils depuis bois+métal) est
+ * ÉRADIQUÉ avec la couche matériau labor — la chaîne de matériaux vit dans le pool
+ * éco (Σ stock des régions du même propriétaire). L'atelier labor est désormais inerte. */
 
 /* E0.1 — LA CROISSANCE A QUITTÉ LABOR. Un seul propriétaire : la démographie du
  * monde (econ_tick fait croître les strates à 0.5-6 %/AN, modulé nourriture/
@@ -571,9 +540,10 @@ static void labor_staff(LaborEcon *e){
  * libre ET un surplus alimentaire, monte de niveau PEU À PEU (accumulateur ∝ surplus).
  * Plus de slots → la passe de staffing les remplit → la prod et les flux montent.
  * Un seul bâtiment se développe par province et par tick (croissance organique).
- * E1bis.12 — la montée n'est PLUS gratuite : le niveau n coûte 20·n bois + 10·n
- * argile au stock du PAYS ; le dev-accumulateur reste le TEMPS. Recette non payable
- * → le dev ATTEND AU SEUIL (pas de dette, pas de saut). */
+ * P-arc : la recette MATÉRIAU de la montée (ex-20·n bois + 10·n argile) est tombée
+ * avec la couche matériau labor — la montée redevient une affaire de TEMPS (le
+ * dev-accumulateur) + main-d'œuvre + surplus alimentaire (le matériau vit dans le
+ * pool éco ; le chantier ÉCO, lui, paie sa matière ailleurs). */
 #define DEV_THRESH 900u
 static void labor_develop(LaborEcon *e){
     long bal = labor_food_balance(e);                       /* surplus = on peut grandir (la GÂCHE) */
@@ -587,14 +557,7 @@ static void labor_develop(LaborEcon *e){
             if (bd->level>=5) continue;
             if (bd->jobs_filled < building_job_slots(bd->level)) continue;   /* pas encore plein */
             if ((unsigned)bd->dev + (unsigned)inc >= DEV_THRESH){
-                long n = bd->level+1;                        /* niveau visé */
-                long need_b = 20*n, need_a = 10*n;           /* E1bis.12 : recette de montée */
-                if (e->stock[LR_BOIS]>=need_b && e->stock[LR_ARGILE]>=need_a){
-                    e->stock[LR_BOIS]-=need_b; e->stock[LR_ARGILE]-=need_a;
-                    bd->level++; bd->dev=0;                  /* PAYÉ → niveau monté */
-                } else {
-                    bd->dev = (uint16_t)DEV_THRESH;          /* le TEMPS est prêt ; on ATTEND la recette (pas de dette) */
-                }
+                bd->level++; bd->dev=0;                      /* le TEMPS est plein → niveau monté (plus de gate matériau) */
             } else bd->dev=(uint16_t)(bd->dev+inc);
             break;                                           /* un seul par province/tick */
         }
@@ -603,7 +566,6 @@ static void labor_develop(LaborEcon *e){
 
 void labor_tick(LaborEcon *e){
     long before[LR_COUNT]; memcpy(before, e->stock, sizeof before);
-    float supply_mat=0.f;
     labor_staff(e);                                          /* P3.19 : la main-d'œuvre libre garnit les slots vides */
 
     /* 0. CAPITALE : améliorer si la pop le débloque & la recette est payable, puis
@@ -612,23 +574,19 @@ void labor_tick(LaborEcon *e){
     for (int i=0;i<e->n_prov;i++) capitale_upgrade(&e->prov[i], e);
     for (int i=0;i<e->n_prov;i++) capitale_mobility_tick(&e->prov[i]);
 
-    /* 1. EXTRACTION + collecte + marché : jobs remplis → sorties (lues de la géo),
-     *    × la PRODUCTIVITÉ de la capitale (+5 %/tier servi). */
+    /* 1. COLLECTE + marché : jobs remplis → sorties PROPRES à labor (nourriture, or),
+     *    lues de la géo, × la PRODUCTIVITÉ de la capitale (+5 %/tier servi). P-arc :
+     *    extraction & atelier sont inertes (per_job_output → sentinelle LR_COUNT, sauté). */
     for (int i=0;i<e->n_prov;i++){
         LProvince *p=&e->prov[i];
         for (int b=0;b<p->n_bld;b++){
             LBuilding *bd=&p->bld[b];
-            if (bd->type==LB_WORKSHOP) continue;     /* les ateliers passent en 2 */
             LRes o; float out=per_job_output(e,p->prov,bd->type,&o)*(float)bd->jobs_filled*p->prod_mult;
             if (o<LR_COUNT) e->stock[o]+=(long)(out+0.5f);
         }
     }
-    /* 2. ATELIERS : chaînes de matériaux (consomment les bruts extraits). */
-    for (int i=0;i<e->n_prov;i++){
-        LProvince *p=&e->prov[i];
-        for (int b=0;b<p->n_bld;b++) if (p->bld[b].type==LB_WORKSHOP)
-            supply_mat += (float)run_workshop(e, p->bld[b].jobs_filled);
-    }
+    /* 2. (P-arc : la passe ATELIERS — chaînes de matériaux — est tombée ; le matériau
+     *    vit dans le pool éco. L'atelier labor ne raffine plus rien.) */
     /* 3. NOURRITURE (E0.2) : la collecte a été ajoutée en passe 1 ; on retire LA
      * BOUCHE (pop totale/100) + la RATION de l'armée. Plancher 0 : on ne mange pas
      * ce qui n'existe pas — le déficit se LIT au flux (la famine du joueur). */
@@ -658,8 +616,9 @@ void labor_tick(LaborEcon *e){
       e->stock[LR_GOLD] -= wg;
       if (e->stock[LR_GOLD]<0) e->stock[LR_GOLD]=0; }
 
-    /* 5. MARCHÉ : l'offre de matériaux du tick met à jour le prix. */
-    e->market.supply = fmaxf(1.f, supply_mat);
+    /* 5. MARCHÉ : P-arc — plus d'offre de matériaux produite par labor (l'atelier est
+     *    inerte) ; l'offre retombe au plancher, le prix suit la seule demande résiduelle. */
+    e->market.supply = 1.f;
     e->market.price  = labor_material_price(e);
     e->treasury      = e->stock[LR_GOLD];
 
@@ -674,8 +633,7 @@ void labor_tick(LaborEcon *e){
 /* LIBELLÉS                                                              */
 /* ===================================================================== */
 const char *lres_name(LRes r){
-    static const char *N[LR_COUNT]={ "Nourriture","Or","Bois","Argile",
-                                     "Pierre","Métal","Outils" };   /* M6 : calcaire coupé */
+    static const char *N[LR_COUNT]={ "Nourriture","Or" };   /* P-arc : matériaux retirés (pool éco) */
     return (r>=0&&r<LR_COUNT)?N[r]:"?";
 }
 const char *lbuild_name(LBuildType b){

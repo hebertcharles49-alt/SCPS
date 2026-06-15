@@ -4,8 +4,8 @@
  *   make army_demo && ./army_demo [graine]
  *
  * Prouve les six points du cahier :
- *   1. Pas un bouton : lever échoue sans armes/matériaux ; fabriquer une arme
- *      consomme la chaîne de matériaux (économie).
+ *   1. Pas un bouton : lever échoue sans armes en tampon ; le tampon de combat se
+ *      remplit du marché macro (P-arc : la fabrication LRes a été éradiquée).
  *   2. Classe : pas de cavalerie noble sans élite ; la masse fournit la piétaille.
  *   3. Contres : un mur de piquiers brise la cavalerie ; l'arbalète défait la
  *      cavalerie lourde ; la cavalerie légère croque les archers.
@@ -27,13 +27,14 @@ static void ok(const char *what, bool cond){
     if (cond) g_pass++; else g_fail++;
 }
 
-/* Une économie de jouet : pop par classe + bruts pour fabriquer des armes. */
-static void setup_labor(LaborEcon *e, long laborer, long elite, long raw){
+/* Une économie de jouet : pop par classe (P-arc : la couche matériau labor a été
+ * éradiquée — les armes viennent désormais du marché macro ; le banc remplit le
+ * tampon a->weapons[W_*] DIRECTEMENT pour éprouver l'enrôlement). */
+static void setup_labor(LaborEcon *e, long laborer, long elite){
     memset(e,0,sizeof(*e)); e->n_prov=1;
     LProvince *p=&e->prov[0]; p->prov=0; p->colonized=true;
     p->pop_by_class[LAB_LABORER]=laborer; p->pop_by_class[LAB_ELITE]=elite;
     p->pop=laborer+elite;
-    e->stock[LR_BOIS]=raw; e->stock[LR_METAL]=raw; e->stock[LR_OUTILS]=raw;
     e->stock[LR_GOLD]=2000; e->market.supply=1.f; e->market.price=1.f;
 }
 static ArmyState one(UnitType t, long count){
@@ -60,34 +61,31 @@ int main(int argc, char **argv){
     printf(" LES ARMÉES — recrutement, armes, contres, combat au dé (graine %u)\n", seed);
     printf("══════════════════════════════════════════════════════════════\n");
 
-    /* ═══ 1. PAS UN BOUTON : pop + armes fabriquées + matériaux + temps ══ */
-    printf("\n── 1. Lever une armée coûte pop, ARMES fabriquées, matériaux ──\n");
-    setup_labor(e, 2000, 200, 50);
+    /* ═══ 1. PAS UN BOUTON : pop + armes (le tampon, rempli au marché macro) + temps ══ */
+    printf("\n── 1. Lever une armée coûte pop + ARMES (le tampon de combat) ──\n");
+    setup_labor(e, 2000, 200);
     ArmyState army; army_init(&army);
     ok("sans armes en stock, lever un piquier ÉCHOUE (ce n'est pas un bouton)",
        !army_can_recruit(&army,e,U_PIQUIER,1) && army_recruit(&army,e,U_PIQUIER,1)==0);
-    long bois0=e->stock[LR_BOIS], metal0=e->stock[LR_METAL];
-    long made=army_fabricate_weapon(&army,e,W_PIQUE,5);   /* pique = bois + métal */
-    printf("   fabrication de %ld piques : bois %ld→%ld, métal %ld→%ld (la chaîne de matériaux)\n",
-           made, bois0,e->stock[LR_BOIS], metal0,e->stock[LR_METAL]);
-    ok("fabriquer des armes CONSOMME la chaîne de matériaux (bois + métal)",
-       made==5 && e->stock[LR_BOIS]<bois0 && e->stock[LR_METAL]<metal0 && army.weapons[W_PIQUE]==5);
+    /* P-arc : plus de fabrication LRes — le tampon de combat se remplit du marché macro
+     * (warhost). Le banc le pose DIRECTEMENT pour éprouver l'enrôlement. */
+    army.weapons[W_PIQUE]=5;
     long got=army_recruit(&army,e,U_PIQUIER,2);
     printf("   levée de 2 piquiers : %ld unités ; armes restantes %ld ; pop en armée %ld\n",
            got, army.weapons[W_PIQUE], labor_pop_in_army(e));
-    ok("avec armes + pop + matériaux, la levée RÉUSSIT (consomme les armes)",
+    ok("avec armes en tampon + pop, la levée RÉUSSIT (consomme les armes)",
        got==2 && army.weapons[W_PIQUE]==3 && labor_pop_in_army(e)==200);
 
     /* ═══ 2. LA CLASSE : cavalerie ← élite ; piétaille ← commun ═════════ */
     printf("\n── 2. La cavalerie noble vient de l'ÉLITE ; la masse fournit la piétaille ──\n");
-    setup_labor(e, 3000, 0, 200);            /* aucune élite */
+    setup_labor(e, 3000, 0);                 /* aucune élite */
     ArmyState a2; army_init(&a2);
-    army_fabricate_weapon(&a2,e,W_MONTURE_H,3);
+    a2.weapons[W_MONTURE_H]=3;
     ok("sans élite, impossible de lever de la cavalerie lourde",
        !army_can_recruit(&a2,e,U_CAV_LOURDE,1));
-    setup_labor(e, 3000, 300, 200);          /* avec élite */
+    setup_labor(e, 3000, 300);               /* avec élite */
     ArmyState a3; army_init(&a3);
-    army_fabricate_weapon(&a3,e,W_MONTURE_H,2); army_fabricate_weapon(&a3,e,W_PIQUE,5);
+    a3.weapons[W_MONTURE_H]=2; a3.weapons[W_PIQUE]=5;
     ok("avec une élite, la cavalerie lourde se lève", army_recruit(&a3,e,U_CAV_LOURDE,2)==2);
     ok("la masse (commun) fournit la piétaille", army_recruit(&a3,e,U_PIQUIER,5)==5);
 

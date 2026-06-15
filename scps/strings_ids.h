@@ -234,6 +234,12 @@
     X(STR_CENTER_HOV, "Le Centre commercial fait de cette province un HUB du r\xc3\xa9seau GLOBAL : on y ach\xc3\xa8te/vend au march\xc3\xa9 mondial. C\xc3\xb4tier/estuaire + vocation marchande requis.") \
     X(STR_ENTREPOT_CAP_FMT, "stock {0}/{1} — Entrepôts ×{2}") \
     X(STR_ROW_ENTREPOTS, "Entrepôts") \
+    X(STR_TOPBAR_MATERIAUX, "Matériaux") \
+    X(STR_RES_BOIS, "Bois") \
+    X(STR_RES_ARGILE, "Argile") \
+    X(STR_RES_PIERRE, "Pierre") \
+    X(STR_RES_METAL, "Métal") \
+    X(STR_RES_OUTILS, "Outils") \
     X(STR_ENTREPOT_HOV, "Sans Entrepôt, le stock régional sature à 200 par ressource (le surplus se perd) ; chaque Entrepôt bâti ajoute +500. Stocker bas, vendre haut.") \
     X(STR_MER_CABOTAGE, "cabotage · vitesse fixe") \
     X(STR_MER_MORTE,    "eaux mortes · ×3 temps") \

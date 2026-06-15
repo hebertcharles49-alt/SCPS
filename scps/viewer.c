@@ -1231,7 +1231,7 @@ static void draw_topbar(SDL_Renderer *ren, int win_w, const Sim *s, const World 
     x0=x; x = draw_res(ren,x,yA, lres_name(LR_FOOD),      s->labor->stock[LR_FOOD],      (float)s->labor->flow[LR_FOOD],
                  "Vivres (clic → Subsistance & démographie). La famine stoppe la croissance de la population.");
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_SUBSISTANCE);
-    x0=x; x = draw_res(ren,x,yA, lres_name(LR_OUTILS), econ_empire_stock(s->econ, cid, RES_TOOLS), 0.f,
+    x0=x; x = draw_res(ren,x,yA, tr(STR_TOPBAR_MATERIAUX), econ_empire_stock(s->econ, cid, RES_TOOLS), 0.f,
                  "Matériaux (clic → Chaînes de production & stock du marché). Bâtir, coloniser et armer en consomment.");
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_CHAINES);
     x = topbar_sep(ren, x, yA);
@@ -2747,32 +2747,39 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
               tr_fmt(lv,sizeof lv, STR_ENTREPOT_CAP_FMT, c0,c1,c2);
               ui_row(ren,x,&y,rw, tr(STR_ROW_ENTREPOTS), lv,
                      re3->n_entrepot>0?COL_PARCH:COL_DIM, tr(STR_ENTREPOT_HOV)); }
-            /* les lots : une ligne par ressource négociable, [−10] vendre · [+10] acheter */
-            static const LRes TRADE_RES[6]={ LR_FOOD,LR_BOIS,LR_ARGILE,LR_PIERRE,LR_METAL,LR_OUTILS };   /* M6 : calcaire coupé */
-            /* La QUANTITÉ affichée des 5 matériaux de bâti LIT le pool éco de l'empire
-             * (ce que le joueur possède & dépense réellement) ; Nourriture reste labor.
-             * RES_NONE = repli sur le stock labor (cas LR_FOOD). */
-            static const Resource TRADE_POOL[6]={ RES_NONE,RES_WOOD,RES_CLAY,RES_STONE,RES_METAL,RES_TOOLS };
-            static char thov[6][160];
-            for (int i=0;i<6;i++){
-                LRes r3=TRADE_RES[i];
-                long qty = (TRADE_POOL[i]!=RES_NONE)
-                         ? econ_empire_stock(econ, s->player, TRADE_POOL[i])
-                         : s->labor->stock[r3];
+            /* P-arc : la couche MATÉRIAU labor a été éradiquée (le matériau vit dans le
+             * pool éco). La NOURRITURE garde son marché labor (achat/vente par lots de 10,
+             * [−10]/[+10]) ; les 5 MATÉRIAUX de bâti restent VISIBLES mais en LECTURE SEULE
+             * (pool éco de l'empire) — bâtir les consomme via le pool, il n'y a pas
+             * d'actionneur d'achat/vente éco à brancher ici. */
+            static char hfood[160];
+            { long qf=s->labor->stock[LR_FOOD];
+              char st[24]; snprintf(st,sizeof st,"%ld",qf);
+              draw_text(ren,g_font,x,y,COL_DIM,lres_name(LR_FOOD));
+              draw_text(ren,g_font,x+104,y,COL_PARCH,st);
+              int bx=x+rw-44;
+              fill_round(ren,bx,y,18,16,COL_PANEL2,3);  round_box(ren,bx,y,18,16,COL_EDGE,3);
+              draw_text(ren,g_font_small?g_font_small:g_font,bx+5,y+1,COL_PARCH,"-");
+              fill_round(ren,bx+22,y,18,16,COL_PANEL2,3); round_box(ren,bx+22,y,18,16,COL_EDGE,3);
+              draw_text(ren,g_font_small?g_font_small:g_font,bx+27,y+1,COL_COPPER,"+");
+              if (g_ntrade<14){
+                  g_trade_btn[g_ntrade++]=(TradeBtn){ (SDL_Rect){bx,y,18,16},    (int)LR_FOOD, true  };
+                  g_trade_btn[g_ntrade++]=(TradeBtn){ (SDL_Rect){bx+22,y,18,16}, (int)LR_FOOD, false };
+              }
+              tr_fmt(hfood,sizeof hfood, STR_MARCHE_ROW_HOV, lres_name(LR_FOOD), st);
+              zone_add((SDL_Rect){x-2,y-2,rw-48,18}, hfood);
+              y += 18; }
+            /* les 5 matériaux de bâti : LECTURE SEULE (pool éco), pas de bouton. */
+            static const StrId MAT_NAME[5]={ STR_RES_BOIS,STR_RES_ARGILE,STR_RES_PIERRE,STR_RES_METAL,STR_RES_OUTILS };
+            static const Resource MAT_POOL[5]={ RES_WOOD,RES_CLAY,RES_STONE,RES_METAL,RES_TOOLS };
+            static char thov[5][160];
+            for (int i=0;i<5;i++){
+                long qty = econ_empire_stock(econ, s->player, MAT_POOL[i]);
                 char st[24]; snprintf(st,sizeof st,"%ld",qty);
-                draw_text(ren,g_font,x,y,COL_DIM,lres_name(r3));
+                draw_text(ren,g_font,x,y,COL_DIM,tr(MAT_NAME[i]));
                 draw_text(ren,g_font,x+104,y,COL_PARCH,st);
-                int bx=x+rw-44;
-                fill_round(ren,bx,y,18,16,COL_PANEL2,3);  round_box(ren,bx,y,18,16,COL_EDGE,3);
-                draw_text(ren,g_font_small?g_font_small:g_font,bx+5,y+1,COL_PARCH,"-");
-                fill_round(ren,bx+22,y,18,16,COL_PANEL2,3); round_box(ren,bx+22,y,18,16,COL_EDGE,3);
-                draw_text(ren,g_font_small?g_font_small:g_font,bx+27,y+1,COL_COPPER,"+");
-                if (g_ntrade<14){
-                    g_trade_btn[g_ntrade++]=(TradeBtn){ (SDL_Rect){bx,y,18,16},    (int)r3, true  };
-                    g_trade_btn[g_ntrade++]=(TradeBtn){ (SDL_Rect){bx+22,y,18,16}, (int)r3, false };
-                }
-                tr_fmt(thov[i],sizeof thov[i], STR_MARCHE_ROW_HOV, lres_name(r3), st);
-                zone_add((SDL_Rect){x-2,y-2,rw-48,18}, thov[i]);
+                tr_fmt(thov[i],sizeof thov[i], STR_MARCHE_ROW_HOV, tr(MAT_NAME[i]), st);
+                zone_add((SDL_Rect){x-2,y-2,rw,18}, thov[i]);
                 y += 18;
             }
             y += 4;
@@ -3571,7 +3578,11 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 20u           /* v20 : F-arc (alchimie & FAUSTIEN) — RES_FLUX + RES_ALCHEMIST_KIT
+#define SAVE_VERSION 21u           /* v21 : P-arc — la couche MATÉRIAU labor ÉRADIQUÉE (le matériau
+                                    * vit dans le pool éco). LRes 7→2 (LR_FOOD/LR_GOLD) ⇒ LaborEcon.stock/
+                                    * flow[LR_COUNT] et g_pres[][LR_COUNT] rétrécissent : sizeof(LaborEcon)
+                                    * change → ère antérieure (les saves <v21 sont refusés au chargement).
+                                    * v20 : F-arc (alchimie & FAUSTIEN) — RES_FLUX + RES_ALCHEMIST_KIT
                                     * appendus (RES_COUNT change) + TECH_ALCHIMIE (unlocked[TECH_COUNT]).
                                     * v19 : M6 — LR_CALCAIRE coupé (LaborEcon.stock[LR_COUNT] 8→7).
                                     * v18 : M3 — DiploState.trade_pact[pays][pays] (le pacte commercial réciproque).
