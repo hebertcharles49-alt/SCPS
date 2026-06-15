@@ -232,7 +232,8 @@ static void sim_day(Sim *s, World *w) {
     } });
     PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1));
     labor_tick(s->labor);
-    PROF(PB_NAVY_J, navy_tick(s->navy, w, s->econ, s->dp, 1.f));   /* chantier + entretien (la chaîne navale TIRE) */
+    /* navy_tick (chantier + entretien) est passé MENSUEL (bloc plus bas) : il pesait ~½ du coût/an
+     * en quotidien, et il est pleinement dt-scalé (rien ne le veut au jour). */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
     if (s->day % 30 == 29) {
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
@@ -259,7 +260,8 @@ static void sim_day(Sim *s, World *w) {
          *   de groupe : faim, sur-taxe, aliénation, non-intégration) allume un
          *   soulèvement, puis on tranche (sécession, coup, jacquerie, écrasement).
          *   Un pays NÉ d'une sécession prend vie. */
-        PROF(PB_NAVY_M, { navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
+        PROF(PB_NAVY_M, { navy_tick(s->navy, w, s->econ, s->dp, 30.f);   /* chantier + entretien : MENSUEL (ex-quotidien) */
+        navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
         navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng,
                          -1, 30.f);   /* coques : la course (raids - saignee - blocus - verdicts) */
         navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng); });   /* les convois se chassent */

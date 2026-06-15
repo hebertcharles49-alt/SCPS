@@ -964,7 +964,8 @@ static void sim_day(Sim *s, World *w) {
     }
     world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1);
     labor_tick(s->labor);
-    navy_tick(s->navy, w, s->econ, s->dp, 1.f);   /* chantier + entretien : la chaîne navale TIRE */
+    /* navy_tick (chantier + entretien) est passé MENSUEL (bloc plus bas) : pleinement dt-scalé,
+     * rien ne le veut au jour — il pesait ~½ du coût/an de la boucle headless. */
     /* — mensuel : ÉCONOMIE + réputation diplomatique (O(n²)) + démographie, tous
      * au pas dt=1/12 → même rythme annuel, mais plus fluide qu'un saut yearly — */
     if (s->day % 30 == 29) {
@@ -973,6 +974,7 @@ static void sim_day(Sim *s, World *w) {
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c);   /* Q1 : l'IA pourvoit son siège d'éthos */
         econ_tick(s->econ, 1.f/12.f);
+        navy_tick(s->navy, w, s->econ, s->dp, 30.f);   /* chantier + entretien : MENSUEL (ex-quotidien) */
         navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
         navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng,
                          s->player, 30.f);   /* coques : la course (raids - saignee - blocus - verdicts) */
