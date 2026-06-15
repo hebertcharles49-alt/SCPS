@@ -1110,6 +1110,36 @@ void econ_tick(WorldEconomy *e, float dt) {
         e->region[r].pillage_cd = fmaxf(0.f, e->region[r].pillage_cd - dt);
     }
 
+    /* ====================================================================
+     * STOCK NATIONAL (le pool d'empire) — « toute ressource produite va dans le
+     * stock de SON empire ». On AGRÈGE les stocks régionaux en un pool par pays :
+     * l'extraction y dépose, la manufacture & la consommation Y PUISENT (la
+     * matière d'une province nourrit l'atelier d'une autre — fin de la
+     * fragmentation qui bloquait les chaînes). La MAIN-D'ŒUVRE reste LOCALE (on ne
+     * staffe pas une fabrique avec les bras d'ailleurs). En clôture de tick, le
+     * pool est REDISTRIBUÉ aux régions au prorata de la population (Σ re->stock =
+     * pool) → les lecteurs externes (intertrade/Centres, viewer, butin de guerre,
+     * save) gardent une vue régionale cohérente, sans réécriture des 280 sites. Le
+     * PRIX reste à l'échelle régionale (chaque province solde son marché sur SA
+     * part du pool) → market_effort ne s'effondre pas sous un stock pooled
+     * « abondant ». Un empire mono-région ⇒ pool = la région, pshare = 1 : moteur
+     * IDENTIQUE (seuls les empires multi-régions changent ; re-baseline attendue). */
+    float pool[SCPS_MAX_COUNTRY][RES_COUNT];
+    memset(pool, 0, sizeof pool);
+    float epop[SCPS_MAX_COUNTRY]={0}, elab[SCPS_MAX_COUNTRY]={0}, ecap[SCPS_MAX_COUNTRY]={0};
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
+        RegionEconomy *ar=&e->region[r];
+        if (!ar->active || !ar->colonized) continue;
+        int o=ar->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
+        for (int g=0;g<RES_COUNT;g++) pool[o][g]+=ar->stock[g];
+        epop[o]+=ar->strata[CLASS_LABORER].pop+ar->strata[CLASS_BOURGEOIS].pop+ar->strata[CLASS_ELITE].pop;
+        elab[o]+=ar->strata[CLASS_LABORER].pop;
+        ecap[o]+=ECON_STOCK_CAP_BASE+ECON_STOCK_CAP_ENTREPOT*(float)ar->n_entrepot;
+    }
+    /* OUTILS — l'usure du PARC NATIONAL se fait UNE fois/tick (un ×0.97 par-région
+     * sur un pool partagé le décaierait N fois). tools_pc lira ce parc déjà usé. */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (epop[c]>0.f) pool[c][RES_TOOLS]*=0.97f;
+
     for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++) {
         RegionEconomy *re=&e->region[rid];
         if (!re->active || !re->colonized) continue;
@@ -1122,11 +1152,20 @@ void econ_tick(WorldEconomy *e, float dt) {
         float profit_pool = 0.f;   /* → bourgeois */
         float tax_pool    = 0.f;   /* → rente d'élite */
         float over_tax[CLASS_COUNT]={0};   /* surtaxe par classe (grogne, §6) */
-        /* OUTILS = le MULTIPLICATEUR de productivité : leur stock (par tête) booste
-         * l'extraction ET la manufacture (rendements décroissants, +30% max). Les
-         * outils s'USENT (décroissance) → il faut les entretenir (Atelier). */
-        float tools_pc  = re->stock[RES_TOOLS] / (labor_avail*0.1f + 1.f);
-        float prod_mult = 1.f + 0.30f*(1.f - 1.f/(1.f + tools_pc));   /* lit le stock AVANT usure */
+        /* STOCK NATIONAL : cette région opère sur le pool de SON empire (matière
+         * fongible) ; sa PART de population (pshare) sert à solder le prix à
+         * l'échelle locale (le signal-effort ne s'effondre pas). elab_ = la
+         * main-d'œuvre de TOUT l'empire (le parc d'outils est national). */
+        int    owner_ = re->owner;
+        float *S      = (owner_>=0 && owner_<SCPS_MAX_COUNTRY) ? pool[owner_] : re->stock;
+        float  rp_    = re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        float  pshare = (owner_>=0 && owner_<SCPS_MAX_COUNTRY && epop[owner_]>EPS) ? rp_/epop[owner_] : 1.f;
+        float  elab_  = (owner_>=0 && owner_<SCPS_MAX_COUNTRY && elab[owner_]>0.f) ? elab[owner_] : labor_avail;
+        /* OUTILS = le MULTIPLICATEUR de productivité : le parc NATIONAL (par tête de
+         * l'empire) booste l'extraction ET la manufacture (rendements décroissants,
+         * +30% max). Les outils s'USENT (usure nationale, ci-dessus). */
+        float tools_pc  = S[RES_TOOLS] / (elab_*0.1f + 1.f);
+        float prod_mult = 1.f + 0.30f*(1.f - 1.f/(1.f + tools_pc));   /* lit le parc national (déjà usé ce tick) */
         /* OUTILS — INPUT PASSIF de la main-d'œuvre : les journaliers veulent être ÉQUIPÉS ∝
          * leur nombre, mais SATURANT (on n'outille pas au-delà de l'utile). La demande
          * effective est le COMBLEMENT du déficit d'outillage vers ce palier — elle tire le
@@ -1134,9 +1173,8 @@ void econ_tick(WorldEconomy *e, float dt) {
          * par l'usure, et ne touche QUE prod_mult (ci-dessus), JAMAIS la satisfaction. */
         {
             float tools_target = labor_avail * TOOLS_PER_LABORER;            /* stock-outil VISÉ ∝ bras */
-            demand[RES_TOOLS] += fmaxf(0.f, tools_target - re->stock[RES_TOOLS]);  /* déficit à combler (saturant → pas de plafond/runaway) */
+            demand[RES_TOOLS] += fmaxf(0.f, tools_target - S[RES_TOOLS]*pshare);  /* déficit (part régionale du parc) à combler */
         }
-        re->stock[RES_TOOLS] *= 0.97f;   /* usure : rouvre un déficit de remplacement chaque tick */
         /* §C3 : le « rot » de l'État (capture par concession) mine l'efficacité NOBLE —
          * une élite gorgée gouverne mal : moins de productivité de capitale, moins de
          * recherche. Lu à l'écran en Corruption. Source : faction_capture_total. */
@@ -1174,7 +1212,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             float out = re->raw_cap[r]*pop_intens*ratio*prod_mult*eff; /* √pop × terrain × outils × effort */
             if (r==RES_WOOD || r==RES_IRON || r==RES_GOLD) out *= 2.0f; /* apport BOIS & FER doublé (épine métal/outils + chauffe) ; OR doublé → nourrir la joaillerie (voie or martiale) */
             labor_used += want_labor*ratio*eff;                        /* le glut LIBÈRE des bras */
-            re->stock[r] += out;
+            S[r] += out;                                               /* dépôt au STOCK NATIONAL */
             supply[r]    += out;
             float value = out*re->price[r];
             gdp += value;
@@ -1199,19 +1237,20 @@ void econ_tick(WorldEconomy *e, float dt) {
             float cap = b->level * market_effort(re->price[rc->out], BASE_PRICE[rc->out]);
             float lim = cap;
             if (rc->in1!=RES_NONE){
-                float out_in1 = re->stock[rc->in1]/fmaxf(rc->q1,EPS);   /* sortie possible via in1 */
-                if (rc->alt1!=RES_NONE) out_in1 += re->stock[rc->alt1]/fmaxf(rc->alt1_q,EPS);  /* + repli (perle…) */
+                float out_in1 = S[rc->in1]/fmaxf(rc->q1,EPS);   /* sortie possible via in1 (pool national) */
+                if (rc->alt1!=RES_NONE) out_in1 += S[rc->alt1]/fmaxf(rc->alt1_q,EPS);  /* + repli (perle…) */
                 lim=fminf(lim, out_in1);
             }
-            if (rc->in2!=RES_NONE) lim=fminf(lim, re->stock[rc->in2]/fmaxf(rc->q2,EPS));
+            if (rc->in2!=RES_NONE) lim=fminf(lim, S[rc->in2]/fmaxf(rc->q2,EPS));
             /* RÉSERVE VIVRIÈRE : le grain NOURRIT avant de se brasser. On ne brasse
-             * que le SURPLUS au-delà du besoin alimentaire (sinon la bière affame
-             * la province — la famine revient). */
+             * que le SURPLUS au-delà du besoin alimentaire — du besoin de TOUT l'empire
+             * (le grenier est national) : une province ne brasse pas la faim d'une autre. */
             if (rc->in1==RES_GRAIN || rc->in2==RES_GRAIN){
-                float pop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
+                float pop = (owner_>=0 && owner_<SCPS_MAX_COUNTRY) ? epop[owner_]
+                          : re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
                           + re->strata[CLASS_ELITE].pop;
                 float reserve = pop/100.f * 1.20f;      /* besoin de grain (1/100 hab) + marge */
-                float spare   = fmaxf(0.f, re->stock[RES_GRAIN] - reserve);
+                float spare   = fmaxf(0.f, S[RES_GRAIN] - reserve);
                 float gq = (rc->in1==RES_GRAIN)?rc->q1:rc->q2;
                 lim = fminf(lim, spare/fmaxf(gq,EPS));
             }
@@ -1224,7 +1263,7 @@ void econ_tick(WorldEconomy *e, float dt) {
              * lim est en « lots » → on convertit la sortie voulue par qout·prod_mult. (Les
              * outils, eux, sont régulés par leur demande passive ∝ main-d'œuvre.) */
             if (rc->out==RES_PRECIOUS_WARE){
-                float gap = re->demand[rc->out]*GATE_DEMAND_BUFFER - re->stock[rc->out];
+                float gap = re->demand[rc->out]*GATE_DEMAND_BUFFER - S[rc->out];
                 lim = fminf(lim, fmaxf(0.f,gap)/fmaxf(rc->qout*prod_mult,EPS));
             }
             if (lim<=0.f){ b->workers=0.f; continue; }
@@ -1238,16 +1277,16 @@ void econ_tick(WorldEconomy *e, float dt) {
              * in1 d'abord, puis le repli alt1 à SA quantité (perle = 2× l'or/bijou). */
             float val_in =0.f;
             if (rc->in1!=RES_NONE){
-                float out1=fminf(lim, re->stock[rc->in1]/fmaxf(rc->q1,EPS));   /* part faite avec in1 */
+                float out1=fminf(lim, S[rc->in1]/fmaxf(rc->q1,EPS));   /* part faite avec in1 (pool) */
                 float g1=out1*rc->q1;
-                re->stock[rc->in1]-=g1; demand[rc->in1]+=g1; val_in+=g1*re->price[rc->in1];
+                S[rc->in1]-=g1; demand[rc->in1]+=g1; val_in+=g1*re->price[rc->in1];
                 float rem=lim-out1;
                 if (rem>0.f && rc->alt1!=RES_NONE){
                     float ga=rem*rc->alt1_q;
-                    re->stock[rc->alt1]-=ga; demand[rc->alt1]+=ga; val_in+=ga*re->price[rc->alt1];
+                    S[rc->alt1]-=ga; demand[rc->alt1]+=ga; val_in+=ga*re->price[rc->alt1];
                 }
             }
-            if (rc->in2!=RES_NONE){ re->stock[rc->in2]-=lim*rc->q2; demand[rc->in2]+=lim*rc->q2; val_in+=lim*rc->q2*re->price[rc->in2]; }
+            if (rc->in2!=RES_NONE){ S[rc->in2]-=lim*rc->q2; demand[rc->in2]+=lim*rc->q2; val_in+=lim*rc->q2*re->price[rc->in2]; }
             float out=lim*rc->qout*prod_mult;   /* outils → productivité */
             out *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
             /* F-arc ARSENAL — la manufacture d'ARMES verse ×MANUF_ARMS_MULT au STOCK (l'arsenal que
@@ -1258,12 +1297,12 @@ void econ_tick(WorldEconomy *e, float dt) {
              * qualité) ; les gonfler ×10 emballe la course aux armements (guerres). Les autres sont du
              * pur carburant de levée, invisibles à la puissance militaire perçue. */
             float arms_mult = (res_is_arm(rc->out)   && rc->out !=RES_ENCHANTED_ARMS) ? tune_f("MANUF_ARMS_MULT", 10.f) : 1.f;
-            re->stock[rc->out]+=out*arms_mult;
+            S[rc->out]+=out*arms_mult;
             supply[rc->out]+=out;
             /* F3 — SORTIE SECONDAIRE (arme arcane : kit alchimiste, bâton de mage) ∝ production. */
             if (rc->out2!=RES_NONE){ float o2=lim*rc->qout2*prod_mult*(1.f-0.5f*re->revolt_scar);
                 float m2 = (res_is_arm(rc->out2) && rc->out2!=RES_ENCHANTED_ARMS) ? tune_f("MANUF_ARMS_MULT", 10.f) : 1.f;
-                re->stock[rc->out2]+=o2*m2; supply[rc->out2]+=o2; }
+                S[rc->out2]+=o2*m2; supply[rc->out2]+=o2; }
             b->workers=rc->labor*lim;
             labor_used+=b->workers;
             /* FAU0/FAU2 — LA CHARGE FAUSTIENNE (hook UNIQUE faust_charge_add) : le mage (essence)
@@ -1438,7 +1477,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         float infl = (e->ipm>0.f)? e->ipm : 1.f;   /* garde-fou : jamais 0 (econ non initialisé) */
         for (int r=0;r<RES_COUNT;r++) {
             if (BASE_PRICE[r]<=0.f) continue;
-            float avail=re->stock[r]+supply[r];
+            float avail=S[r]*pshare+supply[r];   /* la PART régionale du pool : prix à l'échelle locale */
             float target=BASE_PRICE[r]*infl*clampf(demand[r]/(avail+EPS),0.2f,6.f);
             re->price[r]=re->price[r]*PRICE_INERTIA + target*(1.f-PRICE_INERTIA);
             re->price[r]=clampf(re->price[r],BASE_PRICE[r]*0.15f,BASE_PRICE[r]*8.f);
@@ -1467,17 +1506,17 @@ void econ_tick(WorldEconomy *e, float dt) {
                     need_w+=w_d;
                     Resource pref=preferred_drink(&re->culture);
                     Resource alt =(pref==RES_BEER)?RES_WINE:RES_BEER;
-                    float cs_p=clampf(re->stock[pref]/(need+EPS),0.f,1.f);
+                    float cs_p=clampf(S[pref]/(need+EPS),0.f,1.f);
                     float cost_p=need*cs_p*re->price[pref];
                     float cb_p=(cost_p>0.f)?clampf(budget/cost_p,0.f,1.f):1.f;
                     float got_p=cs_p*cb_p;
-                    re->stock[pref]-=need*got_p; budget-=need*got_p*re->price[pref];
+                    S[pref]-=need*got_p; budget-=need*got_p*re->price[pref];
                     float rem=1.f-got_p;                   /* comblé par la mauvaise boisson */
-                    float cs_a=clampf(re->stock[alt]/(need*rem+EPS),0.f,1.f)*rem;
+                    float cs_a=clampf(S[alt]/(need*rem+EPS),0.f,1.f)*rem;
                     float cost_a=need*cs_a*re->price[alt];
                     float cb_a=(cost_a>0.f)?clampf(budget/cost_a,0.f,1.f):1.f;
                     float got_a=cs_a*cb_a;
-                    re->stock[alt]-=need*got_a; budget-=need*got_a*re->price[alt];
+                    S[alt]-=need*got_a; budget-=need*got_a*re->price[alt];
                     float got=clampf(got_p + DRINK_OFFCULT*got_a, 0.f, 1.f);
                     met_w+=w_d*got; r_soc_need+=need; r_soc_got+=need*got;
                     continue;
@@ -1489,29 +1528,29 @@ void econ_tick(WorldEconomy *e, float dt) {
                     Resource pref=preferred_luxe(&re->culture);
                     Resource alt =(pref==RES_PRECIOUS_WARE)?RES_PRECIOUS_CLOTH:RES_PRECIOUS_WARE;
                     float w_l=BASE_PRICE[pref]*need; need_w+=w_l;
-                    float cs_p=clampf(re->stock[pref]/(need+EPS),0.f,1.f);
+                    float cs_p=clampf(S[pref]/(need+EPS),0.f,1.f);
                     float cost_p=need*cs_p*re->price[pref];
                     float cb_p=(cost_p>0.f)?clampf(budget/cost_p,0.f,1.f):1.f;
                     float got_p=cs_p*cb_p;
-                    re->stock[pref]-=need*got_p; budget-=need*got_p*re->price[pref];
+                    S[pref]-=need*got_p; budget-=need*got_p*re->price[pref];
                     float rem=1.f-got_p;
-                    float cs_a=clampf(re->stock[alt]/(need*rem+EPS),0.f,1.f)*rem;
+                    float cs_a=clampf(S[alt]/(need*rem+EPS),0.f,1.f)*rem;
                     float cost_a=need*cs_a*re->price[alt];
                     float cb_a=(cost_a>0.f)?clampf(budget/cost_a,0.f,1.f):1.f;
                     float got_a=cs_a*cb_a;
-                    re->stock[alt]-=need*got_a; budget-=need*got_a*re->price[alt];
+                    S[alt]-=need*got_a; budget-=need*got_a*re->price[alt];
                     float got=clampf(got_p + LUXE_OFFCULT*got_a, 0.f, 1.f);
                     met_w+=w_l*got; r_soc_need+=need; r_soc_got+=need*got;
                     continue;
                 }
                 float w=BASE_PRICE[r]*need;          /* importance ~ valeur */
                 need_w+=w;
-                float can_stock=clampf(re->stock[r]/(need+EPS),0.f,1.f);
+                float can_stock=clampf(S[r]/(need+EPS),0.f,1.f);
                 float cost=need*can_stock*re->price[r];
                 float can_buy=(cost>0.f)?clampf(budget/cost,0.f,1.f):1.f;
                 float got=can_stock*can_buy;
-                /* consomme stock & budget */
-                re->stock[r]-=need*got;
+                /* consomme stock & budget (pool national) */
+                S[r]-=need*got;
                 budget-=need*got*re->price[r];
                 met_w+=w*got;
                 /* couverture par palier : les vivres VS le reste */
@@ -1622,12 +1661,10 @@ void econ_tick(WorldEconomy *e, float dt) {
 
         for (int r=0;r<RES_COUNT;r++){ re->supply[r]=supply[r]; re->demand[r]=demand[r]; }
 
-        /* E2 §11 — LE PLAFOND DE STOCK : sans Entrepôt, l'entrepôt régional sature à
-         * ~200/ressource (le surplus se perd — greniers pleins, denrées qui tournent) ;
-         * chaque Entrepôt BÂTI ajoute +500. C'est lui qui ouvre le jeu de marché :
-         * stocker quand c'est bas, vendre quand c'est haut. */
-        { float cap = ECON_STOCK_CAP_BASE + ECON_STOCK_CAP_ENTREPOT*(float)re->n_entrepot;
-          for (int r=1;r<RES_COUNT;r++) if (re->stock[r]>cap) re->stock[r]=cap; }
+        /* E2 §11 — LE PLAFOND DE STOCK (Σ des caps régionaux) et la décrue des
+         * périssables s'appliquent au POOL NATIONAL une fois/tick, en clôture (ci-dessous,
+         * hors de cette boucle) : un ×0.85 ou un plafond par-région sur un stock partagé
+         * le décaierait/raboterait N fois. */
 
         /* Diaspora : bonus tech par innovation culturelle accumulée.
          * S'absorbe progressivement (acculturation, demi-vie ~50 ticks). */
@@ -1645,9 +1682,38 @@ void econ_tick(WorldEconomy *e, float dt) {
         re->coercion *= COERCION_DECAY;
         if (re->coercion < 0.005f) re->coercion=0.f;
 
-        /* Décroissance du stock excédentaire (denrées périssables / report
-         * limité) : 15% s'évapore, évite l'accumulation infinie. */
-        for (int r=0;r<RES_COUNT;r++) re->stock[r]*=0.85f;
+    }
+
+    /* STOCK NATIONAL — CLÔTURE : plafond du pool (Σ des caps régionaux : Entrepôts
+     * bâtis), puis décrue des périssables (×0.85, le surplus s'évapore — fin de
+     * l'accumulation infinie), UNE fois par empire. */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        if (epop[c]<=0.f) continue;
+        for (int g=1;g<RES_COUNT;g++){
+            if (pool[c][g]>ecap[c]) pool[c][g]=ecap[c];
+            pool[c][g]*=0.85f;
+        }
+    }
+    /* REDISTRIBUTION du pool aux régions au PRORATA de leur population (post-croissance,
+     * pour Σ re->stock = pool exactement) → intertrade/Centres, viewer, butin de guerre
+     * et save voient un stock régional cohérent, sans toucher leurs 280 sites. */
+    {
+        float epop2[SCPS_MAX_COUNTRY]={0};
+        for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++){
+            RegionEconomy *re=&e->region[rid];
+            if (!re->active || !re->colonized) continue;
+            int o=re->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
+            epop2[o]+=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        }
+        for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++){
+            RegionEconomy *re=&e->region[rid];
+            if (!re->active || !re->colonized) continue;
+            int o=re->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
+            if (epop2[o]<=EPS) continue;   /* empire sans population : on ne redistribue pas (laisse le stock en l'état) */
+            float rp=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+            float share=rp/epop2[o];
+            for (int g=0;g<RES_COUNT;g++) re->stock[g]=pool[o][g]*share;
+        }
     }
     econ_build_tick(e);   /* §NF v2 — la construction suit le MARCHÉ (demande + bras), plus le gisement */
 }

@@ -107,6 +107,26 @@
   à chaque pas. On **NE touche PAS** la foreuse (son ressort propre). ⚠ **RE-BASELINE** : combo
   seed 7/9/11/19 = **3/1/2/1** (ex-0) ; la **charge → Brèche** la garde COÛTEUSE mais **BORNÉE**
   (mondes stables, 0 absorbé, âges inchangés). **SAVE non bumpé**.
+- **P1 (2026-06-15) — LE STOCK NATIONAL (« toute ressource produite va dans le stock de SON
+  empire »)** : fin de la fragmentation régionale qui bloquait les chaînes (l'atelier d'une province
+  ne pouvait pas tirer la matière produite par une autre). `econ_tick` **AGRÈGE** les stocks régionaux
+  en un **pool par pays** ; l'extraction y dépose, la **manufacture & la consommation Y PUISENT** (la
+  matière de l'empire est fongible). La **MAIN-D'ŒUVRE reste LOCALE** (on ne staffe pas une fabrique
+  avec les bras d'ailleurs : un atelier tourne = min(bras régionaux, intrants du pool)). Le **PRIX
+  reste à l'échelle RÉGIONALE** — chaque province solde son marché sur **SA part du pool** (pop-share)
+  → `market_effort` ne s'effondre pas sous un stock pooled « abondant » (sans ça : prix planché →
+  effort 0.38× → prod amputée ~65 %). En **clôture**, le pool est **REDISTRIBUÉ aux régions au prorata
+  de la pop** (Σ re->stock = pool, exact) → les **280 sites externes** (intertrade/Centres, viewer,
+  butin de guerre, **save**) gardent une vue régionale cohérente **sans réécriture**. L'usure des
+  OUTILS, le plafond E2 (Σ des caps) et la décrue ×0.85 sont **hoistés à UNE fois/empire** (un ×op
+  par-région sur un pool partagé l'appliquerait N fois). La **réserve vivrière de brassage** suit le
+  besoin de TOUT l'empire (le grenier est national). ⚠ **RE-BASELINE** (chronique : qui produit/
+  consomme quoi change ; pop ~comparable, seed 9 year-100 ~36k). **SAVE non bumpé** (`re->stock`
+  reste le store sérialisé, désormais une matérialisation du pool). Un empire **mono-région** ⇒ pool =
+  la région, pshare = 1 : moteur **IDENTIQUE** (les bancs unitaires à 1 région/empire ne bougent pas ;
+  `social_demo` marque ses 2 fixtures d'isolation `owner=-1` = stock propre). À VENIR : la chaîne à
+  feu (arquebuserie) reste à **0** quand poudrière & arquebuserie sont en empires DISTINCTS — le pool
+  ne franchit pas la frontière ; c'est un défaut de PLACEMENT des fabriques, pas du modèle de stock.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables
