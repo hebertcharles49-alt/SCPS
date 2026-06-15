@@ -294,6 +294,8 @@ float econ_world_ipm(const WorldEconomy *e);
 /* Pool empire d'un bien : Σ stock des régions de même owner. Ce que le joueur POSSÈDE
  * (hors import) — la topbar/Stocks le lisent pour ne pas mentir. */
 long econ_empire_stock(const WorldEconomy *e, int owner, Resource g);
+/* or NET d'un pays = Σ trésor de ses régions (négatif = dette). Partagé chronicle/credit. */
+double econ_country_gold(const WorldEconomy *e, int c);
 /* E0.7 — RAZ de la mobilité de classe (panier capté + séries de mauvaise sat.) ;
  * appelé à chaque nouvelle partie/sim depuis econ_init. (RAZ aussi la friche E1bis.10.) */
 void econ_mobility_reset(void);

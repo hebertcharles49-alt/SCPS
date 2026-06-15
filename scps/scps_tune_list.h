@@ -112,6 +112,10 @@
     X(MANUF_ARMS_MULT,        10.0f) \
     /* Le FOND du TRIO de bâti (bois/pierre/argile, econ_build_reserve) : ce qu'une région GARDE avant
      * d'exporter son surplus — sans quoi l'export auto la vide et le gate de chantier la refuse. */ \
-    X(BUILD_RESERVE_BULK,     60.0f)
+    X(BUILD_RESERVE_BULK,     60.0f) \
+    /* DETTE (scps_credit, incrément 1) — la ligne de crédit ÉMERGE de la taille éco (capacité à
+     * rembourser ∝ pop) ; le taux price le risque (ratio de dette + chute de légitimité). */ \
+    X(CREDIT_LINE_BASE,       0.5f) \
+    X(CREDIT_RATE_BASE,       0.05f)
 
 #endif /* SCPS_TUNE_LIST_H */

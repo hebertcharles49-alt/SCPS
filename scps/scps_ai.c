@@ -16,6 +16,7 @@
 #include "scps_factions.h"   /* l'éthos effectif + la fracture de valeurs (frein interne §6) */
 #include "scps_intertrade.h" /* §leviers : l'embargo — la guerre commerciale du Mercantile */
 #include "scps_labor.h"      /* F-arc : capitale_max_tier (le tier de capitale qui gate les manufactures) */
+#include "scps_credit.h"     /* dette : les gardes « can't afford » deviennent « tu t'endettes » */
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -792,9 +793,9 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
         }
         if (best<0) continue;                                  /* pas de région avec l'intrant (ou déjà bâtie partout) */
         float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
-        if (cre->treasury < cost) continue;                    /* puissance éco insuffisante → pas le chantier */
+        if (!credit_can_spend(econ, w, a->cid, cost)) continue;   /* bloque seulement au-delà de la ligne de crédit (dette) */
         if (econ_build_manufacture(econ, best, b)){
-            cre->treasury-=cost; econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS — pas d'or perdu si la pose échoue */
+            credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS — pas d'or perdu si la pose échoue */
             a->stats.builds_other++;
             /* FINIR LA CHAÎNE (comme l'armurier à poudre des cités-états) : poudrière (salpêtre+charbon
              * → poudre) + charbonnière (bois → charbon). Le pool national amène le salpêtre d'où qu'il
@@ -812,9 +813,8 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
  * (peu importe laquelle ; la moins chère T1 d'abord, gisement le + riche d'abord), tier-gatée par la
  * taille de la province. Une par tour. C'est ce qui convertit la terre en ateliers — et appelle les
  * bras (la relocalisation suit). Le marché écoule, le raw ne dort plus en stock. */
-static void ai_build_civmanuf(AiActor *a, WorldEconomy *econ){
+static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
     int cap=a->home_region; if (cap<0||cap>=econ->n_regions) return;
-    RegionEconomy *cre=&econ->region[cap];
     int br=-1; BuildingType bb=BLD_TYPE_COUNT; float bestcap=0.5f;
     for (int r=0;r<econ->n_regions;r++){
         RegionEconomy *re=&econ->region[r];
@@ -840,9 +840,11 @@ static void ai_build_civmanuf(AiActor *a, WorldEconomy *econ){
     }
     if (br<0) return;                                                /* tous les slots-ressource sont remplis */
     float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(econ);  /* T1 : la moins chère (le développement de base) */
-    if (cre->treasury < cost) return;                                /* puissance éco insuffisante */
-    cre->treasury-=cost; econ_flux_add(a->cid, FX_SOLDE, -cost);
-    if (econ_build_manufacture(econ, br, bb)) a->stats.builds_other++;
+    if (!credit_can_spend(econ, w, a->cid, cost)) return;            /* bloque seulement au-delà de la ligne de crédit */
+    if (econ_build_manufacture(econ, br, bb)){
+        credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
+        a->stats.builds_other++;
+    }
 }
 
 /* Économie : commercer OU bâtir (le frein réoriente l'énergie vers le K). */
@@ -892,7 +894,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             if (roll < t_mil){
                 ai_build_manufacture(a, w, econ);            /* l'arsenal militaire (tier + or, par doctrine) */
             } else if (roll < t_civm){
-                ai_build_civmanuf(a, econ);                  /* la manufacture civile (remplir les slots) */
+                ai_build_civmanuf(a, w, econ);               /* la manufacture civile (remplir les slots) */
             } else {
             /* le BÂTIMENT CIVIL (la voie existante) : on métabolise (K) ; un trône au consentement bas
              * se SACRALISE d'abord (la foi soutient L) ; institutions mûres → SAVOIR. Dominateur/Honneur
@@ -906,8 +908,8 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 RegionEconomy *cre=&econ->region[hr];
                 float price=cre->price[RES_ARMS]; if (price<0.2f) price=0.2f;
                 float cost =20.f*price*(cre->import_margin>0.f?cre->import_margin:1.f);
-                if (cre->treasury>=cost){
-                    cre->treasury-=cost; cre->stock[RES_ARMS]+=20.f;
+                if (credit_can_spend(econ, w, a->cid, cost)){
+                    credit_spend(econ, w, a->cid, cost); cre->stock[RES_ARMS]+=20.f;
                     econ_flux_add(a->cid, FX_SOLDE, -cost);          /* I0 : la ligne militaire */
                     a->stats.builds_h++;                             /* l'arsenal = sa largeur martiale */
                     faction_lever_apply(a->cid, FAC_CONQUERANT, AI_LEVER_BUILD);

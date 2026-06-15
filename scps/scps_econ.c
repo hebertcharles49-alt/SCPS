@@ -1081,6 +1081,14 @@ long econ_empire_stock(const WorldEconomy *e, int owner, Resource g){
     return (long)s;
 }
 
+/* or NET d'un pays = Σ trésor de ses régions (négatif = dette). Partagé chronicle/credit. */
+double econ_country_gold(const WorldEconomy *e, int c){
+    if (!e) return 0.0;
+    double g=0.0; int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    for(int r=0;r<n;r++) if(e->region[r].owner==c) g+=e->region[r].treasury;
+    return g;
+}
+
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;

@@ -38,6 +38,7 @@
 #include "scps_ai.h"        /* les voisins VIVENT : lecteurs de coordonnées, mêmes leviers */
 #include "scps_revolt.h"    /* la révolte INCARNÉE : sécessions/coups dans le jeu vivant */
 #include "scps_intertrade.h"/* commerce inter-pays : grandes routes marchandes + embargo */
+#include "scps_credit.h"    /* dette & prêts (incrément 1) : créancier par pays, save/load */
 #include "scps_warhost.h"   /* les armées VIVENT : mobilisation par pays */
 #include "scps_campaign.h"  /* … et MARCHENT : campagne sur la carte (marche/siège/bataille) */
 #include "scps_missions.h"  /* missions décennales : rythme + injection de ressources */
@@ -1066,6 +1067,7 @@ static void sim_day(Sim *s, World *w) {
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             diplo_set_faustian(s->dp, c, s->ts[c].charge);  /* souillure faustienne → croisades */
         diplo_tick(s->dp, 365.f);
+        credit_year_tick(s->econ, s->wl, w);               /* dette : intérêt annuel (creuse le débiteur, crédite le prêteur) */
         diplo_suzerainty_tick(s->dp, w, s->econ, s->wp);   /* suzeraineté + FRONDE : tributs, ligues, défections */
         diplo_war_tick(s->dp, w, s->econ, s->wp, 1.0f);
         missions_tick(s->missions, w, s->econ, s->ts, s->year);  /* missions décennales */
@@ -1130,6 +1132,7 @@ static void sim_rebuild(Sim *s, World *w) {
     labor_init(s->labor, w);
     labor_seed_from_world(s->labor, w, s->econ, s->player);
     revolt_init(s->rs);                                  /* les soulèvements incarnés */
+    credit_init();                                       /* dette : aucun créancier au départ */
     warhost_init(s->host);                               /* les armées levées par pays */
     campaign_init(s->camp, w, s->econ);                  /* … qui marcheront sur la carte (terrain + RAZ) */
     s->camp_rng = w->seed ^ 0xCA117A11u;                 /* graine de campagne propre à la partie */
@@ -3578,7 +3581,9 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 21u           /* v21 : P-arc — la couche MATÉRIAU labor ÉRADIQUÉE (le matériau
+#define SAVE_VERSION 22u           /* v22 : DETTE — section CRDT (scps_credit g_creditor[]) appendue
+                                    * au save (après FACT). save_sane borne g_creditor. <v22 refusé.
+                                    * v21 : P-arc — la couche MATÉRIAU labor ÉRADIQUÉE (le matériau
                                     * vit dans le pool éco). LRes 7→2 (LR_FOOD/LR_GOLD) ⇒ LaborEcon.stock/
                                     * flow[LR_COUNT] et g_pres[][LR_COUNT] rétrécissent : sizeof(LaborEcon)
                                     * change → ère antérieure (les saves <v21 sont refusés au chargement).
@@ -3678,6 +3683,7 @@ static bool game_save(int slot, World *w, Sim *s, const WorldParams *params){
     ok&=sv_w(f,SV_TAG('A','G','Y','S'), NULL,0); agency_save(f);
     ok&=sv_w(f,SV_TAG('D','P','L','S'), NULL,0); diplo_save_statics(f);
     ok&=sv_w(f,SV_TAG('F','A','C','T'), NULL,0); faction_save(f);
+    ok&=sv_w(f,SV_TAG('C','R','D','T'), NULL,0); credit_save(f);   /* dette : g_creditor[] */
     /* intégrité + CHIFFREMENT (post-passe) : on relit le payload CLAIR, on prend son
      * empreinte, on le chiffre (ChaCha20, nonce unique), on le réécrit en place.
      * L'en-tête reste en clair (l'écran Charger lit la ligne sans déchiffrer). */
@@ -3715,6 +3721,8 @@ static bool save_sane(const World *w, const Sim *s, int player){
     if (w->n_regions   <0 || w->n_regions   >SCPS_MAX_REG)       return false;
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
+    for (int c=0;c<w->n_countries;c++)                          /* dette : créancier désérialisé borné */
+        if (credit_of(c) < -1 || credit_of(c) >= w->n_countries) return false;
     if (w->n_rivers    <0 || w->n_rivers    >SCPS_MAX_RIVERS)    return false;
     for (int i=0;i<w->n_rivers;i++)
         if (w->river[i].len<0 || w->river[i].len>SCPS_RIVER_MAXLEN) return false;
@@ -3821,6 +3829,7 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
     ok&=sv_r(f,SV_TAG('A','G','Y','S'), NULL,0); ok&=agency_load(f);
     ok&=sv_r(f,SV_TAG('D','P','L','S'), NULL,0); ok&=diplo_load_statics(f);
     ok&=sv_r(f,SV_TAG('F','A','C','T'), NULL,0); ok&=faction_load(f);
+    ok&=sv_r(f,SV_TAG('C','R','D','T'), NULL,0); ok&=credit_load(f);   /* dette : g_creditor[] */
     long p1=ftell(f); fclose(f);
     if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;     /* taille/section : refus net */
     if (!save_sane(w, s, s->player)) return 1;             /* invariants du moteur : refus net */

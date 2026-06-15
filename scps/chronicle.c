@@ -19,6 +19,7 @@
 #include "scps_readout.h"
 #include "scps_statecraft.h"
 #include "scps_agency.h"
+#include "scps_credit.h"
 #include "scps_routes.h"
 #include "scps_intertrade.h"
 #include "scps_warhost.h"
@@ -345,6 +346,7 @@ static void sim_day(Sim *s, World *w) {
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             diplo_set_faustian(s->dp, c, s->ts[c].charge);  /* souillure faustienne → croisades */
         diplo_tick(s->dp, 365.f);
+        credit_year_tick(s->econ, s->wl, w);               /* dette : intérêt annuel (creuse le débiteur, crédite le prêteur) */
         diplo_suzerainty_tick(s->dp, w, s->econ, s->wp);   /* suzeraineté + FRONDE : tributs, ligues, défections */
         diplo_war_tick(s->dp, w, s->econ, s->wp, 1.0f);
         missions_tick(s->missions, w, s->econ, s->ts, s->year);  /* missions décennales : rythme + récompense */
@@ -396,6 +398,7 @@ static void sim_init(Sim *s, World *w) {
     demography_attach(w, s->econ, s->drift);
     demography_dyn_id_rebase(s->econ);   /* compteur de drift_id : repart au socle par sim */
     revolt_init(s->rs); warhost_init(s->host); missions_init(s->missions);
+    credit_init();
     navy_init(s->navy);
     campaign_init(s->camp, w, s->econ);                  /* armées de campagne : table de terrain + RAZ */
     s->camp_rng = w->seed ^ 0xCA117A11u;                 /* graine de campagne, propre à la sim */
@@ -542,11 +545,9 @@ static int colonized_provinces(const World *w, const WorldEconomy *e){
     return n;
 }
 
-/* ── TÉLÉMÉTRIE PAR ÂGE : marché · or par empire · tech, figés à l'avènement ── */
-static double country_gold(const WorldEconomy *e, int c){
-    double g=0.0; for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c) g+=e->region[r].treasury;
-    return g;
-}
+/* ── TÉLÉMÉTRIE PAR ÂGE : marché · or par empire · tech, figés à l'avènement ──
+ * (country_gold → econ_country_gold, public dans scps_econ.c, partagé avec scps_credit) */
+#define country_gold econ_country_gold
 /* Population PAR CLASSE d'un pays (somme des strates de ses régions). */
 static void country_class_pop(const WorldEconomy *e, int c, double out[CLASS_COUNT]){
     for (int k=0;k<CLASS_COUNT;k++) out[k]=0.0;
@@ -1179,6 +1180,12 @@ int main(int argc, char **argv){
           printf("              leviers : %d matage(s) · %d formation(s) · %d purge(s) (%ld morts) | suzeraineté : %d servage · %d protectorat · %d concordat · %d cité · %d défection(s)\n",
                  rep, ass, pur, dead,
                  s.dp->n_servage, s.dp->n_protectorat, s.dp->n_concordat, s.dp->n_cite, s.dp->n_defections);
+          { int ndette=0, nlien=0;
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                if (country_gold(s.econ,c) < 0.0) ndette++;
+                if (credit_of(c)>=0) nlien++;
+            }
+            printf("              dette : %d débiteur(s) (or net < 0) · %d créancier(s) assigné(s) [scps_credit]\n", ndette, nlien); }
           printf("              fronde : %d ligue(s) · %d fronde(s) → %d indépendance(s) · %d RENVERSEMENT(s) · %d écrasée(s) | défections %d paisibles · %d par reprise | contre-leviers : %d don · %d allègement · %d division · %d intimidation\n",
                  s.dp->n_ligues, s.dp->n_frondes, s.dp->n_indep, s.dp->n_renvers, s.dp->n_ecrase,
                  s.dp->n_defect_paix, s.dp->n_defect_guerre,
