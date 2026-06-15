@@ -205,7 +205,10 @@ int main(int argc, char **argv){
          * les oscillations du marché — sinon une conjoncture où le bois flambe et le
          * métal s'effondre inverserait l'ordre des paliers (cf. §1 « coût = recette »). */
         for (int r=0;r<RES_COUNT;r++) re->price[r]=1.0f;
-        re->stock[RES_WOOD]=1000.f; re->stock[RES_METAL]=1000.f; re->treasury=100000.f;
+        re->stock[RES_WOOD]=1000.f; re->stock[RES_METAL]=1000.f; re->stock[RES_CLAY]=1000.f;
+        re->stock[RES_STONE]=1000.f; re->stock[RES_TOOLS]=1000.f; re->stock[RES_PRECIOUS_METAL]=1000.f;
+        re->stock[RES_SALT]=1000.f;   /* gate de matière : la recette de l'édifice doit être SOURÇABLE */
+        re->treasury=100000.f;
         float gold_grenier   = agency_build_gold(s.econ, s.cap_reg, EDI_GRENIER);
         float gold_citadelle = agency_build_gold(s.econ, s.cap_reg, EDI_CITADELLE);
         printf("   Grenier coûte %.0f or (bois) | Citadelle %.0f or (métal+outils, palier supérieur)\n",

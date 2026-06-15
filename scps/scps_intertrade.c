@@ -277,6 +277,24 @@ int   intertrade_region_hub(int region){ return (region>=0&&region<SCPS_MAX_REG)
 float intertrade_global_stock(const WorldEconomy *e, int good){
     (void)e; return (good>RES_NONE && good<RES_COUNT)? g_global_cache[good] : 0.f;   /* cache 1×/tick */
 }
+/* Disponibilité d'un bien au marché ATTEIGNABLE depuis `region` : stock propre + Centre le plus
+ * proche + réseau mondial des Centres (cache 1×/tick). Lu par le gate de matière (agency) : qty
+ * requise > avail ⇒ chantier REFUSÉ. Même découpe own/local/glob que intertrade_buy_cost. */
+float intertrade_market_avail(const WorldEconomy *e, int region, int good){
+    if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT) return 0.f;
+    int owner=e->region[region].owner, hub=(region<SCPS_MAX_REG)?g_hub_of[region]:-1;
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    /* EMPIRE : toute sa matière est FONGIBLE pour SON chantier (réseau marchés/ports). */
+    float emp=0.f, owned_centre=0.f;
+    if (owner>=0){ for (int r=0;r<n;r++) if (e->region[r].owner==owner){
+            emp+=e->region[r].stock[good];
+            if (g_centre[r]) owned_centre+=e->region[r].stock[good]; } }
+    else emp=e->region[region].stock[good];                      /* hors empire : la seule région */
+    /* IMPORT : les Centres atteignables NON possédés (cache mondial moins ses propres Centres). */
+    float imp=(hub>=0)? g_global_cache[good]-owned_centre : 0.f;
+    if (imp<0.f) imp=0.f;
+    return emp+imp;
+}
 /* LES 3 ÉTAGES D'UN APPROVISIONNEMENT : combien sortira du stock PROPRE (production
  * sur place, marge nue), du marché LOCAL (le Centre le plus proche, marge de base),
  * du marché MONDIAL (les autres Centres, DOUBLE marge). Pur (pas de mutation). */
@@ -304,28 +322,48 @@ float intertrade_buy_cost(const WorldEconomy *e, int region, int good, float qty
         if (region<SCPS_MAX_REG && g_centre[region]) glob -= own;
         if (glob<0.f) glob=0.f; }
     float po,pl,pg; market_split(own,local,glob,qty,&po,&pl,&pg);
-    float deficit = qty-(po+pl+pg); if (deficit<0) deficit=0;
-    return unit_price * (po + pl*base + (pg+deficit)*base*2.f);
+    /* le gate de matière (agency) garantit qty ≤ dispo → plus de reliquat introuvable : on cesse de
+     * facturer le « deficit » (payer du vide). Scarce = cher (×marge) ; absent partout = refusé en amont. */
+    return unit_price * (po + pl*base + pg*base*2.f);
 }
-/* #5 — CONSOMMER au marché à 2 étages (mutation) : DÉPLÉTÉ d'abord le stock propre,
- * puis le Centre le plus proche (marché local), puis les autres Centres (marché
- * mondial). Les achats touchent de VRAIS stocks → la production a une destination.
- * Le reliquat introuvable n'est pas inventé (pénurie : on a payé, le marché était vide). */
+/* Ponctionne le stock d'une région ; si c'est un Centre, décrémente AUSSI le cache mondial
+ * (g_global_cache = Σ stocks des Centres) → un gate qui le lit n'est plus berné en cours d'an.
+ * Renvoie la quantité prélevée. */
+static float centre_take(WorldEconomy *e, int r, int good, float want){
+    if (want<=0.f) return 0.f;
+    float s=e->region[r].stock[good], t=(s<want?s:want);
+    e->region[r].stock[good]=s-t;
+    if (r<SCPS_MAX_REG && g_centre[r]){
+        g_global_cache[good]-=t; if(g_global_cache[good]<0.f) g_global_cache[good]=0.f;
+    }
+    return t;
+}
+/* Pompe `want` de `good` dans les AUTRES régions de l'empire `owner` (≠ skip, déjà traitée) : le
+ * réseau de marchés/ports rend la matière de l'empire FONGIBLE pour SON chantier — les ports
+ * ABSORBENT le flux terrestre. Renvoie le prélevé ; décrémente le cache pour les régions-Centre. */
+static float empire_take(WorldEconomy *e, int owner, int skip, int good, float want){
+    if (owner<0 || want<=0.f) return 0.f;
+    float got=0.f;
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && want>1e-3f; r++){
+        if (r==skip || e->region[r].owner!=owner) continue;
+        float t=centre_take(e, r, good, want); got+=t; want-=t;
+    }
+    return got;
+}
+/* #5 — CONSOMMER pour un CHANTIER (mutation) : région de chantier → RESTE de l'empire (son réseau de
+ * marchés/ports absorbe le flux terrestre) → Centre local → réseau mondial (import). Cache cohérent. */
 void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty){
     if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||qty<=0.f) return;
-    RegionEconomy *re=&e->region[region];
     int hub = (region<SCPS_MAX_REG)? g_hub_of[region] : -1;
-    float t = re->stock[good]<qty?re->stock[good]:qty; re->stock[good]-=t; qty-=t;   /* 1. propre */
+    qty -= centre_take(e, region, good, qty);                          /* 1. région de chantier */
     if (qty<=1e-3f) return;
-    if (hub>=0 && hub!=region){                                                       /* 2. marché local */
-        t = e->region[hub].stock[good]<qty?e->region[hub].stock[good]:qty;
-        e->region[hub].stock[good]-=t; qty-=t;
-    }
+    qty -= empire_take(e, e->region[region].owner, region, good, qty); /* 2. RESTE de l'empire */
+    if (qty<=1e-3f) return;
+    if (hub>=0 && hub!=region) qty -= centre_take(e, hub, good, qty);  /* 3. marché local (import) */
     if (qty<=1e-3f || hub<0) return;
-    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){                  /* 3. marché mondial */
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){   /* 4. marché mondial (import) */
         if (!g_centre[r]||r==hub||r==region) continue;
-        t = e->region[r].stock[good]<qty?e->region[r].stock[good]:qty;
-        e->region[r].stock[good]-=t; qty-=t;
+        qty -= centre_take(e, r, good, qty);
     }
 }
 
@@ -334,19 +372,14 @@ void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty)
  * qu'elle a pu armer ; les cités-états (armuriers du monde) fournissent ce que la région ne fait pas. */
 float intertrade_market_pull(WorldEconomy *e, int region, int good, float want){
     if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||want<=0.f) return 0.f;
-    if (g_hub_dirty){ hub_map_build(e); g_hub_dirty=false; }   /* carte sûre même hors tick (levée annuelle) */
-    RegionEconomy *re=&e->region[region];
+    if (g_hub_dirty){ hub_map_build(e); global_cache_refresh(e); g_hub_dirty=false; }   /* carte/cache sûrs hors tick (levée annuelle) */
     int hub = g_hub_of[region];
     float got=0.f, t;
-    t = re->stock[good]<want?re->stock[good]:want; re->stock[good]-=t; got+=t; want-=t;   /* 1. propre */
-    if (want>1e-3f && hub>=0 && hub!=region){                                              /* 2. marché local */
-        t = e->region[hub].stock[good]<want?e->region[hub].stock[good]:want;
-        e->region[hub].stock[good]-=t; got+=t; want-=t;
-    }
-    if (want>1e-3f && hub>=0) for (int r=0;r<e->n_regions && r<SCPS_MAX_REG; r++){          /* 3. marché mondial */
+    t=centre_take(e,region,good,want); got+=t; want-=t;                              /* 1. propre */
+    if (want>1e-3f && hub>=0 && hub!=region){ t=centre_take(e,hub,good,want); got+=t; want-=t; }  /* 2. local */
+    if (want>1e-3f && hub>=0) for (int r=0;r<e->n_regions && r<SCPS_MAX_REG; r++){    /* 3. mondial */
         if (!g_centre[r]||r==hub||r==region) continue;
-        t = e->region[r].stock[good]<want?e->region[r].stock[good]:want;
-        e->region[r].stock[good]-=t; got+=t; want-=t;
+        t=centre_take(e,r,good,want); got+=t; want-=t;
         if (want<=1e-3f) break;
     }
     return got;
@@ -525,7 +558,7 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             float cost=it_transport_frac(rt,a_to_b)*((pa+pb)*0.5f)*conn_mult;
             if (fabsf(pa-pb) <= cost) continue;       /* marge trop mince POUR CE SENS → rien ne bouge */
             RegionEconomy *src=a_to_b?A:B, *dst=a_to_b?B:A;     /* on achète au moins cher */
-            float vol=fminf(cap*it_volume_mult(rt,a_to_b), src->stock[g]*IT_EXPORT_FRAC);
+            float vol=fminf(cap*it_volume_mult(rt,a_to_b), fmaxf(0.f, src->stock[g]-econ_build_reserve((Resource)g))*IT_EXPORT_FRAC);  /* garde le FOND de bâti */
             if (vol<=0.001f) continue;
             { bool down=it_is_downstream(rt,a_to_b);  /* télémétrie : le tri par sens ÉMERGE */
               if (rt->maritime||rt->fluvial){

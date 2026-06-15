@@ -179,6 +179,8 @@ int main(int argc, char **argv){
         re->treasury = 30000.f;
         re->stock[RES_WOOD]=900.f; re->stock[RES_METAL]=900.f;
         re->stock[RES_TOOLS]=600.f; re->stock[RES_GRAIN]=900.f;
+        re->stock[RES_CLAY]=900.f; re->stock[RES_STONE]=900.f;          /* gate de matière : toute la */
+        re->stock[RES_SALT]=900.f; re->stock[RES_PRECIOUS_METAL]=900.f; /* recette d'édifice sourçable */
         re->build.H_coerc = fmaxf(re->build.H_coerc, 2.0f);   /* garnison → projeter la force */
         re->build.food_cap = fmaxf(re->build.food_cap, 3.f);   /* vivre sans grenier d'urgence — substrat indépendant du monde */
         if (re->strata[CLASS_LABORER].pop<300.f) re->strata[CLASS_LABORER].pop=500.f;

@@ -9,69 +9,71 @@
 #include "scps_intertrade.h"   /* #5 : le marché à 2 étages (devis + déplétion des stocks) */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>   /* getenv : diag de gate (SCPS_GATEDIAG) */
 #include <string.h>
 
 static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
-    /* {name, jours, delta, recette} — E1 : LA LOI PRIX/DURÉE, 4 paliers :
-     *   180 j : bois 40 · argile 20            (6 mois — l'édifice du quotidien)
-     *   360 j : bois 80 · pierre 40 · métal 20 (12 mois — l'institution qui s'élève)
-     *   540 j : pierre 100 · métal 60 · outils 20             (18 mois — l'œuvre)
-     *   960 j : pierre 180 · métal 120 · outils 60 · préc. 30 (32 mois — le monument)
-     * Ajustements fins ±25 % par édifice autorisés (un grenier mange du sel, une
-     * banque du précieux) — la LOI prime : même palier ≈ même ordre de prix.
-     * L'or payé = Σ qty × prix de marché courant (agency_build_gold, inchangé),
-     * × multiplicateurs géo/étendue existants. Deltas E1bis.11 INCHANGÉS. */
+    /* {name, jours, delta, recette} — E1 : LA LOI PRIX/DURÉE, 4 paliers. LE TRIO bois/pierre/argile
+     * SEUL (matériaux RAW, accumulables → le gate de matière trouve toujours de quoi sourcer ; AUCUN
+     * intermédiaire manufacturé comme le métal/outils, qui ne stocke pas — foundry→toolworks au même
+     * tick → le chantier serait gaté à perpétuité) :
+     *   180 j : bois 40 · argile 20             (6 mois — l'édifice du quotidien)
+     *   360 j : bois 80 · pierre 40 · argile 20 (12 mois — l'institution qui s'élève)
+     *   540 j : pierre dominante + bois/argile  (18 mois — l'œuvre)
+     *   960 j : pierre massive + bois/argile    (32 mois — le monument)
+     * Même palier ≈ même ordre de prix. L'or payé = Σ qty × prix de marché courant (agency_build_gold,
+     * inchangé), × multiplicateurs géo/étendue existants. Deltas E1bis.11 INCHANGÉS. */
     /* Institutionnel → K (ce qui métabolise la distance, tient la diversité). */
     [EDI_TRIBUNAL]     = { "Tribunal",      180, { .K_inst=1.0f }, {{RES_WOOD,RES_CLAY},{40,20}} },
-    [EDI_CHANCELLERIE] = { "Chancellerie",  360, { .K_inst=2.5f }, {{RES_WOOD,RES_STONE,RES_METAL},{80,40,20}} },  /* ↑ Tribunal : 1.0+1.5 */
+    [EDI_CHANCELLERIE] = { "Chancellerie",  360, { .K_inst=2.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{80,40,20}} },  /* trio bois/pierre/argile */
     [EDI_ACADEMIE]     = { "Académie",      960, { .K_inst=4.0f, .P_open=0.5f },
-                           {{RES_STONE,RES_METAL,RES_TOOLS,RES_PRECIOUS_METAL},{160,100,75,30}} },  /* ↑ Chancellerie : 2.5+1.5 ; le savoir mange de l'OUTIL (+25 %) */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{75,190,100}} },  /* le monument : le trio seul */
     /* Coercitif → H (tient l'ordre par la force — ronge L, voie fragile). */
-    [EDI_GARNISON]     = { "Garnison",      360, { .H_coerc=1.0f }, {{RES_WOOD,RES_STONE,RES_METAL},{80,40,20}} },
-    [EDI_FORTERESSE]   = { "Forteresse",    540, { .H_coerc=3.0f }, {{RES_STONE,RES_METAL,RES_TOOLS},{120,60,20}} },  /* ↑ Garnison : 1.0+2.0 ; +20 % pierre (remparts) */
+    [EDI_GARNISON]     = { "Garnison",      360, { .H_coerc=1.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{80,40,20}} },
+    [EDI_FORTERESSE]   = { "Forteresse",    540, { .H_coerc=3.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{20,120,60}} },  /* remparts : pierre dominante */
     [EDI_CITADELLE]    = { "Citadelle",     960, { .H_coerc=6.0f },
-                           {{RES_STONE,RES_METAL,RES_TOOLS,RES_PRECIOUS_METAL},{200,150,60,20}} },  /* ↑ Forteresse : 3.0+3.0 ; martiale (+pierre +métal, −préc.) */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{60,220,150}} },  /* martiale : pierre massive */
     /* Ouverture → P (porte d'assimilation, contact, routes maritimes). */
-    [EDI_PORT]         = { "Port",          360, { .P_open=1.0f, .port=1.0f }, {{RES_WOOD,RES_STONE,RES_METAL},{100,40,25}} },  /* +25 % bois (quais) */
+    [EDI_PORT]         = { "Port",          360, { .P_open=1.0f, .port=1.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{100,40,25}} },  /* quais : bois dominant (trio) */
     [EDI_CARAVANSERAIL]= { "Caravansérail", 180, { .P_open=0.7f }, {{RES_WOOD,RES_CLAY},{45,25}} },  /* +12 % (cours, écuries) */
     /* Prospérité → PE local (capte le carrefour). */
     [EDI_MARCHE]       = { "Marché",        180, { .PE_infra=1.0f }, {{RES_WOOD,RES_CLAY},{40,15}} },
     [EDI_ENTREPOT]     = { "Entrepôt",      180, { .PE_infra=0.7f }, {{RES_WOOD,RES_CLAY},{50,20}} },  /* +25 % bois (halles) */
     /* Croissance → food (nourrit la pop ; l'aqueduc : santé urbaine → croissance). */
-    [EDI_GRENIER]      = { "Grenier",       180, { .food_cap=1.0f }, {{RES_WOOD,RES_CLAY,RES_SALT},{40,15,10}} },  /* le sel CONSERVE (débouché du sel) */
-    [EDI_IRRIGATION]   = { "Irrigation",    360, { .food_cap=1.5f }, {{RES_WOOD,RES_STONE,RES_METAL},{90,30,20}} },  /* +12 % bois (canaux) */
-    [EDI_AQUEDUC]      = { "Aqueduc",       540, { .food_cap=1.2f }, {{RES_STONE,RES_METAL,RES_TOOLS},{125,45,20}} },  /* +25 % pierre (arches) */
+    [EDI_GRENIER]      = { "Grenier",       180, { .food_cap=1.0f }, {{RES_WOOD,RES_CLAY,RES_STONE},{40,15,10}} },  /* trio */
+    [EDI_IRRIGATION]   = { "Irrigation",    360, { .food_cap=1.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{90,30,20}} },  /* canaux : bois (trio) */
+    [EDI_AQUEDUC]      = { "Aqueduc",       540, { .food_cap=1.2f }, {{RES_WOOD,RES_STONE,RES_CLAY},{20,125,45}} },  /* arches : pierre dominante */
     /* Foi → SOUTIENT L (sacraliser le trône apaise sans réprimer — §4 du catalogue). */
     [EDI_SANCTUAIRE]   = { "Sanctuaire",    180, { .faith=1.0f }, {{RES_WOOD,RES_CLAY},{35,20}} },  /* −12 % (humble) */
-    [EDI_TEMPLE]       = { "Temple",        540, { .faith=3.0f }, {{RES_STONE,RES_METAL,RES_TOOLS},{100,50,25}} },  /* ↑ Sanctuaire : 1.0+2.0 */
+    [EDI_TEMPLE]       = { "Temple",        540, { .faith=3.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{25,100,50}} },  /* pierre dominante (trio) */
     [EDI_CATHEDRALE]   = { "Cathédrale",    960, { .faith=6.5f },
-                           {{RES_STONE,RES_METAL,RES_TOOLS,RES_PRECIOUS_METAL},{180,120,45,40}} },  /* ↑ Temple : 3.0+3.5 ; +33 % précieux (l'éclat) */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{45,220,120}} },  /* l'éclat de pierre (trio) */
     /* Savoir → recherche (le monastère sacralise ET étudie — §5 du catalogue). */
-    [EDI_BIBLIOTHEQUE] = { "Bibliothèque",  360, { .savoir=1.5f }, {{RES_WOOD,RES_STONE,RES_METAL},{80,35,15}} },  /* −12 % (le papier pèse peu) */
-    [EDI_MONASTERE]    = { "Monastère",     540, { .savoir=2.5f, .faith=1.0f }, {{RES_STONE,RES_METAL,RES_TOOLS},{90,50,20}} },  /* ↑ Bibliothèque : savoir 1.5+1.0 ; −10 % (la règle est frugale) */
+    [EDI_BIBLIOTHEQUE] = { "Bibliothèque",  360, { .savoir=1.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{80,35,15}} },  /* trio (le papier pèse peu) */
+    [EDI_MONASTERE]    = { "Monastère",     540, { .savoir=2.5f, .faith=1.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{20,90,50}} },  /* frugal (trio) */
     /* Commerce → PE local (capte le flux ; la banque finance l'État). */
     [EDI_COMPTOIR]     = { "Comptoir",      180, { .PE_infra=0.8f }, {{RES_WOOD,RES_CLAY},{40,20}} },
-    [EDI_BANQUE]       = { "Banque",        540, { .PE_infra=1.4f }, {{RES_STONE,RES_METAL,RES_PRECIOUS_METAL},{100,60,15}} },  /* la banque mange du PRÉCIEUX (pas d'outils) */
+    [EDI_BANQUE]       = { "Banque",        540, { .PE_infra=1.4f }, {{RES_WOOD,RES_STONE,RES_CLAY},{15,100,60}} },  /* pierre dominante (trio) */
     /* M5 (forks §9.3/§9.5) — LES FOURCHES v1. Maritime (540 j, ↑ Port — le fork
      * REMPLACE le Port, delta port conservé) : l'Arsenal projette (H), l'Amirauté
      * institue (K), le Port marchand capte (PE). Savoir (360 j, BASES alternatives
      * à la Bibliothèque) : la Bibliothèque militaire arme le savoir (H), 
      * l'Observatoire ouvre le ciel (P). Deltas §14 mappés sur ProvBuild. */
     [EDI_ARSENAL]      = { "Arsenal",       540, { .port=1.0f, .H_coerc=1.2f },
-                           {{RES_STONE,RES_METAL,RES_TOOLS},{110,70,25}} },
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{25,110,70}} },
     [EDI_AMIRAUTE]     = { "Amirauté",      540, { .port=1.0f, .K_inst=0.8f, .H_coerc=0.4f },
-                           {{RES_STONE,RES_METAL,RES_TOOLS},{100,60,25}} },
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{25,100,60}} },
     [EDI_PORT_MARCHAND]= { "Port marchand", 540, { .port=1.0f, .PE_infra=1.5f },
-                           {{RES_STONE,RES_METAL,RES_TOOLS},{90,50,20}} },
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{20,90,50}} },
     [EDI_BIBLIO_MIL]   = { "Bibliothèque militaire", 360, { .savoir=1.2f, .H_coerc=0.4f },
-                           {{RES_WOOD,RES_STONE,RES_METAL},{80,35,15}} },
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{80,35,15}} },
     [EDI_OBSERVATOIRE] = { "Observatoire",  360, { .savoir=1.5f, .P_open=0.3f },
-                           {{RES_WOOD,RES_STONE,RES_METAL},{70,40,20}} },
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{70,40,20}} },
     /* M2 — LE CENTRE COMMERCIAL : le hub du réseau GLOBAL, bâti COÛTEUX (œuvre côtière/
      * estuaire). Une cité-état EN naît (l'expression de son rôle) ; un empire marchand
      * côtier peut en bâtir un et devenir hub. g_centre DÉRIVE de ce bâti (plus un flag). */
     [EDI_TRADE_CENTER] = { "Centre commercial", 540, { .PE_infra=2.0f, .P_open=0.5f },
-                           {{RES_STONE,RES_METAL,RES_PRECIOUS_METAL},{160,90,40}} },
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{40,160,90}} },
 };
 
 const EdificeDef *edifice_def(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?&EDIFICES[e]:NULL; }
@@ -227,7 +229,7 @@ bool edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e){
 #define BUILD_MIN_PRICE 0.20f   /* plancher de prix : même un bien abondant n'est jamais gratuit */
 #define IMPORT_TOLL_FRAC 0.30f  /* I6 : part de la marge versée en PÉAGE au hub tiers emprunté */
 /* DIAGNOSTIC G0.3 — pourquoi les paliers ne montent pas : compteurs par édifice. */
-static long g_edi_made[EDIFICE_COUNT], g_edi_blocked[EDIFICE_COUNT], g_edi_nogold[EDIFICE_COUNT];
+static long g_edi_made[EDIFICE_COUNT], g_edi_blocked[EDIFICE_COUNT], g_edi_nogold[EDIFICE_COUNT], g_edi_nomat[EDIFICE_COUNT];
 
 /* §7 — l'ÉTENDUE du pays RENCHÉRIT ses institutions (le frein tall/wide qui manquait) :
  * facteur ×(1 + 0.15·n_régions du pays) sur le coût matériaux. Un grand empire paie
@@ -273,6 +275,18 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
     if (e==EDI_TRADE_CENTER && !econ->region[region].coastal && !econ->region[region].estuary)
         return false;                                                 /* M2 : un Centre = un débouché (côtier/estuaire) */
     if (edifice_build_blocked(econ, region, e)){ g_edi_blocked[e]++; return false; }  /* E1bis.11 : ↑ exige le palier précédent (pas de doublon) */
+    /* Gate de MATIÈRE (refus sec) : une seule matière introuvable au marché atteignable
+     * (propre + Centre le plus proche + réseau des Centres) → chantier REFUSÉ. Pas de file
+     * d'attente. Scarce = cher (marges) ; absent partout = pas de chantier. */
+    { const BuildCost *c=&EDIFICES[e].cost; float ext=agency_extent_mult(econ,region);
+      for (int k=0;k<BUILD_RES_MAX;k++){ Resource r=c->res[k];
+          if (r<=RES_NONE||r>=RES_COUNT||c->qty[k]<=0.f) continue;
+          float av=intertrade_market_avail(econ,region,r);
+          if (c->qty[k]*ext > av+1e-3f){
+              if (getenv("SCPS_GATEDIAG")) fprintf(stderr,"[GATE] %s rég %d : res %d besoin %.0f (×ext %.1f) > dispo %.0f\n",
+                                                   EDIFICES[e].name, region, (int)r, c->qty[k]*ext, ext, av);
+              g_edi_nomat[e]++; return false; }
+      } }
     RegionEconomy *re=&econ->region[region];
     float base_gold=0.f;
     float gold = agency_build_gold_ex(econ, region, e, &base_gold);
@@ -335,9 +349,9 @@ static int   g_n_repress, g_n_assim, g_n_purge; static long g_purge_dead;
 void agency_edi_dump(void){
     fprintf(stderr,"[EDI] par édifice — made / blocked(palier précédent) / nogold :\n");
     for (int e=0;e<EDIFICE_COUNT;e++)
-        if (g_edi_made[e]||g_edi_blocked[e]||g_edi_nogold[e])
-            fprintf(stderr,"  %-14s %4dj  made=%-5ld blocked=%-6ld nogold=%-6ld\n",
-                    EDIFICES[e].name, EDIFICES[e].days, g_edi_made[e], g_edi_blocked[e], g_edi_nogold[e]);
+        if (g_edi_made[e]||g_edi_blocked[e]||g_edi_nogold[e]||g_edi_nomat[e])
+            fprintf(stderr,"  %-14s %4dj  made=%-5ld blocked=%-6ld nogold=%-6ld nomat=%-6ld\n",
+                    EDIFICES[e].name, EDIFICES[e].days, g_edi_made[e], g_edi_blocked[e], g_edi_nogold[e], g_edi_nomat[e]);
 }
 
 void agency_init(AgencyState *a){
@@ -348,7 +362,7 @@ void agency_init(AgencyState *a){
     memset(g_pend_H,     0,sizeof g_pend_H);
     g_n_repress=g_n_assim=g_n_purge=0; g_purge_dead=0;
     memset(g_edi_made,0,sizeof g_edi_made); memset(g_edi_blocked,0,sizeof g_edi_blocked);
-    memset(g_edi_nogold,0,sizeof g_edi_nogold);
+    memset(g_edi_nogold,0,sizeof g_edi_nogold); memset(g_edi_nomat,0,sizeof g_edi_nomat);
 }
 
 void agency_save(FILE *f){

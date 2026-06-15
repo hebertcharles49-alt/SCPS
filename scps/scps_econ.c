@@ -973,6 +973,15 @@ const char *econ_flux_name(FluxComp comp){
     return (comp>=0&&comp<FX_COUNT)?N[comp]:"?";
 }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
+/* Le FOND de matière de bâti qu'une région garde avant d'exporter le surplus (cf. gate de chantier).
+ * 0 pour tout ce qui n'est pas un matériau d'édifice (table EDIFICES de scps_agency). Tunable. */
+float econ_build_reserve(Resource r){
+    switch(r){
+        case RES_WOOD: case RES_CLAY: case RES_STONE:   /* le TRIO — seuls matériaux d'édifice (bois/pierre/argile) */
+            return tune_f("BUILD_RESERVE_BULK", 60.f);
+        default: return 0.f;
+    }
+}
 
 /* Q1 — LE CONSEIL (I7) : multiplicateurs PAR PAYS, rafraîchis chaque tick par la
  * couche sim depuis l'état conseil (statecraft). Transitoire (pas en SAVE — l'état

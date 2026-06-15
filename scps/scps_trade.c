@@ -204,7 +204,7 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net) {
             RegionEconomy *exp=&e->region[exporter];
             RegionEconomy *imp=&e->region[importer];
 
-            float surplus=exp->stock[r];
+            float surplus=fmaxf(0.f, exp->stock[r]-econ_build_reserve((Resource)r));  /* garde le FOND de bâti avant d'exporter */
             if (surplus<=EPS) continue;
 
             /* Volume limité par la capacité du lien et le surplus exportateur. */

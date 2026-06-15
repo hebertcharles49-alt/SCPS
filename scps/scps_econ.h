@@ -312,6 +312,9 @@ const char *econ_flux_name(FluxComp comp);                    /* libellé court 
 /* E3 §16 — le prix d'ANCRE d'un bien (BASE_PRICE) : pour normaliser les indices
  * de prix (télémétrie du lissage par les stocks). 0 si hors borne. */
 float econ_base_price(Resource r);
+/* Le FOND de matière qu'une région garde pour SA construction avant d'exporter (le gate de chantier
+ * exige la matière présente ; sans réserve l'export auto vide les régions). 0 hors matériaux de bâti. */
+float econ_build_reserve(Resource r);
 
 /* §B1 — pousse le bonus de PRODUCTION (techs Forge/Société/Savoir·Production) du PAYS
  * propriétaire vers chaque région (re->tech_prod), lu par econ_tick pour abonder prod_mult.

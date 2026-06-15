@@ -93,6 +93,7 @@ float intertrade_market_pull   (WorldEconomy *e, int region, int good, float wan
 void  intertrade_seed_citystate_arms(const World *w, WorldEconomy *e);
 int   intertrade_region_hub    (int region);
 float intertrade_global_stock  (const WorldEconomy *e, int good);
+float intertrade_market_avail  (const WorldEconomy *e, int region, int good);   /* dispo au marché atteignable (gate de matière) */
 /* ACTIONNEUR joueur (UI) — achat/vente direct au marché à 2 étages (tier 0 = régional /
  * Centre le plus proche ; tier 1 = mondial / réseau, exige un Centre du pays). L'achat
  * débite le trésor au prix courant×marge (×2 au mondial), crédite le stock, DÉPLÉTÉ le

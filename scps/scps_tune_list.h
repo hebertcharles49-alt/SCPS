@@ -103,6 +103,9 @@
      * econ_arms_take ; le recrutement = stock/POP_PER_UNIT). Le marché (supply/prix), la valeur
      * ajoutée (PIB) et la charge faustienne restent sur la sortie de BASE → l'éco & la Brèche
      * INCHANGÉES ; seul l'arsenal de guerre enfle, ce qu'il faut pour lever les régiments. */ \
-    X(MANUF_ARMS_MULT,        10.0f)
+    X(MANUF_ARMS_MULT,        10.0f) \
+    /* Le FOND du TRIO de bâti (bois/pierre/argile, econ_build_reserve) : ce qu'une région GARDE avant
+     * d'exporter son surplus — sans quoi l'export auto la vide et le gate de chantier la refuse. */ \
+    X(BUILD_RESERVE_BULK,     60.0f)
 
 #endif /* SCPS_TUNE_LIST_H */
