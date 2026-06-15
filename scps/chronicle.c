@@ -8,6 +8,7 @@
  * empires qui croissent, pays absorbés. Aucune entrée joueur — on regarde le
  * monde vivre par les seuls acteurs IA et le moteur d'ordre.
  */
+#define _POSIX_C_SOURCE 199309L   /* PROF : clock_gettime/CLOCK_MONOTONIC visibles sous -std=c99 strict */
 #include "scps_tune.h"
 #include "scps_world.h"
 #include "scps_econ.h"
@@ -39,6 +40,28 @@
 #include <string.h>
 #include <stdarg.h>
 #include <math.h>   /* sqrt : σ du lissage des prix (E3 §16) */
+#include <time.h>   /* PROF : horloge monotone (profiler de boucle, OFF par défaut) */
+
+/* ── PROFILER DE BOUCLE (OFF par défaut ; SCPS_PROF=1) ─────────────────────────
+ * Classe les blocs de sim_day par temps CPU. Zéro coût éteint : PROF se réduit à
+ * `stmt` quand g_prof_on=0 → le hash de déterminisme reste INCHANGÉ sans la var. */
+typedef enum { PB_AGENCY,PB_AI,PB_EVENTS,PB_NAVY_J,PB_ECON,PB_DEMO,PB_NAVY_M,PB_BUILD,
+               PB_REVOLT,PB_LEGIT,PB_INTERTRADE,PB_CONTACT,PB_PROSP,PB_WARHOST,PB_CAMPAGNE,
+               PB_COUNT } ProfBlock;
+static const char *PB_NAME[PB_COUNT]={"agency","ai","events","navy_j","econ","demo","navy_m",
+    "build","revolt","legit","intertrade","contact","prosp","warhost","campagne"};
+static double g_prof[PB_COUNT], g_prof_prev[PB_COUNT];
+static int g_prof_on=-1;
+static inline double prof_now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
+    return (double)t.tv_sec*1e3 + (double)t.tv_nsec*1e-6; }
+#define PROF(blk, stmt) do{ if(g_prof_on<0) g_prof_on=getenv("SCPS_PROF")?1:0; \
+    if(g_prof_on){ double _t0=prof_now(); stmt; g_prof[blk]+=prof_now()-_t0; } else { stmt; } }while(0)
+static void prof_flush(int year){ if(g_prof_on<=0) return;
+    double dt=0,ct=0; for(int i=0;i<PB_COUNT;i++){ ct+=g_prof[i]; dt+=g_prof[i]-g_prof_prev[i]; }
+    fprintf(stderr,"[PROF an %d] annee %.0f ms (cumul %.0f) |",year,dt,ct);
+    for(int i=0;i<PB_COUNT;i++){ double d=g_prof[i]-g_prof_prev[i];
+        if(d>0.5) fprintf(stderr," %s %.0f(%.0f%%)",PB_NAME[i],d,dt>0?100*d/dt:0); }
+    fprintf(stderr,"\n"); for(int i=0;i<PB_COUNT;i++) g_prof_prev[i]=g_prof[i]; }
 
 #define CORR_CAPTURED 30   /* §C3 : seuil « polity tenue par une faction » (corr 0-100) */
 
@@ -194,7 +217,7 @@ static void sim_campaign_year(Sim *s, World *w) {
 }
 
 static void sim_day(Sim *s, World *w) {
-    agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1);
+    PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
     /* leviers intérieurs : draine les coûts SCPS différés (purge/mater) vers TechState */
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         float ch,fr,hh;
@@ -203,22 +226,22 @@ static void sim_day(Sim *s, World *w) {
         }
     }
     routes_advance(s->rn, w, s->econ, 1);
-    for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){
+    PROF(PB_AI, { for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){
         ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
         ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
-    }
-    world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1);
+    } });
+    PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1));
     labor_tick(s->labor);
-    navy_tick(s->navy, w, s->econ, s->dp, 1.f);   /* chantier + entretien (la chaîne navale TIRE) */
+    PROF(PB_NAVY_J, navy_tick(s->navy, w, s->econ, s->dp, 1.f));   /* chantier + entretien (la chaîne navale TIRE) */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
     if (s->day % 30 == 29) {
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
         statecraft_council_apply(s->sc, w, s->econ, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or */
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c);   /* Q1 : l'IA pourvoit son siège d'éthos */
-        econ_tick(s->econ, 1.f/12.f);
+        PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
-        demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f);
+        PROF(PB_DEMO, demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f));
         labor_resync_pop(s->labor, s->econ);   /* E0.1 : labor RELIT la pop (le monde la possède) */
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)   /* E3 : l'IA stockeuse (mensuel) */
             if (s->ai_on[c]) ai_speculate_tick(&s->ai[c], s->econ);
@@ -236,14 +259,14 @@ static void sim_day(Sim *s, World *w) {
          *   de groupe : faim, sur-taxe, aliénation, non-intégration) allume un
          *   soulèvement, puis on tranche (sécession, coup, jacquerie, écrasement).
          *   Un pays NÉ d'une sécession prend vie. */
-        navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
+        PROF(PB_NAVY_M, { navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
         navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng,
                          -1, 30.f);   /* coques : la course (raids - saignee - blocus - verdicts) */
-        navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng);   /* les convois se chassent */
+        navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng); });   /* les convois se chassent */
         /* IA navale FRUGALE (mer §5/§8) : un pays côtier prospère bâtit son port,
          * puis un transport, puis tente la route MARITIME — décision par éthos
          * (les poids fins viendront avec la passe course). */
-        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+        PROF(PB_BUILD, { for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
             if (!s->ai_on[c]) continue;
             int hr=s->ai[c].home_region;
             if (hr<0||hr>=s->econ->n_regions) continue;
@@ -276,9 +299,9 @@ static void sim_day(Sim *s, World *w) {
                     if (routes_order(s->rn, w, s->econ, hp, r2, true)){ mine++; break; }
                 }
             }
-        }
-        revolt_scan(s->rs, w, s->econ, s->drift, 30);
-        revolt_tick(s->rs, w, s->econ, s->drift, s->wl, s->wp, 30);
+        } });
+        PROF(PB_REVOLT, { revolt_scan(s->rs, w, s->econ, s->drift, 30);
+        revolt_tick(s->rs, w, s->econ, s->drift, s->wl, s->wp, 30); });
         if (s->rs->last_spawned>=0){
             /* un pays vient de naître : on donne vie (IA) à tout sécessionniste
              * vivant pas encore piloté (plusieurs peuvent éclore le même mois). */
@@ -300,16 +323,16 @@ static void sim_day(Sim *s, World *w) {
     if (s->day % 365 == 364) {
         econ_colonize_tick(s->econ, w, -1); econ_migrate_tick(s->econ, w);
         world_tick(w, s->econ, 1.0f);
-        legitimacy_tick(s->wl, w, s->econ, s->ts);
+        PROF(PB_LEGIT, legitimacy_tick(s->wl, w, s->econ, s->ts));
         trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
-        intertrade_tick(s->econ, s->rn, s->dp);   /* grandes routes marchandes (goods inter-pays + embargo) */
-        demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f);   /* S2 : la cristallisation suit le contact (annuel) */
-        prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl);
+        PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
+        PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
+        PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));
         /* DIPLOMATIE annuelle : usure de guerre, FONTE des trêves & du momentum
          * (la guerre peut reprendre après le répit), et le SCORE DE GUERRE (bras-de-fer
          * + attrition qui saigne les armes). */
-        warhost_tick(s->host, w, s->econ, s->dp, s->ts, 1.0f);   /* la mobilisation : les armées vivent */
-        sim_campaign_year(s, w);                           /* … et MARCHENT : campagne sur la carte */
+        PROF(PB_WARHOST, warhost_tick(s->host, w, s->econ, s->dp, s->ts, 1.0f));   /* la mobilisation : les armées vivent */
+        PROF(PB_CAMPAGNE, sim_campaign_year(s, w));                           /* … et MARCHENT : campagne sur la carte */
         if (getenv("SCPS_FORGEDIAG")){   /* pic d'effectif par type sur tout le siècle (démasque la démob) */
             long yu[U_COUNT]; memset(yu,0,sizeof yu);
             for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
@@ -331,6 +354,7 @@ static void sim_day(Sim *s, World *w) {
                     faction_age_engage(w, s->econ, c, age);       /* la faction-patronne s'avance (l'IA accepte) */
             s->prev_dawned = s->ev->ages.last_dawned;
         }
+        prof_flush(s->year);   /* PROF : classement de l'année (no-op si SCPS_PROF non posé) */
     }
     if (++s->day % 365 == 0) s->year++;
 }
