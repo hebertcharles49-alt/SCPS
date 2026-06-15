@@ -196,38 +196,56 @@ int main(int argc, char **argv){
         ok("défricher en niche forestière ronge L local",     Lf1 < Lf0);
     ok("exploiter monte l'extraction (raw_cap fer)",          iron1 > iron0 + 0.5f);
 
-    /* ═══ §1 — LE COÛT DES BÂTIMENTS : matériaux achetés AU MARCHÉ en or ════ */
-    printf("\n── §1. Coût des bâtiments : acheté au marché en or, ∝ tier ──\n");
+    /* ═══ §1 — LA MATIÈRE DU BÂTI : recette SOURCÉE au réseau (P1 empire-aware) ════
+     * Re-baseline (2026-06-15) : la matière de SON empire est GRATUITE pour SON chantier
+     * (pool marchés/ports, marge 0, cf. intertrade_buy_cost) — l'or ne paie QUE le déficit
+     * importé des Centres ÉTRANGERS. Ici la capitale tient SON stock ⇒ devis = 0 or ; on
+     * prouve à la place que (a) c'est bien gratuit en propre, (b) le TIER pilote toujours la
+     * recette (la Citadelle MANGE bien plus de pierre que le Grenier), (c) la matière est
+     * réellement CONSOMMÉE, (d) une pénurie franche (rien en propre, aucun Centre atteignable)
+     * REFUSE le chantier au gate de matière (l'autre verrou, l'or ayant disparu en propre). */
+    printf("\n── §1. La matière du bâti : gratuite en propre, ∝ tier, gate de pénurie ──\n");
     {
         RegionEconomy *re=&s.econ->region[s.cap_reg];
-        /* Marché de RÉFÉRENCE uniforme (prix=1 partout) : on teste ici que le coût
-         * suit le TIER (la recette : Grenier 25+18 unités vs Citadelle 100+30), PAS
-         * les oscillations du marché — sinon une conjoncture où le bois flambe et le
-         * métal s'effondre inverserait l'ordre des paliers (cf. §1 « coût = recette »). */
+        /* Marché de RÉFÉRENCE uniforme (prix=1 partout) : on teste le TIER (la recette :
+         * Grenier 40+15+10 unités vs Citadelle 60+220+150), PAS les oscillations du marché. */
         for (int r=0;r<RES_COUNT;r++) re->price[r]=1.0f;
         re->stock[RES_WOOD]=1000.f; re->stock[RES_METAL]=1000.f; re->stock[RES_CLAY]=1000.f;
         re->stock[RES_STONE]=1000.f; re->stock[RES_TOOLS]=1000.f; re->stock[RES_PRECIOUS_METAL]=1000.f;
-        re->stock[RES_SALT]=1000.f;   /* gate de matière : la recette de l'édifice doit être SOURÇABLE */
+        re->stock[RES_SALT]=1000.f;   /* gate de matière : la recette de l'édifice doit être SOURÇABLE en propre */
         re->treasury=100000.f;
         float gold_grenier   = agency_build_gold(s.econ, s.cap_reg, EDI_GRENIER);
         float gold_citadelle = agency_build_gold(s.econ, s.cap_reg, EDI_CITADELLE);
-        printf("   Grenier coûte %.0f or (bois) | Citadelle %.0f or (métal+outils, palier supérieur)\n",
+        printf("   Grenier devise %.0f or | Citadelle %.0f or (matière propre ⇒ pool empire GRATUIT)\n",
                gold_grenier, gold_citadelle);
-        ok("un bâtiment a un PRIX en or = Σ recette × prix marché", gold_grenier > 0.f);
-        ok("un palier SUPÉRIEUR coûte plus, en matériaux plus avancés (∝ tier)",
-           gold_citadelle > gold_grenier);
-        float tre0=re->treasury, wood0=re->stock[RES_WOOD];
-        bool built = agency_build(s.ag, s.econ, s.cap_reg, EDI_GRENIER);
-        ok("bâtir DÉDUIT l'or du trésor (acheté au marché)", built && re->treasury < tre0 - 1.f);
-        ok("… et CONSOMME les matériaux du marché (le stock baisse)", re->stock[RES_WOOD] < wood0);
-        re->treasury = 0.f;
+        ok("la matière de SON empire est GRATUITE pour SON chantier (devis 0 or)",
+           gold_grenier < 1e-3f && gold_citadelle < 1e-3f);
+        /* (b) le TIER pilote la recette : on MESURE la pierre mangée par chaque édifice —
+         * Grenier (pierre 10, vivrier de base) vs Irrigation (pierre 30, palier vivrier
+         * avancé). La matière, pas l'or, porte désormais le tier. (Les deux sont des
+         * édifices STACKABLES hors-famille : pas de verrou « déjà bâti ».) */
+        float stone_g0=re->stock[RES_STONE];
+        bool built_g = agency_build(s.ag, s.econ, s.cap_reg, EDI_GRENIER);
+        float stone_eaten_grenier = stone_g0 - re->stock[RES_STONE];
+        ok("bâtir CONSOMME la matière de l'empire (le stock baisse)", built_g && stone_eaten_grenier > 0.f);
+        re->stock[RES_STONE]=1000.f;   /* on RÉ-DOTE pour mesurer le palier supérieur seul */
+        float stone_c0=re->stock[RES_STONE];
+        bool built_i = agency_build(s.ag, s.econ, s.cap_reg, EDI_IRRIGATION);   /* palier vivrier supérieur */
+        float stone_eaten_irrig = stone_c0 - re->stock[RES_STONE];
+        printf("   pierre mangée : Grenier %.0f · Irrigation %.0f (le TIER porte la recette)\n",
+               stone_eaten_grenier, stone_eaten_irrig);
+        ok("un palier SUPÉRIEUR mange plus de matière (∝ tier)",
+           built_i && stone_eaten_irrig > stone_eaten_grenier);
+        /* (d) PÉNURIE FRANCHE : on vide la pierre de TOUT l'empire (capitale + co-possédées) ;
+         * aucun Centre atteignable (autarcie) ⇒ le gate de matière REFUSE le chantier. */
+        int owner=re->owner;
+        for (int r=0;r<s.econ->n_regions;r++)
+            if (owner<0 ? r==s.cap_reg : s.econ->region[r].owner==owner)
+                s.econ->region[r].stock[RES_STONE]=0.f;
         int nbefore=s.ag->n;
-        bool blocked = agency_build(s.ag, s.econ, s.cap_reg, EDI_CITADELLE);
-        ok("sans or pour acheter les matériaux : REFUSÉ, pas de chantier",
+        bool blocked = agency_build(s.ag, s.econ, s.cap_reg, EDI_GRENIER);
+        ok("pénurie de matière (rien en propre, aucun Centre) : REFUSÉ, pas de chantier",
            !blocked && s.ag->n==nbefore);
-        re->treasury=100000.f;
-        ok("le coût vient du TIER (recette), pas de l'étendue (prix inchangé)",
-           agency_build_gold(s.econ, s.cap_reg, EDI_GRENIER) == gold_grenier);
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

@@ -304,27 +304,30 @@ static void market_split(float own, float local, float glob, float qty,
     t       = local<qty?local:qty; *pl=t; qty-=t; if(qty<0)qty=0;
     t       = glob <qty?glob :qty; *pg=t;
 }
-/* #5 — LE COÛT DU PUMP À 2 ÉTAGES (devis, sans mutation). Sourcer `qty` de `good` dans
- * `region` : stock propre (×1) → marché LOCAL cité-état (×marge de base, distance déjà
- * incluse) → marché MONDIAL (×marge×2 : la double taxe) → pénurie introuvable (×marge×2).
- * `unit_price` = le prix de marché local du bien (lu par l'appelant). */
+/* #5 — LE COÛT DU PUMP (devis, sans mutation), EMPIRE-AWARE (comme _avail/_consume).
+ * Sourcer `qty` de `good` dans `region` : la matière de SON empire est GRATUITE pour SON
+ * chantier (réseau marchés/ports, marge 0) ; l'or ne paie QUE le déficit importé des Centres
+ * ÉTRANGERS — le plus proche (×marge de base, distance incluse) → le reste du réseau étranger
+ * (×marge×2 : la double taxe). `unit_price` = le prix de marché local du bien (lu par l'appelant). */
 float intertrade_buy_cost(const WorldEconomy *e, int region, int good, float qty, float unit_price){
     if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||qty<=0.f) return 0.f;
     const RegionEconomy *re=&e->region[region];
     float base = re->import_margin; if (base<1.f) base=1.f;
-    int hub = (region<SCPS_MAX_REG)? g_hub_of[region] : -1;
-    float own   = re->stock[good];
-    float local = (hub>=0 && hub!=region)? e->region[hub].stock[good] : 0.f;
-    /* le mondial = le réseau (cache 1×/tick) MOINS l'étage local déjà compté (le hub, et
-     * la région elle-même si elle est un Centre) ; O(1), pas de re-somme dans l'IA. */
-    float glob  = 0.f;
-    if (hub>=0){ glob = g_global_cache[good] - local;
-        if (region<SCPS_MAX_REG && g_centre[region]) glob -= own;
-        if (glob<0.f) glob=0.f; }
-    float po,pl,pg; market_split(own,local,glob,qty,&po,&pl,&pg);
-    /* le gate de matière (agency) garantit qty ≤ dispo → plus de reliquat introuvable : on cesse de
-     * facturer le « deficit » (payer du vide). Scarce = cher (×marge) ; absent partout = refusé en amont. */
-    return unit_price * (po + pl*base + pg*base*2.f);
+    int owner=re->owner, hub=(region<SCPS_MAX_REG)?g_hub_of[region]:-1;
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    /* EMPIRE : tout son stock est GRATUIT pour SON chantier (réseau marchés/ports) — comme _consume/_avail. */
+    float emp=0.f, owned_centre=0.f;
+    if (owner>=0){ for (int r=0;r<n;r++) if (e->region[r].owner==owner){
+            emp+=e->region[r].stock[good];
+            if (g_centre[r]) owned_centre+=e->region[r].stock[good]; } }
+    else emp=re->stock[good];                                       /* hors empire : la seule région */
+    /* IMPORT (or) : Centres ÉTRANGERS seuls. Le plus proche (le hub s'il n'est pas à nous) à `base` ;
+     * le reste du réseau étranger (cache mondial − nos Centres − ce hub) à `base×2`. Pool empire = 0. */
+    float fnear = (hub>=0 && hub!=region && e->region[hub].owner!=owner)? e->region[hub].stock[good] : 0.f;
+    float fdist = g_global_cache[good] - owned_centre - fnear; if(fdist<0.f) fdist=0.f;
+    float p_emp,p_near,p_dist; market_split(emp, fnear, fdist, qty, &p_emp,&p_near,&p_dist);
+    (void)p_emp;                                                    /* l'empire est GRATUIT (marge 0) */
+    return unit_price * (p_near*base + p_dist*base*2.f);
 }
 /* Ponctionne le stock d'une région ; si c'est un Centre, décrémente AUSSI le cache mondial
  * (g_global_cache = Σ stocks des Centres) → un gate qui le lit n'est plus berné en cours d'an.
