@@ -101,6 +101,8 @@ static float ai_faustian_appetite(Credo cr, float valeurs){
 #define AI_RELOC_FLOOR     100.f  /* pop minimale pour qualifier source/cible (jamais peupler le vide) */
 #define AI_RELOC_COOLDOWN  1300   /* ~3.5 ans entre deux ensemencements (ENSEMENCER, pas pomper) */
 #define AI_COLONY_FLOOR   1000.f  /* §dév : palier de pop visé par colonie (remplir les jobs → optimum démographique) */
+#define AI_STAFF_PER_MANUF 250.f  /* §dév : pop MINIMALE par manufacture pour BÂTIR — sinon on pose dans le VIDE
+                                   * (la fabrique L5 a 2200 jobs ; sous ce socle, le raw dort, les jobs vides) */
 #define AI_FAITH_FAUSTIAN   3.0f  /* §4 : l'orthodoxie INTERDIT le faustien, le culte le SACRALISE */
 
 /* ---- Utilitaires ------------------------------------------------------ */
@@ -724,10 +726,13 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
         Resource in=(b==BLD_MAGE_WORKSHOP)?RES_ARCANE_CRYSTAL:(b==BLD_CELESTIAL_FORGE)?RES_CELESTIAL_IRON:RES_IRON;
         int best=-1; float bestcap=0.1f;
         for (int r=0;r<econ->n_regions;r++){
-            if (econ->region[r].owner!=a->cid) continue;
-            bool have=false; for (int i=0;i<econ->region[r].n_bld;i++) if (econ->region[r].bld[i].type==b){ have=true; break; }
+            RegionEconomy *re=&econ->region[r];
+            if (re->owner!=a->cid) continue;
+            bool have=false; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==b){ have=true; break; }
             if (have) continue;
-            if (econ->region[r].raw_cap[in] > bestcap){ bestcap=econ->region[r].raw_cap[in]; best=r; }
+            float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+            if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;  /* SOUS-STAFFÉ : pas dans le vide */
+            if (re->raw_cap[in] > bestcap){ bestcap=re->raw_cap[in]; best=r; }
         }
         if (best<0) continue;                                  /* pas de région avec l'intrant (ou déjà bâtie partout) */
         float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
@@ -752,6 +757,7 @@ static void ai_build_civmanuf(AiActor *a, WorldEconomy *econ){
         RegionEconomy *re=&econ->region[r];
         if (re->owner!=a->cid || !re->colonized) continue;
         float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;  /* SOUS-STAFFÉ : on NE bâtit PAS dans le vide */
         int rtier=capitale_max_tier((long)rpop);
         for (int b=0;b<BLD_TYPE_COUNT;b++){
             if (bld_is_faustian((BuildingType)b)) continue;          /* pas les transmuteurs (charge/tech) */
