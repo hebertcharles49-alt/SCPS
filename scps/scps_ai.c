@@ -793,8 +793,8 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
         if (best<0) continue;                                  /* pas de région avec l'intrant (ou déjà bâtie partout) */
         float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
         if (cre->treasury < cost) continue;                    /* puissance éco insuffisante → pas le chantier */
-        cre->treasury-=cost; econ_flux_add(a->cid, FX_SOLDE, -cost);
         if (econ_build_manufacture(econ, best, b)){
+            cre->treasury-=cost; econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS — pas d'or perdu si la pose échoue */
             a->stats.builds_other++;
             /* FINIR LA CHAÎNE (comme l'armurier à poudre des cités-états) : poudrière (salpêtre+charbon
              * → poudre) + charbonnière (bois → charbon). Le pool national amène le salpêtre d'où qu'il
