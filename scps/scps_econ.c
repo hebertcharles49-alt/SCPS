@@ -1071,6 +1071,16 @@ static void mobility_tick_region(RegionEconomy *re, int rid){
 
 float econ_world_ipm(const WorldEconomy *e){ return (e && e->ipm>0.f)? e->ipm : 1.f; }
 
+/* Pool empire d'un bien : Σ stock des régions de même owner. Ce que le joueur POSSÈDE
+ * (hors import) — la topbar/Stocks le lisent pour ne pas mentir. */
+long econ_empire_stock(const WorldEconomy *e, int owner, Resource g){
+    if (!e || owner<0 || g<=RES_NONE || g>=RES_COUNT) return 0;
+    int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
+    double s=0.0;
+    for (int r=0;r<n;r++) if (e->region[r].owner==owner) s+=e->region[r].stock[g];
+    return (long)s;
+}
+
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;

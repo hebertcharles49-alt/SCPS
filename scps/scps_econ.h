@@ -291,6 +291,9 @@ void econ_set_council_mult(int cid, int seat, float m);
 /* §C — l'indice des prix monétaires mondial [~1.0] (1.0 = neutre / IPM désactivé).
  * Lecture seule, pour la télémétrie (chronique) et l'UI. */
 float econ_world_ipm(const WorldEconomy *e);
+/* Pool empire d'un bien : Σ stock des régions de même owner. Ce que le joueur POSSÈDE
+ * (hors import) — la topbar/Stocks le lisent pour ne pas mentir. */
+long econ_empire_stock(const WorldEconomy *e, int owner, Resource g);
 /* E0.7 — RAZ de la mobilité de classe (panier capté + séries de mauvaise sat.) ;
  * appelé à chaque nouvelle partie/sim depuis econ_init. (RAZ aussi la friche E1bis.10.) */
 void econ_mobility_reset(void);

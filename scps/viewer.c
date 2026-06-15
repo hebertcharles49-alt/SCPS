@@ -1231,7 +1231,7 @@ static void draw_topbar(SDL_Renderer *ren, int win_w, const Sim *s, const World 
     x0=x; x = draw_res(ren,x,yA, lres_name(LR_FOOD),      s->labor->stock[LR_FOOD],      (float)s->labor->flow[LR_FOOD],
                  "Vivres (clic → Subsistance & démographie). La famine stoppe la croissance de la population.");
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_SUBSISTANCE);
-    x0=x; x = draw_res(ren,x,yA, lres_name(LR_OUTILS), s->labor->stock[LR_OUTILS], (float)s->labor->flow[LR_OUTILS],
+    x0=x; x = draw_res(ren,x,yA, lres_name(LR_OUTILS), econ_empire_stock(s->econ, cid, RES_TOOLS), 0.f,
                  "Matériaux (clic → Chaînes de production & stock du marché). Bâtir, coloniser et armer en consomment.");
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_CHAINES);
     x = topbar_sep(ren, x, yA);
@@ -2749,10 +2749,17 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
                      re3->n_entrepot>0?COL_PARCH:COL_DIM, tr(STR_ENTREPOT_HOV)); }
             /* les lots : une ligne par ressource négociable, [−10] vendre · [+10] acheter */
             static const LRes TRADE_RES[6]={ LR_FOOD,LR_BOIS,LR_ARGILE,LR_PIERRE,LR_METAL,LR_OUTILS };   /* M6 : calcaire coupé */
+            /* La QUANTITÉ affichée des 5 matériaux de bâti LIT le pool éco de l'empire
+             * (ce que le joueur possède & dépense réellement) ; Nourriture reste labor.
+             * RES_NONE = repli sur le stock labor (cas LR_FOOD). */
+            static const Resource TRADE_POOL[6]={ RES_NONE,RES_WOOD,RES_CLAY,RES_STONE,RES_METAL,RES_TOOLS };
             static char thov[6][160];
             for (int i=0;i<6;i++){
                 LRes r3=TRADE_RES[i];
-                char st[24]; snprintf(st,sizeof st,"%ld",s->labor->stock[r3]);
+                long qty = (TRADE_POOL[i]!=RES_NONE)
+                         ? econ_empire_stock(econ, s->player, TRADE_POOL[i])
+                         : s->labor->stock[r3];
+                char st[24]; snprintf(st,sizeof st,"%ld",qty);
                 draw_text(ren,g_font,x,y,COL_DIM,lres_name(r3));
                 draw_text(ren,g_font,x+104,y,COL_PARCH,st);
                 int bx=x+rw-44;
