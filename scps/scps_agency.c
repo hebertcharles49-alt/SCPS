@@ -243,10 +243,11 @@ static float agency_extent_mult(const WorldEconomy *econ, int region){
 }
 
 /* #5 — LE DEVIS DU CHANTIER, marché à 2 étages. Pour chaque matériau, la quantité
- * réellement consommée (qty × étendue) est SOURCÉE au marché : stock propre (×1) →
- * Centre local (×marge de base, distance incluse) → marché mondial (×marge×2). La
- * couche commerce calcule (intertrade_buy_cost), agency LIT. `base_out` (option) = le
- * coût NU (sans marge) → sert à router le péage vers la cité-état hôte. */
+ * réellement consommée (qty × étendue) est SOURCÉE au marché EMPIRE-AWARE : matière de
+ * l'empire GRATUITE → Centre étranger le plus proche (×marge) → réseau étranger (×marge×2).
+ * La couche commerce calcule (intertrade_buy_cost), agency LIT. `base_out` (option) = le NU
+ * (marge 1) de la part IMPORTÉE seule (l'empire est gratuit, il n'entre pas dans le nu) →
+ * (gold − base_out) = la marge de transport, routée en péage à la cité-état hôte. */
 static float agency_build_gold_ex(const WorldEconomy *econ, int region, Edifice e, float *base_out){
     if (base_out) *base_out=0.f;
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return 0.f;
@@ -259,8 +260,9 @@ static float agency_build_gold_ex(const WorldEconomy *econ, int region, Edifice 
         if (r<=RES_NONE || r>=RES_COUNT || c->qty[k]<=0.f) continue;
         float price = re->price[r]; if (price < BUILD_MIN_PRICE) price = BUILD_MIN_PRICE;
         float qy = c->qty[k]*ext;
-        gold += intertrade_buy_cost(econ, region, r, qy, price);   /* propre/local/mondial + marges */
-        base += qy*price;                                          /* le nu (marge 1) pour le péage */
+        float ib=0.f;
+        gold += intertrade_buy_cost(econ, region, r, qy, price, &ib);   /* import seul facturé (empire gratuit) */
+        base += ib;                                                     /* le NU de l'IMPORT (marge 1) → base du péage */
     }
     if (base_out) *base_out=base;
     return gold;

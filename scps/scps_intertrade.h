@@ -83,7 +83,7 @@ bool  intertrade_relocate_centre(WorldEconomy *e, int from, int to);/* déplace 
  * Centre local ×marge → autres Centres ×marge×2), `intertrade_market_consume` le
  * DÉPLÉTÉ dans le même ordre. `intertrade_region_hub` : le Centre de rattachement
  * (-1 = autarcie). `intertrade_global_stock` : profondeur du marché mondial. */
-float intertrade_buy_cost      (const WorldEconomy *e, int region, int good, float qty, float unit_price);
+float intertrade_buy_cost      (const WorldEconomy *e, int region, int good, float qty, float unit_price, float *import_base_out);
 void  intertrade_market_consume(WorldEconomy *e, int region, int good, float qty);
 /* F-arc — POMPE D'ARMES : comme _market_consume (propre→Centre local→mondial) mais RENVOIE le
  * total prélevé : la levée (econ_arms_take) s'arme au marché des cités-états quand le stock manque. */

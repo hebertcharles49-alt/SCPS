@@ -308,8 +308,12 @@ static void market_split(float own, float local, float glob, float qty,
  * Sourcer `qty` de `good` dans `region` : la matière de SON empire est GRATUITE pour SON
  * chantier (réseau marchés/ports, marge 0) ; l'or ne paie QUE le déficit importé des Centres
  * ÉTRANGERS — le plus proche (×marge de base, distance incluse) → le reste du réseau étranger
- * (×marge×2 : la double taxe). `unit_price` = le prix de marché local du bien (lu par l'appelant). */
-float intertrade_buy_cost(const WorldEconomy *e, int region, int good, float qty, float unit_price){
+ * (×marge×2 : la double taxe). `unit_price` = le prix de marché local du bien (lu par l'appelant).
+ * `import_base_out` (option, NULL ⇒ ignoré) = le NU (marge 1) de la part IMPORTÉE seule — la base
+ * du PÉAGE : (devis − import_base) = la marge de transport routée à la cité-état hôte. L'empire
+ * étant GRATUIT, le nu de bâti n'est PAS la quantité totale mais la seule part importée. */
+float intertrade_buy_cost(const WorldEconomy *e, int region, int good, float qty, float unit_price, float *import_base_out){
+    if (import_base_out) *import_base_out=0.f;
     if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||qty<=0.f) return 0.f;
     const RegionEconomy *re=&e->region[region];
     float base = re->import_margin; if (base<1.f) base=1.f;
@@ -327,6 +331,7 @@ float intertrade_buy_cost(const WorldEconomy *e, int region, int good, float qty
     float fdist = g_global_cache[good] - owned_centre - fnear; if(fdist<0.f) fdist=0.f;
     float p_emp,p_near,p_dist; market_split(emp, fnear, fdist, qty, &p_emp,&p_near,&p_dist);
     (void)p_emp;                                                    /* l'empire est GRATUIT (marge 0) */
+    if (import_base_out) *import_base_out = unit_price * (p_near + p_dist);   /* NU de l'import (marge 1) → base du péage */
     return unit_price * (p_near*base + p_dist*base*2.f);
 }
 /* Ponctionne le stock d'une région ; si c'est un Centre, décrémente AUSSI le cache mondial

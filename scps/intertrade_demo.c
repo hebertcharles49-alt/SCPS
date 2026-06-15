@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static int g_pass=0,g_fail=0;
 static void ok(const char*w,bool c){ printf("   %s %s\n",c?"✓":"✗",w); if(c)g_pass++; else g_fail++; }
@@ -146,6 +147,58 @@ int main(int argc,char**argv){
     long xs=intertrade_market_sell(econ,ra,RES_WOOD,50,0,&xp);   /* tier 0, hub==ra */
     ok("V2 : buy/sell same-region REFUSÉS (0) et NI stock NI trésor ne bougent (or infini TUÉ)",
        xb==0 && xs==0 && econ->region[ra].stock[RES_WOOD]==s0 && econ->region[ra].treasury==t0);
+
+    /* ---- 7. NON-RÉGRESSION : le TRIPTYQUE empire-aware (gate = devis = consume) ----
+     *   La matière des AUTRES régions du même empire est mise en commun : le gate la VOIT,
+     *   le devis ne la FACTURE PAS (gratuite, marge 0), la conso la PUISE. Les trois doivent
+     *   s'accorder, sinon le joueur est sur/sous-facturé (le bug que ce banc verrouille). */
+    printf("\n── 7. Empire-aware : la matière d'une région sœur est GRATUITE (gate=devis=consume) ──\n");
+    {
+        int X=-1, Y=-1;                                    /* X = chantier (vide), Y = sœur (riche), même empire 0 */
+        for (int r=0;r<econ->n_regions;r++){ if (X<0) X=r; else { Y=r; break; } }
+        econ->region[X].owner=0; econ->region[Y].owner=0;
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==0) econ->region[r].stock[RES_STONE]=0.f;
+        econ->region[Y].stock[RES_STONE]=300.f;            /* la SŒUR a la pierre ; X n'a RIEN */
+        econ->region[X].price[RES_STONE]=2.f;
+        float av = intertrade_market_avail(econ, X, RES_STONE);
+        float ib=0.f; float gold = intertrade_buy_cost(econ, X, RES_STONE, 100.f, 2.f, &ib);
+        ok("le GATE voit la matière de la sœur (avail ≥ besoin)", av >= 100.f-1e-3f);
+        ok("le DEVIS est GRATUIT (matière d'empire = 0 or, NU d'import = 0)", gold < 1e-3f && ib < 1e-3f);
+        float y0=econ->region[Y].stock[RES_STONE];
+        intertrade_market_consume(econ, X, RES_STONE, 100.f);
+        ok("la CONSO puise la SŒUR Y (−100), X reste vide",
+           fabsf(econ->region[Y].stock[RES_STONE]-(y0-100.f))<1e-2f && econ->region[X].stock[RES_STONE]<1e-3f);
+    }
+
+    /* ---- 8. NON-RÉGRESSION : le DÉFICIT importé est FACTURÉ (×marge), et le NU de l'import
+     *   = la BASE DU PÉAGE. L'empire est gratuit → le nu de bâti n'est PAS la quantité totale
+     *   mais la seule part importée ; (devis − NU) = la marge de transport routée à la cité-état. */
+    printf("\n── 8. Déficit importé : devis = import×marge · NU de l'import = base du péage ──\n");
+    if (pr>=0) {
+        diplo_declare_war(&dp,0,1);                        /* guerre 0-1 : pas de trade au tick (stocks figés) */
+        econ->region[pr].owner=0; econ->region[ra].owner=1; econ->region[rb].owner=1;
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==0) econ->region[r].stock[RES_STONE]=0.f;
+        for (int r=0;r<econ->n_regions;r++) if (intertrade_has_centre(r) && r!=ra) econ->region[r].stock[RES_STONE]=0.f;
+        econ->region[ra].stock[RES_STONE]=200.f;           /* le SEUL Centre porteur — et il est ÉTRANGER */
+        econ->region[pr].price[RES_STONE]=1.0f;
+        intertrade_tick(econ,&rn,&dp);                     /* carte + cache (guerre ⇒ aucun trade ne bouge les stocks) */
+        if (intertrade_region_hub(pr)==ra && econ->region[ra].owner!=econ->region[pr].owner){
+            float marge=econ->region[pr].import_margin; if(marge<1.f)marge=1.f;
+            float av=intertrade_market_avail(econ,pr,RES_STONE);
+            float ib=0.f; float gold=intertrade_buy_cost(econ,pr,RES_STONE,100.f,1.0f,&ib);
+            printf("   devis import 100 pierre : or %.1f · NU import %.1f · marge ×%.2f\n", gold, ib, marge);
+            ok("le GATE voit l'import du Centre étranger (avail ≥ besoin)", av >= 100.f-1e-3f);
+            ok("le NU de l'import = quantité importée × prix (100×1)", fabsf(ib-100.f) < 1e-2f);
+            ok("le DEVIS facture l'import × marge (l'or paie le déficit étranger)", fabsf(gold-100.f*marge) < 1e-2f);
+            ok("la BASE DU PÉAGE est positive (devis − NU = marge de transport > 0)", gold-ib > 1e-3f);
+            float ra0=econ->region[ra].stock[RES_STONE];
+            intertrade_market_consume(econ,pr,RES_STONE,100.f);
+            ok("la CONSO importe bien du Centre étranger ra (−100)",
+               fabsf(econ->region[ra].stock[RES_STONE]-(ra0-100.f))<1e-2f);
+        } else {
+            printf("   (topologie : pr non rattaché à un Centre étranger — test sauté)\n");
+        }
+    }
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);
