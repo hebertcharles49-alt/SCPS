@@ -244,12 +244,10 @@ static inline Resource preferred_luxe(const PopCulture *c){
 #define PRICE_INERTIA 0.65f  /* lissage du prix (0=instantané,1=figé) */
 #define EPS          1e-4f
 
-/* Démographie calibrée : doublement en ~30 ans à food_sat=1, society_sat=0.5
- *   net = BIRTH_RATE*food_sat - DEATH_RATE + SOCIETY_BONUS*society_sat
- *   typique : 0.034 - 0.015 + 0.004 = 0.023 → ln(2)/0.023 ≈ 30 ticks */
-#define BIRTH_RATE    0.034f
-#define DEATH_RATE    0.015f
-#define SOCIETY_BONUS 0.008f
+/* Démographie calibrée : la FERTILITÉ suit les BESOINS SATISFAITS (registre J :
+ * POP_R_BASE=ln2/100 → ×2/siècle au plancher ; POP_NEEDS_W·needs_met + POP_PROSP_W·
+ * prospérité → jusqu'à ×4/siècle au panier plein). Cf. §6 croissance. Les anciens
+ * BIRTH_RATE/DEATH_RATE/SOCIETY_BONUS sont RETIRÉS (la base ne multiplie plus food_sat). */
 
 /* Colonisation */
 #define COLONY_MIN_POP      500.f   /* pop minimale d'une région pour essaimer  */
@@ -1507,11 +1505,17 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* Suivi de la couverture RÉELLE par palier (pas la satisfaction globale) :
          * food_got mesure les VIVRES effectivement servis, soc_got le reste. */
         float r_food_need=0.f, r_food_got=0.f, r_soc_need=0.f, r_soc_got=0.f;
+        /* needs_met : fraction du panier COMPLET (toutes les entrées NEED, pas seulement
+         * les actives) dont la couverture got≥τ — pop-pondérée sur les classes. Pilote la
+         * fertilité (couverture BRUTE : on ne soustrait PAS la surtaxe fiscale). */
+        float tau=tune_f("NEEDS_MET_TAU",0.5f), nmsum=0.f, nmpop=0.f;
         for (int c=0;c<CLASS_COUNT;c++) {
             float units=re->strata[c].pop/100.f*DEMAND_TENSION;   /* /100 hab, tendu +10 % */
             if (units<=0.f){ re->strata[c].satisfaction=0.f; continue; }
             float budget=re->strata[c].wealth;
             float need_w=0.f, met_w=0.f;   /* pondération par valeur du besoin */
+            int   nbasket=0, nsat=0;       /* catégories du panier total · satisfaites (got≥τ) */
+            for (int rr=0;rr<RES_COUNT;rr++) if (NEED[c][rr]>0.f) nbasket++;   /* dénominateur = panier COMPLET */
             for (int r=0;r<RES_COUNT;r++) {
                 float need=NEED[c][r]*units;
                 if (need<=0.f) continue;
@@ -1537,6 +1541,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                     S[alt]-=need*got_a; budget-=need*got_a*re->price[alt];
                     float got=clampf(got_p + DRINK_OFFCULT*got_a, 0.f, 1.f);
                     met_w+=w_d*got; r_soc_need+=need; r_soc_got+=need*got;
+                    if (got>=tau) nsat++;
                     continue;
                 }
                 /* ── Palier STATUT (luxe d'élite) : VARIANTE culturelle ──
@@ -1559,6 +1564,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                     S[alt]-=need*got_a; budget-=need*got_a*re->price[alt];
                     float got=clampf(got_p + LUXE_OFFCULT*got_a, 0.f, 1.f);
                     met_w+=w_l*got; r_soc_need+=need; r_soc_got+=need*got;
+                    if (got>=tau) nsat++;
                     continue;
                 }
                 float w=BASE_PRICE[r]*need;          /* importance ~ valeur */
@@ -1567,6 +1573,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float cost=need*can_stock*re->price[r];
                 float can_buy=(cost>0.f)?clampf(budget/cost,0.f,1.f):1.f;
                 float got=can_stock*can_buy;
+                if (got>=tau) nsat++;
                 /* consomme stock & budget (pool national) */
                 S[r]-=need*got;
                 budget-=need*got*re->price[r];
@@ -1580,7 +1587,10 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
             re->strata[c].satisfaction=clampf(basket - over_tax[c]*K_TAX_AGIT, 0.f, 1.f);
             if (rid<SCPS_MAX_REG) g_basket_pc[rid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
+            float nm_c=(nbasket>0)?(float)nsat/(float)nbasket:0.f;   /* part BRUTE du panier couverte */
+            nmsum += nm_c*re->strata[c].pop; nmpop += re->strata[c].pop;
         }
+        re->needs_met = (nmpop>0.f)? clampf(nmsum/nmpop,0.f,1.f) : 0.f;   /* pilote la fertilité (avant la croissance) */
         if (rid<SCPS_MAX_REG) mobility_tick_region(re, rid);   /* E0.7 — le dégel des classes */
 
         /* ---- 6. MISE À JOUR : démographie, tech, satisfaction générale - */
@@ -1597,18 +1607,22 @@ void econ_tick(WorldEconomy *e, float dt) {
             re->society_sat *= (1.f - 0.60f*econ_off_culture_fraction(&re->pop));
         }
 
-        /* Croissance calibrée : doublement ~30 ans à food_sat=1, soc=0.5
-         *   net = BIRTH_RATE*food_sat - DEATH_RATE + SOCIETY_BONUS*society_sat
-         * + pic de famine si food_sat < 0.35
-         * Plafond souple : la croissance s'annule à 1.1×cap_pop (apex naturel
-         * entre 1000 et 6000 selon la capacité du site). */
+        /* FERTILITÉ = f(BESOINS SATISFAITS). Doublement ~100 ans au PLANCHER (besoins
+         * vides), ~50 ans (×4/siècle) au PANIER PLEIN : net = r_base·(1+demo)·(1+B), avec
+         * B∈[0,1] = part du panier couverte (needs_met, 0.85) + prospérité normalisée (0.15).
+         * food_s ne MULTIPLIE plus la base — il ne sert qu'au pic de famine (<0.35) ; soc_s
+         * n'est plus lu. Plafond souple (cap_factor, plus bas) inchangé. */
         float food_s = re->food_sat;
-        float soc_s  = re->society_sat;
         /* Démographie modulée par la RACE (Prolifique/Régénérant → + de naissances ;
          * Lent à croître → moins). Levier de la couche biologique. */
         SpeciesBuild sb_demo = species_default_build(re->culture.race);
         float demo = build_leviers(&sb_demo).demographie;
-        float net_growth = BIRTH_RATE*(1.f+demo)*food_s - DEATH_RATE + SOCIETY_BONUS*soc_s;
+        float r_base  = tune_f("POP_R_BASE", 0.00693f);   /* ln2/100 = ×2/siècle plancher */
+        float prosp_n = clampf((re->prosperity - tune_f("POP_PROSP_MID",0.2f))
+                              / tune_f("POP_PROSP_SPAN",1.8f), 0.f, 1.f);   /* PIB/tête → [0,1] (bande haute ≈2.0) */
+        float bonus   = tune_f("POP_PROSP_W",0.15f)*prosp_n
+                      + tune_f("POP_NEEDS_W",0.85f)*re->needs_met;          /* B ∈ [0,1] */
+        float net_growth = r_base*(1.f+demo)*(1.f+bonus);                   /* ×2 plancher → ×4 au plein */
         if (food_s < 0.35f)
             net_growth -= (0.35f - food_s) * 0.12f;   /* pic de mortalité famine */
         net_growth = clampf(net_growth, -0.10f, 0.06f);

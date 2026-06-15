@@ -116,6 +116,15 @@
     /* DETTE (scps_credit, incrément 1) — la ligne de crédit ÉMERGE de la taille éco (capacité à
      * rembourser ∝ pop) ; le taux price le risque (ratio de dette + chute de légitimité). */ \
     X(CREDIT_LINE_BASE,       0.5f) \
-    X(CREDIT_RATE_BASE,       0.05f)
+    X(CREDIT_RATE_BASE,       0.05f) \
+    /* FERTILITÉ = f(besoins satisfaits) — ×2/siècle au plancher (R_BASE=ln2/100), ×4 au panier
+     * plein. needs_met (poids 0.85) + prospérité normalisée PIB/tête (MID/SPAN, poids 0.15).
+     * TAU = seuil de couverture (got≥τ) qui compte une catégorie comme « satisfaite ». */ \
+    X(POP_R_BASE,             0.00693f) \
+    X(POP_PROSP_MID,          0.2f) \
+    X(POP_PROSP_SPAN,         1.8f) \
+    X(POP_PROSP_W,            0.15f) \
+    X(POP_NEEDS_W,            0.85f) \
+    X(NEEDS_MET_TAU,          0.5f)
 
 #endif /* SCPS_TUNE_LIST_H */

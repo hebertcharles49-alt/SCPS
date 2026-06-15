@@ -3581,7 +3581,9 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 22u           /* v22 : DETTE — section CRDT (scps_credit g_creditor[]) appendue
+#define SAVE_VERSION 23u           /* v23 : FERTILITÉ — RegionEconomy.needs_met (float) ⇒ sizeof(WorldEconomy)
+                                    * change → ère antérieure (<v23 refusé).
+                                    * v22 : DETTE — section CRDT (scps_credit g_creditor[]) appendue
                                     * au save (après FACT). save_sane borne g_creditor. <v22 refusé.
                                     * v21 : P-arc — la couche MATÉRIAU labor ÉRADIQUÉE (le matériau
                                     * vit dans le pool éco). LRes 7→2 (LR_FOOD/LR_GOLD) ⇒ LaborEcon.stock/
