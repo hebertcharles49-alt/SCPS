@@ -124,9 +124,23 @@
   consomme quoi change ; pop ~comparable, seed 9 year-100 ~36k). **SAVE non bumpé** (`re->stock`
   reste le store sérialisé, désormais une matérialisation du pool). Un empire **mono-région** ⇒ pool =
   la région, pshare = 1 : moteur **IDENTIQUE** (les bancs unitaires à 1 région/empire ne bougent pas ;
-  `social_demo` marque ses 2 fixtures d'isolation `owner=-1` = stock propre). À VENIR : la chaîne à
-  feu (arquebuserie) reste à **0** quand poudrière & arquebuserie sont en empires DISTINCTS — le pool
-  ne franchit pas la frontière ; c'est un défaut de PLACEMENT des fabriques, pas du modèle de stock.
+  `social_demo` marque ses 2 fixtures d'isolation `owner=-1` = stock propre). Le pool ne franchit pas
+  la frontière (intra-empire seulement) — la chaîne à feu inter-empires restait morte : **RÉSOLU en P2**.
+- **P2 (2026-06-15) — FINIR LA CHAÎNE À FEU (l'arquebusier paraît enfin)** : « si l'IA pose une
+  poudrière, qu'elle FINISSE la chaîne — sinon ça n'a pas de sens ». La doctrine militaire
+  (`ai_build_manufacture`) pose désormais la chaîne à feu **ENTIÈRE** (arquebuserie + **poudrière** +
+  **charbonnière**, comme l'armurier des cités-états) au lieu d'une arquebuserie muette. Quatre gestes :
+  (1) **completion** — bâtir l'arquebuserie déclenche poudrière (salpêtre+charbon→poudre) + charbonnière
+  (bois→charbon) ; le **pool national (P1)** amène le salpêtre d'où qu'il tombe. (2) **gate de sens** —
+  la chaîne ne se pose que si elle peut TOURNER : `TECH_POUDRIERE` découverte ET salpêtre dans l'empire
+  (`empire_has_raw`) ET pas déjà posée (`empire_has_bld`, UNE fois) ; sinon **armurerie lourde** (fer,
+  toujours dispo) — jamais de feu mort. (3) **ÉTHOS ORDRE** rejoint la doctrine martiale (l'État de
+  **discipline** — le drill à poudre, le type le plus apte au feu) aux côtés de Dominateur/Honneur.
+  (4) **T-gate par RÉGION-HÔTE** (et non plus la seule capitale) : avec le pool, une province-fer
+  développée (tier ≥ 3) héberge la chaîne même sous une capitale modeste — la matière y afflue.
+  ⚠ **RE-BASELINE** : feu **0 → 3.3/tick**, arsenal feu 0 → 90+, **arquebusier 0 → 3 unités**
+  (seed 9, year-150) ; l'arc/le trait montent aussi (T-gate assoupli). Determinism 12-ans seed 7
+  **inchangé** (la chaîne n'éclôt qu'après le tier-3, > 12 ans). **SAVE non bumpé**.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

@@ -728,27 +728,54 @@ static void ai_impose_contract(AiActor *a, const World *w, WorldEconomy *econ,
     if (c!=CONTRAT_NONE) diplo_set_vassal(dp, a->cid, loser, c);
 }
 
-/* F-arc — POSER LES MANUFACTURES MILITAIRES PAR DOCTRINE (bâti DÉLIBÉRÉ, gaté par le TIER de
- * capitale + la PUISSANCE ÉCONOMIQUE = l'or). « Combien puis-je poser ? » = ce que le trésor paie ;
- * « par doctrine » : MARTIALE (Dominateur/Honneur) → lourd + feu · ARCANIQUE (appétit faustien) →
- * forge céleste + atelier de mage · FLUIDE → atelier d'arc (trait). Une fabrique par tour ; les
- * troupes suivent à la levée (warhost, par doctrine). Pas d'auto-bâti : c'est un CHOIX payé. */
+/* L'empire EXTRAIT-il `raw` quelque part ? — avec le pool national la matière est fongible, donc
+ * la simple PRÉSENCE d'un gisement suffit (la fabrique se pose où l'on veut, le pool la nourrit). */
+static bool empire_has_raw(const WorldEconomy *econ, int cid, Resource raw){
+    for (int r=0;r<econ->n_regions;r++)
+        if (econ->region[r].owner==cid && econ->region[r].raw_cap[raw]>0.f) return true;
+    return false;
+}
+/* L'empire a-t-il DÉJÀ cette fabrique quelque part ? (la chaîne à feu se pose UNE fois.) */
+static bool empire_has_bld(const WorldEconomy *econ, int cid, BuildingType b){
+    for (int r=0;r<econ->n_regions;r++){
+        if (econ->region[r].owner!=cid) continue;
+        const RegionEconomy *re=&econ->region[r];
+        for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==b) return true;
+    }
+    return false;
+}
+
+/* F-arc — POSER LES MANUFACTURES MILITAIRES PAR DOCTRINE (bâti DÉLIBÉRÉ, gaté par le TIER de la
+ * RÉGION-HÔTE + la PUISSANCE ÉCONOMIQUE = l'or). « Combien puis-je poser ? » = ce que le trésor paie ;
+ * « par doctrine » : MARTIALE (Dominateur/Honneur/ORDRE — l'État de discipline, le plus apte au feu)
+ * → feu + lourd · ARCANIQUE (appétit faustien) → forge céleste + atelier de mage · FLUIDE → atelier
+ * d'arc (trait). La chaîne à feu se POSE ENTIÈRE (poudrière + charbonnière), sinon c'est du feu mort.
+ * Une fabrique par tour ; les troupes suivent à la levée. Pas d'auto-bâti : c'est un CHOIX payé. */
 static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ){
     int cap=a->home_region;
     if (cap<0 || cap>=econ->n_regions) return;
     RegionEconomy *cre=&econ->region[cap];
-    /* « Quelle puissance économique ? » = le TIER de capitale (taille, T1 hameau … T7 mégapole) gate
-     * CE QU'on peut poser ; le trésor gate COMBIEN. (Le tier PAYÉ du labor n'est pas maintenu ici.) */
-    float cpop=cre->strata[CLASS_LABORER].pop+cre->strata[CLASS_BOURGEOIS].pop+cre->strata[CLASS_ELITE].pop;
-    int tier=capitale_max_tier((long)cpop);
+    /* « Quelle puissance économique ? » = une RÉGION-HÔTE assez développée (T-gate PAR RÉGION, dans
+     * la boucle) ; le trésor gate COMBIEN. Avec le pool national, plus besoin que ce soit la CAPITALE :
+     * une province-fer développée héberge la chaîne, et la matière de l'empire y afflue. */
     Ethos eth=ai_capital_ethos(w, econ, a->cid);
     BuildingType want[2]; int nw=0;
-    if (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR){ want[nw++]=BLD_ARMORY_HEAVY; want[nw++]=BLD_ARQUEBUS; }  /* martiale : lourd + feu */
+    if (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR || eth==ETHOS_ORDRE){
+        /* MARTIALE (Dominateur · Honneur · ORDRE — l'État de DISCIPLINE, le drill à poudre : le type le
+         * plus apte à la chaîne à feu) — le FEU d'abord, mais SEULEMENT s'il peut TOURNER : poudre
+         * découverte (TECH_POUDRIERE) + salpêtre dans l'empire (le pool national le rend fongible) +
+         * chaîne pas encore posée. La capacité-clé s'établit UNE fois ; ensuite l'armurerie lourde
+         * (fer, toujours dispo) s'étend. Sans tech/salpêtre : le lourd seul — jamais de feu mort. */
+        if (cre->tech_arquebus && empire_has_raw(econ, a->cid, RES_SALTPETER)
+            && !empire_has_bld(econ, a->cid, BLD_ARQUEBUS))
+            want[nw++]=BLD_ARQUEBUS;
+        want[nw++]=BLD_ARMORY_HEAVY;
+    }
     else if (a->w_faustian > 0.30f){ want[nw++]=BLD_CELESTIAL_FORGE; want[nw++]=BLD_MAGE_WORKSHOP; }          /* arcanique */
     else { want[nw++]=BLD_BOWYER; }                                                                           /* fluide : trait */
     for (int k=0;k<nw;k++){
         BuildingType b=want[k];
-        if (tier < bld_min_tier(b)) continue;                  /* empire pas assez développé (T-gate) */
+        int btier=bld_min_tier(b);
         /* POSER dans la région-RESSOURCE (l'intrant primaire) — sinon la fabrique ne produit pas
          * (régions spécialisées) : fer pour l'armurerie/arc/arquebuse, cristal/fer céleste pour l'arcane. */
         Resource in=(b==BLD_MAGE_WORKSHOP)?RES_ARCANE_CRYSTAL:(b==BLD_CELESTIAL_FORGE)?RES_CELESTIAL_IRON:RES_IRON;
@@ -759,6 +786,7 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
             bool have=false; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==b){ have=true; break; }
             if (have) continue;
             float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+            if (capitale_max_tier((long)rpop) < btier) continue;          /* T-gate PAR RÉGION-HÔTE : la province doit pouvoir héberger ce tier */
             if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;  /* SOUS-STAFFÉ : pas dans le vide */
             if (re->raw_cap[in] > bestcap){ bestcap=re->raw_cap[in]; best=r; }
         }
@@ -766,7 +794,14 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
         float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
         if (cre->treasury < cost) continue;                    /* puissance éco insuffisante → pas le chantier */
         cre->treasury-=cost; econ_flux_add(a->cid, FX_SOLDE, -cost);
-        if (econ_build_manufacture(econ, best, b)) a->stats.builds_other++;
+        if (econ_build_manufacture(econ, best, b)){
+            a->stats.builds_other++;
+            /* FINIR LA CHAÎNE (comme l'armurier à poudre des cités-états) : poudrière (salpêtre+charbon
+             * → poudre) + charbonnière (bois → charbon). Le pool national amène le salpêtre d'où qu'il
+             * tombe ; le feu a enfin sa poudre, l'arquebusier paraît — au lieu d'une fabrique muette. */
+            if (b==BLD_ARQUEBUS){ econ_build_manufacture(econ, best, BLD_POWDERMILL);
+                                  econ_build_manufacture(econ, best, BLD_CHARCOAL); }
+        }
         return;                                                /* une fabrique par tour */
     }
 }
