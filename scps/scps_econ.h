@@ -308,7 +308,7 @@ long econ_friche_count(void);
 typedef enum {
     FX_TAX=0, FX_EXPORT, FX_TOLL_RECV,                /* revenus (+) */
     FX_UPKEEP, FX_COURT, FX_ADMIN, FX_ENCADR,         /* dépenses (−) : édifices/cour/admin/manuf */
-    FX_SOLDE, FX_NAVY, FX_AUDIT, FX_TOLL_PAID, FX_INVEST, FX_CONSEIL,
+    FX_SOLDE, FX_NAVY, FX_AUDIT, FX_TOLL_PAID, FX_INVEST, FX_CONSEIL, FX_IMPORT,
     FX_COUNT
 } FluxComp;
 void   econ_flux_add(int cid, FluxComp comp, float amount);   /* incrémente (signé par convention ci-dessus) */
@@ -377,7 +377,7 @@ float econ_bld_flux_delta(BuildingType b);
 bool  bld_is_faustian(BuildingType b);   /* FAU0 #4 : les 3 transmuteurs (foreuse/réplicateur/corne) */
 void  faust_charge_add(RegionEconomy *re, float amount);  /* FAU0 #2 : le hook de charge UNIQUE */
 long  econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need);  /* F6 : conso d'armes macro (levée/renfort) */
-void  econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float));     /* F-arc : branche la pompe marché (intertrade_market_pull) ; NULL = stock propre seul */
+void  econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float, float));   /* F-arc : pompe marché (intertrade_market_pull, +prix) ; NULL = stock propre seul */
 int   bld_min_tier(BuildingType b);                       /* F-arc : tier de capitale requis pour poser la manufacture */
 bool  econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b);  /* F-arc : bâti délibéré (tier+or vérifiés par l'appelant) */
 /* M6 — la MATIÈRE gate la manufacture arcane : Forge ↔ fer céleste, Atelier ↔ cristal,

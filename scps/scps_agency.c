@@ -304,7 +304,7 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
      * versée à la cité-état hôte (le hub le plus proche) — transfert, pas destruction :
      * les cités-états deviennent banquières du réseau. */
     if (gold > base_gold + 0.01f && re->import_toll_region >= 0 && re->import_toll_region < econ->n_regions){
-        float toll = (gold - base_gold) * IMPORT_TOLL_FRAC;
+        float toll = (gold - base_gold);   /* CONSERVATION : TOUTE la marge → l'hôte (le nu va aux sources via _consume) */
         econ->region[re->import_toll_region].treasury += toll;
         if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
         int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
@@ -314,7 +314,8 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
     for (int k=0;k<BUILD_RES_MAX;k++){
         Resource r=c->res[k];
         if (r<=RES_NONE || r>=RES_COUNT || c->qty[k]<=0.f) continue;
-        intertrade_market_consume(econ, region, r, c->qty[k]*mult);   /* #5 : propre → local → mondial */
+        intertrade_market_consume(econ, region, r, c->qty[k]*mult,
+                                  (re->price[r]<BUILD_MIN_PRICE?BUILD_MIN_PRICE:re->price[r]));   /* nu → sources étrangères */
     }
     bool ok=agency_order_build(a, region, e);      /* enfile le chantier (durée existante) */
     if (ok) g_edi_made[e]++;

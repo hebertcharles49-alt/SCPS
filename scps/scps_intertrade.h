@@ -84,10 +84,10 @@ bool  intertrade_relocate_centre(WorldEconomy *e, int from, int to);/* déplace 
  * DÉPLÉTÉ dans le même ordre. `intertrade_region_hub` : le Centre de rattachement
  * (-1 = autarcie). `intertrade_global_stock` : profondeur du marché mondial. */
 float intertrade_buy_cost      (const WorldEconomy *e, int region, int good, float qty, float unit_price, float *import_base_out);
-void  intertrade_market_consume(WorldEconomy *e, int region, int good, float qty);
-/* F-arc — POMPE D'ARMES : comme _market_consume (propre→Centre local→mondial) mais RENVOIE le
- * total prélevé : la levée (econ_arms_take) s'arme au marché des cités-états quand le stock manque. */
-float intertrade_market_pull   (WorldEconomy *e, int region, int good, float want);
+void  intertrade_market_consume(WorldEconomy *e, int region, int good, float qty, float unit_price);
+/* F-arc — POMPE D'ARMES : propre GRATUIT → Centres ÉTRANGERS = ACHAT borné par le trésor (nu→source,
+ * marge→hôte) ; RENVOIE le total prélevé. La levée (econ_arms_take) s'arme au marché quand le stock manque. */
+float intertrade_market_pull   (WorldEconomy *e, int region, int good, float want, float unit_price);
 /* F-arc — chaque CITÉ-ÉTAT naît ARMURIER : une manufacture d'armes ALÉATOIRE (graine×index) sur son
  * Centre, intrant brut garanti. Les empires y POMPENT leurs armes spécialisées. À semer APRÈS _centres. */
 void  intertrade_seed_citystate_arms(const World *w, WorldEconomy *e);

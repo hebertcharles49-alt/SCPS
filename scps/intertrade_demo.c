@@ -22,6 +22,7 @@
 
 static int g_pass=0,g_fail=0;
 static void ok(const char*w,bool c){ printf("   %s %s\n",c?"✓":"✗",w); if(c)g_pass++; else g_fail++; }
+static double wsum(const WorldEconomy *e){ double s=0.0; for(int r=0;r<e->n_regions;r++) s+=e->region[r].treasury; return s; }
 
 int main(int argc,char**argv){
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
@@ -58,16 +59,18 @@ int main(int argc,char**argv){
     /* A bon marché + surplus ; B cher + pénurie → le bien doit remonter A→B. */
     #define SETUP() do{ econ->region[ra].owner=0; econ->region[rb].owner=1; \
         econ->region[ra].stock[g]=500.f; econ->region[ra].price[g]=1.0f; econ->region[ra].treasury=0.f; \
-        econ->region[rb].stock[g]=0.f;   econ->region[rb].price[g]=6.0f; }while(0)
-
+        econ->region[rb].stock[g]=0.f;   econ->region[rb].price[g]=6.0f; econ->region[rb].treasury=100000.f; }while(0)
+    /* CONSERVATION : Σ trésor du monde — invariant sur tout commerce/pump (zéro faucet, zéro sink). */
     /* ---- 1. Une route inter-pays PORTE des goods ---- */
     printf("\n── 1. La grande route porte des goods (arbitrage + or à l'exportateur) ──\n");
     SETUP();
+    double w0=wsum(econ);
     intertrade_tick(econ,&rn,&dp);
     printf("   après le tick : B reçoit %.0f unités · A encaisse %.0f or · valeur échangée %.0f\n",
            econ->region[rb].stock[g], econ->region[ra].treasury, intertrade_imports_value(econ));
     ok("le bien REMONTE la pente de prix (l'importateur B reçoit)", econ->region[rb].stock[g] > 0.f);
     ok("l'EXPORTATEUR A encaisse de l'or", econ->region[ra].treasury > 0.f);
+    ok("CONSERVATION : Σ trésor du monde INCHANGÉ par le commerce (zéro faucet/sink)", fabs(wsum(econ)-w0) < 1e-2);
     ok("un échange a eu lieu (valeur > 0)", intertrade_imports_value(econ) > 0.f);
     ok("la route marchande est ACTIVE pour les deux pays",
        intertrade_active_routes(econ,&rn,&dp,0)==1 && intertrade_active_routes(econ,&rn,&dp,1)==1);
@@ -116,6 +119,7 @@ int main(int argc,char**argv){
         ok("pr est bien rattaché au Centre ra (son marché régional)", intertrade_region_hub(pr)==ra);
         float marge=econ->region[pr].import_margin; if(marge<1.f)marge=1.f;
         float tres0=econ->region[pr].treasury, hub0=econ->region[ra].stock[RES_WOOD];
+        double wb0=wsum(econ);
         long spent=0; long got=intertrade_market_buy(econ,pr,RES_WOOD,50,0,&spent);
         printf("   achat 50 bois : reçu %ld · payé %ld or · marge ×%.2f · prix attendu %ld\n",
                got, spent, marge, (long)(50*1.0f*marge+0.5f));
@@ -124,6 +128,7 @@ int main(int argc,char**argv){
            spent==(long)(50*1.0f*marge+0.5f) && econ->region[pr].treasury < tres0);
         ok("le bien VIENT du marché (le Centre ra se DÉPLÉTÉ de 50)",
            econ->region[ra].stock[RES_WOOD]==hub0-50.f);
+        ok("CONSERVATION : l'achat ne crée ni ne détruit d'or (acheteur −cost == hub +cost)", fabs(wsum(econ)-wb0) < 1e-2);
         /* UNIQUEMENT s'il est dispo : marché vidé → achat nul, trésor intact */
         econ->region[ra].stock[RES_WOOD]=0.f;
         float tres1=econ->region[pr].treasury;
@@ -165,7 +170,7 @@ int main(int argc,char**argv){
         ok("le GATE voit la matière de la sœur (avail ≥ besoin)", av >= 100.f-1e-3f);
         ok("le DEVIS est GRATUIT (matière d'empire = 0 or, NU d'import = 0)", gold < 1e-3f && ib < 1e-3f);
         float y0=econ->region[Y].stock[RES_STONE];
-        intertrade_market_consume(econ, X, RES_STONE, 100.f);
+        intertrade_market_consume(econ, X, RES_STONE, 100.f, econ->region[X].price[RES_STONE]);
         ok("la CONSO puise la SŒUR Y (−100), X reste vide",
            fabsf(econ->region[Y].stock[RES_STONE]-(y0-100.f))<1e-2f && econ->region[X].stock[RES_STONE]<1e-3f);
     }
@@ -192,7 +197,7 @@ int main(int argc,char**argv){
             ok("le DEVIS facture l'import × marge (l'or paie le déficit étranger)", fabsf(gold-100.f*marge) < 1e-2f);
             ok("la BASE DU PÉAGE est positive (devis − NU = marge de transport > 0)", gold-ib > 1e-3f);
             float ra0=econ->region[ra].stock[RES_STONE];
-            intertrade_market_consume(econ,pr,RES_STONE,100.f);
+            intertrade_market_consume(econ,pr,RES_STONE,100.f, econ->region[pr].price[RES_STONE]);
             ok("la CONSO importe bien du Centre étranger ra (−100)",
                fabsf(econ->region[ra].stock[RES_STONE]-(ra0-100.f))<1e-2f);
         } else {

@@ -902,8 +902,8 @@ void faust_charge_add(RegionEconomy *re, float amount){
  * un crochet (WorldEconomy*, region, good, want)→prélevé qui source les armes propre→Centre→mondial.
  * Le MOTEUR ne dépend donc PAS du sous-système commerce (les bancs unitaires gardent le stock propre
  * seul) ; seule l'app câble le marché des cités-états. */
-static float (*g_arms_pump)(WorldEconomy*, int, int, float) = NULL;
-void econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float)){ g_arms_pump = pump; }
+static float (*g_arms_pump)(WorldEconomy*, int, int, float, float) = NULL;
+void econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float, float)){ g_arms_pump = pump; }
 
 /* F6 (Option B) — CONSOMME `need` armes MACRO (RES_*) du stock de l'empire (région par région),
  * REGISTRE la demande (→ la fabrique produit → consomme le FER) et RENVOIE la quantité prélevée
@@ -921,7 +921,7 @@ long econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need){
          * → Centre de la cité-état la + proche → réseau mondial. Les cités-états (armuriers) fournissent
          * l'arme spécialisée que la région ne fabrique pas. Sans pompe (bancs unitaires) : stock PROPRE
          * seul — le comportement d'origine, sans dépendance au sous-système commerce. */
-        if (g_arms_pump) got += (long)g_arms_pump(econ, r, (int)arm, (float)(need-got));
+        if (g_arms_pump) got += (long)g_arms_pump(econ, r, (int)arm, (float)(need-got), econ->region[r].price[arm]);
         else { long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
             econ->region[r].stock[arm]-=(float)take; got+=take; }
     }
@@ -967,7 +967,7 @@ const char *econ_flux_name(FluxComp comp){
     static const char *N[FX_COUNT]={
         "taxes","export","péages+",
         "entretien","cour","admin","encadr.",
-        "soldes","marine","audits","péages−","invest.","conseil" };
+        "soldes","marine","audits","péages−","invest.","conseil","import" };
     return (comp>=0&&comp<FX_COUNT)?N[comp]:"?";
 }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }

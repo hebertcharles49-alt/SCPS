@@ -26,6 +26,9 @@
     X(IMPORT_MARGIN_THIRD,    1.8f) \
     X(IMPORT_MARGIN_NONE,     2.0f) \
     X(IMPORT_TOLL_FRAC,       0.30f) \
+    /* CONSERVATION du commerce : le prélèvement de l'importateur (Y = X + levy) sur les routes —
+     * l'exportateur encaisse tout (gross + levy), l'importateur paie tout : zéro faucet, zéro sink. */ \
+    X(TRADE_LEVY,             0.10f) \
     /* §G0.1 — le directeur (les fenêtres de température) */ \
     X(DIR_T_HOT,              0.50f) \
     X(DIR_T_COLD,             0.32f) \

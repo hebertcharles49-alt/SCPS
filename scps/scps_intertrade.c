@@ -360,37 +360,56 @@ static float empire_take(WorldEconomy *e, int owner, int skip, int good, float w
 }
 /* #5 — CONSOMMER pour un CHANTIER (mutation) : région de chantier → RESTE de l'empire (son réseau de
  * marchés/ports absorbe le flux terrestre) → Centre local → réseau mondial (import). Cache cohérent. */
-void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty){
+void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty, float unit_price){
     if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||qty<=0.f) return;
     int hub = (region<SCPS_MAX_REG)? g_hub_of[region] : -1;
-    qty -= centre_take(e, region, good, qty);                          /* 1. région de chantier */
+    qty -= centre_take(e, region, good, qty);                          /* 1. région de chantier — GRATUIT */
     if (qty<=1e-3f) return;
-    qty -= empire_take(e, e->region[region].owner, region, good, qty); /* 2. RESTE de l'empire */
+    qty -= empire_take(e, e->region[region].owner, region, good, qty); /* 2. RESTE de l'empire — GRATUIT */
     if (qty<=1e-3f) return;
-    if (hub>=0 && hub!=region) qty -= centre_take(e, hub, good, qty);  /* 3. marché local (import) */
+    if (hub>=0 && hub!=region){                                        /* 3. Centre local étranger : IMPORT */
+        float t = centre_take(e, hub, good, qty);
+        e->region[hub].treasury += t * unit_price;                     /* la SOURCE encaisse le NU (conservation) */
+        qty -= t;
+    }
     if (qty<=1e-3f || hub<0) return;
-    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){   /* 4. marché mondial (import) */
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){   /* 4. réseau mondial étranger : IMPORT */
         if (!g_centre[r]||r==hub||r==region) continue;
-        qty -= centre_take(e, r, good, qty);
+        float t = centre_take(e, r, good, qty);
+        e->region[r].treasury += t * unit_price;                       /* idem : la source encaisse le NU */
+        qty -= t;
+        if (qty<=1e-3f) break;
     }
 }
 
 /* F-arc — POMPE D'ARMES : même cascade que _market_consume (propre → Centre local de la cité-état
  * la + proche → réseau mondial des Centres) mais RENVOIE le total prélevé. La levée doit savoir ce
  * qu'elle a pu armer ; les cités-états (armuriers du monde) fournissent ce que la région ne fait pas. */
-float intertrade_market_pull(WorldEconomy *e, int region, int good, float want){
+float intertrade_market_pull(WorldEconomy *e, int region, int good, float want, float unit_price){
     if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT||want<=0.f) return 0.f;
     if (g_hub_dirty){ hub_map_build(e); global_cache_refresh(e); g_hub_dirty=false; }   /* carte/cache sûrs hors tick (levée annuelle) */
-    int hub = g_hub_of[region];
-    float got=0.f, t;
-    t=centre_take(e,region,good,want); got+=t; want-=t;                              /* 1. propre */
-    if (want>1e-3f && hub>=0 && hub!=region){ t=centre_take(e,hub,good,want); got+=t; want-=t; }  /* 2. local */
-    if (want>1e-3f && hub>=0) for (int r=0;r<e->n_regions && r<SCPS_MAX_REG; r++){    /* 3. mondial */
-        if (!g_centre[r]||r==hub||r==region) continue;
-        t=centre_take(e,r,good,want); got+=t; want-=t;
-        if (want<=1e-3f) break;
-    }
-    return got;
+    int hub=g_hub_of[region], owner=e->region[region].owner;
+    float price=unit_price; if (price<0.2f) price=0.2f;                 /* plancher (cf. MARKET_MIN_PRICE) */
+    int toll_r=e->region[region].import_toll_region;
+    bool has_host=(toll_r>=0 && toll_r<e->n_regions);
+    float base=e->region[region].import_margin; if(base<1.f)base=1.f;
+    float got=0.f,t;
+    t=centre_take(e,region,good,want); got+=t; want-=t;                 /* 1. PROPRE : gratuit (fer déjà payé) */
+    /* étage marchand : la région ACHÈTE aux Centres ÉTRANGERS, borné par son trésor.
+       nu(prix)→source ; marge→cité-état hôte si hôte. CONSERVÉ (zéro sink). */
+    #define PULL_BUY(R,MULT) do{ if(want>1e-3f){ \
+        float up=price*((has_host)?(MULT):1.f); long aff=(up>0.f)?(long)(e->region[region].treasury/up):0; \
+        float w=fminf(want,(float)aff); if(w>1e-3f){ \
+            float tk=centre_take(e,(R),good,w); float nu=tk*price, tot=tk*up; \
+            e->region[(R)].treasury+=nu; if(has_host&&tot>nu) e->region[toll_r].treasury+=(tot-nu); \
+            e->region[region].treasury-=tot; if(owner>=0) econ_flux_add(owner,FX_IMPORT,-tot); \
+            got+=tk; want-=tk; } } }while(0)
+    if (hub>=0 && hub!=region && e->region[hub].owner!=owner) PULL_BUY(hub, base);          /* 2. local */
+    if (want>1e-3f && hub>=0) for (int r=0;r<e->n_regions && r<SCPS_MAX_REG; r++){           /* 3. mondial */
+        if(!g_centre[r]||r==hub||r==region||e->region[r].owner==owner) continue;
+        PULL_BUY(r, base*2.f); if(want<=1e-3f) break; }
+    #undef PULL_BUY
+    return got;   /* les Centres PROPRES (hub/monde) sont fournis par leur propre itération dans econ_arms_take */
 }
 
 /* #5 (action joueur) — l'ACHAT/VENTE DIRECT AU MARCHÉ (l'actionneur que l'UI appelle ;
@@ -428,14 +447,21 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
     float cost=(float)qty*up;
     re->treasury -= cost;                                         /* PUMP du trésor */
     re->stock[good] += (float)qty;                               /* le bien entre au stock */
-    if (tier<=0){ e->region[hub].stock[good]-=(float)qty; if(e->region[hub].stock[good]<0.f)e->region[hub].stock[good]=0.f; }
-    else {
-        long rem=qty;
+    if (tier<=0){
+        e->region[hub].stock[good]-=(float)qty; if(e->region[hub].stock[good]<0.f)e->region[hub].stock[good]=0.f;
+        e->region[hub].treasury += cost;                          /* CONSERVATION : le hub (source+hôte) encaisse le plein */
+    } else {
+        long rem=qty; float nu_credited=0.f;
         for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && rem>0;r++){
             if (!g_centre[r] || r==region) continue;             /* V2 : JAMAIS sa propre région */
             long t=(long)e->region[r].stock[good]; if (t>rem) t=rem;
             e->region[r].stock[good]-=(float)t; rem-=t;
+            float nu=(float)t*price; e->region[r].treasury += nu; /* la source encaisse le NU */
+            nu_credited += nu;
         }
+        float toll = cost - nu_credited;                          /* la marge → cité-état hôte */
+        if (toll>0.f && re->import_toll_region>=0 && re->import_toll_region<e->n_regions)
+            e->region[re->import_toll_region].treasury += toll;
     }
     g_global_cache[good]-=(float)qty; if(g_global_cache[good]<0.f)g_global_cache[good]=0.f;  /* V2.2 : cache à jour (anti sur-tirage intra-tick) */
     if (spent) *spent=(long)(cost+0.5f);
@@ -461,8 +487,13 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
     if (qty<=0) return 0;
     float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
     float gain=(float)qty*price;
+    if (gain > e->region[dep].treasury){                         /* CONSERVATION : borné au trésor de l'absorbeur */
+        float k = (gain>0.f)? e->region[dep].treasury/gain : 0.f;
+        qty=(long)((float)qty*k); if (qty<=0) return 0;
+        gain=(float)qty*price; }
     re->stock[good]-=(float)qty;
     re->treasury+=gain;
+    e->region[dep].treasury-=gain;                               /* l'absorbeur PAIE (vendeur +gain == dep −gain) */
     e->region[dep].stock[good]+=(float)qty;                      /* le bien rejoint le marché (un AUTRE Centre) */
     g_global_cache[good]+=(float)qty;                            /* V2.2 : cache à jour */
     if (gained) *gained=(long)(gain+0.5f);
@@ -537,6 +568,7 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             if (!own) re->import_toll_region=(int16_t)hub;        /* péage à la cité-état hôte (la plus proche) */
         }
     }
+    float trade_levy = tune_f("TRADE_LEVY", 0.10f);   /* prélèvement importateur (conservation) */
     for (int i=0;i<rn->n;i++){
         const TradeRoute *rt=&rn->route[i];
         if (!rt->open) continue;
@@ -568,6 +600,14 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             RegionEconomy *src=a_to_b?A:B, *dst=a_to_b?B:A;     /* on achète au moins cher */
             float vol=fminf(cap*it_volume_mult(rt,a_to_b), fmaxf(0.f, src->stock[g]-econ_build_reserve((Resource)g))*IT_EXPORT_FRAC);  /* garde le FOND de bâti */
             if (vol<=0.001f) continue;
+            /* CONSERVATION (zéro faucet) : l'acheteur PAIE total=gross·(1+levy), le vendeur
+             * l'ENCAISSE intégralement. Borné au trésor de l'importateur (sans or → pas d'achat). */
+            if (dst->treasury <= 0.f) continue;
+            float price=(pa+pb)*0.5f;            /* médian : les deux bouts y gagnent */
+            float gross=vol*price;
+            float total=gross*(1.f+trade_levy);
+            if (total > dst->treasury){ float k=dst->treasury/total; vol*=k; gross*=k; total=dst->treasury; }
+            if (vol<=0.001f) continue;
             { bool down=it_is_downstream(rt,a_to_b);  /* télémétrie : le tri par sens ÉMERGE */
               if (rt->maritime||rt->fluvial){
                   if (down) g_vol_down+=vol; else g_vol_up+=vol;
@@ -575,20 +615,22 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                   if (it_is_precious(g)) { if (down) g_prec_down+=vol; else { g_prec_up+=vol; g_nprec_up++; } }
               } }
             src->stock[g]-=vol; dst->stock[g]+=vol;             /* le bien remonte la pente de prix */
-            float value=vol*dst->price[g];
-            src->treasury += value*IT_MARGIN_TO_GOLD;           /* l'exportateur encaisse l'or */
-            if (src->owner>=0) econ_flux_add(src->owner, FX_EXPORT, value*IT_MARGIN_TO_GOLD);  /* I0 */
-            g_last_value += value;
+            dst->treasury -= total;                             /* l'acheteur PAIE Y */
+            src->treasury += total;                             /* le vendeur ENCAISSE Y (trésor réel) */
+            if (src->owner>=0){ econ_flux_add(src->owner, FX_EXPORT, gross);
+                                econ_flux_add(src->owner, FX_TOLL_RECV, total-gross); }  /* I0 */
+            if (dst->owner>=0) econ_flux_add(dst->owner, FX_IMPORT, -total);
+            g_last_value += gross;
             /* la valeur PASSE par les Centres des deux couronnes (moitié chacun) —
              * la part des cités-états dans le commerce mondial se lit là. */
             { int cca=intertrade_country_centre(e,ca), ccb=intertrade_country_centre(e,cb);
-              if (cca>=0&&cca<SCPS_MAX_REG) g_centre_val[cca]+=value*0.5f;
-              if (ccb>=0&&ccb<SCPS_MAX_REG) g_centre_val[ccb]+=value*0.5f; }
+              if (cca>=0&&cca<SCPS_MAX_REG) g_centre_val[cca]+=gross*0.5f;
+              if (ccb>=0&&ccb<SCPS_MAX_REG) g_centre_val[ccb]+=gross*0.5f; }
             /* comptabilité des flux (sidebar) : qui exporte/importe quoi, vers/depuis qui */
             { int cs=(src==A)?ca:cb, cd=(dst==A)?ca:cb;
               if (cid_ok(cs)&&cid_ok(cd)){
-                  g_expt[cs][g]+=vol; g_imp[cd][g]+=vol; g_gold[cs]+=value*IT_MARGIN_TO_GOLD;
-                  g_pair[cs][cd]+=value; g_pair[cd][cs]+=value;
+                  g_expt[cs][g]+=vol; g_imp[cd][g]+=vol; g_gold[cs]+=total;
+                  g_pair[cs][cd]+=gross; g_pair[cd][cs]+=gross;
                   if (vol>g_expt_best[cs][g]){ g_expt_best[cs][g]=vol; g_expt_to [cs][g]=(int16_t)cd; }
                   if (vol>g_imp_best [cd][g]){ g_imp_best [cd][g]=vol; g_imp_from[cd][g]=(int16_t)cs; }
               } }
