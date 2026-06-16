@@ -195,51 +195,87 @@ static int nature_pick(const Cell *c, uint32_t h){
         case BIO_MOUNTAINS:
             return v<2?MAP_NAT_MOUNTAIN_SMALL:v==2?MAP_NAT_ROCK_CLUSTER:MAP_NAT_CLIFF_FACE;
         case BIO_PEAK:       return (h&1u)?MAP_NAT_MOUNTAIN_SNOW:MAP_NAT_MOUNTAIN_PEAK;
-        case BIO_GLACIER:    return v==0?MAP_NAT_ICE_ROCKS:v==1?MAP_NAT_SNOW_PINE:-1;
+        case BIO_GLACIER:    return (h&1u)?MAP_NAT_MOUNTAIN_SNOW:MAP_NAT_ICE_ROCKS;   /* roche nue enneigée, pas de pins */
         case BIO_VOLCANO:    return (h&1u)?MAP_NAT_VOLCANO_CONE:MAP_NAT_VOLCANIC_ROCK;
         default:             return -1;
     }
 }
-/* La passe : iter cellules visibles (lattice monde, pas STEP), décide par biome
- * via hash. Appelée APRÈS le blit du terrain, AVANT les frontières/labels. */
+/* taille du décor en pixels ~ catégorie (rangée d'atlas) × zoom. Les arbres sont
+ * GRANDS (canopée qui se chevauche), l'herbe/écume petits. */
+static int nature_size(int id, float sc){
+    float k;
+    if (id < 16)        k = (id==MAP_NAT_GRASS_TUFT||id==MAP_NAT_BUSH_SMALL) ? 2.0f
+                          : (id==MAP_NAT_BUSH_CLUSTER||id==MAP_NAT_TREE_STUMP) ? 2.6f : 3.6f;  /* arbres */
+    else if (id < 32)   k = 2.8f;                                       /* marais : roseaux */
+    else if (id < 48)   k = 2.6f;                                       /* rivière */
+    else if (id < 64)   k = (id>=MAP_NAT_MOUNTAIN_SMALL && id<=MAP_NAT_MOUNTAIN_SNOW) ? 3.8f
+                          : (id==MAP_NAT_VOLCANO_CONE) ? 4.0f : 2.8f;   /* roches / montagnes */
+    else                k = 2.2f;                                       /* côte / écume */
+    int px=(int)(sc*k);
+    if (px < 10) px = 10;
+    if (px > 110) px = 110;
+    return px;
+}
+/* densité par biome : combien de cellules-candidates sur 16 portent un décor
+ * (forêts/montagnes/marais ≈ couverture pleine ; plaines clairsemées). */
+static int nature_density(Biome b){
+    switch (b){
+        case BIO_FOREST: case BIO_JUNGLE:                      return 13;
+        case BIO_MOUNTAINS: case BIO_PEAK: case BIO_GLACIER:   return 13;
+        case BIO_MARSH: case BIO_BOG:                          return 11;
+        case BIO_WOODS: case BIO_MANGROVE:                     return 10;
+        case BIO_VOLCANO:                                      return 9;
+        case BIO_HILLS: case BIO_HIGHLANDS:                    return 7;
+        case BIO_FARMLAND: case BIO_PLAINS: case BIO_GRASSLAND:
+        case BIO_STEPPE: case BIO_SAVANNA:                     return 4;
+        case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 3;
+        case BIO_DESERT:                                       return 2;
+        default:                                               return 0;
+    }
+}
+/* La passe : iter cellules visibles (lattice monde, pas adaptatif → densité
+ * écran ~constante et compte borné), décide par biome via hash. Rangées
+ * top→bottom = dessin ARRIÈRE→AVANT (les décors bas-ancrés se recouvrent en
+ * canopée). Appelée APRÈS le terrain, AVANT les frontières/labels. */
 static void draw_map_nature_decals(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
     if (!g_nature_tex) return;
-    float sc = cam->scale;                       /* pixels par cellule */
-    if (sc < 3.0f) return;                        /* trop dézoomé → pas de décor (sous-pixel) */
-    int alpha = (sc < 6.0f) ? 150 : (sc < 10.0f ? 200 : 235);
-    int dpx = (int)(sc * 2.2f); if (dpx < 8) dpx = 8; if (dpx > 56) dpx = 56;
-    const int step = 2;                           /* un candidat toutes les 2 cellules */
-    int cx0=(int)cam->ox-1, cy0=(int)cam->oy-1;
-    int cx1=(int)(cam->ox + win_w/sc)+1, cy1=(int)(cam->oy + win_h/sc)+1;
+    float sc = cam->scale;                        /* pixels par cellule */
+    if (sc < 3.0f) return;                         /* trop dézoomé → pas de décor (sous-pixel) */
+    /* pas monde tel que l'espacement ÉCRAN reste ~constant (≈ 14 px) : dense de
+     * près, jamais en bouillie ni explosif en compte. */
+    int step = (int)(14.0f/sc + 0.5f); if (step < 1) step = 1; if (step > 4) step = 4;
+    int alpha = (sc < 5.0f) ? 200 : (sc < 9.0f ? 230 : 255);
+    int cx0=(int)cam->ox-2, cy0=(int)cam->oy-2;
+    int cx1=(int)(cam->ox + win_w/sc)+2, cy1=(int)(cam->oy + win_h/sc)+2;
     if (cx0<0) cx0=0;
     if (cy0<0) cy0=0;
     if (cx1>SCPS_W) cx1=SCPS_W;
     if (cy1>SCPS_H) cy1=SCPS_H;
     cx0 -= cx0%step; cy0 -= cy0%step;             /* lattice ancré monde → stable au pan */
     SDL_SetTextureAlphaMod(g_nature_tex, (Uint8)alpha);
-    for (int cy=cy0; cy<cy1; cy+=step){
+    for (int cy=cy0; cy<cy1; cy+=step){           /* rangées : arrière → avant */
         for (int cx=cx0; cx<cx1; cx+=step){
             const Cell *c = scps_cellc(w, cx, cy);
             int sx=(int)((cx - cam->ox)*sc), sy=(int)((cy - cam->oy)*sc);
             if (c->sea){                          /* mer : seulement l'ÉCUME au trait de côte */
                 if (c->sea==SEA_CABOTAGE){
                     uint32_t hf=map_hash(cx,cy,0xF0A1u);
-                    if ((hf%5u)==0) nature_blit(ren,(hf&1u)?MAP_NAT_COAST_FOAM_SMALL:MAP_NAT_WAVELETS_A,
-                                                sx-dpx/2, sy-dpx/2, dpx);
+                    if ((hf%6u)==0u){ int id=(hf&1u)?MAP_NAT_COAST_FOAM_SMALL:MAP_NAT_WAVELETS_A;
+                        int px=nature_size(id,sc); nature_blit(ren,id,sx-px/2,sy-px/2,px); }
                 }
                 continue;
             }
             uint32_t h=map_hash(cx,cy,0x5EED01u);
-            int dense=(c->biome==BIO_FOREST||c->biome==BIO_JUNGLE||c->biome==BIO_MARSH||c->biome==BIO_MANGROVE);
-            if ((h % (dense?2u:4u)) != 0u){
-                if (c->river>40 && !c->lake && (h&7u)==0u)   /* fleuve à fort débit : un reflet */
-                    nature_blit(ren, MAP_NAT_RIVER_SHIMMER, sx-dpx/2, sy-dpx/2, dpx);
+            if ((int)(h&15u) >= nature_density(c->biome)){     /* pas tiré : éventuel reflet de fleuve */
+                if (c->river>40 && !c->lake && (h&3u)==0u){ int px=nature_size(MAP_NAT_RIVER_SHIMMER,sc);
+                    nature_blit(ren, MAP_NAT_RIVER_SHIMMER, sx-px/2, sy-px/2, px); }
                 continue;
             }
             int id=nature_pick(c,h);
             if (id<0) continue;
-            int jx=((int)((h>>8)&3u))-1, jy=((int)((h>>10)&3u))-1;   /* jitter sous-cellule */
-            nature_blit(ren, id, sx-dpx/2+jx, sy-(dpx*3)/4+jy, dpx);  /* ancrage bas-centre */
+            int px=nature_size(id,sc);
+            int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
+            nature_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre */
         }
     }
     SDL_SetTextureAlphaMod(g_nature_tex, 255);
