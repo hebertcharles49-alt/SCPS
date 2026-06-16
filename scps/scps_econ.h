@@ -33,6 +33,7 @@
 #ifndef SCPS_ECON_H
 #define SCPS_ECON_H
 
+#include <stdio.h>          /* FILE* : helpers de save (prod_cap) */
 #include "scps_types.h"
 #include "scps_culture.h"   /* PopCulture embarque les traits dérivés (Ethos, …) */
 #include "scps_species.h"   /* couche biologique : race + traits (leviers) */
@@ -378,6 +379,12 @@ bool  bld_is_faustian(BuildingType b);   /* FAU0 #4 : les 3 transmuteurs (foreus
 void  faust_charge_add(RegionEconomy *re, float amount);  /* FAU0 #2 : le hook de charge UNIQUE */
 long  econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need);  /* F6 : conso d'armes macro (levée/renfort) */
 void  econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float, float));   /* F-arc : pompe marché (intertrade_market_pull, +prix) ; NULL = stock propre seul */
+/* §11.4 — LIMITEUR DE PRODUCTION (cap joueur/ressource/pays). -1 = désactivé (∞). Au plafond,
+ * la manufacture cesse de produire ce bien (intrants libérés). État statique → save/load dédiés. */
+void  econ_set_prod_cap(int country, int good, float maxv);
+float econ_prod_cap   (int country, int good);
+void  econ_prodcap_save(FILE *f);
+bool  econ_prodcap_load(FILE *f);
 int   bld_min_tier(BuildingType b);                       /* F-arc : tier de capitale requis pour poser la manufacture */
 bool  econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b);  /* F-arc : bâti délibéré (tier+or vérifiés par l'appelant) */
 /* M6 — la MATIÈRE gate la manufacture arcane : Forge ↔ fer céleste, Atelier ↔ cristal,

@@ -1407,12 +1407,13 @@ enum { SBH_TAB=1, SBH_ECOSUB, SBH_EMBARGO, SBH_RELOC_SRC, SBH_RELOC_DST, SBH_REL
        SBH_MARCHE_SUB /* #5 : a=sous-onglet marché (0 local · 1 régio · 2 global) */,
        SBH_BUY  /* #5 : a=bien, b=tier (0 régio · 1 global) — pompe au marché */,
        SBH_SELL /* #5 : a=bien, b=tier — vend au marché */,
-       SBH_PACT /* M3 : a=pays partenaire, b=1 signer / 0 rompre un pacte commercial */ };
+       SBH_PACT /* M3 : a=pays partenaire, b=1 signer / 0 rompre un pacte commercial */,
+      SBH_PROD_CAP /* limiteur : a=good ; clic gauche/molette+ → +step, clic droit/molette− → −step (Maj = ×10) */ };
 typedef struct { SDL_Rect r; int kind, a, b; } SbHit;
-static SbHit g_sbhits[120]; static int g_nsbhits;
+static SbHit g_sbhits[256]; static int g_nsbhits;
 static void sbhit_reset(void){ g_nsbhits=0; }
 static void sbhit_add(SDL_Rect r, int kind, int a, int b){
-    if (g_nsbhits<120){ g_sbhits[g_nsbhits].r=r; g_sbhits[g_nsbhits].kind=kind;
+    if (g_nsbhits<256){ g_sbhits[g_nsbhits].r=r; g_sbhits[g_nsbhits].kind=kind;
                         g_sbhits[g_nsbhits].a=a; g_sbhits[g_nsbhits].b=b; g_nsbhits++; }
 }
 
@@ -1779,7 +1780,8 @@ static bool sb_good_alive(int g){
 }
 static void sb_panel_stocks(SDL_Renderer *ren, int x, int y, int w, int h, Sim *s, const World *world){
     static char buf[56][130]; int nb=0;
-    (void)world; (void)w;
+    static char capl[56][16]; int nbc=0;  /* libellés limiteur de production */
+    (void)world;
     static const Resource STRAT[3]={RES_SALTPETER,RES_CELESTIAL_IRON,RES_ARCANE_CRYSTAL};
     draw_text(ren,g_font_small,x+10,y,COL_DIM,"bien            stock   net/j   couv."); y+=16;
     int idx[RES_COUNT], n=0;
@@ -1812,15 +1814,28 @@ static void sb_panel_stocks(SDL_Renderer *ren, int x, int y, int w, int h, Sim *
                  (i<base)?"\xe2\x98\x85 ":"  ", resource_name((Resource)g),
                  g_sbc.stk[g], netl, couv);
         draw_text(ren,g_font_small,x+8,y,sb_marche_col(m),buf[nb]); nb++;
+        /* LIMITEUR DE PRODUCTION — contrôle [−] cap [+] à droite de la ligne.
+         * b=+1 → augmenter ; b=-1 → diminuer. La molette est aussi interceptée. */
+        { float capv=econ_prod_cap(s->player, g);
+          if (capv<0.f) snprintf(capl[nbc],16,"\xe2\x88\x9e"); /* ∞ UTF-8 */
+          else          snprintf(capl[nbc],16,"%d",(int)capv);
+          int cx2=x+w-90;
+          draw_text(ren,g_font_small,cx2,y,COL_DIM,capl[nbc]); nbc++;
+          /* [-] à gauche, [+] à droite du libellé */
+          sbhit_add((SDL_Rect){cx2-14,y-1,12,14}, SBH_PROD_CAP, g, -1);
+          draw_text(ren,g_font_small,cx2-14,y,COL_DIM,"-");
+          sbhit_add((SDL_Rect){cx2+36,y-1,12,14}, SBH_PROD_CAP, g, +1);
+          draw_text(ren,g_font_small,cx2+36,y,COL_DIM,"+");
+        }
         /* un ordre DISPONIBLE est un état : le chip [exploiter] sur la ligne en tension,
          * si une terre à toi porte ce bien (sinon : rien — le silence informe). */
         if (chips<4 && (m==MARCHE_PENURIE||m==MARCHE_TENDU)){
             for (int r=0;r<s->econ->n_regions;r++){
                 const RegionEconomy *re=&s->econ->region[r];
                 if (re->owner!=s->player||!re->colonized||re->raw_cap[g]<=0.f) continue;
-                sbhit_add((SDL_Rect){x+w-92,y-1,80,14}, SBH_EXPLOIT, r, g);
+                sbhit_add((SDL_Rect){x+w-92,y-1,44,14}, SBH_EXPLOIT, r, g);
                 draw_text(ren,g_font_small,x+w-92,y,COL_COPPER,"[exploiter]");
-                zone_add((SDL_Rect){x+w-92,y-1,80,14},
+                zone_add((SDL_Rect){x+w-92,y-1,44,14},
                     "Aménager l'extraction (mine/carrière) sur ta terre qui porte ce bien — en file, en jours.");
                 chips++; break;
             }
@@ -2480,6 +2495,19 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
             if (hh->b>=0) statecraft_council_hire(s->sc, s->player, hh->a, hh->b);
             else          statecraft_council_dismiss(s->sc, s->player, hh->a);
             break;
+        case SBH_PROD_CAP: {                                 /* limiteur de production (onglet Stocks) */
+            int step=(SDL_GetModState()&KMOD_SHIFT)?100:10;
+            float cur=econ_prod_cap(s->player, hh->a);
+            float nxt;
+            if (hh->b>0){                                    /* augmenter */
+                nxt=(cur<0.f)?step:(cur+step);
+            } else {                                          /* diminuer */
+                if (cur<0.f) nxt=0.f;
+                else { nxt=cur-step; if (nxt<0.f) nxt=-1.f; } /* sous 0 → ∞ (désactivé) */
+            }
+            econ_set_prod_cap(s->player, hh->a, nxt);
+            printf("\n[scps] limiteur %s : %g\n", resource_name((Resource)hh->a), (double)nxt);
+        } break;
         default: break;
     }
     return true;
@@ -3581,7 +3609,8 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 23u           /* v23 : FERTILITÉ — RegionEconomy.needs_met (float) ⇒ sizeof(WorldEconomy)
+#define SAVE_VERSION 24u           /* v24 : LIMITEUR — section prod_cap appendue après CRDT (econ_prodcap_save/load). <v24 refusé.
+                                    * v23 : FERTILITÉ — RegionEconomy.needs_met (float) ⇒ sizeof(WorldEconomy)
                                     * change → ère antérieure (<v23 refusé).
                                     * v22 : DETTE — section CRDT (scps_credit g_creditor[]) appendue
                                     * au save (après FACT). save_sane borne g_creditor. <v22 refusé.
@@ -3686,6 +3715,7 @@ static bool game_save(int slot, World *w, Sim *s, const WorldParams *params){
     ok&=sv_w(f,SV_TAG('D','P','L','S'), NULL,0); diplo_save_statics(f);
     ok&=sv_w(f,SV_TAG('F','A','C','T'), NULL,0); faction_save(f);
     ok&=sv_w(f,SV_TAG('C','R','D','T'), NULL,0); credit_save(f);   /* dette : g_creditor[] */
+    ok&=sv_w(f,SV_TAG('P','C','A','P'), NULL,0); econ_prodcap_save(f);   /* v24 : limiteur de production */
     /* intégrité + CHIFFREMENT (post-passe) : on relit le payload CLAIR, on prend son
      * empreinte, on le chiffre (ChaCha20, nonce unique), on le réécrit en place.
      * L'en-tête reste en clair (l'écran Charger lit la ligne sans déchiffrer). */
@@ -3832,6 +3862,7 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
     ok&=sv_r(f,SV_TAG('D','P','L','S'), NULL,0); ok&=diplo_load_statics(f);
     ok&=sv_r(f,SV_TAG('F','A','C','T'), NULL,0); ok&=faction_load(f);
     ok&=sv_r(f,SV_TAG('C','R','D','T'), NULL,0); ok&=credit_load(f);   /* dette : g_creditor[] */
+    ok&=sv_r(f,SV_TAG('P','C','A','P'), NULL,0); ok&=econ_prodcap_load(f);   /* v24 : limiteur de production */
     long p1=ftell(f); fclose(f);
     if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;     /* taille/section : refus net */
     if (!save_sane(w, s, s->player)) return 1;             /* invariants du moteur : refus net */
@@ -4459,6 +4490,24 @@ int main(int argc, char **argv) {
 
             case SDL_MOUSEWHEEL: {
                 int mx, my; SDL_GetMouseState(&mx, &my);
+                /* molette sur un contrôle SBH_PROD_CAP → ajuste le limiteur (pas de scroll) */
+                bool pcap_handled=false;
+                if (sim.ready && g_sb.tab==SBT_STOCKS){
+                    for (int i=0;i<g_nsbhits&&!pcap_handled;i++){
+                        SbHit *hh=&g_sbhits[i]; if (hh->kind!=SBH_PROD_CAP) continue;
+                        SDL_Rect *r=&hh->r;
+                        if (mx>=r->x&&mx<r->x+r->w&&my>=r->y&&my<r->y+r->h){
+                            int step=(SDL_GetModState()&KMOD_SHIFT)?100:10;
+                            float cur=econ_prod_cap(sim.player, hh->a);
+                            float nxt;
+                            if (ev.wheel.y>0){ nxt=(cur<0.f)?step:(cur+step); }
+                            else { if (cur<0.f) nxt=0.f; else { nxt=cur-step; if(nxt<0.f) nxt=-1.f; } }
+                            econ_set_prod_cap(sim.player, hh->a, nxt);
+                            pcap_handled=true; dirty=true;
+                        }
+                    }
+                }
+                if (pcap_handled) break;
                 if (sidebar_wheel(mx, my, ev.wheel.y)) { dirty=true; break; }   /* le tiroir défile (hit-test d'abord) */
                 float factor = (ev.wheel.y > 0) ? 1.25f : 0.80f;
                 cam_zoom(&cam, factor, (float)mx, (float)my);

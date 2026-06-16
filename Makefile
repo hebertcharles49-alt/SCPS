@@ -351,6 +351,10 @@ CREDIT_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_ai_demo.o,$(AI_DEMO_OBJS)) $(OBJ
 credit_demo: $(CREDIT_DEMO_OBJS)
 	$(CC) $(CREDIT_DEMO_OBJS) -o $@ -lm
 
+CAP_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_ai_demo.o,$(AI_DEMO_OBJS)) $(OBJDIR)/scps_cap_demo.o
+cap_demo: $(CAP_DEMO_OBJS)
+	$(CC) $(CAP_DEMO_OBJS) -o $@ -lm
+
 CHRONICLE_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
                   $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                   $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \

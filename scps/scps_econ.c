@@ -354,7 +354,10 @@ static void econ_seed_population(RegionEconomy *re, float total_pop) {
     }
 }
 
+/* §11.4 — LIMITEUR DE PRODUCTION joueur : cap par (pays,ressource). -1 = ∞ (désactivé). */
+static float g_prod_cap[SCPS_MAX_COUNTRY][RES_COUNT];
 void econ_init(WorldEconomy *e, const World *w) {
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(e,0,sizeof(*e));
     econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */
     e->n_regions=w->n_regions;
@@ -905,6 +908,9 @@ void faust_charge_add(RegionEconomy *re, float amount){
 static float (*g_arms_pump)(WorldEconomy*, int, int, float, float) = NULL;
 void econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float, float)){ g_arms_pump = pump; }
 
+void econ_set_prod_cap(int c,int g,float v){ if(c>=0&&c<SCPS_MAX_COUNTRY&&g>RES_NONE&&g<RES_COUNT) g_prod_cap[c][g]=v; }
+float econ_prod_cap(int c,int g){ return (c>=0&&c<SCPS_MAX_COUNTRY&&g>RES_NONE&&g<RES_COUNT)?g_prod_cap[c][g]:-1.f; }
+
 /* F6 (Option B) — CONSOMME `need` armes MACRO (RES_*) du stock de l'empire (région par région),
  * REGISTRE la demande (→ la fabrique produit → consomme le FER) et RENVOIE la quantité prélevée
  * (plafonnée par le stock). UN SEUL ROBINET : levée (warhost) ET renfort (campaign) y passent. */
@@ -1281,6 +1287,16 @@ void econ_tick(WorldEconomy *e, float dt) {
             if (rc->out==RES_PRECIOUS_WARE){
                 float gap = re->demand[rc->out]*GATE_DEMAND_BUFFER - S[rc->out];
                 lim = fminf(lim, fmaxf(0.f,gap)/fmaxf(rc->qout*prod_mult,EPS));
+            }
+            /* LIMITEUR JOUEUR (§11.4) : cap/ressource. Au plafond → lim=0 → continue AVANT la conso
+               (intrants NON consommés = libérés). −1 = désactivé. Vise le STOCK réel (arms_mult inclus). */
+            if (owner_>=0 && owner_<SCPS_MAX_COUNTRY){
+                float pc = g_prod_cap[owner_][rc->out];
+                if (pc >= 0.f){
+                    float per_lim = rc->qout*prod_mult
+                                  * ((res_is_arm(rc->out)&&rc->out!=RES_ENCHANTED_ARMS)?tune_f("MANUF_ARMS_MULT",10.f):1.f);
+                    lim = fminf(lim, fmaxf(0.f, pc - S[rc->out])/fmaxf(per_lim, EPS));
+                }
             }
             if (lim<=0.f){ b->workers=0.f; continue; }
             float want_labor=rc->labor*cap;
@@ -2034,3 +2050,6 @@ void econ_print_summary(const WorldEconomy *e, const World *w) {
         printf("  région la plus riche : #%d « %s » (PIB %.0f)\n",
                best, w->region[best].name[0]?w->region[best].name:"—", best_gdp);
 }
+
+void econ_prodcap_save(FILE *f){ fwrite(g_prod_cap,sizeof g_prod_cap,1,f); }
+bool econ_prodcap_load(FILE *f){ return fread(g_prod_cap,sizeof g_prod_cap,1,f)==1; }
