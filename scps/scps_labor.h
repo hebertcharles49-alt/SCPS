@@ -29,7 +29,7 @@ typedef enum { LAB_LABORER=0, LAB_ARTISAN, LAB_ELITE, LAB_CLASS_COUNT } LaborCla
  * vit désormais dans le pool éco, Σ stock des régions du même propriétaire ; il ne
  * reste que les deux ressources PROPRES à labor) (§3) ------------------- */
 typedef enum {
-    LR_FOOD=0, LR_GOLD,
+    LR_FOOD=0,
     LR_COUNT
 } LRes;
 
@@ -89,11 +89,6 @@ typedef struct {
     long      stock[LR_COUNT];
     long      flow [LR_COUNT];   /* net/jour du dernier tick (pour la topbar) */
     LMarket   market;
-    long      treasury;         /* or (miroir de stock[LR_GOLD] — LE trésor unique E0.3) */
-    float     tax_acc;          /* fractions de taxes en attente (créditées par entiers) */
-    float     solde_acc;        /* fractions de solde en attente (débitées par entiers) */
-    float     wage_acc;         /* I2 — fractions du salaire des jobs (débitées par entiers) */
-    bool      staffing_frozen;  /* I2 — masse salariale impayée → on n'embauche plus (pas de licenciement) */
     /* géo précalculée par province du monde (relue, jamais posée) */
     float     g_fert[SCPS_MAX_PROV];   /* fertilité moyenne [0..1] */
     float     g_flow[SCPS_MAX_PROV];   /* flux commercial (carrefour) */
@@ -150,11 +145,8 @@ int  capitale_defense (int tier);
 long capitale_admin_pop(int tier);            /* pop de Nobles employée à l'administration (tier·100) */
 long capitale_housing  (int tier, long admin_pop); /* logement/service : min(paquets,tier)·1000 (gaté) */
 float capitale_prodmult(int tier, long admin_pop); /* productivité : 1 + 0.05·min(paquets,tier) */
-/* Coût d'amélioration vers `to_tier` (recette LRes de plus en plus précieuse). */
-typedef struct { LRes a, b; long qa, qb; } CapCost;
-CapCost capitale_upgrade_cost(int to_tier);
-/* Améliore la capitale d'un tier SI la pop le débloque ET la recette est payable
- * (pompée au marché si manque). Renvoie true si l'amélioration a eu lieu. */
+/* Améliore la capitale d'un tier SI la pop le débloque (FREE — l'or vit dans le
+ * livre éco). Renvoie true si l'amélioration a eu lieu. */
 bool capitale_upgrade(LProvince *p, LaborEcon *e);
 /* Fait ÉMERGER les classes des emplois (par 100) et délivre logement/services/
  * productivité (gatés par les paquets de Nobles en poste). N'achète RIEN (lecture). */
@@ -183,12 +175,6 @@ long  labor_food_balance  (const LaborEcon *e);    /* collecte − bouche − ra
 
 /* ---- Le marché & le prix dynamique (§7) ------------------------------- */
 float labor_material_price(const LaborEcon *e);             /* prix temps réel (demande) */
-/* E0.6 — la pompe livre la ressource DEMANDÉE (plus du bois en dur) → coût or. */
-long  labor_pump_market   (LaborEcon *e, LRes res, long amount);
-/* E2 §12 — la VENTE manuelle : l'inverse de la pompe. Vend jusqu'à `amount` du
- * stock au prix courant (or ← trésor unique) ; vendre DÉTEND la demande (le prix
- * retombe). Renvoie l'or encaissé. */
-long  labor_sell_market   (LaborEcon *e, LRes res, long amount);
 
 /* ---- Population : le POOL et sa répartition (topbar) ------------------ */
 long        labor_pop_total   (const LaborEcon *e);   /* le pool total */

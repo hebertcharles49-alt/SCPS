@@ -35,7 +35,7 @@ static void setup_labor(LaborEcon *e, long laborer, long elite){
     LProvince *p=&e->prov[0]; p->prov=0; p->colonized=true;
     p->pop_by_class[LAB_LABORER]=laborer; p->pop_by_class[LAB_ELITE]=elite;
     p->pop=laborer+elite;
-    e->stock[LR_GOLD]=2000; e->market.supply=1.f; e->market.price=1.f;
+    e->market.supply=1.f; e->market.price=1.f;
 }
 static ArmyState one(UnitType t, long count){
     ArmyState a; army_init(&a); a.n_units=1; a.units[0].type=t; a.units[0].count=count;

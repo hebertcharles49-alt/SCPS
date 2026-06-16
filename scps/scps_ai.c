@@ -852,7 +852,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                          AgencyState *ag, RouteNetwork *rn, float brake, int day){
     /* Famine d'abord : un peuple affamé ne bâtit ni cours ni comptoir. */
     if (v->food < AI_FOOD_FLOOR && a->home_region>=0){
-        if (agency_build(ag, econ, a->home_region, EDI_GRENIER)) a->stats.builds_other++;
+        if (agency_build(ag, econ, w, a->home_region, EDI_GRENIER)) a->stats.builds_other++;
         return;
     }
     /* Le chantier (militaire · manufacture civile · bâtiment civil) est PONDÉRÉ PAR LE TEMPÉRAMENT
@@ -874,7 +874,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
          * par la fiche ; le moteur d'ordre fait le verdict. */
         if (brake > AI_BRAKE_HARD && a->w_expand >= 0.60f){
             Edifice e = ai_next_h_edifice(econ, a->home_region);
-            if (a->home_region>=0 && agency_build(ag, econ, a->home_region, e)){
+            if (a->home_region>=0 && agency_build(ag, econ, w, a->home_region, e)){
                 a->stats.builds_h++;
                 faction_lever_apply(a->cid, ai_lever_for_edifice(e), AI_LEVER_BUILD);  /* §4 : bâtir = voter */
             }
@@ -935,7 +935,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 } else {
                     e = ai_next_k_edifice(econ, hr);       /* le métabolisme par défaut : K */
                 }
-                if (hr>=0 && agency_build(ag, econ, hr, e)){
+                if (hr>=0 && agency_build(ag, econ, w, hr, e)){
                     /* développement institutionnel PROACTIF (la marque du Bâtisseur)
                      * vs DIGESTION imposée par le frein — on ne les confond pas. */
                     if      (kind==2)               a->stats.builds_other++;
@@ -955,7 +955,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
         if (a->has_halles && hub>=0 && hub<econ->n_regions
             && econ->region[hub].n_entrepot<1
             && econ->region[hub].treasury>400.f
-            && agency_build(ag, econ, hub, EDI_ENTREPOT)){
+            && agency_build(ag, econ, w, hub, EDI_ENTREPOT)){
             a->stats.builds_other++;
             faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);
         } else {
@@ -963,7 +963,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             if (p>=0 && routes_order(rn, w, econ, a->home_region, p, false)){
                 a->stats.routes++;
                 faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);   /* §4 : le négoce AVANCE les Marchands */
-            } else if (a->home_region>=0 && agency_build(ag, econ, a->home_region, EDI_MARCHE)){
+            } else if (a->home_region>=0 && agency_build(ag, econ, w, a->home_region, EDI_MARCHE)){
                 a->stats.builds_other++;                   /* pas de partenaire : on bâtit le carrefour */
                 faction_lever_apply(a->cid, FAC_MARCHAND, AI_LEVER_BUILD);
             }

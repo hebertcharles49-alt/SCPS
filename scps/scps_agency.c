@@ -7,6 +7,7 @@
  */
 #include "scps_agency.h"
 #include "scps_intertrade.h"   /* #5 : le marché à 2 étages (devis + déplétion des stocks) */
+#include "scps_credit.h"       /* un seul livre d'or : le chantier débite l'or national (debt-aware) */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>   /* getenv : diag de gate (SCPS_GATEDIAG) */
@@ -271,7 +272,7 @@ float agency_build_gold(const WorldEconomy *econ, int region, Edifice e){
     return agency_build_gold_ex(econ, region, e, NULL);
 }
 
-bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct){
+bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e, int owner){
     if (e<0||e>=EDIFICE_COUNT || !econ || region<0 || region>=econ->n_regions) return false;
     if (e==EDI_PORT && !econ->region[region].coastal) return false;   /* un port se bâtit SUR la côte (mer §5) */
     if (e==EDI_TRADE_CENTER && !econ->region[region].coastal && !econ->region[region].estuary)
@@ -292,14 +293,11 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
     RegionEconomy *re=&econ->region[region];
     float base_gold=0.f;
     float gold = agency_build_gold_ex(econ, region, e, &base_gold);
-    if (gold_acct){                                /* E0.3 : le TRÉSOR UNIQUE paie (la topbar dit vrai) */
-        long lcost=(long)ceilf(gold);
-        if (*gold_acct < lcost){ g_edi_nogold[e]++; return false; }
-        *gold_acct -= lcost;
-    } else {
-        if (gold > re->treasury){ g_edi_nogold[e]++; return false; }   /* pas l'or → pas de chantier */
-        re->treasury -= gold;                      /* on PAIE le marché en or */
-    }
+    /* UN SEUL LIVRE D'OR : on débite l'or NATIONAL de `owner` via le module de crédit
+     * (au-delà du trésor → dette, créancier assigné). Bloque seulement au-delà de la
+     * ligne de crédit ; sinon le chantier passe et l'or peut filer négatif. */
+    if (!credit_can_spend(econ, w, owner, gold)){ g_edi_nogold[e]++; return false; }
+    credit_spend(econ, w, owner, gold);
     /* I6/#5 — LE PÉAGE : la marge au-dessus du nu (transport + double taxe mondiale)
      * versée à la cité-état hôte (le hub le plus proche) — transfert, pas destruction :
      * les cités-états deviennent banquières du réseau. */
@@ -321,8 +319,8 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e
     if (ok) g_edi_made[e]++;
     return ok;
 }
-bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e){
-    return agency_build_acct(a, econ, region, e, NULL);
+bool agency_build(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e){
+    return agency_build_acct(a, econ, w, region, e, (econ&&region>=0&&region<econ->n_regions)?econ->region[region].owner:-1);
 }
 TechId edifice_gate_tech(Edifice e){
     switch (e){

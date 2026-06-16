@@ -279,7 +279,7 @@ static void sim_day(Sim *s, World *w) {
              * la plus peuplée) : un empire à capitale enclavée participe enfin à la mer. */
             int pr=navy_best_coast(w,s->econ,c);
             if (pr>=0 && s->econ->region[pr].build.port<=0.f && s->econ->region[pr].treasury>400.f){
-                agency_build(s->ag, s->econ, pr, EDI_PORT);
+                agency_build(s->ag, s->econ, w, pr, EDI_PORT);
             } else if (navy_best_port(w,s->econ,c)>=0 && s->navy->n[c].build_hull<0){
                 if (s->navy->n[c].hull[HULL_TRANSPORT]<2 && re->treasury>500.f)
                     navy_order_build(s->navy, w, s->econ, c, HULL_TRANSPORT);

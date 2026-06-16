@@ -74,12 +74,9 @@ long warhost_disband(WarHost *h, int cid){
  * la mobilisation puise dans un stock de guerre, pas dans la production courante). */
 static long seed_scratch(LaborEcon *e, const World *w, const WorldEconomy *econ, int cid){
     labor_seed_from_world(e, w, econ, cid);
-    long pop=0, elite=0;
-    for (int p=0;p<e->n_prov;p++){ pop += e->prov[p].pop; elite += e->prov[p].pop_by_class[LAB_ELITE]; }
-    long mat = pop/6 + 100;                      /* dotation de guerre ∝ pop (P-arc : le matériau vit
-                                                  * dans le pool éco ; seul l'or transitoire reste ici) */
-    e->stock[LR_GOLD] += mat;
-    e->market.supply=1.f; e->market.price=1.f;
+    long elite=0;
+    for (int p=0;p<e->n_prov;p++){ elite += e->prov[p].pop_by_class[LAB_ELITE]; }
+    e->market.supply=1.f; e->market.price=1.f;   /* P-arc : matériau & or vivent dans le pool éco, plus ici */
     return elite;
 }
 

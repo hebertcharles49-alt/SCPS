@@ -1,22 +1,21 @@
 /*
- * labor_demo.c — l'économie des populations : jobs, nourriture, or, marché
+ * labor_demo.c — l'économie des populations : jobs, nourriture, marché
  *
  *   make labor_demo && ./labor_demo [graine]
  *
  * Prouve les deux principes (la prod scale sur les JOBS REMPLIS ; les sorties
- * LISENT la géo) et les règles de l'arc « une économie, un trésor, une bouche » :
+ * LISENT la géo) et les règles de l'arc « une économie, une bouche » :
  *   1. Jobs, pas bâtiments : doubler les jobs double la prod ; un bâtiment vide = 0.
  *   2. Géo du marché : un marché au désert ~+0.3 ; le même florissant ~+15.
  *   3. Départ canonique E0.5 : 4000 pop, collecteurs DIMENSIONNÉS sur la géo,
  *      PAS de marché ; BOUCHE UNIQUE = pop/100 (E0.2).
  *   4. P-arc : la couche MATÉRIAU labor est éradiquée (elle vit dans le pool éco) —
  *      extraction & atelier sont INERTES (aucune sortie de matériau).
- *   5. Marché dynamique : prix par la demande ; la pompe sert les ressources PROPRES
- *      (nourriture) au prix courant (E0.6).
+ *   5. Marché dynamique : prix par la demande.
  *   6. Niveaux : un bâtiment niveau 6 offre 2200 pop de jobs.
  *   7. Plein dev : province pleine à Prospérité 100 → pop +15 % plus vite.
  *   8. E0.1/E0.3 : labor ne fait plus NAÎTRE personne (resync depuis le monde) ;
- *      les taxes tombent chaque jour au trésor unique ; le solde de l'armée sort.
+ *      le solde de l'armée sort.
  */
 #include "scps_world.h"
 #include "scps_econ.h"
@@ -85,12 +84,12 @@ int main(int argc, char **argv){
         else next_++;
     }
     long bouche=labor_food_consumed(e), collecte=labor_food_collected(e);
-    printf("   pop=%ld  collecteurs=%d extraction=%d ateliers=%d marchés=%d | bouche %ld/j · collecte %ld/j · stock F/Or=%ld/%ld\n",
+    printf("   pop=%ld  collecteurs=%d extraction=%d ateliers=%d marchés=%d | bouche %ld/j · collecte %ld/j · stock F=%ld\n",
            e->prov[0].pop, ncol, next_, nate, nmar, bouche, collecte,
-           e->stock[LR_FOOD], e->stock[LR_GOLD]);
-    ok("4000 pop, 200 F/Or ; un emplacement d'extraction (inerte) est posé (E0.5 ; P-arc : matériau → pool éco)",
+           e->stock[LR_FOOD]);
+    ok("4000 pop, 200 F ; un emplacement d'extraction (inerte) est posé (E0.5 ; P-arc : matériau → pool éco)",
        e->prov[0].pop==4000 && ncol>=1 && next_==1 && nate==1 &&
-       e->stock[LR_FOOD]==200 && e->stock[LR_GOLD]==200);
+       e->stock[LR_FOOD]==200);
     ok("PAS de marché au départ — le commerce early passe par les Centres (P3.20)", nmar==0);
     ok("LA BOUCHE UNIQUE (E0.2) : conso == pop/100 (tous mangent, employés ou non)",
        bouche == e->prov[0].pop/100);
@@ -114,8 +113,8 @@ int main(int argc, char **argv){
     pc->bld[2]=(LBuilding){ LB_WORKSHOP,0, 1, 0 };
     long chain_pop = (pc->bld[0].jobs_filled+pc->bld[1].jobs_filled+pc->bld[2].jobs_filled)*POP_PER_SLOT;
     /* aucun stock labor ne doit gonfler : la sortie matériau a disparu. On vérifie que
-     * les 2 ressources PROPRES (nourriture/or) ne reçoivent rien de ces bâtiments. */
-    long food0=e->stock[LR_FOOD], gold0=e->stock[LR_GOLD];
+     * la ressource PROPRE (nourriture) ne reçoit rien de ces bâtiments. */
+    long food0=e->stock[LR_FOOD];
     LRes ores; float owk=labor_building_output(e,0,2,&ores);   /* la sortie de l'atelier */
     for (int t=0;t<3;t++) labor_tick(e);
     printf("   chaîne = %ld pop (scierie+mine+atelier) ; sortie atelier = %.2f (sentinelle, aucune ressource)\n",
@@ -123,29 +122,17 @@ int main(int argc, char **argv){
     ok("les emplacements existent toujours (3 jobs = 300 pop)", chain_pop==300);
     ok("extraction & atelier sont INERTES : aucune sortie de matériau (sentinelle LR_COUNT)",
        ores==LR_COUNT && owk==0.f);
-    ok("ni nourriture ni or ne sont produits par scierie/mine/atelier (passe extraction sautée)",
-       e->stock[LR_FOOD]<=food0 && e->stock[LR_GOLD]==gold0);
+    ok("la nourriture n'est pas produite par scierie/mine/atelier (passe extraction sautée)",
+       e->stock[LR_FOOD]<=food0);
 
-    /* ═══ 5. LE MARCHÉ DYNAMIQUE (demande → prix ; pomper coûte) ════════ */
+    /* ═══ 5. LE MARCHÉ DYNAMIQUE (demande → prix) ════════════════════════ */
     printf("\n── 5. Le prix des matériaux est GÉNÉRÉ par la demande ──\n");
     memset(e,0,sizeof(*e)); labor_init(e,w);
-    e->stock[LR_GOLD]=1000;
     e->market.supply=10.f; e->market.demand=5.f;  float price_low=labor_material_price(e);
     e->market.demand=80.f;                          float price_high=labor_material_price(e);
     printf("   prix matériaux : faible demande → %.2f | tout le monde bâtit (forte demande) → %.2f\n",
            price_low, price_high);
     ok("forte demande (tout le monde bâtit) → le prix MONTE", price_high > price_low);
-    long gold_before=e->stock[LR_GOLD];
-    float price_now=labor_material_price(e);
-    /* P-arc : les matériaux ne sont plus pompables au marché labor (ils vivent dans le
-     * pool éco) ; la pompe ne sert plus que les ressources PROPRES — ici la NOURRITURE. */
-    long food_before=e->stock[LR_FOOD];
-    long cost=labor_pump_market(e, LR_FOOD, 20);   /* on POMPE 20 de nourriture au prix courant */
-    printf("   pomper 20 (nourriture) au prix %.2f → coût %ld or (stock or %ld→%ld, nourriture +20)\n",
-           price_now, cost, gold_before, e->stock[LR_GOLD]);
-    ok("pomper le manque coûte au PRIX COURANT (montant × prix)",
-       cost==(long)(20*price_now+0.5f) && e->stock[LR_GOLD]==gold_before-cost
-       && e->stock[LR_FOOD]==food_before+20);
 
     /* ═══ 6. LES NIVEAUX — les jobs qui scalent ════════════════════════ */
     printf("\n── 6. Six niveaux ; capacité de jobs cumulée 100→1000 ──\n");
@@ -195,14 +182,6 @@ int main(int argc, char **argv){
     { long sg, sf; labor_army_upkeep(e,&sg,&sf);
       printf("   solde : %ld or/j + %ld ration(s)/j pour 400 enrôlés\n", sg, sf);
       ok("E0.3 : le solde vaut 0.5 or + 1 ration par 100 enrôlés et par jour", sg==2 && sf==4); }
-    /* E0.3 — les TAXES tombent chaque jour au trésor unique. */
-    { memset(e,0,sizeof(*e)); labor_init(e,w);
-      labor_seed_start(e, 0);
-      long g0=e->stock[LR_GOLD];
-      for (int t=0;t<10;t++) labor_tick(e);
-      printf("   taxes : or %ld → %ld en 10 jours (4000 âmes, sans marché ni armée)\n", g0, e->stock[LR_GOLD]);
-      ok("E0.3 : les taxes par classe CRÉDITENT le trésor unique chaque jour",
-         e->stock[LR_GOLD] > g0+20); }
     /* E0.1 — RESYNC : la pop labor RELIT les strates de sa région adossée. */
     { WorldEconomy *we=malloc(sizeof(WorldEconomy));
       if (we){
@@ -251,24 +230,24 @@ int main(int argc, char **argv){
         }
         if (cRich>=0 && cPoor>=0 && cRich!=cPoor){
             labor_seed_from_world(e,w,econ,cRich); for(int t=0;t<5;t++) labor_tick(e);
-            float idxR=labor_prosperity_index(e); long goldR=e->flow[LR_GOLD];
+            float idxR=labor_prosperity_index(e);
             labor_seed_from_world(e,w,econ,cPoor); for(int t=0;t<5;t++) labor_tick(e);
-            float idxP=labor_prosperity_index(e); long goldP=e->flow[LR_GOLD];
-            printf("   pays RICHE (flux %.2f) : indice prospérité %.1f → Prospérité %d  (or +%ld/j)\n",
-                   bestF, idxR, (int)(idxR*10.f+0.5f), goldR);
-            printf("   pays PAUVRE (flux %.2f) : indice prospérité %.1f → Prospérité %d  (or +%ld/j)\n",
-                   worstF, idxP, (int)(idxP*10.f+0.5f), goldP);
+            float idxP=labor_prosperity_index(e);
+            printf("   pays RICHE (flux %.2f) : indice prospérité %.1f → Prospérité %d\n",
+                   bestF, idxR, (int)(idxR*10.f+0.5f));
+            printf("   pays PAUVRE (flux %.2f) : indice prospérité %.1f → Prospérité %d\n",
+                   worstF, idxP, (int)(idxP*10.f+0.5f));
             ok("l'économie est seedée du vrai pays et son indice tient dans [0..10]",
                idxR>=0.f && idxR<=10.f && idxP>=0.f && idxP<=10.f);
-            ok("la richesse SUIT la géographie (meilleur flux → plus de revenu/prospérité)",
-               goldR > goldP && idxR >= idxP);
+            ok("la richesse SUIT la géographie (meilleur flux → meilleure prospérité)",
+               idxR >= idxP);
         } else { ok("(monde trop homogène pour le test d'intégration — ignoré)", true);
                  ok("(idem)", true); }
         free(econ);
     } else { ok("(OOM econ — ignoré)", true); ok("(idem)", true); }
 
     /* ═══ §CAPITALE : bâtiment obligatoire AMÉLIORABLE + mobilité de classe ═══ */
-    printf("\n── §capitale : capitale obligatoire/améliorable (payante) + mobilité de classe ──\n");
+    printf("\n── §capitale : capitale obligatoire/améliorable (pop-gatée, gratuite) + mobilité de classe ──\n");
     {
         LaborEcon *ce = malloc(sizeof(LaborEcon));
         if (ce){
@@ -281,23 +260,19 @@ int main(int argc, char **argv){
             ok("le STATUT vient du TIER : tier 1 « Hameau », 5 « Cité », 7 « Mégapole »",
                !strcmp(capitale_status(1),"Hameau") && !strcmp(capitale_status(5),"Cité")
                && !strcmp(capitale_status(7),"Mégapole"));
-            /* 2. la POP PLAFONNE le tier ; la RECETTE de plus en plus précieuse PAIE. */
+            /* 2. la POP PLAFONNE le tier ; l'amélioration est GRATUITE (pop-gatée). */
             ok("la population PLAFONNE le tier (500→1, 4000→4, 10000→7)",
                capitale_max_tier(500)==1 && capitale_max_tier(4000)==4 && capitale_max_tier(10000)==7);
-            CapCost c2=capitale_upgrade_cost(2), c4=capitale_upgrade_cost(4), c7=capitale_upgrade_cost(7);
-            /* P-arc : la recette se paie désormais en OR (couche matériau → pool éco) ;
-             * elle reste de plus en plus CHÈRE de tier en tier. */
-            ok("la recette d'amélioration se paie en OR, de plus en plus cher (tier 2 < 4 < 7)",
-               c2.a==LR_GOLD && c4.a==LR_GOLD && c7.a==LR_GOLD && c2.qa<c4.qa && c4.qa<c7.qa);
-            ce->stock[LR_GOLD]=20000; cp->pop=4000; cp->cap_tier=1;
-            long gold0=ce->stock[LR_GOLD];
+            /* pop suffisante : l'amélioration RÉUSSIT et monte le tier (gratuite). */
+            cp->pop=4000; cp->cap_tier=1;
             bool up=capitale_upgrade(cp,ce);
-            printf("   amélioration tier 1→2 : payée %ld or (stock %ld→%ld) ; tier %d\n",
-                   gold0-ce->stock[LR_GOLD], gold0, ce->stock[LR_GOLD], cp->cap_tier);
-            ok("améliorer CONSOMME l'or et monte le tier (ce n'est pas gratuit)",
-               up && cp->cap_tier==2 && ce->stock[LR_GOLD]<gold0 && ce->treasury==ce->stock[LR_GOLD]);
-            cp->pop=500; cp->cap_tier=1; ce->stock[LR_GOLD]=99999;
-            ok("la POP plafonne : 500 hab ne débloque RIEN au-delà du tier 1, même riche", !capitale_upgrade(cp,ce));
+            printf("   amélioration tier 1→2 (pop=4000) : %s ; tier=%d\n",
+                   up?"réussie":"échouée", cp->cap_tier);
+            ok("pop suffisante → capitale_upgrade RÉUSSIT et monte le tier (gratuit)",
+               up && cp->cap_tier==2);
+            /* pop trop faible : l'amélioration ÉCHOUE au plafond pop. */
+            cp->pop=500; cp->cap_tier=1;
+            ok("la POP plafonne : 500 hab ne débloque RIEN au-delà du tier 1", !capitale_upgrade(cp,ce));
             /* 3-5. PAQUETS DE 100 + GATING + productivité. */
             ok("Nobles par PAQUETS de 100 : l'admin emploie tier·100 (tier 3 → 300)", capitale_admin_pop(3)==300);
             ok("GATING : 0 paquet noble → 0 logement, +0 %, MÊME à haut tier",
@@ -329,32 +304,6 @@ int main(int argc, char **argv){
                capitale_unhoused(cp)==0 && capitale_unserved(cp)==0 && capitale_unrest(cp)==0.f);
             free(ce);
         } else ok("(OOM capitale — ignoré)", true);
-    }
-
-    /* ═══ I2 — LE SALAIRE DES JOBS (masse salariale + gel à l'impayé) ═══ */
-    printf("\n── I2. Le salaire des jobs : masse salariale, gel du staffing à l'impayé ──\n");
-    {
-        LaborEcon *le=malloc(sizeof(LaborEcon));
-        if (le){
-            labor_init(le,w); labor_seed_start(le,0);
-            for (int t=0;t<6;t++) labor_tick(le);            /* peuple les slots */
-            long emp0=labor_pop_employed(le);
-            ok("I2 : le domaine EMPLOIE (slots remplis > 0, masse salariale payée)",
-               emp0>0 && !le->staffing_frozen);
-            /* on VIDE les jobs (la pop redevient libre) puis on GÈLE, trésor plein
-             * (on ISOLE l'effet du gel) : le tick ne ré-embauche PAS. */
-            for (int i=0;i<le->n_prov;i++) for (int b=0;b<le->prov[i].n_bld;b++) le->prov[i].bld[b].jobs_filled=0;
-            le->staffing_frozen=true; le->stock[LR_GOLD]=10000000L;
-            labor_tick(le);
-            long emp_frozen=labor_pop_employed(le);
-            ok("I2 : staffing GELÉ → aucune ré-embauche (les slots vidés le restent)", emp_frozen==0);
-            /* on DÉGÈLE, trésor plein : la masse salariale est payée → le staffing regarnit. */
-            le->staffing_frozen=false; le->stock[LR_GOLD]=10000000L;
-            labor_tick(le);
-            ok("I2 : trésor plein → le gel se lève, le staffing REGARNIT (emploi remonte)",
-               labor_pop_employed(le)>emp_frozen);
-            free(le);
-        } else { ok("(OOM I2 — ignoré)",true); ok("(idem)",true); ok("(idem)",true); }
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

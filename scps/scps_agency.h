@@ -97,14 +97,15 @@ void agency_init(AgencyState *a);
 /* Met une action en file (false si pleine). NU — sans coût (bas niveau / bancs d'essai). */
 bool agency_order_build  (AgencyState *a, int region, Edifice e);
 
-/* Bâtir EN PAYANT (§1) : achète la recette AU MARCHÉ (or du trésor régional ; le
- * marché est consommé), PUIS enfile le chantier. Refuse — pas de chantier — si le
- * trésor ne couvre pas. C'est la voie de la sim vive (IA). */
-bool agency_build(AgencyState *a, WorldEconomy *econ, int region, Edifice e);
-/* E0.3 — LE TRÉSOR UNIQUE du joueur : même chantier, mais l'or sort du COMPTE
- * fourni (le trésor labor) au lieu du trésor régional — la topbar dit VRAI.
- * gold_acct NULL ≡ agency_build. Les matériaux sortent toujours du marché régional. */
-bool agency_build_acct(AgencyState *a, WorldEconomy *econ, int region, Edifice e, long *gold_acct);
+/* Bâtir EN PAYANT (§1) : achète la recette AU MARCHÉ (or NATIONAL du propriétaire, via
+ * le module de crédit — peut s'endetter ; le marché est consommé), PUIS enfile le
+ * chantier. Refuse — pas de chantier — au-delà de la ligne de crédit. Voie de la sim
+ * vive (IA & joueur). owner = le pays qui paie (econ_country_gold, debt-aware). */
+bool agency_build(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e);
+/* E0.3 — un seul livre d'or : le chantier débite l'or NATIONAL de `owner` via credit_spend
+ * (au-delà du trésor → dette, créancier assigné) ; la topbar (econ_country_gold) dit VRAI.
+ * Les matériaux sortent toujours du marché régional ; le péage va à la cité-état hôte. */
+bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e, int owner);
 /* E2 §13 — édifices GATÉS par l'arbre : Comptoir ← « Comptoirs marchands »,
  * Entrepôt ← « Halles & entrepôts ». Tout le reste est libre. ts NULL = libre
  * (bancs d'essai, voies basses). */

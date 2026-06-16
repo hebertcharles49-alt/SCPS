@@ -21,6 +21,7 @@
 #include "scps_prosperity.h"
 #include "scps_readout.h"
 #include "scps_agency.h"
+#include "scps_credit.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -105,6 +106,7 @@ int main(int argc, char **argv){
     prosperity_init(s.wp,s.w);
     legitimacy_init(s.wl,s.w,s.econ);
     agency_init(s.ag);
+    credit_init();   /* un seul livre d'or : agency_build débite l'or NATIONAL via crédit */
 
     /* Joueur + sa région-capitale (où l'on bâtit). */
     s.player=0;
@@ -225,12 +227,12 @@ int main(int argc, char **argv){
          * avancé). La matière, pas l'or, porte désormais le tier. (Les deux sont des
          * édifices STACKABLES hors-famille : pas de verrou « déjà bâti ».) */
         float stone_g0=re->stock[RES_STONE];
-        bool built_g = agency_build(s.ag, s.econ, s.cap_reg, EDI_GRENIER);
+        bool built_g = agency_build(s.ag, s.econ, s.w, s.cap_reg, EDI_GRENIER);
         float stone_eaten_grenier = stone_g0 - re->stock[RES_STONE];
         ok("bâtir CONSOMME la matière de l'empire (le stock baisse)", built_g && stone_eaten_grenier > 0.f);
         re->stock[RES_STONE]=1000.f;   /* on RÉ-DOTE pour mesurer le palier supérieur seul */
         float stone_c0=re->stock[RES_STONE];
-        bool built_i = agency_build(s.ag, s.econ, s.cap_reg, EDI_IRRIGATION);   /* palier vivrier supérieur */
+        bool built_i = agency_build(s.ag, s.econ, s.w, s.cap_reg, EDI_IRRIGATION);   /* palier vivrier supérieur */
         float stone_eaten_irrig = stone_c0 - re->stock[RES_STONE];
         printf("   pierre mangée : Grenier %.0f · Irrigation %.0f (le TIER porte la recette)\n",
                stone_eaten_grenier, stone_eaten_irrig);
@@ -243,7 +245,7 @@ int main(int argc, char **argv){
             if (owner<0 ? r==s.cap_reg : s.econ->region[r].owner==owner)
                 s.econ->region[r].stock[RES_STONE]=0.f;
         int nbefore=s.ag->n;
-        bool blocked = agency_build(s.ag, s.econ, s.cap_reg, EDI_GRENIER);
+        bool blocked = agency_build(s.ag, s.econ, s.w, s.cap_reg, EDI_GRENIER);
         ok("pénurie de matière (rien en propre, aucun Centre) : REFUSÉ, pas de chantier",
            !blocked && s.ag->n==nbefore);
     }

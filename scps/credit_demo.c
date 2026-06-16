@@ -95,6 +95,23 @@ int main(void){
     if (tmp) fclose(tmp);
     ok("save/load roundtrip préserve le créancier", sv && ld && credit_of(0)==1);
 
+    /* — 7. LE JOUEUR entre dans la dette par un chantier (incrément 2) —
+     * L'incrément 1 ne prouvait que l'IA ; le joueur emprunte au MÊME livre. On choisit
+     * P = le pays joueur, on lui passe une dépense de TAILLE CHANTIER au-delà de son or,
+     * et la mécanique mord pareil : trésor net < 0, créancier assigné, l'intérêt creuse. */
+    printf("\n── 7. Le JOUEUR entre dans la dette (chantier > trésor) ──\n");
+    credit_init(); setup(e, 100.f, 5000.f);
+    int P=0;   /* le pays joueur (POLITY_PLAYER) */
+    float build_cost = (float)econ_country_gold(e,P) + 350.f;   /* > trésor, taille chantier, sous la ligne */
+    credit_spend(e,w,P,build_cost);
+    ok("le chantier pousse l'or du JOUEUR sous zéro (dette)", econ_country_gold(e,P) < 0.0);
+    ok("un créancier (cité-état/mercantile) est assigné au joueur", credit_of(P) >= 0);
+    double p_before  = econ_country_gold(e,P);
+    double len_before= e->region[credit_of(P)].treasury;
+    credit_year_tick(e, wl, w);
+    ok("l'intérêt CREUSE encore le joueur (la dette grandit)", econ_country_gold(e,P) < p_before);
+    ok("l'intérêt CRÉDITE le prêteur du joueur", e->region[credit_of(P)].treasury > len_before);
+
     printf("\n═══ BILAN : %d réussis, %d échoués ═══\n", g_pass, g_fail);
     free(w); free(e); free(wl);
     return g_fail?1:0;

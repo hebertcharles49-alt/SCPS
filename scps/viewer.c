@@ -990,7 +990,7 @@ static void sim_day(Sim *s, World *w) {
              * la plus peuplée) : un empire à capitale enclavée participe enfin à la mer. */
             int pr=navy_best_coast(w,s->econ,c);
             if (pr>=0 && s->econ->region[pr].build.port<=0.f && s->econ->region[pr].treasury>400.f){
-                agency_build(s->ag, s->econ, pr, EDI_PORT);
+                agency_build(s->ag, s->econ, w, pr, EDI_PORT);
             } else if (navy_best_port(w,s->econ,c)>=0 && s->navy->n[c].build_hull<0){
                 if (s->navy->n[c].hull[HULL_TRANSPORT]<2 && re->treasury>500.f)
                     navy_order_build(s->navy, w, s->econ, c, HULL_TRANSPORT);
@@ -1228,8 +1228,8 @@ static void draw_topbar(SDL_Renderer *ren, int win_w, const Sim *s, const World 
     int x=12, yA=6, x0;
     /* Dépensable : Or · Nourriture · Matériaux (stock + flux +N/j) — chaque ressource
      * est une PORTE : un clic ouvre le menu de son système. */
-    x0=x; x = draw_res(ren,x,yA, lres_name(LR_GOLD),      s->labor->stock[LR_GOLD],      (float)s->labor->flow[LR_GOLD],
-                 "Or en caisse (clic → Finances : revenus, commerce, taxation réglable). Taxes + surplus vendu au marché.");
+    x0=x; x = draw_res(ren,x,yA, "Or",      (long)econ_country_gold(s->econ, cid),      0.f,
+                 "Or en caisse, dette comprise (clic → Finances : revenus, commerce, taxation, prêts). Taxes + surplus vendu au marché.");
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_FINANCES);
     x0=x; x = draw_res(ren,x,yA, lres_name(LR_FOOD),      s->labor->stock[LR_FOOD],      (float)s->labor->flow[LR_FOOD],
                  "Vivres (clic → Subsistance & démographie). La famine stoppe la croissance de la population.");
@@ -2535,9 +2535,6 @@ static SDL_Rect g_reloc_btn; static int g_reloc_dst=-1;
 static SDL_Rect g_comptoir_btn; static int g_comptoir_reg=-1;
 /* M2 — bâtir un CENTRE COMMERCIAL ici (devient un hub du réseau global). */
 static SDL_Rect g_center_btn; static int g_center_reg=-1;
-/* E2 §12 — achat/vente manuels au marché intérieur (lots de 10, prix courant). */
-typedef struct { SDL_Rect r; int res; bool sell; } TradeBtn;
-static TradeBtn g_trade_btn[16]; static int g_ntrade=0;
 static int player_colonize_src(const Sim *s, int dst_reg){
     if (dst_reg<0 || dst_reg>=s->econ->n_regions) return -1;
     const RegionEconomy *d=&s->econ->region[dst_reg];
@@ -2779,26 +2776,17 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
               ui_row(ren,x,&y,rw, tr(STR_ROW_ENTREPOTS), lv,
                      re3->n_entrepot>0?COL_PARCH:COL_DIM, tr(STR_ENTREPOT_HOV)); }
             /* P-arc : la couche MATÉRIAU labor a été éradiquée (le matériau vit dans le
-             * pool éco). La NOURRITURE garde son marché labor (achat/vente par lots de 10,
-             * [−10]/[+10]) ; les 5 MATÉRIAUX de bâti restent VISIBLES mais en LECTURE SEULE
-             * (pool éco de l'empire) — bâtir les consomme via le pool, il n'y a pas
-             * d'actionneur d'achat/vente éco à brancher ici. */
+             * pool éco). « Un seul livre d'or » : le marché labor d'achat/vente a disparu
+             * — la NOURRITURE et les 5 MATÉRIAUX de bâti restent VISIBLES en LECTURE SEULE
+             * (vivres labor ; matériaux = pool éco de l'empire). Bâtir les consomme via le
+             * pool, payé en or débité par le crédit ; pas d'actionneur d'achat/vente ici. */
             static char hfood[160];
             { long qf=s->labor->stock[LR_FOOD];
               char st[24]; snprintf(st,sizeof st,"%ld",qf);
               draw_text(ren,g_font,x,y,COL_DIM,lres_name(LR_FOOD));
               draw_text(ren,g_font,x+104,y,COL_PARCH,st);
-              int bx=x+rw-44;
-              fill_round(ren,bx,y,18,16,COL_PANEL2,3);  round_box(ren,bx,y,18,16,COL_EDGE,3);
-              draw_text(ren,g_font_small?g_font_small:g_font,bx+5,y+1,COL_PARCH,"-");
-              fill_round(ren,bx+22,y,18,16,COL_PANEL2,3); round_box(ren,bx+22,y,18,16,COL_EDGE,3);
-              draw_text(ren,g_font_small?g_font_small:g_font,bx+27,y+1,COL_COPPER,"+");
-              if (g_ntrade<14){
-                  g_trade_btn[g_ntrade++]=(TradeBtn){ (SDL_Rect){bx,y,18,16},    (int)LR_FOOD, true  };
-                  g_trade_btn[g_ntrade++]=(TradeBtn){ (SDL_Rect){bx+22,y,18,16}, (int)LR_FOOD, false };
-              }
               tr_fmt(hfood,sizeof hfood, STR_MARCHE_ROW_HOV, lres_name(LR_FOOD), st);
-              zone_add((SDL_Rect){x-2,y-2,rw-48,18}, hfood);
+              zone_add((SDL_Rect){x-2,y-2,rw,18}, hfood);
               y += 18; }
             /* les 5 matériaux de bâti : LECTURE SEULE (pool éco), pas de bouton. */
             static const StrId MAT_NAME[5]={ STR_RES_BOIS,STR_RES_ARGILE,STR_RES_PIERRE,STR_RES_METAL,STR_RES_OUTILS };
@@ -3609,7 +3597,10 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 24u           /* v24 : LIMITEUR — section prod_cap appendue après CRDT (econ_prodcap_save/load). <v24 refusé.
+#define SAVE_VERSION 25u           /* v25 : UN SEUL LIVRE D'OR — LR_GOLD éradiqué (l'or vit dans econ country_gold,
+                                    * dette via scps_credit). LaborEcon perd treasury + stock/flow[LR_GOLD] (LRes 2→1,
+                                    * LR_FOOD seul) ⇒ sizeof(LaborEcon) rétrécit (blob sv_w) → ère antérieure (<v25 refusé).
+                                    * v24 : LIMITEUR — section prod_cap appendue après CRDT (econ_prodcap_save/load). <v24 refusé.
                                     * v23 : FERTILITÉ — RegionEconomy.needs_met (float) ⇒ sizeof(WorldEconomy)
                                     * change → ère antérieure (<v23 refusé).
                                     * v22 : DETTE — section CRDT (scps_credit g_creditor[]) appendue
@@ -4443,7 +4434,7 @@ int main(int argc, char **argv) {
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
-                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_center_reg=-1; g_ntrade=0;
+                zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_center_reg=-1;
                 draw_empire_labels(ren, &cam, &sim, world, win_w, win_h);  /* P1.8 : noms d'empire au dézoom */
                 draw_army_markers(ren, &cam, &sim, world, win_w, win_h);   /* §4 : les armées sur la carte */
                 draw_centre_markers(ren, &cam, &sim, world, win_w, win_h);  /* P3.20 : les Centres commerciaux */
@@ -4693,10 +4684,9 @@ int main(int argc, char **argv) {
                         ev.button.y>=g_colonize_btn.y && ev.button.y<g_colonize_btn.y+g_colonize_btn.h){
                         /* E0.3 : l'or sort du TRÉSOR UNIQUE (topbar). E1 : le convoi
                          * MARCHE 180 jours — la région ne se peuple qu'à l'arrivée. */
-                        if (sim.labor->stock[LR_GOLD]>=(long)COLONIZE_GOLD_COST
+                        if (credit_can_spend(sim.econ, world, sim.player, (float)COLONIZE_GOLD_COST)
                             && agency_order_colonize(sim.ag, g_colonize_dst, g_colonize_src)){
-                            sim.labor->stock[LR_GOLD]-=(long)COLONIZE_GOLD_COST;
-                            sim.labor->treasury=sim.labor->stock[LR_GOLD];
+                            credit_spend(sim.econ, world, sim.player, (float)COLONIZE_GOLD_COST);
                             printf("\n[scps] Coloniser : convoi parti vers la région %d (100 colons, %.0f or, 180 j).\n", g_colonize_dst, COLONIZE_GOLD_COST);
                         } else printf("\n[scps] Coloniser : trésor insuffisant (%.0f or requis).\n", COLONIZE_GOLD_COST);
                         dirty=true; break;
@@ -4708,10 +4698,9 @@ int main(int argc, char **argv) {
                         ev.button.y>=g_reloc_btn.y && ev.button.y<g_reloc_btn.y+g_reloc_btn.h){
                         int from=intertrade_country_centre(sim.econ, sim.player);
                         /* E0.3 : payé du TRÉSOR UNIQUE (topbar). */
-                        if (from>=0 && sim.labor->stock[LR_GOLD]>=(long)CENTRE_RELOC_COST
+                        if (from>=0 && credit_can_spend(sim.econ, world, sim.player, (float)CENTRE_RELOC_COST)
                             && intertrade_relocate_centre(sim.econ, from, g_reloc_dst)){
-                            sim.labor->stock[LR_GOLD]-=(long)CENTRE_RELOC_COST;
-                            sim.labor->treasury=sim.labor->stock[LR_GOLD];
+                            credit_spend(sim.econ, world, sim.player, (float)CENTRE_RELOC_COST);
                             printf("\n[scps] Centre commercial relocalisé : région %d → %d (%.0f or).\n", from, g_reloc_dst, CENTRE_RELOC_COST);
                         } else printf("\n[scps] Relocalisation refusée (trésor insuffisant ou pas de hub).\n");
                         dirty=true; break;
@@ -4720,8 +4709,8 @@ int main(int argc, char **argv) {
                     if (g_comptoir_reg>=0 && sim.ready &&
                         ev.button.x>=g_comptoir_btn.x && ev.button.x<g_comptoir_btn.x+g_comptoir_btn.w &&
                         ev.button.y>=g_comptoir_btn.y && ev.button.y<g_comptoir_btn.y+g_comptoir_btn.h){
-                        if (agency_build_acct(sim.ag, sim.econ, g_comptoir_reg, EDI_COMPTOIR,
-                                              &sim.labor->stock[LR_GOLD]))
+                        if (agency_build_acct(sim.ag, sim.econ, world, g_comptoir_reg, EDI_COMPTOIR,
+                                              sim.player))
                             printf("\n[scps] Comptoir mis en chantier (région %d, 180 j) — la province se branche au réseau.\n", g_comptoir_reg);
                         else
                             printf("\n[scps] Comptoir : trésor insuffisant.\n");
@@ -4731,29 +4720,13 @@ int main(int argc, char **argv) {
                     if (g_center_reg>=0 && sim.ready &&
                         ev.button.x>=g_center_btn.x && ev.button.x<g_center_btn.x+g_center_btn.w &&
                         ev.button.y>=g_center_btn.y && ev.button.y<g_center_btn.y+g_center_btn.h){
-                        if (agency_build_acct(sim.ag, sim.econ, g_center_reg, EDI_TRADE_CENTER,
-                                              &sim.labor->stock[LR_GOLD]))
+                        if (agency_build_acct(sim.ag, sim.econ, world, g_center_reg, EDI_TRADE_CENTER,
+                                              sim.player))
                             printf("\n[scps] Centre commercial mis en chantier (région %d, 540 j) — l'empire se fait hub du réseau global.\n", g_center_reg);
                         else
                             printf("\n[scps] Centre commercial : trésor insuffisant ou recette manquante.\n");
                         dirty=true; break;
                     }
-                    /* E2 §12 — clic sur un lot du MARCHÉ : acheter/vendre 10 au prix courant. */
-                    { int th=-1;
-                      for (int i=0;i<g_ntrade;i++){ SDL_Rect *r=&g_trade_btn[i].r;
-                          if (ev.button.x>=r->x && ev.button.x<r->x+r->w &&
-                              ev.button.y>=r->y && ev.button.y<r->y+r->h){ th=i; break; } }
-                      if (th>=0){
-                          LRes r3=(LRes)g_trade_btn[th].res;
-                          if (g_trade_btn[th].sell){
-                              long g=labor_sell_market(sim.labor,r3,10);
-                              printf("\n[scps] Marché : vendu %s ×10 → +%ld or.\n", lres_name(r3), g);
-                          } else {
-                              long c=labor_pump_market(sim.labor,r3,10);
-                              printf("\n[scps] Marché : acheté %s ×10 → −%ld or.\n", lres_name(r3), c);
-                          }
-                          dirty=true; break;
-                      } }
                     /* §4 panneau : un clic sur un SLOT de bâtiment bâtit l'édifice
                      * (payé au marché, en jours) — pas de bouton « Bâtir ». */
                     int hit=-1;
@@ -4762,8 +4735,8 @@ int main(int argc, char **argv) {
                             ev.button.y>=r->y && ev.button.y<r->y+r->h){ hit=i; break; } }
                     if (hit>=0){
                         /* E0.3 : l'or du chantier sort du TRÉSOR UNIQUE (la topbar dit vrai). */
-                        if (sim.ready && agency_build_acct(sim.ag, sim.econ, g_bslots[hit].reg,
-                                                           g_bslots[hit].edifice, &sim.labor->stock[LR_GOLD]))
+                        if (sim.ready && agency_build_acct(sim.ag, sim.econ, world, g_bslots[hit].reg,
+                                                           g_bslots[hit].edifice, sim.player))
                             printf("\n[scps] Bâtir %s (région %d) — payé au marché, construit en jours.\n",
                                    edifice_name(g_bslots[hit].edifice), g_bslots[hit].reg);
                         else
@@ -4786,8 +4759,8 @@ int main(int argc, char **argv) {
                         if (g_orows[i].hammer_reg>=0 && hm->w>0 &&
                             ev.button.x>=hm->x && ev.button.x<hm->x+hm->w &&
                             ev.button.y>=hm->y && ev.button.y<hm->y+hm->h){
-                            if (sim.ready) agency_build_acct(sim.ag, sim.econ, g_orows[i].hammer_reg,
-                                                             EDI_TRIBUNAL, &sim.labor->stock[LR_GOLD]);
+                            if (sim.ready) agency_build_acct(sim.ag, sim.econ, world, g_orows[i].hammer_reg,
+                                                             EDI_TRIBUNAL, sim.player);
                             dirty=true; orhit=-2; break;
                         }
                         SDL_Rect *rw=&g_orows[i].row;
@@ -4905,7 +4878,7 @@ int main(int argc, char **argv) {
                 case SDLK_b:
                     if (sim.ready && selected>=0 && selected<world->n_provinces) {
                         int reg = world->province[selected].region;
-                        if (reg>=0 && agency_build_acct(sim.ag, sim.econ, reg, EDI_TRIBUNAL, &sim.labor->stock[LR_GOLD]))
+                        if (reg>=0 && agency_build_acct(sim.ag, sim.econ, world, reg, EDI_TRIBUNAL, sim.player))
                             printf("\n[scps] Action : Tribunal mis en file (région %d) — payé au marché, construit en jours.\n", reg);
                         else
                             printf("\n[scps] Tribunal : trésor insuffisant pour acheter les matériaux.\n");
@@ -5114,7 +5087,7 @@ int main(int argc, char **argv) {
          * membrane (bandes + mots). Le viewer ne touche aucun flottant SCPS. */
         if (sim.ready && g_font) {
             int mx2,my2; SDL_GetMouseState(&mx2,&my2);
-            zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_center_reg=-1; g_ntrade=0;
+            zone_reset(); bslot_reset(); orow_reset(); modebtn_reset(); topbtn_reset(); g_colonize_dst=-1; g_reloc_dst=-1; g_comptoir_reg=-1; g_center_reg=-1;
             int cid = country_for_panel(world, selected);
             if (g_gs!=GS_PLAYING) {                              /* le SHELL tient l'écran */
                 shell_draw(ren,win_w,win_h,world,&sim,&g_stage);

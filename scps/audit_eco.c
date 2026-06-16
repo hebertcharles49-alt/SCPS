@@ -26,6 +26,7 @@
 #include "scps_econ.h"
 #include "scps_labor.h"
 #include "scps_agency.h"
+#include "scps_credit.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +57,7 @@ int main(int argc, char **argv){
     world_generate(w, &p);
     econ_init(econ, w); gen_population(w, econ); worldgen_seed_peoples(w, econ, RACE_HUMAIN);
     agency_init(ag);
+    credit_init();          /* un seul livre d'or : agency_build_acct débite via crédit */
     labor_init(lab, w);
 
     int player=0;
@@ -92,30 +94,35 @@ int main(int argc, char **argv){
            player, cap_reg, cap0, hamlet, h0);
 
     /* ---- accumulateurs des bornes ---- */
+    /* owner = le pays qui PAIE (le livre d'or national, debt-aware) : la capitale du joueur. */
+    int    owner=(cap_reg>=0)? econ->region[cap_reg].owner : player;
     bool   mouth_ok=true;            /* borne 2 : conso == pop/100, chaque mois */
     long   mouth_bad_month=-1;
-    double fl_n=0, fl_mean=0, fl_m2=0;   /* borne 3 : Welford sur le flux d'or/jour */
+    double fl_n=0, fl_mean=0, fl_m2=0;   /* borne 3 : Welford sur le DELTA d'or national/jour */
     int    paid_360_year=-1;             /* borne 4 : l'an du premier 360 j PAYÉ */
-    long   gold0=lab->stock[LR_GOLD];
+    double gold0=econ_country_gold(econ, owner);   /* le livre d'or (Σ trésor régional du pays) */
+    double gold_prev=gold0;
 
     int day=0;
     for (int yr=0; yr<years; yr++){
         for (int d=0; d<365; d++){
             agency_advance(ag, w, econ, NULL, NULL, 1);
             labor_tick(lab);
-            { double f=(double)lab->flow[LR_GOLD];           /* borne 3 : le flux vit ? */
-              fl_n+=1.0; double dd=f-fl_mean; fl_mean+=dd/fl_n; fl_m2+=dd*(f-fl_mean); }
             if (day % 30 == 29){
                 econ_tick(econ, 1.f/12.f);
                 labor_resync_pop(lab, econ);                 /* E0.1 : le monde possède la pop */
                 long bouche=labor_food_consumed(lab);        /* borne 2 : la bouche unique */
                 long pop   =labor_pop_total(lab);
                 if (bouche != pop/100 && mouth_ok){ mouth_ok=false; mouth_bad_month=day/30; }
-                /* borne 4 : le banc paie sa première GARNISON (360 j) dès que possible */
+                /* borne 4 : le banc paie sa première GARNISON (360 j) dès que possible —
+                 * débit de l'or NATIONAL de l'owner via crédit (un seul livre d'or). */
                 if (paid_360_year<0 && cap_reg>=0
-                    && agency_build_acct(ag, econ, cap_reg, EDI_GARNISON, &lab->stock[LR_GOLD]))
+                    && agency_build_acct(ag, econ, w, cap_reg, EDI_GARNISON, owner))
                     paid_360_year = yr;
             }
+            { double g=econ_country_gold(econ, owner);        /* borne 3 : le flux d'or VIT ? */
+              double f=g-gold_prev; gold_prev=g;              /* delta quotidien du livre national */
+              fl_n+=1.0; double dd=f-fl_mean; fl_mean+=dd/fl_n; fl_m2+=dd*(f-fl_mean); }
             day++;
         }
     }
@@ -136,8 +143,8 @@ int main(int argc, char **argv){
     if (!mouth_ok) printf("   (bouche cassée au mois %ld)\n", mouth_bad_month);
     ok("2. BOUCHE (E0.2) : conso nourriture == pop/100 à chaque échantillon mensuel",
        mouth_ok);
-    printf("   flux d'or : moyenne %+.2f/j · variance %.3f (sur %.0f jours) · trésor %ld → %ld\n",
-           fl_mean, var, fl_n, gold0, lab->stock[LR_GOLD]);
+    printf("   flux d'or : moyenne %+.2f/j · variance %.3f (sur %.0f jours) · or national %.0f → %.0f\n",
+           fl_mean, var, fl_n, gold0, econ_country_gold(econ, owner));
     ok("3. OR (E0.3) : le flux d'or quotidien n'est PAS une constante (variance > 0)",
        var > 0.0);
     printf("   premier édifice 360 j (Garnison) payé : an %d\n", paid_360_year);

@@ -98,33 +98,13 @@ float capitale_prodmult(int tier, long admin_pop){
     if (actifs<0) actifs=0;
     return 1.f + CAP_PROD_PER_TIER * (float)actifs;
 }
-/* Recette d'amélioration vers `to_tier` : DE PLUS EN PLUS CHÈRE. P-arc : la couche
- * matériau labor étant ÉRADIQUÉE (elle vit dans le pool éco), la capitale se paie
- * désormais en OR (le trésor unique) — coût croissant par tier, même logique de
- * palier que l'ancienne recette bois→métal→outils. */
-CapCost capitale_upgrade_cost(int to_tier){
-    switch (to_tier){
-        case 2:  return (CapCost){ LR_GOLD, LR_GOLD,  400,  0 };
-        case 3:  return (CapCost){ LR_GOLD, LR_GOLD,  600,  0 };
-        case 4:  return (CapCost){ LR_GOLD, LR_GOLD,  800,  0 };
-        case 5:  return (CapCost){ LR_GOLD, LR_GOLD, 1000,  0 };
-        case 6:  return (CapCost){ LR_GOLD, LR_GOLD, 1400,  0 };
-        case 7:  return (CapCost){ LR_GOLD, LR_GOLD, 1800,  0 };   /* la métropole : le plus cher */
-        default: return (CapCost){ LR_GOLD, LR_GOLD,  200,  0 };   /* tier 1 : fondation */
-    }
-}
+/* P-arc/un-seul-livre-d'or : le livre OR de labor a disparu (l'or vit dans le
+ * livre éco, country_gold). La capitale n'a plus de coût propre : la POP la
+ * DÉBLOQUE (plafond), la montée est GRATUITE côté labor. */
 bool capitale_upgrade(LProvince *p, LaborEcon *e){
     if (!p || !e) return false;
-    int maxt = capitale_max_tier(p->pop);
-    if (p->cap_tier >= maxt) return false;             /* la pop ne débloque pas plus haut */
-    int to = p->cap_tier + 1;
-    CapCost c = capitale_upgrade_cost(to);
-    if (e->stock[c.a] < c.qa) return false;            /* recette non payable (le trésor d'abord) */
-    if (c.qb>0 && e->stock[c.b] < c.qb) return false;
-    e->stock[c.a] -= c.qa;
-    if (c.qb>0) e->stock[c.b] -= c.qb;
-    e->treasury = e->stock[LR_GOLD];                   /* le trésor unique reste le miroir de l'or */
-    p->cap_tier = to;                                  /* PAYÉ → tier monté */
+    if (p->cap_tier >= capitale_max_tier(p->pop)) return false;   /* la pop ne débloque pas plus haut */
+    p->cap_tier++;                                                 /* débloqué → tier monté */
     return true;
 }
 /* Les classes ÉMERGENT des emplois (par paquets de 100) ; la capitale délivre
@@ -240,8 +220,7 @@ void labor_seed_start(LaborEcon *e, int prov0){
         p->bld[p->n_bld++]=(LBuilding){ SEED_EXTRACTION, 1, 2, 0 };
     if (p->n_bld<LAB_BUILDINGS_PER_PROV)
         p->bld[p->n_bld++]=(LBuilding){ LB_WORKSHOP, 0, 1, 0 };
-    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200;
-    e->treasury=200;
+    e->stock[LR_FOOD]=200;
 }
 
 /* ===================================================================== */
@@ -251,9 +230,8 @@ void labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *eco
     /* on garde la géo précalculée (labor_init) ; on (ré)installe l'économie. */
     e->n_prov=0;
     memset(e->stock,0,sizeof e->stock); memset(e->flow,0,sizeof e->flow);
-    e->stock[LR_FOOD]=200; e->stock[LR_GOLD]=200;
-    e->market.supply=1.f; e->market.price=BASE_PRICE; e->treasury=200;
-    e->tax_acc=0.f; e->solde_acc=0.f;
+    e->stock[LR_FOOD]=200;
+    e->market.supply=1.f; e->market.price=BASE_PRICE;
 
     for (int r=0; r<econ->n_regions && e->n_prov<LAB_MAX_PROV; r++){
         if (econ->region[r].owner!=cid || !econ->region[r].culture.settled) continue;
@@ -282,14 +260,11 @@ void labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *eco
 }
 
 float labor_prosperity_index(const LaborEcon *e){
-    long pop = labor_pop_total(e); if (pop<1) pop=1;
-    float per100  = (float)pop/100.f;
-    float foodsec = (labor_food_balance(e) >= 0) ? 3.0f : 0.0f;   /* le pain d'abord */
-    float gold_pc = (float)e->flow[LR_GOLD]   / per100;          /* revenu par tête */
-    /* P-arc : le terme « outils par tête » est tombé avec la couche matériau labor ;
-     * son poids (3) repasse au REVENU → l'échelle [0..10] et le pain restent intacts. */
-    float idx = foodsec + clampf(gold_pc*5.0f, 0.f, 7.0f);
-    return clampf(idx, 0.f, 10.f);
+    /* un-seul-livre-d'or : l'OR a quitté labor (il vit dans country_gold) — le revenu
+     * par tête ne se LIT plus ici. Ne reste que ce dont labor est PROPRIÉTAIRE : la
+     * sécurité alimentaire. Le pain porte l'indice [0..10] (≥0 net → société nourrie). */
+    float foodsec = (labor_food_balance(e) >= 0) ? 10.0f : 0.0f;   /* le pain d'abord */
+    return clampf(foodsec, 0.f, 10.f);
 }
 
 /* ===================================================================== */
@@ -308,10 +283,9 @@ static float per_job_output(const LaborEcon *e, int wprov, LBuildType t, LRes *o
     switch(t){
         case LB_COLLECTOR: *out=LR_FOOD;      return COLLECTOR_BASE + COLLECTOR_GEO*e->g_fert[wprov];
         case LB_GRANARY:   *out=LR_FOOD;      return GRANARY_BASE * e->g_fert[wprov];
-        case LB_MARKET:    *out=LR_GOLD;      return MARKET_BASE * e->g_flow[wprov];
-        /* P-arc : extraction (scierie/argilière/carrière/mine) & atelier sont INERTES —
-         * le matériau labor a été éradiqué (il vit dans le pool éco). Sentinelle = aucune
-         * sortie (le garde `o<LR_COUNT` du tick saute ces emplacements). */
+        /* un-seul-livre-d'or : le MARCHÉ ne dépose plus d'OR dans labor (l'or vit dans
+         * country_gold) — il rejoint extraction/atelier dans l'INERTIE (sentinelle =
+         * aucune sortie ; le garde `o<LR_COUNT` du tick saute ces emplacements). */
         default:           *out=LR_COUNT;     return 0.f;
     }
 }
@@ -358,27 +332,9 @@ long labor_food_balance(const LaborEcon *e){
 float labor_material_price(const LaborEcon *e){
     return BASE_PRICE * clampf(e->market.demand / fmaxf(e->market.supply,1.f), PRICE_MIN, PRICE_MAX);
 }
-long labor_pump_market(LaborEcon *e, LRes res, long amount){
-    if (amount<=0 || res<0 || res>=LR_COUNT || res==LR_GOLD) return 0;
-    float price = labor_material_price(e);
-    long cost = (long)(amount*price + 0.5f);
-    e->stock[res]     += amount;       /* E0.6 : la pompe livre la ressource DEMANDÉE */
-    e->stock[LR_GOLD] -= cost; e->treasury=e->stock[LR_GOLD];
-    e->market.demand  += (float)amount;   /* pomper TIRE la demande → le prix monte */
-    return cost;
-}
-long labor_sell_market(LaborEcon *e, LRes res, long amount){
-    if (amount<=0 || res<0 || res>=LR_COUNT || res==LR_GOLD) return 0;
-    if (amount > e->stock[res]) amount = e->stock[res];
-    if (amount<=0) return 0;
-    float price = labor_material_price(e);
-    long gain = (long)(amount*price + 0.5f);
-    e->stock[res]     -= amount;          /* E2 §12 : on vend du STOCK réel */
-    e->stock[LR_GOLD] += gain; e->treasury=e->stock[LR_GOLD];
-    e->market.demand  -= (float)amount;   /* vendre DÉTEND la demande → le prix retombe */
-    if (e->market.demand < 0.f) e->market.demand = 0.f;
-    return gain;
-}
+/* un-seul-livre-d'or : labor_pump_market / labor_sell_market (les guichets OR de
+ * labor) ont été SUPPRIMÉS — l'or vit dans le livre éco (country_gold, dette-conscient
+ * via scps_credit) ; labor ne tient plus de trésor à débiter/créditer. */
 
 /* ===================================================================== */
 /* POPULATION — le POOL et sa répartition (topbar)                        */
@@ -406,10 +362,11 @@ PopBreakdown labor_pop_breakdown(const LaborEcon *e){
 }
 void labor_print_topbar(const LaborEcon *e){
     PopBreakdown k=labor_pop_breakdown(e);
-    /* P-arc : la colonne « Outils » est tombée (couche matériau labor éradiquée — le
-     * matériau vit dans le pool éco). Restent les deux ressources propres : Or, Nourriture. */
-    printf("   TOPBAR  Or %ld (%+ld/j) · Nourriture %ld (%+ld/j)\n",
-           e->stock[LR_GOLD], e->flow[LR_GOLD], e->stock[LR_FOOD], e->flow[LR_FOOD]);
+    /* un-seul-livre-d'or : les colonnes « Or » & « Outils » sont tombées (l'or vit dans
+     * country_gold ; le matériau dans le pool éco). Ne reste que la ressource PROPRE à
+     * labor : la Nourriture. */
+    printf("   TOPBAR  Nourriture %ld (%+ld/j)\n",
+           e->stock[LR_FOOD], e->flow[LR_FOOD]);
     printf("           Pop %ld :  libre %ld · en job %ld · en armée %ld\n",
            k.total, k.free, k.in_jobs, k.in_army);
 }
@@ -524,7 +481,9 @@ static long prov_free_pop(const LProvince *p){
  * slot vide : sans effet. C'est lui qui fait MONTER la prod quand la pop croît ou
  * qu'un bâtiment se développe → les flux VIVENT. */
 static void labor_staff(LaborEcon *e){
-    if (e->staffing_frozen) return;   /* I2 — masse salariale impayée : on n'embauche plus (les slots tenus restent) */
+    /* un-seul-livre-d'or : le gel d'embauche pour masse salariale impayée a disparu
+     * (l'or a quitté labor → plus de wage_acc/staffing_frozen). Le staffing tourne
+     * toujours ; le coût du travail se solde dans le livre éco (country_gold). */
     for (int i=0;i<e->n_prov;i++){
         LProvince *p=&e->prov[i];
         long free_slots = prov_free_pop(p)/POP_PER_SLOT;
@@ -568,15 +527,16 @@ void labor_tick(LaborEcon *e){
     long before[LR_COUNT]; memcpy(before, e->stock, sizeof before);
     labor_staff(e);                                          /* P3.19 : la main-d'œuvre libre garnit les slots vides */
 
-    /* 0. CAPITALE : améliorer si la pop le débloque & la recette est payable, puis
-     *    faire ÉMERGER les classes des emplois (tier→Nobles, ateliers→Bourgeois) et
-     *    délivrer logement/services/productivité (gatés par les Nobles en poste). */
+    /* 0. CAPITALE : améliorer si la pop le débloque (GRATUIT — l'or vit dans le livre
+     *    éco), puis faire ÉMERGER les classes des emplois (tier→Nobles, ateliers→
+     *    Bourgeois) et délivrer logement/services/productivité (gatés par les Nobles). */
     for (int i=0;i<e->n_prov;i++) capitale_upgrade(&e->prov[i], e);
     for (int i=0;i<e->n_prov;i++) capitale_mobility_tick(&e->prov[i]);
 
-    /* 1. COLLECTE + marché : jobs remplis → sorties PROPRES à labor (nourriture, or),
-     *    lues de la géo, × la PRODUCTIVITÉ de la capitale (+5 %/tier servi). P-arc :
-     *    extraction & atelier sont inertes (per_job_output → sentinelle LR_COUNT, sauté). */
+    /* 1. COLLECTE : jobs remplis → la sortie PROPRE à labor (nourriture), lue de la géo,
+     *    × la PRODUCTIVITÉ de la capitale (+5 %/tier servi). un-seul-livre-d'or : le
+     *    marché ne dépose plus d'or (inerte) ; extraction & atelier le sont aussi
+     *    (per_job_output → sentinelle LR_COUNT, sauté). */
     for (int i=0;i<e->n_prov;i++){
         LProvince *p=&e->prov[i];
         for (int b=0;b<p->n_bld;b++){
@@ -589,38 +549,19 @@ void labor_tick(LaborEcon *e){
      *    vit dans le pool éco. L'atelier labor ne raffine plus rien.) */
     /* 3. NOURRITURE (E0.2) : la collecte a été ajoutée en passe 1 ; on retire LA
      * BOUCHE (pop totale/100) + la RATION de l'armée. Plancher 0 : on ne mange pas
-     * ce qui n'existe pas — le déficit se LIT au flux (la famine du joueur). */
-    { long ration_g, ration_f; labor_army_upkeep(e,&ration_g,&ration_f);
+     * ce qui n'existe pas — le déficit se LIT au flux (la famine du joueur).
+     * un-seul-livre-d'or : les passes TAXES / SOLDE-or / SALAIRE ont été RETIRÉES —
+     * l'or vit dans le livre éco (country_gold, dette-conscient) ; labor ne tient
+     * plus de trésor. Ne reste que la RATION de campagne (nourriture). */
+    { long ration_f; labor_army_upkeep(e,NULL,&ration_f);
       e->stock[LR_FOOD] -= labor_food_consumed(e) + ration_f;
-      if (e->stock[LR_FOOD]<0) e->stock[LR_FOOD]=0;
-
-      /* 4. TAXES (E0.3) : le trésor unique ENCAISSE chaque jour — par classe, par
-       * tête (accumulateurs : les fractions ne se perdent pas). Puis le SOLDE sort. */
-      (void)ration_g;   /* le reader arrondit pour l'UI ; le débit exact passe par solde_acc */
-      float tax_today=0.f;
-      for (int i=0;i<e->n_prov;i++) tax_today += labor_taxes(&e->prov[i]);
-      e->tax_acc += tax_today;
-      long tg=(long)e->tax_acc; e->tax_acc-=(float)tg;
-      e->stock[LR_GOLD] += tg;
-      e->solde_acc += SOLDE_GOLD_PER100*(float)(labor_pop_in_army(e)/POP_PER_SLOT);
-      long sg=(long)e->solde_acc; e->solde_acc-=(float)sg;
-      e->stock[LR_GOLD] -= sg;
-      if (e->stock[LR_GOLD]<0) e->stock[LR_GOLD]=0;   /* l'armée impayée ne crée pas de dette (pas encore de désertion) */
-
-      /* I2 — SALAIRE DES JOBS : la masse salariale des slots remplis sort chaque jour.
-       * Impayée (le trésor ne couvre pas) → on GÈLE l'embauche au tick suivant (le
-       * staffing s'arrête, sans licencier) ; l'or ne tombe pas en dette négative. */
-      e->wage_acc += WAGE_GOLD_PER100*(float)(labor_pop_employed(e)/POP_PER_SLOT);
-      long wg=(long)e->wage_acc; e->wage_acc-=(float)wg;
-      e->staffing_frozen = (wg > e->stock[LR_GOLD]);
-      e->stock[LR_GOLD] -= wg;
-      if (e->stock[LR_GOLD]<0) e->stock[LR_GOLD]=0; }
+      if (e->stock[LR_FOOD]<0) e->stock[LR_FOOD]=0; }
 
     /* 5. MARCHÉ : P-arc — plus d'offre de matériaux produite par labor (l'atelier est
-     *    inerte) ; l'offre retombe au plancher, le prix suit la seule demande résiduelle. */
+     *    inerte) ; l'offre retombe au plancher, le prix suit la seule demande résiduelle.
+     *    (C'est l'indice de PRIX MATÉRIAU, pas de l'or.) */
     e->market.supply = 1.f;
     e->market.price  = labor_material_price(e);
-    e->treasury      = e->stock[LR_GOLD];
 
     /* 6. (E0.1 : PLUS de croissance ici — la démographie monde possède la pop ;
      * labor_resync_pop la relit chaque mois.) On RE-ÉMERGE les classes, puis dev. */
@@ -633,7 +574,9 @@ void labor_tick(LaborEcon *e){
 /* LIBELLÉS                                                              */
 /* ===================================================================== */
 const char *lres_name(LRes r){
-    static const char *N[LR_COUNT]={ "Nourriture","Or" };   /* P-arc : matériaux retirés (pool éco) */
+    /* un-seul-livre-d'or : « Or » retiré (l'or vit dans country_gold) ; P-arc :
+     * matériaux retirés (pool éco). Ne reste que la ressource PROPRE à labor. */
+    static const char *N[LR_COUNT]={ "Nourriture" };
     return (r>=0&&r<LR_COUNT)?N[r]:"?";
 }
 const char *lbuild_name(LBuildType b){
