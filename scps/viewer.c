@@ -2889,58 +2889,8 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
         y += 4;
     }
 
-    /* E2 §12 — MARCHÉ : achat/vente MANUELS au prix courant. L'or sort et entre
-     * par le TRÉSOR UNIQUE ; acheter tire la demande (prix ↑), vendre la détend
-     * (prix ↓) — l'offre/demande déjà en place, rien de neuf. Régions du joueur. */
-    {
-        int reg=(pid>=0&&pid<w->n_provinces)?w->province[pid].region:-1;
-        if (s && reg>=0 && reg<econ->n_regions && econ->region[reg].owner==s->player){
-            ui_section(ren, x, &y, tr(STR_PAN_MARCHE));
-            char pb[24], l[112];
-            snprintf(pb,sizeof pb,"%.2f",labor_material_price(s->labor));
-            tr_fmt(l,sizeof l, STR_MARCHE_PRIX_FMT, pb);
-            draw_text(ren,g_font,x,y,COL_PARCH,l);
-            zone_add((SDL_Rect){x-2,y-2,rw,19}, tr(STR_MARCHE_PRIX_HOV));
-            y+=20;
-            /* le plafond de stock de la RÉGION (E2 §11) : Entrepôts bâtis ici */
-            { const RegionEconomy *re3=&econ->region[reg];
-              float capv=ECON_STOCK_CAP_BASE+ECON_STOCK_CAP_ENTREPOT*(float)re3->n_entrepot;
-              float smax=0.f; for (int g2=1;g2<RES_COUNT;g2++) if (re3->stock[g2]>smax) smax=re3->stock[g2];
-              char c0[16],c1[16],c2[8],lv[112];
-              snprintf(c0,sizeof c0,"%.0f",smax); snprintf(c1,sizeof c1,"%.0f",capv);
-              snprintf(c2,sizeof c2,"%d",(int)re3->n_entrepot);
-              tr_fmt(lv,sizeof lv, STR_ENTREPOT_CAP_FMT, c0,c1,c2);
-              ui_row(ren,x,&y,rw, tr(STR_ROW_ENTREPOTS), lv,
-                     re3->n_entrepot>0?COL_PARCH:COL_DIM, tr(STR_ENTREPOT_HOV)); }
-            /* P-arc : la couche MATÉRIAU labor a été éradiquée (le matériau vit dans le
-             * pool éco). « Un seul livre d'or » : le marché labor d'achat/vente a disparu
-             * — la NOURRITURE et les 5 MATÉRIAUX de bâti restent VISIBLES en LECTURE SEULE
-             * (vivres labor ; matériaux = pool éco de l'empire). Bâtir les consomme via le
-             * pool, payé en or débité par le crédit ; pas d'actionneur d'achat/vente ici. */
-            static char hfood[160];
-            { long qf=s->labor->stock[LR_FOOD];
-              char st[24]; snprintf(st,sizeof st,"%ld",qf);
-              draw_text(ren,g_font,x,y,COL_DIM,lres_name(LR_FOOD));
-              draw_text(ren,g_font,x+104,y,COL_PARCH,st);
-              tr_fmt(hfood,sizeof hfood, STR_MARCHE_ROW_HOV, lres_name(LR_FOOD), st);
-              zone_add((SDL_Rect){x-2,y-2,rw,18}, hfood);
-              y += 18; }
-            /* les 5 matériaux de bâti : LECTURE SEULE (pool éco), pas de bouton. */
-            static const StrId MAT_NAME[5]={ STR_RES_BOIS,STR_RES_ARGILE,STR_RES_PIERRE,STR_RES_METAL,STR_RES_OUTILS };
-            static const Resource MAT_POOL[5]={ RES_WOOD,RES_CLAY,RES_STONE,RES_METAL,RES_TOOLS };
-            static char thov[5][160];
-            for (int i=0;i<5;i++){
-                long qty = econ_empire_stock(econ, s->player, MAT_POOL[i]);
-                char st[24]; snprintf(st,sizeof st,"%ld",qty);
-                draw_text(ren,g_font,x,y,COL_DIM,tr(MAT_NAME[i]));
-                draw_text(ren,g_font,x+104,y,COL_PARCH,st);
-                tr_fmt(thov[i],sizeof thov[i], STR_MARCHE_ROW_HOV, tr(MAT_NAME[i]), st);
-                zone_add((SDL_Rect){x-2,y-2,rw,18}, thov[i]);
-                y += 18;
-            }
-            y += 4;
-        }
-    }
+    /* (Le MARCHÉ — prix, entrepôt, matériaux, vivres — vit dans l'onglet Marché ;
+     * pas de doublon sur le panneau régional.) */
 
     /* Le seuil de révolte reste signalé (gameplay) ; lignée/foi vivent dans les
      * camemberts, l'agitation dans le survol de l'humeur — surface non dense. */
