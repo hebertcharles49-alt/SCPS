@@ -310,11 +310,15 @@ static void draw_map_rivers(SDL_Renderer *ren, const World *w, const Cam *cam, i
         for (int k=0; k<rv->len; k++){
             int cx=rv->x[k], cy=rv->y[k];
             if (cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
-            int ax=(k>0)?rv->x[k-1]:cx, ay=(k>0)?rv->y[k-1]:cy;                 /* tangente amont→aval */
-            int bx=(k<rv->len-1)?rv->x[k+1]:cx, by=(k<rv->len-1)?rv->y[k+1]:cy;
+            /* direction SORTANTE (on re-pick à chaque changement d'orientation, pas de lissage) */
+            int ax,ay,bx,by;
+            if      (k<rv->len-1){ ax=cx; ay=cy; bx=rv->x[k+1]; by=rv->y[k+1]; }
+            else if (k>0)        { ax=rv->x[k-1]; ay=rv->y[k-1]; bx=cx; by=cy; }
+            else                 { ax=cx; ay=cy; bx=cx+1; by=cy; }
             float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
             if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;   /* hors champ */
-            double ang = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f) - SEG_SPRITE_ANG0;
+            double theta = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f);
+            double ang = 180.0 - (theta - SEG_SPRITE_ANG0);   /* inversé + calé sur 180° */
             dress_blit_rot(ren,MAPD_RIVER_STRAIGHT,fsx,fsy,px,ang);   /* TOURNÉ pour suivre le fil */
         }
     }
@@ -363,11 +367,14 @@ static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork
             int cx=lx[k],cy=ly[k];
             if (cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
             if (scps_cellc(w,cx,cy)->sea) continue;              /* la route ne traverse pas la mer */
-            int ax=(k>0)?lx[k-1]:cx, ay=(k>0)?ly[k-1]:cy;
-            int bx=(k<ln-1)?lx[k+1]:cx, by=(k<ln-1)?ly[k+1]:cy;
+            int ax,ay,bx,by;
+            if      (k<ln-1){ ax=cx; ay=cy; bx=lx[k+1]; by=ly[k+1]; }
+            else if (k>0)   { ax=lx[k-1]; ay=ly[k-1]; bx=cx; by=cy; }
+            else            { ax=cx; ay=cy; bx=cx+1; by=cy; }
             float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
             if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;
-            double ang = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f) - SEG_SPRITE_ANG0;
+            double theta = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f);
+            double ang = 180.0 - (theta - SEG_SPRITE_ANG0);   /* inversé + calé sur 180° */
             dress_blit_rot(ren,MAPD_ROAD_STRAIGHT,fsx,fsy,px,ang);   /* TOURNÉE pour suivre la route */
         }
     }
