@@ -47,6 +47,36 @@
 #include "scps_map_dressing.h"  /* pack MAP DRESSING : décors de carte (champs, bâtiments, arbres, roches, buissons, rivières, routes) — display-only */
 /* L'atlas chargé (NULL = absent → carte lisse). Display-only, même régime éditable que scps_lang.txt. */
 static SDL_Texture *g_dress_tex = NULL;  /* atlas de dressing (décors de carte) — NULL si le .bmp est absent */
+static SDL_Texture *g_settle_tex = NULL; /* atlas SETTLEMENTS (villes par tier × terrain) — NULL si absent */
+#define SCPS_SETTLE_FILE "scps_map_settlements.bmp"
+#define SCPS_SETTLE_CELL 96               /* atlas 6 tiers × 6 groupes, cellule 96 px */
+enum { SETTLE_MOUNTAIN=0, SETTLE_RIVER, SETTLE_ESTUARY, SETTLE_RURAL, SETTLE_MARKET, SETTLE_FORTIFIED };
+/* Charge un atlas BMP à fond MAGENTA et le DESPILLE (magenta → alpha, frange → bronze
+ * neutre). Mutualisé décors & settlements. NULL si le fichier est absent. */
+static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
+    SDL_Surface *ns = SDL_LoadBMP(file);
+    if (!ns) return NULL;
+    SDL_Surface *cv = SDL_ConvertSurfaceFormat(ns, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_FreeSurface(ns);
+    if (!cv) return NULL;
+    Uint32 clear = SDL_MapRGBA(cv->format, 0,0,0,0);
+    for (int y=0; y<cv->h; y++){
+        Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
+        for (int x=0; x<cv->w; x++){
+            Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
+            int mn=(r<b)?r:b; int key=mn-(int)g;
+            if (key<=4) continue;
+            float mness=(float)key/255.0f; float af=1.0f-mness; af*=af;
+            if (af<0.03f){ row[x]=clear; continue; }
+            int lum=g; int nr=lum, ng=(int)((float)lum*0.88f+0.5f), nb=(int)((float)lum*0.70f+0.5f);
+            row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
+        }
+    }
+    SDL_Texture *tex = SDL_CreateTextureFromSurface(ren, cv);
+    SDL_FreeSurface(cv);
+    if (tex) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+    return tex;
+}
 #include "stb_image_write.h"  /* F12 : capture d'écran PNG (vendoré) */
 #include "scps_audio.h"       /* la prise audio (miniaudio) — preuve de vie sur alerte */
 #ifdef SCPS_DEV
@@ -240,17 +270,17 @@ static int dress_size(int id, float sc){
  * (forêts/montagnes/marais ≈ couverture pleine ; plaines clairsemées). */
 static int dress_density(Biome b){
     switch (b){
-        case BIO_FOREST: case BIO_JUNGLE:                      return 13;
-        case BIO_MOUNTAINS: case BIO_PEAK: case BIO_GLACIER:   return 13;
-        case BIO_MARSH: case BIO_BOG:                          return 11;
-        case BIO_WOODS: case BIO_MANGROVE:                     return 10;
-        case BIO_VOLCANO:                                      return 9;
-        case BIO_HILLS: case BIO_HIGHLANDS:                    return 7;
-        case BIO_FARMLAND:                                     return 6;   /* les champs habillent bien la terre cultivée */
+        case BIO_FOREST: case BIO_JUNGLE:                      return 8;
+        case BIO_MOUNTAINS: case BIO_PEAK: case BIO_GLACIER:   return 8;
+        case BIO_MARSH: case BIO_BOG:                          return 7;
+        case BIO_WOODS: case BIO_MANGROVE:                     return 6;
+        case BIO_VOLCANO:                                      return 6;
+        case BIO_HILLS: case BIO_HIGHLANDS:                    return 5;
+        case BIO_FARMLAND:                                     return 5;   /* les champs habillent bien la terre cultivée */
         case BIO_PLAINS: case BIO_GRASSLAND:
-        case BIO_STEPPE: case BIO_SAVANNA:                     return 4;
-        case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 3;
-        case BIO_DESERT:                                       return 2;
+        case BIO_STEPPE: case BIO_SAVANNA:                     return 3;
+        case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 2;
+        case BIO_DESERT:                                       return 1;
         default:                                               return 0;
     }
 }
@@ -521,6 +551,42 @@ static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork
         }
     }
 }
+/* SETTLEMENTS : une VILLE par région COLONISÉE, au centre, TAILLE = tier de population,
+ * SILHOUETTE = terrain (priorité estuaire > rivière > montagne > capitale=fortifiée >
+ * rural). Display-only : lit colonized + pop + géographie (tangibles). Dessinée APRÈS le
+ * décor → focale bien lisible. */
+static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
+    if (!g_settle_tex || !econ) return;
+    float sc=cam->scale; if (sc<2.0f) return;
+    g_iso_w=win_w; g_iso_h=win_h;
+    static const float dscale[6]={0.50f,0.66f,0.84f,1.05f,1.28f,1.55f};   /* outpost…metropolis (échelonné) */
+    for (int r=0; r<econ->n_regions && r<w->n_regions; r++){
+        const RegionEconomy *re=&econ->region[r];
+        if (!re->colonized) continue;
+        float pop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        if (pop<40.f) continue;
+        int tier = pop>=30000?5 : pop>=12000?4 : pop>=5000?3 : pop>=1800?2 : pop>=500?1 : 0;
+        float wx,wy; if(!region_world_pos(w,r,&wx,&wy)) continue;
+        int cx=(int)wx, cy=(int)wy; if(cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
+        const Cell *c=scps_cellc(w,cx,cy);
+        int owner=re->owner;
+        bool cap=(owner>=0 && owner<w->n_countries && w->country[owner].capital_prov>=0
+                  && w->country[owner].capital_prov<w->n_provinces
+                  && w->province[w->country[owner].capital_prov].region==r);
+        int group;
+        if (re->coastal)                           group=SETTLE_ESTUARY;       /* port / embouchure */
+        else if (c->river>40 && !c->lake)          group=SETTLE_RIVER;
+        else if (c->biome==BIO_MOUNTAINS||c->biome==BIO_PEAK||c->biome==BIO_HILLS||c->biome==BIO_HIGHLANDS) group=SETTLE_MOUNTAIN;
+        else if (cap)                              group=SETTLE_FORTIFIED;     /* capitale = remparts */
+        else                                       group=SETTLE_RURAL;
+        float fsx,fsy; cam_project(cam,wx,wy,&fsx,&fsy);
+        int dpx=(int)(sc*10.0f*dscale[tier]); if(dpx<18)dpx=18; if(dpx>460)dpx=460;
+        if(fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
+        SDL_Rect src={tier*SCPS_SETTLE_CELL, group*SCPS_SETTLE_CELL, SCPS_SETTLE_CELL, SCPS_SETTLE_CELL};
+        SDL_Rect dst={(int)fsx-dpx/2, (int)fsy-(dpx*7)/10, dpx, dpx};          /* ancré bas-centre */
+        SDL_RenderCopy(ren, g_settle_tex, &src, &dst);
+    }
+}
 static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
     if (!g_dress_tex) return;
     g_iso_w=win_w; g_iso_h=win_h;                 /* pivot iso de la frame */
@@ -565,7 +631,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             /* (les RIVIÈRES sont chaînées dans une passe à part, draw_map_rivers, SOUS ici.) */
             /* ── VILLES : bâtiments isolés sur la terre COLONISÉE, densité ∝ tier de pop.
              *    Le bâti OCCUPE la cellule (pas de nature en plus) + un chemin proche. ── */
-            int bgate = (tier>=2)?3:(tier>=1)?2:1;     /* sur 16 : peuplé = plus de hameaux */
+            int bgate = (tier>=2)?1:0;                 /* fermes OUTLYING rares : la VILLE est le sprite settlement */
             if (settled && (int)(hb&15u) < bgate){
                 int bid = dress_building(c, tier, hb);
                 int bpx = dress_size(bid,sc);
@@ -4573,45 +4639,12 @@ int main(int argc, char **argv) {
      * la planche scps_map_dressing.bmp à côté du binaire, fond MAGENTA FF00FF →
      * transparent par DESPILL (alpha + dé-teinte, voir plus bas). ABSENTE →
      * g_dress_tex NULL → carte lisse (le moteur/déterminisme n'y touchent jamais). */
-    { SDL_Surface *ns = SDL_LoadBMP(SCPS_MAP_DRESSING_FILE);
-      if (ns){
-          /* Clé MAGENTA → ALPHA, faite À LA MAIN (robuste) : la colorkey SDL n'est PAS
-           * convertie en transparence par CreateTextureFromSurface sur un atlas 24-bit
-           * (le magenta resterait opaque). On convertit en ARGB8888 (alpha plein) puis on
-           * passe à TRANSPARENT tout pixel ~magenta (tolérance pour les bords anticrénelés). */
-          SDL_Surface *cv = SDL_ConvertSurfaceFormat(ns, SDL_PIXELFORMAT_ARGB8888, 0);
-          SDL_FreeSurface(ns);
-          if (cv){
-              Uint32 clear = SDL_MapRGBA(cv->format, 0,0,0,0);
-              for (int y=0; y<cv->h; y++){
-                  Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
-                  for (int x=0; x<cv->w; x++){
-                      Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
-                      /* DESPILL magenta. Le « surplus magenta » = min(R,B) − G (haut sur le
-                       * fond et ses FRANGES anticrénelées, ~0 sur le sprite). L'AA est une
-                       * PLAGE (magenta → bords dorés/noirs), pas une clé unique : on traite
-                       * tout le surplus. Magenta dominant → on VIRE le pixel (transparent) ;
-                       * frange légère → résiduel NEUTRE bronze/noir (jamais violet/blanc/bleu).
-                       * Sprite franc (surplus ≤ 0) → opaque, inchangé. */
-                      int mn  = (r<b)?r:b;
-                      int key = mn - (int)g;                 /* surplus magenta (R&B hauts, G bas) */
-                      if (key <= 4) continue;                /* pas de magenta → sprite, opaque inchangé */
-                      float mness = (float)key/255.0f;       /* 0..1 : à quel point c'est magenta */
-                      float af = 1.0f - mness; af *= af;      /* couverture sprite, COURBE RAIDE → la frange s'efface */
-                      if (af < 0.03f){ row[x] = clear; continue; }   /* dominé par le magenta → VIRÉ (transparent) */
-                      /* résiduel NEUTRE : la luminance vient du VERT (le canal SANS magenta) ;
-                       * teinte bronze chaude légère, alpha faible → bord discret, pas de halo. */
-                      int lum = g;
-                      int nr=lum, ng=(int)((float)lum*0.88f+0.5f), nb=(int)((float)lum*0.70f+0.5f);
-                      row[x] = SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
-                  }
-              }
-              g_dress_tex = SDL_CreateTextureFromSurface(ren, cv);
-              SDL_FreeSurface(cv);
-          }
-          if (g_dress_tex){ SDL_SetTextureBlendMode(g_dress_tex, SDL_BLENDMODE_BLEND);
-              printf("[scps] %s chargé (décors de carte).\n", SCPS_MAP_DRESSING_FILE); }
-      } else fprintf(stderr,"[scps] décors de carte : %s absent — carte lisse.\n", SCPS_MAP_DRESSING_FILE); }
+    g_dress_tex = load_despilled_bmp(ren, SCPS_MAP_DRESSING_FILE);
+    if (g_dress_tex) printf("[scps] %s chargé (décors de carte).\n", SCPS_MAP_DRESSING_FILE);
+    else fprintf(stderr,"[scps] décors de carte : %s absent — carte lisse.\n", SCPS_MAP_DRESSING_FILE);
+    g_settle_tex = load_despilled_bmp(ren, SCPS_SETTLE_FILE);
+    if (g_settle_tex) printf("[scps] %s chargé (settlements).\n", SCPS_SETTLE_FILE);
+    else fprintf(stderr,"[scps] settlements : %s absent.\n", SCPS_SETTLE_FILE);
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
 #endif
@@ -4869,7 +4902,7 @@ int main(int argc, char **argv) {
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); }   /* rivières chaînées + décors, SOUS les frontières */
+            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); }   /* rivières chaînées + décors, SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
             if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false; mmp.iso=false;  /* minicarte : top-down */
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
@@ -5477,7 +5510,7 @@ int main(int argc, char **argv) {
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
-        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); }
+        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); }
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
          * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
          * SOUS la sélection/glyphes/étiquettes (z-order §2c). */
