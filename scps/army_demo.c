@@ -92,21 +92,21 @@ int main(int argc, char **argv){
     /* ═══ 3. LES CONTRES (le réseau pierre-feuille-ciseaux) ════════════ */
     printf("\n── 3. Le contre PRIME sur la qualité (sur 21 batailles, à dés variés) ──\n");
     int N=21;
-    int pk = winrate(U_PIQUIER,1,  U_CAV_LOURDE,1, 1.f, N, seed);
-    int ab = winrate(U_ARBALETE,1, U_CAV_LOURDE,1, 1.f, N, seed);
-    int cl = winrate(U_CAV_LEGERE,1,U_ARCHER,1,    1.f, N, seed);
-    printf("   piquier > cav. lourde : %d/%d | arbalète > cav. lourde : %d/%d | cav. légère > archer : %d/%d\n",
-           pk,N, ab,N, cl,N);
-    ok("un mur de piquiers brise une charge de cavalerie d'élite (le contre prime)", pk>=15);
+    int hl = winrate(U_HALLEBARDIER,1, U_CAV_LOURDE,1, 1.f, N, seed);   /* la hallebarde drillée brise la charge lourde */
+    int ab = winrate(U_ARBALETE,1,     U_CAV_LOURDE,1, 1.f, N, seed);
+    int cl = winrate(U_CAV_LEGERE,1,   U_ARCHER,1,     1.f, N, seed);
+    printf("   hallebarde > cav. lourde : %d/%d | arbalète > cav. lourde : %d/%d | cav. légère > archer : %d/%d\n",
+           hl,N, ab,N, cl,N);
+    ok("un mur de hallebardiers (pop bon marché, drillé) brise une charge de cavalerie lourde (le contre prime)", hl>=15);
     ok("une arbalète défait une cavalerie lourde", ab>=15);
     ok("une cavalerie légère croque les archers (contre + mobilité)", cl>=15);
 
     /* ═══ 4. LE SPÉCIAL À TALON : le mage ══════════════════════════════ */
-    printf("\n── 4. Le mage écrase les 2/3 du roster — mais tombe au dernier tiers ──\n");
-    int mg_e = winrate(U_MAGE,1, U_EPEISTE,1,    1.f, N, seed);   /* dans les 2/3 */
-    int mg_c = winrate(U_MAGE,1, U_CAV_LEGERE,1, 1.f, N, seed);   /* le talon */
-    printf("   mage > épéiste (2/3) : %d/%d | mage vs cav. légère (talon) : %d/%d\n", mg_e,N, mg_c,N);
-    ok("le mage écrase les deux tiers du roster (ex. l'épéiste)", mg_e>=15);
+    printf("\n── 4. L'arcane FAUCHE l'infanterie packée — mais tombe aux tirs et à la cavalerie ──\n");
+    int mg_e = winrate(U_MAGE,1, U_EPEISTE,1,    1.f, N, seed);   /* fauche l'infanterie packée */
+    int mg_c = winrate(U_MAGE,1, U_CAV_LEGERE,1, 1.f, N, seed);   /* le talon : la cavalerie rapide */
+    printf("   mage > épéiste : %d/%d | mage vs cav. légère (talon) : %d/%d\n", mg_e,N, mg_c,N);
+    ok("le mage fauche l'infanterie packée (ex. l'épéiste)", mg_e>=15);
     ok("… mais se fait défaire par son talon (la cavalerie légère rapide) — jamais universel", mg_c<=6);
 
     /* ═══ 5. LE DÉ PONDÉRÉ PAR LE CONTRE ET LES STATS ══════════════════ */

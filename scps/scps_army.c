@@ -28,20 +28,20 @@
 
 /* ---- Définitions d'unités (§2, §5) ------------------------------------ */
 static const UnitDef UNITS[U_COUNT] = {
-    [U_PIQUIER]   = { "Piquier",     LAB_LABORER, W_PIQUE,     0.30f, 100.f, 2.f, 3.f },
-    [U_LANCIER]   = { "Lancier",     LAB_LABORER, W_LANCE,     0.30f,  95.f, 3.f, 3.f },
+    [U_PIQUIER]   = { "Piquier",     LAB_LABORER, W_PIQUE,     0.30f, 115.f, 2.f, 3.f },
+    [U_LANCIER]   = { "Lancier",     LAB_LABORER, W_LANCE,     0.32f,  95.f, 3.f, 3.f },
     [U_EPEISTE]   = { "Épéiste",     LAB_LABORER, W_EPEE,      0.45f, 100.f, 3.f, 4.f },
     [U_ARCHER]    = { "Archer",      LAB_LABORER, W_ARC,       0.20f,  70.f, 3.f, 3.f },
-    [U_ARBALETE]  = { "Arbalétrier", LAB_LABORER, W_ARBALETE,  0.25f, 100.f, 2.f, 4.f },
-    [U_CAV_LEGERE]= { "Cav. légère", LAB_ELITE,   W_MONTURE_L, 0.50f,  90.f, 8.f, 6.f },
-    [U_CAV_LOURDE]= { "Cav. lourde", LAB_ELITE,   W_MONTURE_H, 0.70f, 115.f, 6.f, 7.f },
-    [U_MAGE]      = { "Mage",        LAB_ELITE,   W_BATON,     0.30f,  65.f, 4.f, 6.f },
-    /* F5 — les neuves : hallebardier (anti-cav lourd), arquebusier (feu perce-armure),
-     * alchimiste (soutien Fluide), garde runique (élite arcane mêlée). */
-    [U_HALLEBARDIER]={ "Hallebardier", LAB_LABORER, W_HALLEBARDE, 0.50f, 110.f, 2.f, 4.f },
-    [U_ARQUEBUSIER]= { "Arquebusier",  LAB_LABORER, W_ARQUEBUSE,  0.35f,  80.f, 2.f, 4.f },
-    [U_ALCHIMISTE] = { "Alchimiste",   LAB_LABORER, W_ALCHIMIE,   0.30f,  75.f, 3.f, 5.f },
-    [U_GARDE_RUNIQUE]={"Garde runique",LAB_ELITE,   W_RUNES,      0.65f, 120.f, 4.f, 7.f },
+    [U_ARBALETE]  = { "Arbalétrier", LAB_LABORER, W_ARBALETE,  0.42f,  90.f, 2.f, 4.f },
+    [U_CAV_LEGERE]= { "Cav. légère", LAB_ELITE,   W_MONTURE_L, 0.45f,  75.f, 8.f, 6.f },
+    [U_CAV_LOURDE]= { "Cav. lourde", LAB_ELITE,   W_MONTURE_H, 0.78f,  95.f, 6.f, 7.f },
+    [U_MAGE]      = { "Mage",        LAB_ELITE,   W_BATON,     0.58f,  55.f, 4.f, 6.f },
+    /* F5 — hallebardier (anti-cav drillé, les DEUX charges), arquebusier (feu perce-armure),
+     * alchimiste (feu de soutien, fragile), garde runique (élite arcane mêlée, incassable). */
+    [U_HALLEBARDIER]={ "Hallebardier", LAB_LABORER, W_HALLEBARDE, 0.55f, 110.f, 2.f, 4.f },
+    [U_ARQUEBUSIER]= { "Arquebusier",  LAB_LABORER, W_ARQUEBUSE,  0.52f,  78.f, 2.f, 4.f },
+    [U_ALCHIMISTE] = { "Alchimiste",   LAB_LABORER, W_ALCHIMIE,   0.45f,  65.f, 3.f, 5.f },
+    [U_GARDE_RUNIQUE]={"Garde runique",LAB_ELITE,   W_RUNES,      0.72f, 120.f, 4.f, 7.f },
 };
 const UnitDef *unit_def(UnitType t){ return (t>=0&&t<U_COUNT)?&UNITS[t]:NULL; }
 const char    *unit_name(UnitType t){ return (t>=0&&t<U_COUNT)?UNITS[t].name:"?"; }
@@ -95,20 +95,31 @@ static void build_matrix(void){
     for (int i=0;i<U_COUNT;i++) for (int j=0;j<U_COUNT;j++) MATRIX[i][j]=M_NEUTRAL;
     /* a CONTRE b → MATRIX[a][b]=BEAT, MATRIX[b][a]=LOSE (sans écraser un BEAT). */
     struct { UnitType a, b; } C[] = {
-        {U_PIQUIER,U_CAV_LEGERE}, {U_PIQUIER,U_CAV_LOURDE},     /* la pique brise la charge */
-        {U_LANCIER,U_CAV_LEGERE}, {U_LANCIER,U_CAV_LOURDE},
-        {U_EPEISTE,U_PIQUIER},    {U_EPEISTE,U_LANCIER},        /* la mêlée défait les hampes */
-        {U_ARCHER, U_PIQUIER},    {U_ARCHER, U_LANCIER},        /* la flèche pique l'infanterie lente */
-        {U_ARBALETE,U_CAV_LOURDE},{U_ARBALETE,U_MAGE},          /* le carreau perce l'armure et l'arcane */
-        {U_CAV_LEGERE,U_ARCHER},  {U_CAV_LEGERE,U_ARBALETE}, {U_CAV_LEGERE,U_MAGE}, /* la vitesse croque les tireurs */
-        {U_CAV_LOURDE,U_EPEISTE}, {U_CAV_LOURDE,U_ARCHER},      /* le choc enfonce la piétaille */
-        {U_MAGE,U_PIQUIER},{U_MAGE,U_LANCIER},{U_MAGE,U_EPEISTE},{U_MAGE,U_ARCHER},{U_MAGE,U_CAV_LOURDE}, /* le mage écrase les 2/3 */
-        /* F5 — les neuves dans le réseau de contres : */
-        {U_HALLEBARDIER,U_CAV_LEGERE},{U_HALLEBARDIER,U_CAV_LOURDE},   /* la hallebarde brise la charge (anti-cav) */
-        {U_ARQUEBUSIER,U_CAV_LOURDE},{U_ARQUEBUSIER,U_GARDE_RUNIQUE},  /* l'arquebuse PERCE l'armure (lourde + runique) */
-        {U_GARDE_RUNIQUE,U_EPEISTE},{U_GARDE_RUNIQUE,U_PIQUIER},{U_GARDE_RUNIQUE,U_HALLEBARDIER}, /* l'élite arcane défait la piétaille */
-        {U_ALCHIMISTE,U_PIQUIER},{U_ALCHIMISTE,U_HALLEBARDIER},        /* le feu alchimique cuit les formations lentes */
-        {U_CAV_LEGERE,U_ARQUEBUSIER},{U_CAV_LEGERE,U_ALCHIMISTE},      /* la vitesse croque les tireurs/soutiens */
+        /* anti-cav LÉGÈRE : pique/lance arrêtent le galop léger — mais ROMPENT sous la charge lourde
+         * (seule la hallebarde drillée tient les deux). Le « mur bon marché brise l'élite » passe par la hallebarde. */
+        {U_PIQUIER,U_CAV_LEGERE}, {U_LANCIER,U_CAV_LEGERE},
+        /* l'épée défait les hampes en mêlée ET clôt la distance sur l'arquebuse (recharge lente) */
+        {U_EPEISTE,U_PIQUIER}, {U_EPEISTE,U_LANCIER}, {U_EPEISTE,U_ARQUEBUSIER},
+        /* la flèche pique les formations lentes (pique, lance, hallebarde) avant le contact */
+        {U_ARCHER,U_PIQUIER}, {U_ARCHER,U_LANCIER}, {U_ARCHER,U_HALLEBARDIER},
+        /* le carreau perce la plaque (cav lourde), l'armure runique (garde) et atteint le mage */
+        {U_ARBALETE,U_CAV_LOURDE}, {U_ARBALETE,U_GARDE_RUNIQUE}, {U_ARBALETE,U_MAGE},
+        /* la cavalerie LÉGÈRE court-sus à tous les tireurs/soutiens (le moteur de poursuite) */
+        {U_CAV_LEGERE,U_ARCHER}, {U_CAV_LEGERE,U_ARBALETE}, {U_CAV_LEGERE,U_MAGE},
+        {U_CAV_LEGERE,U_ALCHIMISTE}, {U_CAV_LEGERE,U_ARQUEBUSIER},
+        /* la charge LOURDE enfonce les lignes de hampes, l'infanterie meuble, les archers, et atteint le mage */
+        {U_CAV_LOURDE,U_PIQUIER}, {U_CAV_LOURDE,U_LANCIER}, {U_CAV_LOURDE,U_EPEISTE},
+        {U_CAV_LOURDE,U_ARCHER}, {U_CAV_LOURDE,U_MAGE},
+        /* la hallebarde drillée brise LES DEUX cavaleries et outre-porte l'épée */
+        {U_HALLEBARDIER,U_CAV_LEGERE}, {U_HALLEBARDIER,U_CAV_LOURDE}, {U_HALLEBARDIER,U_EPEISTE},
+        /* l'arquebuse PERCE toute armure : cav lourde, garde runique, hallebarde */
+        {U_ARQUEBUSIER,U_CAV_LOURDE}, {U_ARQUEBUSIER,U_GARDE_RUNIQUE}, {U_ARQUEBUSIER,U_HALLEBARDIER},
+        /* le feu alchimique cuit les formations lentes et packées */
+        {U_ALCHIMISTE,U_PIQUIER}, {U_ALCHIMISTE,U_LANCIER}, {U_ALCHIMISTE,U_HALLEBARDIER},
+        /* l'arcane fauche l'infanterie packée (mais tombe aux tirs et à la cavalerie) */
+        {U_MAGE,U_PIQUIER}, {U_MAGE,U_LANCIER}, {U_MAGE,U_EPEISTE}, {U_MAGE,U_HALLEBARDIER},
+        /* l'élite arcane de mêlée défait piétaille et soutien fragile */
+        {U_GARDE_RUNIQUE,U_EPEISTE}, {U_GARDE_RUNIQUE,U_PIQUIER}, {U_GARDE_RUNIQUE,U_HALLEBARDIER}, {U_GARDE_RUNIQUE,U_ALCHIMISTE},
     };
     int n=(int)(sizeof(C)/sizeof(C[0]));
     for (int k=0;k<n;k++){
