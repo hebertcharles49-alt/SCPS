@@ -278,6 +278,24 @@ static float side_power(const ArmyState *f){
     p *= (f->doctrine.weapon_power>0.f?f->doctrine.weapon_power:1.f);
     return powf(p, 0.85f);            /* la MASSE aide, à rendements décroissants */
 }
+/* P-bis — LE CONTRE PREND SES DENTS : matchup moyen pondéré par effectifs des unités de
+ * `self` contre celles de `foe` (∈ [0.5,2]). >1 = la composition de self CONTRAIT celle de
+ * foe. C'est ce qui rend la matrice pierre-feuille-ciseaux EFFECTIVE en bataille de campagne
+ * (avant : seul resolve_battle/le duel la lisait). Mélanges miroir → ~1.0 (neutre) ; un côté
+ * mal apparié (cavalerie contre un mur de hampes drillé) → loin de 1.0. */
+static float side_counter(const ArmyState *self, const ArmyState *foe){
+    long ts=force_units(self), tf=force_units(foe);
+    if (ts<=0 || tf<=0) return 1.f;
+    float acc=0.f;
+    for (int i=0;i<self->n_units;i++){
+        long ni=self->units[i].count; if (ni<=0) continue;
+        for (int j=0;j<foe->n_units;j++){
+            long nj=foe->units[j].count; if (nj<=0) continue;
+            acc += (float)ni * (float)nj * matchup(self->units[i].type, foe->units[j].type);
+        }
+    }
+    return acc / ((float)ts * (float)tf);
+}
 static long kill_packets(ArmyState *f, long packets){
     long tot=force_units(f); if (tot<=0||packets<=0) return 0;
     if (packets>tot) packets=tot;
@@ -393,8 +411,10 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
      * ET en RELÈVE le plafond → cavalerie DOMINANTE ⇒ la poursuite DOMINE le choc ;
      * infanterie pure ⇒ le choc peut primer (le slugfest frontal). */
     float cavf=army_cav_frac(&V->force);
+    float ctrv=side_counter(&V->force,&L->force);   /* le vainqueur qui CONTRAIT le vaincu fait une curée plus totale */
     float P=0.06f + ((V->posture==FA_AGRESSIVE)?0.08f:(V->posture==FA_PRUDENTE)?-0.03f:0.f)
-          + 0.04f*vfrac + tune_f("CAV_PURSUIT",0.45f)*cavf;
+          + 0.04f*vfrac + tune_f("CAV_PURSUIT",0.45f)*cavf
+          + tune_f("CTR_PURSUIT",0.30f)*fmaxf(0.f, ctrv-1.f);
     if (terrain_combat_bonus(c->reg_biome[bt->loc])>1.10f) P-=0.04f;   /* la montagne couvre la fuite */
     float cap=tune_f("CUREE_CAP",0.22f) + tune_f("CAV_CUREE_CAP",0.40f)*cavf;  /* la cavalerie relève le plafond de curée */
     P=fminf(cap,fmaxf(0.03f,P));
@@ -462,8 +482,10 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
     if (ph<BT_CHOC_J){
         bt->chocs++;
         float tA=bt_terrainA(c,e,bt->loc,A->owner,B->owner);
-        float pA=side_power(&A->force)*tA *((A->posture==FA_AGRESSIVE)?1.10f:(A->posture==FA_PRUDENTE)?0.92f:1.f);
-        float pB=side_power(&B->force)/tA *((B->posture==FA_AGRESSIVE)?1.10f:(B->posture==FA_PRUDENTE)?0.92f:1.f);
+        float ctrA=powf(side_counter(&A->force,&B->force), tune_f("CTR_BITE",0.6f)); /* le contre PRIME sur la qualité brute */
+        float ctrB=powf(side_counter(&B->force,&A->force), tune_f("CTR_BITE",0.6f));
+        float pA=side_power(&A->force)*tA*ctrA *((A->posture==FA_AGRESSIVE)?1.10f:(A->posture==FA_PRUDENTE)?0.92f:1.f);
+        float pB=side_power(&B->force)/tA*ctrB *((B->posture==FA_AGRESSIVE)?1.10f:(B->posture==FA_PRUDENTE)?0.92f:1.f);
         pA*=0.85f+0.30f*xs01(rng); pB*=0.85f+0.30f*xs01(rng);
         float tot=pA+pB+1e-3f;
         float dmgk=tune_f("BT_DMG_K",BT_DMG_K);

@@ -59,6 +59,10 @@
     X(CAV_PURSUIT,            0.45f) \
     X(CAV_CUREE_CAP,          0.40f) \
     X(BT_DMG_K,               0.057f) \
+    /* P-bis — le CONTRE composition-vs-composition (bt_day) : mordant au choc (^CTR_BITE) et
+     * part de curée ∝ avantage de contre du vainqueur. C'est ce qui donne des dents à la matrice. */ \
+    X(CTR_BITE,               0.6f) \
+    X(CTR_PURSUIT,            0.30f) \
     X(BT_CHOC_MORTS,          0.006f) \
     X(BT_RUPTURE,             0.20f) \
     X(CHOC_ROUNDS_BONUS,      2.0f) \
