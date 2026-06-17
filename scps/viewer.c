@@ -74,16 +74,18 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
             row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
         }
     }
-    /* POST-TRAITEMENT anti-ROSE : tout pixel encore de FAMILLE MAGENTA (R ET B au-dessus du
-     * VERT) est rabattu sur un BRUN SOMBRE (pas gris : « brun/bronze/noir »). Seuil ÉLARGI
-     * (+2, ex-+3) → couvre une bande plus large de flou rosé. Le brun des bords (R>G>B, donc
-     * B<G) n'est PAS touché ; verts/bruns/bleus non plus. */
+    /* POST-TRAITEMENT anti-ROSE — la DERNIÈRE FRANGE rose/salmon. Spectre ÉTROIT (ne pas
+     * abîmer les autres assets) : R nettement au-dessus du VERT (chaud) ET B encore PRÈS du
+     * vert (B>V−6) — c'est la signature du résidu de magenta (le bleu du fond a contaminé le
+     * bord). L'orange/brun/sable LÉGITIME a B BIEN sous V (non touché) ; la MER a R bas (non
+     * touchée). Rabattue sur du BRONZE à luminance ÉGALE (lum·{.95,.72,.46}). */
     for (int y=0; y<cv->h; y++){
         Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
         for (int x=0; x<cv->w; x++){
             Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
-            if (a>0 && (int)r>(int)g+2 && (int)b>(int)g+2){
-                int nr=(int)((float)g*0.45f+0.5f), ng=(int)((float)g*0.34f+0.5f), nb=(int)((float)g*0.22f+0.5f);
+            if (a>0 && (int)r>(int)g+12 && (int)b>(int)g-6){
+                int lum=((int)r*5 + (int)g*9 + (int)b*2)/16;   /* luminance perçue → BRONZE de même éclat (pas de noircissement du salmon) */
+                int nr=(int)((float)lum*0.95f+0.5f), ng=(int)((float)lum*0.72f+0.5f), nb=(int)((float)lum*0.46f+0.5f);
                 row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb, a);
             }
         }
@@ -778,10 +780,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             }
             int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
-            int goldfield = (id==MAPD_FIELD_WHEAT || id==MAPD_FIELD_HAY);    /* les champs DORÉS (blé/foin), tous biomes */
-            if (goldfield) SDL_SetTextureColorMod(g_dress_tex,150,120,84);    /* doré → brun/bronze (display-only) */
             dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre (sprite debout) */
-            if (goldfield) SDL_SetTextureColorMod(g_dress_tex,255,255,255);
             /* FERME : le champ (RARE) est HABILLÉ — un petit MOULIN + une grappe d'assets
              * (bottes, caisses, haies) en fait une ferme, pas un carré répété. */
             if (c->biome==BIO_FARMLAND){
@@ -794,10 +793,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
                         uint32_t hq=map_hash(cx*3+q, cy*5+q, 0xFA12BEEFu);
                         int fsz=(int)((float)px*0.5f); if(fsz<7)fsz=7;
                         int ox=(int)((hq>>3)&31u)-16, oy=(int)((hq>>9)&15u)-8;
-                        int cid=fcl[hq%5];
-                        if (cid==COVER_HAYSTACK||cid==COVER_REED) SDL_SetTextureColorMod(g_cover_tex,175,145,112);  /* paille dorée → brun */
-                        cover_blit(ren, cid, sx-fsz/2+ox+jx, sy-(fsz*3)/4+oy+jy, fsz);
-                        SDL_SetTextureColorMod(g_cover_tex,255,255,255);
+                        cover_blit(ren, fcl[hq%5], sx-fsz/2+ox+jx, sy-(fsz*3)/4+oy+jy, fsz);
                     }
                 }
             }
