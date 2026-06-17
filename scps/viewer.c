@@ -341,7 +341,7 @@ static bool region_world_pos(const World *w, int reg, float *wx, float *wy){
  * infranchissable, fleuve franchi par un PONT. Chemins MIS EN CACHE (recalcul si le réseau
  * change). Rendu LISSÉ (tangente fenêtrée) → plus de double-variation aux diagonales. ── */
 #define ROAD_PATH_MAX 1400
-typedef struct { int16_t x[ROAD_PATH_MAX], y[ROAD_PATH_MAX]; int len; } RoadPath;
+typedef struct { int16_t x[ROAD_PATH_MAX], y[ROAD_PATH_MAX]; int len; int ra, rb; } RoadPath;
 static RoadPath *g_rd_paths=NULL; static int g_rd_npaths=0; static uint64_t g_rd_sig=0;
 static float *g_rd_g=NULL, *g_heapf=NULL; static int *g_rd_from=NULL,*g_rd_gen=NULL,*g_rd_closed=NULL,*g_heapi=NULL;
 static int g_rd_curgen=0, g_heap_n=0;
@@ -408,6 +408,19 @@ static bool road_astar(const World *w,int ax,int ay,int bx,int by,RoadPath *out)
     }
     return out->len>=2;
 }
+/* LISSAGE++ : moyenne mobile (extrémités fixes) — arrondit l'escalier 8-connexe de l'A*. */
+static void road_path_smooth(RoadPath *p){
+    if (p->len<3) return;
+    static int16_t nx[ROAD_PATH_MAX], ny[ROAD_PATH_MAX];
+    for (int pass=0; pass<3; pass++){
+        nx[0]=p->x[0]; ny[0]=p->y[0]; nx[p->len-1]=p->x[p->len-1]; ny[p->len-1]=p->y[p->len-1];
+        for (int k=1;k<p->len-1;k++){
+            nx[k]=(int16_t)((p->x[k-1]+2*p->x[k]+p->x[k+1])/4);
+            ny[k]=(int16_t)((p->y[k-1]+2*p->y[k]+p->y[k+1])/4);
+        }
+        memcpy(p->x,nx,sizeof(int16_t)*p->len); memcpy(p->y,ny,sizeof(int16_t)*p->len);
+    }
+}
 static void roads_ensure_cache(const World *w,const RouteNetwork *rn){
     uint64_t sig=1469598103934665603ull;
     for(int i=0;i<rn->n && i<SCPS_MAX_ROUTES;i++){ const TradeRoute *tr=&rn->route[i];
@@ -429,32 +442,84 @@ static void roads_ensure_cache(const World *w,const RouteNetwork *rn){
         float fax,fay,fbx,fby;
         if(!region_world_pos(w,tr->ra,&fax,&fay)||!region_world_pos(w,tr->rb,&fbx,&fby)) continue;
         if(hypotf(fbx-fax,fby-fay) > 360.f) continue;     /* trop loin (probable saut de mer) */
-        if(road_astar(w,(int)fax,(int)fay,(int)fbx,(int)fby,&g_rd_paths[g_rd_npaths])) g_rd_npaths++;
+        if(road_astar(w,(int)fax,(int)fay,(int)fbx,(int)fby,&g_rd_paths[g_rd_npaths])){
+            g_rd_paths[g_rd_npaths].ra=tr->ra; g_rd_paths[g_rd_npaths].rb=tr->rb;
+            road_path_smooth(&g_rd_paths[g_rd_npaths]);    /* lissage++ */
+            g_rd_npaths++;
+        }
     }
+}
+/* TRAIT ÉPAIS continu (RenderGeometry, quad par segment + losange aux points) — grammaire
+ * HOMOGÈNE : largeur & couleur CONSTANTES, raccords par recouvrement. Remplace le tuilage
+ * de sprites qui « clôturait ». */
+static void road_thick_polyline(SDL_Renderer *ren, const float *sx, const float *sy, int n, float wid, SDL_Color col){
+    if (n<2 || wid<1.f) return;
+    static SDL_Vertex vb[ROAD_PATH_MAX*8]; static int ib[ROAD_PATH_MAX*12];
+    int nv=0,nidx=0; const int CAP=ROAD_PATH_MAX*8;
+    for (int i=0;i+1<n && nv+4<=CAP;i++){
+        float dx=sx[i+1]-sx[i], dy=sy[i+1]-sy[i]; float L=sqrtf(dx*dx+dy*dy); if(L<0.01f) continue;
+        float nx=-dy/L*wid*0.5f, ny=dx/L*wid*0.5f; int b=nv;
+        vb[nv].position.x=sx[i]+nx;   vb[nv].position.y=sy[i]+ny;   vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i]-nx;   vb[nv].position.y=sy[i]-ny;   vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i+1]+nx; vb[nv].position.y=sy[i+1]+ny; vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i+1]-nx; vb[nv].position.y=sy[i+1]-ny; vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        ib[nidx++]=b; ib[nidx++]=b+1; ib[nidx++]=b+2; ib[nidx++]=b+2; ib[nidx++]=b+1; ib[nidx++]=b+3;
+    }
+    for (int i=1;i+1<n && nv+4<=CAP;i++){            /* losange à chaque coude → raccord sans trou */
+        float h=wid*0.5f; int b=nv;
+        vb[nv].position.x=sx[i];   vb[nv].position.y=sy[i]-h; vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i]+h; vb[nv].position.y=sy[i];   vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i];   vb[nv].position.y=sy[i]+h; vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i]-h; vb[nv].position.y=sy[i];   vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        ib[nidx++]=b; ib[nidx++]=b+1; ib[nidx++]=b+2; ib[nidx++]=b+2; ib[nidx++]=b+3; ib[nidx++]=b;
+    }
+    if (nv>=3) SDL_RenderGeometry(ren, NULL, vb, nv, ib, nidx);
 }
 static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork *rn, const Cam *cam, int win_w, int win_h){
     if (!g_dress_tex || !rn) return;
     float sc=cam->scale; if (sc<3.0f) return;
     g_iso_w=win_w; g_iso_h=win_h;
     roads_ensure_cache(w,rn);
-    int px=(int)(sc*2.3f); if(px<10)px=10; if(px>120)px=120;
-    SDL_SetTextureAlphaMod(g_dress_tex, 235);
+    static float rsx[ROAD_PATH_MAX], rsy[ROAD_PATH_MAX];
+    SDL_Color casing={58,42,28,255}, fill={196,164,110,255}, wood={122,84,48,255};
     for(int pi=0; pi<g_rd_npaths; pi++){
         const RoadPath *p=&g_rd_paths[pi];
-        for(int k=0;k<p->len;k++){
-            int cx=p->x[k], cy=p->y[k];
-            float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
-            if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;
-            int wlo=k-3<0?0:k-3, whi=k+3>=p->len?p->len-1:k+3;   /* tangente LISSÉE (fenêtre ±3) */
-            if(wlo==whi){ if(k>0)wlo=k-1; else if(k+1<p->len)whi=k+1; }
-            double theta=seg_screen_ang(cam,(float)p->x[wlo]+0.5f,(float)p->y[wlo]+0.5f,(float)p->x[whi]+0.5f,(float)p->y[whi]+0.5f);
-            double ang=theta - SEG_SPRITE_ANG0;
-            const Cell *c=scps_cellc(w,cx,cy);
-            int id=(c->river>40 && !c->lake)?MAPD_ROAD_BRIDGE:MAPD_ROAD_STRAIGHT;   /* PONT au fleuve */
-            dress_blit_rot(ren,id,fsx,fsy,px,ang);
+        int n=p->len; if(n>ROAD_PATH_MAX)n=ROAD_PATH_MAX;
+        for(int k=0;k<n;k++){ float fx,fy; cam_project(cam,(float)p->x[k]+0.5f,(float)p->y[k]+0.5f,&fx,&fy); rsx[k]=fx; rsy[k]=fy; }
+        float maj=(pi<3)?1.0f:(pi<7?0.78f:0.6f);                  /* NIVEAU → largeur (artère/desserte) */
+        float wfill=sc*0.55f*maj; if(wfill<2.2f)wfill=2.2f;
+        float wcas=wfill + sc*0.16f + 2.f;
+        road_thick_polyline(ren, rsx,rsy,n, wcas, casing);        /* bord sombre (casing) */
+        road_thick_polyline(ren, rsx,rsy,n, wfill, fill);         /* surface (constante) */
+        for(int k=0;k<n;k++){ const Cell *c=scps_cellc(w,p->x[k],p->y[k]);
+            if(c->river>40 && !c->lake){                           /* PONT (bois) au franchissement */
+                int bs=(int)(wcas*1.3f); if(bs<4)bs=4;
+                SDL_Rect br={(int)(rsx[k]-bs*0.5f),(int)(rsy[k]-bs*0.5f),bs,bs};
+                SDL_SetRenderDrawColor(ren,wood.r,wood.g,wood.b,255); SDL_RenderFillRect(ren,&br); } }
+        /* HABILLAGE : haie/arbres en BORDURE, alternés (buisson↔arbre), variés ; sur les
+         * DEUX côtés AUX COUDES (ils masquent les raccords d'angle), un seul côté ailleurs. */
+        static const int rtree[3]={MAPD_TREE_POPLAR,MAPD_TREE_BROADLEAF,MAPD_TREE_CONIFER};
+        static const int rbush[3]={MAPD_HEDGE_PATCH,MAPD_BUSH_GREEN,MAPD_THICKET_LOW};
+        int dsz=(int)(sc*1.05f); if(dsz<6)dsz=6; if(dsz>52)dsz=52;
+        int rstep=(int)(9.0f/sc)+3;
+        SDL_SetTextureAlphaMod(g_dress_tex,255);
+        for(int k=rstep;k<n-rstep;k+=rstep){
+            int kp=k-rstep, kn=k+rstep; if(kn>=n)kn=n-1;
+            float ax=rsx[k]-rsx[kp], ay=rsy[k]-rsy[kp], bx=rsx[kn]-rsx[k], by=rsy[kn]-rsy[k];
+            float la=sqrtf(ax*ax+ay*ay)+1e-3f, lb=sqrtf(bx*bx+by*by)+1e-3f;
+            float pxp=-(ay+by), pyp=(ax+bx); float pl=sqrtf(pxp*pxp+pyp*pyp)+1e-3f; pxp/=pl; pyp/=pl;  /* perp moyenne */
+            bool bend=((ax*bx+ay*by)/(la*lb))<0.86f;        /* la route TOURNE ici */
+            float off=wcas*0.5f + dsz*0.30f;
+            for(int sgn=-1;sgn<=1;sgn+=2){
+                if(sgn>0 && !bend && ((k/rstep)&1)) continue;            /* tout-droit : un seul côté, alterné */
+                uint32_t hh=map_hash(p->x[k]+sgn, p->y[k], 0xD2E5CAFEu);
+                int id=(((k/rstep)+(sgn>0?1:0))&1) ? rtree[hh%3] : rbush[hh%3];   /* alterne arbre/buisson */
+                int ssx=(int)(rsx[k]+sgn*pxp*off), ssy=(int)(rsy[k]+sgn*pyp*off);
+                if(ssx<-dsz||ssx>win_w+dsz||ssy<-dsz||ssy>win_h+dsz) continue;
+                dress_blit(ren, id, ssx-dsz/2, ssy-(dsz*3)/4, dsz);     /* ancré au sol */
+            }
         }
     }
-    SDL_SetTextureAlphaMod(g_dress_tex, 255);
 }
 static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
     if (!g_dress_tex) return;
