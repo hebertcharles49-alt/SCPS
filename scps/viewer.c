@@ -90,6 +90,26 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
     return tex;
 }
 static SDL_Texture *g_cover_tex = NULL;   /* route-cover : MOBILIER de route (bornes, haies, murets, bottes, rochers…) */
+static SDL_Texture *g_softblob_tex = NULL;/* glow radial DOUX (blanc, alpha en cloche) — teinté à la volée pour le raccord mer */
+/* Construit une fois un disque à alpha en CLOCHE (1 au centre → 0 au bord, sans bord franc).
+ * Teinté/écrasé à la volée (color/alpha-mod), il sert d'apron de mer FONDU sous les villes
+ * côtières — un quad à dégradé linéaire faisait un « carré d'eau » ; ce disque n'a aucun bord. */
+static void softblob_build(SDL_Renderer *ren){
+    const int S=96; const float c=(float)(S-1)*0.5f;
+    SDL_Surface *sf=SDL_CreateRGBSurfaceWithFormat(0,S,S,32,SDL_PIXELFORMAT_ARGB8888);
+    if(!sf) return;
+    for(int y=0;y<S;y++){
+        Uint32 *row=(Uint32*)((Uint8*)sf->pixels+(size_t)y*sf->pitch);
+        for(int x=0;x<S;x++){
+            float dx=((float)x-c)/c, dy=((float)y-c)/c; float d=sqrtf(dx*dx+dy*dy);
+            float a=1.0f-d; if(a<0.f)a=0.f; a*=a;                 /* cloche : 0 au bord, douce */
+            row[x]=SDL_MapRGBA(sf->format,255,255,255,(Uint8)(a*255.0f));
+        }
+    }
+    g_softblob_tex=SDL_CreateTextureFromSurface(ren,sf);
+    SDL_FreeSurface(sf);
+    if(g_softblob_tex) SDL_SetTextureBlendMode(g_softblob_tex,SDL_BLENDMODE_BLEND);
+}
 static SDL_Texture *g_port_tex = NULL;    /* ports ORIENTÉS : ville côtière dont les quais SUIVENT la mer */
 #define SCPS_PORT_FILE "scps_port_orientation.bmp"
 #define SCPS_PORT_CELL 96                 /* atlas 8 col × 16 lignes (0-7 front · 8-15 vue de dos), 96 px */
@@ -607,6 +627,21 @@ static bool settle_nearest_sea(const World *w, int cx, int cy, int *swx, int *sw
             }
     return false;
 }
+/* BLEND mer : un APRON d'eau au glow DOUX (disque à alpha en cloche, sans bord franc), posé
+ * SOUS l'asset côtier et poussé vers la mer → l'eau de la rade « remonte » dans la carte (raccord
+ * naturel, fini le carré d'eau rapporté). (bx,by) = assise écran de la ville ; (ux,uy) = direction
+ * écran NORMALISÉE vers la mer. Écrasé en ellipse (respire l'iso 2:1), teinté à la volée. */
+static void sea_blend(SDL_Renderer *ren, float bx, float by, float dpx, float ux, float uy){
+    if(!g_softblob_tex) return;
+    float cx=bx+ux*dpx*0.24f, cy=(by-dpx*0.06f)+uy*dpx*0.24f;     /* centre : assise, poussé un peu vers la mer */
+    float bw=dpx*1.34f, bh=dpx*0.82f;                              /* ellipse plus large que haute (iso) */
+    SDL_Rect dst={(int)(cx-bw*0.5f),(int)(cy-bh*0.5f),(int)bw,(int)bh};
+    SDL_SetTextureColorMod(g_softblob_tex,52,110,154);
+    SDL_SetTextureAlphaMod(g_softblob_tex,118);
+    SDL_RenderCopy(ren,g_softblob_tex,NULL,&dst);
+    SDL_SetTextureColorMod(g_softblob_tex,255,255,255);
+    SDL_SetTextureAlphaMod(g_softblob_tex,255);
+}
 static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
     if (!g_settle_tex || !econ) return;
     float sc=cam->scale; if (sc<2.0f) return;
@@ -666,8 +701,11 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
             int prow=(tier>=4)?10:(tier>=2)?9:8; int pcol=(sdx<0.f)?1:0; int pid=prow*SCPS_PORT_COLS+pcol;
             SDL_Rect psrc={(pid%SCPS_PORT_COLS)*SCPS_PORT_CELL,(pid/SCPS_PORT_COLS)*SCPS_PORT_CELL,SCPS_PORT_CELL,SCPS_PORT_CELL};
             SDL_Rect pdst={(int)fsx-dpx/2,(int)fsy-(dpx*7)/10,dpx,dpx};
-            SDL_RenderCopy(ren,g_port_tex,&psrc,&pdst); continue;
+            { float dl=sqrtf(sdx*sdx+sdy*sdy)+1e-3f; sea_blend(ren,fsx,fsy,(float)dpx,sdx/dl,sdy/dl); }  /* mer DERRIÈRE (avant l'asset) */
+            SDL_RenderCopy(ren,g_port_tex,&psrc,&pdst);
+            continue;
         }
+        if (hassea){ float dl=sqrtf(sdx*sdx+sdy*sdy)+1e-3f; sea_blend(ren,fsx,fsy,(float)dpx,sdx/dl,sdy/dl); }  /* raccord mer (derrière) */
         SDL_Rect src={tier*SCPS_SETTLE_CELL, group*SCPS_SETTLE_CELL, SCPS_SETTLE_CELL, SCPS_SETTLE_CELL};
         SDL_Rect dst={(int)fsx-dpx/2, (int)fsy-(dpx*7)/10, dpx, dpx};          /* ancré bas-centre */
         SDL_RenderCopy(ren, g_settle_tex, &src, &dst);
@@ -4915,6 +4953,7 @@ int main(int argc, char **argv) {
     if (g_cover_tex) printf("[scps] %s chargé (route-cover).\n", SCPS_COVER_FILE);
     g_port_tex = load_despilled_bmp(ren, SCPS_PORT_FILE);
     if (g_port_tex) printf("[scps] %s chargé (ports orientés).\n", SCPS_PORT_FILE);
+    softblob_build(ren);                  /* glow doux pour le raccord mer des villes côtières */
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
 #endif
