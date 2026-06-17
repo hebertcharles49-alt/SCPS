@@ -530,12 +530,13 @@ void econ_init(WorldEconomy *e, const World *w) {
 
         /* ---- Capacité d'extraction : héritée des ressources brutes des
          *      provinces. Chaque province « pose » sa ressource dominante. */
-        bool coastal=false;
+        bool coastal=false; int wooded=0;
         for (int k=0;k<rg->n_provinces;k++) {
             int pid=rg->province_ids[k];
             if (pid<0||pid>=w->n_provinces) continue;
             const Province *pv=&w->province[pid];
             if (pv->coastal) coastal=true;
+            { Biome bw=pv->biome_dominant; if (bw==BIO_FOREST||bw==BIO_WOODS||bw==BIO_JUNGLE) wooded++; }
             /* débit proportionnel à la surface (P3.18 : la SPÉCIALISATION — le brut
              * DOMINANT de la province est franc, la 2e brute mineure ; le reste vient
              * du COMMERCE, plus jamais du sol). */
@@ -565,6 +566,11 @@ void econ_init(WorldEconomy *e, const World *w) {
         re->raw_cap[RES_GRAIN] += subsist * (1.15f + 0.70f*reg_hab[rid]);   /* vivrier : COMMUN à tous (anti-famine) */
         re->coastal = coastal;                       /* lu par la marine (rade) et l'agency (gate du Port) */
         re->estuary = false;                         /* posé au balayage des cellules ci-dessous */
+        /* Dons géo SÉLECTIFS (gibier/halieutique) : ~1/3 des régions BOISÉES (majorité de
+         * provinces forestières) et ~1/3 des CÔTIÈRES — tirage DÉTERMINISTE par région. */
+        { unsigned hg=(unsigned)rid*2654435761u;
+          if (rg->n_provinces>0 && wooded*2>=rg->n_provinces && (hg%3u)==0u) re->prov_geo |= PROVF_GIBIER;
+          if (coastal && ((hg>>8)%3u)==0u)                                   re->prov_geo |= PROVF_HALIEUTIQUE; }
 
         /* ──────────────────────────────────────────────────────────────────────
          * MISE À NU — À L'EXCEPTION DES CITÉS-ÉTATS.

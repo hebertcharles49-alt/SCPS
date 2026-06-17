@@ -340,4 +340,8 @@
     X(STR_PMOD_RECONSTRUCTION_EFF, "Once the wound of revolt or sack has closed, the province rebounds: post-shock reconstruction quickens births.") \
     X(STR_PMOD_LIMON_NOM,      "Fertile Silt") \
     X(STR_PMOD_LIMON_EFF,      "A great river's mouth lays down rich silt: the delta's fields feed a dense population.") \
+    X(STR_PMOD_GIBIER_NOM,     "Abundant Game") \
+    X(STR_PMOD_GIBIER_EFF,     "The woods teem with game: the hunt fills tables and sustains a denser population.") \
+    X(STR_PMOD_HALIEU_NOM,     "Fishery Bounty") \
+    X(STR_PMOD_HALIEU_EFF,     "Shoals of fish swarm offshore: the catch feeds a populous coast.") \
 

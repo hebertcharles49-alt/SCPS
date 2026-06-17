@@ -4093,7 +4093,9 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 27u           /* v27 : MODIFICATEURS PROVINCIAUX lot 2 — RegionEconomy.ferveur +
+#define SAVE_VERSION 28u           /* v28 : DONS GÉO — RegionEconomy.prov_geo (uint8_t : gibier/halieutique)
+                                    * ⇒ sizeof(WorldEconomy) change (blob ECON sv_w) → <v28 refusé.
+                                    * v27 : MODIFICATEURS PROVINCIAUX lot 2 — RegionEconomy.ferveur +
                                     * reconstruction (2 floats À ÉTAT) ⇒ sizeof(WorldEconomy) change
                                     * (blob ECON sv_w) → ère antérieure (<v27 refusé).
                                     * v26 : CAPSTONE §27 — EndgameState (entropie + fins + merveille) ajoutée dans

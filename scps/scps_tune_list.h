@@ -170,6 +170,10 @@
     X(PROVMOD_RECON_K,        0.6f) \
     X(PROVMOD_RECON_DECAY,    0.10f) \
     X(PROVMOD_LIMON_K,        0.15f) \
+    /* Dons GÉO sélectifs (entrée DÉMO) : gibier abondant (1/3 des bois) · manne halieutique
+     * (1/3 des côtes) — la richesse vivrière du biome soutient une natalité un peu plus dense. */ \
+    X(PROVMOD_GIBIER_K,       0.10f) \
+    X(PROVMOD_HALIEU_K,       0.10f) \
     /* CAPSTONE §27 — Entropie mondiale + 4 fins + Merveille.
      * ENTROPY_FIN : seuil terminal qui déclenche une fin (~200 ans sur seed 9).
      * ENDGAME_YEAR_OPEN : gate dur — aucune apocalypse avant cette année (victoire

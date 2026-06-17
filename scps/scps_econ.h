@@ -260,6 +260,7 @@ typedef struct {
     int16_t    owner;                /* pays qui contrôle la région (-1 = vierge) */
     bool       coastal;              /* une province au moins touche la mer (posé à econ_init) */
     bool       estuary;              /* une EMBOUCHURE vit ici (mer ∩ gros fleuve) — l'entrepôt naturel */
+    uint8_t    prov_geo;             /* dons GÉO sélectifs (drapeaux PROVF_*, posés à econ_init) : gibier/halieutique */
     /* LA COURSE (coques §4) : balafre côtière et immunité au raid. */
     float      balafre_days;         /* > 0 : côte balafrée (production entaillée ~1 an) */
     float      raid_cd_days;         /* > 0 : immunisée (~5 ans — on ne trait pas la même vache) */
@@ -302,8 +303,12 @@ void econ_cold_refresh(WorldEconomy *e, const World *w);
  * une ENTRÉE moteur (la démographie de la croissance), jamais un bonus plat sur la
  * sortie ; le readout le traduit en mots. Les modificateurs À ÉTAT (ferveur fondatrice,
  * reconstruction) viendront avec un champ sérialisé (et son bump). */
+/* Dons géo sélectifs (RegionEconomy.prov_geo), posés à econ_init (tirage déterministe). */
+#define PROVF_GIBIER       0x01u   /* ~1/3 des régions boisées : gibier abondant */
+#define PROVF_HALIEUTIQUE  0x02u   /* ~1/3 des régions côtières : manne halieutique */
 typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE,
-               PMOD_FERVEUR, PMOD_RECONSTRUCTION, PMOD_LIMON, PMOD_COUNT } ProvModKind;
+               PMOD_FERVEUR, PMOD_RECONSTRUCTION, PMOD_LIMON,
+               PMOD_GIBIER, PMOD_HALIEUTIQUE, PMOD_COUNT } ProvModKind;
 typedef struct {
     uint8_t kind;        /* ProvModKind */
     float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
@@ -363,6 +368,18 @@ static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int
     if (re->estuary && n < max){
         out[n].kind = PMOD_LIMON; out[n].intensity = 1.f;
         out[n].demo_bonus = tune_f("PROVMOD_LIMON_K", 0.15f);
+        n++;
+    }
+    /* FAVEUR — GIBIER ABONDANT : une terre boisée giboyeuse, bien nourrie, soutient plus de bouches. */
+    if ((re->prov_geo & PROVF_GIBIER) && n < max){
+        out[n].kind = PMOD_GIBIER; out[n].intensity = 1.f;
+        out[n].demo_bonus = tune_f("PROVMOD_GIBIER_K", 0.10f);
+        n++;
+    }
+    /* FAVEUR — MANNE HALIEUTIQUE : une côte poissonneuse nourrit une population dense. */
+    if ((re->prov_geo & PROVF_HALIEUTIQUE) && n < max){
+        out[n].kind = PMOD_HALIEUTIQUE; out[n].intensity = 1.f;
+        out[n].demo_bonus = tune_f("PROVMOD_HALIEU_K", 0.10f);
         n++;
     }
     return n;

@@ -136,7 +136,7 @@ typedef struct {
  * actifs ici : fléau (cicatrice de révolte) ou faveur (terre d'abondance, …). Mots +
  * signe, jamais un flottant. Le moteur les DÉRIVE de l'état (scps_econ), la membrane
  * les traduit ; le renderer ne lit que ces chaînes. */
-#define PROV_READOUT_MODS 6
+#define PROV_READOUT_MODS 8
 typedef struct {
     const char *nom;     /* le mot du modificateur */
     const char *effet;   /* une ligne : ce qu'il fait (survol) */

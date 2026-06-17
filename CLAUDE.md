@@ -290,6 +290,15 @@
   province apaisée. Zéro risque baissier. Tunable `POP_SAT_W` 0.20 (registre J). ⚠ nudge seed 9 vers
   le haut (province contente) — c'est tout l'écosystème vitalité qui soulève un peu tout, les low
   seeds ~5× plus. `make test` 35/35 · `determinism` STABLE. **SAVE non bumpé**.
+- **DONS GÉO PROVINCIAUX (2026-06-17) — gibier abondant + manne halieutique** : deux faveurs géo
+  SÉLECTIVES sur le slot « MODIFICATEURS » et le canal DÉMO. Posées à `econ_init` (tirage
+  DÉTERMINISTE par région) : **~1/3 des régions BOISÉES** (majorité de provinces FOREST/WOODS/JUNGLE)
+  portent **GIBIER ABONDANT**, **~1/3 des CÔTIÈRES** une **MANNE HALIEUTIQUE** — la richesse vivrière
+  du biome soutient une natalité un peu plus dense. Drapeaux `RegionEconomy.prov_geo` (uint8_t) → ⚠
+  **SAVE BUMP 27→28** (`sizeof(WorldEconomy)` change). 4 `STR_*` (FR+EN), `PROVMOD_GIBIER_K`/
+  `PROVMOD_HALIEU_K` 0.10. ⚠ ce sont des bonus de **PLAFOND** (texture : ils enrichissent TOUS les
+  seeds, ne ferment PAS l'écart low/riche — cf. garde-fou) : K volontairement PETIT. `make test`
+  35/35 · `determinism` STABLE.
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.

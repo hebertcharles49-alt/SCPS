@@ -349,5 +349,9 @@
     X(STR_PMOD_RECONSTRUCTION_EFF, "Une fois la plaie d'une révolte ou d'un sac refermée, la province se relève d'un bond : la reconstruction d'après-choc presse la natalité.") \
     X(STR_PMOD_LIMON_NOM,      "Limon fertile") \
     X(STR_PMOD_LIMON_EFF,      "L'embouchure d'un grand fleuve dépose un limon gras : les champs du delta nourrissent une population dense.") \
+    X(STR_PMOD_GIBIER_NOM,     "Gibier abondant") \
+    X(STR_PMOD_GIBIER_EFF,     "Les bois fourmillent de gibier : la chasse garnit les tables et soutient une population plus dense.") \
+    X(STR_PMOD_HALIEU_NOM,     "Manne halieutique") \
+    X(STR_PMOD_HALIEU_EFF,     "Des bancs de poissons grouillent au large : la pêche nourrit une côte populeuse.") \
 
 #endif /* SCPS_STRINGS_IDS_H */
