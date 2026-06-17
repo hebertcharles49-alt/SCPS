@@ -3194,6 +3194,7 @@ uint32_t biome_base_color(Biome b) {
         0xFF2E6848u, /* MANGROVE       */
         0xFF566848u, /* BOG            */
         0xFF402820u, /* VOLCANO — basalte sombre */
+        0xFF3A1C42u, /* THORNS — ronces violacées, sombres (corruption) */
     };
     return (b>=0&&b<BIO_COUNT)?C[(int)b]:0xFFFF00FFu;
 }
@@ -3205,7 +3206,7 @@ const char *biome_name(Biome b) {
         "Savane","Terres sèches","Désert","Désert côtier",
         "Forêt","Bois","Jungle","Marais",
         "Hauts plateaux","Collines","Montagnes","Sommets","Glacier",
-        "Mangrove","Tourbière","Volcan",
+        "Mangrove","Tourbière","Volcan","Ronces",
     };
     return (b>=0&&b<BIO_COUNT)?N[(int)b]:"?";
 }

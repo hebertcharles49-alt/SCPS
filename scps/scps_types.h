@@ -86,6 +86,8 @@ typedef enum {
     BIO_MANGROVE,      /* côte tropicale ennoyée (ajouté par l'altération) */
     BIO_BOG,           /* tourbière froide / lande humide */
     BIO_VOLCANO,       /* cône/caldeira — roche nue et cendres */
+    BIO_THORNS,        /* CAPSTONE §27 : ronces apocalyptiques — posé UNIQUEMENT par la
+                        * corruption (jamais par assign_biome) ; terre infranchissable */
     BIO_COUNT
 } Biome;
 

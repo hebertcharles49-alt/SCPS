@@ -295,6 +295,50 @@ int main(void) {
     CHECK("une cellule tempérée s'est refroidie", probe < 0 || t1 < t0);
     CHECK("la fertilité vivrière s'effondre (famine)", grain1 < grain0);
 
+    /* ---- C5 : ronces (BFS-cellules erratique, déterministe) ----------- */
+    printf("\nC5 apocalypse des ronces (corruption cellulaire)\n");
+    #define THORNS_HASH(W,OUTN,OUTH) do{ (OUTN)=0; (OUTH)=1469598103934665603ULL; \
+        for(int i=0;i<SCPS_N;i++) if((W)->cell[i].biome==BIO_THORNS){ (OUTN)++; (OUTH)=((OUTH)^(unsigned)i)*1099511628211ULL; } }while(0)
+
+    long thn_n_a=0; unsigned long long thn_h_a=0;
+    world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) ts[c].charge=0.f;
+    int n_reg_b = econ->n_regions;
+    endgame_init(&eg);
+    wp->entropy = FINV+10.f; wp->entropy_epicenter = -1;
+    wp->faust_consumed[0]=0.0; wp->faust_consumed[1]=1000.0; wp->faust_consumed[2]=0.0;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 100);
+    CHECK("RONCES déclenchée", eg.fired && eg.fin == FIN_RONCES);
+    long thn_after_fire=0; for(int i=0;i<SCPS_N;i++) if(w->cell[i].biome==BIO_THORNS) thn_after_fire++;
+    CHECK("éruption : des cellules deviennent ronces", thn_after_fire > 0);
+    int epi_b = eg.epicenter_reg;
+    CHECK("la région-foyer est tombée (owner=-1)", epi_b<0 || econ->region[epi_b].owner == -1);
+    for (int y=0;y<80;y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 101+y);
+    long thn_late=0; for(int i=0;i<SCPS_N;i++) if(w->cell[i].biome==BIO_THORNS) thn_late++;
+    CHECK("le front s'étend (ronces ↑ après 80 ans)", thn_late > thn_after_fire);
+    CHECK("n_regions inchangé (indices figés)", econ->n_regions == n_reg_b);
+    THORNS_HASH(w, thn_n_a, thn_h_a);
+
+    bool sane5 = (eg.thorn_front_n >= 0 && eg.thorn_front_n <= SCPS_THORN_FRONT_MAX);
+    for (int i=0;i<eg.thorn_front_n && sane5;i++) if (eg.thorn_front[i]<0 || eg.thorn_front[i]>=SCPS_N) sane5=false;
+    for (int i=0;i<SCPS_N && sane5;i++){ const Cell *c=&w->cell[i];
+        if (c->region<-1||c->region>=w->n_regions||c->country<-1||c->country>=w->n_countries) sane5=false; }
+    CHECK("invariants save_sane (front + cellules)", sane5);
+
+    /* DÉTERMINISME : même graine + même fin ⇒ MÊME ensemble de ronces */
+    long thn_n_b=0; unsigned long long thn_h_b=0;
+    world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) ts[c].charge=0.f;
+    endgame_init(&eg);
+    wp->entropy = FINV+10.f; wp->entropy_epicenter = -1;
+    wp->faust_consumed[0]=0.0; wp->faust_consumed[1]=1000.0; wp->faust_consumed[2]=0.0;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 100);
+    for (int y=0;y<80;y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 101+y);
+    THORNS_HASH(w, thn_n_b, thn_h_b);
+    CHECK("déterminisme : même ensemble de ronces (count)", thn_n_a == thn_n_b);
+    CHECK("déterminisme : même ensemble de ronces (hash)", thn_h_a == thn_h_b);
+    #undef THORNS_HASH
+
     free(ts); free(wp); free(econ); free(w);
 
     /* ---- Récapitulatif ------------------------------------------------- */

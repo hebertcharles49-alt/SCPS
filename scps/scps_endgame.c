@@ -107,31 +107,34 @@ static void region_set_country(World *w, int r, int newc) {
 /* LA CARVE : engloutit une région — cellules → mer (hiérarchie strippée), éco
  * dépeuplée/sans maître/infranchissable, armées échouées. La région GARDE son
  * indice (on ne réordonne rien : save_sane reste satisfait). */
-static void cataclysm_sink_region(World *w, WorldEconomy *econ, Campaign *camp, int r) {
-    if (r < 0 || r >= econ->n_regions) return;
-    /* 1. cellules : terre → mer, hiérarchie strippée. */
-    for (int y = 0; y < SCPS_H; y++) for (int x = 0; x < SCPS_W; x++) {
-        Cell *c = &w->cell[scps_idx(x,y)];
-        if (c->region != r) continue;
-        world_sink_cell(c, SEA_LEVEL - 0.03f);
-    }
-    /* 2. éco région : dépeuplée, sans maître, infranchissable. */
+/* STRIP ÉCO d'une région MORTE (eau OU ronces) : dépeuplée, sans maître,
+ * infranchissable ; armées échouées ; détachée du pays World. La région GARDE son
+ * indice (rien n'est réordonné → save_sane satisfait). PARTAGÉ C3 (eau) / C5 (ronces). */
+static void cataclysm_strip_region_econ(World *w, WorldEconomy *econ, Campaign *camp, int r) {
     RegionEconomy *re = &econ->region[r];
     for (int cl = 0; cl < CLASS_COUNT; cl++) re->strata[cl].pop = 0.f;
     re->pop.n_groups = 0;
     re->owner = -1; re->active = false; re->colonized = false; re->impassable = true;
     re->coastal = false; re->n_bld = 0; re->cap_pop = 0.f; re->diaspora_pop = 0.f;
     for (int g = 0; g < RES_COUNT; g++) { re->stock[g]=0.f; re->supply[g]=0.f; re->demand[g]=0.f; re->raw_cap[g]=0.f; }
-    /* 3. hiérarchie World : la région perd son pays (l'indice reste ; province.country
-     *    reste ≥ 0 pour save_sane — labels orphelins inoffensifs, l'éco fait autorité). */
-    if (r < w->n_regions) w->region[r].country = -1;
-    /* 4. armées échouées : toute force dont la position/cible est cette région tombe. */
+    if (r < w->n_regions) w->region[r].country = -1;   /* province.country reste ≥0 (save_sane) */
     if (camp) for (int c = 0; c < SCPS_MAX_COUNTRY; c++) {
         FieldArmy *a = &camp->army[c];
         if (a->active && (a->loc == r || a->dest == r || a->next == r)) {
             a->active = false; a->dest = -1; a->next = -1;
         }
     }
+}
+
+static void cataclysm_sink_region(World *w, WorldEconomy *econ, Campaign *camp, int r) {
+    if (r < 0 || r >= econ->n_regions) return;
+    /* cellules : terre → mer, hiérarchie cell strippée. */
+    for (int i = 0; i < SCPS_N; i++) {
+        Cell *c = &w->cell[i];
+        if (c->region != r) continue;
+        world_sink_cell(c, SEA_LEVEL - 0.03f);
+    }
+    cataclysm_strip_region_econ(w, econ, camp, r);     /* l'éco morte (partagé eau/ronces) */
 }
 
 /* REFRAGMENTATION (BFS géo) : un empire scindé par la mer se brise en composantes
@@ -292,6 +295,85 @@ static void cold_step(EndgameState *eg, World *w, WorldEconomy *econ) {
     econ_cold_refresh(econ, w);                           /* la famine émerge de la chaîne */
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * C5 — APOCALYPSE DES RONCES (flux) : BFS-CELLULES erratique
+ * ──────────────────────────────────────────────────────────────────────────── */
+#define THORN_FLIP_FRAC 0.5f    /* ≥ 50 % des cellules de terre en ronces ⇒ la région tombe */
+
+/* ÉRUPTION (1er pas) : la bramble jaillit du foyer — corrompt les cellules de la
+ * région-épicentre et les pose comme front initial. Mute w (≠ water_seed, read-only). */
+static void cataclysm_thorns_seed(EndgameState *eg, World *w, const WorldEconomy *econ) {
+    eg->thorn_rng = (uint32_t)((eg->epicenter_reg + 1) * 2654435761u)
+                  ^ (uint32_t)((eg->fauteur_country + 1) * 40503u) ^ 0x7140C5u;
+    eg->thorn_front_n = 0;
+    int epi = eg->epicenter_reg;
+    if (epi < 0 || epi >= econ->n_regions) return;
+    for (int i = 0; i < SCPS_N; i++) {
+        Cell *c = &w->cell[i];
+        if (c->region == epi && c->height >= SEA_LEVEL) {
+            c->biome = BIO_THORNS;
+            if (eg->thorn_front_n < SCPS_THORN_FRONT_MAX) eg->thorn_front[eg->thorn_front_n++] = i;
+        }
+    }
+}
+
+/* DÉROULEMENT (par an) : le front de ronces propage de façon ERRATIQUE (fraction
+ * aléatoire des voisins de terre, rng dédié → déterministe & frontière non circulaire).
+ * Une région majoritairement ronces TOMBE (strip partagé C3) → recalcul + refragmentation. */
+static void thorns_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign *camp) {
+    if (eg->thorn_front_n == 0) cataclysm_thorns_seed(eg, w, econ);   /* éruption au 1er pas */
+    int budget = (int)(tune_f("THORN_CELLS_PER_YEAR", 200.f) + 0.5f); if (budget < 1) budget = 1;
+    float frac = tune_f("THORN_RANDOM_FRAC", 0.35f);
+    static const int NDX[8] = {1,-1,0,0,1,1,-1,-1}, NDY[8] = {0,0,1,-1,1,-1,1,-1};
+    static int next[SCPS_THORN_FRONT_MAX]; int nn = 0;
+    int corrupted = 0;
+    for (int fi = 0; fi < eg->thorn_front_n; fi++) {
+        int ci = eg->thorn_front[fi];
+        if (corrupted >= budget) { if (nn < SCPS_THORN_FRONT_MAX) next[nn++] = ci; continue; }  /* reporte le reste */
+        int x = ci % SCPS_W, y = ci / SCPS_W;
+        bool still = false;
+        for (int d = 0; d < 8; d++) {
+            int nx = x + NDX[d], ny = y + NDY[d];
+            if (nx < 0 || ny < 0 || nx >= SCPS_W || ny >= SCPS_H) continue;
+            int nidx = scps_idx(nx, ny); Cell *nc = &w->cell[nidx];
+            if (nc->height < SEA_LEVEL || nc->biome == BIO_THORNS) continue;   /* mer / déjà ronces */
+            eg->thorn_rng = eg->thorn_rng * 1664525u + 1013904223u;
+            float roll = (float)((eg->thorn_rng >> 8) & 0xFFFFFFu) / (float)0x1000000;
+            if (roll < frac) { nc->biome = BIO_THORNS; corrupted++; if (nn < SCPS_THORN_FRONT_MAX) next[nn++] = nidx; }
+            else still = true;                                                 /* un voisin sain reste → tip actif */
+        }
+        if (still && nn < SCPS_THORN_FRONT_MAX) next[nn++] = ci;
+    }
+    memcpy(eg->thorn_front, next, sizeof(int) * (size_t)nn);
+    eg->thorn_front_n = nn;
+    if (corrupted == 0) return;                                                /* rien corrompu : carte stable */
+
+    /* régions majoritairement ronces → TOMBENT (convertit + détache + strip éco partagé). */
+    static int land[SCPS_MAX_REG], thn[SCPS_MAX_REG];
+    memset(land, 0, sizeof land); memset(thn, 0, sizeof thn);
+    for (int i = 0; i < SCPS_N; i++) {
+        Cell *c = &w->cell[i];
+        if (c->height < SEA_LEVEL) continue;
+        int r = c->region; if (r < 0 || r >= SCPS_MAX_REG) continue;
+        land[r]++; if (c->biome == BIO_THORNS) thn[r]++;
+    }
+    int flipped = 0;
+    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+        if (land[r] == 0 || econ->region[r].owner < 0) continue;
+        if ((float)thn[r] >= THORN_FLIP_FRAC * (float)land[r]) {
+            for (int i = 0; i < SCPS_N; i++) { Cell *c = &w->cell[i];
+                if (c->region == r) { c->biome = BIO_THORNS; c->province = c->region = c->country = c->continent = -1; c->coast = false; } }
+            cataclysm_strip_region_econ(w, econ, camp, r);
+            flipped++;
+        }
+    }
+    if (flipped == 0) return;
+    world_recompute_adjacency(w); econ_build_adjacency(econ, w);
+    int nc0 = w->n_countries, born = 0;
+    for (int c = 0; c < nc0; c++) born += cataclysm_resplit_empire(w, econ, c);
+    if (born > 0) world_recompute_adjacency(w);
+}
+
 /* ── C2 — sélecteur + déclencheur (latch : un seul déclenchement) ──────────── */
 static void endgame_select_and_fire(EndgameState *eg, const World *w,
                                      WorldEconomy *econ, const WorldProsperity *wp,
@@ -367,7 +449,7 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
         switch (eg->fin) {
             case FIN_EAU:    cataclysm_water_step(eg, w, econ, camp); break;
             case FIN_FROID:  cold_step(eg, w, econ); break;
-            case FIN_RONCES: /* C5 */ break;
+            case FIN_RONCES: thorns_step(eg, w, econ, camp); break;
             default: break;
         }
     }
