@@ -276,7 +276,7 @@ static int dress_density(Biome b){
         case BIO_WOODS: case BIO_MANGROVE:                     return 6;
         case BIO_VOLCANO:                                      return 6;
         case BIO_HILLS: case BIO_HIGHLANDS:                    return 5;
-        case BIO_FARMLAND:                                     return 5;   /* les champs habillent bien la terre cultivée */
+        case BIO_FARMLAND:                                     return 3;   /* champs raréfiés (moins de répétition) */
         case BIO_PLAINS: case BIO_GRASSLAND:
         case BIO_STEPPE: case BIO_SAVANNA:                     return 3;
         case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 2;
@@ -565,7 +565,7 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         if (!re->colonized) continue;
         float pop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
         if (pop<40.f) continue;
-        int tier = pop>=30000?5 : pop>=12000?4 : pop>=5000?3 : pop>=1800?2 : pop>=500?1 : 0;
+        int tier = pop>=12000?5 : pop>=5000?4 : pop>=2000?3 : pop>=700?2 : pop>=200?1 : 0;
         float wx,wy; if(!region_world_pos(w,r,&wx,&wy)) continue;
         int cx=(int)wx, cy=(int)wy; if(cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
         const Cell *c=scps_cellc(w,cx,cy);
@@ -580,7 +580,7 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         else if (cap)                              group=SETTLE_FORTIFIED;     /* capitale = remparts */
         else                                       group=SETTLE_RURAL;
         float fsx,fsy; cam_project(cam,wx,wy,&fsx,&fsy);
-        int dpx=(int)(sc*10.0f*dscale[tier]); if(dpx<18)dpx=18; if(dpx>460)dpx=460;
+        int dpx=(int)(sc*16.0f*dscale[tier]); if(dpx<24)dpx=24; if(dpx>640)dpx=640;   /* gros & visibles (style HOMM) */
         if(fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
         SDL_Rect src={tier*SCPS_SETTLE_CELL, group*SCPS_SETTLE_CELL, SCPS_SETTLE_CELL, SCPS_SETTLE_CELL};
         SDL_Rect dst={(int)fsx-dpx/2, (int)fsy-(dpx*7)/10, dpx, dpx};          /* ancré bas-centre */
