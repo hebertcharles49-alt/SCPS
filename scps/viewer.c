@@ -69,24 +69,25 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
             if (key<=2) continue;                            /* couvre PLUS LARGE (frange ≥3, ex-≥5) */
             float mness=(float)key/255.0f; float af=1.0f-mness; af*=af;
             if (af<0.03f){ row[x]=clear; continue; }
-            /* frange magenta → BRUN/BRONZE SOMBRE (tend vers le noir) : plus de halo DORÉ rapporté. */
-            int lum=g; int nr=(int)((float)lum*0.42f+0.5f), ng=(int)((float)lum*0.32f+0.5f), nb=(int)((float)lum*0.20f+0.5f);
-            row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
+            /* frange magenta → NEUTRE SOMBRE (gris→noir, AUCUNE chaleur) : le liseré de CHAQUE
+             * sprite ne tire plus au ROSÉ. Base = le VERT (seul canal NON contaminé par le
+             * magenta) ⇒ un contour d'encre sombre, jamais un halo chaud. */
+            int v=(int)((float)g*0.26f+0.5f);
+            row[x]=SDL_MapRGBA(cv->format,(Uint8)v,(Uint8)v,(Uint8)v,(Uint8)(af*255.0f+0.5f));
         }
     }
-    /* POST-TRAITEMENT anti-ROSE — la DERNIÈRE FRANGE rose/salmon. Spectre ÉTROIT (ne pas
+    /* POST-TRAITEMENT anti-ROSE — le résidu SALMON (corps du sprite). Spectre ÉTROIT (ne pas
      * abîmer les autres assets) : R nettement au-dessus du VERT (chaud) ET B encore PRÈS du
-     * vert (B>V−6) — c'est la signature du résidu de magenta (le bleu du fond a contaminé le
-     * bord). L'orange/brun/sable LÉGITIME a B BIEN sous V (non touché) ; la MER a R bas (non
-     * touchée). Rabattue sur du BRONZE à luminance ÉGALE (lum·{.95,.72,.46}). */
+     * vert (B>V−6) — signature du résidu de magenta (le bleu du fond a contaminé le pixel).
+     * L'orange/brun/sable LÉGITIME a B BIEN sous V (non touché) ; la MER a R bas (non touchée).
+     * DÉSATURÉ en GRIS à luminance ÉGALE (aucune chaleur résiduelle, pas de rosé). */
     for (int y=0; y<cv->h; y++){
         Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
         for (int x=0; x<cv->w; x++){
             Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
-            if (a>0 && (int)r>(int)g+12 && (int)b>(int)g-6){
-                int lum=((int)r*5 + (int)g*9 + (int)b*2)/16;   /* luminance perçue → BRONZE de même éclat (pas de noircissement du salmon) */
-                int nr=(int)((float)lum*0.95f+0.5f), ng=(int)((float)lum*0.72f+0.5f), nb=(int)((float)lum*0.46f+0.5f);
-                row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb, a);
+            if (a>0 && (int)r>(int)g+6 && (int)b>(int)g-6){
+                int v=((int)r*5 + (int)g*9 + (int)b*2)/16;   /* luminance perçue → GRIS neutre de même éclat */
+                row[x]=SDL_MapRGBA(cv->format,(Uint8)v,(Uint8)v,(Uint8)v, a);
             }
         }
     }
