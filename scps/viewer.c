@@ -337,46 +337,121 @@ static bool region_world_pos(const World *w, int reg, float *wx, float *wy){
     if (n==0) return false;
     *wx=(float)ax/n; *wy=(float)ay/n; return true;
 }
-/* CHAÎNAGE des routes : le long des routes commerciales TERRESTRES OUVERTES
- * (region↔region, RouteNetwork). On échantillonne le segment centre→centre en
- * cellules, autotile iso (droit/coude par direction, comme les rivières), saute la
- * mer. SOUS les décors, SUR les rivières (le commerce existe quand la sim a tourné). */
+/* ── ROUTES TERRAIN-AWARE : A* sur la grille, coût = RELIEF (height + biome) ; mer/lac
+ * infranchissable, fleuve franchi par un PONT. Chemins MIS EN CACHE (recalcul si le réseau
+ * change). Rendu LISSÉ (tangente fenêtrée) → plus de double-variation aux diagonales. ── */
+#define ROAD_PATH_MAX 1400
+typedef struct { int16_t x[ROAD_PATH_MAX], y[ROAD_PATH_MAX]; int len; } RoadPath;
+static RoadPath *g_rd_paths=NULL; static int g_rd_npaths=0; static uint64_t g_rd_sig=0;
+static float *g_rd_g=NULL, *g_heapf=NULL; static int *g_rd_from=NULL,*g_rd_gen=NULL,*g_rd_closed=NULL,*g_heapi=NULL;
+static int g_rd_curgen=0, g_heap_n=0;
+static void rheap_push(float f,int idx){ int i=g_heap_n++; g_heapf[i]=f; g_heapi[i]=idx;
+    while(i>0){ int p=(i-1)/2; if(g_heapf[p]<=g_heapf[i])break;
+        float tf=g_heapf[p];g_heapf[p]=g_heapf[i];g_heapf[i]=tf; int ti=g_heapi[p];g_heapi[p]=g_heapi[i];g_heapi[i]=ti; i=p; } }
+static int rheap_pop(void){ int r=g_heapi[0],n=--g_heap_n; g_heapf[0]=g_heapf[n]; g_heapi[0]=g_heapi[n]; int i=0;
+    for(;;){ int l=2*i+1,rr=2*i+2,s=i; if(l<n&&g_heapf[l]<g_heapf[s])s=l; if(rr<n&&g_heapf[rr]<g_heapf[s])s=rr; if(s==i)break;
+        float tf=g_heapf[s];g_heapf[s]=g_heapf[i];g_heapf[i]=tf; int ti=g_heapi[s];g_heapi[s]=g_heapi[i];g_heapi[i]=ti; i=s; } return r; }
+static float road_cell_cost(const World *w,int x,int y){
+    const Cell *c=scps_cellc(w,x,y);
+    if (c->sea || c->lake) return -1.f;            /* mer/lac : on contourne (sauf pont au fleuve) */
+    float cost=1.f + c->height*7.f;                /* plat facile, on longe le BAS (height ∈ [0..1]) */
+    if (c->biome==BIO_FOREST||c->biome==BIO_WOODS) cost+=2.5f;   /* forêt : plus cher */
+    if (c->biome==BIO_JUNGLE)    cost+=5.f;
+    if (c->biome==BIO_HILLS||c->biome==BIO_HIGHLANDS) cost+=5.f;
+    if (c->biome==BIO_MOUNTAINS) cost+=16.f;       /* montagne : très cher */
+    if (c->biome==BIO_PEAK)      cost+=45.f;
+    if (c->river>40)             cost+=7.f;        /* franchir un fleuve = un PONT (cher mais permis) */
+    return cost;
+}
+static bool road_astar(const World *w,int ax,int ay,int bx,int by,RoadPath *out){
+    if(ax<0||ay<0||ax>=SCPS_W||ay>=SCPS_H||bx<0||by<0||bx>=SCPS_W||by>=SCPS_H) return false;
+    if(!g_rd_g){ g_rd_g=(float*)malloc(sizeof(float)*SCPS_N); g_rd_from=(int*)malloc(sizeof(int)*SCPS_N);
+        g_rd_gen=(int*)calloc(SCPS_N,sizeof(int)); g_rd_closed=(int*)calloc(SCPS_N,sizeof(int));
+        g_heapf=(float*)malloc(sizeof(float)*SCPS_N); g_heapi=(int*)malloc(sizeof(int)*SCPS_N);
+        if(!g_rd_g||!g_rd_from||!g_rd_gen||!g_rd_closed||!g_heapf||!g_heapi) return false; }
+    int minx=(ax<bx?ax:bx)-48, maxx=(ax>bx?ax:bx)+48, miny=(ay<by?ay:by)-48, maxy=(ay>by?ay:by)+48;
+    if(minx<0)minx=0;
+    if(miny<0)miny=0;
+    if(maxx>=SCPS_W)maxx=SCPS_W-1;
+    if(maxy>=SCPS_H)maxy=SCPS_H-1;
+    g_rd_curgen++; g_heap_n=0;
+    int s=scps_idx(ax,ay), goal=scps_idx(bx,by);
+    g_rd_g[s]=0.f; g_rd_from[s]=-1; g_rd_gen[s]=g_rd_curgen;
+    rheap_push(hypotf((float)(bx-ax),(float)(by-ay)), s);
+    static const int dx8[8]={1,-1,0,0,1,1,-1,-1}, dy8[8]={0,0,1,-1,1,-1,1,-1};
+    bool found=false; int guard=0;
+    while(g_heap_n>0 && guard++<900000){
+        int cur=rheap_pop();
+        if(g_rd_closed[cur]==g_rd_curgen) continue;
+        g_rd_closed[cur]=g_rd_curgen;
+        if(cur==goal){ found=true; break; }
+        int cxx=cur%SCPS_W, cyy=cur/SCPS_W;
+        for(int d=0;d<8;d++){
+            int nx=cxx+dx8[d], ny=cyy+dy8[d];
+            if(nx<minx||nx>maxx||ny<miny||ny>maxy) continue;
+            int ni=scps_idx(nx,ny);
+            if(g_rd_closed[ni]==g_rd_curgen) continue;
+            float cc=road_cell_cost(w,nx,ny); if(cc<0.f) continue;
+            float ng=g_rd_g[cur]+(d<4?1.f:1.41421f)*cc;
+            if(g_rd_gen[ni]==g_rd_curgen && g_rd_g[ni]<=ng) continue;
+            g_rd_g[ni]=ng; g_rd_from[ni]=cur; g_rd_gen[ni]=g_rd_curgen;
+            rheap_push(ng+hypotf((float)(bx-nx),(float)(by-ny)), ni);
+        }
+    }
+    if(!found) return false;
+    static int tmp[4096]; int tn=0;
+    for(int cur=goal; cur!=-1 && tn<4096; cur=g_rd_from[cur]) tmp[tn++]=cur;
+    int stepd=(tn>ROAD_PATH_MAX)?(tn/ROAD_PATH_MAX+1):1;
+    out->len=0;
+    for(int k=tn-1;k>=0 && out->len<ROAD_PATH_MAX;k-=stepd){
+        out->x[out->len]=(int16_t)(tmp[k]%SCPS_W); out->y[out->len]=(int16_t)(tmp[k]/SCPS_W); out->len++;
+    }
+    return out->len>=2;
+}
+static void roads_ensure_cache(const World *w,const RouteNetwork *rn){
+    uint64_t sig=1469598103934665603ull;
+    for(int i=0;i<rn->n && i<SCPS_MAX_ROUTES;i++){ const TradeRoute *tr=&rn->route[i];
+        if(tr->open && !tr->maritime) sig=(sig^(uint64_t)(tr->ra*100003+tr->rb))*1099511628211ull; }
+    if(sig==g_rd_sig && g_rd_paths) return;        /* réseau inchangé → cache valide */
+    g_rd_sig=sig;
+    if(!g_rd_paths){ g_rd_paths=(RoadPath*)malloc(sizeof(RoadPath)*SCPS_MAX_ROUTES); if(!g_rd_paths){g_rd_npaths=0;return;} }
+    g_rd_npaths=0;
+    /* NIVEAUX : le commerce existe VIRTUELLEMENT ; on ne TRACE que les routes MAJEURES
+     * (les plus fortes CAPACITÉS — top K). Trop de traits = réseau abstrait. */
+    int idx[SCPS_MAX_ROUTES], ni=0;
+    for(int i=0;i<rn->n && i<SCPS_MAX_ROUTES;i++){ const TradeRoute *tr=&rn->route[i];
+        if(tr->open && !tr->maritime) idx[ni++]=i; }
+    for(int a=1;a<ni;a++){ int v=idx[a]; float vc=rn->route[v].capacity; int b=a-1;   /* tri ↓ capacité */
+        while(b>=0 && rn->route[idx[b]].capacity<vc){ idx[b+1]=idx[b]; b--; } idx[b+1]=v; }
+    int K = ni<14?ni:14;                                  /* majeures seulement (au zoom courant) */
+    for(int r=0;r<K && g_rd_npaths<SCPS_MAX_ROUTES;r++){
+        const TradeRoute *tr=&rn->route[idx[r]];
+        float fax,fay,fbx,fby;
+        if(!region_world_pos(w,tr->ra,&fax,&fay)||!region_world_pos(w,tr->rb,&fbx,&fby)) continue;
+        if(hypotf(fbx-fax,fby-fay) > 360.f) continue;     /* trop loin (probable saut de mer) */
+        if(road_astar(w,(int)fax,(int)fay,(int)fbx,(int)fby,&g_rd_paths[g_rd_npaths])) g_rd_npaths++;
+    }
+}
 static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork *rn, const Cam *cam, int win_w, int win_h){
     if (!g_dress_tex || !rn) return;
     float sc=cam->scale; if (sc<3.0f) return;
     g_iso_w=win_w; g_iso_h=win_h;
-    int px=(int)(sc*2.3f);
-    if(px<10)px=10;
-    if(px>120)px=120;
+    roads_ensure_cache(w,rn);
+    int px=(int)(sc*2.3f); if(px<10)px=10; if(px>120)px=120;
     SDL_SetTextureAlphaMod(g_dress_tex, 235);
-    for (int i=0;i<rn->n && i<SCPS_MAX_ROUTES;i++){
-        const TradeRoute *tr=&rn->route[i];
-        if (!tr->open || tr->maritime) continue;                 /* terrestre & ouverte */
-        float ax,ay,bx,by;
-        if (!region_world_pos(w,tr->ra,&ax,&ay)) continue;
-        if (!region_world_pos(w,tr->rb,&bx,&by)) continue;
-        int steps=(int)fmaxf(fabsf(bx-ax),fabsf(by-ay));
-        if (steps<1 || steps>400) continue;
-        int lx[512],ly[512],ln=0, pcx=-999,pcy=-999;
-        for (int s2=0;s2<=steps && ln<512;s2++){
-            float t=(float)s2/(float)steps;
-            int cx=(int)(ax+(bx-ax)*t+0.5f), cy=(int)(ay+(by-ay)*t+0.5f);
-            if (cx==pcx && cy==pcy) continue;
-            lx[ln]=cx; ly[ln]=cy; ln++; pcx=cx; pcy=cy;
-        }
-        for (int k=0;k<ln;k++){
-            int cx=lx[k],cy=ly[k];
-            if (cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
-            if (scps_cellc(w,cx,cy)->sea) continue;              /* la route ne traverse pas la mer */
-            int ax,ay,bx,by;
-            if      (k<ln-1){ ax=cx; ay=cy; bx=lx[k+1]; by=ly[k+1]; }
-            else if (k>0)   { ax=lx[k-1]; ay=ly[k-1]; bx=cx; by=cy; }
-            else            { ax=cx; ay=cy; bx=cx+1; by=cy; }
+    for(int pi=0; pi<g_rd_npaths; pi++){
+        const RoadPath *p=&g_rd_paths[pi];
+        for(int k=0;k<p->len;k++){
+            int cx=p->x[k], cy=p->y[k];
             float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
             if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;
-            double theta = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f);
-            double ang = theta - SEG_SPRITE_ANG0;   /* axe sprite mesuré (−26°) → suit la direction */
-            dress_blit_rot(ren,MAPD_ROAD_STRAIGHT,fsx,fsy,px,ang);   /* TOURNÉE pour suivre la route */
+            int wlo=k-3<0?0:k-3, whi=k+3>=p->len?p->len-1:k+3;   /* tangente LISSÉE (fenêtre ±3) */
+            if(wlo==whi){ if(k>0)wlo=k-1; else if(k+1<p->len)whi=k+1; }
+            double theta=seg_screen_ang(cam,(float)p->x[wlo]+0.5f,(float)p->y[wlo]+0.5f,(float)p->x[whi]+0.5f,(float)p->y[whi]+0.5f);
+            double ang=theta - SEG_SPRITE_ANG0;
+            const Cell *c=scps_cellc(w,cx,cy);
+            int id=(c->river>40 && !c->lake)?MAPD_ROAD_BRIDGE:MAPD_ROAD_STRAIGHT;   /* PONT au fleuve */
+            dress_blit_rot(ren,id,fsx,fsy,px,ang);
         }
     }
     SDL_SetTextureAlphaMod(g_dress_tex, 255);
