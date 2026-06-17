@@ -431,6 +431,7 @@ static bool region_world_pos(const World *w, int reg, float *wx, float *wy){
 typedef struct { int16_t x[ROAD_PATH_MAX], y[ROAD_PATH_MAX]; int len; int ra, rb; } RoadPath;
 static RoadPath *g_rd_paths=NULL; static int g_rd_npaths=0; static uint64_t g_rd_sig=0;
 static uint8_t *g_road_mask=NULL;   /* 1 = cellule sur/à côté d'une route (les champs l'évitent) */
+static uint8_t *g_clear_mask=NULL;  /* 1 = cellule DÉBOISÉE (rayon autour d'une ville) → pas de canopée */
 static float *g_rd_g=NULL, *g_heapf=NULL; static int *g_rd_from=NULL,*g_rd_gen=NULL,*g_rd_closed=NULL,*g_heapi=NULL;
 static int g_rd_curgen=0, g_heap_n=0;
 static void rheap_push(float f,int idx){ int i=g_heap_n++; g_heapf[i]=f; g_heapi[i]=idx;
@@ -654,6 +655,10 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
     float sc=cam->scale; if (sc<2.0f) return;
     g_iso_w=win_w; g_iso_h=win_h;
     static const float dscale[6]={0.50f,0.66f,0.84f,1.05f,1.28f,1.55f};   /* outpost…metropolis (échelonné) */
+    /* MASQUE de DÉBOISEMENT : remis à plat ici (les villes le tamponnent ci-dessous, AVANT la
+     * passe canopée qui le lit) → un rayon dégagé autour de chaque ville. */
+    if(!g_clear_mask) g_clear_mask=(uint8_t*)calloc(SCPS_N,1);
+    if(g_clear_mask) memset(g_clear_mask,0,SCPS_N);
     for (int r=0; r<econ->n_regions && r<w->n_regions; r++){
         const RegionEconomy *re=&econ->region[r];
         if (!re->colonized) continue;
@@ -688,6 +693,13 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         else if (cap)                              group=SETTLE_FORTIFIED;     /* capitale = remparts */
         else                                       group=SETTLE_RURAL;
         if (cap && tier<4) tier=4;                                             /* la CAPITALE domine : cité a minima */
+        if (g_clear_mask){                                                     /* DÉBOISE un disque ∝ taille autour de la ville */
+            int rad=(int)(7.0f*dscale[tier]+0.5f); if(rad<3)rad=3; if(rad>14)rad=14;
+            for(int dy=-rad;dy<=rad;dy++) for(int dx=-rad;dx<=rad;dx++){
+                if(dx*dx+dy*dy>rad*rad) continue;
+                int nx=cx+dx,ny=cy+dy; if(nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H) g_clear_mask[ny*SCPS_W+nx]=1;
+            }
+        }
         float fsx,fsy; cam_project(cam,wx2,wy2,&fsx,&fsy);
         int dpx=(int)(sc*18.0f*dscale[tier]); if(dpx<22)dpx=22; if(dpx>680)dpx=680;
         if(fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
@@ -781,6 +793,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             int id=dress_pick(c,h);
             if (id<0) continue;
             { int fam=(id<56)?id/8:(id-56)/8; if ((fam==2) != (canopy_pass!=0)) continue; }  /* famille 2 = ARBRES → passe canopée ; le reste → passe sol */
+            if (canopy_pass && g_clear_mask && g_clear_mask[cy*SCPS_W+cx]) continue;          /* forêt DÉBOISÉE autour des villes */
             if (c->biome==BIO_FARMLAND){                              /* CHAMP : très ponctuel (~95 % retirés) + JAMAIS sur une route */
                 if (g_road_mask && g_road_mask[cy*SCPS_W+cx]) continue;
                 if ((map_hash(cx,cy,0xFA12BEEFu) & 15u) != 0u) continue;  /* ne garde qu'1 sur 16 */
