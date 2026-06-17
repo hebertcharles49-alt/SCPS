@@ -807,21 +807,29 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
     }
 }
 
-/* L'IA DÉVELOPPE — la VOLONTÉ de bâtir. Un empire ne THÉSAURISE pas le brut (le bien manufacturé
- * vaut plus) : il POSE la fabrique qui TRANSFORME le raw qu'il extrait. On REMPLIT LES SLOTS — pour
- * chaque région possédée qui extrait un intrant brut SANS la manufacture qui le mange, on la bâtit
- * (peu importe laquelle ; la moins chère T1 d'abord, gisement le + riche d'abord), tier-gatée par la
- * taille de la province. Une par tour. C'est ce qui convertit la terre en ateliers — et appelle les
- * bras (la relocalisation suit). Le marché écoule, le raw ne dort plus en stock. */
+/* L'IA DÉVELOPPE — la VOLONTÉ de bâtir, PILOTÉE PAR LE LOGEMENT (§dev). Une manufacture LOGE juste en
+ * étant bâtie (econ Q6 : eff_cap += Σniveaux·HOUSE_MANUF, plafond ½·cap_pop) — donc on bâtit dans la
+ * province la PLUS SOUS-LOGÉE, pas dans la capitale-gisement (qui sur-bâtissait AU-DELÀ du plafond
+ * pendant que les provinces pauvres en brut restaient à ½ à vie : cette CONCENTRATION était le vrai
+ * verrou du ½→plein, pas la cadence ni le crédit). L'intrant n'a PAS à être extrait sur place : le pool
+ * national P1 nourrit la fabrique d'où que tombe la matière. Tier-gatée, staffée (pas dans le vide). Une
+ * par tour. C'est ce qui DOUBLE les provinces vers leur plein — la pop suit le bâti. */
 static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
     int cap=a->home_region; if (cap<0||cap>=econ->n_regions) return;
-    int br=-1; BuildingType bb=BLD_TYPE_COUNT; float bestcap=0.5f;
+    const float house_manuf = tune_f("HOUSE_MANUF", 100.f);
+    int br=-1; BuildingType bb=BLD_TYPE_COUNT; float best_deficit=house_manuf;  /* ≥ 1 niveau de logement manquant pour agir */
     for (int r=0;r<econ->n_regions;r++){
         RegionEconomy *re=&econ->region[r];
         if (re->owner!=a->cid || !re->colonized) continue;
         float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
         if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;  /* SOUS-STAFFÉ : on NE bâtit PAS dans le vide */
+        /* §dev — LE DÉFICIT DE LOGEMENT pilote (et non le gisement) : combien de logement bâti il
+         * manque encore pour le plein (½·cap_pop). On vise la province la PLUS sous-logée. */
+        float manuf_h=0.f; for (int i=0;i<re->n_bld;i++) manuf_h += re->bld[i].level;
+        float deficit = re->cap_pop*0.5f - manuf_h*house_manuf;
+        if (deficit <= best_deficit) continue;                        /* déjà (presque) plein, ou moins sous-logé qu'un candidat */
         int rtier=capitale_max_tier((long)rpop);
+        BuildingType pick=BLD_TYPE_COUNT; float pick_raw=-1.f;
         for (int b=0;b<BLD_TYPE_COUNT;b++){
             if (bld_is_faustian((BuildingType)b)) continue;          /* pas les transmuteurs (charge/tech) */
             if (rtier < bld_min_tier((BuildingType)b)) continue;      /* province trop petite pour cette fabrique */
@@ -832,13 +840,18 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
              * diplomatie) → emballement des guerres. Le civil métabolise le brut sans armer le monde. */
             if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
                 || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX) continue;
-            if (re->raw_cap[in1] <= bestcap) continue;               /* l'intrant doit être EXTRAIT ici (et + riche) */
             bool have=false; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==(BuildingType)b){ have=true; break; }
             if (have) continue;                                       /* slot déjà rempli */
-            bestcap=re->raw_cap[in1]; br=r; bb=(BuildingType)b;
+            /* §dev — l'intrant doit être NOURRISSABLE : extrait ICI, OU produit ailleurs dans l'empire (le
+             * pool P1 l'amène). Fin du gate « gisement sur place » qui condamnait les provinces pauvres ;
+             * à feedabilité égale on prend la manuf au gisement local le + riche (efficacité conservée). */
+            if (re->raw_cap[in1] <= 0.f && !empire_has_raw(econ, a->cid, in1)) continue;
+            if (re->raw_cap[in1] > pick_raw){ pick_raw=re->raw_cap[in1]; pick=(BuildingType)b; }
         }
+        if (pick==BLD_TYPE_COUNT) continue;                           /* aucune manuf nourrissable posable ici */
+        best_deficit=deficit; br=r; bb=pick;
     }
-    if (br<0) return;                                                /* tous les slots-ressource sont remplis */
+    if (br<0) return;                                                /* toutes les provinces sont (presque) pleines */
     float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(econ);  /* T1 : la moins chère (le développement de base) */
     if (!credit_can_spend(econ, w, a->cid, cost)) return;            /* bloque seulement au-delà de la ligne de crédit */
     if (econ_build_manufacture(econ, br, bb)){
