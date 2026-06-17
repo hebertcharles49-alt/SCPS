@@ -650,6 +650,48 @@ static void sea_blend(SDL_Renderer *ren, float bx, float by, float dpx, float ux
     SDL_SetTextureColorMod(g_softblob_tex,255,255,255);
     SDL_SetTextureAlphaMod(g_softblob_tex,255);
 }
+/* OMBRE de CONTACT : un disque sombre TRÈS aplati sous l'assise de la ville → la POSE au sol
+ * et adoucit le bord-bas tranché net (que les arbres cachaient avant le déboisement). */
+static void settle_shadow(SDL_Renderer *ren, float fsx, float fsy, int dpx){
+    if(!g_softblob_tex) return;
+    float shw=(float)dpx*0.98f, shh=(float)dpx*0.32f;
+    SDL_Rect sh={(int)(fsx-shw*0.5f),(int)(fsy+(float)dpx*0.16f-shh*0.5f),(int)shw,(int)shh};
+    SDL_SetTextureColorMod(g_softblob_tex,16,20,14);
+    SDL_SetTextureAlphaMod(g_softblob_tex,130);
+    SDL_RenderCopy(ren,g_softblob_tex,NULL,&sh);
+    SDL_SetTextureColorMod(g_softblob_tex,255,255,255);
+    SDL_SetTextureAlphaMod(g_softblob_tex,255);
+}
+/* JUPE de base : une frange BASSE (buissons/roseaux) le long du bord-bas AVANT de la ville →
+ * brise la ligne d'assise TRANCHÉE NET du sprite (ce que la forêt cachait avant déboisement).
+ * Basse & ponctuelle → ne recrée pas de forêt, ne masque pas les sorties de route (hors-base). */
+static void settle_skirt(SDL_Renderer *ren, float fsx, float fsy, int dpx, int cx, int cy){
+    if(!g_dress_tex) return;
+    static const int veg[4]={MAPD_BUSH_GREEN,MAPD_REEDS_CLUMP,MAPD_BUSH_BERRY,MAPD_HEDGE_PATCH};
+    int bsz=(int)((float)dpx*0.21f); if(bsz<8)bsz=8;
+    int n=10, span=(int)((float)dpx*0.48f);
+    for(int a=0;a<n;a++){
+        uint32_t hh=map_hash(cx+a*13, cy*3+a, 0x5C1A7E11u);
+        float t=((float)a/(float)(n-1)-0.5f);               /* -0.5..0.5 sur toute la largeur du front */
+        int bx=(int)(fsx + t*2.0f*(float)span);
+        int by=(int)(fsy + (float)dpx*0.25f) + (int)((hh>>4)&3u)-1;   /* À L'ASSISE (pas dans l'eau), jitter minime */
+        dress_blit(ren, veg[hh&3u], bx-bsz/2, by-(bsz*3)/4, bsz);
+    }
+}
+/* CELLULE D'EAU (mer OU lac) la plus proche, dans un petit rayon — sert au raccord d'eau
+ * (la ville au bord d'un lac fond dans l'eau au lieu d'un bord-bas tranché). */
+static bool settle_nearest_water(const World *w, int cx, int cy, int maxrad, int *wx, int *wy){
+    for (int rad=1; rad<=maxrad; rad++)
+        for (int dy=-rad; dy<=rad; dy++)
+            for (int dx=-rad; dx<=rad; dx++){
+                if (abs(dx)!=rad && abs(dy)!=rad) continue;
+                int nx=cx+dx, ny=cy+dy;
+                if (nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+                const Cell *nc=scps_cellc(w,nx,ny);
+                if (nc->sea || nc->lake){ *wx=nx; *wy=ny; return true; }
+            }
+    return false;
+}
 static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
     if (!g_settle_tex || !econ) return;
     float sc=cam->scale; if (sc<2.0f) return;
@@ -693,12 +735,16 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
          * au sud d'écran ; mer au NORD → PORT vue de DOS (estuary_dock 96-103) — une vraie cité
          * PORTUAIRE orientée (pas une cité fortifiée sans quais). */
         int seawx=0,seawy=0; float wx2=wx, wy2=wy, sdx=0.f, sdy=1.f;
+        int lakewx=0,lakewy=0; bool haslake=false;
         bool hassea = (re->coastal && settle_nearest_sea(w,cx,cy,&seawx,&seawy));
         if (hassea){
             float ix=(float)cx-seawx, iy=(float)cy-seawy; float il=sqrtf(ix*ix+iy*iy)+1e-3f;
             wx2 += ix/il*2.5f; wy2 += iy/il*2.5f;                       /* léger rabat → la route ATTEINT encore la ville */
             float ax,ay,bx,by; cam_project(cam,(float)cx,(float)cy,&ax,&ay);
             cam_project(cam,(float)seawx+0.5f,(float)seawy+0.5f,&bx,&by); sdx=bx-ax; sdy=by-ay;
+        } else if (settle_nearest_water(w,cx,cy,5,&lakewx,&lakewy)){     /* AU BORD D'UN LAC : même rabat → l'assise quitte la berge (fini le bord-bas tranché sur l'eau) */
+            float ix=(float)cx-lakewx, iy=(float)cy-lakewy; float il=sqrtf(ix*ix+iy*iy)+1e-3f;
+            wx2 += ix/il*2.5f; wy2 += iy/il*2.5f; haslake=true;
         }
         int group; bool port_back=false;
         if (re->coastal && sdy>0.f)                group=SETTLE_ESTUARY;        /* plage au sud → sprite estuaire */
@@ -737,13 +783,23 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
             SDL_Rect psrc={(pid%SCPS_PORT_COLS)*SCPS_PORT_CELL,(pid/SCPS_PORT_COLS)*SCPS_PORT_CELL,SCPS_PORT_CELL,SCPS_PORT_CELL};
             SDL_Rect pdst={(int)fsx-dpx/2,(int)fsy-(dpx*7)/10,dpx,dpx};
             { float dl=sqrtf(sdx*sdx+sdy*sdy)+1e-3f; sea_blend(ren,fsx,fsy,(float)dpx,sdx/dl,sdy/dl); }  /* mer DERRIÈRE (avant l'asset) */
+            settle_shadow(ren,fsx,fsy,dpx);
             SDL_RenderCopy(ren,g_port_tex,&psrc,&pdst);
+            settle_skirt(ren,fsx,fsy,dpx,cx,cy);
             continue;
         }
         if (hassea){ float dl=sqrtf(sdx*sdx+sdy*sdy)+1e-3f; sea_blend(ren,fsx,fsy,(float)dpx,sdx/dl,sdy/dl); }  /* raccord mer (derrière) */
+        else if (haslake){                                                     /* raccord LAC : l'eau remonte sous l'assise */
+            float ax,ay,bx2,by2; cam_project(cam,(float)cx,(float)cy,&ax,&ay);
+            cam_project(cam,(float)lakewx+0.5f,(float)lakewy+0.5f,&bx2,&by2);
+            float wdx=bx2-ax, wdy=by2-ay, dl=sqrtf(wdx*wdx+wdy*wdy)+1e-3f;
+            sea_blend(ren,fsx,fsy,(float)dpx,wdx/dl,wdy/dl);
+        }
+        settle_shadow(ren,fsx,fsy,dpx);
         SDL_Rect src={tier*SCPS_SETTLE_CELL, group*SCPS_SETTLE_CELL, SCPS_SETTLE_CELL, SCPS_SETTLE_CELL};
         SDL_Rect dst={(int)fsx-dpx/2, (int)fsy-(dpx*7)/10, dpx, dpx};          /* ancré bas-centre */
         SDL_RenderCopy(ren, g_settle_tex, &src, &dst);
+        settle_skirt(ren,fsx,fsy,dpx,cx,cy);
     }
 }
 /* DÉCORS (habillage). Dessiné en DEUX passes pour le bon ordre de calques (z-order
