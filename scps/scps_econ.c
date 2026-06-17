@@ -1676,6 +1676,11 @@ void econ_tick(WorldEconomy *e, float dt) {
          * Lent à croître → moins). Levier de la couche biologique. */
         SpeciesBuild sb_demo = species_default_build(re->culture.race);
         float demo = build_leviers(&sb_demo).demographie;
+        /* MODIFICATEURS PROVINCIAUX diégétiques → entrée DÉMO (pas un bonus plat) : la
+         * TERRE D'ABONDANCE repeuple les régions sous-remplies & nourries (le rebond des
+         * low seeds). Auto-ciblé → les régions pleines (seeds riches) reçoivent 0. */
+        { ProvModHit pm[PMOD_COUNT]; int npm=provmod_collect(re, pm, PMOD_COUNT);
+          for (int i=0;i<npm;i++) demo += pm[i].demo_bonus; }
         float r_base  = tune_f("POP_R_BASE", 0.01733f);   /* ln2/40 = ×2/40ans plancher (vitalité) */
         float prosp_n = clampf((re->prosperity - tune_f("POP_PROSP_MID",0.2f))
                               / tune_f("POP_PROSP_SPAN",1.8f), 0.f, 1.f);   /* PIB/tête → [0,1] (bande haute ≈2.0) */

@@ -739,6 +739,27 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
         pr.specialisation = pr.vocation;
         pr.specialisation_hover = "Slot SPÉCIALISATION : ce que la province exploite ou raffine le mieux (mine, pêcheries, comptoir, atelier…).";
     }
+
+    /* MODIFICATEURS PROVINCIAUX (slot réservé, multiple) — surfacer les effets diégétiques
+     * que le moteur DÉRIVE de l'état (cicatrice de révolte, terre d'abondance…). Le renderer
+     * ne lit que ces mots + le signe ; aucun flottant ne traverse. */
+    pr.n_mods = 0;
+    if (re) {
+        ProvModHit pm[PMOD_COUNT];
+        int npm = provmod_collect(re, pm, PMOD_COUNT);
+        for (int i = 0; i < npm && pr.n_mods < PROV_READOUT_MODS; i++) {
+            ProvinceMod *m = &pr.mods[pr.n_mods];
+            switch (pm[i].kind) {
+                case PMOD_CICATRICE:
+                    m->nom = tr(STR_PMOD_CICATRICE_NOM); m->effet = tr(STR_PMOD_CICATRICE_EFF);
+                    m->faveur = false; pr.n_mods++; break;
+                case PMOD_ABONDANCE:
+                    m->nom = tr(STR_PMOD_ABONDANCE_NOM); m->effet = tr(STR_PMOD_ABONDANCE_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                default: break;
+            }
+        }
+    }
     return pr;
 }
 

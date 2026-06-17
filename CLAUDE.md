@@ -220,6 +220,31 @@
   déjà robustes à l'échelle de pop) ; `make determinism` STABLE (save/reload byte-identique).
   **Dialable d'UNE ligne** ou `SCPS_TUNE=POP_R_BASE=…` vers /35 (≈64k) ou /30 (registre J :
   `POP_R_BASE` 0.01733). **SAVE non bumpé** (aucune struct sérialisée ne change).
+- **MODIFICATEURS PROVINCIAUX (2026-06-17) — « Terre d'abondance » réveille les LOW SEEDS (un
+  modificateur DIÉGÉTIQUE, pas un bonus plat)** : le /40 décolle les seeds RICHES mais laisse les
+  mondes FRAGMENTÉS (seed 11/145) coincés au bassin bas — non par CAPACITÉ (seed 9 & 145 ont la
+  MÊME cap_col ~60k, food_sat=1.0 partout) mais par ALLUMAGE : la révolte PRÉCOCE (an20-23) les
+  assomme sous 50 % de remplissage pendant la fenêtre critique, et le plancher de croissance ne
+  remonte pas la pente → ils IDLENT un siècle avant de s'allumer (seed 145 : 21k an1 → 24k an80 →
+  46k an150). Le fix respecte la discipline (« l'effet passe par les ENTRÉES du moteur, jamais un
+  bonus plat ») : un **MODIFICATEUR PROVINCIAL** dérivé de l'état réel, routé par l'entrée
+  DÉMOGRAPHIE. **TERRE D'ABONDANCE** (`provmod_collect`, inline `scps_econ.h`) — une région
+  SOUS-PEUPLÉE (fill < `PROVMOD_ABOND_REF`=0.45) + NOURRIE + en PAIX (cicatrice basse) gagne un
+  surcroît de natalité ∝ (REF−fill)·food_sat·(1−scar), AJOUTÉ à `demo` (le levier d'espèce),
+  échelle `PROVMOD_ABOND_K`=2.0. **Auto-ciblé** : une terre pleine (seed riche) reçoit 0 → seed 9
+  ~inchangé (sa variation single-sim est du BRUIT — un boost ne peut pas BAISSER la pop, or
+  REF=0.40 K=2.5 la baissait) ; les low seeds DÉCOLLENT (seed 11 +39 %, seed 145 +40 % à l'an120 ;
+  l'idle d'un siècle RÉSORBÉ — seed 145 grimpe 21k→30k dès l'an40). Effet **DÉRIVÉ** (aucun champ
+  stocké, recalculé moteur ET membrane) → **SAVE non bumpé**. La **cicatrice de révolte** (existante)
+  est SURFACÉE dans le même slot (fléau, demo_bonus=0 — pas de double-compte). **Slot UI province
+  « MODIFICATEURS »** (multiple) : `ProvinceReadout.mods[]` (membrane, mots + signe — faveur vert /
+  fléau rouge), rendu par `viewer.c` entre Capitale et Bâtiments ; 7 `STR_*` (FR+EN). ⚠
+  **RE-BASELINE** : les low seeds montent ; le **hash 12 ans re-baseline** (l'abondance mord dès
+  l'an-0). `make test` 35/35 · `determinism` stable · `lang-check` 64/64. Éteignable :
+  `SCPS_TUNE=PROVMOD_ABOND_K=0` (le modificateur reste AFFICHÉ). À VENIR (mêmes rails, comme une
+  TABLE) : ferveur fondatrice & reconstruction-sur-déclin (à ÉTAT → bumperont le save), boosts K
+  (admin/colonie « Nouvelles perspectives »), bonus géo provinciaux (limon fertile/gibier abondant),
+  évents xénophiles. Tunables registre J : `PROVMOD_ABOND_REF` 0.45 · `PROVMOD_ABOND_K` 2.0.
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.

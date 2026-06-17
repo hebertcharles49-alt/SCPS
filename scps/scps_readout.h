@@ -132,6 +132,17 @@ typedef struct {
     BandLignee lignee;
 } AllegeanceReadout;
 
+/* MODIFICATEURS PROVINCIAUX (slot réservé, multiple) — les effets diégétiques NOMMÉS
+ * actifs ici : fléau (cicatrice de révolte) ou faveur (terre d'abondance, …). Mots +
+ * signe, jamais un flottant. Le moteur les DÉRIVE de l'état (scps_econ), la membrane
+ * les traduit ; le renderer ne lit que ces chaînes. */
+#define PROV_READOUT_MODS 6
+typedef struct {
+    const char *nom;     /* le mot du modificateur */
+    const char *effet;   /* une ligne : ce qu'il fait (survol) */
+    bool        faveur;  /* true = faveur (boon) ; false = fléau (malus) */
+} ProvinceMod;
+
 /* Panneau de province complet (ce que le renderer dessine). Chaînes + bandes,
  * jamais un flottant SCPS. `ames` est une quantité tangible : un nombre est OK. */
 typedef struct {
@@ -164,6 +175,9 @@ typedef struct {
     const char *defense_hover;
     const char *specialisation; /* slot PRODUCTION : ce que la province exploite/raffine */
     const char *specialisation_hover;
+    /* MODIFICATEURS — le slot réservé (multiple) : les effets diégétiques actifs ici. */
+    ProvinceMod   mods[PROV_READOUT_MODS];
+    int           n_mods;
 } ProvinceReadout;
 
 /* PRODUCTION — ce qu'une province PRODUIT par jour, en QUANTITÉ (unités/jour), une

@@ -326,4 +326,12 @@
     X(STR_AUGURE_ENTROPIE_0, "The sky takes on a hue no almanac can name.") \
     X(STR_AUGURE_ENTROPIE_1, "Needles spin wild; matter falters on its own laws.") \
     X(STR_AUGURE_ENTROPIE_2, "The real grows thin. The threshold of the Breach awaits only its shape.") \
+    /* PROVINCE MODIFIERS (diegetic) — province UI slot (multiple). */ \
+    X(STR_PMOD_SECTION,        "MODIFIERS") \
+    X(STR_PMOD_FAVEUR,         "Boon") \
+    X(STR_PMOD_FLEAU,          "Bane") \
+    X(STR_PMOD_CICATRICE_NOM,  "Scar of Revolt") \
+    X(STR_PMOD_CICATRICE_EFF,  "A province recently risen or sacked develops poorly: growth and production are gashed until the wound closes.") \
+    X(STR_PMOD_ABONDANCE_NOM,  "Land of Plenty") \
+    X(STR_PMOD_ABONDANCE_EFF,  "A wide, well-fed land at peace draws families in: births soar while its fields are not yet full.") \
 

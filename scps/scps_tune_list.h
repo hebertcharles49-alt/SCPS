@@ -148,6 +148,14 @@
     X(POP_PROSP_W,            0.15f) \
     X(POP_NEEDS_W,            0.85f) \
     X(NEEDS_MET_TAU,          0.5f) \
+    /* MODIFICATEURS PROVINCIAUX (diégétiques) — TERRE D'ABONDANCE : une région
+     * SOUS-PEUPLÉE + NOURRIE + en paix se repeuple vite (le rebond des low seeds,
+     * routé par l'entrée DÉMO de la croissance, PAS un bonus plat sur la sortie).
+     * REF = remplissage sous lequel ça s'active ; K = échelle du surcroît de natalité.
+     * Auto-ciblé : une terre déjà pleine (fill ≥ REF) n'y touche pas → les seeds
+     * RICHES restent inchangés, seuls les low/assommés-sous-REF décollent. */ \
+    X(PROVMOD_ABOND_REF,      0.45f) \
+    X(PROVMOD_ABOND_K,        2.0f) \
     /* CAPSTONE §27 — Entropie mondiale + 4 fins + Merveille.
      * ENTROPY_FIN : seuil terminal qui déclenche une fin (~200 ans sur seed 9).
      * ENDGAME_YEAR_OPEN : gate dur — aucune apocalypse avant cette année (victoire

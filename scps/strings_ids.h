@@ -335,5 +335,13 @@
     X(STR_AUGURE_ENTROPIE_0, "Le ciel se voile d'une teinte qu'aucun almanach ne nomme.") \
     X(STR_AUGURE_ENTROPIE_1, "Les aiguilles s'affolent ; la matière hésite sur ses propres lois.") \
     X(STR_AUGURE_ENTROPIE_2, "Le réel s'amincit. Le seuil de la Brèche n'attend plus que sa forme.") \
+    /* MODIFICATEURS PROVINCIAUX (diégétiques) — slot UI province (multiple). */ \
+    X(STR_PMOD_SECTION,        "MODIFICATEURS") \
+    X(STR_PMOD_FAVEUR,         "Faveur") \
+    X(STR_PMOD_FLEAU,          "Fléau") \
+    X(STR_PMOD_CICATRICE_NOM,  "Cicatrice de révolte") \
+    X(STR_PMOD_CICATRICE_EFF,  "Une province récemment soulevée ou saccagée se développe mal : croissance et production entaillées tant que la plaie ne s'est pas refermée.") \
+    X(STR_PMOD_ABONDANCE_NOM,  "Terre d'abondance") \
+    X(STR_PMOD_ABONDANCE_EFF,  "Une terre vaste, nourrie et en paix appelle les familles : la natalité s'envole tant que ses champs ne sont pas pleins.") \
 
 #endif /* SCPS_STRINGS_IDS_H */

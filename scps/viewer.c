@@ -3331,6 +3331,19 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
         }
     }
 
+    /* MODIFICATEURS PROVINCIAUX (slot réservé, multiple) — les effets diégétiques actifs
+     * ici : fléau (cicatrice de révolte) ou faveur (terre d'abondance…). Lus de la membrane
+     * (mots + signe) ; la couleur porte le sens (vert = faveur, rouge = fléau). */
+    if (p.n_mods > 0) {
+        ui_section(ren, x, &y, tr(STR_PMOD_SECTION));
+        for (int i = 0; i < p.n_mods; i++)
+            ui_row(ren, x, &y, rw,
+                   tr(p.mods[i].faveur ? STR_PMOD_FAVEUR : STR_PMOD_FLEAU),
+                   p.mods[i].nom,
+                   p.mods[i].faveur ? sense_color(0.80f) : sense_color(0.15f),
+                   p.mods[i].effet);
+    }
+
     /* BÂTIMENTS — une grille 6 + 2 : 6 emplacements ordinaires + 2 SPÉCIAUX
      * (optimisation · défense), visuellement distincts (liseré cuivre). Survol =
      * l'effet (si bâti) ou ce qu'on peut y bâtir. PAS de bouton « Bâtir » : on

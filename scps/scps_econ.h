@@ -38,6 +38,7 @@
 #include "scps_culture.h"   /* PopCulture embarque les traits dérivés (Ethos, …) */
 #include "scps_species.h"   /* couche biologique : race + traits (leviers) */
 #include "scps_tech.h"      /* TechState : §B1 abonde prod_mult par les techs de production */
+#include "scps_tune.h"      /* tune_f : lu par les modificateurs provinciaux (inline ci-dessous) */
 
 /* §C — L'INTERRUPTEUR de l'inflation monétaire. 1 = active ; 0 = RETIRE tout effet
  * (l'IPM reste à 1.0, le multiplieur de prix est l'identité — la variable est gardée
@@ -287,6 +288,55 @@ void econ_build_adjacency(WorldEconomy *e, const World *w);
 /* Capstone §27 FROID : re-dérive la fertilité vivrière (raw_cap[RES_GRAIN]) de
  * l'habitabilité COURANTE (carte refroidie) → la famine émerge sous le gel. */
 void econ_cold_refresh(WorldEconomy *e, const World *w);
+
+/* ---- MODIFICATEURS PROVINCIAUX (diégétiques) -------------------------- *
+ * Un effet NOMMÉ, DÉRIVÉ de l'état réel de la région (remplissage, nourriture,
+ * cicatrice) — PAS un champ stocké : recalculé à chaque lecture (le moteur ET la
+ * membrane appellent la même fonction), donc AUCUN bump de save. L'effet passe par
+ * une ENTRÉE moteur (la démographie de la croissance), jamais un bonus plat sur la
+ * sortie ; le readout le traduit en mots. Les modificateurs À ÉTAT (ferveur fondatrice,
+ * reconstruction) viendront avec un champ sérialisé (et son bump). */
+typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE, PMOD_COUNT } ProvModKind;
+typedef struct {
+    uint8_t kind;        /* ProvModKind */
+    float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
+    float   demo_bonus;  /* delta ajouté à l'entrée DÉMOGRAPHIE de la croissance (0 = fléau, pur affichage) */
+} ProvModHit;
+/* eff_cap d'une région (Q6 : ½·cap_pop + logements bâtis plafonnés + grenier). INLINE :
+ * partagée par le moteur (croissance) ET la membrane (readout) sans dépendance de LIEN
+ * (les bancs readout/factions ne tirent pas scps_econ.o). Pure, sans libc-math. */
+static inline float econ_region_effcap(const RegionEconomy *re){
+    float house_manuf = tune_f("HOUSE_MANUF", 100.f);
+    float manuf_h = 0.f;
+    for (int bi = 0; bi < re->n_bld; bi++) manuf_h += re->bld[bi].level;
+    float cap_half = re->cap_pop * 0.5f;
+    float housed = manuf_h * house_manuf; if (housed > cap_half) housed = cap_half;
+    return cap_half + housed + re->build.food_cap * 250.f;
+}
+/* Collecte les modificateurs provinciaux ACTIFS, DÉRIVÉS de l'état (aucun champ stocké). */
+static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int max){
+    int n = 0;
+    float scar = re->revolt_scar; if (scar < 0.f) scar = 0.f; else if (scar > 1.f) scar = 1.f;
+    /* FLÉAU — la cicatrice (mécanique −50 % appliquée AILLEURS ; ici on la SURFACE, demo_bonus=0). */
+    if (scar > 0.05f && n < max){ out[n].kind = PMOD_CICATRICE; out[n].intensity = scar; out[n].demo_bonus = 0.f; n++; }
+    /* FAVEUR — TERRE D'ABONDANCE : sous-peuplée + nourrie + en paix → +natalité (entrée DÉMO). */
+    float eff = econ_region_effcap(re);
+    if (eff > 1.f && n < max){
+        float pop = 0.f; for (int c = 0; c < CLASS_COUNT; c++) pop += re->strata[c].pop;
+        float ref   = tune_f("PROVMOD_ABOND_REF", 0.45f);
+        float fill  = pop / eff;
+        float under = (ref > fill) ? (ref - fill) : 0.f;
+        float denom = (ref > 1e-3f) ? ref : 1e-3f;
+        float inten = (under / denom) * re->food_sat * (1.f - scar);
+        if (inten > 0.02f){
+            if (inten > 1.f) inten = 1.f;
+            out[n].kind = PMOD_ABONDANCE; out[n].intensity = inten;
+            out[n].demo_bonus = tune_f("PROVMOD_ABOND_K", 2.0f) * under * re->food_sat * (1.f - scar);
+            n++;
+        }
+    }
+    return n;
+}
 
 /* Avance la simulation d'un pas. dt = années/tick (1 en annuel, 1/12 en mensuel) :
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
