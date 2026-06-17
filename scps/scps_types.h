@@ -237,6 +237,15 @@ typedef struct {
     int16_t  province_ids[12];  /* cible 3-5, marge à 12 */
     int16_t  country;
     int16_t  continent;
+    /* WG (worldgen-graphe) — L'APTITUDE PORTUAIRE : coordonnée DÉTERMINISTE [0..1]
+     * posée à la genèse, qui lit la FORME du littoral à l'avant-port de la région —
+     * l'ABRI (combien de terre enserre la rade : une baie protège, un cap expose), la
+     * PROFONDEUR de la rade (eaux côtières franches au pied vs haute mer brutale) et la
+     * LONGUEUR de côte exploitable (plus de quai = meilleure rade). 0 = pas de côte /
+     * côte ouverte aux tempêtes ; 1 = baie franche, abritée, longue. La marine la LIT
+     * pour ASSEOIR sa rade (scps_navy: navy_best_coast) — on lit une coordonnée du
+     * monde, on n'assigne pas un bonus. Sérialisée (struct Region ⇒ SAVE_VERSION). */
+    float    harbor;
     uint32_t color;
     char     name[32];          /* nom courant (= variante humaine) */
     /* Toponymie des 4 peuples (préfixe/suffixe liés à l'environnement) */

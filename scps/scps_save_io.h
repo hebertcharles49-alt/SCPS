@@ -27,4 +27,16 @@ bool scps_zip(const void *src, size_t n, void **out, size_t *outn);
  * taille décompressée, ou 0 si échec / dépassement de capacité. */
 size_t scps_unzip(const void *src, size_t n, void *dst, size_t dstn);
 
+/* ÉCRITURE ATOMIQUE d'un fichier (durabilité du slot de sauvegarde).
+ *
+ * Écrit `len` octets de `buf` dans `<path>.tmp` (fflush + fsync + close), PUIS
+ * remplace `path` par un RENAME atomique (POSIX rename / Win32 MoveFileEx
+ * MOVEFILE_REPLACE_EXISTING). Garantie : un crash/disque-plein EN COURS
+ * d'écriture laisse l'ancien `path` INTACT — le slot précédent reste chargeable
+ * (le rename ne s'opère que sur un .tmp entièrement écrit et flushé). En cas
+ * d'échec, le .tmp partiel est retiré et l'ancien fichier n'est jamais touché.
+ *
+ * Renvoie true si le fichier final porte le contenu neuf, false sinon. */
+bool save_write_atomic(const char *path, const void *buf, size_t len);
+
 #endif /* SCPS_SAVE_IO_H */

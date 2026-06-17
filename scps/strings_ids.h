@@ -326,5 +326,20 @@
     X(STR_COUNCIL_NAME_5, "Cercle Velmor") \
     X(STR_COUNCIL_NAME_6, "Loge Brask") \
     X(STR_COUNCIL_NAME_7, "Syndic Dovric") \
+    /* GLOSSAIRE des concepts (hover_*) — TITRES des fiches (la définition réutilise
+     * les STR_HOVER_* existants). Catégorie & alias vivent dans la table C
+     * (scps_lang.c) ; ici, seul le mot-titre face-joueur. */ \
+    X(STR_GLOSS_STAB,      "Stabilité") \
+    X(STR_GLOSS_LEGIT,     "Légitimité") \
+    X(STR_GLOSS_CONCORDE,  "Cohésion") \
+    X(STR_GLOSS_ASSISE,    "Assise") \
+    X(STR_GLOSS_PROSP,     "Prospérité") \
+    X(STR_GLOSS_MARCHE,    "Marché") \
+    X(STR_GLOSS_AISANCE,   "Aisance") \
+    X(STR_GLOSS_HUMEUR,    "Humeur") \
+    X(STR_GLOSS_LIGNEE,    "Lignée") \
+    X(STR_GLOSS_AGITATION, "Agitation") \
+    X(STR_GLOSS_SAVOIR,    "Savoir") \
+    X(STR_GLOSS_PRESAGE,   "Présage") \
 
 #endif /* SCPS_STRINGS_IDS_H */

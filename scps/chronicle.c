@@ -275,10 +275,22 @@ static void sim_day(Sim *s, World *w) {
             if (hr<0||hr>=s->econ->n_regions) continue;
             RegionEconomy *re=&s->econ->region[hr];
             if (re->owner!=c) continue;
-            /* V3 — la rade s'ouvre sur la MEILLEURE CÔTE (capitale côtière, sinon la côte
-             * la plus peuplée) : un empire à capitale enclavée participe enfin à la mer. */
+            /* V3/WG — la rade s'ouvre sur la MEILLEURE CÔTE : navy_best_coast LIT l'aptitude
+             * portuaire (Region.harbor, la FORME du littoral) + un appoint de pop + l'avantage
+             * de siège — une baie franche peut l'emporter sur un cap capital exposé. */
             int pr=navy_best_coast(w,s->econ,c);
             if (pr>=0 && s->econ->region[pr].build.port<=0.f && s->econ->region[pr].treasury>400.f){
+                if (getenv("SCPS_HARBORDIAG")){   /* WG : la rade choisie par aptitude portuaire (vs la région de la capitale) */
+                    int cp=w->country[c].capital_prov;
+                    int capr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+                    float cap_h=(capr>=0&&capr<w->n_regions)?w->region[capr].harbor:-1.f;
+                    bool cap_coast=(capr>=0&&capr<s->econ->n_regions)?s->econ->region[capr].coastal:false;
+                    const char *why = (pr==capr)?"" :
+                                      (!cap_coast)?"  <- la capitale est enclavee : rade sur la meilleure cote" :
+                                      "  <- la FORME l'emporte sur le siege cotier expose";
+                    printf("      [HARBOR] pays %d : rade region %d (harbor %.2f) ; region-capitale %d (harbor %.2f, cote=%d)%s\n",
+                           c, pr, w->region[pr].harbor, capr, cap_h, cap_coast?1:0, why);
+                }
                 agency_build(s->ag, s->econ, w, pr, EDI_PORT);
             } else if (navy_best_port(w,s->econ,c)>=0 && s->navy->n[c].build_hull<0){
                 if (s->navy->n[c].hull[HULL_TRANSPORT]<2 && re->treasury>500.f)
@@ -712,12 +724,15 @@ int main(int argc, char **argv){
     double tot_sd0=0, tot_sd1=0; int tot_sd0_n=0, tot_sd1_n=0;     /* σ avant/après (moy. des sims) */
     double tot_sp0=0, tot_sp1=0; int tot_sp0_n=0, tot_sp1_n=0;     /* σ SPATIAL : à entrepôt vs sans */
     double tot_hub_cs=0, tot_hub_all=0;   /* P3.20 : part des cités-états dans le commerce (via Centres) */
+    long tot_chokes=0, tot_choke_held=0, tot_choke_routes=0; double tot_choke_toll=0;   /* WG : les détroits, agrégés */
+    int  worlds_with_choke_toll=0;   /* WG : sims où un tenant a EFFECTIVEMENT encaissé un péage */
     long tot_captured=0, tot_worstcorr=0; int worlds_with_capture=0;   /* §C3 : le rot, agrégé */
     int  worlds_with_ironorder=0, worlds_with_uprising=0;
     int  worlds_hegemon_cracked=0;   /* A5 : sims où un hégémon ≥10 rég est passé sous Stab 50 OU a subi coup/renversement */
     long tot_hegemon_floor=0; int n_hegemon_sims=0;   /* Stab plancher des hégémons (la fragilité A1 les rend mortels) */
     long tot_dir_fired[DIR_EV_COUNT]={0}; long tot_dir_destab=0, tot_dir_stab=0, tot_dir_overcap=0;   /* §F : le directeur, agrégé */
     int  worlds_dir_topok=0, worlds_dir_stabok=0, tot_dir_toppct=0;   /* G0.1 preuves : top ≤30 % · stabilisateur si T>0.5 */
+    double tot_ampl_pic=0.0, tot_ampl_fin=0.0; long tot_omens=0; int worlds_ampl_vibre=0;   /* §G2 : le directeur-amplitude, agrégé */
     double tot_ipm=0.0, max_ipm=0.0;   /* §C : l'inflation monétaire, agrégée */
     long tot_hulls=0, tot_sails=0, tot_searoutes=0, tot_colonies_om=0;   /* mer §10 */
     double tot_supplies=0, tot_saildays=0;
@@ -842,6 +857,18 @@ int main(int argc, char **argv){
                     printf("   an %3d  ÂGE : %s\n", s.year, age_name((AgeId)a));
                 }
             int wa = wars_active(w, s.dp);
+            /* §G2 — SCPS_AMPLDIAG : la COURBE D'AMPLITUDE année par année (la preuve
+             * que l'amplitude MONTE après un choc — guerre/révolte/T haute — et
+             * REDESCEND au calme). T = température directeur ; ★ = présage émis cette
+             * année (la boucle « tale » a bouclé). Une seule sim suffit (la 1re). */
+            if (getenv("SCPS_AMPLDIAG") && k==0){
+                static int prev_omens=0; if (s.year==1) prev_omens=0;
+                int om=director_omens(s.ev); int newom=om-prev_omens; prev_omens=om;
+                printf("   AMPL an %3d : ampl %.3f  adapt %5.0f j  T %.2f  budget %5.0f  guerres %d  révoltés %d  présages +%d%s\n",
+                       s.year, director_amplitude(s.ev), director_adapt_days(s.ev),
+                       director_temperature(s.ev), director_budget(s.ev),
+                       wa, events_count_revolutionary(w,s.wp), newom, newom>0?" ★":"");
+            }
             if (wa>prev_wars) war_onsets += (wa-prev_wars);
             if (wa>peak_wars) peak_wars=wa;
             prev_wars = wa;
@@ -1315,7 +1342,47 @@ int main(int argc, char **argv){
             printf("              continents :");
             for (int ct2=0;ct2<w->n_continents && ct2<SCPS_MAX_CONTINENT;ct2++)
                 if (cpop[ct2]>0) printf(" C%d %.0f or (%.0fk hab)", ct2, cw[ct2], cpop[ct2]/1000.0);
-            printf("\n"); } }
+            printf("\n"); }
+          /* WG — LES DÉTROITS : combien le monde en porte, combien sont TENUS (région-flanc
+           * possédée), et le PÉAGE encaissé au dernier tick par le meilleur tenant. */
+          { const Chokepoint *ck=NULL; int nck=world_chokepoints(w,&ck);
+            int16_t ownmap[SCPS_MAX_REG];
+            for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++) ownmap[r]=s.econ->region[r].owner;
+            int held=0;
+            for (int k=0;k<nck;k++){
+                int h=world_chokepoint_holder(w,k,ownmap, (s.econ->n_regions<SCPS_MAX_REG)?s.econ->n_regions:SCPS_MAX_REG);
+                if (h>=0) held++;
+            }
+            /* le PÉAGE : cumul de la SIM (la valeur probante — un tick converge vers ~0
+             * quand les prix s'égalisent, mais le cumul DEMEURE) + le meilleur tenant. */
+            double toll_cumul=intertrade_choke_toll_cumul_total(); int toll_routes=intertrade_choke_routes();
+            int best_holder=-1; double best_toll=0.0;
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                double t=intertrade_choke_toll_cumul_country(c);
+                if (t>best_toll){ best_toll=t; best_holder=c; }
+            }
+            printf("              détroits : %d goulet(s) émergent(s) · %d tenu(s) · %d route(s) maritime(s) taxée(s) · péage CUMULÉ %.0f or", nck, held, toll_routes, toll_cumul);
+            if (best_holder>=0)
+                printf(" · meilleur tenant : pays %d a encaissé %.0f or au verrou", best_holder, best_toll);
+            printf("\n");
+            if (getenv("SCPS_CHOKEDIAG")){   /* WG : pourquoi le péage tombe (ou pas) — routes maritimes vs détroits */
+                int mar_open=0, mar_choke=0, mar_third=0, mar_party=0, mar_vierge=0;
+                for (int i=0;i<s.rn->n;i++){ const TradeRoute *rt=&s.rn->route[i];
+                    if (!rt->maritime||!rt->open) continue;
+                    mar_open++;
+                    if (rt->choke_region<0) continue;
+                    mar_choke++;
+                    int h=(rt->choke_region<s.econ->n_regions)?s.econ->region[rt->choke_region].owner:-1;
+                    int ca=(rt->ra<s.econ->n_regions)?s.econ->region[rt->ra].owner:-1;
+                    int cb=(rt->rb<s.econ->n_regions)?s.econ->region[rt->rb].owner:-1;
+                    if (h<0) mar_vierge++; else if (h==ca||h==cb) mar_party++; else mar_third++;
+                }
+                printf("              [CHOKEDIAG] %d route(s) mar. ouverte(s) · %d franchissent un détroit · tenant TIERS %d · tenant=partie %d · goulet vierge %d\n",
+                       mar_open, mar_choke, mar_third, mar_party, mar_vierge);
+            }
+            tot_chokes+=nck; tot_choke_held+=held; tot_choke_routes+=toll_routes; tot_choke_toll+=toll_cumul;
+            if (toll_cumul>0.0) worlds_with_choke_toll++;
+          } }
           tot_raids+=raids; tot_loot+=loot; tot_prises+=prises; tot_navals+=navals;
           tot_disarm+=disarmed; tot_warpir+=s.dp->n_war_antipirate; tot_balafres+=balafres;
           tot_intercepts+=intercepts; tot_drowned+=drowned; }
@@ -1355,6 +1422,18 @@ int main(int argc, char **argv){
           printf("              directeur (F) : T fin %.2f (pic %.2f) · %d total — top %s %d%% (≤30) · %d déstab · %d stab%s · acharnement %d (=0)\n",
                  director_temperature(s.ev), D->max_T, total, top_e>=0?director_event_name(top_e):"—", toppct,
                  D->fired_destab, D->fired_stab, stab_ok?"":" ✗(T>0.5 sans stab)", D->neg_over_cap);
+        }
+        /* §G2 — LE DIRECTEUR-AMPLITUDE : l'amplitude dramatique a-t-elle vécu (pic)
+         * et où finit-elle (le monde s'est-il calmé) ; combien de présages la boucle
+         * « tale » a émis (fait NOTABLE → MÉMOIRE → AUGURE). La courbe année-par-année
+         * est sous SCPS_AMPLDIAG (l'amplitude monte au choc, retombe au calme). */
+        { const Director *D=&s.ev->director;
+          tot_ampl_pic+=D->max_amplitude; tot_ampl_fin+=D->amplitude; tot_omens+=D->omens;
+          if (D->max_amplitude>0.3f) worlds_ampl_vibre++;
+          printf("              amplitude (G2) : pic %.2f · fin %.2f%s · trauma %.0f j · budget %.0f · %d présage(s) · %d mémoire(s)\n",
+                 D->max_amplitude, D->amplitude,
+                 (D->amplitude < D->max_amplitude-0.1f)?" (le monde s'est calmé)":"",
+                 D->adapt_days, D->budget, D->omens, director_memories(s.ev));
         }
         /* §C — l'inflation monétaire : l'IPM final (1.0 = neutre ; >1 = les prix ont
          * monté, l'or a flué plus vite que les biens). 1.00 partout = effet inerte. */
@@ -1422,6 +1501,8 @@ int main(int argc, char **argv){
     printf("   régions réduites (campagne) . %ld   (moy. %.1f/sim ; armées de terrain, hors conquête abstraite)\n", tot_campaign, (double)tot_campaign/nsims);
     printf("   la mer ...................... %ld coque(s) · %.0f fournitures consommées (NE doit plus être zéro) · %ld traversée(s) (%.0f j moy.) · %ld route(s) maritime(s) · %ld colonie(s) outre-mer\n",
            tot_hulls, tot_supplies, tot_sails, (tot_sails>0)?tot_saildays/(double)tot_sails:0.0, tot_searoutes, tot_colonies_om);
+    printf("   détroits (WG) ............... %.1f goulet(s)/sim · %.1f tenu(s)/sim · %ld route(s) taxée(s) · péage CUMULÉ moy. %.0f or/sim · %d/%d sim(s) avec péage ENCAISSÉ (le verrou rapporte à qui le tient)\n",
+           (double)tot_chokes/nsims, (double)tot_choke_held/nsims, tot_choke_routes, tot_choke_toll/nsims, worlds_with_choke_toll, nsims);
     printf("   la course ................... %ld raid(s) (%.0f or) · %ld bataille(s) navale(s) · %ld prise(s) · %ld désarmement(s) · %ld guerre(s) anti-piraterie · %ld balafre(s) en fin de sim\n",
            tot_raids, tot_loot, tot_navals, tot_prises, tot_disarm, tot_warpir, tot_balafres);
     printf("   l'interception .............. %ld convoi(s) coulé(s) · %ld paquet(s) noyés (le transport sans escorte est une PROIE)\n",
@@ -1444,6 +1525,8 @@ int main(int argc, char **argv){
       printf("\n"); }
     printf("      G0.1 preuves : top ≤30%% dans %d/%d sims (pire %d%%) · stabilisateur-si-T>0.5 dans %d/%d\n",
            worlds_dir_topok, nsims, tot_dir_toppct, worlds_dir_stabok, nsims);
+    printf("   directeur-amplitude (G2) .... pic moy %.2f · fin moy %.2f (le monde se calme) · %ld présage(s) (%.1f/sim) · l'amplitude a VIBRÉ dans %d/%d sims [courbe : SCPS_AMPLDIAG]\n",
+           tot_ampl_pic/nsims, tot_ampl_fin/nsims, tot_omens, (double)tot_omens/nsims, worlds_ampl_vibre, nsims);
     printf("   inflation (C) ............... IPM final moyen %.2f · pic %.2f (1.00 = neutre ; SCPS_IPM=0 le retire)\n",
            tot_ipm/nsims, max_ipm);
     printf("══════════════════════════════════════════════════════════════════════\n");

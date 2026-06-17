@@ -42,6 +42,16 @@ void intertrade_asym_stats(float *vdown, float *vup,
 int  intertrade_precious_upstream_events(void);   /* la niche du luxe : il REMONTE */
 int   intertrade_active_routes(const WorldEconomy *e, const RouteNetwork *rn,
                                const DiploState *dp, int cid);  /* routes marchandes vivantes d'un pays */
+/* WG (worldgen-graphe) — LE PÉAGE DE DÉTROIT (dernier tick) : total encaissé par tous
+ * les tenants, nombre de routes maritimes taxées, et le péage encaissé par UN pays
+ * (chronicle : « un tenant de détroit a encaissé X »). Tout est tangible (or, comptes). */
+float intertrade_choke_toll_total(void);          /* somme des péages de détroit (dernier tick) */
+int   intertrade_choke_routes(void);              /* routes maritimes ayant payé un verrou */
+float intertrade_choke_toll_country(int cid);     /* or de péage encaissé par ce pays-tenant (dernier tick) */
+/* CUMUL sur la partie (RAZ à intertrade_reset) : le total des péages encaissés sur toute
+ * la sim — la VALEUR PROBANTE (un tick converge vers ~0, le cumul demeure). */
+double intertrade_choke_toll_cumul_total(void);
+double intertrade_choke_toll_cumul_country(int cid);
 
 /* ---- DÉTAIL par pays × bien (sidebar Import/Export) — nombres de jeu --------
  * Accumulé par intertrade_tick (dernier tick = l'année écoulée) : volumes

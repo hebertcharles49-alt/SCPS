@@ -23,6 +23,7 @@ prosperity_demo
 core_demo
 monde_reel
 readout_demo
+lang_demo
 
 # Sorties générées
 out_*.ppm
@@ -32,6 +33,9 @@ scps_ui.ppm
 scps_ui.png
 scps_ui_zoom.png
 scps_armies*.png
+scps_langshot.ppm
+scps_langshot.png
+scps_lang.fnv
 
 .claude/
 

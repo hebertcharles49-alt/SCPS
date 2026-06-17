@@ -92,8 +92,25 @@ typedef enum {
 } DirEvId;
 #define DIR_STAB_FIRST DIR_CONCILE   /* [0..DIR_STAB_FIRST) déstabilisent ; [DIR_STAB_FIRST..) apaisent */
 
-/* L'état du directeur : cadence, anti-acharnement (F2), télémétrie (F5). Tout est
- * en JOURS de jeu (cumul des ticks) — déterministe, sérialisable. */
+/* ===================================================================== */
+/* §G2 — LE DIRECTEUR-AMPLITUDE (« tale ») : traumatisme → amplitude → présage */
+/* ===================================================================== */
+/* Une MÉMOIRE durable du directeur : un fait NOTABLE (événement marquant ou âge)
+ * laisse une trace horodatée qui, plus tard, nourrit un AUGURE/PRÉSAGE. Tout en
+ * jours de jeu — déterministe, sérialisable (un anneau de taille fixe). */
+#define DIR_MEM_CAP 16                 /* l'anneau de mémoire : 16 hauts faits récents */
+/* La nature d'un haut fait mémorisé (lisible par le présage à venir). */
+typedef enum { DMEM_NONE=0, DMEM_DESTAB, DMEM_STAB, DMEM_AGE, DMEM_KIND_COUNT } DirMemKind;
+typedef struct {
+    int   day;           /* le jour où le fait s'est inscrit (0 = case vide) */
+    int   kind;          /* DirMemKind (la nature du haut fait) */
+    int   subject;       /* pays/région/continent concerné (UI/présage), -1 = monde */
+    float weight;        /* poids dramatique du fait (∝ amplitude au moment) */
+} DirMemory;
+
+/* L'état du directeur : cadence, anti-acharnement (F2), télémétrie (F5), et le
+ * DIRECTEUR-AMPLITUDE (§G2 : intégrateur de trauma, budget, mémoire, présages).
+ * Tout est en JOURS de jeu (cumul des ticks) — déterministe, sérialisable. */
 typedef struct {
     int     next_check_day;                       /* le directeur scanne à cette échéance (~annuel) */
     int     prov_cd_until [SCPS_MAX_REG];          /* anti-acharnement : province en repos jusqu'à ce jour (15 ans) */
@@ -109,6 +126,14 @@ typedef struct {
     int     neg_over_cap;                          /* fois où une province a dépassé 3 négatifs/siècle (DOIT rester 0) */
     float   last_T;                                /* dernière température mondiale [0..1] (UI/télémétrie) */
     float   max_T;                                 /* G0.1 : T maximale atteinte (preuve : ≥1 stabilisateur si > 0.5) */
+    /* §G2 — LE DIRECTEUR-AMPLITUDE (la boucle « tale »). Tout déterministe. */
+    float   adapt_days;       /* INTÉGRATEUR DE TRAUMATISME : monte sous les chocs (T), redescend au calme. [0..AMPL_TRAUMA_MAX] */
+    float   budget;           /* points de mise en scène accumulés (∝ pop+richesse+temps), dépensés en présages */
+    float   amplitude;        /* dernière amplitude dramatique [0..1] = f(adapt_days) (UI/télémétrie) */
+    float   max_amplitude;    /* pic d'amplitude atteint (preuve : monte après un choc) */
+    DirMemory mem[DIR_MEM_CAP]; /* anneau des hauts faits durables (NOTABLE → MÉMOIRE) */
+    int     mem_head;          /* prochaine case d'écriture de l'anneau */
+    int     omens;             /* AUGURES/PRÉSAGES émis (un haut fait ressurgit) */
 } Director;
 
 /* ===================================================================== */
@@ -179,6 +204,34 @@ float       director_temperature(const EventsState *ev);          /* dernière T
 const char *director_event_name(int dir_id);                      /* nom diégétique d'un événement dirigé */
 int         director_fired(const EventsState *ev, int dir_id);     /* occurrences d'un événement dirigé */
 bool        director_is_destab(int dir_id);                        /* déstabilisateur ? */
+
+/* ---- §G2 LE DIRECTEUR-AMPLITUDE : lecteurs (UI / télémétrie) ----------- */
+/* L'AMPLITUDE dramatique [0..1] dérivée du traumatisme intégré : HAUTE juste
+ * après un choc (le monde « vibre »), BASSE au calme (le récit s'apaise). */
+float       director_amplitude(const EventsState *ev);
+/* L'intégrateur de traumatisme brut (jours de tension cumulés, [0..max]). */
+float       director_adapt_days(const EventsState *ev);
+/* Le budget de mise en scène accumulé (∝ pop·richesse·temps), en points. */
+float       director_budget(const EventsState *ev);
+/* Combien d'AUGURES/PRÉSAGES ont été émis (la boucle « tale » a bouclé). */
+int         director_omens(const EventsState *ev);
+/* Combien de hauts faits l'anneau de mémoire porte (faits NOTABLES retenus). */
+int         director_memories(const EventsState *ev);
+
+/* §G2 — un PAS de l'amplitude exposé pour le BANC (déterministe) : intègre le
+ * traumatisme depuis une température `T` donnée, recalcule amplitude/budget,
+ * et émet au plus un présage. `pop`/`gold` dimensionnent le budget (monde
+ * riche/peuplé ⇒ plus de budget) ; `days` = pas de temps. Retour : true si un
+ * présage a été émis ce pas. (La sim appelle l'équivalent INTERNE via le tick.) */
+bool        director_amplitude_step(EventsState *ev, float T, double pop, double gold, int days);
+
+/* §G2 — REVALIDATION du directeur-amplitude désérialisé (save_sane l'appelle).
+ * mem_head BORNE l'écriture dans l'anneau mem[DIR_MEM_CAP], chaque mem.kind est
+ * une étiquette [0..DMEM_KIND_COUNT) et mem.subject un index que le présage relit :
+ * une valeur folle (save forgé) est REFUSÉE. true = sain. `max_subject` = la borne
+ * haute admise pour subject (l'appelant la connaît : SCPS_MAX_COUNTRY² couvre
+ * l'encodage Amnistie a·MAX+b). Exposé pour test headless au banc. */
+bool        director_save_sane(const EventsState *ev, int max_subject);
 
 /* ---- Lecteurs de RISQUE géo (relisent la géo ; 0 = la géo l'interdit) -- */
 float events_quake_risk  (const EventsState *ev, int region);

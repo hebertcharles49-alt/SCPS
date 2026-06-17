@@ -102,6 +102,12 @@ READOUT_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_readout.o $(
 readout_demo: $(READOUT_DEMO_OBJS)
 	$(CC) $(READOUT_DEMO_OBJS) -o $@ -lm
 
+# ---- Localisation (tr_fmt {n|spec}, FNV, audit, glossaire) — banc headless -
+# Autonome : scps_lang.c n'a aucune dépendance moteur (que des tables + format).
+LANG_DEMO_OBJS := $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_lang_demo.o
+lang_demo: $(LANG_DEMO_OBJS)
+	$(CC) $(LANG_DEMO_OBJS) -o $@
+
 # ---- Roster de races & système de traits (autonome) ----------------------
 SPECIES_DEMO_OBJS := $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_species_demo.o
 species_demo: $(SPECIES_DEMO_OBJS)
@@ -123,6 +129,7 @@ SCPS_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
              $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o \
              $(OBJDIR)/scps_scps_navy.o \
              $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_crypt.o \
+             $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/tp_miniz.o \
              $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_stbiw.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_viewer.o
 SCPS_TARGET := scps_viewer$(EXE)
 # Sous DEV : l'overlay Nuklear rejoint le lien, le binaire change de NOM (le
@@ -547,7 +554,7 @@ clean:
 	       chronicle chronicle_asan econ_scan \
 	       out_*.ppm montage.bmp
 
-.PHONY: all scps run_scps clean core_demo monde_reel readout_demo species_demo scps_dump scps_batch asan \
+.PHONY: all scps run_scps clean core_demo monde_reel readout_demo lang_demo species_demo scps_dump scps_batch asan \
         econ_demo tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo
 
 # Inclusion des fichiers de dépendances générés (-MMD). Le tiret ignore leur
@@ -570,6 +577,38 @@ lang-check:
 	fi
 .PHONY: lang-check
 
+# ---- membrane-check : LA CLOISON readout → renderer (CLAUDE.md §Disciplines) --
+# Le RENDERER (viewer.c + scps_render.{c,h}, le côté display) ne doit JAMAIS
+# inclure scps_core.h NI nommer un symbole exclusif du cœur (scps_order /
+# scps_metabolisation / scps_bell, ScpsState / ScpsOrder — la physique §2.4,
+# jamais lue côté affichage). rc≠0 à la moindre fuite.
+#
+# Robustesse aux COMMENTAIRES : on STRIPPE d'abord les commentaires C
+# (gcc -fpreprocessed -dD -E ré-émet le fichier sans commentaires, sans
+# expanser les #include — SDL.h absent n'a pas d'importance), PUIS on grep.
+# Ainsi un commentaire de prose qui mentionne « scps_core.h » ou « scps_order »
+# (viewer.c en a) n'est PAS un faux positif ; seul un VRAI include ou un VRAI
+# usage de symbole déclenche. L'include est repéré par la directive nue
+# (#include "scps_core.h"), jamais par une mention en clair.
+MEMBRANE_FILES := scps/viewer.c scps/scps_render.c scps/scps_render.h
+MEMBRANE_SYMS  := scps_order|scps_metabolisation|scps_bell|ScpsState|ScpsOrder
+membrane-check:
+	@viol=0; \
+	for f in $(MEMBRANE_FILES); do \
+	  [ -f "$$f" ] || continue; \
+	  stripped=$$($(CC) -fpreprocessed -dD -E "$$f" 2>/dev/null); \
+	  if printf '%s\n' "$$stripped" | grep -qE '^[[:space:]]*#[[:space:]]*include[[:space:]]*["<]scps_core\.h[">]'; then \
+	    echo "membrane-check ÉCHEC : $$f INCLUT scps_core.h (la cloison readout→renderer est franchie)"; viol=1; \
+	  fi; \
+	  if printf '%s\n' "$$stripped" | grep -qwE '$(MEMBRANE_SYMS)'; then \
+	    echo "membrane-check ÉCHEC : $$f nomme un symbole EXCLUSIF du cœur ($(MEMBRANE_SYMS)) — le renderer ne lit que des mots/bandes"; \
+	    printf '%s\n' "$$stripped" | grep -nwE '$(MEMBRANE_SYMS)' | head -5; viol=1; \
+	  fi; \
+	done; \
+	if [ $$viol -ne 0 ]; then exit 1; fi; \
+	echo "membrane-check OK : $(words $(MEMBRANE_FILES)) fichiers renderer — ni scps_core.h ni symbole-cœur (cloison tenue)"
+.PHONY: membrane-check
+
 # ---- calibrate-smoke : le pilote de calibrage (Arc J3) tourne de bout en bout ----
 calibrate-smoke: chronicle
 	@python3 tools/calibrate.py --param ENTRETIEN_DIV:300:500:200 \
@@ -578,6 +617,8 @@ calibrate-smoke: chronicle
 .PHONY: calibrate-smoke
 
 # ---- make test : tous les bancs non-SDL (Arc K3.3) ; rc≠0 si un rouge ----
-test:
+# membrane-check est en DÉPENDANCE : la cloison readout→renderer est gardée
+# AVANT les bancs, et son rc≠0 stoppe `make test` (propagation native).
+test: membrane-check
 	@bash tools/run_tests.sh
 .PHONY: test

@@ -2918,6 +2918,181 @@ static void compute_sea_currents(World *w){
                          nc2*100/nsea, nv*100/nsea, nm*100/nsea, ncab*100/nsea, ngl); }
 }
 
+/* ========================================================================
+ * WG — L'APTITUDE PORTUAIRE (la FORME du littoral, lue par région)
+ * À appeler APRÈS compute_render_flags (coast) ET compute_sea_currents (sea).
+ * Pour chaque région CÔTIÈRE : on lit trois traits du trait de côte —
+ *   ABRI       : à la cellule-mer la plus enserrée de la côte régionale, la part
+ *                de terre dans un anneau 5×5 (une baie protège, un cap expose) ;
+ *   PROFONDEUR : la calme du plan d'eau au pied (cabotage/eaux peu profondes =
+ *                rade franche ; un COURANT vif au mouillage = rade brutale) ;
+ *   LONGUEUR   : le nombre de cellules côtières de la région (plus de quai).
+ * Coordonnée [0..1] DÉTERMINISTE posée sur w->region[r].harbor. On LIT le monde
+ * (membrane : aucune assignation de modificateur — c'est une donnée géographique). */
+static void compute_harbor_suitability(World *w){
+    for (int r=0;r<w->n_regions;r++) w->region[r].harbor=0.f;
+    /* longueur de côte : compte des cellules côtières par région (un balayage) */
+    static int coastlen[SCPS_MAX_REG];
+    for (int r=0;r<SCPS_MAX_REG;r++) coastlen[r]=0;
+    for (int i=0;i<SCPS_N;i++){
+        const Cell *c=&w->cell[i];
+        if (c->coast && c->region>=0 && c->region<w->n_regions) coastlen[c->region]++;
+    }
+    /* meilleur ABRI : pour chaque cellule de MER bordant une côte régionale, on
+     * mesure la part de terre dans l'anneau 5×5 ; on retient le MAX par région
+     * (le recoin le mieux protégé — là où un port s'abriterait). On note aussi la
+     * CALME de l'eau à ce recoin (cabotage/peu profond bon, courant vif mauvais). */
+    static float best_shelter[SCPS_MAX_REG];
+    static float depth_at[SCPS_MAX_REG];
+    for (int r=0;r<SCPS_MAX_REG;r++){ best_shelter[r]=0.f; depth_at[r]=0.f; }
+    static const int LDX[4]={1,-1,0,0}, LDY[4]={0,0,1,-1};
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        const Cell *m=&w->cell[scps_idx(x,y)];
+        if (!m->sea) continue;                       /* on part d'une cellule de MER */
+        /* à quelle(s) région(s) côtière(s) cette eau touche-t-elle ? (voisin terrestre) */
+        int touch=-1;
+        for (int k=0;k<4;k++){
+            int X=x+LDX[k], Y=y+LDY[k];
+            if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) continue;
+            const Cell *n=&w->cell[scps_idx(X,Y)];
+            if (!n->sea && n->coast && n->region>=0 && n->region<w->n_regions){ touch=n->region; break; }
+        }
+        if (touch<0) continue;
+        /* ABRI : fraction de TERRE dans l'anneau 5×5 autour de cette eau */
+        int land=0, tot=0;
+        for (int dy=-2;dy<=2;dy++) for (int dx=-2;dx<=2;dx++){
+            if (!dx && !dy) continue;
+            int X=x+dx, Y=y+dy;
+            if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) continue;
+            tot++;
+            if (!w->cell[scps_idx(X,Y)].sea) land++;
+        }
+        float shelter=(tot>0)?(float)land/(float)tot:0.f;
+        if (shelter>best_shelter[touch]){
+            best_shelter[touch]=shelter;
+            /* CALME du mouillage à CE recoin : cabotage/eaux peu profondes = +1 ;
+             * mer vive = neutre ; le couloir/courant = la rade dangereuse (−). */
+            float calm=0.5f;
+            if (m->sea==SEA_CABOTAGE) calm=1.0f;
+            else if (m->biome==BIO_SHALLOW) calm=0.85f;
+            else if (m->sea==SEA_MORTE) calm=0.7f;
+            else if (m->sea==SEA_VIVE) calm=0.45f;
+            else if (m->sea==SEA_COURANT) calm=0.25f;   /* le large brutal au pied */
+            depth_at[touch]=calm;
+        }
+    }
+    for (int r=0;r<w->n_regions;r++){
+        if (coastlen[r]<=0){ w->region[r].harbor=0.f; continue; }   /* enclavée : pas de rade */
+        float len_n=(float)coastlen[r]/14.f; if (len_n>1.f) len_n=1.f;  /* ~14 cellules = quai « long » */
+        /* mélange : l'ABRI domine (la forme), la PROFONDEUR module, la LONGUEUR appoint. */
+        float h = 0.50f*best_shelter[r] + 0.30f*depth_at[r] + 0.20f*len_n;
+        w->region[r].harbor = clampf(h, 0.f, 1.f);
+    }
+}
+
+/* ========================================================================
+ * WG — LES DÉTROITS ÉMERGENTS (chokepoints)
+ * Un goulet = une cellule de MER dont DEUX flancs OPPOSÉS touchent la terre à
+ * COURTE distance (le chenal est mince) ET dont ces deux terres appartiennent à
+ * des CONTINENTS distincts (un vrai bras de mer entre masses, pas une crique).
+ * On garde le point le plus ÉTROIT par grappe (dédup spatial), borné à un petit
+ * nombre. Le TENANT = la région côtière la plus proche du goulet. La valeur de
+ * BLOCUS croît avec l'étroitesse. Cache par seed (DÉRIVÉ — hors sauvegarde). ── */
+#define WG_MAX_CHOKE      24
+#define WG_STRAIT_MAX     12     /* largeur maximale d'un chenal « détroit » (cellules) */
+#define WG_CHOKE_DEDUP    18     /* deux goulets à moins de ça = la MÊME grappe (on garde le + étroit) */
+static Chokepoint g_choke[WG_MAX_CHOKE];
+static int        g_n_choke=0;
+static uint32_t   g_choke_seed=0xFFFFFFFFu;
+
+/* le long de l'axe (dx,dy), distance (≤ lim) à la 1re cellule de TERRE depuis (x,y) ;
+ * -1 si pas de terre dans la limite. *lx,*ly = cette cellule de terre. */
+static int strait_reach(const World *w, int x, int y, int dx, int dy, int lim, int *lx, int *ly){
+    for (int s=1;s<=lim;s++){
+        int X=x+dx*s, Y=y+dy*s;
+        if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) return -1;
+        const Cell *c=&w->cell[scps_idx(X,Y)];
+        if (!c->sea){ if(lx)*lx=X; if(ly)*ly=Y; return s; }
+    }
+    return -1;
+}
+static void compute_chokepoints(World *w){
+    g_n_choke=0;
+    for (int k=0;k<WG_MAX_CHOKE;k++){ g_choke[k].sx=g_choke[k].sy=-1; g_choke[k].region=-1; g_choke[k].width=0; g_choke[k].blockade=0.f; }
+    /* les 4 axes (paires de directions opposées) : E-W, N-S, NE-SW, NW-SE */
+    static const int AX[4][2]={ {1,0},{0,1},{1,1},{1,-1} };
+    for (int y=2;y<SCPS_H-2;y++) for (int x=2;x<SCPS_W-2;x++){
+        const Cell *m=&w->cell[scps_idx(x,y)];
+        if (!m->sea) continue;
+        /* l'axe le plus PINCÉ : terre des DEUX côtés à courte distance (les flancs
+         * initialisés EN-BORNE — 0,0 — : le chemin past-3038 les écrase toujours, mais
+         * le compilateur ne le prouve pas et scps_idx() doit rester indexable). */
+        int best_w=WG_STRAIT_MAX+1, la_x=0,la_y=0, lb_x=0,lb_y=0;
+        for (int a=0;a<4;a++){
+            int ax=AX[a][0], ay=AX[a][1];
+            int p1x=0,p1y=0,p2x=0,p2y=0;
+            int d1=strait_reach(w,x,y, ax, ay, WG_STRAIT_MAX, &p1x,&p1y);
+            int d2=strait_reach(w,x,y,-ax,-ay, WG_STRAIT_MAX, &p2x,&p2y);
+            if (d1<0||d2<0) continue;
+            int wdt=d1+d2;
+            if (wdt<best_w){ best_w=wdt; la_x=p1x; la_y=p1y; lb_x=p2x; lb_y=p2y; }
+        }
+        if (best_w>WG_STRAIT_MAX) continue;                  /* trop large : pas un détroit */
+        /* DEUX MASSES distinctes : les terres de flanc sur des CONTINENTS différents
+         * (le signal d'un vrai bras de mer). À défaut de continent assigné, on exige
+         * au moins deux RÉGIONS distinctes (robustesse sur monde quasi-pangée). */
+        const Cell *ca=&w->cell[scps_idx(la_x,la_y)], *cb=&w->cell[scps_idx(lb_x,lb_y)];
+        bool two_masses = (ca->continent>=0 && cb->continent>=0 && ca->continent!=cb->continent);
+        if (!two_masses) two_masses = (ca->region>=0 && cb->region>=0 && ca->region!=cb->region
+                                       && ca->continent==cb->continent && best_w<=WG_STRAIT_MAX/2);
+        if (!two_masses) continue;
+        /* le goulet doit être un PASSAGE (de l'eau navigable des deux bords du chenal) :
+         * la cellule elle-même n'est pas littorale-bouchée — au moins un voisin de mer
+         * sur l'axe perpendiculaire mène au large. On l'approxime : la cellule a ≥ 5
+         * voisins de mer dans son 3×3 (sinon c'est un cul-de-sac, pas un détroit). */
+        { int seaN=0;
+          for (int dy=-1;dy<=1;dy++) for (int dx=-1;dx<=1;dx++){
+              if (!dx&&!dy) continue;
+              int X=x+dx, Y=y+dy;
+              if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) continue;
+              if (w->cell[scps_idx(X,Y)].sea) seaN++;
+          }
+          if (seaN<4) continue; }
+        /* DÉDUP spatial : même grappe qu'un goulet déjà retenu ? garder le + étroit. */
+        int dup=-1;
+        for (int k=0;k<g_n_choke;k++){
+            int ddx=g_choke[k].sx-x, ddy=g_choke[k].sy-y;
+            if (ddx*ddx+ddy*ddy <= WG_CHOKE_DEDUP*WG_CHOKE_DEDUP){ dup=k; break; }
+        }
+        if (dup>=0){
+            if (best_w<g_choke[dup].width){ g_choke[dup].sx=(int16_t)x; g_choke[dup].sy=(int16_t)y; g_choke[dup].width=(int16_t)best_w; }
+            continue;
+        }
+        if (g_n_choke>=WG_MAX_CHOKE) continue;
+        g_choke[g_n_choke].sx=(int16_t)x; g_choke[g_n_choke].sy=(int16_t)y;
+        g_choke[g_n_choke].width=(int16_t)best_w;
+        g_n_choke++;
+    }
+    /* TENANT (la région côtière la plus proche du goulet) + valeur de BLOCUS.
+     * L'étroitesse FAIT l'enjeu : un chenal de 2 vaut plus qu'un de 12. */
+    for (int k=0;k<g_n_choke;k++){
+        int gx=g_choke[k].sx, gy=g_choke[k].sy;
+        int best_r=-1; int32_t bd=0x7FFFFFFF;
+        for (int dy=-WG_STRAIT_MAX;dy<=WG_STRAIT_MAX;dy++) for (int dx=-WG_STRAIT_MAX;dx<=WG_STRAIT_MAX;dx++){
+            int X=gx+dx, Y=gy+dy;
+            if (X<0||Y<0||X>=SCPS_W||Y>=SCPS_H) continue;
+            const Cell *c=&w->cell[scps_idx(X,Y)];
+            if (c->sea || !c->coast || c->region<0 || c->region>=w->n_regions) continue;
+            int32_t d2=dx*dx+dy*dy;
+            if (d2<bd){ bd=d2; best_r=c->region; }
+        }
+        g_choke[k].region=(int16_t)best_r;
+        float narrow=1.f-(float)(g_choke[k].width-2)/(float)(WG_STRAIT_MAX);   /* 2→1, 12→~0.17 */
+        g_choke[k].blockade=clampf(0.4f+0.6f*narrow, 0.f, 1.f);
+    }
+    g_choke_seed=w->seed;
+}
+
 void world_generate(World *w, const WorldParams *P) {
     WorldParams def;
     if (!P){ def=worldparams_default((uint32_t)0); P=&def; }
@@ -3077,6 +3252,11 @@ void world_generate(World *w, const WorldParams *P) {
 
     printf("[scps] courants...     "); fflush(stdout);
     compute_sea_currents(w);              printf("ok\n");
+
+    printf("[scps] rades...        "); fflush(stdout);
+    compute_harbor_suitability(w);        /* WG : l'aptitude portuaire f(forme du littoral) */
+    compute_chokepoints(w);               /* WG : les détroits émergents (péage + blocus) */
+    printf("ok\n");
 
     printf("[scps] noms prov...    "); fflush(stdout);
     gen_province_names(w);                printf("ok\n");
@@ -3440,4 +3620,54 @@ bool world_region_sea_anchor(const World *w, int region, int *sx, int *sy){
     if (sx) *sx=g_anchor_x[region];
     if (sy) *sy=g_anchor_y[region];
     return true;
+}
+
+/* ── WG — LES DÉTROITS : lecteurs publics (table DÉRIVÉE par seed) ──────────── */
+/* reconstruction PARESSEUSE : un appelant hors-genèse (intertrade) peut demander la
+ * table sans avoir relancé world_generate (mais le monde existe). compute_chokepoints
+ * ne MUTE pas w (il ne lit que la grille) — d'où le cast pour l'appel paresseux. */
+static void chokepoints_ensure(const World *w){
+    if (g_choke_seed!=w->seed) compute_chokepoints((World*)w);
+}
+int world_chokepoints(const World *w, const Chokepoint **out){
+    chokepoints_ensure(w);
+    if (out) *out=g_choke;
+    return g_n_choke;
+}
+/* distance² du point P au SEGMENT AB (pour « la route passe-t-elle par le goulet »). */
+static float seg_dist2(int px,int py,int ax,int ay,int bx,int by,float *t_out){
+    float abx=(float)(bx-ax), aby=(float)(by-ay);
+    float apx=(float)(px-ax), apy=(float)(py-ay);
+    float len2=abx*abx+aby*aby;
+    float t=(len2>1e-6f)?((apx*abx+apy*aby)/len2):0.f;
+    if (t<0.f) t=0.f; else if (t>1.f) t=1.f;
+    float cx=(float)ax+t*abx, cy=(float)ay+t*aby;
+    float dx=(float)px-cx, dy=(float)py-cy;
+    if (t_out) *t_out=t;
+    return dx*dx+dy*dy;
+}
+int world_route_chokepoint(const World *w, int ax, int ay, int bx, int by){
+    chokepoints_ensure(w);
+    /* un goulet est FRANCHI si son point est proche du segment des deux ancres ET
+     * vraiment « entre » les bouts (t∈]0.1,0.9[ : ni à l'embouchure d'un des ports).
+     * Le plus ÉTROIT l'emporte (le verrou le plus dur). */
+    int best=-1, best_w=0x7FFFFFFF;
+    for (int k=0;k<g_n_choke;k++){
+        float t; float d2=seg_dist2(g_choke[k].sx,g_choke[k].sy, ax,ay,bx,by,&t);
+        if (t<=0.08f || t>=0.92f) continue;                  /* trop près d'un bout : pas « franchi » */
+        /* tolérance off-segment : le chemin de mer DÉTOURE autour de l'embouchure du
+         * goulet (la volta n'est pas une corde) — une bande généreuse capte ce détour. */
+        float thresh=(float)(g_choke[k].width)+5.f;
+        if (d2 > thresh*thresh) continue;
+        if (g_choke[k].width<best_w){ best_w=g_choke[k].width; best=k; }
+    }
+    return best;
+}
+int world_chokepoint_holder(const World *w, int choke_idx,
+                            const int16_t *owner_of_region, int n_regions){
+    chokepoints_ensure(w);
+    if (choke_idx<0 || choke_idx>=g_n_choke) return -1;
+    int rg=g_choke[choke_idx].region;
+    if (rg<0 || !owner_of_region || rg>=n_regions) return -1;
+    return owner_of_region[rg];
 }

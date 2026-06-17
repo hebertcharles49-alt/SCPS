@@ -292,6 +292,106 @@ int main(int argc, char **argv){
     ok("ANTI-ACHARNEMENT : aucune province > 3 négatifs/siècle (cooldown 15 ans + alternance)",
        s.ev->director.neg_over_cap==0);
 
+    /* ═══ 8. LE DIRECTEUR-AMPLITUDE (§G2) — trauma → amplitude → présage ═════ */
+    printf("\n── 8. Le directeur-amplitude : trauma intégré, amplitude, budget, présage (G2) ──\n");
+    /* (a) L'INTÉGRATEUR DE TRAUMATISME & L'AMPLITUDE : un CHOC (T haute) gonfle
+     *     adapt_days et donc l'amplitude ; le CALME (T=0) la fait REDESCENDRE. On
+     *     pilote l'intégrateur directement (director_amplitude_step) — déterministe,
+     *     sans dépendre de l'état du monde — pour DÉMONTRER la courbe. */
+    events_init(s.ev,s.w,seed);
+    double POP=50000.0, GOLD=20000.0;   /* un monde peuplé & riche (dimensionne le budget) */
+    float a0=director_amplitude(s.ev);
+    /* 5 ans de CHOC (guerre/famine : T=0.9) → l'amplitude MONTE */
+    for (int yr=0; yr<5; yr++) director_amplitude_step(s.ev, 0.9f, POP, GOLD, 365);
+    float a_shock=director_amplitude(s.ev), adapt_shock=director_adapt_days(s.ev);
+    /* puis 20 ans de CALME PLAT (T=0) → l'amplitude REDESCEND (la demi-vie vide le trauma) */
+    for (int yr=0; yr<20; yr++) director_amplitude_step(s.ev, 0.0f, POP, GOLD, 365);
+    float a_calm=director_amplitude(s.ev), adapt_calm=director_adapt_days(s.ev);
+    printf("   amplitude : repos %.3f → APRÈS CHOC %.3f (adapt %.0f j) → APRÈS CALME %.3f (adapt %.0f j)\n",
+           a0, a_shock, adapt_shock, a_calm, adapt_calm);
+    ok("le CHOC fait MONTER l'amplitude (l'intégrateur de trauma se remplit)", a_shock > a0 + 0.1f);
+    ok("le CALME fait REDESCENDRE l'amplitude (demi-vie : le trauma se vide)", a_calm < a_shock - 0.05f);
+    ok("l'amplitude reste bornée [0..1]", a_shock>=0.f && a_shock<=1.f && a_calm>=0.f);
+
+    /* (b) LE BUDGET ∝ POP·RICHESSE·TEMPS : un monde RICHE & PEUPLÉ accumule PLUS de
+     *     budget de mise en scène qu'un monde PAUVRE & VIDE sur le même temps. */
+    EventsState *evp=malloc(sizeof(EventsState));
+    events_init(evp,s.w,seed);
+    events_init(s.ev,s.w,seed);
+    for (int yr=0; yr<10; yr++){
+        director_amplitude_step(s.ev, 0.5f, 80000.0, 40000.0, 365);   /* riche & peuplé */
+        director_amplitude_step(evp,  0.5f,  2000.0,   500.0, 365);   /* pauvre & vide */
+    }
+    float bud_rich=director_budget(s.ev), bud_poor=director_budget(evp);
+    printf("   budget (10 ans) : monde riche/peuplé %.1f vs pauvre/vide %.1f\n", bud_rich, bud_poor);
+    ok("le BUDGET croît avec pop & richesse (le monde riche met plus en scène)", bud_rich > bud_poor + 1.f);
+    free(evp);
+
+    /* (c) LA BOUCLE TALE : un fait NOTABLE → MÉMOIRE durable → PRÉSAGE plus tard.
+     *     On inscrit des hauts faits (via la sim réelle : 60 ans de monde chaud →
+     *     événements dirigés mémorisés), puis on laisse mûrir → des présages SORTENT. */
+    events_init(s.ev,s.w,seed);
+    for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=1.5f; s.wp->country[c].fracture=6.f; s.wp->country[c].mode=(c%2)?2:0; }
+    int omens0=director_omens(s.ev);
+    for (int yr=0; yr<120; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+    int mem_now=director_memories(s.ev), omens_now=director_omens(s.ev);
+    printf("   tale : %d présage(s) émis · %d haut(s) fait(s) encore en mémoire · amplitude vécue pic %.3f\n",
+           omens_now-omens0, mem_now, s.ev->director.max_amplitude);
+    ok("la boucle TALE émet des PRÉSAGES (un haut fait ressurgit, budget dépensé)", omens_now>omens0);
+    ok("l'amplitude a réellement VIBRÉ dans la sim (pic > seuil de présage)", s.ev->director.max_amplitude>0.3f);
+
+    /* (d) DÉTERMINISME : deux intégrateurs nourris du MÊME flux de température
+     *     finissent au MÊME adapt_days/amplitude/budget/présages (au bit près). */
+    EventsState *ea=malloc(sizeof(EventsState)), *eb=malloc(sizeof(EventsState));
+    events_init(ea,s.w,seed); events_init(eb,s.w,seed);
+    for (int yr=0; yr<30; yr++){
+        float Tser = (yr%4==0)?0.8f:(yr%4==1)?0.2f:(yr%4==2)?0.6f:0.05f;   /* un profil reproductible */
+        director_amplitude_step(ea, Tser, 30000.0, 12000.0, 365);
+        director_amplitude_step(eb, Tser, 30000.0, 12000.0, 365);
+    }
+    ok("DÉTERMINISME : même flux T → même adapt_days/amplitude/budget/présages (bit-exact)",
+       director_adapt_days(ea)==director_adapt_days(eb)
+       && director_amplitude(ea)==director_amplitude(eb)
+       && director_budget(ea)==director_budget(eb)
+       && director_omens(ea)==director_omens(eb));
+    free(ea); free(eb);
+
+    /* (e) SAVE_SANE (v26) : la garde du directeur-amplitude désérialisé REFUSE un
+     *     champ FOU (un save forgé qui déborderait l'anneau / indexerait hors-borne)
+     *     et ACCEPTE un état SAIN. C'est la MÊME garde que save_sane appelle (viewer). */
+    const int MAXSUBJ = SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY;   /* la borne de subject (encodage Amnistie) */
+    events_init(s.ev,s.w,seed);
+    /* un état réel & sain (60 ans de monde vivant → mémoire peuplée) passe la garde */
+    for (int yr=0; yr<60; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+    ok("save_sane ACCEPTE un directeur-amplitude SAIN (état réel de sim)",
+       director_save_sane(s.ev, MAXSUBJ));
+    /* mem_head FOU (déborde l'anneau) → REFUS */
+    { int save=s.ev->director.mem_head; s.ev->director.mem_head=DIR_MEM_CAP+7;
+      ok("save_sane REFUSE un mem_head hors de l'anneau (déborderait l'écriture)",
+         !director_save_sane(s.ev, MAXSUBJ));
+      s.ev->director.mem_head=save; }
+    { int save=s.ev->director.mem_head; s.ev->director.mem_head=-3;
+      ok("save_sane REFUSE un mem_head négatif",
+         !director_save_sane(s.ev, MAXSUBJ));
+      s.ev->director.mem_head=save; }
+    /* mem[].kind FOU (étiquette hors enum) → REFUS */
+    { int sk=s.ev->director.mem[0].kind; s.ev->director.mem[0].kind=999;
+      ok("save_sane REFUSE une étiquette de mémoire hors enum (kind fou)",
+         !director_save_sane(s.ev, MAXSUBJ));
+      s.ev->director.mem[0].kind=sk; }
+    /* mem[].subject FOU (indexerait hors borne au présage) → REFUS */
+    { int ss=s.ev->director.mem[1].subject; s.ev->director.mem[1].subject=MAXSUBJ+100;
+      ok("save_sane REFUSE un sujet de mémoire hors borne (indexerait au-delà)",
+         !director_save_sane(s.ev, MAXSUBJ));
+      s.ev->director.mem[1].subject=ss; }
+    { int ss=s.ev->director.mem[1].subject; s.ev->director.mem[1].subject=-9;
+      ok("save_sane REFUSE un sujet de mémoire trop négatif (seul -1 est licite)",
+         !director_save_sane(s.ev, MAXSUBJ));
+      s.ev->director.mem[1].subject=ss; }
+    /* après restauration des champs, la garde RE-ACCEPTE (preuve : c'est bien le champ fou) */
+    ok("save_sane RE-ACCEPTE après restauration des champs (la garde vise le bon champ)",
+       director_save_sane(s.ev, MAXSUBJ));
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

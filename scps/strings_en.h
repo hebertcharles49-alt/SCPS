@@ -317,4 +317,17 @@
     X(STR_COUNCIL_NAME_5, "Velmor Circle") \
     X(STR_COUNCIL_NAME_6, "Brask Lodge") \
     X(STR_COUNCIL_NAME_7, "Dovric Syndic") \
+    /* GLOSSARY concept TITLES (hover_*) — twin order; definitions reuse STR_HOVER_*. */ \
+    X(STR_GLOSS_STAB,      "Stability") \
+    X(STR_GLOSS_LEGIT,     "Legitimacy") \
+    X(STR_GLOSS_CONCORDE,  "Cohesion") \
+    X(STR_GLOSS_ASSISE,    "Footing") \
+    X(STR_GLOSS_PROSP,     "Prosperity") \
+    X(STR_GLOSS_MARCHE,    "Market") \
+    X(STR_GLOSS_AISANCE,   "Affluence") \
+    X(STR_GLOSS_HUMEUR,    "Mood") \
+    X(STR_GLOSS_LIGNEE,    "Lineage") \
+    X(STR_GLOSS_AGITATION, "Unrest") \
+    X(STR_GLOSS_SAVOIR,    "Knowledge") \
+    X(STR_GLOSS_PRESAGE,   "Omen") \
 

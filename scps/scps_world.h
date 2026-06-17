@@ -72,4 +72,32 @@ float world_sea_days_capped(const World *w, int ax, int ay, int bx, int by, floa
  * false si la région n'a aucune côte. */
 bool world_region_sea_anchor(const World *w, int region, int *sx, int *sy);
 
+/* ── WG (worldgen-graphe) — LES DÉTROITS ÉMERGENTS (chokepoints) ──────────────
+ * Là où un sea_days COURT pince DEUX masses terrestres, la mer se RÉTRÉCIT en un
+ * goulet : qui tient la terre qui le flanque tient le passage. Détectés à la
+ * GENÈSE par la seule FORME (un bras d'eau étroit entre deux continents/côtes),
+ * DÉRIVÉS du monde (cache par seed — rien à sérialiser, comme les ancres). Chaque
+ * détroit porte (a) un PÉAGE-au-tenant — le pays qui possède la région-flanc
+ * encaisse un droit sur le trafic maritime qui le franchit — et (b) une VALEUR DE
+ * BLOCUS (l'enjeu d'y mouiller : plus le chenal est étroit, plus le verrou tient). */
+typedef struct {
+    int16_t sx, sy;         /* la cellule de mer du goulet (le point le plus étroit) */
+    int16_t region;         /* la région-flanc qui le contrôle (-1 si vierge) — le TENANT */
+    int16_t width;          /* largeur du chenal en cellules (petit = stratégique)        */
+    float   blockade;       /* valeur de BLOCUS [0..1] : croît avec l'ÉTROITESSE du chenal */
+} Chokepoint;
+
+/* La table des détroits du monde (construite paresseusement par seed). Renvoie le
+ * nombre ; *out (option) pointe la table interne (lecture seule, valide jusqu'au
+ * prochain seed). */
+int  world_chokepoints(const World *w, const Chokepoint **out);
+/* Le détroit (index) que FRANCHIT une route maritime entre les ancres (ax,ay)→(bx,by) :
+ * son goulet est proche du segment ET « entre » les deux bouts. -1 si la route n'en
+ * croise aucun. (Le plus étroit gagne si plusieurs.) */
+int  world_route_chokepoint(const World *w, int ax, int ay, int bx, int by);
+/* Le TENANT actuel d'un détroit = le pays propriétaire de sa région-flanc (-1 si
+ * vierge / index hors borne). `owner_of_region` mappe région→pays (econ->region.owner). */
+int  world_chokepoint_holder(const World *w, int choke_idx,
+                             const int16_t *owner_of_region, int n_regions);
+
 #endif /* SCPS_WORLD_H */

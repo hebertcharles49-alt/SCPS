@@ -56,7 +56,66 @@ const char *lang_id_name(StrId id);
  * Substitution bornée, sans allocation. Les arguments sont des chaînes ; le
  * site d'appel en passe autant que le PLUS GRAND indice utilisé par la clé
  * (dans TOUTES les langues). Pluriels : deux clés (STR_X_UN/STR_X_PLUSIEURS)
- * là où c'est nécessaire, et seulement là. */
+ * là où c'est nécessaire, et seulement là.
+ *
+ * MINI-SPEC `{n|spec}` (rétro-compatible : `{0}` inchangé). Après la barre, des
+ * lettres mettent en FORME l'argument (qui reste une CHAÎNE — le contrat varargs
+ * ne bouge pas, le moteur passe ses nombres déjà rendus en texte) :
+ *   n  — groupe les chiffres par milliers, séparateur ESPACE FINE insécable
+ *        (« 48000 » → « 48 000 ») ; ne touche qu'aux chiffres, signe/suffixe gardés ;
+ *   +  — force un signe explicite devant un nombre positif (« 12 » → « +12 ») ;
+ *   %  — appose un « % » (« 40 » → « 40 % » en FR, « 40% » en EN — l'espace fine
+ *        suit la langue).
+ * Combinables : `{0|n+}`, `{2|n%}`. La barre+spec est une convention d'AFFICHAGE,
+ * jamais lue par le moteur ; une clé sans barre est traitée à l'identique. */
 void tr_fmt(char *out, size_t n, StrId id, ...);
+
+/* ====================================================================== *
+ * EMPREINTE PAR STR_* (FNV-1a 32 bits) — le SCEAU d'une chaîne.
+ *
+ * Sert le CLIQUET de traduction : un scps_lang.txt édité référence des IDs ;
+ * l'empreinte du DÉFAUT compilé permet de repérer qu'une clé a CHANGÉ de sens
+ * (texte FR de référence modifié) entre deux versions — l'override visant
+ * l'ancienne formulation est alors PÉRIMÉ et doit être relu.
+ *   - lang_fnv      : empreinte du texte de RÉFÉRENCE (FR) d'un id.
+ *   - lang_fnv_str  : empreinte d'une chaîne arbitraire (même algo).
+ *   - lang_dump_fingerprints : « STR_ID<TAB>hash<TAB>texte » pour audit/diff.
+ *   - lang_audit_file : compare un scps_lang.txt au set COMPILÉ et signale les
+ *     IDs INCONNUS (périmés/supprimés) et MANQUANTS. Renvoie le nb d'anomalies
+ *     (0 = sain), -1 si le fichier est absent. Écrit le détail sur `rep_FILE`
+ *     (un FILE* ; stderr si NULL). N'altère PAS les overlays courants (audit pur). */
+unsigned long lang_fnv(StrId id);
+unsigned long lang_fnv_str(const char *s);
+int  lang_dump_fingerprints(const char *path);
+int  lang_audit_file(const char *path, void *rep_FILE);
+
+/* ====================================================================== *
+ * GLOSSAIRE DES CONCEPTS (hover_*) — un registre DÉFINITION+ALIAS+CATÉGORIE.
+ *
+ * Les survols (hover_*) parlent de CONCEPTS (Stabilité, Légitimité, Marché…) ;
+ * ce registre en donne la définition canonique, des alias (mots employés dans
+ * le readout) et une catégorie. Display-only, indépendant du moteur. Exposé pour
+ * l'outillage readout (le `--dump-readout` de l'agent 1 le parcourt). */
+typedef enum {
+    GLOSS_CAT_ETAT = 0,   /* la couronne : stabilité, légitimité, cohésion… */
+    GLOSS_CAT_ECONOMIE,   /* richesse, marché, ressources, commerce          */
+    GLOSS_CAT_PROVINCE,   /* la province : humeur, lignée, agitation          */
+    GLOSS_CAT_SAVOIR,     /* recherche, archétypes, arcane, présage           */
+    GLOSS_CAT_COUNT
+} GlossCat;
+
+typedef struct {
+    StrId       term;     /* le mot-titre du concept (un STR_* face-joueur)   */
+    StrId       def;      /* sa définition (typiquement un STR_HOVER_*)        */
+    GlossCat    cat;      /* la rubrique                                       */
+    const char *alias;    /* synonymes séparés par '|' (NULL si aucun) — bruts,
+                           * hors-table À DESSEIN (clés de recherche, pas du
+                           * texte affiché ; l'audit lang-check les ignore).  */
+} GlossEntry;
+
+int                 glossary_count(void);            /* nb de concepts          */
+const GlossEntry   *glossary_at(int i);              /* l'entrée i, ou NULL      */
+const GlossEntry   *glossary_find(const char *key);  /* par terme/alias, ou NULL */
+const char         *glossary_cat_name(GlossCat c);   /* libellé de rubrique (FR) */
 
 #endif /* SCPS_LANG_H */

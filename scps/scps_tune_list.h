@@ -32,6 +32,21 @@
     /* §G0.1 — le directeur (les fenêtres de température) */ \
     X(DIR_T_HOT,              0.50f) \
     X(DIR_T_COLD,             0.32f) \
+    /* §G2 — LE DIRECTEUR-AMPLITUDE (la boucle « tale ») : un intégrateur de TRAUMATISME
+     * (adapt_days) monte sous les chocs (température T·CHARGE jours/an) et redescend au calme
+     * (demi-vie HALF jours) ; l'AMPLITUDE dramatique = adapt_days/SCALE saturé [0..1]. Le
+     * BUDGET de mise en scène accumule ∝ pop·richesse·temps (BUDGET_POP par 1000 hab/an +
+     * BUDGET_GOLD par 1000 or/an), borné BUDGET_CAP. Un PRÉSAGE coûte OMEN_COST points et ne
+     * sort qu'au-dessus de OMEN_AMPL (le monde doit « vibrer » pour qu'un augure prenne). */ \
+    X(AMPL_TRAUMA_CHARGE,   180.0f) \
+    X(AMPL_TRAUMA_HALF,     900.0f) \
+    X(AMPL_TRAUMA_MAX,     2000.0f) \
+    X(AMPL_TRAUMA_SCALE,    500.0f) \
+    X(AMPL_BUDGET_POP,        0.02f) \
+    X(AMPL_BUDGET_GOLD,       0.01f) \
+    X(AMPL_BUDGET_CAP,      400.0f) \
+    X(AMPL_OMEN_COST,        60.0f) \
+    X(AMPL_OMEN_AMPL,         0.35f) \
     /* §G0.2/C3 — soulèvements & concessions */ \
     X(C3_K_HOLLOW,            0.20f) \
     X(C3_L_HOLLOW,            0.30f) \

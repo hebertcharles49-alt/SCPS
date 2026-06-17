@@ -20,6 +20,7 @@
 #define IT_EXPORT_FRAC 0.25f   /* part du surplus que l'exportateur lâche par tick */
 #define IT_PRICE_CONV  0.20f   /* convergence partielle des prix (lissage) */
 #define IT_MARGIN_TO_GOLD 0.50f/* part de la valeur transportée qui devient de l'OR pour l'exportateur */
+#define IT_CHOKE_TOLL  0.12f   /* WG : part de la valeur transportée que SKIME le tenant d'un détroit (transfert exportateur→tenant, modulée par l'étroitesse du goulet) */
 
 static float g_last_value = 0.f;   /* valeur totale échangée au dernier tick (reporting) */
 
@@ -90,6 +91,18 @@ static float  g_pair[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
 static bool   g_embargo[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* [qui décrète][contre qui] */
 static bool   g_centre[SCPS_MAX_REG];   /* P3.20 : cette région EST un Centre commercial (hub) */
 static float  g_centre_val[SCPS_MAX_REG]; /* valeur du commerce passée par chaque Centre (dernier tick) */
+/* WG (worldgen-graphe) — LE PÉAGE DE DÉTROIT (dernier tick) : ce que chaque pays a
+ * encaissé en TENANT un détroit que franchit une route maritime, + le nombre de
+ * routes ainsi taxées. Le tenant prélève une PART de la valeur transportée (un
+ * transfert exportateur→tenant : l'importateur ne paie pas plus, le verrou skime). */
+static float  g_choke_toll[SCPS_MAX_COUNTRY];
+static int    g_n_choke_routes=0;     /* routes maritimes franchissant un détroit tenu par un TIERS */
+static float  g_choke_toll_total=0.f; /* somme des péages encaissés (dernier tick) */
+/* CUMUL sur la sim (RAZ uniquement par intertrade_reset, pas chaque tick) : le total
+ * encaissé par chaque tenant sur toute la partie — la preuve chiffrée (la valeur d'un
+ * tick converge vers ~0 quand les prix s'égalisent ; le cumul, lui, RESTE). */
+static double g_choke_toll_cumul[SCPS_MAX_COUNTRY];
+static double g_choke_toll_cumul_total=0.0;
 /* #5 — LA CARTE DU MARCHÉ LOCAL : chaque région se relie à la cité-état (Centre) la
  * PLUS PROCHE. g_hub_of = la région-Centre de rattachement (-1 = aucune atteignable :
  * autarcie) ; g_hub_dist = la distance (sauts) qui porte le rendement DÉGRESSIF.
@@ -111,6 +124,8 @@ void intertrade_reset(void){
     memset(g_global_cache,0,sizeof g_global_cache); g_hub_dirty=true;
     memset(g_centre,0,sizeof g_centre);                 /* V2 : pas de FUITE de Centres entre parties d'une même session viewer */
     memset(g_global_access,0,sizeof g_global_access);   /* V2 : ni d'accès global hérité */
+    memset(g_choke_toll,0,sizeof g_choke_toll); g_n_choke_routes=0; g_choke_toll_total=0.f;  /* WG */
+    memset(g_choke_toll_cumul,0,sizeof g_choke_toll_cumul); g_choke_toll_cumul_total=0.0;    /* WG : cumul RAZ par sim */
     g_last_value=0.f;
 }
 static void flows_clear(void){
@@ -120,6 +135,7 @@ static void flows_clear(void){
     memset(g_imp_best,0,sizeof g_imp_best); memset(g_expt_best,0,sizeof g_expt_best);
     memset(g_imp_from,-1,sizeof g_imp_from); memset(g_expt_to,-1,sizeof g_expt_to);
     memset(g_gold,0,sizeof g_gold); memset(g_pair,0,sizeof g_pair);
+    memset(g_choke_toll,0,sizeof g_choke_toll); g_n_choke_routes=0; g_choke_toll_total=0.f;  /* WG : péages du tick */
 }
 static inline bool cid_ok(int c){ return c>=0 && c<SCPS_MAX_COUNTRY; }
 
@@ -592,6 +608,20 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
         float conn_mult = 1.f;
         if ((ra<SCPS_MAX_REG && g_centre[ra]) || (e->region[ra].edi_built & (1u<<EDI_COMPTOIR))) conn_mult *= 0.67f;
         if ((rb<SCPS_MAX_REG && g_centre[rb]) || (e->region[rb].edi_built & (1u<<EDI_COMPTOIR))) conn_mult *= 0.67f;
+        /* WG — LE PÉAGE DE DÉTROIT : si la route maritime franchit un goulet (posé à la
+         * création) TENU par un TIERS (ni ca ni cb), à la paix avec les deux bouts, son
+         * propriétaire SKIME une part de chaque échange (transfert exportateur→tenant,
+         * ∝ étroitesse du goulet). Le verrou rapporte à qui le tient. */
+        int   choke_hold_reg=-1, choke_hold_cid=-1; float choke_rate=0.f; bool choke_tax_route=false;
+        if (rt->maritime && rt->choke_region>=0 && rt->choke_region<e->n_regions){
+            int hc=e->region[rt->choke_region].owner;
+            if (cid_ok(hc) && hc!=ca && hc!=cb
+                && pair_at_peace(dp,hc,ca) && pair_at_peace(dp,hc,cb)
+                && !intertrade_embargoed(hc,ca) && !intertrade_embargoed(hc,cb)){
+                choke_hold_reg=rt->choke_region; choke_hold_cid=hc;
+                choke_rate=IT_CHOKE_TOLL*(0.4f+0.6f*rt->choke_block);   /* l'étroitesse durcit le droit */
+            }
+        }
         for (int g=1; g<RES_COUNT; g++){
             float pa=A->price[g], pb=B->price[g];
             bool a_to_b=(pa<pb);                      /* le bien va du bon marché vers le cher */
@@ -620,6 +650,22 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             if (src->owner>=0){ econ_flux_add(src->owner, FX_EXPORT, gross);
                                 econ_flux_add(src->owner, FX_TOLL_RECV, total-gross); }  /* I0 */
             if (dst->owner>=0) econ_flux_add(dst->owner, FX_IMPORT, -total);
+            /* WG — le tenant du détroit prélève SA part (transfert exportateur→tenant :
+             * conservation préservée, l'importateur ne paie pas plus, le verrou skime). */
+            if (choke_hold_reg>=0){
+                float toll=gross*choke_rate;
+                if (toll>src->treasury) toll=src->treasury;
+                if (toll<0.f) toll=0.f;
+                if (toll>0.f){
+                    src->treasury -= toll;
+                    e->region[choke_hold_reg].treasury += toll;
+                    if (cid_ok(choke_hold_cid)){
+                        g_choke_toll[choke_hold_cid]+=toll; econ_flux_add(choke_hold_cid, FX_TOLL_RECV, toll);
+                        g_choke_toll_cumul[choke_hold_cid]+=toll;   /* le CUMUL de sim (la preuve) */
+                    }
+                    g_choke_toll_total+=toll; g_choke_toll_cumul_total+=toll; choke_tax_route=true;
+                }
+            }
             g_last_value += gross;
             /* la valeur PASSE par les Centres des deux couronnes (moitié chacun) —
              * la part des cités-états dans le commerce mondial se lit là. */
@@ -638,6 +684,7 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             A->price[g]+=(mid-A->price[g])*IT_PRICE_CONV;
             B->price[g]+=(mid-B->price[g])*IT_PRICE_CONV;
         }
+        if (choke_tax_route) g_n_choke_routes++;   /* WG : cette route a payé le verrou ce tick */
     }
     /* M4 — L'ARBITRAGE DES CITÉS-ÉTATS (leur MOTEUR : elles vivent du commerce, pas de
      * l'impôt). Chaque Centre IMPORTE un volume BORNÉ des biens où son marché LOCAL paie
@@ -688,6 +735,13 @@ void intertrade_asym_stats(float *vdown, float *vup,
     if (prec_up)   *prec_up=g_prec_up;
 }
 int intertrade_precious_upstream_events(void){ return g_nprec_up; }
+
+/* WG — lecteurs du PÉAGE DE DÉTROIT (dernier tick + cumul de sim). */
+float intertrade_choke_toll_total(void){ return g_choke_toll_total; }
+int   intertrade_choke_routes(void){ return g_n_choke_routes; }
+float intertrade_choke_toll_country(int cid){ return cid_ok(cid)?g_choke_toll[cid]:0.f; }
+double intertrade_choke_toll_cumul_total(void){ return g_choke_toll_cumul_total; }
+double intertrade_choke_toll_cumul_country(int cid){ return cid_ok(cid)?g_choke_toll_cumul[cid]:0.0; }
 
 int intertrade_active_routes(const WorldEconomy *e, const RouteNetwork *rn,
                              const DiploState *dp, int cid){
