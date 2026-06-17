@@ -73,6 +73,17 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
             row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
         }
     }
+    /* POST-TRAITEMENT anti-ROSE : tout pixel encore de FAMILLE MAGENTA (R ET B au-dessus du
+     * VERT) est neutralisé au gris du vert → plus aucun flou rose résiduel. Le bronze des
+     * bords (R>G>B, donc B<G) n'est PAS touché ; verts/bruns/bleus non plus. */
+    for (int y=0; y<cv->h; y++){
+        Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
+        for (int x=0; x<cv->w; x++){
+            Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
+            if (a>0 && (int)r>(int)g+3 && (int)b>(int)g+3)
+                row[x]=SDL_MapRGBA(cv->format, g,g,g, a);
+        }
+    }
     SDL_Texture *tex = SDL_CreateTextureFromSurface(ren, cv);
     SDL_FreeSurface(cv);
     if (tex) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
@@ -392,6 +403,7 @@ static bool region_world_pos(const World *w, int reg, float *wx, float *wy){
 #define ROAD_PATH_MAX 1400
 typedef struct { int16_t x[ROAD_PATH_MAX], y[ROAD_PATH_MAX]; int len; int ra, rb; } RoadPath;
 static RoadPath *g_rd_paths=NULL; static int g_rd_npaths=0; static uint64_t g_rd_sig=0;
+static uint8_t *g_road_mask=NULL;   /* 1 = cellule sur/à côté d'une route (les champs l'évitent) */
 static float *g_rd_g=NULL, *g_heapf=NULL; static int *g_rd_from=NULL,*g_rd_gen=NULL,*g_rd_closed=NULL,*g_heapi=NULL;
 static int g_rd_curgen=0, g_heap_n=0;
 static void rheap_push(float f,int idx){ int i=g_heap_n++; g_heapf[i]=f; g_heapi[i]=idx;
@@ -496,6 +508,15 @@ static void roads_ensure_cache(const World *w,const RouteNetwork *rn){
             road_path_smooth(&g_rd_paths[g_rd_npaths]);    /* lissage++ */
             g_rd_npaths++;
         }
+    }
+    /* MASQUE des cellules-ROUTE (+1 de marge) : pour ne PAS poser de champ sur une route. */
+    if(!g_road_mask) g_road_mask=(uint8_t*)calloc(SCPS_N,1);
+    if(g_road_mask){
+        memset(g_road_mask,0,SCPS_N);
+        for(int pi=0;pi<g_rd_npaths;pi++){ const RoadPath *p=&g_rd_paths[pi];
+            for(int k=0;k<p->len;k++){ int rx=p->x[k],ry=p->y[k];
+                for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++){
+                    int nx=rx+dx,ny=ry+dy; if(nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H) g_road_mask[ny*SCPS_W+nx]=1; } } }
     }
 }
 /* TRAIT ÉPAIS continu (RenderGeometry, quad par segment + losange aux points) — grammaire
@@ -640,8 +661,9 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
                 dress_blit(ren, rgt[hh%3], tx-tsz/2, ty-(tsz*3)/4, tsz);
             }
         }
-        if (port_back){                              /* PORT vue de DOS (estuary_dock 96-103), miroir selon mer gauche/droite */
-            int pcol=(sdx<0.f)?1:0; int pid=96+pcol;
+        if (port_back){                              /* PORT vue de DOS — estuary_dock (12) INTERDIT ;
+                                                      * on prend pêche(8)/quai(9)/port(10) selon tier, miroir selon mer G/D. */
+            int prow=(tier>=4)?10:(tier>=2)?9:8; int pcol=(sdx<0.f)?1:0; int pid=prow*SCPS_PORT_COLS+pcol;
             SDL_Rect psrc={(pid%SCPS_PORT_COLS)*SCPS_PORT_CELL,(pid/SCPS_PORT_COLS)*SCPS_PORT_CELL,SCPS_PORT_CELL,SCPS_PORT_CELL};
             SDL_Rect pdst={(int)fsx-dpx/2,(int)fsy-(dpx*7)/10,dpx,dpx};
             SDL_RenderCopy(ren,g_port_tex,&psrc,&pdst); continue;
@@ -708,20 +730,27 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor naturel */
             int id=dress_pick(c,h);
             if (id<0) continue;
+            if (c->biome==BIO_FARMLAND){                              /* CHAMP : ponctuel (~90 % retirés) + JAMAIS sur une route */
+                if (g_road_mask && g_road_mask[cy*SCPS_W+cx]) continue;
+                if ((map_hash(cx,cy,0xFA12BEEFu) & 7u) != 0u) continue;   /* ne garde qu'1 sur 8 */
+            }
             int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
             dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre (sprite debout) */
-            /* FERME : un champ est PONCTUEL (densité basse) mais HABILLÉ — une grappe de
-             * 3-4 assets autour (botte, caisse, haie, rocher) en fait une ferme, pas un
-             * carré répété. (Les forêts restent denses, elles, c'est OK.) */
-            if (c->biome==BIO_FARMLAND && g_cover_tex){
-                static const int fcl[5]={COVER_HAYSTACK,COVER_CRATE,COVER_HEDGE_CLUMP,COVER_HAYSTACK,COVER_BOULDER};
-                int fn=3+(int)((h>>17)&1u);
-                for (int q=0;q<fn;q++){
-                    uint32_t hq=map_hash(cx*3+q, cy*5+q, 0xFA12BEEFu);
-                    int fsz=(int)(px*0.55f); if(fsz<7)fsz=7;
-                    int ox=(int)((hq>>3)&31u)-16, oy=(int)((hq>>9)&15u)-8;
-                    cover_blit(ren, fcl[hq%5], sx-fsz/2+ox+jx, sy-(fsz*3)/4+oy+jy, fsz);
+            /* FERME : le champ (RARE) est HABILLÉ — un petit MOULIN + une grappe d'assets
+             * (bottes, caisses, haies) en fait une ferme, pas un carré répété. */
+            if (c->biome==BIO_FARMLAND){
+                int wsz=(int)((float)px*0.95f); if(wsz<10)wsz=10;
+                dress_blit(ren, MAPD_BLD_WINDMILL, sx-wsz/2+jx+(int)((h>>20)&3u)-2, sy-(wsz*3)/4+jy, wsz);
+                if (g_cover_tex){
+                    static const int fcl[5]={COVER_HAYSTACK,COVER_CRATE,COVER_HEDGE_CLUMP,COVER_HAYSTACK,COVER_REED};
+                    int fn=2+(int)((h>>17)&1u);
+                    for (int q=0;q<fn;q++){
+                        uint32_t hq=map_hash(cx*3+q, cy*5+q, 0xFA12BEEFu);
+                        int fsz=(int)((float)px*0.5f); if(fsz<7)fsz=7;
+                        int ox=(int)((hq>>3)&31u)-16, oy=(int)((hq>>9)&15u)-8;
+                        cover_blit(ren, fcl[hq%5], sx-fsz/2+ox+jx, sy-(fsz*3)/4+oy+jy, fsz);
+                    }
                 }
             }
         }
