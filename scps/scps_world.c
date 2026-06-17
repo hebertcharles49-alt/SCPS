@@ -2089,6 +2089,66 @@ static void compute_render_flags(World *w, float *height) {
 }
 
 /* ========================================================================
+ * CAPSTONE §27 — CARVE : engloutir une cellule + recalcul d'adjacence
+ * ====================================================================== */
+/* Engloutit UNE cellule (apocalypse d'eau / fond de ronces écroulé) : la terre
+ * passe sous le niveau de mer, le biome devient océan (assign_biome), la
+ * hiérarchie est strippée (province/région/pays/continent = -1). Le littoral
+ * exact (cabotage) est refait par world_recompute_adjacency après coup. */
+void world_sink_cell(Cell *c, float new_height) {
+    if (new_height >= SEA_LEVEL) new_height = SEA_LEVEL - 0.02f;   /* garantit la mer */
+    c->height   = new_height;
+    c->biome    = assign_biome(c->height, c->moisture, c->temperature);  /* → océan */
+    c->sea      = SEA_VIVE;            /* classe par défaut ; littoral refait au recalcul */
+    c->lake     = false;
+    c->river    = 0; c->flow_dir = -1;
+    c->province = c->region = c->country = c->continent = -1;
+    c->coast    = false;
+    c->cur_vx   = c->cur_vy = 0;
+}
+
+/* Recalcul CIBLÉ après une carve (eau/ronces). NE rappelle PAS build_hierarchy
+ * (qui réassignerait les ids — la région DOIT garder son indice) : recompute
+ * seulement les côtes/littoral (depuis c->height) et les frontières (depuis la
+ * hiérarchie mutée). L'adjacence ÉCO (econ_build_adjacency) est rebâtie par
+ * l'appelant (qui tient le WorldEconomy) — scps_world.o ne dépend pas de l'éco. */
+void world_recompute_adjacency(World *w) {
+    static const int NDX[4]={1,-1,0,0}, NDY[4]={0,0,1,-1};
+    /* 1. côtes (cellule terrestre adjacente à la mer) + littoral neuf (cabotage). */
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        Cell *c=&w->cell[scps_idx(x,y)];
+        bool land = (c->height >= SEA_LEVEL);
+        bool near_land=false;
+        c->coast=false;
+        for (int d=0;d<4;d++){
+            int nx=x+NDX[d], ny=y+NDY[d];
+            if (nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+            const Cell *n=&w->cell[scps_idx(nx,ny)];
+            if (land && n->height < SEA_LEVEL) c->coast=true;
+            if (!land && n->height >= SEA_LEVEL) near_land=true;
+        }
+        if (!land && near_land) c->sea=SEA_CABOTAGE;   /* la côte ennoyée devient cabotage */
+    }
+    /* 2. frontières (depuis la hiérarchie mutée par la carve). */
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        Cell *c=&w->cell[scps_idx(x,y)];
+        c->border_prov=c->border_reg=c->border_country=c->border_continent=false;
+        for (int d=0;d<4;d++){
+            int nx=x+NDX[d], ny=y+NDY[d];
+            int pv=-1,rg=-1,ct=-1;
+            if (nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H){
+                const Cell *n=&w->cell[scps_idx(nx,ny)];
+                pv=n->province; rg=n->region; ct=n->country;
+                if (c->continent!=n->continent) c->border_continent=true;
+            }
+            if (c->province!=pv && (c->province>=0||pv>=0)) c->border_prov=true;
+            if (c->region  !=rg && (c->region  >=0||rg>=0)) c->border_reg=true;
+            if (c->country !=ct && (c->country >=0||ct>=0)) c->border_country=true;
+        }
+    }
+}
+
+/* ========================================================================
  * GÉOGRAPHIE — noms de provinces (la culture vit ailleurs : gen_population)
  * ====================================================================== */
 static void gen_province_names(World *w) {

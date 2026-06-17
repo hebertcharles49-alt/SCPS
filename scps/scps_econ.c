@@ -356,6 +356,27 @@ static void econ_seed_population(RegionEconomy *re, float total_pop) {
 
 /* §11.4 — LIMITEUR DE PRODUCTION joueur : cap par (pays,ressource). -1 = ∞ (désactivé). */
 static float g_prod_cap[SCPS_MAX_COUNTRY][RES_COUNT];
+/* (RE)CONSTRUIT l'adjacence de régions (terre, 4-connexe) : un lien ssi AUCUNE des
+ * deux régions n'est infranchissable (glaciers/déserts/RONCES/MER = barrières). Zéroïe
+ * d'abord — réutilisable après une carve (capstone §27 : côtes & barrières déplacées). */
+void econ_build_adjacency(WorldEconomy *e, const World *w) {
+    memset(e->adj, 0, sizeof e->adj);
+    static const int DX4[4]={1,-1,0,0}, DY4[4]={0,0,1,-1};
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
+        int ra=w->cell[scps_idx(x,y)].region;
+        if (ra<0) continue;
+        for (int d=0;d<4;d++) {
+            int nx=x+DX4[d], ny=y+DY4[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int rb=w->cell[scps_idx(nx,ny)].region;
+            if (rb<0||rb==ra) continue;
+            if (!e->region[ra].impassable && !e->region[rb].impassable) {
+                e->adj[ra][rb]=1; e->adj[rb][ra]=1;
+            }
+        }
+    }
+}
+
 void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(e,0,sizeof(*e));
@@ -624,26 +645,10 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
-    /* ---- Adjacence de régions (terre, 4-connexe) pour la colonisation ---- *
-     * On ne trace un lien que si AUCUNE des deux régions n'est infranchissable.
-     * Cela rend les glaciers et déserts hyperarides des barrières naturelles :
-     * une civilisation ne peut pas coloniser « de l'autre côté » d'une zone morte
-     * sans contourner par une région habitable adjacente.                     */
-    static const int DX4[4]={1,-1,0,0}, DY4[4]={0,0,1,-1};
-    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
-        int ra=w->cell[scps_idx(x,y)].region;
-        if (ra<0) continue;
-        for (int d=0;d<4;d++) {
-            int nx=x+DX4[d], ny=y+DY4[d];
-            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
-            int rb=w->cell[scps_idx(nx,ny)].region;
-            if (rb<0||rb==ra) continue;
-            /* Ne créer un lien que si les deux régions sont franchissables */
-            if (!e->region[ra].impassable && !e->region[rb].impassable) {
-                e->adj[ra][rb]=1; e->adj[rb][ra]=1;
-            }
-        }
-    }
+    /* ---- Adjacence de régions (terre, 4-connexe) pour la colonisation ----
+     * Extraite en econ_build_adjacency (réutilisée par le recalcul du capstone
+     * §27 : une carve eau/ronces déplace côtes et barrières). */
+    econ_build_adjacency(e, w);
 
     /* ---- Peuplement initial : la GRAINE mondiale, le reste vierge ---------- *
      * Q6 re-baseline — le DOUBLEMENT 48k→96k. On répartit une graine TOTALE fixe

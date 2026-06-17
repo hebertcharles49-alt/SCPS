@@ -281,6 +281,9 @@ typedef struct {
 /* Initialise pops, capacités d'extraction et manufactures à partir de la
  * géographie/ressources du monde déjà généré. */
 void econ_init(WorldEconomy *e, const World *w);
+/* (Re)construit l'adjacence de régions (terre 4-connexe, barrières = infranchissable).
+ * Appelée par econ_init ; exposée pour le recalcul du capstone §27 (carve eau/ronces). */
+void econ_build_adjacency(WorldEconomy *e, const World *w);
 
 /* Avance la simulation d'un pas. dt = années/tick (1 en annuel, 1/12 en mensuel) :
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux

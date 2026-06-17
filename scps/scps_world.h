@@ -17,6 +17,14 @@ WorldParams worldparams_default(uint32_t seed);
 /* Génère un monde complet (géographie seule) selon les paramètres. ~200ms. */
 void world_generate(World *w, const WorldParams *params);
 
+/* CAPSTONE §27 — CARVE. world_sink_cell : engloutit une cellule (terre→mer,
+ * biome océan, hiérarchie strippée). world_recompute_adjacency : recalcul CIBLÉ
+ * des côtes/frontières (depuis c->height & la hiérarchie mutée) SANS rappeler
+ * build_hierarchy (les ids de région restent figés). L'adjacence ÉCO se rebâtit
+ * à part via econ_build_adjacency (l'appelant tient le WorldEconomy). */
+void world_sink_cell(Cell *c, float new_height);
+void world_recompute_adjacency(World *w);
+
 /* Intensité agricole [0..10] d'un biome — source unique de vérité partagée
  * avec l'axe de subsistance culturel (cf. lifeway_subs). Sert de proxy de
  * capacité d'accueil dans econ_init. */

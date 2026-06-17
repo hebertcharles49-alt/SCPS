@@ -17,6 +17,7 @@
 #include "scps_trade.h"
 #include "scps_navy.h"
 #include "scps_diplo.h"
+#include "scps_campaign.h"   /* FieldArmy : la carve échoue les armées sur sol englouti */
 
 /* ---- Tailles (capacités — PAS dans le registre J) --------------------- */
 #define SCPS_THORN_FRONT_MAX 16384  /* cellules max dans le front BFS des ronces */
@@ -64,11 +65,11 @@ typedef struct EndgameState {
 /* ---- API -------------------------------------------------------------- */
 void endgame_init(EndgameState *eg);
 
-/* Tick orchestrateur : appelé UNE fois par an (après prosperity_tick,
- * avant world_tick/diplo/factions) depuis sim_step / chronicle. */
+/* Tick orchestrateur : appelé UNE fois par an (après prosperity_tick) depuis
+ * sim_step / chronicle. camp : pour échouer les armées sur sol englouti. */
 void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                   WorldProsperity *wp, const TechState ts[],
                   RouteNetwork *rn, NavyState *navy, DiploState *dp,
-                  int player, int year);
+                  Campaign *camp, int player, int year);
 
 #endif /* SCPS_ENDGAME_H */

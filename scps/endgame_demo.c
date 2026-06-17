@@ -62,7 +62,7 @@ int main(void) {
 
     /* N ticks : fired doit rester false */
     for (int y = 0; y < 300; y++)
-        endgame_tick(&eg, NULL, NULL, &wp0, NULL, NULL, NULL, NULL, 0, y);
+        endgame_tick(&eg, NULL, NULL, &wp0, NULL, NULL, NULL, NULL, NULL, 0, y);
 
     CHECK("300 ticks entropie=0 : fired reste false",  eg.fired == false);
     CHECK("300 ticks entropie=0 : fin reste FIN_AUCUNE", eg.fin == FIN_AUCUNE);
@@ -119,7 +119,7 @@ int main(void) {
     CHECK("un empire existe", victim >= 0);
     /* charge nulle → widen n'ajoute rien */
     wp->entropy = 0.f;
-    endgame_tick(&eg, w, econ, wp, /*ts (toutes charges 0 via calloc)*/ NULL, NULL, NULL, NULL, 0, 0);
+    endgame_tick(&eg, w, econ, wp, /*ts (toutes charges 0 via calloc)*/ NULL, NULL, NULL, NULL, NULL, 0, 0);
     /* (ts NULL → widen ne fait rien, et select_and_fire est sauté : entropy reste 0) */
     CHECK("ts NULL : entropie inchangée (0)", wp->entropy == 0.f);
 
@@ -131,7 +131,7 @@ int main(void) {
     ts[victim].charge = charge_inj;
     wp->entropy = 0.f;
     endgame_init(&eg);
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, 0, 0);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 0);
     float expect = TECH_W * charge_inj;
     CHECK("widen : entropie == TECH_W × charge", fabsf(wp->entropy - expect) < 0.01f);
     CHECK("sous le seuil : pas de fire", eg.fired == false);
@@ -145,7 +145,7 @@ int main(void) {
     wp->entropy = FINV + 1.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 1000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) ts[c].charge = 0.f;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, 0, 50);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 50);
     CHECK("conso essence dominante → FIN_EAU", eg.fired && eg.fin == FIN_EAU);
     CHECK("foyer figé (epicentre assigné)", eg.epicenter_reg >= -1);
     CHECK("année de fin posée", eg.fin_year == 50);
@@ -154,20 +154,20 @@ int main(void) {
     endgame_init(&eg);
     wp->entropy = FINV + 1.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 0.0; wp->faust_consumed[1] = 1000.0; wp->faust_consumed[2] = 0.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, 0, 60);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 60);
     CHECK("conso flux dominante → FIN_RONCES", eg.fired && eg.fin == FIN_RONCES);
 
     /* fer céleste (2) dominant → FROID */
     endgame_init(&eg);
     wp->entropy = FINV + 1.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 0.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 1000.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, 0, 70);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 70);
     CHECK("conso fer céleste dominante → FIN_FROID", eg.fired && eg.fin == FIN_FROID);
 
     /* LATCH : un 2e tick ne re-sélectionne pas (la fin reste figée) */
     FinType latched = eg.fin; int latched_year = eg.fin_year;
     wp->faust_consumed[0] = 9999.0;  /* on tente de forcer EAU après coup */
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, 0, 71);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 71);
     CHECK("latch : la fin reste figée malgré un nouveau dominant", eg.fin == latched);
     CHECK("latch : l'année de fin ne bouge pas", eg.fin_year == latched_year);
 
@@ -176,15 +176,90 @@ int main(void) {
     eg.merv = MERV_ASCENDED;
     wp->entropy = FINV + 1.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 1000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, 0, 80);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 80);
     CHECK("MERV_ASCENDED → FIN_ASCENSION (override)", eg.fired && eg.fin == FIN_ASCENSION);
 
     /* sous le seuil : aucune fin même avec un dominant */
     endgame_init(&eg);
     wp->entropy = FINV - 1.f;
     wp->faust_consumed[0] = 1000.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, 0, 90);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 90);
     CHECK("sous ENTROPY_FIN : pas de fire", eg.fired == false && eg.fin == FIN_AUCUNE);
+
+    /* ---- C3 : carve EAU → recalcul → fragmentation -------------------- */
+    printf("\nC3 apocalypse d'eau (carve + recalcul + split)\n");
+    /* monde FRAIS (les tests C2 ont déjà carvé/refragmenté ce w) */
+    world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+    int n_reg0 = econ->n_regions;
+    for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
+    endgame_init(&eg);
+    wp->entropy = FINV + 10.f; wp->entropy_epicenter = -1;
+    wp->faust_consumed[0] = 1000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;
+    /* fire (an 100) : sélecteur EAU + amorçage du rift + 1er pas de carve */
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 100);
+    CHECK("EAU déclenchée", eg.fired && eg.fin == FIN_EAU);
+    CHECK("rift amorcé (régions programmées)", eg.sink_pending + eg.n_sunken > 0);
+    /* déroule jusqu'à épuisement du rift */
+    for (int y = 0; y < 80 && eg.sink_pending > 0; y++)
+        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 101 + y);
+    CHECK("rift épuisé (sink_pending == 0)", eg.sink_pending == 0);
+    CHECK("au moins une région engloutie", eg.n_sunken > 0);
+    CHECK("n_regions INCHANGÉ (la région garde son indice)", econ->n_regions == n_reg0);
+
+    /* (b) toute région englouti : owner=-1, impassable, cellules en mer */
+    bool sink_ok = true, cell_ok = true;
+    for (int r = 0; r < econ->n_regions; r++) {
+        if (eg.sunken[r] != 2) continue;
+        if (econ->region[r].owner != -1 || !econ->region[r].impassable) sink_ok = false;
+    }
+    /* échantillon : une cellule d'une région engloutie est bien sous la mer & strippée */
+    { int probe = -1; for (int r = 0; r < econ->n_regions; r++) if (eg.sunken[r]==2){ probe=r; break; }
+      if (probe >= 0) {
+          bool found = false;
+          for (int i = 0; i < SCPS_N && !found; i++)
+              if (w->cell[i].height < SEA_LEVEL && w->cell[i].region == -1) found = true;
+          cell_ok = found;
+      } }
+    CHECK("régions englouties : owner=-1 & impassable", sink_ok);
+    CHECK("cellules englouties : sous la mer & hiérarchie strippée", cell_ok);
+
+    /* (c) save_sane-style : indices de cellule/province/région dans les bornes */
+    bool sane = true;
+    for (int i = 0; i < SCPS_N; i++) { const Cell *c = &w->cell[i];
+        if (c->province < -1 || c->region < -1 || c->country < -1 || c->continent < -1) sane = false;
+        if (c->province >= w->n_provinces || c->region >= w->n_regions ||
+            c->country >= w->n_countries || c->continent >= w->n_continents) sane = false; }
+    for (int pr = 0; pr < w->n_provinces; pr++) {
+        if (w->province[pr].region < 0 || w->province[pr].country < 0) sane = false;
+        if (w->province[pr].region >= w->n_regions || w->province[pr].country >= w->n_countries) sane = false; }
+    for (int c = 0; c < w->n_countries; c++) { const Country *ctc = &w->country[c];
+        if (ctc->n_regions < 0 || ctc->n_regions > 32) sane = false;
+        for (int k = 0; k < ctc->n_regions; k++)
+            if (ctc->region_ids[k] < 0 || ctc->region_ids[k] >= w->n_regions) sane = false; }
+    CHECK("invariants save_sane tenus après carve", sane);
+
+    /* (d) idempotence : reconstruire l'adjacence éco 2× donne la MÊME matrice */
+    { static uint8_t snap[SCPS_MAX_REG][SCPS_MAX_REG];
+      world_recompute_adjacency(w); econ_build_adjacency(econ, w);
+      memcpy(snap, econ->adj, sizeof snap);
+      world_recompute_adjacency(w); econ_build_adjacency(econ, w);
+      CHECK("idempotence du recalcul d'adjacence", memcmp(snap, econ->adj, sizeof snap) == 0); }
+
+    /* (e) garantie du split : les régions d'un empire VIVANT forment UNE composante
+     *     connexe (sinon la refragmentation a échoué). BFS sur econ->adj. */
+    { bool all_connected = true;
+      for (int c = 0; c < w->n_countries && all_connected; c++) {
+          int regs[SCPS_MAX_REG], nr = 0;
+          for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == c) regs[nr++] = r;
+          if (nr <= 1) continue;
+          int seen[SCPS_MAX_REG] = {0}, queue[SCPS_MAX_REG], qh = 0, qt = 0;
+          seen[0] = 1; queue[qt++] = 0;
+          while (qh < qt) { int ra = regs[queue[qh++]];
+              for (int j = 0; j < nr; j++) if (!seen[j] && econ->adj[ra][regs[j]]) { seen[j] = 1; queue[qt++] = j; } }
+          int reached = 0; for (int j = 0; j < nr; j++) reached += seen[j];
+          if (reached != nr) all_connected = false;
+      }
+      CHECK("empires vivants : régions connexes (refragmentation)", all_connected); }
 
     free(ts); free(wp); free(econ); free(w);
 
