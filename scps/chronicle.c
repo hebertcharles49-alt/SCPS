@@ -1061,18 +1061,22 @@ int main(int argc, char **argv){
             for (int i=0;i<cont && i<4;i++) printf(" C%d %.0fk", ord[i], pc[ord[i]]/1000.0);
             printf("\n");
             if (getenv("SCPS_CAPDIAG")) {
-                double poptot=0, cap_col=0, cap_act=0, fsat_w=0, fsat_p=0, bldlvl=0; int ncol=0, nact=0;
+                double poptot=0, cap_col=0, cap_act=0, fsat_w=0, fsat_p=0, bldlvl=0, effcap=0; int ncol=0, nact=0;
                 for (int r=0;r<s.econ->n_regions;r++){
                     const RegionEconomy *re=&s.econ->region[r];
                     double p=0; for(int cc=0;cc<CLASS_COUNT;cc++) p+=re->strata[cc].pop;
                     poptot+=p;
                     if (re->active)   { nact++; cap_act+=re->cap_pop; }
                     if (re->colonized){ ncol++; cap_col+=re->cap_pop; fsat_w+=re->food_sat*p; fsat_p+=p;
-                        for(int b=0;b<re->n_bld;b++) bldlvl+=re->bld[b].level; }
+                        double mh=0; for(int b=0;b<re->n_bld;b++){ bldlvl+=re->bld[b].level; mh+=re->bld[b].level; }
+                        mh = fmin(mh*100.0, re->cap_pop*0.5);                       /* HOUSE_MANUF=100 (diag) */
+                        effcap += re->cap_pop*0.5 + mh + re->build.food_cap*250.0;  /* eff_cap réel (Q6) */
+                    }
                 }
-                fprintf(stderr,"[FILLDIAG] pop=%.0f | colonisées=%d/%d cap_col=%.0f cap_act=%.0f | remplissage_col=%.0f%% cap_act=%.0f%% | food_sat=%.2f | Σmanuf_lvl=%.0f\n",
+                fprintf(stderr,"[FILLDIAG] pop=%.0f | colonisées=%d/%d cap_col=%.0f cap_act=%.0f | remplissage_col=%.0f%% cap_act=%.0f%% | pop/EFF_CAP=%.0f%% | food_sat=%.2f | Σmanuf_lvl=%.0f\n",
                         poptot, ncol, nact, cap_col, cap_act,
                         cap_col>0?100.0*poptot/cap_col:0, cap_act>0?100.0*poptot/cap_act:0,
+                        effcap>0?100.0*poptot/effcap:0,
                         fsat_p>0?fsat_w/fsat_p:0, bldlvl);
             }
         }
