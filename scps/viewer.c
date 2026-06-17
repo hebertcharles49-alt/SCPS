@@ -66,22 +66,26 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
         for (int x=0; x<cv->w; x++){
             Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
             int mn=(r<b)?r:b; int key=mn-(int)g;
-            if (key<=4) continue;
+            if (key<=2) continue;                            /* couvre PLUS LARGE (frange ≥3, ex-≥5) */
             float mness=(float)key/255.0f; float af=1.0f-mness; af*=af;
             if (af<0.03f){ row[x]=clear; continue; }
-            int lum=g; int nr=lum, ng=(int)((float)lum*0.88f+0.5f), nb=(int)((float)lum*0.70f+0.5f);
+            /* frange magenta → BRUN/BRONZE SOMBRE (tend vers le noir) : plus de halo DORÉ rapporté. */
+            int lum=g; int nr=(int)((float)lum*0.42f+0.5f), ng=(int)((float)lum*0.32f+0.5f), nb=(int)((float)lum*0.20f+0.5f);
             row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
         }
     }
     /* POST-TRAITEMENT anti-ROSE : tout pixel encore de FAMILLE MAGENTA (R ET B au-dessus du
-     * VERT) est neutralisé au gris du vert → plus aucun flou rose résiduel. Le bronze des
-     * bords (R>G>B, donc B<G) n'est PAS touché ; verts/bruns/bleus non plus. */
+     * VERT) est rabattu sur un BRUN SOMBRE (pas gris : « brun/bronze/noir »). Seuil ÉLARGI
+     * (+2, ex-+3) → couvre une bande plus large de flou rosé. Le brun des bords (R>G>B, donc
+     * B<G) n'est PAS touché ; verts/bruns/bleus non plus. */
     for (int y=0; y<cv->h; y++){
         Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
         for (int x=0; x<cv->w; x++){
             Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
-            if (a>0 && (int)r>(int)g+3 && (int)b>(int)g+3)
-                row[x]=SDL_MapRGBA(cv->format, g,g,g, a);
+            if (a>0 && (int)r>(int)g+2 && (int)b>(int)g+2){
+                int nr=(int)((float)g*0.45f+0.5f), ng=(int)((float)g*0.34f+0.5f), nb=(int)((float)g*0.22f+0.5f);
+                row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb, a);
+            }
         }
     }
     SDL_Texture *tex = SDL_CreateTextureFromSurface(ren, cv);
