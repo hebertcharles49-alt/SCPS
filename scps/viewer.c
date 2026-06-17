@@ -4253,13 +4253,42 @@ int main(int argc, char **argv) {
 
     /* Pack MAP DRESSING (display-only, même régime éditable que scps_lang.txt) :
      * la planche scps_map_dressing.bmp à côté du binaire, fond MAGENTA FF00FF →
-     * transparent (colorkey). ABSENTE → g_dress_tex NULL → carte lisse (le
-     * moteur/déterminisme n'y touchent jamais). */
+     * transparent par DESPILL (alpha + dé-teinte, voir plus bas). ABSENTE →
+     * g_dress_tex NULL → carte lisse (le moteur/déterminisme n'y touchent jamais). */
     { SDL_Surface *ns = SDL_LoadBMP(SCPS_MAP_DRESSING_FILE);
       if (ns){
-          SDL_SetColorKey(ns, SDL_TRUE, SDL_MapRGB(ns->format, SCPS_MAP_DRESSING_KEY_R, SCPS_MAP_DRESSING_KEY_G, SCPS_MAP_DRESSING_KEY_B));
-          g_dress_tex = SDL_CreateTextureFromSurface(ren, ns);
+          /* Clé MAGENTA → ALPHA, faite À LA MAIN (robuste) : la colorkey SDL n'est PAS
+           * convertie en transparence par CreateTextureFromSurface sur un atlas 24-bit
+           * (le magenta resterait opaque). On convertit en ARGB8888 (alpha plein) puis on
+           * passe à TRANSPARENT tout pixel ~magenta (tolérance pour les bords anticrénelés). */
+          SDL_Surface *cv = SDL_ConvertSurfaceFormat(ns, SDL_PIXELFORMAT_ARGB8888, 0);
           SDL_FreeSurface(ns);
+          if (cv){
+              Uint32 clear = SDL_MapRGBA(cv->format, 0,0,0,0);
+              for (int y=0; y<cv->h; y++){
+                  Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
+                  for (int x=0; x<cv->w; x++){
+                      Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
+                      /* DESPILL magenta : le « surplus magenta » = min(R,B) − G (haut sur le
+                       * fond, ~0 sur le sprite). Donne l'ALPHA du bord ; on RETIRE ensuite la
+                       * teinte magenta (un-premultiply) → bords ANTICRÉNELÉS propres, pas de
+                       * halo rose. Pixel plein magenta → transparent ; sprite franc → opaque. */
+                      int mn  = (r<b)?r:b;
+                      int key = mn - (int)g;                 /* surplus magenta (R&B hauts, G bas) */
+                      if (key <= 0) continue;                /* pas magenta → opaque, inchangé */
+                      if (key >= 248){ row[x] = clear; continue; }   /* magenta plein → transparent */
+                      float af  = 1.0f - (float)key/255.0f;  /* alpha du bord */
+                      float inv = (1.0f-af)*255.0f;          /* part magenta à retirer */
+                      int nr=(int)(((float)r-inv)/af+0.5f), ng=(int)((float)g/af+0.5f), nb=(int)(((float)b-inv)/af+0.5f);
+                      nr = nr<0?0:(nr>255?255:nr);
+                      ng = ng<0?0:(ng>255?255:ng);
+                      nb = nb<0?0:(nb>255?255:nb);
+                      row[x] = SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
+                  }
+              }
+              g_dress_tex = SDL_CreateTextureFromSurface(ren, cv);
+              SDL_FreeSurface(cv);
+          }
           if (g_dress_tex){ SDL_SetTextureBlendMode(g_dress_tex, SDL_BLENDMODE_BLEND);
               printf("[scps] %s chargé (décors de carte).\n", SCPS_MAP_DRESSING_FILE); }
       } else fprintf(stderr,"[scps] décors de carte : %s absent — carte lisse.\n", SCPS_MAP_DRESSING_FILE); }
