@@ -317,4 +317,13 @@
     X(STR_COUNCIL_NAME_5, "Velmor Circle") \
     X(STR_COUNCIL_NAME_6, "Brask Lodge") \
     X(STR_COUNCIL_NAME_7, "Dovric Syndic") \
+    /* CAPSTONE §27 — world Entropy (shared fate, not per-country). */ \
+    X(STR_BANDE_ENTROPIE_0, "Stable") \
+    X(STR_BANDE_ENTROPIE_1, "Stirring") \
+    X(STR_BANDE_ENTROPIE_2, "Unstable") \
+    X(STR_BANDE_ENTROPIE_3, "On the brink") \
+    X(STR_HOVER_ENTROPIE, "The world's drift toward the Breach: faustian knowledge and transmutation stoke it. At the threshold, the real gives way.") \
+    X(STR_AUGURE_ENTROPIE_0, "The sky takes on a hue no almanac can name.") \
+    X(STR_AUGURE_ENTROPIE_1, "Needles spin wild; matter falters on its own laws.") \
+    X(STR_AUGURE_ENTROPIE_2, "The real grows thin. The threshold of the Breach awaits only its shape.") \
 

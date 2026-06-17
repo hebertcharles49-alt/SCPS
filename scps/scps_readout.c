@@ -14,6 +14,8 @@
 #include "scps_lang.h"   /* la table de chaînes : les MOTS vivent dans les tables compilées */
 #include "scps_factions.h"   /* EthosFaction (la balance des factions-éthos, §9) */
 #include "scps_agency.h"     /* K2 : Edifice — les noms d'édifices vivent ICI (readout), pas au moteur */
+#include "scps_tune.h"       /* capstone §27 : ENTROPY_FIN (le seuil reste DERRIÈRE la membrane) */
+#include "scps_endgame.h"    /* capstone §27 : la membrane traduit FinType/MervPhase en miroirs */
 #include <stddef.h>   /* NULL */
 #include <string.h>   /* memset */
 #include <math.h>     /* roundf */
@@ -218,6 +220,15 @@ BandPresage band_presage(float charge) {
     if (charge < 7.0f) return PG_OMBRE;
     return PG_SEUIL;
 }
+/* CAPSTONE §27 — l'entropie MONDE classée sur le RATIO entropy/seuil ; le seuil
+ * (ENTROPY_FIN) reste un flottant moteur passé en paramètre, jamais affiché. */
+BandEntropie band_entropie(float entropy, float fin) {
+    float r = (fin > 0.f) ? entropy / fin : 0.f;
+    if (r < 0.25f) return ENT_STABLE;
+    if (r < 0.55f) return ENT_FREMISSANTE;
+    if (r < 0.85f) return ENT_INSTABLE;
+    return ENT_AU_BORD;
+}
 BandHumeur band_humeur(float L) {
     if (L < 2.0f) return HU_REVOLTEE;
     if (L < 4.0f) return HU_FRONDEUSE;
@@ -362,6 +373,7 @@ LBL(label_concorde,     BandConcorde,     STR_BANDE_CONCORDE, 4)
 LBL(label_prosp,     BandProsp,     STR_BANDE_PROSP, 5)
 LBL(label_savoir,     BandSavoir,     STR_BANDE_SAVOIR, 4)
 LBL(label_presage,     BandPresage,     STR_BANDE_PRESAGE, 4)
+LBL(label_entropie,     BandEntropie,     STR_BANDE_ENTROPIE, 4)
 LBL(label_stature,     BandStature,     STR_BANDE_STATURE, 5)
 LBL(label_flux,     BandFlux,     STR_BANDE_FLUX, 5)
 LBL(label_aisance,     BandAisance,     STR_BANDE_AISANCE, 4)
@@ -389,6 +401,7 @@ const char *hover_concorde(void){ return tr(STR_HOVER_CONCORDE); }
 const char *hover_prosp(void){ return tr(STR_HOVER_PROSP); }
 const char *hover_savoir(void){ return tr(STR_HOVER_SAVOIR); }
 const char *hover_presage(void){ return tr(STR_HOVER_PRESAGE); }
+const char *hover_entropie(void){ return tr(STR_HOVER_ENTROPIE); }
 const char *hover_stature(void){ return tr(STR_HOVER_STATURE); }
 const char *hover_flux(void){ return tr(STR_HOVER_FLUX); }
 const char *hover_aisance(void){ return tr(STR_HOVER_AISANCE); }
@@ -398,6 +411,54 @@ const char *hover_lignee(void){ return tr(STR_HOVER_LIGNEE); }
 const char *hover_agitation(void){ return tr(STR_HOVER_AGITATION); }
 const char *hover_foi(void){ return tr(STR_HOVER_FOI); }
 const char *hover_sedition(void){ return tr(STR_HOVER_SEDITION); }
+
+/* CAPSTONE §27 — LE DESTIN PARTAGÉ (membrane). Lit l'entropie monde + l'état
+ * cataclysme, traduit en bandes / projections 0-100 / enums MIROIRS / bitmap
+ * d'indices. Le seuil ENTROPY_FIN reste un flottant moteur (jamais affiché) ;
+ * le viewer ne reçoit que des mots et des nombres tangibles. */
+EndgameReadout endgame_readout(const WorldProsperity *wp, const struct EndgameState *eg) {
+    EndgameReadout r; memset(&r, 0, sizeof r);
+    float fin = tune_f("ENTROPY_FIN", 50.f);
+    float entropy = wp ? wp->entropy : 0.f;
+    r.entropie = band_entropie(entropy, fin);
+    { float ratio = (fin > 0.f) ? entropy / fin : 0.f;
+      int pct = (int)(ratio * 100.f + 0.5f);
+      r.entropie_pct = (pct < 0) ? 0 : (pct > 100) ? 100 : pct; }
+    switch (r.entropie) {                       /* augure : muet si stable */
+        case ENT_FREMISSANTE: r.augure = tr(STR_AUGURE_ENTROPIE_0); break;
+        case ENT_INSTABLE:    r.augure = tr(STR_AUGURE_ENTROPIE_1); break;
+        case ENT_AU_BORD:     r.augure = tr(STR_AUGURE_ENTROPIE_2); break;
+        default:              r.augure = NULL;                      break;
+    }
+    r.fin = RFIN_AUCUNE; r.merv = RMERV_NONE;
+    r.epicenter_reg = wp ? wp->entropy_epicenter : -1;
+    r.sunken = NULL;
+    if (eg) {
+        switch (eg->fin) {                      /* FinType → miroir (même ordre) */
+            case FIN_EAU:       r.fin = RFIN_EAU;       break;
+            case FIN_FROID:     r.fin = RFIN_FROID;     break;
+            case FIN_RONCES:    r.fin = RFIN_RONCES;    break;
+            case FIN_ASCENSION: r.fin = RFIN_ASCENSION; break;
+            default:            r.fin = RFIN_AUCUNE;    break;
+        }
+        switch (eg->merv) {                     /* MervPhase → miroir (_DONE fond dans son palier) */
+            case MERV_FORGE: case MERV_FORGE_DONE:     r.merv = RMERV_FORGE;    break;
+            case MERV_SOCIETE: case MERV_SOCIETE_DONE: r.merv = RMERV_SOCIETE;  break;
+            case MERV_SAVOIR: case MERV_SAVOIR_DONE:   r.merv = RMERV_SAVOIR;   break;
+            case MERV_ASCENDED:                        r.merv = RMERV_ASCENDED; break;
+            default:                                   r.merv = RMERV_NONE;     break;
+        }
+        { int mp = (int)(eg->merv_progress * 100.f + 0.5f);
+          r.merv_progress_pct = (mp < 0) ? 0 : (mp > 100) ? 100 : mp; }
+        { int cp = (int)(eg->cold_offset * 100.f + 0.5f);   /* cold_offset borné [0,1] */
+          r.cold_pct = (cp < 0) ? 0 : (cp > 100) ? 100 : cp; }
+        { int tot = eg->n_sunken + eg->sink_pending;
+          r.sink_intensity = (tot > 0) ? (100 * eg->n_sunken / tot) : 0; }
+        if (eg->fired) r.epicenter_reg = eg->epicenter_reg;
+        if (eg->fin == FIN_EAU) r.sunken = eg->sunken;
+    }
+    return r;
+}
 
 /* ===================================================================== */
 /* ENVELOPPES SIM — lisent les sorties STOCKÉES, jamais scps_core         */

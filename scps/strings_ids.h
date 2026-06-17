@@ -326,5 +326,14 @@
     X(STR_COUNCIL_NAME_5, "Cercle Velmor") \
     X(STR_COUNCIL_NAME_6, "Loge Brask") \
     X(STR_COUNCIL_NAME_7, "Syndic Dovric") \
+    /* CAPSTONE §27 — Entropie mondiale (destin partagé, pas par-pays). */ \
+    X(STR_BANDE_ENTROPIE_0, "Stable") \
+    X(STR_BANDE_ENTROPIE_1, "Frémissante") \
+    X(STR_BANDE_ENTROPIE_2, "Instable") \
+    X(STR_BANDE_ENTROPIE_3, "Au bord") \
+    X(STR_HOVER_ENTROPIE, "La dérive du monde vers la Brèche : le savoir faustien et la transmutation l'attisent. Au seuil, le réel cède.") \
+    X(STR_AUGURE_ENTROPIE_0, "Le ciel se voile d'une teinte qu'aucun almanach ne nomme.") \
+    X(STR_AUGURE_ENTROPIE_1, "Les aiguilles s'affolent ; la matière hésite sur ses propres lois.") \
+    X(STR_AUGURE_ENTROPIE_2, "Le réel s'amincit. Le seuil de la Brèche n'attend plus que sa forme.") \
 
 #endif /* SCPS_STRINGS_IDS_H */

@@ -34,8 +34,10 @@ typedef enum {
     MERV_ASCENDED
 } MervPhase;
 
-/* ---- État cataclysme (struct PLATE — sans pointeur pour sv_w) --------- */
-typedef struct {
+/* ---- État cataclysme (struct PLATE — sans pointeur pour sv_w) ---------
+ * Le tag `EndgameState` est NOMMÉ : la membrane (scps_readout.h) le
+ * forward-déclare sans tirer ce header moteur. */
+typedef struct EndgameState {
     FinType  fin;
     bool     fired;                           /* latch : un seul déclenchement */
 

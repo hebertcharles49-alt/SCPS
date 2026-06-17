@@ -97,7 +97,7 @@ monde_reel: $(MONDE_REEL_OBJS)
 # Prouve le test décisif « Tenue · Contrainte » et la couverture du lexique.
 READOUT_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                      $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_culture.o \
-                     $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_tech.o \
+                     $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_tune.o \
                      $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_readout_demo.o
 readout_demo: $(READOUT_DEMO_OBJS)
 	$(CC) $(READOUT_DEMO_OBJS) -o $@ -lm
@@ -268,7 +268,7 @@ faith_demo: $(FAITH_DEMO_OBJS)
 FACTIONS_DEMO_OBJS := $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o \
                       $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_core.o \
                       $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_culture.o \
-                      $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_tech.o \
+                      $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_tune.o \
                       $(OBJDIR)/scps_factions_demo.o
 factions_demo: $(FACTIONS_DEMO_OBJS)
 	$(CC) $(FACTIONS_DEMO_OBJS) -o $@ -lm

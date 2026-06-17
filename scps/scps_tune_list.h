@@ -146,8 +146,8 @@
      * THORN_RANDOM_FRAC : fraction de voisins choisis aléatoirement (erratique, C5).
      * MERV_PHASE_DAYS : durée de chaque palier de la Merveille en jours (C6).
      * MERV_CHARGE_PER_TICK : charge faustienne ajoutée par tick de chantier (C6). */ \
-    X(ENTROPY_FIN,          600.0f) \
-    X(ENTROPY_TECH_W,         0.08f) \
+    X(ENTROPY_FIN,           50.0f) \
+    X(ENTROPY_TECH_W,         1.0f) \
     X(SINK_RIFTS_PER_YEAR,    3.0f) \
     X(COLD_RAMP_PER_YEAR,     0.005f) \
     X(THORN_CELLS_PER_YEAR, 200.0f) \

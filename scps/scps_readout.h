@@ -55,6 +55,9 @@ typedef enum { FID_FIDELE, FID_TIEDE, FID_FRONDEUR, FID_LIGUEUR } BandFidelite;
  * float — en bande. FERME → ROMPU. */
 typedef enum { MO_FERME, MO_EPROUVE, MO_VACILLANT, MO_ROMPU } BandMoral;
 typedef enum { PG_CALME, PG_FREMISSEMENT, PG_OMBRE, PG_SEUIL }                    BandPresage;
+/* CAPSTONE §27 — ENTROPIE MONDIALE (destin PARTAGÉ, ≠ présage = charge d'UN pays).
+ * Classée sur le RATIO entropy/ENTROPY_FIN ; le seuil reste DERRIÈRE la membrane. */
+typedef enum { ENT_STABLE, ENT_FREMISSANTE, ENT_INSTABLE, ENT_AU_BORD }           BandEntropie;
 /* Panneau de province */
 typedef enum { STA_DESERT, STA_HAMEAU, STA_BOURG, STA_CITE, STA_METROPOLE }       BandStature;
 typedef enum { FX_EXODE, FX_SAIGNEE, FX_STABLE, FX_AFFLUX, FX_RUEE }              BandFlux;
@@ -227,6 +230,35 @@ typedef struct {
     const char    *chemin;       /* l'acquis, ou ce qui manque (canal / profondeur / assimilation) */
 } SyncReadout;
 SyncReadout sync_node_readout(const TechState *ts, int sync_idx);
+
+/* ===================================================================== */
+/* CAPSTONE §27 — ENDGAME : entropie mondiale, fin latchée, merveille      */
+/* ===================================================================== */
+/* La membrane ne tire JAMAIS le moteur endgame : forward-déclaration de la
+ * struct + enums MIROIRS (scps_readout.c, lui, inclut scps_endgame.h et
+ * traduit). Le renderer ne lit que des bandes, des projections 0-100, un
+ * bitmap d'indices (sunken) et des enums miroirs — aucun flottant moteur. */
+struct EndgameState;                 /* défini dans scps_endgame.h (moteur) */
+/* Miroirs de FinType / MervPhase — le viewer ne connaît QUE ces formes. */
+typedef enum { RFIN_AUCUNE=0, RFIN_EAU, RFIN_FROID, RFIN_RONCES, RFIN_ASCENSION } FinReadout;
+typedef enum { RMERV_NONE=0, RMERV_FORGE, RMERV_SOCIETE, RMERV_SAVOIR, RMERV_ASCENDED } MervReadout;
+typedef struct {
+    BandEntropie    entropie;          /* la bande (mot) */
+    int             entropie_pct;      /* 0-100 : projection du ratio entropy/FIN */
+    const char     *augure;            /* ligne d'ambiance, ou NULL si stable */
+    FinReadout      fin;               /* RFIN_AUCUNE tant que non déclenché */
+    MervReadout     merv;              /* phase de la merveille (paliers fusionnés) */
+    int             merv_progress_pct; /* 0-100 : avancée du palier courant */
+    int             cold_pct;          /* 0-100 : intensité du refroidissement (froid) */
+    int             sink_intensity;    /* 0-100 : intensité de l'engloutissement (eau) */
+    int             epicenter_reg;     /* indice région du foyer (-1 si aucun) */
+    const uint8_t  *sunken;            /* bitmap PAR RÉGION (pointe dans EndgameState) ou NULL */
+} EndgameReadout;
+BandEntropie band_entropie(float entropy, float fin);          /* classe sur entropy/fin */
+const char  *label_entropie(BandEntropie b);
+const char  *hover_entropie(void);
+EndgameReadout endgame_readout(const WorldProsperity *wp, const struct EndgameState *eg);
+
 BandPresage  band_presage(float charge_0_10);
 BandHumeur   band_humeur(float L_local);
 /* Lignée : horloge (cousinage) ET contenu (friction), + schisme religieux. */
