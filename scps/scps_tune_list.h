@@ -131,10 +131,16 @@
      * d'intérêt PLAFONNENT → l'intérêt devient constant, la dette croît linéairement
      * (sans ça : intérêt ∝ dette² → spirale géométrique → treasury -1e31 → NaN ~105 ans). */ \
     X(CREDIT_RATIO_CAP,       8.0f) \
-    /* FERTILITÉ = f(besoins satisfaits) — ×2/siècle au plancher (R_BASE=ln2/100), ×4 au panier
-     * plein. needs_met (poids 0.85) + prospérité normalisée PIB/tête (MID/SPAN, poids 0.15).
-     * TAU = seuil de couverture (got≥τ) qui compte une catégorie comme « satisfaite ». */ \
-    X(POP_R_BASE,             0.00693f) \
+    /* FERTILITÉ = f(besoins satisfaits) — doublement ~40 ans au plancher (R_BASE=ln2/40),
+     * ~20 ans au panier plein (le bonus DOUBLE la base). needs_met (poids 0.85) + prospérité
+     * normalisée PIB/tête (MID/SPAN, poids 0.15). TAU = seuil de couverture (got≥τ) qui compte
+     * une catégorie comme « satisfaite ».
+     * ⚠ R_BASE = LE LEVIER DE VITALITÉ (le monde est BISTABLE) : à ln2/100 la pop se FIGE au
+     *   bassin BAS (≈½·cap_pop, monde « mou »), tout build/colonisation glisse dessus ; le seuil
+     *   de bascule est entre /50 et /40. ln2/40 sort du bassin bas SANS les convulsions du /30
+     *   (≈13 guerres/sim, coups en série, IPM 1.28) — monde DIFFÉRENCIÉ (riche=plein, pauvre=
+     *   modeste, pas truqué). Dialable d'UNE ligne (ou SCPS_TUNE=POP_R_BASE=…) vers /35 ou /30. */ \
+    X(POP_R_BASE,             0.01733f) \
     X(POP_PROSP_MID,          0.2f) \
     X(POP_PROSP_SPAN,         1.8f) \
     X(POP_PROSP_W,            0.15f) \

@@ -1666,8 +1666,8 @@ void econ_tick(WorldEconomy *e, float dt) {
             re->society_sat *= (1.f - 0.60f*econ_off_culture_fraction(&re->pop));
         }
 
-        /* FERTILITÉ = f(BESOINS SATISFAITS). Doublement ~100 ans au PLANCHER (besoins
-         * vides), ~50 ans (×4/siècle) au PANIER PLEIN : net = r_base·(1+demo)·(1+B), avec
+        /* FERTILITÉ = f(BESOINS SATISFAITS). Doublement ~40 ans au PLANCHER (besoins
+         * vides), ~20 ans au PANIER PLEIN : net = r_base·(1+demo)·(1+B), avec
          * B∈[0,1] = part du panier couverte (needs_met, 0.85) + prospérité normalisée (0.15).
          * food_s ne MULTIPLIE plus la base — il ne sert qu'au pic de famine (<0.35) ; soc_s
          * n'est plus lu. Plafond souple (cap_factor, plus bas) inchangé. */
@@ -1676,7 +1676,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * Lent à croître → moins). Levier de la couche biologique. */
         SpeciesBuild sb_demo = species_default_build(re->culture.race);
         float demo = build_leviers(&sb_demo).demographie;
-        float r_base  = tune_f("POP_R_BASE", 0.00693f);   /* ln2/100 = ×2/siècle plancher */
+        float r_base  = tune_f("POP_R_BASE", 0.01733f);   /* ln2/40 = ×2/40ans plancher (vitalité) */
         float prosp_n = clampf((re->prosperity - tune_f("POP_PROSP_MID",0.2f))
                               / tune_f("POP_PROSP_SPAN",1.8f), 0.f, 1.f);   /* PIB/tête → [0,1] (bande haute ≈2.0) */
         float bonus   = tune_f("POP_PROSP_W",0.15f)*prosp_n

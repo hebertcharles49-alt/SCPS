@@ -192,6 +192,25 @@
   n'éclôt qu'après l'an-100). ⚠ Re-baseline : les longs runs voient une fin à ~180-200 ans.
   À VENIR : barre Entropie topbar + animations viewer (C7, dépend de SDL) ; pondération IA de
   l'entropie (C8, différée — non porteuse, l'endgame fonctionne sans).
+- **VITALITÉ (2026-06-17) — LE MONDE VIT : `POP_R_BASE` ln2/100 → ln2/40 (sortie du bassin bas)** :
+  le monde était « mou » — la pop des graines de référence se FIGEAIT autour de ½·cap_pop
+  (≈34k seed 9) et AUCUN levier de bâti/colonisation ne la décollait (le LOGEMENT, §dev/a4d5c3c,
+  a aidé +24 % mais sans sortir du bassin). Diagnostic (FILLDIAG `pop/EFF_CAP`, chronicle) : le
+  frein n'était PAS la capacité (remplissage 42-46 %, aucune famine — food_sat ~0.97) mais la
+  VITESSE de croissance. Le monde est **BISTABLE** : à `R_BASE`=ln2/100 la pop reste captive du
+  bassin BAS et tout build/colonisation GLISSE dessus ; le seuil de bascule est entre /50 et /40.
+  **`POP_R_BASE` passe à ln2/40 (0.01733)** — la pop sort du bassin bas (seed 9 : moy ~61k sur
+  5 sims, plage 44-70k ; doublement ~40 ans au plancher de besoins, ~20 ans au panier plein via
+  le bonus). On NE va PAS jusqu'à /30 (≈80k) : ses convulsions (≈13 guerres/sim, coups en série,
+  IPM 1.28, satisfaction → 78-80 %) lisent comme du CHAOS, pas de la vie ; **/40 donne un monde
+  DIFFÉRENCIÉ** — riche = plein, pauvre = modeste (seed 11 reste partiel ~46 %) — **sans truquer**.
+  C'est le **SEUL** levier touché (aucun build order forcé, aucune colonisation forcée, aucune
+  inflation plate). ⚠ **RE-BASELINE** : les mondes des graines de référence ONT CHANGÉ (pop
+  ≈×1.8) ; le **hash 12 ans re-baseline** (le taux mord dès l'an-0, contrairement à l'endgame).
+  `make test` **35/35 vert** (les contrôles sensibles au monde — `ai_demo`, `social_demo` — étaient
+  déjà robustes à l'échelle de pop) ; `make determinism` STABLE (save/reload byte-identique).
+  **Dialable d'UNE ligne** ou `SCPS_TUNE=POP_R_BASE=…` vers /35 (≈64k) ou /30 (registre J :
+  `POP_R_BASE` 0.01733). **SAVE non bumpé** (aucune struct sérialisée ne change).
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.
