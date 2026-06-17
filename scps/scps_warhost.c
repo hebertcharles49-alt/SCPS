@@ -3,6 +3,7 @@
  */
 #include "scps_warhost.h"
 #include "scps_tune.h"   /* Arc I1 : solde de régiment calibrable */
+#include "scps_factions.h"   /* country_faction_weights : l'éthos enraciné qui compose l'armée */
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,29 @@
 #define WH_GARRISON_UNITS 4.0f /* garnison de paix à la jauge GARDE (× LEVY_MULT) */
 #define WH_ARMS_PER_UNIT 8.0f  /* F6 : force d'armée/paquet → mil_stock (calé pour retrouver l'ordre de
                                 * grandeur de l'ancien stock RES_ARMS plafonné, après découplage) */
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * L'ÉTHOS COMPOSE L'ARMÉE (les « intentions ») — affinité faction → unité (0-3).
+ * La distribution de factions du pays (enracinée dans sa pop) pondère la RECETTE
+ * de levée ; le moteur ne lit ensuite QUE les unités. Conquérir un peuple déplace
+ * la distribution → l'armée dérive avec la société. Colonnes = ordre de UnitType :
+ *   PIQ LAN EPE ARC ARB CVL CVH MAG HAL AQB ALC GRU
+ * Lignes = ordre de EthosFaction. Motivé : l'Ordre/Légiste préfère l'arquebuse
+ * (l'arme drillée et standardisée de l'arsenal d'État) ; le Conquérant la
+ * cavalerie (le choc et la poursuite) ; le Marchand le tir (ne pas saigner le
+ * bourgeois, tuer à distance) ; le Gardien la pique (l'enclume consacrée, haut
+ * moral) ; le Transgresseur l'arcane (mage/alchimie/runes — la dette d'entropie) ;
+ * le Communautaire la milice (pique + archers de village, défensif). */
+static const float AFF[FAC_COUNT][U_COUNT] = {
+    /* CONQUERANT    */ { 0,2,2,0,0, 3,3,0, 0,0,0,1 },
+    /* MARCHAND      */ { 0,0,0,2,3, 2,0,0, 0,2,1,0 },
+    /* LEGISTE       */ { 1,0,2,0,0, 0,0,0, 3,3,0,0 },
+    /* GARDIEN       */ { 3,1,2,1,1, 0,0,0, 1,0,0,0 },
+    /* TRANSGRESSEUR */ { 0,0,0,0,0, 0,0,3, 0,0,3,3 },
+    /* COMMUNAUTAIRE */ { 3,1,1,2,1, 0,0,0, 0,0,0,0 },
+};
+/* garde-fou C99 : si le roster (U_COUNT) ou les factions (FAC_COUNT) changent, AFF DOIT suivre. */
+typedef char aff_dims_check[(FAC_COUNT==6 && U_COUNT==12) ? 1 : -1];
 
 /* unit_res_arm (la catégorie d'arme macro d'une unité) vit dans scps_army.c — un seul point de
  * vérité, partagé entre le warhost (levée/démob) et le campaign (renfort). */
@@ -80,25 +104,35 @@ static long seed_scratch(LaborEcon *e, const World *w, const WorldEconomy *econ,
     return elite;
 }
 
-/* LEVER `batch` paquets dans le scratch déjà semé : piquiers (masse) + épéistes,
- * cavalerie si l'élite est là. La fabrication précède l'enrôlement (pas d'arme,
- * pas d'unité). */
-static void wh_levy_batch(ArmyState *a, LaborEcon *sc, WorldEconomy *econ,
+/* LEVER `batch` paquets dans le scratch déjà semé, en COMPOSANT selon l'ÉTHOS du pays
+ * (AFF × distribution de factions). La levée remplit le tampon de combat depuis les armes
+ * MACRO (RES_ARMS_*). Gatée par la TECH (unité non débloquée → poids 0) et l'ÉLITE (pas
+ * d'élite → pas d'unité d'élite). Plancher conventionnel si l'éthos ne désigne rien de
+ * recrutable (Transgresseur sans arcane, p.ex.) : jamais d'armée vide. Chaque type tire SA
+ * catégorie d'armes → fabrique spécialisée → FER (la demande diverse, la preuve F8). */
+static void wh_levy_batch(ArmyState *a, LaborEcon *sc, WorldEconomy *econ, const World *w,
                           const TechState *t, int cid, long batch, long elite){
     if (batch<=0) return;
-    /* F6/F8 — la levée REMPLIT le tampon de combat depuis les armes MACRO (RES_ARMS_*), et lève la
-     * VARIÉTÉ selon la TECH (F7) : noyau léger (piquier+épéiste) + TRAIT (archer), puis les unités
-     * GATÉES quand la tech est là (hallebardier, arquebusier ; garde runique si l'élite). Chaque type
-     * tire SA catégorie d'armes → fabrique spécialisée → FER (la demande diverse, la preuve F8). */
-    wh_arm_unit(a, sc, econ, cid, U_PIQUIER, (batch+1)/2);
-    wh_arm_unit(a, sc, econ, cid, U_EPEISTE, batch/4 + 1);
-    wh_arm_unit(a, sc, econ, cid, U_ARCHER,  batch/4 + 1);                  /* trait ← atelier d'arc */
-    if (unit_recruitable(t, U_HALLEBARDIER)) wh_arm_unit(a, sc, econ, cid, U_HALLEBARDIER, batch/6 + 1);
-    if (unit_recruitable(t, U_ARQUEBUSIER))  wh_arm_unit(a, sc, econ, cid, U_ARQUEBUSIER,  batch/6 + 1);
-    if (elite > 200){
-        wh_arm_unit(a, sc, econ, cid, U_CAV_LOURDE, batch/6 + 1);
-        if (unit_recruitable(t, U_GARDE_RUNIQUE)) wh_arm_unit(a, sc, econ, cid, U_GARDE_RUNIQUE, batch/8 + 1);
+    float fw[FAC_COUNT];
+    country_faction_weights(w, econ, cid, fw);
+    float target[U_COUNT], sum=0.f;
+    for (int u=0; u<U_COUNT; u++){
+        float v=0.f;
+        for (int f=0; f<FAC_COUNT; f++) v += fw[f]*AFF[f][u];
+        if (!unit_recruitable(t,(UnitType)u))                      v=0.f;   /* tech absente → 0 */
+        if (unit_def((UnitType)u)->from==LAB_ELITE && elite<=200)  v=0.f;   /* pas d'élite → 0 */
+        target[u]=v; sum+=v;
     }
+    if (sum<=0.f){ target[U_PIQUIER]=2.f; target[U_EPEISTE]=1.f; target[U_ARCHER]=1.f; sum=4.f; } /* plancher */
+    long placed=0;
+    for (int u=0; u<U_COUNT; u++){
+        if (target[u]<=0.f) continue;
+        long n=(long)((target[u]/sum)*(float)batch + 0.5f);
+        if (n<=0) continue;
+        wh_arm_unit(a, sc, econ, cid, (UnitType)u, n);
+        placed+=n;
+    }
+    if (placed<=0) wh_arm_unit(a, sc, econ, cid, U_PIQUIER, batch);   /* garde-fou ultime */
 }
 
 /* DÉMOBILISER `n` paquets : les unités fondent (de la dernière vers la première), la pop affectée
@@ -180,7 +214,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
             long batch = (long)(WH_BATCH_WAR*LEVY_MULT[lv]*dt + 0.5f);
             if (batch>0){
                 long elite = seed_scratch(h->scratch, w, econ, c);
-                wh_levy_batch(&h->army[c], h->scratch, econ, ts?&ts[c]:NULL, c, batch, elite);
+                wh_levy_batch(&h->army[c], h->scratch, econ, w, ts?&ts[c]:NULL, c, batch, elite);
             }
         } else {
             long garrison = (long)(WH_GARRISON_UNITS*LEVY_MULT[lv] + 0.5f);
@@ -191,7 +225,7 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 long deficit = garrison - cur; if (batch>deficit) batch=deficit;
                 if (batch>0){
                     long elite = seed_scratch(h->scratch, w, econ, c);
-                    wh_levy_batch(&h->army[c], h->scratch, econ, ts?&ts[c]:NULL, c, batch, elite);
+                    wh_levy_batch(&h->army[c], h->scratch, econ, w, ts?&ts[c]:NULL, c, batch, elite);
                 }
             }
         }

@@ -784,10 +784,11 @@ ArmyComposition campaign_composition(const Campaign *c, int o){
     for (int i=0;i<a->n_units;i++){
         long n=a->units[i].count; if (n<=0) continue;
         switch (a->units[i].type){
-            case U_PIQUIER: case U_LANCIER: case U_EPEISTE:   z.infanterie+=n; break;
-            case U_ARCHER:  case U_ARBALETE:                  z.archers   +=n; break;
-            case U_CAV_LEGERE: case U_CAV_LOURDE:             z.cavalerie +=n; break;
-            case U_MAGE:                                      z.mages     +=n; break;
+            case U_PIQUIER: case U_LANCIER: case U_EPEISTE:
+            case U_HALLEBARDIER:                                 z.infanterie+=n; break;  /* la mêlée de ligne */
+            case U_ARCHER: case U_ARBALETE: case U_ARQUEBUSIER:  z.archers   +=n; break;  /* tir & feu */
+            case U_CAV_LEGERE: case U_CAV_LOURDE:                z.cavalerie +=n; break;
+            case U_MAGE: case U_ALCHIMISTE: case U_GARDE_RUNIQUE:z.mages     +=n; break;  /* l'arcane (porte la dette d'entropie) */
             default: break;
         }
         z.total+=n;
