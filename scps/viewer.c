@@ -604,20 +604,22 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         bool cap=(owner>=0 && owner<w->n_countries && w->country[owner].capital_prov>=0
                   && w->country[owner].capital_prov<w->n_provinces
                   && w->province[w->country[owner].capital_prov].region==r);
-        /* mer la plus proche : (a) RABAT la ville de 5 cellules vers l'intérieur (elle s'assoit
-         * sur la TERRE), (b) le sprite estuaire a sa PLAGE au SUD → on ne l'emploie QUE si la mer
-         * est vraiment au sud d'écran ; côte au NORD → cité fortifiée/rurale (sans plage à contre-sens).
-         * (Le pack port « très île » reste ignoré pour la construction.) */
-        int seawx=0,seawy=0; float wx2=wx, wy2=wy, sdy=1.f;
+        /* mer la plus proche : (a) RABAT un PEU vers l'intérieur (assise sur terre SANS se couper
+         * des routes), (b) ORIENTE la cité portuaire. Sprite estuaire (plage au SUD) si la mer est
+         * au sud d'écran ; mer au NORD → PORT vue de DOS (estuary_dock 96-103) — une vraie cité
+         * PORTUAIRE orientée (pas une cité fortifiée sans quais). */
+        int seawx=0,seawy=0; float wx2=wx, wy2=wy, sdx=0.f, sdy=1.f;
         bool hassea = (re->coastal && settle_nearest_sea(w,cx,cy,&seawx,&seawy));
         if (hassea){
             float ix=(float)cx-seawx, iy=(float)cy-seawy; float il=sqrtf(ix*ix+iy*iy)+1e-3f;
-            wx2 += ix/il*5.0f; wy2 += iy/il*5.0f;
+            wx2 += ix/il*2.5f; wy2 += iy/il*2.5f;                       /* léger rabat → la route ATTEINT encore la ville */
             float ax,ay,bx,by; cam_project(cam,(float)cx,(float)cy,&ax,&ay);
-            cam_project(cam,(float)seawx+0.5f,(float)seawy+0.5f,&bx,&by); sdy=by-ay;   /* >0 : mer au SUD d'écran */
+            cam_project(cam,(float)seawx+0.5f,(float)seawy+0.5f,&bx,&by); sdx=bx-ax; sdy=by-ay;
         }
-        int group;
-        if (re->coastal)                           group=(sdy>0.f)?SETTLE_ESTUARY:(cap?SETTLE_FORTIFIED:SETTLE_RURAL);
+        int group; bool port_back=false;
+        if (re->coastal && sdy>0.f)                group=SETTLE_ESTUARY;        /* plage au sud → sprite estuaire */
+        else if (re->coastal && g_port_tex)      { group=-1; port_back=true; }  /* mer au NORD → port de DOS */
+        else if (re->coastal)                      group=(cap?SETTLE_FORTIFIED:SETTLE_RURAL);
         else if (c->river>40 && !c->lake)          group=SETTLE_RIVER;
         else if (c->biome==BIO_MOUNTAINS||c->biome==BIO_PEAK||c->biome==BIO_HILLS||c->biome==BIO_HIGHLANDS) group=SETTLE_MOUNTAIN;
         else if (cap)                              group=SETTLE_FORTIFIED;     /* capitale = remparts */
@@ -626,17 +628,23 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         float fsx,fsy; cam_project(cam,wx2,wy2,&fsx,&fsy);
         int dpx=(int)(sc*18.0f*dscale[tier]); if(dpx<22)dpx=22; if(dpx>680)dpx=680;
         if(fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
-        /* HABILLAGE : un anneau d'arbres/haies autour de la ville CACHE les bouts de route
-         * qui y aboutissent (les routes convergent au centre de région). Dessiné AVANT la ville. */
+        /* HABILLAGE LÉGER : quelques arbres en bordure ARRIÈRE seulement → adoucit sans BLOQUER
+         * les routes qui sortent (l'anneau plein cachait tout le réseau). */
         if (g_dress_tex){
             static const int rgt[3]={MAPD_TREE_BROADLEAF,MAPD_TREE_CONIFER,MAPD_HEDGE_PATCH};
-            int rr=(int)(dpx*0.40f), tsz=(int)(dpx*0.24f); if(tsz<8)tsz=8;
-            for (int a=0;a<10;a++){
-                float ang=(float)a*0.6283f + 0.25f;
-                int tx=(int)(fsx+cosf(ang)*rr), ty=(int)(fsy+sinf(ang)*rr*0.55f);
+            int rr=(int)(dpx*0.34f), tsz=(int)(dpx*0.20f); if(tsz<8)tsz=8;
+            for (int a=0;a<5;a++){
+                float ang=4.19f + (float)a*0.50f;                              /* arc ARRIÈRE (haut d'écran) */
+                int tx=(int)(fsx+cosf(ang)*rr), ty=(int)(fsy+sinf(ang)*rr*0.55f - dpx*0.12f);
                 uint32_t hh=map_hash(cx+a*7, cy, 0x9A17C0DEu);
-                dress_blit(ren, rgt[hh%3], tx-tsz/2, ty-(tsz*3)/4, tsz);        /* ancré au sol */
+                dress_blit(ren, rgt[hh%3], tx-tsz/2, ty-(tsz*3)/4, tsz);
             }
+        }
+        if (port_back){                              /* PORT vue de DOS (estuary_dock 96-103), miroir selon mer gauche/droite */
+            int pcol=(sdx<0.f)?1:0; int pid=96+pcol;
+            SDL_Rect psrc={(pid%SCPS_PORT_COLS)*SCPS_PORT_CELL,(pid/SCPS_PORT_COLS)*SCPS_PORT_CELL,SCPS_PORT_CELL,SCPS_PORT_CELL};
+            SDL_Rect pdst={(int)fsx-dpx/2,(int)fsy-(dpx*7)/10,dpx,dpx};
+            SDL_RenderCopy(ren,g_port_tex,&psrc,&pdst); continue;
         }
         SDL_Rect src={tier*SCPS_SETTLE_CELL, group*SCPS_SETTLE_CELL, SCPS_SETTLE_CELL, SCPS_SETTLE_CELL};
         SDL_Rect dst={(int)fsx-dpx/2, (int)fsy-(dpx*7)/10, dpx, dpx};          /* ancré bas-centre */
