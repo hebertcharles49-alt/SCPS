@@ -145,29 +145,29 @@ int main(void) {
     wp->entropy = FINV + 1.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 1000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) ts[c].charge = 0.f;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 50);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 180);
     CHECK("conso essence dominante → FIN_EAU", eg.fired && eg.fin == FIN_EAU);
     CHECK("foyer figé (epicentre assigné)", eg.epicenter_reg >= -1);
-    CHECK("année de fin posée", eg.fin_year == 50);
+    CHECK("année de fin posée", eg.fin_year == 180);
 
     /* flux (1) dominant → RONCES */
     endgame_init(&eg);
     wp->entropy = FINV + 1.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 0.0; wp->faust_consumed[1] = 1000.0; wp->faust_consumed[2] = 0.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 60);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 181);
     CHECK("conso flux dominante → FIN_RONCES", eg.fired && eg.fin == FIN_RONCES);
 
     /* fer céleste (2) dominant → FROID */
     endgame_init(&eg);
     wp->entropy = FINV + 1.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 0.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 1000.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 70);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 182);
     CHECK("conso fer céleste dominante → FIN_FROID", eg.fired && eg.fin == FIN_FROID);
 
     /* LATCH : un 2e tick ne re-sélectionne pas (la fin reste figée) */
     FinType latched = eg.fin; int latched_year = eg.fin_year;
     wp->faust_consumed[0] = 9999.0;  /* on tente de forcer EAU après coup */
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 71);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 183);
     CHECK("latch : la fin reste figée malgré un nouveau dominant", eg.fin == latched);
     CHECK("latch : l'année de fin ne bouge pas", eg.fin_year == latched_year);
 
@@ -195,13 +195,13 @@ int main(void) {
     endgame_init(&eg);
     wp->entropy = FINV + 10.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 1000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;
-    /* fire (an 100) : sélecteur EAU + amorçage du rift + 1er pas de carve */
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 100);
+    /* fire (an 180) : sélecteur EAU + amorçage du rift + 1er pas de carve */
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 180);
     CHECK("EAU déclenchée", eg.fired && eg.fin == FIN_EAU);
     CHECK("rift amorcé (régions programmées)", eg.sink_pending + eg.n_sunken > 0);
     /* déroule jusqu'à épuisement du rift */
     for (int y = 0; y < 80 && eg.sink_pending > 0; y++)
-        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 101 + y);
+        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 181 + y);
     CHECK("rift épuisé (sink_pending == 0)", eg.sink_pending == 0);
     CHECK("au moins une région engloutie", eg.n_sunken > 0);
     CHECK("n_regions INCHANGÉ (la région garde son indice)", econ->n_regions == n_reg0);
@@ -278,10 +278,10 @@ int main(void) {
     endgame_init(&eg);
     wp->entropy = FINV + 10.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0] = 0.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 1000.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 100);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 180);
     CHECK("FROID déclenchée", eg.fired && eg.fin == FIN_FROID);
     for (int y = 0; y < 220; y++)
-        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 101 + y);
+        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 181 + y);
     /* mesures APRÈS */
     int n_sea1 = 0, n_cold1 = 0; double grain1 = 0.0; float t1 = (probe >= 0) ? w->cell[probe].temperature : 0.f;
     for (int i = 0; i < SCPS_N; i++) {
@@ -307,13 +307,13 @@ int main(void) {
     endgame_init(&eg);
     wp->entropy = FINV+10.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0]=0.0; wp->faust_consumed[1]=1000.0; wp->faust_consumed[2]=0.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 100);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 180);
     CHECK("RONCES déclenchée", eg.fired && eg.fin == FIN_RONCES);
     long thn_after_fire=0; for(int i=0;i<SCPS_N;i++) if(w->cell[i].biome==BIO_THORNS) thn_after_fire++;
     CHECK("éruption : des cellules deviennent ronces", thn_after_fire > 0);
     int epi_b = eg.epicenter_reg;
     CHECK("la région-foyer est tombée (owner=-1)", epi_b<0 || econ->region[epi_b].owner == -1);
-    for (int y=0;y<80;y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 101+y);
+    for (int y=0;y<80;y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 181+y);
     long thn_late=0; for(int i=0;i<SCPS_N;i++) if(w->cell[i].biome==BIO_THORNS) thn_late++;
     CHECK("le front s'étend (ronces ↑ après 80 ans)", thn_late > thn_after_fire);
     CHECK("n_regions inchangé (indices figés)", econ->n_regions == n_reg_b);
@@ -332,8 +332,8 @@ int main(void) {
     endgame_init(&eg);
     wp->entropy = FINV+10.f; wp->entropy_epicenter = -1;
     wp->faust_consumed[0]=0.0; wp->faust_consumed[1]=1000.0; wp->faust_consumed[2]=0.0;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 100);
-    for (int y=0;y<80;y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 101+y);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 180);
+    for (int y=0;y<80;y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 181+y);
     THORNS_HASH(w, thn_n_b, thn_h_b);
     CHECK("déterminisme : même ensemble de ronces (count)", thn_n_a == thn_n_b);
     CHECK("déterminisme : même ensemble de ronces (hash)", thn_h_a == thn_h_b);

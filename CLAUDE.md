@@ -183,13 +183,16 @@
   apocalypse sur la même course), victoire = 3 paliers + **assimilation EFFECTIVE de tout le
   monde** + arbre complet → l'empire disparaît (Dwemer, terre intacte). État sérialisé : section
   **EGAM** + **bump SAVE_VERSION 25→26**. Membrane : `BandEntropie`/`EndgameReadout` (enums
-  miroirs, le seuil reste derrière la cloison). Tunables registre J : `ENTROPY_FIN` 50 ·
-  `ENTROPY_TECH_W` 1.0 · `SINK_RIFTS_PER_YEAR` 3 · `COLD_RAMP_PER_YEAR` 0.005 ·
-  `THORN_CELLS_PER_YEAR` 200 · `THORN_RANDOM_FRAC` 0.35 · `MERV_PHASE_DAYS` 3650 ·
-  `MERV_CHARGE_PER_TICK` 0.5. **Calibration** (seed 9) : déclenchement EAU **an 184** (cible ~180) ;
-  an 100 = entropie 23 < 50 (**cliquet** : aucune fin avant 100 ans). Banc `endgame_demo` (contrôles
-  C0-C6, 76/76). Télémétrie chronicle « §27 FIN ». **Déterminisme 12 ans INCHANGÉ** (l'endgame
-  n'éclôt qu'après l'an-100). ⚠ Re-baseline : les longs runs voient une fin à ~180-200 ans.
+  miroirs, le seuil reste derrière la cloison). Tunables registre J : `ENTROPY_FIN` **55** ·
+  `ENDGAME_YEAR_OPEN` **180** (gate dur : aucune apocalypse avant l'an 180 ; la victoire
+  Merveille est **exemptée** — le joueur peut vaincre à tout moment) · `ENTROPY_TECH_W` 1.0 ·
+  `SINK_RIFTS_PER_YEAR` 3 · `COLD_RAMP_PER_YEAR` 0.005 · `THORN_CELLS_PER_YEAR` 200 ·
+  `THORN_RANDOM_FRAC` 0.35 · `MERV_PHASE_DAYS` 3650 · `MERV_CHARGE_PER_TICK` 0.5.
+  **Calibration** (seed 9) : déclenchement EAU **an 195** (ex-184 ; gate 180 + FIN 55) ;
+  an 100 = entropie 22.9 < 55 · an 180 = entropie 49.6 < 55 (**double cliquet** :
+  gate temporelle ET seuil d'entropie tenus). Banc `endgame_demo` (contrôles C0-C6, 76/76).
+  Télémétrie chronicle « §27 FIN ». **Déterminisme 12 ans INCHANGÉ**.
+  ⚠ Re-baseline : les longs runs voient une fin à ~195 ans (ex-184).
   À VENIR : barre Entropie topbar + animations viewer (C7, dépend de SDL) ; pondération IA de
   l'entropie (C8, différée — non porteuse, l'endgame fonctionne sans).
 - **VITALITÉ (2026-06-17) — LE MONDE VIT : `POP_R_BASE` ln2/100 → ln2/40 (sortie du bassin bas)** :

@@ -476,13 +476,19 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
                                      WorldEconomy *econ, const WorldProsperity *wp,
                                      const TechState ts[], int year) {
     if (eg->fired) return;
-    if (wp->entropy < tune_f("ENTROPY_FIN", 50.f)) return;
 
-    /* Override MERVEILLE (priorité) : l'Ascension a été menée à bout → c'est ELLE. */
+    /* Override MERVEILLE EN PREMIER (exempt du gate temporel et d'entropie) :
+     * la victoire du joueur ne dépend pas du seuil mondial — si l'Ascension
+     * est menée à bout, c'est elle qui l'emporte. */
     if (eg->merv == MERV_ASCENDED) {
         eg->fired = true; eg->fin = FIN_ASCENSION; eg->fin_year = year;
         return;
     }
+
+    /* Gate temporel : les 3 apocalypses ne peuvent éclore avant ENDGAME_YEAR_OPEN. */
+    if (year < (int)tune_f("ENDGAME_YEAR_OPEN", 180.f)) return;
+
+    if (wp->entropy < tune_f("ENTROPY_FIN", 50.f)) return;
 
     /* Foyer FIGÉ : l'épicentre régional (région la plus saturée), sinon — entropie
      * tech-driven pure — l'empire le plus faustien et sa capitale. */
