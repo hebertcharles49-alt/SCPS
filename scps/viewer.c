@@ -4268,20 +4268,22 @@ int main(int argc, char **argv) {
                   Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
                   for (int x=0; x<cv->w; x++){
                       Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
-                      /* DESPILL magenta : le « surplus magenta » = min(R,B) − G (haut sur le
-                       * fond, ~0 sur le sprite). Donne l'ALPHA du bord ; on RETIRE ensuite la
-                       * teinte magenta (un-premultiply) → bords ANTICRÉNELÉS propres, pas de
-                       * halo rose. Pixel plein magenta → transparent ; sprite franc → opaque. */
+                      /* DESPILL magenta. Le « surplus magenta » = min(R,B) − G (haut sur le
+                       * fond et ses FRANGES anticrénelées, ~0 sur le sprite). L'AA est une
+                       * PLAGE (magenta → bords dorés/noirs), pas une clé unique : on traite
+                       * tout le surplus. Magenta dominant → on VIRE le pixel (transparent) ;
+                       * frange légère → résiduel NEUTRE bronze/noir (jamais violet/blanc/bleu).
+                       * Sprite franc (surplus ≤ 0) → opaque, inchangé. */
                       int mn  = (r<b)?r:b;
                       int key = mn - (int)g;                 /* surplus magenta (R&B hauts, G bas) */
-                      if (key <= 0) continue;                /* pas magenta → opaque, inchangé */
-                      if (key >= 248){ row[x] = clear; continue; }   /* magenta plein → transparent */
-                      float af  = 1.0f - (float)key/255.0f;  /* alpha du bord */
-                      float inv = (1.0f-af)*255.0f;          /* part magenta à retirer */
-                      int nr=(int)(((float)r-inv)/af+0.5f), ng=(int)((float)g/af+0.5f), nb=(int)(((float)b-inv)/af+0.5f);
-                      nr = nr<0?0:(nr>255?255:nr);
-                      ng = ng<0?0:(ng>255?255:ng);
-                      nb = nb<0?0:(nb>255?255:nb);
+                      if (key <= 4) continue;                /* pas de magenta → sprite, opaque inchangé */
+                      float mness = (float)key/255.0f;       /* 0..1 : à quel point c'est magenta */
+                      float af = 1.0f - mness; af *= af;      /* couverture sprite, COURBE RAIDE → la frange s'efface */
+                      if (af < 0.03f){ row[x] = clear; continue; }   /* dominé par le magenta → VIRÉ (transparent) */
+                      /* résiduel NEUTRE : la luminance vient du VERT (le canal SANS magenta) ;
+                       * teinte bronze chaude légère, alpha faible → bord discret, pas de halo. */
+                      int lum = g;
+                      int nr=lum, ng=(int)((float)lum*0.88f+0.5f), nb=(int)((float)lum*0.70f+0.5f);
                       row[x] = SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
                   }
               }
