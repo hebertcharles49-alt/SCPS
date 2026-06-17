@@ -127,6 +127,10 @@
      * rembourser ∝ pop) ; le taux price le risque (ratio de dette + chute de légitimité). */ \
     X(CREDIT_LINE_BASE,       0.5f) \
     X(CREDIT_RATE_BASE,       0.05f) \
+    /* ANTI-EMBALLEMENT de la dette : au-delà de ce ratio dette/ligne, taux ET assiette
+     * d'intérêt PLAFONNENT → l'intérêt devient constant, la dette croît linéairement
+     * (sans ça : intérêt ∝ dette² → spirale géométrique → treasury -1e31 → NaN ~105 ans). */ \
+    X(CREDIT_RATIO_CAP,       8.0f) \
     /* FERTILITÉ = f(besoins satisfaits) — ×2/siècle au plancher (R_BASE=ln2/100), ×4 au panier
      * plein. needs_met (poids 0.85) + prospérité normalisée PIB/tête (MID/SPAN, poids 0.15).
      * TAU = seuil de couverture (got≥τ) qui compte une catégorie comme « satisfaite ». */ \

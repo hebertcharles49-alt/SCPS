@@ -73,9 +73,17 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         double debt=-g;
         float legit=legitimacy_country(wl,w,e,c);                   /* 0..10 */
         float line=credit_line(w,e,c); if(line<1.f) line=1.f;
-        float ratio=(float)(debt/(double)line);
+        /* ANTI-EMBALLEMENT (bug pré-capstone) : sans plafond, rate∝ratio ET assiette=debt
+         * → intérêt ∝ debt² → la dette spirale en GÉOMÉTRIQUE (treasury → -1e31 en ~105 ans,
+         * NaN plus loin). Le prêteur n'étend pas le crédit À L'INFINI : au-delà de
+         * CREDIT_RATIO_CAP × ligne, le taux PLAFONNE et l'assiette d'intérêt aussi → l'intérêt
+         * devient CONSTANT (≈ cap·ligne·taux_max), la dette croît LINÉAIREMENT (bornée, finie).
+         * 12 ans : dettes ≪ ligne ⇒ jamais plafonné ⇒ déterminisme INCHANGÉ. */
+        float rcap=tune_f("CREDIT_RATIO_CAP",8.f);
+        float ratio=(float)(debt/(double)line); if(ratio>rcap) ratio=rcap;
         float rate=tune_f("CREDIT_RATE_BASE",0.05f)*(1.f+ratio+(10.f-legit)/10.f);
-        double interest=debt*(double)rate;
+        double idebt=debt; if(idebt>(double)rcap*(double)line) idebt=(double)rcap*(double)line;
+        double interest=idebt*(double)rate;
         int hr=home_reg(w,c); if(hr>=0&&hr<e->n_regions) e->region[hr].treasury-=interest;
         int Cr=g_creditor[c];
         if(Cr>=0&&Cr<w->n_countries){ int hc=home_reg(w,Cr);
