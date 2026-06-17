@@ -44,18 +44,9 @@
 #include "scps_missions.h"  /* missions décennales : rythme + injection de ressources */
 #include "scps_navy.h"     /* la flotte (mer §5) : coques, chantier, entretien, outre-mer */
 #include "scps_lang.h"     /* la table de chaînes : tout mot face-joueur vient des tables */
-#include "scps_sprites.h"  /* le contrat 184 : planche 512×512, magenta=transparent (display-only) */
-#include "scps_map_nature_sprites.h"  /* pack NATURE : décors de carte (arbres, roseaux, roches, écume) — display-only */
-/* La planche chargée (NULL = absente → glyphes vectoriels actuels). Display-only. */
-static SDL_Texture *g_sprite_tex = NULL;
-static SDL_Texture *g_nature_tex = NULL;  /* atlas nature (décors de carte) — NULL si le .bmp est absent */
-/* Dessine la cellule `id` de la planche à (x,y), taille `px` (32 = natif). */
-static inline void sprite_draw(SDL_Renderer *ren, int id, int x, int y, int px){
-    if (!g_sprite_tex || id<0 || id>=SPR_COUNT) return;
-    SDL_Rect src = SPRITE_RECT(id);
-    SDL_Rect dst = { x, y, px, px };
-    SDL_RenderCopy(ren, g_sprite_tex, &src, &dst);
-}
+#include "scps_map_dressing.h"  /* pack MAP DRESSING : décors de carte (champs, bâtiments, arbres, roches, buissons, rivières, routes) — display-only */
+/* L'atlas chargé (NULL = absent → carte lisse). Display-only, même régime éditable que scps_lang.txt. */
+static SDL_Texture *g_dress_tex = NULL;  /* atlas de dressing (décors de carte) — NULL si le .bmp est absent */
 #include "stb_image_write.h"  /* F12 : capture d'écran PNG (vendoré) */
 #include "scps_audio.h"       /* la prise audio (miniaudio) — preuve de vie sur alerte */
 #ifdef SCPS_DEV
@@ -146,71 +137,78 @@ static void pixbuf_upload(PixBuf *pb) {
     SDL_UpdateTexture(pb->tex, NULL, pb->pixels, pb->w * 4);
 }
 
-/* ═══ DÉCORS NATURE (pack display-only) ════════════════════════════════════
- * Une couche de détail pixel-art, semée DÉTERMINISTE par coordonnée MONDE
- * (jamais de hasard runtime → stable au pan/zoom/save), posée SOUS les
- * frontières/labels/marqueurs. Gate au zoom : rien au dézoom (sous-pixel),
- * détail fin de près. Tout est no-op si l'atlas est absent (g_nature_tex NULL). */
+/* ═══ DÉCORS DE CARTE (pack MAP DRESSING — display-only) ════════════════════
+ * Une couche de détail pixel-art (112 sprites, 7 familles : champs · bâtiments ·
+ * arbres · roches · buissons · rivières · routes), semée DÉTERMINISTE par
+ * coordonnée MONDE (jamais de hasard runtime → stable au pan/zoom/save), posée
+ * SOUS les frontières/labels/marqueurs. Gate au zoom : rien au dézoom
+ * (sous-pixel). No-op si l'atlas est absent (g_dress_tex NULL). */
 static inline uint32_t map_hash(int x, int y, uint32_t salt){
     uint32_t h=(uint32_t)x*0x8da6b343u ^ (uint32_t)y*0xd8163841u ^ salt;
     h^=h>>15; h*=0x2c1b3c6du; h^=h>>12; h*=0x297a2d39u; h^=h>>15;
     return h;
 }
-static inline void nature_blit(SDL_Renderer *ren, int id, int x, int y, int px){
-    if (!g_nature_tex || id<0) return;
-    SDL_Rect src = { MAP_NATURE_X(id), MAP_NATURE_Y(id), SCPS_MAP_NATURE_CELL, SCPS_MAP_NATURE_CELL };
+static inline void dress_blit(SDL_Renderer *ren, int id, int x, int y, int px){
+    if (!g_dress_tex || id<0) return;
+    SDL_Rect src = { MAP_DRESSING_X(id), MAP_DRESSING_Y(id), SCPS_MAP_DRESSING_CELL, SCPS_MAP_DRESSING_CELL };
     SDL_Rect dst = { x, y, px, px };
-    SDL_RenderCopy(ren, g_nature_tex, &src, &dst);
+    SDL_RenderCopy(ren, g_dress_tex, &src, &dst);
 }
-/* biome (+ température pour la variante froide/chaude, + hash pour la diversité)
- * → id de sprite nature, ou -1 si la cellule ne porte pas de décor terrestre. */
-static int nature_pick(const Cell *c, uint32_t h){
+/* biome (+ température pour la variante froide, + hash pour la diversité)
+ * → id de sprite de dressing, ou -1 si la cellule ne porte pas de décor. */
+static int dress_pick(const Cell *c, uint32_t h){
     int v = (int)(h & 3u);
     switch (c->biome){
         case BIO_FOREST:
-            if (c->temperature < 0.30f) return (h&1u)?MAP_NAT_SNOW_PINE:MAP_NAT_TREE_PINE_PAIR;
-            return v==0?MAP_NAT_TREE_OAK_DARK:v==1?MAP_NAT_TREE_BROADLEAF_CLUSTER
-                  :v==2?MAP_NAT_TREE_BROADLEAF_SMALL:MAP_NAT_FOREST_SHADOW;
+            if (c->temperature < 0.30f) return (h&1u)?MAPD_TREE_SNOW_CONIFER:MAPD_TREES_CONIFER_CLUSTER;
+            return v==0?MAPD_TREE_OAK_LARGE:v==1?MAPD_TREES_BROADLEAF_CLUSTER
+                  :v==2?MAPD_FOREST_CLUMP_DARK:MAPD_TREE_BROADLEAF;
         case BIO_WOODS:
-            return v==0?MAP_NAT_TREE_BROADLEAF_SMALL:v==1?MAP_NAT_BUSH_CLUSTER
-                  :v==2?MAP_NAT_TREE_PINE_SMALL:MAP_NAT_BUSH_SMALL;
+            return v==0?MAPD_TREE_BROADLEAF:v==1?MAPD_GROVE_THIN
+                  :v==2?MAPD_TREES_BIRCH:MAPD_BUSH_GREEN;
         case BIO_JUNGLE:
-            return v<2?MAP_NAT_JUNGLE_CLUSTER:v==2?MAP_NAT_TREE_PALM:MAP_NAT_TREE_BROADLEAF_CLUSTER;
-        case BIO_FARMLAND:   return (h&1u)?MAP_NAT_ORCHARD_SMALL:MAP_NAT_GRASS_TUFT;
-        case BIO_PLAINS: case BIO_GRASSLAND: case BIO_STEPPE: case BIO_SAVANNA:
-            return v==0?MAP_NAT_GRASS_TUFT:v==1?MAP_NAT_BUSH_SMALL:-1;   /* clairsemé */
+            return v<2?MAPD_GROVE_MIXED:v==2?MAPD_FOREST_CLUMP_DARK:MAPD_TREE_POPLAR;
+        case BIO_FARMLAND:
+            return v==0?MAPD_FIELD_WHEAT:v==1?MAPD_FIELD_TILLED
+                  :v==2?MAPD_FIELD_ORCHARD:MAPD_FIELD_VEG_GARDEN;
+        case BIO_PLAINS: case BIO_GRASSLAND:
+            return v==0?MAPD_FIELD_HAY:v==1?MAPD_FIELD_PASTURE:v==2?MAPD_BUSH_GREEN:-1;
+        case BIO_STEPPE: case BIO_SAVANNA:
+            return v==0?MAPD_SCRUB_DRY:v==1?MAPD_HEATHER:-1;   /* clairsemé */
         case BIO_DRYLANDS: case BIO_COASTAL_DESERT:
-            return v==0?MAP_NAT_DESERT_STONES:v==1?MAP_NAT_TREE_DEAD:-1;
-        case BIO_DESERT:     return v==0?MAP_NAT_DESERT_STONES:-1;
+            return v==0?MAPD_DRY_THORN:v==1?MAPD_TREE_DRY_SCRUB:-1;
+        case BIO_DESERT:     return v==0?MAPD_ROCKS_RED_SANDSTONE:-1;
         case BIO_MARSH:
-            return v==0?MAP_NAT_REEDS_CLUSTER:v==1?MAP_NAT_CATTAILS
-                  :v==2?MAP_NAT_MARSH_PUDDLE:MAP_NAT_REEDS_TALL;
+            return v==0?MAPD_REEDS_CLUMP:v==1?MAPD_YELLOW_REEDS
+                  :v==2?MAPD_MARSH_GRASSES:MAPD_LILYPAD;
         case BIO_BOG:
-            return v==0?MAP_NAT_BOG_MOUND:v==1?MAP_NAT_REEDS_SINGLE:MAP_NAT_WET_SPECKLES;
-        case BIO_MANGROVE:   return v<2?MAP_NAT_TREE_MANGROVE:MAP_NAT_MANGROVE_ROOTS;
-        case BIO_HILLS:      return v==0?MAP_NAT_HILL_BUMP:v==1?MAP_NAT_ROCK_SMALL:-1;
+            return v==0?MAPD_WETLAND_SEDGE:v==1?MAPD_REEDS_CLUMP:MAPD_THICKET_LOW;
+        case BIO_MANGROVE:   return v<2?MAPD_TREE_POPLAR:MAPD_WETLAND_SEDGE;
+        case BIO_HILLS:      return v==0?MAPD_ROCK_BOULDER:v==1?MAPD_ROCKS_PAIR:v==2?MAPD_HEATHER:-1;
         case BIO_HIGHLANDS:
-            return v==0?MAP_NAT_HIGHLAND_GRASS:v==1?MAP_NAT_ROCK_CLUSTER
-                  :v==2?MAP_NAT_HILL_CLUSTER:-1;
+            return v==0?MAPD_ROCKS_RIDGE:v==1?MAPD_ROCKS_MOSSY:v==2?MAPD_HEATHER:-1;
         case BIO_MOUNTAINS:
-            return v<2?MAP_NAT_MOUNTAIN_SMALL:v==2?MAP_NAT_ROCK_CLUSTER:MAP_NAT_CLIFF_FACE;
-        case BIO_PEAK:       return (h&1u)?MAP_NAT_MOUNTAIN_SNOW:MAP_NAT_MOUNTAIN_PEAK;
-        case BIO_GLACIER:    return (h&1u)?MAP_NAT_MOUNTAIN_SNOW:MAP_NAT_ICE_ROCKS;   /* roche nue enneigée, pas de pins */
-        case BIO_VOLCANO:    return (h&1u)?MAP_NAT_VOLCANO_CONE:MAP_NAT_VOLCANIC_ROCK;
+            return v<2?MAPD_ROCKS_RIDGE:v==2?MAPD_ROCK_CLIFF_NUB:MAPD_ROCKS_SCREE;
+        case BIO_PEAK:       return (h&1u)?MAPD_ROCKS_SNOW_CAPPED:MAPD_ROCK_CLIFF_NUB;
+        case BIO_GLACIER:    return (h&1u)?MAPD_ROCKS_SNOW_CAPPED:MAPD_TREE_SNOW_CONIFER;
+        case BIO_VOLCANO:    return (h&1u)?MAPD_ROCKS_BASALT:MAPD_ROCKS_RED_SANDSTONE;
         default:             return -1;
     }
 }
-/* taille du décor en pixels ~ catégorie (rangée d'atlas) × zoom. Les arbres sont
- * GRANDS (canopée qui se chevauche), l'herbe/écume petits. */
-static int nature_size(int id, float sc){
+/* taille du décor en pixels ~ FAMILLE × zoom (arbres GRANDS — canopée qui se
+ * chevauche ; buissons petits). famille = id<56 ? id/8 : (id-56)/8. */
+static int dress_size(int id, float sc){
+    int fam = (id < 56) ? id/8 : (id-56)/8;   /* 0 champs · 1 bâti · 2 arbres · 3 roches · 4 buissons · 5 rivières · 6 routes */
     float k;
-    if (id < 16)        k = (id==MAP_NAT_GRASS_TUFT||id==MAP_NAT_BUSH_SMALL) ? 2.0f
-                          : (id==MAP_NAT_BUSH_CLUSTER||id==MAP_NAT_TREE_STUMP) ? 2.6f : 3.6f;  /* arbres */
-    else if (id < 32)   k = 2.8f;                                       /* marais : roseaux */
-    else if (id < 48)   k = 2.6f;                                       /* rivière */
-    else if (id < 64)   k = (id>=MAP_NAT_MOUNTAIN_SMALL && id<=MAP_NAT_MOUNTAIN_SNOW) ? 3.8f
-                          : (id==MAP_NAT_VOLCANO_CONE) ? 4.0f : 2.8f;   /* roches / montagnes */
-    else                k = 2.2f;                                       /* côte / écume */
+    switch (fam){
+        case 2:  k = 3.6f; break;   /* arbres */
+        case 0:  k = 3.0f; break;   /* champs */
+        case 3:  k = 3.0f; break;   /* roches */
+        case 1:  k = 2.8f; break;   /* bâtiments isolés */
+        case 5:  k = 2.6f; break;   /* rivières */
+        case 6:  k = 2.6f; break;   /* routes */
+        default: k = 2.4f; break;   /* buissons / végétation basse */
+    }
     int px=(int)(sc*k);
     if (px < 10) px = 10;
     if (px > 110) px = 110;
@@ -218,7 +216,7 @@ static int nature_size(int id, float sc){
 }
 /* densité par biome : combien de cellules-candidates sur 16 portent un décor
  * (forêts/montagnes/marais ≈ couverture pleine ; plaines clairsemées). */
-static int nature_density(Biome b){
+static int dress_density(Biome b){
     switch (b){
         case BIO_FOREST: case BIO_JUNGLE:                      return 13;
         case BIO_MOUNTAINS: case BIO_PEAK: case BIO_GLACIER:   return 13;
@@ -226,7 +224,8 @@ static int nature_density(Biome b){
         case BIO_WOODS: case BIO_MANGROVE:                     return 10;
         case BIO_VOLCANO:                                      return 9;
         case BIO_HILLS: case BIO_HIGHLANDS:                    return 7;
-        case BIO_FARMLAND: case BIO_PLAINS: case BIO_GRASSLAND:
+        case BIO_FARMLAND:                                     return 6;   /* les champs habillent bien la terre cultivée */
+        case BIO_PLAINS: case BIO_GRASSLAND:
         case BIO_STEPPE: case BIO_SAVANNA:                     return 4;
         case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 3;
         case BIO_DESERT:                                       return 2;
@@ -236,9 +235,10 @@ static int nature_density(Biome b){
 /* La passe : iter cellules visibles (lattice monde, pas adaptatif → densité
  * écran ~constante et compte borné), décide par biome via hash. Rangées
  * top→bottom = dessin ARRIÈRE→AVANT (les décors bas-ancrés se recouvrent en
- * canopée). Appelée APRÈS le terrain, AVANT les frontières/labels. */
-static void draw_map_nature_decals(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
-    if (!g_nature_tex) return;
+ * canopée). Appelée APRÈS le terrain, AVANT les frontières/labels. La MER reste
+ * NUE : le pack est terrestre (plus de couche d'écume). */
+static void draw_map_dressing(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
+    if (!g_dress_tex) return;
     float sc = cam->scale;                        /* pixels par cellule */
     if (sc < 3.0f) return;                         /* trop dézoomé → pas de décor (sous-pixel) */
     /* pas monde tel que l'espacement ÉCRAN reste ~constant (≈ 14 px) : dense de
@@ -252,33 +252,26 @@ static void draw_map_nature_decals(SDL_Renderer *ren, const World *w, const Cam 
     if (cx1>SCPS_W) cx1=SCPS_W;
     if (cy1>SCPS_H) cy1=SCPS_H;
     cx0 -= cx0%step; cy0 -= cy0%step;             /* lattice ancré monde → stable au pan */
-    SDL_SetTextureAlphaMod(g_nature_tex, (Uint8)alpha);
+    SDL_SetTextureAlphaMod(g_dress_tex, (Uint8)alpha);
     for (int cy=cy0; cy<cy1; cy+=step){           /* rangées : arrière → avant */
         for (int cx=cx0; cx<cx1; cx+=step){
             const Cell *c = scps_cellc(w, cx, cy);
+            if (c->sea) continue;                  /* la mer reste nue (pack terrestre) */
             int sx=(int)((cx - cam->ox)*sc), sy=(int)((cy - cam->oy)*sc);
-            if (c->sea){                          /* mer : seulement l'ÉCUME au trait de côte */
-                if (c->sea==SEA_CABOTAGE){
-                    uint32_t hf=map_hash(cx,cy,0xF0A1u);
-                    if ((hf%6u)==0u){ int id=(hf&1u)?MAP_NAT_COAST_FOAM_SMALL:MAP_NAT_WAVELETS_A;
-                        int px=nature_size(id,sc); nature_blit(ren,id,sx-px/2,sy-px/2,px); }
-                }
-                continue;
-            }
             uint32_t h=map_hash(cx,cy,0x5EED01u);
-            if ((int)(h&15u) >= nature_density(c->biome)){     /* pas tiré : éventuel reflet de fleuve */
-                if (c->river>40 && !c->lake && (h&3u)==0u){ int px=nature_size(MAP_NAT_RIVER_SHIMMER,sc);
-                    nature_blit(ren, MAP_NAT_RIVER_SHIMMER, sx-px/2, sy-px/2, px); }
+            if ((int)(h&15u) >= dress_density(c->biome)){     /* pas tiré : éventuel filet de fleuve */
+                if (c->river>40 && !c->lake && (h&3u)==0u){ int px=dress_size(MAPD_RIVER_STRAIGHT,sc);
+                    dress_blit(ren, MAPD_RIVER_STRAIGHT, sx-px/2, sy-px/2, px); }
                 continue;
             }
-            int id=nature_pick(c,h);
+            int id=dress_pick(c,h);
             if (id<0) continue;
-            int px=nature_size(id,sc);
+            int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
-            nature_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre */
+            dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre */
         }
     }
-    SDL_SetTextureAlphaMod(g_nature_tex, 255);
+    SDL_SetTextureAlphaMod(g_dress_tex, 255);
 }
 
 /* ---- Info province (console) ----------------------------------------- */
@@ -4258,26 +4251,18 @@ int main(int argc, char **argv) {
      * (conteneur/serveur sans carte → le release tourne quand même). */
     if (!audio_init()) fprintf(stderr,"[scps] audio : aucun device — silence.\n");
 
-    /* §SPRITES (contrat 184) : la planche scps_sprites.bmp à côté du binaire,
-     * fond MAGENTA FF00FF → transparent (colorkey). ABSENTE → g_sprite_tex NULL
-     * et le rendu vectoriel actuel reste tel quel (display-only, même régime
-     * éditable que scps_lang.txt). */
-    { SDL_Surface *ss = SDL_LoadBMP("scps_sprites.bmp");
-      if (ss){
-          SDL_SetColorKey(ss, SDL_TRUE, SDL_MapRGB(ss->format, SPRITE_KEY_R, SPRITE_KEY_G, SPRITE_KEY_B));
-          g_sprite_tex = SDL_CreateTextureFromSurface(ren, ss);
-          SDL_FreeSurface(ss);
-          if (g_sprite_tex) printf("[scps] scps_sprites.bmp chargée (contrat %d cellules).\n", SPR_COUNT);
-      } else fprintf(stderr,"[scps] sprites : scps_sprites.bmp absente — glyphes vectoriels.\n"); }
-    /* Pack NATURE (display-only, même régime) : décors de carte. Absent → carte lisse. */
-    { SDL_Surface *ns = SDL_LoadBMP(SCPS_MAP_NATURE_FILE);
+    /* Pack MAP DRESSING (display-only, même régime éditable que scps_lang.txt) :
+     * la planche scps_map_dressing.bmp à côté du binaire, fond MAGENTA FF00FF →
+     * transparent (colorkey). ABSENTE → g_dress_tex NULL → carte lisse (le
+     * moteur/déterminisme n'y touchent jamais). */
+    { SDL_Surface *ns = SDL_LoadBMP(SCPS_MAP_DRESSING_FILE);
       if (ns){
-          SDL_SetColorKey(ns, SDL_TRUE, SDL_MapRGB(ns->format, SCPS_MAP_NATURE_KEY_R, SCPS_MAP_NATURE_KEY_G, SCPS_MAP_NATURE_KEY_B));
-          g_nature_tex = SDL_CreateTextureFromSurface(ren, ns);
+          SDL_SetColorKey(ns, SDL_TRUE, SDL_MapRGB(ns->format, SCPS_MAP_DRESSING_KEY_R, SCPS_MAP_DRESSING_KEY_G, SCPS_MAP_DRESSING_KEY_B));
+          g_dress_tex = SDL_CreateTextureFromSurface(ren, ns);
           SDL_FreeSurface(ns);
-          if (g_nature_tex){ SDL_SetTextureBlendMode(g_nature_tex, SDL_BLENDMODE_BLEND);
-              printf("[scps] %s chargé (décors de carte).\n", SCPS_MAP_NATURE_FILE); }
-      } else fprintf(stderr,"[scps] décors nature : %s absent — carte lisse.\n", SCPS_MAP_NATURE_FILE); }
+          if (g_dress_tex){ SDL_SetTextureBlendMode(g_dress_tex, SDL_BLENDMODE_BLEND);
+              printf("[scps] %s chargé (décors de carte).\n", SCPS_MAP_DRESSING_FILE); }
+      } else fprintf(stderr,"[scps] décors de carte : %s absent — carte lisse.\n", SCPS_MAP_DRESSING_FILE); }
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
 #endif
@@ -4533,7 +4518,7 @@ int main(int argc, char **argv) {
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (sim.ready) draw_map_nature_decals(ren, world, &cam, win_w, win_h);   /* décors SOUS les frontières */
+            if (sim.ready) draw_map_dressing(ren, world, &cam, win_w, win_h);   /* décors SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
             if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false;
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
@@ -5138,7 +5123,7 @@ int main(int argc, char **argv) {
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
-        if (sim.ready && g_gs==GS_PLAYING) draw_map_nature_decals(ren, world, &cam, win_w, win_h);
+        if (sim.ready && g_gs==GS_PLAYING) draw_map_dressing(ren, world, &cam, win_w, win_h);
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
          * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
          * SOUS la sélection/glyphes/étiquettes (z-order §2c). */
