@@ -259,11 +259,10 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const Cam *cam,
             if (c->sea) continue;                  /* la mer reste nue (pack terrestre) */
             int sx=(int)((cx - cam->ox)*sc), sy=(int)((cy - cam->oy)*sc);
             uint32_t h=map_hash(cx,cy,0x5EED01u);
-            if ((int)(h&15u) >= dress_density(c->biome)){     /* pas tiré : éventuel filet de fleuve */
-                if (c->river>40 && !c->lake && (h&3u)==0u){ int px=dress_size(MAPD_RIVER_STRAIGHT,sc);
-                    dress_blit(ren, MAPD_RIVER_STRAIGHT, sx-px/2, sy-px/2, px); }
-                continue;
-            }
+            if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor */
+            /* (pas de sprite RIVIÈRE/ROUTE semé par cellule : ce sont des MORCEAUX
+             * topologiques — tuilés au hasard ils font « motif » sur les côtes/fleuves.
+             * Le tracé des fleuves vient déjà du TERRAIN, pas du dressing.) */
             int id=dress_pick(c,h);
             if (id<0) continue;
             int px=dress_size(id,sc);
