@@ -339,6 +339,62 @@ int main(void) {
     CHECK("déterminisme : même ensemble de ronces (hash)", thn_h_a == thn_h_b);
     #undef THORNS_HASH
 
+    /* ---- C6 : la Merveille (Ascension, victoire joueur) --------------- */
+    printf("\nC6 merveille d'Ascension (paliers + charge + victoire)\n");
+    world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+    int pl = -1;
+    for (int c = 0; c < w->n_countries; c++) if (w->country[c].role != POLITY_UNCLAIMED) { pl = c; break; }
+    CHECK("un empire joueur existe", pl >= 0);
+    for (int c = 0; c < SCPS_MAX_COUNTRY; c++) for (int t = 0; t < TECH_COUNT; t++) ts[c].unlocked[t] = false;
+    for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
+    /* injecte les 3 rares dans le pool du joueur */
+    for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) {
+        econ->region[r].stock[RES_CELESTIAL_IRON] += 100.f;
+        econ->region[r].stock[RES_FLUX]           += 100.f;
+        econ->region[r].stock[RES_ESSENCE]        += 100.f;
+    }
+    int capr = -1; { int cap = w->country[pl].capital_prov; if (cap >= 0 && cap < w->n_provinces) capr = w->province[cap].region; }
+    endgame_init(&eg);
+    endgame_start_wonder(&eg, pl, capr);
+    CHECK("merveille démarrée en FORGE", eg.merv == MERV_FORGE);
+    wp->entropy = 0.f; wp->entropy_epicenter = -1;          /* entropie BASSE : pas d'apocalypse concurrente */
+    for (int k = 0; k < 3; k++) wp->faust_consumed[k] = 0.0;
+    double ci0 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) ci0 += econ->region[r].stock[RES_CELESTIAL_IRON];
+    float site_ch0 = (capr >= 0 && capr < econ->n_regions) ? econ->region[capr].faust_charge : 0.f;
+    for (int y = 0; y < 4; y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, y);
+    CHECK("ordre imposé : pas de SAVOIR avant FORGE/SOCIÉTÉ", eg.merv < MERV_SAVOIR);
+    double ci1 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) ci1 += econ->region[r].stock[RES_CELESTIAL_IRON];
+    CHECK("FORGE dévore le fer céleste", ci1 < ci0);
+    float site_ch1 = (capr >= 0 && capr < econ->n_regions) ? econ->region[capr].faust_charge : 0.f;
+    CHECK("charge-additive : la Brèche se rapproche pendant le chantier", site_ch1 > site_ch0);
+    /* déroule jusqu'à SAVOIR_DONE — SANS conditions de victoire → pas d'ascension */
+    for (int y = 4; y < 50 && eg.merv != MERV_SAVOIR_DONE; y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, y);
+    CHECK("3 paliers bouclés (SAVOIR_DONE)", eg.merv == MERV_SAVOIR_DONE);
+    CHECK("pas de victoire sans assimilation+arbre", !eg.fired && eg.merv == MERV_SAVOIR_DONE);
+
+    /* conditions de victoire : tout le monde au joueur + intégré, arbre complet */
+    int probe_r = -1; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) { probe_r = r; break; }
+    int probe_cell = -1; Biome probe_bio = BIO_PLAINS; float probe_h = 0.f;
+    if (probe_r >= 0) for (int i = 0; i < SCPS_N; i++) if (w->cell[i].region == probe_r && w->cell[i].height >= SEA_LEVEL) { probe_cell = i; probe_bio = w->cell[i].biome; probe_h = w->cell[i].height; break; }
+    for (int r = 0; r < econ->n_regions; r++) { RegionEconomy *re = &econ->region[r];
+        if (!re->active) continue;
+        re->owner = (int16_t)pl; re->culture.settled = true;
+        for (int g = 0; g < re->pop.n_groups; g++) re->pop.groups[g].integration = 1.f;
+    }
+    for (int t = 0; t < TECH_COUNT; t++) ts[pl].unlocked[t] = true;
+    /* un tech manquant → PAS de victoire (test négatif d'abord) */
+    ts[pl].unlocked[0] = false;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 51);
+    CHECK("un seul tech manquant ⇒ pas d'ascension", eg.merv == MERV_SAVOIR_DONE && !eg.fired);
+    /* arbre complet → ASCENSION */
+    ts[pl].unlocked[0] = true;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 52);
+    CHECK("conditions réunies → ASCENSION", eg.merv == MERV_ASCENDED && eg.fired && eg.fin == FIN_ASCENSION);
+    int owned = 0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) owned++;
+    CHECK("l'empire DISPARAÎT (plus aucune région au joueur)", owned == 0);
+    CHECK("terre INTACTE (biome/height inchangés — pas de carve)",
+          probe_cell < 0 || (w->cell[probe_cell].biome == probe_bio && w->cell[probe_cell].height == probe_h));
+
     free(ts); free(wp); free(econ); free(w);
 
     /* ---- Récapitulatif ------------------------------------------------- */

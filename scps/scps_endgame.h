@@ -72,4 +72,8 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                   RouteNetwork *rn, NavyState *navy, DiploState *dp,
                   Campaign *camp, int player, int year);
 
+/* Démarre la Merveille d'Ascension (ordre agency JOUEUR uniquement ; l'IA ne la
+ * poursuit pas). No-op si déjà en cours. */
+void endgame_start_wonder(EndgameState *eg, int player, int capital_region);
+
 #endif /* SCPS_ENDGAME_H */

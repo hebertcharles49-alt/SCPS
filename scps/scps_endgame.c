@@ -374,6 +374,103 @@ static void thorns_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign
     if (born > 0) world_recompute_adjacency(w);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * C6 — LA MERVEILLE (Ascension : la SEULE victoire, réservée au JOUEUR)
+ * ──────────────────────────────────────────────────────────────────────────── */
+#define MERV_RARE_PER_YEAR 2.0f    /* rare dévorée/an par le chantier (TRÈS rare) */
+/* FORGE ← fer céleste · SOCIÉTÉ ← flux · SAVOIR ← essence */
+static const Resource MERV_RARE[3] = { RES_CELESTIAL_IRON, RES_FLUX, RES_ESSENCE };
+
+/* Consomme jusqu'à `amount` de `good` dans le POOL de l'empire (P1) ; renvoie le pris. */
+static float endgame_empire_consume(WorldEconomy *econ, int owner, Resource good, float amount) {
+    float got = 0.f;
+    for (int r = 0; r < econ->n_regions && got < amount; r++) {
+        if (econ->region[r].owner != owner) continue;
+        float take = fminf(amount - got, econ->region[r].stock[good]);
+        if (take > 0.f) { econ->region[r].stock[good] -= take; got += take; }
+    }
+    return got;
+}
+
+/* VICTOIRE (décision 3) : toute culture du MONDE est INTÉGRÉE sous l'empire ascendant —
+ * assimilation EFFECTIVE, pas seulement gouvernée. Toute région vivante settled est au
+ * joueur ET ses groupes sont intégrés (integration ≈ 1). Quasi inatteignable par l'IA. */
+static bool endgame_world_assimilated(const WorldEconomy *econ, int player) {
+    for (int r = 0; r < econ->n_regions; r++) {
+        const RegionEconomy *re = &econ->region[r];
+        if (!re->active || re->owner < 0 || !re->culture.settled) continue;   /* friche/morte ignorée */
+        if (re->owner != player) return false;                                /* une terre étrangère vivante subsiste */
+        for (int g = 0; g < re->pop.n_groups; g++)
+            if (re->pop.groups[g].count > 0 && re->pop.groups[g].integration < 0.99f) return false;
+    }
+    return true;
+}
+static bool endgame_tree_complete(const TechState *ts) {
+    for (int t = 0; t < TECH_COUNT; t++) if (!ts->unlocked[t]) return false;
+    return true;
+}
+
+/* L'empire ASCENDANT disparaît à la Dwemer : régions vidées (owner=-1, pop=0), terre
+ * INTACTE (biome/height inchangés, passable, recolonisable — PAS de carve). */
+static void endgame_empire_vanish(World *w, WorldEconomy *econ, int player) {
+    for (int r = 0; r < econ->n_regions; r++) {
+        if (econ->region[r].owner != player) continue;
+        RegionEconomy *re = &econ->region[r];
+        for (int cl = 0; cl < CLASS_COUNT; cl++) re->strata[cl].pop = 0.f;
+        re->pop.n_groups = 0; re->owner = -1; re->colonized = false;          /* active/passable INTACT */
+        if (r < w->n_regions) w->region[r].country = -1;
+    }
+    for (int i = 0; i < SCPS_N; i++) if (w->cell[i].country == player) w->cell[i].country = -1;
+    world_recompute_adjacency(w);                                             /* les frontières s'effacent */
+}
+
+/* Tick de la Merveille : ordre IMPOSÉ FORGE→SOCIÉTÉ→SAVOIR, chaque palier dévore SA
+ * rare (du pool) et avance tant qu'elle alimente ; charge-additive (ascension ET
+ * apocalypse sur la MÊME course) ; à SAVOIR bouclé + conditions → ASCENSION. */
+static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
+                        const TechState ts[], int player, int year) {
+    if (eg->merv == MERV_NONE || eg->merv == MERV_ASCENDED) return;
+    if (eg->merv_country < 0) return;
+    int site = eg->merv_site_reg;
+    bool done_state = (eg->merv==MERV_FORGE_DONE || eg->merv==MERV_SOCIETE_DONE || eg->merv==MERV_SAVOIR_DONE);
+    if (!done_state) {
+        int phase = (eg->merv==MERV_FORGE)?0 : (eg->merv==MERV_SOCIETE)?1 : 2;
+        float feed = endgame_empire_consume(econ, eg->merv_country, MERV_RARE[phase], MERV_RARE_PER_YEAR);
+        if (feed > 0.f) {                                       /* la rare alimente → on bâtit */
+            eg->merv_progress += 365.f / tune_f("MERV_PHASE_DAYS", 3650.f);
+            if (site >= 0 && site < econ->n_regions) {          /* charge-additive (la Brèche se rapproche) */
+                float ch = tune_f("MERV_CHARGE_PER_TICK", 0.5f);
+                faust_charge_add(&econ->region[site], ch);
+                econ->region[site].faust_charge += ch;
+            }
+            if (eg->merv_progress >= 1.0f) { eg->merv_progress = 0.f; eg->merv = (MervPhase)(eg->merv + 1); }
+        }
+        return;
+    }
+    /* palier bouclé : enchaîne, ou VICTOIRE après SAVOIR. */
+    if (eg->merv == MERV_FORGE_DONE)        eg->merv = MERV_SOCIETE;
+    else if (eg->merv == MERV_SOCIETE_DONE) eg->merv = MERV_SAVOIR;
+    else if (eg->merv == MERV_SAVOIR_DONE) {
+        bool tree  = ts && endgame_tree_complete(&ts[player]);
+        bool assim = endgame_world_assimilated(econ, player);
+        if (tree && assim) {                                    /* les 3 conditions réunies */
+            eg->merv = MERV_ASCENDED;
+            if (!eg->fired) { eg->fired = true; eg->fin = FIN_ASCENSION; eg->fin_year = year; }
+            endgame_empire_vanish(w, econ, player);
+        }
+        /* sinon : reste SAVOIR_DONE, ré-évalué chaque an (le joueur finit l'arbre/l'assimilation). */
+    }
+}
+
+/* Démarrage de la Merveille (ordre agency AGENCY_BUILD_WONDER — JOUEUR uniquement). */
+void endgame_start_wonder(EndgameState *eg, int player, int capital_region) {
+    if (!eg || eg->merv != MERV_NONE) return;
+    eg->merv = MERV_FORGE;
+    eg->merv_country = player;
+    eg->merv_site_reg = capital_region;
+    eg->merv_progress = 0.f;
+}
+
 /* ── C2 — sélecteur + déclencheur (latch : un seul déclenchement) ──────────── */
 static void endgame_select_and_fire(EndgameState *eg, const World *w,
                                      WorldEconomy *econ, const WorldProsperity *wp,
@@ -444,13 +541,17 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
         if (w && econ && ts) endgame_select_and_fire(eg, w, econ, wp, ts, year);
     }
 
-    /* C3-C6 — dérouler la fin latchée (la carve voit la même année que le fire). */
+    /* C3-C5 — dérouler la fin latchée (la carve voit la même année que le fire). */
     if (eg->fired && w && econ) {
         switch (eg->fin) {
             case FIN_EAU:    cataclysm_water_step(eg, w, econ, camp); break;
             case FIN_FROID:  cold_step(eg, w, econ); break;
             case FIN_RONCES: thorns_step(eg, w, econ, camp); break;
-            default: break;
+            default: break;   /* ASCENSION : pas de carve (terre intacte) */
         }
     }
+
+    /* C6 — la Merveille avance TOUJOURS (course ascension vs apocalypse) ; elle ne
+     * peut vaincre que si une apocalypse n'a pas DÉJÀ latché (gate !fired interne). */
+    if (w && econ) wonder_tick(eg, w, econ, ts, player, year);
 }
