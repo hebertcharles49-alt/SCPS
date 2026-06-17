@@ -259,7 +259,24 @@ static int dress_density(Biome b){
  * top→bottom = dessin ARRIÈRE→AVANT (les décors bas-ancrés se recouvrent en
  * canopée). Appelée APRÈS le terrain, AVANT les frontières/labels. La MER reste
  * NUE : le pack est terrestre (plus de couche d'écume). */
-static void draw_map_dressing(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
+/* bâtiment isolé (« ville ») selon le CONTEXTE — côte, relief, forêt, fleuve, tier de
+ * pop. Les hameaux suivent ainsi la géographie ET le peuplement (membrane : on lit
+ * colonized + pop, des nombres tangibles). */
+static int dress_building(const Cell *c, int tier, uint32_t h){
+    int v=(int)((h>>5)&3u);
+    if (c->coast) return (v&1)?MAPD_BLD_FISHING_HUT:MAPD_BLD_BOATHOUSE;
+    switch(c->biome){
+        case BIO_MOUNTAINS: case BIO_HILLS: case BIO_HIGHLANDS: case BIO_PEAK:
+            return (v&1)?MAPD_BLD_MINE_SHACK:MAPD_BLD_QUARRY_SHED;
+        case BIO_FOREST: case BIO_WOODS: case BIO_JUNGLE:
+            return (v&1)?MAPD_BLD_LUMBER_CAMP:MAPD_BLD_CHARCOAL_KILN;
+        default: break;
+    }
+    if (c->river>60) return MAPD_BLD_WATERMILL;
+    if (tier>=2) return (v==0)?MAPD_BLD_CHAPEL:(v==1)?MAPD_BLD_STOREHOUSE:(v==2)?MAPD_BLD_WINDMILL:MAPD_BLD_BARN;
+    return (v==0)?MAPD_BLD_ROUND_HUT:(v==1)?MAPD_BLD_COTTAGE:(v==2)?MAPD_BLD_BARN:MAPD_BLD_SHEPHERD;
+}
+static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
     if (!g_dress_tex) return;
     g_iso_w=win_w; g_iso_h=win_h;                 /* pivot iso de la frame */
     float sc = cam->scale;                        /* pixels par cellule */
@@ -292,7 +309,34 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const Cam *cam,
             float fsx,fsy; cam_project(cam,(float)cx,(float)cy,&fsx,&fsy);
             int sx=(int)fsx, sy=(int)fsy;
             uint32_t h=map_hash(cx,cy,0x5EED01u);
-            if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor */
+            /* ── peuplement RÉEL : la région est-elle colonisée, et à quel point ? ── */
+            int rg = c->region;
+            bool settled = (econ && rg>=0 && rg<econ->n_regions && econ->region[rg].colonized);
+            int tier=0;
+            if (settled){ const RegionEconomy *re=&econ->region[rg];
+                float pp=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+                tier = (pp>4000.f)?2:(pp>800.f)?1:0; }
+            uint32_t hb = map_hash(cx,cy,0xB17DCAFEu);   /* hash indépendant pour le bâti/eau */
+            /* ── RIVIÈRES : un accent RARE sur les fleuves FORTS (suit c->river, pas du
+             *    semis aveugle) — bouche au littoral, filet d'eau à l'intérieur. ── */
+            if (c->river>120 && !c->lake && (hb&15u)==0u){
+                int rid = c->coast ? MAPD_RIVER_MOUTH : MAPD_CREEK_STRAIGHT;
+                int rpx = dress_size(rid,sc);
+                dress_blit(ren, rid, sx-rpx/2, sy-rpx/2, rpx);
+            }
+            /* ── VILLES : bâtiments isolés sur la terre COLONISÉE, densité ∝ tier de pop.
+             *    Le bâti OCCUPE la cellule (pas de nature en plus) + un chemin proche. ── */
+            int bgate = (tier>=2)?3:(tier>=1)?2:1;     /* sur 16 : peuplé = plus de hameaux */
+            if (settled && (int)(hb&15u) < bgate){
+                int bid = dress_building(c, tier, hb);
+                int bpx = dress_size(bid,sc);
+                int bjx=(int)((hb>>8)&7u)-4, bjy=(int)((hb>>11)&7u)-4;
+                if ((hb&0x30u)==0u){ int rid=MAPD_FOOTPATH_STRAIGHT; int rpx=dress_size(rid,sc);   /* ROUTE : un chemin au pied du bâti */
+                    dress_blit(ren, rid, sx-rpx/2, sy-rpx/2, rpx); }
+                dress_blit(ren, bid, sx-bpx/2+bjx, sy-(bpx*3)/4+bjy, bpx);
+                continue;
+            }
+            if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor naturel */
             int id=dress_pick(c,h);
             if (id<0) continue;
             int px=dress_size(id,sc);
@@ -4582,7 +4626,7 @@ int main(int argc, char **argv) {
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (sim.ready) draw_map_dressing(ren, world, &cam, win_w, win_h);   /* décors SOUS les frontières */
+            if (sim.ready) draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h);   /* décors SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
             if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false; mmp.iso=false;  /* minicarte : top-down */
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
@@ -5190,7 +5234,7 @@ int main(int argc, char **argv) {
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
-        if (sim.ready && g_gs==GS_PLAYING) draw_map_dressing(ren, world, &cam, win_w, win_h);
+        if (sim.ready && g_gs==GS_PLAYING) draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h);
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
          * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
          * SOUS la sélection/glyphes/étiquettes (z-order §2c). */
