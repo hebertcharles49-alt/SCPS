@@ -668,6 +668,22 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         float wx,wy; if(!region_world_pos(w,r,&wx,&wy)) continue;
         int cx=(int)wx, cy=(int)wy; if(cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
         const Cell *c=scps_cellc(w,cx,cy);
+        if (c->sea || c->lake){                /* le CENTROÏDE des provinces est tombé dans l'EAU (région
+                                                * enroulée autour d'un lac/baie) → SNAP sur la terre la plus
+                                                * proche : une ville ne se pose jamais sur l'eau. */
+            int bx=cx, by=cy; bool land=false;
+            for (int rad=1; rad<=12 && !land; rad++)
+                for (int dy=-rad; dy<=rad && !land; dy++)
+                    for (int dx=-rad; dx<=rad && !land; dx++){
+                        if (abs(dx)!=rad && abs(dy)!=rad) continue;          /* bord d'anneau */
+                        int nx=cx+dx, ny=cy+dy;
+                        if (nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+                        const Cell *nc=scps_cellc(w,nx,ny);
+                        if (!nc->sea && !nc->lake){ bx=nx; by=ny; land=true; }
+                    }
+            if (!land) continue;               /* aucune terre à portée (région d'eau) : pas de ville */
+            cx=bx; cy=by; wx=(float)cx; wy=(float)cy; c=scps_cellc(w,cx,cy);
+        }
         int owner=re->owner;
         bool cap=(owner>=0 && owner<w->n_countries && w->country[owner].capital_prov>=0
                   && w->country[owner].capital_prov<w->n_provinces
