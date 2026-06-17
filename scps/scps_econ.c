@@ -1686,6 +1686,10 @@ void econ_tick(WorldEconomy *e, float dt) {
                               / tune_f("POP_PROSP_SPAN",1.8f), 0.f, 1.f);   /* PIB/tête → [0,1] (bande haute ≈2.0) */
         float bonus   = tune_f("POP_PROSP_W",0.15f)*prosp_n
                       + tune_f("POP_NEEDS_W",0.85f)*re->needs_met;          /* B ∈ [0,1] */
+        /* COUPLAGE SATISFACTION ASYMÉTRIQUE : une province CONTENTE croît plus vite (part au-dessus
+         * de 0.5 SEULEMENT) ; la satisfaction basse ne soustrait RIEN (un peuple nourri mais grognon
+         * croît quand même → pas de creusement du creux des low seeds, et la reprise est PRIMÉE). */
+        bonus += tune_f("POP_SAT_W",0.20f) * fmaxf(0.f, re->satisfaction - 0.5f);
         float net_growth = r_base*(1.f+demo)*(1.f+bonus);                   /* ×2 plancher → ×4 au plein */
         if (food_s < 0.35f)
             net_growth -= (0.35f - food_s) * 0.12f;   /* pic de mortalité famine */

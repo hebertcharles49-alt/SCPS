@@ -147,6 +147,11 @@
     X(POP_PROSP_SPAN,         1.8f) \
     X(POP_PROSP_W,            0.15f) \
     X(POP_NEEDS_W,            0.85f) \
+    /* COUPLAGE SATISFACTION (asymétrique) : une province CONTENTE (satisfaction > 0.5) croît un
+     * peu plus vite ; la satisfaction BASSE ne PUNIT PAS (plancher à 0) → un peuple nourri mais
+     * grognon se reproduit quand même (pas de creusement du trou des low seeds en turbulence) ;
+     * la récompense PRIME la reprise une fois la province apaisée. W = échelle du surcroît. */ \
+    X(POP_SAT_W,              0.20f) \
     X(NEEDS_MET_TAU,          0.5f) \
     /* MODIFICATEURS PROVINCIAUX (diégétiques) — TERRE D'ABONDANCE : une région
      * SOUS-PEUPLÉE + NOURRIE + en paix se repeuple vite (le rebond des low seeds,

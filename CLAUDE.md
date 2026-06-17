@@ -282,6 +282,14 @@
   de qui a tout fondu en un seul sang. Symétrie d'éthos (pas « diversité = bien/mal plat » : le
   creuset GARDÉ prospère pour l'accueillant, le creuset DIGÉRÉ pour le martial). **SAVE non bumpé**.
   `make test` 35/35 · `determinism` STABLE.
+- **COUPLAGE SATISFACTION ↔ CROISSANCE (2026-06-17, ASYMÉTRIQUE)** : le bonus de fertilité gagne
+  un terme satisfaction `POP_SAT_W·max(0, satisfaction−0.5)` — une province CONTENTE croît un peu
+  plus vite, mais la satisfaction BASSE ne soustrait RIEN (plancher à 0). Le **double tranchant**
+  identifié (coupler symétriquement creuserait le creux des low seeds en turbulence) est neutralisé :
+  un peuple nourri mais grognon croît quand même, et la récompense PRIME la reprise une fois la
+  province apaisée. Zéro risque baissier. Tunable `POP_SAT_W` 0.20 (registre J). ⚠ nudge seed 9 vers
+  le haut (province contente) — c'est tout l'écosystème vitalité qui soulève un peu tout, les low
+  seeds ~5× plus. `make test` 35/35 · `determinism` STABLE. **SAVE non bumpé**.
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.
