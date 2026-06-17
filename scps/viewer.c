@@ -276,15 +276,24 @@ static int dress_building(const Cell *c, int tier, uint32_t h){
     if (tier>=2) return (v==0)?MAPD_BLD_CHAPEL:(v==1)?MAPD_BLD_STOREHOUSE:(v==2)?MAPD_BLD_WINDMILL:MAPD_BLD_BARN;
     return (v==0)?MAPD_BLD_ROUND_HUT:(v==1)?MAPD_BLD_COTTAGE:(v==2)?MAPD_BLD_BARN:MAPD_BLD_SHEPHERD;
 }
-/* blit avec MIROIR (autotile : on tourne un sprite iso par flip H/V). */
-static void dress_blit_ex(SDL_Renderer *ren, int id, int x, int y, int px, SDL_RendererFlip flip){
+/* L'OUTIL DE ROTATION : blit d'un sprite TOURNÉ de `ang` degrés autour de son centre.
+ * Les décals PLATS (rivières, routes) suivent leur direction par rotation ; les sprites
+ * DEBOUT (arbres, bâtiments) ne tournent pas. */
+static void dress_blit_rot(SDL_Renderer *ren, int id, float scx, float scy, int px, double ang){
     if (!g_dress_tex || id<0) return;
     SDL_Rect src = { MAP_DRESSING_X(id), MAP_DRESSING_Y(id), SCPS_MAP_DRESSING_CELL, SCPS_MAP_DRESSING_CELL };
-    SDL_Rect dst = { x, y, px, px };
-    SDL_RenderCopyEx(ren, g_dress_tex, &src, &dst, 0.0, NULL, flip);
+    SDL_Rect dst = { (int)(scx-px*0.5f), (int)(scy-px*0.5f), px, px };
+    SDL_RenderCopyEx(ren, g_dress_tex, &src, &dst, ang, NULL, SDL_FLIP_NONE);
 }
-static int rsign(int v){ return (v>0)?1:(v<0?-1:0); }
-static int rdirbit(int dx,int dy){ if(dx>0)return 2; if(dx<0)return 8; if(dy<0)return 1; if(dy>0)return 4; return 0; }
+#define RAD2DEG 57.29577951308232
+/* angle ÉCRAN (deg) du segment monde (ax,ay)->(bx,by) sous la projection courante. */
+static double seg_screen_ang(const Cam *cam, float ax, float ay, float bx, float by){
+    float p0x,p0y,p1x,p1y; cam_project(cam,ax,ay,&p0x,&p0y); cam_project(cam,bx,by,&p1x,&p1y);
+    return atan2((double)(p1y-p0y),(double)(p1x-p0x))*RAD2DEG;
+}
+/* angle (deg) de l'axe « route/rivière » DESSINÉ dans le sprite iso droit : pour un iso 2:1,
+ * l'axe-sol va ~(KX,KY) → atan2(KY,KX). On RETIRE cet angle puis on ajoute la direction écran. */
+#define SEG_SPRITE_ANG0 (atan2((double)ISO_KY,(double)ISO_KX)*RAD2DEG)
 /* CHAÎNAGE des rivières : on suit les VRAIS tracés (w->river[].x/y, polylignes) — pas
  * le champ de débit (trop large). À chaque cellule, l'orientation vient des pas
  * AMONT→AVAL (voisin précédent + suivant) → sprite iso droit/coude, flip H/V. SOUS les décors. */
@@ -301,21 +310,65 @@ static void draw_map_rivers(SDL_Renderer *ren, const World *w, const Cam *cam, i
         for (int k=0; k<rv->len; k++){
             int cx=rv->x[k], cy=rv->y[k];
             if (cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
-            int dxp=(k>0)?rsign(cx-rv->x[k-1]):0, dyp=(k>0)?rsign(cy-rv->y[k-1]):0;            /* pas entrant */
-            int dxn=(k<rv->len-1)?rsign(rv->x[k+1]-cx):0, dyn=(k<rv->len-1)?rsign(rv->y[k+1]-cy):0; /* pas sortant */
-            int m = rdirbit(-dxp,-dyp) | rdirbit(dxn,dyn);   /* voisins connectés (amont + aval) */
-            bool E=(m&2)!=0, Wb=(m&8)!=0, N=(m&1)!=0, S=(m&4)!=0;
-            int id=MAPD_RIVER_STRAIGHT; SDL_RendererFlip fl=SDL_FLIP_NONE;
-            if      (E&&Wb){ id=MAPD_RIVER_STRAIGHT;    fl=SDL_FLIP_NONE; }       /* E-W : un diagonal iso */
-            else if (N&&S) { id=MAPD_RIVER_STRAIGHT;    fl=SDL_FLIP_HORIZONTAL; } /* N-S : l'autre diagonal */
-            else if (E&&S) { id=MAPD_RIVER_BEND_GENTLE; fl=SDL_FLIP_NONE; }
-            else if (S&&Wb){ id=MAPD_RIVER_BEND_GENTLE; fl=SDL_FLIP_HORIZONTAL; }
-            else if (Wb&&N){ id=MAPD_RIVER_BEND_GENTLE; fl=(SDL_RendererFlip)(SDL_FLIP_HORIZONTAL|SDL_FLIP_VERTICAL); }
-            else if (N&&E) { id=MAPD_RIVER_BEND_GENTLE; fl=SDL_FLIP_VERTICAL; }
-            else           { id=MAPD_RIVER_STRAIGHT;    fl=(k&1)?SDL_FLIP_HORIZONTAL:SDL_FLIP_NONE; }  /* bout */
+            int ax=(k>0)?rv->x[k-1]:cx, ay=(k>0)?rv->y[k-1]:cy;                 /* tangente amont→aval */
+            int bx=(k<rv->len-1)?rv->x[k+1]:cx, by=(k<rv->len-1)?rv->y[k+1]:cy;
             float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
             if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;   /* hors champ */
-            dress_blit_ex(ren,id,(int)fsx-px/2,(int)fsy-(px*2)/3,px,fl);
+            double ang = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f) - SEG_SPRITE_ANG0;
+            dress_blit_rot(ren,MAPD_RIVER_STRAIGHT,fsx,fsy,px,ang);   /* TOURNÉ pour suivre le fil */
+        }
+    }
+    SDL_SetTextureAlphaMod(g_dress_tex, 255);
+}
+static bool region_world_pos(const World *w, int reg, float *wx, float *wy){
+    if (reg<0||reg>=w->n_regions) return false;
+    const Region *R=&w->region[reg];
+    long ax=0,ay=0; int n=0;
+    for (int k=0;k<R->n_provinces && k<12;k++){
+        int pid=R->province_ids[k];
+        if (pid<0||pid>=w->n_provinces) continue;
+        ax+=w->province[pid].seed_x; ay+=w->province[pid].seed_y; n++;
+    }
+    if (n==0) return false;
+    *wx=(float)ax/n; *wy=(float)ay/n; return true;
+}
+/* CHAÎNAGE des routes : le long des routes commerciales TERRESTRES OUVERTES
+ * (region↔region, RouteNetwork). On échantillonne le segment centre→centre en
+ * cellules, autotile iso (droit/coude par direction, comme les rivières), saute la
+ * mer. SOUS les décors, SUR les rivières (le commerce existe quand la sim a tourné). */
+static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork *rn, const Cam *cam, int win_w, int win_h){
+    if (!g_dress_tex || !rn) return;
+    float sc=cam->scale; if (sc<3.0f) return;
+    g_iso_w=win_w; g_iso_h=win_h;
+    int px=(int)(sc*2.3f);
+    if(px<10)px=10;
+    if(px>120)px=120;
+    SDL_SetTextureAlphaMod(g_dress_tex, 235);
+    for (int i=0;i<rn->n && i<SCPS_MAX_ROUTES;i++){
+        const TradeRoute *tr=&rn->route[i];
+        if (!tr->open || tr->maritime) continue;                 /* terrestre & ouverte */
+        float ax,ay,bx,by;
+        if (!region_world_pos(w,tr->ra,&ax,&ay)) continue;
+        if (!region_world_pos(w,tr->rb,&bx,&by)) continue;
+        int steps=(int)fmaxf(fabsf(bx-ax),fabsf(by-ay));
+        if (steps<1 || steps>400) continue;
+        int lx[512],ly[512],ln=0, pcx=-999,pcy=-999;
+        for (int s2=0;s2<=steps && ln<512;s2++){
+            float t=(float)s2/(float)steps;
+            int cx=(int)(ax+(bx-ax)*t+0.5f), cy=(int)(ay+(by-ay)*t+0.5f);
+            if (cx==pcx && cy==pcy) continue;
+            lx[ln]=cx; ly[ln]=cy; ln++; pcx=cx; pcy=cy;
+        }
+        for (int k=0;k<ln;k++){
+            int cx=lx[k],cy=ly[k];
+            if (cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
+            if (scps_cellc(w,cx,cy)->sea) continue;              /* la route ne traverse pas la mer */
+            int ax=(k>0)?lx[k-1]:cx, ay=(k>0)?ly[k-1]:cy;
+            int bx=(k<ln-1)?lx[k+1]:cx, by=(k<ln-1)?ly[k+1]:cy;
+            float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
+            if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;
+            double ang = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f) - SEG_SPRITE_ANG0;
+            dress_blit_rot(ren,MAPD_ROAD_STRAIGHT,fsx,fsy,px,ang);   /* TOURNÉE pour suivre la route */
         }
     }
     SDL_SetTextureAlphaMod(g_dress_tex, 255);
@@ -4337,6 +4390,10 @@ int main(int argc, char **argv) {
      * respecte la barre des tâches) ; le layout suit la taille réelle (resize).
      * En mode capture (--shot), on garde WIN_W×WIN_H pour des images stables. */
     int initw = WIN_W, inith = WIN_H;
+    /* Override de résolution (capture) : SCPS_WIN_W/H — utile pour des screens calibrés. */
+    { const char *ew=getenv("SCPS_WIN_W"), *eh=getenv("SCPS_WIN_H");
+      if (ew){ int v=atoi(ew); if (v>=640 && v<=4096) initw=v; }
+      if (eh){ int v=atoi(eh); if (v>=480 && v<=4096) inith=v; } }
     Uint32 winflags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
     if (!shot){
         SDL_DisplayMode dm;
@@ -4664,7 +4721,7 @@ int main(int argc, char **argv) {
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); }   /* rivières chaînées + décors, SOUS les frontières */
+            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); }   /* rivières chaînées + décors, SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
             if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false; mmp.iso=false;  /* minicarte : top-down */
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
@@ -5272,7 +5329,7 @@ int main(int argc, char **argv) {
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
-        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); }
+        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); }
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
          * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
          * SOUS la sélection/glyphes/étiquettes (z-order §2c). */
