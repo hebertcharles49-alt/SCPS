@@ -199,14 +199,20 @@
   frein n'était PAS la capacité (remplissage 42-46 %, aucune famine — food_sat ~0.97) mais la
   VITESSE de croissance. Le monde est **BISTABLE** : à `R_BASE`=ln2/100 la pop reste captive du
   bassin BAS et tout build/colonisation GLISSE dessus ; le seuil de bascule est entre /50 et /40.
-  **`POP_R_BASE` passe à ln2/40 (0.01733)** — la pop sort du bassin bas (seed 9 : moy ~61k sur
-  5 sims, plage 44-70k ; doublement ~40 ans au plancher de besoins, ~20 ans au panier plein via
-  le bonus). On NE va PAS jusqu'à /30 (≈80k) : ses convulsions (≈13 guerres/sim, coups en série,
-  IPM 1.28, satisfaction → 78-80 %) lisent comme du CHAOS, pas de la vie ; **/40 donne un monde
-  DIFFÉRENCIÉ** — riche = plein, pauvre = modeste (seed 11 reste partiel ~46 %) — **sans truquer**.
-  C'est le **SEUL** levier touché (aucun build order forcé, aucune colonisation forcée, aucune
-  inflation plate). ⚠ **RE-BASELINE** : les mondes des graines de référence ONT CHANGÉ (pop
-  ≈×1.8) ; le **hash 12 ans re-baseline** (le taux mord dès l'an-0, contrairement à l'endgame).
+  **`POP_R_BASE` passe à ln2/40 (0.01733)** — la pop sort du bassin bas (seed 9 : ≈60-70k sur
+  5 sims, plage 44-97k ; doublement ~40 ans au plancher de besoins, ~20 ans au panier plein via
+  le bonus). **Sortir du bassin a un PRIX** : le monde vif est plus CONTESTÉ (seed 9, /40 mesuré :
+  satisfaction 76-80 %, ~12 guerres/sim, ~13 coups/sim, IPM 1.31, hégémon mortel 5/5) — c'est de la
+  VIE (un monde à enjeux), pas du chaos ; **cette turbulence vaut AUSSI à /30** (≈80k), comparable —
+  ce n'est PAS un défaut propre au taux haut. **/40 retenu pour le RÉALISME** (le critère demandé) :
+  le doublement RÉALISÉ ≈20-40 ans (base 40 ans × bonus jusqu'à ×2) ENCADRE la cible ~30 ans, sans
+  le biais trop-rapide du /30 ; monde **DIFFÉRENCIÉ** — riche = plein, pauvre = modeste (seed 11 reste
+  partiel ~46 %) — **sans truquer**. C'est le **SEUL** levier touché (aucun build order forcé, aucune
+  colonisation forcée, aucune inflation plate). ⚠ **EFFET AVAL §27** : le monde plus vif charge
+  l'entropie plus vite → la fin éclôt PLUS TÔT (obs. RONCES an 127 / GRAND HIVER an 143, seed 9, vs
+  ~184 documenté), toujours **post-100** (le cliquet tient). ⚠ **RE-BASELINE** : les mondes des graines
+  de référence ONT CHANGÉ (pop ≈×1.8) ; le **hash 12 ans re-baseline** (le taux mord dès l'an-0,
+  contrairement à l'endgame).
   `make test` **35/35 vert** (les contrôles sensibles au monde — `ai_demo`, `social_demo` — étaient
   déjà robustes à l'échelle de pop) ; `make determinism` STABLE (save/reload byte-identique).
   **Dialable d'UNE ligne** ou `SCPS_TUNE=POP_R_BASE=…` vers /35 (≈64k) ou /30 (registre J :

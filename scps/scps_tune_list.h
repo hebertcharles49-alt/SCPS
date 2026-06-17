@@ -137,9 +137,11 @@
      * une catégorie comme « satisfaite ».
      * ⚠ R_BASE = LE LEVIER DE VITALITÉ (le monde est BISTABLE) : à ln2/100 la pop se FIGE au
      *   bassin BAS (≈½·cap_pop, monde « mou »), tout build/colonisation glisse dessus ; le seuil
-     *   de bascule est entre /50 et /40. ln2/40 sort du bassin bas SANS les convulsions du /30
-     *   (≈13 guerres/sim, coups en série, IPM 1.28) — monde DIFFÉRENCIÉ (riche=plein, pauvre=
-     *   modeste, pas truqué). Dialable d'UNE ligne (ou SCPS_TUNE=POP_R_BASE=…) vers /35 ou /30. */ \
+     *   de bascule est entre /50 et /40. ln2/40 sort du bassin bas — le monde vif est plus CONTESTÉ
+     *   (turbulence mesurée ~12 guerres/sim, coups, IPM ~1.31 : le PRIX de la vie, COMPARABLE à /30)
+     *   mais DIFFÉRENCIÉ (riche=plein, pauvre=modeste, pas truqué) ; /40 retenu pour le RÉALISME —
+     *   le doublement réalisé ≈20-40 ans encadre la cible ~30 ans. Dialable d'UNE ligne (ou
+     *   SCPS_TUNE=POP_R_BASE=…) vers /35 ou /30 (plus plein, turbulence comparable). */ \
     X(POP_R_BASE,             0.01733f) \
     X(POP_PROSP_MID,          0.2f) \
     X(POP_PROSP_SPAN,         1.8f) \
