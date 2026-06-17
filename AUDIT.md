@@ -199,6 +199,36 @@ absorbé), âges éveillés inchangés (2, pas de Brèche en masse). make test 3
 0-warning, lang-check 64. SAVE non bumpé. L'arc Syncrétisme est bouclé : le commerce réveille
 l'archétype (S1), cristallise la culture (S2), et allume l'emblème faustien (S3).
 
+## (c 11) N1 — la carte nue : worldgen ne pose plus rien, SAUF les cités-états (2026-06-16)
+
+Bascule de genèse : `econ_init` ne pose plus ni socles de matière, ni manufactures, ni niveaux
+pour les EMPIRES — chaque région garde sa VOCATION (`REGION_RAW_KEEP`=3 brutes dominantes + vivrier
++ stratégiques rares, la traîne tombe), la carte naît NUE, l'IA/agency bâtissent dans le temps.
+
+Trois compléments pour que la mise à nu reste vivable :
+1. **Cités-états EXEMPTÉES** — elles tiennent le marché mondial (#5) : socles + voiles arcanes +
+   manufactures au gisement + niveaux préservés (le carve-out porte sur `w->country[cid].role`).
+2. **Pool tradable cité-état** (`CS_TRADE_POOL`=1000 bois/fer/argile/pierre sur la région-pivot) :
+   le marché mondial le revend aux empires nus → ils IMPORTENT de quoi bâtir. A/B seed 9 : accession
+   du 3e empire an 66 → 43, vrac aval 0.00 → 1.60, flux −4.7 → +15.4 or/mois.
+3. **Marché de départ** (`agency_seed_capital_markets`) : chaque empire naît avec un `EDI_MARCHE`
+   GRATUIT sur sa capitale (semé comme les Centres, chronicle/viewer). Effet seed 9 : hub tenu
+   1/4 → 2/4, commerce via cités-états 62 % → 55 % (les empires négocient davantage chez eux).
+
+Diagnostic clé (la question « tech / volonté IA / ressources ? ») : la pose autonome (§NF,
+`econ_build_tick:783‑799`) est gatée par les RESSOURCES — la manufacture ne s'implante que si le
+royaume sait la NOURRIR (intrant au pool OU stock importé ≥ `NF_STOCK_MIN`) + une pénurie (prix
+≥ 1.8× base, automatique) + pop ≥ 80. La tech ne gate que 5 manufactures avancées ; la « volonté »
+d'IA est la voie parallèle payée en or (`ai_build_manufacture`). Le charbon de la chaîne à feu/arcane
+reste au joueur (la charbonnière) — hors pool, par choix.
+
+Bancs recâblés (les fixtures dépendaient de bâtiments posés d'office) : `ai_demo` « Bâtisseur +K »
+robustifié (monde nu ⇒ digestion permanente, K → `builds_other` ; on garde « métabolise le plus »,
+`w_build` STRICT) · `social_demo` brasserie isolée (`owner=-1`, sinon diluée P1 sur les sœurs nues) ·
+`econ_arcane_demo` forge nourrie en charbon (in2). make test **34/34**, lang-check 64, déterminisme
+stable, ASan/UBSan muets. SAVE non bumpé (l'accès marché des empires — `hub_map` vers le Centre le
+plus proche — est inchangé ; `re->stock` reste le store).
+
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
 Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde

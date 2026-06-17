@@ -141,6 +141,32 @@
   ⚠ **RE-BASELINE** : feu **0 → 3.3/tick**, arsenal feu 0 → 90+, **arquebusier 0 → 3 unités**
   (seed 9, year-150) ; l'arc/le trait montent aussi (T-gate assoupli). Determinism 12-ans seed 7
   **inchangé** (la chaîne n'éclôt qu'après le tier-3, > 12 ans). **SAVE non bumpé**.
+- **N1 (2026-06-16) — LA CARTE NUE (worldgen ne pose plus rien, SAUF les cités-états)** : le worldgen
+  NE POSE plus socles de matière, manufactures ni niveaux pour les EMPIRES — la tuile produit sa
+  **VOCATION** (`REGION_RAW_KEEP`=3 brutes les plus fortes + vivrier + stratégiques rares ; la longue
+  traîne tombe), la carte naît **NUE** et l'IA/agency élèvent les manufactures DANS LE TEMPS
+  (`econ_build_tick` §NF + chantiers payés). Trois compléments : **(1) À L'EXCEPTION DES CITÉS-ÉTATS** —
+  elles tiennent le marché mondial (#5), donc EXEMPTÉES : elles gardent socles + voiles arcanes +
+  manufactures au gisement + niveaux, comme avant. **(2) POOL TRADABLE CITÉ-ÉTAT** (`CS_TRADE_POOL`=1000
+  bois/fer/argile/pierre sur la région-pivot de chaque cité-état) : le marché mondial le revend aux
+  empires nés nus — la matière du bâti (trio bois/pierre/argile des chantiers) + le fer des outils ont
+  une SOURCE, l'empire IMPORTE au lieu de stagner au plancher ½·cap_pop. **(3) MARCHÉ DE DÉPART** —
+  chaque empire naît avec un `EDI_MARCHE` GRATUIT sur sa capitale (`agency_seed_capital_markets`, semé
+  comme les Centres en chronicle/viewer ; un empire nu ne pourrait pas le payer). Le **gate** de pose
+  autonome (§NF) reste les **RESSOURCES** : la manufacture ne s'implante que si le royaume sait la
+  NOURRIR (intrant produit dans le pool OU importé en stock ≥ `NF_STOCK_MIN`) — PAS la tech (gate de
+  5 manufactures avancées seulement : foreuse/alambic/réplicateur/corne/arquebus) ni une « volonté »
+  d'IA (la voie §NF est price-driven ; l'IA-agency est la voie parallèle payée en or). Le charbon de la
+  chaîne à feu/arcane reste au JOUEUR (la charbonnière, bois→charbon) — pas dans le pool. ⚠ **RE-BASELINE**
+  (seed 9) : accession du 3e empire **an 66 → 43** (pool), vrac aval **0 → 1.6**, hub tenu **1/4 → 2/4**
+  (marché de départ), commerce via cités-états **62 % → 55 %** (les empires négocient plus chez eux).
+  Tunables registre J : `REGION_RAW_KEEP` 3 · `CS_TRADE_POOL` 1000. Bancs (carte nue ⇒ les fixtures qui
+  dépendaient des bâtiments posés d'office sont recâblées) : `ai_demo` « Bâtisseur +K » ROBUSTIFIÉ
+  (monde nu ⇒ digestion permanente, la voie K bascule en `builds_other` ; on garde « métabolise le plus »
+  (K proactif OU édifices civils), l'appétit `w_build` reste STRICT) ; `social_demo` brasserie ISOLÉE
+  (`owner=-1`, sinon diluée P1 sur les sœurs nues) ; `econ_arcane_demo` forge nourrie en CHARBON (in2).
+  **SAVE non bumpé** (l'accès marché des empires — `hub_map` vers le Centre de la cité-état la plus proche,
+  #5 — est INCHANGÉ ; `re->stock` reste le store sérialisé).
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables

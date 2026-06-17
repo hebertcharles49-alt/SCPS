@@ -106,6 +106,9 @@ bool agency_build(AgencyState *a, WorldEconomy *econ, const World *w, int region
  * (au-delà du trésor → dette, créancier assigné) ; la topbar (econ_country_gold) dit VRAI.
  * Les matériaux sortent toujours du marché régional ; le péage va à la cité-état hôte. */
 bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e, int owner);
+/* DÉPART — pose GRATUITE d'un Marché sur la capitale de chaque empire (joueur/antagoniste)
+ * au montage du monde : un marché dès l'an 0 sous la « carte nue ». À semer comme les Centres. */
+void agency_seed_capital_markets(const World *w, WorldEconomy *econ);
 /* E2 §13 — édifices GATÉS par l'arbre : Comptoir ← « Comptoirs marchands »,
  * Entrepôt ← « Halles & entrepôts ». Tout le reste est libre. ts NULL = libre
  * (bancs d'essai, voies basses). */

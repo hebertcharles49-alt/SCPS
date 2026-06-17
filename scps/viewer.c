@@ -1249,6 +1249,7 @@ static void sim_rebuild(Sim *s, World *w) {
     intertrade_reset();   /* embargos décrétés + flux : RAZ par partie */
     intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs du réseau) */
     intertrade_seed_citystate_arms(w, s->econ);   /* F-arc : chaque cité-état naît armurier (les empires y pompent leurs armes) */
+    agency_seed_capital_markets(w, s->econ);   /* DÉPART : chaque empire naît avec un Marché sur sa capitale (carte nue) */
     econ_set_arms_pump(intertrade_market_pull);   /* F-arc : la levée s'arme au marché (propre→Centre cité-état→mondial) */
     /* RAZ PLEINE PLAGE : n_countries grandit par sécession ; à la RÉGÉNÉRATION (touche R)
      * les slots hauts gardaient ai_on/TechState périmés d'un monde précédent (cf. chronicle). */

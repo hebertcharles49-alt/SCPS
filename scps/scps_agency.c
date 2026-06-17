@@ -322,6 +322,28 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
 bool agency_build(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e){
     return agency_build_acct(a, econ, w, region, e, (econ&&region>=0&&region<econ->n_regions)?econ->region[region].owner:-1);
 }
+
+/* DÉPART — chaque EMPIRE (joueur/antagoniste) naît avec un MARCHÉ sur sa capitale :
+ * PE_infra + point de négoce dès l'an 0, GRATUIT (un empire né NU sous la « carte nue »
+ * n'a pas de quoi le payer, et le worldgen ne pose plus rien d'office). Les CITÉS-ÉTATS,
+ * elles, naissent avec leur CENTRE (intertrade_seed_centres, PE_infra ≥ marché) → on ne
+ * double pas. À semer au montage du monde, comme les Centres (chronicle/viewer). */
+static void apply_delta(ProvBuild *b, const ProvBuild *d);   /* défini plus bas (effet d'édifice) */
+void agency_seed_capital_markets(const World *w, WorldEconomy *econ){
+    if (!w || !econ) return;
+    for (int c=0;c<w->n_countries;c++){
+        PolityRole role=w->country[c].role;
+        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+        int cp=w->country[c].capital_prov;
+        if (cp<0 || cp>=w->n_provinces) continue;
+        int r=w->province[cp].region;
+        if (r<0 || r>=econ->n_regions || !econ->region[r].active) continue;
+        RegionEconomy *re=&econ->region[r];
+        if (re->edi_built & (1u<<EDI_MARCHE)) continue;          /* déjà posé → ne pas doubler le delta */
+        apply_delta(&re->build, &EDIFICES[EDI_MARCHE].delta);
+        re->edi_built |= (1u<<EDI_MARCHE);
+    }
+}
 TechId edifice_gate_tech(Edifice e){
     switch (e){
         case EDI_COMPTOIR: return TECH_COMPTOIRS;
