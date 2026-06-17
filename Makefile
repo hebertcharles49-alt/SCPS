@@ -46,7 +46,10 @@ endif
 # SDL n'est requis QUE par le visualiseur (scps_viewer). Les bancs d'essai
 # headless (core_demo, scps_dump, …) se construisent sans SDL. La détection
 # est silencieuse : en l'absence de sdl2-config, SDL_* reste vide.
-SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
+# `-Dmain=SDL_main` est FILTRÉ : le sdl2-config MinGW l'émet, mais ce renommage
+# casse le `main` des outils headless (chronicle, bancs → undefined WinMain). Le
+# viewer, lui, n'en a pas besoin — SDL_main.h le fait déjà via #include <SDL.h>.
+SDL_CFLAGS := $(filter-out -Dmain=SDL_main,$(shell sdl2-config --cflags 2>/dev/null))
 SDL_LIBS   := $(shell sdl2-config --libs   2>/dev/null)
 
 ifeq ($(WIN),1)
