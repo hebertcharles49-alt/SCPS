@@ -1421,6 +1421,13 @@ static void draw_topbar(SDL_Renderer *ren, int win_w, const Sim *s, const World 
     xb = draw_reading(ren,xb,yB,"Légitimité",r.m_legitimite.value,label_legit(r.legitimite), band_good(r.legitimite,5,true), hover_legit());
     xb = draw_reading(ren,xb,yB,"Cohésion",  r.m_cohesion.value,  label_concorde(r.concorde),band_good(r.concorde,4,false),  hover_concorde());
     xb = draw_reading(ren,xb,yB,"Prospérité",r.m_prosperite.value,label_prosp(r.prosperite), band_good(r.prosperite,5,true), hover_prosp());
+    /* §27 — ENTROPIE : le destin PARTAGÉ du monde (≠ par-pays). Masqué tant que le monde
+     * est STABLE (comme le présage calme) ; il SURGIT à mesure que la Brèche approche.
+     * Couleur band_good(…,false) : haut = MAUVAIS. Tout via la membrane (endgame_readout). */
+    { EndgameReadout er = endgame_readout(s->wp, s->eg);
+      if (er.entropie > ENT_STABLE)
+          xb = draw_reading(ren,xb,yB,"Entropie", er.entropie_pct, label_entropie(er.entropie),
+                            band_good((int)er.entropie,4,false), hover_entropie()); }
     (void)xb;
 
     /* — Rang C : les FACTIONS-ÉTHOS par leur SATISFACTION (la signature, §9). Pastille
