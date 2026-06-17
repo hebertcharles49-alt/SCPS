@@ -694,7 +694,7 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         else                                       group=SETTLE_RURAL;
         if (cap && tier<4) tier=4;                                             /* la CAPITALE domine : cité a minima */
         if (g_clear_mask){                                                     /* DÉBOISE un disque ∝ taille autour de la ville */
-            int rad=(int)(7.0f*dscale[tier]+0.5f); if(rad<3)rad=3; if(rad>14)rad=14;
+            int rad=(int)(9.0f*dscale[tier]+0.5f); if(rad<4)rad=4; if(rad>18)rad=18;
             for(int dy=-rad;dy<=rad;dy++) for(int dx=-rad;dx<=rad;dx++){
                 if(dx*dx+dy*dy>rad*rad) continue;
                 int nx=cx+dx,ny=cy+dy; if(nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H) g_clear_mask[ny*SCPS_W+nx]=1;
@@ -763,7 +763,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
     for (int cy=cy0; cy<cy1; cy+=step){           /* rangées : arrière → avant (ordre de profondeur iso) */
         for (int cx=cx0; cx<cx1; cx+=step){
             const Cell *c = scps_cellc(w, cx, cy);
-            if (c->sea) continue;                  /* la mer reste nue (pack terrestre) */
+            if (c->sea || c->lake) continue;       /* mer ET LACS restent nus (plus d'arbres dans l'eau : le bleu du lac perçait sous la canopée) */
             float fsx,fsy; cam_project(cam,(float)cx,(float)cy,&fsx,&fsy);
             int sx=(int)fsx, sy=(int)fsy;
             uint32_t h=map_hash(cx,cy,0x5EED01u);
