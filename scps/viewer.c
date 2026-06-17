@@ -79,6 +79,12 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
     return tex;
 }
 static SDL_Texture *g_cover_tex = NULL;   /* route-cover : MOBILIER de route (bornes, haies, murets, bottes, rochers…) */
+static SDL_Texture *g_port_tex = NULL;    /* ports ORIENTÉS : ville côtière dont les quais SUIVENT la mer */
+#define SCPS_PORT_FILE "scps_port_orientation.bmp"
+#define SCPS_PORT_CELL 96                 /* atlas 8 col × 16 lignes (0-7 front · 8-15 vue de dos), 96 px */
+#define SCPS_PORT_COLS 8
+/* type de port par LIGNE (front_side 0-7 ; +8 = la même vue de DOS) */
+enum { PORT_FISHING=0, PORT_TRADE_QUAY=1, PORT_TOWN_HARBOR=2, PORT_FORTIFIED=3, PORT_ESTUARY_DOCK=4 };
 #define SCPS_COVER_FILE "scps_route_cover.bmp"
 #define SCPS_COVER_CELL 128               /* atlas 8 col × 8 lignes, cellule 128 px */
 #define SCPS_COVER_COLS 8
@@ -567,6 +573,22 @@ static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork
  * SILHOUETTE = terrain (priorité estuaire > rivière > montagne > capitale=fortifiée >
  * rural). Display-only : lit colonized + pop + géographie (tangibles). Dessinée APRÈS le
  * décor → focale bien lisible. */
+/* direction ÉCRAN (dsx,dsy) vers la MER la plus proche d'une ville côtière — sert à
+ * ORIENTER le port (les quais suivent l'eau). Anneaux croissants autour du centre. */
+static bool settle_sea_dir(const World *w, const Cam *cam, int cx, int cy, float *dsx, float *dsy){
+    int bx=-1,by=-1;
+    for (int rad=1; rad<=14 && bx<0; rad++)
+        for (int dy=-rad; dy<=rad && bx<0; dy++)
+            for (int dx=-rad; dx<=rad; dx++){
+                if (abs(dx)!=rad && abs(dy)!=rad) continue;        /* bord de l'anneau seulement */
+                int nx=cx+dx, ny=cy+dy;
+                if (nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+                if (scps_cellc(w,nx,ny)->sea){ bx=nx; by=ny; break; }
+            }
+    if (bx<0) return false;
+    float ax,ay,bxs,bys; cam_project(cam,(float)cx,(float)cy,&ax,&ay); cam_project(cam,(float)bx+0.5f,(float)by+0.5f,&bxs,&bys);
+    *dsx=bxs-ax; *dsy=bys-ay; return true;
+}
 static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
     if (!g_settle_tex || !econ) return;
     float sc=cam->scale; if (sc<2.0f) return;
@@ -595,6 +617,23 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         float fsx,fsy; cam_project(cam,wx,wy,&fsx,&fsy);
         int dpx=(int)(sc*26.0f*dscale[tier]); if(dpx<32)dpx=32; if(dpx>960)dpx=960;   /* TRÈS gros & dominants (style HOMM) */
         if(fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
+        /* ── VILLE PORTUAIRE ORIENTÉE : si côtière, on remplace le sprite générique par un
+         *    PORT dont les quais SUIVENT la mer (front/dos selon haut/bas écran, miroir selon
+         *    gauche/droite, type selon tier). Sinon, settlement standard. ── */
+        float dsx,dsy;
+        if (re->coastal && g_port_tex && settle_sea_dir(w,cam,cx,cy,&dsx,&dsy)){
+            int ptype = (tier>=4||cap)?PORT_FORTIFIED : (tier>=3)?PORT_TOWN_HARBOR
+                      : (tier>=2)?PORT_TRADE_QUAY : PORT_FISHING;
+            if (c->river>40 && !c->lake) ptype=PORT_ESTUARY_DOCK;              /* embouchure */
+            int prow = (dsy<0.f ? 8 : 0) + ptype;        /* mer en HAUT d'écran → vue de DOS */
+            int pcol = (dsx<0.f) ? 1 : 0;                /* mer à GAUCHE → miroir */
+            float dl=sqrtf(dsx*dsx+dsy*dsy)+1e-3f;
+            float ax2=fsx + dsx/dl*dpx*0.16f, ay2=fsy + dsy/dl*dpx*0.16f;      /* décalé vers l'eau */
+            SDL_Rect psrc={pcol*SCPS_PORT_CELL, prow*SCPS_PORT_CELL, SCPS_PORT_CELL, SCPS_PORT_CELL};
+            SDL_Rect pdst={(int)ax2-dpx/2, (int)ay2-(dpx*7)/10, dpx, dpx};
+            SDL_RenderCopy(ren, g_port_tex, &psrc, &pdst);
+            continue;
+        }
         SDL_Rect src={tier*SCPS_SETTLE_CELL, group*SCPS_SETTLE_CELL, SCPS_SETTLE_CELL, SCPS_SETTLE_CELL};
         SDL_Rect dst={(int)fsx-dpx/2, (int)fsy-(dpx*7)/10, dpx, dpx};          /* ancré bas-centre */
         SDL_RenderCopy(ren, g_settle_tex, &src, &dst);
@@ -4820,6 +4859,8 @@ int main(int argc, char **argv) {
     else fprintf(stderr,"[scps] settlements : %s absent.\n", SCPS_SETTLE_FILE);
     g_cover_tex = load_despilled_bmp(ren, SCPS_COVER_FILE);
     if (g_cover_tex) printf("[scps] %s chargé (route-cover).\n", SCPS_COVER_FILE);
+    g_port_tex = load_despilled_bmp(ren, SCPS_PORT_FILE);
+    if (g_port_tex) printf("[scps] %s chargé (ports orientés).\n", SCPS_PORT_FILE);
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
 #endif
