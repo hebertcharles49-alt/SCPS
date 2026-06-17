@@ -88,6 +88,28 @@ typedef struct {
     float scale;     /* pixels par cellule */
 } Cam;
 
+/* ---- VUE ISOMÉTRIQUE (display-only) ---------------------------------- *
+ * Toggle (touche I). Le RENDERER incline le terrain (render_map, p->iso) ; ici on
+ * projette les SURCOUCHES (décors, bordures, labels, marqueurs) avec les MÊMES
+ * facteurs ISO_KX/KY autour du centre fenêtre, et on inverse pour le picking. Les
+ * dims fenêtre du pivot sont rafraîchies par frame (g_iso_w/h). */
+static int g_iso=0, g_iso_w=0, g_iso_h=0;
+static void cam_project(const Cam *cam, float wx, float wy, float *osx, float *osy){
+    float fx=(wx-cam->ox)*cam->scale, fy=(wy-cam->oy)*cam->scale;   /* écran « plat » */
+    if (!g_iso){ *osx=fx; *osy=fy; return; }
+    float px=g_iso_w*0.5f, py=g_iso_h*0.5f, dx=fx-px, dy=fy-py;
+    *osx = px + (dx - dy)*ISO_KX;          /* rotation 45° */
+    *osy = py + (dx + dy)*ISO_KY;          /* + écrasement vertical (2:1) */
+}
+static void cam_unproject(const Cam *cam, float sx, float sy, float *owx, float *owy){
+    float fx=sx, fy=sy;
+    if (g_iso){
+        float px=g_iso_w*0.5f, py=g_iso_h*0.5f, a=(sx-px)/ISO_KX, b=(sy-py)/ISO_KY;
+        fx = px + (a+b)*0.5f; fy = py + (b-a)*0.5f;
+    }
+    *owx = fx/cam->scale + cam->ox; *owy = fy/cam->scale + cam->oy;
+}
+
 static void cam_zoom(Cam *c, float factor, float screen_x, float screen_y) {
     /* Zoom centré sur le point écran (screen_x, screen_y) */
     float wx = screen_x / c->scale + c->ox;
@@ -239,35 +261,43 @@ static int dress_density(Biome b){
  * NUE : le pack est terrestre (plus de couche d'écume). */
 static void draw_map_dressing(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
     if (!g_dress_tex) return;
+    g_iso_w=win_w; g_iso_h=win_h;                 /* pivot iso de la frame */
     float sc = cam->scale;                        /* pixels par cellule */
     if (sc < 3.0f) return;                         /* trop dézoomé → pas de décor (sous-pixel) */
     /* pas monde tel que l'espacement ÉCRAN reste ~constant (≈ 14 px) : dense de
      * près, jamais en bouillie ni explosif en compte. */
     int step = (int)(14.0f/sc + 0.5f); if (step < 1) step = 1; if (step > 4) step = 4;
     int alpha = (sc < 5.0f) ? 200 : (sc < 9.0f ? 230 : 255);
-    int cx0=(int)cam->ox-2, cy0=(int)cam->oy-2;
-    int cx1=(int)(cam->ox + win_w/sc)+2, cy1=(int)(cam->oy + win_h/sc)+2;
+    /* plage MONDE couvrant la fenêtre (iso : on inverse les 4 coins → boîte englobante). */
+    float wx0,wy0,wx1,wy1,twx,twy; cam_unproject(cam,0,0,&wx0,&wy0); wx1=wx0; wy1=wy0;
+    float corn[3][2]={{(float)win_w,0},{0,(float)win_h},{(float)win_w,(float)win_h}};
+    for (int k=0;k<3;k++){
+        cam_unproject(cam,corn[k][0],corn[k][1],&twx,&twy);
+        if(twx<wx0)wx0=twx;
+        if(twx>wx1)wx1=twx;
+        if(twy<wy0)wy0=twy;
+        if(twy>wy1)wy1=twy;
+    }
+    int cx0=(int)wx0-2, cy0=(int)wy0-2, cx1=(int)wx1+2, cy1=(int)wy1+2;
     if (cx0<0) cx0=0;
     if (cy0<0) cy0=0;
     if (cx1>SCPS_W) cx1=SCPS_W;
     if (cy1>SCPS_H) cy1=SCPS_H;
     cx0 -= cx0%step; cy0 -= cy0%step;             /* lattice ancré monde → stable au pan */
     SDL_SetTextureAlphaMod(g_dress_tex, (Uint8)alpha);
-    for (int cy=cy0; cy<cy1; cy+=step){           /* rangées : arrière → avant */
+    for (int cy=cy0; cy<cy1; cy+=step){           /* rangées : arrière → avant (ordre de profondeur iso) */
         for (int cx=cx0; cx<cx1; cx+=step){
             const Cell *c = scps_cellc(w, cx, cy);
             if (c->sea) continue;                  /* la mer reste nue (pack terrestre) */
-            int sx=(int)((cx - cam->ox)*sc), sy=(int)((cy - cam->oy)*sc);
+            float fsx,fsy; cam_project(cam,(float)cx,(float)cy,&fsx,&fsy);
+            int sx=(int)fsx, sy=(int)fsy;
             uint32_t h=map_hash(cx,cy,0x5EED01u);
             if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor */
-            /* (pas de sprite RIVIÈRE/ROUTE semé par cellule : ce sont des MORCEAUX
-             * topologiques — tuilés au hasard ils font « motif » sur les côtes/fleuves.
-             * Le tracé des fleuves vient déjà du TERRAIN, pas du dressing.) */
             int id=dress_pick(c,h);
             if (id<0) continue;
             int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
-            dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre */
+            dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre (sprite debout) */
         }
     }
     SDL_SetTextureAlphaMod(g_dress_tex, 255);
@@ -839,8 +869,9 @@ static void bv_flush(SDL_Renderer *ren){
 #endif
 typedef struct { const Cam *cam; int win_w,win_h; } BView;
 static void bseg_stroke_one(SDL_Renderer *ren, const BView *bv, const BSeg *sg, float wpx, SDL_Color col){
-    float X0=((float)sg->x0-bv->cam->ox)*bv->cam->scale, Y0=((float)sg->y0-bv->cam->oy)*bv->cam->scale;
-    float X1=((float)sg->x1-bv->cam->ox)*bv->cam->scale, Y1=((float)sg->y1-bv->cam->oy)*bv->cam->scale;
+    float X0,Y0,X1,Y1;
+    cam_project(bv->cam,(float)sg->x0,(float)sg->y0,&X0,&Y0);
+    cam_project(bv->cam,(float)sg->x1,(float)sg->y1,&X1,&Y1);
     if ((X0<-wpx&&X1<-wpx)||(X0>bv->win_w+wpx&&X1>bv->win_w+wpx)||
         (Y0<-wpx&&Y1<-wpx)||(Y0>bv->win_h+wpx&&Y1>bv->win_h+wpx)) return;   /* cull viewport */
 #if SDL_VERSION_ATLEAST(2,0,18)
@@ -3386,8 +3417,8 @@ static bool region_screen_pos(const World *w, const Cam *cam, int reg, int *osx,
         ax += w->province[pid].seed_x; ay += w->province[pid].seed_y; n++;
     }
     if (n==0) return false;
-    *osx=(int)(((float)ax/n - cam->ox)*cam->scale);
-    *osy=(int)(((float)ay/n - cam->oy)*cam->scale);
+    float _px,_py; cam_project(cam,(float)ax/n,(float)ay/n,&_px,&_py);
+    *osx=(int)_px; *osy=(int)_py;
     return true;
 }
 
@@ -3514,8 +3545,8 @@ static void draw_empire_labels(SDL_Renderer *ren, const Cam *cam, const Sim *s,
             }
         }
         if (n<2) continue;
-        int sx=(int)(((float)ax/n - cam->ox)*cam->scale);
-        int sy=(int)(((float)ay/n - cam->oy)*cam->scale);
+        float _px,_py; cam_project(cam,(float)ax/n,(float)ay/n,&_px,&_py);
+        int sx=(int)_px, sy=(int)_py;
         if (sx<60||sy<86||sx>win_w-60||sy>win_h-70) continue;   /* hors champ / sous les panneaux */
         const char *nm=w->country[c].name; int lw=text_w(g_font_small,nm);
         fill_rect(ren, sx-lw/2-3, sy-7, lw+6, 14, (SDL_Color){0x08,0x0c,0x14,(Uint8)(a*0.66f)});
@@ -4208,6 +4239,7 @@ int main(int argc, char **argv) {
         }
         else { shot_seed = (uint32_t)strtoul(argv[i], NULL, 10); have_shot_seed = true; }
     }
+    g_iso = getenv("SCPS_ISO") ? 1 : 0;   /* vue isométrique : défaut OFF (toggle en jeu) */
 
     /* §SURCHARGE TEXTE : si scps_lang.txt est présent, il REMPLACE le texte joueur
      * (par ID). Absent → défauts compilés. Rupture assumée de zéro-asset, display-only. */
@@ -4460,13 +4492,15 @@ int main(int argc, char **argv) {
         }
         if (shot_zoom > 1.f) cam_zoom(&cam, shot_zoom, win_w*0.5f, win_h*0.5f);  /* N3.1 : zoom AVANT la photo caméra */
         rp.cam_ox=cam.ox; rp.cam_oy=cam.oy; rp.cam_scale=cam.scale; rp.selected_prov=selected;
+        g_iso_w=win_w; g_iso_h=win_h; rp.iso=g_iso;   /* vue iso (SCPS_ISO en capture) */
         SDL_RenderClear(ren);
         if (shot_cur) {
             rp.region_tint=NULL;
             render_map(world, pb.pixels, pb.w, pb.h, &rp, VIEW_TERRAIN); pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
             for (int sy=8; sy<win_h-8; sy+=12) for (int sx=8; sx<win_w-8; sx+=12){
-                int cx2=(int)(sx/cam.scale+cam.ox), cy2=(int)(sy/cam.scale+cam.oy);
+                float _wx,_wy; cam_unproject(&cam,(float)sx,(float)sy,&_wx,&_wy);
+                int cx2=(int)_wx, cy2=(int)_wy;
                 if (cx2<0||cy2<0||cx2>=SCPS_W||cy2>=SCPS_H) continue;
                 const Cell *cc=scps_cellc(world,cx2,cy2);
                 if (cc->sea<=SEA_CABOTAGE) continue;
@@ -4550,7 +4584,7 @@ int main(int argc, char **argv) {
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
             if (sim.ready) draw_map_dressing(ren, world, &cam, win_w, win_h);   /* décors SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
-            if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false;
+            if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false; mmp.iso=false;  /* minicarte : top-down */
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
@@ -4897,8 +4931,8 @@ int main(int argc, char **argv) {
                     /* P0.2 — clic CARTE seulement HORS panneau (priorité panneau > carte) */
                     if (over_panel(ev.button.x, ev.button.y, win_w, win_h, selected)) break;
                     /* Sinon : sélectionner la province au clic (détail province) */
-                    int cx = (int)(ev.button.x / cam.scale + cam.ox);
-                    int cy = (int)(ev.button.y / cam.scale + cam.oy);
+                    float _wx,_wy; cam_unproject(&cam,(float)ev.button.x,(float)ev.button.y,&_wx,&_wy);
+                    int cx=(int)_wx, cy=(int)_wy;
                     if (cx>=0&&cx<SCPS_W&&cy>=0&&cy<SCPS_H) {
                         int p = (int)scps_cellc(world, cx, cy)->province;
                         if (p != selected) {
@@ -4921,7 +4955,8 @@ int main(int argc, char **argv) {
                 if (ev.button.button == SDL_BUTTON_RIGHT && g_gs==GS_PLAYING && sim.ready
                     && abs(ev.button.x-rdown_x)<5 && abs(ev.button.y-rdown_y)<5
                     && !over_panel(ev.button.x,ev.button.y,win_w,win_h,selected)){
-                    int cx=(int)(ev.button.x/cam.scale+cam.ox), cy=(int)(ev.button.y/cam.scale+cam.oy);
+                    float _wx,_wy; cam_unproject(&cam,(float)ev.button.x,(float)ev.button.y,&_wx,&_wy);
+                    int cx=(int)_wx, cy=(int)_wy;
                     g_diplo_target=-1;
                     if (cx>=0&&cy>=0&&cx<SCPS_W&&cy<SCPS_H){
                         int rg=(int)scps_cellc(world,cx,cy)->region;
@@ -5028,6 +5063,7 @@ int main(int argc, char **argv) {
                 case SDLK_i:     mode=VIEW_HABITABILITY; dirty=true; break;
                 case SDLK_f:     g_sb.tab=(g_sb.tab==SBT_FILTRES)?-1:SBT_FILTRES; dirty=true; break;
                 case SDLK_z:     cam_fit(&cam,win_w,win_h); dirty=true; break;   /* Z = cadrer la carte */
+                case SDLK_o:     g_iso=!g_iso; dirty=true; break;   /* O = bascule vue ISOMÉTRIQUE (oblique) */
                 case SDLK_r:
                     seed ^= (uint32_t)time(NULL) * 2654435761u;
                     params.seed = seed;
@@ -5089,6 +5125,7 @@ int main(int argc, char **argv) {
 
         if (dirty && pb.pixels) {
             rp.cam_ox = cam.ox; rp.cam_oy = cam.oy; rp.cam_scale = cam.scale;
+            g_iso_w=win_w; g_iso_h=win_h; rp.iso=g_iso;   /* vue iso (toggle) */
             rp.selected_prov = selected;
             rp.region_tint = NULL;
             ViewMode rmode = mode;
@@ -5164,7 +5201,8 @@ int main(int argc, char **argv) {
         /* ── filtre COURANTS : lignes de flux sur la mer (les MORTES = le creux) ── */
         if (g_sb.show_currents && g_gs==GS_PLAYING){
             for (int sy=8; sy<win_h-8; sy+=14) for (int sx=8; sx<win_w-8; sx+=14){
-                int cx2=(int)(sx/cam.scale+cam.ox), cy2=(int)(sy/cam.scale+cam.oy);
+                float _wx,_wy; cam_unproject(&cam,(float)sx,(float)sy,&_wx,&_wy);
+                int cx2=(int)_wx, cy2=(int)_wy;
                 if (cx2<0||cy2<0||cx2>=SCPS_W||cy2>=SCPS_H) continue;
                 const Cell *cc=scps_cellc(world,cx2,cy2);
                 if (cc->sea<=SEA_CABOTAGE) continue;          /* terre/côte : rien ; MORTE : creux */
@@ -5182,7 +5220,7 @@ int main(int argc, char **argv) {
          * eaux vives · courant (et son sens). Des mots, jamais un vecteur nu. */
         if (g_gs==GS_PLAYING && g_font_small && sim.ready){
             int hmx,hmy; SDL_GetMouseState(&hmx,&hmy);
-            int hcx=(int)(hmx/cam.scale+cam.ox), hcy=(int)(hmy/cam.scale+cam.oy);
+            float _hwx,_hwy; cam_unproject(&cam,(float)hmx,(float)hmy,&_hwx,&_hwy); int hcx=(int)_hwx, hcy=(int)_hwy;
             if (!over_panel(hmx,hmy,win_w,win_h,selected) && hcx>=0&&hcy>=0&&hcx<SCPS_W&&hcy<SCPS_H){  /* P0.2 : pas de hover carte sous un panneau */
                 const Cell *hc=scps_cellc(world,hcx,hcy);
                 if (hc->sea){
@@ -5236,7 +5274,7 @@ int main(int argc, char **argv) {
             }
             shell_draw(ren,win_w,win_h,world,&sim,&g_stage);     /* surcouches : pause · tuto · confirmation */
             /* mer au survol : le MOT (repli de plus basse priorité — ajouté en dernier) */
-            { int cx3=(int)(mx2/cam.scale+cam.ox), cy3=(int)(my2/cam.scale+cam.oy);
+            { float _wx,_wy; cam_unproject(&cam,(float)mx2,(float)my2,&_wx,&_wy); int cx3=(int)_wx, cy3=(int)_wy;
               if (!over_panel(mx2,my2,win_w,win_h,selected) && cx3>=0&&cy3>=0&&cx3<SCPS_W&&cy3<SCPS_H){  /* P0.2 */
                   const Cell *cc=scps_cellc(world,cx3,cy3);
                   if (cc->sea!=SEA_NONE){
@@ -5261,7 +5299,8 @@ int main(int argc, char **argv) {
 
         /* Status console */
         int mx, my; SDL_GetMouseState(&mx, &my);
-        int cx=(int)(mx/cam.scale+cam.ox), cy=(int)(my/cam.scale+cam.oy);
+        float _wx,_wy; cam_unproject(&cam,(float)mx,(float)my,&_wx,&_wy);
+        int cx=(int)_wx, cy=(int)_wy;
         status_line(world, mode, seed, cx, cy, selected);
 
         SDL_Delay(8); /* ~120fps max */

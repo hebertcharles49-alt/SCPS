@@ -51,7 +51,18 @@ typedef struct {
      * PLUS (sinon double trait). false (défaut) : comportement historique — bake
      * 1 cellule (minicarte, outils headless, captures sans strokes). */
     bool screen_strokes;
+    /* VUE ISOMÉTRIQUE (display-only) : incline le rendu (rotation 45° + écrasement
+     * vertical 2:1) autour du centre de la fenêtre. Le renderer INVERSE la projection
+     * (chaque pixel écran → point « plat » → monde) → la fenêtre reste REMPLIE. Le viewer
+     * projette ses surcouches (décors/bordures/labels) avec les MÊMES facteurs (ci-dessous)
+     * et inverse pour le picking. false = top-down historique. */
+    bool iso;
 } RenderParams;
+
+/* Facteurs de la projection iso (partagés viewer ⇄ renderer pour rester cohérents).
+ * (dx,dy) = point plat relatif au pivot ; écran = pivot + (dx−dy)·KX, (dx+dy)·KY. 2:1. */
+#define ISO_KX 0.78f
+#define ISO_KY 0.39f
 
 /* ---- Rendu principal --------------------------------------------------
  * Remplit pixels[pw×ph] (format ARGB8888) avec la carte rendue selon
