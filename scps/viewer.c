@@ -295,7 +295,7 @@ static int dress_density(Biome b){
         case BIO_WOODS: case BIO_MANGROVE:                     return 6;
         case BIO_VOLCANO:                                      return 6;
         case BIO_HILLS: case BIO_HIGHLANDS:                    return 5;
-        case BIO_FARMLAND:                                     return 3;   /* champs raréfiés (moins de répétition) */
+        case BIO_FARMLAND:                                     return 2;   /* champ PONCTUEL (mais habillé en ferme) */
         case BIO_PLAINS: case BIO_GRASSLAND:
         case BIO_STEPPE: case BIO_SAVANNA:                     return 3;
         case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 2;
@@ -711,6 +711,19 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
             dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre (sprite debout) */
+            /* FERME : un champ est PONCTUEL (densité basse) mais HABILLÉ — une grappe de
+             * 3-4 assets autour (botte, caisse, haie, rocher) en fait une ferme, pas un
+             * carré répété. (Les forêts restent denses, elles, c'est OK.) */
+            if (c->biome==BIO_FARMLAND && g_cover_tex){
+                static const int fcl[5]={COVER_HAYSTACK,COVER_CRATE,COVER_HEDGE_CLUMP,COVER_HAYSTACK,COVER_BOULDER};
+                int fn=3+(int)((h>>17)&1u);
+                for (int q=0;q<fn;q++){
+                    uint32_t hq=map_hash(cx*3+q, cy*5+q, 0xFA12BEEFu);
+                    int fsz=(int)(px*0.55f); if(fsz<7)fsz=7;
+                    int ox=(int)((hq>>3)&31u)-16, oy=(int)((hq>>9)&15u)-8;
+                    cover_blit(ren, fcl[hq%5], sx-fsz/2+ox+jx, sy-(fsz*3)/4+oy+jy, fsz);
+                }
+            }
         }
     }
     SDL_SetTextureAlphaMod(g_dress_tex, 255);
