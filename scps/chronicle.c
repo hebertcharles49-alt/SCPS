@@ -902,6 +902,17 @@ int main(int argc, char **argv){
                  (double)s.wp->entropy, s.wp->entropy_terminal?" [TERMINAL]":"",
                  s.wp->faust_consumed[0], s.wp->faust_consumed[1], s.wp->faust_consumed[2],
                  fract, npr?pir/npr:0.0, pmax, (double)econ_base_price(RES_IRON), arms); }
+        /* CAPSTONE §27 — la FIN, si elle s'est déclenchée (la preuve d'émergence). */
+        if (s.eg && s.eg->fired){
+            static const char *FN[]={"—","ENGLOUTISSEMENT","GRAND HIVER","RONCES","ASCENSION"};
+            int fin=(int)s.eg->fin; if(fin<0||fin>4)fin=0;
+            printf("              §27 FIN : %s (an %d) · épicentre rég %d · fauteur pays %d",
+                   FN[fin], s.eg->fin_year, s.eg->epicenter_reg, s.eg->fauteur_country);
+            if (s.eg->fin==FIN_EAU)        printf(" · %d région(s) englouties (%d en cours)", s.eg->n_sunken, s.eg->sink_pending);
+            else if (s.eg->fin==FIN_FROID) printf(" · refroidissement %.0f%%", (double)s.eg->cold_offset*100.0);
+            else if (s.eg->fin==FIN_RONCES)printf(" · front de ronces %d cellule(s)", s.eg->thorn_front_n);
+            printf("\n");
+        }
         if (getenv("SCPS_FORGEDIAG")){
             long bld[BLD_TYPE_COUNT]; memset(bld,0,sizeof bld);
             double sup[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)sup[g]=0.0;

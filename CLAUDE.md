@@ -167,6 +167,34 @@
   (`owner=-1`, sinon diluée P1 sur les sœurs nues) ; `econ_arcane_demo` forge nourrie en CHARBON (in2).
   **SAVE non bumpé** (l'accès marché des empires — `hub_map` vers le Centre de la cité-état la plus proche,
   #5 — est INCHANGÉ ; `re->stock` reste le store sérialisé).
+- **§27 CAPSTONE (2026-06-17) — L'ENDGAME : Entropie mondiale + 4 fins + Merveille** :
+  l'étage final. L'**ENTROPIE MONDE** (`WorldProsperity.entropy`) incorpore désormais la
+  **charge de TECH faustienne** (`endgame_tick` ajoute `ENTROPY_TECH_W·Σts[c].charge` APRÈS
+  `prosperity_tick` — vraie entrée moteur, pas un bonus plat) en plus des transmuteurs : sans
+  ça l'endgame ne se déclenchait JAMAIS (transmuteurs jamais posés en monde stable). Au seuil
+  `ENTROPY_FIN`, `endgame_select_and_fire` latche UNE fin (compteur de rare dominant : essence→
+  EAU · flux→RONCES · fer céleste→FROID ; sans transmuteur, signature déterministe du fauteur).
+  **EAU** : carve radiale (rift, `sunken[]`), `world_recompute_adjacency`+`econ_build_adjacency`,
+  refragmentation géo (`cataclysm_resplit_empire`). **FROID** : `cell.temperature` mutée par delta
+  annuel → `world_rebiome_cell` → `econ_cold_refresh` (le grain re-dérivé de l'habitabilité gelée
+  PLONGE sous le floor anti-famine → la pop décline). **RONCES** : `BIO_THORNS` + BFS-cellules
+  erratique (`thorn_front[]`, rng dédié). **MERVEILLE** (`endgame_start_wonder`, JOUEUR seul) :
+  3 paliers (FORGE/SOCIÉTÉ/SAVOIR ← fer céleste/flux/essence), charge-additive (ascension ET
+  apocalypse sur la même course), victoire = 3 paliers + **assimilation EFFECTIVE de tout le
+  monde** + arbre complet → l'empire disparaît (Dwemer, terre intacte). État sérialisé : section
+  **EGAM** + **bump SAVE_VERSION 25→26**. Membrane : `BandEntropie`/`EndgameReadout` (enums
+  miroirs, le seuil reste derrière la cloison). Tunables registre J : `ENTROPY_FIN` 50 ·
+  `ENTROPY_TECH_W` 1.0 · `SINK_RIFTS_PER_YEAR` 3 · `COLD_RAMP_PER_YEAR` 0.005 ·
+  `THORN_CELLS_PER_YEAR` 200 · `THORN_RANDOM_FRAC` 0.35 · `MERV_PHASE_DAYS` 3650 ·
+  `MERV_CHARGE_PER_TICK` 0.5. **Calibration** (seed 9) : déclenchement EAU **an 184** (cible ~180) ;
+  an 100 = entropie 23 < 50 (**cliquet** : aucune fin avant 100 ans). Banc `endgame_demo` (contrôles
+  C0-C6, 76/76). Télémétrie chronicle « §27 FIN ». **Déterminisme 12 ans INCHANGÉ** (l'endgame
+  n'éclôt qu'après l'an-100). ⚠ Re-baseline : les longs runs voient une fin à ~180-200 ans.
+  À VENIR : barre Entropie topbar + animations viewer (C7, dépend de SDL) ; pondération IA de
+  l'entropie (C8, différée — non porteuse, l'endgame fonctionne sans).
+- **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
+  d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
+  NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
 
 ## Disciplines non négociables
