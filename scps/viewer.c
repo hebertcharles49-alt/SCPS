@@ -718,7 +718,11 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         SDL_RenderCopy(ren, g_settle_tex, &src, &dst);
     }
 }
-static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
+/* DÉCORS (habillage). Dessiné en DEUX passes pour le bon ordre de calques (z-order
+ * demandé : routes → villes → habillage → CANOPÉES) : canopy_pass=0 pose tout le décor
+ * de SOL (champs, bâti, roches, buissons, fermes) ; canopy_pass=1 pose UNIQUEMENT les
+ * ARBRES (famille 2), qui coiffent donc tout le reste. La canopée se chevauche en dernier. */
+static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h, int canopy_pass){
     if (!g_dress_tex) return;
     g_iso_w=win_w; g_iso_h=win_h;                 /* pivot iso de la frame */
     float sc = cam->scale;                        /* pixels par cellule */
@@ -764,6 +768,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
              *    Le bâti OCCUPE la cellule (pas de nature en plus) + un chemin proche. ── */
             int bgate = (tier>=2)?1:0;                 /* fermes OUTLYING rares : la VILLE est le sprite settlement */
             if (settled && (int)(hb&15u) < bgate){
+                if (canopy_pass) continue;             /* le bâti isolé est de l'HABILLAGE (sol), pas la canopée */
                 int bid = dress_building(c, tier, hb);
                 int bpx = dress_size(bid,sc);
                 int bjx=(int)((hb>>8)&7u)-4, bjy=(int)((hb>>11)&7u)-4;
@@ -775,6 +780,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor naturel */
             int id=dress_pick(c,h);
             if (id<0) continue;
+            { int fam=(id<56)?id/8:(id-56)/8; if ((fam==2) != (canopy_pass!=0)) continue; }  /* famille 2 = ARBRES → passe canopée ; le reste → passe sol */
             if (c->biome==BIO_FARMLAND){                              /* CHAMP : très ponctuel (~95 % retirés) + JAMAIS sur une route */
                 if (g_road_mask && g_road_mask[cy*SCPS_W+cx]) continue;
                 if ((map_hash(cx,cy,0xFA12BEEFu) & 15u) != 0u) continue;  /* ne garde qu'1 sur 16 */
@@ -5293,7 +5299,7 @@ int main(int argc, char **argv) {
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); }   /* rivières chaînées + décors, SOUS les frontières */
+            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 0); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 1); }   /* calques : routes → villes → habillage → canopées, SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
             if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false; mmp.iso=false;  /* minicarte : top-down */
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
@@ -5901,7 +5907,7 @@ int main(int argc, char **argv) {
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
-        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); }
+        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 0); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 1); }   /* calques : routes → villes → habillage → canopées */
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
          * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
          * SOUS la sélection/glyphes/étiquettes (z-order §2c). */
