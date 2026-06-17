@@ -604,21 +604,25 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         bool cap=(owner>=0 && owner<w->n_countries && w->country[owner].capital_prov>=0
                   && w->country[owner].capital_prov<w->n_provinces
                   && w->province[w->country[owner].capital_prov].region==r);
+        /* mer la plus proche : (a) RABAT la ville de 5 cellules vers l'intérieur (elle s'assoit
+         * sur la TERRE), (b) le sprite estuaire a sa PLAGE au SUD → on ne l'emploie QUE si la mer
+         * est vraiment au sud d'écran ; côte au NORD → cité fortifiée/rurale (sans plage à contre-sens).
+         * (Le pack port « très île » reste ignoré pour la construction.) */
+        int seawx=0,seawy=0; float wx2=wx, wy2=wy, sdy=1.f;
+        bool hassea = (re->coastal && settle_nearest_sea(w,cx,cy,&seawx,&seawy));
+        if (hassea){
+            float ix=(float)cx-seawx, iy=(float)cy-seawy; float il=sqrtf(ix*ix+iy*iy)+1e-3f;
+            wx2 += ix/il*5.0f; wy2 += iy/il*5.0f;
+            float ax,ay,bx,by; cam_project(cam,(float)cx,(float)cy,&ax,&ay);
+            cam_project(cam,(float)seawx+0.5f,(float)seawy+0.5f,&bx,&by); sdy=by-ay;   /* >0 : mer au SUD d'écran */
+        }
         int group;
-        if (re->coastal)                           group=SETTLE_ESTUARY;       /* port / embouchure */
+        if (re->coastal)                           group=(sdy>0.f)?SETTLE_ESTUARY:(cap?SETTLE_FORTIFIED:SETTLE_RURAL);
         else if (c->river>40 && !c->lake)          group=SETTLE_RIVER;
         else if (c->biome==BIO_MOUNTAINS||c->biome==BIO_PEAK||c->biome==BIO_HILLS||c->biome==BIO_HIGHLANDS) group=SETTLE_MOUNTAIN;
         else if (cap)                              group=SETTLE_FORTIFIED;     /* capitale = remparts */
         else                                       group=SETTLE_RURAL;
         if (cap && tier<4) tier=4;                                             /* la CAPITALE domine : cité a minima */
-        /* RABATTRE vers l'INTÉRIEUR : la ville côtière se décale de 5 cellules à l'opposé de
-         * la mer la plus proche → elle s'assoit sur la TERRE (le sprite estuaire générique a
-         * ses propres quais ; le pack port « très île » est ignoré pour la construction). */
-        int seawx=0,seawy=0; float wx2=wx, wy2=wy;
-        if (re->coastal && settle_nearest_sea(w,cx,cy,&seawx,&seawy)){
-            float ix=(float)cx-seawx, iy=(float)cy-seawy; float il=sqrtf(ix*ix+iy*iy)+1e-3f;
-            wx2 += ix/il*5.0f; wy2 += iy/il*5.0f;
-        }
         float fsx,fsy; cam_project(cam,wx2,wy2,&fsx,&fsy);
         int dpx=(int)(sc*18.0f*dscale[tier]); if(dpx<22)dpx=22; if(dpx>680)dpx=680;
         if(fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
