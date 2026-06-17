@@ -45,17 +45,50 @@
 #include "scps_navy.h"     /* la flotte (mer §5) : coques, chantier, entretien, outre-mer */
 #include "scps_endgame.h"  /* capstone §27 : entropie + 4 fins + merveille (moteur, pas scps_core) */
 #include "scps_lang.h"     /* la table de chaînes : tout mot face-joueur vient des tables */
-#include "scps_sprites.h"  /* le contrat 184 : planche 512×512, magenta=transparent (display-only) */
-#include "scps_map_nature_sprites.h"  /* pack NATURE : décors de carte (arbres, roseaux, roches, écume) — display-only */
-/* La planche chargée (NULL = absente → glyphes vectoriels actuels). Display-only. */
-static SDL_Texture *g_sprite_tex = NULL;
-static SDL_Texture *g_nature_tex = NULL;  /* atlas nature (décors de carte) — NULL si le .bmp est absent */
-/* Dessine la cellule `id` de la planche à (x,y), taille `px` (32 = natif). */
-static inline void sprite_draw(SDL_Renderer *ren, int id, int x, int y, int px){
-    if (!g_sprite_tex || id<0 || id>=SPR_COUNT) return;
-    SDL_Rect src = SPRITE_RECT(id);
-    SDL_Rect dst = { x, y, px, px };
-    SDL_RenderCopy(ren, g_sprite_tex, &src, &dst);
+#include "scps_map_dressing.h"  /* pack MAP DRESSING : décors de carte (champs, bâtiments, arbres, roches, buissons, rivières, routes) — display-only */
+/* L'atlas chargé (NULL = absent → carte lisse). Display-only, même régime éditable que scps_lang.txt. */
+static SDL_Texture *g_dress_tex = NULL;  /* atlas de dressing (décors de carte) — NULL si le .bmp est absent */
+static SDL_Texture *g_settle_tex = NULL; /* atlas SETTLEMENTS (villes par tier × terrain) — NULL si absent */
+#define SCPS_SETTLE_FILE "scps_map_settlements.bmp"
+#define SCPS_SETTLE_CELL 96               /* atlas 6 tiers × 6 groupes, cellule 96 px */
+enum { SETTLE_MOUNTAIN=0, SETTLE_RIVER, SETTLE_ESTUARY, SETTLE_RURAL, SETTLE_MARKET, SETTLE_FORTIFIED };
+/* Charge un atlas BMP à fond MAGENTA et le DESPILLE (magenta → alpha, frange → bronze
+ * neutre). Mutualisé décors & settlements. NULL si le fichier est absent. */
+static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
+    SDL_Surface *ns = SDL_LoadBMP(file);
+    if (!ns) return NULL;
+    SDL_Surface *cv = SDL_ConvertSurfaceFormat(ns, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_FreeSurface(ns);
+    if (!cv) return NULL;
+    Uint32 clear = SDL_MapRGBA(cv->format, 0,0,0,0);
+    for (int y=0; y<cv->h; y++){
+        Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
+        for (int x=0; x<cv->w; x++){
+            Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
+            int mn=(r<b)?r:b; int key=mn-(int)g;
+            if (key<=4) continue;
+            float mness=(float)key/255.0f; float af=1.0f-mness; af*=af;
+            if (af<0.03f){ row[x]=clear; continue; }
+            int lum=g; int nr=lum, ng=(int)((float)lum*0.88f+0.5f), nb=(int)((float)lum*0.70f+0.5f);
+            row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
+        }
+    }
+    SDL_Texture *tex = SDL_CreateTextureFromSurface(ren, cv);
+    SDL_FreeSurface(cv);
+    if (tex) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+    return tex;
+}
+static SDL_Texture *g_cover_tex = NULL;   /* route-cover : MOBILIER de route (bornes, haies, murets, bottes, rochers…) */
+#define SCPS_COVER_FILE "scps_route_cover.bmp"
+#define SCPS_COVER_CELL 128               /* atlas 8 col × 8 lignes, cellule 128 px */
+#define SCPS_COVER_COLS 8
+enum { COVER_HEDGE_CLUMP=31, COVER_BOULDER=32, COVER_ROCKPILE=33, COVER_BUSH=34, COVER_REED=35,
+       COVER_HAYSTACK=37, COVER_CRATE=38, COVER_MILESTONE=48, COVER_SIGNPOST=49, COVER_WAYSTONE=50 };
+static void cover_blit(SDL_Renderer *ren, int id, int x, int y, int px){
+    if (!g_cover_tex || id<0) return;
+    SDL_Rect src={ (id%SCPS_COVER_COLS)*SCPS_COVER_CELL, (id/SCPS_COVER_COLS)*SCPS_COVER_CELL, SCPS_COVER_CELL, SCPS_COVER_CELL };
+    SDL_Rect dst={ x, y, px, px };
+    SDL_RenderCopy(ren, g_cover_tex, &src, &dst);
 }
 #include "stb_image_write.h"  /* F12 : capture d'écran PNG (vendoré) */
 #include "scps_audio.h"       /* la prise audio (miniaudio) — preuve de vie sur alerte */
@@ -97,6 +130,28 @@ typedef struct {
     float ox, oy;    /* offset en cellules */
     float scale;     /* pixels par cellule */
 } Cam;
+
+/* ---- VUE ISOMÉTRIQUE (display-only) ---------------------------------- *
+ * Toggle (touche I). Le RENDERER incline le terrain (render_map, p->iso) ; ici on
+ * projette les SURCOUCHES (décors, bordures, labels, marqueurs) avec les MÊMES
+ * facteurs ISO_KX/KY autour du centre fenêtre, et on inverse pour le picking. Les
+ * dims fenêtre du pivot sont rafraîchies par frame (g_iso_w/h). */
+static int g_iso=0, g_iso_w=0, g_iso_h=0;
+static void cam_project(const Cam *cam, float wx, float wy, float *osx, float *osy){
+    float fx=(wx-cam->ox)*cam->scale, fy=(wy-cam->oy)*cam->scale;   /* écran « plat » */
+    if (!g_iso){ *osx=fx; *osy=fy; return; }
+    float px=g_iso_w*0.5f, py=g_iso_h*0.5f, dx=fx-px, dy=fy-py;
+    *osx = px + (dx - dy)*ISO_KX;          /* rotation 45° */
+    *osy = py + (dx + dy)*ISO_KY;          /* + écrasement vertical (2:1) */
+}
+static void cam_unproject(const Cam *cam, float sx, float sy, float *owx, float *owy){
+    float fx=sx, fy=sy;
+    if (g_iso){
+        float px=g_iso_w*0.5f, py=g_iso_h*0.5f, a=(sx-px)/ISO_KX, b=(sy-py)/ISO_KY;
+        fx = px + (a+b)*0.5f; fy = py + (b-a)*0.5f;
+    }
+    *owx = fx/cam->scale + cam->ox; *owy = fy/cam->scale + cam->oy;
+}
 
 static void cam_zoom(Cam *c, float factor, float screen_x, float screen_y) {
     /* Zoom centré sur le point écran (screen_x, screen_y) */
@@ -147,71 +202,78 @@ static void pixbuf_upload(PixBuf *pb) {
     SDL_UpdateTexture(pb->tex, NULL, pb->pixels, pb->w * 4);
 }
 
-/* ═══ DÉCORS NATURE (pack display-only) ════════════════════════════════════
- * Une couche de détail pixel-art, semée DÉTERMINISTE par coordonnée MONDE
- * (jamais de hasard runtime → stable au pan/zoom/save), posée SOUS les
- * frontières/labels/marqueurs. Gate au zoom : rien au dézoom (sous-pixel),
- * détail fin de près. Tout est no-op si l'atlas est absent (g_nature_tex NULL). */
+/* ═══ DÉCORS DE CARTE (pack MAP DRESSING — display-only) ════════════════════
+ * Une couche de détail pixel-art (112 sprites, 7 familles : champs · bâtiments ·
+ * arbres · roches · buissons · rivières · routes), semée DÉTERMINISTE par
+ * coordonnée MONDE (jamais de hasard runtime → stable au pan/zoom/save), posée
+ * SOUS les frontières/labels/marqueurs. Gate au zoom : rien au dézoom
+ * (sous-pixel). No-op si l'atlas est absent (g_dress_tex NULL). */
 static inline uint32_t map_hash(int x, int y, uint32_t salt){
     uint32_t h=(uint32_t)x*0x8da6b343u ^ (uint32_t)y*0xd8163841u ^ salt;
     h^=h>>15; h*=0x2c1b3c6du; h^=h>>12; h*=0x297a2d39u; h^=h>>15;
     return h;
 }
-static inline void nature_blit(SDL_Renderer *ren, int id, int x, int y, int px){
-    if (!g_nature_tex || id<0) return;
-    SDL_Rect src = { MAP_NATURE_X(id), MAP_NATURE_Y(id), SCPS_MAP_NATURE_CELL, SCPS_MAP_NATURE_CELL };
+static inline void dress_blit(SDL_Renderer *ren, int id, int x, int y, int px){
+    if (!g_dress_tex || id<0) return;
+    SDL_Rect src = { MAP_DRESSING_X(id), MAP_DRESSING_Y(id), SCPS_MAP_DRESSING_CELL, SCPS_MAP_DRESSING_CELL };
     SDL_Rect dst = { x, y, px, px };
-    SDL_RenderCopy(ren, g_nature_tex, &src, &dst);
+    SDL_RenderCopy(ren, g_dress_tex, &src, &dst);
 }
-/* biome (+ température pour la variante froide/chaude, + hash pour la diversité)
- * → id de sprite nature, ou -1 si la cellule ne porte pas de décor terrestre. */
-static int nature_pick(const Cell *c, uint32_t h){
+/* biome (+ température pour la variante froide, + hash pour la diversité)
+ * → id de sprite de dressing, ou -1 si la cellule ne porte pas de décor. */
+static int dress_pick(const Cell *c, uint32_t h){
     int v = (int)(h & 3u);
     switch (c->biome){
         case BIO_FOREST:
-            if (c->temperature < 0.30f) return (h&1u)?MAP_NAT_SNOW_PINE:MAP_NAT_TREE_PINE_PAIR;
-            return v==0?MAP_NAT_TREE_OAK_DARK:v==1?MAP_NAT_TREE_BROADLEAF_CLUSTER
-                  :v==2?MAP_NAT_TREE_BROADLEAF_SMALL:MAP_NAT_FOREST_SHADOW;
+            if (c->temperature < 0.30f) return (h&1u)?MAPD_TREE_SNOW_CONIFER:MAPD_TREES_CONIFER_CLUSTER;
+            return v==0?MAPD_TREE_OAK_LARGE:v==1?MAPD_TREES_BROADLEAF_CLUSTER
+                  :v==2?MAPD_FOREST_CLUMP_DARK:MAPD_TREE_BROADLEAF;
         case BIO_WOODS:
-            return v==0?MAP_NAT_TREE_BROADLEAF_SMALL:v==1?MAP_NAT_BUSH_CLUSTER
-                  :v==2?MAP_NAT_TREE_PINE_SMALL:MAP_NAT_BUSH_SMALL;
+            return v==0?MAPD_TREE_BROADLEAF:v==1?MAPD_GROVE_THIN
+                  :v==2?MAPD_TREES_BIRCH:MAPD_BUSH_GREEN;
         case BIO_JUNGLE:
-            return v<2?MAP_NAT_JUNGLE_CLUSTER:v==2?MAP_NAT_TREE_PALM:MAP_NAT_TREE_BROADLEAF_CLUSTER;
-        case BIO_FARMLAND:   return (h&1u)?MAP_NAT_ORCHARD_SMALL:MAP_NAT_GRASS_TUFT;
-        case BIO_PLAINS: case BIO_GRASSLAND: case BIO_STEPPE: case BIO_SAVANNA:
-            return v==0?MAP_NAT_GRASS_TUFT:v==1?MAP_NAT_BUSH_SMALL:-1;   /* clairsemé */
+            return v<2?MAPD_GROVE_MIXED:v==2?MAPD_FOREST_CLUMP_DARK:MAPD_TREE_POPLAR;
+        case BIO_FARMLAND:
+            return v==0?MAPD_FIELD_WHEAT:v==1?MAPD_FIELD_TILLED
+                  :v==2?MAPD_FIELD_ORCHARD:MAPD_FIELD_VEG_GARDEN;
+        case BIO_PLAINS: case BIO_GRASSLAND:
+            return v==0?MAPD_FIELD_HAY:v==1?MAPD_FIELD_PASTURE:v==2?MAPD_BUSH_GREEN:-1;
+        case BIO_STEPPE: case BIO_SAVANNA:
+            return v==0?MAPD_SCRUB_DRY:v==1?MAPD_HEATHER:-1;   /* clairsemé */
         case BIO_DRYLANDS: case BIO_COASTAL_DESERT:
-            return v==0?MAP_NAT_DESERT_STONES:v==1?MAP_NAT_TREE_DEAD:-1;
-        case BIO_DESERT:     return v==0?MAP_NAT_DESERT_STONES:-1;
+            return v==0?MAPD_DRY_THORN:v==1?MAPD_TREE_DRY_SCRUB:-1;
+        case BIO_DESERT:     return v==0?MAPD_ROCKS_RED_SANDSTONE:-1;
         case BIO_MARSH:
-            return v==0?MAP_NAT_REEDS_CLUSTER:v==1?MAP_NAT_CATTAILS
-                  :v==2?MAP_NAT_MARSH_PUDDLE:MAP_NAT_REEDS_TALL;
+            return v==0?MAPD_REEDS_CLUMP:v==1?MAPD_YELLOW_REEDS
+                  :v==2?MAPD_MARSH_GRASSES:MAPD_LILYPAD;
         case BIO_BOG:
-            return v==0?MAP_NAT_BOG_MOUND:v==1?MAP_NAT_REEDS_SINGLE:MAP_NAT_WET_SPECKLES;
-        case BIO_MANGROVE:   return v<2?MAP_NAT_TREE_MANGROVE:MAP_NAT_MANGROVE_ROOTS;
-        case BIO_HILLS:      return v==0?MAP_NAT_HILL_BUMP:v==1?MAP_NAT_ROCK_SMALL:-1;
+            return v==0?MAPD_WETLAND_SEDGE:v==1?MAPD_REEDS_CLUMP:MAPD_THICKET_LOW;
+        case BIO_MANGROVE:   return v<2?MAPD_TREE_POPLAR:MAPD_WETLAND_SEDGE;
+        case BIO_HILLS:      return v==0?MAPD_ROCK_BOULDER:v==1?MAPD_ROCKS_PAIR:v==2?MAPD_HEATHER:-1;
         case BIO_HIGHLANDS:
-            return v==0?MAP_NAT_HIGHLAND_GRASS:v==1?MAP_NAT_ROCK_CLUSTER
-                  :v==2?MAP_NAT_HILL_CLUSTER:-1;
+            return v==0?MAPD_ROCKS_RIDGE:v==1?MAPD_ROCKS_MOSSY:v==2?MAPD_HEATHER:-1;
         case BIO_MOUNTAINS:
-            return v<2?MAP_NAT_MOUNTAIN_SMALL:v==2?MAP_NAT_ROCK_CLUSTER:MAP_NAT_CLIFF_FACE;
-        case BIO_PEAK:       return (h&1u)?MAP_NAT_MOUNTAIN_SNOW:MAP_NAT_MOUNTAIN_PEAK;
-        case BIO_GLACIER:    return (h&1u)?MAP_NAT_MOUNTAIN_SNOW:MAP_NAT_ICE_ROCKS;   /* roche nue enneigée, pas de pins */
-        case BIO_VOLCANO:    return (h&1u)?MAP_NAT_VOLCANO_CONE:MAP_NAT_VOLCANIC_ROCK;
+            return v<2?MAPD_ROCKS_RIDGE:v==2?MAPD_ROCK_CLIFF_NUB:MAPD_ROCKS_SCREE;
+        case BIO_PEAK:       return (h&1u)?MAPD_ROCKS_SNOW_CAPPED:MAPD_ROCK_CLIFF_NUB;
+        case BIO_GLACIER:    return (h&1u)?MAPD_ROCKS_SNOW_CAPPED:MAPD_TREE_SNOW_CONIFER;
+        case BIO_VOLCANO:    return (h&1u)?MAPD_ROCKS_BASALT:MAPD_ROCKS_RED_SANDSTONE;
         default:             return -1;
     }
 }
-/* taille du décor en pixels ~ catégorie (rangée d'atlas) × zoom. Les arbres sont
- * GRANDS (canopée qui se chevauche), l'herbe/écume petits. */
-static int nature_size(int id, float sc){
+/* taille du décor en pixels ~ FAMILLE × zoom (arbres GRANDS — canopée qui se
+ * chevauche ; buissons petits). famille = id<56 ? id/8 : (id-56)/8. */
+static int dress_size(int id, float sc){
+    int fam = (id < 56) ? id/8 : (id-56)/8;   /* 0 champs · 1 bâti · 2 arbres · 3 roches · 4 buissons · 5 rivières · 6 routes */
     float k;
-    if (id < 16)        k = (id==MAP_NAT_GRASS_TUFT||id==MAP_NAT_BUSH_SMALL) ? 2.0f
-                          : (id==MAP_NAT_BUSH_CLUSTER||id==MAP_NAT_TREE_STUMP) ? 2.6f : 3.6f;  /* arbres */
-    else if (id < 32)   k = 2.8f;                                       /* marais : roseaux */
-    else if (id < 48)   k = 2.6f;                                       /* rivière */
-    else if (id < 64)   k = (id>=MAP_NAT_MOUNTAIN_SMALL && id<=MAP_NAT_MOUNTAIN_SNOW) ? 3.8f
-                          : (id==MAP_NAT_VOLCANO_CONE) ? 4.0f : 2.8f;   /* roches / montagnes */
-    else                k = 2.2f;                                       /* côte / écume */
+    switch (fam){
+        case 2:  k = 3.6f; break;   /* arbres */
+        case 0:  k = 3.0f; break;   /* champs */
+        case 3:  k = 3.0f; break;   /* roches */
+        case 1:  k = 2.8f; break;   /* bâtiments isolés */
+        case 5:  k = 2.6f; break;   /* rivières */
+        case 6:  k = 2.6f; break;   /* routes */
+        default: k = 2.4f; break;   /* buissons / végétation basse */
+    }
     int px=(int)(sc*k);
     if (px < 10) px = 10;
     if (px > 110) px = 110;
@@ -219,67 +281,388 @@ static int nature_size(int id, float sc){
 }
 /* densité par biome : combien de cellules-candidates sur 16 portent un décor
  * (forêts/montagnes/marais ≈ couverture pleine ; plaines clairsemées). */
-static int nature_density(Biome b){
+static int dress_density(Biome b){
     switch (b){
-        case BIO_FOREST: case BIO_JUNGLE:                      return 13;
-        case BIO_MOUNTAINS: case BIO_PEAK: case BIO_GLACIER:   return 13;
-        case BIO_MARSH: case BIO_BOG:                          return 11;
-        case BIO_WOODS: case BIO_MANGROVE:                     return 10;
-        case BIO_VOLCANO:                                      return 9;
-        case BIO_HILLS: case BIO_HIGHLANDS:                    return 7;
-        case BIO_FARMLAND: case BIO_PLAINS: case BIO_GRASSLAND:
-        case BIO_STEPPE: case BIO_SAVANNA:                     return 4;
-        case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 3;
-        case BIO_DESERT:                                       return 2;
+        case BIO_FOREST: case BIO_JUNGLE:                      return 8;
+        case BIO_MOUNTAINS: case BIO_PEAK: case BIO_GLACIER:   return 8;
+        case BIO_MARSH: case BIO_BOG:                          return 7;
+        case BIO_WOODS: case BIO_MANGROVE:                     return 6;
+        case BIO_VOLCANO:                                      return 6;
+        case BIO_HILLS: case BIO_HIGHLANDS:                    return 5;
+        case BIO_FARMLAND:                                     return 3;   /* champs raréfiés (moins de répétition) */
+        case BIO_PLAINS: case BIO_GRASSLAND:
+        case BIO_STEPPE: case BIO_SAVANNA:                     return 3;
+        case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 2;
+        case BIO_DESERT:                                       return 1;
         default:                                               return 0;
     }
 }
 /* La passe : iter cellules visibles (lattice monde, pas adaptatif → densité
  * écran ~constante et compte borné), décide par biome via hash. Rangées
  * top→bottom = dessin ARRIÈRE→AVANT (les décors bas-ancrés se recouvrent en
- * canopée). Appelée APRÈS le terrain, AVANT les frontières/labels. */
-static void draw_map_nature_decals(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
-    if (!g_nature_tex) return;
+ * canopée). Appelée APRÈS le terrain, AVANT les frontières/labels. La MER reste
+ * NUE : le pack est terrestre (plus de couche d'écume). */
+/* bâtiment isolé (« ville ») selon le CONTEXTE — côte, relief, forêt, fleuve, tier de
+ * pop. Les hameaux suivent ainsi la géographie ET le peuplement (membrane : on lit
+ * colonized + pop, des nombres tangibles). */
+static int dress_building(const Cell *c, int tier, uint32_t h){
+    int v=(int)((h>>5)&3u);
+    if (c->coast) return (v&1)?MAPD_BLD_FISHING_HUT:MAPD_BLD_BOATHOUSE;
+    switch(c->biome){
+        case BIO_MOUNTAINS: case BIO_HILLS: case BIO_HIGHLANDS: case BIO_PEAK:
+            return (v&1)?MAPD_BLD_MINE_SHACK:MAPD_BLD_QUARRY_SHED;
+        case BIO_FOREST: case BIO_WOODS: case BIO_JUNGLE:
+            return (v&1)?MAPD_BLD_LUMBER_CAMP:MAPD_BLD_CHARCOAL_KILN;
+        default: break;
+    }
+    if (c->river>60) return MAPD_BLD_WATERMILL;
+    if (tier>=2) return (v==0)?MAPD_BLD_CHAPEL:(v==1)?MAPD_BLD_STOREHOUSE:(v==2)?MAPD_BLD_WINDMILL:MAPD_BLD_BARN;
+    return (v==0)?MAPD_BLD_ROUND_HUT:(v==1)?MAPD_BLD_COTTAGE:(v==2)?MAPD_BLD_BARN:MAPD_BLD_SHEPHERD;
+}
+/* L'OUTIL DE ROTATION : blit d'un sprite TOURNÉ de `ang` degrés autour de son centre.
+ * Les décals PLATS (rivières, routes) suivent leur direction par rotation ; les sprites
+ * DEBOUT (arbres, bâtiments) ne tournent pas. */
+static void dress_blit_rot(SDL_Renderer *ren, int id, float scx, float scy, int px, double ang){
+    if (!g_dress_tex || id<0) return;
+    SDL_Rect src = { MAP_DRESSING_X(id), MAP_DRESSING_Y(id), SCPS_MAP_DRESSING_CELL, SCPS_MAP_DRESSING_CELL };
+    SDL_Rect dst = { (int)(scx-px*0.5f), (int)(scy-px*0.5f), px, px };
+    SDL_RenderCopyEx(ren, g_dress_tex, &src, &dst, ang, NULL, SDL_FLIP_NONE);
+}
+#define RAD2DEG 57.29577951308232
+/* angle ÉCRAN (deg) du segment monde (ax,ay)->(bx,by) sous la projection courante. */
+static double seg_screen_ang(const Cam *cam, float ax, float ay, float bx, float by){
+    float p0x,p0y,p1x,p1y; cam_project(cam,ax,ay,&p0x,&p0y); cam_project(cam,bx,by,&p1x,&p1y);
+    return atan2((double)(p1y-p0y),(double)(p1x-p0x))*RAD2DEG;
+}
+/* angle (deg) de l'axe « route/rivière » DESSINÉ dans le sprite iso droit. MESURÉ par
+ * PCA sur l'atlas : ≈ −26° en espace écran (le sprite va de bas-gauche vers haut-droite).
+ * On retire cet angle et on ajoute la direction écran courante du segment. */
+#define SEG_SPRITE_ANG0 (-26.0)
+/* CHAÎNAGE des rivières : on suit les VRAIS tracés (w->river[].x/y, polylignes) — pas
+ * le champ de débit (trop large). À chaque cellule, l'orientation vient des pas
+ * AMONT→AVAL (voisin précédent + suivant) → sprite iso droit/coude, flip H/V. SOUS les décors. */
+static void draw_map_rivers(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
+    if (!g_dress_tex) return;
+    float sc=cam->scale; if (sc<3.0f) return;
+    g_iso_w=win_w; g_iso_h=win_h;
+    int px=(int)(sc*2.6f);
+    if(px<10)px=10;
+    if(px>130)px=130;
+    SDL_SetTextureAlphaMod(g_dress_tex, 230);
+    for (int ri=0; ri<w->n_rivers && ri<SCPS_MAX_RIVERS; ri++){
+        const River *rv=&w->river[ri];
+        for (int k=0; k<rv->len; k++){
+            int cx=rv->x[k], cy=rv->y[k];
+            if (cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
+            /* direction SORTANTE (on re-pick à chaque changement d'orientation, pas de lissage) */
+            int ax,ay,bx,by;
+            if      (k<rv->len-1){ ax=cx; ay=cy; bx=rv->x[k+1]; by=rv->y[k+1]; }
+            else if (k>0)        { ax=rv->x[k-1]; ay=rv->y[k-1]; bx=cx; by=cy; }
+            else                 { ax=cx; ay=cy; bx=cx+1; by=cy; }
+            float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
+            if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;   /* hors champ */
+            double theta = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f);
+            double ang = theta - SEG_SPRITE_ANG0;   /* axe sprite mesuré (−26°) → suit la direction */
+            dress_blit_rot(ren,MAPD_RIVER_STRAIGHT,fsx,fsy,px,ang);   /* TOURNÉ pour suivre le fil */
+        }
+    }
+    SDL_SetTextureAlphaMod(g_dress_tex, 255);
+}
+static bool region_world_pos(const World *w, int reg, float *wx, float *wy){
+    if (reg<0||reg>=w->n_regions) return false;
+    const Region *R=&w->region[reg];
+    long ax=0,ay=0; int n=0;
+    for (int k=0;k<R->n_provinces && k<12;k++){
+        int pid=R->province_ids[k];
+        if (pid<0||pid>=w->n_provinces) continue;
+        ax+=w->province[pid].seed_x; ay+=w->province[pid].seed_y; n++;
+    }
+    if (n==0) return false;
+    *wx=(float)ax/n; *wy=(float)ay/n; return true;
+}
+/* ── ROUTES TERRAIN-AWARE : A* sur la grille, coût = RELIEF (height + biome) ; mer/lac
+ * infranchissable, fleuve franchi par un PONT. Chemins MIS EN CACHE (recalcul si le réseau
+ * change). Rendu LISSÉ (tangente fenêtrée) → plus de double-variation aux diagonales. ── */
+#define ROAD_PATH_MAX 1400
+typedef struct { int16_t x[ROAD_PATH_MAX], y[ROAD_PATH_MAX]; int len; int ra, rb; } RoadPath;
+static RoadPath *g_rd_paths=NULL; static int g_rd_npaths=0; static uint64_t g_rd_sig=0;
+static float *g_rd_g=NULL, *g_heapf=NULL; static int *g_rd_from=NULL,*g_rd_gen=NULL,*g_rd_closed=NULL,*g_heapi=NULL;
+static int g_rd_curgen=0, g_heap_n=0;
+static void rheap_push(float f,int idx){ int i=g_heap_n++; g_heapf[i]=f; g_heapi[i]=idx;
+    while(i>0){ int p=(i-1)/2; if(g_heapf[p]<=g_heapf[i])break;
+        float tf=g_heapf[p];g_heapf[p]=g_heapf[i];g_heapf[i]=tf; int ti=g_heapi[p];g_heapi[p]=g_heapi[i];g_heapi[i]=ti; i=p; } }
+static int rheap_pop(void){ int r=g_heapi[0],n=--g_heap_n; g_heapf[0]=g_heapf[n]; g_heapi[0]=g_heapi[n]; int i=0;
+    for(;;){ int l=2*i+1,rr=2*i+2,s=i; if(l<n&&g_heapf[l]<g_heapf[s])s=l; if(rr<n&&g_heapf[rr]<g_heapf[s])s=rr; if(s==i)break;
+        float tf=g_heapf[s];g_heapf[s]=g_heapf[i];g_heapf[i]=tf; int ti=g_heapi[s];g_heapi[s]=g_heapi[i];g_heapi[i]=ti; i=s; } return r; }
+static float road_cell_cost(const World *w,int x,int y){
+    const Cell *c=scps_cellc(w,x,y);
+    if (c->sea || c->lake) return -1.f;            /* mer/lac : on contourne (sauf pont au fleuve) */
+    float cost=1.f + c->height*7.f;                /* plat facile, on longe le BAS (height ∈ [0..1]) */
+    if (c->biome==BIO_FOREST||c->biome==BIO_WOODS) cost+=2.5f;   /* forêt : plus cher */
+    if (c->biome==BIO_JUNGLE)    cost+=5.f;
+    if (c->biome==BIO_HILLS||c->biome==BIO_HIGHLANDS) cost+=5.f;
+    if (c->biome==BIO_MOUNTAINS) cost+=16.f;       /* montagne : très cher */
+    if (c->biome==BIO_PEAK)      cost+=45.f;
+    if (c->river>40)             cost+=7.f;        /* franchir un fleuve = un PONT (cher mais permis) */
+    return cost;
+}
+static bool road_astar(const World *w,int ax,int ay,int bx,int by,RoadPath *out){
+    if(ax<0||ay<0||ax>=SCPS_W||ay>=SCPS_H||bx<0||by<0||bx>=SCPS_W||by>=SCPS_H) return false;
+    if(!g_rd_g){ g_rd_g=(float*)malloc(sizeof(float)*SCPS_N); g_rd_from=(int*)malloc(sizeof(int)*SCPS_N);
+        g_rd_gen=(int*)calloc(SCPS_N,sizeof(int)); g_rd_closed=(int*)calloc(SCPS_N,sizeof(int));
+        g_heapf=(float*)malloc(sizeof(float)*SCPS_N); g_heapi=(int*)malloc(sizeof(int)*SCPS_N);
+        if(!g_rd_g||!g_rd_from||!g_rd_gen||!g_rd_closed||!g_heapf||!g_heapi) return false; }
+    int minx=(ax<bx?ax:bx)-48, maxx=(ax>bx?ax:bx)+48, miny=(ay<by?ay:by)-48, maxy=(ay>by?ay:by)+48;
+    if(minx<0)minx=0;
+    if(miny<0)miny=0;
+    if(maxx>=SCPS_W)maxx=SCPS_W-1;
+    if(maxy>=SCPS_H)maxy=SCPS_H-1;
+    g_rd_curgen++; g_heap_n=0;
+    int s=scps_idx(ax,ay), goal=scps_idx(bx,by);
+    g_rd_g[s]=0.f; g_rd_from[s]=-1; g_rd_gen[s]=g_rd_curgen;
+    rheap_push(hypotf((float)(bx-ax),(float)(by-ay)), s);
+    static const int dx8[8]={1,-1,0,0,1,1,-1,-1}, dy8[8]={0,0,1,-1,1,-1,1,-1};
+    bool found=false; int guard=0;
+    while(g_heap_n>0 && guard++<900000){
+        int cur=rheap_pop();
+        if(g_rd_closed[cur]==g_rd_curgen) continue;
+        g_rd_closed[cur]=g_rd_curgen;
+        if(cur==goal){ found=true; break; }
+        int cxx=cur%SCPS_W, cyy=cur/SCPS_W;
+        for(int d=0;d<8;d++){
+            int nx=cxx+dx8[d], ny=cyy+dy8[d];
+            if(nx<minx||nx>maxx||ny<miny||ny>maxy) continue;
+            int ni=scps_idx(nx,ny);
+            if(g_rd_closed[ni]==g_rd_curgen) continue;
+            float cc=road_cell_cost(w,nx,ny); if(cc<0.f) continue;
+            float ng=g_rd_g[cur]+(d<4?1.f:1.41421f)*cc;
+            if(g_rd_gen[ni]==g_rd_curgen && g_rd_g[ni]<=ng) continue;
+            g_rd_g[ni]=ng; g_rd_from[ni]=cur; g_rd_gen[ni]=g_rd_curgen;
+            rheap_push(ng+hypotf((float)(bx-nx),(float)(by-ny)), ni);
+        }
+    }
+    if(!found) return false;
+    static int tmp[4096]; int tn=0;
+    for(int cur=goal; cur!=-1 && tn<4096; cur=g_rd_from[cur]) tmp[tn++]=cur;
+    int stepd=(tn>ROAD_PATH_MAX)?(tn/ROAD_PATH_MAX+1):1;
+    out->len=0;
+    for(int k=tn-1;k>=0 && out->len<ROAD_PATH_MAX;k-=stepd){
+        out->x[out->len]=(int16_t)(tmp[k]%SCPS_W); out->y[out->len]=(int16_t)(tmp[k]/SCPS_W); out->len++;
+    }
+    return out->len>=2;
+}
+/* LISSAGE++ : moyenne mobile (extrémités fixes) — arrondit l'escalier 8-connexe de l'A*. */
+static void road_path_smooth(RoadPath *p){
+    if (p->len<3) return;
+    static int16_t nx[ROAD_PATH_MAX], ny[ROAD_PATH_MAX];
+    for (int pass=0; pass<3; pass++){
+        nx[0]=p->x[0]; ny[0]=p->y[0]; nx[p->len-1]=p->x[p->len-1]; ny[p->len-1]=p->y[p->len-1];
+        for (int k=1;k<p->len-1;k++){
+            nx[k]=(int16_t)((p->x[k-1]+2*p->x[k]+p->x[k+1])/4);
+            ny[k]=(int16_t)((p->y[k-1]+2*p->y[k]+p->y[k+1])/4);
+        }
+        memcpy(p->x,nx,sizeof(int16_t)*p->len); memcpy(p->y,ny,sizeof(int16_t)*p->len);
+    }
+}
+static void roads_ensure_cache(const World *w,const RouteNetwork *rn){
+    uint64_t sig=1469598103934665603ull;
+    for(int i=0;i<rn->n && i<SCPS_MAX_ROUTES;i++){ const TradeRoute *tr=&rn->route[i];
+        if(tr->open && !tr->maritime) sig=(sig^(uint64_t)(tr->ra*100003+tr->rb))*1099511628211ull; }
+    if(sig==g_rd_sig && g_rd_paths) return;        /* réseau inchangé → cache valide */
+    g_rd_sig=sig;
+    if(!g_rd_paths){ g_rd_paths=(RoadPath*)malloc(sizeof(RoadPath)*SCPS_MAX_ROUTES); if(!g_rd_paths){g_rd_npaths=0;return;} }
+    g_rd_npaths=0;
+    /* NIVEAUX : le commerce existe VIRTUELLEMENT ; on ne TRACE que les routes MAJEURES
+     * (les plus fortes CAPACITÉS — top K). Trop de traits = réseau abstrait. */
+    int idx[SCPS_MAX_ROUTES], ni=0;
+    for(int i=0;i<rn->n && i<SCPS_MAX_ROUTES;i++){ const TradeRoute *tr=&rn->route[i];
+        if(tr->open && !tr->maritime) idx[ni++]=i; }
+    for(int a=1;a<ni;a++){ int v=idx[a]; float vc=rn->route[v].capacity; int b=a-1;   /* tri ↓ capacité */
+        while(b>=0 && rn->route[idx[b]].capacity<vc){ idx[b+1]=idx[b]; b--; } idx[b+1]=v; }
+    int K = ni<14?ni:14;                                  /* majeures seulement (au zoom courant) */
+    for(int r=0;r<K && g_rd_npaths<SCPS_MAX_ROUTES;r++){
+        const TradeRoute *tr=&rn->route[idx[r]];
+        float fax,fay,fbx,fby;
+        if(!region_world_pos(w,tr->ra,&fax,&fay)||!region_world_pos(w,tr->rb,&fbx,&fby)) continue;
+        if(hypotf(fbx-fax,fby-fay) > 360.f) continue;     /* trop loin (probable saut de mer) */
+        if(road_astar(w,(int)fax,(int)fay,(int)fbx,(int)fby,&g_rd_paths[g_rd_npaths])){
+            g_rd_paths[g_rd_npaths].ra=tr->ra; g_rd_paths[g_rd_npaths].rb=tr->rb;
+            road_path_smooth(&g_rd_paths[g_rd_npaths]);    /* lissage++ */
+            g_rd_npaths++;
+        }
+    }
+}
+/* TRAIT ÉPAIS continu (RenderGeometry, quad par segment + losange aux points) — grammaire
+ * HOMOGÈNE : largeur & couleur CONSTANTES, raccords par recouvrement. Remplace le tuilage
+ * de sprites qui « clôturait ». */
+static void road_thick_polyline(SDL_Renderer *ren, const float *sx, const float *sy, int n, float wid, SDL_Color col){
+    if (n<2 || wid<1.f) return;
+    static SDL_Vertex vb[ROAD_PATH_MAX*8]; static int ib[ROAD_PATH_MAX*12];
+    int nv=0,nidx=0; const int CAP=ROAD_PATH_MAX*8;
+    for (int i=0;i+1<n && nv+4<=CAP;i++){
+        float dx=sx[i+1]-sx[i], dy=sy[i+1]-sy[i]; float L=sqrtf(dx*dx+dy*dy); if(L<0.01f) continue;
+        float nx=-dy/L*wid*0.5f, ny=dx/L*wid*0.5f; int b=nv;
+        vb[nv].position.x=sx[i]+nx;   vb[nv].position.y=sy[i]+ny;   vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i]-nx;   vb[nv].position.y=sy[i]-ny;   vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i+1]+nx; vb[nv].position.y=sy[i+1]+ny; vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i+1]-nx; vb[nv].position.y=sy[i+1]-ny; vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        ib[nidx++]=b; ib[nidx++]=b+1; ib[nidx++]=b+2; ib[nidx++]=b+2; ib[nidx++]=b+1; ib[nidx++]=b+3;
+    }
+    for (int i=1;i+1<n && nv+4<=CAP;i++){            /* losange à chaque coude → raccord sans trou */
+        float h=wid*0.5f; int b=nv;
+        vb[nv].position.x=sx[i];   vb[nv].position.y=sy[i]-h; vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i]+h; vb[nv].position.y=sy[i];   vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i];   vb[nv].position.y=sy[i]+h; vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        vb[nv].position.x=sx[i]-h; vb[nv].position.y=sy[i];   vb[nv].color=col; vb[nv].tex_coord.x=0; vb[nv].tex_coord.y=0; nv++;
+        ib[nidx++]=b; ib[nidx++]=b+1; ib[nidx++]=b+2; ib[nidx++]=b+2; ib[nidx++]=b+3; ib[nidx++]=b;
+    }
+    if (nv>=3) SDL_RenderGeometry(ren, NULL, vb, nv, ib, nidx);
+}
+static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork *rn, const Cam *cam, int win_w, int win_h){
+    if (!g_dress_tex || !rn) return;
+    float sc=cam->scale; if (sc<3.0f) return;
+    g_iso_w=win_w; g_iso_h=win_h;
+    roads_ensure_cache(w,rn);
+    static float rsx[ROAD_PATH_MAX], rsy[ROAD_PATH_MAX];
+    SDL_Color casing={58,42,28,255}, fill={196,164,110,255}, wood={122,84,48,255};
+    for(int pi=0; pi<g_rd_npaths; pi++){
+        const RoadPath *p=&g_rd_paths[pi];
+        int n=p->len; if(n>ROAD_PATH_MAX)n=ROAD_PATH_MAX;
+        for(int k=0;k<n;k++){ float fx,fy; cam_project(cam,(float)p->x[k]+0.5f,(float)p->y[k]+0.5f,&fx,&fy); rsx[k]=fx; rsy[k]=fy; }
+        float maj=(pi<3)?1.0f:(pi<7?0.78f:0.6f);                  /* NIVEAU → largeur (artère/desserte) */
+        float wfill=sc*0.55f*maj; if(wfill<2.2f)wfill=2.2f;
+        float wcas=wfill + sc*0.16f + 2.f;
+        road_thick_polyline(ren, rsx,rsy,n, wcas, casing);        /* bord sombre (casing) */
+        road_thick_polyline(ren, rsx,rsy,n, wfill, fill);         /* surface (constante) */
+        for(int k=0;k<n;k++){ const Cell *c=scps_cellc(w,p->x[k],p->y[k]);
+            if(c->river>40 && !c->lake){                           /* PONT (bois) au franchissement */
+                int bs=(int)(wcas*1.3f); if(bs<4)bs=4;
+                SDL_Rect br={(int)(rsx[k]-bs*0.5f),(int)(rsy[k]-bs*0.5f),bs,bs};
+                SDL_SetRenderDrawColor(ren,wood.r,wood.g,wood.b,255); SDL_RenderFillRect(ren,&br); } }
+        /* HABILLAGE : MOBILIER de route (pack route-cover) en BORDURE — bornes, haies, bottes,
+         * rochers, caisses… varié ; DEUX côtés AUX COUDES (masquent l'angle), un côté ailleurs. */
+        static const int rcov[8]={COVER_HEDGE_CLUMP,COVER_BUSH,COVER_BOULDER,COVER_HAYSTACK,
+                                  COVER_MILESTONE,COVER_CRATE,COVER_BUSH,COVER_HEDGE_CLUMP};
+        int dsz=(int)(sc*1.7f); if(dsz<10)dsz=10; if(dsz>96)dsz=96;
+        int rstep=(int)(11.0f/sc)+3;
+        for(int k=rstep;k<n-rstep;k+=rstep){
+            int kp=k-rstep, kn=k+rstep; if(kn>=n)kn=n-1;
+            float ax=rsx[k]-rsx[kp], ay=rsy[k]-rsy[kp], bx=rsx[kn]-rsx[k], by=rsy[kn]-rsy[k];
+            float la=sqrtf(ax*ax+ay*ay)+1e-3f, lb=sqrtf(bx*bx+by*by)+1e-3f;
+            float pxp=-(ay+by), pyp=(ax+bx); float pl=sqrtf(pxp*pxp+pyp*pyp)+1e-3f; pxp/=pl; pyp/=pl;  /* perp moyenne */
+            bool bend=((ax*bx+ay*by)/(la*lb))<0.86f;        /* la route TOURNE ici */
+            float off=wcas*0.5f + dsz*0.32f;
+            for(int sgn=-1;sgn<=1;sgn+=2){
+                if(sgn>0 && !bend && ((k/rstep)&1)) continue;            /* tout-droit : un seul côté, alterné */
+                uint32_t hh=map_hash(p->x[k]+sgn, p->y[k], 0xD2E5CAFEu);
+                int id=rcov[hh&7];                                       /* mobilier varié */
+                int ssx=(int)(rsx[k]+sgn*pxp*off), ssy=(int)(rsy[k]+sgn*pyp*off);
+                if(ssx<-dsz||ssx>win_w+dsz||ssy<-dsz||ssy>win_h+dsz) continue;
+                cover_blit(ren, id, ssx-dsz/2, ssy-(dsz*3)/4, dsz);     /* ancré au sol */
+            }
+        }
+    }
+}
+/* SETTLEMENTS : une VILLE par région COLONISÉE, au centre, TAILLE = tier de population,
+ * SILHOUETTE = terrain (priorité estuaire > rivière > montagne > capitale=fortifiée >
+ * rural). Display-only : lit colonized + pop + géographie (tangibles). Dessinée APRÈS le
+ * décor → focale bien lisible. */
+static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
+    if (!g_settle_tex || !econ) return;
+    float sc=cam->scale; if (sc<2.0f) return;
+    g_iso_w=win_w; g_iso_h=win_h;
+    static const float dscale[6]={0.50f,0.66f,0.84f,1.05f,1.28f,1.55f};   /* outpost…metropolis (échelonné) */
+    for (int r=0; r<econ->n_regions && r<w->n_regions; r++){
+        const RegionEconomy *re=&econ->region[r];
+        if (!re->colonized) continue;
+        float pop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        if (pop<40.f) continue;
+        int tier = pop>=4000?5 : pop>=1500?4 : pop>=500?3 : pop>=150?2 : pop>=50?1 : 0;
+        float wx,wy; if(!region_world_pos(w,r,&wx,&wy)) continue;
+        int cx=(int)wx, cy=(int)wy; if(cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
+        const Cell *c=scps_cellc(w,cx,cy);
+        int owner=re->owner;
+        bool cap=(owner>=0 && owner<w->n_countries && w->country[owner].capital_prov>=0
+                  && w->country[owner].capital_prov<w->n_provinces
+                  && w->province[w->country[owner].capital_prov].region==r);
+        int group;
+        if (re->coastal)                           group=SETTLE_ESTUARY;       /* port / embouchure */
+        else if (c->river>40 && !c->lake)          group=SETTLE_RIVER;
+        else if (c->biome==BIO_MOUNTAINS||c->biome==BIO_PEAK||c->biome==BIO_HILLS||c->biome==BIO_HIGHLANDS) group=SETTLE_MOUNTAIN;
+        else if (cap)                              group=SETTLE_FORTIFIED;     /* capitale = remparts */
+        else                                       group=SETTLE_RURAL;
+        if (cap && tier<4) tier=4;                                             /* la CAPITALE domine : cité a minima */
+        float fsx,fsy; cam_project(cam,wx,wy,&fsx,&fsy);
+        int dpx=(int)(sc*26.0f*dscale[tier]); if(dpx<32)dpx=32; if(dpx>960)dpx=960;   /* TRÈS gros & dominants (style HOMM) */
+        if(fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
+        SDL_Rect src={tier*SCPS_SETTLE_CELL, group*SCPS_SETTLE_CELL, SCPS_SETTLE_CELL, SCPS_SETTLE_CELL};
+        SDL_Rect dst={(int)fsx-dpx/2, (int)fsy-(dpx*7)/10, dpx, dpx};          /* ancré bas-centre */
+        SDL_RenderCopy(ren, g_settle_tex, &src, &dst);
+    }
+}
+static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
+    if (!g_dress_tex) return;
+    g_iso_w=win_w; g_iso_h=win_h;                 /* pivot iso de la frame */
     float sc = cam->scale;                        /* pixels par cellule */
     if (sc < 3.0f) return;                         /* trop dézoomé → pas de décor (sous-pixel) */
     /* pas monde tel que l'espacement ÉCRAN reste ~constant (≈ 14 px) : dense de
      * près, jamais en bouillie ni explosif en compte. */
     int step = (int)(14.0f/sc + 0.5f); if (step < 1) step = 1; if (step > 4) step = 4;
     int alpha = (sc < 5.0f) ? 200 : (sc < 9.0f ? 230 : 255);
-    int cx0=(int)cam->ox-2, cy0=(int)cam->oy-2;
-    int cx1=(int)(cam->ox + win_w/sc)+2, cy1=(int)(cam->oy + win_h/sc)+2;
+    /* plage MONDE couvrant la fenêtre (iso : on inverse les 4 coins → boîte englobante). */
+    float wx0,wy0,wx1,wy1,twx,twy; cam_unproject(cam,0,0,&wx0,&wy0); wx1=wx0; wy1=wy0;
+    float corn[3][2]={{(float)win_w,0},{0,(float)win_h},{(float)win_w,(float)win_h}};
+    for (int k=0;k<3;k++){
+        cam_unproject(cam,corn[k][0],corn[k][1],&twx,&twy);
+        if(twx<wx0)wx0=twx;
+        if(twx>wx1)wx1=twx;
+        if(twy<wy0)wy0=twy;
+        if(twy>wy1)wy1=twy;
+    }
+    int cx0=(int)wx0-2, cy0=(int)wy0-2, cx1=(int)wx1+2, cy1=(int)wy1+2;
     if (cx0<0) cx0=0;
     if (cy0<0) cy0=0;
     if (cx1>SCPS_W) cx1=SCPS_W;
     if (cy1>SCPS_H) cy1=SCPS_H;
     cx0 -= cx0%step; cy0 -= cy0%step;             /* lattice ancré monde → stable au pan */
-    SDL_SetTextureAlphaMod(g_nature_tex, (Uint8)alpha);
-    for (int cy=cy0; cy<cy1; cy+=step){           /* rangées : arrière → avant */
+    SDL_SetTextureAlphaMod(g_dress_tex, (Uint8)alpha);
+    for (int cy=cy0; cy<cy1; cy+=step){           /* rangées : arrière → avant (ordre de profondeur iso) */
         for (int cx=cx0; cx<cx1; cx+=step){
             const Cell *c = scps_cellc(w, cx, cy);
-            int sx=(int)((cx - cam->ox)*sc), sy=(int)((cy - cam->oy)*sc);
-            if (c->sea){                          /* mer : seulement l'ÉCUME au trait de côte */
-                if (c->sea==SEA_CABOTAGE){
-                    uint32_t hf=map_hash(cx,cy,0xF0A1u);
-                    if ((hf%6u)==0u){ int id=(hf&1u)?MAP_NAT_COAST_FOAM_SMALL:MAP_NAT_WAVELETS_A;
-                        int px=nature_size(id,sc); nature_blit(ren,id,sx-px/2,sy-px/2,px); }
-                }
-                continue;
-            }
+            if (c->sea) continue;                  /* la mer reste nue (pack terrestre) */
+            float fsx,fsy; cam_project(cam,(float)cx,(float)cy,&fsx,&fsy);
+            int sx=(int)fsx, sy=(int)fsy;
             uint32_t h=map_hash(cx,cy,0x5EED01u);
-            if ((int)(h&15u) >= nature_density(c->biome)){     /* pas tiré : éventuel reflet de fleuve */
-                if (c->river>40 && !c->lake && (h&3u)==0u){ int px=nature_size(MAP_NAT_RIVER_SHIMMER,sc);
-                    nature_blit(ren, MAP_NAT_RIVER_SHIMMER, sx-px/2, sy-px/2, px); }
+            /* ── peuplement RÉEL : la région est-elle colonisée, et à quel point ? ── */
+            int rg = c->region;
+            bool settled = (econ && rg>=0 && rg<econ->n_regions && econ->region[rg].colonized);
+            int tier=0;
+            if (settled){ const RegionEconomy *re=&econ->region[rg];
+                float pp=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+                tier = (pp>4000.f)?2:(pp>800.f)?1:0; }
+            uint32_t hb = map_hash(cx,cy,0xB17DCAFEu);   /* hash indépendant pour le bâti */
+            /* (les RIVIÈRES sont chaînées dans une passe à part, draw_map_rivers, SOUS ici.) */
+            /* ── VILLES : bâtiments isolés sur la terre COLONISÉE, densité ∝ tier de pop.
+             *    Le bâti OCCUPE la cellule (pas de nature en plus) + un chemin proche. ── */
+            int bgate = (tier>=2)?1:0;                 /* fermes OUTLYING rares : la VILLE est le sprite settlement */
+            if (settled && (int)(hb&15u) < bgate){
+                int bid = dress_building(c, tier, hb);
+                int bpx = dress_size(bid,sc);
+                int bjx=(int)((hb>>8)&7u)-4, bjy=(int)((hb>>11)&7u)-4;
+                if ((hb&0x30u)==0u){ int rid=MAPD_FOOTPATH_STRAIGHT; int rpx=dress_size(rid,sc);   /* ROUTE : un chemin au pied du bâti */
+                    dress_blit(ren, rid, sx-rpx/2, sy-rpx/2, rpx); }
+                dress_blit(ren, bid, sx-bpx/2+bjx, sy-(bpx*3)/4+bjy, bpx);
                 continue;
             }
-            int id=nature_pick(c,h);
+            if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor naturel */
+            int id=dress_pick(c,h);
             if (id<0) continue;
-            int px=nature_size(id,sc);
+            int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
-            nature_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre */
+            dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre (sprite debout) */
         }
     }
-    SDL_SetTextureAlphaMod(g_nature_tex, 255);
+    SDL_SetTextureAlphaMod(g_dress_tex, 255);
 }
 
 /* ---- Info province (console) ----------------------------------------- */
@@ -849,8 +1232,9 @@ static void bv_flush(SDL_Renderer *ren){
 #endif
 typedef struct { const Cam *cam; int win_w,win_h; } BView;
 static void bseg_stroke_one(SDL_Renderer *ren, const BView *bv, const BSeg *sg, float wpx, SDL_Color col){
-    float X0=((float)sg->x0-bv->cam->ox)*bv->cam->scale, Y0=((float)sg->y0-bv->cam->oy)*bv->cam->scale;
-    float X1=((float)sg->x1-bv->cam->ox)*bv->cam->scale, Y1=((float)sg->y1-bv->cam->oy)*bv->cam->scale;
+    float X0,Y0,X1,Y1;
+    cam_project(bv->cam,(float)sg->x0,(float)sg->y0,&X0,&Y0);
+    cam_project(bv->cam,(float)sg->x1,(float)sg->y1,&X1,&Y1);
     if ((X0<-wpx&&X1<-wpx)||(X0>bv->win_w+wpx&&X1>bv->win_w+wpx)||
         (Y0<-wpx&&Y1<-wpx)||(Y0>bv->win_h+wpx&&Y1>bv->win_h+wpx)) return;   /* cull viewport */
 #if SDL_VERSION_ATLEAST(2,0,18)
@@ -3405,8 +3789,8 @@ static bool region_screen_pos(const World *w, const Cam *cam, int reg, int *osx,
         ax += w->province[pid].seed_x; ay += w->province[pid].seed_y; n++;
     }
     if (n==0) return false;
-    *osx=(int)(((float)ax/n - cam->ox)*cam->scale);
-    *osy=(int)(((float)ay/n - cam->oy)*cam->scale);
+    float _px,_py; cam_project(cam,(float)ax/n,(float)ay/n,&_px,&_py);
+    *osx=(int)_px; *osy=(int)_py;
     return true;
 }
 
@@ -3533,8 +3917,8 @@ static void draw_empire_labels(SDL_Renderer *ren, const Cam *cam, const Sim *s,
             }
         }
         if (n<2) continue;
-        int sx=(int)(((float)ax/n - cam->ox)*cam->scale);
-        int sy=(int)(((float)ay/n - cam->oy)*cam->scale);
+        float _px,_py; cam_project(cam,(float)ax/n,(float)ay/n,&_px,&_py);
+        int sx=(int)_px, sy=(int)_py;
         if (sx<60||sy<86||sx>win_w-60||sy>win_h-70) continue;   /* hors champ / sous les panneaux */
         const char *nm=w->country[c].name; int lw=text_w(g_font_small,nm);
         fill_rect(ren, sx-lw/2-3, sy-7, lw+6, 14, (SDL_Color){0x08,0x0c,0x14,(Uint8)(a*0.66f)});
@@ -4248,6 +4632,7 @@ int main(int argc, char **argv) {
         }
         else { shot_seed = (uint32_t)strtoul(argv[i], NULL, 10); have_shot_seed = true; }
     }
+    g_iso = getenv("SCPS_ISO") ? 1 : 0;   /* vue isométrique : défaut OFF (toggle en jeu) */
 
     /* §SURCHARGE TEXTE : si scps_lang.txt est présent, il REMPLACE le texte joueur
      * (par ID). Absent → défauts compilés. Rupture assumée de zéro-asset, display-only. */
@@ -4263,6 +4648,10 @@ int main(int argc, char **argv) {
      * respecte la barre des tâches) ; le layout suit la taille réelle (resize).
      * En mode capture (--shot), on garde WIN_W×WIN_H pour des images stables. */
     int initw = WIN_W, inith = WIN_H;
+    /* Override de résolution (capture) : SCPS_WIN_W/H — utile pour des screens calibrés. */
+    { const char *ew=getenv("SCPS_WIN_W"), *eh=getenv("SCPS_WIN_H");
+      if (ew){ int v=atoi(ew); if (v>=640 && v<=4096) initw=v; }
+      if (eh){ int v=atoi(eh); if (v>=480 && v<=4096) inith=v; } }
     Uint32 winflags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
     if (!shot){
         SDL_DisplayMode dm;
@@ -4290,26 +4679,18 @@ int main(int argc, char **argv) {
      * (conteneur/serveur sans carte → le release tourne quand même). */
     if (!audio_init()) fprintf(stderr,"[scps] audio : aucun device — silence.\n");
 
-    /* §SPRITES (contrat 184) : la planche scps_sprites.bmp à côté du binaire,
-     * fond MAGENTA FF00FF → transparent (colorkey). ABSENTE → g_sprite_tex NULL
-     * et le rendu vectoriel actuel reste tel quel (display-only, même régime
-     * éditable que scps_lang.txt). */
-    { SDL_Surface *ss = SDL_LoadBMP("scps_sprites.bmp");
-      if (ss){
-          SDL_SetColorKey(ss, SDL_TRUE, SDL_MapRGB(ss->format, SPRITE_KEY_R, SPRITE_KEY_G, SPRITE_KEY_B));
-          g_sprite_tex = SDL_CreateTextureFromSurface(ren, ss);
-          SDL_FreeSurface(ss);
-          if (g_sprite_tex) printf("[scps] scps_sprites.bmp chargée (contrat %d cellules).\n", SPR_COUNT);
-      } else fprintf(stderr,"[scps] sprites : scps_sprites.bmp absente — glyphes vectoriels.\n"); }
-    /* Pack NATURE (display-only, même régime) : décors de carte. Absent → carte lisse. */
-    { SDL_Surface *ns = SDL_LoadBMP(SCPS_MAP_NATURE_FILE);
-      if (ns){
-          SDL_SetColorKey(ns, SDL_TRUE, SDL_MapRGB(ns->format, SCPS_MAP_NATURE_KEY_R, SCPS_MAP_NATURE_KEY_G, SCPS_MAP_NATURE_KEY_B));
-          g_nature_tex = SDL_CreateTextureFromSurface(ren, ns);
-          SDL_FreeSurface(ns);
-          if (g_nature_tex){ SDL_SetTextureBlendMode(g_nature_tex, SDL_BLENDMODE_BLEND);
-              printf("[scps] %s chargé (décors de carte).\n", SCPS_MAP_NATURE_FILE); }
-      } else fprintf(stderr,"[scps] décors nature : %s absent — carte lisse.\n", SCPS_MAP_NATURE_FILE); }
+    /* Pack MAP DRESSING (display-only, même régime éditable que scps_lang.txt) :
+     * la planche scps_map_dressing.bmp à côté du binaire, fond MAGENTA FF00FF →
+     * transparent par DESPILL (alpha + dé-teinte, voir plus bas). ABSENTE →
+     * g_dress_tex NULL → carte lisse (le moteur/déterminisme n'y touchent jamais). */
+    g_dress_tex = load_despilled_bmp(ren, SCPS_MAP_DRESSING_FILE);
+    if (g_dress_tex) printf("[scps] %s chargé (décors de carte).\n", SCPS_MAP_DRESSING_FILE);
+    else fprintf(stderr,"[scps] décors de carte : %s absent — carte lisse.\n", SCPS_MAP_DRESSING_FILE);
+    g_settle_tex = load_despilled_bmp(ren, SCPS_SETTLE_FILE);
+    if (g_settle_tex) printf("[scps] %s chargé (settlements).\n", SCPS_SETTLE_FILE);
+    else fprintf(stderr,"[scps] settlements : %s absent.\n", SCPS_SETTLE_FILE);
+    g_cover_tex = load_despilled_bmp(ren, SCPS_COVER_FILE);
+    if (g_cover_tex) printf("[scps] %s chargé (route-cover).\n", SCPS_COVER_FILE);
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
 #endif
@@ -4478,13 +4859,15 @@ int main(int argc, char **argv) {
         }
         if (shot_zoom > 1.f) cam_zoom(&cam, shot_zoom, win_w*0.5f, win_h*0.5f);  /* N3.1 : zoom AVANT la photo caméra */
         rp.cam_ox=cam.ox; rp.cam_oy=cam.oy; rp.cam_scale=cam.scale; rp.selected_prov=selected;
+        g_iso_w=win_w; g_iso_h=win_h; rp.iso=g_iso;   /* vue iso (SCPS_ISO en capture) */
         SDL_RenderClear(ren);
         if (shot_cur) {
             rp.region_tint=NULL;
             render_map(world, pb.pixels, pb.w, pb.h, &rp, VIEW_TERRAIN); pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
             for (int sy=8; sy<win_h-8; sy+=12) for (int sx=8; sx<win_w-8; sx+=12){
-                int cx2=(int)(sx/cam.scale+cam.ox), cy2=(int)(sy/cam.scale+cam.oy);
+                float _wx,_wy; cam_unproject(&cam,(float)sx,(float)sy,&_wx,&_wy);
+                int cx2=(int)_wx, cy2=(int)_wy;
                 if (cx2<0||cy2<0||cx2>=SCPS_W||cy2>=SCPS_H) continue;
                 const Cell *cc=scps_cellc(world,cx2,cy2);
                 if (cc->sea<=SEA_CABOTAGE) continue;
@@ -4566,9 +4949,9 @@ int main(int argc, char **argv) {
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (sim.ready) draw_map_nature_decals(ren, world, &cam, win_w, win_h);   /* décors SOUS les frontières */
+            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); }   /* rivières chaînées + décors, SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
-            if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false;
+            if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false; mmp.iso=false;  /* minicarte : top-down */
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
                 render_map(world, mm_pb.pixels, mm_pb.w, mm_pb.h, &mmp, smode); pixbuf_upload(&mm_pb); }
             if (sim.ready && g_font) {
@@ -4915,8 +5298,8 @@ int main(int argc, char **argv) {
                     /* P0.2 — clic CARTE seulement HORS panneau (priorité panneau > carte) */
                     if (over_panel(ev.button.x, ev.button.y, win_w, win_h, selected)) break;
                     /* Sinon : sélectionner la province au clic (détail province) */
-                    int cx = (int)(ev.button.x / cam.scale + cam.ox);
-                    int cy = (int)(ev.button.y / cam.scale + cam.oy);
+                    float _wx,_wy; cam_unproject(&cam,(float)ev.button.x,(float)ev.button.y,&_wx,&_wy);
+                    int cx=(int)_wx, cy=(int)_wy;
                     if (cx>=0&&cx<SCPS_W&&cy>=0&&cy<SCPS_H) {
                         int p = (int)scps_cellc(world, cx, cy)->province;
                         if (p != selected) {
@@ -4939,7 +5322,8 @@ int main(int argc, char **argv) {
                 if (ev.button.button == SDL_BUTTON_RIGHT && g_gs==GS_PLAYING && sim.ready
                     && abs(ev.button.x-rdown_x)<5 && abs(ev.button.y-rdown_y)<5
                     && !over_panel(ev.button.x,ev.button.y,win_w,win_h,selected)){
-                    int cx=(int)(ev.button.x/cam.scale+cam.ox), cy=(int)(ev.button.y/cam.scale+cam.oy);
+                    float _wx,_wy; cam_unproject(&cam,(float)ev.button.x,(float)ev.button.y,&_wx,&_wy);
+                    int cx=(int)_wx, cy=(int)_wy;
                     g_diplo_target=-1;
                     if (cx>=0&&cy>=0&&cx<SCPS_W&&cy<SCPS_H){
                         int rg=(int)scps_cellc(world,cx,cy)->region;
@@ -5046,6 +5430,7 @@ int main(int argc, char **argv) {
                 case SDLK_i:     mode=VIEW_HABITABILITY; dirty=true; break;
                 case SDLK_f:     g_sb.tab=(g_sb.tab==SBT_FILTRES)?-1:SBT_FILTRES; dirty=true; break;
                 case SDLK_z:     cam_fit(&cam,win_w,win_h); dirty=true; break;   /* Z = cadrer la carte */
+                case SDLK_o:     g_iso=!g_iso; dirty=true; break;   /* O = bascule vue ISOMÉTRIQUE (oblique) */
                 case SDLK_r:
                     seed ^= (uint32_t)time(NULL) * 2654435761u;
                     params.seed = seed;
@@ -5107,6 +5492,7 @@ int main(int argc, char **argv) {
 
         if (dirty && pb.pixels) {
             rp.cam_ox = cam.ox; rp.cam_oy = cam.oy; rp.cam_scale = cam.scale;
+            g_iso_w=win_w; g_iso_h=win_h; rp.iso=g_iso;   /* vue iso (toggle) */
             rp.selected_prov = selected;
             rp.region_tint = NULL;
             ViewMode rmode = mode;
@@ -5171,7 +5557,7 @@ int main(int argc, char **argv) {
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
-        if (sim.ready && g_gs==GS_PLAYING) draw_map_nature_decals(ren, world, &cam, win_w, win_h);
+        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); }
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
          * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
          * SOUS la sélection/glyphes/étiquettes (z-order §2c). */
@@ -5182,7 +5568,8 @@ int main(int argc, char **argv) {
         /* ── filtre COURANTS : lignes de flux sur la mer (les MORTES = le creux) ── */
         if (g_sb.show_currents && g_gs==GS_PLAYING){
             for (int sy=8; sy<win_h-8; sy+=14) for (int sx=8; sx<win_w-8; sx+=14){
-                int cx2=(int)(sx/cam.scale+cam.ox), cy2=(int)(sy/cam.scale+cam.oy);
+                float _wx,_wy; cam_unproject(&cam,(float)sx,(float)sy,&_wx,&_wy);
+                int cx2=(int)_wx, cy2=(int)_wy;
                 if (cx2<0||cy2<0||cx2>=SCPS_W||cy2>=SCPS_H) continue;
                 const Cell *cc=scps_cellc(world,cx2,cy2);
                 if (cc->sea<=SEA_CABOTAGE) continue;          /* terre/côte : rien ; MORTE : creux */
@@ -5200,7 +5587,7 @@ int main(int argc, char **argv) {
          * eaux vives · courant (et son sens). Des mots, jamais un vecteur nu. */
         if (g_gs==GS_PLAYING && g_font_small && sim.ready){
             int hmx,hmy; SDL_GetMouseState(&hmx,&hmy);
-            int hcx=(int)(hmx/cam.scale+cam.ox), hcy=(int)(hmy/cam.scale+cam.oy);
+            float _hwx,_hwy; cam_unproject(&cam,(float)hmx,(float)hmy,&_hwx,&_hwy); int hcx=(int)_hwx, hcy=(int)_hwy;
             if (!over_panel(hmx,hmy,win_w,win_h,selected) && hcx>=0&&hcy>=0&&hcx<SCPS_W&&hcy<SCPS_H){  /* P0.2 : pas de hover carte sous un panneau */
                 const Cell *hc=scps_cellc(world,hcx,hcy);
                 if (hc->sea){
@@ -5254,7 +5641,7 @@ int main(int argc, char **argv) {
             }
             shell_draw(ren,win_w,win_h,world,&sim,&g_stage);     /* surcouches : pause · tuto · confirmation */
             /* mer au survol : le MOT (repli de plus basse priorité — ajouté en dernier) */
-            { int cx3=(int)(mx2/cam.scale+cam.ox), cy3=(int)(my2/cam.scale+cam.oy);
+            { float _wx,_wy; cam_unproject(&cam,(float)mx2,(float)my2,&_wx,&_wy); int cx3=(int)_wx, cy3=(int)_wy;
               if (!over_panel(mx2,my2,win_w,win_h,selected) && cx3>=0&&cy3>=0&&cx3<SCPS_W&&cy3<SCPS_H){  /* P0.2 */
                   const Cell *cc=scps_cellc(world,cx3,cy3);
                   if (cc->sea!=SEA_NONE){
@@ -5279,7 +5666,8 @@ int main(int argc, char **argv) {
 
         /* Status console */
         int mx, my; SDL_GetMouseState(&mx, &my);
-        int cx=(int)(mx/cam.scale+cam.ox), cy=(int)(my/cam.scale+cam.oy);
+        float _wx,_wy; cam_unproject(&cam,(float)mx,(float)my,&_wx,&_wy);
+        int cx=(int)_wx, cy=(int)_wy;
         status_line(world, mode, seed, cx, cy, selected);
 
         SDL_Delay(8); /* ~120fps max */

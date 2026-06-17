@@ -295,11 +295,21 @@ void render_map(const World *w, uint32_t *pixels, int pw, int ph,
     if (!w || !pixels) return;
 
     float inv_scale = 1.f / p->cam_scale;
+    /* ISO : on INVERSE la projection — pivot au centre, (sx,sy) écran → (fx,fy) plat.
+     *   a=(sx−px)/KX = dx−dy ; b=(sy−py)/KY = dx+dy ; dx=(a+b)/2, dy=(b−a)/2.
+     * Puis plat → monde comme en top-down. Chaque pixel est mappé → fenêtre REMPLIE. */
+    float px = pw*0.5f, py = ph*0.5f;
 
     for (int sy = 0; sy < ph; sy++) {
-        float wy = sy * inv_scale + p->cam_oy;
         for (int sx = 0; sx < pw; sx++) {
-            float wx = sx * inv_scale + p->cam_ox;
+            float fx = (float)sx, fy = (float)sy;
+            if (p->iso){
+                float a = ((float)sx - px)/ISO_KX, b = ((float)sy - py)/ISO_KY;
+                fx = px + (a + b)*0.5f;
+                fy = py + (b - a)*0.5f;
+            }
+            float wx = fx * inv_scale + p->cam_ox;
+            float wy = fy * inv_scale + p->cam_oy;
             int cx = (int)wx, cy = (int)wy;
 
             uint32_t col;
