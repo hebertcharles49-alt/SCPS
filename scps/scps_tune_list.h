@@ -72,6 +72,13 @@
      * plein → le monde passe de ~48k à ~96k au siècle (la nourriture suit cap_pop). */ \
     X(EMPIRE_CAP,         13000.0f) \
     X(CITY_CAP,            6500.0f) \
+    /* VOCATION — nb de brutes (hors vivrier & stratégiques) gardées par région : la tuile
+     * produit sa spécialité, pas la liste complète (la traîne mineure vient du commerce). */ \
+    X(REGION_RAW_KEEP,        3.0f) \
+    /* POOL CITÉ-ÉTAT — réserve TRADABLE de matières brutes (bois/fer/argile/pierre) déposée sur
+     * la région-pivot de chaque cité-état : le marché mondial (#5) la revend aux empires nés
+     * NUS, qui importent ainsi de quoi BÂTIR au lieu de stagner au plancher ½·cap_pop. */ \
+    X(CS_TRADE_POOL,       1000.0f) \
     X(SEED_POP,           48000.0f) \
     X(HOUSE_MANUF,          100.0f) \
     /* #5 — le PUMP À 2 ÉTAGES : le marché local de la cité-état la plus proche sert à

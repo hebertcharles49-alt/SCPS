@@ -86,6 +86,9 @@ int main(int argc, char **argv){
     printf("\n── 4. Forge céleste : fer céleste + essence → armes enchantées → puissance militaire ──\n");
     float mil0 = diplo_mil_power(w, e, cid);
     e->region[rid].raw_cap[RES_CELESTIAL_IRON] = 3.0f;     /* un filon de fer céleste */
+    e->region[rid].raw_cap[RES_COAL]           = 3.0f;     /* + le CHARBON : in2 de la forge (fer céleste + CHARBON → armes
+                                                              enchantées). La « carte nue » ne pose plus charbonnière ni socle
+                                                              de charbon d'office → le banc fournit l'intrant explicitement. */
     {
         int bi=-1;
         for (int i=0;i<e->region[rid].n_bld;i++) if (e->region[rid].bld[i].type==BLD_CELESTIAL_FORGE) bi=i;

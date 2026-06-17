@@ -109,7 +109,10 @@ int main(int argc, char **argv){
     printf("\n── 1. La brasserie : le grain devient de la bière ──\n");
     {
         RegionEconomy *re=&e->region[0];
-        re->active=true; re->colonized=true; re->culture.settled=true; re->owner=0;
+        /* polité ISOLÉE (owner=-1) : son propre stock, HORS pool national — sinon la bière
+         * brassée ici se dilue au prorata pop sur les régions-sœurs NUES (worldgen ne pose
+         * plus de brasserie : « carte nue », cités-états exceptées). Le banc compare UNE région. */
+        re->active=true; re->colonized=true; re->culture.settled=true; re->owner=-1;
         for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
         re->raw_cap[RES_GRAIN]=30.f;   /* grain ABONDANT : on ne brasse que le SURPLUS */
         re->n_bld=0;

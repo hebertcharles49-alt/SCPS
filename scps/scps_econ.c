@@ -511,111 +511,93 @@ void econ_init(WorldEconomy *e, const World *w) {
          * classes) — sinon le monde meurt de faim. On le porte au-dessus du seuil,
          * pondéré par la FERTILITÉ moyenne de la région (les bonnes terres
          * nourrissent plus). */
-        re->raw_cap[RES_GRAIN] += subsist * (1.15f + 0.70f*reg_hab[rid]);
-        re->raw_cap[RES_WOOD]  += subsist * 0.12f;   /* P3.18 : socle bois MINIME (chauffe) — le bois d'œuvre vient des forêts (dominante) + commerce */
-        /* E1 — socles de CONSTRUCTION minimes : l'alluvion et le moellon se trouvent
-         * partout un peu (on bâtit partout) ; les gisements francs viennent du relief
-         * et des terres d'eau (ci-dessus), le reste du COMMERCE. */
-        re->raw_cap[RES_CLAY]  += subsist * 0.08f;
-        re->raw_cap[RES_STONE] += subsist * 0.05f;
+        re->raw_cap[RES_GRAIN] += subsist * (1.15f + 0.70f*reg_hab[rid]);   /* vivrier : COMMUN à tous (anti-famine) */
         re->coastal = coastal;                       /* lu par la marine (rade) et l'agency (gate du Port) */
         re->estuary = false;                         /* posé au balayage des cellules ci-dessous */
-        if (coastal) re->raw_cap[RES_FISH] += subsist * 0.10f;   /* socle côtier minime : le poisson vient surtout des biomes halieutiques (§2) */
 
-        /* ARCANE — le cristal sourd des NŒUDS telluriques (proxy : soufre ou métal précieux).
-         * NŒUD RICHE (rare, 1/4) + VOILE DIFFUS de 0.2 sur TOUTE région porteuse du proxy : la
-         * chaîne arcane (essence → bâton de mage) trouve de quoi nourrir un paquet sans devenir
-         * commune. Le voile ne BÂTIT PAS d'atelier (seuil d'implantation relevé à >0.5). */
-        if (re->raw_cap[RES_SULFUR]>0.f || re->raw_cap[RES_PRECIOUS_METAL]>0.f){
-            re->raw_cap[RES_ARCANE_CRYSTAL] += 0.2f;                                   /* voile diffus */
-            if (((uint32_t)(rid*2654435761u) % 4u)==0u) re->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* + nœud riche */
-        }
-        /* Fer céleste — météorique (proxy : minerai de fer en relief). Idem : nœud riche (1/9) +
-         * voile diffus de 0.2 sur toute région ferrifère → la Forge céleste (fer céleste → armes
-         * enchantées) franchit enfin le seuil d'un paquet de Garde runique. */
-        if (re->raw_cap[RES_IRON]>0.f){
-            re->raw_cap[RES_CELESTIAL_IRON] += 0.2f;                                   /* voile diffus */
-            if (((uint32_t)(rid*40503u+7u) % 9u)==0u) re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* + nœud riche */
-        }
-
-        /* ---- Manufactures : implantées là où l'intrant est extrait dans
-         *      la région (cohérence géographique de la chaîne de prod). */
-        if (re->raw_cap[RES_WOOL] > 0.f){ region_ensure_building(re,BLD_TEXTILE);
-                                          region_ensure_building(re,BLD_TUNIC); }  /* la tunique naît où l'on file */
-        if (re->raw_cap[RES_WOOD] > 0.f) {
-            region_ensure_building(re,BLD_SAWMILL);
-            region_ensure_building(re,BLD_PAPERMILL);
-            region_ensure_building(re,BLD_CHARCOAL);   /* charbon DU BOIS : la fonderie n'est plus otage du charbon minier */
-        }
-        if (re->raw_cap[RES_SUGAR] > 0.f) region_ensure_building(re,BLD_WINERY);
-        /* Brasserie : la bière naît du grain — boisson du commun, partout où l'on cultive. */
-        if (re->raw_cap[RES_GRAIN] > 0.f) region_ensure_building(re,BLD_BREWERY);
-        /* Joaillerie : là où l'on extrait de l'OR ou des PERLES (littoral). */
-        if (re->raw_cap[RES_GOLD] > 0.f || re->raw_cap[RES_PEARL] > 0.f)
-            region_ensure_building(re,BLD_JEWELER);
-        /* L'atelier de luxe a besoin de tissu : présent là où l'on file la laine. */
-        /* L'atelier de luxe-tissu s'élève là où l'on EXTRAIT la TEINTURE (murex côtier
-         * ou indigo du bas-pays) — place-gated comme la joaillerie l'est par l'or.
-         * (La rétroaction négative §NF en bâtira d'autres là où la teinture est importée.) */
-        if (re->raw_cap[RES_MUREX] > 0.f || re->raw_cap[RES_INDIGO] > 0.f)
-            region_ensure_building(re,BLD_WEAVER_LUX);
-        /* Épine dorsale : fonderie + atelier d'outillage là où il y a du FER et de quoi
-         * faire le feu — charbon minier OU bois (via la charbonnière). Le fer reste le
-         * gate géographique ; le charbon ne l'est plus (charbonnière du bois abondant). */
-        if (re->raw_cap[RES_IRON] > 0.f && (re->raw_cap[RES_COAL] > 0.f || re->raw_cap[RES_WOOD] > 0.f)){
-            region_ensure_building(re,BLD_FOUNDRY);
-            region_ensure_building(re,BLD_TOOLWORKS);
-        }
-        /* ARCANE : un atelier de mage s'élève au NŒUD tellurique (cristal RICHE >0.5 — pas sur le
-         * voile diffus, qui n'est qu'un gisement à exploiter/commercer, pas un site d'atelier). */
-        if (re->raw_cap[RES_ARCANE_CRYSTAL] > 0.5f) region_ensure_building(re,BLD_MAGE_WORKSHOP);
-        /* ARCANE militaire : une forge céleste là où tombe le fer céleste EN NŒUD (>0.5). */
-        if (re->raw_cap[RES_CELESTIAL_IRON] > 0.5f) region_ensure_building(re,BLD_CELESTIAL_FORGE);
-        /* Militaire de base : armurerie au fer, poudrière au salpêtre+charbon. */
-        if (re->raw_cap[RES_IRON] > 0.f) region_ensure_building(re,BLD_ARMORY);
-        if (re->raw_cap[RES_SALTPETER] > 0.f && re->raw_cap[RES_COAL] > 0.f)
-            region_ensure_building(re,BLD_POWDERMILL);
-        /* F3 — l'ALAMBIC n'est PLUS auto-bâti à la géographie : il est GATÉ par TECH_ALCHIMIE
-         * (le salpêtre nourrit la poudre sans tech ; l'alchimie le distille en flux AVEC tech).
-         * Bâti par la boucle de demande (gatée par re->tech_alchimie) quand le flux est requis. */
-        /* Santé : apothicaire là où poussent les simples (herbes médicinales). */
-        if (re->raw_cap[RES_MED_HERBS] > 0.f) region_ensure_building(re,BLD_APOTHECARY);
-
-        /* §NF — CONSTRUCTION PAR RÉTROACTION NÉGATIVE : au-delà de l'implantation
-         * géographique ci-dessus (au gisement), un bien PRODUCTIBLE en PÉNURIE
-         * (prix ≥ NF_SHORTAGE× base — le signal que « l'input baisse ») APPELLE son
-         * producteur dans CETTE région, même sans gisement local. On le bâtit
-         * spontanément — mais JAMAIS dans le vide : il faut (a) une POPULATION (des
-         * bras qui travaillent, des bouches qui consomment : pop ≥ NF_POP_FLOOR) et
-         * (b) de quoi le NOURRIR — l'intrant EXTRAIT sur place OU présent en STOCK
-         * (importé), repli (perle…) compris. Le surcroît de bien fait RETOMBER le
-         * prix → le signal s'éteint : rétroaction négative, auto-amortie. */
-        if (re->colonized){
-            float rpop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
-                       + re->strata[CLASS_ELITE].pop;
-            if (rpop >= NF_POP_FLOOR){
-                for (int b=0;b<BLD_TYPE_COUNT;b++){
-                    const Recipe *rc=&RECIPE[b];
-                    if (rc->out<=RES_NONE || rc->out>=RES_COUNT) continue;
-                    if (re->price[rc->out] < BASE_PRICE[rc->out]*NF_SHORTAGE) continue;  /* pas en pénurie */
-                    bool feed1 = (rc->in1==RES_NONE)
-                              || re->raw_cap[rc->in1]>0.f || re->stock[rc->in1]>=NF_STOCK_MIN
-                              || (rc->alt1!=RES_NONE && (re->raw_cap[rc->alt1]>0.f
-                                                       || re->stock[rc->alt1]>=NF_STOCK_MIN));
-                    bool feed2 = (rc->in2==RES_NONE)
-                              || re->raw_cap[rc->in2]>0.f || re->stock[rc->in2]>=NF_STOCK_MIN;
-                    if (!feed1 || !feed2) continue;        /* rien pour le nourrir → bâtir dans le vide : refusé */
-                    int bi=region_ensure_building(re,(BuildingType)b);
-                    if (bi>=0 && re->bld[bi].level < NF_SEED_LEVEL) re->bld[bi].level = NF_SEED_LEVEL;
-                }
+        /* ──────────────────────────────────────────────────────────────────────
+         * MISE À NU — À L'EXCEPTION DES CITÉS-ÉTATS.
+         *   · EMPIRE / JOUEUR : la carte naît NUE (terrain + gisements seuls,
+         *     vocation régionale, ZÉRO bâtiment) ; l'IA/agency élèvent les
+         *     manufactures DANS LE TEMPS (econ_build_tick §NF + chantiers payés).
+         *   · CITÉ-ÉTAT : EXEMPTÉE — elle TIENT le marché mondial (#5), elle est
+         *     l'ATELIER du monde où les empires pompent leurs biens. Elle naît donc
+         *     ÉQUIPÉE comme avant la mise à nu : socles de matière, voiles arcanes,
+         *     MANUFACTURES implantées au gisement, niveaux dimensionnés.
+         * (cid = rg->country, connu l.462 ; owner pas encore posé sur re ici.) */
+        bool is_city_state = (cid>=0 && cid<w->n_countries
+                              && w->country[cid].role==POLITY_CITY_STATE);
+        if (is_city_state){
+            /* — socles de matière MINIMES (la cité-état file/scie/bâtit dès l'an 0) — */
+            re->raw_cap[RES_WOOD]  += subsist * 0.12f;
+            re->raw_cap[RES_CLAY]  += subsist * 0.08f;
+            re->raw_cap[RES_STONE] += subsist * 0.05f;
+            if (coastal) re->raw_cap[RES_FISH] += subsist * 0.10f;
+            /* — ARCANE : cristal des nœuds telluriques (nœud riche 1/4 + voile diffus 0.2) — */
+            if (re->raw_cap[RES_SULFUR]>0.f || re->raw_cap[RES_PRECIOUS_METAL]>0.f){
+                re->raw_cap[RES_ARCANE_CRYSTAL] += 0.2f;                                   /* voile diffus */
+                if (((uint32_t)(rid*2654435761u) % 4u)==0u) re->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* + nœud riche */
             }
+            /* — Fer céleste : météorique (nœud riche 1/9 + voile diffus 0.2) — */
+            if (re->raw_cap[RES_IRON]>0.f){
+                re->raw_cap[RES_CELESTIAL_IRON] += 0.2f;                                   /* voile diffus */
+                if (((uint32_t)(rid*40503u+7u) % 9u)==0u) re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* + nœud riche */
+            }
+            /* — MANUFACTURES implantées là où l'intrant est extrait (cohérence de la chaîne) — */
+            if (re->raw_cap[RES_WOOL] > 0.f){ region_ensure_building(re,BLD_TEXTILE);
+                                              region_ensure_building(re,BLD_TUNIC); }  /* la tunique naît où l'on file */
+            if (re->raw_cap[RES_WOOD] > 0.f) {
+                region_ensure_building(re,BLD_SAWMILL);
+                region_ensure_building(re,BLD_PAPERMILL);
+                region_ensure_building(re,BLD_CHARCOAL);   /* charbon DU BOIS */
+            }
+            if (re->raw_cap[RES_SUGAR] > 0.f) region_ensure_building(re,BLD_WINERY);
+            if (re->raw_cap[RES_GRAIN] > 0.f) region_ensure_building(re,BLD_BREWERY);   /* la bière naît du grain */
+            if (re->raw_cap[RES_GOLD] > 0.f || re->raw_cap[RES_PEARL] > 0.f)
+                region_ensure_building(re,BLD_JEWELER);
+            if (re->raw_cap[RES_MUREX] > 0.f || re->raw_cap[RES_INDIGO] > 0.f)
+                region_ensure_building(re,BLD_WEAVER_LUX);
+            if (re->raw_cap[RES_IRON] > 0.f && (re->raw_cap[RES_COAL] > 0.f || re->raw_cap[RES_WOOD] > 0.f)){
+                region_ensure_building(re,BLD_FOUNDRY);
+                region_ensure_building(re,BLD_TOOLWORKS);
+            }
+            if (re->raw_cap[RES_ARCANE_CRYSTAL] > 0.5f) region_ensure_building(re,BLD_MAGE_WORKSHOP);   /* nœud riche seul */
+            if (re->raw_cap[RES_CELESTIAL_IRON] > 0.5f) region_ensure_building(re,BLD_CELESTIAL_FORGE);
+            if (re->raw_cap[RES_IRON] > 0.f) region_ensure_building(re,BLD_ARMORY);
+            if (re->raw_cap[RES_SALTPETER] > 0.f && re->raw_cap[RES_COAL] > 0.f)
+                region_ensure_building(re,BLD_POWDERMILL);
+            if (re->raw_cap[RES_MED_HERBS] > 0.f) region_ensure_building(re,BLD_APOTHECARY);
+            /* Niveau initial : dimensionné sur la capacité d'accueil (infrastructure latente). */
+            float invest = re->cap_pop*CLASS_SHARE[CLASS_BOURGEOIS];
+            for (int i=0;i<re->n_bld;i++)
+                re->bld[i].level = 0.5f + invest*0.01f;
+        } else {
+            /* EMPIRE / JOUEUR — nœuds stratégiques RARES (plus de voile diffus), puis VOCATION. */
+            if (re->raw_cap[RES_SULFUR]>0.f || re->raw_cap[RES_PRECIOUS_METAL]>0.f){
+                if (((uint32_t)(rid*2654435761u) % 4u)==0u) re->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* nœud riche SEUL */
+            }
+            if (re->raw_cap[RES_IRON]>0.f){
+                if (((uint32_t)(rid*40503u+7u) % 9u)==0u) re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* nœud riche SEUL */
+            }
+            /* VOCATION (la tuile produit X et Y, pas la liste complète) : on ne garde que le
+             * VIVRIER (grain), les STRATÉGIQUES rares (fer céleste / cristal arcanique) et les
+             * REGION_RAW_KEEP brutes les plus FORTES ; la longue traîne des brutes mineures
+             * (agrégée des provinces) tombe → spécialisation régionale. Le manquant vient du
+             * COMMERCE (pool national + routes). « Plus jamais du sol » partout. */
+            int keep = (int)tune_f("REGION_RAW_KEEP", 3.f);
+            bool prot[RES_COUNT]; for (int g=0;g<RES_COUNT;g++) prot[g]=false;
+            prot[RES_GRAIN]=prot[RES_CELESTIAL_IRON]=prot[RES_ARCANE_CRYSTAL]=true;  /* vivres + stratégiques */
+            for (int k=0;k<keep;k++){
+                int best=-1; float bv=0.f;
+                for (int g=1;g<RES_PROD_FIRST;g++){ if (prot[g]||re->raw_cap[g]<=0.f) continue;
+                    if (re->raw_cap[g]>bv){ bv=re->raw_cap[g]; best=g; } }
+                if (best<0) break;
+                prot[best]=true;
+            }
+            for (int g=1;g<RES_PROD_FIRST;g++) if (!prot[g]) re->raw_cap[g]=0.f;   /* la traîne tombe */
+            /* WORLDGEN NE POSE AUCUN BÂTIMENT pour l'empire : la carte naît NUE — l'IA/agency
+             * élèvent les manufactures DANS LE TEMPS (plus d'implantation au gisement). */
         }
-
-        /* Niveau initial des manufactures : dimensionné sur la capacité
-         * d'accueil (l'infrastructure latente du site). */
-        float invest = re->cap_pop*CLASS_SHARE[CLASS_BOURGEOIS];
-        for (int i=0;i<re->n_bld;i++)
-            re->bld[i].level = 0.5f + invest*0.01f;
 
         /* ---- Prix & stock de départ. */
         for (int r=0;r<RES_COUNT;r++) {
@@ -632,8 +614,12 @@ void econ_init(WorldEconomy *e, const World *w) {
         if (!c->coast || c->river<40) continue;
         int r=c->region;
         if (r>=0 && r<e->n_regions){
-            /* E1 : la plaine alluviale d'un estuaire est une argilière naturelle. */
-            if (!e->region[r].estuary) e->region[r].raw_cap[RES_CLAY] += 1.5f;
+            /* E1 : la plaine alluviale d'un estuaire est une argilière naturelle —
+             * RESTAURÉE pour les CITÉS-ÉTATS seules (exemptées de la mise à nu) ; pour
+             * l'empire l'argile vient de la GÉO (terres d'eau) soumise à la vocation. */
+            int rc = w->region[r].country;
+            bool cs = (rc>=0 && rc<w->n_countries && w->country[rc].role==POLITY_CITY_STATE);
+            if (cs && !e->region[r].estuary) e->region[r].raw_cap[RES_CLAY] += 1.5f;
             e->region[r].estuary=true;
         }
     }
@@ -700,6 +686,28 @@ void econ_init(WorldEconomy *e, const World *w) {
             econ_seed_population(re, fminf(seed_per, re->cap_pop*0.5f));   /* uniforme, sous le plancher */
             re->colonized=true;
             re->owner=(int16_t)cid;
+        }
+    }
+
+    /* POOL TRADABLE DES CITÉS-ÉTATS (2026-06-16) : chaque cité-état naît avec une RÉSERVE
+     * de matières BRUTES — CS_TRADE_POOL (1000) de BOIS / FER / ARGILE / PIERRE — sur sa
+     * région-pivot. Le marché mondial (ses Centres, #5) la revend aux EMPIRES nés NUS : le
+     * trio du bâti (bois/pierre/argile des chantiers) + le fer des outils/armes ont enfin
+     * une SOURCE, l'empire importe de quoi élever ses manufactures au lieu de stagner au
+     * plancher ½·cap_pop. (Posé APRÈS la remise à zéro des stocks de l.« Prix & stock ».) */
+    {
+        float pool = tune_f("CS_TRADE_POOL", 1000.f);
+        for (int cid=0; cid<w->n_countries; cid++){
+            if (w->country[cid].role!=POLITY_CITY_STATE) continue;
+            for (int r=0; r<e->n_regions; r++){
+                RegionEconomy *re=&e->region[r];
+                if (re->owner!=cid || !re->active) continue;
+                re->stock[RES_WOOD]  += pool;
+                re->stock[RES_IRON]  += pool;
+                re->stock[RES_CLAY]  += pool;
+                re->stock[RES_STONE] += pool;
+                break;   /* une réserve par cité-état (sa première région active = pivot) */
+            }
         }
     }
 

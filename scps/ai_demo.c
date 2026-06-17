@@ -266,8 +266,17 @@ int main(int argc, char **argv){
      * tisse, le bâtisseur empile du K. La propensité (w_trade le plus fort) est vérifiée plus haut. */
     ok("le Mercantile tisse plus de routes que le Bâtisseur (appétit marchand)",
        act[1].stats.routes > act[2].stats.routes);
-    ok("le Bâtisseur bâtit le PLUS de K",
-       strict_max(act[2].stats.builds_k, act[0].stats.builds_k, act[1].stats.builds_k));
+    /* Bâtisseur +K — RE-BASELINE « carte nue » (2026-06-16) : l'empire naît SANS bâti
+     * (eff_cap = ½·cap_pop, sans logement) → il démarre AU PLAFOND et reste sous le frein
+     * (digestion permanente) ; sa voie K bascule alors en builds_other (l.942 scps_ai.c).
+     * Le Bâtisseur reste LE bâtisseur — il pose le plus d'ÉDIFICES civils — mais l'étiquette
+     * K-proactif / digestion suit le MONDE. On garde donc le ROBUSTE « il métabolise le plus »
+     * (K proactif OU édifices civils) ; l'APPÉTIT de K (w_build) est, lui, vérifié STRICT plus
+     * haut. (Les 3 archétypes sont des empires ; le marché-cité-état qui ravitaille la mise à
+     * nu — CS_TRADE_POOL — n'existe pas dans ce banc fermé : il opère en chronique/viewer.) */
+    ok("le Bâtisseur métabolise le PLUS (K proactif ou édifices civils)",
+       strict_max(act[2].stats.builds_k,     act[0].stats.builds_k,     act[1].stats.builds_k)
+    || strict_max(act[2].stats.builds_other, act[0].stats.builds_other, act[1].stats.builds_other));
     {
         int aD=act[0].stats.wars+act[0].stats.conquests;
         int aM=act[1].stats.wars+act[1].stats.conquests;
