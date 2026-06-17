@@ -343,5 +343,11 @@
     X(STR_PMOD_CICATRICE_EFF,  "Une province récemment soulevée ou saccagée se développe mal : croissance et production entaillées tant que la plaie ne s'est pas refermée.") \
     X(STR_PMOD_ABONDANCE_NOM,  "Terre d'abondance") \
     X(STR_PMOD_ABONDANCE_EFF,  "Une terre vaste, nourrie et en paix appelle les familles : la natalité s'envole tant que ses champs ne sont pas pleins.") \
+    X(STR_PMOD_FERVEUR_NOM,    "Ferveur fondatrice") \
+    X(STR_PMOD_FERVEUR_EFF,    "Une colonie fraîchement fondée a faim d'avenir : ses premières années portent un élan de natalité qui s'apaise à mesure qu'elle s'enracine.") \
+    X(STR_PMOD_RECONSTRUCTION_NOM, "Reconstruction") \
+    X(STR_PMOD_RECONSTRUCTION_EFF, "Une fois la plaie d'une révolte ou d'un sac refermée, la province se relève d'un bond : la reconstruction d'après-choc presse la natalité.") \
+    X(STR_PMOD_LIMON_NOM,      "Limon fertile") \
+    X(STR_PMOD_LIMON_EFF,      "L'embouchure d'un grand fleuve dépose un limon gras : les champs du delta nourrissent une population dense.") \
 
 #endif /* SCPS_STRINGS_IDS_H */

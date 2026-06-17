@@ -241,10 +241,24 @@
   fléau rouge), rendu par `viewer.c` entre Capitale et Bâtiments ; 7 `STR_*` (FR+EN). ⚠
   **RE-BASELINE** : les low seeds montent ; le **hash 12 ans re-baseline** (l'abondance mord dès
   l'an-0). `make test` 35/35 · `determinism` stable · `lang-check` 64/64. Éteignable :
-  `SCPS_TUNE=PROVMOD_ABOND_K=0` (le modificateur reste AFFICHÉ). À VENIR (mêmes rails, comme une
-  TABLE) : ferveur fondatrice & reconstruction-sur-déclin (à ÉTAT → bumperont le save), boosts K
-  (admin/colonie « Nouvelles perspectives »), bonus géo provinciaux (limon fertile/gibier abondant),
-  évents xénophiles. Tunables registre J : `PROVMOD_ABOND_REF` 0.45 · `PROVMOD_ABOND_K` 2.0.
+  `SCPS_TUNE=PROVMOD_ABOND_K=0` (le modificateur reste AFFICHÉ). ⚠ **Mesure propre (5 sims
+  appariés)** : seed 9 OFF 63.0k → ON 67.8k (**+7.6 %** — il était lui-même à ~½ rempli, il capte
+  donc un peu d'abondance ; le single-sim « bruit » l'avait masqué) ; les low seeds montent ~5× plus.
+  Tunables registre J : `PROVMOD_ABOND_REF` 0.45 · `PROVMOD_ABOND_K` 2.0.
+- **MODIFICATEURS PROVINCIAUX lot 2 (2026-06-17) — ferveur fondatrice + reconstruction + limon
+  (faveurs À ÉTAT)** : trois faveurs de plus sur le même slot « MODIFICATEURS » et le canal DÉMO.
+  **FERVEUR FONDATRICE** (`re->ferveur`, semé à 1 par `colonize_from`, décru ~15 ans) : une colonie
+  fraîchement fondée croît avec élan (incarne aussi « Nouvelles perspectives »). **RECONSTRUCTION**
+  (`re->reconstruction`, amorcée à 1 par une cicatrice PROFONDE >0.5, LIBÉRÉE à mesure que la plaie
+  se referme via `recon·(1−scar)`, décrue ~10 ans) : la renaissance d'après-révolte/sac — la reprise
+  SUIT la paix, elle frappe pile le creux des low seeds. **LIMON FERTILE** (dérivé, `re->estuary`) :
+  un delta nourrit une natalité dense. Tous routés par l'entrée DÉMO (`provmod_collect` inline),
+  surfacés en faveurs, 6 `STR_*` (FR+EN). ⚠ **SAVE BUMPÉ 26→27** (RegionEconomy +ferveur
+  +reconstruction = 2 floats À ÉTAT → `sizeof(WorldEconomy)` change ; <v27 refusé). ⚠ RE-BASELINE
+  (les faveurs s'empilent ; hash 12 ans re-baseline). `make test` 35/35 · `determinism` STABLE.
+  Tunables registre J : `PROVMOD_FERVEUR_K` 0.5 · `_DECAY` 0.067 · `PROVMOD_RECON_K` 0.6 · `_DECAY`
+  0.10 · `PROVMOD_LIMON_K` 0.15. À VENIR (autres SOUS-SYSTÈMES) : évents xénophiles (event system),
+  boosts K admin (build/agency), bonus géo biome gibier/halieutique (worldgen), couplage satisfaction.
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.

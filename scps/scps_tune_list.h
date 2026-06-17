@@ -156,6 +156,15 @@
      * RICHES restent inchangés, seuls les low/assommés-sous-REF décollent. */ \
     X(PROVMOD_ABOND_REF,      0.45f) \
     X(PROVMOD_ABOND_K,        2.0f) \
+    /* Lot 2 — FAVEURS provinciales À ÉTAT (entrée DÉMO). FERVEUR : élan d'une colonie fondée,
+     * semé à 1, décru sur ~15 ans (DECAY). RECONSTRUCTION : renaissance d'après-choc, amorcée
+     * par une cicatrice profonde, libérée à mesure qu'elle se referme (recon·(1−scar)), décrue
+     * sur ~10 ans. LIMON : natalité dense d'un delta (embouchure). K = échelle du bonus démo. */ \
+    X(PROVMOD_FERVEUR_K,      0.5f) \
+    X(PROVMOD_FERVEUR_DECAY,  0.067f) \
+    X(PROVMOD_RECON_K,        0.6f) \
+    X(PROVMOD_RECON_DECAY,    0.10f) \
+    X(PROVMOD_LIMON_K,        0.15f) \
     /* CAPSTONE §27 — Entropie mondiale + 4 fins + Merveille.
      * ENTROPY_FIN : seuil terminal qui déclenche une fin (~200 ans sur seed 9).
      * ENDGAME_YEAR_OPEN : gate dur — aucune apocalypse avant cette année (victoire

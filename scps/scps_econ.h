@@ -236,6 +236,12 @@ typedef struct {
     /* Cicatrice de révolte [0..1] : une province récemment soulevée se développe
      * MAL (−50 % de croissance ET de production) ; décroît sur quelques années. */
     float      revolt_scar;
+    /* FAVEURS provinciales À ÉTAT (modificateurs diégétiques, lot 2) — [0..1], décroissent
+     * chaque tick. ferveur = l'élan d'une colonie fraîchement fondée (semée à la colonisation) ;
+     * reconstruction = la renaissance d'après-choc (amorcée par une cicatrice PROFONDE, elle
+     * OUTLASTE la plaie → la reprise suit la paix). Routées par l'entrée DÉMO (provmod_collect). */
+    float      ferveur;
+    float      reconstruction;
     /* Anti-saccage (§4 guerre) : une province DÉPOUILLÉE ne peut l'être à nouveau
      * avant ~5 ans (plus rien à prendre) — compteur en années, décroît chaque tick. */
     float      pillage_cd;
@@ -296,7 +302,8 @@ void econ_cold_refresh(WorldEconomy *e, const World *w);
  * une ENTRÉE moteur (la démographie de la croissance), jamais un bonus plat sur la
  * sortie ; le readout le traduit en mots. Les modificateurs À ÉTAT (ferveur fondatrice,
  * reconstruction) viendront avec un champ sérialisé (et son bump). */
-typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE, PMOD_COUNT } ProvModKind;
+typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE,
+               PMOD_FERVEUR, PMOD_RECONSTRUCTION, PMOD_LIMON, PMOD_COUNT } ProvModKind;
 typedef struct {
     uint8_t kind;        /* ProvModKind */
     float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
@@ -334,6 +341,29 @@ static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int
             out[n].demo_bonus = tune_f("PROVMOD_ABOND_K", 2.0f) * under * re->food_sat * (1.f - scar);
             n++;
         }
+    }
+    /* FAVEUR — FERVEUR FONDATRICE : une colonie/jeune nation fraîchement fondée croît avec élan. */
+    if (re->ferveur > 0.02f && n < max){
+        float f = re->ferveur > 1.f ? 1.f : re->ferveur;
+        out[n].kind = PMOD_FERVEUR; out[n].intensity = f;
+        out[n].demo_bonus = tune_f("PROVMOD_FERVEUR_K", 0.5f) * f;
+        n++;
+    }
+    /* FAVEUR — RECONSTRUCTION : la renaissance d'après-choc. Amorcée par une cicatrice profonde,
+     * elle CULMINE à mesure que la plaie se referme (recon·(1−scar)) → la reprise SUIT la paix. */
+    {
+        float recon = re->reconstruction * (1.f - scar);
+        if (recon > 0.02f && n < max){
+            out[n].kind = PMOD_RECONSTRUCTION; out[n].intensity = recon > 1.f ? 1.f : recon;
+            out[n].demo_bonus = tune_f("PROVMOD_RECON_K", 0.6f) * recon;
+            n++;
+        }
+    }
+    /* FAVEUR — LIMON FERTILE : une embouchure (delta, mer ∩ grand fleuve) nourrit une natalité dense. */
+    if (re->estuary && n < max){
+        out[n].kind = PMOD_LIMON; out[n].intensity = 1.f;
+        out[n].demo_bonus = tune_f("PROVMOD_LIMON_K", 0.15f);
+        n++;
     }
     return n;
 }

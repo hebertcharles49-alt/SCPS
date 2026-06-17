@@ -4093,7 +4093,10 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 26u           /* v26 : CAPSTONE §27 — EndgameState (entropie + fins + merveille) ajoutée dans
+#define SAVE_VERSION 27u           /* v27 : MODIFICATEURS PROVINCIAUX lot 2 — RegionEconomy.ferveur +
+                                    * reconstruction (2 floats À ÉTAT) ⇒ sizeof(WorldEconomy) change
+                                    * (blob ECON sv_w) → ère antérieure (<v27 refusé).
+                                    * v26 : CAPSTONE §27 — EndgameState (entropie + fins + merveille) ajoutée dans
                                     * une nouvelle section EGAM. sizeof(EndgameState) entre dans le blob sv_w.
                                     * v25 : UN SEUL LIVRE D'OR — LR_GOLD éradiqué (l'or vit dans econ country_gold,
                                     * dette via scps_credit). LaborEcon perd treasury + stock/flow[LR_GOLD] (LRes 2→1,

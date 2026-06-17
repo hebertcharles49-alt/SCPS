@@ -334,4 +334,10 @@
     X(STR_PMOD_CICATRICE_EFF,  "A province recently risen or sacked develops poorly: growth and production are gashed until the wound closes.") \
     X(STR_PMOD_ABONDANCE_NOM,  "Land of Plenty") \
     X(STR_PMOD_ABONDANCE_EFF,  "A wide, well-fed land at peace draws families in: births soar while its fields are not yet full.") \
+    X(STR_PMOD_FERVEUR_NOM,    "Founding Fervor") \
+    X(STR_PMOD_FERVEUR_EFF,    "A freshly founded colony hungers for the future: its early years carry a surge of births that settles as it takes root.") \
+    X(STR_PMOD_RECONSTRUCTION_NOM, "Reconstruction") \
+    X(STR_PMOD_RECONSTRUCTION_EFF, "Once the wound of revolt or sack has closed, the province rebounds: post-shock reconstruction quickens births.") \
+    X(STR_PMOD_LIMON_NOM,      "Fertile Silt") \
+    X(STR_PMOD_LIMON_EFF,      "A great river's mouth lays down rich silt: the delta's fields feed a dense population.") \
 

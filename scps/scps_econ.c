@@ -1692,7 +1692,12 @@ void econ_tick(WorldEconomy *e, float dt) {
         net_growth = clampf(net_growth, -0.10f, 0.06f);
         /* CICATRICE DE RÉVOLTE : une province récemment soulevée se développe mal —
          * −50 % de croissance tant que la plaie n'est pas refermée (fade ~4 ans). */
-        re->revolt_scar = fmaxf(0.f, re->revolt_scar - 0.25f*dt);
+        /* RECONSTRUCTION (lot 2) : une cicatrice PROFONDE amorce la renaissance — chargée
+         * pendant la crise, libérée à mesure que la plaie se referme (recon·(1−scar)). */
+        if (re->revolt_scar > 0.5f) re->reconstruction = 1.f;
+        re->revolt_scar    = fmaxf(0.f, re->revolt_scar    - 0.25f*dt);
+        re->ferveur        = fmaxf(0.f, re->ferveur        - tune_f("PROVMOD_FERVEUR_DECAY",0.067f)*dt);
+        re->reconstruction = fmaxf(0.f, re->reconstruction - tune_f("PROVMOD_RECON_DECAY",  0.10f )*dt);
         /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE région — pas seulement colonisée.) */
         net_growth *= (1.f - 0.5f*re->revolt_scar);
         net_growth *= dt;   /* cumulatif → suit le pas (mensuel : 1/12 d'an) */
@@ -1841,6 +1846,7 @@ static void colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid) {
     dst->colonized=true;
     dst->culture.settled=true;   /* la culture de biome (gen_population) s'active */
     dst->owner=(int16_t)cid;
+    dst->ferveur=1.f;            /* FERVEUR FONDATRICE (lot 2) : la jeune colonie a faim d'avenir */
 }
 
 /* L5 — COLONIE OUTRE-MER : mêmes PORTES que l'essaimage terrestre (pop, vivres,

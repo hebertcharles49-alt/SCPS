@@ -756,6 +756,15 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
                 case PMOD_ABONDANCE:
                     m->nom = tr(STR_PMOD_ABONDANCE_NOM); m->effet = tr(STR_PMOD_ABONDANCE_EFF);
                     m->faveur = true;  pr.n_mods++; break;
+                case PMOD_FERVEUR:
+                    m->nom = tr(STR_PMOD_FERVEUR_NOM); m->effet = tr(STR_PMOD_FERVEUR_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_RECONSTRUCTION:
+                    m->nom = tr(STR_PMOD_RECONSTRUCTION_NOM); m->effet = tr(STR_PMOD_RECONSTRUCTION_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_LIMON:
+                    m->nom = tr(STR_PMOD_LIMON_NOM); m->effet = tr(STR_PMOD_LIMON_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
                 default: break;
             }
         }
