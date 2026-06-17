@@ -291,9 +291,10 @@ static double seg_screen_ang(const Cam *cam, float ax, float ay, float bx, float
     float p0x,p0y,p1x,p1y; cam_project(cam,ax,ay,&p0x,&p0y); cam_project(cam,bx,by,&p1x,&p1y);
     return atan2((double)(p1y-p0y),(double)(p1x-p0x))*RAD2DEG;
 }
-/* angle (deg) de l'axe « route/rivière » DESSINÉ dans le sprite iso droit : pour un iso 2:1,
- * l'axe-sol va ~(KX,KY) → atan2(KY,KX). On RETIRE cet angle puis on ajoute la direction écran. */
-#define SEG_SPRITE_ANG0 (atan2((double)ISO_KY,(double)ISO_KX)*RAD2DEG)
+/* angle (deg) de l'axe « route/rivière » DESSINÉ dans le sprite iso droit. MESURÉ par
+ * PCA sur l'atlas : ≈ −26° en espace écran (le sprite va de bas-gauche vers haut-droite).
+ * On retire cet angle et on ajoute la direction écran courante du segment. */
+#define SEG_SPRITE_ANG0 (-26.0)
 /* CHAÎNAGE des rivières : on suit les VRAIS tracés (w->river[].x/y, polylignes) — pas
  * le champ de débit (trop large). À chaque cellule, l'orientation vient des pas
  * AMONT→AVAL (voisin précédent + suivant) → sprite iso droit/coude, flip H/V. SOUS les décors. */
@@ -318,7 +319,7 @@ static void draw_map_rivers(SDL_Renderer *ren, const World *w, const Cam *cam, i
             float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
             if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;   /* hors champ */
             double theta = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f);
-            double ang = 180.0 - (theta - SEG_SPRITE_ANG0);   /* inversé + calé sur 180° */
+            double ang = theta - SEG_SPRITE_ANG0;   /* axe sprite mesuré (−26°) → suit la direction */
             dress_blit_rot(ren,MAPD_RIVER_STRAIGHT,fsx,fsy,px,ang);   /* TOURNÉ pour suivre le fil */
         }
     }
@@ -374,7 +375,7 @@ static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork
             float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
             if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;
             double theta = seg_screen_ang(cam,(float)ax+0.5f,(float)ay+0.5f,(float)bx+0.5f,(float)by+0.5f);
-            double ang = 180.0 - (theta - SEG_SPRITE_ANG0);   /* inversé + calé sur 180° */
+            double ang = theta - SEG_SPRITE_ANG0;   /* axe sprite mesuré (−26°) → suit la direction */
             dress_blit_rot(ren,MAPD_ROAD_STRAIGHT,fsx,fsy,px,ang);   /* TOURNÉE pour suivre la route */
         }
     }
