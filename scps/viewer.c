@@ -768,9 +768,9 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor naturel */
             int id=dress_pick(c,h);
             if (id<0) continue;
-            if (c->biome==BIO_FARMLAND){                              /* CHAMP : ponctuel (~90 % retirés) + JAMAIS sur une route */
+            if (c->biome==BIO_FARMLAND){                              /* CHAMP : très ponctuel (~95 % retirés) + JAMAIS sur une route */
                 if (g_road_mask && g_road_mask[cy*SCPS_W+cx]) continue;
-                if ((map_hash(cx,cy,0xFA12BEEFu) & 7u) != 0u) continue;   /* ne garde qu'1 sur 8 */
+                if ((map_hash(cx,cy,0xFA12BEEFu) & 15u) != 0u) continue;  /* ne garde qu'1 sur 16 */
             }
             int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
