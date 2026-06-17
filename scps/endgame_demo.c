@@ -261,6 +261,40 @@ int main(void) {
       }
       CHECK("empires vivants : régions connexes (refragmentation)", all_connected); }
 
+    /* ---- C4 : refroidissement (graduel, non géométrique) -------------- */
+    printf("\nC4 apocalypse de froid (température → biomes → famine)\n");
+    world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+    for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
+    /* mesures AVANT */
+    int n_sea0 = 0, n_cold0 = 0; double grain0 = 0.0; int probe = -1; float t0 = 0.f;
+    for (int i = 0; i < SCPS_N; i++) {
+        if (w->cell[i].height < SEA_LEVEL) n_sea0++;
+        else if (w->cell[i].biome == BIO_GLACIER || w->cell[i].biome == BIO_STEPPE) n_cold0++;
+        if (probe < 0 && w->cell[i].height >= SEA_LEVEL &&
+            w->cell[i].temperature > 0.40f && w->cell[i].temperature < 0.60f) { probe = i; t0 = w->cell[i].temperature; }
+    }
+    for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner >= 0) grain0 += econ->region[r].raw_cap[RES_GRAIN];
+    /* fire FROID + déroulé jusqu'au plateau */
+    endgame_init(&eg);
+    wp->entropy = FINV + 10.f; wp->entropy_epicenter = -1;
+    wp->faust_consumed[0] = 0.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 1000.0;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 100);
+    CHECK("FROID déclenchée", eg.fired && eg.fin == FIN_FROID);
+    for (int y = 0; y < 220; y++)
+        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 101 + y);
+    /* mesures APRÈS */
+    int n_sea1 = 0, n_cold1 = 0; double grain1 = 0.0; float t1 = (probe >= 0) ? w->cell[probe].temperature : 0.f;
+    for (int i = 0; i < SCPS_N; i++) {
+        if (w->cell[i].height < SEA_LEVEL) n_sea1++;
+        else if (w->cell[i].biome == BIO_GLACIER || w->cell[i].biome == BIO_STEPPE) n_cold1++;
+    }
+    for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner >= 0) grain1 += econ->region[r].raw_cap[RES_GRAIN];
+    CHECK("cold_offset plafonne (≈1.0)", eg.cold_offset >= 0.999f);
+    CHECK("les biomes blanchissent (glacier/steppe ↑)", n_cold1 > n_cold0);
+    CHECK("AUCUNE cellule ne devient mer (non géométrique)", n_sea1 == n_sea0);
+    CHECK("une cellule tempérée s'est refroidie", probe < 0 || t1 < t0);
+    CHECK("la fertilité vivrière s'effondre (famine)", grain1 < grain0);
+
     free(ts); free(wp); free(econ); free(w);
 
     /* ---- Récapitulatif ------------------------------------------------- */

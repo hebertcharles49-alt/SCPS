@@ -2091,6 +2091,54 @@ static void compute_render_flags(World *w, float *height) {
 /* ========================================================================
  * CAPSTONE §27 — CARVE : engloutir une cellule + recalcul d'adjacence
  * ====================================================================== */
+/* Habitabilité [0..1] d'un biome à une température donnée : base biome (plafond
+ * dur ; Glacier/Pic/Volcan = 0 absolu) × confort thermique (pénalité froid/chaud).
+ * SOURCE UNIQUE partagée par le worldgen ET le capstone FROID (qui la rejoue sur
+ * une carte refroidie). */
+float biome_habitability(Biome B, float tmp) {
+    float hab_base;
+    switch (B) {
+        case BIO_GLACIER:
+        case BIO_PEAK:
+        case BIO_VOLCANO:        hab_base=0.00f; break;  /* zéro absolu */
+        case BIO_DESERT:         hab_base=0.08f; break;
+        case BIO_COASTAL_DESERT: hab_base=0.18f; break;
+        case BIO_DRYLANDS:       hab_base=0.28f; break;
+        case BIO_MOUNTAINS:      hab_base=0.32f; break;
+        case BIO_STEPPE:
+        case BIO_SAVANNA:        hab_base=0.45f; break;
+        case BIO_MARSH:
+        case BIO_BOG:            hab_base=0.50f; break;
+        case BIO_HILLS:
+        case BIO_HIGHLANDS:      hab_base=0.60f; break;
+        case BIO_JUNGLE:
+        case BIO_MANGROVE:       hab_base=0.65f; break;
+        case BIO_FOREST:
+        case BIO_WOODS:          hab_base=0.72f; break;
+        case BIO_GRASSLAND:      hab_base=0.75f; break;
+        case BIO_COAST:
+        case BIO_SHALLOW:        hab_base=0.78f; break;
+        case BIO_PLAINS:         hab_base=0.88f; break;
+        case BIO_FARMLAND:       hab_base=0.95f; break;
+        default:                 hab_base=0.55f; break;
+    }
+    /* Confort thermique : [0.30..0.72] = confort total ; sous (froid) et au-dessus
+     * (chaud) pénalité sévère. C'est le LEVIER du froid : tmp baisse → t_comfort
+     * s'effondre → habitabilité chute. */
+    float t_comfort;
+    if (tmp >= 0.30f && tmp <= 0.72f) t_comfort = 1.0f;
+    else if (tmp < 0.30f)             t_comfort = clampf(tmp / 0.30f, 0.f, 1.f);
+    else                              t_comfort = clampf((1.f - tmp) / 0.28f, 0.f, 1.f);
+    return (hab_base <= 0.f) ? 0.f : clampf(hab_base * (0.45f + 0.55f*t_comfort), 0.f, 1.f);
+}
+
+/* Recalcule le biome d'UNE cellule de terre depuis (height, moisture, température)
+ * — capstone FROID : la température mutée blanchit les biomes (forêt→steppe→glacier). */
+void world_rebiome_cell(Cell *c) {
+    if (c->height < SEA_LEVEL) return;          /* la mer reste mer */
+    c->biome = assign_biome(c->height, c->moisture, c->temperature);
+}
+
 /* Engloutit UNE cellule (apocalypse d'eau / fond de ronces écroulé) : la terre
  * passe sous le niveau de mer, le biome devient océan (assign_biome), la
  * hiérarchie est strippée (province/région/pays/continent = -1). Le littoral
@@ -2722,50 +2770,9 @@ static void gen_resources(World *w) {
             for (int r=1;r<RES_PROD_FIRST;r++){ acc2+=wt[r]; if(acc2>=roll2){ pr->resource2=(Resource)r; break; } }
         }
 
-        /* ---- Habitabilité de la province [0..1] -------------------------
-         * Base biome (plafond dur) × confort thermique (pénalité froid/chaud).
-         * Glacier/Pic/Volcan → 0 absolu (infranchissable).
-         * Sahara chaud → ~0.05 ; steppe froide → 0.25-0.40 ;
-         * plaines tempérées → 0.80-0.90. */
-        float hab_base;
-        switch (B) {
-            case BIO_GLACIER:
-            case BIO_PEAK:
-            case BIO_VOLCANO:        hab_base=0.00f; break;  /* zéro absolu */
-            case BIO_DESERT:         hab_base=0.08f; break;
-            case BIO_COASTAL_DESERT: hab_base=0.18f; break;
-            case BIO_DRYLANDS:       hab_base=0.28f; break;
-            case BIO_MOUNTAINS:      hab_base=0.32f; break;
-            case BIO_STEPPE:
-            case BIO_SAVANNA:        hab_base=0.45f; break;
-            case BIO_MARSH:
-            case BIO_BOG:            hab_base=0.50f; break;
-            case BIO_HILLS:
-            case BIO_HIGHLANDS:      hab_base=0.60f; break;
-            case BIO_JUNGLE:
-            case BIO_MANGROVE:       hab_base=0.65f; break;
-            case BIO_FOREST:
-            case BIO_WOODS:          hab_base=0.72f; break;
-            case BIO_GRASSLAND:      hab_base=0.75f; break;
-            case BIO_COAST:
-            case BIO_SHALLOW:        hab_base=0.78f; break;
-            case BIO_PLAINS:         hab_base=0.88f; break;
-            case BIO_FARMLAND:       hab_base=0.95f; break;
-            default:                 hab_base=0.55f; break;
-        }
-        /* Confort thermique : [0.30..0.72] = confort total ;
-         * en-dessous (froid) et au-dessus (chaud) pénalité sévère */
-        float t_comfort;
-        if (tmp >= 0.30f && tmp <= 0.72f) {
-            t_comfort = 1.0f;
-        } else if (tmp < 0.30f) {
-            t_comfort = clampf(tmp / 0.30f, 0.f, 1.f);
-        } else {
-            t_comfort = clampf((1.f - tmp) / 0.28f, 0.f, 1.f);
-        }
-        /* hab_base : zéro absolu court-circuite le calcul (GLACIER/PEAK/VOLCANO) */
-        pr->habitability = (hab_base <= 0.f) ? 0.f
-                         : clampf(hab_base * (0.45f + 0.55f*t_comfort), 0.f, 1.f);
+        /* ---- Habitabilité de la province [0..1] : biome × confort thermique
+         * (formule extraite en biome_habitability — partagée avec le capstone froid). */
+        pr->habitability = biome_habitability(B, tmp);
     }
 }
 

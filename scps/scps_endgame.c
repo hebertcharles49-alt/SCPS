@@ -268,6 +268,30 @@ static void cataclysm_water_step(EndgameState *eg, World *w, WorldEconomy *econ,
     if (born > 0) world_recompute_adjacency(w);  /* redessine les frontières de pays */
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * C4 — APOCALYPSE DE FROID (fer céleste) : effet GRADUEL, non géométrique
+ * ──────────────────────────────────────────────────────────────────────────── */
+/* Pas de modificateur plat : on MUTE la température des cellules par le DELTA annuel
+ * (cell.temperature persistée dans WRLD → appliquer le delta, pas l'offset total, évite
+ * la double application au reload), on rebiome (forêt→steppe→glacier via assign_biome),
+ * puis econ_cold_refresh fait ÉMERGER la famine (grain f(habitabilité refroidie)). */
+static void cold_step(EndgameState *eg, World *w, WorldEconomy *econ) {
+    float ramp = tune_f("COLD_RAMP_PER_YEAR", 0.005f);
+    float prev = eg->cold_offset;
+    eg->cold_offset += ramp;
+    if (eg->cold_offset > 1.0f) eg->cold_offset = 1.0f;   /* plafond : monde figé sous la glace */
+    float delta = eg->cold_offset - prev;                 /* delta RÉELLEMENT appliqué (borné) */
+    if (delta <= 0.f) return;
+    for (int i = 0; i < SCPS_N; i++) {
+        Cell *c = &w->cell[i];
+        if (c->height < SEA_LEVEL) continue;              /* la mer reste mer */
+        c->temperature -= delta;
+        if (c->temperature < 0.f) c->temperature = 0.f;
+        world_rebiome_cell(c);                            /* les biomes blanchissent */
+    }
+    econ_cold_refresh(econ, w);                           /* la famine émerge de la chaîne */
+}
+
 /* ── C2 — sélecteur + déclencheur (latch : un seul déclenchement) ──────────── */
 static void endgame_select_and_fire(EndgameState *eg, const World *w,
                                      WorldEconomy *econ, const WorldProsperity *wp,
@@ -342,7 +366,7 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     if (eg->fired && w && econ) {
         switch (eg->fin) {
             case FIN_EAU:    cataclysm_water_step(eg, w, econ, camp); break;
-            case FIN_FROID:  /* C4 */ break;
+            case FIN_FROID:  cold_step(eg, w, econ); break;
             case FIN_RONCES: /* C5 */ break;
             default: break;
         }

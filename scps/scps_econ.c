@@ -377,6 +377,36 @@ void econ_build_adjacency(WorldEconomy *e, const World *w) {
     }
 }
 
+/* CAPSTONE §27 FROID — recompute la fertilité vivrière depuis la carte REFROIDIE.
+ * Le socle de grain (raw_cap[RES_GRAIN], posé à l'init = cap_pop/100 × (1.15+0.70·hab),
+ * floor anti-famine 1.15×) est RE-dérivé de l'habitabilité COURANTE des cellules (biome
+ * × confort thermique). Tant que hab ≥ 0.30 la formule d'init est conservée À L'IDENTIQUE
+ * (zéro choc en jeu normal) ; SOUS 0.30 (terre gelée) elle PLONGE proportionnellement →
+ * le grain tombe sous la conso → food_sat < 0.35 → la pop décline (la famine ÉMERGE de
+ * la chaîne, pas d'un modificateur plat). build.food_cap (grenier/irrigation) est INTACT
+ * (canal séparé). N'agit que sur les régions vivantes (owner≥0, franchissables). */
+void econ_cold_refresh(WorldEconomy *e, const World *w) {
+    static float hab_sum[SCPS_MAX_REG]; static int cnt[SCPS_MAX_REG];
+    memset(hab_sum, 0, sizeof hab_sum); memset(cnt, 0, sizeof cnt);
+    for (int i=0;i<SCPS_N;i++){
+        const Cell *c=&w->cell[i];
+        if (c->height < SEA_LEVEL) continue;            /* terre seule */
+        int r=c->region; if (r<0 || r>=e->n_regions || r>=SCPS_MAX_REG) continue;
+        hab_sum[r] += biome_habitability(c->biome, c->temperature);
+        cnt[r]++;
+    }
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
+        if (cnt[r]==0) continue;
+        RegionEconomy *re=&e->region[r];
+        if (re->owner<0 || re->impassable) continue;
+        float hab = hab_sum[r]/(float)cnt[r];
+        re->habitability = hab;
+        float fac = (hab >= 0.30f) ? (1.15f + 0.70f*hab)               /* jeu normal : IDENTIQUE à l'init */
+                                   : (1.15f + 0.70f*hab) * (hab/0.30f);  /* gel : plonge vers 0 */
+        re->raw_cap[RES_GRAIN] = (re->cap_pop/100.f) * fac;
+    }
+}
+
 void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(e,0,sizeof(*e));
