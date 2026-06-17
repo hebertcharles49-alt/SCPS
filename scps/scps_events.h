@@ -76,6 +76,7 @@ typedef enum {
     EVID_INTEG_DOMINATEUR, EVID_INTEG_MERCANTILE, EVID_INTEG_BUREAUCRATE, EVID_INTEG_ANCIEN,
     EVID_SUCCESSION, EVID_SCHISM,
     EVID_XENOPHILE,        /* floraison cosmopolite : diversité + éthos accueillant + paix */
+    EVID_XENOPHOBE,        /* cohésion du foyer : homogénéité + éthos martial (Dominateur/Honneur) */
     EVID_COUNT
 } EvId;
 

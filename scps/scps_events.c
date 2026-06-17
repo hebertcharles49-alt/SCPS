@@ -220,6 +220,29 @@ static bool trig_xenophile(const EventCtx *cx, int r){
     float agit=(cx->sc && r<SCPS_MAX_REG)?cx->sc->agitation[r]:0.f;
     return agit < 30.f && re->satisfaction > 0.55f;                  /* la diversité INTÈGRE */
 }
+/* Miroir XÉNOPHOBE (province) : la cohésion par la MÉTABOLISATION. Symétrique du creuset, mais
+ * l'éthos MARTIAL (Dominateur « conquête » · Honneur « gloire », les mauvais intégrateurs) ne
+ * GARDE pas la diversité : il la DIGÈRE. Il faut donc qu'il y ait EU de la diversité (plusieurs
+ * peuples, off-culture réelle) ET qu'elle soit DIGÉRÉE — les minorités assimilées en profondeur
+ * (intégration pop-pondérée haute, `g->integration`, qui met des décennies à monter → le tirage
+ * est TARDIF, le déterminisme court terme tient). Les conquis sont devenus un seul sang. */
+static bool trig_xenophobe(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    Ethos e=owner_ethos(cx,r);
+    if (e!=ETHOS_DOMINATEUR && e!=ETHOS_HONNEUR) return false;
+    const ProvincePop *pp=&re->pop;
+    if (pp->n_groups < 2 || econ_off_culture_fraction(pp) < 0.15f) return false;  /* de la diversité À DIGÉRER */
+    /* MÉTABOLISATION = intégration pop-pondérée des MINORITÉS (non-dominantes). Haute → digérées. */
+    int dom=0; long best=pp->groups[0].count;
+    for (int i=1;i<pp->n_groups;i++) if (pp->groups[i].count>best){ best=pp->groups[i].count; dom=i; }
+    double w=0.0, t=0.0;
+    for (int i=0;i<pp->n_groups;i++) if (i!=dom){ w+=(double)pp->groups[i].count; t+=(double)pp->groups[i].count*pp->groups[i].integration; }
+    if (w < 1.0) return false;
+    float metab=(float)(t/w);
+    return metab > 0.75f && re->satisfaction > 0.55f;   /* les peuples conquis fondus en un seul */
+}
 
 /* ===================================================================== */
 /* LA TABLE D'ÉVÈNEMENTS (effets = coordonnées ; textes = mots)           */
@@ -286,6 +309,12 @@ static const EventDef EVENTS[EVID_COUNT] = {
         { "Célébrer la concorde", "Tant de peuples sous un même toit, et la paix tient : les talents affluent, "
           "les comptoirs prospèrent, et le renom de la couronne tolérante porte au loin.",
           { .d_L=1.2f, .d_food_cap=0.5f, .d_treasury=120.f, .d_influence=4.f, .pop_mult=1.02f, .unlock_branch=-1 }, 1.f } }, 1 },
+    /* ---- Miroir xénophobe : la cohésion du creuset DIGÉRÉ (positif pour l'éthos martial) ---- */
+    [EVID_XENOPHOBE] = { EVID_XENOPHOBE, EV_PROVINCE, "Le creuset digéré",
+        trig_xenophobe, 3000.f, NULL, {
+        { "Sceller l'unité", "Les peuples conquis se sont fondus dans le creuset du vainqueur : un seul "
+          "sang désormais, une seule loi — la cohésion farouche de qui a tout digéré tient sans effort.",
+          { .d_L=1.0f, .d_H_coerc=0.5f, .d_agitation=-15.f, .d_influence=3.f, .unlock_branch=-1 }, 1.f } }, 1 },
 };
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
@@ -910,6 +939,8 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
     for (int r=0;r<econ->n_regions;r++){
         if (EVENTS[EVID_XENOPHILE].trigger(&cx,r) &&
             frand(&ev->rng) < mtth_p(EVENTS[EVID_XENOPHILE].mtth_days,days)) fire_event(&cx,EVID_XENOPHILE,r);
+        if (EVENTS[EVID_XENOPHOBE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_XENOPHOBE].mtth_days,days)) fire_event(&cx,EVID_XENOPHOBE,r);
     }
 
     /* 2bis. LE DIRECTEUR (§F) — lit la TEMPÉRATURE du monde, puis stabilise ou

@@ -271,8 +271,17 @@
   déterminisme 12 ans NE BOUGE PAS (la diversité met des décennies à monter). Textes LITTÉRAUX comme
   tout `scps_events.c` (le module n'est pas migré STR_* ; `events_text_clean` reste vert). **SAVE non
   bumpé** (EVENTS[] est une table statique ; rien de sérialisé n'indexe EVID_COUNT). `make test`
-  35/35 · `determinism` STABLE. À VENIR : le miroir XÉNOPHOBE (cohésion par l'homogénéité pour
-  Dominateur/Honneur).
+  35/35 · `determinism` STABLE.
+- **MIROIR XÉNOPHOBE (2026-06-17) — « Le creuset DIGÉRÉ » (la cohésion par la MÉTABOLISATION)** :
+  le pendant martial du creuset, mais l'éthos Dominateur/Honneur ne GARDE pas la diversité — il la
+  DIGÈRE. `EVID_XENOPHOBE`/`trig_xenophobe` exige qu'il y ait EU de la diversité (`n_groups≥2`,
+  `econ_off_culture_fraction>0.15`) ET qu'elle soit DIGÉRÉE — intégration pop-pondérée des minorités
+  (`g->integration`) > 0.75, signal RÉGION-LOCAL (le cache effectif du groupe, pas la pile de dérive).
+  Comme la métabolisation met des DÉCENNIES à monter, le tirage est TARDIF → le déterminisme 12 ans
+  TIENT (vérifié STABLE). Effet : +légitimité +garnison −agitation +influence — la cohésion farouche
+  de qui a tout fondu en un seul sang. Symétrie d'éthos (pas « diversité = bien/mal plat » : le
+  creuset GARDÉ prospère pour l'accueillant, le creuset DIGÉRÉ pour le martial). **SAVE non bumpé**.
+  `make test` 35/35 · `determinism` STABLE.
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.
