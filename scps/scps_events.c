@@ -205,6 +205,21 @@ static bool trig_schism(const EventCtx *cx,int c){
     }
     return false;
 }
+/* Floraison COSMOPOLITE (province) : plusieurs cultures CONVERGENT (forte minorité installée)
+ * sous un éthos ACCUEILLANT (Bureaucrate « tient la diversité » · Mercantile « carrefours » ·
+ * Pacifiste « ne fracture jamais »), et la province est APAISÉE (la diversité s'intègre au lieu
+ * de fracturer) → le creuset porte ses fruits. Le récit suit la FICHE (l'éthos), comme tout le
+ * module ; les éthos xénophobes (Dominateur/Honneur, mauvais intégrateurs) n'y ont pas droit. */
+static bool trig_xenophile(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    Ethos e=owner_ethos(cx,r);
+    if (e!=ETHOS_BUREAUCRATE && e!=ETHOS_MERCANTILE && e!=ETHOS_PACIFISTE) return false;
+    if (econ_off_culture_fraction(&re->pop) < 0.20f) return false;   /* convergence RÉELLE, pas un monolithe */
+    float agit=(cx->sc && r<SCPS_MAX_REG)?cx->sc->agitation[r]:0.f;
+    return agit < 30.f && re->satisfaction > 0.55f;                  /* la diversité INTÈGRE */
+}
 
 /* ===================================================================== */
 /* LA TABLE D'ÉVÈNEMENTS (effets = coordonnées ; textes = mots)           */
@@ -265,6 +280,12 @@ static const EventDef EVENTS[EVID_COUNT] = {
           { .d_agitation=-10.f, .d_L=-0.3f, .unlock_branch=-1 }, 0.5f },
         { "Imposer l'orthodoxie", "Une seule doctrine, par la force s'il le faut — et la dissidence gronde.",
           { .d_H_coerc=1.0f, .d_coercion=0.3f, .d_agitation=10.f, .unlock_branch=-1 }, 0.5f } }, 2 },
+    /* ---- Floraison cosmopolite : le creuset qui réussit (positif, par l'éthos) ---- */
+    [EVID_XENOPHILE] = { EVID_XENOPHILE, EV_PROVINCE, "Le creuset des peuples",
+        trig_xenophile, 2400.f, NULL, {
+        { "Célébrer la concorde", "Tant de peuples sous un même toit, et la paix tient : les talents affluent, "
+          "les comptoirs prospèrent, et le renom de la couronne tolérante porte au loin.",
+          { .d_L=1.2f, .d_food_cap=0.5f, .d_treasury=120.f, .d_influence=4.f, .pop_mult=1.02f, .unlock_branch=-1 }, 1.f } }, 1 },
 };
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
@@ -882,6 +903,13 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SUCCESSION].mtth_days,days)) fire_event(&cx,EVID_SUCCESSION,c);
         if (EVENTS[EVID_SCHISM].trigger(&cx,c) &&
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SCHISM].mtth_days,days)) fire_event(&cx,EVID_SCHISM,c);
+    }
+    /* 2ter. FLORAISON COSMOPOLITE — une province DIVERSE, accueillante et apaisée (les cultures
+     * CONVERGENT) prospère. Court-circuit (trigger && frand) : aucun tirage tant qu'aucun creuset
+     * n'existe → le déterminisme court terme ne bouge pas tant que la diversité n'a pas mûri. */
+    for (int r=0;r<econ->n_regions;r++){
+        if (EVENTS[EVID_XENOPHILE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_XENOPHILE].mtth_days,days)) fire_event(&cx,EVID_XENOPHILE,r);
     }
 
     /* 2bis. LE DIRECTEUR (§F) — lit la TEMPÉRATURE du monde, puis stabilise ou

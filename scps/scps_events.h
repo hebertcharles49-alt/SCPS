@@ -75,6 +75,7 @@ typedef enum {
     EVID_QUAKE = 0, EVID_FLOOD, EVID_DROUGHT, EVID_FIRE, EVID_PLAGUE,
     EVID_INTEG_DOMINATEUR, EVID_INTEG_MERCANTILE, EVID_INTEG_BUREAUCRATE, EVID_INTEG_ANCIEN,
     EVID_SUCCESSION, EVID_SCHISM,
+    EVID_XENOPHILE,        /* floraison cosmopolite : diversité + éthos accueillant + paix */
     EVID_COUNT
 } EvId;
 

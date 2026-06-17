@@ -257,8 +257,22 @@
   +reconstruction = 2 floats À ÉTAT → `sizeof(WorldEconomy)` change ; <v27 refusé). ⚠ RE-BASELINE
   (les faveurs s'empilent ; hash 12 ans re-baseline). `make test` 35/35 · `determinism` STABLE.
   Tunables registre J : `PROVMOD_FERVEUR_K` 0.5 · `_DECAY` 0.067 · `PROVMOD_RECON_K` 0.6 · `_DECAY`
-  0.10 · `PROVMOD_LIMON_K` 0.15. À VENIR (autres SOUS-SYSTÈMES) : évents xénophiles (event system),
-  boosts K admin (build/agency), bonus géo biome gibier/halieutique (worldgen), couplage satisfaction.
+  0.10 · `PROVMOD_LIMON_K` 0.15. À VENIR (autres SOUS-SYSTÈMES) : boosts K admin (build/agency),
+  bonus géo biome gibier/halieutique (worldgen), couplage satisfaction de la croissance.
+- **ÉVÈNEMENT XÉNOPHILE (2026-06-17) — « Le creuset des peuples » (la diversité qui RÉUSSIT)** :
+  un évènement POSITIF de plus, par le motif data-driven existant (`EVENTS[]`/`apply_effect`, effets =
+  COORDONNÉES). `EVID_XENOPHILE` (EV_PROVINCE) : `trig_xenophile` exige plusieurs cultures qui
+  CONVERGENT (`econ_off_culture_fraction` > 0.20) sous un ÉTHOS ACCUEILLANT (Bureaucrate « tient la
+  diversité » · Mercantile « carrefours » · Pacifiste « ne fracture jamais » — les xénophobes
+  Dominateur/Honneur en sont exclus) ET une province APAISÉE (agit < 30, satisfaction > 0.55 : la
+  diversité s'intègre au lieu de fracturer). Effet : +légitimité +fertilité +trésor +influence +une
+  ruée d'immigrants (pop_mult 1.02) — le creuset qui prospère. Tiré dans `world_events_tick` en
+  court-circuit (`trigger && frand`) → **aucun tirage tant qu'aucun creuset n'a mûri** : le
+  déterminisme 12 ans NE BOUGE PAS (la diversité met des décennies à monter). Textes LITTÉRAUX comme
+  tout `scps_events.c` (le module n'est pas migré STR_* ; `events_text_clean` reste vert). **SAVE non
+  bumpé** (EVENTS[] est une table statique ; rien de sérialisé n'indexe EVID_COUNT). `make test`
+  35/35 · `determinism` STABLE. À VENIR : le miroir XÉNOPHOBE (cohésion par l'homogénéité pour
+  Dominateur/Honneur).
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.
