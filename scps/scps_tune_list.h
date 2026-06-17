@@ -135,6 +135,24 @@
     X(POP_PROSP_SPAN,         1.8f) \
     X(POP_PROSP_W,            0.15f) \
     X(POP_NEEDS_W,            0.85f) \
-    X(NEEDS_MET_TAU,          0.5f)
+    X(NEEDS_MET_TAU,          0.5f) \
+    /* CAPSTONE §27 — Entropie mondiale + 4 fins + Merveille.
+     * ENTROPY_FIN : seuil terminal qui déclenche une fin (~180-200 ans sur seed 9).
+     * ENTROPY_TECH_W : poids de la charge de tech faustienne dans l'entropie mondiale
+     *   (décision C1 — élargie hors transmuteurs seuls).
+     * SINK_RIFTS_PER_YEAR : régions englouties/an (eau, C3).
+     * COLD_RAMP_PER_YEAR : décalage de température annuel (froid, C4).
+     * THORN_CELLS_PER_YEAR : cellules corrompues/an (ronces, C5).
+     * THORN_RANDOM_FRAC : fraction de voisins choisis aléatoirement (erratique, C5).
+     * MERV_PHASE_DAYS : durée de chaque palier de la Merveille en jours (C6).
+     * MERV_CHARGE_PER_TICK : charge faustienne ajoutée par tick de chantier (C6). */ \
+    X(ENTROPY_FIN,          600.0f) \
+    X(ENTROPY_TECH_W,         0.08f) \
+    X(SINK_RIFTS_PER_YEAR,    3.0f) \
+    X(COLD_RAMP_PER_YEAR,     0.005f) \
+    X(THORN_CELLS_PER_YEAR, 200.0f) \
+    X(THORN_RANDOM_FRAC,      0.35f) \
+    X(MERV_PHASE_DAYS,     3650.0f) \
+    X(MERV_CHARGE_PER_TICK,   0.5f)
 
 #endif /* SCPS_TUNE_LIST_H */

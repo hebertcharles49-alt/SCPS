@@ -43,6 +43,7 @@
 #include "scps_campaign.h"  /* … et MARCHENT : campagne sur la carte (marche/siège/bataille) */
 #include "scps_missions.h"  /* missions décennales : rythme + injection de ressources */
 #include "scps_navy.h"     /* la flotte (mer §5) : coques, chantier, entretien, outre-mer */
+#include "scps_endgame.h"  /* capstone §27 : entropie + 4 fins + merveille (moteur, pas scps_core) */
 #include "scps_lang.h"     /* la table de chaînes : tout mot face-joueur vient des tables */
 #include "scps_sprites.h"  /* le contrat 184 : planche 512×512, magenta=transparent (display-only) */
 #include "scps_map_nature_sprites.h"  /* pack NATURE : décors de carte (arbres, roseaux, roches, écume) — display-only */
@@ -710,6 +711,7 @@ typedef struct {
     uint32_t         camp_rng;
     MissionsState   *missions; /* missions décennales (rythme + injection de ressources) */
     NavyState       *navy;     /* la flotte (mer §5) : coques, chantier, entretien */
+    EndgameState    *eg;       /* capstone §27 : état cataclysme (entropie + fin + merveille) */
     int              prev_dawned; /* dernier âge avéné traité (engagement d'âge §7) */
     AiActor         *ai;       /* un acteur IA par pays voisin (cadence étalée) */
     bool            *ai_on;    /* ce pays est-il piloté par l'IA ? */
@@ -1198,6 +1200,7 @@ static void sim_day(Sim *s, World *w) {
         intertrade_tick(s->econ, s->rn, s->dp);   /* grandes routes marchandes (goods inter-pays + embargo) */
         demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f);   /* S2 : la cristallisation suit le contact (annuel) */
         prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl);
+        if (s->eg) endgame_tick(s->eg, w, s->econ, s->wp, s->ts, s->rn, s->navy, s->dp, s->player, s->year);
         /* Diplomatie annuelle : usure de guerre, fonte des trêves/momentum, score de guerre. */
         warhost_tick(s->host, w, s->econ, s->dp, s->ts, 1.0f);   /* la mobilisation : les armées vivent */
         sim_campaign_year(s, w);                           /* … et MARCHENT : campagne sur la carte */
@@ -1234,7 +1237,7 @@ static volatile int g_gen_phase = 0;   /* 0 = façonnage du monde · 1 = amorce 
 static volatile int g_gen_day   = 0;   /* jour d'amorce courant (0..GEN_BOOT_DAYS) */
 static void sim_rebuild(Sim *s, World *w) {
     if (!s->econ || !s->wp || !s->wl || !s->net || !s->ts || !s->sc
-        || !s->ag || !s->ev || !s->drift || !s->labor || !s->rs || !s->host || !s->camp || !s->navy) return;
+        || !s->ag || !s->ev || !s->drift || !s->labor || !s->rs || !s->host || !s->camp || !s->navy || !s->eg) return;
     econ_init(s->econ, w);
     gen_population(w, s->econ);
     worldgen_seed_peoples(w, s->econ, g_player_race);   /* la race CHOISIE ancre le gradient */
@@ -1276,6 +1279,7 @@ static void sim_rebuild(Sim *s, World *w) {
     s->camp_rng = w->seed ^ 0xCA117A11u;                 /* graine de campagne propre à la partie */
     missions_init(s->missions);                          /* missions décennales */
     navy_init(s->navy);                                  /* la flotte : chantiers vides, rades à trouver */
+    if (s->eg) endgame_init(s->eg);                     /* capstone §27 : RAZ du cataclysme */
     faction_levers_reset();                              /* §4 : stances de factions à zéro */
     s->prev_dawned=-1;                                   /* §7 : aucun âge encore traité */
     for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++)   /* photo des propriétaires (conquête) */
@@ -3685,7 +3689,9 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 25u           /* v25 : UN SEUL LIVRE D'OR — LR_GOLD éradiqué (l'or vit dans econ country_gold,
+#define SAVE_VERSION 26u           /* v26 : CAPSTONE §27 — EndgameState (entropie + fins + merveille) ajoutée dans
+                                    * une nouvelle section EGAM. sizeof(EndgameState) entre dans le blob sv_w.
+                                    * v25 : UN SEUL LIVRE D'OR — LR_GOLD éradiqué (l'or vit dans econ country_gold,
                                     * dette via scps_credit). LaborEcon perd treasury + stock/flow[LR_GOLD] (LRes 2→1,
                                     * LR_FOOD seul) ⇒ sizeof(LaborEcon) rétrécit (blob sv_w) → ère antérieure (<v25 refusé).
                                     * v24 : LIMITEUR — section prod_cap appendue après CRDT (econ_prodcap_save/load). <v24 refusé.
@@ -3795,6 +3801,7 @@ static bool game_save(int slot, World *w, Sim *s, const WorldParams *params){
     ok&=sv_w(f,SV_TAG('F','A','C','T'), NULL,0); faction_save(f);
     ok&=sv_w(f,SV_TAG('C','R','D','T'), NULL,0); credit_save(f);   /* dette : g_creditor[] */
     ok&=sv_w(f,SV_TAG('P','C','A','P'), NULL,0); econ_prodcap_save(f);   /* v24 : limiteur de production */
+    if (s->eg) ok&=sv_w(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);  /* v26 : EndgameState (capstone §27) */
     /* intégrité + CHIFFREMENT (post-passe) : on relit le payload CLAIR, on prend son
      * empreinte, on le chiffre (ChaCha20, nonce unique), on le réécrit en place.
      * L'en-tête reste en clair (l'écran Charger lit la ligne sans déchiffrer). */
@@ -3881,6 +3888,23 @@ static bool save_sane(const World *w, const Sim *s, int player){
         if (s->dp->occupier[r] < -1 || s->dp->occupier[r] >= w->n_countries) return false;
     for (int i=0;i<SCPS_MAX_COUNTRY;i++)
         if (s->camp->army[i].taken_region < -1 || s->camp->army[i].taken_region >= s->econ->n_regions) return false;
+    /* capstone §27 (v26) : EndgameState — bornes sur tous les champs-indices */
+    if (s->eg) {
+        const EndgameState *eg = s->eg;
+        if ((int)eg->fin < 0 || (int)eg->fin > (int)FIN_ASCENSION) return false;
+        if ((int)eg->merv < 0 || (int)eg->merv > (int)MERV_ASCENDED) return false;
+        if (eg->epicenter_reg < -1 || eg->epicenter_reg >= s->econ->n_regions) return false;
+        if (eg->fauteur_country < -1 || eg->fauteur_country >= w->n_countries) return false;
+        if (eg->merv_country    < -1 || eg->merv_country    >= w->n_countries) return false;
+        if (eg->merv_site_reg   < -1 || eg->merv_site_reg   >= s->econ->n_regions) return false;
+        if (eg->n_sunken < 0 || eg->n_sunken > SCPS_MAX_REG) return false;
+        if (eg->sink_pending < 0) return false;
+        if (eg->thorn_front_n < 0 || eg->thorn_front_n > SCPS_THORN_FRONT_MAX) return false;
+        for (int i = 0; i < eg->thorn_front_n; i++)
+            if (eg->thorn_front[i] < 0 || eg->thorn_front[i] >= SCPS_N) return false;
+        if (eg->cold_offset < 0.0f || eg->cold_offset > 1.0f) return false;
+        if (eg->merv_progress < 0.0f || eg->merv_progress > 1.0f) return false;
+    }
     return true;
 }
 /* charge un slot. 0 = ok ; 1 = absent/corrompu ; 2 = « ère antérieure » (version). */
@@ -3942,6 +3966,7 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
     ok&=sv_r(f,SV_TAG('F','A','C','T'), NULL,0); ok&=faction_load(f);
     ok&=sv_r(f,SV_TAG('C','R','D','T'), NULL,0); ok&=credit_load(f);   /* dette : g_creditor[] */
     ok&=sv_r(f,SV_TAG('P','C','A','P'), NULL,0); ok&=econ_prodcap_load(f);   /* v24 : limiteur de production */
+    if (s->eg) ok&=sv_r(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);   /* v26 : EndgameState (capstone §27) */
     long p1=ftell(f); fclose(f);
     if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;     /* taille/section : refus net */
     if (!save_sane(w, s, s->player)) return 1;             /* invariants du moteur : refus net */
@@ -4320,6 +4345,7 @@ int main(int argc, char **argv) {
     sim.navy = (NavyState*)       malloc(sizeof(NavyState));
     sim.ai   = (AiActor*)         calloc(SCPS_MAX_COUNTRY, sizeof(AiActor));
     sim.ai_on= (bool*)            calloc(SCPS_MAX_COUNTRY, sizeof(bool));
+    sim.eg   = (EndgameState*)    calloc(1, sizeof(EndgameState));
 
     int win_w = WIN_W, win_h = WIN_H;
     SDL_GetWindowSize(win, &win_w, &win_h);            /* P0.1 : taille RÉELLE (maximisée) */
@@ -5260,6 +5286,7 @@ int main(int argc, char **argv) {
     free(sim.ag); free(sim.ev); free(sim.drift); free(sim.labor);
     warhost_free(sim.host);
     free(sim.dp); free(sim.rn); free(sim.rs); free(sim.host); free(sim.camp); free(sim.ai); free(sim.ai_on);
+    free(sim.navy); free(sim.eg);
     if (g_font)     TTF_CloseFont(g_font);
     if (g_font_big) TTF_CloseFont(g_font_big);
     if (g_font_small) TTF_CloseFont(g_font_small);

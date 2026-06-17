@@ -121,7 +121,7 @@ SCPS_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
              $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o \
              $(OBJDIR)/scps_scps_modifier.o $(OBJDIR)/scps_scps_revolt.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o \
              $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o \
-             $(OBJDIR)/scps_scps_navy.o \
+             $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o \
              $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_crypt.o \
              $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_stbiw.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_viewer.o
 SCPS_TARGET := scps_viewer$(EXE)
@@ -366,7 +366,7 @@ CHRONICLE_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDI
                   $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_modifier.o \
                   $(OBJDIR)/scps_scps_revolt.o $(OBJDIR)/scps_scps_army.o \
                   $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o $(OBJDIR)/scps_scps_missions.o \
-                  $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/tp_miniz.o \
+                  $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o $(OBJDIR)/tp_miniz.o \
                   $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_chronicle.o
 chronicle: $(CHRONICLE_OBJS)
 	$(CC) $(CHRONICLE_OBJS) -o $@ -lm $(OMPFLAG)
@@ -540,6 +540,21 @@ SOCIAL_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_demography.o
                     $(OBJDIR)/scps_scps_agency.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_social_demo.o
 social_demo: $(SOCIAL_DEMO_OBJS)
 	$(CC) $(SOCIAL_DEMO_OBJS) -o $@ -lm
+
+# ---- Capstone §27 : Entropie mondiale + 4 fins + Merveille ----------------
+# Banc auto-vérifiant du cataclysme (contrôles C0-C6). N'a besoin que des
+# briques moteur traversées par scps_endgame (econ/prosperity/tech/routes/navy/diplo).
+ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+                     $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
+                     $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
+                     $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
+                     $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_species.o \
+                     $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
+                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_navy.o \
+                     $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_campaign.o \
+                     $(OBJDIR)/scps_scps_endgame.o $(OBJDIR)/scps_endgame_demo.o
+endgame_demo: $(ENDGAME_DEMO_OBJS)
+	$(CC) $(ENDGAME_DEMO_OBJS) -o $@ -lm
 
 clean:
 	rm -rf $(OBJDIR) scps_viewer scps_viewer.exe scps_dump scps_batch econ_demo \

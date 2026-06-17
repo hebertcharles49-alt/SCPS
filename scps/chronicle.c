@@ -26,6 +26,7 @@
 #include "scps_campaign.h"
 #include "scps_navy.h"
 #include "scps_diplo.h"
+#include "scps_endgame.h"  /* capstone §27 : entropie + 4 fins + merveille */
 #include "scps_events.h"
 #include "scps_modifier.h"
 #include "scps_demography.h"
@@ -77,6 +78,7 @@ typedef struct {
     uint32_t     camp_rng;
     MissionsState *missions; /* missions décennales (rythme + injection de ressources) */
     NavyState   *navy;   /* la flotte (mer §5) : coques, chantier, entretien */
+    EndgameState *eg;   /* capstone §27 : état cataclysme (entropie + fin + merveille) */
     int16_t prev_owner_mo[SCPS_MAX_REG];   /* propriétaires au mois précédent (détection de conquête) */
     int prev_dawned;         /* dernier âge avéné traité (engagement d'âge §7) */
     int day, year, player;
@@ -331,6 +333,7 @@ static void sim_day(Sim *s, World *w) {
         PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
         PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
         PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));
+        if (s->eg) endgame_tick(s->eg, w, s->econ, s->wp, s->ts, s->rn, s->navy, s->dp, s->player, s->year);
         /* DIPLOMATIE annuelle : usure de guerre, FONTE des trêves & du momentum
          * (la guerre peut reprendre après le répit), et le SCORE DE GUERRE (bras-de-fer
          * + attrition qui saigne les armes). */
@@ -401,6 +404,7 @@ static void sim_init(Sim *s, World *w) {
     revolt_init(s->rs); warhost_init(s->host); missions_init(s->missions);
     credit_init();
     navy_init(s->navy);
+    if (s->eg) endgame_init(s->eg);                      /* capstone §27 : RAZ du cataclysme */
     campaign_init(s->camp, w, s->econ);                  /* armées de campagne : table de terrain + RAZ */
     s->camp_rng = w->seed ^ 0xCA117A11u;                 /* graine de campagne, propre à la sim */
     faction_levers_reset();   /* §4 : stances de factions remises à zéro pour cette sim */
@@ -679,9 +683,9 @@ int main(int argc, char **argv){
     s.ai=calloc(SCPS_MAX_COUNTRY,sizeof(AiActor)); s.ai_on=calloc(SCPS_MAX_COUNTRY,sizeof(bool));
     s.rs=malloc(sizeof(RevoltState)); s.host=malloc(sizeof(WarHost));
     s.missions=malloc(sizeof(MissionsState)); s.camp=malloc(sizeof(Campaign));
-    s.navy=malloc(sizeof(NavyState));
+    s.navy=malloc(sizeof(NavyState)); s.eg=calloc(1,sizeof(EndgameState));
     if (!w||!s.econ||!s.wp||!s.wl||!s.net||!s.ts||!s.sc||!s.ag||!s.ev||!s.drift
-        ||!s.labor||!s.dp||!s.rn||!s.ai||!s.ai_on||!s.rs||!s.host||!s.missions||!s.camp||!s.navy){
+        ||!s.labor||!s.dp||!s.rn||!s.ai||!s.ai_on||!s.rs||!s.host||!s.missions||!s.camp||!s.navy||!s.eg){
         fprintf(stderr,"OOM\n"); return 1; }
 
     printf("══════════════════════════════════════════════════════════════════════\n");
@@ -1482,6 +1486,6 @@ int main(int argc, char **argv){
     free(s.ag); free(s.ev); free(s.drift); free(s.labor); free(s.dp); free(s.rn);
     warhost_free(s.host); free(s.camp); free(s.ai); free(s.ai_on); free(s.rs); free(s.host);
     free(s.missions);   /* fuyait (6 496 o, vu par LeakSanitizer) */
-    free(s.navy);
+    free(s.navy); free(s.eg);
     return 0;
 }
