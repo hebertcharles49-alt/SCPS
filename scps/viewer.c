@@ -77,6 +77,18 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
     if (tex) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
     return tex;
 }
+static SDL_Texture *g_cover_tex = NULL;   /* route-cover : MOBILIER de route (bornes, haies, murets, bottes, rochers…) */
+#define SCPS_COVER_FILE "scps_route_cover.bmp"
+#define SCPS_COVER_CELL 128               /* atlas 8 col × 8 lignes, cellule 128 px */
+#define SCPS_COVER_COLS 8
+enum { COVER_HEDGE_CLUMP=31, COVER_BOULDER=32, COVER_ROCKPILE=33, COVER_BUSH=34, COVER_REED=35,
+       COVER_HAYSTACK=37, COVER_CRATE=38, COVER_MILESTONE=48, COVER_SIGNPOST=49, COVER_WAYSTONE=50 };
+static void cover_blit(SDL_Renderer *ren, int id, int x, int y, int px){
+    if (!g_cover_tex || id<0) return;
+    SDL_Rect src={ (id%SCPS_COVER_COLS)*SCPS_COVER_CELL, (id/SCPS_COVER_COLS)*SCPS_COVER_CELL, SCPS_COVER_CELL, SCPS_COVER_CELL };
+    SDL_Rect dst={ x, y, px, px };
+    SDL_RenderCopy(ren, g_cover_tex, &src, &dst);
+}
 #include "stb_image_write.h"  /* F12 : capture d'écran PNG (vendoré) */
 #include "scps_audio.h"       /* la prise audio (miniaudio) — preuve de vie sur alerte */
 #ifdef SCPS_DEV
@@ -526,27 +538,26 @@ static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork
                 int bs=(int)(wcas*1.3f); if(bs<4)bs=4;
                 SDL_Rect br={(int)(rsx[k]-bs*0.5f),(int)(rsy[k]-bs*0.5f),bs,bs};
                 SDL_SetRenderDrawColor(ren,wood.r,wood.g,wood.b,255); SDL_RenderFillRect(ren,&br); } }
-        /* HABILLAGE : haie/arbres en BORDURE, alternés (buisson↔arbre), variés ; sur les
-         * DEUX côtés AUX COUDES (ils masquent les raccords d'angle), un seul côté ailleurs. */
-        static const int rtree[3]={MAPD_TREE_POPLAR,MAPD_TREE_BROADLEAF,MAPD_TREE_CONIFER};
-        static const int rbush[3]={MAPD_HEDGE_PATCH,MAPD_BUSH_GREEN,MAPD_THICKET_LOW};
-        int dsz=(int)(sc*1.05f); if(dsz<6)dsz=6; if(dsz>52)dsz=52;
-        int rstep=(int)(9.0f/sc)+3;
-        SDL_SetTextureAlphaMod(g_dress_tex,255);
+        /* HABILLAGE : MOBILIER de route (pack route-cover) en BORDURE — bornes, haies, bottes,
+         * rochers, caisses… varié ; DEUX côtés AUX COUDES (masquent l'angle), un côté ailleurs. */
+        static const int rcov[8]={COVER_HEDGE_CLUMP,COVER_BUSH,COVER_BOULDER,COVER_HAYSTACK,
+                                  COVER_MILESTONE,COVER_CRATE,COVER_BUSH,COVER_HEDGE_CLUMP};
+        int dsz=(int)(sc*1.7f); if(dsz<10)dsz=10; if(dsz>96)dsz=96;
+        int rstep=(int)(11.0f/sc)+3;
         for(int k=rstep;k<n-rstep;k+=rstep){
             int kp=k-rstep, kn=k+rstep; if(kn>=n)kn=n-1;
             float ax=rsx[k]-rsx[kp], ay=rsy[k]-rsy[kp], bx=rsx[kn]-rsx[k], by=rsy[kn]-rsy[k];
             float la=sqrtf(ax*ax+ay*ay)+1e-3f, lb=sqrtf(bx*bx+by*by)+1e-3f;
             float pxp=-(ay+by), pyp=(ax+bx); float pl=sqrtf(pxp*pxp+pyp*pyp)+1e-3f; pxp/=pl; pyp/=pl;  /* perp moyenne */
             bool bend=((ax*bx+ay*by)/(la*lb))<0.86f;        /* la route TOURNE ici */
-            float off=wcas*0.5f + dsz*0.30f;
+            float off=wcas*0.5f + dsz*0.32f;
             for(int sgn=-1;sgn<=1;sgn+=2){
                 if(sgn>0 && !bend && ((k/rstep)&1)) continue;            /* tout-droit : un seul côté, alterné */
                 uint32_t hh=map_hash(p->x[k]+sgn, p->y[k], 0xD2E5CAFEu);
-                int id=(((k/rstep)+(sgn>0?1:0))&1) ? rtree[hh%3] : rbush[hh%3];   /* alterne arbre/buisson */
+                int id=rcov[hh&7];                                       /* mobilier varié */
                 int ssx=(int)(rsx[k]+sgn*pxp*off), ssy=(int)(rsy[k]+sgn*pyp*off);
                 if(ssx<-dsz||ssx>win_w+dsz||ssy<-dsz||ssy>win_h+dsz) continue;
-                dress_blit(ren, id, ssx-dsz/2, ssy-(dsz*3)/4, dsz);     /* ancré au sol */
+                cover_blit(ren, id, ssx-dsz/2, ssy-(dsz*3)/4, dsz);     /* ancré au sol */
             }
         }
     }
@@ -4645,6 +4656,8 @@ int main(int argc, char **argv) {
     g_settle_tex = load_despilled_bmp(ren, SCPS_SETTLE_FILE);
     if (g_settle_tex) printf("[scps] %s chargé (settlements).\n", SCPS_SETTLE_FILE);
     else fprintf(stderr,"[scps] settlements : %s absent.\n", SCPS_SETTLE_FILE);
+    g_cover_tex = load_despilled_bmp(ren, SCPS_COVER_FILE);
+    if (g_cover_tex) printf("[scps] %s chargé (route-cover).\n", SCPS_COVER_FILE);
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
 #endif
