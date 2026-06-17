@@ -276,6 +276,50 @@ static int dress_building(const Cell *c, int tier, uint32_t h){
     if (tier>=2) return (v==0)?MAPD_BLD_CHAPEL:(v==1)?MAPD_BLD_STOREHOUSE:(v==2)?MAPD_BLD_WINDMILL:MAPD_BLD_BARN;
     return (v==0)?MAPD_BLD_ROUND_HUT:(v==1)?MAPD_BLD_COTTAGE:(v==2)?MAPD_BLD_BARN:MAPD_BLD_SHEPHERD;
 }
+/* blit avec MIROIR (autotile : on tourne un sprite iso par flip H/V). */
+static void dress_blit_ex(SDL_Renderer *ren, int id, int x, int y, int px, SDL_RendererFlip flip){
+    if (!g_dress_tex || id<0) return;
+    SDL_Rect src = { MAP_DRESSING_X(id), MAP_DRESSING_Y(id), SCPS_MAP_DRESSING_CELL, SCPS_MAP_DRESSING_CELL };
+    SDL_Rect dst = { x, y, px, px };
+    SDL_RenderCopyEx(ren, g_dress_tex, &src, &dst, 0.0, NULL, flip);
+}
+static int rsign(int v){ return (v>0)?1:(v<0?-1:0); }
+static int rdirbit(int dx,int dy){ if(dx>0)return 2; if(dx<0)return 8; if(dy<0)return 1; if(dy>0)return 4; return 0; }
+/* CHAÎNAGE des rivières : on suit les VRAIS tracés (w->river[].x/y, polylignes) — pas
+ * le champ de débit (trop large). À chaque cellule, l'orientation vient des pas
+ * AMONT→AVAL (voisin précédent + suivant) → sprite iso droit/coude, flip H/V. SOUS les décors. */
+static void draw_map_rivers(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
+    if (!g_dress_tex) return;
+    float sc=cam->scale; if (sc<3.0f) return;
+    g_iso_w=win_w; g_iso_h=win_h;
+    int px=(int)(sc*2.6f);
+    if(px<10)px=10;
+    if(px>130)px=130;
+    SDL_SetTextureAlphaMod(g_dress_tex, 230);
+    for (int ri=0; ri<w->n_rivers && ri<SCPS_MAX_RIVERS; ri++){
+        const River *rv=&w->river[ri];
+        for (int k=0; k<rv->len; k++){
+            int cx=rv->x[k], cy=rv->y[k];
+            if (cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
+            int dxp=(k>0)?rsign(cx-rv->x[k-1]):0, dyp=(k>0)?rsign(cy-rv->y[k-1]):0;            /* pas entrant */
+            int dxn=(k<rv->len-1)?rsign(rv->x[k+1]-cx):0, dyn=(k<rv->len-1)?rsign(rv->y[k+1]-cy):0; /* pas sortant */
+            int m = rdirbit(-dxp,-dyp) | rdirbit(dxn,dyn);   /* voisins connectés (amont + aval) */
+            bool E=(m&2)!=0, Wb=(m&8)!=0, N=(m&1)!=0, S=(m&4)!=0;
+            int id=MAPD_RIVER_STRAIGHT; SDL_RendererFlip fl=SDL_FLIP_NONE;
+            if      (E&&Wb){ id=MAPD_RIVER_STRAIGHT;    fl=SDL_FLIP_NONE; }       /* E-W : un diagonal iso */
+            else if (N&&S) { id=MAPD_RIVER_STRAIGHT;    fl=SDL_FLIP_HORIZONTAL; } /* N-S : l'autre diagonal */
+            else if (E&&S) { id=MAPD_RIVER_BEND_GENTLE; fl=SDL_FLIP_NONE; }
+            else if (S&&Wb){ id=MAPD_RIVER_BEND_GENTLE; fl=SDL_FLIP_HORIZONTAL; }
+            else if (Wb&&N){ id=MAPD_RIVER_BEND_GENTLE; fl=(SDL_RendererFlip)(SDL_FLIP_HORIZONTAL|SDL_FLIP_VERTICAL); }
+            else if (N&&E) { id=MAPD_RIVER_BEND_GENTLE; fl=SDL_FLIP_VERTICAL; }
+            else           { id=MAPD_RIVER_STRAIGHT;    fl=(k&1)?SDL_FLIP_HORIZONTAL:SDL_FLIP_NONE; }  /* bout */
+            float fsx,fsy; cam_project(cam,(float)cx+0.5f,(float)cy+0.5f,&fsx,&fsy);
+            if (fsx<-px||fsx>win_w+px||fsy<-px||fsy>win_h+px) continue;   /* hors champ */
+            dress_blit_ex(ren,id,(int)fsx-px/2,(int)fsy-(px*2)/3,px,fl);
+        }
+    }
+    SDL_SetTextureAlphaMod(g_dress_tex, 255);
+}
 static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
     if (!g_dress_tex) return;
     g_iso_w=win_w; g_iso_h=win_h;                 /* pivot iso de la frame */
@@ -316,14 +360,8 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             if (settled){ const RegionEconomy *re=&econ->region[rg];
                 float pp=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
                 tier = (pp>4000.f)?2:(pp>800.f)?1:0; }
-            uint32_t hb = map_hash(cx,cy,0xB17DCAFEu);   /* hash indépendant pour le bâti/eau */
-            /* ── RIVIÈRES : un accent RARE sur les fleuves FORTS (suit c->river, pas du
-             *    semis aveugle) — bouche au littoral, filet d'eau à l'intérieur. ── */
-            if (c->river>120 && !c->lake && (hb&15u)==0u){
-                int rid = c->coast ? MAPD_RIVER_MOUTH : MAPD_CREEK_STRAIGHT;
-                int rpx = dress_size(rid,sc);
-                dress_blit(ren, rid, sx-rpx/2, sy-rpx/2, rpx);
-            }
+            uint32_t hb = map_hash(cx,cy,0xB17DCAFEu);   /* hash indépendant pour le bâti */
+            /* (les RIVIÈRES sont chaînées dans une passe à part, draw_map_rivers, SOUS ici.) */
             /* ── VILLES : bâtiments isolés sur la terre COLONISÉE, densité ∝ tier de pop.
              *    Le bâti OCCUPE la cellule (pas de nature en plus) + un chemin proche. ── */
             int bgate = (tier>=2)?3:(tier>=1)?2:1;     /* sur 16 : peuplé = plus de hameaux */
@@ -4626,7 +4664,7 @@ int main(int argc, char **argv) {
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (sim.ready) draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h);   /* décors SOUS les frontières */
+            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); }   /* rivières chaînées + décors, SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
             if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false; mmp.iso=false;  /* minicarte : top-down */
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
@@ -5234,7 +5272,7 @@ int main(int argc, char **argv) {
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
-        if (sim.ready && g_gs==GS_PLAYING) draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h);
+        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); }
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
          * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
          * SOUS la sélection/glyphes/étiquettes (z-order §2c). */
