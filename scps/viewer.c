@@ -778,7 +778,10 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             }
             int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
+            int goldfield = (id==MAPD_FIELD_WHEAT || id==MAPD_FIELD_HAY);    /* les champs DORÉS (blé/foin), tous biomes */
+            if (goldfield) SDL_SetTextureColorMod(g_dress_tex,150,120,84);    /* doré → brun/bronze (display-only) */
             dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre (sprite debout) */
+            if (goldfield) SDL_SetTextureColorMod(g_dress_tex,255,255,255);
             /* FERME : le champ (RARE) est HABILLÉ — un petit MOULIN + une grappe d'assets
              * (bottes, caisses, haies) en fait une ferme, pas un carré répété. */
             if (c->biome==BIO_FARMLAND){
@@ -791,7 +794,10 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
                         uint32_t hq=map_hash(cx*3+q, cy*5+q, 0xFA12BEEFu);
                         int fsz=(int)((float)px*0.5f); if(fsz<7)fsz=7;
                         int ox=(int)((hq>>3)&31u)-16, oy=(int)((hq>>9)&15u)-8;
-                        cover_blit(ren, fcl[hq%5], sx-fsz/2+ox+jx, sy-(fsz*3)/4+oy+jy, fsz);
+                        int cid=fcl[hq%5];
+                        if (cid==COVER_HAYSTACK||cid==COVER_REED) SDL_SetTextureColorMod(g_cover_tex,175,145,112);  /* paille dorée → brun */
+                        cover_blit(ren, cid, sx-fsz/2+ox+jx, sy-(fsz*3)/4+oy+jy, fsz);
+                        SDL_SetTextureColorMod(g_cover_tex,255,255,255);
                     }
                 }
             }
