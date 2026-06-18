@@ -2,6 +2,7 @@
 godot-cpp/
 
 # Artefacts de build (par plateforme : on les rebâtit avec scons).
+build/
 project/bin/
 *.os
 *.o

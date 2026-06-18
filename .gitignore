@@ -101,3 +101,9 @@ a.out
 # Preuve visuelle FX (binaire + PNG générés ; la SOURCE tools/fx_proof.c est suivie)
 fx_proof
 fx_proof.png
+
+# Banc de la façade C (binaire généré)
+scps_api_demo
+
+# Objets SCons (.os) — au cas où un build godot écrirait dans l'arbre moteur
+*.os
