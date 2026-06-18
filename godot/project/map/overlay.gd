@@ -13,11 +13,50 @@ const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
 
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
+var _decor := []          ## [{id, pos}] — arbres/forêts (dressing), bâti au générate
+
+# biome (couche) → ids MAPD d'arbres (variés par hash). FOREST=11 · WOODS=12 · JUNGLE=13
+const FOREST_TREES := {
+	11: [16, 73, 19, 79],   # broadleaf · chêne · conifères · bosquet sombre
+	12: [16, 75, 72],       # broadleaf · bosquet clair · bouleaux
+	13: [23, 22],           # bosquet mixte · peuplier
+}
 
 func _ready() -> void:
 	Sim.ticked.connect(_on_tick)
-	Sim.generated.connect(queue_redraw)
+	Sim.generated.connect(_on_generated)
+	if Sim.world != null:
+		_build_decor()
 	queue_redraw()
+
+func _on_generated() -> void:
+	_build_decor()
+	queue_redraw()
+
+## scan de la couche biome (un pas régulier) → liste fixe d'arbres sur les forêts.
+func _build_decor() -> void:
+	_decor.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	var img: Image = w.layer_image(2)   # SCPS_LAYER_BIOME = 2
+	if img == null:
+		return
+	var mw := img.get_width()
+	var mh := img.get_height()
+	var stride := 7
+	for cy in range(0, mh, stride):
+		for cx in range(0, mw, stride):
+			var b := int(img.get_pixel(cx, cy).r * 255.0 + 0.5)
+			if not FOREST_TREES.has(b):
+				continue
+			var h := ((cx * 73856093) ^ (cy * 19349663)) & 0x7fffffff
+			var arr: Array = FOREST_TREES[b]
+			var jx := float((h >> 3) % 5) - 2.0
+			var jy := float((h >> 6) % 5) - 2.0
+			_decor.append({"id": arr[h % arr.size()], "pos": Vector2(cx + jx, cy + jy)})
+			if _decor.size() >= 4000:
+				return
 
 func _on_tick(_year: int) -> void:
 	queue_redraw()
@@ -46,6 +85,17 @@ func _draw() -> void:
 	var w = Sim.world
 	if w == null:
 		return
+
+	# ── DRESSING : arbres/forêts (dressing atlas), DERRIÈRE les villes. Bâti une
+	#    fois au générate (liste fixe, pas de culling fragile). Ancré au PIED de la
+	#    cellule (l'arbre « pousse » du sol). No-op si l'atlas manque. ──────────────
+	for d in _decor:
+		var spr := UIKit.dressing_sprite(d["id"])
+		if spr == null:
+			break
+		var p: Vector2 = d["pos"]
+		var ts := 8.0
+		draw_texture_rect(spr, Rect2(p - Vector2(ts * 0.5, ts), Vector2(ts, ts)), false)
 
 	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde ;
 	#    repli sur un disque teinté au pays si l'atlas est absent. ──────────────

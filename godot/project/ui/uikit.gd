@@ -13,25 +13,65 @@ const MAP := "res://assets/scps/pack/map/"
 
 const SETTLE_CELL := 96   # atlas settlements : 6 tiers (col) × 6 groupes (ligne), 96 px
 
+## ÔTE LE MAGENTA d'un atlas BMP. Pas un simple seuil (le seuil laissait des FRANGES
+## roses sur les bords anti-aliasés) : on mesure la « magenta-ité » m = min(R,B) − G
+## (à quel point R et B dominent le vert). m franc ⇒ transparent ; frange ⇒ alpha
+## dégressif + DESPILL (on rabat R et B vers G pour tuer le rose résiduel). Une seule
+## passe, partagée par tous les atlas (settlements, dressing, …).
+static func _key_magenta(img: Image) -> Texture2D:
+	if img.get_format() != Image.FORMAT_RGBA8:
+		img.convert(Image.FORMAT_RGBA8)
+	var data := img.get_data()
+	for i in range(0, data.size(), 4):
+		var r := data[i]
+		var g := data[i + 1]
+		var b := data[i + 2]
+		var lo := mini(r, b)
+		var m := lo - g                       # > 0 ⇒ le pixel penche vers le magenta
+		if m > 100:
+			data[i + 3] = 0                   # magenta franc → transparent
+		elif m > 20:                          # frange : alpha dégressif + despill du rose
+			data[i + 3] = int(data[i + 3] * float(120 - m) / 100.0)
+			data[i]     = g + (r - lo)        # rebascule R/B sur G (ôte l'excès magenta,
+			data[i + 2] = g + (b - lo)        # garde la teinte propre du sprite)
+	var keyed := Image.create_from_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8, data)
+	return ImageTexture.create_from_image(keyed)
+
 static var _settle_tex: Texture2D = null
 static var _settle_tried := false
 
-## charge l'atlas SETTLEMENTS (BMP magenta-keyé → alpha), une fois (caché).
+## charge l'atlas SETTLEMENTS (magenta ôté → alpha), une fois (caché).
 static func _settlements() -> Texture2D:
 	if _settle_tried:
 		return _settle_tex
 	_settle_tried = true
 	var img := Image.load_from_file(MAP + "settlements.bmp")
 	if img != null:
-		if img.get_format() != Image.FORMAT_RGBA8:
-			img.convert(Image.FORMAT_RGBA8)
-		var data := img.get_data()
-		for i in range(0, data.size(), 4):   # magenta (≈255,0,255) → transparent
-			if data[i] > 200 and data[i + 1] < 60 and data[i + 2] > 200:
-				data[i + 3] = 0
-		var keyed := Image.create_from_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8, data)
-		_settle_tex = ImageTexture.create_from_image(keyed)
+		_settle_tex = _key_magenta(img)
 	return _settle_tex
+
+const DRESS_CELL := 32   # atlas dressing : 16 colonnes, 32 px, magenta-keyé
+static var _dress_tex: Texture2D = null
+static var _dress_tried := false
+
+static func _dressing() -> Texture2D:
+	if _dress_tried:
+		return _dress_tex
+	_dress_tried = true
+	var img := Image.load_from_file(MAP + "dressing.bmp")
+	if img != null:
+		_dress_tex = _key_magenta(img)
+	return _dress_tex
+
+## sprite de dressing par id MAPD (0-111). null si l'atlas est absent.
+static func dressing_sprite(id: int) -> Texture2D:
+	var t := _dressing()
+	if t == null or id < 0:
+		return null
+	var at := AtlasTexture.new()
+	at.atlas = t
+	at.region = Rect2((id % 16) * DRESS_CELL, (id / 16) * DRESS_CELL, DRESS_CELL, DRESS_CELL)
+	return at
 
 ## sprite de settlement : colonne = tier (0-5), ligne = groupe (0-5). null si absent.
 static func settlement_sprite(tier: int, group: int) -> Texture2D:

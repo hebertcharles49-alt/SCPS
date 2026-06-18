@@ -54,7 +54,7 @@ func _draw() -> void:
 	_speed_rect = Rect2(W - 116, 4, 108, H - 8)
 	UIKit.draw_chrome(self, "topbar_resource_chip", _speed_rect)
 	var paused: bool = Sim.speed_index == 0
-	UIKit.draw_icon(self, "control_pause" if not paused else "control_fast_forward",
+	UIKit.draw_icon(self, "tool_speed" if paused else "tool_pause",
 		Vector2(_speed_rect.position.x + 6, 7), 18)
 	VKit.text(self, Vector2(_speed_rect.position.x + 28, 9), VKit.COL_COPPER, Sim.speed_label())
 
