@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/variant/vector2.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 
 extern "C" {
 #include "scps_api.h"
@@ -37,7 +38,7 @@ public:
     /* carte */
     int   map_w() const;
     int   map_h() const;
-    Ref<Image> map_image(int mode);     /* render_map → Image RGBA8 (ImageTexture) */
+    Ref<Image> map_image(int mode, int selected_prov);  /* render_map → Image RGBA8 (sel. surlignée) */
     Ref<Image> layer_image(int layer);  /* couche brute → Image L8 (shaders) */
 
     /* nombres tangibles (membrane) */
@@ -54,6 +55,12 @@ public:
     int64_t region_pop(int region) const;
     bool    region_colonized(int region) const;
     Vector2 region_centroid(int region) const;   /* (-1,-1) si vide */
+
+    /* PICKING & READOUTS (la membrane → panneaux) */
+    int        province_at(int x, int y) const;       /* cellule monde → province (-1) */
+    int        province_region(int province) const;   /* province → région (-1) */
+    Dictionary province_info(int province);           /* mots + nombres (la membrane) */
+    Dictionary country_info(int country);             /* mots + nombres (la membrane) */
 };
 
 } // namespace godot

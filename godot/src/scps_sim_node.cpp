@@ -4,6 +4,8 @@
  */
 #include "scps_sim_node.h"
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/string.hpp>
 
 using namespace godot;
 
@@ -12,7 +14,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("advance_days", "days"),    &ScpsWorld::advance_days);
     ClassDB::bind_method(D_METHOD("map_w"),                   &ScpsWorld::map_w);
     ClassDB::bind_method(D_METHOD("map_h"),                   &ScpsWorld::map_h);
-    ClassDB::bind_method(D_METHOD("map_image", "mode"),       &ScpsWorld::map_image);
+    ClassDB::bind_method(D_METHOD("map_image", "mode", "selected_prov"), &ScpsWorld::map_image, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("layer_image", "layer"),    &ScpsWorld::layer_image);
     ClassDB::bind_method(D_METHOD("year"),                    &ScpsWorld::year);
     ClassDB::bind_method(D_METHOD("player"),                  &ScpsWorld::player);
@@ -25,6 +27,11 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("region_pop", "region"),       &ScpsWorld::region_pop);
     ClassDB::bind_method(D_METHOD("region_colonized", "region"), &ScpsWorld::region_colonized);
     ClassDB::bind_method(D_METHOD("region_centroid", "region"),  &ScpsWorld::region_centroid);
+
+    ClassDB::bind_method(D_METHOD("province_at", "x", "y"),          &ScpsWorld::province_at);
+    ClassDB::bind_method(D_METHOD("province_region", "province"),    &ScpsWorld::province_region);
+    ClassDB::bind_method(D_METHOD("province_info", "province"),      &ScpsWorld::province_info);
+    ClassDB::bind_method(D_METHOD("country_info", "country"),        &ScpsWorld::country_info);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -43,10 +50,10 @@ void ScpsWorld::advance_days(int days)  { if (sim) scps_sim_advance_days(sim, da
 int ScpsWorld::map_w() const { return scps_map_w(); }
 int ScpsWorld::map_h() const { return scps_map_h(); }
 
-Ref<Image> ScpsWorld::map_image(int mode) {
+Ref<Image> ScpsWorld::map_image(int mode, int selected_prov) {
     int w = scps_map_w(), h = scps_map_h();
     PackedByteArray buf; buf.resize((int64_t)w * h * 4);
-    if (sim) scps_map_rgba(sim, buf.ptrw(), mode);
+    if (sim) scps_map_rgba(sim, buf.ptrw(), mode, selected_prov);
     return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);
 }
 
@@ -73,4 +80,73 @@ Vector2 ScpsWorld::region_centroid(int r) const {
     float x = -1.f, y = -1.f;
     scps_region_centroid(sim, r, &x, &y);
     return Vector2(x, y);
+}
+
+int ScpsWorld::province_at(int x, int y) const     { return scps_province_at(sim, x, y); }
+int ScpsWorld::province_region(int p) const        { return scps_province_region(sim, p); }
+
+/* province_info / country_info — la membrane assemblée en Dictionary : des MOTS
+ * (String) et des nombres TANGIBLES. Le panneau GDScript ne lit que ces clés ;
+ * aucun flottant moteur ne traverse. */
+Dictionary ScpsWorld::province_info(int province) {
+    Dictionary d;
+    ScpsProvInfo p;
+    scps_province_info(sim, province, &p);
+    d["valide"] = (bool)p.valid;
+    if (!p.valid) return d;
+    d["nom"]            = String::utf8(p.nom);
+    d["terrain"]        = String::utf8(p.terrain);
+    d["climat"]         = String::utf8(p.climat);
+    d["relief"]         = String::utf8(p.relief);
+    d["race"]           = String::utf8(p.race);
+    d["stature"]        = String::utf8(p.stature);
+    d["flux"]           = String::utf8(p.flux);
+    d["vocation"]       = String::utf8(p.vocation);
+    d["ressource"]      = String::utf8(p.ressource);
+    d["humeur"]         = String::utf8(p.humeur);
+    d["lignee"]         = String::utf8(p.lignee);
+    d["aisance"]        = String::utf8(p.aisance);
+    d["defense"]        = String::utf8(p.defense);
+    d["specialisation"] = String::utf8(p.specialisation);
+    d["ames"]           = (int64_t)p.ames;
+    d["owner"]          = p.owner;
+    d["agitation"]      = p.agitation;
+    d["aisance_val"]    = p.aisance_val;
+    d["humeur_val"]     = p.humeur_val;
+    d["seuil_revolte"]  = (bool)p.seuil_revolte;
+    d["logements_libres"] = (int64_t)p.logements_libres;
+    d["logements_cap"]    = (int64_t)p.logements_cap;
+    d["services_libres"]  = (int64_t)p.services_libres;
+    d["services_cap"]     = (int64_t)p.services_cap;
+    Array mods;
+    for (int i = 0; i < p.n_mods; i++) {
+        Dictionary m;
+        m["nom"]    = String::utf8(p.mods[i].nom);
+        m["effet"]  = String::utf8(p.mods[i].effet);
+        m["faveur"] = (bool)p.mods[i].faveur;
+        mods.push_back(m);
+    }
+    d["mods"] = mods;
+    return d;
+}
+
+Dictionary ScpsWorld::country_info(int country) {
+    Dictionary d;
+    ScpsCountryInfo c;
+    scps_country_info(sim, country, &c);
+    d["valide"] = (bool)c.valid;
+    if (!c.valid) return d;
+    d["nom"]            = String::utf8(c.nom);
+    d["ethos"]          = String::utf8(c.ethos);
+    d["pop"]            = (int64_t)c.pop;
+    d["or"]             = c.gold;
+    d["regions"]        = c.n_regions;
+    d["stabilite"]      = c.stabilite;   d["stabilite_mot"]  = String::utf8(c.stabilite_mot);
+    d["prosperite"]     = c.prosperite;  d["prosperite_mot"] = String::utf8(c.prosperite_mot);
+    d["legitimite"]     = c.legitimite;  d["legitimite_mot"] = String::utf8(c.legitimite_mot);
+    d["cohesion"]       = c.cohesion;    d["cohesion_mot"]   = String::utf8(c.cohesion_mot);
+    d["savoir"]         = c.savoir;      d["savoir_mot"]     = String::utf8(c.savoir_mot);
+    d["influence"]      = c.influence;
+    d["corruption"]     = c.corruption;
+    return d;
 }

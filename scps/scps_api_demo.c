@@ -38,7 +38,7 @@ int main(int argc, char **argv){
 
     /* rendu : la carte contient de l'EAU (bleu dominant) ET de la TERRE (vert/brun) */
     uint8_t *rgba = (uint8_t*)malloc((size_t)W*H*4);
-    scps_map_rgba(s, rgba, 0 /*VIEW_TERRAIN*/);
+    scps_map_rgba(s, rgba, 0 /*VIEW_TERRAIN*/, -1 /*aucune sélection*/);
     long blue=0, land=0;
     for(int i=0;i<W*H;i++){ uint8_t r=rgba[i*4], g=rgba[i*4+1], b=rgba[i*4+2];
         if(b>r && b>=g) blue++; else if(r>40||g>40) land++; }

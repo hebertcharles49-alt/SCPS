@@ -357,6 +357,23 @@
   (la continuité eau↔asset EN SHADER). **Vérifié headless** : binding compile contre godot-cpp 4.3, `scons`
   LIE le `.so` (entrée `scps_library_init` exportée). **RÈGLE D'OR** : zéro logique sim côté GDScript —
   le déterminisme survit. `make test` inchangé (le moteur ne bouge pas), **SAVE non bumpé**.
+- **GODOT PHASE 2 (2026-06-18) — LIRE LE MONDE : la membrane traverse le binding** : le clic ouvre
+  des panneaux readout (ce qui rend SCPS JOUABLE, pas juste regardable). Trois ajouts à la façade
+  `scps_api`, additifs et low-risk. **(1) PICKING** : `scps_province_at(x,y)` (cellule monde →
+  province, l'entité de panneau) + `scps_province_region`. **(2) READOUTS TRAVERSANTS** :
+  `scps_province_info`/`scps_country_info` remplissent des **POD de MOTS DÉJÀ RÉSOLUS** (terrain,
+  humeur, éthos, bandes via `scps_readout.c`) **+ nombres TANGIBLES** (âmes, or, jauges 0-100) — la
+  membrane elle-même, franchissant la frontière C↔C++ sans qu'un flottant moteur passe. La façade
+  alloue+ticke `WorldProsperity`/`WorldLegitimacy`/`TechState` (l'ordre canonique L→P, lus en
+  **CONST** sur econ/world → la colonne économique reste **byte-identique** ; pop inchangée). **(3)
+  SÉLECTION SURLIGNÉE** : `scps_map_rgba` prend `selected_prov` (état d'AFFICHAGE, hors déterminisme).
+  Côté Godot : `province_info`/`country_info` → `Dictionary`, clic gauche (slop anti-glissé) →
+  `ProvincePanel`/`CountryPanel` bâtis en code (jauges rouge→vert), clic en mer referme. ⚠ Les zéros
+  an-0 (or/prospérité/influence) sont l'AVEU HONNÊTE de la colonne éco (ni diplo ni commerce tické) ;
+  ils se peuplent avec l'extraction `chronicle::sim_day` **sans changer la surface façade**. Vérifié
+  **headless** (probe GDScript : picking province 18, readouts complets, borne hors-champ → invalide).
+  `make test` **38/38**, `determinism` **STABLE** (hashes chronicle inchangés), `scps_api_demo` 9/9,
+  GDExtension `scons` 0 warning. Le moteur ne bouge pas → **SAVE non bumpé**.
 
 ## Disciplines non négociables
 

@@ -28,13 +28,21 @@ actuelle).
 Livrable : on génère, on regarde le monde vivre, on navigue. **Aucune dépendance
 moteur nouvelle.**
 
-## Phase 2 — Lire le monde (la membrane → panneaux) **[+façade]**
+## Phase 2 — Lire le monde (la membrane → panneaux) **[+façade]** ✅ (fait)
 
-- *Façade à ajouter* : `province_readout` / `country_readout` (→ `Dictionary`) et
-  un `region_at(x,y)` (picking écran→région). Additif, low-risk.
-- **Sélection** : clic sur la carte → région surlignée.
-- **`ProvincePanel` / `CountryPanel`** : bandes + mots (la membrane), en `Control`
-  nodes. C'est ce qui rend SCPS **jouable**, pas juste regardable.
+- ✅ *Façade ajoutée* : `scps_province_info` / `scps_country_info` (POD de MOTS
+  résolus + nombres → `Dictionary` côté binding) et `scps_province_at(x,y)`
+  (picking cellule→province). La façade alloue+ticke `WorldProsperity` /
+  `WorldLegitimacy` / `TechState` (lus en CONST → la colonne éco reste
+  byte-identique ; `scps_api_demo` 9/9). `scps_map_rgba` prend la province
+  surlignée.
+- ✅ **Sélection** : clic gauche sur la carte → province surlignée (`render_map`
+  `selected_prov`), clic-glissé distingué du clic (slop), clic en mer referme.
+- ✅ **`ProvincePanel` / `CountryPanel`** : bandes + mots + jauges 0-100 (la
+  membrane), en `Control` bâtis en code. Aucun flottant SCPS lu côté Godot.
+- ⏳ *Reste* : les zéros (or/prospérité/influence à l'an-0) se peupleront quand
+  `advance_days` roulera le tick PLEIN (extraction `chronicle::sim_day`) — la
+  surface façade ne bougera pas.
 
 ## Phase 3 — Les acteurs sur la carte **[+façade]**
 

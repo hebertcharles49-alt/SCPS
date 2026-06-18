@@ -1,11 +1,17 @@
 extends Node2D
 ## MapView — affiche la carte du moteur et la pilote en caméra. DISPLAY-ONLY :
-## lit Sim.world (octets de carte), n'écrit jamais dans la sim.
+## lit Sim.world (octets de carte), n'écrit jamais dans la sim. Le clic SÉLECTIONNE
+## une province (picking → province_at) ; la sélection est surlignée par render_map
+## et émise en signal pour les panneaux.
 ##
 ## Construit ses nodes EN CODE (Terrain + Camera2D) — pas de .tscn à maintenir.
 
 const LAYER_SEA := 1            ## scps_map_layer : 1 = SEA (pour le shader d'eau)
 const WATER_SHADER := "res://shaders/water.gdshader"
+const CLICK_SLOP := 5.0         ## px : au-delà, le geste est un glissé (pas un clic)
+
+## clic gauche → province sélectionnée (-1 = mer/hors-monde) + sa région et son pays
+signal province_picked(province: int, region: int, owner: int)
 
 ## ViewMode (cf. scps_render.h) : 0 terrain · 1 politique · 2 régions · 3 pays
 var mode := 0
@@ -13,6 +19,9 @@ var mode := 0
 var _terrain: Sprite2D
 var _camera: Camera2D
 var _sea_tex: ImageTexture
+var _selected_prov := -1
+var _press_pos := Vector2.ZERO
+var _dragged := false
 
 func _ready() -> void:
 	_terrain = Sprite2D.new()
@@ -48,11 +57,37 @@ func _on_ticked(_year: int) -> void:
 func _refresh_terrain() -> void:
 	if Sim.world == null:
 		return
-	_terrain.texture = ImageTexture.create_from_image(Sim.world.map_image(mode))
+	_terrain.texture = ImageTexture.create_from_image(Sim.world.map_image(mode, _selected_prov))
 
 func set_mode(m: int) -> void:
 	mode = m
 	_refresh_terrain()
+
+## convertit la souris (espace écran) en cellule MONDE, ou (-1,-1) hors-carte.
+func _mouse_cell() -> Vector2i:
+	var wpos := get_global_mouse_position()
+	var cx := int(floor(wpos.x))
+	var cy := int(floor(wpos.y))
+	if cx < 0 or cy < 0 or cx >= Sim.world.map_w() or cy >= Sim.world.map_h():
+		return Vector2i(-1, -1)
+	return Vector2i(cx, cy)
+
+func _pick_at_mouse() -> void:
+	if Sim.world == null:
+		return
+	var cell := _mouse_cell()
+	var prov := -1
+	if cell.x >= 0:
+		prov = Sim.world.province_at(cell.x, cell.y)
+	_selected_prov = prov
+	_refresh_terrain()
+	var region := -1
+	var owner := -1
+	if prov >= 0:
+		region = Sim.world.province_region(prov)
+		if region >= 0:
+			owner = Sim.world.region_owner(region)
+	province_picked.emit(prov, region, owner)
 
 func _fit_camera() -> void:
 	var w := float(Sim.world.map_w())
@@ -62,17 +97,26 @@ func _fit_camera() -> void:
 	var z: float = min(vp.x / w, vp.y / h)   # Camera2D : zoom = pixels/unité-monde
 	_camera.zoom = Vector2(z, z)
 
-# ── navigation : pan (clic-droit glissé) · zoom (molette) ──────────────────
+# ── navigation : pan (clic-droit glissé) · zoom (molette) · sélection (clic gauche) ──
 func _unhandled_input(event: InputEvent) -> void:
 	if _camera == null:
 		return
 	if event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
 		_camera.position -= event.relative / _camera.zoom
-	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT):
+		if event.position.distance_to(_press_pos) > CLICK_SLOP:
+			_dragged = true
+	elif event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			_zoom(1.1)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			_zoom(1.0 / 1.1)
+		elif event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				_press_pos = event.position
+				_dragged = false
+			elif not _dragged:           # relâché sans glisser → c'est un clic
+				_pick_at_mouse()
 
 func _zoom(factor: float) -> void:
 	var z: float = clampf(_camera.zoom.x * factor, 0.2, 16.0)

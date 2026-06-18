@@ -27,10 +27,18 @@ godot/
 ## Ce que le moteur expose (façade `../scps/scps_api.h`)
 
 `ScpsWorld` (GDScript) → `scps_api` (C) :
-`generate(seed)` · `advance_days(n)` · `map_image(mode)` (render_map → `Image`) ·
-`layer_image(layer)` (height/sea/biome/coast → `Image` L8, pour shaders) ·
-`year/player/country_count/region_count/world_pop/country_pop/country_gold` ·
-`region_owner/pop/colonized/centroid`.
+`generate(seed)` · `advance_days(n)` · `map_image(mode, selected_prov)`
+(render_map → `Image`, province surlignée) · `layer_image(layer)` (height/sea/
+biome/coast → `Image` L8, pour shaders) · `year/player/country_count/
+region_count/world_pop/country_pop/country_gold` · `region_owner/pop/colonized/
+centroid`.
+
+**Membrane → panneaux (Phase 2)** : `province_at(x,y)` (picking cellule→province) ·
+`province_region(p)` · `province_info(p)` / `country_info(c)` → `Dictionary` de
+**mots déjà résolus** (terrain, humeur, éthos, bandes) et **nombres tangibles**
+(âmes, or, jauges 0-100). Aucun flottant moteur ne traverse : la façade alloue et
+ticke `WorldProsperity`/`WorldLegitimacy`/`TechState` côté C (lus en CONST → la
+colonne économique reste byte-identique), et `scps_readout.c` traduit en mots.
 
 > **Règle d'or :** pas une ligne de simulation côté Godot/GDScript. Tout calcul
 > reste en C → le déterminisme survit. Godot lit des octets et des nombres
@@ -68,9 +76,11 @@ pas bâtie, `Sim` le dit dans la console (pas de crash).
 
 - ✅ **façade C `scps_api`** testée sans Godot : `make scps_api_demo` (9/9, REPRODUCTIBLE).
 - ✅ **binding** C++ compile contre godot-cpp 4.3 ; `libscps.so` lie moteur+façade+binding.
-- ✅ **Phase 1 (carte vivante)** échafaudée : autoload `Sim`, `MapView` (terrain +
-  shader + caméra + modes de carte), `Topbar`. **N'utilise que la façade actuelle —
-  aucune touche moteur.** ⚠ écrit sans runtime Godot ici : à vérifier à l'ouverture.
+- ✅ **Phase 1 (carte vivante)** : autoload `Sim`, `MapView` (terrain + shader +
+  caméra + modes de carte), `Topbar`.
+- ✅ **Phase 2 (lire le monde)** : clic → `ProvincePanel` / `CountryPanel` (la
+  membrane en mots + jauges). Façade `province_info`/`country_info`/`province_at`
+  ajoutée ; **vérifiée headless** (probe GDScript : picking + readouts + bornes).
 - ⏳ `advance_days` roule pour l'instant la **colonne économique** (cf. note fidélité
   dans `scps_api.h`) ; le tick PLEIN viendra de `chronicle::sim_day → scps_sim`,
   **sans changer la surface de l'API**.
