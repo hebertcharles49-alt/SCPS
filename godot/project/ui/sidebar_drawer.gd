@@ -65,6 +65,7 @@ func _draw() -> void:
 	match _tab:
 		1: _draw_demo(x, y, me)
 		2: _draw_stocks(x, y, me)
+		4: _draw_armee(x, y, me)
 		5: _draw_filtres(x, y)
 		6: _draw_diplo(x, y, me)
 		_: VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(panneau à venir — port viewer.c)")
@@ -100,6 +101,30 @@ func _draw_stocks(x: float, y: float, me: int) -> void:
 		var covs := ("" if cov < 0 else (">1 an" if cov >= 366 else "%d j" % cov))
 		VKit.text(self, Vector2(x + 225, y), col, covs, VKit.FS_SMALL)
 		y += 15
+
+# ── ARMÉE (sb_panel_armee, read-only) ──────────────────────────────────────
+func _draw_armee(x: float, y: float, me: int) -> void:
+	var a: Dictionary = Sim.world.country_army(me)
+	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 18)
+	VKit.text(self, Vector2(x + 22, y), VKit.COL_PARCH, "force mobilisée : %d régiments" % int(a["regiments"]))
+	y += 22
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "levée :")
+	VKit.text(self, Vector2(x + 52, y), VKit.COL_COPPER, String(a["levy_name"]))
+	y += 24
+	var ar: Dictionary = Sim.world.army_info(me)
+	if bool(ar.get("active", false)):
+		VKit.text(self, Vector2(x, y), VKit.COL_COPPER,
+			"armée de campagne — région %d · %s" % [int(ar["region"]), ar["phase"]], VKit.FS_SMALL)
+		y += 16
+		VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+			"inf %d · arch %d · cav %d · mages %d  (Σ %d)" % [
+				int(ar["inf"]), int(ar["arch"]), int(ar["cav"]), int(ar["mages"]), int(ar["units"])], VKit.FS_SMALL)
+		y += 20
+	else:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(pas d'armée de campagne déployée)", VKit.FS_SMALL)
+		y += 20
+	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 16)
+	VKit.text(self, Vector2(x + 20, y), VKit.COL_DIM, "Flotte : %d coque(s)" % int(a["fleet"]))
 
 # ── FILTRES (sb_panel_filtres) : sélecteur de mode carte, FONCTIONNEL ──────
 func _draw_filtres(x: float, y: float) -> void:

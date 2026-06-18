@@ -80,6 +80,7 @@ public:
     Dictionary country_demo(int country);             /* classes + satisfaction */
     Array      country_stocks(int country);           /* biens : stock · net · couverture · marché */
     Array      country_relations(int country);        /* diplomatie : statut par pays */
+    Dictionary country_army(int country);             /* mobilisation + flotte */
 };
 
 } // namespace godot

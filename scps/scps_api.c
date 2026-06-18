@@ -454,3 +454,14 @@ int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
     }
     return n;
 }
+
+void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out); out->levy_name = "";
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
+    out->regiments = warhost_units(s->sim.host, cid);
+    out->levy      = warhost_levy(s->sim.host, cid);
+    out->levy_name = sz(warhost_levy_name(out->levy));
+    int f=0; for(int t=0; t<HULL_COUNT; t++) f += s->sim.navy->n[cid].hull[t];
+    out->fleet = f;
+}

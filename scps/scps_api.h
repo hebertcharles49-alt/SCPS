@@ -216,6 +216,16 @@ typedef struct {
 } ScpsRelation;
 int scps_country_relations(ScpsSim *s, int country, ScpsRelation *out, int max);
 
+/* ARMÉE d'un pays (sb_panel_armee, read-only) : mobilisation + flotte. L'armée de
+ * CAMPAGNE (position/phase/composition) se lit via scps_army_info. */
+typedef struct {
+    long regiments;         /* force mobilisée (warhost_units) */
+    int  levy;              /* cran de levée 0-3 */
+    const char *levy_name;  /* Basse · Garde · Pied de guerre · Levée en masse */
+    int  fleet;             /* total de coques */
+} ScpsArmy;
+void scps_country_army(ScpsSim *s, int country, ScpsArmy *out);
+
 #ifdef __cplusplus
 }
 #endif

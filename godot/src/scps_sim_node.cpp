@@ -43,6 +43,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
     ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
     ClassDB::bind_method(D_METHOD("country_relations", "country"),   &ScpsWorld::country_relations);
+    ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -305,4 +306,15 @@ Array ScpsWorld::country_relations(int country) {
         a.push_back(d);
     }
     return a;
+}
+
+Dictionary ScpsWorld::country_army(int country) {
+    ScpsArmy ar;
+    scps_country_army(sim, country, &ar);
+    Dictionary d;
+    d["regiments"] = (int64_t)ar.regiments;
+    d["levy"]      = ar.levy;
+    d["levy_name"] = String::utf8(ar.levy_name);
+    d["fleet"]     = ar.fleet;
+    return d;
 }
