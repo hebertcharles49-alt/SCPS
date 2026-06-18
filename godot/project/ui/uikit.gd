@@ -45,9 +45,18 @@ static func _settlements() -> Texture2D:
 	if _settle_tried:
 		return _settle_tex
 	_settle_tried = true
-	var img := Image.load_from_file(MAP + "settlements.bmp")
-	if img != null:
-		_settle_tex = _key_magenta(img)
+	# La PLACE est gardée : on charge en PRIORITÉ un PNG à alpha (settlements.png →
+	# aucun keying) ; à défaut, repli LEGACY sur un BMP magenta-keyé. Tant qu'aucun
+	# des deux n'est présent → null → l'overlay retombe sur ses marqueurs (pas de bave).
+	var img: Image = null
+	if FileAccess.file_exists(MAP + "settlements.png"):
+		img = Image.load_from_file(MAP + "settlements.png")
+		if img != null:
+			_settle_tex = ImageTexture.create_from_image(img)
+	elif FileAccess.file_exists(MAP + "settlements.bmp"):
+		img = Image.load_from_file(MAP + "settlements.bmp")
+		if img != null:
+			_settle_tex = _key_magenta(img)
 	return _settle_tex
 
 const DRESS_CELL := 32   # atlas dressing : 16 colonnes, 32 px, magenta-keyé
@@ -58,9 +67,16 @@ static func _dressing() -> Texture2D:
 	if _dress_tried:
 		return _dress_tex
 	_dress_tried = true
-	var img := Image.load_from_file(MAP + "dressing.bmp")
-	if img != null:
-		_dress_tex = _key_magenta(img)
+	# Même règle : PNG à alpha d'abord (dressing.png), BMP magenta-keyé en repli legacy.
+	var img: Image = null
+	if FileAccess.file_exists(MAP + "dressing.png"):
+		img = Image.load_from_file(MAP + "dressing.png")
+		if img != null:
+			_dress_tex = ImageTexture.create_from_image(img)
+	elif FileAccess.file_exists(MAP + "dressing.bmp"):
+		img = Image.load_from_file(MAP + "dressing.bmp")
+		if img != null:
+			_dress_tex = _key_magenta(img)
 	return _dress_tex
 
 ## sprite de dressing par id MAPD (0-111). null si l'atlas est absent.
@@ -140,10 +156,11 @@ static func resource_icon(res_name: String) -> Texture2D:
 static func _tex(path: String) -> Texture2D:
 	if _cache.has(path):
 		return _cache[path]
-	var img := Image.load_from_file(path)
 	var tex: Texture2D = null
-	if img != null:
-		tex = ImageTexture.create_from_image(img)
+	if FileAccess.file_exists(path):        # garde : pas d'erreur console si l'asset manque
+		var img := Image.load_from_file(path)
+		if img != null:
+			tex = ImageTexture.create_from_image(img)
 	_cache[path] = tex            # met aussi en cache les ratés (null) → un seul essai
 	return tex
 
