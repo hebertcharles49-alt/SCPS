@@ -541,3 +541,85 @@ void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
     int f=0; for(int t=0; t<HULL_COUNT; t++) f += s->sim.navy->n[cid].hull[t];
     out->fleet = f;
 }
+
+/* ====================================================================== */
+/* CONSTRUCTION — roster militaire & édifices (les boutons + le survol)    */
+/* ---------------------------------------------------------------------- *
+ * Les chaînes COMPOSÉES (coût/éthos/contres) vivent dans des tampons static
+ * par ligne, valides jusqu'au prochain appel — le binding les copie aussitôt
+ * en String Godot. Les noms simples pointent dans les tables compilées (tr). */
+static char g_ucost  [U_COUNT][48];
+static char g_uethos [U_COUNT][72];
+static char g_ufort  [U_COUNT][112];
+static char g_ufaible[U_COUNT][112];
+
+static void sj(char *buf, size_t cap, const char *add, int *n){
+    size_t l = strlen(buf);
+    if (*n && l+2 < cap){ buf[l]=','; buf[l+1]=' '; buf[l+2]=0; l+=2; }
+    if (l < cap-1) strncat(buf, add, cap-l-1);
+    (*n)++;
+}
+
+int scps_unit_roster(ScpsSim *s, int country, ScpsUnitDef *out, int max){
+    if (!s || !s->ready || !out || max<=0) return 0;
+    const TechState *ts = (country>=0 && country<SCPS_MAX_COUNTRY) ? &s->sim.ts[country] : NULL;
+    int g10=5, fd=1; labor_upkeep_per100(&g10,&fd);
+    int n=0;
+    for (int t=0; t<U_COUNT && n<max; t++){
+        const UnitDef *d = unit_def((UnitType)t);
+        ScpsUnitDef *o = &out[n];
+        o->type   = t;
+        o->nom    = sz(unit_name((UnitType)t));
+        o->classe = (d->from==LAB_ELITE) ? "Élite" : "Journalier";
+        o->arme   = sz(weapon_name(d->weapon));
+        Resource arm = unit_res_arm((UnitType)t);
+        if (arm==RES_NONE) snprintf(g_ucost[t], sizeof g_ucost[t], "%d (fortune)", POP_PER_UNIT);
+        else               snprintf(g_ucost[t], sizeof g_ucost[t], "%d %s", POP_PER_UNIT, resource_name(arm));
+        o->cout = g_ucost[t];
+        g_uethos[t][0]=0; { int ne=0; for (int f=0; f<6; f++)        /* éthos : affinité ≥ 2 */
+            if (warhost_unit_affinity(f,t) >= 2.f) sj(g_uethos[t], sizeof g_uethos[t], faction_name(f), &ne); }
+        o->ethos = g_uethos[t][0] ? g_uethos[t] : "—";
+        g_ufort[t][0]=0; g_ufaible[t][0]=0; { int nf=0, nw=0;       /* contres : >1.5 bat · <0.75 battu */
+            for (int j=0; j<U_COUNT; j++){ if (j==t) continue; float m=matchup((UnitType)t,(UnitType)j);
+                if      (m>1.5f  && nf<3) sj(g_ufort[t],   sizeof g_ufort[t],   unit_name((UnitType)j), &nf);
+                else if (m<0.75f && nw<3) sj(g_ufaible[t], sizeof g_ufaible[t], unit_name((UnitType)j), &nw); } }
+        o->fort   = g_ufort[t][0]   ? g_ufort[t]   : "—";
+        o->faible = g_ufaible[t][0] ? g_ufaible[t] : "—";
+        o->entretien_or10   = g10;
+        o->entretien_vivre  = fd;
+        o->recrutable = unit_recruitable(ts,(UnitType)t) ? 1 : 0;
+        n++;
+    }
+    return n;
+}
+
+int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
+    if (!s || !s->ready || !out || max<=0) return 0;
+    const TechState *ts = (country>=0 && country<SCPS_MAX_COUNTRY) ? &s->sim.ts[country] : NULL;
+    int cap_reg = -1;                              /* la capitale fixe le prix OR du chantier */
+    if (country>=0 && country<s->w->n_countries){
+        int cp = s->w->country[country].capital_prov;
+        if (cp>=0 && cp<s->w->n_provinces) cap_reg = s->w->province[cp].region;
+    }
+    int n=0;
+    for (int e=0; e<EDIFICE_COUNT && n<max; e++){
+        const EdificeDef *d = edifice_def((Edifice)e);
+        if (!d) continue;
+        ScpsEdificeDef *o = &out[n];
+        o->type = e;
+        o->nom  = sz(edifice_name(e));
+        o->days = d->days;
+        int nc=0;
+        for (int k=0; k<BUILD_RES_MAX && nc<SCPS_BUILD_COSTS; k++){
+            if (d->cost.res[k]==RES_NONE || d->cost.qty[k]<=0.f) continue;
+            o->cost[nc].res = resource_name(d->cost.res[k]);
+            o->cost[nc].qty = (int)(d->cost.qty[k]+0.5f);
+            nc++;
+        }
+        o->n_cost   = nc;
+        o->gold     = (cap_reg>=0) ? (int)(agency_build_gold(s->sim.econ, cap_reg, (Edifice)e)+0.5f) : 0;
+        o->debloque = edifice_unlocked(ts,(Edifice)e) ? 1 : 0;
+        n++;
+    }
+    return n;
+}

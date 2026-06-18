@@ -253,6 +253,43 @@ typedef struct {
 } ScpsArmy;
 void scps_country_army(ScpsSim *s, int country, ScpsArmy *out);
 
+/* ====================================================================== */
+/* CONSTRUCTION — les boutons « je veux telle unité / tel édifice », avec  */
+/* le PRIX RÉEL et le survol (membrane : des mots résolus + des nombres).  */
+/* ====================================================================== */
+
+/* ROSTER MILITAIRE d'un pays : une ligne par type d'unité (les 22). Le survol
+ * porte l'éthos, l'entretien et les contres ; le bouton est grisé si non recrutable. */
+typedef struct {
+    int         type;          /* UnitType brut (icône/sélection) */
+    const char *nom;           /* unit_name */
+    const char *classe;        /* « Journalier » / « Élite » */
+    const char *arme;          /* weapon_name */
+    const char *cout;          /* prix de levée : « 100 Armes légères » (la catégorie macro) */
+    const char *ethos;         /* éthos qui le favorisent (affinité ≥ 2), joints ; « — » sinon */
+    const char *fort;          /* « efficace contre » : unités battues (joints) ; « — » sinon */
+    const char *faible;        /* « faible contre » : unités qui le battent ; « — » sinon */
+    int         entretien_or10;/* solde : or/100/jour ×10 (uniforme) */
+    int         entretien_vivre;/* ration/100/jour */
+    int         recrutable;    /* 1 si la tech du pays débloque cette unité */
+} ScpsUnitDef;
+int scps_unit_roster(ScpsSim *s, int country, ScpsUnitDef *out, int max);
+
+/* ÉDIFICES qu'un pays peut BÂTIR : nom + RECETTE de matériaux (jusqu'à 4) + prix OR
+ * de la recette au marché de la capitale + durée ; grisé si la tech ne l'ouvre pas. */
+typedef struct { const char *res; int qty; } ScpsBuildCost;
+#define SCPS_BUILD_COSTS 4
+typedef struct {
+    int           type;        /* Edifice brut */
+    const char   *nom;         /* edifice_name */
+    int           n_cost;
+    ScpsBuildCost cost[SCPS_BUILD_COSTS];   /* matériaux : nom de ressource + quantité */
+    int           gold;        /* prix OR de la recette au marché de la capitale (agency_build_gold) */
+    int           days;        /* durée de chantier */
+    int           debloque;    /* 1 si la tech du pays l'ouvre */
+} ScpsEdificeDef;
+int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max);
+
 #ifdef __cplusplus
 }
 #endif

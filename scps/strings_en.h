@@ -286,6 +286,7 @@
     X(STR_FORK_ALAMBIC_2,      "The Alembic of {0} sells calm — priced in saltpetre.") \
     X(STR_EDI_COMPTOIR,     "Trading Post") \
     X(STR_EDI_BANQUE,       "Bank") \
+    X(STR_EDI_TRADE_CENTER, "Trade Center") \
     X(STR_FAC_CONQUERANT,    "Conquerors") \
     X(STR_FAC_MARCHAND,      "Merchants") \
     X(STR_FAC_LEGISTE,       "Legalists") \

@@ -84,6 +84,10 @@ public:
     Dictionary country_army(int country);             /* mobilisation + flotte */
     Dictionary country_trade(int country);            /* commerce : routes · or · partenaires */
     Array      country_council(int country);          /* conseil : 3 sièges */
+
+    /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */
+    Array      unit_roster(int country);              /* unités : nom·classe·coût·éthos·contres·recrutable */
+    Array      building_roster(int country);          /* édifices : nom·coût matériaux·or·jours·débloqué */
 };
 
 } // namespace godot

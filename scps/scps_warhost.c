@@ -40,6 +40,11 @@ static const float AFF[FAC_COUNT][U_COUNT] = {
 /* garde-fou C99 : si le roster (U_COUNT) ou les factions (FAC_COUNT) changent, AFF DOIT suivre. */
 typedef char aff_dims_check[(FAC_COUNT==6 && U_COUNT==22) ? 1 : -1];
 
+/* lecture seule de la table AFF (UI de construction) — n'influe sur aucun calcul. */
+float warhost_unit_affinity(int f, int u){
+    return (f>=0 && f<FAC_COUNT && u>=0 && u<U_COUNT) ? AFF[f][u] : 0.f;
+}
+
 /* unit_res_arm (la catégorie d'arme macro d'une unité) vit dans scps_army.c — un seul point de
  * vérité, partagé entre le warhost (levée/démob) et le campaign (renfort). */
 /* F6 (Option B) — CONSOMME les armes MACRO (RES_ARMS_*, le marché économique où vit le prix du fer)

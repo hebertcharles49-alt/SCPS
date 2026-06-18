@@ -47,6 +47,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
     ClassDB::bind_method(D_METHOD("country_trade", "country"),       &ScpsWorld::country_trade);
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
+    ClassDB::bind_method(D_METHOD("unit_roster", "country"),         &ScpsWorld::unit_roster);
+    ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -358,6 +360,54 @@ Array ScpsWorld::country_council(int country) {
         d["filled"]    = (bool)seats[i].filled;
         d["councilor"] = String::utf8(seats[i].councilor);
         d["tier"]      = seats[i].tier;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Array ScpsWorld::unit_roster(int country) {
+    Array a;
+    if (!sim) return a;
+    ScpsUnitDef u[64];
+    int n = scps_unit_roster(sim, country, u, 64);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["type"]            = u[i].type;
+        d["nom"]             = String::utf8(u[i].nom);
+        d["classe"]          = String::utf8(u[i].classe);
+        d["arme"]            = String::utf8(u[i].arme);
+        d["cout"]            = String::utf8(u[i].cout);
+        d["ethos"]           = String::utf8(u[i].ethos);
+        d["fort"]            = String::utf8(u[i].fort);
+        d["faible"]          = String::utf8(u[i].faible);
+        d["entretien_or10"]  = u[i].entretien_or10;
+        d["entretien_vivre"] = u[i].entretien_vivre;
+        d["recrutable"]      = (bool)u[i].recrutable;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Array ScpsWorld::building_roster(int country) {
+    Array a;
+    if (!sim) return a;
+    ScpsEdificeDef b[64];
+    int n = scps_building_roster(sim, country, b, 64);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["type"]     = b[i].type;
+        d["nom"]      = String::utf8(b[i].nom);
+        d["gold"]     = b[i].gold;
+        d["days"]     = b[i].days;
+        d["debloque"] = (bool)b[i].debloque;
+        Array costs;
+        for (int k = 0; k < b[i].n_cost; k++) {
+            Dictionary c;
+            c["res"] = String::utf8(b[i].cost[k].res);
+            c["qty"] = b[i].cost[k].qty;
+            costs.push_back(c);
+        }
+        d["cost"] = costs;
         a.push_back(d);
     }
     return a;

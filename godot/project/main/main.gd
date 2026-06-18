@@ -6,6 +6,7 @@ extends Node
 var _prov_panel: Control
 var _country_panel: Control
 var _sidebar: Control
+var _construct: Control
 
 func _ready() -> void:
 	# la carte (Node2D, caméra dedans)
@@ -51,8 +52,22 @@ func _ready() -> void:
 	controls.setup(map)
 	ui.add_child(controls)
 
+	# CONSTRUCTION : les boutons de levée & de bâti (touche B) — lit la façade
+	# (roster 22 unités + édifices, prix réels). Caché par défaut, bascule au clavier.
+	_construct = load("res://ui/construction_panel.gd").new()
+	_construct.name = "ConstructionPanel"
+	_construct.position = Vector2(62, 96)
+	_construct.visible = false
+	ui.add_child(_construct)
+
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
+
+func _unhandled_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_B:
+		if _construct != null:
+			_construct.visible = not _construct.visible
+			_construct.queue_redraw()
 
 func _on_province_picked(province: int, _region: int, owner: int) -> void:
 	if Sim.world == null:

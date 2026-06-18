@@ -321,6 +321,10 @@ void labor_army_upkeep(const LaborEcon *e, long *gold_j, long *food_j){
     if (gold_j) *gold_j = (long)(SOLDE_GOLD_PER100*(float)packs + 0.5f);
     if (food_j) *food_j = packs*SOLDE_FOOD_PER100;
 }
+void labor_upkeep_per100(int *gold_x10, int *food){
+    if (gold_x10) *gold_x10 = (int)(SOLDE_GOLD_PER100*10.f + 0.5f);
+    if (food)     *food     = (int)SOLDE_FOOD_PER100;
+}
 long labor_food_balance(const LaborEcon *e){
     long ration; labor_army_upkeep(e,NULL,&ration);
     return labor_food_collected(e) - labor_food_consumed(e) - ration;

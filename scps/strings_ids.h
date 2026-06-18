@@ -292,6 +292,7 @@
     X(STR_FORK_ALAMBIC_2,      "L'Alambic de {0} vend le calme — au prix du salpêtre.") \
     X(STR_EDI_COMPTOIR,     "Comptoir") \
     X(STR_EDI_BANQUE,       "Banque") \
+    X(STR_EDI_TRADE_CENTER, "Centre commercial") \
     X(STR_FAC_CONQUERANT,    "Conquérants") \
     X(STR_FAC_MARCHAND,      "Marchands") \
     X(STR_FAC_LEGISTE,       "Légistes") \

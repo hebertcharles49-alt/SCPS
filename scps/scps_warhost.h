@@ -50,6 +50,10 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
 
 long warhost_units (const WarHost *h, int cid);   /* paquets de 100 levés (UI/IA) */
 
+/* Affinité ÉTHOS→unité (0-3) de la table AFF — read-only, pour l'UI de construction
+ * (« quel éthos favorise cette unité »). N'influe sur rien : pure lecture. */
+float warhost_unit_affinity(int faction, int unit);
+
 /* DÉMOBILISER la réserve levée (§4) : l'armée du pays se dissout, la jauge retombe
  * à GARDE (sinon le pied de guerre re-lève aussitôt). Renvoie les paquets dissous. */
 long warhost_disband(WarHost *h, int cid);
