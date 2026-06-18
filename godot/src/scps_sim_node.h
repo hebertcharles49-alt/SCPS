@@ -75,6 +75,10 @@ public:
     Array      province_income(int province);         /* RESSOURCES / PRODUCTION */
     Dictionary province_classes(int province);        /* barre empilée des classes */
     Dictionary province_capitale(int province);       /* ossature de capitale */
+
+    /* SIDEBAR : agrégats PAYS (read-only) */
+    Dictionary country_demo(int country);             /* classes + satisfaction */
+    Array      country_stocks(int country);           /* biens : stock · net · couverture · marché */
 };
 
 } // namespace godot

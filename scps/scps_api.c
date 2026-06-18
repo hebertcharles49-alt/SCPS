@@ -382,3 +382,53 @@ void scps_province_capitale(ScpsSim *s, int pid, ScpsCapitale *out){
     out->service_cap  = capitale_housing(tier, admin);
     out->prod_pct     = (int)((capitale_prodmult(tier, admin) - 1.f) * 100.f + 0.5f);
 }
+
+/* ---- SIDEBAR : agrégats PAYS (read-only) ------------------------------ */
+
+void scps_country_demo(ScpsSim *s, int cid, ScpsCountryDemo *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
+    double clp[3]={0,0,0}, cls[3]={0,0,0};
+    for(int r=0; r<s->sim.econ->n_regions; r++){
+        RegionEconomy *re = &s->sim.econ->region[r];
+        if(re->owner!=cid || !re->colonized) continue;
+        out->n_regions++;
+        for(int c=0;c<3;c++){
+            clp[c] += re->strata[c].pop;
+            cls[c] += re->strata[c].satisfaction * re->strata[c].pop;
+        }
+    }
+    for(int c=0;c<3;c++){
+        out->cls_pop[c] = (long)clp[c];
+        out->pop_total += (long)clp[c];
+        out->cls_sat[c] = (clp[c]>0.0) ? (int)(100.0*cls[c]/clp[c] + 0.5) : 0;
+    }
+}
+
+int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
+    if(!out || max<=0 || !s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
+    double dem[RES_COUNT]={0}, sup[RES_COUNT]={0}, stk[RES_COUNT]={0};
+    for(int r=0; r<s->sim.econ->n_regions; r++){
+        RegionEconomy *re = &s->sim.econ->region[r];
+        if(re->owner!=cid || !re->colonized) continue;
+        for(int g=1; g<RES_COUNT; g++){
+            dem[g] += re->demand[g]; sup[g] += re->supply[g]; stk[g] += re->stock[g];
+        }
+    }
+    int n=0;
+    for(int g=1; g<RES_COUNT && n<max; g++){
+        if(!(stk[g]>0.5 || dem[g]>0.05 || sup[g]>0.05)) continue;   /* bien VIVANT seulement */
+        float net = (float)(sup[g]-dem[g]) / 30.f;                  /* le tick éco est mensuel */
+        if(net>-0.05f && net<0.05f) net = 0.f;
+        out[n].name        = sz(resource_name((Resource)g));
+        out[n].market_band = (int)band_marche((float)dem[g], (float)(sup[g]+stk[g]));
+        out[n].marche      = sz(label_marche((BandMarche)out[n].market_band));
+        out[n].stock       = (long)stk[g];
+        out[n].net_day     = net;
+        if(net < -0.05f){ float dj = (float)stk[g]/(-net); out[n].coverage_days = (dj>365.f)?366:(int)dj; }
+        else out[n].coverage_days = -1;
+        n++;
+    }
+    return n;
+}

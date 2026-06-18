@@ -24,6 +24,7 @@ signal tab_selected(index: int)   ## -1 = aucun (replié)
 
 var _btns := []
 var _sel := -1
+var _drawer
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -40,10 +41,19 @@ func _ready() -> void:
 		b.pressed.connect(_on_tab.bind(i))
 		b.tooltip_text = String(TABS[i][1])
 		_btns.append(b)
+	_drawer = load("res://ui/sidebar_drawer.gd").new()
+	_drawer.name = "SidebarDrawer"
+	add_child(_drawer)
 
 func _on_tab(i: int) -> void:
 	_sel = -1 if _sel == i else i      # re-cliquer un onglet ouvert le replie
 	for k in range(_btns.size()):
 		_btns[k].selected = (k == _sel)
 		_btns[k].queue_redraw()
+	_drawer.show_tab(_sel)
 	tab_selected.emit(_sel)
+
+## referme le tiroir (p.ex. quand on sélectionne une province)
+func close() -> void:
+	if _sel != -1:
+		_on_tab(_sel)   # re-cliquer l'onglet courant → repli

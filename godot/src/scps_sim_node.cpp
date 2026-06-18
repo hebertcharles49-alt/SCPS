@@ -40,6 +40,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_income", "province"),    &ScpsWorld::province_income);
     ClassDB::bind_method(D_METHOD("province_classes", "province"),   &ScpsWorld::province_classes);
     ClassDB::bind_method(D_METHOD("province_capitale", "province"),  &ScpsWorld::province_capitale);
+    ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
+    ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -251,4 +253,40 @@ Dictionary ScpsWorld::province_capitale(int province) {
     d["service_cap"]  = (int64_t)c.service_cap;
     d["prod_pct"]     = c.prod_pct;
     return d;
+}
+
+Dictionary ScpsWorld::country_demo(int country) {
+    ScpsCountryDemo c;
+    scps_country_demo(sim, country, &c);
+    Dictionary d;
+    d["pop_total"] = (int64_t)c.pop_total;
+    d["n_regions"] = c.n_regions;
+    Array classes;
+    const char *NAMES[3] = {"Journaliers", "Bourgeois", "Nobles"};
+    for (int i = 0; i < 3; i++) {
+        Dictionary cl;
+        cl["nom"]          = String::utf8(NAMES[i]);
+        cl["pop"]          = (int64_t)c.cls_pop[i];
+        cl["satisfaction"] = c.cls_sat[i];
+        classes.push_back(cl);
+    }
+    d["classes"] = classes;
+    return d;
+}
+
+Array ScpsWorld::country_stocks(int country) {
+    Array a;
+    ScpsStock st[40];
+    int n = scps_country_stocks(sim, country, st, 40);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["name"]          = String::utf8(st[i].name);
+        d["marche"]        = String::utf8(st[i].marche);
+        d["stock"]         = (int64_t)st[i].stock;
+        d["net_day"]       = st[i].net_day;
+        d["coverage_days"] = st[i].coverage_days;
+        d["market_band"]   = st[i].market_band;
+        a.push_back(d);
+    }
+    return a;
 }

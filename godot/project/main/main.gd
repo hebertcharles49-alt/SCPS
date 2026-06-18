@@ -5,6 +5,7 @@ extends Node
 
 var _prov_panel: Control
 var _country_panel: Control
+var _sidebar: Control
 
 func _ready() -> void:
 	# la carte (Node2D, caméra dedans)
@@ -36,10 +37,12 @@ func _ready() -> void:
 	endgame.name = "EndgameBanner"
 	ui.add_child(endgame)
 
-	# le RAIL de sidebar (onglets menu_*) — gauche
-	var sidebar = load("res://ui/sidebar.gd").new()
-	sidebar.name = "Sidebar"
-	ui.add_child(sidebar)
+	# le RAIL de sidebar (onglets menu_*) + tiroir — gauche
+	_sidebar = load("res://ui/sidebar.gd").new()
+	_sidebar.name = "Sidebar"
+	ui.add_child(_sidebar)
+	# tiroir ouvert ⇒ on cache le panneau de province (même bande, exclusifs)
+	_sidebar.tab_selected.connect(func(i): if i >= 0: _prov_panel.show_province(-1))
 
 	# barres de carte : sélecteur de mode (bas-gauche) + zoom (bas-droite)
 	var controls = load("res://ui/controls.gd").new()
@@ -57,5 +60,7 @@ func _on_province_picked(province: int, _region: int, owner: int) -> void:
 		_prov_panel.show_province(-1)         # clic en mer → on referme
 		_country_panel.show_country(-1)
 		return
+	if _sidebar != null:
+		_sidebar.close()                      # un clic province referme le tiroir (exclusifs)
 	_prov_panel.show_province(province)
 	_country_panel.show_country(owner)        # -1 (terre libre) → panneau caché

@@ -186,6 +186,27 @@ typedef struct {
 } ScpsCapitale;
 void scps_province_capitale(ScpsSim *s, int province, ScpsCapitale *out);
 
+/* ---- SIDEBAR : agrégats PAYS (port des sb_panel_*, read-only) --------- *
+ * Démographie (classes + satisfaction) et stocks (par bien : stock, flux net,
+ * couverture, état de marché). Agrégés sur les régions colonisées du pays. */
+typedef struct {
+    long pop_total;
+    int  n_regions;
+    long cls_pop[3];   /* journaliers · bourgeois · nobles */
+    int  cls_sat[3];   /* satisfaction 0-100 par classe */
+} ScpsCountryDemo;
+void scps_country_demo(ScpsSim *s, int country, ScpsCountryDemo *out);
+
+typedef struct {
+    const char *name;       /* bien (resource_name) */
+    const char *marche;     /* état de marché (label_marche) */
+    long  stock;
+    float net_day;          /* flux net /jour (offre−demande) */
+    int   coverage_days;    /* jours de couverture si net<0 (366 = >1 an) ; -1 sinon */
+    int   market_band;      /* 0..4 BandMarche (pour la couleur) */
+} ScpsStock;
+int scps_country_stocks(ScpsSim *s, int country, ScpsStock *out, int max);
+
 #ifdef __cplusplus
 }
 #endif
