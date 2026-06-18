@@ -35,6 +35,12 @@ engine_sources.append("../third_party/miniz.c")
 env.Append(CFLAGS=["-std=c99"])
 env.Append(CPPDEFINES=["MINIZ_NO_STDIO", "MINIZ_NO_TIME", "MINIZ_NO_ARCHIVE_APIS"])
 
+# Windows + MinGW (ta chaîne MSYS2) : static-linker les runtimes GCC/pthread → la
+# DLL est AUTONOME. Sans ça, Godot crie « can't open dynamic library » faute de
+# libstdc++-6 / libgcc_s / libwinpthread-1 sur le PATH. (No-op hors windows+mingw.)
+if env["platform"] == "windows" and env.get("use_mingw", False):
+    env.Append(LINKFLAGS=["-static", "-static-libgcc", "-static-libstdc++"])
+
 # le binding C++
 cpp_sources = [str(s) for s in Glob("src/*.cpp")]
 
