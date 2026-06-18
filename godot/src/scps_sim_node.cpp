@@ -44,6 +44,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
     ClassDB::bind_method(D_METHOD("country_relations", "country"),   &ScpsWorld::country_relations);
     ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
+    ClassDB::bind_method(D_METHOD("country_trade", "country"),       &ScpsWorld::country_trade);
+    ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -288,6 +290,7 @@ Array ScpsWorld::country_stocks(int country) {
         d["net_day"]       = st[i].net_day;
         d["coverage_days"] = st[i].coverage_days;
         d["market_band"]   = st[i].market_band;
+        d["price"]         = st[i].price;
         a.push_back(d);
     }
     return a;
@@ -317,4 +320,42 @@ Dictionary ScpsWorld::country_army(int country) {
     d["levy_name"] = String::utf8(ar.levy_name);
     d["fleet"]     = ar.fleet;
     return d;
+}
+
+Dictionary ScpsWorld::country_trade(int country) {
+    int routes = 0, has_centre = 0;
+    double export_gold = 0.0;
+    ScpsTradePartner pt[48];
+    int n = scps_country_trade(sim, country, &routes, &export_gold, &has_centre, pt, 48);
+    Dictionary d;
+    d["routes"]      = routes;
+    d["export_gold"] = export_gold;
+    d["has_centre"]  = (bool)has_centre;
+    Array partners;
+    for (int i = 0; i < n; i++) {
+        Dictionary p;
+        p["name"]    = String::utf8(pt[i].name);
+        p["value"]   = pt[i].value;
+        p["status"]  = String::utf8(pt[i].status);
+        p["at_war"]  = (bool)pt[i].at_war;
+        p["embargo"] = (bool)pt[i].embargo;
+        partners.push_back(p);
+    }
+    d["partners"] = partners;
+    return d;
+}
+
+Array ScpsWorld::country_council(int country) {
+    Array a;
+    ScpsCouncilSeat seats[3];
+    int n = scps_country_council(sim, country, seats, 3);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["seat"]      = String::utf8(seats[i].seat);
+        d["filled"]    = (bool)seats[i].filled;
+        d["councilor"] = String::utf8(seats[i].councilor);
+        d["tier"]      = seats[i].tier;
+        a.push_back(d);
+    }
+    return a;
 }

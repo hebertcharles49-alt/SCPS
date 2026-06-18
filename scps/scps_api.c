@@ -17,6 +17,7 @@
 #include "scps_render.h"    /* render_map, RenderParams, ViewMode */
 #include "scps_tune.h"      /* tune_init (lit SCPS_TUNE une fois) */
 #include "scps_readout.h"   /* LA MEMBRANE : province_readout/country_readout → mots */
+#include "scps_lang.h"      /* tr() : noms de conseillers (StrId) → mot */
 #include <stdlib.h>
 #include <string.h>
 
@@ -408,12 +409,15 @@ void scps_country_demo(ScpsSim *s, int cid, ScpsCountryDemo *out){
 
 int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
     if(!out || max<=0 || !s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
-    double dem[RES_COUNT]={0}, sup[RES_COUNT]={0}, stk[RES_COUNT]={0};
+    double dem[RES_COUNT]={0}, sup[RES_COUNT]={0}, stk[RES_COUNT]={0}, pri[RES_COUNT]={0};
+    int nreg=0;
     for(int r=0; r<s->sim.econ->n_regions; r++){
         RegionEconomy *re = &s->sim.econ->region[r];
         if(re->owner!=cid || !re->colonized) continue;
+        nreg++;
         for(int g=1; g<RES_COUNT; g++){
-            dem[g] += re->demand[g]; sup[g] += re->supply[g]; stk[g] += re->stock[g];
+            dem[g] += re->demand[g]; sup[g] += re->supply[g];
+            stk[g] += re->stock[g];  pri[g] += re->price[g];
         }
     }
     int n=0;
@@ -426,8 +430,55 @@ int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
         out[n].marche      = sz(label_marche((BandMarche)out[n].market_band));
         out[n].stock       = (long)stk[g];
         out[n].net_day     = net;
+        out[n].price       = (nreg>0) ? (float)(pri[g]/nreg) : 0.f;
         if(net < -0.05f){ float dj = (float)stk[g]/(-net); out[n].coverage_days = (dj>365.f)?366:(int)dj; }
         else out[n].coverage_days = -1;
+        n++;
+    }
+    return n;
+}
+
+int scps_country_trade(ScpsSim *s, int me, int *routes, double *export_gold,
+                       int *has_centre, ScpsTradePartner *out, int max){
+    if(routes)      *routes = 0;
+    if(export_gold) *export_gold = 0.0;
+    if(has_centre)  *has_centre = 0;
+    if(!s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
+    if(routes)      *routes = intertrade_active_routes(s->sim.econ, s->sim.rn, s->sim.dp, me);
+    if(export_gold) *export_gold = intertrade_export_gold(me);
+    if(has_centre)  *has_centre = intertrade_country_has_centre(s->sim.econ, me) ? 1 : 0;
+    int n=0;
+    if(!out || max<=0) return 0;
+    for(int c=0; c<s->w->n_countries && n<max; c++){
+        if(c==me) continue;
+        float v = intertrade_pair_value(me, c);
+        int emb = intertrade_embargoed(me, c) ? 1 : 0;
+        int war = (diplo_status(s->sim.dp, me, c)==DIPLO_WAR) ? 1 : 0;
+        if(v<=0.5f && !emb && !war) continue;
+        out[n].name    = sz(s->w->country[c].name);
+        out[n].value   = v;
+        out[n].at_war  = war;
+        out[n].embargo = emb;
+        out[n].status  = war ? "guerre" : emb ? "embargo" : (v>200.f) ? "florissant" : "modeste";
+        n++;
+    }
+    return n;
+}
+
+int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
+    if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
+    uint32_t seed = s->w->seed;
+    int n=0;
+    for(int seat=0; seat<SC_COUNCIL_SEATS && n<max; seat++){
+        out[n].seat = sz(tr((StrId)(STR_COUNCIL_SEAT_0+seat)));
+        int slot = statecraft_council_seated(s->sim.sc, me, seat);
+        if(slot>=0){
+            out[n].filled    = 1;
+            out[n].councilor = sz(tr((StrId)statecraft_council_cand_name(seed, me, seat, slot)));
+            out[n].tier      = statecraft_council_cand_tier(seed, me, seat, slot);
+        } else {
+            out[n].filled = 0; out[n].councilor = ""; out[n].tier = 0;
+        }
         n++;
     }
     return n;

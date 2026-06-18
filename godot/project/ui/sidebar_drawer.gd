@@ -63,11 +63,14 @@ func _draw() -> void:
 		return
 	var me: int = w.player()
 	match _tab:
+		0: _draw_eco(x, y, me)
 		1: _draw_demo(x, y, me)
 		2: _draw_stocks(x, y, me)
+		3: _draw_marche(x, y, me)
 		4: _draw_armee(x, y, me)
 		5: _draw_filtres(x, y)
 		6: _draw_diplo(x, y, me)
+		7: _draw_conseil(x, y, me)
 		_: VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(panneau à venir — port viewer.c)")
 
 # ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
@@ -101,6 +104,54 @@ func _draw_stocks(x: float, y: float, me: int) -> void:
 		var covs := ("" if cov < 0 else (">1 an" if cov >= 366 else "%d j" % cov))
 		VKit.text(self, Vector2(x + 225, y), col, covs, VKit.FS_SMALL)
 		y += 15
+
+# ── ÉCONOMIE (sb_panel_eco, onglet Commerce, read-only) ────────────────────
+func _draw_eco(x: float, y: float, me: int) -> void:
+	var t: Dictionary = Sim.world.country_trade(me)
+	UIKit.draw_icon(self, "menu_economy", Vector2(x, y - 1), 16)
+	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH,
+		"%d route(s) · export %d or/an" % [int(t["routes"]), int(t["export_gold"])])
+	y += 22
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "partenaires :", VKit.FS_SMALL)
+	y += 16
+	var partners: Array = t["partners"]
+	if partners.is_empty():
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, "(aucun)", VKit.FS_SMALL)
+		return
+	for p in partners:
+		if y > size.y - 18:
+			break
+		var col := VKit.sense(0.12) if bool(p["at_war"]) else (VKit.COL_COPPER if bool(p["embargo"]) else VKit.COL_PARCH)
+		VKit.text(self, Vector2(x + 8, y), col, String(p["name"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, "%d or/an" % int(p["value"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 228, y), col, String(p["status"]), VKit.FS_SMALL)
+		y += 15
+
+# ── MARCHÉ (sb_panel_marche, table des prix, read-only) ────────────────────
+func _draw_marche(x: float, y: float, me: int) -> void:
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien            prix(or)   marché", VKit.FS_SMALL)
+	y += 16
+	for st in Sim.world.country_stocks(me):
+		if y > size.y - 18:
+			break
+		var col := _marche_col(int(st["market_band"]))
+		VKit.text(self, Vector2(x, y), col, String(st["name"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 120, y), col, "%.2f" % float(st["price"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 188, y), VKit.COL_DIM, String(st["marche"]), VKit.FS_SMALL)
+		y += 15
+
+# ── CONSEIL (sb_panel_conseil, read-only) ──────────────────────────────────
+func _draw_conseil(x: float, y: float, me: int) -> void:
+	for seat in Sim.world.country_council(me):
+		UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 16)
+		VKit.text(self, Vector2(x + 20, y), VKit.COL_COPPER, String(seat["seat"]))
+		y += 18
+		if bool(seat["filled"]):
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH,
+				"%s — tier %d" % [seat["councilor"], int(seat["tier"])], VKit.FS_SMALL)
+		else:
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant)", VKit.FS_SMALL)
+		y += 22
 
 # ── ARMÉE (sb_panel_armee, read-only) ──────────────────────────────────────
 func _draw_armee(x: float, y: float, me: int) -> void:

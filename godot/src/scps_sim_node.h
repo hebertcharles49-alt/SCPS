@@ -81,6 +81,8 @@ public:
     Array      country_stocks(int country);           /* biens : stock · net · couverture · marché */
     Array      country_relations(int country);        /* diplomatie : statut par pays */
     Dictionary country_army(int country);             /* mobilisation + flotte */
+    Dictionary country_trade(int country);            /* commerce : routes · or · partenaires */
+    Array      country_council(int country);          /* conseil : 3 sièges */
 };
 
 } // namespace godot

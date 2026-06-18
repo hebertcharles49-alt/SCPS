@@ -22,12 +22,17 @@ widgets** (palette `COL_*`, jauges rouge→vert, camemberts, visages d'humeur) e
   Façade : `province_groups`/`province_income`/`province_classes`/`province_capitale`.
 - ✅ **Bandeau de royaume** (country_panel) au thème VKit : nom·éthos·pop·or + jauges
   stabilité/prospérité/légitimité/cohésion/savoir (mots de bande) + influence.
-- ⏳ **À PORTER** (l'essentiel de viewer.c) : `draw_topbar` (le vrai bandeau) ·
-  **sidebar 8 onglets** (éco/démo/stocks/marché/armée/filtres/diplo/état + sous-onglets,
-  scroll, leviers d'action) · **arbre de tech concentrique** (`draw_tech_tree`) ·
-  outliner (domaine, droite) · minimap · mode buttons · **hover footer** (les survols
-  `zone_add`) · diplo popup · empire labels · le shell (litanie/menus). Plus le dressing
-  carte (rivières/routes/colonies/forêts) déjà partiellement dans `render_map`.
+- ✅ **Topbar** habillée (panneau + capsule de date + icônes + vitesse).
+- ✅ **Sidebar 8 onglets** (rail menu_* + tiroir) : Économie · Démographie · Stocks ·
+  Marché · Armée · Filtres · Diplomatie · Conseil — TOUS portés en **lecture**.
+- ✅ **Mode buttons** + zoom (barres de carte) · **Filtres** (sélecteur de mode plein).
+- ✅ **Habillage** : pack chrome+icônes (uikit) sur panneaux, jauges, topbar, rail.
+- ⏳ **Reste à porter** : arbre de tech concentrique (`draw_tech_tree`) · outliner
+  (domaine, droite) · minimap · **hover footer** (survols `zone_add`) · empire labels ·
+  shell (litanie/menus) · dressing carte (colonies/forêts par sprites).
+- ⏳ **ACTION JOUEUR** (le saut observer→jouer) : les *chips* (lever l'ost · embargo ·
+  acheter/vendre · nommer un conseiller · déclarer · construire) — actionneurs façade
+  (`agency`/`intertrade`/`warhost`/`statecraft`) + un pays « joueur » hors IA.
 - ⏳ **i18n** : exposer `tr(STR_*)` pour les labels de chrome (au lieu du FR inline) —
   viewer.c lui-même n'est pas 100 % migré (base 64), on reproduira au plus près.
 

@@ -204,8 +204,29 @@ typedef struct {
     float net_day;          /* flux net /jour (offre−demande) */
     int   coverage_days;    /* jours de couverture si net<0 (366 = >1 an) ; -1 sinon */
     int   market_band;      /* 0..4 BandMarche (pour la couleur) */
+    float price;            /* prix moyen (or) — pour l'onglet Marché */
 } ScpsStock;
 int scps_country_stocks(ScpsSim *s, int country, ScpsStock *out, int max);
+
+/* COMMERCE (sb_panel_eco, onglet Commerce, read-only). */
+typedef struct {
+    const char *name;       /* le partenaire */
+    float value;            /* or/an échangé */
+    const char *status;     /* guerre · embargo · florissant · modeste */
+    int   at_war, embargo;
+} ScpsTradePartner;
+/* head (routes · or exporté · tient-un-Centre) en out-params ; partenaires en retour. */
+int scps_country_trade(ScpsSim *s, int country, int *routes, double *export_gold,
+                       int *has_centre, ScpsTradePartner *out, int max);
+
+/* CONSEIL (sb_panel_conseil, read-only) : 3 sièges (Savoir · Société · Industrie). */
+typedef struct {
+    const char *seat;       /* nom du siège */
+    int   filled;           /* 1 si pourvu */
+    const char *councilor;  /* nom du conseiller (tr) si pourvu, "" sinon */
+    int   tier;             /* 1-3 (effet ×1/×1.5/×2) si pourvu */
+} ScpsCouncilSeat;
+int scps_country_council(ScpsSim *s, int country, ScpsCouncilSeat *out, int max);
 
 /* RELATIONS diplomatiques d'un pays (sb_panel_diplo, read-only). */
 typedef struct {
