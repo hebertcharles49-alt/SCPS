@@ -308,7 +308,7 @@ void econ_cold_refresh(WorldEconomy *e, const World *w);
 #define PROVF_HALIEUTIQUE  0x02u   /* ~1/3 des régions côtières : manne halieutique */
 typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE,
                PMOD_FERVEUR, PMOD_RECONSTRUCTION, PMOD_LIMON,
-               PMOD_GIBIER, PMOD_HALIEUTIQUE, PMOD_COUNT } ProvModKind;
+               PMOD_GIBIER, PMOD_HALIEUTIQUE, PMOD_ADMIN, PMOD_COUNT } ProvModKind;
 typedef struct {
     uint8_t kind;        /* ProvModKind */
     float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
@@ -380,6 +380,14 @@ static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int
     if ((re->prov_geo & PROVF_HALIEUTIQUE) && n < max){
         out[n].kind = PMOD_HALIEUTIQUE; out[n].intensity = 1.f;
         out[n].demo_bonus = tune_f("PROVMOD_HALIEU_K", 0.10f);
+        n++;
+    }
+    /* FAVEUR — BONNE ADMINISTRATION : des institutions solides (K bâti) tiennent l'ordre et les
+     * services → les familles prospèrent. Le pendant DÉMO du levier K (« admin efficace → dévelop. »). */
+    if (re->build.K_inst > 1.5f && n < max){
+        float k = re->build.K_inst - 1.5f; if (k > 4.f) k = 4.f;   /* k ∈ [0,4] → k/4 ∈ [0,1] (clamp manuel, en-tête sans math.h) */
+        out[n].kind = PMOD_ADMIN; out[n].intensity = k/4.f;
+        out[n].demo_bonus = tune_f("PROVMOD_ADMIN_K", 0.06f) * k;
         n++;
     }
     return n;

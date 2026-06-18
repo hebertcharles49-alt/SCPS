@@ -299,6 +299,16 @@
   `PROVMOD_HALIEU_K` 0.10. ⚠ ce sont des bonus de **PLAFOND** (texture : ils enrichissent TOUS les
   seeds, ne ferment PAS l'écart low/riche — cf. garde-fou) : K volontairement PETIT. `make test`
   35/35 · `determinism` STABLE.
+- **BONNE ADMINISTRATION (2026-06-18) — « admin efficace » par le canal DÉMO** : dernière faveur du
+  brainstorm. `PMOD_ADMIN` (dérivé, pas de champ) : des institutions bâties (`re->build.K_inst` > 1.5)
+  tiennent l'ordre & les services → natalité un peu plus dense (`PROVMOD_ADMIN_K` 0.06, plafonné).
+  C'est le pendant DÉMO du « boost K » (le levier K littéral — bâtir plus vite — serait une greffe
+  AGENCY/build ; ici on route l'efficacité administrative par la croissance, cohérent avec le pipeline).
+  ⚠ `provmod_collect` est en-tête `static inline` SANS `<math.h>` → clamps MANUELS obligatoires (pas
+  de `fminf`/`clampf` : ils tirent une déclaration implicite qui CONFLITE avec `scps_world.c`).
+  `make test` 35/35 · `determinism` STABLE · **0 warning** · **SAVE non bumpé**. ⊕ Le brainstorm
+  diégétique est COMPLET (abondance · ferveur · reconstruction · limon · gibier · halieutique · admin
+  + évents xénophile/xénophobe + couplage satisfaction) — 8 faveurs sur le slot « MODIFICATEURS ».
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.

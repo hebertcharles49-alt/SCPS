@@ -344,4 +344,6 @@
     X(STR_PMOD_GIBIER_EFF,     "The woods teem with game: the hunt fills tables and sustains a denser population.") \
     X(STR_PMOD_HALIEU_NOM,     "Fishery Bounty") \
     X(STR_PMOD_HALIEU_EFF,     "Shoals of fish swarm offshore: the catch feeds a populous coast.") \
+    X(STR_PMOD_ADMIN_NOM,      "Good Governance") \
+    X(STR_PMOD_ADMIN_EFF,      "Solid institutions keep order and services: sheltered from disorder, families prosper.") \
 

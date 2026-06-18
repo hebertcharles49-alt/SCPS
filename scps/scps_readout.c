@@ -771,6 +771,9 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
                 case PMOD_HALIEUTIQUE:
                     m->nom = tr(STR_PMOD_HALIEU_NOM); m->effet = tr(STR_PMOD_HALIEU_EFF);
                     m->faveur = true;  pr.n_mods++; break;
+                case PMOD_ADMIN:
+                    m->nom = tr(STR_PMOD_ADMIN_NOM); m->effet = tr(STR_PMOD_ADMIN_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
                 default: break;
             }
         }

@@ -353,5 +353,7 @@
     X(STR_PMOD_GIBIER_EFF,     "Les bois fourmillent de gibier : la chasse garnit les tables et soutient une population plus dense.") \
     X(STR_PMOD_HALIEU_NOM,     "Manne halieutique") \
     X(STR_PMOD_HALIEU_EFF,     "Des bancs de poissons grouillent au large : la pêche nourrit une côte populeuse.") \
+    X(STR_PMOD_ADMIN_NOM,      "Bonne administration") \
+    X(STR_PMOD_ADMIN_EFF,      "Des institutions solides tiennent l'ordre et les services : à l'abri du désordre, les familles prospèrent.") \
 
 #endif /* SCPS_STRINGS_IDS_H */

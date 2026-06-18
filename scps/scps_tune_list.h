@@ -174,6 +174,9 @@
      * (1/3 des côtes) — la richesse vivrière du biome soutient une natalité un peu plus dense. */ \
     X(PROVMOD_GIBIER_K,       0.10f) \
     X(PROVMOD_HALIEU_K,       0.10f) \
+    /* BONNE ADMINISTRATION (entrée DÉMO) : des institutions bâties (K) tiennent l'ordre/services
+     * → natalité un peu plus dense (le pendant DÉMO de « admin efficace → développement »). */ \
+    X(PROVMOD_ADMIN_K,        0.06f) \
     /* CAPSTONE §27 — Entropie mondiale + 4 fins + Merveille.
      * ENTROPY_FIN : seuil terminal qui déclenche une fin (~200 ans sur seed 9).
      * ENDGAME_YEAR_OPEN : gate dur — aucune apocalypse avant cette année (victoire
