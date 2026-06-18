@@ -58,19 +58,39 @@ static inline uint32_t alpha_over(uint32_t dst, uint32_t src, float alpha) {
 }
 
 /* ---- Eau : gradient profondeur propre (sans relief sous-marin apparent) */
+static const uint32_t WATER_SHALLOW = 0xFF5AA6BEu;  /* haut-fond turquoise (bord de terre) */
 static const uint32_t WATER_COAST   = 0xFF3B7EAAu;  /* plateau continental */
 static const uint32_t WATER_MID     = 0xFF1A4870u;  /* mer ouverte */
 static const uint32_t WATER_DEEP    = 0xFF091626u;  /* abysses */
 
 static uint32_t water_color(float height) {
     float depth = clampf((SEA_LEVEL - height) / 0.55f, 0.f, 1.f); /* normalisé */
-    /* Trois stops : côte → mer → abysses, sans sinusoïde sur height */
+    /* Quatre stops : haut-fond → côte → mer → abysses (le haut-fond turquoise
+     * ouvre la transition terre→mer côté eau, sans sinusoïde sur height). */
     uint32_t col;
-    if (depth < 0.35f)
-        col = lerp_color(WATER_COAST, WATER_MID,  depth/0.35f);
+    if (depth < 0.10f)
+        col = lerp_color(WATER_SHALLOW, WATER_COAST, depth/0.10f);
+    else if (depth < 0.35f)
+        col = lerp_color(WATER_COAST,   WATER_MID,  (depth-0.10f)/0.25f);
     else
-        col = lerp_color(WATER_MID,   WATER_DEEP, (depth-0.35f)/0.65f);
+        col = lerp_color(WATER_MID,     WATER_DEEP, (depth-0.35f)/0.65f);
     return col;
+}
+
+/* RIM DE HAUT-FOND : une cellule d'EAU qui touche la TERRE s'éclaircit vers le
+ * turquoise → la côte cesse d'être un mur de couleur, la mer FOND vers le rivage
+ * (continuité eau↔terre côté eau ; le foam asset s'y pose ensuite). Présentation
+ * pure : ne lit que height (jamais une coordonnée SCPS). */
+static uint32_t water_shore_rim(const World *w, int cx, int cy, uint32_t wc) {
+    int land=0;
+    int xm=(cx-1+SCPS_W)%SCPS_W, xp=(cx+1)%SCPS_W;
+    int ym=(cy>0)?cy-1:cy, yp=(cy+1<SCPS_H)?cy+1:cy;
+    if (scps_cellc(w,xm,cy)->height>=SEA_LEVEL) land++;
+    if (scps_cellc(w,xp,cy)->height>=SEA_LEVEL) land++;
+    if (scps_cellc(w,cx,ym)->height>=SEA_LEVEL) land++;
+    if (scps_cellc(w,cx,yp)->height>=SEA_LEVEL) land++;
+    if (!land) return wc;
+    return lerp_color(wc, WATER_SHALLOW, (land>=2)?0.45f:0.28f);
 }
 
 /* ---- Heatmap [0..1] → ARGB ------------------------------------------ */
@@ -118,7 +138,7 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
             float d = h / SEA_LEVEL;
             return rgba(d*0.2f, d*0.3f, d*0.5f+0.1f, 1.f);
         }
-        return water_color(h);
+        return water_shore_rim(w, cx, cy, water_color(h));   /* haut-fond fondu vers le rivage */
     }
 
     /* ---- Altimétrie -------------------------------------------------- */
