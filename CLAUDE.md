@@ -342,6 +342,21 @@
   un flottant §2.4). Vérif headless : **`make fx-proof`** composite les 4 planches sur un terrain
   `render_map` RÉEL (renderer logiciel) → `fx_proof.png` (aucun display requis). `make scps` **0
   warning**, **SAVE non bumpé** (display-only).
+- **BASCULE GODOT (2026-06-18, spike) — le front passe sous Godot, le moteur reste C** : décision
+  d'archi. Le cœur C99 déterministe NE BOUGE PAS ; seul le front-end migre (shaders/particules/
+  tilemaps/UI). La membrane RENDAIT déjà ce déplacement naturel. **(1) Façade C `scps_api.{h,c}`**
+  (dans `scps/`, additif) : la surface de binding STABLE — `scps_sim_new/generate/advance_days/free`,
+  `scps_map_rgba` (render_map → octets RGBA), `scps_map_layer` (height/sea/biome/coast, pour shaders),
+  nombres TANGIBLES (year/pop/gold/…), par-région (owner/pop/centroïde). Banc `scps_api_demo` (9/9,
+  dans le harnais) prouve génération + rendu + avancement + **REPRODUCTIBILITÉ** (sim A == sim B au
+  bit). Fidélité SPIKE : `advance_days` roule la COLONNE économique (boucle d'`audit_eco`) ; le tick
+  PLEIN (fidèle au hash chronicle) viendra de l'extraction `chronicle::sim_day → scps_sim` **sans
+  changer la surface de l'API**. **(2) `godot/`** (dossier à part, hors `make`) : binding GDExtension
+  C++ (classe Godot **`ScpsWorld`** — nom distinct du type C `::ScpsSim`), `SConstruct` qui recompile
+  les MÊMES `scps_*.c` + façade → `libscps.<plateforme>.so`, projet Godot 4 minimal + **`water.gdshader`**
+  (la continuité eau↔asset EN SHADER). **Vérifié headless** : binding compile contre godot-cpp 4.3, `scons`
+  LIE le `.so` (entrée `scps_library_init` exportée). **RÈGLE D'OR** : zéro logique sim côté GDScript —
+  le déterminisme survit. `make test` inchangé (le moteur ne bouge pas), **SAVE non bumpé**.
 
 ## Disciplines non négociables
 

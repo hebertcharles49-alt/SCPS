@@ -596,7 +596,7 @@ BENCH_BINS := core_demo monde_reel readout_demo species_demo tech_demo faith_dem
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \
   econ_production_demo labor_demo missions_demo ai_demo diplo_demo warhost_demo \
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
-  endgame_demo audit_eco lang_demo audio_demo econ_demo culture_demo
+  endgame_demo audit_eco lang_demo scps_api_demo audio_demo econ_demo culture_demo
 TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan fx_proof
 
 clean:
