@@ -97,3 +97,7 @@ audit_eco
 tools/results.csv
 forks_demo
 a.out
+
+# Preuve visuelle FX (binaire + PNG générés ; la SOURCE tools/fx_proof.c est suivie)
+fx_proof
+fx_proof.png

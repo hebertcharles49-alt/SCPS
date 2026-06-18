@@ -135,6 +135,58 @@ static void cover_blit(SDL_Renderer *ren, int id, int x, int y, int px){
     SDL_Rect dst={ x, y, px, px };
     SDL_RenderCopy(ren, g_cover_tex, &src, &dst);
 }
+/* ═══ ANIMATIONS FX (display-only) ══════════════════════════════════════════
+ * Quatre planches à fond MAGENTA (FF00FF → alpha), cadencées par SDL_GetTicks
+ * (horloge MUR, JAMAIS le moteur → le déterminisme reste intact, comme le dressing).
+ * Absentes ⇒ texture NULL ⇒ no-op (la carte reste statique). Même régime éditable
+ * que les autres .bmp : on les dépose à côté du binaire. */
+static SDL_Texture *g_fx_sea_tex    = NULL;  /* houle : 8 frames × 2 lignes (calme/vive), 128 px */
+static SDL_Texture *g_fx_coast_tex  = NULL;  /* écume de rive : 6 frames, 128 px */
+static SDL_Texture *g_fx_army_tex   = NULL;  /* armée en campagne : 4 frames × 2 lignes (marche/assaut), 96 px */
+static SDL_Texture *g_fx_vortex_tex = NULL;  /* vortex de la fin EAU : 2 calques contrarotatifs, 256 px */
+#define SCPS_FX_SEA_FILE     "scps_fx_sea.bmp"
+#define SCPS_FX_COAST_FILE   "scps_fx_coast.bmp"
+#define SCPS_FX_ARMY_FILE    "scps_fx_army.bmp"
+#define SCPS_FX_VORTEX_FILE  "scps_fx_vortex.bmp"
+#define SCPS_FX_SEA_CELL     128
+#define SCPS_FX_SEA_FRAMES   8
+#define SCPS_FX_COAST_CELL   128
+#define SCPS_FX_COAST_FRAMES 6
+#define SCPS_FX_ARMY_CELL    96
+#define SCPS_FX_ARMY_FRAMES  4
+#define SCPS_FX_VORTEX_CELL  256
+/* Indice de frame d'une animation à n images, period_ms par image (horloge mur). */
+static int fx_frame(int nframes, int period_ms){
+    if (nframes<1) nframes=1;
+    if (period_ms<1) period_ms=1;
+    return (int)((SDL_GetTicks()/(Uint32)period_ms) % (Uint32)nframes);
+}
+/* Charge un BMP FX à fond MAGENTA → alpha SANS le despill agressif des atlas de
+ * carte (qui désaturerait un vortex violet ou une écume bleutée) : on ne touche
+ * QUE le magenta, le reste passe VERBATIM (la teinte FX est préservée). */
+static SDL_Texture *load_fx_bmp(SDL_Renderer *ren, const char *file){
+    SDL_Surface *ns = SDL_LoadBMP(file);
+    if (!ns) return NULL;
+    SDL_Surface *cv = SDL_ConvertSurfaceFormat(ns, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_FreeSurface(ns);
+    if (!cv) return NULL;
+    Uint32 clear = SDL_MapRGBA(cv->format, 0,0,0,0);
+    for (int y=0; y<cv->h; y++){
+        Uint32 *row=(Uint32*)((Uint8*)cv->pixels+(size_t)y*cv->pitch);
+        for (int x=0; x<cv->w; x++){
+            Uint8 r,g,b,a; SDL_GetRGBA(row[x],cv->format,&r,&g,&b,&a);
+            int mn=(r<b)?r:b; int key=mn-(int)g;             /* magenta-ness : R&B hauts, G bas */
+            if (key<=2) continue;                             /* pas magenta → VERBATIM */
+            float mness=(float)key/255.0f; float af=1.0f-mness; af*=af;
+            if (af<0.03f){ row[x]=clear; continue; }           /* cœur magenta → transparent */
+            row[x]=SDL_MapRGBA(cv->format,r,g,b,(Uint8)(af*255.0f+0.5f));  /* frange : alpha partiel, teinte gardée */
+        }
+    }
+    SDL_Texture *tex=SDL_CreateTextureFromSurface(ren,cv);
+    SDL_FreeSurface(cv);
+    if (tex) SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+    return tex;
+}
 #include "stb_image_write.h"  /* F12 : capture d'écran PNG (vendoré) */
 #include "scps_audio.h"       /* la prise audio (miniaudio) — preuve de vie sur alerte */
 #ifdef SCPS_DEV
@@ -856,6 +908,154 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
         }
     }
     SDL_SetTextureAlphaMod(g_dress_tex, 255);
+}
+
+/* ═══ RENDU DES ANIMATIONS FX ═══════════════════════════════════════════════
+ * Surcouches display-only, projetées par cam_project (iso compris), cadencées mur.
+ * Toutes no-op si leur texture est absente. */
+
+/* Boîte-monde VISIBLE (AABB), bornée par les 4 coins écran dé-projetés. En iso la
+ * fenêtre est un losange → on élargit. Sert à ne balayer que le viewport. */
+static void fx_visible_aabb(const Cam *cam, int win_w, int win_h, int *x0,int *y0,int *x1,int *y1){
+    int xmn=SCPS_W, ymn=SCPS_H, xmx=0, ymx=0;
+    const int cxs[4]={0,win_w,0,win_w}, cys[4]={0,0,win_h,win_h};
+    for (int i=0;i<4;i++){
+        float wx,wy; cam_unproject(cam,(float)cxs[i],(float)cys[i],&wx,&wy);
+        int ix=(int)wx, iy=(int)wy;
+        if (ix<xmn) xmn=ix;
+        if (iy<ymn) ymn=iy;
+        if (ix>xmx) xmx=ix;
+        if (iy>ymx) ymx=iy;
+    }
+    int padx=(xmx-xmn)/4+4, pady=(ymx-ymn)/4+4;             /* couvre les coins du losange iso */
+    xmn-=padx; xmx+=padx; ymn-=pady; ymx+=pady;
+    if (xmn<0) xmn=0;
+    if (ymn<0) ymn=0;
+    if (xmx>SCPS_W-1) xmx=SCPS_W-1;
+    if (ymx>SCPS_H-1) ymx=SCPS_H-1;
+    *x0=xmn;*y0=ymn;*x1=xmx;*y1=ymx;
+}
+
+/* HOULE : un voile de vagues sur la mer ouverte (c->sea != 0), tuilé en cellules-
+ * monde, déphasé par tuile (pas de répétition franche), la ligne d'atlas suivant
+ * l'énergie du courant (eaux vives → houle ample). Léger : la couleur d'eau du
+ * terrain transparaît dessous. Gate au zoom (sous-pixel au dézoom). */
+static void draw_sea_fx(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
+    if (!g_fx_sea_tex || !w) return;
+    float sc=cam->scale; if (sc<1.0f) return;            /* ~zoom ajusté : la houle vit dès la vue d'ensemble */
+    g_iso_w=win_w; g_iso_h=win_h;
+    const int TILE=8;
+    int dpx=(int)((float)TILE*sc+1.5f); if (dpx<6) return;
+    int frame=fx_frame(SCPS_FX_SEA_FRAMES, 150);
+    int x0,y0,x1,y1; fx_visible_aabb(cam,win_w,win_h,&x0,&y0,&x1,&y1);
+    SDL_SetTextureAlphaMod(g_fx_sea_tex, 90);              /* voile léger : la couleur d'eau transparaît */
+    for (int ty=y0; ty<=y1; ty+=TILE) for (int tx=x0; tx<=x1; tx+=TILE){
+        int mx=tx+TILE/2, my=ty+TILE/2;
+        if (mx>=SCPS_W||my>=SCPS_H) continue;
+        const Cell *c=scps_cellc(w,mx,my);
+        if (!c || c->sea==0) continue;                       /* mer ouverte seulement */
+        float fsx,fsy; cam_project(cam,(float)tx+(float)TILE*0.5f,(float)ty+(float)TILE*0.5f,&fsx,&fsy);
+        if (fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
+        uint32_t h=map_hash(tx,ty,0x5EA50000u);
+        int ph=(frame+(int)(h%(uint32_t)SCPS_FX_SEA_FRAMES))%SCPS_FX_SEA_FRAMES;
+        int en=(int)c->cur_vx*c->cur_vx+(int)c->cur_vy*c->cur_vy;   /* énergie du courant */
+        int rowi=(en>1200)?1:0;
+        SDL_Rect src={ ph*SCPS_FX_SEA_CELL, rowi*SCPS_FX_SEA_CELL, SCPS_FX_SEA_CELL, SCPS_FX_SEA_CELL };
+        SDL_Rect dst={ (int)fsx-dpx/2, (int)fsy-dpx/2, dpx, dpx };
+        SDL_RenderCopy(ren, g_fx_sea_tex, &src, &dst);
+    }
+    SDL_SetTextureAlphaMod(g_fx_sea_tex, 255);
+}
+
+/* ÉCUME DE RIVE : un ourlet animé sur les cellules de TERRE au bord de mer
+ * (c->coast). Détail de zoom franc (sc≥2). Déphasé par cellule. */
+static void draw_coast_fx(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
+    if (!g_fx_coast_tex || !w) return;
+    float sc=cam->scale; if (sc<2.0f) return;
+    g_iso_w=win_w; g_iso_h=win_h;
+    int x0,y0,x1,y1; fx_visible_aabb(cam,win_w,win_h,&x0,&y0,&x1,&y1);
+    int frame=fx_frame(SCPS_FX_COAST_FRAMES, 130);
+    int dpx=(int)(5.0f*sc+1.5f); if (dpx<10) dpx=10;
+    const int TILE=3;
+    SDL_SetTextureAlphaMod(g_fx_coast_tex, 150);
+    for (int ty=y0; ty<=y1; ty+=TILE) for (int tx=x0; tx<=x1; tx+=TILE){
+        const Cell *c=scps_cellc(w,tx,ty);
+        if (!c || !c->coast) continue;                       /* terre au bord de mer */
+        float fsx,fsy; cam_project(cam,(float)tx+0.5f,(float)ty+0.5f,&fsx,&fsy);
+        if (fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
+        uint32_t h=map_hash(tx,ty,0xC0A57001u);
+        int ph=(frame+(int)(h%(uint32_t)SCPS_FX_COAST_FRAMES))%SCPS_FX_COAST_FRAMES;
+        SDL_Rect src={ ph*SCPS_FX_COAST_CELL, 0, SCPS_FX_COAST_CELL, SCPS_FX_COAST_CELL };
+        SDL_Rect dst={ (int)fsx-dpx/2, (int)fsy-dpx/2, dpx, dpx };
+        SDL_RenderCopy(ren, g_fx_coast_tex, &src, &dst);
+    }
+    SDL_SetTextureAlphaMod(g_fx_coast_tex, 255);
+}
+
+/* ARMÉES EN CAMPAGNE : la force de chaque pays anime la case de sa région — ligne
+ * d'atlas 0 (marche) ou 1 (assaut : siège/bataille). Une seule force par pays
+ * (campaign), projetée au centroïde de sa région courante, ancrée bas-centre. */
+static void draw_army_fx(SDL_Renderer *ren, const World *w, const Campaign *camp, const Cam *cam, int win_w, int win_h){
+    if (!g_fx_army_tex || !w || !camp) return;
+    float sc=cam->scale; if (sc<1.0f) return;
+    g_iso_w=win_w; g_iso_h=win_h;
+    int frame=fx_frame(SCPS_FX_ARMY_FRAMES, 180);
+    int dpx=(int)(10.0f*sc+0.5f); if (dpx<20) dpx=20; if (dpx>240) dpx=240;
+    for (int cid=0; cid<w->n_countries; cid++){
+        if (!campaign_active(camp,cid)) continue;
+        int reg=campaign_location(camp,cid);
+        if (reg<0) continue;
+        float wx,wy; if (!region_world_pos(w,reg,&wx,&wy)) continue;
+        float fsx,fsy; cam_project(cam,wx,wy,&fsx,&fsy);
+        if (fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
+        FieldPhase ph=campaign_phase(camp,cid);
+        int rowi=(ph==FA_SIEGE||ph==FA_BATTLE)?1:0;          /* assaut : la ligne de combat */
+        int col=(frame+cid)%SCPS_FX_ARMY_FRAMES;             /* déphasage par armée */
+        SDL_Rect src={ col*SCPS_FX_ARMY_CELL, rowi*SCPS_FX_ARMY_CELL, SCPS_FX_ARMY_CELL, SCPS_FX_ARMY_CELL };
+        SDL_Rect dst={ (int)fsx-dpx/2, (int)fsy-(dpx*3)/4, dpx, dpx };   /* ancré bas-centre */
+        SDL_RenderCopy(ren, g_fx_army_tex, &src, &dst);
+    }
+}
+
+/* VORTEX (fin EAU §27) : un maelström à DEUX calques contrarotatifs au foyer du
+ * cataclysme (epicenter_reg), plus un tourbillon plus modeste sur chaque région
+ * engloutie (sunken[]) — le flot qui s'étend. Rotation continue (horloge mur). */
+static void draw_vortex_fx(SDL_Renderer *ren, const World *w, const EndgameState *eg, const Cam *cam, int win_w, int win_h){
+    if (!g_fx_vortex_tex || !w || !eg) return;
+    if (eg->fin != FIN_EAU) return;                          /* le vortex = la fin EAU (le rift) */
+    g_iso_w=win_w; g_iso_h=win_h;
+    float sc=cam->scale;
+    float ms=(float)(SDL_GetTicks()%36000u);
+    double ang0=(double)(ms*0.010f), ang1=(double)(-ms*0.014f);   /* deux sens, vitesses distinctes */
+    SDL_Rect s0={0,0,SCPS_FX_VORTEX_CELL,SCPS_FX_VORTEX_CELL};
+    SDL_Rect s1={SCPS_FX_VORTEX_CELL,0,SCPS_FX_VORTEX_CELL,SCPS_FX_VORTEX_CELL};
+    if (eg->epicenter_reg>=0){
+        float wx,wy;
+        if (region_world_pos(w,eg->epicenter_reg,&wx,&wy)){
+            float fsx,fsy; cam_project(cam,wx,wy,&fsx,&fsy);
+            int big=(int)(60.0f*sc+0.5f); if (big<48) big=48;
+            int big2=(int)(big*0.66f);
+            SDL_Rect d0={ (int)fsx-big/2, (int)fsy-big/2, big, big };
+            SDL_Rect d1={ (int)fsx-big2/2, (int)fsy-big2/2, big2, big2 };
+            SDL_SetTextureAlphaMod(g_fx_vortex_tex, 205);
+            SDL_RenderCopyEx(ren,g_fx_vortex_tex,&s0,&d0,ang0,NULL,SDL_FLIP_NONE);
+            SDL_RenderCopyEx(ren,g_fx_vortex_tex,&s1,&d1,ang1,NULL,SDL_FLIP_NONE);
+        }
+    }
+    int drawn=0;
+    for (int r=0; r<w->n_regions && r<SCPS_MAX_REG && drawn<48; r++){
+        if (!eg->sunken[r] || r==eg->epicenter_reg) continue;
+        float wx,wy; if (!region_world_pos(w,r,&wx,&wy)) continue;
+        float fsx,fsy; cam_project(cam,wx,wy,&fsx,&fsy);
+        int sz=(int)(28.0f*sc+0.5f); if (sz<22) sz=22;
+        if (fsx<-sz||fsx>win_w+sz||fsy<-sz||fsy>win_h+sz) continue;
+        SDL_Rect d0={ (int)fsx-sz/2, (int)fsy-sz/2, sz, sz };
+        double a=ang0+(double)(map_hash(r,r,0x901D0FF5u)%360u);    /* phase de rotation par région */
+        SDL_SetTextureAlphaMod(g_fx_vortex_tex, 150);
+        SDL_RenderCopyEx(ren,g_fx_vortex_tex,&s0,&d0,a,NULL,SDL_FLIP_NONE);
+        drawn++;
+    }
+    SDL_SetTextureAlphaMod(g_fx_vortex_tex, 255);
 }
 
 /* ---- Info province (console) ----------------------------------------- */
@@ -5058,6 +5258,15 @@ int main(int argc, char **argv) {
     if (g_cover_tex) printf("[scps] %s chargé (route-cover).\n", SCPS_COVER_FILE);
     g_port_tex = load_despilled_bmp(ren, SCPS_PORT_FILE);
     if (g_port_tex) printf("[scps] %s chargé (ports orientés).\n", SCPS_PORT_FILE);
+    /* Planches d'ANIMATION FX (display-only) — absentes ⇒ NULL ⇒ no-op (carte statique). */
+    g_fx_sea_tex    = load_fx_bmp(ren, SCPS_FX_SEA_FILE);
+    g_fx_coast_tex  = load_fx_bmp(ren, SCPS_FX_COAST_FILE);
+    g_fx_army_tex   = load_fx_bmp(ren, SCPS_FX_ARMY_FILE);
+    g_fx_vortex_tex = load_fx_bmp(ren, SCPS_FX_VORTEX_FILE);
+    if (g_fx_sea_tex||g_fx_coast_tex||g_fx_army_tex||g_fx_vortex_tex)
+        printf("[scps] FX animés : mer %s · côte %s · armée %s · vortex %s\n",
+               g_fx_sea_tex?"on":"—", g_fx_coast_tex?"on":"—",
+               g_fx_army_tex?"on":"—", g_fx_vortex_tex?"on":"—");
     softblob_build(ren);                  /* glow doux pour le raccord mer des villes côtières */
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
@@ -5999,6 +6208,9 @@ int main(int argc, char **argv) {
 
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
+        /* FX MER (display-only, cadence mur) : houle sur la mer ouverte + écume de rive,
+         * SOUS les features de terre (rivières/routes/villes). No-op sans .bmp. */
+        if (sim.ready && g_gs==GS_PLAYING){ draw_sea_fx(ren, world, &cam, win_w, win_h); draw_coast_fx(ren, world, &cam, win_w, win_h); }
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
         if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 0); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 1); }   /* calques : routes → villes → habillage → canopées */
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
@@ -6008,6 +6220,9 @@ int main(int argc, char **argv) {
             ViewMode smode2 = (g_sb.lens!=LENS_NONE) ? VIEW_CULTURE : mode;
             borders_draw(ren, &cam, world, &sim, smode2, selected, win_w, win_h);
         }
+        /* FX ARMÉES (la force de campagne anime sa case, PAR-DESSUS frontières & terrain)
+         * + FX VORTEX (le maelström de la fin EAU §27, au foyer du cataclysme). */
+        if (sim.ready && g_gs==GS_PLAYING){ draw_army_fx(ren, world, sim.camp, &cam, win_w, win_h); draw_vortex_fx(ren, world, sim.eg, &cam, win_w, win_h); }
         /* ── filtre COURANTS : lignes de flux sur la mer (les MORTES = le creux) ── */
         if (g_sb.show_currents && g_gs==GS_PLAYING){
             for (int sy=8; sy<win_h-8; sy+=14) for (int sx=8; sx<win_w-8; sx+=14){

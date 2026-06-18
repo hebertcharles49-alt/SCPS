@@ -391,6 +391,18 @@ audit: audit_eco
 	./audit_eco 7 10
 .PHONY: audit
 
+# ---- fx-proof : PREUVE VISUELLE headless des animations FX (hors test) -------
+# Composite les 4 planches FX (mer/côte/armée/vortex) sur un terrain render_map
+# RÉEL via un renderer LOGICIEL → fx_proof.png. Aucun affichage requis (driver
+# vidéo « dummy »). Requiert SDL2 (comme le viewer). Outil de vérif, pas un banc.
+FX_PROOF_SRCS := $(patsubst $(OBJDIR)/scps_%.o,scps/%.c,\
+                   $(filter-out $(OBJDIR)/tp_miniz.o $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS))) \
+                 scps/scps_render.c
+fx-proof:
+	@test -n "$(HAVE_SDL)" || { echo "SDL2 introuvable : installer libsdl2-dev"; exit 1; }
+	$(CC) -O2 -std=c99 -Iscps -Ithird_party $(SDL_CFLAGS) tools/fx_proof.c $(FX_PROOF_SRCS) -o fx_proof $(SDL_LIBS) -lm
+.PHONY: fx-proof
+
 # ---- Banc audio : le mixeur procédural sort du son (build §9.6) -----------
 AUDIO_DEMO_OBJS := $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_audio_demo.o
 audio_demo: $(AUDIO_DEMO_OBJS)
@@ -575,12 +587,12 @@ BENCH_BINS := core_demo monde_reel readout_demo species_demo tech_demo faith_dem
   econ_production_demo labor_demo missions_demo ai_demo diplo_demo warhost_demo \
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
   endgame_demo audit_eco lang_demo audio_demo econ_demo culture_demo
-TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan
+TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan fx_proof
 
 clean:
 	rm -rf $(OBJDIR) $(BENCH_BINS) $(TOOL_BINS) \
 	       $(addsuffix .exe,$(BENCH_BINS) $(TOOL_BINS)) \
-	       out_*.ppm montage.bmp
+	       out_*.ppm montage.bmp fx_proof.png
 
 .PHONY: all scps run_scps clean core_demo monde_reel readout_demo lang_demo species_demo scps_dump scps_batch asan \
         econ_demo tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo
