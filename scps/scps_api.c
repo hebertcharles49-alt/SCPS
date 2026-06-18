@@ -273,3 +273,27 @@ int scps_region_tier(const ScpsSim *s, int r){
     }
     return tier;
 }
+
+/* ---- ENDGAME §27 (Phase 4) -------------------------------------------- */
+
+void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    out->entropie = ""; out->augure = ""; out->epicenter_reg = -1;
+    if(!s || !s->ready) return;
+    EndgameReadout er = endgame_readout(s->sim.wp, s->sim.eg);
+    out->entropie_pct  = er.entropie_pct;
+    out->entropie      = sz(label_entropie(er.entropie));
+    out->augure        = sz(er.augure);
+    out->fin           = (int)er.fin;
+    out->merv          = (int)er.merv;
+    out->merv_pct      = er.merv_progress_pct;
+    out->cold_pct      = er.cold_pct;
+    out->sink_pct      = er.sink_intensity;
+    out->epicenter_reg = er.epicenter_reg;
+}
+
+int scps_region_sunken(const ScpsSim *s, int r){
+    if(!s || !s->ready || !s->sim.eg || r<0 || r>=SCPS_MAX_REG) return 0;
+    return (int)s->sim.eg->sunken[r];
+}

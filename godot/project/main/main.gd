@@ -31,6 +31,11 @@ func _ready() -> void:
 	_country_panel.name = "CountryPanel"
 	ui.add_child(_country_panel)
 
+	# le DESTIN du monde (§27) : barre d'entropie + bandeau de fin, haut-centre
+	var endgame = load("res://ui/endgame_banner.gd").new()
+	endgame.name = "EndgameBanner"
+	ui.add_child(endgame)
+
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
 

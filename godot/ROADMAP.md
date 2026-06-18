@@ -56,13 +56,19 @@ Le tick plein roule DÉJÀ campagnes & guerres ; on les EXPOSE et on les dessine
   Redessine au tick. **Vérifié** (capture xvfb : 7 armées, 73 villes à l'an-110).
 - ⏳ *Reste (optionnel)* : panneau d'armée au clic, frontières fines, anim de marche.
 
-## Phase 4 — Le spectacle (shaders & particules) **[+façade]**
+## Phase 4 — Le spectacle : l'endgame §27 **[+façade]** ✅ (cœur fait)
 
-- *Façade* : `endgame_readout` + accès `sunken[]` / epicentre.
-- **Les fins §27** (EAU/FROID/RONCES) en **shaders** (rift, gel, ronces).
-- **Particules GPU** : écume, neige du Grand Hiver, fumée de siège, sillages.
-- **`TileMap` autotiling** (option) : côtes/routes/rivières lisses — dissout le
-  problème de « continuité » à la racine.
+Le moteur MUTE déjà le monde quand une fin éclôt (régions englouties → mer, biomes
+blanchis au froid, ronces qui gagnent) → `render_map` montre l'apocalypse PHYSIQUE
+SANS shader. On a ajouté la LECTURE et la mise en scène.
+- ✅ *Façade* : `scps_endgame_info` (entropie 0-100 + bande · augure · fin · merveille
+  · intensités · épicentre) + `scps_region_sunken`.
+- ✅ **`EndgameBanner`** (haut-centre) : la jauge d'entropie monte par bandes (Stable
+  → Frémissante → Instable → Au bord) avec des **augures** qui escaladent ; au
+  déclenchement, un **bandeau rouge** nomme la fin. **Vérifié** (seed 9 : RONCES an-181).
+- ✅ **Épicentre** : anneaux pulsants (Overlay, horloge mur) teintés par type de fin.
+- ⏳ *Reste (optionnel)* : **particules GPU** (neige du Grand Hiver, écume), shader de
+  rift sur l'eau engloutie, `TileMap` autotiling pour les côtes.
 
 ## Phase 5 — Le shell de jeu **[+façade]**
 

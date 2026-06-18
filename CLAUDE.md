@@ -393,6 +393,26 @@
   s'observe ; la main humaine viendra). `scps_api_demo` 9/9 (pop change — le monde vit — mais
   REPRODUCTIBLE A==B). Makefile : `scps_sim.o` dans `CHRONICLE_OBJS` ; SConstruct : `"sim"` dans
   ENGINE_MODULES. `make test` **38/38**, **0 warning**, **SAVE non bumpé** (rien de sérialisé ne change).
+- **GODOT PHASE 3 (2026-06-18) — LES ACTEURS SUR LA CARTE** : le tick plein roule déjà guerres &
+  campagnes ; on les EXPOSE et on les dessine. Façade (additive) : `scps_army_info` (loc · dest ·
+  phase mot+brut · effectif · composition inf/arch/cav/mages, lu de `s->sim.camp`) + `scps_region_tier`
+  (0-5 selon la pop, capitale ≥4 ; miroir du viewer). Binding → `Dictionary`. **`Overlay`** (Node2D
+  enfant de MapView, espace MONDE → suit la caméra, display-only, redessine au tick) : **villes** par
+  tier (disque teinté au pays, cœur clair) + **armées** (losange teinté au pays, posé au-dessus de la
+  ville, halo de PHASE marche=blanc/siège=orange/bataille=rouge, ligne vers le but). Vérifié headless
+  (xvfb : seed 9 an-110, 7 armées · 73 villes). Moteur inchangé (façade) → déterminisme & SAVE intacts.
+- **GODOT PHASE 4 (2026-06-18) — L'ENDGAME §27 EN SCÈNE** : le moteur MUTE déjà le monde quand une fin
+  éclôt (régions englouties → mer via `cataclysm_sink_region` ; biomes blanchis au froid via
+  `world_rebiome_cell` ; ronces `BIO_THORNS` qui gagnent) → **`render_map` montre l'apocalypse PHYSIQUE
+  sans shader**. On ajoute la LECTURE + la mise en scène. Façade : `scps_endgame_info` (entropie 0-100 +
+  bande · augure · fin 0-4 · merveille · intensités froid/eau · épicentre, depuis `endgame_readout`) +
+  `scps_region_sunken`. **`EndgameBanner`** (haut-centre) : la jauge d'entropie monte par bandes (Stable
+  → Frémissante → Instable → Au bord) avec des **augures** qui escaladent ; au déclenchement, un
+  **bandeau rouge** nomme la fin. **Épicentre** : anneaux pulsants (Overlay, `_process` horloge MUR — hors
+  déterminisme — teintés par type de fin : EAU bleu · FROID glacé · RONCES vert). Vérifié headless (seed 9 :
+  entropie 18→100 sur l'an 21-181, **fin RONCES an-181** épicentre rég. 30 ; bandeau + anneaux + terre
+  assombrie capturés). Reste optionnel : particules GPU (neige/écume), shader de rift. `scps_api_demo` 9/9,
+  moteur inchangé → **SAVE non bumpé**. ⚠ noms de fin = chrome GDScript (i18n Phase 5).
 
 ## Disciplines non négociables
 

@@ -34,6 +34,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_info", "country"),        &ScpsWorld::country_info);
     ClassDB::bind_method(D_METHOD("army_info", "country"),           &ScpsWorld::army_info);
     ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
+    ClassDB::bind_method(D_METHOD("endgame_info"),                   &ScpsWorld::endgame_info);
+    ClassDB::bind_method(D_METHOD("region_sunken", "region"),        &ScpsWorld::region_sunken);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -173,3 +175,21 @@ Dictionary ScpsWorld::army_info(int country) {
 }
 
 int ScpsWorld::region_tier(int region) const { return scps_region_tier(sim, region); }
+
+Dictionary ScpsWorld::endgame_info() {
+    Dictionary d;
+    ScpsEndgameInfo e;
+    scps_endgame_info(sim, &e);
+    d["entropie_pct"]  = e.entropie_pct;
+    d["entropie"]      = String::utf8(e.entropie);
+    d["augure"]        = String::utf8(e.augure);
+    d["fin"]           = e.fin;
+    d["merv"]          = e.merv;
+    d["merv_pct"]      = e.merv_pct;
+    d["cold_pct"]      = e.cold_pct;
+    d["sink_pct"]      = e.sink_pct;
+    d["epicenter_reg"] = e.epicenter_reg;
+    return d;
+}
+
+int ScpsWorld::region_sunken(int region) const { return scps_region_sunken(sim, region); }

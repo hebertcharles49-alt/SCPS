@@ -11,6 +11,8 @@ const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
 
+var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
+
 func _ready() -> void:
 	Sim.ticked.connect(_on_tick)
 	Sim.generated.connect(queue_redraw)
@@ -18,6 +20,12 @@ func _ready() -> void:
 
 func _on_tick(_year: int) -> void:
 	queue_redraw()
+
+func _process(_dt: float) -> void:
+	# pendant un cataclysme, on redessine en continu pour PULSER l'épicentre
+	# (horloge MUR, hors déterminisme). Sinon : aucun coût (le tick suffit).
+	if _cataclysm:
+		queue_redraw()
 
 ## couleur stable par pays (display-only : un hash d'indice → teinte ; -1 = neutre)
 func _country_color(c: int) -> Color:
@@ -86,3 +94,24 @@ func _draw() -> void:
 			ac + Vector2(0, s), ac + Vector2(-s, 0), ac + Vector2(0, -s)])
 		draw_polyline(border, Color(0, 0, 0, 0.9), 1.4, true)
 		draw_colored_polygon(diamond, col)
+
+	# ── ÉPICENTRE du cataclysme §27 : anneaux pulsants (le foyer de la fin) ────
+	var eg: Dictionary = w.endgame_info()
+	var epi: int = eg.get("epicenter_reg", -1)
+	var fin: int = eg.get("fin", 0)
+	_cataclysm = (fin > 0 and epi >= 0)
+	if epi >= 0:
+		var ec: Vector2 = w.region_centroid(epi)
+		if ec.x >= 0:
+			var col := _fin_color(fin)
+			var t := Time.get_ticks_msec() / 1000.0
+			for k in range(3):
+				var rad := 7.0 + k * 6.0 + fmod(t * 5.0, 6.0)
+				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), 1.0, true)
+
+func _fin_color(fin: int) -> Color:
+	match fin:
+		1: return Color(0.30, 0.55, 0.95)   # EAU : bleu
+		2: return Color(0.80, 0.92, 1.00)   # FROID : blanc glacé
+		3: return Color(0.35, 0.70, 0.30)   # RONCES : vert
+		_: return Color(0.70, 0.35, 0.85)   # Brèche / indéterminé : violet

@@ -139,6 +139,26 @@ void scps_army_info(ScpsSim *s, int country, ScpsArmyInfo *out);
  * colonisée / vide. Pour planter un marqueur de cité dimensionné au centroïde. */
 int scps_region_tier(const ScpsSim *s, int region);
 
+/* ---- ENDGAME §27 (Phase 4) : entropie monde, fin latchée, merveille --- *
+ * La membrane endgame (mots résolus + projections 0-100). Le moteur MUTE déjà le
+ * monde quand une fin éclôt (régions englouties → mer, biomes blanchis, ronces) →
+ * `render_map` reflète l'apocalypse PHYSIQUE ; ces champs ajoutent la LECTURE
+ * (barre d'entropie, augure, bandeau de fin, épicentre). */
+typedef struct {
+    int         entropie_pct;   /* 0-100 : ratio entropy/seuil projeté */
+    const char *entropie;       /* mot de bande (Stable/Frémissante/Instable/Au bord) */
+    const char *augure;         /* ligne d'ambiance, ou "" */
+    int         fin;            /* 0 aucune · 1 EAU · 2 FROID · 3 RONCES · 4 ascension */
+    int         merv;           /* phase de merveille (0 aucune … 4 ascensionné) */
+    int         merv_pct;       /* 0-100 : avancée du palier de merveille */
+    int         cold_pct;       /* 0-100 : intensité du refroidissement (FROID) */
+    int         sink_pct;       /* 0-100 : intensité de l'engloutissement (EAU) */
+    int         epicenter_reg;  /* région-foyer du cataclysme, -1 si aucune */
+} ScpsEndgameInfo;
+void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out);
+/* état d'engloutissement d'une région (fin EAU) : 0 = non · 1 = programmée · 2 = engloutie. */
+int  scps_region_sunken(const ScpsSim *s, int region);
+
 #ifdef __cplusplus
 }
 #endif
