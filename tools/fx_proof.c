@@ -39,6 +39,17 @@ static SDL_Texture *load_fx(SDL_Renderer *ren, const char *f){
     if(t)SDL_SetTextureBlendMode(t,SDL_BLENDMODE_BLEND); return t;
 }
 static uint32_t mhash(int x,int y,uint32_t s){ uint32_t h=(uint32_t)x*0x8da6b343u^(uint32_t)y*0xd8163841u^s; h^=h>>15;h*=0x2c1b3c6du;h^=h>>12;h*=0x297a2d39u;h^=h>>15; return h; }
+#define RAD2DEG 57.29577951308232
+#define COAST_PUSH 0.85f
+#define COAST_FACE_DEG 180.0f   /* mer en HAUT de la planche → base 180° */
+/* normale de plage (réplique coast_sea_normal du viewer) */
+static int csn(const World*w,int cx,int cy,float*nx,float*ny){
+    float ax=0.f,ay=0.f; int n=0;
+    for(int dy=-2;dy<=2;dy++)for(int dx=-2;dx<=2;dx++){ if(!dx&&!dy)continue;
+        int x=cx+dx,y=cy+dy; if(x<0||y<0||x>=SCPS_W||y>=SCPS_H)continue;
+        const Cell*c=scps_cellc(w,x,y); if(c&&c->sea){ float il=1.f/(float)(abs(dx)+abs(dy)); ax+=(float)dx*il; ay+=(float)dy*il; n++; } }
+    if(!n)return 0; float l=sqrtf(ax*ax+ay*ay); if(l<1e-4f)return 0; *nx=ax/l;*ny=ay/l; return 1;
+}
 
 int main(int argc,char**argv){
     uint32_t seed = argc>1?(uint32_t)strtoul(argv[1],0,10):9u;
@@ -92,23 +103,28 @@ int main(int argc,char**argv){
         SDL_Rect s={ph*FX_SEA_CELL,row*FX_SEA_CELL,FX_SEA_CELL,FX_SEA_CELL}, d={(int)sx-dpx/2,(int)sy-dpx/2,dpx,dpx};
         SDL_RenderCopy(ren,sea,&s,&d); nsea++; } SDL_SetTextureAlphaMod(sea,255); }
 
-    if(coast){ int TILE=3,dpx=(int)(5.f*scale+1.5f); if(dpx<10)dpx=10; SDL_SetTextureAlphaMod(coast,170);
+    if(coast){ int TILE=3,dpx=(int)(5.f*scale+1.5f); if(dpx<10)dpx=10; SDL_SetTextureAlphaMod(coast,150);
       for(int ty=0;ty<SCPS_H;ty+=TILE)for(int tx=0;tx<SCPS_W;tx+=TILE){
         const Cell*c=scps_cellc(w,tx,ty); if(!c||!c->coast)continue;
-        float sx,sy; PROJ((float)tx+0.5f,(float)ty+0.5f,&sx,&sy);
-        if(sx<-dpx||sx>CW+dpx||sy<-dpx||sy>CH+dpx)continue;
+        float wnx,wny; if(!csn(w,tx,ty,&wnx,&wny))continue;
+        float p0x=tx+0.5f,p0y=ty+0.5f, psx=p0x+wnx*COAST_PUSH, psy=p0y+wny*COAST_PUSH;
+        float ax,ay,bx,by; PROJ(p0x,p0y,&ax,&ay); PROJ(psx,psy,&bx,&by);
+        float sdx=bx-ax,sdy=by-ay,sl=sqrtf(sdx*sdx+sdy*sdy); if(sl<1e-3f)continue;
+        if(bx<-dpx||bx>CW+dpx||by<-dpx||by>CH+dpx)continue;
+        double rot=atan2((double)sdy,(double)sdx)*RAD2DEG-90.0+COAST_FACE_DEG;
         uint32_t h=mhash(tx,ty,0xC0A57001u); int ph=(frame+(int)(h%FX_COAST_FRAMES))%FX_COAST_FRAMES;
-        SDL_Rect s={ph*FX_COAST_CELL,0,FX_COAST_CELL,FX_COAST_CELL}, d={(int)sx-dpx/2,(int)sy-dpx/2,dpx,dpx};
-        SDL_RenderCopy(ren,coast,&s,&d); ncoast++; } SDL_SetTextureAlphaMod(coast,255); }
+        SDL_Rect s={ph*FX_COAST_CELL,0,FX_COAST_CELL,FX_COAST_CELL}, d={(int)bx-dpx/2,(int)by-dpx/2,dpx,dpx};
+        SDL_RenderCopyEx(ren,coast,&s,&d,rot,NULL,SDL_FLIP_NONE); ncoast++; } SDL_SetTextureAlphaMod(coast,255); }
 
-    if(army){ int dpx=(int)(10.f*scale+0.5f); if(dpx<20)dpx=20;
+    int coastonly = getenv("FX_COASTONLY")!=NULL;   /* vérif d'orientation : écume seule */
+    if(army && !coastonly){ int dpx=(int)(10.f*scale+0.5f); if(dpx<20)dpx=20;
       for(int k=0;k<3;k++){ float wx=(float)fx_c+(float)(k-1)*13.f, wy=(float)fy_c+(float)(k-1)*7.f-12.f;
         float sx,sy; PROJ(wx,wy,&sx,&sy);
         int row=(k==2)?1:0,col=(frame+k)%FX_ARMY_FRAMES;
         SDL_Rect s={col*FX_ARMY_CELL,row*FX_ARMY_CELL,FX_ARMY_CELL,FX_ARMY_CELL}, d={(int)sx-dpx/2,(int)sy-(dpx*3)/4,dpx,dpx};
         SDL_RenderCopy(ren,army,&s,&d);} }
 
-    if(vortex){ int vx=fx_c,vy=fy_c,found=0;
+    if(vortex && !coastonly){ int vx=fx_c,vy=fy_c,found=0;
       for(int rad=1;rad<80&&!found;rad++)for(int a=0;a<16&&!found;a++){
         int axc=fx_c+(int)(rad*cos(a*0.39)),ayc=fy_c+(int)(rad*sin(a*0.39));
         if(axc<0||ayc<0||axc>=SCPS_W||ayc>=SCPS_H)continue;

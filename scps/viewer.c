@@ -155,6 +155,11 @@ static SDL_Texture *g_fx_vortex_tex = NULL;  /* vortex de la fin EAU : 2 calques
 #define SCPS_FX_ARMY_CELL    96
 #define SCPS_FX_ARMY_FRAMES  4
 #define SCPS_FX_VORTEX_CELL  256
+/* écume : POUSSÉE vers la mer (en cellules-monde) pour quitter la plage — le « radius
+ * neutre » qui pose l'ourlet sur la LIGNE D'EAU, pas sur le sable ; et l'orientation de
+ * BASE de la planche (la crête d'écume regarde le BAS = sud = 180° boussole). */
+#define SCPS_FX_COAST_PUSH   0.85f
+#define SCPS_FX_COAST_FACE_DEG 180.0f   /* la planche a la MER en HAUT (eau vide au-dessus de la crête) → base 180° */
 /* Indice de frame d'une animation à n images, period_ms par image (horloge mur). */
 static int fx_frame(int nframes, int period_ms){
     if (nframes<1) nframes=1;
@@ -967,8 +972,27 @@ static void draw_sea_fx(SDL_Renderer *ren, const World *w, const Cam *cam, int w
     SDL_SetTextureAlphaMod(g_fx_sea_tex, 255);
 }
 
-/* ÉCUME DE RIVE : un ourlet animé sur les cellules de TERRE au bord de mer
- * (c->coast). Détail de zoom franc (sc≥2). Déphasé par cellule. */
+/* NORMALE DE PLAGE : la direction MOYENNE vers la mer autour d'une cellule de côte
+ * (somme pondérée des offsets vers les voisins de mer, rayon 2). Unitaire, (0,0) si
+ * aucun voisin de mer. C'est elle qui POUSSE l'écume vers l'eau et qui l'ORIENTE. */
+static bool coast_sea_normal(const World *w, int cx, int cy, float *nx, float *ny){
+    float ax=0.f, ay=0.f; int n=0;
+    for (int dy=-2; dy<=2; dy++) for (int dx=-2; dx<=2; dx++){
+        if (!dx && !dy) continue;
+        int x=cx+dx, y=cy+dy;
+        if (x<0||y<0||x>=SCPS_W||y>=SCPS_H) continue;
+        const Cell *c=scps_cellc(w,x,y);
+        if (c && c->sea){ float il=1.f/(float)(abs(dx)+abs(dy)); ax+=(float)dx*il; ay+=(float)dy*il; n++; }
+    }
+    if (!n) return false;
+    float l=sqrtf(ax*ax+ay*ay); if (l<1e-4f) return false;
+    *nx=ax/l; *ny=ay/l; return true;
+}
+
+/* ÉCUME DE RIVE : un ourlet animé à la LIGNE D'EAU des cellules de côte (c->coast).
+ * POUSSÉE vers la mer (normale de plage × SCPS_FX_COAST_PUSH) pour quitter le sable —
+ * le « radius neutre » demandé — et ORIENTÉE f(direction plage) : la crête regarde la
+ * mer (rotation déduite de la normale projetée, iso compris). Détail de zoom franc. */
 static void draw_coast_fx(SDL_Renderer *ren, const World *w, const Cam *cam, int win_w, int win_h){
     if (!g_fx_coast_tex || !w) return;
     float sc=cam->scale; if (sc<2.0f) return;
@@ -981,13 +1005,21 @@ static void draw_coast_fx(SDL_Renderer *ren, const World *w, const Cam *cam, int
     for (int ty=y0; ty<=y1; ty+=TILE) for (int tx=x0; tx<=x1; tx+=TILE){
         const Cell *c=scps_cellc(w,tx,ty);
         if (!c || !c->coast) continue;                       /* terre au bord de mer */
-        float fsx,fsy; cam_project(cam,(float)tx+0.5f,(float)ty+0.5f,&fsx,&fsy);
-        if (fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
+        float wnx,wny; if (!coast_sea_normal(w,tx,ty,&wnx,&wny)) continue;   /* pas de mer voisine : on s'abstient */
+        /* point POUSSÉ vers la mer (la ligne d'eau) + la direction ÉCRAN de la normale
+         * (projection des DEUX points → iso-correct). */
+        float p0x=(float)tx+0.5f, p0y=(float)ty+0.5f;
+        float psx=p0x+wnx*SCPS_FX_COAST_PUSH, psy=p0y+wny*SCPS_FX_COAST_PUSH;
+        float ax,ay,bx,by; cam_project(cam,p0x,p0y,&ax,&ay); cam_project(cam,psx,psy,&bx,&by);
+        float sdx=bx-ax, sdy=by-ay; float sl=sqrtf(sdx*sdx+sdy*sdy);
+        if (sl<1e-3f) continue;
+        if (bx<-dpx||bx>win_w+dpx||by<-dpx||by>win_h+dpx) continue;
+        double rot=atan2((double)sdy,(double)sdx)*RAD2DEG - 90.0 + (double)SCPS_FX_COAST_FACE_DEG;
         uint32_t h=map_hash(tx,ty,0xC0A57001u);
         int ph=(frame+(int)(h%(uint32_t)SCPS_FX_COAST_FRAMES))%SCPS_FX_COAST_FRAMES;
         SDL_Rect src={ ph*SCPS_FX_COAST_CELL, 0, SCPS_FX_COAST_CELL, SCPS_FX_COAST_CELL };
-        SDL_Rect dst={ (int)fsx-dpx/2, (int)fsy-dpx/2, dpx, dpx };
-        SDL_RenderCopy(ren, g_fx_coast_tex, &src, &dst);
+        SDL_Rect dst={ (int)bx-dpx/2, (int)by-dpx/2, dpx, dpx };
+        SDL_RenderCopyEx(ren, g_fx_coast_tex, &src, &dst, rot, NULL, SDL_FLIP_NONE);
     }
     SDL_SetTextureAlphaMod(g_fx_coast_tex, 255);
 }
