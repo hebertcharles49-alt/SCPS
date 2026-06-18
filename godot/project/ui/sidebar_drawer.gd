@@ -15,7 +15,21 @@ const TAB_ICON := ["menu_economy", "menu_demography", "menu_stocks", "menu_marke
 const TAB_NAME := ["Économie", "Démographie", "Stocks", "Marché",
 	"Armée", "Filtres", "Diplomatie", "Conseil"]
 
+# Filtres : modes render_map offerts (culture/foi exigent des teintes → omis).
+# [label, ViewMode]. Groupés comme viewer.c.
+const FILT_GROUPS := [
+	["Souveraineté", [["Politique", 1], ["Pays", 3], ["Régions", 2], ["Continents", 4]]],
+	["Terre", [["Relief", 0], ["Altitude", 5], ["Fertilité", 6], ["Humidité", 7],
+		["Température", 8], ["Ressources", 9], ["Habitabilité", 10]]],
+]
+
 var _tab := -1
+var _map                       # MapView (pour Filtres → set_mode)
+var _active_mode := 0
+var _chips := []               # [{rect, mode}] cliquables (Filtres)
+
+func setup(map) -> void:
+	_map = map
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -51,6 +65,8 @@ func _draw() -> void:
 	match _tab:
 		1: _draw_demo(x, y, me)
 		2: _draw_stocks(x, y, me)
+		5: _draw_filtres(x, y)
+		6: _draw_diplo(x, y, me)
 		_: VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(panneau à venir — port viewer.c)")
 
 # ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
@@ -84,6 +100,51 @@ func _draw_stocks(x: float, y: float, me: int) -> void:
 		var covs := ("" if cov < 0 else (">1 an" if cov >= 366 else "%d j" % cov))
 		VKit.text(self, Vector2(x + 225, y), col, covs, VKit.FS_SMALL)
 		y += 15
+
+# ── FILTRES (sb_panel_filtres) : sélecteur de mode carte, FONCTIONNEL ──────
+func _draw_filtres(x: float, y: float) -> void:
+	_chips.clear()
+	if _map != null:
+		_active_mode = _map.mode
+	for grp in FILT_GROUPS:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, String(grp[0]), VKit.FS_SMALL)
+		y += 16
+		var cx := x
+		for it in grp[1]:
+			var label: String = it[0]
+			var mode: int = it[1]
+			var tw := VKit.text_w(label, VKit.FS_SMALL) + 14.0
+			if cx + tw > DW - 12.0:
+				cx = x; y += 22
+			var active := (_active_mode == mode)
+			var r := Rect2(cx, y, tw, 18)
+			VKit.fill(self, r, VKit.COL_COPPER if active else VKit.COL_PANEL2)
+			VKit.box(self, r, VKit.COL_EDGE)
+			VKit.text(self, Vector2(cx + 7, y + 1), VKit.COL_PANEL if active else VKit.COL_PARCH, label, VKit.FS_SMALL)
+			_chips.append({"rect": r, "mode": mode})
+			cx += tw + 4
+		y += 26
+
+# ── DIPLOMATIE (sb_panel_diplo, read-only) ─────────────────────────────────
+func _draw_diplo(x: float, y: float, me: int) -> void:
+	for rel in Sim.world.country_relations(me):
+		if y > size.y - 18:
+			break
+		var col := VKit.sense(0.12) if bool(rel["at_war"]) else (VKit.sense(0.78) if bool(rel["allied"]) else VKit.COL_PARCH)
+		VKit.text(self, Vector2(x, y), col, String(rel["name"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 158, y), VKit.COL_DIM, String(rel["status"]), VKit.FS_SMALL)
+		y += 16
+
+func _gui_input(event: InputEvent) -> void:
+	if _tab == 5 and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		for ch in _chips:
+			if ch.rect.has_point(event.position):
+				_active_mode = ch.mode
+				if _map != null:
+					_map.set_mode(ch.mode)
+				queue_redraw()
+				accept_event()
+				return
 
 # couleur d'état de marché (BandMarche : mort · pénurie · tendu · sain · engorgé)
 func _marche_col(band: int) -> Color:

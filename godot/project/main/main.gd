@@ -41,6 +41,7 @@ func _ready() -> void:
 	_sidebar = load("res://ui/sidebar.gd").new()
 	_sidebar.name = "Sidebar"
 	ui.add_child(_sidebar)
+	_sidebar.setup(map)                       # le tiroir Filtres pilote la carte
 	# tiroir ouvert ⇒ on cache le panneau de province (même bande, exclusifs)
 	_sidebar.tab_selected.connect(func(i): if i >= 0: _prov_panel.show_province(-1))
 

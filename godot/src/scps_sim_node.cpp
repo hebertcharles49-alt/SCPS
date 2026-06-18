@@ -42,6 +42,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_capitale", "province"),  &ScpsWorld::province_capitale);
     ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
     ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
+    ClassDB::bind_method(D_METHOD("country_relations", "country"),   &ScpsWorld::country_relations);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -286,6 +287,21 @@ Array ScpsWorld::country_stocks(int country) {
         d["net_day"]       = st[i].net_day;
         d["coverage_days"] = st[i].coverage_days;
         d["market_band"]   = st[i].market_band;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Array ScpsWorld::country_relations(int country) {
+    Array a;
+    ScpsRelation rel[64];
+    int n = scps_country_relations(sim, country, rel, 64);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["name"]   = String::utf8(rel[i].name);
+        d["status"] = String::utf8(rel[i].status);
+        d["at_war"] = (bool)rel[i].at_war;
+        d["allied"] = (bool)rel[i].allied;
         a.push_back(d);
     }
     return a;

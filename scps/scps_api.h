@@ -207,6 +207,15 @@ typedef struct {
 } ScpsStock;
 int scps_country_stocks(ScpsSim *s, int country, ScpsStock *out, int max);
 
+/* RELATIONS diplomatiques d'un pays (sb_panel_diplo, read-only). */
+typedef struct {
+    const char *name;       /* le pays */
+    const char *status;     /* Guerre · Allié · Vassal · Suzerain · Neutre */
+    int   at_war;           /* 1 si en guerre */
+    int   allied;           /* 1 si allié */
+} ScpsRelation;
+int scps_country_relations(ScpsSim *s, int country, ScpsRelation *out, int max);
+
 #ifdef __cplusplus
 }
 #endif

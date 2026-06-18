@@ -432,3 +432,25 @@ int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
     }
     return n;
 }
+
+int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
+    if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
+    int n=0;
+    for(int c=0; c<s->w->n_countries && n<max; c++){
+        if(c==me || s->w->country[c].role==POLITY_UNCLAIMED) continue;
+        if(regions_of(s->sim.econ, c) <= 0) continue;   /* pays VIVANT seulement */
+        DiploStatus st = diplo_status(s->sim.dp, me, c);
+        const char *sw;
+        if      (st==DIPLO_WAR)                       sw = "Guerre";
+        else if (st==DIPLO_ALLIED)                    sw = "Allié";
+        else if (diplo_suzerain(s->sim.dp, c)==me)    sw = "Vassal";
+        else if (diplo_suzerain(s->sim.dp, me)==c)    sw = "Suzerain";
+        else                                          sw = "Neutre";
+        out[n].name   = sz(s->w->country[c].name);
+        out[n].status = sw;
+        out[n].at_war = (st==DIPLO_WAR) ? 1 : 0;
+        out[n].allied = (st==DIPLO_ALLIED) ? 1 : 0;
+        n++;
+    }
+    return n;
+}

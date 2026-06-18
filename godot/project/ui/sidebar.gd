@@ -25,6 +25,7 @@ signal tab_selected(index: int)   ## -1 = aucun (replié)
 var _btns := []
 var _sel := -1
 var _drawer
+var _map
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -44,6 +45,14 @@ func _ready() -> void:
 	_drawer = load("res://ui/sidebar_drawer.gd").new()
 	_drawer.name = "SidebarDrawer"
 	add_child(_drawer)
+	if _map != null:
+		_drawer.setup(_map)
+
+## la carte (pour le tiroir Filtres → set_mode)
+func setup(map) -> void:
+	_map = map
+	if _drawer != null:
+		_drawer.setup(map)
 
 func _on_tab(i: int) -> void:
 	_sel = -1 if _sel == i else i      # re-cliquer un onglet ouvert le replie
