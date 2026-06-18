@@ -19,6 +19,7 @@
 #include <stddef.h>   /* NULL */
 #include <string.h>   /* memset */
 #include <math.h>     /* roundf */
+#include <stdio.h>    /* readout_dump_file : le manifeste d'outillage (--dump-readout) */
 
 /* K2 — LA MEMBRANE : les noms FACE-JOUEUR (factions, édifices) naissent au readout,
  * où tr() est légitime. Le moteur (scps_factions, scps_agency) n'expose que l'ENUM.
@@ -868,4 +869,105 @@ void tech_tree_readout(const TechState *ts, unsigned race_access, float populati
         /* orphelin = signature d'une AUTRE race dont l'empire n'a pas l'accès. */
         nr->orphan   = (n->native!=RACE_COUNT) && !(race_access & tech_race_bit(n->native));
     }
+}
+
+/* ===================================================================== */
+/* MANIFESTE DE READOUT — l'inventaire de la membrane (--dump-readout)     */
+/* ===================================================================== */
+/* OUTILLAGE d'ingénieur, pas de jeu : on liste TOUT ce que le renderer peut
+ * tirer de cette couche — chaque BANDE et ses mots (label_X par valeur), la
+ * DÉFINITION du concept (hover_X), et chaque MetricReadout (le nombre 0-100 +
+ * sa déf). C'est un audit lisible de la cloison, pas un panneau face-joueur :
+ * texte FR libre, hors tables (cf. CLAUDE.md §Clôture).
+ *
+ * Les label_X prennent des enums distincts (BandStab, BandAssise…) ; un enum
+ * passe en `int`, donc un pointeur uniforme const char*(int) est sûr ici —
+ * MÊME promotion que readout_demo.c (COVER appelle fn(i) avec un int). */
+typedef const char *(*LabelFn)(int);
+typedef const char *(*HoverFn)(void);
+typedef struct { const char *bande; LabelFn label; int count; HoverFn hover; } BandManifest;
+
+int readout_dump_file(const char *path) {
+    /* La table des BANDES : chaque ligne = un axe lisible (le MOT par valeur) +
+     * sa définition. L'ordre suit scps_readout.h (bandeau royaume, marché,
+     * fronde, bataille, panneau de province, arbre syncrétique, politique). */
+    static const BandManifest BANDS[] = {
+        { "Stabilité",  (LabelFn)label_stab,      5, hover_stab     },
+        { "Assise",     (LabelFn)label_assise,    4, hover_assise   },
+        { "Légitimité", (LabelFn)label_legit,     5, hover_legit    },
+        { "Concorde",   (LabelFn)label_concorde,  4, hover_concorde },
+        { "Prospérité", (LabelFn)label_prosp,     5, hover_prosp    },
+        { "Savoir",     (LabelFn)label_savoir,    4, hover_savoir   },
+        { "Présage",    (LabelFn)label_presage,   4, hover_presage  },
+        { "Stature",    (LabelFn)label_stature,   5, hover_stature  },
+        { "Flux",       (LabelFn)label_flux,      5, hover_flux     },
+        { "Aisance",    (LabelFn)label_aisance,   4, hover_aisance  },
+        { "Carrefour",  (LabelFn)label_carrefour, 4, hover_carrefour},
+        { "Humeur",     (LabelFn)label_humeur,    5, hover_humeur   },
+        { "Lignée",     (LabelFn)label_lignee,    6, hover_lignee   },
+        { "Agitation",  (LabelFn)label_agitation, 4, hover_agitation},
+        { "Foi",        (LabelFn)label_foi,       3, hover_foi      },
+        { "Sédition",   (LabelFn)label_sedition,  4, hover_sedition },
+        /* Bandes SANS hover dédié (le mot suffit, pas de définition de concept). */
+        { "Forge",      (LabelFn)label_forge,     4, NULL           },
+        { "Profondeur", (LabelFn)label_profondeur,5, NULL           },
+        { "Accès",      (LabelFn)label_acces,     4, NULL           },
+        { "Marché",     (LabelFn)label_marche,    5, NULL           },
+        { "Fidélité",   (LabelFn)label_fidelite,  4, NULL           },
+        { "Moral",      (LabelFn)label_moral,     4, NULL           },
+        { "Arbre",      (LabelFn)label_tree_state,3, NULL           },
+    };
+    const int NB = (int)(sizeof BANDS / sizeof BANDS[0]);
+
+    /* La table des MÉTRIQUES (le nombre 0-100 + le mot + la déf) — par où elles
+     * sortent au renderer, et la déf qu'elles portent. Le MOT vient de la bande
+     * du même nom (déjà listée plus haut) ; ici on documente le CONCEPT. */
+    struct { const char *champ; const char *porteur; HoverFn hover; } METRICS[] = {
+        { "m_stabilite", "CountryReadout",  hover_stab     },
+        { "m_prosperite","CountryReadout",  hover_prosp    },
+        { "m_legitimite","CountryReadout",  hover_legit    },
+        { "m_cohesion",  "CountryReadout",  hover_concorde },
+        { "m_savoir",    "CountryReadout",  hover_savoir   },
+        { "sedition",    "FactionsReadout", hover_sedition },
+        { "agitation",   "ProvinceReadout", hover_agitation},
+        { "m_aisance",   "ProvinceReadout", hover_aisance  },
+        { "m_humeur",    "ProvinceReadout", hover_humeur   },
+    };
+    const int NM = (int)(sizeof METRICS / sizeof METRICS[0]);
+
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+
+    fputs("# scps_readout.txt — MANIFESTE de la membrane (outillage, pas du jeu).\n"
+          "# Pour chaque BANDE : son MOT par valeur (label_X) + sa DÉFINITION (hover_X).\n"
+          "# Puis chaque MetricReadout : le NOMBRE 0-100, son porteur, sa définition.\n"
+          "# Audit de la cloison readout → renderer. Régénérer : scps_viewer --dump-readout.\n\n", f);
+
+    fprintf(f, "=== BANDES (%d) — le MOT par valeur, puis la définition ===\n\n", NB);
+    for (int i = 0; i < NB; i++) {
+        const BandManifest *bm = &BANDS[i];
+        fprintf(f, "BANDE %s — %d valeurs\n", bm->bande, bm->count);
+        for (int v = 0; v < bm->count; v++) {
+            const char *w = bm->label ? bm->label(v) : NULL;
+            fprintf(f, "    [%d] %s\n", v, (w && w[0]) ? w : "(?)");
+        }
+        if (bm->hover) {
+            const char *h = bm->hover();
+            fprintf(f, "    hover : %s\n", (h && h[0]) ? h : "(?)");
+        } else {
+            fputs("    hover : (aucun — le mot suffit)\n", f);
+        }
+        fputc('\n', f);
+    }
+
+    fprintf(f, "=== MÉTRIQUES (%d) — MetricReadout : nombre 0-100 + mot + définition ===\n\n", NM);
+    for (int i = 0; i < NM; i++) {
+        const char *h = METRICS[i].hover ? METRICS[i].hover() : NULL;
+        fprintf(f, "MÉTRIQUE %-12s (%s)\n", METRICS[i].champ, METRICS[i].porteur);
+        fprintf(f, "    plage : 0-100 (projection d'une coordonnée — jamais le flottant SCPS)\n");
+        fprintf(f, "    hover : %s\n\n", (h && h[0]) ? h : "(?)");
+    }
+
+    fclose(f);
+    return NB;
 }

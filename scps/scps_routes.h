@@ -31,6 +31,13 @@ typedef struct {
     float days_ab, days_ba;   /* maritime : a→b / b→a (0 si terrestre)        */
     int8_t fluvial;           /* 0 non · 1 = ra en AMONT · 2 = rb en AMONT     */
     float flow;               /* débit du fleuve emprunté [0..1] (capacité)    */
+    /* WG (worldgen-graphe) — LE DÉTROIT FRANCHI : posé à la création (géographie
+     * STATIQUE : le goulet que la route maritime traverse). choke_region = la région
+     * -flanc qui le CONTRÔLE (-1 = aucun détroit) ; son propriétaire (econ.region.owner)
+     * est le TENANT qui prélève le PÉAGE sur le trafic. choke_block = la valeur de
+     * BLOCUS [0..1] (l'enjeu d'y mouiller). Sérialisé (TradeRoute ⇒ SAVE_VERSION). */
+    int16_t choke_region;     /* -1 = la route ne franchit aucun détroit             */
+    float   choke_block;      /* valeur de blocus du détroit franchi [0..1]          */
 } TradeRoute;
 
 #define SCPS_MAX_ROUTES 256

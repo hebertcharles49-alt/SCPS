@@ -229,6 +229,126 @@ robustifié (monde nu ⇒ digestion permanente, K → `builds_other` ; on garde 
 stable, ASan/UBSan muets. SAVE non bumpé (l'accès marché des empires — `hub_map` vers le Centre le
 plus proche — est inchangé ; `re->stock` reste le store).
 
+## (c 12) WG — worldgen-graphe : l'aptitude portuaire & les détroits émergents (2026-06-17)
+
+Deux couches de GENÈSE lues par le moteur (membrane respectée : on lit des coordonnées du monde,
+on n'assigne aucun bonus plat).
+
+**(1) `Region.harbor` — l'aptitude portuaire (la FORME du littoral).** À la genèse,
+`compute_harbor_suitability` (scps_world.c, après courants) pose sur CHAQUE région une coordonnée
+[0..1] qui lit trois traits du trait de côte à l'avant-port : l'**ABRI** (part de terre dans
+l'anneau 5×5 du recoin de mer le mieux enserré — une baie protège, un cap expose), la **PROFONDEUR**
+du mouillage (cabotage/eaux peu profondes = rade franche ; un COURANT vif au pied = rade brutale),
+la **LONGUEUR** de côte exploitable. Mélange `0.50·abri + 0.30·profondeur + 0.20·longueur`.
+**`navy_best_coast`** (scps_navy.c) la LIT pour asseoir sa rade : score = `harbor + 0.35·pop/popmax
++ (capitale-côte ? 0.40 : 0)` — l'avantage de SIÈGE n'est plus absolu, une baie franche l'emporte
+sur un cap capital exposé. Preuve (`SCPS_HARBORDIAG`) : seed 1 pays 20 ouvre sa rade région 43
+(harbor 0.75) plutôt que sa capitale-côte région 98 (harbor **0.00**, un cap nu) ; seed 42 pays 8
+prend région 8 (harbor 0.79) contre sa capitale-côte région 16 (harbor 0.00). « La FORME l'emporte
+sur le siège. »
+
+**(2) Les DÉTROITS émergents (chokepoints) — péage-au-tenant + valeur de blocus.**
+`compute_chokepoints` (scps_world.c) scanne les cellules de mer : un goulet = un chenal mince (≤ 12
+cellules, terre des DEUX côtés sur un axe) flanqué de CONTINENTS distincts (à défaut, deux régions
+sur un chenal ≤ 6, robustesse quasi-pangée), dédupliqué par grappe (18 cell.), borné à 24. Le
+**TENANT** = la région côtière la plus proche du goulet ; la **valeur de BLOCUS** [0..1] croît avec
+l'étroitesse. Table DÉRIVÉE par seed (cache, hors sauvegarde — comme les ancres de mer). API
+`world_chokepoints` / `world_route_chokepoint` (le goulet sur le segment des deux ancres, t∈]0.08,
+0.92[) / `world_chokepoint_holder`. À la création d'une route MARITIME (`routes_order`), on pose
+`TradeRoute.choke_region`/`choke_block` (le détroit franchi, géographie statique). En commerce
+(`intertrade_tick`), si la route franchit un goulet TENU par un **TIERS** (ni l'un ni l'autre des
+deux bouts), à la paix, hors embargo, son propriétaire **SKIME** `IT_CHOKE_TOLL·(0.4+0.6·blocus)`
+de la valeur transportée — un **transfert exportateur→tenant** (l'importateur ne paie pas plus, le
+verrou prélève ; conservation préservée). FX_TOLL_RECV au tenant.
+
+**⚠ RE-BASELINE (le monde change : qui tient quel détroit, qui ouvre quelle rade).** La rade
+choisie par `harbor` (vs l'ancienne « capitale-côte sinon la + peuplée ») change quelle région
+bâtit le port ⇒ les routes maritimes diffèrent ⇒ le commerce diffère. Le péage de détroit
+redistribue de l'or entre régions. Nouvelles valeurs de référence (chronicle, péage CUMULÉ/sim) :
+
+Balayage chronicle 1 sim × **100 ans** (péage CUMULÉ sur la sim) :
+
+| graine | goulets | tenus | routes mar. | franchissent | tiers/partie/vierge | routes taxées | péage cumulé | meilleur tenant |
+|--------|---------|-------|-------------|--------------|---------------------|---------------|--------------|-----------------|
+| 7      | 11      | 2     | 4           | 1            | 0/0/1               | 0             | 0            | —               |
+| 9      | 11      | 5     | 6           | 1            | 0/1/0               | 0             | 0            | —               |
+| 11     | 9       | 2     | 15          | 0            | 0/0/0               | 0             | 0            | —               |
+| 19     | 9       | 4     | 6           | 1            | 0/0/1               | 0             | 0            | —               |
+| **1**  | **17**  | **8** | **10**      | **4**        | **3/1/0**           | **3**         | **163 or**   | **pays 8 = 128 or** |
+
+Le péage MORD sur les mondes FENDUS (seed 1/42 : empires de part et d'autre d'un détroit tenu par
+un tiers — 3 routes taxées, pays 10 encaisse 16 or au verrou) ; sur un monde mono-continent à 2
+empires (seed 7) la rare route qui franchit un goulet tombe sur un flanc VIERGE → 0 péage, et seed 11
+(routes côtières courtes) n'en franchit aucun → 0 péage. Émergent, non forcé : la géographie décide.
+Télémétrie neuve : ligne « détroits (WG) » (goulets/tenus/routes taxées/péage cumulé) + diags
+`SCPS_CHOKEDIAG` (routes vs détroits : tiers/partie/vierge) et `SCPS_HARBORDIAG` (la rade choisie).
+
+**Déterminisme (5 graines × 12 ans, `make determinism`).** STABLE (deux runs identiques convergent)
+sur la NOUVELLE baseline. Le HASH BOUGE là où la rade par `harbor` ou le péage de tiers diverge en
+12 ans : **HASH 7 `3f17e5cc` et 108 `36684fb2` INCHANGÉS** (worlds dont les choix de port/commerce
+ne changent pas avant l'an 12) ; **209 `19585d19`→`f4368e2c`, 310 `ec502e7a`→`1be2fd49`,
+411 `0e0eef86`→`77941c52`** re-baselinés.
+
+**SAVE bumpé v25→v26** : `Region` GAGNE `harbor` (float) ⇒ `sizeof(World)` change ; `TradeRoute`
+GAGNE `choke_region`/`choke_block` ⇒ `sizeof(RouteNetwork)` change → « ère antérieure » (< v26
+refusé). `save_sane` revalide `harbor∈[0,1]` (lu par navy_best_coast pour SCORER la rade) et
+`choke_region∈[-1,n_regions)` (lu par intertrade pour trouver le tenant). make : core 35/35,
+monde_reel 10/10, routes 4/4, intertrade 25/25, lang-check 64, ASan/UBSan muets.
+## (c 13) G2 — LE DIRECTEUR-AMPLITUDE : trauma → amplitude → présage (2026-06-17)
+
+Un « directeur » NARRATIF déterministe par-dessus le directeur d'événements (§F), entièrement
+dans `scps_events.{h,c}` (+ bump SAVE). Quatre ressorts, tous SÉRIALISÉS (dans `Director`, donc
+le blob `EVNT` de la save) et tous DÉTERMINISTES (aucune fonction du hasard ; lecture de l'état
+du monde) :
+1. **`adapt_days` — l'INTÉGRATEUR DE TRAUMATISME** : un compteur de jours-de-tension qui MONTE
+   sous les chocs et REDESCEND au calme. La charge est ∝ la **température directeur T** (qui
+   agrège DÉJÀ guerre/famine/révolte/fracture/SI, §F1) — `+AMPL_TRAUMA_CHARGE·T` jours/an ; la
+   décharge est une **demi-vie** (`AMPL_TRAUMA_HALF`=900 j). Borné `[0..AMPL_TRAUMA_MAX]`.
+2. **`amplitude = f(adapt_days)`** — saturation douce `adapt/(adapt+SCALE)` ∈ [0..1] : HAUTE
+   juste après un choc (le monde « vibre »), BASSE au ronron. C'est la **lecture UI/télémétrie**.
+3. **`budget` ∝ POP·RICHESSE·TEMPS** — des points de mise en scène qu'un monde riche/peuplé/âgé
+   accumule plus vite (`AMPL_BUDGET_POP`/1000 hab + `AMPL_BUDGET_GOLD`/1000 or, par an, plafond
+   `AMPL_BUDGET_CAP`). La pop = Σ strata des régions possédées ; l'or = Σ `econ_country_gold`.
+4. **la boucle TALE** — fait NOTABLE → MÉMOIRE durable → AUGURE. Un événement dirigé (§F) OU un
+   âge (§4) inscrit une **MÉMOIRE** horodatée dans un anneau `mem[DIR_MEM_CAP=16]` ; plus tard,
+   quand `amplitude ≥ AMPL_OMEN_AMPL` ET `budget ≥ AMPL_OMEN_COST`, le **plus VIEUX** fait encore
+   en mémoire RESSURGIT en **PRÉSAGE** (`omens++`), qui **dépense** le budget et **consume** la
+   trace (la mémoire a nourri le récit). Tout en jours de jeu.
+
+Branchement : `director_tick` calcule T (déjà), puis fait avancer l'amplitude **À CHAQUE SCAN**
+(annuel) — même au calme, sinon l'intégrateur ne décroîtrait jamais. La membrane est respectée :
+ces champs sont une COUCHE NARRATIVE qui LIT le monde et n'y RÉ-ÉCRIT JAMAIS (le moteur ne lit pas
+adapt_days/amplitude/budget) — d'où le point clé ci-dessous.
+
+⚠ **RE-BASELINE — la SAVE seulement, PAS le gameplay.** `sizeof(EventsState)` change (le blob
+`EVNT` s'élargit : `adapt_days/budget/amplitude/max_amplitude` + `mem[16]` + `mem_head` + `omens`)
+⇒ **`SAVE_VERSION` 25→26**, les saves **<v26 sont REFUSÉS** (« ère antérieure »). MAIS le
+**HASH chronique est IDENTIQUE à la base** (`HASH 7 3f17e5cc` AVANT==APRÈS, vérifié en bâtissant
+la base HEAD à part) : `chronicle_sim_hash` ne hashe pas `EventsState`, et SURTOUT le directeur-
+amplitude ne MUTE aucun état moteur. `make determinism` reste STABLE et INCHANGÉ — la re-baseline
+est strictement le format de sauvegarde, pas le monde.
+
+`save_sane` (v26) revalide le champ : `director_save_sane(ev, SCPS_MAX_COUNTRY²)` — `mem_head` borne
+l'écriture de l'anneau (un index forgé déborderait), chaque `mem.kind` est `[0..DMEM_KIND_COUNT)`,
+chaque `mem.subject` est `-1` (monde) ou `< SCPS_MAX_COUNTRY²` (l'encodage Amnistie a·MAX+b),
+`omens ≥ 0`. La garde vit AVEC la struct (scps_events) ; viewer l'appelle. **Testée headless**
+(`events_demo` §8 (e)) : `mem_head` fou (déborde/négatif), `kind` hors enum, `subject` hors borne
+(+/−) sont TOUS refusés ; l'état sain est accepté et RE-accepté après restauration.
+
+**PREUVE — l'amplitude monte au choc, retombe au calme** (`SCPS_AMPLDIAG=1 ./chronicle 9 1 80`,
+fenêtre lisible) : pic **0.442** à l'an-24 (la crête du choc : T 0.62→0.54, 4 révoltés) puis
+DÉCROISSANCE monotone sur le calme an-27→60 : **0.416 → 0.299** (T retombe 0.45→0.28 ; `adapt_days`
+396→214 j). La courbe REMONTE à chaque nouveau choc (p.ex. an-70 T 0.48 ⇒ ampl 0.299→0.363). Sur
+seed 9 / 150 ans : **8 présages** émis (★ marqués : an-28, 70, 71, 88, 104, 119, 133, 148). Synthèse
+chronique neuve : « directeur-amplitude (G2) : pic moy · fin moy (le monde se calme) · N présage(s)
+· l'amplitude a VIBRÉ dans X/Y sims ». Diag : `SCPS_AMPLDIAG` (la courbe année-par-année).
+
+**Tunables** (registre J, §G2) : `AMPL_TRAUMA_CHARGE` 180 · `AMPL_TRAUMA_HALF` 900 · `AMPL_TRAUMA_MAX`
+2000 · `AMPL_TRAUMA_SCALE` 500 · `AMPL_BUDGET_POP` 0.02 · `AMPL_BUDGET_GOLD` 0.01 · `AMPL_BUDGET_CAP`
+400 · `AMPL_OMEN_COST` 60 · `AMPL_OMEN_AMPL` 0.35. `make test` **34/34** (`events_demo` 27→**41/41** :
++14 contrôles G2), lang-check **64** (aucun texte joueur — couche moteur ; la télémétrie reste FR par
+politique), ASan/UBSan muets, déterminisme STABLE & INCHANGÉ, viewer 0-warning.
+
 ## (c quater) Arc P — « la guerre prend du terrain » (2026-06-13)
 
 Racine : 217 batailles, **0 occupation** — après chaque bataille TOUT le monde

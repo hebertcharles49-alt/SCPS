@@ -44,6 +44,7 @@
 #include "scps_missions.h"  /* missions décennales : rythme + injection de ressources */
 #include "scps_navy.h"     /* la flotte (mer §5) : coques, chantier, entretien, outre-mer */
 #include "scps_endgame.h"  /* capstone §27 : entropie + 4 fins + merveille (moteur, pas scps_core) */
+#include "scps_save_io.h"  /* écriture ATOMIQUE du slot (write-then-rename) : un crash ne corrompt pas la sauvegarde existante */
 #include "scps_lang.h"     /* la table de chaînes : tout mot face-joueur vient des tables */
 #include "scps_map_dressing.h"  /* pack MAP DRESSING : décors de carte (champs, bâtiments, arbres, roches, buissons, rivières, routes) — display-only */
 /* L'atlas chargé (NULL = absent → carte lisse). Display-only, même régime éditable que scps_lang.txt. */
@@ -66,11 +67,29 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
         for (int x=0; x<cv->w; x++){
             Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
             int mn=(r<b)?r:b; int key=mn-(int)g;
-            if (key<=4) continue;
+            if (key<=2) continue;                            /* couvre PLUS LARGE (frange ≥3, ex-≥5) */
             float mness=(float)key/255.0f; float af=1.0f-mness; af*=af;
             if (af<0.03f){ row[x]=clear; continue; }
-            int lum=g; int nr=lum, ng=(int)((float)lum*0.88f+0.5f), nb=(int)((float)lum*0.70f+0.5f);
-            row[x]=SDL_MapRGBA(cv->format,(Uint8)nr,(Uint8)ng,(Uint8)nb,(Uint8)(af*255.0f+0.5f));
+            /* frange magenta → NEUTRE SOMBRE (gris→noir, AUCUNE chaleur) : le liseré de CHAQUE
+             * sprite ne tire plus au ROSÉ. Base = le VERT (seul canal NON contaminé par le
+             * magenta) ⇒ un contour d'encre sombre, jamais un halo chaud. */
+            int v=(int)((float)g*0.26f+0.5f);
+            row[x]=SDL_MapRGBA(cv->format,(Uint8)v,(Uint8)v,(Uint8)v,(Uint8)(af*255.0f+0.5f));
+        }
+    }
+    /* POST-TRAITEMENT anti-ROSE — le résidu SALMON (corps du sprite). Spectre ÉTROIT (ne pas
+     * abîmer les autres assets) : R nettement au-dessus du VERT (chaud) ET B encore PRÈS du
+     * vert (B>V−6) — signature du résidu de magenta (le bleu du fond a contaminé le pixel).
+     * L'orange/brun/sable LÉGITIME a B BIEN sous V (non touché) ; la MER a R bas (non touchée).
+     * DÉSATURÉ en GRIS à luminance ÉGALE (aucune chaleur résiduelle, pas de rosé). */
+    for (int y=0; y<cv->h; y++){
+        Uint32 *row = (Uint32*)((Uint8*)cv->pixels + (size_t)y*cv->pitch);
+        for (int x=0; x<cv->w; x++){
+            Uint8 r,g,b,a; SDL_GetRGBA(row[x], cv->format, &r,&g,&b,&a);
+            if (a>0 && (int)r>(int)g+6 && (int)b>(int)g-6){
+                int v=((int)r*5 + (int)g*9 + (int)b*2)/16;   /* luminance perçue → GRIS neutre de même éclat */
+                row[x]=SDL_MapRGBA(cv->format,(Uint8)v,(Uint8)v,(Uint8)v, a);
+            }
         }
     }
     SDL_Texture *tex = SDL_CreateTextureFromSurface(ren, cv);
@@ -79,6 +98,32 @@ static SDL_Texture *load_despilled_bmp(SDL_Renderer *ren, const char *file){
     return tex;
 }
 static SDL_Texture *g_cover_tex = NULL;   /* route-cover : MOBILIER de route (bornes, haies, murets, bottes, rochers…) */
+static SDL_Texture *g_softblob_tex = NULL;/* glow radial DOUX (blanc, alpha en cloche) — teinté à la volée pour le raccord mer */
+/* Construit une fois un disque à alpha en CLOCHE (1 au centre → 0 au bord, sans bord franc).
+ * Teinté/écrasé à la volée (color/alpha-mod), il sert d'apron de mer FONDU sous les villes
+ * côtières — un quad à dégradé linéaire faisait un « carré d'eau » ; ce disque n'a aucun bord. */
+static void softblob_build(SDL_Renderer *ren){
+    const int S=96; const float c=(float)(S-1)*0.5f;
+    SDL_Surface *sf=SDL_CreateRGBSurfaceWithFormat(0,S,S,32,SDL_PIXELFORMAT_ARGB8888);
+    if(!sf) return;
+    for(int y=0;y<S;y++){
+        Uint32 *row=(Uint32*)((Uint8*)sf->pixels+(size_t)y*sf->pitch);
+        for(int x=0;x<S;x++){
+            float dx=((float)x-c)/c, dy=((float)y-c)/c; float d=sqrtf(dx*dx+dy*dy);
+            float a=1.0f-d; if(a<0.f)a=0.f; a*=a;                 /* cloche : 0 au bord, douce */
+            row[x]=SDL_MapRGBA(sf->format,255,255,255,(Uint8)(a*255.0f));
+        }
+    }
+    g_softblob_tex=SDL_CreateTextureFromSurface(ren,sf);
+    SDL_FreeSurface(sf);
+    if(g_softblob_tex) SDL_SetTextureBlendMode(g_softblob_tex,SDL_BLENDMODE_BLEND);
+}
+static SDL_Texture *g_port_tex = NULL;    /* ports ORIENTÉS : ville côtière dont les quais SUIVENT la mer */
+#define SCPS_PORT_FILE "scps_port_orientation.bmp"
+#define SCPS_PORT_CELL 96                 /* atlas 8 col × 16 lignes (0-7 front · 8-15 vue de dos), 96 px */
+#define SCPS_PORT_COLS 8
+/* type de port par LIGNE (front_side 0-7 ; +8 = la même vue de DOS) */
+enum { PORT_FISHING=0, PORT_TRADE_QUAY=1, PORT_TOWN_HARBOR=2, PORT_FORTIFIED=3, PORT_ESTUARY_DOCK=4 };
 #define SCPS_COVER_FILE "scps_route_cover.bmp"
 #define SCPS_COVER_CELL 128               /* atlas 8 col × 8 lignes, cellule 128 px */
 #define SCPS_COVER_COLS 8
@@ -289,7 +334,7 @@ static int dress_density(Biome b){
         case BIO_WOODS: case BIO_MANGROVE:                     return 6;
         case BIO_VOLCANO:                                      return 6;
         case BIO_HILLS: case BIO_HIGHLANDS:                    return 5;
-        case BIO_FARMLAND:                                     return 3;   /* champs raréfiés (moins de répétition) */
+        case BIO_FARMLAND:                                     return 2;   /* champ PONCTUEL (mais habillé en ferme) */
         case BIO_PLAINS: case BIO_GRASSLAND:
         case BIO_STEPPE: case BIO_SAVANNA:                     return 3;
         case BIO_DRYLANDS: case BIO_COASTAL_DESERT:            return 2;
@@ -386,6 +431,8 @@ static bool region_world_pos(const World *w, int reg, float *wx, float *wy){
 #define ROAD_PATH_MAX 1400
 typedef struct { int16_t x[ROAD_PATH_MAX], y[ROAD_PATH_MAX]; int len; int ra, rb; } RoadPath;
 static RoadPath *g_rd_paths=NULL; static int g_rd_npaths=0; static uint64_t g_rd_sig=0;
+static uint8_t *g_road_mask=NULL;   /* 1 = cellule sur/à côté d'une route (les champs l'évitent) */
+static uint8_t *g_clear_mask=NULL;  /* 1 = cellule DÉBOISÉE (rayon autour d'une ville) → pas de canopée */
 static float *g_rd_g=NULL, *g_heapf=NULL; static int *g_rd_from=NULL,*g_rd_gen=NULL,*g_rd_closed=NULL,*g_heapi=NULL;
 static int g_rd_curgen=0, g_heap_n=0;
 static void rheap_push(float f,int idx){ int i=g_heap_n++; g_heapf[i]=f; g_heapi[i]=idx;
@@ -491,6 +538,15 @@ static void roads_ensure_cache(const World *w,const RouteNetwork *rn){
             g_rd_npaths++;
         }
     }
+    /* MASQUE des cellules-ROUTE (+1 de marge) : pour ne PAS poser de champ sur une route. */
+    if(!g_road_mask) g_road_mask=(uint8_t*)calloc(SCPS_N,1);
+    if(g_road_mask){
+        memset(g_road_mask,0,SCPS_N);
+        for(int pi=0;pi<g_rd_npaths;pi++){ const RoadPath *p=&g_rd_paths[pi];
+            for(int k=0;k<p->len;k++){ int rx=p->x[k],ry=p->y[k];
+                for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++){
+                    int nx=rx+dx,ny=ry+dy; if(nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H) g_road_mask[ny*SCPS_W+nx]=1; } } }
+    }
 }
 /* TRAIT ÉPAIS continu (RenderGeometry, quad par segment + losange aux points) — grammaire
  * HOMOGÈNE : largeur & couleur CONSTANTES, raccords par recouvrement. Remplace le tuilage
@@ -567,11 +623,70 @@ static void draw_map_roads(SDL_Renderer *ren, const World *w, const RouteNetwork
  * SILHOUETTE = terrain (priorité estuaire > rivière > montagne > capitale=fortifiée >
  * rural). Display-only : lit colonized + pop + géographie (tangibles). Dessinée APRÈS le
  * décor → focale bien lisible. */
+/* cellule de MER la plus proche d'une ville côtière, dans un PETIT rayon (maxrad). Le
+ * traitement « côtier » (port + raccord d'eau) ne s'applique que si la mer est VRAIMENT
+ * proche — sinon une ville au centre d'une région côtière (mer à 10+ cellules) héritait d'un
+ * faux halo d'eau (« ville dans un lac »). */
+static bool settle_nearest_sea(const World *w, int cx, int cy, int maxrad, int *swx, int *swy){
+    for (int rad=1; rad<=maxrad; rad++)
+        for (int dy=-rad; dy<=rad; dy++)
+            for (int dx=-rad; dx<=rad; dx++){
+                if (abs(dx)!=rad && abs(dy)!=rad) continue;        /* bord de l'anneau seulement */
+                int nx=cx+dx, ny=cy+dy;
+                if (nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+                if (scps_cellc(w,nx,ny)->sea){ *swx=nx; *swy=ny; return true; }
+            }
+    return false;
+}
+/* BLEND mer : un APRON d'eau au glow DOUX (disque à alpha en cloche, sans bord franc), posé
+ * SOUS l'asset côtier et poussé vers la mer → l'eau de la rade « remonte » dans la carte (raccord
+ * naturel, fini le carré d'eau rapporté). (bx,by) = assise écran de la ville ; (ux,uy) = direction
+ * écran NORMALISÉE vers la mer. Écrasé en ellipse (respire l'iso 2:1), teinté à la volée. */
+static void sea_blend(SDL_Renderer *ren, float bx, float by, float dpx, float ux, float uy){
+    if(!g_softblob_tex) return;
+    float cx=bx+ux*dpx*0.24f, cy=(by-dpx*0.06f)+uy*dpx*0.24f;     /* centre : assise, poussé un peu vers la mer */
+    float bw=dpx*1.34f, bh=dpx*0.82f;                              /* ellipse plus large que haute (iso) */
+    SDL_Rect dst={(int)(cx-bw*0.5f),(int)(cy-bh*0.5f),(int)bw,(int)bh};
+    SDL_SetTextureColorMod(g_softblob_tex,52,110,154);
+    SDL_SetTextureAlphaMod(g_softblob_tex,118);
+    SDL_RenderCopy(ren,g_softblob_tex,NULL,&dst);
+    SDL_SetTextureColorMod(g_softblob_tex,255,255,255);
+    SDL_SetTextureAlphaMod(g_softblob_tex,255);
+}
+/* Cale une ville sur la TERRE en s'écartant des LACS : rend la cellule de terre la plus proche
+ * (anneaux croissants) SANS aucun lac à ≤ lakeclr cellules. La MER reste permise (les côtières
+ * sont des ports) — seuls les LACS sont fuis. false si rien à portée (l'appelant retombe alors
+ * sur lakeclr=0 = simple terre la plus proche). */
+static bool settle_land_spot(const World *w, int cx, int cy, int lakeclr, int *ox, int *oy){
+    for (int R=0; R<=14; R++)
+        for (int dy=-R; dy<=R; dy++)
+            for (int dx=-R; dx<=R; dx++){
+                if (R>0 && abs(dx)!=R && abs(dy)!=R) continue;       /* bord d'anneau (R=0 = le centre) */
+                int nx=cx+dx, ny=cy+dy;
+                if (nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+                const Cell *nc=scps_cellc(w,nx,ny);
+                if (nc->sea||nc->lake) continue;                     /* la ville est sur la TERRE */
+                bool nearlake=false;
+                for (int yy=-lakeclr; yy<=lakeclr && !nearlake; yy++)
+                    for (int xx=-lakeclr; xx<=lakeclr; xx++){
+                        int mx=nx+xx,my=ny+yy;
+                        if (mx<0||my<0||mx>=SCPS_W||my>=SCPS_H) continue;
+                        if (scps_cellc(w,mx,my)->lake){ nearlake=true; break; }
+                    }
+                if (nearlake) continue;                              /* écarte les bords de lac */
+                *ox=nx; *oy=ny; return true;
+            }
+    return false;
+}
 static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
     if (!g_settle_tex || !econ) return;
     float sc=cam->scale; if (sc<2.0f) return;
     g_iso_w=win_w; g_iso_h=win_h;
     static const float dscale[6]={0.50f,0.66f,0.84f,1.05f,1.28f,1.55f};   /* outpost…metropolis (échelonné) */
+    /* MASQUE de DÉBOISEMENT : remis à plat ici (les villes le tamponnent ci-dessous, AVANT la
+     * passe canopée qui le lit) → un rayon dégagé autour de chaque ville. */
+    if(!g_clear_mask) g_clear_mask=(uint8_t*)calloc(SCPS_N,1);
+    if(g_clear_mask) memset(g_clear_mask,0,SCPS_N);
     for (int r=0; r<econ->n_regions && r<w->n_regions; r++){
         const RegionEconomy *re=&econ->region[r];
         if (!re->colonized) continue;
@@ -580,27 +695,82 @@ static void draw_map_settlements(SDL_Renderer *ren, const World *w, const WorldE
         int tier = pop>=4000?5 : pop>=1500?4 : pop>=500?3 : pop>=150?2 : pop>=50?1 : 0;
         float wx,wy; if(!region_world_pos(w,r,&wx,&wy)) continue;
         int cx=(int)wx, cy=(int)wy; if(cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) continue;
+        /* PAS DE VILLE DANS / AU BORD D'UN LAC : le centroïde des provinces peut tomber sur l'eau
+         * (région enroulée autour d'un lac) ; on cale sur la terre la plus proche À L'ÉCART des lacs
+         * (marge 2). À défaut (région très lacustre) → terre nue la plus proche ; sinon aucune ville. */
+        { int bx,by;
+          if (settle_land_spot(w,cx,cy,2,&bx,&by) || settle_land_spot(w,cx,cy,0,&bx,&by)){
+              cx=bx; cy=by; wx=(float)cx; wy=(float)cy;
+          } else continue;
+        }
         const Cell *c=scps_cellc(w,cx,cy);
         int owner=re->owner;
         bool cap=(owner>=0 && owner<w->n_countries && w->country[owner].capital_prov>=0
                   && w->country[owner].capital_prov<w->n_provinces
                   && w->province[w->country[owner].capital_prov].region==r);
-        int group;
-        if (re->coastal)                           group=SETTLE_ESTUARY;       /* port / embouchure */
+        /* mer la plus proche : (a) RABAT un PEU vers l'intérieur (assise sur terre SANS se couper
+         * des routes), (b) ORIENTE la cité portuaire. Sprite estuaire (plage au SUD) si la mer est
+         * au sud d'écran ; mer au NORD → PORT vue de DOS (estuary_dock 96-103) — une vraie cité
+         * PORTUAIRE orientée (pas une cité fortifiée sans quais). */
+        int seawx=0,seawy=0; float wx2=wx, wy2=wy, sdx=0.f, sdy=1.f;
+        bool hassea = (re->coastal && settle_nearest_sea(w,cx,cy,3,&seawx,&seawy));   /* mer à ≤3 cellules : vraie côtière */
+        if (hassea){
+            float ix=(float)cx-seawx, iy=(float)cy-seawy; float il=sqrtf(ix*ix+iy*iy)+1e-3f;
+            wx2 += ix/il*2.5f; wy2 += iy/il*2.5f;                       /* léger rabat → la route ATTEINT encore la ville */
+            float ax,ay,bx,by; cam_project(cam,(float)cx,(float)cy,&ax,&ay);
+            cam_project(cam,(float)seawx+0.5f,(float)seawy+0.5f,&bx,&by); sdx=bx-ax; sdy=by-ay;
+        }
+        int group; bool port_back=false;
+        if (re->coastal && sdy>0.f)                group=SETTLE_ESTUARY;        /* plage au sud → sprite estuaire */
+        else if (re->coastal && g_port_tex)      { group=-1; port_back=true; }  /* mer au NORD → port de DOS */
+        else if (re->coastal)                      group=(cap?SETTLE_FORTIFIED:SETTLE_RURAL);
         else if (c->river>40 && !c->lake)          group=SETTLE_RIVER;
         else if (c->biome==BIO_MOUNTAINS||c->biome==BIO_PEAK||c->biome==BIO_HILLS||c->biome==BIO_HIGHLANDS) group=SETTLE_MOUNTAIN;
         else if (cap)                              group=SETTLE_FORTIFIED;     /* capitale = remparts */
         else                                       group=SETTLE_RURAL;
         if (cap && tier<4) tier=4;                                             /* la CAPITALE domine : cité a minima */
-        float fsx,fsy; cam_project(cam,wx,wy,&fsx,&fsy);
-        int dpx=(int)(sc*26.0f*dscale[tier]); if(dpx<32)dpx=32; if(dpx>960)dpx=960;   /* TRÈS gros & dominants (style HOMM) */
+        if (g_clear_mask){                                                     /* DÉBOISE un disque ∝ taille autour de la ville */
+            int rad=(int)(9.0f*dscale[tier]+0.5f); if(rad<4)rad=4; if(rad>18)rad=18;
+            for(int dy=-rad;dy<=rad;dy++) for(int dx=-rad;dx<=rad;dx++){
+                if(dx*dx+dy*dy>rad*rad) continue;
+                int nx=cx+dx,ny=cy+dy; if(nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H) g_clear_mask[ny*SCPS_W+nx]=1;
+            }
+        }
+        float fsx,fsy; cam_project(cam,wx2,wy2,&fsx,&fsy);
+        int dpx=(int)(sc*18.0f*dscale[tier]); if(dpx<22)dpx=22; if(dpx>680)dpx=680;
         if(fsx<-dpx||fsx>win_w+dpx||fsy<-dpx||fsy>win_h+dpx) continue;
+        /* HABILLAGE LÉGER : quelques arbres en bordure ARRIÈRE seulement → adoucit sans BLOQUER
+         * les routes qui sortent (l'anneau plein cachait tout le réseau). */
+        if (g_dress_tex){
+            static const int rgt[3]={MAPD_TREE_BROADLEAF,MAPD_TREE_CONIFER,MAPD_HEDGE_PATCH};
+            int rr=(int)(dpx*0.34f), tsz=(int)(dpx*0.20f); if(tsz<8)tsz=8;
+            for (int a=0;a<5;a++){
+                float ang=4.19f + (float)a*0.50f;                              /* arc ARRIÈRE (haut d'écran) */
+                int tx=(int)(fsx+cosf(ang)*rr), ty=(int)(fsy+sinf(ang)*rr*0.55f - dpx*0.12f);
+                uint32_t hh=map_hash(cx+a*7, cy, 0x9A17C0DEu);
+                dress_blit(ren, rgt[hh%3], tx-tsz/2, ty-(tsz*3)/4, tsz);
+            }
+        }
+        if (port_back){                              /* PORT vue de DOS — estuary_dock (12) INTERDIT ;
+                                                      * on prend pêche(8)/quai(9)/port(10) selon tier, miroir selon mer G/D. */
+            int prow=(tier>=4)?10:(tier>=2)?9:8; int pcol=(sdx<0.f)?1:0; int pid=prow*SCPS_PORT_COLS+pcol;
+            SDL_Rect psrc={(pid%SCPS_PORT_COLS)*SCPS_PORT_CELL,(pid/SCPS_PORT_COLS)*SCPS_PORT_CELL,SCPS_PORT_CELL,SCPS_PORT_CELL};
+            SDL_Rect pdst={(int)fsx-dpx/2,(int)fsy-(dpx*7)/10,dpx,dpx};
+            { float dl=sqrtf(sdx*sdx+sdy*sdy)+1e-3f; sea_blend(ren,fsx,fsy,(float)dpx,sdx/dl,sdy/dl); }  /* mer DERRIÈRE (avant l'asset) */
+            SDL_RenderCopy(ren,g_port_tex,&psrc,&pdst);
+            continue;
+        }
+        if (hassea){ float dl=sqrtf(sdx*sdx+sdy*sdy)+1e-3f; sea_blend(ren,fsx,fsy,(float)dpx,sdx/dl,sdy/dl); }  /* raccord mer (derrière) */
         SDL_Rect src={tier*SCPS_SETTLE_CELL, group*SCPS_SETTLE_CELL, SCPS_SETTLE_CELL, SCPS_SETTLE_CELL};
         SDL_Rect dst={(int)fsx-dpx/2, (int)fsy-(dpx*7)/10, dpx, dpx};          /* ancré bas-centre */
         SDL_RenderCopy(ren, g_settle_tex, &src, &dst);
     }
 }
-static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h){
+/* DÉCORS (habillage). Dessiné en DEUX passes pour le bon ordre de calques (z-order
+ * demandé : routes → villes → habillage → CANOPÉES) : canopy_pass=0 pose tout le décor
+ * de SOL (champs, bâti, roches, buissons, fermes) ; canopy_pass=1 pose UNIQUEMENT les
+ * ARBRES (famille 2), qui coiffent donc tout le reste. La canopée se chevauche en dernier. */
+static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEconomy *econ, const Cam *cam, int win_w, int win_h, int canopy_pass){
     if (!g_dress_tex) return;
     g_iso_w=win_w; g_iso_h=win_h;                 /* pivot iso de la frame */
     float sc = cam->scale;                        /* pixels par cellule */
@@ -629,7 +799,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
     for (int cy=cy0; cy<cy1; cy+=step){           /* rangées : arrière → avant (ordre de profondeur iso) */
         for (int cx=cx0; cx<cx1; cx+=step){
             const Cell *c = scps_cellc(w, cx, cy);
-            if (c->sea) continue;                  /* la mer reste nue (pack terrestre) */
+            if (c->sea || c->lake) continue;       /* mer ET LACS restent nus (plus d'arbres dans l'eau : le bleu du lac perçait sous la canopée) */
             float fsx,fsy; cam_project(cam,(float)cx,(float)cy,&fsx,&fsy);
             int sx=(int)fsx, sy=(int)fsy;
             uint32_t h=map_hash(cx,cy,0x5EED01u);
@@ -646,6 +816,7 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
              *    Le bâti OCCUPE la cellule (pas de nature en plus) + un chemin proche. ── */
             int bgate = (tier>=2)?1:0;                 /* fermes OUTLYING rares : la VILLE est le sprite settlement */
             if (settled && (int)(hb&15u) < bgate){
+                if (canopy_pass) continue;             /* le bâti isolé est de l'HABILLAGE (sol), pas la canopée */
                 int bid = dress_building(c, tier, hb);
                 int bpx = dress_size(bid,sc);
                 int bjx=(int)((hb>>8)&7u)-4, bjy=(int)((hb>>11)&7u)-4;
@@ -657,9 +828,31 @@ static void draw_map_dressing(SDL_Renderer *ren, const World *w, const WorldEcon
             if ((int)(h&15u) >= dress_density(c->biome)) continue;   /* cellule sans décor naturel */
             int id=dress_pick(c,h);
             if (id<0) continue;
+            { int fam=(id<56)?id/8:(id-56)/8; if ((fam==2) != (canopy_pass!=0)) continue; }  /* famille 2 = ARBRES → passe canopée ; le reste → passe sol */
+            if (canopy_pass && g_clear_mask && g_clear_mask[cy*SCPS_W+cx]) continue;          /* forêt DÉBOISÉE autour des villes */
+            if (c->biome==BIO_FARMLAND){                              /* CHAMP : très ponctuel (~95 % retirés) + JAMAIS sur une route */
+                if (g_road_mask && g_road_mask[cy*SCPS_W+cx]) continue;
+                if ((map_hash(cx,cy,0xFA12BEEFu) & 15u) != 0u) continue;  /* ne garde qu'1 sur 16 */
+            }
             int px=dress_size(id,sc);
             int jx=(int)((h>>8)&7u)-4, jy=(int)((h>>11)&7u)-4;   /* jitter sous-cellule (anti-grille) */
             dress_blit(ren, id, sx-px/2+jx, sy-(px*3)/4+jy, px);  /* ancrage bas-centre (sprite debout) */
+            /* FERME : le champ (RARE) est HABILLÉ — un petit MOULIN + une grappe d'assets
+             * (bottes, caisses, haies) en fait une ferme, pas un carré répété. */
+            if (c->biome==BIO_FARMLAND){
+                int wsz=(int)((float)px*0.95f); if(wsz<10)wsz=10;
+                dress_blit(ren, MAPD_BLD_WINDMILL, sx-wsz/2+jx+(int)((h>>20)&3u)-2, sy-(wsz*3)/4+jy, wsz);
+                if (g_cover_tex){
+                    static const int fcl[5]={COVER_HAYSTACK,COVER_CRATE,COVER_HEDGE_CLUMP,COVER_HAYSTACK,COVER_REED};
+                    int fn=2+(int)((h>>17)&1u);
+                    for (int q=0;q<fn;q++){
+                        uint32_t hq=map_hash(cx*3+q, cy*5+q, 0xFA12BEEFu);
+                        int fsz=(int)((float)px*0.5f); if(fsz<7)fsz=7;
+                        int ox=(int)((hq>>3)&31u)-16, oy=(int)((hq>>9)&15u)-8;
+                        cover_blit(ren, fcl[hq%5], sx-fsz/2+ox+jx, sy-(fsz*3)/4+oy+jy, fsz);
+                    }
+                }
+            }
         }
     }
     SDL_SetTextureAlphaMod(g_dress_tex, 255);
@@ -736,14 +929,85 @@ static SDL_Color band_good(int idx, int n, bool higher_better) {
 
 /* ---- Texte (SDL_ttf) -------------------------------------------------- */
 static TTF_Font *g_font = NULL, *g_font_big = NULL, *g_font_small = NULL;
-static void draw_text(SDL_Renderer *ren, TTF_Font *f, int x, int y, SDL_Color col, const char *s) {
-    if (!f || !s || !s[0]) return;
-    SDL_Surface *su = TTF_RenderUTF8_Blended(f, s, col);
-    if (!su) return;
+
+/* §BALISES INLINE `#tag …#!` (brief loc §2) — un balisage LÉGER, display-only,
+ * qui COLORE un segment sans jamais afficher les marqueurs. La membrane est
+ * respectée : ce sont des MOTS habillés, aucun flottant SCPS ne transite ici.
+ * Forme : `#tag contenu#!` — `#`, un nom de balise en lettres, UN espace
+ * séparateur (consommé), le contenu, puis `#!` qui ferme. La couleur de base
+ * (passée par l'appelant) habille tout le texte HORS balise. Vocabulaire fermé
+ * (un mot inconnu retombe sur la base) — chaud/froid/faste/alarme/sourd/cuivre. */
+static SDL_Color markup_color(const char *tag, size_t len, SDL_Color base){
+    struct { const char *name; SDL_Color col; } M[] = {
+        { "hot",   sense_color(0.12f) },              /* chaud / défavorable (rouge) */
+        { "cold",  (SDL_Color){0x6f,0x9f,0xd8,0xff} },/* froid (bleu glace)          */
+        { "good",  sense_color(0.85f) },              /* faste / favorable (vert)    */
+        { "bad",   sense_color(0.12f) },              /* alias de hot                */
+        { "warn",  COL_COPPER },                      /* alerte (cuivre)             */
+        { "dim",   COL_DIM },                         /* sourd                       */
+        { "gold",  COL_COPPER },                      /* or / cuivre                 */
+    };
+    for (size_t i=0;i<sizeof M/sizeof *M;i++)
+        if (strlen(M[i].name)==len && strncmp(tag,M[i].name,len)==0) return M[i].col;
+    return base;                                       /* balise inconnue : pas d'effet */
+}
+/* Rend un run [b,e[ dans la couleur c à (x,y) ; renvoie la largeur avancée. */
+static int draw_run(SDL_Renderer *ren, TTF_Font *f, int x, int y, SDL_Color c,
+                    const char *b, const char *e){
+    if (e<=b) return 0;
+    int len=(int)(e-b);
+    char tmp[512];
+    if (len>(int)sizeof tmp-1) len=(int)sizeof tmp-1;
+    memcpy(tmp,b,(size_t)len); tmp[len]='\0';
+    if (!tmp[0]) return 0;
+    SDL_Surface *su = TTF_RenderUTF8_Blended(f, tmp, c);
+    if (!su) return 0;
     SDL_Texture *tx = SDL_CreateTextureFromSurface(ren, su);
     SDL_Rect d = { x, y, su->w, su->h };
+    int w = su->w;
     SDL_FreeSurface(su);
-    if (tx) { SDL_RenderCopy(ren, tx, NULL, &d); SDL_DestroyTexture(tx); }
+    if (tx){ SDL_RenderCopy(ren, tx, NULL, &d); SDL_DestroyTexture(tx); }
+    return w;
+}
+static void draw_text(SDL_Renderer *ren, TTF_Font *f, int x, int y, SDL_Color col, const char *s) {
+    if (!f || !s || !s[0]) return;
+    /* Chemin RAPIDE — aucune balise : rendu d'UNE texture, octet-pour-octet comme
+     * avant (la quasi-totalité des appels ; aucune régression de mise en page). */
+    if (!strchr(s,'#')){
+        SDL_Surface *su = TTF_RenderUTF8_Blended(f, s, col);
+        if (!su) return;
+        SDL_Texture *tx = SDL_CreateTextureFromSurface(ren, su);
+        SDL_Rect d = { x, y, su->w, su->h };
+        SDL_FreeSurface(su);
+        if (tx) { SDL_RenderCopy(ren, tx, NULL, &d); SDL_DestroyTexture(tx); }
+        return;
+    }
+    /* Chemin BALISÉ — on découpe en runs (base / coloré) et on les pose côte à côte. */
+    int cx=x;
+    const char *p=s, *run=s;
+    while (*p){
+        if (p[0]=='#' && p[1]=='!'){            /* fermeture orpheline → on l'avale */
+            cx += draw_run(ren,f,cx,y,col,run,p);
+            p+=2; run=p; continue;
+        }
+        if (p[0]=='#' && ((p[1]>='a'&&p[1]<='z')||(p[1]>='A'&&p[1]<='Z'))){
+            const char *t=p+1; while ((*t>='a'&&*t<='z')||(*t>='A'&&*t<='Z')) t++;
+            if (*t==' '){                       /* balise valide : #tag<espace>contenu#! */
+                /* poser d'abord le run de base accumulé */
+                cx += draw_run(ren,f,cx,y,col,run,p);
+                size_t tlen=(size_t)(t-(p+1));
+                SDL_Color tc=markup_color(p+1,tlen,col);
+                const char *cont=t+1;           /* après l'espace séparateur */
+                const char *end=cont;
+                while (*end && !(end[0]=='#'&&end[1]=='!')) end++;
+                cx += draw_run(ren,f,cx,y,tc,cont,end);
+                p = (*end) ? end+2 : end;        /* saute le contenu + `#!` */
+                run=p; continue;
+            }
+        }
+        p++;                                     /* `#` littéral (hors motif) : run continue */
+    }
+    draw_run(ren,f,cx,y,col,run,p);              /* le reste */
 }
 static int text_w(TTF_Font *f, const char *s){ int w=0; if (f&&s) TTF_SizeUTF8(f,s,&w,NULL); return w; }
 /* P1.8 — texte avec ALPHA (fondu) : TTF_Blended ne lit pas col.a, on module la texture. */
@@ -4093,13 +4357,17 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 28u           /* v28 : DONS GÉO — RegionEconomy.prov_geo (uint8_t : gibier/halieutique)
-                                    * ⇒ sizeof(WorldEconomy) change (blob ECON sv_w) → <v28 refusé.
-                                    * v27 : MODIFICATEURS PROVINCIAUX lot 2 — RegionEconomy.ferveur +
-                                    * reconstruction (2 floats À ÉTAT) ⇒ sizeof(WorldEconomy) change
-                                    * (blob ECON sv_w) → ère antérieure (<v27 refusé).
-                                    * v26 : CAPSTONE §27 — EndgameState (entropie + fins + merveille) ajoutée dans
-                                    * une nouvelle section EGAM. sizeof(EndgameState) entre dans le blob sv_w.
+#define SAVE_VERSION 29u           /* v29 : MERGE des deux lignées — le format COMBINE les deux jeux de
+                                    * changements de struct (donc <v29 refusé) :
+                                    *   · (assets/worldgen-graphe) Region GAGNE `harbor` (float) ⇒ sizeof(World) ;
+                                    *     TradeRoute GAGNE `choke_region`/`choke_block` ⇒ sizeof(RouteNetwork) ;
+                                    *     Director (blob EVNT) gagne adapt_days/budget/amplitude/mem[]/omens ⇒ sizeof(EventsState).
+                                    *   · (vitalité) RegionEconomy GAGNE ferveur+reconstruction (v27) + prov_geo (v28) ⇒
+                                    *     sizeof(WorldEconomy) ; EndgameState §27 (v26, section EGAM).
+                                    * save_sane borne harbor∈[0,1], choke_region∈[-1,n_regions), mem_head/mem.* (désérialisés).
+                                    * v28 : DONS GÉO — RegionEconomy.prov_geo (gibier/halieutique).
+                                    * v27 : MODIFICATEURS lot 2 — RegionEconomy.ferveur + reconstruction.
+                                    * v26 : CAPSTONE §27 — EndgameState (entropie + fins + merveille) section EGAM.
                                     * v25 : UN SEUL LIVRE D'OR — LR_GOLD éradiqué (l'or vit dans econ country_gold,
                                     * dette via scps_credit). LaborEcon perd treasury + stock/flow[LR_GOLD] (LRes 2→1,
                                     * LR_FOOD seul) ⇒ sizeof(LaborEcon) rétrécit (blob sv_w) → ère antérieure (<v25 refusé).
@@ -4152,6 +4420,43 @@ static bool save_slot_info(int slot, SaveHeader *out){
     fclose(f); return ok;
 }
 #define SV_TAG(a,b,c,d) ((uint32_t)(a)|((uint32_t)(b)<<8)|((uint32_t)(c)<<16)|((uint32_t)(d)<<24))
+/* REGISTRE DES SECTIONS (X-macro) — l'ORDRE et les tags vivent ICI, en un seul
+ * endroit lisible. game_save écrit cette suite, game_load la relit dans LE MÊME
+ * ordre : la table évite qu'une moitié dérive de l'autre (un tag changé d'un
+ * côté seul = format cassé). Chaque ligne : SYMBOLE, 4 octets ASCII du tag. */
+#define SV_SECTIONS(X) \
+    X(WRLD,'W','R','L','D')  /* World                       */ \
+    X(ECON,'E','C','O','N')  /* WorldEconomy                */ \
+    X(PROS,'P','R','O','S')  /* WorldProsperity             */ \
+    X(LEGI,'L','E','G','I')  /* WorldLegitimacy             */ \
+    X(NETW,'N','E','T','W')  /* InfluenceNet                */ \
+    X(TECH,'T','E','C','H')  /* TechState[pays]             */ \
+    X(STAT,'S','T','A','T')  /* Statecraft                  */ \
+    X(AGCY,'A','G','C','Y')  /* AgencyState                 */ \
+    X(EVNT,'E','V','N','T')  /* EventsState                 */ \
+    X(DRFT,'D','R','F','T')  /* DriftState                  */ \
+    X(LABO,'L','A','B','O')  /* LaborEcon                   */ \
+    X(DIPL,'D','I','P','L')  /* DiploState                  */ \
+    X(RTES,'R','T','E','S')  /* RouteNetwork                */ \
+    X(RVLT,'R','V','L','T')  /* RevoltState                 */ \
+    X(MISS,'M','I','S','S')  /* MissionState                */ \
+    X(CAMP,'C','A','M','P')  /* Campaign                    */ \
+    X(NAVY,'N','A','V','Y')  /* NavyState                   */ \
+    X(HARM,'H','A','R','M')  /* WarHost.army (sans scratch) */ \
+    X(HLVY,'H','L','V','Y')  /* WarHost.levy                */ \
+    X(AIAC,'A','I','A','C')  /* AiActor[pays]               */ \
+    X(AION,'A','I','O','N')  /* ai_on[pays]                 */ \
+    X(MISC,'M','I','S','C')  /* SaveMisc                    */ \
+    X(ITRD,'I','T','R','D')  /* intertrade (états statiques) */ \
+    X(AGYS,'A','G','Y','S')  /* agency (états statiques)    */ \
+    X(DPLS,'D','P','L','S')  /* diplo (statiques)           */ \
+    X(FACT,'F','A','C','T')  /* factions (statiques)        */ \
+    X(CRDT,'C','R','D','T')  /* dette : g_creditor[]        */ \
+    X(PCAP,'P','C','A','P')  /* limiteur de production (v24) */
+/* Chaque symbole devient une constante de tag : SVT_WRLD, SVT_ECON, … */
+#define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
+SV_SECTIONS(SV_DECL_TAG)
+#undef SV_DECL_TAG
 static bool sv_w(FILE *f, uint32_t tag, const void *p, size_t sz){
     uint32_t z=(uint32_t)sz;
     return fwrite(&tag,4,1,f)==1 && fwrite(&z,4,1,f)==1 && (sz==0 || fwrite(p,sz,1,f)==1);
@@ -4162,11 +4467,22 @@ static bool sv_r(FILE *f, uint32_t tag, void *p, size_t sz){
     if (t!=tag || z!=(uint32_t)sz) return false;
     return sz==0 || fread(p,sz,1,f)==1;
 }
-/* sauve la partie ENTIÈRE dans un slot ; renvoie false si l'écriture échoue. */
+/* sauve la partie ENTIÈRE dans un slot ; renvoie false si l'écriture échoue.
+ *
+ * Le format est ASSEMBLÉ EN MÉMOIRE (en-tête + payload taggé), puis posé d'un
+ * seul geste ATOMIQUE (write-then-rename via save_write_atomic) : un crash, un
+ * disque plein, une coupure EN COURS d'écriture ne corrompt JAMAIS le slot
+ * existant — l'ancienne sauvegarde reste chargeable jusqu'à ce que la neuve soit
+ * intégralement écrite et flushée. Le payload est d'abord composé via les
+ * sérialiseurs FILE* (intertrade_save, agency_save, …) dans un tmpfile() — relu
+ * pour l'empreinte FNV puis le chiffrement —, ce qui laisse ces modules
+ * INCHANGÉS. */
 static bool game_save(int slot, World *w, Sim *s, const WorldParams *params){
     if (slot<1 || slot>3) return false;
-    scps_mkdir("saves");                         /* EEXIST inoffensif ; l'échec réel tombe au fopen */
-    FILE *f=fopen(save_slot_path(slot),"w+b");   /* w+ : la post-passe de chiffrement RELIT le payload */
+    scps_mkdir("saves");                         /* EEXIST inoffensif ; l'échec réel tombe au write */
+    /* Étape 1 : composer le PAYLOAD CLAIR dans un fichier temporaire anonyme
+     * (auto-effacé). Les modules à états statiques sérialisent vers ce FILE*. */
+    FILE *f=tmpfile();
     if (!f) return false;
     SaveHeader h; memset(&h,0,sizeof h);
     h.magic=SAVE_MAGIC; h.version=SAVE_VERSION; h.seed=params->seed;
@@ -4175,67 +4491,68 @@ static bool game_save(int slot, World *w, Sim *s, const WorldParams *params){
     { int nreg=0; for (int r=0;r<s->econ->n_regions;r++) if (s->econ->region[r].owner==s->player) nreg++;
       snprintf(h.line,sizeof h.line,"An %d — %s, %d région(s)",
                s->year, (s->player>=0&&s->player<w->n_countries)?w->country[s->player].name:"?", nreg); }
-    bool ok = fwrite(&h,sizeof h,1,f)==1;        /* disque plein → échec NET, pas silencieux */
-    long p0=ftell(f);
-    ok&=sv_w(f,SV_TAG('W','R','L','D'), w,        sizeof *w);
-    ok&=sv_w(f,SV_TAG('E','C','O','N'), s->econ,  sizeof *s->econ);
-    ok&=sv_w(f,SV_TAG('P','R','O','S'), s->wp,    sizeof *s->wp);
-    ok&=sv_w(f,SV_TAG('L','E','G','I'), s->wl,    sizeof *s->wl);
-    ok&=sv_w(f,SV_TAG('N','E','T','W'), s->net,   sizeof *s->net);
-    ok&=sv_w(f,SV_TAG('T','E','C','H'), s->ts,    sizeof(TechState)*SCPS_MAX_COUNTRY);
-    ok&=sv_w(f,SV_TAG('S','T','A','T'), s->sc,    sizeof *s->sc);
-    ok&=sv_w(f,SV_TAG('A','G','C','Y'), s->ag,    sizeof *s->ag);
-    ok&=sv_w(f,SV_TAG('E','V','N','T'), s->ev,    sizeof *s->ev);
-    ok&=sv_w(f,SV_TAG('D','R','F','T'), s->drift, sizeof *s->drift);
-    ok&=sv_w(f,SV_TAG('L','A','B','O'), s->labor, sizeof *s->labor);
-    ok&=sv_w(f,SV_TAG('D','I','P','L'), s->dp,    sizeof *s->dp);
-    ok&=sv_w(f,SV_TAG('R','T','E','S'), s->rn,    sizeof *s->rn);
-    ok&=sv_w(f,SV_TAG('R','V','L','T'), s->rs,    sizeof *s->rs);
-    ok&=sv_w(f,SV_TAG('M','I','S','S'), s->missions, sizeof *s->missions);
-    ok&=sv_w(f,SV_TAG('C','A','M','P'), s->camp,  sizeof *s->camp);
-    ok&=sv_w(f,SV_TAG('N','A','V','Y'), s->navy,  sizeof *s->navy);
-    ok&=sv_w(f,SV_TAG('H','A','R','M'), s->host->army, sizeof s->host->army);   /* WarHost SANS scratch */
-    ok&=sv_w(f,SV_TAG('H','L','V','Y'), s->host->levy, sizeof s->host->levy);
-    ok&=sv_w(f,SV_TAG('A','I','A','C'), s->ai,    sizeof(AiActor)*SCPS_MAX_COUNTRY);
-    ok&=sv_w(f,SV_TAG('A','I','O','N'), s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
+    bool ok = true;
+    ok&=sv_w(f,SVT_WRLD, w,        sizeof *w);
+    ok&=sv_w(f,SVT_ECON, s->econ,  sizeof *s->econ);
+    ok&=sv_w(f,SVT_PROS, s->wp,    sizeof *s->wp);
+    ok&=sv_w(f,SVT_LEGI, s->wl,    sizeof *s->wl);
+    ok&=sv_w(f,SVT_NETW, s->net,   sizeof *s->net);
+    ok&=sv_w(f,SVT_TECH, s->ts,    sizeof(TechState)*SCPS_MAX_COUNTRY);
+    ok&=sv_w(f,SVT_STAT, s->sc,    sizeof *s->sc);
+    ok&=sv_w(f,SVT_AGCY, s->ag,    sizeof *s->ag);
+    ok&=sv_w(f,SVT_EVNT, s->ev,    sizeof *s->ev);
+    ok&=sv_w(f,SVT_DRFT, s->drift, sizeof *s->drift);
+    ok&=sv_w(f,SVT_LABO, s->labor, sizeof *s->labor);
+    ok&=sv_w(f,SVT_DIPL, s->dp,    sizeof *s->dp);
+    ok&=sv_w(f,SVT_RTES, s->rn,    sizeof *s->rn);
+    ok&=sv_w(f,SVT_RVLT, s->rs,    sizeof *s->rs);
+    ok&=sv_w(f,SVT_MISS, s->missions, sizeof *s->missions);
+    ok&=sv_w(f,SVT_CAMP, s->camp,  sizeof *s->camp);
+    ok&=sv_w(f,SVT_NAVY, s->navy,  sizeof *s->navy);
+    ok&=sv_w(f,SVT_HARM, s->host->army, sizeof s->host->army);   /* WarHost SANS scratch */
+    ok&=sv_w(f,SVT_HLVY, s->host->levy, sizeof s->host->levy);
+    ok&=sv_w(f,SVT_AIAC, s->ai,    sizeof(AiActor)*SCPS_MAX_COUNTRY);
+    ok&=sv_w(f,SVT_AION, s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
     { SaveMisc m; memset(&m,0,sizeof m);
       m.day=s->day; m.year=s->year; m.player=s->player; m.prev_dawned=s->prev_dawned;
       m.camp_rng=s->camp_rng; m.race=(int32_t)g_player_race; m.ethos=g_setup_ethos;
       memcpy(m.prev_owner,s->prev_owner_mo,sizeof m.prev_owner);
-      ok&=sv_w(f,SV_TAG('M','I','S','C'), &m, sizeof m); }
+      ok&=sv_w(f,SVT_MISC, &m, sizeof m); }
     /* les modules à ÉTATS STATIQUES possèdent leur sérialisation */
-    ok&=sv_w(f,SV_TAG('I','T','R','D'), NULL,0); intertrade_save(f);
-    ok&=sv_w(f,SV_TAG('A','G','Y','S'), NULL,0); agency_save(f);
-    ok&=sv_w(f,SV_TAG('D','P','L','S'), NULL,0); diplo_save_statics(f);
-    ok&=sv_w(f,SV_TAG('F','A','C','T'), NULL,0); faction_save(f);
-    ok&=sv_w(f,SV_TAG('C','R','D','T'), NULL,0); credit_save(f);   /* dette : g_creditor[] */
-    ok&=sv_w(f,SV_TAG('P','C','A','P'), NULL,0); econ_prodcap_save(f);   /* v24 : limiteur de production */
+    ok&=sv_w(f,SVT_ITRD, NULL,0); intertrade_save(f);
+    ok&=sv_w(f,SVT_AGYS, NULL,0); agency_save(f);
+    ok&=sv_w(f,SVT_DPLS, NULL,0); diplo_save_statics(f);
+    ok&=sv_w(f,SVT_FACT, NULL,0); faction_save(f);
+    ok&=sv_w(f,SVT_CRDT, NULL,0); credit_save(f);   /* dette : g_creditor[] */
+    ok&=sv_w(f,SVT_PCAP, NULL,0); econ_prodcap_save(f);   /* v24 : limiteur de production */
     if (s->eg) ok&=sv_w(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);  /* v26 : EndgameState (capstone §27) */
-    /* intégrité + CHIFFREMENT (post-passe) : on relit le payload CLAIR, on prend son
-     * empreinte, on le chiffre (ChaCha20, nonce unique), on le réécrit en place.
-     * L'en-tête reste en clair (l'écran Charger lit la ligne sans déchiffrer). */
-    long p1=ftell(f);
-    h.payload=(uint32_t)(p1-p0);
-    { uint8_t *buf=(uint8_t*)malloc(h.payload);
-      if (!buf){ fclose(f); return false; }
-      fseek(f,p0,SEEK_SET);
-      if (fread(buf,1,h.payload,f)!=h.payload){ free(buf); fclose(f); return false; }
-      h.plain_ck = scrypt_fnv1a(buf,h.payload);
-      /* Nonce : modèle « obfuscation, pas secret » (la clé vit dans le binaire) —
-       * l'unicité n'est requise que pour éviter un keystream identique entre deux
-       * sauvegardes ; le compteur monotone couvre les sauvegardes rapprochées. */
-      { static uint64_t seq=0; ++seq;
-        h.nonce = ((uint64_t)time(NULL)<<32) ^ (uint64_t)SDL_GetTicks()
-                ^ ((uint64_t)params->seed<<13) ^ (uint64_t)(uintptr_t)buf
-                ^ (seq<<48) ^ (uint64_t)clock(); }
-      h.flags = SAVE_F_CRYPT;
-      scrypt_stream(h.nonce, buf, h.payload);
-      fseek(f,p0,SEEK_SET);
-      ok &= fwrite(buf,1,h.payload,f)==h.payload;
-      free(buf); }
-    fseek(f,0,SEEK_SET);
-    ok &= fwrite(&h,sizeof h,1,f)==1;            /* l'en-tête final (payload/nonce/empreinte) doit passer */
-    if (fclose(f)!=0) ok=false;                  /* le flush peut échouer (disque plein) */
+    /* Étape 2 : aspirer le payload clair en mémoire (empreinte FNV + chiffrement).
+     * Le fichier final = en-tête CLAIR (l'écran Charger lit la ligne sans
+     * déchiffrer) suivi du payload chiffré. */
+    if (ok && fflush(f)!=0) ok=false;
+    long psz = ok ? ftell(f) : -1;
+    if (!ok || psz<0){ fclose(f); return false; }
+    h.payload=(uint32_t)psz;
+    uint8_t *img=(uint8_t*)malloc(sizeof h + (size_t)h.payload);   /* en-tête + payload, d'un bloc */
+    if (!img){ fclose(f); return false; }
+    uint8_t *pay = img + sizeof h;
+    rewind(f);
+    if (fread(pay,1,h.payload,f)!=h.payload){ free(img); fclose(f); return false; }
+    fclose(f);
+    h.plain_ck = scrypt_fnv1a(pay,h.payload);
+    /* Nonce : modèle « obfuscation, pas secret » (la clé vit dans le binaire) —
+     * l'unicité n'est requise que pour éviter un keystream identique entre deux
+     * sauvegardes ; le compteur monotone couvre les sauvegardes rapprochées. */
+    { static uint64_t seq=0; ++seq;
+      h.nonce = ((uint64_t)time(NULL)<<32) ^ (uint64_t)SDL_GetTicks()
+              ^ ((uint64_t)params->seed<<13) ^ (uint64_t)(uintptr_t)pay
+              ^ (seq<<48) ^ (uint64_t)clock(); }
+    h.flags = SAVE_F_CRYPT;
+    scrypt_stream(h.nonce, pay, h.payload);
+    memcpy(img,&h,sizeof h);                      /* en-tête FINAL (payload/nonce/empreinte) en tête de bloc */
+    /* Étape 3 : poser le bloc d'un seul geste ATOMIQUE. */
+    ok = save_write_atomic(save_slot_path(slot), img, sizeof h + (size_t)h.payload);
+    free(img);
     return ok;
 }
 /* Garde-fou post-chargement : le moteur entier boucle sur ces comptes et indices
@@ -4270,7 +4587,11 @@ static bool save_sane(const World *w, const Sim *s, int player){
     for (int r=0;r<w->n_regions;r++){ const Region *rg=&w->region[r];
         if (rg->n_provinces<0 || rg->n_provinces>12 || rg->country< -1 || rg->country>=w->n_countries) return false;
         for (int k=0;k<rg->n_provinces;k++)
-            if (rg->province_ids[k]<0 || rg->province_ids[k]>=w->n_provinces) return false; }
+            if (rg->province_ids[k]<0 || rg->province_ids[k]>=w->n_provinces) return false;
+        /* WG : l'aptitude portuaire désérialisée doit rester une coordonnée FINIE de [0,1]
+         * (navy_best_coast la lit pour SCORER la rade — un NaN/hors-borne forgé fausserait
+         * le choix de port ; on refuse net, comme tout le chargeur). */
+        if (!(rg->harbor>=0.f && rg->harbor<=1.f)) return false; }
     for (int c=0;c<w->n_countries;c++){ const Country *ct=&w->country[c];
         if (ct->n_regions<0 || ct->n_regions>32 || ct->capital_prov< -1 || ct->capital_prov>=w->n_provinces) return false;
         for (int k=0;k<ct->n_regions;k++)
@@ -4281,7 +4602,10 @@ static bool save_sane(const World *w, const Sim *s, int player){
         if (re->pop.n_groups<0 || re->pop.n_groups>SCPS_MAX_GROUPS) return false; }
     if (s->rn->n<0 || s->rn->n>SCPS_MAX_ROUTES) return false;
     for (int i=0;i<s->rn->n;i++){ const TradeRoute *rt=&s->rn->route[i];
-        if (rt->ra<0 || rt->ra>=s->econ->n_regions || rt->rb<0 || rt->rb>=s->econ->n_regions) return false; }
+        if (rt->ra<0 || rt->ra>=s->econ->n_regions || rt->rb<0 || rt->rb>=s->econ->n_regions) return false;
+        /* WG : la région-flanc du détroit (lue par intertrade pour trouver le tenant) —
+         * -1 (aucun) ou un index de région valide ; un forgé indexerait econ->region. */
+        if (rt->choke_region< -1 || rt->choke_region>=s->econ->n_regions) return false; }
     for (int i=0;i<SCPS_MAX_COUNTRY;i++){ const FieldArmy *a=&s->camp->army[i];
         if (!a->active) continue;
         if (a->owner<0 || a->owner>=w->n_countries) return false;
@@ -4314,6 +4638,12 @@ static bool save_sane(const World *w, const Sim *s, int player){
         if (eg->cold_offset < 0.0f || eg->cold_offset > 1.0f) return false;
         if (eg->merv_progress < 0.0f || eg->merv_progress > 1.0f) return false;
     }
+    /* §G2 (v26) : le DIRECTEUR-AMPLITUDE désérialisé se revalide — mem_head BORNE l'écriture
+     * dans l'anneau mem[DIR_MEM_CAP] (un index forgé déborderait la prochaine inscription) ;
+     * chaque mem[i].kind est une étiquette [0..DMEM_KIND_COUNT) et mem[i].subject un index
+     * que le présage relit (pays·MAX+pays pour l'Amnistie ⇒ < SCPS_MAX_COUNTRY²) — refus net.
+     * La garde vit AVEC la struct (scps_events) et est testée headless (events_demo). */
+    if (!director_save_sane(s->ev, SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY)) return false;
     return true;
 }
 /* charge un slot. 0 = ok ; 1 = absent/corrompu ; 2 = « ère antérieure » (version). */
@@ -4340,41 +4670,41 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
       free(buf); rewind(f); }
     long p0=ftell(f);
     bool ok=true;
-    ok&=sv_r(f,SV_TAG('W','R','L','D'), w,        sizeof *w);
-    ok&=sv_r(f,SV_TAG('E','C','O','N'), s->econ,  sizeof *s->econ);
-    ok&=sv_r(f,SV_TAG('P','R','O','S'), s->wp,    sizeof *s->wp);
-    ok&=sv_r(f,SV_TAG('L','E','G','I'), s->wl,    sizeof *s->wl);
-    ok&=sv_r(f,SV_TAG('N','E','T','W'), s->net,   sizeof *s->net);
-    ok&=sv_r(f,SV_TAG('T','E','C','H'), s->ts,    sizeof(TechState)*SCPS_MAX_COUNTRY);
-    ok&=sv_r(f,SV_TAG('S','T','A','T'), s->sc,    sizeof *s->sc);
-    ok&=sv_r(f,SV_TAG('A','G','C','Y'), s->ag,    sizeof *s->ag);
-    ok&=sv_r(f,SV_TAG('E','V','N','T'), s->ev,    sizeof *s->ev);
-    ok&=sv_r(f,SV_TAG('D','R','F','T'), s->drift, sizeof *s->drift);
-    ok&=sv_r(f,SV_TAG('L','A','B','O'), s->labor, sizeof *s->labor);
-    ok&=sv_r(f,SV_TAG('D','I','P','L'), s->dp,    sizeof *s->dp);
-    ok&=sv_r(f,SV_TAG('R','T','E','S'), s->rn,    sizeof *s->rn);
-    ok&=sv_r(f,SV_TAG('R','V','L','T'), s->rs,    sizeof *s->rs);
-    ok&=sv_r(f,SV_TAG('M','I','S','S'), s->missions, sizeof *s->missions);
-    ok&=sv_r(f,SV_TAG('C','A','M','P'), s->camp,  sizeof *s->camp);
-    ok&=sv_r(f,SV_TAG('N','A','V','Y'), s->navy,  sizeof *s->navy);
-    ok&=sv_r(f,SV_TAG('H','A','R','M'), s->host->army, sizeof s->host->army);
-    ok&=sv_r(f,SV_TAG('H','L','V','Y'), s->host->levy, sizeof s->host->levy);
-    ok&=sv_r(f,SV_TAG('A','I','A','C'), s->ai,    sizeof(AiActor)*SCPS_MAX_COUNTRY);
-    ok&=sv_r(f,SV_TAG('A','I','O','N'), s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
+    ok&=sv_r(f,SVT_WRLD, w,        sizeof *w);
+    ok&=sv_r(f,SVT_ECON, s->econ,  sizeof *s->econ);
+    ok&=sv_r(f,SVT_PROS, s->wp,    sizeof *s->wp);
+    ok&=sv_r(f,SVT_LEGI, s->wl,    sizeof *s->wl);
+    ok&=sv_r(f,SVT_NETW, s->net,   sizeof *s->net);
+    ok&=sv_r(f,SVT_TECH, s->ts,    sizeof(TechState)*SCPS_MAX_COUNTRY);
+    ok&=sv_r(f,SVT_STAT, s->sc,    sizeof *s->sc);
+    ok&=sv_r(f,SVT_AGCY, s->ag,    sizeof *s->ag);
+    ok&=sv_r(f,SVT_EVNT, s->ev,    sizeof *s->ev);
+    ok&=sv_r(f,SVT_DRFT, s->drift, sizeof *s->drift);
+    ok&=sv_r(f,SVT_LABO, s->labor, sizeof *s->labor);
+    ok&=sv_r(f,SVT_DIPL, s->dp,    sizeof *s->dp);
+    ok&=sv_r(f,SVT_RTES, s->rn,    sizeof *s->rn);
+    ok&=sv_r(f,SVT_RVLT, s->rs,    sizeof *s->rs);
+    ok&=sv_r(f,SVT_MISS, s->missions, sizeof *s->missions);
+    ok&=sv_r(f,SVT_CAMP, s->camp,  sizeof *s->camp);
+    ok&=sv_r(f,SVT_NAVY, s->navy,  sizeof *s->navy);
+    ok&=sv_r(f,SVT_HARM, s->host->army, sizeof s->host->army);
+    ok&=sv_r(f,SVT_HLVY, s->host->levy, sizeof s->host->levy);
+    ok&=sv_r(f,SVT_AIAC, s->ai,    sizeof(AiActor)*SCPS_MAX_COUNTRY);
+    ok&=sv_r(f,SVT_AION, s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
     { SaveMisc m;
-      ok&=sv_r(f,SV_TAG('M','I','S','C'), &m, sizeof m);
+      ok&=sv_r(f,SVT_MISC, &m, sizeof m);
       if (ok){ s->day=m.day; s->year=m.year; s->player=m.player; s->prev_dawned=m.prev_dawned;
                s->camp_rng=m.camp_rng;
                if (m.race <0 || m.race >=(int32_t)RACE_COUNT)  m.race =(int32_t)RACE_HUMAIN;
                if (m.ethos<0 || m.ethos>=(int32_t)ETHOS_COUNT) m.ethos=0;
                g_player_race=(SpeciesArchetype)m.race; g_setup_ethos=m.ethos;
                memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner); } }
-    ok&=sv_r(f,SV_TAG('I','T','R','D'), NULL,0); ok&=intertrade_load(f);
-    ok&=sv_r(f,SV_TAG('A','G','Y','S'), NULL,0); ok&=agency_load(f);
-    ok&=sv_r(f,SV_TAG('D','P','L','S'), NULL,0); ok&=diplo_load_statics(f);
-    ok&=sv_r(f,SV_TAG('F','A','C','T'), NULL,0); ok&=faction_load(f);
-    ok&=sv_r(f,SV_TAG('C','R','D','T'), NULL,0); ok&=credit_load(f);   /* dette : g_creditor[] */
-    ok&=sv_r(f,SV_TAG('P','C','A','P'), NULL,0); ok&=econ_prodcap_load(f);   /* v24 : limiteur de production */
+    ok&=sv_r(f,SVT_ITRD, NULL,0); ok&=intertrade_load(f);
+    ok&=sv_r(f,SVT_AGYS, NULL,0); ok&=agency_load(f);
+    ok&=sv_r(f,SVT_DPLS, NULL,0); ok&=diplo_load_statics(f);
+    ok&=sv_r(f,SVT_FACT, NULL,0); ok&=faction_load(f);
+    ok&=sv_r(f,SVT_CRDT, NULL,0); ok&=credit_load(f);   /* dette : g_creditor[] */
+    ok&=sv_r(f,SVT_PCAP, NULL,0); ok&=econ_prodcap_load(f);   /* v24 : limiteur de production */
     if (s->eg) ok&=sv_r(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);   /* v26 : EndgameState (capstone §27) */
     long p1=ftell(f); fclose(f);
     if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;     /* taille/section : refus net */
@@ -4628,6 +4958,7 @@ int main(int argc, char **argv) {
     int  shot_shell = 0;
     bool savetest = false;
     bool shot_cur = false;
+    bool langshot = false;      /* loc §2 : preuve PPM du balisage inline (#tag…#!) + nombre groupé */
     uint32_t shot_seed = 0; bool have_shot_seed = false;
     for (int i=1;i<argc;i++) {
         if (!strcmp(argv[i], "--shot")) shot = true;
@@ -4648,6 +4979,22 @@ int main(int argc, char **argv) {
             printf("[scps] scps_lang.txt écrit (%d entrées) — édite le texte, relance le jeu.\n", nw);
             return nw>0 ? 0 : 1;
         }
+        else if (!strcmp(argv[i], "--dump-readout")) {   /* écrit scps_readout.txt (manifeste de la membrane : bandes/labels/hovers) puis sort */
+            int nb = readout_dump_file("scps_readout.txt");
+            printf("[scps] scps_readout.txt écrit (%d bandes) — manifeste de la membrane (outillage).\n", nb);
+            return nb>0 ? 0 : 1;
+        }
+        else if (!strcmp(argv[i], "--lang-audit")) {  /* loc §3 : confronte un scps_lang.txt au set COMPILÉ (IDs périmés/manquants) */
+            const char *path = (i+1<argc && argv[i+1][0]!='-') ? argv[++i] : "scps_lang.txt";
+            int an = lang_audit_file(path, stdout);
+            return an==0 ? 0 : 1;                      /* 0 = sain, sinon (anomalies ou absent) ≠ 0 */
+        }
+        else if (!strcmp(argv[i], "--dump-fnv")) {    /* loc §3 : manifeste d'empreintes (ID<TAB>hash<TAB>texte) puis sort */
+            int nw = lang_dump_fingerprints("scps_lang.fnv");
+            printf("[scps] scps_lang.fnv écrit (%d entrées).\n", nw);
+            return nw>0 ? 0 : 1;
+        }
+        else if (!strcmp(argv[i], "--langshot")) { shot = true; langshot = true; }  /* loc §2 : preuve PPM balises + nombre groupé */
         else { shot_seed = (uint32_t)strtoul(argv[i], NULL, 10); have_shot_seed = true; }
     }
     g_iso = getenv("SCPS_ISO") ? 1 : 0;   /* vue isométrique : défaut OFF (toggle en jeu) */
@@ -4709,6 +5056,9 @@ int main(int argc, char **argv) {
     else fprintf(stderr,"[scps] settlements : %s absent.\n", SCPS_SETTLE_FILE);
     g_cover_tex = load_despilled_bmp(ren, SCPS_COVER_FILE);
     if (g_cover_tex) printf("[scps] %s chargé (route-cover).\n", SCPS_COVER_FILE);
+    g_port_tex = load_despilled_bmp(ren, SCPS_PORT_FILE);
+    if (g_port_tex) printf("[scps] %s chargé (ports orientés).\n", SCPS_PORT_FILE);
+    softblob_build(ren);                  /* glow doux pour le raccord mer des villes côtières */
 #ifdef SCPS_DEV
     dev_overlay_init(win, ren);   /* §6 : l'overlay de dev (F3) — build -DSCPS_DEV seul */
 #endif
@@ -4729,6 +5079,81 @@ int main(int argc, char **argv) {
         g_font_small = TTF_OpenFont(font_paths[i], 10);
     }
     if (!g_font) fprintf(stderr, "[scps] police introuvable — panneau sans texte\n");
+
+    /* §LANGSHOT (loc §2/§1) — preuve autonome, headless : on peint sur fond noir
+     * (1) un nombre GROUPÉ via tr_fmt {0|n}, (2) le MÊME mot en clair puis balisé
+     * `#hot …#!`, et on VÉRIFIE par les pixels que (a) les deux versions ont la
+     * MÊME largeur (les marqueurs ne s'affichent pas) et (b) la version balisée
+     * porte la teinte « hot » (rouge) là où la claire est en cuivre. Écrit
+     * scps_langshot.ppm + un verdict, puis sort — aucun monde généré. */
+    if (langshot){
+        int LW=560, LH=160;
+        SDL_Texture *rt = SDL_CreateTexture(ren, SDL_PIXELFORMAT_ARGB8888,
+                                            SDL_TEXTUREACCESS_TARGET, LW, LH);
+        if (!rt){ fprintf(stderr,"[langshot] pas de cible de rendu\n"); return 1; }
+        SDL_SetRenderTarget(ren, rt);
+        SDL_SetRenderDrawColor(ren, 0x0a,0x0e,0x16,0xff);
+        SDL_RenderClear(ren);
+
+        /* (1) nombre groupé — via une surcharge runtime à spec, sur une clé porteuse. */
+        char gbuf[64];
+        lang_dump_file(".langshot_lang.txt");                  /* base éditable */
+        { FILE *f=fopen(".langshot_lang.txt","ab");            /* on AJOUTE l'override à spec */
+          if (f){ fputs("STR_DIPLO_SCORE_FMT\tan-0 : {0|n} habitants\n", f); fclose(f); } }
+        lang_clear_overrides(); lang_load_file(".langshot_lang.txt");
+        tr_fmt(gbuf,sizeof gbuf, STR_DIPLO_SCORE_FMT, "48000");
+        draw_text(ren, g_font, 16, 14, COL_COPPER, gbuf);      /* doit lire « an-0 : 48 000 habitants » */
+        lang_clear_overrides();                                /* on revient aux défauts compilés */
+
+        /* (2) plain vs balisé — même contenu, pour la mesure de largeur. Littéraux
+         * HORS du site draw_text (variables) : c'est de l'outillage, pas de l'UI
+         * livrée — le cliquet lang-check n'a pas à les compter. */
+        const char *plain  = "Marche engorge";
+        const char *tagged = "#hot Marche engorge#!";
+        const char *coldln = "flux #cold -9 500#! ce trimestre";
+        int wp = text_w(g_font, plain);                        /* largeur de référence (sans balise) */
+        draw_text(ren, g_font, 16, 56, COL_COPPER, plain);
+        draw_text(ren, g_font, 16, 92, COL_COPPER, tagged);    /* le segment doit virer au rouge, sans marqueurs */
+        draw_text(ren, g_font, 16, 122, COL_PARCH, coldln);    /* un froid (bleu) à côté, pour l'image */
+
+        /* lecture des pixels : largeur réelle de la ligne balisée + présence du rouge. */
+        uint32_t *px = (uint32_t*)malloc((size_t)LW*LH*4);
+        int verdict_w=0, verdict_red=0;
+        if (px && SDL_RenderReadPixels(ren, NULL, SDL_PIXELFORMAT_ARGB8888, px, LW*4)==0){
+            /* largeur de l'encre sur la rangée balisée (y≈92..104) : dernière colonne non-fond */
+            int last_plain=0, last_tag=0;
+            for (int y=58; y<74; y++) for (int x2=16; x2<LW; x2++){
+                uint32_t c=px[y*LW+x2]; if ((c&0xffffff)!=0x0a0e16 && (c&0xffffff)!=0) if (x2>last_plain) last_plain=x2;
+            }
+            for (int y=94; y<110; y++) for (int x2=16; x2<LW; x2++){
+                uint32_t c=px[y*LW+x2]; if ((c&0xffffff)!=0x0a0e16 && (c&0xffffff)!=0) if (x2>last_tag) last_tag=x2;
+            }
+            /* les deux fins d'encre doivent coïncider (à 3 px près) : marqueurs invisibles */
+            verdict_w = (last_plain>0 && abs(last_tag-last_plain)<=3);
+            /* présence d'un pixel franchement ROUGE (R≫G,B) sur la rangée balisée */
+            for (int y=94; y<110 && !verdict_red; y++) for (int x2=16; x2<LW; x2++){
+                uint32_t c=px[y*LW+x2];
+                int r=(c>>16)&0xff, g=(c>>8)&0xff, b=c&0xff;
+                if (r>120 && r> g+40 && r> b+40){ verdict_red=1; break; }
+            }
+            /* PPM (RGB) pour l'œil */
+            FILE *f=fopen("scps_langshot.ppm","wb");
+            if (f){ fprintf(f,"P6\n%d %d\n255\n",LW,LH);
+                for (int i2=0;i2<LW*LH;i2++){ uint32_t c=px[i2];
+                    unsigned char rgb[3]={(unsigned char)((c>>16)&0xff),(unsigned char)((c>>8)&0xff),(unsigned char)(c&0xff)};
+                    fwrite(rgb,1,3,f); }
+                fclose(f); }
+        }
+        free(px);
+        SDL_SetRenderTarget(ren, NULL);
+        remove(".langshot_lang.txt");
+        printf("[langshot] nombre groupe   : \"%s\"\n", gbuf);
+        printf("[langshot] largeur plain=%d (reference text_w=%d)\n", verdict_w, wp);
+        printf("[langshot] marqueurs invisibles (largeur claire==balisee) : %s\n", verdict_w?"OUI":"NON");
+        printf("[langshot] segment colore en rouge (#hot) detecte         : %s\n", verdict_red?"OUI":"NON");
+        printf("[langshot] image : scps_langshot.ppm\n");
+        return (verdict_w && verdict_red) ? 0 : 1;
+    }
 
     /* Simulation branchée sous la carte (alimente bandeau + panneau). */
     Sim sim = {0};
@@ -4967,7 +5392,7 @@ int main(int argc, char **argv) {
             render_map(world, pb.pixels, pb.w, pb.h, &rp, smode);
             pixbuf_upload(&pb);
             if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
-            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); }   /* rivières chaînées + décors, SOUS les frontières */
+            if (sim.ready) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 0); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 1); }   /* calques : routes → villes → habillage → canopées, SOUS les frontières */
             if (sim.ready) borders_draw(ren, &cam, world, &sim, smode, selected, win_w, win_h);  /* N3.1 : la preuve par capture */
             if (mm_pb.pixels){ RenderParams mmp=rp; mmp.selected_prov=-1; mmp.screen_strokes=false; mmp.iso=false;  /* minicarte : top-down */
                 minimap_fit(&mmp.cam_scale,&mmp.cam_ox,&mmp.cam_oy);
@@ -5575,7 +6000,7 @@ int main(int argc, char **argv) {
         SDL_RenderClear(ren);
         if (pb.tex) SDL_RenderCopy(ren, pb.tex, NULL, NULL);
         /* décors NATURE (pack display-only) : sur le terrain bléité, SOUS les frontières/labels. */
-        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); }
+        if (sim.ready && g_gs==GS_PLAYING) { draw_map_rivers(ren, world, &cam, win_w, win_h); draw_map_roads(ren, world, sim.rn, &cam, win_w, win_h); draw_map_settlements(ren, world, sim.econ, &cam, win_w, win_h); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 0); draw_map_dressing(ren, world, sim.econ, &cam, win_w, win_h, 1); }   /* calques : routes → villes → habillage → canopées */
         /* N3.1 — strokes de frontière en espace écran : province 2px / région 3px /
          * pays 5px, constants à TOUT zoom, posés PAR-DESSUS le terrain bléité et
          * SOUS la sélection/glyphes/étiquettes (z-order §2c). */

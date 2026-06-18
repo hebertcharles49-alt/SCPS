@@ -1,11 +1,27 @@
 /*
  * save_io_demo.c — banc auto-vérifiant : compresse/décompresse un bloc test et
- * vérifie le CRC32 round-trip (brief build §9.5). Sortie ≠ 0 si échec.
+ * vérifie le CRC32 round-trip (brief build §9.5) + l'ÉCRITURE ATOMIQUE (un échec
+ * d'écriture ne corrompt pas le fichier existant). Sortie ≠ 0 si échec.
  */
+#ifndef _WIN32
+# define _POSIX_C_SOURCE 200809L   /* mkdir/rmdir visibles sous -std=c99 strict */
+#endif
 #include "scps_save_io.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+# include <direct.h>
+#else
+# include <sys/stat.h>
+# include <unistd.h>
+#endif
+
+/* lit tout un fichier en mémoire ; renvoie la longueur (-1 si absent). */
+static long slurp(const char *path, unsigned char *out, long cap){
+    FILE *f=fopen(path,"rb"); if (!f) return -1;
+    long n=(long)fread(out,1,(size_t)cap,f); fclose(f); return n;
+}
 
 static int pass=0, fail=0;
 static void check(const char *what, int ok){
@@ -46,6 +62,45 @@ int main(void){
     { uint32_t a=scps_crc32("SCPS",4), a2=scps_crc32("SCPS",4), b=scps_crc32("SCQS",4);
       check("crc32 est déterministe (même entrée → même empreinte)", a==a2 && a!=0);
       check("crc32 est sensible (un octet diffère → empreinte différente)", a!=b); }
+
+    /* ── ÉCRITURE ATOMIQUE : le slot existant SURVIT à un échec d'écriture ──
+     * On écrit une 1re version (l'« ancienne sauvegarde »), puis on FORCE l'échec
+     * de la passe atomique (le .tmp ne peut pas naître car un RÉPERTOIRE squatte
+     * son chemin) et on vérifie que l'ancien fichier reste INTACT, octet pour
+     * octet. Enfin, une écriture saine REMPLACE bien le contenu. */
+    printf("── écriture atomique (write-then-rename) ──\n");
+    { const char *path   = "build/sio_atomic.bin";
+      const char *blocker= "build/sio_atomic.bin.tmp";   /* doit matcher <path>.tmp */
+      const unsigned char v1[] = "ANCIENNE SAUVEGARDE — ne doit PAS être corrompue";
+      const unsigned char v2[] = "NOUVELLE SAUVEGARDE";
+      remove(path); rmdir(blocker); remove(blocker);
+
+      bool w1 = save_write_atomic(path, v1, sizeof v1);
+      check("1re écriture atomique réussit", w1);
+      unsigned char rb[256]; long rn = slurp(path, rb, sizeof rb);
+      check("le fichier porte la 1re version", rn==(long)sizeof v1 && !memcmp(rb,v1,sizeof v1));
+      check("aucun .tmp résiduel après succès", slurp(blocker, rb, sizeof rb) < 0);
+
+      /* Sabotage : un RÉPERTOIRE au chemin du .tmp ⇒ fopen(.tmp,"wb") échoue ⇒
+       * la passe atomique renonce SANS toucher `path`. */
+#ifdef _WIN32
+      int md = _mkdir(blocker);
+#else
+      int md = mkdir(blocker, 0755);
+#endif
+      bool w2 = (md==0) ? save_write_atomic(path, v2, sizeof v2) : true;
+      check("2e écriture atomique ÉCHOUE (le .tmp est bloqué)", md==0 && !w2);
+      rn = slurp(path, rb, sizeof rb);
+      check("l'ANCIEN fichier a SURVÉCU intact (échec non destructif)",
+            rn==(long)sizeof v1 && !memcmp(rb,v1,sizeof v1));
+      rmdir(blocker);
+
+      /* Le sabotage levé, une écriture saine remplace bien le contenu. */
+      bool w3 = save_write_atomic(path, v2, sizeof v2);
+      rn = slurp(path, rb, sizeof rb);
+      check("une écriture saine REMPLACE le contenu (atomicité OK)",
+            w3 && rn==(long)sizeof v2 && !memcmp(rb,v2,sizeof v2));
+      remove(path); }
 
     free(src); free(dst); free(zip);
     printf("══ BILAN : %d réussis, %d échoués ══\n", pass, fail);

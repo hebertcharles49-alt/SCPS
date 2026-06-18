@@ -400,4 +400,14 @@ const char *label_lignee(BandLignee b);    const char *hover_lignee(void);
 const char *label_agitation(BandAgitation b); const char *hover_agitation(void);
 const char *label_foi(BandFoi b);          const char *hover_foi(void);
 
+/* ===================================================================== */
+/* MANIFESTE DE READOUT — l'outillage de la membrane (--dump-readout)      */
+/* ===================================================================== */
+/* Écrit, en texte lisible, l'INVENTAIRE de tout ce que le renderer peut lire
+ * de la membrane : pour chaque BANDE, son label_X par valeur + son hover_X
+ * (la définition) ; puis chaque MetricReadout (le concept 0-100 + sa déf).
+ * OUTILLAGE d'ingénieur (jamais face-joueur) : texte FR libre, hors tables.
+ * Retourne le nombre de bandes écrites (> 0 si OK), ou -1 si fichier illisible. */
+int readout_dump_file(const char *path);
+
 #endif /* SCPS_READOUT_H */

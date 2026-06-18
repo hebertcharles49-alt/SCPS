@@ -29,6 +29,9 @@ struct EventCtx {
 /* ---- Utilitaires ------------------------------------------------------ */
 static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
 static inline float absf(float v){ return v<0?-v:v; }
+/* §G2 — fwd : un fait NOTABLE inscrit une MÉMOIRE (l'âge en est un, défini plus haut
+ * que le bloc directeur ⇒ on annonce le ressort de mémoire ici). */
+static void dir_remember(Director *D, int day, DirMemKind kind, int subject, float weight);
 static uint32_t xs32(uint32_t *s){ uint32_t x=*s; x^=x<<13; x^=x>>17; x^=x<<5; return *s=x?x:1u; }
 static float frand(uint32_t *s){ return (float)(xs32(s)&0xffffffu)/(float)0x1000000u; }
 
@@ -580,6 +583,9 @@ static void age_dawn(EventsState *ev, AgeId a, World *w, WorldEconomy *econ, Wor
     apply_effect(&cx, EV_WORLD, 0, &e);
     ev->ages.dawned[a]=true; ev->ages.last_dawned=(int)a;
     ev->ages.last_dawn_year = ev->ages.days_elapsed/365;   /* horodate l'avènement */
+    /* §G2 — un ÂGE est le fait le PLUS notable : MÉMOIRE durable de poids plein
+     * (subject = -1, échelle monde) → un présage l'évoquera plus tard. */
+    dir_remember(&ev->director, ev->ages.days_elapsed, DMEM_AGE, -1, 1.0f);
 }
 
 bool events_check_ages(EventsState *ev, World *w, WorldEconomy *econ,
@@ -640,6 +646,111 @@ const char *director_event_name(int id){
 bool  director_is_destab(int id){ return (id>=0&&id<DIR_EV_COUNT) && id<DIR_STAB_FIRST; }
 int   director_fired(const EventsState *ev,int id){ return (id>=0&&id<DIR_EV_COUNT)?ev->director.fired[id]:0; }
 float director_temperature(const EventsState *ev){ return ev->director.last_T; }
+
+/* ===================================================================== */
+/* §G2 — LE DIRECTEUR-AMPLITUDE (la boucle « tale »)                      */
+/* ===================================================================== */
+/* Le principe (§G2) : un DIRECTEUR NARRATIF déterministe par-dessus le directeur
+ * d'événements. Quatre ressorts, tous SÉRIALISÉS (dans Director, donc l'EVNT blob) :
+ *   1. adapt_days — un INTÉGRATEUR DE TRAUMATISME : il MONTE sous les chocs (la
+ *      température T agrège DÉJÀ guerre/famine/révolte/fracture, §F1) et REDESCEND
+ *      au calme par demi-vie. Pas de hasard : T est lue de l'état du monde.
+ *   2. amplitude = f(adapt_days) — l'amplitude « dramatique » [0..1], HAUTE juste
+ *      après un choc, BASSE au ronron (saturation douce de adapt_days).
+ *   3. budget — des points de mise en scène ∝ POP·RICHESSE·TEMPS (un monde riche,
+ *      peuplé, âgé en accumule plus) ; ils financent les présages.
+ *   4. la boucle TALE — un fait NOTABLE (événement dirigé / âge) laisse une MÉMOIRE
+ *      durable (anneau) qui, plus tard, RESSURGIT en AUGURE/PRÉSAGE quand budget &
+ *      amplitude le permettent. Le présage dépense du budget : la trace nourrit le récit.
+ *
+ * Lectures des tunables (registre J, §G2) ; bornes dures partout (sérialisé ⇒ revalidé). */
+static inline float ampl_charge_per_day(void){ return tune_f("AMPL_TRAUMA_CHARGE",180.f)/365.f; }
+static inline float ampl_trauma_max(void){ return tune_f("AMPL_TRAUMA_MAX",2000.f); }
+
+/* L'amplitude dérivée du traumatisme : saturation douce adapt/(adapt+SCALE) ∈ [0..1[.
+ * adapt=0 → 0 (calme plat) ; adapt=SCALE → 0.5 ; adapt≫ → →1 (le monde vibre). */
+static float ampl_from_adapt(float adapt){
+    float scale = tune_f("AMPL_TRAUMA_SCALE",500.f); if (scale<1.f) scale=1.f;
+    if (adapt<0.f) adapt=0.f;
+    return clampf(adapt/(adapt+scale), 0.f, 1.f);
+}
+
+/* Inscrit un fait NOTABLE dans l'anneau de mémoire (NOTABLE → MÉMOIRE durable). */
+static void dir_remember(Director *D, int day, DirMemKind kind, int subject, float weight){
+    if (D->mem_head<0 || D->mem_head>=DIR_MEM_CAP) D->mem_head=0;   /* sérialisé : on borne */
+    DirMemory *m=&D->mem[D->mem_head];
+    m->day=day; m->kind=(int)kind; m->subject=subject; m->weight=weight;
+    D->mem_head=(D->mem_head+1)%DIR_MEM_CAP;
+}
+int director_memories(const EventsState *ev){
+    const Director *D=&ev->director; int n=0;
+    for (int i=0;i<DIR_MEM_CAP;i++) if (D->mem[i].day>0 && D->mem[i].kind!=DMEM_NONE) n++;
+    return n;
+}
+float director_amplitude(const EventsState *ev){ return ev->director.amplitude; }
+float director_adapt_days(const EventsState *ev){ return ev->director.adapt_days; }
+float director_budget(const EventsState *ev){ return ev->director.budget; }
+int   director_omens(const EventsState *ev){ return ev->director.omens; }
+
+/* Le PAS d'amplitude (§G2) — intègre le traumatisme depuis T, recalcule amplitude
+ * & budget, et tente un présage. DÉTERMINISTE (aucune fonction du hasard). Exposé
+ * au banc (director_amplitude_step) ; appelé en interne par le tick du directeur. */
+static bool director_amplitude_advance(Director *D, int day, float T, double pop, double gold, int days){
+    if (days<1) days=1;
+    /* 1. INTÉGRATEUR DE TRAUMATISME : charge ∝ T (le choc), décharge par demi-vie. */
+    float chg = ampl_charge_per_day()*clampf(T,0.f,1.f)*(float)days;        /* le choc REMPLIT */
+    float half = tune_f("AMPL_TRAUMA_HALF",900.f); if (half<1.f) half=1.f;
+    float keep = expf(-0.69314718f*(float)days/half);                       /* le calme VIDE (demi-vie) */
+    D->adapt_days = clampf(D->adapt_days*keep + chg, 0.f, ampl_trauma_max());
+    /* 2. AMPLITUDE = f(adapt_days). */
+    D->amplitude = ampl_from_adapt(D->adapt_days);
+    if (D->amplitude > D->max_amplitude) D->max_amplitude = D->amplitude;
+    /* 3. BUDGET ∝ POP·RICHESSE·TEMPS (le monde riche/peuplé/âgé met plus en scène). */
+    if (pop<0.0)  pop=0.0;
+    if (gold<0.0) gold=0.0;
+    float yfrac = (float)days/365.f;
+    float gain = (tune_f("AMPL_BUDGET_POP",0.02f)*(float)(pop/1000.0)
+                + tune_f("AMPL_BUDGET_GOLD",0.01f)*(float)(gold/1000.0)) * yfrac;
+    D->budget = clampf(D->budget + gain, 0.f, tune_f("AMPL_BUDGET_CAP",400.f));
+    /* 4. LA BOUCLE TALE : une MÉMOIRE durable RESSURGIT en PRÉSAGE quand le monde
+     *    vibre (amplitude ≥ seuil) ET que le budget paie. On choisit le plus VIEUX
+     *    fait encore en mémoire (un présage évoque le passé, pas l'écho immédiat) et
+     *    on le « consume » (case vidée) : la trace a nourri le récit. Déterministe. */
+    bool emitted=false;
+    float cost = tune_f("AMPL_OMEN_COST",60.f); if (cost<1.f) cost=1.f;
+    if (D->amplitude >= tune_f("AMPL_OMEN_AMPL",0.35f) && D->budget >= cost){
+        int oldest=-1, oldest_day=0;
+        for (int i=0;i<DIR_MEM_CAP;i++){
+            const DirMemory *m=&D->mem[i];
+            if (m->day<=0 || m->kind==DMEM_NONE) continue;
+            if (m->day >= day) continue;                  /* le présage ÉVOQUE le passé révolu */
+            if (oldest<0 || m->day<oldest_day){ oldest=i; oldest_day=m->day; }
+        }
+        if (oldest>=0){
+            D->budget -= cost;                            /* le présage SE PAIE sur le budget */
+            D->mem[oldest].day=0; D->mem[oldest].kind=DMEM_NONE;  /* consommé (la trace a parlé) */
+            D->omens++;
+            emitted=true;
+        }
+    }
+    return emitted;
+}
+bool director_amplitude_step(EventsState *ev, float T, double pop, double gold, int days){
+    return director_amplitude_advance(&ev->director, ev->ages.days_elapsed, T, pop, gold, days);
+}
+
+/* §G2 — REVALIDATION du directeur-amplitude désérialisé (la garde de save_sane). */
+bool director_save_sane(const EventsState *ev, int max_subject){
+    if (!ev) return false;
+    const Director *D=&ev->director;
+    if (D->mem_head < 0 || D->mem_head >= DIR_MEM_CAP) return false;   /* index d'écriture de l'anneau */
+    for (int i=0;i<DIR_MEM_CAP;i++){
+        if (D->mem[i].kind < 0 || D->mem[i].kind >= DMEM_KIND_COUNT) return false;
+        if (D->mem[i].subject < -1 || D->mem[i].subject >= max_subject) return false;
+    }
+    if (D->omens < 0) return false;
+    return true;
+}
 
 /* ---- LA TEMPÉRATURE T (F1) : 0 = ronron, 1 = chaos ---------------------- */
 static int dir_wars_active(const DiploState *dp, const World *w){
@@ -841,7 +952,20 @@ static void dir_apply(EventCtx *cx, int id, int subject, int day){
     }
 }
 
-/* La boucle du directeur : siècle glissant → cadence → T → pool → tir (un seul). */
+/* §G2 — POP & RICHESSE du monde (les dimensions du budget de mise en scène).
+ * pop = Σ strata sur les régions colonisées ; gold = Σ or des pays vivants. */
+static void dir_world_scale(const World *w, const WorldEconomy *econ, double *out_pop, double *out_gold){
+    double pop=0.0, gold=0.0;
+    for (int r=0;r<econ->n_regions;r++){
+        if (econ->region[r].owner<0) continue;
+        for (int k=0;k<CLASS_COUNT;k++) pop += econ->region[r].strata[k].pop;
+    }
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+        if (w->country[c].role!=POLITY_UNCLAIMED){ double g=econ_country_gold(econ,c); if (g>0.0) gold+=g; }
+    *out_pop=pop; *out_gold=gold;
+}
+
+/* La boucle du directeur : siècle glissant → cadence → T → AMPLITUDE → pool → tir. */
 static void director_tick(EventCtx *cx, int days){
     (void)days;
     Director *D=&cx->ev->director; int day=cx->ev->ages.days_elapsed;
@@ -850,8 +974,14 @@ static void director_tick(EventCtx *cx, int days){
         D->century_base_day=day;
     }
     if (day < D->next_check_day) return;
+    int scan_days = day - (D->next_check_day - DIR_CHECK_DAYS);   /* jours réels écoulés depuis le scan précédent */
+    if (scan_days < 1) scan_days = DIR_CHECK_DAYS;
     D->next_check_day = day + DIR_CHECK_DAYS;
     float T = director_compute_T(cx); D->last_T=T; if (T>D->max_T) D->max_T=T;
+    /* §G2 — L'AMPLITUDE AVANCE À CHAQUE SCAN (même au calme : l'intégrateur DÉCROÎT
+     * sinon). Elle dimensionne aussi la trace : un fait NOTABLE pèse ∝ amplitude. */
+    { double wpop=0.0, wgold=0.0; dir_world_scale(cx->w,cx->econ,&wpop,&wgold);
+      director_amplitude_advance(D, day, T, wpop, wgold, scan_days); }
     int want;
     if      (T > tune_f("DIR_T_HOT",DIR_T_HOT))  want=+1;                    /* trop chaud → stabilisateur */
     else if (T < tune_f("DIR_T_COLD",DIR_T_COLD)) want=-1;                    /* trop froid → déstabilisateur */
@@ -885,6 +1015,10 @@ static void director_tick(EventCtx *cx, int days){
     D->last_fired_day[pick]   = day;                      /* … et pénalité ÷4 pour 30 ans */
     D->fired[pick]++; if (want_destab) D->fired_destab++; else D->fired_stab++;
     cx->ev->last_id=-1; cx->ev->last_name=director_event_name(pick); cx->ev->n_fired++;
+    /* §G2 — la boucle TALE : l'événement dirigé est un fait NOTABLE → MÉMOIRE durable
+     * (pondérée par l'amplitude du moment). Plus tard, au gré du budget, il RESSURGIT
+     * en PRÉSAGE. Le sujet est gardé tel quel (pays/région/continent/Amnistie a·MAX+b). */
+    dir_remember(D, day, want_destab?DMEM_DESTAB:DMEM_STAB, pick_subj, 0.5f + 0.5f*D->amplitude);
 }
 
 /* ===================================================================== */

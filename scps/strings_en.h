@@ -346,4 +346,17 @@
     X(STR_PMOD_HALIEU_EFF,     "Shoals of fish swarm offshore: the catch feeds a populous coast.") \
     X(STR_PMOD_ADMIN_NOM,      "Good Governance") \
     X(STR_PMOD_ADMIN_EFF,      "Solid institutions keep order and services: sheltered from disorder, families prosper.") \
+    /* GLOSSARY concept TITLES (hover_*) — twin order; definitions reuse STR_HOVER_*. */ \
+    X(STR_GLOSS_STAB,      "Stability") \
+    X(STR_GLOSS_LEGIT,     "Legitimacy") \
+    X(STR_GLOSS_CONCORDE,  "Cohesion") \
+    X(STR_GLOSS_ASSISE,    "Footing") \
+    X(STR_GLOSS_PROSP,     "Prosperity") \
+    X(STR_GLOSS_MARCHE,    "Market") \
+    X(STR_GLOSS_AISANCE,   "Affluence") \
+    X(STR_GLOSS_HUMEUR,    "Mood") \
+    X(STR_GLOSS_LIGNEE,    "Lineage") \
+    X(STR_GLOSS_AGITATION, "Unrest") \
+    X(STR_GLOSS_SAVOIR,    "Knowledge") \
+    X(STR_GLOSS_PRESAGE,   "Omen") \
 

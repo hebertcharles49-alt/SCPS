@@ -56,11 +56,20 @@ bool routes_order(RouteNetwork *rn, const World *w, const WorldEconomy *econ,
     t->days_done=0; t->open=false; t->yield=0.f;
     t->sea_days=sea_days; t->days_ab=0.f; t->days_ba=0.f;
     t->fluvial=0; t->flow=0.f; t->pirate_press=0.f;
+    t->choke_region=-1; t->choke_block=0.f;
     if (maritime && w){
         int ax,ay,bx,by;
         if (world_region_sea_anchor(w,ra,&ax,&ay) && world_region_sea_anchor(w,rb,&bx,&by)){
             t->days_ab=world_sea_days_capped(w,ax,ay,bx,by, 2.f*SEA_ROUTE_MAX_DAYS);  /* route acceptée : legs < borne → exact */
             t->days_ba=world_sea_days_capped(w,bx,by,ax,ay, 2.f*SEA_ROUTE_MAX_DAYS);
+            /* WG — LE DÉTROIT que cette route FRANCHIT (géographie statique, posée une
+             * fois) : son goulet est sur le chemin des deux ancres ⇒ la région-flanc le
+             * contrôle, et son propriétaire encaisse le péage (intertrade). */
+            int ck=world_route_chokepoint(w,ax,ay,bx,by);
+            if (ck>=0){
+                const Chokepoint *tab=NULL; int nck=world_chokepoints(w,&tab);
+                if (tab && ck<nck){ t->choke_region=tab[ck].region; t->choke_block=tab[ck].blockade; }
+            }
         }
     }
     /* LA VOIE D'EAU INTÉRIEURE (commerce asym. §4) : si les deux régions vivent
