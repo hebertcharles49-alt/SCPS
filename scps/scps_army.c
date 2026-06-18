@@ -35,13 +35,25 @@ static const UnitDef UNITS[U_COUNT] = {
     [U_ARBALETE]  = { "Arbalétrier", LAB_LABORER, W_ARBALETE,  0.42f,  90.f, 2.f, 4.f },
     [U_CAV_LEGERE]= { "Cav. légère", LAB_ELITE,   W_MONTURE_L, 0.45f,  75.f, 8.f, 6.f },
     [U_CAV_LOURDE]= { "Cav. lourde", LAB_ELITE,   W_MONTURE_H, 0.78f,  95.f, 6.f, 7.f },
-    [U_MAGE]      = { "Mage",        LAB_ELITE,   W_BATON,     0.58f,  55.f, 4.f, 6.f },
+    [U_MAGE]      = { "Sorcier",     LAB_ELITE,   W_BATON,     0.58f,  55.f, 4.f, 6.f },
     /* F5 — hallebardier (anti-cav drillé, les DEUX charges), arquebusier (feu perce-armure),
      * alchimiste (feu de soutien, fragile), garde runique (élite arcane mêlée, incassable). */
     [U_HALLEBARDIER]={ "Hallebardier", LAB_LABORER, W_HALLEBARDE, 0.55f, 110.f, 2.f, 4.f },
     [U_ARQUEBUSIER]= { "Arquebusier",  LAB_LABORER, W_ARQUEBUSE,  0.52f,  78.f, 2.f, 4.f },
     [U_ALCHIMISTE] = { "Alchimiste",   LAB_LABORER, W_ALCHIMIE,   0.45f,  65.f, 3.f, 5.f },
-    [U_GARDE_RUNIQUE]={"Garde runique",LAB_ELITE,   W_RUNES,      0.72f, 120.f, 4.f, 7.f },
+    [U_GARDE_RUNIQUE]={"Chaman",       LAB_ELITE,   W_RUNES,      0.72f, 120.f, 4.f, 7.f },
+    /* Roster 22 — 10 unités appendues (stats dans l'échelle établie : disc 0.12-0.85,
+     * moral 58-130, mvt 1-8, cmd 2-7). Le CONTRE prime la stat brute (cf. la matrice). */
+    [U_ARBALETE_LOURDE]={"Arbalétrier lourd",LAB_LABORER,W_ARBALETE_LOURDE,0.48f, 95.f, 1.f, 4.f },
+    [U_BERSERKER]   = { "Berserker",      LAB_LABORER, W_HACHE,        0.22f,  60.f, 4.f, 5.f },
+    [U_LANCIER_CHOC]= { "Lancier de choc",LAB_LABORER, W_LANCE_LOURDE, 0.60f, 110.f, 2.f, 4.f },
+    [U_MILICE]      = { "Milice",         LAB_LABORER, W_FORTUNE,      0.12f,  60.f, 3.f, 2.f },
+    [U_HARCELEUR]   = { "Harceleur",      LAB_LABORER, W_ARC_COURT,    0.22f,  58.f, 7.f, 3.f },
+    [U_TRAQUEUR]    = { "Traqueur",       LAB_LABORER, W_ARC_CHASSE,   0.30f,  68.f, 5.f, 4.f },
+    [U_LAME_FRANCHE]= { "Lame franche",   LAB_LABORER, W_EPEE_LOUEE,   0.50f,  88.f, 4.f, 5.f },
+    [U_GARDE_ESCORTE]={"Garde d'escorte", LAB_LABORER, W_PERTUISANE,   0.55f, 130.f, 2.f, 4.f },
+    [U_CAV_CUIRASSEE]={"Cav. cuirassée",  LAB_ELITE,   W_MONTURE_CUIRASSEE,0.85f,105.f,5.f, 7.f },
+    [U_CAV_RAID]    = { "Cav. de raid",   LAB_ELITE,   W_MONTURE_RAID, 0.42f,  70.f, 8.f, 6.f },
 };
 const UnitDef *unit_def(UnitType t){ return (t>=0&&t<U_COUNT)?&UNITS[t]:NULL; }
 const char    *unit_name(UnitType t){ return (t>=0&&t<U_COUNT)?UNITS[t].name:"?"; }
@@ -56,6 +68,8 @@ TechId unit_tech_gate(UnitType t){
         case U_MAGE:          return TECH_MAGIE_BATAILLE;
         case U_ALCHIMISTE:    return TECH_ALCHIMIE;
         case U_HALLEBARDIER:  return TECH_CASERNE;
+        case U_CAV_CUIRASSEE: return TECH_CASTE_MARTIALE;   /* apex monté : palier tardif (spec) */
+        case U_ARBALETE_LOURDE:return TECH_QUALITE_MATERIAUX;/* arbalète à pavois : manufacture fine */
         default:              return TECH_COUNT;          /* base : toujours recrutable */
     }
 }
@@ -63,13 +77,18 @@ TechId unit_tech_gate(UnitType t){
  * UN SEUL POINT DE VÉRITÉ (lu par le warhost à la levée/démob ET le campaign au renfort). */
 Resource unit_res_arm(UnitType t){
     switch(t){
-        case U_PIQUIER: case U_LANCIER: case U_EPEISTE: case U_CAV_LEGERE: return RES_ARMS_LIGHT;
-        case U_CAV_LOURDE: case U_HALLEBARDIER:                             return RES_ARMS_HEAVY;
-        case U_ARCHER: case U_ARBALETE:                                     return RES_ARMS_RANGED;
+        case U_PIQUIER: case U_LANCIER: case U_EPEISTE: case U_CAV_LEGERE:
+        case U_LAME_FRANCHE: case U_CAV_RAID:                               return RES_ARMS_LIGHT;
+        case U_CAV_LOURDE: case U_HALLEBARDIER:
+        case U_BERSERKER: case U_LANCIER_CHOC: case U_GARDE_ESCORTE: case U_CAV_CUIRASSEE:
+                                                                           return RES_ARMS_HEAVY;
+        case U_ARCHER: case U_ARBALETE:
+        case U_ARBALETE_LOURDE: case U_HARCELEUR: case U_TRAQUEUR:          return RES_ARMS_RANGED;
         case U_ARQUEBUSIER:                                                 return RES_FIREARM;
         case U_MAGE:                                                        return RES_MAGE_STAFF;
         case U_ALCHIMISTE:                                                  return RES_ALCHEMIST_KIT;
         case U_GARDE_RUNIQUE:                                               return RES_ENCHANTED_ARMS;
+        case U_MILICE:        /* armes de fortune : aucune catégorie → levée libre (~gratuit) */
         default:                                                            return RES_NONE;
     }
 }
@@ -83,7 +102,9 @@ bool unit_recruitable(const TechState *ts, UnitType t){
  * de combat a->weapons[W_*] se remplit désormais des armes MACRO (RES_ARMS_*) à la
  * levée (warhost), plus de fabrication LRes. Seuls les NOMS subsistent (UI/preview). */
 static const char *WNAMES[W_COUNT]={ "Pique","Lance","Épée","Arc","Arbalète","Monture légère","Destrier","Bâton",
-    "Hallebarde","Arquebuse","Nécessaire d'alchimiste","Armes runiques" };
+    "Hallebarde","Arquebuse","Nécessaire d'alchimiste","Armes runiques",
+    "Arbalète à pavois","Hache à deux mains","Lance lourde","Armes de fortune","Arc court",
+    "Arc de chasse","Épée louée","Pertuisane","Destrier cuirassé","Monture de raid" };
 const char *weapon_name(ArmWeapon wp){ return (wp>=0&&wp<W_COUNT)?WNAMES[wp]:"?"; }
 
 /* ===================================================================== */
@@ -120,6 +141,33 @@ static void build_matrix(void){
         {U_MAGE,U_PIQUIER}, {U_MAGE,U_LANCIER}, {U_MAGE,U_EPEISTE}, {U_MAGE,U_HALLEBARDIER},
         /* l'élite arcane de mêlée défait piétaille et soutien fragile */
         {U_GARDE_RUNIQUE,U_EPEISTE}, {U_GARDE_RUNIQUE,U_PIQUIER}, {U_GARDE_RUNIQUE,U_HALLEBARDIER}, {U_GARDE_RUNIQUE,U_ALCHIMISTE},
+        /* ── Roster 22 : le web des 10 unités appendues (spec design) ──────────── */
+        /* arbalète lourde (pavois) : PERCE l'armure lourde — cav lourde/cuirassée, garde runique/escorte, lancier de choc */
+        {U_ARBALETE_LOURDE,U_CAV_LOURDE}, {U_ARBALETE_LOURDE,U_CAV_CUIRASSEE}, {U_ARBALETE_LOURDE,U_GARDE_RUNIQUE},
+        {U_ARBALETE_LOURDE,U_LANCIER_CHOC}, {U_ARBALETE_LOURDE,U_GARDE_ESCORTE},
+        /* berserker : fauche l'infanterie de ligne — mais sans armure, tombe au tir et à la cavalerie */
+        {U_BERSERKER,U_PIQUIER}, {U_BERSERKER,U_LANCIER}, {U_BERSERKER,U_HALLEBARDIER}, {U_BERSERKER,U_MILICE},
+        {U_ARCHER,U_BERSERKER}, {U_ARBALETE,U_BERSERKER}, {U_CAV_LOURDE,U_BERSERKER},
+        /* lancier de choc : brise TOUTE cavalerie + enfonce l'épée — percé au feu, corrodé à l'alchimie */
+        {U_LANCIER_CHOC,U_CAV_LEGERE}, {U_LANCIER_CHOC,U_CAV_LOURDE}, {U_LANCIER_CHOC,U_CAV_CUIRASSEE},
+        {U_LANCIER_CHOC,U_CAV_RAID}, {U_LANCIER_CHOC,U_EPEISTE},
+        {U_ARQUEBUSIER,U_LANCIER_CHOC}, {U_ALCHIMISTE,U_LANCIER_CHOC},
+        /* harceleur : rattrape et pique les casters (mage/alchimie/garde runique) — piétiné par la cav lourde */
+        {U_HARCELEUR,U_MAGE}, {U_HARCELEUR,U_ALCHIMISTE}, {U_HARCELEUR,U_GARDE_RUNIQUE},
+        {U_CAV_LOURDE,U_HARCELEUR}, {U_CAV_CUIRASSEE,U_HARCELEUR},
+        /* traqueur : tir d'embuscade sur les formations lentes (comme l'archer) — couru-sus par la cavalerie */
+        {U_TRAQUEUR,U_PIQUIER}, {U_TRAQUEUR,U_LANCIER}, {U_TRAQUEUR,U_HALLEBARDIER},
+        {U_CAV_LEGERE,U_TRAQUEUR}, {U_CAV_LOURDE,U_TRAQUEUR},
+        /* garde d'escorte : l'ancre — offensivement médiocre, percée au feu et corrodée à l'alchimie */
+        {U_ARQUEBUSIER,U_GARDE_ESCORTE}, {U_ALCHIMISTE,U_GARDE_ESCORTE},
+        /* cav cuirassée : enfonce presque tout par la MASSE (hampes légères, inf, archer, mage) */
+        {U_CAV_CUIRASSEE,U_PIQUIER}, {U_CAV_CUIRASSEE,U_LANCIER}, {U_CAV_CUIRASSEE,U_EPEISTE},
+        {U_CAV_CUIRASSEE,U_ARCHER}, {U_CAV_CUIRASSEE,U_MAGE},
+        {U_HALLEBARDIER,U_CAV_CUIRASSEE}, {U_ARQUEBUSIER,U_CAV_CUIRASSEE},
+        /* cav de raid : anti-tireur + saccage — arrêtée NET par les hampes, écrasée par la cav lourde */
+        {U_CAV_RAID,U_ARCHER}, {U_CAV_RAID,U_ARBALETE}, {U_CAV_RAID,U_MAGE}, {U_CAV_RAID,U_ALCHIMISTE},
+        {U_PIQUIER,U_CAV_RAID}, {U_LANCIER,U_CAV_RAID}, {U_HALLEBARDIER,U_CAV_RAID}, {U_CAV_LOURDE,U_CAV_RAID},
+        /* milice : le plancher — ne BAT presque rien (aucun BEAT propre ; elle SUBIT) */
     };
     int n=(int)(sizeof(C)/sizeof(C[0]));
     for (int k=0;k<n;k++){

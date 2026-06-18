@@ -4589,7 +4589,13 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 29u           /* v29 : MERGE des deux lignées — le format COMBINE les deux jeux de
+#define SAVE_VERSION 30u           /* v30 : ROSTER 22 — le roster militaire passe de 12 à 22 unités (spec
+                                    * design). ArmyState.weapons[W_COUNT] croît (12→22 slots de tampon de
+                                    * combat) ⇒ sizeof(ArmyState) ⇒ sizeof(WarHost)/Campaign change → blob
+                                    * sv_w plus large → ère antérieure (<v30 refusé). Indices des 12 unités
+                                    * d'origine PRÉSERVÉS (Unit.type sérialisé reste valide), seuls 10 types
+                                    * neufs s'ajoutent au-delà.
+                                    * v29 : MERGE des deux lignées — le format COMBINE les deux jeux de
                                     * changements de struct (donc <v29 refusé) :
                                     *   · (assets/worldgen-graphe) Region GAGNE `harbor` (float) ⇒ sizeof(World) ;
                                     *     TradeRoute GAGNE `choke_region`/`choke_block` ⇒ sizeof(RouteNetwork) ;

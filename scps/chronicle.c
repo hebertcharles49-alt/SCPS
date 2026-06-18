@@ -574,6 +574,8 @@ int main(int argc, char **argv){
                     s.year,u[U_HALLEBARDIER],u[U_ARQUEBUSIER],u[U_ALCHIMISTE],u[U_GARDE_RUNIQUE],u[U_ARCHER],u[U_CAV_LOURDE],u[U_PIQUIER],u[U_EPEISTE]);
             fprintf(stderr,"[FORGEDIAG] PIC (sur le siècle) : hallebardier %ld · arquebusier %ld · alchimiste %ld · garde runique %ld · archer %ld · cav lourde %ld | piquier %ld · épéiste %ld\n",
                     g_peak_u[U_HALLEBARDIER],g_peak_u[U_ARQUEBUSIER],g_peak_u[U_ALCHIMISTE],g_peak_u[U_GARDE_RUNIQUE],g_peak_u[U_ARCHER],g_peak_u[U_CAV_LOURDE],g_peak_u[U_PIQUIER],g_peak_u[U_EPEISTE]);
+            fprintf(stderr,"[FORGEDIAG] PIC roster-22 (les 10 neuves) : arb.lourd %ld · berserker %ld · lancier-choc %ld · milice %ld · harceleur %ld · traqueur %ld · lame-franche %ld · garde-escorte %ld · cuirassée %ld · cav-raid %ld\n",
+                    g_peak_u[U_ARBALETE_LOURDE],g_peak_u[U_BERSERKER],g_peak_u[U_LANCIER_CHOC],g_peak_u[U_MILICE],g_peak_u[U_HARCELEUR],g_peak_u[U_TRAQUEUR],g_peak_u[U_LAME_FRANCHE],g_peak_u[U_GARDE_ESCORTE],g_peak_u[U_CAV_CUIRASSEE],g_peak_u[U_CAV_RAID]);
             { double stk[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)stk[g]=0.0;
               for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
                   for(int g=0;g<RES_COUNT;g++) stk[g]+=s.econ->region[r].stock[g]; }

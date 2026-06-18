@@ -29,7 +29,19 @@ typedef enum {
     U_HALLEBARDIER,  /* lourd, anti-cavalerie ← RES_ARMS_HEAVY */
     U_ARQUEBUSIER,   /* feu, perce l'armure ← RES_FIREARM */
     U_ALCHIMISTE,    /* soutien Fluide ← RES_ALCHEMIST_KIT */
-    U_GARDE_RUNIQUE, /* élite arcane mêlée ← RES_ENCHANTED_ARMS */
+    U_GARDE_RUNIQUE, /* élite arcane mêlée (affichée « Chaman ») ← RES_ENCHANTED_ARMS */
+    /* Roster 22 (spec design) — 10 unités appendues AVANT U_COUNT : indices des 12
+     * préservés (SAVE bump pour la taille du tampon d'armes, pas pour les indices). */
+    U_ARBALETE_LOURDE, /* tir perce-armure lourd à pavois (tech) ← RES_ARMS_RANGED */
+    U_BERSERKER,       /* choc-suicide, torse nu ← RES_ARMS_HEAVY */
+    U_LANCIER_CHOC,    /* lance lourde anti-TOUTE-cavalerie + percée ← RES_ARMS_HEAVY */
+    U_MILICE,          /* masse paysanne, armes de fortune ← RES_NONE (adaptable, ~gratuit) */
+    U_HARCELEUR,       /* escarmouche évasive, anti-poursuite ← RES_ARMS_RANGED */
+    U_TRAQUEUR,        /* tir d'embuscade de terrain ← RES_ARMS_RANGED */
+    U_LAME_FRANCHE,    /* mercenaire polyvalent, soldé en OR ← RES_ARMS_LIGHT */
+    U_GARDE_ESCORTE,   /* ancre défensive, moral incassable ← RES_ARMS_HEAVY */
+    U_CAV_CUIRASSEE,   /* apex du choc, masse pure (tech tardive) ← RES_ARMS_HEAVY */
+    U_CAV_RAID,        /* raid, pillage, anti-tireur ← RES_ARMS_LIGHT */
     U_COUNT
 } UnitType;
 
@@ -37,6 +49,10 @@ typedef enum {
 typedef enum {
     W_PIQUE=0, W_LANCE, W_EPEE, W_ARC, W_ARBALETE, W_MONTURE_L, W_MONTURE_H, W_BATON,
     W_HALLEBARDE, W_ARQUEBUSE, W_ALCHIMIE, W_RUNES,   /* F5 (appendus avant W_COUNT) */
+    /* Roster 22 — armes des 10 unités appendues (NOMS pour l'UI ; un slot de tampon
+     * de combat chacun → W_COUNT croît, d'où le SAVE bump). */
+    W_ARBALETE_LOURDE, W_HACHE, W_LANCE_LOURDE, W_FORTUNE, W_ARC_COURT,
+    W_ARC_CHASSE, W_EPEE_LOUEE, W_PERTUISANE, W_MONTURE_CUIRASSEE, W_MONTURE_RAID,
     W_COUNT
 } ArmWeapon;
 

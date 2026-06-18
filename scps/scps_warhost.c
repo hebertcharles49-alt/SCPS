@@ -19,7 +19,9 @@
  * La distribution de factions du pays (enracinée dans sa pop) pondère la RECETTE
  * de levée ; le moteur ne lit ensuite QUE les unités. Conquérir un peuple déplace
  * la distribution → l'armée dérive avec la société. Colonnes = ordre de UnitType :
- *   PIQ LAN EPE ARC ARB CVL CVH MAG HAL AQB ALC GRU
+ *   PIQ LAN EPE ARC ARB CVL CVH MAG HAL AQB ALC GRU | ABL BSK LCH MIL HRC TRQ LMF GES CVC CVR
+ * (les 10 nouvelles : Arbalète lourde · Berserker · Lancier de choc · Milice · Harceleur ·
+ *  Traqueur · Lame franche · Garde d'escorte · Cav cuirassée · Cav de raid)
  * Lignes = ordre de EthosFaction. Motivé : l'Ordre/Légiste préfère l'arquebuse
  * (l'arme drillée et standardisée de l'arsenal d'État) ; le Conquérant la
  * cavalerie (le choc et la poursuite) ; le Marchand le tir (ne pas saigner le
@@ -27,15 +29,16 @@
  * moral) ; le Transgresseur l'arcane (mage/alchimie/runes — la dette d'entropie) ;
  * le Communautaire la milice (pique + archers de village, défensif). */
 static const float AFF[FAC_COUNT][U_COUNT] = {
-    /* CONQUERANT    */ { 0,2,2,0,0, 3,3,0, 0,0,0,1 },
-    /* MARCHAND      */ { 0,0,0,2,3, 2,0,0, 0,2,1,0 },
-    /* LEGISTE       */ { 1,0,2,0,0, 0,0,0, 3,3,0,0 },
-    /* GARDIEN       */ { 3,1,2,1,1, 0,0,0, 1,0,0,0 },
-    /* TRANSGRESSEUR */ { 0,0,0,0,0, 0,0,3, 0,0,3,3 },
-    /* COMMUNAUTAIRE */ { 3,1,1,2,1, 0,0,0, 0,0,0,0 },
+    /*                     PIQ LAN EPE ARC ARB  CVL CVH MAG  HAL AQB ALC GRU   ABL BSK LCH MIL HRC TRQ LMF GES CVC CVR */
+    /* CONQUERANT    */ { 0,2,2,0,0, 3,3,0, 0,0,0,1,   0,3,0,0,0,0,0,0,3,3 },  /* cavalerie, choc, berserker, cuirassée/raid */
+    /* MARCHAND      */ { 0,0,0,2,3, 2,0,0, 0,2,1,0,   3,0,0,0,2,2,3,0,0,0 },  /* tir, arbalète lourde, harceleur/traqueur, lame franche */
+    /* LEGISTE       */ { 1,0,2,0,0, 0,0,0, 3,3,0,0,   2,0,2,0,0,0,0,3,0,0 },  /* arme drillée : arbalète lourde, lancier de choc, garde d'escorte */
+    /* GARDIEN       */ { 3,1,2,1,1, 0,0,0, 1,0,0,0,   0,0,3,1,0,0,0,2,0,0 },  /* la hampe consacrée : lancier de choc, garde d'escorte, milice */
+    /* TRANSGRESSEUR */ { 0,0,0,0,0, 0,0,3, 0,0,3,3,   0,3,0,0,0,0,0,0,0,2 },  /* l'arcane + le berserker/raid transgressifs */
+    /* COMMUNAUTAIRE */ { 3,1,1,2,1, 0,0,0, 0,0,0,0,   0,0,0,3,2,2,0,0,0,0 },  /* la milice de village + harceleur/traqueur */
 };
 /* garde-fou C99 : si le roster (U_COUNT) ou les factions (FAC_COUNT) changent, AFF DOIT suivre. */
-typedef char aff_dims_check[(FAC_COUNT==6 && U_COUNT==12) ? 1 : -1];
+typedef char aff_dims_check[(FAC_COUNT==6 && U_COUNT==22) ? 1 : -1];
 
 /* unit_res_arm (la catégorie d'arme macro d'une unité) vit dans scps_army.c — un seul point de
  * vérité, partagé entre le warhost (levée/démob) et le campaign (renfort). */
