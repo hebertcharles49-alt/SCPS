@@ -1,17 +1,27 @@
-# SCPS × Godot — le spike
+# SCPS × Godot — le front-end
 
 Le **front-end Godot** qui pilote le **moteur SCPS (C99) inchangé**. Le moteur
 CALCULE (déterministe, byte-reproductible) ; Godot AFFICHE et SAISIT. La frontière
 est la façade C `scps_api` — la membrane, version binding.
 
+**Plan d'ensemble : [`ROADMAP.md`](ROADMAP.md)** (les phases du front ; le moteur
+reste de côté tant qu'on bâtit la présentation).
+
 ```
 godot/
+  ROADMAP.md            les phases du front-end (ce qui demande ou non le moteur)
   src/                  binding C++ (godot-cpp) : la classe Godot `ScpsWorld`
     scps_sim_node.{h,cpp}  passe-plat vers ../scps/scps_api.{h,c}
     register_types.{h,cpp} point d'entrée GDExtension
   SConstruct            bâtit le MOTEUR C + la façade + le binding → libscps.<…>.so
-  project/              le projet Godot 4
-    project.godot · Main.tscn · main.gd · water.gdshader · scps.gdextension
+  project/              le projet Godot 4 (architecture, pas un spike à plat)
+    project.godot          autoload `Sim` + scène principale
+    scps.gdextension       déclare la lib native
+    autoload/sim.gd        SINGLETON : détient ScpsWorld, cadence le temps, signaux
+    main/                  Main.tscn + main.gd : compose carte + UI
+    map/map_view.gd        terrain (render_map) + shader d'eau + Camera2D (zoom/pan)
+    ui/topbar.gd           année · pop · vitesse
+    shaders/water.gdshader la continuité eau↔asset, en shader
 ```
 
 ## Ce que le moteur expose (façade `../scps/scps_api.h`)
@@ -47,20 +57,23 @@ moteur (la liste `CHRONICLE_OBJS` sans chronicle/viewer, + `scps_render` +
 godot --path project          # ou ouvrir project/ dans l'éditeur Godot 4.3+
 ```
 
-Le spike : génère le monde (graine 9), affiche le terrain (`render_map` → texture),
-applique le **shader d'eau** (`water.gdshader`, qui anime la mer depuis la couche
-SEA — la continuité eau↔asset en shader, pas en blit), et avance d'un mois toutes
-les 0,2 s (la pop monte dans le HUD).
+Au lancement (`autoload/sim.gd` → `main/main.gd`) : `Sim` génère le monde
+(graine 9), `MapView` affiche le terrain (`render_map` → texture) sous le
+**shader d'eau** (anime la mer depuis la couche SEA — continuité eau↔asset en
+shader, pas en blit) avec caméra zoom/pan, et `Topbar` montre année · pop · pays.
+Le temps avance selon la vitesse (clic sur le bouton vitesse). Si `libscps` n'est
+pas bâtie, `Sim` le dit dans la console (pas de crash).
 
-## État (spike)
+## État
 
-- ✅ façade C `scps_api` testée sans Godot : `make scps_api_demo` (9/9, REPRODUCTIBLE).
-- ✅ binding C++ compile contre godot-cpp 4.3 ; `libscps.so` lie moteur+façade+binding.
-- ⏳ `advance_days` roule pour l'instant la **colonne économique** (cf. la note
-  fidélité dans `scps_api.h`). Le tick PLEIN (IA/guerre/diplo/endgame, fidèle au
-  hash de chronicle) viendra de l'extraction `chronicle::sim_day → scps_sim` —
+- ✅ **façade C `scps_api`** testée sans Godot : `make scps_api_demo` (9/9, REPRODUCTIBLE).
+- ✅ **binding** C++ compile contre godot-cpp 4.3 ; `libscps.so` lie moteur+façade+binding.
+- ✅ **Phase 1 (carte vivante)** échafaudée : autoload `Sim`, `MapView` (terrain +
+  shader + caméra + modes de carte), `Topbar`. **N'utilise que la façade actuelle —
+  aucune touche moteur.** ⚠ écrit sans runtime Godot ici : à vérifier à l'ouverture.
+- ⏳ `advance_days` roule pour l'instant la **colonne économique** (cf. note fidélité
+  dans `scps_api.h`) ; le tick PLEIN viendra de `chronicle::sim_day → scps_sim`,
   **sans changer la surface de l'API**.
 
-Prochaines marches : panneaux readout (province/pays) en nodes Godot · sprites
-d'armées via `region_centroid` + état campagne · `TileMap` autotiling pour des
-côtes douces · sauvegarde via le format C existant.
+**La suite est dans [`ROADMAP.md`](ROADMAP.md)** (Phase 2 : panneaux readout, dès
+qu'on rouvre le moteur pour 3-4 getters).

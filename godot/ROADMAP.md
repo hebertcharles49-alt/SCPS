@@ -1,0 +1,74 @@
+# SCPS × Godot — feuille de route du front-end
+
+> Le moteur C99 (la sim) **ne bouge pas**. On bâtit l'ŒIL et les MAINS. Chaque
+> phase est marquée **[Godot]** (aucune touche moteur — faisable tout de suite) ou
+> **[+façade]** (demande d'ajouter quelques getters à `scps/scps_api.*` — différé
+> tant qu'« on laisse le moteur de côté »). La règle d'or partout : **zéro logique
+> de simulation côté GDScript**.
+
+---
+
+## Phase 0 — Spike ✅ (fait)
+
+Façade C `scps_api`, binding GDExtension (`ScpsWorld`), `scons` lie `libscps.so`,
+la carte se rend (`render_map`→texture), le shader d'eau anime la mer, ça tique.
+Banc `scps_api_demo` 9/9 (reproductible).
+
+## Phase 1 — La carte vivante **[Godot]** ← *on est là*
+
+Le socle de présentation, **sans toucher au moteur** (n'utilise que la façade
+actuelle).
+- **`Sim` (autoload)** : détient `ScpsWorld`, cadence le temps (vitesse pause/
+  ×1/×2/×3), émet `generated` / `ticked(year)`. Le point d'accès unique au monde.
+- **`MapView`** : terrain (`map_image(mode)`) en texture + `water.gdshader` +
+  `Camera2D` (zoom molette, pan clic-droit) + bascule des **modes de carte**
+  (terrain / politique / régions / pays — déjà dans `map_image`).
+- **`Topbar`** : année · pop · pays · contrôle de vitesse.
+
+Livrable : on génère, on regarde le monde vivre, on navigue. **Aucune dépendance
+moteur nouvelle.**
+
+## Phase 2 — Lire le monde (la membrane → panneaux) **[+façade]**
+
+- *Façade à ajouter* : `province_readout` / `country_readout` (→ `Dictionary`) et
+  un `region_at(x,y)` (picking écran→région). Additif, low-risk.
+- **Sélection** : clic sur la carte → région surlignée.
+- **`ProvincePanel` / `CountryPanel`** : bandes + mots (la membrane), en `Control`
+  nodes. C'est ce qui rend SCPS **jouable**, pas juste regardable.
+
+## Phase 3 — Les acteurs sur la carte **[+façade]**
+
+- *Façade* : getters campagne (`campaign_location/phase/units`) + tiers de ville.
+- **Sprites d'armées** au `region_centroid`, animés selon la phase (marche/assaut).
+- **Villes** par tier au centroïde ; **frontières** (les modes politiques existent).
+
+## Phase 4 — Le spectacle (shaders & particules) **[+façade]**
+
+- *Façade* : `endgame_readout` + accès `sunken[]` / epicentre.
+- **Les fins §27** (EAU/FROID/RONCES) en **shaders** (rift, gel, ronces).
+- **Particules GPU** : écume, neige du Grand Hiver, fumée de siège, sillages.
+- **`TileMap` autotiling** (option) : côtes/routes/rivières lisses — dissout le
+  problème de « continuité » à la racine.
+
+## Phase 5 — Le shell de jeu **[+façade]**
+
+- *Façade* : `save(path)` / `load(path)` (le format C existe déjà).
+- Menu, sauvegarde/chargement, options, **i18n** (tes `STR_*` → traduction Godot).
+- **Export** : desktop + **Web (WASM)** + mobile.
+
+---
+
+## Transversal
+
+- **Thème** Godot cohérent (un `.tres`) — quand l'UI prend forme (Phase 2+).
+- **Déterminisme** : la sim reste 100 % C ; `make scps_api_demo` (banc façade)
+  est le garde-fou — il échoue si la reproductibilité casse.
+- **Le viewer SDL reste** le front de référence/debug tant que Godot n'a pas
+  rattrapé ; les deux lisent le même moteur via la façade. On ne supprime SDL
+  que quand Godot fait tout ce qu'il fait.
+
+## Le prochain pas concret
+
+Phase 1 est **entièrement [Godot]** → on la finit sans rouvrir le moteur. Puis,
+quand tu rallumes le moteur, Phase 2 commence par **3-4 getters façade** et les
+panneaux readout décollent.
