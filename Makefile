@@ -635,8 +635,25 @@ calibrate-smoke: chronicle
 .PHONY: calibrate-smoke
 
 # ---- make test : tous les bancs non-SDL (Arc K3.3) ; rc≠0 si un rouge ----
-# membrane-check est en DÉPENDANCE : la cloison readout→renderer est gardée
-# AVANT les bancs, et son rc≠0 stoppe `make test` (propagation native).
-test: membrane-check
-	@bash tools/run_tests.sh
+# membrane-check ET lang-check sont en DÉPENDANCE : les deux cliquets (cloison
+# readout→renderer, ratchet de localisation) sont gardés AVANT les bancs, et
+# leur rc≠0 stoppe `make test` (propagation native).
+test: membrane-check lang-check
+	@bash tools/run_tests.sh full
 .PHONY: test
+
+# ---- make smoke : feedback RAPIDE (la colonne vertébrale en quelques secondes) ----
+# Les deux cliquets + un sous-ensemble de bancs (worldgen/éco/IA + bornes audit &
+# langue). Pour la boucle serrée du dev ; le gardien COMPLET reste `make test`.
+smoke: membrane-check lang-check
+	@bash tools/run_tests.sh smoke
+.PHONY: smoke
+
+# ---- make full-test : LE GARDIEN LOURD (porte avant un push moteur) ----
+# La suite COMPLÈTE, puis le juge de paix du déterminisme, puis ASan+UBSan muets
+# sur un run court. Tout ce qui doit être vert avant de toucher au cœur.
+full-test: test determinism asan
+	@echo "── full-test : ASan+UBSan sur un run court (doit rester muet) ──"
+	@./chronicle_asan 7 1 20 6 12 >/dev/null
+	@echo "full-test OK : bancs + déterminisme + ASan/UBSan tous verts"
+.PHONY: full-test
