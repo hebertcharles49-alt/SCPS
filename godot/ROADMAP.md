@@ -40,12 +40,15 @@ moteur nouvelle.**
   `selected_prov`), clic-glissé distingué du clic (slop), clic en mer referme.
 - ✅ **`ProvincePanel` / `CountryPanel`** : bandes + mots + jauges 0-100 (la
   membrane), en `Control` bâtis en code. Aucun flottant SCPS lu côté Godot.
-- ⏳ *Reste* : les zéros (or/prospérité/influence à l'an-0) se peupleront quand
-  `advance_days` roulera le tick PLEIN (extraction `chronicle::sim_day`) — la
-  surface façade ne bougera pas.
+- ✅ **TICK PLEIN** : `advance_days` roule désormais `sim_day` (cœur partagé
+  `scps_sim.c`, extrait de chronicle À L'IDENTIQUE — hash inchangé). Fini les
+  zéros : le monde VIT (guerres, sécessions, or & prospérité réels). La surface
+  façade n'a PAS bougé.
 
-## Phase 3 — Les acteurs sur la carte **[+façade]**
+## Phase 3 — Les acteurs sur la carte **[+façade]** ← *débloquée*
 
+Le tick plein roule DÉJÀ campagnes & guerres (les armées marchent, les sièges
+tombent) — il ne reste qu'à les EXPOSER et les dessiner.
 - *Façade* : getters campagne (`campaign_location/phase/units`) + tiers de ville.
 - **Sprites d'armées** au `region_centroid`, animés selon la phase (marche/assaut).
 - **Villes** par tier au centroïde ; **frontières** (les modes politiques existent).

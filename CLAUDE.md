@@ -374,6 +374,25 @@
   **headless** (probe GDScript : picking province 18, readouts complets, borne hors-champ → invalide).
   `make test` **38/38**, `determinism` **STABLE** (hashes chronicle inchangés), `scps_api_demo` 9/9,
   GDExtension `scons` 0 warning. Le moteur ne bouge pas → **SAVE non bumpé**.
+- **TICK PARTAGÉ (2026-06-18) — `chronicle::sim_day` → `scps_sim.{h,c}` : le monde Godot VIT
+  PLEINEMENT** : la façade ne roulait que la COLONNE économique (d'où les zéros an-0 : ni guerre,
+  ni diplo, ni prospérité réelle). On EXTRAIT le cœur de jeu de `chronicle.c` vers un module partagé
+  `scps_sim` — `Sim` (l'état plein) + `sim_init` + `sim_day` (agency · IA · events · économie ·
+  statecraft · démographie · navy · révolte · world_tick · légitimité · commerce · intertrade ·
+  contact · prospérité · endgame · warhost · campagne · diplo · crédit · missions · factions) +
+  `regions_of` + le PROFILER (PROF) + les compteurs d'occupation. **DÉPLACÉ VERBATIM** : chronicle
+  inclut `scps_sim.h` et garde sa boucle/télémétrie ; **le hash de déterminisme est IDENTIQUE au
+  byte près** (`make determinism` : 6ad331bf/5b4c5754/1a6611bd/390adfdf/4524729b, inchangés).
+  `scps_api` embarque un `Sim` (helpers `sim_alloc`/`sim_free_members`), `scps_sim_generate`→
+  `sim_init`, `scps_sim_advance_days`→ N×`sim_day` ; **la surface de la façade n'a PAS bougé** (tout
+  le binding/panneaux Phase 2 tourne tel quel). Payoff (probe headless seed 9) : an-0 pop 43 k → an-80
+  **111 k**, un pays à **or 141 k · prospérité 79/Aisance · savoir 29** (tout était à 0 sous la colonne
+  éco). ⚠ **UN SEUL Sim actif par PROCESSUS** : intertrade/factions/arms_pump portent un état GLOBAL
+  remis à plat par `sim_init` (la chronique enchaîne ses sims séquentiellement, la façade n'a qu'un
+  monde). Le pays « joueur » est, pour l'instant, piloté par l'IA comme dans la chronique (le monde
+  s'observe ; la main humaine viendra). `scps_api_demo` 9/9 (pop change — le monde vit — mais
+  REPRODUCTIBLE A==B). Makefile : `scps_sim.o` dans `CHRONICLE_OBJS` ; SConstruct : `"sim"` dans
+  ENGINE_MODULES. `make test` **38/38**, **0 warning**, **SAVE non bumpé** (rien de sérialisé ne change).
 
 ## Disciplines non négociables
 

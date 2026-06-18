@@ -26,7 +26,7 @@ ENGINE_MODULES = [
     "prosperity", "readout", "lang", "species", "diplo", "routes", "intertrade",
     "statecraft", "agency", "events", "demography", "labor", "modifier", "revolt",
     "army", "warhost", "campaign", "missions", "navy", "endgame", "factions",
-    "ai", "credit", "render", "api",
+    "ai", "credit", "render", "sim", "api",
 ]
 engine_sources = ["../scps/scps_%s.c" % m for m in ENGINE_MODULES]
 engine_sources.append("../third_party/miniz.c")

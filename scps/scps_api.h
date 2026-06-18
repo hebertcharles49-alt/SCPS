@@ -9,14 +9,14 @@
  * la membrane — des OCTETS de carte, des NOMBRES tangibles, des VERBES — jamais
  * un flottant de physique §2.4 exposé tel quel.
  *
- * ── Fidélité du SPIKE ──────────────────────────────────────────────────────
- * `scps_sim_advance_days` roule pour l'instant la COLONNE économique (la même
- * boucle que le banc audit_eco : agency/labor/econ/world/colonize/migrate) sur
- * un monde RÉEL → le monde naît, peuple, colonise, se développe. Le tick PLEIN
- * (IA, guerre, diplo, intertrade, prospérité, endgame — fidèle au HASH de
- * chronicle) viendra de l'extraction de chronicle::sim_day vers un module
- * partagé `scps_sim` ; la surface de cette façade NE CHANGERA PAS (seul le corps
- * de advance grossira). C'est l'intérêt de fixer l'API maintenant.
+ * ── Fidélité ───────────────────────────────────────────────────────────────
+ * `scps_sim_advance_days` roule le TICK PLEIN : `sim_day` (le cœur PARTAGÉ avec
+ * la chronique, `scps_sim.c`) — agency, IA, events, économie, statecraft,
+ * démographie, navy, révolte, world_tick, légitimité, commerce, intertrade,
+ * prospérité, endgame, warhost, campagne, diplo, crédit, missions, factions.
+ * Le monde Godot VIT pleinement (guerres, sécessions, prospérité réelle) et reste
+ * DÉTERMINISTE — le hash de la chronique est inchangé (`make determinism`). La
+ * surface de cette façade n'a PAS bougé en passant de la colonne éco au tick plein.
  */
 #include <stdint.h>
 #include <stdbool.h>

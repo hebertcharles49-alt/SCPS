@@ -81,9 +81,11 @@ pas bâtie, `Sim` le dit dans la console (pas de crash).
 - ✅ **Phase 2 (lire le monde)** : clic → `ProvincePanel` / `CountryPanel` (la
   membrane en mots + jauges). Façade `province_info`/`country_info`/`province_at`
   ajoutée ; **vérifiée headless** (probe GDScript : picking + readouts + bornes).
-- ⏳ `advance_days` roule pour l'instant la **colonne économique** (cf. note fidélité
-  dans `scps_api.h`) ; le tick PLEIN viendra de `chronicle::sim_day → scps_sim`,
-  **sans changer la surface de l'API**.
+- ✅ **TICK PLEIN** : `advance_days` roule `sim_day` (cœur partagé `scps_sim.c`,
+  extrait de chronicle À L'IDENTIQUE → **hash inchangé**, `make determinism`). Le
+  monde Godot VIT pleinement (IA, guerre, diplo, prospérité, endgame) ; les
+  readouts montrent du réel (probe : an-80 pop ×2.5, or 141 k, prospérité 79).
+  La surface de l'API n'a **pas** bougé.
 
 **La suite est dans [`ROADMAP.md`](ROADMAP.md)** (Phase 2 : panneaux readout, dès
 qu'on rouvre le moteur pour 3-4 getters).
