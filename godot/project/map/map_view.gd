@@ -37,6 +37,12 @@ func _ready() -> void:
 	add_child(_camera)
 	_camera.make_current()
 
+	# overlay des ACTEURS (villes + armées), en espace monde, AU-DESSUS du terrain
+	var ov := Node2D.new()
+	ov.set_script(load("res://map/overlay.gd"))
+	ov.name = "Overlay"
+	add_child(ov)
+
 	Sim.generated.connect(_on_generated)
 	Sim.ticked.connect(_on_ticked)
 	if Sim.world != null:

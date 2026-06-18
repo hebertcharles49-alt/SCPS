@@ -61,6 +61,10 @@ public:
     int        province_region(int province) const;   /* province → région (-1) */
     Dictionary province_info(int province);           /* mots + nombres (la membrane) */
     Dictionary country_info(int country);             /* mots + nombres (la membrane) */
+
+    /* ACTEURS SUR LA CARTE (Phase 3) */
+    Dictionary army_info(int country);                /* armée de campagne (vide si inactive) */
+    int        region_tier(int region) const;         /* tier de ville 0-5 (-1 si non colonisée) */
 };
 
 } // namespace godot

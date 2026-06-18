@@ -236,3 +236,40 @@ void scps_country_info(ScpsSim *s, int cid, ScpsCountryInfo *out){
     out->influence    = cr.influence;
     out->corruption   = cr.corruption;
 }
+
+/* ---- ACTEURS SUR LA CARTE (Phase 3) : armées de campagne + tiers de ville --- */
+
+void scps_army_info(ScpsSim *s, int cid, ScpsArmyInfo *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    out->region = -1; out->dest = -1; out->owner = cid; out->phase = "";
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
+    if(!campaign_active(s->sim.camp, cid)) return;
+    const FieldArmy *a = &s->sim.camp->army[cid];
+    FieldPhase ph = campaign_phase(s->sim.camp, cid);
+    out->active   = 1;
+    out->region   = campaign_location(s->sim.camp, cid);
+    out->dest     = a->dest;
+    out->phase_id = (int)ph;
+    out->phase    = sz(campaign_phase_name(ph));
+    out->units    = campaign_units(s->sim.camp, cid);
+    ArmyComposition comp = campaign_composition(s->sim.camp, cid);
+    out->inf = comp.infanterie; out->arch = comp.archers;
+    out->cav = comp.cavalerie;  out->mages = comp.mages;
+}
+
+int scps_region_tier(const ScpsSim *s, int r){
+    if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return -1;
+    if(!s->sim.econ->region[r].colonized) return -1;
+    long pop = region_pop_i(s, r);
+    int tier = pop>=4000?5 : pop>=1500?4 : pop>=500?3 : pop>=150?2 : pop>=50?1 : 0;
+    /* la capitale domine : cité a minima (miroir du viewer) */
+    for(int c=0;c<s->w->n_countries;c++){
+        int cp = s->w->country[c].capital_prov;
+        if(cp>=0 && cp<s->w->n_provinces && s->w->province[cp].region==r){
+            if(tier<4) tier=4;
+            break;
+        }
+    }
+    return tier;
+}

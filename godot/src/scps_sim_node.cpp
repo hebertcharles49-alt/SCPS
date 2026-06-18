@@ -32,6 +32,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_region", "province"),    &ScpsWorld::province_region);
     ClassDB::bind_method(D_METHOD("province_info", "province"),      &ScpsWorld::province_info);
     ClassDB::bind_method(D_METHOD("country_info", "country"),        &ScpsWorld::country_info);
+    ClassDB::bind_method(D_METHOD("army_info", "country"),           &ScpsWorld::army_info);
+    ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -150,3 +152,24 @@ Dictionary ScpsWorld::country_info(int country) {
     d["corruption"]     = c.corruption;
     return d;
 }
+
+Dictionary ScpsWorld::army_info(int country) {
+    Dictionary d;
+    ScpsArmyInfo a;
+    scps_army_info(sim, country, &a);
+    d["active"] = (bool)a.active;
+    if (!a.active) return d;
+    d["region"]   = a.region;
+    d["dest"]     = a.dest;
+    d["owner"]    = a.owner;
+    d["phase_id"] = a.phase_id;
+    d["phase"]    = String::utf8(a.phase);
+    d["units"]    = (int64_t)a.units;
+    d["inf"]      = (int64_t)a.inf;
+    d["arch"]     = (int64_t)a.arch;
+    d["cav"]      = (int64_t)a.cav;
+    d["mages"]    = (int64_t)a.mages;
+    return d;
+}
+
+int ScpsWorld::region_tier(int region) const { return scps_region_tier(sim, region); }

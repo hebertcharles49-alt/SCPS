@@ -120,6 +120,25 @@ typedef struct {
 void scps_province_info(ScpsSim *s, int province, ScpsProvInfo  *out);
 void scps_country_info (ScpsSim *s, int country,  ScpsCountryInfo *out);
 
+/* ---- ACTEURS SUR LA CARTE (Phase 3) ---------------------------------- *
+ * Une ARMÉE de campagne par pays (si déployée) : où elle est, vers où elle marche,
+ * sa phase (mot + brut pour l'anim), son effectif et sa composition. Tangibles. */
+typedef struct {
+    int         active;     /* 1 = armée de campagne déployée */
+    int         region;     /* loc (où la dessiner ; centroïde via scps_region_centroid) ; -1 */
+    int         dest;       /* région-but (ligne de marche) ; -1 = aucune */
+    int         owner;      /* pays (= argument ; pratique côté hôte) */
+    int         phase_id;   /* FieldPhase brut 0..6 (pour l'animation) */
+    const char *phase;      /* mot de phase (Marche/Siège/Bataille/…) */
+    long        units;      /* effectif (= paquets × 100) */
+    long        inf, arch, cav, mages;   /* composition (effectifs) */
+} ScpsArmyInfo;
+void scps_army_info(ScpsSim *s, int country, ScpsArmyInfo *out);
+
+/* TIER de ville d'une région (0-5 selon la pop ; capitale ≥ 4) ; -1 si non
+ * colonisée / vide. Pour planter un marqueur de cité dimensionné au centroïde. */
+int scps_region_tier(const ScpsSim *s, int region);
+
 #ifdef __cplusplus
 }
 #endif

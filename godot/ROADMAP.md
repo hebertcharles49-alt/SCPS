@@ -45,13 +45,16 @@ moteur nouvelle.**
   zéros : le monde VIT (guerres, sécessions, or & prospérité réels). La surface
   façade n'a PAS bougé.
 
-## Phase 3 — Les acteurs sur la carte **[+façade]** ← *débloquée*
+## Phase 3 — Les acteurs sur la carte **[+façade]** ✅ (fait)
 
-Le tick plein roule DÉJÀ campagnes & guerres (les armées marchent, les sièges
-tombent) — il ne reste qu'à les EXPOSER et les dessiner.
-- *Façade* : getters campagne (`campaign_location/phase/units`) + tiers de ville.
-- **Sprites d'armées** au `region_centroid`, animés selon la phase (marche/assaut).
-- **Villes** par tier au centroïde ; **frontières** (les modes politiques existent).
+Le tick plein roule DÉJÀ campagnes & guerres ; on les EXPOSE et on les dessine.
+- ✅ *Façade* : `scps_army_info` (loc · dest · phase · effectif · composition, lu
+  de `s->sim.camp`) + `scps_region_tier` (0-5 selon pop, capitale ≥4).
+- ✅ **`Overlay`** (Node2D enfant de MapView, espace monde → suit la caméra) :
+  **villes** par tier (disque teinté au pays, cœur clair) + **armées** (losange
+  teinté au pays, halo de phase marche/siège/bataille, ligne vers le but).
+  Redessine au tick. **Vérifié** (capture xvfb : 7 armées, 73 villes à l'an-110).
+- ⏳ *Reste (optionnel)* : panneau d'armée au clic, frontières fines, anim de marche.
 
 ## Phase 4 — Le spectacle (shaders & particules) **[+façade]**
 
