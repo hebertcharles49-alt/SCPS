@@ -12,14 +12,25 @@ const COL_FAVEUR := Color(0.46, 0.78, 0.46)   ## vert (boon)
 const COL_FLEAU  := Color(0.86, 0.42, 0.40)   ## rouge (malus)
 const COL_ALERT  := Color(0.92, 0.50, 0.30)   ## seuil de révolte
 
+const MARGIN := 8.0
+
 var _vbox: VBoxContainer
 
 func _ready() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 8)
+	# ancrage par défaut (haut-gauche) ; on POSITIONNE explicitement après avoir
+	# bâti le contenu (sinon la taille est nulle au _ready → panneau mal placé).
+	mouse_filter = Control.MOUSE_FILTER_IGNORE   # ne pas bloquer le clic carte dessous
 	_vbox = VBoxContainer.new()
 	_vbox.add_theme_constant_override("separation", 2)
 	add_child(_vbox)
 	hide()
+
+## colle le panneau en BAS-GAUCHE, taille = contenu (recalculée à chaque ouverture).
+func _reposition() -> void:
+	var sz := get_combined_minimum_size()
+	var vp := get_viewport_rect().size
+	reset_size()
+	position = Vector2(MARGIN, max(MARGIN, vp.y - sz.y - MARGIN))
 
 func show_province(info: Dictionary) -> void:
 	if info.is_empty() or not bool(info.get("valide", false)):
@@ -48,6 +59,7 @@ func show_province(info: Dictionary) -> void:
 		for m in mods:
 			_mod(m)
 	show()
+	_reposition.call_deferred()   # après que le layout ait calculé la taille
 
 # ── construction de lignes ─────────────────────────────────────────────────
 func _clear() -> void:

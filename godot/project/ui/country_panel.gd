@@ -10,14 +10,23 @@ const COL_TITLE := Color(0.86, 0.78, 0.52)   ## or pâle (titre pays)
 const COL_KEY   := Color(0.60, 0.60, 0.62)
 const COL_VAL   := Color(0.90, 0.90, 0.88)
 
+const MARGIN := 8.0
+
 var _vbox: VBoxContainer
 
 func _ready() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 8)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE   # ne pas bloquer le clic carte dessous
 	_vbox = VBoxContainer.new()
 	_vbox.add_theme_constant_override("separation", 2)
 	add_child(_vbox)
 	hide()
+
+## colle le panneau en HAUT-DROITE, taille = contenu (recalculée à chaque ouverture).
+func _reposition() -> void:
+	var sz := get_combined_minimum_size()
+	var vp := get_viewport_rect().size
+	reset_size()
+	position = Vector2(max(MARGIN, vp.x - sz.x - MARGIN), MARGIN)
 
 func show_country(info: Dictionary) -> void:
 	if info.is_empty() or not bool(info.get("valide", false)):
@@ -39,6 +48,7 @@ func show_country(info: Dictionary) -> void:
 	if int(info["corruption"]) > 0:
 		_row("Corruption", str(info["corruption"]))
 	show()
+	_reposition.call_deferred()   # après que le layout ait calculé la taille
 
 # ── construction ───────────────────────────────────────────────────────────
 func _clear() -> void:

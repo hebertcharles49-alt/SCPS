@@ -74,11 +74,17 @@ func _mouse_cell() -> Vector2i:
 
 func _pick_at_mouse() -> void:
 	if Sim.world == null:
+		push_warning("[SCPS] clic ignoré : Sim.world absente (libscps non chargée).")
+		return
+	if not Sim.world.has_method("province_at"):
+		push_error("[SCPS] libscps OBSOLÈTE : méthode 'province_at' absente. " +
+			"Rebâtir la GDExtension : cd godot && scons platform=windows use_mingw=yes")
 		return
 	var cell := _mouse_cell()
 	var prov := -1
 	if cell.x >= 0:
 		prov = Sim.world.province_at(cell.x, cell.y)
+	print("[SCPS] clic cellule=", cell, " → province=", prov)   # diag : visible dans l'Output
 	_selected_prov = prov
 	_refresh_terrain()
 	var region := -1
