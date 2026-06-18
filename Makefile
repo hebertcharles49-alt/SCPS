@@ -566,10 +566,20 @@ ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
 endgame_demo: $(ENDGAME_DEMO_OBJS)
 	$(CC) $(ENDGAME_DEMO_OBJS) -o $@ -lm
 
+# Tous les binaires de bancs (MIROIR de run_tests.sh — à garder synchrone) +
+# les legacy + les outils + les variantes .exe (MSYS2/Windows) et _asan.
+BENCH_BINS := core_demo monde_reel readout_demo species_demo tech_demo faith_demo \
+  intertrade_demo routes_demo save_io_demo statecraft_demo pop_demo army_demo \
+  demography_demo demography_integ_demo revolt_demo social_demo agency_demo \
+  campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \
+  econ_production_demo labor_demo missions_demo ai_demo diplo_demo warhost_demo \
+  events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
+  endgame_demo audit_eco lang_demo audio_demo econ_demo culture_demo
+TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan
+
 clean:
-	rm -rf $(OBJDIR) scps_viewer scps_viewer.exe scps_dump scps_batch econ_demo \
-	       tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo core_demo monde_reel readout_demo species_demo \
-	       chronicle chronicle_asan econ_scan \
+	rm -rf $(OBJDIR) $(BENCH_BINS) $(TOOL_BINS) \
+	       $(addsuffix .exe,$(BENCH_BINS) $(TOOL_BINS)) \
 	       out_*.ppm montage.bmp
 
 .PHONY: all scps run_scps clean core_demo monde_reel readout_demo lang_demo species_demo scps_dump scps_batch asan \
