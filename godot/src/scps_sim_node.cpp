@@ -291,6 +291,7 @@ Array ScpsWorld::country_stocks(int country) {
         d["coverage_days"] = st[i].coverage_days;
         d["market_band"]   = st[i].market_band;
         d["price"]         = st[i].price;
+        d["res_id"]        = st[i].res_id;
         a.push_back(d);
     }
     return a;

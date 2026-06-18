@@ -431,6 +431,7 @@ int scps_country_stocks(ScpsSim *s, int cid, ScpsStock *out, int max){
         out[n].stock       = (long)stk[g];
         out[n].net_day     = net;
         out[n].price       = (nreg>0) ? (float)(pri[g]/nreg) : 0.f;
+        out[n].res_id      = g;
         if(net < -0.05f){ float dj = (float)stk[g]/(-net); out[n].coverage_days = (dj>365.f)?366:(int)dj; }
         else out[n].coverage_days = -1;
         n++;

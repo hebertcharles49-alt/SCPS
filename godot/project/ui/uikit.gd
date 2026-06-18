@@ -8,8 +8,59 @@ extends RefCounted
 
 const CHROME := "res://assets/scps/ui/chrome/"
 const ICONS  := "res://assets/scps/ui/icons/"
+const RESOURCES := "res://assets/scps/pack/resources/"
 
 static var _cache := {}
+
+# ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)
+const RES_FALLBACK := {
+	"grain": "grain_bundle", "ble": "grain_bundle", "betail": "grain_bundle",
+	"poisson": "health_food_bowl", "nourriture": "health_food_bowl", "vivres": "health_food_bowl",
+	"pierre": "materials_stone", "argile": "materials_stone",
+	"or": "gold_coin", "metal_precieux": "gold_coin", "perle": "gold_coin",
+	"outils": "development_tools", "metal": "development_tools",
+}
+
+## clé de fichier normalisée d'un nom de ressource : minuscules, accents ôtés,
+## espaces→_ . Ex. « Fer »→"fer", « Cristal arcanique »→"cristal_arcanique".
+static func resource_key(res_name: String) -> String:
+	var s := res_name.to_lower()
+	var acc := {"é":"e","è":"e","ê":"e","ë":"e","à":"a","â":"a","ä":"a","î":"i","ï":"i",
+		"ô":"o","ö":"o","û":"u","ù":"u","ü":"u","ç":"c","'":"","’":"","-":" "}
+	for k in acc:
+		s = s.replace(k, acc[k])
+	return s.strip_edges().replace(" ", "_")
+
+## le SPRITE d'une ressource (assets/scps/pack/resources/). On essaie, dans l'ordre :
+## par INDEX d'enum (<id>.png puis <id zero-paddé 3>.png — l'ordre du jeu de sprites
+## fourni), par CLÉ de nom (<clé>.png), puis repli sur une icône du pack, sinon null
+## (l'appelant retombe sur le texte). Le NOM va au survol.
+const RES_ATLAS_COLS := 16   # feuille « sheet.png » : grille de 16 colonnes (ordre enum)
+
+static func resource_sprite(res_id: int, res_name: String) -> Texture2D:
+	if res_id >= 0:
+		var t := _tex(RESOURCES + str(res_id) + ".png")          # fichier par indice
+		if t != null: return t
+		t = _tex(RESOURCES + "%03d.png" % res_id)                # variante zéro-paddée
+		if t != null: return t
+		var sheet := _tex(RESOURCES + "sheet.png")               # OU une feuille 16-col
+		if sheet != null:
+			var cell := int(sheet.get_width() / RES_ATLAS_COLS)
+			var at := AtlasTexture.new()
+			at.atlas = sheet
+			at.region = Rect2((res_id % RES_ATLAS_COLS) * cell, (res_id / RES_ATLAS_COLS) * cell, cell, cell)
+			return at
+	return resource_icon(res_name)
+
+## variante par NOM seul (income/province, où l'on n'a pas l'id).
+static func resource_icon(res_name: String) -> Texture2D:
+	var key := resource_key(res_name)
+	var t := _tex(RESOURCES + key + ".png")
+	if t != null:
+		return t
+	if RES_FALLBACK.has(key):
+		return icon(RES_FALLBACK[key])
+	return null
 
 static func _tex(path: String) -> Texture2D:
 	if _cache.has(path):

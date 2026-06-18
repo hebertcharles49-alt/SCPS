@@ -27,6 +27,9 @@ var _tab := -1
 var _map                       # MapView (pour Filtres → set_mode)
 var _active_mode := 0
 var _chips := []               # [{rect, mode}] cliquables (Filtres)
+var _hover_zones := []         # [{rect, text}] survols (sprites de ressource → nom)
+var _hover_text := ""
+var _hover_pos := Vector2.ZERO
 
 func setup(map) -> void:
 	_map = map
@@ -44,12 +47,14 @@ func _layout() -> void:
 
 func show_tab(i: int) -> void:
 	_tab = i
+	_hover_text = ""
 	visible = i >= 0
 	queue_redraw()
 
 func _draw() -> void:
 	if _tab < 0:
 		return
+	_hover_zones.clear()
 	VKit.panel_bg(self, Rect2(0, 0, DW, size.y))
 	VKit.fill(self, Rect2(DW - 2, 0, 2, size.y), VKit.COL_COPPER)
 	var x := 14.0
@@ -73,6 +78,15 @@ func _draw() -> void:
 		7: _draw_conseil(x, y, me)
 		_: VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(panneau à venir — port viewer.c)")
 
+	# tooltip de survol (sprite de ressource → son nom)
+	if _hover_text != "":
+		var tw := VKit.text_w(_hover_text, VKit.FS_SMALL) + 12.0
+		var tx := minf(_hover_pos.x + 12.0, DW - tw - 4.0)
+		var ty := maxf(2.0, _hover_pos.y - 20.0)
+		VKit.fill(self, Rect2(tx, ty, tw, 17), VKit.COL_PANEL2)
+		VKit.box(self, Rect2(tx, ty, tw, 17), VKit.COL_COPPER)
+		VKit.text(self, Vector2(tx + 6, ty + 1), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
+
 # ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
 func _draw_demo(x: float, y: float, me: int) -> void:
 	var d: Dictionary = Sim.world.country_demo(me)
@@ -90,20 +104,30 @@ func _draw_demo(x: float, y: float, me: int) -> void:
 
 # ── STOCKS (sb_panel_stocks, read-only) ────────────────────────────────────
 func _draw_stocks(x: float, y: float, me: int) -> void:
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien            stock   net/j   couv.", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          stock   net/j   couv.", VKit.FS_SMALL)
 	y += 16
 	for st in Sim.world.country_stocks(me):
 		if y > size.y - 18:
 			break
 		var col := _marche_col(int(st["market_band"]))
-		VKit.text(self, Vector2(x, y), col, String(st["name"]), VKit.FS_SMALL)
+		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
 		VKit.text(self, Vector2(x + 110, y), col, _grp(st["stock"]), VKit.FS_SMALL)
 		var net: float = st["net_day"]
 		VKit.text(self, Vector2(x + 165, y), col, ("%+.1f" % net) if net != 0.0 else "0.0", VKit.FS_SMALL)
 		var cov: int = int(st["coverage_days"])
 		var covs := ("" if cov < 0 else (">1 an" if cov >= 366 else "%d j" % cov))
 		VKit.text(self, Vector2(x + 225, y), col, covs, VKit.FS_SMALL)
-		y += 15
+		y += 18
+
+## cellule d'identité d'une ressource : le SPRITE (assets/scps/pack/resources, par
+## id), sinon le nom en texte ; survol → le nom dans tous les cas.
+func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> void:
+	var spr := UIKit.resource_sprite(res_id, name)
+	if spr != null:
+		draw_texture_rect(spr, Rect2(x, y - 3, 18, 18), false)
+	else:
+		VKit.text(self, Vector2(x, y), col, name, VKit.FS_SMALL)
+	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 104, 18), "text": name})
 
 # ── ÉCONOMIE (sb_panel_eco, onglet Commerce, read-only) ────────────────────
 func _draw_eco(x: float, y: float, me: int) -> void:
@@ -129,16 +153,16 @@ func _draw_eco(x: float, y: float, me: int) -> void:
 
 # ── MARCHÉ (sb_panel_marche, table des prix, read-only) ────────────────────
 func _draw_marche(x: float, y: float, me: int) -> void:
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien            prix(or)   marché", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          prix(or)   marché", VKit.FS_SMALL)
 	y += 16
 	for st in Sim.world.country_stocks(me):
 		if y > size.y - 18:
 			break
 		var col := _marche_col(int(st["market_band"]))
-		VKit.text(self, Vector2(x, y), col, String(st["name"]), VKit.FS_SMALL)
-		VKit.text(self, Vector2(x + 120, y), col, "%.2f" % float(st["price"]), VKit.FS_SMALL)
-		VKit.text(self, Vector2(x + 188, y), VKit.COL_DIM, String(st["marche"]), VKit.FS_SMALL)
-		y += 15
+		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
+		VKit.text(self, Vector2(x + 110, y), col, "%.2f" % float(st["price"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 178, y), VKit.COL_DIM, String(st["marche"]), VKit.FS_SMALL)
+		y += 18
 
 # ── CONSEIL (sb_panel_conseil, read-only) ──────────────────────────────────
 func _draw_conseil(x: float, y: float, me: int) -> void:
@@ -212,6 +236,17 @@ func _draw_diplo(x: float, y: float, me: int) -> void:
 		y += 16
 
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		var h := ""
+		for z in _hover_zones:
+			if z.rect.has_point(event.position):
+				h = z.text
+				break
+		if h != _hover_text:
+			_hover_text = h
+			_hover_pos = event.position
+			queue_redraw()
+		return
 	if _tab == 5 and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		for ch in _chips:
 			if ch.rect.has_point(event.position):

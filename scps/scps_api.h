@@ -205,6 +205,7 @@ typedef struct {
     int   coverage_days;    /* jours de couverture si net<0 (366 = >1 an) ; -1 sinon */
     int   market_band;      /* 0..4 BandMarche (pour la couleur) */
     float price;            /* prix moyen (or) — pour l'onglet Marché */
+    int   res_id;           /* indice Resource (enum) — pour le SPRITE de ressource */
 } ScpsStock;
 int scps_country_stocks(ScpsSim *s, int country, ScpsStock *out, int max);
 
