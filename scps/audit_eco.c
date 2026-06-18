@@ -66,32 +66,39 @@ int main(int argc, char **argv){
     int cap_prov=w->country[player].capital_prov;
     int cap_reg =(cap_prov>=0&&cap_prov<w->n_provinces)? w->province[cap_prov].region : -1;
 
-    /* le HAMEAU témoin : une COLONIE fraîche (100 âmes), fondée au jour 0 sur une
-     * vierge adjacente au joueur — LOIN de son apex, c'est elle qui révèle le TAUX
-     * de croissance vrai (une région établie sature à son cap_pop : ×1.0x trivial). */
+    /* le HAMEAU témoin : la région du joueur (HORS capitale) avec le PLUS de marge
+     * sous son plafond — c'est elle qui révèle le TAUX de croissance vrai (une région
+     * saturée à son cap_pop ferait ×1.0x trivial ; une colonie de frontière vierge,
+     * elle, gèle sous le plancher d'un monde développé : voir le bloc ci-dessous). */
     int hamlet=-1; double h0=0.0;
-    { int src=-1; double srcpop=0.0;
+    { /* On NE colonise PLUS une vierge de frontière : sur un monde développé elle est pauvre
+       * (cap_pop ≤ 200), une colonie de ≈250 y gèle à cap_factor=0 et la borne mesure le mauvais
+       * régime. Une région établie déjà sous son plafond croît au taux réel, sans manipulation. */
+      float besthead=0.f;
       for (int r=0;r<econ->n_regions;r++){
           const RegionEconomy *re=&econ->region[r];
-          if (re->owner!=player || !re->colonized) continue;
+          if (re->owner!=player || !re->colonized || r==cap_reg) continue;   /* DISTINCT de la capitale */
           double pp=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
-          if (pp>srcpop){ srcpop=pp; src=r; }
+          if (pp<50.0) continue;                              /* assez peuplée pour un signal net */
+          float eff=econ_region_effcap(re); if (eff<1.f) continue;
+          float head=1.f-(float)(pp/eff);                     /* marge : 1 = vide, 0 = plein */
+          if (head>besthead){ besthead=head; hamlet=r; h0=pp; }
       }
-      if (src>=0) for (int r=0;r<econ->n_regions && hamlet<0;r++){
-          const RegionEconomy *re=&econ->region[r];
-          if (re->colonized || !re->active || re->impassable) continue;
-          if (!econ->adj[src][r]) continue;
-          econ_colonize_from(econ, src, r, player);
-          if (econ->region[r].colonized){
-              hamlet=r;
-              h0=econ->region[r].strata[0].pop+econ->region[r].strata[1].pop+econ->region[r].strata[2].pop;
-          }
-      } }
+      if (hamlet>=0) printf("   (hameau témoin : rég %d, marge %.0f%% sous le plafond)\n", hamlet, besthead*100.f); }
     double cap0 = 0.0;
     if (cap_reg>=0){ const RegionEconomy *re=&econ->region[cap_reg];
         cap0 = re->strata[0].pop+re->strata[1].pop+re->strata[2].pop; }
     printf("   joueur=pays %d (capitale rég %d, %.0f âmes) · hameau témoin rég %d (%.0f âmes)\n",
            player, cap_reg, cap0, hamlet, h0);
+
+    /* CARTE NUE (N1) : le banc ne lance PAS l'intertrade (Centres/hubs/cache mondial) ni le
+     * marché de départ (agency_seed_capital_markets) — donc l'IMPORT de matériaux depuis les
+     * cités-états, qui bootstrappe un empire NU dans le vrai jeu (chronicle/viewer), n'opère pas
+     * ici, et l'extraction demand-driven ne sort jamais de pierre sans consommateur. On amorce
+     * la capitale avec un socle de bois/pierre/argile pour PROUVER l'accession au premier édifice
+     * (le bootstrap import lui-même est couvert par intertrade_demo). */
+    if (cap_reg>=0){ RegionEconomy *cr=&econ->region[cap_reg];
+        cr->stock[RES_WOOD]+=120.f; cr->stock[RES_STONE]+=120.f; cr->stock[RES_CLAY]+=120.f; }
 
     /* ---- accumulateurs des bornes ---- */
     /* owner = le pays qui PAIE (le livre d'or national, debt-aware) : la capitale du joueur. */
