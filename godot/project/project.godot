@@ -1,0 +1,15 @@
+; SCPS — spike Godot (le moteur C pilote l'affichage via la GDExtension ScpsSim).
+; Engine configuration file. Généré minimal à la main ; Godot le complétera.
+
+config_version=5
+
+[application]
+
+config/name="SCPS (spike Godot)"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

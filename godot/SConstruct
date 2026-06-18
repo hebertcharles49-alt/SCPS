@@ -1,0 +1,45 @@
+#!/usr/bin/env python
+#
+# SConstruct — bâtit la GDExtension `libscps` : le MOTEUR SCPS (C) + la façade
+# `scps_api` + le binding C++ (godot-cpp), en UNE bibliothèque partagée chargée
+# par Godot. Le moteur n'est PAS modifié — on compile les mêmes .c que `make`.
+#
+# Prérequis : godot-cpp 4.x à côté (submodule ou clone) :
+#   cd godot && git clone -b 4.3 https://github.com/godotengine/godot-cpp
+#   scons            # debug   → project/bin/libscps.<platform>.template_debug.<arch>.<so|dll>
+#   scons target=template_release
+#
+import os
+
+env = SConscript("godot-cpp/SConstruct")
+
+# en-têtes : le binding (src/), le moteur (../scps), les vendorés (../third_party)
+env.Append(CPPPATH=["src/", "../scps/", "../third_party/"])
+
+# ── le MOTEUR SCPS, en C (même liste que CHRONICLE_OBJS, SANS chronicle/viewer/
+#    demos/audio ; + scps_render (render_map) + scps_api (la façade)). ──────────
+ENGINE_MODULES = [
+    "world", "econ", "tune", "trade", "culture", "tech", "core", "legitimacy",
+    "prosperity", "readout", "lang", "species", "diplo", "routes", "intertrade",
+    "statecraft", "agency", "events", "demography", "labor", "modifier", "revolt",
+    "army", "warhost", "campaign", "missions", "navy", "endgame", "factions",
+    "ai", "credit", "render", "api",
+]
+engine_sources = ["../scps/scps_%s.c" % m for m in ENGINE_MODULES]
+engine_sources.append("../third_party/miniz.c")
+
+# le moteur est du C99 ; miniz se compile comme dans le Makefile.
+env.Append(CFLAGS=["-std=c99"])
+env.Append(CPPDEFINES=["MINIZ_NO_STDIO", "MINIZ_NO_TIME", "MINIZ_NO_ARCHIVE_APIS"])
+
+# le binding C++
+cpp_sources = Glob("src/*.cpp")
+
+sources = engine_sources + cpp_sources
+
+# nom attendu par scps.gdextension : libscps<suffix><shlibsuffix>
+# (env["suffix"] = .linux.template_debug.x86_64, etc. — posé par godot-cpp)
+libpath = "project/bin/libscps{}{}".format(env["suffix"], env["SHLIBSUFFIX"])
+library = env.SharedLibrary(libpath, source=sources)
+
+Default(library)

@@ -1,0 +1,13 @@
+# Le clone godot-cpp (régénérable : git clone -b 4.3 …) — pas dans le repo SCPS.
+godot-cpp/
+
+# Artefacts de build (par plateforme : on les rebâtit avec scons).
+project/bin/
+*.os
+*.o
+*.obj
+.sconsign.dblite
+
+# Cache de l'éditeur Godot.
+project/.godot/
+project/.import/
