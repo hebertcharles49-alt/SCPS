@@ -329,6 +329,19 @@
   désormais capté), `timeout` par banc, split `make smoke` (rapide) / `make full-test`
   (bancs + déterminisme + ASan). **Aucune entrée moteur touchée** : re-baseline NULLE,
   aucun hash bougé, **SAVE non bumpé**. Détail en AUDIT.md §(a-bis).
+- **FX ANIMÉS (2026-06-18) — houle · écume · armées · vortex (display-only)** : quatre
+  planches à fond MAGENTA (`scps_fx_{sea,coast,army,vortex}.bmp`, suivies en repo comme les
+  atlas), cadencées par **SDL_GetTicks** (horloge MUR, JAMAIS le moteur → déterminisme
+  intact). `load_fx_bmp` (viewer) key le magenta SANS le despill des atlas de carte (la teinte
+  FX passe verbatim — un vortex violet survit). **draw_sea_fx** : voile de houle tuilé sur la
+  mer ouverte (`c->sea`), ligne d'atlas ∝ énergie du courant (`cur_vx/vy`), borné au viewport.
+  **draw_coast_fx** : écume sur la TERRE côtière (`c->coast`, zoom franc). **draw_army_fx** : la
+  force de campagne (`campaign_location/phase`) anime sa région (marche/assaut). **draw_vortex_fx** :
+  la fin EAU §27 — maelström contrarotatif au `epicenter_reg` + tourbillons sur `sunken[]`. Absentes
+  ⇒ NULL ⇒ no-op. **Membrane TENUE** (faits tangibles — où est l'eau, où marche l'armée — jamais
+  un flottant §2.4). Vérif headless : **`make fx-proof`** composite les 4 planches sur un terrain
+  `render_map` RÉEL (renderer logiciel) → `fx_proof.png` (aucun display requis). `make scps` **0
+  warning**, **SAVE non bumpé** (display-only).
 
 ## Disciplines non négociables
 
