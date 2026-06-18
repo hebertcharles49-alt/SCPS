@@ -9,6 +9,41 @@ extends RefCounted
 const CHROME := "res://assets/scps/ui/chrome/"
 const ICONS  := "res://assets/scps/ui/icons/"
 const RESOURCES := "res://assets/scps/pack/resources/"
+const MAP := "res://assets/scps/pack/map/"
+
+const SETTLE_CELL := 96   # atlas settlements : 6 tiers (col) × 6 groupes (ligne), 96 px
+
+static var _settle_tex: Texture2D = null
+static var _settle_tried := false
+
+## charge l'atlas SETTLEMENTS (BMP magenta-keyé → alpha), une fois (caché).
+static func _settlements() -> Texture2D:
+	if _settle_tried:
+		return _settle_tex
+	_settle_tried = true
+	var img := Image.load_from_file(MAP + "settlements.bmp")
+	if img != null:
+		if img.get_format() != Image.FORMAT_RGBA8:
+			img.convert(Image.FORMAT_RGBA8)
+		var data := img.get_data()
+		for i in range(0, data.size(), 4):   # magenta (≈255,0,255) → transparent
+			if data[i] > 200 and data[i + 1] < 60 and data[i + 2] > 200:
+				data[i + 3] = 0
+		var keyed := Image.create_from_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8, data)
+		_settle_tex = ImageTexture.create_from_image(keyed)
+	return _settle_tex
+
+## sprite de settlement : colonne = tier (0-5), ligne = groupe (0-5). null si absent.
+static func settlement_sprite(tier: int, group: int) -> Texture2D:
+	var t := _settlements()
+	if t == null:
+		return null
+	tier = clampi(tier, 0, 5)
+	group = clampi(group, 0, 5)
+	var at := AtlasTexture.new()
+	at.atlas = t
+	at.region = Rect2(tier * SETTLE_CELL, group * SETTLE_CELL, SETTLE_CELL, SETTLE_CELL)
+	return at
 
 static var _cache := {}
 

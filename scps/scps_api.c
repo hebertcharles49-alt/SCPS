@@ -275,6 +275,30 @@ int scps_region_tier(const ScpsSim *s, int r){
     return tier;
 }
 
+int scps_region_settle_group(const ScpsSim *s, int r){
+    if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return -1;
+    const RegionEconomy *re = &s->sim.econ->region[r];
+    if(!re->colonized) return -1;
+    /* capitale ? */
+    int cap = 0;
+    for(int c=0;c<s->w->n_countries;c++){
+        int cp = s->w->country[c].capital_prov;
+        if(cp>=0 && cp<s->w->n_provinces && s->w->province[cp].region==r){ cap=1; break; }
+    }
+    /* cellule du centroïde (biome / rivière) */
+    const Cell *cell = NULL;
+    if(r<s->n_cent && s->cx[r]>=0.f){
+        int cx = (int)s->cx[r], cy = (int)s->cy[r];
+        if(cx>=0 && cy>=0 && cx<SCPS_W && cy<SCPS_H) cell = scps_cellc(s->w, cx, cy);
+    }
+    if(re->coastal)               return cap ? 5 : 3;           /* côtier : fortifié si capitale, sinon rural */
+    if(cell && cell->river>40 && !cell->lake) return 1;         /* rivière */
+    if(cell){ Biome b=cell->biome;
+        if(b==BIO_HIGHLANDS||b==BIO_HILLS||b==BIO_MOUNTAINS||b==BIO_PEAK) return 0; }  /* montagne */
+    if(cap)                       return 5;                     /* capitale fortifiée */
+    return 3;                                                   /* rural */
+}
+
 /* ---- ENDGAME §27 (Phase 4) -------------------------------------------- */
 
 void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out){

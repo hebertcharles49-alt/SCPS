@@ -65,6 +65,7 @@ public:
     /* ACTEURS SUR LA CARTE (Phase 3) */
     Dictionary army_info(int country);                /* armée de campagne (vide si inactive) */
     int        region_tier(int region) const;         /* tier de ville 0-5 (-1 si non colonisée) */
+    int        region_settle_group(int region) const; /* groupe de sprite settlement 0-5 (-1) */
 
     /* ENDGAME §27 (Phase 4) */
     Dictionary endgame_info();                        /* entropie · augure · fin · épicentre */

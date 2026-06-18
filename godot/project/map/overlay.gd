@@ -7,6 +7,7 @@ extends Node2D
 ## Armées : un losange au centroïde de leur région + une ligne vers leur but
 ## (marche), un anneau coloré par phase (marche/siège/bataille).
 
+const UIKit = preload("res://ui/uikit.gd")
 const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
@@ -46,7 +47,8 @@ func _draw() -> void:
 	if w == null:
 		return
 
-	# ── VILLES (dessous) : un disque par région colonisée, taille ∝ tier ──────
+	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde ;
+	#    repli sur un disque teinté au pays si l'atlas est absent. ──────────────
 	for r in range(w.region_count()):
 		var t: int = w.region_tier(r)
 		if t < 0:
@@ -54,11 +56,16 @@ func _draw() -> void:
 		var ctr: Vector2 = w.region_centroid(r)
 		if ctr.x < 0:
 			continue
-		var col := _country_color(w.region_owner(r))
-		var radius := 0.8 + t * 0.55
-		draw_circle(ctr, radius, col)
-		draw_arc(ctr, radius, 0.0, TAU, 16, Color(0, 0, 0, 0.6), 0.3, true)
-		draw_circle(ctr, radius * 0.35, Color(1, 1, 1, 0.55))   # cœur clair (lisibilité)
+		var spr := UIKit.settlement_sprite(t, w.region_settle_group(r))
+		if spr != null:
+			var sz := 11.0 + t * 4.0                       # taille monde ∝ tier
+			draw_texture_rect(spr, Rect2(ctr - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false)
+		else:
+			var col := _country_color(w.region_owner(r))
+			var radius := 0.8 + t * 0.55
+			draw_circle(ctr, radius, col)
+			draw_arc(ctr, radius, 0.0, TAU, 16, Color(0, 0, 0, 0.6), 0.3, true)
+			draw_circle(ctr, radius * 0.35, Color(1, 1, 1, 0.55))
 
 	# ── ARMÉES (dessus) : losange + ligne de marche + anneau de phase ─────────
 	for c in range(w.country_count()):

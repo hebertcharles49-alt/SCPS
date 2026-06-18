@@ -34,6 +34,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_info", "country"),        &ScpsWorld::country_info);
     ClassDB::bind_method(D_METHOD("army_info", "country"),           &ScpsWorld::army_info);
     ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
+    ClassDB::bind_method(D_METHOD("region_settle_group", "region"),  &ScpsWorld::region_settle_group);
     ClassDB::bind_method(D_METHOD("endgame_info"),                   &ScpsWorld::endgame_info);
     ClassDB::bind_method(D_METHOD("region_sunken", "region"),        &ScpsWorld::region_sunken);
     ClassDB::bind_method(D_METHOD("province_groups", "province"),    &ScpsWorld::province_groups);
@@ -185,6 +186,7 @@ Dictionary ScpsWorld::army_info(int country) {
 }
 
 int ScpsWorld::region_tier(int region) const { return scps_region_tier(sim, region); }
+int ScpsWorld::region_settle_group(int region) const { return scps_region_settle_group(sim, region); }
 
 Dictionary ScpsWorld::endgame_info() {
     Dictionary d;

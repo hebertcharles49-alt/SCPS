@@ -139,6 +139,11 @@ void scps_army_info(ScpsSim *s, int country, ScpsArmyInfo *out);
  * colonisée / vide. Pour planter un marqueur de cité dimensionné au centroïde. */
 int scps_region_tier(const ScpsSim *s, int region);
 
+/* GROUPE de sprite de settlement (atlas scps_map_settlements : ligne) d'une région :
+ * 0 montagne · 1 rivière · 2 estuaire · 3 rural · 4 marché · 5 fortifié (capitale).
+ * -1 si non colonisée. Réplique (simplifiée) de la logique du viewer SDL. */
+int scps_region_settle_group(const ScpsSim *s, int region);
+
 /* ---- ENDGAME §27 (Phase 4) : entropie monde, fin latchée, merveille --- *
  * La membrane endgame (mots résolus + projections 0-100). Le moteur MUTE déjà le
  * monde quand une fin éclôt (régions englouties → mer, biomes blanchis, ronces) →
