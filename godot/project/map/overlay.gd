@@ -11,6 +11,7 @@ const UIKit = preload("res://ui/uikit.gd")
 const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
+const CITY_ZOOM_MIN := 4.5   ## les villes n'apparaissent qu'AU-DELÀ de ce zoom (sinon : carte d'ensemble encombrée)
 
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{id, pos}] — arbres/forêts (dressing), bâti au générate
@@ -44,7 +45,7 @@ func _build_decor() -> void:
 		return
 	var mw := img.get_width()
 	var mh := img.get_height()
-	var stride := 7
+	var stride := 4                       # forêt DENSE (ex-7) : un arbre toutes les 4 cellules
 	for cy in range(0, mh, stride):
 		for cx in range(0, mw, stride):
 			var b := int(img.get_pixel(cx, cy).r * 255.0 + 0.5)
@@ -52,10 +53,10 @@ func _build_decor() -> void:
 				continue
 			var h := ((cx * 73856093) ^ (cy * 19349663)) & 0x7fffffff
 			var arr: Array = FOREST_TREES[b]
-			var jx := float((h >> 3) % 5) - 2.0
-			var jy := float((h >> 6) % 5) - 2.0
+			var jx := float((h >> 3) % 3) - 1.0
+			var jy := float((h >> 6) % 3) - 1.0
 			_decor.append({"id": arr[h % arr.size()], "pos": Vector2(cx + jx, cy + jy)})
-			if _decor.size() >= 4000:
+			if _decor.size() >= 14000:
 				return
 
 func _on_tick(_year: int) -> void:
@@ -97,25 +98,28 @@ func _draw() -> void:
 		var ts := 8.0
 		draw_texture_rect(spr, Rect2(p - Vector2(ts * 0.5, ts), Vector2(ts, ts)), false)
 
-	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde ;
-	#    repli sur un disque teinté au pays si l'atlas est absent. ──────────────
-	for r in range(w.region_count()):
-		var t: int = w.region_tier(r)
-		if t < 0:
-			continue
-		var ctr: Vector2 = w.region_centroid(r)
-		if ctr.x < 0:
-			continue
-		var spr := UIKit.settlement_sprite(t, w.region_settle_group(r))
-		if spr != null:
-			var sz := 11.0 + t * 4.0                       # taille monde ∝ tier
-			draw_texture_rect(spr, Rect2(ctr - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false)
-		else:
-			var col := _country_color(w.region_owner(r))
-			var radius := 0.8 + t * 0.55
-			draw_circle(ctr, radius, col)
-			draw_arc(ctr, radius, 0.0, TAU, 16, Color(0, 0, 0, 0.6), 0.3, true)
-			draw_circle(ctr, radius * 0.35, Color(1, 1, 1, 0.55))
+	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde.
+	#    MASQUÉES sur la carte d'ensemble — elles ne paraissent qu'en ZOOM TRÈS
+	#    HAUT (sinon les marqueurs encombrent). Repli sur un disque si atlas absent. ─
+	var zoom := get_viewport_transform().get_scale().x
+	if zoom >= CITY_ZOOM_MIN:
+		for r in range(w.region_count()):
+			var t: int = w.region_tier(r)
+			if t < 0:
+				continue
+			var ctr: Vector2 = w.region_centroid(r)
+			if ctr.x < 0:
+				continue
+			var spr := UIKit.settlement_sprite(t, w.region_settle_group(r))
+			if spr != null:
+				var sz := 11.0 + t * 4.0                       # taille monde ∝ tier
+				draw_texture_rect(spr, Rect2(ctr - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false)
+			else:
+				var col := _country_color(w.region_owner(r))
+				var radius := 0.8 + t * 0.55
+				draw_circle(ctr, radius, col)
+				draw_arc(ctr, radius, 0.0, TAU, 16, Color(0, 0, 0, 0.6), 0.3, true)
+				draw_circle(ctr, radius * 0.35, Color(1, 1, 1, 0.55))
 
 	# ── ARMÉES (dessus) : losange + ligne de marche + anneau de phase ─────────
 	for c in range(w.country_count()):
