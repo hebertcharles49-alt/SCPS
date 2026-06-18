@@ -313,6 +313,22 @@
   d'intérêt au-delà de `CREDIT_RATIO_CAP·ligne` (sans ça : intérêt ∝ dette² → treasury → -1e31 →
   NaN vers l'an 105). Déterminisme 12 ans inchangé ; les longs runs restent finis.
 - `make scps` : le visualiseur (SDL2) — **0 warning** (`-Wall -Wextra`), toujours.
+- **MERGE (2026-06-18) — un seul tronc** : la lignée VITALITÉ (modificateurs diégétiques,
+  endgame §27) et la lignée ASSETS/ARMÉE/WORLDGEN du collègue (matrice de contres,
+  l'éthos compose l'armée, villes jamais sur l'eau, déboisement) FUSIONNENT. Le format de
+  save COMBINE les deux jeux de sections → **`SAVE_VERSION` 25→29** (l'entête `viewer.c`
+  documente le combiné : EGAM endgame + assets/armée). `make test` vert, déterminisme STABLE.
+- **STABILISATION (2026-06-18) — `make audit` au VERT + harnais durci** : suite à l'audit
+  technique (point bloquant : `make audit` ROUGE 2/4, jamais capté). Les deux bornes
+  rouges (POP, ACCESSION) étaient des artefacts du BANC `audit_eco`, **pas** des bugs
+  moteur (le vrai jeu bootstrappe via `CS_TRADE_POOL`/marché de départ — l'extraction est
+  demand-driven, le banc n'avait ni Centre ni source de pierre). Fixes de BANC seulement :
+  hameau témoin = région du joueur la plus sous son eff_cap (au lieu d'une vierge de
+  frontière gelée) ; capitale amorcée d'un socle bois/pierre/argile. **Harnais** :
+  `audit_eco` + `lang_demo` rejoignent `run_tests.sh` (**35 → 37 bancs** — le rouge serait
+  désormais capté), `timeout` par banc, split `make smoke` (rapide) / `make full-test`
+  (bancs + déterminisme + ASan). **Aucune entrée moteur touchée** : re-baseline NULLE,
+  aucun hash bougé, **SAVE non bumpé**. Détail en AUDIT.md §(a-bis).
 
 ## Disciplines non négociables
 

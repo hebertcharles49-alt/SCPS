@@ -1,30 +1,61 @@
 # AUDIT — SCPS (moteur de grande stratégie C99)
 
-> État POST-arc K (« état vérifiable »). Source de vérité = les bancs (`make test`),
-> jamais ce fichier. Daté : 2026-06-11. Build : gcc 13 · -O2 -Wall -Wextra -std=c99
-> + durcissement (`-fstack-protector-strong -D_FORTIFY_SOURCE=2`).
+> État vérifiable. Source de vérité = les bancs (`make test`), jamais ce fichier.
+> Daté : 2026-06-18 (entête rafraîchi ; les entrées datées plus bas gardent leur
+> compte d'époque). Build : gcc 13 · -O2 -Wall -Wextra -std=c99 + durcissement
+> (`-fstack-protector-strong -D_FORTIFY_SOURCE=2`). SAVE_VERSION = **29** (le
+> format a fusionné les deux lignées : endgame §27 + assets/armée du collègue).
 
 ---
 
 ## (a) Résultats MESURÉS (`make test`, K3 appliqué)
 
-**32 bancs VERTS / 32** — `make test` les bâtit, les lance, compte les BILAN :
+**37 bancs VERTS / 37** — `make test` les bâtit, les lance, compte les BILAN
+(snapshot 2026-06-18 ; le compte AUTORITAIRE est la sortie de `make test`, pas
+cette liste — gardée à jour pour le coup d'œil) :
 
 core 35/35 · monde_reel 10/10 · readout 27/27 · species 9/9 · tech 22/22 ·
-faith 14/14 · intertrade 14/14 · routes 4/4 · save_io 8/8 · statecraft 22/22 ·
-pop 14/14 · army 49/49 · demography 19/19 · demography_integ 6/6 · revolt 23/23 ·
-social 10/10 · agency 18/18 · campaign 19/19 · factions 32/32 · econ_tax 8/8 ·
-econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 44/44 ·
-missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27 (K4a)** ·
-**structural 16/16 (K5+K6)** · **ai 23/23 (L6)** · **forks 34/34 (M)** · prosperity OK (sans format BILAN).
+faith 14/14 · intertrade 25/25 · routes 4/4 · save_io 14/14 · statecraft 27/27 ·
+pop 14/14 · army 48/48 · demography 19/19 · demography_integ 6/6 · revolt 23/23 ·
+social 10/10 · agency 16/16 · campaign 19/19 · factions 35/35 · econ_tax 8/8 ·
+econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 37/37 ·
+missions 8/8 · diplo 49/49 · warhost 4/4 · events 41/41 · structural 16/16 ·
+ai 23/23 · forks 35/35 · prosperity OK (sans format BILAN) · credit 16/16 ·
+cap 5/5 · endgame 76/76 · **audit_eco 4/4** · **lang 26/26**.
 
-**0 banc rouge** — H3 maintient 32/32.
+**0 banc rouge.** `audit_eco` et `lang_demo` sont désormais DANS le harnais
+(`tools/run_tests.sh`) — le rouge de `make audit` (longtemps invisible) serait
+capté. `make smoke` = sous-ensemble rapide ; `make full-test` = bancs +
+déterminisme + ASan. Statut mesuré sur ce build, pas supposé.
 
-**V1 (2026-06, build PORTABLE)** : `make test` 32/32 et `make chronicle` **0 warning** —
-`intertrade_demo` 14/14 (le `setenv` du banc est rendu visible sous `-std=c99` strict via
-`#define _POSIX_C_SOURCE 200809L` ; la chaîne « Mécaniste » dé-malformée — l'octet `\xa9`
-était suivi d'un `c` (chiffre hex) → échappement avalé, corrigé en UTF-8 source). Statut
-mesuré sur ce build, pas supposé.
+---
+
+## (a-bis) Passe de STABILISATION (2026-06-18)
+
+Suite à l'audit technique du 18 juin (point bloquant : `make audit` ROUGE 2/4).
+
+- **`make audit` au VERT (4/4)** — deux bornes étaient rouges depuis longtemps,
+  jamais captées (audit_eco n'était pas dans le harnais). Les DEUX échecs sont
+  des artefacts du BANC, pas des bugs moteur :
+  - **POP (E0.1)** : le banc colonisait une vierge de FRONTIÈRE comme hameau
+    témoin. Sur un monde N1 (carte nue) développé, la frontière est pauvre
+    (cap_pop ≤ 200) : une colonie de ≈250 âmes y naît DÉJÀ au-dessus du plafond
+    (cap_factor=0, pop gelée) → la borne mesurait le mauvais régime. Fix : le
+    témoin est la région du joueur (HORS capitale) avec le PLUS de marge sous
+    son eff_cap. → rég 55, ×1.19 ∈ [1.1 .. 2.5].
+  - **ACCESSION (E1 §9)** : le banc ne lance ni l'intertrade ni le marché de
+    départ (`agency_seed_capital_markets`) — l'import de matériaux depuis les
+    cités-états (qui bootstrappe un empire NU dans le vrai jeu) n'opère pas ici,
+    donc la capitale ne voyait jamais de PIERRE. **Diagnostic RES_STONE** : ce
+    n'est PAS un bug de marché — l'extraction est demand-driven et sans Centre/
+    cache mondial dans le banc, il n'y a pas de consommateur ni de source ; le
+    vrai jeu importe via `CS_TRADE_POOL` (N1, accession 3e empire an 43, prouvée
+    en chronique). Fix de banc : amorcer la capitale d'un socle bois/pierre/
+    argile (+120) ; le bootstrap import reste couvert par `intertrade_demo`.
+- **Harnais durci** : `audit_eco` + `lang_demo` rejoignent `run_tests.sh`
+  (35 → 37 bancs) ; `timeout` par banc ; split `make smoke` / `make full-test`.
+- **Aucune entrée moteur touchée** : `make test` 37/37, déterminisme STABLE,
+  aucun hash bougé. Re-baseline NULLE (purs fixes de banc + doc + harnais).
 
 ---
 
