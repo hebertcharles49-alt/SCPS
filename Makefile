@@ -391,6 +391,16 @@ audit: audit_eco
 	./audit_eco 7 10
 .PHONY: audit
 
+# ---- scps_api_demo : le banc de la FAÇADE C (scps_api) -----------------------
+# scps_api est la surface de binding pour un hôte natif (Godot/GDExtension) : le
+# moteur reste 100 % C, l'hôte affiche/saisit. Ce banc prouve génération + rendu
+# (render_map) + couches + avancement + REPRODUCTIBILITÉ, sans Godot. Lie le
+# moteur complet + scps_render. (Le binding C++ Godot vit dans godot/, à part.)
+API_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS)) \
+                 $(OBJDIR)/scps_scps_render.o $(OBJDIR)/scps_scps_api.o $(OBJDIR)/scps_scps_api_demo.o
+scps_api_demo: $(API_DEMO_OBJS)
+	$(CC) $(API_DEMO_OBJS) -o $@ -lm $(OMPFLAG)
+
 # ---- fx-proof : PREUVE VISUELLE headless des animations FX (hors test) -------
 # Composite les 4 planches FX (mer/côte/armée/vortex) sur un terrain render_map
 # RÉEL via un renderer LOGICIEL → fx_proof.png. Aucun affichage requis (driver
