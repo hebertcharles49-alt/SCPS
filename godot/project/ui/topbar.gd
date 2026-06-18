@@ -26,13 +26,10 @@ func _on_change() -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	# bandeau : embout gauche + centre étiré + embout droit (repli VKit si absent)
-	if UIKit.chrome("topbar_center_repeat") != null:
-		UIKit.draw_chrome(self, "topbar_left_cap", Rect2(0, 0, CAP, H))
-		UIKit.draw_chrome(self, "topbar_center_repeat", Rect2(CAP, 0, W - 2 * CAP, H))
-		UIKit.draw_chrome(self, "topbar_right_cap", Rect2(W - CAP, 0, CAP, H))
-	else:
-		VKit.panel_bg(self, Rect2(0, 0, W, H))
+	# bandeau : le panneau DESSINÉ (navy + liseré cuivre, comme les panneaux) — crisp
+	# et cohérent. (On NE tuile/n'étire PAS la pièce de chrome : étirée à 34 px de
+	# haut, elle bavait en barre grise — pire sous Godot 4.6.)
+	VKit.panel_bg(self, Rect2(0, 0, W, H))
 
 	if Sim.world == null:
 		VKit.text(self, Vector2(16, 9), VKit.COL_DIM, "(libscps absente — voir README)")
