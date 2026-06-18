@@ -7,6 +7,7 @@ extends Control
 ## coordonnées LOCALES (le panneau est à 0,0 local, posé à y=102 à l'écran).
 
 const VKit = preload("res://ui/vkit.gd")
+const UIKit = preload("res://ui/uikit.gd")
 const PW := 312.0
 const TOP := 102.0
 
@@ -46,14 +47,15 @@ func _draw() -> void:
 	var x := 16.0
 	var y := 14.0
 
-	# ── EN-TÊTE : héraldique · nom · jauge de prospérité ──────────────────────
+	# ── EN-TÊTE : héraldique (tour de capitale) · nom · jauge de prospérité ───
 	var hsz := 30.0
 	VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_COPPER)
 	VKit.fill(self, Rect2(x + 1, y + 3, hsz - 2, hsz - 2), VKit.COL_PANEL2)
+	UIKit.draw_icon(self, "capital_tower", Vector2(x + 3, y + 5), hsz - 6)
 	VKit.text(self, Vector2(x + hsz + 8, y), VKit.COL_COPPER, String(info["nom"]), VKit.FS_BIG)
 	var gw := 64.0
 	var gx := PW - 16.0 - gw
-	VKit.gauge(self, gx, y + 4, gw, 10, int(info["aisance_val"]))
+	UIKit.bar(self, Rect2(gx, y + 2, gw, 14), int(info["aisance_val"]))
 	var nb := str(info["aisance_val"])
 	VKit.text(self, Vector2(gx - VKit.text_w(nb) - 6, y), VKit.COL_PARCH, nb)
 	# climat · relief · statut de capitale
@@ -161,8 +163,9 @@ func _draw() -> void:
 
 	# ── seuil de révolte ──────────────────────────────────────────────────────
 	if bool(info.get("seuil_revolte", false)):
-		VKit.text(self, Vector2(x, y), VKit.sense(0.06),
-			"⚑ Au bord de la révolte (agitation %d)" % int(info["agitation"]))
+		UIKit.draw_icon(self, "alert_revolt", Vector2(x, y - 2), 18)
+		VKit.text(self, Vector2(x + 22, y), VKit.sense(0.06),
+			"Au bord de la révolte (agitation %d)" % int(info["agitation"]))
 		y += 22
 
 	# ── CAPITALE ──────────────────────────────────────────────────────────────
