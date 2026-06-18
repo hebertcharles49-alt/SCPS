@@ -36,6 +36,17 @@ func _ready() -> void:
 	endgame.name = "EndgameBanner"
 	ui.add_child(endgame)
 
+	# le RAIL de sidebar (onglets menu_*) — gauche
+	var sidebar = load("res://ui/sidebar.gd").new()
+	sidebar.name = "Sidebar"
+	ui.add_child(sidebar)
+
+	# barres de carte : sélecteur de mode (bas-gauche) + zoom (bas-droite)
+	var controls = load("res://ui/controls.gd").new()
+	controls.name = "MapControls"
+	controls.setup(map)
+	ui.add_child(controls)
+
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
 

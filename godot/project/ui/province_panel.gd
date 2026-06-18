@@ -20,8 +20,10 @@ func _ready() -> void:
 	Sim.ticked.connect(_on_tick)
 	hide()
 
+const RAIL := 46.0   # largeur du rail de sidebar (le panneau se pose à sa droite)
+
 func _layout() -> void:
-	position = Vector2(0, TOP)
+	position = Vector2(RAIL, TOP)
 	size = Vector2(PW, maxf(80.0, get_viewport_rect().size.y - TOP - 26.0))
 
 func show_province(pid: int) -> void:

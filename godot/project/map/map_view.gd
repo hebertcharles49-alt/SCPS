@@ -136,3 +136,8 @@ func _input(event: InputEvent) -> void:
 func _zoom(factor: float) -> void:
 	var z: float = clampf(_camera.zoom.x * factor, 0.2, 16.0)
 	_camera.zoom = Vector2(z, z)
+
+# ── verbes publics pour les contrôles de carte (boutons habillés) ──────────
+func zoom_in() -> void:  _zoom(1.25)
+func zoom_out() -> void: _zoom(1.0 / 1.25)
+func fit() -> void:      _fit_camera()
