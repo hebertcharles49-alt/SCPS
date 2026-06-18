@@ -37,6 +37,13 @@ func _refresh() -> void:
 		_info.text = "(libscps absente — voir README)"
 		_speed.text = "—"
 		return
+	# DLL antérieure à la Phase 2 (sans les readouts) → le clic ne peut pas marcher.
+	if not Sim.world.has_method("province_at"):
+		_info.text = "⚠ libscps OBSOLÈTE (Phase 1) — rebâtir : cd godot && scons platform=windows use_mingw=yes"
+		_info.add_theme_color_override("font_color", Color(0.95, 0.55, 0.25))
+		_speed.text = "—"
+		return
+	_info.remove_theme_color_override("font_color")
 	_info.text = "An %d · pop %d · pays %d" % [
 		Sim.world.year(), Sim.world.world_pop(), Sim.world.country_count()]
 	_speed.text = Sim.speed_label()

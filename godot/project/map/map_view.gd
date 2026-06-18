@@ -104,7 +104,10 @@ func _fit_camera() -> void:
 	_camera.zoom = Vector2(z, z)
 
 # ── navigation : pan (clic-droit glissé) · zoom (molette) · sélection (clic gauche) ──
-func _unhandled_input(event: InputEvent) -> void:
+# On écoute dans _input (livraison GARANTIE) plutôt que _unhandled_input (qui peut
+# être court-circuité selon le routage GUI) ; on ne picke pas si le curseur est sur
+# un Control opaque (la topbar) via gui_get_hovered_control.
+func _input(event: InputEvent) -> void:
 	if _camera == null:
 		return
 	if event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_RIGHT):
@@ -121,8 +124,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.pressed:
 				_press_pos = event.position
 				_dragged = false
-			elif not _dragged:           # relâché sans glisser → c'est un clic
-				_pick_at_mouse()
+			elif not _dragged and get_viewport().gui_get_hovered_control() == null:
+				_pick_at_mouse()        # relâché sans glisser, hors UI → c'est un clic carte
 
 func _zoom(factor: float) -> void:
 	var z: float = clampf(_camera.zoom.x * factor, 0.2, 16.0)
