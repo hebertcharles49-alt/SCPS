@@ -297,3 +297,88 @@ int scps_region_sunken(const ScpsSim *s, int r){
     if(!s || !s->ready || !s->sim.eg || r<0 || r>=SCPS_MAX_REG) return 0;
     return (int)s->sim.eg->sunken[r];
 }
+
+/* ---- DÉTAIL DE PROVINCE (port fidèle de viewer.c) --------------------- */
+
+int scps_province_groups(ScpsSim *s, int pid, ScpsGroup *out, int max){
+    if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    int reg = s->w->province[pid].region;
+    if(reg<0 || reg>=s->sim.econ->n_regions) return 0;
+    RegionEconomy *re = &s->sim.econ->region[reg];
+    if(re->pop.n_groups<=0) return 0;
+    /* la doctrine du TRÔNE (crown) : culture de la région-capitale du propriétaire. */
+    int owner = re->owner;
+    const PopCulture *crown = &re->culture;
+    if(owner>=0 && owner<s->w->n_countries){
+        int cp = s->w->country[owner].capital_prov;
+        if(cp>=0 && cp<s->w->n_provinces){
+            int cr = s->w->province[cp].region;
+            if(cr>=0 && cr<s->sim.econ->n_regions) crown = &s->sim.econ->region[cr].culture;
+        }
+    }
+    GroupReadout gr[SCPS_MAX_GROUPS];
+    int ng = province_composition(&re->pop, s->sim.drift, crown, 5.f, 5.f, gr, SCPS_MAX_GROUPS);
+    if(ng>max) ng=max;
+    for(int i=0;i<ng;i++){
+        out[i].race     = sz(gr[i].race);
+        out[i].culture  = sz(gr[i].culture);
+        out[i].religion = sz(gr[i].religion);
+        out[i].klass    = sz(gr[i].klass);
+        out[i].etat     = sz(gr[i].etat);
+        out[i].loyaute  = sz(label_humeur(gr[i].loyaute));
+        out[i].percent  = gr[i].percent;
+    }
+    return ng;
+}
+
+int scps_province_income(ScpsSim *s, int pid, ScpsIncome *out, int max){
+    if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    int reg = s->w->province[pid].region;
+    IncomeReadout inc = province_income(s->sim.econ, reg);
+    int n = inc.n; if(n>max) n=max;
+    for(int i=0;i<n;i++){
+        out[i].source       = sz(inc.line[i].source);
+        out[i].per_day      = inc.line[i].per_day;
+        out[i].manufactured = inc.line[i].manufactured ? 1 : 0;
+    }
+    return n;
+}
+
+void scps_province_classes(ScpsSim *s, int pid, long *lab, long *bourg, long *elite){
+    long cp[3] = {0,0,0};
+    if(s && s->ready && pid>=0 && pid<s->w->n_provinces){
+        int reg = s->w->province[pid].region;
+        if(reg>=0 && reg<s->sim.econ->n_regions){
+            RegionEconomy *re = &s->sim.econ->region[reg];
+            const ProvincePop *pp = &re->pop;
+            if(pp->n_groups>0){
+                for(int gi=0; gi<pp->n_groups; gi++)
+                    for(int cc=0; cc<3; cc++) cp[cc] += pp->groups[gi].pop_by_class[cc];
+            } else {
+                cp[0]=(long)re->strata[CLASS_LABORER].pop;
+                cp[1]=(long)re->strata[CLASS_BOURGEOIS].pop;
+                cp[2]=(long)re->strata[CLASS_ELITE].pop;
+            }
+        }
+    }
+    if(lab)   *lab   = cp[0];
+    if(bourg) *bourg = cp[1];
+    if(elite) *elite = cp[2];
+}
+
+void scps_province_capitale(ScpsSim *s, int pid, ScpsCapitale *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out); out->statut = "";
+    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return;
+    int reg = s->w->province[pid].region;
+    if(reg<0 || reg>=s->sim.econ->n_regions) return;
+    long pop = region_pop_i(s, reg);
+    int tier = capitale_max_tier(pop);
+    long admin = capitale_admin_pop(tier); if(admin>pop) admin = (pop/100)*100;
+    out->statut       = sz(capitale_status(tier));
+    out->tier         = tier;
+    out->pop          = pop;
+    out->logement_cap = capitale_housing(tier, admin);
+    out->service_cap  = capitale_housing(tier, admin);
+    out->prod_pct     = (int)((capitale_prodmult(tier, admin) - 1.f) * 100.f + 0.5f);
+}

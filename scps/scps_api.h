@@ -159,6 +159,33 @@ void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out);
 /* état d'engloutissement d'une région (fin EAU) : 0 = non · 1 = programmée · 2 = engloutie. */
 int  scps_region_sunken(const ScpsSim *s, int region);
 
+/* ---- DÉTAIL DE PROVINCE (port fidèle de viewer.c) --------------------- *
+ * Les données que draw_province_panel lit EN PLUS de province_info : la
+ * composition (camemberts culture/idéologie), les revenus (production), la pop
+ * par classe (barre empilée) et l'ossature de capitale. Tous membrane/tangibles. */
+typedef struct {
+    const char *race, *culture, *religion, *klass, *etat, *loyaute;  /* mots résolus */
+    int         percent;     /* part de la province */
+} ScpsGroup;
+/* remplit out[0..min(n,max)-1] avec les groupes pop ; retourne le nombre écrit. */
+int scps_province_groups(ScpsSim *s, int province, ScpsGroup *out, int max);
+
+typedef struct { const char *source; float per_day; int manufactured; } ScpsIncome;
+int scps_province_income(ScpsSim *s, int province, ScpsIncome *out, int max);
+
+/* pop par classe (laboureurs · artisans/bourgeois · noblesse/élite). */
+void scps_province_classes(ScpsSim *s, int province, long *laboureurs, long *artisans, long *noblesse);
+
+typedef struct {
+    const char *statut;   /* Hameau … Métropole (capitale_status) */
+    int  tier;            /* 1..7 */
+    long pop;             /* habitants */
+    long logement_cap;    /* capacité de logement (capitale) */
+    long service_cap;     /* capacité de services */
+    int  prod_pct;        /* bonus de productivité, en % */
+} ScpsCapitale;
+void scps_province_capitale(ScpsSim *s, int province, ScpsCapitale *out);
+
 #ifdef __cplusplus
 }
 #endif

@@ -69,6 +69,12 @@ public:
     /* ENDGAME §27 (Phase 4) */
     Dictionary endgame_info();                        /* entropie · augure · fin · épicentre */
     int        region_sunken(int region) const;       /* 0 non · 1 programmée · 2 engloutie */
+
+    /* DÉTAIL DE PROVINCE (port fidèle viewer.c) */
+    Array      province_groups(int province);         /* camemberts culture/idéologie */
+    Array      province_income(int province);         /* RESSOURCES / PRODUCTION */
+    Dictionary province_classes(int province);        /* barre empilée des classes */
+    Dictionary province_capitale(int province);       /* ossature de capitale */
 };
 
 } // namespace godot

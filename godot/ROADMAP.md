@@ -1,10 +1,35 @@
 # SCPS × Godot — feuille de route du front-end
 
-> Le moteur C99 (la sim) **ne bouge pas**. On bâtit l'ŒIL et les MAINS. Chaque
-> phase est marquée **[Godot]** (aucune touche moteur — faisable tout de suite) ou
-> **[+façade]** (demande d'ajouter quelques getters à `scps/scps_api.*` — différé
-> tant qu'« on laisse le moteur de côté »). La règle d'or partout : **zéro logique
-> de simulation côté GDScript**.
+> Le moteur C99 (la sim) **ne bouge pas**. On bâtit l'ŒIL et les MAINS. La règle
+> d'or partout : **zéro logique de simulation côté GDScript**.
+
+---
+
+## ⇒ CAP : PORT FIDÈLE de `viewer.c` (2026-06-18)
+
+`viewer.c` (6400 lignes, ~20 panneaux) est la **SPEC**. On NE réinvente RIEN « à sa
+sauce » : Godot lit la **même membrane** (readouts via la façade) et rend les **mêmes
+widgets** (palette `COL_*`, jauges rouge→vert, camemberts, visages d'humeur) en
+`_draw` immédiat qui **mire `draw_*` ligne à ligne**. Le layout n'est pas pixel-exact
+(Controls Godot vs blits SDL) mais le **contenu · les mots · le lexique** le sont.
+
+- ✅ **`vkit.gd`** : la palette EXACTE + `sense_color` + `SLICE_PAL` + les primitives
+  (`panel_bg`, `box`, `gauge`, `pie`, `face`, `section`, `row`, `text`) — le socle
+  réutilisé par TOUS les panneaux.
+- ✅ **Panneau de province** (`draw_province_panel`) : en-tête héraldique + jauge de
+  prospérité · climat·relief·statut · habitants · **camemberts** culture/idéologie ·
+  **visages** d'humeur · barre empilée des classes · ressources · production · capitale.
+  Façade : `province_groups`/`province_income`/`province_classes`/`province_capitale`.
+- ✅ **Bandeau de royaume** (country_panel) au thème VKit : nom·éthos·pop·or + jauges
+  stabilité/prospérité/légitimité/cohésion/savoir (mots de bande) + influence.
+- ⏳ **À PORTER** (l'essentiel de viewer.c) : `draw_topbar` (le vrai bandeau) ·
+  **sidebar 8 onglets** (éco/démo/stocks/marché/armée/filtres/diplo/état + sous-onglets,
+  scroll, leviers d'action) · **arbre de tech concentrique** (`draw_tech_tree`) ·
+  outliner (domaine, droite) · minimap · mode buttons · **hover footer** (les survols
+  `zone_add`) · diplo popup · empire labels · le shell (litanie/menus). Plus le dressing
+  carte (rivières/routes/colonies/forêts) déjà partiellement dans `render_map`.
+- ⏳ **i18n** : exposer `tr(STR_*)` pour les labels de chrome (au lieu du FR inline) —
+  viewer.c lui-même n'est pas 100 % migré (base 64), on reproduira au plus près.
 
 ---
 

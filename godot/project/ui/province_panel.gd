@@ -1,112 +1,183 @@
-extends PanelContainer
-## ProvincePanel — la membrane d'une PROVINCE, en MOTS. Lit Sim.world.province_info
-## (Dictionary : des mots DÉJÀ résolus par le moteur + des nombres tangibles). Ne
-## touche JAMAIS un flottant SCPS — la cloison membrane tient aussi côté Godot.
+extends Control
+## ProvincePanel — PORT FIDÈLE de draw_province_panel (viewer.c). _draw immédiat
+## avec VKit (mêmes couleurs, mêmes widgets). Lit la membrane via la façade
+## (province_info + groups + income + classes + capitale). Display-only.
 ##
-## Bâti en code (pas de .tscn). Caché tant qu'aucune province n'est sélectionnée.
+## Le Control occupe la bande GAUCHE (clic bloqué dessus) ; tout est dessiné en
+## coordonnées LOCALES (le panneau est à 0,0 local, posé à y=102 à l'écran).
 
-const COL_TITLE  := Color(0.85, 0.62, 0.36)   ## cuivre (titre)
-const COL_KEY    := Color(0.60, 0.60, 0.62)   ## clé grisée
-const COL_VAL    := Color(0.90, 0.90, 0.88)   ## valeur claire
-const COL_FAVEUR := Color(0.46, 0.78, 0.46)   ## vert (boon)
-const COL_FLEAU  := Color(0.86, 0.42, 0.40)   ## rouge (malus)
-const COL_ALERT  := Color(0.92, 0.50, 0.30)   ## seuil de révolte
+const VKit = preload("res://ui/vkit.gd")
+const PW := 312.0
+const TOP := 102.0
 
-const MARGIN := 8.0
-
-var _vbox: VBoxContainer
+var _pid := -1
 
 func _ready() -> void:
-	# ancrage par défaut (haut-gauche) ; on POSITIONNE explicitement après avoir
-	# bâti le contenu (sinon la taille est nulle au _ready → panneau mal placé).
-	mouse_filter = Control.MOUSE_FILTER_IGNORE   # ne pas bloquer le clic carte dessous
-	_vbox = VBoxContainer.new()
-	_vbox.add_theme_constant_override("separation", 2)
-	add_child(_vbox)
+	mouse_filter = Control.MOUSE_FILTER_STOP   # le panneau capte ses propres clics
+	_layout()
+	get_viewport().size_changed.connect(_layout)
+	Sim.ticked.connect(_on_tick)
 	hide()
 
-## colle le panneau en BAS-GAUCHE, taille = contenu (recalculée à chaque ouverture).
-func _reposition() -> void:
-	var sz := get_combined_minimum_size()
-	var vp := get_viewport_rect().size
-	reset_size()
-	position = Vector2(MARGIN, max(MARGIN, vp.y - sz.y - MARGIN))
+func _layout() -> void:
+	position = Vector2(0, TOP)
+	size = Vector2(PW, maxf(80.0, get_viewport_rect().size.y - TOP - 26.0))
 
-func show_province(info: Dictionary) -> void:
-	if info.is_empty() or not bool(info.get("valide", false)):
-		hide()
+func show_province(pid: int) -> void:
+	_pid = pid
+	visible = pid >= 0
+	queue_redraw()
+
+func _on_tick(_year: int) -> void:
+	if visible:
+		queue_redraw()
+
+func _draw() -> void:
+	var w = Sim.world
+	if w == null or _pid < 0:
 		return
-	_clear()
-	_title(String(info["nom"]))
-	_sub("%s · %s âmes" % [info["stature"], _grouped(int(info["ames"]))])
-	_row("Terrain", "%s · %s · %s" % [info["terrain"], info["relief"], info["climat"]])
-	_row("Peuple", String(info["race"]))
-	if String(info["vocation"]) != "":
-		_row("Vocation", String(info["vocation"]))
-	if String(info["ressource"]) != "" and String(info["ressource"]) != "—":
-		_row("Ressource", String(info["ressource"]))
-	_row("Humeur", "%s · %d" % [info["humeur"], info["humeur_val"]])
-	_row("Aisance", "%s · %d" % [info["aisance"], info["aisance_val"]])
-	_row("Agitation", str(info["agitation"]), COL_ALERT if bool(info["seuil_revolte"]) else COL_VAL)
-	_row("Lignée", String(info["lignee"]))
-	_row("Logements", "%s / %s" % [_grouped(int(info["logements_libres"])), _grouped(int(info["logements_cap"]))])
-	_row("Services", "%s / %s" % [_grouped(int(info["services_libres"])), _grouped(int(info["services_cap"]))])
-	if String(info["defense"]) != "":
-		_row("Défense", String(info["defense"]))
-	var mods: Array = info.get("mods", [])
-	if not mods.is_empty():
-		_sep()
-		for m in mods:
-			_mod(m)
-	show()
-	_reposition.call_deferred()   # après que le layout ait calculé la taille
+	var info: Dictionary = w.province_info(_pid)
+	if not bool(info.get("valide", false)):
+		return
+	var ph := size.y
+	var rw := PW - 30.0
+	VKit.panel_bg(self, Rect2(0, 0, PW, ph))
+	VKit.fill(self, Rect2(PW - 2, 0, 2, ph), VKit.COL_COPPER)
+	var x := 16.0
+	var y := 14.0
 
-# ── construction de lignes ─────────────────────────────────────────────────
-func _clear() -> void:
-	for c in _vbox.get_children():
-		c.queue_free()
+	# ── EN-TÊTE : héraldique · nom · jauge de prospérité ──────────────────────
+	var hsz := 30.0
+	VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_COPPER)
+	VKit.fill(self, Rect2(x + 1, y + 3, hsz - 2, hsz - 2), VKit.COL_PANEL2)
+	VKit.text(self, Vector2(x + hsz + 8, y), VKit.COL_COPPER, String(info["nom"]), VKit.FS_BIG)
+	var gw := 64.0
+	var gx := PW - 16.0 - gw
+	VKit.gauge(self, gx, y + 4, gw, 10, int(info["aisance_val"]))
+	var nb := str(info["aisance_val"])
+	VKit.text(self, Vector2(gx - VKit.text_w(nb) - 6, y), VKit.COL_PARCH, nb)
+	# climat · relief · statut de capitale
+	var cap: Dictionary = w.province_capitale(_pid)
+	VKit.text(self, Vector2(x + hsz + 8, y + 18), VKit.COL_PARCH,
+		"%s · %s · %s" % [info["climat"], info["relief"], cap.get("statut", "")])
+	y += hsz + 8
 
-func _title(text: String) -> void:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_color_override("font_color", COL_TITLE)
-	l.add_theme_font_size_override("font_size", 18)
-	_vbox.add_child(l)
+	# ── HABITANTS ─────────────────────────────────────────────────────────────
+	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "%s habitants" % _grp(info["ames"]))
+	y += 22
 
-func _sub(text: String) -> void:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_color_override("font_color", COL_KEY)
-	_vbox.add_child(l)
+	# ── CAMEMBERTS culture / idéologie (ou repli PEUPLE) ──────────────────────
+	var groups: Array = w.province_groups(_pid)
+	if groups.size() > 0:
+		var cper := []
+		var ccol := []
+		for i in range(groups.size()):
+			cper.append(groups[i]["percent"])
+			ccol.append(VKit.SLICE_PAL[i % 8])
+		var rnames := []
+		var rper := []
+		var rcol := []
+		for g in groups:
+			var idx: int = rnames.find(g["religion"])
+			if idx < 0:
+				rnames.append(g["religion"])
+				rper.append(g["percent"])
+				rcol.append(VKit.SLICE_PAL[(rnames.size() - 1) % 8])
+			else:
+				rper[idx] += g["percent"]
+		var pr := 22.0
+		var cyc := y + pr + 4
+		var cx1 := x + pr + 6
+		var cx2 := x + rw / 2.0 + pr + 2
+		VKit.pie(self, Vector2(cx1, cyc), pr, cper, ccol)
+		VKit.pie(self, Vector2(cx2, cyc), pr, rper, rcol)
+		VKit.text(self, Vector2(cx1 - pr, cyc + pr + 3), VKit.COL_DIM, "Culture", VKit.FS_SMALL)
+		VKit.text(self, Vector2(cx2 - pr, cyc + pr + 3), VKit.COL_DIM, "Idéologie", VKit.FS_SMALL)
+		y = cyc + pr + 16
+	else:
+		y = VKit.section(self, x, y, "PEUPLE")
+		y = VKit.row(self, x, y, "Race", String(info["race"]), VKit.COL_PARCH)
 
-func _row(key: String, val: String, val_col: Color = COL_VAL) -> void:
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 8)
-	var k := Label.new()
-	k.text = key
-	k.custom_minimum_size.x = 92
-	k.add_theme_color_override("font_color", COL_KEY)
-	var v := Label.new()
-	v.text = val
-	v.add_theme_color_override("font_color", val_col)
-	hb.add_child(k)
-	hb.add_child(v)
-	_vbox.add_child(hb)
+	# ── HUMEUR : rangée de visages + chiffre ──────────────────────────────────
+	y = VKit.section(self, x, y, "HUMEUR")
+	var nf := 5
+	var fr := 9.0
+	var gap := 8.0
+	var fy := y + fr
+	var moodv := float(info["humeur_val"]) / 100.0
+	var lit := int(moodv * (nf - 1) + 0.5)
+	for i in range(nf):
+		VKit.face(self, Vector2(x + fr + i * (2 * fr + gap), fy), fr, float(i) / (nf - 1), i == lit)
+	VKit.text(self, Vector2(x + nf * (2 * fr + gap) + 6, y), VKit.sense(moodv), str(info["humeur_val"]))
+	y = fy + fr + 8
 
-func _mod(m: Dictionary) -> void:
-	var l := Label.new()
-	var fav := bool(m.get("faveur", true))
-	l.text = "%s %s" % ["▲" if fav else "▼", m.get("nom", "")]
-	l.tooltip_text = String(m.get("effet", ""))
-	l.add_theme_color_override("font_color", COL_FAVEUR if fav else COL_FLEAU)
-	_vbox.add_child(l)
+	# ── POPULATION : barre empilée des classes + légende ──────────────────────
+	var cls: Dictionary = w.province_classes(_pid)
+	var cp := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
+	var tot: float = maxf(1.0, cp[0] + cp[1] + cp[2])
+	var cc := [VKit.SLICE_PAL[0], VKit.SLICE_PAL[1], VKit.SLICE_PAL[3]]
+	var cnames := ["Laboureurs", "Artisans", "Noblesse"]
+	y = VKit.section(self, x, y, "POPULATION")
+	var bh := 12.0
+	var acc := 0.0
+	for i in range(3):
+		var segw: float = (rw - acc) if i == 2 else float(cp[i]) / tot * rw
+		segw = maxf(0.0, segw)
+		VKit.fill(self, Rect2(x + acc, y, segw, bh), cc[i])
+		acc += segw
+	VKit.box(self, Rect2(x, y, rw, bh), VKit.COL_DIM)
+	y += bh + 5
+	for i in range(3):
+		VKit.fill(self, Rect2(x, y + 3, 9, 9), cc[i])
+		VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, "%s %s" % [cnames[i], _grp(cp[i])])
+		y += 18
 
-func _sep() -> void:
-	_vbox.add_child(HSeparator.new())
+	# ── RESSOURCES + PRODUCTION ───────────────────────────────────────────────
+	var inc: Array = w.province_income(_pid)
+	y = VKit.section(self, x, y, "RESSOURCES")
+	var res := ""
+	var shown := 0
+	for l in inc:
+		if bool(l["manufactured"]):
+			continue
+		if shown >= 2:
+			break
+		res += ("" if shown == 0 else " · ") + String(l["source"])
+		shown += 1
+	if shown == 0:
+		res = String(info["ressource"])
+	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, res)
+	y += 22
+	y = VKit.section(self, x, y, "PRODUCTION")
+	if inc.size() == 0:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "rien de notable")
+		y += 18
+	else:
+		for l in inc:
+			VKit.text(self, Vector2(x, y), VKit.sense(0.62), "+%.1f/j" % l["per_day"])
+			VKit.text(self, Vector2(x + 74, y), VKit.COL_DIM, String(l["source"]))
+			y += 18
+	y += 4
+
+	# ── seuil de révolte ──────────────────────────────────────────────────────
+	if bool(info.get("seuil_revolte", false)):
+		VKit.text(self, Vector2(x, y), VKit.sense(0.06),
+			"⚑ Au bord de la révolte (agitation %d)" % int(info["agitation"]))
+		y += 22
+
+	# ── CAPITALE ──────────────────────────────────────────────────────────────
+	y = VKit.section(self, x, y, "CAPITALE")
+	y = VKit.row(self, x, y, "Statut", "%s · tier %d" % [cap.get("statut", ""), int(cap.get("tier", 0))], VKit.COL_COPPER)
+	var libres: int = int(cap.get("logement_cap", 0)) - int(cap.get("pop", 0))
+	y = VKit.row(self, x, y, "Logement", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("logement_cap", 0))],
+		VKit.COL_PARCH if libres >= 0 else VKit.sense(0.12))
+	y = VKit.row(self, x, y, "Services", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("service_cap", 0))], VKit.COL_PARCH)
+	if int(cap.get("prod_pct", 0)) > 0:
+		y = VKit.row(self, x, y, "Productivité", "+%d%%" % int(cap["prod_pct"]), VKit.sense(0.7))
 
 # milliers lisibles : 12345 → "12 345"
-func _grouped(n: int) -> String:
-	var s := str(absi(n))
+func _grp(n) -> String:
+	var s := str(absi(int(n)))
 	var out := ""
 	var c := 0
 	for i in range(s.length() - 1, -1, -1):
@@ -114,4 +185,4 @@ func _grouped(n: int) -> String:
 		c += 1
 		if c % 3 == 0 and i > 0:
 			out = " " + out
-	return ("-" if n < 0 else "") + out
+	return ("-" if int(n) < 0 else "") + out

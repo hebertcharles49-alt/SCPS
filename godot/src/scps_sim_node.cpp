@@ -36,6 +36,10 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
     ClassDB::bind_method(D_METHOD("endgame_info"),                   &ScpsWorld::endgame_info);
     ClassDB::bind_method(D_METHOD("region_sunken", "region"),        &ScpsWorld::region_sunken);
+    ClassDB::bind_method(D_METHOD("province_groups", "province"),    &ScpsWorld::province_groups);
+    ClassDB::bind_method(D_METHOD("province_income", "province"),    &ScpsWorld::province_income);
+    ClassDB::bind_method(D_METHOD("province_classes", "province"),   &ScpsWorld::province_classes);
+    ClassDB::bind_method(D_METHOD("province_capitale", "province"),  &ScpsWorld::province_capitale);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -193,3 +197,58 @@ Dictionary ScpsWorld::endgame_info() {
 }
 
 int ScpsWorld::region_sunken(int region) const { return scps_region_sunken(sim, region); }
+
+Array ScpsWorld::province_groups(int province) {
+    Array a;
+    ScpsGroup g[8];
+    int n = scps_province_groups(sim, province, g, 8);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["race"]     = String::utf8(g[i].race);
+        d["culture"]  = String::utf8(g[i].culture);
+        d["religion"] = String::utf8(g[i].religion);
+        d["klass"]    = String::utf8(g[i].klass);
+        d["etat"]     = String::utf8(g[i].etat);
+        d["loyaute"]  = String::utf8(g[i].loyaute);
+        d["percent"]  = g[i].percent;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Array ScpsWorld::province_income(int province) {
+    Array a;
+    ScpsIncome inc[6];
+    int n = scps_province_income(sim, province, inc, 6);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["source"]       = String::utf8(inc[i].source);
+        d["per_day"]      = inc[i].per_day;
+        d["manufactured"] = (bool)inc[i].manufactured;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Dictionary ScpsWorld::province_classes(int province) {
+    long lab = 0, bourg = 0, elite = 0;
+    scps_province_classes(sim, province, &lab, &bourg, &elite);
+    Dictionary d;
+    d["laboureurs"] = (int64_t)lab;
+    d["artisans"]   = (int64_t)bourg;
+    d["noblesse"]   = (int64_t)elite;
+    return d;
+}
+
+Dictionary ScpsWorld::province_capitale(int province) {
+    ScpsCapitale c;
+    scps_province_capitale(sim, province, &c);
+    Dictionary d;
+    d["statut"]       = String::utf8(c.statut);
+    d["tier"]         = c.tier;
+    d["pop"]          = (int64_t)c.pop;
+    d["logement_cap"] = (int64_t)c.logement_cap;
+    d["service_cap"]  = (int64_t)c.service_cap;
+    d["prod_pct"]     = c.prod_pct;
+    return d;
+}
