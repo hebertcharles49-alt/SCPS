@@ -13,8 +13,6 @@ extends Node2D
 
 const Iso = preload("res://map/iso.gd")
 const LAYER_HEIGHT := 0
-const LAYER_SEA := 1
-const WATER_SHADER := "res://shaders/water.gdshader"
 const CLICK_SLOP := 5.0
 
 # ── GLOBE ──
@@ -23,9 +21,11 @@ const SEG_LAT := 96
 const RELIEF := 0.05
 const GLOBE_FAR := 6.0          ## le plus loin (Terre entière, petite)
 const GLOBE_NEAR := 2.6         ## le plus près du globe AVANT de basculer en ISO
-# ── ISO ──
-const MESH_SX := 256
-const MESH_SY := 128
+# ── ISO ── « qui dit ISO dit TILES » : le sol est une GRILLE de losanges iso (2:1), un par
+# bloc de TILE_K cellules — sol DISCRET (pas une photo équirectangulaire lissée), à l'échelle
+# des assets (un bâti ≈ 1-2 tuiles). PERSPECTIVE D'ABORD (plat) ; la VOLUMÉTRIE vient après
+# (_relief : 0 = plat ; on lèvera les tuiles par l'altitude une fois la perspective calée).
+const TILE_K := 6               ## cellules monde par tuile iso (la maille du damier)
 const ISO_FAR := 4.0            ## zoom Camera2D à l'ENTRÉE en ISO (≈ l'échelle du globe au seuil) ;
                                ## dézoomer dessous rebascule au GLOBE. Les assets sont DÉJÀ lisibles ici.
 const ISO_NEAR := 16.0          ## le plus zoomé (on plonge dans un bourg)
@@ -40,7 +40,8 @@ var view_mode := VIEW_GLOBE     ## GLOBE (overview) ou ISO (jeu) — lu par l'ov
 var _selected_prov := -1
 var _press_pos := Vector2.ZERO
 var _dragged := false
-var _himg: Image                ## couche HEIGHT (figée) — maillage iso + projection overlay
+var _himg: Image                ## couche HEIGHT (figée) — relief globe + (à venir) volumétrie iso
+var _relief := 0.0              ## hauteur de relief ISO (0 = PLAT : on cale la perspective d'abord)
 
 # globe
 var _sv: SubViewport
@@ -55,8 +56,6 @@ var _cam_dist := GLOBE_FAR
 # iso
 var _terrain: MeshInstance2D
 var _camera: Camera2D
-var _sea_tex: ImageTexture
-var _height_tex: ImageTexture
 
 func _ready() -> void:
 	# ---- GLOBE : SubViewport 3D + sprite d'affichage ----
@@ -89,13 +88,10 @@ func _ready() -> void:
 	_disp.texture = _sv.get_texture()
 	add_child(_disp)
 
-	# ---- ISO : maillage à hauteur + Camera2D ----
+	# ---- ISO : GRILLE de tuiles iso + Camera2D ----
 	_terrain = MeshInstance2D.new()
-	var matw := ShaderMaterial.new()
-	var sh := load(WATER_SHADER)
-	if sh != null:
-		matw.shader = sh
-	_terrain.material = matw
+	# couleur PLATE par tuile : UV au centre + filtre NEAREST → un texel par tuile (pas de lissage).
+	_terrain.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_terrain.visible = false
 	add_child(_terrain)
 	_camera = Camera2D.new()
@@ -202,43 +198,51 @@ func center_on(wx: float, wy: float) -> void:
 	_place_camera()
 
 # ════════════════════════ ISO ════════════════════════
-func _build_terrain_mesh() -> void:
-	var himg := _himg
+## bâtit la GRILLE de tuiles iso : un LOSANGE par bloc de TILE_K cellules. Chaque tuile a ses
+## PROPRES 4 sommets (pas de partage) ⇒ couleur PLATE par tuile (arêtes nettes = damier). La
+## couleur vient de l'albédo (UV au CENTRE de la tuile, filtre NEAREST) → suit le tick sans
+## reconstruction. _relief = 0 ⇒ tuiles à PLAT (on cale la perspective ; volumétrie ensuite).
+func _build_tile_mesh() -> void:
 	var W := float(Sim.world.map_w())
 	var H := float(Sim.world.map_h())
-	var hw := himg.get_width()
-	var hh := himg.get_height()
-	var verts := PackedVector3Array()
-	var uvs := PackedVector2Array()
-	verts.resize((MESH_SX + 1) * (MESH_SY + 1))
-	uvs.resize((MESH_SX + 1) * (MESH_SY + 1))
-	for j in range(MESH_SY + 1):
-		for i in range(MESH_SX + 1):
-			var u := float(i) / float(MESH_SX)
-			var v := float(j) / float(MESH_SY)
-			var wx := u * W
-			var wy := v * H
-			var h := himg.get_pixel(clampi(int(wx), 0, hw - 1), clampi(int(wy), 0, hh - 1)).r
-			var p := Iso.proj(wx, wy, h)
-			var idx := j * (MESH_SX + 1) + i
-			verts[idx] = Vector3(p.x, p.y, 0.0)
-			uvs[idx] = Vector2(u, v)
-	var indices := PackedInt32Array()
-	for j in range(MESH_SY):
-		for i in range(MESH_SX):
-			var a := j * (MESH_SX + 1) + i
-			var c := a + (MESH_SX + 1)
-			indices.append_array([a, c, a + 1, a + 1, c, c + 1])
+	var nx := int(W) / TILE_K
+	var ny := int(H) / TILE_K
+	var nt := nx * ny
+	var verts := PackedVector3Array(); verts.resize(nt * 4)
+	var uvs := PackedVector2Array(); uvs.resize(nt * 4)
+	var idx := PackedInt32Array(); idx.resize(nt * 6)
+	var vi := 0
+	var ii := 0
+	for ty in range(ny):
+		for tx in range(nx):
+			var x0 := float(tx * TILE_K)
+			var x1 := x0 + float(TILE_K)
+			var y0 := float(ty * TILE_K)
+			var y1 := y0 + float(TILE_K)
+			var pT := Iso.proj(x0, y0, 0.0)   # sommet NORD
+			var pR := Iso.proj(x1, y0, 0.0)   # EST
+			var pB := Iso.proj(x1, y1, 0.0)   # SUD
+			var pL := Iso.proj(x0, y1, 0.0)   # OUEST
+			var uv := Vector2((x0 + TILE_K * 0.5) / W, (y0 + TILE_K * 0.5) / H)
+			verts[vi] = Vector3(pT.x, pT.y, 0.0)
+			verts[vi + 1] = Vector3(pR.x, pR.y, 0.0)
+			verts[vi + 2] = Vector3(pB.x, pB.y, 0.0)
+			verts[vi + 3] = Vector3(pL.x, pL.y, 0.0)
+			uvs[vi] = uv; uvs[vi + 1] = uv; uvs[vi + 2] = uv; uvs[vi + 3] = uv
+			idx[ii] = vi; idx[ii + 1] = vi + 1; idx[ii + 2] = vi + 2
+			idx[ii + 3] = vi; idx[ii + 4] = vi + 2; idx[ii + 5] = vi + 3
+			vi += 4
+			ii += 6
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts
 	arr[Mesh.ARRAY_TEX_UV] = uvs
-	arr[Mesh.ARRAY_INDEX] = indices
+	arr[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	_terrain.mesh = mesh
 
-## hauteur (0..1) à la cellule monde — pour projeter l'overlay SUR le relief iso.
+## hauteur (0..1) à la cellule monde — pour la volumétrie iso (×_relief) une fois activée.
 func height_at(wx: float, wy: float) -> float:
 	if _himg == null:
 		return 0.0
@@ -246,21 +250,16 @@ func height_at(wx: float, wy: float) -> float:
 	var hh := _himg.get_height()
 	return _himg.get_pixel(clampi(int(wx), 0, hw - 1), clampi(int(wy), 0, hh - 1)).r
 
-## monde → position ISO (avec altitude) : l'overlay y pose ses assets, la Camera2D fait le reste.
+## monde → position ISO : l'overlay y pose ses assets, la Camera2D fait le reste. _relief = 0
+## ⇒ PLAT (les assets reposent sur la grille de tuiles ; volumétrie cohérente quand _relief>0).
 func iso_pos(wx: float, wy: float) -> Vector2:
-	return Iso.proj(wx, wy, height_at(wx, wy))
+	return Iso.proj(wx, wy, height_at(wx, wy) * _relief)
 
 # ════════════════════════ commun ════════════════════════
 func _on_generated() -> void:
 	_himg = Sim.world.layer_image(LAYER_HEIGHT)
 	_build_globe_mesh()
-	_build_terrain_mesh()
-	_sea_tex = ImageTexture.create_from_image(Sim.world.layer_image(LAYER_SEA))
-	_height_tex = ImageTexture.create_from_image(_himg)
-	var matw := _terrain.material as ShaderMaterial
-	if matw != null:
-		matw.set_shader_parameter("sea_tex", _sea_tex)
-		matw.set_shader_parameter("height_tex", _height_tex)
+	_build_tile_mesh()
 	_refresh_terrain()
 	_place_camera()
 
