@@ -14,13 +14,13 @@ const PHASE_BATTLE := 3
 const CITY_ZOOM_MIN := 4.5   ## les villes n'apparaissent qu'AU-DELÀ de ce zoom (sinon : carte d'ensemble encombrée)
 
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
-var _decor := []          ## [{id, pos}] — arbres/forêts (dressing), bâti au générate
+var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
 
-# biome (couche) → ids MAPD d'arbres (variés par hash). FOREST=11 · WOODS=12 · JUNGLE=13
+# biome (couche) → NOMS de sprites dressing (variés par hash). FOREST=11 · WOODS=12 · JUNGLE=13
 const FOREST_TREES := {
-	11: [16, 73, 19, 79],   # broadleaf · chêne · conifères · bosquet sombre
-	12: [16, 75, 72],       # broadleaf · bosquet clair · bouleaux
-	13: [23, 22],           # bosquet mixte · peuplier
+	11: ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_GROVE_BROADLEAF", "DRESS_TREE_POPLAR"],  # FOREST : feuillus
+	12: ["DRESS_GROVE_MIXED", "DRESS_TREE_PINE", "DRESS_GROVE_PINE_A", "DRESS_GROVE_PINE_B"],            # WOODS : mixte/conifères
+	13: ["DRESS_GROVE_BROADLEAF", "DRESS_TREE_GNARLED", "DRESS_GROVE_MIXED"],                            # JUNGLE : dense
 }
 
 func _ready() -> void:
@@ -55,7 +55,7 @@ func _build_decor() -> void:
 			var arr: Array = FOREST_TREES[b]
 			var jx := float((h >> 3) % 3) - 1.0
 			var jy := float((h >> 6) % 3) - 1.0
-			_decor.append({"id": arr[h % arr.size()], "pos": Vector2(cx + jx, cy + jy)})
+			_decor.append({"name": arr[h % arr.size()], "pos": Vector2(cx + jx, cy + jy)})
 			if _decor.size() >= 14000:
 				return
 
@@ -67,6 +67,15 @@ func _process(_dt: float) -> void:
 	# (horloge MUR, hors déterminisme). Sinon : aucun coût (le tick suffit).
 	if _cataclysm:
 		queue_redraw()
+
+## pop d'une région → bande de ville 1-8 (les paliers des sprites CITY_POP_BAND).
+const CITY_POP_BANDS := [150, 400, 900, 1800, 3500, 7000, 14000]   # 7 seuils → 8 bandes
+func _city_band(pop: int) -> int:
+	var b := 1
+	for thr in CITY_POP_BANDS:
+		if pop >= thr:
+			b += 1
+	return b
 
 ## couleur stable par pays (display-only : un hash d'indice → teinte ; -1 = neutre)
 func _country_color(c: int) -> Color:
@@ -87,15 +96,15 @@ func _draw() -> void:
 	if w == null:
 		return
 
-	# ── DRESSING : arbres/forêts (dressing atlas), DERRIÈRE les villes. Bâti une
+	# ── DRESSING : arbres/forêts (sprites nature RGBA), DERRIÈRE les villes. Bâti une
 	#    fois au générate (liste fixe, pas de culling fragile). Ancré au PIED de la
-	#    cellule (l'arbre « pousse » du sol). No-op si l'atlas manque. ──────────────
+	#    cellule (l'arbre « pousse » du sol). No-op si les assets manquent. ──────────
 	for d in _decor:
-		var spr := UIKit.dressing_sprite(d["id"])
+		var spr := UIKit.dressing_named(d["name"])
 		if spr == null:
 			break
 		var p: Vector2 = d["pos"]
-		var ts := 8.0
+		var ts := 10.0
 		draw_texture_rect(spr, Rect2(p - Vector2(ts * 0.5, ts), Vector2(ts, ts)), false)
 
 	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde.
@@ -110,10 +119,11 @@ func _draw() -> void:
 			var ctr: Vector2 = w.region_centroid(r)
 			if ctr.x < 0:
 				continue
-			var spr := UIKit.settlement_sprite(t, w.region_settle_group(r))
+			# la CITÉ par BANDE DE POP (sprite RGBA) × variante stable (hash de région)
+			var spr := UIKit.city_sprite(_city_band(w.region_pop(r)), (r * 2654435761) % 8)
 			if spr != null:
-				var sz := 11.0 + t * 4.0                       # taille monde ∝ tier
-				draw_texture_rect(spr, Rect2(ctr - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false)
+				var sz := 16.0 + t * 6.0                       # taille monde ∝ tier
+				draw_texture_rect(spr, Rect2(ctr - Vector2(sz * 0.5, sz), Vector2(sz, sz)), false)  # ancré au pied
 			else:
 				var col := _country_color(w.region_owner(r))
 				var radius := 0.8 + t * 0.55

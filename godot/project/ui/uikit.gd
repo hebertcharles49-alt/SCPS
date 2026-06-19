@@ -162,6 +162,20 @@ static func building_sprite(edi_type: int) -> Texture2D:
 		return null
 	return _tile(BUILDINGS_DIR, BLD_FILE[edi_type])
 
+# ── ASSETS MONDE à ALPHA (cités par bande de pop · dressing nature) — RGBA DIRECT
+#    (vrai alpha, AUCUN keying) : on réutilise `_tex` (chargement simple + cache). ──
+const CITIES_DIR := "res://assets/scps/pack/cities/"
+const DRESSING_DIR := "res://assets/scps/pack/dressing/"
+
+## sprite de CITÉ par bande de pop (1-8) × variante (0-7 → A-H) ; null si absente.
+static func city_sprite(band: int, variant: int) -> Texture2D:
+	var v := "ABCDEFGH"
+	return _tex(CITIES_DIR + "CITY_POP_BAND_%02d_%s.png" % [clampi(band, 1, 8), v[clampi(variant, 0, 7)]])
+
+## sprite de DRESSING par NOM (DRESS_TREE_*, DRESS_GROVE_*…) ; null si absent.
+static func dressing_named(nm: String) -> Texture2D:
+	return _tex(DRESSING_DIR + nm + ".png")
+
 
 # ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)
 const RES_FALLBACK := {
