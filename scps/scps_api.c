@@ -669,3 +669,43 @@ int scps_river_points(ScpsSim *s, ScpsRiverPt *out, int max){
     }
     return n;
 }
+
+/* owner EFFECTIF d'une cellule (la lecture de la teinte politique) — -1 si mer,
+ * terre vierge ou région non colonisée. Miroir de bseg_owner_of (viewer.c). */
+static int border_owner_of(const ScpsSim *s, const Cell *c){
+    if (!c || c->region<0 || c->region>=s->sim.econ->n_regions || c->region>=SCPS_MAX_REG) return -1;
+    int ow = s->sim.econ->region[c->region].owner;
+    return (ow>=0 && ow<s->w->n_countries && s->sim.econ->region[c->region].colonized) ? ow : -1;
+}
+
+int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max){
+    if (!s || !s->ready || !out || max<=0 || level<0 || level>2) return 0;
+    int n=0;
+    /* balayage des arêtes EST & SUD : chaque joint interne vu UNE fois ; classé à son
+     * niveau le plus FORT (pays > région > province) → on n'émet QUE le niveau demandé. */
+    for (int y=0; y<SCPS_H && n<max; y++) for (int x=0; x<SCPS_W && n<max; x++){
+        const Cell *a = scps_cellc(s->w, x, y);
+        int own_a = border_owner_of(s, a);
+        for (int d=0; d<2 && n<max; d++){               /* d : 0 = arête EST, 1 = arête SUD */
+            int nx2=x+(d==0), ny2=y+(d==1);
+            const Cell *b = (nx2<SCPS_W && ny2<SCPS_H) ? scps_cellc(s->w, nx2, ny2) : NULL;
+            int own_b = b ? border_owner_of(s, b) : -1;
+            int rga=a->region,   rgb=b?b->region:-1;
+            int pva=a->province, pvb=b?b->province:-1;
+            int lvl=-1;
+            if (own_a!=own_b && (own_a>=0||own_b>=0)) lvl=2;        /* PAYS (ou contour externe) */
+            else if (rga!=rgb && rga>=0 && rgb>=0)    lvl=1;        /* RÉGION */
+            else if (pva!=pvb && pva>=0 && pvb>=0)    lvl=0;        /* PROVINCE */
+            if (lvl!=level) continue;
+            if (d==0){ out[n].x0=(float)(x+1); out[n].y0=(float)y;     out[n].x1=(float)(x+1); out[n].y1=(float)(y+1); }
+            else     { out[n].x0=(float)x;     out[n].y0=(float)(y+1); out[n].x1=(float)(x+1); out[n].y1=(float)(y+1); }
+            n++;
+        }
+        /* bords OUEST/NORD de la grille : le contour d'un PAYS s'y ferme aussi */
+        if (level==2){
+            if (x==0 && own_a>=0 && n<max){ out[n].x0=0;          out[n].y0=(float)y; out[n].x1=0;            out[n].y1=(float)(y+1); n++; }
+            if (y==0 && own_a>=0 && n<max){ out[n].x0=(float)x;   out[n].y0=0;        out[n].x1=(float)(x+1); out[n].y1=0;            n++; }
+        }
+    }
+    return n;
+}

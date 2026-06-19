@@ -96,6 +96,10 @@ public:
 
     /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
     Array      river_points();
+
+    /* FRONTIÈRES : segments d'arête (PackedVector2Array, 2 points/segment) au niveau
+     * 0=province · 1=région · 2=pays. Port du balayage bseg de viewer.c. */
+    PackedVector2Array border_segments(int level);
 };
 
 } // namespace godot

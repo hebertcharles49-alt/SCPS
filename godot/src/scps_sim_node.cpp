@@ -6,6 +6,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/packed_vector2_array.hpp>
 
 using namespace godot;
 
@@ -53,6 +54,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
+    ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -436,5 +438,19 @@ Array ScpsWorld::river_points() {
     int n = scps_river_points(sim, pts, 6000);
     for (int i = 0; i < n; i++)
         a.push_back(Vector3(pts[i].x, pts[i].y, pts[i].ang));   /* x · y · angle */
+    return a;
+}
+
+PackedVector2Array ScpsWorld::border_segments(int level) {
+    PackedVector2Array a;
+    if (!sim) return a;
+    static const int MAXSEG = 50000;
+    static ScpsSeg seg[MAXSEG];
+    int n = scps_border_segments(sim, level, seg, MAXSEG);
+    a.resize(n * 2);                                            /* 2 points par segment */
+    for (int i = 0; i < n; i++) {
+        a.set(i * 2,     Vector2(seg[i].x0, seg[i].y0));
+        a.set(i * 2 + 1, Vector2(seg[i].x1, seg[i].y1));
+    }
     return a;
 }

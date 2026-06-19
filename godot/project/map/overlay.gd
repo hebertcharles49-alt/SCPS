@@ -25,6 +25,9 @@ var _region_citymax := {} ## région colonisée → plus grande taille de sprite
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
 var _clear_set := {}      ## cellules DÉBOISÉES autour des villes (le bourg respire, pas noyé sous la forêt)
 var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
+var _borders := {}        ## niveau (1=région · 2=pays) → PackedVector2Array de segments (façade)
+var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
+var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
 var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
 
@@ -73,6 +76,8 @@ func _build_names() -> void:
 
 func _on_generated() -> void:
 	_rivers = Sim.world.river_points()
+	_borders_dirty = true       # monde neuf → frontières à refaire
+	_owner_sig = -1
 	_build_names()
 	_build_anchors()
 	_build_decor()
@@ -399,7 +404,30 @@ func _build_decor() -> void:
 
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
+	var sig := _owner_signature(Sim.world)
+	if sig != _owner_sig:      # la souveraineté a changé → refaire les frontières
+		_owner_sig = sig
+		_borders_dirty = true
 	queue_redraw()
+
+## signature de la photo des propriétaires de régions → détecte conquête/colonisation.
+func _owner_signature(w) -> int:
+	if w == null:
+		return -1
+	var sig := 0
+	for r in range(w.region_count()):
+		sig = (sig * 1000003 + (w.region_owner(r) + 2)) & 0x3fffffff
+	return sig
+
+## reconstruit les segments de frontière (région + pays) depuis la façade (port bseg).
+func _rebuild_borders() -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	_borders[1] = w.border_segments(1)   # RÉGIONS
+	_borders[2] = w.border_segments(2)   # PAYS
+	_owner_sig = _owner_signature(w)
+	_borders_dirty = false
 
 func _process(_dt: float) -> void:
 	# pendant un cataclysme, on redessine en continu pour PULSER l'épicentre
@@ -518,6 +546,26 @@ func _draw() -> void:
 		var p: Vector2 = d["pos"]
 		var ts := 10.0
 		draw_texture_rect(spr, Rect2(p - Vector2(ts * 0.5, ts), Vector2(ts, ts)), false)
+
+	# ── FRONTIÈRES (port du balayage bseg de viewer.c) : segments d'arête entre
+	#    souverainetés, selon le MODE de carte (0=Terrain : aucune ; 1=Politique &
+	#    2=Régions : région+pays ; 3=Pays : pays seul). Largeur à taille ÉCRAN (÷zoom),
+	#    sous les villes. Reconstruites SEULEMENT quand la souveraineté bouge. ─────────
+	var mode := 0
+	var par := get_parent()
+	if par != null and par.get("mode") != null:
+		mode = int(par.get("mode"))
+	if mode >= 1:
+		if _borders_dirty:
+			_rebuild_borders()
+		if mode <= 2 and _borders.has(1):
+			var rseg: PackedVector2Array = _borders[1]
+			if rseg.size() >= 2:
+				draw_multiline(rseg, Color(0.078, 0.102, 0.149, 0.85), 1.6 / zoom)
+		if _borders.has(2):
+			var cseg: PackedVector2Array = _borders[2]
+			if cseg.size() >= 2:
+				draw_multiline(cseg, Color(0.039, 0.055, 0.086, 0.95), 3.0 / zoom)
 
 	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde.
 	#    MASQUÉES sur la carte d'ensemble — elles ne paraissent qu'en ZOOM TRÈS

@@ -311,6 +311,14 @@ void scps_player_set_levy(ScpsSim *s, int level);
 typedef struct { float x, y, ang; } ScpsRiverPt;
 int scps_river_points(ScpsSim *s, ScpsRiverPt *out, int max);
 
+/* FRONTIÈRES : segments d'arête (coins, unités-cellule) entre souverainetés. Niveau
+ * `level` : 0 = PROVINCE · 1 = RÉGION · 2 = PAYS (le joint est classé à son niveau le
+ * plus FORT : pays > région > province — jamais doublé). Port du balayage bseg de
+ * viewer.c. Recalculé à la demande (souveraineté = colonisation/conquête/sécession).
+ * Remplit out[0..min(n,max)-1] (un segment = (x0,y0)-(x1,y1)), renvoie le nombre écrit. */
+typedef struct { float x0, y0, x1, y1; } ScpsSeg;
+int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max);
+
 #ifdef __cplusplus
 }
 #endif
