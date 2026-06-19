@@ -20,6 +20,7 @@ var _region_variant := {} ## région colonisée → nom de variante de ville TER
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
+var _clear_set := {}      ## cellules DÉBOISÉES autour des villes (le bourg respire, pas noyé sous la forêt)
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
 var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
 
@@ -91,7 +92,7 @@ func _build_city_skins() -> void:
 		# si l'assise jouxte l'eau et qu'aucune variante AQUATIQUE n'a été choisie,
 		# bascule sur le village de PÊCHE (sprite à quais) → une ville au bord de l'eau
 		# lit toujours comme un PORT voulu, jamais comme un bâti générique débordant.
-		if nm == "" and not _footprint_clear(sea, {}, ctr):
+		if nm == "" and not _footprint_clear(sea, {}, ctr, 4.5, 9.0):
 			nm = "CITY_BIOME_COAST_FISHING"
 		if nm != "":
 			_region_variant[r] = nm
@@ -103,6 +104,7 @@ func _build_city_skins() -> void:
 func _build_anchors() -> void:
 	_region_anchor.clear()
 	_region_citymax.clear()
+	_clear_set.clear()
 	var w = Sim.world
 	if w == null:
 		return
@@ -133,6 +135,16 @@ func _build_anchors() -> void:
 					break
 		_region_anchor[r] = best
 		_region_citymax[r] = best_sz
+		# DÉBOISE un disque autour de l'assise (∝ tier) → le bourg respire dans une
+		# clairière au lieu d'être noyé sous la canopée (comme le masque de viewer.c).
+		# Couvre TOUTE l'emprise du bourg (champs au large à r≈12) + une marge franche.
+		var clr := int(15.0 + t * 2.2)
+		var bcx := int(best.x)
+		var bcy := int(best.y)
+		for dy in range(-clr, clr + 1):
+			for dx in range(-clr, clr + 1):
+				if dx * dx + dy * dy <= clr * clr:
+					_clear_set[Vector2i(bcx + dx, bcy + dy)] = true
 
 ## rend la cellule de TERRE (sea < 1) la plus proche de `c` (anneaux croissants,
 ## comme settle_land_spot). Renvoie `c` tel quel si aucune terre à portée.
@@ -213,15 +225,17 @@ func _max_dry_size(sea: Image, base: Vector2) -> float:
 	return best
 
 ## empreinte d'un BÂTI parsemé : rect (±4 × 9) au sec ET aucune cellule de rivière.
-func _footprint_clear(sea: Image, rset: Dictionary, p: Vector2) -> bool:
-	if not _sea_clear_rect(sea, p, 4.0, 9.0):
+func _footprint_clear(sea: Image, rset: Dictionary, p: Vector2, halfw: float, up: float) -> bool:
+	if not _sea_clear_rect(sea, p, halfw, up):
 		return false
 	if rset.is_empty():
 		return true
 	var bx := int(p.x)
 	var by := int(p.y)
-	for dy in range(0, -10, -1):
-		for dx in range(-4, 5):
+	var hw := int(ceil(halfw))
+	var uu := int(ceil(up))
+	for dy in range(0, -uu - 1, -1):
+		for dx in range(-hw, hw + 1):
 			if rset.has(Vector2i(bx + dx, by + dy)):
 				return false
 	return true
@@ -275,9 +289,10 @@ func _region_craft_count(w, ctr: Vector2) -> int:
 
 ## pose `count` sprites d'un BANC en spirale phyllotaxique (angle d'or) autour de `ctr`,
 ## dans la bande de rayon [rbase, rbase+rspan] — un anneau cohérent, pas un nuage. Chaque
-## pose passe l'empreinte au sec (sinon SAUTÉE). `idx` court d'un anneau à l'autre.
+## bâtiment tire SA taille (autour de `base_sz`) et un MIROIR optionnel → variété ; son
+## empreinte (à SA taille) doit être au sec, sinon SAUTÉ. `idx` court d'un anneau à l'autre.
 func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: float,
-		idx: int, jit: float, sea: Image, rset: Dictionary, r: int) -> int:
+		base_sz: float, flipok: bool, idx: int, jit: float, sea: Image, rset: Dictionary, r: int) -> int:
 	if pool.is_empty():
 		return idx
 	for j in range(count):
@@ -285,10 +300,12 @@ func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: flo
 		var hh := ((r * 374761393) ^ (idx * 2246822519 + 668265263)) & 0x7fffffff
 		var rad := rbase + float(hh % 100) / 100.0 * rspan
 		var p := ctr + Vector2(cos(ang), sin(ang)) * rad
+		var sz := base_sz * (0.80 + float((hh >> 11) % 42) / 100.0)   # ±taille → variété
 		idx += 1
-		if not _footprint_clear(sea, rset, p):
+		if not _footprint_clear(sea, rset, p, sz * 0.5, sz):
 			continue                                      # déborde l'eau → on saute (ville sur terre)
-		_structures.append({"name": pool[hh % pool.size()], "pos": p})
+		var nm: String = pool[(hh ^ (hh >> 5)) % pool.size()]   # pick mieux brassé
+		_structures.append({"name": nm, "pos": p, "sz": sz, "flip": flipok and (((hh >> 17) & 1) == 1)})
 		if _structures.size() >= 1400:
 			break
 	return idx
@@ -326,10 +343,12 @@ func _build_structures() -> void:
 		var field_n: int = clampi(t - 1, 0, 3)           # le disparate : RARE, au large
 		var jit := float((r * 2654435761) & 0xffff) / 65536.0 * TAU
 		var idx := 0
-		idx = _place_zone(bk["civic"], civic_n, ctr, 1.5, 2.2, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["craft"], craft_n, ctr, 2.8, 3.6, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["dwell"], dwell_n, ctr, 3.2, 5.4, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["field"], field_n, ctr, 7.6, 4.8, idx, jit, sea, rset, r)
+		# zone : rayon · empan · taille de base · miroir autorisé. Civique = repères plus
+		# grands, non miroités ; logements/champs petits et miroités (silhouettes doublées).
+		idx = _place_zone(bk["civic"], civic_n, ctr, 1.5, 2.2, 11.0, false, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["craft"], craft_n, ctr, 2.8, 3.6, 10.0, false, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["dwell"], dwell_n, ctr, 3.2, 5.4, 8.5, true, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["field"], field_n, ctr, 7.6, 4.8, 7.5, true, idx, jit, sea, rset, r)
 		if _structures.size() >= 1400:
 			break
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
@@ -352,6 +371,8 @@ func _build_decor() -> void:
 			var b := int(img.get_pixel(cx, cy).r * 255.0 + 0.5)
 			if not FOREST_TREES.has(b):
 				continue
+			if _clear_set.has(Vector2i(cx, cy)):
+				continue                       # clairière de bourg → pas d'arbre ici
 			var h := ((cx * 73856093) ^ (cy * 19349663)) & 0x7fffffff
 			var arr: Array = FOREST_TREES[b]
 			var jx := float((h >> 3) % 3) - 1.0
@@ -414,6 +435,40 @@ func _army_token_name(a: Dictionary) -> String:
 		return "ARMY_TOKEN_MIXED_ARCHERS"
 	return "ARMY_TOKEN_PIKE_BLOCK"
 
+## dessine UN bâti parsemé — à SA taille, ancré au pied, MIROIR éventuel (variété).
+func _draw_struct(s: Dictionary) -> void:
+	var sspr := UIKit.structure_sprite(s["name"])
+	if sspr == null:
+		return
+	var sp: Vector2 = s["pos"]
+	var ss: float = s.get("sz", 9.0)
+	if bool(s.get("flip", false)):
+		draw_set_transform(sp, 0.0, Vector2(-1, 1))             # miroir horizontal autour du pied
+		draw_texture_rect(sspr, Rect2(-ss * 0.5, -ss, ss, ss), false)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	else:
+		draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false)
+
+## dessine LA ville de la région `r` à l'assise `ctr` — variante TERRAIN sinon bande de
+## pop ; taille ∝ tier BORNÉE au sec ; repli en marqueur sobre si l'assise est trop pincée.
+func _draw_city(w, r: int, ctr: Vector2) -> void:
+	var t: int = w.region_tier(r)
+	var band := _city_band(w.region_pop(r))
+	var spr: Texture2D = null
+	if _region_variant.has(r):
+		spr = UIKit.city_biome(_region_variant[r])
+	if spr == null:
+		spr = UIKit.city_sprite(band, (r * 2654435761) % 8)
+	var want := 16.0 + t * 6.0
+	var sz: float = min(want, _region_citymax.get(r, want))
+	if spr != null and sz >= 6.0:
+		draw_texture_rect(spr, Rect2(ctr - Vector2(sz * 0.5, sz), Vector2(sz, sz)), false)  # ancré au pied
+	else:
+		# assise trop pincée pour le moindre sprite (îlot/langue de terre) → marqueur SOBRE
+		var radius := 1.2 + t * 0.4
+		draw_circle(ctr, radius, Color(0.62, 0.47, 0.30))
+		draw_arc(ctr, radius, 0.0, TAU, 16, Color(0.15, 0.10, 0.05, 0.8), 0.4, true)
+
 func _draw() -> void:
 	var w = Sim.world
 	if w == null:
@@ -457,39 +512,24 @@ func _draw() -> void:
 		if _struct_dirty:
 			_build_structures()
 			_struct_dirty = false
-		# le BOURG autour : bâti de terrain parsemé, SOUS les villes ──────────────
+		# VILLES + BOURG dans une SEULE liste triée par PROFONDEUR (y du pied) → un bâti
+		# au sud d'une ville la masque, et inversement (plus de ville « posée sur » son bourg).
+		var props := []
 		for s in _structures:
-			var sspr := UIKit.structure_sprite(s["name"])
-			if sspr == null:
-				continue
-			var sp: Vector2 = s["pos"]
-			var ss := 9.0
-			draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false)  # ancré au pied
+			props.append({"y": (s["pos"] as Vector2).y, "city": -1, "s": s})
 		for r in range(w.region_count()):
-			var t: int = w.region_tier(r)
-			if t < 0:
+			if w.region_tier(r) < 0:
 				continue
 			var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))   # assise CALÉE SUR TERRE
 			if ctr.x < 0:
 				continue
-			# la CITÉ : terrain DISTINCTIF → variante TERRAIN ; sinon sprite par BANDE DE POP
-			var band := _city_band(w.region_pop(r))
-			var spr: Texture2D = null
-			if _region_variant.has(r):
-				spr = UIKit.city_biome(_region_variant[r])
-			if spr == null:
-				spr = UIKit.city_sprite(band, (r * 2654435761) % 8)
-			# taille voulue ∝ tier, BORNÉE à ce qui tient au SEC (anti-débord mer)
-			var want := 16.0 + t * 6.0
-			var sz: float = min(want, _region_citymax.get(r, want))
-			if spr != null and sz >= 6.0:
-				draw_texture_rect(spr, Rect2(ctr - Vector2(sz * 0.5, sz), Vector2(sz, sz)), false)  # ancré au pied
+			props.append({"y": ctr.y, "city": r, "ctr": ctr})
+		props.sort_custom(func(a, b): return a["y"] < b["y"])   # arrière (nord) → avant (sud)
+		for pr in props:
+			if pr["city"] < 0:
+				_draw_struct(pr["s"])
 			else:
-				# assise trop pincée pour le moindre sprite (îlot/langue de terre) → marqueur
-				# SOBRE : disque terre-de-Sienne + liseré (pas la teinte vive du pays, isolée)
-				var radius := 1.2 + t * 0.4
-				draw_circle(ctr, radius, Color(0.62, 0.47, 0.30))
-				draw_arc(ctr, radius, 0.0, TAU, 16, Color(0.15, 0.10, 0.05, 0.8), 0.4, true)
+				_draw_city(w, pr["city"], pr["ctr"])
 
 	# ── ARMÉES (dessus) : losange + ligne de marche + anneau de phase ─────────
 	for c in range(w.country_count()):
