@@ -17,6 +17,7 @@ var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
 var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
 var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
+var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
 
 const RIVER_ZOOM_MIN := 2.5   ## les rivières paraissent au-delà de ce zoom
@@ -46,6 +47,7 @@ func _ready() -> void:
 	Sim.generated.connect(_on_generated)
 	if Sim.world != null:
 		_rivers = Sim.world.river_points()
+		_build_anchors()
 		_build_decor()
 		_build_structures()
 		_build_city_skins()
@@ -53,6 +55,7 @@ func _ready() -> void:
 
 func _on_generated() -> void:
 	_rivers = Sim.world.river_points()
+	_build_anchors()
 	_build_decor()
 	_build_structures()
 	_build_city_skins()
@@ -66,10 +69,11 @@ func _build_city_skins() -> void:
 	if w == null:
 		return
 	var bio: Image = w.layer_image(2)   # SCPS_LAYER_BIOME
+	var sea: Image = w.layer_image(1)   # SCPS_LAYER_SEA
 	for r in range(w.region_count()):
 		if w.region_tier(r) < 0:
 			continue
-		var ctr: Vector2 = w.region_centroid(r)
+		var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))   # assise CALÉE SUR TERRE
 		if ctr.x < 0:
 			continue
 		var nm := ""
@@ -81,8 +85,102 @@ func _build_city_skins() -> void:
 		elif bio != null and ctr.x < bio.get_width() and ctr.y < bio.get_height():
 			var b := int(bio.get_pixel(int(ctr.x), int(ctr.y)).r * 255.0 + 0.5)
 			nm = BIOME_CITY.get(b, "")
+		# si l'assise jouxte l'eau et qu'aucune variante AQUATIQUE n'a été choisie,
+		# bascule sur le village de PÊCHE (sprite à quais) → une ville au bord de l'eau
+		# lit toujours comme un PORT voulu, jamais comme un bâti générique débordant.
+		if nm == "" and not _footprint_clear(sea, {}, ctr):
+			nm = "CITY_BIOME_COAST_FISHING"
 		if nm != "":
 			_region_variant[r] = nm
+
+## cale l'assise de chaque ville colonisée SUR LA TERRE (le centroïde brut d'une
+## région côtière/insulaire peut tomber dans l'eau → snap vers la terre la plus
+## proche, puis léger RABAT vers l'intérieur — comme settle_land_spot/rabat de
+## viewer.c) → le gros sprite de ville n'a plus sa base dans la mer.
+func _build_anchors() -> void:
+	_region_anchor.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	var sea: Image = w.layer_image(1)   # SCPS_LAYER_SEA : 0 = terre, ≥ 1 = eau
+	for r in range(w.region_count()):
+		if w.region_tier(r) < 0:
+			continue
+		var ctr: Vector2 = w.region_centroid(r)
+		if ctr.x < 0:
+			continue
+		var land := _snap_to_land(sea, ctr)
+		# rabat ~2.5 cellules vers l'intérieur (s'écarte de la mer la plus proche)
+		var sd := _nearest_sea_dir(sea, land, 3)
+		if sd != Vector2.ZERO:
+			land -= sd * 2.5
+			land = _snap_to_land(sea, land)   # re-cale (le rabat peut sauter une crique)
+		_region_anchor[r] = land
+
+## rend la cellule de TERRE (sea < 1) la plus proche de `c` (anneaux croissants,
+## comme settle_land_spot). Renvoie `c` tel quel si aucune terre à portée.
+func _snap_to_land(sea: Image, c: Vector2) -> Vector2:
+	if sea == null:
+		return c
+	var sw := sea.get_width()
+	var sh := sea.get_height()
+	var cx := int(c.x)
+	var cy := int(c.y)
+	for R in range(0, 15):
+		for dy in range(-R, R + 1):
+			for dx in range(-R, R + 1):
+				if R > 0 and absi(dx) != R and absi(dy) != R:
+					continue                       # bord d'anneau seulement
+				var nx := cx + dx
+				var ny := cy + dy
+				if nx < 0 or ny < 0 or nx >= sw or ny >= sh:
+					continue
+				if int(sea.get_pixel(nx, ny).r * 255.0 + 0.5) < 1:
+					return Vector2(nx, ny)
+	return c
+
+## direction NORMALISÉE vers la mer la plus proche (≤ maxrad), Vector2.ZERO si aucune.
+func _nearest_sea_dir(sea: Image, c: Vector2, maxrad: int) -> Vector2:
+	if sea == null:
+		return Vector2.ZERO
+	var sw := sea.get_width()
+	var sh := sea.get_height()
+	var cx := int(c.x)
+	var cy := int(c.y)
+	for R in range(1, maxrad + 1):
+		for dy in range(-R, R + 1):
+			for dx in range(-R, R + 1):
+				if absi(dx) != R and absi(dy) != R:
+					continue
+				var nx := cx + dx
+				var ny := cy + dy
+				if nx < 0 or ny < 0 or nx >= sw or ny >= sh:
+					continue
+				if int(sea.get_pixel(nx, ny).r * 255.0 + 0.5) >= 1:
+					return Vector2(dx, dy).normalized()
+	return Vector2.ZERO
+
+## le sprite (ancré au PIED, ~9 de haut × ~9 de large, montant vers le NORD) ne doit
+## chevaucher AUCUNE eau : on échantillonne son EMPREINTE opaque (colonne centrale +
+## flancs, du pied aux 2/3) — mer OU rivière sous un seul point écarte la pose.
+func _footprint_clear(sea: Image, rset: Dictionary, p: Vector2) -> bool:
+	if sea == null:
+		return true
+	var sw := sea.get_width()
+	var sh := sea.get_height()
+	var bx := int(p.x)
+	var by := int(p.y)
+	for dy in [0, -2, -4, -6, -8]:   # toute la hauteur du sprite (~9), du pied au faîte
+		for dx in [-3, 0, 3]:
+			var ix: int = bx + dx
+			var iy: int = by + dy
+			if ix < 0 or iy < 0 or ix >= sw or iy >= sh:
+				continue
+			if int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1:
+				return false
+			if rset.has(Vector2i(ix, iy)):
+				return false
+	return true
 
 ## parsème du bâti de terrain (maisons/ateliers/champs) AUTOUR de chaque ville
 ## colonisée — une couronne ∝ tier, hors de l'eau. Un bourg vivant, pas un point.
@@ -103,7 +201,7 @@ func _build_structures() -> void:
 		var t: int = w.region_tier(r)
 		if t < 0:
 			continue
-		var ctr: Vector2 = w.region_centroid(r)
+		var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))   # assise CALÉE SUR TERRE
 		if ctr.x < 0:
 			continue
 		var n := 1 + t                      # densité MODÉRÉE (anti-empilement)
@@ -112,14 +210,8 @@ func _build_structures() -> void:
 			var ang := float(h % 628) * 0.01
 			var rad := 6.0 + float((h >> 9) % 100) / 100.0 * (6.0 + t * 2.5)   # ÉCARTÉ de la ville
 			var p := ctr + Vector2(cos(ang), sin(ang)) * rad
-			var ix := int(p.x)
-			var iy := int(p.y)
-			# pas dans l'EAU : ni mer (toute classe ≥ 1), ni rivière (cellule + voisins)
-			if sea != null and ix >= 0 and iy >= 0 and ix < sea.get_width() and iy < sea.get_height():
-				if int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1:
-					continue
-			if rset.has(Vector2i(ix, iy)) or rset.has(Vector2i(ix + 1, iy)) or rset.has(Vector2i(ix - 1, iy)) \
-					or rset.has(Vector2i(ix, iy + 1)) or rset.has(Vector2i(ix, iy - 1)):
+			# l'EMPREINTE entière (sprite ancré au pied, montant) doit être au SEC
+			if not _footprint_clear(sea, rset, p):
 				continue
 			_structures.append({"name": names[h % names.size()], "pos": p})
 			if _structures.size() >= 1400:
@@ -253,7 +345,7 @@ func _draw() -> void:
 			var t: int = w.region_tier(r)
 			if t < 0:
 				continue
-			var ctr: Vector2 = w.region_centroid(r)
+			var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))   # assise CALÉE SUR TERRE
 			if ctr.x < 0:
 				continue
 			# la CITÉ : terrain DISTINCTIF → variante TERRAIN ; sinon sprite par BANDE DE POP
