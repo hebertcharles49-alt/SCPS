@@ -12,3 +12,8 @@ project/bin/
 # Cache de l'éditeur Godot.
 project/.godot/
 project/.import/
+
+# Captures headless des scènes de vérification (shot.gd / shot_zoom.gd) — régénérables.
+project/globe.png
+project/iso_play.png
+project/iso_terrain.png
