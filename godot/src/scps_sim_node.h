@@ -100,6 +100,11 @@ public:
     /* FRONTIÈRES : segments d'arête (PackedVector2Array, 2 points/segment) au niveau
      * 0=province · 1=région · 2=pays. Port du balayage bseg de viewer.c. */
     PackedVector2Array border_segments(int level);
+
+    /* ROUTES : réseau à jonctions (A* « routes attirent routes »). Array de
+     * Dictionary { points: PackedVector2Array (centres de cellule) · level: int
+     * 0=artère/1=desserte/2=mineure }. Port de roads_ensure_cache de viewer.c. */
+    Array road_paths();
 };
 
 } // namespace godot

@@ -709,3 +709,251 @@ int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max){
     }
     return n;
 }
+
+/* ============ ROUTES TERRAIN-AWARE → RÉSEAU À JONCTIONS (port de viewer.c) ========= *
+ * A* sur la grille (coût relief+biome ; mer/lac contournés, fleuve = pont), reliant les
+ * régions des routes commerciales TERRESTRES majeures. « Les routes attirent les routes »
+ * : une cellule déjà routée (corridor lissé + marge) est fortement rabattue → les tracés
+ * FUSIONNENT en jonctions Y/T/X au lieu de se croiser en désordre. Lissé (moyenne mobile).
+ * Caché par signature du réseau (display-only, hors tick → déterminisme intact). */
+#define API_ROAD_PATH_MAX 1400
+typedef struct { int16_t x[API_ROAD_PATH_MAX], y[API_ROAD_PATH_MAX]; int len; int level; } ApiRoad;
+static ApiRoad  *g_roads = NULL;
+static int       g_nroads = 0;
+static uint64_t  g_road_sig = 0;
+static uint8_t  *g_roadmask = NULL;   /* 1 = cellule sur un corridor déjà tracé (attire) */
+static float *g_ag = NULL, *g_aheapf = NULL;
+static int   *g_afrom = NULL, *g_agen = NULL, *g_aclosed = NULL, *g_aheapi = NULL;
+static int    g_acurgen = 0, g_aheap_n = 0;
+
+static void aheap_push(float f, int idx){
+    int i=g_aheap_n++; g_aheapf[i]=f; g_aheapi[i]=idx;
+    while(i>0){ int p=(i-1)/2; if(g_aheapf[p]<=g_aheapf[i]) break;
+        float tf=g_aheapf[p]; g_aheapf[p]=g_aheapf[i]; g_aheapf[i]=tf;
+        int ti=g_aheapi[p]; g_aheapi[p]=g_aheapi[i]; g_aheapi[i]=ti; i=p; }
+}
+static int aheap_pop(void){
+    int r=g_aheapi[0], n=--g_aheap_n; g_aheapf[0]=g_aheapf[n]; g_aheapi[0]=g_aheapi[n]; int i=0;
+    for(;;){ int l=2*i+1, rr=2*i+2, sm=i;
+        if(l<n && g_aheapf[l]<g_aheapf[sm]) sm=l;
+        if(rr<n && g_aheapf[rr]<g_aheapf[sm]) sm=rr;
+        if(sm==i) break;
+        float tf=g_aheapf[sm]; g_aheapf[sm]=g_aheapf[i]; g_aheapf[i]=tf;
+        int ti=g_aheapi[sm]; g_aheapi[sm]=g_aheapi[i]; g_aheapi[i]=ti; i=sm; }
+    return r;
+}
+static float api_road_cost(const World *w, int x, int y){
+    const Cell *c = scps_cellc(w, x, y);
+    if (c->sea || c->lake) return -1.f;            /* mer/lac : on contourne */
+    float cost = 1.f + c->height*7.f;              /* plat facile, on longe le BAS */
+    if (c->biome==BIO_FOREST || c->biome==BIO_WOODS) cost += 2.5f;
+    if (c->biome==BIO_JUNGLE)    cost += 5.f;
+    if (c->biome==BIO_HILLS || c->biome==BIO_HIGHLANDS) cost += 5.f;
+    if (c->biome==BIO_MOUNTAINS) cost += 16.f;
+    if (c->biome==BIO_PEAK)      cost += 45.f;
+    if (c->river>40)             cost += 7.f;      /* franchir un fleuve = un PONT */
+    if (g_roadmask && g_roadmask[scps_idx(x,y)]) cost *= 0.30f;   /* les routes attirent les routes */
+    return cost;
+}
+static bool api_road_astar(const World *w, int ax, int ay, int bx, int by, ApiRoad *out){
+    if(ax<0||ay<0||ax>=SCPS_W||ay>=SCPS_H||bx<0||by<0||bx>=SCPS_W||by>=SCPS_H) return false;
+    if(!g_ag){
+        g_ag=(float*)malloc(sizeof(float)*SCPS_N); g_afrom=(int*)malloc(sizeof(int)*SCPS_N);
+        g_agen=(int*)calloc(SCPS_N,sizeof(int)); g_aclosed=(int*)calloc(SCPS_N,sizeof(int));
+        g_aheapf=(float*)malloc(sizeof(float)*SCPS_N); g_aheapi=(int*)malloc(sizeof(int)*SCPS_N);
+        if(!g_ag||!g_afrom||!g_agen||!g_aclosed||!g_aheapf||!g_aheapi) return false;
+    }
+    int minx=(ax<bx?ax:bx)-48, maxx=(ax>bx?ax:bx)+48, miny=(ay<by?ay:by)-48, maxy=(ay>by?ay:by)+48;
+    if(minx<0) minx=0;
+    if(miny<0) miny=0;
+    if(maxx>=SCPS_W) maxx=SCPS_W-1;
+    if(maxy>=SCPS_H) maxy=SCPS_H-1;
+    g_acurgen++; g_aheap_n=0;
+    int s=scps_idx(ax,ay), goal=scps_idx(bx,by);
+    g_ag[s]=0.f; g_afrom[s]=-1; g_agen[s]=g_acurgen;
+    aheap_push(hypotf((float)(bx-ax),(float)(by-ay)), s);
+    static const int dx8[8]={1,-1,0,0,1,1,-1,-1}, dy8[8]={0,0,1,-1,1,-1,1,-1};
+    bool found=false; int guard=0;
+    while(g_aheap_n>0 && guard++<900000){
+        int cur=aheap_pop();
+        if(g_aclosed[cur]==g_acurgen) continue;
+        g_aclosed[cur]=g_acurgen;
+        if(cur==goal){ found=true; break; }
+        int cxx=cur%SCPS_W, cyy=cur/SCPS_W;
+        for(int d=0;d<8;d++){
+            int nx=cxx+dx8[d], ny=cyy+dy8[d];
+            if(nx<minx||nx>maxx||ny<miny||ny>maxy) continue;
+            int ni=scps_idx(nx,ny);
+            if(g_aclosed[ni]==g_acurgen) continue;
+            float cc=api_road_cost(w,nx,ny); if(cc<0.f) continue;
+            float ng=g_ag[cur]+(d<4?1.f:1.41421f)*cc;
+            if(g_agen[ni]==g_acurgen && g_ag[ni]<=ng) continue;
+            g_ag[ni]=ng; g_afrom[ni]=cur; g_agen[ni]=g_acurgen;
+            aheap_push(ng+hypotf((float)(bx-nx),(float)(by-ny)), ni);
+        }
+    }
+    if(!found) return false;
+    static int tmp[4096]; int tn=0;
+    for(int cur=goal; cur!=-1 && tn<4096; cur=g_afrom[cur]) tmp[tn++]=cur;
+    int stepd=(tn>API_ROAD_PATH_MAX)?(tn/API_ROAD_PATH_MAX+1):1;
+    out->len=0;
+    for(int k=tn-1;k>=0 && out->len<API_ROAD_PATH_MAX;k-=stepd){
+        out->x[out->len]=(int16_t)(tmp[k]%SCPS_W); out->y[out->len]=(int16_t)(tmp[k]/SCPS_W); out->len++;
+    }
+    return out->len>=2;
+}
+static void api_road_smooth(ApiRoad *p){            /* moyenne mobile, extrémités fixes */
+    if(p->len<3) return;
+    static int16_t nx[API_ROAD_PATH_MAX], ny[API_ROAD_PATH_MAX];
+    for(int pass=0; pass<3; pass++){
+        nx[0]=p->x[0]; ny[0]=p->y[0]; nx[p->len-1]=p->x[p->len-1]; ny[p->len-1]=p->y[p->len-1];
+        for(int k=1;k<p->len-1;k++){
+            nx[k]=(int16_t)((p->x[k-1]+2*p->x[k]+p->x[k+1])/4);
+            ny[k]=(int16_t)((p->y[k-1]+2*p->y[k]+p->y[k+1])/4);
+        }
+        memcpy(p->x,nx,sizeof(int16_t)*p->len); memcpy(p->y,ny,sizeof(int16_t)*p->len);
+    }
+}
+/* cale un point sur la TERRE la plus proche (le centre d'une région côtière peut tomber
+ * en mer → l'A* démarrerait dans l'eau et échouerait, la ville resterait sans route). */
+static void api_snap_land(const World *w, int *px, int *py){
+    int cx=*px, cy=*py;
+    if(cx<0||cy<0||cx>=SCPS_W||cy>=SCPS_H) return;
+    const Cell *c = scps_cellc(w,cx,cy);
+    if(!c->sea && !c->lake) return;
+    for(int R=1;R<=20;R++)
+        for(int dy=-R;dy<=R;dy++) for(int dx=-R;dx<=R;dx++){
+            if(abs(dx)!=R && abs(dy)!=R) continue;
+            int nx=cx+dx, ny=cy+dy;
+            if(nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+            const Cell *nc=scps_cellc(w,nx,ny);
+            if(!nc->sea && !nc->lake){ *px=nx; *py=ny; return; }
+        }
+}
+static bool api_region_wpos(const World *w, int reg, float *wx, float *wy){
+    if(reg<0||reg>=w->n_regions) return false;
+    const Region *R=&w->region[reg];
+    long ax=0,ay=0; int n=0;
+    for(int k=0;k<R->n_provinces && k<12;k++){
+        int pid=R->province_ids[k];
+        if(pid<0||pid>=w->n_provinces) continue;
+        ax+=w->province[pid].seed_x; ay+=w->province[pid].seed_y; n++;
+    }
+    if(n==0) return false;
+    *wx=(float)ax/n; *wy=(float)ay/n; return true;
+}
+/* stampe le corridor LISSÉ (+ marge 1) dans le masque → bassin d'attraction pour les
+ * routes suivantes (elles s'y rabattent : jonctions). */
+static void api_road_stamp(const ApiRoad *p){
+    if(!g_roadmask) return;
+    for(int k=0;k<p->len;k++){ int rx=p->x[k], ry=p->y[k];
+        for(int dy=-1;dy<=1;dy++) for(int dx=-1;dx<=1;dx++){
+            int nx=rx+dx, ny=ry+dy;
+            if(nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H) g_roadmask[ny*SCPS_W+nx]=1; } }
+}
+/* tente A* entre deux villes ; succès → range la route (niveau ∝ tier max), lisse, stampe
+ * le corridor (attraction), marque les deux villes connectées. */
+static bool api_road_link(const World *w, const float *cx, const float *cy, const int *ctier,
+                          int ia, int ib, int *connected){
+    if(g_nroads>=SCPS_MAX_ROUTES) return false;
+    ApiRoad *rd=&g_roads[g_nroads];
+    if(!api_road_astar(w,(int)cx[ia],(int)cy[ia],(int)cx[ib],(int)cy[ib],rd)) return false;
+    int t = ctier[ia]>ctier[ib]?ctier[ia]:ctier[ib];
+    rd->level = (t>=4)?0 : (t>=2?1:2);
+    api_road_smooth(rd);
+    api_road_stamp(rd);
+    connected[ia]=1; connected[ib]=1;
+    g_nroads++;
+    return true;
+}
+/* RÉSEAU DE VILLES : chaque ville colonisée est reliée à ses ~2 plus proches voisines par
+ * une route A* — un réseau LOGIQUE où AUCUNE ville n'est isolée (garantie : toute ville
+ * joignable par terre obtient ≥1 route). Les arêtes courtes d'abord → les longues se
+ * rabattent dessus (jonctions Y/T/X via le masque d'attraction). */
+static void api_roads_build(ScpsSim *s){
+    const World *w = s->w;
+    if(!s->sim.econ){ g_nroads=0; return; }
+    int nreg = s->sim.econ->n_regions;
+    /* signature : photo des villes (région colonisée + propriétaire) — change à colo/conquête */
+    uint64_t sig=1469598103934665603ull;
+    for(int r=0;r<nreg && r<SCPS_MAX_REG;r++){
+        const RegionEconomy *re=&s->sim.econ->region[r];
+        if(re->colonized && re->owner>=0) sig=(sig^(uint64_t)(r*100003+(re->owner+1)))*1099511628211ull;
+    }
+    if(sig==g_road_sig && g_roads) return;          /* villes inchangées → cache valide */
+    g_road_sig=sig;
+    if(!g_roads){ g_roads=(ApiRoad*)malloc(sizeof(ApiRoad)*SCPS_MAX_ROUTES); if(!g_roads){g_nroads=0;return;} }
+    if(!g_roadmask){ g_roadmask=(uint8_t*)calloc(SCPS_N,1); }
+    if(g_roadmask) memset(g_roadmask,0,SCPS_N);
+    g_nroads=0;
+
+    /* villes = régions colonisées (centre monde + tier de pop) */
+    static float cx[SCPS_MAX_REG], cy[SCPS_MAX_REG];
+    static int   creg[SCPS_MAX_REG], ctier[SCPS_MAX_REG], connected[SCPS_MAX_REG];
+    int nc=0;
+    for(int r=0;r<nreg && r<SCPS_MAX_REG && nc<SCPS_MAX_REG;r++){
+        const RegionEconomy *re=&s->sim.econ->region[r];
+        if(!re->colonized || re->owner<0) continue;
+        float wx,wy; if(!api_region_wpos(w,r,&wx,&wy)) continue;
+        int ix=(int)wx, iy=(int)wy; api_snap_land(w,&ix,&iy);   /* assise sur TERRE → A* démarre */
+        long pop=region_pop_i(s,r);
+        cx[nc]=(float)ix; cy[nc]=(float)iy; creg[nc]=r;
+        ctier[nc]= pop>=4000?5:pop>=1500?4:pop>=500?3:pop>=150?2:pop>=50?1:0;
+        connected[nc]=0; nc++;
+    }
+    (void)creg;
+    if(nc<2) return;
+
+    /* arêtes candidates : les 2 plus proches voisines de chaque ville (dédup (min,max)). */
+    typedef struct { int a,b; float d; } Edge;
+    static Edge edges[SCPS_MAX_REG*2]; int ne=0;
+    for(int i=0;i<nc;i++){
+        int n1=-1,n2=-1; float d1=1e18f,d2=1e18f;
+        for(int j=0;j<nc;j++){ if(j==i) continue;
+            float dd=(cx[i]-cx[j])*(cx[i]-cx[j])+(cy[i]-cy[j])*(cy[i]-cy[j]);
+            if(dd<d1){ d2=d1;n2=n1; d1=dd;n1=j; } else if(dd<d2){ d2=dd;n2=j; } }
+        if(n1>=0 && ne<SCPS_MAX_REG*2){ int a=i<n1?i:n1,b=i<n1?n1:i; edges[ne].a=a;edges[ne].b=b;edges[ne].d=d1; ne++; }
+        if(n2>=0 && ne<SCPS_MAX_REG*2){ int a=i<n2?i:n2,b=i<n2?n2:i; edges[ne].a=a;edges[ne].b=b;edges[ne].d=d2; ne++; }
+    }
+    for(int e1=0;e1<ne;e1++) for(int e2=e1+1;e2<ne;e2++)        /* dédup (ne petit) */
+        if(edges[e2].a==edges[e1].a && edges[e2].b==edges[e1].b){ edges[e2]=edges[--ne]; e2--; }
+    for(int a=1;a<ne;a++){ Edge v=edges[a]; int b=a-1;          /* tri ↑ distance → courtes d'abord */
+        while(b>=0 && edges[b].d>v.d){ edges[b+1]=edges[b]; b--; } edges[b+1]=v; }
+
+    for(int e=0;e<ne && g_nroads<SCPS_MAX_ROUTES;e++)
+        api_road_link(w,cx,cy,ctier,edges[e].a,edges[e].b,connected);
+
+    /* GARANTIE « chaque ville a une route » : toute ville encore sans route tente ses
+     * voisines de plus en plus loin jusqu'à un A* qui passe (île isolée d'1 ville : rien). */
+    static int order[SCPS_MAX_REG];
+    for(int i=0;i<nc && g_nroads<SCPS_MAX_ROUTES;i++){
+        if(connected[i]) continue;
+        int m=0; for(int j=0;j<nc;j++) if(j!=i) order[m++]=j;
+        for(int a=1;a<m;a++){
+            int v=order[a];
+            float vd=(cx[i]-cx[v])*(cx[i]-cx[v])+(cy[i]-cy[v])*(cy[i]-cy[v]); int b=a-1;
+            while(b>=0){
+                int u=order[b];
+                float ud=(cx[i]-cx[u])*(cx[i]-cx[u])+(cy[i]-cy[u])*(cy[i]-cy[u]);
+                if(ud<=vd) break;
+                order[b+1]=order[b]; b--;
+            }
+            order[b+1]=v;
+        }
+        for(int a=0;a<m && !connected[i] && g_nroads<SCPS_MAX_ROUTES;a++)
+            api_road_link(w,cx,cy,ctier,i,order[a],connected);
+    }
+}
+int scps_roads_build(ScpsSim *s){
+    if(!s || !s->ready) return 0;
+    api_roads_build(s);
+    return g_nroads;
+}
+int scps_road_path(ScpsSim *s, int i, ScpsRoadPt *out, int max, int *level){
+    if(!s || !s->ready || !out || max<=0 || i<0 || i>=g_nroads) return 0;
+    const ApiRoad *p=&g_roads[i];
+    int n=p->len; if(n>max) n=max;
+    for(int k=0;k<n;k++){ out[k].x=(float)p->x[k]+0.5f; out[k].y=(float)p->y[k]+0.5f; }   /* centre cellule */
+    if(level) *level=p->level;
+    return n;
+}

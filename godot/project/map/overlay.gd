@@ -28,11 +28,16 @@ var _country_names := []  ## nom de chaque pays (figé au générate) — pour l
 var _borders := {}        ## niveau (1=région · 2=pays) → PackedVector2Array de segments (façade)
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
+var _roads := []          ## [{points: PackedVector2Array, level: int}] — réseau de routes (façade, A* à jonctions)
+var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
 var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
 
 const RIVER_ZOOM_MIN := 2.5   ## les rivières paraissent au-delà de ce zoom
 const RIVER_CAL := 0.0        ## calibration de l'orientation du sprite (ajusté au rendu)
+const ROAD_ZOOM_MIN := 3.0    ## les routes paraissent au-delà de ce zoom (comme draw_map_roads, sc≥3)
+const ROAD_CASING := Color(0.227, 0.165, 0.110)  ## bord sombre (viewer 58,42,28)
+const ROAD_FILL   := Color(0.769, 0.643, 0.431)  ## surface parchemin (viewer 196,164,110)
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
@@ -76,7 +81,8 @@ func _build_names() -> void:
 
 func _on_generated() -> void:
 	_rivers = Sim.world.river_points()
-	_borders_dirty = true       # monde neuf → frontières à refaire
+	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
+	_roads_dirty = true
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
@@ -405,9 +411,10 @@ func _build_decor() -> void:
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
 	var sig := _owner_signature(Sim.world)
-	if sig != _owner_sig:      # la souveraineté a changé → refaire les frontières
-		_owner_sig = sig
+	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
+		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
 		_borders_dirty = true
+		_roads_dirty = true
 	queue_redraw()
 
 ## signature de la photo des propriétaires de régions → détecte conquête/colonisation.
@@ -513,6 +520,13 @@ func _draw_city(w, r: int, ctr: Vector2) -> void:
 		draw_circle(ctr, radius, Color(0.62, 0.47, 0.30))
 		draw_arc(ctr, radius, 0.0, TAU, 16, Color(0.15, 0.10, 0.05, 0.8), 0.4, true)
 
+## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure).
+## Constante en MONDE (donc s'élargit à l'écran au zoom, comme viewer wfill=sc·0.55·maj),
+## mais bornée à ~2.2 px d'écran au minimum (÷zoom) pour rester visible de loin.
+func _road_width(level: int, zoom: float) -> float:
+	var maj := 1.0 if level == 0 else (0.78 if level == 1 else 0.6)
+	return maxf(0.55 * maj, 2.2 / zoom)
+
 func _draw() -> void:
 	var w = Sim.world
 	if w == null:
@@ -566,6 +580,26 @@ func _draw() -> void:
 			var cseg: PackedVector2Array = _borders[2]
 			if cseg.size() >= 2:
 				draw_multiline(cseg, Color(0.039, 0.055, 0.086, 0.95), 3.0 / zoom)
+
+	# ── ROUTES (port draw_map_roads) : réseau à JONCTIONS reliant les villes. DEUX PASSES
+	#    — TOUS les bords sombres (casing), PUIS toutes les surfaces — pour que croisements
+	#    & fusions (Y/T/X) se raccordent sans couture. Largeur à taille ÉCRAN (la route
+	#    s'élargit au zoom), trait LISSÉ & antialiasé (blend doux). Sous les villes. ───────
+	if zoom >= ROAD_ZOOM_MIN:
+		if _roads_dirty:
+			_roads = w.road_paths()
+			_roads_dirty = false
+		if not _roads.is_empty():
+			# passe 1 : casings (bord sombre, plus large)
+			for rd in _roads:
+				var pts: PackedVector2Array = rd["points"]
+				if pts.size() >= 2:
+					draw_polyline(pts, ROAD_CASING, _road_width(int(rd["level"]), zoom) + 0.16 + 2.0 / zoom, true)
+			# passe 2 : surfaces (parchemin, constante) PAR-DESSUS → jonctions propres
+			for rd in _roads:
+				var pts2: PackedVector2Array = rd["points"]
+				if pts2.size() >= 2:
+					draw_polyline(pts2, ROAD_FILL, _road_width(int(rd["level"]), zoom), true)
 
 	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde.
 	#    MASQUÉES sur la carte d'ensemble — elles ne paraissent qu'en ZOOM TRÈS

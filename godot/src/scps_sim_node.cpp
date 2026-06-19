@@ -55,6 +55,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
     ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
+    ClassDB::bind_method(D_METHOD("road_paths"),                     &ScpsWorld::road_paths);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -451,6 +452,27 @@ PackedVector2Array ScpsWorld::border_segments(int level) {
     for (int i = 0; i < n; i++) {
         a.set(i * 2,     Vector2(seg[i].x0, seg[i].y0));
         a.set(i * 2 + 1, Vector2(seg[i].x1, seg[i].y1));
+    }
+    return a;
+}
+
+Array ScpsWorld::road_paths() {
+    Array a;
+    if (!sim) return a;
+    int np = scps_roads_build(sim);
+    static const int MAXPT = 1400;
+    static ScpsRoadPt pts[MAXPT];
+    for (int i = 0; i < np; i++) {
+        int level = 0;
+        int n = scps_road_path(sim, i, pts, MAXPT, &level);
+        if (n < 2) continue;
+        PackedVector2Array pv;
+        pv.resize(n);
+        for (int k = 0; k < n; k++) pv.set(k, Vector2(pts[k].x, pts[k].y));
+        Dictionary d;
+        d["points"] = pv;
+        d["level"]  = level;
+        a.push_back(d);
     }
     return a;
 }

@@ -319,6 +319,18 @@ int scps_river_points(ScpsSim *s, ScpsRiverPt *out, int max);
 typedef struct { float x0, y0, x1, y1; } ScpsSeg;
 int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max);
 
+/* ROUTES TERRAIN-AWARE (port de viewer.c, en RÉSEAU à JONCTIONS) : A* sur la grille
+ * (coût = relief + biome ; mer/lac contournés, fleuve = pont), reliant les régions des
+ * routes commerciales TERRESTRES majeures. « Les routes attirent les routes » : une
+ * cellule déjà sur une route est moins chère → les tracés FUSIONNENT en jonctions Y/T/X
+ * au lieu de se croiser en désordre. Lissés (moyenne mobile). Display-only, mis en cache
+ * (recalcul si le réseau change). `scps_roads_build` (re)bâtit + renvoie le nombre de
+ * routes ; `scps_road_path` remplit la i-ème (points = centres de cellule), *level :
+ * 0 = artère · 1 = desserte · 2 = mineure (du rang de capacité). */
+typedef struct { float x, y; } ScpsRoadPt;
+int scps_roads_build(ScpsSim *s);
+int scps_road_path(ScpsSim *s, int i, ScpsRoadPt *out, int max, int *level);
+
 #ifdef __cplusplus
 }
 #endif
