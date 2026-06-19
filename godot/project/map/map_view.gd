@@ -6,6 +6,7 @@ extends Node2D
 ##
 ## Construit ses nodes EN CODE (Terrain + Camera2D) — pas de .tscn à maintenir.
 
+const LAYER_HEIGHT := 0         ## scps_map_layer : 0 = HEIGHT (pour le relief volumétrique)
 const LAYER_SEA := 1            ## scps_map_layer : 1 = SEA (pour le shader d'eau)
 const WATER_SHADER := "res://shaders/water.gdshader"
 const CLICK_SLOP := 5.0         ## px : au-delà, le geste est un glissé (pas un clic)
@@ -19,6 +20,7 @@ var mode := 0
 var _terrain: Sprite2D
 var _camera: Camera2D
 var _sea_tex: ImageTexture
+var _height_tex: ImageTexture
 var _selected_prov := -1
 var _press_pos := Vector2.ZERO
 var _dragged := false
@@ -49,11 +51,14 @@ func _ready() -> void:
 		_on_generated()
 
 func _on_generated() -> void:
-	# la couche SEA est figée par worldgen → on la pousse une fois au shader.
+	# couches SEA + HEIGHT figées par worldgen → poussées une fois au shader (eau + relief).
 	_sea_tex = ImageTexture.create_from_image(Sim.world.layer_image(LAYER_SEA))
+	_height_tex = ImageTexture.create_from_image(Sim.world.layer_image(LAYER_HEIGHT))
 	var mat := _terrain.material as ShaderMaterial
 	if mat != null:
 		mat.set_shader_parameter("sea_tex", _sea_tex)
+		mat.set_shader_parameter("height_tex", _height_tex)
+		mat.set_shader_parameter("tex_px", Vector2(1.0 / Sim.world.map_w(), 1.0 / Sim.world.map_h()))
 	_refresh_terrain()
 	_fit_camera()
 
