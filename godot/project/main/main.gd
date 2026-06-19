@@ -3,6 +3,8 @@ extends Node
 ## Le moteur vit dans l'autoload `Sim` ; ici on ne fait qu'assembler la scène et
 ## relier la sélection de carte aux panneaux de lecture (la membrane → UI).
 
+const Frame = preload("res://ui/frame.gd")
+
 var _prov_panel: Control
 var _country_panel: Control
 var _sidebar: Control
@@ -56,7 +58,7 @@ func _ready() -> void:
 	# (roster 22 unités + édifices, prix réels). Caché par défaut, bascule au clavier.
 	_construct = load("res://ui/construction_panel.gd").new()
 	_construct.name = "ConstructionPanel"
-	_construct.position = Vector2(62, 96)
+	_construct.position = Vector2(Frame.SIDEBAR_W + 8, Frame.TOPBAR_H + 8)
 	_construct.visible = false
 	ui.add_child(_construct)
 

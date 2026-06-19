@@ -4,6 +4,7 @@ extends PanelContainer
 ## bandeau rouge la nomme. DISPLAY-ONLY (la membrane, côté Godot). Caché tant que
 ## l'entropie est basse et qu'aucune fin n'a éclos.
 
+const Frame = preload("res://ui/frame.gd")
 const SHOW_FROM := 25   ## % d'entropie à partir duquel on affiche la jauge
 const MARGIN := 8.0
 
@@ -79,4 +80,4 @@ func _reposition() -> void:
 	var sz := get_combined_minimum_size()
 	var vp := get_viewport_rect().size
 	reset_size()
-	position = Vector2((vp.x - sz.x) * 0.5, MARGIN)
+	position = Vector2((vp.x - sz.x) * 0.5, Frame.TOPBAR_H + MARGIN)   # sous le bandeau haut

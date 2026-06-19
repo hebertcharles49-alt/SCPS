@@ -1,9 +1,14 @@
 extends Control
-## MapControls — barres habillées au-dessus de la carte : sélecteur de MODE
-## (terrain · politique · régions · pays) en bas-gauche + ZOOM (in/out/fit) en
-## bas-droite. Câblé à MapView (set_mode + zoom). Boutons IconButton (chrome+icône).
+## MapControls — le BANDEAU BAS, pleine largeur (cadre d'écran). Porte le sélecteur
+## de MODE (terrain · politique · régions · pays) à gauche et le ZOOM (in/out/fit) à
+## droite. La barre capte ses clics (la carte dessous n'est pas sélectionnée). Câblé
+## à MapView. Suit la largeur de la fenêtre (size_changed).
 
+const VKit = preload("res://ui/vkit.gd")
 const IconButton = preload("res://ui/icon_button.gd")
+const Frame = preload("res://ui/frame.gd")
+const H := Frame.BOTTOMBAR_H
+const BTN := 38.0
 
 # mode render_map → icône du pack
 const MODES := [
@@ -23,8 +28,7 @@ func setup(map) -> void:
 	_map = map
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_IGNORE   # ne capte qu'au-dessus des boutons
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_STOP   # la barre capte ses clics
 
 	_mb = HBoxContainer.new()
 	_mb.add_theme_constant_override("separation", 4)
@@ -32,7 +36,7 @@ func _ready() -> void:
 	for m in MODES:
 		var b = IconButton.new()
 		_mb.add_child(b)
-		b.setup_icon(String(m[1]), 38)
+		b.setup_icon(String(m[1]), BTN)
 		b.selected = (int(m[0]) == _mode)
 		b.pressed.connect(_on_mode.bind(int(m[0])))
 		_mode_btns.append(b)
@@ -43,16 +47,25 @@ func _ready() -> void:
 	for c in [["map_zoom_in", "_zin"], ["map_zoom_out", "_zout"], ["map_fit_view", "_zfit"]]:
 		var b = IconButton.new()
 		_zb.add_child(b)
-		b.setup_chrome(String(c[0]), 38)
+		b.setup_chrome(String(c[0]), BTN)
 		b.pressed.connect(Callable(self, String(c[1])))
 
-	get_viewport().size_changed.connect(_reposition)
-	_reposition.call_deferred()
+	get_viewport().size_changed.connect(_resize)
+	_resize.call_deferred()
 
-func _reposition() -> void:
+func _resize() -> void:
 	var vp := get_viewport_rect().size
-	_mb.position = Vector2(12, vp.y - _mb.size.y - 12)
-	_zb.position = Vector2(vp.x - _zb.size.x - 12, vp.y - _zb.size.y - 12)
+	position = Vector2(0, vp.y - H)
+	size = Vector2(vp.x, H)
+	var by := (H - BTN) * 0.5                    # centrage vertical des boutons
+	_mb.position = Vector2(Frame.SIDEBAR_W + 10, by)   # à droite du rail
+	_zb.position = Vector2(vp.x - _zb.size.x - 12, by)
+	queue_redraw()
+
+func _draw() -> void:
+	# barre PLEINE LARGEUR : navy + liseré cuivre en haut
+	VKit.fill(self, Rect2(0, 0, size.x, H), VKit.COL_PANEL)
+	VKit.fill(self, Rect2(0, 0, size.x, 2), VKit.COL_COPPER)
 
 func _on_mode(m: int) -> void:
 	_mode = m

@@ -4,6 +4,7 @@ extends Control
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
+const Frame = preload("res://ui/frame.gd")
 const PW := 322.0
 const PH := 250.0
 const MARGIN := 8.0
@@ -28,7 +29,7 @@ func _ready() -> void:
 	hide()
 
 func _layout() -> void:
-	position = Vector2(get_viewport_rect().size.x - PW - MARGIN, MARGIN)
+	position = Vector2(get_viewport_rect().size.x - PW - MARGIN, Frame.TOPBAR_H + MARGIN)
 
 func show_country(cid: int) -> void:
 	_cid = cid

@@ -8,8 +8,8 @@ extends Control
 
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
+const Frame = preload("res://ui/frame.gd")
 const PW := 312.0
-const TOP := 102.0
 
 var _pid := -1
 
@@ -20,11 +20,11 @@ func _ready() -> void:
 	Sim.ticked.connect(_on_tick)
 	hide()
 
-const RAIL := 46.0   # largeur du rail de sidebar (le panneau se pose à sa droite)
-
 func _layout() -> void:
-	position = Vector2(RAIL, TOP)
-	size = Vector2(PW, maxf(80.0, get_viewport_rect().size.y - TOP - 26.0))
+	# entre les bandeaux : à droite du rail, sous le haut, au-dessus du bas
+	position = Vector2(Frame.SIDEBAR_W, Frame.TOPBAR_H + 4.0)
+	var h := get_viewport_rect().size.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 8.0
+	size = Vector2(PW, maxf(80.0, h))
 
 func show_province(pid: int) -> void:
 	_pid = pid
