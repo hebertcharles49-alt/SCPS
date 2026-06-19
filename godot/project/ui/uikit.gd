@@ -176,6 +176,11 @@ static func city_sprite(band: int, variant: int) -> Texture2D:
 static func dressing_named(nm: String) -> Texture2D:
 	return _tex(DRESSING_DIR + nm + ".png")
 
+## JETON d'armée de campagne par NOM (ARMY_TOKEN_*) ; null si absent. RGBA direct.
+const CAMPAIGN_DIR := "res://assets/scps/pack/campaign/"
+static func army_token(nm: String) -> Texture2D:
+	return _tex(CAMPAIGN_DIR + nm + ".png")
+
 
 # ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)
 const RES_FALLBACK := {

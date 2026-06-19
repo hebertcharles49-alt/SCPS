@@ -91,6 +91,27 @@ func _phase_color(phase: int) -> Color:
 		_:            return Color(0.8, 0.8, 0.85)   # gris : au repos
 	return Color.WHITE
 
+## choisit le JETON d'armée selon sa TAILLE puis sa composition DOMINANTE.
+## (units/inf/arch/cav/mages sont en PAQUETS de 100 — campaign_units.)
+func _army_token_name(a: Dictionary) -> String:
+	var tot: int = a.get("units", 0)
+	if tot >= 22:
+		return "ARMY_TOKEN_LARGE_HOST"
+	if tot <= 4:
+		return "ARMY_TOKEN_SCOUT_COLUMN"
+	var inf: int = a.get("inf", 0)
+	var arch: int = a.get("arch", 0)
+	var cav: int = a.get("cav", 0)
+	var mages: int = a.get("mages", 0)
+	var m := maxi(maxi(inf, arch), maxi(cav, mages))
+	if mages == m and mages > 0:
+		return "ARMY_TOKEN_SORCERER_ESCORT"
+	if cav == m and cav > 0:
+		return "ARMY_TOKEN_HEAVY_CAVALRY"
+	if arch == m and arch > 0:
+		return "ARMY_TOKEN_MIXED_ARCHERS"
+	return "ARMY_TOKEN_PIKE_BLOCK"
+
 func _draw() -> void:
 	var w = Sim.world
 	if w == null:
@@ -152,19 +173,28 @@ func _draw() -> void:
 			if dctr.x >= 0:
 				draw_line(ctr, dctr, Color(_phase_color(phase), 0.7), 0.5)
 
-		# losange d'armée, posé un peu AU-DESSUS de la ville (pour ne pas la masquer)
-		var ac := ctr + Vector2(0, -3.0)
-		var s := 4.5
-		var diamond := PackedVector2Array([
-			ac + Vector2(0, -s), ac + Vector2(s, 0),
-			ac + Vector2(0, s), ac + Vector2(-s, 0)])
-		# halo de phase (bataille/siège ressortent), puis contour noir, puis losange
-		draw_circle(ac, s + 1.6, Color(_phase_color(phase), 0.85))
-		var border := PackedVector2Array([
-			ac + Vector2(0, -s), ac + Vector2(s, 0),
-			ac + Vector2(0, s), ac + Vector2(-s, 0), ac + Vector2(0, -s)])
-		draw_polyline(border, Color(0, 0, 0, 0.9), 1.4, true)
-		draw_colored_polygon(diamond, col)
+		# le JETON d'armée (sprite RGBA selon la composition), posé au-dessus de la ville.
+		var ac := ctr + Vector2(0, -2.0)
+		var token := UIKit.army_token(_army_token_name(a))
+		if token != null:
+			var ts := 26.0
+			# socle DISCRET au pied : pastille teintée au PAYS + anneau de PHASE
+			draw_circle(ac, 2.6, Color(col, 0.95))
+			draw_arc(ac, 3.4, 0.0, TAU, 20, Color(_phase_color(phase), 0.95), 1.1, true)
+			# le JETON, PROÉMINENT, ancré au pied (les troupes « tiennent » le sol)
+			draw_texture_rect(token, Rect2(ac - Vector2(ts * 0.5, ts * 0.9), Vector2(ts, ts)), false)
+		else:
+			# repli losange (jeton absent)
+			var s := 4.5
+			draw_circle(ac, s + 1.6, Color(_phase_color(phase), 0.85))
+			var diamond := PackedVector2Array([
+				ac + Vector2(0, -s), ac + Vector2(s, 0),
+				ac + Vector2(0, s), ac + Vector2(-s, 0)])
+			var border := PackedVector2Array([
+				ac + Vector2(0, -s), ac + Vector2(s, 0),
+				ac + Vector2(0, s), ac + Vector2(-s, 0), ac + Vector2(0, -s)])
+			draw_polyline(border, Color(0, 0, 0, 0.9), 1.4, true)
+			draw_colored_polygon(diamond, col)
 
 	# ── ÉPICENTRE du cataclysme §27 : anneaux pulsants (le foyer de la fin) ────
 	var eg: Dictionary = w.endgame_info()
