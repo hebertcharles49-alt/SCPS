@@ -369,7 +369,7 @@ func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: flo
 			continue                                      # déborde l'eau → on saute (ville sur terre)
 		var nm: String = pool[(hh ^ (hh >> 5)) % pool.size()]   # pick mieux brassé
 		_structures.append({"name": nm, "pos": p, "sz": sz, "flip": flipok and (((hh >> 17) & 1) == 1)})
-		if _structures.size() >= 1400:
+		if _structures.size() >= 3200:
 			break
 	return idx
 
@@ -397,13 +397,15 @@ func _build_structures() -> void:
 		var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))   # assise CALÉE SUR TERRE
 		if ctr.x < 0:
 			continue
-		# FRÉQUENCE FIXE : la ville ne grandit PAS en NOMBRE d'assets (son importance se lit
-		# au CENTRE T1-T7, « grandir en scale »). Un bourg constant, posé en SCATTER ORGANIQUE
-		# (≈ Londres médiévale : ruelles & îlots irréguliers, JAMAIS une grille new-yorkaise).
-		var civic_n := 2
-		var craft_n := 3
-		var dwell_n := 12
-		var field_n := 2
+		# Le bourg CROÎT avec le TIER (band, comme le centre T1-T7) ET avec les BÂTIMENTS
+		# posés : T1 ≈ 4-5 assets épars ; T7 « full upgrade » ≈ la tuile presque entièrement
+		# occupée (métropole ~10k). Scatter ORGANIQUE (Londres médiévale, pas une grille).
+		var band := _city_band(w.region_pop(r))          # 1-8 (le tier visible)
+		var nb := _region_craft_count(w, ctr)            # bâtiments posés (UI provinciale)
+		var civic_n := clampi(band / 2, 1, 4)
+		var craft_n := clampi(nb, 0, band)               # ateliers ∝ bâtiments, plafonnés au tier
+		var dwell_n := clampi(band * 3 - 2, 2, 24)       # logements : le gros de la croissance
+		var field_n := clampi(band - 3, 0, 4)
 		var jit := float((r * 2654435761) & 0xffff) / 65536.0 * TAU
 		var idx := 0
 		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`). Les rayons
@@ -413,7 +415,7 @@ func _build_structures() -> void:
 		idx = _place_zone(bk["craft"], craft_n, ctr, 6.0, 4.0, BLD_SIZE, false, idx, jit, sea, rset, r)
 		idx = _place_zone(bk["dwell"], dwell_n, ctr, 7.0, 6.5, BLD_SIZE, true, idx, jit, sea, rset, r)
 		idx = _place_zone(bk["field"], field_n, ctr, 12.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
-		if _structures.size() >= 1400:
+		if _structures.size() >= 3200:
 			break
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
 	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
