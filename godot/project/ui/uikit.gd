@@ -103,6 +103,66 @@ static func settlement_sprite(tier: int, group: int) -> Texture2D:
 
 static var _cache := {}
 
+# ── TUILES de CONSTRUCTION (unités · édifices) : des PNG auto-encadrés (fond navy
+#    arrondi + liseré cuivre + art). On ôte seulement le NOIR des coins → alpha, la
+#    tuile survit. Mappage indice d'enum moteur → nom de fichier (certaines clés
+#    d'asset diffèrent de l'identifiant C : U_FOUDRIER←U_ARQUEBUSIER, etc.). ────────
+const UNITS_DIR := "res://assets/scps/pack/units/"
+const BUILDINGS_DIR := "res://assets/scps/pack/buildings/"
+
+# indexé par UnitType (0-21), ordre de scps_army.h
+const UNIT_FILE := [
+	"U_PIQUIER", "U_LANCIER", "U_EPEISTE", "U_ARCHER", "U_ARBALETRIER",
+	"U_CAVALERIE_LEGERE", "U_CAVALERIE_LOURDE", "U_SORCIER", "U_HALLEBARDIER", "U_FOUDRIER",
+	"U_ALCHIMISTE", "U_CHAMAN", "U_ARBALETRIER_LOURD", "U_BERSERKER", "U_LANCIER_DE_CHOC",
+	"U_MILICE", "U_HARCELEUR", "U_TRAQUEUR", "U_LAME_FRANCHE", "U_GARDE_ESCORTE",
+	"U_CAVALERIE_CUIRASSEE", "U_CAVALERIE_DE_RAID",
+]
+# indexé par Edifice (0-25), ordre de scps_agency.h (noms = ceux des fichiers)
+const BLD_FILE := [
+	"EDI_TRIBUNAL", "EDI_CHANCELLERIE", "EDI_ACADEMIE", "EDI_GARNISON", "EDI_FORTERESSE", "EDI_CITADELLE",
+	"EDI_PORT", "EDI_CARAVANSERAIL", "EDI_MARCHE", "EDI_ENTREPOT", "EDI_GRENIER", "EDI_IRRIGATION", "EDI_AQUEDUC",
+	"EDI_SANCTUAIRE", "EDI_TEMPLE", "EDI_CATHEDRALE", "EDI_BIBLIOTHEQUE", "EDI_MONASTERE", "EDI_COMPTOIR", "EDI_BANQUE",
+	"EDI_ARSENAL", "EDI_AMIRAUTE", "EDI_PORT_MARCHAND", "EDI_BIBLIO_MIL", "EDI_OBSERVATOIRE", "EDI_TRADE_CENTER",
+]
+static var _tile_cache := {}
+
+## ôte le NOIR du fond (coins de la tuile, somme RGB < 24) → alpha ; navy/liseré/art survivent.
+static func _key_black(img: Image) -> Texture2D:
+	if img.get_format() != Image.FORMAT_RGBA8:
+		img.convert(Image.FORMAT_RGBA8)
+	var d := img.get_data()
+	for i in range(0, d.size(), 4):
+		if int(d[i]) + int(d[i + 1]) + int(d[i + 2]) < 24:
+			d[i + 3] = 0
+	var keyed := Image.create_from_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8, d)
+	return ImageTexture.create_from_image(keyed)
+
+static func _tile(dir: String, key: String) -> Texture2D:
+	var path := dir + key + ".png"
+	if _tile_cache.has(path):
+		return _tile_cache[path]
+	var tex: Texture2D = null
+	if FileAccess.file_exists(path):
+		var img := Image.load_from_file(path)
+		if img != null:
+			tex = _key_black(img)
+	_tile_cache[path] = tex
+	return tex
+
+## tuile d'UNITÉ par UnitType (0-21) ; null si l'asset manque (l'appelant retombe sur le texte).
+static func unit_sprite(unit_type: int) -> Texture2D:
+	if unit_type < 0 or unit_type >= UNIT_FILE.size():
+		return null
+	return _tile(UNITS_DIR, UNIT_FILE[unit_type])
+
+## tuile d'ÉDIFICE par Edifice (0-25) ; null si l'asset manque.
+static func building_sprite(edi_type: int) -> Texture2D:
+	if edi_type < 0 or edi_type >= BLD_FILE.size():
+		return null
+	return _tile(BUILDINGS_DIR, BLD_FILE[edi_type])
+
+
 # ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)
 const RES_FALLBACK := {
 	"grain": "grain_bundle", "ble": "grain_bundle", "betail": "grain_bundle",

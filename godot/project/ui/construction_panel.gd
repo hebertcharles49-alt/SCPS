@@ -1,18 +1,21 @@
 extends Control
-## ConstructionPanel — les BOUTONS de construction. Lit la façade pour le PAYS joueur :
-## `unit_roster` (nom·classe·coût·éthos·entretien·contres·recrutable) et `building_roster`
-## (nom·matériaux·or·jours·débloqué) — display-only, prix RÉELS du moteur. Le clic émet
-## `build_requested` (l'actionneur joueur viendra). Immediate-mode _draw ; le SURVOL
-## donne le détail (le mockup : nom + éthos/entretien + efficace/faible contre).
+## ConstructionPanel — les BOUTONS de construction, en GRILLE DE TUILES (le sprite
+## remplace le nom ; le survol dicte le nom + le détail — le motif demandé). Lit la
+## façade pour le PAYS joueur : `unit_roster` (22) et `building_roster` (édifices).
+## Tuile grisée + ✦ si verrouillée par la tech. Le clic émet `build_requested`
+## (l'actionneur joueur viendra). Immediate-mode _draw, prix RÉELS du moteur.
 
 const VKit = preload("res://ui/vkit.gd")
+const UIKit = preload("res://ui/uikit.gd")
 
 signal build_requested(kind: String, type: int)
 
-const PW := 472
-const PH := 484
-const ROW := 15
-const COLW := 214
+const COLS := 6
+const CELL := 48
+const TILE := 44
+const PADX := 12
+const PW := PADX * 2 + COLS * CELL     # 312
+const PH := 540
 
 var _units := []
 var _builds := []
@@ -45,24 +48,16 @@ func _draw() -> void:
 	_hover_zones.clear()
 	_click_zones.clear()
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
-	VKit.text(self, Vector2(14, 8), VKit.COL_PARCH, "CONSTRUCTION", VKit.FS_BIG)
-	if Sim.world != null:
-		var ci: Dictionary = Sim.world.country_info(Sim.world.player())
-		VKit.text(self, Vector2(176, 13), VKit.COL_DIM, String(ci.get("nom", "")))
+	VKit.text(self, Vector2(PADX, 8), VKit.COL_PARCH, "CONSTRUCTION", VKit.FS_BIG)
 
-	# ── UNITÉS (colonne gauche) — bouton = nom ; survol = le détail ──────────
-	var xu := 14.0
-	var y := VKit.section(self, xu, 30, "UNITÉS")
-	for u in _units:
+	# ── UNITÉS (grille de tuiles) ──────────────────────────────────────────
+	var y0 := VKit.section(self, PADX, 30, "UNITÉS")
+	for i in range(_units.size()):
+		var u: Dictionary = _units[i]
 		var on: bool = bool(u.get("recrutable", false))
-		var rect := Rect2(xu, y - 1, COLW, ROW)
-		if _has_hover and _hover_rect == rect:
-			VKit.fill(self, rect, VKit.COL_PANEL_HI)
-		VKit.text(self, Vector2(xu + 5, y), (VKit.COL_PARCH if on else VKit.COL_DIM),
-			String(u.get("nom", "")), VKit.FS_SMALL)
-		if not on:
-			VKit.text(self, Vector2(xu + COLW - 16, y), VKit.COL_COPPER, "✦", VKit.FS_SMALL)  # verrou tech
-		_hover_zones.append({"rect": rect, "head": String(u.get("nom", "")), "lines": PackedStringArray([
+		var cell := Rect2(PADX + (i % COLS) * CELL, y0 + (i / COLS) * CELL, TILE, TILE)
+		_tile(cell, UIKit.unit_sprite(int(u.get("type", -1))), String(u.get("nom", "")), on)
+		_hover_zones.append({"rect": cell, "head": String(u.get("nom", "")), "lines": PackedStringArray([
 			"%s · %s" % [u.get("classe", ""), u.get("arme", "")],
 			"Coût : %s" % u.get("cout", ""),
 			"Éthos : %s" % u.get("ethos", ""),
@@ -71,35 +66,41 @@ func _draw() -> void:
 			"Faible contre ▸ %s" % u.get("faible", "—"),
 		])})
 		if on:
-			_click_zones.append({"rect": rect, "kind": "unit", "type": int(u.get("type", -1))})
-		y += ROW
+			_click_zones.append({"rect": cell, "kind": "unit", "type": int(u.get("type", -1))})
+	var rows_u := int(ceil(_units.size() / float(COLS)))
+	var yb := y0 + rows_u * CELL
 
-	# ── ÉDIFICES (colonne droite) — nom + matériaux compacts ; survol = prix complet ─
-	var xb := 244.0
-	var yb := VKit.section(self, xb, 30, "ÉDIFICES")
-	for b in _builds:
+	# ── ÉDIFICES (grille de tuiles) ────────────────────────────────────────
+	var y1 := VKit.section(self, PADX, yb + 4, "ÉDIFICES")
+	for i in range(_builds.size()):
+		var b: Dictionary = _builds[i]
 		var on2: bool = bool(b.get("debloque", false))
-		var rect2 := Rect2(xb, yb - 1, COLW, ROW)
-		if _has_hover and _hover_rect == rect2:
-			VKit.fill(self, rect2, VKit.COL_PANEL_HI)
-		VKit.text(self, Vector2(xb + 5, yb), (VKit.COL_PARCH if on2 else VKit.COL_DIM),
-			String(b.get("nom", "")), VKit.FS_SMALL)
-		var cost: Array = b.get("cost", [])
-		var cs := ""
-		for c in cost:
-			cs += "%s%d " % [String(c.get("res", "")).substr(0, 3), int(c.get("qty", 0))]
-		VKit.text(self, Vector2(xb + 104, yb), VKit.COL_DIM, cs.strip_edges(), VKit.FS_SMALL)
+		var cell := Rect2(PADX + (i % COLS) * CELL, y1 + (i / COLS) * CELL, TILE, TILE)
+		_tile(cell, UIKit.building_sprite(int(b.get("type", -1))), String(b.get("nom", "")), on2)
 		var lines := PackedStringArray()
-		for c in cost:
+		for c in b.get("cost", []):
 			lines.append("%s : %d" % [c.get("res", ""), int(c.get("qty", 0))])
 		lines.append("Or : %d   ·   %d jours" % [int(b.get("gold", 0)), int(b.get("days", 0))])
-		_hover_zones.append({"rect": rect2, "head": String(b.get("nom", "")), "lines": lines})
+		_hover_zones.append({"rect": cell, "head": String(b.get("nom", "")), "lines": lines})
 		if on2:
-			_click_zones.append({"rect": rect2, "kind": "build", "type": int(b.get("type", -1))})
-		yb += ROW
+			_click_zones.append({"rect": cell, "kind": "build", "type": int(b.get("type", -1))})
 
 	if _has_hover and _hover_lines.size() > 0:
 		_draw_tooltip()
+
+## une tuile : le sprite (grisé si verrouillé), repli texte si l'asset manque, ✦ si
+## verrouillé, cadre cuivre au survol.
+func _tile(cell: Rect2, tex: Texture2D, name: String, enabled: bool) -> void:
+	if tex != null:
+		draw_texture_rect(tex, cell, false, (Color.WHITE if enabled else Color(0.5, 0.5, 0.55, 0.65)))
+	else:
+		VKit.fill(self, cell, VKit.COL_PANEL2)
+		VKit.box(self, cell, VKit.COL_EDGE)
+		VKit.text(self, cell.position + Vector2(3, 15), (VKit.COL_PARCH if enabled else VKit.COL_DIM), name.substr(0, 7), VKit.FS_SMALL)
+	if not enabled:
+		VKit.text(self, cell.position + Vector2(TILE - 13, 1), VKit.COL_COPPER, "✦", VKit.FS_SMALL)
+	if _has_hover and _hover_rect == cell:
+		VKit.box(self, Rect2(cell.position - Vector2(1, 1), cell.size + Vector2(2, 2)), VKit.COL_COPPER)
 
 func _draw_tooltip() -> void:
 	var w := VKit.text_w(_hover_head, VKit.FS)
