@@ -45,17 +45,17 @@ func _ready() -> void:
 	Sim.ticked.connect(_on_tick)
 	Sim.generated.connect(_on_generated)
 	if Sim.world != null:
+		_rivers = Sim.world.river_points()
 		_build_decor()
 		_build_structures()
 		_build_city_skins()
-		_rivers = Sim.world.river_points()
 	queue_redraw()
 
 func _on_generated() -> void:
+	_rivers = Sim.world.river_points()
 	_build_decor()
 	_build_structures()
 	_build_city_skins()
-	_rivers = Sim.world.river_points()
 	queue_redraw()
 
 ## pré-calcule la variante de ville TERRAIN de chaque région colonisée (échantillon
@@ -94,7 +94,11 @@ func _build_structures() -> void:
 	var names := UIKit.structure_names()
 	if names.is_empty():
 		return
-	var sea: Image = w.layer_image(1)   # SCPS_LAYER_SEA : ne pas bâtir sur l'eau
+	var sea: Image = w.layer_image(1)   # SCPS_LAYER_SEA : 0 = terre, ≥ 1 = eau (toute classe)
+	# ensemble des cellules de RIVIÈRE (on ne bâtit pas dessus non plus) ──────────
+	var rset := {}
+	for rp in _rivers:
+		rset[Vector2i(int(rp.x), int(rp.y))] = true
 	for r in range(w.region_count()):
 		var t: int = w.region_tier(r)
 		if t < 0:
@@ -102,17 +106,23 @@ func _build_structures() -> void:
 		var ctr: Vector2 = w.region_centroid(r)
 		if ctr.x < 0:
 			continue
-		var n := 2 + t * 2                  # plus de bâti autour des grandes villes
+		var n := 1 + t                      # densité MODÉRÉE (anti-empilement)
 		for k in range(n):
 			var h := ((r * 2654435761) ^ (k * 2246822519 + 374761393)) & 0x7fffffff
 			var ang := float(h % 628) * 0.01
-			var rad := 3.0 + float((h >> 9) % 100) / 100.0 * (4.0 + t * 2.0)
+			var rad := 6.0 + float((h >> 9) % 100) / 100.0 * (6.0 + t * 2.5)   # ÉCARTÉ de la ville
 			var p := ctr + Vector2(cos(ang), sin(ang)) * rad
-			if sea != null and p.x >= 0 and p.y >= 0 and p.x < sea.get_width() and p.y < sea.get_height():
-				if sea.get_pixel(int(p.x), int(p.y)).r > 0.5:
-					continue                # tombé sur l'eau → on saute
+			var ix := int(p.x)
+			var iy := int(p.y)
+			# pas dans l'EAU : ni mer (toute classe ≥ 1), ni rivière (cellule + voisins)
+			if sea != null and ix >= 0 and iy >= 0 and ix < sea.get_width() and iy < sea.get_height():
+				if int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1:
+					continue
+			if rset.has(Vector2i(ix, iy)) or rset.has(Vector2i(ix + 1, iy)) or rset.has(Vector2i(ix - 1, iy)) \
+					or rset.has(Vector2i(ix, iy + 1)) or rset.has(Vector2i(ix, iy - 1)):
+				continue
 			_structures.append({"name": names[h % names.size()], "pos": p})
-			if _structures.size() >= 1800:
+			if _structures.size() >= 1400:
 				return
 
 ## scan de la couche biome (un pas régulier) → liste fixe d'arbres sur les forêts.
