@@ -14,12 +14,14 @@ const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
 const CITY_ZOOM_MIN := 4.5   ## les villes n'apparaissent qu'AU-DELÀ de ce zoom (sinon : carte d'ensemble encombrée)
 const BLD_SIZE := 9.0        ## taille MONDE UNIFORME d'un bâti de bourg (égalisée — variété par le sprite, pas l'échelle)
+const CITY_CORE_SIZE := 18.0 ## taille MONDE FIXE du centre-ville (la ville ne GRANDIT pas ; l'importance = le variant T1-T7)
 const LABEL_ZOOM_MAX := 6.5  ## les NOMS d'empire s'estompent À MESURE qu'on zoome (l'inverse des villes)
 
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
 var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
 var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
+var _region_centre := {}  ## région colonisée → TERRAIN du centre-ville (plaine/foret/montagne/estuaire/portuaire/lacustre)
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
@@ -30,6 +32,7 @@ var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation)
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
 var _road_dress := []     ## [{name, pos, road}] — mobilier de BORDURE (apparaît à la FIN du chantier)
+var _road_cells := {}     ## cellules occupées par une route (+ marge) → le bourg en SPIRALE les évite
 var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
@@ -74,10 +77,10 @@ func _ready() -> void:
 		_rivers = Sim.world.river_points()
 		_build_names()
 		_build_anchors()
+		_ensure_roads()         # routes + masque de chaussée AVANT le bourg ; datées dès le démarrage
 		_build_decor()
 		_build_structures()
 		_build_city_skins()
-		_ensure_roads()         # routes datées dès le démarrage (chantier depuis l'an courant)
 	queue_redraw()
 
 func _build_names() -> void:
@@ -97,16 +100,17 @@ func _on_generated() -> void:
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
+	_ensure_roads()             # routes + masque de chaussée AVANT le bourg (évitement) ; datées dès l'an 0
 	_build_decor()
-	_build_structures()
+	_build_structures()         # le bourg en spirale ÉVITE les routes
 	_build_city_skins()
-	_ensure_roads()             # date les routes initiales à l'an de génération (chantier dès l'an 0)
 	queue_redraw()
 
 ## pré-calcule la variante de ville TERRAIN de chaque région colonisée (échantillon
 ## du biome au centroïde ; l'hydro via le groupe de settlement) — pour les petits bourgs.
 func _build_city_skins() -> void:
 	_region_variant.clear()
+	_region_centre.clear()
 	var w = Sim.world
 	if w == null:
 		return
@@ -120,20 +124,39 @@ func _build_city_skins() -> void:
 			continue
 		var nm := ""
 		var sg: int = w.region_settle_group(r)
+		var b := -1
+		if bio != null and ctr.x < bio.get_width() and ctr.y < bio.get_height():
+			b = int(bio.get_pixel(int(ctr.x), int(ctr.y)).r * 255.0 + 0.5)
 		if sg == 2:                       # estuaire
 			nm = "CITY_BIOME_ESTUARY_STILTS"
 		elif sg == 1:                     # rivière
 			nm = "CITY_BIOME_RIVERBANK_QUAY"
-		elif bio != null and ctr.x < bio.get_width() and ctr.y < bio.get_height():
-			var b := int(bio.get_pixel(int(ctr.x), int(ctr.y)).r * 255.0 + 0.5)
+		elif b >= 0:
 			nm = BIOME_CITY.get(b, "")
+		var coastal := not _footprint_clear(sea, {}, ctr, 4.5, 9.0)
 		# si l'assise jouxte l'eau et qu'aucune variante AQUATIQUE n'a été choisie,
 		# bascule sur le village de PÊCHE (sprite à quais) → une ville au bord de l'eau
 		# lit toujours comme un PORT voulu, jamais comme un bâti générique débordant.
-		if nm == "" and not _footprint_clear(sea, {}, ctr, 4.5, 9.0):
+		if nm == "" and coastal:
 			nm = "CITY_BIOME_COAST_FISHING"
 		if nm != "":
 			_region_variant[r] = nm
+		# TERRAIN du CENTRE-VILLE (pack centres) : hydro d'abord, puis biome, puis côte.
+		_region_centre[r] = _centre_kind(sg, b, coastal)
+
+## terrain du centre-ville (pack centres/) : 6 familles, dérivées de l'hydro/biome/côte.
+func _centre_kind(sg: int, biome: int, coastal: bool) -> String:
+	if sg == 2 or sg == 1:                                  # estuaire / rivière
+		return "estuaire"
+	if biome == 15 or biome == 21 or biome == 22:           # marais / humides → lacustre
+		return "lacustre"
+	if biome == 16 or biome == 17 or biome == 18 or biome == 19:  # collines / montagnes
+		return "montagne"
+	if biome == 12 or biome == 13 or biome == 14:           # forêts
+		return "foret"
+	if coastal or biome == 3 or biome == 11:                # côte → portuaire
+		return "portuaire"
+	return "plaine"
 
 ## cale l'assise de chaque ville colonisée SUR LA TERRE (le centroïde brut d'une
 ## région côtière/insulaire peut tomber dans l'eau → snap vers la terre la plus
@@ -176,7 +199,7 @@ func _build_anchors() -> void:
 		# DÉBOISE un disque autour de l'assise (∝ tier) → le bourg respire dans une
 		# clairière au lieu d'être noyé sous la canopée (comme le masque de viewer.c).
 		# Couvre TOUTE l'emprise du bourg (champs au large à r≈12) + une marge franche.
-		var clr := int(15.0 + t * 2.2)
+		var clr := int(18.0 + t * 2.2)
 		var bcx := int(best.x)
 		var bcy := int(best.y)
 		for dy in range(-clr, clr + 1):
@@ -334,12 +357,14 @@ func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: flo
 	if pool.is_empty():
 		return idx
 	for j in range(count):
-		var ang := float(idx) * 2.399963 + jit          # angle d'or → étalement régulier
 		var hh := ((r * 374761393) ^ (idx * 2246822519 + 668265263)) & 0x7fffffff
-		var rad := rbase + float(hh % 100) / 100.0 * rspan
+		var ang := float(hh % 6283) * 0.001 + jit        # angle ALÉATOIRE → scatter ORGANIQUE (pas la spirale)
+		var rad := rbase + float((hh >> 13) % 100) / 100.0 * rspan
 		var p := ctr + Vector2(cos(ang), sin(ang)) * rad
 		var sz := base_sz                                 # taille UNIFORME : la variété vient du SPRITE (+miroir), pas de l'échelle
 		idx += 1
+		if _road_cells.has(Vector2i(int(p.x), int(p.y))):
+			continue                                      # sur la chaussée → on saute (le bâti longe, ne couvre pas)
 		if not _footprint_clear(sea, rset, p, sz * 0.5, sz):
 			continue                                      # déborde l'eau → on saute (ville sur terre)
 		var nm: String = pool[(hh ^ (hh >> 5)) % pool.size()]   # pick mieux brassé
@@ -372,22 +397,22 @@ func _build_structures() -> void:
 		var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))   # assise CALÉE SUR TERRE
 		if ctr.x < 0:
 			continue
-		var pop: int = w.region_pop(r)
-		var nb := _region_craft_count(w, ctr)            # bâtiments posés (UI provinciale)
-		# combien par zone — ∝ tier (civique), bâtiments (ateliers), population (logements)
-		var civic_n := 1 + (1 if t >= 2 else 0) + (1 if t >= 4 else 0)
-		var craft_n: int = clampi(nb, 0, 6)
-		var dwell_n: int = clampi(int(pop / 250.0), 1, 6 + t * 2)
-		var field_n: int = clampi(t - 1, 0, 3)           # le disparate : RARE, au large
+		# FRÉQUENCE FIXE : la ville ne grandit PAS en NOMBRE d'assets (son importance se lit
+		# au CENTRE T1-T7, « grandir en scale »). Un bourg constant, posé en SCATTER ORGANIQUE
+		# (≈ Londres médiévale : ruelles & îlots irréguliers, JAMAIS une grille new-yorkaise).
+		var civic_n := 2
+		var craft_n := 3
+		var dwell_n := 12
+		var field_n := 2
 		var jit := float((r * 2654435761) & 0xffff) / 65536.0 * TAU
 		var idx := 0
-		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`) pour tous —
-		# la variété tient au SPRITE et au miroir, pas à l'échelle (bâtiments « égalisés »).
-		# Civique non miroité (repères) ; logements/champs miroités (silhouettes doublées).
-		idx = _place_zone(bk["civic"], civic_n, ctr, 1.5, 2.2, BLD_SIZE, false, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["craft"], craft_n, ctr, 2.8, 3.6, BLD_SIZE, false, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["dwell"], dwell_n, ctr, 3.2, 5.4, BLD_SIZE, true, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["field"], field_n, ctr, 7.6, 4.8, BLD_SIZE, true, idx, jit, sea, rset, r)
+		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`). Les rayons
+		# ENTOURENT le centre (≈ demi-largeur 9) : le bourg RING le cœur (visible autour),
+		# il ne se cache pas dessous. Scatter organique (Londres), pas une grille.
+		idx = _place_zone(bk["civic"], civic_n, ctr, 4.0, 3.0, BLD_SIZE, false, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["craft"], craft_n, ctr, 6.0, 4.0, BLD_SIZE, false, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["dwell"], dwell_n, ctr, 7.0, 6.5, BLD_SIZE, true, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["field"], field_n, ctr, 12.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
 		if _structures.size() >= 1400:
 			break
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
@@ -465,7 +490,22 @@ func _ensure_roads() -> void:
 		if not _road_start.has(rd["key"]):
 			_road_start[rd["key"]] = yr0     # route NEUVE → chantier daté à maintenant
 	_build_road_dress()
+	_build_road_cells()                      # empreinte des routes → le bourg en spirale les évite
 	_roads_dirty = false
+	_struct_dirty = true                     # les routes ont bougé → le bourg se recale (évitement)
+
+## marque les cellules occupées par une route (+ marge 1) → le bourg en spirale les ÉVITE
+## (le bâti ne pousse pas sur la chaussée ; les ruelles serpentent ENTRE).
+func _build_road_cells() -> void:
+	_road_cells.clear()
+	for rd in _roads:
+		var pts: PackedVector2Array = rd["points"]
+		for p in pts:
+			var bx := int(p.x)
+			var by := int(p.y)
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					_road_cells[Vector2i(bx + dx, by + dy)] = true
 
 ## méta LOCALE par route (sans toucher la façade) : nombre de PROVINCES traversées (pour
 ## la cadence « 1 an/province ») + une CLÉ stable (paire de régions des extrémités) pour
@@ -485,6 +525,13 @@ func _augment_roads(w) -> void:
 		var ra: int = w.province_region(w.province_at(int(pts[0].x), int(pts[0].y)))
 		var rb: int = w.province_region(w.province_at(int(pts[pts.size() - 1].x), int(pts[pts.size() - 1].y)))
 		rd["key"] = (mini(ra, rb) & 0xfff) * 4096 + (maxi(ra, rb) & 0xfff)
+		# les EXTRÉMITÉS rejoignent l'ASSISE des villes (base du sprite) → la route entre par
+		# le BAS de l'asset (le centre, ancré au pied, couvre ce qui passe derrière par le haut).
+		if _region_anchor.has(ra):
+			pts[0] = _region_anchor[ra]
+		if _region_anchor.has(rb):
+			pts[pts.size() - 1] = _region_anchor[rb]
+		rd["points"] = pts
 
 ## portion BÂTIE d'un tracé (du départ, par longueur) — `frac` ∈ [0,1] → croissance organique.
 func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
@@ -614,13 +661,16 @@ func _draw_struct(s: Dictionary) -> void:
 func _draw_city(w, r: int, ctr: Vector2) -> void:
 	var t: int = w.region_tier(r)
 	var band := _city_band(w.region_pop(r))
-	var spr: Texture2D = null
-	if _region_variant.has(r):
+	# le CŒUR du bourg : le CENTRE-VILLE (pack centres, terrain × tier) — le spiral de
+	# structures autour (≪ une ville ≫) est posé par _build_structures. Replis successifs.
+	var spr: Texture2D = UIKit.city_centre(_region_centre.get(r, "plaine"), clampi(band, 1, 7))
+	if spr == null and _region_variant.has(r):
 		spr = UIKit.city_biome(_region_variant[r])
 	if spr == null:
 		spr = UIKit.city_sprite(band, (r * 2654435761) % 8)
-	var want := 16.0 + t * 6.0
-	var sz: float = min(want, _region_citymax.get(r, want))
+	# TAILLE FIXE — la ville ne GRANDIT plus à l'écran ; son importance se lit au VARIANT
+	# (T1-T7, plus de bâti dans le sprite), pas à l'échelle. Le BOURG (spiral) l'entoure.
+	var sz: float = min(CITY_CORE_SIZE, _region_citymax.get(r, CITY_CORE_SIZE))
 	if spr != null and sz >= 6.0:
 		draw_texture_rect(spr, Rect2(ctr - Vector2(sz * 0.5, sz), Vector2(sz, sz)), false)  # ancré au pied
 	else:
