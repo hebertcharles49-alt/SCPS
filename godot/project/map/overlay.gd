@@ -18,6 +18,9 @@ var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature),
 var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
 var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
+var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
+var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
+var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
 var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
 
 const RIVER_ZOOM_MIN := 2.5   ## les rivières paraissent au-delà de ce zoom
@@ -99,23 +102,37 @@ func _build_city_skins() -> void:
 ## viewer.c) → le gros sprite de ville n'a plus sa base dans la mer.
 func _build_anchors() -> void:
 	_region_anchor.clear()
+	_region_citymax.clear()
 	var w = Sim.world
 	if w == null:
 		return
 	var sea: Image = w.layer_image(1)   # SCPS_LAYER_SEA : 0 = terre, ≥ 1 = eau
 	for r in range(w.region_count()):
-		if w.region_tier(r) < 0:
+		var t: int = w.region_tier(r)
+		if t < 0:
 			continue
 		var ctr: Vector2 = w.region_centroid(r)
 		if ctr.x < 0:
 			continue
 		var land := _snap_to_land(sea, ctr)
-		# rabat ~2.5 cellules vers l'intérieur (s'écarte de la mer la plus proche)
-		var sd := _nearest_sea_dir(sea, land, 3)
-		if sd != Vector2.ZERO:
-			land -= sd * 2.5
-			land = _snap_to_land(sea, land)   # re-cale (le rabat peut sauter une crique)
-		_region_anchor[r] = land
+		var want := 16.0 + t * 6.0                         # taille de sprite VOULUE (∝ tier)
+		var best := land
+		var best_sz := _max_dry_size(sea, land)
+		# si le gros sprite ne tient pas (côte), POUSSE vers l'intérieur (à l'opposé de
+		# la mer) jusqu'à trouver une assise qui le porte au sec — une cité s'asseoit en
+		# RETRAIT de son rivage (naturel), plutôt que de rapetisser en pastille.
+		var sdir := _nearest_sea_dir(sea, land, 8)
+		if sdir != Vector2.ZERO and best_sz < want:
+			for push in [2.0, 4.0, 6.0, 9.0, 12.0]:
+				var cand := _snap_to_land(sea, land - sdir * push)
+				var sz := _max_dry_size(sea, cand)
+				if sz > best_sz:
+					best_sz = sz
+					best = cand
+				if best_sz >= want:
+					break
+		_region_anchor[r] = best
+		_region_citymax[r] = best_sz
 
 ## rend la cellule de TERRE (sea < 1) la plus proche de `c` (anneaux croissants,
 ## comme settle_land_spot). Renvoie `c` tel quel si aucune terre à portée.
@@ -160,30 +177,125 @@ func _nearest_sea_dir(sea: Image, c: Vector2, maxrad: int) -> Vector2:
 					return Vector2(dx, dy).normalized()
 	return Vector2.ZERO
 
-## le sprite (ancré au PIED, ~9 de haut × ~9 de large, montant vers le NORD) ne doit
-## chevaucher AUCUNE eau : on échantillonne son EMPREINTE opaque (colonne centrale +
-## flancs, du pied aux 2/3) — mer OU rivière sous un seul point écarte la pose.
-func _footprint_clear(sea: Image, rset: Dictionary, p: Vector2) -> bool:
+## VRAI ssi le RECTANGLE du sprite (ancré au PIED en `base`, large de 2·halfw, montant
+## de `up` vers le nord) est ENTIÈREMENT au sec — balayage DENSE de chaque cellule (pas
+## un échantillon clairsemé : un seul pixel d'eau sous le sprite suffit à le refuser).
+func _sea_clear_rect(sea: Image, base: Vector2, halfw: float, up: float) -> bool:
 	if sea == null:
 		return true
 	var sw := sea.get_width()
 	var sh := sea.get_height()
+	var x0 := int(floor(base.x - halfw))
+	var x1 := int(ceil(base.x + halfw))
+	var y0 := int(floor(base.y - up))
+	var y1 := int(ceil(base.y))
+	var y := y0
+	while y <= y1:
+		if y >= 0 and y < sh:
+			var x := x0
+			while x <= x1:
+				if x >= 0 and x < sw:
+					if int(sea.get_pixel(x, y).r * 255.0 + 0.5) >= 1:
+						return false
+				x += 1
+		y += 1
+	return true
+
+## plus grande taille de sprite carré (sz large, sz haut, ancré au pied) TENANT au sec
+## à `base` — on essaie des tailles CROISSANTES et on s'arrête au premier débord.
+func _max_dry_size(sea: Image, base: Vector2) -> float:
+	var best := 0.0
+	for sz in [6.0, 8.0, 12.0, 16.0, 22.0, 28.0, 34.0, 40.0, 46.0]:
+		if _sea_clear_rect(sea, base, sz * 0.5, sz):
+			best = sz
+		else:
+			break
+	return best
+
+## empreinte d'un BÂTI parsemé : rect (±4 × 9) au sec ET aucune cellule de rivière.
+func _footprint_clear(sea: Image, rset: Dictionary, p: Vector2) -> bool:
+	if not _sea_clear_rect(sea, p, 4.0, 9.0):
+		return false
+	if rset.is_empty():
+		return true
 	var bx := int(p.x)
 	var by := int(p.y)
-	for dy in [0, -2, -4, -6, -8]:   # toute la hauteur du sprite (~9), du pied au faîte
-		for dx in [-3, 0, 3]:
-			var ix: int = bx + dx
-			var iy: int = by + dy
-			if ix < 0 or iy < 0 or ix >= sw or iy >= sh:
-				continue
-			if int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1:
-				return false
-			if rset.has(Vector2i(ix, iy)):
+	for dy in range(0, -10, -1):
+		for dx in range(-4, 5):
+			if rset.has(Vector2i(bx + dx, by + dy)):
 				return false
 	return true
 
-## parsème du bâti de terrain (maisons/ateliers/champs) AUTOUR de chaque ville
-## colonisée — une couronne ∝ tier, hors de l'eau. Un bourg vivant, pas un point.
+## VRAI si le nom contient l'un des fragments donnés.
+func _has_any(s: String, subs: Array) -> bool:
+	for sub in subs:
+		if s.contains(sub):
+			return true
+	return false
+
+## trie (1×, mis en cache) les 96 sprites de structures en BANCS thématiques, pour
+## composer un bourg COHÉRENT : civique au cœur, ateliers, logements, champs au large.
+func _buckets(names: Array) -> Dictionary:
+	if not _bk.is_empty():
+		return _bk
+	var civic := []
+	var craft := []
+	var dwell := []
+	var field := []
+	for nm in names:
+		var s: String = nm
+		if _has_any(s, ["FIELD", "FARM", "BARN", "ORCHARD", "VINE", "WHEAT", "HAY", "VEGETABLE", "IRRIGATION", "SCARECROW", "REED", "NET_HUT", "FISHER"]):
+			field.append(s)
+		elif _has_any(s, ["TRADE", "FORGE", "SMITH", "LUMBER", "QUARRY", "POTTER", "WORKSHOP", "STONE_YARD", "WATERMILL", "WINDMILL", "MASON", "WEAVER", "TANNER", "KILN", "PLANK", "TIMBER", "MILLER", "MINER"]):
+			craft.append(s)
+		elif _has_any(s, ["CIVIC", "UTILITY", "GUARD", "WATCH", "SIGNAL", "SHRINE", "COURT", "TOWN_HALL"]):
+			civic.append(s)
+		else:
+			dwell.append(s)
+	# garde-fou : aucun banc vide (repli sur l'ensemble)
+	if civic.is_empty(): civic = names
+	if craft.is_empty(): craft = names
+	if dwell.is_empty(): dwell = names
+	if field.is_empty(): field = names
+	_bk = {"civic": civic, "craft": craft, "dwell": dwell, "field": field}
+	return _bk
+
+## nombre de BÂTIMENTS (manufactures) réellement posés dans la région — lu par la
+## membrane (province_income · ligne « manufactured ») = ce que montre l'UI provinciale.
+func _region_craft_count(w, ctr: Vector2) -> int:
+	var pid: int = w.province_at(int(ctr.x), int(ctr.y))
+	if pid < 0:
+		return 0
+	var inc: Array = w.province_income(pid)
+	var n := 0
+	for line in inc:
+		if bool(line.get("manufactured", false)):
+			n += 1
+	return n
+
+## pose `count` sprites d'un BANC en spirale phyllotaxique (angle d'or) autour de `ctr`,
+## dans la bande de rayon [rbase, rbase+rspan] — un anneau cohérent, pas un nuage. Chaque
+## pose passe l'empreinte au sec (sinon SAUTÉE). `idx` court d'un anneau à l'autre.
+func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: float,
+		idx: int, jit: float, sea: Image, rset: Dictionary, r: int) -> int:
+	if pool.is_empty():
+		return idx
+	for j in range(count):
+		var ang := float(idx) * 2.399963 + jit          # angle d'or → étalement régulier
+		var hh := ((r * 374761393) ^ (idx * 2246822519 + 668265263)) & 0x7fffffff
+		var rad := rbase + float(hh % 100) / 100.0 * rspan
+		var p := ctr + Vector2(cos(ang), sin(ang)) * rad
+		idx += 1
+		if not _footprint_clear(sea, rset, p):
+			continue                                      # déborde l'eau → on saute (ville sur terre)
+		_structures.append({"name": pool[hh % pool.size()], "pos": p})
+		if _structures.size() >= 1400:
+			break
+	return idx
+
+## bâtit, pour chaque ville, une AGGLOMÉRATION cohérente AUTOUR du centre urbain :
+## un cœur CIVIQUE, une couronne d'ATELIERS (∝ bâtiments posés), une ceinture de
+## LOGEMENTS (∝ population), et au large quelques CHAMPS épars (le disparate, ponctuel).
 func _build_structures() -> void:
 	_structures.clear()
 	var w = Sim.world
@@ -192,6 +304,7 @@ func _build_structures() -> void:
 	var names := UIKit.structure_names()
 	if names.is_empty():
 		return
+	var bk := _buckets(names)
 	var sea: Image = w.layer_image(1)   # SCPS_LAYER_SEA : 0 = terre, ≥ 1 = eau (toute classe)
 	# ensemble des cellules de RIVIÈRE (on ne bâtit pas dessus non plus) ──────────
 	var rset := {}
@@ -204,18 +317,23 @@ func _build_structures() -> void:
 		var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))   # assise CALÉE SUR TERRE
 		if ctr.x < 0:
 			continue
-		var n := 1 + t                      # densité MODÉRÉE (anti-empilement)
-		for k in range(n):
-			var h := ((r * 2654435761) ^ (k * 2246822519 + 374761393)) & 0x7fffffff
-			var ang := float(h % 628) * 0.01
-			var rad := 6.0 + float((h >> 9) % 100) / 100.0 * (6.0 + t * 2.5)   # ÉCARTÉ de la ville
-			var p := ctr + Vector2(cos(ang), sin(ang)) * rad
-			# l'EMPREINTE entière (sprite ancré au pied, montant) doit être au SEC
-			if not _footprint_clear(sea, rset, p):
-				continue
-			_structures.append({"name": names[h % names.size()], "pos": p})
-			if _structures.size() >= 1400:
-				return
+		var pop: int = w.region_pop(r)
+		var nb := _region_craft_count(w, ctr)            # bâtiments posés (UI provinciale)
+		# combien par zone — ∝ tier (civique), bâtiments (ateliers), population (logements)
+		var civic_n := 1 + (1 if t >= 2 else 0) + (1 if t >= 4 else 0)
+		var craft_n: int = clampi(nb, 0, 6)
+		var dwell_n: int = clampi(int(pop / 250.0), 1, 6 + t * 2)
+		var field_n: int = clampi(t - 1, 0, 3)           # le disparate : RARE, au large
+		var jit := float((r * 2654435761) & 0xffff) / 65536.0 * TAU
+		var idx := 0
+		idx = _place_zone(bk["civic"], civic_n, ctr, 1.5, 2.2, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["craft"], craft_n, ctr, 2.8, 3.6, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["dwell"], dwell_n, ctr, 3.2, 5.4, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["field"], field_n, ctr, 7.6, 4.8, idx, jit, sea, rset, r)
+		if _structures.size() >= 1400:
+			break
+	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
+	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 
 ## scan de la couche biome (un pas régulier) → liste fixe d'arbres sur les forêts.
 func _build_decor() -> void:
@@ -243,6 +361,7 @@ func _build_decor() -> void:
 				return
 
 func _on_tick(_year: int) -> void:
+	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
 	queue_redraw()
 
 func _process(_dt: float) -> void:
@@ -333,11 +452,16 @@ func _draw() -> void:
 	#    MASQUÉES sur la carte d'ensemble — elles ne paraissent qu'en ZOOM TRÈS
 	#    HAUT (sinon les marqueurs encombrent). Repli sur un disque si atlas absent. ─
 	if zoom >= CITY_ZOOM_MIN:
+		# le bourg dépend de pop+bâtiments (évolue) → reconstruit ICI, seulement quand on
+		# est assez zoomé pour le voir ET qu'un tick l'a invalidé (jamais en vue d'ensemble).
+		if _struct_dirty:
+			_build_structures()
+			_struct_dirty = false
 		# le BOURG autour : bâti de terrain parsemé, SOUS les villes ──────────────
 		for s in _structures:
 			var sspr := UIKit.structure_sprite(s["name"])
 			if sspr == null:
-				break
+				continue
 			var sp: Vector2 = s["pos"]
 			var ss := 9.0
 			draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false)  # ancré au pied
@@ -355,15 +479,17 @@ func _draw() -> void:
 				spr = UIKit.city_biome(_region_variant[r])
 			if spr == null:
 				spr = UIKit.city_sprite(band, (r * 2654435761) % 8)
-			if spr != null:
-				var sz := 16.0 + t * 6.0                       # taille monde ∝ tier
+			# taille voulue ∝ tier, BORNÉE à ce qui tient au SEC (anti-débord mer)
+			var want := 16.0 + t * 6.0
+			var sz: float = min(want, _region_citymax.get(r, want))
+			if spr != null and sz >= 6.0:
 				draw_texture_rect(spr, Rect2(ctr - Vector2(sz * 0.5, sz), Vector2(sz, sz)), false)  # ancré au pied
 			else:
-				var col := _country_color(w.region_owner(r))
-				var radius := 0.8 + t * 0.55
-				draw_circle(ctr, radius, col)
-				draw_arc(ctr, radius, 0.0, TAU, 16, Color(0, 0, 0, 0.6), 0.3, true)
-				draw_circle(ctr, radius * 0.35, Color(1, 1, 1, 0.55))
+				# assise trop pincée pour le moindre sprite (îlot/langue de terre) → marqueur
+				# SOBRE : disque terre-de-Sienne + liseré (pas la teinte vive du pays, isolée)
+				var radius := 1.2 + t * 0.4
+				draw_circle(ctr, radius, Color(0.62, 0.47, 0.30))
+				draw_arc(ctr, radius, 0.0, TAU, 16, Color(0.15, 0.10, 0.05, 0.8), 0.4, true)
 
 	# ── ARMÉES (dessus) : losange + ligne de marche + anneau de phase ─────────
 	for c in range(w.country_count()):
