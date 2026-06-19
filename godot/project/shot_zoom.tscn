@@ -1,0 +1,4 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8shot0zoom1"]
+[ext_resource type="Script" path="res://shot_zoom.gd" id="1"]
+[node name="ShotZoom" type="Node"]
+script = ExtResource("1")

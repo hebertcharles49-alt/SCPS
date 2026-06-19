@@ -43,8 +43,11 @@ int  scps_map_h(void);
  * Le moteur peint, l'hôte uploade en texture. */
 void scps_map_rgba(ScpsSim *s, uint8_t *dst, int mode, int selected_prov);
 
-/* ---- COUCHES brutes (1 octet/cellule) pour shaders côté hôte ---------- */
-enum { SCPS_LAYER_HEIGHT = 0, SCPS_LAYER_SEA, SCPS_LAYER_BIOME, SCPS_LAYER_COAST };
+/* ---- COUCHES brutes (1 octet/cellule) pour shaders côté hôte ----------
+ * SCPS_LAYER_WATER : masque d'EAU complet (mer OU lac). La couche SEA seule ignore les lacs
+ * intérieurs (c->lake est un drapeau DISTINCT de c->sea) — d'où des bourgs posés SUR un lac.
+ * L'overlay lit WATER pour TOUS ses tests d'assise (snap-terre, débord, poussée vers l'intérieur). */
+enum { SCPS_LAYER_HEIGHT = 0, SCPS_LAYER_SEA, SCPS_LAYER_BIOME, SCPS_LAYER_COAST, SCPS_LAYER_WATER };
 void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer);
 
 /* ---- nombres TANGIBLES (membrane) ------------------------------------ */

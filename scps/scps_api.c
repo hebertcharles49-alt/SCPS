@@ -112,6 +112,10 @@ void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer){
             case SCPS_LAYER_SEA:    v = (uint8_t)c->sea; break;
             case SCPS_LAYER_BIOME:  v = (uint8_t)c->biome; break;
             case SCPS_LAYER_COAST:  v = c->coast ? 255 : 0; break;
+            /* EAU = exactement ce que le RENDU peint en bleu : height < SEA_LEVEL (mer ouverte,
+             * MAIS AUSSI bassins endoréiques sous le niveau que c->sea n'attrape pas) OU c->lake.
+             * La couche SEA (c->sea) seule laissait des bourgs sur des cellules peintes en eau. */
+            case SCPS_LAYER_WATER:  v = (c->height < SEA_LEVEL || c->lake) ? 255 : 0; break;
             default: v = 0;
         }
         dst[i] = v;
