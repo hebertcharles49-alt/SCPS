@@ -88,6 +88,11 @@ public:
     /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */
     Array      unit_roster(int country);              /* unités : nom·classe·coût·éthos·contres·recrutable */
     Array      building_roster(int country);          /* édifices : nom·coût matériaux·or·jours·débloqué */
+
+    /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */
+    bool       player_build(int edifice);             /* met un chantier en file (payé) ; false = refus */
+    int        player_recruit(int unit);              /* lève 1 paquet ; renvoie les paquets levés (0 = gate) */
+    void       player_set_levy(int level);            /* jauge de levée 0-3 */
 };
 
 } // namespace godot

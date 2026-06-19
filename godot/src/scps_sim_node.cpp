@@ -49,6 +49,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
     ClassDB::bind_method(D_METHOD("unit_roster", "country"),         &ScpsWorld::unit_roster);
     ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
+    ClassDB::bind_method(D_METHOD("player_build", "edifice"),        &ScpsWorld::player_build);
+    ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
+    ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -411,4 +414,16 @@ Array ScpsWorld::building_roster(int country) {
         a.push_back(d);
     }
     return a;
+}
+
+bool ScpsWorld::player_build(int edifice) {
+    return sim ? scps_player_build(sim, edifice) != 0 : false;
+}
+
+int ScpsWorld::player_recruit(int unit) {
+    return sim ? (int)scps_player_recruit(sim, unit) : 0;
+}
+
+void ScpsWorld::player_set_levy(int level) {
+    if (sim) scps_player_set_levy(sim, level);
 }

@@ -53,6 +53,7 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     WorldParams p = worldparams_default(seed);
     world_generate(s->w, &p);
     sim_init(&s->sim, s->w);   /* RAZ pleine + seed : econ, peuples, IA, diplo, prospérité, légitimité… */
+    warhost_set_human(s->sim.player);   /* la main humaine : l'armée du joueur ne s'auto-gère plus */
     s->ready = true;
 
     /* centroïdes région (la géo est figée par worldgen ; seul l'OWNER changera) */
@@ -622,4 +623,29 @@ int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
         n++;
     }
     return n;
+}
+
+/* ====================================================================== */
+/* ACTIONS DU JOUEUR — les MÊMES actionneurs que l'IA (agency / warhost)   */
+/* ====================================================================== */
+int scps_player_build(ScpsSim *s, int edifice){
+    if (!s || !s->ready || edifice<0 || edifice>=EDIFICE_COUNT) return 0;
+    int p = s->sim.player;
+    if (p<0 || p>=s->w->n_countries) return 0;
+    int cp = s->w->country[p].capital_prov;
+    int reg = (cp>=0 && cp<s->w->n_provinces) ? s->w->province[cp].region : -1;
+    if (reg<0) return 0;
+    return agency_build_acct(s->sim.ag, s->sim.econ, s->w, reg, (Edifice)edifice, p) ? 1 : 0;
+}
+
+long scps_player_recruit(ScpsSim *s, int unit){
+    if (!s || !s->ready || unit<0 || unit>=U_COUNT) return 0;
+    int p = s->sim.player;
+    if (p<0 || p>=s->w->n_countries) return 0;
+    return warhost_player_recruit(s->sim.host, s->w, s->sim.econ, &s->sim.ts[p], p, (UnitType)unit, 1);
+}
+
+void scps_player_set_levy(ScpsSim *s, int level){
+    if (!s || !s->ready) return;
+    warhost_set_levy(s->sim.host, s->sim.player, level);
 }

@@ -15,7 +15,7 @@ const CELL := 48
 const TILE := 44
 const PADX := 12
 const PW := PADX * 2 + COLS * CELL     # 312
-const PH := 540
+const PH := 556
 
 var _units := []
 var _builds := []
@@ -26,6 +26,8 @@ var _hover_rect := Rect2()
 var _hover_head := ""
 var _hover_lines := PackedStringArray()
 var _hover_pos := Vector2.ZERO
+var _flash := ""           # retour de la dernière action (chantier mis / unité levée / refus)
+var _flash_ok := true
 
 func _ready() -> void:
 	size = Vector2(PW, PH)
@@ -66,7 +68,7 @@ func _draw() -> void:
 			"Faible contre ▸ %s" % u.get("faible", "—"),
 		])})
 		if on:
-			_click_zones.append({"rect": cell, "kind": "unit", "type": int(u.get("type", -1))})
+			_click_zones.append({"rect": cell, "kind": "unit", "type": int(u.get("type", -1)), "nom": String(u.get("nom", ""))})
 	var rows_u := int(ceil(_units.size() / float(COLS)))
 	var yb := y0 + rows_u * CELL
 
@@ -83,8 +85,10 @@ func _draw() -> void:
 		lines.append("Or : %d   ·   %d jours" % [int(b.get("gold", 0)), int(b.get("days", 0))])
 		_hover_zones.append({"rect": cell, "head": String(b.get("nom", "")), "lines": lines})
 		if on2:
-			_click_zones.append({"rect": cell, "kind": "build", "type": int(b.get("type", -1))})
+			_click_zones.append({"rect": cell, "kind": "build", "type": int(b.get("type", -1)), "nom": String(b.get("nom", ""))})
 
+	if _flash != "":
+		VKit.text(self, Vector2(PADX, PH - 18), (VKit.sense(1.0) if _flash_ok else VKit.sense(0.05)), _flash, VKit.FS_SMALL)
 	if _has_hover and _hover_lines.size() > 0:
 		_draw_tooltip()
 
@@ -136,6 +140,20 @@ func _gui_input(e: InputEvent) -> void:
 	elif e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		for z in _click_zones:
 			if z["rect"].has_point(e.position):
-				build_requested.emit(z["kind"], z["type"])
-				print("[construction] %s type=%d — actionneur joueur à venir" % [z["kind"], z["type"]])
+				_act(String(z["kind"]), int(z["type"]), String(z["nom"]))
 				break
+
+## le CLIC agit : on appelle l'actionneur joueur (façade) et on affiche le retour.
+func _act(kind: String, type: int, nom: String) -> void:
+	if Sim.world == null:
+		return
+	if kind == "build":
+		var ok: bool = Sim.world.player_build(type)
+		_flash_ok = ok
+		_flash = ("⚒ %s — chantier ouvert" % nom) if ok else ("✗ %s — trésor / matière insuffisants" % nom)
+	else:
+		var n: int = Sim.world.player_recruit(type)
+		_flash_ok = n > 0
+		_flash = ("⚔ %s levé (%d×100)" % [nom, n]) if n > 0 else ("✗ %s — pas d'armes ou de pop disponible" % nom)
+	build_requested.emit(kind, type)
+	_refresh()

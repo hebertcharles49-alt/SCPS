@@ -45,6 +45,14 @@ float warhost_unit_affinity(int f, int u){
     return (f>=0 && f<FAC_COUNT && u>=0 && u<U_COUNT) ? AFF[f][u] : 0.f;
 }
 
+/* PAYS JOUEUR (main humaine) : pour lui, warhost_tick ne MOBILISE/DÉMOBILISE pas
+ * tout seul — l'humain compose son armée au panneau. -1 = aucun (l'IA gère tout,
+ * comme en chronique). Statique de module, remis à -1 par warhost_init (donc la
+ * chronique, qui n'appelle jamais le setter, garde le comportement IA → déterminisme
+ * inchangé). Il PAIE toujours la solde (l'armée coûte). */
+static int g_human_player = -1;
+void warhost_set_human(int cid){ g_human_player = cid; }
+
 /* unit_res_arm (la catégorie d'arme macro d'une unité) vit dans scps_army.c — un seul point de
  * vérité, partagé entre le warhost (levée/démob) et le campaign (renfort). */
 /* F6 (Option B) — CONSOMME les armes MACRO (RES_ARMS_*, le marché économique où vit le prix du fer)
@@ -71,6 +79,7 @@ void warhost_init(WarHost *h){
     memset(h->army, 0, sizeof(h->army));
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ army_init(&h->army[c]); h->levy[c]=WH_LEVY_GARDE; }
     h->scratch = (LaborEcon*)calloc(1, sizeof(LaborEcon));
+    g_human_player = -1;            /* RAZ : par défaut l'IA gère toutes les armées */
 }
 /* Jauge de levée (sidebar §5) : un palier, pas un float. */
 void warhost_set_levy(WarHost *h, int cid, int levy){
@@ -165,6 +174,22 @@ static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
     }
 }
 
+/* ACTION JOUEUR — lever `packs` paquets d'un TYPE choisi (le verbe que l'IA n'a pas :
+ * elle compose par AFF). Mêmes gates que la levée : tech (unit_recruitable), classe
+ * (élite ⇒ pop d'élite requise), et ARMES en stock macro (consommées). La pop est
+ * affectée (pas retirée du pool). Renvoie les paquets RÉELLEMENT levés (0 si gate). */
+long warhost_player_recruit(WarHost *h, const World *w, WorldEconomy *econ,
+                            const TechState *ts, int cid, UnitType t, long packs){
+    if (!h || !h->scratch || cid<0 || cid>=SCPS_MAX_COUNTRY || packs<=0) return 0;
+    if (!unit_recruitable(ts, t)) return 0;
+    long elite = seed_scratch(h->scratch, w, econ, cid);
+    const UnitDef *d = unit_def(t);
+    if (d && d->from==LAB_ELITE && elite<=200) return 0;
+    long before = warhost_units(h, cid);
+    wh_arm_unit(&h->army[cid], h->scratch, econ, cid, t, packs);
+    return warhost_units(h, cid) - before;
+}
+
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                   const DiploState *dp, const TechState *ts, float dt){
     if (!h || !h->scratch || dt<=0.f) return;
@@ -211,6 +236,10 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 cre->coercion = fminf(1.f, cre->coercion + 0.08f*dt);   /* le prix de la masse */
             }
         }
+        /* PAYS JOUEUR : l'humain compose son armée à la main (panneau Construction) →
+         * on saute la MOBILISATION/DÉMOBILISATION auto (la solde ci-dessus est déjà
+         * payée : son armée coûte ; mais elle ne croît/fond plus toute seule). */
+        if (c == g_human_player) continue;
         /* GUERRE = MOBILISER · PAIX = DÉMOBILISER. La guerre lève au pied de guerre
          * vers le plafond de pop (la cadence rate-limite la montée) ; la paix tend
          * vers une GARNISON ∝ jauge (le « plancher de levée ») — au-dessus on

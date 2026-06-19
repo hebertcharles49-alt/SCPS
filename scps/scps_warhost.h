@@ -54,6 +54,15 @@ long warhost_units (const WarHost *h, int cid);   /* paquets de 100 levés (UI/I
  * (« quel éthos favorise cette unité »). N'influe sur rien : pure lecture. */
 float warhost_unit_affinity(int faction, int unit);
 
+/* MAIN HUMAINE : désigne le pays JOUEUR — warhost_tick cesse de mobiliser/démobiliser
+ * son armée tout seul (l'humain la compose au panneau ; il paie toujours la solde).
+ * -1 = aucun (l'IA gère tout). Remis à -1 par warhost_init (chronique inchangée). */
+void warhost_set_human(int cid);
+/* ACTION JOUEUR : lève `packs` paquets d'un TYPE d'unité choisi (verbe absent de l'IA,
+ * qui compose par AFF). Gates : tech, classe (élite), armes en stock. Renvoie le levé. */
+long warhost_player_recruit(WarHost *h, const World *w, WorldEconomy *econ,
+                            const TechState *ts, int cid, UnitType t, long packs);
+
 /* DÉMOBILISER la réserve levée (§4) : l'armée du pays se dissout, la jauge retombe
  * à GARDE (sinon le pied de guerre re-lève aussitôt). Renvoie les paquets dissous. */
 long warhost_disband(WarHost *h, int cid);
