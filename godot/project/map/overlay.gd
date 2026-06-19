@@ -369,7 +369,7 @@ func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: flo
 			continue                                      # déborde l'eau → on saute (ville sur terre)
 		var nm: String = pool[(hh ^ (hh >> 5)) % pool.size()]   # pick mieux brassé
 		_structures.append({"name": nm, "pos": p, "sz": sz, "flip": flipok and (((hh >> 17) & 1) == 1)})
-		if _structures.size() >= 3200:
+		if _structures.size() >= 4800:
 			break
 	return idx
 
@@ -400,12 +400,13 @@ func _build_structures() -> void:
 		# Le bourg CROÎT avec le TIER (band, comme le centre T1-T7) ET avec les BÂTIMENTS
 		# posés : T1 ≈ 4-5 assets épars ; T7 « full upgrade » ≈ la tuile presque entièrement
 		# occupée (métropole ~10k). Scatter ORGANIQUE (Londres médiévale, pas une grille).
+		# Croissance QUADRATIQUE des logements → l'écart hameau↔métropole est NET.
 		var band := _city_band(w.region_pop(r))          # 1-8 (le tier visible)
 		var nb := _region_craft_count(w, ctr)            # bâtiments posés (UI provinciale)
-		var civic_n := clampi(band / 2, 1, 4)
+		var civic_n := clampi(band / 2, 1, 5)
 		var craft_n := clampi(nb, 0, band)               # ateliers ∝ bâtiments, plafonnés au tier
-		var dwell_n := clampi(band * 3 - 2, 2, 24)       # logements : le gros de la croissance
-		var field_n := clampi(band - 3, 0, 4)
+		var dwell_n := clampi(band * band - 1, 2, 60)    # logements : T1=2 … T7≈48 … T8≈60 (la tuile pleine)
+		var field_n := clampi(band - 3, 0, 5)
 		var jit := float((r * 2654435761) & 0xffff) / 65536.0 * TAU
 		var idx := 0
 		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`). Les rayons
@@ -415,7 +416,7 @@ func _build_structures() -> void:
 		idx = _place_zone(bk["craft"], craft_n, ctr, 6.0, 4.0, BLD_SIZE, false, idx, jit, sea, rset, r)
 		idx = _place_zone(bk["dwell"], dwell_n, ctr, 7.0, 6.5, BLD_SIZE, true, idx, jit, sea, rset, r)
 		idx = _place_zone(bk["field"], field_n, ctr, 12.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
-		if _structures.size() >= 3200:
+		if _structures.size() >= 4800:
 			break
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
 	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
