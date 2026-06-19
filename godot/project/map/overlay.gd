@@ -875,11 +875,12 @@ func _draw_iso(w, mv: Node2D) -> void:
 			_struct_dirty = false
 		var props := []
 		for s in _structures:
-			var ip: Vector2 = mv.iso_pos((s["pos"] as Vector2).x, (s["pos"] as Vector2).y)
+			var sp2: Vector2 = s["pos"]
+			var ip: Vector2 = mv.iso_pos(sp2.x, sp2.y)
 			var ss: Vector2 = vt * ip
 			if ss.x < -60 or ss.y < -80 or ss.x > vp.x + 60 or ss.y > vp.y + 60:
 				continue
-			props.append({"y": ip.y, "city": -1, "s": s, "sp": ip})
+			props.append({"d": sp2.x + sp2.y, "city": -1, "s": s, "sp": ip})   # profondeur iso = wx+wy
 		for r in range(w.region_count()):
 			if w.region_tier(r) < 0:
 				continue
@@ -887,8 +888,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if ctr.x < 0:
 				continue
 			var ip: Vector2 = mv.iso_pos(ctr.x, ctr.y)
-			props.append({"y": ip.y, "city": r, "sp": ip})
-		props.sort_custom(func(a, b): return a["y"] < b["y"])   # arrière (nord) → avant (sud)
+			props.append({"d": ctr.x + ctr.y, "city": r, "sp": ip})
+		props.sort_custom(func(a, b): return a["d"] < b["d"])   # arrière (nord) → avant (sud), profondeur iso
 		for prp in props:
 			if prp["city"] < 0:
 				_draw_struct(prp["s"], prp["sp"])
