@@ -181,6 +181,27 @@ const CAMPAIGN_DIR := "res://assets/scps/pack/campaign/"
 static func army_token(nm: String) -> Texture2D:
 	return _tex(CAMPAIGN_DIR + nm + ".png")
 
+# ── STRUCTURES de terrain (maisons · ateliers · champs · édifices civiques) : un
+#    POOL parsemé autour des villes. On énumère le dossier au 1er appel (pas de
+#    const de 96 noms) ; RGBA direct via _tex. ──────────────────────────────────
+const STRUCTURES_DIR := "res://assets/scps/pack/structures/"
+static var _struct_names: PackedStringArray = []
+static var _struct_listed := false
+
+static func structure_names() -> PackedStringArray:
+	if _struct_listed:
+		return _struct_names
+	_struct_listed = true
+	var d := DirAccess.open(STRUCTURES_DIR)
+	if d != null:
+		for f in d.get_files():
+			if f.ends_with(".png"):
+				_struct_names.append(f.get_basename())
+	return _struct_names
+
+static func structure_sprite(nm: String) -> Texture2D:
+	return _tex(STRUCTURES_DIR + nm + ".png")
+
 
 # ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)
 const RES_FALLBACK := {

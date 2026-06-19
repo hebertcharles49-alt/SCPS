@@ -15,6 +15,7 @@ const CITY_ZOOM_MIN := 4.5   ## les villes n'apparaissent qu'AU-DELÀ de ce zoom
 
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
+var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
 
 # biome (couche) → NOMS de sprites dressing (variés par hash). FOREST=11 · WOODS=12 · JUNGLE=13
 const FOREST_TREES := {
@@ -28,11 +29,44 @@ func _ready() -> void:
 	Sim.generated.connect(_on_generated)
 	if Sim.world != null:
 		_build_decor()
+		_build_structures()
 	queue_redraw()
 
 func _on_generated() -> void:
 	_build_decor()
+	_build_structures()
 	queue_redraw()
+
+## parsème du bâti de terrain (maisons/ateliers/champs) AUTOUR de chaque ville
+## colonisée — une couronne ∝ tier, hors de l'eau. Un bourg vivant, pas un point.
+func _build_structures() -> void:
+	_structures.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	var names := UIKit.structure_names()
+	if names.is_empty():
+		return
+	var sea: Image = w.layer_image(1)   # SCPS_LAYER_SEA : ne pas bâtir sur l'eau
+	for r in range(w.region_count()):
+		var t: int = w.region_tier(r)
+		if t < 0:
+			continue
+		var ctr: Vector2 = w.region_centroid(r)
+		if ctr.x < 0:
+			continue
+		var n := 2 + t * 2                  # plus de bâti autour des grandes villes
+		for k in range(n):
+			var h := ((r * 2654435761) ^ (k * 2246822519 + 374761393)) & 0x7fffffff
+			var ang := float(h % 628) * 0.01
+			var rad := 3.0 + float((h >> 9) % 100) / 100.0 * (4.0 + t * 2.0)
+			var p := ctr + Vector2(cos(ang), sin(ang)) * rad
+			if sea != null and p.x >= 0 and p.y >= 0 and p.x < sea.get_width() and p.y < sea.get_height():
+				if sea.get_pixel(int(p.x), int(p.y)).r > 0.5:
+					continue                # tombé sur l'eau → on saute
+			_structures.append({"name": names[h % names.size()], "pos": p})
+			if _structures.size() >= 1800:
+				return
 
 ## scan de la couche biome (un pas régulier) → liste fixe d'arbres sur les forêts.
 func _build_decor() -> void:
@@ -133,6 +167,14 @@ func _draw() -> void:
 	#    HAUT (sinon les marqueurs encombrent). Repli sur un disque si atlas absent. ─
 	var zoom := get_viewport_transform().get_scale().x
 	if zoom >= CITY_ZOOM_MIN:
+		# le BOURG autour : bâti de terrain parsemé, SOUS les villes ──────────────
+		for s in _structures:
+			var sspr := UIKit.structure_sprite(s["name"])
+			if sspr == null:
+				break
+			var sp: Vector2 = s["pos"]
+			var ss := 9.0
+			draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false)  # ancré au pied
 		for r in range(w.region_count()):
 			var t: int = w.region_tier(r)
 			if t < 0:
