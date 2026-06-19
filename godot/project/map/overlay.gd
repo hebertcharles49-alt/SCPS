@@ -8,10 +8,13 @@ extends Node2D
 ## (marche), un anneau coloré par phase (marche/siège/bataille).
 
 const UIKit = preload("res://ui/uikit.gd")
+const VKit = preload("res://ui/vkit.gd")
 const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
 const CITY_ZOOM_MIN := 4.5   ## les villes n'apparaissent qu'AU-DELÀ de ce zoom (sinon : carte d'ensemble encombrée)
+const BLD_SIZE := 9.0        ## taille MONDE UNIFORME d'un bâti de bourg (égalisée — variété par le sprite, pas l'échelle)
+const LABEL_ZOOM_MAX := 6.5  ## les NOMS d'empire s'estompent À MESURE qu'on zoome (l'inverse des villes)
 
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
@@ -21,6 +24,7 @@ var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR T
 var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
 var _clear_set := {}      ## cellules DÉBOISÉES autour des villes (le bourg respire, pas noyé sous la forêt)
+var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
 var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
 
@@ -51,14 +55,25 @@ func _ready() -> void:
 	Sim.generated.connect(_on_generated)
 	if Sim.world != null:
 		_rivers = Sim.world.river_points()
+		_build_names()
 		_build_anchors()
 		_build_decor()
 		_build_structures()
 		_build_city_skins()
 	queue_redraw()
 
+func _build_names() -> void:
+	_country_names.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	for c in range(w.country_count()):
+		var info: Dictionary = w.country_info(c)
+		_country_names.append(String(info.get("nom", "")))
+
 func _on_generated() -> void:
 	_rivers = Sim.world.river_points()
+	_build_names()
 	_build_anchors()
 	_build_decor()
 	_build_structures()
@@ -300,7 +315,7 @@ func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: flo
 		var hh := ((r * 374761393) ^ (idx * 2246822519 + 668265263)) & 0x7fffffff
 		var rad := rbase + float(hh % 100) / 100.0 * rspan
 		var p := ctr + Vector2(cos(ang), sin(ang)) * rad
-		var sz := base_sz * (0.80 + float((hh >> 11) % 42) / 100.0)   # ±taille → variété
+		var sz := base_sz                                 # taille UNIFORME : la variété vient du SPRITE (+miroir), pas de l'échelle
 		idx += 1
 		if not _footprint_clear(sea, rset, p, sz * 0.5, sz):
 			continue                                      # déborde l'eau → on saute (ville sur terre)
@@ -343,12 +358,13 @@ func _build_structures() -> void:
 		var field_n: int = clampi(t - 1, 0, 3)           # le disparate : RARE, au large
 		var jit := float((r * 2654435761) & 0xffff) / 65536.0 * TAU
 		var idx := 0
-		# zone : rayon · empan · taille de base · miroir autorisé. Civique = repères plus
-		# grands, non miroités ; logements/champs petits et miroités (silhouettes doublées).
-		idx = _place_zone(bk["civic"], civic_n, ctr, 1.5, 2.2, 11.0, false, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["craft"], craft_n, ctr, 2.8, 3.6, 10.0, false, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["dwell"], dwell_n, ctr, 3.2, 5.4, 8.5, true, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["field"], field_n, ctr, 7.6, 4.8, 7.5, true, idx, jit, sea, rset, r)
+		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`) pour tous —
+		# la variété tient au SPRITE et au miroir, pas à l'échelle (bâtiments « égalisés »).
+		# Civique non miroité (repères) ; logements/champs miroités (silhouettes doublées).
+		idx = _place_zone(bk["civic"], civic_n, ctr, 1.5, 2.2, BLD_SIZE, false, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["craft"], craft_n, ctr, 2.8, 3.6, BLD_SIZE, false, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["dwell"], dwell_n, ctr, 3.2, 5.4, BLD_SIZE, true, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["field"], field_n, ctr, 7.6, 4.8, BLD_SIZE, true, idx, jit, sea, rset, r)
 		if _structures.size() >= 1400:
 			break
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
@@ -588,6 +604,48 @@ func _draw() -> void:
 			for k in range(3):
 				var rad := 7.0 + k * 6.0 + fmod(t * 5.0, 6.0)
 				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), 1.0, true)
+
+	# ── ÉTIQUETTES d'empire (au-dessus de tout) : nom au centroïde, en vue d'ensemble ─
+	_draw_empire_labels(w, zoom)
+
+## ÉTIQUETTES d'empire : le nom du pays au centroïde de ses régions, S'ESTOMPANT à
+## mesure qu'on ZOOME (l'inverse des villes — lisible en vue d'ensemble). Texte à
+## taille ÉCRAN constante (contre-échelle 1/zoom). Port de draw_empire_labels.
+func _draw_empire_labels(w, zoom: float) -> void:
+	var fade := (LABEL_ZOOM_MAX - zoom) / 3.5
+	if fade <= 0.0:
+		return
+	fade = minf(fade, 1.0)
+	var inv := 1.0 / zoom
+	var vt := get_viewport_transform()
+	var vp := get_viewport_rect().size
+	for c in range(w.country_count()):
+		if c >= _country_names.size():
+			break
+		var nm: String = _country_names[c]
+		if nm == "":
+			continue
+		var sx := 0.0
+		var sy := 0.0
+		var n := 0
+		for r in range(w.region_count()):
+			if w.region_owner(r) == c:
+				var ctr: Vector2 = w.region_centroid(r)
+				if ctr.x >= 0:
+					sx += ctr.x
+					sy += ctr.y
+					n += 1
+		if n < 2:
+			continue
+		var wp := Vector2(sx / n, sy / n)
+		var sp: Vector2 = vt * wp
+		if sp.x < 50 or sp.y < 60 or sp.x > vp.x - 50 or sp.y > vp.y - 56:
+			continue                                       # hors champ / sous les barres
+		var lw := VKit.text_w(nm, VKit.FS_SMALL)
+		draw_set_transform(wp, 0.0, Vector2(inv, inv))      # contre-échelle → texte à taille ÉCRAN
+		draw_rect(Rect2(-lw * 0.5 - 3.0, -8.0, lw + 6.0, 15.0), Color(0.03, 0.05, 0.08, fade * 0.66))
+		VKit.text(self, Vector2(-lw * 0.5, -7.0), Color(0.95, 0.91, 0.82, fade), nm, VKit.FS_SMALL)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _fin_color(fin: int) -> Color:
 	match fin:
