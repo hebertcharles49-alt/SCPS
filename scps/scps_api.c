@@ -20,6 +20,7 @@
 #include "scps_lang.h"      /* tr() : noms de conseillers (StrId) → mot */
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 struct ScpsSim {
     World    *w;
@@ -648,4 +649,23 @@ long scps_player_recruit(ScpsSim *s, int unit){
 void scps_player_set_levy(ScpsSim *s, int level){
     if (!s || !s->ready) return;
     warhost_set_levy(s->sim.host, s->sim.player, level);
+}
+
+int scps_river_points(ScpsSim *s, ScpsRiverPt *out, int max){
+    if (!s || !s->ready || !out || max<=0) return 0;
+    int n=0;
+    for (int ri=0; ri<s->w->n_rivers && n<max; ri++){
+        const River *rv = &s->w->river[ri];
+        for (int k=0; k<rv->len && n<max; k++){
+            float ax, ay, bx, by;                       /* fil sortant (direction locale) */
+            if (k < rv->len-1){ ax=rv->x[k];   ay=rv->y[k];   bx=rv->x[k+1]; by=rv->y[k+1]; }
+            else if (k > 0)   { ax=rv->x[k-1]; ay=rv->y[k-1]; bx=rv->x[k];   by=rv->y[k];   }
+            else              { ax=rv->x[k];   ay=rv->y[k];   bx=ax+1.f;     by=ay;          }
+            out[n].x   = (float)rv->x[k] + 0.5f;
+            out[n].y   = (float)rv->y[k] + 0.5f;
+            out[n].ang = atan2f(by-ay, bx-ax);
+            n++;
+        }
+    }
+    return n;
 }

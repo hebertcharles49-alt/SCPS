@@ -52,6 +52,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_build", "edifice"),        &ScpsWorld::player_build);
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
+    ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
      * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
@@ -426,4 +427,14 @@ int ScpsWorld::player_recruit(int unit) {
 
 void ScpsWorld::player_set_levy(int level) {
     if (sim) scps_player_set_levy(sim, level);
+}
+
+Array ScpsWorld::river_points() {
+    Array a;
+    if (!sim) return a;
+    static ScpsRiverPt pts[6000];
+    int n = scps_river_points(sim, pts, 6000);
+    for (int i = 0; i < n; i++)
+        a.push_back(Vector3(pts[i].x, pts[i].y, pts[i].ang));   /* x · y · angle */
+    return a;
 }

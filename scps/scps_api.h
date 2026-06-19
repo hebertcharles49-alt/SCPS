@@ -304,6 +304,13 @@ long scps_player_recruit(ScpsSim *s, int unit);
 /* Régler la jauge de levée du joueur (0 basse · 1 garde · 2 guerre · 3 masse). */
 void scps_player_set_levy(ScpsSim *s, int level);
 
+/* ---- TRACÉS DE CARTE (overlays vectoriels du viewer) ----------------- *
+ * RIVIÈRES : un point par cellule de fil (centre cellule) + l'ANGLE du fil (rad,
+ * direction monde) — l'hôte y pose un sprite de rivière TOURNÉ, comme draw_map_rivers.
+ * Figé par worldgen. Remplit out[0..min(n,max)-1], renvoie le nombre écrit. */
+typedef struct { float x, y, ang; } ScpsRiverPt;
+int scps_river_points(ScpsSim *s, ScpsRiverPt *out, int max);
+
 #ifdef __cplusplus
 }
 #endif

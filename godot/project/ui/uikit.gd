@@ -185,6 +185,12 @@ const CAMPAIGN_DIR := "res://assets/scps/pack/campaign/"
 static func army_token(nm: String) -> Texture2D:
 	return _tex(CAMPAIGN_DIR + nm + ".png")
 
+## sprite de RIVIÈRE droit (RIVER_HORIZONTAL, coule en X → tourné le long du fil par
+## l'angle de la façade) ; null si absent.
+const RIVERS_DIR := "res://assets/scps/pack/rivers/"
+static func river_sprite() -> Texture2D:
+	return _tex(RIVERS_DIR + "RIVER_HORIZONTAL.png")
+
 # ── STRUCTURES de terrain (maisons · ateliers · champs · édifices civiques) : un
 #    POOL parsemé autour des villes. On énumère le dossier au 1er appel (pas de
 #    const de 96 noms) ; RGBA direct via _tex. ──────────────────────────────────

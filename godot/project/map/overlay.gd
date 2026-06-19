@@ -17,6 +17,10 @@ var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
 var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
 var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
+var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
+
+const RIVER_ZOOM_MIN := 2.5   ## les rivières paraissent au-delà de ce zoom
+const RIVER_CAL := 0.0        ## calibration de l'orientation du sprite (ajusté au rendu)
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
@@ -44,12 +48,14 @@ func _ready() -> void:
 		_build_decor()
 		_build_structures()
 		_build_city_skins()
+		_rivers = Sim.world.river_points()
 	queue_redraw()
 
 func _on_generated() -> void:
 	_build_decor()
 	_build_structures()
 	_build_city_skins()
+	_rivers = Sim.world.river_points()
 	queue_redraw()
 
 ## pré-calcule la variante de ville TERRAIN de chaque région colonisée (échantillon
@@ -191,6 +197,24 @@ func _draw() -> void:
 	var w = Sim.world
 	if w == null:
 		return
+	var zoom := get_viewport_transform().get_scale().x
+
+	# ── RIVIÈRES : un sprite TOURNÉ le long du fil (sous tout le reste), au zoom.
+	#    Culling par viewport (seuls les points visibles sont tracés). ─────────────
+	if zoom >= RIVER_ZOOM_MIN and not _rivers.is_empty():
+		var rtex := UIKit.river_sprite()
+		if rtex != null:
+			var sc := 3.2 / float(rtex.get_width())     # ~3.2 unités-monde de large
+			var half := rtex.get_size() * 0.5
+			var vt := get_viewport_transform()
+			var vp := get_viewport_rect().size
+			for p in _rivers:                            # Vector3(x, y, ang)
+				var sp: Vector2 = vt * Vector2(p.x, p.y)
+				if sp.x < -30 or sp.x > vp.x + 30 or sp.y < -30 or sp.y > vp.y + 30:
+					continue                             # hors champ
+				draw_set_transform(Vector2(p.x, p.y), p.z + RIVER_CAL, Vector2(sc, sc))
+				draw_texture(rtex, -half)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ── DRESSING : arbres/forêts (sprites nature RGBA), DERRIÈRE les villes. Bâti une
 	#    fois au générate (liste fixe, pas de culling fragile). Ancré au PIED de la
@@ -206,7 +230,6 @@ func _draw() -> void:
 	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde.
 	#    MASQUÉES sur la carte d'ensemble — elles ne paraissent qu'en ZOOM TRÈS
 	#    HAUT (sinon les marqueurs encombrent). Repli sur un disque si atlas absent. ─
-	var zoom := get_viewport_transform().get_scale().x
 	if zoom >= CITY_ZOOM_MIN:
 		# le BOURG autour : bâti de terrain parsemé, SOUS les villes ──────────────
 		for s in _structures:

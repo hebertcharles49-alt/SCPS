@@ -93,6 +93,9 @@ public:
     bool       player_build(int edifice);             /* met un chantier en file (payé) ; false = refus */
     int        player_recruit(int unit);              /* lève 1 paquet ; renvoie les paquets levés (0 = gate) */
     void       player_set_levy(int level);            /* jauge de levée 0-3 */
+
+    /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
+    Array      river_points();
 };
 
 } // namespace godot
