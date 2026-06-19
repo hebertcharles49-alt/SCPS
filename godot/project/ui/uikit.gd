@@ -172,6 +172,10 @@ static func city_sprite(band: int, variant: int) -> Texture2D:
 	var v := "ABCDEFGH"
 	return _tex(CITIES_DIR + "CITY_POP_BAND_%02d_%s.png" % [clampi(band, 1, 8), v[clampi(variant, 0, 7)]])
 
+## variante de ville TERRAIN par NOM (CITY_BIOME_*) ; null si absente.
+static func city_biome(nm: String) -> Texture2D:
+	return _tex(CITIES_DIR + nm + ".png")
+
 ## sprite de DRESSING par NOM (DRESS_TREE_*, DRESS_GROVE_*…) ; null si absent.
 static func dressing_named(nm: String) -> Texture2D:
 	return _tex(DRESSING_DIR + nm + ".png")

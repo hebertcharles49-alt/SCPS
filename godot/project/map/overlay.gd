@@ -16,12 +16,25 @@ const CITY_ZOOM_MIN := 4.5   ## les villes n'apparaissent qu'AU-DELÀ de ce zoom
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
 var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
+var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
 
-# biome (couche) → NOMS de sprites dressing (variés par hash). FOREST=11 · WOODS=12 · JUNGLE=13
+# biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
-	11: ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_GROVE_BROADLEAF", "DRESS_TREE_POPLAR"],  # FOREST : feuillus
-	12: ["DRESS_GROVE_MIXED", "DRESS_TREE_PINE", "DRESS_GROVE_PINE_A", "DRESS_GROVE_PINE_B"],            # WOODS : mixte/conifères
-	13: ["DRESS_GROVE_BROADLEAF", "DRESS_TREE_GNARLED", "DRESS_GROVE_MIXED"],                            # JUNGLE : dense
+	12: ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_GROVE_BROADLEAF", "DRESS_TREE_POPLAR"],  # FOREST : feuillus
+	13: ["DRESS_GROVE_MIXED", "DRESS_TREE_PINE", "DRESS_GROVE_PINE_A", "DRESS_GROVE_PINE_B"],            # WOODS : mixte/conifères
+	14: ["DRESS_GROVE_BROADLEAF", "DRESS_TREE_GNARLED", "DRESS_GROVE_MIXED"],                            # JUNGLE : dense
+}
+
+# biome → variante de ville TERRAIN (CITY_BIOME_*). SEULEMENT les terrains
+# DISTINCTIFS (côte/forêt/marais/montagne/neige…) ; les plaines génériques (4-10)
+# gardent le sprite par BANDE DE POP (qui, lui, gradue la taille avec la pop).
+const BIOME_CITY := {
+	3: "CITY_BIOME_COAST_FISHING", 11: "CITY_BIOME_COAST_FISHING",         # côtes
+	12: "CITY_BIOME_FOREST_HAMLET", 13: "CITY_BIOME_FOREST_HAMLET", 14: "CITY_BIOME_FOREST_HAMLET",  # forêts
+	15: "CITY_BIOME_MARSH_STILTS", 21: "CITY_BIOME_MARSH_STILTS", 22: "CITY_BIOME_MARSH_STILTS",     # humides
+	16: "CITY_BIOME_PINE_HIGHLAND", 17: "CITY_BIOME_DRY_UPLAND",           # hauteurs/collines
+	18: "CITY_BIOME_MOUNTAIN_TERRACE", 19: "CITY_BIOME_CLIFFSIDE",         # montagnes
+	20: "CITY_BIOME_SNOW_HAMLET",                                          # glacier
 }
 
 func _ready() -> void:
@@ -30,12 +43,40 @@ func _ready() -> void:
 	if Sim.world != null:
 		_build_decor()
 		_build_structures()
+		_build_city_skins()
 	queue_redraw()
 
 func _on_generated() -> void:
 	_build_decor()
 	_build_structures()
+	_build_city_skins()
 	queue_redraw()
+
+## pré-calcule la variante de ville TERRAIN de chaque région colonisée (échantillon
+## du biome au centroïde ; l'hydro via le groupe de settlement) — pour les petits bourgs.
+func _build_city_skins() -> void:
+	_region_variant.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	var bio: Image = w.layer_image(2)   # SCPS_LAYER_BIOME
+	for r in range(w.region_count()):
+		if w.region_tier(r) < 0:
+			continue
+		var ctr: Vector2 = w.region_centroid(r)
+		if ctr.x < 0:
+			continue
+		var nm := ""
+		var sg: int = w.region_settle_group(r)
+		if sg == 2:                       # estuaire
+			nm = "CITY_BIOME_ESTUARY_STILTS"
+		elif sg == 1:                     # rivière
+			nm = "CITY_BIOME_RIVERBANK_QUAY"
+		elif bio != null and ctr.x < bio.get_width() and ctr.y < bio.get_height():
+			var b := int(bio.get_pixel(int(ctr.x), int(ctr.y)).r * 255.0 + 0.5)
+			nm = BIOME_CITY.get(b, "")
+		if nm != "":
+			_region_variant[r] = nm
 
 ## parsème du bâti de terrain (maisons/ateliers/champs) AUTOUR de chaque ville
 ## colonisée — une couronne ∝ tier, hors de l'eau. Un bourg vivant, pas un point.
@@ -182,8 +223,13 @@ func _draw() -> void:
 			var ctr: Vector2 = w.region_centroid(r)
 			if ctr.x < 0:
 				continue
-			# la CITÉ par BANDE DE POP (sprite RGBA) × variante stable (hash de région)
-			var spr := UIKit.city_sprite(_city_band(w.region_pop(r)), (r * 2654435761) % 8)
+			# la CITÉ : terrain DISTINCTIF → variante TERRAIN ; sinon sprite par BANDE DE POP
+			var band := _city_band(w.region_pop(r))
+			var spr: Texture2D = null
+			if _region_variant.has(r):
+				spr = UIKit.city_biome(_region_variant[r])
+			if spr == null:
+				spr = UIKit.city_sprite(band, (r * 2654435761) % 8)
 			if spr != null:
 				var sz := 16.0 + t * 6.0                       # taille monde ∝ tier
 				draw_texture_rect(spr, Rect2(ctr - Vector2(sz * 0.5, sz), Vector2(sz, sz)), false)  # ancré au pied
