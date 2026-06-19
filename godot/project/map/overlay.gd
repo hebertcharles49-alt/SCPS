@@ -28,7 +28,9 @@ var _country_names := []  ## nom de chaque pays (figé au générate) — pour l
 var _borders := {}        ## niveau (1=région · 2=pays) → PackedVector2Array de segments (façade)
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
-var _roads := []          ## [{points: PackedVector2Array, level: int}] — réseau de routes (façade, A* à jonctions)
+var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
+var _road_dress := []     ## [{name, pos, road}] — mobilier de BORDURE (apparaît à la FIN du chantier)
+var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
 var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
@@ -38,6 +40,13 @@ const RIVER_CAL := 0.0        ## calibration de l'orientation du sprite (ajusté
 const ROAD_ZOOM_MIN := 3.0    ## les routes paraissent au-delà de ce zoom (comme draw_map_roads, sc≥3)
 const ROAD_CASING := Color(0.227, 0.165, 0.110)  ## bord sombre (viewer 58,42,28)
 const ROAD_FILL   := Color(0.769, 0.643, 0.431)  ## surface parchemin (viewer 196,164,110)
+const ROAD_SOFT   := Color(0.227, 0.165, 0.110, 0.22)  ## halo doux SOUS le casing → blend feutré (anti-alias)
+# MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
+const ROADSIDE := [
+	"DRESS_BUSH_LOW", "DRESS_BUSH_DRY", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_YELLOW",
+	"DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT", "DRESS_STONE_PILE",
+	"DRESS_STONE_SLABS", "DRESS_STONE_WALL_BROKEN", "DRESS_GRASS_GOLD", "DRESS_LOG_PILE",
+]
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
@@ -68,6 +77,7 @@ func _ready() -> void:
 		_build_decor()
 		_build_structures()
 		_build_city_skins()
+		_ensure_roads()         # routes datées dès le démarrage (chantier depuis l'an courant)
 	queue_redraw()
 
 func _build_names() -> void:
@@ -83,12 +93,14 @@ func _on_generated() -> void:
 	_rivers = Sim.world.river_points()
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_roads_dirty = true
+	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
 	_build_decor()
 	_build_structures()
 	_build_city_skins()
+	_ensure_roads()             # date les routes initiales à l'an de génération (chantier dès l'an 0)
 	queue_redraw()
 
 ## pré-calcule la variante de ville TERRAIN de chaque région colonisée (échantillon
@@ -415,6 +427,7 @@ func _on_tick(_year: int) -> void:
 		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
 		_borders_dirty = true
 		_roads_dirty = true
+	_ensure_roads()            # date les chantiers neufs dès maintenant (même non zoomé)
 	queue_redraw()
 
 ## signature de la photo des propriétaires de régions → détecte conquête/colonisation.
@@ -435,6 +448,102 @@ func _rebuild_borders() -> void:
 	_borders[2] = w.border_segments(2)   # PAYS
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
+
+## (re)charge le réseau de routes + sa méta + l'habillage, et DATE les chantiers neufs.
+## Appelé hors zoom (générate/tick) → les routes initiales démarrent dès l'an de fondation,
+## même si le joueur n'a pas encore zoomé (sinon elles « repartiraient » au premier zoom).
+func _ensure_roads() -> void:
+	if not _roads_dirty:
+		return
+	var w = Sim.world
+	if w == null:
+		return
+	_roads = w.road_paths()
+	_augment_roads(w)
+	var yr0: int = w.year()
+	for rd in _roads:
+		if not _road_start.has(rd["key"]):
+			_road_start[rd["key"]] = yr0     # route NEUVE → chantier daté à maintenant
+	_build_road_dress()
+	_roads_dirty = false
+
+## méta LOCALE par route (sans toucher la façade) : nombre de PROVINCES traversées (pour
+## la cadence « 1 an/province ») + une CLÉ stable (paire de régions des extrémités) pour
+## retenir l'année de début de chantier à travers les reconstructions du réseau.
+func _augment_roads(w) -> void:
+	for rd in _roads:
+		var pts: PackedVector2Array = rd["points"]
+		var np := 1
+		var last := -999
+		for p in pts:
+			var pv: int = w.province_at(int(p.x), int(p.y))
+			if pv >= 0 and pv != last:
+				if last != -999:
+					np += 1
+				last = pv
+		rd["nprov"] = np
+		var ra: int = w.province_region(w.province_at(int(pts[0].x), int(pts[0].y)))
+		var rb: int = w.province_region(w.province_at(int(pts[pts.size() - 1].x), int(pts[pts.size() - 1].y)))
+		rd["key"] = (mini(ra, rb) & 0xfff) * 4096 + (maxi(ra, rb) & 0xfff)
+
+## portion BÂTIE d'un tracé (du départ, par longueur) — `frac` ∈ [0,1] → croissance organique.
+func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
+	if frac >= 1.0:
+		return pts
+	if frac <= 0.0 or pts.size() < 2:
+		return PackedVector2Array()
+	var total := 0.0
+	for i in range(pts.size() - 1):
+		total += pts[i].distance_to(pts[i + 1])
+	var target := total * frac
+	var out := PackedVector2Array()
+	out.append(pts[0])
+	var acc := 0.0
+	for i in range(pts.size() - 1):
+		var seg := pts[i].distance_to(pts[i + 1])
+		if acc + seg >= target:
+			out.append(pts[i].lerp(pts[i + 1], (target - acc) / maxf(seg, 0.001)))
+			break
+		acc += seg
+		out.append(pts[i + 1])
+	return out
+
+## sème le MOBILIER de bord de route : à intervalle régulier le long de chaque tracé, un
+## décor (buisson/rocher/borne) DÉCALÉ perpendiculairement, côté alterné — hors de l'eau.
+## Chaque item retient SA route (index) → n'apparaît qu'une fois le chantier ACHEVÉ.
+func _build_road_dress() -> void:
+	_road_dress.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	var sea: Image = w.layer_image(1)
+	var step := 9                                  # un décor tous les ~9 points de tracé
+	for ri in range(_roads.size()):
+		var pts: PackedVector2Array = _roads[ri]["points"]
+		var n := pts.size()
+		if n < step * 2:
+			continue
+		var k := step
+		while k < n - step:
+			var a: Vector2 = pts[k - 1]
+			var b: Vector2 = pts[min(k + 1, n - 1)]
+			var dir := b - a
+			if dir.length() > 0.01:
+				dir = dir.normalized()
+				var perp := Vector2(-dir.y, dir.x)
+				var h := (k * 2654435761 + int(pts[k].x) * 40503) & 0x7fffffff
+				var side := 1.0 if (h & 1) else -1.0
+				var off := 1.5 + float((h >> 3) % 12) / 10.0      # 1.5..2.7 cellules sur le bas-côté
+				var p: Vector2 = pts[k] + perp * (side * off)
+				if not _is_sea_cell(sea, int(p.x), int(p.y)):       # jamais dans l'eau
+					_road_dress.append({"name": ROADSIDE[h % ROADSIDE.size()], "pos": p, "road": ri})
+			k += step
+
+## VRAI si la cellule est de l'eau (mer, toute classe ≥ 1) — pour ne rien semer dessus.
+func _is_sea_cell(sea: Image, ix: int, iy: int) -> bool:
+	if sea == null or ix < 0 or iy < 0 or ix >= sea.get_width() or iy >= sea.get_height():
+		return false
+	return int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1
 
 func _process(_dt: float) -> void:
 	# pendant un cataclysme, on redessine en continu pour PULSER l'épicentre
@@ -581,25 +690,50 @@ func _draw() -> void:
 			if cseg.size() >= 2:
 				draw_multiline(cseg, Color(0.039, 0.055, 0.086, 0.95), 3.0 / zoom)
 
-	# ── ROUTES (port draw_map_roads) : réseau à JONCTIONS reliant les villes. DEUX PASSES
-	#    — TOUS les bords sombres (casing), PUIS toutes les surfaces — pour que croisements
-	#    & fusions (Y/T/X) se raccordent sans couture. Largeur à taille ÉCRAN (la route
-	#    s'élargit au zoom), trait LISSÉ & antialiasé (blend doux). Sous les villes. ───────
+	# ── ROUTES (port draw_map_roads) : réseau à JONCTIONS reliant les villes. TROIS PASSES
+	#    sur TOUT le réseau (pour que croisements & fusions Y/T/X se raccordent sans couture) :
+	#    (0) HALO doux & large → blend feutré, anti-aliasé, dans le terrain ;
+	#    (1) CASING sombre ; (2) SURFACE parchemin. Puis le MOBILIER de bord. Largeur à taille
+	#    ÉCRAN (la route s'élargit au zoom), trait lissé & antialiasé. Sous les villes. ───────
 	if zoom >= ROAD_ZOOM_MIN:
-		if _roads_dirty:
-			_roads = w.road_paths()
-			_roads_dirty = false
+		_ensure_roads()
 		if not _roads.is_empty():
-			# passe 1 : casings (bord sombre, plus large)
-			for rd in _roads:
+			# portion BÂTIE de chaque route (croissance organique : 1 an/province depuis le début)
+			var year: int = w.year()
+			var built := []                       # [{poly, level, done}]
+			var done := {}                        # index de route ACHEVÉE → habillage autorisé
+			for ri in range(_roads.size()):
+				var rd: Dictionary = _roads[ri]
 				var pts: PackedVector2Array = rd["points"]
-				if pts.size() >= 2:
-					draw_polyline(pts, ROAD_CASING, _road_width(int(rd["level"]), zoom) + 0.16 + 2.0 / zoom, true)
-			# passe 2 : surfaces (parchemin, constante) PAR-DESSUS → jonctions propres
-			for rd in _roads:
-				var pts2: PackedVector2Array = rd["points"]
-				if pts2.size() >= 2:
-					draw_polyline(pts2, ROAD_FILL, _road_width(int(rd["level"]), zoom), true)
+				if pts.size() < 2:
+					continue
+				var st: int = _road_start.get(rd["key"], year)
+				var nprov: int = maxi(1, int(rd.get("nprov", 1)))
+				var frac := clampf(float(year - st) / float(nprov), 0.0, 1.0)
+				var poly := _road_partial(pts, frac)
+				if poly.size() >= 2:
+					built.append({"poly": poly, "level": int(rd["level"])})
+				if frac >= 1.0:
+					done[ri] = true
+			# passe 0 : HALO doux (anti-alias / blend) — large, translucide, SOUS tout
+			for bp in built:
+				draw_polyline(bp["poly"], ROAD_SOFT, _road_width(bp["level"], zoom) + 0.16 + 4.0 / zoom, true)
+			# passe 1 : casings (bord sombre)
+			for bp in built:
+				draw_polyline(bp["poly"], ROAD_CASING, _road_width(bp["level"], zoom) + 0.16 + 2.0 / zoom, true)
+			# passe 2 : surfaces (parchemin) PAR-DESSUS → jonctions propres
+			for bp in built:
+				draw_polyline(bp["poly"], ROAD_FILL, _road_width(bp["level"], zoom), true)
+			# HABILLAGE : mobilier de bord — SEULEMENT sur les routes au chantier ACHEVÉ
+			for d in _road_dress:
+				if not done.has(d["road"]):
+					continue
+				var spr := UIKit.dressing_named(d["name"])
+				if spr == null:
+					break
+				var dp: Vector2 = d["pos"]
+				var ds := 6.0
+				draw_texture_rect(spr, Rect2(dp - Vector2(ds * 0.5, ds), Vector2(ds, ds)), false)
 
 	# ── VILLES : le SPRITE de settlement (atlas, tier × groupe) au centroïde.
 	#    MASQUÉES sur la carte d'ensemble — elles ne paraissent qu'en ZOOM TRÈS
