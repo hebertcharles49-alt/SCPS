@@ -82,7 +82,7 @@ func _ready() -> void:
 		_rivers = Sim.world.river_points()
 		_build_names()
 		_build_anchors()
-		_ensure_roads()         # routes + masque de chaussée AVANT le bourg ; datées dès le démarrage
+		_ensure_roads(Sim.world.year() > 0)   # monde mûr (save chargée) ⇒ routes déjà bâties
 		_build_decor()
 		_build_structures()
 		_build_city_skins()
@@ -105,7 +105,7 @@ func _on_generated() -> void:
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
-	_ensure_roads()             # routes + masque de chaussée AVANT le bourg (évitement) ; datées dès l'an 0
+	_ensure_roads(Sim.world.year() > 0)   # an 0 (monde neuf) ⇒ croît ; an N (save/monde mûr) ⇒ déjà bâtie
 	_build_decor()
 	_build_structures()         # le bourg en spirale ÉVITE les routes
 	_build_city_skins()
@@ -485,7 +485,9 @@ func _rebuild_borders() -> void:
 ## (re)charge le réseau de routes + sa méta + l'habillage, et DATE les chantiers neufs.
 ## Appelé hors zoom (générate/tick) → les routes initiales démarrent dès l'an de fondation,
 ## même si le joueur n'a pas encore zoomé (sinon elles « repartiraient » au premier zoom).
-func _ensure_roads() -> void:
+## `prebuild` (monde MÛR : chargement de save / re-génération à l'an N>0) → les routes initiales
+## sont datées DANS LE PASSÉ (déjà bâties) au lieu de re-construire de zéro sous les yeux.
+func _ensure_roads(prebuild := false) -> void:
 	if not _roads_dirty:
 		return
 	var w = Sim.world
@@ -496,7 +498,10 @@ func _ensure_roads() -> void:
 	var yr0: int = w.year()
 	for rd in _roads:
 		if not _road_start.has(rd["key"]):
-			_road_start[rd["key"]] = yr0     # route NEUVE → chantier daté à maintenant
+			if prebuild:
+				_road_start[rd["key"]] = yr0 - int(rd.get("nprov", 1)) - 1   # déjà bâtie (monde mûr)
+			else:
+				_road_start[rd["key"]] = yr0     # route NEUVE → chantier daté à maintenant (croît)
 	_build_road_dress()
 	_build_road_cells()                      # empreinte des routes → le bourg en spirale les évite
 	_roads_dirty = false
