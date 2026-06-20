@@ -197,12 +197,34 @@ const RIVERS_DIR := "res://assets/scps/pack/rivers/"
 static func river_sprite() -> Texture2D:
 	return _tex(RIVERS_DIR + "RIVER_HORIZONTAL.png")
 
-# ── SOL ISO : canevas continus « super_biomes » (cf. godot/ASSETS_ISO.md). Un grand champ de
-#    paysage (atlas N×N de tuiles 256×128) dans pack/iso_tiles/super_biomes_NN.png. On peint le
-#    monde par cellule AVEC un blend derrière (pas de système climatique) : les tuiles = variations.
+# ── SOL ISO (cf. godot/ASSETS_ISO.md) : UNE tuile PROPRE par BIOME (256×128) dans
+#    pack/iso_tiles/biomes/<clé>.png. Le renderer peint la tuile du biome de la cellule PAR-DESSUS
+#    le blend procédural. Art remplaçable au même slot (Kenney CC0, IA par-biome, etc.).
 const ISO_TILES_DIR := "res://assets/scps/pack/iso_tiles/"
 const ISO_TILE_W := 256
 const ISO_TILE_H := 128
+## clés ALIGNÉES sur l'enum Biome de scps_types.h (index = valeur moteur ; couche SCPS_LAYER_BIOME).
+const BIOME_KEYS := [
+	"deep_ocean", "ocean", "shallow", "coast", "plains", "farmland", "grassland",
+	"steppe", "savanna", "drylands", "desert", "coastal_desert", "forest", "woods",
+	"jungle", "marsh", "highlands", "hills", "mountains", "peak", "glacier",
+	"mangrove", "bog", "volcano", "thorns",
+]
+
+## tuile propre du biome (index moteur) → Texture2D 256×128 ; null si absente. Caché par chemin.
+static func biome_tile(biome: int) -> Texture2D:
+	if biome < 0 or biome >= BIOME_KEYS.size():
+		return null
+	return _tex(ISO_TILES_DIR + "biomes/" + String(BIOME_KEYS[biome]) + ".png")
+
+## VRAI si les tuiles de biome sont présentes → sol en tuiles ; sinon repli procédural (rien ne casse).
+static func has_iso_tiles() -> bool:
+	for b in [4, 6, 12, 18]:   # plains, grassland, forest, mountains
+		if biome_tile(b) != null:
+			return true
+	return false
+
+# ── (SECONDAIRE) palette super_biomes — grandes planches de VARIATION, pioche par cellule. ───────
 const SUPER_GRID := 10                       ## super_biomes_01 = PALETTE de 100 tuiles découpées
 ## cellules EAU de la palette (à exclure du tirage TERRE) — repérées sur la planche (r*10+c).
 const SUPER_WATER := [0, 8, 9, 10, 11, 12, 19, 20, 21, 22, 30, 40, 49, 50, 60, 70, 80, 90]
@@ -244,11 +266,6 @@ static func super_land(tc: int, tr: int) -> Texture2D:
 	var idx := absi((tc * 73856093) ^ (tr * 19349663)) % pal.size()
 	var t: int = pal[idx]
 	return super_tile(t % SUPER_GRID, t / SUPER_GRID)
-
-## VRAI si le canevas de sol est présent → on peint les tuiles par-dessus le blend ; sinon repli
-## sur le seul rendu procédural (rien ne casse).
-static func has_iso_tiles() -> bool:
-	return super_atlas() != null
 
 # ── STRUCTURES de terrain (maisons · ateliers · champs · édifices civiques) : un
 #    POOL parsemé autour des villes. On énumère le dossier au 1er appel (pas de

@@ -51,11 +51,21 @@ contraignante.)*
 
 ---
 
-## 3. Le sol = **canevas continus** (champs 5×5 stampés, pas d'autotile par biome)
+## 3. Le sol = **UNE tuile propre par biome** + blend (l'approche RETENUE)
 
-> Décision (2026-06-20) : on ABANDONNE le dual-grid par biome au profit de **canevas iso
-> continus** — des CHAMPS de paysage 5×5 (25 tuiles 256×128, `V01..V25`, `NN = row*5+col+1`)
-> découpés dans un paysage cohérent et **stampés par blocs contigus**. Cf. `CANEVAS_INDEX.json`.
+> **DÉCISION FINALE (2026-06-20).** Après essais, les **canevas continus** (super_biomes /
+> palettes) **ne tuilent PAS** sur une carte procédurale par cellule : leurs tuiles sont
+> *transitionnelles*, le placement par cellule = bruit. La solution **propre & qui MARCHE** :
+> **une tuile NETTE par biome** (`pack/iso_tiles/biomes/<clé>.png`, 256×128), peinte par cellule
+> **par-dessus le blend procédural** (qui adoucit les bords + fait l'eau/les côtes). L'art se
+> **remplace au slot** : tuiles générées (présentes), **Kenney CC0** « Isometric Landscape », ou
+> tes propres tuiles IA **par biome** (PAS des canevas continus). Falaises §3b inchangé.
+>
+> Godot ne FOURNIT pas d'art ; il fournit le **système** (`TileMapLayer`+`TileSet` iso, autotiling
+> par *terrains*). Les sections ci-dessous (canevas/palette) restent comme **exploration** ; le
+> moteur du jeu lit `pack/iso_tiles/biomes/`.
+
+<details><summary>Historique : modèle canevas continus (exploratoire, non retenu)</summary>
 
 ### Règle d'or (la continuité vient de la SOURCE, pas de pièces modulaires)
 - Une tuile **garde ses voisins** d'origine (même `row`/`col`, même canevas). On NE mélange PAS
@@ -104,6 +114,10 @@ plaine · roche plate · marais/tourbe · plage · crique · presqu'île · estu
 - **Anti-répétition / climats** : fournis **plusieurs lots** (`super_biomes_02…`, autres
   couleurs/terrains) — je les ajoute à la palette ; option **rotation/miroir/jitter** au tirage.
   Côtes *speckle* ⇒ à lisser via overlay côtier (`canevas_monde`/`cote_inversee`).
+
+---
+
+</details>
 
 ---
 

@@ -14,7 +14,7 @@ const UIKit = preload("res://ui/uikit.gd")
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
-const LAND_ALPHA := 0.58       ## fusion de la texture de terre sur le blend
+const LAND_ALPHA := 0.92       ## tuile de biome nette ; le reste de blend adoucit les bords
 const CLIFF_GRAD := 40         ## gradient de hauteur (/255) = falaise (monde bimodal, vérifié)
 
 var _mv: Node2D = null
@@ -71,9 +71,10 @@ func _draw() -> void:
 			var row := d - col
 			var cx := mini(col * TILE_K + k2, W - 1)
 			var cy := mini(row * TILE_K + k2, H - 1)
-			if int(bio.get_pixel(cx, cy).r * 255.0 + 0.5) <= 3:
+			var b := int(bio.get_pixel(cx, cy).r * 255.0 + 0.5)
+			if b <= 3:
 				continue                       # eau : le blend procédural fait la mer + la côte
-			var tex := UIKit.super_land(col, row)
+			var tex := UIKit.biome_tile(b)     # UNE tuile propre par biome (l'art se remplace au slot)
 			if tex == null:
 				continue
 			var tint := Color(1, 1, 1, LAND_ALPHA)
