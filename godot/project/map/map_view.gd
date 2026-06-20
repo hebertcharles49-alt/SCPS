@@ -59,6 +59,7 @@ var _cam_dist := GLOBE_FAR
 
 # iso
 var _terrain: MeshInstance2D
+var _ground: Node2D               ## sol en TUILES iso (si assets présents ; sinon repli procédural)
 var _camera: Camera2D
 var _height_tex: ImageTexture
 
@@ -105,6 +106,12 @@ func _ready() -> void:
 		_terrain.material = matw
 	_terrain.visible = false
 	add_child(_terrain)
+	# SOL EN TUILES ISO (par-dessus le sol procédural ; exclusif via has_iso_tiles). Display-only.
+	_ground = Node2D.new()
+	_ground.set_script(load("res://map/iso_ground.gd"))
+	_ground.name = "IsoGround"
+	_ground.visible = false
+	add_child(_ground)
 	# anti-crénelage 2D (silhouette du relief + bords d'assets nets au zoom).
 	get_viewport().msaa_2d = Viewport.MSAA_4X
 	_camera = Camera2D.new()
@@ -320,17 +327,24 @@ func set_mode(m: int) -> void:
 func _enter_iso(at_world: Vector2) -> void:
 	view_mode = VIEW_ISO
 	_disp.visible = false
-	_terrain.visible = true
+	# sol en TUILES si les assets sont là, sinon repli sur le sol PROCÉDURAL (exclusifs).
+	var tiles := false
+	if _ground != null and _ground.has_method("is_active"):
+		tiles = bool(_ground.is_active())
+	_ground.visible = tiles
+	_terrain.visible = not tiles
 	_camera.enabled = true
 	_camera.make_current()
 	_camera.zoom = Vector2(ISO_FAR, ISO_FAR)
-	_camera.position = Iso.proj(at_world.x, at_world.y, height_at(at_world.x, at_world.y))
+	_camera.position = iso_pos(at_world.x, at_world.y)
 	queue_redraw()
 
 func _enter_globe(at_world: Vector2) -> void:
 	view_mode = VIEW_GLOBE
 	_camera.enabled = false
 	_terrain.visible = false
+	if _ground != null:
+		_ground.visible = false
 	_disp.visible = true
 	_cam_dist = GLOBE_NEAR
 	center_on(at_world.x, at_world.y)

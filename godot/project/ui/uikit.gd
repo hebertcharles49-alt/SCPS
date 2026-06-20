@@ -197,6 +197,49 @@ const RIVERS_DIR := "res://assets/scps/pack/rivers/"
 static func river_sprite() -> Texture2D:
 	return _tex(RIVERS_DIR + "RIVER_HORIZONTAL.png")
 
+# ── TUILES ISO de terrain (cf. godot/ASSETS_ISO.md) : un atlas 4×4 (16 tuiles dual-grid de
+#    256×128) par biome, dans pack/iso_tiles/<clé>.png. La clé suit l'INDEX moteur Biome. ───────
+const ISO_TILES_DIR := "res://assets/scps/pack/iso_tiles/"
+const ISO_TILE_W := 256
+const ISO_TILE_H := 128
+## clés ALIGNÉES sur l'enum Biome de scps_types.h (index = valeur moteur ; couche SCPS_LAYER_BIOME).
+const BIOME_KEYS := [
+	"deep_ocean", "ocean", "shallow", "coast", "plains", "farmland", "grassland",
+	"steppe", "savanna", "drylands", "desert", "coastal_desert", "forest", "woods",
+	"jungle", "marsh", "highlands", "hills", "mountains", "peak", "glacier",
+	"mangrove", "bog", "volcano", "thorns",
+]
+static var _iso_region_cache := {}
+
+## clé biome → atlas (Texture2D 1024×512) ; null si absent. Caché par chemin (un seul essai).
+static func iso_tile_atlas(biome: int) -> Texture2D:
+	if biome < 0 or biome >= BIOME_KEYS.size():
+		return null
+	return _tex(ISO_TILES_DIR + String(BIOME_KEYS[biome]) + ".png")
+
+## tuile dual-grid (biome, masque 0..15) → région 256×128 de l'atlas (AtlasTexture caché) ;
+## null si l'atlas manque. masque → case (m%4, m/4).
+static func iso_tile(biome: int, mask: int) -> Texture2D:
+	var atl := iso_tile_atlas(biome)
+	if atl == null:
+		return null
+	var ck := biome * 16 + (mask & 15)
+	if _iso_region_cache.has(ck):
+		return _iso_region_cache[ck]
+	var at := AtlasTexture.new()
+	at.atlas = atl
+	at.region = Rect2((mask & 3) * ISO_TILE_W, ((mask >> 2) & 3) * ISO_TILE_H, ISO_TILE_W, ISO_TILE_H)
+	_iso_region_cache[ck] = at
+	return at
+
+## VRAI si au moins une tuile iso de terrain est présente → le sol passe en TUILES ; sinon repli
+## sur le rendu procédural actuel (terre lissée + côte par pixel). Teste quelques biomes terre.
+static func has_iso_tiles() -> bool:
+	for b in [4, 6, 12, 18]:   # plains, grassland, forest, mountains
+		if iso_tile_atlas(b) != null:
+			return true
+	return false
+
 # ── STRUCTURES de terrain (maisons · ateliers · champs · édifices civiques) : un
 #    POOL parsemé autour des villes. On énumère le dossier au 1er appel (pas de
 #    const de 96 noms) ; RGBA direct via _tex. ──────────────────────────────────
