@@ -17,7 +17,7 @@ const TILE_K := 8              ## cellules monde par tuile iso (granularité du 
 const CLIFF_GRAD := 40         ## gradient de hauteur (/255) = falaise (monde bimodal, vérifié)
 ## PRIORITÉ de fondu par biome (index = enum Biome) : le PLUS HAUT déborde sur le plus bas.
 ## Eau basse · sable · herbe · aride · forêt · relief · neige · roche nue. Réglage maison.
-const PRIO := [0, 0, 1, 5, 8, 9, 8, 6, 6, 11, 12, 11, 16, 16, 17, 10,
+const PRIO := [0, 0, 0, 5, 8, 9, 8, 6, 6, 11, 12, 11, 16, 16, 17, 10,
 	17, 15, 20, 22, 24, 13, 13, 25, 26]
 
 var _mv: Node2D = null
@@ -98,9 +98,8 @@ func _draw() -> void:
 			var cx := mini(col * TILE_K + k2, W - 1)
 			var cy := mini(row * TILE_K + k2, H - 1)
 			var b := int(bio.get_pixel(cx, cy).r * 255.0 + 0.5)
-			if b <= 2:
-				continue                       # mer (deep/ocean/shallow) : le blend procédural la fait
-			var tex := UIKit.biome_tile(b)     # texture du biome (brute) ; le shader fait le bord
+			var vh := (col * 73856093) ^ (row * 19349663)   # hash → variante (variété par cellule)
+			var tex := UIKit.biome_variant(b, vh)
 			if tex == null:
 				continue
 			# placement ABSOLU (pas de draw_set_transform) → VERTEX = iso continu pour le bruit du shader
@@ -111,21 +110,18 @@ func _draw() -> void:
 				_tile_biome(bio, col + 1, row, nx, ny, W, H),
 				_tile_biome(bio, col, row + 1, nx, ny, W, H),
 				_tile_biome(bio, col - 1, row, nx, ny, W, H)]
-			# BASE : la tuile, fondue vers la MER sur ses arêtes d'eau (mode b=0)
-			var wm := 0
-			for k in range(4):
-				if nb[k] <= 2: wm |= (1 << k)
-			var darken := 0.42 if _is_cliff(hgt, cx, cy, W, H) else 1.0   # falaise = barrière assombrie
-			draw_texture_rect(tex, rect, false, Color(float(wm) / 15.0, darken, 0.0, 1.0))
-			# DÉBORDEMENT : chaque voisin TERRE plus PRIORITAIRE mord sur cette tuile (groupé par biome, mode b=1)
+			# BASE pleine (EAU comprise) ; tout le bord vient du DÉBORDEMENT des voisins prioritaires
+			var darken := 0.42 if (b > 2 and _is_cliff(hgt, cx, cy, W, H)) else 1.0   # falaise = barrière
+			draw_texture_rect(tex, rect, false, Color(0.0, darken, 0.0, 1.0))
+			# DÉBORDEMENT : voisin plus PRIORITAIRE mord sur la tuile (la TERRE déborde sur l'EAU = rivage)
 			var pb: int = PRIO[b] if b < PRIO.size() else 0
 			var spill := {}
 			for k in range(4):
 				var n: int = nb[k]
-				if n > 2 and n < PRIO.size() and PRIO[n] > pb:
+				if n >= 0 and n < PRIO.size() and PRIO[n] > pb:
 					spill[n] = int(spill.get(n, 0)) | (1 << k)
 			for n in spill:
-				var ntex := UIKit.biome_tile(n)
+				var ntex := UIKit.biome_variant(n, vh + n * 7)
 				if ntex != null:
 					draw_texture_rect(ntex, rect, false, Color(float(spill[n]) / 15.0, 1.0, 1.0, 1.0))
 

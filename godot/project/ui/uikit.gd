@@ -201,32 +201,42 @@ static func river_sprite() -> Texture2D:
 static func river_mouth_sprite() -> Texture2D:
 	return _tex(RIVERS_DIR + "RIVER_WIDENING.png")
 
-# ── SOL ISO (cf. godot/ASSETS_ISO.md) : UNE tuile PROPRE par BIOME (256×128) dans
-#    pack/iso_tiles/biomes/<clé>.png. Le renderer peint la tuile du biome de la cellule PAR-DESSUS
-#    le blend procédural. Art remplaçable au même slot (Kenney CC0, IA par-biome, etc.).
+# ── SOL ISO : VARIANTES de texture par biome (256×128, eau comprise) chargées des sources.
+#    Le renderer peint la variante (par cellule → variété) et le shader fait le bord. Index = enum Biome.
 const ISO_TILES_DIR := "res://assets/scps/pack/iso_tiles/"
 const ISO_TILE_W := 256
 const ISO_TILE_H := 128
-## clés ALIGNÉES sur l'enum Biome de scps_types.h (index = valeur moteur ; couche SCPS_LAYER_BIOME).
-const BIOME_KEYS := [
-	"deep_ocean", "ocean", "shallow", "coast", "plains", "farmland", "grassland",
-	"steppe", "savanna", "drylands", "desert", "coastal_desert", "forest", "woods",
-	"jungle", "marsh", "highlands", "hills", "mountains", "peak", "glacier",
-	"mangrove", "bog", "volcano", "thorns",
-]
+const BIOME_TEX_DIR := "res://assets/scps/pack/iso_tiles/aoe2_src/textures/"
+## plusieurs textures par biome → variété (anti-répétition) + bons mappings (aucun tile noir) +
+## EAU tuilée (deep/ocean/shallow) pour un rivage propre DEPUIS LA TERRE (la terre déborde sur l'eau).
+const BIOME_TEX := {
+	0: ["uwtr", "wt5"], 1: ["wtr", "wt2", "wt4"], 2: ["sha", "sh2", "sh3"], 3: ["snd", "bch"],
+	4: ["grs", "gr2", "gr3"], 5: ["fc1", "fc2", "fc3"], 6: ["gr3", "grs", "gr6"], 7: ["gr5", "gr4"],
+	8: ["gr6", "gr5"], 9: ["ds2", "ds3"], 10: ["des", "ds2", "ds4"], 11: ["ds3", "snd"],
+	12: ["for", "fo2"], 13: ["fo2", "for"], 14: ["gr2", "for"], 15: ["rm1", "rm2"],
+	16: ["rc1", "rc2"], 17: ["gr2", "gr3"], 18: ["rck", "rc1", "rc3"], 19: ["sno", "snf"],
+	20: ["ice", "sno"], 21: ["rm1", "for"], 22: ["rm2", "rm1"], 23: ["rc3", "bla"], 24: ["for", "fo2"],
+}
 
-## tuile propre du biome (index moteur) → Texture2D 256×128 ; null si absente. Caché par chemin.
-static func biome_tile(biome: int) -> Texture2D:
-	if biome < 0 or biome >= BIOME_KEYS.size():
+static func _src_tex(name: String) -> Texture2D:
+	var t := _tex(BIOME_TEX_DIR + "g_" + name + "_00_color.png")
+	if t == null:
+		t = _tex(BIOME_TEX_DIR + "g_" + name + "_00_COLOR.png")
+	return t
+
+## texture du biome, variante `idx` (variété par cellule) → Texture2D 256×128 ; null si biome inconnu.
+static func biome_variant(biome: int, idx: int) -> Texture2D:
+	var lst: Array = BIOME_TEX.get(biome, [])
+	if lst.is_empty():
 		return null
-	return _tex(ISO_TILES_DIR + "biomes/" + String(BIOME_KEYS[biome]) + ".png")
+	return _src_tex(String(lst[abs(idx) % lst.size()]))
 
-## VRAI si les tuiles de biome sont présentes → sol en tuiles ; sinon repli procédural (rien ne casse).
+static func biome_tile(biome: int) -> Texture2D:
+	return biome_variant(biome, 0)
+
+## VRAI si les textures de biome sont présentes → sol en tuiles ; sinon repli procédural.
 static func has_iso_tiles() -> bool:
-	for b in [4, 6, 12, 18]:   # plains, grassland, forest, mountains
-		if biome_tile(b) != null:
-			return true
-	return false
+	return biome_variant(4, 0) != null
 
 ## stamp de bruit fbm SEAMLESS (blend_noise.png) — ondule le bord du fondu (shader iso_blend).
 static func blend_noise() -> Texture2D:
