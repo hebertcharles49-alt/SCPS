@@ -228,6 +228,10 @@ static func has_iso_tiles() -> bool:
 			return true
 	return false
 
+## stamp de bruit fbm SEAMLESS (blend_noise.png) — ondule le bord du fondu (shader iso_blend).
+static func blend_noise() -> Texture2D:
+	return _tex(ISO_TILES_DIR + "blend_noise.png")
+
 # ── (SECONDAIRE) palette super_biomes — grandes planches de VARIATION, pioche par cellule. ───────
 const SUPER_GRID := 10                       ## super_biomes_01 = PALETTE de 100 tuiles découpées
 ## cellules EAU de la palette (à exclure du tirage TERRE) — repérées sur la planche (r*10+c).

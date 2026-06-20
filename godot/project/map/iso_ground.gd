@@ -38,6 +38,9 @@ func _setup_blend() -> void:
 		return
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
+	var noise := UIKit.blend_noise()        # stamp fbm seamless → bord organique cohérent
+	if noise != null:
+		mat.set_shader_parameter("noise_tex", noise)
 	material = mat
 	_shaded = true
 
