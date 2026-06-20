@@ -1,14 +1,18 @@
 shader_type canvas_item;
-// Applique un MASQUE DE FONDU varié par cellule (banc blend.dat, atlas vertical de N variantes)
-// à la tuile de terrain brute → les bords se fondent SANS répétition évidente (rotations/variance
-// bakées hors-ligne ; la cellule choisit la variante via COLOR.r, l'assombrissement via COLOR.g).
-uniform sampler2D mask_atlas : filter_linear, repeat_disable;
-uniform int n_variants = 16;
+// Fondu DIRECTIONNEL cohérent : la tuile de terre ne se fond QUE sur les arêtes du losange qui
+// font face à une cellule d'EAU (bits passés par COLOR.r : NE=1 SE=2 SW=4 NW=8) → le rivage suit
+// la côte réelle et raccorde avec la voisine (pas de stamp par cellule). COLOR.g = assombrissement.
+uniform float feather : hint_range(0.1, 0.5) = 0.40;
 
 void fragment() {
-	vec4 tex = texture(TEXTURE, UV);                 // texture du biome (brute, losange)
-	int v = clamp(int(COLOR.r * float(n_variants)), 0, n_variants - 1);
-	vec2 muv = vec2(UV.x, (float(v) + UV.y) / float(n_variants));
-	float m = texture(mask_atlas, muv).r;            // luminance du masque = fondu
-	COLOR = vec4(tex.rgb * COLOR.g, tex.a * m);      // COLOR.g = assombrissement (falaise)
+	vec4 tex = texture(TEXTURE, UV);
+	int wm = int(COLOR.r * 15.0 + 0.5);
+	float p = UV.x - 0.5;
+	float q = UV.y - 0.5;
+	float a = 1.0;
+	if ((wm & 1) != 0) a = min(a, clamp((0.5 - (p - q)) / feather, 0.0, 1.0));   // arête NE = eau
+	if ((wm & 2) != 0) a = min(a, clamp((0.5 - (p + q)) / feather, 0.0, 1.0));   // arête SE = eau
+	if ((wm & 4) != 0) a = min(a, clamp((0.5 - (q - p)) / feather, 0.0, 1.0));   // arête SW = eau
+	if ((wm & 8) != 0) a = min(a, clamp((0.5 - (-p - q)) / feather, 0.0, 1.0));  // arête NW = eau
+	COLOR = vec4(tex.rgb * COLOR.g, tex.a * a);
 }

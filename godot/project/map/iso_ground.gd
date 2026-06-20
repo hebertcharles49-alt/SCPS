@@ -18,8 +18,7 @@ const CLIFF_GRAD := 40         ## gradient de hauteur (/255) = falaise (monde bi
 
 var _mv: Node2D = null
 var _active := false
-var _shaded := false        ## le shader de fondu (banc blend.dat) est actif
-var _blend_n := 0
+var _shaded := false        ## le shader de fondu directionnel (rivage) est monté
 
 func _ready() -> void:
 	Sim.generated.connect(_on_generated)
@@ -28,20 +27,23 @@ func _ready() -> void:
 	_setup_blend()
 	queue_redraw()
 
-## monte le ShaderMaterial de fondu (atlas de variantes en uniforme) ; sans le banc → pas de shader
-## (les tuiles brutes se posent à bords francs, le blend procédural derrière adoucit un peu).
+## monte le ShaderMaterial de fondu DIRECTIONNEL (rivage). Sans lui → tuiles brutes à bords francs.
 func _setup_blend() -> void:
-	var atlas := UIKit.blend_atlas()
 	var sh := load("res://map/iso_blend.gdshader")
-	if atlas == null or sh == null:
+	if sh == null:
 		return
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
-	mat.set_shader_parameter("mask_atlas", atlas)
-	_blend_n = UIKit.blend_count()
-	mat.set_shader_parameter("n_variants", _blend_n)
 	material = mat
-	_shaded = _blend_n > 0
+	_shaded = true
+
+## biome au CENTRE de la tuile voisine (col,row) ; HORS-grille = océan (le monde est ceint de mer).
+func _tile_biome(bio: Image, col: int, row: int, nx: int, ny: int, W: int, H: int) -> int:
+	if col < 0 or row < 0 or col >= nx or row >= ny:
+		return 0
+	var x := mini(col * TILE_K + TILE_K / 2, W - 1)
+	var y := mini(row * TILE_K + TILE_K / 2, H - 1)
+	return int(bio.get_pixel(x, y).r * 255.0 + 0.5)
 
 func _mv_ref() -> Node2D:
 	if _mv == null:
@@ -95,13 +97,13 @@ func _draw() -> void:
 			if tex == null:
 				continue
 			var darken := 0.42 if _is_cliff(hgt, cx, cy, W, H) else 1.0   # falaise = barrière assombrie
-			# COLOR.r = variante de fondu (par cellule, hash) · COLOR.g = assombrissement (cf. shader)
-			var mod: Color
-			if _shaded:
-				var vr := absi((col * 73856093) ^ (row * 19349663)) % _blend_n
-				mod = Color((float(vr) + 0.5) / float(_blend_n), darken, 0.0, 1.0)
-			else:
-				mod = Color(darken, darken, darken, 1.0)
+			# masque d'eau voisine (4 arêtes iso) → le shader fond la terre dans la mer de ce côté.
+			var wm := 0
+			if _tile_biome(bio, col, row - 1, nx, ny, W, H) <= 2: wm |= 1   # NE
+			if _tile_biome(bio, col + 1, row, nx, ny, W, H) <= 2: wm |= 2   # SE
+			if _tile_biome(bio, col, row + 1, nx, ny, W, H) <= 2: wm |= 4   # SW
+			if _tile_biome(bio, col - 1, row, nx, ny, W, H) <= 2: wm |= 8   # NW
+			var mod := Color(float(wm) / 15.0, darken, 0.0, 1.0)            # r=eau voisine · g=assombri
 			var ip: Vector2 = mv.iso_pos(float(cx), float(cy))
 			draw_set_transform(ip, 0.0, Vector2(sc, sc))
 			draw_texture(tex, -half, mod)
