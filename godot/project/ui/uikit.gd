@@ -168,19 +168,20 @@ const CITIES_DIR := "res://assets/scps/pack/cities/"
 const DRESSING_DIR := "res://assets/scps/pack/dressing/"
 
 ## sprite de CITÉ par bande de pop (1-8) × variante (0-7 → A-H) ; null si absente.
+const CITY_LIFT := 2.1   ## relèvement de luminance des sprites de ville/centre/structure (sources ~lum 50)
 static func city_sprite(band: int, variant: int) -> Texture2D:
 	var v := "ABCDEFGH"
-	return _tex(CITIES_DIR + "CITY_POP_BAND_%02d_%s.png" % [clampi(band, 1, 8), v[clampi(variant, 0, 7)]])
+	return _tex_lift(CITIES_DIR + "CITY_POP_BAND_%02d_%s.png" % [clampi(band, 1, 8), v[clampi(variant, 0, 7)]], CITY_LIFT)
 
 ## variante de ville TERRAIN par NOM (CITY_BIOME_*) ; null si absente.
 static func city_biome(nm: String) -> Texture2D:
-	return _tex(CITIES_DIR + nm + ".png")
+	return _tex_lift(CITIES_DIR + nm + ".png", CITY_LIFT)
 
 ## CENTRE de ville (cœur du bourg) par TERRAIN × TIER (pack centres/). `kind` ∈
 ## {plaine, foret, montagne, estuaire, portuaire, lacustre} · tier 1-7. RGBA direct.
 const CENTRES_DIR := "res://assets/scps/pack/centres/"
 static func city_centre(kind: String, tier: int) -> Texture2D:
-	return _tex(CENTRES_DIR + kind + "/CITY_CENTRE_" + kind.to_upper() + "_T%d.png" % clampi(tier, 1, 7))
+	return _tex_lift(CENTRES_DIR + kind + "/CITY_CENTRE_" + kind.to_upper() + "_T%d.png" % clampi(tier, 1, 7), CITY_LIFT)
 
 ## sprite de DRESSING par NOM (DRESS_TREE_*, DRESS_GROVE_*…) ; null si absent.
 static func dressing_named(nm: String) -> Texture2D:
@@ -206,7 +207,7 @@ static func river_mouth_sprite() -> Texture2D:
 const ISO_TILES_DIR := "res://assets/scps/pack/iso_tiles/"
 const ISO_TILE_W := 256
 const ISO_TILE_H := 128
-const BIOME_TEX_DIR := "res://assets/scps/pack/iso_tiles/aoe2_src/textures/"
+const BIOME_TEX_DIR := "res://assets/scps/pack/iso_tiles/norm/"   # tuiles à luminance NORMALISÉE
 ## plusieurs textures par biome → variété (anti-répétition) + bons mappings (aucun tile noir) +
 ## EAU tuilée (deep/ocean/shallow) pour un rivage propre DEPUIS LA TERRE (la terre déborde sur l'eau).
 const BIOME_TEX := {
@@ -215,14 +216,11 @@ const BIOME_TEX := {
 	8: ["gr6", "gr5"], 9: ["ds2", "ds3"], 10: ["des", "ds2", "ds4"], 11: ["ds3", "snd"],
 	12: ["for", "fo2"], 13: ["fo2", "for"], 14: ["gr2", "for"], 15: ["rm1", "rm2"],
 	16: ["rc1", "rc2"], 17: ["gr2", "gr3"], 18: ["rck", "rc1", "rc3"], 19: ["sno", "snf"],
-	20: ["ice", "sno"], 21: ["rm1", "for"], 22: ["rm2", "rm1"], 23: ["rc3", "bla"], 24: ["for", "fo2"],
+	20: ["ice", "sno"], 21: ["rm1", "for"], 22: ["rm2", "rm1"], 23: ["rc3", "rc1"], 24: ["for", "fo2"],
 }
 
 static func _src_tex(name: String) -> Texture2D:
-	var t := _tex(BIOME_TEX_DIR + "g_" + name + "_00_color.png")
-	if t == null:
-		t = _tex(BIOME_TEX_DIR + "g_" + name + "_00_COLOR.png")
-	return t
+	return _tex(BIOME_TEX_DIR + name + ".png")
 
 ## texture du biome, variante `idx` (variété par cellule) → Texture2D 256×128 ; null si biome inconnu.
 static func biome_variant(biome: int, idx: int) -> Texture2D:
@@ -243,9 +241,10 @@ static func blend_noise() -> Texture2D:
 	return _tex(ISO_TILES_DIR + "blend_noise.png")
 
 ## sprite de falaise (escarpement iso) ; `rel` = chemin relatif depuis cliffs/ (cf. index.json).
+## RELEVÉ en luminance (sources ~lum 52 = sombres) comme les sprites de ville.
 const CLIFFS_DIR := "res://assets/scps/pack/iso_tiles/cliffs/"
 static func cliff_tex(rel: String) -> Texture2D:
-	return _tex(CLIFFS_DIR + rel)
+	return _tex_lift(CLIFFS_DIR + rel, 1.6)
 
 # ── (SECONDAIRE) palette super_biomes — grandes planches de VARIATION, pioche par cellule. ───────
 const SUPER_GRID := 10                       ## super_biomes_01 = PALETTE de 100 tuiles découpées
@@ -309,7 +308,7 @@ static func structure_names() -> PackedStringArray:
 	return _struct_names
 
 static func structure_sprite(nm: String) -> Texture2D:
-	return _tex(STRUCTURES_DIR + nm + ".png")
+	return _tex_lift(STRUCTURES_DIR + nm + ".png", CITY_LIFT)
 
 
 # ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)
@@ -378,6 +377,31 @@ static func icon(name: String) -> Texture2D:
 
 static func chrome(name: String) -> Texture2D:
 	return _tex(CHROME + name + ".png")
+
+## charge un PNG en RELEVANT sa luminance (×f sur les pixels opaques) — pour les sprites SOMBRES
+## (villes/centres/structures ~lum 50) que le modulate canvas ne peut PAS éclaircir (clamp à 1.0).
+## Fait au CHARGEMENT (CPU, hors clamp) puis caché → coût une seule fois par sprite.
+static var _lift_cache := {}
+static func _tex_lift(path: String, f: float) -> Texture2D:
+	var key := path + "@" + str(f)
+	if _lift_cache.has(key):
+		return _lift_cache[key]
+	var tex: Texture2D = null
+	if FileAccess.file_exists(path):
+		var img := Image.load_from_file(path)
+		if img != null:
+			if img.get_format() != Image.FORMAT_RGBA8:
+				img.convert(Image.FORMAT_RGBA8)
+			var d := img.get_data()
+			for i in range(0, d.size(), 4):
+				if d[i + 3] > 0:
+					d[i] = mini(255, int(d[i] * f))
+					d[i + 1] = mini(255, int(d[i + 1] * f))
+					d[i + 2] = mini(255, int(d[i + 2] * f))
+			tex = ImageTexture.create_from_image(
+				Image.create_from_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8, d))
+	_lift_cache[key] = tex
+	return tex
 
 ## dessine une icône (carrée) à `pos`, côté `sizepx`. No-op si absente.
 static func draw_icon(ci: CanvasItem, name: String, pos: Vector2, sizepx: float, mod: Color = Color.WHITE) -> void:

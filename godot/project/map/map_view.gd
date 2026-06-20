@@ -327,11 +327,11 @@ func set_mode(m: int) -> void:
 func _enter_iso(at_world: Vector2) -> void:
 	view_mode = VIEW_ISO
 	_disp.visible = false
-	# tuiles iso (eau comprise) si présentes → elles COUVRENT tout ; sinon sol procédural.
-	var tiles := _ground != null and _ground.has_method("is_active") and bool(_ground.is_active())
+	# tuiles iso PAR-DESSUS le blend procédural (TOUJOURS visible = filet anti-trou : un coin de
+	# losange non couvert montre le terrain, jamais du noir).
+	_terrain.visible = true
 	if _ground != null:
-		_ground.visible = tiles
-	_terrain.visible = not tiles
+		_ground.visible = _ground.has_method("is_active") and bool(_ground.is_active())
 	_camera.enabled = true
 	_camera.make_current()
 	_camera.zoom = Vector2(ISO_FAR, ISO_FAR)

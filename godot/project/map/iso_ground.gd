@@ -15,18 +15,12 @@ const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
 const CLIFF_GRAD := 40         ## gradient de hauteur (/255) = falaise (monde bimodal, vérifié)
-## PRIORITÉ de fondu par biome (index = enum Biome) : le PLUS HAUT déborde sur le plus bas.
-## Eau basse · sable · herbe · aride · forêt · relief · neige · roche nue. Réglage maison.
-const PRIO := [0, 0, 0, 5, 8, 9, 8, 6, 6, 11, 12, 11, 16, 16, 17, 10,
-	17, 15, 20, 22, 24, 13, 13, 25, 26]
-## NORMALISATION DE LUMINANCE par biome (anti-« trop sombre » + contrastes homogénéisés) : relève
-## les sombres (eau, forêt) et calme les clairs (sable, neige) vers une cible commune. Appliqué en
-## modulate (COLOR.g) → multiplie la texture. Mesuré hors-ligne sur les variantes 0.
-const BIOME_BRIGHT := [
-	1.38, 1.27, 1.36, 0.85, 1.11, 1.53, 1.08, 0.99,
-	1.18, 0.96, 0.91, 1.01, 1.53, 1.53, 1.14, 1.21,
-	1.08, 1.14, 1.16, 0.75, 0.79, 1.21, 1.10, 1.16, 1.53,
-]
+## PRIORITÉ de fondu par biome (index = enum Biome) : le PLUS HAUT déborde sur le plus bas (façon
+## Age of Empires). HIÉRARCHIE : l'HERBE est le SOCLE BAS sur lequel tout déborde ; au-dessus
+## viennent forêt < aride/désert < sable/plage < relief < neige < volcan/ronces. L'eau tout en bas
+## (la terre déborde sur la mer = rivage depuis la terre).
+const PRIO := [0, 0, 1, 16, 4, 5, 4, 6, 6, 12, 14, 13, 8, 8, 9, 7,
+	17, 10, 19, 22, 24, 7, 8, 26, 28]
 
 var _mv: Node2D = null
 var _active := false
@@ -122,8 +116,7 @@ func _draw() -> void:
 				_tile_biome(bio, col - 1, row, nx, ny, W, H)]
 			# BASE pleine (EAU comprise) ; tout le bord vient du DÉBORDEMENT des voisins prioritaires
 			var is_cliff := b > 2 and _is_cliff(hgt, cx, cy, W, H)   # rupture de relief → escarpement posé
-			var bright: float = BIOME_BRIGHT[b] if b < BIOME_BRIGHT.size() else 1.0   # homogénéise le contraste
-			draw_texture_rect(tex, rect, false, Color(0.0, bright, 0.0, 1.0))
+			draw_texture_rect(tex, rect, false, Color(0.0, 1.0, 0.0, 1.0))   # luminance déjà NORMALISÉE (cuite)
 			# DÉBORDEMENT : voisin plus PRIORITAIRE mord sur la tuile (la TERRE déborde sur l'EAU = rivage)
 			var pb: int = PRIO[b] if b < PRIO.size() else 0
 			var spill := {}
@@ -134,8 +127,7 @@ func _draw() -> void:
 			for n in spill:
 				var ntex := UIKit.biome_variant(n, vh + n * 7)
 				if ntex != null:
-					var ng: float = BIOME_BRIGHT[n] if n < BIOME_BRIGHT.size() else 1.0
-					draw_texture_rect(ntex, rect, false, Color(float(spill[n]) / 15.0, ng, 1.0, 1.0))
+					draw_texture_rect(ntex, rect, false, Color(float(spill[n]) / 15.0, 1.0, 1.0, 1.0))
 			if is_cliff:
 				_draw_cliff(b, ip, sc, vh)   # escarpement par-dessus (profondeur OK : on est dans la passe YSort)
 
@@ -187,5 +179,5 @@ func _draw_cliff(biome: int, ip: Vector2, sc: float, vh: int) -> void:
 		return
 	var sz: Vector2 = c["size"]
 	var cs := 1.4 * float(UIKit.ISO_TILE_W) * sc / maxf(sz.x, 1.0)   # normalise la largeur (~1.4 tuile)
-	# COLOR=(0, 1.15, 0, 1) → passe BASE du shader (cfg=0 ⇒ pas de fondu, alpha intact) + léger relèvement
-	draw_texture_rect(ctex, Rect2(ip - (c["hot"] as Vector2) * cs, sz * cs), false, Color(0.0, 1.15, 0.0, 1.0))
+	# COLOR=(0,1,0,1) → passe BASE du shader (cfg=0 ⇒ pas de fondu, alpha du sprite intact)
+	draw_texture_rect(ctex, Rect2(ip - (c["hot"] as Vector2) * cs, sz * cs), false, Color(0.0, 1.0, 0.0, 1.0))
