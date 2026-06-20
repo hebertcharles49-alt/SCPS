@@ -44,48 +44,71 @@ monde (réglable côté code) ; l'art reste indépendant de `TILE_K`.
 | 11  | `coastal_desert` | aride      | 11   | 24  | `thorns`      | §27 fin   | 95   |
 | 12  | `forest`         | forêt      | 51   |     |               |           |      |
 
-**`prio`** = priorité de transition : à une frontière, le biome de **prio supérieure** « déborde »
-sur l'autre (ses tuiles de bord recouvrent). Tu peux ajuster ces valeurs, dis-le moi.
-
 L'index/clé est **autoritatif** (vient de `scps/scps_types.h` `enum Biome`). Le moteur expose le
-biome par cellule via la couche `SCPS_LAYER_BIOME`.
+biome par cellule via la couche `SCPS_LAYER_BIOME`. *(La colonne `prio` servait au dual-grid
+abandonné — gardée comme repère de « qui domine » pour le choix de canevas/feature ; non
+contraignante.)*
 
 ---
 
-## 3. Autotiling — schéma **dual-grid** (16 tuiles / biome)
+## 3. Le sol = **canevas continus** (champs 5×5 stampés, pas d'autotile par biome)
 
-Tu as choisi des **tuiles de transition dédiées**. On utilise le **dual-grid** (le plus économe :
-16 tuiles par biome au lieu de 47) :
+> Décision (2026-06-20) : on ABANDONNE le dual-grid par biome au profit de **canevas iso
+> continus** — des CHAMPS de paysage 5×5 (25 tuiles 256×128, `V01..V25`, `NN = row*5+col+1`)
+> découpés dans un paysage cohérent et **stampés par blocs contigus**. Cf. `CANEVAS_INDEX.json`.
 
-- La grille de RENDU est décalée d'une **demi-tuile** : chaque tuile de rendu chevauche **4 tuiles
-  monde** (ses 4 coins = 4 centres de tuiles monde).
-- Pour un biome donné, chacun des 4 coins est **PLEIN** (ce biome, ou un biome de prio ≥) ou **VIDE**.
-  → masque 4 bits = **16 combinaisons**. Les transitions s'obtiennent en **empilant** les biomes du
-  plus bas au plus haut `prio` (chaque couche dessine sa tuile-masque par-dessus la précédente).
-- **Bits du masque** (coin → bit) : `N=1 · E=2 · S=4 · W=8` (N=haut, E=droite, S=bas, W=gauche).
+### Règle d'or (la continuité vient de la SOURCE, pas de pièces modulaires)
+- Une tuile **garde ses voisins** d'origine (même `row`/`col`, même canevas). On NE mélange PAS
+  des tuiles isolées de canevas différents : on stampe un **champ 5×5 entier**, ou on **crope un
+  sous-rectangle contigu** dedans.
+- **Modèle de pose retenu : « monde = sol général, features superposées » (100 % procédural)** :
+  | famille (dossier)   | rôle moteur | posée par le renderer… |
+  |---------------------|-------------|------------------------|
+  | `canevas_monde`     | côte/sol multi-biome général | **SOL GÉNÉRAL** : stampé partout (pavage de blocs 5×5 cropés à la région) |
+  | `cote_inversee`     | côte, orientation opposée | superposée aux **littoraux** d'orientation inverse |
+  | `estuaire`          | embouchure / delta | superposée aux **embouchures de rivière** |
+  | `canevas_falaises`  | rupture géologique (plateau · face · talus · bas) | superposée aux **ruptures de relief** (cf. §3b) |
+- Le moteur n'a **pas d'éditeur** : la famille est choisie **automatiquement** d'après le terrain
+  local (la carte naît de la génération par cellule — `SCPS_LAYER_BIOME`/`_HEIGHT`/`_COAST`).
 
-### Livrable par biome : un **atlas 4×4** de 16 tuiles
-- Fichier : `iso_tiles/<clé>.png`, taille **1024 × 512** (4 colonnes × 4 lignes de 256×128).
-- **Indexation** : tuile du masque `m` (0..15) à la case `col = m % 4`, `row = m / 4`
-  (origine haut-gauche ; `m=0` en (0,0), `m=15` en (3,3)).
-- Sémantique du masque `m` = quels **coins** sont **PLEINS** (ce biome) :
-  - `m=15` (NESW tous pleins) = **tuile pleine** du biome (cœur).
-  - `m=0` (aucun) = **entièrement transparente** (ne dessine rien — le biome dessous reste).
-  - les 14 autres = bords/coins (ce biome qui s'avance dans 1, 2 ou 3 coins).
-- Référence visuelle du dual-grid : layout 4×4 standard (jess::codes / ThinMatrix). Si tu préfères
-  un **47-blob** (8 voisins) au lieu du dual-grid, dis-le — je recâble (mais 16 suffisent et c'est
-  beaucoup moins d'art).
+### Livrable par famille
+- Dossier `pack/iso_tiles/<famille>/` (ou conserve `ISO_<CANVAS>_VNN.png`), **25 PNG 256×128**.
+- Plusieurs **variantes** de champ par famille = plus de variété (sinon le 5×5 se répète) ; nomme
+  les variantes `…_setB_VNN.png`, etc. — dis-moi le nommage final, je l'indexe.
+- **Invariants qualité** (repris de `CANEVAS_INDEX.json`) : RGBA, transparent hors du losange
+  canonique, **pas de magenta**, **pas de frange rose**, **tout en 256×128**.
 
-> Démarrage minimal : si tu ne fournis QUE `m=15` (la tuile pleine), le monde se couvre déjà en
-> tuiles iso (sans transitions douces) — les 15 autres masques sont un **raffinement** que tu peux
-> livrer par vagues.
+> Le pipeline dual-grid que j'avais posé (atlas 4×4 par biome, `iso_ground.gd`) est **remplacé**
+> par ce modèle ; j'adapte le renderer au stamping de champs quand les canevas sont figés.
+
+---
+
+## 3b. Falaises = barrière **inhabitable** (façon Age of Empires)
+
+La face rocheuse qui **grimpe** (`canevas_falaises`) est une **barrière infranchissable**, pas du
+sol bâtissable. Décidé : **auto depuis la rupture de relief, classe PEAK, zéro bump SAVE**.
+
+- **Détection** (display-derivée, « on lit des coordonnées ») : une cellule de **terre** dont le
+  **gradient de hauteur** vers un 4-voisin dépasse le seuil (≈ **40/255**, calibré : le monde est
+  bimodal — sol lisse Δ<20 vs falaise Δ≥30) est une **cellule de falaise**. ~0.3 % de la terre,
+  groupée le long des dorsales (vérifié seed 9). Source : couche `SCPS_LAYER_HEIGHT` (déjà exposée).
+- **Conséquences (AoE)** : sur une cellule de falaise →
+  1. **rendu** : la face de `canevas_falaises` (pas le sol général) ;
+  2. **inhabitable** : aucun bâti, aucune colonisation, aucun décor posé dessus ;
+  3. **barrière** : l'armée ne traverse pas (passage nul) — on contourne.
+  Le **plateau au-dessus** et la **terre basse en dessous** restent **habitables** : seule la FACE
+  est morte. Réutilise le mécanisme `terrain_impassable`/`region.impassable` existant (PEAK/glacier
+  /volcan sont déjà ainsi : `habitability 0`, sautés par toutes les boucles éco/colonisation).
+- L'enforcement **gameplay** (passage armée nul, décor sauté) passe par les **entrées moteur**
+  (la membrane) → commit dédié, déterminisme re-baseliné, `make test` au vert (pas un hack viewer).
 
 ---
 
 ## 4. Eau (biomes 0-3) + houle animée
 
-- `deep_ocean / ocean / shallow / coast` = tes **tuiles d'eau** (même schéma dual-grid 4×4, ou au
-  minimum la tuile pleine `m=15`). La profondeur est déjà un dégradé de biomes (0→3).
+- L'eau (`deep_ocean / ocean / shallow / coast`) est **incluse dans les canevas côtiers**
+  (`canevas_monde` / `cote_inversee` / `estuaire` portent déjà mer profonde → bas-fonds → plage).
+  Au large (pleine mer hors canevas côtier), je tuile la portion eau du canevas le plus proche.
 - Par-dessus, le moteur applique un **shader de houle/écume animée léger** (display-only, horloge
   mur — n'altère pas le déterminisme) pour la vie. Tu n'as pas à animer l'eau.
 
@@ -104,7 +127,7 @@ Tout ce qui est déjà intégré sera **remplacé par sa composante iso**. Conve
 | édifices      | `pack/buildings/`                    | `EDI_*.png` |
 | rivières      | `pack/rivers/`                       | `RIVER_HORIZONTAL.png` (segment, tourné par le moteur) |
 | armées        | `pack/campaign/`                     | `ARMY_TOKEN_*.png` |
-| **tuiles**    | **`pack/iso_tiles/`** *(nouveau)*    | `<clé_biome>.png` (atlas 4×4 256×128) — §3 |
+| **sol (canevas)** | **`pack/iso_tiles/<famille>/`** *(nouveau)* | `ISO_<CANVAS>_VNN.png` (champ 5×5 de 256×128) — §3 |
 
 - **Ancre des bâtiments / sprites posés** : **pied au centre-bas** (le sommet BAS du losange de leur
   tuile). Les routes **entrent par ce même sommet** (orientation officielle déjà verrouillée).
@@ -113,14 +136,17 @@ Tout ce qui est déjà intégré sera **remplacé par sa composante iso**. Conve
 
 ---
 
-## 6. Intégration côté code (déjà préparé)
+## 6. Intégration côté code (état)
 
-- `ui/uikit.gd` : `iso_tile_atlas(<clé>)` (charge l'atlas) + `iso_tile(<clé>, mask)` (extrait la
-  région). Cache par chemin, chargement runtime.
-- `map/iso_ground.gd` : le **renderer de sol iso** — couvre le monde en tuiles, dual-grid empilé par
-  prio, **culling viewport** + **YSort**, **houle** sur l'eau. **Repli** : tant que `pack/iso_tiles/`
-  est vide, le rendu procédural actuel (terre lissée + côte par pixel) reste — **rien ne casse**.
-- Bascule **automatique** : dès qu'au moins la tuile pleine `m=15` d'un biome est présente, le sol
-  passe en tuiles.
+- **Chargement runtime** des PNG (pas d'import éditeur) : acquis (`ui/uikit.gd`). À recâbler du
+  modèle dual-grid (par biome) vers le **stamping de champs 5×5** (par famille) — fait quand les
+  canevas sont figés.
+- `map/iso_ground.gd` : renderer de sol — **repli** intact (tant que `pack/iso_tiles/` est vide, le
+  sol procédural actuel reste, rien ne casse). Sa logique passe de l'atlas-par-biome au **stamping
+  de canevas + overlays de feature** (côte inversée / estuaire / falaise).
+- **Falaises** (§3b) : signal de rupture de relief depuis `SCPS_LAYER_HEIGHT` — **détection
+  prouvée** (seed 9). Reste : rendu de la face + enforcement inhabitable (commit moteur dédié).
+- **Houle** : shader display-only sur les portions eau.
 
-Dépose les assets, lance le jeu — pas de changement de code requis de ta part.
+Ordre de marche : (1) tu figes un jeu de canevas par famille → (2) je câble le stamping + overlays
++ la houle → (3) commit moteur falaise-inhabitable (déterminisme re-baseliné, tests verts).
