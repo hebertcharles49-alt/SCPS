@@ -14,17 +14,34 @@ const UIKit = preload("res://ui/uikit.gd")
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
-const LAND_ALPHA := 1.0        ## le masque de fondu (baké dans l'alpha) adoucit déjà les bords
 const CLIFF_GRAD := 40         ## gradient de hauteur (/255) = falaise (monde bimodal, vérifié)
 
 var _mv: Node2D = null
 var _active := false
+var _shaded := false        ## le shader de fondu (banc blend.dat) est actif
+var _blend_n := 0
 
 func _ready() -> void:
 	Sim.generated.connect(_on_generated)
 	Sim.ticked.connect(_on_tick)
 	_active = UIKit.has_iso_tiles()
+	_setup_blend()
 	queue_redraw()
+
+## monte le ShaderMaterial de fondu (atlas de variantes en uniforme) ; sans le banc → pas de shader
+## (les tuiles brutes se posent à bords francs, le blend procédural derrière adoucit un peu).
+func _setup_blend() -> void:
+	var atlas := UIKit.blend_atlas()
+	var sh := load("res://map/iso_blend.gdshader")
+	if atlas == null or sh == null:
+		return
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	mat.set_shader_parameter("mask_atlas", atlas)
+	_blend_n = UIKit.blend_count()
+	mat.set_shader_parameter("n_variants", _blend_n)
+	material = mat
+	_shaded = _blend_n > 0
 
 func _mv_ref() -> Node2D:
 	if _mv == null:
@@ -74,15 +91,20 @@ func _draw() -> void:
 			var b := int(bio.get_pixel(cx, cy).r * 255.0 + 0.5)
 			if b <= 2:
 				continue                       # mer (deep/ocean/shallow) : le blend procédural la fait
-			var tex := UIKit.biome_tile(b)     # tuile AoE2 (texture × masque de fondu) ; coast=sable
+			var tex := UIKit.biome_tile(b)     # texture AoE2 BRUTE ; le shader applique le masque
 			if tex == null:
 				continue
-			var tint := Color(1, 1, 1, LAND_ALPHA)
-			if _is_cliff(hgt, cx, cy, W, H):   # falaise = barrière inhabitable → assombrie
-				tint = Color(0.34, 0.27, 0.24, 0.92)
+			var darken := 0.42 if _is_cliff(hgt, cx, cy, W, H) else 1.0   # falaise = barrière assombrie
+			# COLOR.r = variante de fondu (par cellule, hash) · COLOR.g = assombrissement (cf. shader)
+			var mod: Color
+			if _shaded:
+				var vr := absi((col * 73856093) ^ (row * 19349663)) % _blend_n
+				mod = Color((float(vr) + 0.5) / float(_blend_n), darken, 0.0, 1.0)
+			else:
+				mod = Color(darken, darken, darken, 1.0)
 			var ip: Vector2 = mv.iso_pos(float(cx), float(cy))
 			draw_set_transform(ip, 0.0, Vector2(sc, sc))
-			draw_texture(tex, -half, tint)
+			draw_texture(tex, -half, mod)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## rupture de relief : gradient de hauteur vers un 4-voisin (à TILE_K) au-dessus du seuil.

@@ -228,6 +228,42 @@ static func has_iso_tiles() -> bool:
 			return true
 	return false
 
+# ── BANC DE MASQUES DE FONDU (blend.dat) : N variantes (rotations iso + flips + variance + bruit),
+#    gzip-compressées. Atlas VERTICAL (256 × N·128, L8) pour le shader iso_blend. Forgé hors-ligne.
+const BLEND_DAT := "res://assets/scps/pack/iso_tiles/blend.dat"
+static var _blend_tex: Texture2D = null
+static var _blend_n := 0
+static var _blend_tried := false
+
+static func blend_count() -> int:
+	blend_atlas()
+	return _blend_n
+
+## atlas des masques de fondu (Texture2D 256 × N·128) ; null si absent → le shader ne s'active pas.
+static func blend_atlas() -> Texture2D:
+	if _blend_tried:
+		return _blend_tex
+	_blend_tried = true
+	if not FileAccess.file_exists(BLEND_DAT):
+		return null
+	var f := FileAccess.open(BLEND_DAT, FileAccess.READ)
+	if f == null:
+		return null
+	var magic := f.get_buffer(4).get_string_from_ascii()
+	var n := f.get_8()
+	var tw := f.get_16()
+	var th := f.get_16()
+	if magic != "SBD1" or n <= 0 or tw <= 0 or th <= 0:
+		return null
+	var comp := f.get_buffer(f.get_length() - 9)
+	var raw := comp.decompress(n * tw * th, FileAccess.COMPRESSION_GZIP)
+	if raw.size() != n * tw * th:
+		return null
+	var img := Image.create_from_data(tw, th * n, false, Image.FORMAT_L8, raw)
+	_blend_tex = ImageTexture.create_from_image(img)
+	_blend_n = n
+	return _blend_tex
+
 # ── (SECONDAIRE) palette super_biomes — grandes planches de VARIATION, pioche par cellule. ───────
 const SUPER_GRID := 10                       ## super_biomes_01 = PALETTE de 100 tuiles découpées
 ## cellules EAU de la palette (à exclure du tirage TERRE) — repérées sur la planche (r*10+c).
