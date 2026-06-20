@@ -15,6 +15,10 @@ const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
 const CLIFF_GRAD := 40         ## gradient de hauteur (/255) = falaise (monde bimodal, vérifié)
+## PRIORITÉ de fondu par biome (index = enum Biome) : le PLUS HAUT déborde sur le plus bas.
+## Eau basse · sable · herbe · aride · forêt · relief · neige · roche nue. Réglage maison.
+const PRIO := [0, 0, 1, 5, 8, 9, 8, 6, 6, 11, 12, 11, 16, 16, 17, 10,
+	17, 15, 20, 22, 24, 13, 13, 25, 26]
 
 var _mv: Node2D = null
 var _active := false
@@ -93,21 +97,34 @@ func _draw() -> void:
 			var b := int(bio.get_pixel(cx, cy).r * 255.0 + 0.5)
 			if b <= 2:
 				continue                       # mer (deep/ocean/shallow) : le blend procédural la fait
-			var tex := UIKit.biome_tile(b)     # texture AoE2 BRUTE ; le shader applique le masque
+			var tex := UIKit.biome_tile(b)     # texture du biome (brute) ; le shader fait le bord
 			if tex == null:
 				continue
-			var darken := 0.42 if _is_cliff(hgt, cx, cy, W, H) else 1.0   # falaise = barrière assombrie
-			# masque d'eau voisine (4 arêtes iso) → le shader fond la terre dans la mer de ce côté.
-			var wm := 0
-			if _tile_biome(bio, col, row - 1, nx, ny, W, H) <= 2: wm |= 1   # NE
-			if _tile_biome(bio, col + 1, row, nx, ny, W, H) <= 2: wm |= 2   # SE
-			if _tile_biome(bio, col, row + 1, nx, ny, W, H) <= 2: wm |= 4   # SW
-			if _tile_biome(bio, col - 1, row, nx, ny, W, H) <= 2: wm |= 8   # NW
-			var mod := Color(float(wm) / 15.0, darken, 0.0, 1.0)            # r=eau voisine · g=assombri
 			# placement ABSOLU (pas de draw_set_transform) → VERTEX = iso continu pour le bruit du shader
 			var ip: Vector2 = mv.iso_pos(float(cx), float(cy))
-			draw_texture_rect(tex, Rect2(ip - half * sc, half * (2.0 * sc)), false, mod)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var rect := Rect2(ip - half * sc, half * (2.0 * sc))
+			var nb := [                        # 4 voisins iso : NE · SE · SW · NW
+				_tile_biome(bio, col, row - 1, nx, ny, W, H),
+				_tile_biome(bio, col + 1, row, nx, ny, W, H),
+				_tile_biome(bio, col, row + 1, nx, ny, W, H),
+				_tile_biome(bio, col - 1, row, nx, ny, W, H)]
+			# BASE : la tuile, fondue vers la MER sur ses arêtes d'eau (mode b=0)
+			var wm := 0
+			for k in range(4):
+				if nb[k] <= 2: wm |= (1 << k)
+			var darken := 0.42 if _is_cliff(hgt, cx, cy, W, H) else 1.0   # falaise = barrière assombrie
+			draw_texture_rect(tex, rect, false, Color(float(wm) / 15.0, darken, 0.0, 1.0))
+			# DÉBORDEMENT : chaque voisin TERRE plus PRIORITAIRE mord sur cette tuile (groupé par biome, mode b=1)
+			var pb: int = PRIO[b] if b < PRIO.size() else 0
+			var spill := {}
+			for k in range(4):
+				var n: int = nb[k]
+				if n > 2 and n < PRIO.size() and PRIO[n] > pb:
+					spill[n] = int(spill.get(n, 0)) | (1 << k)
+			for n in spill:
+				var ntex := UIKit.biome_tile(n)
+				if ntex != null:
+					draw_texture_rect(ntex, rect, false, Color(float(spill[n]) / 15.0, 1.0, 1.0, 1.0))
 
 ## rupture de relief : gradient de hauteur vers un 4-voisin (à TILE_K) au-dessus du seuil.
 func _is_cliff(hgt: Image, x: int, y: int, W: int, H: int) -> bool:

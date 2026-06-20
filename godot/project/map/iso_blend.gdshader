@@ -1,15 +1,18 @@
 shader_type canvas_item;
-// Fondu DIRECTIONNEL + bord ORGANIQUE (maison, inspiré du blendomatic AoE2 sans en lire les .dat).
-// La terre se fond sur les arêtes face à l'EAU (bits COLOR.r : NE=1 SE=2 SW=4 NW=8) ; le SEUIL du
-// feutre est perturbé par un BRUIT échantillonné en ESPACE ISO CONTINU (varying `iso` = VERTEX) →
-// la côte ondule de façon irrégulière MAIS se raccorde d'une tuile à l'autre (cohérent, pas de
-// motif par cellule). COLOR.g = assombrissement (falaise).
+// Fondu de terrain MAISON (procédural) : PRIORITÉ + bord organique.
+//   · COLOR.r = config d'arêtes (NE=1 SE=2 SW=4 NW=8) · COLOR.g = assombrissement (falaise)
+//   · COLOR.b < 0.5 → mode BASE : la tuile se fond VERS la mer (fade-out) sur ses arêtes d'eau.
+//   · COLOR.b ≥ 0.5 → mode DÉBORDEMENT : la tuile (texture du VOISIN plus prioritaire) déborde
+//     (fade-in) DEPUIS ses arêtes → le terrain dominant mord sur le voisin.
+// Le SEUIL du bord est perturbé par un bruit fbm en ESPACE ISO CONTINU → bords irréguliers MAIS
+// raccordés d'une tuile à l'autre (cohérent, zéro motif par cellule).
 uniform float feather : hint_range(0.05, 0.5) = 0.30;
+uniform float spill : hint_range(0.1, 0.6) = 0.42;      // profondeur du débordement
 uniform float noise_amp : hint_range(0.0, 0.4) = 0.24;
 uniform float noise_freq : hint_range(0.02, 1.0) = 0.13;
 
 varying vec2 iso;
-void vertex() { iso = VERTEX; }     // position en espace iso (continue à travers les tuiles)
+void vertex() { iso = VERTEX; }     // position iso continue à travers les tuiles
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
@@ -21,14 +24,27 @@ float fbm(vec2 p) { return 0.62 * vnoise(p) + 0.38 * vnoise(p * 2.3 + 7.0); }
 
 void fragment() {
 	vec4 tex = texture(TEXTURE, UV);
-	int wm = int(COLOR.r * 15.0 + 0.5);
+	int cfg = int(COLOR.r * 15.0 + 0.5);
 	float p = UV.x - 0.5;
 	float q = UV.y - 0.5;
-	float thr = 0.5 + (fbm(iso * noise_freq) - 0.5) * noise_amp;   // seuil ondulé organique
-	float a = 1.0;
-	if ((wm & 1) != 0) a = min(a, clamp((thr - (p - q)) / feather, 0.0, 1.0));   // NE = eau
-	if ((wm & 2) != 0) a = min(a, clamp((thr - (p + q)) / feather, 0.0, 1.0));   // SE = eau
-	if ((wm & 4) != 0) a = min(a, clamp((thr - (q - p)) / feather, 0.0, 1.0));   // SW = eau
-	if ((wm & 8) != 0) a = min(a, clamp((thr - (-p - q)) / feather, 0.0, 1.0));  // NW = eau
+	float thr = 0.5 + (fbm(iso * noise_freq) - 0.5) * noise_amp;
+	float ev[4];
+	ev[0] = p - q;   // NE
+	ev[1] = p + q;   // SE
+	ev[2] = q - p;   // SW
+	ev[3] = -p - q;  // NW
+	float a;
+	if (COLOR.b < 0.5) {                                   // BASE : fade-out vers la mer
+		a = 1.0;
+		for (int k = 0; k < 4; k++)
+			if ((cfg & (1 << k)) != 0)
+				a = min(a, clamp((thr - ev[k]) / feather, 0.0, 1.0));
+	} else {                                               // DÉBORDEMENT : fade-in depuis l'arête
+		float thr_in = thr - spill;
+		a = 0.0;
+		for (int k = 0; k < 4; k++)
+			if ((cfg & (1 << k)) != 0)
+				a = max(a, clamp((ev[k] - thr_in) / feather, 0.0, 1.0));
+	}
 	COLOR = vec4(tex.rgb * COLOR.g, tex.a * a);
 }
