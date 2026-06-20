@@ -81,6 +81,28 @@ contraignante.)*
 > Le pipeline dual-grid que j'avais posé (atlas 4×4 par biome, `iso_ground.gd`) est **remplacé**
 > par ce modèle ; j'adapte le renderer au stamping de champs quand les canevas sont figés.
 
+### `super_biomes_NN` — la source PRIMAIRE (grand champ continu, par ZONE CLIMATIQUE)
+`super_biomes_01` = champ **10×10** (100 tuiles) « haute-variété snapable » : neige/froid · forêt ·
+plaine · roche plate · marais/tourbe · plage · crique · presqu'île · estuaire · bas-fonds · mer.
+- **Constat asset (vérifié, seed 9)** — deux choses cadrent le renderer :
+  1. **Les tuiles sont TRANSITIONNELLES** (eau+sable, plaine/forêt mêlées) : on **ne peut PAS**
+     découper le canevas en 25 tuiles-par-biome propres (la classif couleur s'effondre). En
+     revanche **terre / eau / neige se séparent** nettement. Le placement **aléatoire par tuile =
+     BRUIT** (prouvé) ; il **FAUT** du contigu.
+  2. `super_biomes_01` couvre **UNE zone climatique** (tempéré-froid côtier ; ni désert, ni
+     jungle…). Le suffixe `_NN` ⇒ d'autres jeux par climat (désert, tropical, aride…). Le monde
+     est rendu en mappant **biome → zone climatique → jeu `super_biomes_NN`**.
+- **Recette de rendu RETENUE (prouvée)** — pour chaque zone :
+  1. repérer dans le champ la **sous-région de TERRE pure** (p.ex. `super_biomes_01` : colonnes
+     3-7, toutes lignes = terre) → **tuilée en CONTIGU sur la terre du monde** (continuité gardée,
+     zéro bave d'eau) ;
+  2. les tuiles **EAU / plage** du champ → posées **aux VRAIES côtes du monde** (`SCPS_LAYER_BIOME`
+     ≤ 3) → le littoral suit la carte générée, pas la mer interne du canevas ;
+  3. **falaises** (§3b) → face de `canevas_falaises` + assombrissement = barrière inhabitable.
+- **Anti-répétition** : la bande de terre se répète ⇒ fournis **plusieurs `super_biomes_NN`** par
+  climat et/ou j'ajoute **rotation/miroir/jitter** de crop. Côtes un peu *speckle* ⇒ à lisser
+  (overlay côtier des familles `canevas_monde`/`cote_inversee`).
+
 ---
 
 ## 3b. Falaises = barrière **inhabitable** (façon Age of Empires)
