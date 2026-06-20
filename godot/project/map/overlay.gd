@@ -47,7 +47,7 @@ const RIVER_ZOOM_MIN := 2.0   ## rivières (zoom ISO)
 const RIVER_CAL := 0.0        ## calibration de l'orientation du sprite (ajusté au rendu)
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
 const ROAD_CASING := Color(0.227, 0.165, 0.110)  ## bord sombre (viewer 58,42,28)
-const ROAD_FILL   := Color(0.769, 0.643, 0.431)  ## surface parchemin (viewer 196,164,110)
+const ROAD_FILL   := Color(0.86, 0.74, 0.52)     ## surface parchemin CLAIRE — la route = le fil conducteur landmark↔bourg
 const ROAD_SOFT   := Color(0.227, 0.165, 0.110, 0.22)  ## halo doux SOUS le casing → blend feutré (anti-alias)
 # MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
 const ROADSIDE := [
@@ -655,8 +655,13 @@ func _army_token_name(a: Dictionary) -> String:
 		return "ARMY_TOKEN_MIXED_ARCHERS"
 	return "ARMY_TOKEN_PIKE_BLOCK"
 
+## bâti de CAMPAGNE rabattu : un peu transparent + assombri (« masque de fondu ») → la terre lissée
+## transparaît, le contraste cuivré/noir baisse, le contour de socle se FOND (plus d'effet d'îlot).
+## Le centre-ville (landmark), lui, reste OPAQUE et pleinement présent (cf. _draw_city).
+const STRUCT_MUTE := Color(0.88, 0.86, 0.83, 0.84)
+
 ## dessine UN bâti parsemé à la POSITION ISO `sp` (espace-monde iso, la Camera2D met à l'échelle) —
-## taille MONDE, ancré au pied, MIROIR éventuel (variété).
+## taille MONDE, ancré au pied, MIROIR éventuel (variété), RABATTU pour s'intégrer à la campagne.
 func _draw_struct(s: Dictionary, sp: Vector2) -> void:
 	var sspr := UIKit.structure_sprite(s["name"])
 	if sspr == null:
@@ -664,10 +669,10 @@ func _draw_struct(s: Dictionary, sp: Vector2) -> void:
 	var ss: float = s.get("sz", 9.0)
 	if bool(s.get("flip", false)):
 		draw_set_transform(sp, 0.0, Vector2(-1, 1))             # miroir horizontal autour du pied
-		draw_texture_rect(sspr, Rect2(-ss * 0.5, -ss, ss, ss), false)
+		draw_texture_rect(sspr, Rect2(-ss * 0.5, -ss, ss, ss), false, STRUCT_MUTE)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	else:
-		draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false)
+		draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false, STRUCT_MUTE)
 
 ## dessine LA ville de la région `r` à la POSITION ISO `ctr` — variante TERRAIN sinon bande de
 ## pop ; taille MONDE BORNÉE au sec ; repli en marqueur sobre. Le BOURG (spiral) l'entoure.
@@ -688,10 +693,10 @@ func _draw_city(w, r: int, ctr: Vector2) -> void:
 		draw_arc(ctr, radius, 0.0, TAU, 16, Color(0.15, 0.10, 0.05, 0.8), 0.4, true)
 
 ## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure),
-## bornée à ~2.2 px d'écran (÷zoom) au minimum pour rester visible de loin.
+## bornée à ~2.6 px d'écran (÷zoom) au minimum — la route RESSORT comme le fil conducteur.
 func _road_width(level: int, zoom: float) -> float:
 	var maj := 1.0 if level == 0 else (0.78 if level == 1 else 0.6)
-	return maxf(0.55 * maj, 2.2 / zoom)
+	return maxf(0.7 * maj, 2.6 / zoom)
 
 func _mv_ref() -> Node2D:
 	if _mv == null:

@@ -30,8 +30,7 @@ const GLOBE_NEAR := 2.6         ## le plus près du globe AVANT de basculer en I
 # bloc de TILE_K cellules. Couleur PLATE par tuile (côtes EN ESCALIER sur la grille, pas lissées)
 # + shader de texture (dithering/herbe/roches/variation) & ombrage iso. Sommet BAS = ancre des
 # bâtiments ET entrée des routes (l'orientation officielle, calée sur les centres-villes).
-const TILE_K := 5               ## cellules monde par tuile iso (la maille du damier ; côtes en escalier)
-const SHADE_STEP := 3.0         ## écart d'échantillon du gradient d'altitude (cellules) — ombrage iso doux
+const TILE_K := 5               ## cellules monde par tuile iso (la maille ; bandes côtières en escalier)
 const ISO_FAR := 4.0            ## zoom Camera2D à l'ENTRÉE en ISO (≈ l'échelle du globe au seuil) ;
                                ## dézoomer dessous rebascule au GLOBE. Les assets sont DÉJÀ lisibles ici.
 const ISO_NEAR := 16.0          ## le plus zoomé (on plonge dans un bourg)
@@ -61,7 +60,7 @@ var _cam_dist := GLOBE_FAR
 # iso
 var _terrain: MeshInstance2D
 var _camera: Camera2D
-var _sea_tex: ImageTexture
+var _height_tex: ImageTexture
 
 func _ready() -> void:
 	# ---- GLOBE : SubViewport 3D + sprite d'affichage ----
@@ -238,54 +237,18 @@ func tile_anchor(wx: float, wy: float) -> Vector2:
 	var a := tile_anchor_world(wx, wy)
 	return iso_pos(a.x, a.y)
 
-## OMBRAGE iso par tuile (hillshade dérivé du gradient d'altitude, soleil au NO) — la lumière
-## SUIT la géométrie iso, par tuile (en escalier), pas un dégradé top-down continu.
-func _hillshade(wx: float, wy: float) -> float:
-	var d := SHADE_STEP
-	var hL := height_at(wx - d, wy)
-	var hR := height_at(wx + d, wy)
-	var hU := height_at(wx, wy - d)
-	var hD := height_at(wx, wy + d)
-	var n := Vector3((hL - hR) * 14.0, (hU - hD) * 14.0, 1.0).normalized()
-	var lt := Vector3(-0.55, -0.62, 0.56).normalized()
-	var diff := clampf(n.dot(lt), 0.0, 1.0)
-	return 0.58 + 0.42 * diff           # 0.58 (ombre) → 1.0 (au soleil) — ≤1 (couleur 8 bits)
-
-## classe d'eau d'une tuile : 0 = terre · 0.5 = eau PEU PROFONDE (berge : une tuile de terre à
-## portée) · 1 = eau PROFONDE. Sert au shader pour les bandes côtières & l'écume de rivage.
-func _water_class(sea: Image, wx: float, wy: float) -> float:
-	if sea == null:
-		return 0.0
-	var sw := sea.get_width()
-	var sh := sea.get_height()
-	var cx := clampi(int(wx), 0, sw - 1)
-	var cy := clampi(int(wy), 0, sh - 1)
-	if int(sea.get_pixel(cx, cy).r * 255.0 + 0.5) < 1:
-		return 0.0                                   # terre
-	var k := TILE_K
-	for off: Vector2i in [Vector2i(k, 0), Vector2i(-k, 0), Vector2i(0, k), Vector2i(0, -k), Vector2i(k, k), Vector2i(-k, -k)]:
-		var nx := clampi(cx + off.x, 0, sw - 1)
-		var ny := clampi(cy + off.y, 0, sh - 1)
-		if int(sea.get_pixel(nx, ny).r * 255.0 + 0.5) < 1:
-			return 0.5                               # berge (eau peu profonde)
-	return 1.0                                        # eau profonde
-
-## bâtit la GRILLE de tuiles iso : un LOSANGE par bloc de TILE_K cellules, sommets PROPRES (pas de
-## partage) ⇒ couleur PLATE par tuile (les côtes épousent la grille). UV = centre de tuile (albédo
-## platifié) ; COULEUR.r = hillshade iso de la tuile (ombrage), COULEUR.a = classe d'eau (bande
-## côtière). La position MONDE par pixel (texture procédurale) vient d'un VARYING sur VERTEX (la
-## couleur 8 bits quantifierait trop ; UV2 n'existe pas en 2D).
+## bâtit la GRILLE de tuiles iso : un LOSANGE par bloc de TILE_K cellules. La tuile fixe la
+## GÉOMÉTRIE iso (projection + ancres) ; TOUTE la couleur (terre lissée, côte, profondeur d'eau,
+## ombrage) est calculée PAR PIXEL dans le shader depuis l'altitude → rendu doux, pas de damier.
 func _build_tile_mesh() -> void:
 	var w = Sim.world
 	var W := float(w.map_w())
 	var H := float(w.map_h())
-	var sea: Image = w.layer_image(LAYER_SEA)
 	var nx := int(W) / TILE_K
 	var ny := int(H) / TILE_K
 	var nt := nx * ny
 	var verts := PackedVector3Array(); verts.resize(nt * 4)
 	var uvs := PackedVector2Array(); uvs.resize(nt * 4)
-	var cols := PackedColorArray(); cols.resize(nt * 4)
 	var idx := PackedInt32Array(); idx.resize(nt * 6)
 	var vi := 0
 	var ii := 0
@@ -301,14 +264,11 @@ func _build_tile_mesh() -> void:
 			var pR := iso_pos(x1, y0)   # EST
 			var pB := iso_pos(x1, y1)   # SUD (sommet BAS = ancre)
 			var pL := iso_pos(x0, y1)   # OUEST
-			var sh := _hillshade(cxw, cyw)
-			var wc := _water_class(sea, cxw, cyw)
-			var uvc := Vector2(cxw / W, cyw / H)             # centre → couleur platifiée
-			var col := Color(sh, 0.0, 0.0, wc)               # .r = hillshade · .a = classe d'eau
-			verts[vi] = Vector3(pT.x, pT.y, 0.0);     uvs[vi] = uvc;     cols[vi] = col
-			verts[vi + 1] = Vector3(pR.x, pR.y, 0.0); uvs[vi + 1] = uvc; cols[vi + 1] = col
-			verts[vi + 2] = Vector3(pB.x, pB.y, 0.0); uvs[vi + 2] = uvc; cols[vi + 2] = col
-			verts[vi + 3] = Vector3(pL.x, pL.y, 0.0); uvs[vi + 3] = uvc; cols[vi + 3] = col
+			var uvc := Vector2(cxw / W, cyw / H)             # centre (réservé) ; tout est lissé au shader
+			verts[vi] = Vector3(pT.x, pT.y, 0.0);     uvs[vi] = uvc
+			verts[vi + 1] = Vector3(pR.x, pR.y, 0.0); uvs[vi + 1] = uvc
+			verts[vi + 2] = Vector3(pB.x, pB.y, 0.0); uvs[vi + 2] = uvc
+			verts[vi + 3] = Vector3(pL.x, pL.y, 0.0); uvs[vi + 3] = uvc
 			idx[ii] = vi; idx[ii + 1] = vi + 1; idx[ii + 2] = vi + 2
 			idx[ii + 3] = vi; idx[ii + 4] = vi + 2; idx[ii + 5] = vi + 3
 			vi += 4
@@ -317,7 +277,6 @@ func _build_tile_mesh() -> void:
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts
 	arr[Mesh.ARRAY_TEX_UV] = uvs
-	arr[Mesh.ARRAY_COLOR] = cols
 	arr[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
@@ -328,12 +287,13 @@ func _on_generated() -> void:
 	_himg = Sim.world.layer_image(LAYER_HEIGHT)
 	_build_globe_mesh()
 	_build_tile_mesh()
-	_sea_tex = ImageTexture.create_from_image(Sim.world.layer_image(LAYER_SEA))
+	_height_tex = ImageTexture.create_from_image(_himg)
 	var matw := _terrain.material as ShaderMaterial
 	if matw != null:
 		var W := float(Sim.world.map_w())
 		var H := float(Sim.world.map_h())
-		matw.set_shader_parameter("sea_tex", _sea_tex)
+		matw.set_shader_parameter("height_tex", _height_tex)
+		matw.set_shader_parameter("map_size", Vector2(W, H))
 		matw.set_shader_parameter("tile_count", Vector2(W / float(TILE_K), H / float(TILE_K)))
 	_refresh_terrain()
 	_place_camera()
