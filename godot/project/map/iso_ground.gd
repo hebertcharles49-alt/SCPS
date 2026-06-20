@@ -46,6 +46,7 @@ func _setup_blend() -> void:
 	if noise != null:
 		mat.set_shader_parameter("noise_tex", noise)
 	material = mat
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED   # la texture PLATE COULE (UV monde > 1 → wrap)
 	_shaded = true
 
 ## biome au CENTRE de la tuile voisine (col,row) ; HORS-grille = océan (le monde est ceint de mer).
@@ -122,13 +123,19 @@ func _draw() -> void:
 			# (le voisin ≥ prioritaire mord ici, façon AoE). La variété vient d'un bruit CONTINU (shader),
 			# pas de variantes par cellule (c'était ça, la grille).
 			var pb: int = PRIO[b] if b < PRIO.size() else 0
+			# blend MUTUEL : toute arête vers un AUTRE biome se fond (les deux côtés) → les couples de
+			# biomes entrelacés ne laissent plus de losanges francs. La PRIORITÉ joue par l'ORDRE de
+			# tracé : on pose d'ABORD les voisins dominés, le dominant PAR-DESSUS (il garde le dessus).
+			var order := []
 			for k in range(4):
 				var n: int = nb[k]
-				if n < 0 or n == b or (n < PRIO.size() and PRIO[n] < pb):
-					continue                   # hors carte · même biome (déjà sans couture) · voisin dominé → rien
-				var ntex := UIKit.biome_variant(n, 0)
+				if n >= 0 and n != b:
+					order.append([PRIO[n] if n < PRIO.size() else 0, k, n])
+			order.sort_custom(func(a, c): return a[0] < c[0])   # priorité croissante → dominant en dernier
+			for e in order:
+				var ntex := UIKit.biome_variant(int(e[2]), 0)
 				if ntex != null:
-					draw_texture_rect(ntex, rect, false, Color(float(1 << k) / 15.0, 1.0, 1.0, 1.0))
+					draw_texture_rect(ntex, rect, false, Color(float(1 << int(e[1])) / 15.0, 1.0, 1.0, 1.0))
 			if is_cliff:
 				_draw_cliff(b, ip, sc, vh)   # escarpement par-dessus (profondeur OK : on est dans la passe YSort)
 

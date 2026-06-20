@@ -207,7 +207,7 @@ static func river_mouth_sprite() -> Texture2D:
 const ISO_TILES_DIR := "res://assets/scps/pack/iso_tiles/"
 const ISO_TILE_W := 256
 const ISO_TILE_H := 128
-const BIOME_TEX_DIR := "res://assets/scps/pack/iso_tiles/norm/"   # tuiles à luminance NORMALISÉE
+const BIOME_TEX_DIR := "res://assets/scps/pack/iso_tiles/flat/"   # tuiles PLATES tuilables, lum. NORMALISÉE
 ## plusieurs textures par biome → variété (anti-répétition) + bons mappings (aucun tile noir) +
 ## EAU tuilée (deep/ocean/shallow) pour un rivage propre DEPUIS LA TERRE (la terre déborde sur l'eau).
 const BIOME_TEX := {
@@ -215,7 +215,7 @@ const BIOME_TEX := {
 	4: ["grs", "gr2", "gr3"], 5: ["fc1", "fc2", "fc3"], 6: ["gr3", "grs", "gr6"], 7: ["gr5", "gr4"],
 	8: ["gr6", "gr5"], 9: ["ds2", "ds3"], 10: ["des", "ds2", "ds4"], 11: ["ds3", "snd"],
 	12: ["for", "fo2"], 13: ["fo2", "for"], 14: ["gr2", "for"], 15: ["rm1", "rm2"],
-	16: ["rc1", "rc2"], 17: ["gr2", "gr3"], 18: ["rck", "rc1", "rc3"], 19: ["sno", "snf"],
+	16: ["rc1", "rc2"], 17: ["gr2", "gr3"], 18: ["rc1", "rc2", "rc3"], 19: ["sno", "snf"],
 	20: ["ice", "sno"], 21: ["rm1", "for"], 22: ["rm2", "rm1"], 23: ["rc3", "rc1"], 24: ["for", "fo2"],
 }
 
