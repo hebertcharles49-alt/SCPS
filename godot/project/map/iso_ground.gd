@@ -103,7 +103,7 @@ func _draw() -> void:
 			var cy := mini(row * TILE_K + k2, H - 1)
 			var b := int(bio.get_pixel(cx, cy).r * 255.0 + 0.5)
 			var vh := (col * 73856093) ^ (row * 19349663)   # hash → variante (variété par cellule)
-			var tex := UIKit.biome_variant(b, vh)
+			var tex := UIKit.biome_variant(b, 0)
 			if tex == null:
 				continue
 			# placement ABSOLU (pas de draw_set_transform) → VERTEX = iso continu pour le bruit du shader
@@ -117,17 +117,18 @@ func _draw() -> void:
 			# BASE pleine (EAU comprise) ; tout le bord vient du DÉBORDEMENT des voisins prioritaires
 			var is_cliff := b > 2 and _is_cliff(hgt, cx, cy, W, H)   # rupture de relief → escarpement posé
 			draw_texture_rect(tex, rect, false, Color(0.0, 1.0, 0.0, 1.0))   # luminance déjà NORMALISÉE (cuite)
-			# DÉBORDEMENT : voisin plus PRIORITAIRE mord sur la tuile (la TERRE déborde sur l'EAU = rivage)
+			# BLEND : « dominance par biome » = la BASE (UNE texture par biome → même biome SANS COUTURE,
+			# la grille disparaît) ; le blend de priorité se colle PAR-DESSUS sur les arêtes inter-biomes
+			# (le voisin ≥ prioritaire mord ici, façon AoE). La variété vient d'un bruit CONTINU (shader),
+			# pas de variantes par cellule (c'était ça, la grille).
 			var pb: int = PRIO[b] if b < PRIO.size() else 0
-			var spill := {}
 			for k in range(4):
 				var n: int = nb[k]
-				if n >= 0 and n < PRIO.size() and PRIO[n] > pb:
-					spill[n] = int(spill.get(n, 0)) | (1 << k)
-			for n in spill:
-				var ntex := UIKit.biome_variant(n, vh + n * 7)
+				if n < 0 or n == b or (n < PRIO.size() and PRIO[n] < pb):
+					continue                   # hors carte · même biome (déjà sans couture) · voisin dominé → rien
+				var ntex := UIKit.biome_variant(n, 0)
 				if ntex != null:
-					draw_texture_rect(ntex, rect, false, Color(float(spill[n]) / 15.0, 1.0, 1.0, 1.0))
+					draw_texture_rect(ntex, rect, false, Color(float(1 << k) / 15.0, 1.0, 1.0, 1.0))
 			if is_cliff:
 				_draw_cliff(b, ip, sc, vh)   # escarpement par-dessus (profondeur OK : on est dans la passe YSort)
 

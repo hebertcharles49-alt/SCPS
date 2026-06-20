@@ -11,6 +11,10 @@ uniform float feather : hint_range(0.05, 0.5) = 0.30;
 uniform float spill : hint_range(0.1, 0.6) = 0.42;       // profondeur du débordement
 uniform float noise_amp : hint_range(0.0, 0.5) = 0.28;
 uniform float noise_freq : hint_range(0.01, 0.4) = 0.045;
+// VARIÉTÉ : luminance modulée par un bruit CONTINU (échelle large) → casse l'uniformité d'UNE
+// texture/biome SANS variantes par cellule (= sans grille de losanges).
+uniform float var_freq : hint_range(0.005, 0.1) = 0.02;
+uniform float var_amp : hint_range(0.0, 0.3) = 0.13;
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }     // position iso continue à travers les tuiles
@@ -39,5 +43,7 @@ void fragment() {
 			if ((cfg & (1 << k)) != 0)
 				a = max(a, clamp((ev[k] - thr_in) / feather, 0.0, 1.0));
 	}
-	COLOR = vec4(tex.rgb * COLOR.g, tex.a * a);
+	float vstamp = texture(noise_tex, iso * var_freq + vec2(3.1, 7.3)).r;   // bruit CONTINU large échelle
+	float vbright = mix(1.0 - var_amp, 1.0 + var_amp, vstamp);              // ± luminance, sans grille
+	COLOR = vec4(tex.rgb * COLOR.g * vbright, tex.a * a);
 }
