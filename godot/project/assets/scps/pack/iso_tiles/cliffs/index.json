@@ -1,0 +1,1416 @@
+{
+  "asset_kind": "Age2 cliff topology repainted as SCPS isometric escarpments",
+  "source": "clf01_nn.slp through clf10_nn.slp, decoded with the local clf_pal.pal",
+  "styles": [
+    "temperate",
+    "frost",
+    "volcanic"
+  ],
+  "entries": [
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_01.png",
+      "style": "temperate",
+      "label": "tem 01:01",
+      "source_frame": 1,
+      "size": [
+        213,
+        261
+      ],
+      "hotspot": [
+        101,
+        134
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28554,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_01.png",
+      "style": "frost",
+      "label": "fro 01:01",
+      "source_frame": 1,
+      "size": [
+        213,
+        261
+      ],
+      "hotspot": [
+        101,
+        134
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28554,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_01.png",
+      "style": "volcanic",
+      "label": "vol 01:01",
+      "source_frame": 1,
+      "size": [
+        213,
+        261
+      ],
+      "hotspot": [
+        101,
+        134
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28554,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_02.png",
+      "style": "temperate",
+      "label": "tem 01:02",
+      "source_frame": 2,
+      "size": [
+        212,
+        261
+      ],
+      "hotspot": [
+        105,
+        127
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25727,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_02.png",
+      "style": "frost",
+      "label": "fro 01:02",
+      "source_frame": 2,
+      "size": [
+        212,
+        261
+      ],
+      "hotspot": [
+        105,
+        127
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25727,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_02.png",
+      "style": "volcanic",
+      "label": "vol 01:02",
+      "source_frame": 2,
+      "size": [
+        212,
+        261
+      ],
+      "hotspot": [
+        105,
+        127
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25727,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_03.png",
+      "style": "temperate",
+      "label": "tem 01:03",
+      "source_frame": 3,
+      "size": [
+        191,
+        275
+      ],
+      "hotspot": [
+        97,
+        149
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 26028,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_03.png",
+      "style": "frost",
+      "label": "fro 01:03",
+      "source_frame": 3,
+      "size": [
+        191,
+        275
+      ],
+      "hotspot": [
+        97,
+        149
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 26028,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_03.png",
+      "style": "volcanic",
+      "label": "vol 01:03",
+      "source_frame": 3,
+      "size": [
+        191,
+        275
+      ],
+      "hotspot": [
+        97,
+        149
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 26028,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_04.png",
+      "style": "temperate",
+      "label": "tem 01:04",
+      "source_frame": 4,
+      "size": [
+        542,
+        399
+      ],
+      "hotspot": [
+        201,
+        228
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28336,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_04.png",
+      "style": "frost",
+      "label": "fro 01:04",
+      "source_frame": 4,
+      "size": [
+        542,
+        399
+      ],
+      "hotspot": [
+        201,
+        228
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28336,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_04.png",
+      "style": "volcanic",
+      "label": "vol 01:04",
+      "source_frame": 4,
+      "size": [
+        542,
+        399
+      ],
+      "hotspot": [
+        201,
+        228
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28336,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_05.png",
+      "style": "temperate",
+      "label": "tem 01:05",
+      "source_frame": 5,
+      "size": [
+        542,
+        399
+      ],
+      "hotspot": [
+        283,
+        200
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25827,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_05.png",
+      "style": "frost",
+      "label": "fro 01:05",
+      "source_frame": 5,
+      "size": [
+        542,
+        399
+      ],
+      "hotspot": [
+        283,
+        200
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25827,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_05.png",
+      "style": "volcanic",
+      "label": "vol 01:05",
+      "source_frame": 5,
+      "size": [
+        542,
+        399
+      ],
+      "hotspot": [
+        283,
+        200
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25827,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_15.png",
+      "style": "temperate",
+      "label": "tem 01:15",
+      "source_frame": 15,
+      "size": [
+        214,
+        298
+      ],
+      "hotspot": [
+        72,
+        134
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28620,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_15.png",
+      "style": "frost",
+      "label": "fro 01:15",
+      "source_frame": 15,
+      "size": [
+        214,
+        298
+      ],
+      "hotspot": [
+        72,
+        134
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28620,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_15.png",
+      "style": "volcanic",
+      "label": "vol 01:15",
+      "source_frame": 15,
+      "size": [
+        214,
+        298
+      ],
+      "hotspot": [
+        72,
+        134
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 28620,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_16.png",
+      "style": "temperate",
+      "label": "tem 01:16",
+      "source_frame": 16,
+      "size": [
+        294,
+        293
+      ],
+      "hotspot": [
+        132,
+        139
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25804,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_16.png",
+      "style": "frost",
+      "label": "fro 01:16",
+      "source_frame": 16,
+      "size": [
+        294,
+        293
+      ],
+      "hotspot": [
+        132,
+        139
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25804,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_16.png",
+      "style": "volcanic",
+      "label": "vol 01:16",
+      "source_frame": 16,
+      "size": [
+        294,
+        293
+      ],
+      "hotspot": [
+        132,
+        139
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 25804,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_17.png",
+      "style": "temperate",
+      "label": "tem 01:17",
+      "source_frame": 17,
+      "size": [
+        293,
+        348
+      ],
+      "hotspot": [
+        179,
+        165
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 22497,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_17.png",
+      "style": "frost",
+      "label": "fro 01:17",
+      "source_frame": 17,
+      "size": [
+        293,
+        348
+      ],
+      "hotspot": [
+        179,
+        165
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 22497,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_17.png",
+      "style": "volcanic",
+      "label": "vol 01:17",
+      "source_frame": 17,
+      "size": [
+        293,
+        348
+      ],
+      "hotspot": [
+        179,
+        165
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 22497,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_18.png",
+      "style": "temperate",
+      "label": "tem 01:18",
+      "source_frame": 18,
+      "size": [
+        294,
+        309
+      ],
+      "hotspot": [
+        155,
+        166
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 20964,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_18.png",
+      "style": "frost",
+      "label": "fro 01:18",
+      "source_frame": 18,
+      "size": [
+        294,
+        309
+      ],
+      "hotspot": [
+        155,
+        166
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 20964,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_18.png",
+      "style": "volcanic",
+      "label": "vol 01:18",
+      "source_frame": 18,
+      "size": [
+        294,
+        309
+      ],
+      "hotspot": [
+        155,
+        166
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 20964,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_19.png",
+      "style": "temperate",
+      "label": "tem 01:19",
+      "source_frame": 19,
+      "size": [
+        270,
+        285
+      ],
+      "hotspot": [
+        136,
+        140
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 27050,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_19.png",
+      "style": "frost",
+      "label": "fro 01:19",
+      "source_frame": 19,
+      "size": [
+        270,
+        285
+      ],
+      "hotspot": [
+        136,
+        140
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 27050,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_19.png",
+      "style": "volcanic",
+      "label": "vol 01:19",
+      "source_frame": 19,
+      "size": [
+        270,
+        285
+      ],
+      "hotspot": [
+        136,
+        140
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 27050,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "temperate/clf01_nn/frame_24.png",
+      "style": "temperate",
+      "label": "tem 01:24",
+      "source_frame": 24,
+      "size": [
+        283,
+        138
+      ],
+      "hotspot": [
+        142,
+        68
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 18093,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "frost/clf01_nn/frame_24.png",
+      "style": "frost",
+      "label": "fro 01:24",
+      "source_frame": 24,
+      "size": [
+        283,
+        138
+      ],
+      "hotspot": [
+        142,
+        68
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 18093,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf01_nn.slp",
+      "output": "volcanic/clf01_nn/frame_24.png",
+      "style": "volcanic",
+      "label": "vol 01:24",
+      "source_frame": 24,
+      "size": [
+        283,
+        138
+      ],
+      "hotspot": [
+        142,
+        68
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 18093,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "temperate/clf02_nn/frame_07.png",
+      "style": "temperate",
+      "label": "tem 02:07",
+      "source_frame": 7,
+      "size": [
+        330,
+        719
+      ],
+      "hotspot": [
+        246,
+        665
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5602,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "frost/clf02_nn/frame_07.png",
+      "style": "frost",
+      "label": "fro 02:07",
+      "source_frame": 7,
+      "size": [
+        330,
+        719
+      ],
+      "hotspot": [
+        246,
+        665
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5602,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "volcanic/clf02_nn/frame_07.png",
+      "style": "volcanic",
+      "label": "vol 02:07",
+      "source_frame": 7,
+      "size": [
+        330,
+        719
+      ],
+      "hotspot": [
+        246,
+        665
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5602,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "temperate/clf02_nn/frame_08.png",
+      "style": "temperate",
+      "label": "tem 02:08",
+      "source_frame": 8,
+      "size": [
+        179,
+        92
+      ],
+      "hotspot": [
+        86,
+        38
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 4417,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "frost/clf02_nn/frame_08.png",
+      "style": "frost",
+      "label": "fro 02:08",
+      "source_frame": 8,
+      "size": [
+        179,
+        92
+      ],
+      "hotspot": [
+        86,
+        38
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 4417,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "volcanic/clf02_nn/frame_08.png",
+      "style": "volcanic",
+      "label": "vol 02:08",
+      "source_frame": 8,
+      "size": [
+        179,
+        92
+      ],
+      "hotspot": [
+        86,
+        38
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 4417,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "temperate/clf02_nn/frame_22.png",
+      "style": "temperate",
+      "label": "tem 02:22",
+      "source_frame": 22,
+      "size": [
+        154,
+        91
+      ],
+      "hotspot": [
+        78,
+        44
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 6468,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "frost/clf02_nn/frame_22.png",
+      "style": "frost",
+      "label": "fro 02:22",
+      "source_frame": 22,
+      "size": [
+        154,
+        91
+      ],
+      "hotspot": [
+        78,
+        44
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 6468,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "volcanic/clf02_nn/frame_22.png",
+      "style": "volcanic",
+      "label": "vol 02:22",
+      "source_frame": 22,
+      "size": [
+        154,
+        91
+      ],
+      "hotspot": [
+        78,
+        44
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 6468,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "temperate/clf02_nn/frame_23.png",
+      "style": "temperate",
+      "label": "tem 02:23",
+      "source_frame": 23,
+      "size": [
+        143,
+        87
+      ],
+      "hotspot": [
+        71,
+        44
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5225,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "frost/clf02_nn/frame_23.png",
+      "style": "frost",
+      "label": "fro 02:23",
+      "source_frame": 23,
+      "size": [
+        143,
+        87
+      ],
+      "hotspot": [
+        71,
+        44
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5225,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf02_nn.slp",
+      "output": "volcanic/clf02_nn/frame_23.png",
+      "style": "volcanic",
+      "label": "vol 02:23",
+      "source_frame": 23,
+      "size": [
+        143,
+        87
+      ],
+      "hotspot": [
+        71,
+        44
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5225,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "temperate/clf03_nn/frame_10.png",
+      "style": "temperate",
+      "label": "tem 03:10",
+      "source_frame": 10,
+      "size": [
+        175,
+        98
+      ],
+      "hotspot": [
+        86,
+        57
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5813,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "frost/clf03_nn/frame_10.png",
+      "style": "frost",
+      "label": "fro 03:10",
+      "source_frame": 10,
+      "size": [
+        175,
+        98
+      ],
+      "hotspot": [
+        86,
+        57
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5813,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "volcanic/clf03_nn/frame_10.png",
+      "style": "volcanic",
+      "label": "vol 03:10",
+      "source_frame": 10,
+      "size": [
+        175,
+        98
+      ],
+      "hotspot": [
+        86,
+        57
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5813,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "temperate/clf03_nn/frame_11.png",
+      "style": "temperate",
+      "label": "tem 03:11",
+      "source_frame": 11,
+      "size": [
+        174,
+        97
+      ],
+      "hotspot": [
+        80,
+        53
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5472,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "frost/clf03_nn/frame_11.png",
+      "style": "frost",
+      "label": "fro 03:11",
+      "source_frame": 11,
+      "size": [
+        174,
+        97
+      ],
+      "hotspot": [
+        80,
+        53
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5472,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "volcanic/clf03_nn/frame_11.png",
+      "style": "volcanic",
+      "label": "vol 03:11",
+      "source_frame": 11,
+      "size": [
+        174,
+        97
+      ],
+      "hotspot": [
+        80,
+        53
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 5472,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "temperate/clf03_nn/frame_20.png",
+      "style": "temperate",
+      "label": "tem 03:20",
+      "source_frame": 20,
+      "size": [
+        147,
+        77
+      ],
+      "hotspot": [
+        75,
+        46
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 3171,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "frost/clf03_nn/frame_20.png",
+      "style": "frost",
+      "label": "fro 03:20",
+      "source_frame": 20,
+      "size": [
+        147,
+        77
+      ],
+      "hotspot": [
+        75,
+        46
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 3171,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "volcanic/clf03_nn/frame_20.png",
+      "style": "volcanic",
+      "label": "vol 03:20",
+      "source_frame": 20,
+      "size": [
+        147,
+        77
+      ],
+      "hotspot": [
+        75,
+        46
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 3171,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "temperate/clf03_nn/frame_21.png",
+      "style": "temperate",
+      "label": "tem 03:21",
+      "source_frame": 21,
+      "size": [
+        175,
+        74
+      ],
+      "hotspot": [
+        84,
+        43
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 4970,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "frost/clf03_nn/frame_21.png",
+      "style": "frost",
+      "label": "fro 03:21",
+      "source_frame": 21,
+      "size": [
+        175,
+        74
+      ],
+      "hotspot": [
+        84,
+        43
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 4970,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf03_nn.slp",
+      "output": "volcanic/clf03_nn/frame_21.png",
+      "style": "volcanic",
+      "label": "vol 03:21",
+      "source_frame": 21,
+      "size": [
+        175,
+        74
+      ],
+      "hotspot": [
+        84,
+        43
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 4970,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf04_nn.slp",
+      "output": "temperate/clf04_nn/frame_12.png",
+      "style": "temperate",
+      "label": "tem 04:12",
+      "source_frame": 12,
+      "size": [
+        248,
+        221
+      ],
+      "hotspot": [
+        107,
+        152
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 22245,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf04_nn.slp",
+      "output": "frost/clf04_nn/frame_12.png",
+      "style": "frost",
+      "label": "fro 04:12",
+      "source_frame": 12,
+      "size": [
+        248,
+        221
+      ],
+      "hotspot": [
+        107,
+        152
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 22245,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf04_nn.slp",
+      "output": "volcanic/clf04_nn/frame_12.png",
+      "style": "volcanic",
+      "label": "vol 04:12",
+      "source_frame": 12,
+      "size": [
+        248,
+        221
+      ],
+      "hotspot": [
+        107,
+        152
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 22245,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf05_nn.slp",
+      "output": "temperate/clf05_nn/frame_06.png",
+      "style": "temperate",
+      "label": "tem 05:06",
+      "source_frame": 6,
+      "size": [
+        510,
+        397
+      ],
+      "hotspot": [
+        281,
+        185
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 12355,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf05_nn.slp",
+      "output": "frost/clf05_nn/frame_06.png",
+      "style": "frost",
+      "label": "fro 05:06",
+      "source_frame": 6,
+      "size": [
+        510,
+        397
+      ],
+      "hotspot": [
+        281,
+        185
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 12355,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf05_nn.slp",
+      "output": "volcanic/clf05_nn/frame_06.png",
+      "style": "volcanic",
+      "label": "vol 05:06",
+      "source_frame": 6,
+      "size": [
+        510,
+        397
+      ],
+      "hotspot": [
+        281,
+        185
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 12355,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf06_nn.slp",
+      "output": "temperate/clf06_nn/frame_14.png",
+      "style": "temperate",
+      "label": "tem 06:14",
+      "source_frame": 14,
+      "size": [
+        214,
+        298
+      ],
+      "hotspot": [
+        100,
+        188
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 21960,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf06_nn.slp",
+      "output": "frost/clf06_nn/frame_14.png",
+      "style": "frost",
+      "label": "fro 06:14",
+      "source_frame": 14,
+      "size": [
+        214,
+        298
+      ],
+      "hotspot": [
+        100,
+        188
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 21960,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf06_nn.slp",
+      "output": "volcanic/clf06_nn/frame_14.png",
+      "style": "volcanic",
+      "label": "vol 06:14",
+      "source_frame": 14,
+      "size": [
+        214,
+        298
+      ],
+      "hotspot": [
+        100,
+        188
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 21960,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf07_nn.slp",
+      "output": "temperate/clf07_nn/frame_00.png",
+      "style": "temperate",
+      "label": "tem 07:00",
+      "source_frame": 0,
+      "size": [
+        510,
+        397
+      ],
+      "hotspot": [
+        197,
+        180
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 15166,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf07_nn.slp",
+      "output": "frost/clf07_nn/frame_00.png",
+      "style": "frost",
+      "label": "fro 07:00",
+      "source_frame": 0,
+      "size": [
+        510,
+        397
+      ],
+      "hotspot": [
+        197,
+        180
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 15166,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf07_nn.slp",
+      "output": "volcanic/clf07_nn/frame_00.png",
+      "style": "volcanic",
+      "label": "vol 07:00",
+      "source_frame": 0,
+      "size": [
+        510,
+        397
+      ],
+      "hotspot": [
+        197,
+        180
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 15166,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf08_nn.slp",
+      "output": "temperate/clf08_nn/frame_13.png",
+      "style": "temperate",
+      "label": "tem 08:13",
+      "source_frame": 13,
+      "size": [
+        201,
+        90
+      ],
+      "hotspot": [
+        112,
+        55
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 8604,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf08_nn.slp",
+      "output": "frost/clf08_nn/frame_13.png",
+      "style": "frost",
+      "label": "fro 08:13",
+      "source_frame": 13,
+      "size": [
+        201,
+        90
+      ],
+      "hotspot": [
+        112,
+        55
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 8604,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf08_nn.slp",
+      "output": "volcanic/clf08_nn/frame_13.png",
+      "style": "volcanic",
+      "label": "vol 08:13",
+      "source_frame": 13,
+      "size": [
+        201,
+        90
+      ],
+      "hotspot": [
+        112,
+        55
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 8604,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf09_nn.slp",
+      "output": "temperate/clf09_nn/frame_09.png",
+      "style": "temperate",
+      "label": "tem 09:09",
+      "source_frame": 9,
+      "size": [
+        161,
+        89
+      ],
+      "hotspot": [
+        78,
+        36
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 7159,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf09_nn.slp",
+      "output": "frost/clf09_nn/frame_09.png",
+      "style": "frost",
+      "label": "fro 09:09",
+      "source_frame": 9,
+      "size": [
+        161,
+        89
+      ],
+      "hotspot": [
+        78,
+        36
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 7159,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf09_nn.slp",
+      "output": "volcanic/clf09_nn/frame_09.png",
+      "style": "volcanic",
+      "label": "vol 09:09",
+      "source_frame": 9,
+      "size": [
+        161,
+        89
+      ],
+      "hotspot": [
+        78,
+        36
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 7159,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf10_nn.slp",
+      "output": "temperate/clf10_nn/frame_00.png",
+      "style": "temperate",
+      "label": "tem 10:00",
+      "source_frame": 0,
+      "size": [
+        154,
+        79
+      ],
+      "hotspot": [
+        96,
+        32
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 3750,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf10_nn.slp",
+      "output": "frost/clf10_nn/frame_00.png",
+      "style": "frost",
+      "label": "fro 10:00",
+      "source_frame": 0,
+      "size": [
+        154,
+        79
+      ],
+      "hotspot": [
+        96,
+        32
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 3750,
+      "magenta": 0
+    },
+    {
+      "source": "D:/Steam/steamapps/common/Age2HD/resources/_common/slp/clf10_nn.slp",
+      "output": "volcanic/clf10_nn/frame_00.png",
+      "style": "volcanic",
+      "label": "vol 10:00",
+      "source_frame": 0,
+      "size": [
+        154,
+        79
+      ],
+      "hotspot": [
+        96,
+        32
+      ],
+      "anchor": "source hotspot; use this as the world placement origin",
+      "alpha_pixels": 3750,
+      "magenta": 0
+    }
+  ],
+  "preview": "E:\\Jeux\\SCPS\\godot\\asset\\monde\\falaises_age2\\_review.png"
+}

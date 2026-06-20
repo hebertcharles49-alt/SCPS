@@ -3,8 +3,8 @@ extends Node2D
 ## MapView (cf. godot/ASSETS_ISO.md §3). Pas de « système climatique » : les tuiles sont des
 ## VARIATIONS de terrain, fusionnées (alpha) sur le blend biome-couleur — le blend derrière dissout
 ## le clash entre tuiles voisines (sinon : bruit). L'EAU reste au procédural (le blend FAIT la mer
-## + les côtes). Les cellules de FALAISE (rupture de relief) sont assombries = barrière inhabitable
-## (façon Age of Empires).
+## + les côtes). Les cellules de FALAISE (rupture de relief) reçoivent un ESCARPEMENT (sprite iso
+## ancré par hotspot, style par biome) = barrière de relief (façon Age of Empires).
 ##
 ## Display-only. Dessiné en espace ISO (la Camera2D fait pan/zoom) ; rendu UNE FOIS au générate
 ## (biomes ~statiques post-worldgen ; re-dessin sur cataclysme §27). YSort par profondeur (col+row).
@@ -31,6 +31,8 @@ const BIOME_BRIGHT := [
 var _mv: Node2D = null
 var _active := false
 var _shaded := false        ## le shader de fondu directionnel (rivage) est monté
+var _cliffs := {}           ## style → Array de {rel, hot:Vector2, size:Vector2} (index.json)
+var _cliffs_loaded := false
 
 func _ready() -> void:
 	Sim.generated.connect(_on_generated)
@@ -119,9 +121,9 @@ func _draw() -> void:
 				_tile_biome(bio, col, row + 1, nx, ny, W, H),
 				_tile_biome(bio, col - 1, row, nx, ny, W, H)]
 			# BASE pleine (EAU comprise) ; tout le bord vient du DÉBORDEMENT des voisins prioritaires
-			var darken := 0.42 if (b > 2 and _is_cliff(hgt, cx, cy, W, H)) else 1.0   # falaise = barrière
+			var is_cliff := b > 2 and _is_cliff(hgt, cx, cy, W, H)   # rupture de relief → escarpement posé
 			var bright: float = BIOME_BRIGHT[b] if b < BIOME_BRIGHT.size() else 1.0   # homogénéise le contraste
-			draw_texture_rect(tex, rect, false, Color(0.0, darken * bright, 0.0, 1.0))
+			draw_texture_rect(tex, rect, false, Color(0.0, bright, 0.0, 1.0))
 			# DÉBORDEMENT : voisin plus PRIORITAIRE mord sur la tuile (la TERRE déborde sur l'EAU = rivage)
 			var pb: int = PRIO[b] if b < PRIO.size() else 0
 			var spill := {}
@@ -134,6 +136,8 @@ func _draw() -> void:
 				if ntex != null:
 					var ng: float = BIOME_BRIGHT[n] if n < BIOME_BRIGHT.size() else 1.0
 					draw_texture_rect(ntex, rect, false, Color(float(spill[n]) / 15.0, ng, 1.0, 1.0))
+			if is_cliff:
+				_draw_cliff(b, ip, sc, vh)   # escarpement par-dessus (profondeur OK : on est dans la passe YSort)
 
 ## rupture de relief : gradient de hauteur vers un 4-voisin (à TILE_K) au-dessus du seuil.
 func _is_cliff(hgt: Image, x: int, y: int, W: int, H: int) -> bool:
@@ -143,3 +147,45 @@ func _is_cliff(hgt: Image, x: int, y: int, W: int, H: int) -> bool:
 	g = maxf(g, absf(h0 - hgt.get_pixel(x, mini(y + TILE_K, H - 1)).r))
 	g = maxf(g, absf(h0 - hgt.get_pixel(x, maxi(y - TILE_K, 0)).r))
 	return g * 255.0 >= float(CLIFF_GRAD)
+
+## charge l'index des escarpements (une fois) → listes par style avec hotspot (origine monde) + taille.
+func _load_cliffs() -> void:
+	_cliffs_loaded = true
+	for s in ["temperate", "frost", "volcanic"]:
+		_cliffs[s] = []
+	var path := "res://assets/scps/pack/iso_tiles/cliffs/index.json"
+	if not FileAccess.file_exists(path):
+		return
+	var d = JSON.parse_string(FileAccess.open(path, FileAccess.READ).get_as_text())
+	if typeof(d) != TYPE_DICTIONARY:
+		return
+	for e in d.get("entries", []):
+		var st: String = e.get("style", "temperate")
+		if not _cliffs.has(st):
+			_cliffs[st] = []
+		_cliffs[st].append({
+			"rel": String(e["output"]),
+			"hot": Vector2(e["hotspot"][0], e["hotspot"][1]),
+			"size": Vector2(e["size"][0], e["size"][1])})
+
+## escarpement isométrique à la cellule de falaise : sprite ancré par hotspot, largeur ≈ 1.4 tuile,
+## style choisi par biome (neige→frost, volcan→volcanic, sinon temperate), variante par hash.
+func _draw_cliff(biome: int, ip: Vector2, sc: float, vh: int) -> void:
+	if not _cliffs_loaded:
+		_load_cliffs()
+	var st := "temperate"
+	if biome == 19 or biome == 20:
+		st = "frost"
+	elif biome == 23:
+		st = "volcanic"
+	var lst: Array = _cliffs.get(st, [])
+	if lst.is_empty():
+		return
+	var c: Dictionary = lst[abs(vh) % lst.size()]
+	var ctex := UIKit.cliff_tex(c["rel"])
+	if ctex == null:
+		return
+	var sz: Vector2 = c["size"]
+	var cs := 1.4 * float(UIKit.ISO_TILE_W) * sc / maxf(sz.x, 1.0)   # normalise la largeur (~1.4 tuile)
+	# COLOR=(0, 1.15, 0, 1) → passe BASE du shader (cfg=0 ⇒ pas de fondu, alpha intact) + léger relèvement
+	draw_texture_rect(ctex, Rect2(ip - (c["hot"] as Vector2) * cs, sz * cs), false, Color(0.0, 1.15, 0.0, 1.0))

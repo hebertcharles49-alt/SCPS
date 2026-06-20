@@ -242,6 +242,11 @@ static func has_iso_tiles() -> bool:
 static func blend_noise() -> Texture2D:
 	return _tex(ISO_TILES_DIR + "blend_noise.png")
 
+## sprite de falaise (escarpement iso) ; `rel` = chemin relatif depuis cliffs/ (cf. index.json).
+const CLIFFS_DIR := "res://assets/scps/pack/iso_tiles/cliffs/"
+static func cliff_tex(rel: String) -> Texture2D:
+	return _tex(CLIFFS_DIR + rel)
+
 # ── (SECONDAIRE) palette super_biomes — grandes planches de VARIATION, pioche par cellule. ───────
 const SUPER_GRID := 10                       ## super_biomes_01 = PALETTE de 100 tuiles découpées
 ## cellules EAU de la palette (à exclure du tirage TERRE) — repérées sur la planche (r*10+c).
