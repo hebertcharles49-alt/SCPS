@@ -19,6 +19,14 @@ const CLIFF_GRAD := 40         ## gradient de hauteur (/255) = falaise (monde bi
 ## Eau basse · sable · herbe · aride · forêt · relief · neige · roche nue. Réglage maison.
 const PRIO := [0, 0, 0, 5, 8, 9, 8, 6, 6, 11, 12, 11, 16, 16, 17, 10,
 	17, 15, 20, 22, 24, 13, 13, 25, 26]
+## NORMALISATION DE LUMINANCE par biome (anti-« trop sombre » + contrastes homogénéisés) : relève
+## les sombres (eau, forêt) et calme les clairs (sable, neige) vers une cible commune. Appliqué en
+## modulate (COLOR.g) → multiplie la texture. Mesuré hors-ligne sur les variantes 0.
+const BIOME_BRIGHT := [
+	1.38, 1.27, 1.36, 0.85, 1.11, 1.53, 1.08, 0.99,
+	1.18, 0.96, 0.91, 1.01, 1.53, 1.53, 1.14, 1.21,
+	1.08, 1.14, 1.16, 0.75, 0.79, 1.21, 1.10, 1.16, 1.53,
+]
 
 var _mv: Node2D = null
 var _active := false
@@ -112,7 +120,8 @@ func _draw() -> void:
 				_tile_biome(bio, col - 1, row, nx, ny, W, H)]
 			# BASE pleine (EAU comprise) ; tout le bord vient du DÉBORDEMENT des voisins prioritaires
 			var darken := 0.42 if (b > 2 and _is_cliff(hgt, cx, cy, W, H)) else 1.0   # falaise = barrière
-			draw_texture_rect(tex, rect, false, Color(0.0, darken, 0.0, 1.0))
+			var bright: float = BIOME_BRIGHT[b] if b < BIOME_BRIGHT.size() else 1.0   # homogénéise le contraste
+			draw_texture_rect(tex, rect, false, Color(0.0, darken * bright, 0.0, 1.0))
 			# DÉBORDEMENT : voisin plus PRIORITAIRE mord sur la tuile (la TERRE déborde sur l'EAU = rivage)
 			var pb: int = PRIO[b] if b < PRIO.size() else 0
 			var spill := {}
@@ -123,7 +132,8 @@ func _draw() -> void:
 			for n in spill:
 				var ntex := UIKit.biome_variant(n, vh + n * 7)
 				if ntex != null:
-					draw_texture_rect(ntex, rect, false, Color(float(spill[n]) / 15.0, 1.0, 1.0, 1.0))
+					var ng: float = BIOME_BRIGHT[n] if n < BIOME_BRIGHT.size() else 1.0
+					draw_texture_rect(ntex, rect, false, Color(float(spill[n]) / 15.0, ng, 1.0, 1.0))
 
 ## rupture de relief : gradient de hauteur vers un 4-voisin (à TILE_K) au-dessus du seuil.
 func _is_cliff(hgt: Image, x: int, y: int, W: int, H: int) -> bool:
