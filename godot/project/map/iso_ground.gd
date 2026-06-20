@@ -104,9 +104,9 @@ func _draw() -> void:
 			if _tile_biome(bio, col, row + 1, nx, ny, W, H) <= 2: wm |= 4   # SW
 			if _tile_biome(bio, col - 1, row, nx, ny, W, H) <= 2: wm |= 8   # NW
 			var mod := Color(float(wm) / 15.0, darken, 0.0, 1.0)            # r=eau voisine · g=assombri
+			# placement ABSOLU (pas de draw_set_transform) → VERTEX = iso continu pour le bruit du shader
 			var ip: Vector2 = mv.iso_pos(float(cx), float(cy))
-			draw_set_transform(ip, 0.0, Vector2(sc, sc))
-			draw_texture(tex, -half, mod)
+			draw_texture_rect(tex, Rect2(ip - half * sc, half * (2.0 * sc)), false, mod)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## rupture de relief : gradient de hauteur vers un 4-voisin (à TILE_K) au-dessus du seuil.
