@@ -533,12 +533,17 @@ func _augment_roads(w) -> void:
 		var ra: int = w.province_region(w.province_at(int(pts[0].x), int(pts[0].y)))
 		var rb: int = w.province_region(w.province_at(int(pts[pts.size() - 1].x), int(pts[pts.size() - 1].y)))
 		rd["key"] = (mini(ra, rb) & 0xfff) * 4096 + (maxi(ra, rb) & 0xfff)
-		# les EXTRÉMITÉS rejoignent l'ASSISE des villes (base du sprite) → la route entre par
-		# le BAS de l'asset (le centre, ancré au pied, couvre ce qui passe derrière par le haut).
-		if _region_anchor.has(ra):
-			pts[0] = _region_anchor[ra]
-		if _region_anchor.has(rb):
-			pts[pts.size() - 1] = _region_anchor[rb]
+		# ORIENTATION OFFICIELLE : les extrémités rejoignent le SOMMET BAS de la tuile de la ville
+		# (tile_anchor_world) — EXACTEMENT le point où le centre-ville branche sa propre route. La
+		# route entre donc par le bas du losange (le centre, ancré là, couvre l'arrière par le haut).
+		var mv := _mv_ref()
+		if mv != null and mv.has_method("tile_anchor_world"):
+			if _region_anchor.has(ra):
+				var a0: Vector2 = _region_anchor[ra]
+				pts[0] = mv.tile_anchor_world(a0.x, a0.y)
+			if _region_anchor.has(rb):
+				var a1: Vector2 = _region_anchor[rb]
+				pts[pts.size() - 1] = mv.tile_anchor_world(a1.x, a1.y)
 		rd["points"] = pts
 
 ## portion BÂTIE d'un tracé (du départ, par longueur) — `frac` ∈ [0,1] → croissance organique.
@@ -887,8 +892,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))
 			if ctr.x < 0:
 				continue
-			var ip: Vector2 = mv.iso_pos(ctr.x, ctr.y)
-			props.append({"d": ctr.x + ctr.y, "city": r, "sp": ip})
+			# le centre-ville s'ANCRE au SOMMET BAS de sa tuile (même point que l'entrée de route).
+			var aw: Vector2 = ctr
+			if mv.has_method("tile_anchor_world"):
+				aw = mv.tile_anchor_world(ctr.x, ctr.y)
+			props.append({"d": aw.x + aw.y, "city": r, "sp": mv.iso_pos(aw.x, aw.y)})
 		props.sort_custom(func(a, b): return a["d"] < b["d"])   # arrière (nord) → avant (sud), profondeur iso
 		for prp in props:
 			if prp["city"] < 0:
