@@ -194,8 +194,12 @@ static func army_token(nm: String) -> Texture2D:
 ## sprite de RIVIÈRE droit (RIVER_HORIZONTAL, coule en X → tourné le long du fil par
 ## l'angle de la façade) ; null si absent.
 const RIVERS_DIR := "res://assets/scps/pack/rivers/"
+## segment de rivière DROIT (tourné le long du fil) — l'eau traverse le losange W↔E, centrée.
 static func river_sprite() -> Texture2D:
-	return _tex(RIVERS_DIR + "RIVER_HORIZONTAL.png")
+	return _tex(RIVERS_DIR + "RIVER_EW.png")
+## ÉLARGISSEMENT (delta) posé aux EMBOUCHURES — là où le fil rejoint la mer.
+static func river_mouth_sprite() -> Texture2D:
+	return _tex(RIVERS_DIR + "RIVER_WIDENING.png")
 
 # ── SOL ISO (cf. godot/ASSETS_ISO.md) : UNE tuile PROPRE par BIOME (256×128) dans
 #    pack/iso_tiles/biomes/<clé>.png. Le renderer peint la tuile du biome de la cellule PAR-DESSUS

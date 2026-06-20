@@ -41,6 +41,7 @@ var _road_start := {}     ## clé de route → ANNÉE de début de chantier (cro
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
 var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
+var _river_wide := PackedByteArray()   ## 1 = EMBOUCHURE (point adjacent à la mer) → tuile élargie
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
 
 const RIVER_ZOOM_MIN := 2.0   ## rivières (zoom ISO)
@@ -79,7 +80,7 @@ func _ready() -> void:
 	Sim.ticked.connect(_on_tick)
 	Sim.generated.connect(_on_generated)
 	if Sim.world != null:
-		_rivers = Sim.world.river_points()
+		_set_rivers()
 		_build_names()
 		_build_anchors()
 		_ensure_roads(Sim.world.year() > 0)   # monde mûr (save chargée) ⇒ routes déjà bâties
@@ -98,7 +99,7 @@ func _build_names() -> void:
 		_country_names.append(String(info.get("nom", "")))
 
 func _on_generated() -> void:
-	_rivers = Sim.world.river_points()
+	_set_rivers()
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
@@ -110,6 +111,37 @@ func _on_generated() -> void:
 	_build_structures()         # le bourg en spirale ÉVITE les routes
 	_build_city_skins()
 	queue_redraw()
+
+## lit le fil de rivière (façade) PUIS marque les points d'EMBOUCHURE (adjacents à la mer ouverte)
+## → tuile élargie au delta. Calculé 1× au générate, comme le reste du fil.
+func _set_rivers() -> void:
+	_rivers = Sim.world.river_points()
+	_compute_river_mouths()
+
+func _compute_river_mouths() -> void:
+	_river_wide = PackedByteArray()
+	_river_wide.resize(_rivers.size())
+	var w = Sim.world
+	if w == null:
+		return
+	var bio: Image = w.layer_image(2)        # BIOME : ≤2 = grande eau (mer/lac : deep/ocean/shallow)
+	if bio == null:
+		return
+	var W := int(w.map_w())
+	var H := int(w.map_h())
+	# le fil s'arrête à quelques cellules de l'eau → rayon large pour saisir l'embouchure/delta
+	const OFF := [Vector2i(5, 0), Vector2i(-5, 0), Vector2i(0, 5), Vector2i(0, -5),
+		Vector2i(4, 4), Vector2i(-4, 4), Vector2i(4, -4), Vector2i(-4, -4)]
+	for i in range(_rivers.size()):
+		var p: Vector3 = _rivers[i]
+		var wide := 0
+		for d in OFF:
+			var x := clampi(int(p.x) + d.x, 0, W - 1)
+			var y := clampi(int(p.y) + d.y, 0, H - 1)
+			if int(bio.get_pixel(x, y).r * 255.0 + 0.5) <= 2:   # grande eau proche → embouchure
+				wide = 1
+				break
+		_river_wide[i] = wide
 
 ## pré-calcule la variante de ville TERRAIN de chaque région colonisée (échantillon
 ## du biome au centroïde ; l'hydro via le groupe de settlement) — pour les petits bourgs.
@@ -798,19 +830,23 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
 
-	# ── RIVIÈRES ──
+	# ── RIVIÈRES : segment droit tourné le long du fil ; ÉLARGI aux embouchures (delta) ──
 	if zoom >= RIVER_ZOOM_MIN and not _rivers.is_empty():
 		var rtex := UIKit.river_sprite()
 		if rtex != null:
+			var wtex := UIKit.river_mouth_sprite()
 			var sc := 3.2 / float(rtex.get_width())
 			var half := rtex.get_size() * 0.5
-			for p in _rivers:                            # Vector3(x, y, ang)
+			var whalf := (wtex.get_size() * 0.5) if wtex != null else half
+			for i in range(_rivers.size()):
+				var p: Vector3 = _rivers[i]
 				var ip: Vector2 = mv.iso_pos(p.x, p.y)
 				var ss: Vector2 = vt * ip
 				if ss.x < -40 or ss.y < -40 or ss.x > vp.x + 40 or ss.y > vp.y + 40:
 					continue
+				var mouth: bool = wtex != null and i < _river_wide.size() and _river_wide[i] == 1
 				draw_set_transform(ip, p.z + RIVER_CAL, Vector2(sc, sc))
-				draw_texture(rtex, -half)
+				draw_texture(wtex if mouth else rtex, -(whalf if mouth else half))
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ── DRESSING : arbres/forêts (DERRIÈRE les villes), cullés au viewport ──
