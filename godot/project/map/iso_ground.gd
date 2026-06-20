@@ -129,8 +129,12 @@ func _draw() -> void:
 			var order := []
 			for k in range(4):
 				var n: int = nb[k]
-				if n >= 0 and n != b:
-					order.append([PRIO[n] if n < PRIO.size() else 0, k, n])
+				if n < 0 or n == b:
+					continue
+				var sb: int = n                       # biome qui DÉBORDE sur cette arête
+				if (b <= 2) != (n <= 2):              # frontière TERRE↔MER → SHORELINE
+					sb = 3                            # terre > SABLE > mer : le sable des DEUX côtés du bord
+				order.append([PRIO[sb] if sb < PRIO.size() else 0, k, sb])
 			order.sort_custom(func(a, c): return a[0] < c[0])   # priorité croissante → dominant en dernier
 			for e in order:
 				var ntex := UIKit.biome_variant(int(e[2]), 0)
