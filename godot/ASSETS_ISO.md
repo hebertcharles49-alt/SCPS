@@ -92,16 +92,18 @@ plaine · roche plate · marais/tourbe · plage · crique · presqu'île · estu
   2. `super_biomes_01` couvre **UNE zone climatique** (tempéré-froid côtier ; ni désert, ni
      jungle…). Le suffixe `_NN` ⇒ d'autres jeux par climat (désert, tropical, aride…). Le monde
      est rendu en mappant **biome → zone climatique → jeu `super_biomes_NN`**.
-- **Recette de rendu RETENUE (prouvée)** — pour chaque zone :
-  1. repérer dans le champ la **sous-région de TERRE pure** (p.ex. `super_biomes_01` : colonnes
-     3-7, toutes lignes = terre) → **tuilée en CONTIGU sur la terre du monde** (continuité gardée,
-     zéro bave d'eau) ;
-  2. les tuiles **EAU / plage** du champ → posées **aux VRAIES côtes du monde** (`SCPS_LAYER_BIOME`
-     ≤ 3) → le littoral suit la carte générée, pas la mer interne du canevas ;
-  3. **falaises** (§3b) → face de `canevas_falaises` + assombrissement = barrière inhabitable.
-- **Anti-répétition** : la bande de terre se répète ⇒ fournis **plusieurs `super_biomes_NN`** par
-  climat et/ou j'ajoute **rotation/miroir/jitter** de crop. Côtes un peu *speckle* ⇒ à lisser
-  (overlay côtier des familles `canevas_monde`/`cote_inversee`).
+- ⚠ **Les `super_biomes` sont des palettes-EXEMPLE** : on n'en stampe **JAMAIS** la disposition.
+  On se sert des **tuiles découpées** comme une **PALETTE de variation** (pas de « système
+  climatique » — juste des lots de couleurs à fondre). Recette RETENUE :
+  1. **blend DERRIÈRE** = le sol procédural (mélange biome-couleur lissé) — il fait la mer, les
+     côtes et la teinte ;
+  2. **terre** : on **PIOCHE** une tuile de terre de la palette **par cellule** (variation),
+     **fusionnée (alpha) sur le blend** → le blend dissout le clash entre voisines (sans lui, le
+     placement par tuile = BRUIT, prouvé) ;
+  3. **falaises** (§3b) → assombries = **barrière inhabitable**.
+- **Anti-répétition / climats** : fournis **plusieurs lots** (`super_biomes_02…`, autres
+  couleurs/terrains) — je les ajoute à la palette ; option **rotation/miroir/jitter** au tirage.
+  Côtes *speckle* ⇒ à lisser via overlay côtier (`canevas_monde`/`cote_inversee`).
 
 ---
 

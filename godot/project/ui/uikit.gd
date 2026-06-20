@@ -197,48 +197,58 @@ const RIVERS_DIR := "res://assets/scps/pack/rivers/"
 static func river_sprite() -> Texture2D:
 	return _tex(RIVERS_DIR + "RIVER_HORIZONTAL.png")
 
-# ── TUILES ISO de terrain (cf. godot/ASSETS_ISO.md) : un atlas 4×4 (16 tuiles dual-grid de
-#    256×128) par biome, dans pack/iso_tiles/<clé>.png. La clé suit l'INDEX moteur Biome. ───────
+# ── SOL ISO : canevas continus « super_biomes » (cf. godot/ASSETS_ISO.md). Un grand champ de
+#    paysage (atlas N×N de tuiles 256×128) dans pack/iso_tiles/super_biomes_NN.png. On peint le
+#    monde par cellule AVEC un blend derrière (pas de système climatique) : les tuiles = variations.
 const ISO_TILES_DIR := "res://assets/scps/pack/iso_tiles/"
 const ISO_TILE_W := 256
 const ISO_TILE_H := 128
-## clés ALIGNÉES sur l'enum Biome de scps_types.h (index = valeur moteur ; couche SCPS_LAYER_BIOME).
-const BIOME_KEYS := [
-	"deep_ocean", "ocean", "shallow", "coast", "plains", "farmland", "grassland",
-	"steppe", "savanna", "drylands", "desert", "coastal_desert", "forest", "woods",
-	"jungle", "marsh", "highlands", "hills", "mountains", "peak", "glacier",
-	"mangrove", "bog", "volcano", "thorns",
-]
+const SUPER_GRID := 10                       ## super_biomes_01 = PALETTE de 100 tuiles découpées
+## cellules EAU de la palette (à exclure du tirage TERRE) — repérées sur la planche (r*10+c).
+const SUPER_WATER := [0, 8, 9, 10, 11, 12, 19, 20, 21, 22, 30, 40, 49, 50, 60, 70, 80, 90]
 static var _iso_region_cache := {}
+static var _land_pal: Array = []             ## indices de tuiles TERRE (palette de variation)
 
-## clé biome → atlas (Texture2D 1024×512) ; null si absent. Caché par chemin (un seul essai).
-static func iso_tile_atlas(biome: int) -> Texture2D:
-	if biome < 0 or biome >= BIOME_KEYS.size():
-		return null
-	return _tex(ISO_TILES_DIR + String(BIOME_KEYS[biome]) + ".png")
+## l'atlas super_biomes (Texture2D N·256 × N·128) ; null si absent. Caché par chemin (un seul essai).
+static func super_atlas() -> Texture2D:
+	return _tex(ISO_TILES_DIR + "super_biomes_01.png")
 
-## tuile dual-grid (biome, masque 0..15) → région 256×128 de l'atlas (AtlasTexture caché) ;
-## null si l'atlas manque. masque → case (m%4, m/4).
-static func iso_tile(biome: int, mask: int) -> Texture2D:
-	var atl := iso_tile_atlas(biome)
+## tuile (col,row) du champ → région 256×128 (AtlasTexture caché) ; null si l'atlas manque.
+static func super_tile(col: int, row: int) -> Texture2D:
+	var atl := super_atlas()
 	if atl == null:
 		return null
-	var ck := biome * 16 + (mask & 15)
+	var c := col % SUPER_GRID
+	var r := row % SUPER_GRID
+	var ck := r * SUPER_GRID + c
 	if _iso_region_cache.has(ck):
 		return _iso_region_cache[ck]
 	var at := AtlasTexture.new()
 	at.atlas = atl
-	at.region = Rect2((mask & 3) * ISO_TILE_W, ((mask >> 2) & 3) * ISO_TILE_H, ISO_TILE_W, ISO_TILE_H)
+	at.region = Rect2(c * ISO_TILE_W, r * ISO_TILE_H, ISO_TILE_W, ISO_TILE_H)
 	_iso_region_cache[ck] = at
 	return at
 
-## VRAI si au moins une tuile iso de terrain est présente → le sol passe en TUILES ; sinon repli
-## sur le rendu procédural actuel (terre lissée + côte par pixel). Teste quelques biomes terre.
+## palette des tuiles de TERRE (toutes sauf l'eau) — construite une fois.
+static func _land_palette() -> Array:
+	if _land_pal.is_empty():
+		for i in range(SUPER_GRID * SUPER_GRID):
+			if not SUPER_WATER.has(i):
+				_land_pal.append(i)
+	return _land_pal
+
+## tuile de TERRE pour la cellule monde (tc,tr) : on PIOCHE dans la palette (variation, pas la
+## disposition de la planche-exemple) ; le blend derrière fond les tuiles voisines.
+static func super_land(tc: int, tr: int) -> Texture2D:
+	var pal := _land_palette()
+	var idx := absi((tc * 73856093) ^ (tr * 19349663)) % pal.size()
+	var t: int = pal[idx]
+	return super_tile(t % SUPER_GRID, t / SUPER_GRID)
+
+## VRAI si le canevas de sol est présent → on peint les tuiles par-dessus le blend ; sinon repli
+## sur le seul rendu procédural (rien ne casse).
 static func has_iso_tiles() -> bool:
-	for b in [4, 6, 12, 18]:   # plains, grassland, forest, mountains
-		if iso_tile_atlas(b) != null:
-			return true
-	return false
+	return super_atlas() != null
 
 # ── STRUCTURES de terrain (maisons · ateliers · champs · édifices civiques) : un
 #    POOL parsemé autour des villes. On énumère le dossier au 1er appel (pas de

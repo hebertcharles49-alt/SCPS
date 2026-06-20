@@ -327,12 +327,10 @@ func set_mode(m: int) -> void:
 func _enter_iso(at_world: Vector2) -> void:
 	view_mode = VIEW_ISO
 	_disp.visible = false
-	# sol en TUILES si les assets sont là, sinon repli sur le sol PROCÉDURAL (exclusifs).
-	var tiles := false
-	if _ground != null and _ground.has_method("is_active"):
-		tiles = bool(_ground.is_active())
-	_ground.visible = tiles
-	_terrain.visible = not tiles
+	# le sol procédural est le BLEND derrière (toujours) ; les tuiles canevas se peignent par-dessus.
+	_terrain.visible = true
+	if _ground != null:
+		_ground.visible = _ground.has_method("is_active") and bool(_ground.is_active())
 	_camera.enabled = true
 	_camera.make_current()
 	_camera.zoom = Vector2(ISO_FAR, ISO_FAR)
