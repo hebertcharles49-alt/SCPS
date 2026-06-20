@@ -211,7 +211,7 @@ const BIOME_TEX_DIR := "res://assets/scps/pack/iso_tiles/flat/"   # tuiles PLATE
 ## plusieurs textures par biome → variété (anti-répétition) + bons mappings (aucun tile noir) +
 ## EAU tuilée (deep/ocean/shallow) pour un rivage propre DEPUIS LA TERRE (la terre déborde sur l'eau).
 const BIOME_TEX := {
-	0: ["uwtr", "wt5"], 1: ["wtr", "wt2", "wt4"], 2: ["sha", "sh2", "sh3"], 3: ["snd", "bch"],
+	0: ["wtr"], 1: ["wtr"], 2: ["wtr"], 3: ["snd", "bch"],   # eau UNIFIÉE (1 texture → mer continue)
 	4: ["grs", "gr2", "gr3"], 5: ["fc1", "fc2", "fc3"], 6: ["gr3", "grs", "gr6"], 7: ["gr5", "gr4"],
 	8: ["gr6", "gr5"], 9: ["ds2", "ds3"], 10: ["des", "ds2", "ds4"], 11: ["ds3", "snd"],
 	12: ["for", "fo2"], 13: ["fo2", "for"], 14: ["gr2", "for"], 15: ["rm1", "rm2"],
