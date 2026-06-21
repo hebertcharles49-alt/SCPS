@@ -46,6 +46,9 @@ var _river_wide := PackedByteArray()   ## 1 = EMBOUCHURE (point adjacent à la m
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
 
 const RIVER_ZOOM_MIN := 2.0   ## rivières (zoom ISO)
+const DRAW_RIVERS := false    ## RIVIÈRES OFF : points ESPACÉS (non ordonnés) → segments disjoints =
+                              ## "stries bleues" ; un vrai rendu de cours d'eau (chemins ordonnés,
+                              ## polyline lissée) est un chantier à part. true pour rétablir l'actuel.
 const RIVER_CAL := 0.0        ## calibration de l'orientation du sprite (ajusté au rendu)
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
 const ROAD_CASING := Color(0.227, 0.165, 0.110)  ## bord sombre (viewer 58,42,28)
@@ -856,11 +859,14 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vp := get_viewport_rect().size
 
 	# ── RIVIÈRES : segment droit tourné le long du fil ; ÉLARGI aux embouchures (delta) ──
-	if zoom >= RIVER_ZOOM_MIN and not _rivers.is_empty():
+	if DRAW_RIVERS and zoom >= RIVER_ZOOM_MIN and not _rivers.is_empty():
 		var rtex := UIKit.river_sprite()
 		if rtex != null:
+			# RIVIÈRES : segment EW posé à chaque point, ALIGNÉ au flux. Le bug des "stries bleues" :
+			# on tournait par l'angle MONDE — or le sprite vit en ISO. On projette la direction de flux
+			# en iso (proj d'un vecteur) et on tourne par CET angle → segments alignés = cours continu.
 			var wtex := UIKit.river_mouth_sprite()
-			var sc := 3.2 / float(rtex.get_width())
+			var sc := 3.0 / float(rtex.get_width())
 			var half := rtex.get_size() * 0.5
 			var whalf := (wtex.get_size() * 0.5) if wtex != null else half
 			for i in range(_rivers.size()):
@@ -870,7 +876,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 				if ss.x < -40 or ss.y < -40 or ss.x > vp.x + 40 or ss.y > vp.y + 40:
 					continue
 				var mouth: bool = wtex != null and i < _river_wide.size() and _river_wide[i] == 1
-				draw_set_transform(ip, p.z + RIVER_CAL, Vector2(sc, sc))
+				var d := Vector2(cos(p.z), sin(p.z))                       # direction de flux (monde)
+				var iang := Vector2(d.x - d.y, (d.x + d.y) * 0.5).angle()  # … PROJETÉE en iso
+				draw_set_transform(ip, iang, Vector2(sc, sc))
 				draw_texture(wtex if mouth else rtex, -(whalf if mouth else half))
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 

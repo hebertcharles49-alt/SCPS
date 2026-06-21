@@ -32,7 +32,9 @@ uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellule
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
 uniform float outline_w : hint_range(0.0, 4.0) = 1.4;        // demi-largeur du détourage (px écran)
 uniform float outline_str : hint_range(0.0, 1.0) = 0.6;      // force du trait de contour (arêtes accentuées)
-uniform float ridge_density : hint_range(0.1, 1.0) = 0.42;   // densité des ARÊTES (fines lignes verticales)
+uniform float ridge_density : hint_range(0.1, 1.0) = 0.42;   // densité des panneaux de l'ÉVENTAIL (arêtes)
+uniform float fold_skew : hint_range(0.0, 0.4) = 0.14;       // cisaillement du PLI (texture pliée)
+uniform float fold_shade : hint_range(0.0, 0.6) = 0.34;      // contraste d'ombrage des facets (l'arête)
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
 uniform float warp : hint_range(0.0, 12.0) = 5.0;         // amplitude d'ondulation des frontières (cellules)
@@ -94,25 +96,28 @@ vec3 cliff_top(vec2 c) {
 	r *= mix(0.80, 1.26, n) * mix(0.92, 1.08, n2);   // variance grande + petite échelle
 	return r * 1.08;
 }
-// FACE de roche (paroi) — base CLAIRE GARANTIE : une COULEUR gris-brun modulée par le grain de la
-// texture (jamais la texture sombre brute) → impossible de virer au noir. ARÊTES = fines LIGNES
-// verticales RÉGULIÈRES (géométrie basique : ombre fine + reflet fin), à peine gauchies par un bruit.
+// FACE de roche (paroi) — base CLAIRE GARANTIE (couleur gris-brun, jamais la texture sombre brute).
+// ARÊTES = la paroi est PLIÉE comme un ÉVENTAIL : des panneaux verticaux le long de la falaise, chacun
+// un FACET dont l'angle ALTERNE (~30°/60°) → la texture est CISAILLÉE (pliée) et chaque flanc est
+// OMBRÉ selon son angle (un côté capte la lumière, l'autre est dans l'ombre) → le PLI fait l'arête.
 vec3 cliff_face(vec2 c, float t) {
 	float ci = max(texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0, 1.0);
-	float tex = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).g;   // grain (luminance)
-	vec3 base = vec3(0.58, 0.52, 0.45) * (0.80 + 0.45 * tex);                // gris-brun CLAIR (min ≈ 0.46)
-	vec3 earth = terr(18, fract(c / period), c) * 1.7;                        // patches terre/herbe (variation)
+	float hx = c.x - c.y;                       // le long de la paroi (≈ const en colonne d'écran)
+	float p = hx * ridge_density;
+	float fp = fract(p);                        // position dans le panneau (0..1)
+	float ang = (mod(floor(p), 2.0) < 0.5) ? 0.52 : 1.05;   // ~30° puis ~60° (l'éventail)
+	float side = fp - 0.5;                      // <0 flanc gauche du pli, >0 flanc droit
+	float skew = side * tan(ang) * fold_skew;   // la texture PLIÉE (cisaillée verticalement ∝ angle)
+	float tex = texture(cliff_atlas, vec3(fract(vec2(c.x / tile_k, c.y / tile_k + skew)), ci - 1.0)).g;
+	vec3 base = vec3(0.58, 0.52, 0.45) * (0.80 + 0.45 * tex);   // gris-brun CLAIR (min ≈ 0.46)
+	// OMBRAGE du facet (lumière haut-gauche) : flanc gauche du pli CLAIR, flanc droit OMBRÉ ; l'écart
+	// croît avec l'angle (60° plus contrasté que 30°) → l'arête au pli (side=0) et aux bords de panneau.
+	base *= clamp(1.0 - sin(ang) * sign(side) * fold_shade, 0.72, 1.30);
+	vec3 earth = terr(18, fract(c / period), c) * 1.7;
 	float m = texture(noise_tex, c * 0.05 + vec2(9.0, 4.0)).r;
-	vec3 r = mix(base, earth, smoothstep(0.55, 0.82, m) * 0.5);
-	// ARÊTES FINES (géométrie) : lignes verticales régulières le LONG de la paroi (hx ≈ const en colonne),
-	// constantes en hauteur ; une fine OMBRE puis un fin REFLET → côte nette, sans aplat ni noir.
-	float hx = c.x - c.y;
-	float ph = fract(hx * ridge_density + texture(noise_tex, vec2(hx * 0.012, 1.0)).r * 0.6);
-	float shad = smoothstep(0.0, 0.03, ph) - smoothstep(0.03, 0.08, ph);
-	float lite = smoothstep(0.08, 0.11, ph) - smoothstep(0.11, 0.16, ph);
-	r *= (1.0 - 0.20 * shad) * (1.0 + 0.12 * lite);          // arête FINE (ombre + reflet)
+	vec3 r = mix(base, earth, smoothstep(0.55, 0.82, m) * 0.45);
 	vec3 col = r * mix(0.88, 1.04, t);                        // pied à PEINE ombré (jamais noir)
-	col += vec3(0.12, 0.11, 0.09) * smoothstep(0.86, 0.98, t);  // lèvre éclairée
+	col += vec3(0.12, 0.11, 0.09) * smoothstep(0.86, 0.98, t);  // lèvre éclairée au sommet
 	return col;
 }
 
