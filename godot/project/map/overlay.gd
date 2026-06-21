@@ -72,6 +72,17 @@ const FOREST_TREES := {
 	13: ["DRESS_GROVE_MIXED", "DRESS_TREE_PINE", "DRESS_GROVE_PINE_A", "DRESS_GROVE_PINE_B"],            # WOODS : mixte/conifères
 	14: ["DRESS_GROVE_BROADLEAF", "DRESS_TREE_GNARLED", "DRESS_GROVE_MIXED"],                            # JUNGLE : dense
 }
+# ── DRESSING du monde par MILIEU (cailloux, buissons, arbres sporadiques, roseaux…) — habille la
+#    carte hors des forêts. Pools tirés au hasard, semés SPORADIQUEMENT (cf. _dress_rule). ──
+const DRESS_OPEN := ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_TREE_OAK_AUTUMN", "DRESS_TREE_POPLAR",
+	"DRESS_GROVE_BROADLEAF", "DRESS_GROVE_MIXED", "DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_FERNS"]
+const DRESS_DRY := ["DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW", "DRESS_BUSH_THORNY", "DRESS_TREE_GNARLED", "DRESS_ROCK_LIGHT", "DRESS_GRASS_GOLD", "DRESS_DIRT_MOUND"]
+const DRESS_MARSH := ["DRESS_REEDS_GREEN", "DRESS_REEDS_DRY", "DRESS_GRASS_CATTAIL", "DRESS_GRASS_WET", "DRESS_TREE_GNARLED",
+	"DRESS_TREE_DEAD", "DRESS_MUSHROOMS", "DRESS_FERNS", "DRESS_MOSS_PATCH", "DRESS_BUSH_LOW", "DRESS_ROCK_MOSSY", "DRESS_ROOT_CLUSTER"]
+const DRESS_HILL := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT", "DRESS_ROCK_MOSSY", "DRESS_BUSH_LOW", "DRESS_BUSH_DRY", "DRESS_TREE_PINE", "DRESS_STONE_PILE"]
+const DRESS_CLIFF := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_DARK", "DRESS_ROCK_SPIRES", "DRESS_STONE_PILE", "DRESS_STONE_SLABS", "DRESS_BUSH_DRY", "DRESS_BUSH_THORNY", "DRESS_BUSH_LOW"]
+const DRESS_SNOW := ["DRESS_TREE_PINE_SNOW", "DRESS_ROCK_SNOW", "DRESS_BRANCH_SNOW", "DRESS_ROCK_GRAY_B"]
+const DRESS_RIVER := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT", "DRESS_ROCK_MOSSY", "DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_REEDS_GREEN", "DRESS_PEBBLE_PATH", "DRESS_GRASS_CATTAIL"]
 
 # biome → variante de ville TERRAIN (CITY_BIOME_*). SEULEMENT les terrains
 # DISTINCTIFS (côte/forêt/marais/montagne/neige…) ; les plaines génériques (4-10)
@@ -455,36 +466,88 @@ func _build_structures() -> void:
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
 	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 
-## scan de la couche biome (un pas régulier) → liste fixe d'arbres sur les forêts.
-const DRAW_TREES := false   # ARBRES OFF : les conifères denses se lisaient en "stries" sombres (non voulu) ;
-                            # la forêt reste portée par le SOL (biome). Repasser à true pour les rétablir.
+## DRESSING du monde : scan de la couche biome → arbres/bosquets/buissons/cailloux/roseaux semés
+## SPORADIQUEMENT selon le MILIEU (forêt dense ; plaine & aride sporadiques ; marais ; collines ;
+## falaise = cailloux/buissons ; neige), PLUS un liseré de cailloux/buissons le long des rivières.
+const DRAW_DECOR := true
+## règle de semis par biome → [pool, probabilité (au pas), taille] ; [] = rien. La PROBABILITÉ tient
+## la densité (forêt dense, plaine très clairsemée), le SPORADIQUE casse tout motif.
+func _dress_rule(b: int) -> Array:
+	if FOREST_TREES.has(b):
+		return [FOREST_TREES[b], 0.55, 12.0]                  # FORÊT : dense
+	if b == 4 or b == 5 or b == 6 or b == 7 or b == 8 or b == 24:
+		return [DRESS_OPEN, 0.05, 11.0]                       # PLAINE/herbe : arbres & buissons SPORADIQUES
+	if b == 9 or b == 10 or b == 11:
+		return [DRESS_DRY, 0.045, 9.0]                        # ARIDE/désert : buissons secs épars
+	if b == 15 or b == 21 or b == 22:
+		return [DRESS_MARSH, 0.30, 9.0]                       # MARAIS : roseaux, arbres morts, champignons, cailloux
+	if b == 16 or b == 17:
+		return [DRESS_HILL, 0.18, 9.0]                        # COLLINES/highlands : cailloux + buissons + pins
+	if b == 18 or b == 23:
+		return [DRESS_CLIFF, 0.28, 9.0]                       # FALAISE/montagne/volcan : cailloux + buissons
+	if b == 19 or b == 20:
+		return [DRESS_SNOW, 0.12, 10.0]                       # NEIGE/glacier : pins enneigés, rochers de neige
+	return []
+
 func _build_decor() -> void:
 	_decor.clear()
-	if not DRAW_TREES:
+	if not DRAW_DECOR:
 		return
 	var w = Sim.world
 	if w == null:
 		return
-	var img: Image = w.layer_image(2)   # SCPS_LAYER_BIOME = 2
-	if img == null:
+	var bio: Image = w.layer_image(2)   # SCPS_LAYER_BIOME = 2
+	if bio == null:
 		return
-	var mw := img.get_width()
-	var mh := img.get_height()
-	var stride := 4                       # forêt DENSE (ex-7) : un arbre toutes les 4 cellules
+	var sea: Image = w.layer_image(LAYER_WATER)
+	var mw := bio.get_width()
+	var mh := bio.get_height()
+	var stride := 3
 	for cy in range(0, mh, stride):
 		for cx in range(0, mw, stride):
-			var b := int(img.get_pixel(cx, cy).r * 255.0 + 0.5)
-			if not FOREST_TREES.has(b):
-				continue
+			var b := int(bio.get_pixel(cx, cy).r * 255.0 + 0.5)
+			if b <= 3:
+				continue                            # eau / plage : rien
 			if _clear_set.has(Vector2i(cx, cy)):
-				continue                       # clairière de bourg → pas d'arbre ici
+				continue                            # clairière de bourg
+			if sea != null and int(sea.get_pixel(cx, cy).r * 255.0 + 0.5) >= 1:
+				continue                            # eau (lac)
+			var rule := _dress_rule(b)
+			if rule.is_empty():
+				continue
 			var h := ((cx * 73856093) ^ (cy * 19349663)) & 0x7fffffff
-			var arr: Array = FOREST_TREES[b]
-			var jx := float((h >> 3) % 3) - 1.0
-			var jy := float((h >> 6) % 3) - 1.0
-			_decor.append({"name": arr[h % arr.size()], "pos": Vector2(cx + jx, cy + jy)})
-			if _decor.size() >= 14000:
-				return
+			if float(h % 1000) / 1000.0 > float(rule[1]):
+				continue                            # SPORADIQUE
+			var pool: Array = rule[0]
+			var jx := (float((h >> 3) % 7) - 3.0) * 0.4   # jitter ORGANIQUE (pas un quadrillage)
+			var jy := (float((h >> 7) % 7) - 3.0) * 0.4
+			var sz: float = float(rule[2]) * (0.82 + 0.36 * float((h >> 15) % 10) / 10.0)
+			_decor.append({"name": pool[(h >> 11) % pool.size()], "pos": Vector2(cx + jx, cy + jy), "sz": sz})
+			if _decor.size() >= 16000:
+				break
+		if _decor.size() >= 16000:
+			break
+	_dress_rivers(sea)
+	# tri arrière→avant (profondeur iso = y) → l'empilement des arbres/cailloux se lit correctement
+	_decor.sort_custom(func(a, c): return (a["pos"] as Vector2).y < (c["pos"] as Vector2).y)
+
+## cailloux/buissons/roseaux SPORADIQUES le long du fil de rivière (le nuage worldgen) — la berge
+## habillée. Léger décalage du fil, jamais dans l'eau ni dans une clairière de bourg.
+func _dress_rivers(sea: Image) -> void:
+	for rp in _rivers:
+		var cx := int(rp.x)
+		var cy := int(rp.y)
+		var h := ((cx * 2654435761) ^ (cy * 40503)) & 0x7fffffff
+		if (h % 100) >= 10:
+			continue                                # ~10 % des points → SPORADIQUE
+		var p := Vector2(cx + (float((h >> 3) % 5) - 2.0), cy + (float((h >> 7) % 5) - 2.0))
+		if _clear_set.has(Vector2i(int(p.x), int(p.y))):
+			continue
+		if sea != null and _is_sea_cell(sea, int(p.x), int(p.y)):
+			continue
+		_decor.append({"name": DRESS_RIVER[(h >> 11) % DRESS_RIVER.size()], "pos": p, "sz": 7.0})
+		if _decor.size() >= 17000:
+			return
 
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
@@ -609,9 +672,8 @@ func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
 ## sème le MOBILIER de bord de route : à intervalle régulier le long de chaque tracé, un
 ## décor (buisson/rocher/borne) DÉCALÉ perpendiculairement, côté alterné — hors de l'eau.
 ## Chaque item retient SA route (index) → n'apparaît qu'une fois le chantier ACHEVÉ.
-const DRAW_ROAD_DRESS := false   # MOBILIER de bord de route OFF : sources sombres (~lum 50) non relevées
-                                 # → des rangées de petits marquages sombres qui se lisaient comme des
-                                 # "stries"/slopes le long des routes (non voulu). true pour rétablir.
+const DRAW_ROAD_DRESS := true    # MOBILIER de bord de route ON : buissons/cailloux SPORADIQUES, posés
+                                 # côté SUD de la chaussée (devant, proj.y plus grand) → le « petit effet sud ».
 func _build_road_dress() -> void:
 	_road_dress.clear()
 	if not DRAW_ROAD_DRESS:
@@ -634,8 +696,8 @@ func _build_road_dress() -> void:
 			if dir.length() > 0.01:
 				dir = dir.normalized()
 				var perp := Vector2(-dir.y, dir.x)
-				if perp.x + perp.y > 0.0:
-					perp = -perp                                  # TOUJOURS au NORD à l'écran (proj.y plus petit = vers le haut)
+				if perp.x + perp.y < 0.0:
+					perp = -perp                                  # TOUJOURS au SUD à l'écran (proj.y plus GRAND = devant/bas) → l'« effet sud »
 				var h := (k * 2654435761 + int(pts[k].x) * 40503) & 0x7fffffff
 				var off := 0.8 + float((h >> 3) % 6) / 10.0       # 0.8..1.3 : TRES leger (moins excentre)
 				var p: Vector2 = pts[k] + perp * off
@@ -847,17 +909,17 @@ func _draw_iso(w, mv: Node2D) -> void:
 
 	# (RIVIÈRES : plus dessinées ici — CARVÉES dans le terrain par iso_blend.gdshader, cf. en-tête.)
 
-	# ── DRESSING : arbres/forêts (DERRIÈRE les villes), cullés au viewport ──
+	# ── DRESSING : arbres/bosquets/buissons/cailloux/roseaux (DERRIÈRE les villes), cullés au viewport ──
 	if zoom >= DECOR_ZOOM_MIN:
 		for d in _decor:
 			var spr := UIKit.dressing_named(d["name"])
 			if spr == null:
-				break
+				continue
 			var ip: Vector2 = mv.iso_pos((d["pos"] as Vector2).x, (d["pos"] as Vector2).y)
 			var ss: Vector2 = vt * ip
 			if ss.x < -30 or ss.y < -30 or ss.x > vp.x + 30 or ss.y > vp.y + 30:
 				continue
-			var ts := 10.0
+			var ts: float = d.get("sz", 10.0)
 			draw_texture_rect(spr, Rect2(ip - Vector2(ts * 0.5, ts), Vector2(ts, ts)), false)
 
 	# ── FRONTIÈRES (gameplay) : sur le relief iso. Pays + régions selon le mode. ──

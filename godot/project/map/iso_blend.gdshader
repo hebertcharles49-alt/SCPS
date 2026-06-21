@@ -25,7 +25,7 @@ uniform float dist_max = 24.0;                  // plafond du champ de distance 
 uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombrage de la terrasse (sommet)
 // RELIEF « AoE » : chaque cellule highland est RELEVÉE de `highland_lift` (unités iso-écran) — son
 // sommet monte, une FACE de roche le relie au pied → vrai escarpement en volume (pas un sol plat).
-uniform float highland_lift : hint_range(0.0, 40.0) = 12.0;   // hauteur de falaise (~1.5 tuile = 12 px iso)
+uniform float highland_lift : hint_range(0.0, 40.0) = 8.0;    // hauteur de falaise ABAISSÉE (~1 tuile) → relief plus DOUX, habillé de cailloux/buissons
 uniform float face_dark : hint_range(0.0, 1.0) = 0.80;       // pied de face (HAUT = clair, anti near-black)
 uniform float highland_warp : hint_range(0.0, 16.0) = 2.5;   // ondulation du bord (DOUX : angle droit à peine cassé)
 uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
