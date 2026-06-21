@@ -198,6 +198,9 @@ const RIVERS_DIR := "res://assets/scps/pack/rivers/"
 ## segment de rivière DROIT (tourné le long du fil) — l'eau traverse le losange W↔E, centrée.
 static func river_sprite() -> Texture2D:
 	return _tex(RIVERS_DIR + "RIVER_EW.png")
+## TUILE ISO directionnelle de rivière (pré-orientée) par nom — sélectionnée selon l'axe du flux.
+static func river_named(nm: String) -> Texture2D:
+	return _tex(RIVERS_DIR + nm + ".png")
 ## ÉLARGISSEMENT (delta) posé aux EMBOUCHURES — là où le fil rejoint la mer.
 static func river_mouth_sprite() -> Texture2D:
 	return _tex(RIVERS_DIR + "RIVER_WIDENING.png")

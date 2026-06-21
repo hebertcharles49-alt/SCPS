@@ -46,9 +46,12 @@ var _river_wide := PackedByteArray()   ## 1 = EMBOUCHURE (point adjacent à la m
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
 
 const RIVER_ZOOM_MIN := 2.0   ## rivières (zoom ISO)
-const DRAW_RIVERS := false    ## RIVIÈRES OFF : points ESPACÉS (non ordonnés) → segments disjoints =
-                              ## "stries bleues" ; un vrai rendu de cours d'eau (chemins ordonnés,
-                              ## polyline lissée) est un chantier à part. true pour rétablir l'actuel.
+const DRAW_RIVERS := true     ## rivières via les TUILES ISO directionnelles (pré-orientées)
+const RIVER_TILE := 3.6       ## taille (unités monde) d'une tuile de rivière posée
+## 4 axes iso (bin de l'angle de flux projeté) → tuile pré-orientée. Ordre = bins 0..3 :
+## 0≈horizontal · 1≈NW-SE (45°) · 2≈vertical (90°) · 3≈NE-SW (135°).
+const RIVER_DIRS := ["RIVER_HORIZONTAL", "RIVER_STRAIGHT_NW_SE", "RIVER_VERTICAL", "RIVER_STRAIGHT_NE_SW"]
+var _river_dt := []
 const RIVER_CAL := 0.0        ## calibration de l'orientation du sprite (ajusté au rendu)
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
 const ROAD_CASING := Color(0.227, 0.165, 0.110)  ## bord sombre (viewer 58,42,28)
@@ -860,27 +863,26 @@ func _draw_iso(w, mv: Node2D) -> void:
 
 	# ── RIVIÈRES : segment droit tourné le long du fil ; ÉLARGI aux embouchures (delta) ──
 	if DRAW_RIVERS and zoom >= RIVER_ZOOM_MIN and not _rivers.is_empty():
-		var rtex := UIKit.river_sprite()
-		if rtex != null:
-			# RIVIÈRES : segment EW posé à chaque point, ALIGNÉ au flux. Le bug des "stries bleues" :
-			# on tournait par l'angle MONDE — or le sprite vit en ISO. On projette la direction de flux
-			# en iso (proj d'un vecteur) et on tourne par CET angle → segments alignés = cours continu.
-			var wtex := UIKit.river_mouth_sprite()
-			var sc := 3.0 / float(rtex.get_width())
-			var half := rtex.get_size() * 0.5
-			var whalf := (wtex.get_size() * 0.5) if wtex != null else half
-			for i in range(_rivers.size()):
-				var p: Vector3 = _rivers[i]
-				var ip: Vector2 = mv.iso_pos(p.x, p.y)
-				var ss: Vector2 = vt * ip
-				if ss.x < -40 or ss.y < -40 or ss.x > vp.x + 40 or ss.y > vp.y + 40:
-					continue
-				var mouth: bool = wtex != null and i < _river_wide.size() and _river_wide[i] == 1
-				var d := Vector2(cos(p.z), sin(p.z))                       # direction de flux (monde)
-				var iang := Vector2(d.x - d.y, (d.x + d.y) * 0.5).angle()  # … PROJETÉE en iso
-				draw_set_transform(ip, iang, Vector2(sc, sc))
-				draw_texture(wtex if mouth else rtex, -(whalf if mouth else half))
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# RIVIÈRES : on POSE la TUILE ISO directionnelle (pré-orientée) correspondant à l'axe du flux
+		# projeté en iso — JAMAIS un sprite tourné (c'était le bug des "stries bleues"). 4 axes.
+		if _river_dt.is_empty():
+			for n in RIVER_DIRS:
+				_river_dt.append(UIKit.river_named(n))
+		var wtex := UIKit.river_mouth_sprite()
+		for i in range(_rivers.size()):
+			var p: Vector3 = _rivers[i]
+			var ip: Vector2 = mv.iso_pos(p.x, p.y)
+			var ss: Vector2 = vt * ip
+			if ss.x < -40 or ss.y < -40 or ss.x > vp.x + 40 or ss.y > vp.y + 40:
+				continue
+			var mouth: bool = wtex != null and i < _river_wide.size() and _river_wide[i] == 1
+			var d := Vector2(cos(p.z), sin(p.z))                       # direction de flux (monde)
+			var a := fposmod(Vector2(d.x - d.y, (d.x + d.y) * 0.5).angle(), PI)   # axe PROJETÉ en iso
+			var tex: Texture2D = wtex if mouth and wtex != null else _river_dt[int(round(a / (PI / 4.0))) % 4]
+			if tex == null:
+				continue
+			var scl := RIVER_TILE / float(tex.get_width())
+			draw_texture_rect(tex, Rect2(ip - tex.get_size() * 0.5 * scl, tex.get_size() * scl), false)
 
 	# ── DRESSING : arbres/forêts (DERRIÈRE les villes), cullés au viewport ──
 	if zoom >= DECOR_ZOOM_MIN:

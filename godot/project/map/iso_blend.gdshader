@@ -113,10 +113,8 @@ vec3 cliff_face(vec2 c, float t) {
 	// OMBRAGE du facet (lumière haut-gauche) : flanc gauche du pli CLAIR, flanc droit OMBRÉ ; l'écart
 	// croît avec l'angle (60° plus contrasté que 30°) → l'arête au pli (side=0) et aux bords de panneau.
 	base *= clamp(1.0 - sin(ang) * sign(side) * fold_shade, 0.72, 1.30);
-	vec3 earth = terr(18, fract(c / period), c) * 1.7;
-	float m = texture(noise_tex, c * 0.05 + vec2(9.0, 4.0)).r;
-	vec3 r = mix(base, earth, smoothstep(0.55, 0.82, m) * 0.45);
-	vec3 col = r * mix(0.88, 1.04, t);                        // pied à PEINE ombré (jamais noir)
+	// PAS de mélange avec l'herbe : la paroi est une ROCHE COHÉRENTE & ISOLÉE (le grain vient de `tex`).
+	vec3 col = base * mix(0.88, 1.04, t);                     // pied à PEINE ombré (jamais noir)
 	col += vec3(0.12, 0.11, 0.09) * smoothstep(0.86, 0.98, t);  // lèvre éclairée au sommet
 	return col;
 }
