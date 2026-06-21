@@ -18,8 +18,7 @@ const LAYER_BIOME := 2
 const RIVER_MERGE := 64.0   ## embouchures à ≤ ça = UN système (le tronc le plus long le représente)
 const RIVER_MAX_SYS := 5    ## systèmes (les plus forts) gravés
 const RIVER_MIN_PTS := 12   ## tronc plus court = stub → système ignoré
-const RIVER_SECOND_MIN := 8 ## brin SECONDAIRE plus court = bruit → ignoré (les affluents un peu plus courts passent)
-const RIVER_DUP_FRAC := 0.5 ## un brin déjà gravé à ≥ ce % = doublon braidé du tronc → sauté (garde les VRAIS affluents)
+const RIVER_SECOND_MIN := 8 ## affluent dont la course AMONT (source→confluence) est plus courte = bruit → ignoré
 const RIVER_SECOND_MAX := 3 ## affluents gravés au plus par système (tronc + 3) → réseau lisible, pas d'inondation
 const RIVER_FLOW_FLOOR := 0.16  ## fraction du plus fort débit en-dessous de laquelle on s'arrête
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
@@ -411,6 +410,7 @@ func _build_river_field(w, W: int, H: int) -> Image:
 	if raw.is_empty():
 		return img
 	var water: Image = w.layer_image(4)   # SCPS_LAYER_WATER : mer OU lac (255) → prolonger le fleuve jusque dedans
+	var height: Image = w.layer_image(0)  # SCPS_LAYER_HEIGHT : choisir le TRONC qui vient de la MONTAGNE (source haute)
 	# 1) CLUSTER par embouchure (distance) → un système = une baie ; on garde TOUS ses brins (tronc +
 	#    affluents). Les copies braidées se RECOUVRENT dans le champ (fusionnées au max) ; les VRAIS
 	#    affluents ajoutent des branches secondaires.
@@ -449,31 +449,57 @@ func _build_river_field(w, W: int, H: int) -> Image:
 			break
 		if int(s["trunk_len"]) < RIVER_MIN_PTS:
 			continue                                  # même le tronc est un stub → système écarté
-		# du plus LONG (le tronc) au plus court : on grave le tronc, puis SEULEMENT les brins qui
-		# apportent un VRAI tracé neuf (affluent) ; les copies braidées (déjà gravées) sont sautées.
 		var strands: Array = s["strands"]
+		# TRONC = le brin venant de la MONTAGNE (source la plus HAUTE) parmi les longs → une VRAIE
+		# rivière source→mer, jamais un bras isolé.
+		var trunk: Dictionary = _pick_trunk(strands, height, W, H)
+		if trunk.is_empty():
+			continue
+		var tpts: PackedVector2Array = trunk["points"]
+		var trel := float(trunk["flow"]) / fmax
+		_carve_path(img, tpts, trel, W, H)            # tronc source→embouchure = le réseau de référence
+		# AFFLUENTS : SEULEMENT ceux qui CONFLUENT avec le réseau (clipés à la jonction) → JAMAIS de bras
+		# isolé. Du plus long au plus court, plafonnés. (Le tronc & les copies braidées confluent dès leur
+		# source — déjà gravée — donc jct≈0 → sautés ; un cours sans confluence amont est un bras isolé → sauté.)
 		strands.sort_custom(func(a, b): return (a["points"] as PackedVector2Array).size() > (b["points"] as PackedVector2Array).size())
-		var drew := 0
+		var drew := 1
 		for rv in strands:
-			if drew > RIVER_SECOND_MAX:               # tronc + N affluents au plus → pas d'inondation au confluent
+			if drew > RIVER_SECOND_MAX:
 				break
 			var pts: PackedVector2Array = rv["points"]
 			if pts.size() < RIVER_SECOND_MIN:
-				continue                              # brin trop court (bruit) → ignoré
-			if drew > 0:
-				var ov := 0
-				for p in pts:
-					if img.get_pixel(clampi(int(p.x), 0, W - 1), clampi(int(p.y), 0, H - 1)).r > 0.25:
-						ov += 1
-				if float(ov) / float(pts.size()) > RIVER_DUP_FRAC:
-					continue                          # ≥ ce % déjà gravé = doublon braidé du tronc → saute
-			var rel := float(rv["flow"]) / fmax
-			_carve_path(img, pts, rel, W, H)
-			if drew == 0:                             # le TRONC : on le PROLONGE sciemment DANS la mer
-				_carve_to_sea(img, pts[pts.size() - 1], water, rel, W, H)
+				continue
+			var jct := -1
+			for k in range(pts.size()):              # 1re cellule (depuis la SOURCE) déjà gravée = la confluence
+				if img.get_pixel(clampi(int(pts[k].x), 0, W - 1), clampi(int(pts[k].y), 0, H - 1)).r > 0.30:
+					jct = k
+					break
+			if jct < RIVER_SECOND_MIN:
+				continue                              # pas de confluence en AMONT (ou trop court) → bras isolé : SKIP
+			_carve_path(img, pts.slice(0, jct + 1), float(rv["flow"]) / fmax, W, H)
 			drew += 1
+		_carve_to_sea(img, tpts[tpts.size() - 1], water, trel, W, H)   # le TRONC se jette dans la mer
 		n += 1
 	return img
+
+## TRONC du système = le brin le plus LONG (le cours complet, qui remonte le plus loin vers la
+## MONTAGNE) ; à longueur ~égale (copies braidées), on préfère la SOURCE la plus HAUTE. Tout le reste
+## CONFLUE vers ce tronc → la rivière vient bien de la montagne, jamais de bras isolé.
+func _pick_trunk(strands: Array, height: Image, W: int, H: int) -> Dictionary:
+	var best := {}
+	var best_score := -1.0
+	for rv in strands:
+		var pts: PackedVector2Array = rv["points"]
+		if pts.size() < RIVER_MIN_PTS:
+			continue
+		var score := float(pts.size())               # longueur = critère principal (le cours complet)
+		if height != null:                            # +tiebreak : la source la plus HAUTE (vers la montagne)
+			var src: Vector2 = pts[0]
+			score += height.get_pixel(clampi(int(src.x), 0, W - 1), clampi(int(src.y), 0, H - 1)).r * 3.0
+		if score > best_score:
+			best_score = score
+			best = rv
+	return best
 
 ## largeur du PINCEAU pour un débit relatif : [peak, core, soft]. FIN : cœur d'1 cellule au plus fort
 ## seulement, 0 sinon ; halo dégradé de +2 = la berge fondue (le « cut » latéral). Affluent = tout fondu.
@@ -531,9 +557,9 @@ func _carve_to_sea(img: Image, mouth: Vector2, water: Image, rel: float, W: int,
 			break
 	if best.x < 0:
 		return
-	var b := _brush_for(rel)
 	var steps := int(mouth.distance_to(best)) + 1
 	for i in range(steps + 1):
 		var p := mouth.lerp(best, float(i) / float(steps))   # grave la ligne mouth→mer (les cellules de TERRE entre)
-		_carve_brush(img, int(p.x), int(p.y), b[0], b[1], b[2], W, H)
+		# pont SOLIDE d'EAU (cœur plein, intensité max) → le fleuve REJOINT visiblement la mer (pas un filet de sable)
+		_carve_brush(img, int(p.x), int(p.y), 1.07, 1, 3, W, H)
 

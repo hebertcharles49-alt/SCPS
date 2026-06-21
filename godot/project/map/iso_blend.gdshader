@@ -73,6 +73,7 @@ uniform float river_sand  : hint_range(0.0, 1.0) = 0.16;     // champ ≥ ça = 
 uniform float river_water : hint_range(0.0, 1.0) = 0.54;     // champ ≥ ça = le cœur d'EAU (étroit) commence
 uniform float river_band  : hint_range(0.02, 0.5) = 0.22;    // rampe du cœur d'eau (sable→eau)
 uniform float river_sand_str : hint_range(0.0, 1.0) = 0.85;  // opacité du sable de berge (= shore_str)
+uniform float river_warp  : hint_range(0.0, 6.0) = 2.5;      // ondulation des berges (cellules) → bord ORGANIQUE, pas « posé là »
 uniform float river_str  : hint_range(0.0, 1.0) = 1.0;       // opacité globale de la rivière carvée
 
 varying vec2 iso;
@@ -211,7 +212,11 @@ void fragment() {
 		//    une BERGE de SABLE (terr(3), le même que le rivage → continuité) qui grignote le terrain,
 		//    PUIS un cœur d'EAU ÉTROIT au seul débit fort. Jamais sur la mer (déjà eau). ──────────────
 		if (!sea) {
-			float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r;
+			// champ ÉCHANTILLONNÉ via une ondulation (wv = même bruit que les frontières de biome) +
+			// un grain fin → la berge MÉANDRE et se fond au terrain (plus de bord « posé là »).
+			vec2 rwv = wv + (vec2(texture(noise_tex, cell * 0.11 + vec2(1.7, 4.3)).r,
+				texture(noise_tex, cell * 0.11 + vec2(6.1, 0.9)).r) - 0.5) * 0.6;
+			float rv = texture(river_map, (cell + rwv * river_warp + vec2(0.5)) / map_size).r;
 			float sand_amt = smoothstep(river_sand, river_water, rv);          // berge sableuse (large)
 			if (sand_amt > 0.003) {
 				col = mix(col, terr(3, uv, cell), sand_amt * river_sand_str);  // SABLE (pipeline shore)

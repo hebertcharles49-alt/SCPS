@@ -41,13 +41,22 @@ func _run() -> void:
 		c = best
 		print("focus mountain densest cell n=", bestn, " at=", c)
 	else:
-		# centre = milieu du fleuve le plus FORT (garantit une rivière dans le cadre)
+		# centre = milieu du fleuve dont la SOURCE est la plus HAUTE (la rivière qui vient de la MONTAGNE)
 		var paths: Array = w.river_paths()
+		var hi: Image = w.layer_image(0)   # HEIGHT
 		if not paths.is_empty():
-			paths.sort_custom(func(a, b): return float(a["flow"]) > float(b["flow"]))
-			var pts: PackedVector2Array = paths[0]["points"]
+			var best := -1; var best_h := -1.0
+			for i in range(paths.size()):
+				var pp: PackedVector2Array = paths[i]["points"]
+				if pp.size() < 20: continue
+				var src: Vector2 = pp[0]
+				var h := 0.0
+				if hi != null: h = hi.get_pixel(clampi(int(src.x), 0, hi.get_width() - 1), clampi(int(src.y), 0, hi.get_height() - 1)).r
+				if h > best_h: best_h = h; best = i
+			if best < 0: best = 0
+			var pts: PackedVector2Array = paths[best]["points"]
 			c = pts[pts.size() / 2]
-			print("focus river flow=", paths[0]["flow"], " mid=", c, " nrivers=", paths.size())
+			print("focus MOUNTAIN river src_h=", best_h, " flow=", paths[best]["flow"], " mid=", c, " nrivers=", paths.size())
 	var zoom: float = float(_zoom_arg())
 	_map._enter_iso(c)
 	_map._camera.zoom = Vector2(zoom, zoom)
