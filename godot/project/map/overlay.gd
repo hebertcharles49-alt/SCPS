@@ -474,8 +474,12 @@ func _build_structures() -> void:
 	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 
 ## scan de la couche biome (un pas régulier) → liste fixe d'arbres sur les forêts.
+const DRAW_TREES := false   # ARBRES OFF : les conifères denses se lisaient en "stries" sombres (non voulu) ;
+                            # la forêt reste portée par le SOL (biome). Repasser à true pour les rétablir.
 func _build_decor() -> void:
 	_decor.clear()
+	if not DRAW_TREES:
+		return
 	var w = Sim.world
 	if w == null:
 		return
@@ -623,8 +627,13 @@ func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
 ## sème le MOBILIER de bord de route : à intervalle régulier le long de chaque tracé, un
 ## décor (buisson/rocher/borne) DÉCALÉ perpendiculairement, côté alterné — hors de l'eau.
 ## Chaque item retient SA route (index) → n'apparaît qu'une fois le chantier ACHEVÉ.
+const DRAW_ROAD_DRESS := false   # MOBILIER de bord de route OFF : sources sombres (~lum 50) non relevées
+                                 # → des rangées de petits marquages sombres qui se lisaient comme des
+                                 # "stries"/slopes le long des routes (non voulu). true pour rétablir.
 func _build_road_dress() -> void:
 	_road_dress.clear()
+	if not DRAW_ROAD_DRESS:
+		return
 	var w = Sim.world
 	if w == null:
 		return

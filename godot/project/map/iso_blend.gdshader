@@ -32,7 +32,7 @@ uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellule
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
 uniform float outline_w : hint_range(0.0, 4.0) = 1.4;        // demi-largeur du détourage (px écran)
 uniform float outline_str : hint_range(0.0, 1.0) = 0.6;      // force du trait de contour (arêtes accentuées)
-uniform float stripe_freq : hint_range(0.01, 0.3) = 0.09;    // densité des stries verticales de la paroi
+uniform float ridge_density : hint_range(0.1, 1.0) = 0.42;   // densité des ARÊTES (fines lignes verticales)
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
 uniform float warp : hint_range(0.0, 12.0) = 5.0;         // amplitude d'ondulation des frontières (cellules)
@@ -94,25 +94,25 @@ vec3 cliff_top(vec2 c) {
 	r *= mix(0.80, 1.26, n) * mix(0.92, 1.08, n2);   // variance grande + petite échelle
 	return r * 1.08;
 }
-// FACE de roche (paroi), CLAIRE (pas noire) : 2 TEXTURES mélangées par un MASQUE (roche scree ↔
-// terre/herbe) → variation. ARÊTES = ribs verticaux ÉCLAIRÉS par le GRADIENT horizontal du motif
-// (côté lumière clair / côté ombre) → relief net, pas un aplat. Pied un peu ombré + lèvre éclairée.
+// FACE de roche (paroi) — base CLAIRE GARANTIE : une COULEUR gris-brun modulée par le grain de la
+// texture (jamais la texture sombre brute) → impossible de virer au noir. ARÊTES = fines LIGNES
+// verticales RÉGULIÈRES (géométrie basique : ombre fine + reflet fin), à peine gauchies par un bruit.
 vec3 cliff_face(vec2 c, float t) {
 	float ci = max(texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0, 1.0);
-	vec3 rock = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).rgb * 2.6 + vec3(0.24, 0.20, 0.15);
-	vec3 earth = terr(18, fract(c / period), c) * 1.85;        // 2e texture = terre/herbe (mont. earthy)
+	float tex = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).g;   // grain (luminance)
+	vec3 base = vec3(0.58, 0.52, 0.45) * (0.80 + 0.45 * tex);                // gris-brun CLAIR (min ≈ 0.46)
+	vec3 earth = terr(18, fract(c / period), c) * 1.7;                        // patches terre/herbe (variation)
 	float m = texture(noise_tex, c * 0.05 + vec2(9.0, 4.0)).r;
-	vec3 r = mix(rock, earth, smoothstep(0.50, 0.78, m) * 0.6); // surtout roche, PATCHES de terre/herbe
-	// ARÊTES : on éclaire les ribs verticaux par le gradient horizontal du motif (hx ≈ const en colonne)
-	// → chaque côte a un flanc CLAIR et un flanc OMBRÉ ; borné pour ne JAMAIS virer au noir.
+	vec3 r = mix(base, earth, smoothstep(0.55, 0.82, m) * 0.5);
+	// ARÊTES FINES (géométrie) : lignes verticales régulières le LONG de la paroi (hx ≈ const en colonne),
+	// constantes en hauteur ; une fine OMBRE puis un fin REFLET → côte nette, sans aplat ni noir.
 	float hx = c.x - c.y;
-	float sL = texture(noise_tex, vec2((hx - 1.4) * stripe_freq, t * 0.04)).r;
-	float sR = texture(noise_tex, vec2((hx + 1.4) * stripe_freq, t * 0.04)).r;
-	r *= clamp(1.0 + 2.6 * (sR - sL), 0.70, 1.42);            // ARÊTE = flanc clair / flanc sombre
-	float br = texture(noise_tex, vec2(hx * stripe_freq * 0.5 + 5.0, t * 0.2)).r;
-	r *= mix(0.90, 1.12, br);                                  // variation douce (non écrasante)
-	vec3 col = r * mix(face_dark, 1.06, t);                    // pied LÉGÈREMENT ombré (plus de near-black)
-	col += vec3(0.16, 0.15, 0.12) * smoothstep(0.82, 0.97, t); // LÈVRE éclairée au sommet
+	float ph = fract(hx * ridge_density + texture(noise_tex, vec2(hx * 0.012, 1.0)).r * 0.6);
+	float shad = smoothstep(0.0, 0.03, ph) - smoothstep(0.03, 0.08, ph);
+	float lite = smoothstep(0.08, 0.11, ph) - smoothstep(0.11, 0.16, ph);
+	r *= (1.0 - 0.20 * shad) * (1.0 + 0.12 * lite);          // arête FINE (ombre + reflet)
+	vec3 col = r * mix(0.88, 1.04, t);                        // pied à PEINE ombré (jamais noir)
+	col += vec3(0.12, 0.11, 0.09) * smoothstep(0.86, 0.98, t);  // lèvre éclairée
 	return col;
 }
 
@@ -128,9 +128,10 @@ void fragment() {
 		// l'ondulation casse la grille SUR TERRE, mais NE FRANCHIT JAMAIS la côte : au passage
 		// mer↔terre on RETOMBE sur le biome vrai → la mer ne "bave" plus sur la terre (ni l'inverse).
 		if (b < 0 || (b <= 2) != (b0 <= 2)) b = b0;
-		// HIGHLAND : le SOL DE BASE prend le terrain OUVERT du sommet (herbe/désert/neige), JAMAIS la
-		// roche sombre du biome montagne → pas de "sol noir" sous la falaise ; la base raccorde au plateau.
-		if (highland_at(cell) > 0.5) {
+		// MONTAGNE (falaise OU poche carvée sous une ville OU pied de paroi) : le SOL DE BASE prend le
+		// terrain OUVERT du sommet (herbe/désert/neige), JAMAIS la roche sombre du biome montagne → fini
+		// le "sol noir". On vise le BIOME (18/19/23), pas le masque falaise (la carve l'a vidé sous la ville).
+		if (highland_at(cell) > 0.5 || b0 == 18 || b0 == 19 || b0 == 23) {
 			int bs = int(texture(cliff_top_biome, (floor(cell / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0 + 0.5);
 			b = ((bs >= 3 && bs <= 11) || bs == 20) ? bs : 6;
 		}
@@ -214,7 +215,7 @@ void fragment() {
 			float edge = (1.0 - cliff_cov(cellW + vec2(o, o)))                 // bas écran
 			           + (1.0 - cliff_cov(cellW + vec2(o * 0.5, -o * 0.5)))    // droite écran
 			           + (1.0 - cliff_cov(cellW + vec2(-o * 0.5, o * 0.5)));   // gauche écran
-			col = mix(col, col * 0.45, clamp(edge, 0.0, 1.0) * outline_str);
+			col = mix(col, col * 0.62, clamp(edge, 0.0, 1.0) * outline_str);
 		}
 		COLOR = vec4(col, 1.0);
 	}
