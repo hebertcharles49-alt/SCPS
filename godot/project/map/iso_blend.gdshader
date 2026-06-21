@@ -18,13 +18,14 @@ uniform sampler2D noise_tex : repeat_enable, filter_linear;
 uniform sampler2DArray cliff_atlas : filter_linear_mipmap;
 uniform sampler2D cliff_idx : filter_nearest;
 uniform sampler2D cliff_dist : filter_linear;
+uniform sampler2D cliff_top_biome : filter_nearest;   // biome du SOMMET (terrain alentour) par cellule
 uniform vec2 cliff_grid = vec2(128.0, 64.0);   // (nx, ny) cellules
 uniform float tile_k = 8.0;                     // cellules-monde par cellule d'autotile
 uniform float dist_max = 24.0;                  // plafond du champ de distance (cellules)
 uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombrage de la terrasse (sommet)
 // RELIEF « AoE » : chaque cellule highland est RELEVÉE de `highland_lift` (unités iso-écran) — son
 // sommet monte, une FACE de roche le relie au pied → vrai escarpement en volume (pas un sol plat).
-uniform float highland_lift : hint_range(0.0, 40.0) = 16.0;
+uniform float highland_lift : hint_range(0.0, 40.0) = 12.0;   // hauteur de falaise (~1.5 tuile = 12 px iso)
 uniform float face_dark : hint_range(0.0, 1.0) = 0.55;       // assombrissement du PIED de la face
 uniform float highland_warp : hint_range(0.0, 16.0) = 7.0;   // ondulation du bord highland → moins carré
 uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
@@ -72,19 +73,22 @@ float highland_at(vec2 c) {
 	if (c.x < 0.0 || c.y < 0.0 || c.x >= map_size.x || c.y >= map_size.y) return 0.0;
 	return texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r > 0.0015 ? 1.0 : 0.0;
 }
-// SOMMET du plateau : le SOL NORMAL (biome) de la cellule, RELEVÉ (comme AoE : herbe/roche en haut,
-// la roche n'est QUE sur la face). Légèrement éclairci (le sommet capte la lumière).
+// SOMMET du plateau : le TERRAIN ALENTOUR (biome non-highland le plus proche : terreux/herbe/neige),
+// RELEVÉ — la roche n'est QUE sur la face (comme AoE). VARIANCE : taches claires/sombres (pas un aplat).
 vec3 cliff_top(vec2 c) {
-	int bb = biome_at(c);
-	if (bb < 0) bb = 18;
-	return terr(bb, fract(c / period), c) * 1.10;
+	int bb = int(texture(cliff_top_biome, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0 + 0.5);
+	if (bb < 3) bb = 6;                              // repli : herbe (île de roche cernée de mer)
+	vec3 r = terr(bb, fract(c / period), c);
+	float n = texture(noise_tex, c * 0.03 + vec2(2.0, 6.0)).r;
+	float n2 = texture(noise_tex, c * 0.09 + vec2(7.0, 1.0)).r;
+	r *= mix(0.80, 1.26, n) * mix(0.92, 1.08, n2);   // variance grande + petite échelle
+	return r * 1.08;
 }
-// FACE de roche (verticale) : scree relu, strié vertical (t = 0 pied .. 1 sommet), ombré en bas.
-vec3 cliff_face(vec2 c, float t, float hx) {
+// FACE de roche (verticale) : scree de la cellule (UV LOCAL stable → PAS de stries), ombré en bas.
+vec3 cliff_face(vec2 c, float t) {
 	float ci = max(texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0, 1.0);
-	vec3 r = texture(cliff_atlas, vec3(fract(vec2(hx / (tile_k * 1.2), t * 1.4)), ci - 1.0)).rgb;
-	r *= 1.5;                                            // la roche de face est éclairée (pas un trou noir)
-	return r * mix(face_dark, 0.95, t);                  // pied plus sombre (ombre portée), haut clair
+	vec3 r = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).rgb * 1.4;
+	return r * mix(face_dark, 0.95, t);              // pied plus sombre (ombre portée), haut clair
 }
 
 void fragment() {
@@ -169,7 +173,7 @@ void fragment() {
 				float k = eff_lift * float(i) / 12.0;
 				if (highland_at(cellW + vec2(k)) > 0.5) { fk = k; fc = cellW + vec2(k); break; }
 			}
-			if (fk > 0.0) col = mix(col, cliff_face(fc, fk / eff_lift, iso.x),
+			if (fk > 0.0) col = mix(col, cliff_face(fc, fk / eff_lift),
 				smoothstep(0.0, 0.16, fk / eff_lift));   // pied FONDU dans le sol (talus arrondi)
 		}
 		COLOR = vec4(col, 1.0);

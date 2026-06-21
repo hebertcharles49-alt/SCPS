@@ -19,6 +19,7 @@ const TILE_K := 8              ## cellules monde par tuile iso (granularité du 
 const HIGHLAND_BIOMES := [18, 19, 23]
 const CLIFF_AT_DIR := "res://assets/scps/pack/iso_tiles/cliff_autotile/"
 const DIST_MAX := 24.0         ## plafond du champ de distance highland (cellules) → terrasses + pente
+const CITY_CARVE := 3          ## rayon (cellules) dégagé de falaise autour d'une ville → assise plate
 ## PRIORITÉ de fondu par biome (index = enum Biome) : le PLUS HAUT domine le plus bas. HIÉRARCHIE :
 ## l'HERBE est le SOCLE BAS ; au-dessus forêt < aride/désert < sable/plage < relief < neige <
 ## volcan/ronces. L'eau tout en bas (la terre domine la mer = rivage depuis la terre).
@@ -46,7 +47,8 @@ var _bmap: ImageTexture = null         ## couche biome → texture (R = biome/25
 var _cliff_arr: Texture2DArray = null  ## 94 tuiles d'autotile falaise (ordre des entrées JSON)
 var _cliff_mask := {}                  ## mask blob (canon) → [layerA, layerB] (couches du _cliff_arr)
 var _cliff_idx: ImageTexture = null    ## carte PAR CELLULE : R = layer+1 (0 = pas de falaise)
-var _cliff_h: ImageTexture = null      ## champ de HAUTEUR lissé (masque highland flouté) → pente + fondu
+var _cliff_h: ImageTexture = null      ## champ de DISTANCE au bord (cellules/DIST_MAX) → rampes d'accès
+var _cliff_topbio: ImageTexture = null ## biome du SOMMET (terrain alentour) par cellule highland
 
 ## texture-array des tuiles PLATES tuilables : VAR couches par biome (couche = biome*VAR + variante),
 ## chargées de var/ (palette B). Bâtie une fois. Le shader fond les variantes par région.
@@ -166,20 +168,40 @@ func _blob_mask(hl: PackedByteArray, nx: int, ny: int, x: int, y: int) -> int:
 
 ## carte PAR CELLULE (nx×ny, R8) : 0 = pas de falaise ; sinon layer+1 (couche d'autotile choisie par
 ## le masque blob, variante par hash). Le shader lit cette carte au pas de cellule (filter_nearest).
-func _build_cliff_idx(bio: Image, W: int, H: int) -> void:
+func _build_cliff_idx(w, bio: Image, W: int, H: int) -> void:
 	_cliff_autotile()       # garantit _cliff_mask peuplée
 	var nx := W / TILE_K
 	var ny := H / TILE_K
 	var k2 := TILE_K / 2
 	var hl := PackedByteArray()
 	hl.resize(nx * ny)
+	var bcell := PackedByteArray()
+	bcell.resize(nx * ny)
 	for cy in range(ny):
 		for cx in range(nx):
 			var bx := mini(cx * TILE_K + k2, W - 1)
 			var by := mini(cy * TILE_K + k2, H - 1)
 			var b := int(bio.get_pixel(bx, by).r * 255.0 + 0.5)
+			bcell[cy * nx + cx] = b
 			hl[cy * nx + cx] = 1 if HIGHLAND_BIOMES.has(b) else 0
 	_morph_highland(hl, nx, ny)     # comble les trous, retire les falaises isolées, rabote les coins
+	# CARVE : aucune falaise SOUS une ville (le bourg s'embourbait dans la paroi). On dégage un disque
+	# autour de chaque centroïde colonisé → assise PLATE pour le village.
+	if w != null:
+		for r in range(w.region_count()):
+			if not w.region_colonized(r):
+				continue
+			var ctr: Vector2 = w.region_centroid(r)
+			var ccx := int(ctr.x) / TILE_K
+			var ccy := int(ctr.y) / TILE_K
+			for dy in range(-CITY_CARVE, CITY_CARVE + 1):
+				for dx in range(-CITY_CARVE, CITY_CARVE + 1):
+					if dx * dx + dy * dy > CITY_CARVE * CITY_CARVE:
+						continue
+					var xx := ccx + dx
+					var yy := ccy + dy
+					if xx >= 0 and yy >= 0 and xx < nx and yy < ny:
+						hl[yy * nx + xx] = 0
 	var img := Image.create(nx, ny, false, Image.FORMAT_R8)
 	for cy in range(ny):
 		for cx in range(nx):
@@ -226,6 +248,40 @@ func _build_cliff_idx(bio: Image, W: int, H: int) -> void:
 			var dv: float = dist[cy * nx + cx]
 			df.set_pixel(cx, cy, Color(minf(dv, DIST_MAX) / DIST_MAX, 0.0, 0.0))
 	_cliff_h = ImageTexture.create_from_image(df)
+	# BIOME du SOMMET : le biome SOUPLE (herbe/terre/neige) le plus proche, propagé À TRAVERS la TERRE
+	# — donc AU-DELÀ des couronnes rocheuses (highlands/hills) qui ceignent les monts. Le plateau garde
+	# ainsi un sol DOUX (terreux/neigeux) ; la roche (autotile) ne reste QUE sur la FACE. Souple =
+	# biomes 3..15 (côte→marais) + 20..22 (glacier/mangrove/tourbière) ; rocheux 16-19,23 exclus.
+	var topb := bcell.duplicate()
+	var bdist := PackedInt32Array()
+	bdist.resize(n)
+	var q2 := PackedInt32Array()
+	for i in range(n):
+		var bb := int(bcell[i])
+		if (bb >= 3 and bb <= 15) or (bb >= 20 and bb <= 22):
+			bdist[i] = 0
+			topb[i] = bcell[i]
+			q2.append(i)
+		else:
+			bdist[i] = 1 << 28
+	var h2 := 0
+	while h2 < q2.size():
+		var idx := q2[h2]
+		h2 += 1
+		var cx := idx % nx
+		var cy := idx / nx
+		var nd := bdist[idx] + 1
+		for ni in [idx - 1 if cx > 0 else -1, idx + 1 if cx < nx - 1 else -1,
+				idx - nx if cy > 0 else -1, idx + nx if cy < ny - 1 else -1]:
+			if ni >= 0 and bcell[ni] >= 3 and bdist[ni] > nd:   # propage à travers la TERRE (pas la mer)
+				bdist[ni] = nd
+				topb[ni] = topb[idx]
+				q2.append(ni)
+	var tb := Image.create(nx, ny, false, Image.FORMAT_R8)
+	for cy in range(ny):
+		for cx in range(nx):
+			tb.set_pixel(cx, cy, Color(float(topb[cy * nx + cx]) / 255.0, 0.0, 0.0))
+	_cliff_topbio = ImageTexture.create_from_image(tb)
 
 func _ready() -> void:
 	Sim.generated.connect(_on_generated)
@@ -258,8 +314,9 @@ func is_active() -> bool:
 func _on_generated() -> void:
 	_active = UIKit.has_iso_tiles()
 	_bmap = null            # nouveau monde → recharge la carte des biomes pour le splat
-	_cliff_idx = null       # … et recalcule l'autotile falaise (+ son champ de hauteur)
+	_cliff_idx = null       # … et recalcule l'autotile falaise (+ distance + biome de sommet)
 	_cliff_h = null
+	_cliff_topbio = null
 	queue_redraw()
 
 func _on_tick(_y: int) -> void:
@@ -285,13 +342,14 @@ func _draw() -> void:
 		if _bmap == null:
 			_bmap = ImageTexture.create_from_image(bio)
 		if _cliff_idx == null:
-			_build_cliff_idx(bio, W, H)
+			_build_cliff_idx(w, bio, W, H)
 		mat.set_shader_parameter("biome_map", _bmap)
 		mat.set_shader_parameter("map_size", Vector2(W, H))
 		mat.set_shader_parameter("terrains", _terr_array())
 		mat.set_shader_parameter("cliff_atlas", _cliff_autotile())
 		mat.set_shader_parameter("cliff_idx", _cliff_idx)
 		mat.set_shader_parameter("cliff_dist", _cliff_h)
+		mat.set_shader_parameter("cliff_top_biome", _cliff_topbio)
 		mat.set_shader_parameter("dist_max", DIST_MAX)
 		mat.set_shader_parameter("cliff_grid", Vector2(W / TILE_K, H / TILE_K))
 		mat.set_shader_parameter("tile_k", float(TILE_K))
