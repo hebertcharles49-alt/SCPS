@@ -11,7 +11,9 @@ const UIKit = preload("res://ui/uikit.gd")
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
 const TILE_K := 8
-const CLIFF_GRAD := 52          ## descente (/255) = vraie falaise (haut → seules les ruptures FRANCHES)
+const CLIFF_GRAD := 46          ## descente (/255) vers un voisin = vraie MARCHE (rupture franche)
+const CLIFF_CONVEX := 10        ## convexité min (/255) : tuile au-dessus de la MOYENNE des voisins →
+                                ## la LÈVRE HAUTE d'une marche, pas un flanc de pente lisse (anti-blob)
 const CLIFF_TILES := 2.2        ## HAUTEUR de l'escarpement EN TUILES (~2 — l'objectif de design)
 const CLIFF_WIDEN := 1.18       ## léger élargissement horizontal → les escarpements se touchent = mur
 
@@ -21,6 +23,10 @@ var _cliffs_loaded := false
 func _ready() -> void:
 	name = "IsoCliffs"
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	# OCCLUSION : la roche passe PAR-DESSUS routes & bâtiments (l'Overlay, z=0) → ce qui est sur une
+	# tuile-falaise DISPARAÎT sous l'escarpement (la passabilité reste un sujet moteur, pas ici).
+	z_index = 50
+	z_as_relative = false
 	Sim.generated.connect(queue_redraw)
 	Sim.ticked.connect(_on_tick)
 
@@ -70,17 +76,20 @@ func _draw() -> void:
 ## bas est à l'écran-DROITE (+x/-y), 1 si à l'écran-GAUCHE (-x/+y → sprite MIROIR).
 func _cliff_info(hgt: Image, x: int, y: int, W: int, H: int) -> int:
 	var h0 := hgt.get_pixel(x, y).r
-	var drops := [
-		h0 - hgt.get_pixel(mini(x + TILE_K, W - 1), y).r,   # +x (SE) droite
-		h0 - hgt.get_pixel(x, maxi(y - TILE_K, 0)).r,        # -y (NE) droite
-		h0 - hgt.get_pixel(maxi(x - TILE_K, 0), y).r,        # -x (NW) gauche
-		h0 - hgt.get_pixel(x, mini(y + TILE_K, H - 1)).r,    # +y (SW) gauche
-	]
+	var hpx := hgt.get_pixel(mini(x + TILE_K, W - 1), y).r
+	var hny := hgt.get_pixel(x, maxi(y - TILE_K, 0)).r
+	var hnx := hgt.get_pixel(maxi(x - TILE_K, 0), y).r
+	var hpy := hgt.get_pixel(x, mini(y + TILE_K, H - 1)).r
+	var drops := [h0 - hpx, h0 - hny, h0 - hnx, h0 - hpy]    # +x(SE)/-y(NE) droite · -x(NW)/+y(SW) gauche
 	var bi := 0
 	for i in range(1, 4):
 		if drops[i] > drops[bi]:
 			bi = i
 	if drops[bi] * 255.0 < float(CLIFF_GRAD):
+		return -1
+	# CONVEXITÉ : on ne pose la falaise que sur la LÈVRE HAUTE (tuile nettement au-dessus de la
+	# moyenne de ses voisins). Un flanc de pente LISSE a h0 ≈ moyenne → écarté → plus de blob.
+	if (h0 - 0.25 * (hpx + hnx + hpy + hny)) * 255.0 < float(CLIFF_CONVEX):
 		return -1
 	return 0 if bi < 2 else 1
 
