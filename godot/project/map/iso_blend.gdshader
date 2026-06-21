@@ -32,6 +32,7 @@ uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellule
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
 uniform float outline_w : hint_range(0.0, 4.0) = 1.4;        // demi-largeur du détourage (px écran)
 uniform float outline_str : hint_range(0.0, 1.0) = 0.5;      // force du trait de contour (assombrissement)
+uniform float stripe_freq : hint_range(0.01, 0.3) = 0.09;    // densité des stries verticales de la paroi
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
 uniform float warp : hint_range(0.0, 12.0) = 5.0;         // amplitude d'ondulation des frontières (cellules)
@@ -94,11 +95,21 @@ vec3 cliff_top(vec2 c) {
 	return r * 1.08;
 }
 // FACE de roche (paroi) : scree de la cellule ÉCLAIRCI en gris-brun (pas un trou noir), UV local
-// stable (pas de stries), dégradé d'ombre du pied (sombre) vers le haut (pleine lumière).
+// stable (pas de stries-couture), + STRIES VERTICALES de roche (organique & perspective) + un GRAIN
+// de texture montagne (avec PARCIMONIE), dégradé d'ombre du pied (sombre) vers le haut (lumière).
 vec3 cliff_face(vec2 c, float t) {
 	float ci = max(texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0, 1.0);
 	vec3 r = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).rgb;
 	r = r * 2.3 + vec3(0.16, 0.13, 0.10);            // ROCHE claire gris-brun (lisible, pas noire)
+	// STRIES VERTICALES : motif qui varie le LONG de la paroi (hx = écran-x ≈ constant en colonne) et
+	// quasi constant en HAUTEUR → colonnes de roche ; 2e octave gauchie → organique, donne le relief.
+	float hx = c.x - c.y;
+	float s1 = texture(noise_tex, vec2(hx * stripe_freq, t * 0.05)).r;          // colonnes ~verticales
+	float s2 = texture(noise_tex, vec2(hx * stripe_freq * 3.1 + 3.0, t * 0.5 + 1.0)).r;  // fines, gauchies
+	r *= mix(0.58, 1.24, s1 * 0.62 + s2 * 0.38);     // STRIES marquées (relief de paroi)
+	// PARCIMONIE : un grain de la texture du biome MONTAGNE pour le caractère rocheux (léger, pas sombre).
+	vec3 mtn = terr(18, fract(c / period), c);
+	r = mix(r, r * (0.8 + 0.7 * mtn), 0.15);
 	vec3 col = r * mix(face_dark, 1.04, t);          // pied ombré → haut en pleine lumière
 	col += vec3(0.16, 0.15, 0.12) * smoothstep(0.80, 0.97, t);   // LÈVRE éclairée au sommet (cue AoE)
 	return col;
