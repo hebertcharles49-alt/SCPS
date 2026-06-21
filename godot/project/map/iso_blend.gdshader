@@ -35,6 +35,12 @@ uniform float outline_str : hint_range(0.0, 1.0) = 0.6;      // force du trait d
 uniform float ridge_density : hint_range(0.1, 1.0) = 0.42;   // densité des panneaux de l'ÉVENTAIL (arêtes)
 uniform float fold_skew : hint_range(0.0, 0.4) = 0.14;       // cisaillement du PLI (texture pliée)
 uniform float fold_shade : hint_range(0.0, 0.6) = 0.34;      // contraste d'ombrage des facets (l'arête)
+// ÉCLAIRAGE GLOBAL DIRECTIONNEL : UNE seule lumière (haut-gauche écran) éclaire sol/falaise/assets.
+// `light_world` = direction MONDE vers la source (un pas `cell + light_world*k` va vers la lumière à
+// l'écran). Les falaises projettent une OMBRE PORTÉE douce sur le sol côté OPPOSÉ à la lumière.
+uniform vec2 light_world = vec2(-0.95, -0.32);
+uniform float shadow_str : hint_range(0.0, 0.7) = 0.34;      // force de l'ombre portée des falaises
+uniform float shadow_reach : hint_range(2.0, 20.0) = 10.0;   // portée de l'ombre (unités monde)
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
 uniform float warp : hint_range(0.0, 12.0) = 5.0;         // amplitude d'ondulation des frontières (cellules)
@@ -189,6 +195,18 @@ void fragment() {
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
 			texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);
 		col *= vb;
+		// OMBRE PORTÉE des falaises sur le SOL : un pixel de sol est dans l'ombre s'il y a une falaise
+		// EN AMONT DE LA LUMIÈRE (on marche vers `light_world`). Plus la falaise est proche, plus c'est
+		// sombre (chute douce) → le plateau « décolle » du sol comme dans AoE. (Le relief écrase ensuite
+		// les pixels de falaise ; l'ombre ne reste donc que sur le SOL, côté opposé à la lumière.)
+		float shp = 0.0;
+		for (int s = 1; s <= 6; s++) {
+			if (highland_at(cell + light_world * (float(s) * shadow_reach / 6.0)) > 0.5) {
+				shp = 1.0 - (float(s) - 1.0) / 6.0;
+				break;
+			}
+		}
+		col *= 1.0 - shadow_str * shp;
 		// ───── RELIEF « AoE » : highland RELEVÉ par-dessus le sol. (1) bord ONDULÉ par un bruit
 		// (cellW) → contour ORGANIQUE, moins carré / arrondi. (2) SLOPES D'ACCÈS : par zones (bruit),
 		// le relèvement RAMPE avec la distance au bord → un talus praticable au lieu d'une paroi.
