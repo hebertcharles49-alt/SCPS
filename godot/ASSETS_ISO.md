@@ -121,7 +121,7 @@ plaine · roche plate · marais/tourbe · plage · crique · presqu'île · estu
 
 ---
 
-## 3b. Falaises = barrière **inhabitable** (façon Age of Empires)
+## 3b. Falaises = barrière **inhabitable**
 
 La face rocheuse qui **grimpe** (`canevas_falaises`) est une **barrière infranchissable**, pas du
 sol bâtissable. Décidé : **auto depuis la rupture de relief, classe PEAK, zéro bump SAVE**.
@@ -130,7 +130,7 @@ sol bâtissable. Décidé : **auto depuis la rupture de relief, classe PEAK, zé
   **gradient de hauteur** vers un 4-voisin dépasse le seuil (≈ **40/255**, calibré : le monde est
   bimodal — sol lisse Δ<20 vs falaise Δ≥30) est une **cellule de falaise**. ~0.3 % de la terre,
   groupée le long des dorsales (vérifié seed 9). Source : couche `SCPS_LAYER_HEIGHT` (déjà exposée).
-- **Conséquences (AoE)** : sur une cellule de falaise →
+- **Conséquences** : sur une cellule de falaise →
   1. **rendu** : la face de `canevas_falaises` (pas le sol général) ;
   2. **inhabitable** : aucun bâti, aucune colonisation, aucun décor posé dessus ;
   3. **barrière** : l'armée ne traverse pas (passage nul) — on contourne.
