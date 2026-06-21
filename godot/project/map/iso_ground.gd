@@ -14,7 +14,9 @@ const UIKit = preload("res://ui/uikit.gd")
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
-const CLIFF_GRAD := 40         ## gradient de hauteur (/255) = falaise (monde bimodal, vérifié)
+const CLIFF_GRAD := 44         ## gradient de hauteur (/255) = falaise : HAUT → seulement les vraies
+                               ## ruptures (pas les pentes douces) ; là, l'escarpement large fait mur.
+const CLIFF_W := 1.7           ## largeur de l'escarpement en tuiles (> 1 → recouvre les voisins = mur)
 ## PRIORITÉ de fondu par biome (index = enum Biome) : le PLUS HAUT déborde sur le plus bas (façon
 ## Age of Empires). HIÉRARCHIE : l'HERBE est le SOCLE BAS sur lequel tout déborde ; au-dessus
 ## viennent forêt < aride/désert < sable/plage < relief < neige < volcan/ronces. L'eau tout en bas
@@ -47,6 +49,7 @@ func _setup_blend() -> void:
 		mat.set_shader_parameter("noise_tex", noise)
 	material = mat
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED   # la texture PLATE COULE (UV monde > 1 → wrap)
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS   # anti-moiré au dézoom
 	_shaded = true
 
 ## biome au CENTRE de la tuile voisine (col,row) ; HORS-grille = océan (le monde est ceint de mer).
@@ -190,6 +193,6 @@ func _draw_cliff(biome: int, ip: Vector2, sc: float, vh: int) -> void:
 	if ctex == null:
 		return
 	var sz: Vector2 = c["size"]
-	var cs := 1.4 * float(UIKit.ISO_TILE_W) * sc / maxf(sz.x, 1.0)   # normalise la largeur (~1.4 tuile)
-	# COLOR=(0,1,0,1) → passe BASE du shader (cfg=0 ⇒ pas de fondu, alpha du sprite intact)
-	draw_texture_rect(ctex, Rect2(ip - (c["hot"] as Vector2) * cs, sz * cs), false, Color(0.0, 1.0, 0.0, 1.0))
+	var cs := CLIFF_W * float(UIKit.ISO_TILE_W) * sc / maxf(sz.x, 1.0)   # largeur normalisée (recouvre = mur)
+	# COLOR.b=0.5 → passe SPRITE du shader (UV local, hors splat → le sprite n'est PAS tuilé)
+	draw_texture_rect(ctex, Rect2(ip - (c["hot"] as Vector2) * cs, sz * cs), false, Color(0.0, 1.0, 0.5, 1.0))

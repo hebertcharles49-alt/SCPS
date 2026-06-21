@@ -368,6 +368,7 @@ static func _tex(path: String) -> Texture2D:
 	if FileAccess.file_exists(path):        # garde : pas d'erreur console si l'asset manque
 		var img := Image.load_from_file(path)
 		if img != null:
+			img.generate_mipmaps()          # anti-aliasing au DÉZOOM (sol échantillonné en monde continu)
 			tex = ImageTexture.create_from_image(img)
 	_cache[path] = tex            # met aussi en cache les ratés (null) → un seul essai
 	return tex
