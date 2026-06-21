@@ -20,6 +20,20 @@ const CLIFF_W := 1.7           ## largeur de l'escarpement en tuiles (> 1 → re
 ## volcan/ronces. L'eau tout en bas (la terre domine la mer = rivage depuis la terre).
 const PRIO := [0, 0, 1, 16, 4, 5, 4, 6, 6, 12, 14, 13, 8, 8, 9, 7,
 	17, 10, 19, 22, 24, 7, 8, 26, 28]
+## VAR variantes de texture PLATE par biome (var/, palette B) → variété par RÉGION (le shader
+## choisit/fond une variante selon un bruit basse-fréquence). Index = enum Biome.
+const VAR := 4
+const BIOME_VAR := [
+	["uwtr", "wt5", "wt4", "wt3"], ["wtr", "wt2", "wt3", "wt4"], ["sha", "sh2", "sh3", "sha"],
+	["snd", "ds3", "des", "ds2"], ["grs", "gr3", "gr2", "sr1"], ["pal", "pal1", "pal", "pal1"],
+	["gr3", "grs", "gr6", "gr2"], ["gr5", "gr4", "sr1", "sr2"], ["gr6", "gr5", "sr2", "gr4"],
+	["ds2", "ds3", "qs", "des"], ["des", "ds2", "ds4", "snd"], ["ds3", "snd", "des", "qs"],
+	["for", "fo2", "fc1", "fc2"], ["fo2", "for", "fc3", "fc1"], ["fc1", "fc2", "fo2", "for"],
+	["m05", "m10", "m15", "m20"], ["rc1", "rc2", "rd1", "rm1"], ["gr2", "sr1", "gr4", "rc1"],
+	["rck", "rc3", "rd2", "rd1"], ["sno", "snf", "sng", "ice"], ["ice", "sno", "snf", "sng"],
+	["m20", "m25", "rm1", "m15"], ["m25", "rm2", "m15", "m20"], ["bc2", "bc3", "bc4", "bla"],
+	["for", "bc4", "fo2", "fc3"],
+]
 
 var _mv: Node2D = null
 var _active := false
@@ -29,27 +43,30 @@ var _cliffs_loaded := false
 var _terr_arr: Texture2DArray = null   ## texture-array des sols PLATS, indexée par BIOME
 var _bmap: ImageTexture = null         ## couche biome → texture (R = biome/255) pour le splat shader
 
-## texture-array (une couche par biome 0-24) des tuiles plates tuilables ; bâtie une fois.
+## texture-array des tuiles PLATES tuilables : VAR couches par biome (couche = biome*VAR + variante),
+## chargées de var/ (palette B). Bâtie une fois. Le shader fond les variantes par région.
+const VAR_DIR := "res://assets/scps/pack/iso_tiles/var/"
 func _terr_array() -> Texture2DArray:
 	if _terr_arr != null:
 		return _terr_arr
 	var imgs: Array[Image] = []
 	for b in range(25):
-		var names: Array = UIKit.BIOME_TEX.get(b, [])
-		var img: Image = null
-		if not names.is_empty():
-			var p := UIKit.BIOME_TEX_DIR + String(names[0]) + ".png"   # tuiles PLATES tuilables
-			if FileAccess.file_exists(p):
-				img = Image.load_from_file(p)
-		if img == null:
-			img = Image.create(256, 256, false, Image.FORMAT_RGBA8)
-			img.fill(Color(1, 0, 1, 1))
-		if img.get_format() != Image.FORMAT_RGBA8:
-			img.convert(Image.FORMAT_RGBA8)
-		if img.get_width() != 256 or img.get_height() != 256:
-			img.resize(256, 256)
-		img.generate_mipmaps()
-		imgs.append(img)
+		var vs: Array = BIOME_VAR[b] if b < BIOME_VAR.size() else []
+		for v in range(VAR):
+			var img: Image = null
+			if not vs.is_empty():
+				var p := VAR_DIR + String(vs[v % vs.size()]) + ".png"
+				if FileAccess.file_exists(p):
+					img = Image.load_from_file(p)
+			if img == null:
+				img = Image.create(256, 256, false, Image.FORMAT_RGBA8)
+				img.fill(Color(1, 0, 1, 1))
+			if img.get_format() != Image.FORMAT_RGBA8:
+				img.convert(Image.FORMAT_RGBA8)
+			if img.get_width() != 256 or img.get_height() != 256:
+				img.resize(256, 256)
+			img.generate_mipmaps()
+			imgs.append(img)
 	_terr_arr = Texture2DArray.new()
 	_terr_arr.create_from_images(imgs)
 	return _terr_arr
