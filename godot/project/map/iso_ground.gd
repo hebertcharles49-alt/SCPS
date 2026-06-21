@@ -13,8 +13,10 @@ const UIKit = preload("res://ui/uikit.gd")
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
-## Biomes « HIGHLAND » → reçoivent la falaise plate (autotile) : HIGHLANDS, MOUNTAINS, PEAK, VOLCANO.
-const HIGHLAND_BIOMES := [16, 18, 19, 23]
+## Biomes « HIGHLAND » → reçoivent la falaise plate (autotile). TRI SERRÉ : seulement le relief
+## RUGUEUX (MOUNTAINS, PEAK, VOLCANO) ; HIGHLANDS (upland DOUX, très répandu) et HILLS en sont EXCLUS
+## (sinon « tout devient falaise »). La gentle upland reste son biome de sol (herbe/roche habillable).
+const HIGHLAND_BIOMES := [18, 19, 23]
 const CLIFF_AT_DIR := "res://assets/scps/pack/iso_tiles/cliff_autotile/"
 const DIST_MAX := 24.0         ## plafond du champ de distance highland (cellules) → terrasses + pente
 ## PRIORITÉ de fondu par biome (index = enum Biome) : le PLUS HAUT domine le plus bas. HIÉRARCHIE :
