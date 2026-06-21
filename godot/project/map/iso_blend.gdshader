@@ -12,6 +12,19 @@ shader_type canvas_item;
 uniform sampler2DArray terrains : filter_linear_mipmap, repeat_enable;
 uniform sampler2D biome_map : filter_nearest;
 uniform sampler2D noise_tex : repeat_enable, filter_linear;
+// FALAISE PLATE : autotile blob 47 états. `cliff_idx` (par cellule, R=layer+1 ; 0=pas de falaise) →
+// `cliff_atlas` échantillonné en UV local à la cellule → bord de plateau (scree) auto-connecté.
+// `cliff_dist` = distance au bord (cellules, /dist_max) → TERRASSES (riser de pente + tread plat).
+uniform sampler2DArray cliff_atlas : filter_linear_mipmap;
+uniform sampler2D cliff_idx : filter_nearest;
+uniform sampler2D cliff_dist : filter_linear;
+uniform vec2 cliff_grid = vec2(128.0, 64.0);   // (nx, ny) cellules
+uniform float tile_k = 8.0;                     // cellules-monde par cellule d'autotile
+uniform float dist_max = 24.0;                  // plafond du champ de distance (cellules)
+uniform float terrace_period : hint_range(2.0, 6.0) = 3.0;   // cellules par MARCHE (riser + tread)
+uniform float riser_frac : hint_range(0.15, 0.6) = 0.34;     // part de la marche en PENTE (reste = plat)
+uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombrage directionnel du flanc
+uniform float border_feather : hint_range(0.0, 3.0) = 1.6;   // cellules de fondu vers le sol au bord
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
 uniform float warp : hint_range(0.0, 12.0) = 5.0;         // amplitude d'ondulation des frontières (cellules)
@@ -48,6 +61,8 @@ vec3 terr(int b, vec2 uv, vec2 cellG) {
 	return mix(texture(terrains, vec3(uv, float(base + v0))).rgb,
 	           texture(terrains, vec3(uv, float(base + v1))).rgb, fract(vf));
 }
+// distance au bord highland (en CELLULES) au point monde c.
+float cdist(vec2 c) { return texture(cliff_dist, c / (cliff_grid * tile_k)).r * dist_max; }
 
 void fragment() {
 	vec2 cell = vec2(iso.y + iso.x * 0.5, iso.y - iso.x * 0.5);   // inverse-iso
@@ -79,6 +94,31 @@ void fragment() {
 		if (bn >= 0 && bn != b && (bn > 2) == (b > 2)) {
 			float edge = texture(noise_tex, cell * warp_freq * 1.7 + vec2(2.1, 8.4)).r;
 			col = mix(col, terr(bn, uv, cell), clamp(0.5 + (edge - 0.5) * 1.3, 0.0, 1.0) * 0.8);
+		}
+		// FALAISE PLATE TERRASSÉE (autotile blob + champ de distance). Cellule HIGHLAND → le sol
+		// DEVIENT la tuile scree (UV local NET), PUIS on la sculpte en TERRASSES concentriques :
+		// chaque MARCHE = un RISER (pente 30-45°, ombré directionnellement) suivi d'un TREAD plat
+		// (habillable). Le bord du plateau se FOND légèrement vers le sol dessous.
+		vec2 cg = floor(cell / tile_k);
+		float ci = texture(cliff_idx, (cg + vec2(0.5)) / cliff_grid).r * 255.0;
+		if (ci >= 0.5) {
+			vec3 ccol = texture(cliff_atlas, vec3(fract(cell / tile_k), ci - 1.0)).rgb;
+			float d = cdist(cell);
+			float e = tile_k * 0.75;
+			vec2 g = vec2(cdist(cell + vec2(e, 0.0)) - cdist(cell - vec2(e, 0.0)),
+			              cdist(cell + vec2(0.0, e)) - cdist(cell - vec2(0.0, e)));
+			float gl = max(length(g), 1e-4);
+			float lvl = floor(d / terrace_period);                     // NIVEAU de terrasse (0 = le plus bas)
+			float f = fract(d / terrace_period);                       // position dans la marche
+			float riser = 1.0 - smoothstep(riser_frac, riser_frac + 0.10, f);   // 1 = pente, 0 = tread plat
+			vec2 Ld = normalize(vec2(-0.6, -0.8));                      // lumière haut-gauche
+			float lit = dot(-g / gl, Ld);                              // la face regarde l'AVAL (-grad)
+			ccol *= 1.0 + clamp(lvl * 0.075, 0.0, 0.45);               // pas tonal /niveau (plateau ensoleillé)
+			ccol *= mix(1.0, 0.80, riser);                             // RISER toujours plus sombre (face de marche)
+			ccol *= 1.0 + slope_shade * lit * riser;                   // + ombrage DIRECTIONNEL 30-45° (clair/sombre)
+			ccol *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.12, f));     // OMBRE marquée au PIED de la marche
+			ccol *= 1.0 + 0.18 * riser * smoothstep(riser_frac - 0.06, riser_frac, f);  // CRÊTE claire en haut du riser
+			col = mix(col, ccol, smoothstep(0.0, border_feather, d));  // FONDU léger sur la frontière
 		}
 		if (sea) {
 			// PROFONDEUR : deep un peu plus SOMBRE → shallow un peu plus CLAIR (doux, pas de blocs).

@@ -1,0 +1,498 @@
+{
+  "asset_kind": "SCPS original flat cliff terrain autotile",
+  "tile_size": [
+    256,
+    256
+  ],
+  "opaque": true,
+  "selection": {
+    "cell": "highland terrain cell",
+    "bit_order": {
+      "n": 1,
+      "e": 2,
+      "s": 4,
+      "w": 8,
+      "ne": 16,
+      "se": 32,
+      "sw": 64,
+      "nw": 128
+    },
+    "rule": "Set a bit when that neighbouring cell is also highland. Diagonal bits matter only when both adjoining cardinal neighbours are highland.",
+    "states": 47,
+    "variants_per_state": 2
+  },
+  "visual_rule": "All images are flat top-down ground. The elevation break is represented by a narrow, irregular scree band; there is no isometric face, cast shadow, UI framing or transparency.",
+  "origin": "Original SCPS artwork assembled from new generated source materials without third-party image, frame, naming or geometry input.",
+  "entries": [
+    {
+      "mask": 0,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_000_01.png"
+    },
+    {
+      "mask": 0,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_000_02.png"
+    },
+    {
+      "mask": 1,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_001_01.png"
+    },
+    {
+      "mask": 1,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_001_02.png"
+    },
+    {
+      "mask": 2,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_002_01.png"
+    },
+    {
+      "mask": 2,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_002_02.png"
+    },
+    {
+      "mask": 3,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_003_01.png"
+    },
+    {
+      "mask": 3,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_003_02.png"
+    },
+    {
+      "mask": 19,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_019_01.png"
+    },
+    {
+      "mask": 19,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_019_02.png"
+    },
+    {
+      "mask": 4,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_004_01.png"
+    },
+    {
+      "mask": 4,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_004_02.png"
+    },
+    {
+      "mask": 5,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_005_01.png"
+    },
+    {
+      "mask": 5,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_005_02.png"
+    },
+    {
+      "mask": 6,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_006_01.png"
+    },
+    {
+      "mask": 6,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_006_02.png"
+    },
+    {
+      "mask": 38,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_038_01.png"
+    },
+    {
+      "mask": 38,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_038_02.png"
+    },
+    {
+      "mask": 7,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_007_01.png"
+    },
+    {
+      "mask": 7,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_007_02.png"
+    },
+    {
+      "mask": 23,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_023_01.png"
+    },
+    {
+      "mask": 23,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_023_02.png"
+    },
+    {
+      "mask": 39,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_039_01.png"
+    },
+    {
+      "mask": 39,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_039_02.png"
+    },
+    {
+      "mask": 55,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_055_01.png"
+    },
+    {
+      "mask": 55,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_055_02.png"
+    },
+    {
+      "mask": 8,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_008_01.png"
+    },
+    {
+      "mask": 8,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_008_02.png"
+    },
+    {
+      "mask": 9,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_009_01.png"
+    },
+    {
+      "mask": 9,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_009_02.png"
+    },
+    {
+      "mask": 137,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_137_01.png"
+    },
+    {
+      "mask": 137,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_137_02.png"
+    },
+    {
+      "mask": 10,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_010_01.png"
+    },
+    {
+      "mask": 10,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_010_02.png"
+    },
+    {
+      "mask": 11,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_011_01.png"
+    },
+    {
+      "mask": 11,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_011_02.png"
+    },
+    {
+      "mask": 27,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_027_01.png"
+    },
+    {
+      "mask": 27,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_027_02.png"
+    },
+    {
+      "mask": 139,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_139_01.png"
+    },
+    {
+      "mask": 139,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_139_02.png"
+    },
+    {
+      "mask": 155,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_155_01.png"
+    },
+    {
+      "mask": 155,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_155_02.png"
+    },
+    {
+      "mask": 12,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_012_01.png"
+    },
+    {
+      "mask": 12,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_012_02.png"
+    },
+    {
+      "mask": 76,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_076_01.png"
+    },
+    {
+      "mask": 76,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_076_02.png"
+    },
+    {
+      "mask": 13,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_013_01.png"
+    },
+    {
+      "mask": 13,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_013_02.png"
+    },
+    {
+      "mask": 77,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_077_01.png"
+    },
+    {
+      "mask": 77,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_077_02.png"
+    },
+    {
+      "mask": 141,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_141_01.png"
+    },
+    {
+      "mask": 141,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_141_02.png"
+    },
+    {
+      "mask": 205,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_205_01.png"
+    },
+    {
+      "mask": 205,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_205_02.png"
+    },
+    {
+      "mask": 14,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_014_01.png"
+    },
+    {
+      "mask": 14,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_014_02.png"
+    },
+    {
+      "mask": 46,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_046_01.png"
+    },
+    {
+      "mask": 46,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_046_02.png"
+    },
+    {
+      "mask": 78,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_078_01.png"
+    },
+    {
+      "mask": 78,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_078_02.png"
+    },
+    {
+      "mask": 110,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_110_01.png"
+    },
+    {
+      "mask": 110,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_110_02.png"
+    },
+    {
+      "mask": 15,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_015_01.png"
+    },
+    {
+      "mask": 15,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_015_02.png"
+    },
+    {
+      "mask": 31,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_031_01.png"
+    },
+    {
+      "mask": 31,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_031_02.png"
+    },
+    {
+      "mask": 47,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_047_01.png"
+    },
+    {
+      "mask": 47,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_047_02.png"
+    },
+    {
+      "mask": 63,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_063_01.png"
+    },
+    {
+      "mask": 63,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_063_02.png"
+    },
+    {
+      "mask": 79,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_079_01.png"
+    },
+    {
+      "mask": 79,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_079_02.png"
+    },
+    {
+      "mask": 95,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_095_01.png"
+    },
+    {
+      "mask": 95,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_095_02.png"
+    },
+    {
+      "mask": 111,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_111_01.png"
+    },
+    {
+      "mask": 111,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_111_02.png"
+    },
+    {
+      "mask": 127,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_127_01.png"
+    },
+    {
+      "mask": 127,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_127_02.png"
+    },
+    {
+      "mask": 143,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_143_01.png"
+    },
+    {
+      "mask": 143,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_143_02.png"
+    },
+    {
+      "mask": 159,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_159_01.png"
+    },
+    {
+      "mask": 159,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_159_02.png"
+    },
+    {
+      "mask": 175,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_175_01.png"
+    },
+    {
+      "mask": 175,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_175_02.png"
+    },
+    {
+      "mask": 191,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_191_01.png"
+    },
+    {
+      "mask": 191,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_191_02.png"
+    },
+    {
+      "mask": 207,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_207_01.png"
+    },
+    {
+      "mask": 207,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_207_02.png"
+    },
+    {
+      "mask": 223,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_223_01.png"
+    },
+    {
+      "mask": 223,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_223_02.png"
+    },
+    {
+      "mask": 239,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_239_01.png"
+    },
+    {
+      "mask": 239,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_239_02.png"
+    },
+    {
+      "mask": 255,
+      "variant": 1,
+      "output": "tiles/scps_ground_cliff_255_01.png"
+    },
+    {
+      "mask": 255,
+      "variant": 2,
+      "output": "tiles/scps_ground_cliff_255_02.png"
+    }
+  ]
+}
