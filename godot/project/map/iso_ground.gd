@@ -575,18 +575,35 @@ func _carve_to_sea(img: Image, mouth: Vector2, water: Image, height: Image, W: i
 					bx = nx
 					by = ny
 		if bx == px and by == py:
-			# CUVETTE plate : on vise la mer la plus proche EN LIGNE DROITE (recherche large)
+			# CUVETTE plate : on vise la mer la plus proche — mais en MÉANDRE (jamais une droite stricte)
 			var s := _nearest_sea(water, px, py, 55, W, H)
 			if s.x < 0:
 				return
-			var steps := maxi(1, int(Vector2(px, py).distance_to(s)))
-			for i in range(steps + 1):
-				var q := Vector2(px, py).lerp(s, float(i) / float(steps))
-				_carve_brush(img, int(q.x), int(q.y), 1.07, 3, 5, W, H)
-			_carve_brush(img, int(s.x), int(s.y), 1.10, ESTUARY_CORE, ESTUARY_CORE + 2, W, H)   # ESTUAIRE au débouché
+			_carve_meander(img, Vector2(px, py), s, W, H)
 			return
 		px = bx
 		py = by
+
+## grave une LIGNE MÉANDREUSE de a→b (JAMAIS une droite stricte) : décalage perpendiculaire
+## sinusoïdal d'amplitude/fréquence/phase VARIABLES (dérivées de a → déterministe mais non répétitif) ;
+## enveloppe sin(πt) → 0 aux deux bouts (raccord net au fil et à la mer) ; deux harmoniques
+## incommensurables → aucun « pattern » de sinus visible. C'est l'embouchure qui serpente vers la mer.
+func _carve_meander(img: Image, a: Vector2, b: Vector2, W: int, H: int) -> void:
+	var dist := a.distance_to(b)
+	var dir := (b - a) / maxf(dist, 0.001)
+	var perp := Vector2(-dir.y, dir.x)
+	var sd := (int(a.x) * 73856093) ^ (int(a.y) * 19349663)
+	var amp := dist * (0.07 + 0.09 * float(sd & 0xff) / 255.0)        # 7-16 % de la longueur (variable)
+	var freq := 1.4 + float((sd >> 8) & 0x7) * 0.5                    # ~1.4 … 4.9 ondulations (variable)
+	var phase := float((sd >> 12) & 0xff) / 255.0 * TAU              # déphasage (variable)
+	var steps := maxi(2, int(dist))
+	for i in range(steps + 1):
+		var t := float(i) / float(steps)
+		var env := sin(t * PI)                                       # 0 aux extrémités
+		var wig := sin(t * freq * TAU + phase) + 0.35 * sin(t * freq * 2.7 * TAU + phase * 1.7)
+		var q := a.lerp(b, t) + perp * (amp * env * wig)
+		_carve_brush(img, int(q.x), int(q.y), 1.07, 3, 5, W, H)
+	_carve_brush(img, int(b.x), int(b.y), 1.10, ESTUARY_CORE, ESTUARY_CORE + 2, W, H)   # ESTUAIRE au débouché
 
 ## VRAI si une cellule d'eau (mer/lac) JOUXTE (px,py) — la rivière est alors connectée.
 func _touches_sea(water: Image, px: int, py: int, W: int, H: int) -> bool:
