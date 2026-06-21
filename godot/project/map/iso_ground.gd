@@ -479,7 +479,7 @@ func _build_river_field(w, W: int, H: int) -> Image:
 ## seulement, 0 sinon ; halo dégradé de +2 = la berge fondue (le « cut » latéral). Affluent = tout fondu.
 func _brush_for(rel: float) -> Array:
 	var peak := clampf(0.52 + 0.55 * rel, 0.0, 1.07)   # le DÉBIT module la largeur via le seuil du shader
-	return [peak, 0, 2]                                # cœur d'1 cellule (core 0) + halo de 2 → fil FIN, berge fondue
+	return [peak, 0, 3]                                # cœur d'1 cellule (core 0) + halo de 3 → place pour la BERGE de sable
 
 ## grave un brin dans le champ : à chaque point, un PINCEAU DOUX. Le RECOUVREMENT le long du fil garde
 ## le cœur CONTINU ; le halo dégradé FOND la berge latéralement (le « cut » des bords).

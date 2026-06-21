@@ -66,8 +66,13 @@ uniform float foam_str : hint_range(0.0, 1.0) = 0.5;
 //    TOMBE en travers des berges (le fondu n'est qu'aux bords). Un fleuve plus FIN (débit moindre) reste
 //    tout en zone de fondu → plus mélangé (le « blend supplémentaire » des petits cours). ─────────────
 uniform sampler2D river_map : filter_linear;
-uniform float river_core : hint_range(0.0, 1.0) = 0.45;      // champ ≥ ça = cœur d'EAU propre
-uniform float river_edge : hint_range(0.0, 1.0) = 0.16;      // champ ≤ ça = pas de rivière (terre) → berge fondue entre les deux
+// DEUX bandes, comme la CÔTE (eau → sable → terre) : le champ donne une large berge de SABLE qui
+// GRIGNOTE le terrain, et un cœur d'EAU ÉTROIT au débit fort (≈ ⅔ de surface d'eau en moins qu'un
+// mix direct → plus de « bras de mer »). Le sable = `terr(3)`, le MÊME que le rivage → continuité.
+uniform float river_sand  : hint_range(0.0, 1.0) = 0.16;     // champ ≥ ça = la BERGE (sable) commence
+uniform float river_water : hint_range(0.0, 1.0) = 0.54;     // champ ≥ ça = le cœur d'EAU (étroit) commence
+uniform float river_band  : hint_range(0.02, 0.5) = 0.22;    // rampe du cœur d'eau (sable→eau)
+uniform float river_sand_str : hint_range(0.0, 1.0) = 0.85;  // opacité du sable de berge (= shore_str)
 uniform float river_str  : hint_range(0.0, 1.0) = 1.0;       // opacité globale de la rivière carvée
 
 varying vec2 iso;
@@ -202,21 +207,24 @@ void fragment() {
 			float fp = 0.55 + 0.45 * sin(TIME * 2.2 + cell.x * 0.6 + cell.y * 0.4);
 			col = mix(col, vec3(0.86, 0.93, 0.98), foam_str * fp);
 		}
-		// ── RIVIÈRE CARVÉE (worldgen) : eau DANS le relief. Champ de débit LISSÉ (5 taps → berges
-		//    fondues, "blend supplémentaire" des fins cours) ; cœur PROPRE au débit fort, continu le
-		//    long du fil. Jamais sur la mer (déjà eau). ─────────────────────────────────────────────
+		// ── RIVIÈRE CARVÉE (worldgen), intégrée à la pipeline SHORE : le champ de débit pose d'abord
+		//    une BERGE de SABLE (terr(3), le même que le rivage → continuité) qui grignote le terrain,
+		//    PUIS un cœur d'EAU ÉTROIT au seul débit fort. Jamais sur la mer (déjà eau). ──────────────
 		if (!sea) {
-			// champ de débit LISSE (filtre linéaire → fondu naturel des berges, sans diluer le cœur)
 			float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r;
-			float wamt = smoothstep(river_edge, river_core, rv) * river_str;
-			if (wamt > 0.002) {
-				vec2 ruv = fract(cell / period + (vec2(
-					texture(noise_tex, cell * water_freq + vec2(TIME * water_speed, 0.0)).r,
-					texture(noise_tex, cell * water_freq + vec2(0.0, -TIME * water_speed)).r) - 0.5) * water_wave);
-				vec3 wcol = terr(1, ruv, cell) * vec3(0.92, 1.02, 1.12);   // eau DOUCE : un peu plus claire/cyan que la mer
-				float shim = texture(noise_tex, cell * water_freq * 2.3 + vec2(TIME * water_speed * 2.0, 0.0)).r;
-				wcol += vec3(0.12, 0.16, 0.20) * smoothstep(0.65, 0.93, shim) * water_shimmer;
-				col = mix(col, wcol, wamt);
+			float sand_amt = smoothstep(river_sand, river_water, rv);          // berge sableuse (large)
+			if (sand_amt > 0.003) {
+				col = mix(col, terr(3, uv, cell), sand_amt * river_sand_str);  // SABLE (pipeline shore)
+				float wamt = smoothstep(river_water, river_water + river_band, rv);   // cœur d'EAU étroit
+				if (wamt > 0.003) {
+					vec2 ruv = fract(cell / period + (vec2(
+						texture(noise_tex, cell * water_freq + vec2(TIME * water_speed, 0.0)).r,
+						texture(noise_tex, cell * water_freq + vec2(0.0, -TIME * water_speed)).r) - 0.5) * water_wave);
+					vec3 wcol = terr(1, ruv, cell) * vec3(0.92, 1.02, 1.12);   // eau DOUCE : un peu plus claire/cyan que la mer
+					float shim = texture(noise_tex, cell * water_freq * 2.3 + vec2(TIME * water_speed * 2.0, 0.0)).r;
+					wcol += vec3(0.12, 0.16, 0.20) * smoothstep(0.65, 0.93, shim) * water_shimmer;
+					col = mix(col, wcol, wamt);
+				}
 			}
 		}
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
