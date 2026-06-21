@@ -11,13 +11,15 @@ const UIKit = preload("res://ui/uikit.gd")
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
 const TILE_K := 8
-const CLIFF_GRAD := 60          ## descente (/255) = vraie falaise (haut → seules les ruptures FRANCHES)
-const CLIFF_W := 1.9            ## largeur de l'escarpement en tuiles (> 1 → recouvre = mur)
+const CLIFF_GRAD := 52          ## descente (/255) = vraie falaise (haut → seules les ruptures FRANCHES)
+const CLIFF_TILES := 2.2        ## HAUTEUR de l'escarpement EN TUILES (~2 — l'objectif de design)
+const CLIFF_WIDEN := 1.18       ## léger élargissement horizontal → les escarpements se touchent = mur
 
 var _cliffs := {}
 var _cliffs_loaded := false
 
 func _ready() -> void:
+	name = "IsoCliffs"
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	Sim.generated.connect(queue_redraw)
 	Sim.ticked.connect(_on_tick)
@@ -49,7 +51,6 @@ func _draw() -> void:
 	var nx := W / TILE_K
 	var ny := H / TILE_K
 	var k2 := TILE_K / 2
-	var sc := 2.0 * float(TILE_K) / float(UIKit.ISO_TILE_W)
 	for d in range(nx + ny - 1):
 		var c0 := maxi(0, d - (ny - 1))
 		var c1 := mini(nx - 1, d)
@@ -63,7 +64,7 @@ func _draw() -> void:
 			var cf := _cliff_info(hgt, cx, cy, W, H)   # -1 / 0 (face droite) / 1 (face gauche, miroir)
 			if cf >= 0:
 				var ip: Vector2 = mv.iso_pos(float(cx), float(cy))
-				_draw_cliff(b, ip, sc, (col * 73856093) ^ (row * 19349663), cf)
+				_draw_cliff(b, ip, (col * 73856093) ^ (row * 19349663), cf)
 
 ## plus forte DESCENTE vers un tuile-voisin (la falaise regarde le BAS). -1 si trop douce, 0 si le
 ## bas est à l'écran-DROITE (+x/-y), 1 si à l'écran-GAUCHE (-x/+y → sprite MIROIR).
@@ -102,7 +103,7 @@ func _load_cliffs() -> void:
 			"hot": Vector2(e["hotspot"][0], e["hotspot"][1]),
 			"size": Vector2(e["size"][0], e["size"][1])})
 
-func _draw_cliff(biome: int, ip: Vector2, sc: float, vh: int, flip: int) -> void:
+func _draw_cliff(biome: int, ip: Vector2, vh: int, flip: int) -> void:
 	if not _cliffs_loaded:
 		_load_cliffs()
 	var st := "temperate"
@@ -118,11 +119,17 @@ func _draw_cliff(biome: int, ip: Vector2, sc: float, vh: int, flip: int) -> void
 	if ctex == null:
 		return
 	var sz: Vector2 = c["size"]
-	var cs := CLIFF_W * float(UIKit.ISO_TILE_W) * sc / maxf(sz.x, 1.0)
-	var off := (c["hot"] as Vector2) * cs
-	if flip == 1:                            # MIROIR horizontal autour de l'ancre (face écran-gauche)
-		draw_set_transform(ip, 0.0, Vector2(-1.0, 1.0))
-		draw_texture_rect(ctex, Rect2(-off, sz * cs), false)
+	# 1 TUILE iso = TILE_K de HAUT (un pas diagonal complet = +TILE_K en y). On dimensionne par la
+	# HAUTEUR (objectif ~CLIFF_TILES tuiles) → la largeur SUIT l'aspect, ×WIDEN pour la continuité.
+	var csy := CLIFF_TILES * float(TILE_K) / maxf(sz.y, 1.0)
+	var dw := sz.x * csy * CLIFF_WIDEN
+	var dh := sz.y * csy
+	# base posée SUR la tuile (centre horizontal = ip.x), le ROC monte vers le haut d'écran ; on
+	# enfonce la base d'½-tuile pour qu'il couvre bien sa cellule (pas suspendu au-dessus du vide).
+	var top := ip.y - dh + float(TILE_K) * 0.5
+	if flip == 1:                            # MIROIR horizontal autour de ip.x (face écran-gauche)
+		draw_set_transform(Vector2(ip.x, 0.0), 0.0, Vector2(-1.0, 1.0))
+		draw_texture_rect(ctex, Rect2(Vector2(-dw * 0.5, top), Vector2(dw, dh)), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	else:
-		draw_texture_rect(ctex, Rect2(ip - off, sz * cs), false)
+		draw_texture_rect(ctex, Rect2(Vector2(ip.x - dw * 0.5, top), Vector2(dw, dh)), false)

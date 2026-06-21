@@ -51,12 +51,16 @@ vec3 terr(int b, vec2 uv, vec2 cellG) {
 
 void fragment() {
 	vec2 cell = vec2(iso.y + iso.x * 0.5, iso.y - iso.x * 0.5);   // inverse-iso
-	vec2 wv = vec2(texture(noise_tex, cell * warp_freq).r,
-	               texture(noise_tex, cell * warp_freq + vec2(5.2, 1.3)).r) - 0.5;
-	vec2 cw = cell + wv * (2.0 * warp);            // position de lecture ONDULÉE
-	int b = biome_at(cw);
-	if (b < 0) { COLOR = vec4(0.0); }
+	int b0 = biome_at(cell);                       // biome VRAI au pixel (NON ondulé)
+	if (b0 < 0) { COLOR = vec4(0.0); }
 	else {
+		vec2 wv = vec2(texture(noise_tex, cell * warp_freq).r,
+		               texture(noise_tex, cell * warp_freq + vec2(5.2, 1.3)).r) - 0.5;
+		vec2 cw = cell + wv * (2.0 * warp);        // position de lecture ONDULÉE
+		int b = biome_at(cw);
+		// l'ondulation casse la grille SUR TERRE, mais NE FRANCHIT JAMAIS la côte : au passage
+		// mer↔terre on RETOMBE sur le biome vrai → la mer ne "bave" plus sur la terre (ni l'inverse).
+		if (b < 0 || (b <= 2) != (b0 <= 2)) b = b0;
 		bool sea = b <= 2;
 		// UV ONDULÉE par un bruit basse-fréquence (casse la grille) ; pour l'EAU, ondulée EN PLUS par
 		// le TEMPS → vagues qui COULENT (horloge mur, display-only) → fin de la répétition statique.
@@ -77,13 +81,13 @@ void fragment() {
 			col = mix(col, terr(bn, uv, cell), clamp(0.5 + (edge - 0.5) * 1.3, 0.0, 1.0) * 0.8);
 		}
 		if (sea) {
-			// PROFONDEUR : deep SOMBRE → shallow CLAIR (gradient marqué, anti-uniforme).
+			// PROFONDEUR : deep un peu plus SOMBRE → shallow un peu plus CLAIR (doux, pas de blocs).
 			float depth = (b == 0) ? 0.0 : ((b == 1) ? 0.55 : 1.0);
-			col *= mix(0.70, 1.16, depth);
-			// COURANTS : patches sombres/clairs GRANDE ÉCHELLE + teinte → casse la nappe plate.
-			float cur = texture(noise_tex, cell * 0.015 + vec2(7.0, 2.0)).r;
-			col *= mix(0.78, 1.24, cur);
-			col = mix(col, col * vec3(0.78, 0.92, 1.18), (cur - 0.5) * water_var);   // bleuit/verdit par zones
+			col *= mix(0.82, 1.10, depth);
+			// COURANTS : patches GRANDE ÉCHELLE + teinte, ATTÉNUÉS → nappe vivante mais non blocky.
+			float cur = texture(noise_tex, cell * 0.012 + vec2(7.0, 2.0)).r;
+			col *= mix(0.90, 1.12, cur);
+			col = mix(col, col * vec3(0.86, 0.94, 1.12), (cur - 0.5) * water_var);   // bleuit/verdit par zones
 			// MIROITEMENT : taches claires mouvantes.
 			float shim = texture(noise_tex, cell * water_freq * 2.3
 				+ vec2(TIME * water_speed * 2.0, -TIME * water_speed * 1.5)).r;
