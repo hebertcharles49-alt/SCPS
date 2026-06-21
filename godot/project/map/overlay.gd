@@ -24,6 +24,7 @@ const CITY_CORE_SIZE := 18.0 ## taille MONDE FIXE du centre-ville (la ville ne G
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
 var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
+var _bio_img: Image = null ## couche biome (cache) → interdit le PIED d'un asset sur une tuile falaise
 var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
 var _region_centre := {}  ## région colonisée → TERRAIN du centre-ville (plaine/foret/montagne/estuaire/portuaire/lacustre)
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
@@ -389,6 +390,17 @@ func _region_craft_count(w, ctr: Vector2) -> int:
 ## dans la bande de rayon [rbase, rbase+rspan] — un anneau cohérent, pas un nuage. Chaque
 ## bâtiment tire SA taille (autour de `base_sz`) et un MIROIR optionnel → variété ; son
 ## empreinte (à SA taille) doit être au sec, sinon SAUTÉ. `idx` court d'un anneau à l'autre.
+## VRAI si la BASE (le pied) de l'asset tombe sur une tuile FALAISE (biome highland 18/19/23). En
+## iso, seule la BASE compte (profondeur) : le HAUT d'un asset PEUT surplomber la falaise — on ne
+## teste donc QUE le point-pied, pas une empreinte.
+func _is_cliff_base(p: Vector2) -> bool:
+	if _bio_img == null:
+		return false
+	var x := clampi(int(p.x), 0, _bio_img.get_width() - 1)
+	var y := clampi(int(p.y), 0, _bio_img.get_height() - 1)
+	var b := int(_bio_img.get_pixel(x, y).r * 255.0 + 0.5)
+	return b == 18 or b == 19 or b == 23
+
 func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: float,
 		base_sz: float, flipok: bool, idx: int, jit: float, sea: Image, rset: Dictionary, r: int) -> int:
 	if pool.is_empty():
@@ -404,6 +416,8 @@ func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: flo
 			continue                                      # sur la chaussée → on saute (le bâti longe, ne couvre pas)
 		if not _footprint_clear(sea, rset, p, sz * 0.5, sz):
 			continue                                      # déborde l'eau → on saute (ville sur terre)
+		if _is_cliff_base(p):
+			continue                                      # PIED sur une tuile falaise → interdit (iso : seule la base compte, le haut peut surplomber)
 		var nm: String = pool[(hh ^ (hh >> 5)) % pool.size()]   # pick mieux brassé
 		_structures.append({"name": nm, "pos": p, "sz": sz, "flip": flipok and (((hh >> 17) & 1) == 1)})
 		if _structures.size() >= 4800:
@@ -423,6 +437,7 @@ func _build_structures() -> void:
 		return
 	var bk := _buckets(names)
 	var sea: Image = w.layer_image(LAYER_WATER)   # mer OU lac : 0 = terre, ≥ 1 = eau (toute classe)
+	_bio_img = w.layer_image(2)                   # biome → interdit le PIED d'asset sur tuile falaise
 	# ensemble des cellules de RIVIÈRE (on ne bâtit pas dessus non plus) ──────────
 	var rset := {}
 	for rp in _rivers:
@@ -628,10 +643,11 @@ func _build_road_dress() -> void:
 			if dir.length() > 0.01:
 				dir = dir.normalized()
 				var perp := Vector2(-dir.y, dir.x)
+				if perp.y < 0.0:
+					perp = -perp                                  # TOUJOURS au SUD de la route (+y monde)
 				var h := (k * 2654435761 + int(pts[k].x) * 40503) & 0x7fffffff
-				var side := 1.0 if (h & 1) else -1.0
-				var off := 1.5 + float((h >> 3) % 12) / 10.0      # 1.5..2.7 cellules sur le bas-côté
-				var p: Vector2 = pts[k] + perp * (side * off)
+				var off := 0.8 + float((h >> 3) % 6) / 10.0       # 0.8..1.3 : TRES leger (moins excentre)
+				var p: Vector2 = pts[k] + perp * off
 				if not _is_sea_cell(sea, int(p.x), int(p.y)):       # jamais dans l'eau
 					_road_dress.append({"name": ROADSIDE[h % ROADSIDE.size()], "pos": p, "road": ri})
 			k += step

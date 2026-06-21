@@ -27,7 +27,7 @@ uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombra
 // sommet monte, une FACE de roche le relie au pied → vrai escarpement en volume (pas un sol plat).
 uniform float highland_lift : hint_range(0.0, 40.0) = 12.0;   // hauteur de falaise (~1.5 tuile = 12 px iso)
 uniform float face_dark : hint_range(0.0, 1.0) = 0.55;       // assombrissement du PIED de la face
-uniform float highland_warp : hint_range(0.0, 16.0) = 7.0;   // ondulation du bord highland → moins carré
+uniform float highland_warp : hint_range(0.0, 16.0) = 2.5;   // ondulation du bord (DOUX : angle droit à peine cassé)
 uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
 uniform vec2 map_size = vec2(1024.0, 512.0);
