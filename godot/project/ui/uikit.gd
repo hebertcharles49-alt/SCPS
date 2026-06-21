@@ -399,8 +399,9 @@ static func _tex_lift(path: String, f: float) -> Texture2D:
 					d[i] = mini(255, int(d[i] * f))
 					d[i + 1] = mini(255, int(d[i + 1] * f))
 					d[i + 2] = mini(255, int(d[i + 2] * f))
-			tex = ImageTexture.create_from_image(
-				Image.create_from_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8, d))
+			var lifted := Image.create_from_data(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8, d)
+			lifted.generate_mipmaps()    # sinon INVISIBLE sous un filtre mipmap (ex. falaises sur iso_ground)
+			tex = ImageTexture.create_from_image(lifted)
 	_lift_cache[key] = tex
 	return tex
 

@@ -7,7 +7,8 @@ shader_type canvas_item;
 //   4. on échantillonne la texture TUILÉE de ce biome (texture-array) en espace monde continu.
 // → terrain CONTINU, frontières organiques, zéro grille. La PRIORITÉ : on lit AUSSI le biome voisin
 //   dominant et on fond vers lui sur une bande (le dominant mord). SHORELINE : sable injecté à la
-//   frontière terre/mer. Falaises = passe SPRITE (COLOR.b≈0.5, UV local).
+//   frontière terre/mer. Les ESCARPEMENTS (sprites) sont une COUCHE À PART (iso_cliffs), HORS de ce
+//   shader : un canvas-shader avec un sampler2DArray ne lie pas la TEXTURE intégrée pour draw_*.
 uniform sampler2DArray terrains : filter_linear_mipmap, repeat_enable;
 uniform sampler2D biome_map : filter_nearest;
 uniform sampler2D noise_tex : repeat_enable, filter_linear;
@@ -49,68 +50,63 @@ vec3 terr(int b, vec2 uv, vec2 cellG) {
 }
 
 void fragment() {
-	if (COLOR.b > 0.25 && COLOR.b < 0.75) {            // SPRITE (falaise) : UV local
-		vec4 s = texture(TEXTURE, UV);
-		COLOR = vec4(s.rgb * COLOR.g, s.a);
-	} else {
-		vec2 cell = vec2(iso.y + iso.x * 0.5, iso.y - iso.x * 0.5);   // inverse-iso
-		vec2 wv = vec2(texture(noise_tex, cell * warp_freq).r,
-		               texture(noise_tex, cell * warp_freq + vec2(5.2, 1.3)).r) - 0.5;
-		vec2 cw = cell + wv * (2.0 * warp);            // position de lecture ONDULÉE
-		int b = biome_at(cw);
-		if (b < 0) { COLOR = vec4(0.0); }
-		else {
-			bool sea = b <= 2;
-			// UV ONDULÉE par un bruit basse-fréquence (casse la grille) ; pour l'EAU, ondulée EN PLUS par
-			// le TEMPS → vagues qui COULENT (horloge mur, display-only) → fin de la répétition statique.
-			vec2 uvw = cell / period + (vec2(texture(noise_tex, cell * 0.012).r,
-				texture(noise_tex, cell * 0.012 + vec2(4.0, 2.0)).r) - 0.5) * uv_warp;
-			if (sea) {
-				vec2 flow = vec2(texture(noise_tex, cell * water_freq + vec2(TIME * water_speed, 0.0)).r,
-					texture(noise_tex, cell * water_freq + vec2(0.0, -TIME * water_speed) + vec2(3.1, 1.7)).r) - 0.5;
-				uvw += flow * water_wave;
-			}
-			vec2 uv = fract(uvw);
-			vec3 col = terr(b, uv, cell);
-			// FONDU inter-biome (terre↔terre OU profondeurs d'eau) : le voisin se fond ici.
-			vec2 dir = normalize(wv + vec2(1e-4));
-			int bn = biome_at(cw + dir * blendband);
-			if (bn >= 0 && bn != b && (bn > 2) == (b > 2)) {
-				float edge = texture(noise_tex, cell * warp_freq * 1.7 + vec2(2.1, 8.4)).r;
-				col = mix(col, terr(bn, uv, cell), clamp(0.5 + (edge - 0.5) * 1.3, 0.0, 1.0) * 0.8);
-			}
-			if (sea) {
-				// PROFONDEUR : deep SOMBRE → shallow CLAIR (gradient marqué, anti-uniforme).
-				float depth = (b == 0) ? 0.0 : ((b == 1) ? 0.55 : 1.0);
-				col *= mix(0.70, 1.16, depth);
-				// COURANTS : patches sombres/clairs GRANDE ÉCHELLE + teinte → casse la nappe plate.
-				float cur = texture(noise_tex, cell * 0.015 + vec2(7.0, 2.0)).r;
-				col *= mix(0.78, 1.24, cur);
-				col = mix(col, col * vec3(0.78, 0.92, 1.18), (cur - 0.5) * water_var);   // bleuit/verdit par zones
-				// MIROITEMENT : taches claires mouvantes.
-				float shim = texture(noise_tex, cell * water_freq * 2.3
-					+ vec2(TIME * water_speed * 2.0, -TIME * water_speed * 1.5)).r;
-				col += vec3(0.10, 0.14, 0.18) * smoothstep(0.70, 0.95, shim) * water_shimmer;
-			}
-			// SHORELINE : SABLE autour de toute côte (anneau) ; ÉCUME : ourlet blanc ANIMÉ au ras de la
-			// terre, côté EAU (anneau plus serré). Détecté quelle que soit l'orientation de la côte.
-			float shore = 0.0;
-			float foam = 0.0;
-			for (int i = 0; i < 8; i++) {
-				float a = float(i) * 0.7854;
-				vec2 d2 = vec2(cos(a), sin(a));
-				int bs = biome_at(cw + d2 * shore_w);
-				if (bs >= 0 && (bs <= 2) != sea) shore = 1.0;
-				if (sea && biome_at(cw + d2 * foam_w) > 2) foam = 1.0;
-			}
-			if (shore > 0.5) col = mix(col, terr(3, uv, cell), shore_str);
-			if (foam > 0.5) {
-				float fp = 0.55 + 0.45 * sin(TIME * 2.2 + cell.x * 0.6 + cell.y * 0.4);
-				col = mix(col, vec3(0.86, 0.93, 0.98), foam_str * fp);
-			}
-			float vb = mix(1.0 - var_amp, 1.0 + var_amp,
-				texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);
-			COLOR = vec4(col * vb, 1.0);
+	vec2 cell = vec2(iso.y + iso.x * 0.5, iso.y - iso.x * 0.5);   // inverse-iso
+	vec2 wv = vec2(texture(noise_tex, cell * warp_freq).r,
+	               texture(noise_tex, cell * warp_freq + vec2(5.2, 1.3)).r) - 0.5;
+	vec2 cw = cell + wv * (2.0 * warp);            // position de lecture ONDULÉE
+	int b = biome_at(cw);
+	if (b < 0) { COLOR = vec4(0.0); }
+	else {
+		bool sea = b <= 2;
+		// UV ONDULÉE par un bruit basse-fréquence (casse la grille) ; pour l'EAU, ondulée EN PLUS par
+		// le TEMPS → vagues qui COULENT (horloge mur, display-only) → fin de la répétition statique.
+		vec2 uvw = cell / period + (vec2(texture(noise_tex, cell * 0.012).r,
+			texture(noise_tex, cell * 0.012 + vec2(4.0, 2.0)).r) - 0.5) * uv_warp;
+		if (sea) {
+			vec2 flow = vec2(texture(noise_tex, cell * water_freq + vec2(TIME * water_speed, 0.0)).r,
+				texture(noise_tex, cell * water_freq + vec2(0.0, -TIME * water_speed) + vec2(3.1, 1.7)).r) - 0.5;
+			uvw += flow * water_wave;
 		}
+		vec2 uv = fract(uvw);
+		vec3 col = terr(b, uv, cell);
+		// FONDU inter-biome (terre↔terre OU profondeurs d'eau) : le voisin se fond ici.
+		vec2 dir = normalize(wv + vec2(1e-4));
+		int bn = biome_at(cw + dir * blendband);
+		if (bn >= 0 && bn != b && (bn > 2) == (b > 2)) {
+			float edge = texture(noise_tex, cell * warp_freq * 1.7 + vec2(2.1, 8.4)).r;
+			col = mix(col, terr(bn, uv, cell), clamp(0.5 + (edge - 0.5) * 1.3, 0.0, 1.0) * 0.8);
+		}
+		if (sea) {
+			// PROFONDEUR : deep SOMBRE → shallow CLAIR (gradient marqué, anti-uniforme).
+			float depth = (b == 0) ? 0.0 : ((b == 1) ? 0.55 : 1.0);
+			col *= mix(0.70, 1.16, depth);
+			// COURANTS : patches sombres/clairs GRANDE ÉCHELLE + teinte → casse la nappe plate.
+			float cur = texture(noise_tex, cell * 0.015 + vec2(7.0, 2.0)).r;
+			col *= mix(0.78, 1.24, cur);
+			col = mix(col, col * vec3(0.78, 0.92, 1.18), (cur - 0.5) * water_var);   // bleuit/verdit par zones
+			// MIROITEMENT : taches claires mouvantes.
+			float shim = texture(noise_tex, cell * water_freq * 2.3
+				+ vec2(TIME * water_speed * 2.0, -TIME * water_speed * 1.5)).r;
+			col += vec3(0.10, 0.14, 0.18) * smoothstep(0.70, 0.95, shim) * water_shimmer;
+		}
+		// SHORELINE : SABLE autour de toute côte (anneau) ; ÉCUME : ourlet blanc ANIMÉ au ras de la
+		// terre, côté EAU (anneau plus serré). Détecté quelle que soit l'orientation de la côte.
+		float shore = 0.0;
+		float foam = 0.0;
+		for (int i = 0; i < 8; i++) {
+			float a = float(i) * 0.7854;
+			vec2 d2 = vec2(cos(a), sin(a));
+			int bs = biome_at(cw + d2 * shore_w);
+			if (bs >= 0 && (bs <= 2) != sea) shore = 1.0;
+			if (sea && biome_at(cw + d2 * foam_w) > 2) foam = 1.0;
+		}
+		if (shore > 0.5) col = mix(col, terr(3, uv, cell), shore_str);
+		if (foam > 0.5) {
+			float fp = 0.55 + 0.45 * sin(TIME * 2.2 + cell.x * 0.6 + cell.y * 0.4);
+			col = mix(col, vec3(0.86, 0.93, 0.98), foam_str * fp);
+		}
+		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
+			texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);
+		COLOR = vec4(col * vb, 1.0);
 	}
 }
