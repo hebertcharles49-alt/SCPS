@@ -26,7 +26,7 @@ uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombra
 // RELIEF « AoE » : chaque cellule highland est RELEVÉE de `highland_lift` (unités iso-écran) — son
 // sommet monte, une FACE de roche le relie au pied → vrai escarpement en volume (pas un sol plat).
 uniform float highland_lift : hint_range(0.0, 40.0) = 12.0;   // hauteur de falaise (~1.5 tuile = 12 px iso)
-uniform float face_dark : hint_range(0.0, 1.0) = 0.62;       // assombrissement du PIED de la face
+uniform float face_dark : hint_range(0.0, 1.0) = 0.80;       // pied de face (HAUT = clair, anti near-black)
 uniform float highland_warp : hint_range(0.0, 16.0) = 2.5;   // ondulation du bord (DOUX : angle droit à peine cassé)
 uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
@@ -94,21 +94,24 @@ vec3 cliff_top(vec2 c) {
 	r *= mix(0.80, 1.26, n) * mix(0.92, 1.08, n2);   // variance grande + petite échelle
 	return r * 1.08;
 }
-// FACE de roche (paroi) : 2 TEXTURES mélangées par un MASQUE (roche scree ↔ terre/herbe du biome
-// montagne) → variation ; STRIES verticales à FORT contraste → ARÊTES accentuées (relief, perspective) ;
-// dégradé d'ombre du pied (sombre) vers le haut (lumière) + lèvre éclairée.
+// FACE de roche (paroi), CLAIRE (pas noire) : 2 TEXTURES mélangées par un MASQUE (roche scree ↔
+// terre/herbe) → variation. ARÊTES = ribs verticaux ÉCLAIRÉS par le GRADIENT horizontal du motif
+// (côté lumière clair / côté ombre) → relief net, pas un aplat. Pied un peu ombré + lèvre éclairée.
 vec3 cliff_face(vec2 c, float t) {
 	float ci = max(texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0, 1.0);
-	vec3 rock = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).rgb * 2.3 + vec3(0.16, 0.13, 0.10);
-	vec3 earth = terr(18, fract(c / period), c) * 1.7;          // 2e texture = terre/herbe (mont. earthy)
+	vec3 rock = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).rgb * 2.6 + vec3(0.24, 0.20, 0.15);
+	vec3 earth = terr(18, fract(c / period), c) * 1.85;        // 2e texture = terre/herbe (mont. earthy)
 	float m = texture(noise_tex, c * 0.05 + vec2(9.0, 4.0)).r;
-	vec3 r = mix(rock, earth, smoothstep(0.50, 0.78, m) * 0.7); // surtout roche, PATCHES de terre/herbe
-	// STRIES VERTICALES : motif le LONG de la paroi (hx ≈ const en colonne), ~constant en HAUTEUR.
+	vec3 r = mix(rock, earth, smoothstep(0.50, 0.78, m) * 0.6); // surtout roche, PATCHES de terre/herbe
+	// ARÊTES : on éclaire les ribs verticaux par le gradient horizontal du motif (hx ≈ const en colonne)
+	// → chaque côte a un flanc CLAIR et un flanc OMBRÉ ; borné pour ne JAMAIS virer au noir.
 	float hx = c.x - c.y;
-	float st = texture(noise_tex, vec2(hx * stripe_freq, t * 0.05)).r * 0.62
-	         + texture(noise_tex, vec2(hx * stripe_freq * 3.1 + 3.0, t * 0.5 + 1.0)).r * 0.38;
-	r *= mix(0.50, 1.30, st);                                  // contraste FORT → arêtes nettes
-	vec3 col = r * mix(face_dark, 1.04, t);                    // pied ombré → haut en pleine lumière
+	float sL = texture(noise_tex, vec2((hx - 1.4) * stripe_freq, t * 0.04)).r;
+	float sR = texture(noise_tex, vec2((hx + 1.4) * stripe_freq, t * 0.04)).r;
+	r *= clamp(1.0 + 2.6 * (sR - sL), 0.70, 1.42);            // ARÊTE = flanc clair / flanc sombre
+	float br = texture(noise_tex, vec2(hx * stripe_freq * 0.5 + 5.0, t * 0.2)).r;
+	r *= mix(0.90, 1.12, br);                                  // variation douce (non écrasante)
+	vec3 col = r * mix(face_dark, 1.06, t);                    // pied LÉGÈREMENT ombré (plus de near-black)
 	col += vec3(0.16, 0.15, 0.12) * smoothstep(0.82, 0.97, t); // LÈVRE éclairée au sommet
 	return col;
 }

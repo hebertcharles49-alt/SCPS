@@ -146,8 +146,8 @@ func _morph_highland(hl: PackedByteArray, nx: int, ny: int) -> void:
 				var c := _count8(src, nx, ny, cx, cy)
 				if src[i] == 0 and c >= 5:
 					hl[i] = 1
-				elif src[i] == 1 and c <= 1:
-					hl[i] = 0
+				elif src[i] == 1 and c <= 2:
+					hl[i] = 0       # retire slivers/pointes (≤2 voisins) → plus de petites faces noires éparses
 
 ## masque blob 8-voisins (bits n=1 e=2 s=4 w=8 ; diagonales SEULEMENT si les deux cardinaux adjacents).
 func _blob_mask(hl: PackedByteArray, nx: int, ny: int, x: int, y: int) -> int:
