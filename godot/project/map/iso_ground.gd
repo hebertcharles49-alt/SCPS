@@ -20,6 +20,7 @@ const HIGHLAND_BIOMES := [18, 19, 23]
 const CLIFF_AT_DIR := "res://assets/scps/pack/iso_tiles/cliff_autotile/"
 const DIST_MAX := 24.0         ## plafond du champ de distance highland (cellules) → terrasses + pente
 const CITY_CARVE := 3          ## rayon (cellules) dégagé de falaise autour d'une ville → assise plate
+const MIN_CLUSTER := 9         ## taille mini d'un massif (cellules) → pas de petites falaises éparses
 ## PRIORITÉ de fondu par biome (index = enum Biome) : le PLUS HAUT domine le plus bas. HIÉRARCHIE :
 ## l'HERBE est le SOCLE BAS ; au-dessus forêt < aride/désert < sable/plage < relief < neige <
 ## volcan/ronces. L'eau tout en bas (la terre domine la mer = rivage depuis la terre).
@@ -149,6 +150,32 @@ func _morph_highland(hl: PackedByteArray, nx: int, ny: int) -> void:
 				elif src[i] == 1 and c <= 2:
 					hl[i] = 0       # retire slivers/pointes (≤2 voisins) → plus de petites faces noires éparses
 
+## retire les PETITS amas highland (composantes connexes < MIN_CLUSTER cellules) → fini les petites
+## falaises éparses qui rendaient des "stries" noires ; seuls les VRAIS massifs gardent une falaise.
+func _remove_small_clusters(hl: PackedByteArray, nx: int, ny: int) -> void:
+	var seen := PackedByteArray()
+	seen.resize(nx * ny)
+	for start in range(nx * ny):
+		if hl[start] == 0 or seen[start] == 1:
+			continue
+		var comp := PackedInt32Array()
+		comp.append(start)
+		seen[start] = 1
+		var h := 0
+		while h < comp.size():
+			var idx := comp[h]
+			h += 1
+			var cx := idx % nx
+			var cy := idx / nx
+			for ni in [idx - 1 if cx > 0 else -1, idx + 1 if cx < nx - 1 else -1,
+					idx - nx if cy > 0 else -1, idx + nx if cy < ny - 1 else -1]:
+				if ni >= 0 and hl[ni] == 1 and seen[ni] == 0:
+					seen[ni] = 1
+					comp.append(ni)
+		if comp.size() < MIN_CLUSTER:
+			for idx2 in comp:
+				hl[idx2] = 0
+
 ## masque blob 8-voisins (bits n=1 e=2 s=4 w=8 ; diagonales SEULEMENT si les deux cardinaux adjacents).
 func _blob_mask(hl: PackedByteArray, nx: int, ny: int, x: int, y: int) -> int:
 	var n := _is_highland(hl, nx, ny, x, y - 1)
@@ -185,6 +212,7 @@ func _build_cliff_idx(w, bio: Image, W: int, H: int) -> void:
 			bcell[cy * nx + cx] = b
 			hl[cy * nx + cx] = 1 if HIGHLAND_BIOMES.has(b) else 0
 	_morph_highland(hl, nx, ny)     # comble les trous, retire les falaises isolées, rabote les coins
+	_remove_small_clusters(hl, nx, ny)   # retire les petits amas → fini les "stries" noires éparses
 	# CARVE : aucune falaise SOUS une ville (le bourg s'embourbait dans la paroi). On dégage un disque
 	# autour de chaque centroïde colonisé → assise PLATE pour le village.
 	if w != null:
