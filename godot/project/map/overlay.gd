@@ -21,6 +21,13 @@ const DECOR_ZOOM_MIN := 3.0  ## forêts/arbres
 const BLD_SIZE := 9.0        ## taille MONDE UNIFORME d'un bâti de bourg (égalisée — variété par le sprite, pas l'échelle)
 const CITY_CORE_SIZE := 18.0 ## taille MONDE FIXE du centre-ville (la ville ne GRANDIT pas ; l'importance = le variant T1-T7)
 
+## OMBRE PORTÉE des assets : un disque APLATI au pied, décalé dans la direction ANTI-LUMIÈRE,
+## la MÊME lumière globale que le shader de terrain (light_world ≈ (-0.95,-0.32)). L'ombre tombe
+## donc à l'OPPOSÉ (monde (0.95,0.32)) → projeté iso ≈ (0.70,0.71) = bas-droite (soleil haut-gauche).
+## Subtile (le « trop violent » d'avant) + tracée en 2 PASSES (toutes les ombres SOUS tous les sprites).
+const SHADOW_COL := Color(0.0, 0.0, 0.0, 0.17)
+const SHADOW_DIR := Vector2(0.704, 0.710)   ## direction ÉCRAN de l'ombre (anti-lumière projetée en iso)
+
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
 var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
@@ -41,18 +48,13 @@ var _road_cells := {}     ## cellules occupées par une route (+ marge) → le b
 var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
-var _rivers := []         ## [Vector3(x, y, ang)] — fil de rivière (façade), figé au générate
-var _river_wide := PackedByteArray()   ## 1 = EMBOUCHURE (point adjacent à la mer) → tuile élargie
+var _rivers := []         ## [Vector3(x, y, ang)] — nuage de points (façade) gardé pour l'anti-bâti SUR le fil
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
 
-const RIVER_ZOOM_MIN := 2.0   ## rivières (zoom ISO)
-const DRAW_RIVERS := true     ## rivières via les TUILES ISO directionnelles (pré-orientées)
-const RIVER_TILE := 3.6       ## taille (unités monde) d'une tuile de rivière posée
-## 4 axes iso (bin de l'angle de flux projeté) → tuile pré-orientée. Ordre = bins 0..3 :
-## 0≈horizontal · 1≈NW-SE (45°) · 2≈vertical (90°) · 3≈NE-SW (135°).
-const RIVER_DIRS := ["RIVER_HORIZONTAL", "RIVER_STRAIGHT_NW_SE", "RIVER_VERTICAL", "RIVER_STRAIGHT_NE_SW"]
-var _river_dt := []
-const RIVER_CAL := 0.0        ## calibration de l'orientation du sprite (ajusté au rendu)
+# RIVIÈRES : CARVÉES DANS LE TERRAIN (worldgen), pas un asset par-dessus. Le shader iso_blend lit
+# un champ de débit (bâti par iso_ground._build_river_field depuis `river_paths`, fusionné par baie)
+# et rend l'eau DANS le relief — cœur propre, berges fondues, continu jusqu'à la mer. L'overlay n'en
+# garde QUE le nuage de points (`_rivers`) pour interdire de BÂTIR sur le fil.
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
 const ROAD_CASING := Color(0.227, 0.165, 0.110)  ## bord sombre (viewer 58,42,28)
 const ROAD_FILL   := Color(0.86, 0.74, 0.52)     ## surface parchemin CLAIRE — la route = le fil conducteur landmark↔bourg
@@ -119,36 +121,10 @@ func _on_generated() -> void:
 	_build_city_skins()
 	queue_redraw()
 
-## lit le fil de rivière (façade) PUIS marque les points d'EMBOUCHURE (adjacents à la mer ouverte)
-## → tuile élargie au delta. Calculé 1× au générate, comme le reste du fil.
+## lit le nuage de points (anti-bâti) PUIS sélectionne les fleuves MAJEURS (tracé en ruban).
+## Calculé 1× au générate, comme le reste du fil.
 func _set_rivers() -> void:
-	_rivers = Sim.world.river_points()
-	_compute_river_mouths()
-
-func _compute_river_mouths() -> void:
-	_river_wide = PackedByteArray()
-	_river_wide.resize(_rivers.size())
-	var w = Sim.world
-	if w == null:
-		return
-	var bio: Image = w.layer_image(2)        # BIOME : ≤2 = grande eau (mer/lac : deep/ocean/shallow)
-	if bio == null:
-		return
-	var W := int(w.map_w())
-	var H := int(w.map_h())
-	# le fil s'arrête à quelques cellules de l'eau → rayon large pour saisir l'embouchure/delta
-	const OFF := [Vector2i(5, 0), Vector2i(-5, 0), Vector2i(0, 5), Vector2i(0, -5),
-		Vector2i(4, 4), Vector2i(-4, 4), Vector2i(4, -4), Vector2i(-4, -4)]
-	for i in range(_rivers.size()):
-		var p: Vector3 = _rivers[i]
-		var wide := 0
-		for d in OFF:
-			var x := clampi(int(p.x) + d.x, 0, W - 1)
-			var y := clampi(int(p.y) + d.y, 0, H - 1)
-			if int(bio.get_pixel(x, y).r * 255.0 + 0.5) <= 2:   # grande eau proche → embouchure
-				wide = 1
-				break
-		_river_wide[i] = wide
+	_rivers = Sim.world.river_points()    # gardé : _build_structures évite de bâtir SUR le fil
 
 ## pré-calcule la variante de ville TERRAIN de chaque région colonisée (échantillon
 ## du biome au centroïde ; l'hydro via le groupe de settlement) — pour les petits bourgs.
@@ -730,6 +706,14 @@ const STRUCT_MUTE := Color(0.88, 0.86, 0.83, 0.84)
 
 ## dessine UN bâti parsemé à la POSITION ISO `sp` (espace-monde iso, la Camera2D met à l'échelle) —
 ## taille MONDE, ancré au pied, MIROIR éventuel (variété), RABATTU pour s'intégrer à la campagne.
+## ombre portée d'un asset : ellipse aplatie au PIED, décalée vers l'anti-lumière (cohérent
+## avec le shader). Tracée en passe SÉPARÉE (toutes les ombres d'abord) → jamais par-dessus
+## un sprite d'arrière-plan (le bug « ombres placées aléatoirement » = ordre de tracé).
+func _blob_shadow(foot: Vector2, wd: float) -> void:
+	draw_set_transform(foot + SHADOW_DIR * wd * 0.14, 0.0, Vector2(1.0, 0.42))
+	draw_circle(Vector2.ZERO, wd * 0.30, SHADOW_COL)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func _draw_struct(s: Dictionary, sp: Vector2) -> void:
 	var sspr := UIKit.structure_sprite(s["name"])
 	if sspr == null:
@@ -861,28 +845,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
 
-	# ── RIVIÈRES : segment droit tourné le long du fil ; ÉLARGI aux embouchures (delta) ──
-	if DRAW_RIVERS and zoom >= RIVER_ZOOM_MIN and not _rivers.is_empty():
-		# RIVIÈRES : on POSE la TUILE ISO directionnelle (pré-orientée) correspondant à l'axe du flux
-		# projeté en iso — JAMAIS un sprite tourné (c'était le bug des "stries bleues"). 4 axes.
-		if _river_dt.is_empty():
-			for n in RIVER_DIRS:
-				_river_dt.append(UIKit.river_named(n))
-		var wtex := UIKit.river_mouth_sprite()
-		for i in range(_rivers.size()):
-			var p: Vector3 = _rivers[i]
-			var ip: Vector2 = mv.iso_pos(p.x, p.y)
-			var ss: Vector2 = vt * ip
-			if ss.x < -40 or ss.y < -40 or ss.x > vp.x + 40 or ss.y > vp.y + 40:
-				continue
-			var mouth: bool = wtex != null and i < _river_wide.size() and _river_wide[i] == 1
-			var d := Vector2(cos(p.z), sin(p.z))                       # direction de flux (monde)
-			var a := fposmod(Vector2(d.x - d.y, (d.x + d.y) * 0.5).angle(), PI)   # axe PROJETÉ en iso
-			var tex: Texture2D = wtex if mouth and wtex != null else _river_dt[int(round(a / (PI / 4.0))) % 4]
-			if tex == null:
-				continue
-			var scl := RIVER_TILE / float(tex.get_width())
-			draw_texture_rect(tex, Rect2(ip - tex.get_size() * 0.5 * scl, tex.get_size() * scl), false)
+	# (RIVIÈRES : plus dessinées ici — CARVÉES dans le terrain par iso_blend.gdshader, cf. en-tête.)
 
 	# ── DRESSING : arbres/forêts (DERRIÈRE les villes), cullés au viewport ──
 	if zoom >= DECOR_ZOOM_MIN:
@@ -979,6 +942,15 @@ func _draw_iso(w, mv: Node2D) -> void:
 				aw = mv.tile_anchor_world(ctr.x, ctr.y)
 			props.append({"d": aw.x + aw.y, "city": r, "sp": mv.iso_pos(aw.x, aw.y)})
 		props.sort_custom(func(a, b): return a["d"] < b["d"])   # arrière (nord) → avant (sud), profondeur iso
+		# PASSE 1 : toutes les ombres SOUS tout (sinon l'ombre d'un asset AVANT mord le sprite d'un ARRIÈRE)
+		for prp in props:
+			var wd: float
+			if prp["city"] < 0:
+				wd = float((prp["s"] as Dictionary).get("sz", BLD_SIZE))
+			else:
+				wd = minf(CITY_CORE_SIZE, float(_region_citymax.get(prp["city"], CITY_CORE_SIZE)))
+			_blob_shadow(prp["sp"], wd)
+		# PASSE 2 : les sprites par-dessus, dans l'ordre de profondeur
 		for prp in props:
 			if prp["city"] < 0:
 				_draw_struct(prp["s"], prp["sp"])

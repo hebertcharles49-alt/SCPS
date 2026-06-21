@@ -12,6 +12,16 @@ extends Node2D
 const UIKit = preload("res://ui/uikit.gd")
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
+## CARVE STRATÉGIQUE : la worldgen sème des fleuves PARTOUT → on ne grave QUE les majeurs. On
+## CLUSTER par embouchure (une baie = un système), on garde le TRONC le plus long, on le grave en
+## CONTINU (pinceau ∝ débit) dans le champ. Le shader y lit l'eau (cœur propre, berges fondues).
+const RIVER_MERGE := 64.0   ## embouchures à ≤ ça = UN système (le tronc le plus long le représente)
+const RIVER_MAX_SYS := 5    ## systèmes (les plus forts) gravés
+const RIVER_MIN_PTS := 12   ## tronc plus court = stub → système ignoré
+const RIVER_SECOND_MIN := 8 ## brin SECONDAIRE plus court = bruit → ignoré (les affluents un peu plus courts passent)
+const RIVER_DUP_FRAC := 0.5 ## un brin déjà gravé à ≥ ce % = doublon braidé du tronc → sauté (garde les VRAIS affluents)
+const RIVER_SECOND_MAX := 3 ## affluents gravés au plus par système (tronc + 3) → réseau lisible, pas d'inondation
+const RIVER_FLOW_FLOOR := 0.16  ## fraction du plus fort débit en-dessous de laquelle on s'arrête
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
 ## Biomes « HIGHLAND » → reçoivent la falaise plate (autotile). TRI SERRÉ : seulement le relief
 ## RUGUEUX (MOUNTAINS, PEAK, VOLCANO) ; HIGHLANDS (upland DOUX, très répandu) et HILLS en sont EXCLUS
@@ -45,6 +55,7 @@ var _active := false
 var _shaded := false        ## le shader de fondu directionnel (rivage) est monté
 var _terr_arr: Texture2DArray = null   ## texture-array des sols PLATS, indexée par BIOME
 var _bmap: ImageTexture = null         ## couche biome → texture (R = biome/255) pour le splat shader
+var _river_map: ImageTexture = null    ## couche DÉBIT (c->river/255) → le shader carve la rivière comme l'eau
 var _cliff_arr: Texture2DArray = null  ## 94 tuiles d'autotile falaise (ordre des entrées JSON)
 var _cliff_mask := {}                  ## mask blob (canon) → [layerA, layerB] (couches du _cliff_arr)
 var _cliff_idx: ImageTexture = null    ## carte PAR CELLULE : R = layer+1 (0 = pas de falaise)
@@ -342,6 +353,7 @@ func is_active() -> bool:
 func _on_generated() -> void:
 	_active = UIKit.has_iso_tiles()
 	_bmap = null            # nouveau monde → recharge la carte des biomes pour le splat
+	_river_map = null       # … et la couche débit (rivières carvées)
 	_cliff_idx = null       # … et recalcule l'autotile falaise (+ distance + biome de sommet)
 	_cliff_h = null
 	_cliff_topbio = null
@@ -369,9 +381,13 @@ func _draw() -> void:
 	if mat != null:
 		if _bmap == null:
 			_bmap = ImageTexture.create_from_image(bio)
+		if _river_map == null:
+			_river_map = ImageTexture.create_from_image(_build_river_field(w, W, H))
 		if _cliff_idx == null:
 			_build_cliff_idx(w, bio, W, H)
 		mat.set_shader_parameter("biome_map", _bmap)
+		if _river_map != null:
+			mat.set_shader_parameter("river_map", _river_map)
 		mat.set_shader_parameter("map_size", Vector2(W, H))
 		mat.set_shader_parameter("terrains", _terr_array())
 		mat.set_shader_parameter("cliff_atlas", _cliff_autotile())
@@ -383,4 +399,141 @@ func _draw() -> void:
 		mat.set_shader_parameter("tile_k", float(TILE_K))
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
 	draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))
+
+## bâtit le CHAMP DÉBIT à graver : la worldgen sème des fleuves partout → on ne garde QUE les majeurs
+## (cluster par embouchure, tronc le plus long par système), gravés en CONTINU (pinceau ∝ débit) dans
+## un L8. Le shader y lit l'eau : cœur propre au fort, berges fondues (champ lissé par filtre linéaire).
+func _build_river_field(w, W: int, H: int) -> Image:
+	var img := Image.create(W, H, false, Image.FORMAT_L8)
+	if w == null or not w.has_method("river_paths"):
+		return img
+	var raw: Array = w.river_paths()
+	if raw.is_empty():
+		return img
+	var water: Image = w.layer_image(4)   # SCPS_LAYER_WATER : mer OU lac (255) → prolonger le fleuve jusque dedans
+	# 1) CLUSTER par embouchure (distance) → un système = une baie ; on garde TOUS ses brins (tronc +
+	#    affluents). Les copies braidées se RECOUVRENT dans le champ (fusionnées au max) ; les VRAIS
+	#    affluents ajoutent des branches secondaires.
+	var systems := []
+	for rv in raw:
+		var pts: PackedVector2Array = rv["points"]
+		if pts.size() < 2:
+			continue
+		var mouth: Vector2 = pts[pts.size() - 1]
+		var f := float(rv["flow"])
+		var placed := false
+		for s in systems:
+			if mouth.distance_to(s["mouth"]) < RIVER_MERGE:
+				(s["strands"] as Array).append(rv)
+				s["flow"] = maxf(float(s["flow"]), f)
+				if pts.size() > s["trunk_len"]:
+					s["trunk_len"] = pts.size()
+				placed = true
+				break
+		if not placed:
+			systems.append({"mouth": mouth, "flow": f, "strands": [rv], "trunk_len": pts.size()})
+	if systems.is_empty():
+		return img
+	# 2) graver les RIVER_MAX_SYS systèmes les plus forts ; pour chacun, TOUS ses brins (secondaires
+	#    inclus, plus fins) — le champ fusionne les recouvrements, les affluents restent distincts.
+	systems.sort_custom(func(a, b): return float(a["flow"]) > float(b["flow"]))
+	var fmax := float(systems[0]["flow"])
+	if fmax <= 0.0:
+		fmax = 1.0
+	var n := 0
+	for s in systems:
+		if n >= RIVER_MAX_SYS:
+			break
+		var f := float(s["flow"])
+		if f < RIVER_FLOW_FLOOR * fmax:
+			break
+		if int(s["trunk_len"]) < RIVER_MIN_PTS:
+			continue                                  # même le tronc est un stub → système écarté
+		# du plus LONG (le tronc) au plus court : on grave le tronc, puis SEULEMENT les brins qui
+		# apportent un VRAI tracé neuf (affluent) ; les copies braidées (déjà gravées) sont sautées.
+		var strands: Array = s["strands"]
+		strands.sort_custom(func(a, b): return (a["points"] as PackedVector2Array).size() > (b["points"] as PackedVector2Array).size())
+		var drew := 0
+		for rv in strands:
+			if drew > RIVER_SECOND_MAX:               # tronc + N affluents au plus → pas d'inondation au confluent
+				break
+			var pts: PackedVector2Array = rv["points"]
+			if pts.size() < RIVER_SECOND_MIN:
+				continue                              # brin trop court (bruit) → ignoré
+			if drew > 0:
+				var ov := 0
+				for p in pts:
+					if img.get_pixel(clampi(int(p.x), 0, W - 1), clampi(int(p.y), 0, H - 1)).r > 0.25:
+						ov += 1
+				if float(ov) / float(pts.size()) > RIVER_DUP_FRAC:
+					continue                          # ≥ ce % déjà gravé = doublon braidé du tronc → saute
+			var rel := float(rv["flow"]) / fmax
+			_carve_path(img, pts, rel, W, H)
+			if drew == 0:                             # le TRONC : on le PROLONGE sciemment DANS la mer
+				_carve_to_sea(img, pts[pts.size() - 1], water, rel, W, H)
+			drew += 1
+		n += 1
+	return img
+
+## largeur du PINCEAU pour un débit relatif : [peak, core, soft]. FIN : cœur d'1 cellule au plus fort
+## seulement, 0 sinon ; halo dégradé de +2 = la berge fondue (le « cut » latéral). Affluent = tout fondu.
+func _brush_for(rel: float) -> Array:
+	var peak := clampf(0.52 + 0.55 * rel, 0.0, 1.07)   # le DÉBIT module la largeur via le seuil du shader
+	return [peak, 0, 2]                                # cœur d'1 cellule (core 0) + halo de 2 → fil FIN, berge fondue
+
+## grave un brin dans le champ : à chaque point, un PINCEAU DOUX. Le RECOUVREMENT le long du fil garde
+## le cœur CONTINU ; le halo dégradé FOND la berge latéralement (le « cut » des bords).
+func _carve_path(img: Image, pts: PackedVector2Array, rel: float, W: int, H: int) -> void:
+	var b := _brush_for(rel)
+	for p in pts:
+		_carve_brush(img, int(p.x), int(p.y), b[0], b[1], b[2], W, H)
+
+## un coup de pinceau en (cx,cy) : cœur PLEIN (dist ≤ core) puis dégradé LINÉAIRE jusqu'à 0 au halo.
+func _carve_brush(img: Image, cx: int, cy: int, peak: float, core: int, soft: int, W: int, H: int) -> void:
+	for dy in range(-soft, soft + 1):
+		for dx in range(-soft, soft + 1):
+			var d2 := dx * dx + dy * dy
+			if d2 > soft * soft:
+				continue
+			var x := cx + dx
+			var y := cy + dy
+			if x < 0 or y < 0 or x >= W or y >= H:
+				continue
+			var dist := sqrt(float(d2))
+			var fall := 1.0 if dist <= float(core) else clampf((float(soft) - dist) / float(maxi(1, soft - core)), 0.0, 1.0)
+			var v := peak * fall
+			if img.get_pixel(x, y).r < v:              # garde le MAX (troncs/recouvrements priment)
+				img.set_pixel(x, y, Color(v, 0.0, 0.0))
+
+## PROLONGE l'aval du tronc DANS la mer : du dernier point, trouve la cellule d'EAU la plus proche
+## (≤ 14 cellules) et grave une ligne jusque dedans → le fleuve se jette VISIBLEMENT dans la mer.
+func _carve_to_sea(img: Image, mouth: Vector2, water: Image, rel: float, W: int, H: int) -> void:
+	if water == null:
+		return
+	var mx := int(mouth.x)
+	var my := int(mouth.y)
+	var best := Vector2(-1, -1)
+	for R in range(1, 15):
+		for dy in range(-R, R + 1):
+			for dx in range(-R, R + 1):
+				if absi(dx) != R and absi(dy) != R:
+					continue
+				var x := mx + dx
+				var y := my + dy
+				if x < 0 or y < 0 or x >= W or y >= H:
+					continue
+				if water.get_pixel(x, y).r > 0.5:      # cellule de mer/lac
+					best = Vector2(x, y)
+					break
+			if best.x >= 0:
+				break
+		if best.x >= 0:
+			break
+	if best.x < 0:
+		return
+	var b := _brush_for(rel)
+	var steps := int(mouth.distance_to(best)) + 1
+	for i in range(steps + 1):
+		var p := mouth.lerp(best, float(i) / float(steps))   # grave la ligne mouth→mer (les cellules de TERRE entre)
+		_carve_brush(img, int(p.x), int(p.y), b[0], b[1], b[2], W, H)
 

@@ -60,6 +60,16 @@ uniform float water_var : hint_range(0.0, 1.0) = 0.5;        // force de la vari
 uniform float foam_w : hint_range(0.3, 3.0) = 1.0;            // largeur de l'ourlet d'écume (cellules)
 uniform float foam_str : hint_range(0.0, 1.0) = 0.5;
 
+// ── RIVIÈRES CARVÉES (worldgen) : `river_map` = DÉBIT accumulé par cellule (c->river/255), un champ
+//    LISSE (filtre linéaire). On rend l'eau DANS le relief : cœur d'eau PROPRE là où le débit ≥ core ;
+//    bords FONDUS entre edge et core. Le débit est FORT le long du fil (continuité = cœur continu) et
+//    TOMBE en travers des berges (le fondu n'est qu'aux bords). Un fleuve plus FIN (débit moindre) reste
+//    tout en zone de fondu → plus mélangé (le « blend supplémentaire » des petits cours). ─────────────
+uniform sampler2D river_map : filter_linear;
+uniform float river_core : hint_range(0.0, 1.0) = 0.45;      // champ ≥ ça = cœur d'EAU propre
+uniform float river_edge : hint_range(0.0, 1.0) = 0.16;      // champ ≤ ça = pas de rivière (terre) → berge fondue entre les deux
+uniform float river_str  : hint_range(0.0, 1.0) = 1.0;       // opacité globale de la rivière carvée
+
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
 
@@ -191,6 +201,23 @@ void fragment() {
 		if (foam > 0.5) {
 			float fp = 0.55 + 0.45 * sin(TIME * 2.2 + cell.x * 0.6 + cell.y * 0.4);
 			col = mix(col, vec3(0.86, 0.93, 0.98), foam_str * fp);
+		}
+		// ── RIVIÈRE CARVÉE (worldgen) : eau DANS le relief. Champ de débit LISSÉ (5 taps → berges
+		//    fondues, "blend supplémentaire" des fins cours) ; cœur PROPRE au débit fort, continu le
+		//    long du fil. Jamais sur la mer (déjà eau). ─────────────────────────────────────────────
+		if (!sea) {
+			// champ de débit LISSE (filtre linéaire → fondu naturel des berges, sans diluer le cœur)
+			float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r;
+			float wamt = smoothstep(river_edge, river_core, rv) * river_str;
+			if (wamt > 0.002) {
+				vec2 ruv = fract(cell / period + (vec2(
+					texture(noise_tex, cell * water_freq + vec2(TIME * water_speed, 0.0)).r,
+					texture(noise_tex, cell * water_freq + vec2(0.0, -TIME * water_speed)).r) - 0.5) * water_wave);
+				vec3 wcol = terr(1, ruv, cell) * vec3(0.92, 1.02, 1.12);   // eau DOUCE : un peu plus claire/cyan que la mer
+				float shim = texture(noise_tex, cell * water_freq * 2.3 + vec2(TIME * water_speed * 2.0, 0.0)).r;
+				wcol += vec3(0.12, 0.16, 0.20) * smoothstep(0.65, 0.93, shim) * water_shimmer;
+				col = mix(col, wcol, wamt);
+			}
 		}
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
 			texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);

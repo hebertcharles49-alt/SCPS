@@ -54,15 +54,18 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
+    ClassDB::bind_method(D_METHOD("river_paths"),                    &ScpsWorld::river_paths);
     ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
     ClassDB::bind_method(D_METHOD("road_paths"),                     &ScpsWorld::road_paths);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
-     * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST */
+     * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST · 4 = WATER · 5 = RIVER */
     BIND_CONSTANT(SCPS_LAYER_HEIGHT);
     BIND_CONSTANT(SCPS_LAYER_SEA);
     BIND_CONSTANT(SCPS_LAYER_BIOME);
     BIND_CONSTANT(SCPS_LAYER_COAST);
+    BIND_CONSTANT(SCPS_LAYER_WATER);
+    BIND_CONSTANT(SCPS_LAYER_RIVER);
 }
 
 ScpsWorld::ScpsWorld()  { sim = scps_sim_new(); }
@@ -439,6 +442,27 @@ Array ScpsWorld::river_points() {
     int n = scps_river_points(sim, pts, 6000);
     for (int i = 0; i < n; i++)
         a.push_back(Vector3(pts[i].x, pts[i].y, pts[i].ang));   /* x · y · angle */
+    return a;
+}
+
+Array ScpsWorld::river_paths() {
+    Array a;
+    if (!sim) return a;
+    int nr = scps_river_count(sim);
+    static const int MAXPT = 4096;
+    static ScpsRiverPt pts[MAXPT];
+    for (int i = 0; i < nr; i++) {
+        float flow = 0.0f;
+        int n = scps_river_path(sim, i, pts, MAXPT, &flow);
+        if (n < 2) continue;
+        PackedVector2Array pv;
+        pv.resize(n);
+        for (int k = 0; k < n; k++) pv.set(k, Vector2(pts[k].x, pts[k].y));
+        Dictionary d;
+        d["points"] = pv;
+        d["flow"]   = flow;
+        a.push_back(d);
+    }
     return a;
 }
 

@@ -46,8 +46,11 @@ void scps_map_rgba(ScpsSim *s, uint8_t *dst, int mode, int selected_prov);
 /* ---- COUCHES brutes (1 octet/cellule) pour shaders côté hôte ----------
  * SCPS_LAYER_WATER : masque d'EAU complet (mer OU lac). La couche SEA seule ignore les lacs
  * intérieurs (c->lake est un drapeau DISTINCT de c->sea) — d'où des bourgs posés SUR un lac.
- * L'overlay lit WATER pour TOUS ses tests d'assise (snap-terre, débord, poussée vers l'intérieur). */
-enum { SCPS_LAYER_HEIGHT = 0, SCPS_LAYER_SEA, SCPS_LAYER_BIOME, SCPS_LAYER_COAST, SCPS_LAYER_WATER };
+ * L'overlay lit WATER pour TOUS ses tests d'assise (snap-terre, débord, poussée vers l'intérieur).
+ * SCPS_LAYER_RIVER : DÉBIT accumulé par cellule (c->river, 0-255) — le worldgen. L'hôte CARVE les
+ * cellules à fort débit comme de l'EAU dans la carte des biomes → le shader de terrain rend la
+ * rivière comme la mer (carvée DANS le relief, pas un asset par-dessus). Seuil haut = fleuves majeurs. */
+enum { SCPS_LAYER_HEIGHT = 0, SCPS_LAYER_SEA, SCPS_LAYER_BIOME, SCPS_LAYER_COAST, SCPS_LAYER_WATER, SCPS_LAYER_RIVER };
 void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer);
 
 /* ---- nombres TANGIBLES (membrane) ------------------------------------ */
@@ -313,6 +316,14 @@ void scps_player_set_levy(ScpsSim *s, int level);
  * Figé par worldgen. Remplit out[0..min(n,max)-1], renvoie le nombre écrit. */
 typedef struct { float x, y, ang; } ScpsRiverPt;
 int scps_river_points(ScpsSim *s, ScpsRiverPt *out, int max);
+
+/* RIVIÈRES STRUCTURÉES (par FLEUVE, ordonnées) — pour un rendu STRATÉGIQUE. La worldgen
+ * sème des fleuves PARTOUT ; le rendu ne peut pas tous les montrer. L'hôte choisit donc
+ * les fleuves MAJEURS (flow_max le plus fort) et les trace en FIL CONTINU au lieu d'un
+ * nuage de points. `scps_river_count` = nombre de fleuves ; `scps_river_path` remplit le
+ * i-ème (points ORDONNÉS, centres de cellule, *flow = débit max = le POIDS du fleuve). */
+int scps_river_count(ScpsSim *s);
+int scps_river_path(ScpsSim *s, int i, ScpsRiverPt *out, int max, float *flow);
 
 /* FRONTIÈRES : segments d'arête (coins, unités-cellule) entre souverainetés. Niveau
  * `level` : 0 = PROVINCE · 1 = RÉGION · 2 = PAYS (le joint est classé à son niveau le

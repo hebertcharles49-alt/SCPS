@@ -96,6 +96,9 @@ public:
 
     /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
     Array      river_points();
+    /* rivières STRUCTURÉES par fleuve : Array[Dictionary{points:PackedVector2Array, flow:float}]
+     * — pour un rendu STRATÉGIQUE (l'hôte trie par débit et ne trace que les majeurs). */
+    Array      river_paths();
 
     /* FRONTIÈRES : segments d'arête (PackedVector2Array, 2 points/segment) au niveau
      * 0=province · 1=région · 2=pays. Port du balayage bseg de viewer.c. */

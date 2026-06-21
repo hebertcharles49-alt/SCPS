@@ -116,6 +116,7 @@ void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer){
              * MAIS AUSSI bassins endoréiques sous le niveau que c->sea n'attrape pas) OU c->lake.
              * La couche SEA (c->sea) seule laissait des bourgs sur des cellules peintes en eau. */
             case SCPS_LAYER_WATER:  v = (c->height < SEA_LEVEL || c->lake) ? 255 : 0; break;
+            case SCPS_LAYER_RIVER:  v = c->river; break;   /* débit accumulé (worldgen) → carve par l'hôte */
             default: v = 0;
         }
         dst[i] = v;
@@ -670,6 +671,30 @@ int scps_river_points(ScpsSim *s, ScpsRiverPt *out, int max){
             out[n].ang = atan2f(by-ay, bx-ax);
             n++;
         }
+    }
+    return n;
+}
+
+int scps_river_count(ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    return s->w->n_rivers;
+}
+
+/* Le i-ème fleuve en FIL ORDONNÉ (points = centres de cellule), *flow = débit max. */
+int scps_river_path(ScpsSim *s, int i, ScpsRiverPt *out, int max, float *flow){
+    if (!s || !s->ready || !out || max<=0 || i<0 || i>=s->w->n_rivers) return 0;
+    const River *rv = &s->w->river[i];
+    if (flow) *flow = rv->flow_max;
+    int n=0;
+    for (int k=0; k<rv->len && n<max; k++){
+        float ax, ay, bx, by;                           /* fil sortant (direction locale) */
+        if (k < rv->len-1){ ax=rv->x[k];   ay=rv->y[k];   bx=rv->x[k+1]; by=rv->y[k+1]; }
+        else if (k > 0)   { ax=rv->x[k-1]; ay=rv->y[k-1]; bx=rv->x[k];   by=rv->y[k];   }
+        else              { ax=rv->x[k];   ay=rv->y[k];   bx=ax+1.f;     by=ay;          }
+        out[n].x   = (float)rv->x[k] + 0.5f;
+        out[n].y   = (float)rv->y[k] + 0.5f;
+        out[n].ang = atan2f(by-ay, bx-ax);
+        n++;
     }
     return n;
 }
