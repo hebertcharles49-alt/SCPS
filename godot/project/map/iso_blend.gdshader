@@ -26,6 +26,7 @@ uniform float water_wave : hint_range(0.0, 0.3) = 0.07;
 uniform float water_freq : hint_range(0.01, 0.2) = 0.045;
 uniform float water_speed : hint_range(0.0, 0.5) = 0.06;
 uniform float water_shimmer : hint_range(0.0, 1.0) = 0.5;
+uniform float water_var : hint_range(0.0, 1.0) = 0.5;        // force de la variation de teinte (courants)
 uniform float foam_w : hint_range(0.3, 3.0) = 1.0;            // largeur de l'ourlet d'écume (cellules)
 uniform float foam_str : hint_range(0.0, 1.0) = 0.5;
 
@@ -78,10 +79,18 @@ void fragment() {
 				float edge = texture(noise_tex, cell * warp_freq * 1.7 + vec2(2.1, 8.4)).r;
 				col = mix(col, terr(bn, uv, cell), clamp(0.5 + (edge - 0.5) * 1.3, 0.0, 1.0) * 0.8);
 			}
-			if (sea) {                                     // MIROITEMENT : taches claires mouvantes
+			if (sea) {
+				// PROFONDEUR : deep SOMBRE → shallow CLAIR (gradient marqué, anti-uniforme).
+				float depth = (b == 0) ? 0.0 : ((b == 1) ? 0.55 : 1.0);
+				col *= mix(0.70, 1.16, depth);
+				// COURANTS : patches sombres/clairs GRANDE ÉCHELLE + teinte → casse la nappe plate.
+				float cur = texture(noise_tex, cell * 0.015 + vec2(7.0, 2.0)).r;
+				col *= mix(0.78, 1.24, cur);
+				col = mix(col, col * vec3(0.78, 0.92, 1.18), (cur - 0.5) * water_var);   // bleuit/verdit par zones
+				// MIROITEMENT : taches claires mouvantes.
 				float shim = texture(noise_tex, cell * water_freq * 2.3
 					+ vec2(TIME * water_speed * 2.0, -TIME * water_speed * 1.5)).r;
-				col += vec3(0.10, 0.14, 0.18) * smoothstep(0.74, 0.97, shim) * water_shimmer;
+				col += vec3(0.10, 0.14, 0.18) * smoothstep(0.70, 0.95, shim) * water_shimmer;
 			}
 			// SHORELINE : SABLE autour de toute côte (anneau) ; ÉCUME : ourlet blanc ANIMÉ au ras de la
 			// terre, côté EAU (anneau plus serré). Détecté quelle que soit l'orientation de la côte.
