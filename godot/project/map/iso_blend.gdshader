@@ -26,7 +26,7 @@ uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombra
 // RELIEF « AoE » : chaque cellule highland est RELEVÉE de `highland_lift` (unités iso-écran) — son
 // sommet monte, une FACE de roche le relie au pied → vrai escarpement en volume (pas un sol plat).
 uniform float highland_lift : hint_range(0.0, 40.0) = 12.0;   // hauteur de falaise (~1.5 tuile = 12 px iso)
-uniform float face_dark : hint_range(0.0, 1.0) = 0.55;       // assombrissement du PIED de la face
+uniform float face_dark : hint_range(0.0, 1.0) = 0.62;       // assombrissement du PIED de la face
 uniform float highland_warp : hint_range(0.0, 16.0) = 2.5;   // ondulation du bord (DOUX : angle droit à peine cassé)
 uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
@@ -77,18 +77,22 @@ float highland_at(vec2 c) {
 // RELEVÉ — la roche n'est QUE sur la face (comme AoE). VARIANCE : taches claires/sombres (pas un aplat).
 vec3 cliff_top(vec2 c) {
 	int bb = int(texture(cliff_top_biome, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0 + 0.5);
-	if (bb < 3) bb = 6;                              // repli : herbe (île de roche cernée de mer)
+	if (!((bb >= 3 && bb <= 11) || bb == 20)) bb = 6; // hors terrain ouvert/neige → herbe (jamais roche/forêt sombre sur le sommet)
 	vec3 r = terr(bb, fract(c / period), c);
 	float n = texture(noise_tex, c * 0.03 + vec2(2.0, 6.0)).r;
 	float n2 = texture(noise_tex, c * 0.09 + vec2(7.0, 1.0)).r;
 	r *= mix(0.80, 1.26, n) * mix(0.92, 1.08, n2);   // variance grande + petite échelle
 	return r * 1.08;
 }
-// FACE de roche (verticale) : scree de la cellule (UV LOCAL stable → PAS de stries), ombré en bas.
+// FACE de roche (paroi) : scree de la cellule ÉCLAIRCI en gris-brun (pas un trou noir), UV local
+// stable (pas de stries), dégradé d'ombre du pied (sombre) vers le haut (pleine lumière).
 vec3 cliff_face(vec2 c, float t) {
 	float ci = max(texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0, 1.0);
-	vec3 r = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).rgb * 1.4;
-	return r * mix(face_dark, 0.95, t);              // pied plus sombre (ombre portée), haut clair
+	vec3 r = texture(cliff_atlas, vec3(fract(c / tile_k), ci - 1.0)).rgb;
+	r = r * 2.3 + vec3(0.16, 0.13, 0.10);            // ROCHE claire gris-brun (lisible, pas noire)
+	vec3 col = r * mix(face_dark, 1.04, t);          // pied ombré → haut en pleine lumière
+	col += vec3(0.16, 0.15, 0.12) * smoothstep(0.80, 0.97, t);   // LÈVRE éclairée au sommet (cue AoE)
+	return col;
 }
 
 void fragment() {

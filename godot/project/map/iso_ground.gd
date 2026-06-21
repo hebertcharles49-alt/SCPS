@@ -248,17 +248,17 @@ func _build_cliff_idx(w, bio: Image, W: int, H: int) -> void:
 			var dv: float = dist[cy * nx + cx]
 			df.set_pixel(cx, cy, Color(minf(dv, DIST_MAX) / DIST_MAX, 0.0, 0.0))
 	_cliff_h = ImageTexture.create_from_image(df)
-	# BIOME du SOMMET : le biome SOUPLE (herbe/terre/neige) le plus proche, propagé À TRAVERS la TERRE
-	# — donc AU-DELÀ des couronnes rocheuses (highlands/hills) qui ceignent les monts. Le plateau garde
-	# ainsi un sol DOUX (terreux/neigeux) ; la roche (autotile) ne reste QUE sur la FACE. Souple =
-	# biomes 3..15 (côte→marais) + 20..22 (glacier/mangrove/tourbière) ; rocheux 16-19,23 exclus.
+	# BIOME du SOMMET : le biome de TERRAIN OUVERT le plus proche (herbe/plaine/steppe/désert/NEIGE),
+	# propagé À TRAVERS la terre par BFS. On EXCLUT les biomes SOMBRES (forêt/jungle/marais) et rocheux
+	# des sources → le plateau garde un sol CLAIR & lisible (jamais de forêt ni de roche sur le dessus ;
+	# la roche reste sur la FACE). Ouvert = 3..11 (côte→désert côtier) + 20 (glacier/neige).
 	var topb := bcell.duplicate()
 	var bdist := PackedInt32Array()
 	bdist.resize(n)
 	var q2 := PackedInt32Array()
 	for i in range(n):
 		var bb := int(bcell[i])
-		if (bb >= 3 and bb <= 15) or (bb >= 20 and bb <= 22):
+		if (bb >= 3 and bb <= 11) or bb == 20:
 			bdist[i] = 0
 			topb[i] = bcell[i]
 			q2.append(i)

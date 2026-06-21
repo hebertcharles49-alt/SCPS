@@ -643,8 +643,8 @@ func _build_road_dress() -> void:
 			if dir.length() > 0.01:
 				dir = dir.normalized()
 				var perp := Vector2(-dir.y, dir.x)
-				if perp.y < 0.0:
-					perp = -perp                                  # TOUJOURS au SUD de la route (+y monde)
+				if perp.x + perp.y > 0.0:
+					perp = -perp                                  # TOUJOURS au NORD à l'écran (proj.y plus petit = vers le haut)
 				var h := (k * 2654435761 + int(pts[k].x) * 40503) & 0x7fffffff
 				var off := 0.8 + float((h >> 3) % 6) / 10.0       # 0.8..1.3 : TRES leger (moins excentre)
 				var p: Vector2 = pts[k] + perp * off
