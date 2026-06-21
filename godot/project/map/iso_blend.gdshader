@@ -30,6 +30,8 @@ uniform float face_dark : hint_range(0.0, 1.0) = 0.62;       // assombrissement 
 uniform float highland_warp : hint_range(0.0, 16.0) = 2.5;   // ondulation du bord (DOUX : angle droit à peine cassé)
 uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
+uniform float outline_w : hint_range(0.0, 4.0) = 1.4;        // demi-largeur du détourage (px écran)
+uniform float outline_str : hint_range(0.0, 1.0) = 0.5;      // force du trait de contour (assombrissement)
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
 uniform float warp : hint_range(0.0, 12.0) = 5.0;         // amplitude d'ondulation des frontières (cellules)
@@ -73,6 +75,13 @@ float highland_at(vec2 c) {
 	if (c.x < 0.0 || c.y < 0.0 || c.x >= map_size.x || c.y >= map_size.y) return 0.0;
 	return texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r > 0.0015 ? 1.0 : 0.0;
 }
+// 1.0 si le pixel (cellW = cwp) est COUVERT par la falaise (sommet OU face) — sert au DÉTOURAGE.
+float cliff_cov(vec2 cwp) {
+	for (int i = 0; i <= 6; i++) {
+		if (highland_at(cwp + vec2(highland_lift * float(i) / 6.0)) > 0.5) return 1.0;
+	}
+	return 0.0;
+}
 // SOMMET du plateau : le TERRAIN ALENTOUR (biome non-highland le plus proche : terreux/herbe/neige),
 // RELEVÉ — la roche n'est QUE sur la face (comme AoE). VARIANCE : taches claires/sombres (pas un aplat).
 vec3 cliff_top(vec2 c) {
@@ -107,6 +116,12 @@ void fragment() {
 		// l'ondulation casse la grille SUR TERRE, mais NE FRANCHIT JAMAIS la côte : au passage
 		// mer↔terre on RETOMBE sur le biome vrai → la mer ne "bave" plus sur la terre (ni l'inverse).
 		if (b < 0 || (b <= 2) != (b0 <= 2)) b = b0;
+		// HIGHLAND : le SOL DE BASE prend le terrain OUVERT du sommet (herbe/désert/neige), JAMAIS la
+		// roche sombre du biome montagne → pas de "sol noir" sous la falaise ; la base raccorde au plateau.
+		if (highland_at(cell) > 0.5) {
+			int bs = int(texture(cliff_top_biome, (floor(cell / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0 + 0.5);
+			b = ((bs >= 3 && bs <= 11) || bs == 20) ? bs : 6;
+		}
 		bool sea = b <= 2;
 		// UV ONDULÉE par un bruit basse-fréquence (casse la grille) ; pour l'EAU, ondulée EN PLUS par
 		// le TEMPS → vagues qui COULENT (horloge mur, display-only) → fin de la répétition statique.
@@ -179,6 +194,15 @@ void fragment() {
 			}
 			if (fk > 0.0) col = mix(col, cliff_face(fc, fk / eff_lift),
 				smoothstep(0.0, 0.16, fk / eff_lift));   // pied FONDU dans le sol (talus arrondi)
+		}
+		// DÉTOURAGE : trait sombre LÉGER sur la SILHOUETTE (le pixel est falaise, un voisin écran
+		// VERS L'EXTÉRIEUR ne l'est pas) → contour lisible du plateau, sans cerner tout le massif.
+		if (cliff_cov(cellW) > 0.5) {
+			float o = outline_w;
+			float edge = (1.0 - cliff_cov(cellW + vec2(o, o)))                 // bas écran
+			           + (1.0 - cliff_cov(cellW + vec2(o * 0.5, -o * 0.5)))    // droite écran
+			           + (1.0 - cliff_cov(cellW + vec2(-o * 0.5, o * 0.5)));   // gauche écran
+			col = mix(col, col * 0.45, clamp(edge, 0.0, 1.0) * outline_str);
 		}
 		COLOR = vec4(col, 1.0);
 	}
