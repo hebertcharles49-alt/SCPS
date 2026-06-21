@@ -21,6 +21,7 @@ const RIVER_MIN_PTS := 12   ## tronc plus court = stub → système ignoré
 const RIVER_SECOND_MIN := 8 ## affluent dont la course AMONT (source→confluence) est plus courte = bruit → ignoré
 const RIVER_SECOND_MAX := 3 ## affluents gravés au plus par système (tronc + 3) → réseau lisible, pas d'inondation
 const RIVER_FLOW_FLOOR := 0.16  ## fraction du plus fort débit en-dessous de laquelle on s'arrête
+const ESTUARY_CORE := 4      ## rayon du cœur d'eau à l'EMBOUCHURE (le fleuve s'ÉVASE dans la mer → accès LARGE, pas bouché par le sable)
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
 ## Biomes « HIGHLAND » → reçoivent la falaise plate (autotile). TRI SERRÉ : seulement le relief
 ## RUGUEUX (MOUNTAINS, PEAK, VOLCANO) ; HIGHLANDS (upland DOUX, très répandu) et HILLS en sont EXCLUS
@@ -508,11 +509,20 @@ func _brush_for(rel: float) -> Array:
 	return [peak, 0, 3]                                # cœur d'1 cellule (core 0) + halo de 3 → place pour la BERGE de sable
 
 ## grave un brin dans le champ : à chaque point, un PINCEAU DOUX. Le RECOUVREMENT le long du fil garde
-## le cœur CONTINU ; le halo dégradé FOND la berge latéralement (le « cut » des bords).
+## le cœur CONTINU ; le halo dégradé FOND la berge latéralement. Le tiers AVAL s'ÉVASE vers la mer
+## (cœur qui grossit) → le neck d'embouchure n'est plus étranglé par le sable (vraie largeur d'estuaire).
 func _carve_path(img: Image, pts: PackedVector2Array, rel: float, W: int, H: int) -> void:
 	var b := _brush_for(rel)
-	for p in pts:
-		_carve_brush(img, int(p.x), int(p.y), b[0], b[1], b[2], W, H)
+	var n := pts.size()
+	for i in range(n):
+		var core: int = b[1]
+		var soft: int = b[2]
+		var frac := float(i) / float(maxi(1, n - 1))      # 0 = source, 1 = embouchure
+		if frac > 0.55:                                   # tiers AVAL → évasement progressif vers la mer
+			var add := int(round((frac - 0.55) / 0.45 * 2.0))   # +0 … +2 cellules de cœur
+			core += add
+			soft = core + 2
+		_carve_brush(img, int(pts[i].x), int(pts[i].y), b[0], core, soft, W, H)
 
 ## un coup de pinceau en (cx,cy) : cœur PLEIN (dist ≤ core) puis dégradé LINÉAIRE jusqu'à 0 au halo.
 func _carve_brush(img: Image, cx: int, cy: int, peak: float, core: int, soft: int, W: int, H: int) -> void:
@@ -541,9 +551,10 @@ func _carve_to_sea(img: Image, mouth: Vector2, water: Image, height: Image, W: i
 	var px := int(mouth.x)
 	var py := int(mouth.y)
 	for _step in range(90):
-		_carve_brush(img, px, py, 1.07, 1, 3, W, H)        # pont d'eau SOLIDE
+		_carve_brush(img, px, py, 1.07, 3, 5, W, H)        # pont d'eau SOLIDE LARGE → rejoint franchement la mer
 		if _touches_sea(water, px, py, W, H):
-			return                                          # jouxte l'eau → REJOINT la mer
+			_carve_brush(img, px, py, 1.10, ESTUARY_CORE, ESTUARY_CORE + 2, W, H)   # ESTUAIRE : large embouchure
+			return                                          # jouxte l'eau → REJOINT la mer (accès NON bouché par le sable)
 		# descendre vers le voisin le PLUS BAS (le sens du courant)
 		var bx := px
 		var by := py
@@ -571,7 +582,8 @@ func _carve_to_sea(img: Image, mouth: Vector2, water: Image, height: Image, W: i
 			var steps := maxi(1, int(Vector2(px, py).distance_to(s)))
 			for i in range(steps + 1):
 				var q := Vector2(px, py).lerp(s, float(i) / float(steps))
-				_carve_brush(img, int(q.x), int(q.y), 1.07, 1, 3, W, H)
+				_carve_brush(img, int(q.x), int(q.y), 1.07, 3, 5, W, H)
+			_carve_brush(img, int(s.x), int(s.y), 1.10, ESTUARY_CORE, ESTUARY_CORE + 2, W, H)   # ESTUAIRE au débouché
 			return
 		px = bx
 		py = by

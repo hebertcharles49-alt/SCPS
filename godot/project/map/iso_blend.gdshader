@@ -69,9 +69,9 @@ uniform sampler2D river_map : filter_linear;
 // La RIVIÈRE est de l'EAU pour la SHORELINE (unifiée mer+rivière) : le SABLE de berge et le confluent
 // rivière↔mer sont gérés par la MÊME pipeline que la côte (terr(3)) → continuité, pas de barrière de
 // sable au débouché. Ici on ne règle que le seuil d'EAU et le méandrage des berges.
-uniform float river_water : hint_range(0.0, 1.0) = 0.46;     // champ de débit ≥ ça = EAU (la shore y met le sable autour)
+uniform float river_water : hint_range(0.0, 1.0) = 0.40;     // champ de débit ≥ ça = EAU (abaissé : cœur plus large, moins de sable)
 uniform float river_band  : hint_range(0.02, 0.5) = 0.14;    // rampe du cœur d'eau (berge→eau)
-uniform float river_warp  : hint_range(0.0, 6.0) = 2.5;      // ondulation des berges (cellules) → bord ORGANIQUE
+uniform float river_warp  : hint_range(0.0, 6.0) = 0.0;      // 0 = berge NETTE et CONTINUE (un warp brise le fil fin) ; la berge de sable de la shoreline texture déjà le bord
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
@@ -221,9 +221,9 @@ void fragment() {
 				vec2 ruv = fract(cell / period + (vec2(
 					texture(noise_tex, cell * water_freq + vec2(TIME * water_speed, 0.0)).r,
 					texture(noise_tex, cell * water_freq + vec2(0.0, -TIME * water_speed)).r) - 0.5) * water_wave);
-				vec3 wcol = terr(1, ruv, cell) * vec3(0.92, 1.02, 1.12);   // eau DOUCE : un peu plus claire/cyan que la mer
+				vec3 wcol = terr(2, ruv, cell) * vec3(1.06, 1.18, 1.30);   // eau DOUCE CLAIRE (texture PEU PROFONDE) → tranche NET sur le marais sombre, lit comme une vraie rivière
 				float shim = texture(noise_tex, cell * water_freq * 2.3 + vec2(TIME * water_speed * 2.0, 0.0)).r;
-				wcol += vec3(0.12, 0.16, 0.20) * smoothstep(0.65, 0.93, shim) * water_shimmer;
+				wcol += vec3(0.14, 0.18, 0.22) * smoothstep(0.62, 0.92, shim) * water_shimmer;
 				col = mix(col, wcol, wamt);
 			}
 		}

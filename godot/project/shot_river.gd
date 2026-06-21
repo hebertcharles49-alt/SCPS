@@ -69,6 +69,12 @@ func _run() -> void:
 	_map._enter_iso(c)
 	_map._camera.zoom = Vector2(zoom, zoom)
 	_map._camera.position = _map.iso_pos(c.x, c.y)
+	# OPTION : masquer l'overlay (routes/villes) → la détection « jaune entre deux bleus » ne mesure
+	# que le TERRAIN + rivières + mer (les routes tan cassaient la continuité bleue).
+	for a in OS.get_cmdline_user_args():
+		if a == "overlay=off":
+			var ov := _map.get_node_or_null("Overlay")
+			if ov != null: ov.visible = false
 	for i in range(8): await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
