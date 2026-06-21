@@ -61,10 +61,10 @@ const ROAD_FILL   := Color(0.86, 0.74, 0.52)     ## surface parchemin CLAIRE —
 const ROAD_SOFT   := Color(0.227, 0.165, 0.110, 0.22)  ## halo doux SOUS le casing → blend feutré (anti-alias)
 # MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
 const ROADSIDE := [
-	"DRESS_BUSH_LOW", "DRESS_BUSH_DRY", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_YELLOW",
-	"DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT", "DRESS_STONE_PILE",
-	"DRESS_STONE_SLABS", "DRESS_STONE_WALL_BROKEN", "DRESS_GRASS_GOLD", "DRESS_LOG_PILE",
-]
+	"DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW",
+	"DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_GRASS_GOLD", "DRESS_BUSH_THORNY",
+	"DRESS_ROCK_GRAY_A", "DRESS_ROCK_LIGHT", "DRESS_STONE_PILE", "DRESS_ROCK_GRAY_B",
+]   # surtout des BUISSONS (ils CACHENT/adoucissent le bord), quelques cailloux
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
@@ -75,7 +75,7 @@ const FOREST_TREES := {
 # ── DRESSING du monde par MILIEU (cailloux, buissons, arbres sporadiques, roseaux…) — habille la
 #    carte hors des forêts. Pools tirés au hasard, semés SPORADIQUEMENT (cf. _dress_rule). ──
 const DRESS_OPEN := ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_TREE_OAK_AUTUMN", "DRESS_TREE_POPLAR",
-	"DRESS_GROVE_BROADLEAF", "DRESS_GROVE_MIXED", "DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_FERNS"]
+	"DRESS_GROVE_BROADLEAF", "DRESS_GROVE_MIXED", "DRESS_TREE_PINE", "DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN"]  # surtout des ARBRES, peu de buissons
 const DRESS_DRY := ["DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW", "DRESS_BUSH_THORNY", "DRESS_TREE_GNARLED", "DRESS_ROCK_LIGHT", "DRESS_GRASS_GOLD", "DRESS_DIRT_MOUND"]
 const DRESS_MARSH := ["DRESS_REEDS_GREEN", "DRESS_REEDS_DRY", "DRESS_GRASS_CATTAIL", "DRESS_GRASS_WET", "DRESS_TREE_GNARLED",
 	"DRESS_TREE_DEAD", "DRESS_MUSHROOMS", "DRESS_FERNS", "DRESS_MOSS_PATCH", "DRESS_BUSH_LOW", "DRESS_ROCK_MOSSY", "DRESS_ROOT_CLUSTER"]
@@ -476,15 +476,15 @@ func _dress_rule(b: int) -> Array:
 	if FOREST_TREES.has(b):
 		return [FOREST_TREES[b], 0.55, 12.0]                  # FORÊT : dense
 	if b == 4 or b == 5 or b == 6 or b == 7 or b == 8 or b == 24:
-		return [DRESS_OPEN, 0.05, 11.0]                       # PLAINE/herbe : arbres & buissons SPORADIQUES
+		return [DRESS_OPEN, 0.085, 11.0]                      # PLAINE/herbe : ARBRES sporadiques (un peu plus)
 	if b == 9 or b == 10 or b == 11:
-		return [DRESS_DRY, 0.045, 9.0]                        # ARIDE/désert : buissons secs épars
+		return [DRESS_DRY, 0.04, 9.0]                         # ARIDE/désert : buissons secs épars
 	if b == 15 or b == 21 or b == 22:
-		return [DRESS_MARSH, 0.30, 9.0]                       # MARAIS : roseaux, arbres morts, champignons, cailloux
+		return [DRESS_MARSH, 0.22, 9.0]                       # MARAIS : roseaux, arbres morts, champignons (moins de cailloux)
 	if b == 16 or b == 17:
-		return [DRESS_HILL, 0.18, 9.0]                        # COLLINES/highlands : cailloux + buissons + pins
+		return [DRESS_HILL, 0.10, 9.0]                        # COLLINES/highlands : cailloux + buissons (allégé)
 	if b == 18 or b == 23:
-		return [DRESS_CLIFF, 0.28, 9.0]                       # FALAISE/montagne/volcan : cailloux + buissons
+		return [DRESS_CLIFF, 0.14, 9.0]                       # FALAISE/montagne/volcan : cailloux + buissons (allégé)
 	if b == 19 or b == 20:
 		return [DRESS_SNOW, 0.12, 10.0]                       # NEIGE/glacier : pins enneigés, rochers de neige
 	return []
@@ -682,7 +682,7 @@ func _build_road_dress() -> void:
 	if w == null:
 		return
 	var sea: Image = w.layer_image(LAYER_WATER)
-	var step := 9                                  # un décor tous les ~9 points de tracé
+	var step := 5                                  # un décor tous les ~5 points → marge SUD ~continue
 	for ri in range(_roads.size()):
 		var pts: PackedVector2Array = _roads[ri]["points"]
 		var n := pts.size()
@@ -697,9 +697,9 @@ func _build_road_dress() -> void:
 				dir = dir.normalized()
 				var perp := Vector2(-dir.y, dir.x)
 				if perp.x + perp.y < 0.0:
-					perp = -perp                                  # TOUJOURS au SUD à l'écran (proj.y plus GRAND = devant/bas) → l'« effet sud »
+					perp = -perp                                  # vers le SUD écran (proj.y plus GRAND = devant/bas)
 				var h := (k * 2654435761 + int(pts[k].x) * 40503) & 0x7fffffff
-				var off := 0.8 + float((h >> 3) % 6) / 10.0       # 0.8..1.3 : TRES leger (moins excentre)
+				var off := 0.7 + float((h >> 3) % 5) / 8.0        # ~0.7..1.2 : COLLÉ au bord SUD (chevauche → cache)
 				var p: Vector2 = pts[k] + perp * off
 				if not _is_sea_cell(sea, int(p.x), int(p.y)):       # jamais dans l'eau
 					_road_dress.append({"name": ROADSIDE[h % ROADSIDE.size()], "pos": p, "road": ri})
@@ -974,10 +974,12 @@ func _draw_iso(w, mv: Node2D) -> void:
 					continue
 				var spr := UIKit.dressing_named(d["name"])
 				if spr == null:
-					break
+					continue
 				var ip: Vector2 = mv.iso_pos((d["pos"] as Vector2).x, (d["pos"] as Vector2).y)
-				var ds := 6.0
-				draw_texture_rect(spr, Rect2(ip - Vector2(ds * 0.5, ds), Vector2(ds, ds)), false)
+				var ds := 4.0
+				# petit buisson BAS, CENTRÉ sur le bord SUD de la chaussée : la moitié haute CHEVAUCHE/CACHE
+				# le bord, la moitié basse est la marge visible au SUD → effet sud + masquage (pas une tour nord).
+				draw_texture_rect(spr, Rect2(ip - Vector2(ds * 0.5, ds * 0.46), Vector2(ds, ds)), false)
 
 	# ── VILLES + BOURG : posés sur le relief iso, triés par PROFONDEUR (y iso). ──
 	if zoom >= CITY_ZOOM_MIN:
