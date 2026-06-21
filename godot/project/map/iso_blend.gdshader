@@ -66,15 +66,12 @@ uniform float foam_str : hint_range(0.0, 1.0) = 0.5;
 //    TOMBE en travers des berges (le fondu n'est qu'aux bords). Un fleuve plus FIN (débit moindre) reste
 //    tout en zone de fondu → plus mélangé (le « blend supplémentaire » des petits cours). ─────────────
 uniform sampler2D river_map : filter_linear;
-// DEUX bandes, comme la CÔTE (eau → sable → terre) : le champ donne une large berge de SABLE qui
-// GRIGNOTE le terrain, et un cœur d'EAU ÉTROIT au débit fort (≈ ⅔ de surface d'eau en moins qu'un
-// mix direct → plus de « bras de mer »). Le sable = `terr(3)`, le MÊME que le rivage → continuité.
-uniform float river_sand  : hint_range(0.0, 1.0) = 0.16;     // champ ≥ ça = la BERGE (sable) commence
-uniform float river_water : hint_range(0.0, 1.0) = 0.54;     // champ ≥ ça = le cœur d'EAU (étroit) commence
-uniform float river_band  : hint_range(0.02, 0.5) = 0.22;    // rampe du cœur d'eau (sable→eau)
-uniform float river_sand_str : hint_range(0.0, 1.0) = 0.85;  // opacité du sable de berge (= shore_str)
-uniform float river_warp  : hint_range(0.0, 6.0) = 2.5;      // ondulation des berges (cellules) → bord ORGANIQUE, pas « posé là »
-uniform float river_str  : hint_range(0.0, 1.0) = 1.0;       // opacité globale de la rivière carvée
+// La RIVIÈRE est de l'EAU pour la SHORELINE (unifiée mer+rivière) : le SABLE de berge et le confluent
+// rivière↔mer sont gérés par la MÊME pipeline que la côte (terr(3)) → continuité, pas de barrière de
+// sable au débouché. Ici on ne règle que le seuil d'EAU et le méandrage des berges.
+uniform float river_water : hint_range(0.0, 1.0) = 0.46;     // champ de débit ≥ ça = EAU (la shore y met le sable autour)
+uniform float river_band  : hint_range(0.02, 0.5) = 0.14;    // rampe du cœur d'eau (berge→eau)
+uniform float river_warp  : hint_range(0.0, 6.0) = 2.5;      // ondulation des berges (cellules) → bord ORGANIQUE
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
@@ -192,44 +189,42 @@ void fragment() {
 				+ vec2(TIME * water_speed * 2.0, -TIME * water_speed * 1.5)).r;
 			col += vec3(0.10, 0.14, 0.18) * smoothstep(0.70, 0.95, shim) * water_shimmer;
 		}
-		// SHORELINE : SABLE autour de toute côte (anneau) ; ÉCUME : ourlet blanc ANIMÉ au ras de la
-		// terre, côté EAU (anneau plus serré). Détecté quelle que soit l'orientation de la côte.
+		// SHORELINE UNIFIÉE (mer OU rivière) : le SABLE (terr(3)) se forme autour de TOUTE eau — côte
+		// ET berges de rivière — et au CONFLUENT rivière↔mer il n'y a PAS de barrière (même eau) → le
+		// fleuve REJOINT la mer. ÉCUME : ourlet blanc animé, côté EAU, MER seulement.
+		vec2 rwv = wv + (vec2(texture(noise_tex, cell * 0.11 + vec2(1.7, 4.3)).r,
+			texture(noise_tex, cell * 0.11 + vec2(6.1, 0.9)).r) - 0.5) * 0.6;   // ondulation → berges ORGANIQUES
+		float rv = texture(river_map, (cell + rwv * river_warp + vec2(0.5)) / map_size).r;
+		bool water_here = sea || (rv >= river_water);
 		float shore = 0.0;
 		float foam = 0.0;
 		for (int i = 0; i < 8; i++) {
 			float a = float(i) * 0.7854;
 			vec2 d2 = vec2(cos(a), sin(a));
-			int bs = biome_at(cw + d2 * shore_w);
-			if (bs >= 0 && (bs <= 2) != sea) shore = 1.0;
-			if (sea && biome_at(cw + d2 * foam_w) > 2) foam = 1.0;
+			vec2 np = cw + d2 * shore_w;
+			int bs = biome_at(np);
+			float rvn = texture(river_map, (np + rwv * river_warp + vec2(0.5)) / map_size).r;
+			bool nbr_water = (bs >= 0 && bs <= 2) || (rvn >= river_water);
+			if (nbr_water != water_here) shore = 1.0;                 // sable de part et d'autre de TOUTE rive
+			if (sea && biome_at(cw + d2 * foam_w) > 2) foam = 1.0;    // écume = MER seulement
 		}
 		if (shore > 0.5) col = mix(col, terr(3, uv, cell), shore_str);
 		if (foam > 0.5) {
 			float fp = 0.55 + 0.45 * sin(TIME * 2.2 + cell.x * 0.6 + cell.y * 0.4);
 			col = mix(col, vec3(0.86, 0.93, 0.98), foam_str * fp);
 		}
-		// ── RIVIÈRE CARVÉE (worldgen), intégrée à la pipeline SHORE : le champ de débit pose d'abord
-		//    une BERGE de SABLE (terr(3), le même que le rivage → continuité) qui grignote le terrain,
-		//    PUIS un cœur d'EAU ÉTROIT au seul débit fort. Jamais sur la mer (déjà eau). ──────────────
+		// RIVIÈRE CARVÉE (worldgen) : seul le CŒUR d'EAU ici — la berge de SABLE est faite par la
+		// SHORELINE ci-dessus (unifiée). Jamais sur la mer (déjà eau).
 		if (!sea) {
-			// champ ÉCHANTILLONNÉ via une ondulation (wv = même bruit que les frontières de biome) +
-			// un grain fin → la berge MÉANDRE et se fond au terrain (plus de bord « posé là »).
-			vec2 rwv = wv + (vec2(texture(noise_tex, cell * 0.11 + vec2(1.7, 4.3)).r,
-				texture(noise_tex, cell * 0.11 + vec2(6.1, 0.9)).r) - 0.5) * 0.6;
-			float rv = texture(river_map, (cell + rwv * river_warp + vec2(0.5)) / map_size).r;
-			float sand_amt = smoothstep(river_sand, river_water, rv);          // berge sableuse (large)
-			if (sand_amt > 0.003) {
-				col = mix(col, terr(3, uv, cell), sand_amt * river_sand_str);  // SABLE (pipeline shore)
-				float wamt = smoothstep(river_water, river_water + river_band, rv);   // cœur d'EAU étroit
-				if (wamt > 0.003) {
-					vec2 ruv = fract(cell / period + (vec2(
-						texture(noise_tex, cell * water_freq + vec2(TIME * water_speed, 0.0)).r,
-						texture(noise_tex, cell * water_freq + vec2(0.0, -TIME * water_speed)).r) - 0.5) * water_wave);
-					vec3 wcol = terr(1, ruv, cell) * vec3(0.92, 1.02, 1.12);   // eau DOUCE : un peu plus claire/cyan que la mer
-					float shim = texture(noise_tex, cell * water_freq * 2.3 + vec2(TIME * water_speed * 2.0, 0.0)).r;
-					wcol += vec3(0.12, 0.16, 0.20) * smoothstep(0.65, 0.93, shim) * water_shimmer;
-					col = mix(col, wcol, wamt);
-				}
+			float wamt = smoothstep(river_water, river_water + river_band, rv);
+			if (wamt > 0.003) {
+				vec2 ruv = fract(cell / period + (vec2(
+					texture(noise_tex, cell * water_freq + vec2(TIME * water_speed, 0.0)).r,
+					texture(noise_tex, cell * water_freq + vec2(0.0, -TIME * water_speed)).r) - 0.5) * water_wave);
+				vec3 wcol = terr(1, ruv, cell) * vec3(0.92, 1.02, 1.12);   // eau DOUCE : un peu plus claire/cyan que la mer
+				float shim = texture(noise_tex, cell * water_freq * 2.3 + vec2(TIME * water_speed * 2.0, 0.0)).r;
+				wcol += vec3(0.12, 0.16, 0.20) * smoothstep(0.65, 0.93, shim) * water_shimmer;
+				col = mix(col, wcol, wamt);
 			}
 		}
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
