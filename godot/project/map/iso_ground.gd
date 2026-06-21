@@ -35,7 +35,7 @@ const BIOME_VAR := [
 	["ds2", "ds3", "qs", "des"], ["des", "ds2", "ds4", "snd"], ["ds3", "snd", "des", "qs"],
 	["for", "fo2", "fc1", "fc2"], ["fo2", "for", "fc3", "fc1"], ["fc1", "fc2", "fo2", "for"],
 	["m05", "m10", "m15", "m20"], ["rc1", "rc2", "rd1", "rm1"], ["gr2", "sr1", "gr4", "rc1"],
-	["rck", "rc3", "rd2", "rd1"], ["sno", "snf", "sng", "ice"], ["ice", "sno", "snf", "sng"],
+	["sr1", "des", "gr3", "grs"], ["sno", "snf", "sng", "ice"], ["ice", "sno", "snf", "sng"],
 	["m20", "m25", "rm1", "m15"], ["m25", "rm2", "m15", "m20"], ["bc2", "bc3", "bc4", "bla"],
 	["for", "bc4", "fo2", "fc3"],
 ]
