@@ -119,6 +119,34 @@ func _is_highland(hl: PackedByteArray, nx: int, ny: int, x: int, y: int) -> bool
 		return false
 	return hl[y * nx + x] == 1
 
+## nombre de voisins (8) highland (hors-carte = 0).
+func _count8(src: PackedByteArray, nx: int, ny: int, x: int, y: int) -> int:
+	var c := 0
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx == 0 and dy == 0:
+				continue
+			var xx := x + dx
+			var yy := y + dy
+			if xx >= 0 and yy >= 0 and xx < nx and yy < ny and src[yy * nx + xx] == 1:
+				c += 1
+	return c
+
+## MORPHO du masque highland : COMBLE trous & concavités (≥ FILL voisins → devient highland) puis
+## RETIRE les cellules isolées / pointes (≤ SPECK voisins → retiré). 2 passes → massifs PLEINS (zéro
+## trou), aucune falaise orpheline, coins saillants rabotés (amorce le « moins carré »).
+func _morph_highland(hl: PackedByteArray, nx: int, ny: int) -> void:
+	for _pass in range(2):
+		var src := hl.duplicate()
+		for cy in range(ny):
+			for cx in range(nx):
+				var i := cy * nx + cx
+				var c := _count8(src, nx, ny, cx, cy)
+				if src[i] == 0 and c >= 5:
+					hl[i] = 1
+				elif src[i] == 1 and c <= 1:
+					hl[i] = 0
+
 ## masque blob 8-voisins (bits n=1 e=2 s=4 w=8 ; diagonales SEULEMENT si les deux cardinaux adjacents).
 func _blob_mask(hl: PackedByteArray, nx: int, ny: int, x: int, y: int) -> int:
 	var n := _is_highland(hl, nx, ny, x, y - 1)
@@ -151,6 +179,7 @@ func _build_cliff_idx(bio: Image, W: int, H: int) -> void:
 			var by := mini(cy * TILE_K + k2, H - 1)
 			var b := int(bio.get_pixel(bx, by).r * 255.0 + 0.5)
 			hl[cy * nx + cx] = 1 if HIGHLAND_BIOMES.has(b) else 0
+	_morph_highland(hl, nx, ny)     # comble les trous, retire les falaises isolées, rabote les coins
 	var img := Image.create(nx, ny, false, Image.FORMAT_R8)
 	for cy in range(ny):
 		for cx in range(nx):

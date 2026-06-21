@@ -21,10 +21,14 @@ uniform sampler2D cliff_dist : filter_linear;
 uniform vec2 cliff_grid = vec2(128.0, 64.0);   // (nx, ny) cellules
 uniform float tile_k = 8.0;                     // cellules-monde par cellule d'autotile
 uniform float dist_max = 24.0;                  // plafond du champ de distance (cellules)
-uniform float terrace_period : hint_range(2.0, 6.0) = 3.0;   // cellules par MARCHE (riser + tread)
-uniform float riser_frac : hint_range(0.15, 0.6) = 0.34;     // part de la marche en PENTE (reste = plat)
-uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombrage directionnel du flanc
-uniform float border_feather : hint_range(0.0, 3.0) = 1.6;   // cellules de fondu vers le sol au bord
+uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombrage de la terrasse (sommet)
+// RELIEF « AoE » : chaque cellule highland est RELEVÉE de `highland_lift` (unités iso-écran) — son
+// sommet monte, une FACE de roche le relie au pied → vrai escarpement en volume (pas un sol plat).
+uniform float highland_lift : hint_range(0.0, 40.0) = 16.0;
+uniform float face_dark : hint_range(0.0, 1.0) = 0.55;       // assombrissement du PIED de la face
+uniform float highland_warp : hint_range(0.0, 16.0) = 7.0;   // ondulation du bord highland → moins carré
+uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
+uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
 uniform float warp : hint_range(0.0, 12.0) = 5.0;         // amplitude d'ondulation des frontières (cellules)
@@ -63,6 +67,25 @@ vec3 terr(int b, vec2 uv, vec2 cellG) {
 }
 // distance au bord highland (en CELLULES) au point monde c.
 float cdist(vec2 c) { return texture(cliff_dist, c / (cliff_grid * tile_k)).r * dist_max; }
+// highland à la cellule contenant le point monde c → 1.0 si oui (cliff_idx = (layer+1)/255 > 0), sinon 0.
+float highland_at(vec2 c) {
+	if (c.x < 0.0 || c.y < 0.0 || c.x >= map_size.x || c.y >= map_size.y) return 0.0;
+	return texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r > 0.0015 ? 1.0 : 0.0;
+}
+// SOMMET du plateau : le SOL NORMAL (biome) de la cellule, RELEVÉ (comme AoE : herbe/roche en haut,
+// la roche n'est QUE sur la face). Légèrement éclairci (le sommet capte la lumière).
+vec3 cliff_top(vec2 c) {
+	int bb = biome_at(c);
+	if (bb < 0) bb = 18;
+	return terr(bb, fract(c / period), c) * 1.10;
+}
+// FACE de roche (verticale) : scree relu, strié vertical (t = 0 pied .. 1 sommet), ombré en bas.
+vec3 cliff_face(vec2 c, float t, float hx) {
+	float ci = max(texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0, 1.0);
+	vec3 r = texture(cliff_atlas, vec3(fract(vec2(hx / (tile_k * 1.2), t * 1.4)), ci - 1.0)).rgb;
+	r *= 1.5;                                            // la roche de face est éclairée (pas un trou noir)
+	return r * mix(face_dark, 0.95, t);                  // pied plus sombre (ombre portée), haut clair
+}
 
 void fragment() {
 	vec2 cell = vec2(iso.y + iso.x * 0.5, iso.y - iso.x * 0.5);   // inverse-iso
@@ -95,31 +118,6 @@ void fragment() {
 			float edge = texture(noise_tex, cell * warp_freq * 1.7 + vec2(2.1, 8.4)).r;
 			col = mix(col, terr(bn, uv, cell), clamp(0.5 + (edge - 0.5) * 1.3, 0.0, 1.0) * 0.8);
 		}
-		// FALAISE PLATE TERRASSÉE (autotile blob + champ de distance). Cellule HIGHLAND → le sol
-		// DEVIENT la tuile scree (UV local NET), PUIS on la sculpte en TERRASSES concentriques :
-		// chaque MARCHE = un RISER (pente 30-45°, ombré directionnellement) suivi d'un TREAD plat
-		// (habillable). Le bord du plateau se FOND légèrement vers le sol dessous.
-		vec2 cg = floor(cell / tile_k);
-		float ci = texture(cliff_idx, (cg + vec2(0.5)) / cliff_grid).r * 255.0;
-		if (ci >= 0.5) {
-			vec3 ccol = texture(cliff_atlas, vec3(fract(cell / tile_k), ci - 1.0)).rgb;
-			float d = cdist(cell);
-			float e = tile_k * 0.75;
-			vec2 g = vec2(cdist(cell + vec2(e, 0.0)) - cdist(cell - vec2(e, 0.0)),
-			              cdist(cell + vec2(0.0, e)) - cdist(cell - vec2(0.0, e)));
-			float gl = max(length(g), 1e-4);
-			float lvl = floor(d / terrace_period);                     // NIVEAU de terrasse (0 = le plus bas)
-			float f = fract(d / terrace_period);                       // position dans la marche
-			float riser = 1.0 - smoothstep(riser_frac, riser_frac + 0.10, f);   // 1 = pente, 0 = tread plat
-			vec2 Ld = normalize(vec2(-0.6, -0.8));                      // lumière haut-gauche
-			float lit = dot(-g / gl, Ld);                              // la face regarde l'AVAL (-grad)
-			ccol *= 1.0 + clamp(lvl * 0.075, 0.0, 0.45);               // pas tonal /niveau (plateau ensoleillé)
-			ccol *= mix(1.0, 0.80, riser);                             // RISER toujours plus sombre (face de marche)
-			ccol *= 1.0 + slope_shade * lit * riser;                   // + ombrage DIRECTIONNEL 30-45° (clair/sombre)
-			ccol *= 1.0 - 0.26 * (1.0 - smoothstep(0.0, 0.12, f));     // OMBRE marquée au PIED de la marche
-			ccol *= 1.0 + 0.18 * riser * smoothstep(riser_frac - 0.06, riser_frac, f);  // CRÊTE claire en haut du riser
-			col = mix(col, ccol, smoothstep(0.0, border_feather, d));  // FONDU léger sur la frontière
-		}
 		if (sea) {
 			// PROFONDEUR : deep un peu plus SOMBRE → shallow un peu plus CLAIR (doux, pas de blocs).
 			float depth = (b == 0) ? 0.0 : ((b == 1) ? 0.55 : 1.0);
@@ -151,6 +149,29 @@ void fragment() {
 		}
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
 			texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);
-		COLOR = vec4(col * vb, 1.0);
+		col *= vb;
+		// ───── RELIEF « AoE » : highland RELEVÉ par-dessus le sol. (1) bord ONDULÉ par un bruit
+		// (cellW) → contour ORGANIQUE, moins carré / arrondi. (2) SLOPES D'ACCÈS : par zones (bruit),
+		// le relèvement RAMPE avec la distance au bord → un talus praticable au lieu d'une paroi.
+		// (3) Le PIED de la face se FOND dans le sol → côté arrondi, moins brut.
+		vec2 hw = (vec2(texture(noise_tex, cell * 0.05).r,
+			texture(noise_tex, cell * 0.05 + vec2(3.7, 1.9)).r) - 0.5) * highland_warp;
+		vec2 cellW = cell + hw;
+		float rmask = ramp_amount * smoothstep(0.56, 0.66,
+			texture(noise_tex, cellW * 0.016 + vec2(5.0, 9.0)).r);
+		float eff_lift = highland_lift * (1.0 - rmask * (1.0 - clamp(cdist(cellW) / ramp_cells, 0.0, 1.0)));
+		if (highland_at(cellW + vec2(eff_lift)) > 0.5) {
+			col = cliff_top(cellW + vec2(eff_lift));
+		} else if (eff_lift > 0.5) {
+			float fk = -1.0;
+			vec2 fc = cellW;
+			for (int i = 1; i <= 12; i++) {
+				float k = eff_lift * float(i) / 12.0;
+				if (highland_at(cellW + vec2(k)) > 0.5) { fk = k; fc = cellW + vec2(k); break; }
+			}
+			if (fk > 0.0) col = mix(col, cliff_face(fc, fk / eff_lift, iso.x),
+				smoothstep(0.0, 0.16, fk / eff_lift));   // pied FONDU dans le sol (talus arrondi)
+		}
+		COLOR = vec4(col, 1.0);
 	}
 }
