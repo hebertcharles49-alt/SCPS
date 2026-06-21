@@ -40,6 +40,14 @@ func _run() -> void:
 					if n > bestn: bestn = n; best = Vector2(gx + cell * 0.5, gy + cell * 0.5)
 		c = best
 		print("focus mountain densest cell n=", bestn, " at=", c)
+	elif foc == "flow":
+		# centre = milieu du fleuve le plus FORT (le plus probable « circlé » par l'utilisateur)
+		var fp: Array = w.river_paths()
+		if not fp.is_empty():
+			fp.sort_custom(func(a, b): return float(a["flow"]) > float(b["flow"]))
+			var pts: PackedVector2Array = fp[0]["points"]
+			c = pts[pts.size() / 2]
+			print("focus FLOW river flow=", fp[0]["flow"], " mid=", c)
 	else:
 		# centre = milieu du fleuve dont la SOURCE est la plus HAUTE (la rivière qui vient de la MONTAGNE)
 		var paths: Array = w.river_paths()

@@ -478,7 +478,7 @@ func _build_river_field(w, W: int, H: int) -> Image:
 				continue                              # pas de confluence en AMONT (ou trop court) → bras isolé : SKIP
 			_carve_path(img, pts.slice(0, jct + 1), float(rv["flow"]) / fmax, W, H)
 			drew += 1
-		_carve_to_sea(img, tpts[tpts.size() - 1], water, trel, W, H)   # le TRONC se jette dans la mer
+		_carve_to_sea(img, tpts[tpts.size() - 1], water, height, W, H)   # le TRONC se jette dans la mer
 		n += 1
 	return img
 
@@ -531,35 +531,71 @@ func _carve_brush(img: Image, cx: int, cy: int, peak: float, core: int, soft: in
 			if img.get_pixel(x, y).r < v:              # garde le MAX (troncs/recouvrements priment)
 				img.set_pixel(x, y, Color(v, 0.0, 0.0))
 
-## PROLONGE l'aval du tronc DANS la mer : du dernier point, trouve la cellule d'EAU la plus proche
-## (≤ 14 cellules) et grave une ligne jusque dedans → le fleuve se jette VISIBLEMENT dans la mer.
-func _carve_to_sea(img: Image, mouth: Vector2, water: Image, rel: float, W: int, H: int) -> void:
+## PROLONGE l'aval du tronc jusqu'à TOUCHER la mer en SUIVANT LA PENTE (l'eau coule vers le bas) :
+## la worldgen arrête souvent le fil dans le bas-pays côtier, à 15-25 cellules de l'eau ouverte — on
+## descend donc cellule par cellule (voisin le plus BAS) en gravant un pont d'eau SOLIDE jusqu'à
+## jouxter l'eau. Repli LIGNE DROITE vers la mer la plus proche si on tombe dans une cuvette plate.
+func _carve_to_sea(img: Image, mouth: Vector2, water: Image, height: Image, W: int, H: int) -> void:
 	if water == null:
 		return
-	var mx := int(mouth.x)
-	var my := int(mouth.y)
-	var best := Vector2(-1, -1)
-	for R in range(1, 15):
+	var px := int(mouth.x)
+	var py := int(mouth.y)
+	for _step in range(90):
+		_carve_brush(img, px, py, 1.07, 1, 3, W, H)        # pont d'eau SOLIDE
+		if _touches_sea(water, px, py, W, H):
+			return                                          # jouxte l'eau → REJOINT la mer
+		# descendre vers le voisin le PLUS BAS (le sens du courant)
+		var bx := px
+		var by := py
+		var bh := 2.0
+		if height != null:
+			bh = height.get_pixel(px, py).r
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				if dx == 0 and dy == 0:
+					continue
+				var nx := px + dx
+				var ny := py + dy
+				if nx < 0 or ny < 0 or nx >= W or ny >= H:
+					continue
+				var h := height.get_pixel(nx, ny).r if height != null else 1.0
+				if h < bh:
+					bh = h
+					bx = nx
+					by = ny
+		if bx == px and by == py:
+			# CUVETTE plate : on vise la mer la plus proche EN LIGNE DROITE (recherche large)
+			var s := _nearest_sea(water, px, py, 55, W, H)
+			if s.x < 0:
+				return
+			var steps := maxi(1, int(Vector2(px, py).distance_to(s)))
+			for i in range(steps + 1):
+				var q := Vector2(px, py).lerp(s, float(i) / float(steps))
+				_carve_brush(img, int(q.x), int(q.y), 1.07, 1, 3, W, H)
+			return
+		px = bx
+		py = by
+
+## VRAI si une cellule d'eau (mer/lac) JOUXTE (px,py) — la rivière est alors connectée.
+func _touches_sea(water: Image, px: int, py: int, W: int, H: int) -> bool:
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var nx := px + dx
+			var ny := py + dy
+			if nx >= 0 and ny >= 0 and nx < W and ny < H and water.get_pixel(nx, ny).r > 0.5:
+				return true
+	return false
+
+## cellule d'eau la plus proche (anneaux croissants ≤ maxr) ; (-1,-1) si aucune.
+func _nearest_sea(water: Image, px: int, py: int, maxr: int, W: int, H: int) -> Vector2:
+	for R in range(1, maxr):
 		for dy in range(-R, R + 1):
 			for dx in range(-R, R + 1):
 				if absi(dx) != R and absi(dy) != R:
 					continue
-				var x := mx + dx
-				var y := my + dy
-				if x < 0 or y < 0 or x >= W or y >= H:
-					continue
-				if water.get_pixel(x, y).r > 0.5:      # cellule de mer/lac
-					best = Vector2(x, y)
-					break
-			if best.x >= 0:
-				break
-		if best.x >= 0:
-			break
-	if best.x < 0:
-		return
-	var steps := int(mouth.distance_to(best)) + 1
-	for i in range(steps + 1):
-		var p := mouth.lerp(best, float(i) / float(steps))   # grave la ligne mouth→mer (les cellules de TERRE entre)
-		# pont SOLIDE d'EAU (cœur plein, intensité max) → le fleuve REJOINT visiblement la mer (pas un filet de sable)
-		_carve_brush(img, int(p.x), int(p.y), 1.07, 1, 3, W, H)
+				var nx := px + dx
+				var ny := py + dy
+				if nx >= 0 and ny >= 0 and nx < W and ny < H and water.get_pixel(nx, ny).r > 0.5:
+					return Vector2(nx, ny)
+	return Vector2(-1, -1)
 
