@@ -95,7 +95,7 @@ const MAIN_ST_LEN := 9.0         ## longueur de la RUE PRINCIPALE (vers le sud/a
 # TRÈS PROFOND) → les tuiles cardinales-adjacentes se CHEVAUCHENT et FUSIONNENT dans le terrain ; les
 # pas diagonaux sont COMBLÉS (cellule intermédiaire) pour qu'aucun lien ne soit seulement diagonal.
 const ROADS_IN_SHADER := true    ## les routes sont rendues au niveau TERRAIN (iso_blend) → overlay muet
-const DRAW_BRIDGES := false       ## ponts OFF le temps que l'asset (fond noir) soit réparé
+const DRAW_BRIDGES := true        ## asset pont réparé (alpha OK) → ponts réactivés
 const USE_ROAD_TILES := true
 const ROUTE_TILE_DIR := "res://assets/scps/pack/iso_tiles/"
 const ROUTE_GRID_K := 5          ## DOIT égaler map_view.TILE_K (cellules-monde par losange)
@@ -1392,6 +1392,9 @@ func _build_bridges(mv: Node2D) -> void:
 		var over: Array = []
 		for c in cells:
 			over.append(_in_river_water(rf, c.x * ROUTE_GRID_K + ROUTE_GRID_K / 2, c.y * ROUTE_GRID_K + ROUTE_GRID_K / 2))
+		# tous les RUNS au-dessus de l'eau de cette route → on ne garde QUE le plus LARGE : UN SEUL pont
+		# par route (pas un chapelet de petits ponts ni un agglomérat aux méandres).
+		var runs: Array = []
 		var i := 0
 		while i < n:
 			if not over[i]:
@@ -1400,22 +1403,38 @@ func _build_bridges(mv: Node2D) -> void:
 			var j := i
 			while j + 1 < n and over[j + 1]:
 				j += 1
-			var s0 := maxi(i - 1, 0)               # bord AVANT (terre) → rampe start
-			var s1 := mini(j + 1, n - 1)           # bord APRÈS (terre) → rampe end
-			var d: Vector2 = _bridge_ctr(mv, cells[s1]) - _bridge_ctr(mv, cells[s0])
-			var orient := "ew" if absf(d.x) >= absf(d.y) else "ns"   # axe écran dominant
-			for k in range(s0, s1 + 1):
-				var piece := "span"
-				if k == s0:
-					piece = "start"
-				elif k == s1:
-					piece = "end"
-				var tex: Texture2D = _bridge_tex.get(orient + "_" + piece)
-				if tex == null:
-					continue
-				var ctr: Vector2 = _bridge_ctr(mv, cells[k])
-				_bridges.append({"tex": tex, "tl": ctr - Vector2(half, half), "sz": sz})
+			runs.append([maxi(i - 1, 0), mini(j + 1, n - 1)])
 			i = j + 1
+		if runs.is_empty():
+			continue
+		var best: Array = runs[0]
+		for rr in runs:
+			if (rr[1] - rr[0]) > (best[1] - best[0]):
+				best = rr
+		var s0: int = best[0]                  # bord AVANT (terre) → rampe start
+		var s1: int = best[1]                  # bord APRÈS (terre) → rampe end
+		# modules posés sur un AXE PROPRE au pas EXACT du kit (256 px EW / 128 px NS = 2·TILE_K / TILE_K
+		# iso) → ils s'aboutent en UN tablier continu, pas un agglomérat qui zigzague.
+		var S: Vector2 = _bridge_ctr(mv, cells[s0])
+		var E: Vector2 = _bridge_ctr(mv, cells[s1])
+		var d: Vector2 = E - S
+		var ew := absf(d.x) >= absf(d.y)
+		var orient := "ew" if ew else "ns"
+		var stepw := float(2 * ROUTE_GRID_K) if ew else float(ROUTE_GRID_K)
+		var stepv: Vector2 = (Vector2(signf(d.x), 0.0) if ew else Vector2(0.0, signf(d.y))) * stepw
+		var span_axis := absf(d.x) if ew else absf(d.y)
+		var num := clampi(int(round(span_axis / stepw)) + 1, 2, 10)
+		for k in range(num):
+			var piece := "span"
+			if k == 0:
+				piece = "start"
+			elif k == num - 1:
+				piece = "end"
+			var tex: Texture2D = _bridge_tex.get(orient + "_" + piece)
+			if tex == null:
+				continue
+			var ctr: Vector2 = S + stepv * float(k)
+			_bridges.append({"tex": tex, "tl": ctr - Vector2(half, half), "sz": sz})
 
 ## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure),
 ## bornée à ~2.6 px d'écran (÷zoom) au minimum — la route RESSORT comme le fil conducteur.
