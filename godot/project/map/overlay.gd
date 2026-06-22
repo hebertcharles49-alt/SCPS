@@ -98,13 +98,13 @@ const USE_ROAD_TILES := true
 const ROUTE_TILE_DIR := "res://assets/scps/pack/iso_tiles/"
 const ROUTE_GRID_K := 5          ## DOIT égaler map_view.TILE_K (cellules-monde par losange)
 const ROUTE_SURFACE := "road_cobble"
-const ROUTE_SPLAT_EXP := 1.7     ## élargissement du splat (chevauchement des voisins → fusion)
-const ROUTE_SPLAT_CORE := 0.42   ## rayon (frac) du cœur OPAQUE ; au-delà → fondu alpha vers 0
-const ROUTE_CORE_A := 0.95       ## alpha du cœur (un brin < 1 → le terrain perce = blend plus profond)
+const ROUTE_SPLAT_EXP := 1.6     ## extension des arêtes CONNECTÉES (chevauchement du voisin → continuité)
+const ROUTE_CORE_A := 0.96       ## alpha de la route (cœur + arêtes connectées)
 var _road_tex := {}              ## masque cardinal 1-15 → Array[Texture2D] (variantes)
-var _road_tiles := []            ## [{ctr:Vector2(iso), tex}] — splats précalculés
+var _road_tiles := []            ## [{ctr:Vector2(iso), tex, mask}] — splats précalculés
 var _road_tiles_dirty := true    ## le réseau a bougé → recalculer la pose
-var _route_mesh: ArrayMesh = null ## splat losange réutilisable (UV + alpha fondu), bâti 1×
+var _route_meshes := {}          ## masque → ArrayMesh : splat UNIDIRECTIONNEL (plein LE LONG de la route,
+                                 ## fondu EN TRAVERS — comme une rivière), bâti/caché par masque
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
@@ -1238,45 +1238,51 @@ func _load_route_tiles() -> void:
 		if not arr.is_empty():
 			_road_tex[m] = arr
 
-## SPLAT losange réutilisable : cœur OPAQUE (alpha ROUTE_CORE_A) jusqu'à ROUTE_SPLAT_CORE, fondu vers
-## alpha 0 au bord ÉLARGI (ROUTE_SPLAT_EXP). Coins iso N/E/S/W (relatifs au centre) ↔ coins UV de la
-## tuile (N=0,0 · E=1,0 · S=1,1 · W=0,1) ; le centre = (0.5,0.5). Bâti une fois, dessiné par cellule.
-func _build_route_mesh() -> void:
-	if _route_mesh != null:
-		return
+## SPLAT losange UNIDIRECTIONNEL pour un masque cardinal donné (bâti/caché par masque). Le losange iso
+## a 4 SOMMETS (N/E/S/W) et 4 ARÊTES ; chaque arête fait face à UN voisin cardinal (n→arête N-E, e→E-S,
+## s→S-W, w→W-N — la tuile autotile est orientée pareil). Le mid d'une arête CONNECTÉE est plein (alpha)
+## et ÉTENDU (×EXP) pour chevaucher le voisin → la route est PLEINE le long de son axe ; les sommets et
+## les arêtes NON connectées sont à alpha 0 → fondu EN TRAVERS (la berge). Un fan de 8 secteurs.
+func _route_mesh_for_mask(m: int) -> ArrayMesh:
+	if _route_meshes.has(m):
+		return _route_meshes[m]
 	var k := float(ROUTE_GRID_K)
-	var dirs := [Vector2(0.0, -k * 0.5), Vector2(k, 0.0), Vector2(0.0, k * 0.5), Vector2(-k, 0.0)]  # N E S W
-	var cuv := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
-	var verts := PackedVector3Array()
-	var uvs := PackedVector2Array()
-	var cols := PackedColorArray()
-	verts.append(Vector3(0, 0, 0)); uvs.append(Vector2(0.5, 0.5)); cols.append(Color(1, 1, 1, ROUTE_CORE_A))  # 0 centre
-	for i in range(4):                                   # 1-4 cœur (alpha plein)
-		verts.append(Vector3(dirs[i].x * ROUTE_SPLAT_CORE, dirs[i].y * ROUTE_SPLAT_CORE, 0.0))
-		uvs.append(Vector2(0.5, 0.5) + (cuv[i] - Vector2(0.5, 0.5)) * ROUTE_SPLAT_CORE)
-		cols.append(Color(1, 1, 1, ROUTE_CORE_A))
-	for i in range(4):                                   # 5-8 bord élargi (alpha 0)
-		verts.append(Vector3(dirs[i].x * ROUTE_SPLAT_EXP, dirs[i].y * ROUTE_SPLAT_EXP, 0.0))
-		uvs.append(Vector2(0.5, 0.5) + (cuv[i] - Vector2(0.5, 0.5)) * ROUTE_SPLAT_EXP)
-		cols.append(Color(1, 1, 1, 0.0))
-	var idx := PackedInt32Array([
-		0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1,             # cœur (fan)
-		1, 5, 6, 1, 6, 2,  2, 6, 7, 2, 7, 3,            # fondu N-E, E-S
-		3, 7, 8, 3, 8, 4,  4, 8, 5, 4, 5, 1])           # fondu S-W, W-N
+	# anneau (8) en ordre : N-sommet, n-arête, E-sommet, e-arête, S-sommet, s-arête, W-sommet, w-arête
+	var Nv := Vector2(0, -k * 0.5); var Ev := Vector2(k, 0); var Sv := Vector2(0, k * 0.5); var Wv := Vector2(-k, 0)
+	var Nuv := Vector2(0, 0); var Euv := Vector2(1, 0); var Suv := Vector2(1, 1); var Wuv := Vector2(0, 1)
+	var ring_pos := [Nv, (Nv + Ev) * 0.5, Ev, (Ev + Sv) * 0.5, Sv, (Sv + Wv) * 0.5, Wv, (Wv + Nv) * 0.5]
+	var ring_uv := [Nuv, (Nuv + Euv) * 0.5, Euv, (Euv + Suv) * 0.5, Suv, (Suv + Wuv) * 0.5, Wuv, (Wuv + Nuv) * 0.5]
+	var ring_bit := [-1, 1, -1, 2, -1, 4, -1, 8]         # arêtes portent un bit (n/e/s/w) ; sommets = -1
+	var c := Vector2(0.5, 0.5)
+	var verts := PackedVector3Array([Vector3(0, 0, 0)])
+	var uvs := PackedVector2Array([c])
+	var cols := PackedColorArray([Color(1, 1, 1, ROUTE_CORE_A)])   # 0 = centre (plein)
+	for i in range(8):
+		var bit: int = ring_bit[i]
+		var connected: bool = bit > 0 and (m & bit) != 0
+		var ext := ROUTE_SPLAT_EXP if connected else 1.0
+		var a := ROUTE_CORE_A if connected else 0.0       # arête connectée = pleine ; sinon (et sommets) = fondu
+		verts.append(Vector3((ring_pos[i] * ext).x, (ring_pos[i] * ext).y, 0.0))
+		uvs.append(c + (ring_uv[i] - c) * ext)
+		cols.append(Color(1, 1, 1, a))
+	var idx := PackedInt32Array()
+	for i in range(8):                                    # fan centre → secteurs consécutifs de l'anneau
+		idx.append(0); idx.append(1 + i); idx.append(1 + (i + 1) % 8)
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_COLOR] = cols
 	arrays[Mesh.ARRAY_INDEX] = idx
-	_route_mesh = ArrayMesh.new()
-	_route_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_route_meshes[m] = mesh
+	return mesh
 
 ## précalcule la pose des splats route : quantifie le réseau sur la grille losange, COMBLE les pas
 ## diagonaux (4-connexité garantie), calcule le masque cardinal, choisit la tuile, garde le centre iso.
 func _build_road_tiles(mv: Node2D) -> void:
 	_load_route_tiles()
-	_build_route_mesh()
 	_road_tiles.clear()
 	_road_tiles_dirty = false
 	var grid := {}
@@ -1319,7 +1325,7 @@ func _build_road_tiles(mv: Node2D) -> void:
 		var tex: Texture2D = arr[absi(h) % arr.size()]
 		var wx := float(cell.x * ROUTE_GRID_K) + float(ROUTE_GRID_K) * 0.5
 		var wy := float(cell.y * ROUTE_GRID_K) + float(ROUTE_GRID_K) * 0.5
-		_road_tiles.append({"ctr": mv.iso_pos(wx, wy), "tex": tex})
+		_road_tiles.append({"ctr": mv.iso_pos(wx, wy), "tex": tex, "mask": m})
 
 ## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure),
 ## bornée à ~2.6 px d'écran (÷zoom) au minimum — la route RESSORT comme le fil conducteur.
@@ -1462,7 +1468,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if _road_tiles_dirty:
 				_build_road_tiles(mv)
 			for q in _road_tiles:
-				draw_mesh(_route_mesh, q["tex"], Transform2D(0.0, q["ctr"]))
+				draw_mesh(_route_mesh_for_mask(q["mask"]), q["tex"], Transform2D(0.0, q["ctr"]))
 		elif not _roads.is_empty():
 			var year: int = w.year()
 			var built := []                       # [{poly:[iso Vector2], w}]
