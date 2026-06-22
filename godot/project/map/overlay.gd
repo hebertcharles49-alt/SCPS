@@ -641,6 +641,17 @@ func _build_structures() -> void:
 		idx = _place_zone(bk["field"], field_n, ctr, 13.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
 		if _structures.size() >= 4800:
 			break
+	# GARDE-FOU (capté par viewer_audit) : retire tout bâti dont la BASE tombe dans l'eau — la mer/lac
+	# (sea) OU le fleuve CARVÉ continu (rf). `_footprint_clear` ne teste que le NUAGE de points rivière
+	# (rset, épars) ; un bâti entre deux points pouvait rester dans l'eau rendue. Le décor, lui, teste
+	# déjà `_in_river_water`. On aligne le bâti sur le MÊME critère que le rendu.
+	var dry: Array = []
+	for s in _structures:
+		var sp: Vector2 = s["pos"]
+		if _is_sea_cell(sea, int(sp.x), int(sp.y)) or _in_river_water(rf, int(sp.x), int(sp.y)):
+			continue
+		dry.append(s)
+	_structures = dry
 	# teinte de chaque bâti CALÉE sur le terrain (relief + sol) → fini le « posé là »
 	for s in _structures:
 		var p: Vector2 = s["pos"]

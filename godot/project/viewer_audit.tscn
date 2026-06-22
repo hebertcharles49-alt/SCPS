@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8viewaudit01"]
+
+[ext_resource type="Script" path="res://viewer_audit.gd" id="1_vaudit"]
+
+[node name="ViewerAudit" type="Node"]
+script = ExtResource("1_vaudit")
