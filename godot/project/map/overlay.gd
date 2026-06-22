@@ -76,7 +76,7 @@ const ROADSIDE := [
 const ROAD_RESAMPLE := 2.0       ## pas d'échantillonnage du tracé (cellules) → points réguliers
 const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'ancre de ville (cellules)
 const ROAD_DRESS_OFF := 0.95     ## décalage SUD de base du mobilier (marge)
-const MAIN_ST_LEN := 7.0         ## longueur de la RUE PRINCIPALE (vers le sud/avant) — la façade western
+const MAIN_ST_LEN := 9.0         ## longueur de la RUE PRINCIPALE (vers le sud/avant) — la façade western
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
@@ -519,14 +519,14 @@ func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float,
 		return idx
 	var dir := d / lng
 	var perp := Vector2(-dir.y, dir.x)
-	var t := 1.6                                          # 1re façade juste après le pied du centre
+	var t := 1.8                                          # 1re façade juste après le pied du centre
 	var sidx := 0
 	while t <= lng + 0.5:
 		for side in [1.0, -1.0]:                          # les DEUX rives se font face (la grand-rue)
 			var hh := ((r * 2654435761) ^ (sidx * 40503 + (1 if side > 0.0 else 2) * 7919)) & 0x7fffffff
 			sidx += 1
 			idx += 1
-			var off := 1.6 + float(hh % 50) / 100.0       # 1.6..2.1 : serré contre la rue
+			var off := 1.5 + float(hh % 40) / 100.0       # 1.5..1.9 : SERRÉ contre la rue (vide de rue net)
 			var p: Vector2 = a + dir * t + perp * (side * off)
 			if _road_cells.has(Vector2i(int(p.x), int(p.y))):
 				continue
@@ -536,7 +536,7 @@ func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float,
 				continue
 			_structures.append({"name": pool[(hh ^ (hh >> 5)) % pool.size()], "pos": p, "sz": base_sz,
 				"flip": side < 0.0})
-		t += 2.1                                          # rangée serrée le long de la rue
+		t += 1.9                                          # rangée serrée le long de la rue
 	return idx
 
 ## bâtit, pour chaque ville, une AGGLOMÉRATION cohérente AUTOUR du centre urbain :
@@ -592,8 +592,9 @@ func _build_structures() -> void:
 			idx = _place_western(r, aW, sW, along_pool, BLD_SIZE, idx, sea, rset)
 		var along_n := dwell_n + craft_n
 		idx = _place_road_houses(along_pool, r, BLD_SIZE, idx, sea, rset, 40.0, 4.0, along_n)
-		idx = _place_zone(bk["dwell"], maxi(0, along_n - _road_placed), ctr, 6.0, 7.0, BLD_SIZE, true, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["field"], field_n, ctr, 13.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
+		# « build AUTOUR de l'agrégat » : l'anneau de surplus s'élargit (rayon 8) → il ENTOURE la grand-rue
+		idx = _place_zone(bk["dwell"], maxi(0, along_n - _road_placed), ctr, 8.0, 7.0, BLD_SIZE, true, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["field"], field_n, ctr, 14.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
 		if _structures.size() >= 4800:
 			break
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
@@ -776,12 +777,17 @@ func _stamp_cell(bx: int, by: int) -> void:
 			_road_cells[Vector2i(bx + dx, by + dy)] = true
 
 ## extrémité de la RUE PRINCIPALE : on pousse vers l'AVANT (iso-sud = +x+y monde) ; si l'avant strict
-## est en eau (bourg côtier), on tente avant-est puis avant-ouest ; sinon pas de rue (retour = ancre).
+## a de l'eau SUR SON TRAJET (bourg côtier), on tente avant-est puis avant-ouest ; sinon pas de rue.
 func _main_street_end(a: Vector2, sea: Image, rf: Image) -> Vector2:
 	for d in [Vector2(0.707, 0.707), Vector2(0.917, 0.4), Vector2(0.4, 0.917)]:
-		var s: Vector2 = a + d * MAIN_ST_LEN
-		if not _is_sea_cell(sea, int(s.x), int(s.y)) and not _in_river_water(rf, int(s.x), int(s.y)):
-			return s
+		var clear := true
+		for k in range(1, 6):                        # tout le tronçon doit être au sec (pas qu'au bout)
+			var p: Vector2 = a + d * (MAIN_ST_LEN * float(k) / 5.0)
+			if _is_sea_cell(sea, int(p.x), int(p.y)) or _in_river_water(rf, int(p.x), int(p.y)):
+				clear = false
+				break
+		if clear:
+			return a + d * MAIN_ST_LEN
 	return a
 
 ## pour chaque bourg : la RUE PRINCIPALE = un court tronçon de l'ancre (pied du centre) vers l'avant
