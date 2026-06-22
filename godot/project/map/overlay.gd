@@ -519,14 +519,14 @@ func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float,
 		return idx
 	var dir := d / lng
 	var perp := Vector2(-dir.y, dir.x)
-	var t := 1.8                                          # 1re façade juste après le pied du centre
+	var t := 2.4                                          # 1re façade juste après le pied du centre
 	var sidx := 0
 	while t <= lng + 0.5:
 		for side in [1.0, -1.0]:                          # les DEUX rives se font face (la grand-rue)
 			var hh := ((r * 2654435761) ^ (sidx * 40503 + (1 if side > 0.0 else 2) * 7919)) & 0x7fffffff
 			sidx += 1
 			idx += 1
-			var off := 1.5 + float(hh % 40) / 100.0       # 1.5..1.9 : SERRÉ contre la rue (vide de rue net)
+			var off := 4.0 + float(hh % 110) / 100.0      # 4.0..5.1 : la rue reste VISIBLE entre les façades
 			var p: Vector2 = a + dir * t + perp * (side * off)
 			if _road_cells.has(Vector2i(int(p.x), int(p.y))):
 				continue
@@ -536,7 +536,7 @@ func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float,
 				continue
 			_structures.append({"name": pool[(hh ^ (hh >> 5)) % pool.size()], "pos": p, "sz": base_sz,
 				"flip": side < 0.0})
-		t += 1.9                                          # rangée serrée le long de la rue
+		t += 3.0                                          # une devanture tous les ~3 cellules (rangée)
 	return idx
 
 ## bâtit, pour chaque ville, une AGGLOMÉRATION cohérente AUTOUR du centre urbain :
@@ -763,13 +763,17 @@ func _build_road_cells() -> void:
 		var pts: PackedVector2Array = rd["points"]
 		for p in pts:
 			_stamp_cell(int(p.x), int(p.y))
-	for ms in _main_streets:                         # la rue principale compte AUSSI comme chaussée
+	for ms in _main_streets:                         # la grand-rue : corridor LARGE dégagé (façades à off 4-5)
 		var a: Vector2 = ms["a"]
 		var s: Vector2 = ms["s"]
 		var n := maxi(1, int(a.distance_to(s)))
 		for k in range(n + 1):
 			var p := a.lerp(s, float(k) / float(n))
-			_stamp_cell(int(p.x), int(p.y))
+			var bx := int(p.x)
+			var by := int(p.y)
+			for dy in range(-3, 4):
+				for dx in range(-3, 4):
+					_road_cells[Vector2i(bx + dx, by + dy)] = true
 
 func _stamp_cell(bx: int, by: int) -> void:
 	for dy in range(-1, 2):
@@ -1279,11 +1283,12 @@ func _draw_iso(w, mv: Node2D) -> void:
 					done[ri] = true
 			# RUES PRINCIPALES (toujours bâties) : court tronçon SUD de chaque bourg → porte la façade
 			# western ; rejoint le réseau à l'ANCRE (même entrée), fusionnée par les passes UNION ci-dessous.
+			# LARGE (avenue, ~×2 l'artère) → elle se lit comme la grand-rue entre les deux rangées.
 			for ms in _main_streets:
 				var msp := PackedVector2Array()
 				msp.append(mv.iso_pos((ms["a"] as Vector2).x, (ms["a"] as Vector2).y))
 				msp.append(mv.iso_pos((ms["s"] as Vector2).x, (ms["s"] as Vector2).y))
-				built.append({"poly": msp, "w": _road_width(1, zoom)})
+				built.append({"poly": msp, "w": _road_width(0, zoom) + 1.1})
 			# 3 passes UNION (casing/fill OPAQUES → les recouvrements FUSIONNENT sans double-assombrir) ;
 			# le halo doux est TIGHT et discret (l'ancien +4/zoom α.22 boursouflait/floutait la route).
 			for bp in built:
