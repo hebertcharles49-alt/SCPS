@@ -77,12 +77,11 @@ uniform float river_warp  : hint_range(0.0, 6.0) = 0.0;      // 0 = berge NETTE 
 //    overlay), fondue dans le biome au BORD via `road_cov` (couverture lisse, filtre linéaire). `road_idx`
 //    porte la COUCHE (R = couche+1) par cellule-losange ; `road_atlas` est la pile des tuiles. ─────────
 uniform sampler2DArray road_atlas : filter_linear_mipmap;
-uniform sampler2D road_idx : filter_nearest;                 // R = couche+1 (0 = pas de route), par cellule
-uniform sampler2D road_cov : filter_linear;                  // 1 = route, 0 sinon → fondu de bord
+uniform sampler2D road_idx : filter_nearest;                 // R = couche+1 (0 = pas de route) · G = masque cardinal
 uniform vec2 road_grid = vec2(0.0);
 uniform float road_on = 0.0;
-uniform float road_blend_lo = 0.18;                          // seuil bas du fondu de bord (↓ = route plus large)
-uniform float road_blend_hi = 0.85;                          // seuil haut (cœur plein)
+uniform float road_hw = 0.17;                                // demi-largeur de la BANDE pavée (0.5 = toute la cellule)
+uniform float road_feather = 0.06;                           // fondu pavé→biome (la DIRT est masquée par le biome)
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
@@ -241,15 +240,25 @@ void fragment() {
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
 			texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);
 		col *= vb;
-		// ── ROUTES : la tuile d'autotile DEVIENT le sol de la cellule, fondue au bord (terre seulement) ──
+		// ── ROUTES : on ne garde que la BANDE PAVÉE de la tuile (le long des bras connectés) ; la DIRT
+		//    autour est MASQUÉE par le biome (elle n'est qu'un fond de secours). La forme vient du masque
+		//    cardinal (G) : un bras vers chaque voisin connecté ; distance perpendiculaire au bras → fondu. ──
 		if (road_on > 0.5 && !sea && road_grid.x > 0.5) {
-			vec2 rcell = floor(cell / tile_k);
-			float ridx = texture(road_idx, (rcell + vec2(0.5)) / road_grid).r;
-			if (ridx > 0.0015) {
-				float rcov = texture(road_cov, cell / map_size).r;     // lisse → fondu au bord de cellule
-				int rl = int(ridx * 255.0 + 0.5) - 1;
-				vec3 rcol = texture(road_atlas, vec3(fract(cell / tile_k), float(rl))).rgb;
-				col = mix(col, rcol, smoothstep(road_blend_lo, road_blend_hi, rcov));
+			vec2 ridx = texture(road_idx, (floor(cell / tile_k) + vec2(0.5)) / road_grid).rg;
+			if (ridx.r > 0.0015) {
+				int rmask = int(ridx.g * 255.0 + 0.5);
+				vec2 luv = fract(cell / tile_k) - vec2(0.5);       // -0.5..0.5 dans la cellule
+				float d = 0.5;                                     // distance à la bande pavée (loin par défaut)
+				if ((rmask & 1) != 0 && luv.y <= 0.02) d = min(d, abs(luv.x));   // bras N (haut)
+				if ((rmask & 4) != 0 && luv.y >= -0.02) d = min(d, abs(luv.x));  // bras S (bas)
+				if ((rmask & 2) != 0 && luv.x >= -0.02) d = min(d, abs(luv.y));  // bras E (droite)
+				if ((rmask & 8) != 0 && luv.x <= 0.02) d = min(d, abs(luv.y));   // bras W (gauche)
+				float rb = 1.0 - smoothstep(road_hw, road_hw + road_feather, d);
+				if (rb > 0.003) {
+					int rl = int(ridx.r * 255.0 + 0.5) - 1;
+					vec3 rcol = texture(road_atlas, vec3(fract(cell / tile_k), float(rl))).rgb;
+					col = mix(col, rcol, rb);
+				}
 			}
 		}
 		// OMBRE PORTÉE des falaises sur le SOL : un pixel de sol est dans l'ombre s'il y a une falaise

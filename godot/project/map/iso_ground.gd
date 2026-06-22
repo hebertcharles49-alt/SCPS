@@ -388,8 +388,7 @@ func _build_road_idx(w, W: int, H: int) -> void:
 					fill[aa] = true
 	for fk in fill.keys():
 		grid[fk] = true
-	var img := Image.create(nx, ny, false, Image.FORMAT_R8)
-	var cov := Image.create(nx, ny, false, Image.FORMAT_R8)
+	var img := Image.create(nx, ny, false, Image.FORMAT_RGB8)   # R=couche+1 · G=masque cardinal (forme route)
 	for ck2 in grid.keys():
 		var cell: Vector2i = ck2
 		var m := 0
@@ -406,10 +405,8 @@ func _build_road_idx(w, W: int, H: int) -> void:
 			continue
 		var h := (cell.x * 73856093) ^ (cell.y * 19349663)
 		var layer: int = layers[absi(h) % layers.size()]
-		img.set_pixel(cell.x, cell.y, Color(float(layer + 1) / 255.0, 0.0, 0.0))
-		cov.set_pixel(cell.x, cell.y, Color(1.0, 0.0, 0.0))
+		img.set_pixel(cell.x, cell.y, Color(float(layer + 1) / 255.0, float(m) / 255.0, 0.0))
 	_road_idx = ImageTexture.create_from_image(img)
-	_road_cov = ImageTexture.create_from_image(cov)
 	_road_sig = npts
 
 func _ready() -> void:
@@ -508,7 +505,6 @@ func _draw() -> void:
 			_build_road_idx(w, W, H)
 		mat.set_shader_parameter("road_atlas", _road_atlas())
 		mat.set_shader_parameter("road_idx", _road_idx)
-		mat.set_shader_parameter("road_cov", _road_cov)
 		mat.set_shader_parameter("road_grid", Vector2(W / TILE_K, H / TILE_K))
 		mat.set_shader_parameter("road_on", 1.0)
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
