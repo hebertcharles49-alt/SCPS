@@ -107,6 +107,14 @@ var _road_tiles_dirty := true    ## le réseau a bougé → recalculer la pose
 var _route_meshes := {}          ## masque → ArrayMesh : splat UNIDIRECTIONNEL (plein LE LONG de la route,
                                  ## fondu EN TRAVERS — comme une rivière), bâti/caché par masque
 
+# ── PONTS (kit modulaire RGBA) : là où une route franchit un FLEUVE (le moteur l'y route déjà), on
+# pose start→span×N→end en overlay AU-DESSUS de l'eau. Orientation EW (horizontal écran) / NS (vertical)
+# selon la direction du franchissement. Sprite 384² centré sur le centre de la tuile-route (losange). ──
+const BRIDGE_DIR := "res://assets/scps/pack/bridges/"
+var _bridge_tex := {}            ## "ew_start".."ns_end" → Texture2D
+var _bridges := []               ## [{tex, tl:Vector2(iso coin haut-gauche), sz:float}]
+var _bridges_dirty := true
+
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
 	12: ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_GROVE_BROADLEAF", "DRESS_TREE_POPLAR"],  # FOREST : feuillus
@@ -179,6 +187,7 @@ func _on_generated() -> void:
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
 	_road_tiles_dirty = true    # monde neuf → reposer les tuiles de route
+	_bridges_dirty = true       # … et les ponts
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
@@ -746,6 +755,7 @@ func _dress_rivers(sea: Image) -> void:
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
 	_road_tiles_dirty = true   # le réseau a pu croître/changer → reposer les tuiles de route
+	_bridges_dirty = true      # … et les ponts (un franchissement neuf)
 	var sig := _owner_signature(Sim.world)
 	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
 		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
@@ -1328,6 +1338,73 @@ func _build_road_tiles(mv: Node2D) -> void:
 		var wy := float(cell.y * ROUTE_GRID_K) + float(ROUTE_GRID_K) * 0.5
 		_road_tiles.append({"ctr": mv.iso_pos(wx, wy), "tex": tex, "mask": m})
 
+## charge (1×) les 6 sprites de pont (start/span/end × EW/NS).
+func _load_bridges() -> void:
+	if not _bridge_tex.is_empty():
+		return
+	for o in ["ew", "ns"]:
+		for pc in ["start", "span", "end"]:
+			var p := BRIDGE_DIR + "scps_bridge_%s_%s.png" % [o, pc]
+			if FileAccess.file_exists(p):
+				var img := Image.load_from_file(p)
+				if img != null:
+					_bridge_tex[o + "_" + pc] = ImageTexture.create_from_image(img)
+
+## centre ISO du losange de la cellule-route `c`.
+func _bridge_ctr(mv: Node2D, c: Vector2i) -> Vector2:
+	return mv.iso_pos(float(c.x * ROUTE_GRID_K) + ROUTE_GRID_K * 0.5, float(c.y * ROUTE_GRID_K) + ROUTE_GRID_K * 0.5)
+
+## précalcule les PONTS : pour chaque route, on suit ses cellules-losange distinctes ; tout RUN au-dessus
+## de l'eau de fleuve devient un pont (start au bord avant, span sur l'eau, end au bord après). L'empreinte
+## de la tuile-route (256 px) = la largeur du losange (2·TILE_K iso) → échelle du sprite 384².
+func _build_bridges(mv: Node2D) -> void:
+	_load_bridges()
+	_bridges.clear()
+	_bridges_dirty = false
+	var rf := _carved_river_field()
+	if rf == null:
+		return
+	var scale := float(2 * ROUTE_GRID_K) / 256.0
+	var sz := 384.0 * scale
+	var half := sz * 0.5
+	for rd in _roads:
+		var pts: PackedVector2Array = rd["points"]
+		var cells: Array = []
+		var last := Vector2i(-9999, -9999)
+		for p in pts:
+			var c := Vector2i(int(p.x) / ROUTE_GRID_K, int(p.y) / ROUTE_GRID_K)
+			if c != last:
+				cells.append(c)
+				last = c
+		var n := cells.size()
+		var over: Array = []
+		for c in cells:
+			over.append(_in_river_water(rf, c.x * ROUTE_GRID_K + ROUTE_GRID_K / 2, c.y * ROUTE_GRID_K + ROUTE_GRID_K / 2))
+		var i := 0
+		while i < n:
+			if not over[i]:
+				i += 1
+				continue
+			var j := i
+			while j + 1 < n and over[j + 1]:
+				j += 1
+			var s0 := maxi(i - 1, 0)               # bord AVANT (terre) → rampe start
+			var s1 := mini(j + 1, n - 1)           # bord APRÈS (terre) → rampe end
+			var d: Vector2 = _bridge_ctr(mv, cells[s1]) - _bridge_ctr(mv, cells[s0])
+			var orient := "ew" if absf(d.x) >= absf(d.y) else "ns"   # axe écran dominant
+			for k in range(s0, s1 + 1):
+				var piece := "span"
+				if k == s0:
+					piece = "start"
+				elif k == s1:
+					piece = "end"
+				var tex: Texture2D = _bridge_tex.get(orient + "_" + piece)
+				if tex == null:
+					continue
+				var ctr: Vector2 = _bridge_ctr(mv, cells[k])
+				_bridges.append({"tex": tex, "tl": ctr - Vector2(half, half), "sz": sz})
+			i = j + 1
+
 ## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure),
 ## bornée à ~2.6 px d'écran (÷zoom) au minimum — la route RESSORT comme le fil conducteur.
 func _road_width(level: int, zoom: float) -> float:
@@ -1466,7 +1543,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
 		if ROADS_IN_SHADER:
-			pass                              # les ROUTES sont rendues par le terrain (iso_blend) → l'overlay n'en dessine pas
+			# les ROUTES sont rendues par le terrain (iso_blend) ; l'overlay ne pose que les PONTS (RGBA, sur l'eau)
+			if _bridges_dirty:
+				_build_bridges(mv)
+			for b in _bridges:
+				draw_texture_rect(b["tex"], Rect2(b["tl"], Vector2(b["sz"], b["sz"])), false)
 		elif USE_ROAD_TILES:
 			if _road_tiles_dirty:
 				_build_road_tiles(mv)
