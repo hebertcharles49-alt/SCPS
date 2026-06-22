@@ -28,6 +28,8 @@ const TILE_K := 8              ## cellules monde par tuile iso (granularité du 
 ## (sinon « tout devient falaise »). La gentle upland reste son biome de sol (herbe/roche habillable).
 const HIGHLAND_BIOMES := [18, 19, 23]
 const CLIFF_AT_DIR := "res://assets/scps/pack/iso_tiles/cliff_autotile/"
+const ROAD_SURF := "road_cobble"   ## surface routière du pack (mud/gravel/cobble)
+const ROAD_DIR := "res://assets/scps/pack/iso_tiles/road_cobble/"
 const DIST_MAX := 24.0         ## plafond du champ de distance highland (cellules) → terrasses + pente
 const CITY_CARVE := 3          ## rayon (cellules) dégagé de falaise autour d'une ville → assise plate
 const MIN_CLUSTER := 9         ## taille mini d'un massif (cellules) → pas de petites falaises éparses
@@ -62,6 +64,11 @@ var _cliff_mask := {}                  ## mask blob (canon) → [layerA, layerB]
 var _cliff_idx: ImageTexture = null    ## carte PAR CELLULE : R = layer+1 (0 = pas de falaise)
 var _cliff_h: ImageTexture = null      ## champ de DISTANCE au bord (cellules/DIST_MAX) → rampes d'accès
 var _cliff_topbio: ImageTexture = null ## biome du SOMMET (terrain alentour) par cellule highland
+var _road_arr: Texture2DArray = null   ## tuiles ROUTE (autotile cardinal) — couches = entrées chargées
+var _road_mask := {}                   ## masque cardinal 1-15 → [couches] (variantes)
+var _road_idx: ImageTexture = null     ## carte PAR CELLULE : R = couche+1 (0 = pas de route)
+var _road_cov: ImageTexture = null     ## couverture LISSE (1 route, 0 sinon, filtre linéaire) → fondu de bord
+var _road_sig := -1                    ## signature du réseau (nb cellules) → ne reposer que si ça change
 
 ## texture-array des tuiles PLATES tuilables : VAR couches par biome (couche = biome*VAR + variante),
 ## chargées de var/ (palette B). Bâtie une fois. Le shader fond les variantes par région.
@@ -323,6 +330,88 @@ func _build_cliff_idx(w, bio: Image, W: int, H: int) -> void:
 			tb.set_pixel(cx, cy, Color(float(topb[cy * nx + cx]) / 255.0, 0.0, 0.0))
 	_cliff_topbio = ImageTexture.create_from_image(tb)
 
+## texture-array des tuiles ROUTE (cardinal 15 états × 2 variantes) + table masque→couches. Bâti 1×.
+func _road_atlas() -> Texture2DArray:
+	if _road_arr != null:
+		return _road_arr
+	var imgs: Array[Image] = []
+	_road_mask.clear()
+	for m in range(1, 16):
+		for v in [1, 2]:
+			var p := ROAD_DIR + "scps_" + ROAD_SURF + "_%02d_%02d.png" % [m, v]
+			if FileAccess.file_exists(p):
+				var img := Image.load_from_file(p)
+				if img != null:
+					if img.get_format() != Image.FORMAT_RGBA8:
+						img.convert(Image.FORMAT_RGBA8)
+					if img.get_width() != 256 or img.get_height() != 256:
+						img.resize(256, 256)
+					img.generate_mipmaps()
+					if not _road_mask.has(m):
+						_road_mask[m] = []
+					_road_mask[m].append(imgs.size())
+					imgs.append(img)
+	if imgs.is_empty():
+		var mg := Image.create(256, 256, false, Image.FORMAT_RGBA8)
+		mg.fill(Color(1, 0, 1, 1)); mg.generate_mipmaps(); imgs.append(mg)
+	_road_arr = Texture2DArray.new()
+	_road_arr.create_from_images(imgs)
+	return _road_arr
+
+## carte PAR CELLULE (nx×ny) de la route : R = couche+1 (0 = pas de route) + couverture lisse. Le réseau
+## (façade `road_paths`) est quantifié sur la grille losange, les pas DIAGONAUX sont COMBLÉS (4-connexité),
+## puis chaque cellule prend le masque CARDINAL de ses 4 voisins → la couche d'autotile. Le shader pose la
+## tuile comme SOL et la fond au bord via la couverture (filtre linéaire).
+func _build_road_idx(w, W: int, H: int) -> void:
+	_road_atlas()
+	var nx := W / TILE_K
+	var ny := H / TILE_K
+	var grid := {}
+	var npts := 0
+	for rd in w.road_paths():
+		var pts: PackedVector2Array = rd["points"]
+		npts += pts.size()
+		for p in pts:
+			var cx := int(p.x) / TILE_K
+			var cy := int(p.y) / TILE_K
+			if cx >= 0 and cy >= 0 and cx < nx and cy < ny:
+				grid[Vector2i(cx, cy)] = true
+	# 4-CONNEXITÉ : tout lien seulement diagonal reçoit une cellule cardinale de comblement
+	var fill := {}
+	for ck in grid.keys():
+		var c: Vector2i = ck
+		for d in [Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+			if grid.has(c + d):
+				var aa := Vector2i(c.x + d.x, c.y)
+				var bb := Vector2i(c.x, c.y + d.y)
+				if not grid.has(aa) and not grid.has(bb) and not fill.has(aa) and not fill.has(bb):
+					fill[aa] = true
+	for fk in fill.keys():
+		grid[fk] = true
+	var img := Image.create(nx, ny, false, Image.FORMAT_R8)
+	var cov := Image.create(nx, ny, false, Image.FORMAT_R8)
+	for ck2 in grid.keys():
+		var cell: Vector2i = ck2
+		var m := 0
+		if grid.has(Vector2i(cell.x, cell.y - 1)): m |= 1   # n
+		if grid.has(Vector2i(cell.x + 1, cell.y)): m |= 2   # e
+		if grid.has(Vector2i(cell.x, cell.y + 1)): m |= 4   # s
+		if grid.has(Vector2i(cell.x - 1, cell.y)): m |= 8   # w
+		if m == 0:
+			m = 15
+		var layers: Array = _road_mask.get(m, [])
+		if layers.is_empty():
+			layers = _road_mask.get(15, [])
+		if layers.is_empty():
+			continue
+		var h := (cell.x * 73856093) ^ (cell.y * 19349663)
+		var layer: int = layers[absi(h) % layers.size()]
+		img.set_pixel(cell.x, cell.y, Color(float(layer + 1) / 255.0, 0.0, 0.0))
+		cov.set_pixel(cell.x, cell.y, Color(1.0, 0.0, 0.0))
+	_road_idx = ImageTexture.create_from_image(img)
+	_road_cov = ImageTexture.create_from_image(cov)
+	_road_sig = npts
+
 func _ready() -> void:
 	Sim.generated.connect(_on_generated)
 	Sim.ticked.connect(_on_tick)
@@ -359,12 +448,25 @@ func _on_generated() -> void:
 	_cliff_idx = null       # … et recalcule l'autotile falaise (+ distance + biome de sommet)
 	_cliff_h = null
 	_cliff_topbio = null
+	_road_idx = null        # … et repose les tuiles de route (réseau du monde neuf)
+	_road_cov = null
+	_road_sig = -1
 	queue_redraw()
 
 func _on_tick(_y: int) -> void:
-	# les biomes ne bougent qu'en FIN §27 (cataclysme) → re-dessin seulement alors
 	var w = Sim.world
-	if w != null and int((w.endgame_info() as Dictionary).get("fin", 0)) > 0:
+	if w == null:
+		return
+	# le RÉSEAU de routes grandit/change (conquête) → reposer les tuiles si le nb de cellules a bougé
+	if _road_sig >= 0:
+		var n := 0
+		for rd in w.road_paths():
+			n += (rd["points"] as PackedVector2Array).size()
+		if n != _road_sig:
+			_road_idx = null
+			queue_redraw()
+	# les biomes ne bougent qu'en FIN §27 (cataclysme) → re-dessin aussi alors
+	if int((w.endgame_info() as Dictionary).get("fin", 0)) > 0:
 		queue_redraw()
 
 func _draw() -> void:
@@ -401,6 +503,14 @@ func _draw() -> void:
 		mat.set_shader_parameter("dist_max", DIST_MAX)
 		mat.set_shader_parameter("cliff_grid", Vector2(W / TILE_K, H / TILE_K))
 		mat.set_shader_parameter("tile_k", float(TILE_K))
+		# ROUTES : tuiles d'autotile posées comme SOL (par cellule), fondues au bord (couverture lisse)
+		if _road_idx == null:
+			_build_road_idx(w, W, H)
+		mat.set_shader_parameter("road_atlas", _road_atlas())
+		mat.set_shader_parameter("road_idx", _road_idx)
+		mat.set_shader_parameter("road_cov", _road_cov)
+		mat.set_shader_parameter("road_grid", Vector2(W / TILE_K, H / TILE_K))
+		mat.set_shader_parameter("road_on", 1.0)
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
 	draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))
 

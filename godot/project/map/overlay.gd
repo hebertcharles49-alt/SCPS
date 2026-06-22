@@ -94,6 +94,7 @@ const MAIN_ST_LEN := 9.0         ## longueur de la RUE PRINCIPALE (vers le sud/a
 # CARDINAL de ses 4 voisins (n=1,e=2,s=4,w=8). Posée en SPLAT iso ÉLARGI à bord ALPHA-fondu (blend
 # TRÈS PROFOND) → les tuiles cardinales-adjacentes se CHEVAUCHENT et FUSIONNENT dans le terrain ; les
 # pas diagonaux sont COMBLÉS (cellule intermédiaire) pour qu'aucun lien ne soit seulement diagonal.
+const ROADS_IN_SHADER := true    ## les routes sont rendues au niveau TERRAIN (iso_blend) → overlay muet
 const USE_ROAD_TILES := true
 const ROUTE_TILE_DIR := "res://assets/scps/pack/iso_tiles/"
 const ROUTE_GRID_K := 5          ## DOIT égaler map_view.TILE_K (cellules-monde par losange)
@@ -1464,7 +1465,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 	#    Croissance organique 1 an/province ; mobilier de bord à la FIN du chantier. ──
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
-		if USE_ROAD_TILES:
+		if ROADS_IN_SHADER:
+			pass                              # les ROUTES sont rendues par le terrain (iso_blend) → l'overlay n'en dessine pas
+		elif USE_ROAD_TILES:
 			if _road_tiles_dirty:
 				_build_road_tiles(mv)
 			for q in _road_tiles:

@@ -73,6 +73,17 @@ uniform float river_water : hint_range(0.0, 1.0) = 0.40;     // champ de débit 
 uniform float river_band  : hint_range(0.02, 0.5) = 0.14;    // rampe du cœur d'eau (berge→eau)
 uniform float river_warp  : hint_range(0.0, 6.0) = 0.0;      // 0 = berge NETTE et CONTINUE (un warp brise le fil fin) ; la berge de sable de la shoreline texture déjà le bord
 
+// ── ROUTES (pack de tuiles terrain, autotile cardinal) : la tuile DEVIENT le sol de la cellule (pas un
+//    overlay), fondue dans le biome au BORD via `road_cov` (couverture lisse, filtre linéaire). `road_idx`
+//    porte la COUCHE (R = couche+1) par cellule-losange ; `road_atlas` est la pile des tuiles. ─────────
+uniform sampler2DArray road_atlas : filter_linear_mipmap;
+uniform sampler2D road_idx : filter_nearest;                 // R = couche+1 (0 = pas de route), par cellule
+uniform sampler2D road_cov : filter_linear;                  // 1 = route, 0 sinon → fondu de bord
+uniform vec2 road_grid = vec2(0.0);
+uniform float road_on = 0.0;
+uniform float road_blend_lo = 0.18;                          // seuil bas du fondu de bord (↓ = route plus large)
+uniform float road_blend_hi = 0.85;                          // seuil haut (cœur plein)
+
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
 
@@ -230,6 +241,17 @@ void fragment() {
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
 			texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);
 		col *= vb;
+		// ── ROUTES : la tuile d'autotile DEVIENT le sol de la cellule, fondue au bord (terre seulement) ──
+		if (road_on > 0.5 && !sea && road_grid.x > 0.5) {
+			vec2 rcell = floor(cell / tile_k);
+			float ridx = texture(road_idx, (rcell + vec2(0.5)) / road_grid).r;
+			if (ridx > 0.0015) {
+				float rcov = texture(road_cov, cell / map_size).r;     // lisse → fondu au bord de cellule
+				int rl = int(ridx * 255.0 + 0.5) - 1;
+				vec3 rcol = texture(road_atlas, vec3(fract(cell / tile_k), float(rl))).rgb;
+				col = mix(col, rcol, smoothstep(road_blend_lo, road_blend_hi, rcov));
+			}
+		}
 		// OMBRE PORTÉE des falaises sur le SOL : un pixel de sol est dans l'ombre s'il y a une falaise
 		// EN AMONT DE LA LUMIÈRE (on marche vers `light_world`). Plus la falaise est proche, plus c'est
 		// sombre (chute douce) → le plateau « décolle » du sol comme dans AoE. (Le relief écrase ensuite
