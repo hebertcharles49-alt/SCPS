@@ -95,6 +95,7 @@ const MAIN_ST_LEN := 9.0         ## longueur de la RUE PRINCIPALE (vers le sud/a
 # TRÈS PROFOND) → les tuiles cardinales-adjacentes se CHEVAUCHENT et FUSIONNENT dans le terrain ; les
 # pas diagonaux sont COMBLÉS (cellule intermédiaire) pour qu'aucun lien ne soit seulement diagonal.
 const ROADS_IN_SHADER := true    ## les routes sont rendues au niveau TERRAIN (iso_blend) → overlay muet
+const DRAW_BRIDGES := false       ## ponts OFF le temps que l'asset (fond noir) soit réparé
 const USE_ROAD_TILES := true
 const ROUTE_TILE_DIR := "res://assets/scps/pack/iso_tiles/"
 const ROUTE_GRID_K := 5          ## DOIT égaler map_view.TILE_K (cellules-monde par losange)
@@ -1544,10 +1545,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 		_ensure_roads()
 		if ROADS_IN_SHADER:
 			# les ROUTES sont rendues par le terrain (iso_blend) ; l'overlay ne pose que les PONTS (RGBA, sur l'eau)
-			if _bridges_dirty:
-				_build_bridges(mv)
-			for b in _bridges:
-				draw_texture_rect(b["tex"], Rect2(b["tl"], Vector2(b["sz"], b["sz"])), false)
+			if DRAW_BRIDGES:
+				if _bridges_dirty:
+					_build_bridges(mv)
+				for b in _bridges:
+					draw_texture_rect(b["tex"], Rect2(b["tl"], Vector2(b["sz"], b["sz"])), false)
 		elif USE_ROAD_TILES:
 			if _road_tiles_dirty:
 				_build_road_tiles(mv)

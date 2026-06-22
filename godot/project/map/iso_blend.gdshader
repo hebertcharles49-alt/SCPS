@@ -244,8 +244,9 @@ void fragment() {
 		col *= vb;
 		// ── ROUTES : on ne garde que la BANDE PAVÉE de la tuile (le long des bras connectés) ; la DIRT
 		//    autour est MASQUÉE par le biome (elle n'est qu'un fond de secours). La forme vient du masque
-		//    cardinal (G) : un bras vers chaque voisin connecté ; distance perpendiculaire au bras → fondu. ──
-		if (road_on > 0.5 && !sea && road_grid.x > 0.5) {
+		//    cardinal (G) : un bras vers chaque voisin connecté ; distance perpendiculaire au bras → fondu.
+		//    La route NE COURT PAS sur l'eau de fleuve (water_here) : le PONT (overlay) tient le franchissement. ──
+		if (road_on > 0.5 && !water_here && road_grid.x > 0.5) {
 			vec2 ridx = texture(road_idx, (floor(cell / tile_k) + vec2(0.5)) / road_grid).rg;
 			if (ridx.r > 0.0015) {
 				int rmask = int(ridx.g * 255.0 + 0.5);
