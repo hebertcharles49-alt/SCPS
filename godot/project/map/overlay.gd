@@ -48,6 +48,7 @@ var _road_cells := {}     ## cellules occupées par une route (+ marge) → le b
 var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
+var _road_placed := 0     ## logements/ateliers réellement posés LE LONG des routes (le reste comble en anneau)
 var _rivers := []         ## [Vector3(x, y, ang)] — nuage de points (façade) gardé pour l'anti-bâti SUR le fil
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
 
@@ -447,11 +448,11 @@ func _place_zone(pool: Array, count: int, ctr: Vector2, rbase: float, rspan: flo
 ## jamais sur une cellule de route). `budget` = total de logements à aligner ; le reste ira en anneau.
 func _place_road_houses(pool: Array, r: int, base_sz: float, idx: int, sea: Image, rset: Dictionary,
 		reach: float, clear_foot: float, budget: int) -> int:
+	_road_placed = 0
 	if pool.is_empty() or budget <= 0:
 		return idx
-	var total := 0
 	for rd in _roads:
-		if total >= budget:
+		if _road_placed >= budget:
 			break
 		var pts: PackedVector2Array = rd["points"]
 		if pts.size() < 3:
@@ -468,7 +469,7 @@ func _place_road_houses(pool: Array, r: int, base_sz: float, idx: int, sea: Imag
 		var walked := 0.0
 		var next_place := clear_foot                          # 1er logement APRÈS le pied des marches
 		var sidx := 0
-		while total < budget and walked < reach:
+		while _road_placed < budget and walked < reach:
 			var ni := i + stepd
 			if ni < 0 or ni >= pts.size():
 				break
@@ -499,7 +500,7 @@ func _place_road_houses(pool: Array, r: int, base_sz: float, idx: int, sea: Imag
 				continue
 			_structures.append({"name": pool[(hh ^ (hh >> 5)) % pool.size()], "pos": p, "sz": base_sz,
 				"flip": ((hh >> 17) & 1) == 1})
-			total += 1
+			_road_placed += 1
 			if _structures.size() >= 4800:
 				return idx
 	return idx
@@ -544,14 +545,15 @@ func _build_structures() -> void:
 		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`). Les rayons
 		# ENTOURENT le centre (≈ demi-largeur 9) : le bourg RING le cœur (visible autour),
 		# il ne se cache pas dessous. Scatter organique (Londres), pas une grille.
-		idx = _place_zone(bk["civic"], civic_n, ctr, 4.0, 3.0, BLD_SIZE, false, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["craft"], craft_n, ctr, 6.0, 4.0, BLD_SIZE, false, idx, jit, sea, rset, r)
-		# LOGEMENTS : la majorité S'ALIGNE LE LONG DES ROUTES (rue-village, quinconce), le reste en anneau
-		# pour combler (villes sans route / surplus de population).
-		var road_h := clampi(dwell_n * 2 / 3, 0, 28)
-		idx = _place_road_houses(bk["dwell"], r, BLD_SIZE, idx, sea, rset, 26.0, 4.0, road_h)
-		idx = _place_zone(bk["dwell"], maxi(0, dwell_n - road_h), ctr, 7.0, 6.5, BLD_SIZE, true, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["field"], field_n, ctr, 12.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
+		# le bourg S'ORGANISE AUTOUR DES ROUTES : un petit cœur CIVIQUE serré au pied du centre, puis
+		# ateliers + logements ALIGNÉS LE LONG DES ROUTES (la rue-village). L'anneau ne fait que combler
+		# le surplus quand les routes sont saturées (grosse ville) ou absentes.
+		idx = _place_zone(bk["civic"], civic_n, ctr, 3.0, 2.0, BLD_SIZE, false, idx, jit, sea, rset, r)
+		var along_pool: Array = bk["dwell"] + bk["craft"]
+		var along_n := dwell_n + craft_n
+		idx = _place_road_houses(along_pool, r, BLD_SIZE, idx, sea, rset, 40.0, 4.0, along_n)
+		idx = _place_zone(bk["dwell"], maxi(0, along_n - _road_placed), ctr, 6.0, 7.0, BLD_SIZE, true, idx, jit, sea, rset, r)
+		idx = _place_zone(bk["field"], field_n, ctr, 13.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
 		if _structures.size() >= 4800:
 			break
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
