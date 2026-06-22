@@ -89,6 +89,23 @@ const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'anc
 const ROAD_DRESS_OFF := 0.95     ## décalage SUD de base du mobilier (marge)
 const MAIN_ST_LEN := 9.0         ## longueur de la RUE PRINCIPALE (vers le sud/avant) — la façade western
 
+# ── ROUTES EN TUILES (autotile cardinal, pack « SCPS Full Terrain Tiles ») ──────────────────────
+# Chaque cellule-losange traversée par une route reçoit une TUILE plate 256² choisie par le masque
+# CARDINAL de ses 4 voisins (n=1,e=2,s=4,w=8). Posée en SPLAT iso ÉLARGI à bord ALPHA-fondu (blend
+# TRÈS PROFOND) → les tuiles cardinales-adjacentes se CHEVAUCHENT et FUSIONNENT dans le terrain ; les
+# pas diagonaux sont COMBLÉS (cellule intermédiaire) pour qu'aucun lien ne soit seulement diagonal.
+const USE_ROAD_TILES := true
+const ROUTE_TILE_DIR := "res://assets/scps/pack/iso_tiles/"
+const ROUTE_GRID_K := 5          ## DOIT égaler map_view.TILE_K (cellules-monde par losange)
+const ROUTE_SURFACE := "road_cobble"
+const ROUTE_SPLAT_EXP := 1.7     ## élargissement du splat (chevauchement des voisins → fusion)
+const ROUTE_SPLAT_CORE := 0.42   ## rayon (frac) du cœur OPAQUE ; au-delà → fondu alpha vers 0
+const ROUTE_CORE_A := 0.95       ## alpha du cœur (un brin < 1 → le terrain perce = blend plus profond)
+var _road_tex := {}              ## masque cardinal 1-15 → Array[Texture2D] (variantes)
+var _road_tiles := []            ## [{ctr:Vector2(iso), tex}] — splats précalculés
+var _road_tiles_dirty := true    ## le réseau a bougé → recalculer la pose
+var _route_mesh: ArrayMesh = null ## splat losange réutilisable (UV + alpha fondu), bâti 1×
+
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
 	12: ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_GROVE_BROADLEAF", "DRESS_TREE_POPLAR"],  # FOREST : feuillus
@@ -160,6 +177,7 @@ func _on_generated() -> void:
 	_set_rivers()
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
+	_road_tiles_dirty = true    # monde neuf → reposer les tuiles de route
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
@@ -726,6 +744,7 @@ func _dress_rivers(sea: Image) -> void:
 
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
+	_road_tiles_dirty = true   # le réseau a pu croître/changer → reposer les tuiles de route
 	var sig := _owner_signature(Sim.world)
 	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
 		_owner_sig = sig       # refaire frontières ET réseau de routes (villes neuves/captées)
@@ -1204,6 +1223,104 @@ func _draw_city(w, r: int, ctr: Vector2) -> void:
 		draw_circle(ctr, radius, Color(0.62, 0.47, 0.30))
 		draw_arc(ctr, radius, 0.0, TAU, 16, Color(0.15, 0.10, 0.05, 0.8), 0.4, true)
 
+## charge (1×) les tuiles de route de la surface choisie, indexées par masque cardinal 1-15 → variantes.
+func _load_route_tiles() -> void:
+	if not _road_tex.is_empty():
+		return
+	for m in range(1, 16):
+		var arr: Array = []
+		for v in [1, 2]:
+			var p := ROUTE_TILE_DIR + ROUTE_SURFACE + "/scps_" + ROUTE_SURFACE + "_%02d_%02d.png" % [m, v]
+			if FileAccess.file_exists(p):
+				var img := Image.load_from_file(p)
+				if img != null:
+					arr.append(ImageTexture.create_from_image(img))
+		if not arr.is_empty():
+			_road_tex[m] = arr
+
+## SPLAT losange réutilisable : cœur OPAQUE (alpha ROUTE_CORE_A) jusqu'à ROUTE_SPLAT_CORE, fondu vers
+## alpha 0 au bord ÉLARGI (ROUTE_SPLAT_EXP). Coins iso N/E/S/W (relatifs au centre) ↔ coins UV de la
+## tuile (N=0,0 · E=1,0 · S=1,1 · W=0,1) ; le centre = (0.5,0.5). Bâti une fois, dessiné par cellule.
+func _build_route_mesh() -> void:
+	if _route_mesh != null:
+		return
+	var k := float(ROUTE_GRID_K)
+	var dirs := [Vector2(0.0, -k * 0.5), Vector2(k, 0.0), Vector2(0.0, k * 0.5), Vector2(-k, 0.0)]  # N E S W
+	var cuv := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+	var verts := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var cols := PackedColorArray()
+	verts.append(Vector3(0, 0, 0)); uvs.append(Vector2(0.5, 0.5)); cols.append(Color(1, 1, 1, ROUTE_CORE_A))  # 0 centre
+	for i in range(4):                                   # 1-4 cœur (alpha plein)
+		verts.append(Vector3(dirs[i].x * ROUTE_SPLAT_CORE, dirs[i].y * ROUTE_SPLAT_CORE, 0.0))
+		uvs.append(Vector2(0.5, 0.5) + (cuv[i] - Vector2(0.5, 0.5)) * ROUTE_SPLAT_CORE)
+		cols.append(Color(1, 1, 1, ROUTE_CORE_A))
+	for i in range(4):                                   # 5-8 bord élargi (alpha 0)
+		verts.append(Vector3(dirs[i].x * ROUTE_SPLAT_EXP, dirs[i].y * ROUTE_SPLAT_EXP, 0.0))
+		uvs.append(Vector2(0.5, 0.5) + (cuv[i] - Vector2(0.5, 0.5)) * ROUTE_SPLAT_EXP)
+		cols.append(Color(1, 1, 1, 0.0))
+	var idx := PackedInt32Array([
+		0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1,             # cœur (fan)
+		1, 5, 6, 1, 6, 2,  2, 6, 7, 2, 7, 3,            # fondu N-E, E-S
+		3, 7, 8, 3, 8, 4,  4, 8, 5, 4, 5, 1])           # fondu S-W, W-N
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	_route_mesh = ArrayMesh.new()
+	_route_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+
+## précalcule la pose des splats route : quantifie le réseau sur la grille losange, COMBLE les pas
+## diagonaux (4-connexité garantie), calcule le masque cardinal, choisit la tuile, garde le centre iso.
+func _build_road_tiles(mv: Node2D) -> void:
+	_load_route_tiles()
+	_build_route_mesh()
+	_road_tiles.clear()
+	_road_tiles_dirty = false
+	var grid := {}
+	for rd in _roads:
+		for p in rd["points"]:
+			grid[Vector2i(int(p.x) / ROUTE_GRID_K, int(p.y) / ROUTE_GRID_K)] = true
+	for ms in _main_streets:
+		var a: Vector2 = ms["a"]
+		var s: Vector2 = ms["s"]
+		var n := maxi(1, int(a.distance_to(s)))
+		for k in range(n + 1):
+			var pp := a.lerp(s, float(k) / float(n))
+			grid[Vector2i(int(pp.x) / ROUTE_GRID_K, int(pp.y) / ROUTE_GRID_K)] = true
+	# 4-CONNEXITÉ : tout lien seulement DIAGONAL reçoit une cellule de comblement (jamais de coin nu)
+	var fill := {}
+	for ck in grid.keys():
+		var c: Vector2i = ck
+		for d in [Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+			if grid.has(c + d):
+				var aa := Vector2i(c.x + d.x, c.y)
+				var bb := Vector2i(c.x, c.y + d.y)
+				if not grid.has(aa) and not grid.has(bb) and not fill.has(aa) and not fill.has(bb):
+					fill[aa] = true                      # comble UNE des deux jonctions cardinales
+	for fk in fill.keys():
+		grid[fk] = true
+	# masque cardinal + tuile + centre iso, par cellule
+	for ck2 in grid.keys():
+		var cell: Vector2i = ck2
+		var m := 0
+		if grid.has(Vector2i(cell.x, cell.y - 1)): m |= 1   # n
+		if grid.has(Vector2i(cell.x + 1, cell.y)): m |= 2   # e
+		if grid.has(Vector2i(cell.x, cell.y + 1)): m |= 4   # s
+		if grid.has(Vector2i(cell.x - 1, cell.y)): m |= 8   # w
+		if m == 0:
+			m = 15                                           # isolée (rare) → carrefour, pas de trou
+		var arr: Array = _road_tex.get(m, [])
+		if arr.is_empty():
+			continue
+		var h := (cell.x * 73856093) ^ (cell.y * 19349663)
+		var tex: Texture2D = arr[absi(h) % arr.size()]
+		var wx := float(cell.x * ROUTE_GRID_K) + float(ROUTE_GRID_K) * 0.5
+		var wy := float(cell.y * ROUTE_GRID_K) + float(ROUTE_GRID_K) * 0.5
+		_road_tiles.append({"ctr": mv.iso_pos(wx, wy), "tex": tex})
+
 ## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure),
 ## bornée à ~2.6 px d'écran (÷zoom) au minimum — la route RESSORT comme le fil conducteur.
 func _road_width(level: int, zoom: float) -> float:
@@ -1341,7 +1458,12 @@ func _draw_iso(w, mv: Node2D) -> void:
 	#    Croissance organique 1 an/province ; mobilier de bord à la FIN du chantier. ──
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
-		if not _roads.is_empty():
+		if USE_ROAD_TILES:
+			if _road_tiles_dirty:
+				_build_road_tiles(mv)
+			for q in _road_tiles:
+				draw_mesh(_route_mesh, q["tex"], Transform2D(0.0, q["ctr"]))
+		elif not _roads.is_empty():
 			var year: int = w.year()
 			var built := []                       # [{poly:[iso Vector2], w}]
 			var done := {}
