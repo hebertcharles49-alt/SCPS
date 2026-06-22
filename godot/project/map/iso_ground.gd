@@ -30,6 +30,11 @@ const HIGHLAND_BIOMES := [18, 19, 23]
 const CLIFF_AT_DIR := "res://assets/scps/pack/iso_tiles/cliff_autotile/"
 const ROAD_SURF := "road_cobble"   ## surface routière du pack (mud/gravel/cobble)
 const ROAD_DIR := "res://assets/scps/pack/iso_tiles/road_cobble/"
+## tuile cobble TRANSPARENTE (RGBA épars) — traitée comme une vraie TUILE : échantillonnée sur le plan du
+## sol par le shader (angle iso correct), composée sur la sente usée. Une seule tuile (rangées flat), le
+## shader swappe l'UV pour les routes N-S.
+const COBBLE_TILE := "res://assets/scps/pack/iso_tiles/road_detail/scps_cobbles_sparse_flat_01.png"
+var _cobble_tex: Texture2D = null
 const DIST_MAX := 24.0         ## plafond du champ de distance highland (cellules) → terrasses + pente
 const CITY_CARVE := 3          ## rayon (cellules) dégagé de falaise autour d'une ville → assise plate
 const MIN_CLUSTER := 9         ## taille mini d'un massif (cellules) → pas de petites falaises éparses
@@ -358,6 +363,19 @@ func _road_atlas() -> Texture2DArray:
 	_road_arr.create_from_images(imgs)
 	return _road_arr
 
+## tuile cobble transparente (1×) avec mipmaps → échantillonnée sur le plan du sol par le shader.
+func _cobble_atlas() -> Texture2D:
+	if _cobble_tex != null:
+		return _cobble_tex
+	if FileAccess.file_exists(COBBLE_TILE):
+		var img := Image.load_from_file(COBBLE_TILE)
+		if img != null:
+			if img.get_format() != Image.FORMAT_RGBA8:
+				img.convert(Image.FORMAT_RGBA8)
+			img.generate_mipmaps()
+			_cobble_tex = ImageTexture.create_from_image(img)
+	return _cobble_tex
+
 ## carte PAR CELLULE (nx×ny) de la route : R = couche+1 (0 = pas de route) + couverture lisse. Le réseau
 ## (façade `road_paths`) est quantifié sur la grille losange, les pas DIAGONAUX sont COMBLÉS (4-connexité),
 ## puis chaque cellule prend le masque CARDINAL de ses 4 voisins → la couche d'autotile. Le shader pose la
@@ -527,9 +545,12 @@ func _draw() -> void:
 			_build_road_idx(w, W, H)
 		mat.set_shader_parameter("road_idx", _road_idx)
 		mat.set_shader_parameter("road_grid", Vector2(W / TILE_K, H / TILE_K))
-		# la route N'EST PLUS la tuile road_cobble (dirt) : on ASSOMBRIT juste le TERRAIN RÉEL le long de
-		# la sente (sol usé/tassé) → une route LISIBLE qui reste 100 % le terrain ; les COBBLES transparents
-		# (overlay) posent les pierres par-dessus. Le road_atlas n'est plus échantillonné.
+		# la route = sente usée (terrain RÉEL assombri/tassé) + tuile COBBLE TRANSPARENTE posée DESSUS,
+		# échantillonnée sur le plan du sol par le shader (UV losange → angle iso) ; le terrain perce entre
+		# les pierres (alpha). Le road_atlas (dirt opaque) n'est plus échantillonné.
+		var cob := _cobble_atlas()
+		if cob != null:
+			mat.set_shader_parameter("cobble_tex", cob)
 		mat.set_shader_parameter("road_on", 1.0)
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
 	draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))

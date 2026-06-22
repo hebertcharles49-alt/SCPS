@@ -116,17 +116,10 @@ var _bridge_tex := {}            ## "ew_start".."ns_end" → Texture2D
 var _bridges := []               ## [{tex, tl:Vector2(iso coin haut-gauche), sz:float}]
 var _bridges_dirty := true
 
-# ── ROUTE EN COBBLES TRANSPARENTS (asset fourni) : la route N'EST PLUS un sol de tuile (dirt) mais des
-# pavés ÉPARS RGBA posés sur le terrain RÉEL (il perce entre les pierres → zéro clash, zéro dirt). On
-# STAMPE la tuile À PLAT (axe-aligné écran, JAMAIS mappée sur le losange — le mapping losange CISAILLAIT
-# l'angle authoré). La tuile DIAGONALE suit l'axe de la route : route monde-Y = "/" telle quelle, route
-# monde-X = "\" (miroir horizontal) ; jonction/isolé = semis flat. ──
-const ROAD_DETAIL_DIR := "res://assets/scps/pack/iso_tiles/road_detail/"
-const COBBLE_SZ := 11.0          ## taille MONDE (iso) du semis de pavés posé par cellule de route
-const COBBLE_MOD := Color(1.12, 1.07, 0.98)  ## léger éclaircissement chaud → les pierres TRANCHENT sur le sentier usé
-var _cobble_tex := []            ## [0]=flat (rangées horizontales) · [1]=diagonale ("/")
-var _road_cobbles := []          ## [{ctr:Vector2(iso), tex, flip}]
-var _road_cobbles_dirty := true
+# ── ROUTE EN COBBLES TRANSPARENTS : la tuile cobble (RGBA épars) est traitée comme une VRAIE TUILE, pas
+# un sprite — échantillonnée au niveau TERRAIN (iso_blend) sur le plan du sol (UV losange), donc à l'angle
+# iso correct, exactement comme `cliff_atlas`. iso_ground charge la tuile et la passe au shader ; l'overlay
+# n'a plus rien à poser pour la route (seuls les PONTS restent en overlay, eux sont au-dessus de l'eau). ──
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
@@ -200,7 +193,6 @@ func _on_generated() -> void:
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
 	_road_tiles_dirty = true    # monde neuf → reposer les tuiles de route
-	_road_cobbles_dirty = true  # … et les cobbles
 	_bridges_dirty = true       # … et les ponts
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_roads_dirty = true
@@ -776,7 +768,6 @@ func _dress_rivers(sea: Image) -> void:
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
 	_road_tiles_dirty = true   # le réseau a pu croître/changer → reposer les tuiles de route
-	_road_cobbles_dirty = true # … et les cobbles
 	_bridges_dirty = true      # … et les ponts (un franchissement neuf)
 	var sig := _owner_signature(Sim.world)
 	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
@@ -1362,60 +1353,6 @@ func _build_road_tiles(mv: Node2D) -> void:
 		var wy := float(cell.y * ROUTE_GRID_K) + float(ROUTE_GRID_K) * 0.5
 		_road_tiles.append({"ctr": mv.iso_pos(wx, wy), "tex": tex, "mask": m})
 
-## charge (1×) les 2 tuiles cobbles transparentes : [0]=flat, [1]=diagonale.
-func _load_road_detail() -> void:
-	if not _cobble_tex.is_empty():
-		return
-	for nm in ["scps_cobbles_sparse_flat_01", "scps_cobbles_sparse_flat_diagonal_01"]:
-		var p: String = ROAD_DETAIL_DIR + str(nm) + ".png"
-		var tex: Texture2D = null
-		if FileAccess.file_exists(p):
-			var img := Image.load_from_file(p)
-			if img != null:
-				tex = ImageTexture.create_from_image(img)
-		_cobble_tex.append(tex)
-
-## précalcule la pose des cobbles : une tuile par cellule de route, STAMPÉE À PLAT au dessin (le terrain
-## perce via l'alpha). Variante DIAGONALE suivant l'axe (monde-Y "/" / monde-X "\" miroité), flat aux jonctions.
-func _build_road_cobbles(mv: Node2D) -> void:
-	_load_road_detail()
-	_road_cobbles.clear()
-	_road_cobbles_dirty = false
-	if _cobble_tex.size() < 2:
-		return
-	var sea: Image = Sim.world.layer_image(LAYER_WATER)
-	var rf: Image = _carved_river_field()
-	var grid := {}
-	for rd in _roads:
-		var rpts: PackedVector2Array = rd["points"]
-		for p in rpts:
-			grid[Vector2i(int(p.x) / ROUTE_GRID_K, int(p.y) / ROUTE_GRID_K)] = true
-	for ms in _main_streets:
-		var a: Vector2 = ms["a"]
-		var s: Vector2 = ms["s"]
-		var n := maxi(1, int(a.distance_to(s)))
-		for k in range(n + 1):
-			var pp := a.lerp(s, float(k) / float(n))
-			grid[Vector2i(int(pp.x) / ROUTE_GRID_K, int(pp.y) / ROUTE_GRID_K)] = true
-	for ck in grid.keys():
-		var c: Vector2i = ck
-		var wcx := c.x * ROUTE_GRID_K + ROUTE_GRID_K / 2
-		var wcy := c.y * ROUTE_GRID_K + ROUTE_GRID_K / 2
-		if _is_sea_cell(sea, wcx, wcy) or _in_river_water(rf, wcx, wcy):
-			continue                          # eau → c'est le PONT qui franchit, pas de cobbles
-		var ew_conn := grid.has(Vector2i(c.x + 1, c.y)) or grid.has(Vector2i(c.x - 1, c.y))
-		var ns_conn := grid.has(Vector2i(c.x, c.y + 1)) or grid.has(Vector2i(c.x, c.y - 1))
-		var tex: Texture2D = _cobble_tex[0]   # défaut : semis flat (jonction / isolé)
-		var flip := false
-		if ns_conn and not ew_conn:
-			tex = _cobble_tex[1]              # route monde-Y → "/" sur écran : la diagonale telle quelle
-		elif ew_conn and not ns_conn:
-			tex = _cobble_tex[1]              # route monde-X → "\" : on MIROITE la diagonale
-			flip = true
-		if tex == null:
-			continue
-		_road_cobbles.append({"ctr": mv.iso_pos(float(wcx), float(wcy)), "tex": tex, "flip": flip})
-
 ## charge (1×) les 6 sprites de pont (start/span/end × EW/NS).
 func _load_bridges() -> void:
 	if not _bridge_tex.is_empty():
@@ -1648,19 +1585,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
 		if ROADS_IN_SHADER:
-			# ROUTE = cobbles TRANSPARENTS posés sur le terrain (le sol perce entre les pierres) ; PONTS au-dessus.
-			if _road_cobbles_dirty:
-				_build_road_cobbles(mv)
-			var chs := COBBLE_SZ * 0.5
-			for q in _road_cobbles:
-				var cc: Vector2 = q["ctr"]
-				var ct: Texture2D = q["tex"]
-				if q["flip"]:
-					draw_set_transform(cc, 0.0, Vector2(-1.0, 1.0))   # miroir H → diagonale "\"
-					draw_texture_rect(ct, Rect2(-chs, -chs, COBBLE_SZ, COBBLE_SZ), false, COBBLE_MOD)
-					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-				else:
-					draw_texture_rect(ct, Rect2(cc.x - chs, cc.y - chs, COBBLE_SZ, COBBLE_SZ), false, COBBLE_MOD)
+			# ROUTE = tuile cobble TRANSPARENTE échantillonnée AU NIVEAU TERRAIN (iso_blend), sur le plan du sol
+			# (UV losange → angle iso correct, comme une vraie tuile) ; l'overlay ne pose que les PONTS (sur l'eau).
 			if DRAW_BRIDGES:
 				if _bridges_dirty:
 					_build_bridges(mv)

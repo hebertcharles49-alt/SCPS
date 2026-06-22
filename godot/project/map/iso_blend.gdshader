@@ -85,6 +85,10 @@ uniform float road_feather = 0.12;                           // bord de la sente
 uniform float road_dirt_reach = 0.28;                        // portée du halo (élargit la sente, dégradé)
 uniform float road_dirt_str = 0.55;                          // force du halo (par rapport au cœur)
 uniform vec3 road_worn = vec3(0.60, 0.53, 0.44);             // TEINTE de la sente : MULTIPLIE le terrain (sol usé/tassé) — assez SOMBRE pour que les cobbles CLAIRS contrastent
+// COBBLES : tuile RGBA transparente échantillonnée sur le PLAN DU SOL (UV losange fract(cell/tile_k)) →
+// angle iso correct, comme une vraie tuile ; composée par-dessus la sente usée, masquée à la bande de route.
+uniform sampler2D cobble_tex : filter_linear, repeat_enable;   // pas de mipmap → pas de couture au bord de tuile (fract)
+uniform vec3 cobble_tint = vec3(1.12, 1.07, 0.98);           // éclaircissement chaud → les pierres TRANCHENT
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
@@ -259,9 +263,15 @@ void fragment() {
 				if ((rmask & 8) != 0 && luv.x <= 0.02) d = min(d, abs(luv.y));   // bras W (gauche)
 				float rb = 1.0 - smoothstep(road_hw, road_hw + road_feather, d);      // cœur de la sente
 				rb = max(rb, road_dirt_str * (1.0 - smoothstep(road_hw, road_hw + road_dirt_reach, d)));  // halo dégradé
-				// SENTE = terrain RÉEL assombri/tassé (pas une tuile dirt) → route lisible qui reste le sol ;
-				// les COBBLES transparents (overlay) posent les pierres CLAIRES par-dessus → fort contraste.
+				// SENTE = terrain RÉEL assombri/tassé (pas une tuile dirt) → route lisible qui reste le sol.
 				col *= mix(vec3(1.0), road_worn, rb);
+				// COBBLES = la tuile transparente posée SUR le plan du sol (UV losange → angle iso correct).
+				// On oriente les rangées SUR l'axe de la route : route N-S (bras n/s seuls) → UV swappé.
+				bool ns_road = ((rmask & 1) != 0 || (rmask & 4) != 0) && !((rmask & 2) != 0 || (rmask & 8) != 0);
+				vec2 cuv = fract(cell / tile_k);
+				if (ns_road) cuv = cuv.yx;
+				vec4 cob = texture(cobble_tex, cuv);
+				col = mix(col, cob.rgb * cobble_tint, cob.a * rb);   // pierres claires, masquées à la sente
 			}
 		}
 		// OMBRE PORTÉE des falaises sur le SOL : un pixel de sol est dans l'ombre s'il y a une falaise
