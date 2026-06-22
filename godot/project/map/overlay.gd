@@ -28,6 +28,15 @@ const CITY_CORE_SIZE := 18.0 ## taille MONDE FIXE du centre-ville (la ville ne G
 const SHADOW_COL := Color(0.0, 0.0, 0.0, 0.17)
 const SHADOW_DIR := Vector2(0.704, 0.710)   ## direction ÉCRAN de l'ombre (anti-lumière projetée en iso)
 
+## COHÉRENCE DE LUMIÈRE (assets & routes calés sur le terrain) — fini le « posé là » : chaque asset
+## est modulé par (a) l'OMBRAGE du relief sous le MÊME soleil que iso_blend.gdshader, et (b) la
+## LUMINOSITÉ/teinte du SOL sous lui. Calculé une fois (au build), display-only.
+const LIGHT_WORLD := Vector2(-0.95, -0.32)   ## même direction-source que le shader de terrain
+const SHADE_K := 0.22        ## amplitude de l'ombrage relief (± sur la clarté de l'asset)
+const GROUND_TINT_BLD := 0.11 ## fraction de teinte du sol mêlée à un BÂTIMENT (lumière rebondie / brume)
+const GROUND_TINT_DEC := 0.07 ## idem, plus discret, pour le DRESSING (arbres : ne pas mudder les verts)
+
+
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
 var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
@@ -52,6 +61,8 @@ var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → r
 var _road_placed := 0     ## logements/ateliers réellement posés LE LONG des routes (le reste comble en anneau)
 var _rivers := []         ## [Vector3(x, y, ang)] — nuage de points (façade) gardé pour l'anti-bâti SUR le fil
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
+var _himg_l: Image = null ## couche HEIGHT (cache local) → ombrage cohérent des assets/routes
+var _alb_l: Image = null  ## terrain albedo (cache) → couleur/luminosité du SOL sous l'asset
 
 # RIVIÈRES : CARVÉES DANS LE TERRAIN (worldgen), pas un asset par-dessus. Le shader iso_blend lit
 # un champ de débit (bâti par iso_ground._build_river_field depuis `river_paths`, fusionné par baie)
@@ -147,6 +158,8 @@ func _build_names() -> void:
 
 func _on_generated() -> void:
 	_set_rivers()
+	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
+	_alb_l = null
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
@@ -507,9 +520,9 @@ func _place_road_houses(pool: Array, r: int, base_sz: float, idx: int, sea: Imag
 				return idx
 	return idx
 
-## bâti le long de la RUE PRINCIPALE (a → s, vers le sud) — MÊME style que les autres routes
-## (`_place_road_houses` : quinconce, espacé), pour qu'elle SE FONDE dans le réseau plutôt que de
-## ressortir en avenue distincte. Le bourg s'agrège autour comme partout.
+## bâti le long de la RUE PRINCIPALE (a → s, vers le sud) — la route est tracée à largeur NORMALE
+## (elle se fond dans le réseau), mais on la BORDE sur TOUTE sa longueur en QUINCONCE serré (les deux
+## rives alternées) → l'axe visuel côté joueur est COUVERT d'un bout à l'autre par un lot de bâtiments.
 func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float, idx: int,
 		sea: Image, rset: Dictionary) -> int:
 	if pool.is_empty():
@@ -520,16 +533,16 @@ func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float,
 		return idx
 	var dir := d / lng
 	var perp := Vector2(-dir.y, dir.x)
-	var t := 3.0                                          # 1re façade après le pied des marches
+	var t := 2.0                                          # démarre tôt → l'axe est garni dès le pied
 	var sidx := 0
 	while t <= lng + 0.5:
 		var hh := ((r * 2654435761) ^ (sidx * 40503 + 668265263)) & 0x7fffffff
-		var side := 1.0 if (sidx % 2 == 0) else -1.0      # QUINCONCE (comme les autres routes)
-		var off := 1.7 + float(hh % 140) / 100.0          # 1.7..3.1 : à CÔTÉ de la chaussée
+		var side := 1.0 if (sidx % 2 == 0) else -1.0      # QUINCONCE : les deux rives alternées
+		var off := 1.6 + float(hh % 90) / 100.0           # 1.6..2.5 : SERRÉ contre la chaussée
 		var p: Vector2 = a + dir * t + perp * (side * off)
 		sidx += 1
 		idx += 1
-		t += 2.6 + float((hh >> 14) % 100) / 100.0 * 1.5  # pas ~2.6..4.1 (espacé, comme le réseau)
+		t += 2.0 + float((hh >> 14) % 70) / 100.0         # pas ~2.0..2.7 : COUVRE tout l'axe
 		if _road_cells.has(Vector2i(int(p.x), int(p.y))):
 			continue
 		if not _footprint_clear(sea, rset, p, base_sz * 0.5, base_sz):
@@ -552,6 +565,7 @@ func _build_structures() -> void:
 	if names.is_empty():
 		return
 	var bk := _buckets(names)
+	_ensure_terrain(w)                            # caches relief + albedo → teinte cohérente des assets
 	var sea: Image = w.layer_image(LAYER_WATER)   # mer OU lac : 0 = terre, ≥ 1 = eau (toute classe)
 	var rf: Image = _carved_river_field()         # rivière carvée → l'avant de la rue principale l'évite
 	var mvr := _mv_ref()
@@ -598,6 +612,10 @@ func _build_structures() -> void:
 		idx = _place_zone(bk["field"], field_n, ctr, 13.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
 		if _structures.size() >= 4800:
 			break
+	# teinte de chaque bâti CALÉE sur le terrain (relief + sol) → fini le « posé là »
+	for s in _structures:
+		var p: Vector2 = s["pos"]
+		s["tint"] = _asset_tint(STRUCT_MUTE, p.x, p.y, GROUND_TINT_BLD)
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
 	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 
@@ -640,6 +658,7 @@ func _build_decor() -> void:
 	var bio: Image = w.layer_image(2)   # SCPS_LAYER_BIOME = 2
 	if bio == null:
 		return
+	_ensure_terrain(w)                            # caches relief + albedo → teinte cohérente du dressing
 	var sea: Image = w.layer_image(LAYER_WATER)
 	var rf: Image = _carved_river_field()         # eau de RIVIÈRE carvée (ce que le shader rend) → pas de BASE dedans
 	var mw := bio.get_width()
@@ -677,6 +696,10 @@ func _build_decor() -> void:
 		if _decor.size() >= 16000:
 			break
 	_dress_rivers(sea)
+	# teinte du dressing CALÉE sur le terrain (relief + sol) — les arbres/cailloux appartiennent au sol
+	for d in _decor:
+		var p: Vector2 = d["pos"]
+		d["tint"] = _asset_tint(Color(1, 1, 1, 1), p.x, p.y, GROUND_TINT_DEC)
 	# tri arrière→avant (profondeur iso = y) → l'empilement des arbres/cailloux se lit correctement
 	_decor.sort_custom(func(a, c): return (a["pos"] as Vector2).y < (c["pos"] as Vector2).y)
 
@@ -1086,6 +1109,65 @@ const STRUCT_MUTE := Color(0.88, 0.86, 0.83, 0.84)
 ## ombre portée d'un asset : ellipse aplatie au PIED, décalée vers l'anti-lumière (cohérent
 ## avec le shader). Tracée en passe SÉPARÉE (toutes les ombres d'abord) → jamais par-dessus
 ## un sprite d'arrière-plan (le bug « ombres placées aléatoirement » = ordre de tracé).
+# ════════════════════════ COHÉRENCE DE LUMIÈRE (relief + sol) ════════════════════════
+func _lum(c: Color) -> float:
+	return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b
+
+## charge (paresseux) les caches de lumière : la couche HEIGHT (relief) + l'albedo TERRAIN (sol).
+func _ensure_terrain(w) -> void:
+	if _himg_l == null:
+		_himg_l = w.layer_image(0)            # SCPS_LAYER_HEIGHT (canal R = altitude)
+	if _alb_l == null and w.has_method("map_image"):
+		_alb_l = w.map_image(0, -1)           # rendu TERRAIN (mode 0), sans sélection → couleur du sol
+
+## ombrage relief en (wx,wy) : pente du champ d'altitude DOT le même soleil que le terrain →
+## ~0.80 (versant à l'ombre) .. 1.20 (versant éclairé), 1.0 à plat. La cohérence avec le shader.
+func _hillshade(wx: float, wy: float) -> float:
+	if _himg_l == null:
+		return 1.0
+	var hw := _himg_l.get_width()
+	var hh := _himg_l.get_height()
+	var x := clampi(int(wx), 1, hw - 2)
+	var y := clampi(int(wy), 1, hh - 2)
+	var hl := _himg_l.get_pixel(x - 1, y).r
+	var hr := _himg_l.get_pixel(x + 1, y).r
+	var hu := _himg_l.get_pixel(x, y - 1).r
+	var hd := _himg_l.get_pixel(x, y + 1).r
+	var grad := Vector2(hr - hl, hd - hu)        # pente : pointe vers le HAUT du relief
+	if grad.length() < 0.0008:
+		return 1.0                               # plat → pas d'ombrage
+	var al := grad.normalized().dot(LIGHT_WORLD) # pente FACE à la source = éclairée
+	return clampf(1.0 + SHADE_K * al, 0.80, 1.20)
+
+## couleur du SOL rendu en (wx,wy) (albedo terrain), mise à l'échelle si l'albedo n'est pas à la
+## résolution monde. Gris moyen en repli (cache absent).
+func _ground_color(wx: float, wy: float) -> Color:
+	if _alb_l == null:
+		return Color(0.5, 0.5, 0.5, 1.0)
+	var aw := _alb_l.get_width()
+	var ah := _alb_l.get_height()
+	var mw := aw
+	var mh := ah
+	if _himg_l != null:
+		mw = _himg_l.get_width()
+		mh = _himg_l.get_height()
+	var px := clampi(int(wx / float(maxi(1, mw)) * aw), 0, aw - 1)
+	var py := clampi(int(wy / float(maxi(1, mh)) * ah), 0, ah - 1)
+	return _alb_l.get_pixel(px, py)
+
+## teinte FINALE d'un asset en (wx,wy) : base × ombrage-relief × clarté-du-sol, puis une POINTE de
+## la teinte du sol mêlée (lumière rebondie) → l'asset APPARTIENT au lieu au lieu d'y être collé.
+func _asset_tint(base: Color, wx: float, wy: float, tint_amt: float) -> Color:
+	var shade := _hillshade(wx, wy)
+	var g := _ground_color(wx, wy)
+	var lumf := 0.80 + 0.30 * clampf(_lum(g) / 0.60, 0.0, 1.0)   # sol noir 0.80 .. sol clair 1.10
+	var f := shade * lumf
+	return Color(
+		lerpf(base.r * f, g.r, tint_amt),
+		lerpf(base.g * f, g.g, tint_amt),
+		lerpf(base.b * f, g.b, tint_amt),
+		base.a)
+
 func _blob_shadow(foot: Vector2, wd: float) -> void:
 	draw_set_transform(foot + SHADOW_DIR * wd * 0.14, 0.0, Vector2(1.0, 0.42))
 	draw_circle(Vector2.ZERO, wd * 0.30, SHADOW_COL)
@@ -1096,12 +1178,13 @@ func _draw_struct(s: Dictionary, sp: Vector2) -> void:
 	if sspr == null:
 		return
 	var ss: float = s.get("sz", 9.0)
+	var tint: Color = s.get("tint", STRUCT_MUTE)               # calé sur le terrain (relief + sol)
 	if bool(s.get("flip", false)):
 		draw_set_transform(sp, 0.0, Vector2(-1, 1))             # miroir horizontal autour du pied
-		draw_texture_rect(sspr, Rect2(-ss * 0.5, -ss, ss, ss), false, STRUCT_MUTE)
+		draw_texture_rect(sspr, Rect2(-ss * 0.5, -ss, ss, ss), false, tint)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	else:
-		draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false, STRUCT_MUTE)
+		draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false, tint)
 
 ## dessine LA ville de la région `r` à la POSITION ISO `ctr` — variante TERRAIN sinon bande de
 ## pop ; taille MONDE BORNÉE au sec ; repli en marqueur sobre. Le BOURG (spiral) l'entoure.
@@ -1120,6 +1203,27 @@ func _draw_city(w, r: int, ctr: Vector2) -> void:
 		var radius := 1.2 + t * 0.4
 		draw_circle(ctr, radius, Color(0.62, 0.47, 0.30))
 		draw_arc(ctr, radius, 0.0, TAU, 16, Color(0.15, 0.10, 0.05, 0.8), 0.4, true)
+
+## mouchetis de POUSSIÈRE le long d'un tracé iso : petits points clairs/sombres jittered, alpha bas →
+## la chaussée a du GRAIN au lieu d'une bande lisse. Déterministe (hash position), display-only.
+func _road_dust(ip: PackedVector2Array, wln: float) -> void:
+	for k in range(ip.size() - 1):
+		var a := ip[k]
+		var seg := ip[k + 1] - a
+		var L := seg.length()
+		if L < 0.6:
+			continue
+		var dir := seg / L
+		var perp := Vector2(-dir.y, dir.x)
+		var n := maxi(1, int(L / 0.8))                   # DENSE → un vrai voile de grain
+		for j in range(n):
+			var hh := ((int(a.x * 8.0) * 73856093) ^ (int(a.y * 8.0) * 19349663) ^ (j * 2654435761)) & 0x7fffffff
+			var t := (float(j) + 0.5) / float(n)
+			var off := (float(hh % 100) / 100.0 - 0.5) * wln * 0.84   # étalé sur presque toute la largeur
+			var p := a + dir * (t * L) + perp * off
+			var rad := wln * (0.10 + float((hh >> 7) % 20) / 100.0 * 0.11)
+			var dust := Color(0.26, 0.18, 0.10, 0.20) if (hh & 1) == 0 else Color(0.97, 0.90, 0.72, 0.16)
+			draw_circle(p, rad, dust)
 
 ## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure),
 ## bornée à ~2.6 px d'écran (÷zoom) au minimum — la route RESSORT comme le fil conducteur.
@@ -1221,6 +1325,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var zoom := get_viewport_transform().get_scale().x
 	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
+	_ensure_terrain(w)            # caches de lumière prêts (routes ombrées comme le terrain)
 
 	# (RIVIÈRES : plus dessinées ici — CARVÉES dans le terrain par iso_blend.gdshader, cf. en-tête.)
 
@@ -1235,7 +1340,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if ss.x < -30 or ss.y < -30 or ss.x > vp.x + 30 or ss.y > vp.y + 30:
 				continue
 			var ts: float = d.get("sz", 10.0)
-			draw_texture_rect(spr, Rect2(ip - Vector2(ts * 0.5, ts), Vector2(ts, ts)), false)
+			var dt: Color = d.get("tint", Color(1, 1, 1, 1))   # calé sur le terrain (relief + sol)
+			draw_texture_rect(spr, Rect2(ip - Vector2(ts * 0.5, ts), Vector2(ts, ts)), false, dt)
 
 	# ── FRONTIÈRES (gameplay) : sur le relief iso. Pays + régions selon le mode. ──
 	var mode := 0
@@ -1272,19 +1378,23 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var poly := _road_partial(pts, frac)
 				if poly.size() >= 2:
 					var ipoly := PackedVector2Array()
+					var spoly := PackedFloat32Array()
 					ipoly.resize(poly.size())
+					spoly.resize(poly.size())
 					for k in range(poly.size()):
 						ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
-					built.append({"poly": ipoly, "w": _road_width(int(rd["level"]), zoom)})
+						spoly[k] = _hillshade(poly[k].x, poly[k].y)   # ombrage = celui du terrain
+					built.append({"poly": ipoly, "shade": spoly, "w": _road_width(int(rd["level"]), zoom)})
 				if frac >= 1.0:
 					done[ri] = true
 			# RUES PRINCIPALES (toujours bâties) : court tronçon SUD de chaque bourg → la route forcée vers
 			# le sud, qui SE FOND dans le réseau (même largeur que les autres) ; rejoint l'ANCRE.
 			for ms in _main_streets:
-				var msp := PackedVector2Array()
-				msp.append(mv.iso_pos((ms["a"] as Vector2).x, (ms["a"] as Vector2).y))
-				msp.append(mv.iso_pos((ms["s"] as Vector2).x, (ms["s"] as Vector2).y))
-				built.append({"poly": msp, "w": _road_width(1, zoom)})
+				var msa: Vector2 = ms["a"]
+				var mss: Vector2 = ms["s"]
+				var msp := PackedVector2Array([mv.iso_pos(msa.x, msa.y), mv.iso_pos(mss.x, mss.y)])
+				var msh := PackedFloat32Array([_hillshade(msa.x, msa.y), _hillshade(mss.x, mss.y)])
+				built.append({"poly": msp, "shade": msh, "w": _road_width(1, zoom)})
 			# 3 passes UNION (casing/fill OPAQUES → les recouvrements FUSIONNENT sans double-assombrir) ;
 			# le halo doux est TIGHT et discret (l'ancien +4/zoom α.22 boursouflait/floutait la route).
 			for bp in built:
@@ -1293,6 +1403,24 @@ func _draw_iso(w, mv: Node2D) -> void:
 				draw_polyline(bp["poly"], ROAD_CASING, bp["w"] + 0.10 + 0.9 / zoom, true)
 			for bp in built:
 				draw_polyline(bp["poly"], ROAD_FILL, bp["w"], true)
+			# RELIEF : ombrage par segment SOUS le même soleil que le terrain (voile chaud au versant
+			# éclairé, sombre à l'ombre, par-dessus le fill continu → pas de trou aux jonctions).
+			for bp in built:
+				var ip2: PackedVector2Array = bp["poly"]
+				var sh: PackedFloat32Array = bp.get("shade", PackedFloat32Array())
+				if sh.size() != ip2.size():
+					continue
+				var wln: float = bp["w"]
+				for k in range(ip2.size() - 1):
+					var f := (sh[k] + sh[k + 1]) * 0.5 - 1.0
+					if absf(f) < 0.015:
+						continue
+					var oc := Color(1.0, 0.95, 0.80, minf(0.40, f * 1.7)) if f > 0.0 \
+						else Color(0.12, 0.08, 0.05, minf(0.42, -f * 1.8))
+					draw_line(ip2[k], ip2[k + 1], oc, wln * 0.80, true)
+			# POUSSIÈRE : mouchetis discret (grain sablonneux) → la chaussée n'est plus lisse.
+			for bp in built:
+				_road_dust(bp["poly"], bp["w"])
 			for d in _road_dress:
 				if not done.has(d["road"]):
 					continue
