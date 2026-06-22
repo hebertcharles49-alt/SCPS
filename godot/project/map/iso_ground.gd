@@ -30,11 +30,12 @@ const HIGHLAND_BIOMES := [18, 19, 23]
 const CLIFF_AT_DIR := "res://assets/scps/pack/iso_tiles/cliff_autotile/"
 const ROAD_SURF := "road_cobble"   ## surface routière du pack (mud/gravel/cobble)
 const ROAD_DIR := "res://assets/scps/pack/iso_tiles/road_cobble/"
-## tuiles cobble TRANSPARENTES (RGBA épars) — traitées comme de vraies TUILES : échantillonnées en espace
-## écran par le shader, rotées sur l'axe de la route. Couche 0 = flat (rangées 0°, routes monde-X "\") ·
-## couche 1 = diagonale (rangées ~-25° = angle iso, routes monde-Y "/").
+## tuiles cobble TRANSPARENTES (RGBA épars) — de vraies TUILES échantillonnées sur le plan du sol par le
+## shader. Couche 0 = flat (rangées monde-X, routes "/") · couche 1 = flat PIVOTÉE 90° (rangées monde-Y,
+## routes "\") · couche 2 = diagonale (jonctions). La verticale est le 1er fichier dupliqué tourné de 90°.
 const COBBLE_DIR := "res://assets/scps/pack/iso_tiles/road_detail/"
-const COBBLE_TILES := ["scps_cobbles_sparse_flat_01", "scps_cobbles_sparse_flat_diagonal_01"]
+const COBBLE_TILES := ["scps_cobbles_sparse_flat_01", "scps_cobbles_sparse_flat_vertical_01",
+	"scps_cobbles_sparse_flat_diagonal_01"]
 var _cobble_arr: Texture2DArray = null
 const DIST_MAX := 24.0         ## plafond du champ de distance highland (cellules) → terrasses + pente
 const CITY_CARVE := 3          ## rayon (cellules) dégagé de falaise autour d'une ville → assise plate
@@ -364,7 +365,7 @@ func _road_atlas() -> Texture2DArray:
 	_road_arr.create_from_images(imgs)
 	return _road_arr
 
-## texture-array des 2 tuiles cobble (couche 0 flat · 1 diagonale) → échantillonnée en espace écran (rotée).
+## texture-array des 3 tuiles cobble (0 flat · 1 flat pivotée 90° · 2 diagonale) → plan du sol (shader).
 func _cobble_atlas() -> Texture2DArray:
 	if _cobble_arr != null:
 		return _cobble_arr
@@ -379,7 +380,7 @@ func _cobble_atlas() -> Texture2DArray:
 				if img.get_width() != 256 or img.get_height() != 256:
 					img.resize(256, 256)
 				imgs.append(img)
-	if imgs.size() < 2:
+	if imgs.size() < 3:
 		return null
 	_cobble_arr = Texture2DArray.new()
 	_cobble_arr.create_from_images(imgs)
