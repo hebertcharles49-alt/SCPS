@@ -520,9 +520,9 @@ func _place_road_houses(pool: Array, r: int, base_sz: float, idx: int, sea: Imag
 				return idx
 	return idx
 
-## bâti le long de la RUE PRINCIPALE (a → s, vers le sud) — la route est tracée à largeur NORMALE
-## (elle se fond dans le réseau), mais on la BORDE sur TOUTE sa longueur en QUINCONCE serré (les deux
-## rives alternées) → l'axe visuel côté joueur est COUVERT d'un bout à l'autre par un lot de bâtiments.
+## bâti le long de la RUE PRINCIPALE (a → s, vers le sud) — MÊME style que les autres routes
+## (`_place_road_houses` : quinconce, espacé), pour qu'elle SE FONDE dans le réseau plutôt que de
+## ressortir en avenue distincte. Le bourg s'agrège autour comme partout.
 func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float, idx: int,
 		sea: Image, rset: Dictionary) -> int:
 	if pool.is_empty():
@@ -533,16 +533,16 @@ func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float,
 		return idx
 	var dir := d / lng
 	var perp := Vector2(-dir.y, dir.x)
-	var t := 2.0                                          # démarre tôt → l'axe est garni dès le pied
+	var t := 3.0                                          # 1re façade après le pied des marches
 	var sidx := 0
 	while t <= lng + 0.5:
 		var hh := ((r * 2654435761) ^ (sidx * 40503 + 668265263)) & 0x7fffffff
-		var side := 1.0 if (sidx % 2 == 0) else -1.0      # QUINCONCE : les deux rives alternées
-		var off := 1.6 + float(hh % 90) / 100.0           # 1.6..2.5 : SERRÉ contre la chaussée
+		var side := 1.0 if (sidx % 2 == 0) else -1.0      # QUINCONCE (comme les autres routes)
+		var off := 1.7 + float(hh % 140) / 100.0          # 1.7..3.1 : à CÔTÉ de la chaussée
 		var p: Vector2 = a + dir * t + perp * (side * off)
 		sidx += 1
 		idx += 1
-		t += 2.0 + float((hh >> 14) % 70) / 100.0         # pas ~2.0..2.7 : COUVRE tout l'axe
+		t += 2.6 + float((hh >> 14) % 100) / 100.0 * 1.5  # pas ~2.6..4.1 (espacé, comme le réseau)
 		if _road_cells.has(Vector2i(int(p.x), int(p.y))):
 			continue
 		if not _footprint_clear(sea, rset, p, base_sz * 0.5, base_sz):
@@ -1169,8 +1169,8 @@ func _asset_tint(base: Color, wx: float, wy: float, tint_amt: float) -> Color:
 		base.a)
 
 func _blob_shadow(foot: Vector2, wd: float) -> void:
-	draw_set_transform(foot + SHADOW_DIR * wd * 0.14, 0.0, Vector2(1.0, 0.42))
-	draw_circle(Vector2.ZERO, wd * 0.30, SHADOW_COL)
+	draw_set_transform(foot + SHADOW_DIR * wd * 0.04, 0.0, Vector2(1.0, 0.40))
+	draw_circle(Vector2.ZERO, wd * 0.28, SHADOW_COL)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_struct(s: Dictionary, sp: Vector2) -> void:
@@ -1203,27 +1203,6 @@ func _draw_city(w, r: int, ctr: Vector2) -> void:
 		var radius := 1.2 + t * 0.4
 		draw_circle(ctr, radius, Color(0.62, 0.47, 0.30))
 		draw_arc(ctr, radius, 0.0, TAU, 16, Color(0.15, 0.10, 0.05, 0.8), 0.4, true)
-
-## mouchetis de POUSSIÈRE le long d'un tracé iso : petits points clairs/sombres jittered, alpha bas →
-## la chaussée a du GRAIN au lieu d'une bande lisse. Déterministe (hash position), display-only.
-func _road_dust(ip: PackedVector2Array, wln: float) -> void:
-	for k in range(ip.size() - 1):
-		var a := ip[k]
-		var seg := ip[k + 1] - a
-		var L := seg.length()
-		if L < 0.6:
-			continue
-		var dir := seg / L
-		var perp := Vector2(-dir.y, dir.x)
-		var n := maxi(1, int(L / 0.8))                   # DENSE → un vrai voile de grain
-		for j in range(n):
-			var hh := ((int(a.x * 8.0) * 73856093) ^ (int(a.y * 8.0) * 19349663) ^ (j * 2654435761)) & 0x7fffffff
-			var t := (float(j) + 0.5) / float(n)
-			var off := (float(hh % 100) / 100.0 - 0.5) * wln * 0.84   # étalé sur presque toute la largeur
-			var p := a + dir * (t * L) + perp * off
-			var rad := wln * (0.10 + float((hh >> 7) % 20) / 100.0 * 0.11)
-			var dust := Color(0.26, 0.18, 0.10, 0.20) if (hh & 1) == 0 else Color(0.97, 0.90, 0.72, 0.16)
-			draw_circle(p, rad, dust)
 
 ## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure),
 ## bornée à ~2.6 px d'écran (÷zoom) au minimum — la route RESSORT comme le fil conducteur.
@@ -1325,7 +1304,6 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var zoom := get_viewport_transform().get_scale().x
 	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
-	_ensure_terrain(w)            # caches de lumière prêts (routes ombrées comme le terrain)
 
 	# (RIVIÈRES : plus dessinées ici — CARVÉES dans le terrain par iso_blend.gdshader, cf. en-tête.)
 
@@ -1378,23 +1356,19 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var poly := _road_partial(pts, frac)
 				if poly.size() >= 2:
 					var ipoly := PackedVector2Array()
-					var spoly := PackedFloat32Array()
 					ipoly.resize(poly.size())
-					spoly.resize(poly.size())
 					for k in range(poly.size()):
 						ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
-						spoly[k] = _hillshade(poly[k].x, poly[k].y)   # ombrage = celui du terrain
-					built.append({"poly": ipoly, "shade": spoly, "w": _road_width(int(rd["level"]), zoom)})
+					built.append({"poly": ipoly, "w": _road_width(int(rd["level"]), zoom)})
 				if frac >= 1.0:
 					done[ri] = true
 			# RUES PRINCIPALES (toujours bâties) : court tronçon SUD de chaque bourg → la route forcée vers
 			# le sud, qui SE FOND dans le réseau (même largeur que les autres) ; rejoint l'ANCRE.
 			for ms in _main_streets:
-				var msa: Vector2 = ms["a"]
-				var mss: Vector2 = ms["s"]
-				var msp := PackedVector2Array([mv.iso_pos(msa.x, msa.y), mv.iso_pos(mss.x, mss.y)])
-				var msh := PackedFloat32Array([_hillshade(msa.x, msa.y), _hillshade(mss.x, mss.y)])
-				built.append({"poly": msp, "shade": msh, "w": _road_width(1, zoom)})
+				var msp := PackedVector2Array()
+				msp.append(mv.iso_pos((ms["a"] as Vector2).x, (ms["a"] as Vector2).y))
+				msp.append(mv.iso_pos((ms["s"] as Vector2).x, (ms["s"] as Vector2).y))
+				built.append({"poly": msp, "w": _road_width(1, zoom)})
 			# 3 passes UNION (casing/fill OPAQUES → les recouvrements FUSIONNENT sans double-assombrir) ;
 			# le halo doux est TIGHT et discret (l'ancien +4/zoom α.22 boursouflait/floutait la route).
 			for bp in built:
@@ -1403,24 +1377,6 @@ func _draw_iso(w, mv: Node2D) -> void:
 				draw_polyline(bp["poly"], ROAD_CASING, bp["w"] + 0.10 + 0.9 / zoom, true)
 			for bp in built:
 				draw_polyline(bp["poly"], ROAD_FILL, bp["w"], true)
-			# RELIEF : ombrage par segment SOUS le même soleil que le terrain (voile chaud au versant
-			# éclairé, sombre à l'ombre, par-dessus le fill continu → pas de trou aux jonctions).
-			for bp in built:
-				var ip2: PackedVector2Array = bp["poly"]
-				var sh: PackedFloat32Array = bp.get("shade", PackedFloat32Array())
-				if sh.size() != ip2.size():
-					continue
-				var wln: float = bp["w"]
-				for k in range(ip2.size() - 1):
-					var f := (sh[k] + sh[k + 1]) * 0.5 - 1.0
-					if absf(f) < 0.015:
-						continue
-					var oc := Color(1.0, 0.95, 0.80, minf(0.40, f * 1.7)) if f > 0.0 \
-						else Color(0.12, 0.08, 0.05, minf(0.42, -f * 1.8))
-					draw_line(ip2[k], ip2[k + 1], oc, wln * 0.80, true)
-			# POUSSIÈRE : mouchetis discret (grain sablonneux) → la chaussée n'est plus lisse.
-			for bp in built:
-				_road_dust(bp["poly"], bp["w"])
 			for d in _road_dress:
 				if not done.has(d["road"]):
 					continue
