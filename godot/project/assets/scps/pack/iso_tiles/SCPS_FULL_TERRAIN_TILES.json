@@ -1,0 +1,1606 @@
+{
+  "asset_kind": "SCPS original full flat terrain tiles",
+  "tile_size": [
+    256,
+    256
+  ],
+  "format": "opaque RGB PNG",
+  "selection": {
+    "lake": {
+      "mode": "47-state blob",
+      "bits": {
+        "n": 1,
+        "e": 2,
+        "s": 4,
+        "w": 8,
+        "ne": 16,
+        "se": 32,
+        "sw": 64,
+        "nw": 128
+      }
+    },
+    "river_and_roads": {
+      "mode": "15-state cardinal",
+      "bits": {
+        "n": 1,
+        "e": 2,
+        "s": 4,
+        "w": 8
+      }
+    }
+  },
+  "visual_rule": "Every listed PNG is a complete square terrain tile. None use alpha, magenta, black padding, UI framing, isometric geometry or isolated sprite placement.",
+  "origin": "Original SCPS work assembled from newly generated source materials without third-party image, source names or geometry input.",
+  "entries": [
+    {
+      "category": "water_light",
+      "output": "water_light/scps_water_light_01.png",
+      "kind": "full_surface",
+      "variant": 1
+    },
+    {
+      "category": "urban_pavement",
+      "output": "urban_pavement/scps_urban_pavement_01.png",
+      "kind": "full_surface",
+      "variant": 1
+    },
+    {
+      "category": "water_light",
+      "output": "water_light/scps_water_light_02.png",
+      "kind": "full_surface",
+      "variant": 2
+    },
+    {
+      "category": "urban_pavement",
+      "output": "urban_pavement/scps_urban_pavement_02.png",
+      "kind": "full_surface",
+      "variant": 2
+    },
+    {
+      "category": "water_light",
+      "output": "water_light/scps_water_light_03.png",
+      "kind": "full_surface",
+      "variant": 3
+    },
+    {
+      "category": "urban_pavement",
+      "output": "urban_pavement/scps_urban_pavement_03.png",
+      "kind": "full_surface",
+      "variant": 3
+    },
+    {
+      "category": "water_light",
+      "output": "water_light/scps_water_light_04.png",
+      "kind": "full_surface",
+      "variant": 4
+    },
+    {
+      "category": "urban_pavement",
+      "output": "urban_pavement/scps_urban_pavement_04.png",
+      "kind": "full_surface",
+      "variant": 4
+    },
+    {
+      "category": "water_light",
+      "output": "water_light/scps_water_light_05.png",
+      "kind": "full_surface",
+      "variant": 5
+    },
+    {
+      "category": "urban_pavement",
+      "output": "urban_pavement/scps_urban_pavement_05.png",
+      "kind": "full_surface",
+      "variant": 5
+    },
+    {
+      "category": "water_light",
+      "output": "water_light/scps_water_light_06.png",
+      "kind": "full_surface",
+      "variant": 6
+    },
+    {
+      "category": "urban_pavement",
+      "output": "urban_pavement/scps_urban_pavement_06.png",
+      "kind": "full_surface",
+      "variant": 6
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_000_01.png",
+      "kind": "blob_47",
+      "mask": 0,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_000_02.png",
+      "kind": "blob_47",
+      "mask": 0,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_001_01.png",
+      "kind": "blob_47",
+      "mask": 1,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_001_02.png",
+      "kind": "blob_47",
+      "mask": 1,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_002_01.png",
+      "kind": "blob_47",
+      "mask": 2,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_002_02.png",
+      "kind": "blob_47",
+      "mask": 2,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_003_01.png",
+      "kind": "blob_47",
+      "mask": 3,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_003_02.png",
+      "kind": "blob_47",
+      "mask": 3,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_019_01.png",
+      "kind": "blob_47",
+      "mask": 19,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_019_02.png",
+      "kind": "blob_47",
+      "mask": 19,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_004_01.png",
+      "kind": "blob_47",
+      "mask": 4,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_004_02.png",
+      "kind": "blob_47",
+      "mask": 4,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_005_01.png",
+      "kind": "blob_47",
+      "mask": 5,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_005_02.png",
+      "kind": "blob_47",
+      "mask": 5,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_006_01.png",
+      "kind": "blob_47",
+      "mask": 6,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_006_02.png",
+      "kind": "blob_47",
+      "mask": 6,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_038_01.png",
+      "kind": "blob_47",
+      "mask": 38,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_038_02.png",
+      "kind": "blob_47",
+      "mask": 38,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_007_01.png",
+      "kind": "blob_47",
+      "mask": 7,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_007_02.png",
+      "kind": "blob_47",
+      "mask": 7,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_023_01.png",
+      "kind": "blob_47",
+      "mask": 23,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_023_02.png",
+      "kind": "blob_47",
+      "mask": 23,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_039_01.png",
+      "kind": "blob_47",
+      "mask": 39,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_039_02.png",
+      "kind": "blob_47",
+      "mask": 39,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_055_01.png",
+      "kind": "blob_47",
+      "mask": 55,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_055_02.png",
+      "kind": "blob_47",
+      "mask": 55,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_008_01.png",
+      "kind": "blob_47",
+      "mask": 8,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_008_02.png",
+      "kind": "blob_47",
+      "mask": 8,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_009_01.png",
+      "kind": "blob_47",
+      "mask": 9,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_009_02.png",
+      "kind": "blob_47",
+      "mask": 9,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_137_01.png",
+      "kind": "blob_47",
+      "mask": 137,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_137_02.png",
+      "kind": "blob_47",
+      "mask": 137,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_010_01.png",
+      "kind": "blob_47",
+      "mask": 10,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_010_02.png",
+      "kind": "blob_47",
+      "mask": 10,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_011_01.png",
+      "kind": "blob_47",
+      "mask": 11,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_011_02.png",
+      "kind": "blob_47",
+      "mask": 11,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_027_01.png",
+      "kind": "blob_47",
+      "mask": 27,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_027_02.png",
+      "kind": "blob_47",
+      "mask": 27,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_139_01.png",
+      "kind": "blob_47",
+      "mask": 139,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_139_02.png",
+      "kind": "blob_47",
+      "mask": 139,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_155_01.png",
+      "kind": "blob_47",
+      "mask": 155,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_155_02.png",
+      "kind": "blob_47",
+      "mask": 155,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_012_01.png",
+      "kind": "blob_47",
+      "mask": 12,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_012_02.png",
+      "kind": "blob_47",
+      "mask": 12,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_076_01.png",
+      "kind": "blob_47",
+      "mask": 76,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_076_02.png",
+      "kind": "blob_47",
+      "mask": 76,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_013_01.png",
+      "kind": "blob_47",
+      "mask": 13,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_013_02.png",
+      "kind": "blob_47",
+      "mask": 13,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_077_01.png",
+      "kind": "blob_47",
+      "mask": 77,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_077_02.png",
+      "kind": "blob_47",
+      "mask": 77,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_141_01.png",
+      "kind": "blob_47",
+      "mask": 141,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_141_02.png",
+      "kind": "blob_47",
+      "mask": 141,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_205_01.png",
+      "kind": "blob_47",
+      "mask": 205,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_205_02.png",
+      "kind": "blob_47",
+      "mask": 205,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_014_01.png",
+      "kind": "blob_47",
+      "mask": 14,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_014_02.png",
+      "kind": "blob_47",
+      "mask": 14,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_046_01.png",
+      "kind": "blob_47",
+      "mask": 46,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_046_02.png",
+      "kind": "blob_47",
+      "mask": 46,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_078_01.png",
+      "kind": "blob_47",
+      "mask": 78,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_078_02.png",
+      "kind": "blob_47",
+      "mask": 78,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_110_01.png",
+      "kind": "blob_47",
+      "mask": 110,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_110_02.png",
+      "kind": "blob_47",
+      "mask": 110,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_015_01.png",
+      "kind": "blob_47",
+      "mask": 15,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_015_02.png",
+      "kind": "blob_47",
+      "mask": 15,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_031_01.png",
+      "kind": "blob_47",
+      "mask": 31,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_031_02.png",
+      "kind": "blob_47",
+      "mask": 31,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_047_01.png",
+      "kind": "blob_47",
+      "mask": 47,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_047_02.png",
+      "kind": "blob_47",
+      "mask": 47,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_063_01.png",
+      "kind": "blob_47",
+      "mask": 63,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_063_02.png",
+      "kind": "blob_47",
+      "mask": 63,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_079_01.png",
+      "kind": "blob_47",
+      "mask": 79,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_079_02.png",
+      "kind": "blob_47",
+      "mask": 79,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_095_01.png",
+      "kind": "blob_47",
+      "mask": 95,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_095_02.png",
+      "kind": "blob_47",
+      "mask": 95,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_111_01.png",
+      "kind": "blob_47",
+      "mask": 111,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_111_02.png",
+      "kind": "blob_47",
+      "mask": 111,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_127_01.png",
+      "kind": "blob_47",
+      "mask": 127,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_127_02.png",
+      "kind": "blob_47",
+      "mask": 127,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_143_01.png",
+      "kind": "blob_47",
+      "mask": 143,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_143_02.png",
+      "kind": "blob_47",
+      "mask": 143,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_159_01.png",
+      "kind": "blob_47",
+      "mask": 159,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_159_02.png",
+      "kind": "blob_47",
+      "mask": 159,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_175_01.png",
+      "kind": "blob_47",
+      "mask": 175,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_175_02.png",
+      "kind": "blob_47",
+      "mask": 175,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_191_01.png",
+      "kind": "blob_47",
+      "mask": 191,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_191_02.png",
+      "kind": "blob_47",
+      "mask": 191,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_207_01.png",
+      "kind": "blob_47",
+      "mask": 207,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_207_02.png",
+      "kind": "blob_47",
+      "mask": 207,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_223_01.png",
+      "kind": "blob_47",
+      "mask": 223,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_223_02.png",
+      "kind": "blob_47",
+      "mask": 223,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_239_01.png",
+      "kind": "blob_47",
+      "mask": 239,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_239_02.png",
+      "kind": "blob_47",
+      "mask": 239,
+      "variant": 2
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_255_01.png",
+      "kind": "blob_47",
+      "mask": 255,
+      "variant": 1
+    },
+    {
+      "category": "lake",
+      "output": "lake/scps_lake_255_02.png",
+      "kind": "blob_47",
+      "mask": 255,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_01_01.png",
+      "kind": "cardinal_15",
+      "mask": 1,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_01_02.png",
+      "kind": "cardinal_15",
+      "mask": 1,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_02_01.png",
+      "kind": "cardinal_15",
+      "mask": 2,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_02_02.png",
+      "kind": "cardinal_15",
+      "mask": 2,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_03_01.png",
+      "kind": "cardinal_15",
+      "mask": 3,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_03_02.png",
+      "kind": "cardinal_15",
+      "mask": 3,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_04_01.png",
+      "kind": "cardinal_15",
+      "mask": 4,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_04_02.png",
+      "kind": "cardinal_15",
+      "mask": 4,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_05_01.png",
+      "kind": "cardinal_15",
+      "mask": 5,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_05_02.png",
+      "kind": "cardinal_15",
+      "mask": 5,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_06_01.png",
+      "kind": "cardinal_15",
+      "mask": 6,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_06_02.png",
+      "kind": "cardinal_15",
+      "mask": 6,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_07_01.png",
+      "kind": "cardinal_15",
+      "mask": 7,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_07_02.png",
+      "kind": "cardinal_15",
+      "mask": 7,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_08_01.png",
+      "kind": "cardinal_15",
+      "mask": 8,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_08_02.png",
+      "kind": "cardinal_15",
+      "mask": 8,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_09_01.png",
+      "kind": "cardinal_15",
+      "mask": 9,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_09_02.png",
+      "kind": "cardinal_15",
+      "mask": 9,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_10_01.png",
+      "kind": "cardinal_15",
+      "mask": 10,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_10_02.png",
+      "kind": "cardinal_15",
+      "mask": 10,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_11_01.png",
+      "kind": "cardinal_15",
+      "mask": 11,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_11_02.png",
+      "kind": "cardinal_15",
+      "mask": 11,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_12_01.png",
+      "kind": "cardinal_15",
+      "mask": 12,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_12_02.png",
+      "kind": "cardinal_15",
+      "mask": 12,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_13_01.png",
+      "kind": "cardinal_15",
+      "mask": 13,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_13_02.png",
+      "kind": "cardinal_15",
+      "mask": 13,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_14_01.png",
+      "kind": "cardinal_15",
+      "mask": 14,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_14_02.png",
+      "kind": "cardinal_15",
+      "mask": 14,
+      "variant": 2
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_15_01.png",
+      "kind": "cardinal_15",
+      "mask": 15,
+      "variant": 1
+    },
+    {
+      "category": "river",
+      "output": "river/scps_river_15_02.png",
+      "kind": "cardinal_15",
+      "mask": 15,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_01_01.png",
+      "kind": "cardinal_15",
+      "mask": 1,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_01_02.png",
+      "kind": "cardinal_15",
+      "mask": 1,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_02_01.png",
+      "kind": "cardinal_15",
+      "mask": 2,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_02_02.png",
+      "kind": "cardinal_15",
+      "mask": 2,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_03_01.png",
+      "kind": "cardinal_15",
+      "mask": 3,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_03_02.png",
+      "kind": "cardinal_15",
+      "mask": 3,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_04_01.png",
+      "kind": "cardinal_15",
+      "mask": 4,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_04_02.png",
+      "kind": "cardinal_15",
+      "mask": 4,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_05_01.png",
+      "kind": "cardinal_15",
+      "mask": 5,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_05_02.png",
+      "kind": "cardinal_15",
+      "mask": 5,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_06_01.png",
+      "kind": "cardinal_15",
+      "mask": 6,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_06_02.png",
+      "kind": "cardinal_15",
+      "mask": 6,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_07_01.png",
+      "kind": "cardinal_15",
+      "mask": 7,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_07_02.png",
+      "kind": "cardinal_15",
+      "mask": 7,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_08_01.png",
+      "kind": "cardinal_15",
+      "mask": 8,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_08_02.png",
+      "kind": "cardinal_15",
+      "mask": 8,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_09_01.png",
+      "kind": "cardinal_15",
+      "mask": 9,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_09_02.png",
+      "kind": "cardinal_15",
+      "mask": 9,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_10_01.png",
+      "kind": "cardinal_15",
+      "mask": 10,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_10_02.png",
+      "kind": "cardinal_15",
+      "mask": 10,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_11_01.png",
+      "kind": "cardinal_15",
+      "mask": 11,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_11_02.png",
+      "kind": "cardinal_15",
+      "mask": 11,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_12_01.png",
+      "kind": "cardinal_15",
+      "mask": 12,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_12_02.png",
+      "kind": "cardinal_15",
+      "mask": 12,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_13_01.png",
+      "kind": "cardinal_15",
+      "mask": 13,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_13_02.png",
+      "kind": "cardinal_15",
+      "mask": 13,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_14_01.png",
+      "kind": "cardinal_15",
+      "mask": 14,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_14_02.png",
+      "kind": "cardinal_15",
+      "mask": 14,
+      "variant": 2
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_15_01.png",
+      "kind": "cardinal_15",
+      "mask": 15,
+      "variant": 1
+    },
+    {
+      "category": "road_mud",
+      "output": "road_mud/scps_road_mud_15_02.png",
+      "kind": "cardinal_15",
+      "mask": 15,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_01_01.png",
+      "kind": "cardinal_15",
+      "mask": 1,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_01_02.png",
+      "kind": "cardinal_15",
+      "mask": 1,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_02_01.png",
+      "kind": "cardinal_15",
+      "mask": 2,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_02_02.png",
+      "kind": "cardinal_15",
+      "mask": 2,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_03_01.png",
+      "kind": "cardinal_15",
+      "mask": 3,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_03_02.png",
+      "kind": "cardinal_15",
+      "mask": 3,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_04_01.png",
+      "kind": "cardinal_15",
+      "mask": 4,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_04_02.png",
+      "kind": "cardinal_15",
+      "mask": 4,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_05_01.png",
+      "kind": "cardinal_15",
+      "mask": 5,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_05_02.png",
+      "kind": "cardinal_15",
+      "mask": 5,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_06_01.png",
+      "kind": "cardinal_15",
+      "mask": 6,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_06_02.png",
+      "kind": "cardinal_15",
+      "mask": 6,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_07_01.png",
+      "kind": "cardinal_15",
+      "mask": 7,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_07_02.png",
+      "kind": "cardinal_15",
+      "mask": 7,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_08_01.png",
+      "kind": "cardinal_15",
+      "mask": 8,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_08_02.png",
+      "kind": "cardinal_15",
+      "mask": 8,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_09_01.png",
+      "kind": "cardinal_15",
+      "mask": 9,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_09_02.png",
+      "kind": "cardinal_15",
+      "mask": 9,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_10_01.png",
+      "kind": "cardinal_15",
+      "mask": 10,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_10_02.png",
+      "kind": "cardinal_15",
+      "mask": 10,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_11_01.png",
+      "kind": "cardinal_15",
+      "mask": 11,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_11_02.png",
+      "kind": "cardinal_15",
+      "mask": 11,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_12_01.png",
+      "kind": "cardinal_15",
+      "mask": 12,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_12_02.png",
+      "kind": "cardinal_15",
+      "mask": 12,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_13_01.png",
+      "kind": "cardinal_15",
+      "mask": 13,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_13_02.png",
+      "kind": "cardinal_15",
+      "mask": 13,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_14_01.png",
+      "kind": "cardinal_15",
+      "mask": 14,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_14_02.png",
+      "kind": "cardinal_15",
+      "mask": 14,
+      "variant": 2
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_15_01.png",
+      "kind": "cardinal_15",
+      "mask": 15,
+      "variant": 1
+    },
+    {
+      "category": "road_gravel",
+      "output": "road_gravel/scps_road_gravel_15_02.png",
+      "kind": "cardinal_15",
+      "mask": 15,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_01_01.png",
+      "kind": "cardinal_15",
+      "mask": 1,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_01_02.png",
+      "kind": "cardinal_15",
+      "mask": 1,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_02_01.png",
+      "kind": "cardinal_15",
+      "mask": 2,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_02_02.png",
+      "kind": "cardinal_15",
+      "mask": 2,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_03_01.png",
+      "kind": "cardinal_15",
+      "mask": 3,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_03_02.png",
+      "kind": "cardinal_15",
+      "mask": 3,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_04_01.png",
+      "kind": "cardinal_15",
+      "mask": 4,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_04_02.png",
+      "kind": "cardinal_15",
+      "mask": 4,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_05_01.png",
+      "kind": "cardinal_15",
+      "mask": 5,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_05_02.png",
+      "kind": "cardinal_15",
+      "mask": 5,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_06_01.png",
+      "kind": "cardinal_15",
+      "mask": 6,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_06_02.png",
+      "kind": "cardinal_15",
+      "mask": 6,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_07_01.png",
+      "kind": "cardinal_15",
+      "mask": 7,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_07_02.png",
+      "kind": "cardinal_15",
+      "mask": 7,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_08_01.png",
+      "kind": "cardinal_15",
+      "mask": 8,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_08_02.png",
+      "kind": "cardinal_15",
+      "mask": 8,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_09_01.png",
+      "kind": "cardinal_15",
+      "mask": 9,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_09_02.png",
+      "kind": "cardinal_15",
+      "mask": 9,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_10_01.png",
+      "kind": "cardinal_15",
+      "mask": 10,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_10_02.png",
+      "kind": "cardinal_15",
+      "mask": 10,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_11_01.png",
+      "kind": "cardinal_15",
+      "mask": 11,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_11_02.png",
+      "kind": "cardinal_15",
+      "mask": 11,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_12_01.png",
+      "kind": "cardinal_15",
+      "mask": 12,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_12_02.png",
+      "kind": "cardinal_15",
+      "mask": 12,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_13_01.png",
+      "kind": "cardinal_15",
+      "mask": 13,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_13_02.png",
+      "kind": "cardinal_15",
+      "mask": 13,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_14_01.png",
+      "kind": "cardinal_15",
+      "mask": 14,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_14_02.png",
+      "kind": "cardinal_15",
+      "mask": 14,
+      "variant": 2
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_15_01.png",
+      "kind": "cardinal_15",
+      "mask": 15,
+      "variant": 1
+    },
+    {
+      "category": "road_cobble",
+      "output": "road_cobble/scps_road_cobble_15_02.png",
+      "kind": "cardinal_15",
+      "mask": 15,
+      "variant": 2
+    }
+  ]
+}
