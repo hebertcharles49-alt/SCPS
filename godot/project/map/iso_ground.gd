@@ -376,6 +376,28 @@ func _build_road_idx(w, W: int, H: int) -> void:
 			var cy := int(p.y) / TILE_K
 			if cx >= 0 and cy >= 0 and cx < nx and cy < ny:
 				grid[Vector2i(cx, cy)] = true
+	# RACCORD SUD aux TOURS : la tour est posée au pied SUD (ancre) de sa tuile ; le réseau, lui, vise le
+	# CENTROÏDE. On ajoute un court stub depuis l'ancre vers le sud (iso-sud = +x+y) sur terre → la route
+	# rejoint le pied de la tour (« snap sud »), comme l'ancienne rue principale.
+	var sea: Image = w.layer_image(4)        # SCPS_LAYER_WATER (mer/lac) → le stub s'arrête à l'eau
+	for r in range(w.region_count()):
+		if not w.region_colonized(r):
+			continue
+		var ctr: Vector2 = w.region_centroid(r)
+		if ctr.x < 0:
+			continue
+		var col := int(ctr.x) / TILE_K
+		var row := int(ctr.y) / TILE_K
+		for i in range(0, 3):                # ancre (col+1,row+1) puis 2 cellules plus au sud
+			var sx := col + 1 + i
+			var sy := row + 1 + i
+			if sx < 0 or sy < 0 or sx >= nx or sy >= ny:
+				break
+			var wx := mini(sx * TILE_K + TILE_K / 2, W - 1)
+			var wy := mini(sy * TILE_K + TILE_K / 2, H - 1)
+			if sea != null and int(sea.get_pixel(wx, wy).r * 255.0 + 0.5) >= 1:
+				break                        # eau devant → on arrête le stub
+			grid[Vector2i(sx, sy)] = true
 	# 4-CONNEXITÉ : tout lien seulement diagonal reçoit une cellule cardinale de comblement
 	var fill := {}
 	for ck in grid.keys():
