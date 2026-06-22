@@ -14,7 +14,13 @@ func _run() -> void:
 	var w = Sim.world
 	var c := Vector2(512, 256)
 	var foc := _focus_arg()
-	if foc == "town":
+	if foc.begins_with("at:"):
+		# coordonnées EXPLICITES « at:X,Y » (cadrage d'un biome précis)
+		var parts := foc.substr(3).split(",")
+		if parts.size() == 2:
+			c = Vector2(float(parts[0]), float(parts[1]))
+		print("focus AT ", c)
+	elif foc == "town":
 		# centre = la plus grosse ville (vitrine des OMBRES d'assets)
 		var best := -1; var bestpop := -1
 		for r in range(w.region_count()):

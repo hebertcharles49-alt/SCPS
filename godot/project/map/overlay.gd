@@ -77,8 +77,15 @@ const FOREST_TREES := {
 const DRESS_OPEN := ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_TREE_OAK_AUTUMN", "DRESS_TREE_POPLAR",
 	"DRESS_GROVE_BROADLEAF", "DRESS_GROVE_MIXED", "DRESS_TREE_PINE", "DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN"]  # surtout des ARBRES, peu de buissons
 const DRESS_DRY := ["DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW", "DRESS_BUSH_THORNY", "DRESS_TREE_GNARLED", "DRESS_ROCK_LIGHT", "DRESS_GRASS_GOLD", "DRESS_DIRT_MOUND"]
-const DRESS_MARSH := ["DRESS_REEDS_GREEN", "DRESS_REEDS_DRY", "DRESS_GRASS_CATTAIL", "DRESS_GRASS_WET", "DRESS_TREE_GNARLED",
-	"DRESS_TREE_DEAD", "DRESS_MUSHROOMS", "DRESS_FERNS", "DRESS_MOSS_PATCH", "DRESS_BUSH_LOW", "DRESS_ROCK_MOSSY", "DRESS_ROOT_CLUSTER"]
+# MARAIS : roselière DENSE — roseaux (verts/secs/en eau), massettes, herbe mouillée, fougères, mousse,
+# quelques snags morts/tordus, peu de cailloux. Couvre la vasière brune.
+const DRESS_MARSH := ["DRESS_REEDS_GREEN", "DRESS_REEDS_DRY", "DRESS_REEDS_WATER", "DRESS_GRASS_CATTAIL",
+	"DRESS_GRASS_WET", "DRESS_FERNS", "DRESS_REEDS_GREEN", "DRESS_MUSHROOMS", "DRESS_MOSS_PATCH",
+	"DRESS_TREE_DEAD", "DRESS_TREE_GNARLED", "DRESS_ROOT_CLUSTER", "DRESS_BUSH_LOW"]
+# MANGROVE (côte tropicale ennoyée) : THICKET de palétuviers — arbres tordus + amas de racines en eau,
+# roseaux d'eau, fougères, herbe mouillée. Dense.
+const DRESS_MANGROVE := ["DRESS_TREE_GNARLED", "DRESS_ROOT_CLUSTER", "DRESS_REEDS_WATER", "DRESS_REEDS_GREEN",
+	"DRESS_TREE_GNARLED", "DRESS_FERNS", "DRESS_GRASS_WET", "DRESS_ROOT_CLUSTER", "DRESS_MOSS_PATCH", "DRESS_TREE_DEAD"]
 const DRESS_HILL := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT", "DRESS_ROCK_MOSSY", "DRESS_BUSH_LOW", "DRESS_BUSH_DRY", "DRESS_TREE_PINE", "DRESS_STONE_PILE"]
 const DRESS_CLIFF := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_DARK", "DRESS_ROCK_SPIRES", "DRESS_STONE_PILE", "DRESS_STONE_SLABS", "DRESS_BUSH_DRY", "DRESS_BUSH_THORNY", "DRESS_BUSH_LOW"]
 const DRESS_SNOW := ["DRESS_TREE_PINE_SNOW", "DRESS_ROCK_SNOW", "DRESS_BRANCH_SNOW", "DRESS_ROCK_GRAY_B"]
@@ -90,7 +97,7 @@ const DRESS_STEPPE := ["DRESS_GRASS_GOLD", "DRESS_GRASS_GOLD", "DRESS_GRASS_GOLD
 # TOURBIÈRE/LANDE (brun humide) : mousse, roseaux, herbe mouillée, snags morts — dense (terre couverte), peu de cailloux
 const DRESS_BOG := ["DRESS_MOSS_PATCH", "DRESS_GRASS_WET", "DRESS_REEDS_DRY", "DRESS_BUSH_LOW",
 	"DRESS_TREE_DEAD", "DRESS_REEDS_GREEN", "DRESS_MUSHROOMS", "DRESS_TREE_GNARLED", "DRESS_ROOT_CLUSTER",
-	"DRESS_FERNS", "DRESS_GRASS_CATTAIL", "DRESS_ROCK_MOSSY"]
+	"DRESS_FERNS", "DRESS_GRASS_CATTAIL", "DRESS_MOSS_PATCH"]
 
 # biome → variante de ville TERRAIN (CITY_BIOME_*). SEULEMENT les terrains
 # DISTINCTIFS (côte/forêt/marais/montagne/neige…) ; les plaines génériques (4-10)
@@ -490,9 +497,11 @@ func _dress_rule(b: int) -> Array:
 	if b == 9 or b == 10 or b == 11:
 		return [DRESS_DRY, 0.04, 9.0]                         # ARIDE/désert : buissons secs épars
 	if b == 22:
-		return [DRESS_BOG, 0.26, 8.5]                         # TOURBIÈRE/LANDE (brun humide) : mousse, roseaux, snags — couvrant
-	if b == 15 or b == 21:
-		return [DRESS_MARSH, 0.22, 9.0]                       # MARAIS/mangrove : roseaux, arbres morts, champignons (moins de cailloux)
+		return [DRESS_BOG, 0.80, 8.0, 3]                      # TOURBIÈRE/LANDE : lande COUVERTE — lits de mousse/roseaux (3 touffes)
+	if b == 15:
+		return [DRESS_MARSH, 0.85, 8.5, 3]                    # MARAIS : roselière DENSE (3 touffes/bloc → vasière couverte)
+	if b == 21:
+		return [DRESS_MANGROVE, 0.85, 9.5, 3]                 # MANGROVE : thicket dense de palétuviers (3 touffes/bloc)
 	if b == 16 or b == 17:
 		return [DRESS_HILL, 0.10, 9.0]                        # COLLINES/highlands : cailloux + buissons (allégé)
 	if b == 18 or b == 23:
@@ -532,14 +541,17 @@ func _build_decor() -> void:
 			if float(h % 1000) / 1000.0 > float(rule[1]):
 				continue                            # SPORADIQUE
 			var pool: Array = rule[0]
-			var jx := (float((h >> 3) % 7) - 3.0) * 0.4   # jitter ORGANIQUE (pas un quadrillage)
-			var jy := (float((h >> 7) % 7) - 3.0) * 0.4
-			var bx := cx + jx
-			var by := cy + jy
-			if _in_river_water(rf, int(bx), int(by)):
-				continue                            # la BASE tomberait dans l'eau de rivière → interdit
-			var sz: float = float(rule[2]) * (0.82 + 0.36 * float((h >> 15) % 10) / 10.0)
-			_decor.append({"name": pool[(h >> 11) % pool.size()], "pos": Vector2(bx, by), "sz": sz})
+			var rep: int = int(rule[3]) if rule.size() > 3 else 1   # touffes MULTIPLES → lit dense (zones humides)
+			for ti in range(rep):
+				var hi := (h * (ti * 2 + 1) + ti * 0x9e3779b9) & 0x7fffffff   # hash décorrélé par touffe
+				var jx := (float((hi >> 3) % 13) - 6.0) * 0.22   # jitter étalé sur le bloc (stride) → lit continu
+				var jy := (float((hi >> 7) % 13) - 6.0) * 0.22
+				var bx := cx + jx
+				var by := cy + jy
+				if _is_sea_cell(sea, int(bx), int(by)) or _in_river_water(rf, int(bx), int(by)):
+					continue                        # la BASE tomberait dans l'eau (mer/lac ou rivière) → interdit
+				var sz: float = float(rule[2]) * (0.82 + 0.36 * float((hi >> 15) % 10) / 10.0)
+				_decor.append({"name": pool[(hi >> 11) % pool.size()], "pos": Vector2(bx, by), "sz": sz})
 			if _decor.size() >= 16000:
 				break
 		if _decor.size() >= 16000:
