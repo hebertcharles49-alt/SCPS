@@ -525,9 +525,11 @@ func _draw() -> void:
 		# ROUTES : tuiles d'autotile posées comme SOL (par cellule), fondues au bord (couverture lisse)
 		if _road_idx == null:
 			_build_road_idx(w, W, H)
-		mat.set_shader_parameter("road_atlas", _road_atlas())
 		mat.set_shader_parameter("road_idx", _road_idx)
 		mat.set_shader_parameter("road_grid", Vector2(W / TILE_K, H / TILE_K))
+		# la route N'EST PLUS la tuile road_cobble (dirt) : on ASSOMBRIT juste le TERRAIN RÉEL le long de
+		# la sente (sol usé/tassé) → une route LISIBLE qui reste 100 % le terrain ; les COBBLES transparents
+		# (overlay) posent les pierres par-dessus. Le road_atlas n'est plus échantillonné.
 		mat.set_shader_parameter("road_on", 1.0)
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
 	draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))

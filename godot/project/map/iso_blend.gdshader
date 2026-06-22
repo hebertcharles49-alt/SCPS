@@ -80,10 +80,11 @@ uniform sampler2DArray road_atlas : filter_linear_mipmap;
 uniform sampler2D road_idx : filter_nearest;                 // R = couche+1 (0 = pas de route) · G = masque cardinal
 uniform vec2 road_grid = vec2(0.0);
 uniform float road_on = 0.0;
-uniform float road_hw = 0.14;                                // demi-largeur de la BANDE pavée (cœur net)
-uniform float road_feather = 0.10;                           // bord du pavé (doux → moins « posé là »)
-uniform float road_dirt_reach = 0.30;                        // portée du HALO de dirt (casse le « trop droit »)
-uniform float road_dirt_str = 0.22;                          // force MAX du halo de dirt (gradient qui neutralise presque tout)
+uniform float road_hw = 0.14;                                // demi-largeur de la SENTE (cœur)
+uniform float road_feather = 0.12;                           // bord de la sente (doux)
+uniform float road_dirt_reach = 0.28;                        // portée du halo (élargit la sente, dégradé)
+uniform float road_dirt_str = 0.55;                          // force du halo (par rapport au cœur)
+uniform vec3 road_worn = vec3(0.60, 0.53, 0.44);             // TEINTE de la sente : MULTIPLIE le terrain (sol usé/tassé) — assez SOMBRE pour que les cobbles CLAIRS contrastent
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
@@ -256,15 +257,11 @@ void fragment() {
 				if ((rmask & 4) != 0 && luv.y >= -0.02) d = min(d, abs(luv.x));  // bras S (bas)
 				if ((rmask & 2) != 0 && luv.x >= -0.02) d = min(d, abs(luv.y));  // bras E (droite)
 				if ((rmask & 8) != 0 && luv.x <= 0.02) d = min(d, abs(luv.y));   // bras W (gauche)
-				float rb = 1.0 - smoothstep(road_hw, road_hw + road_feather, d);      // cœur PAVÉ (net, bord doux)
-				// HALO de DIRT : on garde un peu de terre autour du pavé (sinon « trop droit »), mais un
-				// gradient large la NEUTRALISE presque → elle se FOND dans le monde au lieu de patcher.
-				rb = max(rb, road_dirt_str * (1.0 - smoothstep(road_hw, road_hw + road_dirt_reach, d)));
-				if (rb > 0.003) {
-					int rl = int(ridx.r * 255.0 + 0.5) - 1;
-					vec3 rcol = texture(road_atlas, vec3(fract(cell / tile_k), float(rl))).rgb;
-					col = mix(col, rcol, rb);
-				}
+				float rb = 1.0 - smoothstep(road_hw, road_hw + road_feather, d);      // cœur de la sente
+				rb = max(rb, road_dirt_str * (1.0 - smoothstep(road_hw, road_hw + road_dirt_reach, d)));  // halo dégradé
+				// SENTE = terrain RÉEL assombri/tassé (pas une tuile dirt) → route lisible qui reste le sol ;
+				// les COBBLES transparents (overlay) posent les pierres CLAIRES par-dessus → fort contraste.
+				col *= mix(vec3(1.0), road_worn, rb);
 			}
 		}
 		// OMBRE PORTÉE des falaises sur le SOL : un pixel de sol est dans l'ombre s'il y a une falaise

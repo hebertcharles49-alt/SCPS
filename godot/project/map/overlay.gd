@@ -116,6 +116,18 @@ var _bridge_tex := {}            ## "ew_start".."ns_end" → Texture2D
 var _bridges := []               ## [{tex, tl:Vector2(iso coin haut-gauche), sz:float}]
 var _bridges_dirty := true
 
+# ── ROUTE EN COBBLES TRANSPARENTS (asset fourni) : la route N'EST PLUS un sol de tuile (dirt) mais des
+# pavés ÉPARS RGBA posés sur le terrain RÉEL (il perce entre les pierres → zéro clash, zéro dirt). On
+# STAMPE la tuile À PLAT (axe-aligné écran, JAMAIS mappée sur le losange — le mapping losange CISAILLAIT
+# l'angle authoré). La tuile DIAGONALE suit l'axe de la route : route monde-Y = "/" telle quelle, route
+# monde-X = "\" (miroir horizontal) ; jonction/isolé = semis flat. ──
+const ROAD_DETAIL_DIR := "res://assets/scps/pack/iso_tiles/road_detail/"
+const COBBLE_SZ := 11.0          ## taille MONDE (iso) du semis de pavés posé par cellule de route
+const COBBLE_MOD := Color(1.12, 1.07, 0.98)  ## léger éclaircissement chaud → les pierres TRANCHENT sur le sentier usé
+var _cobble_tex := []            ## [0]=flat (rangées horizontales) · [1]=diagonale ("/")
+var _road_cobbles := []          ## [{ctr:Vector2(iso), tex, flip}]
+var _road_cobbles_dirty := true
+
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
 	12: ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_GROVE_BROADLEAF", "DRESS_TREE_POPLAR"],  # FOREST : feuillus
@@ -188,6 +200,7 @@ func _on_generated() -> void:
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
 	_road_tiles_dirty = true    # monde neuf → reposer les tuiles de route
+	_road_cobbles_dirty = true  # … et les cobbles
 	_bridges_dirty = true       # … et les ponts
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_roads_dirty = true
@@ -625,15 +638,11 @@ func _build_structures() -> void:
 		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`). Les rayons
 		# ENTOURENT le centre (≈ demi-largeur 9) : le bourg RING le cœur (visible autour),
 		# il ne se cache pas dessous. Scatter organique (Londres), pas une grille.
-		# le bourg S'ORGANISE AUTOUR DE LA RUE PRINCIPALE : un petit cœur CIVIQUE serré, la FAÇADE WESTERN
-		# (deux rangées qui se font face le long de la rue sud), puis l'agglomération le long des AUTRES
-		# routes ; l'anneau ne fait que combler le surplus (routes saturées / absentes).
+		# le bourg S'ORGANISE le long des routes : un petit cœur CIVIQUE serré, puis l'agglomération le
+		# long des routes ; l'anneau ne fait que combler le surplus (routes saturées / absentes).
+		# (FAÇADE WESTERN retirée — plus de rue principale sud à rangées qui se font face.)
 		idx = _place_zone(bk["civic"], civic_n, ctr, 3.0, 2.0, BLD_SIZE, false, idx, jit, sea, rset, r)
 		var along_pool: Array = bk["dwell"] + bk["craft"]
-		if mvr != null and mvr.has_method("tile_anchor_world"):
-			var aW: Vector2 = mvr.tile_anchor_world(ctr.x, ctr.y)
-			var sW: Vector2 = _main_street_end(aW, sea, rf)
-			idx = _place_western(r, aW, sW, along_pool, BLD_SIZE, idx, sea, rset)
 		var along_n := dwell_n + craft_n
 		idx = _place_road_houses(along_pool, r, BLD_SIZE, idx, sea, rset, 40.0, 4.0, along_n)
 		# le surplus comble en anneau autour du bourg
@@ -767,6 +776,7 @@ func _dress_rivers(sea: Image) -> void:
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
 	_road_tiles_dirty = true   # le réseau a pu croître/changer → reposer les tuiles de route
+	_road_cobbles_dirty = true # … et les cobbles
 	_bridges_dirty = true      # … et les ponts (un franchissement neuf)
 	var sig := _owner_signature(Sim.world)
 	if sig != _owner_sig:      # la souveraineté a changé (conquête/colonisation) →
@@ -815,7 +825,7 @@ func _ensure_roads(prebuild := false) -> void:
 				_road_start[rd["key"]] = yr0 - int(rd.get("nprov", 1)) - 1   # déjà bâtie (monde mûr)
 			else:
 				_road_start[rd["key"]] = yr0     # route NEUVE → chantier daté à maintenant (croît)
-	_build_main_streets()                    # rue principale (sud) de chaque bourg — la façade western
+	_main_streets.clear()                    # « route western » RETIRÉE (option supprimée) : plus de rue sud ni de façade
 	_build_road_dress()
 	_build_road_cells()                      # empreinte des routes (+ rues principales) → le bourg les évite
 	_roads_dirty = false
@@ -1075,7 +1085,8 @@ func _is_sea_cell(sea: Image, ix: int, iy: int) -> bool:
 
 ## le CHAMP DÉBIT carvé (L8) que le shader iso_blend rend en EAU — récupéré du nœud IsoGround voisin.
 ## Sert à interdire la BASE d'un asset dans l'eau de RIVIÈRE (la mer/lac est déjà couverte par la couche WATER).
-const RIVER_WATER_MIN := 0.36   ## champ ≥ ça = eau rendue (shader river_water 0.40) + marge de berge
+const RIVER_WATER_MIN := 0.26   ## champ ≥ ça = ZONE INTERDITE aux assets : l'eau rendue (shader 0.40) + une
+                                ## VRAIE marge de berge (les arbres/bâtis débordaient sur le fleuve) → plus rien dans/au bord du fleuve
 func _carved_river_field() -> Image:
 	var p := get_parent()
 	if p == null:
@@ -1310,7 +1321,8 @@ func _build_road_tiles(mv: Node2D) -> void:
 	_road_tiles_dirty = false
 	var grid := {}
 	for rd in _roads:
-		for p in rd["points"]:
+		var rtpts: PackedVector2Array = rd["points"]
+		for p in rtpts:
 			grid[Vector2i(int(p.x) / ROUTE_GRID_K, int(p.y) / ROUTE_GRID_K)] = true
 	for ms in _main_streets:
 		var a: Vector2 = ms["a"]
@@ -1349,6 +1361,60 @@ func _build_road_tiles(mv: Node2D) -> void:
 		var wx := float(cell.x * ROUTE_GRID_K) + float(ROUTE_GRID_K) * 0.5
 		var wy := float(cell.y * ROUTE_GRID_K) + float(ROUTE_GRID_K) * 0.5
 		_road_tiles.append({"ctr": mv.iso_pos(wx, wy), "tex": tex, "mask": m})
+
+## charge (1×) les 2 tuiles cobbles transparentes : [0]=flat, [1]=diagonale.
+func _load_road_detail() -> void:
+	if not _cobble_tex.is_empty():
+		return
+	for nm in ["scps_cobbles_sparse_flat_01", "scps_cobbles_sparse_flat_diagonal_01"]:
+		var p: String = ROAD_DETAIL_DIR + str(nm) + ".png"
+		var tex: Texture2D = null
+		if FileAccess.file_exists(p):
+			var img := Image.load_from_file(p)
+			if img != null:
+				tex = ImageTexture.create_from_image(img)
+		_cobble_tex.append(tex)
+
+## précalcule la pose des cobbles : une tuile par cellule de route, STAMPÉE À PLAT au dessin (le terrain
+## perce via l'alpha). Variante DIAGONALE suivant l'axe (monde-Y "/" / monde-X "\" miroité), flat aux jonctions.
+func _build_road_cobbles(mv: Node2D) -> void:
+	_load_road_detail()
+	_road_cobbles.clear()
+	_road_cobbles_dirty = false
+	if _cobble_tex.size() < 2:
+		return
+	var sea: Image = Sim.world.layer_image(LAYER_WATER)
+	var rf: Image = _carved_river_field()
+	var grid := {}
+	for rd in _roads:
+		var rpts: PackedVector2Array = rd["points"]
+		for p in rpts:
+			grid[Vector2i(int(p.x) / ROUTE_GRID_K, int(p.y) / ROUTE_GRID_K)] = true
+	for ms in _main_streets:
+		var a: Vector2 = ms["a"]
+		var s: Vector2 = ms["s"]
+		var n := maxi(1, int(a.distance_to(s)))
+		for k in range(n + 1):
+			var pp := a.lerp(s, float(k) / float(n))
+			grid[Vector2i(int(pp.x) / ROUTE_GRID_K, int(pp.y) / ROUTE_GRID_K)] = true
+	for ck in grid.keys():
+		var c: Vector2i = ck
+		var wcx := c.x * ROUTE_GRID_K + ROUTE_GRID_K / 2
+		var wcy := c.y * ROUTE_GRID_K + ROUTE_GRID_K / 2
+		if _is_sea_cell(sea, wcx, wcy) or _in_river_water(rf, wcx, wcy):
+			continue                          # eau → c'est le PONT qui franchit, pas de cobbles
+		var ew_conn := grid.has(Vector2i(c.x + 1, c.y)) or grid.has(Vector2i(c.x - 1, c.y))
+		var ns_conn := grid.has(Vector2i(c.x, c.y + 1)) or grid.has(Vector2i(c.x, c.y - 1))
+		var tex: Texture2D = _cobble_tex[0]   # défaut : semis flat (jonction / isolé)
+		var flip := false
+		if ns_conn and not ew_conn:
+			tex = _cobble_tex[1]              # route monde-Y → "/" sur écran : la diagonale telle quelle
+		elif ew_conn and not ns_conn:
+			tex = _cobble_tex[1]              # route monde-X → "\" : on MIROITE la diagonale
+			flip = true
+		if tex == null:
+			continue
+		_road_cobbles.append({"ctr": mv.iso_pos(float(wcx), float(wcy)), "tex": tex, "flip": flip})
 
 ## charge (1×) les 6 sprites de pont (start/span/end × EW/NS).
 func _load_bridges() -> void:
@@ -1420,8 +1486,16 @@ func _build_bridges(mv: Node2D) -> void:
 		var d: Vector2 = E - S
 		var ew := absf(d.x) >= absf(d.y)
 		var orient := "ew" if ew else "ns"
+		# le kit assemble TOUJOURS start→end dans le sens d'avance POSITIF (EW : +x · NS : +y ; le start
+		# porte sa culée au bout MIN). On ancre donc le START au bout MIN — sinon start/end s'inversent
+		# quand la route court dans l'autre sens.
 		var stepw := float(2 * ROUTE_GRID_K) if ew else float(ROUTE_GRID_K)
-		var stepv: Vector2 = (Vector2(signf(d.x), 0.0) if ew else Vector2(0.0, signf(d.y))) * stepw
+		var stepv: Vector2 = Vector2(stepw, 0.0) if ew else Vector2(0.0, stepw)
+		var anchor: Vector2
+		if ew:
+			anchor = S if S.x <= E.x else E
+		else:
+			anchor = S if S.y <= E.y else E
 		var span_axis := absf(d.x) if ew else absf(d.y)
 		var num := clampi(int(round(span_axis / stepw)) + 1, 2, 10)
 		for k in range(num):
@@ -1433,7 +1507,7 @@ func _build_bridges(mv: Node2D) -> void:
 			var tex: Texture2D = _bridge_tex.get(orient + "_" + piece)
 			if tex == null:
 				continue
-			var ctr: Vector2 = S + stepv * float(k)
+			var ctr: Vector2 = anchor + stepv * float(k)
 			_bridges.append({"tex": tex, "tl": ctr - Vector2(half, half), "sz": sz})
 
 ## largeur MONDE de la surface d'une route selon son niveau (artère/desserte/mineure),
@@ -1574,7 +1648,19 @@ func _draw_iso(w, mv: Node2D) -> void:
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
 		if ROADS_IN_SHADER:
-			# les ROUTES sont rendues par le terrain (iso_blend) ; l'overlay ne pose que les PONTS (RGBA, sur l'eau)
+			# ROUTE = cobbles TRANSPARENTS posés sur le terrain (le sol perce entre les pierres) ; PONTS au-dessus.
+			if _road_cobbles_dirty:
+				_build_road_cobbles(mv)
+			var chs := COBBLE_SZ * 0.5
+			for q in _road_cobbles:
+				var cc: Vector2 = q["ctr"]
+				var ct: Texture2D = q["tex"]
+				if q["flip"]:
+					draw_set_transform(cc, 0.0, Vector2(-1.0, 1.0))   # miroir H → diagonale "\"
+					draw_texture_rect(ct, Rect2(-chs, -chs, COBBLE_SZ, COBBLE_SZ), false, COBBLE_MOD)
+					draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				else:
+					draw_texture_rect(ct, Rect2(cc.x - chs, cc.y - chs, COBBLE_SZ, COBBLE_SZ), false, COBBLE_MOD)
 			if DRAW_BRIDGES:
 				if _bridges_dirty:
 					_build_bridges(mv)
