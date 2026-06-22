@@ -66,6 +66,16 @@ const ROADSIDE := [
 	"DRESS_ROCK_GRAY_A", "DRESS_ROCK_LIGHT", "DRESS_STONE_PILE", "DRESS_ROCK_GRAY_B",
 ]   # surtout des BUISSONS (ils CACHENT/adoucissent le bord), quelques cailloux
 
+# Traitement FRONT-END du tracé (l'A* moteur reste la vérité ; on en lisse la SORTIE, hors tick) :
+#  · SNAP : raccord d'extrémité PROPRE (trim des points qui tanglent près de l'ancre de ville) ;
+#  · PATHFINDING (rendu) : ré-échantillonnage à PAS CONSTANT + Chaikin GARDÉ-EAU (courbe nette qui
+#    épouse la côte sans la couper) ;
+#  · ASSETS : mobilier semé à l'ARC (espacement RÉGULIER, indépendant de la densité de points).
+const ROAD_RESAMPLE := 2.0       ## pas d'échantillonnage du tracé (cellules) → points réguliers
+const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'ancre de ville (cellules)
+const ROAD_DRESS_SPACING := 5.5  ## un mobilier tous les N cellules (RÉGULARITÉ)
+const ROAD_DRESS_OFF := 0.95     ## décalage SUD constant du mobilier (marge uniforme)
+
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
 	12: ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_GROVE_BROADLEAF", "DRESS_TREE_POPLAR"],  # FOREST : feuillus
@@ -652,8 +662,12 @@ func _build_road_cells() -> void:
 ## la cadence « 1 an/province ») + une CLÉ stable (paire de régions des extrémités) pour
 ## retenir l'année de début de chantier à travers les reconstructions du réseau.
 func _augment_roads(w) -> void:
+	var sea: Image = w.layer_image(LAYER_WATER)
+	var rf: Image = _carved_river_field()
+	var mv := _mv_ref()
 	for rd in _roads:
 		var pts: PackedVector2Array = rd["points"]
+		# PROVINCES traversées (cadence du chantier 1 an/province) — sur le tracé BRUT (A*).
 		var np := 1
 		var last := -999
 		for p in pts:
@@ -666,17 +680,19 @@ func _augment_roads(w) -> void:
 		var ra: int = w.province_region(w.province_at(int(pts[0].x), int(pts[0].y)))
 		var rb: int = w.province_region(w.province_at(int(pts[pts.size() - 1].x), int(pts[pts.size() - 1].y)))
 		rd["key"] = (mini(ra, rb) & 0xfff) * 4096 + (maxi(ra, rb) & 0xfff)
-		# ORIENTATION OFFICIELLE : les extrémités rejoignent le SOMMET BAS de la tuile de la ville
-		# (tile_anchor_world) — EXACTEMENT le point où le centre-ville branche sa propre route. La
-		# route entre donc par le bas du losange (le centre, ancré là, couvre l'arrière par le haut).
-		var mv := _mv_ref()
+		# SNAP : les extrémités rejoignent le SOMMET BAS de la tuile de ville (où le centre-ville branche
+		# sa route) avec un TRIM propre — on retire les points A* qui tanglent dans le rayon de l'ancre →
+		# approche RADIALE nette (plus de connecteur tordu).
 		if mv != null and mv.has_method("tile_anchor_world"):
 			if _region_anchor.has(ra):
 				var a0: Vector2 = _region_anchor[ra]
-				pts[0] = mv.tile_anchor_world(a0.x, a0.y)
+				pts = _snap_endpoint(pts, mv.tile_anchor_world(a0.x, a0.y), true)
 			if _region_anchor.has(rb):
 				var a1: Vector2 = _region_anchor[rb]
-				pts[pts.size() - 1] = mv.tile_anchor_world(a1.x, a1.y)
+				pts = _snap_endpoint(pts, mv.tile_anchor_world(a1.x, a1.y), false)
+		# PATHFINDING (rendu) : ré-échantillonnage à pas constant + Chaikin gardé-eau → courbe propre,
+		# points réguliers — sans jamais couper la côte (l'A* moteur reste la vérité du chemin).
+		pts = _smooth_resample_road(pts, sea, rf)
 		rd["points"] = pts
 
 ## portion BÂTIE d'un tracé (du départ, par longueur) — `frac` ∈ [0,1] → croissance organique.
@@ -701,10 +717,91 @@ func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
 		out.append(pts[i + 1])
 	return out
 
-## sème le MOBILIER de bord de route : à intervalle régulier le long de chaque tracé, un
-## décor (buisson/rocher/borne) DÉCALÉ perpendiculairement, côté alterné — hors de l'eau.
-## Chaque item retient SA route (index) → n'apparaît qu'une fois le chantier ACHEVÉ.
-const DRAW_ROAD_DRESS := true    # MOBILIER de bord de route ON : buissons/cailloux SPORADIQUES, posés
+## SNAP d'extrémité : retire les points qui tanglent dans le rayon de l'ancre, puis raccorde l'ancre
+## au 1er point survivant → approche RADIALE nette vers la ville (toujours ≥ 2 points).
+func _snap_endpoint(pts: PackedVector2Array, anchor: Vector2, from_start: bool) -> PackedVector2Array:
+	if pts.size() < 3:
+		var two := PackedVector2Array()
+		if from_start:
+			two.append(anchor); two.append(pts[pts.size() - 1])
+		else:
+			two.append(pts[0]); two.append(anchor)
+		return two
+	var out := PackedVector2Array()
+	if from_start:
+		var i := 0
+		while i < pts.size() - 2 and pts[i].distance_to(anchor) < ROAD_SNAP_TRIM:
+			i += 1
+		out.append(anchor)
+		for k in range(i, pts.size()):
+			out.append(pts[k])
+	else:
+		var j := pts.size() - 1
+		while j > 1 and pts[j].distance_to(anchor) < ROAD_SNAP_TRIM:
+			j -= 1
+		for k in range(0, j + 1):
+			out.append(pts[k])
+		out.append(anchor)
+	return out
+
+## ré-échantillonne un tracé à PAS CONSTANT (cellules) — points réguliers, water-safe (on interpole
+## sur des segments DÉJÀ sûrs). Garde exactement la 1re et la dernière position (le snapping tient).
+func _resample_polyline(pts: PackedVector2Array, spacing: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if pts.size() < 2:
+		return pts
+	out.append(pts[0])
+	var cur: Vector2 = pts[0]
+	var acc := 0.0
+	var i := 1
+	while i < pts.size():
+		var nxt: Vector2 = pts[i]
+		var seg := cur.distance_to(nxt)
+		if seg < 0.0001:
+			cur = nxt; i += 1; continue
+		if acc + seg >= spacing:
+			cur = cur.lerp(nxt, (spacing - acc) / seg)
+			out.append(cur)
+			acc = 0.0
+		else:
+			acc += seg
+			cur = nxt
+			i += 1
+	var endp: Vector2 = pts[pts.size() - 1]
+	if out[out.size() - 1].distance_to(endp) > 0.001:
+		out.append(endp)
+	return out
+
+## Chaikin (corner-cutting) GARDÉ-EAU : un point coupé qui tomberait en eau (mer/lac/rivière) est
+## remplacé par le coin d'origine → la route se LISSE partout SAUF à la côte, qu'elle continue d'épouser.
+func _chaikin_safe(pts: PackedVector2Array, sea: Image, rf: Image) -> PackedVector2Array:
+	if pts.size() < 3:
+		return pts
+	var out := PackedVector2Array()
+	out.append(pts[0])
+	for i in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var q := a.lerp(b, 0.25)
+		var r := a.lerp(b, 0.75)
+		out.append(a if (_is_sea_cell(sea, int(q.x), int(q.y)) or _in_river_water(rf, int(q.x), int(q.y))) else q)
+		out.append(b if (_is_sea_cell(sea, int(r.x), int(r.y)) or _in_river_water(rf, int(r.x), int(r.y))) else r)
+	out.append(pts[pts.size() - 1])
+	return out
+
+## tracé RENDU : ré-échantillonné régulier + 2 passes Chaikin gardées-eau (courbe propre, extrémités fixes).
+func _smooth_resample_road(pts: PackedVector2Array, sea: Image, rf: Image) -> PackedVector2Array:
+	if pts.size() < 3:
+		return pts
+	var rs := _resample_polyline(pts, ROAD_RESAMPLE)
+	rs = _chaikin_safe(rs, sea, rf)
+	rs = _chaikin_safe(rs, sea, rf)
+	return rs
+
+## sème le MOBILIER de bord de route par MARCHE À L'ARC : un décor tous les ROAD_DRESS_SPACING
+## cellules (espacement RÉGULIER, indépendant de la densité de points), décalé d'une marge SUD
+## CONSTANTE. Chaque item retient SA route (index) → n'apparaît qu'une fois le chantier ACHEVÉ.
+const DRAW_ROAD_DRESS := true    # MOBILIER de bord de route ON : buissons/cailloux RÉGULIERS, posés
                                  # côté SUD de la chaussée (devant, proj.y plus grand) → le « petit effet sud ».
 func _build_road_dress() -> void:
 	_road_dress.clear()
@@ -715,28 +812,31 @@ func _build_road_dress() -> void:
 		return
 	var sea: Image = w.layer_image(LAYER_WATER)
 	var rf: Image = _carved_river_field()          # le mobilier ne tombe pas dans l'eau de rivière (pont)
-	var step := 5                                  # un décor tous les ~5 points → marge SUD ~continue
 	for ri in range(_roads.size()):
 		var pts: PackedVector2Array = _roads[ri]["points"]
-		var n := pts.size()
-		if n < step * 2:
+		if pts.size() < 2:
 			continue
-		var k := step
-		while k < n - step:
-			var a: Vector2 = pts[k - 1]
-			var b: Vector2 = pts[min(k + 1, n - 1)]
-			var dir := b - a
-			if dir.length() > 0.01:
-				dir = dir.normalized()
-				var perp := Vector2(-dir.y, dir.x)
-				if perp.x + perp.y < 0.0:
-					perp = -perp                                  # vers le SUD écran (proj.y plus GRAND = devant/bas)
-				var h := (k * 2654435761 + int(pts[k].x) * 40503) & 0x7fffffff
-				var off := 0.7 + float((h >> 3) % 5) / 8.0        # ~0.7..1.2 : COLLÉ au bord SUD (chevauche → cache)
-				var p: Vector2 = pts[k] + perp * off
+		var carry := ROAD_DRESS_SPACING * 0.5      # 1er item à demi-pas du départ
+		var slot := 0
+		for i in range(1, pts.size()):
+			var a: Vector2 = pts[i - 1]
+			var b: Vector2 = pts[i]
+			var seg := a.distance_to(b)
+			if seg < 0.0001:
+				continue
+			var dir := (b - a) / seg
+			var perp := Vector2(-dir.y, dir.x)
+			if perp.x + perp.y < 0.0:
+				perp = -perp                       # marge SUD écran (proj.y plus GRAND = devant/bas)
+			var t := carry
+			while t <= seg:
+				slot += 1
+				var p: Vector2 = a + dir * t + perp * ROAD_DRESS_OFF
 				if not _is_sea_cell(sea, int(p.x), int(p.y)) and not _in_river_water(rf, int(p.x), int(p.y)):
-					_road_dress.append({"name": ROADSIDE[h % ROADSIDE.size()], "pos": p, "road": ri})
-			k += step
+					var hh := (slot * 2654435761 + ri * 40503) & 0x7fffffff
+					_road_dress.append({"name": ROADSIDE[hh % ROADSIDE.size()], "pos": p, "road": ri})
+				t += ROAD_DRESS_SPACING
+			carry = t - seg                        # reliquat reporté au segment suivant → pas CONTINU
 
 ## VRAI si la cellule est de l'eau (mer, toute classe ≥ 1) — pour ne rien semer dessus.
 func _is_sea_cell(sea: Image, ix: int, iy: int) -> bool:
