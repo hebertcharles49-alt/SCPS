@@ -83,6 +83,14 @@ const DRESS_HILL := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT
 const DRESS_CLIFF := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_DARK", "DRESS_ROCK_SPIRES", "DRESS_STONE_PILE", "DRESS_STONE_SLABS", "DRESS_BUSH_DRY", "DRESS_BUSH_THORNY", "DRESS_BUSH_LOW"]
 const DRESS_SNOW := ["DRESS_TREE_PINE_SNOW", "DRESS_ROCK_SNOW", "DRESS_BRANCH_SNOW", "DRESS_ROCK_GRAY_B"]
 const DRESS_RIVER := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT", "DRESS_ROCK_MOSSY", "DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_REEDS_GREEN", "DRESS_PEBBLE_PATH", "DRESS_GRASS_CATTAIL"]
+# STEPPE/SAVANE (brun, sec) : couvrir de TOUFFES d'herbe dorée (ground cover, pas des cailloux),
+# quelques buissons secs, rare arbre tordu — densité haute mais BAS (l'herbe ne fait pas de clutter).
+const DRESS_STEPPE := ["DRESS_GRASS_GOLD", "DRESS_GRASS_GOLD", "DRESS_GRASS_GOLD", "DRESS_GRASS_GOLD",
+	"DRESS_GRASS_CATTAIL", "DRESS_GRASS_GOLD", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW", "DRESS_BUSH_LOW", "DRESS_TREE_GNARLED"]
+# TOURBIÈRE/LANDE (brun humide) : mousse, roseaux, herbe mouillée, snags morts — dense (terre couverte), peu de cailloux
+const DRESS_BOG := ["DRESS_MOSS_PATCH", "DRESS_GRASS_WET", "DRESS_REEDS_DRY", "DRESS_BUSH_LOW",
+	"DRESS_TREE_DEAD", "DRESS_REEDS_GREEN", "DRESS_MUSHROOMS", "DRESS_TREE_GNARLED", "DRESS_ROOT_CLUSTER",
+	"DRESS_FERNS", "DRESS_GRASS_CATTAIL", "DRESS_ROCK_MOSSY"]
 
 # biome → variante de ville TERRAIN (CITY_BIOME_*). SEULEMENT les terrains
 # DISTINCTIFS (côte/forêt/marais/montagne/neige…) ; les plaines génériques (4-10)
@@ -475,12 +483,16 @@ const DRAW_DECOR := true
 func _dress_rule(b: int) -> Array:
 	if FOREST_TREES.has(b):
 		return [FOREST_TREES[b], 0.55, 12.0]                  # FORÊT : dense
-	if b == 4 or b == 5 or b == 6 or b == 7 or b == 8 or b == 24:
+	if b == 4 or b == 5 or b == 6 or b == 24:
 		return [DRESS_OPEN, 0.085, 11.0]                      # PLAINE/herbe : ARBRES sporadiques (un peu plus)
+	if b == 7 or b == 8:
+		return [DRESS_STEPPE, 0.22, 9.0]                      # STEPPE/SAVANE (brun) : touffes d'herbe sèche couvrantes, buissons épars
 	if b == 9 or b == 10 or b == 11:
 		return [DRESS_DRY, 0.04, 9.0]                         # ARIDE/désert : buissons secs épars
-	if b == 15 or b == 21 or b == 22:
-		return [DRESS_MARSH, 0.22, 9.0]                       # MARAIS : roseaux, arbres morts, champignons (moins de cailloux)
+	if b == 22:
+		return [DRESS_BOG, 0.26, 8.5]                         # TOURBIÈRE/LANDE (brun humide) : mousse, roseaux, snags — couvrant
+	if b == 15 or b == 21:
+		return [DRESS_MARSH, 0.22, 9.0]                       # MARAIS/mangrove : roseaux, arbres morts, champignons (moins de cailloux)
 	if b == 16 or b == 17:
 		return [DRESS_HILL, 0.10, 9.0]                        # COLLINES/highlands : cailloux + buissons (allégé)
 	if b == 18 or b == 23:
@@ -500,6 +512,7 @@ func _build_decor() -> void:
 	if bio == null:
 		return
 	var sea: Image = w.layer_image(LAYER_WATER)
+	var rf: Image = _carved_river_field()         # eau de RIVIÈRE carvée (ce que le shader rend) → pas de BASE dedans
 	var mw := bio.get_width()
 	var mh := bio.get_height()
 	var stride := 3
@@ -521,8 +534,12 @@ func _build_decor() -> void:
 			var pool: Array = rule[0]
 			var jx := (float((h >> 3) % 7) - 3.0) * 0.4   # jitter ORGANIQUE (pas un quadrillage)
 			var jy := (float((h >> 7) % 7) - 3.0) * 0.4
+			var bx := cx + jx
+			var by := cy + jy
+			if _in_river_water(rf, int(bx), int(by)):
+				continue                            # la BASE tomberait dans l'eau de rivière → interdit
 			var sz: float = float(rule[2]) * (0.82 + 0.36 * float((h >> 15) % 10) / 10.0)
-			_decor.append({"name": pool[(h >> 11) % pool.size()], "pos": Vector2(cx + jx, cy + jy), "sz": sz})
+			_decor.append({"name": pool[(h >> 11) % pool.size()], "pos": Vector2(bx, by), "sz": sz})
 			if _decor.size() >= 16000:
 				break
 		if _decor.size() >= 16000:
@@ -534,6 +551,7 @@ func _build_decor() -> void:
 ## cailloux/buissons/roseaux SPORADIQUES le long du fil de rivière (le nuage worldgen) — la berge
 ## habillée. Léger décalage du fil, jamais dans l'eau ni dans une clairière de bourg.
 func _dress_rivers(sea: Image) -> void:
+	var rf: Image = _carved_river_field()
 	for rp in _rivers:
 		var cx := int(rp.x)
 		var cy := int(rp.y)
@@ -545,6 +563,8 @@ func _dress_rivers(sea: Image) -> void:
 			continue
 		if sea != null and _is_sea_cell(sea, int(p.x), int(p.y)):
 			continue
+		if _in_river_water(rf, int(p.x), int(p.y)):
+			continue                                # la BASE tomberait dans l'eau → la berge, jamais le lit
 		_decor.append({"name": DRESS_RIVER[(h >> 11) % DRESS_RIVER.size()], "pos": p, "sz": 7.0})
 		if _decor.size() >= 17000:
 			return
@@ -682,6 +702,7 @@ func _build_road_dress() -> void:
 	if w == null:
 		return
 	var sea: Image = w.layer_image(LAYER_WATER)
+	var rf: Image = _carved_river_field()          # le mobilier ne tombe pas dans l'eau de rivière (pont)
 	var step := 5                                  # un décor tous les ~5 points → marge SUD ~continue
 	for ri in range(_roads.size()):
 		var pts: PackedVector2Array = _roads[ri]["points"]
@@ -701,7 +722,7 @@ func _build_road_dress() -> void:
 				var h := (k * 2654435761 + int(pts[k].x) * 40503) & 0x7fffffff
 				var off := 0.7 + float((h >> 3) % 5) / 8.0        # ~0.7..1.2 : COLLÉ au bord SUD (chevauche → cache)
 				var p: Vector2 = pts[k] + perp * off
-				if not _is_sea_cell(sea, int(p.x), int(p.y)):       # jamais dans l'eau
+				if not _is_sea_cell(sea, int(p.x), int(p.y)) and not _in_river_water(rf, int(p.x), int(p.y)):
 					_road_dress.append({"name": ROADSIDE[h % ROADSIDE.size()], "pos": p, "road": ri})
 			k += step
 
@@ -710,6 +731,24 @@ func _is_sea_cell(sea: Image, ix: int, iy: int) -> bool:
 	if sea == null or ix < 0 or iy < 0 or ix >= sea.get_width() or iy >= sea.get_height():
 		return false
 	return int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1
+
+## le CHAMP DÉBIT carvé (L8) que le shader iso_blend rend en EAU — récupéré du nœud IsoGround voisin.
+## Sert à interdire la BASE d'un asset dans l'eau de RIVIÈRE (la mer/lac est déjà couverte par la couche WATER).
+const RIVER_WATER_MIN := 0.36   ## champ ≥ ça = eau rendue (shader river_water 0.40) + marge de berge
+func _carved_river_field() -> Image:
+	var p := get_parent()
+	if p == null:
+		return null
+	var g = p.get_node_or_null("IsoGround")
+	if g != null and g.has_method("river_field"):
+		return g.river_field(Sim.world)
+	return null
+
+## VRAI si la BASE (ix,iy) tombe dans l'eau de rivière carvée (≥ river_water) → pas d'asset dessus.
+func _in_river_water(rf: Image, ix: int, iy: int) -> bool:
+	if rf == null or ix < 0 or iy < 0 or ix >= rf.get_width() or iy >= rf.get_height():
+		return false
+	return rf.get_pixel(ix, iy).r >= RIVER_WATER_MIN
 
 func _process(_dt: float) -> void:
 	# pendant un cataclysme, on redessine en continu pour PULSER l'épicentre

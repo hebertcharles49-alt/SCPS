@@ -56,6 +56,7 @@ var _shaded := false        ## le shader de fondu directionnel (rivage) est mont
 var _terr_arr: Texture2DArray = null   ## texture-array des sols PLATS, indexée par BIOME
 var _bmap: ImageTexture = null         ## couche biome → texture (R = biome/255) pour le splat shader
 var _river_map: ImageTexture = null    ## couche DÉBIT (c->river/255) → le shader carve la rivière comme l'eau
+var _river_field: Image = null         ## la MÊME couche débit en Image L8 (échantillonnée par l'overlay : pas d'asset BASE dans l'eau de rivière)
 var _cliff_arr: Texture2DArray = null  ## 94 tuiles d'autotile falaise (ordre des entrées JSON)
 var _cliff_mask := {}                  ## mask blob (canon) → [layerA, layerB] (couches du _cliff_arr)
 var _cliff_idx: ImageTexture = null    ## carte PAR CELLULE : R = layer+1 (0 = pas de falaise)
@@ -354,6 +355,7 @@ func _on_generated() -> void:
 	_active = UIKit.has_iso_tiles()
 	_bmap = null            # nouveau monde → recharge la carte des biomes pour le splat
 	_river_map = null       # … et la couche débit (rivières carvées)
+	_river_field = null
 	_cliff_idx = null       # … et recalcule l'autotile falaise (+ distance + biome de sommet)
 	_cliff_h = null
 	_cliff_topbio = null
@@ -382,7 +384,9 @@ func _draw() -> void:
 		if _bmap == null:
 			_bmap = ImageTexture.create_from_image(bio)
 		if _river_map == null:
-			_river_map = ImageTexture.create_from_image(_build_river_field(w, W, H))
+			if _river_field == null:
+				_river_field = _build_river_field(w, W, H)
+			_river_map = ImageTexture.create_from_image(_river_field)
 		if _cliff_idx == null:
 			_build_cliff_idx(w, bio, W, H)
 		mat.set_shader_parameter("biome_map", _bmap)
@@ -399,6 +403,13 @@ func _draw() -> void:
 		mat.set_shader_parameter("tile_k", float(TILE_K))
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
 	draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))
+
+## le CHAMP DÉBIT carvé (L8), bâti à la DEMANDE et mis en cache — la MÊME donnée que le shader rend en
+## eau. L'overlay l'échantillonne pour interdire la BASE d'un asset dans l'eau de rivière (≥ river_water).
+func river_field(w) -> Image:
+	if _river_field == null and w != null and w.has_method("map_w"):
+		_river_field = _build_river_field(w, int(w.map_w()), int(w.map_h()))
+	return _river_field
 
 ## bâtit le CHAMP DÉBIT à graver : la worldgen sème des fleuves partout → on ne garde QUE les majeurs
 ## (cluster par embouchure, tronc le plus long par système), gravés en CONTINU (pinceau ∝ débit) dans
