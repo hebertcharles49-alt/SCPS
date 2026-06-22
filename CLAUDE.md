@@ -1,5 +1,21 @@
 # SCPS — conventions du dépôt
 
+## Principes de collaboration (non négociables)
+
+- **Demander, ne pas supposer.** Si quelque chose n'est pas clair, demander AVANT
+  d'écrire une seule ligne. Jamais de supposition silencieuse sur l'intention,
+  l'architecture ou les exigences.
+- **La solution la plus simple d'abord.** Toujours implémenter la chose la plus simple
+  qui puisse marcher. Pas d'abstraction ni de flexibilité non explicitement demandée.
+- **Ne pas toucher au code hors sujet.** Si un fichier ou une fonction n'est pas
+  directement concerné par la tâche en cours, ne pas le modifier — même si on pense
+  pouvoir l'améliorer.
+- **Signaler l'incertitude explicitement.** En cas de doute sur une approche ou un
+  détail technique, le dire avant de continuer. La confiance sans certitude fait plus
+  de dégâts qu'un manque admis.
+- **Ouvert aux meilleures idées.** Ne pas hésiter à proposer une meilleure façon de
+  faire, ou une qui a un impact durable plutôt qu'un correctif tactique.
+
 ## Build & vérification
 
 - `make` → `core_demo` (35 contrôles auto-vérifiés, sortie ≠ 0 si échec).
