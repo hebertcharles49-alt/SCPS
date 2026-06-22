@@ -45,6 +45,7 @@ var _owner_sig := -1      ## signature de la photo des propriétaires → détec
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
 var _road_dress := []     ## [{name, pos, road}] — mobilier de BORDURE (apparaît à la FIN du chantier)
 var _road_cells := {}     ## cellules occupées par une route (+ marge) → le bourg en SPIRALE les évite
+var _main_streets := []   ## [{a, s, r}] — RUE PRINCIPALE (vers le sud/avant) de chaque bourg (façade western)
 var _road_start := {}     ## clé de route → ANNÉE de début de chantier (croissance 1 an/province)
 var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les routes
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
@@ -75,6 +76,7 @@ const ROADSIDE := [
 const ROAD_RESAMPLE := 2.0       ## pas d'échantillonnage du tracé (cellules) → points réguliers
 const ROAD_SNAP_TRIM := 4.5      ## rayon de nettoyage des points près de l'ancre de ville (cellules)
 const ROAD_DRESS_OFF := 0.95     ## décalage SUD de base du mobilier (marge)
+const MAIN_ST_LEN := 7.0         ## longueur de la RUE PRINCIPALE (vers le sud/avant) — la façade western
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
 const FOREST_TREES := {
@@ -505,6 +507,38 @@ func _place_road_houses(pool: Array, r: int, base_sz: float, idx: int, sea: Imag
 				return idx
 	return idx
 
+## FAÇADE WESTERN : deux rangées de bâtiments SERRÉS se faisant face le long de la rue principale
+## (a → s, vers le sud). Le bourg s'agrège ensuite autour (cf. _place_road_houses + anneau).
+func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float, idx: int,
+		sea: Image, rset: Dictionary) -> int:
+	if pool.is_empty():
+		return idx
+	var d := s - a
+	var lng := d.length()
+	if lng < 2.0:
+		return idx
+	var dir := d / lng
+	var perp := Vector2(-dir.y, dir.x)
+	var t := 1.6                                          # 1re façade juste après le pied du centre
+	var sidx := 0
+	while t <= lng + 0.5:
+		for side in [1.0, -1.0]:                          # les DEUX rives se font face (la grand-rue)
+			var hh := ((r * 2654435761) ^ (sidx * 40503 + (1 if side > 0.0 else 2) * 7919)) & 0x7fffffff
+			sidx += 1
+			idx += 1
+			var off := 1.6 + float(hh % 50) / 100.0       # 1.6..2.1 : serré contre la rue
+			var p: Vector2 = a + dir * t + perp * (side * off)
+			if _road_cells.has(Vector2i(int(p.x), int(p.y))):
+				continue
+			if not _footprint_clear(sea, rset, p, base_sz * 0.5, base_sz):
+				continue
+			if _is_cliff_base(p):
+				continue
+			_structures.append({"name": pool[(hh ^ (hh >> 5)) % pool.size()], "pos": p, "sz": base_sz,
+				"flip": side < 0.0})
+		t += 2.1                                          # rangée serrée le long de la rue
+	return idx
+
 ## bâtit, pour chaque ville, une AGGLOMÉRATION cohérente AUTOUR du centre urbain :
 ## un cœur CIVIQUE, une couronne d'ATELIERS (∝ bâtiments posés), une ceinture de
 ## LOGEMENTS (∝ population), et au large quelques CHAMPS épars (le disparate, ponctuel).
@@ -518,6 +552,8 @@ func _build_structures() -> void:
 		return
 	var bk := _buckets(names)
 	var sea: Image = w.layer_image(LAYER_WATER)   # mer OU lac : 0 = terre, ≥ 1 = eau (toute classe)
+	var rf: Image = _carved_river_field()         # rivière carvée → l'avant de la rue principale l'évite
+	var mvr := _mv_ref()
 	_bio_img = w.layer_image(2)                   # biome → interdit le PIED d'asset sur tuile falaise
 	# ensemble des cellules de RIVIÈRE (on ne bâtit pas dessus non plus) ──────────
 	var rset := {}
@@ -545,11 +581,15 @@ func _build_structures() -> void:
 		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`). Les rayons
 		# ENTOURENT le centre (≈ demi-largeur 9) : le bourg RING le cœur (visible autour),
 		# il ne se cache pas dessous. Scatter organique (Londres), pas une grille.
-		# le bourg S'ORGANISE AUTOUR DES ROUTES : un petit cœur CIVIQUE serré au pied du centre, puis
-		# ateliers + logements ALIGNÉS LE LONG DES ROUTES (la rue-village). L'anneau ne fait que combler
-		# le surplus quand les routes sont saturées (grosse ville) ou absentes.
+		# le bourg S'ORGANISE AUTOUR DE LA RUE PRINCIPALE : un petit cœur CIVIQUE serré, la FAÇADE WESTERN
+		# (deux rangées qui se font face le long de la rue sud), puis l'agglomération le long des AUTRES
+		# routes ; l'anneau ne fait que combler le surplus (routes saturées / absentes).
 		idx = _place_zone(bk["civic"], civic_n, ctr, 3.0, 2.0, BLD_SIZE, false, idx, jit, sea, rset, r)
 		var along_pool: Array = bk["dwell"] + bk["craft"]
+		if mvr != null and mvr.has_method("tile_anchor_world"):
+			var aW: Vector2 = mvr.tile_anchor_world(ctr.x, ctr.y)
+			var sW: Vector2 = _main_street_end(aW, sea, rf)
+			idx = _place_western(r, aW, sW, along_pool, BLD_SIZE, idx, sea, rset)
 		var along_n := dwell_n + craft_n
 		idx = _place_road_houses(along_pool, r, BLD_SIZE, idx, sea, rset, 40.0, 4.0, along_n)
 		idx = _place_zone(bk["dwell"], maxi(0, along_n - _road_placed), ctr, 6.0, 7.0, BLD_SIZE, true, idx, jit, sea, rset, r)
@@ -708,8 +748,9 @@ func _ensure_roads(prebuild := false) -> void:
 				_road_start[rd["key"]] = yr0 - int(rd.get("nprov", 1)) - 1   # déjà bâtie (monde mûr)
 			else:
 				_road_start[rd["key"]] = yr0     # route NEUVE → chantier daté à maintenant (croît)
+	_build_main_streets()                    # rue principale (sud) de chaque bourg — la façade western
 	_build_road_dress()
-	_build_road_cells()                      # empreinte des routes → le bourg en spirale les évite
+	_build_road_cells()                      # empreinte des routes (+ rues principales) → le bourg les évite
 	_roads_dirty = false
 	_struct_dirty = true                     # les routes ont bougé → le bourg se recale (évitement)
 
@@ -720,11 +761,49 @@ func _build_road_cells() -> void:
 	for rd in _roads:
 		var pts: PackedVector2Array = rd["points"]
 		for p in pts:
-			var bx := int(p.x)
-			var by := int(p.y)
-			for dy in range(-1, 2):
-				for dx in range(-1, 2):
-					_road_cells[Vector2i(bx + dx, by + dy)] = true
+			_stamp_cell(int(p.x), int(p.y))
+	for ms in _main_streets:                         # la rue principale compte AUSSI comme chaussée
+		var a: Vector2 = ms["a"]
+		var s: Vector2 = ms["s"]
+		var n := maxi(1, int(a.distance_to(s)))
+		for k in range(n + 1):
+			var p := a.lerp(s, float(k) / float(n))
+			_stamp_cell(int(p.x), int(p.y))
+
+func _stamp_cell(bx: int, by: int) -> void:
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			_road_cells[Vector2i(bx + dx, by + dy)] = true
+
+## extrémité de la RUE PRINCIPALE : on pousse vers l'AVANT (iso-sud = +x+y monde) ; si l'avant strict
+## est en eau (bourg côtier), on tente avant-est puis avant-ouest ; sinon pas de rue (retour = ancre).
+func _main_street_end(a: Vector2, sea: Image, rf: Image) -> Vector2:
+	for d in [Vector2(0.707, 0.707), Vector2(0.917, 0.4), Vector2(0.4, 0.917)]:
+		var s: Vector2 = a + d * MAIN_ST_LEN
+		if not _is_sea_cell(sea, int(s.x), int(s.y)) and not _in_river_water(rf, int(s.x), int(s.y)):
+			return s
+	return a
+
+## pour chaque bourg : la RUE PRINCIPALE = un court tronçon de l'ancre (pied du centre) vers l'avant
+## (sud). Elle rejoint les autres routes À L'ANCRE (pas un stub flottant) et porte la façade western.
+func _build_main_streets() -> void:
+	_main_streets.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	var mv := _mv_ref()
+	if mv == null or not mv.has_method("tile_anchor_world"):
+		return
+	var sea: Image = w.layer_image(LAYER_WATER)
+	var rf: Image = _carved_river_field()
+	for r in range(w.region_count()):
+		if w.region_tier(r) < 0 or not _region_anchor.has(r):
+			continue
+		var ctr: Vector2 = _region_anchor[r]
+		var a: Vector2 = mv.tile_anchor_world(ctr.x, ctr.y)
+		var s: Vector2 = _main_street_end(a, sea, rf)
+		if a.distance_to(s) >= 2.0:
+			_main_streets.append({"a": a, "s": s, "r": r})
 
 ## méta LOCALE par route (sans toucher la façade) : nombre de PROVINCES traversées (pour
 ## la cadence « 1 an/province ») + une CLÉ stable (paire de régions des extrémités) pour
@@ -1192,6 +1271,13 @@ func _draw_iso(w, mv: Node2D) -> void:
 					built.append({"poly": ipoly, "w": _road_width(int(rd["level"]), zoom)})
 				if frac >= 1.0:
 					done[ri] = true
+			# RUES PRINCIPALES (toujours bâties) : court tronçon SUD de chaque bourg → porte la façade
+			# western ; rejoint le réseau à l'ANCRE (même entrée), fusionnée par les passes UNION ci-dessous.
+			for ms in _main_streets:
+				var msp := PackedVector2Array()
+				msp.append(mv.iso_pos((ms["a"] as Vector2).x, (ms["a"] as Vector2).y))
+				msp.append(mv.iso_pos((ms["s"] as Vector2).x, (ms["s"] as Vector2).y))
+				built.append({"poly": msp, "w": _road_width(1, zoom)})
 			# 3 passes UNION (casing/fill OPAQUES → les recouvrements FUSIONNENT sans double-assombrir) ;
 			# le halo doux est TIGHT et discret (l'ancien +4/zoom α.22 boursouflait/floutait la route).
 			for bp in built:
