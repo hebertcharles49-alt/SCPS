@@ -85,10 +85,17 @@ uniform float road_feather = 0.12;                           // bord de la sente
 uniform float road_dirt_reach = 0.28;                        // portée du halo (élargit la sente, dégradé)
 uniform float road_dirt_str = 0.55;                          // force du halo (par rapport au cœur)
 uniform vec3 road_worn = vec3(0.60, 0.53, 0.44);             // TEINTE de la sente : MULTIPLIE le terrain (sol usé/tassé) — assez SOMBRE pour que les cobbles CLAIRS contrastent
-// COBBLES : tuile RGBA transparente échantillonnée sur le PLAN DU SOL (UV losange fract(cell/tile_k)) →
-// angle iso correct, comme une vraie tuile ; composée par-dessus la sente usée, masquée à la bande de route.
-uniform sampler2D cobble_tex : filter_linear, repeat_enable;   // pas de mipmap → pas de couture au bord de tuile (fract)
+// COBBLES : 2 tuiles RGBA (couche 0 = flat, rangées 0° · couche 1 = diagonale, rangées ~-25° = angle iso).
+// Échantillonnées en ESPACE ÉCRAN puis ROTÉES sur l'axe de la route (les rangées suivent la chaussée),
+// car les tuiles sont authorées aux angles iso (pas faites pour être cisaillées sur le plan du sol).
+// Route monde-X ("\") → tuile flat tournée à +26,6° ; route monde-Y ("/") → tuile diagonale (déjà "/").
+uniform sampler2DArray cobble_arr : filter_linear, repeat_enable;
 uniform vec3 cobble_tint = vec3(1.12, 1.07, 0.98);           // éclaircissement chaud → les pierres TRANCHENT
+// La tuile fait 8 pavés de LARGE × 3 rangées de HAUT : on mappe sa LARGEUR le LONG de la route (répétée)
+// et sa HAUTEUR (les 3 rangées) EN TRAVERS (la largeur de la chaussée) → le ruban se remplit de pavés.
+uniform float cobble_along = 7.0;                            // étendue ISO le long de la route (taille pavé)
+uniform float cobble_cross = 3.0;                            // étendue ISO en travers (≈ largeur de la chaussée)
+uniform float cobble_phi_diag = -0.436;                      // angle authoré des rangées de la tuile diagonale (rad)
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
@@ -265,12 +272,16 @@ void fragment() {
 				rb = max(rb, road_dirt_str * (1.0 - smoothstep(road_hw, road_hw + road_dirt_reach, d)));  // halo dégradé
 				// SENTE = terrain RÉEL assombri/tassé (pas une tuile dirt) → route lisible qui reste le sol.
 				col *= mix(vec3(1.0), road_worn, rb);
-				// COBBLES = la tuile transparente posée SUR le plan du sol (UV losange → angle iso correct).
-				// On oriente les rangées SUR l'axe de la route : route N-S (bras n/s seuls) → UV swappé.
+				// COBBLES = tuile ROTÉE sur l'axe de la route (espace écran), les rangées suivent la chaussée.
 				bool ns_road = ((rmask & 1) != 0 || (rmask & 4) != 0) && !((rmask & 2) != 0 || (rmask & 8) != 0);
-				vec2 cuv = fract(cell / tile_k);
-				if (ns_road) cuv = cuv.yx;
-				vec4 cob = texture(cobble_tex, cuv);
+				vec2 rd = normalize(ns_road ? vec2(-1.0, 0.5) : vec2(1.0, 0.5));  // direction ÉCRAN de la route
+				mat2 align = mat2(vec2(rd.x, -rd.y), vec2(rd.y, rd.x));           // mappe rd → +X (aligne le repère)
+				float ph = ns_road ? cobble_phi_diag : 0.0;                      // angle authoré des rangées
+				mat2 rot = mat2(vec2(cos(ph), sin(ph)), vec2(-sin(ph), cos(ph)));
+				float layer = ns_road ? 1.0 : 0.0;                               // monde-Y → diagonale · monde-X → flat
+				vec2 p = rot * (align * iso);                                    // repère aligné à la route (x=le long, y=en travers)
+				vec2 cuv = vec2(p.x / cobble_along, p.y / cobble_cross) + vec2(0.5);  // repeat_enable → tuilage continu
+				vec4 cob = texture(cobble_arr, vec3(cuv, layer));
 				col = mix(col, cob.rgb * cobble_tint, cob.a * rb);   // pierres claires, masquées à la sente
 			}
 		}
