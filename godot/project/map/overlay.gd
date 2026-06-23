@@ -20,6 +20,15 @@ const CITY_ZOOM_MIN := 3.5   ## villes + bourg
 const DECOR_ZOOM_MIN := 3.0  ## forêts/arbres
 const BLD_SIZE := 9.0        ## taille MONDE UNIFORME d'un bâti de bourg (égalisée — variété par le sprite, pas l'échelle)
 const CITY_CORE_SIZE := 18.0 ## taille MONDE FIXE du centre-ville (la ville ne GRANDIT pas ; l'importance = le variant T1-T7)
+const STRUCT_SIZE := 12.0    ## hauteur MONDE d'un MONUMENT EDI_* épars (plus petit que le centre, plus grand qu'une maison)
+# anneau de CENTRES DE TUILES (offsets en tuiles) autour du centre où poser les monuments — déterministe,
+# grille-aligné, rayon 2-3 tuiles (dégage l'emprise du centre). Ordre = priorité de pose.
+const EDI_RING := [
+	Vector2i(2, 0), Vector2i(0, 2), Vector2i(-2, 0), Vector2i(0, -2),
+	Vector2i(2, 2), Vector2i(-2, 2), Vector2i(2, -2), Vector2i(-2, -2),
+	Vector2i(3, 1), Vector2i(1, 3), Vector2i(-3, -1), Vector2i(-1, -3),
+	Vector2i(3, -1), Vector2i(-1, 3), Vector2i(-3, 1), Vector2i(1, -3),
+]
 
 ## OMBRE PORTÉE des assets : un disque APLATI au pied, décalé dans la direction ANTI-LUMIÈRE,
 ## la MÊME lumière globale que le shader de terrain (light_world ≈ (-0.95,-0.32)). L'ombre tombe
@@ -605,13 +614,10 @@ func _build_structures() -> void:
 	var names := UIKit.structure_names()
 	if names.is_empty():
 		return
-	var bk := _buckets(names)
 	_ensure_terrain(w)                            # caches relief + albedo → teinte cohérente des assets
 	var sea: Image = w.layer_image(LAYER_WATER)   # mer OU lac : 0 = terre, ≥ 1 = eau (toute classe)
 	var rf: Image = _carved_river_field()         # rivière carvée → l'avant de la rue principale l'évite
-	var mvr := _mv_ref()
 	_bio_img = w.layer_image(2)                   # biome → interdit le PIED d'asset sur tuile falaise
-	# ensemble des cellules de RIVIÈRE (on ne bâtit pas dessus non plus) ──────────
 	var rset := {}
 	for rp in _rivers:
 		rset[Vector2i(int(rp.x), int(rp.y))] = true
@@ -622,31 +628,28 @@ func _build_structures() -> void:
 		var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))   # assise CALÉE SUR TERRE
 		if ctr.x < 0:
 			continue
-		# Le bourg CROÎT avec le TIER (band, comme le centre T1-T7) ET avec les BÂTIMENTS
-		# posés : T1 ≈ 4-5 assets épars ; T7 « full upgrade » ≈ la tuile presque entièrement
-		# occupée (métropole ~10k). Scatter ORGANIQUE (Londres médiévale, pas une grille).
-		# Croissance QUADRATIQUE des logements → l'écart hameau↔métropole est NET.
-		var band := _city_band(w.region_pop(r))          # 1-8 (le tier visible)
-		var nb := _region_craft_count(w, ctr)            # bâtiments posés (UI provinciale)
-		var civic_n := clampi(band / 2, 1, 5)
-		var craft_n := clampi(nb, 0, band)               # ateliers ∝ bâtiments, plafonnés au tier
-		var dwell_n := clampi(band * band - 1, 2, 60)    # logements : T1=2 … T7≈48 … T8≈60 (la tuile pleine)
-		var field_n := clampi(band - 3, 0, 5)
-		var jit := float((r * 2654435761) & 0xffff) / 65536.0 * TAU
-		var idx := 0
-		# zone : rayon · empan · taille · miroir. TAILLE UNIFORME (`BLD_SIZE`). Les rayons
-		# ENTOURENT le centre (≈ demi-largeur 9) : le bourg RING le cœur (visible autour),
-		# il ne se cache pas dessous. Scatter organique (Londres), pas une grille.
-		# le bourg S'ORGANISE le long des routes : un petit cœur CIVIQUE serré, puis l'agglomération le
-		# long des routes ; l'anneau ne fait que combler le surplus (routes saturées / absentes).
-		# (FAÇADE WESTERN retirée — plus de rue principale sud à rangées qui se font face.)
-		idx = _place_zone(bk["civic"], civic_n, ctr, 3.0, 2.0, BLD_SIZE, false, idx, jit, sea, rset, r)
-		var along_pool: Array = bk["dwell"] + bk["craft"]
-		var along_n := dwell_n + craft_n
-		idx = _place_road_houses(along_pool, r, BLD_SIZE, idx, sea, rset, 40.0, 4.0, along_n)
-		# le surplus comble en anneau autour du bourg
-		idx = _place_zone(bk["dwell"], maxi(0, along_n - _road_placed), ctr, 6.0, 7.0, BLD_SIZE, true, idx, jit, sea, rset, r)
-		idx = _place_zone(bk["field"], field_n, ctr, 13.0, 5.0, BLD_SIZE, true, idx, jit, sea, rset, r)
+		# Le CENTRE (T1-T7) porte la masse bâtie ; ici on ne pose QUE les MONUMENTS spéciaux (EDI_*),
+		# CLAIRSEMÉS et GRILLE-ALIGNÉS en anneau autour du centre (JAMAIS aléatoires — pose déterministe
+		# sur CENTRES DE TUILES). Le nombre suit ce que la région a BÂTI (manufactures) + un peu le tier.
+		var band := _city_band(w.region_pop(r))
+		var nb := _region_craft_count(w, ctr)
+		var n_special := clampi(maxi(nb, band - 2), 0, EDI_RING.size())
+		var ccol := int(ctr.x) / ROUTE_GRID_K
+		var crow := int(ctr.y) / ROUTE_GRID_K
+		var placed := 0
+		for oi in range(EDI_RING.size()):
+			if placed >= n_special:
+				break
+			var off: Vector2i = EDI_RING[oi]
+			var bx := float((ccol + off.x) * ROUTE_GRID_K + ROUTE_GRID_K / 2)
+			var by := float((crow + off.y) * ROUTE_GRID_K + ROUTE_GRID_K / 2)
+			var bp := Vector2(bx, by)
+			if _is_sea_cell(sea, int(bx), int(by)) or _in_river_water(rf, int(bx), int(by)) or _is_cliff_base(bp):
+				continue
+			var hh := (r * 2654435761) ^ ((oi + 1) * 40503)
+			var nm: String = names[absi(hh) % names.size()]
+			_structures.append({"name": nm, "pos": bp, "sz": STRUCT_SIZE, "flip": (hh & 2) == 0})
+			placed += 1
 		if _structures.size() >= 4800:
 			break
 	# GARDE-FOU (capté par viewer_audit) : retire tout bâti dont la BASE tombe dans l'eau — la mer/lac
@@ -1245,14 +1248,15 @@ func _draw_struct(s: Dictionary, sp: Vector2) -> void:
 	var sspr := UIKit.structure_sprite(s["name"])
 	if sspr == null:
 		return
-	var ss: float = s.get("sz", 9.0)
+	var th: float = s.get("sz", STRUCT_SIZE)
+	var tw := th * float(sspr.get_width()) / float(maxi(1, sspr.get_height()))   # RATIO NATIF (monuments non carrés)
 	var tint: Color = s.get("tint", STRUCT_MUTE)               # calé sur le terrain (relief + sol)
 	if bool(s.get("flip", false)):
 		draw_set_transform(sp, 0.0, Vector2(-1, 1))             # miroir horizontal autour du pied
-		draw_texture_rect(sspr, Rect2(-ss * 0.5, -ss, ss, ss), false, tint)
+		draw_texture_rect(sspr, Rect2(-tw * 0.5, -th, tw, th), false, tint)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	else:
-		draw_texture_rect(sspr, Rect2(sp - Vector2(ss * 0.5, ss), Vector2(ss, ss)), false, tint)
+		draw_texture_rect(sspr, Rect2(sp - Vector2(tw * 0.5, th), Vector2(tw, th)), false, tint)
 
 ## dessine LA ville de la région `r` à la POSITION ISO `ctr` — variante TERRAIN sinon bande de
 ## pop ; taille MONDE BORNÉE au sec ; repli en marqueur sobre. Le BOURG (spiral) l'entoure.
@@ -1691,10 +1695,12 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))
 			if ctr.x < 0:
 				continue
-			# le centre-ville s'ANCRE au SOMMET BAS de sa tuile (même point que l'entrée de route).
-			var aw: Vector2 = ctr
-			if mv.has_method("tile_anchor_world"):
-				aw = mv.tile_anchor_world(ctr.x, ctr.y)
+			# le centre + sa DALLE tombent au CENTRE de la tuile (grille alignée, déterministe) — pas le
+			# sommet sud qui les décalait au coin avant (« posés de travers / aléatoirement »).
+			var ccol := int(ctr.x) / ROUTE_GRID_K
+			var crow := int(ctr.y) / ROUTE_GRID_K
+			var aw := Vector2(float(ccol) * ROUTE_GRID_K + ROUTE_GRID_K * 0.5,
+				float(crow) * ROUTE_GRID_K + ROUTE_GRID_K * 0.5)
 			props.append({"d": aw.x + aw.y, "city": r, "sp": mv.iso_pos(aw.x, aw.y), "w": aw})
 		props.sort_custom(func(a, b): return a["d"] < b["d"])   # arrière (nord) → avant (sud), profondeur iso
 		# PASSE 1 : toutes les ombres SOUS tout (sinon l'ombre d'un asset AVANT mord le sprite d'un ARRIÈRE)

@@ -307,7 +307,7 @@ static func structure_names() -> PackedStringArray:
 	return _struct_names
 
 static func structure_sprite(nm: String) -> Texture2D:
-	return _tex_lift(STRUCTURES_DIR + nm + ".png", CITY_LIFT)
+	return _tex_lift(STRUCTURES_DIR + nm + ".png", NEW_ART_LIFT)
 
 
 # ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)

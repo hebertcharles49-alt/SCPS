@@ -77,6 +77,7 @@ var _road_idx: ImageTexture = null     ## carte PAR CELLULE : R = couche+1 (0 = 
 var _road_cov: ImageTexture = null     ## couverture LISSE (1 route, 0 sinon, filtre linéaire) → fondu de bord
 var _road_pave: Texture2D = null       ## tuile pavé seamless (centre de la chaussée)
 const ROAD_PAVE := "res://assets/scps/pack/iso_tiles/road_detail/cobblestone-path-seamless-512.png"
+const ROAD_CLEAR_R := 8                 ## rayon (cellules) effacé de route autour d'un centre → la dalle n'est pas traversée
 var _road_sig := -1                    ## signature du réseau (nb cellules) → ne reposer que si ça change
 
 ## texture-array des tuiles PLATES tuilables : VAR couches par biome (couche = biome*VAR + variante),
@@ -619,21 +620,25 @@ func _build_road_cov(w, W: int, H: int) -> Image:
 				if mini(i, n - 2 - i) <= 2:
 					soft += 1                             # évasement près du bourg (extrémités)
 				_carve_brush(img, ix, iy, 1.0, 1, soft, W, H)
-	# RACCORD SUD au pied des tours (comme _build_road_idx) : court stub de l'ancre vers l'iso-sud (+x+y)
+	# CLEARANCE : la route MÈNE au bourg sans le TRAVERSER. On EFFACE la couverture dans un rayon autour
+	# de chaque centre (l'emprise de la dalle de fondation) → sinon la route passe « par-dessus » la
+	# fondation (elle perçait sous ses bords semi-transparents). Le tracé s'arrête net au bord de la dalle.
 	for r in range(w.region_count()):
 		if not w.region_colonized(r):
 			continue
 		var ctr: Vector2 = w.region_centroid(r)
 		if ctr.x < 0:
 			continue
-		for k in range(1, TILE_K + 1):
-			var sx := int(ctr.x) + k
-			var sy := int(ctr.y) + k
-			if sx < 0 or sy < 0 or sx >= W or sy >= H:
-				break
-			if sea != null and int(sea.get_pixel(sx, sy).r * 255.0 + 0.5) >= 1:
-				break
-			_carve_brush(img, sx, sy, 1.0, 1, 3, W, H)
+		var cx := int(ctr.x)
+		var cy := int(ctr.y)
+		for dy in range(-ROAD_CLEAR_R, ROAD_CLEAR_R + 1):
+			for dx in range(-ROAD_CLEAR_R, ROAD_CLEAR_R + 1):
+				if dx * dx + dy * dy > ROAD_CLEAR_R * ROAD_CLEAR_R:
+					continue
+				var x := cx + dx
+				var y := cy + dy
+				if x >= 0 and y >= 0 and x < W and y < H:
+					img.set_pixel(x, y, Color(0.0, 0.0, 0.0))
 	return img
 
 ## le CHAMP DÉBIT carvé (L8), bâti à la DEMANDE et mis en cache — la MÊME donnée que le shader rend en
