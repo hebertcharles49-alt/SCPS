@@ -73,24 +73,18 @@ uniform float river_water : hint_range(0.0, 1.0) = 0.40;     // champ de débit 
 uniform float river_band  : hint_range(0.02, 0.5) = 0.14;    // rampe du cœur d'eau (berge→eau)
 uniform float river_warp  : hint_range(0.0, 6.0) = 0.0;      // 0 = berge NETTE et CONTINUE (un warp brise le fil fin) ; la berge de sable de la shoreline texture déjà le bord
 
-// ── ROUTES (pack de tuiles terrain, autotile cardinal) : la tuile DEVIENT le sol de la cellule (pas un
-//    overlay), fondue dans le biome au BORD via `road_cov` (couverture lisse, filtre linéaire). `road_idx`
-//    porte la COUCHE (R = couche+1) par cellule-losange ; `road_atlas` est la pile des tuiles. ─────────
-uniform sampler2DArray road_atlas : filter_linear_mipmap;
-uniform sampler2D road_idx : filter_nearest;                 // R = couche+1 (0 = pas de route) · G = masque cardinal
-uniform vec2 road_grid = vec2(0.0);
+// ── ROUTES en CHAMP LISSE (modèle de la RIVIÈRE) : `road_cov` = couverture scalaire par cellule (filtre
+//    linéaire), rasterisée depuis les polylignes. On lit le champ → BORD terreux (road_worn) + CENTRE pavé
+//    (tuile seamless `road_pave` tuilée sur le plan du sol), avec WARP de bruit sur le bord. Largeur
+//    variable = l'amplitude du champ (plus large près des bourgs, plus étroit en forêt — encodé au carve). ─
+uniform sampler2D road_cov : filter_linear;                  // couverture de route 0..1 (champ lisse)
+uniform sampler2D road_pave : filter_linear, repeat_enable;  // tuile pavé seamless (centre de chaussée)
 uniform float road_on = 0.0;
-uniform float road_hw = 0.14;                                // demi-largeur de la SENTE (cœur)
-uniform float road_feather = 0.12;                           // bord de la sente (doux)
-uniform float road_dirt_reach = 0.28;                        // portée du halo (élargit la sente, dégradé)
-uniform float road_dirt_str = 0.55;                          // force du halo (par rapport au cœur)
-uniform vec3 road_worn = vec3(0.60, 0.53, 0.44);             // TEINTE de la sente : MULTIPLIE le terrain (sol usé/tassé) — assez SOMBRE pour que les cobbles CLAIRS contrastent
-// COBBLES : 3 tuiles RGBA échantillonnées sur le PLAN DU SOL (UV losange) → angle iso correct sans
-// cisaillement. Les COURSES de pavés courent EN TRAVERS de la chaussée (vrai look pavé), en pivotant la
-// tuile selon l'axe : couche 0 = flat (rangées monde-X) pour les routes "/" · couche 1 = flat PIVOTÉE 90°
-// (rangées monde-Y) pour les routes "\" · couche 2 = diagonale pour les jonctions.
-uniform sampler2DArray cobble_arr : filter_linear, repeat_enable;
-uniform vec3 cobble_tint = vec3(1.12, 1.07, 0.98);           // éclaircissement chaud → les pierres TRANCHENT
+uniform float road_dirt_edge = 0.10;                         // seuil champ : début du bord terreux
+uniform float road_pave_edge = 0.55;                         // seuil champ : début du centre pavé
+uniform float road_warp = 0.12;                              // amplitude du warp de bruit sur le bord
+uniform float road_period = 5.0;                             // période monde de la tuile pavé (petit = pavés gros)
+uniform vec3 road_worn = vec3(0.60, 0.53, 0.44);             // TEINTE de la sente : MULTIPLIE le terrain (sol usé/tassé)
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
@@ -253,33 +247,19 @@ void fragment() {
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
 			texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);
 		col *= vb;
-		// ── ROUTES : on ne garde que la BANDE PAVÉE de la tuile (le long des bras connectés) ; la DIRT
-		//    autour est MASQUÉE par le biome (elle n'est qu'un fond de secours). La forme vient du masque
-		//    cardinal (G) : un bras vers chaque voisin connecté ; distance perpendiculaire au bras → fondu.
-		//    La route NE COURT PAS sur l'eau de fleuve (water_here) : le PONT (overlay) tient le franchissement. ──
-		if (road_on > 0.5 && !water_here && road_grid.x > 0.5) {
-			vec2 ridx = texture(road_idx, (floor(cell / tile_k) + vec2(0.5)) / road_grid).rg;
-			if (ridx.r > 0.0015) {
-				int rmask = int(ridx.g * 255.0 + 0.5);
-				vec2 luv = fract(cell / tile_k) - vec2(0.5);       // -0.5..0.5 dans la cellule
-				float d = 0.5;                                     // distance à la bande pavée (loin par défaut)
-				if ((rmask & 1) != 0 && luv.y <= 0.02) d = min(d, abs(luv.x));   // bras N (haut)
-				if ((rmask & 4) != 0 && luv.y >= -0.02) d = min(d, abs(luv.x));  // bras S (bas)
-				if ((rmask & 2) != 0 && luv.x >= -0.02) d = min(d, abs(luv.y));  // bras E (droite)
-				if ((rmask & 8) != 0 && luv.x <= 0.02) d = min(d, abs(luv.y));   // bras W (gauche)
-				float rb = 1.0 - smoothstep(road_hw, road_hw + road_feather, d);      // cœur de la sente
-				rb = max(rb, road_dirt_str * (1.0 - smoothstep(road_hw, road_hw + road_dirt_reach, d)));  // halo dégradé
-				// SENTE = terrain RÉEL assombri/tassé (pas une tuile dirt) → route lisible qui reste le sol.
-				col *= mix(vec3(1.0), road_worn, rb);
-				// COBBLES = tuile sur le PLAN DU SOL (UV losange) ; on PIVOTE la tuile selon l'axe pour que les
-				// courses traversent la chaussée : route "/" → flat · route "\" → flat pivotée 90° · jonction → diag.
-				bool ew_arm = (rmask & 2) != 0 || (rmask & 8) != 0;
-				bool ns_arm = (rmask & 1) != 0 || (rmask & 4) != 0;
-				float layer = 0.0;                       // route "/" (monde-Y) → flat (rangées en travers)
-				if (ew_arm && ns_arm) layer = 2.0;       // jonction → diagonale
-				else if (ew_arm) layer = 1.0;            // route "\" (monde-X) → flat pivotée 90°
-				vec4 cob = texture(cobble_arr, vec3(fract(cell / tile_k), layer));
-				col = mix(col, cob.rgb * cobble_tint, cob.a * rb);   // pierres claires, masquées à la sente
+		// ── ROUTES en CHAMP LISSE (modèle rivière) : on lit `road_cov` (couverture scalaire, filtre
+		//    linéaire) → BORD terreux (assombri road_worn) + CENTRE pavé (tuile seamless sur le plan du sol).
+		//    Un WARP de bruit casse la régularité du bord. La route NE COURT PAS sur l'eau (water_here). ──
+		if (road_on > 0.5 && !water_here) {
+			float rc = texture(road_cov, cell / map_size).r;
+			if (rc > 0.01) {
+				float wn = (texture(noise_tex, cell * 0.10).r - 0.5) * road_warp;   // warp de bord (bruit)
+				float rcw = rc + wn;
+				float dirt = smoothstep(road_dirt_edge, road_dirt_edge + 0.14, rcw);   // bord terreux (sente usée)
+				float pave = smoothstep(road_pave_edge, road_pave_edge + 0.14, rcw);   // centre pavé
+				col *= mix(vec3(1.0), road_worn, dirt);                                 // sente = terrain assombri/tassé
+				vec3 pav = texture(road_pave, fract(cell / road_period)).rgb;           // tuile pavé seamless (plan du sol)
+				col = mix(col, pav, pave);                                              // centre PAVÉ
 			}
 		}
 		// OMBRE PORTÉE des falaises sur le SOL : un pixel de sol est dans l'ombre s'il y a une falaise

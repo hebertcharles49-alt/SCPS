@@ -75,6 +75,8 @@ var _road_arr: Texture2DArray = null   ## tuiles ROUTE (autotile cardinal) — c
 var _road_mask := {}                   ## masque cardinal 1-15 → [couches] (variantes)
 var _road_idx: ImageTexture = null     ## carte PAR CELLULE : R = couche+1 (0 = pas de route)
 var _road_cov: ImageTexture = null     ## couverture LISSE (1 route, 0 sinon, filtre linéaire) → fondu de bord
+var _road_pave: Texture2D = null       ## tuile pavé seamless (centre de la chaussée)
+const ROAD_PAVE := "res://assets/scps/pack/iso_tiles/road_detail/cobblestone-path-seamless-512.png"
 var _road_sig := -1                    ## signature du réseau (nb cellules) → ne reposer que si ça change
 
 ## texture-array des tuiles PLATES tuilables : VAR couches par biome (couche = biome*VAR + variante),
@@ -511,6 +513,7 @@ func _on_tick(_y: int) -> void:
 			n += (rd["points"] as PackedVector2Array).size()
 		if n != _road_sig:
 			_road_idx = null
+			_road_cov = null
 			queue_redraw()
 	# les biomes ne bougent qu'en FIN §27 (cataclysme) → re-dessin aussi alors
 	if int((w.endgame_info() as Dictionary).get("fin", 0)) > 0:
@@ -550,20 +553,88 @@ func _draw() -> void:
 		mat.set_shader_parameter("dist_max", DIST_MAX)
 		mat.set_shader_parameter("cliff_grid", Vector2(W / TILE_K, H / TILE_K))
 		mat.set_shader_parameter("tile_k", float(TILE_K))
-		# ROUTES : tuiles d'autotile posées comme SOL (par cellule), fondues au bord (couverture lisse)
-		if _road_idx == null:
-			_build_road_idx(w, W, H)
-		mat.set_shader_parameter("road_idx", _road_idx)
-		mat.set_shader_parameter("road_grid", Vector2(W / TILE_K, H / TILE_K))
-		# la route = sente usée (terrain RÉEL assombri/tassé) + tuiles COBBLE TRANSPARENTES posées DESSUS,
-		# échantillonnées en espace écran et ROTÉES sur l'axe de la route par le shader (flat "\" / diagonale
-		# "/") ; le terrain perce entre les pierres (alpha). Le road_atlas (dirt opaque) n'est plus utilisé.
-		var cob := _cobble_atlas()
-		if cob != null:
-			mat.set_shader_parameter("cobble_arr", cob)
+		# ROUTES = CHAMP LISSE (comme la rivière) : on rasterise les polylignes en couverture douce
+		# (`road_cov`, filtre linéaire), pas un pâté cardinal en losange. Le shader lit le champ → bord
+		# terreux (road_worn) + centre PAVÉ (tuile cobblestone seamless), avec warp de bruit sur le bord.
+		if _road_cov == null:
+			_road_cov = ImageTexture.create_from_image(_build_road_cov(w, W, H))
+			var nn := 0
+			for rd in w.road_paths():
+				nn += (rd["points"] as PackedVector2Array).size()
+			_road_sig = nn
+		mat.set_shader_parameter("road_cov", _road_cov)
+		mat.set_shader_parameter("map_size", Vector2(W, H))
+		var pave := _road_pave_tex()
+		if pave != null:
+			mat.set_shader_parameter("road_pave", pave)
 		mat.set_shader_parameter("road_on", 1.0)
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
 	draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))
+
+## tuile pavé seamless (1×) — centre de la chaussée, échantillonnée tuilée sur le plan du sol.
+func _road_pave_tex() -> Texture2D:
+	if _road_pave != null:
+		return _road_pave
+	if FileAccess.file_exists(ROAD_PAVE):
+		var img := Image.load_from_file(ROAD_PAVE)
+		if img != null:
+			if img.get_format() != Image.FORMAT_RGBA8:
+				img.convert(Image.FORMAT_RGBA8)
+			img.generate_mipmaps()
+			_road_pave = ImageTexture.create_from_image(img)
+	return _road_pave
+
+## CHAMP de COUVERTURE des routes (L8) — le pendant ROUTE de `river_map` : on rasterise les polylignes
+## en pinceau DOUX (réutilise `_carve_brush`), continu le long du fil. LARGEUR VARIABLE : plus étroit en
+## FORÊT (2), plus large près des BOURGS (extrémités, +1). Le shader lit ce champ (filtre linéaire) → bord
+## terreux + centre pavé, sans masque cardinal. Pas de route sur l'eau (le pont franchit).
+func _build_road_cov(w, W: int, H: int) -> Image:
+	var img := Image.create(W, H, false, Image.FORMAT_L8)
+	if w == null or not w.has_method("road_paths"):
+		return img
+	var bio: Image = w.layer_image(LAYER_BIOME)
+	var sea: Image = w.layer_image(4)
+	for rd in w.road_paths():
+		var pts: PackedVector2Array = rd["points"]
+		var n := pts.size()
+		if n < 2:
+			continue
+		for i in range(n - 1):
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			var steps := maxi(1, int(ceil(a.distance_to(b))))
+			for s in range(steps + 1):
+				var p: Vector2 = a.lerp(b, float(s) / float(steps))
+				var ix := int(p.x)
+				var iy := int(p.y)
+				if ix < 0 or iy < 0 or ix >= W or iy >= H:
+					continue
+				if sea != null and int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1:
+					continue                              # eau → le pont franchit, pas de chaussée
+				var soft := 3
+				if bio != null:
+					var bb := int(bio.get_pixel(ix, iy).r * 255.0 + 0.5)
+					if bb == 12 or bb == 13 or bb == 14:
+						soft = 2                          # FORÊT : sente plus étroite
+				if mini(i, n - 2 - i) <= 2:
+					soft += 1                             # évasement près du bourg (extrémités)
+				_carve_brush(img, ix, iy, 1.0, 1, soft, W, H)
+	# RACCORD SUD au pied des tours (comme _build_road_idx) : court stub de l'ancre vers l'iso-sud (+x+y)
+	for r in range(w.region_count()):
+		if not w.region_colonized(r):
+			continue
+		var ctr: Vector2 = w.region_centroid(r)
+		if ctr.x < 0:
+			continue
+		for k in range(1, TILE_K + 1):
+			var sx := int(ctr.x) + k
+			var sy := int(ctr.y) + k
+			if sx < 0 or sy < 0 or sx >= W or sy >= H:
+				break
+			if sea != null and int(sea.get_pixel(sx, sy).r * 255.0 + 0.5) >= 1:
+				break
+			_carve_brush(img, sx, sy, 1.0, 1, 3, W, H)
+	return img
 
 ## le CHAMP DÉBIT carvé (L8), bâti à la DEMANDE et mis en cache — la MÊME donnée que le shader rend en
 ## eau. L'overlay l'échantillonne pour interdire la BASE d'un asset dans l'eau de rivière (≥ river_water).
