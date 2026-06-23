@@ -35,6 +35,13 @@ const LIGHT_WORLD := Vector2(-0.95, -0.32)   ## même direction-source que le sh
 const SHADE_K := 0.22        ## amplitude de l'ombrage relief (± sur la clarté de l'asset)
 const GROUND_TINT_BLD := 0.11 ## fraction de teinte du sol mêlée à un BÂTIMENT (lumière rebondie / brume)
 const GROUND_TINT_DEC := 0.07 ## idem, plus discret, pour le DRESSING (arbres : ne pas mudder les verts)
+# FONDATION : dalle de terre battue (diamant iso 2:1) sous chaque centre/bâtiment → l'édifice REPOSE sur
+# le terrain (fin du « posé là » : l'art n'a pas de base baked). Teintée au sol local (fond FORT).
+const FOUND_DIR := "res://assets/scps/pack/foundations/"
+const FOUND_BASE := Color(0.98, 0.95, 0.90, 1.0)    ## terre claire ; la dalle DOIT se voir autour du pied
+const GROUND_TINT_FOUND := 0.18                     ## se mêle au sol mais reste LISIBLE (terre battue)
+const FOUND_W_MULT := 2.1                            ## dalle nettement plus large que le bâti → les bords débordent
+var _found_tex: Texture2D = null
 
 
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
@@ -1217,6 +1224,23 @@ func _blob_shadow(foot: Vector2, wd: float) -> void:
 	draw_circle(Vector2.ZERO, wd * 0.28, SHADOW_COL)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
+func _found_sprite() -> Texture2D:
+	if _found_tex == null:
+		var p := FOUND_DIR + "FOUND_DIRT.png"
+		if FileAccess.file_exists(p):
+			var img := Image.load_from_file(p)
+			if img != null:
+				_found_tex = ImageTexture.create_from_image(img)
+	return _found_tex
+
+## dalle de fondation (diamant iso 2:1) CENTRÉE au pied, teintée au sol → l'édifice y repose.
+func _draw_foundation(pied: Vector2, fw: float, tint: Color) -> void:
+	var tex := _found_sprite()
+	if tex == null:
+		return
+	var fh := fw * 0.5                                  # diamant iso 2:1
+	draw_texture_rect(tex, Rect2(pied - Vector2(fw * 0.5, fh * 0.5), Vector2(fw, fh)), false, tint)
+
 func _draw_struct(s: Dictionary, sp: Vector2) -> void:
 	var sspr := UIKit.structure_sprite(s["name"])
 	if sspr == null:
@@ -1660,7 +1684,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var ss: Vector2 = vt * ip
 			if ss.x < -60 or ss.y < -80 or ss.x > vp.x + 60 or ss.y > vp.y + 60:
 				continue
-			props.append({"d": sp2.x + sp2.y, "city": -1, "s": s, "sp": ip})   # profondeur iso = wx+wy
+			props.append({"d": sp2.x + sp2.y, "city": -1, "s": s, "sp": ip, "w": sp2})   # profondeur iso = wx+wy
 		for r in range(w.region_count()):
 			if w.region_tier(r) < 0:
 				continue
@@ -1671,7 +1695,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var aw: Vector2 = ctr
 			if mv.has_method("tile_anchor_world"):
 				aw = mv.tile_anchor_world(ctr.x, ctr.y)
-			props.append({"d": aw.x + aw.y, "city": r, "sp": mv.iso_pos(aw.x, aw.y)})
+			props.append({"d": aw.x + aw.y, "city": r, "sp": mv.iso_pos(aw.x, aw.y), "w": aw})
 		props.sort_custom(func(a, b): return a["d"] < b["d"])   # arrière (nord) → avant (sud), profondeur iso
 		# PASSE 1 : toutes les ombres SOUS tout (sinon l'ombre d'un asset AVANT mord le sprite d'un ARRIÈRE)
 		for prp in props:
@@ -1681,6 +1705,15 @@ func _draw_iso(w, mv: Node2D) -> void:
 			else:
 				wd = minf(CITY_CORE_SIZE, float(_region_citymax.get(prp["city"], CITY_CORE_SIZE)))
 			_blob_shadow(prp["sp"], wd)
+		# PASSE 1.5 : FONDATIONS (dalles de terre battue) après les ombres, SOUS les sprites (§5a) → l'édifice repose
+		for prp in props:
+			var fwd: float
+			if prp["city"] < 0:
+				fwd = float((prp["s"] as Dictionary).get("sz", BLD_SIZE))
+			else:
+				fwd = minf(CITY_CORE_SIZE, float(_region_citymax.get(prp["city"], CITY_CORE_SIZE)))
+			var wp: Vector2 = prp["w"]
+			_draw_foundation(prp["sp"], fwd * FOUND_W_MULT, _asset_tint(FOUND_BASE, wp.x, wp.y, GROUND_TINT_FOUND))
 		# PASSE 2 : les sprites par-dessus, dans l'ordre de profondeur
 		for prp in props:
 			if prp["city"] < 0:
