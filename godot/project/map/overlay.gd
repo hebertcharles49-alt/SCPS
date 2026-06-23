@@ -33,12 +33,6 @@ const EDI_RING := [
 # CLUTTER (barils/bûches/charrettes/puits) : anneau PÉRIPHÉRIE du bourg (rayon 3-5 tuiles), hash-déterministe
 # + petit jitter sub-tuile (vivant sans être « posé au hasard »). Plus large que EDI_RING (au-delà des monuments).
 const CLUTTER_SIZE := 5.0    ## hauteur MONDE d'un prop de clutter (petit)
-const CLUTTER_RING := [
-	Vector2i(4, 0), Vector2i(0, 4), Vector2i(-4, 0), Vector2i(0, -4),
-	Vector2i(3, 3), Vector2i(-3, 3), Vector2i(3, -3), Vector2i(-3, -3),
-	Vector2i(5, 2), Vector2i(2, 5), Vector2i(-5, -2), Vector2i(-2, -5),
-	Vector2i(5, -2), Vector2i(-2, 5), Vector2i(-5, 2), Vector2i(2, -5),
-]
 var _clutter := []           ## [{name, pos(world), sz, flip, tint}]
 var _clutter_dirty := true
 
@@ -643,6 +637,7 @@ func _build_structures() -> void:
 		var streets := _build_town_streets(r, ctr, w, sea, rf, band)
 		_town_streets.append_array(streets)
 		_place_along_streets(r, streets, names, sea, rf, band, nb)
+		_place_infill(r, ctr, streets, names, sea, rf, band)
 		if _structures.size() >= 4800:
 			break
 	# GARDE-FOU (capté par viewer_audit) : retire tout bâti dont la BASE tombe dans l'eau — la mer/lac
@@ -780,8 +775,54 @@ func _place_along_streets(r: int, streets: Array, names: PackedStringArray, sea:
 				return
 		sbase += k + 3
 
-## CLUTTER : props de vie dispersés en PÉRIPHÉRIE du bourg (anneau hash-déterministe + jitter sub-tuile),
-## au sec (jamais eau/falaise). Teinte au sol, petit. 3-8 selon le band.
+## distance d'un POINT au SEGMENT a-b (pour repérer les POCHES loin des rues).
+func _dist_point_seg(p: Vector2, a: Vector2, b: Vector2) -> float:
+	var ab := b - a
+	var l2 := ab.length_squared()
+	var t := 0.0
+	if l2 > 0.0001:
+		t = clampf((p - a).dot(ab) / l2, 0.0, 1.0)
+	return p.distance_to(a + ab * t)
+
+## A3 — COMBLEMENT organique : pour les villes (band≥4), des NIDS de 2-3 maisons dans les POCHES entre
+## les rues (loin de tout segment) — pas un remplissage uniforme, des grappes séparées par des cours.
+func _place_infill(r: int, ctr: Vector2, streets: Array, names: PackedStringArray, sea: Image, rf: Image, band: int) -> void:
+	if band < 4:
+		return
+	var dwell_pool := []
+	for nm in names:
+		var ns: String = nm
+		if ns.begins_with("DWELL_LOW_") or ns.begins_with("DWELL_HIGH_"):
+			dwell_pool.append(nm)
+	if dwell_pool.is_empty():
+		return
+	var rad := 3 + band
+	for gy in range(-rad, rad + 1, 4):
+		for gx in range(-rad, rad + 1, 4):
+			if gx * gx + gy * gy > rad * rad:
+				continue
+			var p := Vector2(ctr.x + gx, ctr.y + gy)
+			var dmin := 999.0
+			for st in streets:
+				dmin = minf(dmin, _dist_point_seg(p, st["a"], st["b"]))
+			if dmin < 2.8:
+				continue                                  # déjà bâti le long de la rue
+			var h := ((r * 2654435761) ^ ((gx + 64) * 40503) ^ ((gy + 64) * 668265263)) & 0x7fffffff
+			if (h % 100) >= 45:
+				continue                                  # ~45 % des poches reçoivent un nid (cours/jardins ailleurs)
+			var nn := 2 + (h % 2)                         # nid de 2-3 maisons
+			for i in range(nn):
+				var hi := (h ^ (i * 2246822519)) & 0x7fffffff
+				var bp := p + Vector2(float(hi % 5) - 2.0, float((hi >> 4) % 5) - 2.0)
+				if _is_sea_cell(sea, int(bp.x), int(bp.y)) or _in_river_water(rf, int(bp.x), int(bp.y)) or _is_cliff_base(bp):
+					continue
+				_structures.append({"name": dwell_pool[absi(hi) % dwell_pool.size()], "pos": bp, "sz": DWELL_SIZE, "flip": (hi & 1) == 0})
+				if _structures.size() >= 4800:
+					return
+
+## A4 — CLUTTER CONTEXTUEL : les props de vie naissent AU PIED de l'activité — tonneaux/caisses/charrettes
+## auprès des ATELIERS (craft), un PARVIS de 1-2 props devant les MONUMENTS (civic) — plus d'anneau aveugle
+## en périphérie. Déterministe (hash sur l'index du bâti), au sec (jamais eau/falaise), teinté au sol.
 func _build_clutter() -> void:
 	_clutter.clear()
 	_clutter_dirty = false
@@ -795,32 +836,40 @@ func _build_clutter() -> void:
 	var sea: Image = w.layer_image(LAYER_WATER)
 	var rf: Image = _carved_river_field()
 	_bio_img = w.layer_image(2)
-	for r in range(w.region_count()):
-		if w.region_tier(r) < 0:
+	var bk := _buckets(UIKit.structure_names())
+	var craft_set := {}
+	for cn in bk["craft"]:
+		craft_set[cn] = true
+	var civic_set := {}
+	for cn in bk["civic"]:
+		civic_set[cn] = true
+	var idx := 0
+	for s in _structures:
+		var snm: String = s["name"]
+		var is_craft: bool = craft_set.has(snm)
+		var is_civic: bool = civic_set.has(snm)
+		if not (is_craft or is_civic):
 			continue
-		var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))
-		if ctr.x < 0:
-			continue
-		var ccol := int(ctr.x) / ROUTE_GRID_K
-		var crow := int(ctr.y) / ROUTE_GRID_K
-		var n := clampi(_city_band(w.region_pop(r)), 3, 8)
-		var placed := 0
-		for oi in range(CLUTTER_RING.size()):
-			if placed >= n:
-				break
-			var off: Vector2i = CLUTTER_RING[oi]
-			var h := (r * 2654435761) ^ ((oi + 13) * 40503)
-			var jx := float(h % 5) - 2.0                       # jitter sub-tuile déterministe (vivant)
-			var jy := float((h >> 8) % 5) - 2.0
-			var bx := float((ccol + off.x) * ROUTE_GRID_K + ROUTE_GRID_K / 2) + jx
-			var by := float((crow + off.y) * ROUTE_GRID_K + ROUTE_GRID_K / 2) + jy
-			var bp := Vector2(bx, by)
-			if _is_sea_cell(sea, int(bx), int(by)) or _in_river_water(rf, int(bx), int(by)) or _is_cliff_base(bp):
+		var h := (idx * 2654435761) & 0x7fffffff
+		var nn := 0
+		if is_civic:
+			nn = 1 + (h % 2)                                # PARVIS : 1-2 props devant le monument
+		elif (h % 100) < 60:
+			nn = 1                                          # ~60 % des ateliers ont leur dépôt
+		for i in range(nn):
+			var hi := (h ^ ((i + 1) * 2246822519)) & 0x7fffffff
+			var ang := float(hi % 6283) * 0.001
+			var rad := 1.6 + float((hi >> 5) % 100) / 100.0 * 1.0   # 1.6..2.6 : AU PIED du bâti, pas dessus
+			var bp: Vector2 = (s["pos"] as Vector2) + Vector2(cos(ang), sin(ang)) * rad
+			var bx := int(bp.x)
+			var by := int(bp.y)
+			if _is_sea_cell(sea, bx, by) or _in_river_water(rf, bx, by) or _is_cliff_base(bp):
 				continue
-			var nm: String = pool[absi(h) % pool.size()]
-			_clutter.append({"name": nm, "pos": bp, "sz": CLUTTER_SIZE, "flip": (h & 4) == 0,
+			_clutter.append({"name": pool[absi(hi) % pool.size()], "pos": bp, "sz": CLUTTER_SIZE, "flip": (hi & 4) == 0,
 				"tint": _asset_tint(Color(1, 1, 1, 1), bx, by, GROUND_TINT_DEC)})
-			placed += 1
+		idx += 1
+		if _clutter.size() >= 1200:
+			break
 
 ## dessine un prop de clutter au RATIO NATIF, ancré au pied, teinté au sol.
 func _draw_clutter(cl: Dictionary, sp: Vector2) -> void:
@@ -910,8 +959,14 @@ func _build_decor() -> void:
 				var by := cy + jy
 				if _is_sea_cell(sea, int(bx), int(by)) or _in_river_water(rf, int(bx), int(by)):
 					continue                        # la BASE tomberait dans l'eau (mer/lac ou rivière) → interdit
-				var sz: float = float(rule[2]) * (0.82 + 0.36 * float((hi >> 15) % 10) / 10.0)
-				_decor.append({"name": pool[(hi >> 11) % pool.size()], "pos": Vector2(bx, by), "sz": sz})
+				var dnm: String = pool[(hi >> 11) % pool.size()]
+				var dfac := 1.0
+				if dnm.begins_with("DRESS_ROCK"):
+					dfac = 0.52                         # CAILLOUX : petits (pas des blocs qui dominent)
+				elif dnm.begins_with("DRESS_BUSH"):
+					dfac = 0.68                         # BUISSONS : bas
+				var sz: float = float(rule[2]) * dfac * (0.82 + 0.36 * float((hi >> 15) % 10) / 10.0)
+				_decor.append({"name": dnm, "pos": Vector2(bx, by), "sz": sz})
 			if _decor.size() >= 16000:
 				break
 		if _decor.size() >= 16000:
