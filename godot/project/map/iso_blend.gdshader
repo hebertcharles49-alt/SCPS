@@ -25,22 +25,22 @@ uniform float dist_max = 24.0;                  // plafond du champ de distance 
 uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombrage de la terrasse (sommet)
 // RELIEF « AoE » : chaque cellule highland est RELEVÉE de `highland_lift` (unités iso-écran) — son
 // sommet monte, une FACE de roche le relie au pied → vrai escarpement en volume (pas un sol plat).
-uniform float highland_lift : hint_range(0.0, 40.0) = 8.0;    // hauteur de falaise ABAISSÉE (~1 tuile) → relief plus DOUX, habillé de cailloux/buissons
+uniform float highland_lift : hint_range(0.0, 40.0) = 14.0;    // hauteur de falaise ABAISSÉE (~1 tuile) → relief plus DOUX, habillé de cailloux/buissons
 uniform float face_dark : hint_range(0.0, 1.0) = 0.80;       // pied de face (HAUT = clair, anti near-black)
-uniform float highland_warp : hint_range(0.0, 16.0) = 2.5;   // ondulation du bord (DOUX : angle droit à peine cassé)
+uniform float highland_warp : hint_range(0.0, 16.0) = 3.5;   // ondulation du bord (DOUX : angle droit à peine cassé)
 uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
 uniform float outline_w : hint_range(0.0, 4.0) = 1.4;        // demi-largeur du détourage (px écran)
-uniform float outline_str : hint_range(0.0, 1.0) = 0.6;      // force du trait de contour (arêtes accentuées)
+uniform float outline_str : hint_range(0.0, 1.0) = 0.45;      // force du trait de contour (arêtes accentuées)
 uniform float ridge_density : hint_range(0.1, 1.0) = 0.42;   // densité des panneaux de l'ÉVENTAIL (arêtes)
 uniform float fold_skew : hint_range(0.0, 0.4) = 0.14;       // cisaillement du PLI (texture pliée)
-uniform float fold_shade : hint_range(0.0, 0.6) = 0.34;      // contraste d'ombrage des facets (l'arête)
+uniform float fold_shade : hint_range(0.0, 0.6) = 0.28;      // contraste d'ombrage des facets (l'arête)
 // ÉCLAIRAGE GLOBAL DIRECTIONNEL : UNE seule lumière (haut-gauche écran) éclaire sol/falaise/assets.
 // `light_world` = direction MONDE vers la source (un pas `cell + light_world*k` va vers la lumière à
 // l'écran). Les falaises projettent une OMBRE PORTÉE douce sur le sol côté OPPOSÉ à la lumière.
 uniform vec2 light_world = vec2(-0.95, -0.32);
-uniform float shadow_str : hint_range(0.0, 0.7) = 0.34;      // force de l'ombre portée des falaises
-uniform float shadow_reach : hint_range(2.0, 20.0) = 10.0;   // portée de l'ombre (unités monde)
+uniform float shadow_str : hint_range(0.0, 0.7) = 0.50;      // force de l'ombre portée des falaises
+uniform float shadow_reach : hint_range(2.0, 20.0) = 14.0;   // portée de l'ombre (unités monde)
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
 uniform float warp : hint_range(0.0, 12.0) = 5.0;         // amplitude d'ondulation des frontières (cellules)
@@ -147,7 +147,11 @@ vec3 cliff_face(vec2 c, float t) {
 	float side = fp - 0.5;                      // <0 flanc gauche du pli, >0 flanc droit
 	float skew = side * tan(ang) * fold_skew;   // la texture PLIÉE (cisaillée verticalement ∝ angle)
 	float tex = texture(cliff_atlas, vec3(fract(vec2(c.x / tile_k, c.y / tile_k + skew)), ci - 1.0)).g;
-	vec3 base = vec3(0.58, 0.52, 0.45) * (0.80 + 0.45 * tex);   // gris-brun CLAIR (min ≈ 0.46)
+	vec3 base = vec3(0.75, 0.68, 0.58) * (0.80 + 0.45 * tex);   // grès CHAUD (clair)
+	// STRATES horizontales (roche sédimentaire) : bandes douces le long de c.y, brisées par le bruit.
+	float strata = fract(c.y * 0.3 + texture(noise_tex, c * 0.02).r * 0.4);
+	float band = smoothstep(0.0, 0.08, strata) * (1.0 - smoothstep(0.42, 0.50, strata));
+	base *= mix(0.88, 1.12, band);
 	// OMBRAGE du facet (lumière haut-gauche) : flanc gauche du pli CLAIR, flanc droit OMBRÉ ; l'écart
 	// croît avec l'angle (60° plus contrasté que 30°) → l'arête au pli (side=0) et aux bords de panneau.
 	base *= clamp(1.0 - sin(ang) * sign(side) * fold_shade, 0.72, 1.30);

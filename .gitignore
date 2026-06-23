@@ -107,3 +107,6 @@ scps_api_demo
 
 # Objets SCons (.os) — au cas où un build godot écrirait dans l'arbre moteur
 *.os
+
+# Backup local des assets (rollback overhaul) — pas dans le repo
+godot/project/assets/scps/pack_old/
