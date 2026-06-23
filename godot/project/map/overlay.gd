@@ -149,37 +149,24 @@ var _bridges_dirty := true
 # n'a plus rien à poser pour la route (seuls les PONTS restent en overlay, eux sont au-dessus de l'eau). ──
 
 # biome (couche, valeurs Biome) → NOMS de sprites dressing. FOREST=12 · WOODS=13 · JUNGLE=14
+# PREMIER LOT de dressing : chêne ×4 · buisson ×4 · rocher ×4 (découpés des planches de variantes).
+# Les milieux non encore couverts (marais, neige, mangrove, tourbière) RETOMBENT sur buisson/rocher
+# en attendant les lots suivants (roseaux, sapins enneigés, palétuviers…).
 const FOREST_TREES := {
-	12: ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_GROVE_BROADLEAF", "DRESS_TREE_POPLAR"],  # FOREST : feuillus
-	13: ["DRESS_GROVE_MIXED", "DRESS_TREE_PINE", "DRESS_GROVE_PINE_A", "DRESS_GROVE_PINE_B"],            # WOODS : mixte/conifères
-	14: ["DRESS_GROVE_BROADLEAF", "DRESS_TREE_GNARLED", "DRESS_GROVE_MIXED"],                            # JUNGLE : dense
+	12: ["DRESS_OAK_01", "DRESS_OAK_02", "DRESS_OAK_03", "DRESS_OAK_04"],  # FOREST : chênes
+	13: ["DRESS_OAK_02", "DRESS_OAK_04", "DRESS_OAK_01", "DRESS_OAK_03"],  # WOODS
+	14: ["DRESS_OAK_03", "DRESS_OAK_01", "DRESS_OAK_04", "DRESS_OAK_02"],  # JUNGLE
 }
-# ── DRESSING du monde par MILIEU (cailloux, buissons, arbres sporadiques, roseaux…) — habille la
-#    carte hors des forêts. Pools tirés au hasard, semés SPORADIQUEMENT (cf. _dress_rule). ──
-const DRESS_OPEN := ["DRESS_TREE_OAK_SUMMER", "DRESS_TREE_OAK_GOLD", "DRESS_TREE_OAK_AUTUMN", "DRESS_TREE_POPLAR",
-	"DRESS_GROVE_BROADLEAF", "DRESS_GROVE_MIXED", "DRESS_TREE_PINE", "DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN"]  # surtout des ARBRES, peu de buissons
-const DRESS_DRY := ["DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW", "DRESS_BUSH_THORNY", "DRESS_TREE_GNARLED", "DRESS_ROCK_LIGHT", "DRESS_GRASS_GOLD", "DRESS_DIRT_MOUND"]
-# MARAIS : roselière DENSE — roseaux (verts/secs/en eau), massettes, herbe mouillée, fougères, mousse,
-# quelques snags morts/tordus, peu de cailloux. Couvre la vasière brune.
-const DRESS_MARSH := ["DRESS_REEDS_GREEN", "DRESS_REEDS_DRY", "DRESS_REEDS_WATER", "DRESS_GRASS_CATTAIL",
-	"DRESS_GRASS_WET", "DRESS_FERNS", "DRESS_REEDS_GREEN", "DRESS_MUSHROOMS", "DRESS_MOSS_PATCH",
-	"DRESS_TREE_DEAD", "DRESS_TREE_GNARLED", "DRESS_ROOT_CLUSTER", "DRESS_BUSH_LOW"]
-# MANGROVE (côte tropicale ennoyée) : THICKET de palétuviers — arbres tordus + amas de racines en eau,
-# roseaux d'eau, fougères, herbe mouillée. Dense.
-const DRESS_MANGROVE := ["DRESS_TREE_GNARLED", "DRESS_ROOT_CLUSTER", "DRESS_REEDS_WATER", "DRESS_REEDS_GREEN",
-	"DRESS_TREE_GNARLED", "DRESS_FERNS", "DRESS_GRASS_WET", "DRESS_ROOT_CLUSTER", "DRESS_MOSS_PATCH", "DRESS_TREE_DEAD"]
-const DRESS_HILL := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT", "DRESS_ROCK_MOSSY", "DRESS_BUSH_LOW", "DRESS_BUSH_DRY", "DRESS_TREE_PINE", "DRESS_STONE_PILE"]
-const DRESS_CLIFF := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_DARK", "DRESS_ROCK_SPIRES", "DRESS_STONE_PILE", "DRESS_STONE_SLABS", "DRESS_BUSH_DRY", "DRESS_BUSH_THORNY", "DRESS_BUSH_LOW"]
-const DRESS_SNOW := ["DRESS_TREE_PINE_SNOW", "DRESS_ROCK_SNOW", "DRESS_BRANCH_SNOW", "DRESS_ROCK_GRAY_B"]
-const DRESS_RIVER := ["DRESS_ROCK_GRAY_A", "DRESS_ROCK_GRAY_B", "DRESS_ROCK_LIGHT", "DRESS_ROCK_MOSSY", "DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_REEDS_GREEN", "DRESS_PEBBLE_PATH", "DRESS_GRASS_CATTAIL"]
-# STEPPE/SAVANE (brun, sec) : couvrir de TOUFFES d'herbe dorée (ground cover, pas des cailloux),
-# quelques buissons secs, rare arbre tordu — densité haute mais BAS (l'herbe ne fait pas de clutter).
-const DRESS_STEPPE := ["DRESS_GRASS_GOLD", "DRESS_GRASS_GOLD", "DRESS_GRASS_GOLD", "DRESS_GRASS_GOLD",
-	"DRESS_GRASS_CATTAIL", "DRESS_GRASS_GOLD", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW", "DRESS_BUSH_LOW", "DRESS_TREE_GNARLED"]
-# TOURBIÈRE/LANDE (brun humide) : mousse, roseaux, herbe mouillée, snags morts — dense (terre couverte), peu de cailloux
-const DRESS_BOG := ["DRESS_MOSS_PATCH", "DRESS_GRASS_WET", "DRESS_REEDS_DRY", "DRESS_BUSH_LOW",
-	"DRESS_TREE_DEAD", "DRESS_REEDS_GREEN", "DRESS_MUSHROOMS", "DRESS_TREE_GNARLED", "DRESS_ROOT_CLUSTER",
-	"DRESS_FERNS", "DRESS_GRASS_CATTAIL", "DRESS_MOSS_PATCH"]
+const DRESS_OPEN := ["DRESS_OAK_01", "DRESS_OAK_02", "DRESS_OAK_03", "DRESS_OAK_04", "DRESS_BUSH_01", "DRESS_BUSH_03"]  # plaine : arbres + buissons épars
+const DRESS_DRY := ["DRESS_BUSH_01", "DRESS_BUSH_02", "DRESS_BUSH_04", "DRESS_ROCK_01", "DRESS_ROCK_02"]               # aride : buissons secs + cailloux
+const DRESS_MARSH := ["DRESS_BUSH_01", "DRESS_BUSH_03", "DRESS_BUSH_02", "DRESS_BUSH_04"]                              # (roseaux à venir) → buissons
+const DRESS_MANGROVE := ["DRESS_OAK_03", "DRESS_BUSH_03", "DRESS_BUSH_01", "DRESS_BUSH_04"]                            # (palétuviers à venir)
+const DRESS_HILL := ["DRESS_ROCK_01", "DRESS_ROCK_02", "DRESS_ROCK_04", "DRESS_BUSH_02", "DRESS_BUSH_01"]              # collines : cailloux + buissons
+const DRESS_CLIFF := ["DRESS_ROCK_01", "DRESS_ROCK_02", "DRESS_ROCK_03", "DRESS_ROCK_04", "DRESS_BUSH_02"]             # falaise : rochers
+const DRESS_SNOW := ["DRESS_ROCK_01", "DRESS_ROCK_04", "DRESS_ROCK_02"]                                                # (sapins enneigés à venir) → rochers
+const DRESS_RIVER := ["DRESS_ROCK_01", "DRESS_ROCK_02", "DRESS_BUSH_01", "DRESS_BUSH_03"]                              # berge : cailloux + buissons
+const DRESS_STEPPE := ["DRESS_BUSH_02", "DRESS_BUSH_04", "DRESS_BUSH_01", "DRESS_BUSH_03"]                             # steppe : buissons secs
+const DRESS_BOG := ["DRESS_BUSH_01", "DRESS_BUSH_03", "DRESS_BUSH_02", "DRESS_BUSH_04"]                                # (mousse/roseaux à venir)
 
 # biome → variante de ville TERRAIN (CITY_BIOME_*). SEULEMENT les terrains
 # DISTINCTIFS (côte/forêt/marais/montagne/neige…) ; les plaines génériques (4-10)
@@ -750,15 +737,15 @@ func _dress_rule(b: int) -> Array:
 	if b == 4 or b == 5 or b == 6 or b == 24:
 		return [DRESS_OPEN, 0.085, 11.0]                      # PLAINE/herbe : ARBRES sporadiques (un peu plus)
 	if b == 7 or b == 8:
-		return [DRESS_STEPPE, 0.22, 9.0]                      # STEPPE/SAVANE (brun) : touffes d'herbe sèche couvrantes, buissons épars
+		return [DRESS_STEPPE, 0.10, 8.0]                      # STEPPE/SAVANE : buissons secs épars (lot 1 : pas de touffes d'herbe)
 	if b == 9 or b == 10 or b == 11:
-		return [DRESS_DRY, 0.04, 9.0]                         # ARIDE/désert : buissons secs épars
+		return [DRESS_DRY, 0.04, 8.0]                         # ARIDE/désert : buissons secs + cailloux épars
 	if b == 22:
-		return [DRESS_BOG, 0.80, 8.0, 3]                      # TOURBIÈRE/LANDE : lande COUVERTE — lits de mousse/roseaux (3 touffes)
+		return [DRESS_BOG, 0.14, 8.0]                         # TOURBIÈRE/LANDE : buissons épars (densité BAISSÉE — lot 1, gros props ≠ grass)
 	if b == 15:
-		return [DRESS_MARSH, 0.85, 8.5, 3]                    # MARAIS : roselière DENSE (3 touffes/bloc → vasière couverte)
+		return [DRESS_MARSH, 0.16, 8.0]                       # MARAIS : buissons épars (roseaux à venir)
 	if b == 21:
-		return [DRESS_MANGROVE, 0.85, 9.5, 3]                 # MANGROVE : thicket dense de palétuviers (3 touffes/bloc)
+		return [DRESS_MANGROVE, 0.16, 9.0]                    # MANGROVE : buissons/arbres épars (palétuviers à venir)
 	if b == 16 or b == 17:
 		return [DRESS_HILL, 0.10, 9.0]                        # COLLINES/highlands : cailloux + buissons (allégé)
 	if b == 18 or b == 23:
@@ -1661,9 +1648,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var ss: Vector2 = vt * ip
 			if ss.x < -30 or ss.y < -30 or ss.x > vp.x + 30 or ss.y > vp.y + 30:
 				continue
-			var ts: float = d.get("sz", 10.0)
+			var th: float = d.get("sz", 10.0)                  # HAUTEUR monde
+			var tw := th * float(spr.get_width()) / float(maxi(1, spr.get_height()))   # RATIO NATIF (chênes hauts ≠ carrés)
 			var dt: Color = d.get("tint", Color(1, 1, 1, 1))   # calé sur le terrain (relief + sol)
-			draw_texture_rect(spr, Rect2(ip - Vector2(ts * 0.5, ts), Vector2(ts, ts)), false, dt)
+			draw_texture_rect(spr, Rect2(ip - Vector2(tw * 0.5, th), Vector2(tw, th)), false, dt)
 
 	# ── FRONTIÈRES (gameplay) : sur le relief iso. Pays + régions selon le mode. ──
 	var mode := 0
