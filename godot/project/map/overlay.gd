@@ -835,25 +835,25 @@ const DRAW_DECOR := true
 ## la densité (forêt dense, plaine très clairsemée), le SPORADIQUE casse tout motif.
 func _dress_rule(b: int) -> Array:
 	if FOREST_TREES.has(b):
-		return [FOREST_TREES[b], 0.55, 12.0]                  # FORÊT : dense
+		return [FOREST_TREES[b], 0.55, 8.0]                  # FORÊT : dense
 	if b == 4 or b == 5 or b == 6 or b == 24:
-		return [DRESS_OPEN, 0.085, 11.0]                      # PLAINE/herbe : ARBRES sporadiques (un peu plus)
+		return [DRESS_OPEN, 0.085, 7.5]                      # PLAINE/herbe : ARBRES sporadiques (un peu plus)
 	if b == 7 or b == 8:
-		return [DRESS_STEPPE, 0.10, 8.0]                      # STEPPE/SAVANE : buissons secs épars (lot 1 : pas de touffes d'herbe)
+		return [DRESS_STEPPE, 0.10, 5.5]                      # STEPPE/SAVANE : buissons secs épars (lot 1 : pas de touffes d'herbe)
 	if b == 9 or b == 10 or b == 11:
-		return [DRESS_DRY, 0.04, 8.0]                         # ARIDE/désert : buissons secs + cailloux épars
+		return [DRESS_DRY, 0.04, 5.5]                         # ARIDE/désert : buissons secs + cailloux épars
 	if b == 22:
-		return [DRESS_BOG, 0.14, 8.0]                         # TOURBIÈRE/LANDE : buissons épars (densité BAISSÉE — lot 1, gros props ≠ grass)
+		return [DRESS_BOG, 0.14, 5.5]                         # TOURBIÈRE/LANDE : buissons épars (densité BAISSÉE — lot 1, gros props ≠ grass)
 	if b == 15:
-		return [DRESS_MARSH, 0.16, 8.0]                       # MARAIS : buissons épars (roseaux à venir)
+		return [DRESS_MARSH, 0.16, 5.5]                       # MARAIS : buissons épars (roseaux à venir)
 	if b == 21:
-		return [DRESS_MANGROVE, 0.16, 9.0]                    # MANGROVE : buissons/arbres épars (palétuviers à venir)
+		return [DRESS_MANGROVE, 0.16, 6.0]                    # MANGROVE : buissons/arbres épars (palétuviers à venir)
 	if b == 16 or b == 17:
-		return [DRESS_HILL, 0.10, 9.0]                        # COLLINES/highlands : cailloux + buissons (allégé)
+		return [DRESS_HILL, 0.10, 6.0]                        # COLLINES/highlands : cailloux + buissons (allégé)
 	if b == 18 or b == 23:
-		return [DRESS_CLIFF, 0.14, 9.0]                       # FALAISE/montagne/volcan : cailloux + buissons (allégé)
+		return [DRESS_CLIFF, 0.14, 6.0]                       # FALAISE/montagne/volcan : cailloux + buissons (allégé)
 	if b == 19 or b == 20:
-		return [DRESS_SNOW, 0.12, 10.0]                       # NEIGE/glacier : pins enneigés, rochers de neige
+		return [DRESS_SNOW, 0.12, 7.0]                       # NEIGE/glacier : pins enneigés, rochers de neige
 	return []
 
 func _build_decor() -> void:
