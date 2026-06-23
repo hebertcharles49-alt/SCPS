@@ -29,6 +29,17 @@ const EDI_RING := [
 	Vector2i(3, 1), Vector2i(1, 3), Vector2i(-3, -1), Vector2i(-1, -3),
 	Vector2i(3, -1), Vector2i(-1, 3), Vector2i(-3, 1), Vector2i(1, -3),
 ]
+# CLUTTER (barils/bûches/charrettes/puits) : anneau PÉRIPHÉRIE du bourg (rayon 3-5 tuiles), hash-déterministe
+# + petit jitter sub-tuile (vivant sans être « posé au hasard »). Plus large que EDI_RING (au-delà des monuments).
+const CLUTTER_SIZE := 5.0    ## hauteur MONDE d'un prop de clutter (petit)
+const CLUTTER_RING := [
+	Vector2i(4, 0), Vector2i(0, 4), Vector2i(-4, 0), Vector2i(0, -4),
+	Vector2i(3, 3), Vector2i(-3, 3), Vector2i(3, -3), Vector2i(-3, -3),
+	Vector2i(5, 2), Vector2i(2, 5), Vector2i(-5, -2), Vector2i(-2, -5),
+	Vector2i(5, -2), Vector2i(-2, 5), Vector2i(-5, 2), Vector2i(2, -5),
+]
+var _clutter := []           ## [{name, pos(world), sz, flip, tint}]
+var _clutter_dirty := true
 
 ## OMBRE PORTÉE des assets : un disque APLATI au pied, décalé dans la direction ANTI-LUMIÈRE,
 ## la MÊME lumière globale que le shader de terrain (light_world ≈ (-0.95,-0.32)). L'ombre tombe
@@ -670,6 +681,63 @@ func _build_structures() -> void:
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
 	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 
+## CLUTTER : props de vie dispersés en PÉRIPHÉRIE du bourg (anneau hash-déterministe + jitter sub-tuile),
+## au sec (jamais eau/falaise). Teinte au sol, petit. 3-8 selon le band.
+func _build_clutter() -> void:
+	_clutter.clear()
+	_clutter_dirty = false
+	var w = Sim.world
+	if w == null:
+		return
+	var pool := UIKit.clutter_names()
+	if pool.is_empty():
+		return
+	_ensure_terrain(w)
+	var sea: Image = w.layer_image(LAYER_WATER)
+	var rf: Image = _carved_river_field()
+	_bio_img = w.layer_image(2)
+	for r in range(w.region_count()):
+		if w.region_tier(r) < 0:
+			continue
+		var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))
+		if ctr.x < 0:
+			continue
+		var ccol := int(ctr.x) / ROUTE_GRID_K
+		var crow := int(ctr.y) / ROUTE_GRID_K
+		var n := clampi(_city_band(w.region_pop(r)), 3, 8)
+		var placed := 0
+		for oi in range(CLUTTER_RING.size()):
+			if placed >= n:
+				break
+			var off: Vector2i = CLUTTER_RING[oi]
+			var h := (r * 2654435761) ^ ((oi + 13) * 40503)
+			var jx := float(h % 5) - 2.0                       # jitter sub-tuile déterministe (vivant)
+			var jy := float((h >> 8) % 5) - 2.0
+			var bx := float((ccol + off.x) * ROUTE_GRID_K + ROUTE_GRID_K / 2) + jx
+			var by := float((crow + off.y) * ROUTE_GRID_K + ROUTE_GRID_K / 2) + jy
+			var bp := Vector2(bx, by)
+			if _is_sea_cell(sea, int(bx), int(by)) or _in_river_water(rf, int(bx), int(by)) or _is_cliff_base(bp):
+				continue
+			var nm: String = pool[absi(h) % pool.size()]
+			_clutter.append({"name": nm, "pos": bp, "sz": CLUTTER_SIZE, "flip": (h & 4) == 0,
+				"tint": _asset_tint(Color(1, 1, 1, 1), bx, by, GROUND_TINT_DEC)})
+			placed += 1
+
+## dessine un prop de clutter au RATIO NATIF, ancré au pied, teinté au sol.
+func _draw_clutter(cl: Dictionary, sp: Vector2) -> void:
+	var spr := UIKit.clutter_sprite(cl["name"])
+	if spr == null:
+		return
+	var th: float = cl.get("sz", CLUTTER_SIZE)
+	var tw := th * float(spr.get_width()) / float(maxi(1, spr.get_height()))
+	var tint: Color = cl.get("tint", Color(1, 1, 1, 1))
+	if bool(cl.get("flip", false)):
+		draw_set_transform(sp, 0.0, Vector2(-1, 1))
+		draw_texture_rect(spr, Rect2(-tw * 0.5, -th, tw, th), false, tint)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	else:
+		draw_texture_rect(spr, Rect2(sp - Vector2(tw * 0.5, th), Vector2(tw, th)), false, tint)
+
 ## DRESSING du monde : scan de la couche biome → arbres/bosquets/buissons/cailloux/roseaux semés
 ## SPORADIQUEMENT selon le MILIEU (forêt dense ; plaine & aride sporadiques ; marais ; collines ;
 ## falaise = cailloux/buissons ; neige), PLUS un liseré de cailloux/buissons le long des rivières.
@@ -777,6 +845,7 @@ func _dress_rivers(sea: Image) -> void:
 
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
+	_clutter_dirty = true     # le clutter suit le bourg
 	_road_tiles_dirty = true   # le réseau a pu croître/changer → reposer les tuiles de route
 	_bridges_dirty = true      # … et les ponts (un franchissement neuf)
 	var sig := _owner_signature(Sim.world)
@@ -831,6 +900,7 @@ func _ensure_roads(prebuild := false) -> void:
 	_build_road_cells()                      # empreinte des routes (+ rues principales) → le bourg les évite
 	_roads_dirty = false
 	_struct_dirty = true                     # les routes ont bougé → le bourg se recale (évitement)
+	_clutter_dirty = true     # le clutter suit le bourg
 
 ## marque les cellules occupées par une route (+ marge 1) → le bourg en spirale les ÉVITE
 ## (le bâti ne pousse pas sur la chaussée ; les ruelles serpentent ENTRE).
@@ -1702,28 +1772,41 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var aw := Vector2(float(ccol) * ROUTE_GRID_K + ROUTE_GRID_K * 0.5,
 				float(crow) * ROUTE_GRID_K + ROUTE_GRID_K * 0.5)
 			props.append({"d": aw.x + aw.y, "city": r, "sp": mv.iso_pos(aw.x, aw.y), "w": aw})
+		# CLUTTER (props de vie en peripherie) - meme Y-sort, ombre legere, PAS de fondation (city = -2)
+		if _clutter_dirty:
+			_build_clutter()
+		for cl in _clutter:
+			var clp: Vector2 = cl["pos"]
+			var cip: Vector2 = mv.iso_pos(clp.x, clp.y)
+			var css: Vector2 = vt * cip
+			if css.x < -40 or css.y < -60 or css.x > vp.x + 40 or css.y > vp.y + 40:
+				continue
+			props.append({"d": clp.x + clp.y, "city": -2, "cl": cl, "sp": cip})
 		props.sort_custom(func(a, b): return a["d"] < b["d"])   # arrière (nord) → avant (sud), profondeur iso
-		# PASSE 1 : toutes les ombres SOUS tout (sinon l'ombre d'un asset AVANT mord le sprite d'un ARRIÈRE)
 		for prp in props:
 			var wd: float
-			if prp["city"] < 0:
+			if prp["city"] == -1:
 				wd = float((prp["s"] as Dictionary).get("sz", BLD_SIZE))
+			elif prp["city"] == -2:
+				wd = float((prp["cl"] as Dictionary).get("sz", CLUTTER_SIZE))
 			else:
 				wd = minf(CITY_CORE_SIZE, float(_region_citymax.get(prp["city"], CITY_CORE_SIZE)))
 			_blob_shadow(prp["sp"], wd)
-		# PASSE 1.5 : FONDATIONS (dalles de terre battue) après les ombres, SOUS les sprites (§5a) → l'édifice repose
 		for prp in props:
+			if prp["city"] == -2:
+				continue
 			var fwd: float
-			if prp["city"] < 0:
+			if prp["city"] == -1:
 				fwd = float((prp["s"] as Dictionary).get("sz", BLD_SIZE))
 			else:
 				fwd = minf(CITY_CORE_SIZE, float(_region_citymax.get(prp["city"], CITY_CORE_SIZE)))
 			var wp: Vector2 = prp["w"]
 			_draw_foundation(prp["sp"], fwd * FOUND_W_MULT, _asset_tint(FOUND_BASE, wp.x, wp.y, GROUND_TINT_FOUND))
-		# PASSE 2 : les sprites par-dessus, dans l'ordre de profondeur
 		for prp in props:
-			if prp["city"] < 0:
+			if prp["city"] == -1:
 				_draw_struct(prp["s"], prp["sp"])
+			elif prp["city"] == -2:
+				_draw_clutter(prp["cl"], prp["sp"])
 			else:
 				_draw_city(w, prp["city"], prp["sp"])
 

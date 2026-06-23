@@ -309,6 +309,23 @@ static func structure_names() -> PackedStringArray:
 static func structure_sprite(nm: String) -> Texture2D:
 	return _tex_lift(STRUCTURES_DIR + nm + ".png", NEW_ART_LIFT)
 
+# ── CLUTTER (props de vie : barils, bûches, charrettes, puits…) — découpés de la planche, RGBA direct.
+const CLUTTER_DIR := "res://assets/scps/pack/clutter/"
+static var _clutter_names: PackedStringArray = []
+static var _clutter_listed := false
+static func clutter_names() -> PackedStringArray:
+	if _clutter_listed:
+		return _clutter_names
+	_clutter_listed = true
+	var d := DirAccess.open(CLUTTER_DIR)
+	if d != null:
+		for f in d.get_files():
+			if f.ends_with(".png"):
+				_clutter_names.append(f.get_basename())
+	return _clutter_names
+static func clutter_sprite(nm: String) -> Texture2D:
+	return _tex_lift(CLUTTER_DIR + nm + ".png", NEW_ART_LIFT)
+
 
 # ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)
 const RES_FALLBACK := {
