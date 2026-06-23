@@ -1,0 +1,496 @@
+{
+ "asset_kind": "SCPS cliff autotile (gres, lot 1 - genere des 3 textures)",
+ "tile_size": [
+  256,
+  256
+ ],
+ "opaque": true,
+ "selection": {
+  "cell": "highland terrain cell",
+  "bit_order": {
+   "n": 1,
+   "e": 2,
+   "s": 4,
+   "w": 8,
+   "ne": 16,
+   "se": 32,
+   "sw": 64,
+   "nw": 128
+  },
+  "rule": "Set a bit when that neighbouring cell is also highland. Diagonal bits matter only when both adjoining cardinal neighbours are highland.",
+  "states": 47,
+  "variants_per_state": 2
+ },
+ "entries": [
+  {
+   "mask": 0,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 0,
+   "variant": 2,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 1,
+   "variant": 1,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 1,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 2,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 2,
+   "variant": 2,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 3,
+   "variant": 1,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 3,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 19,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 19,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 4,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 4,
+   "variant": 2,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 5,
+   "variant": 1,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 5,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 6,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 6,
+   "variant": 2,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 38,
+   "variant": 1,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 38,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 7,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 7,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 23,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 23,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 39,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 39,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 55,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 55,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 8,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 8,
+   "variant": 2,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 9,
+   "variant": 1,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 9,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 137,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 137,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 10,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 10,
+   "variant": 2,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 11,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 11,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 27,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 27,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 139,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 139,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 155,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 155,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 12,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 12,
+   "variant": 2,
+   "output": "cliff_scree.png"
+  },
+  {
+   "mask": 76,
+   "variant": 1,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 76,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 13,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 13,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 77,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 77,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 141,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 141,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 205,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 205,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 14,
+   "variant": 1,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 14,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 46,
+   "variant": 1,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 46,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 78,
+   "variant": 1,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 78,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 110,
+   "variant": 1,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 110,
+   "variant": 2,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 15,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 15,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 31,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 31,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 47,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 47,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 63,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 63,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 79,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 79,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 95,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 95,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 111,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 111,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 127,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 127,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 143,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 143,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 159,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 159,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 175,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 175,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 191,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 191,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 207,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 207,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 223,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 223,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 239,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 239,
+   "variant": 2,
+   "output": "cliff_b.png"
+  },
+  {
+   "mask": 255,
+   "variant": 1,
+   "output": "cliff_a.png"
+  },
+  {
+   "mask": 255,
+   "variant": 2,
+   "output": "cliff_b.png"
+  }
+ ]
+}
