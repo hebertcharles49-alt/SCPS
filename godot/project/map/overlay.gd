@@ -74,7 +74,7 @@ var _region_centre := {}  ## région colonisée → TERRAIN du centre-ville (pla
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
-var _clear_set := {}      ## cellules DÉBOISÉES autour des villes (le bourg respire, pas noyé sous la forêt)
+var _clear_set := {}      ## clairance 0-1 par cellule autour des villes (1 = cœur déboisé -> 0 = lisière) — fondu, pas binaire
 var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
 var _borders := {}        ## niveau (1=région · 2=pays) → PackedVector2Array de segments (façade)
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
@@ -319,13 +319,19 @@ func _build_anchors() -> void:
 		# DÉBOISE un disque autour de l'assise (∝ tier) → le bourg respire dans une
 		# clairière au lieu d'être noyé sous la canopée (comme le masque de viewer.c).
 		# Couvre TOUTE l'emprise du bourg (champs au large à r≈12) + une marge franche.
-		var clr := int(18.0 + t * 2.2)
+		var r_in := 10.0 + t * 2.0
+		var r_out := r_in + 12.0
 		var bcx := int(best.x)
 		var bcy := int(best.y)
-		for dy in range(-clr, clr + 1):
-			for dx in range(-clr, clr + 1):
-				if dx * dx + dy * dy <= clr * clr:
-					_clear_set[Vector2i(bcx + dx, bcy + dy)] = true
+		var rr := int(ceil(r_out))
+		for dy in range(-rr, rr + 1):
+			for dx in range(-rr, rr + 1):
+				var cv := 1.0 - smoothstep(r_in, r_out, sqrt(float(dx * dx + dy * dy)))
+				if cv <= 0.0:
+					continue
+				var ckey := Vector2i(bcx + dx, bcy + dy)
+				if cv > float(_clear_set.get(ckey, 0.0)):
+					_clear_set[ckey] = cv
 
 ## rend la cellule de TERRE (sea < 1) la plus proche de `c` (anneaux croissants,
 ## comme settle_land_spot). Renvoie `c` tel quel si aucune terre à portée.
@@ -871,8 +877,11 @@ func _build_decor() -> void:
 			var b := int(bio.get_pixel(cx, cy).r * 255.0 + 0.5)
 			if b <= 3:
 				continue                            # eau / plage : rien
-			if _clear_set.has(Vector2i(cx, cy)):
-				continue                            # clairière de bourg
+			var clv: float = _clear_set.get(Vector2i(cx, cy), 0.0)
+			if clv > 0.0:
+				var ch := ((cx * 73856093) ^ (cy * 19349663) ^ 0x5bd1e995) & 0xffff
+				if float(ch) / 65535.0 < clv:        # LISÈRE graduelle : proba de saut = clairance (1 au cœur -> 0 au bord)
+					continue
 			if sea != null and int(sea.get_pixel(cx, cy).r * 255.0 + 0.5) >= 1:
 				continue                            # eau (lac)
 			var rule := _dress_rule(b)
@@ -916,7 +925,7 @@ func _dress_rivers(sea: Image) -> void:
 		if (h % 100) >= 10:
 			continue                                # ~10 % des points → SPORADIQUE
 		var p := Vector2(cx + (float((h >> 3) % 5) - 2.0), cy + (float((h >> 7) % 5) - 2.0))
-		if _clear_set.has(Vector2i(int(p.x), int(p.y))):
+		if float(_clear_set.get(Vector2i(int(p.x), int(p.y)), 0.0)) > 0.4:
 			continue
 		if sea != null and _is_sea_cell(sea, int(p.x), int(p.y)):
 			continue
