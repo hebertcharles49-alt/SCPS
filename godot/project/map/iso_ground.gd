@@ -647,6 +647,38 @@ func _build_road_cov(w, W: int, H: int) -> Image:
 				var y := cy + dy
 				if x >= 0 and y >= 0 and x < W and y < H:
 					img.set_pixel(x, y, Color(0.0, 0.0, 0.0))
+	# A1.5 / B3 / C2 — RUES PAVÉES DU BOURG : par-dessus la clairance, on grave le squelette de rues (overlay).
+	# Le SOL URBAIN (city_wear) tasse déjà tout le bourg en TERRE BATTUE → une sente de terre s'y NOIE. Les
+	# rues doivent donc RESSORTIR : on les PAVE (peak > road_pave_edge) → chaussée claire sur le brun du bourg,
+	# exactement la lecture « ville médiévale : terre tassée + rues pavées ». RAYONNENT du centre vers les
+	# routes ; la clairance ne les efface pas (gravées APRÈS). Le point de CONVERGENCE (origine commune des
+	# rues principales) reçoit une PLACE pavée (§C2 marché ; §B3 assise des monuments civiques au cœur).
+	var par := get_parent()
+	var ov: Node = par.get_node_or_null("Overlay") if par != null else null
+	if ov != null and ov.has_method("town_streets"):
+		var plazas := {}
+		for st in ov.call("town_streets"):
+			var a: Vector2 = st["a"]
+			var b: Vector2 = st["b"]
+			var is_main: bool = bool(st.get("main", true))
+			if is_main:
+				plazas[Vector2i(int(a.x), int(a.y))] = a   # origine = cœur du bourg → place du marché
+			var pk := 0.80 if is_main else 0.66            # grande rue PAVÉE nette · ruelle plus fine
+			var sf := 2 if is_main else 1
+			var steps := maxi(1, int(ceil(a.distance_to(b))))
+			for s in range(steps + 1):
+				var p: Vector2 = a.lerp(b, float(s) / float(steps))
+				var ix := int(p.x)
+				var iy := int(p.y)
+				if ix < 0 or iy < 0 or ix >= W or iy >= H:
+					continue
+				if sea != null and int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1:
+					continue
+				_carve_brush(img, ix, iy, pk, 1, sf, W, H)
+		# PLACE DU MARCHÉ : disque pavé au point de convergence (§C2) — l'assise des monuments civiques (§B3).
+		for key in plazas:
+			var c: Vector2 = plazas[key]
+			_carve_brush(img, int(c.x), int(c.y), 0.88, 3, 5, W, H)
 	return img
 
 ## CHAMP de SOL URBAIN (RF) : un BLOB ORGANIQUE par bourg (centré sur le centroïde, rayon ∝ band, contour

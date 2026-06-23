@@ -658,6 +658,12 @@ func _build_structures() -> void:
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
 	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
 
+## A1.5 — expose le squelette de rues (segments {a, b, main}) au SOL : IsoGround les grave dans road_cov
+## → les rues du bourg se LISENT comme des sentes de terre battue (le pendant ground du bâti le long des rues).
+## Construit eager au générate/tick (lignes _build_structures), donc prêt quand IsoGround bâtit road_cov.
+func town_streets() -> Array:
+	return _town_streets
+
 ## A1 — SQUELETTE DE RUES d'un bourg : un segment du CENTRE vers chaque route commerciale qui TOUCHE la
 ## région (≤4, dédupliqués par angle), + une rue SUD si isolé, + ruelles transversales (band≥3, ±15°).
 ## Chaque segment est CLIPPÉ au dernier point SEC (jamais sur l'eau).
