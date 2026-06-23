@@ -1242,7 +1242,10 @@ func _draw_city(w, r: int, ctr: Vector2) -> void:
 		spr = UIKit.city_sprite(band, (r * 2654435761) % 8)
 	var sz: float = min(CITY_CORE_SIZE, _region_citymax.get(r, CITY_CORE_SIZE))
 	if spr != null and sz >= 6.0:
-		draw_texture_rect(spr, Rect2(ctr - Vector2(sz * 0.5, sz), Vector2(sz, sz)), false)  # ancré au pied
+		# RATIO NATIF (les centres ne sont pas carrés : hutte large, donjon haut…) → hauteur = sz, largeur ∝ ratio
+		var th := sz
+		var tw := th * float(spr.get_width()) / float(maxi(1, spr.get_height()))
+		draw_texture_rect(spr, Rect2(ctr - Vector2(tw * 0.5, th), Vector2(tw, th)), false)  # ancré au pied (bas-centre)
 	else:
 		var radius := 1.2 + t * 0.4
 		draw_circle(ctr, radius, Color(0.62, 0.47, 0.30))

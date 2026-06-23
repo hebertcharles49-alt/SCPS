@@ -177,11 +177,13 @@ static func city_sprite(band: int, variant: int) -> Texture2D:
 static func city_biome(nm: String) -> Texture2D:
 	return _tex_lift(CITIES_DIR + nm + ".png", CITY_LIFT)
 
-## CENTRE de ville (cœur du bourg) par TERRAIN × TIER (pack centres/). `kind` ∈
-## {plaine, foret, montagne, estuaire, portuaire, lacustre} · tier 1-7. RGBA direct.
+## CENTRE de ville par TIER (1-7) : nouveau lot power-progression (hutte→palais royal), AGNOSTIQUE au
+## biome (un seul jeu de 7). `kind` conservé pour compat d'appel mais IGNORÉ. RGBA direct, lift DOUX
+## (l'art painterly est déjà clair, lum ~85 → le lift ×2.1 le délaverait).
 const CENTRES_DIR := "res://assets/scps/pack/centres/"
+const NEW_ART_LIFT := 1.25   ## éclaircissement doux des nouveaux sprites (centres/bâtiments)
 static func city_centre(kind: String, tier: int) -> Texture2D:
-	return _tex_lift(CENTRES_DIR + kind + "/CITY_CENTRE_" + kind.to_upper() + "_T%d.png" % clampi(tier, 1, 7), CITY_LIFT)
+	return _tex_lift(CENTRES_DIR + "CITY_CENTRE_T%d.png" % clampi(tier, 1, 7), NEW_ART_LIFT)
 
 ## sprite de DRESSING par NOM (DRESS_TREE_*, DRESS_GROVE_*…) ; null si absent.
 static func dressing_named(nm: String) -> Texture2D:
