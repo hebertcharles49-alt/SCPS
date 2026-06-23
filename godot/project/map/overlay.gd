@@ -1780,16 +1780,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 			else:
 				wd = minf(CITY_CORE_SIZE, float(_region_citymax.get(prp["city"], CITY_CORE_SIZE)))
 			_blob_shadow(prp["sp"], wd)
-		for prp in props:
-			if prp["city"] == -2:
-				continue
-			var fwd: float
-			if prp["city"] == -1:
-				fwd = float((prp["s"] as Dictionary).get("sz", BLD_SIZE))
-			else:
-				fwd = minf(CITY_CORE_SIZE, float(_region_citymax.get(prp["city"], CITY_CORE_SIZE)))
-			var wp: Vector2 = prp["w"]
-			_draw_foundation(prp["sp"], fwd * FOUND_W_MULT, _asset_tint(FOUND_BASE, wp.x, wp.y, GROUND_TINT_FOUND))
+		# (FONDATIONS « pate » RETIREES -> le SOL URBAIN city_wear (shader terrain) fait le grounding
+		#  graduel sous tout le bourg ; plus de disque-tampon par batiment.)
 		for prp in props:
 			if prp["city"] == -1:
 				_draw_struct(prp["s"], prp["sp"])

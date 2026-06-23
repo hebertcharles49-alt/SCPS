@@ -78,6 +78,7 @@ uniform float river_warp  : hint_range(0.0, 6.0) = 0.0;      // 0 = berge NETTE 
 //    (tuile seamless `road_pave` tuilée sur le plan du sol), avec WARP de bruit sur le bord. Largeur
 //    variable = l'amplitude du champ (plus large près des bourgs, plus étroit en forêt — encodé au carve). ─
 uniform sampler2D road_cov : filter_linear;                  // couverture de route 0..1 (champ lisse)
+uniform sampler2D city_wear : filter_linear;                 // SOL URBAIN 0..1 (terre battue sous les bourgs, champ lisse)
 uniform sampler2D road_pave : filter_linear, repeat_enable;  // tuile pavé seamless (centre de chaussée)
 uniform float road_on = 0.0;
 uniform float road_dirt_edge = 0.10;                         // seuil champ : début du bord terreux
@@ -247,6 +248,17 @@ void fragment() {
 		float vb = mix(1.0 - var_amp, 1.0 + var_amp,
 			texture(noise_tex, cell * 0.02 + vec2(3.1, 7.3)).r);
 		col *= vb;
+		// ── SOL URBAIN (city_wear) : terre battue GRADUELLE sous les bourgs (champ lisse, blob organique).
+		//    Le biome transparaît (terre battue EN FORÊT ≠ EN PLAINE) ; pas de disque, pas de frontière nette. ──
+		if (!water_here) {
+			float cw = texture(city_wear, cell / map_size).r;
+			if (cw > 0.01) {
+				vec3 dirt = mix(col, vec3(0.58, 0.50, 0.40), 0.6);             // terre battue teintée au biome local
+				float grit = texture(noise_tex, cell * 0.15).r;               // micro-bruit (cailloux/ornières)
+				dirt *= mix(0.92, 1.08, grit);
+				col = mix(col, dirt, cw * 0.55);
+			}
+		}
 		// ── ROUTES en CHAMP LISSE (modèle rivière) : on lit `road_cov` (couverture scalaire, filtre
 		//    linéaire) → BORD terreux (assombri road_worn) + CENTRE pavé (tuile seamless sur le plan du sol).
 		//    Un WARP de bruit casse la régularité du bord. La route NE COURT PAS sur l'eau (water_here). ──

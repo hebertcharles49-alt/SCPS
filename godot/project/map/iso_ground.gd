@@ -78,6 +78,8 @@ var _road_cov: ImageTexture = null     ## couverture LISSE (1 route, 0 sinon, fi
 var _road_pave: Texture2D = null       ## tuile pavé seamless (centre de la chaussée)
 const ROAD_PAVE := "res://assets/scps/pack/iso_tiles/road_detail/cobblestone-path-seamless-512.png"
 const ROAD_CLEAR_R := 8                 ## rayon (cellules) effacé de route autour d'un centre → la dalle n'est pas traversée
+var _city_wear: ImageTexture = null     ## SOL URBAIN (terre battue sous les bourgs) — champ lisse comme road_cov
+const CITY_WEAR_BANDS := [150, 400, 900, 1800, 3500, 7000, 14000]   ## seuils de pop → band (miroir overlay)
 var _road_sig := -1                    ## signature du réseau (nb cellules) → ne reposer que si ça change
 
 ## texture-array des tuiles PLATES tuilables : VAR couches par biome (couche = biome*VAR + variante),
@@ -500,6 +502,7 @@ func _on_generated() -> void:
 	_cliff_topbio = null
 	_road_idx = null        # … et repose les tuiles de route (réseau du monde neuf)
 	_road_cov = null
+	_city_wear = null       # … et le sol urbain (bourgs du monde neuf)
 	_road_sig = -1
 	queue_redraw()
 
@@ -507,6 +510,7 @@ func _on_tick(_y: int) -> void:
 	var w = Sim.world
 	if w == null:
 		return
+	_city_wear = null       # la pop a bougé → le sol urbain (blob ∝ band) se recale
 	# le RÉSEAU de routes grandit/change (conquête) → reposer les tuiles si le nb de cellules a bougé
 	if _road_sig >= 0:
 		var n := 0
@@ -568,6 +572,10 @@ func _draw() -> void:
 		var pave := _road_pave_tex()
 		if pave != null:
 			mat.set_shader_parameter("road_pave", pave)
+		# SOL URBAIN : terre battue graduelle sous les bourgs (remplace les dalles « pâté » de l'overlay)
+		if _city_wear == null:
+			_city_wear = ImageTexture.create_from_image(_build_city_wear(w, W, H))
+		mat.set_shader_parameter("city_wear", _city_wear)
 		mat.set_shader_parameter("road_on", 1.0)
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
 	draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))
@@ -639,6 +647,50 @@ func _build_road_cov(w, W: int, H: int) -> Image:
 				var y := cy + dy
 				if x >= 0 and y >= 0 and x < W and y < H:
 					img.set_pixel(x, y, Color(0.0, 0.0, 0.0))
+	return img
+
+## CHAMP de SOL URBAIN (RF) : un BLOB ORGANIQUE par bourg (centré sur le centroïde, rayon ∝ band, contour
+## LOBÉ par harmoniques d'angle → tache d'huile, pas un timbre rond). 1 au cœur, 0 au bord (smoothstep).
+## Le shader le rend en terre battue graduelle. Jamais sur l'eau. (Les rues l'épaississent — phase A1.)
+func _build_city_wear(w, W: int, H: int) -> Image:
+	var img := Image.create(W, H, false, Image.FORMAT_RF)
+	if w == null:
+		return img
+	var sea: Image = w.layer_image(4)
+	for r in range(w.region_count()):
+		if w.region_tier(r) < 0:
+			continue
+		var ctr: Vector2 = w.region_centroid(r)
+		if ctr.x < 0:
+			continue
+		var pop: int = w.region_pop(r)
+		var band := 1
+		for thr in CITY_WEAR_BANDS:
+			if pop >= thr:
+				band += 1
+		var r_in := 6.0 + float(band) * 2.0
+		var r_out := r_in + 8.0
+		var seed := float(r) * 1.7
+		var cx := int(ctr.x)
+		var cy := int(ctr.y)
+		var rr := int(ceil(r_out)) + 2
+		for dy in range(-rr, rr + 1):
+			for dx in range(-rr, rr + 1):
+				var x := cx + dx
+				var y := cy + dy
+				if x < 0 or y < 0 or x >= W or y >= H:
+					continue
+				if sea != null and int(sea.get_pixel(x, y).r * 255.0 + 0.5) >= 1:
+					continue                                  # pas de terre battue sur l'eau
+				var dist := sqrt(float(dx * dx + dy * dy))
+				var ang := atan2(float(dy), float(dx))
+				var rmod := 1.0 + 0.25 * sin(ang * 3.0 + seed) + 0.14 * sin(ang * 5.0 - seed)   # contour LOBÉ
+				var eff := dist / maxf(0.3, rmod)
+				var v := 1.0 - smoothstep(r_in, r_out, eff)   # 1 au cœur, 0 au bord
+				if v <= 0.0:
+					continue
+				if img.get_pixel(x, y).r < v:
+					img.set_pixel(x, y, Color(v, 0.0, 0.0))
 	return img
 
 ## le CHAMP DÉBIT carvé (L8), bâti à la DEMANDE et mis en cache — la MÊME donnée que le shader rend en
