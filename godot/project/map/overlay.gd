@@ -21,6 +21,7 @@ const DECOR_ZOOM_MIN := 3.0  ## forêts/arbres
 const BLD_SIZE := 9.0        ## taille MONDE UNIFORME d'un bâti de bourg (égalisée — variété par le sprite, pas l'échelle)
 const CITY_CORE_SIZE := 18.0 ## taille MONDE FIXE du centre-ville (la ville ne GRANDIT pas ; l'importance = le variant T1-T7)
 const STRUCT_SIZE := 12.0    ## hauteur MONDE d'un MONUMENT EDI_* épars (plus petit que le centre, plus grand qu'une maison)
+const DWELL_SIZE := 7.5      ## hauteur MONDE d'une MAISON (faubourg) — plus petite que les monuments
 # anneau de CENTRES DE TUILES (offsets en tuiles) autour du centre où poser les monuments — déterministe,
 # grille-aligné, rayon 2-3 tuiles (dégage l'emprise du centre). Ordre = priorité de pose.
 const EDI_RING := [
@@ -154,18 +155,18 @@ var _bridges_dirty := true
 # Les milieux non encore couverts (marais, neige, mangrove, tourbière) RETOMBENT sur buisson/rocher
 # en attendant les lots suivants (roseaux, sapins enneigés, palétuviers…).
 const FOREST_TREES := {
-	12: ["DRESS_OAK_01", "DRESS_OAK_02", "DRESS_OAK_03", "DRESS_OAK_04"],  # FOREST : chênes
-	13: ["DRESS_OAK_02", "DRESS_OAK_04", "DRESS_OAK_01", "DRESS_OAK_03"],  # WOODS
-	14: ["DRESS_OAK_03", "DRESS_OAK_01", "DRESS_OAK_04", "DRESS_OAK_02"],  # JUNGLE
+	12: ["DRESS_OAK_01", "DRESS_OAK_05", "DRESS_LEAF_01", "DRESS_OAK_03", "DRESS_LEAF_03", "DRESS_OAK_07"],  # FOREST : chênes
+	13: ["DRESS_BIRCH_01", "DRESS_OAK_06", "DRESS_BIRCH_03", "DRESS_LEAF_02", "DRESS_OAK_02"],  # WOODS
+	14: ["DRESS_LEAF_01", "DRESS_LEAF_04", "DRESS_OAK_08", "DRESS_LEAF_02"],  # JUNGLE
 }
-const DRESS_OPEN := ["DRESS_OAK_01", "DRESS_OAK_02", "DRESS_OAK_03", "DRESS_OAK_04", "DRESS_BUSH_01", "DRESS_BUSH_03"]  # plaine : arbres + buissons épars
+const DRESS_OPEN := ["DRESS_OAK_01", "DRESS_LEAF_02", "DRESS_OAK_05", "DRESS_BIRCH_02", "DRESS_BUSH_01", "DRESS_BUSH_03"]  # plaine : arbres + buissons épars
 const DRESS_DRY := ["DRESS_BUSH_01", "DRESS_BUSH_02", "DRESS_BUSH_04", "DRESS_ROCK_01", "DRESS_ROCK_02"]               # aride : buissons secs + cailloux
 const DRESS_MARSH := ["DRESS_BUSH_01", "DRESS_BUSH_03", "DRESS_BUSH_02", "DRESS_BUSH_04"]                              # (roseaux à venir) → buissons
 const DRESS_MANGROVE := ["DRESS_OAK_03", "DRESS_BUSH_03", "DRESS_BUSH_01", "DRESS_BUSH_04"]                            # (palétuviers à venir)
-const DRESS_HILL := ["DRESS_ROCK_01", "DRESS_ROCK_02", "DRESS_ROCK_04", "DRESS_BUSH_02", "DRESS_BUSH_01"]              # collines : cailloux + buissons
-const DRESS_CLIFF := ["DRESS_ROCK_01", "DRESS_ROCK_02", "DRESS_ROCK_03", "DRESS_ROCK_04", "DRESS_BUSH_02"]             # falaise : rochers
-const DRESS_SNOW := ["DRESS_ROCK_01", "DRESS_ROCK_04", "DRESS_ROCK_02"]                                                # (sapins enneigés à venir) → rochers
-const DRESS_RIVER := ["DRESS_ROCK_01", "DRESS_ROCK_02", "DRESS_BUSH_01", "DRESS_BUSH_03"]                              # berge : cailloux + buissons
+const DRESS_HILL := ["DRESS_PINE_01", "DRESS_ROCK_01", "DRESS_PINE_03", "DRESS_ROCK_04", "DRESS_BUSH_02"]              # collines : cailloux + buissons
+const DRESS_CLIFF := ["DRESS_ROCK_01", "DRESS_ROCK_02", "DRESS_ROCK_03", "DRESS_PINE_02", "DRESS_ROCK_04"]             # falaise : rochers
+const DRESS_SNOW := ["DRESS_PINE_01", "DRESS_PINE_02", "DRESS_PINE_03", "DRESS_PINE_04", "DRESS_ROCK_04"]                                                # (sapins enneigés à venir) → rochers
+const DRESS_RIVER := ["DRESS_LEAF_03", "DRESS_BIRCH_01", "DRESS_ROCK_01", "DRESS_BUSH_03"]                              # berge : cailloux + buissons
 const DRESS_STEPPE := ["DRESS_BUSH_02", "DRESS_BUSH_04", "DRESS_BUSH_01", "DRESS_BUSH_03"]                             # steppe : buissons secs
 const DRESS_BOG := ["DRESS_BUSH_01", "DRESS_BUSH_03", "DRESS_BUSH_02", "DRESS_BUSH_04"]                                # (mousse/roseaux à venir)
 
@@ -729,6 +730,14 @@ func _clip_dry(a: Vector2, b: Vector2, sea: Image, rf: Image) -> Vector2:
 ## civic au cœur · craft+dwell au milieu · dwell au faubourg · FIELD au-delà du bout (100-125 %).
 func _place_along_streets(r: int, streets: Array, names: PackedStringArray, sea: Image, rf: Image, band: int, nb: int) -> void:
 	var bk := _buckets(names)
+	# DWELL = maisons, par TIER : T1-3 (band<=3) = chaumieres (DWELL_LOW) ; T4+ = tout le lot (humble+riche)
+	var dwell_pool := []
+	for nm in names:
+		var ns: String = nm
+		if ns.begins_with("DWELL_LOW_") or (band >= 4 and ns.begins_with("DWELL_HIGH_")):
+			dwell_pool.append(nm)
+	if dwell_pool.is_empty():
+		dwell_pool = bk["dwell"]
 	var sbase := 0
 	for st in streets:
 		var a: Vector2 = st["a"]
@@ -747,9 +756,9 @@ func _place_along_streets(r: int, streets: Array, names: PackedStringArray, sea:
 			if is_main and frac < 0.20:
 				pool = bk["civic"]
 			elif frac < 0.60:
-				pool = bk["craft"] + bk["dwell"]
+				pool = bk["craft"] + dwell_pool
 			elif frac <= 1.0:
-				pool = bk["dwell"]
+				pool = dwell_pool
 			else:
 				pool = bk["field"]
 			if pool.is_empty():
@@ -763,7 +772,8 @@ func _place_along_streets(r: int, streets: Array, names: PackedStringArray, sea:
 			var by := int(bp.y)
 			if not (_is_sea_cell(sea, bx, by) or _in_river_water(rf, bx, by) or _is_cliff_base(bp)):
 				var nm: String = pool[absi(hh) % pool.size()]
-				_structures.append({"name": nm, "pos": bp, "sz": STRUCT_SIZE, "flip": side < 0.0})
+				var dsz := DWELL_SIZE if nm.begins_with("DWELL_") else STRUCT_SIZE
+				_structures.append({"name": nm, "pos": bp, "sz": dsz, "flip": side < 0.0})
 			k += 1
 			walked += 3.2 * (1.0 + 0.3 * frac)                # espacement CROISSANT vers la sortie
 			if _structures.size() >= 4800:
