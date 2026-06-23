@@ -66,7 +66,8 @@ var _found_tex: Texture2D = null
 
 var _cataclysm := false   ## un foyer de fin est actif → on anime l'épicentre
 var _decor := []          ## [{name, pos}] — arbres/forêts (dressing nature), bâti au générate
-var _structures := []     ## [{name, pos}] — bâti de terrain parsemé autour des villes
+var _structures := []
+var _town_streets := []      ## A1 : squelette de rues des bourgs (pour rendu/clutter)     ## [{name, pos}] — bâti de terrain parsemé autour des villes
 var _bio_img: Image = null ## couche biome (cache) → interdit le PIED d'un asset sur une tuile falaise
 var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
 var _region_centre := {}  ## région colonisée → TERRAIN du centre-ville (plaine/foret/montagne/estuaire/portuaire/lacustre)
@@ -438,11 +439,11 @@ func _buckets(names: Array) -> Dictionary:
 	var field := []
 	for nm in names:
 		var s: String = nm
-		if _has_any(s, ["FIELD", "FARM", "BARN", "ORCHARD", "VINE", "WHEAT", "HAY", "VEGETABLE", "IRRIGATION", "SCARECROW", "REED", "NET_HUT", "FISHER"]):
+		if _has_any(s, ["FIELD", "FARM", "BARN", "ORCHARD", "VINE", "WHEAT", "HAY", "VEGETABLE", "IRRIGATION", "SCARECROW", "REED", "NET_HUT", "FISHER", "GRENIER", "AQUEDUC"]):
 			field.append(s)
-		elif _has_any(s, ["TRADE", "FORGE", "SMITH", "LUMBER", "QUARRY", "POTTER", "WORKSHOP", "STONE_YARD", "WATERMILL", "WINDMILL", "MASON", "WEAVER", "TANNER", "KILN", "PLANK", "TIMBER", "MILLER", "MINER"]):
+		elif _has_any(s, ["TRADE", "FORGE", "SMITH", "LUMBER", "QUARRY", "POTTER", "WORKSHOP", "STONE_YARD", "WATERMILL", "WINDMILL", "MASON", "WEAVER", "TANNER", "KILN", "PLANK", "TIMBER", "MILLER", "MINER", "MARCHE", "BANQUE", "ARSENAL", "COMPTOIR", "ENTREPOT", "AMIRAUTE", "PORT"]):
 			craft.append(s)
-		elif _has_any(s, ["CIVIC", "UTILITY", "GUARD", "WATCH", "SIGNAL", "SHRINE", "COURT", "TOWN_HALL"]):
+		elif _has_any(s, ["CIVIC", "UTILITY", "GUARD", "WATCH", "SIGNAL", "SHRINE", "COURT", "TOWN_HALL", "TRIBUNAL", "ACADEMIE", "CATHEDRALE", "TEMPLE", "SANCTUAIRE", "BIBLIOTHEQUE", "MONASTERE", "OBSERVATOIRE", "CHANCELLERIE", "CITADELLE", "FORTERESSE", "GARNISON"]):
 			civic.append(s)
 		else:
 			dwell.append(s)
@@ -606,6 +607,7 @@ func _place_western(r: int, a: Vector2, s: Vector2, pool: Array, base_sz: float,
 ## LOGEMENTS (∝ population), et au large quelques CHAMPS épars (le disparate, ponctuel).
 func _build_structures() -> void:
 	_structures.clear()
+	_town_streets.clear()
 	var w = Sim.world
 	if w == null:
 		return
@@ -631,23 +633,9 @@ func _build_structures() -> void:
 		# sur CENTRES DE TUILES). Le nombre suit ce que la région a BÂTI (manufactures) + un peu le tier.
 		var band := _city_band(w.region_pop(r))
 		var nb := _region_craft_count(w, ctr)
-		var n_special := clampi(maxi(nb, band - 2), 0, EDI_RING.size())
-		var ccol := int(ctr.x) / ROUTE_GRID_K
-		var crow := int(ctr.y) / ROUTE_GRID_K
-		var placed := 0
-		for oi in range(EDI_RING.size()):
-			if placed >= n_special:
-				break
-			var off: Vector2i = EDI_RING[oi]
-			var bx := float((ccol + off.x) * ROUTE_GRID_K + ROUTE_GRID_K / 2)
-			var by := float((crow + off.y) * ROUTE_GRID_K + ROUTE_GRID_K / 2)
-			var bp := Vector2(bx, by)
-			if _is_sea_cell(sea, int(bx), int(by)) or _in_river_water(rf, int(bx), int(by)) or _is_cliff_base(bp):
-				continue
-			var hh := (r * 2654435761) ^ ((oi + 1) * 40503)
-			var nm: String = names[absi(hh) % names.size()]
-			_structures.append({"name": nm, "pos": bp, "sz": STRUCT_SIZE, "flip": (hh & 2) == 0})
-			placed += 1
+		var streets := _build_town_streets(r, ctr, w, sea, rf, band)
+		_town_streets.append_array(streets)
+		_place_along_streets(r, streets, names, sea, rf, band, nb)
 		if _structures.size() >= 4800:
 			break
 	# GARDE-FOU (capté par viewer_audit) : retire tout bâti dont la BASE tombe dans l'eau — la mer/lac
@@ -667,6 +655,114 @@ func _build_structures() -> void:
 		s["tint"] = _asset_tint(STRUCT_MUTE, p.x, p.y, GROUND_TINT_BLD)
 	# tri arrière→avant (par y) → l'empilement du bourg se lit correctement
 	_structures.sort_custom(func(a, b): return a["pos"].y < b["pos"].y)
+
+## A1 — SQUELETTE DE RUES d'un bourg : un segment du CENTRE vers chaque route commerciale qui TOUCHE la
+## région (≤4, dédupliqués par angle), + une rue SUD si isolé, + ruelles transversales (band≥3, ±15°).
+## Chaque segment est CLIPPÉ au dernier point SEC (jamais sur l'eau).
+func _build_town_streets(r: int, ctr: Vector2, w, sea: Image, rf: Image, band: int) -> Array:
+	var streets := []
+	var slen := 6.0 + float(band) * 2.5
+	var dirs := []
+	for rd in _roads:
+		var te := -1
+		if int(rd.get("ra", -1)) == r:
+			te = 0
+		elif int(rd.get("rb", -1)) == r:
+			te = (rd["points"] as PackedVector2Array).size() - 1
+		if te < 0:
+			continue
+		var pts: PackedVector2Array = rd["points"]
+		var step := 1 if te == 0 else -1
+		var nxt: Vector2 = pts[clampi(te + step * 3, 0, pts.size() - 1)]
+		var d := nxt - ctr
+		if d.length() > 1.0:
+			dirs.append(d.normalized())
+	var kept := []
+	for d in dirs:
+		var dup := false
+		for k in kept:
+			if (d as Vector2).dot(k) > 0.9:
+				dup = true
+				break
+		if not dup:
+			kept.append(d)
+		if kept.size() >= 4:
+			break
+	if kept.is_empty():
+		kept.append(Vector2(0.7071, 0.7071))                # SUD (convention iso : vers le joueur)
+	for di in range(kept.size()):
+		var d: Vector2 = kept[di]
+		var b := _clip_dry(ctr, ctr + d * slen, sea, rf)
+		if ctr.distance_to(b) < 2.5:
+			continue
+		streets.append({"a": ctr, "b": b, "main": true})
+		if band >= 3:
+			var mid: Vector2 = ctr.lerp(b, 0.6)
+			var ah := ((r * 2654435761) ^ (di * 40503)) & 0x7fffffff
+			var jit := deg_to_rad(float(ah % 31) - 15.0)    # ±15° → arête de poisson, pas une étoile
+			var perp := Vector2(-d.y, d.x).rotated(jit)
+			var sgn := 1.0 if (ah & 1) == 0 else -1.0
+			var ab := _clip_dry(mid, mid + perp * (slen * 0.4 * sgn), sea, rf)
+			if mid.distance_to(ab) > 2.5:
+				streets.append({"a": mid, "b": ab, "main": false})
+	return streets
+
+## clippe le segment a→b au DERNIER point SEC (s'arrête avant la mer / le fleuve carvé).
+func _clip_dry(a: Vector2, b: Vector2, sea: Image, rf: Image) -> Vector2:
+	var n := maxi(1, int(a.distance_to(b)))
+	var last := a
+	for k in range(1, n + 1):
+		var p := a.lerp(b, float(k) / float(n))
+		if _is_sea_cell(sea, int(p.x), int(p.y)) or _in_river_water(rf, int(p.x), int(p.y)):
+			break
+		last = p
+	return last
+
+## A2 — pose le long des rues : QUINCONCE des deux côtés, densité CROISSANTE vers la sortie (dense au
+## cœur, clairsemé au faubourg), orienté (flip = face à la rue). Pool par position (lot 1 = monuments) :
+## civic au cœur · craft+dwell au milieu · dwell au faubourg · FIELD au-delà du bout (100-125 %).
+func _place_along_streets(r: int, streets: Array, names: PackedStringArray, sea: Image, rf: Image, band: int, nb: int) -> void:
+	var bk := _buckets(names)
+	var sbase := 0
+	for st in streets:
+		var a: Vector2 = st["a"]
+		var b: Vector2 = st["b"]
+		var slen := a.distance_to(b)
+		if slen < 2.5:
+			continue
+		var dir := (b - a) / slen
+		var perp := Vector2(-dir.y, dir.x)
+		var is_main: bool = st["main"]
+		var walked := 2.5                                     # on démarre APRÈS le centre
+		var k := 0
+		while walked < slen * 1.25:                           # 100-125 % : le champ PROLONGE la rue
+			var frac := walked / slen
+			var pool: Array
+			if is_main and frac < 0.20:
+				pool = bk["civic"]
+			elif frac < 0.60:
+				pool = bk["craft"] + bk["dwell"]
+			elif frac <= 1.0:
+				pool = bk["dwell"]
+			else:
+				pool = bk["field"]
+			if pool.is_empty():
+				pool = names
+			var hh := ((r * 374761393) ^ ((sbase + k) * 2246822519)) & 0x7fffffff
+			var side := 1.0 if (k % 2 == 0) else -1.0         # QUINCONCE
+			var off := 1.8 + float(hh % 100) / 100.0 * 1.2    # 1.8..3.0 : à côté de la rue
+			var jl := (float((hh >> 7) % 100) / 100.0 - 0.5) * 1.0
+			var bp := a + dir * walked + perp * (side * off) + dir * jl
+			var bx := int(bp.x)
+			var by := int(bp.y)
+			if not (_is_sea_cell(sea, bx, by) or _in_river_water(rf, bx, by) or _is_cliff_base(bp)):
+				var nm: String = pool[absi(hh) % pool.size()]
+				_structures.append({"name": nm, "pos": bp, "sz": STRUCT_SIZE, "flip": side < 0.0})
+			k += 1
+			walked += 3.2 * (1.0 + 0.3 * frac)                # espacement CROISSANT vers la sortie
+			if _structures.size() >= 4800:
+				return
+		sbase += k + 3
 
 ## CLUTTER : props de vie dispersés en PÉRIPHÉRIE du bourg (anneau hash-déterministe + jitter sub-tuile),
 ## au sec (jamais eau/falaise). Teinte au sol, petit. 3-8 selon le band.
