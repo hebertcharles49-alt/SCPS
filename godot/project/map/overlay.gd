@@ -41,6 +41,17 @@ const CLUTTER_SIZE := 5.0    ## hauteur MONDE d'un prop de clutter (petit)
 var _clutter := []           ## [{name, pos(world), sz, flip, tint}]
 var _clutter_dirty := true
 
+# ── FALAISES SPRITE (système 2 COUCHES) : des PILIERS forment le MUR (face), une DALLE coiffe le REBORD.
+# Le shader garde le lift + le sommet herbeux ; la face procédurale devient une simple ombre de contact.
+const CLIFF_DIR := "res://assets/scps/pack/iso_tiles/cliff_faces/"
+const CLIFF_STEP := 4         ## espacement (cellules) des piliers le long du bord → mur CONTINU (chevauchant)
+const CLIFF_PILLAR_H := 17.0  ## hauteur MONDE d'un pilier (couvre highland_lift≈14 + coiffe la dalle)
+const CLIFF_SLAB_W := 13.0    ## largeur MONDE d'une dalle (couvre le haut des piliers)
+var _cliff_pillars: Array[Texture2D] = []
+var _cliff_slabs: Array[Texture2D] = []
+var _cliff_items := []        ## [{type, pos(world), tex, sx, sy, flip}]
+var _cliff_dirty := true
+
 ## OMBRE PORTÉE des assets : un disque APLATI au pied, décalé dans la direction ANTI-LUMIÈRE,
 ## la MÊME lumière globale que le shader de terrain (light_world ≈ (-0.95,-0.32)). L'ombre tombe
 ## donc à l'OPPOSÉ (monde (0.95,0.32)) → projeté iso ≈ (0.70,0.71) = bas-droite (soleil haut-gauche).
@@ -210,6 +221,7 @@ func _on_generated() -> void:
 	_himg_l = null              # monde neuf → recharger les caches de lumière (relief + albedo)
 	_alb_l = null
 	_road_tiles_dirty = true    # monde neuf → reposer les tuiles de route
+	_cliff_dirty = true         # … et le mur de falaises (highland change au worldgen/cataclysme)
 	_bridges_dirty = true       # … et les ponts
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
 	_roads_dirty = true
@@ -1067,6 +1079,85 @@ func _dress_buildings() -> void:
 			"tint": _asset_tint(Color(1, 1, 1, 1), bp.x, bp.y, GROUND_TINT_DEC)})
 	_decor.sort_custom(func(a, c): return (a["pos"] as Vector2).y < (c["pos"] as Vector2).y)
 
+## FALAISES SPRITE — chargement des 3 piliers + 3 dalles. On charge l'IMAGE BRUTE (Image.load_from_file,
+## comme tout asset hors import Godot) → pas de .import requis. Vide si absents → le système est inactif.
+func _load_cliff_assets() -> void:
+	if not _cliff_pillars.is_empty():
+		return
+	for v in ["A", "B", "C"]:
+		var pt := _raw_tex(CLIFF_DIR + "CLIFF_PILLAR_%s.png" % v)
+		if pt != null:
+			_cliff_pillars.append(pt)
+		var st := _raw_tex(CLIFF_DIR + "CLIFF_SLAB_%s.png" % v)
+		if st != null:
+			_cliff_slabs.append(st)
+
+func _raw_tex(path: String) -> Texture2D:
+	if not FileAccess.file_exists(path):
+		return null
+	var img := Image.load_from_file(path)
+	if img == null:
+		return null
+	img.generate_mipmaps()                        # anti-alias au dézoom
+	return ImageTexture.create_from_image(img)
+
+## Détecte les BORDS highland FACE CAMÉRA (sud cy+1, est cx+1) et émet, espacés le long du bord
+## (CLIFF_STEP), un PILIER (mur) + une DALLE (rebord). Une seule fois (highland statique hors cataclysme).
+func _build_cliff_sprites() -> void:
+	_cliff_items.clear()
+	_cliff_dirty = false
+	_load_cliff_assets()
+	if _cliff_pillars.is_empty():
+		return
+	var w = Sim.world
+	if w == null:
+		return
+	var bio: Image = w.layer_image(2)
+	if bio == null:
+		return
+	var mw := bio.get_width()
+	var mh := bio.get_height()
+	var hl := PackedByteArray()
+	hl.resize(mw * mh)
+	for y in range(mh):
+		for x in range(mw):
+			var b := int(bio.get_pixel(x, y).r * 255.0 + 0.5)
+			hl[y * mw + x] = 1 if (b == 18 or b == 19 or b == 23) else 0
+	for cy in range(mh):
+		for cx in range(mw):
+			if hl[cy * mw + cx] == 0:
+				continue
+			if (cx + cy) % CLIFF_STEP != 0:
+				continue                                  # espacement → mur continu, pas un sprite/cellule
+			var south: bool = (cy + 1 >= mh) or hl[(cy + 1) * mw + cx] == 0
+			var east: bool = (cx + 1 >= mw) or hl[cy * mw + cx + 1] == 0
+			if south:
+				_emit_cliff_edge(cx, cy, Vector2(0, 1))
+			if east:
+				_emit_cliff_edge(cx, cy, Vector2(1, 0))
+			if _cliff_items.size() >= 9000:
+				break
+		if _cliff_items.size() >= 9000:
+			break
+	# Y-sort GLOBAL (arrière → avant) : les piliers du fond passent derrière ceux du premier plan
+	_cliff_items.sort_custom(func(a, c): return (a["pos"] as Vector2).y < (c["pos"] as Vector2).y)
+
+## un pilier (ancré au PIED, monte vers le plateau) + une dalle (coiffe le rebord), `outward` = vers le vide.
+func _emit_cliff_edge(cx: int, cy: int, outward: Vector2) -> void:
+	var h := ((cx * 73856093) ^ (cy * 19349663)) & 0x7fffffff
+	var ptex: Texture2D = _cliff_pillars[h % _cliff_pillars.size()]
+	var ph := CLIFF_PILLAR_H * (0.92 + 0.16 * float(h % 100) / 100.0)
+	var pw := ph * float(ptex.get_width()) / float(maxi(1, ptex.get_height()))
+	_cliff_items.append({"type": "pillar", "pos": Vector2(cx, cy) + outward * 0.7,
+		"tex": ptex, "sx": pw, "sy": ph, "flip": ((h >> 20) & 1) == 1})
+	if not _cliff_slabs.is_empty():
+		var hs := (h * 374761393) & 0x7fffffff
+		var stex: Texture2D = _cliff_slabs[hs % _cliff_slabs.size()]
+		var sw := CLIFF_SLAB_W * (0.92 + 0.16 * float(hs % 100) / 100.0)
+		var sh := sw * float(stex.get_height()) / float(maxi(1, stex.get_width()))
+		_cliff_items.append({"type": "slab", "pos": Vector2(cx, cy) + outward * 0.15,
+			"tex": stex, "sx": sw, "sy": sh, "flip": ((hs >> 16) & 1) == 1})
+
 ## cailloux/buissons/roseaux SPORADIQUES le long du fil de rivière (le nuage worldgen) — la berge
 ## habillée. Léger décalage du fil, jamais dans l'eau ni dans une clairière de bourg.
 func _dress_rivers(sea: Image) -> void:
@@ -1895,6 +1986,31 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vp := get_viewport_rect().size
 
 	# (RIVIÈRES : plus dessinées ici — CARVÉES dans le terrain par iso_blend.gdshader, cf. en-tête.)
+
+	# ── FALAISES SPRITE (mur = piliers, rebord = dalle) : posées sur le bord highland, Y-sortées, DERRIÈRE
+	#    le dressing & les villes (relief de fond). Le shader n'a plus que le sommet + l'ombre de contact. ──
+	if zoom >= DECOR_ZOOM_MIN:
+		if _cliff_dirty:
+			_build_cliff_sprites()
+		for it in _cliff_items:
+			var cp: Vector2 = it["pos"]
+			var cip: Vector2 = mv.iso_pos(cp.x, cp.y)
+			var css: Vector2 = vt * cip
+			if css.x < -80 or css.y < -120 or css.x > vp.x + 80 or css.y > vp.y + 80:
+				continue
+			var csx: float = it["sx"]
+			var csy: float = it["sy"]
+			var ctex: Texture2D = it["tex"]
+			var crect: Rect2
+			if String(it["type"]) == "pillar":
+				crect = Rect2(cip.x - csx * 0.5, cip.y - csy, csx, csy)          # pied AU SOL, monte
+			else:
+				crect = Rect2(cip.x - csx * 0.5, cip.y - csy * 0.7, csx, csy)    # dalle coiffe le rebord
+			if bool(it["flip"]):
+				crect.position.x += crect.size.x
+				crect.size.x = -crect.size.x
+			var ctint: Color = _asset_tint(Color(1, 1, 1, 1), cp.x, cp.y, 0.05)
+			draw_texture_rect(ctex, crect, false, ctint)
 
 	# ── DRESSING : arbres/bosquets/buissons/cailloux/roseaux (DERRIÈRE les villes), cullés au viewport ──
 	if zoom >= DECOR_ZOOM_MIN:

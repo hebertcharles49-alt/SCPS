@@ -302,16 +302,17 @@ void fragment() {
 		if (highland_at(cellW + vec2(eff_lift)) > 0.5) {
 			col = cliff_top(cellW + vec2(eff_lift));
 		} else if (eff_lift > 0.5) {
+			// La FACE n'est plus peinte par le shader : ce sont les SPRITES (piliers + dalle) de l'overlay
+			// qui forment le mur. Ici on ne laisse qu'une OMBRE DE CONTACT (le fond sombre derrière/sous
+			// les piliers), pour que les rares interstices ne montrent pas le terrain en pleine lumière.
 			float fk = -1.0;
-			vec2 fc = cellW;
 			for (int i = 1; i <= 12; i++) {
 				float k = eff_lift * float(i) / 12.0;
-				if (highland_at(cellW + vec2(k)) > 0.5) { fk = k; fc = cellW + vec2(k); break; }
+				if (highland_at(cellW + vec2(k)) > 0.5) { fk = k; break; }
 			}
 			if (fk > 0.0) {
-				float tface = fk / eff_lift;
-				float face_alpha = smoothstep(0.0, 0.03, tface);   // OPAQUE dès 3 % (ex-16 % : la paroi était
-				col = mix(col, cliff_face(fc, tface), face_alpha);  // semi-TRANSPARENTE en bas → le terrain transparaissait)
+				float foot = smoothstep(0.0, 0.06, fk / eff_lift);
+				col *= mix(0.65, 1.0, foot);
 			}
 		}
 		// DÉTOURAGE : trait sombre LÉGER sur la SILHOUETTE (le pixel est falaise, un voisin écran
