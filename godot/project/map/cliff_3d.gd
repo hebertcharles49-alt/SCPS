@@ -17,7 +17,7 @@ const Iso = preload("res://map/iso.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const TILE_K := 8               ## DOIT matcher iso_ground.TILE_K (la grille du masque highland)
 const KH := 73.484692           ## pré-étirement de hauteur = 90/sqrt(1.5) → base ortho-normée
-const TOP_H := 0.15556          ## hauteur MONDE du plateau = highland_lift(14) / 90 (miroir du shader)
+const TOP_H := 0.11111          ## hauteur MONDE du plateau = highland_lift(10) / 90 (miroir du shader)
 const CAM_BACK := 1600.0        ## recul caméra le long de l'axe de vue (ortho : n'affecte que near/far)
 # base ORTHONORMÉE de la caméra iso (colonnes X=right, Y=up, Z=back) — cf. en-tête.
 const BX := Vector3(0.70710678, 0.0, -0.70710678)
@@ -116,8 +116,8 @@ func _on_generated() -> void:
 func _toon_mat() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
-	m.diffuse_mode = BaseMaterial3D.DIFFUSE_TOON
-	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED   # pas de reflet (les « X » blancs spéculaires)
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT_WRAP   # doux (pas toon) → coiffe peinte, moins CG
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 	m.roughness = 1.0
 	m.metallic = 0.0
 	return m
@@ -201,7 +201,7 @@ func _rock_tint(b: int, jit: float, lay: float) -> Color:
 func _cap_tint(topb: int, jit: float) -> Color:
 	var base := Color(0.40, 0.52, 0.26)            # herbe
 	if topb == 20 or topb == 19:
-		base = Color(0.78, 0.81, 0.84)             # neige/glacier (cassée, pas blanc pur flottant)
+		base = Color(0.70, 0.73, 0.77)             # neige/glacier (cassée, pas blanc pur flottant)
 	elif topb >= 9 and topb <= 11:
 		base = Color(0.74, 0.66, 0.44)             # steppe/désert
 	elif topb == 5 or topb == 3:
@@ -267,21 +267,25 @@ func _emit_wall(cx: int, cy: int, is_east: bool, bi: int, ti: int,
 	var width := float(TILE_K) * 1.14        # un peu > la cellule → murs voisins se CHEVAUCHENT (continu)
 	var depth := 2.4
 	var h0 := _hash(cx, cy, is_east as int)
-	var nslab := 3                            # 3 strates → bandes sédimentaires lisibles
+	var nslab := 3 + (h0 % 3)                 # 3..5 strates (varié par mur) → bancs irréguliers
 	for i in range(nslab):
 		var hh := _hash(cx, cy, i + (10 if is_east else 0))
-		var j := float(hh % 1000) / 1000.0    # jitter [0,1)
+		var j := float(hh % 1000) / 1000.0          # jitter principal [0,1)
+		var j2 := float((hh / 1000) % 1000) / 1000.0  # 2e jitter décorrélé
 		var sh := SY / float(nslab)
-		var yc := (float(i) + 0.5) * sh
-		# les strates HAUTES reculent un PEU vers le plateau (-out) → léger fruit (paroi qui se redresse),
-		# décalage discret le long du bord (pas un mur parfaitement lisse). Spread avant SUPPRIMÉ (anti-ballon).
-		var off := along * ((j - 0.5) * 1.1) - outv * (float(i) / float(nslab) * 0.55)
+		var yc := (float(i) + 0.5) * sh + (j2 - 0.5) * sh * 0.35   # strates pas parfaitement alignées
+		# RECUL IRRÉGULIER : chaque banc avance/recule un peu différemment (paroi rugueuse, pas un plan),
+		# décalage le long du bord + rotation → silhouette cassée. Spread avant net SUPPRIMÉ (anti-ballon).
+		var recede := (float(i) / float(nslab)) * 0.7 + (j - 0.5) * 1.0
+		var off := along * ((j - 0.5) * 2.1) - outv * recede
 		var pos := Vector3(ex, yc, ez) + off
-		var b := Basis().rotated(Vector3.UP, deg_to_rad((j - 0.5) * 12.0))
-		var sx := width * (0.94 + 0.12 * j)
-		b = b.scaled((Vector3(depth, sh * 1.04, sx) if is_east else Vector3(sx, sh * 1.04, depth)))
+		var b := Basis().rotated(Vector3.UP, deg_to_rad((j - 0.5) * 22.0))
+		var sx := width * (0.80 + 0.40 * j)         # largeur très variée (0.80..1.20) → bancs inégaux
+		var sd := depth * (0.85 + 0.6 * j2)         # profondeur variée
+		b = b.scaled((Vector3(sd, sh * 1.08, sx) if is_east else Vector3(sx, sh * 1.08, sd)))
 		slab_x.append(Transform3D(b, pos))
-		slab_c.append(_rock_tint(bi, j, 0.82 + 0.13 * float(i)))   # strate haute = plus claire (ensoleillée)
+		var lay := 0.78 + 0.18 * float(i) / maxf(1.0, float(nslab - 1))   # bas sombre → haut ensoleillé
+		slab_c.append(_rock_tint(bi, j, lay))
 	# COIFFE : un LISERÉ herbeux/neigeux PLAT sur le rebord (pas un monticule) — débordant un peu vers le vide.
 	var hc := _hash(cx, cy, 7 + (is_east as int))
 	var jc := float(hc % 1000) / 1000.0
@@ -290,23 +294,24 @@ func _emit_wall(cx: int, cy: int, is_east: bool, bi: int, ti: int,
 	cb = cb.scaled((Vector3(depth * 1.5, SY * 0.10, capw) if is_east else Vector3(capw, SY * 0.10, depth * 1.5)))
 	cap_x.append(Transform3D(cb, Vector3(ex, SY * 0.97, ez) + outv * (depth * 0.12)))
 	cap_c.append(_cap_tint(ti, jc))
-	# ÉBOULIS de pied : un gros bloc + parfois un caillou, posés sur le sol côté vide (déterministe).
-	if (h0 % 5) < 3:
-		var hb := _hash(cx, cy, 21 + (is_east as int))
+	# ÉBOULIS de pied : 1 à 3 blocs/cailloux ÉPARS le long du pied → cachent l'arête basse et RACCORDENT
+	# la paroi au sol (le « raccord de pied »). Le 1er est un gros bloc, les suivants des cailloux. Déterministe.
+	var nsc := 1 + (h0 % 3)
+	for s in range(nsc):
+		var hb := _hash(cx, cy, 21 + s * 13 + (is_east as int))
 		var jb := float(hb % 1000) / 1000.0
-		var bscale := 2.0 + 1.4 * jb
-		var bb := Basis().rotated(Vector3.UP, deg_to_rad(jb * 360.0)).scaled(Vector3(bscale, bscale * 0.8, bscale))
-		var bp := Vector3(ex, bscale * 0.3, ez) + outv * (1.6 + 0.8 * jb) + along * ((jb - 0.5) * width * 0.5)
-		bld_x.append(Transform3D(bb, bp))
-		bld_c.append(_rock_tint(bi, jb * 0.7, 0.86))
-	if (h0 % 7) < 2:
-		var hr := _hash(cx, cy, 33 + (is_east as int))
-		var jr := float(hr % 1000) / 1000.0
-		var rscale := 1.5 + 1.0 * jr
-		var rb := Basis().rotated(Vector3.UP, deg_to_rad(jr * 360.0)).scaled(Vector3(rscale, rscale, rscale))
-		var rp := Vector3(ex, rscale * 0.25, ez) + outv * (2.6 + 1.2 * jr) + along * ((jr - 0.5) * width * 0.7)
-		rk_x.append(Transform3D(rb, rp))
-		rk_c.append(_rock_tint(bi, 0.3 + 0.5 * jr, 0.9))
+		var jb2 := float((hb / 1000) % 1000) / 1000.0
+		var aoff := along * ((jb2 - 0.5) * width * 1.0)
+		if s == 0:
+			var bs := 2.2 + 1.6 * jb
+			var bb := Basis().rotated(Vector3.UP, deg_to_rad(jb * 360.0)).scaled(Vector3(bs, bs * 0.78, bs))
+			bld_x.append(Transform3D(bb, Vector3(ex, bs * 0.28, ez) + outv * (1.2 + 1.0 * jb) + aoff))
+			bld_c.append(_rock_tint(bi, jb * 0.7, 0.84))
+		else:
+			var rs := 1.1 + 1.0 * jb
+			var rb := Basis().rotated(Vector3.UP, deg_to_rad(jb * 360.0)).scaled(Vector3(rs, rs, rs))
+			rk_x.append(Transform3D(rb, Vector3(ex, rs * 0.24, ez) + outv * (1.8 + 1.6 * jb) + aoff))
+			rk_c.append(_rock_tint(bi, 0.3 + 0.5 * jb, 0.9))
 
 func _make_mmi(mesh: ArrayMesh, xforms: Array, colors: Array, mat: Material) -> MultiMeshInstance3D:
 	if xforms.is_empty():
