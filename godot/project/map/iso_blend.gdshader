@@ -32,7 +32,6 @@ uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellule
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
 uniform float outline_w : hint_range(0.0, 4.0) = 1.4;        // demi-largeur du détourage (px écran)
 uniform float outline_str : hint_range(0.0, 1.0) = 0.40;      // silhouette painterly (pas un cerne)
-uniform float face_light : hint_range(0.0, 0.5) = 0.34;      // PERSPECTIVE : écart d'ombrage flanc-gauche/flanc-droit (l'arête de l'angle)
 uniform float ridge_density : hint_range(0.1, 1.0) = 0.16;   // PEU de panneaux → grands facets, arêtes ESPACÉES (pas des stries)
 uniform float fold_skew : hint_range(0.0, 0.4) = 0.05;       // cisaillement quasi-NUL → facets DROITES (pas ondulées)
 uniform float fold_shade : hint_range(0.0, 0.6) = 0.16;      // contraste DOUX des grands plans (facets lisibles)
@@ -145,8 +144,8 @@ vec3 cliff_face(vec2 c, float t) {
 	// verticale écran. Sans ça, les strates suivaient un Y-monde et basculaient à ~26° (l'iso).
 	vec2 uv = vec2(c.x - c.y, (c.x + c.y) * 0.5) / tile_k;
 	vec3 rock = texture(cliff_atlas, vec3(fract(uv), ci - 1.0)).rgb;
-	rock *= mix(0.80, 1.10, t);                                  // VOLUME : pied dans l'ombre, sommet éclairé
-	rock += vec3(0.10, 0.09, 0.07) * smoothstep(0.88, 0.99, t);  // lèvre éclairée tout en haut
+	rock *= mix(0.80, 1.10, t);                                  // VOLUME léger : pied ombré → sommet éclairé
+	rock += vec3(0.10, 0.09, 0.07) * smoothstep(0.88, 0.99, t);  // lèvre discrète au sommet (strates en FOND)
 	return rock;
 }
 
@@ -312,16 +311,7 @@ void fragment() {
 			if (fk > 0.0) {
 				float tface = fk / eff_lift;
 				float face_alpha = smoothstep(0.0, 0.03, tface);   // OPAQUE dès 3 % (ex-16 % : la paroi était
-				vec3 fcol = cliff_face(fc, tface);                  // semi-TRANSPARENTE en bas → le terrain transparaissait)
-				// PERSPECTIVE — ARÊTES AUX ANGLES : on ombre la facette selon SON ORIENTATION écran. Le massif
-				// est-il à GAUCHE ou à DROITE de la paroi ? (somme de présence highland décalée en x-écran).
-				// Lumière du HAUT-GAUCHE (light_world) → flanc tourné à GAUCHE = CLAIR, à DROITE = SOMBRE. Les
-				// deux flancs d'un coin DIVERGENT en valeur → l'ARÊTE de l'angle se lit (relief 3D), sans cerne.
-				float hr = highland_at(fc + vec2(3.0, -3.0)) + highland_at(fc + vec2(6.0, -6.0));   // massif à DROITE écran
-				float hl = highland_at(fc + vec2(-3.0, 3.0)) + highland_at(fc + vec2(-6.0, 6.0));   // massif à GAUCHE écran
-				float face_dir = clamp(0.5 + (hr - hl) * 0.5, 0.0, 1.0);   // 1 = paroi vers la lumière, 0 = vers l'ombre
-				fcol *= 1.0 + (face_dir - 0.5) * 2.0 * face_light;         // flanc gauche éclairé ↔ flanc droit ombré
-				col = mix(col, fcol, face_alpha);
+				col = mix(col, cliff_face(fc, tface), face_alpha);  // semi-TRANSPARENTE en bas → le terrain transparaissait)
 			}
 		}
 		// DÉTOURAGE : trait sombre LÉGER sur la SILHOUETTE (le pixel est falaise, un voisin écran
