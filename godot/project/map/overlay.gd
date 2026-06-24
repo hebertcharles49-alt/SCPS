@@ -20,8 +20,13 @@ const CITY_ZOOM_MIN := 3.5   ## villes + bourg
 const DECOR_ZOOM_MIN := 3.0  ## forêts/arbres
 const BLD_SIZE := 9.0        ## taille MONDE UNIFORME d'un bâti de bourg (égalisée — variété par le sprite, pas l'échelle)
 const CITY_CORE_SIZE := 18.0 ## taille MONDE FIXE du centre-ville (la ville ne GRANDIT pas ; l'importance = le variant T1-T7)
-const STRUCT_SIZE := 12.0    ## hauteur MONDE d'un MONUMENT EDI_* épars (plus petit que le centre, plus grand qu'une maison)
+const STRUCT_SIZE := 12.0    ## hauteur MONDE d'un MONUMENT EDI_* épars (repli ; voir hiérarchie SZ_* ci-dessous)
 const DWELL_SIZE := 7.5      ## hauteur MONDE d'une MAISON (faubourg) — plus petite que les monuments
+# HIÉRARCHIE DES TAILLES (lisibilité : on voit d'un coup l'important vs le décor). CENTRE(18) >> CIVIC >
+# CRAFT > DWELL > FIELD > CLUTTER. Un monument civique IMPOSE, une maison est petite, un champ est bas.
+const SZ_CIVIC := 11.0       ## mairie/temple/marché — imposants (juste après le centre-ville)
+const SZ_CRAFT := 9.5        ## ateliers — gros, industriels
+const SZ_FIELD := 6.0        ## champs/greniers — bas, étalés
 # anneau de CENTRES DE TUILES (offsets en tuiles) autour du centre où poser les monuments — déterministe,
 # grille-aligné, rayon 2-3 tuiles (dégage l'emprise du centre). Ordre = priorité de pose.
 const EDI_RING := [
@@ -739,6 +744,16 @@ func _place_along_streets(r: int, streets: Array, names: PackedStringArray, sea:
 			dwell_pool.append(nm)
 	if dwell_pool.is_empty():
 		dwell_pool = bk["dwell"]
+	# sets de bucket → taille par catégorie (hiérarchie SZ_*). DWELL prime au préfixe ; sinon civic > craft > field.
+	var civic_set := {}
+	for n in bk["civic"]:
+		civic_set[n] = true
+	var craft_set := {}
+	for n in bk["craft"]:
+		craft_set[n] = true
+	var field_set := {}
+	for n in bk["field"]:
+		field_set[n] = true
 	var sbase := 0
 	for st in streets:
 		var a: Vector2 = st["a"]
@@ -773,7 +788,18 @@ func _place_along_streets(r: int, streets: Array, names: PackedStringArray, sea:
 			var by := int(bp.y)
 			if not (_is_sea_cell(sea, bx, by) or _in_river_water(rf, bx, by) or _is_cliff_base(bp)):
 				var nm: String = pool[absi(hh) % pool.size()]
-				var dsz := DWELL_SIZE if nm.begins_with("DWELL_") else STRUCT_SIZE
+				var base_sz: float
+				if nm.begins_with("DWELL_"):
+					base_sz = DWELL_SIZE
+				elif civic_set.has(nm):
+					base_sz = SZ_CIVIC
+				elif field_set.has(nm):
+					base_sz = SZ_FIELD
+				elif craft_set.has(nm):
+					base_sz = SZ_CRAFT
+				else:
+					base_sz = SZ_CRAFT
+				var dsz := base_sz * (0.88 + 0.24 * float((hh >> 9) % 100) / 100.0)   # jitter ±12 % (anti-clones)
 				_structures.append({"name": nm, "pos": bp, "sz": dsz, "flip": side < 0.0})
 			k += 1
 			walked += 3.2 * (1.0 + 0.3 * frac)                # espacement CROISSANT vers la sortie
@@ -942,6 +968,9 @@ func _build_decor() -> void:
 			var b := int(bio.get_pixel(cx, cy).r * 255.0 + 0.5)
 			if b <= 3:
 				continue                            # eau / plage : rien
+			if b == 18 or b == 19 or b == 23:
+				continue                            # MASSIF relevé par le shader → un décor au niveau du sol y
+				                                    # FLOTTE (cailloux « posés n'importe comment ») : on n'en pose pas
 			var clv: float = _clear_set.get(Vector2i(cx, cy), 0.0)
 			if clv > 0.0:
 				var ch := ((cx * 73856093) ^ (cy * 19349663) ^ 0x5bd1e995) & 0xffff
@@ -968,9 +997,9 @@ func _build_decor() -> void:
 				var dnm: String = pool[(hi >> 11) % pool.size()]
 				var dfac := 1.0
 				if dnm.begins_with("DRESS_ROCK"):
-					dfac = 0.52                         # CAILLOUX : petits (pas des blocs qui dominent)
+					dfac = 0.30                         # CAILLOUX : PETITS (ex-0.52 : encore des blocs) — du gravier, pas des menhirs
 				elif dnm.begins_with("DRESS_BUSH"):
-					dfac = 0.68                         # BUISSONS : bas
+					dfac = 0.60                         # BUISSONS : bas
 				var sz: float = float(rule[2]) * dfac * (0.82 + 0.36 * float((hi >> 15) % 10) / 10.0)
 				_decor.append({"name": dnm, "pos": Vector2(bx, by), "sz": sz})
 			if _decor.size() >= 16000:

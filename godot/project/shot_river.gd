@@ -29,6 +29,33 @@ func _run() -> void:
 			if p > bestpop: bestpop = p; best = r
 		if best >= 0: c = w.region_centroid(best)
 		print("focus town region=", best, " pop=", bestpop, " at=", c)
+	elif foc == "forest":
+		# centre = la MAILLE 24×24 la plus DENSE en cellules FORÊT (12/13/14) → vitrine des arbres
+		var bio: Image = w.layer_image(2)
+		var best := Vector2(512, 256); var bestn := -1
+		# anchors des bourgs → on ÉVITE les mailles trop proches d'une ville (sinon le bâti cache les arbres)
+		var towns := []
+		for r in range(w.region_count()):
+			if w.region_tier(r) < 0: continue
+			towns.append(w.region_centroid(r))
+		if bio != null:
+			var gw := bio.get_width(); var gh := bio.get_height()
+			var cell := 24
+			for gy in range(0, gh, cell):
+				for gx in range(0, gw, cell):
+					var cc := Vector2(gx + cell * 0.5, gy + cell * 0.5)
+					var near_town := false
+					for tc in towns:
+						if cc.distance_to(tc) < 22.0: near_town = true; break
+					if near_town: continue
+					var n := 0
+					for yy in range(gy, min(gy + cell, gh), 2):
+						for xx in range(gx, min(gx + cell, gw), 2):
+							var b := int(bio.get_pixel(xx, yy).r * 255.0 + 0.5)
+							if b == 12 or b == 13 or b == 14: n += 1
+					if n > bestn: bestn = n; best = cc
+		c = best
+		print("focus forest densest cell n=", bestn, " at=", c)
 	elif foc == "mountain":
 		# centre = la MAILLE 24×24 la plus DENSE en cellules FALAISE (18/19/23) → vrai massif (pas un barycentre noyé)
 		var bio: Image = w.layer_image(2)

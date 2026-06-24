@@ -620,11 +620,11 @@ func _build_road_cov(w, W: int, H: int) -> Image:
 					continue
 				if sea != null and int(sea.get_pixel(ix, iy).r * 255.0 + 0.5) >= 1:
 					continue                              # eau → le pont franchit, pas de chaussée
-				var soft := 3
+				var soft := 2                             # SENTE médiévale ÉTROITE (ex-3 : la route faisait ~BLD_SIZE)
 				if bio != null:
 					var bb := int(bio.get_pixel(ix, iy).r * 255.0 + 0.5)
 					if bb == 12 or bb == 13 or bb == 14:
-						soft = 2                          # FORÊT : sente plus étroite
+						soft = 2                          # FORÊT : sente étroite
 				if mini(i, n - 2 - i) <= 2:
 					soft += 1                             # évasement près du bourg (extrémités)
 				_carve_brush(img, ix, iy, 1.0, 1, soft, W, H)
