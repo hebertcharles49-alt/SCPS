@@ -27,19 +27,21 @@ uniform float slope_shade : hint_range(0.0, 0.8) = 0.38;     // force de l'ombra
 // sommet monte, une FACE de roche le relie au pied → vrai escarpement en volume (pas un sol plat).
 uniform float highland_lift : hint_range(0.0, 40.0) = 14.0;    // hauteur de falaise ABAISSÉE (~1 tuile) → relief plus DOUX, habillé de cailloux/buissons
 uniform float face_dark : hint_range(0.0, 1.0) = 0.80;       // pied de face (HAUT = clair, anti near-black)
-uniform float highland_warp : hint_range(0.0, 16.0) = 3.5;   // ondulation du bord (DOUX : angle droit à peine cassé)
+uniform float highland_warp : hint_range(0.0, 16.0) = 1.8;   // bord PEU ondulé → arêtes DROITES (anguleux, pas curvy)
 uniform float ramp_cells : hint_range(1.0, 8.0) = 4.0;       // largeur (cellules) des slopes d'ACCÈS
 uniform float ramp_amount : hint_range(0.0, 1.0) = 0.6;      // fréquence des accès (0 = aucun, 1 = beaucoup)
 uniform float outline_w : hint_range(0.0, 4.0) = 1.4;        // demi-largeur du détourage (px écran)
-uniform float outline_str : hint_range(0.0, 1.0) = 0.45;      // force du trait de contour (arêtes accentuées)
-uniform float ridge_density : hint_range(0.1, 1.0) = 0.42;   // densité des panneaux de l'ÉVENTAIL (arêtes)
-uniform float fold_skew : hint_range(0.0, 0.4) = 0.14;       // cisaillement du PLI (texture pliée)
-uniform float fold_shade : hint_range(0.0, 0.6) = 0.28;      // contraste d'ombrage des facets (l'arête)
+uniform float outline_str : hint_range(0.0, 1.0) = 0.40;      // silhouette painterly (pas un cerne)
+uniform float ridge_density : hint_range(0.1, 1.0) = 0.16;   // PEU de panneaux → grands facets, arêtes ESPACÉES (pas des stries)
+uniform float fold_skew : hint_range(0.0, 0.4) = 0.05;       // cisaillement quasi-NUL → facets DROITES (pas ondulées)
+uniform float fold_shade : hint_range(0.0, 0.6) = 0.16;      // contraste DOUX des grands plans (facets lisibles)
+uniform float arete_w : hint_range(0.005, 0.2) = 0.06;       // largeur de l'arête (FINE)
+uniform float arete_dark : hint_range(0.0, 0.8) = 0.55;      // noirceur de l'arête (OPAQUE, nette)
 // ÉCLAIRAGE GLOBAL DIRECTIONNEL : UNE seule lumière (haut-gauche écran) éclaire sol/falaise/assets.
 // `light_world` = direction MONDE vers la source (un pas `cell + light_world*k` va vers la lumière à
 // l'écran). Les falaises projettent une OMBRE PORTÉE douce sur le sol côté OPPOSÉ à la lumière.
 uniform vec2 light_world = vec2(-0.95, -0.32);
-uniform float shadow_str : hint_range(0.0, 0.7) = 0.50;      // force de l'ombre portée des falaises
+uniform float shadow_str : hint_range(0.0, 0.7) = 0.48;      // force de l'ombre portée des falaises (franche au pied)
 uniform float shadow_reach : hint_range(2.0, 20.0) = 14.0;   // portée de l'ombre (unités monde)
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float period : hint_range(2.0, 24.0) = 8.0;       // cellules par répétition de texture
@@ -81,9 +83,9 @@ uniform sampler2D road_cov : filter_linear;                  // couverture de ro
 uniform sampler2D city_wear : filter_linear;                 // SOL URBAIN 0..1 (terre battue sous les bourgs, champ lisse)
 uniform sampler2D road_pave : filter_linear, repeat_enable;  // tuile pavé seamless (centre de chaussée)
 uniform float road_on = 0.0;
-uniform float road_dirt_edge = 0.10;                         // seuil champ : début du bord terreux
-uniform float road_pave_edge = 0.55;                         // seuil champ : début du centre pavé
-uniform float road_warp = 0.12;                              // amplitude du warp de bruit sur le bord
+uniform float road_dirt_edge = 0.30;                         // seuil champ : début du bord terreux (HAUSSÉ → sente étroite)
+uniform float road_pave_edge = 0.62;                         // seuil champ : début du centre pavé
+uniform float road_warp = 0.08;                              // amplitude du warp de bruit sur le bord (resserré)
 uniform float road_period = 5.0;                             // période monde de la tuile pavé (petit = pavés gros)
 uniform vec3 road_worn = vec3(0.60, 0.53, 0.44);             // TEINTE de la sente : MULTIPLIE le terrain (sol usé/tassé)
 
@@ -121,12 +123,14 @@ float cliff_cov(vec2 cwp) {
 // SOMMET du plateau : le TERRAIN ALENTOUR (biome non-highland le plus proche : terreux/herbe/neige),
 // RELEVÉ — la roche n'est QUE sur la face (comme AoE). VARIANCE : taches claires/sombres (pas un aplat).
 vec3 cliff_top(vec2 c) {
+	// SOMMET du massif = le BIOME voisin (herbe/sable/neige) assigné à cliff_top_biome, propre (le fix
+	// du blend inter-biome empêche la « soupe » de couleurs voisines de contaminer le highland).
 	int bb = int(texture(cliff_top_biome, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0 + 0.5);
 	if (!((bb >= 3 && bb <= 11) || bb == 20)) bb = 6; // hors terrain ouvert/neige → herbe (jamais roche/forêt sombre sur le sommet)
 	vec3 r = terr(bb, fract(c / period), c);
 	float n = texture(noise_tex, c * 0.03 + vec2(2.0, 6.0)).r;
 	float n2 = texture(noise_tex, c * 0.09 + vec2(7.0, 1.0)).r;
-	r *= mix(0.80, 1.26, n) * mix(0.92, 1.08, n2);   // variance grande + petite échelle
+	r *= mix(0.90, 1.12, n) * mix(0.95, 1.05, n2);   // variance APAISÉE (ex-0.80/1.26 : le sommet marbrait)
 	return r * 1.08;
 }
 // FACE de roche (paroi) — base CLAIRE GARANTIE (couleur gris-brun, jamais la texture sombre brute).
@@ -142,17 +146,23 @@ vec3 cliff_face(vec2 c, float t) {
 	float side = fp - 0.5;                      // <0 flanc gauche du pli, >0 flanc droit
 	float skew = side * tan(ang) * fold_skew;   // la texture PLIÉE (cisaillée verticalement ∝ angle)
 	float tex = texture(cliff_atlas, vec3(fract(vec2(c.x / tile_k, c.y / tile_k + skew)), ci - 1.0)).g;
-	vec3 base = vec3(0.75, 0.68, 0.58) * (0.80 + 0.45 * tex);   // grès CHAUD (clair)
-	// STRATES horizontales (roche sédimentaire) : bandes douces le long de c.y, brisées par le bruit.
-	float strata = fract(c.y * 0.3 + texture(noise_tex, c * 0.02).r * 0.4);
-	float band = smoothstep(0.0, 0.08, strata) * (1.0 - smoothstep(0.42, 0.50, strata));
-	base *= mix(0.88, 1.12, band);
-	// OMBRAGE du facet (lumière haut-gauche) : flanc gauche du pli CLAIR, flanc droit OMBRÉ ; l'écart
-	// croît avec l'angle (60° plus contrasté que 30°) → l'arête au pli (side=0) et aux bords de panneau.
-	base *= clamp(1.0 - sin(ang) * sign(side) * fold_shade, 0.72, 1.30);
-	// PAS de mélange avec l'herbe : la paroi est une ROCHE COHÉRENTE & ISOLÉE (le grain vient de `tex`).
-	vec3 col = base * mix(0.88, 1.04, t);                     // pied à PEINE ombré (jamais noir)
-	col += vec3(0.12, 0.11, 0.09) * smoothstep(0.86, 0.98, t);  // lèvre éclairée au sommet
+	// COULEUR DE BASE : grès chaud, PLAT — le grain d'atlas (qui DÉFILE verticalement quand on remonte la
+	// paroi → les « stries » horizontales) est QUASI-ÉTEINT (0.03, ex-0.38). La structure vient désormais
+	// UNIQUEMENT des PLANS (facets) + des ARÊTES fines — pas d'une texture striée.
+	vec3 base = vec3(0.74, 0.67, 0.57) * (0.97 + 0.03 * tex);
+	// GRADIENT VERTICAL : sombre au pied, chaud au sommet → VOLUME (pas de bande).
+	base *= mix(vec3(0.85, 0.84, 0.82), vec3(1.08, 1.05, 0.98), t);
+	// FACETS ANGULAIRES : flanc gauche du pli CLAIR, flanc droit OMBRÉ (l'écart ∝ angle) → des PLANS.
+	base *= clamp(1.0 - sin(ang) * sign(side) * fold_shade, 0.74, 1.26);
+	// ARÊTES : lignes FINES OPAQUES aux angles — l'arête entre deux facettes (fp≈0/1) + le pli (fp≈0.5).
+	// L'ossature ANGULEUSE du rocher (AUCUNE strate, aucune bande horizontale).
+	float arete_edge = smoothstep(arete_w, 0.0, min(fp, 1.0 - fp));   // bord entre deux facettes
+	float arete_fold = smoothstep(arete_w * 0.7, 0.0, abs(fp - 0.5)); // pli central
+	float arete = max(arete_edge, arete_fold * 0.65);
+	base *= 1.0 - arete * arete_dark;                                 // trait NET, sombre (opaque & fin)
+	// LÈVRE SOMMITALE : lumière au sommet, ombre au pied (jamais noir).
+	vec3 col = base;
+	col += vec3(0.10, 0.09, 0.07) * smoothstep(0.88, 0.98, t);
 	return col;
 }
 
@@ -187,12 +197,17 @@ void fragment() {
 		}
 		vec2 uv = fract(uvw);
 		vec3 col = terr(b, uv, cell);
-		// FONDU inter-biome (terre↔terre OU profondeurs d'eau) : le voisin se fond ici.
-		vec2 dir = normalize(wv + vec2(1e-4));
-		int bn = biome_at(cw + dir * blendband);
-		if (bn >= 0 && bn != b && (bn > 2) == (b > 2)) {
-			float edge = texture(noise_tex, cell * warp_freq * 1.7 + vec2(2.1, 8.4)).r;
-			col = mix(col, terr(bn, uv, cell), clamp(0.5 + (edge - 0.5) * 1.3, 0.0, 1.0) * 0.8);
+		// FONDU inter-biome : SEULEMENT sur le SOL PLAT. Sur un highland, le `col` ici est RÉUTILISÉ par la
+		// face/le sommet (cliff_face/cliff_top) ; le laisser se mélanger aux biomes voisins le transformait
+		// en SOUPE → la paroi héritait d'un gris sale. On garde donc le biome PROPRE sous les falaises.
+		bool is_highland = highland_at(cell) > 0.5 || b0 == 18 || b0 == 19 || b0 == 23;
+		if (!is_highland) {
+			vec2 dir = normalize(wv + vec2(1e-4));
+			int bn = biome_at(cw + dir * blendband);
+			if (bn >= 0 && bn != b && (bn > 2) == (b > 2)) {
+				float edge = texture(noise_tex, cell * warp_freq * 1.7 + vec2(2.1, 8.4)).r;
+				col = mix(col, terr(bn, uv, cell), clamp(0.5 + (edge - 0.5) * 1.3, 0.0, 1.0) * 0.8);
+			}
 		}
 		if (sea) {
 			// PROFONDEUR : deep un peu plus SOMBRE → shallow un peu plus CLAIR (doux, pas de blocs).
@@ -252,11 +267,16 @@ void fragment() {
 		//    Le biome transparaît (terre battue EN FORÊT ≠ EN PLAINE) ; pas de disque, pas de frontière nette. ──
 		if (!water_here) {
 			float cw = texture(city_wear, cell / map_size).r;
-			if (cw > 0.01) {
-				vec3 dirt = mix(col, vec3(0.58, 0.50, 0.40), 0.6);             // terre battue teintée au biome local
-				float grit = texture(noise_tex, cell * 0.15).r;               // micro-bruit (cailloux/ornières)
-				dirt *= mix(0.92, 1.08, grit);
-				col = mix(col, dirt, cw * 0.55);
+			if (cw > 0.005) {
+				// terre battue DÉRIVÉE de col (le biome déjà rendu) : forêt → brun-vert, plaine → brun-jaune,
+				// neige → gris-brun. Désaturé (luminance) + bruni légèrement. PAS un brun générique.
+				float lum = dot(col, vec3(0.30, 0.59, 0.11));
+				vec3 dirt = mix(col, vec3(lum) * vec3(1.05, 0.95, 0.82), 0.5);
+				float grit = texture(noise_tex, cell * 0.12 + vec2(8.1, 3.7)).r;   // variation basse-freq (ornières)
+				float grit2 = texture(noise_tex, cell * 0.35).r;                   // grain fin (piétinement)
+				dirt *= mix(0.93, 1.07, grit);
+				dirt *= mix(0.97, 1.03, grit2);
+				col = mix(col, dirt, cw * 0.60);
 			}
 		}
 		// ── ROUTES en CHAMP LISSE (modèle rivière) : on lit `road_cov` (couverture scalaire, filtre
@@ -305,8 +325,11 @@ void fragment() {
 				float k = eff_lift * float(i) / 12.0;
 				if (highland_at(cellW + vec2(k)) > 0.5) { fk = k; fc = cellW + vec2(k); break; }
 			}
-			if (fk > 0.0) col = mix(col, cliff_face(fc, fk / eff_lift),
-				smoothstep(0.0, 0.16, fk / eff_lift));   // pied FONDU dans le sol (talus arrondi)
+			if (fk > 0.0) {
+				float tface = fk / eff_lift;
+				float face_alpha = smoothstep(0.0, 0.03, tface);   // OPAQUE dès 3 % (ex-16 % : la paroi était
+				col = mix(col, cliff_face(fc, tface), face_alpha);  // semi-TRANSPARENTE en bas → le terrain transparaissait)
+			}
 		}
 		// DÉTOURAGE : trait sombre LÉGER sur la SILHOUETTE (le pixel est falaise, un voisin écran
 		// VERS L'EXTÉRIEUR ne l'est pas) → contour lisible du plateau, sans cerner tout le massif.
