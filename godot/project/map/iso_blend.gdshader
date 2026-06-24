@@ -133,37 +133,20 @@ vec3 cliff_top(vec2 c) {
 	r *= mix(0.90, 1.12, n) * mix(0.95, 1.05, n2);   // variance APAISÉE (ex-0.80/1.26 : le sommet marbrait)
 	return r * 1.08;
 }
-// FACE de roche (paroi) — base CLAIRE GARANTIE (couleur gris-brun, jamais la texture sombre brute).
-// ARÊTES = la paroi est PLIÉE comme un ÉVENTAIL : des panneaux verticaux le long de la falaise, chacun
-// un FACET dont l'angle ALTERNE (~30°/60°) → la texture est CISAILLÉE (pliée) et chaque flanc est
-// OMBRÉ selon son angle (un côté capte la lumière, l'autre est dans l'ombre) → le PLI fait l'arête.
+// FACE de roche (paroi) = LA TUILE DE FALAISE PEINTE, affichée en RGB DIRECT (grès stratifié cliff_a/b à
+// l'intérieur, éboulis cliff_scree aux bords — l'autotile `cliff_idx` choisit la couche `ci`). On ne génère
+// PLUS de roche procédurale (ex-éventail/arêtes qui IGNORAIENT l'art et n'en lisaient que le canal vert) :
+// on lit la vraie tuile + un simple OMBRAGE DE VOLUME (pied ombré → sommet éclairé, lumière du haut).
 vec3 cliff_face(vec2 c, float t) {
 	float ci = max(texture(cliff_idx, (floor(c / tile_k) + vec2(0.5)) / cliff_grid).r * 255.0, 1.0);
-	float hx = c.x - c.y;                       // le long de la paroi (≈ const en colonne d'écran)
-	float p = hx * ridge_density;
-	float fp = fract(p);                        // position dans le panneau (0..1)
-	float ang = (mod(floor(p), 2.0) < 0.5) ? 0.52 : 1.05;   // ~30° puis ~60° (l'éventail)
-	float side = fp - 0.5;                      // <0 flanc gauche du pli, >0 flanc droit
-	float skew = side * tan(ang) * fold_skew;   // la texture PLIÉE (cisaillée verticalement ∝ angle)
-	float tex = texture(cliff_atlas, vec3(fract(vec2(c.x / tile_k, c.y / tile_k + skew)), ci - 1.0)).g;
-	// COULEUR DE BASE : grès chaud, PLAT — le grain d'atlas (qui DÉFILE verticalement quand on remonte la
-	// paroi → les « stries » horizontales) est QUASI-ÉTEINT (0.03, ex-0.38). La structure vient désormais
-	// UNIQUEMENT des PLANS (facets) + des ARÊTES fines — pas d'une texture striée.
-	vec3 base = vec3(0.74, 0.67, 0.57) * (0.97 + 0.03 * tex);
-	// GRADIENT VERTICAL : sombre au pied, chaud au sommet → VOLUME (pas de bande).
-	base *= mix(vec3(0.85, 0.84, 0.82), vec3(1.08, 1.05, 0.98), t);
-	// FACETS ANGULAIRES : flanc gauche du pli CLAIR, flanc droit OMBRÉ (l'écart ∝ angle) → des PLANS.
-	base *= clamp(1.0 - sin(ang) * sign(side) * fold_shade, 0.74, 1.26);
-	// ARÊTES : lignes FINES OPAQUES aux angles — l'arête entre deux facettes (fp≈0/1) + le pli (fp≈0.5).
-	// L'ossature ANGULEUSE du rocher (AUCUNE strate, aucune bande horizontale).
-	float arete_edge = smoothstep(arete_w, 0.0, min(fp, 1.0 - fp));   // bord entre deux facettes
-	float arete_fold = smoothstep(arete_w * 0.7, 0.0, abs(fp - 0.5)); // pli central
-	float arete = max(arete_edge, arete_fold * 0.65);
-	base *= 1.0 - arete * arete_dark;                                 // trait NET, sombre (opaque & fin)
-	// LÈVRE SOMMITALE : lumière au sommet, ombre au pied (jamais noir).
-	vec3 col = base;
-	col += vec3(0.10, 0.09, 0.07) * smoothstep(0.88, 0.98, t);
-	return col;
+	// UV en AXES ÉCRAN ISO (pas en axes monde) → les STRATES (horizontales dans la tuile) restent PARALLÈLES
+	// À L'HORIZON : U = le long de la paroi (c.x-c.y = horizontale écran) ; V = empilement (c.x+c.y)/2 =
+	// verticale écran. Sans ça, les strates suivaient un Y-monde et basculaient à ~26° (l'iso).
+	vec2 uv = vec2(c.x - c.y, (c.x + c.y) * 0.5) / tile_k;
+	vec3 rock = texture(cliff_atlas, vec3(fract(uv), ci - 1.0)).rgb;
+	rock *= mix(0.80, 1.10, t);                                  // VOLUME : pied dans l'ombre, sommet éclairé
+	rock += vec3(0.10, 0.09, 0.07) * smoothstep(0.88, 0.99, t);  // lèvre éclairée tout en haut
+	return rock;
 }
 
 void fragment() {
