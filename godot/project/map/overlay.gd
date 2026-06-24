@@ -154,11 +154,12 @@ var _bridges_dirty := true
 # Les milieux non encore couverts (marais, neige, mangrove, tourbière) RETOMBENT sur buisson/rocher
 # en attendant les lots suivants (roseaux, sapins enneigés, palétuviers…).
 const FOREST_TREES := {
-	12: ["DRESS_OAK_01", "DRESS_OAK_05", "DRESS_LEAF_01", "DRESS_OAK_03", "DRESS_LEAF_03", "DRESS_OAK_07"],  # FOREST : chênes
-	13: ["DRESS_BIRCH_01", "DRESS_OAK_06", "DRESS_BIRCH_03", "DRESS_LEAF_02", "DRESS_OAK_02"],  # WOODS
-	14: ["DRESS_LEAF_01", "DRESS_LEAF_04", "DRESS_OAK_08", "DRESS_LEAF_02"],  # JUNGLE
+	# variété ÉLARGIE (tout le lot chêne/bouleau/feuillu) → une forêt n'est jamais deux fois la même essence
+	12: ["DRESS_OAK_01", "DRESS_OAK_05", "DRESS_OAK_03", "DRESS_OAK_07", "DRESS_OAK_02", "DRESS_LEAF_01", "DRESS_LEAF_03", "DRESS_BIRCH_01"],  # FOREST : chênes + feuillus
+	13: ["DRESS_BIRCH_01", "DRESS_BIRCH_02", "DRESS_BIRCH_03", "DRESS_BIRCH_04", "DRESS_OAK_06", "DRESS_LEAF_02", "DRESS_OAK_02"],  # WOODS : bouleaux dominants
+	14: ["DRESS_LEAF_01", "DRESS_LEAF_02", "DRESS_LEAF_03", "DRESS_LEAF_04", "DRESS_OAK_08", "DRESS_OAK_04"],  # JUNGLE : feuillus denses
 }
-const DRESS_OPEN := ["DRESS_OAK_01", "DRESS_LEAF_02", "DRESS_OAK_05", "DRESS_BIRCH_02", "DRESS_BUSH_01", "DRESS_BUSH_03"]  # plaine : arbres + buissons épars
+const DRESS_OPEN := ["DRESS_OAK_01", "DRESS_OAK_05", "DRESS_LEAF_02", "DRESS_LEAF_04", "DRESS_BIRCH_02", "DRESS_BIRCH_04", "DRESS_BUSH_01", "DRESS_BUSH_03", "DRESS_BUSH_02"]  # plaine : arbres ÉPARS + buissons (plus de variété)
 const DRESS_DRY := ["DRESS_BUSH_01", "DRESS_BUSH_02", "DRESS_BUSH_04", "DRESS_ROCK_01", "DRESS_ROCK_02"]               # aride : buissons secs + cailloux
 const DRESS_MARSH := ["DRESS_BUSH_01", "DRESS_BUSH_03", "DRESS_BUSH_02", "DRESS_BUSH_04"]                              # (roseaux à venir) → buissons
 const DRESS_MANGROVE := ["DRESS_OAK_03", "DRESS_BUSH_03", "DRESS_BUSH_01", "DRESS_BUSH_04"]                            # (palétuviers à venir)
@@ -191,6 +192,7 @@ func _ready() -> void:
 		_ensure_roads(Sim.world.year() > 0)   # monde mûr (save chargée) ⇒ routes déjà bâties
 		_build_decor()
 		_build_structures()
+		_dress_buildings()              # nature (buisson/caillou) au pied de certains bâtiments
 		_build_city_skins()
 	queue_redraw()
 
@@ -218,6 +220,7 @@ func _on_generated() -> void:
 	_ensure_roads(Sim.world.year() > 0)   # an 0 (monde neuf) ⇒ croît ; an N (save/monde mûr) ⇒ déjà bâtie
 	_build_decor()
 	_build_structures()         # le bourg en spirale ÉVITE les routes
+	_dress_buildings()          # nature (buisson/caillou) au pied de certains bâtiments
 	_build_city_skins()
 	queue_redraw()
 
@@ -978,6 +981,14 @@ func _build_decor() -> void:
 					continue
 			if sea != null and int(sea.get_pixel(cx, cy).r * 255.0 + 0.5) >= 1:
 				continue                            # eau (lac)
+			# CAILLOUX ÉPARS (indépendants du biome) : du gravier sporadique sur toute terre sèche — petit,
+			# au sec. Tiré AVANT la règle de biome → on en trouve aussi en plaine nue (pas que sous les arbres).
+			var rkh := ((cx * 40503) ^ (cy * 668265263) ^ 0x13579bdf) & 0x7fffffff
+			if (rkh % 1000) < 22:
+				var rkp := Vector2(cx + (float((rkh >> 5) % 9) - 4.0) * 0.4, cy + (float((rkh >> 9) % 9) - 4.0) * 0.4)
+				if not (_is_sea_cell(sea, int(rkp.x), int(rkp.y)) or _in_river_water(rf, int(rkp.x), int(rkp.y))):
+					_decor.append({"name": "DRESS_ROCK_0" + str(1 + ((rkh >> 13) % 4)),
+						"pos": rkp, "sz": 1.7 * (0.8 + 0.4 * float((rkh >> 17) % 10) / 10.0)})
 			var rule := _dress_rule(b)
 			if rule.is_empty():
 				continue
@@ -1002,6 +1013,14 @@ func _build_decor() -> void:
 					dfac = 0.60                         # BUISSONS : bas
 				var sz: float = float(rule[2]) * dfac * (0.82 + 0.36 * float((hi >> 15) % 10) / 10.0)
 				_decor.append({"name": dnm, "pos": Vector2(bx, by), "sz": sz})
+				# BUISSON AU PIED D'UN ARBRE (sous-bois) : ~32 % des ARBRES (pas buissons/cailloux) ont un
+				# petit buisson bas à leur base → la végétation s'étage, fini l'arbre isolé sur sol nu.
+				var is_tree := not (dnm.begins_with("DRESS_BUSH") or dnm.begins_with("DRESS_ROCK"))
+				if is_tree and (hi % 100) < 32:
+					var bp2 := Vector2(bx + (float((hi >> 12) % 7) - 3.0) * 0.45, by + 0.7 + float((hi >> 18) % 4) * 0.25)
+					if not (_is_sea_cell(sea, int(bp2.x), int(bp2.y)) or _in_river_water(rf, int(bp2.x), int(bp2.y))):
+						_decor.append({"name": "DRESS_BUSH_0" + str(1 + ((hi >> 9) % 4)),
+							"pos": bp2, "sz": float(rule[2]) * 0.46 * (0.8 + 0.3 * float((hi >> 22) % 10) / 10.0)})
 			if _decor.size() >= 16000:
 				break
 		if _decor.size() >= 16000:
@@ -1012,6 +1031,40 @@ func _build_decor() -> void:
 		var p: Vector2 = d["pos"]
 		d["tint"] = _asset_tint(Color(1, 1, 1, 1), p.x, p.y, GROUND_TINT_DEC)
 	# tri arrière→avant (profondeur iso = y) → l'empilement des arbres/cailloux se lit correctement
+	_decor.sort_custom(func(a, c): return (a["pos"] as Vector2).y < (c["pos"] as Vector2).y)
+
+## NATURE AU PIED DES BÂTIMENTS : ~28 % des bâtis reçoivent un buisson (le plus souvent) ou un caillou
+## planté à leur base — la verdure reprend ses droits autour du bâti (fini le bâtiment sur sol nu). Appelé
+## APRÈS _build_structures (donc _structures est peuplé) ; ajoute au _decor (dessiné en dressing) et re-trie.
+func _dress_buildings() -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	var sea: Image = w.layer_image(LAYER_WATER)
+	var rf: Image = _carved_river_field()
+	var idx := 0
+	for s in _structures:
+		var h := (idx * 2654435761) & 0x7fffffff
+		idx += 1
+		if (h % 100) >= 28:
+			continue
+		var ang := float(h % 6283) * 0.001
+		var rad := 1.7 + float((h >> 5) % 100) / 100.0      # 1.7..2.7 : juste à côté du mur
+		var bp: Vector2 = (s["pos"] as Vector2) + Vector2(cos(ang), sin(ang)) * rad
+		var bx := int(bp.x)
+		var by := int(bp.y)
+		if _is_sea_cell(sea, bx, by) or _in_river_water(rf, bx, by) or _is_cliff_base(bp):
+			continue
+		var nm: String
+		var sz: float
+		if (h % 5) == 0:                                     # 1/5 caillou, 4/5 buisson (surtout de la verdure)
+			nm = "DRESS_ROCK_0" + str(1 + ((h >> 3) % 4))
+			sz = 1.7 * (0.85 + 0.3 * float((h >> 10) % 10) / 10.0)
+		else:
+			nm = "DRESS_BUSH_0" + str(1 + ((h >> 3) % 4))
+			sz = 4.0 * (0.85 + 0.3 * float((h >> 10) % 10) / 10.0)
+		_decor.append({"name": nm, "pos": bp, "sz": sz,
+			"tint": _asset_tint(Color(1, 1, 1, 1), bp.x, bp.y, GROUND_TINT_DEC)})
 	_decor.sort_custom(func(a, c): return (a["pos"] as Vector2).y < (c["pos"] as Vector2).y)
 
 ## cailloux/buissons/roseaux SPORADIQUES le long du fil de rivière (le nuage worldgen) — la berge
