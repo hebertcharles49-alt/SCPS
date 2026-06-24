@@ -118,6 +118,14 @@ func _ready() -> void:
 	_camera.enabled = false           # le GLOBE est la vue de départ → pas de caméra 2D
 	add_child(_camera)
 
+	# ── FALAISES 3D : micro-mesh empilés rendus en SubViewport ortho (calé à l'iso), composité SOUS le
+	#    dressing de l'overlay et SUR le sol. Display-only. iso_ground lui passe le masque highland. ──
+	var cliff := Node2D.new()
+	cliff.set_script(load("res://map/cliff_3d.gd"))
+	cliff.name = "Cliff3D"
+	add_child(cliff)
+	cliff.setup(_camera)
+
 	# overlay des ACTEURS — projeté selon le view_mode actif
 	var ov := Node2D.new()
 	ov.set_script(load("res://map/overlay.gd"))

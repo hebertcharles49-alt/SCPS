@@ -302,9 +302,9 @@ void fragment() {
 		if (highland_at(cellW + vec2(eff_lift)) > 0.5) {
 			col = cliff_top(cellW + vec2(eff_lift));
 		} else if (eff_lift > 0.5) {
-			// La FACE n'est plus peinte par le shader : ce sont les SPRITES (piliers + dalle) de l'overlay
-			// qui forment le mur. Ici on ne laisse qu'une OMBRE DE CONTACT (le fond sombre derrière/sous
-			// les piliers), pour que les rares interstices ne montrent pas le terrain en pleine lumière.
+			// La FACE de roche est rendue par le MICRO-MESH 3D (cliff_3d.gd, SubViewport ortho calé à l'iso)
+			// composité par-dessus le sol. Le shader ne laisse qu'une OMBRE DE FOND sombre : si un interstice
+			// subsiste entre le mesh et le sol, il montre de l'ombre, jamais le terrain en pleine lumière.
 			float fk = -1.0;
 			for (int i = 1; i <= 12; i++) {
 				float k = eff_lift * float(i) / 12.0;
@@ -312,7 +312,7 @@ void fragment() {
 			}
 			if (fk > 0.0) {
 				float foot = smoothstep(0.0, 0.06, fk / eff_lift);
-				col *= mix(0.65, 1.0, foot);
+				col *= mix(0.42, 0.66, foot);   // fond d'ombre : sombre au pied, un peu moins haut (le mesh peint la roche)
 			}
 		}
 		// DÉTOURAGE : trait sombre LÉGER sur la SILHOUETTE (le pixel est falaise, un voisin écran

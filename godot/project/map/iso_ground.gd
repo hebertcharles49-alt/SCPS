@@ -341,6 +341,13 @@ func _build_cliff_idx(w, bio: Image, W: int, H: int) -> void:
 		for cx in range(nx):
 			tb.set_pixel(cx, cy, Color(float(topb[cy * nx + cx]) / 255.0, 0.0, 0.0))
 	_cliff_topbio = ImageTexture.create_from_image(tb)
+	# FALAISES 3D : on passe le masque highland FINAL + le biome par cellule (face) + le biome de sommet
+	# (coiffe) au système de micro-mesh (le frère Cliff3D) — la MÊME donnée qui nourrit le lift du shader
+	# → les faces 3D épousent exactement le rebord du plateau. (No-op si Cliff3D absent.)
+	var _par := get_parent()
+	var _c3d: Node = _par.get_node_or_null("Cliff3D") if _par != null else null
+	if _c3d != null and _c3d.has_method("build"):
+		_c3d.call("build", hl, nx, ny, bcell, topb)
 
 ## texture-array des tuiles ROUTE (cardinal 15 états × 2 variantes) + table masque→couches. Bâti 1×.
 func _road_atlas() -> Texture2DArray:
