@@ -458,6 +458,7 @@ Array ScpsWorld::tech_nodes() {
         d["unlocks"]  = String::utf8(nd[i].unlocks);
         d["effet"]    = String::utf8(nd[i].effet);
         d["cost"]     = nd[i].cost;
+        d["prereq"]   = nd[i].prereq;
         a.push_back(d);
     }
     return a;

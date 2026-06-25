@@ -36,14 +36,14 @@ enum Status {
 
 ## Internal Maps
 var connected_atoms: Array[Atom] = []
-var navigation_map: Dictionary[StringName, Atom] = {}
+var navigation_map: Dictionary = {}   # Godot 4.3 : Dictionary non typé (typed dict = 4.4+)
 
 #region Settings
 @export var data: AtomData:
 	set(value): if data != value: data = value; _update_visual_style()
 @export var connected_paths: Array[NodePath] = []:
 	set(value): connected_paths = value; _update_connection_links(); _force_graph_redraw()
-@export var navigation_paths: Dictionary[StringName, NodePath] = {
+@export var navigation_paths: Dictionary = {
 	&"ui_up": NodePath(""),
 	&"ui_right": NodePath(""),
 	&"ui_left": NodePath(""),

@@ -369,6 +369,7 @@ typedef struct {
     const char *unlocks;  /* ce qu'il déverrouille */
     const char *effet;    /* l'utilité concrète */
     int  cost;      /* points de recherche (0 pour une base) */
+    int  prereq;    /* INDICE du nœud prérequis dans CE tableau (-1 = aucun : une base) — pour tracer les arêtes */
 } ScpsTechNode;
 int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max);
 

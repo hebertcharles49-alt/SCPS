@@ -664,6 +664,11 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
         out[i].is_base = nd->is_base?1:0;
         out[i].name    = sz(nd->name);  out[i].unlocks = sz(nd->unlocks);
         out[i].effet   = sz(nd->effet); out[i].cost = nd->cost;
+        /* prérequis : node[i] ↔ TechId i, donc prereq (un TechId, TECH_COUNT=aucun)
+         * est directement l'INDICE du nœud parent dans CE tableau → arête de l'arbre. */
+        const TechNode *tn = tech_node((TechId)i);
+        int pr = tn ? (int)tn->prereq : (int)TECH_COUNT;
+        out[i].prereq = (pr < (int)TECH_COUNT && pr < n) ? pr : -1;
     }
     return n;
 }
