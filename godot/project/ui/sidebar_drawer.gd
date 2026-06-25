@@ -1,8 +1,9 @@
 extends Control
 ## SidebarDrawer — le TIROIR de la sidebar : s'ouvre à droite du rail (même bande
 ## que le panneau de province, mutuellement exclusifs). En-tête à plaque + icône,
-## puis le contenu de l'onglet. Portés (read-only) : Démographie, Stocks. Les
-## autres affichent un cadre « à venir » (leur port viewer.c suit). Display-only.
+## puis le contenu de l'onglet. Les 8 onglets sont PORTÉS (read-only, lus de la
+## façade) : Économie (budget + commerce), Démographie, Stocks, Marché, Armée,
+## Filtres (pilote la carte), Diplomatie, Conseil. Display-only.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -129,18 +130,47 @@ func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> voi
 		VKit.text(self, Vector2(x, y), col, name, VKit.FS_SMALL)
 	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 104, 18), "text": name})
 
-# ── ÉCONOMIE (sb_panel_eco, onglet Commerce, read-only) ────────────────────
+# ── ÉCONOMIE : Budget (econ_flux) + Commerce (intertrade), read-only ───────
 func _draw_eco(x: float, y: float, me: int) -> void:
+	# — Trésor & budget de l'année (la décomposition du flux d'or) —
+	var b: Dictionary = Sim.world.budget_summary(me)
+	UIKit.draw_icon(self, "gold_coin", Vector2(x, y - 1), 16)
+	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, "Trésor : %s or" % _grp(b["gold"]))
+	y += 18
+	var net: float = b["net"]
+	var ncol := VKit.sense(0.80) if net >= 0 else VKit.sense(0.12)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Budget (an)", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 74, y), VKit.sense(0.80), "+%s" % _grp(b["income"]), VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 138, y), VKit.sense(0.12), "−%s" % _grp(b["expense"]), VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 206, y), ncol, "net %s%s" % ["+" if net >= 0 else "−", _grp(absf(net))], VKit.FS_SMALL)
+	y += 16
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "crédit : %s or" % _grp(b["credit_line"]), VKit.FS_SMALL)
+	if int(b.get("creditor", -1)) >= 0:
+		VKit.text(self, Vector2(x + 140, y), VKit.sense(0.30), "dette → %s" % String(b.get("creditor_name", "")), VKit.FS_SMALL)
+	y += 18
+	# postes de flux (signés : revenu vert / dépense rouge) — quelques-uns
+	var shown := 0
+	for p in Sim.world.country_budget(me):
+		if shown >= 5 or y > size.y - 96:
+			break
+		var amt: float = p["amount"]
+		var pcol := VKit.sense(0.78) if amt >= 0 else VKit.sense(0.18)
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_PARCH, String(p["name"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 150, y), pcol, "%s%s" % ["+" if amt >= 0 else "−", _grp(absf(amt))], VKit.FS_SMALL)
+		y += 14
+		shown += 1
+	y += 4
+	VKit.fill(self, Rect2(x, y, DW - 2.0 * x, 1), VKit.COL_EDGE)
+	y += 8
+	# — Commerce (routes + partenaires) —
 	var t: Dictionary = Sim.world.country_trade(me)
 	UIKit.draw_icon(self, "menu_economy", Vector2(x, y - 1), 16)
 	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH,
 		"%d route(s) · export %d or/an" % [int(t["routes"]), int(t["export_gold"])])
-	y += 22
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "partenaires :", VKit.FS_SMALL)
-	y += 16
+	y += 20
 	var partners: Array = t["partners"]
 	if partners.is_empty():
-		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, "(aucun)", VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, "(aucun partenaire)", VKit.FS_SMALL)
 		return
 	for p in partners:
 		if y > size.y - 18:

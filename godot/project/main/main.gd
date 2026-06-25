@@ -9,6 +9,7 @@ var _prov_panel: Control
 var _country_panel: Control
 var _sidebar: Control
 var _construct: Control
+var _tech: Control
 
 func _ready() -> void:
 	# la carte (Node2D, caméra dedans)
@@ -62,14 +63,34 @@ func _ready() -> void:
 	_construct.visible = false
 	ui.add_child(_construct)
 
+	# ARBRE DE TECH (touche T) : l'arbre du joueur, rendu en GRAPHE (medusa) sur
+	# une trame radiale (chart 2D). Lit tech_info/tech_nodes. Caché par défaut.
+	_tech = load("res://ui/tech_panel.gd").new()
+	_tech.name = "TechPanel"
+	_tech.visible = false
+	ui.add_child(_tech)
+
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
 
 func _unhandled_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_B:
-		if _construct != null:
-			_construct.visible = not _construct.visible
-			_construct.queue_redraw()
+	if not (e is InputEventKey and e.pressed and not e.echo):
+		return
+	match e.keycode:
+		KEY_B:
+			if _construct != null:
+				_construct.visible = not _construct.visible
+				_construct.queue_redraw()
+		KEY_T:
+			if _tech != null:
+				_tech.visible = not _tech.visible
+				_tech.queue_redraw()
+		KEY_SPACE:                       # pause ↔ reprise (parité viewer.c)
+			Sim.toggle_pause()
+		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:        # « + » : accélérer
+			Sim.faster()
+		KEY_MINUS, KEY_KP_SUBTRACT:             # « - » : ralentir
+			Sim.slower()
 
 func _on_province_picked(province: int, _region: int, owner: int) -> void:
 	if Sim.world == null:

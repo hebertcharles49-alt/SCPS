@@ -6,7 +6,7 @@ const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const PW := 322.0
-const PH := 250.0
+const PH := 296.0
 const MARGIN := 8.0
 
 # métrique → (libellé, nom d'icône du pack)
@@ -74,6 +74,26 @@ func _draw() -> void:
 	if int(info.get("corruption", 0)) > 0:
 		UIKit.draw_icon(self, "corruption_coin", Vector2(x + 150, y - 1), 16)
 		VKit.text(self, Vector2(x + 170, y), VKit.COL_DIM, "%d" % int(info["corruption"]))
+
+	# mission décennale (l'objectif courant du pays — mission_of via la façade)
+	var mis: Dictionary = w.mission_info(_cid)
+	if bool(mis.get("active", false)):
+		y += 26
+		VKit.fill(self, Rect2(x, y, PW - 2.0 * x, 1), VKit.COL_EDGE)
+		y += 6
+		VKit.text(self, Vector2(x, y), VKit.COL_COPPER, "✦ Mission", VKit.FS_SMALL)
+		y += 16
+		VKit.text(self, Vector2(x + 4, y), VKit.COL_PARCH, String(mis["text"]), VKit.FS_SMALL)
+		var rg := int(mis.get("reward_gold", 0))
+		var rq := int(mis.get("reward_qty", 0))
+		if rg > 0 or rq > 0:
+			y += 15
+			var rew := "prime : "
+			if rg > 0:
+				rew += "%d or" % rg
+			if rq > 0:
+				rew += (" + " if rg > 0 else "") + "%d %s" % [rq, String(mis.get("reward_mat", ""))]
+			VKit.text(self, Vector2(x + 4, y), VKit.COL_DIM, rew, VKit.FS_SMALL)
 
 ## icône · libellé · jauge texturée · "valeur mot"
 func _gauge_row(x: float, y: float, label: String, icon: String, value: int, word: String) -> void:

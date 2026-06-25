@@ -21,6 +21,7 @@ const STEP_PERIOD := 0.20       ## secondes entre deux pas
 # le garde-fou ci-dessous donne un message clair au lieu d'un crash de parse.
 var world = null                ## le handle moteur (GDExtension) ; null si libscps absente
 var speed_index := 1
+var _last_speed := 1            ## dernière vitesse non-pause (pour la bascule Espace)
 var _accum := 0.0
 
 func _ready() -> void:
@@ -51,9 +52,22 @@ func _process(delta: float) -> void:
 
 func set_speed(i: int) -> void:
 	speed_index = clampi(i, 0, SPEED_DAYS.size() - 1)
+	if speed_index > 0:
+		_last_speed = speed_index
 
 func cycle_speed() -> void:
 	set_speed((speed_index + 1) % SPEED_DAYS.size())
+
+## Espace : bascule pause ↔ dernière vitesse (parité viewer.c SDLK_SPACE)
+func toggle_pause() -> void:
+	set_speed(0 if speed_index > 0 else _last_speed)
+
+## +/- : monter / descendre d'un cran (sans repasser par la pause en montant)
+func faster() -> void:
+	set_speed(mini(speed_index + 1, SPEED_DAYS.size() - 1))
+
+func slower() -> void:
+	set_speed(maxi(speed_index - 1, 0))
 
 func speed_label() -> String:
 	return SPEED_LABELS[speed_index]
