@@ -17,7 +17,6 @@ const FIN_NAMES := {
 }
 
 var _line: Label
-var _augure: Label
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -29,10 +28,6 @@ func _ready() -> void:
 	_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_line.add_theme_font_size_override("font_size", 18)
 	vb.add_child(_line)
-	_augure = Label.new()
-	_augure.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_augure.add_theme_color_override("font_color", Color(0.78, 0.74, 0.62))
-	vb.add_child(_augure)
 	Sim.ticked.connect(_on_tick)
 	Sim.generated.connect(_on_gen)
 	hide()
@@ -54,22 +49,18 @@ func _refresh() -> void:
 		return
 	var e: Dictionary = w.endgame_info()
 	var fin: int = e.get("fin", 0)
+	# JUSTE LA MÉTRIQUE : « Entropie X » (pas de prose ; un sprite couleur viendra). À la
+	# FIN, on adjoint le NOM de la fin (le FAIT : quelle apocalypse), sans augure.
 	if fin > 0:
-		_line.text = "⚠  %s  ⚠" % FIN_NAMES.get(fin, "La Fin du Monde")
+		_line.text = "Entropie  100  —  %s" % FIN_NAMES.get(fin, "Fin du monde")
 		_line.add_theme_color_override("font_color", Color(0.96, 0.3, 0.24))
-		var aug := String(e.get("augure", ""))
-		_augure.text = aug
-		_augure.visible = aug != ""
 		show()
 		_reposition.call_deferred()
 		return
 	var pct: int = e.get("entropie_pct", 0)
 	if pct >= SHOW_FROM:
-		_line.text = "Entropie  %d  —  %s" % [pct, e.get("entropie", "")]
+		_line.text = "Entropie  %d" % pct
 		_line.add_theme_color_override("font_color", _entropy_color(pct))
-		var aug := String(e.get("augure", ""))
-		_augure.text = aug
-		_augure.visible = aug != ""
 		show()
 		_reposition.call_deferred()
 	else:
