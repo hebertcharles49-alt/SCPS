@@ -336,6 +336,9 @@ const RES_FALLBACK := {
 	"bois": "layer_forest",
 	"or": "gold_coin", "metal_precieux": "gold_coin", "perle": "gold_coin",
 	"outils": "development_tools", "metal": "development_tools",
+	"fer": "development_tools", "cuivre": "development_tools", "etain": "development_tools",
+	"charbon": "materials_stone", "sel": "materials_stone", "salpetre": "materials_stone",
+	"vin": "health_food_bowl", "epices": "health_food_bowl", "laine": "layer_forest",
 }
 
 ## clé de fichier normalisée d'un nom de ressource : minuscules, accents ôtés,

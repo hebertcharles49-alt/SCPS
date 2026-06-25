@@ -74,6 +74,8 @@ var _structures := []
 var _town_streets := []      ## A1 : squelette de rues des bourgs (pour rendu/clutter)     ## [{name, pos}] — bâti de terrain parsemé autour des villes
 var _bio_img: Image = null ## couche biome (cache) → interdit le PIED d'un asset sur une tuile falaise
 var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
+var _region_raws := {}    ## région → [{id, name}] : les BRUTES extraites (≤2) — mode carte RESSOURCES (9)
+var _raws_dirty := true    ## la production a bougé (an-0 nu → extraction établie) → recache les brutes
 var _region_centre := {}  ## région colonisée → TERRAIN du centre-ville (plaine/foret/montagne/estuaire/portuaire/lacustre)
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
@@ -198,6 +200,7 @@ func _ready() -> void:
 		_build_structures()
 		_dress_buildings()              # nature (buisson/caillou) au pied de certains bâtiments
 		_build_city_skins()
+		_build_region_raws()            # brutes extraites par région (mode carte RESSOURCES)
 	queue_redraw()
 
 func _build_names() -> void:
@@ -226,6 +229,7 @@ func _on_generated() -> void:
 	_build_structures()         # le bourg en spirale ÉVITE les routes
 	_dress_buildings()          # nature (buisson/caillou) au pied de certains bâtiments
 	_build_city_skins()
+	_build_region_raws()        # brutes extraites par région (mode carte RESSOURCES)
 	queue_redraw()
 
 ## lit le nuage de points (anti-bâti) PUIS sélectionne les fleuves MAJEURS (tracé en ruban).
@@ -270,6 +274,72 @@ func _build_city_skins() -> void:
 			_region_variant[r] = nm
 		# TERRAIN du CENTRE-VILLE (pack centres) : hydro d'abord, puis biome, puis côte.
 		_region_centre[r] = _centre_kind(sg, b, coastal)
+
+## brutes extraites par région (≤2, règle moteur) — lues de la membrane (province_income,
+## lignes NON manufacturées). Cache pour le mode carte RESSOURCES (icône de raw par tuile).
+func _build_region_raws() -> void:
+	_region_raws.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	for r in range(w.region_count()):
+		var ctr: Vector2 = w.region_centroid(r)
+		if ctr.x < 0:
+			continue
+		var pid: int = w.province_at(int(ctr.x), int(ctr.y))
+		if pid < 0:
+			continue
+		var raws := []
+		for line in w.province_income(pid):
+			if bool(line.get("manufactured", false)):
+				continue                                  # on ne veut QUE la brute extraite
+			raws.append({"id": int(line.get("res_id", -1)), "name": String(line.get("source", ""))})
+			if raws.size() >= 2:                          # règle moteur : 2 brutes/province
+				break
+		if not raws.is_empty():
+			_region_raws[r] = raws
+
+## MODE RESSOURCES (9) : l'icône de chaque brute extraite, à la tuile (centroïde projeté).
+## Sprite si dispo, sinon une PASTILLE nommée (3 lettres) → couverture complète. Taille
+## ÉCRAN-CONSTANTE (÷zoom) → lisible à tout niveau de zoom.
+func _draw_resources(w, mv: Node2D, is_iso: bool) -> void:
+	if _raws_dirty:
+		_build_region_raws()         # rebâti à la demande (mode RESSOURCES seulement)
+		_raws_dirty = false
+	var vt := get_viewport_transform()
+	var vp := get_viewport_rect().size
+	var zoom := maxf(0.01, vt.get_scale().x)
+	var sz := 18.0 / zoom if is_iso else 13.0           # MONDE (iso : constant écran) · ÉCRAN (globe)
+	for r in range(w.region_count()):
+		var raws: Array = _region_raws.get(r, [])
+		if raws.is_empty():
+			continue
+		var ctr: Vector2 = w.region_centroid(r)
+		if ctr.x < 0:
+			continue
+		var sp: Vector2
+		if is_iso:
+			sp = vt * mv.iso_pos(ctr.x, ctr.y)
+		else:
+			var pr: Dictionary = mv.globe_to_screen(ctr.x, ctr.y)
+			if not pr["vis"]:
+				continue
+			sp = pr["pos"]
+		if sp.x < -20 or sp.y < -20 or sp.x > vp.x + 20 or sp.y > vp.y + 20:
+			continue
+		var n := raws.size()
+		for i in range(n):
+			var rr: Dictionary = raws[i]
+			var off := Vector2((float(i) - float(n - 1) * 0.5) * (sz + 2.0), 0.0)
+			var tl := sp + off - Vector2(sz * 0.5, sz * 0.5)
+			var spr := UIKit.resource_sprite(int(rr.get("id", -1)), String(rr.get("name", "")))
+			if spr != null:
+				draw_texture_rect(spr, Rect2(tl, Vector2(sz, sz)), false)
+			else:                                          # pas de sprite : pastille nommée (couverture complète)
+				draw_rect(Rect2(tl, Vector2(sz, sz)), Color(0.10, 0.11, 0.14, 0.92))
+				draw_rect(Rect2(tl, Vector2(sz, sz)), VKit.COL_COPPER, false, 1.0)
+				if sz >= 11.0:
+					VKit.text(self, tl + Vector2(2.0, sz * 0.5 - 5.0), Color(0.92, 0.86, 0.70), String(rr.get("name", "?")).substr(0, 3), VKit.FS_SMALL)
 
 ## terrain du centre-ville (pack centres/) : 6 familles, dérivées de l'hydro/biome/côte.
 func _centre_kind(sg: int, biome: int, coastal: bool) -> String:
@@ -1096,6 +1166,7 @@ func _dress_rivers(sea: Image) -> void:
 
 func _on_tick(_year: int) -> void:
 	_struct_dirty = true       # pop & bâtiments ont bougé → le bourg sera reconstruit au prochain dessin zoomé
+	_raws_dirty = true         # l'extraction a pu s'établir (an-0 nu) → recache les brutes au prochain dessin RESSOURCES
 	_clutter_dirty = true     # le clutter suit le bourg
 	_road_tiles_dirty = true   # le réseau a pu croître/changer → reposer les tuiles de route
 	_bridges_dirty = true      # … et les ponts (un franchissement neuf)
@@ -1808,7 +1879,12 @@ func _road_width(level: int, zoom: float) -> float:
 func _mv_ref() -> Node2D:
 	if _mv == null:
 		_mv = get_parent() as Node2D
+		if _mv != null and _mv.has_signal("mode_changed") and not _mv.mode_changed.is_connected(_on_mode_changed):
+			_mv.mode_changed.connect(_on_mode_changed)   # mode RESSOURCES ↔ autre → redraw immédiat (même en pause)
 	return _mv
+
+func _on_mode_changed(_m: int) -> void:
+	queue_redraw()
 
 # ── projection GLOBE (segments, deux bouts visibles) ───────────────────────────
 func _project_segs_globe(mv: Node2D, segs: PackedVector2Array) -> PackedVector2Array:
@@ -1846,6 +1922,9 @@ func _draw() -> void:
 		_draw_globe(w, mv)
 	else:
 		_draw_iso(w, mv)
+	# MODE RESSOURCES (9) : les icônes de brutes par tuile, AU-DESSUS de tout
+	if int(mv.get("mode")) == 9:
+		_draw_resources(w, mv, vm != 0)
 
 ## GLOBE (vue d'ensemble) — UNIQUEMENT frontières + noms d'empire (se repérer). Aucun asset.
 func _draw_globe(w, mv: Node2D) -> void:
