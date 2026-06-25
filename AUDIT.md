@@ -29,6 +29,33 @@ cap 5/5 · endgame 76/76 · **audit_eco 4/4** · **lang 26/26**.
 capté. `make smoke` = sous-ensemble rapide ; `make full-test` = bancs +
 déterminisme + ASan. Statut mesuré sur ce build, pas supposé.
 
+## (a-ter) Refonte ÉCO + pipelines IA + hameaux libres + diplo subjectif (2026-06-25)
+
+Quatre arcs livrés et MESURÉS (40/40 bancs · determinism STABLE & golden re-baseliné
+vert · 0 warning) :
+- **Refonte ÉCO (A0-A5)** : extraction LABOR-BOUND `out = ouvriers × YIELD × geo_eff ×
+  prix` (table ancrée grain 800/poisson 400/bois 50…), bouche ANNUELLE calibrée
+  (`FOOD_NEED`, sinon needs_met s'effondre), nourriture du SPAWN (capitale = socle de
+  grain, SEULE règle vivrière de worldgen). Calibré seed 9 : pop 38.4k (= baseline 38.8k),
+  needs_met 0.52, remplissage 63 %. `EXTRACT_GEO_REF` 4.5 · `EXTRACT_LABOR_SHARE` 0.65.
+- **Pipeline IA éco** : `econ_country_forecast` (runway/shortfall/déficit structurel +
+  food_runway, l'offre suit la pop jusqu'au potentiel → seuls les déficits STRUCTURELS
+  arment) → priorités émergentes (prix×stress×manque) → colonisation needs-aware (capacité
+  + steer urgence) + anti-spirale food + relocate projeté + grenier stock-safe. SAVE non
+  bumpé (AiView = cache de tick).
+- **Hameaux libres (POLITY_WILD)** : N hameaux épars/jouable (BFS), pop ≈750±, culture +
+  éthos DISTINCTS du voisin, AUCUNE religion, raw food forcée, PASSIFS (ai_on=false).
+  Ralliement CULTUREL au voisin (contact pacifique soutenu) ; absorption militaire par
+  conquête. seed 9 : 4 semés, 4 ralliés/100 ans.
+- **Pipeline diplo (étages 1-2)** : `ai_province_value` SUBJECTIVE (prix objectif + BESOIN
+  Σ raw_cap×stress(runway)×prix) → `ai_pick_rival` convoite (AI_COVET_W), `diplo_settle`
+  butin needs-driven (l'affamé exige le grenier). Banc INVARIANT anti-modificateur
+  (diplo_demo 51/51 : affamé 123 vs repu 30). **À VENIR** : étage 3 (vassalité sur la
+  durée — acquérir/tenir/intégrer/annexer avec soft-scar) NON implémenté.
+
+Tous SAVE non bumpés (aucune struct sérialisée n'a grandi). RE-BASELINE du hash 12 ans
+(golden mis à jour, diff revu).
+
 ---
 
 ## (a-bis) Passe de STABILISATION (2026-06-18)
