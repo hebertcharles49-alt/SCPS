@@ -24,7 +24,7 @@ env.Append(CPPPATH=["src/", "../scps/", "../third_party/"])
 ENGINE_MODULES = [
     "world", "econ", "tune", "trade", "culture", "tech", "core", "legitimacy",
     "prosperity", "readout", "lang", "species", "diplo", "routes", "intertrade",
-    "statecraft", "agency", "events", "demography", "labor", "modifier", "revolt",
+    "statecraft", "agency", "events", "provlog", "demography", "labor", "modifier", "revolt",
     "army", "warhost", "campaign", "missions", "navy", "endgame", "factions",
     "ai", "credit", "render", "sim", "api",
 ]

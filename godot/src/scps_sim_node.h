@@ -76,6 +76,7 @@ public:
     Array      province_income(int province);         /* RESSOURCES / PRODUCTION */
     Dictionary province_agitation(int province);      /* MODIFICATEURS : { value:int, causes:[{cause,delta,decay}] } */
     Array      province_buildings(int province);      /* MANUFACTURES : [{nom, niveau, ouvriers}] */
+    Array      province_log(int province);            /* JOURNAL : [{year, label, sign}] (récent en tête) */
     Dictionary province_classes(int province);        /* barre empilée des classes */
     Dictionary province_capitale(int province);       /* ossature de capitale */
 

@@ -10,6 +10,14 @@
 #include <string.h>
 #include <math.h>
 #include "scps_tune.h"
+#include "scps_provlog.h"   /* journal provincial : on POUSSE les évènements EV_PROVINCE (display) */
+
+/* signe d'un effet pour le journal : +1 fléau · -1 faveur · 0 neutre */
+static int ev_sign(const EvEffect *e){
+    if (e->d_agitation>0.1f || e->d_L<-0.1f || e->pop_mult<0.999f) return +1;
+    if (e->d_agitation<-0.1f || e->d_L>0.1f) return -1;
+    return 0;
+}
 
 /* ===================================================================== */
 /* Le bundle de pointeurs systèmes passé aux triggers/effets             */
@@ -373,6 +381,8 @@ static void fire_event(EventCtx *cx, int evid, int subject){
     for (int i=0;i<d->n_options;i++) if (d->options[i].ai_chance>bw){ bw=d->options[i].ai_chance; best=i; }
     apply_effect(cx, d->scope, subject, &d->options[best].eff);
     cx->ev->last_id=evid; cx->ev->last_name=d->name; cx->ev->n_fired++;
+    if (d->scope==EV_PROVINCE && subject>=0)
+        provlog_push_lit(subject, d->name, ev_sign(&d->options[best].eff));   /* journal provincial */
 }
 
 /* ===================================================================== */
@@ -385,6 +395,8 @@ void events_strike(EventsState *ev, World *w, WorldEconomy *econ,
     if (shock<0||shock>=EVID_COUNT) return;
     apply_effect(&cx, EVENTS[shock].scope, region, &EVENTS[shock].options[0].eff);
     ev->last_id=shock; ev->last_name=EVENTS[shock].name; ev->n_fired++;
+    if (EVENTS[shock].scope==EV_PROVINCE && region>=0)
+        provlog_push_lit(region, EVENTS[shock].name, ev_sign(&EVENTS[shock].options[0].eff));
 }
 
 /* ===================================================================== */
@@ -408,6 +420,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
         e.d_agitation = 18.f - 3.f*h;
         EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL};
         apply_effect(&cx, EV_PROVINCE, r, &e);
+        provlog_push_lit(r, EVENTS[EVID_PLAGUE].name, +1);   /* journal provincial : la peste (fléau) */
         infected++;
         if (h>=4) continue;                         /* portée bornée */
         for (int i=0;i<rn->n;i++){

@@ -18,6 +18,7 @@
 #include "scps_tune.h"      /* tune_init (lit SCPS_TUNE une fois) */
 #include "scps_readout.h"   /* LA MEMBRANE : province_readout/country_readout → mots */
 #include "scps_lang.h"      /* tr() : noms de conseillers (StrId) → mot */
+#include "scps_provlog.h"   /* journal d'évènements provincial */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -422,6 +423,22 @@ int scps_province_buildings(ScpsSim *s, int pid, ScpsProvBld *out, int max){
         out[i].nom     = sz(building_name(b->type));
         out[i].niveau  = (int)(b->level + 0.5f);
         out[i].ouvriers= (int)(b->workers + 0.5f);
+    }
+    return n;
+}
+
+/* le JOURNAL d'évènements de la province : les dernières entrées (an + libellé +
+ * signe), la PLUS RÉCENTE en tête. Lecture pure du tampon provlog. Retourne n. */
+int scps_province_log(ScpsSim *s, int pid, ScpsLogEntry *out, int max){
+    if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    int reg = s->w->province[pid].region;
+    int n = provlog_count(reg); if(n>max) n=max;
+    for(int i=0;i<n;i++){
+        const ProvLogEntry *e = provlog_at(reg, i);
+        if(!e){ n=i; break; }
+        out[i].year  = e->year;
+        out[i].label = (e->str_id>=0) ? sz(tr((StrId)e->str_id)) : sz(e->lit);
+        out[i].sign  = e->sign;
     }
     return n;
 }

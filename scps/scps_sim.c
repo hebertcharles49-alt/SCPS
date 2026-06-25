@@ -10,6 +10,7 @@
  */
 #include "scps_sim.h"
 #include "scps_readout.h"   /* RECHERCHE JOUEUR : la cloche de prospérité (country_readout), FIDÈLE au viewer */
+#include "scps_provlog.h"   /* journal d'évènements provincial (display ; runtime, hors déterminisme) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -235,6 +236,7 @@ static void sim_cmd_drain(Sim *s, World *w){
 }
 
 void sim_day(Sim *s, World *w) {
+    provlog_set_year(s->year);   /* l'an courant pour les pushs d'évènements du directeur (display) */
     PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
     sim_cmd_drain(s, w);   /* JOUEUR : ses ordres s'appliquent ICI, après agency_advance, AVANT l'IA (point fixe) */
     /* leviers intérieurs : draine les coûts SCPS différés (purge/mater) vers TechState */
@@ -412,6 +414,24 @@ void sim_day(Sim *s, World *w) {
                     faction_age_engage(w, s->econ, c, age);       /* la faction-patronne s'avance (l'IA accepte) */
             s->prev_dawned = s->ev->ages.last_dawned;
         }
+        /* JOURNAL PROVINCIAL : diff annuel des modificateurs DYNAMIQUES par région
+         * (apparition → entrée). Lecture pure (provmod_collect + years_held) → aucun
+         * état sim touché, déterminisme intact. Le 1er passage amorce sans logguer. */
+        for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
+            const RegionEconomy *re=&s->econ->region[r];
+            if (re->owner<0) continue;
+            unsigned mask=0;
+            if (s->wl->years_held[r] < 5.f) mask |= 1u<<JMOD_CONQUEST;
+            ProvModHit ph[8]; int nh=provmod_collect(re, ph, 8);
+            for (int h=0;h<nh;h++) switch(ph[h].kind){
+                case PMOD_CICATRICE:      mask |= 1u<<JMOD_SCAR;        break;
+                case PMOD_ABONDANCE:      mask |= 1u<<JMOD_ABONDANCE;   break;
+                case PMOD_FERVEUR:        mask |= 1u<<JMOD_FERVEUR;     break;
+                case PMOD_RECONSTRUCTION: mask |= 1u<<JMOD_RECONSTRUCT; break;
+                default: break;
+            }
+            provlog_modifier_diff(r, mask);
+        }
         prof_flush(s->year);   /* PROF : classement de l'année (no-op si SCPS_PROF non posé) */
     }
     if (++s->day % 365 == 0) s->year++;
@@ -425,6 +445,7 @@ void sim_init(Sim *s, World *w) {
     statecraft_init(s->sc, w); agency_init(s->ag); diplo_init(s->dp); routes_init(s->rn);
     diplo_seed_rng(s->dp, w->seed);   /* la fronde tire sa graine du monde (séquence par sim) */
     intertrade_reset();   /* embargos décrétés + flux inter-pays : RAZ par sim */
+    provlog_reset();      /* journal provincial : RAZ par sim (runtime, hors save) */
     demography_contact_reset();   /* S2 : compteur de cristallisations culturelles par contact */
     intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs) — géographiques */
     intertrade_seed_citystate_arms(w, s->econ);   /* F-arc : chaque cité-état naît armurier (manufacture d'armes aléatoire sur son Centre) */

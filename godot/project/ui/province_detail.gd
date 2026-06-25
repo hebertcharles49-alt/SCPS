@@ -13,7 +13,7 @@ const PW := 648.0
 const PH := 512.0
 const HEAD := 34.0
 const BODY := 92.0          # y de départ du corps d'onglet (sous titre + onglets)
-const TABS := ["Peuples", "Production", "Bâtiments"]
+const TABS := ["Peuples", "Production", "Bâtiments", "Journal"]
 
 var _pid := -1
 var _tab := 0
@@ -72,6 +72,7 @@ func _draw() -> void:
 		0: _draw_peuples(x, BODY, w)
 		1: _draw_flux(x, BODY + 4.0, PW - 32.0, PH - BODY - 18.0, w)
 		2: _draw_batiments(x, BODY, w)
+		3: _draw_journal(x, BODY, w)
 
 # ── ONGLET PEUPLES : camemberts culture/religion + classes + agitation (hover) ──
 func _draw_peuples(x: float, y: float, w) -> void:
@@ -176,6 +177,24 @@ func _draw_batiments(x: float, y: float, w) -> void:
 		VKit.text(self, Vector2(x + 326, y), VKit.COL_PARCH, str(lv), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
 		y += 19
+
+# ── ONGLET JOURNAL : le fil chronologique des évènements & modificateurs ───────
+func _draw_journal(x: float, y: float, w) -> void:
+	var entries: Array = w.province_log(_pid)
+	if entries.is_empty():
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucun évènement notable jusqu'ici", VKit.FS_SMALL)
+		return
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "an      évènement", VKit.FS_SMALL)
+	y += 18
+	for e in entries:
+		if y > PH - 22:
+			break
+		var sign := int(e["sign"])
+		var col := VKit.sense(0.16) if sign > 0 else (VKit.sense(0.78) if sign < 0 else VKit.COL_PARCH)
+		var mark := "▲" if sign > 0 else ("▼" if sign < 0 else "·")
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "an %d" % int(e["year"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 58, y), col, "%s %s" % [mark, String(e["label"])], VKit.FS_SMALL)
+		y += 17
 
 # ── ONGLET PRODUCTION : flux +X/j par bien (sprite de ressource dessous) ───────
 func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:

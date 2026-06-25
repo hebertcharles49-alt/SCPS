@@ -194,6 +194,11 @@ int scps_province_agitation(ScpsSim *s, int province, int *out_value, ScpsBreakd
 typedef struct { const char *nom; int niveau; int ouvriers; } ScpsProvBld;
 int scps_province_buildings(ScpsSim *s, int province, ScpsProvBld *out, int max);
 
+/* le JOURNAL d'évènements de la province : an + libellé résolu + signe
+ * (+1 fléau · -1 faveur · 0 neutre). La PLUS RÉCENTE en tête. Retourne n. */
+typedef struct { int year; const char *label; int sign; } ScpsLogEntry;
+int scps_province_log(ScpsSim *s, int province, ScpsLogEntry *out, int max);
+
 /* pop par classe (laboureurs · artisans/bourgeois · noblesse/élite). */
 void scps_province_classes(ScpsSim *s, int province, long *laboureurs, long *artisans, long *noblesse);
 
