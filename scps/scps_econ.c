@@ -452,7 +452,12 @@ void econ_cold_refresh(WorldEconomy *e, const World *w) {
         re->habitability = hab;
         float fac = (hab >= 0.30f) ? (1.15f + 0.70f*hab)               /* jeu normal : IDENTIQUE à l'init */
                                    : (1.15f + 0.70f*hab) * (hab/0.30f);  /* gel : plonge vers 0 */
-        re->raw_cap[RES_GRAIN] = (re->cap_pop/100.f) * fac;
+        /* REFONTE (carte nue géologique) : le froid RÉDUIT le grain de la tuile (vocation/spawn),
+         * il n'en AJOUTE jamais — on borne par la valeur existante. Quand le gel plonge fac sous
+         * elle, le grain tombe → l'extraction vivrière s'effondre → famine. (L'ancien overwrite
+         * cap_pop-based plantait du grain partout, incohérent avec le food géologique du refonte.) */
+        float cold_grain = (re->cap_pop/100.f) * fac;
+        if (cold_grain < re->raw_cap[RES_GRAIN]) re->raw_cap[RES_GRAIN] = cold_grain;
     }
 }
 
