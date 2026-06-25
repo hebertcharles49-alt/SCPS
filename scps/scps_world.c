@@ -43,7 +43,7 @@ static float rng_f(void)       { return (rng_u() & 0xFFFFFFu) * (1.f/0x1000000u)
  * Utilitaires
  * ====================================================================== */
 static inline float clampf(float v, float lo, float hi) {
-    return v < lo ? lo : v > hi ? hi : v;
+    return v!=v?lo:(v < lo ? lo : v > hi ? hi : v);
 }
 static inline int clampi(int v, int lo, int hi) {
     return v < lo ? lo : v > hi ? hi : v;

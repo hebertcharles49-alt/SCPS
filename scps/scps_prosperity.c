@@ -29,7 +29,7 @@
 
 /* ---- Utilitaires ------------------------------------------------------- */
 static inline float clampf(float v, float lo, float hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
+    return v!=v?lo:(v < lo ? lo : (v > hi ? hi : v));
 }
 static inline float fabsf_local(float v) { return v < 0.f ? -v : v; }
 

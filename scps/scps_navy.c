@@ -14,7 +14,7 @@
 #include <string.h>
 #include <math.h>
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 
 /* ── Surface d'équilibrage ──────────────────────────────────────────────── */
 #define NAVY_MIN_PRICE       0.5f     /* plancher de prix (même rôle que BUILD_MIN_PRICE) */

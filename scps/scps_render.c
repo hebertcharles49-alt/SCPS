@@ -22,7 +22,7 @@ const char *VIEW_NAMES[VIEW_COUNT] = {
 };
 
 /* ---- Primitives couleur ---------------------------------------------- */
-static inline float    clampf(float v,float lo,float hi){return v<lo?lo:v>hi?hi:v;}
+static inline float    clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:v>hi?hi:v);}
 static inline uint8_t  u8(float v) { return (v<0.f)?0:(v>1.f)?255:(uint8_t)(v*255.f); }
 static inline float    ch_r(uint32_t c) { return ((c>>16)&0xFF)/255.f; }
 static inline float    ch_g(uint32_t c) { return ((c>> 8)&0xFF)/255.f; }

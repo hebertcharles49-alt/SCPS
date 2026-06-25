@@ -20,7 +20,7 @@
 #define REVOLT_SUSTAIN_DAYS 365      /* agitation au seuil pendant un an → révolte      */
 #define DIP_PER_INFLUENCE   25       /* +1 diplomate par 25 d'Influence                 */
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static inline int   iclamp(int v,int lo,int hi){ return v<lo?lo:(v>hi?hi:v); }
 static inline float toward(float cur,float tgt,float k){ return cur + (tgt-cur)*clampf(k,0.f,1.f); }
 static inline float absf(float v){ return v<0?-v:v; }

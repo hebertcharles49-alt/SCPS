@@ -46,7 +46,7 @@ static const int LEVEL_JOBS[6] = { 100,100,200,300,500,1000 };  /* capacité AJO
  * même propriétaire). Les bâtiments d'extraction/atelier (LB_SAWMILL…LB_WORKSHOP)
  * restent dans l'enum mais sont INERTES (per_job_output ne leur rend plus rien). */
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 
 /* ===================================================================== */
 /* JOBS & NIVEAUX (§9)                                                    */

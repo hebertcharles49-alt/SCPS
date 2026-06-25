@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static inline float clampf(float v,float lo,float hi){return v<lo?lo:(v>hi?hi:v);}
+static inline float clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:(v>hi?hi:v));}
 #define EPS 1e-4f
 
 /* ====================================================================== */

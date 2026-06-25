@@ -265,7 +265,7 @@ static inline Resource preferred_luxe(const PopCulture *c){
 #define RELOC_COERCION_BASE 0.25f   /* pic de coercition de base par évènement       */
 #define COERCION_DECAY      0.93f   /* demi-vie ≈ 10 ticks                            */
 
-static inline float clampf(float v,float lo,float hi){return v<lo?lo:(v>hi?hi:v);}
+static inline float clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:(v>hi?hi:v));}
 
 /* TENSION DE DEMANDE : +10 % de besoins partout (appliqué au facteur `units`) → une
  * demande tendue en permanence, le marché presse toujours sur l'offre. */
@@ -1297,7 +1297,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * stabilisateur actif ; elle refonte lentement chaque tick (CHARGE_DECAY ≪ accumulation
          * sous spawn soutenu) → dabbler puis cesser = récupérable, spawn continu = fracture.
          * L'IMMÉDIAT (arcane_charge : mage + spawn du tick) est remis à zéro (per-tick, comme avant). */
-        re->faust_charge = fmaxf(0.f, re->faust_charge - tune_f("CHARGE_DECAY", 0.04f));
+        re->faust_charge = fminf(1.0e6f, fmaxf(0.f, re->faust_charge - tune_f("CHARGE_DECAY", 0.04f)));   /* P1 : plafond anti-dérive-inf (jamais atteint en jeu : ~unités avant la fin §27 ; borne juste l'accumulateur non clampé) */
         re->arcane_charge=0.f;
         for (int i=0;i<re->n_bld;i++) {
             Building *b=&re->bld[i];

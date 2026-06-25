@@ -107,7 +107,7 @@ static float ai_faustian_appetite(Credo cr, float valeurs){
 #define AI_FAITH_FAUSTIAN   3.0f  /* §4 : l'orthodoxie INTERDIT le faustien, le culte le SACRALISE */
 
 /* ---- Utilitaires ------------------------------------------------------ */
-static inline float clampf(float v, float lo, float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v, float lo, float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static uint32_t xs32(uint32_t *s){ uint32_t x=*s; x^=x<<13; x^=x>>17; x^=x<<5; return *s=x?x:1u; }
 static float frand(uint32_t *s){ return (float)(xs32(s)&0xffffffu) / (float)0x1000000u; }
 

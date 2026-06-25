@@ -50,7 +50,7 @@ const char *edifice_name(int e){
 }
 
 static inline float rclampf(float v, float lo, float hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
+    return v!=v?lo:(v < lo ? lo : (v > hi ? hi : v));
 }
 static inline int   iclamp(int v, int lo, int hi) {
     return v < lo ? lo : (v > hi ? hi : v);

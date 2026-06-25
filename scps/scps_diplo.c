@@ -12,7 +12,7 @@
 #include <string.h>
 #include <math.h>
 
-static inline float clampf(float v,float lo,float hi){return v<lo?lo:(v>hi?hi:v);}
+static inline float clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:(v>hi?hi:v));}
 static inline float absf(float v){return v<0?-v:v;}
 
 /* ---- Diplomatie d'équilibre — surface d'équilibrage ------------------- */

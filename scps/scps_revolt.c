@@ -94,7 +94,7 @@ static float ethos_coup_boost(const PopGroup *g, EthosFaction alien_fac, float c
 }
 #define CRUSH_KILL    0.55f    /* part des mobilisés tués si écrasés */
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static inline float absf(float v){ return v<0?-v:v; }
 
 /* Distance de CONTENU (valeurs/subsistance/parenté/religion, langue exclue) —

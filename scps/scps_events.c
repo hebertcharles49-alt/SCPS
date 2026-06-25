@@ -27,7 +27,7 @@ struct EventCtx {
 };
 
 /* ---- Utilitaires ------------------------------------------------------ */
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static inline float absf(float v){ return v<0?-v:v; }
 /* §G2 — fwd : un fait NOTABLE inscrit une MÉMOIRE (l'âge en est un, défini plus haut
  * que le bloc directeur ⇒ on annonce le ressort de mémoire ici). */
