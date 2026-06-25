@@ -1,19 +1,20 @@
 extends Control
 ## ProvinceDetail — le DÉTAIL graphique d'une province (read-only), bascule touche V
-## (montre la province sélectionnée). Donne de l'AIR aux métriques que le panneau
-## étroit de gauche ne peut que résumer : un graphe Easy Charts des FLUX (production
-## + ressources, par source), les CAMEMBERTS culture & idéologie (VKit, réutilisés),
-## et la barre des CLASSES. Charte bleu nuit / cuivre. Display-only.
+## (montre la province sélectionnée). Donne de l'AIR aux métriques que la bande
+## étroite de gauche ne fait que résumer : un GRAPHE de barres des FLUX (production
+## + ressources, /an) où chaque ressource est NOMMÉE PAR SON SPRITE sous la barre ;
+## les CAMEMBERTS culture & idéologie (VKit, réutilisés) ; la barre des CLASSES.
+## Tout en immédiat VKit (catégoriel + sprites → la charte tient, sans EC qui cale
+## sur un axe X de chaînes ; Easy Charts reste le moteur des SÉRIES temporelles).
+## Charte bleu nuit / cuivre. Display-only.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
-const BARCHART = preload("res://addons/easy_charts/control_charts/BarChart/bar_chart.tscn")
 const PW := 648.0
-const PH := 520.0
+const PH := 512.0
 const HEAD := 34.0
 
 var _pid := -1
-var _chart
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -21,14 +22,7 @@ func _ready() -> void:
 	size = Vector2(PW, PH)
 	_layout()
 	get_viewport().size_changed.connect(_layout)
-	_chart = BARCHART.instantiate()
-	_chart.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_chart.position = Vector2(16, 250)
-	_chart.size = Vector2(PW - 32, PH - 250 - 16)
-	_chart.custom_minimum_size = _chart.size
-	_chart.visible = false
-	add_child(_chart)
-	Sim.ticked.connect(func(_y): if visible: _refresh())
+	Sim.ticked.connect(func(_y): if visible: queue_redraw())
 	hide()
 
 func _layout() -> void:
@@ -37,46 +31,6 @@ func _layout() -> void:
 
 func show_province(pid: int) -> void:
 	_pid = pid
-	if visible:
-		_refresh()
-	queue_redraw()
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_VISIBILITY_CHANGED and is_inside_tree() and visible:
-		_refresh()
-		queue_redraw()
-
-# ── le graphe EC des flux (production + ressources, par source) ─────────────
-func _refresh() -> void:
-	if Sim.world == null or _pid < 0:
-		if _chart != null:
-			_chart.visible = false
-		return
-	var inc: Array = Sim.world.province_income(_pid)
-	var x := []
-	var y := []
-	for l in inc:
-		x.append(String(l["source"]))
-		y.append(float(l["per_day"]) * 365.0)   # PAR AN (le par-jour n'est pas parlant)
-	if x.size() >= 1:
-		var cp = ChartProperties.new()
-		cp.title = "Flux (production & ressources, /an)"
-		cp.x_label = ""
-		cp.y_label = "/an"
-		cp.grid = true
-		cp.points = false
-		cp.origin = false       # un axe X catégoriel (chaînes) → pas d'origine numérique (évite remap(Nil))
-		cp.x_scale = maxi(1, x.size())
-		cp.y_scale = 5
-		cp.bar_width = 18.0
-		cp.background = false
-		cp.colors.bounding_box = VKit.COL_PARCH
-		cp.colors.grid = VKit.COL_EDGE
-		cp.colors.functions = [VKit.COL_COPPER]
-		_chart.visible = true
-		_chart.plot(x, y, cp)
-	else:
-		_chart.visible = false
 	queue_redraw()
 
 func _draw() -> void:
@@ -97,7 +51,7 @@ func _draw() -> void:
 
 	# ── CAMEMBERTS culture & idéologie (VKit, réutilisés du panneau de gauche) ──
 	var groups: Array = w.province_groups(_pid)
-	var cy := HEAD + 64.0
+	var cy := HEAD + 60.0
 	if groups.size() > 0:
 		var cper := []
 		var ccol := []
@@ -115,13 +69,13 @@ func _draw() -> void:
 				rcol.append(VKit.SLICE_PAL[(rnames.size() - 1) % 8])
 			else:
 				rper[idx] += g["percent"]
-		var pr := 44.0
-		VKit.pie(self, Vector2(x + pr + 20, cy), pr, cper, ccol)
-		VKit.pie(self, Vector2(x + 3 * pr + 70, cy), pr, rper, rcol)
-		VKit.text(self, Vector2(x + 12, cy + pr + 6), VKit.COL_DIM, "Culture", VKit.FS_SMALL)
-		VKit.text(self, Vector2(x + 2 * pr + 62, cy + pr + 6), VKit.COL_DIM, "Idéologie", VKit.FS_SMALL)
-		# légende culture (noms + part)
-		var lx := x + 4 * pr + 110
+		var pr := 40.0
+		VKit.pie(self, Vector2(x + pr + 16, cy), pr, cper, ccol)
+		VKit.pie(self, Vector2(x + 3 * pr + 56, cy), pr, rper, rcol)
+		VKit.text(self, Vector2(x + 6, cy + pr + 6), VKit.COL_DIM, "Culture", VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 2 * pr + 46, cy + pr + 6), VKit.COL_DIM, "Idéologie", VKit.FS_SMALL)
+		# légende des cultures (nom + part)
+		var lx := x + 4 * pr + 96
 		var ly := cy - pr
 		for i in range(mini(groups.size(), 6)):
 			VKit.fill(self, Rect2(lx, ly + 3, 9, 9), VKit.SLICE_PAL[i % 8])
@@ -131,16 +85,16 @@ func _draw() -> void:
 
 	# ── POPULATION : barre empilée des classes ────────────────────────────────
 	var cls: Dictionary = w.province_classes(_pid)
-	var cp := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
-	var tot: float = maxf(1.0, cp[0] + cp[1] + cp[2])
+	var ccnt := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
+	var tot: float = maxf(1.0, ccnt[0] + ccnt[1] + ccnt[2])
 	var cc := [VKit.SLICE_PAL[0], VKit.SLICE_PAL[1], VKit.SLICE_PAL[3]]
 	var cnames := ["Laboureurs", "Artisans", "Noblesse"]
-	var py := HEAD + 64.0 + 44.0 + 30.0
+	var py := HEAD + 60.0 + 40.0 + 30.0
 	var rw := PW - 32.0
 	var bh := 14.0
 	var acc := 0.0
 	for i in range(3):
-		var segw: float = (rw - acc) if i == 2 else float(cp[i]) / tot * rw
+		var segw: float = (rw - acc) if i == 2 else float(ccnt[i]) / tot * rw
 		segw = maxf(0.0, segw)
 		VKit.fill(self, Rect2(x + acc, py, segw, bh), cc[i])
 		acc += segw
@@ -149,7 +103,53 @@ func _draw() -> void:
 	for i in range(3):
 		VKit.fill(self, Rect2(x + i * 200.0, py + 3, 9, 9), cc[i])
 		VKit.text(self, Vector2(x + i * 200.0 + 15, py), VKit.COL_PARCH,
-			"%s %s" % [cnames[i], _grp(cp[i])], VKit.FS_SMALL)
+			"%s %s" % [cnames[i], _grp(ccnt[i])], VKit.FS_SMALL)
+
+	# ── FLUX (production & ressources, /an) : barres + SPRITE de ressource dessous ──
+	_draw_flux(x, py + 30.0, rw, PH - (py + 30.0) - 14.0, w)
+
+func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
+	VKit.text(self, Vector2(fx, fy), VKit.COL_COPPER, "Flux (production & ressources, /an)", VKit.FS_SMALL)
+	var inc: Array = w.province_income(_pid)
+	if inc.is_empty():
+		VKit.text(self, Vector2(fx, fy + 20.0), VKit.COL_DIM, "rien de notable", VKit.FS_SMALL)
+		return
+	var n := inc.size()
+	var vals := []
+	var maxv := 1.0
+	for l in inc:
+		var v := float(l["per_day"]) * 365.0
+		vals.append(v)
+		maxv = maxf(maxv, absf(v))
+	var top := fy + 20.0
+	var base := fy + fh - 26.0          # ligne de base (place dessous pour le sprite)
+	var barmax := base - top - 12.0     # place au-dessus pour la valeur
+	# lignes de repère + valeur (0 · ½ · max)
+	for g in range(0, 3):
+		var gy := base - float(g) / 2.0 * barmax
+		VKit.fill(self, Rect2(fx, gy, fw, 1), VKit.COL_EDGE)
+		VKit.text(self, Vector2(fx + fw - 44.0, gy - 12.0), VKit.COL_DIM, "%.0f" % (float(g) / 2.0 * maxv), VKit.FS_SMALL)
+	var slot := fw / float(n)
+	var bw := minf(36.0, slot * 0.62)
+	for i in range(n):
+		var cx := fx + (float(i) + 0.5) * slot
+		var v: float = vals[i]
+		var bhh: float = absf(v) / maxv * barmax
+		var manuf := bool(inc[i]["manufactured"])
+		var col := VKit.SLICE_PAL[7] if manuf else VKit.COL_COPPER   # production = vert · ressource = cuivre
+		VKit.fill(self, Rect2(cx - bw / 2.0, base - bhh, bw, bhh), col)
+		var vs := "%.0f" % v
+		VKit.text(self, Vector2(cx - VKit.text_w(vs, VKit.FS_SMALL) / 2.0, base - bhh - 13.0), VKit.COL_PARCH, vs, VKit.FS_SMALL)
+		var spr := UIKit.resource_sprite(int(inc[i].get("res_id", -1)), String(inc[i]["source"]))
+		if spr != null:
+			draw_texture_rect(spr, Rect2(cx - 10.0, base + 3.0, 20.0, 20.0), false)
+		else:
+			VKit.text(self, Vector2(cx - 14.0, base + 5.0), VKit.COL_DIM, String(inc[i]["source"]).substr(0, 5), VKit.FS_SMALL)
+	VKit.fill(self, Rect2(fx, base, fw, 1), VKit.COL_DIM)
+	# légende des teintes
+	VKit.fill(self, Rect2(fx, fy + 2.0, 9, 9), VKit.COL_COPPER)
+	VKit.text(self, Vector2(fx + 220.0, fy), VKit.COL_DIM, "■ ressource", VKit.FS_SMALL)
+	VKit.text(self, Vector2(fx + 300.0, fy), VKit.SLICE_PAL[7], "■ production", VKit.FS_SMALL)
 
 func _grp(n) -> String:
 	var s := str(absi(int(n)))

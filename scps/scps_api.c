@@ -383,6 +383,7 @@ int scps_province_income(ScpsSim *s, int pid, ScpsIncome *out, int max){
         out[i].source       = sz(inc.line[i].source);
         out[i].per_day      = inc.line[i].per_day;
         out[i].manufactured = inc.line[i].manufactured ? 1 : 0;
+        out[i].res_id       = inc.line[i].good;
     }
     return n;
 }

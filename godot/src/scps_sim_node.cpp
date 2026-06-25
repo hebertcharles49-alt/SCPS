@@ -250,6 +250,7 @@ Array ScpsWorld::province_income(int province) {
         d["source"]       = String::utf8(inc[i].source);
         d["per_day"]      = inc[i].per_day;
         d["manufactured"] = (bool)inc[i].manufactured;
+        d["res_id"]       = inc[i].res_id;
         a.push_back(d);
     }
     return a;

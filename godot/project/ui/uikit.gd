@@ -330,8 +330,10 @@ static func clutter_sprite(nm: String) -> Texture2D:
 # ressources couvertes par le pack UI (repli tant que le sprite dédié n'est pas posé)
 const RES_FALLBACK := {
 	"grain": "grain_bundle", "ble": "grain_bundle", "betail": "grain_bundle",
+	"cereales": "grain_bundle",
 	"poisson": "health_food_bowl", "nourriture": "health_food_bowl", "vivres": "health_food_bowl",
 	"pierre": "materials_stone", "argile": "materials_stone",
+	"bois": "layer_forest",
 	"or": "gold_coin", "metal_precieux": "gold_coin", "perle": "gold_coin",
 	"outils": "development_tools", "metal": "development_tools",
 }

@@ -188,6 +188,7 @@ typedef struct {
     const char *source;        /* le bien produit, mot diégétique */
     float       per_day;       /* +N/j : QUANTITÉ produite par jour (unités, 1 décimale) */
     bool        manufactured;  /* false = collecte (brute) ; true = sortie d'atelier */
+    int         good;          /* indice Resource (enum) — pour le SPRITE de ressource (membrane : un nombre tangible) */
 } IncomeLine;
 typedef struct {
     IncomeLine line[6];        /* les biens principaux, triés par quantité */

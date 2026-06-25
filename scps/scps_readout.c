@@ -606,6 +606,7 @@ IncomeReadout province_income(const WorldEconomy *econ, int region) {
         r.line[r.n].source       = resource_name((Resource)best);
         r.line[r.n].per_day      = qty[best];         /* unités/jour (1 décimale à l'affichage) */
         r.line[r.n].manufactured = (best >= RES_PROD_FIRST);
+        r.line[r.n].good         = best;              /* l'indice Resource → sprite côté façade */
         r.n++;
     }
     return r;

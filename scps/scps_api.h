@@ -181,7 +181,7 @@ typedef struct {
 /* remplit out[0..min(n,max)-1] avec les groupes pop ; retourne le nombre écrit. */
 int scps_province_groups(ScpsSim *s, int province, ScpsGroup *out, int max);
 
-typedef struct { const char *source; float per_day; int manufactured; } ScpsIncome;
+typedef struct { const char *source; float per_day; int manufactured; int res_id; } ScpsIncome;
 int scps_province_income(ScpsSim *s, int province, ScpsIncome *out, int max);
 
 /* pop par classe (laboureurs · artisans/bourgeois · noblesse/élite). */
