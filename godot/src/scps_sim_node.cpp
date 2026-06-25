@@ -50,6 +50,11 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
     ClassDB::bind_method(D_METHOD("unit_roster", "country"),         &ScpsWorld::unit_roster);
     ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
+    ClassDB::bind_method(D_METHOD("tech_info"),                      &ScpsWorld::tech_info);
+    ClassDB::bind_method(D_METHOD("tech_nodes"),                     &ScpsWorld::tech_nodes);
+    ClassDB::bind_method(D_METHOD("country_budget", "country"),      &ScpsWorld::country_budget);
+    ClassDB::bind_method(D_METHOD("budget_summary", "country"),      &ScpsWorld::budget_summary);
+    ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
     ClassDB::bind_method(D_METHOD("player_build", "edifice", "region"), &ScpsWorld::player_build, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
@@ -421,6 +426,82 @@ Array ScpsWorld::building_roster(int country) {
         a.push_back(d);
     }
     return a;
+}
+
+Dictionary ScpsWorld::tech_info() {
+    Dictionary d;
+    ScpsTechInfo t;
+    scps_tech_info(sim, &t);
+    d["points"]    = t.points;
+    d["crise_pct"] = t.crise_pct;
+    d["presage"]   = String::utf8(t.presage);
+    Array themes, funcs;
+    for (int i = 0; i < 3; i++) { themes.push_back(String::utf8(t.theme[i])); funcs.push_back(String::utf8(t.function[i])); }
+    d["themes"]    = themes;
+    d["functions"] = funcs;
+    return d;
+}
+
+Array ScpsWorld::tech_nodes() {
+    Array a;
+    ScpsTechNode nd[64];
+    int n = scps_tech_nodes(sim, nd, 64);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["quarter"]  = nd[i].quarter;
+        d["tier"]     = nd[i].tier;
+        d["state"]    = nd[i].state;
+        d["faustian"] = (bool)nd[i].faustian;
+        d["orphan"]   = (bool)nd[i].orphan;
+        d["is_base"]  = (bool)nd[i].is_base;
+        d["name"]     = String::utf8(nd[i].name);
+        d["unlocks"]  = String::utf8(nd[i].unlocks);
+        d["effet"]    = String::utf8(nd[i].effet);
+        d["cost"]     = nd[i].cost;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Array ScpsWorld::country_budget(int country) {
+    Array a;
+    ScpsFluxLine fx[32];
+    int n = scps_country_budget(sim, country, fx, 32);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["name"]   = String::utf8(fx[i].name);
+        d["amount"] = fx[i].amount;
+        a.push_back(d);
+    }
+    return a;
+}
+
+Dictionary ScpsWorld::budget_summary(int country) {
+    Dictionary d;
+    ScpsBudget b;
+    scps_budget_summary(sim, country, &b);
+    d["gold"]          = b.gold;
+    d["income"]        = b.income;
+    d["expense"]       = b.expense;
+    d["net"]           = b.net;
+    d["credit_line"]   = b.credit_line;
+    d["creditor"]      = b.creditor;
+    d["creditor_name"] = String::utf8(b.creditor_name);
+    return d;
+}
+
+Dictionary ScpsWorld::mission_info(int country) {
+    Dictionary d;
+    ScpsMission m;
+    scps_mission_info(sim, country, &m);
+    d["active"]      = (bool)m.active;
+    d["text"]        = String::utf8(m.text);
+    d["reward_gold"] = m.reward_gold;
+    d["reward_mat"]  = String::utf8(m.reward_mat);
+    d["reward_qty"]  = m.reward_qty;
+    d["issued_year"] = m.issued_year;
+    d["done"]        = (bool)m.done;
+    return d;
 }
 
 bool ScpsWorld::player_build(int edifice, int region) {

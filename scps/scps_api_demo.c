@@ -63,6 +63,31 @@ int main(int argc, char **argv){
     ok("20 ans écoulés", yr==20);
     ok("le monde VIT (pop a changé)", p20 != p0);
 
+    /* ── LECTURES DE FENÊTRES : arbre de tech · budget · missions (read-only) ──
+     * LU AVANT le 2e sim : le flux fiscal est un état GLOBAL (règle « un seul Sim
+     * actif/processus ») — créer s2 le RAZ. On lit donc le budget de s ICI, sur ~1
+     * an de flux accumulé, tant que s est le seul monde vivant. */
+    int pl0 = scps_player(s);
+    ScpsTechInfo ti; scps_tech_info(s, &ti);
+    ScpsTechNode tn[64]; int ntn = scps_tech_nodes(s, tn, 64);
+    printf("   tech : %d nœuds · %d points · présage=%s · crise=%d%%\n",
+           ntn, ti.points, ti.presage, ti.crise_pct);
+    ok("arbre de tech lu (nœuds + points ≥0)", ntn>0 && ti.points>=0);
+    ok("risque faustien BANDÉ (présage résolu, jamais le flottant)", ti.presage[0]!='\0');
+    ok("thèmes/fonctions résolus", ti.theme[0][0]!='\0' && ti.function[0][0]!='\0');
+
+    ScpsBudget bg; scps_budget_summary(s, pl0, &bg);
+    ScpsFluxLine fx[32]; int nfx = scps_country_budget(s, pl0, fx, 32);
+    printf("   budget : or=%.0f · revenus=%.0f · dépenses=%.0f · net=%+.0f · %d postes · crédit=%.0f\n",
+           bg.gold, bg.income, bg.expense, bg.net, nfx, bg.credit_line);
+    ok("budget : décomposition du flux (postes non vides)", nfx>0);
+    ok("budget : net = revenus − dépenses (cohérent)", bg.net==bg.income-bg.expense);
+    ok("budget : ligne de crédit ∝ pop (≥0, finie)", bg.credit_line>=0 && bg.credit_line==bg.credit_line);
+
+    ScpsMission ms; scps_mission_info(s, pl0, &ms);
+    printf("   mission : %s\n", ms.active ? ms.text : "(aucune active)");
+    ok("mission lue sans crash (active ∈ {0,1})", ms.active==0 || ms.active==1);
+
     /* REPRODUCTIBILITÉ : un 2e sim, mêmes appels → même résultat au bit près */
     ScpsSim *s2 = scps_sim_new();
     scps_sim_generate(s2, seed);

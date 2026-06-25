@@ -346,6 +346,78 @@ typedef struct { float x, y; } ScpsRoadPt;
 int scps_roads_build(ScpsSim *s);
 int scps_road_path(ScpsSim *s, int i, ScpsRoadPt *out, int max, int *level);
 
+/* ====================================================================== */
+/* LECTURES DE FENÊTRES (read-only) : arbre de tech · budget · missions     */
+/* La membrane : des MOTS résolus + des nombres TANGIBLES (or, points,      */
+/* projections 0-100), jamais un flottant moteur. Toutes const, golden-safe.*/
+/* ====================================================================== */
+
+/* ---- ARBRE DE TECHNOLOGIE (tech_tree_readout) ------------------------- *
+ * L'arbre concentrique du JOUEUR : un nœud = un angle (quarter 0-8 = thème×3
+ * + fonction) × un rayon (tier 0-5), un état, un coût en POINTS de recherche,
+ * l'effet concret. scps_tech_nodes remplit la grille ; scps_tech_info donne le
+ * total de points, les libellés thèmes/fonctions et la BANDE de risque faustien
+ * (jamais le flottant brut : présage + projection 0-100). */
+typedef struct {
+    int  quarter;   /* 0-8 : thème×3 + fonction (l'angle) */
+    int  tier;      /* 0-5 : le rayon (profondeur) */
+    int  state;     /* 0 verrouillé · 1 ouvert (recherchable) · 2 acquis */
+    int  faustian;  /* 1 = bout interdit (charge la Brèche) */
+    int  orphan;    /* 1 = signature d'une AUTRE lignée, accès manquant */
+    int  is_base;   /* 1 = bâtiment de base (tier 0) */
+    const char *name;     /* nom du nœud */
+    const char *unlocks;  /* ce qu'il déverrouille */
+    const char *effet;    /* l'utilité concrète */
+    int  cost;      /* points de recherche (0 pour une base) */
+} ScpsTechNode;
+int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max);
+
+typedef struct {
+    int  points;            /* points de recherche DISPONIBLES (tangible) */
+    const char *theme[3];   /* libellés de thèmes (ordre THM_*) */
+    const char *function[3];/* libellés de fonctions (ordre FN_*) */
+    const char *presage;    /* bande de risque faustien (présage de la Brèche) */
+    int  crise_pct;         /* 0-100 : proximité de crise (projection tangible) */
+} ScpsTechInfo;
+void scps_tech_info(ScpsSim *s, ScpsTechInfo *out);
+
+/* ---- BUDGET / FISCAL (econ_flux_get × FluxComp + crédit) -------------- *
+ * La décomposition du flux d'or de l'ANNÉE COURANTE (la façade RAZ le flux à
+ * chaque passage d'année dans advance_days) : une ligne par poste non vide,
+ * signe = revenu (+) ou dépense (−). Plus le trésor, la ligne de crédit
+ * (capacité d'emprunt ∝ pop) et le pays prêteur s'il y a dette. */
+typedef struct {
+    const char *name;   /* libellé du poste (econ_flux_name) */
+    double amount;      /* or de l'année (signé : + revenu, − dépense) */
+} ScpsFluxLine;
+int scps_country_budget(ScpsSim *s, int cid, ScpsFluxLine *out, int max);
+
+typedef struct {
+    double gold;            /* trésor courant */
+    double income;          /* Σ des postes positifs (année) */
+    double expense;         /* Σ des dépenses, en valeur absolue (année) */
+    double net;             /* income − expense */
+    double credit_line;     /* capacité d'emprunt (dette max) */
+    int    creditor;        /* pays prêteur (-1 = aucune dette / aucun prêteur) */
+    const char *creditor_name;
+} ScpsBudget;
+void scps_budget_summary(ScpsSim *s, int cid, ScpsBudget *out);
+
+/* ---- MISSION DÉCENNALE (mission_of) ----------------------------------- *
+ * L'objectif courant du pays (au plus un actif) : texte (membrane moteur),
+ * récompense (or + matière), année d'émission. La progression n'est pas
+ * stockée (le moteur la re-dérive) → on surface l'objectif et sa prime. */
+typedef struct {
+    int    active;          /* 0/1 : une mission est-elle en cours ? */
+    const char *text;       /* texte de la mission (FR, membrane moteur) */
+    double reward_gold;     /* prime en or à l'accomplissement */
+    const char *reward_mat; /* matière de prime (resource_name ; vide si reward_qty=0) */
+    double reward_qty;      /* quantité de la matière */
+    int    issued_year;     /* année d'émission */
+    int    done;            /* 1 = accomplie (récompense versée ce tour) */
+} ScpsMission;
+void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out);
+
 #ifdef __cplusplus
 }
 #endif

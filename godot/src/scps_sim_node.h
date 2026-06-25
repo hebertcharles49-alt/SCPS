@@ -88,6 +88,11 @@ public:
     /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */
     Array      unit_roster(int country);              /* unités : nom·classe·coût·éthos·contres·recrutable */
     Array      building_roster(int country);          /* édifices : nom·coût matériaux·or·jours·débloqué */
+    Dictionary tech_info();                           /* arbre du joueur : points · thèmes/fonctions · présage · crise% */
+    Array      tech_nodes();                           /* arbre du joueur : nœuds (quadrant·tier·état·coût·effet) */
+    Array      country_budget(int country);            /* budget : postes de flux de l'année (signés) */
+    Dictionary budget_summary(int country);            /* budget : or · revenus · dépenses · net · crédit · prêteur */
+    Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année */
 
     /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */
     bool       player_build(int edifice, int region); /* enfile un chantier (region<0 ⇒ capitale) ; false = file pleine/hors-domaine */

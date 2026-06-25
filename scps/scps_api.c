@@ -62,6 +62,7 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     s->sim.human_player = s->sim.player;
     s->sim.ai_on[s->sim.player] = false;
     warhost_set_human(s->sim.player);   /* la main humaine : l'armée du joueur ne s'auto-mobilise plus */
+    econ_flux_reset();   /* budget façade : repart d'une ardoise propre (le flux est un état GLOBAL) */
     s->ready = true;
 
     /* centroïdes région (la géo est figée par worldgen ; seul l'OWNER changera) */
@@ -87,7 +88,10 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
 /* Le TICK PLEIN : exactement le sim_day de la chronique (déterministe). */
 void scps_sim_advance_days(ScpsSim *s, int ndays){
     if(!s || !s->ready) return;
-    for(int i=0; i<ndays; i++) sim_day(&s->sim, s->w);
+    for(int i=0; i<ndays; i++){
+        if(s->sim.day % 365 == 0) econ_flux_reset();   /* budget façade : le flux porte sur l'ANNÉE courante */
+        sim_day(&s->sim, s->w);
+    }
 }
 
 int scps_map_w(void){ return SCPS_W; }
@@ -636,6 +640,101 @@ int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
         n++;
     }
     return n;
+}
+
+/* ====================================================================== */
+/* LECTURES DE FENÊTRES : arbre de tech · budget · missions (read-only)     */
+/* Const, sans tick ni RNG (golden-safe) ; membrane (mots résolus + nombres */
+/* tangibles, bandes pour le risque — jamais un flottant moteur brut).      */
+/* ====================================================================== */
+
+int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
+    if(!out || max<=0 || !s || !s->ready) return 0;
+    int p = s->sim.player;
+    if(p<0 || p>=s->w->n_countries) return 0;
+    unsigned acc = ai_race_access(s->w, s->sim.econ, s->sim.rn, p);
+    float pop = (float)scps_country_pop(s, p);
+    TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, pop, &tt);
+    int n = (tt.n < max) ? tt.n : max;
+    for(int i=0;i<n;i++){
+        const TreeNodeReadout *nd = &tt.node[i];
+        out[i].quarter = nd->quarter;  out[i].tier = nd->tier;
+        out[i].state   = (int)nd->state;
+        out[i].faustian= nd->faustian?1:0; out[i].orphan = nd->orphan?1:0;
+        out[i].is_base = nd->is_base?1:0;
+        out[i].name    = sz(nd->name);  out[i].unlocks = sz(nd->unlocks);
+        out[i].effet   = sz(nd->effet); out[i].cost = nd->cost;
+    }
+    return n;
+}
+
+void scps_tech_info(ScpsSim *s, ScpsTechInfo *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    for(int i=0;i<3;i++){ out->theme[i]=""; out->function[i]=""; }
+    out->presage="";
+    if(!s || !s->ready) return;
+    int p = s->sim.player;
+    if(p<0 || p>=s->w->n_countries) return;
+    unsigned acc = ai_race_access(s->w, s->sim.econ, s->sim.rn, p);
+    float pop = (float)scps_country_pop(s, p);
+    TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, pop, &tt);
+    out->points = tt.points;
+    for(int i=0;i<3;i++){ out->theme[i]=sz(tt.theme[i]); out->function[i]=sz(tt.function[i]); }
+    const TechState *ts = &s->sim.ts[p];
+    float ch = ts->charge; if(ch<0.f)ch=0.f; if(ch>10.f)ch=10.f;
+    out->presage = sz(label_presage(band_presage(ch)));
+    float cp = tech_crisis_proximity(ts); if(cp<0.f)cp=0.f; if(cp>1.f)cp=1.f;
+    out->crise_pct = (int)(cp*100.f + 0.5f);
+}
+
+int scps_country_budget(ScpsSim *s, int cid, ScpsFluxLine *out, int max){
+    if(!out || max<=0 || !s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
+    int n=0;
+    for(int comp=0; comp<FX_COUNT && n<max; comp++){
+        double amt = econ_flux_get(cid, (FluxComp)comp);
+        if(amt > -0.5 && amt < 0.5) continue;          /* poste vide → omis */
+        out[n].name   = sz(econ_flux_name((FluxComp)comp));
+        out[n].amount = amt;
+        n++;
+    }
+    return n;
+}
+
+void scps_budget_summary(ScpsSim *s, int cid, ScpsBudget *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    out->creditor = -1; out->creditor_name = "";
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
+    double inc=0, exp=0;
+    for(int comp=0; comp<FX_COUNT; comp++){
+        double a = econ_flux_get(cid, (FluxComp)comp);
+        if(a>0) inc+=a; else exp+= -a;                 /* dépenses stockées NÉGATIVES → |a| */
+    }
+    out->gold        = econ_country_gold(s->sim.econ, cid);
+    out->income      = inc;
+    out->expense     = exp;
+    out->net         = inc - exp;
+    out->credit_line = credit_line(s->w, s->sim.econ, cid);
+    int cr = credit_of(cid);
+    out->creditor = cr;
+    if(cr>=0 && cr<s->w->n_countries) out->creditor_name = sz(s->w->country[cr].name);
+}
+
+void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    out->text=""; out->reward_mat="";
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
+    const Mission *m = mission_of(s->sim.missions, cid);
+    if(!m) return;
+    out->active      = 1;
+    out->text        = sz(m->text);
+    out->reward_gold = m->reward_gold;
+    out->reward_qty  = m->reward_qty;
+    if(m->reward_qty > 0.f) out->reward_mat = sz(resource_name(m->reward_mat));
+    out->issued_year = m->issued_year;
+    out->done        = m->done?1:0;
 }
 
 /* ====================================================================== */
