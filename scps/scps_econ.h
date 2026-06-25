@@ -448,6 +448,26 @@ float econ_tax_tolerance(Ethos e, SocialClass c);
  * la pénalité. 0 si la province est homogène. Frappe la satisfaction SOCIALE. */
 float econ_off_culture_fraction(const ProvincePop *pp);
 
+/* ── PIPELINE IA — PRÉVISION (étage 1) : ce que l'IA LIT pour voir le mur venir ──
+ * Forecast par PAYS et par flux, DÉRIVÉ des seules coordonnées du moteur (pop, raw_cap,
+ * demande, offre, stock, eff_cap, needs_met). Recalculé au tick, JAMAIS sérialisé.
+ *   runway[g]        : années avant le déficit (demande projetée > offre+stock) ; +inf si jamais.
+ *   shortfall_proj[g]: besoin(HORIZON) − offre actuelle (annualisé ; >0 = on sera court).
+ *   struct_deficit[g]: la production MAX possible (au plein eff_cap) < la conso à plein → déficit
+ *                      DURABLE (import/colonie/plafond), pas un creux passager.
+ *   food_runway      : le runway AGRÉGÉ des sources vivrières (grain+poisson+viande) — l'existentiel. */
+typedef struct {
+    float runway[RES_COUNT];
+    float shortfall_proj[RES_COUNT];
+    unsigned char struct_deficit[RES_COUNT];
+    float food_runway;
+    float pop, eff_cap, growth_r;     /* trajectoire f(pop) (lecture/télémétrie) */
+} EconForecast;
+/* Calcule le forecast du pays `cid` à l'horizon `horizon` ans. Lecture pure (const econ). */
+void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconForecast *out);
+/* Conso ANNUELLE par tête d'un bien (table NEED × parts de classe × tension × FOOD_NEED si food). */
+float econ_conso_per_capita_year(Resource g);
+
 /* Pas de colonisation : joueur et antagonistes essaiment vers les régions
  * vierges voisines ; les cités-états colonisent leurs propres territoires
  * non encore peuplés. À appeler après econ_tick(). Renvoie le nb de régions

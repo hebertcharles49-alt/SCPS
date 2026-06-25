@@ -294,6 +294,36 @@ AiView ai_observe(const WorldProsperity *wp, const World *w,
         if (chain!=RES_NONE && chain<RES_PROD_FIRST && rawcap[chain]<0.1f) take += 0.4f;
         v.take_pressure = clampf(take, 0.f, 1.f);
     }
+
+    /* ── ÉTAGES 1-2 : la PRÉVISION + la FILE DE PRIORITÉS (la motivation éco ÉMERGE) ──
+     * Le forecast (runway/shortfall/déficit structurel) se lit des coordonnées (étage 1).
+     * La PRIORITÉ d'un flux = stress(runway court) × prix (la valeur de marché, émergente)
+     * × deficit_vs_safe (manque sous le coussin de réserve). AUCUNE hiérarchie codée : un
+     * empire-bijoux dont l'or crise priorise l'or ; un empire affamé, la nourriture. */
+    econ_country_forecast(econ, cid, tune_f("AI_PROJ_HORIZON",25.f), &v.fc);
+    v.food_alert = (v.fc.food_runway < tune_f("AI_SAFETY_HORIZON",12.f));
+    {
+        float safety = tune_f("AI_SAFETY_HORIZON",12.f);
+        float safe_months = tune_f("AI_SAFE_STOCK_MONTHS",6.f);
+        float pr_sum[RES_COUNT]; float dem_m[RES_COUNT]; float stk2[RES_COUNT]; int pn[RES_COUNT];
+        for (int g=0; g<RES_COUNT; g++){ pr_sum[g]=0.f; dem_m[g]=0.f; stk2[g]=0.f; pn[g]=0; }
+        for (int r=0; r<econ->n_regions; r++) if (econ->region[r].owner==cid && econ->region[r].colonized){
+            const RegionEconomy *re=&econ->region[r];
+            for (int g=1; g<RES_COUNT; g++){ pr_sum[g]+=re->price[g]; pn[g]++; dem_m[g]+=re->demand[g]; stk2[g]+=re->stock[g]; }
+        }
+        Resource top=RES_NONE; float topp=0.f;
+        for (int g=1; g<RES_COUNT; g++){
+            if (dem_m[g] < 0.01f) continue;                       /* flux non demandé → pas une motivation */
+            float pr = (pn[g]>0)? pr_sum[g]/(float)pn[g] : econ_base_price((Resource)g);
+            float rw = v.fc.runway[g]; if (rw<0.05f) rw=0.05f;
+            float stress = clampf(safety/rw, 0.f, 4.f);          /* runway court → urgent */
+            float safe_stock = safe_months * dem_m[g];           /* coussin = N mois de demande */
+            float dvs = (safe_stock>1e-3f)? clampf((safe_stock-stk2[g])/safe_stock, 0.f, 1.f) : 0.f;
+            float prio = stress * pr * dvs;                      /* émergent : urgence × valeur × manque */
+            if (prio>topp){ topp=prio; top=(Resource)g; }
+        }
+        v.top_flow=top; v.top_priority=topp;
+    }
     return v;
 }
 

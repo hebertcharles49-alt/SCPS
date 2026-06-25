@@ -73,15 +73,18 @@ int main(int argc, char **argv){
 
     /* ═══ 3. Les outils MULTIPLIENT la productivité ═════════════════════ */
     printf("\n── 3. Les outils montent la production (le multiplicateur) ──\n");
+    /* REFONTE A0 : on mesure l'EXTRACTION BRUTE (que les outils multiplient via prod_mult),
+     * pas le PIB (valeur ajoutée) — désormais confondu par le marché des outils (le stock
+     * d'outils déprime leur prix → la manufacture d'outils, donc la VA, varie en sens inverse). */
     rig(e, 1, 0.f);    /* site sans outils */
     econ_tick(e,1.f);
-    float gdp_none=e->region[1].gdp;
+    float out_none=0.f; for(int g=1;g<RES_PROD_FIRST;g++) out_none+=e->region[1].supply[g];
     rig(e, 1, 600.f);  /* région IDENTIQUE mais bien outillée */
     econ_tick(e,1.f);
-    float gdp_tools=e->region[1].gdp;
-    printf("   PIB du même site : sans outils=%.0f vs bien outillé=%.0f\n", gdp_none, gdp_tools);
-    ok("un site BIEN OUTILLÉ produit plus qu'un site sans outils (productivité)",
-       gdp_tools > gdp_none + 1.f);
+    float out_tools=0.f; for(int g=1;g<RES_PROD_FIRST;g++) out_tools+=e->region[1].supply[g];
+    printf("   extraction brute du même site : sans outils=%.1f vs bien outillé=%.1f\n", out_none, out_tools);
+    ok("un site BIEN OUTILLÉ extrait plus qu'un site sans outils (productivité)",
+       out_tools > out_none + 0.5f);
 
     /* ═══ 4. Les outils s'usent ═════════════════════════════════════════ */
     printf("\n── 4. Les outils s'usent (il faut les entretenir) ──\n");

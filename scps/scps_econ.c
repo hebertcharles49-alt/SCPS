@@ -1925,6 +1925,99 @@ void econ_tick(WorldEconomy *e, float dt) {
 }
 
 /* ====================================================================== */
+/* PRÉVISION ÉCONOMIQUE (pipeline IA, étage 1)                             */
+/* ====================================================================== */
+/* Conso ANNUELLE par tête d'un bien (toutes classes pondérées). Lue de NEED. */
+float econ_conso_per_capita_year(Resource g){
+    if (g<=RES_NONE || g>=RES_COUNT) return 0.f;
+    float per100=0.f;
+    for (int c=0;c<CLASS_COUNT;c++) per100 += NEED[c][g]*CLASS_SHARE[c];
+    float fn = res_is_food(g) ? tune_f("FOOD_NEED",1.f) : 1.f;
+    return per100/100.f * 12.f * DEMAND_TENSION * fn;   /* /100hab/tick → /hab/an, demande tendue, calibrage food */
+}
+
+/* Forecast d'un pays : runway/shortfall/déficit-structurel par flux, depuis les SEULES
+ * coordonnées du moteur (pop, raw_cap, demande, offre, stock, eff_cap, needs_met). Aucune
+ * hiérarchie de criticité codée — la criticité ÉMERGE du prix × runway × manque (étage 2). */
+void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconForecast *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    for (int g=0; g<RES_COUNT; g++) out->runway[g]=1.0e9f;
+    out->food_runway=1.0e9f;
+    if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY) return;
+    const float geo_ref   = tune_f("EXTRACT_GEO_REF",     EXTRACT_GEO_REF);
+    const float geo_cap   = tune_f("EXTRACT_GEO_CAP",     EXTRACT_GEO_CAP);
+    const float lab_share = tune_f("EXTRACT_LABOR_SHARE", EXTRACT_LABOR_SHARE);
+    double P0=0, effcap=0, nm_w=0;
+    double sup[RES_COUNT], dem[RES_COUNT], stk[RES_COUNT], pot[RES_COUNT];
+    for (int g=0; g<RES_COUNT; g++){ sup[g]=dem[g]=stk[g]=pot[g]=0.0; }
+    for (int r=0; r<e->n_regions; r++){
+        const RegionEconomy *re=&e->region[r];
+        if (re->owner!=cid || !re->active || !re->colonized) continue;
+        double p=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
+        double ec=econ_region_effcap(re);
+        P0+=p; effcap+=ec; nm_w+=re->needs_met*p;
+        for (int g=1; g<RES_COUNT; g++){
+            sup[g]+=re->supply[g]*12.0;   /* tick mensuel → annuel */
+            dem[g]+=re->demand[g]*12.0;
+            stk[g]+=re->stock[g];
+        }
+        /* POTENTIEL (pour le déficit STRUCTUREL) : la prod MAX si la région mettait son plein
+         * labor (au plein eff_cap) sur la brute — borne OPTIMISTE du « jamais assez ». */
+        for (int g=1; g<RES_PROD_FIRST; g++){
+            if (re->raw_cap[g]<=0.f) continue;
+            double geo=re->raw_cap[g]/geo_ref; if (geo>geo_cap) geo=geo_cap;
+            pot[g]+= ec*0.8*lab_share * EXTRACT_YIELD[g] * geo;
+        }
+    }
+    if (P0<1.0) return;
+    out->pop=(float)P0; out->eff_cap=(float)effcap;
+    float nm=(float)(nm_w/P0);
+    float r=tune_f("POP_R_BASE",0.01733f)*(1.f+0.85f*nm);   /* taux annualisé approx (la fertilité moteur) */
+    if (effcap <= P0*1.05) r*=0.2f;                          /* proche du plafond → la croissance s'éteint */
+    out->growth_r=r;
+    double lnr=log(1.0+(r>1e-4f?r:1e-4f));
+    double grow=pow(1.0+r, horizon);
+    for (int g=1; g<RES_COUNT; g++){
+        double d0=dem[g], s0=sup[g], k=stk[g];
+        if (d0<=1e-3 && s0<=1e-3 && k<=1e-3) continue;       /* flux inerte */
+        /* CAPACITÉ de production : pour une brute = le POTENTIEL (au plein labor) ; pour un
+         * manufacturé = l'offre courante (capacité = ateliers, non projetée ici). L'offre SUIT
+         * la pop (plus de bras) jusqu'à ce plafond, la demande AUSSI → un flux en équilibre RESTE
+         * en équilibre. Le mur n'est que STRUCTUREL : quand la demande dépasse la CAPACITÉ. */
+        double cap_g = (g<RES_PROD_FIRST) ? pot[g] : s0;
+        double dh = d0*grow;
+        out->shortfall_proj[g]=(float)(dh - (cap_g<dh?cap_g:dh));   /* ce que la capacité NE couvre pas à l'horizon */
+        if (cap_g >= d0){
+            double hr=(d0>1e-3)? cap_g/d0 : 1e9;             /* la demande croît jusqu'à la capacité */
+            double rw=(hr>1.0)? log(hr)/lnr : 0.0;
+            rw += (d0>1e-3)? k/d0 : 0.0;                     /* + le coussin de stock (en années) */
+            out->runway[g]=(float)rw;
+        } else {                                             /* déjà au-delà de la capacité : le stock draine */
+            double drain=d0-s0;
+            out->runway[g]=(drain>1e-3)? (float)(k/drain) : 0.f;
+        }
+        if (out->runway[g]<0.f) out->runway[g]=0.f;
+        if (out->runway[g]>1.0e9f) out->runway[g]=1.0e9f;
+        if (g<RES_PROD_FIRST){                               /* STRUCTUREL : potentiel < conso au plein eff_cap */
+            double need_full=(double)econ_conso_per_capita_year((Resource)g)*effcap;
+            out->struct_deficit[g]=(pot[g] < need_full*0.95) ? 1 : 0;
+        }
+    }
+    /* FOOD agrégé (grain+poisson+viande interchangeables) — l'existentiel. */
+    {
+        double fd=dem[RES_GRAIN]+dem[RES_FISH]+dem[RES_LIVESTOCK];
+        double fpot=pot[RES_GRAIN]+pot[RES_FISH]+pot[RES_LIVESTOCK];
+        double fs=sup[RES_GRAIN]+sup[RES_FISH]+sup[RES_LIVESTOCK];
+        double fk=stk[RES_GRAIN]+stk[RES_FISH]+stk[RES_LIVESTOCK];
+        if (fd>1e-3){
+            if (fpot>=fd){ double hr=fpot/fd; double rw=(hr>1.0)?log(hr)/lnr:0.0; rw+=fk/fd; out->food_runway=(float)rw; }
+            else { double drain=fd-fs; out->food_runway=(drain>1e-3)?(float)(fk/drain):0.f; }
+        }
+    }
+}
+
+/* ====================================================================== */
 /* COLONISATION                                                            */
 /* ====================================================================== */
 /* Joueur/Antagoniste : essaiment vers toute région vierge adjacente.
@@ -1981,24 +2074,62 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
         PolityRole role=ct->role;
 
         if (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) {
-            /* Cherche la meilleure paire (source, cible) du pays. */
-            int best_src=-1, best_dst=-1; float best_score=-1.f;
+            /* COLONISATION NEEDS-AWARE (pipeline IA, étage 3a) : la cible vaut ce qu'elle COMBLE.
+             * score(dst) = Σ_g max(0,shortfall_PROJETÉ[g]) × dst->raw_cap[g] × prix[g] (la valeur
+             * ÉMERGE — aucune hiérarchie codée). Le gate vivrier (food_sat) et COLONY_MIN_POP sont
+             * LEVÉS vers une tuile-DÉFICIT (runway court / déficit structurel) → expédition de survie :
+             * « je colonise le grenier vide même affamé, il va me nourrir ». Anti-spirale : food
+             * critique + aucune source au gate normal → on FORCE une colonie de survie vers la food. */
+            float proj_h = tune_f("AI_PROJ_HORIZON",25.f);
+            EconForecast fc; econ_country_forecast(e, cid, proj_h, &fc);
+            float safety = tune_f("AI_SAFETY_HORIZON",12.f);
+            float geo_ref = tune_f("EXTRACT_GEO_REF",EXTRACT_GEO_REF);
+            float geo_cap = tune_f("EXTRACT_GEO_CAP",EXTRACT_GEO_CAP);
+            float needs_w = tune_f("AI_COLONY_NEEDS_W",1.5f);
+            bool  food_crit = fc.food_runway < safety;
+            float survive_min = tune_f("COLONY_SURVIVE_SEED",0.5f)*COLONY_MIN_POP;
+            int best_src=-1, best_dst=-1; float best_score=-1.f;   /* colonisation au gate NORMAL */
+            int surv_src=-1, surv_dst=-1; float surv_score=-1.f;   /* expédition de SURVIE (gate levé) */
             for (int rs=0; rs<e->n_regions; rs++) {
                 RegionEconomy *src=&e->region[rs];
                 if (!src->colonized || src->owner!=cid) continue;
                 float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
-                if (spop<COLONY_MIN_POP || src->food_sat<COLONY_FOOD_GATE) continue;
+                bool normal_ok  = (spop>=COLONY_MIN_POP && src->food_sat>=COLONY_FOOD_GATE);
+                bool survive_ok = (spop>=survive_min);
+                if (!normal_ok && !survive_ok) continue;
                 for (int rd=0; rd<e->n_regions; rd++) {
                     if (!e->adj[rs][rd]) continue;
                     RegionEconomy *dst=&e->region[rd];
                     if (!dst->active || dst->colonized) continue;
-                    float score = dst->cap_pop*0.001f + (spop-COLONY_MIN_POP)*0.0005f
-                                + src->food_sat;
-                    if (score>best_score){ best_score=score; best_src=rs; best_dst=rd; }
+                    /* score de BASE = expansion vers la CAPACITÉ (préserve la croissance saine, le
+                     * comportement d'avant : la pop ne s'effondre pas). Un STEER needs-aware NORMALISÉ
+                     * biaise vers une tuile RICHE d'un flux à déficit URGENT (runway<SAFETY ou
+                     * structurel) — la valeur ÉMERGE du prix —, SANS que le volume brut écrase la
+                     * capacité (borne geo_eff × prime de prix). Sans urgence → steer=0 → capacité pure. */
+                    float base = dst->cap_pop*0.001f + (spop-COLONY_MIN_POP)*0.0005f + src->food_sat;
+                    float steer=0.f;
+                    for (int g=1; g<RES_PROD_FIRST; g++){
+                        if (dst->raw_cap[g]<=0.f) continue;
+                        if (fc.runway[g] < safety || fc.struct_deficit[g]){
+                            float rich = clampf(dst->raw_cap[g]/geo_ref, 0.f, geo_cap);            /* ≈ geo_eff du gisement */
+                            float val  = src->price[g]/fmaxf(BASE_PRICE[g],0.1f);                  /* prime de prix (valeur émergente) */
+                            steer += rich*val;
+                        }
+                    }
+                    float score = base + needs_w*steer;
+                    if (normal_ok && score>best_score){ best_score=score; best_src=rs; best_dst=rd; }
+                    /* ANTI-SPIRALE (étage 3a) : la meilleure tuile VIVRIÈRE à portée, gate levé —
+                     * réservée à la crise FOOD (sinon les colonies de survie draineraient les petites
+                     * sources hors crise et la pop s'effondrerait). Une seule, quand rien d'autre. */
+                    bool food_tile = (dst->raw_cap[RES_GRAIN]>0.f || dst->raw_cap[RES_FISH]>0.f
+                                    || dst->raw_cap[RES_LIVESTOCK]>0.f);
+                    if (survive_ok && food_tile && base>surv_score){ surv_score=base; surv_src=rs; surv_dst=rd; }
                 }
             }
-            if (best_src>=0 && best_dst>=0) {
-                colonize_from(e, best_src, best_dst, cid);
+            int csrc=best_src, cdst=best_dst;
+            if (csrc<0 && food_crit){ csrc=surv_src; cdst=surv_dst; }   /* anti-spirale : SEULEMENT en crise vivrière */
+            if (csrc>=0 && cdst>=0) {
+                colonize_from(e, csrc, cdst, cid);
                 founded++;
             }
 

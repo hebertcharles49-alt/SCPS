@@ -54,6 +54,11 @@ typedef struct {
     float    gap_acuity; /* gravité agrégée du manque [0..1] */
     float    take_pressure; /* acuité d'un bien NON-productible localement → ne reste que PRENDRE/COMMERCER [0..1] */
     float    ethos_fracture; /* fracture de VALEURS interne (factions opposées) [0..1] — frein interne (§6) */
+    /* PIPELINE ÉCO (étages 1-2) — la PRÉVISION + la FILE DE PRIORITÉS, lues des coordonnées. */
+    EconForecast fc;        /* runway/shortfall/déficit structurel par flux (étage 1) */
+    Resource top_flow;      /* le flux PRIORITAIRE = argmax(stress(runway)×prix×deficit_vs_safe) — la motivation éco */
+    float    top_priority;  /* sa valeur (0 = aucun flux pressant) */
+    bool     food_alert;    /* food_runway < AI_SAFETY_HORIZON (le mur vivrier approche) */
 } AiView;
 
 /* ---- Compteurs (preuve d'émergence : on tally par acteur) ------------------ */

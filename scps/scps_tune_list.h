@@ -110,6 +110,20 @@
      * chaque empire (geo_eff = SPAWN_FOOD_RAW/EXTRACT_GEO_REF). La SEULE règle vivrière de
      * worldgen ; tout le reste est géologie + commerce (0 = aucun grenier de spawn). */ \
     X(SPAWN_FOOD_RAW,        12.0f) \
+    /* PIPELINE IA ÉCO — la PRÉVISION (forecast) qui rend l'IA voyante de ses flux.
+     * SAFETY_HORIZON : un runway sous ce nb d'années est URGENT (le stress monte). PROJ_HORIZON :
+     * fenêtre de projection du shortfall (colonisation/priorités anticipent à cet horizon).
+     * SAFE_STOCK_MONTHS : coussin de réserve visé (mois de conso) pour les flux critiques.
+     * COLONY_SURVIVE_SEED : fraction de COLONY_MIN_POP semée par une colonie de SURVIE
+     * (gate vivrier levé vers une tuile-déficit, anti-spirale poule-œuf). */ \
+    X(AI_SAFETY_HORIZON,     12.0f) \
+    X(AI_PROJ_HORIZON,       25.0f) \
+    X(AI_SAFE_STOCK_MONTHS,   6.0f) \
+    X(COLONY_SURVIVE_SEED,    0.5f) \
+    /* COLONISATION : poids du STEER needs-aware (biais vers les tuiles d'un flux à déficit
+     * URGENT) au-dessus du score d'expansion de CAPACITÉ. La capacité reste le défaut (pop
+     * saine) ; le besoin oriente la cible quand ça presse. 0 = colonisation aveugle (capacité). */ \
+    X(AI_COLONY_NEEDS_W,      1.5f) \
     /* POOL CITÉ-ÉTAT — réserve TRADABLE de matières brutes (bois/fer/argile/pierre) déposée sur
      * la région-pivot de chaque cité-état : le marché mondial (#5) la revend aux empires nés
      * NUS, qui importent ainsi de quoi BÂTIR au lieu de stagner au plancher ½·cap_pop. */ \
