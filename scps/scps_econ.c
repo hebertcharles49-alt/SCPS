@@ -559,11 +559,13 @@ void econ_init(WorldEconomy *e, const World *w) {
          * ~90% de la population, laissant la satisfaction refléter les biens
          * supérieurs et non une famine universelle. */
         float subsist = total_pop / 100.f;
-        /* Le socle vivrier DOIT dépasser la consommation (≈1.0/100/tête, toutes
-         * classes) — sinon le monde meurt de faim. On le porte au-dessus du seuil,
-         * pondéré par la FERTILITÉ moyenne de la région (les bonnes terres
-         * nourrissent plus). */
-        re->raw_cap[RES_GRAIN] += subsist * (1.15f + 0.70f*reg_hab[rid]);   /* vivrier : COMMUN à tous (anti-famine) */
+        /* PLUS de socle vivrier UNIVERSEL (anti-famine retiré, à la demande) : la
+         * NOURRITURE suit la GÉOLOGIE comme toute brute (les terres fertiles ont le
+         * grain dans leur resource/resource2 ; une province « bois+argile » n'a PAS de
+         * grain). Le vivrier de base est au SPAWN (stock de la cité-état, CS_TRADE_POOL ;
+         * la capitale d'empire en stock) et au COMMERCE — pas extrait par chaque tuile.
+         * ⚠ Des FAMINES sont possibles (assumé pour l'instant). subsist sert encore aux
+         * socles de cité-état (plus bas). */
         re->coastal = coastal;                       /* lu par la marine (rade) et l'agency (gate du Port) */
         re->estuary = false;                         /* posé au balayage des cellules ci-dessous */
         /* Dons géo SÉLECTIFS (gibier/halieutique) : ~1/3 des régions BOISÉES (majorité de
@@ -636,14 +638,25 @@ void econ_init(WorldEconomy *e, const World *w) {
             if (re->raw_cap[RES_IRON]>0.f){
                 if (((uint32_t)(rid*40503u+7u) % 9u)==0u) re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* nœud riche SEUL */
             }
-            /* VOCATION (la tuile produit X et Y, pas la liste complète) : on ne garde que le
-             * VIVRIER (grain), les STRATÉGIQUES rares (fer céleste / cristal arcanique) et les
-             * REGION_RAW_KEEP brutes les plus FORTES ; la longue traîne des brutes mineures
-             * (agrégée des provinces) tombe → spécialisation régionale. Le manquant vient du
-             * COMMERCE (pool national + routes). « Plus jamais du sol » partout. */
-            int keep = (int)tune_f("REGION_RAW_KEEP", 3.f);
+            /* WORLDGEN NE POSE AUCUN BÂTIMENT pour l'empire : la carte naît NUE — l'IA/agency
+             * élèvent les manufactures DANS LE TEMPS (plus d'implantation au gisement). */
+        }
+        /* VOCATION — « 2 BRUTES PAR PROVINCE », SANS EXCEPTION (empire ET CITÉ-ÉTAT).
+         * On ne garde que les REGION_RAW_KEEP=2 brutes EXTRAITES les plus FORTES (plus le
+         * vivrier et les stratégiques rares, protégés) ; la longue traîne — agrégée des
+         * provinces, socles de cité-état, voiles diffus — TOMBE. Le manquant vient du
+         * COMMERCE (pool national + routes). La cité-état n'est PLUS exemptée du plafond
+         * d'EXTRACTION : sa richesse vient de son gros STOCK de base (CS_TRADE_POOL), non
+         * d'extraire davantage ; ses manufactures (posées plus haut, sur le raw AVANT coupe)
+         * restent l'atelier du monde. (Coupe DÉPLACÉE hors du if/else → frappe TOUT le monde.) */
+        {
+            int keep = (int)tune_f("REGION_RAW_KEEP", 2.f);
             bool prot[RES_COUNT]; for (int g=0;g<RES_COUNT;g++) prot[g]=false;
-            prot[RES_GRAIN]=prot[RES_CELESTIAL_IRON]=prot[RES_ARCANE_CRYSTAL]=true;  /* vivres + stratégiques */
+            /* le GRAIN n'est PLUS protégé : il concourt comme toute brute (food = géologie).
+             * Seuls les stratégiques RARES (fer céleste / cristal arcanique) restent protégés
+             * — sinon la chaîne faustienne/endgame perdrait sa matière (ce n'est pas un
+             * ajustement d'éco : c'est garder l'intrant rare de la tech). */
+            prot[RES_CELESTIAL_IRON]=prot[RES_ARCANE_CRYSTAL]=true;
             for (int k=0;k<keep;k++){
                 int best=-1; float bv=0.f;
                 for (int g=1;g<RES_PROD_FIRST;g++){ if (prot[g]||re->raw_cap[g]<=0.f) continue;
@@ -652,8 +665,6 @@ void econ_init(WorldEconomy *e, const World *w) {
                 prot[best]=true;
             }
             for (int g=1;g<RES_PROD_FIRST;g++) if (!prot[g]) re->raw_cap[g]=0.f;   /* la traîne tombe */
-            /* WORLDGEN NE POSE AUCUN BÂTIMENT pour l'empire : la carte naît NUE — l'IA/agency
-             * élèvent les manufactures DANS LE TEMPS (plus d'implantation au gisement). */
         }
 
         /* ---- Prix & stock de départ. */
@@ -743,6 +754,7 @@ void econ_init(WorldEconomy *e, const World *w) {
             for (int r=0; r<e->n_regions; r++){
                 RegionEconomy *re=&e->region[r];
                 if (re->owner!=cid || !re->active) continue;
+                re->stock[RES_GRAIN] += pool;   /* + NOURRITURE de base (la cité-état nourrit le marché) */
                 re->stock[RES_WOOD]  += pool;
                 re->stock[RES_IRON]  += pool;
                 re->stock[RES_CLAY]  += pool;

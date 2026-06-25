@@ -93,7 +93,7 @@
     X(CITY_CAP,            6500.0f) \
     /* VOCATION — nb de brutes (hors vivrier & stratégiques) gardées par région : la tuile
      * produit sa spécialité, pas la liste complète (la traîne mineure vient du commerce). */ \
-    X(REGION_RAW_KEEP,        3.0f) \
+    X(REGION_RAW_KEEP,        2.0f) \
     /* POOL CITÉ-ÉTAT — réserve TRADABLE de matières brutes (bois/fer/argile/pierre) déposée sur
      * la région-pivot de chaque cité-état : le marché mondial (#5) la revend aux empires nés
      * NUS, qui importent ainsi de quoi BÂTIR au lieu de stagner au plancher ½·cap_pop. */ \
