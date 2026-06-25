@@ -12,17 +12,26 @@
 
 #define PROVLOG_CAP 12   /* entrées gardées par région (anneau) */
 
+/* stats touchées par une entrée (pour le HOVER « complet ») — 2 bits chacune dans
+ * eff_dir : 0 inchangé · 1 hausse · 2 baisse. Les ÉVÈNEMENTS portent un eff_dir ;
+ * les MODIFICATEURS portent plutôt un eff_str (leur ligne d'effet déjà rédigée). */
+enum { JEFF_POP=0, JEFF_PROD, JEFF_AGIT, JEFF_LEGIT, JEFF_TRESOR, JEFF_N };
+
 typedef struct {
     int          year;
     int          str_id;   /* libellé via tr() (>=0) ; -1 si on lit `lit` */
     const char  *lit;      /* libellé littéral (nom d'évènement) ; NULL si str_id>=0 */
     signed char  sign;     /* +1 fléau · -1 faveur · 0 neutre */
+    int          eff_str;  /* MODIFICATEUR : sa ligne d'effet (STR_*) ; -1 sinon */
+    unsigned     eff_dir;  /* ÉVÈNEMENT : directions par stat (2 bits/JEFF_*) ; 0 sinon */
 } ProvLogEntry;
 
 void provlog_reset(void);                 /* RAZ pleine (appelée par sim_init) */
 void provlog_set_year(int year);          /* fixe l'an courant (sim_day, 1×/tick) */
-void provlog_push_str(int region, int str_id, int sign);
-void provlog_push_lit(int region, const char *lit, int sign);
+/* MODIFICATEUR : nom STR_* + signe + sa ligne d'effet STR_* (-1 si aucune). */
+void provlog_push_mod(int region, int str_id, int sign, int eff_str);
+/* ÉVÈNEMENT : nom littéral + signe + directions d'effet par stat (2 bits/JEFF_*). */
+void provlog_push_event(int region, const char *lit, int sign, unsigned eff_dir);
 
 /* bits du masque de modificateurs DYNAMIQUES suivis par le diff annuel */
 enum { JMOD_CONQUEST=0, JMOD_SCAR, JMOD_ABONDANCE, JMOD_FERVEUR, JMOD_RECONSTRUCT, JMOD_COUNT };

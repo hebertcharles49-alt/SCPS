@@ -18,6 +18,9 @@ const TABS := ["Peuples", "Production", "Bâtiments", "Journal"]
 var _pid := -1
 var _tab := 0
 var _tab_rects := []        # [{rect, idx}] onglets cliquables
+var _hover_zones := []      # [{rect, text}] survol des entrées de journal (effets)
+var _hover_text := ""
+var _hover_pos := Vector2.ZERO
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -45,6 +48,7 @@ func _draw() -> void:
 	if not bool(info.get("valide", false)):
 		VKit.text(self, Vector2(16, HEAD), VKit.COL_DIM, "(aucune province sélectionnée)", VKit.FS_SMALL)
 		return
+	_hover_zones.clear()
 	var x := 16.0
 	UIKit.draw_icon(self, "capital_tower", Vector2(14, 8), 18)
 	VKit.text(self, Vector2(40, 9), VKit.COL_COPPER, "Province — %s" % String(info["nom"]), VKit.FS_BIG)
@@ -73,6 +77,15 @@ func _draw() -> void:
 		1: _draw_flux(x, BODY + 4.0, PW - 32.0, PH - BODY - 18.0, w)
 		2: _draw_batiments(x, BODY, w)
 		3: _draw_journal(x, BODY, w)
+
+	# tooltip de survol (Journal : les effets de l'entrée)
+	if _hover_text != "":
+		var tw := VKit.text_w(_hover_text, VKit.FS_SMALL) + 14.0
+		var tx2 := minf(_hover_pos.x + 14.0, PW - tw - 6.0)
+		var ty2 := minf(maxf(4.0, _hover_pos.y - 22.0), PH - 22.0)
+		VKit.fill(self, Rect2(tx2, ty2, tw, 18), VKit.COL_PANEL2)
+		VKit.box(self, Rect2(tx2, ty2, tw, 18), VKit.COL_COPPER)
+		VKit.text(self, Vector2(tx2 + 7, ty2 + 2), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
 
 # ── ONGLET PEUPLES : camemberts culture/religion + classes + agitation (hover) ──
 func _draw_peuples(x: float, y: float, w) -> void:
@@ -184,7 +197,7 @@ func _draw_journal(x: float, y: float, w) -> void:
 	if entries.is_empty():
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucun évènement notable jusqu'ici", VKit.FS_SMALL)
 		return
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "an      évènement", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "an      évènement  (survol → effets)", VKit.FS_SMALL)
 	y += 18
 	for e in entries:
 		if y > PH - 22:
@@ -194,6 +207,9 @@ func _draw_journal(x: float, y: float, w) -> void:
 		var mark := "▲" if sign > 0 else ("▼" if sign < 0 else "·")
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "an %d" % int(e["year"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 58, y), col, "%s %s" % [mark, String(e["label"])], VKit.FS_SMALL)
+		var ht := String(e.get("hover", ""))
+		if ht != "":
+			_hover_zones.append({"rect": Rect2(x, y - 1, PW - 32.0, 17.0), "text": ht})
 		y += 17
 
 # ── ONGLET PRODUCTION : flux +X/j par bien (sprite de ressource dessous) ───────
@@ -240,10 +256,25 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	VKit.fill(self, Rect2(fx, base, fw, 1), VKit.COL_DIM)
 
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		var h := ""
+		for z in _hover_zones:
+			if z.rect.has_point(event.position):
+				h = z.text
+				break
+		if h != _hover_text:
+			_hover_text = h
+			_hover_pos = event.position
+			queue_redraw()
+		elif h != "":
+			_hover_pos = event.position
+			queue_redraw()
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		for t in _tab_rects:
 			if t.rect.has_point(event.position):
 				_tab = t.idx
+				_hover_text = ""
 				queue_redraw()
 				accept_event()
 				return

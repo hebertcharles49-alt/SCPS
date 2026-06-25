@@ -302,6 +302,7 @@ Array ScpsWorld::province_log(int province) {
         d["year"] = e[i].year;
         d["label"] = String::utf8(e[i].label);
         d["sign"] = e[i].sign;
+        d["hover"] = String::utf8(e[i].hover);
         a.push_back(d);
     }
     return a;

@@ -133,6 +133,10 @@
     X(STR_AGIT_CAUSE_CULTURE,   "Culture étrangère") \
     X(STR_AGIT_CAUSE_CHOC,      "Conquête récente") \
     X(STR_AGIT_CAUSE_GARNISON,  "Garnison") \
+    X(STR_JLOG_CHOC_EFF, "Agitation accrue, se résorbe avec le temps") \
+    X(STR_JLOG_POP,    "Population") \
+    X(STR_JLOG_PROD,   "Production") \
+    X(STR_JLOG_TRESOR, "Trésor") \
     X(STR_TUTO_TITLE_0, "1 · Ce monde se lit.") \
     X(STR_TUTO_TITLE_1, "2 · Le temps coule en jours.") \
     X(STR_TUTO_TITLE_2, "3 · Ton empire.") \

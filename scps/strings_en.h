@@ -128,6 +128,10 @@
     X(STR_AGIT_CAUSE_CULTURE,   "Foreign culture") \
     X(STR_AGIT_CAUSE_CHOC,      "Recent conquest") \
     X(STR_AGIT_CAUSE_GARNISON,  "Garrison") \
+    X(STR_JLOG_CHOC_EFF, "Heightened unrest, fades over time") \
+    X(STR_JLOG_POP,    "Population") \
+    X(STR_JLOG_PROD,   "Production") \
+    X(STR_JLOG_TRESOR, "Treasury") \
     X(STR_TUTO_TITLE_0, "1 · Ce monde se lit.") \
     X(STR_TUTO_TITLE_1, "2 · Le temps coule en jours.") \
     X(STR_TUTO_TITLE_2, "3 · Ton empire.") \

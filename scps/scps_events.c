@@ -18,6 +18,16 @@ static int ev_sign(const EvEffect *e){
     if (e->d_agitation<-0.1f || e->d_L>0.1f) return -1;
     return 0;
 }
+/* directions d'effet pour le HOVER du journal (2 bits/stat : 1 hausse · 2 baisse) */
+static unsigned ev_effdir(const EvEffect *e){
+    unsigned d=0;
+    if (e->pop_mult   > 1.001f) d|=1u<<(2*JEFF_POP);    else if (e->pop_mult   < 0.999f) d|=2u<<(2*JEFF_POP);
+    if (e->d_food_cap >  0.01f) d|=1u<<(2*JEFF_PROD);   else if (e->d_food_cap < -0.01f) d|=2u<<(2*JEFF_PROD);
+    if (e->d_agitation>  0.1f)  d|=1u<<(2*JEFF_AGIT);   else if (e->d_agitation< -0.1f)  d|=2u<<(2*JEFF_AGIT);
+    if (e->d_L        >  0.01f) d|=1u<<(2*JEFF_LEGIT);  else if (e->d_L        < -0.01f) d|=2u<<(2*JEFF_LEGIT);
+    if (e->d_treasury >  0.1f)  d|=1u<<(2*JEFF_TRESOR); else if (e->d_treasury < -0.1f)  d|=2u<<(2*JEFF_TRESOR);
+    return d;
+}
 
 /* ===================================================================== */
 /* Le bundle de pointeurs systèmes passé aux triggers/effets             */
@@ -382,7 +392,7 @@ static void fire_event(EventCtx *cx, int evid, int subject){
     apply_effect(cx, d->scope, subject, &d->options[best].eff);
     cx->ev->last_id=evid; cx->ev->last_name=d->name; cx->ev->n_fired++;
     if (d->scope==EV_PROVINCE && subject>=0)
-        provlog_push_lit(subject, d->name, ev_sign(&d->options[best].eff));   /* journal provincial */
+        provlog_push_event(subject, d->name, ev_sign(&d->options[best].eff), ev_effdir(&d->options[best].eff));
 }
 
 /* ===================================================================== */
@@ -396,7 +406,7 @@ void events_strike(EventsState *ev, World *w, WorldEconomy *econ,
     apply_effect(&cx, EVENTS[shock].scope, region, &EVENTS[shock].options[0].eff);
     ev->last_id=shock; ev->last_name=EVENTS[shock].name; ev->n_fired++;
     if (EVENTS[shock].scope==EV_PROVINCE && region>=0)
-        provlog_push_lit(region, EVENTS[shock].name, ev_sign(&EVENTS[shock].options[0].eff));
+        provlog_push_event(region, EVENTS[shock].name, ev_sign(&EVENTS[shock].options[0].eff), ev_effdir(&EVENTS[shock].options[0].eff));
 }
 
 /* ===================================================================== */
@@ -420,7 +430,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
         e.d_agitation = 18.f - 3.f*h;
         EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL};
         apply_effect(&cx, EV_PROVINCE, r, &e);
-        provlog_push_lit(r, EVENTS[EVID_PLAGUE].name, +1);   /* journal provincial : la peste (fléau) */
+        provlog_push_event(r, EVENTS[EVID_PLAGUE].name, +1, ev_effdir(&e));   /* journal provincial : la peste */
         infected++;
         if (h>=4) continue;                         /* portée bornée */
         for (int i=0;i<rn->n;i++){

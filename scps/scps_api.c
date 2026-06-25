@@ -429,6 +429,10 @@ int scps_province_buildings(ScpsSim *s, int pid, ScpsProvBld *out, int max){
 
 /* le JOURNAL d'évènements de la province : les dernières entrées (an + libellé +
  * signe), la PLUS RÉCENTE en tête. Lecture pure du tampon provlog. Retourne n. */
+/* le mot de chaque stat touchée par un évènement (cf. JEFF_*) */
+static const StrId JEFF_WORD[JEFF_N] = {
+    STR_JLOG_POP, STR_JLOG_PROD, STR_GLOSS_AGITATION, STR_GLOSS_LEGIT, STR_JLOG_TRESOR
+};
 int scps_province_log(ScpsSim *s, int pid, ScpsLogEntry *out, int max){
     if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
     int reg = s->w->province[pid].region;
@@ -439,6 +443,18 @@ int scps_province_log(ScpsSim *s, int pid, ScpsLogEntry *out, int max){
         out[i].year  = e->year;
         out[i].label = (e->str_id>=0) ? sz(tr((StrId)e->str_id)) : sz(e->lit);
         out[i].sign  = e->sign;
+        out[i].hover[0] = '\0';
+        if(e->eff_str>=0){                                  /* MODIFICATEUR : sa ligne d'effet */
+            snprintf(out[i].hover, sizeof out[i].hover, "%s", sz(tr((StrId)e->eff_str)));
+        } else {                                            /* ÉVÈNEMENT : les stats touchées, ↑/↓ */
+            int pos=0;
+            for(int st=0; st<JEFF_N; st++){
+                int dir = (int)((e->eff_dir >> (2*st)) & 3u);
+                if(!dir) continue;
+                pos += snprintf(out[i].hover+pos, (pos<(int)sizeof out[i].hover)?sizeof out[i].hover-pos:0,
+                                "%s%s %s", pos?"  ·  ":"", sz(tr(JEFF_WORD[st])), dir==1?"↑":"↓");
+            }
+        }
     }
     return n;
 }
