@@ -61,6 +61,8 @@ const BIOME_VAR := [
 ]
 
 var _active := false
+var _antique := false       ## mode « carte ancienne » : shader cartographique TOP-DOWN (quad plat)
+const ANTIQUE_MARGIN := 48.0   ## marge de PAPIER (unités monde) autour de la carte en mode top-down
 var _shaded := false        ## le shader de fondu directionnel (rivage) est monté
 var _terr_arr: Texture2DArray = null   ## texture-array des sols PLATS, indexée par BIOME
 var _bmap: ImageTexture = null         ## couche biome → texture (R = biome/255) pour le splat shader
@@ -482,11 +484,11 @@ func _ready() -> void:
 func _setup_blend() -> void:
 	# OPT-IN « carte ancienne » (essai) : un shader cartographique remplace le splat réaliste. Display-only,
 	# déclenché par l'argument `antique=on` (ou SCPS_ANTIQUE) → ne touche pas le rendu par défaut.
-	var antique := OS.has_environment("SCPS_ANTIQUE")
+	_antique = OS.has_environment("SCPS_ANTIQUE")
 	for a in OS.get_cmdline_user_args():
 		if a == "antique=on":
-			antique = true
-	var sh := load("res://map/iso_antique.gdshader") if antique else load("res://map/iso_blend.gdshader")
+			_antique = true
+	var sh := load("res://map/iso_antique.gdshader") if _antique else load("res://map/iso_blend.gdshader")
 	if sh == null:
 		return
 	var mat := ShaderMaterial.new()
@@ -590,8 +592,14 @@ func _draw() -> void:
 			_city_wear = ImageTexture.create_from_image(_build_city_wear(w, W, H))
 		mat.set_shader_parameter("city_wear", _city_wear)
 		mat.set_shader_parameter("road_on", 1.0)
+		mat.set_shader_parameter("flat_map", 1.0 if _antique else 0.0)
 	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
-	draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))
+	if _antique:
+		# CARTE ANCIENNE : quad TOP-DOWN (monde direct) + marge de PAPIER → vraie carte a plat.
+		draw_rect(Rect2(-ANTIQUE_MARGIN, -ANTIQUE_MARGIN, float(W) + 2.0 * ANTIQUE_MARGIN,
+			float(H) + 2.0 * ANTIQUE_MARGIN), Color(0.0, 0.0, 0.0, 1.0))
+	else:
+		draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))
 
 ## tuile pavé seamless (1×) — centre de la chaussée, échantillonnée tuilée sur le plan du sol.
 func _road_pave_tex() -> Texture2D:

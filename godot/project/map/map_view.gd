@@ -41,6 +41,7 @@ signal province_picked(province: int, region: int, owner: int)
 
 var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique · 2 régions · 3 pays)
 var view_mode := VIEW_GLOBE     ## GLOBE (overview) ou ISO (jeu) — lu par l'overlay
+var _flat_map := false          ## « carte ancienne » : le sol est TOP-DOWN (iso_pos = identité, pas de skew)
 
 var _selected_prov := -1
 var _press_pos := Vector2.ZERO
@@ -64,6 +65,12 @@ var _camera: Camera2D
 var _height_tex: ImageTexture
 
 func _ready() -> void:
+	# « carte ancienne » TOP-DOWN : le sol n'est plus projeté en iso (iso_pos devient l'identité) → la
+	# Camera2D cadre la carte à plat. Opt-in (même déclencheur que le shader cartographique d'iso_ground).
+	_flat_map = OS.has_environment("SCPS_ANTIQUE")
+	for a in OS.get_cmdline_user_args():
+		if a == "antique=on":
+			_flat_map = true
 	# ---- GLOBE : SubViewport 3D + sprite d'affichage ----
 	_sv = SubViewport.new()
 	_sv.transparent_bg = false
@@ -237,6 +244,8 @@ func height_at(wx: float, wy: float) -> float:
 ## monde → position ISO (sol PLAT : les côtes épousent la grille de tuiles, pas de relief lissé).
 ## Le maillage ET l'overlay y passent → assets et tuiles partagent EXACTEMENT la même projection.
 func iso_pos(wx: float, wy: float) -> Vector2:
+	if _flat_map:
+		return Vector2(wx, wy)          # TOP-DOWN : monde = écran (la carte ancienne n'est pas iso)
 	return Iso.proj(wx, wy, 0.0)
 
 ## SOMMET BAS (sud) du losange contenant la cellule (wx,wy) — coin monde de (col+1,row+1)×TILE_K.
