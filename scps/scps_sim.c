@@ -52,6 +52,7 @@ static void sim_campaign_defense(Sim *s, World *w) {
         if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
         int def=s->econ->region[en->loc].owner;
         if (def<0 || def>=SCPS_MAX_COUNTRY || def==en->owner) continue;
+        if (def==s->human_player) continue;   /* la sortie défensive du JOUEUR est SA décision (gate IA-off ; human=-1 ⇒ no-op chronique) */
         if (diplo_status(s->dp,def,en->owner)!=DIPLO_WAR) continue;
         if (campaign_active(s->camp,def) && campaign_phase(s->camp,def)!=FA_IDLE){
             campaign_redirect(s->camp, s->econ, s->dp, def, en->loc);     /* on déroute l'armée en route */
@@ -63,6 +64,7 @@ static void sim_campaign_defense(Sim *s, World *w) {
 
 static void sim_campaign_orders(Sim *s, World *w) {
     for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++) {
+        if (c==s->human_player) continue;   /* le JOUEUR projette son armée À LA MAIN (gate IA-off ; human=-1 ⇒ no-op chronique) */
         if (campaign_active(s->camp,c) && campaign_phase(s->camp,c)!=FA_IDLE) continue; /* déjà en route */
         if (warhost_units(s->host, c) <= 0) continue;                                   /* rien à projeter */
         int frontier=-1, target=-1;
@@ -159,7 +161,7 @@ static void sim_campaign_year(Sim *s, World *w) {
                 if (s->dp->occupier[sn]==a->owner) continue;        /* déjà tenue : au suivant */
                 ntgt=sn;
             }
-            if (ntgt>=0) campaign_redirect(s->camp, s->econ, s->dp, a->owner, ntgt);
+            if (ntgt>=0 && a->owner!=s->human_player) campaign_redirect(s->camp, s->econ, s->dp, a->owner, ntgt);   /* le JOUEUR re-cible à la main (gate IA-off ; human=-1 ⇒ no-op chronique) */
         }
     }
 }
@@ -252,7 +254,7 @@ void sim_day(Sim *s, World *w) {
          *   soulèvement, puis on tranche (sécession, coup, jacquerie, écrasement).
          *   Un pays NÉ d'une sécession prend vie. */
         PROF(PB_NAVY_M, { navy_tick(s->navy, w, s->econ, s->dp, 30.f);   /* chantier + entretien : MENSUEL (ex-quotidien) */
-        navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
+        navy_colonize_tick(s->navy, w, s->econ, 30.f, s->human_player);   /* mer §8 : on découvre ce que la volta touche (le JOUEUR colonise à la main) */
         navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng,
                          -1, 30.f);   /* coques : la course (raids - saignee - blocus - verdicts) */
         navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng); });   /* les convois se chassent */
@@ -326,7 +328,7 @@ void sim_day(Sim *s, World *w) {
         }
     }
     if (s->day % 365 == 364) {
-        econ_colonize_tick(s->econ, w, -1); econ_migrate_tick(s->econ, w);
+        econ_colonize_tick(s->econ, w, s->human_player); econ_migrate_tick(s->econ, w);   /* le JOUEUR essaime à la main (gate IA-off ; human=-1 ⇒ no-op chronique) */
         world_tick(w, s->econ, 1.0f);
         PROF(PB_LEGIT, legitimacy_tick(s->wl, w, s->econ, s->ts));
         trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);

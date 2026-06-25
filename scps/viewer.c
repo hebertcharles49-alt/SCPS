@@ -1996,7 +1996,7 @@ static void sim_day(Sim *s, World *w) {
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c);   /* Q1 : l'IA pourvoit son siège d'éthos */
         econ_tick(s->econ, 1.f/12.f);
         navy_tick(s->navy, w, s->econ, s->dp, 30.f);   /* chantier + entretien : MENSUEL (ex-quotidien) */
-        navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
+        navy_colonize_tick(s->navy, w, s->econ, 30.f, s->player);   /* mer §8 : on découvre ce que la volta touche (le JOUEUR colonise à la main) */
         navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng,
                          s->player, 30.f);   /* coques : la course (raids - saignee - blocus - verdicts) */
         navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng);   /* les convois se chassent */
