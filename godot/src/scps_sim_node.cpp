@@ -58,6 +58,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_build", "edifice", "region"), &ScpsWorld::player_build, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
+    ClassDB::bind_method(D_METHOD("player_research", "tech"),        &ScpsWorld::player_research);
+    ClassDB::bind_method(D_METHOD("research_status"),               &ScpsWorld::research_status);
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
     ClassDB::bind_method(D_METHOD("river_paths"),                    &ScpsWorld::river_paths);
     ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
@@ -516,6 +518,19 @@ int ScpsWorld::player_recruit(int unit) {
 
 void ScpsWorld::player_set_levy(int level) {
     if (sim) scps_player_set_levy(sim, level);
+}
+
+int ScpsWorld::player_research(int tech) {
+    return sim ? scps_player_research(sim, tech) : 0;
+}
+
+Dictionary ScpsWorld::research_status() {
+    Dictionary d;
+    float prog = 0.0f;
+    int t = sim ? scps_research_target(sim, &prog) : -1;
+    d["target"] = t;
+    d["progress"] = prog;
+    return d;
 }
 
 Array ScpsWorld::river_points() {

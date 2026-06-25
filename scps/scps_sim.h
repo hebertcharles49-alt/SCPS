@@ -55,7 +55,7 @@
  * C'est la base de la réplicabilité : une partie = (graine + ce journal) → rejeu
  * au bit, classements auto-vérifiés, repro de bug. La CHRONIQUE n'enfile jamais
  * (cmd_n=0) → le drain est un no-op et son hash reste IDENTIQUE (golden intact). */
-enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY };
+enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
 
@@ -77,6 +77,7 @@ typedef struct {
     int day, year, player;
     int human_player;        /* index du pays piloté À LA MAIN (-1 = aucun : la chronique headless reste 100 % IA) */
     PlayerCmd cmdq[SCPS_CMDQ_MAX]; int cmd_n;   /* journal de commandes JOUEUR (vidé au tick, déterministe) */
+    int research_target;   /* cible de recherche du JOUEUR (-1 = aucune ; file de 1, modèle viewer) */
 } Sim;
 
 /* allocation/libération des MEMBRES (heap) — la chronique alloue inline (intacte) ;

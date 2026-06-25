@@ -768,6 +768,31 @@ void scps_player_set_levy(ScpsSim *s, int level){
     sim_cmd_push(&s->sim, c);
 }
 
+/* RECHERCHE : fixe la CIBLE de tech du joueur (file de 1). tech<0 ⇒ annule. La
+ * progression/déblocage tombe au tick (income SAVOIR × prospérité, cf. sim_day). */
+int scps_player_research(ScpsSim *s, int tech){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_RESEARCH, { tech, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
+/* LECTURE : la cible de recherche COURANTE (-1 = aucune) ; *progress01 ← fraction
+ * acquise [0..1] (points / coût plein) pour la jauge UI. Lecture pure. */
+int scps_research_target(ScpsSim *s, float *progress01){
+    if (progress01) *progress01 = 0.f;
+    if (!s || !s->ready) return -1;
+    int pl = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    int t  = s->sim.research_target;
+    if (t<0 || pl<0 || pl>=s->w->n_countries) return -1;
+    if (progress01){
+        float pop  = ai_country_population(s->w, s->sim.econ, pl);
+        float cost = tech_cost((TechId)t, pop);
+        float f = (cost>0.f) ? (s->sim.ts[pl].research_points / cost) : 0.f;
+        *progress01 = f<0.f ? 0.f : (f>1.f ? 1.f : f);
+    }
+    return t;
+}
+
 int scps_river_points(ScpsSim *s, ScpsRiverPt *out, int max){
     if (!s || !s->ready || !out || max<=0) return 0;
     int n=0;

@@ -5,7 +5,8 @@ extends Control
 ## par une arête (GraphSoftLine). La COULEUR dit l'état (verrouillé/recherchable/
 ## acquis) ; le bout faustien vire au rouge. Clic sur un nœud → son détail en pied.
 ## En-tête : points · présage (bande) · crise %. Lit tech_info/tech_nodes (la façade).
-## Display-only : choisir une recherche se fera via une commande (à venir).
+## ACTIONNABLE : cliquer un nœud RECHERCHABLE le fixe comme cible (player_research) ;
+## l'en-tête montre la recherche EN COURS + sa jauge de progression (research_status).
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -23,6 +24,7 @@ const COL_FAUST    := Color(0.88, 0.24, 0.24)
 var _graph                 # Medusa Graph (Control)
 var _atoms := []           # Atom par indice de nœud
 var _info := {}            # Atom -> dict du nœud (pour le détail au clic)
+var _nodes := []           # le tableau de nœuds (lookup index → nom pour la cible)
 var _built := false
 var _sel := ""             # détail du nœud sélectionné (pied)
 
@@ -60,6 +62,7 @@ func _build() -> void:
 	_info.clear()
 
 	var nodes: Array = Sim.world.tech_nodes()
+	_nodes = nodes
 	if nodes.is_empty():
 		_built = true
 		return
@@ -153,12 +156,19 @@ func _on_atom_selected(atom) -> void:
 	var nd = _info.get(atom, null)
 	if nd == null:
 		_sel = ""
-	else:
-		var states := ["verrouillé", "recherchable", "acquis"]
-		var stt := int(nd["state"])
-		_sel = "%s — %s · %s" % [String(nd["name"]), String(nd.get("effet", "")), states[clampi(stt, 0, 2)]]
-		if int(nd.get("cost", 0)) > 0 and stt != 2:
-			_sel += " (%d pts)" % int(nd["cost"])
+		queue_redraw()
+		return
+	var states := ["verrouillé", "recherchable", "acquis"]
+	var stt := int(nd["state"])
+	_sel = "%s — %s · %s" % [String(nd["name"]), String(nd.get("effet", "")), states[clampi(stt, 0, 2)]]
+	if int(nd.get("cost", 0)) > 0 and stt != 2:
+		_sel += " (%d pts)" % int(nd["cost"])
+	# ACTIONNABLE : un nœud RECHERCHABLE (state==1) cliqué devient la CIBLE de recherche
+	# (l'indice de _atoms == TechId ; la façade enfile CMD_RESEARCH, le déblocage tombe au tick).
+	if stt == 1 and Sim.world != null:
+		var idx := _atoms.find(atom)
+		if idx >= 0 and Sim.world.player_research(idx) != 0:
+			_sel += "   → recherche lancée"
 	queue_redraw()
 
 # ── chrome du panneau : fond + en-tête + pied (le graphe se dessine seul) ───
@@ -175,6 +185,20 @@ func _draw() -> void:
 	var pcol := VKit.COL_DIM if crise < 25 else (VKit.sense(0.40) if crise < 60 else VKit.sense(0.10))
 	VKit.text(self, Vector2(PW - 250, 30), pcol,
 		"Présage : %s (crise %d%%)" % [String(info.get("presage", "")), crise], VKit.FS_SMALL)
+	# RECHERCHE EN COURS : la cible + sa jauge de progression (research_status)
+	var rs: Dictionary = w.research_status()
+	var rt := int(rs.get("target", -1))
+	if rt >= 0 and rt < _nodes.size():
+		var rname := String(_nodes[rt].get("name", "?"))
+		var prog := clampf(float(rs.get("progress", 0.0)), 0.0, 1.0)
+		VKit.text(self, Vector2(220, 13), VKit.COL_COPPER, "Recherche : %s" % rname, VKit.FS_SMALL)
+		var bx := 220.0
+		var bw := 200.0
+		VKit.box(self, Rect2(bx, 30, bw, 9), VKit.COL_DIM)
+		VKit.fill(self, Rect2(bx + 1, 31, (bw - 2) * prog, 7), COL_UNLOCKED)
+		VKit.text(self, Vector2(bx + bw + 8, 30), VKit.COL_PARCH, "%d%%" % int(prog * 100.0), VKit.FS_SMALL)
+	else:
+		VKit.text(self, Vector2(220, 13), VKit.COL_DIM, "Recherche : (cliquez un nœud recherchable)", VKit.FS_SMALL)
 	# légende d'état
 	VKit.text(self, Vector2(14, 33), COL_UNLOCKED, "● acquis", VKit.FS_SMALL)
 	VKit.text(self, Vector2(86, 33), COL_AVAIL, "● recherchable", VKit.FS_SMALL)

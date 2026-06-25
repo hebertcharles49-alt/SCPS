@@ -98,6 +98,8 @@ public:
     bool       player_build(int edifice, int region); /* enfile un chantier (region<0 ⇒ capitale) ; false = file pleine/hors-domaine */
     int        player_recruit(int unit);              /* enfile 1 paquet à lever ; 1 = mis en file, 0 = refus d'enfilement */
     void       player_set_levy(int level);            /* enfile le réglage de la jauge de levée 0-3 */
+    int        player_research(int tech);             /* fixe la cible de tech (file de 1) ; tech<0 ⇒ annule ; 1 = mis en file */
+    Dictionary research_status();                     /* { target:int(-1=aucune), progress:float[0..1] } */
 
     /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
     Array      river_points();

@@ -310,6 +310,11 @@ int  scps_player_build  (ScpsSim *s, int edifice, int region);
 long scps_player_recruit(ScpsSim *s, int unit);
 /* Régler la jauge de levée du joueur (0 basse · 1 garde · 2 guerre · 3 masse). */
 void scps_player_set_levy(ScpsSim *s, int level);
+/* RECHERCHE : fixer la cible de tech du joueur (file de 1). tech<0 ⇒ annule.
+ * 1 = mis en file ; 0 = refus. La progression (income SAVOIR × prospérité) tombe au tick. */
+int  scps_player_research(ScpsSim *s, int tech);
+/* LECTURE : cible de recherche courante (-1 = aucune) ; *progress01 ← fraction [0..1]. */
+int  scps_research_target(ScpsSim *s, float *progress01);
 
 /* ---- TRACÉS DE CARTE (overlays vectoriels du viewer) ----------------- *
  * RIVIÈRES : un point par cellule de fil (centre cellule) + l'ANGLE du fil (rad,

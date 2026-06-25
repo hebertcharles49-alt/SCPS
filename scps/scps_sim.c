@@ -9,6 +9,7 @@
  * diplo, prospérité, endgame), plus seulement la colonne économique.
  */
 #include "scps_sim.h"
+#include "scps_readout.h"   /* RECHERCHE JOUEUR : la cloche de prospérité (country_readout), FIDÈLE au viewer */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -166,10 +167,30 @@ static void sim_campaign_year(Sim *s, World *w) {
     }
 }
 
+/* RECHERCHE JOUEUR — revenu SAVOIR mensuel de la capitale (réplique le viewer :
+ * player_savoir_income_month). Le LaborEcon est calé sur s->player (== s->human_player
+ * dans la façade) → prov[0] EST la capitale du joueur. Lecture PURE du LaborEcon. */
+static float sim_player_savoir_month(const LaborEcon *lab){
+    if (!lab || lab->n_prov<1) return 0.f;
+    const LProvince *cap=&lab->prov[0];
+    int ct=cap->cap_tier; if(ct<1)ct=1; if(ct>4)ct=4;
+    float m = 0.5f*(float)ct;                                   /* la capitale : ses nobles/lettrés */
+    for (int b=0;b<cap->n_bld;b++){
+        const LBuilding *bd=&cap->bld[b];
+        if (bd->type==LB_NONE) continue;
+        int slots=building_job_slots(bd->level); if(slots<1)slots=1;
+        float staffing=(float)bd->jobs_filled/(float)slots;
+        staffing = staffing<0.f ? 0.f : (staffing>1.f ? 1.f : staffing);
+        int tier=bd->level+1; if(tier<1)tier=1; if(tier>4)tier=4;
+        m += 0.5f*(float)tier*staffing;                         /* 0.5·tier /mois, au prorata */
+    }
+    return m;
+}
+
 /* enfile un ordre joueur (façade) — FIFO bornée ; false si pleine (jamais d'écrasement). */
 bool sim_cmd_push(Sim *s, PlayerCmd c){
     if (!s || s->cmd_n >= SCPS_CMDQ_MAX) return false;
-    if (c.verb==CMD_NONE || c.verb>CMD_SET_LEVY) return false;   /* verbe hors domaine : refus net */
+    if (c.verb==CMD_NONE || c.verb>CMD_RESEARCH) return false;   /* verbe hors domaine : refus net */
     s->cmdq[s->cmd_n++] = c;
     return true;
 }
@@ -203,6 +224,11 @@ static void sim_cmd_drain(Sim *s, World *w){
           case CMD_SET_LEVY:
             warhost_set_levy(s->host, p, c->a[0]);
             break;
+          case CMD_RESEARCH: {
+            int t = c->a[0];
+            if (t<0 || t>=TECH_COUNT){ s->research_target = -1; break; }   /* a[0]<0 ⇒ annuler la cible */
+            s->research_target = t;   /* file de 1 : la progression/déblocage se fait au tick (bloc sim_day) */
+            break; }
         }
     }
     s->cmd_n = 0;
@@ -223,6 +249,28 @@ void sim_day(Sim *s, World *w) {
         ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
         ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
     } });
+    /* RECHERCHE DU JOUEUR (gate IA-off : l'humain ne reçoit PAS ai_research_step ci-dessus).
+     * La cible (CMD_RESEARCH) progresse, payée par l'INCOME SAVOIR de la capitale × rendement
+     * des INSTITUTIONS Savoir × CLOCHE DE PROSPÉRITÉ — modèle FIDÈLE au viewer (file de 1 ;
+     * coût plein ; jamais un bonus plat). human=-1 ⇒ research_target reste -1 ⇒ NO-OP chronique. */
+    if (s->research_target>=0 && s->human_player>=0 && s->human_player<w->n_countries){
+        int pl=s->human_player;
+        unsigned access = ai_race_access(w, s->econ, s->rn, pl);
+        if (!tech_can_research(&s->ts[pl], (TechId)s->research_target, access)){
+            s->research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
+        } else {
+            float pop   = ai_country_population(w, s->econ, pl);
+            float month = sim_player_savoir_month(s->labor);    /* capital par tier × staffing */
+            float yield = tech_research_yield(&s->ts[pl]);       /* institutions Savoir : ×1..2.5 */
+            CountryReadout cr = country_readout(s->wp, s->ts, w, pl);
+            float prosp = 0.4f + (float)cr.m_prosperite.value/100.f*1.2f;   /* ×[0.4..1.6] selon la prospérité */
+            s->ts[pl].research_points += (month/30.4f) * yield * prosp;     /* /mois → /jour */
+            if (s->ts[pl].research_points >= tech_cost((TechId)s->research_target, pop)){
+                tech_research(&s->ts[pl], (TechId)s->research_target, access);   /* DÉBLOQUÉ */
+                s->ts[pl].research_points = 0.f; s->research_target=-1;          /* file de 1 : terminé */
+            }
+        }
+    }
     PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1));
     labor_tick(s->labor);
     /* navy_tick (chantier + entretien) est passé MENSUEL (bloc plus bas) : il pesait ~½ du coût/an
@@ -393,6 +441,7 @@ void sim_init(Sim *s, World *w) {
     for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_PLAYER){ s->player=c; break; }
     s->human_player = -1;   /* aucun humain par DÉFAUT (la chronique reste 100 % IA) ; la façade débraye après coup */
     s->cmd_n = 0;           /* journal de commandes joueur : vide (la chronique n'enfile jamais) */
+    s->research_target = -1;   /* aucune cible de recherche joueur (la chronique n'en pose jamais ⇒ bloc no-op) */
     /* PAS DE JOUEUR HUMAIN dans la chronique : TOUT pays habitable est piloté par
      * l'IA — y compris l'ex-emplacement « joueur ». Sinon ce pays restait inerte
      * (il ne bâtissait rien, ne se défendait pas) et FAUSSAIT le balayage (un trou
