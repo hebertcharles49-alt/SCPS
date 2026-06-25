@@ -38,7 +38,7 @@ bool is_relief(int b)  { return b == 17 || b == 18 || b == 19 || b == 23; } // c
 
 // palette SÉPIA par biome (enum RÉEL)
 vec3 antique_color(int b) {
-	if (b <= 2)                        return vec3(0.58, 0.67, 0.70);   // mer bleu-gris
+	if (b <= 2)                        return vec3(0.47, 0.57, 0.63);   // MER : bleu plus PROFOND (sombre)
 	if (b == 3)                        return vec3(0.88, 0.82, 0.62);   // côte / plage
 	if (b == 15 || b == 21 || b == 22) return vec3(0.63, 0.70, 0.60);   // MARAIS / mangrove / tourbière (humide)
 	if (b >= 12 && b <= 14)            return vec3(0.57, 0.62, 0.40);   // forêt OLIVE
@@ -108,6 +108,55 @@ float compass(vec2 ip, vec2 ci, float R) {
 	return v;
 }
 
+// hash entier → [0,1) (déterministe, display-only) pour varier les symboles par cellule de semis.
+float hash(uint n) {
+	n = (n << 13u) ^ n;
+	n = n * (n * n * 15731u + 789221u) + 1376312589u;
+	return float(n & 0x7fffffffu) / 2147483648.0;
+}
+
+// ARBRE STYLISÉ à l'encre : conifère (3 triangles empilés) OU feuillu (couronne ronde) + tronc. uv local.
+float draw_tree(vec2 uv, uint seed) {
+	float h = hash(seed);
+	vec2 p = uv;
+	float trunk = step(abs(p.x), 0.025) * step(p.y, 0.35) * step(-0.45, p.y);
+	float foliage = 0.0;
+	for (int i = 0; i < 3; i++) {
+		float y_off = -0.15 - float(i) * 0.20;
+		float tri_w = 0.22 - float(i) * 0.04;
+		float tri_h = 0.22;
+		foliage += step(abs(p.x) / tri_w + (p.y - y_off) / tri_h, 1.0) * step(p.y, y_off) * step(y_off - tri_h, p.y);
+	}
+	foliage = min(foliage, 1.0);
+	float crown = 0.0;
+	if (h < 0.5) {
+		crown = step(length(p - vec2(0.0, -0.25)), 0.18)
+		      + step(length(p - vec2(-0.08, -0.32)), 0.12)
+		      + step(length(p - vec2(0.07, -0.30)), 0.10);
+		crown = min(crown, 1.0) * 0.9;
+	}
+	return max(max(trunk, foliage), crown);
+}
+
+// MONTAGNE STYLISÉE à l'encre : pic principal + pic secondaire + hachures internes + ombre portée SE.
+float draw_mountain(vec2 uv, uint seed) {
+	vec2 p = uv;
+	float h1 = hash(seed);
+	float h2 = hash(seed + 1u);
+	float peak_h = 0.5 + h1 * 0.3;
+	float peak_w = 0.25 + h2 * 0.1;
+	float mountain = step(abs(p.x) / peak_w + p.y / peak_h, 1.0) * step(p.y, 0.0) * step(-peak_h, p.y);
+	mountain += step(abs(p.x - 0.18) / 0.12 + (p.y + 0.08) / 0.30, 1.0) * step(p.y, -0.08) * step(-0.38, p.y) * 0.8;
+	float hatch = 0.0;
+	for (int i = 0; i < 5; i++) {
+		float y_line = -0.05 - float(i) * 0.09;
+		hatch += step(abs(p.x + (p.y - y_line) * 0.15), 0.015) * step(p.y, y_line + 0.01) * step(y_line - 0.02, p.y);
+	}
+	hatch = min(hatch, 1.0) * 0.6;
+	float shadow = step(p.x, 0.0) * step(-p.x * 0.4 + p.y + 0.15, 0.0) * mountain * 0.35;
+	return min(max(max(mountain, shadow), hatch * mountain), 1.0);
+}
+
 void fragment() {
 	// TOP-DOWN : cell = position monde directe (iso=VERTEX du quad plat) ; sinon inverse-iso 2:1.
 	vec2 cell = (flat_map > 0.5) ? iso : vec2(iso.y + iso.x * 0.5, iso.y - iso.x * 0.5);
@@ -162,7 +211,8 @@ void fragment() {
 		float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r;
 		float rv_noise = texture(noise_tex, cell * 0.35 + vec2(1.3, 4.7)).r;
 		float plume = smoothstep(0.33, 0.46, rv) * (0.7 + 0.3 * rv_noise) + smoothstep(0.6, 0.9, rv) * 0.15;
-		vec3 river_col = is_water(b) ? mix(vec3(0.35, 0.45, 0.55), antique_color(0), 0.55) : vec3(0.35, 0.45, 0.55);
+		// EAUX TERRESTRES plus CLAIRES que la mer (inversion demandée) : rivière = bleu PÂLE lumineux.
+		vec3 river_col = is_water(b) ? mix(vec3(0.64, 0.74, 0.77), antique_color(0), 0.55) : vec3(0.64, 0.74, 0.77);
 		float river_amt = is_water(b) ? plume * 0.40 : (is_wetland(b) ? plume * 0.7 : plume);
 		col = mix(col, river_col, river_amt);
 
@@ -170,16 +220,27 @@ void fragment() {
 		float rd = relief_density(cw);
 		if (rd > 0.25) {
 			float m = smoothstep(0.25, 0.65, rd);
-			col = mix(col, vec3(0.76, 0.67, 0.51), m * 0.55);
-			if (relief_density(cw + vec2(2.6, 2.6)) < 0.2 && is_solid(biome_at(cw + vec2(2.0, 2.0)))) col *= 0.88;
-			float dir = texture(noise_tex, cell * 0.02 + vec2(8.0, 3.0)).r;
-			float coord = (iso.x - iso.y) * mix(0.7, 1.1, dir) + (iso.x + iso.y) * (dir - 0.5) * 0.35;
-			float hatch = sin(coord * hatch_freq + texture(noise_tex, cell * 0.12).r * 4.0);
-			float hn = texture(noise_tex, cell * 0.18 + vec2(5.0, 2.0)).r;
-			col *= mix(1.0, 1.0 - hatch_str * m, smoothstep(0.45, 0.95, hatch) * (0.45 + 0.55 * hn));
-			if (m > 0.7) {
-				float hatch2 = sin(coord * hatch_freq * 0.9 - (iso.x + iso.y) * 0.8 + 2.0);
-				col *= mix(1.0, 1.0 - hatch_str * 0.6, smoothstep(0.55, 0.95, hatch2) * hn);
+			col = mix(col, vec3(0.76, 0.67, 0.51), m * 0.5);   // teinte massif tan (les PICS dessinent le relief)
+			if (relief_density(cw + vec2(2.6, 2.6)) < 0.2 && is_solid(biome_at(cw + vec2(2.0, 2.0)))) col *= 0.90;
+		}
+
+		// ── SYMBOLES DESSINÉS à l'ENCRE (carte ancienne) : conifères/feuillus en FORÊT, pics hachurés en
+		//    MONTAGNE — semis sur grille jittered, clippés à leur région (le biome du PIXEL). ──
+		if (is_forest(b)) {
+			vec2 grd = floor(cell * 0.30);                 // ~1 arbre / 3.3 unités monde
+			uint sd = uint(max(grd.x * 7919.0 + grd.y * 6271.0 + 1048576.0, 0.0));
+			if (hash(sd + 5u) > 0.16) {                    // ~16 % de cellules VIDES → casse la grille
+				vec2 luv = fract(cell * 0.30) - 0.5;
+				luv -= vec2(hash(sd) - 0.5, hash(sd + 1u) - 0.5) * 0.55;             // gros jitter
+				col = mix(col, vec3(0.22, 0.16, 0.09), draw_tree(luv * (1.0 + hash(sd + 2u) * 0.6), sd) * 0.8);  // taille variée, glyphe REMPLIT la cellule
+			}
+		} else if (is_relief(b) && rd > 0.3) {
+			vec2 grd = floor(cell * 0.22);                 // pics plus GROS et espacés
+			uint sd = uint(max(grd.x * 8191.0 + grd.y * 5113.0 + 1048576.0, 0.0));
+			if (hash(sd + 5u) > 0.12) {
+				vec2 luv = fract(cell * 0.22) - 0.5;
+				luv -= vec2(hash(sd) - 0.5, hash(sd + 1u) - 0.5) * 0.5;
+				col = mix(col, vec3(0.20, 0.14, 0.07), draw_mountain(luv * (1.0 + hash(sd + 2u) * 0.5), sd) * 0.82);
 			}
 		}
 	}
