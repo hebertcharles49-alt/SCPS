@@ -446,6 +446,21 @@ determinism: chronicle
 	 fi
 .PHONY: determinism
 
+# ---- make determinism-deep : le déterminisme sur des SIÈCLES (nightly, pas pre-commit) ----
+# Le gate à 12 ans (ci-dessus) n'exerce JAMAIS l'endgame §27 (ENDGAME_YEAR_OPEN=180), le clamp
+# anti-emballement crédit (tardif), ni les mutations de carte (cataclysm_sink_region / rebiome) —
+# exactement les siècles où vit une partie joueur. On rejoue 2 graines × DEEP_YEARS ans DEUX FOIS
+# et on exige A==B (self-cohérence longue ; complète le golden 12 ans).
+DEEP_YEARS ?= 200
+determinism-deep: chronicle
+	@ok=1; for s in 7 9; do \
+	   A=$$(./chronicle --hash $$s 2 $(DEEP_YEARS) 2>/dev/null | grep '^HASH'); \
+	   B=$$(./chronicle --hash $$s 2 $(DEEP_YEARS) 2>/dev/null | grep '^HASH'); \
+	   if [ -n "$$A" ] && [ "$$A" = "$$B" ]; then echo "deep graine $$s : STABLE ($(DEEP_YEARS) ans)"; \
+	   else echo "deep graine $$s : DIVERGE —"; printf 'A:\n%s\nB:\n%s\n' "$$A" "$$B"; ok=0; fi; \
+	 done; [ $$ok -eq 1 ] || { echo "determinism-deep ÉCHEC"; exit 1; }
+.PHONY: determinism-deep
+
 # ---- make golden : NON-RÉGRESSION du monde (le hash comme CONTRAT public) --
 # `determinism` ci-dessus prouve la SELF-COHÉRENCE (A==B sur le MÊME binaire) — il reste VERT
 # si un changement DÉCALE le monde, tant que les deux runs du nouveau binaire concordent. Or

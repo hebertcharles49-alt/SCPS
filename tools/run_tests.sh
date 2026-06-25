@@ -27,7 +27,7 @@ BENCHES_FULL=(
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo
   econ_production_demo labor_demo missions_demo ai_demo diplo_demo warhost_demo
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo
-  endgame_demo audit_eco lang_demo scps_api_demo
+  endgame_demo audit_eco lang_demo scps_api_demo culture_demo
 )
 
 # Le sous-ensemble RAPIDE : la colonne vertébrale (worldgen/readout/labor/éco/IA),

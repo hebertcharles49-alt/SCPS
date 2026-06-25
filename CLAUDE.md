@@ -431,7 +431,7 @@
   assombrie capturés). Reste optionnel : particules GPU (neige/écume), shader de rift. `scps_api_demo` 9/9,
   moteur inchangé → **SAVE non bumpé**. ⚠ noms de fin = chrome GDScript (i18n Phase 5).
 - **AUDIT STEAM — correctifs P0/P1/P2 (2026-06-25)** : durcissement « contrat public » avant que des
-  saves touchent un joueur (toutes vérifs au vert : 38/38 bancs · déterminisme INCHANGÉ vs golden ·
+  saves touchent un joueur (toutes vérifs au vert : 39 bancs · déterminisme INCHANGÉ vs golden ·
   ASan/UBSan muet · viewer 0 warning). **P0-1** (le seul bug de CORRUPTION) : `save_sane` borne enfin
   `AgencyState.n`/`RevoltState.count`/`ArmyState.n_units` (+ régions d'ordre) ; `purge_slice` borne
   `reg` (la boucle PURGE l'appelait SANS la garde d'apply_action ⇒ écriture hors-bornes depuis une save
@@ -443,6 +443,12 @@
   host calloc'd. **P1-2** : `clampf` ne propage plus le NaN (17 copies) ; accumulateur `faust_charge`
   borné (anti-dérive-inf cross-build). **P2-1** : `prosperity_demo` VÉRIFIE (17 assertions) au lieu de
   vert-sur-rc=0. Détail & vérif-de-l'audit (claims CONFIRMÉS/REFUTÉS, file:line) à part.
+  **Bonus & suite** : `make fuzz-save` (`scps_viewer --fuzztest` headless — forge chaque compteur
+  désérialisé hors-borne → save_sane REJETTE, le test qui aurait pris les 3 trous P0-1 d'un coup ; +
+  fuzz d'octets → game_load ne plante jamais) ; `make determinism-deep` (200 ans × 2 graines, nightly —
+  exerce l'endgame §27 / le clamp crédit / le cataclysme, hors du gate 12 ans) ; **P2-4** `culture_demo`
+  rendu AUTO-VÉRIFIANT (23 assertions sur les invariants : corps/âme, mutation, 2 canaux de distance,
+  continuum de syncrétisme) et RECÂBLÉ au harnais (**39 bancs**, il était construit mais jamais lancé).
 
 ## Disciplines non négociables
 
