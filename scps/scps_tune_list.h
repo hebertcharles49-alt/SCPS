@@ -94,6 +94,22 @@
     /* VOCATION — nb de brutes (hors vivrier & stratégiques) gardées par région : la tuile
      * produit sa spécialité, pas la liste complète (la traîne mineure vient du commerce). */ \
     X(REGION_RAW_KEEP,        2.0f) \
+    /* REFONTE A0 — EXTRACTION LABOR-BOUND (ressource PAR OUVRIER). out = ouvriers × YIELD ×
+     * geo_eff × prix. GEO_REF = raw_cap donnant geo_eff=1 (la tuile standard) ; GEO_CAP =
+     * plafond de qualité ; LABOR_SHARE = part des journaliers à l'extraction (le levier de
+     * CALIBRAGE du volume brut ; le reste staffe les manufactures). */ \
+    X(EXTRACT_GEO_REF,        4.5f) \
+    X(EXTRACT_GEO_CAP,        3.0f) \
+    X(EXTRACT_LABOR_SHARE,    0.65f) \
+    /* REFONTE A2 — multiplicateur de la BOUCHE vivrière (grain/poisson/viande). La cible
+     * « décidée » est 100/100hab/an (table NEED) mais la géographie des vocations (2 brutes/
+     * région) + le commerce bornent ce que le monde NOURRIT : FOOD_NEED calibre la demande
+     * vivrière sans toucher la table (1.0 = la table telle quelle). Levier anti-famine. */ \
+    X(FOOD_NEED,              1.0f) \
+    /* REFONTE A5 — la NOURRITURE DU SPAWN : socle de grain (raw_cap) sur la capitale de
+     * chaque empire (geo_eff = SPAWN_FOOD_RAW/EXTRACT_GEO_REF). La SEULE règle vivrière de
+     * worldgen ; tout le reste est géologie + commerce (0 = aucun grenier de spawn). */ \
+    X(SPAWN_FOOD_RAW,        12.0f) \
     /* POOL CITÉ-ÉTAT — réserve TRADABLE de matières brutes (bois/fer/argile/pierre) déposée sur
      * la région-pivot de chaque cité-état : le marché mondial (#5) la revend aux empires nés
      * NUS, qui importent ainsi de quoi BÂTIR au lieu de stagner au plancher ½·cap_pop. */ \

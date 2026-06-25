@@ -74,6 +74,33 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_REMEDE]        = 7.0f,    /* remèdes — santé/confort */
 };
 
+/* ── REFONTE A1 — RENDEMENT D'EXTRACTION PAR OUVRIER (unités/ouvrier/AN) ──────
+ * La brute n'est plus extraite ∝ terrain×√pop : elle suit les BRAS. Chaque ouvrier
+ * affecté à une brute en tire EXTRACT_YIELD[r] par AN (à geo_eff=1, effort=1). La
+ * valeur EST « production annuelle par 100 ouvriers ÷ 100 » (donc grain 800/100 = 8).
+ * Au tick (mensuel) on multiplie par dt (=1/12). Les brutes manufacturées (≥
+ * RES_PROD_FIRST) ne s'extraient pas (0). Le ×2 historique bois/fer/or est REPLIÉ ici
+ * (bois/fer portent leur poids dans le rendement, plus de multiplicateur ad hoc).
+ *   🔒 ancrés : grain 8 · poisson 4 · gibier/élevage 3 · bois 0.5 · pierre/argile 0.25.
+ *   ◇ dérivés : métaux 0.25-0.40 · fibres/sucre 0.60 · épices/minéraux 0.30-0.40 ·
+ *               or 0.08 · rares (perle/teinture/arcane/céleste) 0.03-0.06. */
+static const float EXTRACT_YIELD[RES_COUNT] = {
+    /* nourriture (interchangeable : grain/poisson/viande) */
+    [RES_GRAIN]=8.0f, [RES_FISH]=4.0f, [RES_LIVESTOCK]=3.0f,
+    /* vrac de construction & bois de feu */
+    [RES_WOOD]=0.50f, [RES_STONE]=0.25f, [RES_CLAY]=0.25f,
+    /* métaux & charbon */
+    [RES_IRON]=0.30f, [RES_COAL]=0.40f, [RES_COPPER]=0.25f,
+    /* fibres & douceurs (intrants manufacture) */
+    [RES_WOOL]=0.60f, [RES_SUGAR]=0.60f, [RES_COTTON]=0.60f,
+    /* épices, minéraux mineurs, fourrure */
+    [RES_SALT]=0.30f, [RES_MED_HERBS]=0.30f, [RES_SALTPETER]=0.30f, [RES_SULFUR]=0.30f, [RES_FUR]=0.40f,
+    /* précieux & rares (rendement maigre, valeur haute) */
+    [RES_GOLD]=0.08f, [RES_PRECIOUS_METAL]=0.05f, [RES_PEARL]=0.05f,
+    [RES_MUREX]=0.05f, [RES_INDIGO]=0.06f,
+    [RES_ARCANE_CRYSTAL]=0.04f, [RES_CELESTIAL_IRON]=0.03f,
+};
+
 /* Recette d'une manufacture : jusqu'à 2 intrants → 1 produit. */
 typedef struct {
     Resource in1;  float q1;
@@ -155,22 +182,32 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
  * préférence) ; la case RES_PRECIOUS_WARE = palier STATUT (orfèvrerie/étoffe
  * précieuse). On allège l'étoffe (en pénurie) et le bois de feu ; tout le reste
  * tend de +10 % via DEMAND_TENSION appliqué à `units` (demande tendue permanente). */
+/* ── REFONTE A2 — la BOUCHE est ANNUELLE (1 food = une ration-personne-an) ────
+ * La nourriture & le bois de feu sont des besoins ANNUELS, CALIBRÉS à la géographie
+ * (le réglage fin passe par le tunable FOOD_NEED, défaut 1.0). La table reste « par
+ * 100 hab / TICK » (mensuel, ×12/an). Grain & poisson sont INTERCHANGEABLES (food_sat
+ * les agrège l.~1703 ; le pool national les met en commun) ; la nourriture du SPAWN
+ * (A5) ancre chaque empire. ⚠ La bouche est l'apparié des hauts rendements A1, MAIS
+ * elle reste BORNÉE : un bond ×8 (la cible « 100/100hab » brute) ÉCRASE la fertilité
+ * — needs_met (le moteur de croissance, poids 0.85) chute quand la nourriture monopolise
+ * le budget des journaliers (les autres paliers passent sous τ). On garde donc une
+ * bouche ~3-4× l'ancienne (annuelle, signifiante) sans assécher la vitalité. Le CONFORT
+ * (étoffe/vin/papier/sel/remède/fourrure/statut) garde ses valeurs. */
 static const float NEED[CLASS_COUNT][RES_COUNT] = {
     [CLASS_LABORER] = {
-        [RES_GRAIN]=1.00f, [RES_WINE]=0.35f, [RES_FISH]=0.30f, [RES_WOOD]=0.35f, [RES_TUNIQUE]=0.40f, /* §moral : la BIÈRE (palier moral du commun, via préférence) est le levier — brassée du SURPLUS de grain (réserve vivrière protégée) ; calée pour ~60 % de satisfaction journalière */
+        [RES_GRAIN]=3.50f, [RES_FISH]=1.00f,     /* A2 : nourriture ANNUELLE (grain+poisson INTERCHANGEABLES, food_sat les agrège) */
+        [RES_WOOD]=1.00f,                         /* A2 : bois de FEU annuel (~3× l'ancien 0.35) */
+        [RES_WINE]=0.35f, [RES_TUNIQUE]=0.40f,   /* confort INCHANGÉ (bière/vin via préférence) */
     },
     [CLASS_BOURGEOIS] = {
-        [RES_GRAIN]=1.00f, [RES_CLOTH]=0.34f, [RES_PAPER]=0.25f, [RES_WINE]=0.30f,
-        [RES_SALT]=0.20f, [RES_REMEDE]=0.15f,   /* santé urbaine (apothicaire) */
+        [RES_GRAIN]=4.00f,                        /* A2 : nourriture ANNUELLE */
+        [RES_CLOTH]=0.34f, [RES_PAPER]=0.25f, [RES_WINE]=0.30f,
+        [RES_SALT]=0.20f, [RES_REMEDE]=0.15f,   /* santé urbaine (apothicaire) — confort INCHANGÉ */
     },
     [CLASS_ELITE] = {
-        /* §panier — rééquilibré vers les paliers PRODUCTIBLES (le statut écrasait à 73 %).
-         * Conforts relevés (fourrure/papier/vin, que l'éco SAIT fournir), STATUT abaissé
-         * (orfèvrerie 0.90→0.55, le maillon rare). Combiné au déblocage progressif. */
-        [RES_GRAIN]=1.00f, [RES_FUR]=0.12f, [RES_PAPER]=0.12f, [RES_WINE]=0.28f,
-        [RES_PRECIOUS_WARE]=0.13f,   /* palier STATUT : servi en orfèvrerie OU étoffe ; débloqué EN DERNIER ; calé pour ~60 % */
-        /* §panier — besoins confort/luxe encore allégés de 0.10 (le grain vital reste 1.0) :
-         * l'élite se contente d'un peu moins → satisfaction relevée d'un cran de plus. */
+        [RES_GRAIN]=4.00f,                        /* A2 : nourriture ANNUELLE */
+        [RES_FUR]=0.12f, [RES_PAPER]=0.12f, [RES_WINE]=0.28f,
+        [RES_PRECIOUS_WARE]=0.13f,   /* palier STATUT (orfèvrerie OU étoffe) — confort INCHANGÉ */
     },
 };
 /* §besoins progressifs — ORDRE de priorité par classe (subsistance → confort → STATUT).
@@ -179,7 +216,7 @@ static const float NEED[CLASS_COUNT][RES_COUNT] = {
  * le panier (statut compris). Ainsi le luxe se MÉRITE avec le développement — et l'élite
  * d'un bourg n'est pas punie de ne pas avoir d'orfèvrerie. Le palier STATUT vient DERNIER. */
 static const Resource NEED_ORDER[CLASS_COUNT][8] = {
-    [CLASS_LABORER]   = { RES_GRAIN, RES_WINE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_NONE },  /* bière (RES_WINE→préférée) en palier moral PRÉCOCE : le commun veut sa chope */
+    [CLASS_LABORER]   = { RES_GRAIN, RES_WINE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_NONE },  /* bière (RES_WINE→préférée) en palier moral PRÉCOCE ; poisson = nourriture interchangeable (A2) */
     [CLASS_BOURGEOIS] = { RES_GRAIN, RES_SALT, RES_CLOTH, RES_REMEDE, RES_WINE, RES_PAPER, RES_NONE },
     [CLASS_ELITE]     = { RES_GRAIN, RES_FUR, RES_PAPER, RES_WINE, RES_PRECIOUS_WARE, RES_NONE },
 };
@@ -189,6 +226,9 @@ static int need_rank(int c, Resource r){
     for (int i=0;i<8 && NEED_ORDER[c][i]!=RES_NONE;i++) if (NEED_ORDER[c][i]==r) return i;
     return 99;
 }
+/* REFONTE A2 — une SOURCE DE NOURRITURE interchangeable (grain/poisson/viande). FOOD_NEED
+ * calibre leur demande à l'échelle du monde (la cible 100/100hab borne la géographie). */
+static inline bool res_is_food(Resource r){ return r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK; }
 
 /* Part de chaque strate dans la population à l'initialisation. */
 static const float CLASS_SHARE[CLASS_COUNT] = { 0.80f, 0.15f, 0.05f };
@@ -233,13 +273,22 @@ static inline Resource preferred_luxe(const PopCulture *c){
  * l'usage). L'outil n'entre PAS dans le panier : il ne touche QUE la productivité, JAMAIS
  * la satisfaction. Fini le prix planché à demande nulle qui rendait l'outillage inerte. */
 #define TOOLS_PER_LABORER  0.15f   /* stock-outil VISÉ par journalier (palier d'équipement) → tools_pc ≈ 1.5 à plein, prod_mult ≈ +18 % ; la demande est le DÉFICIT vers ce palier (saturant), pas un flux pop-illimité */
-/* §collecte — INTENSIFICATION : la récolte d'une tuile suit les BRAS qui l'occupent, pas
- * le seul terrain. raw_cap = RICHESSE de référence ; l'intensité ∝ √(pop/réf) (rendements
- * DÉCROISSANTS, plafonnés). Une région peuplée tire plus de sa terre → la production SUIT
- * la population, sans toucher les manufactures. EXTRACT_POP_REF : pop active donnant une
- * intensité de 1 (réglage du seuil). EXTRACT_INTENS_CAP : plafond physique de la tuile. */
-#define EXTRACT_POP_REF    300.f
-#define EXTRACT_INTENS_CAP 2.5f
+/* §collecte — REFONTE LABOR-BOUND (ressource PAR OUVRIER). La récolte d'une brute =
+ * OUVRIERS affectés × EXTRACT_YIELD[r] (rendement/ouvrier/an) × geo_eff (qualité de tuile)
+ * × effort de marché (le prix). Plus de √pop : la collecte est LINÉAIRE en bras.
+ *  · EXTRACT_GEO_REF : raw_cap de référence donnant geo_eff = 1 (la tuile « standard »).
+ *  · EXTRACT_GEO_CAP : plafond de qualité (une tuile exceptionnelle ne va pas à l'infini).
+ *  · EXTRACT_LABOR_SHARE : part des JOURNALIERS dédiée à l'extraction (le reste staffe les
+ *    manufactures) ; les ouvriers se répartissent entre brutes ∝ geo_eff×prix (la tuile
+ *    riche/chère attire). C'est le levier de CALIBRAGE du volume brut. */
+#define EXTRACT_GEO_REF      4.5f    /* calibré seed 9 : pop/needs_met = baseline (cf. CLAUDE.md) */
+#define EXTRACT_GEO_CAP      3.0f
+#define EXTRACT_LABOR_SHARE  0.65f
+/* REFONTE A5 — LA NOURRITURE DU SPAWN (la SEULE règle vivrière de worldgen). La région
+ * CAPITALE de chaque empire naît avec un socle de grain (raw_cap), un grenier de départ.
+ * Tout le reste de la carte est pure GÉOLOGIE (grain/poisson dans la vocation) + COMMERCE.
+ * Valeur = qualité de tuile (raw_cap) : SPAWN_FOOD_RAW/GEO_REF = geo_eff du grenier. */
+#define SPAWN_FOOD_RAW       12.0f
 #define TECH_RATE    0.010f  /* conversion richesse élite → tech */
 #define PRICE_INERTIA 0.65f  /* lissage du prix (0=instantané,1=figé) */
 #define EPS          1e-4f
@@ -741,6 +790,25 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
+    /* REFONTE A5 — LA NOURRITURE DU SPAWN (la SEULE règle vivrière ; le reste = GÉOLOGIE).
+     * Chaque EMPIRE naît avec une base vivrière sur sa région-CAPITALE : un socle de grain
+     * qui en fait un GRENIER de départ (posé APRÈS la coupe de vocation → protégé). Les
+     * autres régions tirent leur nourriture de la GÉOLOGIE (grain/poisson dans leur
+     * vocation) et du COMMERCE (pool national + routes). Pas de socle UNIVERSEL : un empire
+     * né sur terre stérile dépend de sa capitale et de ses échanges (la « Mali » qui commerce). */
+    {
+        float spawn_food = tune_f("SPAWN_FOOD_RAW", SPAWN_FOOD_RAW);
+        for (int cid=0; cid<w->n_countries; cid++){
+            PolityRole role=w->country[cid].role;
+            if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+            int cp=w->country[cid].capital_prov;
+            int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
+            if (cr<0||cr>=e->n_regions||!e->region[cr].active) continue;
+            if (e->region[cr].raw_cap[RES_GRAIN] < spawn_food)
+                e->region[cr].raw_cap[RES_GRAIN] = spawn_food;   /* grenier de spawn (vocation vivrière garantie) */
+        }
+    }
+
     /* POOL TRADABLE DES CITÉS-ÉTATS (2026-06-16) : chaque cité-état naît avec une RÉSERVE
      * de matières BRUTES — CS_TRADE_POOL (1000) de BOIS / FER / ARGILE / PIERRE — sur sa
      * région-pivot. Le marché mondial (ses Centres, #5) la revend aux EMPIRES nés NUS : le
@@ -1223,6 +1291,12 @@ void econ_tick(WorldEconomy *e, float dt) {
      * sur un pool partagé le décaierait N fois). tools_pc lira ce parc déjà usé. */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (epop[c]>0.f) pool[c][RES_TOOLS]*=0.97f;
 
+    /* REFONTE A0/A2 — les leviers éco labor-bound, lus UNE fois/tick (SCPS_TUNE-ables). */
+    const float ext_geo_ref   = tune_f("EXTRACT_GEO_REF",     EXTRACT_GEO_REF);
+    const float ext_geo_cap   = tune_f("EXTRACT_GEO_CAP",     EXTRACT_GEO_CAP);
+    const float ext_lab_share = tune_f("EXTRACT_LABOR_SHARE", EXTRACT_LABOR_SHARE);
+    const float food_need     = tune_f("FOOD_NEED",           1.0f);   /* A2 : calibrage de la bouche vivrière */
+
     for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++) {
         RegionEconomy *re=&e->region[rid];
         if (!re->active || !re->colonized) continue;
@@ -1278,23 +1352,31 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (re->raid_cd_days>0.f)  re->raid_cd_days-=dt*365.f;
         if (rid<SCPS_MAX_REG && g_friche[rid]) prod_mult*=FRICHE_FACTOR;  /* E1bis.10 : entretien IMPAYÉ → friche */
 
-        /* ---- 1. EXTRACTION = COLLECTE PASSIVE (∝ JOURNALIERS × TERRAIN) -
-         * La récolte suit les BRAS qui occupent la tuile, pas le seul terrain : plus de
-         * journaliers → plus de collecte, en rendements DÉCROISSANTS (√, la tuile sature).
-         * raw_cap = RICHESSE de référence ; pop_intens l'exploite ∝ √(pop/réf). Une région
-         * peuplée tire plus de sa terre qu'une région vide → la production SUIT la pop.
-         * Borné par la main-d'œuvre dispo (ratio) et l'effort de marché (demande). */
-        float pop_active = re->strata[CLASS_LABORER].pop;
-        float pop_intens = clampf(sqrtf(fmaxf(pop_active,0.f)/EXTRACT_POP_REF), 0.25f, EXTRACT_INTENS_CAP);
-        for (int r=0;r<RES_COUNT;r++) {
+        /* ---- 1. EXTRACTION = LABOR-BOUND (ressource PAR OUVRIER, refonte A0) ---
+         * out[r] = OUVRIERS[r] × YIELD[r] × geo_eff[r] × effort(prix) × prod_mult.
+         *   · geo_eff = qualité de tuile (raw_cap/REF, plafonné) — un multiplicateur, pas
+         *     la base ; raw_cap n'est plus le rendement mais la RICHESSE qui module.
+         *   · ouvriers : la part EXTRACT_LABOR_SHARE des journaliers, répartie entre les
+         *     brutes ∝ geo_eff×prix (la tuile riche/chère attire les bras). Le reste des
+         *     journaliers reste pour les manufactures (labor_used le réserve).
+         *   · plus de ×2 bois/fer/or (replié dans YIELD).
+         * La production est ainsi LINÉAIRE en main-d'œuvre (elle SUIT la pop) ; le commerce
+         * comble ce que la géologie locale ne donne pas (vocation : 2 brutes/région). */
+        float egeo[RES_COUNT], eeff[RES_COUNT], ew[RES_COUNT], ewsum=0.f;
+        for (int r=1;r<RES_PROD_FIRST;r++){
+            ew[r]=0.f;
             if (re->raw_cap[r]<=0.f) continue;
-            float want_labor = re->raw_cap[r]*0.5f*pop_intens;        /* la collecte intensifiée occupe plus de bras */
-            float avail = labor_avail-labor_used;
-            float ratio = (want_labor>0.f)? clampf(avail/want_labor,0.f,1.f) : 0.f;
-            float eff  = market_effort(re->price[r], BASE_PRICE[r]);   /* SURPLUS NATUREL : l'effort suit le prix */
-            float out = re->raw_cap[r]*pop_intens*ratio*prod_mult*eff; /* √pop × terrain × outils × effort */
-            if (r==RES_WOOD || r==RES_IRON || r==RES_GOLD) out *= 2.0f; /* apport BOIS & FER doublé (épine métal/outils + chauffe) ; OR doublé → nourrir la joaillerie (voie or martiale) */
-            labor_used += want_labor*ratio*eff;                        /* le glut LIBÈRE des bras */
+            egeo[r] = clampf(re->raw_cap[r]/ext_geo_ref, 0.f, ext_geo_cap);          /* qualité ∈ [0..CAP] */
+            eeff[r] = market_effort(re->price[r], BASE_PRICE[r]);                     /* l'effort suit le prix */
+            ew[r]   = egeo[r]*eeff[r];                                               /* poids d'allocation des bras */
+            ewsum  += ew[r];
+        }
+        float L_ext = labor_avail*ext_lab_share;   /* main-d'œuvre dédiée à l'extraction */
+        if (ewsum>EPS) for (int r=1;r<RES_PROD_FIRST;r++){
+            if (ew[r]<=0.f) continue;
+            float workers = L_ext*ew[r]/ewsum;                          /* bras affectés à la brute r */
+            float out = workers*EXTRACT_YIELD[r]*dt*egeo[r]*eeff[r]*prod_mult;  /* /ouvrier/an × dt × qualité × prix × outils */
+            labor_used += workers;
             S[r] += out;                                               /* dépôt au STOCK NATIONAL */
             supply[r]    += out;
             float value = out*re->price[r];
@@ -1332,7 +1414,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float pop = (owner_>=0 && owner_<SCPS_MAX_COUNTRY) ? epop[owner_]
                           : re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
                           + re->strata[CLASS_ELITE].pop;
-                float reserve = pop/100.f * 1.20f;      /* besoin de grain (1/100 hab) + marge */
+                float reserve = pop/100.f * 5.0f * food_need;   /* REFONTE A2 : on protège le besoin VIVRIER (≈4/100hab × calibrage) + marge — on ne brasse QUE le surplus */
                 float spare   = fmaxf(0.f, S[RES_GRAIN] - reserve);
                 float gq = (rc->in1==RES_GRAIN)?rc->q1:rc->q2;
                 lim = fminf(lim, spare/fmaxf(gq,EPS));
@@ -1557,6 +1639,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float need=NEED[c][r];
                 if (need<=0.f) continue;
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* besoin pas encore débloqué */
+                if (res_is_food((Resource)r)) need*=food_need;            /* A2 : calibrage de la bouche */
                 Resource tgt=(Resource)r;
                 if      (r==RES_WINE)          tgt=preferred_drink(&re->culture);
                 else if (r==RES_PRECIOUS_WARE) tgt=preferred_luxe(&re->culture);
@@ -1594,7 +1677,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             int   nbasket=0, nsat=0;       /* catégories du panier total · satisfaites (got≥τ) */
             for (int rr=0;rr<RES_COUNT;rr++) if (NEED[c][rr]>0.f) nbasket++;   /* dénominateur = panier COMPLET */
             for (int r=0;r<RES_COUNT;r++) {
-                float need=NEED[c][r]*units;
+                float need=NEED[c][r]*units*(res_is_food((Resource)r)?food_need:1.f);   /* A2 : calibrage de la bouche */
                 if (need<=0.f) continue;
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* §progressif : besoin pas encore débloqué → ne pèse pas */
                 /* ── Palier MORAL (boisson) : VARIANTE culturelle bière/vin ──
