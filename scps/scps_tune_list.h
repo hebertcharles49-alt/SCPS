@@ -130,6 +130,27 @@
      * poids de MON manque dans le choix d'allié (s'allier à qui me COMPLÈTE). */ \
     X(AI_COVET_W,             0.5f) \
     X(AI_COMPLEMENT_W,        1.0f) \
+    /* PIPELINE DIPLO étage 3 — LA VASSALITÉ SUR LA DURÉE (la VALEUR cible, l'ÉTHOS décide la
+     * MÉTHODE : tenir-et-traire vs digérer). INTÉGRATION : un vassal TENU à la paix se rapproche
+     * de son maître (INTEGRATE_YEARS = ~temps de pleine intégration à culture identique ; freiné
+     * par la distance culturelle réelle et le grief). CONTRIBUTION TYPÉE : passé le seuil
+     * CONTRIB_GATE d'intégration (bond MÛRI), le vassal verse selon sa FONCTION (commerce→or /
+     * agraire→vivres / martial→force) × son appréciation (1−grief), à hauteur CONTRIB_BASE de son
+     * potentiel. ANNEXION : un maître ANNEXEUR (éthos Dominateur/Honneur) DIGÈRE sa province vassale
+     * INTÉGRÉE (≥ ANNEX_MIN_INTEGRATION) — un PROCESSUS de durée ∝ prix × (1 − DISCOUNT·intégration),
+     * payé GOLD_PER_PRICE or/an ; à terme, transfert + cicatrice DOUCE (SOFT_SCAR·(1−intégration)).
+     * Le seuil CONTRIB_GATE 0.65 est INATTEIGNABLE en 12 ans (max 12/20=0.60) ⇒ déterminisme 12 ans
+     * INCHANGÉ par construction (tout l'étage mord APRÈS la fenêtre golden). */ \
+    X(AI_VASSAL_INTEGRATE_YEARS, 20.0f) \
+    X(AI_VASSAL_CONTRIB_GATE,     0.65f) \
+    X(AI_VASSAL_CONTRIB_BASE,     0.05f) \
+    X(AI_ANNEX_MIN_INTEGRATION,   0.65f) \
+    X(AI_ANNEX_YEARS_PER_PRICE,   0.5f) \
+    X(AI_ANNEX_GOLD_PER_PRICE,    2.0f) \
+    X(ANNEX_INTEGRATION_DISCOUNT, 0.6f) \
+    X(ANNEX_SOFT_SCAR,            0.4f) \
+    X(ANNEX_SCAR_DECAY,          0.20f) \
+    X(ANNEX_SAT_W,                0.5f) \
     /* HAMEAUX LIBRES (POLITY_WILD) — Peuples Libres épars près des jouables (tue le « siècle
      * d'inertie » : chaque empire a 2 objectifs voisins dès l'an 0). WILD_PER_PLAYABLE hameaux
      * par jouable (0 = DÉSACTIVE) · WILD_POP graine · WILD_CAP plafond d'accueil · WILD_SPAWN_HOPS

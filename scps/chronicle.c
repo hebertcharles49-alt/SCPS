@@ -334,7 +334,7 @@ int main(int argc, char **argv){
     long tot_tree_pct=0; int tot_tree_sims=0;   /* §A : fraction d'arbre déverrouillée (le coût force les choix) */
     long tot_reloc=0;   /* §reloc : ensemencements de pop pour combler une pénurie */
     long tot_repress=0, tot_assim=0, tot_purge=0, tot_purge_dead=0;       /* leviers intérieurs */
-    long tot_serv=0, tot_prot=0, tot_conc=0, tot_cite=0, tot_defect=0;    /* suzeraineté */
+    long tot_serv=0, tot_prot=0, tot_conc=0, tot_cite=0, tot_defect=0, tot_annex=0;    /* suzeraineté */
     long tot_ligues=0, tot_frondes=0, tot_indep=0, tot_renvers=0, tot_ecrase=0;   /* fronde */
     long tot_bt=0, tot_btj=0, tot_routs=0, tot_rallies=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
@@ -843,9 +843,9 @@ int main(int argc, char **argv){
         /* LEVIERS & SUZERAINETÉ (brief leviers) : l'usage par sim — sans ces lignes,
          * on ne sait ni si l'IA s'en sert, ni si elle s'en sert TROP. */
         { int rep,ass,pur; long dead; agency_levier_stats(&rep,&ass,&pur,&dead);
-          printf("              leviers : %d matage(s) · %d formation(s) · %d purge(s) (%ld morts) | suzeraineté : %d servage · %d protectorat · %d concordat · %d cité · %d défection(s)\n",
+          printf("              leviers : %d matage(s) · %d formation(s) · %d purge(s) (%ld morts) | suzeraineté : %d servage · %d protectorat · %d concordat · %d cité · %d défection(s) · %d annexion(s) par digestion\n",
                  rep, ass, pur, dead,
-                 s.dp->n_servage, s.dp->n_protectorat, s.dp->n_concordat, s.dp->n_cite, s.dp->n_defections);
+                 s.dp->n_servage, s.dp->n_protectorat, s.dp->n_concordat, s.dp->n_cite, s.dp->n_defections, s.dp->n_annex);
           { int ndette=0, nlien=0;
             for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
                 if (country_gold(s.econ,c) < 0.0) ndette++;
@@ -870,7 +870,7 @@ int main(int argc, char **argv){
         tot_deseng+=s.camp->n_disengage; tot_renf+=s.camp->n_reinforce; tot_nul+=s.camp->n_stalemate;
           tot_repress+=rep; tot_assim+=ass; tot_purge+=pur; tot_purge_dead+=dead;
           tot_serv+=s.dp->n_servage; tot_prot+=s.dp->n_protectorat; tot_conc+=s.dp->n_concordat;
-          tot_cite+=s.dp->n_cite; tot_defect+=s.dp->n_defections; }
+          tot_cite+=s.dp->n_cite; tot_defect+=s.dp->n_defections; tot_annex+=s.dp->n_annex; }
 
         /* ARBRE (§A) : fraction de l'arbre déverrouillée PAR EMPIRE (cible < 100 % → l'empire
          * doit CHOISIR) + thème DOMINANT (deux empires aux choix différents → divergence). */
@@ -1130,8 +1130,8 @@ int main(int argc, char **argv){
            tot_reloc, (double)tot_reloc/nsims);
     printf("   leviers intérieurs .......... %ld matage(s) · %ld formation(s) · %ld purge(s) (%ld morts — RARE attendu)\n",
            tot_repress, tot_assim, tot_purge, tot_purge_dead);
-    printf("   suzeraineté ................. %ld servage · %ld protectorat · %ld concordat · %ld cité · %ld défection(s)\n",
-           tot_serv, tot_prot, tot_conc, tot_cite, tot_defect);
+    printf("   suzeraineté ................. %ld servage · %ld protectorat · %ld concordat · %ld cité · %ld défection(s) · %ld annexion(s) par digestion (étage 3)\n",
+           tot_serv, tot_prot, tot_conc, tot_cite, tot_defect, tot_annex);
     printf("   fronde vassale .............. %ld ligue(s) · %ld fronde(s) → %ld indép. · %ld renversement(s) · %ld écrasée(s)  (les TROIS fins doivent exister)\n",
            tot_ligues, tot_frondes, tot_indep, tot_renvers, tot_ecrase);
     printf("   batailles dans le temps ..... %ld livrées · %.0f j/bataille · %ld déroutes · %ld ralliement(s) · %ld décrochages · %ld renforts · %ld nuls | morts choc %ld vs POURSUITE %ld (ratio %.1fx — la poursuite doit DOMINER le choc si la cavalerie domine la compo)\n",

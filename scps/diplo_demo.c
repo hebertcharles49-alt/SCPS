@@ -514,6 +514,72 @@ int main(int argc,char**argv){
            (v_sated - objective) < 0.3f*(v_hungry - objective));
     }
 
+    /* ── VASSALITÉ SUR LA DURÉE (pipeline diplo étage 3) ──────────────────────────────
+     * La VALEUR cible, l'ÉTHOS décide la MÉTHODE. On vérifie : (a) la cicatrice d'annexion est
+     * une COORDONNÉE surfacée (fléau, demo_bonus=0 — pas un modificateur de croissance plat) ;
+     * (b) l'intégration MONTE à la paix mais LENTEMENT (sur la durée) ; (c) un maître ANNEXEUR
+     * DIGÈRE le vassal intégré (processus → transfert + cicatrice douce + mort du vassal). */
+    printf("\n── Vassalité sur la durée : intégration · contribution · digestion (étage 3) ──\n");
+    {
+        /* (a) la cicatrice d'annexion = COORDONNÉE de STABILITÉ surfacée, PAS un bonus de natalité. */
+        int r0 = (cap_reg>=0)?cap_reg:0;
+        econ->region[r0].annex_scar = 0.5f;
+        ProvModHit hits[PMOD_COUNT]; int nh = provmod_collect(&econ->region[r0], hits, PMOD_COUNT);
+        bool found=false; float db=-1.f, inten=-1.f;
+        for(int i=0;i<nh;i++) if(hits[i].kind==PMOD_ANNEX_SCAR){ found=true; db=hits[i].demo_bonus; inten=hits[i].intensity; }
+        ok("la cicatrice d'annexion est SURFACÉE dans le slot MODIFICATEURS (fléau visible)", found);
+        ok("elle ne touche PAS la natalité (demo_bonus=0 — c'est la STABILITÉ, lue ailleurs, pas un bonus plat)",
+           found && db==0.f);
+        ok("son intensité SUIT la plaie (la bande reflète la coordonnée [0..1])", found && inten>0.4f && inten<=1.f);
+        econ->region[r0].annex_scar = 0.f;
+
+        /* un vassal V : un pays VIVANT ≠ joueur tenant ≥1 région. */
+        int S=player, V=-1;
+        for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            if(c==S || w->country[c].role==POLITY_UNCLAIMED) continue;
+            int rc=0; for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==c) rc++;
+            if(rc>0){ V=c; break; }
+        }
+        if(V<0){ ok("(monde trop petit : pas de vassal disponible)", true); }
+        else {
+            int capS=cap_reg, cpV=w->country[V].capital_prov, capV=(cpV>=0)?w->province[cpV].region:-1;
+            if(capS>=0 && capV>=0){                              /* capitales RAPPROCHÉES (prox≈1) → test net */
+                PopCulture cs=econ->region[capS].culture;
+                econ->region[capV].culture.valeurs=cs.valeurs;   econ->region[capV].culture.subsistance=cs.subsistance;
+                econ->region[capV].culture.parente=cs.parente;   econ->region[capV].culture.religion=cs.religion;
+                econ->region[capS].culture.ethos=ETHOS_MERCANTILE;  /* tient-et-traire, NE digère pas */
+            }
+            /* (b) INTÉGRATION : V vassal de S, à la paix → le lien MÛRIT, lentement. */
+            diplo_set_vassal(dp,S,V,CONTRAT_PROTECTORAT);
+            dp->v_integration[V]=0.f; dp->v_grief[V]=0.f;
+            diplo_suzerainty_tick(dp,w,econ,wp);
+            float i1=dp->v_integration[V];
+            ok("l'intégration MONTE dès la 1re année de paix", i1>0.f);
+            ok("mais LENTEMENT (une année ne mûrit pas le lien : sous le seuil de contribution 0.65)", i1<0.65f);
+            for(int t=0;t<25;t++){ dp->v_grief[V]=0.05f; diplo_suzerainty_tick(dp,w,econ,wp); }
+            ok("après ~25 ans de paix, le lien a MÛRI (intégration ≥0.6) et reste BORNÉE ≤1",
+               dp->v_integration[V]>=0.6f && dp->v_integration[V]<=1.f);
+            /* (c) DIGESTION : maître ANNEXEUR + vassal bien intégré (amorcé près du terme) → absorption. */
+            if(capS>=0) econ->region[capS].culture.ethos=ETHOS_DOMINATEUR;
+            dp->v_integration[V]=0.9f; dp->v_annex[V]=0.95f;
+            int annex0=dp->n_annex;
+            for(int t=0;t<12 && w->country[V].role!=POLITY_UNCLAIMED;t++){
+                dp->v_grief[V]=0.05f;
+                if(capS>=0) econ->region[capS].treasury=1.0e9f;   /* de quoi payer la digestion */
+                diplo_suzerainty_tick(dp,w,econ,wp);
+            }
+            int vleft=0; bool scar=false;
+            for(int r=0;r<econ->n_regions;r++){
+                if(econ->region[r].owner==V) vleft++;
+                if(econ->region[r].owner==S && econ->region[r].annex_scar>0.f) scar=true;
+            }
+            ok("un maître ANNEXEUR DIGÈRE le vassal intégré (annexion-processus aboutie)", dp->n_annex>annex0);
+            ok("le vassal digéré DISPARAÎT (role=UNCLAIMED)", w->country[V].role==POLITY_UNCLAIMED);
+            ok("les régions de l'ex-vassal passent au maître (plus aucune à V)", vleft==0);
+            ok("au moins une région annexée porte une cicatrice DOUCE (la plaie de fierté)", scar);
+        }
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

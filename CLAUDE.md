@@ -498,8 +498,29 @@
   BUTIN : `diplo_settle` trie l'occupé par valeur SUBJECTIVE décroissante (l'affamé exige le GRENIER, le
   budget OBJECTIF borne). VALEUR = cible, ÉTHOS = méthode (appétits non écrasés). Banc INVARIANT
   anti-modificateur (diplo_demo 51/51). Tunables `AI_COVET_W` 0.5 · `AI_COMPLEMENT_W` 1.0. ⚠ RE-BASELINE
-  (ciblage). `make test` 40/40 · determinism STABLE · **SAVE non bumpé**. À VENIR (étage 3) : la VASSALITÉ
-  sur la durée (acquérir/tenir/intégrer/annexer avec soft-scar) — non encore implémentée.
+  (ciblage). `make test` 40/40 · determinism STABLE · **SAVE non bumpé**.
+- **PIPELINE DIPLO IA — la VASSALITÉ SUR LA DURÉE (étage 3) (2026-06-25)** : la suite logique — la VALEUR
+  choisit la CIBLE, l'ÉTHOS décide la MÉTHODE (tenir-et-traire vs DIGÉRER). Tout vit dans `diplo_suzerainty_tick`
+  (annuel) sur des vassaux EXISTANTS. **(intégration)** un vassal TENU à la paix se rapproche de son maître
+  (`v_integration[v]` [0..1], ∝ proximité culturelle RÉELLE `suz_culture_prox` (D∞ des axes PopCulture) ×
+  appréciation (1−grief)) — une vitesse 1/`AI_VASSAL_INTEGRATE_YEARS` (20). **(contribution typée)** passé
+  `AI_VASSAL_CONTRIB_GATE` (0.65, bond MÛRI), le vassal VERSE selon sa FONCTION (`vassal_function` : agraire→
+  vivres au pool P1 / martial→`mil_stock` / commerce→`treasury`) × appréciation, à hauteur `AI_VASSAL_CONTRIB_BASE`
+  de son potentiel — le canal va à la CAPITALE du maître. **(annexion-PROCESSUS)** un maître ANNEXEUR (éthos
+  Dominateur/Honneur) DIGÈRE un vassal INTÉGRÉ (`AI_ANNEX_MIN_INTEGRATION` 0.65) : durée ∝ prix `country_price`
+  × (1 − `ANNEX_INTEGRATION_DISCOUNT`·intégration), PAYÉE `AI_ANNEX_GOLD_PER_PRICE` or/an (sans or → s'essouffle) ;
+  à `v_annex[v]`≥1, transfert de TOUTES ses régions au maître (`re->owner`, idiome `settle_transfer`) + `polity_death`
+  + **cicatrice DOUCE** `re->annex_scar = ANNEX_SOFT_SCAR·(1−intégration)` (la voie patiente = bien intégré ⇒
+  peu de plaie). **(annex_scar)** plaie [0..1] qui FRAPPE la STABILITÉ (`econ_tick` : satisfaction −= annex_scar·
+  `ANNEX_SAT_W`), PAS la croissance (≠ revolt_scar), décroît ~5 ans (`ANNEX_SCAR_DECAY`) — surfacée dans le slot
+  MODIFICATEURS (`PMOD_ANNEX_SCAR`, fléau, demo_bonus=0 ; `STR_PMOD_ANNEX_*` FR+EN). **DÉTERMINISME 12 ans
+  INTACT par CONSTRUCTION** : tous les seuils (0.65) sont INATTEIGNABLES dans la fenêtre golden (intégration max
+  12/20 = 0.60 < 0.65) ⇒ aucun flux moteur ne bouge avant l'an-12 (`make golden` IDENTIQUE, vérifié). Le mécanisme
+  VIT au-delà (seed 9 : 1 annexion/200 ans — rare, BORNÉ, complète la conquête violente). ⚠ **SAVE BUMP 31→32**
+  (DiploState +`v_integration`/`v_annex`/`n_annex` ; RegionEconomy +`annex_scar` ; `save_sane` borne les trois
+  ∈[0,1] + suzerain∈[-1,n)). `suzerainty_tick` prend désormais un `World*` NON-const (l'annexion MUTE le monde).
+  Tunables registre J (10). Banc diplo_demo (61/61, +10 : surfaçage·intégration lente·digestion). Télémétrie
+  chronicle « annexion(s) par digestion ». `make test` 40/40 · determinism STABLE · golden IDENTIQUE.
 
 ## Disciplines non négociables
 

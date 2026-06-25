@@ -144,10 +144,55 @@ static Credo suz_credo(const World *w, const WorldEconomy *econ, int c){
 static SuzContrat contrat_adouci(SuzContrat c){
     return (c==CONTRAT_SERVAGE)?CONTRAT_PROTECTORAT:(c==CONTRAT_PROTECTORAT)?CONTRAT_CONCORDAT:c;
 }
+/* ── VASSALITÉ SUR LA DURÉE (pipeline diplo étage 3) — helpers ────────────────────────
+ * La VALEUR (prix) choisit la CIBLE ; l'ÉTHOS décide la MÉTHODE (tenir-et-traire vs digérer).
+ * Tout mord APRÈS l'an-12 (seuils inatteignables dans la fenêtre golden) → déterminisme intact. */
+static void polity_death(DiploState *d, World *w, WorldEconomy *econ, int dead);  /* défini plus bas */
+
+/* PROXIMITÉ CULTURELLE [0..1] de deux pays (par leur capitale) — 1 = identique. D∞ sur les axes
+ * de CONTENU de la PopCulture (mêmes axes que culture_content_distance), normalisé sur [0..10]. */
+static float suz_culture_prox(const World *w, const WorldEconomy *econ, int a, int b){
+    int ca=(a>=0&&a<w->n_countries)?w->country[a].capital_prov:-1;
+    int cb=(b>=0&&b<w->n_countries)?w->country[b].capital_prov:-1;
+    int ra=(ca>=0&&ca<w->n_provinces)?w->province[ca].region:-1;
+    int rb=(cb>=0&&cb<w->n_provinces)?w->province[cb].region:-1;
+    if (ra<0||ra>=econ->n_regions||rb<0||rb>=econ->n_regions) return 0.5f;   /* inconnu → neutre */
+    const PopCulture *pa=&econ->region[ra].culture, *pb=&econ->region[rb].culture;
+    float dv=absf(pa->valeurs-pb->valeurs),   ds=absf(pa->subsistance-pb->subsistance),
+          dp=absf(pa->parente-pb->parente),   dr=absf(pa->religion-pb->religion);
+    float D=dv; if(ds>D)D=ds; if(dp>D)D=dp; if(dr>D)D=dr;
+    return clampf(1.f - D/10.f, 0.f, 1.f);
+}
+/* FONCTION d'un vassal — sa plus forte VOCATION (somme sur ses régions). Sort aussi les
+ * trois potentiels (le canal reçoit une part de CELUI de sa fonction). */
+typedef enum { VFN_COMMERCE=0, VFN_AGRAIRE, VFN_MARTIAL } VassalFunction;
+static VassalFunction vassal_function(const WorldEconomy *e, int cid,
+                                      float *out_food, float *out_gold, float *out_mil){
+    float food=0.f, gold=0.f, mil=0.f;
+    for (int r=0;r<e->n_regions;r++){
+        const RegionEconomy *re=&e->region[r];
+        if (re->owner!=cid) continue;
+        food += re->raw_cap[RES_GRAIN]+re->raw_cap[RES_LIVESTOCK]+re->raw_cap[RES_FISH];
+        gold += re->raw_cap[RES_GOLD] + re->treasury*0.01f;
+        mil  += re->raw_cap[RES_IRON]+re->raw_cap[RES_COPPER] + re->mil_stock;
+    }
+    if (out_food) *out_food=food;
+    if (out_gold) *out_gold=gold;
+    if (out_mil)  *out_mil =mil;
+    if (food>=gold && food>=mil) return VFN_AGRAIRE;
+    if (mil >=gold && mil >=food) return VFN_MARTIAL;
+    return VFN_COMMERCE;
+}
+/* PRIX OBJECTIF d'un pays (Σ prix de ses régions) — borne la DURÉE et le COÛT de la digestion. */
+static float country_price(const WorldEconomy *e, int cid){
+    float p=0.f;
+    for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==cid) p+=diplo_province_price(e,r);
+    return p;
+}
 #define FRONDE_RATIO     1.2f
 #define FRONDE_GRIEF_MIN 0.45f
 
-void diplo_suzerainty_tick(DiploState *d, const World *w, WorldEconomy *econ,
+void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                            const WorldProsperity *wp){
     if (!d||!w||!econ) return;
     int capreg[SCPS_MAX_COUNTRY];                /* où coule le tribut */
@@ -257,6 +302,54 @@ void diplo_suzerainty_tick(DiploState *d, const World *w, WorldEconomy *econ,
           if (d->v_loyal[v]>0.f){ g-=0.04f; d->v_loyal[v]-=365.f; }   /* loyauté achetée : décline + bloque la ligue */
           else g-=0.01f;
           d->v_grief[v]=clampf(g,0.f,1.f);
+        }
+        /* ── VASSALITÉ SUR LA DURÉE (étage 3) : intégration → contribution typée → digestion ──
+         * À la PAIX (hors ligue), le lien MÛRIT : le vassal s'intègre, puis CONTRIBUE selon sa
+         * fonction ; un maître ANNEXEUR (éthos) le DIGÈRE alors par un PROCESSUS de durée. Tous
+         * les seuils (0.65) sont INATTEIGNABLES en 12 ans (max 12/20=0.60) ⇒ golden intact. */
+        if (d->status[s][v]!=DIPLO_WAR && !d->v_ligue[v]){
+            float prox=suz_culture_prox(w,econ,s,v), appr=1.f-d->v_grief[v];
+            /* (a) INTÉGRATION — d'autant plus vite que les cultures sont PROCHES et le grief BAS. */
+            float irate=(1.f/tune_f("AI_VASSAL_INTEGRATE_YEARS",20.f))*(0.3f+0.7f*prox)*appr;
+            d->v_integration[v]=clampf(d->v_integration[v]+irate,0.f,1.f);
+            float gate=tune_f("AI_VASSAL_CONTRIB_GATE",0.65f);
+            /* (b) CONTRIBUTION TYPÉE — bond MÛRI : le vassal verse selon sa FONCTION × appréciation,
+             *     dans le canal correspondant du maître (capitale = pool national P1). */
+            if (d->v_integration[v]>=gate && capreg[s]>=0 && capreg[s]<econ->n_regions){
+                float food=0.f,gold=0.f,mil=0.f; VassalFunction fn=vassal_function(econ,v,&food,&gold,&mil);
+                float base=tune_f("AI_VASSAL_CONTRIB_BASE",0.05f)*appr;
+                RegionEconomy *sc=&econ->region[capreg[s]];
+                if      (fn==VFN_AGRAIRE) sc->stock[RES_GRAIN]+=base*food;   /* vivres → pool national */
+                else if (fn==VFN_MARTIAL) sc->mil_stock       +=base*mil;    /* la levée du vassal */
+                else                      sc->treasury        +=base*gold;   /* l'or marchand */
+            }
+            /* (c) ANNEXION-PROCESSUS — un maître ANNEXEUR (Dominateur/Honneur) DIGÈRE un vassal
+             *     INTÉGRÉ : durée ∝ prix × (1−DISCOUNT·intégration), payée en or/an ; à 1.0 →
+             *     transfert + cicatrice DOUCE (la voie patiente = bien intégré ⇒ peu de plaie). */
+            Ethos es=suz_ethos(w,econ,s);
+            bool annexeur=(es==ETHOS_DOMINATEUR||es==ETHOS_HONNEUR);
+            if (annexeur && d->v_integration[v]>=tune_f("AI_ANNEX_MIN_INTEGRATION",0.65f)
+                && capreg[s]>=0 && capreg[s]<econ->n_regions){
+                float price=country_price(econ,v);
+                float gcost=tune_f("AI_ANNEX_GOLD_PER_PRICE",2.f)*price;
+                RegionEconomy *sc=&econ->region[capreg[s]];
+                if (sc->treasury>=gcost){
+                    sc->treasury-=gcost;
+                    float years=fmaxf(1.f, tune_f("AI_ANNEX_YEARS_PER_PRICE",0.5f)*price
+                                       *(1.f-tune_f("ANNEX_INTEGRATION_DISCOUNT",0.6f)*d->v_integration[v]));
+                    d->v_annex[v]=clampf(d->v_annex[v]+1.f/years,0.f,1.f);
+                } else d->v_annex[v]=fmaxf(0.f,d->v_annex[v]-0.10f);   /* sans or, le projet s'essouffle */
+                if (d->v_annex[v]>=1.f){                               /* DIGESTION ABOUTIE */
+                    float soft=tune_f("ANNEX_SOFT_SCAR",0.4f)*(1.f-d->v_integration[v]);
+                    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==v){
+                        econ->region[r].owner=(int16_t)s; econ->region[r].colonized=true;
+                        if (econ->region[r].annex_scar<soft) econ->region[r].annex_scar=soft;
+                    }
+                    polity_death(d,w,econ,v);   /* le vassal disparaît, DIGÉRÉ dans le maître */
+                    d->n_annex++;
+                    continue;                   /* v est mort : ne pas le traiter plus avant */
+                }
+            } else if (d->v_annex[v]>0.f) d->v_annex[v]=fmaxf(0.f,d->v_annex[v]-0.10f);  /* maître non-annexeur : retombe */
         }
         /* DÉFECTION individuelle (§4) : trop seul pour se liguer → changer de maître. */
         if (!d->v_ligue[v] && d->v_grief[v]>0.70f){
@@ -727,9 +820,11 @@ static void polity_death(DiploState *d, World *w, WorldEconomy *econ, int dead){
     }
     d->momentum[dead]=0.f; d->faustian[dead]=0.f; d->pirate_disarm[dead]=0;
     d->suzerain[dead]=-1; d->contrat[dead]=CONTRAT_NONE;            /* plus le vassal de personne */
+    d->v_integration[dead]=0.f; d->v_annex[dead]=0.f;              /* étage 3 : plus d'état de vassalité */
     for (int v=0;v<SCPS_MAX_COUNTRY;v++)                            /* ses vassaux : LIBÉRÉS */
         if (d->suzerain[v]==dead){ d->suzerain[v]=-1; d->contrat[v]=CONTRAT_NONE;
-                                   d->v_grief[v]=0.f; d->v_ligue[v]=0; }
+                                   d->v_grief[v]=0.f; d->v_ligue[v]=0;
+                                   d->v_annex[v]=0.f; }            /* étage 3 : digestion interrompue */
     if (d->fronde_suz==dead || d->fronde_lead==dead){ d->fronde_suz=-1; d->fronde_lead=-1; }
     for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
         if (d->occupier[r]==dead) d->occupier[r]=-1;                /* il ne tient plus rien */

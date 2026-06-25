@@ -242,6 +242,11 @@ typedef struct {
      * OUTLASTE la plaie → la reprise suit la paix). Routées par l'entrée DÉMO (provmod_collect). */
     float      ferveur;
     float      reconstruction;
+    /* CICATRICE D'ANNEXION [0..1] (pipeline diplo, étage 3d) : une province ANNEXÉE par voie
+     * de vassalité porte une plaie DOUCE — frappe la STABILITÉ (satisfaction/légitimité), PAS
+     * la croissance (distincte de revolt_scar) — qui décroît sur ~5 ans. L'intégration la
+     * RABAISSE → la voie patiente paie. Surfacée dans le slot MODIFICATEURS (fléau décroissant). */
+    float      annex_scar;
     /* Anti-saccage (§4 guerre) : une province DÉPOUILLÉE ne peut l'être à nouveau
      * avant ~5 ans (plus rien à prendre) — compteur en années, décroît chaque tick. */
     float      pillage_cd;
@@ -308,7 +313,8 @@ void econ_cold_refresh(WorldEconomy *e, const World *w);
 #define PROVF_HALIEUTIQUE  0x02u   /* ~1/3 des régions côtières : manne halieutique */
 typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE,
                PMOD_FERVEUR, PMOD_RECONSTRUCTION, PMOD_LIMON,
-               PMOD_GIBIER, PMOD_HALIEUTIQUE, PMOD_ADMIN, PMOD_COUNT } ProvModKind;
+               PMOD_GIBIER, PMOD_HALIEUTIQUE, PMOD_ADMIN,
+               PMOD_ANNEX_SCAR, PMOD_COUNT } ProvModKind;
 typedef struct {
     uint8_t kind;        /* ProvModKind */
     float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
@@ -331,6 +337,10 @@ static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int
     float scar = re->revolt_scar; if (scar < 0.f) scar = 0.f; else if (scar > 1.f) scar = 1.f;
     /* FLÉAU — la cicatrice (mécanique −50 % appliquée AILLEURS ; ici on la SURFACE, demo_bonus=0). */
     if (scar > 0.05f && n < max){ out[n].kind = PMOD_CICATRICE; out[n].intensity = scar; out[n].demo_bonus = 0.f; n++; }
+    /* FLÉAU — CICATRICE D'ANNEXION (étage 3d) : plaie douce de STABILITÉ (appliquée à la
+     * satisfaction AILLEURS), surfacée ici (demo_bonus=0 — n'entre pas dans la croissance). */
+    { float as = re->annex_scar; if (as<0.f) as=0.f; else if (as>1.f) as=1.f;
+      if (as > 0.05f && n < max){ out[n].kind = PMOD_ANNEX_SCAR; out[n].intensity = as; out[n].demo_bonus = 0.f; n++; } }
     /* FAVEUR — TERRE D'ABONDANCE : sous-peuplée + nourrie + en paix → +natalité (entrée DÉMO). */
     float eff = econ_region_effcap(re);
     if (eff > 1.f && n < max){

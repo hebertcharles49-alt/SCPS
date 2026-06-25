@@ -50,11 +50,22 @@ vert · 0 warning) :
 - **Pipeline diplo (étages 1-2)** : `ai_province_value` SUBJECTIVE (prix objectif + BESOIN
   Σ raw_cap×stress(runway)×prix) → `ai_pick_rival` convoite (AI_COVET_W), `diplo_settle`
   butin needs-driven (l'affamé exige le grenier). Banc INVARIANT anti-modificateur
-  (diplo_demo 51/51 : affamé 123 vs repu 30). **À VENIR** : étage 3 (vassalité sur la
-  durée — acquérir/tenir/intégrer/annexer avec soft-scar) NON implémenté.
+  (diplo_demo 51/51 : affamé 123 vs repu 30).
+- **Pipeline diplo (étage 3) — VASSALITÉ SUR LA DURÉE** : la VALEUR cible, l'ÉTHOS la MÉTHODE.
+  Dans `diplo_suzerainty_tick` : `v_integration` monte à la paix (∝ proximité culturelle ×
+  appréciation, 1/`AI_VASSAL_INTEGRATE_YEARS`) ; passé `AI_VASSAL_CONTRIB_GATE` (0.65) le vassal
+  VERSE une contribution TYPÉE (agraire→vivres / martial→mil_stock / commerce→or, `vassal_function`)
+  à la capitale du maître ; un maître ANNEXEUR (Dom/Honneur) DIGÈRE un vassal intégré — PROCESSUS
+  de durée ∝ prix×(1−intégration), payé en or, à terme transfert + `polity_death` + `annex_scar`
+  DOUCE (∝ 1−intégration) qui frappe la SATISFACTION (pas la croissance), décroît ~5 ans, surfacée
+  en `PMOD_ANNEX_SCAR`. **Golden-safe PAR CONSTRUCTION** : seuils 0.65 inatteignables en 12 ans
+  (max 12/20=0.60) ⇒ `make golden` IDENTIQUE (pas de re-baseline). Vivant au-delà : seed 9 1 annexion
+  /200 ans (rare/borné). ⚠ **SAVE BUMP 31→32** (DiploState +3 champs · RegionEconomy +annex_scar ;
+  `save_sane` borne). Banc diplo_demo 61/61 (+10). `suzerainty_tick` → `World*` non-const.
 
-Tous SAVE non bumpés (aucune struct sérialisée n'a grandi). RE-BASELINE du hash 12 ans
-(golden mis à jour, diff revu).
+Étages éco/IA/wild/diplo-1-2 : SAVE non bumpés. Diplo étage 3 : **SAVE 31→32** (structs grandies).
+RE-BASELINE du hash 12 ans pour les arcs ÉCO (golden mis à jour) ; diplo étage 3 N'A PAS re-baseliné
+(golden IDENTIQUE — l'étage mord après l'an-12).
 
 ---
 

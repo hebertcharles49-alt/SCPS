@@ -364,6 +364,8 @@
     X(STR_PMOD_HALIEU_EFF,     "Des bancs de poissons grouillent au large : la pêche nourrit une côte populeuse.") \
     X(STR_PMOD_ADMIN_NOM,      "Bonne administration") \
     X(STR_PMOD_ADMIN_EFF,      "Des institutions solides tiennent l'ordre et les services : à l'abri du désordre, les familles prospèrent.") \
+    X(STR_PMOD_ANNEX_NOM,      "Annexion récente") \
+    X(STR_PMOD_ANNEX_EFF,      "Une province arrachée à son ancien maître par l'annexion porte une plaie de fierté : la stabilité reste fragile et l'humeur boude tant que les esprits ne se sont pas faits à la nouvelle bannière.") \
     /* GLOSSAIRE des concepts (hover_*) — TITRES des fiches (la définition réutilise
      * les STR_HOVER_* existants). Catégorie & alias vivent dans la table C
      * (scps_lang.c) ; ici, seul le mot-titre face-joueur. */ \

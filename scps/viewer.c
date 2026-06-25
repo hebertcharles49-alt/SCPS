@@ -4590,7 +4590,11 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 31u           /* v31 : EMPREINTE TUNABLES — SaveHeader gagne `tune_ck` (FNV des surcharges
+#define SAVE_VERSION 32u           /* v32 : VASSALITÉ SUR LA DURÉE (pipeline diplo étage 3) — DiploState gagne
+                                    * v_integration[]/v_annex[] (+ n_annex) et RegionEconomy gagne annex_scar ⇒
+                                    * sizeof(DiploState) & sizeof(WorldEconomy) changent → <v32 refusé. save_sane
+                                    * borne annex_scar/v_integration/v_annex ∈ [0,1] et suzerain ∈ [-1,n).
+                                    * v31 : EMPREINTE TUNABLES — SaveHeader gagne `tune_ck` (FNV des surcharges
                                     * SCPS_TUNE résolues, tune_active_string) ⇒ sizeof(SaveHeader) change → <v31
                                     * refusé. Au chargement, un tune_ck DIFFÉRENT AVERTIT (la partie évoluera sous
                                     * d'AUTRES règles ⇒ replays/graines-partagées invalides) sans bloquer le load.
@@ -4846,7 +4850,10 @@ static bool save_sane(const World *w, const Sim *s, int player){
     if (s->econ->n_regions<0 || s->econ->n_regions>SCPS_MAX_REG) return false;
     for (int r=0;r<s->econ->n_regions;r++){ const RegionEconomy *re=&s->econ->region[r];
         if (re->owner < -1 || re->owner >= w->n_countries) return false;
-        if (re->pop.n_groups<0 || re->pop.n_groups>SCPS_MAX_GROUPS) return false; }
+        if (re->pop.n_groups<0 || re->pop.n_groups>SCPS_MAX_GROUPS) return false;
+        /* étage 3 (v32) : la cicatrice d'annexion FRAPPE la satisfaction — un forgé hors-[0,1]
+         * fausserait l'humeur ; on la borne comme toute coordonnée désérialisée. */
+        if (!(re->annex_scar>=0.f && re->annex_scar<=1.f)) return false; }
     if (s->rn->n<0 || s->rn->n>SCPS_MAX_ROUTES) return false;
     for (int i=0;i<s->rn->n;i++){ const TradeRoute *rt=&s->rn->route[i];
         if (rt->ra<0 || rt->ra>=s->econ->n_regions || rt->rb<0 || rt->rb>=s->econ->n_regions) return false;
@@ -4866,6 +4873,13 @@ static bool save_sane(const World *w, const Sim *s, int player){
      * un occupier forgé indexerait w->country, un taken_region forgé econ->region. */
     for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++)
         if (s->dp->occupier[r] < -1 || s->dp->occupier[r] >= w->n_countries) return false;
+    /* étage 3 (v32) : le lien suzerain (indexé par l'annexion-processus) + les jauges
+     * d'intégration/d'annexion désérialisées — un forgé hors-domaine fausserait la digestion
+     * (transfert de régions) ou ferait une boucle d'indexation hors-borne. Refus net. */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        if (s->dp->suzerain[c] < -1 || s->dp->suzerain[c] >= w->n_countries) return false;
+        if (!(s->dp->v_integration[c]>=0.f && s->dp->v_integration[c]<=1.f)) return false;
+        if (!(s->dp->v_annex[c]      >=0.f && s->dp->v_annex[c]      <=1.f)) return false; }
     for (int i=0;i<SCPS_MAX_COUNTRY;i++)
         if (s->camp->army[i].taken_region < -1 || s->camp->army[i].taken_region >= s->econ->n_regions) return false;
     /* P0 : COMPTEURS désérialisés qui BORNENT des boucles / indexent des tableaux, jusqu'ici NON revalidés

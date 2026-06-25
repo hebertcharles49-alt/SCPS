@@ -99,6 +99,15 @@ typedef struct DiploState {
     /* chronique fronde */
     int n_ligues, n_frondes, n_indep, n_renvers, n_ecrase, n_defect_paix, n_defect_guerre;
     int n_lev_don, n_lev_allege, n_lev_divise, n_lev_intim;
+    /* ── VASSALITÉ SUR LA DURÉE (pipeline diplo étage 3) — la VALEUR cible, l'ÉTHOS décide la
+     * MÉTHODE (tenir-et-traire vs digérer). v_integration : un vassal TENU à la paix se rapproche
+     * de son maître [0..1] (∝ proximité culturelle réelle × appréciation) ; passé un seuil il VERSE
+     * une contribution TYPÉE (commerce/agraire/martial). v_annex : un maître ANNEXEUR (Dom/Honneur)
+     * DIGÈRE un vassal intégré — PROCESSUS de durée ∝ prix × (1−intégration), payé en or ; à 1.0,
+     * transfert + cicatrice DOUCE. (Tout mord APRÈS l'an-12 ⇒ déterminisme golden intact.) */
+    float    v_integration[SCPS_MAX_COUNTRY];   /* [0..1] intégration du vassal vers son maître */
+    float    v_annex       [SCPS_MAX_COUNTRY];  /* [0..1] avancement de l'annexion-processus */
+    int      n_annex;                            /* chronique : annexions PAR DIGESTION abouties */
 } DiploState;
 
 /* Les QUATRE contrats de suzeraineté — quatre logiques (cf. brief §3). */
@@ -121,8 +130,9 @@ void        diplo_set_trade_pact(DiploState *d, int a, int b, bool on);
  * léger 2 %), APPEL du protecteur (les guerres du protégé l'appellent), DÉFECTION
  * (ratio de force < ~1.15 → dénonciation ; le serf part en guerre), ACCEPTATION par
  * la MENACE (un petit SANS allié sous un voisin écrasant ≥ 1.8 accepte le protectorat
- * — la voie « menace » ; la voie « mission » D3 viendra par statecraft). */
-void diplo_suzerainty_tick(DiploState *d, const World *w, WorldEconomy *econ,
+ * — la voie « menace » ; la voie « mission » D3 viendra par statecraft).
+ * étage 3 : peut MUTER le World (l'annexion-processus DIGÈRE un vassal → polity_death). */
+void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                            const WorldProsperity *wp);
 /* Fidélité d'un vassal — pour la membrane (le ratio 1,2 ne s'affiche JAMAIS ;
  * la fronde se PRESSENT en bandes et en signes, elle ne se calcule pas à l'écran). */

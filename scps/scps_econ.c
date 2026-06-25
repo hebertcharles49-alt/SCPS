@@ -1801,7 +1801,10 @@ void econ_tick(WorldEconomy *e, float dt) {
             re->strata[c].wealth=fmaxf(0.f,budget);
             float basket=(need_w>0.f)?met_w/need_w:0.5f;
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
-            re->strata[c].satisfaction=clampf(basket - over_tax[c]*K_TAX_AGIT, 0.f, 1.f);
+            /* CICATRICE D'ANNEXION (étage 3d) : la plaie douce frappe la STABILITÉ — elle ABAISSE
+             * la satisfaction (donc l'agitation monte) sans toucher la croissance (≠ revolt_scar). */
+            re->strata[c].satisfaction=clampf(basket - over_tax[c]*K_TAX_AGIT
+                                              - re->annex_scar*tune_f("ANNEX_SAT_W",0.5f), 0.f, 1.f);
             if (rid<SCPS_MAX_REG) g_basket_pc[rid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
             float nm_c=(nbasket>0)?(float)nsat/(float)nbasket:0.f;   /* part BRUTE du panier couverte */
             nmsum += nm_c*re->strata[c].pop; nmpop += re->strata[c].pop;
@@ -1859,6 +1862,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         re->revolt_scar    = fmaxf(0.f, re->revolt_scar    - 0.25f*dt);
         re->ferveur        = fmaxf(0.f, re->ferveur        - tune_f("PROVMOD_FERVEUR_DECAY",0.067f)*dt);
         re->reconstruction = fmaxf(0.f, re->reconstruction - tune_f("PROVMOD_RECON_DECAY",  0.10f )*dt);
+        re->annex_scar     = fmaxf(0.f, re->annex_scar     - tune_f("ANNEX_SCAR_DECAY",    0.20f )*dt);  /* étage 3d : ~5 ans */
         /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE région — pas seulement colonisée.) */
         net_growth *= (1.f - 0.5f*re->revolt_scar);
         net_growth *= dt;   /* cumulatif → suit le pas (mensuel : 1/12 d'an) */
