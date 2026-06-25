@@ -242,6 +242,9 @@ int   diplo_war_claim (const DiploState *d, const World *w,
  * développé coûte cher (victoire DÉCISIVE requise) ; un arrière-pays est bon marché ;
  * une province SACCAGÉE (valeur effondrée) devient moins chère à annexer. */
 float diplo_province_price(const WorldEconomy *econ, int region);
+/* VALEUR SUBJECTIVE (pipeline diplo) : prix objectif + BESOIN (Σ raw_cap × stress(runway de
+ * cid) × prix) + stratégique. `fc` = forecast de cid (econ_country_forecast), NULL = objectif seul. */
+float ai_province_value(const WorldEconomy *econ, int cid, int region, const EconForecast *fc);
 float diplo_war_budget(const DiploState *d, const World *w, const WorldEconomy *econ,
                        int attacker, int defender);  /* domination militaire + prime de score */
 float diplo_country_value(const WorldEconomy *econ, int cid);             /* Σ prix des provinces */

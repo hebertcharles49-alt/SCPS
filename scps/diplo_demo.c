@@ -490,6 +490,30 @@ int main(int argc,char**argv){
         } else ok("(monde trop petit pour le test d'esclavage)", true);
     }
 
+    /* ── INVARIANT ANTI-MODIFICATEUR (pipeline diplo, valeur subjective) ────────────
+     * Deux empires regardent le MÊME grenier : l'AFFAMÉ (runway food court → stress haut) le
+     * valorise HAUT, le REPU (runway long → stress nul) s'en tient au prix OBJECTIF. Mêmes
+     * valeurs = échec (cela voudrait dire une hiérarchie de criticité CODÉE, pas émergente). */
+    printf("\n── Valeur SUBJECTIVE de province (besoin ⇒ valeur, pas de hiérarchie codée) ──\n");
+    {
+        int fr=-1;
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].raw_cap[RES_GRAIN]>0.5f){ fr=r; break; }
+        if (fr<0){ fr=0; econ->region[0].raw_cap[RES_GRAIN]=8.f; }
+        econ->region[fr].price[RES_GRAIN]=econ_base_price(RES_GRAIN)*2.f;   /* grain RARE (cher) */
+        EconForecast hungry, sated;
+        memset(&hungry,0,sizeof hungry); memset(&sated,0,sizeof sated);
+        for (int g=0;g<RES_COUNT;g++){ hungry.runway[g]=100.f; sated.runway[g]=100.f; }
+        hungry.runway[RES_GRAIN]=2.f;     /* AFFAMÉ : le grain manque dans 2 ans */
+        float v_hungry=ai_province_value(econ, player, fr, &hungry);
+        float v_sated =ai_province_value(econ, player, fr, &sated);
+        float objective=diplo_province_price(econ, fr);
+        printf("   grenier (rég %d) : affamé=%.1f vs repu=%.1f (objectif=%.1f)\n", fr, v_hungry, v_sated, objective);
+        ok("l'AFFAMÉ valorise le grenier PLUS HAUT que le REPU (valeur subjective émergente)",
+           v_hungry > v_sated + 1.f);
+        ok("le covet du REPU est BIEN MOINDRE que celui de l'affamé (il s'éteint avec le runway long)",
+           (v_sated - objective) < 0.3f*(v_hungry - objective));
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

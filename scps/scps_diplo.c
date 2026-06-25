@@ -747,13 +747,16 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
         for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
             if (d->occupier[r]==winner && econ->region[r].owner==loser
                 && econ->region[r].culture.settled) list[n++]=r;
-        /* tri : adjacentes au vainqueur d'abord, puis prix croissant (insertion, n petit). */
+        /* tri (pipeline diplo, étage 2 — butin NEEDS-DRIVEN) : adjacentes au vainqueur d'abord,
+         * puis VALEUR SUBJECTIVE décroissante — l'affamé EXIGE le GRENIER, pas la grande cité.
+         * Le BUDGET (prix OBJECTIF, plus bas) borne toujours la prise ; seul l'ORDRE change. */
+        EconForecast fc; econ_country_forecast(econ, winner, tune_f("AI_PROJ_HORIZON",25.f), &fc);
         for (int i=1;i<n;i++){
-            int r=list[i]; bool ra=settle_adj_winner(econ,winner,r); float rp=diplo_province_price(econ,r);
+            int r=list[i]; bool ra=settle_adj_winner(econ,winner,r); float rv=ai_province_value(econ,winner,r,&fc);
             int j=i-1;
             while (j>=0){
-                bool ja=settle_adj_winner(econ,winner,list[j]); float jp=diplo_province_price(econ,list[j]);
-                if ((!ja && ra) || (ja==ra && jp>rp)){ list[j+1]=list[j]; j--; } else break;
+                bool ja=settle_adj_winner(econ,winner,list[j]); float jv=ai_province_value(econ,winner,list[j],&fc);
+                if ((!ja && ra) || (ja==ra && jv<rv)){ list[j+1]=list[j]; j--; } else break;
             }
             list[j+1]=r;
         }
@@ -942,6 +945,36 @@ float diplo_province_price(const WorldEconomy *econ, int region){
     price *= scar;
     return clampf(price, PRICE_FLOOR, PRICE_CAP);
 }
+
+/* ── VALEUR SUBJECTIVE D'UNE PROVINCE (pipeline diplo, étage 1) ──────────────────
+ * La valeur OBJECTIVE (diplo_province_price : pop+bâti, identique pour tous) ne dit pas ce
+ * dont CE pays a BESOIN — l'IA raflait la plus RICHE, pas celle qu'il lui FAUT. On ajoute le
+ * BESOIN (= le score de colonisation appliqué aux provinces d'AUTRUI : Σ raw_cap × stress(runway
+ * de `cid`) × prix) + un terme STRATÉGIQUE (adjacence à moi, port). DÉRIVÉE — lue de raw_cap/
+ * runway/prix/bâti, AUCUN état stocké, AUCUN modificateur. Le forecast `fc` est celui de `cid`
+ * (calculé UNE fois par l'appelant). La valeur ÉMERGE : le grenier vaut cher pour l'AFFAMÉ
+ * (runway food court → stress haut), rien pour le REPU — aucune hiérarchie de criticité codée. */
+float ai_province_value(const WorldEconomy *econ, int cid, int region, const EconForecast *fc){
+    if (!econ || region<0 || region>=econ->n_regions) return 0.f;
+    const RegionEconomy *re=&econ->region[region];
+    float base = diplo_province_price(econ, region);   /* socle OBJECTIF (pop+bâti) */
+    float covet=0.f;
+    if (fc){
+        float safety=tune_f("AI_SAFETY_HORIZON",12.f);
+        for (int g=1; g<RES_PROD_FIRST; g++){
+            if (re->raw_cap[g]<=0.f) continue;
+            float rw=fc->runway[g]; if (rw<0.05f) rw=0.05f;
+            float stress=clampf(safety/rw, 0.f, 4.f);            /* runway court → convoité */
+            covet += re->raw_cap[g] * stress * re->price[g];     /* BESOIN (subjectif, anticipé) */
+        }
+    }
+    float strat=0.f;                                            /* STRATÉGIQUE : front + débouché */
+    if (cid>=0) for (int s=0;s<econ->n_regions;s++)
+        if (econ->adj[region][s] && econ->region[s].owner==cid){ strat+=2.f; break; }
+    if (re->build.port>0.f) strat += 1.f;
+    return base + covet + strat;   /* covet à poids 1 ici ; AI_COVET_W pondère AU SITE (ai_pick_rival) */
+}
+
 #define BUDGET_DOM    300.f  /* valeur achetable par cran de domination militaire (au-delà de 0.5) */
 #define BUDGET_SCORE  0.40f  /* … + une prime du score accumulé (une victoire décisive prend plus) */
 float diplo_war_budget(const DiploState *d, const World *w, const WorldEconomy *econ, int a, int b){

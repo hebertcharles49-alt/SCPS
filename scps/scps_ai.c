@@ -401,6 +401,10 @@ static int ai_pick_rival(const AiActor *a, const World *w, const WorldEconomy *e
                          const WorldProsperity *wp, const DiploState *diplo, float my_army,
                          Resource want){
     int best=-1; float bestscore=0.f;
+    /* VALEUR SUBJECTIVE (pipeline diplo, étage 2) : on vise qui TIENT ce qu'on convoite, pas
+     * seulement le faible/menaçant. Le forecast de `a` (runway/shortfall) se calcule UNE fois. */
+    EconForecast fc; econ_country_forecast(econ, a->cid, tune_f("AI_PROJ_HORIZON",25.f), &fc);
+    float covet_w = tune_f("AI_COVET_W", 0.5f);
     for (int b=0; b<w->n_countries; b++){
         if (b==a->cid) continue;
         if (w->country[b].role==POLITY_UNCLAIMED) continue;
@@ -424,11 +428,17 @@ static int ai_pick_rival(const AiActor *a, const World *w, const WorldEconomy *e
         /* CROISADE : une foi orthodoxe a une CHANCE de frapper qui développe le
          * faustien — pesée par sa ferveur (w_faith). Gardiens vs Transgresseurs. */
         float crusade = diplo_faustian_cb(w,econ,diplo,a->cid,b) ? AI_CRUSADE_W*(0.4f+a->w_faith) : 0.f;
+        /* CONVOITISE : la province la plus PRÉCIEUSE (subjectivement) que b me tient → on vise
+         * qui détient ce qui me MANQUE (l'affamé fond sur le tenant du grenier). Émergent. */
+        float coveted=0.f;
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==b){
+            float v=ai_province_value(econ, a->cid, r, &fc); if (v>coveted) coveted=v; }
         float score = rel.threat
                     + a->w_expand * 3.0f * (opportunism>0.f ? opportunism : 0.f)
                     + a->w_faith  * 5.0f * rel.schism
                     + AI_RANCOR_W * diplo_rancor(diplo, a->cid, b)
                     + crusade
+                    + covet_w * coveted                       /* VALEUR = cible (l'éthos décide la méthode) */
                     - rel.alliance
                     - AI_WIDEN_W * widen;
         if (sea_adj) score *= AI_SEA_WAR_PENALTY; /* H3 : outre-mer = logistique plus dure */

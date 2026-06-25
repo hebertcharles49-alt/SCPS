@@ -124,6 +124,12 @@
      * URGENT) au-dessus du score d'expansion de CAPACITÉ. La capacité reste le défaut (pop
      * saine) ; le besoin oriente la cible quand ça presse. 0 = colonisation aveugle (capacité). */ \
     X(AI_COLONY_NEEDS_W,      1.5f) \
+    /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
+     * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
+     * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :
+     * poids de MON manque dans le choix d'allié (s'allier à qui me COMPLÈTE). */ \
+    X(AI_COVET_W,             0.5f) \
+    X(AI_COMPLEMENT_W,        1.0f) \
     /* HAMEAUX LIBRES (POLITY_WILD) — Peuples Libres épars près des jouables (tue le « siècle
      * d'inertie » : chaque empire a 2 objectifs voisins dès l'an 0). WILD_PER_PLAYABLE hameaux
      * par jouable (0 = DÉSACTIVE) · WILD_POP graine · WILD_CAP plafond d'accueil · WILD_SPAWN_HOPS
