@@ -44,11 +44,16 @@ var _mesh_rock: ArrayMesh = null
 var _rock_mat: ShaderMaterial = null    ## roche PEINTE (strates + mottle, par-dessus le toon)
 var _cap_mat: StandardMaterial3D = null  ## coiffe herbe/neige (toon simple)
 var _built := false
+var _disabled := false                   ## « carte ancienne » : on n'affiche pas les falaises 3D
 
 func setup(cam2d: Camera2D) -> void:
 	_cam2d = cam2d
 
 func _ready() -> void:
+	_disabled = OS.has_environment("SCPS_ANTIQUE")
+	for a in OS.get_cmdline_user_args():
+		if a == "antique=on":
+			_disabled = true
 	_csv = SubViewport.new()
 	_csv.transparent_bg = true
 	_csv.size = Vector2i(get_viewport_rect().size)
@@ -348,6 +353,9 @@ func _sync_camera() -> void:
 	_ccam.transform = Transform3D(Basis(BX, BY, BZ), pc + BZ * CAM_BACK)
 
 func _process(_dt: float) -> void:
+	if _disabled:
+		visible = false
+		return
 	if _cam2d == null:
 		return
 	var par := get_parent()

@@ -480,7 +480,13 @@ func _ready() -> void:
 
 ## monte le ShaderMaterial de fondu DIRECTIONNEL (rivage). Sans lui → tuiles brutes à bords francs.
 func _setup_blend() -> void:
-	var sh := load("res://map/iso_blend.gdshader")
+	# OPT-IN « carte ancienne » (essai) : un shader cartographique remplace le splat réaliste. Display-only,
+	# déclenché par l'argument `antique=on` (ou SCPS_ANTIQUE) → ne touche pas le rendu par défaut.
+	var antique := OS.has_environment("SCPS_ANTIQUE")
+	for a in OS.get_cmdline_user_args():
+		if a == "antique=on":
+			antique = true
+	var sh := load("res://map/iso_antique.gdshader") if antique else load("res://map/iso_blend.gdshader")
 	if sh == null:
 		return
 	var mat := ShaderMaterial.new()
