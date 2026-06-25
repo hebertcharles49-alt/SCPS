@@ -616,7 +616,6 @@ static EthosFaction ai_lever_for_edifice(Edifice e){
  * martial déporte volontiers vers ses mines, le marchand/pacifiste répugne et reste court.
  * Pour l'empire qui A la terre de fer mais ne la peuple pas, c'est l'issue ; le marché tient ensuite (§3). */
 static void ai_relocate_turn(AiActor *a, WorldEconomy *econ, const AiView *v, int day){
-    (void)v;
     if (day < a->next_reloc_day) return;
     /* VOLONTÉ ∝ éthos (via les poids effectifs) : conquête haute → déporte ; commerce haut → répugne. */
     float w_reloc = 0.20f + 0.65f*a->w_expand - 0.45f*a->w_trade + 0.20f*a->w_build;
@@ -661,7 +660,9 @@ static void ai_relocate_turn(AiActor *a, WorldEconomy *econ, const AiView *v, in
         float margin = (AI_RELOC_SEED - lab)/AI_RELOC_SEED; if (margin<0.f) margin=0.f;
         for (int g=1;g<RES_COUNT;g++){
             if (re->raw_cap[g] <= 0.f) continue;
-            float shortfall = agg_d[g] - (agg_s[g]+agg_k[g]);
+            /* shortfall ANTICIPÉ (étage 3) : le manque immédiat OU le projeté (forecast) — on
+             * peuple la province-ressource AVANT le mur, pas une fois la pénurie installée. */
+            float shortfall = fmaxf(agg_d[g] - (agg_s[g]+agg_k[g]), v->fc.shortfall_proj[g]);
             if (shortfall <= 0.5f) continue;               /* l'empire n'est pas court de ce raw */
             float score = shortfall * (0.4f+margin) * re->raw_cap[g];
             if (score > best){ best=score; tgt=r; }
@@ -893,8 +894,11 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
 /* Économie : commercer OU bâtir (le frein réoriente l'énergie vers le K). */
 static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const AiView *v,
                          AgencyState *ag, RouteNetwork *rn, float brake, int day){
-    /* Famine d'abord : un peuple affamé ne bâtit ni cours ni comptoir. */
-    if (v->food < AI_FOOD_FLOOR && a->home_region>=0){
+    /* Famine d'abord : un peuple affamé ne bâtit ni cours ni comptoir. STOCK-SAFE (étage 3b) :
+     * on bâtit le GRENIER aussi quand la PRÉVISION voit le mur vivrier (food_alert = food_runway
+     * < SAFETY) — proactif, AVANT que la marge ne s'effondre (le grenier relève le plafond de
+     * stock + la capacité nourrie → coussin de réserve). */
+    if ((v->food < AI_FOOD_FLOOR || v->food_alert) && a->home_region>=0){
         if (agency_build(ag, econ, w, a->home_region, EDI_GRENIER)) a->stats.builds_other++;
         return;
     }
