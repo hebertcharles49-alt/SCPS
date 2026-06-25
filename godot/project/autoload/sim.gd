@@ -10,18 +10,21 @@ signal ticked(year: int)        ## un pas de simulation vient d'avancer
 
 const SEED_DEFAULT := 9
 
-## jours simulés par PAS, selon la vitesse (index 0 = pause)
-const SPEED_DAYS := [0, 30, 90, 180]
-const SPEED_LABELS := ["❙❙", "▶ ×1", "▶▶ ×2", "▶▶▶ ×3"]
-const STEP_PERIOD := 0.20       ## secondes entre deux pas
+## jours simulés par PAS, selon la vitesse (index 0 = pause). Ticks ALLONGÉS pour
+## un déroulé OBSERVABLE : à « normal » l'an 100 prend ~8 min (et non ~20 s) ; on
+## peut accélérer. (Display-only : aucun impact sur le déterminisme — advance_days(N)
+## roule la MÊME suite de sim_day, juste regroupée autrement.)
+const SPEED_DAYS := [0, 7, 20, 50]   ## pause · lent · normal · rapide (jours/pas)
+const SPEED_LABELS := ["❙❙", "▶ lent", "▶▶ normal", "▶▶▶ rapide"]
+const STEP_PERIOD := 0.25       ## secondes entre deux pas
 
 # `world` est UNTYPED à dessein : référencer le type `ScpsWorld` à la compilation
 # ferait échouer l'OUVERTURE du projet si la GDExtension n'est pas encore bâtie.
 # On l'instancie par NOM (ClassDB.instantiate) → le projet ouvre sans libscps, et
 # le garde-fou ci-dessous donne un message clair au lieu d'un crash de parse.
 var world = null                ## le handle moteur (GDExtension) ; null si libscps absente
-var speed_index := 1
-var _last_speed := 1            ## dernière vitesse non-pause (pour la bascule Espace)
+var speed_index := 2            ## « normal » par défaut
+var _last_speed := 2            ## dernière vitesse non-pause (pour la bascule Espace)
 var _accum := 0.0
 
 func _ready() -> void:

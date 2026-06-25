@@ -11,6 +11,8 @@ var _sidebar: Control
 var _construct: Control
 var _tech: Control
 var _econ: Control
+var _prov_detail: Control
+var _sel_prov := -1
 
 func _ready() -> void:
 	# la carte (Node2D, caméra dedans)
@@ -78,6 +80,13 @@ func _ready() -> void:
 	_econ.visible = false
 	ui.add_child(_econ)
 
+	# PROVINCE — DÉTAIL (touche V) : graphes Easy Charts des flux + camemberts +
+	# classes de la province SÉLECTIONNÉE. Caché par défaut, read-only.
+	_prov_detail = load("res://ui/province_detail.gd").new()
+	_prov_detail.name = "ProvinceDetail"
+	_prov_detail.visible = false
+	ui.add_child(_prov_detail)
+
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
 
@@ -97,6 +106,11 @@ func _unhandled_input(e: InputEvent) -> void:
 			if _econ != null:
 				_econ.visible = not _econ.visible
 				_econ.queue_redraw()
+		KEY_V:
+			if _prov_detail != null:
+				_prov_detail.show_province(_sel_prov)
+				_prov_detail.visible = not _prov_detail.visible
+				_prov_detail.queue_redraw()
 		KEY_SPACE:                       # pause ↔ reprise (parité viewer.c)
 			Sim.toggle_pause()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:        # « + » : accélérer
@@ -113,5 +127,8 @@ func _on_province_picked(province: int, _region: int, owner: int) -> void:
 		return
 	if _sidebar != null:
 		_sidebar.close()                      # un clic province referme le tiroir (exclusifs)
+	_sel_prov = province                      # mémorisé pour le détail (touche V)
 	_prov_panel.show_province(province)
 	_country_panel.show_country(owner)        # -1 (terre libre) → panneau caché
+	if _prov_detail != null and _prov_detail.visible:
+		_prov_detail.show_province(province)  # détail ouvert → suit la sélection
