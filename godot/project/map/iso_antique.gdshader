@@ -21,6 +21,8 @@ uniform float burn : hint_range(0.0, 0.8) = 0.42;
 uniform float compass_on = 1.0;
 uniform vec2 compass_uv = vec2(0.13, 0.27);
 uniform float compass_r : hint_range(8.0, 80.0) = 30.0;
+uniform float rgb_jitter : hint_range(0.0, 16.0) = 3.0;   // variation PERLIN intra-biome : ±N/255 par canal
+uniform float jitter_freq : hint_range(0.02, 0.5) = 0.12; // échelle des taches de couleur
 
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
@@ -108,6 +110,15 @@ float compass(vec2 ip, vec2 ci, float R) {
 	return v;
 }
 
+// bruit de VALEUR lissé (perlin-like) : hash de coin + interpolation smoothstep → taches DOUCES.
+float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+	vec2 i = floor(p), f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float a = hash2(i), b = hash2(i + vec2(1.0, 0.0)), c = hash2(i + vec2(0.0, 1.0)), d = hash2(i + vec2(1.0, 1.0));
+	return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 // hash entier → [0,1) (déterministe, display-only) pour varier les symboles par cellule de semis.
 float hash(uint n) {
 	n = (n << 13u) ^ n;
@@ -182,6 +193,12 @@ void fragment() {
 		float g2 = texture(noise_tex, cell * 0.012 + vec2(3.0, 7.0)).r;
 		float grain_s = is_wet(b) ? paper_grain * 0.5 : paper_grain;
 		col *= mix(1.0 - grain_s, 1.0 + grain_s, g) * mix(0.93, 1.05, g2);
+		// VARIATION PERLIN intra-biome : jitter RGB ±rgb_jitter/255 PAR CANAL (3 bruits décorrélés → micro
+		// dérive de teinte, pas juste de luminance) → les aplats RESPIRENT au lieu d'être morts.
+		vec3 jit3 = vec3(vnoise(cell * jitter_freq),
+		                 vnoise(cell * jitter_freq + vec2(37.2, 11.5)),
+		                 vnoise(cell * jitter_freq + vec2(91.7, 53.1))) - 0.5;
+		col += jit3 * (2.0 * rgb_jitter / 255.0);
 
 		if (is_water(b)) {
 			// MER : assombrie + écume près de la TERRE FERME (PAS le marais → estuaire OUVERT)
