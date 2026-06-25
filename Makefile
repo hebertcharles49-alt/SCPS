@@ -315,6 +315,20 @@ WARHOST_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
 warhost_demo: $(WARHOST_DEMO_OBJS)
 	$(CC) $(WARHOST_DEMO_OBJS) -o $@ -lm
 
+# ---- navy_demo : LA FLOTTE (rade · chantier · emport · conversion · invariants save_sane) ----
+NAVY_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+                  $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_trade.o \
+                  $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
+                  $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
+                  $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_species.o \
+                  $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
+                  $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_labor.o \
+                  $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
+                  $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_campaign.o \
+                  $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_navy_demo.o
+navy_demo: $(NAVY_DEMO_OBJS)
+	$(CC) $(NAVY_DEMO_OBJS) -o $@ -lm
+
 # ---- La campagne : les armées sur la carte (marche, siège, bataille) -------
 # Pose les primitives combat-dans-le-temps (déplacement/siège/bataille/doctrine)
 # sur une vraie carte ; non-invasif (lecture seule sur econ).
@@ -648,7 +662,7 @@ BENCH_BINS := core_demo monde_reel readout_demo species_demo tech_demo faith_dem
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \
   econ_production_demo labor_demo missions_demo ai_demo diplo_demo warhost_demo \
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
-  endgame_demo audit_eco lang_demo scps_api_demo audio_demo econ_demo culture_demo
+  endgame_demo audit_eco lang_demo scps_api_demo audio_demo econ_demo culture_demo navy_demo
 TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan fx_proof
 
 clean:

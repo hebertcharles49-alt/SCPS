@@ -105,6 +105,9 @@ fx_proof.png
 # Banc de la façade C (binaire généré)
 scps_api_demo
 
+# Banc de la flotte (binaire généré)
+navy_demo
+
 # Objets SCons (.os) — au cas où un build godot écrirait dans l'arbre moteur
 *.os
 
