@@ -24,10 +24,13 @@ const FILT_GROUPS := [
 		["Température", 8], ["Ressources", 9], ["Habitabilité", 10]]],
 ]
 
+signal charts_requested        ## Économie → « Courbes dans le temps » : ouvre le panneau Easy Charts
+
 var _tab := -1
 var _map                       # MapView (pour Filtres → set_mode)
 var _active_mode := 0
 var _chips := []               # [{rect, mode}] cliquables (Filtres)
+var _chart_btn := Rect2()      # bouton « Courbes dans le temps » (onglet Économie)
 var _hover_zones := []         # [{rect, text}] survols (sprites de ressource → nom)
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
@@ -132,6 +135,13 @@ func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> voi
 
 # ── ÉCONOMIE : Budget (econ_flux) + Commerce (intertrade), read-only ───────
 func _draw_eco(x: float, y: float, me: int) -> void:
+	# bouton : les COURBES dans le temps sont DERRIÈRE ce sous-menu (pas affichées d'office)
+	_chart_btn = Rect2(x, y, DW - 2.0 * x, 20.0)
+	VKit.fill(self, _chart_btn, VKit.COL_PANEL2)
+	VKit.box(self, _chart_btn, VKit.COL_COPPER)
+	UIKit.draw_icon(self, "menu_economy", Vector2(x + 4, y + 3), 13)
+	VKit.text(self, Vector2(x + 24, y + 3), VKit.COL_COPPER, "Courbes dans le temps  ▸", VKit.FS_SMALL)
+	y += 28
 	# — Trésor & budget de l'année (la décomposition du flux d'or) —
 	var b: Dictionary = Sim.world.budget_summary(me)
 	UIKit.draw_icon(self, "gold_coin", Vector2(x, y - 1), 16)
@@ -277,15 +287,20 @@ func _gui_input(event: InputEvent) -> void:
 			_hover_pos = event.position
 			queue_redraw()
 		return
-	if _tab == 5 and event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		for ch in _chips:
-			if ch.rect.has_point(event.position):
-				_active_mode = ch.mode
-				if _map != null:
-					_map.set_mode(ch.mode)
-				queue_redraw()
-				accept_event()
-				return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _tab == 0 and _chart_btn.has_point(event.position):   # Économie → ouvre les courbes
+			charts_requested.emit()
+			accept_event()
+			return
+		if _tab == 5:
+			for ch in _chips:
+				if ch.rect.has_point(event.position):
+					_active_mode = ch.mode
+					if _map != null:
+						_map.set_mode(ch.mode)
+					queue_redraw()
+					accept_event()
+					return
 
 # couleur d'état de marché (BandMarche : mort · pénurie · tendu · sain · engorgé)
 func _marche_col(band: int) -> Color:

@@ -79,6 +79,10 @@ func _ready() -> void:
 	_econ.name = "EconomyPanel"
 	_econ.visible = false
 	ui.add_child(_econ)
+	# les COURBES sont DERRIÈRE le sous-menu Économie (sidebar) — pas affichées d'office
+	_sidebar.charts_requested.connect(func():
+		_econ.visible = not _econ.visible
+		_econ.queue_redraw())
 
 	# PROVINCE — DÉTAIL (touche V) : graphes Easy Charts des flux + camemberts +
 	# classes de la province SÉLECTIONNÉE. Caché par défaut, read-only.
