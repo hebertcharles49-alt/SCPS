@@ -452,6 +452,54 @@
   n'avait AUCUN test : rade `navy_best_coast`/`_port`, chantier `navy_order_build` — sans port rien, UN
   seul à la fois —, complétion au tick, emport 10 paquets, conversion marchand→pirate, invariants
   `save_sane` des coques/at_sea/build_hull — 20 contrôles). Les deux RECÂBLÉS au harnais (**40 bancs**).
+- **REFONTE ÉCO — ressource PAR-OUVRIER + bouche annuelle + nourriture du spawn (2026-06-25)** : l'économie
+  passe d'une extraction `raw_cap × √pop` à du LABOR-BOUND. (A0/A1) `out = ouvriers × EXTRACT_YIELD[r] ×
+  geo_eff × effort(prix)` — table de rendement ANCRÉE (grain 800/poisson 400/bois 50/pierre·argile 25 par
+  100 ouvriers/an), le ×2 bois/fer/or REPLIÉ dans le rendement ; les ouvriers se répartissent entre brutes
+  ∝ geo_eff×prix (la part `EXTRACT_LABOR_SHARE` des journaliers, le reste staffe les manufactures). geo_eff =
+  raw_cap/`EXTRACT_GEO_REF` (qualité de tuile, MULTIPLICATEUR — pas la base). (A2) la BOUCHE est ANNUELLE
+  (1 food = ration-personne-an), grain+poisson INTERCHANGEABLES (food_sat les agrège), CALIBRÉE à la
+  géographie (`FOOD_NEED`) car un bond ×8 brut ÉCRASE `needs_met` (le moteur de fertilité : la nourriture
+  monopolise le budget des journaliers). (A3) recettes per-100-artisans — ratios INCHANGÉS, déjà compatibles.
+  (A4) techs d'output = le `tech_prod` GLOBAL existant (+77 % à plein) booste la nouvelle extraction (pas de
+  système neuf). (A5) commerce comble les déficits ; **nourriture du SPAWN** = la SEULE règle vivrière de
+  worldgen : la capitale de chaque empire naît avec un socle de grain (`SPAWN_FOOD_RAW`), tout le reste est
+  GÉOLOGIE. Calibré (seed 9) : pop/needs_met/remplissage = baseline (38.4k vs 38.8k). Tunables registre J :
+  `EXTRACT_GEO_REF` 4.5 · `EXTRACT_LABOR_SHARE` 0.65 · `FOOD_NEED` 1.0 · `SPAWN_FOOD_RAW` 12. ⚠ RE-BASELINE
+  (hash 12 ans re-baseliné — golden mis à jour). `make test` 40/40 · determinism STABLE · **SAVE non bumpé**.
+- **PIPELINE IA ÉCO — la prévision (l'IA n'est plus aveugle de ses flux) (2026-06-25)** : un pipeline de
+  DÉCISION lu des coordonnées (jamais une hiérarchie de criticité codée). (É1 forecast) `econ_country_forecast`
+  — runway/shortfall_proj/déficit STRUCTUREL par flux + food_runway, dérivés de pop/raw_cap/demande/offre/
+  stock/eff_cap/needs_met. L'offre SUIT la pop (plus de bras) jusqu'au POTENTIEL de la tuile → un flux en
+  équilibre RESTE en équilibre (seuls les déficits STRUCTURELS arment). Câblé dans `AiView.fc` (non sérialisé).
+  (É2 priorités) `top_flow = argmax(stress(runway court) × prix × deficit_vs_safe)` — la motivation ÉMERGE.
+  (É3a colonisation needs-aware) score = expansion CAPACITÉ (base, préserve la pop saine) + STEER borné vers
+  une tuile riche d'un flux à déficit URGENT ; anti-spirale : crise FOOD + aucune source au gate normal →
+  colonie de SURVIE vers la meilleure tuile vivrière (brise le poule-œuf). (É3b) relocate au shortfall
+  PROJETÉ + grenier stock-safe sur `food_alert`. Tunables : `AI_SAFETY_HORIZON` 12 · `AI_PROJ_HORIZON` 25 ·
+  `AI_SAFE_STOCK_MONTHS` 6 · `COLONY_SURVIVE_SEED` 0.5 · `AI_COLONY_NEEDS_W` 1.5. `make test` 40/40 ·
+  determinism STABLE · **SAVE non bumpé** (AiView est un cache de tick).
+- **HAMEAUX LIBRES (POLITY_WILD) — les Peuples Libres (2026-06-25)** : un rôle neuf (1 slot porteur) occupe N
+  hameaux ÉPARS près des jouables (BFS multi-source ≤ `WILD_SPAWN_HOPS`) — tue le « siècle d'inertie » (2
+  objectifs voisins dès l'an 0). Chaque hameau : pop `WILD_POP`±`WILD_POP_VAR` (≈750±, ~1500/empire), cap
+  `WILD_CAP`, réserve `WILD_HOARD`, raw food FORCÉE (`WILD_FOOD` — il se nourrit). Culture DISTINCTE du
+  voisin (race + ÉTHOS forcés ≠ l'empire adjacent) et AUCUNE religion (credo PLURALISTE, branche ANIMISTE)
+  → enclaves ÉTRANGÈRES. PASSIFS (ai_on=false : ne conquièrent/colonisent/recherchent JAMAIS). Ralliement
+  CULTUREL (la règle neuve) : contact PACIFIQUE soutenu avec l'empire voisin → owner→empire après
+  `WILD_DEFECT_YEARS` OU convergence de race ; la culture distincte devient minorité → assimilation/
+  xénophile-xénophobe. L'absorption MILITAIRE passe par la conquête (WILD = cible valide). Tunables registre
+  J (`WILD_PER_PLAYABLE` 2, 0=off · …). Télémétrie « hameaux libres ». seed 9 : 4 semés, 4 ralliés/100 ans.
+  `make test` 40/40 · **SAVE non bumpé** (owner/strata déjà sérialisés).
+- **PIPELINE DIPLO IA — valeur SUBJECTIVE de province (étages 1-2) (2026-06-25)** : l'IA raflait la province
+  la plus RICHE (valeur OBJECTIVE), pas celle dont elle a BESOIN. (É1) `ai_province_value` (diplo.c) = prix
+  objectif (`diplo_province_price`) + BESOIN (Σ raw_cap × stress(runway de cid) × prix) + stratégique —
+  DÉRIVÉE, aucun état stocké, la valeur ÉMERGE (le grenier vaut cher pour l'AFFAMÉ, rien pour le REPU). (É2)
+  CONQUÊTE : `ai_pick_rival += AI_COVET_W × best_coveted_value` (on vise qui TIENT ce qu'on convoite) ;
+  BUTIN : `diplo_settle` trie l'occupé par valeur SUBJECTIVE décroissante (l'affamé exige le GRENIER, le
+  budget OBJECTIF borne). VALEUR = cible, ÉTHOS = méthode (appétits non écrasés). Banc INVARIANT
+  anti-modificateur (diplo_demo 51/51). Tunables `AI_COVET_W` 0.5 · `AI_COMPLEMENT_W` 1.0. ⚠ RE-BASELINE
+  (ciblage). `make test` 40/40 · determinism STABLE · **SAVE non bumpé**. À VENIR (étage 3) : la VASSALITÉ
+  sur la durée (acquérir/tenir/intégrer/annexer avec soft-scar) — non encore implémentée.
 
 ## Disciplines non négociables
 
