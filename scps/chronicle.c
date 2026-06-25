@@ -310,7 +310,7 @@ int main(int argc, char **argv){
     s.drift=malloc(sizeof(ModifierStack)); s.labor=malloc(sizeof(LaborEcon));
     s.dp=malloc(sizeof(DiploState)); s.rn=malloc(sizeof(RouteNetwork));
     s.ai=calloc(SCPS_MAX_COUNTRY,sizeof(AiActor)); s.ai_on=calloc(SCPS_MAX_COUNTRY,sizeof(bool));
-    s.rs=malloc(sizeof(RevoltState)); s.host=malloc(sizeof(WarHost));
+    s.rs=malloc(sizeof(RevoltState)); s.host=calloc(1,sizeof(WarHost));   /* P1 : scratch NULL d'emblée (warhost_free sûr) */
     s.missions=malloc(sizeof(MissionsState)); s.camp=malloc(sizeof(Campaign));
     s.navy=malloc(sizeof(NavyState)); s.eg=calloc(1,sizeof(EndgameState));
     if (!w||!s.econ||!s.wp||!s.wl||!s.net||!s.ts||!s.sc||!s.ag||!s.ev||!s.drift

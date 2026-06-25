@@ -358,7 +358,10 @@ void sim_init(Sim *s, World *w) {
     ai_ensure_dominator(s->ai, s->ai_on, w->n_countries);   /* §war : un monde tout en alliances reste atone */
     demography_attach(w, s->econ, s->drift);
     demography_dyn_id_rebase(s->econ);   /* compteur de drift_id : repart au socle par sim */
-    revolt_init(s->rs); warhost_init(s->host); missions_init(s->missions);
+    /* P1 : LIBÉRER le scratch warhost du run précédent AVANT la RAZ — warhost_init re-calloc le scratch ;
+     * sans ce free, chaque ré-génère (façade) ou sim enchaîné (chronique) fuyait ~15 Ko. host est calloc'd
+     * (scratch NULL au 1er passage → free(NULL) sûr). */
+    revolt_init(s->rs); warhost_free(s->host); warhost_init(s->host); missions_init(s->missions);
     credit_init();
     navy_init(s->navy);
     if (s->eg) endgame_init(s->eg);                      /* capstone §27 : RAZ du cataclysme */
@@ -383,7 +386,7 @@ bool sim_alloc(Sim *s) {
     s->drift=malloc(sizeof(ModifierStack)); s->labor=malloc(sizeof(LaborEcon));
     s->dp=malloc(sizeof(DiploState)); s->rn=malloc(sizeof(RouteNetwork));
     s->ai=calloc(SCPS_MAX_COUNTRY,sizeof(AiActor)); s->ai_on=calloc(SCPS_MAX_COUNTRY,sizeof(bool));
-    s->rs=malloc(sizeof(RevoltState)); s->host=malloc(sizeof(WarHost));
+    s->rs=malloc(sizeof(RevoltState)); s->host=calloc(1,sizeof(WarHost));   /* P1 : calloc → scratch NULL d'emblée (free sûr) */
     s->missions=malloc(sizeof(MissionsState)); s->camp=malloc(sizeof(Campaign));
     s->navy=malloc(sizeof(NavyState)); s->eg=calloc(1,sizeof(EndgameState));
     return s->econ&&s->wp&&s->wl&&s->net&&s->ts&&s->sc&&s->ag&&s->ev&&s->drift
@@ -393,6 +396,6 @@ bool sim_alloc(Sim *s) {
 void sim_free_members(Sim *s) {
     free(s->econ); free(s->wp); free(s->wl); free(s->net); free(s->ts); free(s->sc);
     free(s->ag); free(s->ev); free(s->drift); free(s->labor); free(s->dp); free(s->rn);
-    free(s->ai); free(s->ai_on); free(s->rs); free(s->host); free(s->missions);
+    free(s->ai); free(s->ai_on); free(s->rs); warhost_free(s->host); free(s->host); free(s->missions);   /* P1 : scratch warhost */
     free(s->camp); free(s->navy); free(s->eg);
 }

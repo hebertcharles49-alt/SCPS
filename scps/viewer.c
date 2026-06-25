@@ -4859,6 +4859,26 @@ static bool save_sane(const World *w, const Sim *s, int player){
         if (s->dp->occupier[r] < -1 || s->dp->occupier[r] >= w->n_countries) return false;
     for (int i=0;i<SCPS_MAX_COUNTRY;i++)
         if (s->camp->army[i].taken_region < -1 || s->camp->army[i].taken_region >= s->econ->n_regions) return false;
+    /* P0 : COMPTEURS désérialisés qui BORNENT des boucles / indexent des tableaux, jusqu'ici NON revalidés
+     * (agency_advance, revolt_tick et les boucles d'unités leur font CONFIANCE — un compte forgé = lecture/
+     * écriture hors-bornes). On les borne comme tout le reste du chargeur ; + chaque région d'ordre indexe
+     * econ->region (purge_slice / apply_action / relocate / colonize). */
+    if (s->ag){
+        if (s->ag->n < 0 || s->ag->n > SCPS_MAX_BUILDS) return false;
+        for (int i=0;i<s->ag->n;i++){ const BuildOrder *o=&s->ag->order[i];
+            if (o->region < -1 || o->region >= s->econ->n_regions) return false;
+            if ((o->kind==AGY_RELOCATE || o->kind==AGY_COLONIZE) &&
+                (o->param < -1 || o->param >= s->econ->n_regions)) return false; }
+    }
+    if (s->rs){
+        if (s->rs->count < 0 || s->rs->count > REVOLT_MAX) return false;
+        for (int i=0;i<s->rs->count;i++)
+            if (s->rs->list[i].region < -1 || s->rs->list[i].region >= s->econ->n_regions) return false;
+    }
+    for (int i=0;i<SCPS_MAX_COUNTRY;i++){
+        if (s->camp->army[i].force.n_units < 0 || s->camp->army[i].force.n_units > ARMY_MAX_UNITS) return false;
+        if (s->host && (s->host->army[i].n_units < 0 || s->host->army[i].n_units > ARMY_MAX_UNITS)) return false;
+    }
     /* capstone §27 (v26) : EndgameState — bornes sur tous les champs-indices */
     if (s->eg) {
         const EndgameState *eg = s->eg;
@@ -4949,6 +4969,10 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
     if (!save_sane(w, s, s->player)) return 1;             /* invariants du moteur : refus net */
     demography_dyn_id_rebase(s->econ);                     /* drift_id dynamiques au-dessus du chargé */
     *params=h.params;
+    warhost_set_human(s->player);                          /* P0 : RÉTABLIR la main humaine — warhost_init l'a remise
+                                                            * à -1 ; sans ça, warhost_tick re-mobiliserait l'armée du
+                                                            * joueur tout seul après un chargement (le generate, lui,
+                                                            * le pose déjà — le load l'avait OUBLIÉ). */
     s->ready=true;
     return 0;
 }
