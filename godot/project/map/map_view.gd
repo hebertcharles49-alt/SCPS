@@ -38,6 +38,7 @@ const ISO_NEAR := 16.0          ## le plus zoomé (on plonge dans un bourg)
 enum { VIEW_GLOBE = 0, VIEW_ISO = 1 }
 
 signal province_picked(province: int, region: int, owner: int)
+signal mode_changed(m: int)     ## le mode render a changé (légende, sélecteurs)
 
 var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique · 2 régions · 3 pays)
 var view_mode := VIEW_GLOBE     ## GLOBE (overview) ou ISO (jeu) — lu par l'overlay
@@ -339,6 +340,7 @@ func _refresh_terrain() -> void:
 func set_mode(m: int) -> void:
 	mode = m
 	_refresh_terrain()
+	mode_changed.emit(m)
 
 # ── bascule GLOBE ↔ ISO en préservant le point regardé ──
 func _enter_iso(at_world: Vector2) -> void:
