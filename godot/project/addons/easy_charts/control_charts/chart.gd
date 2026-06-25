@@ -188,7 +188,10 @@ func _pre_process() -> void:
 	
 	
 	#### @node_box size, which is the whole "frame"
-	node_box = Rect2(Vector2.ZERO, frame.size - frame.position)
+	# Correctif (SCPS) : l'aire de tracé est la TAILLE du graphe en coords LOCALES.
+	# L'original soustrayait la position GLOBALE de la taille → aire faussée dès que
+	# le graphe n'est pas près de l'origine (panneau centré → débordement).
+	node_box = Rect2(Vector2.ZERO, frame.size)
 	
 	#### calculating offset from the @node_box for the @bounding_box.
 	plot_offset = _padding_offset
@@ -285,7 +288,9 @@ func _get_vertical_tick_label_pos(base_position: Vector2, text: String) -> Vecto
 func _get_tick_label(line_index: int, line_value: float) -> String:
 	var tick_lbl: String = ""
 	if x_labels.is_empty():
-		tick_lbl = ("%.2f" if x_has_decimals else "%s") % [x_min_max.left + (line_index * line_value)]
+		# Correctif (SCPS) : un x SANS décimale s'affiche en ENTIER ("%d") — sinon le
+		# pas fractionnaire (plage/échelle) imprimait « 12.33333333 » à pleine précision.
+		tick_lbl = ("%.2f" if x_has_decimals else "%d") % [x_min_max.left + (line_index * line_value)]
 	else:
 		tick_lbl = x_labels[clamp(line_value * line_index, 0, x_labels.size() - 1)]
 	
@@ -316,7 +321,9 @@ func _draw_vertical_gridline_component(p1: Vector2, p2: Vector2, line_index: int
 func _draw_horizontal_tick_label(font: Font, position: Vector2, color: Color, line_index: int, line_value: float) -> void:
 	var tick_lbl: String = ""
 	if y_labels.is_empty():
-		tick_lbl = ("%.2f" if y_has_decimals else "%s") % [y_domain.left + (line_index * line_value)]
+		# Correctif (SCPS) : idem axe X — un y SANS décimale en ENTIER (le pas
+		# plage/échelle est fractionnaire et imprimait « 8333333333 » sinon).
+		tick_lbl = ("%.2f" if y_has_decimals else "%d") % [y_domain.left + (line_index * line_value)]
 	else:
 		tick_lbl = y_labels[clamp(y_labels.size() * line_index, 0, y_labels.size() - 1)]
 	

@@ -10,6 +10,7 @@ var _country_panel: Control
 var _sidebar: Control
 var _construct: Control
 var _tech: Control
+var _econ: Control
 
 func _ready() -> void:
 	# la carte (Node2D, caméra dedans)
@@ -70,6 +71,13 @@ func _ready() -> void:
 	_tech.visible = false
 	ui.add_child(_tech)
 
+	# ÉCONOMIE DANS LE TEMPS (touche G) : graphes Easy Charts (pop · trésor ·
+	# prospérité), historique accumulé an par an. Caché par défaut, read-only.
+	_econ = load("res://ui/economy_panel.gd").new()
+	_econ.name = "EconomyPanel"
+	_econ.visible = false
+	ui.add_child(_econ)
+
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
 
@@ -85,6 +93,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			if _tech != null:
 				_tech.visible = not _tech.visible
 				_tech.queue_redraw()
+		KEY_G:
+			if _econ != null:
+				_econ.visible = not _econ.visible
+				_econ.queue_redraw()
 		KEY_SPACE:                       # pause ↔ reprise (parité viewer.c)
 			Sim.toggle_pause()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:        # « + » : accélérer
