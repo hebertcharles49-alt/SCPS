@@ -184,6 +184,12 @@ int scps_province_groups(ScpsSim *s, int province, ScpsGroup *out, int max);
 typedef struct { const char *source; float per_day; int manufactured; int res_id; } ScpsIncome;
 int scps_province_income(ScpsSim *s, int province, ScpsIncome *out, int max);
 
+/* le POURQUOI de l'agitation (roadmap §B9) : la cause (mot résolu) + son apport
+ * SIGNÉ en points (+ soulève / − apaise). Rend le sim apprenable. */
+typedef struct { const char *cause; int delta; } ScpsBreakdownLine;
+/* *out_value ← agitation 0-100 ; out[] ← les causes triées par poids. Retourne n. */
+int scps_province_agitation(ScpsSim *s, int province, int *out_value, ScpsBreakdownLine *out, int max);
+
 /* pop par classe (laboureurs · artisans/bourgeois · noblesse/élite). */
 void scps_province_classes(ScpsSim *s, int province, long *laboureurs, long *artisans, long *noblesse);
 

@@ -388,6 +388,21 @@ int scps_province_income(ScpsSim *s, int pid, ScpsIncome *out, int max){
     return n;
 }
 
+/* le POURQUOI de l'AGITATION d'une province : *out_value ← le nombre 0-100 ; out[]
+ * ← les causes signées (mots résolus + points), triées par poids. Retourne n lignes. */
+int scps_province_agitation(ScpsSim *s, int pid, int *out_value, ScpsBreakdownLine *out, int max){
+    if(out_value) *out_value = 0;
+    if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    ProvinceReadout pr = province_readout(s->w, s->sim.econ, s->sim.wp, s->sim.wl, pid);
+    if(out_value) *out_value = pr.agitation.value;
+    int n = pr.agitation_why.n; if(n>max) n=max;
+    for(int i=0;i<n;i++){
+        out[i].cause = sz(pr.agitation_why.line[i].cause);
+        out[i].delta = pr.agitation_why.line[i].delta;
+    }
+    return n;
+}
+
 void scps_province_classes(ScpsSim *s, int pid, long *lab, long *bourg, long *elite){
     long cp[3] = {0,0,0};
     if(s && s->ready && pid>=0 && pid<s->w->n_provinces){

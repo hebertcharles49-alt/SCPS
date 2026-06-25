@@ -74,6 +74,7 @@ public:
     /* DÉTAIL DE PROVINCE (port fidèle viewer.c) */
     Array      province_groups(int province);         /* camemberts culture/idéologie */
     Array      province_income(int province);         /* RESSOURCES / PRODUCTION */
+    Dictionary province_agitation(int province);      /* POURQUOI : { value:int, causes:[{cause,delta}] } */
     Dictionary province_classes(int province);        /* barre empilée des classes */
     Dictionary province_capitale(int province);       /* ossature de capitale */
 

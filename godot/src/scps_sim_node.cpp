@@ -40,6 +40,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("region_sunken", "region"),        &ScpsWorld::region_sunken);
     ClassDB::bind_method(D_METHOD("province_groups", "province"),    &ScpsWorld::province_groups);
     ClassDB::bind_method(D_METHOD("province_income", "province"),    &ScpsWorld::province_income);
+    ClassDB::bind_method(D_METHOD("province_agitation", "province"), &ScpsWorld::province_agitation);
     ClassDB::bind_method(D_METHOD("province_classes", "province"),   &ScpsWorld::province_classes);
     ClassDB::bind_method(D_METHOD("province_capitale", "province"),  &ScpsWorld::province_capitale);
     ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
@@ -256,6 +257,23 @@ Array ScpsWorld::province_income(int province) {
         a.push_back(d);
     }
     return a;
+}
+
+Dictionary ScpsWorld::province_agitation(int province) {
+    Dictionary out;
+    Array causes;
+    int value = 0;
+    ScpsBreakdownLine bl[6];
+    int n = sim ? scps_province_agitation(sim, province, &value, bl, 6) : 0;
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["cause"] = String::utf8(bl[i].cause);
+        d["delta"] = bl[i].delta;
+        causes.push_back(d);
+    }
+    out["value"] = value;
+    out["causes"] = causes;
+    return out;
 }
 
 Dictionary ScpsWorld::province_classes(int province) {

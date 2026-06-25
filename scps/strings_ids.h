@@ -129,6 +129,12 @@
     X(STR_HOVER_AGITATION, "La colère qui monte dans la province ; soutenue, elle vire à la révolte — qu'apaisent la stabilité du royaume, la garnison et la légitimité.") \
     X(STR_HOVER_FOI, "L'adhésion de la province à l'idéologie du trône ; convaincue, elle nourrit la légitimité — dissidente, elle couve le schisme.") \
     X(STR_HOVER_SEDITION, "La tension d'une faction forte dont les valeurs s'opposent à la direction du régime ; séditieuse, elle complote le coup d'État pour imposer son éthos.") \
+    X(STR_AGIT_CAUSE_CONSENT,   "Consentement bas") \
+    X(STR_AGIT_CAUSE_COERCION,  "Coercition") \
+    X(STR_AGIT_CAUSE_CULTURE,   "Culture étrangère") \
+    X(STR_AGIT_CAUSE_CHOC,      "Choc récent") \
+    X(STR_AGIT_CAUSE_STABILITE, "Stabilité du royaume") \
+    X(STR_AGIT_CAUSE_GARNISON,  "Garnison") \
     X(STR_TUTO_TITLE_0, "1 · Ce monde se lit.") \
     X(STR_TUTO_TITLE_1, "2 · Le temps coule en jours.") \
     X(STR_TUTO_TITLE_2, "3 · Ton empire.") \

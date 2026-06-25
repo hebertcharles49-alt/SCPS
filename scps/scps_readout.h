@@ -86,6 +86,26 @@ typedef struct {
     const char *hover;   /* la définition du concept — jamais sa valeur */
 } MetricReadout;
 
+/* ===================================================================== */
+/* BREAKDOWN — le « POURQUOI » d'une métrique : ses contributeurs SIGNÉS  */
+/* ===================================================================== */
+/* La couche MODIFICATEURS étendue à un NOMBRE (roadmap §B2/B9) : chaque ligne
+ * NOMME une cause (mot déjà résolu) + son apport en POINTS (signé, échelle de
+ * la métrique 0-100). Un LECTEUR des coordonnées qui les FONT déjà, jamais un
+ * modificateur plat. Rend le sim apprenable (« agitation 78 = consentement bas
+ * +45, culture étrangère +12 · garnison −20 »). */
+#define BREAKDOWN_LINES 6
+typedef struct {
+    const char *cause;   /* le mot : ce qui contribue (déjà résolu) */
+    int         delta;   /* apport SIGNÉ en points (+ soulève / − apaise) */
+} BreakdownLine;
+typedef struct {
+    int          value;  /* la métrique résultante 0-100 (la valeur canonique) */
+    const char  *word;   /* la bande de la métrique */
+    BreakdownLine line[BREAKDOWN_LINES];
+    int          n;      /* lignes NON-NULLES, triées par |delta| décroissant */
+} BreakdownReadout;
+
 /* Une jauge de faction-éthos : son MOT, sa PART (0-100, tangible comme une part de
  * population), et si elle est ALIGNÉE à la direction (sinon elle s'aigrit/complote). */
 typedef struct {
@@ -163,6 +183,7 @@ typedef struct {
     BandFoi       foi;         /* humeur religieuse face au culte du trône */
     bool          diaspora;
     MetricReadout agitation;   /* 0-100 : L bas + coercition + tension de diversité */
+    BreakdownReadout agitation_why;   /* le POURQUOI de l'agitation : ses causes signées */
     MetricReadout m_aisance;   /* 0-100 : la PROSPÉRITÉ locale (la jauge rouge→vert de l'en-tête) */
     MetricReadout m_humeur;    /* 0-100 : l'HUMEUR (les visages) */
     bool          seuil_revolte;/* l'agitation a franchi le seuil de révolte */
@@ -297,6 +318,10 @@ int  metric_savoir    (float lumiere_0_10);
  * diversité, ABATTUE par la stabilité du pays et la garnison (H bâti). */
 int  metric_agitation (float L_local, float coercion_0_1, float diversity_tension_0_10,
                        float recent_shock_0_1, int country_stability_0_100, float garrison_H);
+/* le POURQUOI de l'agitation : MÊMES termes, décomposés en lignes signées (mots + points). */
+BreakdownReadout metric_agitation_breakdown(float L_local, float coercion, float diversity_tension,
+                       float recent_shock, int country_stability, float garrison_H,
+                       int value, const char *band_word);
 
 /* ===================================================================== */
 /* EFFETS — une COURBE LUE d'une métrique, jamais un modificateur plat     */
