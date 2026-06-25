@@ -98,11 +98,60 @@ void scps_sim_advance_days(ScpsSim *s, int ndays){
 int scps_map_w(void){ return SCPS_W; }
 int scps_map_h(void){ return SCPS_H; }
 
+/* MODES D'ÉTAT (stabilité · commerce · guerre · diplo) : la façade calcule une
+ * teinte PAR RÉGION depuis l'état sim et la passe à render_map (comme culture/foi).
+ * tint[r]=0 ⇒ ignoré ; on évite donc le noir pur. */
+static void map_state_tint(ScpsSim *s, int mode, uint32_t *tint){
+    int nreg = s->sim.econ->n_regions; if(nreg>SCPS_MAX_REG) nreg=SCPS_MAX_REG;
+    int me = s->sim.player;
+    int rcount[SCPS_MAX_REG];
+    if(mode==VIEW_TRADE){
+        memset(rcount, 0, sizeof rcount);
+        for(int i=0;i<s->sim.rn->n;i++){ const TradeRoute *t=&s->sim.rn->route[i];
+            if(!t->open) continue;
+            if(t->ra>=0&&t->ra<SCPS_MAX_REG) rcount[t->ra]++;
+            if(t->rb>=0&&t->rb<SCPS_MAX_REG) rcount[t->rb]++; }
+    }
+    for(int r=0;r<nreg;r++){
+        int owner = s->sim.econ->region[r].owner;
+        uint32_t col = 0x303038u;   /* neutre par défaut (gris-bleu sombre) */
+        if(mode==VIEW_STABILITY){
+            float L = s->sim.wl->L[r]; if(L<0.f)L=0.f; if(L>10.f)L=10.f;
+            float t = L/10.f;        /* rouge (instable) → vert (stable) */
+            col = ((unsigned)((1.f-t)*215.f+25.f)<<16) | ((unsigned)(t*195.f+30.f)<<8) | 40u;
+        } else if(mode==VIEW_TRADE){
+            int n=rcount[r]; float t = n>0 ? (n>4?1.f:n/4.f) : 0.f;
+            col = n>0 ? (((unsigned)(70.f+t*175.f)<<16)|((unsigned)(50.f+t*115.f)<<8)|((unsigned)(30.f+t*25.f)))
+                      : 0x2c2c34u;
+        } else if(mode==VIEW_WAR){
+            int occ = s->sim.dp->occupier[r];
+            int at_war=0;
+            if(owner>=0) for(int b=0;b<s->w->n_countries;b++)
+                if(b!=owner && diplo_status(s->sim.dp,owner,b)==DIPLO_WAR){ at_war=1; break; }
+            if(occ>=0 && occ!=owner) col = 0xC02820u;        /* occupé : rouge vif   */
+            else if(at_war)          col = 0xC07820u;        /* belligérant : orange */
+            else if(owner>=0)        col = 0x35502fu;        /* en paix : vert sombre */
+        } else { /* VIEW_DIPLO : relation au JOUEUR */
+            if(owner<0)        col = 0x303038u;
+            else if(owner==me) col = 0x2f63c0u;              /* soi : bleu */
+            else { DiploStatus st = diplo_status(s->sim.dp, me, owner);
+                   col = (st==DIPLO_WAR)?0xC02828u : (st==DIPLO_ALLIED)?0x2fa050u : 0x6f6f78u; }
+        }
+        tint[r] = col ? col : 0x010101u;
+    }
+}
+
 void scps_map_rgba(ScpsSim *s, uint8_t *dst, int mode, int selected_prov){
     if(!s || !s->ready || !dst) return;
     RenderParams rp; memset(&rp, 0, sizeof rp);
     rp.cam_ox=0.f; rp.cam_oy=0.f; rp.cam_scale=1.f; rp.selected_prov=selected_prov;
     rp.show_rivers=true; rp.show_borders=true; rp.iso=false; rp.screen_strokes=false;
+    uint32_t tint[SCPS_MAX_REG];
+    if(mode==VIEW_STABILITY || mode==VIEW_TRADE || mode==VIEW_WAR || mode==VIEW_DIPLO){
+        memset(tint, 0, sizeof tint);
+        map_state_tint(s, mode, tint);
+        rp.region_tint = tint;
+    }
     render_map(s->w, s->px, SCPS_W, SCPS_H, &rp, (ViewMode)mode);
     /* render_map sort de l'ARGB8888 (uint32) ; on swizzle en RGBA octets (Godot). */
     for(int i=0; i<SCPS_N; i++){

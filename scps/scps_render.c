@@ -18,7 +18,7 @@
 const char *VIEW_NAMES[VIEW_COUNT] = {
     "Terrain","Territoires","Régions","Pays","Continents","Altimétrie",
     "Fertilité","Humidité","Température","Ressources","Habitabilité",
-    "Culture","Foi"
+    "Culture","Foi","Stabilité","Commerce","Guerre","Diplomatie"
 };
 
 /* ---- Primitives couleur ---------------------------------------------- */
@@ -244,8 +244,10 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
     }
     /* ---- Overlay CULTURE / FOI : teinte par région, fournie par l'appelant
      *      (le viewer la calcule depuis l'éco ; le renderer ne lit rien de SCPS). */
-    if ((mode == VIEW_CULTURE || mode == VIEW_FAITH) && region_tint && c->region >= 0) {
-        terrain = alpha_over(terrain, region_tint[c->region], 0.55f);
+    if ((mode == VIEW_CULTURE || mode == VIEW_FAITH || mode == VIEW_STABILITY ||
+         mode == VIEW_TRADE || mode == VIEW_WAR || mode == VIEW_DIPLO)
+        && region_tint && c->region >= 0) {
+        terrain = alpha_over(terrain, region_tint[c->region], 0.58f);
     }
     /* ---- Overlay OCCUPATION (brief terrain) : HACHURE de la couleur de l'occupant
      *      sur la carte politique (la région est TENUE par les armes, pas possédée —

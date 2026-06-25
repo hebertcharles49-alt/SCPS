@@ -20,6 +20,7 @@ const TAB_NAME := ["Économie", "Démographie", "Stocks", "Marché",
 # [label, ViewMode]. Groupés comme viewer.c.
 const FILT_GROUPS := [
 	["Souveraineté", [["Politique", 1], ["Pays", 3], ["Régions", 2], ["Continents", 4]]],
+	["Gouvernance", [["Stabilité", 13], ["Commerce", 14], ["Guerre", 15], ["Diplomatie", 16]]],
 	["Terre", [["Relief", 0], ["Altitude", 5], ["Fertilité", 6], ["Humidité", 7],
 		["Température", 8], ["Ressources", 9], ["Habitabilité", 10]]],
 ]
