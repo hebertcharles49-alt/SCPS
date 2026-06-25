@@ -164,8 +164,51 @@ static void sim_campaign_year(Sim *s, World *w) {
     }
 }
 
+/* enfile un ordre joueur (façade) — FIFO bornée ; false si pleine (jamais d'écrasement). */
+bool sim_cmd_push(Sim *s, PlayerCmd c){
+    if (!s || s->cmd_n >= SCPS_CMDQ_MAX) return false;
+    if (c.verb==CMD_NONE || c.verb>CMD_SET_LEVY) return false;   /* verbe hors domaine : refus net */
+    s->cmdq[s->cmd_n++] = c;
+    return true;
+}
+
+/* VIDE le journal de commandes du JOUEUR au point FIXE du tick. Chaque ordre est
+ * REVALIDÉ contre l'état COURANT avant dispatch (miroir save_sane : un index périmé
+ * — région perdue, edifice/unité hors domaine — est ignoré, jamais déréférencé) puis
+ * appliqué par le MÊME actionneur que l'IA (agency/warhost). Drain → file remise à 0.
+ * cmd_n=0 (chronique) ⇒ no-op total : aucun état touché, aucun RNG, hash INCHANGÉ. */
+static void sim_cmd_drain(Sim *s, World *w){
+    int p = s->human_player;
+    if (p < 0 || p >= w->n_countries){ s->cmd_n = 0; return; }   /* pas d'humain : on jette (sécurité) */
+    for (int i=0; i<s->cmd_n; i++){
+        const PlayerCmd *c = &s->cmdq[i];
+        switch (c->verb){
+          case CMD_BUILD: {
+            int e = c->a[0];
+            if (e<0 || e>=EDIFICE_COUNT) break;
+            int cp  = w->country[p].capital_prov;
+            int cap = (cp>=0 && cp<w->n_provinces) ? w->province[cp].region : -1;
+            int reg = (c->a[1] >= 0) ? c->a[1] : cap;            /* a[1]<0 ⇒ capitale par défaut */
+            if (reg<0 || reg>=s->econ->n_regions) break;
+            if (s->econ->region[reg].owner != p) break;          /* REVALIDE : la région est-elle encore au joueur ? */
+            agency_build_acct(s->ag, s->econ, w, reg, (Edifice)e, p);
+            break; }
+          case CMD_RECRUIT: {
+            int u = c->a[0]; long n = (c->a[1] > 0) ? c->a[1] : 1;
+            if (u<0 || u>=U_COUNT) break;
+            warhost_player_recruit(s->host, w, s->econ, &s->ts[p], p, (UnitType)u, n);
+            break; }
+          case CMD_SET_LEVY:
+            warhost_set_levy(s->host, p, c->a[0]);
+            break;
+        }
+    }
+    s->cmd_n = 0;
+}
+
 void sim_day(Sim *s, World *w) {
     PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
+    sim_cmd_drain(s, w);   /* JOUEUR : ses ordres s'appliquent ICI, après agency_advance, AVANT l'IA (point fixe) */
     /* leviers intérieurs : draine les coûts SCPS différés (purge/mater) vers TechState */
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         float ch,fr,hh;
@@ -314,7 +357,8 @@ void sim_day(Sim *s, World *w) {
         if (s->ev->ages.last_dawned != s->prev_dawned){          /* §7 : un âge se lève → engagement */
             int age=s->ev->ages.last_dawned;
             if (age>=0) for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
-                if (w->country[c].role!=POLITY_UNCLAIMED && regions_of(s->econ,c)>0)
+                if (w->country[c].role!=POLITY_UNCLAIMED && regions_of(s->econ,c)>0
+                    && c!=s->human_player)                        /* le JOUEUR choisit lui-même : pas d'engagement auto (human=-1 ⇒ no-op chronique) */
                     faction_age_engage(w, s->econ, c, age);       /* la faction-patronne s'avance (l'IA accepte) */
             s->prev_dawned = s->ev->ages.last_dawned;
         }
@@ -345,6 +389,8 @@ void sim_init(Sim *s, World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ s->ai_on[c]=false; tech_state_init(&s->ts[c], false); }
     s->player = 0;
     for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_PLAYER){ s->player=c; break; }
+    s->human_player = -1;   /* aucun humain par DÉFAUT (la chronique reste 100 % IA) ; la façade débraye après coup */
+    s->cmd_n = 0;           /* journal de commandes joueur : vide (la chronique n'enfile jamais) */
     /* PAS DE JOUEUR HUMAIN dans la chronique : TOUT pays habitable est piloté par
      * l'IA — y compris l'ex-emplacement « joueur ». Sinon ce pays restait inerte
      * (il ne bâtissait rien, ne se défendait pas) et FAUSSAIT le balayage (un trou

@@ -297,15 +297,16 @@ typedef struct {
 int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max);
 
 /* ---- ACTIONS DU JOUEUR (la main humaine sur le pays joueur) ----------- *
- * Les MÊMES actionneurs que l'IA (agency / warhost), jamais l'appel direct. Le
- * monde reste DÉTERMINISTE : ces verbes n'entrent pas dans sim_day (la chronique
- * ne les appelle pas) ; ils déposent un ordre que le prochain tick traitera. */
-/* Bâtir un édifice sur la CAPITALE du joueur (chantier payé, agency_build_acct).
- * 1 = mis en file ; 0 = refus (trésor/ligne de crédit insuffisants, pas de capitale). */
-int  scps_player_build  (ScpsSim *s, int edifice);
-/* Lever 1 paquet (100) d'un TYPE d'unité. Renvoie les paquets levés (0 si tech
- * absente, pas d'élite, ou pas d'armes en stock). L'armée du joueur n'est plus
- * auto-gérée (warhost_set_human posé à la génération). */
+ * ENFILÉES dans le journal de commandes (scps_sim.h) : ces verbes n'appliquent
+ * RIEN à l'instant de l'appel — ils déposent un ordre que le prochain sim_day
+ * VIDE à un point fixe (après agency_advance, avant l'IA), chacun REVALIDÉ. Le
+ * monde reste DÉTERMINISTE et REJOUABLE (graine + journal). Retour = accepté-
+ * dans-la-file, PAS le verdict d'application (trésor/matière), qui tombe au tick. */
+/* Bâtir un édifice. region<0 ⇒ la CAPITALE du joueur ; sinon la région visée (le
+ * drain revalide l'appartenance). 1 = mis en file ; 0 = file pleine / argument hors domaine. */
+int  scps_player_build  (ScpsSim *s, int edifice, int region);
+/* Lever 1 paquet (100) d'un TYPE d'unité. 1 = mis en file ; 0 = refus d'enfilement.
+ * (Le verdict réel — tech, élite, armes en stock — tombe au drain.) */
 long scps_player_recruit(ScpsSim *s, int unit);
 /* Régler la jauge de levée du joueur (0 basse · 1 garde · 2 guerre · 3 masse). */
 void scps_player_set_levy(ScpsSim *s, int level);

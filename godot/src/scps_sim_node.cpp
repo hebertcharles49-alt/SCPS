@@ -50,7 +50,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
     ClassDB::bind_method(D_METHOD("unit_roster", "country"),         &ScpsWorld::unit_roster);
     ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
-    ClassDB::bind_method(D_METHOD("player_build", "edifice"),        &ScpsWorld::player_build);
+    ClassDB::bind_method(D_METHOD("player_build", "edifice", "region"), &ScpsWorld::player_build, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
@@ -423,8 +423,8 @@ Array ScpsWorld::building_roster(int country) {
     return a;
 }
 
-bool ScpsWorld::player_build(int edifice) {
-    return sim ? scps_player_build(sim, edifice) != 0 : false;
+bool ScpsWorld::player_build(int edifice, int region) {
+    return sim ? scps_player_build(sim, edifice, region) != 0 : false;
 }
 
 int ScpsWorld::player_recruit(int unit) {

@@ -90,9 +90,9 @@ public:
     Array      building_roster(int country);          /* édifices : nom·coût matériaux·or·jours·débloqué */
 
     /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */
-    bool       player_build(int edifice);             /* met un chantier en file (payé) ; false = refus */
-    int        player_recruit(int unit);              /* lève 1 paquet ; renvoie les paquets levés (0 = gate) */
-    void       player_set_levy(int level);            /* jauge de levée 0-3 */
+    bool       player_build(int edifice, int region); /* enfile un chantier (region<0 ⇒ capitale) ; false = file pleine/hors-domaine */
+    int        player_recruit(int unit);              /* enfile 1 paquet à lever ; 1 = mis en file, 0 = refus d'enfilement */
+    void       player_set_levy(int level);            /* enfile le réglage de la jauge de levée 0-3 */
 
     /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
     Array      river_points();

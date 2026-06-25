@@ -147,13 +147,16 @@ func _gui_input(e: InputEvent) -> void:
 func _act(kind: String, type: int, nom: String) -> void:
 	if Sim.world == null:
 		return
+	# Les ordres sont ENFILÉS (journal déterministe) : ils s'appliquent au prochain
+	# tick (après agency_advance). En pause, l'ordre attend la reprise. Le retour
+	# n'est donc que « mis en file », pas le verdict d'application (qui tombe au tick).
 	if kind == "build":
-		var ok: bool = Sim.world.player_build(type)
+		var ok: bool = Sim.world.player_build(type, -1)
 		_flash_ok = ok
-		_flash = ("⚒ %s — chantier ouvert" % nom) if ok else ("✗ %s — trésor / matière insuffisants" % nom)
+		_flash = ("⚒ %s — ordre émis" % nom) if ok else ("✗ %s — file pleine" % nom)
 	else:
-		var n: int = Sim.world.player_recruit(type)
-		_flash_ok = n > 0
-		_flash = ("⚔ %s levé (%d×100)" % [nom, n]) if n > 0 else ("✗ %s — pas d'armes ou de pop disponible" % nom)
+		var ok2: bool = Sim.world.player_recruit(type) > 0
+		_flash_ok = ok2
+		_flash = ("⚔ %s — levée ordonnée" % nom) if ok2 else ("✗ %s — file pleine" % nom)
 	build_requested.emit(kind, type)
 	_refresh()

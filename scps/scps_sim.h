@@ -47,6 +47,18 @@
 #include "scps_species.h"
 #include <stdbool.h>
 
+/* ---- JOURNAL DE COMMANDES JOUEUR (déterministe) -------------------------
+ * Les ordres du joueur (la façade Godot) ne s'appliquent PAS à l'instant de
+ * l'appel (hors-tick, en temps réel) : ils sont ENFILÉS, puis VIDÉS à un point
+ * FIXE du tick (après agency_advance, AVANT l'IA), chacun REVALIDÉ contre l'état
+ * courant (miroir de save_sane : un index périmé est ignoré, jamais déréférencé).
+ * C'est la base de la réplicabilité : une partie = (graine + ce journal) → rejeu
+ * au bit, classements auto-vérifiés, repro de bug. La CHRONIQUE n'enfile jamais
+ * (cmd_n=0) → le drain est un no-op et son hash reste IDENTIQUE (golden intact). */
+enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY };
+#define SCPS_CMDQ_MAX 64
+typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
+
 /* L'ÉTAT PLEIN d'une partie (tous les sous-systèmes). Membres alloués sur le tas
  * (sim_alloc) ; les pointeurs sont assignés par l'hôte ou sim_alloc. */
 typedef struct {
@@ -63,6 +75,8 @@ typedef struct {
     int16_t prev_owner_mo[SCPS_MAX_REG];   /* propriétaires au mois précédent (détection de conquête) */
     int prev_dawned;         /* dernier âge avéné traité (engagement d'âge §7) */
     int day, year, player;
+    int human_player;        /* index du pays piloté À LA MAIN (-1 = aucun : la chronique headless reste 100 % IA) */
+    PlayerCmd cmdq[SCPS_CMDQ_MAX]; int cmd_n;   /* journal de commandes JOUEUR (vidé au tick, déterministe) */
 } Sim;
 
 /* allocation/libération des MEMBRES (heap) — la chronique alloue inline (intacte) ;
@@ -74,6 +88,10 @@ void sim_free_members(Sim *s);
 void sim_init(Sim *s, World *w);   /* RAZ pleine + seed du monde */
 void sim_day (Sim *s, World *w);   /* un jour de jeu PLEIN */
 int  regions_of(const WorldEconomy *e, int c);   /* régions tenues par un pays */
+
+/* enfile un ordre JOUEUR (façade). false si la file est pleine. L'ordre est
+ * REVALIDÉ et appliqué au prochain sim_day (drain déterministe). */
+bool sim_cmd_push(Sim *s, PlayerCmd c);
 
 /* télémétrie partagée (la chronique les lit pour ses bilans) */
 extern long g_tot_occ_posed, g_tot_occ_lifted;   /* occupations posées / levées */

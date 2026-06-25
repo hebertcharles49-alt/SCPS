@@ -71,6 +71,22 @@ int main(int argc, char **argv){
     printf("   sim B an %d · pop=%ld\n", scps_year(s2), p20b);
     ok("REPRODUCTIBLE (sim A == sim B)", p20b == p20);
 
+    /* ── JOURNAL DE COMMANDES JOUEUR (déterministe) : enfiler → vider au tick ──
+     * La main humaine PASSE par le moteur : un ordre de levée est ENFILÉ (différé),
+     * sans effet jusqu'au tick, puis APPLIQUÉ au drain de sim_day. Démontre du même
+     * coup le DÉBRAYAGE de l'IA : la levée du joueur obéit à SA commande (ai_on[joueur]
+     * =false ⇒ l'IA ne la repilote pas). */
+    int pl = scps_player(s2);
+    ScpsArmy a0; scps_country_army(s2, pl, &a0);
+    int want = (a0.levy>=3) ? 0 : 3;            /* viser un cran DIFFÉRENT de l'actuel */
+    scps_player_set_levy(s2, want);
+    ScpsArmy a1; scps_country_army(s2, pl, &a1);
+    ok("ordre de levée ENFILÉ, pas encore appliqué (différé)", a1.levy==a0.levy);
+    scps_sim_advance_days(s2, 1);               /* un tick → le drain applique l'ordre */
+    ScpsArmy a2; scps_country_army(s2, pl, &a2);
+    printf("   levée joueur : %d → (ordre %d) → %d après 1 tick\n", a0.levy, want, a2.levy);
+    ok("ordre de levée APPLIQUÉ au drain (round-trip du journal)", a2.levy==want);
+
     scps_sim_free(s); scps_sim_free(s2);
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
