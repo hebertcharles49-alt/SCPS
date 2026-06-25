@@ -297,23 +297,25 @@ int metric_agitation(float L_local, float coercion, float diversity_tension,
     return iclamp((int)roundf(raise - calm), 0, 100);
 }
 
-/* Le POURQUOI de l'agitation : MÊMES termes que metric_agitation, décomposés en
- * lignes signées (mots + points). Non-nuls seulement, triés par |apport| desc. */
-BreakdownReadout metric_agitation_breakdown(float L_local, float coercion,
-        float diversity_tension, float recent_shock, int country_stability,
-        float garrison_H, int value, const char *band_word) {
+/* Les MODIFICATEURS PROVINCIAUX d'agitation — CONCRETS et PROPRES À LA PROVINCE
+ * (style grande stratégie) : conquête récente (temporaire, se digère −4/an), culture
+ * étrangère sous la couronne, coercition (la province tenue par la force), garnison
+ * (apaise). PAS d'agrégat abstrait (« consentement bas » = symptôme de la coercition,
+ * pas une cause) NI de facteur national (« stabilité du royaume » n'est pas un
+ * modificateur DE province). Nom + apport SIGNÉ + résorption/an si temporaire. */
+BreakdownReadout metric_agitation_breakdown(float coercion, float diversity_tension,
+        float years_held, float garrison_H, int value, const char *band_word) {
     BreakdownReadout b; memset(&b, 0, sizeof b);
     b.value = value; b.word = band_word;
-    BreakdownLine all[BREAKDOWN_LINES];
-    all[0].cause = tr(STR_AGIT_CAUSE_CONSENT);   all[0].delta = +(int)roundf((10.f-rclampf(L_local,0.f,10.f))*4.5f);
-    all[1].cause = tr(STR_AGIT_CAUSE_COERCION);  all[1].delta = +(int)roundf(rclampf(coercion,0.f,1.f)*25.f);
-    all[2].cause = tr(STR_AGIT_CAUSE_CULTURE);   all[2].delta = +(int)roundf(rclampf(diversity_tension,0.f,10.f)*2.0f);
-    all[3].cause = tr(STR_AGIT_CAUSE_CHOC);      all[3].delta = +(int)roundf(rclampf(recent_shock,0.f,1.f)*20.f);
-    all[4].cause = tr(STR_AGIT_CAUSE_STABILITE); all[4].delta = -(int)roundf((country_stability/100.f)*20.f);
-    all[5].cause = tr(STR_AGIT_CAUSE_GARNISON);  all[5].delta = -(int)roundf(rclampf(garrison_H,0.f,8.f)*4.0f);
-    /* garder les NON-NULS, triés par |delta| décroissant (la cause dominante en tête) */
+    float conquest = (years_held < 5.f) ? (1.f - years_held/5.f) : 0.f;   /* 1→0 sur 5 ans */
+    BreakdownLine all[BREAKDOWN_LINES]; int m=0;
+    all[m].cause = tr(STR_AGIT_CAUSE_CHOC);     all[m].delta = +(int)roundf(conquest*20.f);                           all[m].decay = (conquest>0.f)?4:0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_CULTURE);  all[m].delta = +(int)roundf(rclampf(diversity_tension,0.f,10.f)*2.0f); all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_COERCION); all[m].delta = +(int)roundf(rclampf(coercion,0.f,1.f)*25.f);           all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_GARNISON); all[m].delta = -(int)roundf(rclampf(garrison_H,0.f,8.f)*4.0f);         all[m].decay = 0; m++;
+    /* garder les NON-NULS, triés par |delta| décroissant (le modificateur dominant en tête) */
     int order[BREAKDOWN_LINES], k=0;
-    for (int i=0;i<BREAKDOWN_LINES;i++) if (all[i].delta!=0) order[k++]=i;
+    for (int i=0;i<m;i++) if (all[i].delta!=0) order[k++]=i;
     for (int i=0;i<k;i++) for (int j=i+1;j<k;j++){
         int ai = all[order[i]].delta, aj = all[order[j]].delta;
         if (ai<0) ai=-ai;
@@ -734,8 +736,8 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     int   agit = metric_agitation(L_local, coercion, div_tension, recent_shock,
                                   country_stab, garrison);
     pr.agitation     = mk_metric(agit, label_agitation(band_agitation(agit)), hover_agitation());
-    pr.agitation_why = metric_agitation_breakdown(L_local, coercion, div_tension, recent_shock,
-                                  country_stab, garrison, agit, pr.agitation.word);
+    pr.agitation_why = metric_agitation_breakdown(coercion, div_tension, yh,
+                                  garrison, agit, pr.agitation.word);
     pr.seuil_revolte = revolt_threshold_reached(agit);
 
     /* ── BÂTIMENTS — capacité CONSOMMÉE par la population : chaque âme occupe

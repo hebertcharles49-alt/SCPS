@@ -399,6 +399,29 @@ int scps_province_agitation(ScpsSim *s, int pid, int *out_value, ScpsBreakdownLi
     for(int i=0;i<n;i++){
         out[i].cause = sz(pr.agitation_why.line[i].cause);
         out[i].delta = pr.agitation_why.line[i].delta;
+        out[i].decay = pr.agitation_why.line[i].decay;
+    }
+    return n;
+}
+
+/* les MANUFACTURES bâties dans la province : nom + niveau (capacité) + ouvriers
+ * (emploi effectif). Lues de RegionEconomy.bld[]. Retourne n (trié par niveau desc). */
+int scps_province_buildings(ScpsSim *s, int pid, ScpsProvBld *out, int max){
+    if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    int reg = s->w->province[pid].region;
+    if(reg<0 || reg>=s->sim.econ->n_regions) return 0;
+    const RegionEconomy *re = &s->sim.econ->region[reg];
+    /* indices triés par niveau décroissant (le bâti le plus gros en tête) */
+    int idx[ECON_MAX_BLD], k=0;
+    for(int i=0;i<re->n_bld && i<ECON_MAX_BLD;i++) if(re->bld[i].level > 0.05f) idx[k++]=i;
+    for(int i=0;i<k;i++) for(int j=i+1;j<k;j++)
+        if(re->bld[idx[j]].level > re->bld[idx[i]].level){ int t=idx[i]; idx[i]=idx[j]; idx[j]=t; }
+    int n = (k>max)?max:k;
+    for(int i=0;i<n;i++){
+        const Building *b = &re->bld[idx[i]];
+        out[i].nom     = sz(building_name(b->type));
+        out[i].niveau  = (int)(b->level + 0.5f);
+        out[i].ouvriers= (int)(b->workers + 0.5f);
     }
     return n;
 }

@@ -96,8 +96,9 @@ typedef struct {
  * +45, culture étrangère +12 · garnison −20 »). */
 #define BREAKDOWN_LINES 6
 typedef struct {
-    const char *cause;   /* le mot : ce qui contribue (déjà résolu) */
+    const char *cause;   /* le NOM du modificateur (déjà résolu) : « Conquête récente » */
     int         delta;   /* apport SIGNÉ en points (+ soulève / − apaise) */
+    int         decay;   /* résorption en points/AN si TEMPORAIRE (la conquête se digère) ; 0 = permanent */
 } BreakdownLine;
 typedef struct {
     int          value;  /* la métrique résultante 0-100 (la valeur canonique) */
@@ -318,10 +319,10 @@ int  metric_savoir    (float lumiere_0_10);
  * diversité, ABATTUE par la stabilité du pays et la garnison (H bâti). */
 int  metric_agitation (float L_local, float coercion_0_1, float diversity_tension_0_10,
                        float recent_shock_0_1, int country_stability_0_100, float garrison_H);
-/* le POURQUOI de l'agitation : MÊMES termes, décomposés en lignes signées (mots + points). */
-BreakdownReadout metric_agitation_breakdown(float L_local, float coercion, float diversity_tension,
-                       float recent_shock, int country_stability, float garrison_H,
-                       int value, const char *band_word);
+/* les MODIFICATEURS provinciaux d'agitation, CONCRETS (conquête récente · culture
+ * étrangère · coercition · garnison). Nom + apport signé + résorption/an si temporaire. */
+BreakdownReadout metric_agitation_breakdown(float coercion, float diversity_tension,
+                       float years_held, float garrison_H, int value, const char *band_word);
 
 /* ===================================================================== */
 /* EFFETS — une COURBE LUE d'une métrique, jamais un modificateur plat     */

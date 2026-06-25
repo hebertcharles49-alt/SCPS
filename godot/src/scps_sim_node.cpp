@@ -41,6 +41,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_groups", "province"),    &ScpsWorld::province_groups);
     ClassDB::bind_method(D_METHOD("province_income", "province"),    &ScpsWorld::province_income);
     ClassDB::bind_method(D_METHOD("province_agitation", "province"), &ScpsWorld::province_agitation);
+    ClassDB::bind_method(D_METHOD("province_buildings", "province"), &ScpsWorld::province_buildings);
     ClassDB::bind_method(D_METHOD("province_classes", "province"),   &ScpsWorld::province_classes);
     ClassDB::bind_method(D_METHOD("province_capitale", "province"),  &ScpsWorld::province_capitale);
     ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
@@ -269,11 +270,26 @@ Dictionary ScpsWorld::province_agitation(int province) {
         Dictionary d;
         d["cause"] = String::utf8(bl[i].cause);
         d["delta"] = bl[i].delta;
+        d["decay"] = bl[i].decay;
         causes.push_back(d);
     }
     out["value"] = value;
     out["causes"] = causes;
     return out;
+}
+
+Array ScpsWorld::province_buildings(int province) {
+    Array a;
+    ScpsProvBld b[16];
+    int n = sim ? scps_province_buildings(sim, province, b, 16) : 0;
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["nom"] = String::utf8(b[i].nom);
+        d["niveau"] = b[i].niveau;
+        d["ouvriers"] = b[i].ouvriers;
+        a.push_back(d);
+    }
+    return a;
 }
 
 Dictionary ScpsWorld::province_classes(int province) {
