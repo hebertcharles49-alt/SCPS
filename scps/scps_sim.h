@@ -97,5 +97,7 @@ bool sim_cmd_push(Sim *s, PlayerCmd c);
 /* télémétrie partagée (la chronique les lit pour ses bilans) */
 extern long g_tot_occ_posed, g_tot_occ_lifted;   /* occupations posées / levées */
 extern long g_peak_u[U_COUNT];                    /* FORGEDIAG : pic d'effectif par type */
+extern long g_wild_spawned, g_wild_defected;     /* HAMEAUX LIBRES : semés · ralliés culturellement */
+extern double g_wild_absorb_pop;                  /* pop CUMULÉE ralliée (÷ g_wild_defected = moyenne) */
 
 #endif /* SCPS_SIM_H */

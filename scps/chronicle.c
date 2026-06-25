@@ -1120,6 +1120,9 @@ int main(int argc, char **argv){
     printf("   occupations (terrain) ....... %ld posée(s) · %ld levée(s)   (les sièges tiennent le sol entre deux paix)\n", g_tot_occ_posed, g_tot_occ_lifted);
     printf("   pays absorbés (morts) ....... %ld   (moy. %.1f/sim)\n", tot_absorbed, (double)tot_absorbed/nsims);
     printf("   pays émergés (sécession) .... %ld   (moy. %.1f/sim ; la carte politique respire)\n", tot_emerged, (double)tot_emerged/nsims);
+    printf("   hameaux libres (WILD) ....... %.1f semés/sim · %ld ralliés culturellement (%.1f/sim · pop moy. %.0f) ; l'absorption MILITAIRE passe par la conquête\n",
+           (double)g_wild_spawned/nsims, g_wild_defected, (double)g_wild_defected/nsims,
+           g_wild_defected>0?g_wild_absorb_pop/(double)g_wild_defected:0.0);
     printf("   nœuds de tech débloqués ..... %ld   (moy. %.1f/sim ; %ld faustiens)\n", tot_techs, (double)tot_techs/nsims, tot_faustian);
     printf("   arbre déverrouillé / empire . %ld%%   (le coût force les choix : cible < 100 %% → spécialisation)\n",
            tot_tree_sims>0? tot_tree_pct/tot_tree_sims : 0);

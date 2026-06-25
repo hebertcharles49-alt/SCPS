@@ -20,6 +20,7 @@
 #include "scps_world.h"
 #include "scps_culture.h"   /* culture_make(), lifeway_*, ethos_nearest() */
 #include "scps_species.h"   /* race + leviers (worldgen_seed_peoples, dérive) */
+#include "scps_tune.h"      /* HAMEAUX LIBRES : WILD_PER_PLAYABLE (réserve du slot WILD) */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -2017,6 +2018,14 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
         }
     }
 
+    /* HAMEAUX LIBRES (POLITY_WILD) — on RÉSERVE un slot-pays (le 1er VIERGE après empires+
+     * cités, par poids) comme PORTEUR des Peuples Libres ; econ_init y rattache les hameaux
+     * (BFS près des jouables). WILD_PER_PLAYABLE=0 → désactivé (aucun slot réservé). */
+    if (tune_f("WILD_PER_PLAYABLE", 2.f) > 0.f){
+        for (int c=0;c<ncty;c++) if (w->country[c].role==POLITY_UNCLAIMED){
+            w->country[c].role=POLITY_WILD; break; }
+    }
+
     /* Propage région/pays/continent sur les cellules (pour le rendu). */
     for (int i=0;i<SCPS_N;i++) {
         int p=w->cell[i].province;
@@ -2391,6 +2400,40 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
         Ethos            ec=ok? econ->region[cr].culture.ethos : ETHOS_ORDRE;
         w->country[c].color = country_race_color(rc, c);
         country_make_name(w->country[c].name, (int)sizeof w->country[c].name, rc, ec, c);
+    }
+
+    /* HAMEAUX LIBRES (POLITY_WILD) — culture DISTINCTE du voisin + AUCUNE religion : des
+     * enclaves ÉTRANGÈRES, sinon l'absorption culturelle/défection (B4) n'aurait pas de sens.
+     * La race est tirée DÉTERMINISTE et forcée ≠ l'empire adjacent (WILD_CULTURE_DISTINCT) ;
+     * le credo PLURALISTE (pas d'Église), la branche ANIMISTE folk, l'axe religion bas. */
+    bool wild_distinct = tune_f("WILD_CULTURE_DISTINCT", 1.f) > 0.f;
+    for (int r=0;r<w->n_regions && r<econ->n_regions;r++){
+        int o=econ->region[r].owner;
+        if (o<0||o>=w->n_countries || w->country[o].role!=POLITY_WILD) continue;
+        SpeciesArchetype neigh=RACE_HUMAIN;     /* race de l'empire ADJACENT (à éviter) */
+        Ethos neigh_eth=ETHOS_ORDRE;            /* éthos du voisin (à éviter) */
+        for (int s=0;s<econ->n_regions;s++){
+            if (!econ->adj[r][s]) continue;
+            int os=econ->region[s].owner;
+            if (os>=0 && os<w->n_countries
+                && (w->country[os].role==POLITY_PLAYER || w->country[os].role==POLITY_ANTAGONIST)){
+                neigh=econ->region[s].culture.race; neigh_eth=econ->region[s].culture.ethos; break; }
+        }
+        if (wild_distinct){
+            uint32_t h=(uint32_t)(r+1)*2246822519u ^ ((uint32_t)w->seed*374761393u);
+            h ^= h>>15; h *= 0x2c1b3c6du; h ^= h>>13;
+            SpeciesArchetype wr=(SpeciesArchetype)(h % (uint32_t)RACE_COUNT);
+            if (wr==neigh) wr=(SpeciesArchetype)(((int)wr+1)%(int)RACE_COUNT);   /* race forcée ≠ voisin */
+            econ->region[r].culture.race=wr;
+            /* ÉTHOS distinct du voisin (« si le voisin est Dominateur, les hameaux sont p.ex.
+             * Mercantile et Ordre ») — pas de culture WILD spéciale, juste un éthos NORMAL ≠ voisin. */
+            Ethos we=(Ethos)((h>>3) % (uint32_t)ETHOS_COUNT);
+            if (we==neigh_eth) we=(Ethos)(((int)we+1)%(int)ETHOS_COUNT);
+            econ->region[r].culture.ethos=we;
+        }
+        econ->region[r].culture.credo=CREDO_PLURALISTE;   /* AUCUNE religion organisée */
+        econ->region[r].culture.rel_branch=REL_ANIMISTE;
+        econ->region[r].culture.religion=1.0f;            /* axe bas */
     }
 }
 

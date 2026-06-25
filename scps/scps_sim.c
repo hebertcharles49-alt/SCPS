@@ -41,6 +41,45 @@ static void prof_flush(int year){ if(g_prof_on<=0) return;
 /* télémétrie partagée (la chronique les lit ; déclarées extern dans le header) */
 long g_tot_occ_posed=0, g_tot_occ_lifted=0;
 long g_peak_u[U_COUNT];   /* FORGEDIAG : pic d'effectif debout par type d'unité (sur tout le siècle, pas le seul snapshot) */
+/* HAMEAUX LIBRES (POLITY_WILD) — télémétrie : hameaux semés · ralliés CULTURELLEMENT · pop
+ * moyenne ralliée (l'absorption MILITAIRE passe par les mécanismes de conquête existants). */
+long g_wild_spawned=0, g_wild_defected=0; double g_wild_absorb_pop=0.0;
+static int  g_wild_contact[SCPS_MAX_REG];   /* années de contact PACIFIQUE par hameau (reset à sim_init) */
+
+/* HAMEAUX LIBRES — ralliement CULTUREL (la règle neuve de B4). Un hameau WILD en contact
+ * PACIFIQUE soutenu avec l'empire VOISIN s'y RALLIE : owner → empire, après WILD_DEFECT_YEARS
+ * d'adjacence à la paix OU dès que sa culture a CONVERGÉ (race = celle du voisin, via
+ * l'assimilation). Sa pop + sa culture DISTINCTE deviennent minorité dans l'empire →
+ * assimilation_tick / off_culture_fraction / xénophile-xénophobe la digèrent (existant). */
+static void wild_cultural_tick(Sim *s, World *w){
+    WorldEconomy *e=s->econ;
+    int defect_years=(int)tune_f("WILD_DEFECT_YEARS", 8.f);
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
+        RegionEconomy *re=&e->region[r];
+        int o=re->owner;
+        if (o<0||o>=w->n_countries || w->country[o].role!=POLITY_WILD || !re->colonized){ g_wild_contact[r]=0; continue; }
+        int adjc[SCPS_MAX_COUNTRY]; memset(adjc,0,sizeof adjc);
+        int best_emp=-1, best_n=0;
+        for (int t=0;t<e->n_regions;t++){
+            if (!e->adj[r][t]) continue;
+            int ot=e->region[t].owner;
+            if (ot>=0 && ot<w->n_countries
+                && (w->country[ot].role==POLITY_PLAYER || w->country[ot].role==POLITY_ANTAGONIST)
+                && ++adjc[ot]>best_n){ best_n=adjc[ot]; best_emp=ot; }
+        }
+        if (best_emp<0){ g_wild_contact[r]=0; continue; }                       /* pas de voisin empire */
+        if (diplo_status(s->dp, o, best_emp)==DIPLO_WAR){ g_wild_contact[r]=0; continue; }  /* la guerre RAZ le compteur */
+        g_wild_contact[r]++;
+        int cap=w->country[best_emp].capital_prov;
+        int cr=(cap>=0&&cap<w->n_provinces)? w->province[cap].region : -1;
+        bool converged=(cr>=0 && cr<e->n_regions && re->culture.race==e->region[cr].culture.race);
+        if (g_wild_contact[r]>=defect_years || converged){
+            double pop=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
+            re->owner=(int16_t)best_emp;    /* RALLIEMENT : transfert d'owner (réutilise le modèle) */
+            g_wild_contact[r]=0; g_wild_defected++; g_wild_absorb_pop+=pop;
+        }
+    }
+}
 
 int regions_of(const WorldEconomy *e, int c){
     int n=0; for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c) n++; return n;
@@ -384,6 +423,7 @@ void sim_day(Sim *s, World *w) {
         trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
         PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
         PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
+        wild_cultural_tick(s, w);   /* HAMEAUX LIBRES (B4) : ralliement culturel des hameaux WILD au voisin */
         PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));
         if (s->eg) endgame_tick(s->eg, w, s->econ, s->wp, s->ts, s->rn, s->navy, s->dp, s->camp, s->player, s->year);
         /* DIPLOMATIE annuelle : usure de guerre, FONTE des trêves & du momentum
@@ -447,6 +487,13 @@ void sim_init(Sim *s, World *w) {
     intertrade_reset();   /* embargos décrétés + flux inter-pays : RAZ par sim */
     provlog_reset();      /* journal provincial : RAZ par sim (runtime, hors save) */
     demography_contact_reset();   /* S2 : compteur de cristallisations culturelles par contact */
+    /* HAMEAUX LIBRES : RAZ du compteur de contact (par sim) + recensement des hameaux semés. */
+    memset(g_wild_contact, 0, sizeof g_wild_contact);
+    for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
+        int o=s->econ->region[r].owner;
+        if (o>=0 && o<w->n_countries && w->country[o].role==POLITY_WILD && s->econ->region[r].colonized)
+            g_wild_spawned++;
+    }
     intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs) — géographiques */
     intertrade_seed_citystate_arms(w, s->econ);   /* F-arc : chaque cité-état naît armurier (manufacture d'armes aléatoire sur son Centre) */
     agency_seed_capital_markets(w, s->econ);   /* DÉPART : chaque empire naît avec un Marché sur sa capitale (carte nue) */
@@ -469,7 +516,10 @@ void sim_init(Sim *s, World *w) {
      * mort sur la carte). Le LaborEcon reste calé sur s->player (modèle isolé : il
      * ne nourrit pas l'éco partagée, les capitales agissent via capitale_* en direct). */
     for (int c=0;c<w->n_countries;c++){
+        /* HAMEAUX LIBRES (POLITY_WILD) : PASSIFS — aucun acteur IA (ils ne conquièrent, ne
+         * colonisent, ne recherchent JAMAIS ; ils défendent et se laissent rallier). */
         s->ai_on[c] = (w->country[c].role!=POLITY_UNCLAIMED
+                       && w->country[c].role!=POLITY_WILD
                        && w->country[c].capital_prov>=0);
         if (s->ai_on[c]) ai_actor_init(&s->ai[c], w, s->econ, c, w->seed ^ (uint32_t)(c*2654435761u));
     }

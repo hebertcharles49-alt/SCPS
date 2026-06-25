@@ -267,7 +267,9 @@ typedef enum {
     POLITY_PLAYER = 0,   /* le joueur — capitale peuplée au départ */
     POLITY_ANTAGONIST,   /* IA majeure — peuplée, colonise */
     POLITY_CITY_STATE,   /* cité-état — peuplée sur toute sa région, colonise ses propres territoires */
-    POLITY_UNCLAIMED     /* terres vierges colonisables (pays sans départ) */
+    POLITY_UNCLAIMED,    /* terres vierges colonisables (pays sans départ) */
+    POLITY_WILD          /* PEUPLES LIBRES — hameaux épars près des jouables ; défendent, jamais
+                          * n'attaquent ; absorbables par conquête, vassalité OU défection culturelle */
 } PolityRole;
 
 /* ---- Pays : capacité 32 régions (agglomération peut dépasser 12 en cas de

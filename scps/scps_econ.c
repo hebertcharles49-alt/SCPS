@@ -837,6 +837,55 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
+    /* ──────────────────────────────────────────────────────────────────────
+     * HAMEAUX LIBRES (POLITY_WILD) — les PEUPLES LIBRES. Pour CHAQUE jouable on
+     * rattache au slot WILD les WILD_PER_PLAYABLE régions VIERGES viables les plus
+     * PROCHES (BFS multi-source ≤ WILD_SPAWN_HOPS sur l'adjacence) : un hameau peuplé
+     * (WILD_POP), plafonné (WILD_CAP), avec une réserve de brutes (WILD_HOARD). Tue le
+     * « siècle d'inertie » : 2 objectifs voisins dès l'an 0. WILD_PER_PLAYABLE=0 → aucun. */
+    {
+        int wild_cid=-1;
+        for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_WILD){ wild_cid=c; break; }
+        int per=(int)tune_f("WILD_PER_PLAYABLE",2.f), hops=(int)tune_f("WILD_SPAWN_HOPS",2.f);
+        if (wild_cid>=0 && per>0 && hops>0){
+            float wpop=tune_f("WILD_POP",750.f), wvar=tune_f("WILD_POP_VAR",250.f);
+            float wcap=tune_f("WILD_CAP",1200.f), whoard=tune_f("WILD_HOARD",60.f), wfood=tune_f("WILD_FOOD",8.f);
+            for (int cid=0; cid<w->n_countries; cid++){
+                PolityRole role=w->country[cid].role;
+                if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+                static int dist[SCPS_MAX_REG], q[SCPS_MAX_REG];   /* BFS multi-source depuis les régions de cid */
+                for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++) dist[r]=-1;
+                int qh=0, qt=0;
+                for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
+                    if (e->region[r].owner==cid){ dist[r]=0; q[qt++]=r; }
+                int got=0;
+                while (qh<qt && got<per){
+                    int r=q[qh++];
+                    if (dist[r]>=hops) continue;
+                    for (int s=0;s<e->n_regions && s<SCPS_MAX_REG && got<per;s++){
+                        if (!e->adj[r][s] || dist[s]>=0) continue;
+                        dist[s]=dist[r]+1;
+                        RegionEconomy *re=&e->region[s];
+                        if (re->active && !re->colonized && !re->impassable && re->cap_pop>0.f){
+                            re->owner=(int16_t)wild_cid; re->colonized=true; re->culture.settled=true;
+                            re->cap_pop=wcap;
+                            /* pop = WILD_POP ± variance DÉTERMINISTE (hash de la région) : les deux
+                             * hameaux d'un empire totalisent ~1500, chacun ~750±. */
+                            uint32_t hh=(uint32_t)s*2654435761u + (uint32_t)cid*40503u;
+                            hh ^= hh>>13; hh *= 0x85ebca6bu; hh ^= hh>>16;
+                            float jitter = (wvar>0.f)? ((float)(hh % 2001u)/1000.f - 1.f)*wvar : 0.f;  /* ∈ [-var,+var] */
+                            econ_seed_population(re, fminf(fmaxf(wpop+jitter, 50.f), wcap*0.5f));
+                            re->raw_cap[RES_GRAIN]=fmaxf(re->raw_cap[RES_GRAIN], wfood);  /* raw food FORCÉE : le hameau se nourrit */
+                            for (int g=1; g<RES_PROD_FIRST; g++) if (re->raw_cap[g]>0.f) re->stock[g]+=whoard;
+                            got++;
+                        }
+                        if (dist[s]<hops) q[qt++]=s;
+                    }
+                }
+            }
+        }
+    }
+
     if (getenv("SCPS_CAPDIAG")) {
         double capsum=0, seedsum=0; int nact=0, nrole[4]={0};
         for (int r=0;r<e->n_regions;r++){
@@ -844,8 +893,10 @@ void econ_init(WorldEconomy *e, const World *w) {
             for (int c=0;c<CLASS_COUNT;c++) seedsum+=e->region[r].strata[c].pop;
         }
         for (int c=0;c<w->n_countries;c++){ int rr=w->country[c].role; if(rr>=0&&rr<4) nrole[rr]++; }
-        fprintf(stderr,"[CAPDIAG] active=%d cap_pop_sum=%.0f seed_pop=%.0f | PLAYER=%d ANTAG=%d CS=%d UNCL=%d\n",
-                nact, capsum, seedsum, nrole[0],nrole[1],nrole[2],nrole[3]);
+        int n_wild=0; for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized){
+            int o=e->region[r].owner; if (o>=0&&o<w->n_countries&&w->country[o].role==POLITY_WILD) n_wild++; }
+        fprintf(stderr,"[CAPDIAG] active=%d cap_pop_sum=%.0f seed_pop=%.0f | PLAYER=%d ANTAG=%d CS=%d UNCL=%d | hameaux WILD=%d\n",
+                nact, capsum, seedsum, nrole[0],nrole[1],nrole[2],nrole[3], n_wild);
     }
 }
 

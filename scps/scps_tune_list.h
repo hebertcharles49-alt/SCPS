@@ -124,6 +124,22 @@
      * URGENT) au-dessus du score d'expansion de CAPACITÉ. La capacité reste le défaut (pop
      * saine) ; le besoin oriente la cible quand ça presse. 0 = colonisation aveugle (capacité). */ \
     X(AI_COLONY_NEEDS_W,      1.5f) \
+    /* HAMEAUX LIBRES (POLITY_WILD) — Peuples Libres épars près des jouables (tue le « siècle
+     * d'inertie » : chaque empire a 2 objectifs voisins dès l'an 0). WILD_PER_PLAYABLE hameaux
+     * par jouable (0 = DÉSACTIVE) · WILD_POP graine · WILD_CAP plafond d'accueil · WILD_SPAWN_HOPS
+     * rayon BFS · WILD_CULTURE_DISTINCT (1 = culture distincte du voisin) · WILD_DEFECT_YEARS ans
+     * de contact pacifique avant ralliement culturel · WILD_HOARD réserve de brutes · WILD_REGIMENTS
+     * régiments défensifs levés. */ \
+    X(WILD_PER_PLAYABLE,      2.0f) \
+    X(WILD_POP,             750.0f) \
+    X(WILD_POP_VAR,         250.0f) \
+    X(WILD_CAP,            1200.0f) \
+    X(WILD_FOOD,              8.0f) \
+    X(WILD_SPAWN_HOPS,        2.0f) \
+    X(WILD_CULTURE_DISTINCT,  1.0f) \
+    X(WILD_DEFECT_YEARS,      8.0f) \
+    X(WILD_HOARD,            60.0f) \
+    X(WILD_REGIMENTS,         2.0f) \
     /* POOL CITÉ-ÉTAT — réserve TRADABLE de matières brutes (bois/fer/argile/pierre) déposée sur
      * la région-pivot de chaque cité-état : le marché mondial (#5) la revend aux empires nés
      * NUS, qui importent ainsi de quoi BÂTIR au lieu de stagner au plancher ½·cap_pop. */ \
