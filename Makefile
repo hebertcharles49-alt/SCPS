@@ -446,6 +446,32 @@ determinism: chronicle
 	 fi
 .PHONY: determinism
 
+# ---- make golden : NON-RÉGRESSION du monde (le hash comme CONTRAT public) --
+# `determinism` ci-dessus prouve la SELF-COHÉRENCE (A==B sur le MÊME binaire) — il reste VERT
+# si un changement DÉCALE le monde, tant que les deux runs du nouveau binaire concordent. Or
+# « monde reproductible » (graines partageables, replays, compat-save) repose sur le hash comme
+# CONTRAT. `golden` diffe la sortie courante CONTRE un golden COMMITÉ (scps/golden_hashes.txt) :
+# une re-baseline DÉLIBÉRÉE devient un diff d'UNE LIGNE, revu (puis `make golden-update`), au
+# lieu d'un glissement silencieux. (Le golden suit DET_YEARS=12 ; le long-run est un gate à part.)
+golden: chronicle
+	@CUR=$$(./chronicle --hash 7 5 $(DET_YEARS) 2>/dev/null | grep '^HASH'); \
+	 GOLD=$$(cat scps/golden_hashes.txt 2>/dev/null); \
+	 if [ -n "$$CUR" ] && [ "$$CUR" = "$$GOLD" ]; then \
+	   echo "golden OK : hash monde IDENTIQUE au golden commité (5 graines × $(DET_YEARS) ans)"; \
+	 else \
+	   echo "golden ÉCHEC : le hash monde a CHANGÉ vs scps/golden_hashes.txt —"; \
+	   echo "  re-baseline DÉLIBÉRÉE ? → revoir le diff ci-dessous, puis : make golden-update"; \
+	   printf '  golden :\n%s\n  actuel :\n%s\n' "$$GOLD" "$$CUR"; exit 1; \
+	 fi
+.PHONY: golden
+
+# Re-baseline ASSUMÉE : régénère le golden (à committer, le diff étant revu — le pendant outillé
+# des notes « ⚠ RE-BASELINE » faites à la main).
+golden-update: chronicle
+	@./chronicle --hash 7 5 $(DET_YEARS) 2>/dev/null | grep '^HASH' > scps/golden_hashes.txt
+	@echo "golden RE-BASELINÉ : scps/golden_hashes.txt mis à jour (à committer, diff revu)."
+.PHONY: golden-update
+
 # ---- Diagnostic mémoire : chronicle sous AddressSanitizer + UBSan ---------
 # Compile les sources d'un bloc AVEC les sanitizers (compile + link ensemble),
 # pour traquer double-free, use-after-free, hors-bornes et comportement indéfini :
@@ -685,7 +711,7 @@ smoke: membrane-check lang-check
 # ---- make full-test : LE GARDIEN LOURD (porte avant un push moteur) ----
 # La suite COMPLÈTE, puis le juge de paix du déterminisme, puis ASan+UBSan muets
 # sur un run court. Tout ce qui doit être vert avant de toucher au cœur.
-full-test: test determinism asan
+full-test: test determinism golden asan
 	@echo "── full-test : ASan+UBSan sur un run court (doit rester muet) ──"
 	@./chronicle_asan 7 1 20 6 12 >/dev/null
 	@echo "full-test OK : bancs + déterminisme + ASan/UBSan tous verts"
