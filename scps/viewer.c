@@ -43,6 +43,7 @@
 #include "scps_campaign.h"  /* … et MARCHENT : campagne sur la carte (marche/siège/bataille) */
 #include "scps_missions.h"  /* missions décennales : rythme + injection de ressources */
 #include "scps_navy.h"     /* la flotte (mer §5) : coques, chantier, entretien, outre-mer */
+#include "scps_tune.h"     /* P0-3 : empreinte des surcharges SCPS_TUNE dans la save (tune_active_string) */
 #include "scps_endgame.h"  /* capstone §27 : entropie + 4 fins + merveille (moteur, pas scps_core) */
 #include "scps_save_io.h"  /* écriture ATOMIQUE du slot (write-then-rename) : un crash ne corrompt pas la sauvegarde existante */
 #include "scps_lang.h"     /* la table de chaînes : tout mot face-joueur vient des tables */
@@ -4589,7 +4590,11 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 30u           /* v30 : ROSTER 22 — le roster militaire passe de 12 à 22 unités (spec
+#define SAVE_VERSION 31u           /* v31 : EMPREINTE TUNABLES — SaveHeader gagne `tune_ck` (FNV des surcharges
+                                    * SCPS_TUNE résolues, tune_active_string) ⇒ sizeof(SaveHeader) change → <v31
+                                    * refusé. Au chargement, un tune_ck DIFFÉRENT AVERTIT (la partie évoluera sous
+                                    * d'AUTRES règles ⇒ replays/graines-partagées invalides) sans bloquer le load.
+                                    * v30 : ROSTER 22 — le roster militaire passe de 12 à 22 unités (spec
                                     * design). ArmyState.weapons[W_COUNT] croît (12→22 slots de tampon de
                                     * combat) ⇒ sizeof(ArmyState) ⇒ sizeof(WarHost)/Campaign change → blob
                                     * sv_w plus large → ère antérieure (<v30 refusé). Indices des 12 unités
@@ -4645,6 +4650,8 @@ typedef struct {
     uint32_t flags;            /* SAVE_F_CRYPT : sections chiffrées (l'en-tête reste en CLAIR) */
     uint64_t nonce;            /* nonce ChaCha20 — unique par sauvegarde */
     uint64_t plain_ck;         /* empreinte FNV-1a du CLAIR : un octet altéré = refus net */
+    uint32_t tune_ck;          /* P0-3 : FNV des surcharges SCPS_TUNE résolues (tune_active_string) — une save
+                                * faite sous d'autres tunables, rechargée, évolue sous d'AUTRES règles : on le DÉTECTE */
 } SaveHeader;
 typedef struct { int32_t day, year, player, prev_dawned; uint32_t camp_rng;
                  int32_t race, ethos; int16_t prev_owner[SCPS_MAX_REG]; } SaveMisc;
@@ -4726,6 +4733,8 @@ static bool game_save(int slot, World *w, Sim *s, const WorldParams *params){
     h.magic=SAVE_MAGIC; h.version=SAVE_VERSION; h.seed=params->seed;
     h.day=s->day; h.year=s->year; h.player=s->player; h.params=*params;
     h.stamp=(int64_t)time(NULL);
+    { const char *tstr=tune_active_string();    /* P0-3 : empreinte des surcharges SCPS_TUNE résolues */
+      h.tune_ck=(uint32_t)scrypt_fnv1a(tstr, strlen(tstr)); }
     { int nreg=0; for (int r=0;r<s->econ->n_regions;r++) if (s->econ->region[r].owner==s->player) nreg++;
       snprintf(h.line,sizeof h.line,"An %d — %s, %d région(s)",
                s->year, (s->player>=0&&s->player<w->n_countries)?w->country[s->player].name:"?", nreg); }
@@ -4973,6 +4982,10 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
                                                             * à -1 ; sans ça, warhost_tick re-mobiliserait l'armée du
                                                             * joueur tout seul après un chargement (le generate, lui,
                                                             * le pose déjà — le load l'avait OUBLIÉ). */
+    { const char *tstr=tune_active_string();               /* P0-3 : les tunables actifs ≠ ceux de la save ? */
+      if ((uint32_t)scrypt_fnv1a(tstr, strlen(tstr)) != h.tune_ck)
+          fprintf(stderr, "[save] AVERTISSEMENT : SCPS_TUNE actif ≠ celui de la sauvegarde — la partie évoluera "
+                          "sous d'AUTRES règles (replays / graines partagées invalides).\n"); }
     s->ready=true;
     return 0;
 }
