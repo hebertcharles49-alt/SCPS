@@ -472,6 +472,16 @@ golden-update: chronicle
 	@echo "golden RE-BASELINÉ : scps/golden_hashes.txt mis à jour (à committer, diff revu)."
 .PHONY: golden-update
 
+# ---- make fuzz-save : DURCISSEMENT du save (audit P0-1, bonus) ------------
+# (1) forge chaque COMPTEUR désérialisé hors-borne → save_sane DOIT rejeter (le vecteur d'écriture
+# hors-bornes) ; (2) fuzz d'octets du fichier → game_load ne plante JAMAIS. Headless via SDL dummy.
+# HORS `make test` : le viewer a besoin de SDL ; les bancs, non. (~50 s ; idéal sous un build ASan.)
+fuzz-save: scps_viewer
+	@out=$$(SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./scps_viewer --fuzztest 9 2>&1); rc=$$?; \
+	 printf '%s\n' "$$out" | grep -E "BILAN|✗|flippés"; \
+	 if [ $$rc -eq 0 ]; then echo "fuzz-save OK"; else echo "fuzz-save ÉCHEC (rc=$$rc)"; exit 1; fi
+.PHONY: fuzz-save
+
 # ---- Diagnostic mémoire : chronicle sous AddressSanitizer + UBSan ---------
 # Compile les sources d'un bloc AVEC les sanitizers (compile + link ensemble),
 # pour traquer double-free, use-after-free, hors-bornes et comportement indéfini :

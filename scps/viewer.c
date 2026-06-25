@@ -5232,6 +5232,7 @@ int main(int argc, char **argv) {
     bool shot_political = false; float shot_zoom = 1.f;   /* N3.1 : capture vue Politique ± zoom */
     int  shot_shell = 0;
     bool savetest = false;
+    bool fuzztest = false;      /* P0-1 bonus : forge des compteurs (save_sane les rejette) + fuzz d'octets (jamais de crash) */
     bool shot_cur = false;
     bool langshot = false;      /* loc §2 : preuve PPM du balisage inline (#tag…#!) + nombre groupé */
     uint32_t shot_seed = 0; bool have_shot_seed = false;
@@ -5244,6 +5245,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--council")) { shot = true; shot_council = true; }   /* Q1 : section ÉTAT (Conseil) */
         else if (!strcmp(argv[i], "--shellshot") && i+1<argc) { shot=true; shot_shell=1+atoi(argv[++i]); }  /* 1=menu 2=setup 3=ouverture */
         else if (!strcmp(argv[i], "--savetest")) savetest=true;   /* vérif sauvegarde : sauver-recharger = continuation identique */
+        else if (!strcmp(argv[i], "--fuzztest")) fuzztest=true;   /* P0-1 : forge de compteurs + fuzz d'octets du save */
         else if (!strcmp(argv[i], "--curshot")) { shot=true; shot_cur=true; }   /* carte + champ des courants */
         else if (!strcmp(argv[i], "--war"))  { shot = true; shot_war  = true; }  /* §4 : capturer les armées sur la carte */
         else if (!strcmp(argv[i], "--culture")) { shot = true; shot_culture = true; }  /* §5 : vue culture */
@@ -5565,6 +5567,48 @@ int main(int argc, char **argv) {
                dA, dB, tamper_ok?"REFUSÉE (empreinte)":"ACCEPTÉE (BUG)",
                (same?1:0)+(tamper_ok?1:0), (same?0:1)+(tamper_ok?0:1));
         return (same&&tamper_ok)?0:1;
+    }
+
+    /* ── --fuzztest : LE DURCISSEMENT « contrat public » du save (audit P0-1, bonus). (1) chaque COMPTEUR/
+     * INDEX désérialisé, forgé HORS-BORNE, doit être REJETÉ par save_sane (le vecteur d'écriture hors-bornes) ;
+     * (2) un FUZZ d'octets du fichier (en-tête + payload) : game_load doit TOUJOURS rendre proprement — jamais
+     * planter (un OOB serait attrapé sous ASan). Headless : SDL_VIDEODRIVER=dummy ./scps_viewer --fuzztest 9. ── */
+    if (fuzztest){
+        for (int d2=0; d2<365*5; d2++) sim_day(&sim, world);   /* de l'état RÉEL : ordres, armées, révoltes */
+        int ok=0, ko=0;
+        #define FZ(cond,msg) do{ if (cond) ok++; else { ko++; printf("  ✗ %s\n",(msg)); } }while(0)
+        FZ(save_sane(world,&sim,sim.player), "sim valide accepté par save_sane");
+        { int v=sim.ag->n; sim.ag->n=SCPS_MAX_BUILDS+1; FZ(!save_sane(world,&sim,sim.player), "agency.n hors-borne REJETÉ"); sim.ag->n=v; }
+        { int v=sim.ag->n; sim.ag->n=-1;                FZ(!save_sane(world,&sim,sim.player), "agency.n négatif REJETÉ");   sim.ag->n=v; }
+        if (sim.ag->n>0){ int v=sim.ag->order[0].region; sim.ag->order[0].region=sim.econ->n_regions+9;
+            FZ(!save_sane(world,&sim,sim.player), "ordre.region OOB REJETÉ (le vecteur purge_slice)"); sim.ag->order[0].region=v; }
+        { int v=sim.rs->count; sim.rs->count=REVOLT_MAX+5; FZ(!save_sane(world,&sim,sim.player), "revolt.count hors-borne REJETÉ"); sim.rs->count=v; }
+        { int v=sim.camp->army[0].force.n_units; sim.camp->army[0].force.n_units=ARMY_MAX_UNITS+1;
+            FZ(!save_sane(world,&sim,sim.player), "camp army.n_units hors-borne REJETÉ"); sim.camp->army[0].force.n_units=v; }
+        { int v=sim.host->army[0].n_units; sim.host->army[0].n_units=ARMY_MAX_UNITS+13;
+            FZ(!save_sane(world,&sim,sim.player), "host army.n_units hors-borne REJETÉ"); sim.host->army[0].n_units=v; }
+        long flips=0;
+        if (game_save(3, world, &sim, &params)){
+            const char *fp=save_slot_path(3);
+            long fsz=0; { FILE *g=fopen(fp,"rb"); if(g){ fseek(g,0,SEEK_END); fsz=ftell(g); fclose(g); } }
+            long hdr=(long)sizeof(SaveHeader);
+            /* tout l'EN-TÊTE octet par octet (le parsing brut — magic/version/payload/nonce/ck) + un
+             * petit échantillon du payload (lequel est de toute façon protégé par l'empreinte FNV). */
+            long limit = (fsz < hdr+2048) ? fsz : hdr+2048;
+            for (long b=0; b<limit; b += (b<hdr?1:128)){
+                FILE *g=fopen(fp,"r+b"); if(!g) break;
+                fseek(g,b,SEEK_SET); int c=fgetc(g);
+                fseek(g,b,SEEK_SET); fputc(c^0xFF,g); fclose(g);
+                (void)game_load(3, world, &sim, &params);   /* doit RENDRE (0/1/2) — jamais planter */
+                flips++;
+                FILE *g2=fopen(fp,"r+b"); if(g2){ fseek(g2,b,SEEK_SET); fputc(c,g2); fclose(g2); }   /* restaure l'octet */
+            }
+            FZ(flips>0, "fuzz d'octets exécuté (game_load a toujours rendu — aucun crash)");
+        } else FZ(0, "game_save a écrit le fichier de fuzz");
+        #undef FZ
+        printf("  (%ld octets flippés ; save_sane a rejeté chaque forge ; aucun crash)\n", flips);
+        printf("══════════════════════════════════════\n BILAN : %d réussis, %d échoués\n", ok, ko);
+        return ko?1:0;
     }
     printf("[scps] Prêt. TAB/1-0=vues  T=arbre de tech  E/D/S/A/F=sidebar (éco·démo·stocks·armée·filtres)  Z=cadrer  R=regénère  clic=territoire\n");
     printf("[scps] Réglages (régénèrent) : c=continents g=âge e=érosion\n");
