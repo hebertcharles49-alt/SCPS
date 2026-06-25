@@ -3,8 +3,9 @@
 > État vérifiable. Source de vérité = les bancs (`make test`), jamais ce fichier.
 > Daté : 2026-06-18 (entête rafraîchi ; les entrées datées plus bas gardent leur
 > compte d'époque). Build : gcc 13 · -O2 -Wall -Wextra -std=c99 + durcissement
-> (`-fstack-protector-strong -D_FORTIFY_SOURCE=2`). SAVE_VERSION = **29** (le
-> format a fusionné les deux lignées : endgame §27 + assets/armée du collègue).
+> (`-fstack-protector-strong -D_FORTIFY_SOURCE=2`). SAVE_VERSION = **31** (le
+> format a fusionné les deux lignées : endgame §27 + assets/armée du collègue ;
+> puis v30 ROSTER militaire 12→22, v31 empreinte tunables — cf. correctifs d'audit).
 
 ---
 

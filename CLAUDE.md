@@ -43,7 +43,7 @@
   PLEINE nourrie (le socle vivrier suit `cap_pop`). **Bâtir double la région ½→plein** ⇒
   le monde passe de 48k à ~96k au siècle par la seule CONSTRUCTION (la pop SUIT le bâti ;
   aucun taux de croissance touché ; la guerre redistribue). Tunables (registre J) :
-  `EMPIRE_CAP` 10300 / `CITY_CAP` 5150 (taille nourrie) · `HOUSE_MANUF` 100 · `SEED_POP`
+  `EMPIRE_CAP` 13000 / `CITY_CAP` 6500 (taille nourrie ; valeurs CODE, cf. scps_tune_list.h) · `HOUSE_MANUF` 100 · `SEED_POP`
   48000. `cap_pop_sum` exact (zones mortes tranchées en Passe 1, RÉUTILISÉES en Passe 3).
   Le **readout** (viewer) reflète l'eff_cap moteur : les logements MONTENT quand on bâtit.
   ⚠ Pop & taille des pays ≫ qu'avant ; `ai_demo` a deux contrôles SENSIBLES AU MONDE
@@ -232,7 +232,7 @@
   ~184 documenté), toujours **post-100** (le cliquet tient). ⚠ **RE-BASELINE** : les mondes des graines
   de référence ONT CHANGÉ (pop ≈×1.8) ; le **hash 12 ans re-baseline** (le taux mord dès l'an-0,
   contrairement à l'endgame).
-  `make test` **35/35 vert** (les contrôles sensibles au monde — `ai_demo`, `social_demo` — étaient
+  `make test` **38/38 vert** (les contrôles sensibles au monde — `ai_demo`, `social_demo` — étaient
   déjà robustes à l'échelle de pop) ; `make determinism` STABLE (save/reload byte-identique).
   **Dialable d'UNE ligne** ou `SCPS_TUNE=POP_R_BASE=…` vers /35 (≈64k) ou /30 (registre J :
   `POP_R_BASE` 0.01733). **SAVE non bumpé** (aucune struct sérialisée ne change).
@@ -256,7 +256,7 @@
   « MODIFICATEURS »** (multiple) : `ProvinceReadout.mods[]` (membrane, mots + signe — faveur vert /
   fléau rouge), rendu par `viewer.c` entre Capitale et Bâtiments ; 7 `STR_*` (FR+EN). ⚠
   **RE-BASELINE** : les low seeds montent ; le **hash 12 ans re-baseline** (l'abondance mord dès
-  l'an-0). `make test` 35/35 · `determinism` stable · `lang-check` 64/64. Éteignable :
+  l'an-0). `make test` 38/38 · `determinism` stable · `lang-check` 64/64. Éteignable :
   `SCPS_TUNE=PROVMOD_ABOND_K=0` (le modificateur reste AFFICHÉ). ⚠ **Mesure propre (5 sims
   appariés)** : seed 9 OFF 63.0k → ON 67.8k (**+7.6 %** — il était lui-même à ~½ rempli, il capte
   donc un peu d'abondance ; le single-sim « bruit » l'avait masqué) ; les low seeds montent ~5× plus.
@@ -271,7 +271,7 @@
   un delta nourrit une natalité dense. Tous routés par l'entrée DÉMO (`provmod_collect` inline),
   surfacés en faveurs, 6 `STR_*` (FR+EN). ⚠ **SAVE BUMPÉ 26→27** (RegionEconomy +ferveur
   +reconstruction = 2 floats À ÉTAT → `sizeof(WorldEconomy)` change ; <v27 refusé). ⚠ RE-BASELINE
-  (les faveurs s'empilent ; hash 12 ans re-baseline). `make test` 35/35 · `determinism` STABLE.
+  (les faveurs s'empilent ; hash 12 ans re-baseline). `make test` 38/38 · `determinism` STABLE.
   Tunables registre J : `PROVMOD_FERVEUR_K` 0.5 · `_DECAY` 0.067 · `PROVMOD_RECON_K` 0.6 · `_DECAY`
   0.10 · `PROVMOD_LIMON_K` 0.15. À VENIR (autres SOUS-SYSTÈMES) : boosts K admin (build/agency),
   bonus géo biome gibier/halieutique (worldgen), couplage satisfaction de la croissance.
@@ -287,7 +287,7 @@
   déterminisme 12 ans NE BOUGE PAS (la diversité met des décennies à monter). Textes LITTÉRAUX comme
   tout `scps_events.c` (le module n'est pas migré STR_* ; `events_text_clean` reste vert). **SAVE non
   bumpé** (EVENTS[] est une table statique ; rien de sérialisé n'indexe EVID_COUNT). `make test`
-  35/35 · `determinism` STABLE.
+  38/38 · `determinism` STABLE.
 - **MIROIR XÉNOPHOBE (2026-06-17) — « Le creuset DIGÉRÉ » (la cohésion par la MÉTABOLISATION)** :
   le pendant martial du creuset, mais l'éthos Dominateur/Honneur ne GARDE pas la diversité — il la
   DIGÈRE. `EVID_XENOPHOBE`/`trig_xenophobe` exige qu'il y ait EU de la diversité (`n_groups≥2`,
@@ -297,7 +297,7 @@
   TIENT (vérifié STABLE). Effet : +légitimité +garnison −agitation +influence — la cohésion farouche
   de qui a tout fondu en un seul sang. Symétrie d'éthos (pas « diversité = bien/mal plat » : le
   creuset GARDÉ prospère pour l'accueillant, le creuset DIGÉRÉ pour le martial). **SAVE non bumpé**.
-  `make test` 35/35 · `determinism` STABLE.
+  `make test` 38/38 · `determinism` STABLE.
 - **COUPLAGE SATISFACTION ↔ CROISSANCE (2026-06-17, ASYMÉTRIQUE)** : le bonus de fertilité gagne
   un terme satisfaction `POP_SAT_W·max(0, satisfaction−0.5)` — une province CONTENTE croît un peu
   plus vite, mais la satisfaction BASSE ne soustrait RIEN (plancher à 0). Le **double tranchant**
@@ -305,7 +305,7 @@
   un peuple nourri mais grognon croît quand même, et la récompense PRIME la reprise une fois la
   province apaisée. Zéro risque baissier. Tunable `POP_SAT_W` 0.20 (registre J). ⚠ nudge seed 9 vers
   le haut (province contente) — c'est tout l'écosystème vitalité qui soulève un peu tout, les low
-  seeds ~5× plus. `make test` 35/35 · `determinism` STABLE. **SAVE non bumpé**.
+  seeds ~5× plus. `make test` 38/38 · `determinism` STABLE. **SAVE non bumpé**.
 - **DONS GÉO PROVINCIAUX (2026-06-17) — gibier abondant + manne halieutique** : deux faveurs géo
   SÉLECTIVES sur le slot « MODIFICATEURS » et le canal DÉMO. Posées à `econ_init` (tirage
   DÉTERMINISTE par région) : **~1/3 des régions BOISÉES** (majorité de provinces FOREST/WOODS/JUNGLE)
@@ -314,7 +314,7 @@
   **SAVE BUMP 27→28** (`sizeof(WorldEconomy)` change). 4 `STR_*` (FR+EN), `PROVMOD_GIBIER_K`/
   `PROVMOD_HALIEU_K` 0.10. ⚠ ce sont des bonus de **PLAFOND** (texture : ils enrichissent TOUS les
   seeds, ne ferment PAS l'écart low/riche — cf. garde-fou) : K volontairement PETIT. `make test`
-  35/35 · `determinism` STABLE.
+  38/38 · `determinism` STABLE.
 - **BONNE ADMINISTRATION (2026-06-18) — « admin efficace » par le canal DÉMO** : dernière faveur du
   brainstorm. `PMOD_ADMIN` (dérivé, pas de champ) : des institutions bâties (`re->build.K_inst` > 1.5)
   tiennent l'ordre & les services → natalité un peu plus dense (`PROVMOD_ADMIN_K` 0.06, plafonné).
@@ -322,7 +322,7 @@
   AGENCY/build ; ici on route l'efficacité administrative par la croissance, cohérent avec le pipeline).
   ⚠ `provmod_collect` est en-tête `static inline` SANS `<math.h>` → clamps MANUELS obligatoires (pas
   de `fminf`/`clampf` : ils tirent une déclaration implicite qui CONFLITE avec `scps_world.c`).
-  `make test` 35/35 · `determinism` STABLE · **0 warning** · **SAVE non bumpé**. ⊕ Le brainstorm
+  `make test` 38/38 · `determinism` STABLE · **0 warning** · **SAVE non bumpé**. ⊕ Le brainstorm
   diégétique est COMPLET (abondance · ferveur · reconstruction · limon · gibier · halieutique · admin
   + évents xénophile/xénophobe + couplage satisfaction) — 8 faveurs sur le slot « MODIFICATEURS ».
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
@@ -332,7 +332,8 @@
 - **MERGE (2026-06-18) — un seul tronc** : la lignée VITALITÉ (modificateurs diégétiques,
   endgame §27) et la lignée ASSETS/ARMÉE/WORLDGEN du collègue (matrice de contres,
   l'éthos compose l'armée, villes jamais sur l'eau, déboisement) FUSIONNENT. Le format de
-  save COMBINE les deux jeux de sections → **`SAVE_VERSION` 25→29** (l'entête `viewer.c`
+  save COMBINE les deux jeux de sections → **`SAVE_VERSION` 25→29**, depuis porté à **31** (v30 ROSTER
+  militaire 12→22 unités · v31 empreinte tunables, cf. audit) (l'entête `viewer.c`
   documente le combiné : EGAM endgame + assets/armée). `make test` vert, déterminisme STABLE.
 - **STABILISATION (2026-06-18) — `make audit` au VERT + harnais durci** : suite à l'audit
   technique (point bloquant : `make audit` ROUGE 2/4, jamais capté). Les deux bornes
@@ -429,6 +430,19 @@
   entropie 18→100 sur l'an 21-181, **fin RONCES an-181** épicentre rég. 30 ; bandeau + anneaux + terre
   assombrie capturés). Reste optionnel : particules GPU (neige/écume), shader de rift. `scps_api_demo` 9/9,
   moteur inchangé → **SAVE non bumpé**. ⚠ noms de fin = chrome GDScript (i18n Phase 5).
+- **AUDIT STEAM — correctifs P0/P1/P2 (2026-06-25)** : durcissement « contrat public » avant que des
+  saves touchent un joueur (toutes vérifs au vert : 38/38 bancs · déterminisme INCHANGÉ vs golden ·
+  ASan/UBSan muet · viewer 0 warning). **P0-1** (le seul bug de CORRUPTION) : `save_sane` borne enfin
+  `AgencyState.n`/`RevoltState.count`/`ArmyState.n_units` (+ régions d'ordre) ; `purge_slice` borne
+  `reg` (la boucle PURGE l'appelait SANS la garde d'apply_action ⇒ écriture hors-bornes depuis une save
+  forgée). **P0-2** : `game_load` rétablit `warhost_set_human` (sinon l'armée du joueur se re-mobilisait
+  seule après un load). **P0-3** : empreinte des surcharges `SCPS_TUNE` dans le SaveHeader (`tune_ck`) →
+  un reload sous d'autres règles AVERTIT ; **SAVE_VERSION 30→31**. **P0-4** : gate de NON-RÉGRESSION —
+  `scps/golden_hashes.txt` committé + `make golden` (le `determinism` ne prouvait que la self-cohérence).
+  **P1-1** : fuite du scratch warhost (~15 Ko/régénération) — `warhost_free` au teardown + avant ré-init,
+  host calloc'd. **P1-2** : `clampf` ne propage plus le NaN (17 copies) ; accumulateur `faust_charge`
+  borné (anti-dérive-inf cross-build). **P2-1** : `prosperity_demo` VÉRIFIE (17 assertions) au lieu de
+  vert-sur-rc=0. Détail & vérif-de-l'audit (claims CONFIRMÉS/REFUTÉS, file:line) à part.
 
 ## Disciplines non négociables
 
