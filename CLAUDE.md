@@ -619,6 +619,33 @@
   carve au cœur ≥ 0.72, bien au-dessus du seuil shader). **`viewer_audit` VERT** (graine 9 : aucun décor/
   bâti dans l'eau de rivière malgré le réseau plus dense — l'anti-bâti suit). **GDScript seul** (le carve
   est display-only) ⇒ moteur/déterminisme/golden INCHANGÉS, **SAVE non bumpé**.
+- **RIVIÈRES — hiérarchie FORCÉE connectée + dé-aridification + méandre jitté (2026-06-26, RE-BASELINE)** :
+  refonte du tracé pour une carte parchemin lisible. **Moteur** (`scps_world.c`, `trace_rivers`) :
+  hiérarchie FORCÉE — **N=6 fleuves · 2N rivières · 4N affluents** — chaque bras SEEK son parent par
+  champ de distance BFS ⇒ tout est CONNECTÉ (plus de bras morts). **`river_dist_to_sea`** : champ BFS
+  distance-à-la-mer (depuis TOUTE l'eau) SANS minimum local sur la terre ⇒ un fleuve qui le descend
+  ATTEINT TOUJOURS l'eau (corrige « le fleuve ne se jette dans aucune mer » : l'ancien `river_fleuve`
+  se coinçait dans une cuvette endoréique). `river_seek` unifié = descente propre (plus basse distance,
+  départage altitude). **Dé-aridification** (`gen_climate`) : corridor riparien ÉLARGI (rayon 4, débit
+  décroissant, `+0.55·riv`) ⇒ verdit les vallées partout où l'eau coule. **Membrane** : le MÉANDRE et la
+  LARGEUR sont posés au RENDU (`iso_ground.gd._meander`, display-only, ré-itérable sans re-baseline) :
+  Chaikin arrondit l'escalier D8, puis sinusoïde JITTÉE (2 sinus incommensurables + bruit cohérent
+  FastNoiseLite) d'amplitude ∝ **platitude × BIOME** (plaine ouverte serpente, forêt quasi droite, relief
+  nul, marais fort) — hors-axe NSEO, zéro angle droit ; largeur qui croît vers l'aval (affluents
+  collectés) ; disque doux sous-pixel = AA massif. Carte parchemin : **glyphes arbre/pic RETIRÉS**
+  (`iso_antique.gdshader`), lavis de terrain seuls, rivières en vedette.
+  ⚠ **BUG GENÈSE LATENT corrigé** (`scps_econ.c`) : une région PORTEUSE de la capitale d'un empire
+  pouvait être déclarée « infranchissable » (≥35 % d'aire morte) — la capitale est choisie pour l'EAU →
+  siège CÔTIER → la région agrège assez de provinces mortes (côte/glacier) pour franchir le seuil ⇒ un
+  empire (voire le JOUEUR) naissait SANS région colonisée. La dé-aridification ne CRÉAIT pas le bug, elle
+  déplaçait juste quel pays devient `ord[0]`=joueur, l'EXPOSANT. Fix : la région-siège est EXEMPTÉE du
+  verdict de zone morte (`is_cap[]`, le siège tient sur sa province habitable). ⚠ **RE-BASELINE** (le
+  monde change : qui est empire/colonisé bouge ; **golden re-baseliné**, déterminisme STABLE). 4 bancs
+  sensibles au monde recalibrés (intention préservée) : `audit_eco` (témoin = hameau SINON capitale) ·
+  `econ_arcane_demo` (essence au POOL NATIONAL, pas la part pop-share P1) · `ai_demo` (Bâtisseur
+  métabolise via un 3e canal, les CONSOLIDATIONS) · `scps_api_demo` (cible diplo VALIDE — possède des
+  régions, rôle indifférent — au lieu d'un index fixe). `make test` **40/40** · ASan/UBSan muet · **SAVE
+  non bumpé** (rien de sérialisé ne change ; le monde se régénère depuis la graine).
 
 ## Disciplines non négociables
 
