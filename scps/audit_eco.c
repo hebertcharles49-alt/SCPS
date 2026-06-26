@@ -140,13 +140,18 @@ int main(int argc, char **argv){
     if (cap_reg>=0){ const RegionEconomy *re=&econ->region[cap_reg];
         cap1=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop; }
     double hx   = (h0>0.0)? h1/h0 : 0.0;
+    double capx = (cap0>0.0)? cap1/cap0 : 0.0;
+    /* TÉMOIN de croissance : le hameau (région établie sous son plafond) s'il existe ; sinon — empire
+     * MONO-RÉGION (sur certains mondes le joueur ne tient QUE sa capitale) — la CAPITALE témoigne du
+     * taux réel (elle aussi croît sous son plafond, ×1.37 typique ; jamais le ×440 d'un bug d'amorçage). */
+    double wx   = (hamlet>=0)? hx : capx;
     double var  = (fl_n>1.0)? fl_m2/(fl_n-1.0) : 0.0;
 
     printf("\n── Les quatre bornes ──\n");
-    printf("   pop : hameau %.0f → %.0f (×%.2f en %d ans) · capitale %.0f → %.0f (×%.2f)\n",
-           h0, h1, hx, years, cap0, cap1, (cap0>0.0)?cap1/cap0:0.0);
-    ok("1. POP (E0.1) : le hameau fait ×[1.1 .. 2.5] en 10 ans (plus jamais ×440)",
-       hamlet>=0 && hx>=1.1 && hx<=2.5);
+    printf("   pop : hameau %.0f → %.0f (×%.2f en %d ans) · capitale %.0f → %.0f (×%.2f) · témoin ×%.2f\n",
+           h0, h1, hx, years, cap0, cap1, capx, wx);
+    ok("1. POP (E0.1) : la croissance témoin (hameau, sinon capitale) fait ×[1.1 .. 2.5] en 10 ans (plus jamais ×440)",
+       wx>=1.1 && wx<=2.5);
     if (!mouth_ok) printf("   (bouche cassée au mois %ld)\n", mouth_bad_month);
     ok("2. BOUCHE (E0.2) : conso nourriture == pop/100 à chaque échantillon mensuel",
        mouth_ok);

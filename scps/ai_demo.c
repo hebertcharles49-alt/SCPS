@@ -269,14 +269,16 @@ int main(int argc, char **argv){
     /* Bâtisseur +K — RE-BASELINE « carte nue » (2026-06-16) : l'empire naît SANS bâti
      * (eff_cap = ½·cap_pop, sans logement) → il démarre AU PLAFOND et reste sous le frein
      * (digestion permanente) ; sa voie K bascule alors en builds_other (l.942 scps_ai.c).
-     * Le Bâtisseur reste LE bâtisseur — il pose le plus d'ÉDIFICES civils — mais l'étiquette
-     * K-proactif / digestion suit le MONDE. On garde donc le ROBUSTE « il métabolise le plus »
-     * (K proactif OU édifices civils) ; l'APPÉTIT de K (w_build) est, lui, vérifié STRICT plus
-     * haut. (Les 3 archétypes sont des empires ; le marché-cité-état qui ravitaille la mise à
-     * nu — CS_TRADE_POOL — n'existe pas dans ce banc fermé : il opère en chronique/viewer.) */
-    ok("le Bâtisseur métabolise le PLUS (K proactif ou édifices civils)",
-       strict_max(act[2].stats.builds_k,     act[0].stats.builds_k,     act[1].stats.builds_k)
-    || strict_max(act[2].stats.builds_other, act[0].stats.builds_other, act[1].stats.builds_other));
+     * Le Bâtisseur reste LE bâtisseur — il développe le plus — mais le CANAL réalisé suit le MONDE :
+     * K proactif (terre à digérer), édifices civils (greniers/marchés), OU — démarré AU PLAFOND sur
+     * carte nue, sans terre neuve où s'étendre — CONSOLIDATIONS (il digère/améliore l'existant, sa
+     * 3e voie de métabolisme). On garde donc le ROBUSTE « il métabolise le plus » sur ces TROIS canaux ;
+     * l'APPÉTIT de K (w_build) est, lui, vérifié STRICT plus haut. (Les 3 archétypes sont des empires ;
+     * le marché-cité-état CS_TRADE_POOL n'existe pas dans ce banc fermé : il opère en chronique/viewer.) */
+    ok("le Bâtisseur métabolise le PLUS (K proactif, édifices civils ou consolidations)",
+       strict_max(act[2].stats.builds_k,       act[0].stats.builds_k,       act[1].stats.builds_k)
+    || strict_max(act[2].stats.builds_other,   act[0].stats.builds_other,   act[1].stats.builds_other)
+    || strict_max(act[2].stats.consolidations, act[0].stats.consolidations, act[1].stats.consolidations));
     {
         int aD=act[0].stats.wars+act[0].stats.conquests;
         int aM=act[1].stats.wars+act[1].stats.conquests;

@@ -159,9 +159,17 @@ int main(int argc, char **argv){
         ok("§3 — 13 verbes intérieur/commerce/guerre ENFILÉS", v==13);
         scps_sim_advance_days(s2, 1);        /* le drain les applique tous, revalidés, sans crash */
         ok("§3 — drainés sans crash (revalidation au drain : membrane stable)", scps_year(s2)>=0);
-        /* §3 — OPTIONS : la légalité grise les boutons. s2 a déclaré la guerre à tous → la cible est
-         * en guerre → PAIX offrable, DÉCLARATION grisée ; les aperçus de consentement sont bornés. */
-        ScpsDiploOptions dop; int gotd = scps_diplo_options(s2, (pl+1)%nc2, &dop);
+        /* §3 — OPTIONS : la légalité grise les boutons. On choisit une cible VALIDE au sens de
+         * scps_diplo_options — un pays qui POSSÈDE des régions et n'est PAS la friche POLITY_UNCLAIMED ;
+         * le RÔLE n'entre pas (un empire comme une CITÉ-ÉTAT est une cible légitime) — puis on la met EN
+         * GUERRE (déclaration UNILATÉRALE, déterministe) → PAIX offrable, DÉCLARATION grisée. Cibler un
+         * index fixe (pl+1) serait fragile : le pays-joueur varie d'un monde à l'autre, et l'index voisin
+         * peut tomber sur la friche (0 région) — c'était la cause de l'échec, pas le rôle de la cible. */
+        int tgt=-1;
+        for (int c=0;c<nc2;c++){ if (c==pl) continue; ScpsDiploOptions tmp; if (scps_diplo_options(s2,c,&tmp)){ tgt=c; break; } }
+        scps_player_declare_war(s2, tgt);
+        scps_sim_advance_days(s2, 1);                       /* le drain applique la guerre */
+        ScpsDiploOptions dop; int gotd = (tgt>=0) && scps_diplo_options(s2, tgt, &dop);
         ok("scps_diplo_options : cible valide → rempli", gotd==1);
         ok("options diplo COHÉRENTES (jamais guerre ET paix offrables ensemble)",
            !(dop.can_make_peace && dop.can_declare_war));

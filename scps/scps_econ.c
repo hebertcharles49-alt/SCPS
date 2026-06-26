@@ -477,6 +477,19 @@ void econ_init(WorldEconomy *e, const World *w) {
     float reg_hab[SCPS_MAX_REG]={0};
     bool  reg_impass[SCPS_MAX_REG]={0};   /* zone morte (déterminée ici, RÉUTILISÉE en Passe 3) */
     float cty_cap[SCPS_MAX_COUNTRY]={0};
+    /* Une région PORTEUSE de la capitale d'un empire/cité ne peut être déclarée morte : la capitale est
+     * posée sur sa province habitable (choisie pour l'eau+nourriture), mais le poids de rôle préfère les
+     * sièges CÔTIERS — la région agrège alors assez de provinces mortes (côte/glacier) pour franchir le
+     * seuil d'infranchissabilité. Sans garde, un empire (voire le JOUEUR) naît SANS aucune région
+     * colonisée (capitale inactive). On exonère donc la région-siège du verdict de zone morte. */
+    bool is_cap[SCPS_MAX_REG]={0};
+    for (int c=0;c<w->n_countries;c++){
+        PolityRole rl=w->country[c].role;
+        if (rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST && rl!=POLITY_CITY_STATE) continue;
+        int cp=w->country[c].capital_prov;
+        int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
+        if (cr>=0&&cr<w->n_regions) is_cap[cr]=true;
+    }
     for (int rid=0; rid<w->n_regions; rid++) {
         const Region *rg=&w->region[rid];
         e->region[rid].import_margin = 1.f;          /* I6 : marché 1:1 par défaut (intertrade l'ajuste) */
@@ -503,7 +516,7 @@ void econ_init(WorldEconomy *e, const World *w) {
         reg_cap[rid] = cap * hab;   /* la capacité est nulle pour les zones mortes */
         /* Zone morte : ≥35 % d'aire à habitabilité nulle (barrière même diluée par
          * une vallée) OU habitabilité moyenne < 12 % (désert hyperaride sans pic). */
-        reg_impass[rid] = (dead_area/area >= 0.35f) || (hab < 0.12f);
+        reg_impass[rid] = ((dead_area/area >= 0.35f) || (hab < 0.12f)) && !is_cap[rid];
         int cid=rg->country;
         /* La capacité-pays ne compte que les terres VIVABLES → la cible (Passe 2)
          * se répartit sur les seules régions actives : aucune part « fuite » dans
