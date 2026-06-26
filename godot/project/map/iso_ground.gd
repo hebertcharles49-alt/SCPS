@@ -768,10 +768,11 @@ func _build_river_field(w, W: int, H: int) -> Image:
 		return img
 	var hgt: Image = w.layer_image(LAYER_HEIGHT)   # pente locale → module l'amplitude du méandre
 	var sea: Image = w.layer_image(4)              # mer/lac → on n'envoie pas le méandre dans l'eau
+	var bio: Image = w.layer_image(LAYER_BIOME)    # biome → forêt ≈ droit, plaine ouverte = serpente
 	# flow = NIVEAU : fleuve 1.0 · rivière 0.62 · affluent 0.34. Le MOTEUR donne une LIGNE MÉDIANE propre ;
-	# ICI on FORCE un MÉANDRE SINUSOÏDAL (ample en PLAINE, nul en montagne — c'est là que serpentent les
-	# vrais fleuves) puis on grave avec une LARGEUR qui CROÎT vers l'AVAL (le fleuve grossit en collectant
-	# ses affluents). Disque DOUX sous-pixel = anti-crénelage MASSIF.
+	# ICI on l'ARRONDIT (Chaikin → fin de l'escalier D8) puis on FORCE un MÉANDRE SINUSOÏDAL JITTÉ — amplitude
+	# ∝ platitude × BIOME (serpente en terre plate ouverte, quasi droit en forêt, nul en montagne), bruit
+	# cohérent pour casser l'axe NSEO (zéro angle droit). Largeur qui CROÎT vers l'aval (affluents collectés).
 	for rv in raw:
 		var pts: PackedVector2Array = rv["points"]
 		if pts.size() < 6:
@@ -780,39 +781,102 @@ func _build_river_field(w, W: int, H: int) -> Image:
 		var v := clampf(0.58 + 0.42 * fl, 0.0, 1.0)
 		var base_w := 2 if fl > 0.8 else (1 if fl > 0.5 else 0)   # fleuve · rivière · affluent
 		var grow := 2 if fl > 0.8 else (1 if fl > 0.5 else 0)     # de combien la largeur enfle vers l'embouchure
-		var mp := _meander(pts, hgt, sea, W, H)
-		var sm := _smooth_poly(mp, 1)                            # de-step très léger (la sinusoïde est déjà lisse)
-		var n := sm.size()
+		var mp := _meander(pts, hgt, sea, bio, W, H)
+		var n := mp.size()
 		for k in range(n - 1):
 			var frac := float(k) / float(maxi(1, n - 1))         # 0 = source → 1 = embouchure
 			var wd := base_w + int(round(frac * float(grow)))    # PLUS LARGE en aval (affluents accumulés)
-			_carve_seg(img, sm[k], sm[k + 1], v, wd, W, H)
+			_carve_seg(img, mp[k], mp[k + 1], v, wd, W, H)
 	return img
 
-## FORCE un MÉANDRE SINUSOÏDAL sur la ligne médiane : déplacement PERPENDICULAIRE d'amplitude ∝ PLATITUDE
-## locale (plaine = grand méandre, montagne = droit). Bouts ANCRÉS (source/embouchure intacts) ; jamais
-## poussé dans la mer (sinon le décalage est réduit). Longueur d'onde ~ `wave` cellules.
-func _meander(pts: PackedVector2Array, hgt: Image, sea: Image, W: int, H: int) -> PackedVector2Array:
-	var n := pts.size()
+## amplitude de MÉANDRE par BIOME (index = enum Biome) : terre plate OUVERTE serpente (≈1), FORÊT quasi
+## droite (les arbres = obstacles, ≈0.25), relief droit (≈0), MARAIS serpente fort. Module l'amplitude.
+const BIOME_MEANDER := [
+	0.0, 0.0, 0.0, 0.7,        # 0 deep_ocean · 1 ocean · 2 shallow · 3 coast
+	1.0, 1.0, 1.0, 1.0, 1.0,   # 4 plains · 5 farmland · 6 grassland · 7 steppe · 8 savanna → SERPENTE
+	0.85, 0.85, 0.8,           # 9 drylands · 10 desert · 11 coastal_desert → ouvert
+	0.25, 0.25, 0.30,          # 12 forest · 13 woods · 14 jungle → QUASI DROIT
+	1.1,                       # 15 marsh → serpente FORT
+	0.12, 0.15, 0.05, 0.05,    # 16 highlands · 17 hills · 18 mountains · 19 peak → droit
+	0.18,                      # 20 glacier
+	0.8, 1.0, 0.05, 0.2,       # 21 mangrove · 22 bog · 23 volcano · 24 thorns
+]
+var _riv_noise: FastNoiseLite = null
+
+## FORCE un MÉANDRE SINUSOÏDAL JITTÉ sur la ligne médiane. (1) Chaikin ARRONDIT d'abord l'escalier D8 (plus
+## d'angle droit de base). (2) Déplacement PERPENDICULAIRE d'amplitude ∝ PLATITUDE × BIOME (plaine ouverte
+## serpente, forêt quasi droite, montagne nulle). (3) Sinusoïde JITTÉE : deux sinus incommensurables + bruit
+## COHÉRENT (FastNoiseLite) → ni régulière ni verrouillée sur l'axe NSEO (zéro angle droit). Bouts ancrés ;
+## jamais poussé dans la mer. Longueur d'onde ~ `wave` cellules ; abscisse curviligne `s` = phase constante.
+func _meander(pts: PackedVector2Array, hgt: Image, sea: Image, bio: Image, W: int, H: int) -> PackedVector2Array:
+	var base := _chaikin(pts, 2)                          # arrondit l'escalier D8 AVANT de méandrer
+	var n := base.size()
+	if n < 4:
+		return base
 	var out := PackedVector2Array(); out.resize(n)
-	out[0] = pts[0]; out[n - 1] = pts[n - 1]
-	var wave := 22.0
-	var amp_max := 9.0
-	var phase := float((int(pts[0].x) * 131 + int(pts[0].y) * 57) % 628) / 100.0   # déphasage par rivière
+	out[0] = base[0]; out[n - 1] = base[n - 1]
+	var nz := _meander_noise()
+	var wave := 26.0
+	var amp := 7.0
+	var phase := float((int(base[0].x) * 131 + int(base[0].y) * 57) % 628) / 100.0   # déphasage par rivière
+	var s := 0.0
 	for i in range(1, n - 1):
-		var p: Vector2 = pts[i]
-		var tang: Vector2 = (pts[i + 1] - pts[i - 1]).normalized()
+		s += base[i].distance_to(base[i - 1])             # abscisse curviligne (longueur d'onde en CELLULES)
+		var p: Vector2 = base[i]
+		var tang: Vector2 = (base[i + 1] - base[i - 1]).normalized()
 		var perp := Vector2(-tang.y, tang.x)
-		var off := amp_max * _flatness(hgt, p, W, H) * sin(float(i) * TAU / wave + phase)
-		var q := p + perp * off
-		if sea != null:                                  # ne pas méandrer DANS la mer (réduit jusqu'à rester sur terre)
+		var fac := _flatness(hgt, p, W, H) * _biome_meander(bio, p, W, H)   # pente × biome
+		# sinusoïde JITTÉE : 2 sinus incommensurables (normalisés) + bruit cohérent → cassée, hors-axe
+		var wig := (sin(s / wave + phase) + 0.4 * sin(s / wave * 2.37 + phase * 1.7)) / 1.4
+		wig += 0.4 * nz.get_noise_2d(p.x * 1.4, p.y * 1.4)
+		var disp := perp * (amp * fac * wig)
+		# micro-jitter COHÉRENT, décorrélé x/y → casse tout verrou cardinal résiduel (déplacement OFF-AXIS)
+		disp += Vector2(nz.get_noise_2d(p.y * 2.3 + 40.0, p.x * 2.3),
+				nz.get_noise_2d(p.x * 2.3, p.y * 2.3 + 70.0)) * (amp * 0.30 * fac)
+		var q := p + disp
+		if sea != null:                                   # ne pas méandrer DANS la mer (réduit jusqu'à rester sur terre)
 			var tries := 0
-			while tries < 4 and _is_sea(sea, q, W, H):
-				off *= 0.5; q = p + perp * off; tries += 1
+			while tries < 5 and _is_sea(sea, q, W, H):
+				disp *= 0.5; q = p + disp; tries += 1
 			if _is_sea(sea, q, W, H):
 				q = p
 		out[i] = q
 	return out
+
+## Chaikin (corner-cutting) : remplace chaque segment par ses points ¼ et ¾ → coins ARRONDIS (l'escalier
+## D8 devient courbe). Bouts conservés (source/embouchure ancrés). `iters` passes (≈ ×2 points/passe).
+func _chaikin(pts: PackedVector2Array, iters: int) -> PackedVector2Array:
+	var cur := pts
+	for _it in range(iters):
+		if cur.size() < 3:
+			break
+		var nxt := PackedVector2Array()
+		nxt.append(cur[0])
+		for i in range(cur.size() - 1):
+			var a: Vector2 = cur[i]
+			var b: Vector2 = cur[i + 1]
+			nxt.append(a.lerp(b, 0.25))
+			nxt.append(a.lerp(b, 0.75))
+		nxt.append(cur[cur.size() - 1])
+		cur = nxt
+	return cur
+
+## amplitude de méandre du BIOME sous (p) — 1 = serpente (plaine ouverte), 0.25 = forêt, ~0 = relief.
+func _biome_meander(bio: Image, p: Vector2, W: int, H: int) -> float:
+	if bio == null:
+		return 1.0
+	var b := int(bio.get_pixel(clampi(int(p.x), 0, W - 1), clampi(int(p.y), 0, H - 1)).r * 255.0 + 0.5)
+	return BIOME_MEANDER[b] if b >= 0 and b < BIOME_MEANDER.size() else 0.6
+
+## bruit COHÉRENT partagé (Simplex lissé) — le jitter du méandre. Spatialement lisse → wander organique,
+## jamais une dent de scie. Display-only (n'entre pas dans le moteur/déterminisme).
+func _meander_noise() -> FastNoiseLite:
+	if _riv_noise == null:
+		_riv_noise = FastNoiseLite.new()
+		_riv_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		_riv_noise.frequency = 0.05
+		_riv_noise.seed = 1337
+	return _riv_noise
 
 ## PLATITUDE 0..1 dérivée de la pente locale (gradient central du champ de hauteur). Plaine → ~1 (grand
 ## méandre) ; montagne → ~0 (droit).
