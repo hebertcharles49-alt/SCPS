@@ -115,6 +115,10 @@
      * tampon « habitée mais pas rivale »). La mer coupe l'adjacence ⇒ une île isolée passe toujours
      * (les « Angleterre » insulaires émergent). Trop grand sur un petit monde ⇒ moins d'empires posés. */ \
     X(SPAWN_SAFE_HOPS,        6.0f) \
+    /* Rayon de spawn ADAPTATIF : on tente SPAWN_SAFE_HOPS, et si la géométrie ne case pas tous les
+     * empires demandés, on resserre d'un cran jusqu'à SPAWN_SAFE_HOPS_MIN. « Tout caser » prime, à
+     * l'espacement max possible (HUGE=12 retombe sur 5 ; les presets qui tiennent à 6 le gardent). */ \
+    X(SPAWN_SAFE_HOPS_MIN,    5.0f) \
     /* VOCATION — nb de brutes (hors vivrier & stratégiques) gardées par région : la tuile
      * produit sa spécialité, pas la liste complète (la traîne mineure vient du commerce). */ \
     X(REGION_RAW_KEEP,        2.0f) \

@@ -137,7 +137,10 @@ int main(int argc, char **argv){
     printf("\n── 1b. Les chaînes complétées : armes, poudre, remèdes ──\n");
     {
         RegionEconomy *re=&e->region[3];
-        re->active=true; re->colonized=true; re->culture.settled=true; re->owner=0;
+        /* ISOLÉE (owner=-1), comme la brasserie : son stock PROPRE, hors pool national — sinon la
+         * poudre/les remèdes se diluent au prorata pop sur les régions-sœurs du pays (P1), d'autant
+         * plus que le monde est vaste. Le banc compare UNE région isolée → robuste à la taille du monde. */
+        re->active=true; re->colonized=true; re->culture.settled=true; re->owner=-1;
         for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
         re->raw_cap[RES_IRON]=4.f; re->raw_cap[RES_SALTPETER]=4.f; re->raw_cap[RES_COAL]=4.f;
         re->raw_cap[RES_MED_HERBS]=4.f;

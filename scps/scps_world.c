@@ -2048,7 +2048,15 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
              * est à distance infinie de tout empire ⇒ elle PASSE toujours : les « Angleterre »
              * insulaires deviennent des spawns de choix. Dégradation gracieuse : si le monde ne peut
              * caser N_EMPIRE empires espacés, on en pose moins (la post-passe continent rattrape). */
-            int safe = (int)tune_f("SPAWN_SAFE_HOPS", 6.f);
+            /* SPAWN « SAFE » ADAPTATIF — on pose les empires au rayon le plus LARGE qui les case
+             * TOUS : on tente SPAWN_SAFE_HOPS (6), et si la géométrie (continents/forme) ne peut
+             * tous les espacer, on RESSERRE d'un cran jusqu'à SPAWN_SAFE_HOPS_MIN (5). « Tout caser »
+             * prime, à l'espacement MAXIMAL possible. HUGE=12 retombe ainsi naturellement sur 5 ;
+             * un preset qui tient à 6 le garde. (Dégradation : si même le min ne case pas tout, on
+             * garde le tour le plus rempli — la post-passe continent rattrape les masses vides.) */
+            int safe_max = (int)tune_f("SPAWN_SAFE_HOPS",     6.f);
+            int safe_min = (int)tune_f("SPAWN_SAFE_HOPS_MIN", 5.f);
+            if (safe_min > safe_max) safe_min = safe_max;
             int demp[SCPS_MAX_REG], bq[SCPS_MAX_REG];
             /* demp[r] = distance-région (sauts radj) au plus proche empire déjà posé (BFS multi-source). */
             #define DEMP_RECOMPUTE() do { \
@@ -2059,14 +2067,20 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
                 while (bh<bt){ int r=bq[bh++]; for(int s=0;s<nreg;s++) if(radj[r*nreg+s] && demp[s]>demp[r]+1){ demp[s]=demp[r]+1; bq[bt++]=s; } } \
             } while(0)
             int n_emp=1;                                   /* le joueur compte */
-            DEMP_RECOMPUTE();
-            for (int i=1; i<ncty && n_emp<N_EMPIRE; i++){
-                int c=ord[i];
-                if (w->country[c].role!=POLITY_UNCLAIMED) continue;
-                const Country *ct=&w->country[c];
-                int mind=nreg+1;
-                for (int ri=0; ri<ct->n_regions; ri++){ int rr=ct->region_ids[ri]; if (rr>=0&&rr<nreg&&demp[rr]<mind) mind=demp[rr]; }
-                if (mind>=safe){ w->country[c].role=POLITY_ANTAGONIST; n_emp++; DEMP_RECOMPUTE(); }
+            for (int safe=safe_max; safe>=safe_min; safe--){
+                /* repli : relâche les antagonistes du tour précédent (le joueur reste) avant de retenter. */
+                for (int c=0;c<ncty;c++) if (w->country[c].role==POLITY_ANTAGONIST) w->country[c].role=POLITY_UNCLAIMED;
+                n_emp=1;
+                DEMP_RECOMPUTE();
+                for (int i=1; i<ncty && n_emp<N_EMPIRE; i++){
+                    int c=ord[i];
+                    if (w->country[c].role!=POLITY_UNCLAIMED) continue;
+                    const Country *ct=&w->country[c];
+                    int mind=nreg+1;
+                    for (int ri=0; ri<ct->n_regions; ri++){ int rr=ct->region_ids[ri]; if (rr>=0&&rr<nreg&&demp[rr]<mind) mind=demp[rr]; }
+                    if (mind>=safe){ w->country[c].role=POLITY_ANTAGONIST; n_emp++; DEMP_RECOMPUTE(); }
+                }
+                if (n_emp>=N_EMPIRE) break;   /* tous casés au rayon le plus large possible */
             }
             #undef DEMP_RECOMPUTE
             /* CITÉS-ÉTATS — les plus pesants restants, SANS contrainte d'espacement (elles peuplent
