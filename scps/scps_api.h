@@ -263,6 +263,7 @@ typedef struct {
     const char *status;     /* Guerre · Allié · Vassal · Suzerain · Neutre */
     int   at_war;           /* 1 si en guerre */
     int   allied;           /* 1 si allié */
+    int   opinion;          /* #26 : opinion ±100 de l'AUTRE pays envers nous (la mémoire des actes) */
 } ScpsRelation;
 int scps_country_relations(ScpsSim *s, int country, ScpsRelation *out, int max);
 
@@ -339,6 +340,22 @@ int  scps_player_make_peace    (ScpsSim *s, int target);   /* offre de paix BLAN
 int  scps_player_offer_alliance(ScpsSim *s, int target);
 int  scps_player_offer_pact    (ScpsSim *s, int target);
 int  scps_player_embargo       (ScpsSim *s, int target, int on);
+/* §3 — INTÉRIEUR · COMMERCE · GUERRE (plomberie additive ; ENFILENT, revalidé au drain).
+ * `region` = index de région À SOI ; `seat` ∈ [0,3) ; `good` ∈ Resource ; `hull` ∈ HullType ;
+ * `posture` 0 prudente/1 standard/2 agressive. Retour = mis-en-file (1) / refus (0). */
+int  scps_player_repress       (ScpsSim *s, int region);
+int  scps_player_assimilate    (ScpsSim *s, int region, int creuset);
+int  scps_player_purge         (ScpsSim *s, int region);
+int  scps_player_council_hire  (ScpsSim *s, int seat, int slot);
+int  scps_player_council_dismiss(ScpsSim *s, int seat);
+int  scps_player_route         (ScpsSim *s, int ra, int rb, int maritime);
+int  scps_player_market_buy    (ScpsSim *s, int region, int good, long qty, int tier);
+int  scps_player_market_sell   (ScpsSim *s, int region, int good, long qty, int tier);
+int  scps_player_campaign      (ScpsSim *s, int from_region, int target_region);
+int  scps_player_posture       (ScpsSim *s, int posture);
+int  scps_player_refill        (ScpsSim *s);
+int  scps_player_navy_build    (ScpsSim *s, int hull);
+int  scps_player_disband       (ScpsSim *s);
 /* LECTURE : cible de recherche courante (-1 = aucune) ; *progress01 ← fraction [0..1]. */
 int  scps_research_target(ScpsSim *s, float *progress01);
 

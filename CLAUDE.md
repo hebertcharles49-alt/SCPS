@@ -561,9 +561,20 @@
   (sim_cmd_push gate). **La chronique n'enfile jamais** (cmd_n=0) ⇒ drain no-op ⇒ **golden IDENTIQUE**,
   SAVE non bumpé, déterminisme intact. Banc scps_api_demo +3 (aller-retour : déclarer→guerre au drain ;
   paix/embargo/alliance enfilés+drainés sans crash). `make test` 40/40 · ASan muet · 0 warning.
-  À VENIR (§3 suite) : surfacer l'OPINION en bande (membrane, `statecraft_opinion` → readout) ; les
-  verbes intérieur (repress/assim/purge/conseil), commerce (route/marché) et guerre (campaign_*) —
-  plomberie additive sur le même motif.
+- **§3 — SURFACE DE VERBES COMPLÈTE + bande d'OPINION (2026-06-26)** : la plomberie additive est
+  BOUCLÉE. **13 verbes de plus** au journal (même motif : `CMD_*` + case revalidé au drain + façade
+  `scps_player_*`) — INTÉRIEUR : `repress`/`assimilate`(creuset)/`purge` (→ `agency_order_*`),
+  `council_hire`/`_dismiss` ; COMMERCE : `route` (→ `routes_order`), `market_buy`/`_sell`
+  (→ `intertrade_market_*`) ; GUERRE : `campaign` (→ `campaign_order`, force = l'ost mobilisé
+  `host->army[p]`), `posture`, `refill`, `navy_build`, `disband`. Chaque verbe REVALIDÉ au drain
+  (région ∈ [0,n) ET au joueur · seat/hull/good bornés · trêve respectée) — miroir save_sane, jamais
+  d'index périmé. **Bande d'OPINION** : `ScpsRelation` gagne `opinion` (±100, ce que l'AUTRE pense de
+  nous, `statecraft_opinion`) → la membrane porte enfin l'opinion #26 au panneau diplo. **Chronique
+  n'enfile pas** ⇒ drain no-op ⇒ **golden IDENTIQUE, SAVE non bumpé, déterminisme intact**. Banc
+  scps_api_demo (24/24 : déclarer→guerre · opinion bornée · 13 verbes enfilés+drainés sans crash).
+  `make test` 40/40 · golden IDENTIQUE · ASan muet · 0 warning. La couverture de VERBES joueur de la
+  roadmap §3 est COMPLÈTE (build/recruit/levy/research + diplo + intérieur + commerce + guerre) ;
+  restent les READS d'OPTIONS (énumérer les coups légaux) et l'UI Godot, hors moteur.
 
 ## Disciplines non négociables
 

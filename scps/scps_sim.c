@@ -305,6 +305,76 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
             intertrade_order_embargo(p, t, c->a[1]!=0);               /* décret unilatéral (pas d'évaluation) */
             break; }
+          /* ── §3 — INTÉRIEUR : les leviers passent par les MÊMES actionneurs que l'IA
+           *    (agency/statecraft) ; toute région est REVALIDÉE (∈ [0,n) ET au joueur). ── */
+          case CMD_REPRESS: {
+            int r=c->a[0];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            agency_order_repress(s->ag, r);
+            break; }
+          case CMD_ASSIMILATE: {
+            int r=c->a[0];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            agency_order_assimilate(s->ag, r, c->a[1]!=0);            /* a[1] = creuset (TECH_INTEGRATION) */
+            break; }
+          case CMD_PURGE: {
+            int r=c->a[0];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            agency_order_purge(s->ag, r);
+            break; }
+          case CMD_COUNCIL_HIRE: {
+            int seat=c->a[0], slot=c->a[1];
+            if (seat<0 || seat>=SC_COUNCIL_SEATS || slot<0 || slot>=SC_COUNCIL_CANDS) break;
+            statecraft_council_hire(s->sc, p, seat, slot);
+            break; }
+          case CMD_COUNCIL_DISMISS: {
+            int seat=c->a[0];
+            if (seat<0 || seat>=SC_COUNCIL_SEATS) break;
+            statecraft_council_dismiss(s->sc, p, seat);
+            break; }
+          /* ── §3 — COMMERCE ── */
+          case CMD_ROUTE: {
+            int ra=c->a[0], rb=c->a[1];
+            if (ra<0 || ra>=s->econ->n_regions || rb<0 || rb>=s->econ->n_regions || ra==rb) break;
+            if (s->econ->region[ra].owner!=p) break;                 /* on TRACE depuis une région à soi */
+            routes_order(s->rn, w, s->econ, ra, rb, c->a[2]!=0);     /* a[2] = maritime */
+            break; }
+          case CMD_MARKET_BUY: {
+            int r=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            if (g<=RES_NONE || g>=RES_COUNT || q<=0) break;
+            if (tier<0) tier=0; else if (tier>2) tier=2;
+            long spent=0; intertrade_market_buy(s->econ, r, (Resource)g, q, tier, &spent);
+            break; }
+          case CMD_MARKET_SELL: {
+            int r=c->a[0], g=c->a[1]; long q=c->a[2]; int tier=c->a[3];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            if (g<=RES_NONE || g>=RES_COUNT || q<=0) break;
+            if (tier<0) tier=0; else if (tier>2) tier=2;
+            long gained=0; intertrade_market_sell(s->econ, r, (Resource)g, q, tier, &gained);
+            break; }
+          /* ── §3 — GUERRE (campagne & flotte) : la force = l'ost MOBILISÉ du joueur (host) ── */
+          case CMD_CAMPAIGN: {
+            int from=c->a[0], tgt=c->a[1];
+            if (from<0 || from>=s->econ->n_regions || tgt<0 || tgt>=s->econ->n_regions) break;
+            if (s->econ->region[from].owner!=p) break;               /* on LANCE depuis une région à soi */
+            campaign_order(s->camp, s->econ, p, from, tgt, &s->host->army[p]);
+            break; }
+          case CMD_POSTURE: {
+            int po=c->a[0]; if (po<0) po=0; else if (po>2) po=2;     /* 0 prudente · 1 standard · 2 agressive */
+            campaign_set_posture(s->camp, p, po);
+            break; }
+          case CMD_REFILL:
+            campaign_refill(s->camp, p, s->econ, s->labor);          /* recomplète l'armée de campagne */
+            break;
+          case CMD_NAVY_BUILD: {
+            int h=c->a[0];
+            if (h<0 || h>=HULL_COUNT) break;
+            navy_order_build(s->navy, w, s->econ, p, (HullType)h);
+            break; }
+          case CMD_DISBAND:
+            warhost_disband(s->host, p);                             /* dissout la réserve levée */
+            break;
         }
     }
     s->cmd_n = 0;

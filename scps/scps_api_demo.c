@@ -135,6 +135,30 @@ int main(int argc, char **argv){
         scps_sim_advance_days(s2, 1);
         ok("verbes PAIX/EMBARGO/ALLIANCE : enfilés + drainés sans crash (membrane stable)",
            pe>=0 && em>=0 && (al==0 || al==1));
+        /* #26 — l'OPINION traverse la membrane : la bande ±100 du vis-à-vis (mémoire des actes). */
+        ScpsRelation rel2[64]; int nr2 = scps_country_relations(s2, pl, rel2, 64);
+        int op_ok = (nr2>0);
+        for (int i=0;i<nr2;i++) if (rel2[i].opinion < -100 || rel2[i].opinion > 100) op_ok=0;
+        ok("#26 : l'opinion ±100 traverse la membrane (bande bornée [-100,100])", op_ok);
+        /* §3 suite — INTÉRIEUR · COMMERCE · GUERRE : tous les verbes ENFILENT + DRAINENT sans crash.
+         * (Effet réel revalidé au drain : région à soi, indices bornés ; ici on prouve l'aller-retour.) */
+        int v = 0;
+        v += scps_player_repress(s2, 0)      ? 1:0;
+        v += scps_player_assimilate(s2, 0, 1)? 1:0;
+        v += scps_player_purge(s2, 0)        ? 1:0;
+        v += scps_player_council_hire(s2, 0, 0)   ? 1:0;
+        v += scps_player_council_dismiss(s2, 0)   ? 1:0;
+        v += scps_player_route(s2, 0, 1, 0)  ? 1:0;
+        v += scps_player_market_buy(s2, 0, 1, 10, 0) ? 1:0;
+        v += scps_player_market_sell(s2, 0, 1, 10, 0)? 1:0;
+        v += scps_player_campaign(s2, 0, 1)  ? 1:0;
+        v += scps_player_posture(s2, 2)      ? 1:0;
+        v += scps_player_refill(s2)          ? 1:0;
+        v += scps_player_navy_build(s2, 0)   ? 1:0;
+        v += scps_player_disband(s2)         ? 1:0;
+        ok("§3 — 13 verbes intérieur/commerce/guerre ENFILÉS", v==13);
+        scps_sim_advance_days(s2, 1);        /* le drain les applique tous, revalidés, sans crash */
+        ok("§3 — drainés sans crash (revalidation au drain : membrane stable)", scps_year(s2)>=0);
     }
 
     scps_sim_free(s); scps_sim_free(s2);

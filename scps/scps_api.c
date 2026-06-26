@@ -665,6 +665,7 @@ int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
         out[n].status = sw;
         out[n].at_war = (st==DIPLO_WAR) ? 1 : 0;
         out[n].allied = (st==DIPLO_ALLIED) ? 1 : 0;
+        out[n].opinion= statecraft_opinion(s->sim.sc, c, me);   /* #26 : ce que `c` pense de NOUS (mémoire) */
         n++;
     }
     return n;
@@ -923,6 +924,75 @@ int scps_player_offer_pact(ScpsSim *s, int target){
 int scps_player_embargo(ScpsSim *s, int target, int on){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_EMBARGO, { target, on?1:0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
+/* ── §3 — INTÉRIEUR · COMMERCE · GUERRE : plomberie additive (même motif que ci-dessus).
+ * Tous ENFILENT (différé) ; chaque verbe est REVALIDÉ au drain (région à soi, indices bornés)
+ * puis passé au MÊME actionneur que l'IA (agency/statecraft/intertrade/routes/campaign/navy). */
+int scps_player_repress(ScpsSim *s, int region){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_REPRESS, { region, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_assimilate(ScpsSim *s, int region, int creuset){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_ASSIMILATE, { region, creuset?1:0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_purge(ScpsSim *s, int region){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_PURGE, { region, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_council_hire(ScpsSim *s, int seat, int slot){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_COUNCIL_HIRE, { seat, slot, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_council_dismiss(ScpsSim *s, int seat){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_COUNCIL_DISMISS, { seat, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_route(ScpsSim *s, int ra, int rb, int maritime){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_ROUTE, { ra, rb, maritime?1:0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_market_buy(ScpsSim *s, int region, int good, long qty, int tier){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_MARKET_BUY, { region, good, (int32_t)qty, tier } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_market_sell(ScpsSim *s, int region, int good, long qty, int tier){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_MARKET_SELL, { region, good, (int32_t)qty, tier } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_campaign(ScpsSim *s, int from_region, int target_region){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_CAMPAIGN, { from_region, target_region, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_posture(ScpsSim *s, int posture){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_POSTURE, { posture, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_refill(ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_REFILL, { 0, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_navy_build(ScpsSim *s, int hull){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_NAVY_BUILD, { hull, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_disband(ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_DISBAND, { 0, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 

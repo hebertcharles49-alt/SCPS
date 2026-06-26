@@ -85,8 +85,13 @@ RE-BASELINE du hash 12 ans pour les arcs ÉCO (golden mis à jour) ; diplo étag
   guerre · paix blanche · offrir alliance/pacte · embargo) ; alliance/paix/pacte passent par
   `ai_consider_offer` (le vis-à-vis CONSENT via l'opinion). Façade `scps_player_*` additive, ENFILE
   (différé, revalidé au drain). Chronique n'enfile pas → **golden IDENTIQUE · SAVE non bumpé**. Banc
-  scps_api_demo +3 (40/40) · ASan muet. À VENIR (§3 suite) : bande d'opinion (membrane) + verbes
-  intérieur/commerce/guerre (même motif additif).
+  scps_api_demo +3 · ASan muet.
+- **§3 — surface de verbes COMPLÈTE + bande d'opinion** : +13 verbes (intérieur repress/assim/purge/
+  conseil · commerce route/marché · guerre campaign/posture/refill/navy/disband), même motif additif
+  (CMD_* + case revalidé au drain + façade scps_player_*). `ScpsRelation` gagne `opinion` (±100, la
+  membrane porte l'opinion #26). Chronique n'enfile pas → **golden IDENTIQUE · SAVE non bumpé**. Banc
+  scps_api_demo 24/24 (40/40) · ASan muet · 0 warning. Couverture de verbes joueur roadmap §3 COMPLÈTE ;
+  restent les reads d'OPTIONS (coups légaux) + l'UI Godot, hors moteur.
 
 ---
 
