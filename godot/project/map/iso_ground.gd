@@ -12,15 +12,18 @@ extends Node2D
 const UIKit = preload("res://ui/uikit.gd")
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
-## CARVE STRATÉGIQUE : la worldgen sème des fleuves PARTOUT → on ne grave QUE les majeurs. On
-## CLUSTER par embouchure (une baie = un système), on garde le TRONC le plus long, on le grave en
-## CONTINU (pinceau ∝ débit) dans le champ. Le shader y lit l'eau (cœur propre, berges fondues).
-const RIVER_MERGE := 64.0   ## embouchures à ≤ ça = UN système (le tronc le plus long le représente)
-const RIVER_MAX_SYS := 5    ## systèmes (les plus forts) gravés
-const RIVER_MIN_PTS := 12   ## tronc plus court = stub → système ignoré
+## CARVE du RÉSEAU : le moteur trace un réseau dendritique (tributaires tracés jusqu'à la mer ⇒ des
+## brins BRAIDÉS partagent le même tronc/embouchure). On CLUSTER par embouchure UNIQUEMENT pour DÉDUP
+## ces brins (une vraie rivière = un système), on garde le TRONC le plus long, on le grave en CONTINU
+## (pinceau ∝ débit) dans le champ. Le shader y lit l'eau (cœur propre, berges fondues).
+## ⚠ Le « on ne grave QUE les majeurs » (cap MAX_SYS + rayon de fusion ÉNORME) était un HÉRITAGE de
+## l'ancienne worldgen (qui spammait) — RETIRÉ : tous les bassins distincts se gravent (carte 1024×512,
+## ~7-17 fleuves selon la graine au lieu de 1-4).
+const RIVER_MERGE := 5.0    ## embouchures à ≤ ça = UN système : DÉDUP des brins braidés SEULEMENT (pas un throttle)
+const RIVER_MIN_PTS := 12   ## tronc plus court = stub → système ignoré (qualité, pas legacy)
 const RIVER_SECOND_MIN := 8 ## affluent dont la course AMONT (source→confluence) est plus courte = bruit → ignoré
 const RIVER_SECOND_MAX := 3 ## affluents gravés au plus par système (tronc + 3) → réseau lisible, pas d'inondation
-const RIVER_FLOW_FLOOR := 0.16  ## fraction du plus fort débit en-dessous de laquelle on s'arrête
+const RIVER_FLOW_FLOOR := 0.04  ## plancher ANTI-trace-morte (≈0) — plus le seuil « majeurs » d'antan
 const ESTUARY_CORE := 4      ## rayon du cœur d'eau à l'EMBOUCHURE (le fleuve s'ÉVASE dans la mer → accès LARGE, pas bouché par le sable)
 const TILE_K := 8              ## cellules monde par tuile iso (granularité du sol)
 ## Biomes « HIGHLAND » → reçoivent la falaise plate (autotile). TRI SERRÉ : seulement le relief
@@ -788,19 +791,17 @@ func _build_river_field(w, W: int, H: int) -> Image:
 			systems.append({"mouth": mouth, "flow": f, "strands": [rv], "trunk_len": pts.size()})
 	if systems.is_empty():
 		return img
-	# 2) graver les RIVER_MAX_SYS systèmes les plus forts ; pour chacun, TOUS ses brins (secondaires
-	#    inclus, plus fins) — le champ fusionne les recouvrements, les affluents restent distincts.
+	# 2) graver TOUS les systèmes distincts (cap MAX_SYS RETIRÉ — héritage de l'ancienne gen) ; pour
+	#    chacun, TOUS ses brins (secondaires inclus, plus fins) — le champ fusionne les recouvrements,
+	#    les affluents restent distincts. Trié par débit (les forts gravés d'abord = troncs de référence).
 	systems.sort_custom(func(a, b): return float(a["flow"]) > float(b["flow"]))
 	var fmax := float(systems[0]["flow"])
 	if fmax <= 0.0:
 		fmax = 1.0
-	var n := 0
 	for s in systems:
-		if n >= RIVER_MAX_SYS:
-			break
 		var f := float(s["flow"])
 		if f < RIVER_FLOW_FLOOR * fmax:
-			break
+			continue                                  # trace morte (≈0 débit) — pas un seuil « majeurs »
 		if int(s["trunk_len"]) < RIVER_MIN_PTS:
 			continue                                  # même le tronc est un stub → système écarté
 		var strands: Array = s["strands"]
@@ -833,7 +834,6 @@ func _build_river_field(w, W: int, H: int) -> Image:
 			_carve_path(img, pts.slice(0, jct + 1), float(rv["flow"]) / fmax, W, H)
 			drew += 1
 		_carve_to_sea(img, tpts[tpts.size() - 1], water, height, W, H)   # le TRONC se jette dans la mer
-		n += 1
 	return img
 
 ## TRONC du système = le brin le plus LONG (le cours complet, qui remonte le plus loin vers la

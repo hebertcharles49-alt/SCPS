@@ -604,6 +604,21 @@
   panneau compile). **Moteur INCHANGÉ** (façade + binding + GDScript seuls) ⇒ golden/déterminisme intacts,
   **SAVE non bumpé**. `scps_api_demo` 29/29, `make smoke` 8/8, GDExtension `scons` 0 warning. ⊕ La
   roadmap **§3 est COMPLÈTE de bout en bout** : verbes moteur → façade → binding → panneau jouable.
+- **RIVIÈRES — retrait du throttle « héritage de l'ancienne gen » (2026-06-26, DISPLAY-ONLY)** : la
+  carte ne montrait que **1-4 fleuves** (graine 11 : UN SEUL) là où le moteur en trace ~10-18 distincts.
+  Cause : le carve `iso_ground._build_river_field` héritait du postulat de l'ANCIENNE worldgen (« elle
+  sème des fleuves PARTOUT → on ne grave QUE les majeurs ») via un **rayon de fusion ÉNORME**
+  (`RIVER_MERGE` 64 cellules sur une carte **1024×512**) qui agglomérait des BASSINS distincts, + un
+  **cap** `RIVER_MAX_SYS` 5. Le moteur trace un réseau dendritique (tributaires tracés jusqu'à la mer ⇒
+  des brins braidés partagent le même tronc/embouchure) — la fusion ne doit DÉDUP que ces braids, pas
+  écraser les vrais bassins. **Retiré** : `RIVER_MAX_SYS` (cap supprimé) ; `RIVER_MERGE` 64→**5** (dédup
+  des braids SEULEMENT) ; `RIVER_FLOW_FLOOR` 0.16→**0.04** (plancher anti-trace-morte, plus le seuil
+  « majeurs »). On garde la machinerie de qualité (pinceau ∝ débit, tronc mont→mer, affluents clipés à la
+  confluence, `RIVER_MIN_PTS` anti-stub). Résultat (gate replay `river_diag`, fidèle aux mêmes gates) :
+  fleuves gravés graine 9 **3→13** · 11 **1→7** · 7 **4→16** · 42 **4→17** ; tous rendus (`_brush_for`
+  carve au cœur ≥ 0.72, bien au-dessus du seuil shader). **`viewer_audit` VERT** (graine 9 : aucun décor/
+  bâti dans l'eau de rivière malgré le réseau plus dense — l'anti-bâti suit). **GDScript seul** (le carve
+  est display-only) ⇒ moteur/déterminisme/golden INCHANGÉS, **SAVE non bumpé**.
 
 ## Disciplines non négociables
 
