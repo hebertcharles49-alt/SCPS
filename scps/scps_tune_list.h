@@ -84,13 +84,19 @@
     X(AI_WAR_BASELINE,        0.05f) \
     X(AI_WAR_SATURATION,      0.20f) \
     X(AI_WAR_CAP,             3.0f) \
-    /* Q6 re-baseline — le DOUBLEMENT 48k→96k PAR LE DÉVELOPPEMENT. cap_pop = la
-     * taille PLEINE nourrie (socle vivrier) ; eff_cap = ½·cap_pop (plancher) +
-     * grenier + logements BÂTIS (manufactures, +HOUSE_MANUF/niveau, plafonné à
-     * ½·cap_pop). La graine ensemence ½·cap_pop ; bâtir double la région vers son
-     * plein → le monde passe de ~48k à ~96k au siècle (la nourriture suit cap_pop). */ \
+    /* Q6 re-baseline — le DOUBLEMENT PAR LE DÉVELOPPEMENT. cap_pop = la taille PLEINE
+     * nourrie (socle vivrier) ; eff_cap = ½·cap_pop (plancher) + grenier + logements
+     * BÂTIS (manufactures, +HOUSE_MANUF/niveau, plafonné à ½·cap_pop). La graine ensemence
+     * sous le plancher ; bâtir double la région vers son plein (la nourriture suit cap_pop). */ \
     X(EMPIRE_CAP,         13000.0f) \
     X(CITY_CAP,            6500.0f) \
+    /* GENÈSE PAR-POLITÉ (re-baseline) — la pop an-0 est SEMÉE PAR ENTITÉ, plus un total
+     * plat : chaque EMPIRE naît avec EMPIRE_SEED âmes, chaque CITÉ-ÉTAT CITY_SEED, répartis
+     * uniformément sur ses régions actives (sous ½·cap_pop). Avec les WILD (2/empire ·
+     * WILD_POP), an-0 ≈ n·EMPIRE_SEED + nCS·CITY_SEED + 2n·WILD_POP. La pop CROÎT ensuite
+     * vers EMPIRE_CAP/CITY_CAP (l'apex visé, Passe 2). */ \
+    X(EMPIRE_SEED,         4000.0f) \
+    X(CITY_SEED,           2000.0f) \
     /* VOCATION — nb de brutes (hors vivrier & stratégiques) gardées par région : la tuile
      * produit sa spécialité, pas la liste complète (la traîne mineure vient du commerce). */ \
     X(REGION_RAW_KEEP,        2.0f) \
@@ -172,14 +178,15 @@
     X(AI_OFFER_PACT_OPINION,     0.0f) \
     /* HAMEAUX LIBRES (POLITY_WILD) — Peuples Libres épars près des jouables (tue le « siècle
      * d'inertie » : chaque empire a 2 objectifs voisins dès l'an 0). WILD_PER_PLAYABLE hameaux
-     * par jouable (0 = DÉSACTIVE) · WILD_POP graine · WILD_CAP plafond d'accueil · WILD_SPAWN_HOPS
-     * rayon BFS · WILD_CULTURE_DISTINCT (1 = culture distincte du voisin) · WILD_DEFECT_YEARS ans
+     * par jouable (0 = DÉSACTIVE) · WILD_POP graine EXACTE (750 ; WILD_POP_VAR=0 → an-0 LOCKÉ sur
+     * la formule, plus de jitter) · WILD_CAP plafond d'accueil (≥2·WILD_POP : la graine TIENT) ·
+     * WILD_SPAWN_HOPS rayon BFS · WILD_CULTURE_DISTINCT (1 = culture distincte du voisin) · WILD_DEFECT_YEARS ans
      * de contact pacifique avant ralliement culturel · WILD_HOARD réserve de brutes · WILD_REGIMENTS
      * régiments défensifs levés. */ \
     X(WILD_PER_PLAYABLE,      2.0f) \
     X(WILD_POP,             750.0f) \
-    X(WILD_POP_VAR,         250.0f) \
-    X(WILD_CAP,            1200.0f) \
+    X(WILD_POP_VAR,           0.0f) \
+    X(WILD_CAP,            1600.0f) \
     X(WILD_FOOD,              8.0f) \
     X(WILD_SPAWN_HOPS,        2.0f) \
     X(WILD_CULTURE_DISTINCT,  1.0f) \
@@ -190,7 +197,6 @@
      * la région-pivot de chaque cité-état : le marché mondial (#5) la revend aux empires nés
      * NUS, qui importent ainsi de quoi BÂTIR au lieu de stagner au plancher ½·cap_pop. */ \
     X(CS_TRADE_POOL,       1000.0f) \
-    X(SEED_POP,           48000.0f) \
     X(HOUSE_MANUF,          100.0f) \
     /* #5 — le PUMP À 2 ÉTAGES : le marché local de la cité-état la plus proche sert à
      * RENDEMENT DÉGRESSIF (la marge d'achat monte de MARKET_DIST_FALLOFF par saut). */ \

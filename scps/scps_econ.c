@@ -769,45 +769,44 @@ void econ_init(WorldEconomy *e, const World *w) {
      * §27 : une carve eau/ronces déplace côtes et barrières). */
     econ_build_adjacency(e, w);
 
-    /* ---- Peuplement initial : la GRAINE mondiale, le reste vierge ---------- *
-     * Q6 re-baseline — le DOUBLEMENT 48k→96k. On répartit une graine TOTALE fixe
-     * (SEED_POP ≈ 48k) sur toutes les régions actives des polités (empire +
-     * cité-état), AU PRORATA de leur cap_pop. Chaque région démarre donc sous
-     * son apex (cap_pop, lui-même VISÉ plus haut : EMPIRE_CAP/CITY_CAP) et CROÎT
-     * vers lui ; le monde traverse ~96k au siècle (seul moteur : la croissance,
-     * aucun taux trafiqué — la capacité visée, elle, est calibrée).
-     *   · La capitale (région la plus riche, sur tuile nourricière) reçoit
-     *     MÉCANIQUEMENT la plus grosse part (∝ son cap).
-     *   · Graine DÉCOUPLÉE du cap → Σ graines = SEED_POP PILE (plus de déficit,
-     *     même si une polité tombe sur une terre maigre).
-     *   · La friche vierge reste à zéro : frontière que les empires colonisent
-     *     (gain TERRITORIAL ; négligeable en pop, cap 200/pays).
-     * Membrane : on n'ajoute pas un bonus, on AMORCE la pop sous son plafond. */
-    /* Distribution UNIFORME à l'an-0 (Q6) : la même pop dans chaque région de polité
-     * (SEED_POP réparti à parts ÉGALES), bornée par le plancher ½·cap_pop (la terre nue,
-     * = eff_cap quand rien n'est bâti) → pas de famine d'amorçage. À l'an-0 nul ne domine ;
-     * la DIVERGENCE vient ENSUITE du bâti (qui développe ses manufactures grossit). */
-    int n_pr=0;
-    for (int cid=0; cid<w->n_countries; cid++) {
-        PolityRole role=w->country[cid].role;
-        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST && role!=POLITY_CITY_STATE) continue;
-        const Country *ct=&w->country[cid];
-        for (int ri=0; ri<ct->n_regions; ri++){
-            int rid=ct->region_ids[ri];
-            if (rid>=0&&rid<e->n_regions&&e->region[rid].active) n_pr++;
-        }
-    }
-    float seed_per = (n_pr>0) ? tune_f("SEED_POP",48000.f)/(float)n_pr : 0.f;
+    /* ---- Peuplement initial : la GRAINE PAR-POLITÉ, le reste vierge -------- *
+     * Re-baseline — la pop an-0 est SEMÉE PAR ENTITÉ (plus de total plat 48k réparti) :
+     *   EMPIRE     → EMPIRE_SEED (4000) ;
+     *   CITÉ-ÉTAT  → CITY_SEED   (2000) ;
+     *   (WILD      → 2/empire · WILD_POP ≈ 750, plus bas).
+     * La graine d'une polité se répartit UNIFORMÉMENT sur ses régions ACTIVES, bornée par
+     * le plancher ½·cap_pop (la terre nue = eff_cap quand rien n'est bâti → pas de famine
+     * d'amorçage). À l'an-0 nul ne domine DANS une polité ; la DIVERGENCE vient ENSUITE du
+     * bâti. La capacité VISÉE (apex) reste EMPIRE_CAP/CITY_CAP (Passe 2) : la pop CROÎT de
+     * sa graine vers son apex. La friche vierge reste à zéro (frontière à coloniser).
+     * Membrane : on n'ajoute pas un bonus, on AMORCE la pop sous son plafond.
+     *   an-0 ≈ n·EMPIRE_SEED + nCS·CITY_SEED + 2n·WILD_POP. */
+    float empire_seed = tune_f("EMPIRE_SEED", 4000.f);
+    float city_seed   = tune_f("CITY_SEED",   2000.f);
     for (int cid=0; cid<w->n_countries; cid++) {
         const Country *ct=&w->country[cid];
         PolityRole role=ct->role;
-        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST && role!=POLITY_CITY_STATE) continue;
+        float pol_seed;
+        if      (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) pol_seed=empire_seed;
+        else if (role==POLITY_CITY_STATE)                        pol_seed=city_seed;
+        else continue;
+        /* Σ cap_pop des régions ACTIVES = clé de répartition (∝ capacité → la capitale, la
+         * plus capable, en prend le plus). La graine de la polité se RÉPARTIT EXACTEMENT
+         * (Σ parts = pol_seed PILE, aucune perte au plancher) : la pop an-0 est ainsi LOCKÉE
+         * sur la formule n·EMPIRE_SEED + nCS·CITY_SEED + 2n·WILD_POP. Comme l'apex visé
+         * (EMPIRE_CAP/CITY_CAP) > 2·graine, chaque part reste SOUS ½·cap_pop (anti-famine). */
+        float capsum=0.f;
+        for (int ri=0; ri<ct->n_regions; ri++){
+            int rid=ct->region_ids[ri];
+            if (rid>=0&&rid<e->n_regions&&e->region[rid].active) capsum+=e->region[rid].cap_pop;
+        }
+        if (capsum<=0.f) continue;
         for (int ri=0; ri<ct->n_regions; ri++){
             int rid=ct->region_ids[ri];
             if (rid<0||rid>=e->n_regions) continue;
             RegionEconomy *re=&e->region[rid];
             if (!re->active) continue;
-            econ_seed_population(re, fminf(seed_per, re->cap_pop*0.5f));   /* uniforme, sous le plancher */
+            econ_seed_population(re, pol_seed * (re->cap_pop/capsum));   /* ∝ capacité, Σ = pol_seed PILE */
             re->colonized=true;
             re->owner=(int16_t)cid;
         }
