@@ -2031,10 +2031,42 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
              * gracieuse : on en assigne autant qu'il y en a.) */
             const int N_EMPIRE = want_empires>0 ? want_empires : 15;
             const int N_CITY   = want_cities >0 ? want_cities  : 20;
-            for (int i=1; i<N_EMPIRE && i<ncty; i++)
-                w->country[ord[i]].role=POLITY_ANTAGONIST;
-            for (int i=N_EMPIRE; i<N_EMPIRE+N_CITY && i<ncty; i++)
-                w->country[ord[i]].role=POLITY_CITY_STATE;
+            /* SPAWN « SAFE » (anti-voisin-collé) — un empire ne s'installe qu'à ≥ SPAWN_SAFE_HOPS
+             * tuiles-région d'un autre empire (BFS land-adj sur radj). Dans cette zone-tampon les
+             * CITÉS-ÉTATS et les HAMEAUX libres sont OK (eux ne sont pas bornés) — seuls deux
+             * EMPIRES ne se collent pas. La mer COUPE l'adjacence (radj land-only) ⇒ une île isolée
+             * est à distance infinie de tout empire ⇒ elle PASSE toujours : les « Angleterre »
+             * insulaires deviennent des spawns de choix. Dégradation gracieuse : si le monde ne peut
+             * caser N_EMPIRE empires espacés, on en pose moins (la post-passe continent rattrape). */
+            int safe = (int)tune_f("SPAWN_SAFE_HOPS", 6.f);
+            int demp[SCPS_MAX_REG], bq[SCPS_MAX_REG];
+            /* demp[r] = distance-région (sauts radj) au plus proche empire déjà posé (BFS multi-source). */
+            #define DEMP_RECOMPUTE() do { \
+                int bh=0,bt=0; \
+                for (int r=0;r<nreg;r++) demp[r]=nreg+1; \
+                for (int r=0;r<nreg;r++){ int cc=w->region[r].country; \
+                    if (cc>=0&&cc<ncty && (w->country[cc].role==POLITY_PLAYER||w->country[cc].role==POLITY_ANTAGONIST)){ demp[r]=0; bq[bt++]=r; } } \
+                while (bh<bt){ int r=bq[bh++]; for(int s=0;s<nreg;s++) if(radj[r*nreg+s] && demp[s]>demp[r]+1){ demp[s]=demp[r]+1; bq[bt++]=s; } } \
+            } while(0)
+            int n_emp=1;                                   /* le joueur compte */
+            DEMP_RECOMPUTE();
+            for (int i=1; i<ncty && n_emp<N_EMPIRE; i++){
+                int c=ord[i];
+                if (w->country[c].role!=POLITY_UNCLAIMED) continue;
+                const Country *ct=&w->country[c];
+                int mind=nreg+1;
+                for (int ri=0; ri<ct->n_regions; ri++){ int rr=ct->region_ids[ri]; if (rr>=0&&rr<nreg&&demp[rr]<mind) mind=demp[rr]; }
+                if (mind>=safe){ w->country[c].role=POLITY_ANTAGONIST; n_emp++; DEMP_RECOMPUTE(); }
+            }
+            #undef DEMP_RECOMPUTE
+            /* CITÉS-ÉTATS — les plus pesants restants, SANS contrainte d'espacement (elles peuplent
+             * volontiers les zones-tampon des empires : « CE ok » dans la safe zone). */
+            int n_cs=0;
+            for (int i=1; i<ncty && n_cs<N_CITY; i++){
+                int c=ord[i];
+                if (w->country[c].role!=POLITY_UNCLAIMED) continue;
+                w->country[c].role=POLITY_CITY_STATE; n_cs++;
+            }
 
             /* L4 — PEUPLER LES CONTINENTS : les rôles suivent le POIDS global, donc
              * tout s'agglutine sur le grand continent et les autres restent VIERGES

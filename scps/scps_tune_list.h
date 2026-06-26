@@ -97,6 +97,11 @@
      * vers EMPIRE_CAP/CITY_CAP (l'apex visé, Passe 2). */ \
     X(EMPIRE_SEED,         4000.0f) \
     X(CITY_SEED,           2000.0f) \
+    /* SPAWN « SAFE » — distance-région MIN (sauts d'adjacence terrestre) entre deux EMPIRES à la
+     * genèse : aucun empire ne se colle à un voisin. Cités-états & hameaux libres y sont permis (zone
+     * tampon « habitée mais pas rivale »). La mer coupe l'adjacence ⇒ une île isolée passe toujours
+     * (les « Angleterre » insulaires émergent). Trop grand sur un petit monde ⇒ moins d'empires posés. */ \
+    X(SPAWN_SAFE_HOPS,        6.0f) \
     /* VOCATION — nb de brutes (hors vivrier & stratégiques) gardées par région : la tuile
      * produit sa spécialité, pas la liste complète (la traîne mineure vient du commerce). */ \
     X(REGION_RAW_KEEP,        2.0f) \
