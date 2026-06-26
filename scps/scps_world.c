@@ -2505,21 +2505,40 @@ static int river_fleuve(World *w, float *height, uint8_t *mark, int sx, int sy, 
 /* RIVIÈRE/AFFLUENT : SEEK — descend le champ `dist` (vers le parent) en préférant la pente ;
  * s'ARRÊTE sur une cellule-rivière (RACCORD garanti) ; marque ses cellules au niveau `level`. */
 static int river_seek(World *w, float *height, int *dist, uint8_t *mark, int sx, int sy, int level, River *rv){
-    (void)w; rv->len=0; rv->flow_max = (level==2)?0.62f:0.34f;
-    int cx=sx, cy=sy, guard=0;
+    rv->len=0; rv->flow_max = (level==2)?0.62f:0.34f;
+    int cx=sx, cy=sy, guard=0, noprog=0;
+    float nzz=(float)(w->seed & 1023)*0.137f;            /* décale le champ de bruit par graine */
     if (dist[scps_idx(cx,cy)]<0) return 0;
     while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
         int ci=scps_idx(cx,cy);
         rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
         if (mark[ci]>=1) break;                          /* atteint une rivière → RACCORD */
-        int best=-1, bestd=1<<30; float besth=1e9f;
+        int curd=dist[ci];
+        int best=-1, bestdd=1<<30; float bestcost=1e30f;
         for (int d=0;d<8;d++){
             int nx=cx+DDX[d], ny=cy+DDY[d];
             if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
             int ni=scps_idx(nx,ny);
             if (height[ni]<SEA_LEVEL || dist[ni]<0) continue;
-            if (dist[ni]<bestd || (dist[ni]==bestd && height[ni]<besth)){ bestd=dist[ni]; besth=height[ni]; best=ni; }
+            /* coût = distance au parent + pente + BRUIT (le bruit casse la ligne droite → méandre) */
+            float nz=stb_perlin_fbm_noise3((float)nx*0.06f,(float)ny*0.06f,nzz,2.f,0.5f,3);
+            float cost=(float)dist[ni] + height[ni]*0.4f + nz*0.85f;
+            if (cost<bestcost){ bestcost=cost; best=ni; bestdd=dist[ni]; }
         }
+        if (best<0) break;
+        if (bestdd>=curd){                               /* le méandre s'éloigne… */
+            if (++noprog>5){                             /* …mais anti-blocage : force le plus court */
+                best=-1; int bd=1<<30; float bh=1e9f;
+                for (int d=0;d<8;d++){
+                    int nx=cx+DDX[d], ny=cy+DDY[d];
+                    if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+                    int ni=scps_idx(nx,ny);
+                    if (height[ni]<SEA_LEVEL || dist[ni]<0) continue;
+                    if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
+                }
+                noprog=0;
+            }
+        } else noprog=0;
         if (best<0) break;
         cx=best%SCPS_W; cy=best/SCPS_W;
     }
