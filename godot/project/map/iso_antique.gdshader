@@ -227,9 +227,9 @@ void fragment() {
 		// dans le MARAIS elle reste un chenal lisible, sur terre un trait net.
 		float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r;
 		float rv_noise = texture(noise_tex, cell * 0.35 + vec2(1.3, 4.7)).r;
-		float plume = smoothstep(0.33, 0.46, rv) * (0.7 + 0.3 * rv_noise) + smoothstep(0.6, 0.9, rv) * 0.15;
-		// EAUX TERRESTRES plus CLAIRES que la mer (inversion demandée) : rivière = bleu PÂLE lumineux.
-		vec3 river_col = is_water(b) ? mix(vec3(0.64, 0.74, 0.77), antique_color(0), 0.55) : vec3(0.64, 0.74, 0.77);
+		float plume = smoothstep(0.10, 0.40, rv) * (0.85 + 0.15 * rv_noise);   // champ de débit déjà courbé
+		// PREVIEW : encre bleue lisible (style final après baseline).
+		vec3 river_col = is_water(b) ? mix(vec3(0.40, 0.52, 0.62), antique_color(0), 0.5) : vec3(0.28, 0.44, 0.60);
 		float river_amt = is_water(b) ? plume * 0.40 : (is_wetland(b) ? plume * 0.7 : plume);
 		col = mix(col, river_col, river_amt);
 

@@ -1218,8 +1218,18 @@ static void gen_climate(World *w, float *height, float *moisture,
                 - subtrop            /* ceinture subtropicale → Sahara/Gobi */
                 - inland_dry;        /* intérieur profond → steppes/déserts froids */
 
-        /* Corridor riparien : le fleuve verdit sa vallée même dans le désert */
-        m += (cells[i].river/255.f)*0.28f;
+        /* Corridor riparien ÉLARGI : le RÉSEAU de fleuves (toutes les sources) verdit ses VALLÉES
+         * — la cellule ET son VOISINAGE (rayon 4, débit décroissant) — → DÉSARIDIFIE la planète
+         * partout où l'eau coule (« adapter le climat aux rivières »). */
+        float riv=0.f;
+        for (int ry=-4; ry<=4; ry++) for (int rx=-4; rx<=4; rx++){
+            int qx=x+rx, qy=y+ry;
+            if (qx<0||qx>=SCPS_W||qy<0||qy>=SCPS_H) continue;
+            float dd=sqrtf((float)(rx*rx+ry*ry)); if (dd>4.f) continue;
+            float c=(cells[scps_idx(qx,qy)].river/255.f)*(1.f-dd/5.f);
+            if (c>riv) riv=c;
+        }
+        m += riv*0.55f;
 
         moisture[i]=clampf(m,0.f,1.f);
     }
@@ -2440,62 +2450,136 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
 /* ========================================================================
  * TRACÉ DES RIVIÈRES PRINCIPALES
  * ====================================================================== */
-static void trace_rivers(World *w, float *height) {
-    int n=0;
-    /* Cellules déjà couvertes par un fleuve, pour éviter de retracer dix fois
-     * le même cours d'eau depuis des sources voisines. */
-    uint8_t *traced=(uint8_t*)calloc(SCPS_N,sizeof(uint8_t));
-    bool    *seen  =(bool*)   calloc(SCPS_N,sizeof(bool));
-    if (!traced||!seen){ free(traced); free(seen); w->n_rivers=0; return; }
-
-    for (int y=2;y<SCPS_H-2&&n<SCPS_MAX_RIVERS;y+=3)
-    for (int x=2;x<SCPS_W-2&&n<SCPS_MAX_RIVERS;x+=3) {
-        int i=scps_idx(x,y);
-        /* Source = cellule d'altitude (le débit y est nul par construction ;
-         * il grossit en descendant). On ne filtre PAS sur le débit ici. */
-        if (height[i]<MOUNTAIN_H-0.10f) continue;
-        if (traced[i]) continue;
-
-        River *rv=&w->river[n];
-        rv->len=0; rv->flow_max=0.f;
-        memset(seen,0,SCPS_N*sizeof(bool));
-
-        int cx=x,cy=y;
-        for (int s=0;s<SCPS_RIVER_MAXLEN;s++) {
-            if (cx<0||cx>=SCPS_W||cy<0||cy>=SCPS_H) break;
-            int ci=scps_idx(cx,cy);
-            if (seen[ci]) break;          /* anti-boucle */
-            seen[ci]=true;
-            rv->x[rv->len]=(int16_t)cx;
-            rv->y[rv->len]=(int16_t)cy;
-            rv->len++;
-            float fl=w->cell[ci].river/255.f;
-            if (fl>rv->flow_max) rv->flow_max=fl;
-            if (height[ci]<SEA_LEVEL) break;   /* atteint la mer */
-
-            /* Descente : voisin le plus bas (D8 stocké, sinon recherche) */
-            int dir=w->cell[ci].flow_dir;
-            if (dir<0) {
-                float mh=height[ci]; int best=-1;
-                for (int d=0;d<8;d++){
-                    int nx2=cx+DDX[d],ny2=cy+DDY[d];
-                    if (nx2<0||nx2>=SCPS_W||ny2<0||ny2>=SCPS_H)continue;
-                    if (height[scps_idx(nx2,ny2)]<mh){mh=height[scps_idx(nx2,ny2)];best=d;}
-                }
-                if (best<0) break;          /* cuvette : fin du cours */
-                dir=best;
-            }
-            cx+=DDX[dir]; cy+=DDY[dir];
-        }
-
-        /* On retient le fleuve s'il est long ET devient un vrai cours d'eau */
-        if (rv->len>14 && rv->flow_max>0.30f) {
-            for (int s=0;s<rv->len;s++) traced[scps_idx(rv->x[s],rv->y[s])]=1;
-            n++;
+/* ---- générateur de rivières FORCÉ : hiérarchie CONNECTÉE (jeu) -------------------------------
+ * Comment marche une vraie rivière : source en altitude → DESCENTE (jamais la côte) → les affluents
+ * SE JETTENT dans plus gros → fleuve → mer. On FORCE cette hiérarchie connectée (équilibre + rendu) :
+ *   N fleuves (long, source mont → mer) · 2N rivières (raccord à un fleuve) · 4N affluents (raccord
+ *   à une rivière/fleuve). Chaque brin SEEK son parent (champ de distance BFS) → toujours CONNECTÉ. */
+typedef struct { int idx; float h; } RiverSrc;
+static int river_src_cmp(const void *a, const void *b){
+    float ha=((const RiverSrc*)a)->h, hb=((const RiverSrc*)b)->h;
+    return (ha<hb) - (ha>hb);                    /* altitude DÉCROISSANTE */
+}
+/* BFS : dist[cellule de terre] = nb de pas jusqu'à la rivière la plus proche de niveau [lo..hi]. */
+static void river_dist_to(World *w, float *height, uint8_t *mark, int lo, int hi, int *dist, int *q){
+    (void)w; int qt=0;
+    for (int i=0;i<SCPS_N;i++){
+        dist[i]=-1;
+        if (height[i]>=SEA_LEVEL && mark[i]>=lo && mark[i]<=hi){ dist[i]=0; q[qt++]=i; }
+    }
+    for (int qh=0; qh<qt; qh++){
+        int c=q[qh], cx=c%SCPS_W, cy=c/SCPS_W;
+        for (int d=0;d<8;d++){
+            int nx=cx+DDX[d], ny=cy+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int ni=scps_idx(nx,ny);
+            if (height[ni]<SEA_LEVEL || dist[ni]>=0) continue;
+            dist[ni]=dist[c]+1; q[qt++]=ni;
         }
     }
-    free(traced); free(seen);
+}
+/* FLEUVE : descente NATURELLE (flow_dir / plus bas voisin) du sommet jusqu'à la MER. */
+static int river_fleuve(World *w, float *height, uint8_t *mark, int sx, int sy, River *rv){
+    rv->len=0; rv->flow_max=1.0f;
+    int cx=sx, cy=sy, guard=0;
+    while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
+        int ci=scps_idx(cx,cy);
+        rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
+        if (height[ci]<SEA_LEVEL) break;                 /* atteint la mer */
+        if (mark[ci]>=1 && rv->len>1) break;             /* rejoint un fleuve existant */
+        int dir=w->cell[ci].flow_dir, nx, ny;
+        if (dir>=0){ nx=cx+DDX[dir]; ny=cy+DDY[dir]; }
+        else { float mh=height[ci]; int best=-1;
+            for (int d=0;d<8;d++){ int ax=cx+DDX[d],ay=cy+DDY[d];
+                if (ax<0||ax>=SCPS_W||ay<0||ay>=SCPS_H) continue;
+                if (height[scps_idx(ax,ay)]<mh){ mh=height[scps_idx(ax,ay)]; best=d; } }
+            if (best<0) break;
+            nx=cx+DDX[best]; ny=cy+DDY[best]; }
+        if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) break;
+        cx=nx; cy=ny;
+    }
+    if (rv->len<14) return 0;
+    for (int k=0;k<rv->len;k++){ int mi=scps_idx(rv->x[k],rv->y[k]); if (mark[mi]==0) mark[mi]=1; }
+    return 1;
+}
+/* RIVIÈRE/AFFLUENT : SEEK — descend le champ `dist` (vers le parent) en préférant la pente ;
+ * s'ARRÊTE sur une cellule-rivière (RACCORD garanti) ; marque ses cellules au niveau `level`. */
+static int river_seek(World *w, float *height, int *dist, uint8_t *mark, int sx, int sy, int level, River *rv){
+    (void)w; rv->len=0; rv->flow_max = (level==2)?0.62f:0.34f;
+    int cx=sx, cy=sy, guard=0;
+    if (dist[scps_idx(cx,cy)]<0) return 0;
+    while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
+        int ci=scps_idx(cx,cy);
+        rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
+        if (mark[ci]>=1) break;                          /* atteint une rivière → RACCORD */
+        int best=-1, bestd=1<<30; float besth=1e9f;
+        for (int d=0;d<8;d++){
+            int nx=cx+DDX[d], ny=cy+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int ni=scps_idx(nx,ny);
+            if (height[ni]<SEA_LEVEL || dist[ni]<0) continue;
+            if (dist[ni]<bestd || (dist[ni]==bestd && height[ni]<besth)){ bestd=dist[ni]; besth=height[ni]; best=ni; }
+        }
+        if (best<0) break;
+        cx=best%SCPS_W; cy=best/SCPS_W;
+    }
+    if (rv->len<7) return 0;
+    for (int k=0;k<rv->len;k++){ int mi=scps_idx(rv->x[k],rv->y[k]); if (mark[mi]==0) mark[mi]=(uint8_t)level; }
+    return 1;
+}
+static void trace_rivers(World *w, float *height) {
+    int n=0;
+    uint8_t *mark=(uint8_t*)calloc(SCPS_N,1);
+    int *dist=(int*)malloc(SCPS_N*sizeof(int));
+    int *q   =(int*)malloc(SCPS_N*sizeof(int));
+    RiverSrc *src=(RiverSrc*)malloc(20000*sizeof(RiverSrc));
+    if (!mark||!dist||!q||!src){ free(mark); free(dist); free(q); free(src); w->n_rivers=0; return; }
+    const int RN=6;                                       /* N ~ empires jouables */
+    int ucx[64], ucy[64], nu=0;                           /* sources retenues (espacement) */
+
+    /* sources candidates = SOMMETS LOCAUX au-dessus du seuil amont, triés par altitude décroissante */
+    int ns=0;
+    for (int y=2;y<SCPS_H-2;y+=2) for (int x=2;x<SCPS_W-2;x+=2){
+        int i=scps_idx(x,y);
+        if (height[i] < SEA_LEVEL+0.10f) continue;
+        int ismax=1;
+        for (int d=0;d<8;d++){ int nx=x+DDX[d],ny=y+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            if (height[scps_idx(nx,ny)]>height[i]){ ismax=0; break; } }
+        if (!ismax) continue;
+        if (ns<20000){ src[ns].idx=i; src[ns].h=height[i]; ns++; }
+    }
+    qsort(src, ns, sizeof(RiverSrc), river_src_cmp);
+
+    /* 1) N FLEUVES : sources les plus HAUTES, ESPACÉES → descente jusqu'à la mer */
+    for (int s=0; s<ns && n<RN; s++){
+        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
+        if (mark[si]) continue;
+        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<140*140){tooclose=1;break;} }
+        if (tooclose) continue;
+        if (river_fleuve(w,height,mark,sx,sy,&w->river[n])){ ucx[nu]=sx; ucy[nu]=sy; nu++; n++; }
+    }
+    /* 2) 2N RIVIÈRES : SEEK le fleuve le plus proche (espacées) */
+    river_dist_to(w,height,mark,1,1,dist,q);
+    for (int s=0; s<ns && n<SCPS_MAX_RIVERS && (n-RN)<2*RN; s++){
+        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
+        if (mark[si] || dist[si]<0) continue;
+        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<70*70){tooclose=1;break;} }
+        if (tooclose) continue;
+        if (river_seek(w,height,dist,mark,sx,sy,2,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; }
+    }
+    /* 3) 4N AFFLUENTS : SEEK rivière OU fleuve (espacés serré) */
+    river_dist_to(w,height,mark,1,2,dist,q);
+    int na=0;
+    for (int s=0; s<ns && n<SCPS_MAX_RIVERS && na<4*RN; s++){
+        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
+        if (mark[si] || dist[si]<0) continue;
+        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<40*40){tooclose=1;break;} }
+        if (tooclose) continue;
+        if (river_seek(w,height,dist,mark,sx,sy,3,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; na++; }
+    }
     w->n_rivers=n;
+    free(mark); free(dist); free(q); free(src);
 }
 
 /* ========================================================================

@@ -766,75 +766,31 @@ func _build_river_field(w, W: int, H: int) -> Image:
 	var raw: Array = w.river_paths()
 	if raw.is_empty():
 		return img
-	var water: Image = w.layer_image(4)   # SCPS_LAYER_WATER : mer OU lac (255) → prolonger le fleuve jusque dedans
-	var height: Image = w.layer_image(0)  # SCPS_LAYER_HEIGHT : choisir le TRONC qui vient de la MONTAGNE (source haute)
-	# 1) CLUSTER par embouchure (distance) → un système = une baie ; on garde TOUS ses brins (tronc +
-	#    affluents). Les copies braidées se RECOUVRENT dans le champ (fusionnées au max) ; les VRAIS
-	#    affluents ajoutent des branches secondaires.
-	var systems := []
+	# Hiérarchie FORCÉE (worldgen) : flow encode le NIVEAU — fleuve 1.0 · rivière 0.62 · affluent 0.34.
+	# Largeur ∝ niveau (fleuve large → affluent fin). Brins CONNECTÉS (seek) → réseau cohérent.
 	for rv in raw:
 		var pts: PackedVector2Array = rv["points"]
-		if pts.size() < 2:
+		if pts.size() < 4:
 			continue
-		var mouth: Vector2 = pts[pts.size() - 1]
-		var f := float(rv["flow"])
-		var placed := false
-		for s in systems:
-			if mouth.distance_to(s["mouth"]) < RIVER_MERGE:
-				(s["strands"] as Array).append(rv)
-				s["flow"] = maxf(float(s["flow"]), f)
-				if pts.size() > s["trunk_len"]:
-					s["trunk_len"] = pts.size()
-				placed = true
-				break
-		if not placed:
-			systems.append({"mouth": mouth, "flow": f, "strands": [rv], "trunk_len": pts.size()})
-	if systems.is_empty():
-		return img
-	# 2) graver TOUS les systèmes distincts (cap MAX_SYS RETIRÉ — héritage de l'ancienne gen) ; pour
-	#    chacun, TOUS ses brins (secondaires inclus, plus fins) — le champ fusionne les recouvrements,
-	#    les affluents restent distincts. Trié par débit (les forts gravés d'abord = troncs de référence).
-	systems.sort_custom(func(a, b): return float(a["flow"]) > float(b["flow"]))
-	var fmax := float(systems[0]["flow"])
-	if fmax <= 0.0:
-		fmax = 1.0
-	for s in systems:
-		var f := float(s["flow"])
-		if f < RIVER_FLOW_FLOOR * fmax:
-			continue                                  # trace morte (≈0 débit) — pas un seuil « majeurs »
-		if int(s["trunk_len"]) < RIVER_MIN_PTS:
-			continue                                  # même le tronc est un stub → système écarté
-		var strands: Array = s["strands"]
-		# TRONC = le brin venant de la MONTAGNE (source la plus HAUTE) parmi les longs → une VRAIE
-		# rivière source→mer, jamais un bras isolé.
-		var trunk: Dictionary = _pick_trunk(strands, height, W, H)
-		if trunk.is_empty():
-			continue
-		var tpts: PackedVector2Array = trunk["points"]
-		var trel := float(trunk["flow"]) / fmax
-		_carve_path(img, tpts, trel, W, H)            # tronc source→embouchure = le réseau de référence
-		# AFFLUENTS : SEULEMENT ceux qui CONFLUENT avec le réseau (clipés à la jonction) → JAMAIS de bras
-		# isolé. Du plus long au plus court, plafonnés. (Le tronc & les copies braidées confluent dès leur
-		# source — déjà gravée — donc jct≈0 → sautés ; un cours sans confluence amont est un bras isolé → sauté.)
-		strands.sort_custom(func(a, b): return (a["points"] as PackedVector2Array).size() > (b["points"] as PackedVector2Array).size())
-		var drew := 1
-		for rv in strands:
-			if drew > RIVER_SECOND_MAX:
-				break
-			var pts: PackedVector2Array = rv["points"]
-			if pts.size() < RIVER_SECOND_MIN:
-				continue
-			var jct := -1
-			for k in range(pts.size()):              # 1re cellule (depuis la SOURCE) déjà gravée = la confluence
-				if img.get_pixel(clampi(int(pts[k].x), 0, W - 1), clampi(int(pts[k].y), 0, H - 1)).r > 0.30:
-					jct = k
-					break
-			if jct < RIVER_SECOND_MIN:
-				continue                              # pas de confluence en AMONT (ou trop court) → bras isolé : SKIP
-			_carve_path(img, pts.slice(0, jct + 1), float(rv["flow"]) / fmax, W, H)
-			drew += 1
-		_carve_to_sea(img, tpts[tpts.size() - 1], water, height, W, H)   # le TRONC se jette dans la mer
+		var fl := float(rv["flow"])
+		var v := clampf(0.58 + 0.42 * fl, 0.0, 1.0)
+		var wd := 2 if fl > 0.8 else (1 if fl > 0.5 else 0)   # fleuve 5px · rivière 3px · affluent 1px
+		for k in range(pts.size()):
+			var x := int(pts[k].x)
+			var y := int(pts[k].y)
+			_setmax(img, x, y, v, W, H)
+			for r in range(1, wd + 1):
+				_setmax(img, x + r, y, v, W, H)
+				_setmax(img, x - r, y, v, W, H)
+				_setmax(img, x, y + r, v, W, H)
+				_setmax(img, x, y - r, v, W, H)
 	return img
+
+func _setmax(img: Image, x: int, y: int, v: float, W: int, H: int) -> void:
+	if x < 0 or y < 0 or x >= W or y >= H:
+		return
+	if img.get_pixel(x, y).r < v:
+		img.set_pixel(x, y, Color(v, 0.0, 0.0))
 
 ## TRONC du système = le brin le plus LONG (le cours complet, qui remonte le plus loin vers la
 ## MONTAGNE) ; à longueur ~égale (copies braidées), on préfère la SOURCE la plus HAUTE. Tout le reste
