@@ -3796,6 +3796,18 @@ void country_make_name(char *out, int n, SpeciesArchetype race, Ethos ethos, int
     char core[24]; place_make_name(core,sizeof core, race, (uint32_t)cid);
     snprintf(out,(size_t)n,"%s %s", EPI[e], core);
 }
+/* NOM DE CULTURE (le PEUPLE) procédural — un ETHNONYME inventé, façon Stellaris : sans lui, les
+ * cultures de l'IA s'afficheraient toutes par leur AXE (« Honneur », « Mercantile »…) — moche &
+ * répétitif. L'axe (éthos) n'est PAS un nom. Dérivé de (héritage + seed=cid), déterministe ⇒ rien
+ * à sérialiser (comme les toponymes). Racine+suffixe du syllabaire d'héritage + une terminaison
+ * ethnonymique → ~256 variantes/héritage. P.ex. « Caeldoriens », « Brenwicar », « Tikilites ». */
+void culture_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed){
+    static const char *ETHNO[8] = { "iens","ar","ites","esi","ane","oï","uri","ade" };
+    int r=(race>=0&&race<RACE_COUNT)?(int)race:RACE_HUMAIN;
+    uint32_t h=(seed*2654435761u)^0x9E3779B9u; h^=h>>13; h*=0x85ebca6bu; h^=h>>16;
+    snprintf(out,(size_t)n,"%s%s%s",
+             NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3], ETHNO[(h>>15)&7]);
+}
 
 /* ════════════════════════════════════════════════════════════════════════
  * LA MER §4 — LE COÛT DIRECTIONNEL (et la volta émerge)

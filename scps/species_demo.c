@@ -25,16 +25,18 @@ static void ok(const char *what, bool cond){
 }
 
 static void print_build(const char *who, const SpeciesBuild *b){
-    int bud = build_budget(b);
-    printf("   %-22s %-14s %-14s %-16s  budget=%d %s\n",
+    int pos=0,neg=0;
+    for (int c=0;c<CAT_COUNT;c++){ const TraitDef *d=trait_def(b->trait[c]);
+        if (d->pts>0) pos++; else if (d->pts<0) neg++; }
+    printf("   %-22s %-14s %-14s %-16s  %d+/%d−  %s\n",
            who, trait_name(b->trait[CAT_PHYSIQUE]),
            trait_name(b->trait[CAT_SOCIAL]), trait_name(b->trait[CAT_INTELLECTUEL]),
-           bud, build_is_valid(b)?"✓ valide":"✗ INVALIDE");
+           pos, neg, build_is_valid(b)?"✓ valide":"✗ INVALIDE");
 }
 
 int main(void){
     printf("══════════════════════════════════════════════════════════════\n");
-    printf(" ROSTER DE RACES & TRAITS — un trait par catégorie, équilibré à 0\n");
+    printf(" ROSTER & TRADITIONS — une tradition par catégorie, FORCÉ 2 atouts + 1 défaut\n");
     printf("══════════════════════════════════════════════════════════════\n");
 
     /* ---- 1. Structure des pools ---------------------------------------- */
@@ -67,7 +69,7 @@ int main(void){
         print_build(tag,&b);
         if (!build_is_valid(&b)) roster_ok=false;
     }
-    ok("les 6 races par défaut sont valides (équilibrées à 0)", roster_ok);
+    ok("les 6 héritages par défaut sont valides (2 atouts + 1 défaut)", roster_ok);
 
     /* ---- 3. Flexibilité Stellaris (versions légales) ------------------ */
     printf("\n── 3. Flexibilité — on se compose un peuple (légalement) ──\n");
@@ -87,11 +89,12 @@ int main(void){
     SpeciesBuild illegal_cat = {{ T_ENDURANT, T_CHARISMATIQUE, T_FRONDEUR }};
     ok("rejette deux traits de la même catégorie (Frondeur en slot Intel)",
        !build_is_valid(&illegal_cat));
-    /* build déséquilibré : trois atouts → budget ≠ 0. */
-    SpeciesBuild unbalanced = {{ T_ROBUSTE, T_BELLIQUEUX, T_INVENTIF }};
-    ok("rejette un build déséquilibré (budget != 0)", !build_is_valid(&unbalanced));
-    printf("     (Robuste+Belliqueux+Inventif : budget=%d → trois atouts, illégal)\n",
-           build_budget(&unbalanced));
+    /* trois atouts → viole la règle FORCÉE (il faut exactement 1 défaut). */
+    SpeciesBuild three_pos = {{ T_ROBUSTE, T_BELLIQUEUX, T_INVENTIF }};
+    ok("rejette trois atouts (la règle force 2 atouts + 1 défaut)", !build_is_valid(&three_pos));
+    /* deux défauts → viole aussi (il faut exactement 2 atouts). */
+    SpeciesBuild two_neg = {{ T_FRELE, T_FACTIEUX, T_INVENTIF }};
+    ok("rejette deux défauts (la règle force 2 atouts + 1 défaut)", !build_is_valid(&two_neg));
 
     /* ---- Leviers composés (le code voit les chiffres ; le joueur des mots) */
     printf("\n── Leviers composés par race (échelle moteur) ──\n");

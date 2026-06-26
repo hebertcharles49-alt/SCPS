@@ -189,23 +189,19 @@ SpeciesBuild species_default_build(SpeciesArchetype r){
 /* ===================================================================== */
 /* BUDGET, VALIDATION, LEVIERS                                            */
 /* ===================================================================== */
-int build_budget(const SpeciesBuild *b){
-    int sum = 0;
-    for (int c=0;c<CAT_COUNT;c++){
-        TraitId t=b->trait[c];
-        if (t>=0&&t<TRAIT_COUNT) sum += TRAITS[t].pts;
-    }
-    return 1 - sum;   /* départ +1 ; équilibré quand Σ pts == 1 */
-}
-bool build_is_balanced(const SpeciesBuild *b){ return build_budget(b)==0; }
-
+/* RÈGLE DE TRADITIONS (ex-budget) — un build = 3 TRADITIONS (une par catégorie), FORCÉ à
+ * EXACTEMENT 2 atouts (pts>0) + 1 défaut (pts<0). Plus de score à équilibrer : la composition
+ * elle-même est la contrainte (le joueur choisit QUELLE catégorie est le défaut). Plus d'antonyme
+ * en conflit. (Le défaut « accompagne » la culture personnalisable : tout peuple a son revers.) */
 bool build_is_valid(const SpeciesBuild *b){
+    int pos=0, neg=0;
     for (int c=0;c<CAT_COUNT;c++){
         TraitId t=b->trait[c];
         if (t<0||t>=TRAIT_COUNT) return false;
-        if (TRAITS[t].cat != (TraitCategory)c) return false;   /* un trait par catégorie */
+        if (TRAITS[t].cat != (TraitCategory)c) return false;   /* une tradition par catégorie */
+        if (TRAITS[t].pts > 0) pos++; else if (TRAITS[t].pts < 0) neg++;
     }
-    if (build_budget(b)!=0) return false;
+    if (pos!=2 || neg!=1) return false;                        /* FORCÉ : 2 positifs, 1 négatif */
     for (int i=0;i<CAT_COUNT;i++)
         for (int j=i+1;j<CAT_COUNT;j++)
             if (TRAITS[b->trait[i]].antonym == b->trait[j]) return false;   /* antonymes */

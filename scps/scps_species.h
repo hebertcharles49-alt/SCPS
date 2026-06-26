@@ -107,12 +107,10 @@ Sphere          species_sphere(SpeciesArchetype r);
 const char     *species_name(SpeciesArchetype r);
 SpeciesBuild    species_default_build(SpeciesArchetype r);
 
-/* Budget restant d'un build (départ +1 − Σ coûts + Σ gains). 0 = équilibré. */
-int             build_budget(const SpeciesBuild *b);
-bool            build_is_balanced(const SpeciesBuild *b);   /* budget == 0 */
-/* Valide : un trait par catégorie, équilibré, aucun antonyme en conflit. */
+/* Valide : 3 TRADITIONS (une par catégorie), FORCÉ à 2 atouts (pts>0) + 1 défaut (pts<0),
+ * aucun antonyme en conflit. Plus de budget/score (supprimé) — la composition 2+/1− EST la règle. */
 bool            build_is_valid(const SpeciesBuild *b);
-/* Compose les leviers des 3 traits (somme des deltas). */
+/* Compose les leviers des 3 traditions (somme des deltas). */
 SpeciesLeviers  build_leviers(const SpeciesBuild *b);
 
 #endif /* SCPS_SPECIES_H */
