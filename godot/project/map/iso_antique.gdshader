@@ -126,47 +126,7 @@ float hash(uint n) {
 	return float(n & 0x7fffffffu) / 2147483648.0;
 }
 
-// ARBRE STYLISÉ à l'encre : conifère (3 triangles empilés) OU feuillu (couronne ronde) + tronc. uv local.
-float draw_tree(vec2 uv, uint seed) {
-	float h = hash(seed);
-	vec2 p = uv;
-	float trunk = step(abs(p.x), 0.025) * step(p.y, 0.35) * step(-0.45, p.y);
-	float foliage = 0.0;
-	for (int i = 0; i < 3; i++) {
-		float y_off = -0.15 - float(i) * 0.20;
-		float tri_w = 0.22 - float(i) * 0.04;
-		float tri_h = 0.22;
-		foliage += step(abs(p.x) / tri_w + (p.y - y_off) / tri_h, 1.0) * step(p.y, y_off) * step(y_off - tri_h, p.y);
-	}
-	foliage = min(foliage, 1.0);
-	float crown = 0.0;
-	if (h < 0.5) {
-		crown = step(length(p - vec2(0.0, -0.25)), 0.18)
-		      + step(length(p - vec2(-0.08, -0.32)), 0.12)
-		      + step(length(p - vec2(0.07, -0.30)), 0.10);
-		crown = min(crown, 1.0) * 0.9;
-	}
-	return max(max(trunk, foliage), crown);
-}
-
-// MONTAGNE STYLISÉE à l'encre : pic principal + pic secondaire + hachures internes + ombre portée SE.
-float draw_mountain(vec2 uv, uint seed) {
-	vec2 p = uv;
-	float h1 = hash(seed);
-	float h2 = hash(seed + 1u);
-	float peak_h = 0.5 + h1 * 0.3;
-	float peak_w = 0.25 + h2 * 0.1;
-	float mountain = step(abs(p.x) / peak_w + p.y / peak_h, 1.0) * step(p.y, 0.0) * step(-peak_h, p.y);
-	mountain += step(abs(p.x - 0.18) / 0.12 + (p.y + 0.08) / 0.30, 1.0) * step(p.y, -0.08) * step(-0.38, p.y) * 0.8;
-	float hatch = 0.0;
-	for (int i = 0; i < 5; i++) {
-		float y_line = -0.05 - float(i) * 0.09;
-		hatch += step(abs(p.x + (p.y - y_line) * 0.15), 0.015) * step(p.y, y_line + 0.01) * step(y_line - 0.02, p.y);
-	}
-	hatch = min(hatch, 1.0) * 0.6;
-	float shadow = step(p.x, 0.0) * step(-p.x * 0.4 + p.y + 0.15, 0.0) * mountain * 0.35;
-	return min(max(max(mountain, shadow), hatch * mountain), 1.0);
-}
+// (draw_tree / draw_mountain RETIRÉS : la carte n'imprime plus de glyphes arbre/pic — lavis seuls.)
 
 void fragment() {
 	// TOP-DOWN : cell = position monde directe (iso=VERTEX du quad plat) ; sinon inverse-iso 2:1.
@@ -245,25 +205,8 @@ void fragment() {
 			if (relief_density(cw + vec2(2.6, 2.6)) < 0.2 && is_solid(biome_at(cw + vec2(2.0, 2.0)))) col *= 0.90;
 		}
 
-		// ── SYMBOLES DESSINÉS à l'ENCRE (carte ancienne) : conifères/feuillus en FORÊT, pics hachurés en
-		//    MONTAGNE — semis sur grille jittered, clippés à leur région (le biome du PIXEL). ──
-		if (is_forest(b)) {
-			vec2 grd = floor(cell * 0.30);                 // ~1 arbre / 3.3 unités monde
-			uint sd = uint(max(grd.x * 7919.0 + grd.y * 6271.0 + 1048576.0, 0.0));
-			if (hash(sd + 5u) > 0.16) {                    // ~16 % de cellules VIDES → casse la grille
-				vec2 luv = fract(cell * 0.30) - 0.5;
-				luv -= vec2(hash(sd) - 0.5, hash(sd + 1u) - 0.5) * 0.55;             // gros jitter
-				col = mix(col, vec3(0.22, 0.16, 0.09), draw_tree(luv * (1.0 + hash(sd + 2u) * 0.6), sd) * 0.8);  // taille variée, glyphe REMPLIT la cellule
-			}
-		} else if (is_relief(b) && rd > 0.3) {
-			vec2 grd = floor(cell * 0.22);                 // pics plus GROS et espacés
-			uint sd = uint(max(grd.x * 8191.0 + grd.y * 5113.0 + 1048576.0, 0.0));
-			if (hash(sd + 5u) > 0.12) {
-				vec2 luv = fract(cell * 0.22) - 0.5;
-				luv -= vec2(hash(sd) - 0.5, hash(sd + 1u) - 0.5) * 0.5;
-				col = mix(col, vec3(0.20, 0.14, 0.07), draw_mountain(luv * (1.0 + hash(sd + 2u) * 0.5), sd) * 0.82);
-			}
-		}
+		// SYMBOLES DESSINÉS (arbres/pics à l'encre) : RETIRÉS — la carte garde les LAVIS de terrain
+		// (vert forêt, tan massif) mais plus aucun glyphe semé ; lecture épurée, rivières en vedette.
 	}
 
 	// ── COMMUN : rose des vents, bords brûlés, vignette, grade chaud ──
