@@ -484,8 +484,36 @@ static int weakest_ally(const AiActor *a, const World *w, const WorldEconomy *ec
     if (out_score) *out_score = (worst>=0)? wv : 0.f;
     return worst;
 }
+/* #26 — `to` ÉVALUE une OFFRE de `from` et l'ACCEPTE/REFUSE (le « code IA évaluer-offre »).
+ * Lu de l'OPINION ±100 (mémoire des actes) + la relation STRUCTURELLE + le score de guerre.
+ * sc == NULL ⇒ pas de porte d'opinion (décision relation-seule, rétro-compatible bancs). */
+bool ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldProsperity *wp,
+                       const DiploState *d, const Statecraft *sc, int from, int to, OfferKind kind){
+    if (!w||!econ||!wp||!d) return false;
+    if (from<0||to<0||from==to||from>=w->n_countries||to>=w->n_countries) return false;
+    if (w->country[to].role==POLITY_UNCLAIMED || w->country[from].role==POLITY_UNCLAIMED) return false;
+    int op = sc ? statecraft_opinion(sc, to, from) : 0;   /* ce que `to` pense de `from` (l'offrant) */
+    switch (kind){
+        case OFFER_ALLIANCE:
+            if (diplo_status(d,to,from)==DIPLO_WAR) return false;                 /* pas d'alliance avec un ennemi actif */
+            if (diplo_ally_count(d,to) >= DIPLO_ALLY_SLOTS) return false;         /* plus de slot libre */
+            if (sc && op < (int)tune_f("AI_OFFER_ALLY_OPINION",10.f)) return false;   /* opinion trop basse → REFUS */
+            return diplo_relation(w,econ,wp,d,to,from).alliance > 0.f;            /* + compatibilité réciproque */
+        case OFFER_PEACE: {
+            if (diplo_status(d,to,from)!=DIPLO_WAR) return true;                  /* déjà en paix : trivialement oui */
+            float sf  = diplo_war_score(d, from, to);                            /* score de l'OFFRANT contre `to` */
+            float yrs = d->war_years[from][to];
+            return sf >= tune_f("AI_WAR_DECISIVE",50.f)*0.5f || yrs >= tune_f("AI_WAR_EXHAUST",10.f);
+        }                                                                        /* `to` cède s'il PERD ou s'épuise */
+        case OFFER_TRADE_PACT:
+            if (diplo_status(d,to,from)==DIPLO_WAR) return false;
+            if (sc && op < (int)tune_f("AI_OFFER_PACT_OPINION",0.f)) return false;
+            return diplo_relation(w,econ,wp,d,to,from).complement > 0.1f;         /* un pacte = un intérêt commercial */
+    }
+    return false;
+}
 static int ai_pick_ally(const AiActor *a, const World *w, const WorldEconomy *econ,
-                        const WorldProsperity *wp, const DiploState *d){
+                        const WorldProsperity *wp, const DiploState *d, const Statecraft *sc){
     int best=-1; float bestsc=AI_ALLY_SEUIL;
     for (int b=0;b<w->n_countries;b++){
         if (b==a->cid || w->country[b].role==POLITY_UNCLAIMED) continue;
@@ -493,6 +521,7 @@ static int ai_pick_ally(const AiActor *a, const World *w, const WorldEconomy *ec
         if (!countries_adjacent(econ,a->cid,b)) continue;
         if (diplo_ally_count(d,b) >= DIPLO_ALLY_SLOTS) continue;           /* §D-sat : le candidat n'a plus de slot */
         if (crosses_existing(w,d,a->cid,b)) continue;             /* §D-sat : pas d'alliance croisée */
+        if (!ai_consider_offer(w,econ,wp,d,sc, a->cid, b, OFFER_ALLIANCE)) continue;  /* #26 : `b` CONSENT-il ? (bilatéral) */
         Relation rel=diplo_relation(w,econ,wp,d,a->cid,b);
         if (rel.alliance>bestsc){ bestsc=rel.alliance; best=b; }
     }
@@ -1069,8 +1098,8 @@ static float ai_occupied_value(const DiploState *d, const WorldEconomy *econ, in
 
 /* Stratégie : conquérir, déclarer la guerre, ou CONSOLIDER (le frein). */
 static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
-                          WorldLegitimacy *wl, DiploState *diplo, const AiView *v,
-                          float brake, int day){
+                          WorldLegitimacy *wl, DiploState *diplo, const Statecraft *sc,
+                          const AiView *v, float brake, int day){
     if (ai_owned_regions(econ, a->cid)==0) return;      /* polité ABSORBÉE : inerte (plus de stratégie) */
     /* FREIN DUR : on a trop avalé / l'ordre craque → paix générale + verrou. */
     if (brake > AI_BRAKE_HARD){
@@ -1218,7 +1247,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
      * AI_ALLY_SLOTS pactes : l'alliance est une ressource RARE qu'on arbitre, pas un seuil
      * que tout le monde franchit. Slots pleins → on n'élargit pas ; on n'ÉVINCE le plus
      * faible que si le nouveau le dépasse NETTEMENT (marge) — sinon on garde ce qu'on a. */
-    int ally = ai_pick_ally(a, w, econ, wp, diplo);
+    int ally = ai_pick_ally(a, w, econ, wp, diplo, sc);
     if (ally>=0){
         if (diplo_ally_count(diplo, a->cid) < DIPLO_ALLY_SLOTS){
             diplo_form_alliance(diplo, a->cid, ally);
@@ -1778,7 +1807,7 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
 /* ===================================================================== */
 void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
              WorldLegitimacy *wl, AgencyState *ag, RouteNetwork *rn,
-             DiploState *diplo, int day){
+             DiploState *diplo, const Statecraft *sc, int day){
     if (a->cid<0 || a->cid>=w->n_countries) return;
     bool econ_due  = (day >= a->next_econ_day);
     bool strat_due = (day >= a->next_strat_day);
@@ -1830,7 +1859,7 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
     }
     if (strat_due){
         ai_refresh_ethos(a, w, econ);   /* §3 : l'éthos effectif GLISSE avec la composition avant d'agir */
-        ai_strat_turn(a, w, econ, wp, wl, diplo, &v, brake, day);
+        ai_strat_turn(a, w, econ, wp, wl, diplo, sc, &v, brake, day);
         a->next_strat_day = day + AI_STRAT_CADENCE/2 + (int)(frand(&a->rng)*AI_STRAT_CADENCE);
     }
 }

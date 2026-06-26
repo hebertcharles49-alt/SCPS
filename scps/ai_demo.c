@@ -51,7 +51,7 @@ static void world_step(Sim *s, AiActor *act, int n_act, int day){
     agency_advance(s->ag, s->w, s->econ, s->wl, NULL, STEP);
     routes_advance(s->rn, s->w, s->econ, STEP);
     for (int i=0;i<n_act;i++) ai_step(&act[i], s->w, s->econ, s->wp, s->wl,
-                                      s->ag, s->rn, s->dp, day);
+                                      s->ag, s->rn, s->dp, NULL, day);   /* #26 : NULL = pas de porte d'opinion (banc relation-seule) */
     legitimacy_tick(s->wl, s->w, s->econ, s->ts);
     prosperity_tick(s->wp, s->w, s->econ, s->net, s->ts, s->wl);
     diplo_tick(s->dp, (float)STEP);
@@ -296,7 +296,7 @@ int main(int argc, char **argv){
     printf("\n── Vérification : l'éthos effectif glisse avec la composition (§3) ──\n");
     {
         int day=horizon;
-        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,day);
+        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,day);
         float expand_before=act[1].w_expand;
         int rg=-1;
         for (int r=0;r<s.econ->n_regions;r++)
@@ -311,7 +311,7 @@ int main(int argc, char **argv){
             re->pop.groups[0].klass=CLASS_LABORER; re->pop.groups[0].count=3000;
             re->pop.n_groups=1;
         }
-        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,day);
+        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,day);
         float expand_after=act[1].w_expand;
         printf("   Mercantile : w_expand effectif %.3f → après avoir avalé une province orque → %.3f\n",
                expand_before, expand_after);
@@ -472,11 +472,41 @@ int main(int argc, char **argv){
         act[0].next_econ_day=INT_MAX;             /* gèle l'éco (pas de K bâti → frein figé) */
         act[0].peace_lock_until=0;
         int d0=horizon;
-        for (int k=0;k<6;k++){ act[0].next_strat_day=d0; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,d0); }
+        for (int k=0;k<6;k++){ act[0].next_strat_day=d0; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,d0); }
         printf("  Sous le frein : guerres +%d, consolidations +%d\n",
                act[0].stats.wars-wars0, act[0].stats.consolidations-cons0);
         ok("le Dominateur surétendu CESSE de déclarer la guerre", act[0].stats.wars==wars0);
         ok("le Dominateur surétendu consolide (il digère)", act[0].stats.consolidations>cons0);
+    }
+
+    /* ── #26 — ai_consider_offer : l'OPINION ±100 gate l'acceptation d'une OFFRE (« évaluer-offre ») ──
+     * `B` ACCEPTE l'alliance de `A` s'il l'apprécie (opinion haute) + compatibilité réciproque ;
+     * la REFUSE si l'opinion est basse (la mémoire d'un acte pèse). sc==NULL ⇒ pas de porte d'opinion. */
+    printf("\n── #26 : ai_consider_offer (l'opinion gate l'acceptation d'une offre) ──\n");
+    {
+        Statecraft *tsc = (Statecraft*)malloc(sizeof(Statecraft));
+        if (tsc){
+            statecraft_init(tsc, s.w);
+            int A=-1,B=-1;   /* une paire en paix, structurellement compatible (relation.alliance>0), B a un slot */
+            for (int a=0;a<s.w->n_countries && A<0;a++) for (int b=0;b<s.w->n_countries;b++){
+                if (a==b || s.w->country[a].role==POLITY_UNCLAIMED || s.w->country[b].role==POLITY_UNCLAIMED) continue;
+                if (diplo_status(s.dp,a,b)!=DIPLO_WAR
+                    && diplo_relation(s.w,s.econ,s.wp,s.dp,b,a).alliance > 0.5f
+                    && diplo_ally_count(s.dp,b) < DIPLO_ALLY_SLOTS){ A=a; B=b; break; }
+            }
+            if (A<0) ok("(#26) pas de paire structurellement compatible — monde", true);
+            else {
+                tsc->opinion[B][A] = 40.f;     /* B APPRÉCIE A */
+                ok("ai_consider_offer : opinion HAUTE → B ACCEPTE l'alliance de A",
+                   ai_consider_offer(s.w,s.econ,s.wp,s.dp,tsc, A, B, OFFER_ALLIANCE));
+                tsc->opinion[B][A] = -40.f;    /* B MÉPRISE A (la mémoire d'un acte pèse) */
+                ok("ai_consider_offer : opinion BASSE → B REFUSE l'alliance",
+                   !ai_consider_offer(s.w,s.econ,s.wp,s.dp,tsc, A, B, OFFER_ALLIANCE));
+                ok("ai_consider_offer : sc==NULL → pas de porte d'opinion (relation-seule, rétro-compat)",
+                   ai_consider_offer(s.w,s.econ,s.wp,s.dp,NULL, A, B, OFFER_ALLIANCE));
+            }
+            free(tsc);
+        }
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

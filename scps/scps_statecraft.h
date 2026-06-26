@@ -70,7 +70,12 @@ typedef struct {
 typedef struct {
     float           influence[SCPS_MAX_COUNTRY];                 /* 0..100, inertie */
     float           prestige [SCPS_MAX_COUNTRY];                 /* mémoire des accords (0..30) */
-    float           opinion  [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];/* −100..100 */
+    float           opinion  [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];/* −100..100 (EFFECTIF, lissé) */
+    /* #26 — la MÉMOIRE DURABLE des actes : ledger ±(borné) de ce que `a` retient de `b`
+     * (trahison, embargo, alliance TENUE, guerre endurée, frères d'armes). Décroît sur une
+     * génération ; PÈSE sur la cible vers laquelle `opinion` converge → l'opinion a une
+     * mémoire (≠ la projection memoryless d'avant). Sérialisé (blob SVT_STAT). */
+    float           opinion_mem[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
     DiplomaticStaff staff    [SCPS_MAX_COUNTRY];
     float           agitation  [SCPS_MAX_REG];                   /* 0..100 soutenue */
     float           unrest_days[SCPS_MAX_REG];                   /* temps au-dessus du seuil */

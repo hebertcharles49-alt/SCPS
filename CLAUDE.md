@@ -521,6 +521,36 @@
   ∈[0,1] + suzerain∈[-1,n)). `suzerainty_tick` prend désormais un `World*` NON-const (l'annexion MUTE le monde).
   Tunables registre J (10). Banc diplo_demo (61/61, +10 : surfaçage·intégration lente·digestion). Télémétrie
   chronicle « annexion(s) par digestion ». `make test` 40/40 · determinism STABLE · golden IDENTIQUE.
+- **TÉLÉMÉTRIE chronicle (2026-06-26) — prévision (éco) + guerres motivées (diplo)** : deux lignes
+  d'observabilité (« la télémétrie est la preuve d'équilibre »). `prévision` (étages 1-2 éco) : N/N pays
+  en déficit vivrier STRUCTUREL (ne se nourrit pas à plein → import vital) vs sous tension de runway,
+  dérivé de `econ_country_forecast`. `guerres motivées` : déclarations PAR casus belli (la part
+  ÉCONOMIQUE — convoitise étage 2 — vs territoriale/subjugation), compteur `g_war_cb` STATIQUE dans
+  scps_diplo.c (RAZ par sim, jamais sérialisé/lu par le moteur). Golden IDENTIQUE (télémétrie hors-moteur).
+- **#26 — OPINION ±100 À MÉMOIRE + `ai_consider_offer` (2026-06-26)** : le champ opinion ±100
+  (`statecraft_opinion`) EXISTAIT mais était DÉCORATIF (lu par aucune décision IA ; projection memoryless
+  d'une cible-relation persistante ±35). Refonte en DEUX couches — **« les relations TENDENT VERS 0 :
+  decay naturelle »** : (1) **MODIFICATEURS DE STATUT** temporaires, calculés chaque tick, qui
+  DISPARAISSENT à la rupture (alliance +`OPINION_ALLY`, guerre −`OPINION_WAR`, vassalité +, pacte +,
+  embargo −, rancune territoriale −`OPINION_RANCOR_W`·rancor = la rivalité) → à la rupture, l'opinion
+  ne tend plus vers +50 mais vers **0** ; (2) **MÉMOIRE D'ACTES** durable (`Statecraft.opinion_mem[][]`,
+  sérialisée) qui décroît vers 0 sur des années (`OPINION_MEM_DECAY`) — la **TRAHISON**
+  (`statecraft_on_betrayal` → opinion_mem) SURVIT au statut. La STRUCTURE (kinship/complément) reste
+  dans `diplo_relation` (le « avec qui ») ; l'opinion porte l'HISTOIRE (le « après ce qu'il m'a fait »).
+  **`ai_consider_offer`** (scps_ai.c, PUBLIC) : `to` ÉVALUE une offre de `from` (alliance/paix/pacte),
+  lue de l'opinion (`AI_OFFER_*_OPINION`) + relation + `diplo_war_score` → accepte/refuse. Les alliances
+  IA deviennent **BILATÉRALES** (`ai_pick_ally` ne retient qu'un candidat qui CONSENT). `sc==NULL` ⇒ pas
+  de porte d'opinion (décision relation-seule ; les bancs passent NULL → INCHANGÉS). `ai_step`/
+  `ai_strat_turn`/`ai_pick_ally` prennent le `Statecraft` ; `AI_DEMO_OBJS` gagne `scps_statecraft.o`.
+  ⚠ **SAVE BUMP 32→33** (opinion_mem). ⚠ **RE-BASELINE diplo** (golden mis à jour : 4/5 graines bougent —
+  les alliances changent). Les alliances **RESPIRENT toujours** (seeds 7/9/11/42 : 1-2 actives/100 ans,
+  pas de deadlock). Tunables registre J (11 : `OPINION_ALLY` 50 · `_WAR` 60 · `_VASSAL` 30 · `_PACT` 15 ·
+  `_EMBARGO` 25 · `_RANCOR_W` 8 · `_MEM_DECAY` 0.0003 · `_MEM_BETRAYAL` 35 · `_MEM_CAP` 100 ·
+  `AI_OFFER_ALLY_OPINION` 10 · `_PACT_OPINION` 0). Bancs : statecraft_demo +4 (modèle : guerre creuse →
+  paix remonte vers 0 ; trahison durable → s'estompe), ai_demo +3 (offre : opinion gate accepte/refuse).
+  `make test` 40/40 · determinism STABLE (v33 save/reload byte-identique) · golden re-baseliné · ASan muet.
+  À VENIR (§3) : surfacer l'opinion en BANDE (membrane, `statecraft_opinion` → readout) + le verbe diplo
+  JOUEUR (proposer alliance/paix → `ai_consider_offer` du vis-à-vis l'évalue).
 
 ## Disciplines non négociables
 

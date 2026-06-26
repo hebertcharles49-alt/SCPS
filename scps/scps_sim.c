@@ -287,7 +287,7 @@ void sim_day(Sim *s, World *w) {
     }
     routes_advance(s->rn, w, s->econ, 1);
     PROF(PB_AI, { for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){
-        ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
+        ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->sc, s->day);
         ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
     } });
     /* RECHERCHE DU JOUEUR (gate IA-off : l'humain ne reçoit PAS ai_research_step ci-dessus).

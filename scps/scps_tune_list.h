@@ -151,6 +151,25 @@
     X(ANNEX_SOFT_SCAR,            0.4f) \
     X(ANNEX_SCAR_DECAY,          0.20f) \
     X(ANNEX_SAT_W,                0.5f) \
+    /* #26 — OPINION ±100 (les relations TENDENT VERS 0 : decay naturelle). DEUX couches :
+     * (1) MODIFICATEURS DE STATUT — temporaires, calculés chaque tick, DISPARAISSENT à la rupture
+     *     (alliance +ALLY tant qu'elle tient → à la rupture l'opinion retombe vers 0 ; guerre −WAR ;
+     *     vassalité +VASSAL ; pacte +PACT ; embargo −EMBARGO ; rancune territoriale −RANCOR_W·rancor,
+     *     la RIVALITÉ, qui décroît déjà). (2) MÉMOIRE D'ACTES — `opinion_mem`, durable, décroît vers 0
+     *     sur des années (MEM_DECAY/jour) : la TRAHISON (BETRAYAL) — la seule marque qui survit au statut.
+     * La STRUCTURE (kinship/complément) reste dans diplo_relation (le « avec qui ») ; l'opinion porte
+     * l'HISTOIRE. AI_OFFER_*_OPINION : seuil d'acceptation d'une offre entrante (ai_consider_offer). */ \
+    X(OPINION_ALLY,             50.0f) \
+    X(OPINION_WAR,              60.0f) \
+    X(OPINION_VASSAL,           30.0f) \
+    X(OPINION_PACT,             15.0f) \
+    X(OPINION_EMBARGO,          25.0f) \
+    X(OPINION_RANCOR_W,          8.0f) \
+    X(OPINION_MEM_DECAY,         0.0003f) \
+    X(OPINION_MEM_BETRAYAL,     35.0f) \
+    X(OPINION_MEM_CAP,         100.0f) \
+    X(AI_OFFER_ALLY_OPINION,    10.0f) \
+    X(AI_OFFER_PACT_OPINION,     0.0f) \
     /* HAMEAUX LIBRES (POLITY_WILD) — Peuples Libres épars près des jouables (tue le « siècle
      * d'inertie » : chaque empire a 2 objectifs voisins dès l'an 0). WILD_PER_PLAYABLE hameaux
      * par jouable (0 = DÉSACTIVE) · WILD_POP graine · WILD_CAP plafond d'accueil · WILD_SPAWN_HOPS

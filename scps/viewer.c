@@ -1958,7 +1958,7 @@ static void sim_day(Sim *s, World *w) {
     }
     routes_advance(s->rn, w, s->econ, 1);
     for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){    /* les voisins VIVENT (cadence étalée) */
-        ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
+        ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->sc, s->day);
         ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
     }
     /* P5.26/27/28 — RECHERCHE DU JOUEUR : la cible (clic sur l'arbre) progresse,
@@ -4590,7 +4590,12 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 32u           /* v32 : VASSALITÉ SUR LA DURÉE (pipeline diplo étage 3) — DiploState gagne
+#define SAVE_VERSION 33u           /* v33 : OPINION À MÉMOIRE (#26) — Statecraft gagne opinion_mem[][] (ledger
+                                    * durable des actes : la trahison qui survit au statut) ⇒ sizeof(Statecraft)
+                                    * change → <v33 refusé. opinion_mem est un float à effet BORNÉ (il ne fait
+                                    * que nourrir opinion, clampé ±100 au tick) — aucun index → pas de clause
+                                    * save_sane neuve (le blob SVT_STAT le persiste).
+                                    * v32 : VASSALITÉ SUR LA DURÉE (pipeline diplo étage 3) — DiploState gagne
                                     * v_integration[]/v_annex[] (+ n_annex) et RegionEconomy gagne annex_scar ⇒
                                     * sizeof(DiploState) & sizeof(WorldEconomy) changent → <v32 refusé. save_sane
                                     * borne annex_scar/v_integration/v_annex ∈ [0,1] et suzerain ∈ [-1,n).

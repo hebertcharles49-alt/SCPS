@@ -69,6 +69,20 @@ vert · 0 warning) :
 RE-BASELINE du hash 12 ans pour les arcs ÉCO (golden mis à jour) ; diplo étage 3 N'A PAS re-baseliné
 (golden IDENTIQUE — l'étage mord après l'an-12).
 
+## (a-quater) Télémétrie + #26 OPINION à mémoire (2026-06-26)
+
+- **Télémétrie chronicle** : lignes `prévision` (déficit vivrier structurel vs tension de runway,
+  dérivé `econ_country_forecast`) + `guerres motivées` (déclarations par casus belli ; compteur
+  `g_war_cb` statique, hors-moteur). Golden IDENTIQUE.
+- **#26 — opinion ±100 à MÉMOIRE + `ai_consider_offer`** (le seul gros « vrai code » moteur restant
+  de la roadmap Steam §2). Opinion en deux couches (modificateurs de statut TEMPORAIRES + mémoire
+  d'actes DURABLE `opinion_mem`), **« tend vers 0 »** (decay naturelle) ; `ai_consider_offer` évalue
+  une offre (alliance/paix/pacte) lue de l'opinion+relation+war_score → alliances IA BILATÉRALES.
+  Réconciliation doc (38→40, diplo 49→61) faite en amont. ⚠ **SAVE 32→33** (opinion_mem) · ⚠
+  **RE-BASELINE diplo** (golden mis à jour, 4/5 graines). Alliances respirent (1-2/100 ans, 4 seeds).
+  Bancs : statecraft_demo +4, ai_demo +3 (40/40). determinism STABLE (v33 round-trip). À VENIR (§3) :
+  bande d'opinion (membrane) + verbe diplo joueur.
+
 ---
 
 ## (a-bis) Passe de STABILISATION (2026-06-18)

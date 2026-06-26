@@ -240,8 +240,8 @@ int main(int argc, char **argv){
                aB.w_expand, vB.SI, aD.w_expand, vD.SI);
         for (int k=0;k<8;k++){
             int day=k*600;
-            aB.next_econ_day=day; aB.next_strat_day=INT_MAX; ai_step(&aB,s.w,s.econ,s.wp,s.wl,&ag,s.rn,s.dp,day);
-            aD.next_econ_day=day; aD.next_strat_day=INT_MAX; ai_step(&aD,s.w,s.econ,s.wp,s.wl,&ag,s.rn,s.dp,day);
+            aB.next_econ_day=day; aB.next_strat_day=INT_MAX; ai_step(&aB,s.w,s.econ,s.wp,s.wl,&ag,s.rn,s.dp,NULL,day);
+            aD.next_econ_day=day; aD.next_strat_day=INT_MAX; ai_step(&aD,s.w,s.econ,s.wp,s.wl,&ag,s.rn,s.dp,NULL,day);
         }
         printf("   bâtiments sous la crise — Bureaucrate : K=%d H=%d | Dominateur : K=%d H=%d\n",
                aB.stats.builds_k+aB.stats.builds_other, aB.stats.builds_h,
