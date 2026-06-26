@@ -904,7 +904,7 @@ void tech_tree_readout(const TechState *ts, unsigned race_access, float populati
         bool open = ts && tech_can_research(ts, (TechId)i, race_access);
         nr->state    = done ? TREE_DONE : (open ? TREE_OPEN : TREE_LOCKED);
         /* orphelin = signature d'une AUTRE race dont l'empire n'a pas l'accès. */
-        nr->orphan   = (n->native!=RACE_COUNT) && !(race_access & tech_race_bit(n->native));
+        nr->orphan   = (n->native!=HERITAGE_COUNT) && !(race_access & tech_race_bit(n->native));
     }
 }
 

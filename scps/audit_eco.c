@@ -65,7 +65,7 @@ int main(int argc, char **argv){
 
     WorldParams p = worldparams_default(seed);
     world_generate(w, &p);
-    econ_init(econ, w); gen_population(w, econ); worldgen_seed_peoples(w, econ, RACE_HUMAIN);
+    econ_init(econ, w); gen_population(w, econ); worldgen_seed_peoples(w, econ, HERITAGE_ADAPTATIF);
     agency_init(ag);
     credit_init();          /* un seul livre d'or : agency_build_acct débite via crédit */
     labor_init(lab, w);

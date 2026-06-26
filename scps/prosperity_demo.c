@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
     /* Profil culturel des populations régionales (après création des régions). */
     gen_population(w, econ);
     /* Races en gradient autour du joueur (couche biologique). */
-    worldgen_seed_peoples(w, econ, RACE_HUMAIN);
+    worldgen_seed_peoples(w, econ, HERITAGE_ADAPTATIF);
 
     /* ---- Init réseau commercial ----------------------------------------- */
     printf("=== Construction du réseau commercial ===\n");

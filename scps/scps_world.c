@@ -2454,9 +2454,9 @@ void world_tick(World *w, WorldEconomy *econ, float dt) {
         PopCulture *pc=&econ->region[r].culture;
         Culture tmp; memset(&tmp,0,sizeof(tmp));
         tmp.langue=pc->langue; tmp.age=pc->age;
-        /* Dérive modulée par la race : Adaptable/Éphémère vite, Longévif/
-         * Traditionaliste lent (levier « dérive » de la couche biologique). */
-        SpeciesBuild sb=species_default_build(pc->race);
+        /* Dérive modulée par les TRADITIONS de l'empire (Adaptable vite, Traditionaliste lent)
+         * — INDÉPENDANT de l'héritage (qui ne fait que les noms). */
+        SpeciesBuild sb=culture_random_build((uint32_t)(econ->region[r].owner<0?0:econ->region[r].owner));
         float drift=0.002f*dt*(1.f + build_leviers(&sb).derive);
         if (drift < 0.f) drift = 0.f;
         culture_age_tick(&tmp, drift);
@@ -2492,7 +2492,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
         if (c==player){ crace[c]=player_race; continue; }
         uint32_t h = (uint32_t)(c+1)*2654435761u ^ ((uint32_t)w->seed*40503u + 0x9E3779B9u);
         h ^= h>>16; h *= 0x7feb352du; h ^= h>>15; h *= 0x846ca68bu; h ^= h>>16;
-        crace[c] = (SpeciesArchetype)(h % (uint32_t)RACE_COUNT);
+        crace[c] = (SpeciesArchetype)(h % (uint32_t)HERITAGE_COUNT);
     }
 
     /* Pose l'héritage sur toutes les régions (substrat). */
@@ -2502,10 +2502,10 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
     }
 
     /* Diagnostic : la distribution des héritages, DÉCORRÉLÉE de la géo. */
-    { int cnt[RACE_COUNT]={0};
-      for (int c=0;c<w->n_countries;c++) if (crace[c]>=0&&crace[c]<RACE_COUNT) cnt[crace[c]]++;
+    { int cnt[HERITAGE_COUNT]={0};
+      for (int c=0;c<w->n_countries;c++) if (crace[c]>=0&&crace[c]<HERITAGE_COUNT) cnt[crace[c]]++;
       printf("[peuples] joueur=%s ; héritages DÉBRAYÉS de la géo :", species_name(player_race));
-      for (int r=0;r<RACE_COUNT;r++) if (cnt[r]) printf(" %s\xc3\x97%d", species_name((SpeciesArchetype)r), cnt[r]);
+      for (int r=0;r<HERITAGE_COUNT;r++) if (cnt[r]) printf(" %s\xc3\x97%d", species_name((SpeciesArchetype)r), cnt[r]);
       printf("\n"); }
 
     /* P1.5/P1.9 — recolore ET RENOMME chaque EMPIRE par sa famille de RACE + son
@@ -2514,7 +2514,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
         int cp=w->country[c].capital_prov;
         int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
         bool ok=(cr>=0&&cr<econ->n_regions);
-        SpeciesArchetype rc=ok? econ->region[cr].culture.race  : RACE_HUMAIN;
+        SpeciesArchetype rc=ok? econ->region[cr].culture.race  : HERITAGE_ADAPTATIF;
         Ethos            ec=ok? econ->region[cr].culture.ethos : ETHOS_ORDRE;
         w->country[c].color = country_race_color(rc, c);
         country_make_name(w->country[c].name, (int)sizeof w->country[c].name, rc, ec, c);
@@ -2528,7 +2528,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
     for (int r=0;r<w->n_regions && r<econ->n_regions;r++){
         int o=econ->region[r].owner;
         if (o<0||o>=w->n_countries || w->country[o].role!=POLITY_WILD) continue;
-        SpeciesArchetype neigh=RACE_HUMAIN;     /* race de l'empire ADJACENT (à éviter) */
+        SpeciesArchetype neigh=HERITAGE_ADAPTATIF;     /* race de l'empire ADJACENT (à éviter) */
         Ethos neigh_eth=ETHOS_ORDRE;            /* éthos du voisin (à éviter) */
         for (int s=0;s<econ->n_regions;s++){
             if (!econ->adj[r][s]) continue;
@@ -2540,8 +2540,8 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
         if (wild_distinct){
             uint32_t h=(uint32_t)(r+1)*2246822519u ^ ((uint32_t)w->seed*374761393u);
             h ^= h>>15; h *= 0x2c1b3c6du; h ^= h>>13;
-            SpeciesArchetype wr=(SpeciesArchetype)(h % (uint32_t)RACE_COUNT);
-            if (wr==neigh) wr=(SpeciesArchetype)(((int)wr+1)%(int)RACE_COUNT);   /* race forcée ≠ voisin */
+            SpeciesArchetype wr=(SpeciesArchetype)(h % (uint32_t)HERITAGE_COUNT);
+            if (wr==neigh) wr=(SpeciesArchetype)(((int)wr+1)%(int)HERITAGE_COUNT);   /* race forcée ≠ voisin */
             econ->region[r].culture.race=wr;
             /* ÉTHOS distinct du voisin (« si le voisin est Dominateur, les hameaux sont p.ex.
              * Mercantile et Ordre ») — pas de culture WILD spéciale, juste un éthos NORMAL ≠ voisin. */
@@ -3746,12 +3746,12 @@ uint32_t province_palette(int id) {
 uint32_t country_race_color(SpeciesArchetype race, int cid){
     float baseh, s, l;                       /* h en TOURS [0..1] (comme hue2rgb_f) */
     switch(race){
-        case RACE_HUMAIN:   baseh=0.585f; s=0.55f; l=0.52f; break;  /* bleu */
-        case RACE_ELFE:     baseh=0.355f; s=0.48f; l=0.46f; break;  /* vert */
-        case RACE_NAIN:     baseh=0.020f; s=0.30f; l=0.46f; break;  /* gris-rouge */
-        case RACE_ORQUE:    baseh=0.072f; s=0.55f; l=0.34f; break;  /* marron */
-        case RACE_HALFELIN: baseh=0.133f; s=0.66f; l=0.56f; break;  /* jaune */
-        case RACE_GNOME:    baseh=0.500f; s=0.46f; l=0.48f; break;  /* turquoise */
+        case HERITAGE_ADAPTATIF:   baseh=0.585f; s=0.55f; l=0.52f; break;  /* bleu */
+        case HERITAGE_ESOTERIQUE:     baseh=0.355f; s=0.48f; l=0.46f; break;  /* vert */
+        case HERITAGE_METALLURGISTE:     baseh=0.020f; s=0.30f; l=0.46f; break;  /* gris-rouge */
+        case HERITAGE_CLANIQUE:    baseh=0.072f; s=0.55f; l=0.34f; break;  /* marron */
+        case HERITAGE_AGRAIRE: baseh=0.133f; s=0.66f; l=0.56f; break;  /* jaune */
+        case HERITAGE_MECANISTE:    baseh=0.500f; s=0.46f; l=0.48f; break;  /* turquoise */
         default:            baseh=0.820f; s=0.38f; l=0.50f; break;  /* violet (exotiques) */
     }
     uint32_t hsh=(uint32_t)cid*2654435761u;
@@ -3769,23 +3769,25 @@ uint32_t country_race_color(SpeciesArchetype race, int cid){
 /* P1.9 — NOM D'EMPIRE procédural = f(RACE, ETHOS) : syllabaire par race (racine +
  * suffixe) + ÉPITHÈTE d'ethos. Déterministe par pays (donc par graine). « Horde
  * Grukgor » (orque dominateur) · « Sylve Aeriel » (elfe) · « Couronne Aldwic ». */
-/* Syllabaire par RACE (racine + suffixe) — partagé : toponymes ET noms d'empire. */
-static const char *NAME_ROOT[RACE_COUNT][8] = {
-    {"Aer","Syl","Lór","Thal","Elen","Cael","Mith","Vael"},   /* ELFE */
-    {"Gron","Dur","Khaz","Bral","Thrum","Kar","Bor","Dhûr"},  /* NAIN */
-    {"Tik","Zen","Pyx","Fizz","Cog","Bel","Nim","Vex"},       /* GNOME */
-    {"Ald","Bren","Cael","Dorn","Estr","Far","Gual","Marn"},  /* HUMAIN */
-    {"Bram","Tuck","Fal","Hob","Mer","Pip","Wyn","Bre"},      /* HALFELIN */
-    {"Gruk","Mor","Karg","Drog","Nazg","Urk","Brak","Gho"},   /* ORQUE */
+/* Syllabaire par HÉRITAGE (racine + suffixe) — partagé : toponymes, noms d'empire ET de culture.
+ * « Plus de races » : ce ne sont pas des langues d'espèces mais les banques de noms des LIGNÉES
+ * culturelles (la sonorité ésotérique reste « elfique », la clanique « orque », par tradition). */
+static const char *NAME_ROOT[HERITAGE_COUNT][8] = {
+    {"Aer","Syl","Lór","Thal","Elen","Cael","Mith","Vael"},   /* ESOTERIQUE */
+    {"Gron","Dur","Khaz","Bral","Thrum","Kar","Bor","Dhûr"},  /* METALLURGISTE */
+    {"Tik","Zen","Pyx","Fizz","Cog","Bel","Nim","Vex"},       /* MECANISTE */
+    {"Ald","Bren","Cael","Dorn","Estr","Far","Gual","Marn"},  /* ADAPTATIF */
+    {"Bram","Tuck","Fal","Hob","Mer","Pip","Wyn","Bre"},      /* AGRAIRE */
+    {"Gruk","Mor","Karg","Drog","Nazg","Urk","Brak","Gho"},   /* CLANIQUE */
 };
-static const char *NAME_SUFF[RACE_COUNT][4] = {
+static const char *NAME_SUFF[HERITAGE_COUNT][4] = {
     {"iel","wen","dor","ond"}, {"gan","din","mar","rok"}, {"il","ex","top","yn"},
     {"or","wic","yan","red"},  {"ling","wick","by","ton"},  {"nak","dush","rak","gor"},
 };
 /* TOPONYME (lieu) : racine+suffixe du syllabaire de la RACE, SANS épithète d'éthos
  * (réservée aux empires). Déterministe par `seed` — sert aux Centres commerciaux. */
 void place_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed){
-    int r=(race>=0&&race<RACE_COUNT)?(int)race:RACE_HUMAIN;
+    int r=(race>=0&&race<HERITAGE_COUNT)?(int)race:HERITAGE_ADAPTATIF;
     uint32_t h=(seed*2654435761u)^0x9E3779B9u;
     snprintf(out,(size_t)n,"%s%s", NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3]);
 }
@@ -3803,7 +3805,7 @@ void country_make_name(char *out, int n, SpeciesArchetype race, Ethos ethos, int
  * ethnonymique → ~256 variantes/héritage. P.ex. « Caeldoriens », « Brenwicar », « Tikilites ». */
 void culture_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed){
     static const char *ETHNO[8] = { "iens","ar","ites","esi","ane","oï","uri","ade" };
-    int r=(race>=0&&race<RACE_COUNT)?(int)race:RACE_HUMAIN;
+    int r=(race>=0&&race<HERITAGE_COUNT)?(int)race:HERITAGE_ADAPTATIF;
     uint32_t h=(seed*2654435761u)^0x9E3779B9u; h^=h>>13; h*=0x85ebca6bu; h^=h>>16;
     snprintf(out,(size_t)n,"%s%s%s",
              NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3], ETHNO[(h>>15)&7]);

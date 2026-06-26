@@ -84,7 +84,7 @@ typedef struct {
     TechId          prereq;      /* nœud précédent (TECH_COUNT = aucun) */
     bool            faustian;    /* ⚠ bout interdit (monte charge/flux → Brèche) */
     bool            needs_ruins; /* porte arcane : accès ruine/relique */
-    SpeciesArchetype native;     /* race signature ; RACE_COUNT = universelle */
+    SpeciesArchetype native;     /* race signature ; HERITAGE_COUNT = universelle */
 
     /* Écriture SCPS (deltas appliqués au TechState). */
     float dK, dL, dF;            /* socle : capacité narrative, ordre, fédéralisme */
@@ -105,14 +105,14 @@ typedef struct {
  * requis à la profondeur requise — AUTOMATIQUE (diffusion, pas recherche). */
 typedef enum { PROF_NONE=0, PROF_SURFACE, PROF_METIER, PROF_PROFOND, PROF_SECRET } Profondeur;
 
-/* ARCHÉTYPES (briefs §7) : un PROFIL culturel, pas une race. Les indices 0..RACE_COUNT-1
+/* ARCHÉTYPES (briefs §7) : un PROFIL culturel, pas une race. Les indices 0..HERITAGE_COUNT-1
  * sont les 6 signatures de race (centroïdes culturels — arcane=elfe, forge runique=nain,
  * artificier=gnome, assimilationniste=humain, pastoral=halfelin, martial-servile=orque,
  * MÊME ORDRE que SpeciesArchetype) ; au-delà, des profils d'ÉTHOS. depth[] est indexé
  * sur ARCH_COUNT. Un archétype d'éthos est « porté » par toute culture de cet éthos. */
-#define ARCH_BUREAUCRATIQUE (RACE_COUNT)       /* éthos bureaucrate : scriptorium, cadastre */
-#define ARCH_MERCANTILE     (RACE_COUNT+1)     /* éthos mercantile : comptoir, cothon */
-#define ARCH_COUNT          (RACE_COUNT+2)
+#define ARCH_BUREAUCRATIQUE (HERITAGE_COUNT)       /* éthos bureaucrate : scriptorium, cadastre */
+#define ARCH_MERCANTILE     (HERITAGE_COUNT+1)     /* éthos mercantile : comptoir, cothon */
+#define ARCH_COUNT          (HERITAGE_COUNT+2)
 
 typedef struct {
     const char      *name;

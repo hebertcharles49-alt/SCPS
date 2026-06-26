@@ -138,7 +138,7 @@ int main(void) {
     printf("\n── Arbre de tech concentrique (angle=quartier · rayon=tier · mots) ──\n");
     {
         TechState ts; tech_state_init(&ts, /*ruines*/false);
-        unsigned human = tech_race_bit(RACE_HUMAIN);
+        unsigned human = tech_race_bit(HERITAGE_ADAPTATIF);
         tech_research(&ts, TECH_SCRIPTORIUM, human);          /* Savoir·Prod t1 acquis */
         TechTreeReadout tr; tech_tree_readout(&ts, human, /*pop*/10000.f, &tr);
         ok("le readout couvre tout l'arbre (n = TECH_COUNT)", tr.n==TECH_COUNT);

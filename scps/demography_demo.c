@@ -64,11 +64,11 @@ int main(int argc, char **argv){
     /* ═══ 1. D RÉEL PAR PROVINCE ════════════════════════════════════════ */
     printf("\n── 1. D interne PAR province (entre groupes) ──\n");
     ProvincePop mixed; memset(&mixed,0,sizeof mixed);
-    mixed.groups[0]=grp(RACE_HUMAIN,SPHERE_HOMMES,humc,CLASS_LABORER,700,8.0f,1.0f,false);
-    mixed.groups[1]=grp(RACE_ORQUE, SPHERE_ETRANGERS,orcc,CLASS_LABORER,300,1.5f,0.2f,false);
+    mixed.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,humc,CLASS_LABORER,700,8.0f,1.0f,false);
+    mixed.groups[1]=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS,orcc,CLASS_LABORER,300,1.5f,0.2f,false);
     mixed.n_groups=2;
     ProvincePop homo; memset(&homo,0,sizeof homo);
-    homo.groups[0]=grp(RACE_HUMAIN,SPHERE_HOMMES,humc,CLASS_LABORER,1000,8.0f,1.0f,false);
+    homo.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,humc,CLASS_LABORER,1000,8.0f,1.0f,false);
     homo.n_groups=1;
     float dmix=province_Dinf(&mixed,drift), dhom=province_Dinf(&homo,drift);
     printf("   province 70%% Humains / 30%% Orques : D∞=%.1f | province homogène : D∞=%.1f\n", dmix, dhom);
@@ -109,9 +109,9 @@ int main(int argc, char **argv){
     ok("le gouffre allonge le timer (Halfelin ≪ Orque)",
        assimilation_years(2.f,5.f,5.f) < assimilation_years(8.f,5.f,5.f)*0.5f);
     ProvincePop town; memset(&town,0,sizeof town);
-    town.groups[0]=grp(RACE_HUMAIN, SPHERE_HOMMES,   humc, CLASS_LABORER,1000,8.f,1.f,false);
-    town.groups[1]=grp(RACE_HALFELIN,SPHERE_HOMMES,  halfc,CLASS_BOURGEOIS, 200,5.f,0.5f,false);
-    town.groups[2]=grp(RACE_ORQUE,   SPHERE_ETRANGERS,orcc, CLASS_LABORER, 200,2.f,0.2f,false);
+    town.groups[0]=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES,   humc, CLASS_LABORER,1000,8.f,1.f,false);
+    town.groups[1]=grp(HERITAGE_AGRAIRE,SPHERE_HOMMES,  halfc,CLASS_BOURGEOIS, 200,5.f,0.5f,false);
+    town.groups[2]=grp(HERITAGE_CLANIQUE,   SPHERE_ETRANGERS,orcc, CLASS_LABORER, 200,2.f,0.2f,false);
     town.n_groups=3;
     int half_id=town.groups[1].drift_id, orc_id=town.groups[2].drift_id;
     float half_d0=cdist(&town.groups[1].origin,&crown), orc_d0=cdist(&town.groups[2].origin,&crown);
@@ -143,8 +143,8 @@ int main(int argc, char **argv){
     /* (a) TOLÉRANCE : un trône pluraliste ne convertit personne. */
     PopCulture crown_plu = crown; crown_plu.credo = CREDO_PLURALISTE; crown_plu.religion = 2.f;
     ProvincePop plu; memset(&plu,0,sizeof plu);
-    plu.groups[0]=grp(RACE_HUMAIN,SPHERE_HOMMES,crown_plu,CLASS_LABORER,800,8.f,1.f,false);
-    plu.groups[1]=grp(RACE_HUMAIN,SPHERE_HOMMES,heretic,  CLASS_LABORER,200,6.f,0.9f,false);
+    plu.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,crown_plu,CLASS_LABORER,800,8.f,1.f,false);
+    plu.groups[1]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,heretic,  CLASS_LABORER,200,6.f,0.9f,false);
     plu.n_groups=2;
     for (int yr=0; yr<200; yr++) faith_convert_tick(&plu, &crown_plu, 300.f, 1.f);
     ok("un trône PLURALISTE ne convertit personne (tolérance : empire multi-confessionnel)",
@@ -152,8 +152,8 @@ int main(int argc, char **argv){
     /* (b) PURIFICATION : la branche hérétique BASCULE vers la couronne, puis fusionne. */
     PopCulture crown_pur = crown; crown_pur.credo = CREDO_PURIFICATEUR; crown_pur.religion = 2.f;
     ProvincePop pur; memset(&pur,0,sizeof pur);
-    pur.groups[0]=grp(RACE_HUMAIN,SPHERE_HOMMES,crown_pur,CLASS_LABORER,800,8.f,1.f,false);
-    pur.groups[1]=grp(RACE_HUMAIN,SPHERE_HOMMES,heretic,  CLASS_LABORER,200,6.f,0.9f,false);
+    pur.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,crown_pur,CLASS_LABORER,800,8.f,1.f,false);
+    pur.groups[1]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,heretic,  CLASS_LABORER,200,6.f,0.9f,false);
     pur.n_groups=2;
     int her_id = pur.groups[1].drift_id;
     bool flipped=false;
@@ -176,12 +176,12 @@ int main(int argc, char **argv){
      *     converti ; l'évangéliste, plus lent (deux générations), pas encore. */
     PopCulture crown_eva = crown; crown_eva.credo = CREDO_EVANGELISTE; crown_eva.religion = 2.f;
     ProvincePop eva; memset(&eva,0,sizeof eva);
-    eva.groups[0]=grp(RACE_HUMAIN,SPHERE_HOMMES,crown_eva,CLASS_LABORER,800,8.f,1.f,false);
-    eva.groups[1]=grp(RACE_HUMAIN,SPHERE_HOMMES,heretic,  CLASS_LABORER,200,6.f,0.9f,false);
+    eva.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,crown_eva,CLASS_LABORER,800,8.f,1.f,false);
+    eva.groups[1]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,heretic,  CLASS_LABORER,200,6.f,0.9f,false);
     eva.n_groups=2;
     ProvincePop pur30; memset(&pur30,0,sizeof pur30);
-    pur30.groups[0]=grp(RACE_HUMAIN,SPHERE_HOMMES,crown_pur,CLASS_LABORER,800,8.f,1.f,false);
-    pur30.groups[1]=grp(RACE_HUMAIN,SPHERE_HOMMES,heretic, CLASS_LABORER,200,6.f,0.9f,false);
+    pur30.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,crown_pur,CLASS_LABORER,800,8.f,1.f,false);
+    pur30.groups[1]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,heretic, CLASS_LABORER,200,6.f,0.9f,false);
     pur30.n_groups=2;
     for (int yr=0; yr<30; yr++){
         faith_convert_tick(&eva,   &crown_eva, 30.f, 1.f);
@@ -194,15 +194,15 @@ int main(int argc, char **argv){
     /* ═══ 5. MIGRATION — emporte race + culture, crée du D ════════════ */
     printf("\n── 5. Migration : un groupe afflue vers la prospérité, devient diaspora ──\n");
     ProvincePop poor; memset(&poor,0,sizeof poor); poor.prosperity=3.f;
-    poor.groups[0]=grp(RACE_ORQUE,SPHERE_ETRANGERS,orcc,CLASS_LABORER,500,4.f,0.5f,false);
+    poor.groups[0]=grp(HERITAGE_CLANIQUE,SPHERE_ETRANGERS,orcc,CLASS_LABORER,500,4.f,0.5f,false);
     poor.n_groups=1;
     ProvincePop rich; memset(&rich,0,sizeof rich); rich.prosperity=8.f;
-    rich.groups[0]=grp(RACE_HUMAIN,SPHERE_HOMMES,humc,CLASS_LABORER,800,8.f,1.f,false);
+    rich.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,humc,CLASS_LABORER,800,8.f,1.f,false);
     rich.n_groups=1;
     float rich_d_before=province_Dinf(&rich,drift);
     bool moved = (rich.prosperity>poor.prosperity) && migration_move(&poor,&rich,0,200, g_id++);
     float rich_d_after=province_Dinf(&rich,drift);
-    bool diaspora = (rich.n_groups==2 && rich.groups[1].diaspora && rich.groups[1].race==RACE_ORQUE);
+    bool diaspora = (rich.n_groups==2 && rich.groups[1].diaspora && rich.groups[1].race==HERITAGE_CLANIQUE);
     printf("   les Orques affluent (prospérité 3→8) : province d'accueil D∞ %.0f→%.1f, diaspora=%d\n",
            rich_d_before, rich_d_after, diaspora);
     ok("le groupe migre vers la province plus prospère", moved);
@@ -213,13 +213,13 @@ int main(int argc, char **argv){
     printf("\n── 6. Le pays agrège ; conquérir du lointain monte D∞ → fracture ──\n");
     ProvincePop country[2]; memset(country,0,sizeof country);
     country[0]=homo;                                            /* province humaine homogène */
-    country[1].groups[0]=grp(RACE_HUMAIN,SPHERE_HOMMES,humc,CLASS_LABORER,600,8.f,1.f,false);
+    country[1].groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,humc,CLASS_LABORER,600,8.f,1.f,false);
     country[1].n_groups=1;
     float cd0=country_Dbar(country,2,drift), cL0=country_L(country,2);
     ScpsState s0={0}; s0.D_bar=cd0; s0.C=5; s0.P=5; s0.K=5; s0.H=2; s0.F=5; s0.I=4; s0.L=cL0;
     float frac0=scps_order(&s0).fracture;
     /* CONQUÊTE : une province orque lointaine entre dans le pays. */
-    country[1].groups[1]=grp(RACE_ORQUE,SPHERE_ETRANGERS,orcc,CLASS_LABORER,400,1.5f,0.1f,false);
+    country[1].groups[1]=grp(HERITAGE_CLANIQUE,SPHERE_ETRANGERS,orcc,CLASS_LABORER,400,1.5f,0.1f,false);
     country[1].n_groups=2;
     float cd1=country_Dbar(country,2,drift), cdinf=country_Dinf(country,2,drift), cL1=country_L(country,2);
     ScpsState s1={0}; s1.D_bar=cd1; s1.C=5; s1.P=5; s1.K=5; s1.H=2; s1.F=5; s1.I=4; s1.L=cL1;

@@ -70,7 +70,7 @@ static PopCulture make_fiche(float valeurs, Ethos e, EconTrait ec, Credo cr){
     pc.langue=5.f; pc.valeurs=valeurs; pc.subsistance=6.f; pc.parente=5.f; pc.religion=5.f;
     pc.ethos=e; pc.lifeway=LIFE_FARMER; pc.structure=STRUCT_LIGNAGER;
     pc.credo=cr; pc.rel_branch=REL_ABRAHAMIQUE; pc.econ=ec; pc.martial=MART_MUR_BOUCLIERS;
-    pc.race=RACE_HUMAIN; pc.settled=true; pc.age=200;
+    pc.race=HERITAGE_ADAPTATIF; pc.settled=true; pc.age=200;
     return pc;
 }
 static void set_capital_fiche(Sim *s, int cid, PopCulture fiche, float healthK){
@@ -111,7 +111,7 @@ int main(int argc, char **argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(s.w,&p);
-    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ); agency_init(s.ag);
@@ -306,10 +306,10 @@ int main(int argc, char **argv){
                 && s.econ->region[r].owner!=cidD && s.econ->region[r].owner!=cidB){ rg=r; break; }
         if (rg>=0){
             RegionEconomy *re=&s.econ->region[rg];
-            PopCulture oc=make_fiche(9.f,ETHOS_DOMINATEUR,ECON_TRIBUT,CREDO_PLURALISTE); oc.race=RACE_ORQUE;
+            PopCulture oc=make_fiche(9.f,ETHOS_DOMINATEUR,ECON_TRIBUT,CREDO_PLURALISTE); oc.race=HERITAGE_CLANIQUE;
             re->owner=(int16_t)cidM; re->colonized=true; re->culture=oc;
             memset(&re->pop,0,sizeof re->pop);
-            re->pop.groups[0].race=RACE_ORQUE; re->pop.groups[0].origin=oc; re->pop.groups[0].culture=oc;
+            re->pop.groups[0].race=HERITAGE_CLANIQUE; re->pop.groups[0].origin=oc; re->pop.groups[0].culture=oc;
             re->pop.groups[0].klass=CLASS_LABORER; re->pop.groups[0].count=3000;
             re->pop.n_groups=1;
         }

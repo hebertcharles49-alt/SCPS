@@ -225,7 +225,7 @@ static const double DAYS_PER_SEC[SPEED_COUNT] = { 0.0, 3.0, 8.0, 14.0, 24.0 };
 static const char  *SPEED_LABEL[SPEED_COUNT]  = { "❙❙", "▸ ×1", "▸▸ ×2", "▸▸ ×3", "▸▸▸ ×5" };
 static SDL_Rect g_speed_zone;   /* le cran est CLIQUABLE (clic = cran suivant, repasse à ×1) */
 static GameSpeed g_last_speed = SPEED_1;   /* Espace repart sur le DERNIER cran choisi */
-static SpeciesArchetype g_player_race = RACE_HUMAIN;   /* le choix de l'écran de création (shell) */
+static SpeciesArchetype g_player_race = HERITAGE_ADAPTATIF;   /* le choix de l'écran de création (shell) */
 #define GAME_YEARS 250
 
 /* ---- État caméra ----------------------------------------------------- */
@@ -2525,7 +2525,7 @@ static int sb_capital_region(const Sim *s, const World *w){
  * DOMINANTE de la région ; déterministe par région, décorrélé des noms d'empire. */
 static void region_make_name(char *out, int n, const WorldEconomy *e, int region){
     SpeciesArchetype race = (e && region>=0 && region<e->n_regions)
-                          ? e->region[region].culture.race : RACE_HUMAIN;
+                          ? e->region[region].culture.race : HERITAGE_ADAPTATIF;
     place_make_name(out, n, race, (uint32_t)region ^ 0x5EEDu);
 }
 
@@ -4471,7 +4471,7 @@ static void save_ppm(const char *path, const uint32_t *px, int w, int h) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 static bool g_pause_menu=false, g_quit_confirm=false, g_show_tuto=false;
 static int  g_tuto_page=0;
-static int  g_setup_ethos=5, g_setup_race=(int)RACE_HUMAIN, g_setup_terre=5;  /* défauts : Pacifiste? non → voir tables */
+static int  g_setup_ethos=5, g_setup_race=(int)HERITAGE_ADAPTATIF, g_setup_terre=5;  /* défauts : Pacifiste? non → voir tables */
 static char g_open_terre_line[120]="";
 static WorldParams g_stage;            /* l'écran de création édite une COPIE */
 static bool g_pending_open=false;      /* après la forge : entrer en OUVERTURE */
@@ -4991,7 +4991,7 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
       ok&=sv_r(f,SVT_MISC, &m, sizeof m);
       if (ok){ s->day=m.day; s->year=m.year; s->player=m.player; s->prev_dawned=m.prev_dawned;
                s->camp_rng=m.camp_rng;
-               if (m.race <0 || m.race >=(int32_t)RACE_COUNT)  m.race =(int32_t)RACE_HUMAIN;
+               if (m.race <0 || m.race >=(int32_t)HERITAGE_COUNT)  m.race =(int32_t)HERITAGE_ADAPTATIF;
                if (m.ethos<0 || m.ethos>=(int32_t)ETHOS_COUNT) m.ethos=0;
                g_player_race=(SpeciesArchetype)m.race; g_setup_ethos=m.ethos;
                memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner); } }
@@ -5087,7 +5087,7 @@ static void shell_draw(SDL_Renderer *ren,int win_w,int win_h,World *w,Sim *s,
             shhit_add((SDL_Rect){px,py,330,20},SH_PICK_ETHOS,e); py+=22;
         }
         py+=8; draw_text(ren,g_font_small,px,py,COL_DIM,"Race"); py+=18;
-        for (int r=0;r<(int)RACE_COUNT;r++){
+        for (int r=0;r<(int)HERITAGE_COUNT;r++){
             bool on=(g_setup_race==r);
             int cx2=px+(r%3)*112, cy2=py+(r/3)*24;
             fill_rect(ren,cx2,cy2,104,20,on?(SDL_Color){0x3a,0x2c,0x1a,0xff}:(SDL_Color){0x12,0x18,0x24,0xff});

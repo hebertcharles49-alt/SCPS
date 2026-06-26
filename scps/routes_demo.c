@@ -42,7 +42,7 @@ int main(int argc,char**argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
-    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
     trade_network_build(net,w,econ);
     for(int c=0;c<w->n_countries;c++) tech_state_init(&ts[c],false);
     prosperity_init(wp,w); legitimacy_init(wl,w,econ); routes_init(rn);

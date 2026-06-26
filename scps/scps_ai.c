@@ -1292,11 +1292,11 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
 /* RECHERCHE — l'arbre de tech vivant (buts + penchant de race + frein)     */
 /* ===================================================================== */
 static SpeciesArchetype ai_capital_race(const World *w, const WorldEconomy *econ, int cid){
-    if (cid<0||cid>=w->n_countries) return RACE_HUMAIN;
+    if (cid<0||cid>=w->n_countries) return HERITAGE_ADAPTATIF;
     int cp=w->country[cid].capital_prov;
-    if (cp<0||cp>=w->n_provinces) return RACE_HUMAIN;
+    if (cp<0||cp>=w->n_provinces) return HERITAGE_ADAPTATIF;
     int cr=w->province[cp].region;
-    if (cr<0||cr>=econ->n_regions) return RACE_HUMAIN;
+    if (cr<0||cr>=econ->n_regions) return HERITAGE_ADAPTATIF;
     return econ->region[cr].culture.race;
 }
 static Ethos ai_capital_ethos(const World *w, const WorldEconomy *econ, int cid){
@@ -1376,25 +1376,25 @@ static float pc_content_dist(const PopCulture *a, const PopCulture *b){
     float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
 }
 /* Centroïde culturel (contenu) de chaque race-archétype au monde, pondéré population. */
-static void world_archetype_centroids(const WorldEconomy *econ, PopCulture cen[RACE_COUNT], bool present[RACE_COUNT]){
-    double sv[RACE_COUNT]={0}, ss[RACE_COUNT]={0}, sp[RACE_COUNT]={0}, sr[RACE_COUNT]={0}, wsum[RACE_COUNT]={0};
+static void world_archetype_centroids(const WorldEconomy *econ, PopCulture cen[HERITAGE_COUNT], bool present[HERITAGE_COUNT]){
+    double sv[HERITAGE_COUNT]={0}, ss[HERITAGE_COUNT]={0}, sp[HERITAGE_COUNT]={0}, sr[HERITAGE_COUNT]={0}, wsum[HERITAGE_COUNT]={0};
     for (int r=0;r<econ->n_regions;r++){
         const RegionEconomy *re=&econ->region[r];
         if (!re->active || !re->colonized) continue;
         if (re->pop.n_groups>0){
             for (int g=0;g<re->pop.n_groups;g++){
                 const PopGroup *pg=&re->pop.groups[g]; int rr=pg->race;
-                if (rr<0||rr>=RACE_COUNT || pg->count<=0) continue;
+                if (rr<0||rr>=HERITAGE_COUNT || pg->count<=0) continue;
                 double wq=(double)pg->count; const PopCulture *c=&pg->culture;
                 sv[rr]+=wq*c->valeurs; ss[rr]+=wq*c->subsistance; sp[rr]+=wq*c->parente; sr[rr]+=wq*c->religion; wsum[rr]+=wq;
             }
         } else {
-            int rr=re->culture.race; if (rr<0||rr>=RACE_COUNT) continue;
+            int rr=re->culture.race; if (rr<0||rr>=HERITAGE_COUNT) continue;
             const PopCulture *c=&re->culture;
             sv[rr]+=c->valeurs; ss[rr]+=c->subsistance; sp[rr]+=c->parente; sr[rr]+=c->religion; wsum[rr]+=1.0;
         }
     }
-    for (int r=0;r<RACE_COUNT;r++){
+    for (int r=0;r<HERITAGE_COUNT;r++){
         present[r]=(wsum[r]>0.0);
         if (present[r]){ cen[r].valeurs=(float)(sv[r]/wsum[r]); cen[r].subsistance=(float)(ss[r]/wsum[r]);
                          cen[r].parente=(float)(sp[r]/wsum[r]); cen[r].religion=(float)(sr[r]/wsum[r]); }
@@ -1407,9 +1407,9 @@ static void world_archetype_centroids(const WorldEconomy *econ, PopCulture cen[R
  * tradition diffuse : le comptoir passe la surface, seule la gouvernance atteint le secret.
  * depth[] indexé par race-signature (archétype ↔ race, 1:1). */
 /* La culture porte-t-elle l'archétype ar ? — distance au centroïde (signatures de race,
- * 0..RACE_COUNT-1) ou correspondance d'ÉTHOS (profils d'éthos au-delà : bureaucrate, marchand). */
-static bool culture_bears_arch(const PopCulture *c, int ar, const PopCulture cen[RACE_COUNT], const bool present[RACE_COUNT]){
-    if (ar>=0 && ar<RACE_COUNT) return present[ar] && pc_content_dist(c,&cen[ar])<=ARCH_PORTEE_PROFIL;
+ * 0..HERITAGE_COUNT-1) ou correspondance d'ÉTHOS (profils d'éthos au-delà : bureaucrate, marchand). */
+static bool culture_bears_arch(const PopCulture *c, int ar, const PopCulture cen[HERITAGE_COUNT], const bool present[HERITAGE_COUNT]){
+    if (ar>=0 && ar<HERITAGE_COUNT) return present[ar] && pc_content_dist(c,&cen[ar])<=ARCH_PORTEE_PROFIL;
     if (ar==ARCH_BUREAUCRATIQUE) return c->ethos==ETHOS_BUREAUCRATE;
     if (ar==ARCH_MERCANTILE)     return c->ethos==ETHOS_MERCANTILE;
     return false;
@@ -1425,7 +1425,7 @@ static float region_cohesion(const RegionEconomy *re){
     return (sw>0.0)?(float)(si/sw):1.0f;
 }
 static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid, unsigned char depth[ARCH_COUNT]){
-    PopCulture cen[RACE_COUNT]; bool present[RACE_COUNT];
+    PopCulture cen[HERITAGE_COUNT]; bool present[HERITAGE_COUNT];
     world_archetype_centroids(econ, cen, present);
     for (int r=0;r<ARCH_COUNT;r++) depth[r]=PROF_NONE;
     /* credo dominant (capitale) → canal RELIGION (la foi partagée ouvre le métier). */
@@ -1511,7 +1511,7 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
 unsigned ai_race_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid){
     unsigned char depth[ARCH_COUNT]; ai_archetype_depth(w, econ, rn, cid, depth);
     unsigned m=0;
-    for (int r=0;r<RACE_COUNT;r++) if (depth[r]>=(unsigned char)PROF_PROFOND) m|=tech_race_bit((SpeciesArchetype)r);
+    for (int r=0;r<HERITAGE_COUNT;r++) if (depth[r]>=(unsigned char)PROF_PROFOND) m|=tech_race_bit((SpeciesArchetype)r);
     return m;
 }
 /* §syncrétique — rafraîchit le cercle d'un empire : cache la profondeur de contact par
@@ -1571,7 +1571,7 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
                      * (n->faustian ? ai_faustian_appetite(credo, valeurs) : 1.0f)
                      * ((n->faustian && !has_arcane_raw) ? 0.6f : 1.0f);
           score = (score + 0.4f) * mult; }
-        if (n->native!=RACE_COUNT) score += AI_TECH_SIGNATURE;     /* une signature accessible se prend */
+        if (n->native!=HERITAGE_COUNT) score += AI_TECH_SIGNATURE;     /* une signature accessible se prend */
         /* FREIN — le faustien rapproche la Brèche : pris seulement si la pente l'emporte. */
         if (n->faustian){          /* la pente faustienne, FREINÉE ou BÉNIE par la foi (§4) */
             float religious = (faith_stance - 0.5f)*2.f;   /* −1 orthodoxe (sacrilège) … +1 culte */
@@ -1628,7 +1628,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     ts->research_points += income;
     ai_sync_refresh(w, econ, rn, ts, a->cid);                   /* §4-13 : cache la profondeur + loquette la diffusion (+ S1 : le commerce) */
     unsigned access=0;
-    for (int r=0;r<RACE_COUNT;r++) if (ts->arch_depth[r]>=(unsigned char)PROF_PROFOND) access|=tech_race_bit((SpeciesArchetype)r);
+    for (int r=0;r<HERITAGE_COUNT;r++) if (ts->arch_depth[r]>=(unsigned char)PROF_PROFOND) access|=tech_race_bit((SpeciesArchetype)r);
     TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, pop);
     /* §4 COUPLAGE : une fois l'Industrie en poche, l'empire AFFAMÉ DE FER ÉPARGNE pour la
      * foreuse (chère, faustienne) plutôt que d'éparpiller — l'issue tentante précipite sa Brèche. */
@@ -1662,13 +1662,13 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     if (a->w_trade > 0.5f || a->w_build > 0.5f){
         int got=0;
         for (int id=0; id<TECH_COUNT; id++)
-            if (ts->unlocked[id] && tech_node((TechId)id)->native!=RACE_COUNT) got++;
+            if (ts->unlocked[id] && tech_node((TechId)id)->native!=HERITAGE_COUNT) got++;
         if (got < 2){
             Ethos eg = ai_capital_ethos(w,econ,a->cid);
             TechId sig=TECH_COUNT; float sigcost=1e30f;
             for (int id=0; id<TECH_COUNT; id++){
                 const TechNode *tn=tech_node((TechId)id);
-                if (tn->native==RACE_COUNT || tn->faustian || ts->unlocked[id]) continue;
+                if (tn->native==HERITAGE_COUNT || tn->faustian || ts->unlocked[id]) continue;
                 if (!tech_can_research(ts, (TechId)id, access)) continue;     /* accessible (accès+prérequis) */
                 float cc=tech_cost((TechId)id, pop)*ai_tech_cost_mult(eg, tn);
                 if (cc<sigcost){ sig=(TechId)id; sigcost=cc; }                /* la moins chère d'abord */
@@ -1688,7 +1688,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
      * d'appétit) et COÛTEUX (la charge → Brèche borne les conséquences) ; on NE touche PAS la
      * foreuse. Le frein AI_TECH_FAUSTIAN abaissé (2.5→1.2) scelle la rencontre appétit/frein. */
     if (!ts->unlocked[TECH_FORGE_RUNES]
-        && (access & tech_race_bit(RACE_NAIN)) && (access & tech_race_bit(RACE_ELFE))){
+        && (access & tech_race_bit(HERITAGE_METALLURGISTE)) && (access & tech_race_bit(HERITAGE_ESOTERIQUE))){
         Credo cr=CREDO_PLURALISTE; float val=5.f;
         { int cp=w->country[a->cid].capital_prov;
           int crg=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
@@ -1713,7 +1713,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
       if (eth==ETHOS_DOMINATEUR||eth==ETHOS_HONNEUR){
           if (!ts->unlocked[TECH_POUDRIERE]) tgt=TECH_POUDRIERE;
       } else if (a->w_faustian>0.30f){
-          bool s3=(access&tech_race_bit(RACE_NAIN))&&(access&tech_race_bit(RACE_ELFE))&&!ts->unlocked[TECH_FORGE_RUNES];
+          bool s3=(access&tech_race_bit(HERITAGE_METALLURGISTE))&&(access&tech_race_bit(HERITAGE_ESOTERIQUE))&&!ts->unlocked[TECH_FORGE_RUNES];
           if (!s3){                                              /* sinon la Forge runique (S3) a la priorité */
               if      (!ts->unlocked[TECH_MAGIE_BATAILLE]) tgt=TECH_MAGIE_BATAILLE;
               else if (!ts->unlocked[TECH_ALCHIMIE])       tgt=TECH_ALCHIMIE;

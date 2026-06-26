@@ -39,7 +39,7 @@ int main(int argc,char**argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
-    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
     /* P3.20 — la GÂCHE du réseau : sans Centre commercial, pas de commerce
      * inter-pays. On sème les hubs (géographiques) et l'on teste ENTRE hubs. */
     intertrade_reset();

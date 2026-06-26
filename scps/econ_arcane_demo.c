@@ -44,7 +44,7 @@ int main(int argc, char **argv){
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
     econ_init(e,w); gen_population(w,e);
-    worldgen_seed_peoples(w,e,RACE_HUMAIN);
+    worldgen_seed_peoples(w,e,HERITAGE_ADAPTATIF);
     prosperity_init(wp,w); legitimacy_init(wl,w,e);
     for (int c=0;c<w->n_countries;c++) tech_state_init(&ts[c],false);
 

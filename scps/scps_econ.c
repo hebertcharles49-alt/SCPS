@@ -1860,9 +1860,10 @@ void econ_tick(WorldEconomy *e, float dt) {
          * food_s ne MULTIPLIE plus la base — il ne sert qu'au pic de famine (<0.35) ; soc_s
          * n'est plus lu. Plafond souple (cap_factor, plus bas) inchangé. */
         float food_s = re->food_sat;
-        /* Démographie modulée par la RACE (Prolifique/Régénérant → + de naissances ;
-         * Lent à croître → moins). Levier de la couche biologique. */
-        SpeciesBuild sb_demo = species_default_build(re->culture.race);
+        /* Démographie modulée par les TRADITIONS de l'empire (Prolifique → + de naissances ;
+         * Lent à croître → moins) — INDÉPENDANT de l'héritage (qui ne fait que les noms).
+         * IA : tirées au hasard par empire ; joueur : sa composition (via la façade, à venir). */
+        SpeciesBuild sb_demo = culture_random_build((uint32_t)(re->owner<0?0:re->owner));
         float demo = build_leviers(&sb_demo).demographie;
         /* MODIFICATEURS PROVINCIAUX diégétiques → entrée DÉMO (pas un bonus plat) : la
          * TERRE D'ABONDANCE repeuple les régions sous-remplies & nourries (le rebond des

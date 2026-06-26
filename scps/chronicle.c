@@ -917,21 +917,21 @@ int main(int argc, char **argv){
         /* SYNCRÉTISME (§tech culturelle) : les nœuds à PORTE D'ARCHÉTYPE (ex-signatures de
          * race, désormais ouvertes par la CULTURE gouvernée — soi ou contact) — combien
          * acquis, et la DISPERSION entre empires : deux contacts différents → arbres différents. */
-        { int sync_total=0, nmax=0, nmin=999, nemp=0, combo=0, diff_total=0; int arch_reached[RACE_COUNT]={0};
+        { int sync_total=0, nmax=0, nmin=999, nemp=0, combo=0, diff_total=0; int arch_reached[HERITAGE_COUNT]={0};
           for (int c=0;c<w->n_countries;c++){
               if (!s.ai_on[c] || regions_of(s.econ,c)==0) continue;     /* vivant seulement */
               int n=0;
               for (int id=0; id<TECH_COUNT; id++)
-                  if (s.ts[c].unlocked[id] && tech_node((TechId)id)->native!=RACE_COUNT){
+                  if (s.ts[c].unlocked[id] && tech_node((TechId)id)->native!=HERITAGE_COUNT){
                       n++; arch_reached[tech_node((TechId)id)->native]=1; }
               if (s.ts[c].unlocked[TECH_FORGE_RUNES]) combo++;          /* §18.3 : armes enchantées = forge runique × arcane */
               diff_total += s.ts[c].n_sync;                             /* §8 : nœuds de diffusion (contact peu profond) loqués */
               sync_total+=n; if(n>nmax)nmax=n; if(n<nmin)nmin=n; nemp++;
           }
-          int distinct=0; for (int ar=0;ar<RACE_COUNT;ar++) distinct+=arch_reached[ar];   /* ar : ne pas masquer le r extérieur (-Wshadow) */
+          int distinct=0; for (int ar=0;ar<HERITAGE_COUNT;ar++) distinct+=arch_reached[ar];   /* ar : ne pas masquer le r extérieur (-Wshadow) */
           if (nemp>0){
               printf("              syncrétisme : %d nœud(s) profond(s) (gouvernance) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane · %ld cristallisation(s) culturelle(s) par contact (S2)\n",
-                     sync_total, diff_total, distinct, (int)RACE_COUNT, nmin, nmax, combo, demography_contact_count());
+                     sync_total, diff_total, distinct, (int)HERITAGE_COUNT, nmin, nmax, combo, demography_contact_count());
               tot_sync += sync_total; tot_sync_distinct += distinct;
           }
         }

@@ -30,7 +30,7 @@ int main(int argc,char**argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
-    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
     for(int t=0;t<8;t++) econ_tick(econ,1.f);   /* peuple les strates (bras des rades) */
 
     NavyState ns; navy_init(&ns);

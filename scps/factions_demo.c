@@ -52,22 +52,22 @@ int main(void){
     printf("\n── 2. Le penchant d'un groupe vient de sa culture ──\n");
     {
         float w[FAC_COUNT];
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_DOMINATEUR,.race=RACE_ORQUE,.credo=CREDO_PLURALISTE}, w);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_DOMINATEUR,.race=HERITAGE_CLANIQUE,.credo=CREDO_PLURALISTE}, w);
         ok("orque dominateur → Conquérant dominant, Transgresseur fort",
            argmax(w)==FAC_CONQUERANT && w[FAC_TRANSGRESSEUR]>w[FAC_MARCHAND] && w[FAC_TRANSGRESSEUR]>0.2f);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_MERCANTILE,.race=RACE_HALFELIN,.credo=CREDO_PLURALISTE}, w);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_MERCANTILE,.race=HERITAGE_AGRAIRE,.credo=CREDO_PLURALISTE}, w);
         ok("halfelin mercantile → Marchand dominant, Communautaire présent",
            argmax(w)==FAC_MARCHAND && w[FAC_COMMUNAUTAIRE]>0.1f);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_BUREAUCRATE,.race=RACE_HUMAIN,.credo=CREDO_PLURALISTE}, w);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_BUREAUCRATE,.race=HERITAGE_ADAPTATIF,.credo=CREDO_PLURALISTE}, w);
         ok("humain bureaucrate → Légiste dominant", argmax(w)==FAC_LEGISTE);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_PACIFISTE,.race=RACE_GNOME,.credo=CREDO_PLURALISTE}, w);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_PACIFISTE,.race=HERITAGE_MECANISTE,.credo=CREDO_PLURALISTE}, w);
         ok("gnome pacifiste → Communautaire dominant", argmax(w)==FAC_COMMUNAUTAIRE);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=RACE_NAIN,.credo=CREDO_PLURALISTE}, w);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=HERITAGE_METALLURGISTE,.credo=CREDO_PLURALISTE}, w);
         ok("nain d'ordre → Transgresseur présent (forge à runes)", w[FAC_TRANSGRESSEUR]>0.15f);
         /* CREDO : la ferveur nourrit les Gardiens. */
         float wp[FAC_COUNT], wz[FAC_COUNT];
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=RACE_HUMAIN,.credo=CREDO_PLURALISTE}, wp);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=RACE_HUMAIN,.credo=CREDO_PURIFICATEUR}, wz);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=HERITAGE_ADAPTATIF,.credo=CREDO_PLURALISTE}, wp);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=HERITAGE_ADAPTATIF,.credo=CREDO_PURIFICATEUR}, wz);
         ok("le credo purificateur RENFORCE les Gardiens (vs pluraliste)",
            wz[FAC_GARDIEN] > wp[FAC_GARDIEN] + 0.1f);
         /* somme normalisée. */
@@ -80,12 +80,12 @@ int main(void){
     {
         /* Un pays marchand (halfelins). */
         ProvincePop prov; memset(&prov,0,sizeof prov);
-        prov.groups[0]=grp(cult(ETHOS_MERCANTILE,RACE_HALFELIN,CREDO_PLURALISTE),CLASS_LABORER,1000);
+        prov.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,1000);
         prov.n_groups=1;
         float before[FAC_COUNT]; EthosFaction dom0=faction_weights_of(&prov,1,before);
         /* CONQUÊTE : une province orque entre dans le pays. */
         ProvincePop conq; memset(&conq,0,sizeof conq);
-        conq.groups[0]=grp(cult(ETHOS_DOMINATEUR,RACE_ORQUE,CREDO_PLURALISTE),CLASS_LABORER,600);
+        conq.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_LABORER,600);
         conq.n_groups=1;
         ProvincePop country[2]={prov,conq};
         float after[FAC_COUNT]; EthosFaction dom1=faction_weights_of(country,2,after);
@@ -101,8 +101,8 @@ int main(void){
     /* ═══ 4. LA CLASSE PÈSE — l'élite qui gouverne amplifie son éthos ═════ */
     printf("\n── 4. Qui gouverne compte : l'élite pèse plus que la masse ──\n");
     {
-        PopCulture half=cult(ETHOS_MERCANTILE,RACE_HALFELIN,CREDO_PLURALISTE);
-        PopCulture orc =cult(ETHOS_DOMINATEUR,RACE_ORQUE,CREDO_PLURALISTE);
+        PopCulture half=cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE);
+        PopCulture orc =cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE);
         /* Même masse orque, une fois LABOUREURS, une fois ÉLITE régnante. */
         ProvincePop asLab; memset(&asLab,0,sizeof asLab);
         asLab.groups[0]=grp(half,CLASS_LABORER,1000); asLab.groups[1]=grp(orc,CLASS_LABORER,200); asLab.n_groups=2;
@@ -122,10 +122,10 @@ int main(void){
         /* Un pays conquérant (orques) vs un pays marchand (halfelins). */
         float wc[FAC_COUNT], wm[FAC_COUNT];
         ProvincePop pc; memset(&pc,0,sizeof pc);
-        pc.groups[0]=grp(cult(ETHOS_DOMINATEUR,RACE_ORQUE,CREDO_PLURALISTE),CLASS_ELITE,300);
-        pc.groups[1]=grp(cult(ETHOS_DOMINATEUR,RACE_ORQUE,CREDO_PLURALISTE),CLASS_LABORER,800); pc.n_groups=2;
+        pc.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_ELITE,300);
+        pc.groups[1]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_LABORER,800); pc.n_groups=2;
         ProvincePop pm; memset(&pm,0,sizeof pm);
-        pm.groups[0]=grp(cult(ETHOS_MERCANTILE,RACE_HALFELIN,CREDO_PLURALISTE),CLASS_LABORER,1000); pm.n_groups=1;
+        pm.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,1000); pm.n_groups=1;
         faction_weights_of(&pc,1,wc); faction_weights_of(&pm,1,wm);
         EthosWeights ec=faction_effective_weights(wc), em=faction_effective_weights(wm);
         printf("   conquérant : w_expand=%.2f w_trade=%.2f | marchand : w_expand=%.2f w_trade=%.2f\n",
@@ -139,12 +139,12 @@ int main(void){
     {
         /* Mono-éthos : un seul peuple → cohésion (fracture basse). */
         ProvincePop mono; memset(&mono,0,sizeof mono);
-        mono.groups[0]=grp(cult(ETHOS_BUREAUCRATE,RACE_HUMAIN,CREDO_PLURALISTE),CLASS_LABORER,1000); mono.n_groups=1;
+        mono.groups[0]=grp(cult(ETHOS_BUREAUCRATE,HERITAGE_ADAPTATIF,CREDO_PLURALISTE),CLASS_LABORER,1000); mono.n_groups=1;
         float wmono[FAC_COUNT]; faction_weights_of(&mono,1,wmono);
         /* Deux blocs forts et opposés (Conquérants ~ Marchands) → fracture. */
         ProvincePop split; memset(&split,0,sizeof split);
-        split.groups[0]=grp(cult(ETHOS_DOMINATEUR,RACE_ORQUE,CREDO_PLURALISTE),CLASS_LABORER,1000);
-        split.groups[1]=grp(cult(ETHOS_MERCANTILE,RACE_HALFELIN,CREDO_PLURALISTE),CLASS_LABORER,1000);
+        split.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_LABORER,1000);
+        split.groups[1]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,1000);
         split.n_groups=2;
         float wsplit[FAC_COUNT]; faction_weights_of(&split,1,wsplit);
         printf("   mono-éthos : fracture %.2f (cohésion %.2f) | bloc 50/50 opposé : fracture %.2f\n",
@@ -164,8 +164,8 @@ int main(void){
         ok("une faction ne s'oppose pas à elle-même", faction_opposition(FAC_MARCHAND,FAC_MARCHAND)==0.f);
         /* Régime marchand (dominante) avec un bloc CONQUÉRANT fort et opposé. */
         ProvincePop pp; memset(&pp,0,sizeof pp);
-        pp.groups[0]=grp(cult(ETHOS_MERCANTILE,RACE_HALFELIN,CREDO_PLURALISTE),CLASS_LABORER,1100);
-        pp.groups[1]=grp(cult(ETHOS_DOMINATEUR,RACE_ORQUE,CREDO_PLURALISTE),CLASS_ELITE,300);
+        pp.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,1100);
+        pp.groups[1]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_ELITE,300);
         pp.n_groups=2;
         float w[FAC_COUNT]; faction_weights_of(&pp,1,w);
         EthosFaction alien; float tension=faction_coup_tension(w,&alien);
@@ -174,7 +174,7 @@ int main(void){
         ok("un bloc fort et opposé à la direction crée une TENSION de coup", tension > 0.15f);
         /* Mono-éthos : nulle opposition forte → quasi nulle tension. */
         ProvincePop mono; memset(&mono,0,sizeof mono);
-        mono.groups[0]=grp(cult(ETHOS_BUREAUCRATE,RACE_HUMAIN,CREDO_PLURALISTE),CLASS_LABORER,1000);
+        mono.groups[0]=grp(cult(ETHOS_BUREAUCRATE,HERITAGE_ADAPTATIF,CREDO_PLURALISTE),CLASS_LABORER,1000);
         mono.n_groups=1;
         float wm[FAC_COUNT]; faction_weights_of(&mono,1,wm);
         ok("un mono-éthos ne couve aucun coup (nulle faction forte opposée)",

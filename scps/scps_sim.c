@@ -585,7 +585,7 @@ void sim_day(Sim *s, World *w) {
 
 void sim_init(Sim *s, World *w) {
     econ_init(s->econ, w); gen_population(w, s->econ);
-    worldgen_seed_peoples(w, s->econ, RACE_HUMAIN);
+    worldgen_seed_peoples(w, s->econ, HERITAGE_ADAPTATIF);
     legitimacy_init(s->wl, w, s->econ); prosperity_init(s->wp, w);
     trade_network_build(s->net, w, s->econ);
     statecraft_init(s->sc, w); agency_init(s->ag); diplo_init(s->dp); routes_init(s->rn);

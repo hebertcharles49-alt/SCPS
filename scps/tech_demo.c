@@ -71,7 +71,7 @@ int main(void){
 
     /* ---- 5. FAUSTIEN PARTOUT → la Brèche (seule la Société métabolise) - */
     printf("\n── 5. Le faustien partout → la Brèche (K métabolise) ──\n");
-    unsigned human=tech_race_bit(RACE_HUMAIN);
+    unsigned human=tech_race_bit(HERITAGE_ADAPTATIF);
     printf("  RUN A — ruée arcane sans socle :\n");
     TechState a; tech_state_init(&a,/*ruines*/true);
     research(&a,TECH_SAVOIR_GUERRE,human); research(&a,TECH_MAGIE_BATAILLE,human); research(&a,TECH_EVEIL,human);
@@ -96,16 +96,16 @@ int main(void){
     TechState f; tech_state_init(&f,false);
     research(&f,TECH_ARMURERIE,human); research(&f,TECH_POUDRIERE,human);   /* prérequis de la Forge à runes */
     ok("NAIN sans ARCANE : la Forge à runes (runique × arcane) reste INSUFFISANTE",
-       !tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(RACE_NAIN)));
+       !tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(HERITAGE_METALLURGISTE)));
     ok("NAIN + ARCANE (elfe en contact) : la Forge à runes se GREFFE (combo §syncrétique)",
-       tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(RACE_NAIN)|tech_race_bit(RACE_ELFE)));
+       tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(HERITAGE_METALLURGISTE)|tech_race_bit(HERITAGE_ESOTERIQUE)));
     ok("un empire NAIN+ELFE la recherche (native naine + combo elfe réunis)",
-       tech_can_research(&f,TECH_FORGE_RUNES, tech_race_bit(RACE_NAIN)|tech_race_bit(RACE_ELFE)));
+       tech_can_research(&f,TECH_FORGE_RUNES, tech_race_bit(HERITAGE_METALLURGISTE)|tech_race_bit(HERITAGE_ESOTERIQUE)));
     ok("la signature HALFELINE (Abondance) est la MOINS faustienne (charge nulle)",
        !tech_node(TECH_ABONDANCE)->faustian && tech_node(TECH_ABONDANCE)->charge==0.f &&
-       tech_node(TECH_ABONDANCE)->native==RACE_HALFELIN);
+       tech_node(TECH_ABONDANCE)->native==HERITAGE_AGRAIRE);
     ok("l'Esclavage est la signature ORQUE (la tech d'asservissement, gate du §4c)",
-       tech_node(TECH_ESCLAVAGE)->native==RACE_ORQUE && tech_node(TECH_ESCLAVAGE)->faustian);
+       tech_node(TECH_ESCLAVAGE)->native==HERITAGE_CLANIQUE && tech_node(TECH_ESCLAVAGE)->faustian);
 
     /* ---- 7. LE COÛT QUI SCALE ∝ POPULATION ---------------------------- */
     printf("\n── 7. Le coût qui scale ∝ étendue ∝ population ──\n");

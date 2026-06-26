@@ -55,7 +55,7 @@ int main(int argc,char**argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
-    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
     trade_network_build(net,w,econ);
     for(int c=0;c<w->n_countries;c++) tech_state_init(&ts[c],false);
     prosperity_init(wp,w); legitimacy_init(wl,w,econ); diplo_init(dp);
@@ -472,12 +472,12 @@ int main(int argc,char**argv){
             /* Le banc tourne en mono-groupe : on PEUPLE explicitement le cœur (natifs)
              * et une province source (un groupe ÉTRANGER — des orques). */
             PopGroup nat; memset(&nat,0,sizeof nat);
-            nat.race=RACE_HUMAIN; nat.klass=CLASS_BOURGEOIS; nat.count=8000;
-            nat.integration=1.f; nat.L=6.f; nat.drift_id=111; nat.origin_sphere=species_sphere(RACE_HUMAIN);
+            nat.race=HERITAGE_ADAPTATIF; nat.klass=CLASS_BOURGEOIS; nat.count=8000;
+            nat.integration=1.f; nat.L=6.f; nat.drift_id=111; nat.origin_sphere=species_sphere(HERITAGE_ADAPTATIF);
             econ->region[capR].pop.n_groups=1; econ->region[capR].pop.groups[0]=nat;
             PopGroup foe; memset(&foe,0,sizeof foe);
-            foe.race=RACE_ORQUE; foe.klass=CLASS_LABORER; foe.count=4000;
-            foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=species_sphere(RACE_ORQUE);
+            foe.race=HERITAGE_CLANIQUE; foe.klass=CLASS_LABORER; foe.count=4000;
+            foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=species_sphere(HERITAGE_CLANIQUE);
             econ->region[srcR].pop.n_groups=1; econ->region[srcR].pop.groups[0]=foe;
 
             /* GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Orque) : booléen. */
@@ -489,7 +489,7 @@ int main(int argc,char**argv){
                econ->region[capR].pop.n_groups==2);
             PopGroup *g=&econ->region[capR].pop.groups[econ->region[capR].pop.n_groups-1];
             ok("le groupe d'esclaves est RESTIF (non-intégré + diaspora → D̄↑ au centre)",
-               g->integration<0.01f && g->diaspora && g->race==RACE_ORQUE);
+               g->integration<0.01f && g->diaspora && g->race==HERITAGE_CLANIQUE);
             ok("la province prise PERD la population déportée",
                econ->region[srcR].pop.groups[0].count < 4000);
             /* GATE : sans la TECH d'asservissement (enslaves=false), personne n'est asservi. */

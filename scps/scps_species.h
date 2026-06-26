@@ -1,23 +1,23 @@
 #ifndef SCPS_SPECIES_H
 #define SCPS_SPECIES_H
 /*
- * scps_species.h — ROSTER DE RACES & SYSTÈME DE TRAITS (façon Stellaris)
+ * scps_species.h — HÉRITAGES & TRADITIONS (le créateur de culture, façon Stellaris/Civ)
  *
- * Couche BIOLOGIQUE/TEMPÉRAMENTALE de l'espèce (démographie, productivité,
- * tempérament). Elle se SUPERPOSE à la fiche culturelle SCPS (PopCulture) —
- * ensemble elles définissent un peuple. Les traits ne sont PAS verrouillés par
- * race : on se compose un orque charismatique en échangeant un trait et en
- * rééquilibrant à 0.
+ * « Plus de races, tout le monde est humain. » Deux couches INDÉPENDANTES :
+ *   · HÉRITAGE (SpeciesArchetype) — une LIGNÉE CULTURELLE qui ne pilote QUE les NOMS
+ *     (banque de syllabes : ésotérique « elfique », clanique « orque »…). PAS de traits.
+ *   · TRADITIONS (le build) — 3 traditions, une par AXE (Physique/Social/Intellectuel),
+ *     FORCÉ à 1 atout MAJEUR (+2) + 1 atout MINEUR (+1) + 1 défaut (−1, plus de défaut
+ *     majeur). Plus de budget/score : la composition EST la règle. Le joueur les compose ;
+ *     l'IA les tire au hasard (culture_random_build) — indépendamment de l'héritage.
  *
- * Système de points : 3 catégories (Physique/Social/Intellectuel), un trait
- * par catégorie. 12 traits/pool (6 atouts qui coûtent, 6 défauts qui rendent),
- * 1 ou 2 points. Départ +1 ; un build est ÉQUILIBRÉ quand la somme signée des
- * 3 traits vaut +1 (budget restant = 1 − Σ = 0).
- *
- * Membrane : le joueur lit des MOTS (« Robuste », « Belliqueux ») + leur
- * définition au survol — jamais les leviers chiffrés derrière.
+ * Les traditions se SUPERPOSENT à la fiche culturelle SCPS (PopCulture) ; ensemble
+ * (héritage + axe/éthos + traditions) elles définissent un peuple.
+ * Membrane : le joueur lit des MOTS (« Robuste », « Belliqueux ») + leur définition
+ * au survol — jamais les leviers chiffrés derrière.
  */
 #include <stdbool.h>
+#include <stdint.h>
 
 /* ===================================================================== */
 /* SPHÈRES — tiers de magnitude sur un seul continuum (gouffre corrigé)   */
@@ -90,15 +90,8 @@ typedef enum {
     HERITAGE_ADAPTATIF, HERITAGE_AGRAIRE, HERITAGE_CLANIQUE,
     HERITAGE_COUNT
 } SpeciesArchetype;
-/* Alias de transition : l'ancien lexique RACE_* reste utilisable (mêmes valeurs) tant
- * que le moteur n'est pas entièrement migré — GR3 autorise les noms d'enum internes. */
-#define RACE_ELFE     HERITAGE_ESOTERIQUE
-#define RACE_NAIN     HERITAGE_METALLURGISTE
-#define RACE_GNOME    HERITAGE_MECANISTE
-#define RACE_HUMAIN   HERITAGE_ADAPTATIF
-#define RACE_HALFELIN HERITAGE_AGRAIRE
-#define RACE_ORQUE    HERITAGE_CLANIQUE
-#define RACE_COUNT    HERITAGE_COUNT
+/* GR-final — « plus de races, tout le monde est humain » : les HÉRITAGES sont des LIGNÉES
+ * CULTURELLES (pas des espèces). L'ancien lexique RACE_* est entièrement migré vers HERITAGE_*. */
 
 /* Un build = un trait par catégorie (indexé par TraitCategory). */
 typedef struct { TraitId trait[CAT_COUNT]; } SpeciesBuild;
@@ -112,5 +105,8 @@ SpeciesBuild    species_default_build(SpeciesArchetype r);
 bool            build_is_valid(const SpeciesBuild *b);
 /* Compose les leviers des 3 traditions (somme des deltas). */
 SpeciesLeviers  build_leviers(const SpeciesBuild *b);
+/* TRADITIONS ALÉATOIRES déterministes — un build VALIDE tiré d'un seed (= identité d'empire),
+ * INDÉPENDANT de l'héritage. L'IA en reçoit ; défaut du joueur avant qu'il compose la sienne. */
+SpeciesBuild    culture_random_build(uint32_t seed);
 
 #endif /* SCPS_SPECIES_H */

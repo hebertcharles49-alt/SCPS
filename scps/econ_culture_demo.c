@@ -42,13 +42,13 @@ int main(int argc, char **argv){
     printf("\n── 1-3. Off-culture & assimilation ──\n");
     ProvincePop pp; memset(&pp,0,sizeof pp);
 
-    set_group(&pp.groups[0], RACE_HUMAIN, SPHERE_HOMMES, 1000, 1.f);
+    set_group(&pp.groups[0], HERITAGE_ADAPTATIF, SPHERE_HOMMES, 1000, 1.f);
     pp.n_groups=1;
     ok("province HOMOGÈNE (un peuple) → aucune pénalité off-culture",
        econ_off_culture_fraction(&pp) < 0.001f);
 
     /* On conquiert : une minorité ORQUE (sphère Étrangers), non assimilée. */
-    set_group(&pp.groups[1], RACE_ORQUE, SPHERE_ETRANGERS, 500, 0.f);
+    set_group(&pp.groups[1], HERITAGE_CLANIQUE, SPHERE_ETRANGERS, 500, 0.f);
     pp.n_groups=2;
     float off_raw = econ_off_culture_fraction(&pp);
     printf("   dominante Hommes + 1/3 minorité Étrangers (integration 0) : pénalité=%.2f\n", off_raw);
@@ -63,10 +63,10 @@ int main(int argc, char **argv){
 
     /* Une minorité de la MÊME sphère (Anciens : elfe sous nain) gêne moins qu'une
      * sphère lointaine (Étrangers). */
-    set_group(&pp.groups[0], RACE_NAIN, SPHERE_ANCIENS, 1000, 1.f);
-    set_group(&pp.groups[1], RACE_ELFE, SPHERE_ANCIENS, 500, 0.f);
+    set_group(&pp.groups[0], HERITAGE_METALLURGISTE, SPHERE_ANCIENS, 1000, 1.f);
+    set_group(&pp.groups[1], HERITAGE_ESOTERIQUE, SPHERE_ANCIENS, 500, 0.f);
     float off_near = econ_off_culture_fraction(&pp);
-    set_group(&pp.groups[1], RACE_ORQUE, SPHERE_ETRANGERS, 500, 0.f);
+    set_group(&pp.groups[1], HERITAGE_CLANIQUE, SPHERE_ETRANGERS, 500, 0.f);
     float off_far  = econ_off_culture_fraction(&pp);
     printf("   minorité MÊME sphère=%.2f vs sphère LOINTAINE=%.2f\n", off_near, off_far);
     ok("une sphère LOINTAINE gêne plus qu'une sphère proche (variantes plus distantes)",
@@ -85,15 +85,15 @@ int main(int argc, char **argv){
 
     /* cas homogène */
     memset(&e->region[rr].pop,0,sizeof e->region[rr].pop);
-    set_group(&e->region[rr].pop.groups[0], RACE_HUMAIN, SPHERE_HOMMES, pop, 1.f);
+    set_group(&e->region[rr].pop.groups[0], HERITAGE_ADAPTATIF, SPHERE_HOMMES, pop, 1.f);
     e->region[rr].pop.n_groups=1;
     for (int t=0;t<3;t++) econ_tick(e, 1.f);
     float soc_homo = e->region[rr].society_sat, food_homo = e->region[rr].food_sat;
 
     /* cas bigarré : on injecte une forte minorité étrangère non assimilée */
     econ_init(e,w); gen_population(w,e);
-    set_group(&e->region[rr].pop.groups[0], RACE_HUMAIN, SPHERE_HOMMES, pop/2, 1.f);
-    set_group(&e->region[rr].pop.groups[1], RACE_ORQUE,  SPHERE_ETRANGERS, pop/2, 0.f);
+    set_group(&e->region[rr].pop.groups[0], HERITAGE_ADAPTATIF, SPHERE_HOMMES, pop/2, 1.f);
+    set_group(&e->region[rr].pop.groups[1], HERITAGE_CLANIQUE,  SPHERE_ETRANGERS, pop/2, 0.f);
     e->region[rr].pop.n_groups=2;
     for (int t=0;t<3;t++) econ_tick(e, 1.f);
     float soc_mix = e->region[rr].society_sat, food_mix = e->region[rr].food_sat;
