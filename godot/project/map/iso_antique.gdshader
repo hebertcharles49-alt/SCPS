@@ -183,26 +183,26 @@ void fragment() {
 			}
 		}
 
-		// RIVIÈRE = ENCRE qui BAVE dans le PARCHEMIN, avec PROFONDEUR (pas un bleu uniforme « Google Maps ») :
-		// HAUT-FOND bleu-vert PÂLE à la berge → CHENAL bleu-gris plus dense au cœur. Transition TRÈS douce
-		// vers la terre, lavis TRANSLUCIDE (le sol transparaît), teinte variée par le grain du papier.
+		// RIVIÈRE = ENCRE FANÉE mais OPAQUE (pas un bleu uniforme « Google Maps », mais le sol ne TRANSPARAÎT
+		// PAS — c'est moche). Couleur DÉSATURÉE avec PROFONDEUR : HAUT-FOND bleu-vert pâle à la berge → CHENAL
+		// bleu-gris au cœur ; teinte variée par le grain du papier. Seul le BORD (la berge) se fond doucement.
 		float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r;
 		float rv_noise = texture(noise_tex, cell * 0.35 + vec2(1.3, 4.7)).r;
-		float paper = texture(noise_tex, cell * 0.6 + vec2(7.0, 2.0)).r;   // grain du papier (absorption inégale)
-		float pres  = smoothstep(0.04, 0.34, rv) * (0.75 + 0.40 * rv_noise);   // présence, bord ULTRA-doux baveux
+		float paper = texture(noise_tex, cell * 0.6 + vec2(7.0, 2.0)).r;   // grain du papier (teinte inégale)
+		// OPACITÉ : le CORPS de la rivière est PLEIN (encre opaque) ; seule la berge (bord fin) se fond.
+		float edge  = smoothstep(0.05, 0.22, rv) * (0.92 + 0.08 * rv_noise);
 		float depth = smoothstep(0.16, 0.62, rv);             // 0 = HAUT-FOND (berge) · 1 = CHENAL profond
-		// encre RGB ±5 % par canal (jamais uniforme — elle bave, se concentre, s'éclaircit) + dérive du grain
+		// encre RGB ±4 % par canal (jamais uniforme — elle bave, se concentre) + légère dérive du grain
 		vec3 water_ink = (vec3(vnoise(cell * 0.7 + vec2(11.0, 3.0)),
 		                       vnoise(cell * 0.7 + vec2(5.0, 19.0)),
-		                       vnoise(cell * 0.7 + vec2(23.0, 7.0))) - 0.5) * 0.09;
-		vec3 shoal = vec3(0.56, 0.64, 0.61);                  // HAUT-FOND : bleu-vert PÂLE (eau peu profonde)
-		vec3 deep  = vec3(0.37, 0.47, 0.55);                  // CHENAL : bleu-gris FANÉ
-		vec3 riv_col = mix(shoal, deep, depth) + water_ink + (paper - 0.5) * 0.06;
-		// OPACITÉ CAPÉE → lavis TRANSLUCIDE : la berge (haut-fond) PLUS translucide fond dans la terre ; le
-		// chenal plus marqué. L'encre TEINTE le sol, elle ne le REMPLACE pas (fin du « trait » opaque).
-		float core_amt  = pres * (0.30 + 0.45 * depth);       // berge faible, chenal plus dense
-		float river_amt = core_amt * (is_water(b) ? 0.5 : (is_wetland(b) ? 0.6 : 0.72)) * (0.72 + 0.50 * paper);
-		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.62));
+		                       vnoise(cell * 0.7 + vec2(23.0, 7.0))) - 0.5) * 0.08;
+		vec3 shoal = vec3(0.55, 0.63, 0.60);                  // HAUT-FOND : bleu-vert PÂLE (eau peu profonde)
+		vec3 deep  = vec3(0.34, 0.45, 0.54);                  // CHENAL : bleu-gris FANÉ
+		vec3 riv_col = mix(shoal, deep, depth) + water_ink + (paper - 0.5) * 0.05;
+		// l'encre RECOUVRE le sol (corps OPAQUE ~0.95) ; le bord fondu donne la berge — JAMAIS de terrain
+		// qui transparaît à travers le lit (fade par la COULEUR désaturée, pas par la transparence).
+		float river_amt = edge * (is_water(b) ? 0.7 : (is_wetland(b) ? 0.88 : 0.95));
+		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.96));
 
 		// RELIEF (massifs clusterisés ∝ densité → pas de hachures éparses)
 		float rd = relief_density(cw);
