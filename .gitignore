@@ -28,6 +28,8 @@ lang_demo
 # Sorties générées
 out_*.ppm
 out_*.png
+wg_*.png
+river_shot.png
 montage.bmp
 scps_ui.ppm
 scps_ui.png
