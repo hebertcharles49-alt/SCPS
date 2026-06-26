@@ -56,11 +56,20 @@ static inline float absf(float v){return v<0?-v:v;}
 #define RANCOR_RALLY_NORM 3.0f          /* échelle de saturation du ralliement */
 
 static int g_intim_cd[SCPS_MAX_COUNTRY];   /* l'intimidation n'est pas gratuite : ~5 ans entre deux démonstrations */
+/* TÉLÉMÉTRIE « guerres motivées » (chronicle) — le casus belli DIT le pourquoi. Compteur
+ * PAR MOTIF des déclarations CB-taguées (la guerre motivée a une RAISON ; la fronde/défection
+ * n'en pose pas). Statique = remis à plat par diplo_init (par sim), JAMAIS sérialisé, JAMAIS lu
+ * par le moteur ⇒ déterminisme/hash/SAVE intacts. */
+static int g_war_cb[CB_ANTIPIRATERIE+1];
+void diplo_war_cb_counts(int out[CB_ANTIPIRATERIE+1]){
+    for (int i=0;i<=CB_ANTIPIRATERIE;i++) out[i]=g_war_cb[i];
+}
 void diplo_save_statics(FILE *f){ fwrite(g_intim_cd,sizeof g_intim_cd,1,f); }
 bool diplo_load_statics(FILE *f){ return fread(g_intim_cd,sizeof g_intim_cd,1,f)==1; }
 void diplo_init(DiploState *d){
     memset(d,0,sizeof(*d));
     memset(g_intim_cd,0,sizeof g_intim_cd);
+    memset(g_war_cb,0,sizeof g_war_cb);   /* télémétrie « guerres motivées » : RAZ par sim */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) d->suzerain[c]=-1;   /* tous libres au départ */
     for (int r=0;r<SCPS_MAX_REG;r++)     d->occupier[r]=-1;   /* aucune région occupée */
     d->fronde_suz=-1; d->fronde_lead=-1; d->fronde_rng=0x9E3779B9u;
@@ -506,7 +515,8 @@ void diplo_declare_war  (DiploState *d,int a,int b){ set_sym(d,a,b,DIPLO_WAR); }
 void diplo_declare_war_cb(DiploState *d,int a,int b,CasusBelli cb){
     set_sym(d,a,b,DIPLO_WAR);
     if (a>=0&&a<SCPS_MAX_COUNTRY&&b>=0&&b<SCPS_MAX_COUNTRY){ d->cb[a][b]=(int8_t)cb;  /* le but de l'AGRESSEUR */
-        if (cb==CB_ANTIPIRATERIE) d->n_war_antipirate++; }
+        if (cb==CB_ANTIPIRATERIE) d->n_war_antipirate++;
+        if (cb>=0 && cb<=CB_ANTIPIRATERIE) g_war_cb[cb]++; }   /* télémétrie : guerre motivée par son CB */
 }
 CasusBelli diplo_war_goal(const DiploState *d,int a,int b){
     if (a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY) return CB_NONE;

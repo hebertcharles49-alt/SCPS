@@ -164,6 +164,9 @@ CasusBelli  diplo_casus_belli (const World *w, const WorldEconomy *econ,
 void        diplo_declare_war_cb(DiploState *d, int a, int b, CasusBelli cb);
 CasusBelli  diplo_war_goal     (const DiploState *d, int a, int b);
 const char *diplo_cb_name      (CasusBelli cb);
+/* TÉLÉMÉTRIE (chronicle) — déclarations de guerre PAR MOTIF (casus belli) sur la sim courante.
+ * out[CB_*] ; statique remis à plat par diplo_init, jamais sérialisé (hors déterminisme/SAVE). */
+void        diplo_war_cb_counts(int out[CB_ANTIPIRATERIE+1]);
 void        diplo_form_alliance(DiploState *d, int a, int b);
 void        diplo_make_peace  (DiploState *d, int a, int b);
 DiploStatus diplo_status      (const DiploState *d, int a, int b);

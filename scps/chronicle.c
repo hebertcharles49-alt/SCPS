@@ -335,6 +335,7 @@ int main(int argc, char **argv){
     long tot_reloc=0;   /* §reloc : ensemencements de pop pour combler une pénurie */
     long tot_repress=0, tot_assim=0, tot_purge=0, tot_purge_dead=0;       /* leviers intérieurs */
     long tot_serv=0, tot_prot=0, tot_conc=0, tot_cite=0, tot_defect=0, tot_annex=0;    /* suzeraineté */
+    long tot_wcb[CB_ANTIPIRATERIE+1]={0};    /* guerres motivées : déclarations par casus belli (cumul) */
     long tot_ligues=0, tot_frondes=0, tot_indep=0, tot_renvers=0, tot_ecrase=0;   /* fronde */
     long tot_bt=0, tot_btj=0, tot_routs=0, tot_rallies=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
@@ -840,6 +841,21 @@ int main(int argc, char **argv){
           printf("              recherche : %d nœuds déverrouillés (dont %d faustiens) · %d relocalisation(s) pour combler une pénurie (peupler sa province-ressource)\n", sim_techs, sim_faust, sim_reloc);
           tot_techs += sim_techs; tot_faustian += sim_faust; tot_reloc += sim_reloc; }
 
+        /* PRÉVISION (pipeline IA éco étages 1-2) : l'IA n'est plus AVEUGLE de ses flux. Le forecast
+         * distingue le STRUCTUREL (cap < conso à PLEIN eff_cap : le manque PERMANENT qui ARME
+         * import/colonisation) du transitoire. On surface l'existentiel — le déficit VIVRIER
+         * structurel (ne peut se nourrir même à plein → import vital) + la tension de runway. */
+        { int n_foodstruct=0, n_foodten=0, nctry=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].role==POLITY_WILD) continue;
+              nctry++;
+              EconForecast fc; econ_country_forecast(s.econ, c, 25.f, &fc);
+              if (fc.struct_deficit[RES_GRAIN] || fc.struct_deficit[RES_FISH] || fc.struct_deficit[RES_LIVESTOCK]) n_foodstruct++;
+              if (fc.food_runway < 12.f) n_foodten++;
+          }
+          printf("              prévision : %d/%d pays en déficit vivrier STRUCTUREL (ne se nourrit pas à plein → import vital) · %d sous tension de runway (< 12 ans)\n",
+                 n_foodstruct, nctry, n_foodten); }
+
         /* LEVIERS & SUZERAINETÉ (brief leviers) : l'usage par sim — sans ces lignes,
          * on ne sait ni si l'IA s'en sert, ni si elle s'en sert TROP. */
         { int rep,ass,pur; long dead; agency_levier_stats(&rep,&ass,&pur,&dead);
@@ -858,6 +874,12 @@ int main(int argc, char **argv){
                  s.dp->n_lev_don, s.dp->n_lev_allege, s.dp->n_lev_divise, s.dp->n_lev_intim);
           tot_ligues+=s.dp->n_ligues; tot_frondes+=s.dp->n_frondes; tot_indep+=s.dp->n_indep;
           tot_renvers+=s.dp->n_renvers; tot_ecrase+=s.dp->n_ecrase;
+          /* GUERRES MOTIVÉES (pipeline diplo) : le casus belli DIT le pourquoi — la part
+           * ÉCONOMIQUE (convoitise d'un bien, étage 2) à côté de la territoriale/subjugation. */
+          { int wc[CB_ANTIPIRATERIE+1]; diplo_war_cb_counts(wc);
+            printf("              guerres motivées : %d territoriale(s) · %d économique(s) · %d subjugation · %d religieuse(s) · %d anti-piraterie\n",
+                   wc[CB_TERRITORIAL], wc[CB_ECONOMIC], wc[CB_SUBJUGATION], wc[CB_RELIGIOUS], wc[CB_ANTIPIRATERIE]);
+            for (int i=0;i<=CB_ANTIPIRATERIE;i++) tot_wcb[i]+=wc[i]; }
 
         /* BATAILLES DANS LE TEMPS (§8) : durées, déroutes, et LA vérif — la poursuite
          * doit dominer le choc, sinon on a juste ralenti l'ancien modèle. */
@@ -1132,6 +1154,8 @@ int main(int argc, char **argv){
            tot_repress, tot_assim, tot_purge, tot_purge_dead);
     printf("   suzeraineté ................. %ld servage · %ld protectorat · %ld concordat · %ld cité · %ld défection(s) · %ld annexion(s) par digestion (étage 3)\n",
            tot_serv, tot_prot, tot_conc, tot_cite, tot_defect, tot_annex);
+    printf("   guerres motivées ............ %ld territoriale(s) · %ld économique(s) · %ld subjugation · %ld religieuse(s) · %ld anti-piraterie (le casus belli DIT le pourquoi)\n",
+           tot_wcb[CB_TERRITORIAL], tot_wcb[CB_ECONOMIC], tot_wcb[CB_SUBJUGATION], tot_wcb[CB_RELIGIOUS], tot_wcb[CB_ANTIPIRATERIE]);
     printf("   fronde vassale .............. %ld ligue(s) · %ld fronde(s) → %ld indép. · %ld renversement(s) · %ld écrasée(s)  (les TROIS fins doivent exister)\n",
            tot_ligues, tot_frondes, tot_indep, tot_renvers, tot_ecrase);
     printf("   batailles dans le temps ..... %ld livrées · %.0f j/bataille · %ld déroutes · %ld ralliement(s) · %ld décrochages · %ld renforts · %ld nuls | morts choc %ld vs POURSUITE %ld (ratio %.1fx — la poursuite doit DOMINER le choc si la cavalerie domine la compo)\n",
