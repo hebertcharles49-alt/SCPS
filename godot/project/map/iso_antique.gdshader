@@ -167,12 +167,12 @@ void fragment() {
 			if (near_solid(cw, 1.8) && !near_solid(cw, 1.2)) col = mix(col, vec3(0.78, 0.82, 0.80), 0.40);
 			col *= mix(1.0, 0.96, smoothstep(0.6, 1.0, sin(iso.y * 1.6)));   // gravure
 		} else if (is_wetland(b)) {
-			// MARAIS : SYMBOLE de tirets horizontaux (cartographie) — wetland traité comme « humide »,
-			// donc AUCUN trait de côte qui obstrue l'estuaire : la rivière/mer y passent librement.
+			// MARAIS : SYMBOLE de tirets horizontaux (cartographie) — DISCRET (le marais se FOND dans le
+			// papier, plus un semis de « trucs » noirs) ; wetland reste « humide » → estuaire ouvert.
 			float rows = sin(iso.y * 0.9 + texture(noise_tex, cell * 0.1).r * 2.0);
-			float rowOn = smoothstep(0.35, 0.7, rows);
+			float rowOn = smoothstep(0.40, 0.75, rows);
 			float dash = sin(iso.x * 1.7 + step(0.0, rows) * 1.6);     // tirets décalés rangée/rangée
-			col = mix(col, col * 0.78, rowOn * smoothstep(0.2, 0.7, dash) * 0.7);
+			col = mix(col, col * 0.88, rowOn * smoothstep(0.2, 0.7, dash) * 0.40);
 		} else {
 			// TERRE FERME : trait d'ENCRE de côte contre l'eau ET le marais (la rive solide) + bave
 			if (near_wet(cw, 2.4)) col = mix(col, vec3(0.30, 0.24, 0.17), ink * 0.35);
@@ -183,19 +183,26 @@ void fragment() {
 			}
 		}
 
-		// RIVIÈRES à la PLUME + ESTUAIRE : sur l'eau OUVERTE la rivière s'évase/se fond (couleur marine),
-		// dans le MARAIS elle reste un chenal lisible, sur terre un trait net.
+		// RIVIÈRE = ENCRE qui BAVE dans le PARCHEMIN, avec PROFONDEUR (pas un bleu uniforme « Google Maps ») :
+		// HAUT-FOND bleu-vert PÂLE à la berge → CHENAL bleu-gris plus dense au cœur. Transition TRÈS douce
+		// vers la terre, lavis TRANSLUCIDE (le sol transparaît), teinte variée par le grain du papier.
 		float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r;
 		float rv_noise = texture(noise_tex, cell * 0.35 + vec2(1.3, 4.7)).r;
-		float plume = smoothstep(0.08, 0.42, rv) * (0.85 + 0.15 * rv_noise);   // bord DOUX (anti-crénelage)
-		// ENCRE D'EAU sur PARCHEMIN : bleu de base + BRUIT RGB ±5 % par canal (l'encre n'est jamais
-		// uniforme sur le papier — elle bave, se concentre, s'éclaircit).
+		float paper = texture(noise_tex, cell * 0.6 + vec2(7.0, 2.0)).r;   // grain du papier (absorption inégale)
+		float pres  = smoothstep(0.04, 0.34, rv) * (0.75 + 0.40 * rv_noise);   // présence, bord ULTRA-doux baveux
+		float depth = smoothstep(0.16, 0.62, rv);             // 0 = HAUT-FOND (berge) · 1 = CHENAL profond
+		// encre RGB ±5 % par canal (jamais uniforme — elle bave, se concentre, s'éclaircit) + dérive du grain
 		vec3 water_ink = (vec3(vnoise(cell * 0.7 + vec2(11.0, 3.0)),
 		                       vnoise(cell * 0.7 + vec2(5.0, 19.0)),
-		                       vnoise(cell * 0.7 + vec2(23.0, 7.0))) - 0.5) * 0.10;
-		vec3 river_col = (is_water(b) ? mix(vec3(0.40, 0.52, 0.62), antique_color(0), 0.5) : vec3(0.28, 0.44, 0.60)) + water_ink;
-		float river_amt = is_water(b) ? plume * 0.40 : (is_wetland(b) ? plume * 0.7 : plume);
-		col = mix(col, river_col, river_amt);
+		                       vnoise(cell * 0.7 + vec2(23.0, 7.0))) - 0.5) * 0.09;
+		vec3 shoal = vec3(0.56, 0.64, 0.61);                  // HAUT-FOND : bleu-vert PÂLE (eau peu profonde)
+		vec3 deep  = vec3(0.37, 0.47, 0.55);                  // CHENAL : bleu-gris FANÉ
+		vec3 riv_col = mix(shoal, deep, depth) + water_ink + (paper - 0.5) * 0.06;
+		// OPACITÉ CAPÉE → lavis TRANSLUCIDE : la berge (haut-fond) PLUS translucide fond dans la terre ; le
+		// chenal plus marqué. L'encre TEINTE le sol, elle ne le REMPLACE pas (fin du « trait » opaque).
+		float core_amt  = pres * (0.30 + 0.45 * depth);       // berge faible, chenal plus dense
+		float river_amt = core_amt * (is_water(b) ? 0.5 : (is_wetland(b) ? 0.6 : 0.72)) * (0.72 + 0.50 * paper);
+		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.62));
 
 		// RELIEF (massifs clusterisés ∝ densité → pas de hachures éparses)
 		float rd = relief_density(cw);

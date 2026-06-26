@@ -12,7 +12,8 @@ func _run() -> void:
 		Sim.regenerate(sd)                       # override la graine par défaut (seed=N)
 		await get_tree().process_frame; await get_tree().process_frame
 	if Sim.world == null: push_error("no world"); get_tree().quit(1); return
-	for i in range(120): Sim.world.advance_days(360)
+	var yrs := _years_arg()                      # years=0 → rendu de la WORLDGEN (terrain/rivières/lacs an-0), rapide
+	for i in range(yrs): Sim.world.advance_days(360)
 	Sim.generated.emit()
 	for i in range(6): await get_tree().process_frame
 	var w = Sim.world
@@ -124,6 +125,10 @@ func _seed_arg() -> int:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("seed="): return int(a.substr(5))
 	return -1
+func _years_arg() -> int:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("years="): return int(a.substr(6))
+	return 120
 func _zoom_arg() -> float:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("zoom="): return float(a.substr(5))

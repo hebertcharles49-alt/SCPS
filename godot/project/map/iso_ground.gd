@@ -779,8 +779,8 @@ func _build_river_field(w, W: int, H: int) -> Image:
 			continue
 		var fl := float(rv["flow"])
 		var v := clampf(0.58 + 0.42 * fl, 0.0, 1.0)
-		var base_w := 2 if fl > 0.8 else (1 if fl > 0.5 else 0)   # fleuve · rivière · affluent
-		var grow := 2 if fl > 0.8 else (1 if fl > 0.5 else 0)     # de combien la largeur enfle vers l'embouchure
+		var base_w := 1 if fl > 0.8 else 0                       # fleuve = trait fin · rivière/affluent = FIL
+		var grow := 1 if fl > 0.8 else (1 if fl > 0.5 else 0)     # enfle un PEU vers l'aval (fleuve 1→2 · rivière 0→1)
 		var mp := _meander(pts, hgt, sea, bio, W, H)
 		var n := mp.size()
 		for k in range(n - 1):
@@ -923,7 +923,7 @@ func _carve_seg(img: Image, a: Vector2, b: Vector2, v: float, wd: int, W: int, H
 ## distance est mesurée au point SOUS-PIXEL (fx,fy) → bord vraiment anti-crénelé, jamais en marches.
 func _carve_dot(img: Image, fx: float, fy: float, v: float, wd: int, W: int, H: int) -> void:
 	var core := float(wd)
-	var halo := 2.6                                  # halo large = AA MASSIF (bord fondu sur ~3 cellules)
+	var halo := 1.3                                  # halo FIN (rivière fluette, pas un Mississippi) — bord fondu ~1.5 cellule
 	var rad := core + halo
 	var ri := int(ceil(rad)) + 1
 	var cx := int(round(fx))

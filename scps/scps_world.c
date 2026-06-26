@@ -1218,18 +1218,24 @@ static void gen_climate(World *w, float *height, float *moisture,
                 - subtrop            /* ceinture subtropicale → Sahara/Gobi */
                 - inland_dry;        /* intérieur profond → steppes/déserts froids */
 
-        /* Corridor riparien ÉLARGI : le RÉSEAU de fleuves (toutes les sources) verdit ses VALLÉES
-         * — la cellule ET son VOISINAGE (rayon 4, débit décroissant) — → DÉSARIDIFIE la planète
-         * partout où l'eau coule (« adapter le climat aux rivières »). */
+        /* GREENIFICATION EN CONSÉQUENCE DES COURS D'EAU (pas « un lâcher de pluie ») : maintenant que les
+         * rivières ont des cours réels, on VERDIT leurs BERGES. SEULEMENT le long d'un VRAI cours (débit
+         * accumulé fort, > 0.30·255 — pas le ruissellement diffus), corridor de vallée SERRÉ (rayon 3,
+         * débit décroissant). La terre LOIN d'une rivière garde son climat naturel (aride si aride). */
         float riv=0.f;
-        for (int ry=-4; ry<=4; ry++) for (int rx=-4; rx<=4; rx++){
+        for (int ry=-3; ry<=3; ry++) for (int rx=-3; rx<=3; rx++){
             int qx=x+rx, qy=y+ry;
             if (qx<0||qx>=SCPS_W||qy<0||qy>=SCPS_H) continue;
-            float dd=sqrtf((float)(rx*rx+ry*ry)); if (dd>4.f) continue;
-            float c=(cells[scps_idx(qx,qy)].river/255.f)*(1.f-dd/5.f);
+            float dd=sqrtf((float)(rx*rx+ry*ry)); if (dd>3.f) continue;
+            float fl=cells[scps_idx(qx,qy)].river/255.f;
+            if (fl<0.30f) continue;                          /* le COURS, pas le ruissellement */
+            float c=fl*(1.f-dd/4.f);
             if (c>riv) riv=c;
         }
-        m += riv*0.55f;
+        /* PLAFONNÉ sous le seuil de MARAIS (0.58 < 0.60) : la berge verdit en PRAIRIE/FORÊT, JAMAIS en
+         * marécage → fini les petits « lacs/trucs » épars que l'ancien lâcher de pluie semait aux bas-fonds. */
+        float boost=riv*0.60f*(1.f-clampf(m,0.f,1.f));
+        m=fminf(m+boost, fmaxf(m,0.58f));
 
         moisture[i]=clampf(m,0.f,1.f);
     }
@@ -1320,11 +1326,11 @@ static void fill_lakes(float *height, Cell *cells) {
     for (int y=2;y<SCPS_H-2;y++) for (int x=2;x<SCPS_W-2;x++) {
         int i=scps_idx(x,y);
         if (height[i]<SEA_LEVEL+0.030f||inlake[i]) continue;
-        /* Un lac a besoin d'un APPORT d'eau : pas de lac dans un bassin SEC
-         * (désert, steppe) — il devient cuvette/salant, pas de l'eau libre.
-         * C'est ce qui faisait « gruyère » : chaque creux de bruit, même aride,
-         * se remplissait. On le conditionne désormais à l'humidité locale. */
-        if (cells[i].moisture<0.42f) continue;
+        /* RÉTENTION DANS UN BASSIN NATUREL (formation réaliste d'un lac) : le creux ne retient de l'eau
+         * libre que s'il REÇOIT un APPORT — un débit accumulé en amont qui s'y déverse (cells[].river =
+         * aire de bassin drainée). Un creux SANS apport reste une cuvette SÈCHE (playa/salant), pas un lac
+         * — c'est ce qui semait les petits « lacs/trucs » épars (chaque pothole humide se remplissait). */
+        if (cells[i].river < 48) continue;
         /* Dépression STRICTE sur les 8 voisins : un vrai creux fermé, pas une
          * simple ride de bruit (l'ancien test 4-cardinal en retenait trop). */
         bool dep=true;
@@ -1347,12 +1353,49 @@ static void fill_lakes(float *height, Cell *cells) {
             if (sz>=MAX_LAKE_CELLS) break;
         }
         for (int k=0;k<sz;k++) {
-            cells[batch[k]].lake=true;
+            cells[batch[k]].lake=true;            /* couche d'accès EAU (région) — reste DISCRET sur la carte
+                                                   * (pas mis en biome bleu : sinon une nuée de mares révélées
+                                                   * recrée les « trucs ». Les lacs VISIBLES = bassins endoréiques
+                                                   * sous le niveau marin + bras morts, posés à part). */
             height[batch[k]]=SEA_LEVEL+0.005f;
             inlake[batch[k]]=true;
         }
     }
     free(inlake);
+}
+
+/* OXBOW / BRAS MORT (2e voie de formation d'un lac, IRL) : au cours INFÉRIEUR d'un fleuve/rivière — la
+ * plaine où il méandre — un ancien méandre se RECOUPE, laissant un petit lac en CROISSANT à côté du lit.
+ * Déterministe (graine × index) : ~1 cours sur 3 en porte un, sur la terre BASSE adjacente au lit. */
+static void carve_oxbows(World *w, float *height){
+    for (int r=0; r<w->n_rivers; r++){
+        const River *rv=&w->river[r];
+        if (rv->flow_max < 0.5f || rv->len < 45) continue;       /* fleuve/rivière assez long */
+        uint32_t hsh=(uint32_t)w->seed*2654435761u + (uint32_t)(r+1)*40503u;
+        if ((hsh % 3u)!=0u) continue;                            /* ~1 sur 3 a un bras mort */
+        int lo=rv->len*55/100, hi=rv->len*88/100;
+        int span=(hi-lo>1)?hi-lo:1;
+        int idx=lo + (int)(hsh % (uint32_t)span);
+        int ia=(idx-4>0)?idx-4:0, ib=(idx+4<rv->len)?idx+4:rv->len-1;
+        float tx=(float)(rv->x[ib]-rv->x[ia]), ty=(float)(rv->y[ib]-rv->y[ia]);
+        float tl=sqrtf(tx*tx+ty*ty); if (tl<2.f) continue;
+        tx/=tl; ty/=tl;
+        float perpx=-ty, perpy=tx;
+        float side=(hsh & 1u)?1.f:-1.f;
+        float off=3.5f+(float)((hsh>>8)%3u);                     /* 3.5-5.5 cellules du lit */
+        float ccx=(float)rv->x[idx]+perpx*off*side, ccy=(float)rv->y[idx]+perpy*off*side;
+        for (int s=-2;s<=2;s++){                                  /* croissant ~5 de long × 2 de large */
+            for (int ww=0; ww<2; ww++){
+                int lx=(int)(ccx + tx*(float)s + perpx*(float)ww*side + 0.5f);
+                int ly=(int)(ccy + ty*(float)s + perpy*(float)ww*side + 0.5f);
+                if (lx<2||lx>=SCPS_W-2||ly<2||ly>=SCPS_H-2) continue;
+                int li=scps_idx(lx,ly);
+                if (height[li]<SEA_LEVEL+0.008f || height[li]>SEA_LEVEL+0.20f) continue;  /* terre BASSE (ni mer ni pente) */
+                if (w->cell[li].lake) continue;
+                w->cell[li].lake=true; w->cell[li].biome=BIO_SHALLOW; height[li]=SEA_LEVEL+0.004f;
+            }
+        }
+    }
 }
 
 /* ========================================================================
@@ -2503,32 +2546,47 @@ static void river_dist_to_sea(float *height, int *dist, int *q){
  * tracée pour un affluent — la cible est toujours dist 0). Le coût est DOMINÉ par un BRUIT à TRIPLE
  * fréquence (méandres larges + ondulation + jitter fin) → AUCUNE ligne droite, quitte à former des
  * angles ; la distance n'est qu'un FAIBLE guide. */
-/* SEEK : descente PROPRE du champ `dist` vers la CIBLE (dist 0 = la MER pour un fleuve, une rivière déjà
- * tracée pour un affluent) — voisin de plus BASSE distance, départagé par l'ALTITUDE (suit le talweg).
- * Le champ dist n'a aucun minimum local sur la terre ⇒ la descente ATTEINT TOUJOURS dist 0, court et sûr.
- * Le centre est une POLYLIGNE droite-ish : le MÉANDRE sinusoïdal et la LARGEUR sont posés au RENDU (la
- * forme stylisée ne touche pas la donnée moteur ; le commerce fluvial lit la ligne médiane, suffisant). */
-static int river_seek(World *w, float *height, int *dist, uint8_t *mark,
+/* SEEK : descente du champ `dist` vers la CIBLE (dist 0 = la MER pour un fleuve, une rivière déjà tracée
+ * pour un affluent) — voisin de plus BASSE distance, MAIS **JAMAIS EN MONTÉE** : une rivière ne franchit
+ * pas une crête (fini les fleuves qui « passent par-dessus la montagne »). Marche AUTO-ÉVITANTE (`seen`)
+ * → pas de boucle ; si tous les voisins descendants sont bloqués (CUVETTE endoréique), on s'échappe par le
+ * rim le plus BAS vers la cible (montée minimale, jamais une crête). Le champ dist (BFS, sans minimum local)
+ * garantit l'arrivée. MÉANDRE & LARGEUR sont posés au RENDU (la donnée moteur reste une médiane propre). */
+static int river_seek(World *w, float *height, int *dist, uint8_t *mark, int *seen, int gen,
                       int sx, int sy, int level, float flow, River *rv){
     (void)w;
     rv->len=0; rv->flow_max=flow;
     int s0=scps_idx(sx,sy);
     if (dist[s0]<0) return 0;
+    const float UPHILL_EPS=0.004f;                        /* tolère un faux-plat (bruit), bloque un vrai talus */
     int cx=sx, cy=sy, guard=0;
     while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
         int ci=scps_idx(cx,cy);
         rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
+        seen[ci]=gen;
         if (dist[ci]==0) break;                          /* TOUCHE la cible (mer/lac ou rivière) */
         if (mark[ci]>=1 && rv->len>1) break;             /* tombe sur une rivière tracée → RACCORD */
+        float hcur=height[ci];
         int best=-1, bd=1<<30; float bh=1e9f;
-        for (int d=0;d<8;d++){
+        for (int d=0;d<8;d++){                            /* descente PURE : plus basse dist, JAMAIS en montée */
             int nx=cx+DDX[d], ny=cy+DDY[d];
             if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
             int ni=scps_idx(nx,ny);
-            if (dist[ni]<0) continue;
+            if (dist[ni]<0 || seen[ni]==gen) continue;
+            if (height[ni] > hcur+UPHILL_EPS) continue;  /* pas de franchissement de crête */
             if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
         }
-        if (best<0) break;
+        if (best<0){                                     /* CUVETTE : échappe par le rim le plus bas vers la cible */
+            bd=1<<30; bh=1e9f;
+            for (int d=0;d<8;d++){
+                int nx=cx+DDX[d], ny=cy+DDY[d];
+                if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+                int ni=scps_idx(nx,ny);
+                if (dist[ni]<0 || seen[ni]==gen) continue;
+                if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
+            }
+            if (best<0) break;
+        }
         cx=best%SCPS_W; cy=best/SCPS_W;
     }
     int minlen=(level==1)?14:7;                           /* un fleuve doit être LONG */
@@ -2541,10 +2599,11 @@ static void trace_rivers(World *w, float *height) {
     uint8_t *mark=(uint8_t*)calloc(SCPS_N,1);
     int *dist=(int*)malloc(SCPS_N*sizeof(int));
     int *q   =(int*)malloc(SCPS_N*sizeof(int));
+    int *seen=(int*)calloc(SCPS_N,sizeof(int));           /* marche auto-évitante du seek (estampille `gen`) */
     RiverSrc *src=(RiverSrc*)malloc(20000*sizeof(RiverSrc));
-    if (!mark||!dist||!q||!src){ free(mark); free(dist); free(q); free(src); w->n_rivers=0; return; }
+    if (!mark||!dist||!q||!seen||!src){ free(mark); free(dist); free(q); free(seen); free(src); w->n_rivers=0; return; }
     const int RN=6;                                       /* N ~ empires jouables */
-    int ucx[64], ucy[64], nu=0;                           /* sources retenues (espacement) */
+    int ucx[64], ucy[64], nu=0, gen=0;                    /* sources retenues (espacement) ; gén. `seen` */
 
     /* sources candidates = SOMMETS LOCAUX au-dessus du seuil amont, triés par altitude décroissante */
     int ns=0;
@@ -2567,7 +2626,7 @@ static void trace_rivers(World *w, float *height) {
         if (mark[si]) continue;
         int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<140*140){tooclose=1;break;} }
         if (tooclose) continue;
-        if (river_seek(w,height,dist,mark,sx,sy,1,1.0f,&w->river[n])){ ucx[nu]=sx; ucy[nu]=sy; nu++; n++; }
+        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,1,1.0f,&w->river[n])){ ucx[nu]=sx; ucy[nu]=sy; nu++; n++; }
     }
     /* 2) 2N RIVIÈRES : SEEK le fleuve le plus proche (espacées) */
     river_dist_to(w,height,mark,1,1,dist,q);
@@ -2576,7 +2635,7 @@ static void trace_rivers(World *w, float *height) {
         if (mark[si] || dist[si]<0) continue;
         int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<70*70){tooclose=1;break;} }
         if (tooclose) continue;
-        if (river_seek(w,height,dist,mark,sx,sy,2,0.62f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; }
+        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,2,0.62f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; }
     }
     /* 3) 4N AFFLUENTS : SEEK rivière OU fleuve (espacés serré) */
     river_dist_to(w,height,mark,1,2,dist,q);
@@ -2586,10 +2645,10 @@ static void trace_rivers(World *w, float *height) {
         if (mark[si] || dist[si]<0) continue;
         int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<40*40){tooclose=1;break;} }
         if (tooclose) continue;
-        if (river_seek(w,height,dist,mark,sx,sy,3,0.34f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; na++; }
+        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,3,0.34f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; na++; }
     }
     w->n_rivers=n;
-    free(mark); free(dist); free(q); free(src);
+    free(mark); free(dist); free(q); free(seen); free(src);
 }
 
 /* ========================================================================
@@ -3475,6 +3534,7 @@ void world_generate(World *w, const WorldParams *P) {
 
     printf("[scps] rivières...     "); fflush(stdout);
     trace_rivers(w,height);
+    carve_oxbows(w,height);               /* bras morts (2e voie de lac) le long des cours inférieurs */
     printf("ok (%d riv.)\n",w->n_rivers);
 
 end:

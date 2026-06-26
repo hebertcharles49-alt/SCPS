@@ -89,8 +89,11 @@ static bool mission_check(const World *w, WorldEconomy *econ, const TechState *t
     }
 }
 
-static void mission_grant(WorldEconomy *econ, int cid, const Mission *m){
-    int cr=-1; for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){ cr=r; break; }
+static void mission_grant(const World *w, WorldEconomy *econ, int cid, const Mission *m){
+    /* récompense versée à la CAPITALE (le siège) — cohérent avec mission_check, qui VÉRIFIE le bâti sur
+     * capital_region(). L'ancien « 1re région possédée » (plus bas index) coïncidait avec la capitale sur
+     * les anciens mondes ; un monde re-baseliné peut les dissocier → la récompense tombait à côté. */
+    int cr=capital_region(w,econ,cid);
     if (cr<0) return;
     econ->region[cr].treasury += m->reward_gold;                 /* or au trésor */
     if (m->reward_mat>RES_NONE && m->reward_mat<RES_COUNT)
@@ -105,7 +108,7 @@ void missions_tick(MissionsState *ms, const World *w, WorldEconomy *econ,
         if (year%10==0 && (!m->active || m->issued_year!=year))   /* nouvelle décennie : mission fraîche */
             *m = mission_roll(w,econ,ts,c,year);
         if (m->active && !m->done && mission_check(w,econ,ts,c,m)){
-            m->done=true; mission_grant(econ,c,m);                /* accomplie → récompense */
+            m->done=true; mission_grant(w,econ,c,m);              /* accomplie → récompense (au siège) */
         }
     }
 }

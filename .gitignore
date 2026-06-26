@@ -29,6 +29,7 @@ lang_demo
 out_*.ppm
 out_*.png
 wg_*.png
+s7_*.png
 river_shot.png
 montage.bmp
 scps_ui.ppm
