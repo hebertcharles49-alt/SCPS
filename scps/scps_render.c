@@ -164,6 +164,8 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
         if (h < SEA_LEVEL) return water_color(h);
         float hab = 0.f;
         if (c->province >= 0) hab = w->province[c->province].habitability;
+        /* SEUIL D'ACCÈS : ≤25 % = INACCESSIBLE → rendu SOMBRE (zone morte, distincte du dégradé). */
+        if (hab <= 0.25f) { float shd = 0.40f + c->shade*0.30f; return rgba(0.16f*shd, 0.14f*shd, 0.20f*shd, 1.f); }
         /* 0→rouge vif, 0.15→orange, 0.40→jaune, 0.70→vert clair, 1→vert */
         float r2, g2, b2;
         if (hab < 0.15f) {

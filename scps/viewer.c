@@ -4590,7 +4590,12 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 33u           /* v33 : OPINION À MÉMOIRE (#26) — Statecraft gagne opinion_mem[][] (ledger
+#define SAVE_VERSION 34u           /* v34 : UTILITÉ DE L'HABITABILITÉ — RegionEconomy gagne `is_capital` (la
+                                    * région-siège, EXEMPTE du malus de prod/popgrowth (1−hab)·HAB_MALUS_K) ⇒
+                                    * sizeof(WorldEconomy) change → <v34 refusé. is_capital est un bool DÉRIVÉ
+                                    * (posé à econ_init depuis capital_prov) à effet BORNÉ (exemption d'un
+                                    * malus lu sur habitability ∈ [0,1]) — aucun index → pas de clause save_sane.
+                                    * v33 : OPINION À MÉMOIRE (#26) — Statecraft gagne opinion_mem[][] (ledger
                                     * durable des actes : la trahison qui survit au statut) ⇒ sizeof(Statecraft)
                                     * change → <v33 refusé. opinion_mem est un float à effet BORNÉ (il ne fait
                                     * que nourrir opinion, clampé ±100 au tick) — aucun index → pas de clause

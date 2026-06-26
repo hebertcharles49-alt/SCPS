@@ -441,7 +441,9 @@ void econ_cold_refresh(WorldEconomy *e, const World *w) {
         const Cell *c=&w->cell[i];
         if (c->height < SEA_LEVEL) continue;            /* terre seule */
         int r=c->region; if (r<0 || r>=e->n_regions || r>=SCPS_MAX_REG) continue;
-        hab_sum[r] += biome_habitability(c->biome, c->temperature);
+        float hcell = biome_habitability(c->biome, c->temperature, c->height);
+        if (c->coast && hcell < 0.32f) hcell = 0.32f;   /* PLANCHER CÔTIER : la côte reste vivable (Chili) */
+        hab_sum[r] += hcell;
         cnt[r]++;
     }
     for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
@@ -508,15 +510,17 @@ void econ_init(WorldEconomy *e, const World *w) {
             cap  += a * (0.25f + 0.75f*clampf(subs/10.f,0.f,1.f));
             hab_w += pv->habitability * a;
             area += a;
-            if (pv->habitability < 0.01f) dead_area += a;   /* glacier/pic/volcan/désert hyperaride */
+            if (pv->habitability <= 0.25f) dead_area += a;   /* SEUIL D'ACCÈS : ≤25 % = inaccessible (glacier/pic/volcan/montagne escarpée/désert/froid) */
         }
         if (area<1.f) continue;
         float hab = hab_w / area;   /* habitabilité pondérée par surface */
         reg_hab[rid] = hab;
         reg_cap[rid] = cap * hab;   /* la capacité est nulle pour les zones mortes */
-        /* Zone morte : ≥35 % d'aire à habitabilité nulle (barrière même diluée par
-         * une vallée) OU habitabilité moyenne < 12 % (désert hyperaride sans pic). */
-        reg_impass[rid] = ((dead_area/area >= 0.35f) || (hab < 0.12f)) && !is_cap[rid];
+        /* SEUIL D'ACCÈS UNIFIÉ (≤25 %) : une région est inaccessible si elle est
+         * MAJORITAIREMENT sous le seuil (≥50 % d'aire ≤25 %) OU si sa moyenne tombe
+         * elle-même ≤25 %. Remplace les ex-seuils ad-hoc (0.01 / 35 % / 12 %). La
+         * région-siège reste exemptée (la capitale tient sur sa province habitable). */
+        reg_impass[rid] = ((dead_area/area >= 0.50f) || (hab <= 0.25f)) && !is_cap[rid];
         int cid=rg->country;
         /* La capacité-pays ne compte que les terres VIVABLES → la cible (Passe 2)
          * se répartit sur les seules régions actives : aucune part « fuite » dans
@@ -563,6 +567,7 @@ void econ_init(WorldEconomy *e, const World *w) {
         bool is_impass = reg_impass[rid];
 
         re->habitability = reg_hab[rid];
+        re->is_capital   = is_cap[rid];   /* région-siège : EXEMPTE du malus d'habitabilité (province de départ) */
         if (area_sum<1.f || reg_cap[rid]<=0.f || is_impass) {
             re->active     = false;
             re->impassable = is_impass;
@@ -1420,6 +1425,11 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (re->balafre_days>0.f){ re->balafre_days-=dt*365.f; prod_mult*=0.5f; }
         if (re->raid_cd_days>0.f)  re->raid_cd_days-=dt*365.f;
         if (rid<SCPS_MAX_REG && g_friche[rid]) prod_mult*=FRICHE_FACTOR;  /* E1bis.10 : entretien IMPAYÉ → friche */
+        /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE produit moins : malus = (1−hab)·HAB_MALUS_K
+         * (habitabilité 50 % → −10 % de prod). Lit la COORDONNÉE (re->habitability), n'assigne
+         * aucun modificateur plat. La région-SIÈGE (province de départ) en est EXEMPTÉE. */
+        if (!re->is_capital)
+            prod_mult *= fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
 
         /* ---- 1. EXTRACTION = LABOR-BOUND (ressource PAR OUVRIER, refonte A0) ---
          * out[r] = OUVRIERS[r] × YIELD[r] × geo_eff[r] × effort(prix) × prod_mult.
@@ -1878,6 +1888,10 @@ void econ_tick(WorldEconomy *e, float dt) {
         re->annex_scar     = fmaxf(0.f, re->annex_scar     - tune_f("ANNEX_SCAR_DECAY",    0.20f )*dt);  /* étage 3d : ~5 ans */
         /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE région — pas seulement colonisée.) */
         net_growth *= (1.f - 0.5f*re->revolt_scar);
+        /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE peuple moins vite : même malus que la prod,
+         * (1−hab)·HAB_MALUS_K, EXEMPTANT la région-siège (province de départ). */
+        if (!re->is_capital)
+            net_growth *= fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
         net_growth *= dt;   /* cumulatif → suit le pas (mensuel : 1/12 d'an) */
 
         float total_pop_now=0.f;

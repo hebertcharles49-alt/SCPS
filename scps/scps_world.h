@@ -24,8 +24,10 @@ void world_generate(World *w, const WorldParams *params);
  * à part via econ_build_adjacency (l'appelant tient le WorldEconomy). */
 void world_sink_cell(Cell *c, float new_height);
 void world_recompute_adjacency(World *w);
-/* Habitabilité [0..1] biome×température (source unique worldgen + capstone froid). */
-float biome_habitability(Biome B, float tmp);
+/* Habitabilité [0..1] = f(biome) × f(température) × f(relief). Source unique worldgen
+ * + capstone froid. `height` = altitude de la tuile/province : le RELIEF escarpé
+ * (hors plateau highlands/hills) écrase l'habitabilité ; un plateau reste un berceau. */
+float biome_habitability(Biome B, float tmp, float height);
 /* Rebiome une cellule de terre depuis sa température mutée (capstone froid). */
 void  world_rebiome_cell(Cell *c);
 

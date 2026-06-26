@@ -264,6 +264,10 @@
      * la récompense PRIME la reprise une fois la province apaisée. W = échelle du surcroît. */ \
     X(POP_SAT_W,              0.20f) \
     X(NEEDS_MET_TAU,          0.5f) \
+    /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE produit ET peuple moins : malus = (1−hab)·K
+     * sur prod ET popgrowth (habitabilité 50 % → −10 %). EXEMPTE la région-siège (province de
+     * départ). Lit la coordonnée habitability ∈ [0,1] — aucun bonus plat. K=0 désactive. */ \
+    X(HAB_MALUS_K,            0.20f) \
     /* MODIFICATEURS PROVINCIAUX (diégétiques) — TERRE D'ABONDANCE : une région
      * SOUS-PEUPLÉE + NOURRIE + en paix se repeuple vite (le rebond des low seeds,
      * routé par l'entrée DÉMO de la croissance, PAS un bonus plat sur la sortie).

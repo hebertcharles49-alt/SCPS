@@ -265,6 +265,7 @@ typedef struct {
     int16_t    owner;                /* pays qui contrôle la région (-1 = vierge) */
     bool       coastal;              /* une province au moins touche la mer (posé à econ_init) */
     bool       estuary;              /* une EMBOUCHURE vit ici (mer ∩ gros fleuve) — l'entrepôt naturel */
+    bool       is_capital;           /* région-SIÈGE (porte la capitale d'un empire/cité) — EXEMPTE du malus d'habitabilité (la province de départ) */
     uint8_t    prov_geo;             /* dons GÉO sélectifs (drapeaux PROVF_*, posés à econ_init) : gibier/halieutique */
     /* LA COURSE (coques §4) : balafre côtière et immunité au raid. */
     float      balafre_days;         /* > 0 : côte balafrée (production entaillée ~1 an) */

@@ -2157,7 +2157,7 @@ static void compute_render_flags(World *w, float *height) {
  * dur ; Glacier/Pic/Volcan = 0 absolu) × confort thermique (pénalité froid/chaud).
  * SOURCE UNIQUE partagée par le worldgen ET le capstone FROID (qui la rejoue sur
  * une carte refroidie). */
-float biome_habitability(Biome B, float tmp) {
+float biome_habitability(Biome B, float tmp, float height) {
     float hab_base;
     switch (B) {
         case BIO_GLACIER:
@@ -2191,7 +2191,16 @@ float biome_habitability(Biome B, float tmp) {
     if (tmp >= 0.30f && tmp <= 0.72f) t_comfort = 1.0f;
     else if (tmp < 0.30f)             t_comfort = clampf(tmp / 0.30f, 0.f, 1.f);
     else                              t_comfort = clampf((1.f - tmp) / 0.28f, 0.f, 1.f);
-    return (hab_base <= 0.f) ? 0.f : clampf(hab_base * (0.45f + 0.55f*t_comfort), 0.f, 1.f);
+    /* RELIEF (3e axe) — l'ESCARPEMENT, pas l'altitude brute : un PLATEAU (highlands/hills)
+     * reste habitable (les plateaux éthiopiens = berceau de civilisation), un haut-relief
+     * ESCARPÉ s'effondre. La pénalité ne mord QUE le terrain haut NON-plateau (forêt/
+     * montagne d'altitude) ; highlands/hills en sont EXEMPTÉS. Un pic/glacier (base 0)
+     * reste mort de toute façon. Cale les montagnes escarpées sous le seuil d'accès 0.25. */
+    float f_relief = 1.0f;
+    if (B != BIO_HIGHLANDS && B != BIO_HILLS && height > 0.62f)
+        f_relief = clampf(1.0f - 2.2f*(height - 0.62f), 0.30f, 1.0f);
+    return (hab_base <= 0.f) ? 0.f
+         : clampf(hab_base * (0.45f + 0.55f*t_comfort) * f_relief, 0.f, 1.f);
 }
 
 /* Recalcule le biome d'UNE cellule de terre depuis (height, moisture, température)
@@ -2968,7 +2977,11 @@ static void gen_resources(World *w) {
 
         /* ---- Habitabilité de la province [0..1] : biome × confort thermique
          * (formule extraite en biome_habitability — partagée avec le capstone froid). */
-        pr->habitability = biome_habitability(B, tmp);
+        pr->habitability = biome_habitability(B, tmp, pr->height_avg);
+        /* PLANCHER CÔTIER : une côte reste TOUJOURS vivable (pêche + commerce) — un liseré
+         * côtier sous des montagnes/déserts morts garde sa civilisation (le Chili, le Pérou,
+         * la Norvège). Sans ça, pas de nation côtière coincée contre un relief mort. */
+        if (pr->coastal && pr->habitability < 0.32f) pr->habitability = 0.32f;
     }
 }
 
@@ -2993,9 +3006,13 @@ static float biome_food(Biome b) {
     }
 }
 
+/* Axes de score INDÉPENDANTS — eau douce, nourriture (FERTILITÉ du biome),
+ * habitabilité (VIVABILITÉ : climat/relief, séparée de la bouffe — la Sibérie peut
+ * nourrir l'été sans être vivable ; le Val de Loire est les deux) et ressources. */
 #define START_FOOD_MIN 0.30f
-#define START_W_WATER  0.35f
-#define START_W_FOOD   0.50f
+#define START_W_WATER  0.30f
+#define START_W_FOOD   0.35f
+#define START_W_HAB    0.20f
 #define START_W_RES    0.15f
 
 static void refine_capitals(World *w) {
@@ -3021,14 +3038,19 @@ static void refine_capitals(World *w) {
                 const Province *pv=&w->province[pid];
                 float water = (has_river[pid] && pv->coastal) ? 1.0f
                             : (has_river[pid] || has_lake[pid]) ? 0.7f : 0.0f;  /* estuaire/eau douce/sec */
-                float food = 0.5f*biome_food(pv->biome_dominant) + 0.5f*pv->habitability;
+                float food = biome_food(pv->biome_dominant);  /* FERTILITÉ pure (≠ vivabilité) */
                 if (pv->coastal) food += 0.10f;          /* pêche côtière */
                 if (food > 1.f)  food = 1.f;
+                float hab = pv->habitability;            /* VIVABILITÉ pure (axe séparé) */
                 float resval = 0.f;
                 if (pv->resource > RES_NONE)
                     resval = (pv->resource==RES_GOLD || pv->resource==RES_PRECIOUS_METAL
                               || pv->resource>=RES_PROD_FIRST) ? 0.30f : 0.15f;
-                float s = START_W_WATER*water + START_W_FOOD*food + START_W_RES*resval;
+                float s = START_W_WATER*water + START_W_FOOD*food
+                        + START_W_HAB*hab + START_W_RES*resval;
+                /* SPAWN SUR TERRE HABITABLE : une province inaccessible (≤25 %) n'est qu'un
+                 * dernier recours — une capitale DOIT naître sur du vivable si possible. */
+                if (pv->habitability <= 0.25f) s *= 0.15f;
                 if (s > bs){ bs=s; best=pid; }
             }
         }
@@ -3037,8 +3059,7 @@ static void refine_capitals(World *w) {
         const Province *pv=&w->province[best];
         float water = (has_river[best] && pv->coastal) ? 1.0f
                     : (has_river[best] || has_lake[best]) ? 0.7f : 0.0f;
-        float food = 0.5f*biome_food(pv->biome_dominant) + 0.5f*pv->habitability
-                   + (pv->coastal ? 0.10f : 0.f);
+        float food = biome_food(pv->biome_dominant) + (pv->coastal ? 0.10f : 0.f);
         ncap++;
         if      (water >= 1.0f) est++;
         else if (water >  0.0f) fresh++;
