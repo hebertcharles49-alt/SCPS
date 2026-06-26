@@ -16,6 +16,7 @@
 #include "scps_econ.h"
 #include "scps_legitimacy.h"
 #include "scps_agency.h"
+#include "scps_tune.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +92,13 @@ static float tech_with_savoir(WorldEconomy *e, int r, float savoir){
 }
 
 int main(int argc, char **argv){
+    /* Fixture STABLE : monde pinné à ~320 territoires (le banc teste les chaînes/édifices, pas
+     * le scaling f(empires) ; un monde géant dilue la pop/labor par région et fausse les seuils). */
+    if (!getenv("SCPS_TUNE")){
+        tune_set("WORLD_PROV_BASE",320.f);
+        tune_set("WORLD_PROV_PER_EMPIRE",0.f);
+        tune_set("WORLD_PROV_PER_CITY",0.f);
+    }
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
     World *w=malloc(sizeof(World));
     WorldEconomy *e=malloc(sizeof(WorldEconomy));

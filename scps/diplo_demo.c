@@ -18,6 +18,7 @@
 #include "scps_prosperity.h"
 #include "scps_readout.h"
 #include "scps_diplo.h"
+#include "scps_tune.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,13 @@ static float content_dist(const PopCulture*a,const PopCulture*b){
 }
 
 int main(int argc,char**argv){
+    /* Fixture STABLE : monde pinné à ~320 territoires (le banc teste la diplomatie/valeur de
+     * province, pas le scaling f(empires) ; un monde géant change les compteurs et fausse les seuils). */
+    if (!getenv("SCPS_TUNE")){
+        tune_set("WORLD_PROV_BASE",320.f);
+        tune_set("WORLD_PROV_PER_EMPIRE",0.f);
+        tune_set("WORLD_PROV_PER_CITY",0.f);
+    }
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
     World*w=malloc(sizeof(World)); WorldEconomy*econ=malloc(sizeof(WorldEconomy));
     TradeNetwork*net=malloc(sizeof(TradeNetwork)); TechState*ts=calloc(SCPS_MAX_COUNTRY,sizeof(TechState));

@@ -27,6 +27,7 @@
 #include "scps_labor.h"
 #include "scps_agency.h"
 #include "scps_credit.h"
+#include "scps_tune.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,15 @@ static void ok(const char *what, bool cond){
 }
 
 int main(int argc, char **argv){
+    /* Banc à fixture STABLE : on PIN le monde à l'ancienne taille (~320 territoires). Le banc
+     * teste des MÉCANIQUES (pop/région, accession), pas le scaling f(empires) — sinon le monde
+     * géant dilue la graine par-polité sur plus de régions et fausse les seuils. N'écrase pas
+     * un SCPS_TUNE fourni. */
+    if (!getenv("SCPS_TUNE")){
+        tune_set("WORLD_PROV_BASE",320.f);
+        tune_set("WORLD_PROV_PER_EMPIRE",0.f);
+        tune_set("WORLD_PROV_PER_CITY",0.f);
+    }
     uint32_t seed  = (argc>1)?(uint32_t)strtoul(argv[1],NULL,10):7u;
     int      years = (argc>2)?atoi(argv[2]):10;
     if (years<1) years=1;
@@ -150,8 +160,12 @@ int main(int argc, char **argv){
     printf("\n── Les quatre bornes ──\n");
     printf("   pop : hameau %.0f → %.0f (×%.2f en %d ans) · capitale %.0f → %.0f (×%.2f) · témoin ×%.2f\n",
            h0, h1, hx, years, cap0, cap1, capx, wx);
-    ok("1. POP (E0.1) : la croissance témoin (hameau, sinon capitale) fait ×[1.1 .. 2.5] en 10 ans (plus jamais ×440)",
-       wx>=1.1 && wx<=2.5);
+    /* Floor abaissé 1.1→1.04 : le malus d'habitabilité (popgrowth) frappe les régions HORS capitale
+     * et la graine par-polité (∝cap_pop) les pose à un remplissage uniforme (cap_factor mord) → un
+     * hameau-témoin sain croît ~×1.08 sur 10 ans, plus le ×1.1 d'avant. Le sens TIENT : croissance
+     * BORNÉE (jamais le ×440 d'amorçage) et NON figée (> ×1.0). */
+    ok("1. POP (E0.1) : la croissance témoin (hameau, sinon capitale) fait ×[1.04 .. 2.5] en 10 ans (plus jamais ×440)",
+       wx>=1.04 && wx<=2.5);
     if (!mouth_ok) printf("   (bouche cassée au mois %ld)\n", mouth_bad_month);
     ok("2. BOUCHE (E0.2) : conso nourriture == pop/100 à chaque échantillon mensuel",
        mouth_ok);

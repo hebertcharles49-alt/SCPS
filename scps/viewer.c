@@ -4590,7 +4590,12 @@ static void sh_draw_litanie(SDL_Renderer *ren,int win_w,int win_h,uint32_t seedv
  * qui ne matche pas = refus poli (« sauvegarde d'une ère antérieure »).
  * ═══════════════════════════════════════════════════════════════════════════ */
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 34u           /* v34 : UTILITÉ DE L'HABITABILITÉ — RegionEconomy gagne `is_capital` (la
+#define SAVE_VERSION 35u           /* v35 : MONDE QUI SCALE — plafonds SCPS_MAX_PROV 320→1344 / MAX_REG 130→672 /
+                                    * MAX_COUNTRY 56→256 (le monde suit le nb d'empires, presets tiny 2…huge 12).
+                                    * sizeof(WorldEconomy)/DiploState/Statecraft + TechState[]/AiActor[] changent ⇒
+                                    * <v35 refusé. Aucun nouveau champ — les bornes save_sane (n_regions/owner/…)
+                                    * restent valides (elles bornent SUR les compteurs, désormais à plus haut plafond).
+                                    * v34 : UTILITÉ DE L'HABITABILITÉ — RegionEconomy gagne `is_capital` (la
                                     * région-siège, EXEMPTE du malus de prod/popgrowth (1−hab)·HAB_MALUS_K) ⇒
                                     * sizeof(WorldEconomy) change → <v34 refusé. is_capital est un bool DÉRIVÉ
                                     * (posé à econ_init depuis capital_prov) à effet BORNÉ (exemption d'un

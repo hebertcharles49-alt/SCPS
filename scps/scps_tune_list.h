@@ -97,6 +97,19 @@
      * vers EMPIRE_CAP/CITY_CAP (l'apex visé, Passe 2). */ \
     X(EMPIRE_SEED,         4000.0f) \
     X(CITY_SEED,           2000.0f) \
+    /* SCALE DU MONDE — le nombre de TERRITOIRES (et donc régions/pays, par agglomération) SUIT le
+     * nombre d'empires, façon Civ. PRESETS de TAILLE = nombre d'empires : tiny 2 · petit 4 · normal 6
+     * (défaut) · grand 8 · énorme 10 · HUGE 12. PROV = BASE + PER_EMPIRE·n_empires + PER_CITY·n_city_states,
+     * SANS clamp artificiel (seul SCPS_MAX_PROV — calibré HUGE=12 — borne ⇒ ≤12 empires JAMAIS rogné).
+     * PER_EMPIRE = la DENSITÉ (place par empire : capitale + colonisation + tampon de spawn) ; ~95 ⇒
+     * ~32 régions-terre/empire (1.3× la limite de packing à SPAWN_SAFE_HOPS). tiny ⇒ ~234 terr.,
+     * normal ⇒ ~654, huge ⇒ ~1284. Baisser PER_EMPIRE = plus serré ; monter = plus de friche vierge. */ \
+    X(WORLD_PROV_BASE,       24.0f) \
+    X(WORLD_PROV_PER_EMPIRE,120.0f) \
+    X(WORLD_PROV_PER_CITY,    5.0f) \
+    /* Calage de saturation Poisson : la terre tient ~SAT_K/pas² germes (384 à pas 18 ⇒ 384·18²).
+     * assign_provinces en DÉRIVE le pas pour atteindre le nombre de territoires visé. */ \
+    X(WORLD_PROV_SAT_K,  124416.0f) \
     /* SPAWN « SAFE » — distance-région MIN (sauts d'adjacence terrestre) entre deux EMPIRES à la
      * genèse : aucun empire ne se colle à un voisin. Cités-états & hameaux libres y sont permis (zone
      * tampon « habitée mais pas rivale »). La mer coupe l'adjacence ⇒ une île isolée passe toujours

@@ -27,9 +27,15 @@
  *   territoire (province) → 3-5 = région → 3-5 = pays
  *   continent = masse continentale géographique (séparée par l'océan),
  *   hébergeant ~4-7 pays. */
-#define SCPS_MAX_PROV      320
-#define SCPS_MAX_REG       130
-#define SCPS_MAX_COUNTRY    56
+/* PLAFONDS — le monde SCALE avec le nombre d'entités (cf. WORLD_PROV_* / assign_provinces) :
+ * le compte de territoires est f(empires) SANS clamp artificiel — ces plafonds ne font que
+ * DIMENSIONNER les tableaux pour le mode le plus grand (HUGE = 12 empires ⇒ ~1284 terr.).
+ * Défaut = 6 empires (~654 terr.). En-dessous de 12 empires le compte n'est JAMAIS rogné.
+ * INVARIANT anti-débordement : MAX_REG ≥ MAX_PROV / REG_TARGET_MIN (une région = ≥2 terr.),
+ * donc l'agglomération (qui ne clampe PAS nreg) ne peut jamais dépasser MAX_REG. */
+#define SCPS_MAX_PROV     1664
+#define SCPS_MAX_REG       832
+#define SCPS_MAX_COUNTRY   320
 #define SCPS_MAX_CONTINENT  16
 #define SCPS_REG_TARGET_MIN 2   /* territoires par région (unités plus fines → plus de pays) */
 #define SCPS_REG_TARGET_MAX 3

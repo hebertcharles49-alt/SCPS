@@ -1472,12 +1472,12 @@ static void compute_fertility(float *height, float *moisture, float *temperature
  * rencontrent, la frontière tombe sur l'obstacle → fleuves et montagnes
  * deviennent des frontières naturelles, sans les tracer à la main.
  * ====================================================================== */
-#define MIN_PROV_DIST 18     /* serré → territoires nombreux (place pour 4 niveaux) */
 
 static int g_pseedx[SCPS_MAX_PROV];
 static int g_pseedy[SCPS_MAX_PROV];
 
-static int pick_seeds(Cell *cells, int want) {
+static int pick_seeds(Cell *cells, int want, int min_dist) {
+    if (min_dist<3) min_dist=3;
     /* Distribution pondérée par la fertilité, avec espacement minimum.
      * Somme préfixe (une passe) + recherche dichotomique → chaque tirage est
      * en O(log N) au lieu de O(N) : indispensable quand l'espacement serré
@@ -1497,7 +1497,7 @@ static int pick_seeds(Cell *cells, int want) {
         bool ok=true;
         for (int k=0;k<n&&ok;k++){
             int dx=cx-g_pseedx[k],dy=cy-g_pseedy[k];
-            if (dx*dx+dy*dy<MIN_PROV_DIST*MIN_PROV_DIST) ok=false;
+            if (dx*dx+dy*dy<min_dist*min_dist) ok=false;
         }
         if (ok){ g_pseedx[n]=cx; g_pseedy[n]=cy; n++; fails=0; }
         else fails++;
@@ -1562,8 +1562,18 @@ static HNode heap_pop(void){
     return top;
 }
 
-static void assign_provinces(World *w, float *height, float seed_f) {
-    int n=pick_seeds(w->cell, SCPS_MAX_PROV);
+static void assign_provinces(World *w, float *height, float seed_f, int want_prov) {
+    if (want_prov<4) want_prov=4;
+    if (want_prov>SCPS_MAX_PROV) want_prov=SCPS_MAX_PROV;   /* borne dure = taille des tableaux */
+    /* L'espacement des germes (Poisson) SUIT la cible : la terre sature à ~PROV_SAT_K/dist²
+     * germes (≈384 à dist 18). Pour atteindre want_prov on RÉTRÉCIT le pas :
+     * dist = sqrt(K/want), borné [PROV_DIST_MIN, PROV_DIST_MAX] (jamais de territoires dégénérés
+     * ni trop grossiers). Petit monde ⇒ grand pas (territoires vastes) ; Huge ⇒ pas fin. */
+    float K = tune_f("WORLD_PROV_SAT_K", 124416.f);    /* 384 · 18² : calage de saturation */
+    int min_dist = (int)(sqrtf(K/(float)want_prov) + 0.5f);
+    if (min_dist < 8)  min_dist = 8;
+    if (min_dist > 30) min_dist = 30;
+    int n=pick_seeds(w->cell, want_prov, min_dist);
     if (n<4) n=4;
     w->n_provinces=n;
 
@@ -3539,7 +3549,14 @@ void world_generate(World *w, const WorldParams *P) {
     compute_fertility(height,moisture,temp,w->cell); printf("ok\n");
 
     printf("[scps] territoires...  "); fflush(stdout);
-    assign_provinces(w,height,seed_f);
+    /* SCALE DU MONDE — le nombre de territoires SUIT le nombre d'entités jouées (f(empires),
+     * sans clamp artificiel ; seul SCPS_MAX_PROV — taille des tableaux, calibré HUGE=12 — borne).
+     * Peu d'empires ⇒ monde compact ; 6 ⇒ vaste & confortable ; 12 ⇒ Huge. */
+    int want_prov = (int)(tune_f("WORLD_PROV_BASE",24.f)
+                        + tune_f("WORLD_PROV_PER_EMPIRE",95.f) * (float)(P->n_empires>0?P->n_empires:6)
+                        + tune_f("WORLD_PROV_PER_CITY", 5.f) * (float)(P->n_city_states>0?P->n_city_states:0));
+    if (want_prov<80) want_prov=80;     /* plancher : jamais un monde dégénéré */
+    assign_provinces(w,height,seed_f,want_prov);
     printf("ok (%d terr.)\n",w->n_provinces);
 
     printf("[scps] continents...   "); fflush(stdout);
