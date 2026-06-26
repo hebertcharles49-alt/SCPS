@@ -330,6 +330,15 @@ void scps_player_set_levy(ScpsSim *s, int level);
 /* RECHERCHE : fixer la cible de tech du joueur (file de 1). tech<0 ⇒ annule.
  * 1 = mis en file ; 0 = refus. La progression (income SAVOIR × prospérité) tombe au tick. */
 int  scps_player_research(ScpsSim *s, int tech);
+/* §3 — VERBES DIPLO (capstone #26). Le joueur PROPOSE ; le vis-à-vis ÉVALUE au drain via
+ * ai_consider_offer (l'opinion ±100 + la relation + le score de guerre) → l'offre n'aboutit que
+ * si l'autre CONSENT. declare_war / embargo sont unilatéraux. Retour = mis-en-file (1) / refus (0) ;
+ * le VERDICT (accepté ?) se lit ensuite dans country_relations (statut/allié/at_war). `target` = cid. */
+int  scps_player_declare_war   (ScpsSim *s, int target);
+int  scps_player_make_peace    (ScpsSim *s, int target);   /* offre de paix BLANCHE (si l'autre cède) */
+int  scps_player_offer_alliance(ScpsSim *s, int target);
+int  scps_player_offer_pact    (ScpsSim *s, int target);
+int  scps_player_embargo       (ScpsSim *s, int target, int on);
 /* LECTURE : cible de recherche courante (-1 = aucune) ; *progress01 ← fraction [0..1]. */
 int  scps_research_target(ScpsSim *s, float *progress01);
 

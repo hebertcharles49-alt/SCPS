@@ -549,8 +549,21 @@
   `AI_OFFER_ALLY_OPINION` 10 · `_PACT_OPINION` 0). Bancs : statecraft_demo +4 (modèle : guerre creuse →
   paix remonte vers 0 ; trahison durable → s'estompe), ai_demo +3 (offre : opinion gate accepte/refuse).
   `make test` 40/40 · determinism STABLE (v33 save/reload byte-identique) · golden re-baseliné · ASan muet.
-  À VENIR (§3) : surfacer l'opinion en BANDE (membrane, `statecraft_opinion` → readout) + le verbe diplo
-  JOUEUR (proposer alliance/paix → `ai_consider_offer` du vis-à-vis l'évalue).
+- **§3 — VERBES DIPLO JOUEUR (2026-06-26, capstone #26)** : le joueur DIPLOMATE — le journal de
+  commandes (`CMD_*`, FIFO 64, drainé au point fixe de `sim_day`) gagne 5 verbes : `CMD_DECLARE_WAR`
+  (CB dérivé · trêve respectée), `CMD_MAKE_PEACE` (paix BLANCHE), `CMD_OFFER_ALLIANCE`, `CMD_OFFER_PACT`,
+  `CMD_EMBARGO`. **Capstone de #26** : OFFER_ALLIANCE/PACT/PEACE passent par `ai_consider_offer` (le
+  vis-à-vis ÉVALUE via l'opinion ±100) → le joueur PROPOSE, l'autre CONSENT (ou refuse) ; declare_war/
+  embargo sont unilatéraux. Façade additive `scps_player_declare_war/_make_peace/_offer_alliance/
+  _offer_pact/_embargo` (scps_api.{h,c}) — ENFILENT (différé, déterministe) ; le verdict tombe au drain,
+  lu ensuite dans `country_relations`. Chaque verbe REVALIDÉ au drain (cible ∈ [0,n), ≠ soi, vivante,
+  pas en trêve) — miroir save_sane, jamais d'index périmé déréférencé. `enum` borné par `CMD_COUNT`
+  (sim_cmd_push gate). **La chronique n'enfile jamais** (cmd_n=0) ⇒ drain no-op ⇒ **golden IDENTIQUE**,
+  SAVE non bumpé, déterminisme intact. Banc scps_api_demo +3 (aller-retour : déclarer→guerre au drain ;
+  paix/embargo/alliance enfilés+drainés sans crash). `make test` 40/40 · ASan muet · 0 warning.
+  À VENIR (§3 suite) : surfacer l'OPINION en bande (membrane, `statecraft_opinion` → readout) ; les
+  verbes intérieur (repress/assim/purge/conseil), commerce (route/marché) et guerre (campaign_*) —
+  plomberie additive sur le même motif.
 
 ## Disciplines non négociables
 

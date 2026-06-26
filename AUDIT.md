@@ -80,8 +80,13 @@ RE-BASELINE du hash 12 ans pour les arcs ÉCO (golden mis à jour) ; diplo étag
   une offre (alliance/paix/pacte) lue de l'opinion+relation+war_score → alliances IA BILATÉRALES.
   Réconciliation doc (38→40, diplo 49→61) faite en amont. ⚠ **SAVE 32→33** (opinion_mem) · ⚠
   **RE-BASELINE diplo** (golden mis à jour, 4/5 graines). Alliances respirent (1-2/100 ans, 4 seeds).
-  Bancs : statecraft_demo +4, ai_demo +3 (40/40). determinism STABLE (v33 round-trip). À VENIR (§3) :
-  bande d'opinion (membrane) + verbe diplo joueur.
+  Bancs : statecraft_demo +4, ai_demo +3 (40/40). determinism STABLE (v33 round-trip).
+- **§3 — VERBES DIPLO JOUEUR** (capstone #26) : le journal de commandes gagne 5 verbes (déclarer
+  guerre · paix blanche · offrir alliance/pacte · embargo) ; alliance/paix/pacte passent par
+  `ai_consider_offer` (le vis-à-vis CONSENT via l'opinion). Façade `scps_player_*` additive, ENFILE
+  (différé, revalidé au drain). Chronique n'enfile pas → **golden IDENTIQUE · SAVE non bumpé**. Banc
+  scps_api_demo +3 (40/40) · ASan muet. À VENIR (§3 suite) : bande d'opinion (membrane) + verbes
+  intérieur/commerce/guerre (même motif additif).
 
 ---
 

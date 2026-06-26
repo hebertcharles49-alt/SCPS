@@ -55,7 +55,11 @@
  * C'est la base de la réplicabilité : une partie = (graine + ce journal) → rejeu
  * au bit, classements auto-vérifiés, repro de bug. La CHRONIQUE n'enfile jamais
  * (cmd_n=0) → le drain est un no-op et son hash reste IDENTIQUE (golden intact). */
-enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH };
+/* §3 ajoute les verbes DIPLO (capstone #26 : le joueur PROPOSE, le vis-à-vis ÉVALUE via
+ * ai_consider_offer). Étendre = un verbe ici (avant CMD_COUNT) + un case au drain. */
+enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
+       CMD_DECLARE_WAR, CMD_MAKE_PEACE, CMD_OFFER_ALLIANCE, CMD_OFFER_PACT, CMD_EMBARGO,
+       CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
 

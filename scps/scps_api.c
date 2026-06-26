@@ -896,6 +896,36 @@ int scps_player_research(ScpsSim *s, int tech){
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 
+/* ── §3 — VERBES DIPLO (capstone #26) : le joueur PROPOSE, le vis-à-vis ÉVALUE au drain via
+ * ai_consider_offer (alliance/paix/pacte) → l'offre n'aboutit que si l'OPINION+relation CONSENTENT.
+ * declare_war / embargo sont UNILATÉRAUX. Retour = ACCEPTÉ-DANS-LA-FILE (1) ; le VERDICT
+ * (l'autre a-t-il accepté ?) tombe au tick → se lit ensuite dans country_relations. */
+int scps_player_declare_war(ScpsSim *s, int target){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_DECLARE_WAR, { target, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_make_peace(ScpsSim *s, int target){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_MAKE_PEACE, { target, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_offer_alliance(ScpsSim *s, int target){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_OFFER_ALLIANCE, { target, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_offer_pact(ScpsSim *s, int target){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_OFFER_PACT, { target, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_embargo(ScpsSim *s, int target, int on){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_EMBARGO, { target, on?1:0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
 /* LECTURE : la cible de recherche COURANTE (-1 = aucune) ; *progress01 ← fraction
  * acquise [0..1] (points / coût plein) pour la jauge UI. Lecture pure. */
 int scps_research_target(ScpsSim *s, float *progress01){

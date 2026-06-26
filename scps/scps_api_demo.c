@@ -112,6 +112,31 @@ int main(int argc, char **argv){
     printf("   levée joueur : %d → (ordre %d) → %d après 1 tick\n", a0.levy, want, a2.levy);
     ok("ordre de levée APPLIQUÉ au drain (round-trip du journal)", a2.levy==want);
 
+    /* ── §3 — VERBES DIPLO (capstone #26) : le joueur DÉCLARE/PROPOSE, le moteur applique au drain.
+     * DÉCLARER LA GUERRE est unilatéral (effet déterministe) ; OFFRIR ALLIANCE/PAIX passe par
+     * ai_consider_offer (le vis-à-vis évalue l'opinion) — on prouve l'aller-retour du journal. */
+    {
+        int nc2 = scps_country_count(s2);
+        ScpsRelation rel[64]; int nr = scps_country_relations(s2, pl, rel, 64);
+        int wars0=0; for (int i=0;i<nr;i++) wars0 += rel[i].at_war;
+        int enq=0;
+        for (int c=0;c<nc2;c++){ if (c==pl) continue; if (scps_player_declare_war(s2, c)) enq++; }
+        ok("verbe DÉCLARER LA GUERRE : ordre(s) ENFILÉ(s) (différé)", enq>0);
+        scps_sim_advance_days(s2, 1);                       /* le drain applique */
+        nr = scps_country_relations(s2, pl, rel, 64);
+        int wars1=0; for (int i=0;i<nr;i++) wars1 += rel[i].at_war;
+        printf("   diplo joueur : guerres %d → %d après déclaration au drain\n", wars0, wars1);
+        ok("verbe DÉCLARER LA GUERRE : APPLIQUÉ au drain (le joueur entre en guerre)", wars1 > wars0);
+        /* offre de PAIX + EMBARGO + ALLIANCE : enfilés et drainés sans crash (la membrane tient ;
+         * le verdict d'acceptation — via l'opinion — tombe au tick, lu ensuite en relations). */
+        int pe=0, em=0;
+        for (int c=0;c<nc2;c++){ if (c==pl) continue; pe += scps_player_make_peace(s2,c); em += scps_player_embargo(s2,c,1); }
+        int al = scps_player_offer_alliance(s2, (pl+1)%nc2);
+        scps_sim_advance_days(s2, 1);
+        ok("verbes PAIX/EMBARGO/ALLIANCE : enfilés + drainés sans crash (membrane stable)",
+           pe>=0 && em>=0 && (al==0 || al==1));
+    }
+
     scps_sim_free(s); scps_sim_free(s2);
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);

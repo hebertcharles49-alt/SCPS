@@ -230,7 +230,7 @@ static float sim_player_savoir_month(const LaborEcon *lab){
 /* enfile un ordre joueur (façade) — FIFO bornée ; false si pleine (jamais d'écrasement). */
 bool sim_cmd_push(Sim *s, PlayerCmd c){
     if (!s || s->cmd_n >= SCPS_CMDQ_MAX) return false;
-    if (c.verb==CMD_NONE || c.verb>CMD_RESEARCH) return false;   /* verbe hors domaine : refus net */
+    if (c.verb==CMD_NONE || c.verb>=CMD_COUNT) return false;   /* verbe hors domaine : refus net */
     s->cmdq[s->cmd_n++] = c;
     return true;
 }
@@ -268,6 +268,42 @@ static void sim_cmd_drain(Sim *s, World *w){
             int t = c->a[0];
             if (t<0 || t>=TECH_COUNT){ s->research_target = -1; break; }   /* a[0]<0 ⇒ annuler la cible */
             s->research_target = t;   /* file de 1 : la progression/déblocage se fait au tick (bloc sim_day) */
+            break; }
+          /* ── §3 — DIPLO (capstone #26) : le joueur PROPOSE, le vis-à-vis ÉVALUE (ai_consider_offer).
+           *    Tout est REVALIDÉ contre l'état courant ; une offre non consentie est silencieusement
+           *    sans effet (la membrane lira le statut INCHANGÉ au tick suivant). */
+          case CMD_DECLARE_WAR: {
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            if (diplo_status(s->dp,p,t)==DIPLO_WAR) break;             /* déjà en guerre */
+            if (diplo_truce_days(s->dp,p,t) > 0.f) break;             /* trêve en cours → interdit */
+            CasusBelli cb = diplo_casus_belli(w, s->econ, s->wp, s->dp, p, t, RES_NONE);
+            if (cb==CB_NONE) cb = CB_TERRITORIAL;                     /* le joueur DÉCLARE : CB par défaut */
+            diplo_declare_war_cb(s->dp, p, t, cb);
+            break; }
+          case CMD_MAKE_PEACE: {
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p) break;
+            if (diplo_status(s->dp,p,t)!=DIPLO_WAR) break;
+            if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_PEACE))
+                diplo_make_peace(s->dp, p, t);                        /* paix BLANCHE si l'autre cède */
+            break; }
+          case CMD_OFFER_ALLIANCE: {
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_ALLIANCE))
+                diplo_form_alliance(s->dp, p, t);                     /* … BILATÉRAL : seulement si consenti (#26) */
+            break; }
+          case CMD_OFFER_PACT: {
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_TRADE_PACT))
+                diplo_set_trade_pact(s->dp, p, t, true);
+            break; }
+          case CMD_EMBARGO: {
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            intertrade_order_embargo(p, t, c->a[1]!=0);               /* décret unilatéral (pas d'évaluation) */
             break; }
         }
     }
