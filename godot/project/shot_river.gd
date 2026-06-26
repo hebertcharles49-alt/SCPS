@@ -7,6 +7,10 @@ func _ready() -> void:
 	_map = load("res://map/map_view.gd").new(); _map.name = "MapView"; add_child(_map); _run.call_deferred()
 func _run() -> void:
 	await get_tree().process_frame; await get_tree().process_frame
+	var sd := _seed_arg()
+	if sd >= 0:
+		Sim.regenerate(sd)                       # override la graine par défaut (seed=N)
+		await get_tree().process_frame; await get_tree().process_frame
 	if Sim.world == null: push_error("no world"); get_tree().quit(1); return
 	for i in range(120): Sim.world.advance_days(360)
 	Sim.generated.emit()
@@ -116,6 +120,10 @@ func _run() -> void:
 	_map.get_viewport().get_texture().get_image().save_png(out)
 	print("SAVED ", out)
 	get_tree().quit(0)
+func _seed_arg() -> int:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("seed="): return int(a.substr(5))
+	return -1
 func _zoom_arg() -> float:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("zoom="): return float(a.substr(5))
