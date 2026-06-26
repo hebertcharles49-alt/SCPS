@@ -48,6 +48,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
     ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
     ClassDB::bind_method(D_METHOD("country_relations", "country"),   &ScpsWorld::country_relations);
+    ClassDB::bind_method(D_METHOD("diplo_options", "target"),        &ScpsWorld::diplo_options);
     ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
     ClassDB::bind_method(D_METHOD("country_trade", "country"),       &ScpsWorld::country_trade);
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
@@ -63,6 +64,11 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
     ClassDB::bind_method(D_METHOD("player_research", "tech"),        &ScpsWorld::player_research);
     ClassDB::bind_method(D_METHOD("research_status"),               &ScpsWorld::research_status);
+    ClassDB::bind_method(D_METHOD("player_declare_war", "target"),    &ScpsWorld::player_declare_war);
+    ClassDB::bind_method(D_METHOD("player_make_peace", "target"),     &ScpsWorld::player_make_peace);
+    ClassDB::bind_method(D_METHOD("player_offer_alliance", "target"), &ScpsWorld::player_offer_alliance);
+    ClassDB::bind_method(D_METHOD("player_offer_pact", "target"),     &ScpsWorld::player_offer_pact);
+    ClassDB::bind_method(D_METHOD("player_embargo", "target", "on"),  &ScpsWorld::player_embargo);
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
     ClassDB::bind_method(D_METHOD("river_paths"),                    &ScpsWorld::river_paths);
     ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
@@ -379,9 +385,28 @@ Array ScpsWorld::country_relations(int country) {
         d["status"] = String::utf8(rel[i].status);
         d["at_war"] = (bool)rel[i].at_war;
         d["allied"] = (bool)rel[i].allied;
+        d["opinion"] = rel[i].opinion;   /* #26 : ±100, la mémoire des actes de l'AUTRE envers nous */
+        d["country"] = rel[i].country;   /* §3 : index pays (cible des verbes/options diplo) */
         a.push_back(d);
     }
     return a;
+}
+
+Dictionary ScpsWorld::diplo_options(int target) {
+    Dictionary d;
+    ScpsDiploOptions o;
+    int ok = sim ? scps_diplo_options(sim, target, &o) : 0;
+    d["valid"]                = (bool)ok;
+    d["can_declare_war"]      = (bool)(ok && o.can_declare_war);
+    d["can_make_peace"]       = (bool)(ok && o.can_make_peace);
+    d["can_offer_alliance"]   = (bool)(ok && o.can_offer_alliance);
+    d["can_offer_pact"]       = (bool)(ok && o.can_offer_pact);
+    d["can_embargo"]          = (bool)(ok && o.can_embargo);
+    d["can_lift_embargo"]     = (bool)(ok && o.can_lift_embargo);
+    d["would_accept_alliance"]= (bool)(ok && o.would_accept_alliance);
+    d["would_accept_pact"]    = (bool)(ok && o.would_accept_pact);
+    d["would_accept_peace"]   = (bool)(ok && o.would_accept_peace);
+    return d;
 }
 
 Dictionary ScpsWorld::country_army(int country) {
@@ -581,6 +606,22 @@ Dictionary ScpsWorld::research_status() {
     d["target"] = t;
     d["progress"] = prog;
     return d;
+}
+
+bool ScpsWorld::player_declare_war(int target) {
+    return sim ? scps_player_declare_war(sim, target) != 0 : false;
+}
+bool ScpsWorld::player_make_peace(int target) {
+    return sim ? scps_player_make_peace(sim, target) != 0 : false;
+}
+bool ScpsWorld::player_offer_alliance(int target) {
+    return sim ? scps_player_offer_alliance(sim, target) != 0 : false;
+}
+bool ScpsWorld::player_offer_pact(int target) {
+    return sim ? scps_player_offer_pact(sim, target) != 0 : false;
+}
+bool ScpsWorld::player_embargo(int target, bool on) {
+    return sim ? scps_player_embargo(sim, target, on ? 1 : 0) != 0 : false;
 }
 
 Array ScpsWorld::river_points() {

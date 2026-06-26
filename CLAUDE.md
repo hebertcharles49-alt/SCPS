@@ -585,6 +585,25 @@
   consentement bornés · build legal {0,1}). `make test` 40/40 · ASan muet · 0 warning. Reste : l'UI
   Godot qui CONSOMME verbes+options (GDScript, hors moteur), et d'éventuels options-readers fins
   (recruit/campaign/market) sur le même motif si besoin.
+- **GODOT PHASE 5 (2026-06-26) — L'UI DIPLOMATIE JOUEUR (la membrane §3 DEVIENT JOUABLE)** : le tiroir
+  Diplomatie (onglet 6, `sidebar_drawer.gd`) passait read-only (nom + statut) ; il CONSOMME désormais
+  la surface §3. **Binding** (additif, `scps_sim_node.{cpp,h}`) : `diplo_options(target)→Dictionary`
+  (la légalité par cible, pour griser), 5 verbes `player_declare_war/make_peace/offer_alliance/
+  offer_pact/embargo→bool` (enfilent le journal déterministe), `opinion` + `country` (l'index cible)
+  ajoutés au Dictionary de `country_relations`. `ScpsRelation` gagne `country` (POD façade,
+  **NON sérialisé** → aucun bump). **Panneau** : chaque pays affiche nom · statut · **BARRE D'OPINION
+  ±100** (vert favorable / rouge hostile depuis le centre, la mémoire #26 de SES actes envers nous) ·
+  une rangée de boutons (Guerre · Paix · Allier · Pacte · Embargo) **GRISÉS par `diplo_options`** —
+  un geste permis mais dont l'offre serait REFUSÉE (`would_accept` faux) s'affiche en AMBRE (« il
+  refusera » avant le clic). Le clic émet le verbe → flash « ordre émis » (≠ accepté : les offres
+  passent par `ai_consider_offer` au drain). **RÈGLE D'OR tenue** : zéro logique sim en GDScript — le
+  panneau LIT la façade et ENFILE des verbes ; le déterminisme survit. Probe headless **`diplo_audit.{gd,
+  tscn}`** (pendant de `viewer_audit` pour les verbes) : seeds 9/11/42 — opinion bornée [-100,100], index
+  cible valide+unique, options cohérentes (jamais guerre ET paix offrables ; en guerre ⇒ paix offrable),
+  et le **ROUND-TRIP** (déclarer la guerre MUTE vraiment le monde via le journal), + INVARIANT 0 (le
+  panneau compile). **Moteur INCHANGÉ** (façade + binding + GDScript seuls) ⇒ golden/déterminisme intacts,
+  **SAVE non bumpé**. `scps_api_demo` 29/29, `make smoke` 8/8, GDExtension `scons` 0 warning. ⊕ La
+  roadmap **§3 est COMPLÈTE de bout en bout** : verbes moteur → façade → binding → panneau jouable.
 
 ## Disciplines non négociables
 

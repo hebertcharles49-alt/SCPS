@@ -32,6 +32,9 @@ var _map                       # MapView (pour Filtres → set_mode)
 var _active_mode := 0
 var _chips := []               # [{rect, mode}] cliquables (Filtres)
 var _chart_btn := Rect2()      # bouton « Courbes dans le temps » (onglet Économie)
+var _diplo_btns := []          # [{rect, act, target, nom}] boutons d'action diplo (onglet Diplomatie)
+var _diplo_flash := ""         # retour du dernier verbe diplo émis
+var _diplo_flash_ok := true
 var _hover_zones := []         # [{rect, text}] survols (sprites de ressource → nom)
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
@@ -266,15 +269,109 @@ func _draw_filtres(x: float, y: float) -> void:
 			cx += tw + 4
 		y += 26
 
-# ── DIPLOMATIE (sb_panel_diplo, read-only) ─────────────────────────────────
+# ── DIPLOMATIE (sb_panel_diplo) : INTERACTIF — opinion #26 + verbes du joueur §3 ──
+# Chaque pays : nom + statut, BARRE D'OPINION (±100, la mémoire de ses actes envers
+# nous), puis les boutons d'action GRISÉS par la légalité (diplo_options). Un bouton
+# permis mais dont l'offre serait REFUSÉE (would_accept faux) s'affiche en ambre.
+const DIPLO_ACTS := [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"],
+	["pact", "Pacte"], ["emb", "Embargo"]]
+
 func _draw_diplo(x: float, y: float, me: int) -> void:
+	_diplo_btns.clear()
 	for rel in Sim.world.country_relations(me):
-		if y > size.y - 18:
+		if y > size.y - 58:
 			break
-		var col := VKit.sense(0.12) if bool(rel["at_war"]) else (VKit.sense(0.78) if bool(rel["allied"]) else VKit.COL_PARCH)
+		var target: int = int(rel["country"])
+		var at_war: bool = bool(rel["at_war"])
+		var allied: bool = bool(rel["allied"])
+		var col := VKit.sense(0.12) if at_war else (VKit.sense(0.78) if allied else VKit.COL_PARCH)
+		# ligne 1 : nom + statut
 		VKit.text(self, Vector2(x, y), col, String(rel["name"]), VKit.FS_SMALL)
-		VKit.text(self, Vector2(x + 158, y), VKit.COL_DIM, String(rel["status"]), VKit.FS_SMALL)
-		y += 16
+		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, String(rel["status"]), VKit.FS_SMALL)
+		y += 14
+		# ligne 2 : opinion ±100 (ce que CE pays pense de nous)
+		var op: int = int(rel["opinion"])
+		_opinion_bar(x, y, 150.0, op)
+		VKit.text(self, Vector2(x + 158, y - 3), _opinion_col(op), "%+d" % op, VKit.FS_SMALL)
+		y += 14
+		# ligne 3 : boutons d'action, grisés selon diplo_options
+		var o: Dictionary = Sim.world.diplo_options(target)
+		var bx := x
+		for act in DIPLO_ACTS:
+			var key: String = act[0]
+			var label: String = act[1]
+			var can := false
+			var warn := false   # permis mais refus probable (would_accept faux)
+			match key:
+				"war":   can = bool(o.get("can_declare_war", false))
+				"peace": can = bool(o.get("can_make_peace", false)); warn = can and not bool(o.get("would_accept_peace", false))
+				"ally":  can = bool(o.get("can_offer_alliance", false)); warn = can and not bool(o.get("would_accept_alliance", false))
+				"pact":  can = bool(o.get("can_offer_pact", false)); warn = can and not bool(o.get("would_accept_pact", false))
+				"emb":
+					if bool(o.get("can_lift_embargo", false)):
+						label = "Lever"; can = true
+					else:
+						can = bool(o.get("can_embargo", false))
+			var bw := VKit.text_w(label, VKit.FS_SMALL) + 10.0
+			if bx + bw > DW - 12.0:
+				bx = x; y += 18
+			var r := Rect2(bx, y, bw, 16)
+			var fgc := VKit.COL_DIM
+			if can:
+				fgc = VKit.sense(0.40) if warn else VKit.COL_COPPER
+			VKit.fill(self, r, VKit.COL_PANEL2)
+			VKit.box(self, r, VKit.COL_EDGE if not can else fgc)
+			VKit.text(self, Vector2(bx + 5, y + 1), fgc, label, VKit.FS_SMALL)
+			if can:
+				_diplo_btns.append({"rect": r, "act": key, "target": target, "nom": String(rel["name"])})
+			bx += bw + 4
+		y += 22
+		VKit.fill(self, Rect2(x, y - 6, DW - 2.0 * x, 1), VKit.COL_EDGE)
+	if _diplo_flash != "":
+		VKit.text(self, Vector2(x, size.y - 18),
+			(VKit.sense(0.85) if _diplo_flash_ok else VKit.sense(0.10)), _diplo_flash, VKit.FS_SMALL)
+
+## barre d'opinion ±100 : repère central (zéro), remplissage vert (favorable) ou
+## rouge (hostile) depuis le centre.
+func _opinion_bar(x: float, y: float, w: float, op: int) -> void:
+	VKit.fill(self, Rect2(x, y, w, 8), VKit.COL_PANEL2)
+	VKit.box(self, Rect2(x, y, w, 8), VKit.COL_EDGE)
+	var mid := x + w * 0.5
+	VKit.fill(self, Rect2(mid, y, 1, 8), VKit.COL_DIM)
+	var frac := clampf(op / 100.0, -1.0, 1.0)
+	if frac >= 0.0:
+		VKit.fill(self, Rect2(mid, y + 1, (w * 0.5) * frac, 6), VKit.sense(0.80))
+	else:
+		var ww := (w * 0.5) * (-frac)
+		VKit.fill(self, Rect2(mid - ww, y + 1, ww, 6), VKit.sense(0.12))
+
+func _opinion_col(op: int) -> Color:
+	if op > 15: return VKit.sense(0.80)
+	if op < -15: return VKit.sense(0.15)
+	return VKit.COL_DIM
+
+## le CLIC émet le verbe joueur (façade) — l'ordre est ENFILÉ (journal déterministe),
+## il s'applique au prochain tick. Les offres passent par ai_consider_offer (le
+## vis-à-vis peut REFUSER) : « ordre émis » ≠ « accepté » (cf. l'aperçu would_accept).
+func _diplo_act(act: String, target: int, nom: String) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	var ok := false
+	var verb := ""
+	match act:
+		"war":   ok = w.player_declare_war(target);    verb = "guerre à"
+		"peace": ok = w.player_make_peace(target);      verb = "paix offerte à"
+		"ally":  ok = w.player_offer_alliance(target);  verb = "alliance proposée à"
+		"pact":  ok = w.player_offer_pact(target);       verb = "pacte proposé à"
+		"emb":
+			var o: Dictionary = w.diplo_options(target)
+			var on := not bool(o.get("can_lift_embargo", false))
+			ok = w.player_embargo(target, on)
+			verb = "embargo sur" if on else "embargo levé sur"
+	_diplo_flash_ok = ok
+	_diplo_flash = ("⚑ %s %s — ordre émis" % [verb, nom]) if ok else ("✗ %s %s — refusé" % [verb, nom])
+	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
@@ -300,6 +397,12 @@ func _gui_input(event: InputEvent) -> void:
 					if _map != null:
 						_map.set_mode(ch.mode)
 					queue_redraw()
+					accept_event()
+					return
+		if _tab == 6:
+			for b in _diplo_btns:
+				if b.rect.has_point(event.position):
+					_diplo_act(String(b.act), int(b.target), String(b.nom))
 					accept_event()
 					return
 

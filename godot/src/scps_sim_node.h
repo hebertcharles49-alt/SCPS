@@ -83,7 +83,8 @@ public:
     /* SIDEBAR : agrégats PAYS (read-only) */
     Dictionary country_demo(int country);             /* classes + satisfaction */
     Array      country_stocks(int country);           /* biens : stock · net · couverture · marché */
-    Array      country_relations(int country);        /* diplomatie : statut par pays */
+    Array      country_relations(int country);        /* diplomatie : statut + opinion #26 par pays */
+    Dictionary diplo_options(int target);             /* §3 : légalité des verbes diplo contre `target` (boutons grisés) */
     Dictionary country_army(int country);             /* mobilisation + flotte */
     Dictionary country_trade(int country);            /* commerce : routes · or · partenaires */
     Array      country_council(int country);          /* conseil : 3 sièges */
@@ -103,6 +104,13 @@ public:
     void       player_set_levy(int level);            /* enfile le réglage de la jauge de levée 0-3 */
     int        player_research(int tech);             /* fixe la cible de tech (file de 1) ; tech<0 ⇒ annule ; 1 = mis en file */
     Dictionary research_status();                     /* { target:int(-1=aucune), progress:float[0..1] } */
+
+    /* §3 — VERBES DIPLO du joueur (proposer → ai_consider_offer évalue) ; true = ordre enfilé */
+    bool       player_declare_war(int target);        /* déclarer la guerre */
+    bool       player_make_peace(int target);         /* offre de paix blanche */
+    bool       player_offer_alliance(int target);     /* proposer une alliance */
+    bool       player_offer_pact(int target);         /* proposer un pacte de commerce */
+    bool       player_embargo(int target, bool on);   /* poser/lever un embargo */
 
     /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
     Array      river_points();

@@ -666,6 +666,7 @@ int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
         out[n].at_war = (st==DIPLO_WAR) ? 1 : 0;
         out[n].allied = (st==DIPLO_ALLIED) ? 1 : 0;
         out[n].opinion= statecraft_opinion(s->sim.sc, c, me);   /* #26 : ce que `c` pense de NOUS (mémoire) */
+        out[n].country= c;                                      /* §3 : cible des verbes/options diplo */
         n++;
     }
     return n;

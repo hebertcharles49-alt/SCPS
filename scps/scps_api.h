@@ -264,6 +264,7 @@ typedef struct {
     int   at_war;           /* 1 si en guerre */
     int   allied;           /* 1 si allié */
     int   opinion;          /* #26 : opinion ±100 de l'AUTRE pays envers nous (la mémoire des actes) */
+    int   country;          /* §3 : l'index pays de l'AUTRE (cible des verbes/options diplo) */
 } ScpsRelation;
 int scps_country_relations(ScpsSim *s, int country, ScpsRelation *out, int max);
 
