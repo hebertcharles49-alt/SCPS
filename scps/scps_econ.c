@@ -855,18 +855,31 @@ void econ_init(WorldEconomy *e, const World *w) {
     }
 
     /* ──────────────────────────────────────────────────────────────────────
-     * HAMEAUX LIBRES (POLITY_WILD) — les PEUPLES LIBRES. Pour CHAQUE jouable on
-     * rattache au slot WILD les WILD_PER_PLAYABLE régions VIERGES viables les plus
-     * PROCHES (BFS multi-source ≤ WILD_SPAWN_HOPS sur l'adjacence) : un hameau peuplé
-     * (WILD_POP), plafonné (WILD_CAP), avec une réserve de brutes (WILD_HOARD). Tue le
-     * « siècle d'inertie » : 2 objectifs voisins dès l'an 0. WILD_PER_PLAYABLE=0 → aucun. */
+     * HAMEAUX LIBRES (POLITY_WILD) — les PEUPLES LIBRES. Pour CHAQUE empire on PLANTE
+     * WILD_PER_PLAYABLE hameaux sur les régions VIERGES viables les plus PROCHES — BFS
+     * multi-source BORNÉ à WILD_SPAWN_HOPS (un rayon de 2-3 tuiles autour du spawn : assez
+     * près pour tuer le « siècle d'inertie » — 2 objectifs voisins dès l'an 0 —, jamais à
+     * l'autre bout du monde). nearest-first → les plus proches d'abord. Chaque hameau :
+     * WILD_POP (graine EXACTE), plafond WILD_CAP, réserve WILD_HOARD. WILD_PER_PLAYABLE=0 → aucun. */
     {
         int wild_cid=-1;
         for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_WILD){ wild_cid=c; break; }
-        int per=(int)tune_f("WILD_PER_PLAYABLE",2.f), hops=(int)tune_f("WILD_SPAWN_HOPS",2.f);
+        int per=(int)tune_f("WILD_PER_PLAYABLE",2.f), hops=(int)tune_f("WILD_SPAWN_HOPS",3.f);
         if (wild_cid>=0 && per>0 && hops>0){
-            float wpop=tune_f("WILD_POP",750.f), wvar=tune_f("WILD_POP_VAR",250.f);
-            float wcap=tune_f("WILD_CAP",1200.f), whoard=tune_f("WILD_HOARD",60.f), wfood=tune_f("WILD_FOOD",8.f);
+            float wpop=tune_f("WILD_POP",750.f), wvar=tune_f("WILD_POP_VAR",0.f);
+            float wcap=tune_f("WILD_CAP",1600.f), whoard=tune_f("WILD_HOARD",60.f), wfood=tune_f("WILD_FOOD",8.f);
+            /* Pose un hameau libre sur la région WS (graine exacte WILD_POP, sous ½·WILD_CAP). */
+            #define WILD_PLANT(WS) do { \
+                int ws_=(WS); RegionEconomy *wre=&e->region[ws_]; \
+                wre->owner=(int16_t)wild_cid; wre->colonized=true; wre->culture.settled=true; \
+                wre->cap_pop=wcap; \
+                uint32_t hh=(uint32_t)ws_*2654435761u + (uint32_t)cid*40503u; \
+                hh ^= hh>>13; hh *= 0x85ebca6bu; hh ^= hh>>16; \
+                float jit=(wvar>0.f)? ((float)(hh % 2001u)/1000.f - 1.f)*wvar : 0.f; /* WILD_POP_VAR=0 → 0 (graine LOCKÉE) */ \
+                econ_seed_population(wre, fminf(fmaxf(wpop+jit, 50.f), wcap*0.5f)); \
+                wre->raw_cap[RES_GRAIN]=fmaxf(wre->raw_cap[RES_GRAIN], wfood); /* raw food FORCÉE : le hameau se nourrit */ \
+                for (int g=1; g<RES_PROD_FIRST; g++) if (wre->raw_cap[g]>0.f) wre->stock[g]+=whoard; \
+            } while(0)
             for (int cid=0; cid<w->n_countries; cid++){
                 PolityRole role=w->country[cid].role;
                 if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
@@ -876,6 +889,8 @@ void econ_init(WorldEconomy *e, const World *w) {
                 for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
                     if (e->region[r].owner==cid){ dist[r]=0; q[qt++]=r; }
                 int got=0;
+                /* BFS BORNÉ au rayon hops (2-3 tuiles), nearest-first : les régions vierges
+                 * viables LES PLUS PROCHES du spawn d'abord. */
                 while (qh<qt && got<per){
                     int r=q[qh++];
                     if (dist[r]>=hops) continue;
@@ -884,22 +899,13 @@ void econ_init(WorldEconomy *e, const World *w) {
                         dist[s]=dist[r]+1;
                         RegionEconomy *re=&e->region[s];
                         if (re->active && !re->colonized && !re->impassable && re->cap_pop>0.f){
-                            re->owner=(int16_t)wild_cid; re->colonized=true; re->culture.settled=true;
-                            re->cap_pop=wcap;
-                            /* pop = WILD_POP ± variance DÉTERMINISTE (hash de la région) : les deux
-                             * hameaux d'un empire totalisent ~1500, chacun ~750±. */
-                            uint32_t hh=(uint32_t)s*2654435761u + (uint32_t)cid*40503u;
-                            hh ^= hh>>13; hh *= 0x85ebca6bu; hh ^= hh>>16;
-                            float jitter = (wvar>0.f)? ((float)(hh % 2001u)/1000.f - 1.f)*wvar : 0.f;  /* ∈ [-var,+var] */
-                            econ_seed_population(re, fminf(fmaxf(wpop+jitter, 50.f), wcap*0.5f));
-                            re->raw_cap[RES_GRAIN]=fmaxf(re->raw_cap[RES_GRAIN], wfood);  /* raw food FORCÉE : le hameau se nourrit */
-                            for (int g=1; g<RES_PROD_FIRST; g++) if (re->raw_cap[g]>0.f) re->stock[g]+=whoard;
-                            got++;
+                            WILD_PLANT(s); got++;
                         }
                         if (dist[s]<hops) q[qt++]=s;
                     }
                 }
             }
+            #undef WILD_PLANT
         }
     }
 
