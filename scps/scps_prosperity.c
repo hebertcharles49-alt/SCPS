@@ -285,7 +285,7 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
             int cap_reg  = (cap_prov>=0 && cap_prov<w->n_provinces)
                          ? w->province[cap_prov].region : -1;
             if (cap_reg>=0 && cap_reg<econ->n_regions) {
-                SpeciesBuild   sb  = culture_random_build((uint32_t)cid);   /* traditions empire (indép. héritage) */
+                SpeciesBuild   sb  = culture_build_for((uint32_t)cid);   /* traditions empire (joueur : sa compo ; IA : tirage) */
                 SpeciesLeviers lev = build_leviers(&sb);
                 st.K     = clampf(st.K     + lev.capacite,     0.f, 10.f);
                 st.P     = clampf(st.P     + lev.permeabilite, 0.f, 10.f);

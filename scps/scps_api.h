@@ -489,6 +489,49 @@ typedef struct {
 } ScpsMission;
 void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out);
 
+/* ====================================================================== */
+/* CRÉATEUR DE CULTURE (façon Stellaris) — le JOUEUR compose son empire :   */
+/* un HÉRITAGE (la lignée → les NOMS) · un ÉTHOS (les valeurs → le nom du    */
+/* pays + les factions) · 3 TRADITIONS (une par AXE, EXACTEMENT 1 majeur +   */
+/* 1 mineur + 1 défaut → les leviers du moteur pour SON empire). La membrane  */
+/* traverse : des MOTS et des SIGNES, jamais un flottant de levier. Les       */
+/* listes + la validation + l'aperçu sont PURS (aucun sim requis) → utilisables*/
+/* AVANT scps_sim_generate ; la composition est appliquée À la génération.    */
+/* ====================================================================== */
+
+/* HÉRITAGE (lignée culturelle) : id + nom + sphère + un ethnonyme-exemple. */
+typedef struct { int id; const char *nom; const char *sphere; const char *exemple; } ScpsHeritage;
+int scps_heritage_list(ScpsHeritage *out, int max);     /* retourne HERITAGE_COUNT */
+
+/* ÉTHOS (axe de valeurs) : id + nom + épithète de pays (« Horde »…) + une ligne. */
+typedef struct { int id; const char *nom; const char *epithete; const char *hint; } ScpsEthosDef;
+int scps_ethos_list(ScpsEthosDef *out, int max);        /* retourne ETHOS_COUNT */
+
+/* TRADITION (= un trait) : id + nom + axe (0 Physique·1 Social·2 Intellectuel) +
+ * nom d'axe + rang (+2 majeur · +1 mineur · −1 défaut) + définition (survol). */
+typedef struct { int id; const char *nom; int axe; const char *axe_nom; int rang; const char *hover; } ScpsTradition;
+int scps_tradition_list(ScpsTradition *out, int max);   /* retourne TRAIT_COUNT (36) */
+
+/* VALIDE une composition : t0∈Physique, t1∈Social, t2∈Intellectuel, et le trio porte
+ * EXACTEMENT 1 majeur + 1 mineur + 1 défaut, sans antonymes. 1 = valide, 0 = non. */
+int scps_culture_validate(int t0, int t1, int t2);
+
+/* APERÇU des leviers d'une composition (membrane : un MOT + un SIGNE), pour le survol.
+ * signe : +1 atout · −1 revers (les zéros sont omis). Retourne le nombre de lignes. */
+typedef struct { const char *nom; int signe; } ScpsLevierLine;
+int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max);
+
+/* NOM DE CULTURE (ethnonyme façon Stellaris) pour un héritage + une graine — pour
+ * l'aperçu live du créateur (aucun monde requis). Pointe un buffer statique. */
+const char *scps_culture_name(int heritage, uint32_t seed);
+
+/* COMPOSE la culture du JOUEUR — à appeler AVANT scps_sim_generate (la composition
+ * est gravée à la génération : héritage→noms/couleur, éthos→nom/factions, traditions→
+ * les 5 leviers pour le cid joueur). Retourne 1 si VALIDE et retenue, 0 sinon (rien). */
+int  scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2);
+/* EFFACE la composition (retour au tirage IA + héritage ADAPTATIF + éthos émergent). */
+void scps_clear_player_culture(void);
+
 #ifdef __cplusplus
 }
 #endif

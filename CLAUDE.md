@@ -646,6 +646,34 @@
   métabolise via un 3e canal, les CONSOLIDATIONS) · `scps_api_demo` (cible diplo VALIDE — possède des
   régions, rôle indifférent — au lieu d'un index fixe). `make test` **40/40** · ASan/UBSan muet · **SAVE
   non bumpé** (rien de sérialisé ne change ; le monde se régénère depuis la graine).
+- **CRÉATEUR DE CULTURE — le PONT (le joueur compose son empire, façon Stellaris) (2026-06-27)** : le
+  MOTEUR du créateur existait (héritages ≠ traditions, composition 1 majeur/1 mineur/1 défaut,
+  `culture_random_build` pour l'IA) ; il manquait la chaîne joueur → moteur. **(1) Override moteur**
+  (`scps_species.{h,c}`) : `culture_player_compose/bind/clear` + `culture_build_for(cid)` — un état
+  GLOBAL « joueur » INACTIF PAR DÉFAUT. Les **5 sites** qui lisaient les traditions d'un pays
+  (`scps_diplo.c` ×2, `scps_econ.c`, `scps_prosperity.c`, `scps_world.c`) passent de
+  `culture_random_build(cid)` à `culture_build_for(cid)` : l'empire du JOUEUR joue SA composition,
+  l'IA garde son tirage. **(2) Héritage** câblé via `scps_sim.c` (`worldgen_seed_peoples(..,
+  culture_player_heritage())` ≡ `HERITAGE_ADAPTATIF` quand inactif) → pilote les NOMS + la couleur du
+  pays joueur. **(3) Éthos** : override des régions + groupes du joueur dans `worldgen_seed_peoples`
+  AVANT la passe de noms → l'épithète du pays (« Horde »…« Havre ») et les factions le suivent. **(4)
+  Façade** `scps_api.{h,c}` (membrane : des MOTS + des SIGNES, jamais un levier brut) :
+  `scps_heritage_list`/`_ethos_list`/`_tradition_list`/`_culture_validate`/`_culture_preview`/
+  `_culture_name`/`_set_player_culture`/`_clear_player_culture` ; le cid joueur est LIÉ dans
+  `scps_sim_generate` avant `sim_init`. **(5) Binding** `scps_sim_node.{cpp,h}` (8 passe-plats +
+  `_bind_methods`). **(6) Fenêtre Godot** `ui/culture_creator.gd` (câblée dans `main.gd`, touche **C**,
+  monde EN PAUSE à l'ouverture) : déroulants héritage + éthos + 3 traditions (une par axe), aperçu LIVE
+  (nom de culture + leviers), garde de validité, graine, « Commencer » → `set_player_culture` +
+  régénération. **DÉTERMINISME INTACT par construction** (tout est gardé par `culture_player_active()`
+  faux par défaut ; le seul geste inconditionnel passe la MÊME valeur `HERITAGE_ADAPTATIF`) : **`make
+  golden` IDENTIQUE**, **`determinism` STABLE**, **SAVE non bumpé** (aucune struct sérialisée ne
+  change ; l'override est un état runtime, recalculé). Vérif : `scps_api_demo` **41/41** (prouve
+  l'override de bout en bout : `joueur=Ésotérique`, pays « Havre Lórond ») ; probe Godot headless
+  **`culture_audit`** (binding LIVE via `libscps` : listes 6/6/36, validation, aperçu, round-trip
+  « Havre Lórond ») → **CULTURE AUDIT OK**. ⚠ Sur **Windows/MinGW** 3 bancs échouent HORS-SUJET
+  (pré-existants, confirmés sur `main` vierge) : `intertrade_demo` (build : `setenv` est POSIX),
+  `campaign_demo`/`warhost_demo` (`0xC00000FD` STACK_OVERFLOW : pile Windows 1 Mo vs 8 Mo Linux) — le
+  reste **37/37** vert (sur Linux/cloud : **40/40**).
 
 ## Disciplines non négociables
 

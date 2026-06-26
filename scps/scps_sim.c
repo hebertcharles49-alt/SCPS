@@ -585,7 +585,9 @@ void sim_day(Sim *s, World *w) {
 
 void sim_init(Sim *s, World *w) {
     econ_init(s->econ, w); gen_population(w, s->econ);
-    worldgen_seed_peoples(w, s->econ, HERITAGE_ADAPTATIF);
+    /* CRÉATEUR DE CULTURE : l'héritage du JOUEUR (sa lignée → noms & couleur de son pays).
+     * Inactif (chronique/bancs/déterminisme) ⇒ culture_player_heritage() ≡ HERITAGE_ADAPTATIF. */
+    worldgen_seed_peoples(w, s->econ, culture_player_heritage());
     legitimacy_init(s->wl, w, s->econ); prosperity_init(s->wp, w);
     trade_network_build(s->net, w, s->econ);
     statecraft_init(s->sc, w); agency_init(s->ag); diplo_init(s->dp); routes_init(s->rn);

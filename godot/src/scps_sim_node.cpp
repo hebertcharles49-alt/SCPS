@@ -69,6 +69,17 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_offer_alliance", "target"), &ScpsWorld::player_offer_alliance);
     ClassDB::bind_method(D_METHOD("player_offer_pact", "target"),     &ScpsWorld::player_offer_pact);
     ClassDB::bind_method(D_METHOD("player_embargo", "target", "on"),  &ScpsWorld::player_embargo);
+
+    /* CRÉATEUR DE CULTURE */
+    ClassDB::bind_method(D_METHOD("heritage_list"),                  &ScpsWorld::heritage_list);
+    ClassDB::bind_method(D_METHOD("ethos_list"),                     &ScpsWorld::ethos_list);
+    ClassDB::bind_method(D_METHOD("tradition_list"),                 &ScpsWorld::tradition_list);
+    ClassDB::bind_method(D_METHOD("culture_validate", "t0", "t1", "t2"), &ScpsWorld::culture_validate);
+    ClassDB::bind_method(D_METHOD("culture_preview", "t0", "t1", "t2"),  &ScpsWorld::culture_preview);
+    ClassDB::bind_method(D_METHOD("culture_name", "heritage", "seed"),   &ScpsWorld::culture_name);
+    ClassDB::bind_method(D_METHOD("set_player_culture", "heritage", "ethos", "t0", "t1", "t2"), &ScpsWorld::set_player_culture);
+    ClassDB::bind_method(D_METHOD("clear_player_culture"),          &ScpsWorld::clear_player_culture);
+
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
     ClassDB::bind_method(D_METHOD("river_paths"),                    &ScpsWorld::river_paths);
     ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
@@ -622,6 +633,83 @@ bool ScpsWorld::player_offer_pact(int target) {
 }
 bool ScpsWorld::player_embargo(int target, bool on) {
     return sim ? scps_player_embargo(sim, target, on ? 1 : 0) != 0 : false;
+}
+
+/* ── CRÉATEUR DE CULTURE — la membrane traverse en Dictionary (mots + signes) ── */
+Array ScpsWorld::heritage_list() {
+    Array a;
+    ScpsHeritage h[16];
+    int n = scps_heritage_list(h, 16);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["id"]      = h[i].id;
+        d["nom"]     = String::utf8(h[i].nom);
+        d["sphere"]  = String::utf8(h[i].sphere);
+        d["exemple"] = String::utf8(h[i].exemple);
+        a.push_back(d);
+    }
+    return a;
+}
+
+Array ScpsWorld::ethos_list() {
+    Array a;
+    ScpsEthosDef e[16];
+    int n = scps_ethos_list(e, 16);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["id"]       = e[i].id;
+        d["nom"]      = String::utf8(e[i].nom);
+        d["epithete"] = String::utf8(e[i].epithete);
+        d["hint"]     = String::utf8(e[i].hint);
+        a.push_back(d);
+    }
+    return a;
+}
+
+Array ScpsWorld::tradition_list() {
+    Array a;
+    ScpsTradition t[64];
+    int n = scps_tradition_list(t, 64);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["id"]      = t[i].id;
+        d["nom"]     = String::utf8(t[i].nom);
+        d["axe"]     = t[i].axe;
+        d["axe_nom"] = String::utf8(t[i].axe_nom);
+        d["rang"]    = t[i].rang;
+        d["hover"]   = String::utf8(t[i].hover);
+        a.push_back(d);
+    }
+    return a;
+}
+
+bool ScpsWorld::culture_validate(int t0, int t1, int t2) {
+    return scps_culture_validate(t0, t1, t2) != 0;
+}
+
+Array ScpsWorld::culture_preview(int t0, int t1, int t2) {
+    Array a;
+    ScpsLevierLine lv[16];
+    int n = scps_culture_preview(t0, t1, t2, lv, 16);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["nom"]   = String::utf8(lv[i].nom);
+        d["signe"] = lv[i].signe;
+        a.push_back(d);
+    }
+    return a;
+}
+
+String ScpsWorld::culture_name(int heritage, int seed) {
+    return String::utf8(scps_culture_name(heritage, (uint32_t)seed));
+}
+
+bool ScpsWorld::set_player_culture(int heritage, int ethos, int t0, int t1, int t2) {
+    return scps_set_player_culture(heritage, ethos, t0, t1, t2) != 0;
+}
+
+void ScpsWorld::clear_player_culture() {
+    scps_clear_player_culture();
 }
 
 Array ScpsWorld::river_points() {

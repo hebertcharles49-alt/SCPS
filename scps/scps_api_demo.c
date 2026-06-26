@@ -11,6 +11,7 @@
 #include "scps_api.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int g_pass=0, g_fail=0;
 static void ok(const char *what, bool cond){
@@ -183,6 +184,67 @@ int main(int argc, char **argv){
     }
 
     scps_sim_free(s); scps_sim_free(s2);
+
+    /* ── CRÉATEUR DE CULTURE : listes + validation + aperçu + composition (headless) ──
+     * La façade expose tout ce qu'il faut au créateur Godot SANS sim : les listes
+     * (héritages/éthos/traditions), la validation 1maj/1min/1déf, l'aperçu des leviers
+     * (mots+signe), puis la COMPOSITION gravée à la génération (l'éthos paraît au nom). */
+    {
+        ScpsHeritage her[16]; int nher=scps_heritage_list(her,16);
+        printf("   héritages : %d (ex. %s « %s »)\n", nher, nher?her[0].nom:"", nher?her[0].exemple:"");
+        ok("héritages listés (6, avec ethnonyme-exemple)", nher==6 && her[0].nom[0] && her[0].exemple[0]);
+
+        ScpsEthosDef eth[16]; int neth=scps_ethos_list(eth,16);
+        ok("éthos listés (6, avec épithète)", neth==6 && eth[0].epithete[0]);
+
+        ScpsTradition trs[64]; int ntr=scps_tradition_list(trs,64);
+        ok("traditions listées (36, axe + rang + survol)", ntr==36 && trs[0].nom[0] && trs[0].hover[0]);
+
+        /* compo VALIDE piochée DANS la liste (façade-pure : on ne connaît pas les enums) :
+         * 1 majeur (rang ≥ +2) sur l'axe 0, 1 mineur (+1) sur l'axe 1, 1 défaut (−1) sur l'axe 2. */
+        int maj=-1, mn=-1, df=-1;
+        for(int i=0;i<ntr;i++){
+            if(maj<0 && trs[i].axe==0 && trs[i].rang>=2) maj=trs[i].id;
+            if(mn <0 && trs[i].axe==1 && trs[i].rang==1) mn =trs[i].id;
+            if(df <0 && trs[i].axe==2 && trs[i].rang< 0) df =trs[i].id;
+        }
+        ok("pioche compo (maj Phys / min Soc / déf Int)", maj>=0 && mn>=0 && df>=0);
+        ok("validation : 1maj+1min+1déf ACCEPTÉE", scps_culture_validate(maj,mn,df)==1);
+        /* trois majeurs (un par axe) → REFUSÉ (major≠1) */
+        int m1=-1,m2=-1;
+        for(int i=0;i<ntr;i++){
+            if(m1<0 && trs[i].axe==1 && trs[i].rang>=2) m1=trs[i].id;
+            if(m2<0 && trs[i].axe==2 && trs[i].rang>=2) m2=trs[i].id;
+        }
+        ok("validation : 3 majeurs REFUSÉS", scps_culture_validate(maj,m1,m2)==0);
+
+        ScpsLevierLine lv[16]; int nlv=scps_culture_preview(maj,mn,df,lv,16);
+        printf("   aperçu leviers : %d ligne(s) (ex. %s %s)\n",
+               nlv, nlv?lv[0].nom:"", nlv?(lv[0].signe>0?"+":"-"):"");
+        ok("aperçu leviers (mots + signe ±1)", nlv>0 && (lv[0].signe==1||lv[0].signe==-1));
+
+        const char *cn = scps_culture_name(0 /*ESOTERIQUE*/, 7u);
+        printf("   nom de culture (ESOTERIQUE, graine 7) : %s\n", cn);
+        ok("nom de culture (ethnonyme) non vide", cn && cn[0]);
+
+        /* COMPOSER puis GÉNÉRER : l'éthos PACIFISTE (5) doit donner l'épithète « Havre » au pays. */
+        int set = scps_set_player_culture(0 /*ESOTERIQUE*/, 5 /*PACIFISTE*/, maj, mn, df);
+        ok("composition retenue (valide)", set==1);
+        ScpsSim *s3 = scps_sim_new();
+        scps_sim_generate(s3, seed);
+        int pl3 = scps_player(s3);
+        ScpsCountryInfo ci3; scps_country_info(s3, pl3, &ci3);
+        printf("   empire joueur composé : « %s » (faction dominante lue : %s)\n", ci3.nom, ci3.ethos);
+        ok("éthos joueur GRAVÉ (nom = épithète « Havre … »)", strncmp(ci3.nom, "Havre", 5)==0);
+        scps_sim_advance_days(s3, 365*5);
+        ok("le monde composé VIT (5 ans, pop > 0)", scps_world_pop(s3) > 0);
+        scps_sim_free(s3);
+
+        /* EFFACER : retour au défaut (héritage ADAPTATIF, éthos émergent). */
+        scps_clear_player_culture();
+        ok("composition effacée (retour défaut)", scps_culture_validate(maj,mn,df)==1);  /* la validation reste pure */
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

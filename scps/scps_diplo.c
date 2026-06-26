@@ -596,7 +596,7 @@ static float geo_dist(const World *w, int a, int b){
 static float race_influence(const World *w, const WorldEconomy *econ, int cid){
     const PopCulture *pc=cap_culture(w,econ,cid);
     if (!pc) return 0.f;
-    SpeciesBuild sb=culture_random_build((uint32_t)cid);   /* traditions de l'empire (indép. héritage) */
+    SpeciesBuild sb=culture_build_for((uint32_t)cid);   /* traditions de l'empire (joueur : sa compo ; IA : tirage) */
     return build_leviers(&sb).influence;
 }
 
@@ -617,7 +617,7 @@ float diplo_mil_power(const World *w, const WorldEconomy *econ, int cid){
     const PopCulture *pc=cap_culture(w,econ,cid);
     float race_coerc=0.f, mart=0.f;
     if (pc){
-        SpeciesBuild sb=culture_random_build((uint32_t)cid);   /* traditions de l'empire (indép. héritage) */
+        SpeciesBuild sb=culture_build_for((uint32_t)cid);   /* traditions de l'empire (joueur : sa compo ; IA : tirage) */
         race_coerc=build_leviers(&sb).coercition;
         if (pc->martial==MART_HORDE_MONTEE||pc->martial==MART_LEVEE_MASSIVE||
             pc->martial==MART_THALASSO_PREDATRICE) mart=0.7f;   /* traditions offensives */

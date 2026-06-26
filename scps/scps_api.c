@@ -19,6 +19,9 @@
 #include "scps_readout.h"   /* LA MEMBRANE : province_readout/country_readout → mots */
 #include "scps_lang.h"      /* tr() : noms de conseillers (StrId) → mot */
 #include "scps_provlog.h"   /* journal d'évènements provincial */
+#include "scps_species.h"   /* CRÉATEUR DE CULTURE : héritages, traditions, override joueur */
+#include "scps_culture.h"   /* ethos_name, enum Ethos */
+#include "scps_world.h"     /* culture_make_name (ethnonyme façon Stellaris) */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -54,6 +57,14 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     tune_once();
     WorldParams p = worldparams_default(seed);
     world_generate(s->w, &p);
+    /* CRÉATEUR DE CULTURE : lier l'override de culture au cid JOUEUR (rôle POLITY_PLAYER)
+     * AVANT sim_init, pour que SES leviers (traditions) valent dès l'initialisation et que
+     * l'éthos/héritage choisis imprègnent la genèse. Inactif (défaut) ⇒ no-op total. */
+    if (culture_player_active()){
+        int pcid=0;
+        for (int c=0;c<s->w->n_countries;c++) if (s->w->country[c].role==POLITY_PLAYER){ pcid=c; break; }
+        culture_player_bind(pcid);
+    }
     sim_init(&s->sim, s->w);   /* RAZ pleine + seed : econ, peuples, IA, diplo, prospérité, légitimité… */
     /* DÉBRAYAGE DE L'IA : le pays « joueur » passe sous la MAIN HUMAINE. ai_on=false le
      * retire de TOUTES les boucles de DÉCISION de sim_day (ai_step, conseil-IA, spéculation,
@@ -1383,3 +1394,115 @@ int scps_road_path(ScpsSim *s, int i, ScpsRoadPt *out, int max, int *level){
     if(level) *level=p->level;
     return n;
 }
+
+/* ====================================================================== */
+/* CRÉATEUR DE CULTURE — listes, validation, aperçu, composition (voir .h)  */
+/* La membrane : des MOTS (noms, axes, épithètes) et des SIGNES. Pur (aucun  */
+/* sim) → utilisable AVANT scps_sim_generate.                               */
+/* ====================================================================== */
+
+int scps_heritage_list(ScpsHeritage *out, int max){
+    static char ex[HERITAGE_COUNT][32];   /* ethnonymes-exemples (persistent le temps que l'hôte copie) */
+    int n=0;
+    for(int h=0; h<HERITAGE_COUNT && n<max; h++){
+        culture_make_name(ex[h], (int)sizeof ex[h], (SpeciesArchetype)h, 1u);
+        out[n].id      = h;
+        out[n].nom     = species_name((SpeciesArchetype)h);
+        out[n].sphere  = sphere_name(species_sphere((SpeciesArchetype)h));
+        out[n].exemple = ex[h];
+        n++;
+    }
+    return n;
+}
+
+int scps_ethos_list(ScpsEthosDef *out, int max){
+    /* épithètes = celles de country_make_name (DOMINATEUR..PACIFISTE) ; lignes courtes. */
+    static const char *EPI[ETHOS_COUNT]  = { "Horde","Clans","Ordre","Couronne","Ligue","Havre" };
+    static const char *HINT[ETHOS_COUNT] = {
+        "Conquête : pousse la coercition, mauvais intégrateur.",
+        "Gloire & razzia : honneur martial, digère mal.",
+        "Hiérarchie & discipline : l'État qui tient l'ordre.",
+        "Bâtisseur d'institutions : tient la diversité.",
+        "Profit & carrefours : prospère par le commerce.",
+        "Consentement seul : ne fracture jamais, pacifique.",
+    };
+    int n=0;
+    for(int e=0; e<ETHOS_COUNT && n<max; e++){
+        out[n].id       = e;
+        out[n].nom      = ethos_name((Ethos)e);
+        out[n].epithete = EPI[e];
+        out[n].hint     = HINT[e];
+        n++;
+    }
+    return n;
+}
+
+int scps_tradition_list(ScpsTradition *out, int max){
+    int n=0;
+    for(int t=0; t<TRAIT_COUNT && n<max; t++){
+        const TraitDef *d = trait_def((TraitId)t);
+        if(!d) continue;
+        out[n].id      = t;
+        out[n].nom     = d->name;
+        out[n].axe     = (int)d->cat;
+        out[n].axe_nom = category_name(d->cat);
+        out[n].rang    = d->pts;
+        out[n].hover   = d->hover;
+        n++;
+    }
+    return n;
+}
+
+/* construit un build depuis 3 ids (le slot = l'axe, comme build_is_valid l'exige). */
+static SpeciesBuild api_build_of(int t0, int t1, int t2){
+    SpeciesBuild b;
+    b.trait[0]=(TraitId)t0; b.trait[1]=(TraitId)t1; b.trait[2]=(TraitId)t2;
+    return b;
+}
+
+int scps_culture_validate(int t0, int t1, int t2){
+    if(t0<0||t0>=TRAIT_COUNT||t1<0||t1>=TRAIT_COUNT||t2<0||t2>=TRAIT_COUNT) return 0;
+    SpeciesBuild b = api_build_of(t0,t1,t2);
+    return build_is_valid(&b) ? 1 : 0;
+}
+
+int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max){
+    if(!out || max<=0) return 0;
+    if(t0<0||t0>=TRAIT_COUNT||t1<0||t1>=TRAIT_COUNT||t2<0||t2>=TRAIT_COUNT) return 0;
+    SpeciesBuild b = api_build_of(t0,t1,t2);
+    SpeciesLeviers L = build_leviers(&b);
+    /* les 9 leviers du moteur, dans l'ordre de la struct → un MOT par axe touché. */
+    float v[9] = { L.demographie, L.productivite, L.influence, L.coercition,
+                   L.capacite, L.permeabilite, L.arcane, L.derive, L.fracture };
+    static const char *NM[9] = {
+        "Démographie", "Productivité", "Influence", "Coercition (militaire)",
+        "Capacité (diversité)", "Perméabilité (assimilation)", "Affinité arcane",
+        "Dérive culturelle", "Fracture" };
+    int n=0;
+    for(int i=0;i<9 && n<max;i++){
+        if(v[i] > 0.0001f || v[i] < -0.0001f){
+            out[n].nom   = NM[i];
+            out[n].signe = (v[i] > 0.f) ? +1 : -1;
+            n++;
+        }
+    }
+    return n;
+}
+
+const char *scps_culture_name(int heritage, uint32_t seed){
+    static char buf[40];
+    int h = (heritage>=0 && heritage<HERITAGE_COUNT) ? heritage : HERITAGE_ADAPTATIF;
+    culture_make_name(buf, (int)sizeof buf, (SpeciesArchetype)h, seed);
+    return buf;
+}
+
+int scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2){
+    if(!scps_culture_validate(t0,t1,t2)) return 0;
+    if(heritage<0||heritage>=HERITAGE_COUNT) return 0;
+    if(ethos<0||ethos>=ETHOS_COUNT) return 0;
+    SpeciesBuild b = api_build_of(t0,t1,t2);
+    culture_player_compose((SpeciesArchetype)heritage, ethos, b);
+    return 1;
+}
+
+void scps_clear_player_culture(void){ culture_player_clear(); }

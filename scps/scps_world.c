@@ -2456,7 +2456,7 @@ void world_tick(World *w, WorldEconomy *econ, float dt) {
         tmp.langue=pc->langue; tmp.age=pc->age;
         /* Dérive modulée par les TRADITIONS de l'empire (Adaptable vite, Traditionaliste lent)
          * — INDÉPENDANT de l'héritage (qui ne fait que les noms). */
-        SpeciesBuild sb=culture_random_build((uint32_t)(econ->region[r].owner<0?0:econ->region[r].owner));
+        SpeciesBuild sb=culture_build_for((uint32_t)(econ->region[r].owner<0?0:econ->region[r].owner));
         float drift=0.002f*dt*(1.f + build_leviers(&sb).derive);
         if (drift < 0.f) drift = 0.f;
         culture_age_tick(&tmp, drift);
@@ -2507,6 +2507,19 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
       printf("[peuples] joueur=%s ; héritages DÉBRAYÉS de la géo :", species_name(player_race));
       for (int r=0;r<HERITAGE_COUNT;r++) if (cnt[r]) printf(" %s\xc3\x97%d", species_name((SpeciesArchetype)r), cnt[r]);
       printf("\n"); }
+
+    /* CRÉATEUR DE CULTURE — l'ÉTHOS choisi du joueur (override) imprègne SES régions :
+     * la dominante culturelle ET les groupes (factions, assimilation) — donc le NOM du
+     * pays (épithète, lu juste après) le suivent. Inactif ⇒ rien (déterminisme intact). */
+    if (culture_player_active()){
+        Ethos pe=(Ethos)culture_player_ethos();
+        for (int r=0;r<w->n_regions;r++){
+            if (w->region[r].country!=player) continue;
+            econ->region[r].culture.ethos=pe;
+            for (int g=0; g<econ->region[r].pop.n_groups; g++)
+                econ->region[r].pop.groups[g].culture.ethos=pe;
+        }
+    }
 
     /* P1.5/P1.9 — recolore ET RENOMME chaque EMPIRE par sa famille de RACE + son
      * ETHOS dominant (lus de sa capitale). Déterministe par graine. */

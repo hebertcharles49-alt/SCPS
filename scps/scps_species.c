@@ -247,3 +247,39 @@ SpeciesBuild culture_random_build(uint32_t seed){
     }
     return b;
 }
+
+/* ===================================================================== */
+/* CRÉATEUR DE CULTURE — override du JOUEUR (voir .h)                      */
+/* ===================================================================== */
+/* Un SEUL « joueur » par processus. Inactif par défaut ⇒ culture_build_for ≡
+ * culture_random_build, culture_player_heritage ≡ ADAPTATIF : le moteur (chronique,
+ * bancs, golden, déterminisme) ne voit STRICTEMENT aucun changement. */
+static struct {
+    bool             active;
+    int              cid;        /* -1 tant que non lié à la genèse */
+    SpeciesArchetype heritage;
+    int              ethos;      /* Ethos (scps_culture.h) — int pour éviter le cycle d'include */
+    SpeciesBuild     build;
+} g_player = { false, -1, HERITAGE_ADAPTATIF, 2 /*ETHOS_ORDRE*/, {{ T_PROLIFIQUE, T_FRONDEUR, T_INVENTIF }} };
+
+void culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build){
+    g_player.active   = true;
+    g_player.cid      = -1;      /* (re)lié à la genèse via culture_player_bind */
+    g_player.heritage = (heritage>=0&&heritage<HERITAGE_COUNT) ? heritage : HERITAGE_ADAPTATIF;
+    g_player.ethos    = ethos;
+    g_player.build    = build;
+}
+void culture_player_bind(int cid){ if (g_player.active) g_player.cid = cid; }
+void culture_player_clear(void){
+    g_player.active=false; g_player.cid=-1;
+    g_player.heritage=HERITAGE_ADAPTATIF; g_player.ethos=2;
+}
+bool             culture_player_active(void){ return g_player.active; }
+int              culture_player_cid(void){ return g_player.active ? g_player.cid : -1; }
+SpeciesArchetype culture_player_heritage(void){ return g_player.active ? g_player.heritage : HERITAGE_ADAPTATIF; }
+int              culture_player_ethos(void){ return g_player.active ? g_player.ethos : 2; }
+
+SpeciesBuild culture_build_for(uint32_t cid){
+    if (g_player.active && g_player.cid>=0 && (uint32_t)g_player.cid==cid) return g_player.build;
+    return culture_random_build(cid);
+}

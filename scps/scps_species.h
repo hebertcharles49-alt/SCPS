@@ -109,4 +109,23 @@ SpeciesLeviers  build_leviers(const SpeciesBuild *b);
  * INDÉPENDANT de l'héritage. L'IA en reçoit ; défaut du joueur avant qu'il compose la sienne. */
 SpeciesBuild    culture_random_build(uint32_t seed);
 
+/* ===================================================================== */
+/* CRÉATEUR DE CULTURE — la composition du JOUEUR (override du tirage IA)  */
+/* ===================================================================== */
+/* Le joueur compose SON empire (héritage + éthos + 3 traditions) dans le créateur ;
+ * sa composition REMPLACE le tirage aléatoire pour SON cid (un seul « joueur » par
+ * processus). TANT QUE c'est INACTIF (le défaut — chronique, bancs, déterminisme),
+ * TOUT est exactement comme avant : héritage ADAPTATIF, traditions aléatoires, éthos
+ * émergent. `ethos` voyage en int (l'enum Ethos vit dans scps_culture.h ; on le garde
+ * hors d'ici pour ne pas créer de cycle d'include) — caster à/depuis Ethos aux sites. */
+void              culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build);
+void              culture_player_bind(int cid);     /* lie l'override au cid joueur (à la genèse) */
+void              culture_player_clear(void);
+bool              culture_player_active(void);
+int               culture_player_cid(void);         /* -1 si non lié */
+SpeciesArchetype  culture_player_heritage(void);    /* HERITAGE_ADAPTATIF si inactif */
+int               culture_player_ethos(void);       /* 2 (ETHOS_ORDRE) si inactif */
+/* Build EFFECTIF pour un cid : l'override du joueur si lié à ce cid, sinon le tirage. */
+SpeciesBuild      culture_build_for(uint32_t cid);
+
 #endif /* SCPS_SPECIES_H */

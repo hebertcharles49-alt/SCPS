@@ -112,6 +112,18 @@ public:
     bool       player_offer_pact(int target);         /* proposer un pacte de commerce */
     bool       player_embargo(int target, bool on);   /* poser/lever un embargo */
 
+    /* CRÉATEUR DE CULTURE (façon Stellaris) — listes + validation + aperçu + composition.
+     * Membrane : des MOTS et des SIGNES (pas de levier brut). Pur (aucun sim) → utilisable
+     * AVANT generate() ; set_player_culture grave la compo À la prochaine generate(). */
+    Array      heritage_list();                        /* [{id,nom,sphere,exemple}] */
+    Array      ethos_list();                           /* [{id,nom,epithete,hint}] */
+    Array      tradition_list();                       /* [{id,nom,axe,axe_nom,rang,hover}] */
+    bool       culture_validate(int t0, int t1, int t2);    /* 1maj+1min+1déf, une/axe, pas d'antonyme */
+    Array      culture_preview(int t0, int t1, int t2);     /* [{nom,signe}] — aperçu des leviers */
+    String     culture_name(int heritage, int seed);        /* ethnonyme façon Stellaris (aperçu live) */
+    bool       set_player_culture(int heritage, int ethos, int t0, int t1, int t2);  /* true = valide+retenu */
+    void       clear_player_culture();                      /* retour au défaut (IA aléatoire) */
+
     /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
     Array      river_points();
     /* rivières STRUCTURÉES par fleuve : Array[Dictionary{points:PackedVector2Array, flow:float}]

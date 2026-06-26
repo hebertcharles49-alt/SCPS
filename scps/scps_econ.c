@@ -1862,8 +1862,8 @@ void econ_tick(WorldEconomy *e, float dt) {
         float food_s = re->food_sat;
         /* Démographie modulée par les TRADITIONS de l'empire (Prolifique → + de naissances ;
          * Lent à croître → moins) — INDÉPENDANT de l'héritage (qui ne fait que les noms).
-         * IA : tirées au hasard par empire ; joueur : sa composition (via la façade, à venir). */
-        SpeciesBuild sb_demo = culture_random_build((uint32_t)(re->owner<0?0:re->owner));
+         * IA : tirées au hasard par empire ; joueur : SA composition (culture_build_for). */
+        SpeciesBuild sb_demo = culture_build_for((uint32_t)(re->owner<0?0:re->owner));
         float demo = build_leviers(&sb_demo).demographie;
         /* MODIFICATEURS PROVINCIAUX diégétiques → entrée DÉMO (pas un bonus plat) : la
          * TERRE D'ABONDANCE repeuple les régions sous-remplies & nourries (le rebond des
