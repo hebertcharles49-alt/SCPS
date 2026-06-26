@@ -11,18 +11,20 @@
 
 ## (a) Résultats MESURÉS (`make test`, K3 appliqué)
 
-**37 bancs VERTS / 37** — `make test` les bâtit, les lance, compte les BILAN
-(snapshot 2026-06-18 ; le compte AUTORITAIRE est la sortie de `make test`, pas
-cette liste — gardée à jour pour le coup d'œil) :
+**40 bancs VERTS / 40** — `make test` les bâtit, les lance, compte les BILAN
+(snapshot 2026-06-26 ; le compte AUTORITAIRE est la sortie de `make test`, pas
+cette liste — gardée à jour pour le coup d'œil ; +navy_demo +culture_demo
++scps_api_demo depuis l'audit Steam, diplo monté 49→61 avec l'étage-3 vassalité) :
 
 core 35/35 · monde_reel 10/10 · readout 27/27 · species 9/9 · tech 22/22 ·
 faith 14/14 · intertrade 25/25 · routes 4/4 · save_io 14/14 · statecraft 27/27 ·
 pop 14/14 · army 48/48 · demography 19/19 · demography_integ 6/6 · revolt 23/23 ·
 social 10/10 · agency 16/16 · campaign 19/19 · factions 35/35 · econ_tax 8/8 ·
 econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 37/37 ·
-missions 8/8 · diplo 49/49 · warhost 4/4 · events 41/41 · structural 16/16 ·
-ai 23/23 · forks 35/35 · prosperity OK (sans format BILAN) · credit 16/16 ·
-cap 5/5 · endgame 76/76 · **audit_eco 4/4** · **lang 26/26**.
+missions 8/8 · diplo 61/61 · warhost 4/4 · events 41/41 · structural 16/16 ·
+ai 23/23 · forks 35/35 · prosperity 17/17 · credit 16/16 ·
+cap 5/5 · endgame 76/76 · **audit_eco 4/4** · **lang 26/26** · **navy 20/20** ·
+**culture 23/23** · **scps_api 18/18**.
 
 **0 banc rouge.** `audit_eco` et `lang_demo` sont désormais DANS le harnais
 (`tools/run_tests.sh`) — le rouge de `make audit` (longtemps invisible) serait
@@ -141,7 +143,9 @@ Suite à l'audit technique du 18 juin (point bloquant : `make audit` ROUGE 2/4).
   la taille PLEINE nourrie. **Bâtir double la région ½→plein** : la pop SUIT le bâti (seed 9
   monte 48→56→69→75→80→89k, monotone). Graine **UNIFORME** à l'an-0 (divergence ENSUITE).
   Readout viewer = miroir de l'eff_cap (les logements montent quand on bâtit). Tunables :
-  `EMPIRE_CAP` 10300 / `CITY_CAP` 5150 (taille nourrie) · `HOUSE_MANUF` 100. make test
+  `EMPIRE_CAP` 10300 / `CITY_CAP` 5150 (taille nourrie ; ⚠ valeur d'ÉPOQUE — code courant
+  **13000 / 6500**, cf. `scps_tune_list.h` ; les valeurs CAP des entrées datées plus bas sont
+  toutes archivales, la source de vérité est le registre) · `HOUSE_MANUF` 100. make test
   **32/32** (les 2 contrôles `ai_demo` sensibles au monde — aggression/routes réalisées —
   rendus robustes : la conquête du Dominateur peut hériter des routes, hors appétit marchand).
   **À VENIR (#5)** : « le commerce nourrit le marché » (cités-états = hubs alimentaires)

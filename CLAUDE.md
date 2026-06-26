@@ -232,7 +232,7 @@
   ~184 documenté), toujours **post-100** (le cliquet tient). ⚠ **RE-BASELINE** : les mondes des graines
   de référence ONT CHANGÉ (pop ≈×1.8) ; le **hash 12 ans re-baseline** (le taux mord dès l'an-0,
   contrairement à l'endgame).
-  `make test` **38/38 vert** (les contrôles sensibles au monde — `ai_demo`, `social_demo` — étaient
+  `make test` **40/40 vert** (les contrôles sensibles au monde — `ai_demo`, `social_demo` — étaient
   déjà robustes à l'échelle de pop) ; `make determinism` STABLE (save/reload byte-identique).
   **Dialable d'UNE ligne** ou `SCPS_TUNE=POP_R_BASE=…` vers /35 (≈64k) ou /30 (registre J :
   `POP_R_BASE` 0.01733). **SAVE non bumpé** (aucune struct sérialisée ne change).
@@ -256,7 +256,7 @@
   « MODIFICATEURS »** (multiple) : `ProvinceReadout.mods[]` (membrane, mots + signe — faveur vert /
   fléau rouge), rendu par `viewer.c` entre Capitale et Bâtiments ; 7 `STR_*` (FR+EN). ⚠
   **RE-BASELINE** : les low seeds montent ; le **hash 12 ans re-baseline** (l'abondance mord dès
-  l'an-0). `make test` 38/38 · `determinism` stable · `lang-check` 64/64. Éteignable :
+  l'an-0). `make test` 40/40 · `determinism` stable · `lang-check` 64/64. Éteignable :
   `SCPS_TUNE=PROVMOD_ABOND_K=0` (le modificateur reste AFFICHÉ). ⚠ **Mesure propre (5 sims
   appariés)** : seed 9 OFF 63.0k → ON 67.8k (**+7.6 %** — il était lui-même à ~½ rempli, il capte
   donc un peu d'abondance ; le single-sim « bruit » l'avait masqué) ; les low seeds montent ~5× plus.
@@ -271,7 +271,7 @@
   un delta nourrit une natalité dense. Tous routés par l'entrée DÉMO (`provmod_collect` inline),
   surfacés en faveurs, 6 `STR_*` (FR+EN). ⚠ **SAVE BUMPÉ 26→27** (RegionEconomy +ferveur
   +reconstruction = 2 floats À ÉTAT → `sizeof(WorldEconomy)` change ; <v27 refusé). ⚠ RE-BASELINE
-  (les faveurs s'empilent ; hash 12 ans re-baseline). `make test` 38/38 · `determinism` STABLE.
+  (les faveurs s'empilent ; hash 12 ans re-baseline). `make test` 40/40 · `determinism` STABLE.
   Tunables registre J : `PROVMOD_FERVEUR_K` 0.5 · `_DECAY` 0.067 · `PROVMOD_RECON_K` 0.6 · `_DECAY`
   0.10 · `PROVMOD_LIMON_K` 0.15. À VENIR (autres SOUS-SYSTÈMES) : boosts K admin (build/agency),
   bonus géo biome gibier/halieutique (worldgen), couplage satisfaction de la croissance.
@@ -287,7 +287,7 @@
   déterminisme 12 ans NE BOUGE PAS (la diversité met des décennies à monter). Textes LITTÉRAUX comme
   tout `scps_events.c` (le module n'est pas migré STR_* ; `events_text_clean` reste vert). **SAVE non
   bumpé** (EVENTS[] est une table statique ; rien de sérialisé n'indexe EVID_COUNT). `make test`
-  38/38 · `determinism` STABLE.
+  40/40 · `determinism` STABLE.
 - **MIROIR XÉNOPHOBE (2026-06-17) — « Le creuset DIGÉRÉ » (la cohésion par la MÉTABOLISATION)** :
   le pendant martial du creuset, mais l'éthos Dominateur/Honneur ne GARDE pas la diversité — il la
   DIGÈRE. `EVID_XENOPHOBE`/`trig_xenophobe` exige qu'il y ait EU de la diversité (`n_groups≥2`,
@@ -297,7 +297,7 @@
   TIENT (vérifié STABLE). Effet : +légitimité +garnison −agitation +influence — la cohésion farouche
   de qui a tout fondu en un seul sang. Symétrie d'éthos (pas « diversité = bien/mal plat » : le
   creuset GARDÉ prospère pour l'accueillant, le creuset DIGÉRÉ pour le martial). **SAVE non bumpé**.
-  `make test` 38/38 · `determinism` STABLE.
+  `make test` 40/40 · `determinism` STABLE.
 - **COUPLAGE SATISFACTION ↔ CROISSANCE (2026-06-17, ASYMÉTRIQUE)** : le bonus de fertilité gagne
   un terme satisfaction `POP_SAT_W·max(0, satisfaction−0.5)` — une province CONTENTE croît un peu
   plus vite, mais la satisfaction BASSE ne soustrait RIEN (plancher à 0). Le **double tranchant**
@@ -305,7 +305,7 @@
   un peuple nourri mais grognon croît quand même, et la récompense PRIME la reprise une fois la
   province apaisée. Zéro risque baissier. Tunable `POP_SAT_W` 0.20 (registre J). ⚠ nudge seed 9 vers
   le haut (province contente) — c'est tout l'écosystème vitalité qui soulève un peu tout, les low
-  seeds ~5× plus. `make test` 38/38 · `determinism` STABLE. **SAVE non bumpé**.
+  seeds ~5× plus. `make test` 40/40 · `determinism` STABLE. **SAVE non bumpé**.
 - **DONS GÉO PROVINCIAUX (2026-06-17) — gibier abondant + manne halieutique** : deux faveurs géo
   SÉLECTIVES sur le slot « MODIFICATEURS » et le canal DÉMO. Posées à `econ_init` (tirage
   DÉTERMINISTE par région) : **~1/3 des régions BOISÉES** (majorité de provinces FOREST/WOODS/JUNGLE)
@@ -314,7 +314,7 @@
   **SAVE BUMP 27→28** (`sizeof(WorldEconomy)` change). 4 `STR_*` (FR+EN), `PROVMOD_GIBIER_K`/
   `PROVMOD_HALIEU_K` 0.10. ⚠ ce sont des bonus de **PLAFOND** (texture : ils enrichissent TOUS les
   seeds, ne ferment PAS l'écart low/riche — cf. garde-fou) : K volontairement PETIT. `make test`
-  38/38 · `determinism` STABLE.
+  40/40 · `determinism` STABLE.
 - **BONNE ADMINISTRATION (2026-06-18) — « admin efficace » par le canal DÉMO** : dernière faveur du
   brainstorm. `PMOD_ADMIN` (dérivé, pas de champ) : des institutions bâties (`re->build.K_inst` > 1.5)
   tiennent l'ordre & les services → natalité un peu plus dense (`PROVMOD_ADMIN_K` 0.06, plafonné).
@@ -322,7 +322,7 @@
   AGENCY/build ; ici on route l'efficacité administrative par la croissance, cohérent avec le pipeline).
   ⚠ `provmod_collect` est en-tête `static inline` SANS `<math.h>` → clamps MANUELS obligatoires (pas
   de `fminf`/`clampf` : ils tirent une déclaration implicite qui CONFLITE avec `scps_world.c`).
-  `make test` 38/38 · `determinism` STABLE · **0 warning** · **SAVE non bumpé**. ⊕ Le brainstorm
+  `make test` 40/40 · `determinism` STABLE · **0 warning** · **SAVE non bumpé**. ⊕ Le brainstorm
   diégétique est COMPLET (abondance · ferveur · reconstruction · limon · gibier · halieutique · admin
   + évents xénophile/xénophobe + couplage satisfaction) — 8 faveurs sur le slot « MODIFICATEURS ».
 - **Anti-emballement dette (bug PRÉ-§27 corrigé)** : `credit_year_tick` plafonne taux & assiette
@@ -389,7 +389,7 @@
   an-0 (or/prospérité/influence) sont l'AVEU HONNÊTE de la colonne éco (ni diplo ni commerce tické) ;
   ils se peuplent avec l'extraction `chronicle::sim_day` **sans changer la surface façade**. Vérifié
   **headless** (probe GDScript : picking province 18, readouts complets, borne hors-champ → invalide).
-  `make test` **38/38**, `determinism` **STABLE** (hashes chronicle inchangés), `scps_api_demo` 9/9,
+  `make test` **40/40**, `determinism` **STABLE** (hashes chronicle inchangés), `scps_api_demo` 9/9,
   GDExtension `scons` 0 warning. Le moteur ne bouge pas → **SAVE non bumpé**.
 - **TICK PARTAGÉ (2026-06-18) — `chronicle::sim_day` → `scps_sim.{h,c}` : le monde Godot VIT
   PLEINEMENT** : la façade ne roulait que la COLONNE économique (d'où les zéros an-0 : ni guerre,
@@ -409,7 +409,7 @@
   monde). Le pays « joueur » est, pour l'instant, piloté par l'IA comme dans la chronique (le monde
   s'observe ; la main humaine viendra). `scps_api_demo` 9/9 (pop change — le monde vit — mais
   REPRODUCTIBLE A==B). Makefile : `scps_sim.o` dans `CHRONICLE_OBJS` ; SConstruct : `"sim"` dans
-  ENGINE_MODULES. `make test` **38/38**, **0 warning**, **SAVE non bumpé** (rien de sérialisé ne change).
+  ENGINE_MODULES. `make test` **40/40**, **0 warning**, **SAVE non bumpé** (rien de sérialisé ne change).
 - **GODOT PHASE 3 (2026-06-18) — LES ACTEURS SUR LA CARTE** : le tick plein roule déjà guerres &
   campagnes ; on les EXPOSE et on les dessine. Façade (additive) : `scps_army_info` (loc · dest ·
   phase mot+brut · effectif · composition inf/arch/cav/mages, lu de `s->sim.camp`) + `scps_region_tier`
