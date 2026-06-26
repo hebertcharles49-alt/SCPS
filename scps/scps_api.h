@@ -267,6 +267,27 @@ typedef struct {
 } ScpsRelation;
 int scps_country_relations(ScpsSim *s, int country, ScpsRelation *out, int max);
 
+/* §3 — OPTIONS DIPLO : la LÉGALITÉ des verbes du JOUEUR contre `target` (pour GRISER les boutons).
+ * `can_*` = structurellement permis ; `would_accept_*` = APERÇU du consentement du vis-à-vis
+ * (ai_consider_offer — l'opinion #26) : le bouton peut être actif mais l'offre refusée. Retour
+ * 1 si `target` est une cible valide (rempli), 0 sinon (tout à 0). */
+typedef struct {
+    int can_declare_war;        /* pas déjà en guerre · pas de trêve · cible vivante ≠ soi */
+    int can_make_peace;         /* en guerre avec la cible */
+    int can_offer_alliance;     /* pas en guerre · pas déjà allié · un slot libre des DEUX côtés */
+    int can_offer_pact;         /* pas en guerre · pas déjà de pacte */
+    int can_embargo;            /* pas d'embargo en cours */
+    int can_lift_embargo;       /* embargo en cours */
+    int would_accept_alliance;  /* le vis-à-vis CONSENTIRAIT (opinion + relation) */
+    int would_accept_pact;      /* idem (opinion + complémentarité) */
+    int would_accept_peace;     /* le vis-à-vis CÉDERAIT (score de guerre / épuisement) */
+} ScpsDiploOptions;
+int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
+/* §3 — LÉGALITÉ de CONSTRUCTION par RÉGION : 1 si le joueur peut bâtir `edifice` dans `region`
+ * MAINTENANT (non bloqué par le palier ET payable au crédit). Le roster (debloque) gate la TECH ;
+ * ce prédicat gate la RÉGION + l'OR. region<0 ⇒ capitale. */
+int scps_build_legal(ScpsSim *s, int region, int edifice);
+
 /* ARMÉE d'un pays (sb_panel_armee, read-only) : mobilisation + flotte. L'armée de
  * CAMPAGNE (position/phase/composition) se lit via scps_army_info. */
 typedef struct {

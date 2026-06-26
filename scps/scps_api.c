@@ -671,6 +671,45 @@ int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
     return n;
 }
 
+/* §3 — OPTIONS DIPLO : la légalité des verbes du joueur contre `target` + l'aperçu du consentement
+ * (ai_consider_offer, l'opinion #26). Pour GRISER les boutons et montrer « il refusera » avant l'offre. */
+int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
+    if (!out) return 0;
+    memset(out, 0, sizeof *out);
+    if (!s || !s->ready) return 0;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    int t = target;
+    if (p<0 || p>=s->w->n_countries || t<0 || t>=s->w->n_countries || t==p) return 0;
+    if (s->w->country[t].role==POLITY_UNCLAIMED || regions_of(s->sim.econ, t)<=0) return 0;
+    DiploState *d = s->sim.dp;
+    DiploStatus st = diplo_status(d, p, t);
+    int at_war = (st==DIPLO_WAR);
+    int slot   = (diplo_ally_count(d,p) < DIPLO_ALLY_SLOTS) && (diplo_ally_count(d,t) < DIPLO_ALLY_SLOTS);
+    int emb    = intertrade_embargoed(p, t) ? 1:0;
+    out->can_declare_war    = (!at_war && diplo_truce_days(d,p,t)<=0.f) ? 1:0;
+    out->can_make_peace     = at_war ? 1:0;
+    out->can_offer_alliance = (!at_war && st!=DIPLO_ALLIED && slot) ? 1:0;
+    out->can_offer_pact     = (!at_war && !diplo_trade_pact(d,p,t)) ? 1:0;
+    out->can_embargo        = emb ? 0:1;
+    out->can_lift_embargo   = emb ? 1:0;
+    out->would_accept_alliance = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_ALLIANCE) ? 1:0;
+    out->would_accept_pact     = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_TRADE_PACT) ? 1:0;
+    out->would_accept_peace    = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_PEACE) ? 1:0;
+    return 1;
+}
+
+/* §3 — LÉGALITÉ de construction PAR RÉGION (le roster `debloque` gate la TECH ; ici la RÉGION+l'OR). */
+int scps_build_legal(ScpsSim *s, int region, int edifice){
+    if (!s || !s->ready || edifice<0 || edifice>=EDIFICE_COUNT) return 0;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    if (p<0 || p>=s->w->n_countries) return 0;
+    int reg = region;
+    if (reg<0){ int cp=s->w->country[p].capital_prov; reg = (cp>=0&&cp<s->w->n_provinces)? s->w->province[cp].region : -1; }
+    if (reg<0 || reg>=s->sim.econ->n_regions || s->sim.econ->region[reg].owner != p) return 0;
+    if (edifice_build_blocked(s->sim.econ, reg, (Edifice)edifice)) return 0;
+    return credit_can_spend(s->sim.econ, s->w, p, agency_build_gold(s->sim.econ, reg, (Edifice)edifice)) ? 1:0;
+}
+
 void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
     if(!out) return;
     memset(out, 0, sizeof *out); out->levy_name = "";

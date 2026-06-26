@@ -159,6 +159,19 @@ int main(int argc, char **argv){
         ok("§3 — 13 verbes intérieur/commerce/guerre ENFILÉS", v==13);
         scps_sim_advance_days(s2, 1);        /* le drain les applique tous, revalidés, sans crash */
         ok("§3 — drainés sans crash (revalidation au drain : membrane stable)", scps_year(s2)>=0);
+        /* §3 — OPTIONS : la légalité grise les boutons. s2 a déclaré la guerre à tous → la cible est
+         * en guerre → PAIX offrable, DÉCLARATION grisée ; les aperçus de consentement sont bornés. */
+        ScpsDiploOptions dop; int gotd = scps_diplo_options(s2, (pl+1)%nc2, &dop);
+        ok("scps_diplo_options : cible valide → rempli", gotd==1);
+        ok("options diplo COHÉRENTES (jamais guerre ET paix offrables ensemble)",
+           !(dop.can_make_peace && dop.can_declare_war));
+        ok("options diplo : en GUERRE ⇒ paix offrable, déclaration grisée",
+           dop.can_make_peace==1 && dop.can_declare_war==0);
+        ok("options diplo : aperçus de consentement ∈ {0,1} (l'opinion #26 prévisualisée)",
+           (dop.would_accept_alliance|dop.would_accept_pact|dop.would_accept_peace|
+            dop.can_offer_alliance|dop.can_offer_pact|dop.can_embargo|dop.can_lift_embargo) <= 1);
+        ok("scps_build_legal : réponse bornée {0,1} (région · or)",
+           (scps_build_legal(s2,-1,0) & ~1)==0);
     }
 
     scps_sim_free(s); scps_sim_free(s2);

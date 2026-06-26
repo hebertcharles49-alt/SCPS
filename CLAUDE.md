@@ -573,8 +573,18 @@
   n'enfile pas** ⇒ drain no-op ⇒ **golden IDENTIQUE, SAVE non bumpé, déterminisme intact**. Banc
   scps_api_demo (24/24 : déclarer→guerre · opinion bornée · 13 verbes enfilés+drainés sans crash).
   `make test` 40/40 · golden IDENTIQUE · ASan muet · 0 warning. La couverture de VERBES joueur de la
-  roadmap §3 est COMPLÈTE (build/recruit/levy/research + diplo + intérieur + commerce + guerre) ;
-  restent les READS d'OPTIONS (énumérer les coups légaux) et l'UI Godot, hors moteur.
+  roadmap §3 est COMPLÈTE (build/recruit/levy/research + diplo + intérieur + commerce + guerre).
+- **§3 — READS d'OPTIONS (légalité des coups, pour griser les boutons) (2026-06-26)** : `scps_diplo_options`
+  (struct par CIBLE : `can_declare_war`/`_make_peace`/`_offer_alliance`/`_offer_pact`/`_embargo`/
+  `_lift_embargo` + APERÇUS `would_accept_*` = `ai_consider_offer`, l'opinion #26 PRÉVISUALISÉE — l'UI
+  montre « il refusera » AVANT l'offre) ; `scps_build_legal(region,edifice)` (le roster `debloque` gate
+  la TECH, ce prédicat gate la RÉGION+l'OR : `!edifice_build_blocked` × `credit_can_spend(agency_build_gold)`).
+  Les rosters de build (`debloque`) et d'unités (`recrutable`) existaient déjà → la légalité par TECH
+  est couverte ; ces deux readers complètent par CIBLE / RÉGION. PURS READS (aucune mutation moteur) ⇒
+  golden trivialement IDENTIQUE. Banc scps_api_demo +5 (29/29 : cohérence guerre⇔paix · aperçus de
+  consentement bornés · build legal {0,1}). `make test` 40/40 · ASan muet · 0 warning. Reste : l'UI
+  Godot qui CONSOMME verbes+options (GDScript, hors moteur), et d'éventuels options-readers fins
+  (recruit/campaign/market) sur le même motif si besoin.
 
 ## Disciplines non négociables
 
