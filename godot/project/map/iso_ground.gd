@@ -766,25 +766,116 @@ func _build_river_field(w, W: int, H: int) -> Image:
 	var raw: Array = w.river_paths()
 	if raw.is_empty():
 		return img
-	# Hiérarchie FORCÉE (worldgen) : flow encode le NIVEAU — fleuve 1.0 · rivière 0.62 · affluent 0.34.
-	# Largeur ∝ niveau (fleuve large → affluent fin). Brins CONNECTÉS (seek) → réseau cohérent.
+	var hgt: Image = w.layer_image(LAYER_HEIGHT)   # pente locale → module l'amplitude du méandre
+	var sea: Image = w.layer_image(4)              # mer/lac → on n'envoie pas le méandre dans l'eau
+	# flow = NIVEAU : fleuve 1.0 · rivière 0.62 · affluent 0.34. Le MOTEUR donne une LIGNE MÉDIANE propre ;
+	# ICI on FORCE un MÉANDRE SINUSOÏDAL (ample en PLAINE, nul en montagne — c'est là que serpentent les
+	# vrais fleuves) puis on grave avec une LARGEUR qui CROÎT vers l'AVAL (le fleuve grossit en collectant
+	# ses affluents). Disque DOUX sous-pixel = anti-crénelage MASSIF.
 	for rv in raw:
 		var pts: PackedVector2Array = rv["points"]
-		if pts.size() < 4:
+		if pts.size() < 6:
 			continue
 		var fl := float(rv["flow"])
 		var v := clampf(0.58 + 0.42 * fl, 0.0, 1.0)
-		var wd := 2 if fl > 0.8 else (1 if fl > 0.5 else 0)   # fleuve 5px · rivière 3px · affluent 1px
-		for k in range(pts.size()):
-			var x := int(pts[k].x)
-			var y := int(pts[k].y)
-			_setmax(img, x, y, v, W, H)
-			for r in range(1, wd + 1):
-				_setmax(img, x + r, y, v, W, H)
-				_setmax(img, x - r, y, v, W, H)
-				_setmax(img, x, y + r, v, W, H)
-				_setmax(img, x, y - r, v, W, H)
+		var base_w := 2 if fl > 0.8 else (1 if fl > 0.5 else 0)   # fleuve · rivière · affluent
+		var grow := 2 if fl > 0.8 else (1 if fl > 0.5 else 0)     # de combien la largeur enfle vers l'embouchure
+		var mp := _meander(pts, hgt, sea, W, H)
+		var sm := _smooth_poly(mp, 1)                            # de-step très léger (la sinusoïde est déjà lisse)
+		var n := sm.size()
+		for k in range(n - 1):
+			var frac := float(k) / float(maxi(1, n - 1))         # 0 = source → 1 = embouchure
+			var wd := base_w + int(round(frac * float(grow)))    # PLUS LARGE en aval (affluents accumulés)
+			_carve_seg(img, sm[k], sm[k + 1], v, wd, W, H)
 	return img
+
+## FORCE un MÉANDRE SINUSOÏDAL sur la ligne médiane : déplacement PERPENDICULAIRE d'amplitude ∝ PLATITUDE
+## locale (plaine = grand méandre, montagne = droit). Bouts ANCRÉS (source/embouchure intacts) ; jamais
+## poussé dans la mer (sinon le décalage est réduit). Longueur d'onde ~ `wave` cellules.
+func _meander(pts: PackedVector2Array, hgt: Image, sea: Image, W: int, H: int) -> PackedVector2Array:
+	var n := pts.size()
+	var out := PackedVector2Array(); out.resize(n)
+	out[0] = pts[0]; out[n - 1] = pts[n - 1]
+	var wave := 22.0
+	var amp_max := 9.0
+	var phase := float((int(pts[0].x) * 131 + int(pts[0].y) * 57) % 628) / 100.0   # déphasage par rivière
+	for i in range(1, n - 1):
+		var p: Vector2 = pts[i]
+		var tang: Vector2 = (pts[i + 1] - pts[i - 1]).normalized()
+		var perp := Vector2(-tang.y, tang.x)
+		var off := amp_max * _flatness(hgt, p, W, H) * sin(float(i) * TAU / wave + phase)
+		var q := p + perp * off
+		if sea != null:                                  # ne pas méandrer DANS la mer (réduit jusqu'à rester sur terre)
+			var tries := 0
+			while tries < 4 and _is_sea(sea, q, W, H):
+				off *= 0.5; q = p + perp * off; tries += 1
+			if _is_sea(sea, q, W, H):
+				q = p
+		out[i] = q
+	return out
+
+## PLATITUDE 0..1 dérivée de la pente locale (gradient central du champ de hauteur). Plaine → ~1 (grand
+## méandre) ; montagne → ~0 (droit).
+func _flatness(hgt: Image, p: Vector2, W: int, H: int) -> float:
+	if hgt == null:
+		return 1.0
+	var x := clampi(int(p.x), 1, W - 2)
+	var y := clampi(int(p.y), 1, H - 2)
+	var sx := absf(hgt.get_pixel(x + 1, y).r - hgt.get_pixel(x - 1, y).r)
+	var sy := absf(hgt.get_pixel(x, y + 1).r - hgt.get_pixel(x, y - 1).r)
+	return clampf(1.0 - (sx + sy) * 12.0, 0.0, 1.0)
+
+## VRAI si (p) tombe sur une cellule de mer/lac (ou hors carte).
+func _is_sea(sea: Image, p: Vector2, W: int, H: int) -> bool:
+	var x := int(round(p.x))
+	var y := int(round(p.y))
+	if x < 0 or y < 0 or x >= W or y >= H:
+		return true
+	return sea.get_pixel(x, y).r > 0.5
+
+## lissage moving-average d'une polyligne (fenêtre `win`) → courbes douces, plus d'angles droits.
+func _smooth_poly(pts: PackedVector2Array, win: int) -> PackedVector2Array:
+	var out := PackedVector2Array(); out.resize(pts.size())
+	for i in range(pts.size()):
+		var sx := 0.0
+		var sy := 0.0
+		var n := 0
+		for k in range(-win, win + 1):
+			var j := clampi(i + k, 0, pts.size() - 1)
+			sx += pts[j].x
+			sy += pts[j].y
+			n += 1
+		out[i] = Vector2(sx / float(n), sy / float(n))
+	return out
+
+## grave un segment a→b (comble les trous) en estampant un DISQUE DOUX sous-pixel à chaque pas.
+func _carve_seg(img: Image, a: Vector2, b: Vector2, v: float, wd: int, W: int, H: int) -> void:
+	var steps := int(maxf(absf(b.x - a.x), absf(b.y - a.y))) + 1
+	for t in range(steps + 1):
+		var p := a.lerp(b, float(t) / float(steps))
+		_carve_dot(img, p.x, p.y, v, wd, W, H)
+
+## DISQUE DOUX sous-pixel : cœur PLEIN (dist ≤ wd) puis halo LARGE fondu en quadratique jusqu'à 0. La
+## distance est mesurée au point SOUS-PIXEL (fx,fy) → bord vraiment anti-crénelé, jamais en marches.
+func _carve_dot(img: Image, fx: float, fy: float, v: float, wd: int, W: int, H: int) -> void:
+	var core := float(wd)
+	var halo := 2.6                                  # halo large = AA MASSIF (bord fondu sur ~3 cellules)
+	var rad := core + halo
+	var ri := int(ceil(rad)) + 1
+	var cx := int(round(fx))
+	var cy := int(round(fy))
+	for dy in range(-ri, ri + 1):
+		for dx in range(-ri, ri + 1):
+			var x := cx + dx
+			var y := cy + dy
+			if x < 0 or y < 0 or x >= W or y >= H:
+				continue
+			var dist := sqrt((float(x) - fx) * (float(x) - fx) + (float(y) - fy) * (float(y) - fy))
+			if dist > rad:
+				continue
+			var fall := 1.0 if dist <= core else clampf((rad - dist) / halo, 0.0, 1.0)
+			fall = fall * fall                       # falloff quadratique → transition plus douce
+			_setmax(img, x, y, v * fall, W, H)
 
 func _setmax(img: Image, x: int, y: int, v: float, W: int, H: int) -> void:
 	if x < 0 or y < 0 or x >= W or y >= H:

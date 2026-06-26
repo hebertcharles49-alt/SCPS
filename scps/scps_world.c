@@ -2478,71 +2478,61 @@ static void river_dist_to(World *w, float *height, uint8_t *mark, int lo, int hi
         }
     }
 }
-/* FLEUVE : descente NATURELLE (flow_dir / plus bas voisin) du sommet jusqu'à la MER. */
-static int river_fleuve(World *w, float *height, uint8_t *mark, int sx, int sy, River *rv){
-    rv->len=0; rv->flow_max=1.0f;
-    int cx=sx, cy=sy, guard=0;
-    while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
-        int ci=scps_idx(cx,cy);
-        rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
-        if (height[ci]<SEA_LEVEL) break;                 /* atteint la mer */
-        if (mark[ci]>=1 && rv->len>1) break;             /* rejoint un fleuve existant */
-        int dir=w->cell[ci].flow_dir, nx, ny;
-        if (dir>=0){ nx=cx+DDX[dir]; ny=cy+DDY[dir]; }
-        else { float mh=height[ci]; int best=-1;
-            for (int d=0;d<8;d++){ int ax=cx+DDX[d],ay=cy+DDY[d];
-                if (ax<0||ax>=SCPS_W||ay<0||ay>=SCPS_H) continue;
-                if (height[scps_idx(ax,ay)]<mh){ mh=height[scps_idx(ax,ay)]; best=d; } }
-            if (best<0) break;
-            nx=cx+DDX[best]; ny=cy+DDY[best]; }
-        if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) break;
-        cx=nx; cy=ny;
+/* BFS : dist[cellule de terre] = nb de pas jusqu'à la MER (ou un lac) le/la plus proche ; 0 sur l'eau.
+ * Champ SANS minimum local sur la terre → un fleuve qui le descend ATTEINT TOUJOURS l'eau (fin des bras
+ * endoréiques bloqués dans une cuvette au-dessus du niveau marin : c'était le « ne se jette dans aucune
+ * mer » du continent gauche). */
+static void river_dist_to_sea(float *height, int *dist, int *q){
+    int qt=0;
+    for (int i=0;i<SCPS_N;i++){
+        if (height[i]<SEA_LEVEL){ dist[i]=0; q[qt++]=i; }
+        else dist[i]=-1;
     }
-    if (rv->len<14) return 0;
-    for (int k=0;k<rv->len;k++){ int mi=scps_idx(rv->x[k],rv->y[k]); if (mark[mi]==0) mark[mi]=1; }
-    return 1;
-}
-/* RIVIÈRE/AFFLUENT : SEEK — descend le champ `dist` (vers le parent) en préférant la pente ;
- * s'ARRÊTE sur une cellule-rivière (RACCORD garanti) ; marque ses cellules au niveau `level`. */
-static int river_seek(World *w, float *height, int *dist, uint8_t *mark, int sx, int sy, int level, River *rv){
-    rv->len=0; rv->flow_max = (level==2)?0.62f:0.34f;
-    int cx=sx, cy=sy, guard=0, noprog=0;
-    float nzz=(float)(w->seed & 1023)*0.137f;            /* décale le champ de bruit par graine */
-    if (dist[scps_idx(cx,cy)]<0) return 0;
-    while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
-        int ci=scps_idx(cx,cy);
-        rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
-        if (mark[ci]>=1) break;                          /* atteint une rivière → RACCORD */
-        int curd=dist[ci];
-        int best=-1, bestdd=1<<30; float bestcost=1e30f;
+    for (int qh=0; qh<qt; qh++){
+        int c=q[qh], cx=c%SCPS_W, cy=c/SCPS_W;
         for (int d=0;d<8;d++){
             int nx=cx+DDX[d], ny=cy+DDY[d];
             if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
             int ni=scps_idx(nx,ny);
-            if (height[ni]<SEA_LEVEL || dist[ni]<0) continue;
-            /* coût = distance au parent + pente + BRUIT (le bruit casse la ligne droite → méandre) */
-            float nz=stb_perlin_fbm_noise3((float)nx*0.06f,(float)ny*0.06f,nzz,2.f,0.5f,3);
-            float cost=(float)dist[ni] + height[ni]*0.4f + nz*0.85f;
-            if (cost<bestcost){ bestcost=cost; best=ni; bestdd=dist[ni]; }
+            if (dist[ni]>=0) continue;
+            dist[ni]=dist[c]+1; q[qt++]=ni;
         }
-        if (best<0) break;
-        if (bestdd>=curd){                               /* le méandre s'éloigne… */
-            if (++noprog>5){                             /* …mais anti-blocage : force le plus court */
-                best=-1; int bd=1<<30; float bh=1e9f;
-                for (int d=0;d<8;d++){
-                    int nx=cx+DDX[d], ny=cy+DDY[d];
-                    if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
-                    int ni=scps_idx(nx,ny);
-                    if (height[ni]<SEA_LEVEL || dist[ni]<0) continue;
-                    if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
-                }
-                noprog=0;
-            }
-        } else noprog=0;
+    }
+}
+/* SEEK générique : descend le champ `dist` vers la CIBLE (la MER pour un fleuve ; une rivière déjà
+ * tracée pour un affluent — la cible est toujours dist 0). Le coût est DOMINÉ par un BRUIT à TRIPLE
+ * fréquence (méandres larges + ondulation + jitter fin) → AUCUNE ligne droite, quitte à former des
+ * angles ; la distance n'est qu'un FAIBLE guide. */
+/* SEEK : descente PROPRE du champ `dist` vers la CIBLE (dist 0 = la MER pour un fleuve, une rivière déjà
+ * tracée pour un affluent) — voisin de plus BASSE distance, départagé par l'ALTITUDE (suit le talweg).
+ * Le champ dist n'a aucun minimum local sur la terre ⇒ la descente ATTEINT TOUJOURS dist 0, court et sûr.
+ * Le centre est une POLYLIGNE droite-ish : le MÉANDRE sinusoïdal et la LARGEUR sont posés au RENDU (la
+ * forme stylisée ne touche pas la donnée moteur ; le commerce fluvial lit la ligne médiane, suffisant). */
+static int river_seek(World *w, float *height, int *dist, uint8_t *mark,
+                      int sx, int sy, int level, float flow, River *rv){
+    (void)w;
+    rv->len=0; rv->flow_max=flow;
+    int s0=scps_idx(sx,sy);
+    if (dist[s0]<0) return 0;
+    int cx=sx, cy=sy, guard=0;
+    while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
+        int ci=scps_idx(cx,cy);
+        rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
+        if (dist[ci]==0) break;                          /* TOUCHE la cible (mer/lac ou rivière) */
+        if (mark[ci]>=1 && rv->len>1) break;             /* tombe sur une rivière tracée → RACCORD */
+        int best=-1, bd=1<<30; float bh=1e9f;
+        for (int d=0;d<8;d++){
+            int nx=cx+DDX[d], ny=cy+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int ni=scps_idx(nx,ny);
+            if (dist[ni]<0) continue;
+            if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
+        }
         if (best<0) break;
         cx=best%SCPS_W; cy=best/SCPS_W;
     }
-    if (rv->len<7) return 0;
+    int minlen=(level==1)?14:7;                           /* un fleuve doit être LONG */
+    if (rv->len<minlen) return 0;
     for (int k=0;k<rv->len;k++){ int mi=scps_idx(rv->x[k],rv->y[k]); if (mark[mi]==0) mark[mi]=(uint8_t)level; }
     return 1;
 }
@@ -2570,13 +2560,14 @@ static void trace_rivers(World *w, float *height) {
     }
     qsort(src, ns, sizeof(RiverSrc), river_src_cmp);
 
-    /* 1) N FLEUVES : sources les plus HAUTES, ESPACÉES → descente jusqu'à la mer */
+    /* 1) N FLEUVES : sources les plus HAUTES, ESPACÉES → SEEK la MER (champ dist-mer = jamais bloqué) */
+    river_dist_to_sea(height,dist,q);
     for (int s=0; s<ns && n<RN; s++){
         int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
         if (mark[si]) continue;
         int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<140*140){tooclose=1;break;} }
         if (tooclose) continue;
-        if (river_fleuve(w,height,mark,sx,sy,&w->river[n])){ ucx[nu]=sx; ucy[nu]=sy; nu++; n++; }
+        if (river_seek(w,height,dist,mark,sx,sy,1,1.0f,&w->river[n])){ ucx[nu]=sx; ucy[nu]=sy; nu++; n++; }
     }
     /* 2) 2N RIVIÈRES : SEEK le fleuve le plus proche (espacées) */
     river_dist_to(w,height,mark,1,1,dist,q);
@@ -2585,7 +2576,7 @@ static void trace_rivers(World *w, float *height) {
         if (mark[si] || dist[si]<0) continue;
         int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<70*70){tooclose=1;break;} }
         if (tooclose) continue;
-        if (river_seek(w,height,dist,mark,sx,sy,2,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; }
+        if (river_seek(w,height,dist,mark,sx,sy,2,0.62f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; }
     }
     /* 3) 4N AFFLUENTS : SEEK rivière OU fleuve (espacés serré) */
     river_dist_to(w,height,mark,1,2,dist,q);
@@ -2595,7 +2586,7 @@ static void trace_rivers(World *w, float *height) {
         if (mark[si] || dist[si]<0) continue;
         int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<40*40){tooclose=1;break;} }
         if (tooclose) continue;
-        if (river_seek(w,height,dist,mark,sx,sy,3,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; na++; }
+        if (river_seek(w,height,dist,mark,sx,sy,3,0.34f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; na++; }
     }
     w->n_rivers=n;
     free(mark); free(dist); free(q); free(src);
