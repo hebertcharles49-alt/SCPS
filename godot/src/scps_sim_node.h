@@ -143,6 +143,7 @@ public:
     int        religion_recruit_scholar(int cid, int region);   /* ScholarRole / -1 */
     int        religion_scholar_role(int cid);
     String     religion_name(int cid);
+    int        religion_founding_ready(int cid);   /* 1 = édifice religieux bâti + pas de foi → créateur */
 
     /* SAUVEGARDE (« Charger ») — 3 emplacements (1..3) */
     bool       save_game(int slot);                         /* true = écrit */

@@ -97,6 +97,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("religion_recruit_scholar", "cid", "region"), &ScpsWorld::religion_recruit_scholar);
     ClassDB::bind_method(D_METHOD("religion_scholar_role", "cid"),  &ScpsWorld::religion_scholar_role);
     ClassDB::bind_method(D_METHOD("religion_name", "cid"),          &ScpsWorld::religion_name);
+    ClassDB::bind_method(D_METHOD("religion_founding_ready", "cid"), &ScpsWorld::religion_founding_ready);
     ClassDB::bind_method(D_METHOD("save_game", "slot"),             &ScpsWorld::save_game);
     ClassDB::bind_method(D_METHOD("load_game", "slot"),             &ScpsWorld::load_game);
     ClassDB::bind_method(D_METHOD("save_slots"),                    &ScpsWorld::save_slots);
@@ -824,6 +825,9 @@ int ScpsWorld::religion_recruit_scholar(int cid, int region) {
 int ScpsWorld::religion_scholar_role(int cid){ return sim ? scps_religion_scholar_role(sim, cid) : -1; }
 String ScpsWorld::religion_name(int cid) {
     return sim ? String::utf8(scps_religion_name(sim, cid)) : String();
+}
+int ScpsWorld::religion_founding_ready(int cid) {
+    return sim ? scps_religion_founding_ready(sim, cid) : 0;
 }
 
 bool ScpsWorld::save_game(int slot) {

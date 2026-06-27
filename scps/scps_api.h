@@ -568,6 +568,9 @@ int scps_credo_list(ScpsCredoDef *out, int max);            /* CREDO_COUNT (3) *
 int scps_religion_picks_valid(int p0, int p1, int p2);
 /* nom de la religion d'un pays = « <crédo> · <pôle0>/<pôle1>/<pôle2> » (buffer statique). */
 const char *scps_religion_name(ScpsSim *s, int cid);
+/* DÉCLENCHEUR « créateur de foi » : 1 si `cid` a bâti un ÉDIFICE RELIGIEUX (sanctuaire/
+ * temple/cathédrale/monastère) ET n'a PAS encore de foi. Avant : le monde est ATHÉE. */
+int scps_religion_founding_ready(ScpsSim *s, int cid);
 
 /* ====================================================================== */
 /* PARAMÈTRES DE GÉNÉRATION (l'écran « Nouvelle partie ») — les sliders.    */

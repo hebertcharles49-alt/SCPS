@@ -1,8 +1,11 @@
 extends Control
-## ReligionPanel — fonder/voir la religion du JOUEUR (touche R). Le joueur compose un
-## CRÉDO + 3 traditions (pôles) sur 3 axes DISTINCTS ; si le centre de sa foi est conquis
-## (RUPTURE), un bouton SCHISME apparaît. RÈGLE D'OR : zéro logique de sim — on LIT la
-## façade (Sim.world.*) et on émet des verbes (religion_found / religion_schism).
+## ReligionPanel — le CRÉATEUR DE FOI : s'ouvre quand le joueur bâtit son PREMIER édifice
+## religieux (sanctuaire/temple…) — avant, le monde est ATHÉE. Le joueur compose un CRÉDO +
+## 3 traditions (pôles) sur 3 axes DISTINCTS ; si le centre de sa foi est conquis (RUPTURE),
+## un bouton SCHISME apparaît. Aussi rouvrable à la touche R. RÈGLE D'OR : zéro logique de
+## sim — on LIT la façade (Sim.world.*) et on émet des verbes (religion_found / religion_schism).
+
+signal closed   ## le panneau se ferme → le jeu reprend (main.gd)
 
 const C_BG    := Color(0.04, 0.04, 0.06, 0.74)
 const C_PANEL := Color(0.09, 0.085, 0.12, 0.98)
@@ -20,6 +23,7 @@ var _trad_opt := [null, null, null]
 var _trad_tip := [null, null, null]
 var _valid_lbl: Label
 var _state_lbl: Label
+var _title_lbl: Label
 var _found_btn: Button
 var _schism_btn: Button
 
@@ -51,10 +55,10 @@ func _build_ui() -> void:
 	col.add_theme_constant_override("separation", 10)
 	panel.add_child(col)
 
-	var title := Label.new(); title.text = "Religion"
-	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_color_override("font_color", C_TITLE)
-	col.add_child(title)
+	_title_lbl = Label.new(); _title_lbl.text = "Créateur de foi"
+	_title_lbl.add_theme_font_size_override("font_size", 24)
+	_title_lbl.add_theme_color_override("font_color", C_TITLE)
+	col.add_child(_title_lbl)
 
 	_state_lbl = Label.new()
 	_state_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -91,7 +95,7 @@ func _build_ui() -> void:
 	foot.add_theme_constant_override("separation", 10)
 	col.add_child(foot)
 	var close := Button.new(); close.text = "Fermer"
-	close.pressed.connect(func(): hide())
+	close.pressed.connect(func(): hide(); closed.emit())
 	foot.add_child(close)
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(sp)
@@ -144,6 +148,8 @@ func _refresh() -> void:
 		return
 	var me: int = Sim.world.player()
 	var has: bool = (int(Sim.world.religion_of_country(me)) >= 0)
+	if _title_lbl != null:
+		_title_lbl.text = "Religion" if has else "Créateur de foi"
 	# état courant
 	if has:
 		var elig := int(Sim.world.religion_eligible(me))

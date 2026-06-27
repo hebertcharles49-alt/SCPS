@@ -14,6 +14,7 @@ var _econ: Control
 var _prov_detail: Control
 var _menu: Control
 var _religion: Control
+var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _sel_prov := -1
 
 func _ready() -> void:
@@ -103,11 +104,14 @@ func _ready() -> void:
 	_menu.name = "MenuRoot"
 	ui.add_child(_menu)
 
-	# RELIGION (touche R) : fonder/voir la foi du joueur (panneau modale). Caché par défaut.
+	# RELIGION — le CRÉATEUR DE FOI : s'ouvre quand le joueur bâtit son 1er édifice religieux
+	# (avant, le monde est ATHÉE). Rouvrable à la touche R. Caché par défaut.
 	_religion = load("res://ui/religion_panel.gd").new()
 	_religion.name = "ReligionPanel"
 	_religion.visible = false
 	ui.add_child(_religion)
+	_religion.closed.connect(func(): Sim.set_speed(2))   # fermer le créateur → le jeu reprend
+	Sim.ticked.connect(_on_tick_faith)                   # surveille la pose du 1er édifice religieux
 
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
@@ -135,16 +139,30 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_ESCAPE:                      # rouvrir le menu principal (monde en pause)
 			if _menu != null:
 				_menu.open()
-		KEY_R:                           # panneau RELIGION (fonder / schisme)
+		KEY_R:                           # créateur de foi / panneau religion (monde en pause)
 			if _religion != null:
-				if _religion.visible: _religion.hide()
-				else: _religion.open()
+				if _religion.visible:
+					_religion.hide(); Sim.set_speed(2)
+				else:
+					Sim.set_speed(0); _religion.open()
 		KEY_SPACE:                       # pause ↔ reprise (parité viewer.c)
 			Sim.toggle_pause()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:        # « + » : accélérer
 			Sim.faster()
 		KEY_MINUS, KEY_KP_SUBTRACT:             # « - » : ralentir
 			Sim.slower()
+
+## DÉCLENCHEUR « créateur de foi » : à chaque pas, si le joueur a bâti son 1er édifice
+## religieux et n'a pas encore de foi, on ouvre le créateur (monde en pause). Une seule fois.
+func _on_tick_faith(_year: int) -> void:
+	if _faith_prompted or _religion == null or Sim.world == null:
+		return
+	if not Sim.world.has_method("religion_founding_ready"):
+		return
+	if int(Sim.world.religion_founding_ready(Sim.world.player())) == 1:
+		_faith_prompted = true
+		Sim.set_speed(0)             # le monde s'arrête : moment de fondation
+		_religion.open()
 
 func _on_province_picked(province: int, _region: int, owner: int) -> void:
 	if Sim.world == null:

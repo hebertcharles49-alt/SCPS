@@ -25,11 +25,21 @@ func _run() -> void:
 	# INVARIANT 1 : binding présent
 	for m in ["religion_pole_list", "credo_list", "religion_found", "religion_eligible",
 			  "religion_schism", "religion_of_country", "religion_of_region",
-			  "religion_recruit_scholar", "religion_name", "religion_picks_valid"]:
+			  "religion_recruit_scholar", "religion_name", "religion_picks_valid",
+			  "religion_founding_ready"]:
 		if not w.has_method(m):
 			push_error("religion_audit: méthode absente : " + m); viol += 1
 	if viol > 0:
 		print("RELIGION AUDIT : ", viol, " VIOLATION(S)"); get_tree().quit(1); return
+
+	# INVARIANT 1b : le monde est ATHÉE au départ — aucune foi, créateur PAS déclenché
+	var atheist := true
+	for c in range(w.country_count()):
+		if int(w.religion_of_country(c)) >= 0: atheist = false
+	if not atheist: viol += 1; push_error("monde non athée au départ")
+	if int(w.religion_founding_ready(w.player())) != 0:
+		viol += 1; push_error("créateur prêt sans édifice religieux")
+	print("  monde athée au départ : ", atheist, " · créateur prêt : ", w.religion_founding_ready(w.player()))
 
 	# INVARIANT 2 : listes peuplées
 	var poles: Array = w.religion_pole_list()
@@ -55,6 +65,8 @@ func _run() -> void:
 	if rid < 0 or w.religion_of_country(me) != rid: viol += 1; push_error("fondation échouée")
 	if inh <= 0: viol += 1; push_error("régions n'héritent pas")
 	if String(w.religion_name(me)) == "": viol += 1; push_error("nom de religion vide")
+	# une fois la foi fondée, le créateur n'est plus « prêt » (one-shot)
+	if int(w.religion_founding_ready(me)) != 0: viol += 1; push_error("créateur encore prêt après fondation")
 
 	# INVARIANT 5 : schisme interne → enfant + fracture bornée
 	var sch: Dictionary = w.religion_schism(me, 1, 5, 2, 11, 2)   # repick MUR/Orthodoxie, crédo purificateur

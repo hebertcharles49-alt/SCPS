@@ -1606,6 +1606,14 @@ int scps_credo_list(ScpsCredoDef *out, int max){
     return n;
 }
 int scps_religion_picks_valid(int p0, int p1, int p2){ return religion_picks_valid(p0,p1,p2); }
+int scps_religion_founding_ready(ScpsSim *s, int cid){
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
+    if(religion_of_country(cid) >= 0) return 0;   /* a déjà une foi */
+    uint32_t mask = (1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE)|(1u<<EDI_MONASTERE);
+    for(int r=0;r<s->sim.econ->n_regions;r++)
+        if(s->sim.econ->region[r].owner==cid && (s->sim.econ->region[r].edi_built & mask)) return 1;
+    return 0;
+}
 const char *scps_religion_name(ScpsSim *s, int cid){
     static char buf[96];
     (void)s;
