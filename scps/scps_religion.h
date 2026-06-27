@@ -72,4 +72,16 @@ void religion_color_variant(const uint8_t parent[3], uint8_t out[3],
 int  religion_color_near(const uint8_t parent[3], const uint8_t chosen[3]); /* validation choix joueur */
 void religion_selftest(void);
 
+/* ===================================================================== */
+/* i18n — mots RÉSOLUS (membrane ; même mécanisme que credo_name/species_name) */
+/* ===================================================================== */
+const char *relig_axis_name(ReligAxis a);   /* Sang/Feu/Seuil/… */
+const char *relig_pole_name(ReligPole p);   /* Fécondité/Offrande/… */
+const char *relig_pole_tip(ReligPole p);    /* descripteur diégétique court (sans chiffre) */
+
+/* Faces du LETTRÉ (scholar) — la face dérive du crédo (P6 emploie le roster). */
+typedef enum { SCHOLAR_CONVERT, SCHOLAR_RESIST, SCHOLAR_STABILIZE, SCHOLAR_ROLE_COUNT } ScholarRole;
+const char *scholar_role_name(int role);     /* Missionnaire/Gourou/Moine */
+const char *scholar_role_ability(int role);  /* Conversion/Résistance/Stabilisation */
+
 #endif /* SCPS_RELIGION_H */

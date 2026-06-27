@@ -127,6 +127,50 @@ int religion_color_near(const uint8_t parent[3],const uint8_t chosen[3]){
   return !same;
 }
 
+/* ===================================================================== */
+/* i18n — mots résolus (littéraux, comme credo_name/species_name)          */
+/* ===================================================================== */
+const char *relig_axis_name(ReligAxis a){
+  static const char *N[RA_AXIS_COUNT]={
+    "Sang","Feu","Seuil","Serment","Veille","Canon","Don","Glaive"};
+  return (a>=0&&a<RA_AXIS_COUNT)?N[a]:"?";
+}
+const char *relig_pole_name(ReligPole p){
+  static const char *N[RP_COUNT]={
+    "F\xc3\xa9""condit\xc3\xa9","Offrande","Transe","Silence","Accueil","Mur",
+    "Couronne","Assembl\xc3\xa9""e","Anc\xc3\xaatres","Cendre","Gnose","Orthodoxie",
+    "Frugalit\xc3\xa9","Faste","Courage","Tr\xc3\xaave"};
+  return (p>=0&&p<RP_COUNT)?N[p]:"?";
+}
+const char *relig_pole_tip(ReligPole p){
+  static const char *T[RP_COUNT]={
+    "Croissance accrue, flux plus lourd",          /* Fécondité  */
+    "Stabilit\xc3\xa9 par le sang vers\xc3\xa9",    /* Offrande   */
+    "Ferveur chaude, ordre dilu\xc3\xa9",           /* Transe     */
+    "Discipline, peu d'effervescence",             /* Silence    */
+    "Membrane ouverte, peu d'expulsion",           /* Accueil    */
+    "Membrane ferm\xc3\xa9""e, contact appauvri",   /* Mur        */
+    "Pouvoir centralis\xc3\xa9",                     /* Couronne   */
+    "D\xc3\xa9""cision distribu\xc3\xa9""e",         /* Assemblée  */
+    "Continuit\xc3\xa9, assimilation lente",        /* Ancêtres   */
+    "Table rase, assimilation rapide",             /* Cendre     */
+    "Savoir pouss\xc3\xa9, app\xc3\xa9tit faustien",/* Gnose      */
+    "Doctrine fig\xc3\xa9""e, d\xc3\xa9rive verrouill\xc3\xa9""e", /* Orthodoxie */
+    "Coh\xc3\xa9sion sobre, revenu moindre",        /* Frugalité  */
+    "Prestige, grief d'in\xc3\xa9galit\xc3\xa9",     /* Faste      */
+    "Ardeur guerri\xc3\xa8re, contact m\xc3\xa9""fiant", /* Courage */
+    "Concorde marchande, ardeur moindre"};         /* Trêve      */
+  return (p>=0&&p<RP_COUNT)?T[p]:"";
+}
+const char *scholar_role_name(int role){
+  static const char *N[SCHOLAR_ROLE_COUNT]={"Missionnaire","Gourou","Moine"};
+  return (role>=0&&role<SCHOLAR_ROLE_COUNT)?N[role]:"?";
+}
+const char *scholar_role_ability(int role){
+  static const char *N[SCHOLAR_ROLE_COUNT]={"Conversion","R\xc3\xa9sistance","Stabilisation"};
+  return (role>=0&&role<SCHOLAR_ROLE_COUNT)?N[role]:"?";
+}
+
 void religion_selftest(void){
   for(int p=0;p<RP_COUNT;p++) assert(RELIG_POLES[p].axis==(ReligAxis)(p>>1)); /* ordre */
   assert(!religion_picks_valid(RP_FECONDITE,RP_OFFRANDE,RP_ACCUEIL)); /* même axe SANG */
@@ -142,5 +186,9 @@ void religion_selftest(void){
   assert(kid>=0 && g_religions[kid].parent==root);
   assert(g_religions[kid].traditions[0]==RP_FECONDITE); /* slot 0 conservé */
   assert(religion_color_near(col,g_religions[kid].color)); /* variante proche */
+  /* i18n : chaque axe/pôle a un nom + tip non vides (membrane résolue). */
+  for(int x=0;x<RA_AXIS_COUNT;x++) assert(relig_axis_name((ReligAxis)x)[0]);
+  for(int p=0;p<RP_COUNT;p++){ assert(relig_pole_name((ReligPole)p)[0]); assert(relig_pole_tip((ReligPole)p)[0]); }
+  for(int s=0;s<SCHOLAR_ROLE_COUNT;s++){ assert(scholar_role_name(s)[0]); assert(scholar_role_ability(s)[0]); }
   g_religion_count=0; /* reset banc */
 }
