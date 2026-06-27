@@ -10,6 +10,7 @@
  * coordonnée de consolidation. Aucune branche « si pays==X ».
  */
 #include "scps_ai.h"
+#include "scps_religion.h"   /* P7 : schisme IA + emploi du lettré (gated) */
 #include "scps_tune.h"   /* Arc J : calibrage */
 #include "scps_tech.h"
 #include "scps_species.h"
@@ -1113,6 +1114,49 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             a->stats.consolidations++;
         }
         return;
+    }
+
+    /* RELIGION (P7) — SCHISME : si le pays ne contrôle plus le centre de sa foi (RUPTURE,
+     * centre conquis), il ROMPT en une foi AUTONOME — repick ALÉATOIRE valide (2 slots),
+     * crédo & teinte aléatoires, et l'adopte (son nouveau centre = sa capitale → l'éligibilité
+     * se résout, pas de spam). GATED : sans foi, éligibilité NONE ⇒ no-op (golden intact). */
+    if (religion_schism_eligible(w, a->cid) == RSE_RUPTURE){
+        int parent = religion_of_country(a->cid);
+        if (parent >= 0){
+            int cp = w->country[a->cid].capital_prov, centre = 0;
+            if (cp>=0 && cp<w->n_provinces){ int sx=w->province[cp].seed_x, sy=w->province[cp].seed_y;
+                if (sx>=0 && sy>=0) centre = sy*SCPS_W + sx; }
+            uint32_t h = (uint32_t)(a->cid*2654435761u) ^ (uint32_t)((day+1)*40503u);
+            for (int tries=0; tries<16; tries++){
+                h ^= h>>13; h *= 0x5bd1e995u; h ^= h>>15;
+                int sa = (int)(h%3u); h/=3u;
+                int sb = (sa + 1 + (int)(h%2u)) % 3; h/=2u;             /* sb != sa */
+                int pa = (int)(h%(uint32_t)RP_COUNT); h/=(uint32_t)RP_COUNT;
+                h ^= h>>11; h *= 0x9e3779b1u;
+                int pb = (int)(h%(uint32_t)RP_COUNT); h/=(uint32_t)RP_COUNT;
+                int nc = (int)(h%(uint32_t)CREDO_COUNT);
+                int trad[3]; for(int i=0;i<3;i++) trad[i]=g_religions[parent].traditions[i];
+                trad[sa]=pa; trad[sb]=pb;
+                if (!religion_picks_valid(trad[0],trad[1],trad[2])) continue;
+                int child = religion_schism(parent, sa,pa, sb,pb, nc, centre, a->cid, 1, h);
+                if (child >= 0){
+                    religion_set_country(a->cid, child);     /* adopte la foi autonome */
+                    religion_inherit_regions(w, a->cid);     /* ses régions suivent */
+                }
+                break;
+            }
+        }
+    }
+    /* RELIGION (P7) — EMPLOI du LETTRÉ : une région de foi MINORITAIRE gronde et aucun
+     * lettré n'est déployé → en recruter un dessus (rôle dérivé du crédo). GATED. */
+    if (religion_of_country(a->cid) >= 0 && !religion_scholar_active(a->cid)){
+        int mine = religion_of_country(a->cid), target = -1;
+        for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++){
+            if (econ->region[r].owner!=a->cid) continue;
+            int rr=religion_of_region(r);
+            if (rr>=0 && rr!=mine){ target=r; break; }
+        }
+        if (target>=0) religion_scholar_recruit(a->cid, target);
     }
 
     /* REDDITION (§3) : si l'on est DÉFENSEUR dans une guerre nettement PERDUE (le
