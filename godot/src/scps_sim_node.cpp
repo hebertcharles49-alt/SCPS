@@ -71,6 +71,13 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_offer_pact", "target"),     &ScpsWorld::player_offer_pact);
     ClassDB::bind_method(D_METHOD("player_embargo", "target", "on"),  &ScpsWorld::player_embargo);
 
+    /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) */
+    ClassDB::bind_method(D_METHOD("region_alloc", "region"),              &ScpsWorld::region_alloc);
+    ClassDB::bind_method(D_METHOD("player_alloc_raw", "region", "resource", "weight"), &ScpsWorld::player_alloc_raw);
+    ClassDB::bind_method(D_METHOD("player_alloc_bld", "region", "bld_type", "weight"), &ScpsWorld::player_alloc_bld);
+    ClassDB::bind_method(D_METHOD("player_alloc_input", "region", "bld_type", "input"), &ScpsWorld::player_alloc_input);
+    ClassDB::bind_method(D_METHOD("player_alloc_auto", "region"),         &ScpsWorld::player_alloc_auto);
+
     /* CRÉATEUR DE CULTURE */
     ClassDB::bind_method(D_METHOD("heritage_list"),                  &ScpsWorld::heritage_list);
     ClassDB::bind_method(D_METHOD("ethos_list"),                     &ScpsWorld::ethos_list);
@@ -658,6 +665,48 @@ bool ScpsWorld::player_offer_pact(int target) {
 }
 bool ScpsWorld::player_embargo(int target, bool on) {
     return sim ? scps_player_embargo(sim, target, on ? 1 : 0) != 0 : false;
+}
+
+/* ── ALLOCATION DE MAIN-D'ŒUVRE — la membrane traverse en Dictionary (mots + poids) ── */
+Dictionary ScpsWorld::region_alloc(int region) {
+    Dictionary out;
+    ScpsAlloc al;
+    if (sim) scps_region_alloc(sim, region, &al); else al.region = -1;
+    out["region"] = al.region;
+    if (al.region < 0) { out["on"] = false; out["pool"] = 0.0f; out["sinks"] = Array(); return out; }
+    out["on"]   = al.on != 0;
+    out["pool"] = al.pool;
+    Array sinks;
+    for (int i = 0; i < al.n; i++) {
+        const ScpsAllocSink *k = &al.sink[i];
+        Dictionary d;
+        d["kind"]    = k->kind;
+        d["id"]      = k->id;
+        d["name"]    = String::utf8(k->name ? k->name : "");
+        d["output"]  = String::utf8(k->output  ? k->output  : "");
+        d["in_name"] = String::utf8(k->in_name ? k->in_name : "");
+        d["alt_name"]= String::utf8(k->alt_name? k->alt_name : "");
+        d["weight"]  = k->weight;
+        d["pct"]     = k->pct;
+        d["workers"] = k->workers;
+        d["closed"]  = k->closed != 0;
+        d["input"]   = k->input;
+        sinks.push_back(d);
+    }
+    out["sinks"] = sinks;
+    return out;
+}
+bool ScpsWorld::player_alloc_raw(int region, int resource, int weight) {
+    return sim ? scps_player_alloc_raw(sim, region, resource, weight) != 0 : false;
+}
+bool ScpsWorld::player_alloc_bld(int region, int bld_type, int weight) {
+    return sim ? scps_player_alloc_bld(sim, region, bld_type, weight) != 0 : false;
+}
+bool ScpsWorld::player_alloc_input(int region, int bld_type, int input) {
+    return sim ? scps_player_alloc_input(sim, region, bld_type, input) != 0 : false;
+}
+bool ScpsWorld::player_alloc_auto(int region) {
+    return sim ? scps_player_alloc_auto(sim, region) != 0 : false;
 }
 
 /* ── CRÉATEUR DE CULTURE — la membrane traverse en Dictionary (mots + signes) ── */

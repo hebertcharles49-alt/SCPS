@@ -39,10 +39,15 @@ static void brew_region(WorldEconomy *e){
     re->culture.subsistance=10.f;                 /* agraire ⇒ boit le VIN, pas la bière */
     for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
     re->raw_cap[RES_GRAIN]=60.f;                  /* grain ample pour une cadence haute */
+    re->n_entrepot=20;                            /* gros plafond de stock (≈10k) : le grain n'est pas bridé à ~200 */
+    re->stock[RES_GRAIN]=5000.f;                  /* SURPLUS vivrier large : la réserve (∝ pop) ne borne pas le brassage — le banc teste le CAP, pas la nourriture */
     re->stock[RES_WINE]=1e5f;                     /* soif comblée au VIN ⇒ bière intacte */
     re->n_bld=0; re->bld[0].type=BLD_BREWERY; re->bld[0].level=8.f; re->n_bld=1;
-    re->strata[CLASS_LABORER].pop=600.f;  re->strata[CLASS_LABORER].wealth=1e5f;
-    re->strata[CLASS_BOURGEOIS].pop=100.f; re->strata[CLASS_BOURGEOIS].wealth=1e5f;
+    /* Bassin AMPLE : ce banc teste le PLAFOND DE PRODUCTION, pas la main-d'œuvre. La refonte
+     * labor-bound (brasserie labor=27, gourmande en bras) rendait une petite fixture labor-limitée
+     * (la brasserie ne se staffait plus à plein) → on dote large pour que le CAP soit le seul goulot. */
+    re->strata[CLASS_LABORER].pop=3000.f;  re->strata[CLASS_LABORER].wealth=1e5f;
+    re->strata[CLASS_BOURGEOIS].pop=300.f; re->strata[CLASS_BOURGEOIS].wealth=1e5f;
     re->strata[CLASS_ELITE].pop=50.f;      re->strata[CLASS_ELITE].wealth=1e5f;
 }
 /* un tick en tenant le prix bière épinglé (effort de marché constant). */

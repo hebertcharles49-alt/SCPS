@@ -58,6 +58,7 @@ int    scps_year         (const ScpsSim *s);
 int    scps_player       (const ScpsSim *s);
 int    scps_country_count(const ScpsSim *s);
 int    scps_region_count (const ScpsSim *s);
+int    scps_province_count(const ScpsSim *s);
 long   scps_world_pop    (const ScpsSim *s);
 long   scps_country_pop  (const ScpsSim *s, int country);
 double scps_country_gold (const ScpsSim *s, int country);
@@ -338,6 +339,35 @@ typedef struct {
 } ScpsEdificeDef;
 int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max);
 
+/* ---- ALLOCATION DE MAIN-D'ŒUVRE (onglet province) ---------------------- *
+ * Les PUITS de main-d'œuvre d'une région : chaque brute extraite (kind 0) et chaque
+ * manufacture bâtie (kind 1). Le joueur règle un POIDS par puits (somme normalisée à
+ * 100 %) ; un poids 0 sur une manufacture = FERMÉE. `on` indique si l'override est
+ * actif (sinon le moteur répartit en AUTO et `weight` reflète la part ACTUELLE). */
+typedef struct {
+    int         kind;       /* 0 = extraction (brute) ; 1 = manufacture (bâtiment) */
+    int         id;         /* kind 0 : Resource ; kind 1 : BuildingType */
+    const char *name;       /* nom du puits (resource_name / building_name) */
+    const char *output;     /* kind 1 : bien produit (resource_name) ; kind 0 : NULL */
+    int         weight;     /* poids brut 0-255 (override) OU part suggérée (mode AUTO) */
+    int         pct;        /* part normalisée 0-100 du bassin */
+    float       workers;    /* bras employés au dernier tick (kind 1 : réel ; kind 0 : estimé) */
+    int         closed;     /* kind 1 : fermé (override & poids 0) */
+    int         input;      /* kind 1 : choix d'intrant 0/1 ; -1 si pas d'alternative */
+    const char *alt_name;   /* kind 1 : nom de l'intrant ALTERNATIF (NULL si aucun) */
+    const char *in_name;    /* kind 1 : nom de l'intrant PRIMAIRE (NULL si aucun) */
+} ScpsAllocSink;
+#define SCPS_ALLOC_MAX 48
+typedef struct {
+    int           region;   /* région lue (-1 si invalide) */
+    int           on;       /* override actif ? */
+    float         pool;     /* bassin de bras de la région (journaliers + bourgeois) */
+    int           n;        /* nombre de puits remplis */
+    ScpsAllocSink sink[SCPS_ALLOC_MAX];
+} ScpsAlloc;
+/* Lit l'allocation d'une RÉGION (pas une province : l'unité moteur). PUR read. */
+void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out);
+
 /* ---- ACTIONS DU JOUEUR (la main humaine sur le pays joueur) ----------- *
  * ENFILÉES dans le journal de commandes (scps_sim.h) : ces verbes n'appliquent
  * RIEN à l'instant de l'appel — ils déposent un ordre que le prochain sim_day
@@ -380,6 +410,12 @@ int  scps_player_posture       (ScpsSim *s, int posture);
 int  scps_player_refill        (ScpsSim *s);
 int  scps_player_navy_build    (ScpsSim *s, int hull);
 int  scps_player_disband       (ScpsSim *s);
+/* ALLOCATION (onglet province) — ENFILENT, revalidé au drain (région à soi ; res/bld bornés).
+ * Poser un poids ACTIVE l'override de la région ; weight 0 sur un bâtiment = FERMÉ. */
+int  scps_player_alloc_raw     (ScpsSim *s, int region, int resource, int weight);
+int  scps_player_alloc_bld     (ScpsSim *s, int region, int bld_type, int weight);
+int  scps_player_alloc_input   (ScpsSim *s, int region, int bld_type, int input);
+int  scps_player_alloc_auto    (ScpsSim *s, int region);   /* retour au split AUTO */
 /* LECTURE : cible de recherche courante (-1 = aucune) ; *progress01 ← fraction [0..1]. */
 int  scps_research_target(ScpsSim *s, float *progress01);
 

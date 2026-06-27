@@ -89,12 +89,7 @@ typedef enum {
     BLD_ARMORY_HEAVY,  /* F2 : fer ×3 → armes LOURDES */
     BLD_BOWYER,        /* F2 : fer + bois → armes de TRAIT */
     BLD_ARQUEBUS,      /* F2 : fer + poudre (cuivre repli) → armes à FEU (gate TECH_POUDRIERE, F7) */
-    /* === RAW-WORKS — extraction MANUFACTURÉE (hors-sol, par le travail+or, PAS la tuile) :
-     * brise la loterie géologique du monde nu (N1). Coûtent du BOIS à bâtir, de l'OR à tourner. === */
-    BLD_BRICKWORKS,    /* four à brique : (travail + or) → ARGILE — indépendant de la tuile */
-    BLD_QUARRY,        /* carrière     : (travail + or) → PIERRE */
-    BLD_LUMBERYARD,    /* scierie      : (travail + or) → BOIS  (rendement double : bien de base) */
-    /* === CONFORT du brut de bâti : la DEMANDE qui entretient les raw-works (logique manuf normale) === */
+    /* === CONFORT du brut de bâti : la DEMANDE qui tire l'extraction d'argile/pierre (manuf normale) === */
     BLD_POTTERY,       /* poterie            : argile → poterie (confort journalier/bourgeois → bonheur) */
     BLD_SCULPTURE,     /* atelier de sculpture : pierre → statuaire (confort bourgeois/élite → bonheur) */
     BLD_TYPE_COUNT
@@ -209,8 +204,20 @@ typedef struct {
     int32_t    pole_since_day;    /* jour où le candidat divergent est apparu (0 = aucun) */
 
     float      raw_cap[RES_COUNT];   /* extraction max/tick par matière première */
+    uint8_t    raw_boost[RES_COUNT]; /* EXPLOITATION : palier de boost d'extraction PAR brute (+RAW_BOOST_PER_TIER/palier) — bâti & amélioré comme une manufacture, scale sur les bras d'extraction */
     Building   bld[ECON_MAX_BLD];
     int        n_bld;
+
+    /* ALLOCATION DE MAIN-D'ŒUVRE (joueur/IA) — override du split AUTO du tick.
+     *  · alloc_on=0 (DÉFAUT) ⇒ comportement AUTO : extraction ∝ geo×prix sous
+     *    EXTRACT_LABOR_SHARE, manufacture gloutonne par ordre de bâtiment.
+     *  · alloc_on=1 ⇒ le bassin labor_avail (journaliers+bourgeois) est réparti par les
+     *    POIDS ci-dessous — extraction ET manufacture dans UN SEUL budget (somme=100 % à l'UI).
+     *    Un poids 0 sur un bâtiment = FERMÉ (aucune sortie, aucun intrant consommé). */
+    uint8_t    alloc_on;                       /* 0 = auto (défaut, déterminisme préservé) ; 1 = override */
+    uint8_t    alloc_raw[RES_PROD_FIRST];      /* poids d'allocation par brute extraite (0-255) */
+    uint8_t    alloc_bld[BLD_TYPE_COUNT];      /* poids d'allocation par type de bâtiment (0 = fermé) */
+    uint8_t    bld_input[BLD_TYPE_COUNT];      /* choix d'intrant : 0 = primaire (in1) ; 1 = repli (alt1) */
 
     float      stock [RES_COUNT];    /* entrepôt régional — PLAFONNÉ : 200/ressource + 500 par Entrepôt bâti (E2 §11) */
     float      price [RES_COUNT];    /* prix de marché courant */
@@ -533,12 +540,12 @@ const char *social_class_name(SocialClass c);
 const char *building_name(BuildingType b);
 /* Recette d'un bâtiment (intrants → extrant) — pour la perception IA. */
 void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resource *out);
+Resource    building_alt_input(BuildingType b);   /* intrant alternatif (repli) — UI d'allocation */
 /* M6 (forks §14) — le DELTA DE FLUX d'une manufacture arcane : Forge Céleste +1.2 ·
  * Atelier du Mage +0.8 · Alambic −0.3 (le puits) · 0 sinon. Table de design, lue par
  * le banc ; le PUITS est branché dans econ_tick (l'essence purifiée neutralise la charge). */
 float econ_bld_flux_delta(BuildingType b);
 bool  bld_is_faustian(BuildingType b);   /* FAU0 #4 : les 3 transmuteurs (foreuse/réplicateur/corne) */
-bool  bld_is_rawworks(BuildingType b);   /* RAW : extraction manufacturée (four à brique/carrière/scierie) */
 void  faust_charge_add(RegionEconomy *re, float amount);  /* FAU0 #2 : le hook de charge UNIQUE */
 long  econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need);  /* F6 : conso d'armes macro (levée/renfort) */
 void  econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float, float));   /* F-arc : pompe marché (intertrade_market_pull, +prix) ; NULL = stock propre seul */

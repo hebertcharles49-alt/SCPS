@@ -376,6 +376,35 @@ static void sim_cmd_drain(Sim *s, World *w){
           case CMD_DISBAND:
             warhost_disband(s->host, p);                             /* dissout la réserve levée */
             break;
+          /* ── ALLOCATION de main-d'œuvre (onglet province). Tout REVALIDÉ : région ∈ [0,n) ET au
+           *    joueur ; poids clampé ; res/bld bornés. Poser un poids ACTIVE l'override (alloc_on=1). ── */
+          case CMD_ALLOC_RAW: {   /* a={region, resource, poids} */
+            int r=c->a[0], g=c->a[1], wt=c->a[2];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            if (g<=RES_NONE || g>=RES_PROD_FIRST) break;
+            if (wt<0) wt=0; else if (wt>255) wt=255;
+            s->econ->region[r].alloc_raw[g]=(uint8_t)wt;
+            s->econ->region[r].alloc_on=1;
+            break; }
+          case CMD_ALLOC_BLD: {   /* a={region, bld_type, poids (0=fermé)} */
+            int r=c->a[0], b=c->a[1], wt=c->a[2];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            if (b<0 || b>=BLD_TYPE_COUNT) break;
+            if (wt<0) wt=0; else if (wt>255) wt=255;
+            s->econ->region[r].alloc_bld[b]=(uint8_t)wt;
+            s->econ->region[r].alloc_on=1;
+            break; }
+          case CMD_ALLOC_INPUT: {   /* a={region, bld_type, intrant(0/1)} */
+            int r=c->a[0], b=c->a[1];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            if (b<0 || b>=BLD_TYPE_COUNT) break;
+            s->econ->region[r].bld_input[b]=(c->a[2]!=0)?1:0;
+            break; }
+          case CMD_ALLOC_AUTO: {   /* a={region} : retour au split AUTO */
+            int r=c->a[0];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p) break;
+            s->econ->region[r].alloc_on=0;
+            break; }
         }
     }
     s->cmd_n = 0;

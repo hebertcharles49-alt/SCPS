@@ -64,6 +64,8 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        CMD_REPRESS, CMD_ASSIMILATE, CMD_PURGE, CMD_COUNCIL_HIRE, CMD_COUNCIL_DISMISS,
        CMD_ROUTE, CMD_MARKET_BUY, CMD_MARKET_SELL,
        CMD_CAMPAIGN, CMD_POSTURE, CMD_REFILL, CMD_NAVY_BUILD, CMD_DISBAND,
+       /* ALLOCATION de main-d'œuvre (onglet province) : poids par puits, fermeture, intrant, retour AUTO */
+       CMD_ALLOC_RAW, CMD_ALLOC_BLD, CMD_ALLOC_INPUT, CMD_ALLOC_AUTO,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

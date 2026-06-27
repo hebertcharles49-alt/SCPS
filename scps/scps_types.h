@@ -157,6 +157,7 @@ typedef enum {
     RES_COTTON,         /* flatlands arides             */
     RES_SUGAR,          /* côtes arides                 */
     RES_WOOD,           /* régions boisées              */
+    RES_FRUIT,          /* fruits — un peu PARTOUT, + en forêt ; repli du VIN (compense le sucre tropical) */
     RES_MED_HERBS,      /* herbes médicinales — wetland d'altitude */
     /* --- Brutes : minéral & stratégique --- */
     RES_COPPER,         /* montagnes, collines, mesas   */

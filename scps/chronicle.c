@@ -423,6 +423,19 @@ int main(int argc, char **argv){
 
         printf("\n── Sim %d (graine %u) — %d empires · %d cités-états · %d continents · %d régions ──\n",
                k+1, seed, n_emp, n_city, cont, s.econ->n_regions);
+        /* RESSOURCES DU MONDE (genèse) — vérifier que la worldgen colle aux specs : par brute
+         * EXTRACTIBLE, nb de régions qui la portent (raw_cap>0) et la capacité totale Σ. La coupe
+         * REGION_RAW_KEEP garde ≈ 2 brutes/région ⇒ Σ(régions-brutes) ≈ 2×régions. */
+        {
+            int act=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].active) act++;
+            printf("              ressources (extraction, %d rég actives) :", act);
+            for (int g=1; g<RES_PROD_FIRST; g++){
+                int n=0; double cap=0.0;
+                for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].raw_cap[g]>0.f){ n++; cap+=s.econ->region[r].raw_cap[g]; }
+                if (n>0) printf(" %s %d(Σ%.0f)", resource_name((Resource)g), n, cap);
+            }
+            printf("\n");
+        }
 
         int snap[4]={years/5, years*2/5, years*3/5, years*4/5}, si=0;  /* instantanés mis à l'échelle */
         /* photo des trésors au seuil de la DERNIÈRE année → flux d'or net par MOIS
@@ -560,12 +573,34 @@ int main(int argc, char **argv){
             else if (s.eg->fin==FIN_RONCES)printf(" · front de ronces %d cellule(s)", s.eg->thorn_front_n);
             printf("\n");
         }
+        if (getenv("SCPS_BASKETDIAG")){
+            /* CONSO (demande agrégée) vs OUTPUT RÉEL (offre) par ressource — pour voir QUELLE brute/bien
+             * le panier ne couvre pas (couv < 100 % = pénurie réelle). demande/offre sont mensuelles. */
+            double bd[RES_COUNT]={0}, bs[RES_COUNT]={0}, bk[RES_COUNT]={0};
+            for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
+                for (int g=1;g<RES_COUNT;g++){ bd[g]+=s.econ->region[r].demand[g];
+                    bs[g]+=s.econ->region[r].supply[g]; bk[g]+=s.econ->region[r].stock[g]; } }
+            fprintf(stderr,"[BASKET an %d] conso vs output (monde) :\n", s.year);
+            for (int g=1;g<RES_COUNT;g++){
+                if (bd[g]<0.5 && bs[g]<0.5) continue;
+                double cov=(bd[g]>1e-3)? bs[g]/bd[g] : 9.9;
+                fprintf(stderr,"   %-22s dem %.0f · out %.0f · stk %.0f · couv %.0f%%\n",
+                        resource_name((Resource)g), bd[g], bs[g], bk[g], cov*100.0);
+            }
+        }
         if (getenv("SCPS_FORGEDIAG")){
             long bld[BLD_TYPE_COUNT]; memset(bld,0,sizeof bld);
             double sup[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)sup[g]=0.0;
             for (int r=0;r<s.econ->n_regions;r++){ if (s.econ->region[r].owner<0) continue;
                 for (int b=0;b<s.econ->region[r].n_bld;b++){ int ty=s.econ->region[r].bld[b].type; if(ty>=0&&ty<BLD_TYPE_COUNT)bld[ty]++; }
                 for (int g=0;g<RES_COUNT;g++) sup[g]+=s.econ->region[r].supply[g]; }
+            { long btot=0; long b_clay=0,b_stone=0,b_iron=0,b_wood=0;
+              for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
+                  for (int g=1;g<RES_PROD_FIRST;g++) btot+=s.econ->region[r].raw_boost[g];
+                  b_clay+=s.econ->region[r].raw_boost[RES_CLAY]; b_stone+=s.econ->region[r].raw_boost[RES_STONE];
+                  b_iron+=s.econ->region[r].raw_boost[RES_IRON]; b_wood+=s.econ->region[r].raw_boost[RES_WOOD]; }
+              fprintf(stderr,"[FORGEDIAG] EXPLOITATIONS (paliers de boost) : total %ld | argile %ld · pierre %ld · fer %ld · bois %ld\n",
+                      btot,b_clay,b_stone,b_iron,b_wood); }
             long u[U_COUNT]; memset(u,0,sizeof u);
             for (int c=0;c<w->n_countries;c++) for (int i=0;i<s.host->army[c].n_units;i++){
                 int ty=s.host->army[c].units[i].type; if(ty>=0&&ty<U_COUNT) u[ty]+=s.host->army[c].units[i].count; }

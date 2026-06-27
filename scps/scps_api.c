@@ -232,6 +232,7 @@ int  scps_year         (const ScpsSim *s){ return s ? s->sim.year : 0; }
 int  scps_player       (const ScpsSim *s){ return s ? s->sim.player : 0; }
 int  scps_country_count(const ScpsSim *s){ return (s && s->ready) ? s->w->n_countries : 0; }
 int  scps_region_count (const ScpsSim *s){ return (s && s->ready) ? s->sim.econ->n_regions : 0; }
+int  scps_province_count(const ScpsSim *s){ return (s && s->ready) ? s->w->n_provinces : 0; }
 
 long scps_region_pop(const ScpsSim *s, int r){
     if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return 0;
@@ -847,6 +848,65 @@ int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
     return n;
 }
 
+/* ALLOCATION DE MAIN-D'ŒUVRE — lit les PUITS d'une région (brutes extraites + manufactures)
+ * avec leur poids et leur emploi. En mode AUTO (alloc_on=0), `weight` reflète une estimation
+ * de la part de bras ACTUELLE (manufactures : bras réels ; brutes : part ∝ raw_cap) → l'UI
+ * part de la distribution réelle. PUR read (aucun tick, aucun RNG). */
+void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    out->region = -1;
+    if (!s || !s->ready) return;
+    WorldEconomy *e = s->sim.econ;
+    if (region<0 || region>=e->n_regions) return;
+    RegionEconomy *re = &e->region[region];
+    out->region = region;
+    out->on     = re->alloc_on;
+    out->pool   = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop;
+    int n=0;
+    float estw[SCPS_ALLOC_MAX];   /* estimation de bras par puits (mode AUTO) */
+    /* — extraction : part du bassin EXTRACTION (~0.65) répartie ∝ raw_cap — */
+    float sumrc=0.f; for (int g=1;g<RES_PROD_FIRST;g++) if (re->raw_cap[g]>0.f) sumrc+=re->raw_cap[g];
+    float L_ext = out->pool * 0.65f;
+    for (int g=1; g<RES_PROD_FIRST && n<SCPS_ALLOC_MAX; g++){
+        if (re->raw_cap[g] <= 0.f) continue;
+        ScpsAllocSink *k = &out->sink[n];
+        k->kind=0; k->id=g; k->name=sz(resource_name((Resource)g));
+        k->output=NULL; k->closed=0; k->input=-1; k->alt_name=NULL; k->in_name=NULL;
+        estw[n] = (sumrc>1e-6f)? L_ext*re->raw_cap[g]/sumrc : 0.f;
+        k->workers = re->alloc_on ? 0.f : estw[n];
+        k->weight  = re->alloc_on ? re->alloc_raw[g] : 0;
+        n++;
+    }
+    /* — manufactures bâties : bras RÉELS (b->workers) — */
+    for (int i=0; i<re->n_bld && n<SCPS_ALLOC_MAX; i++){
+        int b = re->bld[i].type;
+        if (b<0 || b>=BLD_TYPE_COUNT) continue;
+        Resource in1,in2,o; building_recipe((BuildingType)b,&in1,&in2,&o);
+        Resource alt = building_alt_input((BuildingType)b);
+        ScpsAllocSink *k = &out->sink[n];
+        k->kind=1; k->id=b; k->name=sz(building_name((BuildingType)b));
+        k->output  = (o>RES_NONE)? sz(resource_name(o)) : NULL;
+        k->in_name = (in1>RES_NONE)? sz(resource_name(in1)) : NULL;
+        k->alt_name= (alt!=RES_NONE)? sz(resource_name(alt)) : NULL;
+        k->input   = (alt!=RES_NONE)? (int)re->bld_input[b] : -1;
+        k->closed  = (re->alloc_on && re->alloc_bld[b]==0)?1:0;
+        k->workers = re->bld[i].workers;
+        estw[n]    = re->bld[i].workers;
+        k->weight  = re->alloc_on ? re->alloc_bld[b] : 0;
+        n++;
+    }
+    out->n = n;
+    /* mode AUTO : poids = estimation de bras normalisée 0-100 (l'UI part du réel) */
+    if (!re->alloc_on){
+        float sw=0.f; for (int i=0;i<n;i++) sw+=estw[i];
+        for (int i=0;i<n;i++) out->sink[i].weight = (sw>1e-6f)? (int)(100.f*estw[i]/sw+0.5f) : 0;
+    }
+    /* pct = part normalisée des poids courants */
+    { float tw=0.f; for (int i=0;i<n;i++) tw+=(float)out->sink[i].weight;
+      for (int i=0;i<n;i++) out->sink[i].pct = (tw>1e-6f)? (int)(100.f*out->sink[i].weight/tw+0.5f) : 0; }
+}
+
 /* ====================================================================== */
 /* LECTURES DE FENÊTRES : arbre de tech · budget · missions (read-only)     */
 /* Const, sans tick ni RNG (golden-safe) ; membrane (mots résolus + nombres */
@@ -1076,6 +1136,26 @@ int scps_player_navy_build(ScpsSim *s, int hull){
 int scps_player_disband(ScpsSim *s){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_DISBAND, { 0, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_alloc_raw(ScpsSim *s, int region, int resource, int weight){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_ALLOC_RAW, { region, resource, weight, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_alloc_bld(ScpsSim *s, int region, int bld_type, int weight){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_ALLOC_BLD, { region, bld_type, weight, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_alloc_input(ScpsSim *s, int region, int bld_type, int input){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_ALLOC_INPUT, { region, bld_type, input, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_alloc_auto(ScpsSim *s, int region){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_ALLOC_AUTO, { region, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 

@@ -184,6 +184,40 @@ int main(int argc, char **argv){
            (scps_build_legal(s2,-1,0) & ~1)==0);
     }
 
+    /* ── ALLOCATION DE MAIN-D'ŒUVRE (onglet province) : lire les puits, poser un poids
+     *    (active l'override), fermer un bâtiment, revenir AUTO — tout via le journal. ── */
+    {
+        int preg=-1, np=scps_province_count(s2);
+        for (int pp=0; pp<np; pp++){ ScpsProvInfo pi; scps_province_info(s2,pp,&pi);
+            if (pi.owner==pl){ int rg=scps_province_region(s2,pp); if(rg>=0){ preg=rg; break; } } }
+        ok("alloc : région du joueur trouvée", preg>=0);
+        if (preg>=0){
+            ScpsAlloc al; scps_region_alloc(s2, preg, &al);
+            ok("scps_region_alloc : région lue (bassin>0, puits listés)", al.region==preg && al.pool>0.f && al.n>0);
+            ok("alloc : mode AUTO au départ (on=0)", al.on==0);
+            int kbld=-1, kraw=-1;
+            for (int i=0;i<al.n;i++){ if(al.sink[i].kind==1 && kbld<0) kbld=i; if(al.sink[i].kind==0 && kraw<0) kraw=i; }
+            if (kraw>=0){
+                ok("verbe alloc_raw ENFILÉ", scps_player_alloc_raw(s2, preg, al.sink[kraw].id, 80)==1);
+                scps_sim_advance_days(s2, 1);
+                ScpsAlloc al2; scps_region_alloc(s2, preg, &al2);
+                ok("alloc : override ACTIVÉ au drain (on=1)", al2.on==1);
+            }
+            if (kbld>=0){
+                int bid=al.sink[kbld].id;
+                scps_player_alloc_bld(s2, preg, bid, 0);   /* poids 0 = fermé */
+                scps_sim_advance_days(s2, 1);
+                ScpsAlloc al3; scps_region_alloc(s2, preg, &al3);
+                int closed=0; for (int i=0;i<al3.n;i++) if(al3.sink[i].kind==1 && al3.sink[i].id==bid) closed=al3.sink[i].closed;
+                ok("alloc : bâtiment FERMÉ (poids 0) reflété au readout", closed==1);
+            }
+            scps_player_alloc_auto(s2, preg);
+            scps_sim_advance_days(s2, 1);
+            ScpsAlloc al4; scps_region_alloc(s2, preg, &al4);
+            ok("alloc : retour au mode AUTO", al4.on==0);
+        }
+    }
+
     scps_sim_free(s); scps_sim_free(s2);
 
     /* ── CRÉATEUR DE CULTURE : listes + validation + aperçu + composition (headless) ──

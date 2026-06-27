@@ -986,45 +986,53 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
     }
 }
 
-/* RAW-WORKS PAR LE FORECAST — un déficit STRUCTUREL de brut de bâti (argile/pierre/bois, lu de
- * `fc.struct_deficit`) arme le PRODUCTEUR hors-sol : four à brique/carrière/scierie. La demande de
- * ces brutes est LATENTE (les chantiers qui les veulent sont gatés faute de matière) → seul le
- * forecast la voit. Posé dans la région la plus PEUPLÉE qui ne l'a pas encore (staffée), payé en
- * BOIS (le chantier) + or — la matière du bâti naît enfin SUR PLACE. Une par tour. */
-static bool ai_build_rawworks(AiActor *a, WorldEconomy *econ, const EconForecast *fc){
-    /* ORDRE DE BOOTSTRAP — le BOIS d'abord : la scierie (sans coût bois, le feu l'ayant brûlé) DÉBLOQUE
-     * le reste ; puis argile puis pierre (four à brique/carrière, qui COÛTENT du bois désormais produit).
-     * On bâtit le PREMIER maillon en déficit qu'on peut poser (pas le « pire » — sinon on viserait
-     * l'argile, qui exige du bois qu'on n'a pas encore, et la scierie ne serait jamais levée). */
-    const Resource     order[3] = { RES_WOOD,      RES_CLAY,       RES_STONE };
-    const BuildingType ob[3]    = { BLD_LUMBERYARD, BLD_BRICKWORKS, BLD_QUARRY };
-    float wood_cost = tune_f("RAW_WORKS_WOOD",15.f);
-    for (int i=0;i<3;i++){
-        if (!fc->struct_deficit[order[i]]) continue;          /* ce brut n'est pas en déficit */
-        BuildingType b=ob[i];
-        float wood = (b==BLD_LUMBERYARD) ? 0.f : wood_cost;    /* la scierie est le bootstrap : gratuite en bois */
-        int best=-1; float bestpop=AI_STAFF_PER_MANUF;
-        for (int r=0;r<econ->n_regions;r++){
-            RegionEconomy *re=&econ->region[r];
+/* EXPLOITATION PAR LE FORECAST (décision ÉCONOMIQUE, pas un seuil arbitraire) — on améliore une
+ * exploitation (+1 palier de boost, +RAW_BOOST_PER_TIER) SSI les DEUX conditions tiennent :
+ *   (1) PÉNURIE APPROCHANTE — fc->runway[r] < AI_SAFETY_HORIZON. Le runway est désormais BOOST-AWARE
+ *       (le forecast inclut les paliers déjà posés) → il REMONTE à mesure qu'on boost → la décision se
+ *       RÉGULE (l'ancien gate shortfall>0.5 était quasi toujours vrai → 500 paliers/sim, prix cassés).
+ *   (2) ROI — le +5% d'extraction ANNUELLE de la brute, valorisé au prix RÉGIONAL (qui MONTE avec la
+ *       rareté → le boost devient rentable PILE quand c'est rare), rembourse le coût en PAYBACK ans.
+ * On vise la brute au runway le plus COURT (la plus urgente). Une amélioration par tour. */
+static bool ai_build_raw_boost(AiActor *a, const World *w, WorldEconomy *econ, const EconForecast *fc){
+    int   max_tier = (int)tune_f("RAW_BOOST_MAX_TIER", 8.f);
+    float safety   = tune_f("AI_SAFETY_HORIZON", 12.f);
+    float payback  = tune_f("RAW_BOOST_PAYBACK", 8.f);
+    float per_tier = tune_f("RAW_BOOST_PER_TIER", 0.05f);
+    float cost     = tune_f("RAW_BOOST_COST", 40.f) * econ_world_ipm(econ);
+    Resource pick=RES_NONE; float urgent=1e30f; int pick_region=-1;
+    for (int r=1;r<RES_PROD_FIRST;r++){
+        if (fc->runway[r] >= safety) continue;                /* (1) pas de pénurie APPROCHANTE (boost-aware) */
+        int br=-1; float bcap=0.f;
+        for (int rr=0;rr<econ->n_regions;rr++){
+            RegionEconomy *re=&econ->region[rr];
             if (re->owner!=a->cid || !re->colonized) continue;
-            bool have=false; for (int k=0;k<re->n_bld;k++) if (re->bld[k].type==b){ have=true; break; }
-            if (have) continue;                               /* slot déjà rempli */
-            float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
-            if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;   /* SOUS-STAFFÉ : pas dans le vide */
-            if (wood > 0.f && re->stock[RES_WOOD] < wood) continue;        /* kiln/carrière : pas de bois ici → attend la scierie */
-            if (rpop>bestpop){ bestpop=rpop; best=r; }
+            if (re->raw_cap[r] <= 0.f || re->raw_boost[r] >= max_tier) continue;  /* brute ABSENTE ou au plafond */
+            if (re->raw_cap[r] > bcap){ bcap=re->raw_cap[r]; br=rr; }              /* la province la + riche */
         }
-        if (best<0) continue;                                 /* ce maillon pas posable ici → on tente le suivant */
-        if (econ_build_manufacture(econ, best, b)){
-            if (wood > 0.f) econ->region[best].stock[RES_WOOD] -= wood;     /* coûte du bois (kiln/carrière) */
-            a->stats.builds_other++;
-            return true;
-        }
+        if (br<0) continue;
+        /* (2) ROI : +5% de l'extraction ANNUELLE (supply×12) × prix RÉGIONAL (rareté incluse). */
+        float O_year  = econ->region[br].supply[r]*12.f;
+        float val_year= per_tier * O_year * econ->region[br].price[r];
+        if (val_year*payback < cost) continue;                /* le palier ne se rembourse pas → on s'abstient */
+        if (fc->runway[r] < urgent){ urgent=fc->runway[r]; pick=(Resource)r; pick_region=br; }
     }
-    return false;
+    if (pick==RES_NONE || pick_region<0) return false;
+    if (!credit_can_spend(econ, w, a->cid, cost)) return false;
+    credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);
+    econ->region[pick_region].raw_boost[pick]++;              /* +1 palier d'EXPLOITATION (boost d'extraction) */
+    a->stats.builds_other++;
+    return true;
 }
 
 /* Économie : commercer OU bâtir (le frein réoriente l'énergie vers le K). */
+/* ── ALLOCATION DE MAIN-D'ŒUVRE & l'IA ──
+ * MESURÉ : un override par poids (proportionnel) sous-performe le split AUTO glouton de l'IA
+ * (66-69 % vs 75 % de satisfaction journalier), parce que l'auto FAIT COULER les bras vers les
+ * seuls puits qui peuvent les employer (qui peut tourner les prend) et CONCENTRE sur la pénurie,
+ * là où un poids fixe en gâche sur les bâtiments bornés en intrant. L'AUTO prix-driven EST donc
+ * l'allocation « avisée » de l'IA — on ne l'override pas. L'override (alloc_on) reste l'outil du
+ * JOUEUR (micro-gestion de SON empire), exposé par la façade scps_player_alloc_*. */
 static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const AiView *v,
                          AgencyState *ag, RouteNetwork *rn, float brake, int day){
     /* Famine d'abord : un peuple affamé ne bâtit ni cours ni comptoir. STOCK-SAFE (étage 3b) :
@@ -1074,11 +1082,11 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             if (roll < t_mil){
                 ai_build_manufacture(a, w, econ);            /* l'arsenal militaire (tier + or, par doctrine) */
             } else if (roll < t_civm){
-                /* RAW-WORKS (forecast) D'ABORD dans le créneau manufacture civile : un déficit STRUCTUREL
-                 * de brut de bâti (argile/pierre/bois, fc) arme le producteur hors-sol AVANT toute autre
-                 * fabrique — sans matière, rien ne se bâtit. Pas de déficit → manufacture civile normale.
+                /* EXPLOITATION (forecast) D'ABORD dans le créneau manufacture civile : une brute en
+                 * déficit qu'on extrait → on AMÉLIORE son exploitation (+1 palier de boost d'extraction)
+                 * avant toute autre fabrique. Pas de déficit boostable → manufacture civile normale.
                  * Le créneau FOI/SAVOIR/K (ci-dessous) reste INTACT → la foi peut toujours s'ériger. */
-                if (!ai_build_rawworks(a, econ, &v->fc))
+                if (!ai_build_raw_boost(a, w, econ, &v->fc))
                     ai_build_civmanuf(a, w, econ);            /* la manufacture civile (remplir les slots) */
             } else {
             /* le BÂTIMENT CIVIL (la voie existante) : on métabolise (K) ; un trône au consentement bas

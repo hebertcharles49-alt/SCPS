@@ -35,6 +35,7 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_COTTON]        = 1.9f,
     [RES_SUGAR]         = 2.0f,
     [RES_WOOD]          = 1.0f,
+    [RES_FRUIT]         = 1.8f,    /* fruits — douceur commune (repli du vin), comme le sucre */
     [RES_MED_HERBS]     = 3.5f,
     /* brutes minérales */
     [RES_COPPER]        = 2.6f,
@@ -90,12 +91,14 @@ static const float BASE_PRICE[RES_COUNT] = {
 static const float EXTRACT_YIELD[RES_COUNT] = {
     /* nourriture (interchangeable : grain/poisson/viande) */
     [RES_GRAIN]=8.0f, [RES_FISH]=4.0f, [RES_LIVESTOCK]=3.0f,
-    /* vrac de construction & bois de feu */
-    [RES_WOOD]=0.50f, [RES_STONE]=0.25f, [RES_CLAY]=0.25f,
-    /* métaux & charbon */
-    [RES_IRON]=0.30f, [RES_COAL]=0.40f, [RES_COPPER]=0.25f,
+    /* vrac de construction & bois de feu — bois 0.5→1.0 : le FEU est un bien DIRECT (pas de
+     * manufacture, donc pas de levier `labor`) → c'est le rendement qui cale « 100 emplois → 1000 hab »
+     * (demande feu ≈ 105/1000hab/an, 100 ouvriers × 1.0 = 100 → ~1000 hab). */
+    [RES_WOOD]=1.00f, [RES_STONE]=0.25f, [RES_CLAY]=0.25f,
+    /* métaux & charbon — fer 0.3→0.4 (nourrir la chaîne outils, affamée à 2 %) */
+    [RES_IRON]=0.40f, [RES_COAL]=0.40f, [RES_COPPER]=0.25f,
     /* fibres & douceurs (intrants manufacture) */
-    [RES_WOOL]=0.60f, [RES_SUGAR]=0.60f, [RES_COTTON]=0.60f,
+    [RES_WOOL]=0.60f, [RES_SUGAR]=0.60f, [RES_COTTON]=0.60f, [RES_FRUIT]=0.60f,
     /* épices, minéraux mineurs, fourrure */
     [RES_SALT]=0.30f, [RES_MED_HERBS]=0.30f, [RES_SALTPETER]=0.30f, [RES_SULFUR]=0.30f, [RES_FUR]=0.40f,
     /* précieux & rares (rendement maigre, valeur haute) */
@@ -117,15 +120,16 @@ typedef struct {
 } Recipe;
 
 static const Recipe RECIPE[BLD_TYPE_COUNT] = {
-    /* TEXTILE : intrant allégé (2.0→1.5) et sortie relevée (1.0→1.8) → la pénurie
-     * d'étoffe (couv 22%) se résorbe ; la laine est mieux dispatchée (scps_world). */
-    [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_COTTON, 1.5f },  /* F4 : laine OU COTON (repli) → étoffe — le coton inerte gagne un débouché, aucune région bloquée */
+    /* TEXTILE : laine (ou coton repli) → étoffe. ÉTOFFE = INTERMÉDIAIRE (→ tunique) + bien BOURG
+     * direct mineur : on la garde EFFICACE (labor bas) — le puits de bras est sur la TUNIQUE (final). */
+    [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_COTTON, 1.5f },  /* F4 : laine OU COTON (repli) → étoffe — le coton inerte gagne un débouché */
     [BLD_SAWMILL]   = { RES_WOOD,  2.0f, RES_COPPER,        0.2f, RES_NAVAL_SUPPLIES, 1.0f, 0.8f, RES_NONE, 0.f },  /* M5 : le naval EXIGE du cuivre (clous/doublage) — il ne sort plus sans */
     [BLD_PAPERMILL] = { RES_WOOD,  1.5f, RES_NONE,          0.f, RES_PAPER,          1.0f, 0.7f, RES_NONE, 0.f },
-    /* VIN : sucre allégé (2.0→1.6), sortie relevée (1.0→1.4) ; le sucre tropical est
-     * mieux dispatché (scps_world) → la pénurie de vin (couv 25%) se résorbe. */
-    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 0.9f, RES_NONE, 0.f },
-    [BLD_BREWERY]   = { RES_GRAIN, 1.2f, RES_NONE,          0.f, RES_BEER,           1.0f, 0.8f, RES_NONE, 0.f },
+    /* VIN/BIÈRE — BOISSON, le SEUL bien manufacturé actif en EARLY ⇒ le calibrage `labor` qui MORD.
+     * LEVIER LABOR (ratios & qout intacts) : labor = 1200·qout/demande_1000 → 100 emplois ≈ 1000 hab.
+     * Vin : 1200·1.4/44.7 = 37.6 → labor 38. Bière : 1200·1.0/44.7 = 26.8 → labor 27. */
+    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 38.f, RES_FRUIT, 1.6f },  /* sucre OU FRUIT (repli) → vin — le fruit (un peu partout, + en forêt) débloque le vin hors zones à sucre */
+    [BLD_BREWERY]   = { RES_GRAIN, 1.2f, RES_NONE,          0.f, RES_BEER,           1.0f, 27.f, RES_NONE, 0.f },  /* grain → bière (palier moral des cultures de basse subsistance) */
     /* JOAILLERIE : OR, ou PERLE en repli (2× la quantité par bijou — littoral).
      * Sortie TEMPÉRÉE (1.0→0.5) et intrant plus lourd (1.5→2.0) : l'orfèvrerie
      * surinondait (couv ×170) → on vise un surplus DOUX, pas un raz-de-marée.
@@ -141,9 +145,9 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
      * teinture (rare), PAS par l'étoffe → quand la teinture manque, l'étoffe REFLUE
      * vers les tuniques (les journaliers servis). in1=teinture, in2=4 étoffes. */
     [BLD_WEAVER_LUX]= { RES_MUREX, 0.1f, RES_CLOTH, 4.0f, RES_PRECIOUS_CLOTH, 1.0f, 1.1f, RES_INDIGO, 0.1f },  /* SURCADENCE : un bain de teinture colore beaucoup → l'étoffe précieuse suit la cour ; la teinture PLACE-gate, l'étoffe 1:4 (surplus après tunique) borne le volume */
-    /* TUNIQUE — la chaîne SÉPARÉE des journaliers : étoffe → tunique (1:1). Bien fini
-     * propre au commun → plus de prix-exclusion par le luxe sur le même tissu. */
-    [BLD_TUNIC]     = { RES_CLOTH, 1.0f, RES_NONE,          0.f, RES_TUNIQUE,       1.0f, 0.8f, RES_NONE, 0.f },
+    /* TUNIQUE — étoffe → tunique (1:1), le bien fini du commun. LEVIER LABOR : 1200·1.0/42.2 = 28.4
+     * → labor 28 (100 emplois ≈ 1000 hab habillés ; l'étoffe-feeder reste efficace en amont). */
+    [BLD_TUNIC]     = { RES_CLOTH, 1.0f, RES_NONE,          0.f, RES_TUNIQUE,       1.0f, 28.f, RES_NONE, 0.f },
     /* ARCANE (F3) : on BRÛLE le cristal → ESSENCE (primaire) + BÂTON DE MAGE (secondaire, débloque
      * le mage). Sa combustion nourrit la Brèche (econ_tick → faust_charge_add). */
     [BLD_MAGE_WORKSHOP]={ RES_ARCANE_CRYSTAL, 1.0f, RES_NONE, 0.f, RES_ESSENCE,    1.0f, 1.3f, RES_NONE, 0.f, RES_MAGE_STAFF, 0.2f },
@@ -152,7 +156,7 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     [BLD_CELESTIAL_FORGE]={ RES_CELESTIAL_IRON, 2.0f, RES_COAL, 1.0f, RES_ENCHANTED_ARMS, 1.0f, 1.4f, RES_NONE, 0.f },
     /* Épine dorsale de production : fer + charbon → métal → (métal + bois) outils. */
     [BLD_FOUNDRY]   = { RES_IRON,  1.5f, RES_COAL, 1.0f, RES_METAL, 1.0f, 1.0f, RES_COPPER, 3.0f },  /* M5 : le CUIVRE alimente la fonderie en REPLI du fer, à DEMI-rendement (3 cuivre = 1 métal vs 1.5 fer) */
-    [BLD_TOOLWORKS] = { RES_METAL, 1.0f, RES_WOOD, 1.0f, RES_TOOLS, 1.0f, 0.9f, RES_NONE, 0.f },
+    [BLD_TOOLWORKS] = { RES_METAL, 1.0f, RES_WOOD, 1.0f, RES_TOOLS, 1.0f, 0.9f, RES_NONE, 0.f },  /* métal+bois → outils (input PASSIF ∝ main-d'œuvre, hors panier — efficace) */
     /* CHARBONNIÈRE : 2 bois → 1 charbon. Le charbon minier est rare et co-localisé
      * avec le fer (gate de la fonderie) ; la charbonnière le PRODUIT du bois (abondant)
      * → la fonderie tourne partout où il y a du fer, et la chaîne métal/outils respire. */
@@ -175,15 +179,9 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     [BLD_ARMORY_HEAVY]={ RES_IRON,     3.0f, RES_NONE, 0.f, RES_ARMS_HEAVY, 1.0f, 1.1f, RES_NONE, 0.f },  /* fer ×3 → lourdes */
     [BLD_BOWYER]    = { RES_IRON,      1.0f, RES_WOOD, 1.0f, RES_ARMS_RANGED,1.0f, 0.9f, RES_NONE, 0.f },  /* fer + bois → trait */
     [BLD_ARQUEBUS]  = { RES_IRON,      1.0f, RES_GUNPOWDER, 2.0f, RES_FIREARM, 1.0f, 1.1f, RES_COPPER, 1.0f },  /* fer + poudre (cuivre repli) → feu */
-    /* RAW-WORKS : AUCUN intrant matière (in1=RES_NONE) → production HORS-SOL par le seul travail
-     * (indépendante de la tuile) ; l'OR est ponctionné au tick (input renforcé, scps_econ §RAW). qout =
-     * sortie/ouvrier/mois (labor=1) : 0.15 argile/pierre, 0.30 bois (100 ouvriers → 15/15/30 par mois). */
-    [BLD_BRICKWORKS]= { RES_NONE,      0.f,  RES_NONE,      0.f,  RES_CLAY,    0.60f, 1.0f, RES_NONE, 0.f },  /* four à brique → argile (100 jobs → 60/mois) */
-    [BLD_QUARRY]    = { RES_NONE,      0.f,  RES_NONE,      0.f,  RES_STONE,   0.60f, 1.0f, RES_NONE, 0.f },  /* carrière → pierre (100 jobs → 60/mois) */
-    [BLD_LUMBERYARD]= { RES_NONE,      0.f,  RES_NONE,      0.f,  RES_WOOD,    1.20f, 1.0f, RES_NONE, 0.f },  /* scierie → bois (100 jobs → 120/mois) */
-    /* CONFORT du brut de bâti — CONSOMMENT argile/pierre (⇒ la demande qui entretient les raw-works). */
-    [BLD_POTTERY]   = { RES_CLAY,      1.5f, RES_NONE,      0.f,  RES_POTTERY, 1.4f,  1.0f, RES_NONE, 0.f },  /* argile → poterie */
-    [BLD_SCULPTURE] = { RES_STONE,     2.0f, RES_NONE,      0.f,  RES_STATUE,  1.0f,  1.1f, RES_NONE, 0.f },  /* pierre → statuaire */
+    /* CONFORT du brut de bâti — CONSOMMENT argile/pierre (⇒ la demande qui tire leur extraction). */
+    [BLD_POTTERY]   = { RES_CLAY,      1.5f, RES_NONE,      0.f,  RES_POTTERY, 1.4f,  46.f, RES_NONE, 0.f },  /* argile → poterie (confort). LEVIER LABOR : 1200·1.4/36.6 = 45.9 → labor 46 */
+    [BLD_SCULPTURE] = { RES_STONE,     2.0f, RES_NONE,      0.f,  RES_STATUE,  1.0f,  1.1f, RES_NONE, 0.f },  /* pierre → statuaire (luxe NICHE : demande basse → reste efficace) */
     [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
     [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 0.8f, RES_NONE, 0.f },
 };
@@ -298,7 +296,7 @@ static inline Resource preferred_luxe(const PopCulture *c){
  *    riche/chère attire). C'est le levier de CALIBRAGE du volume brut. */
 #define EXTRACT_GEO_REF      4.5f    /* calibré seed 9 : pop/needs_met = baseline (cf. CLAUDE.md) */
 #define EXTRACT_GEO_CAP      3.0f
-#define EXTRACT_LABOR_SHARE  0.65f
+#define EXTRACT_LABOR_SHARE  0.65f   /* part des journaliers à l'extraction (le reste staffe les manufactures). Le réglage fin du bassin manufacture passera par l'ALLOCATION joueur/IA, pas ce levier global (0.45 testé : n'aide pas la boisson — limitée par la réserve vivrière locale — et baisse un peu la satisfaction). */
 /* REFONTE A5 — LA NOURRITURE DU SPAWN (la SEULE règle vivrière de worldgen). La région
  * CAPITALE de chaque empire naît avec un socle de grain (raw_cap), un grenier de départ.
  * Tout le reste de la carte est pure GÉOLOGIE (grain/poisson dans la vocation) + COMMERCE.
@@ -360,6 +358,10 @@ void building_recipe(BuildingType b, Resource *in1, Resource *in2, Resource *out
     if (in2) *in2=RECIPE[b].in2;
     if (out) *out=RECIPE[b].out;
 }
+/* Intrant ALTERNATIF (repli) d'un bâtiment — exposé pour l'UI d'allocation (choix d'intrant). */
+Resource building_alt_input(BuildingType b){
+    return (b>=0 && b<BLD_TYPE_COUNT) ? RECIPE[b].alt1 : RES_NONE;
+}
 
 float econ_off_culture_fraction(const ProvincePop *pp){
     if (!pp || pp->n_groups<=1) return 0.f;
@@ -391,7 +393,6 @@ const char *building_name(BuildingType b) {
         [BLD_TUNIC]="Atelier de tunique",[BLD_CHARCOAL]="Charbonnière",[BLD_FOREUSE]="Foreuse arcanique",
         [BLD_REPLICATEUR]="Réplicateur ligneux",[BLD_CORNE]="Corne divine",
         [BLD_ARMORY_HEAVY]="Armurerie lourde",[BLD_BOWYER]="Atelier d'arc",[BLD_ARQUEBUS]="Arquebuserie",
-        [BLD_BRICKWORKS]="Four à brique",[BLD_QUARRY]="Carrière",[BLD_LUMBERYARD]="Scierie",
         [BLD_POTTERY]="Poterie",[BLD_SCULPTURE]="Atelier de sculpture",
     };
     return (b>=0&&b<BLD_TYPE_COUNT&&N[b])?N[b]:"?";
@@ -443,11 +444,11 @@ void econ_build_adjacency(WorldEconomy *e, const World *w) {
     }
 }
 
-/* GAMEPLAY — GARANTIE DE BÂTI PRÈS DU JOUEUR : la worldgen tire argile (terres d'eau) & pierre
- * (relief) SELON LE BIOME — par malchance, la capitale peut n'avoir ni l'un ni l'autre à portée.
- * On FORCE alors une tuile de chaque dans le RAYON 1-2 de la capitale (via l'adjacence éco) : le
- * joueur ne doit JAMAIS être privé de construction. IDEMPOTENT (présent dans le rayon ⇒ on ne force
- * rien) ; à appeler APRÈS econ_init (raw_cap + coupe + adjacence) ET l'assignation des capitales. */
+/* GAMEPLAY — GARANTIE DES BRUTES DE BASE PRÈS DU JOUEUR : la worldgen tire les brutes SELON LE BIOME
+ * (argile aux terres d'eau, pierre au relief, fer/bois aux gisements) — par malchance, la capitale
+ * peut en manquer à portée. On FORCE une tuile de chaque (argile, pierre, FER, BOIS) dans le RAYON 1-2
+ * de la capitale (via l'adjacence éco) : le joueur ne doit JAMAIS être privé de construction NI d'outils.
+ * IDEMPOTENT (présent dans le rayon ⇒ on ne force rien) ; APRÈS econ_init (adjacence) + les capitales. */
 void econ_guarantee_player_construction(WorldEconomy *e, const World *w, int player_cid){
     if (!e || !w || player_cid<0 || player_cid>=w->n_countries) return;
     int cp = w->country[player_cid].capital_prov;
@@ -461,8 +462,8 @@ void econ_guarantee_player_construction(WorldEconomy *e, const World *w, int pla
     for (int r=0;r<N;r++) if (e->adj[caphr][r]){ inrad[r]=true;   /* rayon 1 */
         for (int r2=0;r2<N;r2++) if (e->adj[r][r2]) inrad[r2]=true; }  /* rayon 2 */
     const float amt = tune_f("PLAYER_GUARANTEE_RAW", 4.f);
-    const Resource gg[2] = { RES_CLAY, RES_STONE };
-    for (int i=0;i<2;i++){ Resource g=gg[i];
+    const Resource gg[4] = { RES_CLAY, RES_STONE, RES_IRON, RES_WOOD };   /* les 4 brutes de base à portée */
+    for (int i=0;i<4;i++){ Resource g=gg[i];
         int present=0, target=-1;
         for (int r=0;r<N;r++){ if(!inrad[r] || !e->region[r].active) continue;
             if (e->region[r].raw_cap[g] >= 1.f){ present=1; break; }
@@ -674,6 +675,10 @@ void econ_init(WorldEconomy *e, const World *w) {
                 re->raw_cap[RES_STONE] += base*0.5f;
             if (bd==BIO_MARSH||bd==BIO_BOG||bd==BIO_MANGROVE)
                 re->raw_cap[RES_CLAY]  += base*0.5f;
+            /* FRUIT — vergers/cueillette : un peu PARTOUT (fond diffus), DAVANTAGE en forêt/bois.
+             * Repli du VIN (compense le sucre tropical, rare). Protégé de la coupe ci-dessous. */
+            re->raw_cap[RES_FRUIT] += base*0.20f;
+            if (bd==BIO_FOREST||bd==BIO_WOODS||bd==BIO_JUNGLE) re->raw_cap[RES_FRUIT] += base*0.45f;
         }
 
         /* Subsistance locale : vivres et bois de feu dimensionnés pour couvrir
@@ -783,6 +788,9 @@ void econ_init(WorldEconomy *e, const World *w) {
              * dominantes. Source géologique BON MARCHÉ (extraction, pas la seule manufacture) ; les
              * RAW-WORKS restent le SUPPLÉMENT des régions pauvres + la chaîne confort. */
             prot[RES_CLAY]=prot[RES_STONE]=true;
+            /* FRUIT PROTÉGÉ — « un peu partout » : le repli vin doit survivre à la coupe (vocation
+             * mineure base·0.20) sinon le fruit n'existe nulle part et la winery-alt est morte. */
+            prot[RES_FRUIT]=true;
             for (int k=0;k<keep;k++){
                 int best=-1; float bv=0.f;
                 for (int g=1;g<RES_PROD_FIRST;g++){ if (prot[g]||re->raw_cap[g]<=0.f) continue;
@@ -1044,7 +1052,6 @@ static void econ_build_tick(WorldEconomy *e){
             if (b==BLD_REPLICATEUR && !re->tech_replicateur) continue;           /* FAU4 : gate TECH_TRANSMUTATION */
             if (b==BLD_CORNE && !re->tech_corne) continue;                       /* FAU4 : gate TECH_FORGE_RUNES */
             if (b==BLD_ARQUEBUS && !re->tech_arquebus) continue;                 /* F7 : gate TECH_POUDRIERE */
-            if (bld_is_rawworks((BuildingType)b)) continue;                      /* RAW-WORKS : pilotés par le FORECAST (ai_build_rawworks), pas le §NF price-driven (demande LATENTE) */
             if (re->price[rc->out] < BASE_PRICE[rc->out]*NF_SHORTAGE) continue;   /* output pas en pénurie ICI */
             bool feed1 = (rc->in1==RES_NONE)
                       || avail[rc->in1] > NF_REALM_MIN || re->stock[rc->in1] >= NF_STOCK_MIN
@@ -1150,10 +1157,6 @@ bool econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b){
 bool bld_is_faustian(BuildingType b){
     return b==BLD_FOREUSE || b==BLD_REPLICATEUR || b==BLD_CORNE;
 }
-/* RAW-WORKS — extraction MANUFACTURÉE (argile/pierre/bois par le travail+or, hors tuile). */
-bool bld_is_rawworks(BuildingType b){
-    return b==BLD_BRICKWORKS || b==BLD_QUARRY || b==BLD_LUMBERYARD;
-}
 /* F-arc ARSENAL — une SORTIE d'ARMEMENT (les 7 biens militaires : armes légères/lourdes/trait/feu,
  * armes enchantées, bâton de mage, kit d'alchimiste). Sert à reconnaître une manufacture D'ARMES :
  * sa sortie verse ×MANUF_ARMS_MULT au STOCK (l'arsenal que la levée pompe), sans toucher au marché. */
@@ -1221,11 +1224,8 @@ bool econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b){
     int bi=region_ensure_building(re, b);
     if (bi<0) return false;
     /* une fabrique DÉLIBÉRÉE (payée) naît SUBSTANTIELLE — un vrai atelier, pas une semence : elle
-     * produit assez pour armer des régiments (la prod plafonne de toute façon sur l'intrant + les bras).
-     * RAW-WORKS : naissent PLUS GROS — seule source du brut de bâti (le monde nu ne l'extrait pas), face
-     * à la grosse demande (poterie/statuaire + chantiers), un atelier-semence ne suffirait jamais. */
-    float lvl = bld_is_rawworks(b) ? tune_f("RAW_WORKS_LEVEL", 25.f) : 5.f;
-    if (re->bld[bi].level < lvl) re->bld[bi].level = lvl;
+     * produit assez pour armer des régiments (la prod plafonne de toute façon sur l'intrant + les bras). */
+    if (re->bld[bi].level < 5.f) re->bld[bi].level = 5.f;
     return true;
 }
 
@@ -1424,7 +1424,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         int o=ar->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
         for (int g=0;g<RES_COUNT;g++) pool[o][g]+=ar->stock[g];
         epop[o]+=ar->strata[CLASS_LABORER].pop+ar->strata[CLASS_BOURGEOIS].pop+ar->strata[CLASS_ELITE].pop;
-        elab[o]+=ar->strata[CLASS_LABORER].pop;
+        elab[o]+=ar->strata[CLASS_LABORER].pop+ar->strata[CLASS_BOURGEOIS].pop;   /* bassin de travail NATIONAL = journaliers + bourgeois */
         ecap[o]+=ECON_STOCK_CAP_BASE+ECON_STOCK_CAP_ENTREPOT*(float)ar->n_entrepot;
     }
     /* OUTILS — l'usure du PARC NATIONAL se fait UNE fois/tick (un ×0.97 par-région
@@ -1442,7 +1442,10 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (!re->active || !re->colonized) continue;
 
         float supply[RES_COUNT]={0}, demand[RES_COUNT]={0};
-        float labor_avail = re->strata[CLASS_LABORER].pop;
+        /* « 100 emplois = 100 emplois, qu'ils soient artisans ou bourgeois » : le BASSIN de
+         * main-d'œuvre = JOURNALIERS + BOURGEOIS (l'élite, classe dirigeante, ne travaille pas).
+         * Extraction ET manufacture y puisent. (Re-baseline : le bassin grandit ~+19 %.) */
+        float labor_avail = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop;
         float labor_used  = 0.f;
         float gdp         = 0.f;
         float wage_pool   = 0.f;   /* → laborers */
@@ -1479,7 +1482,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* CAPITALE (scps_labor) : sa PRODUCTIVITÉ (+5 %/tier servi) booste la vraie
          * production, au-delà des outils — mais le bonus est rongé par (1−rot). */
         {
-            long rpop = (long)(labor_avail + re->strata[CLASS_BOURGEOIS].pop + re->strata[CLASS_ELITE].pop);
+            long rpop = (long)rp_;   /* pop TOTALE (labor_avail inclut désormais les bourgeois — ne pas les recompter) */
             int  ctier = capitale_max_tier(rpop);
             long nob   = capitale_admin_pop(ctier); if (nob>rpop) nob=rpop;
             float cap_bonus = (capitale_prodmult(ctier, nob) - 1.f) * (1.f - rot);
@@ -1507,6 +1510,14 @@ void econ_tick(WorldEconomy *e, float dt) {
          *   · plus de ×2 bois/fer/or (replié dans YIELD).
          * La production est ainsi LINÉAIRE en main-d'œuvre (elle SUIT la pop) ; le commerce
          * comble ce que la géologie locale ne donne pas (vocation : 2 brutes/région). */
+        /* ALLOCATION JOUEUR/IA — si alloc_on, on répartit labor_avail (journaliers+bourgeois)
+         * par les POIDS du joueur : extraction ET manufacture partagent UN budget (somme des
+         * poids = alloc_total). Sinon, alloc_total reste 0 et le split AUTO ci-dessous opère. */
+        float alloc_total = 0.f;
+        if (re->alloc_on){
+            for (int r=1;r<RES_PROD_FIRST;r++) if (re->raw_cap[r]>0.f) alloc_total += (float)re->alloc_raw[r];
+            for (int i=0;i<re->n_bld;i++){ int t=re->bld[i].type; if(t>=0&&t<BLD_TYPE_COUNT) alloc_total += (float)re->alloc_bld[t]; }
+        }
         float egeo[RES_COUNT], eeff[RES_COUNT], ew[RES_COUNT], ewsum=0.f;
         for (int r=1;r<RES_PROD_FIRST;r++){
             ew[r]=0.f;
@@ -1516,11 +1527,24 @@ void econ_tick(WorldEconomy *e, float dt) {
             ew[r]   = egeo[r]*eeff[r];                                               /* poids d'allocation des bras */
             ewsum  += ew[r];
         }
-        float L_ext = labor_avail*ext_lab_share;   /* main-d'œuvre dédiée à l'extraction */
-        if (ewsum>EPS) for (int r=1;r<RES_PROD_FIRST;r++){
-            if (ew[r]<=0.f) continue;
-            float workers = L_ext*ew[r]/ewsum;                          /* bras affectés à la brute r */
-            float out = workers*EXTRACT_YIELD[r]*dt*egeo[r]*eeff[r]*prod_mult;  /* /ouvrier/an × dt × qualité × prix × outils */
+        float L_ext = labor_avail*ext_lab_share;   /* main-d'œuvre dédiée à l'extraction (mode AUTO) */
+        for (int r=1;r<RES_PROD_FIRST;r++){
+            if (re->raw_cap[r]<=0.f) continue;
+            float workers;
+            if (re->alloc_on){                                          /* OVERRIDE : poids joueur, budget commun */
+                if (alloc_total<=EPS || re->alloc_raw[r]==0) continue;   /* rien alloué à cette brute */
+                workers = labor_avail * (float)re->alloc_raw[r] / alloc_total;
+            } else {                                                    /* AUTO : ∝ geo×prix, part EXTRACT_LABOR_SHARE */
+                if (ewsum<=EPS || ew[r]<=0.f) continue;
+                workers = L_ext*ew[r]/ewsum;                            /* bras affectés à la brute r */
+            }
+            /* EXPLOITATION (modificateur provincial à construire) : +RAW_BOOST_PER_TIER par palier sur
+             * l'extraction de CETTE brute. Multiplie `out` (= bras × rendement) → l'effet SCALE sur les
+             * bras (plus d'ouvriers = boost absolu plus grand), même logique qu'une manufacture. */
+            int bt = re->raw_boost[r];                                   /* palier d'exploitation (clampé : save forgée) */
+            { int maxt=(int)tune_f("RAW_BOOST_MAX_TIER",8.f); if (bt>maxt) bt=maxt; }
+            float rboost = 1.f + tune_f("RAW_BOOST_PER_TIER",0.05f)*(float)bt;
+            float out = workers*EXTRACT_YIELD[r]*dt*egeo[r]*eeff[r]*prod_mult*rboost;  /* /ouvrier/an × dt × qualité × prix × outils × exploitation */
             labor_used += workers;
             S[r] += out;                                               /* dépôt au STOCK NATIONAL */
             supply[r]    += out;
@@ -1541,14 +1565,23 @@ void econ_tick(WorldEconomy *e, float dt) {
         for (int i=0;i<re->n_bld;i++) {
             Building *b=&re->bld[i];
             const Recipe *rc=&RECIPE[b->type];
+            /* ALLOCATION — bâtiment FERMÉ par le joueur (poids 0) : aucune sortie, aucun
+             * intrant consommé, aucun bras employé. (alloc_on=0 ⇒ jamais fermé.) */
+            if (re->alloc_on && re->alloc_bld[b->type]==0){ b->workers=0.f; continue; }
+            /* CHOIX D'INTRANT (override) : bld_input==1 FORCE le repli (alt1) comme seul intrant
+             * (pas de fallback vers in1). Sinon comportement par défaut (in1 d'abord, alt1 en repli). */
+            Resource e_in1=rc->in1; float e_q1=rc->q1; Resource e_alt=rc->alt1; float e_altq=rc->alt1_q;
+            if (re->alloc_on && rc->alt1!=RES_NONE && re->bld_input[b->type]==1){
+                e_in1=rc->alt1; e_q1=rc->alt1_q; e_alt=RES_NONE;
+            }
             /* Production cible = niveau ; bornée par intrants en stock et
              * par la main-d'œuvre restante. */
             /* cap = niveau × effort de marché (SURPLUS NATUREL : on lit le prix sortie). */
             float cap = b->level * market_effort(re->price[rc->out], BASE_PRICE[rc->out]);
             float lim = cap;
-            if (rc->in1!=RES_NONE){
-                float out_in1 = S[rc->in1]/fmaxf(rc->q1,EPS);   /* sortie possible via in1 (pool national) */
-                if (rc->alt1!=RES_NONE) out_in1 += S[rc->alt1]/fmaxf(rc->alt1_q,EPS);  /* + repli (perle…) */
+            if (e_in1!=RES_NONE){
+                float out_in1 = S[e_in1]/fmaxf(e_q1,EPS);   /* sortie possible via l'intrant primaire (pool national) */
+                if (e_alt!=RES_NONE) out_in1 += S[e_alt]/fmaxf(e_altq,EPS);  /* + repli (perle…) */
                 lim=fminf(lim, out_in1);
             }
             if (rc->in2!=RES_NONE) lim=fminf(lim, S[rc->in2]/fmaxf(rc->q2,EPS));
@@ -1588,7 +1621,11 @@ void econ_tick(WorldEconomy *e, float dt) {
             }
             if (lim<=0.f){ b->workers=0.f; continue; }
             float want_labor=rc->labor*cap;
-            float avail=labor_avail-labor_used;
+            /* AUTO : la manufacture pioche dans la main-d'œuvre RESTANTE (gloutonne, par ordre).
+             * OVERRIDE : chaque bâtiment reçoit SON budget = part de poids du bassin total. */
+            float avail = re->alloc_on
+                ? ((alloc_total>EPS) ? labor_avail*(float)re->alloc_bld[b->type]/alloc_total : 0.f)
+                : (labor_avail-labor_used);
             float lratio=(want_labor>0.f)?clampf(avail/want_labor,0.f,1.f):0.f;
             lim=fminf(lim, cap*lratio);
             if (lim<=0.f){ b->workers=0.f; continue; }
@@ -1596,14 +1633,14 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* Consomme intrants, produit sortie (valeur ajoutée = sortie − intrants).
              * in1 d'abord, puis le repli alt1 à SA quantité (perle = 2× l'or/bijou). */
             float val_in =0.f;
-            if (rc->in1!=RES_NONE){
-                float out1=fminf(lim, S[rc->in1]/fmaxf(rc->q1,EPS));   /* part faite avec in1 (pool) */
-                float g1=out1*rc->q1;
-                S[rc->in1]-=g1; demand[rc->in1]+=g1; val_in+=g1*re->price[rc->in1];
+            if (e_in1!=RES_NONE){
+                float out1=fminf(lim, S[e_in1]/fmaxf(e_q1,EPS));   /* part faite avec l'intrant primaire (pool) */
+                float g1=out1*e_q1;
+                S[e_in1]-=g1; demand[e_in1]+=g1; val_in+=g1*re->price[e_in1];
                 float rem=lim-out1;
-                if (rem>0.f && rc->alt1!=RES_NONE){
-                    float ga=rem*rc->alt1_q;
-                    S[rc->alt1]-=ga; demand[rc->alt1]+=ga; val_in+=ga*re->price[rc->alt1];
+                if (rem>0.f && e_alt!=RES_NONE){
+                    float ga=rem*e_altq;
+                    S[e_alt]-=ga; demand[e_alt]+=ga; val_in+=ga*re->price[e_alt];
                 }
             }
             if (rc->in2!=RES_NONE){ S[rc->in2]-=lim*rc->q2; demand[rc->in2]+=lim*rc->q2; val_in+=lim*rc->q2*re->price[rc->in2]; }
@@ -2143,11 +2180,15 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
             stk[g]+=re->stock[g];
         }
         /* POTENTIEL (pour le déficit STRUCTUREL) : la prod MAX si la région mettait son plein
-         * labor (au plein eff_cap) sur la brute — borne OPTIMISTE du « jamais assez ». */
+         * labor (au plein eff_cap) sur la brute — borne OPTIMISTE du « jamais assez ». INCLUT le
+         * boost d'EXPLOITATION (raw_boost) : sinon le forecast ne « voit » jamais l'effet des paliers
+         * déjà posés → la pénurie paraît éternelle et l'IA sur-bâtit. Le runway RÉCUPÈRE désormais
+         * à mesure qu'on boost → la décision se RÉGULE d'elle-même. */
         for (int g=1; g<RES_PROD_FIRST; g++){
             if (re->raw_cap[g]<=0.f) continue;
             double geo=re->raw_cap[g]/geo_ref; if (geo>geo_cap) geo=geo_cap;
-            pot[g]+= ec*0.8*lab_share * EXTRACT_YIELD[g] * geo;
+            double boost = 1.0 + (double)tune_f("RAW_BOOST_PER_TIER",0.05f)*(double)re->raw_boost[g];
+            pot[g]+= ec*0.8*lab_share * EXTRACT_YIELD[g] * geo * boost;
         }
     }
     if (P0<1.0) return;

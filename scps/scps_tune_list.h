@@ -78,13 +78,16 @@
     X(AI_THREAT_BRAKE,        0.5f) \
     X(AI_WAR_LOSING,        -25.0f) \
     X(AI_ALLY_NEED_W,         1.0f) \
-    /* RAW-WORKS — extraction manufacturée (four à brique/carrière/scierie), source UNIQUE du brut de
-     * bâti (le monde nu n'en extrait pas) : niveau de NAISSANCE substantiel (un vrai atelier qui pèse
-     * face à la grosse demande pottery+chantiers) · bois consommé à la POSE · seuil de déficit forecast */ \
-    X(RAW_WORKS_LEVEL,       10.0f) \
-    X(RAW_WORKS_WOOD,        15.0f) \
+    /* EXPLOITATION — boost d'EXTRACTION par brute (modificateur provincial à construire) : +PER_TIER
+     * par palier d'amélioration (scale sur les bras), plafonné à MAX_TIER paliers · coût d'or par palier
+     * · seuil de déficit (forecast) qui ARME l'amélioration */ \
+    X(RAW_BOOST_PER_TIER,     0.05f) \
+    X(RAW_BOOST_MAX_TIER,     8.0f) \
+    X(RAW_BOOST_COST,        40.0f) \
+    /* le +5% d'extraction doit rembourser le palier en ≤ PAYBACK ans (ROI) */ \
+    X(RAW_BOOST_PAYBACK,      8.0f) \
     X(RAW_WORKS_NEED,       120.0f) \
-    /* argile/pierre FORCÉES près de la capitale joueur si le biome n'en donne pas */ \
+    /* argile/pierre/fer/bois FORCÉS près de la capitale joueur si le biome n'en donne pas */ \
     X(PLAYER_GUARANTEE_RAW,   4.0f) \
     /* CONFORT (poterie+statuaire servies) → bonheur AU-DESSUS du panier (hors-besoin, sans pénalité)
      * + −15 % de besoin de logement (densité tolérée) */ \

@@ -13,7 +13,8 @@ const PW := 648.0
 const PH := 512.0
 const HEAD := 34.0
 const BODY := 92.0          # y de départ du corps d'onglet (sous titre + onglets)
-const TABS := ["Peuples", "Production", "Bâtiments", "Journal"]
+const TABS := ["Peuples", "Production", "Bâtiments", "Journal", "Main-d'œuvre"]
+const ALLOC_STEP := 10      # pas d'ajustement de poids (clic [−]/[+])
 
 var _pid := -1
 var _tab := 0
@@ -21,6 +22,8 @@ var _tab_rects := []        # [{rect, idx}] onglets cliquables
 var _hover_zones := []      # [{rect, text}] survol des entrées de journal (effets)
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
+var _alloc_btns := []       # [{rect, act, sink}] boutons de l'onglet Main-d'œuvre
+var _alloc_cache := {}      # dernier readout region_alloc (pour pousser l'allocation COMPLÈTE)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -77,6 +80,7 @@ func _draw() -> void:
 		1: _draw_flux(x, BODY + 4.0, PW - 32.0, PH - BODY - 18.0, w)
 		2: _draw_batiments(x, BODY, w)
 		3: _draw_journal(x, BODY, w)
+		4: _draw_alloc(x, BODY, w, info)
 
 	# tooltip de survol (Journal : les effets de l'entrée)
 	if _hover_text != "":
@@ -191,6 +195,96 @@ func _draw_batiments(x: float, y: float, w) -> void:
 		VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
 		y += 19
 
+# ── ONGLET MAIN-D'ŒUVRE : allocation des bras par PUITS (extraction + manufactures) ──
+#    Régler les % (somme normalisée), FERMER un bâtiment (poids 0), choisir l'INTRANT.
+#    Le joueur ne règle QUE ses régions ; sinon lecture seule. Les verbes ENFILENT (drain).
+func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
+	_alloc_btns.clear()
+	var region: int = w.province_region(_pid)
+	var mine := (int(info.get("owner", -1)) == int(w.player()))
+	var al: Dictionary = w.region_alloc(region)
+	_alloc_cache = al
+	var on := bool(al.get("on", false))
+	var sinks: Array = al.get("sinks", [])
+	# — entête : bassin + mode + bouton Auto —
+	VKit.text(self, Vector2(x, y), VKit.COL_COPPER,
+		"Bassin : %s bras (journaliers + bourgeois)" % _grp(al.get("pool", 0)), VKit.FS_SMALL)
+	var mode_txt := ("RÉPARTI (manuel)" if on else "AUTO (réparti par le marché)")
+	VKit.text(self, Vector2(x, y + 18), VKit.COL_DIM, "mode : %s" % mode_txt, VKit.FS_SMALL)
+	if mine and on:
+		var ar := Rect2(PW - 96, y - 2, 78, 18)
+		VKit.fill(self, ar, VKit.COL_PANEL2); VKit.box(self, ar, VKit.COL_COPPER)
+		VKit.text(self, Vector2(ar.position.x + 10, ar.position.y + 2), VKit.COL_PARCH, "↻ Auto", VKit.FS_SMALL)
+		_alloc_btns.append({"rect": ar, "act": "auto", "sink": -1})
+	if not mine:
+		VKit.text(self, Vector2(x, y + 36), VKit.sense(0.5), "(province non gouvernée — lecture seule)", VKit.FS_SMALL)
+	if sinks.is_empty():
+		VKit.text(self, Vector2(x, y + 54), VKit.COL_DIM, "aucun puits de main-d'œuvre ici", VKit.FS_SMALL)
+		return
+	VKit.fill(self, Rect2(12, y + 38, PW - 24, 1), VKit.COL_EDGE)
+	var ry := y + 46.0
+	for i in range(sinks.size()):
+		if ry > PH - 26:
+			break
+		var s: Dictionary = sinks[i]
+		var is_bld := (int(s.get("kind", 0)) == 1)
+		var closed := bool(s.get("closed", false))
+		# icône + nom (→ sortie pour les manufactures)
+		if is_bld:
+			UIKit.draw_icon(self, "build_hammer", Vector2(x, ry - 1), 14)
+		else:
+			var spr := UIKit.resource_sprite(int(s.get("id", -1)), String(s.get("name", "")))
+			if spr != null: draw_texture_rect(spr, Rect2(x - 2, ry - 2, 18, 18), false)
+		var nm := String(s.get("name", ""))
+		var ncol := VKit.COL_DIM if closed else VKit.COL_PARCH
+		VKit.text(self, Vector2(x + 20, ry), ncol, nm, VKit.FS_SMALL)
+		if is_bld and String(s.get("output", "")) != "":
+			VKit.text(self, Vector2(x + 150, ry), VKit.COL_DIM, "→ %s" % String(s["output"]), VKit.FS_SMALL)
+		# barre de part (%)
+		var pct := int(s.get("pct", 0))
+		var bx := x + 250.0
+		VKit.fill(self, Rect2(bx, ry + 2, 80, 10), VKit.COL_PANEL2)
+		if not closed:
+			VKit.fill(self, Rect2(bx, ry + 2, 80.0 * float(pct) / 100.0, 10), VKit.COL_COPPER)
+		VKit.box(self, Rect2(bx, ry + 2, 80, 10), VKit.COL_EDGE)
+		VKit.text(self, Vector2(bx + 86, ry), VKit.COL_PARCH, "%d%%" % pct, VKit.FS_SMALL)
+		# contrôles (région à soi seulement)
+		if mine:
+			var cx := bx + 122.0
+			cx = _alloc_btn(cx, ry, "−", "minus", i)
+			cx = _alloc_btn(cx, ry, "+", "plus", i)
+			if is_bld:
+				cx = _alloc_btn(cx, ry, ("Ouvrir" if closed else "Fermer"), "close", i)
+				if String(s.get("alt_name", "")) != "" and int(s.get("input", -1)) >= 0:
+					var inp := int(s["input"])
+					var lab := ("Intr.: %s" % (String(s["alt_name"]) if inp == 1 else String(s.get("in_name", "?"))))
+					cx = _alloc_btn(cx, ry, lab, "input", i)
+		ry += 20.0
+
+# petit bouton cliquable de l'onglet alloc ; renvoie le x suivant
+func _alloc_btn(bx: float, by: float, label: String, act: String, sink: int) -> float:
+	var bw := VKit.text_w(label, VKit.FS_SMALL) + 12.0
+	var r := Rect2(bx, by - 1, bw, 17.0)
+	VKit.fill(self, r, VKit.COL_PANEL2); VKit.box(self, r, VKit.COL_EDGE)
+	VKit.text(self, Vector2(bx + 6, by), VKit.COL_PARCH, label, VKit.FS_SMALL)
+	_alloc_btns.append({"rect": r, "act": act, "sink": sink})
+	return bx + bw + 4.0
+
+# applique une édition d'allocation : pousse l'allocation COMPLÈTE (un seul puits réglé
+# mettrait les autres à 0) — région à soi, revalidée au drain.
+func _alloc_apply(region: int, idx: int, new_w: int) -> void:
+	var w = Sim.world
+	if w == null: return
+	var sinks: Array = _alloc_cache.get("sinks", [])
+	for i in range(sinks.size()):
+		var s: Dictionary = sinks[i]
+		var ww := (new_w if i == idx else int(s.get("weight", 0)))
+		ww = clampi(ww, 0, 100)
+		if int(s.get("kind", 0)) == 0:
+			w.player_alloc_raw(region, int(s.get("id", 0)), ww)
+		else:
+			w.player_alloc_bld(region, int(s.get("id", 0)), ww)
+
 # ── ONGLET JOURNAL : le fil chronologique des évènements & modificateurs ───────
 func _draw_journal(x: float, y: float, w) -> void:
 	var entries: Array = w.province_log(_pid)
@@ -271,6 +365,34 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		# onglet Main-d'œuvre : boutons d'allocation (poids ± · fermer · intrant · auto)
+		for b in _alloc_btns:
+			if b.rect.has_point(event.position):
+				var w = Sim.world
+				if w == null:
+					return
+				var region: int = w.province_region(_pid)
+				var idx: int = b.sink
+				var sinks: Array = _alloc_cache.get("sinks", [])
+				match b.act:
+					"auto":
+						w.player_alloc_auto(region)
+					"minus":
+						if idx >= 0 and idx < sinks.size():
+							_alloc_apply(region, idx, int(sinks[idx].get("weight", 0)) - ALLOC_STEP)
+					"plus":
+						if idx >= 0 and idx < sinks.size():
+							_alloc_apply(region, idx, int(sinks[idx].get("weight", 0)) + ALLOC_STEP)
+					"close":
+						if idx >= 0 and idx < sinks.size():
+							var cl := bool(sinks[idx].get("closed", false))
+							_alloc_apply(region, idx, (ALLOC_STEP if cl else 0))
+					"input":
+						if idx >= 0 and idx < sinks.size():
+							w.player_alloc_input(region, int(sinks[idx].get("id", 0)), 1 - int(sinks[idx].get("input", 0)))
+				queue_redraw()
+				accept_event()
+				return
 		for t in _tab_rects:
 			if t.rect.has_point(event.position):
 				_tab = t.idx

@@ -804,6 +804,40 @@
   ma pire menace quand `alliance_need > 0.5`. ⊕ **`golden` IDENTIQUE** (les seuils ne sont pas atteints en 12 ans),
   determinism STABLE, guerres 40→39/sim (moins de surextension). Tunables : `AI_THREAT_GATE`/`_BRAKE` · `AI_WAR_LOSING`
   · `AI_ALLY_NEED_W`. **SAVE non bumpé**.
+- **REFONTE ÉCO #2 — LEVIER `labor` (100 emplois → ~1000 hab) + BASSIN J+B + ALLOCATION joueur (2026-06-27)** :
+  recalibrage demandé (« une manufacture sert 900-1200 hab ; 100 emplois = 100 emplois, qu'ils soient artisans ou
+  bourgeois »). **Cause racine MESURÉE** (workflow + lecture source) : la manufacture produit **par-tick SANS ×dt**
+  (`scps_econ.c` sortie `lim·qout`), l'extraction est annualisée (`×dt`) → un ouvrier de manufacture rendait **12×**
+  un ouvrier d'extraction au même coefficient (la « redondance massive »). Le bon levier N'EST NI le `×dt` (casse les
+  ratios + re-baseline militaire/arcane/endgame) NI baisser `qout` (casse les ratios intrant:sortie) mais **`labor`**
+  (ouvriers/lot) : productivité = `12·qout/labor`, ratio = `q1:qout` (indépendant de labor) → on règle « combien de bras
+  pour 1000 hab » SANS toucher ni ratios ni qout. Appliqué aux STAPLES de panier : **bière labor 0.8→27 · vin 0.9→38 ·
+  tunique 0.8→28 · poterie 1.0→46** (`= 1200·qout/demande_1000`) ; les biens NICHE (papier/statue/sel/fourrure) restent
+  efficaces (cibler 1000 hab y est absurde). **BASSIN J+B** : `labor_avail = JOURNALIERS + BOURGEOIS` (l'élite ne
+  travaille pas) — le geste « 100 emplois = 100 emplois » ; corrige le double-compte rpop (`rp_`) + `elab` national.
+  **bois 0.5→1.0** (le feu est un bien DIRECT, calé par le rendement). **FRUITS** (`RES_FRUIT`, brute un peu partout +
+  forêt, protégée de la coupe) = repli du VIN (compense le sucre rare). ⊕ Mesuré seed 9/150 ans : **satisfaction
+  75/75/81 (≥ baseline 66/74/78)**, boisson servie ~90 % — le levier rend les manufactures labor-intensives SANS casser
+  le monde. `EXTRACT_LABOR_SHARE` testé 0.45 → **remis 0.65** (0.45 n'aide pas la boisson — limitée par la réserve
+  vivrière locale — et baisse la satisfaction).
+  **ALLOCATION DE MAIN-D'ŒUVRE (onglet province, item joueur)** : override par RÉGION du split AUTO. `RegionEconomy`
+  gagne `alloc_on`/`alloc_raw[RES_PROD_FIRST]`/`alloc_bld[BLD_TYPE_COUNT]`/`bld_input[BLD_TYPE_COUNT]` (⚠ **SAVE BUMP
+  41→42**). `alloc_on=0` (DÉFAUT) ⇒ AUTO inchangé (déterminisme préservé hors-override) ; `alloc_on=1` ⇒ le bassin est
+  réparti par les POIDS (extraction + manufacture, un seul budget), poids 0 sur un bâtiment = FERMÉ, `bld_input` force
+  le repli (alt1). FAÇADE : `scps_region_alloc` (reader : puits + poids + part suggérée en AUTO) + 4 verbes journalisés
+  `scps_player_alloc_{raw,bld,input,auto}` (revalidés au drain : région à soi, bornes) + `scps_province_count`. Binding
+  Godot (`region_alloc`→Dictionary + 4 verbes) + onglet **« Main-d'œuvre »** (`province_detail.gd` : barres %, [−]/[+],
+  Fermer/Ouvrir, choix d'intrant, ↻ Auto — pousse l'allocation COMPLÈTE pour ne pas zéroter les autres puits ; lecture
+  seule hors de ses régions). Probe headless `alloc_audit` (round-trip read→override→fermer→auto, seeds 11/42 OK).
+  **IA = AUTO** : un override IA proportionnel a été codé puis **MESURÉ inférieur** (66-69 % vs 75 % auto — le glouton
+  AUTO fait COULER les bras vers qui peut les employer ; un poids fixe en gâche) → **retiré** ; l'AUTO prix-driven EST
+  l'allocation avisée de l'IA, l'override reste l'outil du JOUEUR (cf. garde-fou « keep only if ≥ auto »).
+  ⚠ **RE-BASELINE golden** (le levier + le bassin J+B mordent dès l'an-0 ; golden mis à jour) · `determinism` **STABLE**
+  (save/reload v42 byte-identique) · `make test` **38/40** (cap_demo RECALIBRÉ — fixture dotée large : le banc teste le
+  CAP, pas la main-d'œuvre ; les 3 KO restants sont les pré-existants Windows : intertrade `setenv`, campaign/warhost
+  stack) · `scps_api_demo` **91/91** (+7 alloc) · GDExtension `scons` **0 warning** · sweep 5×250 SAIN (24-45 pays, IPM
+  1.24, §27 an-180, hégémon mortel 5/5). Tunables INCHANGÉS sauf les `labor` de recette (code) + `EXTRACT_LABOR_SHARE`
+  0.65 (registre J). `resource_name`/color : +Fruits/Poterie/Statuaire.
 
 ## Disciplines non négociables
 

@@ -3696,7 +3696,7 @@ const char *resource_name(Resource r) {
         [RES_NONE]="—",
         /* brutes agricoles */
         [RES_GRAIN]="Céréales",[RES_LIVESTOCK]="Bétail",[RES_WOOL]="Laine",[RES_FISH]="Poisson",[RES_FUR]="Fourrure",
-        [RES_SALT]="Sel",[RES_COTTON]="Coton",[RES_SUGAR]="Sucre",[RES_WOOD]="Bois",[RES_MED_HERBS]="Herbes médicinales",
+        [RES_SALT]="Sel",[RES_COTTON]="Coton",[RES_SUGAR]="Sucre",[RES_WOOD]="Bois",[RES_FRUIT]="Fruits",[RES_MED_HERBS]="Herbes médicinales",
         /* brutes minérales & rares */
         [RES_COPPER]="Cuivre",[RES_IRON]="Fer",[RES_COAL]="Charbon",[RES_SULFUR]="Soufre",[RES_SALTPETER]="Salpêtre",[RES_ESSENCE_PURIFIEE]="Essence purifiée",
         [RES_GOLD]="Or",[RES_PRECIOUS_METAL]="Métaux précieux",[RES_PEARL]="Perle",
@@ -3711,6 +3711,7 @@ const char *resource_name(Resource r) {
         [RES_FLUX]="Flux",[RES_ALCHEMIST_KIT]="Nécessaire d'alchimiste",
         [RES_ARMS_HEAVY]="Armes lourdes",[RES_ARMS_RANGED]="Armes de trait",[RES_FIREARM]="Armes à feu",
         [RES_MAGE_STAFF]="Bâton de mage",
+        [RES_POTTERY]="Poterie",[RES_STATUE]="Statuaire",   /* confort de bâti (argile/pierre) */
     };
     return (r>=0&&r<RES_COUNT)?(N[(int)r]?N[(int)r]:"?"):"?";
 }
@@ -3720,7 +3721,7 @@ uint32_t resource_color(Resource r) {
         [RES_NONE]=0xFF404040u,
         /* agricoles */
         [RES_GRAIN]=0xFFE8C84Cu,[RES_LIVESTOCK]=0xFFB07840u,[RES_WOOL]=0xFFE0D0B0u,[RES_FISH]=0xFF4078A0u,[RES_FUR]=0xFF7B4A28u,
-        [RES_SALT]=0xFFF0F0F0u,[RES_COTTON]=0xFFF0E0E0u,[RES_SUGAR]=0xFFE0A040u,[RES_WOOD]=0xFF386020u,[RES_MED_HERBS]=0xFF80B070u,
+        [RES_SALT]=0xFFF0F0F0u,[RES_COTTON]=0xFFF0E0E0u,[RES_SUGAR]=0xFFE0A040u,[RES_WOOD]=0xFF386020u,[RES_FRUIT]=0xFFE05858u,[RES_MED_HERBS]=0xFF80B070u,
         /* minéraux & rares */
         [RES_COPPER]=0xFFB87333u,[RES_IRON]=0xFF8090A0u,[RES_COAL]=0xFF303030u,[RES_SULFUR]=0xFFD8D040u,[RES_SALTPETER]=0xFFC8B090u,
         [RES_GOLD]=0xFFFFD000u,[RES_PRECIOUS_METAL]=0xFF80E0E0u,[RES_PEARL]=0xFFF0E0E8u,
@@ -3734,6 +3735,7 @@ uint32_t resource_color(Resource r) {
         [RES_ARMS]=0xFF707080u,[RES_GUNPOWDER]=0xFF505050u,[RES_REMEDE]=0xFF60B080u,[RES_TUNIQUE]=0xFFB8A088u,
         [RES_FLUX]=0xFF50C0E0u,[RES_ALCHEMIST_KIT]=0xFF9070C0u,
         [RES_ARMS_HEAVY]=0xFF606070u,[RES_ARMS_RANGED]=0xFF90A060u,[RES_FIREARM]=0xFF404048u,[RES_MAGE_STAFF]=0xFF70D0B0u,
+        [RES_POTTERY]=0xFFC07850u,[RES_STATUE]=0xFFC8C0B0u,
     };
     return (r>=0&&r<RES_COUNT)?C[(int)r]:0xFFFF00FFu;
 }

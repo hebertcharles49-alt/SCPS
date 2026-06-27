@@ -113,6 +113,15 @@ public:
     bool       player_offer_pact(int target);         /* proposer un pacte de commerce */
     bool       player_embargo(int target, bool on);   /* poser/lever un embargo */
 
+    /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) — lire les puits + régler les poids.
+     * region_alloc renvoie { region, on:bool, pool:float, sinks:[{kind,id,name,output,in_name,
+     * alt_name,weight,pct,workers,closed,input}] }. Les verbes ENFILENT (revalidé au drain). */
+    Dictionary region_alloc(int region);
+    bool       player_alloc_raw(int region, int resource, int weight);
+    bool       player_alloc_bld(int region, int bld_type, int weight);  /* weight 0 = fermé */
+    bool       player_alloc_input(int region, int bld_type, int input);
+    bool       player_alloc_auto(int region);          /* retour au split AUTO */
+
     /* CRÉATEUR DE CULTURE (façon Stellaris) — listes + validation + aperçu + composition.
      * Membrane : des MOTS et des SIGNES (pas de levier brut). Pur (aucun sim) → utilisable
      * AVANT generate() ; set_player_culture grave la compo À la prochaine generate(). */
