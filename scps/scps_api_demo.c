@@ -292,6 +292,42 @@ int main(int argc, char **argv){
         scps_sim_free(se);
     }
 
+    /* ── SAUVEGARDE : aller-retour (compose → sauve → recharge → tout conservé) ── */
+    {
+        scps_clear_player_culture();
+        ScpsTradition trs3[64]; int ntr3=scps_tradition_list(trs3,64);
+        int maj=-1, mn=-1, df=-1;
+        for(int i=0;i<ntr3;i++){
+            if(maj<0 && trs3[i].axe==0 && trs3[i].rang>=2) maj=trs3[i].id;
+            if(mn <0 && trs3[i].axe==1 && trs3[i].rang==1) mn =trs3[i].id;
+            if(df <0 && trs3[i].axe==2 && trs3[i].rang< 0) df =trs3[i].id;
+        }
+        scps_set_empire_culture(0, 0, 5, maj, mn, df);   /* joueur ESOTERIQUE/PACIFISTE → Havre */
+        ScpsSim *sg=scps_sim_new(); scps_sim_generate(sg, seed);
+        scps_sim_advance_days(sg, 365*3);
+        int yr_before=scps_year(sg);
+        long pop_before=scps_world_pop(sg);
+        ScpsCountryInfo before; scps_country_info(sg, scps_player(sg), &before);
+        char nom_before[64]; snprintf(nom_before,sizeof nom_before,"%s",before.nom);
+        ok("sauvegarde écrite (slot 1)", scps_sim_save(sg, 1)==1);
+        ScpsSaveSlot slots[3]; scps_save_slots(slots,3);
+        ok("slot 1 listé OCCUPÉ (année cohérente)", slots[0].used==1 && slots[0].year==yr_before);
+
+        ScpsSim *sl=scps_sim_new();
+        int rc=scps_sim_load(sl, 1);
+        ok("chargement OK (rc=0)", rc==0);
+        ok("année + pop restaurées", scps_year(sl)==yr_before && scps_world_pop(sl)==pop_before);
+        ScpsCountryInfo after; scps_country_info(sl, scps_player(sl), &after);
+        printf("   save/load : « %s » (an %d, %ld âmes) → « %s » (an %d, %ld âmes)\n",
+               nom_before, yr_before, pop_before, after.nom, scps_year(sl), scps_world_pop(sl));
+        ok("culture du joueur CONSERVÉE (nom = épithète « Havre »)", strncmp(after.nom,"Havre",5)==0);
+        /* la partie chargée VIT (le build composé persiste via la section CULT) */
+        scps_sim_advance_days(sl, 365);
+        ok("la partie chargée AVANCE (an +1)", scps_year(sl)==yr_before+1);
+        scps_clear_player_culture();
+        scps_sim_free(sg); scps_sim_free(sl);
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

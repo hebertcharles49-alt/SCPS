@@ -298,6 +298,48 @@ SpeciesBuild culture_build_for(uint32_t cid){
     return culture_random_build(cid);
 }
 
+/* ---- SAUVEGARDE des slots (section CULT) ---------------------------------- */
+void culture_slots_save(FILE *f){
+    uint32_t n = (uint32_t)CULTURE_SLOTS;
+    fwrite(&n, 4, 1, f);
+    for (int s=0;s<CULTURE_SLOTS;s++){
+        uint8_t act = g_slot[s].active ? 1u : 0u;
+        int32_t her = (int32_t)g_slot[s].heritage;
+        int32_t eth = (int32_t)g_slot[s].ethos;
+        int32_t tr[CAT_COUNT];
+        for (int c=0;c<CAT_COUNT;c++) tr[c] = (int32_t)g_slot[s].build.trait[c];
+        fwrite(&act,1,1,f); fwrite(&her,4,1,f); fwrite(&eth,4,1,f);
+        fwrite(tr, 4, CAT_COUNT, f);
+    }
+    cid_map_ensure();
+    uint32_t m = (uint32_t)CULTURE_MAX_CID;
+    fwrite(&m, 4, 1, f);
+    for (int i=0;i<CULTURE_MAX_CID;i++){ int32_t v=(int32_t)g_cid_slot[i]; fwrite(&v,4,1,f); }
+}
+bool culture_slots_load(FILE *f){
+    uint32_t n=0;
+    if (fread(&n,4,1,f)!=1 || n!=(uint32_t)CULTURE_SLOTS) return false;
+    for (int s=0;s<CULTURE_SLOTS;s++){
+        uint8_t act=0; int32_t her=0, eth=0, tr[CAT_COUNT];
+        if (fread(&act,1,1,f)!=1 || fread(&her,4,1,f)!=1 || fread(&eth,4,1,f)!=1) return false;
+        if (fread(tr,4,CAT_COUNT,f)!=(size_t)CAT_COUNT) return false;
+        g_slot[s].active   = act!=0;
+        g_slot[s].heritage = (her>=0&&her<HERITAGE_COUNT) ? (SpeciesArchetype)her : HERITAGE_ADAPTATIF;
+        g_slot[s].ethos    = eth;
+        for (int c=0;c<CAT_COUNT;c++)
+            g_slot[s].build.trait[c] = (tr[c]>=0&&tr[c]<TRAIT_COUNT) ? (TraitId)tr[c] : T_PROLIFIQUE;
+    }
+    uint32_t m=0;
+    if (fread(&m,4,1,f)!=1 || m!=(uint32_t)CULTURE_MAX_CID) return false;
+    cid_map_ensure();
+    for (int i=0;i<CULTURE_MAX_CID;i++){
+        int32_t v=0; if (fread(&v,4,1,f)!=1) return false;
+        g_cid_slot[i] = (v>=-1 && v<CULTURE_SLOTS) ? (int)v : -1;   /* borne : slot valide ou aucun */
+    }
+    g_cid_map_init = true;
+    return true;
+}
+
 /* ---- Compat « joueur » = slot 0 ------------------------------------------- */
 void culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build){
     culture_slot_set(0, heritage, ethos, build);

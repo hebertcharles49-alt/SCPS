@@ -674,6 +674,31 @@
   (pré-existants, confirmés sur `main` vierge) : `intertrade_demo` (build : `setenv` est POSIX),
   `campaign_demo`/`warhost_demo` (`0xC00000FD` STACK_OVERFLOW : pile Windows 1 Mo vs 8 Mo Linux) — le
   reste **37/37** vert (sur Linux/cloud : **40/40**).
+- **MENU + NOUVELLE PARTIE + SAUVEGARDE (2026-06-27) — le shell de jeu (Godot)** : un vrai menu
+  (Jouer · Charger · Options · Quitter) → écran Nouvelle partie → chargement → PAUSE an 0.
+  **(1) Sliders monde** : la façade `scps_worldgen_set/clear` + `scps_worldparams_default` route les
+  champs RÉELS de `WorldParams` (taille tiny→huge = nb empires/cités, âge, continents, terres,
+  montagnes, érosion, température, humidité) vers `scps_sim_generate` (override clampé, défaut =
+  worldparams_default) ; `WorldParams` mémorisé dans `ScpsSim` (pour la save). seed 9 : petit(2 emp)=98
+  rég · grand(10)=441. **(2) Culture par EMPIRE (slots, façon Stellaris)** : le mono-joueur `g_player`
+  devient un table `g_slot[CULTURE_SLOTS]` + map `g_cid_slot` ; slot 0 = joueur, 1..N = IA
+  (POLITY_ANTAGONIST) liés à la genèse par ordinal (`culture_bind_cid`) ; `worldgen_seed_peoples`
+  applique héritage+éthos par empire ; `culture_build_for(cid)` lit le slot. Façade
+  `scps_set_empire_culture(slot,…)` + `scps_country_role`. seed 9 : joueur slot 0 = « Havre Lórond »,
+  IA slot 1 (cid 9) = « Horde Grukgor ». Compat `culture_player_*` (= slot 0) conservée.
+  **(3) Sauvegarde PARTAGÉE** : le format (en-tête versionné, sections taguées, ChaCha20, save_sane)
+  est EXTRAIT de `viewer.c` vers **`scps_save.{h,c}`** (sur le `Sim` MOTEUR) — ⚠ le viewer garde SON
+  `Sim` distinct (jamais migré vers scps_sim.h) donc garde SA copie du save ; `scps_save` sert la
+  FAÇADE. Nouvelle section **CULT** (`culture_slots_save/load` : slots + map cid→slot) ⇒ un monde
+  chargé garde les cultures composées (joueur ET IA) → **SAVE_VERSION 36** (côté façade). Façade
+  `scps_sim_save/load` + `scps_save_slots` ; le binding Godot expose worldgen/culture-slot/save +
+  `country_role`. **(4) UI Godot** (zéro logique sim) : `menu_root.gd` (shell + écran Charger :
+  3 emplacements, Sauvegarder/Charger), `new_game_panel.gd` (sliders + liste d'empires composables
+  via `culture_creator.gd` en mode SLOT + seed → Lancer → regenerate → pause), `main.gd` démarre sur
+  le menu (Échap rouvre). **Déterminisme INTACT** (slots/override inactifs par défaut ; chronicle ne
+  lie pas scps_save) : `make golden` **IDENTIQUE**, `determinism` **STABLE**, `scps_api_demo` **54/54**
+  (dont save/load aller-retour), probes Godot **MENU AUDIT OK** + **CULTURE AUDIT OK**. ⚠ Le viewer
+  SDL ne se bâtit pas sur ce poste (SDL2_ttf absent de MSYS2) — sans rapport, `viewer.c` est INCHANGÉ.
 
 ## Disciplines non négociables
 

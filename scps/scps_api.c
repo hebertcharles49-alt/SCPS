@@ -22,6 +22,7 @@
 #include "scps_species.h"   /* CRÉATEUR DE CULTURE : héritages, traditions, override joueur */
 #include "scps_culture.h"   /* ethos_name, enum Ethos */
 #include "scps_world.h"     /* culture_make_name (ethnonyme façon Stellaris) */
+#include "scps_save.h"      /* SAUVEGARDE partagée : scps_save_game/load/slot_info */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -55,6 +56,27 @@ void scps_sim_free(ScpsSim *s){
     if(!s) return;
     sim_free_members(&s->sim);
     free(s->w); free(s->px); free(s->cx); free(s->cy); free(s);
+}
+
+/* centroïdes région (la géo est figée par worldgen/chargement ; seul l'OWNER changera). */
+static void api_centroids(ScpsSim *s){
+    int nr = s->sim.econ->n_regions; s->n_cent = nr;
+    s->cx = (float*)realloc(s->cx, (size_t)nr*sizeof(float));
+    s->cy = (float*)realloc(s->cy, (size_t)nr*sizeof(float));
+    double *ax = (double*)calloc((size_t)nr, sizeof(double));
+    double *ay = (double*)calloc((size_t)nr, sizeof(double));
+    long   *cn = (long*)  calloc((size_t)nr, sizeof(long));
+    if(s->cx && s->cy && ax && ay && cn){
+        for(int y=0; y<SCPS_H; y++) for(int x=0; x<SCPS_W; x++){
+            int r = scps_cellc(s->w, x, y)->region;
+            if(r>=0 && r<nr){ ax[r]+=x; ay[r]+=y; cn[r]++; }
+        }
+        for(int r=0; r<nr; r++){
+            if(cn[r]){ s->cx[r]=(float)(ax[r]/(double)cn[r]); s->cy[r]=(float)(ay[r]/(double)cn[r]); }
+            else     { s->cx[r]=-1.f; s->cy[r]=-1.f; }
+        }
+    }
+    free(ax); free(ay); free(cn);
 }
 
 void scps_sim_generate(ScpsSim *s, uint32_t seed){
@@ -98,25 +120,7 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     warhost_set_human(s->sim.player);   /* la main humaine : l'armée du joueur ne s'auto-mobilise plus */
     econ_flux_reset();   /* budget façade : repart d'une ardoise propre (le flux est un état GLOBAL) */
     s->ready = true;
-
-    /* centroïdes région (la géo est figée par worldgen ; seul l'OWNER changera) */
-    int nr = s->sim.econ->n_regions; s->n_cent = nr;
-    s->cx = (float*)realloc(s->cx, (size_t)nr*sizeof(float));
-    s->cy = (float*)realloc(s->cy, (size_t)nr*sizeof(float));
-    double *ax = (double*)calloc((size_t)nr, sizeof(double));
-    double *ay = (double*)calloc((size_t)nr, sizeof(double));
-    long   *cn = (long*)  calloc((size_t)nr, sizeof(long));
-    if(s->cx && s->cy && ax && ay && cn){
-        for(int y=0; y<SCPS_H; y++) for(int x=0; x<SCPS_W; x++){
-            int r = scps_cellc(s->w, x, y)->region;
-            if(r>=0 && r<nr){ ax[r]+=x; ay[r]+=y; cn[r]++; }
-        }
-        for(int r=0; r<nr; r++){
-            if(cn[r]){ s->cx[r]=(float)(ax[r]/(double)cn[r]); s->cy[r]=(float)(ay[r]/(double)cn[r]); }
-            else     { s->cx[r]=-1.f; s->cy[r]=-1.f; }
-        }
-    }
-    free(ax); free(ay); free(cn);
+    api_centroids(s);   /* centroïdes région (géo figée par worldgen) */
 }
 
 /* Le TICK PLEIN : exactement le sim_day de la chronique (déterministe). */
@@ -1573,3 +1577,40 @@ void scps_worldgen_set(const ScpsWorldParams *p){
 }
 
 void scps_worldgen_clear(void){ g_wg.active = false; }
+
+/* ====================================================================== */
+/* SAUVEGARDE (l'écran « Charger ») — réutilise le format PARTAGÉ scps_save */
+/* ====================================================================== */
+int scps_sim_save(ScpsSim *s, int slot){
+    if(!s || !s->ready) return 0;
+    /* identité de culture = le slot 0 (joueur) ; la section CULT persiste TOUS les slots. */
+    return scps_save_game(slot, s->w, &s->sim, &s->params,
+                          (int)culture_player_heritage(), culture_player_ethos()) ? 1 : 0;
+}
+int scps_sim_load(ScpsSim *s, int slot){
+    if(!s) return 1;
+    int r=0, e=0;
+    int rc = scps_load_game(slot, s->w, &s->sim, &s->params, &r, &e);
+    if(rc!=0) return rc;
+    /* MAIN HUMAINE : comme à la genèse (le load restaure ai_on du save, mais on garantit
+     * que le joueur reste débrayé de l'IA côté façade). */
+    s->sim.human_player = s->sim.player;
+    s->sim.ai_on[s->sim.player] = false;
+    warhost_set_human(s->sim.player);
+    econ_flux_reset();
+    s->ready = true;
+    api_centroids(s);   /* la carte chargée : recalcule les centroïdes */
+    return 0;
+}
+void scps_save_slots(ScpsSaveSlot *out, int max){
+    if(!out) return;
+    for(int i=0;i<max;i++){
+        out[i].used=0; out[i].year=0; out[i].line[0]='\0';
+        SaveHeader h;
+        if(scps_save_slot_info(i+1, &h)){
+            out[i].used = 1;
+            out[i].year = (int)h.year;
+            snprintf(out[i].line, sizeof out[i].line, "%s", h.line);
+        }
+    }
+}

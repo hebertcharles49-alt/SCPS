@@ -65,6 +65,26 @@ func _run() -> void:
 	print("  slot 0 joueur=« ", pname, " » · slot 1 IA(cid ", ai, ")=« ", aname, " »")
 	if not pname.begins_with("Havre"): viol += 1; push_error("joueur slot 0 non gravé : " + pname)
 	if ai < 0 or not aname.begins_with("Horde"): viol += 1; push_error("IA slot 1 non gravée : " + aname)
+
+	# INVARIANT 5 : SAUVEGARDE — aller-retour à travers le binding (Charger)
+	for m in ["save_game", "load_game", "save_slots"]:
+		if not w.has_method(m):
+			push_error("menu_audit: méthode save absente : " + m); viol += 1
+	if w.has_method("save_game"):
+		w.advance_days(365 * 2)
+		var yr := int(w.year())
+		if not w.save_game(1): viol += 1; push_error("save_game a échoué")
+		var occ := false
+		for sl in w.save_slots():
+			if int(sl["slot"]) == 1 and bool(sl["used"]): occ = true
+		if not occ: viol += 1; push_error("slot 1 non listé occupé")
+		w.advance_days(365 * 5)               # mute le monde
+		var rc := int(w.load_game(1))         # puis recharge
+		if rc != 0: viol += 1; push_error("load_game rc=" + str(rc))
+		if int(w.year()) != yr: viol += 1; push_error("année non restaurée")
+		var pn := String(w.country_info(w.player()).get("nom", ""))
+		print("  save/load : sauve an ", yr, " → mute → load → an ", w.year(), " · joueur=« ", pn, " »")
+		if not pn.begins_with("Havre"): viol += 1; push_error("culture non restaurée après load")
 	w.clear_player_culture()
 
 	print("")

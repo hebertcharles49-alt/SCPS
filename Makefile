@@ -413,6 +413,7 @@ audit: audit_eco
 # (render_map) + couches + avancement + REPRODUCTIBILITÉ, sans Godot. Lie le
 # moteur complet + scps_render. (Le binding C++ Godot vit dans godot/, à part.)
 API_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS)) \
+                 $(OBJDIR)/scps_scps_crypt.o $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/scps_scps_save.o \
                  $(OBJDIR)/scps_scps_render.o $(OBJDIR)/scps_scps_api.o $(OBJDIR)/scps_scps_api_demo.o
 scps_api_demo: $(API_DEMO_OBJS)
 	$(CC) $(API_DEMO_OBJS) -o $@ -lm $(OMPFLAG)

@@ -18,6 +18,7 @@
  */
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>   /* FILE — sérialisation des slots de culture (sauvegarde) */
 
 /* ===================================================================== */
 /* SPHÈRES — tiers de magnitude sur un seul continuum (gouffre corrigé)   */
@@ -131,6 +132,12 @@ int               culture_slot_of_cid(int cid);         /* slot d'un cid, -1 si 
 bool              culture_any_active(void);              /* un slot au moins est-il posé ? */
 /* Build EFFECTIF pour un cid : l'override de son slot s'il est lié+actif, sinon le tirage. */
 SpeciesBuild      culture_build_for(uint32_t cid);
+
+/* SAUVEGARDE — sérialise/restaure les slots + la map cid→slot (section CULT) : un monde
+ * chargé garde les cultures composées (joueur ET IA). culture_slots_load rétablit aussi
+ * la map cid→slot ⇒ culture_build_for rend les bons builds post-chargement. false si corrompu. */
+void              culture_slots_save(FILE *f);
+bool              culture_slots_load(FILE *f);
 
 /* ---- Compat « joueur » (= slot 0) : la surface d'origine, conservée ---------- */
 void              culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build); /* = slot 0 */

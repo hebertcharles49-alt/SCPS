@@ -84,6 +84,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("worldparams_default", "seed"),   &ScpsWorld::worldparams_default);
     ClassDB::bind_method(D_METHOD("worldgen_set", "p"),             &ScpsWorld::worldgen_set);
     ClassDB::bind_method(D_METHOD("worldgen_clear"),                &ScpsWorld::worldgen_clear);
+    ClassDB::bind_method(D_METHOD("save_game", "slot"),             &ScpsWorld::save_game);
+    ClassDB::bind_method(D_METHOD("load_game", "slot"),             &ScpsWorld::load_game);
+    ClassDB::bind_method(D_METHOD("save_slots"),                    &ScpsWorld::save_slots);
 
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
     ClassDB::bind_method(D_METHOD("river_paths"),                    &ScpsWorld::river_paths);
@@ -753,6 +756,27 @@ void ScpsWorld::worldgen_set(Dictionary p) {
 
 void ScpsWorld::worldgen_clear() {
     scps_worldgen_clear();
+}
+
+bool ScpsWorld::save_game(int slot) {
+    return sim ? scps_sim_save(sim, slot) != 0 : false;
+}
+int ScpsWorld::load_game(int slot) {
+    return sim ? scps_sim_load(sim, slot) : 1;
+}
+Array ScpsWorld::save_slots() {
+    Array a;
+    ScpsSaveSlot sl[3];
+    scps_save_slots(sl, 3);
+    for (int i = 0; i < 3; i++) {
+        Dictionary d;
+        d["slot"] = i + 1;
+        d["used"] = (bool)sl[i].used;
+        d["year"] = sl[i].year;
+        d["line"] = String::utf8(sl[i].line);
+        a.push_back(d);
+    }
+    return a;
 }
 
 Array ScpsWorld::river_points() {

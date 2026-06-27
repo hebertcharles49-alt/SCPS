@@ -131,6 +131,11 @@ public:
     void       worldgen_set(Dictionary p);                  /* override la prochaine generate() */
     void       worldgen_clear();
 
+    /* SAUVEGARDE (« Charger ») — 3 emplacements (1..3) */
+    bool       save_game(int slot);                         /* true = écrit */
+    int        load_game(int slot);                         /* 0 ok · 1 absent/corrompu · 2 ère antérieure */
+    Array      save_slots();                                /* [{used:bool, year:int, line:String}] (slots 1..3) */
+
     /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
     Array      river_points();
     /* rivières STRUCTURÉES par fleuve : Array[Dictionary{points:PackedVector2Array, flow:float}]

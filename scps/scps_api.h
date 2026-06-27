@@ -561,6 +561,16 @@ void scps_worldparams_default(uint32_t seed, ScpsWorldParams *out);
 void scps_worldgen_set(const ScpsWorldParams *p);
 void scps_worldgen_clear(void);
 
+/* ====================================================================== */
+/* SAUVEGARDE (l'écran « Charger ») — format PARTAGÉ avec le viewer (scps_save).*/
+/* 3 emplacements (1..3). La section CULT persiste les cultures composées.   */
+/* ====================================================================== */
+int  scps_sim_save(ScpsSim *s, int slot);   /* 1 = écrit · 0 = échec */
+int  scps_sim_load(ScpsSim *s, int slot);   /* 0 ok · 1 absent/corrompu · 2 « ère antérieure » */
+/* infos des slots (pour la liste « Charger ») : used + année + ligne résumée. */
+typedef struct { int used; int year; char line[96]; } ScpsSaveSlot;
+void scps_save_slots(ScpsSaveSlot *out, int max);   /* remplit out[0..max) = slots 1..max */
+
 #ifdef __cplusplus
 }
 #endif

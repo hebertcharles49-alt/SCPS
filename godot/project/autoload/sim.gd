@@ -40,6 +40,22 @@ func regenerate(seed_value: int) -> void:
 	world.generate(seed_value)
 	generated.emit()
 
+## SAUVEGARDE (menu Charger). save_game → bool ; load_game → 0 ok/1 absent/2 ère antérieure
+## (émet generated sur succès : la carte se redessine) ; save_slots → infos des 3 emplacements.
+func save_game(slot: int) -> bool:
+	return world.save_game(slot) if world != null else false
+
+func load_game(slot: int) -> int:
+	if world == null:
+		return 1
+	var rc: int = world.load_game(slot)
+	if rc == 0:
+		generated.emit()
+	return rc
+
+func save_slots() -> Array:
+	return world.save_slots() if world != null else []
+
 func _process(delta: float) -> void:
 	if world == null:
 		return
