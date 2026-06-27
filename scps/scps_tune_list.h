@@ -71,6 +71,25 @@
     X(REGIMENT_PRICE,        12.0f) \
     X(NAVY_UPKEEP_GOLD,       1.5f) \
     X(AI_SAVOIR_K,            2.5f) \
+    /* RELIGION — seuil de zèle : w_faith ≥ ce seuil ⇒ crédo prosélyte FONDE sa foi proactivement */ \
+    X(AI_FAITH_ZEAL,          0.5f) \
+    /* PRÉVISION DIPLO — frein à la menace ENTRANTE : war_risk > GATE ⇒ on freine l'offensive de BRAKE×risk */ \
+    X(AI_THREAT_GATE,         0.55f) \
+    X(AI_THREAT_BRAKE,        0.5f) \
+    X(AI_WAR_LOSING,        -25.0f) \
+    X(AI_ALLY_NEED_W,         1.0f) \
+    /* RAW-WORKS — extraction manufacturée (four à brique/carrière/scierie), source UNIQUE du brut de
+     * bâti (le monde nu n'en extrait pas) : niveau de NAISSANCE substantiel (un vrai atelier qui pèse
+     * face à la grosse demande pottery+chantiers) · bois consommé à la POSE · seuil de déficit forecast */ \
+    X(RAW_WORKS_LEVEL,       10.0f) \
+    X(RAW_WORKS_WOOD,        15.0f) \
+    X(RAW_WORKS_NEED,       120.0f) \
+    /* argile/pierre FORCÉES près de la capitale joueur si le biome n'en donne pas */ \
+    X(PLAYER_GUARANTEE_RAW,   4.0f) \
+    /* CONFORT (poterie+statuaire servies) → bonheur AU-DESSUS du panier (hors-besoin, sans pénalité)
+     * + −15 % de besoin de logement (densité tolérée) */ \
+    X(COMFORT_JOY,            0.08f) \
+    X(COMFORT_HOUSE_RELIEF,   0.15f) \
     /* §spéculation (E3) — les bandes du stockeur IA */ \
     X(SPEC_BUY_BAND,          0.80f) \
     X(SPEC_SELL_BAND,         1.25f) \

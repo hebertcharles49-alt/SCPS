@@ -73,6 +73,8 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_ARMS]          = 9.0f,    /* armes & armures — militaire de base */
     [RES_GUNPOWDER]     = 11.0f,   /* poudre — militaire */
     [RES_REMEDE]        = 7.0f,    /* remèdes — santé/confort */
+    [RES_POTTERY]       = 3.0f,    /* poterie — confort du commun (vaisselle/tuiles), argile façonnée */
+    [RES_STATUE]        = 9.0f,    /* statuaire — confort de prestige (bourgeois/élite), pierre ouvrée */
 };
 
 /* ── REFONTE A1 — RENDEMENT D'EXTRACTION PAR OUVRIER (unités/ouvrier/AN) ──────
@@ -173,6 +175,15 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     [BLD_ARMORY_HEAVY]={ RES_IRON,     3.0f, RES_NONE, 0.f, RES_ARMS_HEAVY, 1.0f, 1.1f, RES_NONE, 0.f },  /* fer ×3 → lourdes */
     [BLD_BOWYER]    = { RES_IRON,      1.0f, RES_WOOD, 1.0f, RES_ARMS_RANGED,1.0f, 0.9f, RES_NONE, 0.f },  /* fer + bois → trait */
     [BLD_ARQUEBUS]  = { RES_IRON,      1.0f, RES_GUNPOWDER, 2.0f, RES_FIREARM, 1.0f, 1.1f, RES_COPPER, 1.0f },  /* fer + poudre (cuivre repli) → feu */
+    /* RAW-WORKS : AUCUN intrant matière (in1=RES_NONE) → production HORS-SOL par le seul travail
+     * (indépendante de la tuile) ; l'OR est ponctionné au tick (input renforcé, scps_econ §RAW). qout =
+     * sortie/ouvrier/mois (labor=1) : 0.15 argile/pierre, 0.30 bois (100 ouvriers → 15/15/30 par mois). */
+    [BLD_BRICKWORKS]= { RES_NONE,      0.f,  RES_NONE,      0.f,  RES_CLAY,    0.60f, 1.0f, RES_NONE, 0.f },  /* four à brique → argile (100 jobs → 60/mois) */
+    [BLD_QUARRY]    = { RES_NONE,      0.f,  RES_NONE,      0.f,  RES_STONE,   0.60f, 1.0f, RES_NONE, 0.f },  /* carrière → pierre (100 jobs → 60/mois) */
+    [BLD_LUMBERYARD]= { RES_NONE,      0.f,  RES_NONE,      0.f,  RES_WOOD,    1.20f, 1.0f, RES_NONE, 0.f },  /* scierie → bois (100 jobs → 120/mois) */
+    /* CONFORT du brut de bâti — CONSOMMENT argile/pierre (⇒ la demande qui entretient les raw-works). */
+    [BLD_POTTERY]   = { RES_CLAY,      1.5f, RES_NONE,      0.f,  RES_POTTERY, 1.4f,  1.0f, RES_NONE, 0.f },  /* argile → poterie */
+    [BLD_SCULPTURE] = { RES_STONE,     2.0f, RES_NONE,      0.f,  RES_STATUE,  1.0f,  1.1f, RES_NONE, 0.f },  /* pierre → statuaire */
     [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
     [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 0.8f, RES_NONE, 0.f },
 };
@@ -199,16 +210,19 @@ static const float NEED[CLASS_COUNT][RES_COUNT] = {
         [RES_GRAIN]=3.50f, [RES_FISH]=1.00f,     /* A2 : nourriture ANNUELLE (grain+poisson INTERCHANGEABLES, food_sat les agrège) */
         [RES_WOOD]=1.00f,                         /* A2 : bois de FEU annuel (~3× l'ancien 0.35) */
         [RES_WINE]=0.35f, [RES_TUNIQUE]=0.40f,   /* confort INCHANGÉ (bière/vin via préférence) */
+        [RES_POTTERY]=0.30f,                      /* poterie : vaisselle/tuiles du foyer — confort (⇒ demande d'argile) */
     },
     [CLASS_BOURGEOIS] = {
         [RES_GRAIN]=4.00f,                        /* A2 : nourriture ANNUELLE */
         [RES_CLOTH]=0.34f, [RES_PAPER]=0.25f, [RES_WINE]=0.30f,
         [RES_SALT]=0.20f, [RES_REMEDE]=0.15f,   /* santé urbaine (apothicaire) — confort INCHANGÉ */
+        [RES_POTTERY]=0.25f, [RES_STATUE]=0.12f, /* poterie fine + ornement de pierre — confort (⇒ demande argile/pierre) */
     },
     [CLASS_ELITE] = {
         [RES_GRAIN]=4.00f,                        /* A2 : nourriture ANNUELLE */
         [RES_FUR]=0.12f, [RES_PAPER]=0.12f, [RES_WINE]=0.28f,
         [RES_PRECIOUS_WARE]=0.13f,   /* palier STATUT (orfèvrerie OU étoffe) — confort INCHANGÉ */
+        [RES_STATUE]=0.18f,                       /* statuaire de prestige — confort/statut (⇒ demande de pierre) */
     },
 };
 /* §besoins progressifs — ORDRE de priorité par classe (subsistance → confort → STATUT).
@@ -216,15 +230,15 @@ static const float NEED[CLASS_COUNT][RES_COUNT] = {
  * petit centre n'aspire qu'aux bases (2 besoins), une grande capitale développée à tout
  * le panier (statut compris). Ainsi le luxe se MÉRITE avec le développement — et l'élite
  * d'un bourg n'est pas punie de ne pas avoir d'orfèvrerie. Le palier STATUT vient DERNIER. */
-static const Resource NEED_ORDER[CLASS_COUNT][8] = {
-    [CLASS_LABORER]   = { RES_GRAIN, RES_WINE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_NONE },  /* bière (RES_WINE→préférée) en palier moral PRÉCOCE ; poisson = nourriture interchangeable (A2) */
-    [CLASS_BOURGEOIS] = { RES_GRAIN, RES_SALT, RES_CLOTH, RES_REMEDE, RES_WINE, RES_PAPER, RES_NONE },
-    [CLASS_ELITE]     = { RES_GRAIN, RES_FUR, RES_PAPER, RES_WINE, RES_PRECIOUS_WARE, RES_NONE },
+static const Resource NEED_ORDER[CLASS_COUNT][9] = {
+    [CLASS_LABORER]   = { RES_GRAIN, RES_WINE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_POTTERY, RES_NONE },  /* bière (RES_WINE→préférée) en palier moral PRÉCOCE ; poisson = nourriture interchangeable (A2) ; poterie = confort TARDIF */
+    [CLASS_BOURGEOIS] = { RES_GRAIN, RES_SALT, RES_CLOTH, RES_REMEDE, RES_WINE, RES_PAPER, RES_POTTERY, RES_STATUE, RES_NONE },
+    [CLASS_ELITE]     = { RES_GRAIN, RES_FUR, RES_PAPER, RES_WINE, RES_PRECIOUS_WARE, RES_STATUE, RES_NONE },
 };
 /* rang de priorité d'un besoin (0 = vital) ; 99 = hors panier (jamais débloqué). */
 static int need_rank(int c, Resource r){
     if (c<0||c>=CLASS_COUNT) return 99;
-    for (int i=0;i<8 && NEED_ORDER[c][i]!=RES_NONE;i++) if (NEED_ORDER[c][i]==r) return i;
+    for (int i=0;i<9 && NEED_ORDER[c][i]!=RES_NONE;i++) if (NEED_ORDER[c][i]==r) return i;
     return 99;
 }
 /* REFONTE A2 — une SOURCE DE NOURRITURE interchangeable (grain/poisson/viande). FOOD_NEED
@@ -377,6 +391,8 @@ const char *building_name(BuildingType b) {
         [BLD_TUNIC]="Atelier de tunique",[BLD_CHARCOAL]="Charbonnière",[BLD_FOREUSE]="Foreuse arcanique",
         [BLD_REPLICATEUR]="Réplicateur ligneux",[BLD_CORNE]="Corne divine",
         [BLD_ARMORY_HEAVY]="Armurerie lourde",[BLD_BOWYER]="Atelier d'arc",[BLD_ARQUEBUS]="Arquebuserie",
+        [BLD_BRICKWORKS]="Four à brique",[BLD_QUARRY]="Carrière",[BLD_LUMBERYARD]="Scierie",
+        [BLD_POTTERY]="Poterie",[BLD_SCULPTURE]="Atelier de sculpture",
     };
     return (b>=0&&b<BLD_TYPE_COUNT&&N[b])?N[b]:"?";
 }
@@ -423,6 +439,38 @@ void econ_build_adjacency(WorldEconomy *e, const World *w) {
             if (!e->region[ra].impassable && !e->region[rb].impassable) {
                 e->adj[ra][rb]=1; e->adj[rb][ra]=1;
             }
+        }
+    }
+}
+
+/* GAMEPLAY — GARANTIE DE BÂTI PRÈS DU JOUEUR : la worldgen tire argile (terres d'eau) & pierre
+ * (relief) SELON LE BIOME — par malchance, la capitale peut n'avoir ni l'un ni l'autre à portée.
+ * On FORCE alors une tuile de chaque dans le RAYON 1-2 de la capitale (via l'adjacence éco) : le
+ * joueur ne doit JAMAIS être privé de construction. IDEMPOTENT (présent dans le rayon ⇒ on ne force
+ * rien) ; à appeler APRÈS econ_init (raw_cap + coupe + adjacence) ET l'assignation des capitales. */
+void econ_guarantee_player_construction(WorldEconomy *e, const World *w, int player_cid){
+    if (!e || !w || player_cid<0 || player_cid>=w->n_countries) return;
+    int cp = w->country[player_cid].capital_prov;
+    if (cp<0 || cp>=w->n_provinces) return;
+    int caphr = w->province[cp].region;
+    if (caphr<0 || caphr>=e->n_regions || caphr>=SCPS_MAX_REG) return;
+    int N = (e->n_regions < SCPS_MAX_REG) ? e->n_regions : SCPS_MAX_REG;
+    static bool inrad[SCPS_MAX_REG];
+    for (int r=0;r<N;r++) inrad[r]=false;
+    inrad[caphr]=true;                                        /* rayon 0 : la capitale */
+    for (int r=0;r<N;r++) if (e->adj[caphr][r]){ inrad[r]=true;   /* rayon 1 */
+        for (int r2=0;r2<N;r2++) if (e->adj[r][r2]) inrad[r2]=true; }  /* rayon 2 */
+    const float amt = tune_f("PLAYER_GUARANTEE_RAW", 4.f);
+    const Resource gg[2] = { RES_CLAY, RES_STONE };
+    for (int i=0;i<2;i++){ Resource g=gg[i];
+        int present=0, target=-1;
+        for (int r=0;r<N;r++){ if(!inrad[r] || !e->region[r].active) continue;
+            if (e->region[r].raw_cap[g] >= 1.f){ present=1; break; }
+            if (target<0 && r!=caphr) target=r;              /* préfère un VOISIN distinct (capitale garde sa vocation) */
+        }
+        if (!present){
+            if (target<0) target=caphr;                      /* aucun voisin franchissable → la capitale elle-même */
+            e->region[target].raw_cap[g] = amt;              /* « Clay + X » / « Pierre + Y » */
         }
     }
 }
@@ -730,6 +778,11 @@ void econ_init(WorldEconomy *e, const World *w) {
              * — sinon la chaîne faustienne/endgame perdrait sa matière (ce n'est pas un
              * ajustement d'éco : c'est garder l'intrant rare de la tech). */
             prot[RES_CELESTIAL_IRON]=prot[RES_ARCANE_CRYSTAL]=true;
+            /* CONSTRUCTION — argile & pierre PROTÉGÉES de la coupe : le brut de bâti SUIT la géo
+             * (argile aux terres d'eau, pierre au relief) au lieu d'être ÉCRASÉ par les 2 brutes
+             * dominantes. Source géologique BON MARCHÉ (extraction, pas la seule manufacture) ; les
+             * RAW-WORKS restent le SUPPLÉMENT des régions pauvres + la chaîne confort. */
+            prot[RES_CLAY]=prot[RES_STONE]=true;
             for (int k=0;k<keep;k++){
                 int best=-1; float bv=0.f;
                 for (int g=1;g<RES_PROD_FIRST;g++){ if (prot[g]||re->raw_cap[g]<=0.f) continue;
@@ -991,6 +1044,7 @@ static void econ_build_tick(WorldEconomy *e){
             if (b==BLD_REPLICATEUR && !re->tech_replicateur) continue;           /* FAU4 : gate TECH_TRANSMUTATION */
             if (b==BLD_CORNE && !re->tech_corne) continue;                       /* FAU4 : gate TECH_FORGE_RUNES */
             if (b==BLD_ARQUEBUS && !re->tech_arquebus) continue;                 /* F7 : gate TECH_POUDRIERE */
+            if (bld_is_rawworks((BuildingType)b)) continue;                      /* RAW-WORKS : pilotés par le FORECAST (ai_build_rawworks), pas le §NF price-driven (demande LATENTE) */
             if (re->price[rc->out] < BASE_PRICE[rc->out]*NF_SHORTAGE) continue;   /* output pas en pénurie ICI */
             bool feed1 = (rc->in1==RES_NONE)
                       || avail[rc->in1] > NF_REALM_MIN || re->stock[rc->in1] >= NF_STOCK_MIN
@@ -1096,6 +1150,10 @@ bool econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b){
 bool bld_is_faustian(BuildingType b){
     return b==BLD_FOREUSE || b==BLD_REPLICATEUR || b==BLD_CORNE;
 }
+/* RAW-WORKS — extraction MANUFACTURÉE (argile/pierre/bois par le travail+or, hors tuile). */
+bool bld_is_rawworks(BuildingType b){
+    return b==BLD_BRICKWORKS || b==BLD_QUARRY || b==BLD_LUMBERYARD;
+}
 /* F-arc ARSENAL — une SORTIE d'ARMEMENT (les 7 biens militaires : armes légères/lourdes/trait/feu,
  * armes enchantées, bâton de mage, kit d'alchimiste). Sert à reconnaître une manufacture D'ARMES :
  * sa sortie verse ×MANUF_ARMS_MULT au STOCK (l'arsenal que la levée pompe), sans toucher au marché. */
@@ -1163,8 +1221,11 @@ bool econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b){
     int bi=region_ensure_building(re, b);
     if (bi<0) return false;
     /* une fabrique DÉLIBÉRÉE (payée) naît SUBSTANTIELLE — un vrai atelier, pas une semence : elle
-     * produit assez pour armer des régiments (la prod plafonne de toute façon sur l'intrant + les bras). */
-    if (re->bld[bi].level < 5.f) re->bld[bi].level = 5.f;
+     * produit assez pour armer des régiments (la prod plafonne de toute façon sur l'intrant + les bras).
+     * RAW-WORKS : naissent PLUS GROS — seule source du brut de bâti (le monde nu ne l'extrait pas), face
+     * à la grosse demande (poterie/statuaire + chantiers), un atelier-semence ne suffirait jamais. */
+    float lvl = bld_is_rawworks(b) ? tune_f("RAW_WORKS_LEVEL", 25.f) : 5.f;
+    if (re->bld[bi].level < lvl) re->bld[bi].level = lvl;
     return true;
 }
 
@@ -1306,7 +1367,6 @@ void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
     g_n_friche=0;                      /* E1bis.10 : recompte les régions en friche ce tick */
-    const float house_manuf = tune_f("HOUSE_MANUF", 100.f);   /* Q6 : logements par niveau de manufacture (hors boucle chaude) */
 
 #if SCPS_IPM
     /* §C — INFLATION MONÉTAIRE (un seul interrupteur). L'IPM = indice des prix :
@@ -1759,12 +1819,27 @@ void econ_tick(WorldEconomy *e, float dt) {
             if (units<=0.f){ re->strata[c].satisfaction=0.f; continue; }
             float budget=re->strata[c].wealth;
             float need_w=0.f, met_w=0.f;   /* pondération par valeur du besoin */
+            float comfort_joy=0.f;         /* BONUS poterie/statuaire CONSOMMÉES (luxe qui ÉLÈVE, hors panier) */
             int   nbasket=0, nsat=0;       /* catégories du panier total · satisfaites (got≥τ) */
-            for (int rr=0;rr<RES_COUNT;rr++) if (NEED[c][rr]>0.f) nbasket++;   /* dénominateur = panier COMPLET */
+            for (int rr=0;rr<RES_COUNT;rr++)
+                if (NEED[c][rr]>0.f && rr!=RES_POTTERY && rr!=RES_STATUE) nbasket++;   /* panier COMPLET hors confort-bonus */
             for (int r=0;r<RES_COUNT;r++) {
                 float need=NEED[c][r]*units*(res_is_food((Resource)r)?food_need:1.f);   /* A2 : calibrage de la bouche */
                 if (need<=0.f) continue;
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* §progressif : besoin pas encore débloqué → ne pèse pas */
+                /* ── CONFORT-BONUS (poterie/statuaire) : un LUXE qui ÉLÈVE le bonheur quand SERVI,
+                 * SANS pénaliser quand absent (hors panier) — ⇒ « bonheur up ». La demande, elle, est
+                 * générée par la boucle DEMANDE (plus haut) → le marché les produit, consommant
+                 * argile/pierre (la demande qui entretient les raw-works). */
+                if (r==RES_POTTERY || r==RES_STATUE){
+                    float can_stock=clampf(S[r]/(need+EPS),0.f,1.f);
+                    float cost=need*can_stock*re->price[r];
+                    float can_buy=(cost>0.f)?clampf(budget/cost,0.f,1.f):1.f;
+                    float got=can_stock*can_buy;
+                    S[r]-=need*got; budget-=need*got*re->price[r];
+                    comfort_joy += tune_f("COMFORT_JOY",0.08f) * got;   /* luxe SERVI → bonheur (par bien) */
+                    continue;                                            /* HORS panier : aucune pénalité si absent */
+                }
                 /* ── Palier MORAL (boisson) : VARIANTE culturelle bière/vin ──
                  * On sert la boisson PRÉFÉRÉE de la culture locale d'abord ; la
                  * mauvaise ne comble qu'à moitié (un nain boude le vin). */
@@ -1832,7 +1907,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
             /* CICATRICE D'ANNEXION (étage 3d) : la plaie douce frappe la STABILITÉ — elle ABAISSE
              * la satisfaction (donc l'agitation monte) sans toucher la croissance (≠ revolt_scar). */
-            re->strata[c].satisfaction=clampf(basket - over_tax[c]*K_TAX_AGIT
+            re->strata[c].satisfaction=clampf(basket + comfort_joy - over_tax[c]*K_TAX_AGIT
                                               - re->annex_scar*tune_f("ANNEX_SAT_W",0.5f), 0.f, 1.f);
             if (rid<SCPS_MAX_REG) g_basket_pc[rid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
             float nm_c=(nbasket>0)?(float)nsat/(float)nbasket:0.f;   /* part BRUTE du panier couverte */
@@ -1913,10 +1988,8 @@ void econ_tick(WorldEconomy *e, float dt) {
          *     plafonné à ½·cap_pop (≈ 25 ateliers·100 quand cap_pop≈5000) ;
          *   · le GRENIER garde son rôle NOURRITURE (food_cap·250), pas logement.
          * Bâtir = la seule façon de remplir la moitié haute → la pop SUIT le bâti. */
-        float manuf_h=0.f;
-        for (int bi=0; bi<re->n_bld; bi++) manuf_h += re->bld[bi].level;
-        manuf_h = fminf(manuf_h * house_manuf, re->cap_pop*0.5f);
-        float eff_cap = re->cap_pop*0.5f + manuf_h + re->build.food_cap*250.f;
+        /* eff_cap UNIFIÉ via le helper (Q6 + BONUS CONFORT poterie/statuaire = −15 % besoin logement). */
+        float eff_cap = econ_region_effcap(re);
         float cap_factor = fmaxf(0.f, 1.f - total_pop_now/(eff_cap*1.1f));
         net_growth *= cap_factor;
 
@@ -2109,6 +2182,28 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
         if (g<RES_PROD_FIRST){                               /* STRUCTUREL : potentiel < conso au plein eff_cap */
             double need_full=(double)econ_conso_per_capita_year((Resource)g)*effcap;
             out->struct_deficit[g]=(pot[g] < need_full*0.95) ? 1 : 0;
+        }
+    }
+    /* CONSTRUCTION — argile/pierre/bois : leur demande est LATENTE (les chantiers qui les veulent
+     * sont EUX-MÊMES gatés faute de matière → le flux paraît « inerte », jamais flaggé par la boucle
+     * ci-dessus, et le brut de bâti n'est pas une conso PAR TÊTE). On les traite À PART : un royaume
+     * dont la CAPACITÉ de brut de bâti (potentiel géo + offre manufacturée + un peu de stock) est sous
+     * le seuil RAW_WORKS_NEED est en déficit STRUCTUREL — c'est LE signal qui arme les RAW-WORKS (four
+     * à brique/carrière/scierie) dans le pipeline IA. Réutilise le MÊME seuil que le §NF (cohérent). */
+    {
+        const int trio[3]={RES_CLAY,RES_STONE,RES_WOOD};
+        float need=tune_f("RAW_WORKS_NEED",60.f);
+        for (int i=0;i<3;i++){ int g=trio[i];
+            /* SIGNAL = matière BÂTISSABLE réelle (stock + surplus net), PAS la capacité géologique :
+             * un empire riche en raw_cap BOIS mais dont le feu BRÛLE tout (offre < demande) a un stock
+             * ~0 → il est en déficit de bois DE BÂTI, même « capacité » haute. C'est ce déficit-là qui
+             * arme la scierie ; raw_cap induisait en erreur (le bois de vocation file au feu). */
+            double buildable = stk[g] + (sup[g] > dem[g] ? sup[g]-dem[g] : 0.0);
+            if (buildable < need){
+                out->struct_deficit[g]=1;
+                float sf=(float)(need-buildable);
+                if (sf > out->shortfall_proj[g]) out->shortfall_proj[g]=sf;
+            }
         }
     }
     /* FOOD agrégé (grain+poisson+viande interchangeables) — l'existentiel. */

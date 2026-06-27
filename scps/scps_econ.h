@@ -89,6 +89,14 @@ typedef enum {
     BLD_ARMORY_HEAVY,  /* F2 : fer ×3 → armes LOURDES */
     BLD_BOWYER,        /* F2 : fer + bois → armes de TRAIT */
     BLD_ARQUEBUS,      /* F2 : fer + poudre (cuivre repli) → armes à FEU (gate TECH_POUDRIERE, F7) */
+    /* === RAW-WORKS — extraction MANUFACTURÉE (hors-sol, par le travail+or, PAS la tuile) :
+     * brise la loterie géologique du monde nu (N1). Coûtent du BOIS à bâtir, de l'OR à tourner. === */
+    BLD_BRICKWORKS,    /* four à brique : (travail + or) → ARGILE — indépendant de la tuile */
+    BLD_QUARRY,        /* carrière     : (travail + or) → PIERRE */
+    BLD_LUMBERYARD,    /* scierie      : (travail + or) → BOIS  (rendement double : bien de base) */
+    /* === CONFORT du brut de bâti : la DEMANDE qui entretient les raw-works (logique manuf normale) === */
+    BLD_POTTERY,       /* poterie            : argile → poterie (confort journalier/bourgeois → bonheur) */
+    BLD_SCULPTURE,     /* atelier de sculpture : pierre → statuaire (confort bourgeois/élite → bonheur) */
     BLD_TYPE_COUNT
 } BuildingType;
 
@@ -298,6 +306,9 @@ void econ_init(WorldEconomy *e, const World *w);
 /* (Re)construit l'adjacence de régions (terre 4-connexe, barrières = infranchissable).
  * Appelée par econ_init ; exposée pour le recalcul du capstone §27 (carve eau/ronces). */
 void econ_build_adjacency(WorldEconomy *e, const World *w);
+/* GAMEPLAY — garantit argile + pierre dans le rayon 1-2 de la capitale du joueur (force si absent).
+ * À appeler après econ_init (adjacence) ET l'assignation des capitales (worldgen_seed_peoples). */
+void econ_guarantee_player_construction(WorldEconomy *e, const World *w, int player_cid);
 /* Capstone §27 FROID : re-dérive la fertilité vivrière (raw_cap[RES_GRAIN]) de
  * l'habitabilité COURANTE (carte refroidie) → la famine émerge sous le gel. */
 void econ_cold_refresh(WorldEconomy *e, const World *w);
@@ -330,6 +341,15 @@ static inline float econ_region_effcap(const RegionEconomy *re){
     for (int bi = 0; bi < re->n_bld; bi++) manuf_h += re->bld[bi].level;
     float cap_half = re->cap_pop * 0.5f;
     float housed = manuf_h * house_manuf; if (housed > cap_half) housed = cap_half;
+    /* BONUS CONFORT — poterie ET statuaire SERVIES (demande ACTIVE + couverte) : −15% de besoin de
+     * LOGEMENT → le bâti loge davantage d'âmes (un foyer pourvu de confort tolère la densité). Appliqué
+     * APRÈS le plafond ½·cap_pop (le confort permet de le DÉPASSER). Dérivé des flux stockés, pur. */
+    float pot_d=re->demand[RES_POTTERY], pot_av=re->supply[RES_POTTERY]+re->stock[RES_POTTERY];
+    float sta_d=re->demand[RES_STATUE],  sta_av=re->supply[RES_STATUE] +re->stock[RES_STATUE];
+    if (pot_d>0.1f && pot_av>=pot_d*0.95f && sta_d>0.1f && sta_av>=sta_d*0.95f){
+        float relief = tune_f("COMFORT_HOUSE_RELIEF", 0.15f);
+        if (relief>0.f && relief<0.9f) housed *= 1.f/(1.f-relief);   /* −15 % de besoin ⇒ ×1/0.85 de capacité-logement */
+    }
     return cap_half + housed + re->build.food_cap * 250.f;
 }
 /* Collecte les modificateurs provinciaux ACTIFS, DÉRIVÉS de l'état (aucun champ stocké). */
@@ -518,6 +538,7 @@ void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resour
  * le banc ; le PUITS est branché dans econ_tick (l'essence purifiée neutralise la charge). */
 float econ_bld_flux_delta(BuildingType b);
 bool  bld_is_faustian(BuildingType b);   /* FAU0 #4 : les 3 transmuteurs (foreuse/réplicateur/corne) */
+bool  bld_is_rawworks(BuildingType b);   /* RAW : extraction manufacturée (four à brique/carrière/scierie) */
 void  faust_charge_add(RegionEconomy *re, float amount);  /* FAU0 #2 : le hook de charge UNIQUE */
 long  econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need);  /* F6 : conso d'armes macro (levée/renfort) */
 void  econ_set_arms_pump(float (*pump)(WorldEconomy*, int, int, float, float));   /* F-arc : pompe marché (intertrade_market_pull, +prix) ; NULL = stock propre seul */

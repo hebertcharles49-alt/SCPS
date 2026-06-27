@@ -357,6 +357,48 @@ static int ai_world_war_pairs(const World *w, const DiploState *d){
             if (diplo_status(d,a,b)==DIPLO_WAR) n++;
     return n;
 }
+/* ── PRÉVISION DIPLO — la menace ENTRANTE (qui va m'attaquer, et suis-je couvert ?), lue des
+ * coordonnées : diplo_relation (menace de b sur moi) + ma puissance + la menace ambiante. PURE
+ * (const), recalculée au tick, JAMAIS sérialisée — l'analogue diplomatique d'EconForecast. */
+typedef struct {
+    float threat_in_max;     /* la menace ENTRANTE la plus forte (mon pire voisin hostile) */
+    float threat_in_sum;     /* masse de menace entrante (coalition potentielle) */
+    int   threat_top;        /* le cid derrière threat_in_max (-1 = aucun) */
+    float war_risk;          /* [0..1] = threat_in_max / (ma puissance + menace ambiante) */
+    float alliance_need;     /* [0..1] urgence d'allié (menacé ET mon bloc ne couvre pas) */
+    float war_outlook_worst; /* pire war_score sur mes guerres EN COURS (négatif = je perds) */
+    int   losing_war;        /* 1 si une guerre en cours est nettement perdue */
+} DiploForecast;
+static DiploForecast ai_diplo_forecast(const World *w, const WorldEconomy *econ,
+                                       const WorldProsperity *wp, const DiploState *d, int cid){
+    DiploForecast f; memset(&f,0,sizeof f); f.threat_top=-1; f.war_outlook_worst=100.f;
+    if (!w||!econ||!d||cid<0||cid>=w->n_countries) return f;
+    float my_power = diplo_mil_power(w,econ,cid) + diplo_eco_power(wp,cid);
+    float amb = (d->ambient_threat>1e-4f)? d->ambient_threat : 1.f;
+    float allied = 0.f;
+    for (int b=0;b<w->n_countries;b++){
+        if (b==cid) continue;
+        DiploStatus st = diplo_status(d,cid,b);
+        if (st==DIPLO_ALLIED){ allied += diplo_mil_power(w,econ,b)+diplo_eco_power(wp,b); continue; }
+        /* ENNEMI POTENTIEL : déjà en guerre, OU rancune contre moi, OU casus belli (b → moi). */
+        bool menacing = (st==DIPLO_WAR) || diplo_rancor(d,b,cid)>0.f
+                       || diplo_casus_belli(w,econ,wp,d,b,cid,RES_NONE)!=CB_NONE;
+        if (!menacing) continue;
+        Relation rel = diplo_relation(w,econ,wp,d,cid,b);   /* rel.threat = menace de b sur cid */
+        f.threat_in_sum += rel.threat;
+        if (rel.threat > f.threat_in_max){ f.threat_in_max=rel.threat; f.threat_top=b; }
+        if (st==DIPLO_WAR){
+            float ws = diplo_war_score(d,cid,b);
+            if (ws < f.war_outlook_worst) f.war_outlook_worst = ws;
+            if (ws < tune_f("AI_WAR_LOSING",-25.f) && d->war_years[cid][b]>0.f) f.losing_war=1;
+        }
+    }
+    f.war_risk = clampf(f.threat_in_max/(my_power+amb), 0.f, 1.f);
+    float cover = (f.threat_in_max>1e-4f)? clampf(allied/f.threat_in_max,0.f,1.f) : 1.f;
+    f.alliance_need = clampf(f.war_risk*(1.f-cover), 0.f, 1.f);
+    return f;
+}
+
 float ai_aggression(const AiActor *a, const AiView *v){
     float brake = ai_consolidation_pressure(v);
     float base  = a->w_expand + 0.5f*a->w_faith;
@@ -516,6 +558,11 @@ bool ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldPros
 static int ai_pick_ally(const AiActor *a, const World *w, const WorldEconomy *econ,
                         const WorldProsperity *wp, const DiploState *d, const Statecraft *sc){
     int best=-1; float bestsc=AI_ALLY_SEUIL;
+    /* PRÉVISION DIPLO — BESOIN D'ALLIÉ : menacé ET mon bloc ne couvre pas (alliance_need haut) → je
+     * COURTISE en priorité la puissance qui COUVRE ma pire menace, au lieu de la seule affinité.
+     * Gaté (need>0.5, rare <12 ans) ⇒ la fenêtre golden reste byte-identique. Le consentement (#26)
+     * et les slots restent les portes INCHANGÉES — le forecast ne change que l'URGENCE de sélection. */
+    DiploForecast a_dfc = ai_diplo_forecast(w, econ, wp, d, a->cid);
     for (int b=0;b<w->n_countries;b++){
         if (b==a->cid || w->country[b].role==POLITY_UNCLAIMED) continue;
         if (diplo_status(d,a->cid,b)!=DIPLO_NEUTRAL) continue;     /* déjà allié ou en guerre */
@@ -524,7 +571,13 @@ static int ai_pick_ally(const AiActor *a, const World *w, const WorldEconomy *ec
         if (crosses_existing(w,d,a->cid,b)) continue;             /* §D-sat : pas d'alliance croisée */
         if (!ai_consider_offer(w,econ,wp,d,sc, a->cid, b, OFFER_ALLIANCE)) continue;  /* #26 : `b` CONSENT-il ? (bilatéral) */
         Relation rel=diplo_relation(w,econ,wp,d,a->cid,b);
-        if (rel.alliance>bestsc){ bestsc=rel.alliance; best=b; }
+        float score=rel.alliance;
+        if (a_dfc.alliance_need > 0.5f){                          /* menacé & sous-couvert → URGENCE */
+            float ally_help = clampf((diplo_mil_power(w,econ,b)+diplo_eco_power(wp,b))
+                                     /(a_dfc.threat_in_max+1e-4f), 0.f, 1.f);
+            score += tune_f("AI_ALLY_NEED_W", 1.0f) * a_dfc.alliance_need * ally_help;
+        }
+        if (score>bestsc){ bestsc=score; best=b; }
     }
     return best;
 }
@@ -627,6 +680,8 @@ static Edifice ai_next_savoir_edifice(const WorldEconomy *econ, int region){
     return (econ->region[region].build.savoir < 1.5f) ? EDI_BIBLIOTHEQUE : EDI_MONASTERE;
 }
 #define AI_FAITH_L 3.0f   /* consentement DÉFAILLANT (Légit<30) → le trône se SACRALISE */
+#define AI_FAITH_ZEAL 0.5f /* ZÈLE : un crédo prosélyte (évangéliste 0.6 / purificateur 1.0 ⇒ w_faith haut)
+                            * FONDE sa foi PROACTIVEMENT (pas seulement en crise) ; pluraliste 0.1 jamais */
 #define AI_SAVOIR_K 2.5f  /* B3 : dès la Chancellerie (K≥2.5) posée, un centre établi se dote
                            * d'une ŒUVRE DE SAVOIR (Bibliothèque 360 → Monastère 540 — qui
                            * consomme des OUTILS, §B2) AVANT de couronner par l'Académie (960).
@@ -931,6 +986,44 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
     }
 }
 
+/* RAW-WORKS PAR LE FORECAST — un déficit STRUCTUREL de brut de bâti (argile/pierre/bois, lu de
+ * `fc.struct_deficit`) arme le PRODUCTEUR hors-sol : four à brique/carrière/scierie. La demande de
+ * ces brutes est LATENTE (les chantiers qui les veulent sont gatés faute de matière) → seul le
+ * forecast la voit. Posé dans la région la plus PEUPLÉE qui ne l'a pas encore (staffée), payé en
+ * BOIS (le chantier) + or — la matière du bâti naît enfin SUR PLACE. Une par tour. */
+static bool ai_build_rawworks(AiActor *a, WorldEconomy *econ, const EconForecast *fc){
+    /* ORDRE DE BOOTSTRAP — le BOIS d'abord : la scierie (sans coût bois, le feu l'ayant brûlé) DÉBLOQUE
+     * le reste ; puis argile puis pierre (four à brique/carrière, qui COÛTENT du bois désormais produit).
+     * On bâtit le PREMIER maillon en déficit qu'on peut poser (pas le « pire » — sinon on viserait
+     * l'argile, qui exige du bois qu'on n'a pas encore, et la scierie ne serait jamais levée). */
+    const Resource     order[3] = { RES_WOOD,      RES_CLAY,       RES_STONE };
+    const BuildingType ob[3]    = { BLD_LUMBERYARD, BLD_BRICKWORKS, BLD_QUARRY };
+    float wood_cost = tune_f("RAW_WORKS_WOOD",15.f);
+    for (int i=0;i<3;i++){
+        if (!fc->struct_deficit[order[i]]) continue;          /* ce brut n'est pas en déficit */
+        BuildingType b=ob[i];
+        float wood = (b==BLD_LUMBERYARD) ? 0.f : wood_cost;    /* la scierie est le bootstrap : gratuite en bois */
+        int best=-1; float bestpop=AI_STAFF_PER_MANUF;
+        for (int r=0;r<econ->n_regions;r++){
+            RegionEconomy *re=&econ->region[r];
+            if (re->owner!=a->cid || !re->colonized) continue;
+            bool have=false; for (int k=0;k<re->n_bld;k++) if (re->bld[k].type==b){ have=true; break; }
+            if (have) continue;                               /* slot déjà rempli */
+            float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+            if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;   /* SOUS-STAFFÉ : pas dans le vide */
+            if (wood > 0.f && re->stock[RES_WOOD] < wood) continue;        /* kiln/carrière : pas de bois ici → attend la scierie */
+            if (rpop>bestpop){ bestpop=rpop; best=r; }
+        }
+        if (best<0) continue;                                 /* ce maillon pas posable ici → on tente le suivant */
+        if (econ_build_manufacture(econ, best, b)){
+            if (wood > 0.f) econ->region[best].stock[RES_WOOD] -= wood;     /* coûte du bois (kiln/carrière) */
+            a->stats.builds_other++;
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Économie : commercer OU bâtir (le frein réoriente l'énergie vers le K). */
 static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const AiView *v,
                          AgencyState *ag, RouteNetwork *rn, float brake, int day){
@@ -981,7 +1074,12 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             if (roll < t_mil){
                 ai_build_manufacture(a, w, econ);            /* l'arsenal militaire (tier + or, par doctrine) */
             } else if (roll < t_civm){
-                ai_build_civmanuf(a, w, econ);               /* la manufacture civile (remplir les slots) */
+                /* RAW-WORKS (forecast) D'ABORD dans le créneau manufacture civile : un déficit STRUCTUREL
+                 * de brut de bâti (argile/pierre/bois, fc) arme le producteur hors-sol AVANT toute autre
+                 * fabrique — sans matière, rien ne se bâtit. Pas de déficit → manufacture civile normale.
+                 * Le créneau FOI/SAVOIR/K (ci-dessous) reste INTACT → la foi peut toujours s'ériger. */
+                if (!ai_build_rawworks(a, econ, &v->fc))
+                    ai_build_civmanuf(a, w, econ);            /* la manufacture civile (remplir les slots) */
             } else {
             /* le BÂTIMENT CIVIL (la voie existante) : on métabolise (K) ; un trône au consentement bas
              * se SACRALISE d'abord (la foi soutient L) ; institutions mûres → SAVOIR. Dominateur/Honneur
@@ -991,7 +1089,21 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             int hr = a->home_region;
             const ProvBuild *bd = (hr>=0&&hr<econ->n_regions)?&econ->region[hr].build:NULL;
             bool faith_crisis = (bd && v->L < AI_FAITH_L && bd->faith < 5.0f);
-            if (!faith_crisis && (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && hr>=0){
+            /* ZÈLE PROACTIF — un crédo prosélyte (w_faith haut) qui n'a PAS encore de foi bâtit son
+             * PREMIER sanctuaire DE LUI-MÊME → la foi se FONDE (bloc RELIGION ci-dessous, sous le
+             * plafond ⌈N/3⌉) au lieu de n'émerger qu'en crise de légitimité. On LIT w_faith (l'entrée
+             * moteur dérivée du crédo), pas un bonus plat ; borné à UN chantier : athée + faith<1 +
+             * aucun chantier de foi déjà en file (anti-spam — agency_build est asynchrone). */
+            bool faith_pending = false;
+            if (ag && hr>=0) for (int oi=0; oi<ag->n; oi++)
+                if (ag->order[oi].active && ag->order[oi].kind==AGY_BUILD && ag->order[oi].region==hr){
+                    Edifice pe=(Edifice)ag->order[oi].param;
+                    if (pe==EDI_SANCTUAIRE||pe==EDI_TEMPLE||pe==EDI_CATHEDRALE||pe==EDI_MONASTERE){ faith_pending=true; break; }
+                }
+            bool faith_zeal = (bd && hr>=0 && !faith_pending && bd->faith < 1.0f
+                               && religion_of_country(a->cid) < 0
+                               && a->w_faith >= tune_f("AI_FAITH_ZEAL",AI_FAITH_ZEAL));
+            if (!faith_crisis && !faith_zeal && (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && hr>=0){
                 RegionEconomy *cre=&econ->region[hr];
                 float price=cre->price[RES_ARMS]; if (price<0.2f) price=0.2f;
                 float cost =20.f*price*(cre->import_margin>0.f?cre->import_margin:1.f);
@@ -1003,8 +1115,8 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 }
             } else {
                 Edifice e; int kind = 0;                   /* 0 = voie K (builds_k) · 2 = réseau */
-                if (faith_crisis){
-                    e = ai_next_faith_edifice(econ, hr);   /* consentement défaillant → foi (universel) */
+                if (faith_crisis || faith_zeal){
+                    e = ai_next_faith_edifice(econ, hr);   /* crise de consentement OU zèle prosélyte → foi */
                 } else if (eth==ETHOS_MERCANTILE){
                     e = EDI_MARCHE; kind = 2;              /* la largeur du marchand : le RÉSEAU, toujours */
                 } else if (bd && eth!=ETHOS_BUREAUCRATE
@@ -1116,24 +1228,25 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
         return;
     }
 
-    /* RELIGION — FONDER au 1er édifice religieux (comme le joueur), sous le PLAFOND mondial
-     * ⌈n_emp/3⌉ : si le pays a bâti un sanctuaire/temple/… et n'a pas de foi, il en FONDE une
-     * (aléatoire) tant que le monde n'a pas atteint son plafond ; au-delà, il RALLIE une foi
-     * existante (les empires se PARTAGENT les religions). GATED : aucun édifice ⇒ no-op. */
+    /* RELIGION — le PLAFOND mondial ⌈N/3⌉ borne le TOTAL des religions (fondation ET schisme).
+     * N = empires de GENÈSE (religion_empire_ref, stable) : « 6 empires ⇒ 2 religions » même quand
+     * les sécessions multiplient les polities. */
+    int n_emp = religion_empire_ref();
+
+    /* FONDER au 1er édifice religieux (comme le joueur) : si le pays a bâti un sanctuaire/temple/…
+     * et n'a pas de foi, il en FONDE une (aléatoire) tant que le TOTAL est sous le plafond ; au-delà,
+     * il RALLIE une foi existante (les empires se PARTAGENT les religions). GATED : aucun édifice ⇒ no-op. */
     if (religion_of_country(a->cid) < 0){
         uint32_t emask=(1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE)|(1u<<EDI_MONASTERE);
         int has_edi=0;
         for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
             if (econ->region[r].owner==a->cid && (econ->region[r].edi_built & emask)){ has_edi=1; break; }
         if (has_edi){
-            int n_emp=0;
-            for (int c=0;c<w->n_countries;c++){ int rl=w->country[c].role;
-                if (rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) n_emp++; }
             int cp=w->country[a->cid].capital_prov, centre=0;
             if (cp>=0 && cp<w->n_provinces){ int sx=w->province[cp].seed_x, sy=w->province[cp].seed_y;
                 if (sx>=0 && sy>=0) centre=sy*SCPS_W+sx; }
             uint32_t h=(uint32_t)(a->cid*0x9e3779b1u) ^ (uint32_t)((day+7)*2654435761u);
-            int rid = (religion_root_count() < religion_cap(n_emp))
+            int rid = religion_can_found(n_emp)
                       ? religion_found_random(a->cid, centre, h)
                       : religion_adopt_existing(a->cid, h);
             if (rid>=0) religion_inherit_regions(w, a->cid);
@@ -1143,8 +1256,10 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
     /* RELIGION (P7) — SCHISME : si le pays ne contrôle plus le centre de sa foi (RUPTURE,
      * centre conquis), il ROMPT en une foi AUTONOME — repick ALÉATOIRE valide (2 slots),
      * crédo & teinte aléatoires, et l'adopte (son nouveau centre = sa capitale → l'éligibilité
-     * se résout, pas de spam). GATED : sans foi, éligibilité NONE ⇒ no-op (golden intact). */
-    if (religion_schism_eligible(w, a->cid) == RSE_RUPTURE){
+     * se résout, pas de spam). GATED par le PLAFOND PAR RACINE : au plus RELIG_SCHISM_MAX schismes
+     * par foi fondatrice (la foi en exil PERSISTE au-delà) — sans foi, éligibilité NONE ⇒ no-op. */
+    if (religion_schism_eligible(w, a->cid) == RSE_RUPTURE
+        && religion_can_schism(religion_of_country(a->cid))){
         int parent = religion_of_country(a->cid);
         if (parent >= 0){
             int cp = w->country[a->cid].capital_prov, centre = 0;
@@ -1207,6 +1322,13 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
      * fendus ne SPIRALENT plus à 25 : plus il y a de guerres en cours, moins on en ajoute). */
     { float aggr = ai_aggression(a, v) + tune_f("AI_WAR_BASELINE", 0.05f);
       aggr /= (1.f + tune_f("AI_WAR_SATURATION", 0.20f) * (float)ai_world_war_pairs(w, diplo));
+      /* PRÉVISION DIPLO — FREIN À LA MENACE ENTRANTE : si mon pire voisin hostile m'écrase
+       * (war_risk au-delà du seuil), je FREINE ma PROPRE offensive — anticiper la coalition qui se
+       * forme plutôt que d'ouvrir un second front. Deadband (AI_THREAT_GATE) : sous le seuil, AUCUN
+       * effet → la fenêtre golden (voisins peu menaçants en 12 ans) reste byte-identique. */
+      DiploForecast dfc = ai_diplo_forecast(w, econ, wp, diplo, a->cid);
+      if (dfc.war_risk > tune_f("AI_THREAT_GATE", 0.55f))
+          aggr *= (1.f - tune_f("AI_THREAT_BRAKE", 0.5f) * dfc.war_risk);
       a->credit_war += aggr; }
     if (a->credit_war < 1.f) return;
     /* §war-smoothing — CAP mondial : au-delà de N paires en guerre, on N'EN OUVRE PLUS (le monde

@@ -201,6 +201,9 @@ typedef enum {
     RES_ARMS_RANGED,            /* F1 : armes de TRAIT (fer + bois → Atelier d'arc) — archer, arbalétrier */
     RES_FIREARM,                /* F1 : armes à FEU (cuivre+fer+poudre → Arquebuserie) — arquebusier */
     RES_MAGE_STAFF,             /* F1/F3 : bâton de mage (Atelier de mage, secondaire) — mage */
+    /* === BIENS DE CONFORT issus du brut de construction (la DEMANDE qui entretient les RAW-WORKS) === */
+    RES_POTTERY,                /* poterie : argile → vaisselle/tuiles (confort journalier/bourgeois) → bonheur */
+    RES_STATUE,                 /* statuaire : pierre → statues/ornements (confort bourgeois/élite) → bonheur */
     RES_COUNT
 } Resource;
 #define RES_ARMS_LIGHT RES_ARMS   /* F1 : alias SAVE-safe — RES_ARMS EST l'arme légère (slot préservé) */

@@ -597,6 +597,10 @@ void sim_init(Sim *s, World *w) {
     intertrade_reset();   /* embargos décrétés + flux inter-pays : RAZ par sim */
     provlog_reset();      /* journal provincial : RAZ par sim (runtime, hors save) */
     demography_contact_reset();   /* S2 : compteur de cristallisations culturelles par contact */
+    religion_reset();     /* RELIGION : monde ATHÉE à chaque sim (sinon les foi FUITENT entre sims) */
+    { int ne=0; for (int c=0;c<w->n_countries;c++){ int rl=w->country[c].role;
+          if (rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) ne++; }
+      religion_set_empire_ref(ne); }   /* plafond ⌈N/3⌉ ANCRÉ au compte d'empires de genèse */
     /* HAMEAUX LIBRES : RAZ du compteur de contact (par sim) + recensement des hameaux semés. */
     memset(g_wild_contact, 0, sizeof g_wild_contact);
     for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
@@ -617,6 +621,9 @@ void sim_init(Sim *s, World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ s->ai_on[c]=false; tech_state_init(&s->ts[c], false); }
     s->player = 0;
     for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_PLAYER){ s->player=c; break; }
+    /* GAMEPLAY — argile + pierre GARANTIES dans le rayon 1-2 de la capitale joueur (force si le biome
+     * n'en a pas donné) : la construction ne doit jamais être hors de portée. */
+    econ_guarantee_player_construction(s->econ, w, s->player);
     s->human_player = -1;   /* aucun humain par DÉFAUT (la chronique reste 100 % IA) ; la façade débraye après coup */
     s->cmd_n = 0;           /* journal de commandes joueur : vide (la chronique n'enfile jamais) */
     s->research_target = -1;   /* aucune cible de recherche joueur (la chronique n'en pose jamais ⇒ bloc no-op) */

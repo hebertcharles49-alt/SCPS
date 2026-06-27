@@ -736,6 +736,74 @@
   INCHANGÉES) — `golden_hashes.txt` mis à jour. **`determinism` STABLE** (fondation IA déterministe :
   graine cid×jour). `make test` 38/38 runnable (les 3 KO restent les pré-existants Windows). Probe
   `religion_audit` : monde athée au départ, plafond=2, RALLIE au-delà.
+- **RELIGION — ÉMERGENCE EN CHRONIQUE : zèle proactif + plafond TOTAL ancré + autel humble (2026-06-27)** :
+  la foi N'ÉMERGEAIT PAS en sim headless (0.4 foi/sim — uniquement la sacralisation de CRISE, légitimité
+  < 30 %). Trois gestes, mesurés sur un long balayage (`./chronicle 9 5 250 6 12`, EXIT 0, 59 s, monde
+  SAIN — satisfaction 63/74/77, ~40 guerres/sim, inflation 1.24, hégémon mortel 5/5). **(1) ZÈLE
+  PROACTIF** (`scps_ai.c`, bloc bâtiment civil) : un crédo prosélyte (évangéliste/purificateur ⇒
+  `w_faith` ≥ `AI_FAITH_ZEAL` 0.5, registre J) qui n'a pas de foi bâtit son PREMIER sanctuaire DE
+  LUI-MÊME → la fondation se déclenche (au lieu d'attendre une crise de L). On LIT `w_faith` (l'entrée
+  moteur dérivée du crédo), jamais un bonus plat ; borné à UN chantier (athée + faith<1 + aucun chantier
+  de foi en file — `agency_build` est ASYNCHRONE, anti-spam par scan de la file `AGY_BUILD`). **(2) AUTEL
+  HUMBLE** : le Sanctuaire (`EDIFICES[]`) passe de {bois 35, argile 20} à **{bois 12}** — le monde NU
+  (N1) manque d'argile (dispo ~3), ce qui ÉTRANGLAIT la fondation partout (gate matière `SCPS_GATEDIAG`) ;
+  Temple/Cathédrale gardent la pierre (la progression). **(3) PLAFOND sur le TOTAL, ANCRÉ À LA GENÈSE** :
+  l'ancien `religion_cap` bornait les RACINES → les schismes multipliaient les foi SANS LIMITE (44/sim au
+  test). Neuf : `religion_can_create(N) = (g_religion_count < ⌈N/3⌉)` borne le TOTAL (racines + schismes),
+  et N = empires de **GENÈSE** (`religion_set_empire_ref` posé par `sim_init`, `religion_empire_ref` lu par
+  l'IA ET la façade) — « 6 empires ⇒ 2 religions » même quand les sécessions fragmentent le monde. Gate
+  appliqué à la fondation ET au schisme (au plafond : la foi en exil PERSISTE, pas de foi de plus ; la
+  façade grise le bouton schisme via `scps_religion_eligible`). ⚠ **RÉSULTAT** : 0.4 → **2.0 foi(s)/sim**
+  (= ⌈6/3⌉), 0 schisme (cap plein), **6.4 pays fidèles/sim** (les empires PARTAGENT les 2 foi), 2.4 régions
+  minoritaires, 8 guerres de religion/sim. **TÉLÉMÉTRIE chronicle** neuve « religion » (racines · schismes ·
+  pays fidèles · régions minoritaires). ⚠ **RE-BASELINE** (3/5 graines fondent < 12 ans → `golden_hashes.txt`
+  mis à jour) · **`determinism` STABLE** (zèle/fondation déterministes : w_faith + cid×jour) · **smoke 8/8**,
+  bancs liés (ai/agency/api/religion/diplo/…) **tous verts** · **SAVE non bumpé** (l'état religion vit dans
+  les globals du module + section façade RELG, déjà sérialisée). Dialable : `SCPS_TUNE=AI_FAITH_ZEAL=…`
+  (0 = tout le monde fonde) · l'autel reste une ligne d'`EDIFICES[]`. Bug latent corrigé au passage :
+  `sim_init` appelait pas `religion_reset()` → les foi FUYAIENT entre les sims d'une même chronique (multi-sim).
+- **BRUT DE BÂTI — argile/pierre RENDUES À LA GÉOLOGIE + RAW-WORKS + CONFORT + garantie joueur (2026-06-27)** :
+  la « carte nue » (N1) ÉCRASAIT argile & pierre (coupe `REGION_RAW_KEEP=2`) → AUCUNE source géologique → les
+  chantiers (sanctuaire compris ⇒ religion) STAGNAIENT. Refonte de l'approvisionnement du brut de construction :
+  **(1) GÉOLOGIE rendue** — `prot[RES_CLAY]=prot[RES_STONE]=true` dans la coupe : l'argile (terres d'eau :
+  marais/tourbière/mangrove) et la pierre (relief : collines/hauts/montagnes/pic/volcan/height>0.55) SURVIVENT
+  comme tout stratégique rare. Source BON MARCHÉ par EXTRACTION (part journalière 0.65) → ne CONCURRENCE pas la
+  main-d'œuvre de manufacture (le vrai verrou : tout-manufacturé affamait vin/étoffe → bonheur en chute).
+  **(2) GARANTIE JOUEUR** — `econ_guarantee_player_construction` (appelée par `sim_init` après capitales+adjacence) :
+  si le biome n'a donné NI argile NI pierre dans le rayon 1-2 de la capitale, on en FORCE une tuile de chaque
+  (`PLAYER_GUARANTEE_RAW` 4) — la construction jamais hors de portée. **(3) RAW-WORKS** (3 manufactures hors-sol,
+  `in1=RES_NONE`, indépendantes de la tuile) : **four à brique→argile · carrière→pierre · scierie→bois**,
+  rendement **100 ouvriers → 60/60/120 par mois** (qout 0.60/0.60/1.20), nées substantielles (`RAW_WORKS_LEVEL`
+  10), bâties par le **FORECAST** (`econ_country_forecast` flagge un déficit STRUCTUREL du trio quand le BÂTISSABLE
+  — stock+surplus, PAS la capacité géo — < `RAW_WORKS_NEED` 120 ; `ai_build_rawworks` dans le créneau manuf
+  civile, ordre de bootstrap BOIS→argile→pierre, la scierie sans coût-bois). Le SUPPLÉMENT des régions
+  pauvres + la chaîne confort ; coût normal (upkeep), AUCUNE logique magique (market_effort standard).
+  **(4) CONFORT** : **poterie** (argile→poterie, confort journalier/bourgeois) + **atelier de sculpture**
+  (pierre→statuaire, confort bourgeois/élite) — NORMAUX (`§NF` price-driven), CONSOMMENT argile/pierre (⇒ la
+  demande qui ENTRETIENT les raw-works). Leur satisfaction est un **BONUS HORS-PANIER** (`COMFORT_JOY` 0.08/bien
+  servi → bonheur AU-DESSUS du panier, AUCUNE pénalité si absent) + une **−15 % de besoin de LOGEMENT**
+  (`COMFORT_HOUSE_RELIEF`, `econ_region_effcap`) quand servies. **(5) FORECAST resources** : le trio construction
+  câblé dans `EconForecast` (signal stock+surplus, demande LATENTE). ⊕ Résultat (seed 9, 5×250) : satisfaction
+  **66/74/78 (AU-DESSUS du socle 63/73/75 — bonheur UP)**, religion 2 racines + 3.6 schismes/sim, monde STABLE
+  (revolt 20, sécession 16, inflation 1.23, hégémon mortel 5/5). ⚠ **SAVE BUMP 39→40** (RES_POTTERY/STATUE +
+  3+2 BLD types ⇒ RegionEconomy grandit). ⚠ RE-BASELINE (golden mis à jour) · determinism STABLE · smoke 8/8 ·
+  bancs liés tous verts. Tunables registre J : `RAW_WORKS_LEVEL`/`_WOOD`/`_NEED` · `COMFORT_JOY`/`_HOUSE_RELIEF`
+  · `PLAYER_GUARANTEE_RAW`.
+- **PLAFOND RELIGION refondu — RACINES ≤ ⌈N/3⌉ + ≤ 2 SCHISMES PAR RACINE (2026-06-27)** : l'ancien `religion_can_create`
+  bornait le TOTAL (racines+schismes) à ⌈N/3⌉ → les schismes (P8) étaient ÉTOUFFÉS (0/sim). Neuf : `religion_can_found`
+  (racines < ⌈N/3⌉) + `religion_can_schism(parent)` (descendants de la RACINE-ancêtre < `RELIG_SCHISM_MAX` 2, via
+  `religion_root_of`). « 6 empires ⇒ 2 foi fondatrices, chacune jusqu'à 2 sectes » → la P8 REVIT bornée (2 racines +
+  ~3.6 schismes/sim). Gates câblés IA (`scps_ai.c`) + façade (`scps_api.c` found/eligible/schism). **SAVE non bumpé**
+  (état religion déjà sérialisé). RE-BASELINE incluse dans le golden ci-dessus.
+- **PRÉVISION DIPLO — la menace ENTRANTE + le besoin d'allié (2026-06-27)** : l'IA voyait QUI la menace (threat) mais
+  jamais « qui va m'attaquer, suis-je couvert ». `DiploForecast` (cache de tick, NON sérialisé, `scps_ai.c`) dérivé
+  PUR des coordonnées (`diplo_relation`/`mil`/`eco_power`/`war_score`/`momentum`/`ambient_threat`) : `war_risk`
+  (= pire menace entrante / (ma puissance + menace ambiante)), `alliance_need`, `war_outlook`. Deux conso GATÉES
+  (deadband ⇒ fenêtre golden INTACTE) : (1) `ai_aggression` FREINE l'offensive quand `war_risk > AI_THREAT_GATE`
+  (0.55) — anticiper la coalition au lieu d'ouvrir un 2e front ; (2) `ai_pick_ally` SURPONDÈRE l'allié qui COUVRE
+  ma pire menace quand `alliance_need > 0.5`. ⊕ **`golden` IDENTIQUE** (les seuils ne sont pas atteints en 12 ans),
+  determinism STABLE, guerres 40→39/sim (moins de surextension). Tunables : `AI_THREAT_GATE`/`_BRAKE` · `AI_WAR_LOSING`
+  · `AI_ALLY_NEED_W`. **SAVE non bumpé**.
 
 ## Disciplines non négociables
 

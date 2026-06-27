@@ -1556,6 +1556,10 @@ static int api_capital_cell(ScpsSim *s, int cid){
     return centre;
 }
 static int api_count_empires(ScpsSim *s){
+    /* Le plafond religion s'ancre au compte d'empires de GENÈSE (religion_empire_ref, posé par
+     * sim_init) — stable face aux sécessions. Repli : compte courant si le ref n'est pas semé. */
+    int ref = religion_empire_ref();
+    if (ref > 0) return ref;
     int n=0;
     for(int c=0;c<s->w->n_countries;c++){ int rl=s->w->country[c].role;
         if(rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) n++; }
@@ -1563,14 +1567,14 @@ static int api_count_empires(ScpsSim *s){
 }
 int scps_religion_cap(ScpsSim *s){ return s ? religion_cap(api_count_empires(s)) : 1; }
 int scps_religion_can_found(ScpsSim *s){
-    return (s && s->ready && religion_root_count() < religion_cap(api_count_empires(s))) ? 1 : 0;
+    return (s && s->ready && religion_can_found(api_count_empires(s))) ? 1 : 0;
 }
 int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
     if(!religion_picks_valid(t0,t1,t2)) return -1;
-    /* PLAFOND mondial ⌈n_emp/3⌉ : au-delà, le joueur RALLIE une foi existante (les empires
-     * se PARTAGENT les religions) au lieu d'en créer une nouvelle. */
-    if(religion_root_count() >= religion_cap(api_count_empires(s))){
+    /* PLAFOND ⌈n_emp/3⌉ sur les RACINES : au-delà, le joueur RALLIE une foi existante (les empires
+     * se PARTAGENT les religions) au lieu d'en fonder une nouvelle. */
+    if(!religion_can_found(api_count_empires(s))){
         int rid=religion_adopt_existing(cid, (uint32_t)(cid+1));
         if(rid>=0) religion_inherit_regions(s->w, cid);
         return rid;
@@ -1584,12 +1588,16 @@ int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
 }
 int scps_religion_eligible(ScpsSim *s, int cid){
     if(!s || !s->ready) return 0;
+    /* PLAFOND PAR RACINE : pas de schisme si la foi a déjà ses RELIG_SCHISM_MAX sectes (bouton grisé) —
+     * la foi en exil PERSISTE alors au lieu d'essaimer une secte de plus. */
+    if(!religion_can_schism(religion_of_country(cid))) return 0;
     return (int)religion_schism_eligible(s->w, cid);
 }
 int scps_religion_schism(ScpsSim *s, int cid, int slot_a, int pole_a, int slot_b, int pole_b,
                          int new_credo, int *out_flipped){
     if(out_flipped) *out_flipped=0;
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
+    if(!religion_can_schism(religion_of_country(cid))) return -1;   /* plafond schismes/racine atteint */
     int parent=religion_of_country(cid);
     if(parent<0) return -1;
     int child=religion_schism(parent, slot_a, pole_a, slot_b, pole_b, new_credo,

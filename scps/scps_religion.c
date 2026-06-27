@@ -58,6 +58,7 @@ static const ReligDelta* const RELIG_CREDO[CREDO_COUNT] = {
 
 Religion g_religions[RELIG_MAX];
 int      g_religion_count = 0;
+static int g_relig_n_emp_ref = 0;   /* compte d'empires de GENÈSE → ancre le plafond ⌈N/3⌉ (stable) */
 
 /* lien pays→religion (P3) + cache d'accumulateur (P4) + religion par région (P8). */
 static int        g_country_religion[RELIG_MAX_COUNTRY];
@@ -155,6 +156,29 @@ int religion_root_count(void){
   int n=0; for(int i=0;i<g_religion_count;i++) if(g_religions[i].parent<0) n++; return n;
 }
 int religion_cap(int n_empires){ return (n_empires<=0)?1:((n_empires+2)/3); }   /* ceil(n/3) */
+/* FONDER une RACINE : le plafond ⌈N/3⌉ borne les foi FONDATRICES (racines, parent<0). Les schismes
+ * (sectes) ne comptent PAS ici — ils ont leur propre plafond PAR RACINE (religion_can_schism). */
+int religion_can_found(int n_empires){ return religion_root_count() < religion_cap(n_empires); }
+/* la RACINE-ANCÊTRE d'une foi (remonte la chaîne parent ; borne anti-cycle = RELIG_MAX). */
+int religion_root_of(int rid){
+  int guard=0;
+  while(rid>=0 && rid<g_religion_count && g_religions[rid].parent>=0 && guard++<RELIG_MAX)
+    rid=g_religions[rid].parent;
+  return rid;
+}
+/* SCHISMER : au plus RELIG_SCHISM_MAX schismes par RACINE fondatrice (toute sa lignée comptée). */
+int religion_can_schism(int parent_rid){
+  if(parent_rid<0 || parent_rid>=g_religion_count) return 0;
+  if(g_religion_count>=RELIG_MAX) return 0;                 /* borne DURE du registre */
+  int root=religion_root_of(parent_rid), n=0;
+  for(int i=0;i<g_religion_count;i++)
+    if(g_religions[i].parent>=0 && religion_root_of(i)==root) n++;   /* descendants de CETTE racine */
+  return n < RELIG_SCHISM_MAX;
+}
+/* le plafond est ANCRÉ au compte d'empires de GENÈSE (stable) — pas au compte courant, qui
+ * gonfle avec les sécessions : « 6 empires ⇒ 2 religions », pas 8 quand le monde se fragmente. */
+void religion_set_empire_ref(int n){ g_relig_n_emp_ref = (n>0)?n:0; }
+int  religion_empire_ref(void){ return g_relig_n_emp_ref; }
 
 int religion_found_random(int cid, int centre_cell, uint32_t seed){
   uint32_t h = seed ? seed : 1u;
@@ -214,7 +238,7 @@ const ReligAccum* religion_country_acc(int cid){
   return (cid>=0&&cid<RELIG_MAX_COUNTRY)?&g_country_relig_acc[cid]:&g_zero_acc;
 }
 void religion_reset(void){
-  g_religion_count=0; cr_ensure();
+  g_religion_count=0; g_relig_n_emp_ref=0; cr_ensure();
   for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1;
   for(int i=0;i<RELIG_MAX_REGION;i++)  g_region_religion[i]=-1;
   memset(g_country_relig_acc, 0, sizeof g_country_relig_acc);

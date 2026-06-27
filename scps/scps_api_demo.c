@@ -430,12 +430,20 @@ int main(int argc, char **argv){
         int r0=religion_found_random(0, 10, 111u);
         int r1=religion_found_random(1, 20, 222u);
         ok("2 racines fondées (cap 4 emp = 2)", r0>=0 && r1>=0 && religion_root_count()==2);
-        /* 3e empire : cap atteint (root_count 2 == cap 2) → RALLIE, pas de nouvelle racine */
+        ok("au plafond de RACINES : religion_can_found faux (2 == cap 2)", !religion_can_found(4));
+        /* 3e empire : plafond de RACINES atteint → RALLIE, pas de nouvelle racine */
         int before=religion_root_count();
-        int r2 = (religion_root_count() < religion_cap(4)) ? religion_found_random(2,30,333u)
-                                                           : religion_adopt_existing(2,333u);
+        int r2 = religion_can_found(4) ? religion_found_random(2,30,333u)
+                                       : religion_adopt_existing(2,333u);
         ok("3e empire RALLIE (aucune racine neuve)", r2>=0 && religion_root_count()==before);
         ok("le rallié partage une foi existante", r2==r0 || r2==r1);
+        /* SCHISME borné PAR RACINE : RELIG_SCHISM_MAX sectes par foi fondatrice */
+        ok("racine r0 peut schismer (0 secte)", religion_can_schism(r0));
+        int k1=religion_schism(r0,1,RP_ACCUEIL,2,RP_ORTHODOXIE,2,30,1,1,0xABCDu);
+        int k2=religion_schism(r0,1,RP_MUR,2,RP_GNOSE,2,31,1,1,0xBCDEu);
+        ok("2 sectes créées sous r0", k1>r1 && k2>k1 && religion_root_of(k1)==r0 && religion_root_of(k2)==r0);
+        ok("au plafond : r0 ne peut plus schismer (2 sectes)", !religion_can_schism(r0));
+        ok("racine r1 (0 secte) PEUT encore schismer", religion_can_schism(r1));
         religion_reset();
     }
 

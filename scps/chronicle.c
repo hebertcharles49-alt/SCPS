@@ -37,6 +37,7 @@
 #include "scps_ai.h"
 #include "scps_species.h"
 #include "scps_sim.h"       /* le TICK PARTAGÉ : Sim, sim_init, sim_day, regions_of (ex-inline) */
+#include "scps_religion.h"  /* RELIGION : télémétrie (root_count, of_country/region, g_religion_count) */
 #include "miniz.h"          /* HARNAIS DE DÉTERMINISME : mz_crc32 (vendoré, third_party) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -331,6 +332,7 @@ int main(int argc, char **argv){
     long tot_ignited=0, tot_seceded=0, tot_coup=0, tot_concession=0, tot_crushed=0, tot_revdead=0;
     long tot_techs=0, tot_faustian=0, tot_campaign=0, tot_alliances=0;   /* §D : pactes actifs */
     long tot_sync=0, tot_sync_distinct=0;   /* §syncrétique : nœuds à porte culturelle + dispersion */
+    long tot_relig_roots=0, tot_relig_schisms=0, tot_relig_faith=0, tot_relig_minority=0;   /* RELIGION : foi émergente */
     long tot_tree_pct=0; int tot_tree_sims=0;   /* §A : fraction d'arbre déverrouillée (le coût force les choix) */
     long tot_reloc=0;   /* §reloc : ensemencements de pop pour combler une pénurie */
     long tot_repress=0, tot_assim=0, tot_purge=0, tot_purge_dead=0;       /* leviers intérieurs */
@@ -1053,6 +1055,13 @@ int main(int argc, char **argv){
         tot_conq += conq_prov;
         tot_ignited += s.rs->n_ignited; tot_seceded += s.rs->n_seceded; tot_coup += s.rs->n_coup;
         tot_concession += s.rs->n_concession; tot_crushed += s.rs->n_crushed; tot_revdead += s.rs->pop_lost;
+        /* RELIGION : foi(s) fondée(s) (racines) + schismes + pays fidèles + régions minoritaires. */
+        { int rr_roots = religion_root_count();
+          tot_relig_roots   += rr_roots;
+          tot_relig_schisms += (g_religion_count - rr_roots);
+          for (int c=0;c<w->n_countries;c++) if (religion_of_country(c)>=0) tot_relig_faith++;
+          for (int r=0;r<s.econ->n_regions;r++){ int rg=religion_of_region(r), o=s.econ->region[r].owner;
+              if (rg>=0 && o>=0 && rg!=religion_of_country(o)) tot_relig_minority++; } }
         if (age_year[AGE_ORDRE_FER]>=0)   worlds_with_ironorder++;
         if (age_year[AGE_SOULEVEMENTS]>=0) worlds_with_uprising++;
         /* A5 — L'HÉGÉMON MORTEL : ce monde a-t-il vu un grand empire (≥10 rég)
@@ -1163,6 +1172,9 @@ int main(int argc, char **argv){
            tot_mchoc, tot_mpour, tot_mchoc? (double)tot_mpour/tot_mchoc:0.0);
     printf("   syncrétisme culturel ........ %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus race ; la diffusion par contact DIVERGE)\n",
            (double)tot_sync/(nsims>0?nsims:1), (double)tot_sync_distinct/(nsims>0?nsims:1));
+    printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (monde ATHÉE au départ ; racines ≤ ⌈empires/3⌉ genèse · ≤ 2 schismes/racine)\n",
+           (double)tot_relig_roots/(nsims>0?nsims:1), (double)tot_relig_schisms/(nsims>0?nsims:1),
+           (double)tot_relig_faith/(nsims>0?nsims:1), (double)tot_relig_minority/(nsims>0?nsims:1));
     printf("   régions réduites (campagne) . %ld   (moy. %.1f/sim ; armées de terrain, hors conquête abstraite)\n", tot_campaign, (double)tot_campaign/nsims);
     printf("   la mer ...................... %ld coque(s) · %.0f fournitures consommées (NE doit plus être zéro) · %ld traversée(s) (%.0f j moy.) · %ld route(s) maritime(s) · %ld colonie(s) outre-mer\n",
            tot_hulls, tot_supplies, tot_sails, (tot_sails>0)?tot_saildays/(double)tot_sails:0.0, tot_searoutes, tot_colonies_om);

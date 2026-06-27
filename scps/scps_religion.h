@@ -15,6 +15,7 @@
 #include "scps_legitimacy.h"/* WorldLegitimacy (L par région — fracture P8) */
 
 #define RELIG_MAX 64
+#define RELIG_SCHISM_MAX 2   /* schismes MAX par racine fondatrice (2 sectes/foi — cf. plafond ⌈N/3⌉ des racines) */
 
 /* 8 axes ; pole>>1 == axe */
 typedef enum { RA_SANG, RA_FEU, RA_SEUIL, RA_SERMENT,
@@ -118,9 +119,14 @@ void religion_scholar_tick(const World *w, WorldEconomy *econ);  /* CONVERT agit
 int  religion_region_stabilized(int rg);              /* un Moine y calme l'agitation ? (1/0) */
 int  religion_region_resisted(int rg);                /* un Gourou y bloque la conversion ? (1/0) */
 
-/* ── PLAFOND mondial de religions FONDÉES (racines) = ⌈n_empires/3⌉ ─────── */
+/* ── PLAFOND mondial de religions = ⌈n_empires/3⌉ sur le TOTAL (racines + schismes) ─────── */
 int  religion_root_count(void);                       /* nb de religions racines (parent==-1) */
 int  religion_cap(int n_empires);                     /* ⌈n_empires/3⌉, ≥1 */
+int  religion_can_found(int n_empires);               /* RACINES < ⌈N/3⌉ ? (gate FONDATION) */
+int  religion_root_of(int rid);                       /* racine-ancêtre (remonte parent) */
+int  religion_can_schism(int parent_rid);             /* < RELIG_SCHISM_MAX schismes sous la racine ? */
+void religion_set_empire_ref(int n);                  /* ancre le plafond au compte d'empires de GENÈSE */
+int  religion_empire_ref(void);                       /* ledit compte (0 si non semé ⇒ cap 1) */
 int  religion_found_random(int cid, int centre_cell, uint32_t seed); /* fonde une racine ALÉATOIRE valide + set_country ; -1 */
 int  religion_adopt_existing(int cid, uint32_t seed); /* RALLIE une racine existante + set_country ; -1 si aucune */
 

@@ -27,7 +27,7 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 39u
+#define SAVE_VERSION 40u           /* v40 : RAW-WORKS (four à brique/carrière/scierie) → +3 BLD types ⇒ RegionEconomy grandit */
 #define SAVE_F_CRYPT 1u
 
 typedef struct {
