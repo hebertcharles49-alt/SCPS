@@ -40,6 +40,10 @@ func _run() -> void:
 	if int(w.religion_founding_ready(w.player())) != 0:
 		viol += 1; push_error("créateur prêt sans édifice religieux")
 	print("  monde athée au départ : ", atheist, " · créateur prêt : ", w.religion_founding_ready(w.player()))
+	# plafond mondial ⌈empires/3⌉ ≥ 1, et on peut créer tant qu'il reste de la place
+	if int(w.religion_cap()) < 1: viol += 1; push_error("cap < 1")
+	if int(w.religion_can_found()) != 1: viol += 1; push_error("can_found faux alors qu'aucune foi")
+	print("  plafond religions=", w.religion_cap(), " · peut fonder=", w.religion_can_found())
 
 	# INVARIANT 2 : listes peuplées
 	var poles: Array = w.religion_pole_list()

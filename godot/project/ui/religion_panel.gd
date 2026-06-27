@@ -158,7 +158,15 @@ func _refresh() -> void:
 		_schism_btn.disabled = (elig == 0)
 		_found_btn.disabled = true
 	else:
-		_state_lbl.text = "Aucune foi fondée. Composez un crédo + 3 traditions."
+		var can := true
+		if Sim.world.has_method("religion_can_found"):
+			can = int(Sim.world.religion_can_found()) == 1
+		if can:
+			_state_lbl.text = "Aucune foi fondée. Composez un crédo + 3 traditions."
+			_found_btn.text = "Fonder"
+		else:
+			_state_lbl.text = "Le monde a atteint son nombre de religions (⌈empires/3⌉) — vous RALLIEZ une foi existante."
+			_found_btn.text = "Rallier une foi"
 		_schism_btn.disabled = true
 	for i in range(3):
 		_trad_tip[i].text = _pole_tip(_cur_pole(i))
@@ -166,7 +174,10 @@ func _refresh() -> void:
 	var t0 := _cur_pole(0); var t1 := _cur_pole(1); var t2 := _cur_pole(2)
 	var ok: bool = Sim.world.religion_picks_valid(t0, t1, t2)
 	if not has:
-		_found_btn.disabled = not ok
+		var can_create := true
+		if Sim.world.has_method("religion_can_found"):
+			can_create = int(Sim.world.religion_can_found()) == 1
+		_found_btn.disabled = (not ok) if can_create else false   # rallier ne dépend pas des picks
 	if ok:
 		_valid_lbl.text = "✓ Trois axes distincts."
 		_valid_lbl.add_theme_color_override("font_color", C_GOOD)

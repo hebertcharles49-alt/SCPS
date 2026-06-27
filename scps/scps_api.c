@@ -1555,9 +1555,26 @@ static int api_capital_cell(ScpsSim *s, int cid){
     }
     return centre;
 }
+static int api_count_empires(ScpsSim *s){
+    int n=0;
+    for(int c=0;c<s->w->n_countries;c++){ int rl=s->w->country[c].role;
+        if(rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) n++; }
+    return n;
+}
+int scps_religion_cap(ScpsSim *s){ return s ? religion_cap(api_count_empires(s)) : 1; }
+int scps_religion_can_found(ScpsSim *s){
+    return (s && s->ready && religion_root_count() < religion_cap(api_count_empires(s))) ? 1 : 0;
+}
 int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
     if(!religion_picks_valid(t0,t1,t2)) return -1;
+    /* PLAFOND mondial ⌈n_emp/3⌉ : au-delà, le joueur RALLIE une foi existante (les empires
+     * se PARTAGENT les religions) au lieu d'en créer une nouvelle. */
+    if(religion_root_count() >= religion_cap(api_count_empires(s))){
+        int rid=religion_adopt_existing(cid, (uint32_t)(cid+1));
+        if(rid>=0) religion_inherit_regions(s->w, cid);
+        return rid;
+    }
     int trad[3]={t0,t1,t2};
     int rid=religion_spawn(credo, trad, api_capital_cell(s,cid), cid, NULL);
     if(rid<0) return -1;

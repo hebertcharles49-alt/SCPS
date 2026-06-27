@@ -150,6 +150,39 @@ int religion_region_resisted(int rg){
     if(g_scholar[c].active && g_scholar[c].role==SCHOLAR_RESIST && g_scholar[c].region==rg) return 1;
   return 0;
 }
+/* ── PLAFOND mondial : ⌈n_empires/3⌉ religions FONDÉES (racines) ────────── */
+int religion_root_count(void){
+  int n=0; for(int i=0;i<g_religion_count;i++) if(g_religions[i].parent<0) n++; return n;
+}
+int religion_cap(int n_empires){ return (n_empires<=0)?1:((n_empires+2)/3); }   /* ceil(n/3) */
+
+int religion_found_random(int cid, int centre_cell, uint32_t seed){
+  uint32_t h = seed ? seed : 1u;
+  for(int tries=0; tries<24; tries++){
+    h ^= h>>13; h *= 0x5bd1e995u; h ^= h>>15;
+    int p0=(int)(h%(uint32_t)RP_COUNT); h/=(uint32_t)RP_COUNT;
+    h ^= h>>11; h *= 0x9e3779b1u;
+    int p1=(int)(h%(uint32_t)RP_COUNT); h/=(uint32_t)RP_COUNT;
+    h ^= h>>7;  h *= 0x85ebca6bu;
+    int p2=(int)(h%(uint32_t)RP_COUNT); h/=(uint32_t)RP_COUNT;
+    int nc=(int)(h%(uint32_t)CREDO_COUNT);
+    if(!religion_picks_valid(p0,p1,p2)) continue;
+    int trad[3]={p0,p1,p2};
+    int rid=religion_spawn(nc, trad, centre_cell, cid, NULL);
+    if(rid>=0){ religion_set_country(cid, rid); return rid; }
+    break;
+  }
+  return -1;
+}
+int religion_adopt_existing(int cid, uint32_t seed){
+  int roots[RELIG_MAX], nr=0;
+  for(int i=0;i<g_religion_count && nr<RELIG_MAX;i++) if(g_religions[i].parent<0) roots[nr++]=i;
+  if(nr<=0) return -1;
+  int pick=roots[seed % (uint32_t)nr];
+  religion_set_country(cid, pick);
+  return pick;
+}
+
 void religion_scholar_tick(const World *w, WorldEconomy *econ){
   (void)econ;
   cr_ensure();

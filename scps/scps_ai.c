@@ -1116,6 +1116,30 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
         return;
     }
 
+    /* RELIGION — FONDER au 1er édifice religieux (comme le joueur), sous le PLAFOND mondial
+     * ⌈n_emp/3⌉ : si le pays a bâti un sanctuaire/temple/… et n'a pas de foi, il en FONDE une
+     * (aléatoire) tant que le monde n'a pas atteint son plafond ; au-delà, il RALLIE une foi
+     * existante (les empires se PARTAGENT les religions). GATED : aucun édifice ⇒ no-op. */
+    if (religion_of_country(a->cid) < 0){
+        uint32_t emask=(1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE)|(1u<<EDI_MONASTERE);
+        int has_edi=0;
+        for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
+            if (econ->region[r].owner==a->cid && (econ->region[r].edi_built & emask)){ has_edi=1; break; }
+        if (has_edi){
+            int n_emp=0;
+            for (int c=0;c<w->n_countries;c++){ int rl=w->country[c].role;
+                if (rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) n_emp++; }
+            int cp=w->country[a->cid].capital_prov, centre=0;
+            if (cp>=0 && cp<w->n_provinces){ int sx=w->province[cp].seed_x, sy=w->province[cp].seed_y;
+                if (sx>=0 && sy>=0) centre=sy*SCPS_W+sx; }
+            uint32_t h=(uint32_t)(a->cid*0x9e3779b1u) ^ (uint32_t)((day+7)*2654435761u);
+            int rid = (religion_root_count() < religion_cap(n_emp))
+                      ? religion_found_random(a->cid, centre, h)
+                      : religion_adopt_existing(a->cid, h);
+            if (rid>=0) religion_inherit_regions(w, a->cid);
+        }
+    }
+
     /* RELIGION (P7) — SCHISME : si le pays ne contrôle plus le centre de sa foi (RUPTURE,
      * centre conquis), il ROMPT en une foi AUTONOME — repick ALÉATOIRE valide (2 slots),
      * crédo & teinte aléatoires, et l'adopte (son nouveau centre = sa capitale → l'éligibilité

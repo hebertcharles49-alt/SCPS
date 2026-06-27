@@ -144,6 +144,8 @@ public:
     int        religion_scholar_role(int cid);
     String     religion_name(int cid);
     int        religion_founding_ready(int cid);   /* 1 = édifice religieux bâti + pas de foi → créateur */
+    int        religion_cap();                      /* ⌈n_empires/3⌉ */
+    int        religion_can_found();                /* 1 = sous le plafond (créer) ; 0 = rallier une foi */
 
     /* SAUVEGARDE (« Charger ») — 3 emplacements (1..3) */
     bool       save_game(int slot);                         /* true = écrit */

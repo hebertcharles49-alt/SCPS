@@ -118,6 +118,12 @@ void religion_scholar_tick(const World *w, WorldEconomy *econ);  /* CONVERT agit
 int  religion_region_stabilized(int rg);              /* un Moine y calme l'agitation ? (1/0) */
 int  religion_region_resisted(int rg);                /* un Gourou y bloque la conversion ? (1/0) */
 
+/* ── PLAFOND mondial de religions FONDÉES (racines) = ⌈n_empires/3⌉ ─────── */
+int  religion_root_count(void);                       /* nb de religions racines (parent==-1) */
+int  religion_cap(int n_empires);                     /* ⌈n_empires/3⌉, ≥1 */
+int  religion_found_random(int cid, int centre_cell, uint32_t seed); /* fonde une racine ALÉATOIRE valide + set_country ; -1 */
+int  religion_adopt_existing(int cid, uint32_t seed); /* RALLIE une racine existante + set_country ; -1 si aucune */
+
 /* ===================================================================== */
 /* i18n — mots RÉSOLUS (membrane ; même mécanisme que credo_name/species_name) */
 /* ===================================================================== */

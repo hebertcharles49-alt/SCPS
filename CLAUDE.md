@@ -723,6 +723,19 @@
   gagnent `scps_religion.o`. `make test` **38/38 runnable** (3 KO PRÉ-EXISTANTS Windows : intertrade
   `setenv`, campaign/warhost stack-overflow — prouvés sur main vierge ; 41/41 attendu Linux/cloud).
   SDL `viewer.c` religion UI = différé (front non jouable + non-buildable ici).
+- **RELIGION — fondation par ÉDIFICE + plafond mondial + IA & headless (2026-06-27)** : le monde
+  naît ATHÉE ; une foi n'apparaît qu'au **1er édifice religieux** (sanctuaire/temple/cathédrale/
+  monastère, lu de `re->edi_built`). Côté JOUEUR (Godot) : `scps_religion_founding_ready` déclenche le
+  **créateur de foi** (`main.gd` sur `Sim.ticked`, monde en pause, une fois). Côté **IA + sim headless** :
+  `ai_strat_turn` FONDE une foi aléatoire au 1er édifice religieux **sous le PLAFOND mondial**
+  `religion_cap = ⌈n_empires/3⌉` (4 empires ⇒ 2 ; `religion_root_count` = racines `parent==-1`) ; au-delà,
+  l'empire **RALLIE** une foi existante (`religion_adopt_existing`) — les empires se PARTAGENT les
+  religions. Le joueur idem (`scps_religion_found` crée sous le cap, rallie au-delà ; UI : bouton
+  Fonder→« Rallier », `religion_can_found`). ⚠ **RE-BASELINE golden ASSUMÉE** : les religions ÉMERGENT
+  désormais dans la chronique (1 graine sur 5 fonde une foi < 12 ans → son hash change ; les 4 autres
+  INCHANGÉES) — `golden_hashes.txt` mis à jour. **`determinism` STABLE** (fondation IA déterministe :
+  graine cid×jour). `make test` 38/38 runnable (les 3 KO restent les pré-existants Windows). Probe
+  `religion_audit` : monde athée au départ, plafond=2, RALLIE au-delà.
 
 ## Disciplines non négociables
 

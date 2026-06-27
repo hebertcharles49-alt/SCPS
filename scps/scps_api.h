@@ -571,6 +571,9 @@ const char *scps_religion_name(ScpsSim *s, int cid);
 /* DÉCLENCHEUR « créateur de foi » : 1 si `cid` a bâti un ÉDIFICE RELIGIEUX (sanctuaire/
  * temple/cathédrale/monastère) ET n'a PAS encore de foi. Avant : le monde est ATHÉE. */
 int scps_religion_founding_ready(ScpsSim *s, int cid);
+/* PLAFOND mondial de religions FONDÉES = ⌈n_empires/3⌉. can_found=0 ⇒ on RALLIE une foi. */
+int scps_religion_cap(ScpsSim *s);
+int scps_religion_can_found(ScpsSim *s);
 
 /* ====================================================================== */
 /* PARAMÈTRES DE GÉNÉRATION (l'écran « Nouvelle partie ») — les sliders.    */
