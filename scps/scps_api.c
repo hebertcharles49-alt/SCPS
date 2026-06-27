@@ -1545,6 +1545,47 @@ int scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2){
 void scps_clear_player_culture(void){ culture_player_clear(); }
 
 /* ====================================================================== */
+/* RELIGION (façade) — voir scps_api.h                                      */
+/* ====================================================================== */
+static int api_capital_cell(ScpsSim *s, int cid){
+    int cp=s->w->country[cid].capital_prov, centre=0;
+    if(cp>=0 && cp<s->w->n_provinces){
+        int sx=s->w->province[cp].seed_x, sy=s->w->province[cp].seed_y;
+        if(sx>=0 && sy>=0) centre=sy*SCPS_W+sx;
+    }
+    return centre;
+}
+int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
+    if(!religion_picks_valid(t0,t1,t2)) return -1;
+    int trad[3]={t0,t1,t2};
+    int rid=religion_spawn(credo, trad, api_capital_cell(s,cid), cid, NULL);
+    if(rid<0) return -1;
+    religion_set_country(cid, rid);
+    religion_inherit_regions(s->w, cid);
+    return rid;
+}
+int scps_religion_eligible(ScpsSim *s, int cid){
+    if(!s || !s->ready) return 0;
+    return (int)religion_schism_eligible(s->w, cid);
+}
+int scps_religion_schism(ScpsSim *s, int cid, int slot_a, int pole_a, int slot_b, int pole_b,
+                         int new_credo, int *out_flipped){
+    if(out_flipped) *out_flipped=0;
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
+    int parent=religion_of_country(cid);
+    if(parent<0) return -1;
+    int child=religion_schism(parent, slot_a, pole_a, slot_b, pole_b, new_credo,
+                              api_capital_cell(s,cid), cid, 0, 0);
+    if(child<0) return -1;
+    int fl=religion_fracture(s->w, s->sim.econ, s->sim.wl, cid, child);
+    if(out_flipped) *out_flipped=fl;
+    return child;
+}
+int scps_religion_of_country(ScpsSim *s, int cid){ (void)s; return religion_of_country(cid); }
+int scps_religion_of_region (ScpsSim *s, int region){ (void)s; return religion_of_region(region); }
+
+/* ====================================================================== */
 /* PARAMÈTRES DE GÉNÉRATION (sliders de nouvelle partie)                    */
 /* ====================================================================== */
 void scps_worldparams_default(uint32_t seed, ScpsWorldParams *out){

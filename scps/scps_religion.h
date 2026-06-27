@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <stdio.h>          /* FILE — sérialisation (section RELG, P3) */
 #include "scps_culture.h"   /* enum Credo existant (CREDO_*) */
+#include "scps_econ.h"      /* World/WorldEconomy/PopCulture (intégration P4/P8) */
+#include "scps_legitimacy.h"/* WorldLegitimacy (L par région — fracture P8) */
 
 #define RELIG_MAX 64
 
@@ -86,6 +88,21 @@ typedef enum { RSE_NONE = 0, RSE_RUPTURE, RSE_DERIVE } ReligSchismMode;
  * contrôle PAS la cellule-centre de sa religion (centre conquis/étranger). DERIVE
  * (dérive province distance-centre) : phase ultérieure — renvoie RSE_NONE pour l'instant. */
 ReligSchismMode religion_schism_eligible(const World *w, int cid);
+
+/* ===================================================================== */
+/* P8 — religion par RÉGION (granularité du moteur : culture/L/agitation/  */
+/* sécession sont RÉGIONALES) + héritage + fracture. État GLOBAL (RELG).   */
+/* ===================================================================== */
+#define RELIG_MAX_REGION 1024   /* ≥ SCPS_MAX_REG */
+int  religion_of_region(int rg);              /* -1 = aucune */
+void religion_set_region(int rg, int rid);
+/* les régions du pays HÉRITENT de la religion du pays (à la fondation). */
+void religion_inherit_regions(const World *w, int cid);
+/* FRACTURE : au schisme INTERNE, les régions du pays CULTURELLEMENT distantes du centre
+ * ET peu légitimes (L bas) basculent vers la religion ENFANT ; le noyau garde le parent.
+ * Renvoie le nombre de régions basculées. Pure mutation de g_region_religion. */
+int  religion_fracture(const World *w, const WorldEconomy *econ,
+                       const WorldLegitimacy *wl, int cid, int child_rid);
 
 /* ===================================================================== */
 /* i18n — mots RÉSOLUS (membrane ; même mécanisme que credo_name/species_name) */

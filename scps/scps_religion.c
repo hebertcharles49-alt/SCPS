@@ -59,13 +59,57 @@ static const ReligDelta* const RELIG_CREDO[CREDO_COUNT] = {
 Religion g_religions[RELIG_MAX];
 int      g_religion_count = 0;
 
-/* lien pays→religion (P3) + cache d'accumulateur (P4) — globals du module. */
+/* lien pays→religion (P3) + cache d'accumulateur (P4) + religion par région (P8). */
 static int        g_country_religion[RELIG_MAX_COUNTRY];
 static ReligAccum g_country_relig_acc[RELIG_MAX_COUNTRY];   /* P4 : acc caché par pays */
+static int        g_region_religion[RELIG_MAX_REGION];      /* P8 : religion par région (-1=aucune) */
 static int g_cr_init = 0;
 static const ReligAccum g_zero_acc = {{0}};
 static void cr_ensure(void){
-  if(!g_cr_init){ for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1; g_cr_init=1; }
+  if(!g_cr_init){
+    for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1;
+    for(int i=0;i<RELIG_MAX_REGION;i++)  g_region_religion[i]=-1;
+    g_cr_init=1;
+  }
+}
+int  religion_of_region(int rg){ cr_ensure(); return (rg>=0&&rg<RELIG_MAX_REGION)?g_region_religion[rg]:-1; }
+void religion_set_region(int rg,int rid){ cr_ensure(); if(rg>=0&&rg<RELIG_MAX_REGION) g_region_religion[rg]=rid; }
+void religion_inherit_regions(const World *w,int cid){
+  if(!w) return;
+  cr_ensure();
+  int rid=religion_of_country(cid);
+  for(int r=0;r<w->n_regions && r<RELIG_MAX_REGION;r++){
+    if(w->region[r].country==cid) g_region_religion[r]=rid;
+  }
+}
+
+/* FRACTURE (P8) — au schisme INTERNE : les régions du pays distantes (culture vs centre)
+ * ET peu légitimes (L bas) basculent vers l'enfant ; le noyau (région-centre) garde le
+ * parent. D∞ inline sur les axes PopCulture (valeurs/subsistance/parenté/religion). */
+#define SCHISM_FLIP_D 5.0f   /* D∞ vs culture du centre (calibrable) */
+#define SCHISM_FLIP_L 4.0f   /* L locale sous laquelle le flip devient probable */
+int religion_fracture(const World *w, const WorldEconomy *econ,
+                      const WorldLegitimacy *wl, int cid, int child_rid){
+  if(!w||!econ||child_rid<0||child_rid>=g_religion_count) return 0;
+  cr_ensure();
+  int parent_rid=religion_of_country(cid);
+  int centre=(parent_rid>=0&&parent_rid<g_religion_count)?g_religions[parent_rid].centre_cell:-1;
+  int centre_rg=(centre>=0&&centre<SCPS_N)?w->cell[centre].region:-1;
+  if(centre_rg<0||centre_rg>=econ->n_regions) return 0;
+  const PopCulture *fc=&econ->region[centre_rg].culture;   /* culture « orthodoxe » du centre */
+  int flipped=0;
+  for(int r=0;r<w->n_regions && r<RELIG_MAX_REGION && r<econ->n_regions;r++){
+    if(w->region[r].country!=cid || r==centre_rg) continue;   /* le centre garde le parent */
+    const PopCulture *rc=&econ->region[r].culture;
+    float dv=rc->valeurs-fc->valeurs;          if(dv<0)dv=-dv;
+    float ds=rc->subsistance-fc->subsistance;  if(ds<0)ds=-ds;
+    float dp=rc->parente-fc->parente;          if(dp<0)dp=-dp;
+    float dr=rc->religion-fc->religion;         if(dr<0)dr=-dr;
+    float dinf=dv; if(ds>dinf)dinf=ds; if(dp>dinf)dinf=dp; if(dr>dinf)dinf=dr;
+    float L=(wl && r<SCPS_MAX_REG)?wl->L[r]:5.f;
+    if(dinf>SCHISM_FLIP_D && L<SCHISM_FLIP_L){ g_region_religion[r]=child_rid; flipped++; }
+  }
+  return flipped;
 }
 /* recalcule le cache d'un pays depuis sa religion (P4). */
 static void cr_recompute(int cid){
@@ -86,6 +130,7 @@ const ReligAccum* religion_country_acc(int cid){
 void religion_reset(void){
   g_religion_count=0; cr_ensure();
   for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1;
+  for(int i=0;i<RELIG_MAX_REGION;i++)  g_region_religion[i]=-1;
   memset(g_country_relig_acc, 0, sizeof g_country_relig_acc);
 }
 
@@ -111,6 +156,8 @@ void religion_save(FILE *f){
     int32_t fc=r->founder_cid; fwrite(&fc,4,1,f); }
   uint32_t m=(uint32_t)RELIG_MAX_COUNTRY; fwrite(&m,4,1,f);
   for(int i=0;i<RELIG_MAX_COUNTRY;i++){ int32_t v=g_country_religion[i]; fwrite(&v,4,1,f); }
+  uint32_t q=(uint32_t)RELIG_MAX_REGION; fwrite(&q,4,1,f);    /* P8 : religion par région */
+  for(int i=0;i<RELIG_MAX_REGION;i++){ int32_t v=g_region_religion[i]; fwrite(&v,4,1,f); }
 }
 int religion_load(FILE *f){
   cr_ensure();
@@ -127,6 +174,9 @@ int religion_load(FILE *f){
   uint32_t m=0; if(fread(&m,4,1,f)!=1 || m!=(uint32_t)RELIG_MAX_COUNTRY) return 1;
   for(int i=0;i<RELIG_MAX_COUNTRY;i++){ int32_t v=0; if(fread(&v,4,1,f)!=1) return 1;
     g_country_religion[i]=(v>=-1 && v<g_religion_count)?(int)v:-1; }  /* borne : religion valide ou aucune */
+  uint32_t q=0; if(fread(&q,4,1,f)!=1 || q!=(uint32_t)RELIG_MAX_REGION) return 1;   /* P8 : région */
+  for(int i=0;i<RELIG_MAX_REGION;i++){ int32_t v=0; if(fread(&v,4,1,f)!=1) return 1;
+    g_region_religion[i]=(v>=-1 && v<g_religion_count)?(int)v:-1; }
   for(int i=0;i<RELIG_MAX_COUNTRY;i++) cr_recompute(i);              /* P4 : reconstruit le cache d'acc */
   return 0;
 }

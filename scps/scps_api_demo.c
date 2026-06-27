@@ -377,6 +377,27 @@ int main(int argc, char **argv){
         scps_sim_free(nb);
     }
 
+    /* ── RELIGION (P8) : fondation région-héritée + schisme INTERNE qui FRACTURE ── */
+    {
+        ScpsSim *sf=scps_sim_new(); scps_sim_generate(sf, seed);
+        int pl=scps_player(sf);
+        int rid=scps_religion_found(sf, pl, CREDO_PLURALISTE, RP_FECONDITE, RP_ACCUEIL, RP_GNOSE);
+        ok("religion fondée (façade)", rid>=0 && scps_religion_of_country(sf,pl)==rid);
+        int inherited=0, nrg=scps_region_count(sf);
+        for(int r=0;r<nrg;r++) if(scps_religion_of_region(sf,r)==rid) inherited++;
+        ok("régions du pays HÉRITENT de la religion", inherited>0);
+        int flipped=0;
+        int child=scps_religion_schism(sf, pl, 1, RP_MUR, 2, RP_ORTHODOXIE, CREDO_PURIFICATEUR, &flipped);
+        int now_child=0; for(int r=0;r<nrg;r++) if(scps_religion_of_region(sf,r)==child) now_child++;
+        printf("   P8 schisme interne : enfant=%d · régions basculées=%d/%d · régions enfant=%d\n",
+               child, flipped, inherited, now_child);
+        ok("schisme interne crée un enfant", child>rid);
+        ok("fracture bornée (0..régions héritées)", flipped>=0 && flipped<=inherited);
+        ok("régions basculées == compte enfant (cohérent)", now_child==flipped);
+        scps_sim_free(sf);
+        religion_reset();
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

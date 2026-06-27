@@ -538,6 +538,24 @@ int  scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2);
 void scps_clear_player_culture(void);
 
 /* ====================================================================== */
+/* RELIGION (façade) — fonder · schismer · lire. Le moteur tient le registre */
+/* (g_religions) + les liens pays/région ; l'hôte FONDE et SCHISME, lit des  */
+/* mots via relig_*_name côté binding. credo ∈ Credo · t0/t1/t2 ∈ ReligPole. */
+/* ====================================================================== */
+/* FONDE une religion pour `cid` (3 traditions une-par-axe) : centre = capitale du pays ;
+ * le pays + ses régions en héritent. Retour : id de la religion (-1 si invalide). */
+int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2);
+/* éligibilité au schisme : 0 aucune · 1 RUPTURE · 2 DERIVE. */
+int scps_religion_eligible(ScpsSim *s, int cid);
+/* SCHISME interne : crée l'enfant (repick 2 slots du parent) + FRACTURE les régions
+ * distantes/peu légitimes vers l'enfant. *out_flipped ← nb régions basculées. Retour :
+ * id enfant (-1 si invalide). */
+int scps_religion_schism(ScpsSim *s, int cid, int slot_a, int pole_a, int slot_b, int pole_b,
+                         int new_credo, int *out_flipped);
+int scps_religion_of_country(ScpsSim *s, int cid);
+int scps_religion_of_region (ScpsSim *s, int region);
+
+/* ====================================================================== */
 /* PARAMÈTRES DE GÉNÉRATION (l'écran « Nouvelle partie ») — les sliders.    */
 /* Ce sont les champs RÉELS de WorldParams que le moteur consomme (taille,  */
 /* âge, climat, relief). POD membrane (ints/floats), aucun type moteur.      */

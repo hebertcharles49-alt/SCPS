@@ -1931,6 +1931,15 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* l'insatisfaction off-culture pèse sur la satisfaction GÉNÉRALE (donc
          * prospérité/légitimité/impôt) — mais food_sat reste intact (la survie). */
         re->satisfaction *= (1.f - 0.45f*econ_off_culture_fraction(&re->pop));
+        /* RELIGION (P8) : une région de foi MINORITAIRE (≠ celle de son pays, après
+         * fracture/schisme) gronde — la D-interne religieuse ABAISSE la satisfaction →
+         * alimente l'agitation/sécession (système existant). GATED → aucun effet sans
+         * religion (chronique : religion_of_region ≡ -1 ⇒ golden intact). */
+        if (re->owner>=0){
+            int rrg=religion_of_region(rid);
+            if (rrg>=0 && rrg!=religion_of_country(re->owner))
+                re->satisfaction = fmaxf(0.f, re->satisfaction - tune_f("RELIG_MINORITY_SAT",0.15f));
+        }
         re->prosperity = re->gdp/(popsum+1.f);
 
         /* Tech : les élites convertissent richesse × satisfaction en savoir. La
