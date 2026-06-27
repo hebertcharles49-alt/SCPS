@@ -84,6 +84,19 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("worldparams_default", "seed"),   &ScpsWorld::worldparams_default);
     ClassDB::bind_method(D_METHOD("worldgen_set", "p"),             &ScpsWorld::worldgen_set);
     ClassDB::bind_method(D_METHOD("worldgen_clear"),                &ScpsWorld::worldgen_clear);
+
+    /* RELIGION (P5) */
+    ClassDB::bind_method(D_METHOD("religion_pole_list"),            &ScpsWorld::religion_pole_list);
+    ClassDB::bind_method(D_METHOD("credo_list"),                    &ScpsWorld::credo_list);
+    ClassDB::bind_method(D_METHOD("religion_picks_valid", "p0", "p1", "p2"), &ScpsWorld::religion_picks_valid);
+    ClassDB::bind_method(D_METHOD("religion_found", "cid", "credo", "t0", "t1", "t2"), &ScpsWorld::religion_found);
+    ClassDB::bind_method(D_METHOD("religion_eligible", "cid"),      &ScpsWorld::religion_eligible);
+    ClassDB::bind_method(D_METHOD("religion_schism", "cid", "slot_a", "pole_a", "slot_b", "pole_b", "new_credo"), &ScpsWorld::religion_schism);
+    ClassDB::bind_method(D_METHOD("religion_of_country", "cid"),    &ScpsWorld::religion_of_country);
+    ClassDB::bind_method(D_METHOD("religion_of_region", "region"),  &ScpsWorld::religion_of_region);
+    ClassDB::bind_method(D_METHOD("religion_recruit_scholar", "cid", "region"), &ScpsWorld::religion_recruit_scholar);
+    ClassDB::bind_method(D_METHOD("religion_scholar_role", "cid"),  &ScpsWorld::religion_scholar_role);
+    ClassDB::bind_method(D_METHOD("religion_name", "cid"),          &ScpsWorld::religion_name);
     ClassDB::bind_method(D_METHOD("save_game", "slot"),             &ScpsWorld::save_game);
     ClassDB::bind_method(D_METHOD("load_game", "slot"),             &ScpsWorld::load_game);
     ClassDB::bind_method(D_METHOD("save_slots"),                    &ScpsWorld::save_slots);
@@ -756,6 +769,61 @@ void ScpsWorld::worldgen_set(Dictionary p) {
 
 void ScpsWorld::worldgen_clear() {
     scps_worldgen_clear();
+}
+
+/* ── RELIGION (P5) — passe-plats vers la façade ── */
+Array ScpsWorld::religion_pole_list() {
+    Array a;
+    ScpsReligPole p[32];
+    int n = scps_religion_pole_list(p, 32);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["id"]      = p[i].id;
+        d["nom"]     = String::utf8(p[i].nom);
+        d["axe"]     = p[i].axe;
+        d["axe_nom"] = String::utf8(p[i].axe_nom);
+        d["tip"]     = String::utf8(p[i].tip);
+        a.push_back(d);
+    }
+    return a;
+}
+Array ScpsWorld::credo_list() {
+    Array a;
+    ScpsCredoDef c[8];
+    int n = scps_credo_list(c, 8);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["id"]  = c[i].id;
+        d["nom"] = String::utf8(c[i].nom);
+        a.push_back(d);
+    }
+    return a;
+}
+bool ScpsWorld::religion_picks_valid(int p0, int p1, int p2) {
+    return scps_religion_picks_valid(p0, p1, p2) != 0;
+}
+int ScpsWorld::religion_found(int cid, int credo, int t0, int t1, int t2) {
+    return sim ? scps_religion_found(sim, cid, credo, t0, t1, t2) : -1;
+}
+int ScpsWorld::religion_eligible(int cid) {
+    return sim ? scps_religion_eligible(sim, cid) : 0;
+}
+Dictionary ScpsWorld::religion_schism(int cid, int slot_a, int pole_a, int slot_b, int pole_b, int new_credo) {
+    Dictionary d;
+    int flipped = 0;
+    int child = sim ? scps_religion_schism(sim, cid, slot_a, pole_a, slot_b, pole_b, new_credo, &flipped) : -1;
+    d["child"]   = child;
+    d["flipped"] = flipped;
+    return d;
+}
+int ScpsWorld::religion_of_country(int cid)  { return sim ? scps_religion_of_country(sim, cid) : -1; }
+int ScpsWorld::religion_of_region(int region){ return sim ? scps_religion_of_region(sim, region) : -1; }
+int ScpsWorld::religion_recruit_scholar(int cid, int region) {
+    return sim ? scps_religion_recruit_scholar(sim, cid, region) : -1;
+}
+int ScpsWorld::religion_scholar_role(int cid){ return sim ? scps_religion_scholar_role(sim, cid) : -1; }
+String ScpsWorld::religion_name(int cid) {
+    return sim ? String::utf8(scps_religion_name(sim, cid)) : String();
 }
 
 bool ScpsWorld::save_game(int slot) {

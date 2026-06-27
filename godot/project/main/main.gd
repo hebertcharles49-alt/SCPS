@@ -13,6 +13,7 @@ var _tech: Control
 var _econ: Control
 var _prov_detail: Control
 var _menu: Control
+var _religion: Control
 var _sel_prov := -1
 
 func _ready() -> void:
@@ -101,6 +102,13 @@ func _ready() -> void:
 	_menu = load("res://ui/menu_root.gd").new()
 	_menu.name = "MenuRoot"
 	ui.add_child(_menu)
+
+	# RELIGION (touche R) : fonder/voir la foi du joueur (panneau modale). Caché par défaut.
+	_religion = load("res://ui/religion_panel.gd").new()
+	_religion.name = "ReligionPanel"
+	_religion.visible = false
+	ui.add_child(_religion)
+
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
 func _unhandled_input(e: InputEvent) -> void:
@@ -127,6 +135,10 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_ESCAPE:                      # rouvrir le menu principal (monde en pause)
 			if _menu != null:
 				_menu.open()
+		KEY_R:                           # panneau RELIGION (fonder / schisme)
+			if _religion != null:
+				if _religion.visible: _religion.hide()
+				else: _religion.open()
 		KEY_SPACE:                       # pause ↔ reprise (parité viewer.c)
 			Sim.toggle_pause()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:        # « + » : accélérer

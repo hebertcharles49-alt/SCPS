@@ -1590,6 +1590,35 @@ int scps_religion_recruit_scholar(ScpsSim *s, int cid, int region){
 }
 int scps_religion_scholar_role(ScpsSim *s, int cid){ (void)s; return religion_scholar_role(cid); }
 
+int scps_religion_pole_list(ScpsReligPole *out, int max){
+    int n=0;
+    for(int p=0;p<RP_COUNT && n<max;p++){
+        const ReligPoleDef *d=&RELIG_POLES[p];
+        out[n].id=p; out[n].nom=relig_pole_name((ReligPole)p);
+        out[n].axe=(int)d->axis; out[n].axe_nom=relig_axis_name(d->axis);
+        out[n].tip=relig_pole_tip((ReligPole)p); n++;
+    }
+    return n;
+}
+int scps_credo_list(ScpsCredoDef *out, int max){
+    int n=0;
+    for(int c=0;c<CREDO_COUNT && n<max;c++){ out[n].id=c; out[n].nom=credo_name((Credo)c); n++; }
+    return n;
+}
+int scps_religion_picks_valid(int p0, int p1, int p2){ return religion_picks_valid(p0,p1,p2); }
+const char *scps_religion_name(ScpsSim *s, int cid){
+    static char buf[96];
+    (void)s;
+    int rid=religion_of_country(cid);
+    if(rid<0 || rid>=g_religion_count){ buf[0]='\0'; return buf; }
+    const Religion *r=&g_religions[rid];
+    snprintf(buf,sizeof buf,"%s \xc2\xb7 %s/%s/%s", credo_name((Credo)r->credo),
+             relig_pole_name((ReligPole)r->traditions[0]),
+             relig_pole_name((ReligPole)r->traditions[1]),
+             relig_pole_name((ReligPole)r->traditions[2]));
+    return buf;
+}
+
 /* ====================================================================== */
 /* PARAMÈTRES DE GÉNÉRATION (sliders de nouvelle partie)                    */
 /* ====================================================================== */

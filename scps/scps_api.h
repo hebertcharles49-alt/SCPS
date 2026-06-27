@@ -559,6 +559,16 @@ int scps_religion_of_region (ScpsSim *s, int region);
 int scps_religion_recruit_scholar(ScpsSim *s, int cid, int region);
 int scps_religion_scholar_role(ScpsSim *s, int cid);   /* ScholarRole courant / -1 */
 
+/* LISTES pour l'UI religion (membrane : mots résolus). */
+typedef struct { int id; const char *nom; int axe; const char *axe_nom; const char *tip; } ScpsReligPole;
+int scps_religion_pole_list(ScpsReligPole *out, int max);   /* RP_COUNT (16) */
+typedef struct { int id; const char *nom; } ScpsCredoDef;
+int scps_credo_list(ScpsCredoDef *out, int max);            /* CREDO_COUNT (3) */
+/* VALIDE 3 pôles (axes distincts) — pour griser l'UI. */
+int scps_religion_picks_valid(int p0, int p1, int p2);
+/* nom de la religion d'un pays = « <crédo> · <pôle0>/<pôle1>/<pôle2> » (buffer statique). */
+const char *scps_religion_name(ScpsSim *s, int cid);
+
 /* ====================================================================== */
 /* PARAMÈTRES DE GÉNÉRATION (l'écran « Nouvelle partie ») — les sliders.    */
 /* Ce sont les champs RÉELS de WorldParams que le moteur consomme (taille,  */

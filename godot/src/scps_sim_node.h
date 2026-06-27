@@ -131,6 +131,19 @@ public:
     void       worldgen_set(Dictionary p);                  /* override la prochaine generate() */
     void       worldgen_clear();
 
+    /* RELIGION (P5) — listes, fondation, schisme, lecture (membrane). */
+    Array      religion_pole_list();                        /* [{id,nom,axe,axe_nom,tip}] (16) */
+    Array      credo_list();                                /* [{id,nom}] (3) */
+    bool       religion_picks_valid(int p0, int p1, int p2);
+    int        religion_found(int cid, int credo, int t0, int t1, int t2);   /* id religion / -1 */
+    int        religion_eligible(int cid);                  /* 0 aucune · 1 RUPTURE · 2 DERIVE */
+    Dictionary religion_schism(int cid, int slot_a, int pole_a, int slot_b, int pole_b, int new_credo); /* {child,flipped} */
+    int        religion_of_country(int cid);
+    int        religion_of_region(int region);
+    int        religion_recruit_scholar(int cid, int region);   /* ScholarRole / -1 */
+    int        religion_scholar_role(int cid);
+    String     religion_name(int cid);
+
     /* SAUVEGARDE (« Charger ») — 3 emplacements (1..3) */
     bool       save_game(int slot);                         /* true = écrit */
     int        load_game(int slot);                         /* 0 ok · 1 absent/corrompu · 2 ère antérieure */
