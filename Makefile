@@ -116,6 +116,11 @@ SPECIES_DEMO_OBJS := $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_species_demo.o
 species_demo: $(SPECIES_DEMO_OBJS)
 	$(CC) $(SPECIES_DEMO_OBJS) -o $@
 
+# ---- religion_demo : module fondation religion (P1, PUR) ---------------------
+RELIGION_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_religion_demo.o
+religion_demo: $(RELIGION_DEMO_OBJS)
+	$(CC) $(RELIGION_DEMO_OBJS) -o $@
+
 # ---- Visualiseur de carte + UI diégétique (SDL2 + SDL_ttf) ---------------
 # Le viewer lie toute la chaîne sim (la membrane scps_readout traduit en mots),
 # mais N'inclut PAS scps_core.h (cloison vérifiée par grep).
