@@ -9,6 +9,7 @@
  * sur l'ordre de cet enum.
  */
 #include <stdint.h>
+#include <stdio.h>          /* FILE — sérialisation (section RELG, P3) */
 #include "scps_culture.h"   /* enum Credo existant (CREDO_*) */
 
 #define RELIG_MAX 64
@@ -83,5 +84,18 @@ const char *relig_pole_tip(ReligPole p);    /* descripteur diégétique court (s
 typedef enum { SCHOLAR_CONVERT, SCHOLAR_RESIST, SCHOLAR_STABILIZE, SCHOLAR_ROLE_COUNT } ScholarRole;
 const char *scholar_role_name(int role);     /* Missionnaire/Gourou/Moine */
 const char *scholar_role_ability(int role);  /* Conversion/Résistance/Stabilisation */
+
+/* ===================================================================== */
+/* LIEN pays→religion + SÉRIALISATION (P3) — état en GLOBAL du module       */
+/* (comme g_creditor), PAS dans la struct pays partagée : la genèse/le save */
+/* du viewer et le déterminisme (chronicle) restent INTACTS ; seule la save */
+/* FAÇADE (scps_save) ajoute une section RELG.                              */
+/* ===================================================================== */
+#define RELIG_MAX_COUNTRY 512   /* ≥ SCPS_MAX_COUNTRY ; découplé de scps_types.h */
+int  religion_of_country(int cid);            /* -1 = sans religion */
+void religion_set_country(int cid, int rid);  /* rid=-1 efface */
+void religion_reset(void);                    /* RAZ registre + liens (nouvelle partie) */
+void religion_save(FILE *f);                  /* section RELG (registre + liens pays) */
+int  religion_load(FILE *f);                  /* 0 ok · !=0 corrompu */
 
 #endif /* SCPS_RELIGION_H */

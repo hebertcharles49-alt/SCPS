@@ -11,6 +11,8 @@
  * pour que la membrane de SaveMisc reste neutre (aucun global de front ici).
  *
  * ── Historique des versions (bump = struct sérialisée plus large ⇒ « ère antérieure ») ──
+ * v37 : RELIGION — section RELG (religion_save/load : registre g_religions + liens pays→religion).
+ *       État en GLOBAL du module religion (pas de struct partagée touchée). <v37 refusé.
  * v36 : CRÉATEUR DE CULTURE — section CULT (culture_slots_save/load : g_slot[]+map cid→slot)
  *       ⇒ un monde chargé garde les cultures composées (joueur ET IA). <v36 refusé.
  * v35 : MONDE QUI SCALE — plafonds SCPS_MAX_PROV/REG/COUNTRY relevés (le monde suit le nb
@@ -23,7 +25,7 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 36u
+#define SAVE_VERSION 37u
 #define SAVE_F_CRYPT 1u
 
 typedef struct {

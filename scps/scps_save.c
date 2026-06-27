@@ -9,6 +9,7 @@
 #include "scps_save_io.h"   /* save_write_atomic */
 #include "scps_tune.h"      /* tune_active_string */
 #include "scps_species.h"   /* culture_slots_save/load (section CULT) */
+#include "scps_religion.h"  /* religion_save/load (section RELG, v37) */
 #include "scps_demography.h"/* demography_dyn_id_rebase */
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,7 +68,8 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(FACT,'F','A','C','T')  /* factions (statiques)        */ \
     X(CRDT,'C','R','D','T')  /* dette : g_creditor[]        */ \
     X(PCAP,'P','C','A','P')  /* limiteur de production (v24) */ \
-    X(CULT,'C','U','L','T')  /* v36 : slots de culture + map cid→slot */
+    X(CULT,'C','U','L','T')  /* v36 : slots de culture + map cid→slot */ \
+    X(RELG,'R','E','L','G')  /* v37 : registre religion + liens pays */
 #define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
 SV_SECTIONS(SV_DECL_TAG)
 #undef SV_DECL_TAG
@@ -131,6 +133,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     ok&=sv_w(f,SVT_PCAP, NULL,0); econ_prodcap_save(f);
     if (s->eg) ok&=sv_w(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
     ok&=sv_w(f,SVT_CULT, NULL,0); culture_slots_save(f);   /* v36 : cultures composées (joueur + IA) */
+    ok&=sv_w(f,SVT_RELG, NULL,0); religion_save(f);        /* v37 : registre religion + liens pays */
     if (ok && fflush(f)!=0) ok=false;
     long psz = ok ? ftell(f) : -1;
     if (!ok || psz<0){ fclose(f); return false; }
@@ -304,6 +307,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_rac
     ok&=sv_r(f,SVT_PCAP, NULL,0); ok&=econ_prodcap_load(f);
     if (s->eg) ok&=sv_r(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
     ok&=sv_r(f,SVT_CULT, NULL,0); ok&=culture_slots_load(f);   /* v36 : cultures composées */
+    ok&=sv_r(f,SVT_RELG, NULL,0); ok&=(religion_load(f)==0);   /* v37 : religion + liens pays */
     long p1=ftell(f); fclose(f);
     if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;
     if (!scps_save_sane(w, s, s->player)) return 1;

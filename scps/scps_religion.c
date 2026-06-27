@@ -59,6 +59,48 @@ static const ReligDelta* const RELIG_CREDO[CREDO_COUNT] = {
 Religion g_religions[RELIG_MAX];
 int      g_religion_count = 0;
 
+/* lien pays→religion (P3) — global du module (init paresseux à -1). */
+static int g_country_religion[RELIG_MAX_COUNTRY];
+static int g_cr_init = 0;
+static void cr_ensure(void){
+  if(!g_cr_init){ for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1; g_cr_init=1; }
+}
+int  religion_of_country(int cid){ cr_ensure(); return (cid>=0&&cid<RELIG_MAX_COUNTRY)?g_country_religion[cid]:-1; }
+void religion_set_country(int cid,int rid){ cr_ensure(); if(cid>=0&&cid<RELIG_MAX_COUNTRY) g_country_religion[cid]=rid; }
+void religion_reset(void){
+  g_religion_count=0; cr_ensure();
+  for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1;
+}
+
+void religion_save(FILE *f){
+  cr_ensure();
+  uint32_t n=(uint32_t)g_religion_count; fwrite(&n,4,1,f);
+  for(int i=0;i<g_religion_count;i++){ const Religion *r=&g_religions[i];
+    int32_t v[7]={r->id,r->parent,r->centre_cell,r->credo,
+                  r->traditions[0],r->traditions[1],r->traditions[2]};
+    fwrite(v,4,7,f); fwrite(r->color,1,3,f);
+    int32_t fc=r->founder_cid; fwrite(&fc,4,1,f); }
+  uint32_t m=(uint32_t)RELIG_MAX_COUNTRY; fwrite(&m,4,1,f);
+  for(int i=0;i<RELIG_MAX_COUNTRY;i++){ int32_t v=g_country_religion[i]; fwrite(&v,4,1,f); }
+}
+int religion_load(FILE *f){
+  cr_ensure();
+  uint32_t n=0; if(fread(&n,4,1,f)!=1 || n>(uint32_t)RELIG_MAX) return 1;
+  g_religion_count=(int)n;
+  for(int i=0;i<(int)n;i++){ Religion *r=&g_religions[i];
+    int32_t v[7]; if(fread(v,4,7,f)!=7) return 1;
+    r->id=v[0]; r->parent=v[1]; r->centre_cell=v[2]; r->credo=v[3];
+    r->traditions[0]=v[4]; r->traditions[1]=v[5]; r->traditions[2]=v[6];
+    if(fread(r->color,1,3,f)!=3) return 1;
+    int32_t fc=0; if(fread(&fc,4,1,f)!=1) return 1; r->founder_cid=fc;
+    if(r->credo<0||r->credo>=CREDO_COUNT) r->credo=0;                 /* borne désérialisée */
+    for(int k=0;k<3;k++) if(r->traditions[k]<0||r->traditions[k]>=RP_COUNT) r->traditions[k]=0; }
+  uint32_t m=0; if(fread(&m,4,1,f)!=1 || m!=(uint32_t)RELIG_MAX_COUNTRY) return 1;
+  for(int i=0;i<RELIG_MAX_COUNTRY;i++){ int32_t v=0; if(fread(&v,4,1,f)!=1) return 1;
+    g_country_religion[i]=(v>=-1 && v<g_religion_count)?(int)v:-1; }  /* borne : religion valide ou aucune */
+  return 0;
+}
+
 int religion_picks_valid(int p0,int p1,int p2){
   int v[3]={p0,p1,p2};
   for(int i=0;i<3;i++){ if(v[i]<0||v[i]>=RP_COUNT) return 0;

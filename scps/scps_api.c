@@ -23,6 +23,7 @@
 #include "scps_culture.h"   /* ethos_name, enum Ethos */
 #include "scps_world.h"     /* culture_make_name (ethnonyme façon Stellaris) */
 #include "scps_save.h"      /* SAUVEGARDE partagée : scps_save_game/load/slot_info */
+#include "scps_religion.h"  /* religion_reset (nouvelle partie) */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -82,6 +83,7 @@ static void api_centroids(ScpsSim *s){
 void scps_sim_generate(ScpsSim *s, uint32_t seed){
     if(!s) return;
     tune_once();
+    religion_reset();   /* nouvelle partie : registre religion + liens pays remis à plat */
     WorldParams p = worldparams_default(seed);
     /* NOUVELLE PARTIE : applique l'override de sliders s'il est posé (sinon défaut). */
     if(g_wg.active){

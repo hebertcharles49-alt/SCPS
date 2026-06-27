@@ -9,6 +9,7 @@
  * de déterminisme que l'hôte Godot héritera tant qu'il n'AFFICHE que.
  */
 #include "scps_api.h"
+#include "scps_religion.h"   /* P3 : test de persistance religion */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -326,6 +327,33 @@ int main(int argc, char **argv){
         ok("la partie chargée AVANCE (an +1)", scps_year(sl)==yr_before+1);
         scps_clear_player_culture();
         scps_sim_free(sg); scps_sim_free(sl);
+    }
+
+    /* ── RELIGION (P3) : le registre + le lien pays→religion SURVIVENT au save/load ── */
+    {
+        ScpsSim *sr=scps_sim_new(); scps_sim_generate(sr, seed);   /* reset religion */
+        int pl=scps_player(sr);
+        int rtrad[3]={RP_FECONDITE, RP_ACCUEIL, RP_GNOSE};
+        uint8_t rcol[3]={30,60,200};
+        int rid=religion_spawn(CREDO_PLURALISTE, rtrad, 100, pl, rcol);
+        religion_set_country(pl, rid);
+        ok("religion fondée + liée au joueur", rid>=0 && religion_of_country(pl)==rid);
+        ok("sauvegarde religion (slot 2)", scps_sim_save(sr, 2)==1);
+        scps_sim_free(sr);
+
+        ScpsSim *sr2=scps_sim_new();
+        scps_sim_generate(sr2, seed);                               /* reset → plus de religion */
+        ok("après reset : registre religion vide", g_religion_count==0);
+        int rc=scps_sim_load(sr2, 2);
+        ok("chargement religion OK (rc=0)", rc==0);
+        int pl2=scps_player(sr2);
+        printf("   religion save/load : registre=%d · lien joueur=%d (attendu %d)\n",
+               g_religion_count, religion_of_country(pl2), rid);
+        ok("registre religion RESTAURÉ (>=1)", g_religion_count>=1);
+        ok("lien pays→religion RESTAURÉ", religion_of_country(pl2)==rid);
+        ok("tradition[0] conservée (Fécondité)", rid>=0 && g_religions[rid].traditions[0]==RP_FECONDITE);
+        religion_reset();
+        scps_sim_free(sr2);
     }
 
     free(rgba); free(lay);
