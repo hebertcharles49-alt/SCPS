@@ -2489,6 +2489,10 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
      * (country_make_name/region_make_name lisent culture.race), donc restent cohérents. */
     SpeciesArchetype crace[SCPS_MAX_COUNTRY];
     for (int c=0;c<w->n_countries;c++){
+        /* CRÉATEUR DE CULTURE — un empire (joueur OU IA) avec un slot composé porte SON
+         * héritage choisi ; sinon le joueur garde player_race et les autres le hash. */
+        int slot = culture_slot_of_cid(c);
+        if (slot>=0 && culture_slot_active(slot)){ crace[c]=culture_slot_heritage(slot); continue; }
         if (c==player){ crace[c]=player_race; continue; }
         uint32_t h = (uint32_t)(c+1)*2654435761u ^ ((uint32_t)w->seed*40503u + 0x9E3779B9u);
         h ^= h>>16; h *= 0x7feb352du; h ^= h>>15; h *= 0x846ca68bu; h ^= h>>16;
@@ -2508,13 +2512,15 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
       for (int r=0;r<HERITAGE_COUNT;r++) if (cnt[r]) printf(" %s\xc3\x97%d", species_name((SpeciesArchetype)r), cnt[r]);
       printf("\n"); }
 
-    /* CRÉATEUR DE CULTURE — l'ÉTHOS choisi du joueur (override) imprègne SES régions :
-     * la dominante culturelle ET les groupes (factions, assimilation) — donc le NOM du
-     * pays (épithète, lu juste après) le suivent. Inactif ⇒ rien (déterminisme intact). */
-    if (culture_player_active()){
-        Ethos pe=(Ethos)culture_player_ethos();
+    /* CRÉATEUR DE CULTURE — l'ÉTHOS choisi de CHAQUE empire à slot (joueur OU IA) imprègne
+     * SES régions : la dominante culturelle ET les groupes (factions, assimilation) — donc
+     * le NOM du pays (épithète, lu juste après) le suit. Aucun slot ⇒ rien (déterminisme). */
+    if (culture_any_active()){
         for (int r=0;r<w->n_regions;r++){
-            if (w->region[r].country!=player) continue;
+            int cc=w->region[r].country;
+            int slot=(cc>=0)?culture_slot_of_cid(cc):-1;
+            if (slot<0 || !culture_slot_active(slot)) continue;
+            Ethos pe=(Ethos)culture_slot_ethos(slot);
             econ->region[r].culture.ethos=pe;
             for (int g=0; g<econ->region[r].pop.n_groups; g++)
                 econ->region[r].pop.groups[g].culture.ethos=pe;

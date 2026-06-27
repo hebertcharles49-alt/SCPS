@@ -24,6 +24,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("world_pop"),               &ScpsWorld::world_pop);
     ClassDB::bind_method(D_METHOD("country_pop", "country"),  &ScpsWorld::country_pop);
     ClassDB::bind_method(D_METHOD("country_gold", "country"), &ScpsWorld::country_gold);
+    ClassDB::bind_method(D_METHOD("country_role", "country"), &ScpsWorld::country_role);
     ClassDB::bind_method(D_METHOD("region_owner", "region"),     &ScpsWorld::region_owner);
     ClassDB::bind_method(D_METHOD("region_pop", "region"),       &ScpsWorld::region_pop);
     ClassDB::bind_method(D_METHOD("region_colonized", "region"), &ScpsWorld::region_colonized);
@@ -77,8 +78,12 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("culture_validate", "t0", "t1", "t2"), &ScpsWorld::culture_validate);
     ClassDB::bind_method(D_METHOD("culture_preview", "t0", "t1", "t2"),  &ScpsWorld::culture_preview);
     ClassDB::bind_method(D_METHOD("culture_name", "heritage", "seed"),   &ScpsWorld::culture_name);
+    ClassDB::bind_method(D_METHOD("set_empire_culture", "slot", "heritage", "ethos", "t0", "t1", "t2"), &ScpsWorld::set_empire_culture);
     ClassDB::bind_method(D_METHOD("set_player_culture", "heritage", "ethos", "t0", "t1", "t2"), &ScpsWorld::set_player_culture);
     ClassDB::bind_method(D_METHOD("clear_player_culture"),          &ScpsWorld::clear_player_culture);
+    ClassDB::bind_method(D_METHOD("worldparams_default", "seed"),   &ScpsWorld::worldparams_default);
+    ClassDB::bind_method(D_METHOD("worldgen_set", "p"),             &ScpsWorld::worldgen_set);
+    ClassDB::bind_method(D_METHOD("worldgen_clear"),                &ScpsWorld::worldgen_clear);
 
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
     ClassDB::bind_method(D_METHOD("river_paths"),                    &ScpsWorld::river_paths);
@@ -125,6 +130,7 @@ int     ScpsWorld::region_count()  const { return scps_region_count(sim); }
 int64_t ScpsWorld::world_pop()     const { return (int64_t)scps_world_pop(sim); }
 int64_t ScpsWorld::country_pop(int c)  const { return (int64_t)scps_country_pop(sim, c); }
 double  ScpsWorld::country_gold(int c) const { return scps_country_gold(sim, c); }
+int     ScpsWorld::country_role(int c) const { return scps_country_role(sim, c); }
 
 int     ScpsWorld::region_owner(int r)     const { return scps_region_owner(sim, r); }
 int64_t ScpsWorld::region_pop(int r)       const { return (int64_t)scps_region_pop(sim, r); }
@@ -704,12 +710,49 @@ String ScpsWorld::culture_name(int heritage, int seed) {
     return String::utf8(scps_culture_name(heritage, (uint32_t)seed));
 }
 
+bool ScpsWorld::set_empire_culture(int slot, int heritage, int ethos, int t0, int t1, int t2) {
+    return scps_set_empire_culture(slot, heritage, ethos, t0, t1, t2) != 0;
+}
 bool ScpsWorld::set_player_culture(int heritage, int ethos, int t0, int t1, int t2) {
     return scps_set_player_culture(heritage, ethos, t0, t1, t2) != 0;
 }
 
 void ScpsWorld::clear_player_culture() {
     scps_clear_player_culture();
+}
+
+Dictionary ScpsWorld::worldparams_default(int seed) {
+    ScpsWorldParams p;
+    scps_worldparams_default((uint32_t)seed, &p);
+    Dictionary d;
+    d["n_empires"]     = p.n_empires;
+    d["n_city_states"] = p.n_city_states;
+    d["n_continents"]  = p.n_continents;
+    d["world_age"]     = p.world_age;
+    d["land_amount"]   = p.land_amount;
+    d["mountains"]     = p.mountains;
+    d["erosion"]       = p.erosion;
+    d["temperature"]   = p.temperature;
+    d["humidity"]      = p.humidity;
+    return d;
+}
+
+void ScpsWorld::worldgen_set(Dictionary p) {
+    ScpsWorldParams w;
+    w.n_empires     = (int)p.get("n_empires", 6);
+    w.n_city_states = (int)p.get("n_city_states", 12);
+    w.n_continents  = (int)p.get("n_continents", 6);
+    w.world_age     = (float)(double)p.get("world_age", 0.7);
+    w.land_amount   = (float)(double)p.get("land_amount", 0.5);
+    w.mountains     = (float)(double)p.get("mountains", 0.5);
+    w.erosion       = (float)(double)p.get("erosion", 0.5);
+    w.temperature   = (float)(double)p.get("temperature", 0.5);
+    w.humidity      = (float)(double)p.get("humidity", 0.5);
+    scps_worldgen_set(&w);
+}
+
+void ScpsWorld::worldgen_clear() {
+    scps_worldgen_clear();
 }
 
 Array ScpsWorld::river_points() {

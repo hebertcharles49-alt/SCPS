@@ -49,6 +49,7 @@ public:
     int64_t world_pop() const;
     int64_t country_pop(int country) const;
     double  country_gold(int country) const;
+    int     country_role(int country) const;          /* 0 joueur · 1 IA · 2 cité-état · 3 vierge · 4 libre · -1 */
 
     /* par région */
     int     region_owner(int region) const;
@@ -121,8 +122,14 @@ public:
     bool       culture_validate(int t0, int t1, int t2);    /* 1maj+1min+1déf, une/axe, pas d'antonyme */
     Array      culture_preview(int t0, int t1, int t2);     /* [{nom,signe}] — aperçu des leviers */
     String     culture_name(int heritage, int seed);        /* ethnonyme façon Stellaris (aperçu live) */
-    bool       set_player_culture(int heritage, int ethos, int t0, int t1, int t2);  /* true = valide+retenu */
-    void       clear_player_culture();                      /* retour au défaut (IA aléatoire) */
+    bool       set_empire_culture(int slot, int heritage, int ethos, int t0, int t1, int t2); /* slot 0=joueur, 1..N IA */
+    bool       set_player_culture(int heritage, int ethos, int t0, int t1, int t2);  /* raccourci slot 0 */
+    void       clear_player_culture();                      /* efface TOUS les slots */
+
+    /* PARAMÈTRES DE GÉNÉRATION (sliders « Nouvelle partie ») — POD WorldParams en Dictionary. */
+    Dictionary worldparams_default(int seed);               /* défauts pour pré-remplir les sliders */
+    void       worldgen_set(Dictionary p);                  /* override la prochaine generate() */
+    void       worldgen_clear();
 
     /* TRACÉS DE CARTE : rivières (Vector3 par point : x · y · angle rad) */
     Array      river_points();

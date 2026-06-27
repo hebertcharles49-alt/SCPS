@@ -12,6 +12,14 @@ extends Control
 
 signal started   ## le joueur a lancé son empire (le monde vient d'être régénéré)
 signal cancelled ## le joueur a fermé sans composer (on garde le monde par défaut)
+signal composed(slot: int, heritage: int, ethos: int, t0: int, t1: int, t2: int)  ## mode-slot : compo validée pour un empire
+
+## Deux modes :
+##  · AUTONOME (touche C en jeu) : « Commencer » applique la culture au JOUEUR + régénère.
+##  · SLOT (écran Nouvelle partie) : « Valider » émet composed(slot,…) sans toucher le monde —
+##    l'écran de setup collecte les compos de tous les empires puis lance la partie.
+var _slot_mode := false
+var _target_slot := 0
 
 const AXES := ["Physique", "Social", "Intellectuel"]
 
@@ -373,12 +381,31 @@ func _on_start() -> void:
 	var t0 := _cur_trait(0)
 	var t1 := _cur_trait(1)
 	var t2 := _cur_trait(2)
-	if not Sim.world.set_player_culture(her, eth, t0, t1, t2):
+	if not Sim.world.culture_validate(t0, t1, t2):
 		_refresh()   # invalide : le bouton n'aurait pas dû être actif
+		return
+	if _slot_mode:
+		# écran de setup : on rend la compo, sans toucher le monde (lancé à « Lancer »).
+		composed.emit(_target_slot, her, eth, t0, t1, t2)
+		hide()
+		return
+	# mode autonome : applique au joueur + régénère immédiatement
+	if not Sim.world.set_player_culture(her, eth, t0, t1, t2):
+		_refresh()
 		return
 	Sim.regenerate(int(_seed_spin.value))   # le monde renaît AVEC la culture du joueur
 	hide()
 	started.emit()
+
+## ouvre le créateur en mode SLOT (composer la culture de l'empire `slot`).
+func open_for_slot(slot: int) -> void:
+	_slot_mode = true
+	_target_slot = slot
+	if _start_btn != null:
+		_start_btn.text = "Valider la culture"
+	if _seed_spin != null:
+		_seed_spin.editable = false   # la graine est gérée par l'écran de setup
+	open()
 
 
 func _on_cancel() -> void:

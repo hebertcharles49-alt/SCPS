@@ -245,6 +245,53 @@ int main(int argc, char **argv){
         ok("composition effacée (retour défaut)", scps_culture_validate(maj,mn,df)==1);  /* la validation reste pure */
     }
 
+    /* ── PARAMÈTRES DE GÉNÉRATION (sliders « Nouvelle partie ») : la TAILLE mord ── */
+    {
+        ScpsWorldParams wp; scps_worldparams_default(seed, &wp);
+        ok("worldparams défaut lus (empires>0, continents>0)", wp.n_empires>0 && wp.n_continents>0);
+
+        ScpsWorldParams small = wp; small.n_empires=2;  small.n_city_states=4;
+        scps_worldgen_set(&small);
+        ScpsSim *sa=scps_sim_new(); scps_sim_generate(sa, seed); int ra=scps_region_count(sa);
+
+        ScpsWorldParams big = wp;   big.n_empires=10;   big.n_city_states=20;
+        scps_worldgen_set(&big);
+        ScpsSim *sb=scps_sim_new(); scps_sim_generate(sb, seed); int rb=scps_region_count(sb);
+
+        printf("   régions : petit(2 emp)=%d · grand(10 emp)=%d\n", ra, rb);
+        ok("monde plus GRAND ⇒ plus de régions", rb > ra);
+        scps_worldgen_clear();
+        scps_sim_free(sa); scps_sim_free(sb);
+    }
+
+    /* ── SLOTS DE CULTURE PAR EMPIRE (façon Stellaris) : slot 0 joueur + slot 1 IA ── */
+    {
+        ScpsTradition trs2[64]; int ntr2=scps_tradition_list(trs2,64);
+        int maj=-1, mn=-1, df=-1;
+        for(int i=0;i<ntr2;i++){
+            if(maj<0 && trs2[i].axe==0 && trs2[i].rang>=2) maj=trs2[i].id;
+            if(mn <0 && trs2[i].axe==1 && trs2[i].rang==1) mn =trs2[i].id;
+            if(df <0 && trs2[i].axe==2 && trs2[i].rang< 0) df =trs2[i].id;
+        }
+        scps_clear_player_culture();   /* repart propre */
+        ok("slot HORS-BORNE refusé", scps_set_empire_culture(99, 0, 5, maj, mn, df)==0);
+        ok("slot 0 (joueur) ESOTERIQUE/PACIFISTE retenu", scps_set_empire_culture(0, 0, 5, maj, mn, df)==1);
+        ok("slot 1 (IA) CLANIQUE/DOMINATEUR retenu",      scps_set_empire_culture(1, 5, 0, maj, mn, df)==1);
+        ScpsSim *se=scps_sim_new(); scps_sim_generate(se, seed);
+        int pl=scps_player(se);
+        ScpsCountryInfo pin; scps_country_info(se, pl, &pin);
+        ok("joueur (slot 0) = épithète « Havre »", strncmp(pin.nom,"Havre",5)==0);
+        int ai1=-1;
+        for(int c=0;c<scps_country_count(se);c++) if(scps_country_role(se,c)==1){ ai1=c; break; }  /* 1er antagoniste = slot 1 */
+        int horde_ok=0;
+        if(ai1>=0){ ScpsCountryInfo ain; scps_country_info(se, ai1, &ain);
+            printf("   slot 0 joueur=« %s » · slot 1 IA(cid %d)=« %s »\n", pin.nom, ai1, ain.nom);
+            horde_ok = (strncmp(ain.nom,"Horde",5)==0); }
+        ok("IA slot 1 = épithète « Horde » (culture DONNÉE à l'IA)", ai1>=0 && horde_ok);
+        scps_clear_player_culture();
+        scps_sim_free(se);
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

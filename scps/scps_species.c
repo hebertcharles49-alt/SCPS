@@ -249,37 +249,66 @@ SpeciesBuild culture_random_build(uint32_t seed){
 }
 
 /* ===================================================================== */
-/* CRÉATEUR DE CULTURE — override du JOUEUR (voir .h)                      */
+/* CRÉATEUR DE CULTURE — SLOTS par empire (voir .h)                        */
 /* ===================================================================== */
-/* Un SEUL « joueur » par processus. Inactif par défaut ⇒ culture_build_for ≡
- * culture_random_build, culture_player_heritage ≡ ADAPTATIF : le moteur (chronique,
- * bancs, golden, déterminisme) ne voit STRICTEMENT aucun changement. */
-static struct {
+/* Slot 0 = joueur ; 1..N-1 = empires IA. Le cid→slot est établi à la genèse
+ * (culture_bind_cid). AUCUN slot posé ⇒ culture_build_for ≡ culture_random_build,
+ * culture_*_heritage ≡ ADAPTATIF : le moteur (chronique, bancs, golden, déterminisme)
+ * ne voit STRICTEMENT aucun changement. */
+#define CULTURE_MAX_CID 512   /* ≥ SCPS_MAX_COUNTRY ; découplé de scps_types.h */
+typedef struct {
     bool             active;
-    int              cid;        /* -1 tant que non lié à la genèse */
     SpeciesArchetype heritage;
     int              ethos;      /* Ethos (scps_culture.h) — int pour éviter le cycle d'include */
     SpeciesBuild     build;
-} g_player = { false, -1, HERITAGE_ADAPTATIF, 2 /*ETHOS_ORDRE*/, {{ T_PROLIFIQUE, T_FRONDEUR, T_INVENTIF }} };
+} CultureSlot;
+static CultureSlot g_slot[CULTURE_SLOTS];           /* défaut : tout {false,…} (BSS) */
+static int  g_cid_slot[CULTURE_MAX_CID];            /* cid→slot, -1 = aucun (init au 1er reset) */
+static bool g_cid_map_init = false;
 
-void culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build){
-    g_player.active   = true;
-    g_player.cid      = -1;      /* (re)lié à la genèse via culture_player_bind */
-    g_player.heritage = (heritage>=0&&heritage<HERITAGE_COUNT) ? heritage : HERITAGE_ADAPTATIF;
-    g_player.ethos    = ethos;
-    g_player.build    = build;
+static void cid_map_ensure(void){
+    if (!g_cid_map_init){ for (int i=0;i<CULTURE_MAX_CID;i++) g_cid_slot[i]=-1; g_cid_map_init=true; }
 }
-void culture_player_bind(int cid){ if (g_player.active) g_player.cid = cid; }
-void culture_player_clear(void){
-    g_player.active=false; g_player.cid=-1;
-    g_player.heritage=HERITAGE_ADAPTATIF; g_player.ethos=2;
+
+void culture_slot_set(int slot, SpeciesArchetype heritage, int ethos, SpeciesBuild build){
+    if (slot<0 || slot>=CULTURE_SLOTS) return;
+    g_slot[slot].active   = true;
+    g_slot[slot].heritage = (heritage>=0&&heritage<HERITAGE_COUNT) ? heritage : HERITAGE_ADAPTATIF;
+    g_slot[slot].ethos    = ethos;
+    g_slot[slot].build    = build;
 }
-bool             culture_player_active(void){ return g_player.active; }
-int              culture_player_cid(void){ return g_player.active ? g_player.cid : -1; }
-SpeciesArchetype culture_player_heritage(void){ return g_player.active ? g_player.heritage : HERITAGE_ADAPTATIF; }
-int              culture_player_ethos(void){ return g_player.active ? g_player.ethos : 2; }
+void culture_slot_clear_all(void){
+    for (int s=0;s<CULTURE_SLOTS;s++){ g_slot[s].active=false; g_slot[s].heritage=HERITAGE_ADAPTATIF; g_slot[s].ethos=2; }
+    cid_map_ensure();
+    for (int i=0;i<CULTURE_MAX_CID;i++) g_cid_slot[i]=-1;
+}
+bool             culture_slot_active(int slot){ return (slot>=0&&slot<CULTURE_SLOTS) && g_slot[slot].active; }
+SpeciesArchetype culture_slot_heritage(int slot){ return culture_slot_active(slot)?g_slot[slot].heritage:HERITAGE_ADAPTATIF; }
+int              culture_slot_ethos(int slot){ return culture_slot_active(slot)?g_slot[slot].ethos:2; }
+
+void culture_reset_cid_map(void){ cid_map_ensure(); for (int i=0;i<CULTURE_MAX_CID;i++) g_cid_slot[i]=-1; }
+void culture_bind_cid(int cid, int slot){ cid_map_ensure(); if (cid>=0&&cid<CULTURE_MAX_CID) g_cid_slot[cid]=slot; }
+int  culture_slot_of_cid(int cid){ cid_map_ensure(); return (cid>=0&&cid<CULTURE_MAX_CID)?g_cid_slot[cid]:-1; }
+
+bool culture_any_active(void){ for (int s=0;s<CULTURE_SLOTS;s++) if (g_slot[s].active) return true; return false; }
 
 SpeciesBuild culture_build_for(uint32_t cid){
-    if (g_player.active && g_player.cid>=0 && (uint32_t)g_player.cid==cid) return g_player.build;
+    int slot = culture_slot_of_cid((int)cid);
+    if (slot>=0 && culture_slot_active(slot)) return g_slot[slot].build;
     return culture_random_build(cid);
 }
+
+/* ---- Compat « joueur » = slot 0 ------------------------------------------- */
+void culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build){
+    culture_slot_set(0, heritage, ethos, build);
+}
+void culture_player_bind(int cid){ culture_bind_cid(cid, 0); }
+void culture_player_clear(void){ culture_slot_clear_all(); }
+bool culture_player_active(void){ return culture_any_active(); }
+int  culture_player_cid(void){
+    cid_map_ensure();
+    for (int i=0;i<CULTURE_MAX_CID;i++) if (g_cid_slot[i]==0) return i;
+    return -1;
+}
+SpeciesArchetype culture_player_heritage(void){ return culture_slot_heritage(0); }
+int              culture_player_ethos(void){ return culture_slot_ethos(0); }

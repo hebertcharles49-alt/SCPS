@@ -112,20 +112,33 @@ SpeciesBuild    culture_random_build(uint32_t seed);
 /* ===================================================================== */
 /* CRÉATEUR DE CULTURE — la composition du JOUEUR (override du tirage IA)  */
 /* ===================================================================== */
-/* Le joueur compose SON empire (héritage + éthos + 3 traditions) dans le créateur ;
- * sa composition REMPLACE le tirage aléatoire pour SON cid (un seul « joueur » par
- * processus). TANT QUE c'est INACTIF (le défaut — chronique, bancs, déterminisme),
- * TOUT est exactement comme avant : héritage ADAPTATIF, traditions aléatoires, éthos
- * émergent. `ethos` voyage en int (l'enum Ethos vit dans scps_culture.h ; on le garde
- * hors d'ici pour ne pas créer de cycle d'include) — caster à/depuis Ethos aux sites. */
-void              culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build);
-void              culture_player_bind(int cid);     /* lie l'override au cid joueur (à la genèse) */
-void              culture_player_clear(void);
-bool              culture_player_active(void);
-int               culture_player_cid(void);         /* -1 si non lié */
-SpeciesArchetype  culture_player_heritage(void);    /* HERITAGE_ADAPTATIF si inactif */
-int               culture_player_ethos(void);       /* 2 (ETHOS_ORDRE) si inactif */
-/* Build EFFECTIF pour un cid : l'override du joueur si lié à ce cid, sinon le tirage. */
+/* Le joueur (et, façon Stellaris, chaque empire) compose une culture (héritage + éthos
+ * + 3 traditions) qui REMPLACE le tirage aléatoire pour SON empire. Modèle à SLOTS par
+ * ORDINAL d'empire : slot 0 = JOUEUR, slots 1..N-1 = empires IA (POLITY_ANTAGONIST) dans
+ * l'ordre des cid. À la genèse, on LIE chaque cid d'empire à son slot (culture_bind_cid).
+ * TANT QU'AUCUN slot n'est posé (le défaut — chronique, bancs, déterminisme), TOUT est
+ * exactement comme avant : héritage ADAPTATIF, traditions aléatoires, éthos émergent.
+ * `ethos` voyage en int (l'enum Ethos vit dans scps_culture.h — évite un cycle d'include). */
+#define CULTURE_SLOTS 64
+void              culture_slot_set(int slot, SpeciesArchetype heritage, int ethos, SpeciesBuild build);
+void              culture_slot_clear_all(void);         /* désactive tous les slots + RAZ la map cid */
+bool              culture_slot_active(int slot);
+SpeciesArchetype  culture_slot_heritage(int slot);      /* HERITAGE_ADAPTATIF si inactif */
+int               culture_slot_ethos(int slot);         /* 2 (ETHOS_ORDRE) si inactif */
+void              culture_reset_cid_map(void);          /* map cid→slot toute à -1 (par genèse) */
+void              culture_bind_cid(int cid, int slot);  /* établit cid→slot à la genèse */
+int               culture_slot_of_cid(int cid);         /* slot d'un cid, -1 si aucun */
+bool              culture_any_active(void);              /* un slot au moins est-il posé ? */
+/* Build EFFECTIF pour un cid : l'override de son slot s'il est lié+actif, sinon le tirage. */
 SpeciesBuild      culture_build_for(uint32_t cid);
+
+/* ---- Compat « joueur » (= slot 0) : la surface d'origine, conservée ---------- */
+void              culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build); /* = slot 0 */
+void              culture_player_bind(int cid);     /* = culture_bind_cid(cid, 0) */
+void              culture_player_clear(void);        /* = culture_slot_clear_all */
+bool              culture_player_active(void);        /* = culture_any_active */
+int               culture_player_cid(void);          /* cid lié au slot 0, -1 sinon */
+SpeciesArchetype  culture_player_heritage(void);     /* slot 0 (HERITAGE_ADAPTATIF si inactif) */
+int               culture_player_ethos(void);        /* slot 0 (2/ETHOS_ORDRE si inactif) */
 
 #endif /* SCPS_SPECIES_H */

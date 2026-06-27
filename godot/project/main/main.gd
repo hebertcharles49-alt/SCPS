@@ -12,7 +12,7 @@ var _construct: Control
 var _tech: Control
 var _econ: Control
 var _prov_detail: Control
-var _creator: Control
+var _menu: Control
 var _sel_prov := -1
 
 func _ready() -> void:
@@ -95,17 +95,13 @@ func _ready() -> void:
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
 
-	# CRÉATEUR D'EMPIRE (façon Stellaris, touche C) : composer sa culture (héritage +
-	# éthos + 3 traditions) AVANT de jouer. Topmost (ajouté en dernier). À la fermeture,
-	# le monde reprend à vitesse normale ; « Commencer » a déjà régénéré avec la culture.
-	_creator = load("res://ui/culture_creator.gd").new()
-	_creator.name = "CultureCreator"
-	ui.add_child(_creator)
-	_creator.started.connect(func(): Sim.set_speed(2))
-	_creator.cancelled.connect(func(): Sim.set_speed(2))
-	# au DÉMARRAGE : on ouvre le créateur, le monde (déjà généré par défaut) en pause
-	Sim.set_speed(0)
-	_creator.open()
+	# MENU PRINCIPAL (Jouer/Charger/Options/Quitter) par-dessus la carte, au démarrage.
+	# Topmost (ajouté en dernier). Le monde par défaut est déjà généré derrière ; « Lancer
+	# la partie » le régénère selon le setup (sliders + cultures) puis laisse en PAUSE an 0.
+	_menu = load("res://ui/menu_root.gd").new()
+	_menu.name = "MenuRoot"
+	ui.add_child(_menu)
+	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
 func _unhandled_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
@@ -128,10 +124,9 @@ func _unhandled_input(e: InputEvent) -> void:
 				_prov_detail.show_province(_sel_prov)
 				_prov_detail.visible = not _prov_detail.visible
 				_prov_detail.queue_redraw()
-		KEY_C:                           # rouvrir le créateur d'empire (monde en pause)
-			if _creator != null:
-				Sim.set_speed(0)
-				_creator.open()
+		KEY_ESCAPE:                      # rouvrir le menu principal (monde en pause)
+			if _menu != null:
+				_menu.open()
 		KEY_SPACE:                       # pause ↔ reprise (parité viewer.c)
 			Sim.toggle_pause()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:        # « + » : accélérer

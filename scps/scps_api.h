@@ -61,6 +61,8 @@ int    scps_region_count (const ScpsSim *s);
 long   scps_world_pop    (const ScpsSim *s);
 long   scps_country_pop  (const ScpsSim *s, int country);
 double scps_country_gold (const ScpsSim *s, int country);
+/* RÔLE de polité (PolityRole) : 0 joueur · 1 antagoniste(IA) · 2 cité-état · 3 vierge · 4 libre ; -1 hors-borne. */
+int    scps_country_role (const ScpsSim *s, int country);
 
 /* ---- par RÉGION (overlays / sprites côté hôte) ----------------------- */
 int   scps_region_owner    (const ScpsSim *s, int region);
@@ -525,12 +527,39 @@ int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max);
  * l'aperçu live du créateur (aucun monde requis). Pointe un buffer statique. */
 const char *scps_culture_name(int heritage, uint32_t seed);
 
-/* COMPOSE la culture du JOUEUR — à appeler AVANT scps_sim_generate (la composition
- * est gravée à la génération : héritage→noms/couleur, éthos→nom/factions, traditions→
- * les 5 leviers pour le cid joueur). Retourne 1 si VALIDE et retenue, 0 sinon (rien). */
+/* COMPOSE la culture d'un EMPIRE par SLOT (façon Stellaris) : slot 0 = JOUEUR, 1..N-1 =
+ * empires IA dans l'ordre de génération. À appeler AVANT scps_sim_generate (la compo est
+ * gravée à la genèse : héritage→noms/couleur, éthos→nom/factions, traditions→les leviers
+ * de cet empire). Retourne 1 si VALIDE et retenue, 0 sinon (rien). */
+int  scps_set_empire_culture(int slot, int heritage, int ethos, int t0, int t1, int t2);
+/* Raccourci slot 0 (le joueur). */
 int  scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2);
-/* EFFACE la composition (retour au tirage IA + héritage ADAPTATIF + éthos émergent). */
+/* EFFACE TOUTES les compositions (retour au tirage IA + héritage ADAPTATIF + éthos émergent). */
 void scps_clear_player_culture(void);
+
+/* ====================================================================== */
+/* PARAMÈTRES DE GÉNÉRATION (l'écran « Nouvelle partie ») — les sliders.    */
+/* Ce sont les champs RÉELS de WorldParams que le moteur consomme (taille,  */
+/* âge, climat, relief). POD membrane (ints/floats), aucun type moteur.      */
+/* ====================================================================== */
+typedef struct {
+    int   n_empires;       /* empires visés (taille : tiny 2 … huge 12) */
+    int   n_city_states;   /* cités-états visées */
+    int   n_continents;    /* 1..8 masses continentales */
+    float world_age;       /* 0..1 — vieux = relief usé */
+    float land_amount;     /* 0..1 — 0.5 neutre ; haut = plus de terres */
+    float mountains;       /* 0..1 — amplitude du relief */
+    float erosion;         /* 0..1 — creusement hydraulique */
+    float temperature;     /* 0..1 — 0.5 neutre ; haut = chaud */
+    float humidity;        /* 0..1 — 0.5 neutre ; haut = humide */
+} ScpsWorldParams;
+
+/* Les DÉFAUTS « monde standard » pour une graine (pour pré-remplir les sliders). */
+void scps_worldparams_default(uint32_t seed, ScpsWorldParams *out);
+/* OVERRIDE des paramètres pour la PROCHAINE scps_sim_generate (clampé en interne).
+ * Reste actif jusqu'à scps_worldgen_clear (ou la prochaine partie). */
+void scps_worldgen_set(const ScpsWorldParams *p);
+void scps_worldgen_clear(void);
 
 #ifdef __cplusplus
 }

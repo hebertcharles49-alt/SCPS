@@ -27,13 +27,18 @@
 #include <math.h>
 
 struct ScpsSim {
-    World    *w;
-    Sim       sim;       /* l'état PLEIN : sim_init/sim_day (IA, guerre, diplo, prospérité…) */
-    uint32_t *px;        /* SCPS_N : tampon de travail pour render_map */
-    float    *cx, *cy;   /* centroïdes région (figés par worldgen) */
-    int       n_cent;
-    bool      ready;
+    World      *w;
+    Sim         sim;       /* l'état PLEIN : sim_init/sim_day (IA, guerre, diplo, prospérité…) */
+    WorldParams params;    /* les paramètres de la genèse courante (pour la sauvegarde) */
+    uint32_t   *px;        /* SCPS_N : tampon de travail pour render_map */
+    float      *cx, *cy;   /* centroïdes région (figés par worldgen) */
+    int         n_cent;
+    bool        ready;
 };
+
+/* OVERRIDE des paramètres de genèse (l'écran « Nouvelle partie »). Inactif par défaut
+ * ⇒ scps_sim_generate utilise worldparams_default (comportement historique). */
+static struct { bool active; ScpsWorldParams p; } g_wg = { false, {0,0,0,0,0,0,0,0,0} };
 
 static void tune_once(void){ static bool done=false; if(!done){ tune_init(); done=true; } }
 
@@ -56,14 +61,31 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     if(!s) return;
     tune_once();
     WorldParams p = worldparams_default(seed);
+    /* NOUVELLE PARTIE : applique l'override de sliders s'il est posé (sinon défaut). */
+    if(g_wg.active){
+        p.n_empires     = g_wg.p.n_empires;
+        p.n_city_states = g_wg.p.n_city_states;
+        p.n_continents  = g_wg.p.n_continents;
+        p.world_age     = g_wg.p.world_age;
+        p.land_amount   = g_wg.p.land_amount;
+        p.mountains     = g_wg.p.mountains;
+        p.erosion       = g_wg.p.erosion;
+        p.temperature   = g_wg.p.temperature;
+        p.humidity      = g_wg.p.humidity;
+    }
+    s->params = p;   /* mémorisé pour la sauvegarde (l'en-tête sérialise WorldParams) */
     world_generate(s->w, &p);
-    /* CRÉATEUR DE CULTURE : lier l'override de culture au cid JOUEUR (rôle POLITY_PLAYER)
-     * AVANT sim_init, pour que SES leviers (traditions) valent dès l'initialisation et que
-     * l'éthos/héritage choisis imprègnent la genèse. Inactif (défaut) ⇒ no-op total. */
-    if (culture_player_active()){
-        int pcid=0;
-        for (int c=0;c<s->w->n_countries;c++) if (s->w->country[c].role==POLITY_PLAYER){ pcid=c; break; }
-        culture_player_bind(pcid);
+    /* CRÉATEUR DE CULTURE : lier chaque empire à son SLOT par ordinal (slot 0 = joueur,
+     * 1..N = empires IA dans l'ordre des cid) AVANT sim_init, pour que les leviers/héritage/
+     * éthos choisis imprègnent la genèse. Aucun slot posé (défaut) ⇒ no-op total. */
+    if (culture_any_active()){
+        culture_reset_cid_map();
+        int ord=1;
+        for (int c=0;c<s->w->n_countries;c++){
+            int role = s->w->country[c].role;
+            if (role==POLITY_PLAYER)          culture_bind_cid(c, 0);
+            else if (role==POLITY_ANTAGONIST) culture_bind_cid(c, ord++);
+        }
     }
     sim_init(&s->sim, s->w);   /* RAZ pleine + seed : econ, peuples, IA, diplo, prospérité, légitimité… */
     /* DÉBRAYAGE DE L'IA : le pays « joueur » passe sous la MAIN HUMAINE. ai_on=false le
@@ -238,6 +260,10 @@ long scps_country_pop(const ScpsSim *s, int c){
 double scps_country_gold(const ScpsSim *s, int c){
     if(!s || !s->ready) return 0.0;
     return econ_country_gold(s->sim.econ, c);
+}
+int scps_country_role(const ScpsSim *s, int c){
+    if(!s || !s->ready || c<0 || c>=s->w->n_countries) return -1;
+    return (int)s->w->country[c].role;
 }
 
 /* ---- PICKING & READOUTS (la membrane traverse le binding) ------------- */
@@ -1496,13 +1522,54 @@ const char *scps_culture_name(int heritage, uint32_t seed){
     return buf;
 }
 
-int scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2){
+int scps_set_empire_culture(int slot, int heritage, int ethos, int t0, int t1, int t2){
+    if(slot<0 || slot>=CULTURE_SLOTS) return 0;
     if(!scps_culture_validate(t0,t1,t2)) return 0;
     if(heritage<0||heritage>=HERITAGE_COUNT) return 0;
     if(ethos<0||ethos>=ETHOS_COUNT) return 0;
     SpeciesBuild b = api_build_of(t0,t1,t2);
-    culture_player_compose((SpeciesArchetype)heritage, ethos, b);
+    culture_slot_set(slot, (SpeciesArchetype)heritage, ethos, b);
     return 1;
 }
 
+int scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2){
+    return scps_set_empire_culture(0, heritage, ethos, t0, t1, t2);
+}
+
 void scps_clear_player_culture(void){ culture_player_clear(); }
+
+/* ====================================================================== */
+/* PARAMÈTRES DE GÉNÉRATION (sliders de nouvelle partie)                    */
+/* ====================================================================== */
+void scps_worldparams_default(uint32_t seed, ScpsWorldParams *out){
+    if(!out) return;
+    WorldParams d = worldparams_default(seed);
+    out->n_empires     = d.n_empires;
+    out->n_city_states = d.n_city_states;
+    out->n_continents  = d.n_continents;
+    out->world_age     = d.world_age;
+    out->land_amount   = d.land_amount;
+    out->mountains     = d.mountains;
+    out->erosion       = d.erosion;
+    out->temperature   = d.temperature;
+    out->humidity      = d.humidity;
+}
+
+static int   clampi_api(int v, int lo, int hi){ return v<lo?lo:(v>hi?hi:v); }
+static float clamp01_api(float v){ return v<0.f?0.f:(v>1.f?1.f:v); }
+
+void scps_worldgen_set(const ScpsWorldParams *p){
+    if(!p){ g_wg.active=false; return; }
+    g_wg.active = true;
+    g_wg.p.n_empires     = clampi_api(p->n_empires,     1, 60);
+    g_wg.p.n_city_states = clampi_api(p->n_city_states, 0, 120);
+    g_wg.p.n_continents  = clampi_api(p->n_continents,  1, 8);
+    g_wg.p.world_age     = clamp01_api(p->world_age);
+    g_wg.p.land_amount   = clamp01_api(p->land_amount);
+    g_wg.p.mountains     = clamp01_api(p->mountains);
+    g_wg.p.erosion       = clamp01_api(p->erosion);
+    g_wg.p.temperature   = clamp01_api(p->temperature);
+    g_wg.p.humidity      = clamp01_api(p->humidity);
+}
+
+void scps_worldgen_clear(void){ g_wg.active = false; }
