@@ -15,6 +15,7 @@
  */
 #include "scps_prosperity.h"
 #include "scps_culture.h"
+#include "scps_religion.h"    /* P4 : nudge des coordonnées par la religion (gated) */
 #include "scps_core.h"        /* scps_order : le moteur d'ordre interne §2.4 vérifié */
 #include "scps_tune.h"        /* FAU0 : ENTROPY_TERMINAL (seuil terminal calibrable) */
 #include <stdio.h>
@@ -219,6 +220,18 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
         float Lt= ts_c ? ts_c->L        : 3.f;   /* tech L (ordre consenti) → croissance */
         float P = ts_c ? ts_c->puissance: 3.f;   /* puissance → porte PE (§2.3)          */
         float H = ts_c ? ts_c->H        : 0.f;
+        /* RELIGION (P4) : les pôles/crédo NUDGENT les coordonnées de TRAVAIL (non
+         * destructif : K/Lt/P/H sont des copies locales, ts_c reste intact ⇒ pas
+         * d'empilement inter-tick). GATED sur religion_of_country : aucun effet sans
+         * religion ⇒ golden/determinism INTACTS (la chronique ne fonde jamais de foi).
+         * STAB & COHESION → +L (proxy de stabilité, ★ par défaut du mapping P4). */
+        if (religion_of_country(cid) >= 0) {
+            const ReligAccum *ra = religion_country_acc(cid);
+            K  = clampf(K  + ra->ch[RC_K], 0.f, 10.f);
+            P  = clampf(P  + ra->ch[RC_P], 0.f, 10.f);
+            H  = clampf(H  + ra->ch[RC_H], 0.f, 10.f);
+            Lt = clampf(Lt + ra->ch[RC_L] + ra->ch[RC_STAB] + ra->ch[RC_COHESION], 0.f, 10.f);
+        }
         /* Connectivité EFFECTIVE = C du pays + bonus mondial des Âges (Commerce).
          * Offset de lecture (non cumulatif) : le contact devient plus fécond pour
          * tout le monde quand le monde devient commerçant. */

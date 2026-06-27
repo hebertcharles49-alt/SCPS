@@ -74,6 +74,20 @@ int  religion_color_near(const uint8_t parent[3], const uint8_t chosen[3]); /* v
 void religion_selftest(void);
 
 /* ===================================================================== */
+/* P4 — cache d'accumulateur PAR PAYS + éligibilité au schisme             */
+/* ===================================================================== */
+/* acc CACHÉ du pays = somme pôles+crédo de SA religion (ZÉRO si sans religion).
+ * Recalculé à religion_set_country / religion_load. Les consommateurs moteur LISENT
+ * ceci (jamais de recompute par site). World visible via scps_culture.h→scps_types.h. */
+const ReligAccum* religion_country_acc(int cid);
+
+typedef enum { RSE_NONE = 0, RSE_RUPTURE, RSE_DERIVE } ReligSchismMode;
+/* éligibilité au schisme (LECTURE pure, aucun effet de bord). RUPTURE : le pays NE
+ * contrôle PAS la cellule-centre de sa religion (centre conquis/étranger). DERIVE
+ * (dérive province distance-centre) : phase ultérieure — renvoie RSE_NONE pour l'instant. */
+ReligSchismMode religion_schism_eligible(const World *w, int cid);
+
+/* ===================================================================== */
 /* i18n — mots RÉSOLUS (membrane ; même mécanisme que credo_name/species_name) */
 /* ===================================================================== */
 const char *relig_axis_name(ReligAxis a);   /* Sang/Feu/Seuil/… */

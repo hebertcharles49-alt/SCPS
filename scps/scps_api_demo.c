@@ -356,6 +356,27 @@ int main(int argc, char **argv){
         scps_sim_free(sr2);
     }
 
+    /* ── RELIGION (P4) : la foi NUDGE le moteur (gated) — la pop joueur DIVERGE vs sans-foi ── */
+    {
+        ScpsSim *na=scps_sim_new(); scps_sim_generate(na, seed);   /* A : generate reset → sans foi */
+        int pa=scps_player(na); scps_sim_advance_days(na, 365*10);
+        long popA=scps_country_pop(na, pa);
+        scps_sim_free(na);
+
+        ScpsSim *nb=scps_sim_new(); scps_sim_generate(nb, seed);   /* B : même graine, foi pro-natalité */
+        int pb=scps_player(nb);
+        int rt[3]={RP_FECONDITE, RP_COURONNE, RP_GNOSE};           /* Fécondité(popgrowth+) · Couronne(L+) · Gnose */
+        int rr=religion_spawn(CREDO_EVANGELISTE, rt, 0, pb, NULL);
+        religion_set_country(pb, rr);
+        scps_sim_advance_days(nb, 365*10);
+        long popB=scps_country_pop(nb, pb);
+        printf("   P4 effet : pop joueur sans-foi=%ld · avec-foi(Fécondité+Couronne)=%ld\n", popA, popB);
+        ok("la religion MORD sur le moteur (pop joueur diverge)", popB != popA);
+        ok("foi pro-natalité ⇒ pop ≥ sans-foi", popB >= popA);
+        religion_reset();
+        scps_sim_free(nb);
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

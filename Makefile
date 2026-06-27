@@ -137,7 +137,7 @@ SCPS_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
              $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o \
              $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o \
              $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_crypt.o \
-             $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/tp_miniz.o \
+             $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/tp_miniz.o \
              $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_stbiw.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_viewer.o
 SCPS_TARGET := scps_viewer$(EXE)
 # Sous DEV : l'overlay Nuklear rejoint le lien, le binaire change de NOM (le
@@ -398,6 +398,7 @@ CHRONICLE_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDI
                   $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o $(OBJDIR)/scps_scps_missions.o \
                   $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o $(OBJDIR)/tp_miniz.o \
                   $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o \
+                  $(OBJDIR)/scps_scps_religion.o \
                   $(OBJDIR)/scps_scps_sim.o $(OBJDIR)/scps_chronicle.o
 chronicle: $(CHRONICLE_OBJS)
 	$(CC) $(CHRONICLE_OBJS) -o $@ -lm $(OMPFLAG)
@@ -419,7 +420,6 @@ audit: audit_eco
 # moteur complet + scps_render. (Le binding C++ Godot vit dans godot/, à part.)
 API_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS)) \
                  $(OBJDIR)/scps_scps_crypt.o $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/scps_scps_save.o \
-                 $(OBJDIR)/scps_scps_religion.o \
                  $(OBJDIR)/scps_scps_render.o $(OBJDIR)/scps_scps_api.o $(OBJDIR)/scps_scps_api_demo.o
 scps_api_demo: $(API_DEMO_OBJS)
 	$(CC) $(API_DEMO_OBJS) -o $@ -lm $(OMPFLAG)

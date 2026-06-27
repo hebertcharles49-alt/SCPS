@@ -9,6 +9,7 @@
 #include "scps_tune.h"    /* Arc J : constantes de calibrage surchargeables (SCPS_TUNE) */
 #include "scps_world.h"   /* resource_name(), subsistance_for_biome() */
 #include "scps_culture.h" /* culture_content_distance() pour la novelty diaspora */
+#include "scps_religion.h"/* P4 : nudge démographie/coordonnées par la religion (gated) */
 #include "scps_labor.h"   /* capitale_* : la productivité de la capitale booste la prod réelle */
 #include "scps_factions.h"/* §C3 : faction_capture_total → le « rot » qui mine l'efficacité noble */
 #include <stdio.h>
@@ -1870,6 +1871,10 @@ void econ_tick(WorldEconomy *e, float dt) {
          * low seeds). Auto-ciblé → les régions pleines (seeds riches) reçoivent 0. */
         { ProvModHit pm[PMOD_COUNT]; int npm=provmod_collect(re, pm, PMOD_COUNT);
           for (int i=0;i<npm;i++) demo += pm[i].demo_bonus; }
+        /* RELIGION (P4) : le canal RC_POPGROWTH (Fécondité/Offrande) nudge la natalité
+         * via la MÊME entrée DÉMO. GATED → aucun effet sans religion (golden intact). */
+        if (re->owner>=0 && religion_of_country(re->owner) >= 0)
+            demo += religion_country_acc(re->owner)->ch[RC_POPGROWTH];
         float r_base  = tune_f("POP_R_BASE", 0.01733f);   /* ln2/40 = ×2/40ans plancher (vitalité) */
         float prosp_n = clampf((re->prosperity - tune_f("POP_PROSP_MID",0.2f))
                               / tune_f("POP_PROSP_SPAN",1.8f), 0.f, 1.f);   /* PIB/tête → [0,1] (bande haute ≈2.0) */

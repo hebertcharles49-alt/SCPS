@@ -59,17 +59,46 @@ static const ReligDelta* const RELIG_CREDO[CREDO_COUNT] = {
 Religion g_religions[RELIG_MAX];
 int      g_religion_count = 0;
 
-/* lien pays→religion (P3) — global du module (init paresseux à -1). */
-static int g_country_religion[RELIG_MAX_COUNTRY];
+/* lien pays→religion (P3) + cache d'accumulateur (P4) — globals du module. */
+static int        g_country_religion[RELIG_MAX_COUNTRY];
+static ReligAccum g_country_relig_acc[RELIG_MAX_COUNTRY];   /* P4 : acc caché par pays */
 static int g_cr_init = 0;
+static const ReligAccum g_zero_acc = {{0}};
 static void cr_ensure(void){
   if(!g_cr_init){ for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1; g_cr_init=1; }
 }
+/* recalcule le cache d'un pays depuis sa religion (P4). */
+static void cr_recompute(int cid){
+  if(cid<0||cid>=RELIG_MAX_COUNTRY) return;
+  int rid=g_country_religion[cid];
+  if(rid>=0&&rid<g_religion_count) religion_apply(&g_religions[rid], &g_country_relig_acc[cid]);
+  else memset(&g_country_relig_acc[cid], 0, sizeof g_country_relig_acc[cid]);
+}
 int  religion_of_country(int cid){ cr_ensure(); return (cid>=0&&cid<RELIG_MAX_COUNTRY)?g_country_religion[cid]:-1; }
-void religion_set_country(int cid,int rid){ cr_ensure(); if(cid>=0&&cid<RELIG_MAX_COUNTRY) g_country_religion[cid]=rid; }
+void religion_set_country(int cid,int rid){
+  cr_ensure();
+  if(cid>=0&&cid<RELIG_MAX_COUNTRY){ g_country_religion[cid]=rid; cr_recompute(cid); }
+}
+const ReligAccum* religion_country_acc(int cid){
+  cr_ensure();
+  return (cid>=0&&cid<RELIG_MAX_COUNTRY)?&g_country_relig_acc[cid]:&g_zero_acc;
+}
 void religion_reset(void){
   g_religion_count=0; cr_ensure();
   for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1;
+  memset(g_country_relig_acc, 0, sizeof g_country_relig_acc);
+}
+
+/* éligibilité au schisme — RUPTURE : la cellule-centre de la religion du pays n'est
+ * PAS sous son contrôle (conquise/étrangère). Lecture pure. (DERIVE : phase ultérieure.) */
+ReligSchismMode religion_schism_eligible(const World *w, int cid){
+  if(!w) return RSE_NONE;
+  int rid=religion_of_country(cid);
+  if(rid<0||rid>=g_religion_count) return RSE_NONE;
+  int centre=g_religions[rid].centre_cell;
+  if(centre<0||centre>=SCPS_N) return RSE_NONE;
+  if(w->cell[centre].country != cid) return RSE_RUPTURE;
+  return RSE_NONE;
 }
 
 void religion_save(FILE *f){
@@ -98,6 +127,7 @@ int religion_load(FILE *f){
   uint32_t m=0; if(fread(&m,4,1,f)!=1 || m!=(uint32_t)RELIG_MAX_COUNTRY) return 1;
   for(int i=0;i<RELIG_MAX_COUNTRY;i++){ int32_t v=0; if(fread(&v,4,1,f)!=1) return 1;
     g_country_religion[i]=(v>=-1 && v<g_religion_count)?(int)v:-1; }  /* borne : religion valide ou aucune */
+  for(int i=0;i<RELIG_MAX_COUNTRY;i++) cr_recompute(i);              /* P4 : reconstruit le cache d'acc */
   return 0;
 }
 
