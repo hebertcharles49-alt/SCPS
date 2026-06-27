@@ -699,6 +699,30 @@
   lie pas scps_save) : `make golden` **IDENTIQUE**, `determinism` **STABLE**, `scps_api_demo` **54/54**
   (dont save/load aller-retour), probes Godot **MENU AUDIT OK** + **CULTURE AUDIT OK**. ⚠ Le viewer
   SDL ne se bâtit pas sur ce poste (SDL2_ttf absent de MSYS2) — sans rapport, `viewer.c` est INCHANGÉ.
+- **RELIGION (2026-06-27) — module composable (16 pôles · 3 crédos), façon Stellaris/Civ, P1→P8** :
+  un système de foi qui EXISTE, est NOMMÉ, PERSISTE et AGIT, branché côté FAÇADE/Godot (le front
+  jouable). Tout est GATÉ sur « le pays a-t-il une foi » → la chronique n'en fonde JAMAIS ⇒ `golden`
+  IDENTIQUE & `determinism` STABLE à TOUTES les phases. **P1** `scps_religion.{h,c}` (PUR) : 8 axes /
+  16 pôles appariés (deltas Civ-tier) + 3 crédos RÉUTILISÉS de `scps_culture.h`
+  (PLURALISTE/EVANGELISTE/PURIFICATEUR ; `RELIG_CREDO[]` aligné) + primitives spawn/schism/apply/
+  color + `religion_selftest` (banc `religion_demo`). **P2** i18n (relig_axis/pole_name + tips,
+  scholar roles — littéraux façon credo_name). **P3** persistance : lien pays→religion en GLOBAL du
+  module (PAS la struct pays partagée ⇒ viewer/déterminisme intacts), section RELG du save FAÇADE
+  (`scps_save`, SAVE_VERSION 36→**39** au fil des phases). **P4** la foi MORD : cache d'accumulateur
+  par pays + nudges NON DESTRUCTIFS gatés (prosperity K/P/H/L ; démo popgrowth) + éligibilité schisme
+  (RUPTURE). **P8** religion par RÉGION (granularité moteur : adapté de « province ») : héritage +
+  FRACTURE (régions distantes/peu légitimes basculent à l'enfant) + la D-interne religieuse abaisse la
+  satisfaction des régions MINORITAIRES → alimente l'agitation/sécession EXISTANTE. **P6** le LETTRÉ
+  (Missionnaire/Gourou/Moine, face=crédo) : tick quotidien (CONVERT répand · STABILIZE exempte du malus
+  · RESIST bloque la bascule), sérialisé. **P7** l'IA : schisme RUPTURE (repick aléatoire valide,
+  auto-résolvant) + emploi du lettré. **P5** UI GODOT (le prompt visait `viewer.c` SDL mais le front
+  jouable est Godot ET le viewer ne LIE pas sur ce Windows — `-lGL`/`-ldl` Linux-only, pré-existant,
+  PAS SDL2_ttf qui est en fait PRÉSENT) : façade listes/verbes + binding `scps_sim_node` + `religion_panel.gd`
+  (touche R : fonder crédo+3 pôles axes distincts, schisme, readout) + probe `religion_audit` (**RELIGION
+  AUDIT OK** via binding live). ⚠ RIPPLE : econ/prosperity/ai/sim appellent religion ⇒ 26 OBJS de bancs
+  gagnent `scps_religion.o`. `make test` **38/38 runnable** (3 KO PRÉ-EXISTANTS Windows : intertrade
+  `setenv`, campaign/warhost stack-overflow — prouvés sur main vierge ; 41/41 attendu Linux/cloud).
+  SDL `viewer.c` religion UI = différé (front non jouable + non-buildable ici).
 
 ## Disciplines non négociables
 
