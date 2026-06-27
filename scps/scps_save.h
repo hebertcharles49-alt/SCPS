@@ -11,6 +11,7 @@
  * pour que la membrane de SaveMisc reste neutre (aucun global de front ici).
  *
  * ── Historique des versions (bump = struct sérialisée plus large ⇒ « ère antérieure ») ──
+ * v39 : LETTRÉS — la section RELG gagne g_scholar[] (agents religieux déployés). <v39 refusé.
  * v38 : RELIGION par RÉGION — la section RELG gagne g_region_religion[] (fracture/sécession). <v38 refusé.
  * v37 : RELIGION — section RELG (religion_save/load : registre g_religions + liens pays→religion).
  *       État en GLOBAL du module religion (pas de struct partagée touchée). <v37 refusé.
@@ -26,7 +27,7 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 38u
+#define SAVE_VERSION 39u
 #define SAVE_F_CRYPT 1u
 
 typedef struct {

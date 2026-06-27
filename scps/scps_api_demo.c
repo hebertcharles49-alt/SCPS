@@ -398,6 +398,30 @@ int main(int argc, char **argv){
         religion_reset();
     }
 
+    /* ── RELIGION (P6) : le LETTRÉ — un Missionnaire RECONVERTIT une région minoritaire ── */
+    {
+        ScpsSim *ss=scps_sim_new(); scps_sim_generate(ss, seed);
+        int pl=scps_player(ss);
+        int rid=scps_religion_found(ss, pl, CREDO_EVANGELISTE, RP_FECONDITE, RP_ACCUEIL, RP_GNOSE);
+        ok("foi évangéliste fondée", rid>=0);
+        int prg=-1, nrg=scps_region_count(ss);
+        for(int r=0;r<nrg;r++) if(scps_region_owner(ss,r)==pl){ prg=r; break; }
+        ok("région du joueur trouvée", prg>=0);
+        int otr[3]={RP_OFFRANDE, RP_MUR, RP_ORTHODOXIE};
+        int other=religion_spawn(CREDO_PURIFICATEUR, otr, 0, pl, NULL);
+        religion_set_region(prg, other);   /* rend la région MINORITAIRE */
+        ok("région rendue minoritaire", scps_religion_of_region(ss,prg)==other);
+        int role=scps_religion_recruit_scholar(ss, pl, prg);
+        ok("Missionnaire recruté (CONVERT)", role==SCHOLAR_CONVERT);
+        scps_sim_advance_days(ss, 30);
+        printf("   P6 missionnaire : région %d religion=%d (foi d'État=%d)\n", prg, scps_religion_of_region(ss,prg), rid);
+        ok("Missionnaire RECONVERTIT à la foi d'État", scps_religion_of_region(ss,prg)==rid);
+        ok("crédo→rôle : pluraliste=Gourou(RESIST)", scholar_role_from_credo(CREDO_PLURALISTE)==SCHOLAR_RESIST);
+        ok("crédo→rôle : purificateur=Moine(STABILIZE)", scholar_role_from_credo(CREDO_PURIFICATEUR)==SCHOLAR_STABILIZE);
+        scps_sim_free(ss);
+        religion_reset();
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

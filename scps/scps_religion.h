@@ -105,6 +105,20 @@ int  religion_fracture(const World *w, const WorldEconomy *econ,
                        const WorldLegitimacy *wl, int cid, int child_rid);
 
 /* ===================================================================== */
+/* P6 — LETTRÉ (scholar) : agent religieux par pays (1 actif/pays).        */
+/* Face dérivée du crédo : Pluraliste→Gourou(RESIST) · Évangéliste→        */
+/* Missionnaire(CONVERT) · Purificateur→Moine(STABILIZE). État sérialisé.  */
+/* ===================================================================== */
+int  scholar_role_from_credo(int credo);              /* ScholarRole (-1 si crédo hors-borne) */
+int  religion_scholar_recruit(int cid, int region);   /* role>=0 si le pays a une foi ; -1 sinon */
+int  religion_scholar_active(int cid);                /* 1 si un lettré est déployé */
+int  religion_scholar_role(int cid);                  /* ScholarRole courant ; -1 si aucun */
+int  religion_scholar_region(int cid);                /* région d'action ; -1 */
+void religion_scholar_tick(const World *w, WorldEconomy *econ);  /* CONVERT agit ; RESIST/STABILIZE = requêtes */
+int  religion_region_stabilized(int rg);              /* un Moine y calme l'agitation ? (1/0) */
+int  religion_region_resisted(int rg);                /* un Gourou y bloque la conversion ? (1/0) */
+
+/* ===================================================================== */
 /* i18n — mots RÉSOLUS (membrane ; même mécanisme que credo_name/species_name) */
 /* ===================================================================== */
 const char *relig_axis_name(ReligAxis a);   /* Sang/Feu/Seuil/… */

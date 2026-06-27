@@ -1937,7 +1937,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * religion (chronique : religion_of_region ≡ -1 ⇒ golden intact). */
         if (re->owner>=0){
             int rrg=religion_of_region(rid);
-            if (rrg>=0 && rrg!=religion_of_country(re->owner))
+            if (rrg>=0 && rrg!=religion_of_country(re->owner) && !religion_region_stabilized(rid))
                 re->satisfaction = fmaxf(0.f, re->satisfaction - tune_f("RELIG_MINORITY_SAT",0.15f));
         }
         re->prosperity = re->gdp/(popsum+1.f);

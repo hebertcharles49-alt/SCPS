@@ -554,6 +554,10 @@ int scps_religion_schism(ScpsSim *s, int cid, int slot_a, int pole_a, int slot_b
                          int new_credo, int *out_flipped);
 int scps_religion_of_country(ScpsSim *s, int cid);
 int scps_religion_of_region (ScpsSim *s, int region);
+/* recrute un LETTRÉ pour `cid` sur `region` (rôle dérivé du crédo : Missionnaire/Gourou/
+ * Moine) ; retourne le ScholarRole (>=0) ou -1 si le pays n'a pas de foi. */
+int scps_religion_recruit_scholar(ScpsSim *s, int cid, int region);
+int scps_religion_scholar_role(ScpsSim *s, int cid);   /* ScholarRole courant / -1 */
 
 /* ====================================================================== */
 /* PARAMÈTRES DE GÉNÉRATION (l'écran « Nouvelle partie ») — les sliders.    */

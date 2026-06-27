@@ -107,9 +107,62 @@ int religion_fracture(const World *w, const WorldEconomy *econ,
     float dr=rc->religion-fc->religion;         if(dr<0)dr=-dr;
     float dinf=dv; if(ds>dinf)dinf=ds; if(dp>dinf)dinf=dp; if(dr>dinf)dinf=dr;
     float L=(wl && r<SCPS_MAX_REG)?wl->L[r]:5.f;
+    if(religion_region_resisted(r)) continue;   /* un Gourou y bloque la bascule (P6) */
     if(dinf>SCHISM_FLIP_D && L<SCHISM_FLIP_L){ g_region_religion[r]=child_rid; flipped++; }
   }
   return flipped;
+}
+
+/* ── P6 : LETTRÉ (scholar) ─────────────────────────────────────────────── */
+#define SCHOLAR_DURATION 1825   /* ~5 ans d'action (jours) */
+typedef struct { int active; int role; int region; int timer; } ReligScholarSt;
+static ReligScholarSt g_scholar[RELIG_MAX_COUNTRY];
+
+int scholar_role_from_credo(int credo){
+  switch(credo){
+    case CREDO_PLURALISTE:   return SCHOLAR_RESIST;     /* Gourou : protège */
+    case CREDO_EVANGELISTE:  return SCHOLAR_CONVERT;    /* Missionnaire : répand */
+    case CREDO_PURIFICATEUR: return SCHOLAR_STABILIZE;  /* Moine : calme */
+    default: return -1;
+  }
+}
+int religion_scholar_recruit(int cid,int region){
+  cr_ensure();
+  if(cid<0||cid>=RELIG_MAX_COUNTRY) return -1;
+  int rid=religion_of_country(cid); if(rid<0||rid>=g_religion_count) return -1;
+  int role=scholar_role_from_credo(g_religions[rid].credo); if(role<0) return -1;
+  g_scholar[cid].active=1; g_scholar[cid].role=role;
+  g_scholar[cid].region=region; g_scholar[cid].timer=SCHOLAR_DURATION;
+  return role;
+}
+int religion_scholar_active(int cid){ cr_ensure(); return (cid>=0&&cid<RELIG_MAX_COUNTRY)?g_scholar[cid].active:0; }
+int religion_scholar_role(int cid){ cr_ensure(); return (cid>=0&&cid<RELIG_MAX_COUNTRY&&g_scholar[cid].active)?g_scholar[cid].role:-1; }
+int religion_scholar_region(int cid){ cr_ensure(); return (cid>=0&&cid<RELIG_MAX_COUNTRY&&g_scholar[cid].active)?g_scholar[cid].region:-1; }
+int religion_region_stabilized(int rg){
+  cr_ensure();
+  for(int c=0;c<RELIG_MAX_COUNTRY;c++)
+    if(g_scholar[c].active && g_scholar[c].role==SCHOLAR_STABILIZE && g_scholar[c].region==rg) return 1;
+  return 0;
+}
+int religion_region_resisted(int rg){
+  cr_ensure();
+  for(int c=0;c<RELIG_MAX_COUNTRY;c++)
+    if(g_scholar[c].active && g_scholar[c].role==SCHOLAR_RESIST && g_scholar[c].region==rg) return 1;
+  return 0;
+}
+void religion_scholar_tick(const World *w, WorldEconomy *econ){
+  (void)econ;
+  cr_ensure();
+  for(int c=0;c<RELIG_MAX_COUNTRY;c++){
+    if(!g_scholar[c].active) continue;
+    int rg=g_scholar[c].region;
+    if(g_scholar[c].role==SCHOLAR_CONVERT && rg>=0 && rg<RELIG_MAX_REGION && (!w||rg<w->n_regions)
+       && !religion_region_resisted(rg)){
+      int rid=religion_of_country(c);
+      if(rid>=0) g_region_religion[rg]=rid;   /* le Missionnaire répand la foi d'État */
+    }
+    if(--g_scholar[c].timer<=0) g_scholar[c].active=0;
+  }
 }
 /* recalcule le cache d'un pays depuis sa religion (P4). */
 static void cr_recompute(int cid){
@@ -132,6 +185,7 @@ void religion_reset(void){
   for(int i=0;i<RELIG_MAX_COUNTRY;i++) g_country_religion[i]=-1;
   for(int i=0;i<RELIG_MAX_REGION;i++)  g_region_religion[i]=-1;
   memset(g_country_relig_acc, 0, sizeof g_country_relig_acc);
+  memset(g_scholar, 0, sizeof g_scholar);
 }
 
 /* éligibilité au schisme — RUPTURE : la cellule-centre de la religion du pays n'est
@@ -158,6 +212,11 @@ void religion_save(FILE *f){
   for(int i=0;i<RELIG_MAX_COUNTRY;i++){ int32_t v=g_country_religion[i]; fwrite(&v,4,1,f); }
   uint32_t q=(uint32_t)RELIG_MAX_REGION; fwrite(&q,4,1,f);    /* P8 : religion par région */
   for(int i=0;i<RELIG_MAX_REGION;i++){ int32_t v=g_region_religion[i]; fwrite(&v,4,1,f); }
+  uint32_t sc=(uint32_t)RELIG_MAX_COUNTRY; fwrite(&sc,4,1,f); /* P6 : lettrés (scholars) */
+  for(int i=0;i<RELIG_MAX_COUNTRY;i++){
+    int32_t v[4]={g_scholar[i].active,g_scholar[i].role,g_scholar[i].region,g_scholar[i].timer};
+    fwrite(v,4,4,f);
+  }
 }
 int religion_load(FILE *f){
   cr_ensure();
@@ -177,6 +236,13 @@ int religion_load(FILE *f){
   uint32_t q=0; if(fread(&q,4,1,f)!=1 || q!=(uint32_t)RELIG_MAX_REGION) return 1;   /* P8 : région */
   for(int i=0;i<RELIG_MAX_REGION;i++){ int32_t v=0; if(fread(&v,4,1,f)!=1) return 1;
     g_region_religion[i]=(v>=-1 && v<g_religion_count)?(int)v:-1; }
+  uint32_t sc=0; if(fread(&sc,4,1,f)!=1 || sc!=(uint32_t)RELIG_MAX_COUNTRY) return 1;   /* P6 : scholars */
+  for(int i=0;i<RELIG_MAX_COUNTRY;i++){ int32_t v[4]; if(fread(v,4,4,f)!=4) return 1;
+    g_scholar[i].active=(v[0]!=0);
+    g_scholar[i].role=(v[1]>=0&&v[1]<SCHOLAR_ROLE_COUNT)?v[1]:0;            /* borné */
+    g_scholar[i].region=(v[2]>=-1&&v[2]<RELIG_MAX_REGION)?v[2]:-1;
+    g_scholar[i].timer=(v[3]>=0&&v[3]<=SCHOLAR_DURATION)?v[3]:0;
+    if(g_scholar[i].timer<=0) g_scholar[i].active=0; }
   for(int i=0;i<RELIG_MAX_COUNTRY;i++) cr_recompute(i);              /* P4 : reconstruit le cache d'acc */
   return 0;
 }

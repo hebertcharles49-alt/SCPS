@@ -9,6 +9,7 @@
  * diplo, prospérité, endgame), plus seulement la colonne économique.
  */
 #include "scps_sim.h"
+#include "scps_religion.h"  /* P6 : religion_scholar_tick (quotidien dans sim_day) */
 #include "scps_readout.h"   /* RECHERCHE JOUEUR : la cloche de prospérité (country_readout), FIDÈLE au viewer */
 #include "scps_provlog.h"   /* journal d'évènements provincial (display ; runtime, hors déterminisme) */
 #include <stdio.h>
@@ -384,6 +385,7 @@ void sim_day(Sim *s, World *w) {
     provlog_set_year(s->year);   /* l'an courant pour les pushs d'évènements du directeur (display) */
     PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
     sim_cmd_drain(s, w);   /* JOUEUR : ses ordres s'appliquent ICI, après agency_advance, AVANT l'IA (point fixe) */
+    religion_scholar_tick(w, s->econ);   /* P6 : lettrés (quotidien) — Missionnaire répand la foi ; gated (no-op sans foi) */
     /* leviers intérieurs : draine les coûts SCPS différés (purge/mater) vers TechState */
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         float ch,fr,hh;

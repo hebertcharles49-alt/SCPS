@@ -1584,6 +1584,11 @@ int scps_religion_schism(ScpsSim *s, int cid, int slot_a, int pole_a, int slot_b
 }
 int scps_religion_of_country(ScpsSim *s, int cid){ (void)s; return religion_of_country(cid); }
 int scps_religion_of_region (ScpsSim *s, int region){ (void)s; return religion_of_region(region); }
+int scps_religion_recruit_scholar(ScpsSim *s, int cid, int region){
+    if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
+    return religion_scholar_recruit(cid, region);
+}
+int scps_religion_scholar_role(ScpsSim *s, int cid){ (void)s; return religion_scholar_role(cid); }
 
 /* ====================================================================== */
 /* PARAMÈTRES DE GÉNÉRATION (sliders de nouvelle partie)                    */
