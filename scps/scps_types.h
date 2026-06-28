@@ -186,8 +186,7 @@ typedef enum {
     RES_PRECIOUS_WARE,          /* bien précieux des 4 races (porcelaine, bière…) */
     RES_PRECIOUS_CLOTH,         /* étoffe précieuse des 4 races */
     RES_PAPER,                  /* transformation           */
-    RES_METAL,                  /* fer + charbon → métal (Fonderie) — intrant outils/armes */
-    RES_TOOLS,                  /* métal + bois → outils (Atelier) → MULTIPLICATEUR de productivité */
+    RES_TOOLS,                  /* fer + bois → outils (Atelier d'outillage, DIRECT) → MULTIPLICATEUR de productivité */
     RES_ESSENCE,                /* ARCANE : mana raffiné (cristal brûlé) → sa combustion MONTE la Brèche */
     RES_ENCHANTED_ARMS,         /* armes/armures enchantées (fer céleste + essence) → puissance militaire */
     RES_ARMS,                   /* armes LÉGÈRES (fer → Armurerie légère) ; RES_ARMS_LIGHT en alias F1 */

@@ -212,7 +212,7 @@ int main(int argc, char **argv){
         /* Marché de RÉFÉRENCE uniforme (prix=1 partout) : on teste le TIER (la recette :
          * Grenier 40+15+10 unités vs Citadelle 60+220+150), PAS les oscillations du marché. */
         for (int r=0;r<RES_COUNT;r++) re->price[r]=1.0f;
-        re->stock[RES_WOOD]=1000.f; re->stock[RES_METAL]=1000.f; re->stock[RES_CLAY]=1000.f;
+        re->stock[RES_WOOD]=1000.f; re->stock[RES_IRON]=1000.f; re->stock[RES_CLAY]=1000.f;
         re->stock[RES_STONE]=1000.f; re->stock[RES_TOOLS]=1000.f; re->stock[RES_PRECIOUS_METAL]=1000.f;
         re->stock[RES_SALT]=1000.f;   /* gate de matière : la recette de l'édifice doit être SOURÇABLE en propre */
         re->treasury=100000.f;

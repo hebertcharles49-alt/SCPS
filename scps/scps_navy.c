@@ -25,9 +25,9 @@ static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(
 #define NAVY_COLONY_CD       (2.f*365.f)  /* une colonie outre-mer / 2 ans / pays   */
 #define NAVY_TRANSPORT_PKTS  10       /* 1 transport = 10 paquets = 1 000 hommes   */
 
-typedef struct { float supplies, wood, metal; int days; } HullCost;
+typedef struct { float supplies, wood, copper; int days; } HullCost;   /* la coque de guerre coûte du CUIVRE (clous/doublage), pas un « métal » manufacturé */
 static const HullCost HULLS[HULL_COUNT]={
-    [HULL_WAR]      ={ 30.f, 40.f, 25.f, 360 },   /* E1.7 : la coque LOURDE — recalée au palier 360 j (l'institution qui s'élève, comme Garnison/Port) ; 420 j était hors-grille */
+    [HULL_WAR]      ={ 30.f, 40.f, 25.f, 360 },   /* E1.7 : la coque LOURDE — recalée au palier 360 j ; 25 = CUIVRE (ex-métal) */
     [HULL_TRANSPORT]={ 20.f, 30.f,  0.f, 180 },   /* E1 : coque LÉGÈRE — alignée au palier 180 j */
     [HULL_MERCHANT] ={ 15.f, 25.f,  0.f, 180 },   /* E1 : coque LÉGÈRE — alignée au palier 180 j */
     [HULL_PIRATE]   ={  6.f,  8.f,  0.f,  60 },   /* la CONVERSION coûte peu : c'est sa nature */
@@ -121,7 +121,7 @@ float navy_build_gold(const WorldEconomy *econ, int region, HullType t){
     float gold=0.f, p;
     p=re->price[RES_NAVAL_SUPPLIES]; if (p<NAVY_MIN_PRICE) p=NAVY_MIN_PRICE; gold+=h->supplies*p;
     p=re->price[RES_WOOD];           if (p<NAVY_MIN_PRICE) p=NAVY_MIN_PRICE; gold+=h->wood*p;
-    if (h->metal>0.f){ p=re->price[RES_METAL]; if (p<NAVY_MIN_PRICE) p=NAVY_MIN_PRICE; gold+=h->metal*p; }
+    if (h->copper>0.f){ p=re->price[RES_COPPER]; if (p<NAVY_MIN_PRICE) p=NAVY_MIN_PRICE; gold+=h->copper*p; }
     return gold;
 }
 
@@ -139,7 +139,7 @@ bool navy_order_build(NavyState *ns, const World *w, WorldEconomy *econ, int cid
     re->treasury-=gold;
     re->stock[RES_NAVAL_SUPPLIES]-=h->supplies; if (re->stock[RES_NAVAL_SUPPLIES]<0.f) re->stock[RES_NAVAL_SUPPLIES]=0.f;
     re->stock[RES_WOOD]          -=h->wood;     if (re->stock[RES_WOOD]<0.f)           re->stock[RES_WOOD]=0.f;
-    if (h->metal>0.f){ re->stock[RES_METAL]-=h->metal; if (re->stock[RES_METAL]<0.f) re->stock[RES_METAL]=0.f; }
+    if (h->copper>0.f){ re->stock[RES_COPPER]-=h->copper; if (re->stock[RES_COPPER]<0.f) re->stock[RES_COPPER]=0.f; }
     re->demand[RES_NAVAL_SUPPLIES]+=h->supplies;         /* le marché VOIT le chantier */
     re->demand[RES_WOOD]          +=h->wood;
     n->supplies_eaten+=h->supplies;

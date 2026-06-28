@@ -241,7 +241,6 @@
     X(STR_RES_BOIS, "Wood") \
     X(STR_RES_ARGILE, "Clay") \
     X(STR_RES_PIERRE, "Stone") \
-    X(STR_RES_METAL, "Metal") \
     X(STR_RES_OUTILS, "Tools") \
     X(STR_ENTREPOT_HOV, "Without a Warehouse, regional stock saturates at 200 per resource (surplus is lost); each Warehouse built adds +500. Buy low, sell high.") \
     X(STR_MER_CABOTAGE, "coastal · fixed speed") \

@@ -72,8 +72,7 @@ typedef enum {
     BLD_WEAVER_LUX,    /* tissu   → étoffe précieuse    */
     BLD_MAGE_WORKSHOP, /* ARCANE : cristal → essence (mana) — sa combustion MONTE la Brèche */
     BLD_CELESTIAL_FORGE,/* ARCANE militaire : fer céleste + essence → armes enchantées */
-    BLD_FOUNDRY,       /* fer + charbon → métal (haut-fourneau) */
-    BLD_TOOLWORKS,     /* métal + bois → outils → MULTIPLICATEUR de productivité */
+    BLD_TOOLWORKS,     /* fer + bois → outils (DIRECT) → MULTIPLICATEUR de productivité */
     BLD_ARMORY,        /* fer → armes (armurerie) → puissance militaire de base */
     BLD_POWDERMILL,    /* salpêtre + charbon → poudre (poudrière) → puissance militaire */
     BLD_APOTHECARY,    /* simples → remèdes (apothicaire) → santé/confort */

@@ -246,7 +246,6 @@
     X(STR_RES_BOIS, "Bois") \
     X(STR_RES_ARGILE, "Argile") \
     X(STR_RES_PIERRE, "Pierre") \
-    X(STR_RES_METAL, "Métal") \
     X(STR_RES_OUTILS, "Outils") \
     X(STR_ENTREPOT_HOV, "Sans Entrepôt, le stock régional sature à 200 par ressource (le surplus se perd) ; chaque Entrepôt bâti ajoute +500. Stocker bas, vendre haut.") \
     X(STR_MER_CABOTAGE, "cabotage · vitesse fixe") \

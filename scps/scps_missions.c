@@ -60,7 +60,7 @@ static Mission mission_roll(const World *w, WorldEconomy *econ, const TechState 
         m.coord=coord_for_faction(dom);
         float cur = (cr>=0)?build_coord(&econ->region[cr].build, m.coord):0.f;
         m.threshold = cur + 2.0f;                          /* deux paliers de plus */
-        m.reward_gold = 320.f; m.reward_mat=RES_METAL; m.reward_qty=60.f;
+        m.reward_gold = 320.f; m.reward_mat=RES_IRON; m.reward_qty=60.f;
         snprintf(m.text,sizeof m.text, "Ériger %s (atteindre %.0f)", coord_word(m.coord), m.threshold);
     } else if (kind==MIS_CHAIN){
         m.good = RES_TOOLS;                                /* la chaîne d'outils (multiplicateur) */
@@ -71,7 +71,7 @@ static Mission mission_roll(const World *w, WorldEconomy *econ, const TechState 
     } else { /* MIS_TECH */
         float cur = (cid<SCPS_MAX_COUNTRY)?(float)ts[cid].n_unlocked:0.f;
         m.threshold = cur + 3.f;                           /* percer trois technologies de plus */
-        m.reward_gold = 360.f; m.reward_mat=RES_METAL; m.reward_qty=40.f;
+        m.reward_gold = 360.f; m.reward_mat=RES_IRON; m.reward_qty=40.f;
         snprintf(m.text,sizeof m.text, "Percer la connaissance (atteindre %.0f techs)", m.threshold);
     }
     return m;

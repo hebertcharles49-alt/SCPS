@@ -459,7 +459,7 @@ int main(int argc, char **argv){
               for (int r=0;r<s.econ->n_regions && !any_ent;r++)
                   if (s.econ->region[r].n_entrepot>0) any_ent=true;
               float idx = (avg_price(s.econ,RES_GRAIN)/econ_base_price(RES_GRAIN)
-                         + avg_price(s.econ,RES_METAL)/econ_base_price(RES_METAL)
+                         + avg_price(s.econ,RES_IRON)/econ_base_price(RES_IRON)
                          + avg_price(s.econ,RES_TOOLS)/econ_base_price(RES_TOOLS))/3.f;
               int b = any_ent?1:0;
               sg_n[b]+=1.0; double d=idx-sg_mean[b]; sg_mean[b]+=d/sg_n[b]; sg_m2[b]+=d*(idx-sg_mean[b]);
@@ -469,7 +469,7 @@ int main(int argc, char **argv){
                   const RegionEconomy *re2=&s.econ->region[r];
                   if (!re2->colonized) continue;
                   double ir = (re2->price[RES_GRAIN]/econ_base_price(RES_GRAIN)
-                             + re2->price[RES_METAL]/econ_base_price(RES_METAL)
+                             + re2->price[RES_IRON]/econ_base_price(RES_IRON)
                              + re2->price[RES_TOOLS]/econ_base_price(RES_TOOLS))/3.0;
                   pr_n[r]+=1.0; double d2=ir-pr_mean[r]; pr_mean[r]+=d2/pr_n[r]; pr_m2[r]+=d2*(ir-pr_mean[r]);
               } }
@@ -618,7 +618,10 @@ int main(int argc, char **argv){
               for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
                   for(int g=0;g<RES_COUNT;g++) stk[g]+=s.econ->region[r].stock[g]; }
               fprintf(stderr,"[FORGEDIAG] ARSENAL (stock, an %d) : lég %.0f · lourde %.0f · trait %.0f · feu %.0f · enchantées %.0f (seuil 1 paquet = %d)\n",
-                    s.year,stk[RES_ARMS_LIGHT],stk[RES_ARMS_HEAVY],stk[RES_ARMS_RANGED],stk[RES_FIREARM],stk[RES_ENCHANTED_ARMS],POP_PER_UNIT); }
+                    s.year,stk[RES_ARMS_LIGHT],stk[RES_ARMS_HEAVY],stk[RES_ARMS_RANGED],stk[RES_FIREARM],stk[RES_ENCHANTED_ARMS],POP_PER_UNIT);
+              fprintf(stderr,"[FORGEDIAG] CHAÎNE OUTILS (fer+bois→outils DIRECT) : taillanderie %ld bâtie | fer extr %.0f → outils out %.0f stk %.0f (dem %.0f)\n",
+                    bld[BLD_TOOLWORKS], sup[RES_IRON],sup[RES_TOOLS],stk[RES_TOOLS],
+                    ({ double dt=0; for(int r=0;r<s.econ->n_regions;r++) if(s.econ->region[r].owner>=0) dt+=s.econ->region[r].demand[RES_TOOLS]; dt; })); }
             { int cc=0,ca=0,cs=0,cu=0; double rcc=0,rca=0,rcs=0,rcu=0,spc=0,spa=0,sps=0,spu=0;   /* RAW spéciaux sur TOUTE la carte (≠ owned) */
               for (int r=0;r<s.econ->n_regions;r++){ RegionEconomy *re=&s.econ->region[r];
                   if(re->raw_cap[RES_CELESTIAL_IRON]>0.f){cc++;rcc+=re->raw_cap[RES_CELESTIAL_IRON];} spc+=re->supply[RES_CELESTIAL_IRON];
@@ -643,14 +646,14 @@ int main(int argc, char **argv){
                   double pop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
                   tpop+=pop; if(pop<1000.0)under++;
                   rawk += re->stock[RES_IRON]+re->stock[RES_WOOD]+re->stock[RES_COAL]+re->stock[RES_WOOL]+re->stock[RES_GRAIN];
-                  goods+= re->supply[RES_CLOTH]+re->supply[RES_METAL]+re->supply[RES_TOOLS]+re->supply[RES_PAPER]; }
+                  goods+= re->supply[RES_CLOTH]+re->supply[RES_TOOLS]+re->supply[RES_PAPER]; }
               fprintf(stderr,"[FORGEDIAG] DÉV : %d colonies · pop moy %.0f · %d sous 1000 hab | stock RAW %.0f · biens manuf/tick %.0f (le raw doit DESCENDRE, les biens MONTER)\n",
                     ncol, ncol?tpop/ncol:0.0, under, rawk, goods); }
             { double dem[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)dem[g]=0.0;
               for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
                   for(int g=0;g<RES_COUNT;g++) dem[g]+=s.econ->region[r].demand[g]; }
-              fprintf(stderr,"[FORGEDIAG] MANUFACTURÉ produit/tick : étoffe %.0f · métal %.0f · outils %.0f · armes lég %.0f | RAW consommé (demande) : fer %.0f · bois %.0f · charbon %.0f · laine %.0f\n",
-                    sup[RES_CLOTH],sup[RES_METAL],sup[RES_TOOLS],sup[RES_ARMS_LIGHT], dem[RES_IRON],dem[RES_WOOD],dem[RES_COAL],dem[RES_WOOL]); }
+              fprintf(stderr,"[FORGEDIAG] MANUFACTURÉ produit/tick : étoffe %.0f · outils %.0f · armes lég %.0f | RAW consommé (demande) : fer %.0f · bois %.0f · charbon %.0f · laine %.0f\n",
+                    sup[RES_CLOTH],sup[RES_TOOLS],sup[RES_ARMS_LIGHT], dem[RES_IRON],dem[RES_WOOD],dem[RES_COAL],dem[RES_WOOL]); }
             /* POURQUOI 0 ? — la fabrique se bâtit si prix_sortie ≥ 1.8×base (pénurie) ET intrants dispo.
              * On regarde le MAX (sur régions poss.) du prix des armes neuves vs le seuil, + le bois. */
             double pmh=0,pmr=0,pmf=0,dmh=0,dmr=0,df=0,woodmax=0,woodsup=0;

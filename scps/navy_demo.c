@@ -63,7 +63,7 @@ int main(int argc,char**argv){
         { RegionEconomy*re=&econ->region[coast];
           re->build.port=1.f; re->treasury=1.0e9f;
           re->strata[CLASS_LABORER].pop=8000.f;
-          re->stock[RES_NAVAL_SUPPLIES]=5000.f; re->stock[RES_WOOD]=5000.f; re->stock[RES_METAL]=5000.f; }
+          re->stock[RES_NAVAL_SUPPLIES]=5000.f; re->stock[RES_WOOD]=5000.f; re->stock[RES_COPPER]=5000.f; }
         ok("la côte devient un PORT (navy_region_is_port)", navy_region_is_port(w,econ,coast));
         ok("navy_best_port retrouve la rade", navy_best_port(w,econ,cid)==coast);
         ok("navy_build_gold(transport) > 0 (recette chiffrée au marché)", navy_build_gold(econ,coast,HULL_TRANSPORT)>0.f);

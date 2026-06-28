@@ -69,7 +69,6 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_MAGE_STAFF]    = 30.0f,   /* F1 : bâton de mage (atelier de mage, secondaire) */
     [RES_CELESTIAL_IRON]= 20.0f,   /* météorique — très rare */
     [RES_ENCHANTED_ARMS]= 46.0f,   /* armes enchantées — la Forge supérieure */
-    [RES_METAL]         = 5.0f,    /* fonte/acier — intrant */
     [RES_TOOLS]         = 8.5f,    /* outils — le multiplicateur de productivité */
     [RES_ARMS]          = 9.0f,    /* armes & armures — militaire de base */
     [RES_GUNPOWDER]     = 11.0f,   /* poudre — militaire */
@@ -98,7 +97,11 @@ static const float EXTRACT_YIELD[RES_COUNT] = {
     /* métaux & charbon — fer 0.3→0.4 (nourrir la chaîne outils, affamée à 2 %) */
     [RES_IRON]=0.40f, [RES_COAL]=0.40f, [RES_COPPER]=0.25f,
     /* fibres & douceurs (intrants manufacture) */
-    [RES_WOOL]=0.60f, [RES_SUGAR]=0.60f, [RES_COTTON]=0.60f, [RES_FRUIT]=0.60f,
+    [RES_WOOL]=0.60f, [RES_SUGAR]=0.60f, [RES_COTTON]=0.60f,
+    /* FRUIT = NOURRITURE (supplément) : 4.0 = « 100 emplois → 400 hab » à la TUILE STANDARD
+     * (geo=1) ; les tuiles fruitières ont un raw_cap modeste (≈0.4 plaine, ≈2.6 forêt) → la
+     * contribution RÉELLE est geo-modulée (≈36 plaine, ≈230 forêt par 100 emplois). */
+    [RES_FRUIT]=4.0f,
     /* épices, minéraux mineurs, fourrure */
     [RES_SALT]=0.30f, [RES_MED_HERBS]=0.30f, [RES_SALTPETER]=0.30f, [RES_SULFUR]=0.30f, [RES_FUR]=0.40f,
     /* précieux & rares (rendement maigre, valeur haute) */
@@ -128,7 +131,7 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* VIN/BIÈRE — BOISSON, le SEUL bien manufacturé actif en EARLY ⇒ le calibrage `labor` qui MORD.
      * LEVIER LABOR (ratios & qout intacts) : labor = 1200·qout/demande_1000 → 100 emplois ≈ 1000 hab.
      * Vin : 1200·1.4/44.7 = 37.6 → labor 38. Bière : 1200·1.0/44.7 = 26.8 → labor 27. */
-    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 38.f, RES_FRUIT, 1.6f },  /* sucre OU FRUIT (repli) → vin — le fruit (un peu partout, + en forêt) débloque le vin hors zones à sucre */
+    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 38.f, RES_FRUIT, 4.0f },  /* sucre OU FRUIT (repli) → vin. Le fruit est désormais NOURRITURE : son intrant-vin est ÉLEVÉ (4 fruits/vin vs 1.6 sucre) → le vin de fruit est une voie CHÈRE, le fruit reste d'abord de la nourriture */
     [BLD_BREWERY]   = { RES_GRAIN, 1.2f, RES_NONE,          0.f, RES_BEER,           1.0f, 27.f, RES_NONE, 0.f },  /* grain → bière (palier moral des cultures de basse subsistance) */
     /* JOAILLERIE : OR, ou PERLE en repli (2× la quantité par bijou — littoral).
      * Sortie TEMPÉRÉE (1.0→0.5) et intrant plus lourd (1.5→2.0) : l'orfèvrerie
@@ -154,9 +157,9 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* ARCANE militaire (F3) : fer céleste ×2 + charbon → ARMES ENCHANTÉES (l'arme EST le primaire,
      * consommée par la Garde runique). Gate TECH_FORGE_RUNES (F7). */
     [BLD_CELESTIAL_FORGE]={ RES_CELESTIAL_IRON, 2.0f, RES_COAL, 1.0f, RES_ENCHANTED_ARMS, 1.0f, 1.4f, RES_NONE, 0.f },
-    /* Épine dorsale de production : fer + charbon → métal → (métal + bois) outils. */
-    [BLD_FOUNDRY]   = { RES_IRON,  1.5f, RES_COAL, 1.0f, RES_METAL, 1.0f, 1.0f, RES_COPPER, 3.0f },  /* M5 : le CUIVRE alimente la fonderie en REPLI du fer, à DEMI-rendement (3 cuivre = 1 métal vs 1.5 fer) */
-    [BLD_TOOLWORKS] = { RES_METAL, 1.0f, RES_WOOD, 1.0f, RES_TOOLS, 1.0f, 0.9f, RES_NONE, 0.f },  /* métal+bois → outils (input PASSIF ∝ main-d'œuvre, hors panier — efficace) */
+    /* OUTILS — chaîne DIRECTE (le « métal » intermédiaire est SUPPRIMÉ : seuls les outils l'utilisaient).
+     * 1 fer + 1 bois → 3 OUTILS. Input PASSIF ∝ main-d'œuvre (hors panier — efficace). */
+    [BLD_TOOLWORKS] = { RES_IRON, 1.0f, RES_WOOD, 1.0f, RES_TOOLS, 3.0f, 0.9f, RES_NONE, 0.f },
     /* CHARBONNIÈRE : 2 bois → 1 charbon. Le charbon minier est rare et co-localisé
      * avec le fer (gate de la fonderie) ; la charbonnière le PRODUIT du bois (abondant)
      * → la fonderie tourne partout où il y a du fer, et la chaîne métal/outils respire. */
@@ -241,7 +244,7 @@ static int need_rank(int c, Resource r){
 }
 /* REFONTE A2 — une SOURCE DE NOURRITURE interchangeable (grain/poisson/viande). FOOD_NEED
  * calibre leur demande à l'échelle du monde (la cible 100/100hab borne la géographie). */
-static inline bool res_is_food(Resource r){ return r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK; }
+static inline bool res_is_food(Resource r){ return r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK||r==RES_FRUIT; }   /* le FRUIT nourrit aussi (supplément, + en forêt) */
 
 /* Part de chaque strate dans la population à l'initialisation. */
 static const float CLASS_SHARE[CLASS_COUNT] = { 0.80f, 0.15f, 0.05f };
@@ -285,7 +288,7 @@ static inline Resource preferred_luxe(const PopCulture *c){
  * donc le §NF qui bâtit l'atelier et la perception IA) ET draine le stock (usure par
  * l'usage). L'outil n'entre PAS dans le panier : il ne touche QUE la productivité, JAMAIS
  * la satisfaction. Fini le prix planché à demande nulle qui rendait l'outillage inerte. */
-#define TOOLS_PER_LABORER  0.15f   /* stock-outil VISÉ par journalier (palier d'équipement) → tools_pc ≈ 1.5 à plein, prod_mult ≈ +18 % ; la demande est le DÉFICIT vers ce palier (saturant), pas un flux pop-illimité */
+#define TOOLS_PER_LABORER  0.05f   /* cible de stock-outil/journalier → pilote le bonus prod_mult (+30 % max). Sous PRIX NATIONAL (uniforme par empire, plus d'artefact régional), on remonte la cible (0.015→0.05) pour un bonus RÉEL ; le prix s'élève en miroir (tension bonus↔prix assumée), mais sans flambée régionale. */
 /* §collecte — REFONTE LABOR-BOUND (ressource PAR OUVRIER). La récolte d'une brute =
  * OUVRIERS affectés × EXTRACT_YIELD[r] (rendement/ouvrier/an) × geo_eff (qualité de tuile)
  * × effort de marché (le prix). Plus de √pop : la collecte est LINÉAIRE en bras.
@@ -388,7 +391,7 @@ const char *building_name(BuildingType b) {
         [BLD_TEXTILE]="Manufacture textile",[BLD_SAWMILL]="Scierie navale",[BLD_PAPERMILL]="Papeterie",
         [BLD_WINERY]="Domaine viticole",[BLD_BREWERY]="Brasserie",[BLD_JEWELER]="Joaillerie",
         [BLD_WEAVER_LUX]="Atelier d'étoffe précieuse",[BLD_MAGE_WORKSHOP]="Atelier de mage",
-        [BLD_CELESTIAL_FORGE]="Forge céleste",[BLD_FOUNDRY]="Haut-fourneau",[BLD_TOOLWORKS]="Atelier d'outillage",[BLD_ALAMBIC]="Alambic",
+        [BLD_CELESTIAL_FORGE]="Forge céleste",[BLD_TOOLWORKS]="Atelier d'outillage",[BLD_ALAMBIC]="Alambic",
         [BLD_ARMORY]="Armurerie légère",[BLD_POWDERMILL]="Poudrière",[BLD_APOTHECARY]="Apothicaire",
         [BLD_TUNIC]="Atelier de tunique",[BLD_CHARCOAL]="Charbonnière",[BLD_FOREUSE]="Foreuse arcanique",
         [BLD_REPLICATEUR]="Réplicateur ligneux",[BLD_CORNE]="Corne divine",
@@ -675,10 +678,10 @@ void econ_init(WorldEconomy *e, const World *w) {
                 re->raw_cap[RES_STONE] += base*0.5f;
             if (bd==BIO_MARSH||bd==BIO_BOG||bd==BIO_MANGROVE)
                 re->raw_cap[RES_CLAY]  += base*0.5f;
-            /* FRUIT — vergers/cueillette : un peu PARTOUT (fond diffus), DAVANTAGE en forêt/bois.
-             * Repli du VIN (compense le sucre tropical, rare). Protégé de la coupe ci-dessous. */
-            re->raw_cap[RES_FRUIT] += base*0.20f;
-            if (bd==BIO_FOREST||bd==BIO_WOODS||bd==BIO_JUNGLE) re->raw_cap[RES_FRUIT] += base*0.45f;
+            /* FRUIT — vergers/cueillette : FORÊT/BOIS/JUNGLE SEULEMENT (plus « partout ») → le fruit
+             * ne vole PAS les bras d'extraction au grain dans les régions céréalières (la bière survit).
+             * Nourriture de substitution (food-fill, plus bas) + repli du VIN. Protégé de la coupe. */
+            if (bd==BIO_FOREST||bd==BIO_WOODS||bd==BIO_JUNGLE) re->raw_cap[RES_FRUIT] += base*0.65f;
         }
 
         /* Subsistance locale : vivres et bois de feu dimensionnés pour couvrir
@@ -742,10 +745,8 @@ void econ_init(WorldEconomy *e, const World *w) {
                 region_ensure_building(re,BLD_JEWELER);
             if (re->raw_cap[RES_MUREX] > 0.f || re->raw_cap[RES_INDIGO] > 0.f)
                 region_ensure_building(re,BLD_WEAVER_LUX);
-            if (re->raw_cap[RES_IRON] > 0.f && (re->raw_cap[RES_COAL] > 0.f || re->raw_cap[RES_WOOD] > 0.f)){
-                region_ensure_building(re,BLD_FOUNDRY);
-                region_ensure_building(re,BLD_TOOLWORKS);
-            }
+            if (re->raw_cap[RES_IRON] > 0.f && re->raw_cap[RES_WOOD] > 0.f)
+                region_ensure_building(re,BLD_TOOLWORKS);   /* fer + bois → outils (DIRECT) */
             if (re->raw_cap[RES_ARCANE_CRYSTAL] > 0.5f) region_ensure_building(re,BLD_MAGE_WORKSHOP);   /* nœud riche seul */
             if (re->raw_cap[RES_CELESTIAL_IRON] > 0.5f) region_ensure_building(re,BLD_CELESTIAL_FORGE);
             if (re->raw_cap[RES_IRON] > 0.f) region_ensure_building(re,BLD_ARMORY);
@@ -1410,13 +1411,21 @@ void econ_tick(WorldEconomy *e, float dt) {
      * staffe pas une fabrique avec les bras d'ailleurs). En clôture de tick, le
      * pool est REDISTRIBUÉ aux régions au prorata de la population (Σ re->stock =
      * pool) → les lecteurs externes (intertrade/Centres, viewer, butin de guerre,
-     * save) gardent une vue régionale cohérente, sans réécriture des 280 sites. Le
-     * PRIX reste à l'échelle régionale (chaque province solde son marché sur SA
-     * part du pool) → market_effort ne s'effondre pas sous un stock pooled
-     * « abondant ». Un empire mono-région ⇒ pool = la région, pshare = 1 : moteur
-     * IDENTIQUE (seuls les empires multi-régions changent ; re-baseline attendue). */
+     * save) gardent une vue régionale cohérente, sans réécriture des 280 sites.
+     * ── PRIX NATIONAL (refonte) : le prix n'est PLUS soldé par-région (pop-share) — ce qui
+     * créait un ARTEFACT spatial (un bien fait dans 1 région flambait dans les autres : outils
+     * à 51×). Il est soldé UNE FOIS par empire sur l'offre/demande NATIONALES (supply_nat/
+     * demand_nat ci-dessous) vs le pool → MÊMES paliers ⇒ ratio invariant à l'échelle : ni
+     * artefact régional, ni effondrement d'effort (le piège évité était le MÉLANGE demande
+     * régionale / stock national). Le prix national est PROJETÉ sur re->price de chaque région
+     * (matérialisation, comme re->stock). Empire mono-région ⇒ national = local : IDENTIQUE.
+     * Région ISOLÉE (owner<0, fixtures) ⇒ prix soldé LOCALEMENT (repli inchangé). */
     float pool[SCPS_MAX_COUNTRY][RES_COUNT];
     memset(pool, 0, sizeof pool);
+    /* accumulateurs NATIONAUX (statiques = hors pile) du tick courant, pour le prix national. */
+    static float supply_nat[SCPS_MAX_COUNTRY][RES_COUNT], demand_nat[SCPS_MAX_COUNTRY][RES_COUNT];
+    memset(supply_nat, 0, sizeof supply_nat);
+    memset(demand_nat, 0, sizeof demand_nat);
     float epop[SCPS_MAX_COUNTRY]={0}, elab[SCPS_MAX_COUNTRY]={0}, ecap[SCPS_MAX_COUNTRY]={0};
     for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
         RegionEconomy *ar=&e->region[r];
@@ -1833,12 +1842,20 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* Prix : converge vers base × IPM × demande/(stock+offre). Le facteur IPM
          * (§C) est 1.0 quand SCPS_IPM=0 → multiplieur identité, effet RETIRÉ. */
         float infl = (e->ipm>0.f)? e->ipm : 1.f;   /* garde-fou : jamais 0 (econ non initialisé) */
-        for (int r=0;r<RES_COUNT;r++) {
-            if (BASE_PRICE[r]<=0.f) continue;
-            float avail=S[r]*pshare+supply[r];   /* la PART régionale du pool : prix à l'échelle locale */
-            float target=BASE_PRICE[r]*infl*clampf(demand[r]/(avail+EPS),0.2f,6.f);
-            re->price[r]=re->price[r]*PRICE_INERTIA + target*(1.f-PRICE_INERTIA);
-            re->price[r]=clampf(re->price[r],BASE_PRICE[r]*0.15f,BASE_PRICE[r]*8.f);
+        if (owner_ < 0){
+            /* ISOLÉ (hors empire / fixture banc) : prix soldé LOCALEMENT sur re->stock (pshare=1) — INCHANGÉ. */
+            for (int r=0;r<RES_COUNT;r++) {
+                if (BASE_PRICE[r]<=0.f) continue;
+                float avail=S[r]*pshare+supply[r];
+                float target=BASE_PRICE[r]*infl*clampf(demand[r]/(avail+EPS),0.2f,6.f);
+                re->price[r]=re->price[r]*PRICE_INERTIA + target*(1.f-PRICE_INERTIA);
+                re->price[r]=clampf(re->price[r],BASE_PRICE[r]*0.15f,BASE_PRICE[r]*8.f);
+            }
+        } else {
+            /* EMPIRE : on ACCUMULE l'offre/demande NATIONALES ; le prix est soldé UNE FOIS par pays
+             * après la boucle (prix UNIFORME par empire → fin de l'artefact spatial). re->price garde
+             * le prix national du tick PRÉCÉDENT (la conso ci-dessous le lit, causalité décalée d'1 tick). */
+            for (int r=0;r<RES_COUNT;r++){ supply_nat[owner_][r]+=supply[r]; demand_nat[owner_][r]+=demand[r]; }
         }
 
         /* Satisfaction par strate : fraction des besoins effectivement
@@ -1952,6 +1969,20 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
         re->needs_met = (nmpop>0.f)? clampf(nmsum/nmpop,0.f,1.f) : 0.f;   /* pilote la fertilité (avant la croissance) */
         if (rid<SCPS_MAX_REG) mobility_tick_region(re, rid);   /* E0.7 — le dégel des classes */
+
+        /* FRUIT — NOURRITURE DE SUBSTITUTION : comble le déficit vivrier RÉSIDUEL (grain/poisson
+         * non couverts) avec le fruit du pool national, là où il pousse (forêt/tempéré). Crée la
+         * DEMANDE de fruit (fin du pile-up) ET relève food_sat — un FILET vivrier géo-sensible, qui
+         * n'ajoute AUCUN besoin (il ne fait que substituer le manque). 1 fruit = 1 unité de manque. */
+        {
+            float food_gap = r_food_need - r_food_got;
+            if (food_gap > EPS && S[RES_FRUIT] > EPS){
+                float fill = fminf(food_gap, S[RES_FRUIT]);
+                S[RES_FRUIT]      -= fill;
+                demand[RES_FRUIT] += fill;
+                r_food_got        += fill;
+            }
+        }
 
         /* ---- 6. MISE À JOUR : démographie, tech, satisfaction générale - */
         /* food_sat = la couverture VIVRIÈRE RÉELLE (et non la satisfaction
@@ -2107,6 +2138,33 @@ void econ_tick(WorldEconomy *e, float dt) {
 
     }
 
+    /* PRIX NATIONAL — soldé UNE FOIS par empire sur demande/(pool+offre) NATIONALES (mêmes
+     * paliers ⇒ ratio invariant à l'échelle : ni artefact spatial, ni effondrement d'effort),
+     * puis PROJETÉ sur re->price de toutes ses régions (matérialisation). Inertie amorcée du prix
+     * national du tick précédent (re->price, uniforme par empire). Itération par index = stable
+     * (déterminisme). Les régions ISOLÉES (owner<0) ont déjà soldé leur prix localement, plus haut. */
+    {
+        float infl = (e->ipm>0.f)? e->ipm : 1.f;
+        static float pn[SCPS_MAX_COUNTRY][RES_COUNT];   /* prix national soldé (hors pile) */
+        bool done[SCPS_MAX_COUNTRY]; for (int c=0;c<SCPS_MAX_COUNTRY;c++) done[c]=false;
+        for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++){
+            RegionEconomy *re=&e->region[rid];
+            if (!re->active || !re->colonized) continue;
+            int c=re->owner; if (c<0||c>=SCPS_MAX_COUNTRY) continue;
+            if (!done[c]){
+                done[c]=true;
+                for (int r=0;r<RES_COUNT;r++){
+                    if (BASE_PRICE[r]<=0.f){ pn[c][r]=re->price[r]; continue; }
+                    float avail  = pool[c][r] + supply_nat[c][r];                  /* offre NATIONALE (stock + production) */
+                    float target = BASE_PRICE[r]*infl*clampf(demand_nat[c][r]/(avail+EPS),0.2f,6.f);
+                    float p      = re->price[r]*PRICE_INERTIA + target*(1.f-PRICE_INERTIA);  /* amorce = prix national t-1 */
+                    pn[c][r]     = clampf(p, BASE_PRICE[r]*0.15f, BASE_PRICE[r]*8.f);
+                }
+            }
+            for (int r=0;r<RES_COUNT;r++) re->price[r]=pn[c][r];   /* PROJECTION : toutes les régions de l'empire = même prix */
+        }
+    }
+
     /* STOCK NATIONAL — CLÔTURE : plafond du pool (Σ des caps régionaux : Entrepôts
      * bâtis), puis décrue des périssables (×0.85, le surplus s'évapore — fin de
      * l'accumulation infinie), UNE fois par empire. */
@@ -2247,12 +2305,12 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
             }
         }
     }
-    /* FOOD agrégé (grain+poisson+viande interchangeables) — l'existentiel. */
+    /* FOOD agrégé (grain+poisson+viande+FRUIT interchangeables) — l'existentiel. */
     {
-        double fd=dem[RES_GRAIN]+dem[RES_FISH]+dem[RES_LIVESTOCK];
-        double fpot=pot[RES_GRAIN]+pot[RES_FISH]+pot[RES_LIVESTOCK];
-        double fs=sup[RES_GRAIN]+sup[RES_FISH]+sup[RES_LIVESTOCK];
-        double fk=stk[RES_GRAIN]+stk[RES_FISH]+stk[RES_LIVESTOCK];
+        double fd=dem[RES_GRAIN]+dem[RES_FISH]+dem[RES_LIVESTOCK]+dem[RES_FRUIT];
+        double fpot=pot[RES_GRAIN]+pot[RES_FISH]+pot[RES_LIVESTOCK]+pot[RES_FRUIT];
+        double fs=sup[RES_GRAIN]+sup[RES_FISH]+sup[RES_LIVESTOCK]+sup[RES_FRUIT];
+        double fk=stk[RES_GRAIN]+stk[RES_FISH]+stk[RES_LIVESTOCK]+stk[RES_FRUIT];
         if (fd>1e-3){
             if (fpot>=fd){ double hr=fpot/fd; double rw=(hr>1.0)?log(hr)/lnr:0.0; rw+=fk/fd; out->food_runway=(float)rw; }
             else { double drain=fd-fs; out->food_runway=(drain>1e-3)?(float)(fk/drain):0.f; }

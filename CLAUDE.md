@@ -838,6 +838,36 @@
   stack) · `scps_api_demo` **91/91** (+7 alloc) · GDExtension `scons` **0 warning** · sweep 5×250 SAIN (24-45 pays, IPM
   1.24, §27 an-180, hégémon mortel 5/5). Tunables INCHANGÉS sauf les `labor` de recette (code) + `EXTRACT_LABOR_SHARE`
   0.65 (registre J). `resource_name`/color : +Fruits/Poterie/Statuaire.
+- **FRUITS — forêt-nourriture + repli vin CHER (2026-06-28)** : `RES_FRUIT` (brute, agricole). Au départ « un peu partout »,
+  RAMENÉ à **FORÊT/BOIS/JUNGLE SEULEMENT** (`base·0.65`, protégé de la coupe) pour ne PAS voler les bras d'extraction au
+  grain. **NOURRITURE DE SUBSTITUTION** : `res_is_food(FRUIT)`=vrai + un FOOD-FILL après le panier (le fruit du pool
+  comble le déficit vivrier RÉSIDUEL grain/poisson, 1:1, sans AJOUTER de besoin) → relève `food_sat` là où il pousse +
+  crée la demande de fruit (fin du pile-up). `EXTRACT_YIELD[FRUIT]`=4.0 (« 100 emplois → 400 hab » à la tuile standard ;
+  geo-modulé ⇒ ~230 forêt). Repli VIN à intrant ÉLEVÉ (winery `alt1_q` 4.0 : 4 fruits/vin vs 1.6 sucre → le fruit reste
+  d'abord de la nourriture). Forecast vivrier inclut le fruit. ⚠ Coût mesuré : **−3 journalier** (sous PRIX NATIONAL ;
+  c'était −10 sous prix régional — la distribution régionale AMPLIFIAIT le coût) pour 0 famine d'import.
+- **MÉTAL SUPPRIMÉ — outils fer+bois DIRECT, coques au CUIVRE (2026-06-28)** : `RES_METAL` n'avait que DEUX consommateurs
+  (taillanderie + coques navales). Le chaînon intermédiaire est RETIRÉ DÉFINITIVEMENT : `RES_METAL` et `BLD_FOUNDRY`
+  sortent des enums ⇒ ⚠ **SAVE BUMP 42→43** (`RES_COUNT` change → tableaux `[RES_COUNT]` de `RegionEconomy` rétrécissent).
+  **BLD_TOOLWORKS** : `1 fer + 1 bois → 3 OUTILS` (direct). **Coques** (`scps_navy.c`) : `HullCost.metal`→`copper`,
+  les navires de guerre coûtent du **CUIVRE** (clous/doublage). Récompenses de mission métal→fer. Bancs recâblés
+  (`econ_production_demo` réécrit chaîne directe, `navy_demo` cuivre, agency/ai/structural fer). `TOOLS_PER_LABORER`
+  0.15→0.015→**0.05** (sous prix national, on remonte la cible pour un bonus prod RÉEL : outils ×2.4, stock ×2.4,
+  bonus ~+4.4 %, plafonné par la rareté du fer). `resource_name`/color/strings `STR_RES_METAL` retirés.
+- **PRIX NATIONAL — fin de l'artefact de distribution régionale (2026-06-28, le gros morceau)** : le STOCK était déjà
+  national (pool P1) mais le PRIX était soldé PAR RÉGION sur sa pop-share du pool (`avail = S[r]*pshare + supply[r]`) —
+  un ARTEFACT spatial : un bien produit dans 1 région flambait dans les autres (outils à ~7×base côté consommateur vs
+  bas côté producteur ; boisson du journalier mal servie). Le workflow a identifié que le prix régional était le
+  garde-fou anti-effondrement (mélanger demande régionale / stock national ferait ÷N → plancher 0.2 → effort 0.42 →
+  prod −60 %). FIX : le prix est soldé **UNE FOIS par EMPIRE** sur `demand_nat[c]/(pool[c]+supply_nat[c])` (mêmes
+  PALIERS ⇒ ratio invariant à l'échelle : ni artefact, ni effondrement), puis PROJETÉ sur `re->price` de toutes ses
+  régions (matérialisation, comme `re->stock`). Accumulateurs `supply_nat`/`demand_nat` (statiques) sommés de l'offre/
+  demande locales ; le solde par-région est GARDÉ pour `owner<0` (fixtures/hors-empire → prix local, bancs INCHANGÉS).
+  `re->price` reste le store sérialisé ⇒ **AUCUN bump SAVE** (Option A) ; `re->stock` INTACT ⇒ les ~280 lecteurs externes
+  cohérents. ⊕ Résultat : prix UNIFORME par empire (artefact disparu), journalier **63→69**, pop 189k (pas d'effondrement),
+  prix outils moyen 63→~45 absolu. ⚠ **RE-BASELINE golden** (le prix mord dès l'an-0 sur les empires multi-régions ;
+  `golden_hashes.txt` mis à jour) · `determinism` **STABLE** · bancs **37/37** runnable verts (3 KO pré-existants Windows) ·
+  sweep 5×250 SAIN (satisfaction 66/76/83 an-250 post-Grand-Hiver, hégémon mortel 5/5, §27 an-180, IPM 1.22).
 
 ## Disciplines non négociables
 

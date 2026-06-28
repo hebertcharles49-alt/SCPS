@@ -26,7 +26,7 @@ static void ok(const char *what, bool cond){
 }
 
 /* Fige une région en banc d'essai de production : fer+charbon+bois+grain, plus
- * une fonderie et un atelier d'outillage, sur une pop de travail donnée. */
+ * un atelier d'outillage (fer + bois → outils, DIRECT), sur une pop de travail donnée. */
 static void rig(WorldEconomy *e, int r, float tools){
     RegionEconomy *re=&e->region[r];
     re->active=true; re->colonized=true; re->culture.settled=true;
@@ -36,7 +36,6 @@ static void rig(WorldEconomy *e, int r, float tools){
     re->raw_cap[RES_IRON]=4.f; re->raw_cap[RES_COAL]=4.f;
     re->raw_cap[RES_WOOD]=4.f; re->raw_cap[RES_GRAIN]=8.f;
     re->n_bld=0;
-    re->bld[re->n_bld].type=BLD_FOUNDRY;   re->bld[re->n_bld].level=3.f; re->n_bld++;
     re->bld[re->n_bld].type=BLD_TOOLWORKS; re->bld[re->n_bld].level=3.f; re->n_bld++;
     re->strata[CLASS_LABORER].pop=600.f;  re->strata[CLASS_LABORER].wealth=400.f;
     re->strata[CLASS_BOURGEOIS].pop=100.f;re->strata[CLASS_BOURGEOIS].wealth=200.f;
@@ -56,28 +55,21 @@ int main(int argc, char **argv){
     World *w=malloc(sizeof(World)); WorldEconomy *e=malloc(sizeof(WorldEconomy));
     if(!w||!e){ fprintf(stderr,"OOM\n"); return 1; }
     printf("══════════════════════════════════════════════════════════════\n");
-    printf(" ÉPINE DORSALE — fer+charbon→métal→outils→productivité — graine %u\n", seed);
+    printf(" ÉPINE DORSALE — fer+bois→outils→productivité — graine %u\n", seed);
     printf("══════════════════════════════════════════════════════════════\n");
 
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p); econ_init(e,w); gen_population(w,e);
     if (e->n_regions<3){ fprintf(stderr,"monde trop petit\n"); return 1; }
 
-    /* ═══ 1-2. La chaîne réelle ═════════════════════════════════════════ */
-    printf("\n── 1-2. Fonderie (fer+charbon→métal) puis Atelier (métal+bois→outils) ──\n");
-    /* Région 0 : Fonderie SEULE → le métal s'accumule (rien ne le consomme). */
-    rig(e, 0, 0.f);
-    e->region[0].n_bld=1;   /* garder la fonderie, retirer l'atelier */
-    for (int t=0;t<6;t++) econ_tick(e,1.f);
-    float metal=e->region[0].stock[RES_METAL];
-    /* Région 1 : Fonderie + Atelier → la chaîne complète sort des OUTILS (donc
-     * le métal a bien été produit PUIS consommé pour les outils). */
+    /* ═══ 1. La chaîne réelle (DIRECTE) ═════════════════════════════════ */
+    printf("\n── 1. Atelier d'outillage (fer + bois → outils, DIRECT — plus de métal) ──\n");
+    /* Région 1 : l'atelier sort des OUTILS directement du fer + bois. */
     rig(e, 1, 0.f);
     for (int t=0;t<6;t++) econ_tick(e,1.f);
     float tools=e->region[1].stock[RES_TOOLS];
-    printf("   fonderie seule : métal=%.1f | chaîne complète : outils=%.1f\n", metal, tools);
-    ok("la Fonderie produit du MÉTAL (fer + charbon)", metal > 0.5f);
-    ok("la chaîne complète (métal→bois) produit des OUTILS", tools > 0.5f);
+    printf("   chaîne directe : outils=%.1f\n", tools);
+    ok("l'Atelier produit des OUTILS (fer + bois, DIRECT)", tools > 0.5f);
 
     /* ═══ 3. Les outils MULTIPLIENT la productivité ═════════════════════ */
     printf("\n── 3. Les outils montent la production (le multiplicateur) ──\n");
