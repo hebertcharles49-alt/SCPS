@@ -131,7 +131,7 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     /* VIN/BIÈRE — BOISSON, le SEUL bien manufacturé actif en EARLY ⇒ le calibrage `labor` qui MORD.
      * LEVIER LABOR (ratios & qout intacts) : labor = 1200·qout/demande_1000 → 100 emplois ≈ 1000 hab.
      * Vin : 1200·1.4/44.7 = 37.6 → labor 38. Bière : 1200·1.0/44.7 = 26.8 → labor 27. */
-    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 38.f, RES_FRUIT, 4.0f },  /* sucre OU FRUIT (repli) → vin. Le fruit est désormais NOURRITURE : son intrant-vin est ÉLEVÉ (4 fruits/vin vs 1.6 sucre) → le vin de fruit est une voie CHÈRE, le fruit reste d'abord de la nourriture */
+    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 38.f, RES_FRUIT, 4.0f },  /* DISTILLERIE : sucre OU FRUIT (repli) → EAU DE VIE (RES_WINE = l'alcool générique : distiller sucre/fruit est plus logique que « vin »). Le fruit est NOURRITURE : son intrant est ÉLEVÉ (4 fruits vs 1.6 sucre) → l'eau-de-vie de fruit est CHÈRE, le fruit reste d'abord de la nourriture */
     [BLD_BREWERY]   = { RES_GRAIN, 1.2f, RES_NONE,          0.f, RES_BEER,           1.0f, 27.f, RES_NONE, 0.f },  /* grain → bière (palier moral des cultures de basse subsistance) */
     /* JOAILLERIE : OR, ou PERLE en repli (2× la quantité par bijou — littoral).
      * Sortie TEMPÉRÉE (1.0→0.5) et intrant plus lourd (1.5→2.0) : l'orfèvrerie
@@ -389,7 +389,7 @@ const char *social_class_name(SocialClass c) {
 const char *building_name(BuildingType b) {
     static const char *N[BLD_TYPE_COUNT]={
         [BLD_TEXTILE]="Manufacture textile",[BLD_SAWMILL]="Scierie navale",[BLD_PAPERMILL]="Papeterie",
-        [BLD_WINERY]="Domaine viticole",[BLD_BREWERY]="Brasserie",[BLD_JEWELER]="Joaillerie",
+        [BLD_WINERY]="Distillerie",[BLD_BREWERY]="Brasserie",[BLD_JEWELER]="Joaillerie",
         [BLD_WEAVER_LUX]="Atelier d'étoffe précieuse",[BLD_MAGE_WORKSHOP]="Atelier de mage",
         [BLD_CELESTIAL_FORGE]="Forge céleste",[BLD_TOOLWORKS]="Atelier d'outillage",[BLD_ALAMBIC]="Alambic",
         [BLD_ARMORY]="Armurerie légère",[BLD_POWDERMILL]="Poudrière",[BLD_APOTHECARY]="Apothicaire",

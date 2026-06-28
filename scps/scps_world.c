@@ -3704,7 +3704,7 @@ const char *resource_name(Resource r) {
         [RES_MUREX]="Murex",[RES_INDIGO]="Indigo",
         [RES_CLAY]="Argile",[RES_STONE]="Pierre",   /* E1 : matériaux de construction réels */
         /* production */
-        [RES_CLOTH]="Étoffe",[RES_NAVAL_SUPPLIES]="Fournitures navales",[RES_WINE]="Vin",[RES_BEER]="Bière",
+        [RES_CLOTH]="Étoffe",[RES_NAVAL_SUPPLIES]="Fournitures navales",[RES_WINE]="Eau de vie",[RES_BEER]="Bière",
         [RES_PRECIOUS_WARE]="Bien précieux",[RES_PRECIOUS_CLOTH]="Étoffe précieuse",[RES_PAPER]="Papier",
         [RES_TOOLS]="Outils",[RES_ESSENCE]="Essence",[RES_ENCHANTED_ARMS]="Armes enchantées",
         [RES_ARMS]="Armes légères",[RES_GUNPOWDER]="Poudre",[RES_REMEDE]="Remèdes",[RES_TUNIQUE]="Tunique",
