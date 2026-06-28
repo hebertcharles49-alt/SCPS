@@ -1081,8 +1081,12 @@
   épicentre §27 (anneaux pulsants). **DISPLAY-ONLY** : moteur C / déterminisme / save **INTACTS**
   (aucun fichier C touché). Régressions mineures assumées : surbrillance de province sélectionnée
   sur le sol (à remettre en contour d'encre dans l'overlay) · rose des vents très légèrement ovale
-  sous l'inclinaison. ⚠ Re-baseline NULLE (rien de sérialisé). À VENIR : purge du code mort GDScript
-  (builders sprite d'overlay, fonctions atlas/falaise/route d'iso_ground).
+  sous l'inclinaison. ⚠ Re-baseline NULLE (rien de sérialisé). **Code mort PURGÉ** : `iso_ground.gd`
+  1074→294 lignes (atlas terrain/falaise/route, carve-brush, city-wear — tout le splat iso 3D) ;
+  `overlay.gd` 2063→892 lignes (45 fonctions : builders de villes/structures/clutter/nature/ponts/
+  tuiles-route + leur chaîne de teinte terrain + le chemin globe) ; ~1860 lignes display-only retirées.
+  Bruit du parchemin rendu PROCÉDURAL (NoiseTexture2D). Vérifié au rendu (rivières/routes/villes/
+  frontières/noms/armées intacts).
 
 ## Disciplines non négociables
 
