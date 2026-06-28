@@ -5309,6 +5309,9 @@ int main(int argc, char **argv) {
      * (par ID). Absent → défauts compilés. Rupture assumée de zéro-asset, display-only. */
     { int nov = lang_load_file("scps_lang.txt");
       if (nov>0) printf("[scps] scps_lang.txt chargé : %d libellé(s) surchargé(s).\n", nov); }
+    /* MODTOOLS : surcharge des valeurs (prix/recettes/tech/unités) si SCPS_MODS pointe un fichier. */
+    { const char *m=getenv("SCPS_MODS");
+      if (m && *m){ econ_moddata_load(m); tech_moddata_load(m); army_moddata_load(m); } }
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         fatal_box(SDL_GetError());

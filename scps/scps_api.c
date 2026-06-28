@@ -83,6 +83,8 @@ static void api_centroids(ScpsSim *s){
 void scps_sim_generate(ScpsSim *s, uint32_t seed){
     if(!s) return;
     tune_once();
+    { const char *m=getenv("SCPS_MODS");   /* MODTOOLS : surcharge des valeurs si défini (sinon vanilla) */
+      if (m && *m){ econ_moddata_load(m); tech_moddata_load(m); army_moddata_load(m); } }
     religion_reset();   /* nouvelle partie : registre religion + liens pays remis à plat */
     WorldParams p = worldparams_default(seed);
     /* NOUVELLE PARTIE : applique l'override de sliders s'il est posé (sinon défaut). */

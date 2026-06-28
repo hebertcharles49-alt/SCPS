@@ -26,6 +26,7 @@
 #define SCPS_TECH_H
 
 #include <stdbool.h>
+#include <stdio.h>           /* FILE* : MODTOOLS dump/load */
 #include "scps_heritage.h"   /* Heritage : la heritage native d'une tech signature */
 
 /* ---- Thèmes (3) — la Magie est fondue dans le Savoir ------------------- */
@@ -244,6 +245,11 @@ const SyncNode *tech_sync_node(int i);   /* lecture (UI/membrane/télémétrie) 
  * ⇒ le coût marginal d'une province < son apport → l'EXPANSION est récompensée, sans snowball
  * (rythme/empire ∝ √N). Plancher pour le mono-province. Les bâtiments de base (tier 0) = 0. */
 float tech_cost(TechId id, float n_provinces);
+
+/* MODTOOLS — surcharge des coûts de tier (BASE_COST) et des bonus prod/eff par fichier
+ * (l'app charge via SCPS_MODS ; sans fichier ⇒ valeurs compilées, golden-safe). */
+void tech_moddata_dump(FILE *f);
+int  tech_moddata_load(const char *path);
 
 /* Rendement de recherche : multiplicateur issu du SAVOIR·Production (Bibliothèque
  * → Scriptorium → Académie → Université). La POPULATION fournit l'assiette (côté

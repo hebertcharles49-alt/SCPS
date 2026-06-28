@@ -112,49 +112,7 @@ static float EXTRACT_YIELD[RES_COUNT] = {   /* NON-const (MODTOOLS) — surcharg
     [RES_ARCANE_CRYSTAL]=0.04f, [RES_CELESTIAL_IRON]=0.03f,
 };
 
-/* ── MODTOOLS (2026-06-28) — surcharge des VALEURS éco par FICHIER ────────────
- * Le motif tune_f/scps_lang.txt étendu aux TABLES : défaut compilé + override
- * fichier, OPT-IN via l'env SCPS_MODS (chargé à econ_init si défini). SANS fichier
- * ⇒ valeurs compilées IDENTIQUES ⇒ golden/déterminisme INTACTS. Format TSV
- * NAME-KEYED (robuste au réordonnancement d'enum), TAB-séparé (les noms ont des
- * espaces) : « ressource<TAB>base_price<TAB>extract_yield » ; '#'/vide ignorés ;
- * extract_yield optionnel. `chronicle --dump-data` écrit le point de départ. */
-void econ_moddata_dump(FILE *f){
-    if (!f) return;
-    fprintf(f, "# MODTOOLS éco — valeurs éditables. Charger : SCPS_MODS=<ce fichier> ./chronicle …\n");
-    fprintf(f, "# ressource\tbase_price\textract_yield\n");
-    for (int r=0;r<RES_COUNT;r++){
-        const char *n=resource_name((Resource)r);
-        if (!n || !*n || strcmp(n,"—")==0) continue;     /* saute le sentinel RES_NONE */
-        fprintf(f, "%s\t%.4g\t%.4g\n", n, BASE_PRICE[r], EXTRACT_YIELD[r]);
-    }
-}
-static int econ_res_by_name(const char *tok){
-    for (int r=0;r<RES_COUNT;r++){ const char *n=resource_name((Resource)r);
-        if (n && strcmp(n,tok)==0) return r; }
-    return -1;
-}
-int econ_moddata_load(const char *path){
-    if (!path || !*path) return -1;
-    FILE *f=fopen(path,"r"); if (!f) return -1;
-    char line[256]; int applied=0;
-    while (fgets(line,sizeof line,f)){
-        if (line[0]=='#') continue;
-        char *nl=strpbrk(line,"\r\n"); if (nl) *nl=0;
-        char *t1=strchr(line,'\t'); if (!t1) continue;      /* ressource<TAB>… */
-        *t1=0;
-        int r=econ_res_by_name(line); if (r<0) continue;     /* nom inconnu → ignoré (tolérant) */
-        char *rest=t1+1; char *t2=strchr(rest,'\t');
-        BASE_PRICE[r]=(float)atof(rest);
-        if (t2) EXTRACT_YIELD[r]=(float)atof(t2+1);
-        applied++;
-    }
-    fclose(f);
-    if (applied>0) fprintf(stderr,
-        "[mods] éco : %d ressource(s) surchargée(s) depuis %s — monde NON-vanilla (replay/golden invalides).\n",
-        applied, path);
-    return applied;
-}
+/* MODTOOLS — les fns econ_moddata_dump/load sont en FIN de fichier (après RECIPE). */
 
 /* Recette d'une manufacture : jusqu'à 2 intrants → 1 produit. */
 typedef struct {
@@ -168,7 +126,7 @@ typedef struct {
     Resource out2; float qout2;   /* F3 : sortie SECONDAIRE (arme arcane) ∝ production. RES_NONE = aucune. */
 } Recipe;
 
-static const Recipe RECIPE[BLD_TYPE_COUNT] = {
+static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qout surchargeables par SCPS_MODS */
     /* TEXTILE : laine (ou coton repli) → étoffe. ÉTOFFE = INTERMÉDIAIRE (→ tunique) + bien BOURG
      * direct mineur : on la garde EFFICACE (labor bas) — le puits de bras est sur la TUNIQUE (final). */
     [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_COTTON, 1.5f },  /* F4 : laine OU COTON (repli) → étoffe — le coton inerte gagne un débouché */
@@ -617,8 +575,6 @@ void econ_cold_refresh(WorldEconomy *e, const World *w) {
 }
 
 void econ_init(WorldEconomy *e, const World *w) {
-    { const char *mods=getenv("SCPS_MODS");   /* MODTOOLS : surcharge de valeurs si défini (sinon vanilla) */
-      if (mods && *mods) econ_moddata_load(mods); }
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(e,0,sizeof(*e));
     econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */
@@ -2746,3 +2702,59 @@ void econ_print_summary(const WorldEconomy *e, const World *w) {
 
 void econ_prodcap_save(FILE *f){ fwrite(g_prod_cap,sizeof g_prod_cap,1,f); }
 bool econ_prodcap_load(FILE *f){ return fread(g_prod_cap,sizeof g_prod_cap,1,f)==1; }
+
+/* ── MODTOOLS — surcharge des VALEURS éco par FICHIER (palier 1-2) ────────────
+ * Motif tune_f/scps_lang.txt étendu aux TABLES : défaut compilé + override fichier,
+ * OPT-IN (l'app charge via SCPS_MODS). SANS fichier ⇒ valeurs compilées IDENTIQUES
+ * ⇒ golden/déterminisme INTACTS. Format TAG-keyed, TAB-séparé (les noms ont des
+ * espaces) : « price<TAB>ressource<TAB>base<TAB>yield » · « recipe<TAB>bâtiment<TAB>
+ * labor<TAB>qout ». '#'/vide ignorés ; nom inconnu ignoré (tolérant). En fin de
+ * fichier : RECIPE/BASE_PRICE/EXTRACT_YIELD tous définis. */
+static int moddata_split(char *line, char *out[], int maxf){   /* split TAB en place (1 copie/module) */
+    int n=0; char *p=line;
+    while (n<maxf){ out[n++]=p; char *t=strchr(p,'\t'); if(!t) break; *t=0; p=t+1; }
+    return n;
+}
+static int econ_res_by_name(const char *t){
+    for (int r=0;r<RES_COUNT;r++){ const char *n=resource_name((Resource)r); if(n&&strcmp(n,t)==0) return r; }
+    return -1;
+}
+static int econ_bld_by_name(const char *t){
+    for (int b=0;b<BLD_TYPE_COUNT;b++){ const char *n=building_name((BuildingType)b); if(n&&strcmp(n,t)==0) return b; }
+    return -1;
+}
+void econ_moddata_dump(FILE *f){
+    if(!f) return;
+    fprintf(f,"# MODTOOLS — valeurs éditables. Charger : SCPS_MODS=<ce fichier>. Format : TAG<TAB>clé<TAB>valeurs.\n");
+    fprintf(f,"# price\t<ressource>\t<base_price>\t<extract_yield>\n");
+    for(int r=0;r<RES_COUNT;r++){ const char *n=resource_name((Resource)r);
+        if(!n||!*n||strcmp(n,"—")==0) continue;
+        fprintf(f,"price\t%s\t%.4g\t%.4g\n",n,BASE_PRICE[r],EXTRACT_YIELD[r]); }
+    fprintf(f,"# recipe\t<bâtiment>\t<labor>\t<qout>\n");
+    for(int b=0;b<BLD_TYPE_COUNT;b++){ const char *n=building_name((BuildingType)b);
+        if(!n||!*n) continue;
+        fprintf(f,"recipe\t%s\t%.4g\t%.4g\n",n,RECIPE[b].labor,RECIPE[b].qout); }
+}
+int econ_moddata_load(const char *path){
+    if(!path||!*path) return -1;
+    FILE *f=fopen(path,"r"); if(!f) return -1;
+    char line[256]; int applied=0; char *fld[5];
+    while(fgets(line,sizeof line,f)){
+        if(line[0]=='#') continue;
+        char *nl=strpbrk(line,"\r\n"); if(nl)*nl=0;
+        int nf=moddata_split(line,fld,5); if(nf<3) continue;
+        if(strcmp(fld[0],"price")==0){
+            int r=econ_res_by_name(fld[1]); if(r<0) continue;
+            BASE_PRICE[r]=(float)atof(fld[2]);
+            if(nf>=4) EXTRACT_YIELD[r]=(float)atof(fld[3]);
+            applied++;
+        } else if(strcmp(fld[0],"recipe")==0 && nf>=4){
+            int b=econ_bld_by_name(fld[1]); if(b<0) continue;
+            RECIPE[b].labor=(float)atof(fld[2]); RECIPE[b].qout=(float)atof(fld[3]);
+            applied++;
+        }
+    }
+    fclose(f);
+    if(applied>0) fprintf(stderr,"[mods] éco : %d valeur(s) surchargée(s) depuis %s.\n",applied,path);
+    return applied;
+}

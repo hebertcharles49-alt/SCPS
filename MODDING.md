@@ -23,23 +23,30 @@ Le save enregistre une empreinte des surcharges actives : charger une partie sou
 règles **avertit** (replays / graines partagées invalides). C'est voulu : un monde modé n'est
 plus « vanilla ».
 
-## 2. Valeurs ÉCO en table — `SCPS_MODS` (prix & rendements, zéro recompile)
+## 2. Valeurs en TABLE — `SCPS_MODS` (prix, recettes, tech, unités ; zéro recompile)
 
-Les **prix de base** et les **rendements d'extraction** par ressource (qui ne sont pas des
-tunables scalaires mais des TABLES) s'éditent par fichier TSV **name-keyed** (robuste au
-réordonnancement d'enum).
+Les valeurs qui sont des TABLES (pas des tunables scalaires) s'éditent par un fichier
+**TAG-keyed**, TAB-séparé (les noms ont des espaces : « Eau de vie »), **name-keyed** (robuste
+au réordonnancement d'enum). Une ligne = un objet, préfixée par sa table :
+
+| TAG | colonnes | ce que ça change |
+|-----|----------|------------------|
+| `price`     | `<ressource> <base_price> <extract_yield>` | prix de base + rendement d'extraction |
+| `recipe`    | `<bâtiment> <labor> <qout>`                | main-d'œuvre/lot + sortie/lot (les leviers « 100 emplois → X ») |
+| `basecost`  | `<tier 0-5> <coût>`                        | coût de recherche par tier (la courbe) |
+| `techbonus` | `<tech> <prod_pct> <eff_pct>`              | bonus de production/efficacité d'une tech |
+| `unit`      | `<unité> <discipline> <moral> <mvt> <cmd>` | stats d'unité (combat) |
 
 ```sh
-./chronicle --dump-data > mods.tsv     # écrit le point de départ éditable (toutes les ressources)
-# éditer mods.tsv : « ressource <TAB> base_price <TAB> extract_yield » (une ligne/ressource)
-#   - séparateur = TABULATION (les noms ont des espaces : « Eau de vie »)
-#   - extract_yield est optionnel ; '#' ou ligne vide = ignoré ; nom inconnu = ignoré
-SCPS_MODS=mods.tsv ./chronicle 9 1 200 # charge les surcharges (message [mods] sur stderr)
+./chronicle --dump-data > mods.tsv     # écrit le point de départ éditable (TOUTES les tables)
+# éditer mods.tsv (séparateur = TABULATION ; '#'/vide ignoré ; nom/tag inconnu ignoré)
+SCPS_MODS=mods.tsv ./chronicle 9 1 200 # charge (messages [mods] éco/tech/unités sur stderr)
 ```
 
-Côté jeu (Godot / viewer) : poser `SCPS_MODS` dans l'environnement avant de lancer. Les valeurs
-sont relues à chaque génération de monde. Comme `SCPS_TUNE`, un monde modé n'est plus rejouable
-contre le golden vanilla.
+Côté jeu (Godot / viewer) : poser `SCPS_MODS` dans l'environnement avant de lancer (chargé à la
+génération de monde / au démarrage). Comme `SCPS_TUNE`, un monde modé n'est plus rejouable contre
+le golden vanilla. *(Les types d'intrants/sorties d'une recette + la structure des nœuds restent
+du domaine du contenu : cf. §Ajouter du contenu.)*
 
 ## 3. Strings face-joueur — `scps_lang.txt` (≈358 textes, F4 à chaud)
 

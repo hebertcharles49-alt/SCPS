@@ -116,6 +116,10 @@ typedef struct {
 /* ===================================================================== */
 const UnitDef     *unit_def(UnitType t);
 const char        *unit_name(UnitType t);
+/* MODTOOLS — surcharge des stats d'unité (discipline/moral/mvt/cmd) par fichier
+ * (l'app charge via SCPS_MODS ; sans fichier ⇒ valeurs compilées, golden-safe). */
+void  army_moddata_dump(FILE *f);
+int   army_moddata_load(const char *path);
 const char        *weapon_name(ArmWeapon wp);
 TechId             unit_tech_gate(UnitType t);                 /* F7 : la tech qui débloque l'unité (TECH_COUNT = aucune) */
 bool               unit_recruitable(const TechState *ts, UnitType t);  /* F7 : recrutable (tech acquise) ? */

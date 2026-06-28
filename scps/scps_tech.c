@@ -9,6 +9,9 @@
 #include "scps_tech.h"
 #include <math.h>
 #include <stddef.h>
+#include <stdio.h>     /* MODTOOLS : dump/load fichier */
+#include <string.h>
+#include <stdlib.h>
 
 #define NONE TECH_COUNT     /* sentinelle « pas de prérequis » */
 #define UNIV HERITAGE_COUNT     /* sentinelle « tech universelle (pas de heritage native) » */
@@ -28,7 +31,7 @@
 #define TECH_COST_N_K     0.90f  /* coefficient du coût ∝ N^exp (calé sur les grands empires : N~20 ≈ ancien popf) */
 #define TECH_COST_N_EXP   0.5f   /* exposant SOUS-linéaire (0.5 = √N) — le cœur du « wide récompensé » */
 #define TECH_COST_N_FLOOR 0.5f   /* plancher : un empire mono-province paie au moins BASE×SCALE×0.5 */
-static const float BASE_COST[6] = { 0.f, 40.f, 90.f, 160.f, 260.f, 400.f }; /* par tier (rayon) */
+static float BASE_COST[6] = { 0.f, 40.f, 90.f, 160.f, 260.f, 400.f }; /* par tier — NON-const (MODTOOLS) */
 
 /* ====================================================================== */
 /* TABLE DES NŒUDS — 9 quartiers (angle), tier (rayon)                     */
@@ -322,7 +325,7 @@ float tech_research_yield(const TechState *s){
 /* §B1 — techs de PRODUCTION : multiplicateurs MODESTES (non faustiens, charge 0) dispatchés
  * thématiquement. prod_pct abonde la production (prod_mult) ; eff_pct l'efficacité d'emploi.
  * Tables par nœud (0 par défaut) — le pain quotidien de l'arbre, le gain sain de spécialisation. */
-static const float NODE_PROD_PCT[TECH_COUNT] = {
+static float NODE_PROD_PCT[TECH_COUNT] = {   /* NON-const (MODTOOLS) — surchargeable par SCPS_MODS */
     /* Forge·Production — « le multiplicateur de rendement » : extraction + manufacture. */
     [TECH_FONDERIE]=0.08f, [TECH_OUTILLAGE]=0.10f, [TECH_MANUFACTURE]=0.12f, [TECH_INDUSTRIE]=0.15f,
     /* Société·Production — rendement agricole / efficacité du commerce. */
@@ -335,7 +338,7 @@ static const float NODE_PROD_PCT[TECH_COUNT] = {
     [TECH_COMBO_GUILDES]=0.08f, [TECH_COMBO_CHARRUES]=0.08f,
     [TECH_COMBO_MACHINES_AGRI]=0.12f, [TECH_COMBO_HORDE_ECO]=0.06f,
 };
-static const float NODE_EFF_PCT[TECH_COUNT] = {
+static float NODE_EFF_PCT[TECH_COUNT] = {   /* NON-const (MODTOOLS) */
     /* Savoir·Production — le savoir-faire rend chaque bras meilleur (efficacité d'emploi). */
     [TECH_SCRIPTORIUM]=0.05f, [TECH_ACADEMIE]=0.07f, [TECH_UNIVERSITE]=0.10f,
     /* ÉTOFFE — l'horlogerie gnome SYNCHRONISE la production (efficacité d'emploi). */
@@ -521,4 +524,46 @@ bool tech_fusion_available(const TechState *s, int recipe_idx,
     if (!has_ingredient[r->in1]) return false;
     if (!has_ingredient[r->in2]) return false;
     return true;
+}
+
+/* ── MODTOOLS — surcharge des COÛTS/BONUS de tech par fichier (SCPS_MODS) ─────
+ * basecost<TAB><tier 0-5><TAB><coût>  ·  techbonus<TAB><tech><TAB><prod_pct><TAB><eff_pct>
+ * Sans fichier ⇒ valeurs compilées ⇒ golden/déterminisme INTACTS. */
+static int tech_split(char *line, char *out[], int maxf){
+    int n=0; char *p=line;
+    while (n<maxf){ out[n++]=p; char *t=strchr(p,'\t'); if(!t) break; *t=0; p=t+1; }
+    return n;
+}
+static int tech_by_name(const char *t){
+    for (int i=0;i<TECH_COUNT;i++){ const char *n=tech_name((TechId)i); if(n&&strcmp(n,t)==0) return i; }
+    return -1;
+}
+void tech_moddata_dump(FILE *f){
+    if(!f) return;
+    fprintf(f,"# basecost\t<tier 0-5>\t<coût de base>\n");
+    for(int t=0;t<6;t++) fprintf(f,"basecost\t%d\t%.4g\n",t,BASE_COST[t]);
+    fprintf(f,"# techbonus\t<tech>\t<prod_pct>\t<eff_pct>  (techs à bonus non nul)\n");
+    for(int i=0;i<TECH_COUNT;i++)
+        if(NODE_PROD_PCT[i]!=0.f||NODE_EFF_PCT[i]!=0.f)
+            fprintf(f,"techbonus\t%s\t%.4g\t%.4g\n",tech_name((TechId)i),NODE_PROD_PCT[i],NODE_EFF_PCT[i]);
+}
+int tech_moddata_load(const char *path){
+    if(!path||!*path) return -1;
+    FILE *f=fopen(path,"r"); if(!f) return -1;
+    char line[256]; int applied=0; char *fld[5];
+    while(fgets(line,sizeof line,f)){
+        if(line[0]=='#') continue;
+        char *nl=strpbrk(line,"\r\n"); if(nl)*nl=0;
+        int nf=tech_split(line,fld,5); if(nf<3) continue;
+        if(strcmp(fld[0],"basecost")==0){
+            int t=atoi(fld[1]); if(t<0||t>5) continue;
+            BASE_COST[t]=(float)atof(fld[2]); applied++;
+        } else if(strcmp(fld[0],"techbonus")==0 && nf>=4){
+            int i=tech_by_name(fld[1]); if(i<0) continue;
+            NODE_PROD_PCT[i]=(float)atof(fld[2]); NODE_EFF_PCT[i]=(float)atof(fld[3]); applied++;
+        }
+    }
+    fclose(f);
+    if(applied>0) fprintf(stderr,"[mods] tech : %d valeur(s) surchargée(s) depuis %s.\n",applied,path);
+    return applied;
 }

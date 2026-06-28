@@ -1032,6 +1032,18 @@
   éco · `scps_lang.txt` strings + assets Godot ; et comment AJOUTER du contenu = enum+table+1 recompile).
   À VENIR : étendre `SCPS_MODS` aux recettes/tech/unités · codegen de contenu (manifeste → enums/tables) ·
   panneau dev Godot (sliders live).
+- **MODTOOLS — palier 2 : `SCPS_MODS` étendu aux recettes / tech / unités (2026-06-28)** : le canal fichier
+  passe au format **TAG-keyed** unifié (une ligne = un objet, préfixée de sa table) couvrant TOUTES les valeurs
+  en table. `RECIPE`/`BASE_COST`/`NODE_PROD_PCT`/`NODE_EFF_PCT`/`UNITS` passent **non-const** (valeurs compilées
+  INCHANGÉES). Chaque module (econ/tech/army) a son `*_moddata_dump/load` (copie statique de `*_split`, fopen
+  par module — décuplé, pas de nouveau module ni dépendance croisée) ; l'APP (chronicle/façade/viewer) charge
+  les 3 si `SCPS_MODS` est défini (l'ancien hook `econ_init` retiré ⇒ pas de dépendance econ→tech/army, bancs
+  intacts). Tags : `price` (base/yield) · `recipe` (labor/qout) · `basecost` (tier→coût) · `techbonus`
+  (prod/eff) · `unit` (disc/moral/mvt/cmd). `chronicle --dump-data` écrit les 3 tables. ⊕ **golden IDENTIQUE +
+  determinism STABLE** (sans `SCPS_MODS` ⇒ valeurs compilées ; vérifié + re-confirmé après un run modé) · **SAVE
+  non bumpé** (tables non sérialisées) · 0 warning · bancs econ/tech/army/api verts · round-trip 3 tables prouvé
+  (recipe/unit/basecost surchargés → 3 messages `[mods]`). MODDING.md mis à jour. À VENIR : codegen de contenu ·
+  panneau dev Godot.
 
 ## Disciplines non négociables
 

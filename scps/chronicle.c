@@ -290,10 +290,12 @@ int main(int argc, char **argv){
     for (int i=1;i<argc;i++){
         if (!strcmp(argv[i],"--hash")) hash_mode=1;
         else if (!strcmp(argv[i],"--tunables")){ tune_list(stdout); return 0; }  /* Arc J : liste nom·défaut·actif */
-        else if (!strcmp(argv[i],"--dump-data")){ econ_moddata_dump(stdout); return 0; }  /* MODTOOLS : valeurs éco éditables */
+        else if (!strcmp(argv[i],"--dump-data")){ econ_moddata_dump(stdout); tech_moddata_dump(stdout); army_moddata_dump(stdout); return 0; }  /* MODTOOLS : toutes les valeurs éditables */
         else if (np<8) pos[np++]=argv[i];
     }
     tune_print_active(stderr);   /* surcharges actives en tête (stderr → stdout reste byte-identique sans env) */
+    { const char *m=getenv("SCPS_MODS");   /* MODTOOLS : surcharge des valeurs si défini (sinon vanilla → golden intact) */
+      if (m && *m){ econ_moddata_load(m); tech_moddata_load(m); army_moddata_load(m); } }
     uint32_t base = (np>0)?(uint32_t)strtoul(pos[0],NULL,10):20240607u;
     int nsims     = (np>1)?atoi(pos[1]):10;      /* sim i : 2+i empires, 5+i cités (2→11 / 5→14) */
     int years     = (np>2)?atoi(pos[2]):200;

@@ -8,6 +8,8 @@
 #include "scps_army.h"
 #include <string.h>
 #include <math.h>
+#include <stdio.h>     /* MODTOOLS : dump/load fichier */
+#include <stdlib.h>
 
 /* ---- Calibrage (surface d'équilibrage) -------------------------------- */
 #define ARM_THRESHOLD   12     /* d20 + commandement ≥ 12 → le contact porte */
@@ -27,7 +29,7 @@
 #define SAVOIR_STEP     0.07f  /* SAVOIR·Armée  : +7 % aux dégâts du mage par tier (arcane) */
 
 /* ---- Définitions d'unités (§2, §5) ------------------------------------ */
-static const UnitDef UNITS[U_COUNT] = {
+static UnitDef UNITS[U_COUNT] = {   /* NON-const (MODTOOLS) — stats surchargeables par SCPS_MODS */
     [U_PIQUIER]   = { "Piquier",     LAB_LABORER, W_PIQUE,     0.30f, 115.f, 2.f, 3.f },
     [U_LANCIER]   = { "Lancier",     LAB_LABORER, W_LANCE,     0.32f,  95.f, 3.f, 3.f },
     [U_EPEISTE]   = { "Épéiste",     LAB_LABORER, W_EPEE,      0.45f, 100.f, 3.f, 4.f },
@@ -528,4 +530,42 @@ float siege_days(float defense_level, float food_months, float def_mult){
     if (d > SIEGE_MAX_DAYS) d = SIEGE_MAX_DAYS;           /* plafond : 2 ans */
     if (d < SIEGE_WALK_DAYS) d = SIEGE_WALK_DAYS;         /* jamais moins que marcher dedans */
     return d;
+}
+
+/* ── MODTOOLS — surcharge des STATS D'UNITÉ par fichier (SCPS_MODS) ───────────
+ * unit<TAB><unité><TAB><discipline><TAB><moral><TAB><mvt><TAB><commandement>
+ * Sans fichier ⇒ valeurs compilées ⇒ golden/déterminisme INTACTS. */
+static int army_split(char *line, char *out[], int maxf){
+    int n=0; char *p=line;
+    while (n<maxf){ out[n++]=p; char *t=strchr(p,'\t'); if(!t) break; *t=0; p=t+1; }
+    return n;
+}
+static int unit_by_name(const char *t){
+    for (int i=0;i<U_COUNT;i++){ const char *n=unit_name((UnitType)i); if(n&&strcmp(n,t)==0) return i; }
+    return -1;
+}
+void army_moddata_dump(FILE *f){
+    if(!f) return;
+    fprintf(f,"# unit\t<unité>\t<discipline>\t<moral>\t<mvt>\t<commandement>\n");
+    for(int i=0;i<U_COUNT;i++){ const char *n=unit_name((UnitType)i); if(!n||!*n) continue;
+        fprintf(f,"unit\t%s\t%.4g\t%.4g\t%.4g\t%.4g\n",
+            n,UNITS[i].discipline,UNITS[i].moral,UNITS[i].mouvement,UNITS[i].commandement); }
+}
+int army_moddata_load(const char *path){
+    if(!path||!*path) return -1;
+    FILE *f=fopen(path,"r"); if(!f) return -1;
+    char line[256]; int applied=0; char *fld[7];
+    while(fgets(line,sizeof line,f)){
+        if(line[0]=='#') continue;
+        char *nl=strpbrk(line,"\r\n"); if(nl)*nl=0;
+        int nf=army_split(line,fld,7); if(nf<6) continue;
+        if(strcmp(fld[0],"unit")!=0) continue;
+        int i=unit_by_name(fld[1]); if(i<0) continue;
+        UNITS[i].discipline=(float)atof(fld[2]); UNITS[i].moral=(float)atof(fld[3]);
+        UNITS[i].mouvement=(float)atof(fld[4]); UNITS[i].commandement=(float)atof(fld[5]);
+        applied++;
+    }
+    fclose(f);
+    if(applied>0) fprintf(stderr,"[mods] unités : %d surchargée(s) depuis %s.\n",applied,path);
+    return applied;
 }
