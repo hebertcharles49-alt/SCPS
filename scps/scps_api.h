@@ -488,7 +488,19 @@ typedef struct {
     const char *function[3];/* libellés de fonctions (ordre FN_*) */
     const char *presage;    /* bande de risque faustien (présage de la Brèche) */
     int  crise_pct;         /* 0-100 : proximité de crise (projection tangible) */
+    int  metab_pct;         /* MÉTABOLISATION : +X% de recherche (le creuset digéré) — pour le hover */
 } ScpsTechInfo;
+
+/* ACCÈS D'HÉRITAGE (barre de métabolisation) — par héritage, le TIER d'accès tech atteint
+ * (0..3 : commerce/gouvernance/métabolisation) + la part d'âmes diaspora DIGÉRÉES. Lu par
+ * l'UI de l'arbre (Medusa) : la « barre de progression » qui ouvre les signatures par tier. */
+typedef struct {
+    const char *nom;       /* nom de l'héritage */
+    int tier;              /* accès recherchable atteint : 0..3 */
+    int digested_pct;      /* % d'âmes diaspora de cet héritage DIGÉRÉES (la métabolisation) */
+    int native;            /* 1 = héritage natif de l'empire (toujours tier 3) */
+} ScpsHeritageAccess;
+int scps_player_heritage_access(ScpsSim *s, ScpsHeritageAccess *out, int max);  /* retourne HERITAGE_COUNT */
 void scps_tech_info(ScpsSim *s, ScpsTechInfo *out);
 
 /* ---- BUDGET / FISCAL (econ_flux_get × FluxComp + crédit) -------------- *

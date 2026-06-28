@@ -57,6 +57,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
     ClassDB::bind_method(D_METHOD("tech_info"),                      &ScpsWorld::tech_info);
     ClassDB::bind_method(D_METHOD("tech_nodes"),                     &ScpsWorld::tech_nodes);
+    ClassDB::bind_method(D_METHOD("heritage_access"),                &ScpsWorld::heritage_access);
     ClassDB::bind_method(D_METHOD("country_budget", "country"),      &ScpsWorld::country_budget);
     ClassDB::bind_method(D_METHOD("budget_summary", "country"),      &ScpsWorld::budget_summary);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
@@ -184,7 +185,7 @@ Dictionary ScpsWorld::province_info(int province) {
     d["terrain"]        = String::utf8(p.terrain);
     d["climat"]         = String::utf8(p.climat);
     d["relief"]         = String::utf8(p.relief);
-    d["race"]           = String::utf8(p.race);
+    d["heritage"]       = String::utf8(p.heritage);
     d["stature"]        = String::utf8(p.stature);
     d["flux"]           = String::utf8(p.flux);
     d["vocation"]       = String::utf8(p.vocation);
@@ -283,7 +284,7 @@ Array ScpsWorld::province_groups(int province) {
     int n = scps_province_groups(sim, province, g, 8);
     for (int i = 0; i < n; i++) {
         Dictionary d;
-        d["race"]     = String::utf8(g[i].race);
+        d["heritage"] = String::utf8(g[i].heritage);
         d["culture"]  = String::utf8(g[i].culture);
         d["religion"] = String::utf8(g[i].religion);
         d["klass"]    = String::utf8(g[i].klass);
@@ -556,6 +557,7 @@ Dictionary ScpsWorld::tech_info() {
     d["points"]    = t.points;
     d["crise_pct"] = t.crise_pct;
     d["presage"]   = String::utf8(t.presage);
+    d["metab_pct"] = t.metab_pct;
     Array themes, funcs;
     for (int i = 0; i < 3; i++) { themes.push_back(String::utf8(t.theme[i])); funcs.push_back(String::utf8(t.function[i])); }
     d["themes"]    = themes;
@@ -563,10 +565,27 @@ Dictionary ScpsWorld::tech_info() {
     return d;
 }
 
+/* ACCÈS D'HÉRITAGE (barre de métabolisation) : par héritage, tier 0..3 + part digérée. */
+Array ScpsWorld::heritage_access() {
+    Array a;
+    if (!sim) return a;
+    ScpsHeritageAccess h[8];
+    int n = scps_player_heritage_access(sim, h, 8);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["nom"]          = String::utf8(h[i].nom);
+        d["tier"]         = h[i].tier;
+        d["digested_pct"] = h[i].digested_pct;
+        d["native"]       = (bool)h[i].native;
+        a.push_back(d);
+    }
+    return a;
+}
+
 Array ScpsWorld::tech_nodes() {
     Array a;
-    ScpsTechNode nd[64];
-    int n = scps_tech_nodes(sim, nd, 64);
+    ScpsTechNode nd[96];
+    int n = scps_tech_nodes(sim, nd, 96);
     for (int i = 0; i < n; i++) {
         Dictionary d;
         d["quarter"]  = nd[i].quarter;

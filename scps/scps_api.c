@@ -959,6 +959,30 @@ void scps_tech_info(ScpsSim *s, ScpsTechInfo *out){
     out->presage = sz(label_presage(band_presage(ch)));
     float cp = tech_crisis_proximity(ts); if(cp<0.f)cp=0.f; if(cp>1.f)cp=1.f;
     out->crise_pct = (int)(cp*100.f + 0.5f);
+    /* MÉTABOLISATION : le +% de recherche que vaut le creuset digéré (W·part) — pour le hover. */
+    out->metab_pct = (int)(tune_f("AI_METAB_RES_W",AI_METAB_RES_W)
+                           * econ_country_metabolized(s->w, s->sim.econ, p) * 100.f + 0.5f);
+}
+
+/* ACCÈS D'HÉRITAGE du joueur — la « barre de métabolisation » par héritage (tier 0..3 + part
+ * digérée). Décode le masque d'accès gradué (Temps 2a) + la métabolisation ventilée. */
+int scps_player_heritage_access(ScpsSim *s, ScpsHeritageAccess *out, int max){
+    if(!out || max<=0 || !s || !s->ready) return 0;
+    int p = s->sim.player;
+    if(p<0 || p>=s->w->n_countries) return 0;
+    unsigned acc = ai_heritage_access(s->w, s->sim.econ, s->sim.rn, p);
+    float metab[HERITAGE_COUNT]; econ_country_heritage_digested(s->w, s->sim.econ, p, metab);
+    int cp2 = s->w->country[p].capital_prov;
+    int cr  = (cp2>=0 && cp2<s->w->n_provinces) ? s->w->province[cp2].region : -1;
+    int nativ = (cr>=0 && cr<s->sim.econ->n_regions) ? (int)s->sim.econ->region[cr].culture.heritage : -1;
+    int n = (HERITAGE_COUNT < max) ? HERITAGE_COUNT : max;
+    for(int r=0;r<n;r++){
+        out[r].nom          = sz(heritage_name((Heritage)r));
+        out[r].tier         = tech_heritage_access_tier(acc, (Heritage)r);
+        out[r].digested_pct = (int)(metab[r]*100.f + 0.5f);
+        out[r].native       = (r==nativ) ? 1 : 0;
+    }
+    return n;
 }
 
 int scps_country_budget(ScpsSim *s, int cid, ScpsFluxLine *out, int max){

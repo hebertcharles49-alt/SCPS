@@ -14,6 +14,7 @@ const PW := 720.0
 const PH := 560.0
 const HEAD := 52.0          # hauteur d'en-tête (titre + jauges)
 const FOOT := 22.0          # pied (détail du nœud sélectionné)
+const METAH := 52.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage)
 
 # couleurs d'état (sans bibliothèque d'animation Medusa : on teinte le cercle)
 const COL_LOCKED   := Color(0.40, 0.40, 0.46)
@@ -78,7 +79,7 @@ func _build() -> void:
 	line.connection_width = 2.0
 	_graph.graph_lines = line
 	_graph.position = Vector2(0, HEAD)
-	_graph.size = Vector2(PW, PH - HEAD - FOOT)
+	_graph.size = Vector2(PW, PH - HEAD - FOOT - METAH)
 
 	var center: Vector2 = _graph.size * 0.5
 	var max_r: float = minf(_graph.size.x, _graph.size.y) * 0.5 - 36.0
@@ -205,6 +206,8 @@ func _draw() -> void:
 	VKit.text(self, Vector2(196, 33), COL_LOCKED, "● verrouillé", VKit.FS_SMALL)
 	VKit.text(self, Vector2(286, 33), COL_FAUST, "● faustien", VKit.FS_SMALL)
 	VKit.fill(self, Rect2(12, HEAD - 4, PW - 24, 1), VKit.COL_EDGE)
+	# bande de MÉTABOLISATION : le +% recherche + l'accès tech par héritage (la barre)
+	_draw_metab(info)
 	# pied : détail du nœud cliqué + rappel touche
 	VKit.fill(self, Rect2(12, PH - FOOT, PW - 24, 1), VKit.COL_EDGE)
 	if _sel != "":
@@ -212,3 +215,39 @@ func _draw() -> void:
 	else:
 		VKit.text(self, Vector2(16, PH - FOOT + 4), VKit.COL_DIM, "Cliquez un nœud pour son détail.", VKit.FS_SMALL)
 	VKit.text(self, Vector2(PW - 96, PH - FOOT + 4), VKit.COL_DIM, "[T] fermer", VKit.FS_SMALL)
+
+# ── bande de MÉTABOLISATION : le +% recherche du creuset + l'accès tech par héritage ──
+# Le "+X% recherche" répond à « métabolisation = +% tech visible sous la barre de savoir » ;
+# les 6 barres (tier 0-3 en pips + part digérée) sont la « barre de progression par tier » :
+# digérer un peuple OUVRE ses signatures (tier 1 commerce → tier 3 plein/métabolisé).
+func _draw_metab(info: Dictionary) -> void:
+	var y0 := PH - FOOT - METAH
+	VKit.fill(self, Rect2(12, y0, PW - 24, 1), VKit.COL_EDGE)
+	var mp := int(info.get("metab_pct", 0))
+	UIKit.draw_icon(self, "knowledge_book", Vector2(14, y0 + 4), 14)
+	VKit.text(self, Vector2(36, y0 + 5), VKit.COL_COPPER,
+		"Métabolisation : +%d%% recherche (le creuset digéré)" % mp, VKit.FS_SMALL)
+	if Sim.world == null:
+		return
+	var acc: Array = Sim.world.heritage_access()
+	var n := acc.size()
+	if n == 0:
+		return
+	var cw := (PW - 28.0) / float(n)
+	var ry := y0 + 24.0
+	for i in n:
+		var h: Dictionary = acc[i]
+		var x := 16.0 + i * cw
+		var nm := String(h.get("nom", ""))
+		if nm.length() > 8:
+			nm = nm.substr(0, 8)
+		var nativ := bool(h.get("native", false))
+		var tier := int(h.get("tier", 0))
+		VKit.text(self, Vector2(x, ry), (VKit.COL_COPPER if nativ else VKit.COL_PARCH),
+			("★" if nativ else "") + nm, VKit.FS_SMALL)
+		for k in 3:                                   # 3 pips de tier (rempli = accessible)
+			VKit.fill(self, Rect2(x + k * 9.0, ry + 14, 6, 6),
+				(COL_UNLOCKED if tier > k else COL_LOCKED))
+		var dp := int(h.get("digested_pct", 0))
+		if dp > 0 and not nativ:                       # la métabolisation EN COURS de ce peuple
+			VKit.text(self, Vector2(x + 32, ry + 13), VKit.COL_DIM, "%d%%" % dp, VKit.FS_SMALL)

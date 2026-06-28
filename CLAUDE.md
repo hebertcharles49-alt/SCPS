@@ -965,6 +965,24 @@
   hégémon mortel 5/5, §27 gaté an-180, IPM 1.23 ; **monde plus EXPANSIONNISTE** — guerres 33→45/sim, l'expansion
   payant, mais les soupapes tiennent). **SAVE non bumpé** (rien de sérialisé ne change). Dialable d'une ligne
   (`TECH_COST_N_K` ↑ pour freiner l'expansion, ↓ pour la pousser). À VENIR : reorg tiers 1-5, UI Medusa.
+- **GODOT — UI MEDUSA : arbre tech + barre de métabolisation (2026-06-28)** : le graphe d'arbre Medusa EXISTAIT
+  (`ui/tech_panel.gd` : Atomes radiaux angle=quartier/rayon=tier, couleur=état, clic→recherche, en-tête points/
+  présage/crise) ; on le COMPLÈTE à la vision métabolisation. **Façade** (additive) : `ScpsTechInfo.metab_pct`
+  (le « +X% recherche » du creuset, lu de `econ_country_metabolized`) + `scps_player_heritage_access` →
+  `ScpsHeritageAccess[6]` (par héritage : tier d'accès 0-3 décodé du masque gradué Temps 2a + part diaspora
+  digérée + natif). **Binding** : `tech_info` Dict +`metab_pct`, méthode `heritage_access()`→Array, buffer
+  `tech_nodes` **64→96** (⚠ l'arbre fait désormais **71 nœuds** > 64 → sans le bump, 7 nœuds dont des combos
+  TRONQUÉS). **Panneau** : bande de MÉTABOLISATION sous le graphe — « Métabolisation : +X% recherche » + les
+  6 héritages en **barre de progression** (3 pips de tier remplis selon l'accès + % digéré + ★ natif) : la
+  lecture directe de « digérer un peuple OUVRE ses signatures par tier ». ⚠ **Correctif rename** : le binding +
+  `province_panel.gd` référençaient encore `.race`/`["race"]` (le rename race→héritage 92db155 n'avait pas
+  touché le Godot, scons ne buildant pas d'office ici) → `heritage`/« Héritage ». ⚠ **Env** : la jonction
+  `godot/godot-cpp` était un fichier-symlink cassé (28 o) → recréée vers `E:\JEUX\SCPS\godot\godot-cpp`.
+  GDExtension `scons` **build OK** (`libscps...dll`) · `scps_api_demo` 91/91 · probe headless **`tech_audit`
+  (TECH AUDIT OK** : 71 nœuds, métab +0..43 %, 1 natif tier-3, accès 0-3 bornés sur seeds 9/11/42). Moteur
+  INCHANGÉ (façade+binding+GDScript) ⇒ golden/determinism/SAVE intacts. La roadmap tech est **JOUABLE de bout
+  en bout** (moteur → façade → binding → panneau Medusa). Reste : reorg prix tiers 1-5 (cosmétique), remise de
+  prix inter-empires, hook par-unité, apex triples.
 
 ## Disciplines non négociables
 

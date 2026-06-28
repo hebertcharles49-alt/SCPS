@@ -100,7 +100,7 @@ func _draw() -> void:
 		y = cyc + pr + 16
 	else:
 		y = VKit.section(self, x, y, "PEUPLE")
-		y = VKit.row(self, x, y, "Race", String(info["race"]), VKit.COL_PARCH)
+		y = VKit.row(self, x, y, "Héritage", String(info["heritage"]), VKit.COL_PARCH)
 
 	# ── HUMEUR : rangée de visages + chiffre ──────────────────────────────────
 	y = VKit.section(self, x, y, "HUMEUR")

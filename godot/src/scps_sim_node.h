@@ -93,8 +93,9 @@ public:
     /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */
     Array      unit_roster(int country);              /* unités : nom·classe·coût·éthos·contres·recrutable */
     Array      building_roster(int country);          /* édifices : nom·coût matériaux·or·jours·débloqué */
-    Dictionary tech_info();                           /* arbre du joueur : points · thèmes/fonctions · présage · crise% */
+    Dictionary tech_info();                           /* arbre du joueur : points · thèmes/fonctions · présage · crise% · métab% */
     Array      tech_nodes();                           /* arbre du joueur : nœuds (quadrant·tier·état·coût·effet) */
+    Array      heritage_access();                      /* barre de métabolisation : par héritage tier 0-3 + part digérée */
     Array      country_budget(int country);            /* budget : postes de flux de l'année (signés) */
     Dictionary budget_summary(int country);            /* budget : or · revenus · dépenses · net · crédit · prêteur */
     Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année */
