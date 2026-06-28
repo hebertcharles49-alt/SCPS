@@ -105,9 +105,9 @@ var _alb_l: Image = null  ## terrain albedo (cache) → couleur/luminosité du S
 # et rend l'eau DANS le relief — cœur propre, berges fondues, continu jusqu'à la mer. L'overlay n'en
 # garde QUE le nuage de points (`_rivers`) pour interdire de BÂTIR sur le fil.
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
-const ROAD_CASING := Color(0.227, 0.165, 0.110)  ## bord sombre (viewer 58,42,28)
-const ROAD_FILL   := Color(0.86, 0.74, 0.52)     ## surface parchemin CLAIRE — la route = le fil conducteur landmark↔bourg
-const ROAD_SOFT   := Color(0.227, 0.165, 0.110, 0.13)  ## halo doux SOUS le casing → blend feutré (anti-alias) TIGHT
+const ROAD_INK  := Color(0.29, 0.17, 0.07, 0.78) ## route : sépia RENFORCÉ (umber sombre), opacité LIMITÉE (encre sur parchemin)
+const ROAD_DASH := 6.5     ## longueur de tiret (px écran) — la route en POINTILLÉ
+const ROAD_GAP  := 4.0     ## espace entre tirets (px écran)
 # MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
 const ROADSIDE := [
 	"DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW",
@@ -538,6 +538,38 @@ func _ink_brush(segs: PackedVector2Array, col: Color, core_w: float, feather: fl
 		draw_multiline(segs, Color(col.r, col.g, col.b, col.a * float(b[1])), ww / zoom, true)
 	draw_multiline(segs, col, core_w / zoom, true)            # plume nette (cœur)
 
+## découpe une polyligne en TIRETS (pointillé) — phase continue d'un segment à l'autre (suit la
+## longueur cumulée). `dash`/`gap` en unités MONDE (l'appelant divise les px écran par le zoom).
+func _dash_poly(poly: PackedVector2Array, dash: float, gap: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	if poly.size() < 2 or dash <= 0.0:
+		return out
+	var period := dash + gap
+	if period < 0.001:
+		return out
+	var d := 0.0                                  # longueur cumulée (abscisse curviligne globale)
+	for i in range(poly.size() - 1):
+		var a := poly[i]
+		var b := poly[i + 1]
+		var L := a.distance_to(b)
+		if L < 0.0001:
+			continue
+		var dir := (b - a) / L
+		# parcourt les MULTIPLES de période qui couvrent ce segment [d, d+L] (k croît STRICTEMENT → fini)
+		var k := int(floor(d / period))
+		while true:
+			var ds := float(k) * period          # début du tiret (abscisse globale)
+			if ds > d + L:
+				break
+			var s0 := maxf(ds, d)                 # chevauchement [ds, ds+dash] ∩ [d, d+L]
+			var s1 := minf(ds + dash, d + L)
+			if s1 > s0:
+				out.push_back(a + dir * (s0 - d))
+				out.push_back(a + dir * (s1 - d))
+			k += 1
+		d += L
+	return out
+
 ## (re)charge le réseau de routes + sa méta + l'habillage, et DATE les chantiers neufs.
 ## Appelé hors zoom (générate/tick) → les routes initiales démarrent dès l'an de fondation,
 ## même si le joueur n'a pas encore zoomé (sinon elles « repartiraient » au premier zoom).
@@ -754,12 +786,6 @@ func _phase_color(phase: int) -> Color:
 		_:            return Color(0.8, 0.8, 0.85)   # gris : au repos
 	return Color.WHITE
 
-## choisit le JETON d'armée selon sa TAILLE puis sa composition DOMINANTE.
-## (units/inf/arch/cav/mages sont en PAQUETS de 100 — campaign_units.)
-func _road_width(level: int, zoom: float) -> float:
-	var maj := 1.0 if level == 0 else (0.78 if level == 1 else 0.6)
-	return maxf(0.7 * maj, 2.6 / zoom)
-
 func _mv_ref() -> Node2D:
 	if _mv == null:
 		_mv = get_parent() as Node2D
@@ -820,12 +846,13 @@ func _draw_iso(w, mv: Node2D) -> void:
 			continue
 		_ink_brush(oseg, _empire_ink(o), 2.6, 7.0, zoom)        # 3px bloc d'empire : trait de PINCEAU plein
 
-	# ── ROUTES : réseau à jonctions, 3 passes (halo/casing/surface) à l'encre, croissance organique. ──
+	# ── ROUTES : POINTILLÉ + trait de PINCEAU, sépia RENFORCÉ à OPACITÉ LIMITÉE (encre sur parchemin).
+	#    Croissance organique (1 an/province) ; tous les tirets cumulés → UN seul pinceau (batch). ──
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
 		if not _roads.is_empty():
 			var year: int = w.year()
-			var built := []
+			var alldash := PackedVector2Array()
 			for ri in range(_roads.size()):
 				var rd: Dictionary = _roads[ri]
 				var pts: PackedVector2Array = rd["points"]
@@ -835,18 +862,17 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var nprov: int = maxi(1, int(rd.get("nprov", 1)))
 				var frac := clampf(float(year - st) / float(nprov), 0.0, 1.0)
 				var poly := _road_partial(pts, frac)
-				if poly.size() >= 2:
-					var ipoly := PackedVector2Array()
-					ipoly.resize(poly.size())
-					for k in range(poly.size()):
-						ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
-					built.append({"poly": ipoly, "w": _road_width(int(rd["level"]), zoom)})
-			for bp in built:
-				draw_polyline(bp["poly"], ROAD_SOFT, bp["w"] + 0.10 + 1.4 / zoom, true)
-			for bp in built:
-				draw_polyline(bp["poly"], ROAD_CASING, bp["w"] + 0.10 + 0.9 / zoom, true)
-			for bp in built:
-				draw_polyline(bp["poly"], ROAD_FILL, bp["w"], true)
+				if poly.size() < 2:
+					continue
+				var ipoly := PackedVector2Array()
+				ipoly.resize(poly.size())
+				for k in range(poly.size()):
+					ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
+				alldash.append_array(_dash_poly(ipoly, ROAD_DASH / zoom, ROAD_GAP / zoom))
+			if alldash.size() >= 2:
+				# 2px · pointillé · pinceau (halo doux + cœur) · sépia RENFORCÉ à OPACITÉ LIMITÉE.
+				draw_multiline(alldash, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b, ROAD_INK.a * 0.34), 4.2 / zoom, true)
+				draw_multiline(alldash, ROAD_INK, 2.2 / zoom, true)
 
 	# ── VILLES : glyphe d'encre par région (taille ∝ tier), capitale étoilée. ──
 	if zoom >= CITY_ZOOM_MIN:

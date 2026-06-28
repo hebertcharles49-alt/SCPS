@@ -1101,6 +1101,15 @@
   Binding `border_segments_col`→Dictionary {pts, owner}. **DISPLAY-ONLY** : `scps_api.c` n'est pas
   dans chronicle ⇒ **golden IDENTIQUE**, déterminisme/save intacts. GDExtension `scons` 0 warning.
   Tunable d'overlay : `BORDER_JIT` 0.4.
+- **GODOT parchemin — ROUTES en POINTILLÉ sépia (2026-06-29)** : les routes quittent le tracé plein
+  3-passes pour un **pointillé brossé** — `_dash_poly` découpe chaque polyligne en tirets (marcheur par
+  MULTIPLE de période, `k` croît strictement → terminaison garantie ; remplace une 1re version `fmod`
+  qui bouclait sur un piège de précision flottant), tous les tirets cumulés en UN batch, dessinés en
+  **2 passes** (halo doux + cœur **2.2px**) en **sépia RENFORCÉ** (umber sombre `ROAD_INK`) à
+  **OPACITÉ LIMITÉE** (α 0.78) → encre de route sur le parchemin, distincte des frontières colorées.
+  Tunables d'overlay : `ROAD_INK` · `ROAD_DASH` 6.5 · `ROAD_GAP` 4.0. (Le `_ink_brush` 5-passes est
+  réservé aux blocs d'empire — sur le réseau routier dense entier il étranglait le rendu.) DISPLAY-ONLY,
+  moteur intact.
 
 ## Disciplines non négociables
 
