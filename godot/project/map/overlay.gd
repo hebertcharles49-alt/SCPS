@@ -523,6 +523,21 @@ func _empire_ink(o: int) -> Color:
 	var c := _country_color(o)
 	return Color(c.r * 0.50, c.g * 0.50, c.b * 0.50, 0.95)
 
+## TRAIT DE PINCEAU : pile de passes translucides (bave d'encre) du LARGE plumé au cœur dense,
+## TOUTES antialiasées → feutre le crénelage des arêtes + bord doux = effet brosse. `core_w`/`feather`
+## en px ÉCRAN (÷ zoom). Plus de passes larges = halo plus « mouillé ».
+func _ink_brush(segs: PackedVector2Array, col: Color, core_w: float, feather: float, zoom: float) -> void:
+	var bands := [
+		[feather,        0.07],
+		[feather * 0.72, 0.13],
+		[feather * 0.46, 0.22],
+		[feather * 0.26, 0.38],
+	]
+	for b in bands:
+		var ww: float = core_w + float(b[0])
+		draw_multiline(segs, Color(col.r, col.g, col.b, col.a * float(b[1])), ww / zoom, true)
+	draw_multiline(segs, col, core_w / zoom, true)            # plume nette (cœur)
+
 ## (re)charge le réseau de routes + sa méta + l'habillage, et DATE les chantiers neufs.
 ## Appelé hors zoom (générate/tick) → les routes initiales démarrent dès l'an de fondation,
 ## même si le joueur n'a pas encore zoomé (sinon elles « repartiraient » au premier zoom).
@@ -796,14 +811,14 @@ func _draw_iso(w, mv: Node2D) -> void:
 		if fine_a > 0.02:
 			var fseg := _project_segs_iso(mv, _borders[0])
 			if fseg.size() >= 2:
-				draw_multiline(fseg, Color(0.30, 0.22, 0.15, fine_a), 1.0 / zoom, true)   # 1px provinces (encre fanée)
+				# 1px provinces : 2 passes douces (feutrage léger, sans épaissir) — pinceau fin
+				draw_multiline(fseg, Color(0.30, 0.22, 0.15, fine_a * 0.45), 2.4 / zoom, true)
+				draw_multiline(fseg, Color(0.30, 0.22, 0.15, fine_a), 1.0 / zoom, true)
 	for o in _borders_col:
 		var oseg := _project_segs_iso(mv, _borders_col[o])
 		if oseg.size() < 2:
 			continue
-		var ec := _empire_ink(o)
-		draw_multiline(oseg, Color(ec.r, ec.g, ec.b, 0.22), 5.2 / zoom, true)        # bave d'encre (halo doux)
-		draw_multiline(oseg, ec, 3.0 / zoom, true)                                    # plume nette (3px)
+		_ink_brush(oseg, _empire_ink(o), 2.6, 7.0, zoom)        # 3px bloc d'empire : trait de PINCEAU plein
 
 	# ── ROUTES : réseau à jonctions, 3 passes (halo/casing/surface) à l'encre, croissance organique. ──
 	if zoom >= ROAD_ZOOM_MIN:

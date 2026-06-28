@@ -1092,8 +1092,10 @@
   `ScpsSegC{…,owner}`) : le balayage bseg TAGGE chaque segment par l'owner (pays) → l'overlay groupe
   par entité. **Deux tiers** : **1px TOUTES les provinces** (niveaux 0+1, trame fine encre fanée, en
   **LOD** — fond en survol, se révèle au plan ; toutes restent tracées) · **3px les BLOCS d'empire**
-  (niveau 2) **COULEUR PAR ENTITÉ** (`_empire_ink` = couleur pays foncée), en **2 passes** (bave
-  d'encre douce + plume nette). **Effet plume/calligraphie** : wobble déterministe ∝ position
+  (niveau 2) **COULEUR PAR ENTITÉ** (`_empire_ink` = couleur pays foncée), en **TRAIT DE PINCEAU**
+  (`_ink_brush` : pile de passes translucides du large plumé au cœur dense, TOUTES antialiasées →
+  feutre le crénelage des arêtes de cellule = effet brosse/encre mouillée ; la trame fine reçoit un
+  feutrage léger 2 passes). **Effet plume/calligraphie** : wobble déterministe ∝ position
   (`_jit`, même point monde → même offset → segments JOINTS, pas de trou) + antialiasing. **Noms
   d'empire SANS boîte** (fond transparent) — encre directe + halo papier doux (« écrit à la plume »).
   Binding `border_segments_col`→Dictionary {pts, owner}. **DISPLAY-ONLY** : `scps_api.c` n'est pas
