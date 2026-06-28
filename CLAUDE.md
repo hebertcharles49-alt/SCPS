@@ -999,6 +999,23 @@
   recalculé). ⊕ La **TRIADE de métabolisation est COMPLÈTE** : déverrouille (barre d'accès Temps 2a) · accélère
   (boost Temps 1) · escompte (cette remise). Dialable d'une ligne (`AI_TECH_DIFFUSE_MAX`). Reste (cosmétique/différé) :
   reorg prix tiers 1-5, hook par-unité, apex triples.
+- **APEX TRIPLES tier-5 + HOOK PAR-UNITÉ (2026-06-28)** : le pinacle de l'arbre — la fusion de TROIS héritages.
+  Le mécanisme combo passe à **N=3** : `tech_combo_native2` (3e héritage) ; `tech_can_research` exige l'accès
+  PLEIN (tier 3) aux TROIS (natif OU métabolisé). 3 apex (tier-5, prereq=NONE, la porte = la triple-métabolisation
+  + le coût tier-5) : **Arquebuse runique** (Méca×Métal×Éso, Forge·Armée) · **Concile des savants** (Éso×Adaptatif×Méca,
+  Savoir·Prod → +recherche+efficacité) · **Légion universelle** (Adaptatif×Métal×Clanique, Société·Armée → +moral).
+  **HOOK PAR-UNITÉ** (le vrai « +X% arquebusiers » ciblé que tu voulais) : `ArmyDoctrine` gagne `firearm_power` ;
+  `unit_power` le multiplie sur l'ARQUEBUSIER (comme `arcane_power` sur le mage) ; `army_doctrine` le pose si
+  l'Arquebuse runique est acquise (`APEX_FIREARM` 0.50 = +50 % dégâts arquebusier, en PLUS du weapon_power large).
+  ⚠ **SAVE BUMP 45→46** (TechState +3 nœuds ⇒ TECH_COUNT ; ArmyDoctrine +firearm_power ⇒ ArmyState block sérialisé
+  `sizeof` change). ⊕ **golden IDENTIQUE** (golden-safe : un apex exige l'accès plein à 3 peuples = jamais atteint
+  en 12 ans ; le firearm ne mord que l'apex acquis) — PAS de re-baseline. `determinism` STABLE · 0 warning ·
+  tech_demo 23/23 · army_demo 48/48 · ai_demo 26/26 · scps_api_demo 91/91 · sweep 5×250 SAIN (satisfaction
+  70/77/83, hégémon mortel 5/5, IPM 1.22). `firearm_power` en `#define` local (scps_army.c, comme FORGE_STEP —
+  pas de tune_f dans ce module). ⊕ **La roadmap tech/héritage est COMPLÈTE** (déverrouille/accélère/escompte +
+  étoffe + combos paires + apex triples + coût √N + UI Medusa). Reste UNIQUEMENT le cosmétique : reorg des prix
+  tiers 1-5 (le layout Medusa par tier/quartier le rend déjà lisible — non fait : un changement de BASE_COST
+  re-baselinerait l'équilibre pour un gain purement cosmétique).
 
 ## Disciplines non négociables
 

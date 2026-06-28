@@ -226,6 +226,18 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0.5f,0, 0,0, 0, -0.5f, 0, 0, 0, false },     /* Adaptatif×Clanique : +moral via doctrine + cohésion */
 [TECH_COMBO_HORDE_ECO] = { "Économie de horde","Halle du butin", THM_SOCIETE,FN_ARMEE,4, NONE, false,false,HERITAGE_AGRAIRE,
     0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Agraire×Clanique : +moral via doctrine + production (prod%) */
+
+/* ====================================================================== */
+/* APEX TRIPLES (2026-06-28) — TIER-5 : la fusion de TROIS héritages (accès PLEIN aux 3).   */
+/* Le pinacle. N=3 via tech_combo_native (2e) + tech_combo_native2 (3e). prereq=NONE (la    */
+/* porte = la triple-métabolisation + le coût tier-5). Effets sur leviers vivants.          */
+/* ====================================================================== */
+[TECH_APEX_ARQUEBUSE] = { "Arquebuse runique","Arsenal runique à feu", THM_FORGE,FN_ARMEE,5, NONE, false,false,HERITAGE_MECANISTE,
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false },            /* Méca×Métal×Éso : +dégâts (doctrine) + ARQUEBUSIERS ciblés (firearm_power) */
+[TECH_APEX_CONCILE] = { "Concile des savants","Grand concile", THM_SAVOIR,FN_PRODUCTION,5, NONE, false,false,HERITAGE_ESOTERIQUE,
+    1.0f,0,0, 0,0, 0, 0, 0, 0, 0, false },         /* Éso×Adaptatif×Méca : +recherche (Savoir·Prod) + prod% */
+[TECH_APEX_LEGION] = { "Légion universelle","Camp des nations", THM_SOCIETE,FN_ARMEE,5, NONE, false,false,HERITAGE_ADAPTATIF,
+    0,0.5f,0, 0,0, 0, -0.5f, 0, 0, 0, false },     /* Adaptatif×Métal×Clanique : +moral (doctrine) + cohésion */
 };
 
 /* ====================================================================== */
@@ -330,6 +342,8 @@ static const float NODE_EFF_PCT[TECH_COUNT] = {
     [TECH_MECANISTE_HORLOGERIE]=0.08f,
     /* COMBOS tier-4 à vocation efficacité/savoir. */
     [TECH_COMBO_HORLOGE_MARCH]=0.10f, [TECH_COMBO_ACADEMIE]=0.08f,
+    /* APEX : le Concile des savants — l'efficacité du savoir des trois peuples. */
+    [TECH_APEX_CONCILE]=0.12f,
 };
 float tech_prod_bonus(const TechState *s){
     float b=0.f; if(!s) return 0.f;
@@ -397,6 +411,19 @@ static Heritage tech_combo_native(TechId id){
         case TECH_COMBO_GRENIER_COLON: return HERITAGE_AGRAIRE;       /* Adaptatif × Agraire */
         case TECH_COMBO_FOEDERATI:     return HERITAGE_CLANIQUE;      /* Adaptatif × Clanique */
         case TECH_COMBO_HORDE_ECO:     return HERITAGE_CLANIQUE;      /* Agraire × Clanique */
+        /* APEX TRIPLES : le 2e des trois héritages (le 3e = tech_combo_native2). */
+        case TECH_APEX_ARQUEBUSE:      return HERITAGE_METALLURGISTE; /* Méca × MÉTAL × Éso */
+        case TECH_APEX_CONCILE:        return HERITAGE_ADAPTATIF;     /* Éso × ADAPTATIF × Méca */
+        case TECH_APEX_LEGION:         return HERITAGE_METALLURGISTE; /* Adaptatif × MÉTAL × Clanique */
+        default:               return UNIV;
+    }
+}
+/* APEX TRIPLES — le TROISIÈME héritage requis (UNIV pour tout le reste : pas de 3e porte). */
+static Heritage tech_combo_native2(TechId id){
+    switch (id){
+        case TECH_APEX_ARQUEBUSE:      return HERITAGE_ESOTERIQUE;    /* Méca × Métal × ÉSO */
+        case TECH_APEX_CONCILE:        return HERITAGE_MECANISTE;     /* Éso × Adaptatif × MÉCA */
+        case TECH_APEX_LEGION:         return HERITAGE_CLANIQUE;      /* Adaptatif × Métal × CLANIQUE */
         default:               return UNIV;
     }
 }
@@ -411,9 +438,12 @@ bool tech_can_research(const TechState *s, TechId id, unsigned heritage_access) 
      * l'accès PLEIN (3) à son/ses héritage(s) — natif OU pleinement métabolisé. */
     int need = n->tier > 3 ? 3 : n->tier;
     if (n->native!=UNIV && tech_heritage_access_tier(heritage_access, n->native) < need) return false;
-    /* COMBINAISON : certains nœuds exigent un SECOND archétype (ET), au même tier requis. */
+    /* COMBINAISON : certains nœuds exigent un SECOND (et, pour les APEX, un TROISIÈME)
+     * archétype (ET), au même tier requis (accès PLEIN aux 2-3 héritages). */
     { Heritage combo=tech_combo_native(id);
-      if (combo!=UNIV && tech_heritage_access_tier(heritage_access, combo) < need) return false; }
+      if (combo!=UNIV && tech_heritage_access_tier(heritage_access, combo) < need) return false;
+      Heritage combo2=tech_combo_native2(id);
+      if (combo2!=UNIV && tech_heritage_access_tier(heritage_access, combo2) < need) return false; }
     /* Porte arcane : les bouts faustiens du Savoir profond exigent une ruine. */
     if (n->needs_ruins && !s->has_ruins_access) return false;
     /* Prérequis : le nœud précédent du quartier doit être acquis. */

@@ -82,6 +82,7 @@ typedef struct {
     float weapon_power;   /* FORGE·Armée   : multiplie les dégâts (meilleures armes ; ≥1) */
     float moral_mul;      /* SOCIÉTÉ·Armée : multiplie la réserve de moral (tient plus ; ≥1) */
     float arcane_power;   /* SAVOIR·Armée  : multiplie les dégâts du MAGE (l'arcane ; ≥1) */
+    float firearm_power;  /* APEX Arquebuse runique : multiplie les dégâts de l'ARQUEBUSIER (≥1) */
     bool  can_summon;     /* SAVOIR·Armée faustien : l'INVOCATION déverrouillée */
 } ArmyDoctrine;
 

@@ -908,6 +908,10 @@ static const char *const TECH_UTILITY[TECH_COUNT] = {
     [TECH_COMBO_GRENIER_COLON] = "+stabilité & +croissance (colonies) [Adaptatif×Agraire]",
     [TECH_COMBO_FOEDERATI]     = "+moral & +cohésion (mercenaires) [Adaptatif×Clanique]",
     [TECH_COMBO_HORDE_ECO]     = "+moral & +production (razzia) [Agraire×Clanique]",
+    /* APEX TRIPLES (fusion de 3 héritages) — le pinacle. */
+    [TECH_APEX_ARQUEBUSE]      = "+dégâts & +arquebusiers ciblés (feu runique) [Méca×Métal×Éso]",
+    [TECH_APEX_CONCILE]        = "+recherche & +efficacité (le concile) [Éso×Adaptatif×Méca]",
+    [TECH_APEX_LEGION]         = "+moral & +cohésion (la légion des nations) [Adaptatif×Métal×Clanique]",
 };
 void tech_tree_readout(const TechState *ts, unsigned heritage_access, float n_provinces,
                        TechTreeReadout *out){

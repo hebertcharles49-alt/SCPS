@@ -188,13 +188,18 @@ float matchup(UnitType a, UnitType b){
 void army_init(ArmyState *a){ memset(a,0,sizeof(*a)); a->doctrine = army_doctrine_base(); }
 
 /* ---- §3 : la doctrine lue depuis l'arbre ------------------------------- */
+#ifndef APEX_FIREARM
+#define APEX_FIREARM 0.50f   /* APEX Arquebuse runique : +50 % de dégâts aux ARQUEBUSIERS (par-unité) */
+#endif
 ArmyDoctrine army_doctrine_base(void){
-    ArmyDoctrine d; d.weapon_power=1.f; d.moral_mul=1.f; d.arcane_power=1.f; d.can_summon=false;
+    ArmyDoctrine d; d.weapon_power=1.f; d.moral_mul=1.f; d.arcane_power=1.f; d.firearm_power=1.f; d.can_summon=false;
     return d;
 }
 ArmyDoctrine army_doctrine(const TechState *t){
     ArmyDoctrine d = army_doctrine_base();
     if (!t) return d;
+    /* APEX (Méca×Métal×Éso) : le « +X% arquebusiers » CIBLÉ — par-unité, en plus du weapon_power large. */
+    if (t->unlocked[TECH_APEX_ARQUEBUSE]) d.firearm_power += APEX_FIREARM;
     /* on parcourt l'arbre : tout nœud ARMÉE déverrouillé pèse selon sa PROFONDEUR
      * (tier) — la base (tier 0, universelle) ne différencie personne ; le bord
      * faustien (tier élevé) décuple. Chaque thème nourrit sa propre vertu. */
@@ -271,7 +276,8 @@ static void resolve_contact(Unit *a, Unit *b, float terrain, float power, uint32
  * en plus pour le mage. */
 static float unit_power(UnitType t, const ArmyDoctrine *d){
     float p = d->weapon_power;
-    if (t==U_MAGE) p *= d->arcane_power;
+    if (t==U_MAGE)        p *= d->arcane_power;    /* l'arcane pour le mage */
+    if (t==U_ARQUEBUSIER) p *= d->firearm_power;  /* APEX : le feu runique pour l'arquebusier */
     return p;
 }
 static int first_live(const ArmyState *S){

@@ -27,7 +27,7 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 45u           /* v45 : COMBOS — +14 nœuds de tech tier-4 (fusion de 2 héritages) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v44 : ÉTOFFE — +12 nœuds de tech (branches culturelles d'héritage tier 1-2) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v43 : RES_METAL SUPPRIMÉ (outils = fer+bois DIRECT ; coques = cuivre) ⇒ RES_COUNT change → tableaux [RES_COUNT] de RegionEconomy rétrécissent. v42 : ALLOCATION main-d'œuvre. v41 : EXPLOITATION (raw_boost) */
+#define SAVE_VERSION 46u           /* v46 : APEX TRIPLES — +3 nœuds tier-5 (fusion de 3 héritages) ⇒ TECH_COUNT grandit (TechState) ; + ArmyDoctrine.firearm_power (ArmyState block sérialisé sizeof). v45 : COMBOS — +14 nœuds de tech tier-4 (fusion de 2 héritages) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v44 : ÉTOFFE — +12 nœuds de tech (branches culturelles d'héritage tier 1-2) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v43 : RES_METAL SUPPRIMÉ (outils = fer+bois DIRECT ; coques = cuivre) ⇒ RES_COUNT change → tableaux [RES_COUNT] de RegionEconomy rétrécissent. v42 : ALLOCATION main-d'œuvre. v41 : EXPLOITATION (raw_boost) */
 #define SAVE_F_CRYPT 1u
 
 typedef struct {

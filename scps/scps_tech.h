@@ -101,6 +101,11 @@ typedef enum {
     TECH_COMBO_GRENIER_COLON, /* Adaptatif × Agraire — Grenier colonial (Société·Renf) */
     TECH_COMBO_FOEDERATI,     /* Adaptatif × Clanique — Foederati (Société·Armée) */
     TECH_COMBO_HORDE_ECO,     /* Agraire × Clanique — Économie de horde (Société·Armée) */
+    /* APEX TRIPLES (2026-06-28) — TIER-5 : la fusion de TROIS héritages métabolisés/possédés
+     * (accès PLEIN aux 3). Le pinacle. Mécanisme N=3 : native + tech_combo_native + tech_combo_native2. */
+    TECH_APEX_ARQUEBUSE,      /* Méca × Métal × Éso — Arquebuse runique (Forge·Armée : +arquebusiers ciblés) */
+    TECH_APEX_CONCILE,        /* Éso × Adaptatif × Méca — Concile des savants (Savoir·Prod : +recherche) */
+    TECH_APEX_LEGION,         /* Adaptatif × Métal × Clanique — Légion universelle (Société·Armée : +moral) */
     TECH_COUNT
 } TechId;
 
