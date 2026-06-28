@@ -890,6 +890,23 @@
   ligne. **SAVE non bumpé** (rien de sérialisé ne change ; le signal se recalcule). À VENIR (Temps 2, re-baseline) :
   la BARRE D'ACCÈS continue (le seuil binaire `PROFOND` de `ai_heritage_access` → access_bar par tier) + la REMISE
   de prix (tech qu'un autre empire possède = moins chère) ; puis coût en N-provinces, reorg tiers 1-5, UI Medusa.
+- **ÉTOFFE DE L'ARBRE — 12 branches culturelles d'héritage tier 1-2 (2026-06-28)** : prérequis de la barre de
+  métabolisation. L'arbre n'avait que **7 signatures** (≈1/héritage, TOUTES tier-3) → « X% d'un éthos ⇒ tech R/S/T
+  par tier » n'avait RIEN à graduer. On donne à chaque héritage une vraie montée **tier 1→2→3** : 2 nœuds
+  PEU PROFONDS neufs (`native=héritage`, `faustian=false`, charge/flux faibles) menant vers sa signature tier-3.
+  **Branches PARALLÈLES** (la signature garde son prérequis d'origine ; ce sont des rungs que la barre — Temps 2 —
+  ouvrira par tier : peu de métabolisation → t1, plus → t2, beaucoup → la signature t3). Les 12 (conçus par
+  workflow 6-designers + critique d'équilibre adversarial, deltas calés sur l'échelle des tier-1/2 existants) :
+  **Ésotérique** Glyphes éthérés→Communion éthérée (Savoir·Renf) · **Métallurgiste** Alliages des profondeurs→
+  Gravure runique (Forge·Armée) · **Mécaniste** Rouages de précision→Mécanisme d'horlogerie (Forge·Prod→Renf) ·
+  **Adaptatif** Droit coutumier→Langue franque (Société·Renf) · **Agraire** Vergers étagés→Pâturages intégrés
+  (Société·Prod) · **Clanique** Rites guerriers→Hordes conquérantes (Société·Armée). Enums APPENDUS (index stable ;
+  `tech_heritage_affinity` inchangé — les signatures précèdent dans l'ordre) ; `NODES[]` les place par initialiseur
+  désigné. ⚠ **SAVE BUMP 43→44** (+12 ⇒ `TECH_COUNT` grandit ⇒ `TechState.unlocked[TECH_COUNT]` change de taille).
+  ⚠ **RE-BASELINE golden** (les natifs recherchent leurs nouveaux rungs — l'arbre vit ; golden mis à jour) ·
+  `determinism` **STABLE** · `tech_demo` 22/22 · suite **38 runnable verts** (3 KO pré-existants Windows) · 0 warning ·
+  sweep 5×250 SAIN (hégémon mortel 5/5, §27 gaté an-180, arbre 51-60 %/empire encore DIFFÉRENCIÉ, satisfaction
+  ~67/75/82). À VENIR (Temps 2) : la barre de métabolisation gate ces rungs par tier + la remise de prix.
 
 ## Disciplines non négociables
 

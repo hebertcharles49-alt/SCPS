@@ -71,6 +71,17 @@ typedef enum {
      * la Corne divine réutilise TECH_FORGE_RUNES (métallurgie céleste, FAU4). */
     TECH_ALCHIMIE,
     TECH_TRANSMUTATION,
+    /* ÉTOFFE (2026-06-28) — BRANCHES CULTURELLES D'HÉRITAGE (tier 1-2, native=héritage).
+     * Chaque héritage gagne 2 spécialités PEU PROFONDES menant vers sa signature tier-3 :
+     * la « barre de métabolisation » (Temps 2) ouvrira l'accès par tier (peu → t1, plus → t2,
+     * beaucoup → la signature t3). Appendus (index stable) ; la table NODES les place par
+     * initialiseur désigné. Branches PARALLÈLES (la signature garde son prérequis d'origine). */
+    TECH_GLYPHES_ETHERES,    TECH_COMMUNION_ETHEREE,   /* Ésotérique (Savoir) */
+    TECH_ALLIAGES_NAINS,     TECH_GRAVURE_RUNES,       /* Métallurgiste (Forge) */
+    TECH_MECANISTE_ROUAGES,  TECH_MECANISTE_HORLOGERIE,/* Mécaniste (Forge) */
+    TECH_DROIT_COUTUMIER,    TECH_LANGUE_FRANQUE,      /* Adaptatif (Société) */
+    TECH_VERGERS_ETAGES,     TECH_PATURAGES_INTEGRES,  /* Agraire (Société) */
+    TECH_RITES_GUERRIERS,    TECH_HORDES_CONQUERANTES, /* Clanique (Société) */
     TECH_COUNT
 } TechId;
 

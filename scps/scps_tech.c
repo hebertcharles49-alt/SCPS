@@ -146,6 +146,44 @@ static const TechNode NODES[TECH_COUNT] = {
  * (tier 3, derrière l'Alchimie) → charge de base élevée (paroxysme = pression de Brèche). */
 [TECH_TRANSMUTATION] = { "Transmutation","Réplicateur ligneux", THM_SOCIETE,FN_PRODUCTION,3, TECH_ALCHIMIE, true,false,UNIV,
     0,0,0, 2.0f,0, 0, 0, 1.0f, 0.30f, 1.2f, false },
+
+/* ====================================================================== */
+/* ÉTOFFE (2026-06-28) — BRANCHES CULTURELLES D'HÉRITAGE (tier 1-2)        */
+/* Chaque héritage gagne 2 spécialités PEU PROFONDES (native=héritage,      */
+/* faustian=false, charge/flux faibles) menant vers sa signature tier-3.    */
+/* Branches PARALLÈLES : la signature garde son prérequis d'origine ; ce    */
+/* sont des rungs que la barre de métabolisation (Temps 2) ouvrira par tier.*/
+/* ====================================================================== */
+/* ---- Ésotérique (Savoir·Renforcement → COMMUNION) -------------------- */
+[TECH_GLYPHES_ETHERES] = { "Glyphes éthérés","Cercle de glyphes", THM_SAVOIR,FN_RENFORCEMENT,1, TECH_BIBLIOTHEQUE, false,false,HERITAGE_ESOTERIQUE,
+    0,0.5f,0.75f, 0,0, 0, 0, 0.3f, 0, 0.10f, false },
+[TECH_COMMUNION_ETHEREE] = { "Communion éthérée","Bastion éthéré", THM_SAVOIR,FN_RENFORCEMENT,2, TECH_GLYPHES_ETHERES, false,false,HERITAGE_ESOTERIQUE,
+    0,1.0f,1.5f, 0,0, 0, 0, 0.6f, 0.15f, 0.40f, false },
+/* ---- Métallurgiste (Forge·Armée → FORGE_RUNES) ----------------------- */
+[TECH_ALLIAGES_NAINS] = { "Alliages des profondeurs","Fonderie de bronze", THM_FORGE,FN_ARMEE,1, TECH_COLLECTE_ARGILE, false,false,HERITAGE_METALLURGISTE,
+    0,0.3f,0.5f, 0.3f,1.3f, 0, 0, 0, 0, 0, false },
+[TECH_GRAVURE_RUNES] = { "Gravure runique","Rune-forge", THM_FORGE,FN_ARMEE,2, TECH_ALLIAGES_NAINS, false,false,HERITAGE_METALLURGISTE,
+    0,0.3f,0.5f, 0.2f,2.0f, 0, 0, 0.5f, 0.10f, 0.50f, false },
+/* ---- Mécaniste (Forge·Prod→Renf → AUTOMATES) ------------------------- */
+[TECH_MECANISTE_ROUAGES] = { "Rouages de précision","Engrenagerie", THM_FORGE,FN_PRODUCTION,1, TECH_FONDERIE, false,false,HERITAGE_MECANISTE,
+    0.3f,0.5f,0, 1.2f,0, 0, 0, 0, 0.05f, 0.20f, false },
+[TECH_MECANISTE_HORLOGERIE] = { "Mécanisme d'horlogerie","Horloge mécanique", THM_FORGE,FN_RENFORCEMENT,2, TECH_MECANISTE_ROUAGES, false,false,HERITAGE_MECANISTE,
+    0.3f,0.5f,0.3f, 1.5f,0, 0, 0, 0.5f, 0.10f, 0.30f, false },
+/* ---- Adaptatif (Société·Renforcement → INTEGRATION) ------------------ */
+[TECH_DROIT_COUTUMIER] = { "Droit coutumier","Code coutumier", THM_SOCIETE,FN_RENFORCEMENT,1, TECH_CHANCELLERIE, false,false,HERITAGE_ADAPTATIF,
+    0,1.0f,0.5f, 0.5f,0, 0, 0, 0, 0, 0, false },
+[TECH_LANGUE_FRANQUE] = { "Langue franque","Lingua franca", THM_SOCIETE,FN_RENFORCEMENT,2, TECH_DROIT_COUTUMIER, false,false,HERITAGE_ADAPTATIF,
+    1.0f,1.5f,1.0f, 0,0, 0, -1.0f, 0, 0, 0, false },
+/* ---- Agraire (Société·Production → ABONDANCE) ------------------------ */
+[TECH_VERGERS_ETAGES] = { "Vergers étagés","Vergers en terrasses", THM_SOCIETE,FN_PRODUCTION,1, TECH_COLLECTE_NOURRITURE, false,false,HERITAGE_AGRAIRE,
+    0,0.5f,0, 1.0f,0, 0, 0, 0, 0, 0, false },
+[TECH_PATURAGES_INTEGRES] = { "Pâturages intégrés","Prairies-vergers", THM_SOCIETE,FN_PRODUCTION,2, TECH_VERGERS_ETAGES, false,false,HERITAGE_AGRAIRE,
+    0,1.0f,0, 2.0f,0, 0, 0, 0, 0, 0, false },
+/* ---- Clanique (Société·Armée → ESCLAVAGE) ---------------------------- */
+[TECH_RITES_GUERRIERS] = { "Rites guerriers","Sanctuaire des ancêtres", THM_SOCIETE,FN_ARMEE,1, TECH_CASERNE, false,false,HERITAGE_CLANIQUE,
+    0,0.3f,0, 0,1.3f, 0.2f, 0, 0, 0, 0, false },
+[TECH_HORDES_CONQUERANTES] = { "Hordes conquérantes","Camps de rapine", THM_SOCIETE,FN_ARMEE,2, TECH_RITES_GUERRIERS, false,false,HERITAGE_CLANIQUE,
+    0,0.5f,0, 1.5f,1.5f, 0.3f, 0.5f, 0, 0, 0, false },
 };
 
 /* ====================================================================== */

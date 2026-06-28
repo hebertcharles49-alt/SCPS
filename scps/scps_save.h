@@ -27,7 +27,7 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 43u           /* v43 : RES_METAL SUPPRIMÉ (outils = fer+bois DIRECT ; coques = cuivre) ⇒ RES_COUNT change → tableaux [RES_COUNT] de RegionEconomy rétrécissent. v42 : ALLOCATION main-d'œuvre. v41 : EXPLOITATION (raw_boost) */
+#define SAVE_VERSION 44u           /* v44 : ÉTOFFE — +12 nœuds de tech (branches culturelles d'héritage tier 1-2) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v43 : RES_METAL SUPPRIMÉ (outils = fer+bois DIRECT ; coques = cuivre) ⇒ RES_COUNT change → tableaux [RES_COUNT] de RegionEconomy rétrécissent. v42 : ALLOCATION main-d'œuvre. v41 : EXPLOITATION (raw_boost) */
 #define SAVE_F_CRYPT 1u
 
 typedef struct {
