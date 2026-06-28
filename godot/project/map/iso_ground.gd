@@ -479,26 +479,20 @@ func _build_road_idx(w, W: int, H: int) -> void:
 func _ready() -> void:
 	Sim.generated.connect(_on_generated)
 	Sim.ticked.connect(_on_tick)
-	_active = UIKit.has_iso_tiles()
+	_active = true                  # le parchemin est PROCÉDURAL (couches moteur) → pas besoin d'iso_tiles
 	_setup_blend()
 	queue_redraw()
 
-## monte le ShaderMaterial de fondu DIRECTIONNEL (rivage). Sans lui → tuiles brutes à bords francs.
+## monte le ShaderMaterial PARCHEMIN (iso_antique) — rendu cartographique 100 % procédural depuis les
+## couches moteur (biome + rivières) + un bruit. Plus de splat iso 3D, plus d'atlas de sprites.
 func _setup_blend() -> void:
-	# OPT-IN « carte ancienne » (essai) : un shader cartographique remplace le splat réaliste. Display-only,
-	# déclenché par l'argument `antique=on` (ou SCPS_ANTIQUE) → ne touche pas le rendu par défaut.
-	_antique = OS.has_environment("SCPS_ANTIQUE")
-	for a in OS.get_cmdline_user_args():
-		if a == "antique=on":
-			_antique = true
-	var sh := load("res://map/iso_antique.gdshader") if _antique else load("res://map/iso_blend.gdshader")
+	_antique = true                 # rendu UNIQUE : la carte parchemin, à tous les zooms
+	var sh := load("res://map/iso_antique.gdshader")
 	if sh == null:
 		return
 	var mat := ShaderMaterial.new()
 	mat.shader = sh
-	var noise := UIKit.blend_noise()        # stamp fbm seamless → bord organique cohérent
-	if noise != null:
-		mat.set_shader_parameter("noise_tex", noise)
+	mat.set_shader_parameter("noise_tex", _make_noise())   # bruit PROCÉDURAL seamless (plus d'asset PNG)
 	material = mat
 	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED   # la texture PLATE COULE (UV monde > 1 → wrap)
 	# Filtre du NŒUD = LINEAR (pour la TEXTURE intégrée = sprites de falaise) ; le splat anti-moiré via
@@ -507,11 +501,26 @@ func _setup_blend() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_shaded = true
 
+## bruit fbm SEAMLESS généré (plus de PNG) — grain de papier, warp de frontières, écume/encre du shader.
+func _make_noise() -> NoiseTexture2D:
+	var fnl := FastNoiseLite.new()
+	fnl.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	fnl.frequency = 0.012
+	fnl.fractal_type = FastNoiseLite.FRACTAL_FBM
+	fnl.fractal_octaves = 4
+	fnl.seed = 1337
+	var nt := NoiseTexture2D.new()
+	nt.width = 512
+	nt.height = 512
+	nt.seamless = true
+	nt.noise = fnl
+	return nt
+
 func is_active() -> bool:
 	return _active
 
 func _on_generated() -> void:
-	_active = UIKit.has_iso_tiles()
+	_active = true
 	_bmap = null            # nouveau monde → recharge la carte des biomes pour le splat
 	_river_map = null       # … et la couche débit (rivières carvées)
 	_river_field = null
@@ -553,7 +562,8 @@ func _draw() -> void:
 		return
 	var W := int(w.map_w())
 	var H := int(w.map_h())
-	# uniformes du splat : carte des biomes (R = biome/255) + texture-array des sols plats + autotile falaise
+	# PARCHEMIN : le shader peint tout depuis les SEULES couches moteur — carte des biomes (R = biome/255)
+	# + champ de débit des rivières (carvé CPU) + bruit (grain/warp). Aucun atlas de sprites.
 	var mat := material as ShaderMaterial
 	if mat != null:
 		if _bmap == null:
@@ -562,47 +572,16 @@ func _draw() -> void:
 			if _river_field == null:
 				_river_field = _build_river_field(w, W, H)
 			_river_map = ImageTexture.create_from_image(_river_field)
-		if _cliff_idx == null:
-			_build_cliff_idx(w, bio, W, H)
 		mat.set_shader_parameter("biome_map", _bmap)
 		if _river_map != null:
 			mat.set_shader_parameter("river_map", _river_map)
 		mat.set_shader_parameter("map_size", Vector2(W, H))
-		mat.set_shader_parameter("terrains", _terr_array())
-		mat.set_shader_parameter("cliff_atlas", _cliff_autotile())
-		mat.set_shader_parameter("cliff_idx", _cliff_idx)
-		mat.set_shader_parameter("cliff_dist", _cliff_h)
-		mat.set_shader_parameter("cliff_top_biome", _cliff_topbio)
-		mat.set_shader_parameter("dist_max", DIST_MAX)
-		mat.set_shader_parameter("cliff_grid", Vector2(W / TILE_K, H / TILE_K))
-		mat.set_shader_parameter("tile_k", float(TILE_K))
-		# ROUTES = CHAMP LISSE (comme la rivière) : on rasterise les polylignes en couverture douce
-		# (`road_cov`, filtre linéaire), pas un pâté cardinal en losange. Le shader lit le champ → bord
-		# terreux (road_worn) + centre PAVÉ (tuile cobblestone seamless), avec warp de bruit sur le bord.
-		if _road_cov == null:
-			_road_cov = ImageTexture.create_from_image(_build_road_cov(w, W, H))
-			var nn := 0
-			for rd in w.road_paths():
-				nn += (rd["points"] as PackedVector2Array).size()
-			_road_sig = nn
-		mat.set_shader_parameter("road_cov", _road_cov)
-		mat.set_shader_parameter("map_size", Vector2(W, H))
-		var pave := _road_pave_tex()
-		if pave != null:
-			mat.set_shader_parameter("road_pave", pave)
-		# SOL URBAIN : terre battue graduelle sous les bourgs (remplace les dalles « pâté » de l'overlay)
-		if _city_wear == null:
-			_city_wear = ImageTexture.create_from_image(_build_city_wear(w, W, H))
-		mat.set_shader_parameter("city_wear", _city_wear)
-		mat.set_shader_parameter("road_on", 1.0)
-		mat.set_shader_parameter("flat_map", 1.0 if _antique else 0.0)
-	# SOL = UN seul QUAD couvrant la carte iso (x∈[-H,W], y∈[0,(W+H)/2]) → splat PAR PIXEL dans le shader
-	if _antique:
-		# CARTE ANCIENNE : quad TOP-DOWN (monde direct) + marge de PAPIER → vraie carte a plat.
-		draw_rect(Rect2(-ANTIQUE_MARGIN, -ANTIQUE_MARGIN, float(W) + 2.0 * ANTIQUE_MARGIN,
-			float(H) + 2.0 * ANTIQUE_MARGIN), Color(0.0, 0.0, 0.0, 1.0))
-	else:
-		draw_rect(Rect2(-float(H), 0.0, float(W + H), float(W + H) * 0.5), Color(0.0, 0.0, 0.0, 1.0))
+		# flat_map = 1.0 : mapping cellule TOP-DOWN (biome lu en monde direct). L'INCLINAISON visuelle
+		# est portée par l'échelle Y du nœud IsoGround (map_view.TILT_Y) → sol & overlay restent alignés.
+		mat.set_shader_parameter("flat_map", 1.0)
+	# SOL PARCHEMIN : un seul QUAD TOP-DOWN couvrant le monde (+ marge de PAPIER), peint par le shader.
+	draw_rect(Rect2(-ANTIQUE_MARGIN, -ANTIQUE_MARGIN, float(W) + 2.0 * ANTIQUE_MARGIN,
+		float(H) + 2.0 * ANTIQUE_MARGIN), Color(0.0, 0.0, 0.0, 1.0))
 
 ## tuile pavé seamless (1×) — centre de la chaussée, échantillonnée tuilée sur le plan du sol.
 func _road_pave_tex() -> Texture2D:

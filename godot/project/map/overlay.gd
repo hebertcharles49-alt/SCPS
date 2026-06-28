@@ -1907,134 +1907,49 @@ func _project_segs_iso(mv: Node2D, segs: PackedVector2Array) -> PackedVector2Arr
 		out[i] = mv.iso_pos(segs[i].x, segs[i].y)
 	return out
 
-# ════════════════════════ dispatch GLOBE / ISO ════════════════════════
+# ════════════════════════ dispatch (parchemin, ISO unique) ════════════════════════
 func _draw() -> void:
 	var w = Sim.world
 	if w == null:
 		return
 	var mv := _mv_ref()
-	if mv == null or not mv.has_method("globe_to_screen"):
+	if mv == null:
 		return
-	var vm := 0
-	if mv.get("view_mode") != null:
-		vm = int(mv.get("view_mode"))
-	if vm == 0:
-		_draw_globe(w, mv)
-	else:
-		_draw_iso(w, mv)
+	_draw_iso(w, mv)
 	# MODE RESSOURCES (9) : les icônes de brutes par tuile, AU-DESSUS de tout
 	if int(mv.get("mode")) == 9:
-		_draw_resources(w, mv, vm != 0)
+		_draw_resources(w, mv, true)
 
-## GLOBE (vue d'ensemble) — UNIQUEMENT frontières + noms d'empire (se repérer). Aucun asset.
-func _draw_globe(w, mv: Node2D) -> void:
+## CARTE PARCHEMIN — acteurs tracés en ENCRE vectorielle (zéro sprite) : frontières, routes,
+## villes (glyphes), noms d'empire, armées, épicentre §27. La Camera2D met à l'échelle ; les
+## tailles d'encre sont en px ÉCRAN (÷ zoom) → lisibles à tous les zooms.
+func _draw_iso(w, mv: Node2D) -> void:
+	var zoom := get_viewport_transform().get_scale().x
+	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
+	var INK := Color(0.20, 0.14, 0.09, 0.95)         # encre brun-sépia (le trait de plume)
+
+	# ── FRONTIÈRES : pays toujours (repère), régions en mode régions. Encre. ──
 	var mode := 0
 	if mv.get("mode") != null:
 		mode = int(mv.get("mode"))
 	if _borders_dirty:
 		_rebuild_borders()
-	# régions seulement en mode régions ; PAYS TOUJOURS (le repère d'orientation).
 	if mode >= 1 and mode <= 2 and _borders.has(1):
-		var rseg := _project_segs_globe(mv, _borders[1])
+		var rseg := _project_segs_iso(mv, _borders[1])
 		if rseg.size() >= 2:
-			draw_multiline(rseg, Color(0.078, 0.102, 0.149, 0.85), 1.4)
+			draw_multiline(rseg, Color(0.34, 0.26, 0.16, 0.65), 1.4 / zoom)
 	if _borders.has(2):
-		var cseg := _project_segs_globe(mv, _borders[2])
+		var cseg := _project_segs_iso(mv, _borders[2])
 		if cseg.size() >= 2:
-			draw_multiline(cseg, Color(0.039, 0.055, 0.086, 0.95), 2.6)
-	# NOMS d'empire (toujours, sur le globe : c'est la fonction « se repérer »).
-	for c in range(w.country_count()):
-		if c >= _country_names.size():
-			break
-		var nm: String = _country_names[c]
-		if nm == "":
-			continue
-		var sx := 0.0
-		var sy := 0.0
-		var n := 0
-		for r in range(w.region_count()):
-			if w.region_owner(r) == c:
-				var ctr: Vector2 = w.region_centroid(r)
-				if ctr.x >= 0:
-					sx += ctr.x
-					sy += ctr.y
-					n += 1
-		if n < 2:
-			continue
-		var pr: Dictionary = mv.globe_to_screen(sx / n, sy / n)
-		if not pr["vis"]:
-			continue
-		var sp: Vector2 = pr["pos"]
-		if sp.x < 50 or sp.y < 60 or sp.x > vp.x - 50 or sp.y > vp.y - 56:
-			continue
-		var lw := VKit.text_w(nm, VKit.FS_SMALL)
-		draw_rect(Rect2(sp.x - lw * 0.5 - 3.0, sp.y - 8.0, lw + 6.0, 15.0), Color(0.03, 0.05, 0.08, 0.72))
-		VKit.text(self, Vector2(sp.x - lw * 0.5, sp.y - 7.0), Color(0.97, 0.93, 0.84, 1.0), nm, VKit.FS_SMALL)
+			draw_multiline(cseg, Color(0.22, 0.15, 0.09, 0.90), 2.8 / zoom)
 
-## ISO (surface de JEU) — ROUTES & ASSETS posés SUR le relief (mv.iso_pos), la Camera2D met à
-## l'échelle. Détail croissant au zoom : rivières → routes → bourg. C'est ici que se lit le jeu.
-func _draw_iso(w, mv: Node2D) -> void:
-	var zoom := get_viewport_transform().get_scale().x
-	var vt := get_viewport_transform()
-	var vp := get_viewport_rect().size
-
-	# (RIVIÈRES : plus dessinées ici — CARVÉES dans le terrain par iso_blend.gdshader, cf. en-tête.)
-	# (FALAISES : le RELIEF est rendu par cliff_3d.gd — micro-mesh 3D en SubViewport — composité par
-	#  iso_ground, sous le dressing. L'overlay ne dessine plus de mur de falaise.)
-
-	# ── DRESSING : arbres/bosquets/buissons/cailloux/roseaux (DERRIÈRE les villes), cullés au viewport ──
-	if zoom >= DECOR_ZOOM_MIN:
-		for d in _decor:
-			var spr := UIKit.dressing_named(d["name"])
-			if spr == null:
-				continue
-			var ip: Vector2 = mv.iso_pos((d["pos"] as Vector2).x, (d["pos"] as Vector2).y)
-			var ss: Vector2 = vt * ip
-			if ss.x < -30 or ss.y < -30 or ss.x > vp.x + 30 or ss.y > vp.y + 30:
-				continue
-			var th: float = d.get("sz", 10.0)                  # HAUTEUR monde
-			var tw := th * float(spr.get_width()) / float(maxi(1, spr.get_height()))   # RATIO NATIF (chênes hauts ≠ carrés)
-			var dt: Color = d.get("tint", Color(1, 1, 1, 1))   # calé sur le terrain (relief + sol)
-			draw_texture_rect(spr, Rect2(ip - Vector2(tw * 0.5, th), Vector2(tw, th)), false, dt)
-
-	# ── FRONTIÈRES (gameplay) : sur le relief iso. Pays + régions selon le mode. ──
-	var mode := 0
-	if mv.get("mode") != null:
-		mode = int(mv.get("mode"))
-	if mode >= 1:
-		if _borders_dirty:
-			_rebuild_borders()
-		if mode <= 2 and _borders.has(1):
-			var rseg := _project_segs_iso(mv, _borders[1])
-			if rseg.size() >= 2:
-				draw_multiline(rseg, Color(0.078, 0.102, 0.149, 0.85), 1.6 / zoom)
-		if _borders.has(2):
-			var cseg := _project_segs_iso(mv, _borders[2])
-			if cseg.size() >= 2:
-				draw_multiline(cseg, Color(0.039, 0.055, 0.086, 0.95), 3.0 / zoom)
-
-	# ── ROUTES : réseau à jonctions, 3 passes (halo/casing/surface), sur le relief iso.
-	#    Croissance organique 1 an/province ; mobilier de bord à la FIN du chantier. ──
+	# ── ROUTES : réseau à jonctions, 3 passes (halo/casing/surface) à l'encre, croissance organique. ──
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
-		if ROADS_IN_SHADER:
-			# ROUTE = tuile cobble TRANSPARENTE échantillonnée AU NIVEAU TERRAIN (iso_blend), sur le plan du sol
-			# (UV losange → angle iso correct, comme une vraie tuile) ; l'overlay ne pose que les PONTS (sur l'eau).
-			if DRAW_BRIDGES:
-				if _bridges_dirty:
-					_build_bridges(mv)
-				for b in _bridges:
-					draw_texture_rect(b["tex"], Rect2(b["tl"], Vector2(b["sz"], b["sz"])), false)
-		elif USE_ROAD_TILES:
-			if _road_tiles_dirty:
-				_build_road_tiles(mv)
-			for q in _road_tiles:
-				draw_mesh(_route_mesh_for_mask(q["mask"]), q["tex"], Transform2D(0.0, q["ctr"]))
-		elif not _roads.is_empty():
+		if not _roads.is_empty():
 			var year: int = w.year()
-			var built := []                       # [{poly:[iso Vector2], w}]
-			var done := {}
+			var built := []
 			for ri in range(_roads.size()):
 				var rd: Dictionary = _roads[ri]
 				var pts: PackedVector2Array = rd["points"]
@@ -2050,92 +1965,29 @@ func _draw_iso(w, mv: Node2D) -> void:
 					for k in range(poly.size()):
 						ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
 					built.append({"poly": ipoly, "w": _road_width(int(rd["level"]), zoom)})
-				if frac >= 1.0:
-					done[ri] = true
-			# RUES PRINCIPALES (toujours bâties) : court tronçon SUD de chaque bourg → la route forcée vers
-			# le sud, qui SE FOND dans le réseau (même largeur que les autres) ; rejoint l'ANCRE.
-			for ms in _main_streets:
-				var msp := PackedVector2Array()
-				msp.append(mv.iso_pos((ms["a"] as Vector2).x, (ms["a"] as Vector2).y))
-				msp.append(mv.iso_pos((ms["s"] as Vector2).x, (ms["s"] as Vector2).y))
-				built.append({"poly": msp, "w": _road_width(1, zoom)})
-			# 3 passes UNION (casing/fill OPAQUES → les recouvrements FUSIONNENT sans double-assombrir) ;
-			# le halo doux est TIGHT et discret (l'ancien +4/zoom α.22 boursouflait/floutait la route).
 			for bp in built:
 				draw_polyline(bp["poly"], ROAD_SOFT, bp["w"] + 0.10 + 1.4 / zoom, true)
 			for bp in built:
 				draw_polyline(bp["poly"], ROAD_CASING, bp["w"] + 0.10 + 0.9 / zoom, true)
 			for bp in built:
 				draw_polyline(bp["poly"], ROAD_FILL, bp["w"], true)
-			for d in _road_dress:
-				if not done.has(d["road"]):
-					continue
-				var spr := UIKit.dressing_named(d["name"])
-				if spr == null:
-					continue
-				var ip: Vector2 = mv.iso_pos((d["pos"] as Vector2).x, (d["pos"] as Vector2).y)
-				var ds := 4.0
-				# petit buisson BAS, CENTRÉ sur le bord SUD de la chaussée : la moitié haute CHEVAUCHE/CACHE
-				# le bord, la moitié basse est la marge visible au SUD → effet sud + masquage (pas une tour nord).
-				draw_texture_rect(spr, Rect2(ip - Vector2(ds * 0.5, ds * 0.46), Vector2(ds, ds)), false)
 
-	# ── VILLES + BOURG : posés sur le relief iso, triés par PROFONDEUR (y iso). ──
+	# ── VILLES : glyphe d'encre par région (taille ∝ tier), capitale étoilée. ──
 	if zoom >= CITY_ZOOM_MIN:
-		if _struct_dirty:
-			_build_structures()
-			_struct_dirty = false
-		var props := []
-		for s in _structures:
-			var sp2: Vector2 = s["pos"]
-			var ip: Vector2 = mv.iso_pos(sp2.x, sp2.y)
-			var ss: Vector2 = vt * ip
-			if ss.x < -60 or ss.y < -80 or ss.x > vp.x + 60 or ss.y > vp.y + 60:
-				continue
-			props.append({"d": sp2.x + sp2.y, "city": -1, "s": s, "sp": ip, "w": sp2})   # profondeur iso = wx+wy
 		for r in range(w.region_count()):
-			if w.region_tier(r) < 0:
+			var tier: int = w.region_tier(r)
+			if tier < 0:
 				continue
 			var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))
 			if ctr.x < 0:
 				continue
-			# le centre + sa DALLE tombent au CENTRE de la tuile (grille alignée, déterministe) — pas le
-			# sommet sud qui les décalait au coin avant (« posés de travers / aléatoirement »).
-			var ccol := int(ctr.x) / ROUTE_GRID_K
-			var crow := int(ctr.y) / ROUTE_GRID_K
-			var aw := Vector2(float(ccol) * ROUTE_GRID_K + ROUTE_GRID_K * 0.5,
-				float(crow) * ROUTE_GRID_K + ROUTE_GRID_K * 0.5)
-			props.append({"d": aw.x + aw.y, "city": r, "sp": mv.iso_pos(aw.x, aw.y), "w": aw})
-		# CLUTTER (props de vie en peripherie) - meme Y-sort, ombre legere, PAS de fondation (city = -2)
-		if _clutter_dirty:
-			_build_clutter()
-		for cl in _clutter:
-			var clp: Vector2 = cl["pos"]
-			var cip: Vector2 = mv.iso_pos(clp.x, clp.y)
-			var css: Vector2 = vt * cip
-			if css.x < -40 or css.y < -60 or css.x > vp.x + 40 or css.y > vp.y + 40:
+			var ip: Vector2 = mv.iso_pos(ctr.x, ctr.y)
+			var ss: Vector2 = vt * ip
+			if ss.x < -20 or ss.y < -20 or ss.x > vp.x + 20 or ss.y > vp.y + 20:
 				continue
-			props.append({"d": clp.x + clp.y, "city": -2, "cl": cl, "sp": cip})
-		props.sort_custom(func(a, b): return a["d"] < b["d"])   # arrière (nord) → avant (sud), profondeur iso
-		for prp in props:
-			var wd: float
-			if prp["city"] == -1:
-				wd = float((prp["s"] as Dictionary).get("sz", BLD_SIZE))
-			elif prp["city"] == -2:
-				wd = float((prp["cl"] as Dictionary).get("sz", CLUTTER_SIZE))
-			else:
-				wd = minf(CITY_CORE_SIZE, float(_region_citymax.get(prp["city"], CITY_CORE_SIZE)))
-			_blob_shadow(prp["sp"], wd)
-		# (FONDATIONS « pate » RETIREES -> le SOL URBAIN city_wear (shader terrain) fait le grounding
-		#  graduel sous tout le bourg ; plus de disque-tampon par batiment.)
-		for prp in props:
-			if prp["city"] == -1:
-				_draw_struct(prp["s"], prp["sp"])
-			elif prp["city"] == -2:
-				_draw_clutter(prp["cl"], prp["sp"])
-			else:
-				_draw_city(w, prp["city"], prp["sp"])
+			_draw_town(ip, tier, zoom, INK)
 
-	# ── ARMÉES : jeton + ligne de marche + anneau de phase, sur le relief iso. ──
+	# ── ARMÉES : jeton vectoriel (losange + anneau de phase) + ligne de marche. ──
 	for c in range(w.country_count()):
 		var a: Dictionary = w.army_info(c)
 		if not bool(a.get("active", false)):
@@ -2153,27 +2005,40 @@ func _draw_iso(w, mv: Node2D) -> void:
 		if dest >= 0 and dest != reg:
 			var dw: Vector2 = w.region_centroid(dest)
 			if dw.x >= 0:
-				draw_line(ctr, mv.iso_pos(dw.x, dw.y), Color(_phase_color(phase), 0.7), 0.5)
-		var ac := ctr + Vector2(0, -2.0)
-		var token := UIKit.army_token(_army_token_name(a))
-		if token != null:
-			var ts := 26.0
-			draw_circle(ac, 2.6, Color(col, 0.95))
-			draw_arc(ac, 3.4, 0.0, TAU, 20, Color(_phase_color(phase), 0.95), 1.1, true)
-			draw_texture_rect(token, Rect2(ac - Vector2(ts * 0.5, ts * 0.9), Vector2(ts, ts)), false)
-		else:
-			var s := 4.5
-			draw_circle(ac, s + 1.6, Color(_phase_color(phase), 0.85))
-			var diamond := PackedVector2Array([
-				ac + Vector2(0, -s), ac + Vector2(s, 0),
-				ac + Vector2(0, s), ac + Vector2(-s, 0)])
-			var bord := PackedVector2Array([
-				ac + Vector2(0, -s), ac + Vector2(s, 0),
-				ac + Vector2(0, s), ac + Vector2(-s, 0), ac + Vector2(0, -s)])
-			draw_polyline(bord, Color(0, 0, 0, 0.9), 1.4, true)
-			draw_colored_polygon(diamond, col)
+				draw_line(ctr, mv.iso_pos(dw.x, dw.y), Color(_phase_color(phase), 0.7), 1.4 / zoom)
+		var s := 5.0 / zoom
+		draw_circle(ctr, s + 1.8 / zoom, Color(_phase_color(phase), 0.9))
+		var diamond := PackedVector2Array([
+			ctr + Vector2(0, -s), ctr + Vector2(s, 0), ctr + Vector2(0, s), ctr + Vector2(-s, 0)])
+		draw_colored_polygon(diamond, col)
+		var bord := PackedVector2Array([
+			ctr + Vector2(0, -s), ctr + Vector2(s, 0), ctr + Vector2(0, s),
+			ctr + Vector2(-s, 0), ctr + Vector2(0, -s)])
+		draw_polyline(bord, Color(0.12, 0.09, 0.06, 0.9), 1.2 / zoom, true)
 
-	# ── ÉPICENTRE du cataclysme §27 : anneaux pulsants, sur le relief iso. ──
+	# ── NOMS D'EMPIRE : à l'encre, taille ÉCRAN constante (la fonction « se repérer »). ──
+	for c in range(w.country_count()):
+		if c >= _country_names.size():
+			break
+		var nm: String = _country_names[c]
+		if nm == "":
+			continue
+		var sx := 0.0; var sy := 0.0; var n := 0
+		for r in range(w.region_count()):
+			if w.region_owner(r) == c:
+				var rc: Vector2 = w.region_centroid(r)
+				if rc.x >= 0:
+					sx += rc.x; sy += rc.y; n += 1
+		if n < 2:
+			continue
+		var ip: Vector2 = mv.iso_pos(sx / n, sy / n)
+		var lw := VKit.text_w(nm, VKit.FS_SMALL)
+		draw_set_transform(ip, 0.0, Vector2(1.0 / zoom, 1.0 / zoom))
+		draw_rect(Rect2(-lw * 0.5 - 3.0, -8.0, lw + 6.0, 15.0), Color(0.95, 0.89, 0.72, 0.55))
+		VKit.text(self, Vector2(-lw * 0.5, -7.0), Color(0.22, 0.15, 0.09, 1.0), nm, VKit.FS_SMALL)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# ── ÉPICENTRE du cataclysme §27 : anneaux pulsants à l'encre de la fin. ──
 	var eg: Dictionary = w.endgame_info()
 	var epi: int = eg.get("epicenter_reg", -1)
 	var fin: int = eg.get("fin", 0)
@@ -2185,8 +2050,22 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var col := _fin_color(fin)
 			var t := Time.get_ticks_msec() / 1000.0
 			for k in range(3):
-				var rad := 7.0 + k * 6.0 + fmod(t * 5.0, 6.0)
-				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), 1.0, true)
+				var rad := (7.0 + k * 6.0 + fmod(t * 5.0, 6.0)) / zoom
+				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), 1.0 / zoom, true)
+
+## glyphe de ville à l'encre : cercle crème cerné d'encre, taille ∝ tier ; capitale (tier≥4) étoilée.
+func _draw_town(ip: Vector2, tier: int, zoom: float, ink: Color) -> void:
+	var cream := Color(0.94, 0.89, 0.74, 1.0)
+	var r := lerpf(2.2, 6.5, clampf(float(tier) / 5.0, 0.0, 1.0)) / zoom
+	draw_circle(ip, r, ink)
+	draw_circle(ip, r - 1.2 / zoom, cream)
+	draw_circle(ip, r * 0.34, ink)
+	if tier >= 4:
+		draw_arc(ip, r + 2.0 / zoom, 0.0, TAU, 28, ink, 1.0 / zoom, true)
+		for k in range(4):
+			var ang := float(k) * (PI / 2.0)
+			var d := Vector2(cos(ang), sin(ang))
+			draw_line(ip + d * (r + 0.6 / zoom), ip + d * (r + 4.0 / zoom), ink, 1.2 / zoom, true)
 
 func _fin_color(fin: int) -> Color:
 	match fin:

@@ -1060,6 +1060,30 @@
   (comme `SCPS_TUNE`). ⊕ Le modtools est COMPLET sur ses 3 canaux : valeurs (`SCPS_MODS` fichier + F10 live) ·
   chaînes (`scps_lang.txt`, F4) · contenu (`gen_content.py` + 1 recompile).
 
+- **GODOT — CARTE PARCHEMIN UNIQUE (2026-06-28) : un seul rendu, zéro asset de carte** : le front
+  passe à un rendu de carte UNIQUE — le shader cartographique `iso_antique.gdshader`, **100 %
+  procédural** (lit les SEULES couches moteur `biome_map` + `river_map` + un bruit GÉNÉRÉ ; lavis
+  sépia, côtes à l'encre, marais, rivières à la plume, relief en lavis, rose des vents, bords
+  brûlés). **Retraits** : la vue GLOBE 3D (SubViewport/Camera3D/sphère), le splat iso 3D
+  (`iso_blend.gdshader`), les falaises micro-mesh 3D (`cliff_3d.gd`), le backdrop eau
+  (`water.gdshader`), la roche peinte (`cliff_rock.gdshader`). `map_view.gd` réécrit : ISO unique,
+  zoom continu, `fit` cadre la carte entière (remplace l'overview globe). **Projection top-down
+  LÉGÈREMENT INCLINÉE** (Y comprimé `TILT_Y`=0.80 via l'échelle du nœud IsoGround → sol & overlay
+  restent alignés, pas un hack par-acteur). **Assets LARGUÉS** (le shader n'en a aucun besoin) :
+  **359 fichiers** supprimés — `pack/{cities,centres,structures,clutter,dressing,campaign,bridges,
+  foundations,rivers,iso_tiles}` ; **GARDÉS** : `pack/buildings` (icônes des boutons de
+  construction), `pack/resources` (chips UI), `ui/{icons,chrome}` (boutons + barres de rendu) —
+  conformément à « tout sauf les sprites de boutons et les barres ». Le bruit du shader devient
+  **PROCÉDURAL** (`NoiseTexture2D` seamless, FastNoiseLite) → plus de `blend_noise.png`. **Overlay**
+  réécrit : les acteurs sont en **ENCRE vectorielle** (zéro sprite carte) — villes = glyphes (cercle
+  crème cerné d'encre, capitale étoilée), routes 3 passes, frontières (pays/régions), **noms
+  d'empire** (taille écran constante), armées (losange + anneau de phase + ligne de marche),
+  épicentre §27 (anneaux pulsants). **DISPLAY-ONLY** : moteur C / déterminisme / save **INTACTS**
+  (aucun fichier C touché). Régressions mineures assumées : surbrillance de province sélectionnée
+  sur le sol (à remettre en contour d'encre dans l'overlay) · rose des vents très légèrement ovale
+  sous l'inclinaison. ⚠ Re-baseline NULLE (rien de sérialisé). À VENIR : purge du code mort GDScript
+  (builders sprite d'overlay, fonctions atlas/falaise/route d'iso_ground).
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
