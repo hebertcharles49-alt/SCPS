@@ -1087,6 +1087,18 @@
   tuiles-route + leur chaîne de teinte terrain + le chemin globe) ; ~1860 lignes display-only retirées.
   Bruit du parchemin rendu PROCÉDURAL (NoiseTexture2D). Vérifié au rendu (rivières/routes/villes/
   frontières/noms/armées intacts).
+- **GODOT parchemin — FRONTIÈRES CALLIGRAPHIQUES + couleur par empire (2026-06-28)** : refonte des
+  outlines pour la lecture parchemin. **Façade additive** `scps_border_segments_col(level)` (+ struct
+  `ScpsSegC{…,owner}`) : le balayage bseg TAGGE chaque segment par l'owner (pays) → l'overlay groupe
+  par entité. **Deux tiers** : **1px TOUTES les provinces** (niveaux 0+1, trame fine encre fanée, en
+  **LOD** — fond en survol, se révèle au plan ; toutes restent tracées) · **3px les BLOCS d'empire**
+  (niveau 2) **COULEUR PAR ENTITÉ** (`_empire_ink` = couleur pays foncée), en **2 passes** (bave
+  d'encre douce + plume nette). **Effet plume/calligraphie** : wobble déterministe ∝ position
+  (`_jit`, même point monde → même offset → segments JOINTS, pas de trou) + antialiasing. **Noms
+  d'empire SANS boîte** (fond transparent) — encre directe + halo papier doux (« écrit à la plume »).
+  Binding `border_segments_col`→Dictionary {pts, owner}. **DISPLAY-ONLY** : `scps_api.c` n'est pas
+  dans chronicle ⇒ **golden IDENTIQUE**, déterminisme/save intacts. GDExtension `scons` 0 warning.
+  Tunable d'overlay : `BORDER_JIT` 0.4.
 
 ## Disciplines non négociables
 

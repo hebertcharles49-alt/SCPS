@@ -173,6 +173,7 @@ public:
     /* FRONTIÈRES : segments d'arête (PackedVector2Array, 2 points/segment) au niveau
      * 0=province · 1=région · 2=pays. Port du balayage bseg de viewer.c. */
     PackedVector2Array border_segments(int level);
+    Dictionary         border_segments_col(int level);   /* segments + owner (outline par empire) */
 
     /* ROUTES : réseau à jonctions (A* « routes attirent routes »). Array de
      * Dictionary { points: PackedVector2Array (centres de cellule) · level: int

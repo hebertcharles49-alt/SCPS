@@ -443,6 +443,12 @@ int scps_river_path(ScpsSim *s, int i, ScpsRiverPt *out, int max, float *flow);
 typedef struct { float x0, y0, x1, y1; } ScpsSeg;
 int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max);
 
+/* Idem mais chaque segment porte l'OWNER (pays) — pour colorer l'outline PAR EMPIRE/entité.
+ * Niveau 0/1 : owner = le pays du joint (province/région interne) ; niveau 2 : owner = own_a
+ * si >=0, sinon own_b (le côté terre du contour). owner = -1 si indéfini. */
+typedef struct { float x0, y0, x1, y1; int owner; } ScpsSegC;
+int scps_border_segments_col(ScpsSim *s, int level, ScpsSegC *out, int max);
+
 /* ROUTES TERRAIN-AWARE (port de viewer.c, en RÉSEAU à JONCTIONS) : A* sur la grille
  * (coût = relief + biome ; mer/lac contournés, fleuve = pont), reliant les régions des
  * routes commerciales TERRESTRES majeures. « Les routes attirent les routes » : une

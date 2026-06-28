@@ -82,7 +82,9 @@ var _region_citymax := {} ## région colonisée → plus grande taille de sprite
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
 var _clear_set := {}      ## clairance 0-1 par cellule autour des villes (1 = cœur déboisé -> 0 = lisière) — fondu, pas binaire
 var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
-var _borders := {}        ## niveau (1=région · 2=pays) → PackedVector2Array de segments (façade)
+var _borders := {}        ## 0 = TRAME FINE (provinces+régions) → PackedVector2Array jittée
+var _borders_col := {}    ## owner (pays) → PackedVector2Array : outline d'empire jittée, par entité
+const BORDER_JIT := 0.4   ## amplitude du wobble « plume » des frontières (unités monde)
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
@@ -478,10 +480,48 @@ func _rebuild_borders() -> void:
 	var w = Sim.world
 	if w == null:
 		return
-	_borders[1] = w.border_segments(1)   # RÉGIONS
-	_borders[2] = w.border_segments(2)   # PAYS
+	# 1px : la TRAME FINE — provinces (0) + régions (1), jittée « plume » (encre neutre, fanée).
+	var fine := PackedVector2Array()
+	fine.append_array(_jitter_segs(w.border_segments(0)))
+	fine.append_array(_jitter_segs(w.border_segments(1)))
+	_borders[0] = fine
+	# 3px : les BLOCS — empires (2), GROUPÉS PAR OWNER → couleur d'outline par empire/entité.
+	_borders_col.clear()
+	var cd: Dictionary = w.border_segments_col(2)
+	var pts: PackedVector2Array = cd.get("pts", PackedVector2Array())
+	var own: PackedInt32Array = cd.get("owner", PackedInt32Array())
+	for i in range(own.size()):
+		var o: int = own[i]
+		if not _borders_col.has(o):
+			_borders_col[o] = PackedVector2Array()
+		var pa: Vector2 = pts[i * 2]
+		var pb: Vector2 = pts[i * 2 + 1]
+		var arr: PackedVector2Array = _borders_col[o]
+		arr.push_back(pa + _jit(pa)); arr.push_back(pb + _jit(pb))
+		_borders_col[o] = arr
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
+
+## offset déterministe ∝ position (hash) → wobble « main levée » ; MÊME point monde → MÊME offset
+## (les segments partagés restent JOINTS, pas de trou). L'effet plume/calligraphie de l'outline.
+func _jit(p: Vector2) -> Vector2:
+	var a := sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453
+	var b := sin(p.x * 39.346 + p.y * 11.135) * 24634.6345
+	return Vector2((a - floor(a)) - 0.5, (b - floor(b)) - 0.5) * BORDER_JIT
+
+func _jitter_segs(segs: PackedVector2Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.resize(segs.size())
+	for i in range(segs.size()):
+		out[i] = segs[i] + _jit(segs[i])
+	return out
+
+## encre d'empire : la couleur du pays FONCÉE → lisible sur parchemin, mais teintée par entité.
+func _empire_ink(o: int) -> Color:
+	if o < 0:
+		return Color(0.20, 0.14, 0.09, 0.92)         # contour externe / indéfini → encre brune
+	var c := _country_color(o)
+	return Color(c.r * 0.50, c.g * 0.50, c.b * 0.50, 0.95)
 
 ## (re)charge le réseau de routes + sa méta + l'habillage, et DATE les chantiers neufs.
 ## Appelé hors zoom (générate/tick) → les routes initiales démarrent dès l'an de fondation,
@@ -745,20 +785,25 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vp := get_viewport_rect().size
 	var INK := Color(0.20, 0.14, 0.09, 0.95)         # encre brun-sépia (le trait de plume)
 
-	# ── FRONTIÈRES : pays toujours (repère), régions en mode régions. Encre. ──
-	var mode := 0
-	if mv.get("mode") != null:
-		mode = int(mv.get("mode"))
+	# ── FRONTIÈRES à l'ENCRE (calligraphie) : TRAME FINE 1px (toutes provinces+régions) + BLOCS
+	#    d'empire 3px, COULEUR PAR ENTITÉ, en 2 passes (bave d'encre douce + plume nette, jittées). ──
 	if _borders_dirty:
 		_rebuild_borders()
-	if mode >= 1 and mode <= 2 and _borders.has(1):
-		var rseg := _project_segs_iso(mv, _borders[1])
-		if rseg.size() >= 2:
-			draw_multiline(rseg, Color(0.34, 0.26, 0.16, 0.65), 1.4 / zoom)
-	if _borders.has(2):
-		var cseg := _project_segs_iso(mv, _borders[2])
-		if cseg.size() >= 2:
-			draw_multiline(cseg, Color(0.22, 0.15, 0.09, 0.90), 2.8 / zoom)
+	# la TRAME FINE fond en survol (sinon mosaïque illisible) et se révèle au plan rapproché — toutes
+	# les provinces RESTENT tracées (1px), juste graduées au zoom (LOD ; les blocs d'empire, eux, toujours).
+	if _borders.has(0):
+		var fine_a := clampf((zoom - 1.6) / 2.4, 0.0, 1.0) * 0.42
+		if fine_a > 0.02:
+			var fseg := _project_segs_iso(mv, _borders[0])
+			if fseg.size() >= 2:
+				draw_multiline(fseg, Color(0.30, 0.22, 0.15, fine_a), 1.0 / zoom, true)   # 1px provinces (encre fanée)
+	for o in _borders_col:
+		var oseg := _project_segs_iso(mv, _borders_col[o])
+		if oseg.size() < 2:
+			continue
+		var ec := _empire_ink(o)
+		draw_multiline(oseg, Color(ec.r, ec.g, ec.b, 0.22), 5.2 / zoom, true)        # bave d'encre (halo doux)
+		draw_multiline(oseg, ec, 3.0 / zoom, true)                                    # plume nette (3px)
 
 	# ── ROUTES : réseau à jonctions, 3 passes (halo/casing/surface) à l'encre, croissance organique. ──
 	if zoom >= ROAD_ZOOM_MIN:
@@ -849,9 +894,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 			continue
 		var ip: Vector2 = mv.iso_pos(sx / n, sy / n)
 		var lw := VKit.text_w(nm, VKit.FS_SMALL)
+		# CALLIGRAPHIE : AUCUNE boîte (fond transparent) — encre directe + halo papier doux pour la
+		# lisibilité sur le terrain ; le nom « écrit à la plume » sur le parchemin.
 		draw_set_transform(ip, 0.0, Vector2(1.0 / zoom, 1.0 / zoom))
-		draw_rect(Rect2(-lw * 0.5 - 3.0, -8.0, lw + 6.0, 15.0), Color(0.95, 0.89, 0.72, 0.55))
-		VKit.text(self, Vector2(-lw * 0.5, -7.0), Color(0.22, 0.15, 0.09, 1.0), nm, VKit.FS_SMALL)
+		VKit.text(self, Vector2(-lw * 0.5 + 0.7, -6.3), Color(0.97, 0.91, 0.74, 0.6), nm, VKit.FS_SMALL)  # halo papier
+		VKit.text(self, Vector2(-lw * 0.5, -7.0), Color(0.18, 0.12, 0.07, 0.96), nm, VKit.FS_SMALL)        # encre
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ── ÉPICENTRE du cataclysme §27 : anneaux pulsants à l'encre de la fin. ──

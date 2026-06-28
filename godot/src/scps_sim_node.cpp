@@ -117,6 +117,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("river_points"),                   &ScpsWorld::river_points);
     ClassDB::bind_method(D_METHOD("river_paths"),                    &ScpsWorld::river_paths);
     ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
+    ClassDB::bind_method(D_METHOD("border_segments_col", "level"),   &ScpsWorld::border_segments_col);
     ClassDB::bind_method(D_METHOD("road_paths"),                     &ScpsWorld::road_paths);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
@@ -987,6 +988,29 @@ PackedVector2Array ScpsWorld::border_segments(int level) {
         a.set(i * 2 + 1, Vector2(seg[i].x1, seg[i].y1));
     }
     return a;
+}
+
+/* frontières TAGGÉES par owner (pays) — { pts: PackedVector2Array (2/seg), owner: PackedInt32Array }
+ * → l'overlay groupe par owner et colore l'outline par empire/entité. */
+Dictionary ScpsWorld::border_segments_col(int level) {
+    Dictionary d;
+    PackedVector2Array pts;
+    PackedInt32Array owners;
+    if (sim) {
+        static const int MAXSEG = 50000;
+        static ScpsSegC seg[MAXSEG];
+        int n = scps_border_segments_col(sim, level, seg, MAXSEG);
+        pts.resize(n * 2);
+        owners.resize(n);
+        for (int i = 0; i < n; i++) {
+            pts.set(i * 2,     Vector2(seg[i].x0, seg[i].y0));
+            pts.set(i * 2 + 1, Vector2(seg[i].x1, seg[i].y1));
+            owners.set(i, seg[i].owner);
+        }
+    }
+    d["pts"] = pts;
+    d["owner"] = owners;
+    return d;
 }
 
 Array ScpsWorld::road_paths() {
