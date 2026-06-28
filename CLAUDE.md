@@ -983,6 +983,22 @@
   INCHANGÉ (façade+binding+GDScript) ⇒ golden/determinism/SAVE intacts. La roadmap tech est **JOUABLE de bout
   en bout** (moteur → façade → binding → panneau Medusa). Reste : reorg prix tiers 1-5 (cosmétique), remise de
   prix inter-empires, hook par-unité, apex triples.
+- **MÉTABOLISATION — Temps 2b : la REMISE DE PRIX PAR DIFFUSION (le 3e effet, triade complète) (2026-06-28)** :
+  « une tech déjà déverrouillée par un AUTRE empire coûte moins cher » — le savoir DIFFUSE, la (re)découverte
+  d'un savoir RÉPANDU est plus facile (catch-up des retardataires). `g_tech_diff[TECH_COUNT]` (scps_ai.c) = nb
+  d'empires VIVANTS qui possèdent chaque tech, recompté CHAQUE TICK par `tech_diffusion_refresh(w, ts, n)`
+  (appelé de `sim_day` ET du viewer) — DÉTERMINISTE, non sérialisé (fonction PURE des TechState). `tech_diffusion_mult(id)`
+  = `1 − AI_TECH_DIFFUSE_MAX·(possédants/vivants)` ∈ [0.6, 1] (registre J : `AI_TECH_DIFFUSE_MAX` **0.40** ⇒ tech
+  que TOUS les autres ont = −40 %). Câblé via `ai_effective_cost` (= √N × biais éthos × remise) qui REMPLACE les
+  6 sites de coût de l'IA (`ai_pick_tech` + les 5 épargnes de `ai_research_step`) ; la voie JOUEUR (sim.c + viewer)
+  et le coût AFFICHÉ (façade `scps_tech_nodes`) appliquent la même remise (le prix montré = le prix payé). À g_tech_diff=0
+  (bancs sans refresh) ⇒ mult=1 (aucune remise) ⇒ **bancs INCHANGÉS**. ⚠ **RE-BASELINE golden** (le savoir diffuse
+  dès l'an-1). `determinism` STABLE · 0 warning · tech_demo 23/23 · ai_demo 26/26 · scps_api_demo 91/91 · sweep 5×250
+  SAIN (satisfaction 70/77/83, hégémon mortel 5/5, §27 gaté an-180 par construction, **arbre 39→44 %/empire** — le
+  catch-up VIT ; télémétrie « remise diffusion » : 40-43 tech(s) escomptée(s), max −40 %). **SAVE non bumpé** (g_tech_diff
+  recalculé). ⊕ La **TRIADE de métabolisation est COMPLÈTE** : déverrouille (barre d'accès Temps 2a) · accélère
+  (boost Temps 1) · escompte (cette remise). Dialable d'une ligne (`AI_TECH_DIFFUSE_MAX`). Reste (cosmétique/différé) :
+  reorg prix tiers 1-5, hook par-unité, apex triples.
 
 ## Disciplines non négociables
 

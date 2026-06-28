@@ -423,6 +423,7 @@ void sim_day(Sim *s, World *w) {
         }
     }
     routes_advance(s->rn, w, s->econ, 1);
+    tech_diffusion_refresh(w, s->ts, w->n_countries);   /* REMISE de prix : recompte qui possède quoi (savoir diffusé) */
     PROF(PB_AI, { for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){
         ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->sc, s->day);
         ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
@@ -444,7 +445,8 @@ void sim_day(Sim *s, World *w) {
             float metab = 1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)     /* MÉTABOLISATION (Temps 1) : creuset → +recherche */
                               * econ_country_metabolized(w, s->econ, pl);
             s->ts[pl].research_points += (month/30.4f) * yield * prosp * metab; /* /mois → /jour */
-            if (s->ts[pl].research_points >= tech_cost((TechId)s->research_target, (float)w->country[pl].n_regions)){
+            if (s->ts[pl].research_points >= tech_cost((TechId)s->research_target, (float)w->country[pl].n_regions)
+                                              * tech_diffusion_mult((TechId)s->research_target)){  /* remise de diffusion */
                 tech_research(&s->ts[pl], (TechId)s->research_target, access);   /* DÉBLOQUÉ */
                 s->ts[pl].research_points = 0.f; s->research_target=-1;          /* file de 1 : terminé */
             }

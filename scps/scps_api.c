@@ -931,7 +931,9 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
         out[i].faustian= nd->faustian?1:0; out[i].orphan = nd->orphan?1:0;
         out[i].is_base = nd->is_base?1:0;
         out[i].name    = sz(nd->name);  out[i].unlocks = sz(nd->unlocks);
-        out[i].effet   = sz(nd->effet); out[i].cost = nd->cost;
+        out[i].effet   = sz(nd->effet);
+        /* coût AFFICHÉ = coût de base × remise de diffusion (ce que le joueur paiera vraiment). */
+        out[i].cost    = (int)(nd->cost * tech_diffusion_mult((TechId)i) + 0.5f);
         /* prérequis : node[i] ↔ TechId i, donc prereq (un TechId, TECH_COUNT=aucun)
          * est directement l'INDICE du nœud parent dans CE tableau → arête de l'arbre. */
         const TechNode *tn = tech_node((TechId)i);

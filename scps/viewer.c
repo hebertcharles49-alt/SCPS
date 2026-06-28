@@ -1956,6 +1956,7 @@ static void sim_day(Sim *s, World *w) {
         }
     }
     routes_advance(s->rn, w, s->econ, 1);
+    tech_diffusion_refresh(w, s->ts, w->n_countries);      /* REMISE de prix : savoir diffusé entre empires */
     for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){    /* les voisins VIVENT (cadence étalée) */
         ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->sc, s->day);
         ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
@@ -1975,7 +1976,8 @@ static void sim_day(Sim *s, World *w) {
             CountryReadout cr = country_readout(s->wp, s->ts, w, pl);
             float prosp = 0.4f + (float)cr.m_prosperite.value/100.f*1.2f;   /* P5.28 : ×[0.4..1.6] selon la prospérité */
             s->ts[pl].research_points += (month/30.4f) * yield * prosp;     /* /mois → /jour */
-            if (s->ts[pl].research_points >= tech_cost((TechId)g_research_target, (float)w->country[pl].n_regions)){
+            if (s->ts[pl].research_points >= tech_cost((TechId)g_research_target, (float)w->country[pl].n_regions)
+                                              * tech_diffusion_mult((TechId)g_research_target)){  /* remise de diffusion */
                 tech_research(&s->ts[pl], (TechId)g_research_target, access);   /* DÉBLOQUÉ */
                 s->ts[pl].research_points = 0.f; g_research_target=-1;          /* file de 1 : terminé */
             }

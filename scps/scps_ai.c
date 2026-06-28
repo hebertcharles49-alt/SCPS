@@ -1747,6 +1747,38 @@ void ai_sync_refresh(const World *w, const WorldEconomy *econ, const RouteNetwor
     tech_sync_tick(ts, adepth);                                 /* §8 : diffusion par contact (auto-latch) */
 }
 
+/* REMISE DE PRIX PAR DIFFUSION (métabolisation, 3e effet) — « une tech déjà déverrouillée par
+ * un autre empire coûte moins cher » : le savoir diffuse, la (re)découverte d'un savoir RÉPANDU
+ * est plus facile. g_tech_diff[id] = nb d'empires VIVANTS qui possèdent la tech (recalculé chaque
+ * tick par tech_diffusion_refresh, appelé depuis sim_day — DÉTERMINISTE, non sérialisé : fonction
+ * pure des TechState). À 0 (bancs qui n'appellent pas refresh) ⇒ mult=1 (aucune remise). */
+#ifndef AI_TECH_DIFFUSE_MAX
+#define AI_TECH_DIFFUSE_MAX 0.40f   /* remise MAX (tech possédée par tous les autres ⇒ −40 %) */
+#endif
+static int g_tech_diff[TECH_COUNT];
+static int g_tech_living = 0;
+void tech_diffusion_refresh(const World *w, const TechState *all, int n_ts){
+    for (int i=0;i<TECH_COUNT;i++) g_tech_diff[i]=0;
+    g_tech_living=0;
+    if (!w || !all) return;
+    for (int c=0;c<w->n_countries && c<n_ts;c++){
+        PolityRole role=w->country[c].role;
+        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+        g_tech_living++;
+        for (int i=0;i<TECH_COUNT;i++) if (all[c].unlocked[i]) g_tech_diff[i]++;
+    }
+}
+float tech_diffusion_mult(TechId id){
+    if (id<0 || id>=TECH_COUNT || g_tech_living<=1) return 1.f;
+    float frac = (float)g_tech_diff[id] / (float)g_tech_living;   /* part qui la possède déjà */
+    if (frac>1.f) frac=1.f;
+    return 1.f - tune_f("AI_TECH_DIFFUSE_MAX",AI_TECH_DIFFUSE_MAX) * frac;
+}
+/* coût EFFECTIF d'une tech pour l'IA : géologie (√N) × biais d'éthos × remise de diffusion. */
+static float ai_effective_cost(TechId id, float nprov, Ethos eth){
+    return tech_cost(id, nprov) * ai_tech_cost_mult(eth, tech_node(id)) * tech_diffusion_mult(id);
+}
+
 /* Le nœud à déverrouiller : score = BUTS (la fonction répond au besoin lu) +
  * PENCHANT de heritage (biais vers son thème + ses signatures) − FREIN (le faustien
  * n'est pris que si la pente dépasse le frein). Aucun « si heritage==X ». */
@@ -1777,7 +1809,7 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
         TechId id=(TechId)i;
         if (!tech_can_research(ts,id,access)) continue;
         const TechNode *n=tech_node(id);
-        float cost=tech_cost(id,nprov) * ai_tech_cost_mult(eth,n);   /* l'éthos pèse sur le coût (biais, jamais mur) */
+        float cost=ai_effective_cost(id, nprov, eth);   /* géologie √N × biais d'éthos × remise de diffusion */
         if (cost > ts->research_points + 0.01f) continue;          /* pas encore les moyens */
         float score=0.f;
         /* BUTS — la fonction du nœud répond à un besoin lu de la VUE (pas de script). */
@@ -1877,7 +1909,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         if (tgt!=TECH_COUNT && !ts->unlocked[tgt]){
             TechId step=ai_step_toward(ts, tgt, access);
             if (step!=TECH_COUNT){
-                float sc=tech_cost(step,nprov)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
+                float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid));
                 if (ts->research_points < sc) return;      /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                 /* on AVANCE vers l'échappatoire */
             }
@@ -1901,7 +1933,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                 const TechNode *tn=tech_node((TechId)id);
                 if (tn->native==HERITAGE_COUNT || tn->faustian || ts->unlocked[id]) continue;
                 if (!tech_can_research(ts, (TechId)id, access)) continue;     /* accessible (accès+prérequis) */
-                float cc=tech_cost((TechId)id, nprov)*ai_tech_cost_mult(eg, tn);
+                float cc=ai_effective_cost((TechId)id, nprov, eg);
                 if (cc<sigcost){ sig=(TechId)id; sigcost=cc; }                /* la moins chère d'abord */
             }
             if (sig!=TECH_COUNT){
@@ -1928,7 +1960,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         if (ai_faustian_appetite(cr, val) >= AI_FAUST_QUEST){               /* la SOIF d'interdit (rare) */
             TechId step=ai_step_toward(ts, TECH_FORGE_RUNES, access);
             if (step!=TECH_COUNT){
-                float sc=tech_cost(step,nprov)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
+                float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid));
                 if (ts->research_points < sc) return;                      /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                                 /* on AVANCE vers l'emblème */
             }
@@ -1954,13 +1986,13 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
       if (tgt!=TECH_COUNT){
           TechId step=ai_step_toward(ts, tgt, access);
           if (step!=TECH_COUNT){
-              float sc=tech_cost(step,nprov)*ai_tech_cost_mult(eth, tech_node(step));
+              float sc=ai_effective_cost(step, nprov, eth);
               if (ts->research_points < sc) return;              /* on ÉPARGNE pour le pas suivant */
               pick=step;                                         /* on AVANCE vers la tech d'unité */
           }
       } }
     if (pick!=TECH_COUNT){
-        float cost = tech_cost(pick, nprov) * ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(pick));
+        float cost = ai_effective_cost(pick, nprov, ai_capital_ethos(w,econ,a->cid));
         if (ts->research_points >= cost && tech_research(ts, pick, access)){
             ts->research_points -= cost;
             a->stats.techs++;

@@ -926,6 +926,18 @@ int main(int argc, char **argv){
           printf("              combos tier-4 : %d empire(s) tiennent une fusion d'héritages · %d combo(s) au total\n",
                  ncombo_emp, ncombo_tot); }
 
+        /* REMISE DE DIFFUSION (métabolisation, 3e effet) : le savoir RÉPANDU se (re)découvre moins
+         * cher — combien de techs sont escomptées (≥5 %) et la remise la plus forte (g_tech_diff
+         * rafraîchi au dernier tick par sim_day). La PREUVE que le catch-up des retardataires vit. */
+        { int ndisc=0; float best=0.f;
+          for (int id=0; id<TECH_COUNT; id++){
+              float m = tech_diffusion_mult((TechId)id);
+              if (m < 0.95f) ndisc++;
+              if (1.f-m > best) best = 1.f-m;
+          }
+          printf("              remise diffusion : %d tech(s) escomptée(s) (−5%%+) · remise max −%.0f%%\n",
+                 ndisc, best*100.f); }
+
         /* CALIBRATION coût-tech-N (gated SCPS_NDIAG) : la relation pop↔provinces par empire,
          * pour caler k de tech_cost(N) — l'ancien coût ∝ pop/5000 (popf), le neuf ∝ √N. */
         if (getenv("SCPS_NDIAG")){

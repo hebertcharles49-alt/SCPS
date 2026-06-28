@@ -88,6 +88,9 @@
     X(METAB_TIER1,            0.10f) \
     X(METAB_TIER2,            0.20f) \
     X(METAB_TIER3,            0.35f) \
+    /* REMISE DE PRIX PAR DIFFUSION (métabolisation) — une tech possédée par TOUS les autres
+     * empires coûte −MAX % (le savoir répandu se (re)découvre plus vite ; catch-up des retardataires) */ \
+    X(AI_TECH_DIFFUSE_MAX,    0.40f) \
     /* EXPLOITATION — boost d'EXTRACTION par brute (modificateur provincial à construire) : +PER_TIER
      * par palier d'amélioration (scale sur les bras), plafonné à MAX_TIER paliers · coût d'or par palier
      * · seuil de déficit (forecast) qui ARME l'amélioration */ \

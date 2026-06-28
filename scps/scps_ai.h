@@ -186,6 +186,12 @@ TechFunction ai_ethos_pref_func(Ethos e);
  * conquises/migrées) → l'accès aux techs orphelines. Exposé pour le banc d'essai. */
 unsigned ai_heritage_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid);
 
+/* REMISE DE PRIX PAR DIFFUSION (métabolisation) — une tech possédée par d'autres empires coûte
+ * moins cher. tech_diffusion_refresh recompte (chaque tick, depuis sim_day) combien d'empires
+ * VIVANTS ont chaque tech ; tech_diffusion_mult(id) ∈ [1−MAX, 1] est le facteur de coût. */
+void  tech_diffusion_refresh(const World *w, const TechState *all, int n_ts);
+float tech_diffusion_mult(TechId id);
+
 /* §syncrétique — RAFRAÎCHIT le cercle d'un empire : recalcule la profondeur de contact
  * par archétype, la met en cache (ts->arch_depth, lu par la membrane) et loquette les
  * nœuds de diffusion atteints. Appelée par ai_research_step ET par le visualiseur (pour
