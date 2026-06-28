@@ -178,6 +178,7 @@ func _draw() -> void:
 	if w == null:
 		return
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
+	_draw_tier_rings()          # guides de TIER (rayon = profondeur) sous le graphe — lisibilité
 	var info: Dictionary = w.tech_info()
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, 12), 20)
 	VKit.text(self, Vector2(42, 13), VKit.COL_COPPER, "Arbre de technologie", VKit.FS_BIG)
@@ -220,6 +221,21 @@ func _draw() -> void:
 # Le "+X% recherche" répond à « métabolisation = +% tech visible sous la barre de savoir » ;
 # les 6 barres (tier 0-3 en pips + part digérée) sont la « barre de progression par tier » :
 # digérer un peuple OUVRE ses signatures (tier 1 commerce → tier 3 plein/métabolisé).
+# Anneaux de TIER (rayon = profondeur 1-5) — rend la structure en tiers LISIBLE sous le graphe
+# Medusa (l'« arbre cohérent par tier » voulu, sans toucher aux prix/équilibre). Display-only.
+func _draw_tier_rings() -> void:
+	if _graph == null or not is_instance_valid(_graph):
+		return
+	var c: Vector2 = _graph.position + _graph.size * 0.5
+	var max_r: float = minf(_graph.size.x, _graph.size.y) * 0.5 - 36.0
+	if max_r <= 0.0:
+		return
+	var ring := max_r / 6.0
+	for t in range(1, 6):
+		var r := (float(t) + 0.7) * ring
+		draw_arc(c, r, 0.0, TAU, 64, Color(0.58, 0.52, 0.42, 0.16), 1.0, true)
+		VKit.text(self, Vector2(c.x - 7.0, c.y - r - 11.0), VKit.COL_DIM, "T%d" % t, VKit.FS_SMALL)
+
 func _draw_metab(info: Dictionary) -> void:
 	var y0 := PH - FOOT - METAH
 	VKit.fill(self, Rect2(12, y0, PW - 24, 1), VKit.COL_EDGE)

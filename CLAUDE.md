@@ -1013,9 +1013,10 @@
   tech_demo 23/23 · army_demo 48/48 · ai_demo 26/26 · scps_api_demo 91/91 · sweep 5×250 SAIN (satisfaction
   70/77/83, hégémon mortel 5/5, IPM 1.22). `firearm_power` en `#define` local (scps_army.c, comme FORGE_STEP —
   pas de tune_f dans ce module). ⊕ **La roadmap tech/héritage est COMPLÈTE** (déverrouille/accélère/escompte +
-  étoffe + combos paires + apex triples + coût √N + UI Medusa). Reste UNIQUEMENT le cosmétique : reorg des prix
-  tiers 1-5 (le layout Medusa par tier/quartier le rend déjà lisible — non fait : un changement de BASE_COST
-  re-baselinerait l'équilibre pour un gain purement cosmétique).
+  étoffe + combos paires + apex triples + coût √N + UI Medusa). ⊕ **Lisibilité par tier** : des ANNEAUX DE TIER
+  (concentriques, display-only) ajoutés au panneau Medusa (`tech_panel.gd._draw_tier_rings`) — l'intent « arbre
+  lisible par tier » de C, SANS toucher BASE_COST. Le reorg des PRIX (changer BASE_COST) reste volontairement
+  non fait : il re-baselinerait l'équilibre pour un gain purement cosmétique (signalé, non un oubli).
 
 ## Disciplines non négociables
 
