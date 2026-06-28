@@ -3147,7 +3147,7 @@ static void sb_panel_filtres(SDL_Renderer *ren, int x, int y, int w, int h, View
       static const char *HV[3]={
         "Chaque province colorée par sa bande de PROSPÉRITÉ (misère → opulence).",
         "Où ça gronde : la bande d'HUMEUR locale (révoltée → dévouée).",
-        "Où sont les PÉNURIES : la pire tension du panier (grain/outils/fer/étoffe/vin)." };
+        "Où sont les PÉNURIES : la pire tension du panier (grain/outils/fer/étoffe/eau-de-vie)." };
       cx=sb_chip(ren,cx,y,"Prospérité", g_sb.lens==LENS_PROSP,  SBH_CHIP_LENS, LENS_PROSP,0, HV[0]);
       cx=sb_chip(ren,cx,y,"Humeur",     g_sb.lens==LENS_HUMEUR, SBH_CHIP_LENS, LENS_HUMEUR,0,HV[1]);
       (void)sb_chip(ren,cx,y,"Marché",  g_sb.lens==LENS_MARCHE, SBH_CHIP_LENS, LENS_MARCHE,0,HV[2]);

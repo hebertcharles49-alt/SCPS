@@ -157,7 +157,7 @@ typedef enum {
     RES_COTTON,         /* flatlands arides             */
     RES_SUGAR,          /* côtes arides                 */
     RES_WOOD,           /* régions boisées              */
-    RES_FRUIT,          /* fruits — un peu PARTOUT, + en forêt ; repli du VIN (compense le sucre tropical) */
+    RES_FRUIT,          /* fruits — un peu PARTOUT, + en forêt ; repli du EAU-DE-VIE (compense le sucre tropical) */
     RES_MED_HERBS,      /* herbes médicinales — wetland d'altitude */
     /* --- Brutes : minéral & stratégique --- */
     RES_COPPER,         /* montagnes, collines, mesas   */
@@ -181,7 +181,7 @@ typedef enum {
     RES_PROD_FIRST,
     RES_CLOTH = RES_PROD_FIRST, /* production               */
     RES_NAVAL_SUPPLIES,         /* production (bois+goudron) */
-    RES_WINE,                   /* boisson des Cités/Sylvain (vin) — palier MORAL */
+    RES_EAU_DE_VIE,                   /* boisson des Cités/Sylvain (eau-de-vie) — palier MORAL */
     RES_BEER,                   /* boisson des Clans/Souterrain/Sauvage (bière) — palier MORAL */
     RES_PRECIOUS_WARE,          /* bien précieux des 4 races (porcelaine, bière…) */
     RES_PRECIOUS_CLOTH,         /* étoffe précieuse des 4 races */

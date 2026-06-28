@@ -8,7 +8,7 @@
  *   1. BRASSERIE — le grain devient de la BIÈRE (la chaîne vivrière du commun).
  *   2. VARIANTE CULTURELLE — le palier MORAL (boisson) est une variante : une
  *      culture de basse subsistance (clans/nains/orques) est CONTENTE avec la
- *      bière et BOUDE le vin ; une culture urbaine, l'inverse.
+ *      bière et BOUDE le eau-de-vie ; une culture urbaine, l'inverse.
  *   3. FOI — un Temple bâti SOUTIENT la légitimité locale (sacraliser le trône
  *      apaise sans réprimer) — la coordonnée que la légitimité LIT.
  */
@@ -64,7 +64,7 @@ static float elite_sat_with_luxe(WorldEconomy *e, int r, float subsistance, Reso
     re->strata[CLASS_ELITE].pop=200.f;    re->strata[CLASS_ELITE].wealth=1e6f;
     re->stock[RES_GRAIN]=1e5f; re->stock[RES_FISH]=1e5f; re->stock[RES_WOOD]=1e5f;
     re->stock[RES_CLOTH]=1e5f; re->stock[RES_PAPER]=1e5f; re->stock[RES_SALT]=1e5f; re->stock[RES_FUR]=1e5f;
-    re->stock[RES_WINE]=1e5f; re->stock[RES_BEER]=1e5f;     /* boisson satisfaite quoi qu'il arrive */
+    re->stock[RES_EAU_DE_VIE]=1e5f; re->stock[RES_BEER]=1e5f;     /* boisson satisfaite quoi qu'il arrive */
     re->stock[luxe]=1e5f;                                   /* SEUL ce luxe est disponible */
     econ_tick(e, 1.f);
     return re->strata[CLASS_ELITE].satisfaction;
@@ -84,7 +84,7 @@ static float tech_with_savoir(WorldEconomy *e, int r, float savoir){
     re->stock[RES_GRAIN]=1e5f; re->stock[RES_FISH]=1e5f; re->stock[RES_WOOD]=1e5f;
     re->stock[RES_CLOTH]=1e5f; re->stock[RES_PAPER]=1e5f; re->stock[RES_SALT]=1e5f;
     re->stock[RES_FUR]=1e5f; re->stock[RES_PRECIOUS_WARE]=1e5f; re->stock[RES_PRECIOUS_CLOTH]=1e5f;
-    re->stock[RES_WINE]=1e5f;
+    re->stock[RES_EAU_DE_VIE]=1e5f;
     memset(&re->build,0,sizeof re->build); re->build.savoir=savoir;
     re->tech=0.f;
     econ_tick(e, 1.f);
@@ -161,13 +161,13 @@ int main(int argc, char **argv){
     /* ═══ 2. VARIANTE CULTURELLE — la bonne boisson contente ════════════ */
     printf("\n── 2. La variante culturelle : chacun sa boisson ──\n");
     float clan_beer = society_with_drink(e, 1, 2.0f, RES_BEER);   /* basse subsistance → bière */
-    float clan_wine = society_with_drink(e, 1, 2.0f, RES_WINE);   /* … servi en vin (off-culture) */
-    float city_wine = society_with_drink(e, 2, 8.0f, RES_WINE);   /* haute subsistance → vin */
+    float clan_evdv = society_with_drink(e, 1, 2.0f, RES_EAU_DE_VIE);   /* … servi en eau-de-vie (off-culture) */
+    float city_evdv = society_with_drink(e, 2, 8.0f, RES_EAU_DE_VIE);   /* haute subsistance → eau-de-vie */
     float city_beer = society_with_drink(e, 2, 8.0f, RES_BEER);   /* … servi en bière (off-culture) */
-    printf("   clan (bière=%.2f vs vin=%.2f) · cité (vin=%.2f vs bière=%.2f)\n",
-           clan_beer, clan_wine, city_wine, city_beer);
-    ok("un peuple de clans est PLUS content avec sa bière qu'avec du vin", clan_beer > clan_wine + 0.02f);
-    ok("un peuple des cités est PLUS content avec son vin qu'avec de la bière", city_wine > city_beer + 0.02f);
+    printf("   clan (bière=%.2f vs eau-de-vie=%.2f) · cité (eau-de-vie=%.2f vs bière=%.2f)\n",
+           clan_beer, clan_evdv, city_evdv, city_beer);
+    ok("un peuple de clans est PLUS content avec sa bière qu'avec du eau-de-vie", clan_beer > clan_evdv + 0.02f);
+    ok("un peuple des cités est PLUS content avec son eau-de-vie qu'avec de la bière", city_evdv > city_beer + 0.02f);
 
     /* ── 2b. STATUT (luxe) : orfèvrerie martiale vs étoffe raffinée ── */
     printf("\n── 2b. Le luxe d'élite : à chaque culture son statut ──\n");

@@ -9,7 +9,7 @@
  *                captent le profit, demandent des biens manufacturés.
  *   ELITES     — aristocratie. Vivent de la taxe et de la rente, produisent
  *                la TECH (recherche) et exigent des biens de luxe (joaillerie,
- *                étoffe précieuse, vin).
+ *                étoffe précieuse, eau-de-vie).
  *
  * Unité de simulation : la RÉGION (= le « marché régional » du cahier des
  * charges). Chaque région a :
@@ -66,7 +66,7 @@ typedef enum {
     BLD_TEXTILE = 0,   /* laine   → tissu               */
     BLD_SAWMILL,       /* bois    → fournitures navales */
     BLD_PAPERMILL,     /* bois    → papier              */
-    BLD_WINERY,        /* sucre   → vin                 */
+    BLD_DISTILLERY,        /* sucre   → eau-de-vie                 */
     BLD_BREWERY,       /* grain   → bière (palier moral des Clans/Souterrain) */
     BLD_JEWELER,       /* or+métal précieux → joaillerie (bien d'élite) */
     BLD_WEAVER_LUX,    /* tissu   → étoffe précieuse    */
@@ -103,7 +103,7 @@ typedef struct {
 #define ECON_MAX_BLD BLD_TYPE_COUNT  /* une manufacture de CHAQUE type par région — calé sur
                                       * l'enum (était figé à 6 alors que les types ont grimpé à
                                       * 14 : les bâtiments communs saturaient les slots et
-                                      * évinçaient les rares — joaillerie, fonderie, outillage —
+                                      * éeau-de-vieçaient les rares — joaillerie, fonderie, outillage —
                                       * d'où leur pénurie. Désormais auto-calé : plus de désync). */
 
 /* E2 §11 — plafond de STOCK régional par ressource : base sans Entrepôt, +cap
@@ -235,7 +235,7 @@ typedef struct {
     float      gdp;                  /* valeur produite au dernier tick */
     float      satisfaction;         /* satisfaction générale [0..1] */
     float      food_sat;             /* satisfaction alimentaire [0..1] (grain+fish) */
-    float      society_sat;          /* satisfaction sociale [0..1] (cloth+wine+…) */
+    float      society_sat;          /* satisfaction sociale [0..1] (cloth+eau-de-vie+…) */
     float      needs_met;            /* [0..1] : fraction ABSOLUE du panier couverte (catégories ≥τ / total du panier), pop-pondérée — pilote la FERTILITÉ (×2 subsistance → ×4 plein) */
     float      over_tax;             /* surtaxe ressentie par les laboureurs [0..1] (grief → révolte) */
     float      cap_pop;              /* capacité d'accueil (pop cible à terme) */

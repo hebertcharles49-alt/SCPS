@@ -35,7 +35,7 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_COTTON]        = 1.9f,
     [RES_SUGAR]         = 2.0f,
     [RES_WOOD]          = 1.0f,
-    [RES_FRUIT]         = 1.8f,    /* fruits — douceur commune (repli du vin), comme le sucre */
+    [RES_FRUIT]         = 1.8f,    /* fruits — douceur commune (repli du eau-de-vie), comme le sucre */
     [RES_MED_HERBS]     = 3.5f,
     /* brutes minérales */
     [RES_COPPER]        = 2.6f,
@@ -54,8 +54,8 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_CLOTH]         = 4.5f,
     [RES_TUNIQUE]       = 5.5f,    /* vêtement fini du commun — étoffe + façon (un cran au-dessus du tissu) */
     [RES_NAVAL_SUPPLIES]= 4.0f,
-    [RES_WINE]          = 5.0f,
-    [RES_BEER]          = 3.0f,    /* la boisson du commun — moins chère que le vin */
+    [RES_EAU_DE_VIE]          = 5.0f,
+    [RES_BEER]          = 3.0f,    /* la boisson du commun — moins chère que le eau-de-vie */
     [RES_PRECIOUS_WARE] = 22.0f,
     [RES_PRECIOUS_CLOTH]= 18.0f,
     [RES_PAPER]         = 5.5f,
@@ -128,10 +128,10 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
     [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_COTTON, 1.5f },  /* F4 : laine OU COTON (repli) → étoffe — le coton inerte gagne un débouché */
     [BLD_SAWMILL]   = { RES_WOOD,  2.0f, RES_COPPER,        0.2f, RES_NAVAL_SUPPLIES, 1.0f, 0.8f, RES_NONE, 0.f },  /* M5 : le naval EXIGE du cuivre (clous/doublage) — il ne sort plus sans */
     [BLD_PAPERMILL] = { RES_WOOD,  1.5f, RES_NONE,          0.f, RES_PAPER,          1.0f, 0.7f, RES_NONE, 0.f },
-    /* VIN/BIÈRE — BOISSON, le SEUL bien manufacturé actif en EARLY ⇒ le calibrage `labor` qui MORD.
+    /* EAU-DE-VIE/BIÈRE — BOISSON, le SEUL bien manufacturé actif en EARLY ⇒ le calibrage `labor` qui MORD.
      * LEVIER LABOR (ratios & qout intacts) : labor = 1200·qout/demande_1000 → 100 emplois ≈ 1000 hab.
      * Vin : 1200·1.4/44.7 = 37.6 → labor 38. Bière : 1200·1.0/44.7 = 26.8 → labor 27. */
-    [BLD_WINERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_WINE,           1.4f, 38.f, RES_FRUIT, 4.0f },  /* DISTILLERIE : sucre OU FRUIT (repli) → EAU DE VIE (RES_WINE = l'alcool générique : distiller sucre/fruit est plus logique que « vin »). Le fruit est NOURRITURE : son intrant est ÉLEVÉ (4 fruits vs 1.6 sucre) → l'eau-de-vie de fruit est CHÈRE, le fruit reste d'abord de la nourriture */
+    [BLD_DISTILLERY]    = { RES_SUGAR, 1.6f, RES_NONE,          0.f, RES_EAU_DE_VIE,           1.4f, 38.f, RES_FRUIT, 4.0f },  /* DISTILLERIE : sucre OU FRUIT (repli) → EAU DE VIE (RES_EAU_DE_VIE = l'alcool générique : distiller sucre/fruit est plus logique que « eau-de-vie »). Le fruit est NOURRITURE : son intrant est ÉLEVÉ (4 fruits vs 1.6 sucre) → l'eau-de-vie de fruit est CHÈRE, le fruit reste d'abord de la nourriture */
     [BLD_BREWERY]   = { RES_GRAIN, 1.2f, RES_NONE,          0.f, RES_BEER,           1.0f, 27.f, RES_NONE, 0.f },  /* grain → bière (palier moral des cultures de basse subsistance) */
     /* JOAILLERIE : OR, ou PERLE en repli (2× la quantité par bijou — littoral).
      * Sortie TEMPÉRÉE (1.0→0.5) et intrant plus lourd (1.5→2.0) : l'orfèvrerie
@@ -191,7 +191,7 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
 
 /* Besoins par tête et par strate (unités/100 hab/tick). Le grain (vivres)
  * est universel ; le reste monte en gamme avec la classe. */
-/* Table REVISITÉE. La case RES_WINE = palier MORAL (servi bière/vin selon la
+/* Table REVISITÉE. La case RES_EAU_DE_VIE = palier MORAL (servi bière/eau-de-vie selon la
  * préférence) ; la case RES_PRECIOUS_WARE = palier STATUT (orfèvrerie/étoffe
  * précieuse). On allège l'étoffe (en pénurie) et le bois de feu ; tout le reste
  * tend de +10 % via DEMAND_TENSION appliqué à `units` (demande tendue permanente). */
@@ -205,23 +205,23 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
  * — needs_met (le moteur de croissance, poids 0.85) chute quand la nourriture monopolise
  * le budget des journaliers (les autres paliers passent sous τ). On garde donc une
  * bouche ~3-4× l'ancienne (annuelle, signifiante) sans assécher la vitalité. Le CONFORT
- * (étoffe/vin/papier/sel/remède/fourrure/statut) garde ses valeurs. */
+ * (étoffe/eau-de-vie/papier/sel/remède/fourrure/statut) garde ses valeurs. */
 static const float NEED[CLASS_COUNT][RES_COUNT] = {
     [CLASS_LABORER] = {
         [RES_GRAIN]=3.50f, [RES_FISH]=1.00f,     /* A2 : nourriture ANNUELLE (grain+poisson INTERCHANGEABLES, food_sat les agrège) */
         [RES_WOOD]=1.00f,                         /* A2 : bois de FEU annuel (~3× l'ancien 0.35) */
-        [RES_WINE]=0.35f, [RES_TUNIQUE]=0.40f,   /* confort INCHANGÉ (bière/vin via préférence) */
+        [RES_EAU_DE_VIE]=0.35f, [RES_TUNIQUE]=0.40f,   /* confort INCHANGÉ (bière/eau-de-vie via préférence) */
         [RES_POTTERY]=0.30f,                      /* poterie : vaisselle/tuiles du foyer — confort (⇒ demande d'argile) */
     },
     [CLASS_BOURGEOIS] = {
         [RES_GRAIN]=4.00f,                        /* A2 : nourriture ANNUELLE */
-        [RES_CLOTH]=0.34f, [RES_PAPER]=0.25f, [RES_WINE]=0.30f,
+        [RES_CLOTH]=0.34f, [RES_PAPER]=0.25f, [RES_EAU_DE_VIE]=0.30f,
         [RES_SALT]=0.20f, [RES_REMEDE]=0.15f,   /* santé urbaine (apothicaire) — confort INCHANGÉ */
         [RES_POTTERY]=0.25f, [RES_STATUE]=0.12f, /* poterie fine + ornement de pierre — confort (⇒ demande argile/pierre) */
     },
     [CLASS_ELITE] = {
         [RES_GRAIN]=4.00f,                        /* A2 : nourriture ANNUELLE */
-        [RES_FUR]=0.12f, [RES_PAPER]=0.12f, [RES_WINE]=0.28f,
+        [RES_FUR]=0.12f, [RES_PAPER]=0.12f, [RES_EAU_DE_VIE]=0.28f,
         [RES_PRECIOUS_WARE]=0.13f,   /* palier STATUT (orfèvrerie OU étoffe) — confort INCHANGÉ */
         [RES_STATUE]=0.18f,                       /* statuaire de prestige — confort/statut (⇒ demande de pierre) */
     },
@@ -232,9 +232,9 @@ static const float NEED[CLASS_COUNT][RES_COUNT] = {
  * le panier (statut compris). Ainsi le luxe se MÉRITE avec le développement — et l'élite
  * d'un bourg n'est pas punie de ne pas avoir d'orfèvrerie. Le palier STATUT vient DERNIER. */
 static const Resource NEED_ORDER[CLASS_COUNT][9] = {
-    [CLASS_LABORER]   = { RES_GRAIN, RES_WINE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_POTTERY, RES_NONE },  /* bière (RES_WINE→préférée) en palier moral PRÉCOCE ; poisson = nourriture interchangeable (A2) ; poterie = confort TARDIF */
-    [CLASS_BOURGEOIS] = { RES_GRAIN, RES_SALT, RES_CLOTH, RES_REMEDE, RES_WINE, RES_PAPER, RES_POTTERY, RES_STATUE, RES_NONE },
-    [CLASS_ELITE]     = { RES_GRAIN, RES_FUR, RES_PAPER, RES_WINE, RES_PRECIOUS_WARE, RES_STATUE, RES_NONE },
+    [CLASS_LABORER]   = { RES_GRAIN, RES_EAU_DE_VIE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_POTTERY, RES_NONE },  /* bière (RES_EAU_DE_VIE→préférée) en palier moral PRÉCOCE ; poisson = nourriture interchangeable (A2) ; poterie = confort TARDIF */
+    [CLASS_BOURGEOIS] = { RES_GRAIN, RES_SALT, RES_CLOTH, RES_REMEDE, RES_EAU_DE_VIE, RES_PAPER, RES_POTTERY, RES_STATUE, RES_NONE },
+    [CLASS_ELITE]     = { RES_GRAIN, RES_FUR, RES_PAPER, RES_EAU_DE_VIE, RES_PRECIOUS_WARE, RES_STATUE, RES_NONE },
 };
 /* rang de priorité d'un besoin (0 = vital) ; 99 = hors panier (jamais débloqué). */
 static int need_rank(int c, Resource r){
@@ -252,11 +252,11 @@ static const float CLASS_SHARE[CLASS_COUNT] = { 0.80f, 0.15f, 0.05f };
 /* ---- Le palier MORAL est une VARIANTE culturelle (catalogue des biens) ----
  * Les cultures de basse subsistance (clans, montagnards nains, sauvages orques)
  * brassent la BIÈRE ; les cultures agraires/urbaines (cités, sylve elfique,
- * mercantile) pressent le VIN. Servir la MAUVAISE boisson ne contente qu'à
- * moitié (un nain boude le vin, un orque méprise le verre fin). */
+ * mercantile) pressent le EAU-DE-VIE. Servir la MAUVAISE boisson ne contente qu'à
+ * moitié (un nain boude le eau-de-vie, un orque méprise le verre fin). */
 #define DRINK_OFFCULT 0.5f
 static inline Resource preferred_drink(const PopCulture *c){
-    return (c->subsistance < 5.f) ? RES_BEER : RES_WINE;
+    return (c->subsistance < 5.f) ? RES_BEER : RES_EAU_DE_VIE;
 }
 /* Le palier STATUT (luxe d'élite) est lui aussi une variante : les cultures
  * martiales/pastorales (clans, nains, orques) prisent l'ORFÈVRERIE (torques,
@@ -349,7 +349,7 @@ static inline float market_effort(float price, float base){
 /* §4 (catalogue des biens) — DEMANDE par VARIANTE CULTURELLE. Les biens d'un
  * peuple ne sont pas d'autres biens : ce sont les variantes d'un même palier.
  * Une minorité d'une autre SPHÈRE réclame SES variantes (un orque méprise le
- * verre fin, un nain boude le vin) ; lui servir celles du dominant la satisfait
+ * verre fin, un nain boude le eau-de-vie) ; lui servir celles du dominant la satisfait
  * MAL. L'ASSIMILATION (integration↑, via le refactor démographique) fait DÉRIVER
  * sa demande vers la dominante → la pénalité s'efface sur les générations.
  * Renvoie la fraction de pop « mal servie » [0..1] (0 si province homogène). */
@@ -389,7 +389,7 @@ const char *social_class_name(SocialClass c) {
 const char *building_name(BuildingType b) {
     static const char *N[BLD_TYPE_COUNT]={
         [BLD_TEXTILE]="Manufacture textile",[BLD_SAWMILL]="Scierie navale",[BLD_PAPERMILL]="Papeterie",
-        [BLD_WINERY]="Distillerie",[BLD_BREWERY]="Brasserie",[BLD_JEWELER]="Joaillerie",
+        [BLD_DISTILLERY]="Distillerie",[BLD_BREWERY]="Brasserie",[BLD_JEWELER]="Joaillerie",
         [BLD_WEAVER_LUX]="Atelier d'étoffe précieuse",[BLD_MAGE_WORKSHOP]="Atelier de mage",
         [BLD_CELESTIAL_FORGE]="Forge céleste",[BLD_TOOLWORKS]="Atelier d'outillage",[BLD_ALAMBIC]="Alambic",
         [BLD_ARMORY]="Armurerie légère",[BLD_POWDERMILL]="Poudrière",[BLD_APOTHECARY]="Apothicaire",
@@ -680,7 +680,7 @@ void econ_init(WorldEconomy *e, const World *w) {
                 re->raw_cap[RES_CLAY]  += base*0.5f;
             /* FRUIT — vergers/cueillette : FORÊT/BOIS/JUNGLE SEULEMENT (plus « partout ») → le fruit
              * ne vole PAS les bras d'extraction au grain dans les régions céréalières (la bière survit).
-             * Nourriture de substitution (food-fill, plus bas) + repli du VIN. Protégé de la coupe. */
+             * Nourriture de substitution (food-fill, plus bas) + repli du EAU-DE-VIE. Protégé de la coupe. */
             if (bd==BIO_FOREST||bd==BIO_WOODS||bd==BIO_JUNGLE) re->raw_cap[RES_FRUIT] += base*0.65f;
         }
 
@@ -739,7 +739,7 @@ void econ_init(WorldEconomy *e, const World *w) {
                 region_ensure_building(re,BLD_PAPERMILL);
                 region_ensure_building(re,BLD_CHARCOAL);   /* charbon DU BOIS */
             }
-            if (re->raw_cap[RES_SUGAR] > 0.f) region_ensure_building(re,BLD_WINERY);
+            if (re->raw_cap[RES_SUGAR] > 0.f) region_ensure_building(re,BLD_DISTILLERY);
             if (re->raw_cap[RES_GRAIN] > 0.f) region_ensure_building(re,BLD_BREWERY);   /* la bière naît du grain */
             if (re->raw_cap[RES_GOLD] > 0.f || re->raw_cap[RES_PEARL] > 0.f)
                 region_ensure_building(re,BLD_JEWELER);
@@ -789,8 +789,8 @@ void econ_init(WorldEconomy *e, const World *w) {
              * dominantes. Source géologique BON MARCHÉ (extraction, pas la seule manufacture) ; les
              * RAW-WORKS restent le SUPPLÉMENT des régions pauvres + la chaîne confort. */
             prot[RES_CLAY]=prot[RES_STONE]=true;
-            /* FRUIT PROTÉGÉ — « un peu partout » : le repli vin doit survivre à la coupe (vocation
-             * mineure base·0.20) sinon le fruit n'existe nulle part et la winery-alt est morte. */
+            /* FRUIT PROTÉGÉ — « un peu partout » : le repli eau-de-vie doit survivre à la coupe (vocation
+             * mineure base·0.20) sinon le fruit n'existe nulle part et la distillerie-alt est morte. */
             prot[RES_FRUIT]=true;
             for (int k=0;k<keep;k++){
                 int best=-1; float bv=0.f;
@@ -1818,11 +1818,11 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* ---- 4. DEMANDE de consommation par strate ---------------------
          * §2 (CORRECTIF D'INTÉGRATION) : la demande des paliers VARIANTES suit la
          * PRÉFÉRENCE culturelle, EXACTEMENT comme la satisfaction (étape 5). Le
-         * besoin inscrit dans la case canonique (RES_WINE = palier moral,
+         * besoin inscrit dans la case canonique (RES_EAU_DE_VIE = palier moral,
          * RES_PRECIOUS_WARE = palier statut) est ROUTÉ vers la variante préférée
-         * (bière/vin, orfèvrerie/étoffe précieuse). Sans cela, bière & étoffe
+         * (bière/eau-de-vie, orfèvrerie/étoffe précieuse). Sans cela, bière & étoffe
          * précieuse restent à demande nulle (prix planché, jamais tirées par le
-         * marché) tandis que vin & orfèvrerie portent TOUTE la demande (prix
+         * marché) tandis que eau-de-vie & orfèvrerie portent TOUTE la demande (prix
          * plafond, pénurie structurelle) → l'élite ne reçoit pas son statut → coup. */
         for (int c=0;c<CLASS_COUNT;c++) {
             float units=re->strata[c].pop/100.f*DEMAND_TENSION;   /* /100 hab, tendu +10 % */
@@ -1832,7 +1832,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* besoin pas encore débloqué */
                 if (res_is_food((Resource)r)) need*=food_need;            /* A2 : calibrage de la bouche */
                 Resource tgt=(Resource)r;
-                if      (r==RES_WINE)          tgt=preferred_drink(&re->culture);
+                if      (r==RES_EAU_DE_VIE)          tgt=preferred_drink(&re->culture);
                 else if (r==RES_PRECIOUS_WARE) tgt=preferred_luxe(&re->culture);
                 demand[tgt]+=need*units;
             }
@@ -1894,14 +1894,14 @@ void econ_tick(WorldEconomy *e, float dt) {
                     comfort_joy += tune_f("COMFORT_JOY",0.08f) * got;   /* luxe SERVI → bonheur (par bien) */
                     continue;                                            /* HORS panier : aucune pénalité si absent */
                 }
-                /* ── Palier MORAL (boisson) : VARIANTE culturelle bière/vin ──
+                /* ── Palier MORAL (boisson) : VARIANTE culturelle bière/eau-de-vie ──
                  * On sert la boisson PRÉFÉRÉE de la culture locale d'abord ; la
-                 * mauvaise ne comble qu'à moitié (un nain boude le vin). */
-                if (r==RES_WINE){
-                    float w_d=BASE_PRICE[RES_WINE]*need;   /* valeur du palier (réf. vin) */
+                 * mauvaise ne comble qu'à moitié (un nain boude le eau-de-vie). */
+                if (r==RES_EAU_DE_VIE){
+                    float w_d=BASE_PRICE[RES_EAU_DE_VIE]*need;   /* valeur du palier (réf. eau-de-vie) */
                     need_w+=w_d;
                     Resource pref=preferred_drink(&re->culture);
-                    Resource alt =(pref==RES_BEER)?RES_WINE:RES_BEER;
+                    Resource alt =(pref==RES_BEER)?RES_EAU_DE_VIE:RES_BEER;
                     float cs_p=clampf(S[pref]/(need+EPS),0.f,1.f);
                     float cost_p=need*cs_p*re->price[pref];
                     float cb_p=(cost_p>0.f)?clampf(budget/cost_p,0.f,1.f):1.f;

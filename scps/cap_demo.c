@@ -26,7 +26,7 @@ static void ok(const char *what, bool cond){
  * le cap. Deux obstacles du moteur, neutralisés à dessein (banc = on tient le
  * marché pour isoler le limiteur) :
  *   · la SOIF (un bien de marché consommé ne s'accumule pas) → culture AGRAIRE
- *     (subsistance ≥ 5 ⇒ boisson préférée = VIN, pré-rempli) : la pop boit le vin,
+ *     (subsistance ≥ 5 ⇒ boisson préférée = EAU-DE-VIE, pré-rempli) : la pop boit le eau-de-vie,
  *     la bière reste INTACTE ⇒ seul puits = la décrue ×0.85.
  *   · l'ANTI-GLUT (offre > demande ⇒ prix s'effondre ⇒ effort chute) → on ÉPINGLE
  *     le prix bière (tick_pin, avant chaque econ_tick) ⇒ effort de marché tenu
@@ -36,12 +36,12 @@ static void ok(const char *what, bool cond){
 static void brew_region(WorldEconomy *e){
     RegionEconomy *re=&e->region[0];
     re->active=true; re->colonized=true; re->culture.settled=true; re->owner=0;
-    re->culture.subsistance=10.f;                 /* agraire ⇒ boit le VIN, pas la bière */
+    re->culture.subsistance=10.f;                 /* agraire ⇒ boit le EAU-DE-VIE, pas la bière */
     for (int k=0;k<RES_COUNT;k++){ re->raw_cap[k]=0.f; re->stock[k]=0.f; re->price[k]=1.0f; }
     re->raw_cap[RES_GRAIN]=60.f;                  /* grain ample pour une cadence haute */
     re->n_entrepot=20;                            /* gros plafond de stock (≈10k) : le grain n'est pas bridé à ~200 */
     re->stock[RES_GRAIN]=5000.f;                  /* SURPLUS vivrier large : la réserve (∝ pop) ne borne pas le brassage — le banc teste le CAP, pas la nourriture */
-    re->stock[RES_WINE]=1e5f;                     /* soif comblée au VIN ⇒ bière intacte */
+    re->stock[RES_EAU_DE_VIE]=1e5f;                     /* soif comblée au EAU-DE-VIE ⇒ bière intacte */
     re->n_bld=0; re->bld[0].type=BLD_BREWERY; re->bld[0].level=8.f; re->n_bld=1;
     /* Bassin AMPLE : ce banc teste le PLAFOND DE PRODUCTION, pas la main-d'œuvre. La refonte
      * labor-bound (brasserie labor=27, gourmande en bras) rendait une petite fixture labor-limitée

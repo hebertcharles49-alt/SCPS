@@ -164,7 +164,7 @@ void map_lens_tints(const WorldEconomy *econ, const WorldLegitimacy *wl,
     static const uint32_t T_PROSP[5]  = { 0xFF5a3d2e,0xFF8a6a3a,0xFFb0975a,0xFFd4b96a,0xFFf0d878 }; /* misère→opulence */
     static const uint32_t T_HUMEUR[5] = { 0xFFb03030,0xFFc07040,0xFFb0a060,0xFF7aa060,0xFF4a9a6a }; /* révoltée→dévouée */
     static const uint32_t T_MARCHE[5] = { 0xFF383838,0xFFc04038,0xFFc08040,0xFF6a9a70,0xFF8090a8 }; /* mort·pénurie·tendu·sain·engorgé */
-    static const Resource BASKET[5]   = { RES_GRAIN, RES_TOOLS, RES_IRON, RES_CLOTH, RES_WINE };    /* la tension qui compte */
+    static const Resource BASKET[5]   = { RES_GRAIN, RES_TOOLS, RES_IRON, RES_CLOTH, RES_EAU_DE_VIE };    /* la tension qui compte */
     for (int r=0; r<SCPS_MAX_REG; r++) out[r]=0xFF202020u;
     if (!econ) return;
     for (int r=0; r<econ->n_regions && r<SCPS_MAX_REG; r++) {
