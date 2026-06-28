@@ -1105,9 +1105,11 @@
   3-passes pour un **pointillé brossé** — `_dash_poly` découpe chaque polyligne en tirets (marcheur par
   MULTIPLE de période, `k` croît strictement → terminaison garantie ; remplace une 1re version `fmod`
   qui bouclait sur un piège de précision flottant), tous les tirets cumulés en UN batch, dessinés en
-  **2 passes** (halo doux + cœur **2.2px**) en **sépia RENFORCÉ** (umber sombre `ROAD_INK`) à
-  **OPACITÉ LIMITÉE** (α 0.78) → encre de route sur le parchemin, distincte des frontières colorées.
-  Tunables d'overlay : `ROAD_INK` · `ROAD_DASH` 6.5 · `ROAD_GAP` 4.0. (Le `_ink_brush` 5-passes est
+  **2 passes** en **sépia** (`ROAD_INK`). **ALLÉGÉ « carte au trésor » (2026-06-29)** : le gros web brun
+  (cœur 2.2px + halo 4.2px qui comblait les trous) devient un **POINTILLÉ FIN de DIRECTION** — cœur
+  **1.2px** + halo MINUSCULE (2.1px, ne comble plus les trous), tirets COURTS / gaps OUVERTS
+  (`ROAD_DASH` 3.5 · `ROAD_GAP` 5.5), α 0.72 → fine trace en pointillé, plus de réseau lourd.
+  Tunables d'overlay : `ROAD_INK` · `ROAD_DASH` · `ROAD_GAP`. (Le `_ink_brush` 5-passes est
   réservé aux blocs d'empire — sur le réseau routier dense entier il étranglait le rendu.) DISPLAY-ONLY,
   moteur intact.
 - **GODOT parchemin — frontières affinées + noms en forme de pays (2026-06-29)** : 4 retouches lecture.

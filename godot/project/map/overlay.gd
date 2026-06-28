@@ -107,9 +107,9 @@ var _alb_l: Image = null  ## terrain albedo (cache) → couleur/luminosité du S
 # et rend l'eau DANS le relief — cœur propre, berges fondues, continu jusqu'à la mer. L'overlay n'en
 # garde QUE le nuage de points (`_rivers`) pour interdire de BÂTIR sur le fil.
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
-const ROAD_INK  := Color(0.29, 0.17, 0.07, 0.78) ## route : sépia RENFORCÉ (umber sombre), opacité LIMITÉE (encre sur parchemin)
-const ROAD_DASH := 6.5     ## longueur de tiret (px écran) — la route en POINTILLÉ
-const ROAD_GAP  := 4.0     ## espace entre tirets (px écran)
+const ROAD_INK  := Color(0.30, 0.18, 0.08, 0.72) ## route : encre sépia (carte au trésor), trait FIN allégé
+const ROAD_DASH := 3.5     ## longueur de tiret (px écran) — POINTILLÉ de DIRECTION (carte pirate)
+const ROAD_GAP  := 5.5     ## espace entre tirets (px écran) — trous BIEN OUVERTS (allège)
 # MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
 const ROADSIDE := [
 	"DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW",
@@ -895,9 +895,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 					ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
 				alldash.append_array(_dash_poly(ipoly, ROAD_DASH / zoom, ROAD_GAP / zoom))
 			if alldash.size() >= 2:
-				# 2px · pointillé · pinceau (halo doux + cœur) · sépia RENFORCÉ à OPACITÉ LIMITÉE.
-				draw_multiline(alldash, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b, ROAD_INK.a * 0.34), 4.2 / zoom, true)
-				draw_multiline(alldash, ROAD_INK, 2.2 / zoom, true)
+				# CARTE PIRATE : direction en POINTILLÉ FIN — un seul trait délicat (halo MINUSCULE qui ne
+				# comble pas les trous), sépia léger. Allégé (plus de gros web brun).
+				draw_multiline(alldash, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b, ROAD_INK.a * 0.22), 2.1 / zoom, true)
+				draw_multiline(alldash, ROAD_INK, 1.2 / zoom, true)
 
 	# ── VILLES : glyphe d'encre par région (taille ∝ tier), capitale étoilée. ──
 	if zoom >= CITY_ZOOM_MIN:
