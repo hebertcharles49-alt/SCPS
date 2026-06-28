@@ -309,6 +309,11 @@ typedef struct {
 /* Initialise pops, capacités d'extraction et manufactures à partir de la
  * géographie/ressources du monde déjà généré. */
 void econ_init(WorldEconomy *e, const World *w);
+/* MODTOOLS — surcharge des VALEURS éco (prix/rendement) par fichier TSV name-keyed.
+ * dump : écrit le point de départ éditable. load : applique les surcharges (auto à
+ * econ_init si l'env SCPS_MODS pointe un fichier). Sans fichier ⇒ valeurs compilées. */
+void econ_moddata_dump(FILE *f);
+int  econ_moddata_load(const char *path);
 /* (Re)construit l'adjacence de régions (terre 4-connexe, barrières = infranchissable).
  * Appelée par econ_init ; exposée pour le recalcul du capstone §27 (carve eau/ronces). */
 void econ_build_adjacency(WorldEconomy *e, const World *w);

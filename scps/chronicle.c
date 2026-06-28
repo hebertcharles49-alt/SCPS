@@ -290,6 +290,7 @@ int main(int argc, char **argv){
     for (int i=1;i<argc;i++){
         if (!strcmp(argv[i],"--hash")) hash_mode=1;
         else if (!strcmp(argv[i],"--tunables")){ tune_list(stdout); return 0; }  /* Arc J : liste nom·défaut·actif */
+        else if (!strcmp(argv[i],"--dump-data")){ econ_moddata_dump(stdout); return 0; }  /* MODTOOLS : valeurs éco éditables */
         else if (np<8) pos[np++]=argv[i];
     }
     tune_print_active(stderr);   /* surcharges actives en tête (stderr → stdout reste byte-identique sans env) */

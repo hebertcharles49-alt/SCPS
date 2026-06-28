@@ -22,8 +22,10 @@
 /* ====================================================================== */
 
 /* Prix de base par bien (monnaie/unité). Brutes bon marché, manufacturés
- * chers, luxe très cher. Sert d'ancre au prix de marché. */
-static const float BASE_PRICE[RES_COUNT] = {
+ * chers, luxe très cher. Sert d'ancre au prix de marché.
+ * ⚠ NON-const (MODTOOLS) : surchargeable par fichier (SCPS_MODS) via econ_moddata_load.
+ * Sans fichier ⇒ valeurs compilées IDENTIQUES ⇒ golden/déterminisme intacts. */
+static float BASE_PRICE[RES_COUNT] = {
     [RES_NONE]          = 0.f,
     /* brutes agricoles */
     [RES_GRAIN]         = 1.0f,
@@ -87,7 +89,7 @@ static const float BASE_PRICE[RES_COUNT] = {
  *   🔒 ancrés : grain 8 · poisson 4 · gibier/élevage 3 · bois 0.5 · pierre/argile 0.25.
  *   ◇ dérivés : métaux 0.25-0.40 · fibres/sucre 0.60 · épices/minéraux 0.30-0.40 ·
  *               or 0.08 · rares (perle/teinture/arcane/céleste) 0.03-0.06. */
-static const float EXTRACT_YIELD[RES_COUNT] = {
+static float EXTRACT_YIELD[RES_COUNT] = {   /* NON-const (MODTOOLS) — surchargeable par SCPS_MODS */
     /* nourriture (interchangeable : grain/poisson/viande) */
     [RES_GRAIN]=8.0f, [RES_FISH]=4.0f, [RES_LIVESTOCK]=3.0f,
     /* vrac de construction & bois de feu — bois 0.5→1.0 : le FEU est un bien DIRECT (pas de
@@ -109,6 +111,50 @@ static const float EXTRACT_YIELD[RES_COUNT] = {
     [RES_MUREX]=0.05f, [RES_INDIGO]=0.06f,
     [RES_ARCANE_CRYSTAL]=0.04f, [RES_CELESTIAL_IRON]=0.03f,
 };
+
+/* ── MODTOOLS (2026-06-28) — surcharge des VALEURS éco par FICHIER ────────────
+ * Le motif tune_f/scps_lang.txt étendu aux TABLES : défaut compilé + override
+ * fichier, OPT-IN via l'env SCPS_MODS (chargé à econ_init si défini). SANS fichier
+ * ⇒ valeurs compilées IDENTIQUES ⇒ golden/déterminisme INTACTS. Format TSV
+ * NAME-KEYED (robuste au réordonnancement d'enum), TAB-séparé (les noms ont des
+ * espaces) : « ressource<TAB>base_price<TAB>extract_yield » ; '#'/vide ignorés ;
+ * extract_yield optionnel. `chronicle --dump-data` écrit le point de départ. */
+void econ_moddata_dump(FILE *f){
+    if (!f) return;
+    fprintf(f, "# MODTOOLS éco — valeurs éditables. Charger : SCPS_MODS=<ce fichier> ./chronicle …\n");
+    fprintf(f, "# ressource\tbase_price\textract_yield\n");
+    for (int r=0;r<RES_COUNT;r++){
+        const char *n=resource_name((Resource)r);
+        if (!n || !*n || strcmp(n,"—")==0) continue;     /* saute le sentinel RES_NONE */
+        fprintf(f, "%s\t%.4g\t%.4g\n", n, BASE_PRICE[r], EXTRACT_YIELD[r]);
+    }
+}
+static int econ_res_by_name(const char *tok){
+    for (int r=0;r<RES_COUNT;r++){ const char *n=resource_name((Resource)r);
+        if (n && strcmp(n,tok)==0) return r; }
+    return -1;
+}
+int econ_moddata_load(const char *path){
+    if (!path || !*path) return -1;
+    FILE *f=fopen(path,"r"); if (!f) return -1;
+    char line[256]; int applied=0;
+    while (fgets(line,sizeof line,f)){
+        if (line[0]=='#') continue;
+        char *nl=strpbrk(line,"\r\n"); if (nl) *nl=0;
+        char *t1=strchr(line,'\t'); if (!t1) continue;      /* ressource<TAB>… */
+        *t1=0;
+        int r=econ_res_by_name(line); if (r<0) continue;     /* nom inconnu → ignoré (tolérant) */
+        char *rest=t1+1; char *t2=strchr(rest,'\t');
+        BASE_PRICE[r]=(float)atof(rest);
+        if (t2) EXTRACT_YIELD[r]=(float)atof(t2+1);
+        applied++;
+    }
+    fclose(f);
+    if (applied>0) fprintf(stderr,
+        "[mods] éco : %d ressource(s) surchargée(s) depuis %s — monde NON-vanilla (replay/golden invalides).\n",
+        applied, path);
+    return applied;
+}
 
 /* Recette d'une manufacture : jusqu'à 2 intrants → 1 produit. */
 typedef struct {
@@ -571,6 +617,8 @@ void econ_cold_refresh(WorldEconomy *e, const World *w) {
 }
 
 void econ_init(WorldEconomy *e, const World *w) {
+    { const char *mods=getenv("SCPS_MODS");   /* MODTOOLS : surcharge de valeurs si défini (sinon vanilla) */
+      if (mods && *mods) econ_moddata_load(mods); }
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(e,0,sizeof(*e));
     econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */

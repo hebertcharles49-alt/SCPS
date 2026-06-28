@@ -1018,6 +1018,21 @@
   lisible par tier » de C, SANS toucher BASE_COST. Le reorg des PRIX (changer BASE_COST) reste volontairement
   non fait : il re-baselinerait l'équilibre pour un gain purement cosmétique (signalé, non un oubli).
 
+- **MODTOOLS — palier 1 : surcharge des VALEURS ÉCO par fichier (2026-06-28)** : 1er étage d'un modtools
+  durable (« éditer les prix/valeurs sans passer par une recompile »). Le motif `tune_f`/`scps_lang.txt`
+  (défaut compilé + override OPT-IN, golden-safe sans override) étendu aux TABLES éco. `BASE_PRICE[]` et
+  `EXTRACT_YIELD[]` passent **non-const** (valeurs compilées INCHANGÉES) ; `econ_moddata_dump(FILE*)` écrit un
+  TSV **name-keyed** (robuste au réordonnancement d'enum, TAB-séparé car les noms ont des espaces) ;
+  `econ_moddata_load(path)` applique les surcharges, appelé à `econ_init` **si l'env `SCPS_MODS` pointe un
+  fichier** (sinon vanilla). `chronicle --dump-data` écrit le point de départ éditable. ⊕ **golden IDENTIQUE +
+  determinism STABLE** (sans `SCPS_MODS` ⇒ valeurs compilées ⇒ rien ne bouge ; vérifié : golden re-confirmé
+  identique APRÈS un run modé — le fichier ne fuit pas) ; **SAVE non bumpé** (les tables ne sont pas
+  sérialisées, lues au tick). 0 warning. Round-trip prouvé (dump → édite Céréales prix→999 → `SCPS_MODS` →
+  « [mods] 1 ressource surchargée »). Guide : **MODDING.md** (les 3 canaux : `SCPS_TUNE` ≈168 · `SCPS_MODS`
+  éco · `scps_lang.txt` strings + assets Godot ; et comment AJOUTER du contenu = enum+table+1 recompile).
+  À VENIR : étendre `SCPS_MODS` aux recettes/tech/unités · codegen de contenu (manifeste → enums/tables) ·
+  panneau dev Godot (sliders live).
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
