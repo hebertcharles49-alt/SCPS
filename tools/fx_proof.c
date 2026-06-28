@@ -83,7 +83,7 @@ int main(int argc,char**argv){
     World *w=malloc(sizeof(World)); WorldEconomy*econ=malloc(sizeof(WorldEconomy));
     if(!w||!econ){ printf("OOM\n"); return 2; }
     WorldParams p=worldparams_default(seed); world_generate(w,&p);
-    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
 
     /* foyer caméra : une VILLE CÔTIÈRE — la région colonisée+côtière la plus peuplée ;
      * assise = une de SES cellules de côte (la plus proche de son centroïde). */
