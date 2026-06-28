@@ -149,41 +149,81 @@ static const TechNode NODES[TECH_COUNT] = {
 
 /* ====================================================================== */
 /* ÉTOFFE (2026-06-28) — BRANCHES CULTURELLES D'HÉRITAGE (tier 1-2)        */
-/* Chaque héritage gagne 2 spécialités PEU PROFONDES (native=héritage,      */
-/* faustian=false, charge/flux faibles) menant vers sa signature tier-3.    */
-/* Branches PARALLÈLES : la signature garde son prérequis d'origine ; ce    */
-/* sont des rungs que la barre de métabolisation (Temps 2) ouvrira par tier.*/
+/* Chaque héritage gagne 2 spécialités PEU PROFONDES (native=héritage)      */
+/* menant vers sa signature tier-3 — rungs que la barre de métabolisation   */
+/* (Temps 2) ouvre par tier. EFFETS sur les LEVIERS VIVANTS seulement :     */
+/* dK→prospérité · dL→stabilité & croissance · dPuissance→prospérité+Brèche ·*/
+/* dH→coercition · dFracture→fragilité · flux/charge→Brèche · et NODE_PROD_  */
+/* PCT/EFF_PCT (plus bas) pour le +production/+efficacité concret. (dEco/dMil/*/
+/* dF sont des champs MORTS du TechState — jamais lus — donc laissés à 0.)   */
 /* ====================================================================== */
-/* ---- Ésotérique (Savoir·Renforcement → COMMUNION) -------------------- */
+/* ---- Ésotérique (Savoir·Renforcement → COMMUNION) : +stabilité --------- */
 [TECH_GLYPHES_ETHERES] = { "Glyphes éthérés","Cercle de glyphes", THM_SAVOIR,FN_RENFORCEMENT,1, TECH_BIBLIOTHEQUE, false,false,HERITAGE_ESOTERIQUE,
-    0,0.5f,0.75f, 0,0, 0, 0, 0.3f, 0, 0.10f, false },
+    0,0.5f,0, 0,0, 0, 0, 0.3f, 0, 0.10f, false },
 [TECH_COMMUNION_ETHEREE] = { "Communion éthérée","Bastion éthéré", THM_SAVOIR,FN_RENFORCEMENT,2, TECH_GLYPHES_ETHERES, false,false,HERITAGE_ESOTERIQUE,
-    0,1.0f,1.5f, 0,0, 0, 0, 0.6f, 0.15f, 0.40f, false },
-/* ---- Métallurgiste (Forge·Armée → FORGE_RUNES) ----------------------- */
+    0,1.0f,0, 0,0, 0, 0, 0.6f, 0.15f, 0.40f, false },
+/* ---- Métallurgiste (Forge·Armée → FORGE_RUNES) : +production ----------- */
 [TECH_ALLIAGES_NAINS] = { "Alliages des profondeurs","Fonderie de bronze", THM_FORGE,FN_ARMEE,1, TECH_COLLECTE_ARGILE, false,false,HERITAGE_METALLURGISTE,
-    0,0.3f,0.5f, 0.3f,1.3f, 0, 0, 0, 0, 0, false },
+    0,0.3f,0, 0,0, 0, 0, 0, 0, 0, false },
 [TECH_GRAVURE_RUNES] = { "Gravure runique","Rune-forge", THM_FORGE,FN_ARMEE,2, TECH_ALLIAGES_NAINS, false,false,HERITAGE_METALLURGISTE,
-    0,0.3f,0.5f, 0.2f,2.0f, 0, 0, 0.5f, 0.10f, 0.50f, false },
-/* ---- Mécaniste (Forge·Prod→Renf → AUTOMATES) ------------------------- */
+    0,0.3f,0, 0,0, 0, 0, 0.5f, 0.10f, 0.50f, false },
+/* ---- Mécaniste (Forge·Prod→Renf → AUTOMATES) : +production/+efficacité - */
 [TECH_MECANISTE_ROUAGES] = { "Rouages de précision","Engrenagerie", THM_FORGE,FN_PRODUCTION,1, TECH_FONDERIE, false,false,HERITAGE_MECANISTE,
-    0.3f,0.5f,0, 1.2f,0, 0, 0, 0, 0.05f, 0.20f, false },
+    0.3f,0.5f,0, 0,0, 0, 0, 0, 0.05f, 0.20f, false },
 [TECH_MECANISTE_HORLOGERIE] = { "Mécanisme d'horlogerie","Horloge mécanique", THM_FORGE,FN_RENFORCEMENT,2, TECH_MECANISTE_ROUAGES, false,false,HERITAGE_MECANISTE,
-    0.3f,0.5f,0.3f, 1.5f,0, 0, 0, 0.5f, 0.10f, 0.30f, false },
-/* ---- Adaptatif (Société·Renforcement → INTEGRATION) ------------------ */
+    0.3f,0.5f,0, 0,0, 0, 0, 0.5f, 0.10f, 0.30f, false },
+/* ---- Adaptatif (Société·Renforcement → INTEGRATION) : +cohésion -------- */
 [TECH_DROIT_COUTUMIER] = { "Droit coutumier","Code coutumier", THM_SOCIETE,FN_RENFORCEMENT,1, TECH_CHANCELLERIE, false,false,HERITAGE_ADAPTATIF,
-    0,1.0f,0.5f, 0.5f,0, 0, 0, 0, 0, 0, false },
+    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false },
 [TECH_LANGUE_FRANQUE] = { "Langue franque","Lingua franca", THM_SOCIETE,FN_RENFORCEMENT,2, TECH_DROIT_COUTUMIER, false,false,HERITAGE_ADAPTATIF,
-    1.0f,1.5f,1.0f, 0,0, 0, -1.0f, 0, 0, 0, false },
-/* ---- Agraire (Société·Production → ABONDANCE) ------------------------ */
+    1.0f,1.5f,0, 0,0, 0, -1.0f, 0, 0, 0, false },
+/* ---- Agraire (Société·Production → ABONDANCE) : +production agricole --- */
 [TECH_VERGERS_ETAGES] = { "Vergers étagés","Vergers en terrasses", THM_SOCIETE,FN_PRODUCTION,1, TECH_COLLECTE_NOURRITURE, false,false,HERITAGE_AGRAIRE,
-    0,0.5f,0, 1.0f,0, 0, 0, 0, 0, 0, false },
+    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },
 [TECH_PATURAGES_INTEGRES] = { "Pâturages intégrés","Prairies-vergers", THM_SOCIETE,FN_PRODUCTION,2, TECH_VERGERS_ETAGES, false,false,HERITAGE_AGRAIRE,
-    0,1.0f,0, 2.0f,0, 0, 0, 0, 0, 0, false },
-/* ---- Clanique (Société·Armée → ESCLAVAGE) ---------------------------- */
+    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false },
+/* ---- Clanique (Société·Armée → ESCLAVAGE) : +stabilité / +production --- */
 [TECH_RITES_GUERRIERS] = { "Rites guerriers","Sanctuaire des ancêtres", THM_SOCIETE,FN_ARMEE,1, TECH_CASERNE, false,false,HERITAGE_CLANIQUE,
-    0,0.3f,0, 0,1.3f, 0.2f, 0, 0, 0, 0, false },
+    0,0.3f,0, 0,0, 0.2f, 0, 0, 0, 0, false },
 [TECH_HORDES_CONQUERANTES] = { "Hordes conquérantes","Camps de rapine", THM_SOCIETE,FN_ARMEE,2, TECH_RITES_GUERRIERS, false,false,HERITAGE_CLANIQUE,
-    0,0.5f,0, 1.5f,1.5f, 0.3f, 0.5f, 0, 0, 0, false },
+    0,0.5f,0, 0,0, 0.3f, 0.5f, 0, 0, 0, false },
+
+/* ====================================================================== */
+/* COMBOS (2026-06-28) — TIER-4 COMBINATOIRE EXCLUSIF (une paire d'héritages)*/
+/* prereq=NONE : la PORTE est la double-métabolisation (accès tier 3 aux deux*/
+/* héritages, via tech_combo_native + le plafond de tier dans can_research) +*/
+/* le coût tier-4. native=héritage A ; tech_combo_native renvoie l'héritage B.*/
+/* Effets sur leviers VIVANTS : FN_ARMEE → army_doctrine (auto, tier4=+20/28%);*/
+/* FN_PRODUCTION/RENFORCEMENT → NODE_PROD_PCT/EFF_PCT (plus bas) + prospérité. */
+/* ====================================================================== */
+[TECH_COMBO_POUDRE] = { "Arquebuserie de précision","Manufacture d'armes à feu", THM_FORGE,FN_ARMEE,4, NONE, false,false,HERITAGE_MECANISTE,
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Méca×Métal : +dégâts (feu) via doctrine + poudre (prod%) */
+[TECH_COMBO_AUTOMATES_ARC] = { "Automates arcanes","Golems d'essence", THM_FORGE,FN_RENFORCEMENT,4, NONE, false,false,HERITAGE_ESOTERIQUE,
+    0,0,0, 0,0, 0, 0, 1.0f, 0, 0, false },         /* Éso×Méca : +production (prod%) + puissance */
+[TECH_COMBO_ACADEMIE] = { "Académie cosmopolite","Grande académie", THM_SAVOIR,FN_PRODUCTION,4, NONE, false,false,HERITAGE_ESOTERIQUE,
+    1.0f,0,0, 0,0, 0, 0, 0, 0, 0, false },         /* Éso×Adaptatif : +recherche (Savoir·Prod) + efficacité */
+[TECH_COMBO_DRUIDE] = { "Abondance druidique","Bosquet nourricier", THM_SOCIETE,FN_PRODUCTION,4, NONE, false,false,HERITAGE_ESOTERIQUE,
+    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Éso×Agraire : +production agricole (prod%) + stabilité */
+[TECH_COMBO_CHAMAN] = { "Chamanisme de guerre","Cercle des chamans", THM_SAVOIR,FN_ARMEE,4, NONE, false,false,HERITAGE_ESOTERIQUE,
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Éso×Clanique : +magie de guerre via doctrine (arcane_power) */
+[TECH_COMBO_GUILDES] = { "Guildes maîtresses","Hôtel des guildes", THM_SOCIETE,FN_PRODUCTION,4, NONE, false,false,HERITAGE_METALLURGISTE,
+    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Métal×Adaptatif : +production (prod%) + or/stabilité */
+[TECH_COMBO_CHARRUES] = { "Charrues lourdes","Atelier de charronnage", THM_SOCIETE,FN_PRODUCTION,4, NONE, false,false,HERITAGE_METALLURGISTE,
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Métal×Agraire : +production agricole (prod%) */
+[TECH_COMBO_POLIORCETIQUE] = { "Poliorcétique","Forge de guerre", THM_FORGE,FN_ARMEE,4, NONE, false,false,HERITAGE_METALLURGISTE,
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Métal×Clanique : +dégâts via doctrine */
+[TECH_COMBO_HORLOGE_MARCH] = { "Horlogerie marchande","Comptoir mécanique", THM_FORGE,FN_RENFORCEMENT,4, NONE, false,false,HERITAGE_MECANISTE,
+    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Méca×Adaptatif : +efficacité (eff%) + or/stabilité */
+[TECH_COMBO_MACHINES_AGRI] = { "Machines agricoles","Moulins & semoirs", THM_SOCIETE,FN_PRODUCTION,4, NONE, false,false,HERITAGE_MECANISTE,
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Méca×Agraire : +production agricole (prod%, fort) */
+[TECH_COMBO_SIEGE] = { "Engins de siège","Arsenal de siège", THM_FORGE,FN_ARMEE,4, NONE, false,false,HERITAGE_MECANISTE,
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Méca×Clanique : +dégâts via doctrine */
+[TECH_COMBO_GRENIER_COLON] = { "Grenier colonial","Comptoir-grenier", THM_SOCIETE,FN_RENFORCEMENT,4, NONE, false,false,HERITAGE_ADAPTATIF,
+    1.0f,1.5f,0, 0,0, 0, 0, 0, 0, 0, false },      /* Adaptatif×Agraire : +stabilité & +croissance (K,L) */
+[TECH_COMBO_FOEDERATI] = { "Foederati","Camp fédéré", THM_SOCIETE,FN_ARMEE,4, NONE, false,false,HERITAGE_ADAPTATIF,
+    0,0.5f,0, 0,0, 0, -0.5f, 0, 0, 0, false },     /* Adaptatif×Clanique : +moral via doctrine + cohésion */
+[TECH_COMBO_HORDE_ECO] = { "Économie de horde","Halle du butin", THM_SOCIETE,FN_ARMEE,4, NONE, false,false,HERITAGE_AGRAIRE,
+    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Agraire×Clanique : +moral via doctrine + production (prod%) */
 };
 
 /* ====================================================================== */
@@ -273,10 +313,21 @@ static const float NODE_PROD_PCT[TECH_COUNT] = {
     [TECH_FONDERIE]=0.08f, [TECH_OUTILLAGE]=0.10f, [TECH_MANUFACTURE]=0.12f, [TECH_INDUSTRIE]=0.15f,
     /* Société·Production — rendement agricole / efficacité du commerce. */
     [TECH_IRRIGATION]=0.06f, [TECH_COMMERCE]=0.08f, [TECH_CADASTRE]=0.08f, [TECH_ABONDANCE]=0.10f,
+    /* ÉTOFFE — rungs d'héritage à VOCATION PRODUCTION (les FN_ARMÉE vont à army_doctrine). */
+    [TECH_MECANISTE_ROUAGES]=0.06f,
+    [TECH_VERGERS_ETAGES]=0.05f, [TECH_PATURAGES_INTEGRES]=0.07f,
+    /* COMBOS tier-4 à vocation production (le +production CONCRET de la fusion). */
+    [TECH_COMBO_AUTOMATES_ARC]=0.10f, [TECH_COMBO_DRUIDE]=0.08f,
+    [TECH_COMBO_GUILDES]=0.08f, [TECH_COMBO_CHARRUES]=0.08f,
+    [TECH_COMBO_MACHINES_AGRI]=0.12f, [TECH_COMBO_HORDE_ECO]=0.06f,
 };
 static const float NODE_EFF_PCT[TECH_COUNT] = {
     /* Savoir·Production — le savoir-faire rend chaque bras meilleur (efficacité d'emploi). */
     [TECH_SCRIPTORIUM]=0.05f, [TECH_ACADEMIE]=0.07f, [TECH_UNIVERSITE]=0.10f,
+    /* ÉTOFFE — l'horlogerie gnome SYNCHRONISE la production (efficacité d'emploi). */
+    [TECH_MECANISTE_HORLOGERIE]=0.08f,
+    /* COMBOS tier-4 à vocation efficacité/savoir. */
+    [TECH_COMBO_HORLOGE_MARCH]=0.10f, [TECH_COMBO_ACADEMIE]=0.08f,
 };
 float tech_prod_bonus(const TechState *s){
     float b=0.f; if(!s) return 0.f;
@@ -329,6 +380,21 @@ int tech_heritage_access_tier(unsigned access, Heritage r){
 static Heritage tech_combo_native(TechId id){
     switch (id){
         case TECH_FORGE_RUNES: return HERITAGE_ESOTERIQUE;   /* runique (métallurgiste) ET arcane (ésotérique) */
+        /* COMBOS tier-4 : le SECOND héritage requis (le premier = NODES[].native). */
+        case TECH_COMBO_POUDRE:        return HERITAGE_METALLURGISTE; /* Méca × Métal */
+        case TECH_COMBO_AUTOMATES_ARC: return HERITAGE_MECANISTE;     /* Éso × Méca */
+        case TECH_COMBO_ACADEMIE:      return HERITAGE_ADAPTATIF;     /* Éso × Adaptatif */
+        case TECH_COMBO_DRUIDE:        return HERITAGE_AGRAIRE;       /* Éso × Agraire */
+        case TECH_COMBO_CHAMAN:        return HERITAGE_CLANIQUE;      /* Éso × Clanique */
+        case TECH_COMBO_GUILDES:       return HERITAGE_ADAPTATIF;     /* Métal × Adaptatif */
+        case TECH_COMBO_CHARRUES:      return HERITAGE_AGRAIRE;       /* Métal × Agraire */
+        case TECH_COMBO_POLIORCETIQUE: return HERITAGE_CLANIQUE;      /* Métal × Clanique */
+        case TECH_COMBO_HORLOGE_MARCH: return HERITAGE_ADAPTATIF;     /* Méca × Adaptatif */
+        case TECH_COMBO_MACHINES_AGRI: return HERITAGE_AGRAIRE;       /* Méca × Agraire */
+        case TECH_COMBO_SIEGE:         return HERITAGE_CLANIQUE;      /* Méca × Clanique */
+        case TECH_COMBO_GRENIER_COLON: return HERITAGE_AGRAIRE;       /* Adaptatif × Agraire */
+        case TECH_COMBO_FOEDERATI:     return HERITAGE_CLANIQUE;      /* Adaptatif × Clanique */
+        case TECH_COMBO_HORDE_ECO:     return HERITAGE_CLANIQUE;      /* Agraire × Clanique */
         default:               return UNIV;
     }
 }
@@ -339,10 +405,13 @@ bool tech_can_research(const TechState *s, TechId id, unsigned heritage_access) 
     const TechNode *n=&NODES[id];
     /* PORTE D'ARCHÉTYPE : une tech-signature exige que l'empire ATTEIGNE l'archétype
      * (par sa culture ou un contact de gouvernance — le masque est calculé ainsi côté IA). */
-    if (n->native!=UNIV && tech_heritage_access_tier(heritage_access, n->native) < n->tier) return false;
-    /* COMBINAISON : certains nœuds exigent un SECOND archétype (ET), au tier du nœud. */
+    /* L'accès gradué plafonne à tier 3 (accès PLEIN) ; un nœud tier-4 (combo) exige donc
+     * l'accès PLEIN (3) à son/ses héritage(s) — natif OU pleinement métabolisé. */
+    int need = n->tier > 3 ? 3 : n->tier;
+    if (n->native!=UNIV && tech_heritage_access_tier(heritage_access, n->native) < need) return false;
+    /* COMBINAISON : certains nœuds exigent un SECOND archétype (ET), au même tier requis. */
     { Heritage combo=tech_combo_native(id);
-      if (combo!=UNIV && tech_heritage_access_tier(heritage_access, combo) < n->tier) return false; }
+      if (combo!=UNIV && tech_heritage_access_tier(heritage_access, combo) < need) return false; }
     /* Porte arcane : les bouts faustiens du Savoir profond exigent une ruine. */
     if (n->needs_ruins && !s->has_ruins_access) return false;
     /* Prérequis : le nœud précédent du quartier doit être acquis. */

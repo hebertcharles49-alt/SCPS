@@ -910,6 +910,22 @@ int main(int argc, char **argv){
           printf("              métabolisation : %d/%d empire(s) creuset (>1%% digéré) · moyenne %.1f%% · max %.1f%% → +%.1f%% recherche au plus métabolisé\n",
                  ncreuset, nm, nm?sm/nm*100.f:0.f, mx*100.f, mx*wgt*100.f); }
 
+        /* COMBOS tier-4 (fusion de 2 héritages métabolisés/possédés) : la PREUVE que la matrice
+         * de combos s'allume sur le long cours — combien d'empires en tiennent ≥1, et combien de
+         * combos au total (Forge runique + les 14 paires). Rare (double accès plein + coût tier-4). */
+        { int ncombo_emp=0, ncombo_tot=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].role==POLITY_WILD) continue;
+              int got=0;
+              for (int id=TECH_FORGE_RUNES; id<TECH_COUNT; id++){
+                  if (id!=TECH_FORGE_RUNES && id<TECH_COMBO_POUDRE) continue;   /* FORGE_RUNES + la plage COMBO */
+                  if (s.ts[c].unlocked[id]) got++;
+              }
+              if (got>0){ ncombo_emp++; ncombo_tot+=got; }
+          }
+          printf("              combos tier-4 : %d empire(s) tiennent une fusion d'héritages · %d combo(s) au total\n",
+                 ncombo_emp, ncombo_tot); }
+
         /* LEVIERS & SUZERAINETÉ (brief leviers) : l'usage par sim — sans ces lignes,
          * on ne sait ni si l'IA s'en sert, ni si elle s'en sert TROP. */
         { int rep,ass,pur; long dead; agency_levier_stats(&rep,&ass,&pur,&dead);

@@ -82,6 +82,25 @@ typedef enum {
     TECH_DROIT_COUTUMIER,    TECH_LANGUE_FRANQUE,      /* Adaptatif (Société) */
     TECH_VERGERS_ETAGES,     TECH_PATURAGES_INTEGRES,  /* Agraire (Société) */
     TECH_RITES_GUERRIERS,    TECH_HORDES_CONQUERANTES, /* Clanique (Société) */
+    /* COMBOS (2026-06-28) — TIER-4 COMBINATOIRE EXCLUSIF : un nœud par PAIRE d'héritages,
+     * recherchable seulement avec l'ACCÈS PLEIN (tier 3 — natif OU métabolisé) aux DEUX.
+     * Symétrie : si un empire métabolise B ET C, le combo B×C lui est ouvert (même s'il
+     * n'est ni B ni C). Forge runique (Métal×Éso) existe déjà ; voici les 14 autres paires.
+     * Effets routés sur les leviers VIVANTS (army_doctrine / NODE_PROD_PCT / prospérité). */
+    TECH_COMBO_POUDRE,        /* Méca × Métal — Arquebuserie de précision (Forge·Armée) */
+    TECH_COMBO_AUTOMATES_ARC, /* Éso × Méca — Automates arcanes (Forge·Renf) */
+    TECH_COMBO_ACADEMIE,      /* Éso × Adaptatif — Académie cosmopolite (Savoir·Prod) */
+    TECH_COMBO_DRUIDE,        /* Éso × Agraire — Abondance druidique (Société·Prod) */
+    TECH_COMBO_CHAMAN,        /* Éso × Clanique — Chamanisme de guerre (Savoir·Armée) */
+    TECH_COMBO_GUILDES,       /* Métal × Adaptatif — Guildes maîtresses (Société·Prod) */
+    TECH_COMBO_CHARRUES,      /* Métal × Agraire — Charrues lourdes (Société·Prod) */
+    TECH_COMBO_POLIORCETIQUE, /* Métal × Clanique — Poliorcétique (Forge·Armée) */
+    TECH_COMBO_HORLOGE_MARCH, /* Méca × Adaptatif — Horlogerie marchande (Forge·Renf) */
+    TECH_COMBO_MACHINES_AGRI, /* Méca × Agraire — Machines agricoles (Société·Prod) */
+    TECH_COMBO_SIEGE,         /* Méca × Clanique — Engins de siège (Forge·Armée) */
+    TECH_COMBO_GRENIER_COLON, /* Adaptatif × Agraire — Grenier colonial (Société·Renf) */
+    TECH_COMBO_FOEDERATI,     /* Adaptatif × Clanique — Foederati (Société·Armée) */
+    TECH_COMBO_HORDE_ECO,     /* Agraire × Clanique — Économie de horde (Société·Armée) */
     TECH_COUNT
 } TechId;
 

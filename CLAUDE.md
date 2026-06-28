@@ -926,6 +926,29 @@
   registre J : `METAB_TIER1` 0.10 · `_TIER2` 0.20 · `_TIER3` 0.35. **SAVE non bumpé** (l'accès se recalcule ;
   `arch_depth` déjà sérialisé, sens inchangé). À VENIR (Temps 2b) : la REMISE de prix (tech qu'un autre empire
   possède = moins chère) ; puis coût en N-provinces, reorg tiers 1-5, UI Medusa.
+- **EFFETS TECH CONCRETS + MATRICE DE COMBOS tier-4 (2026-06-28)** : « que font les techs ? » — audit + réponse.
+  ⚠ **Découverte** : `TechState.eco`, `.mil`, `.F` sont des champs **MORTS** (jamais lus) → `dEco`/`dMil`/`dF`
+  ne font RIEN (ni mes nœuds, ni les techs existantes). Les leviers VIVANTS : `K`→prospérité · `L`→stabilité &
+  croissance (`croissance = δ·P·L/10`) · `puissance`→prospérité+Brèche · `H`→coercition · `fracture`/`charge`/
+  `flux`→Brèche · **`NODE_PROD_PCT`/`EFF_PCT`**→+production/+efficacité · **`army_doctrine`** (compte les techs
+  FN_ARMÉE × tier : Forge→+dégâts, Société→+moral, Savoir→+magie) · chaîne Savoir·Prod→+recherche.
+  **(1) Étoffe recâblée sur les leviers vivants** : les 12 rungs zéro-tent leurs champs morts ; les FN_ARMÉE
+  (Alliages/Gravure→+dégâts, Rites/Hordes→+moral) passent par `army_doctrine` (PAS la prod — correction d'une
+  mauvaise étiquette), les FN_PRODUCTION (Rouages/Vergers/Pâturages) par `NODE_PROD_PCT`, l'Horlogerie par
+  `NODE_EFF_PCT`, les Savoir·Renf (Glyphes/Communion) par la prospérité. **Effet JOUEUR** affiché par tech
+  (`TECH_UTILITY`, ex. « +dégâts d'armes », « +stabilité », « +recherche »). **(2) MATRICE DE COMBOS** — 15
+  paires d'héritages (Forge runique existait ; +14 neuves), chacune un **nœud tier-4 COMBINATOIRE EXCLUSIF**
+  recherchable seulement avec l'**accès PLEIN (tier 3) aux DEUX héritages** (natif OU métabolisé) — symétrie :
+  métaboliser B ET C ouvre B×C même si on n'est ni l'un ni l'autre. Réutilise le motif `tech_combo_native`
+  (native=A, combo renvoie B) + plafond de tier dans `tech_can_research` (`need = min(tier,3)` ⇒ tier-4 exige
+  accès plein). Effets via leviers vivants (army_doctrine pour les combos militaires Poudre/Poliorcétique/Siège/
+  Chamanisme/Foederati/Horde ; `NODE_PROD_PCT`/`EFF_PCT` pour Automates arcanes/Druide/Guildes/Charrues/Machines
+  agricoles/Horlogerie marchande ; recherche pour Académie ; prospérité pour Grenier colonial). ⚠ **SAVE BUMP
+  44→45** (+14 nœuds ⇒ `TECH_COUNT` grandit). ⚠ **RE-BASELINE golden**. `determinism` STABLE · suite **38 runnable
+  verts** (3 KO pré-existants Windows) · 0 warning · sweep 5×250 SAIN (satisfaction ~65/75/80, hégémon mortel 5/5,
+  §27 gaté an-180, **combos VIVANTS : 15-32 empires tiennent une fusion/sim**). Télémétrie chronicle « combos
+  tier-4 ». Hook par-unité (vrai « +X% arquebusiers » ciblé) + apex triple (Arquebuse runique Méca×Métal×Éso)
+  = différés (le `weapon_power` large suffit). À VENIR : coût en N-provinces, reorg tiers 1-5, UI Medusa.
 
 ## Disciplines non négociables
 
