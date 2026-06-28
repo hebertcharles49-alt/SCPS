@@ -78,6 +78,10 @@
     X(AI_THREAT_BRAKE,        0.5f) \
     X(AI_WAR_LOSING,        -25.0f) \
     X(AI_ALLY_NEED_W,         1.0f) \
+    /* MÉTABOLISATION — la recherche accélère ∝ part d'âmes ÉTRANGÈRES DIGÉRÉES (creuset) :
+     * income ×= 1 + W·métabolisé. Le signal est ~0 tôt (l'assimilation prend des décennies)
+     * ⇒ golden-safe. W=1 ⇒ « métabolisation X% = +X% recherche » (lisible au hover) */ \
+    X(AI_METAB_RES_W,         1.0f) \
     /* EXPLOITATION — boost d'EXTRACTION par brute (modificateur provincial à construire) : +PER_TIER
      * par palier d'amélioration (scale sur les bras), plafonné à MAX_TIER paliers · coût d'or par palier
      * · seuil de déficit (forecast) qui ARME l'amélioration */ \

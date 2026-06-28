@@ -896,6 +896,20 @@ int main(int argc, char **argv){
           printf("              prévision : %d/%d pays en déficit vivrier STRUCTUREL (ne se nourrit pas à plein → import vital) · %d sous tension de runway (< 12 ans)\n",
                  n_foodstruct, nctry, n_foodten); }
 
+        /* MÉTABOLISATION (Temps 1) : le creuset DIGÉRÉ accélère la recherche. Le signal
+         * est ~0 tôt (l'assimilation prend des décennies) → la fenêtre golden ne bouge
+         * pas ; on MESURE ici qu'il DÉCOLLE sur le long cours (la preuve d'équilibre). */
+        { int nm=0, ncreuset=0; float sm=0.f, mx=0.f;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].role==POLITY_WILD) continue;
+              nm++;
+              float m = econ_country_metabolized(w, s.econ, c);
+              sm += m; if (m>mx) mx=m; if (m>0.01f) ncreuset++;
+          }
+          float wgt = tune_f("AI_METAB_RES_W",AI_METAB_RES_W);
+          printf("              métabolisation : %d/%d empire(s) creuset (>1%% digéré) · moyenne %.1f%% · max %.1f%% → +%.1f%% recherche au plus métabolisé\n",
+                 ncreuset, nm, nm?sm/nm*100.f:0.f, mx*100.f, mx*wgt*100.f); }
+
         /* LEVIERS & SUZERAINETÉ (brief leviers) : l'usage par sim — sans ces lignes,
          * on ne sait ni si l'IA s'en sert, ni si elle s'en sert TROP. */
         { int rep,ass,pur; long dead; agency_levier_stats(&rep,&ass,&pur,&dead);

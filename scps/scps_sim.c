@@ -442,7 +442,9 @@ void sim_day(Sim *s, World *w) {
             float yield = tech_research_yield(&s->ts[pl]);       /* institutions Savoir : ×1..2.5 */
             CountryReadout cr = country_readout(s->wp, s->ts, w, pl);
             float prosp = 0.4f + (float)cr.m_prosperite.value/100.f*1.2f;   /* ×[0.4..1.6] selon la prospérité */
-            s->ts[pl].research_points += (month/30.4f) * yield * prosp;     /* /mois → /jour */
+            float metab = 1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)     /* MÉTABOLISATION (Temps 1) : creuset → +recherche */
+                              * econ_country_metabolized(w, s->econ, pl);
+            s->ts[pl].research_points += (month/30.4f) * yield * prosp * metab; /* /mois → /jour */
             if (s->ts[pl].research_points >= tech_cost((TechId)s->research_target, pop)){
                 tech_research(&s->ts[pl], (TechId)s->research_target, access);   /* DÉBLOQUÉ */
                 s->ts[pl].research_points = 0.f; s->research_target=-1;          /* file de 1 : terminé */

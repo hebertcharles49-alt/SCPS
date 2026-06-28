@@ -382,6 +382,36 @@ float econ_off_culture_fraction(const ProvincePop *pp){
     return (total>0)? off/(float)total : 0.f;
 }
 
+/* MÉTABOLISATION — la part de la population de l'empire qui est venue d'AILLEURS
+ * (DIASPORA : migrants + captifs de conquête, posés à integration=0) ET d'un AUTRE
+ * héritage que la capitale, pondérée par ce qu'on en a DIGÉRÉ (×integration). C'est
+ * « incorporer d'autres gens dans SA culture » au sens ACTIF : pas l'hétérogénéité
+ * de naissance (les natifs d'un héritage hash-assigné post-GR4 ne comptent PAS — ils
+ * ne sont pas diaspora), mais les nouveaux venus à mesure qu'on les assimile. Un
+ * captif fraîchement pris (integration 0) ne rapporte rien ; il rapporte en se
+ * digérant. ⇒ ~0 tôt (l'assimilation prend des années) → golden-safe. [0..1],
+ * pondéré par les âmes (200 digérés ≠ 1000). */
+float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid){
+    if (!w || !econ || cid<0 || cid>=w->n_countries) return 0.f;
+    int cp = w->country[cid].capital_prov;
+    int cr = (cp>=0 && cp<w->n_provinces) ? w->province[cp].region : -1;
+    Heritage native = (cr>=0 && cr<econ->n_regions) ? econ->region[cr].culture.heritage
+                                                    : HERITAGE_ADAPTATIF;
+    double dig=0.0, tot=0.0;
+    for (int r=0;r<econ->n_regions;r++){
+        const RegionEconomy *re=&econ->region[r];
+        if (re->owner!=cid) continue;
+        const ProvincePop *pp=&re->pop;
+        for (int i=0;i<pp->n_groups;i++){
+            const PopGroup *g=&pp->groups[i];
+            tot += (double)g->count;
+            if (g->diaspora && g->heritage!=native)
+                dig += (double)g->count * (double)clampf(g->integration,0.f,1.f);
+        }
+    }
+    return (tot>0.0) ? (float)(dig/tot) : 0.f;
+}
+
 const char *social_class_name(SocialClass c) {
     static const char *N[CLASS_COUNT]={"Laborers","Bourgeois","Élites"};
     return (c>=0&&c<CLASS_COUNT)?N[c]:"?";

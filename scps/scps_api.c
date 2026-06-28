@@ -348,6 +348,9 @@ void scps_country_info(ScpsSim *s, int cid, ScpsCountryInfo *out){
     out->savoir       = cr.m_savoir.value;     out->savoir_mot     = sz(cr.m_savoir.word);
     out->influence    = cr.influence;
     out->corruption   = cr.corruption;
+    /* MÉTABOLISATION (Temps 1) : le +% de recherche que vaut le creuset digéré (W·part). */
+    out->metab_pct    = (int)(tune_f("AI_METAB_RES_W",AI_METAB_RES_W)
+                              * econ_country_metabolized(s->w, s->sim.econ, cid) * 100.f + 0.5f);
 }
 
 /* ---- ACTEURS SUR LA CARTE (Phase 3) : armées de campagne + tiers de ville --- */

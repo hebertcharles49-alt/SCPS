@@ -485,6 +485,17 @@ float econ_tax_tolerance(Ethos e, SocialClass c);
  * la pénalité. 0 si la province est homogène. Frappe la satisfaction SOCIALE. */
 float econ_off_culture_fraction(const ProvincePop *pp);
 
+/* MÉTABOLISATION — part [0..1] des âmes de l'empire qui sont d'un AUTRE héritage que
+ * la capitale ET assimilées (×integration) : le signal « creuset digéré ». Lu par la
+ * recherche (boost) et la membrane (hover « métabolisation +X% »). Twin-inverse de
+ * econ_off_culture_fraction (qui pèse le foreign NON encore digéré). */
+float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid);
+/* Poids du boost de recherche par métabolisation (Temps 1) — fallback compilé du
+ * tunable runtime AI_METAB_RES_W (registre scps_tune_list.h). income ×= 1 + W·métabolisé. */
+#ifndef AI_METAB_RES_W
+#define AI_METAB_RES_W 1.0f
+#endif
+
 /* ── PIPELINE IA — PRÉVISION (étage 1) : ce que l'IA LIT pour voir le mur venir ──
  * Forecast par PAYS et par flux, DÉRIVÉ des seules coordonnées du moteur (pop, raw_cap,
  * demande, offre, stock, eff_cap, needs_met). Recalculé au tick, JAMAIS sérialisé.

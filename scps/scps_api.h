@@ -124,6 +124,7 @@ typedef struct {
     int         savoir;      const char *savoir_mot;
     int         influence;              /* 0-100 : réputation diplomatique */
     int         corruption;             /* 0-100 : capture de l'État */
+    int         metab_pct;              /* MÉTABOLISATION : +X% de recherche (creuset digéré) — pour le hover savoir */
 } ScpsCountryInfo;
 
 void scps_province_info(ScpsSim *s, int province, ScpsProvInfo  *out);

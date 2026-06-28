@@ -1823,6 +1823,11 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     /* ASSIETTE : la pop PRODUIT la recherche — et la renchérit (tech_cost) → équilibre. */
     float income = (AI_RESEARCH_RATE/365.f)*AI_RESEARCH_CADENCE
                  * tech_research_yield(ts) * (1.f + pop/AI_RESEARCH_POPREF);
+    /* MÉTABOLISATION (Temps 1) — un empire CREUSET (qui a digéré des âmes d'un autre
+     * héritage) cherche plus vite : « incorporer d'autres gens dans sa culture fonctionne ».
+     * Signal ~0 tôt (l'assimilation prend des décennies) ⇒ la fenêtre golden ne bouge pas. */
+    income *= (1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)
+                     * econ_country_metabolized(w, econ, a->cid));
     ts->research_points += income;
     ai_sync_refresh(w, econ, rn, ts, a->cid);                   /* §4-13 : cache la profondeur + loquette la diffusion (+ S1 : le commerce) */
     unsigned access=0;

@@ -868,6 +868,28 @@
   prix outils moyen 63→~45 absolu. ⚠ **RE-BASELINE golden** (le prix mord dès l'an-0 sur les empires multi-régions ;
   `golden_hashes.txt` mis à jour) · `determinism` **STABLE** · bancs **37/37** runnable verts (3 KO pré-existants Windows) ·
   sweep 5×250 SAIN (satisfaction 66/76/83 an-250 post-Grand-Hiver, hégémon mortel 5/5, §27 an-180, IPM 1.22).
+- **MÉTABOLISATION — Temps 1 : le creuset DIGÉRÉ accélère la recherche (2026-06-28)** : premier étage du
+  mécanisme d'accès-tech par éthos/héritage. « Incorporer d'autres gens dans SA culture FONCTIONNE » au sens
+  ACTIF — pas l'hétérogénéité de NAISSANCE (post-GR4 les régions d'un empire portent des héritages hash-assignés
+  ≠ la capitale ; leurs natifs NE comptent PAS), mais les **NOUVEAUX VENUS** (DIASPORA : migrants + captifs de
+  conquête, posés à `integration=0`) d'un AUTRE héritage, **à mesure qu'on les DIGÈRE**. Helper neuf
+  `econ_country_metabolized(w,econ,cid)` (scps_econ.c) = TWIN-INVERSE de `econ_off_culture_fraction` : Σ
+  (diaspora ∧ heritage≠natif) count·integration / Σ count ∈ [0..1], pondéré par les ÂMES (200 digérés ≠ 1000).
+  La recherche en tire un boost — `income ×= 1 + W·métabolisé` — dans `ai_research_step` (IA) ET la voie joueur
+  (`scps_sim.c`, no-op chronique : `human_player=-1`). Un captif fraîchement pris (integ 0) ne rapporte RIEN ;
+  il rapporte en se métabolisant (= digérer). **Complément** de la diffusion par COMMERCE existante (S1/
+  `tech_sync_tick` : le négoce ouvre les nœuds syncrétiques peu profonds jusqu'au seuil PROFOND) — la
+  métabolisation est le canal ACTIF, le commerce le canal PASSIF. Membrane : `ScpsCountryInfo.metab_pct`
+  (le +X% de recherche, pour le hover sous la barre de savoir). Télémétrie chronicle « métabolisation »
+  (empires creuset · moyenne · max → +% au plus métabolisé). ⚠ **RE-BASELINE golden** (la migration est VIVE
+  dès l'an-0 → le creuset digéré atteint ~25 % à l'an-12 → le boost mord ; `golden_hashes.txt` mis à jour) ·
+  `determinism` **STABLE** (le boost est pur état sérialisé) · ai_demo 26/26 · scps_api_demo 91/91 · sweep 5×250
+  SAIN (satisfaction ~70/78/84, hégémon mortel 5/5, **§27 toujours gaté an-180** — le boost NE tire PAS l'apocalypse,
+  arbre 64-71 %/empire encore DIFFÉRENCIÉ ; le lever décolle : moyenne 4-8 %, **max +48 %** au plus métabolisé).
+  Tunable registre J : `AI_METAB_RES_W` 1.0 (⇒ « métabolisation X% = +X% recherche », lisible) — dialable d'une
+  ligne. **SAVE non bumpé** (rien de sérialisé ne change ; le signal se recalcule). À VENIR (Temps 2, re-baseline) :
+  la BARRE D'ACCÈS continue (le seuil binaire `PROFOND` de `ai_heritage_access` → access_bar par tier) + la REMISE
+  de prix (tech qu'un autre empire possède = moins chère) ; puis coût en N-provinces, reorg tiers 1-5, UI Medusa.
 
 ## Disciplines non négociables
 
