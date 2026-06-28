@@ -59,14 +59,14 @@ int main(void) {
      * ================================================================== */
     printf("\n── §2.2/§4 Distance : horloge (cousinage) vs contenu (friction) ──\n");
 
-    /* §4.4 elfe ↔ orc : mêmes deltas que le tableau (langue 2, parenté 7,
+    /* §4.4 ésotérique ↔ clan : mêmes deltas que le tableau (langue 2, parenté 7,
      * religion 5, subsistance 9, valeurs 9). D∞ doit valoir 9, l'horloge 2. */
-    ScpsFiche elf = {{ 5.f, 1.f, 3.f, 1.f, 1.f }};
-    ScpsFiche orc = {{ 7.f, 8.f, 8.f, 10.f, 10.f }};
-    printf("  Elfe↔Orc (§4.4) : sang commun, contenu opposé\n");
-    check("D∞ (friction, contenu)", scps_dist_inf(&elf, &orc), 9.0f);
-    check("horloge (cousinage)",     scps_clock(&elf, &orc),    2.0f);
-    check("D̄ (5 axes, annexe)",      scps_dist_bar(&elf, &orc), sqrtf(48.f)); /* √48≈6.928 */
+    ScpsFiche ésotérique = {{ 5.f, 1.f, 3.f, 1.f, 1.f }};
+    ScpsFiche clan = {{ 7.f, 8.f, 8.f, 10.f, 10.f }};
+    printf("  Ésotérique↔Clanique (§4.4) : sang commun, contenu opposé\n");
+    check("D∞ (friction, contenu)", scps_dist_inf(&ésotérique, &clan), 9.0f);
+    check("horloge (cousinage)",     scps_clock(&ésotérique, &clan),    2.0f);
+    check("D̄ (5 axes, annexe)",      scps_dist_bar(&ésotérique, &clan), sqrtf(48.f)); /* √48≈6.928 */
 
     /* §4.5 jumeaux transcontinentaux : horloge lointaine (8), contenu jumeau
      * → D∞ minuscule, ils fusionnent « sans se reconnaître ». */

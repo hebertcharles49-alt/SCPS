@@ -250,16 +250,16 @@ static inline bool res_is_food(Resource r){ return r==RES_GRAIN||r==RES_FISH||r=
 static const float CLASS_SHARE[CLASS_COUNT] = { 0.80f, 0.15f, 0.05f };
 
 /* ---- Le palier MORAL est une VARIANTE culturelle (catalogue des biens) ----
- * Les cultures de basse subsistance (clans, montagnards nains, sauvages orques)
- * brassent la BIÈRE ; les cultures agraires/urbaines (cités, sylve elfique,
+ * Les cultures de basse subsistance (clans, montagnards métallurgistes, sauvages claniques)
+ * brassent la BIÈRE ; les cultures agraires/urbaines (cités, sylve ésotérique,
  * mercantile) pressent le EAU-DE-VIE. Servir la MAUVAISE boisson ne contente qu'à
- * moitié (un nain boude le eau-de-vie, un orque méprise le verre fin). */
+ * moitié (un métallurgiste boude le eau-de-vie, un clanique méprise le verre fin). */
 #define DRINK_OFFCULT 0.5f
 static inline Resource preferred_drink(const PopCulture *c){
     return (c->subsistance < 5.f) ? RES_BEER : RES_EAU_DE_VIE;
 }
 /* Le palier STATUT (luxe d'élite) est lui aussi une variante : les cultures
- * martiales/pastorales (clans, nains, orques) prisent l'ORFÈVRERIE (torques,
+ * martiales/pastorales (clans, métallurgistes, claniques) prisent l'ORFÈVRERIE (torques,
  * runes, totems = bien OUVRÉ → precious_ware) ; les cultures établies/raffinées
  * (cités, sylve, mercantile) prisent l'ÉTOFFE PRÉCIEUSE (soie, fil-de-lune →
  * precious_cloth). Servir le mauvais luxe ne flatte qu'à moitié — l'élite
@@ -348,8 +348,8 @@ static inline float market_effort(float price, float base){
 
 /* §4 (catalogue des biens) — DEMANDE par VARIANTE CULTURELLE. Les biens d'un
  * peuple ne sont pas d'autres biens : ce sont les variantes d'un même palier.
- * Une minorité d'une autre SPHÈRE réclame SES variantes (un orque méprise le
- * verre fin, un nain boude le eau-de-vie) ; lui servir celles du dominant la satisfait
+ * Une minorité d'une autre SPHÈRE réclame SES variantes (un clanique méprise le
+ * verre fin, un métallurgiste boude le eau-de-vie) ; lui servir celles du dominant la satisfait
  * MAL. L'ASSIMILATION (integration↑, via le refactor démographique) fait DÉRIVER
  * sa demande vers la dominante → la pénalité s'efface sur les générations.
  * Renvoie la fraction de pop « mal servie » [0..1] (0 si province homogène). */
@@ -1896,7 +1896,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 }
                 /* ── Palier MORAL (boisson) : VARIANTE culturelle bière/eau-de-vie ──
                  * On sert la boisson PRÉFÉRÉE de la culture locale d'abord ; la
-                 * mauvaise ne comble qu'à moitié (un nain boude le eau-de-vie). */
+                 * mauvaise ne comble qu'à moitié (un métallurgiste boude le eau-de-vie). */
                 if (r==RES_EAU_DE_VIE){
                     float w_d=BASE_PRICE[RES_EAU_DE_VIE]*need;   /* valeur du palier (réf. eau-de-vie) */
                     need_w+=w_d;
@@ -2007,7 +2007,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* Démographie modulée par les TRADITIONS de l'empire (Prolifique → + de naissances ;
          * Lent à croître → moins) — INDÉPENDANT de l'héritage (qui ne fait que les noms).
          * IA : tirées au hasard par empire ; joueur : SA composition (culture_build_for). */
-        SpeciesBuild sb_demo = culture_build_for((uint32_t)(re->owner<0?0:re->owner));
+        HeritageBuild sb_demo = culture_build_for((uint32_t)(re->owner<0?0:re->owner));
         float demo = build_leviers(&sb_demo).demographie;
         /* MODIFICATEURS PROVINCIAUX diégétiques → entrée DÉMO (pas un bonus plat) : la
          * TERRE D'ABONDANCE repeuple les régions sous-remplies & nourries (le rebond des

@@ -290,26 +290,26 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
         st.flux_faustien = flux_f;
 
         /* Couche BIOLOGIQUE : les leviers de la RACE du pays (lus sur la région-
-         * capitale) déplacent les entrées — Nain bâtisseur K+ mais factieux
-         * fracture+, Orque coercition+, Halfelin perméabilité+, etc. */
-        float race_prod = 0.f;   /* productivité de la race → échelle P_réalisé */
+         * capitale) déplacent les entrées — Métallurgiste bâtisseur K+ mais factieux
+         * fracture+, Clanique coercition+, Agraire perméabilité+, etc. */
+        float heritage_prod = 0.f;   /* productivité de la heritage → échelle P_réalisé */
         {
             int cap_prov = w->country[cid].capital_prov;
             int cap_reg  = (cap_prov>=0 && cap_prov<w->n_provinces)
                          ? w->province[cap_prov].region : -1;
             if (cap_reg>=0 && cap_reg<econ->n_regions) {
-                SpeciesBuild   sb  = culture_build_for((uint32_t)cid);   /* traditions empire (joueur : sa compo ; IA : tirage) */
-                SpeciesLeviers lev = build_leviers(&sb);
+                HeritageBuild   sb  = culture_build_for((uint32_t)cid);   /* traditions empire (joueur : sa compo ; IA : tirage) */
+                HeritageLeviers lev = build_leviers(&sb);
                 st.K     = clampf(st.K     + lev.capacite,     0.f, 10.f);
                 st.P     = clampf(st.P     + lev.permeabilite, 0.f, 10.f);
                 st.H     = clampf(st.H     + lev.coercition,   0.f, 10.f);
                 st.D_bar = clampf(st.D_bar + lev.fracture,     0.f, 10.f);  /* fracture interne */
-                st.flux_faustien += lev.arcane;   /* arcane → pente faustienne (Elfe Arcanique) */
-                race_prod = lev.productivite;     /* Gnome Inventif / Orque Borné → rendement */
+                st.flux_faustien += lev.arcane;   /* arcane → pente faustienne (Ésotérique Arcanique) */
+                heritage_prod = lev.productivite;     /* Mécaniste Inventif / Clanique Borné → rendement */
                 /* garde anti-contagion : un levier dégénéré (NaN/inf) polluerait
                  * toute la chaîne P_réalisé → tech_cost. clampf laisse passer NaN. */
-                if (!isfinite(race_prod)) race_prod = 0.f;
-                race_prod = clampf(race_prod, -0.9f, 9.f);
+                if (!isfinite(heritage_prod)) heritage_prod = 0.f;
+                heritage_prod = clampf(heritage_prod, -0.9f, 9.f);
             }
         }
 
@@ -356,7 +356,7 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
         st.L     = clampf(Lg - wp->age_L_penalty - wp->age_lumiere_solvent*(st.H/10.f),
                           0.f, 10.f);
 
-        cp->K = st.K;   /* capacité EFFECTIVE (tech+race+bâti) — lue par l'IA (frein D∞/K) */
+        cp->K = st.K;   /* capacité EFFECTIVE (tech+heritage+bâti) — lue par l'IA (frein D∞/K) */
         ScpsOrder o = scps_order(&st);
         cp->SI        = o.SI;
         cp->fragilite = o.fragilite;
@@ -365,7 +365,7 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
         cp->L         = st.L;                /* exposé pour la membrane (légitimité EFFECTIVE) */
         cp->mode      = (int)scps_mode(&o);
         cp->rendement = clampf((o.SI / 10.f) * (1.f - LAMBDA * o.fragilite / 10.f), 0.f, 1.f);
-        cp->P_realise = cp->P_potentiel * cp->rendement * (1.f + race_prod);  /* productivité de race */
+        cp->P_realise = cp->P_potentiel * cp->rendement * (1.f + heritage_prod);  /* productivité de heritage */
 
         /* Sorties */
         cp->Lumiere        = BETA  * cp->P_potentiel * (K / 10.f);

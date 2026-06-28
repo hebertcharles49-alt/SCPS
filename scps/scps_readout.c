@@ -112,7 +112,7 @@ BandForge band_forge(float l) {
 }
 /* SYNCRÉTIQUE (§12) — bandes des cercles de contact, classées sur des NUS (la cloison
  * tient : aucun type moteur ici). Les libellés sont DIÉGÉTIQUES et parlent de cultures
- * et de savoir-faire, jamais de races ni de coordonnées. */
+ * et de savoir-faire, jamais de héritages ni de coordonnées. */
 BandProfondeur band_profondeur(int d) {
     switch (d) {
         case 0:  return PROF_OBSCURE;
@@ -657,7 +657,7 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     pr.ressource = (p->resource > RES_NONE) ? resource_name(p->resource) : "—";
 
     const RegionEconomy *re = (reg >= 0 && reg < econ->n_regions) ? &econ->region[reg] : NULL;
-    pr.race = re ? species_name(re->culture.race) : "—";
+    pr.heritage = re ? heritage_name(re->culture.heritage) : "—";
     float pop = 0.f;
     if (re) pop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
                 + re->strata[CLASS_ELITE].pop;
@@ -880,7 +880,7 @@ static const char *const TECH_UTILITY[TECH_COUNT] = {
     [TECH_INTEGRATION]       = "+cohésion (l'assimilation des peuples)",
     [TECH_CULTE_IMPERIAL]    = "⚠ +cohésion forcée — rapproche la Brèche",
 };
-void tech_tree_readout(const TechState *ts, unsigned race_access, float population,
+void tech_tree_readout(const TechState *ts, unsigned heritage_access, float population,
                        TechTreeReadout *out){
     if (!out) return;
     memset(out, 0, sizeof(*out));
@@ -901,10 +901,10 @@ void tech_tree_readout(const TechState *ts, unsigned race_access, float populati
         nr->effet    = TECH_UTILITY[i] ? TECH_UTILITY[i] : n->unlocks;   /* l'utilité concrète */
         nr->cost     = (int)(tech_cost((TechId)i, population) + 0.5f);
         bool done = ts && ts->unlocked[i];
-        bool open = ts && tech_can_research(ts, (TechId)i, race_access);
+        bool open = ts && tech_can_research(ts, (TechId)i, heritage_access);
         nr->state    = done ? TREE_DONE : (open ? TREE_OPEN : TREE_LOCKED);
-        /* orphelin = signature d'une AUTRE race dont l'empire n'a pas l'accès. */
-        nr->orphan   = (n->native!=HERITAGE_COUNT) && !(race_access & tech_race_bit(n->native));
+        /* orphelin = signature d'une AUTRE heritage dont l'empire n'a pas l'accès. */
+        nr->orphan   = (n->native!=HERITAGE_COUNT) && !(heritage_access & tech_heritage_bit(n->native));
     }
 }
 

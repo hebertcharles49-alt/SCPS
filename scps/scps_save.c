@@ -8,7 +8,7 @@
 #include "scps_crypt.h"     /* scrypt_stream, scrypt_fnv1a */
 #include "scps_save_io.h"   /* save_write_atomic */
 #include "scps_tune.h"      /* tune_active_string */
-#include "scps_species.h"   /* culture_slots_save/load (section CULT) */
+#include "scps_heritage.h"   /* culture_slots_save/load (section CULT) */
 #include "scps_religion.h"  /* religion_save/load (section RELG, v37) */
 #include "scps_demography.h"/* demography_dyn_id_rebase */
 #include <stdio.h>
@@ -26,7 +26,7 @@
 #endif
 
 typedef struct { int32_t day, year, player, prev_dawned; uint32_t camp_rng;
-                 int32_t race, ethos; int16_t prev_owner[SCPS_MAX_REG]; } SaveMisc;
+                 int32_t heritage, ethos; int16_t prev_owner[SCPS_MAX_REG]; } SaveMisc;
 
 const char *save_slot_path(int slot){
     static char p[64]; snprintf(p,sizeof p,"saves/slot_%d.scps",slot); return p;
@@ -84,7 +84,7 @@ static bool sv_r(FILE *f, uint32_t tag, void *p, size_t sz){
     return sz==0 || fread(p,sz,1,f)==1;
 }
 
-bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int setup_race, int setup_ethos){
+bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int setup_heritage, int setup_ethos){
     if (slot<1 || slot>3) return false;
     scps_mkdir("saves");
     FILE *f=tmpfile();
@@ -122,7 +122,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     ok&=sv_w(f,SVT_AION, s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
     { SaveMisc m; memset(&m,0,sizeof m);
       m.day=s->day; m.year=s->year; m.player=s->player; m.prev_dawned=s->prev_dawned;
-      m.camp_rng=s->camp_rng; m.race=(int32_t)setup_race; m.ethos=(int32_t)setup_ethos;
+      m.camp_rng=s->camp_rng; m.heritage=(int32_t)setup_heritage; m.ethos=(int32_t)setup_ethos;
       memcpy(m.prev_owner,s->prev_owner_mo,sizeof m.prev_owner);
       ok&=sv_w(f,SVT_MISC, &m, sizeof m); }
     ok&=sv_w(f,SVT_ITRD, NULL,0); intertrade_save(f);
@@ -249,7 +249,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
 }
 
 #define SAVE_MAX_PAYLOAD (256u<<20)   /* plafond de vraisemblance : pas de malloc(4 Go) sur en-tête forgé */
-int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_race, int *out_ethos){
+int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_heritage, int *out_ethos){
     if (slot<1 || slot>3) return 1;
     FILE *f=fopen(save_slot_path(slot),"rb");
     if (!f) return 1;
@@ -294,9 +294,9 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_rac
       ok&=sv_r(f,SVT_MISC, &m, sizeof m);
       if (ok){ s->day=m.day; s->year=m.year; s->player=m.player; s->prev_dawned=m.prev_dawned;
                s->camp_rng=m.camp_rng;
-               if (m.race <0 || m.race >=(int32_t)HERITAGE_COUNT) m.race =(int32_t)HERITAGE_ADAPTATIF;
+               if (m.heritage <0 || m.heritage >=(int32_t)HERITAGE_COUNT) m.heritage =(int32_t)HERITAGE_ADAPTATIF;
                if (m.ethos<0 || m.ethos>=(int32_t)ETHOS_COUNT)    m.ethos=0;
-               if (out_race)  *out_race  = (int)m.race;
+               if (out_heritage)  *out_heritage  = (int)m.heritage;
                if (out_ethos) *out_ethos = (int)m.ethos;
                memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner); } }
     ok&=sv_r(f,SVT_ITRD, NULL,0); ok&=intertrade_load(f);

@@ -104,7 +104,7 @@ int main(void){
     Culture dur  = culture_make(BIO_DESERT, ETHOS_DOMINATEUR, REL_ABRAHAMIQUE, CREDO_PURIFICATEUR);
 
     struct { const char *tag; const Culture *a, *b; } pr[] = {
-        { "proche  (demi-elfes)",  &substrat, &elite },
+        { "proche  (demi-ésotériques)",  &substrat, &elite },
         { "lointain (le gouffre)", &doux,     &dur   },
     };
     struct { const char *who; float P, K; } st[] = {

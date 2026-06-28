@@ -4,14 +4,14 @@
  * Table de nœuds data-driven : 9 quartiers (3 thèmes × 3 fonctions), rayon = tier.
  * Aucune dépendance au reste du moteur : ce module n'écrit QUE dans un TechState
  * et répond des LECTURES (coût, accès, coordonnées). Le branchement IA/sim/UI se
- * fait par l'appelant (qui paie le coût, fournit le masque de races, lit l'arbre).
+ * fait par l'appelant (qui paie le coût, fournit le masque de héritages, lit l'arbre).
  */
 #include "scps_tech.h"
 #include <math.h>
 #include <stddef.h>
 
 #define NONE TECH_COUNT     /* sentinelle « pas de prérequis » */
-#define UNIV HERITAGE_COUNT     /* sentinelle « tech universelle (pas de race native) » */
+#define UNIV HERITAGE_COUNT     /* sentinelle « tech universelle (pas de heritage native) » */
 
 /* ---- Constantes de calibrage (surface d'équilibrage) ------------------ */
 #define CRISIS_SCALE    12.0f   /* échelle de la courbe proximité = f(charge) */
@@ -20,7 +20,7 @@
 /* COÛT ∝ POP TOTALE (§A — « le coût force les choix »). Le revenu de recherche monte
  * DÉJÀ avec la pop (plus de monde = plus de chercheurs) ; en scalant le COÛT sur la pop
  * AUSSI, le rapport revenu/coût devient ~indépendant de la TAILLE → l'arbitrage de branche
- * est une affaire de STRATÉGIE, pas de volume (uniforme du nain au géant). COST_SCALE relève
+ * est une affaire de STRATÉGIE, pas de volume (uniforme du métallurgiste au géant). COST_SCALE relève
  * l'ensemble pour qu'un empire ne s'offre que ~40-60 % de l'arbre sur 200 ans → il se SPÉCIALISE
  * (magie OU industrie OU négoce, pas tout). La spine Savoir·Production reste l'accélérateur. */
 #define COST_SCALE       14.4f   /* P5.29 : coût des techs ×3 (T2 216→~650) — l'income suit (IA ×3, joueur par tier) */
@@ -251,8 +251,8 @@ float tech_eff_bonus(const TechState *s){
     return b;
 }
 
-/* Le penchant d'une race = le thème de sa signature (lecture, pas de « si race »). */
-TechTheme tech_race_affinity(SpeciesArchetype r){
+/* Le penchant d'une heritage = le thème de sa signature (lecture, pas de « si heritage »). */
+TechTheme tech_heritage_affinity(Heritage r){
     for (int i=0;i<TECH_COUNT;i++)
         if (NODES[i].native==r) return NODES[i].theme;   /* le thème où sa signature niche */
     return THM_SOCIETE;                                  /* défaut : le socle */
@@ -272,31 +272,31 @@ const char *tech_function_name(TechFunction f){
 int  tech_quarter(TechTheme t, TechFunction f){ return (int)t*FN_COUNT + (int)f; }
 bool tech_is_base(TechId id){ return (id>=0&&id<TECH_COUNT)&&NODES[id].tier==0; }
 
-unsigned tech_race_bit(SpeciesArchetype r){ return (r>=0&&r<HERITAGE_COUNT)?(1u<<r):0u; }
+unsigned tech_heritage_bit(Heritage r){ return (r>=0&&r<HERITAGE_COUNT)?(1u<<r):0u; }
 
 /* §SYNCRÉTIQUE — COMBINAISON (brief Forge §5/§8) : un nœud-pointe peut exiger DEUX
  * archétypes culturels en contact, pas un seul. Emblème : les armes enchantées (Forge
- * céleste) = FORGE RUNIQUE (nain) × ARCANE (elfe) — il faut porter/gouverner les DEUX
+ * céleste) = FORGE RUNIQUE (métallurgiste) × ARCANE (ésotérique) — il faut porter/gouverner les DEUX
  * cultures, le commerce seul ne suffit pas (la chaîne BLD_CELESTIAL_FORGE existe déjà :
  * on gate l'UNLOCK, pas la production). UNIV = aucun second requis. La porte PRIMAIRE
- * reste NODES[].native ; le masque `race_access` encode désormais l'ACCÈS D'ARCHÉTYPE. */
-static SpeciesArchetype tech_combo_native(TechId id){
+ * reste NODES[].native ; le masque `heritage_access` encode désormais l'ACCÈS D'ARCHÉTYPE. */
+static Heritage tech_combo_native(TechId id){
     switch (id){
-        case TECH_FORGE_RUNES: return HERITAGE_ESOTERIQUE;   /* runique (nain) ET arcane (elfe) */
+        case TECH_FORGE_RUNES: return HERITAGE_ESOTERIQUE;   /* runique (métallurgiste) ET arcane (ésotérique) */
         default:               return UNIV;
     }
 }
 
-bool tech_can_research(const TechState *s, TechId id, unsigned race_access) {
+bool tech_can_research(const TechState *s, TechId id, unsigned heritage_access) {
     if (id<0||id>=TECH_COUNT) return false;
     if (s->unlocked[id]) return false;
     const TechNode *n=&NODES[id];
     /* PORTE D'ARCHÉTYPE : une tech-signature exige que l'empire ATTEIGNE l'archétype
      * (par sa culture ou un contact de gouvernance — le masque est calculé ainsi côté IA). */
-    if (n->native!=UNIV && !(race_access & tech_race_bit(n->native))) return false;
+    if (n->native!=UNIV && !(heritage_access & tech_heritage_bit(n->native))) return false;
     /* COMBINAISON : certains nœuds exigent un SECOND archétype (ET). */
-    { SpeciesArchetype combo=tech_combo_native(id);
-      if (combo!=UNIV && !(race_access & tech_race_bit(combo))) return false; }
+    { Heritage combo=tech_combo_native(id);
+      if (combo!=UNIV && !(heritage_access & tech_heritage_bit(combo))) return false; }
     /* Porte arcane : les bouts faustiens du Savoir profond exigent une ruine. */
     if (n->needs_ruins && !s->has_ruins_access) return false;
     /* Prérequis : le nœud précédent du quartier doit être acquis. */
@@ -304,8 +304,8 @@ bool tech_can_research(const TechState *s, TechId id, unsigned race_access) {
     return true;
 }
 
-bool tech_research(TechState *s, TechId id, unsigned race_access) {
-    if (!tech_can_research(s,id,race_access)) return false;
+bool tech_research(TechState *s, TechId id, unsigned heritage_access) {
+    if (!tech_can_research(s,id,heritage_access)) return false;
     const TechNode *n=&NODES[id];
     s->K        += n->dK;
     s->L        += n->dL;

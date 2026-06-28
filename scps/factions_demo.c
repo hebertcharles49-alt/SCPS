@@ -4,8 +4,8 @@
  *   make factions_demo && ./factions_demo
  *
  * Prouve : (1) six factions = les axes IA + le Communautaire ; (2) le penchant
- * d'un groupe vient de son éthos / sa race / son credo ; (3) la distribution d'un
- * pays = Σ groupes, et CONQUÉRIR un peuple orque MONTE les Conquérants ; (4) la
+ * d'un groupe vient de son éthos / sa heritage / son credo ; (3) la distribution d'un
+ * pays = Σ groupes, et CONQUÉRIR un peuple clanique MONTE les Conquérants ; (4) la
  * classe pèse — l'élite qui gouverne amplifie son éthos.
  */
 #include "scps_factions.h"
@@ -19,15 +19,15 @@ static void ok(const char *what, int cond){
     if (cond) g_pass++; else g_fail++;
 }
 
-static PopCulture cult(Ethos e, SpeciesArchetype race, Credo credo){
+static PopCulture cult(Ethos e, Heritage heritage, Credo credo){
     PopCulture c; memset(&c,0,sizeof c);
     c.langue=5; c.valeurs=5; c.subsistance=5; c.parente=5; c.religion=5;
-    c.ethos=e; c.race=race; c.credo=credo; c.rel_branch=REL_ABRAHAMIQUE; c.settled=true;
+    c.ethos=e; c.heritage=heritage; c.credo=credo; c.rel_branch=REL_ABRAHAMIQUE; c.settled=true;
     return c;
 }
 static PopGroup grp(PopCulture cu, SocialClass k, long n){
     PopGroup g; memset(&g,0,sizeof g);
-    g.race=cu.race; g.origin=cu; g.culture=cu; g.klass=k; g.count=n; g.integration=1.f;
+    g.heritage=cu.heritage; g.origin=cu; g.culture=cu; g.klass=k; g.count=n; g.integration=1.f;
     return g;
 }
 static int argmax(const float w[FAC_COUNT]){
@@ -48,26 +48,26 @@ int main(void){
        faction_name(FAC_CONQUERANT)[0] && faction_name(FAC_COMMUNAUTAIRE)[0]
        && faction_name(FAC_TRANSGRESSEUR)[0]);
 
-    /* ═══ 2. LE PENCHANT D'UN GROUPE — éthos / race / credo ═══════════════ */
+    /* ═══ 2. LE PENCHANT D'UN GROUPE — éthos / heritage / credo ═══════════════ */
     printf("\n── 2. Le penchant d'un groupe vient de sa culture ──\n");
     {
         float w[FAC_COUNT];
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_DOMINATEUR,.race=HERITAGE_CLANIQUE,.credo=CREDO_PLURALISTE}, w);
-        ok("orque dominateur → Conquérant dominant, Transgresseur fort",
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_DOMINATEUR,.heritage=HERITAGE_CLANIQUE,.credo=CREDO_PLURALISTE}, w);
+        ok("clanique dominateur → Conquérant dominant, Transgresseur fort",
            argmax(w)==FAC_CONQUERANT && w[FAC_TRANSGRESSEUR]>w[FAC_MARCHAND] && w[FAC_TRANSGRESSEUR]>0.2f);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_MERCANTILE,.race=HERITAGE_AGRAIRE,.credo=CREDO_PLURALISTE}, w);
-        ok("halfelin mercantile → Marchand dominant, Communautaire présent",
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_MERCANTILE,.heritage=HERITAGE_AGRAIRE,.credo=CREDO_PLURALISTE}, w);
+        ok("agraire mercantile → Marchand dominant, Communautaire présent",
            argmax(w)==FAC_MARCHAND && w[FAC_COMMUNAUTAIRE]>0.1f);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_BUREAUCRATE,.race=HERITAGE_ADAPTATIF,.credo=CREDO_PLURALISTE}, w);
-        ok("humain bureaucrate → Légiste dominant", argmax(w)==FAC_LEGISTE);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_PACIFISTE,.race=HERITAGE_MECANISTE,.credo=CREDO_PLURALISTE}, w);
-        ok("gnome pacifiste → Communautaire dominant", argmax(w)==FAC_COMMUNAUTAIRE);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=HERITAGE_METALLURGISTE,.credo=CREDO_PLURALISTE}, w);
-        ok("nain d'ordre → Transgresseur présent (forge à runes)", w[FAC_TRANSGRESSEUR]>0.15f);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_BUREAUCRATE,.heritage=HERITAGE_ADAPTATIF,.credo=CREDO_PLURALISTE}, w);
+        ok("adaptatif bureaucrate → Légiste dominant", argmax(w)==FAC_LEGISTE);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_PACIFISTE,.heritage=HERITAGE_MECANISTE,.credo=CREDO_PLURALISTE}, w);
+        ok("mécaniste pacifiste → Communautaire dominant", argmax(w)==FAC_COMMUNAUTAIRE);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.heritage=HERITAGE_METALLURGISTE,.credo=CREDO_PLURALISTE}, w);
+        ok("métallurgiste d'ordre → Transgresseur présent (forge à runes)", w[FAC_TRANSGRESSEUR]>0.15f);
         /* CREDO : la ferveur nourrit les Gardiens. */
         float wp[FAC_COUNT], wz[FAC_COUNT];
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=HERITAGE_ADAPTATIF,.credo=CREDO_PLURALISTE}, wp);
-        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.race=HERITAGE_ADAPTATIF,.credo=CREDO_PURIFICATEUR}, wz);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.heritage=HERITAGE_ADAPTATIF,.credo=CREDO_PLURALISTE}, wp);
+        group_ethos_lean(&(PopCulture){.ethos=ETHOS_ORDRE,.heritage=HERITAGE_ADAPTATIF,.credo=CREDO_PURIFICATEUR}, wz);
         ok("le credo purificateur RENFORCE les Gardiens (vs pluraliste)",
            wz[FAC_GARDIEN] > wp[FAC_GARDIEN] + 0.1f);
         /* somme normalisée. */
@@ -76,23 +76,23 @@ int main(void){
     }
 
     /* ═══ 3. ENRACINEMENT — la distribution d'un pays = Σ groupes ═════════ */
-    printf("\n── 3. Enracinement : conquérir un peuple orque MONTE les Conquérants ──\n");
+    printf("\n── 3. Enracinement : conquérir un peuple clanique MONTE les Conquérants ──\n");
     {
-        /* Un pays marchand (halfelins). */
+        /* Un pays marchand (agraires). */
         ProvincePop prov; memset(&prov,0,sizeof prov);
         prov.groups[0]=grp(cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE),CLASS_LABORER,1000);
         prov.n_groups=1;
         float before[FAC_COUNT]; EthosFaction dom0=faction_weights_of(&prov,1,before);
-        /* CONQUÊTE : une province orque entre dans le pays. */
+        /* CONQUÊTE : une province clanique entre dans le pays. */
         ProvincePop conq; memset(&conq,0,sizeof conq);
         conq.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_LABORER,600);
         conq.n_groups=1;
         ProvincePop country[2]={prov,conq};
         float after[FAC_COUNT]; EthosFaction dom1=faction_weights_of(country,2,after);
-        printf("   avant : dominante %s (Conquérants %.0f%%) → après conquête orque : %s (Conquérants %.0f%%)\n",
+        printf("   avant : dominante %s (Conquérants %.0f%%) → après conquête clanique : %s (Conquérants %.0f%%)\n",
                faction_name(dom0), before[FAC_CONQUERANT]*100, faction_name(dom1), after[FAC_CONQUERANT]*100);
         ok("le pays marchand est d'abord dominé par les Marchands", dom0==FAC_MARCHAND);
-        ok("avaler une province orque MONTE les Conquérants (le spectre se reconfigure)",
+        ok("avaler une province clanique MONTE les Conquérants (le spectre se reconfigure)",
            after[FAC_CONQUERANT] > before[FAC_CONQUERANT] + 0.1f);
         ok("la somme reste un profil (Σ≈1)",
            after[0]+after[1]+after[2]+after[3]+after[4]+after[5] > 0.98f);
@@ -101,25 +101,25 @@ int main(void){
     /* ═══ 4. LA CLASSE PÈSE — l'élite qui gouverne amplifie son éthos ═════ */
     printf("\n── 4. Qui gouverne compte : l'élite pèse plus que la masse ──\n");
     {
-        PopCulture half=cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE);
-        PopCulture orc =cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE);
-        /* Même masse orque, une fois LABOUREURS, une fois ÉLITE régnante. */
+        PopCulture agr=cult(ETHOS_MERCANTILE,HERITAGE_AGRAIRE,CREDO_PLURALISTE);
+        PopCulture clan =cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE);
+        /* Même masse clanique, une fois LABOUREURS, une fois ÉLITE régnante. */
         ProvincePop asLab; memset(&asLab,0,sizeof asLab);
-        asLab.groups[0]=grp(half,CLASS_LABORER,1000); asLab.groups[1]=grp(orc,CLASS_LABORER,200); asLab.n_groups=2;
+        asLab.groups[0]=grp(agr,CLASS_LABORER,1000); asLab.groups[1]=grp(clan,CLASS_LABORER,200); asLab.n_groups=2;
         ProvincePop asElite; memset(&asElite,0,sizeof asElite);
-        asElite.groups[0]=grp(half,CLASS_LABORER,1000); asElite.groups[1]=grp(orc,CLASS_ELITE,200); asElite.n_groups=2;
+        asElite.groups[0]=grp(agr,CLASS_LABORER,1000); asElite.groups[1]=grp(clan,CLASS_ELITE,200); asElite.n_groups=2;
         float wl[FAC_COUNT], we[FAC_COUNT];
         faction_weights_of(&asLab,1,wl); faction_weights_of(&asElite,1,we);
-        printf("   orque laboureur : Conquérants %.0f%% | orque ÉLITE régnante : Conquérants %.0f%%\n",
+        printf("   clanique laboureur : Conquérants %.0f%% | clanique ÉLITE régnante : Conquérants %.0f%%\n",
                wl[FAC_CONQUERANT]*100, we[FAC_CONQUERANT]*100);
-        ok("la même minorité orque pèse PLUS comme élite que comme masse (qui gouverne compte)",
+        ok("la même minorité clanique pèse PLUS comme élite que comme masse (qui gouverne compte)",
            we[FAC_CONQUERANT] > wl[FAC_CONQUERANT] + 0.05f);
     }
 
     /* ═══ 5. L'ÉTHOS EFFECTIF (§3) — la résultante que le moteur lit ══════ */
     printf("\n── 5. L'éthos effectif : la dominante fixe les poids w_* ──\n");
     {
-        /* Un pays conquérant (orques) vs un pays marchand (halfelins). */
+        /* Un pays conquérant (claniques) vs un pays marchand (agraires). */
         float wc[FAC_COUNT], wm[FAC_COUNT];
         ProvincePop pc; memset(&pc,0,sizeof pc);
         pc.groups[0]=grp(cult(ETHOS_DOMINATEUR,HERITAGE_CLANIQUE,CREDO_PLURALISTE),CLASS_ELITE,300);
@@ -169,7 +169,7 @@ int main(void){
         pp.n_groups=2;
         float w[FAC_COUNT]; faction_weights_of(&pp,1,w);
         EthosFaction alien; float tension=faction_coup_tension(w,&alien);
-        printf("   régime marchand + élite orque conquérante : tension de coup %.2f (faction aliénée : %s)\n",
+        printf("   régime marchand + élite clanique conquérante : tension de coup %.2f (faction aliénée : %s)\n",
                tension, faction_name(alien));
         ok("un bloc fort et opposé à la direction crée une TENSION de coup", tension > 0.15f);
         /* Mono-éthos : nulle opposition forte → quasi nulle tension. */

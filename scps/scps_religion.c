@@ -373,7 +373,7 @@ int religion_color_near(const uint8_t parent[3],const uint8_t chosen[3]){
 }
 
 /* ===================================================================== */
-/* i18n — mots résolus (littéraux, comme credo_name/species_name)          */
+/* i18n — mots résolus (littéraux, comme credo_name/heritage_name)          */
 /* ===================================================================== */
 const char *relig_axis_name(ReligAxis a){
   static const char *N[RA_AXIS_COUNT]={

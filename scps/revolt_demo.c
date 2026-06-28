@@ -32,15 +32,15 @@ static void ok(const char *what, bool cond){
 }
 
 /* Une culture-test à axes connus (langue ignorée par la distance). */
-static PopCulture cult(float v,float s,float p,float r,SpeciesArchetype race){
+static PopCulture cult(float v,float s,float p,float r,Heritage heritage){
     PopCulture c; memset(&c,0,sizeof c);
-    c.valeurs=v; c.subsistance=s; c.parente=p; c.religion=r; c.race=race; c.settled=true;
+    c.valeurs=v; c.subsistance=s; c.parente=p; c.religion=r; c.heritage=heritage; c.settled=true;
     return c;
 }
-static PopGroup grp(SpeciesArchetype race, SocialClass k, long n, float L, float integ, PopCulture cu, int id){
+static PopGroup grp(Heritage heritage, SocialClass k, long n, float L, float integ, PopCulture cu, int id){
     PopGroup g; memset(&g,0,sizeof g);
-    g.race=race; g.klass=k; g.count=n; g.L=L; g.integration=integ; g.culture=cu; g.origin=cu;
-    g.agit_base=0.f; g.drift_id=id; g.origin_sphere=species_sphere(race);
+    g.heritage=heritage; g.klass=k; g.count=n; g.L=L; g.integration=integ; g.culture=cu; g.origin=cu;
+    g.agit_base=0.f; g.drift_id=id; g.origin_sphere=heritage_sphere(heritage);
     return g;
 }
 

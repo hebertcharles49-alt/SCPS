@@ -1,21 +1,21 @@
 /*
- * species_demo.c — banc d'essai du roster & des traits (console)
+ * heritage_demo.c — banc d'essai du roster & des traits (console)
  *
- *   make species_demo && ./species_demo
+ *   make heritage_demo && ./heritage_demo
  *
  * Valide le système et sort ≠ 0 si un contrôle échoue (CI) :
  *   1. Structure : 6 atouts + 6 défauts par catégorie ; antonymes réciproques,
  *      même catégorie, signes opposés.
- *   2. Roster : les 6 races par défaut sont VALIDES (un trait/catégorie,
+ *   2. Roster : les 6 héritages par défaut sont VALIDES (un trait/catégorie,
  *      équilibrées à 0).
- *   3. Flexibilité Stellaris : orque charismatique & elfe belliqueux légaux.
+ *   3. Flexibilité Stellaris : clanique charismatique & ésotérique belliqueux légaux.
  *   4. Le validateur REJETTE les builds illégaux (déséquilibrés, hors catégorie).
  *
  * NB — les deux exemples de flexibilité du document de design avaient des
- * coquilles (l'orque mettait deux traits Sociaux ; l'elfe « corrigé » tombait
+ * coquilles (le clanique mettait deux traits Sociaux ; l'ésotérique « corrigé » tombait
  * à +2). On montre ici les versions LÉGALES ; le validateur est la vérité.
  */
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include <stdio.h>
 
 static int g_pass=0, g_fail=0;
@@ -24,7 +24,7 @@ static void ok(const char *what, bool cond){
     if (cond) g_pass++; else g_fail++;
 }
 
-static void print_build(const char *who, const SpeciesBuild *b){
+static void print_build(const char *who, const HeritageBuild *b){
     int pos=0,neg=0;
     for (int c=0;c<CAT_COUNT;c++){ const TraitDef *d=trait_def(b->trait[c]);
         if (d->pts>0) pos++; else if (d->pts<0) neg++; }
@@ -62,10 +62,10 @@ int main(void){
     printf("\n── 2. Roster (builds par défaut) ──\n");
     bool roster_ok=true;
     for (int r=0;r<HERITAGE_COUNT;r++){
-        SpeciesBuild b=species_default_build((SpeciesArchetype)r);
+        HeritageBuild b=heritage_default_build((Heritage)r);
         char tag[48]; snprintf(tag,sizeof tag,"%s [%s]",
-                               species_name((SpeciesArchetype)r),
-                               sphere_name(species_sphere((SpeciesArchetype)r)));
+                               heritage_name((Heritage)r),
+                               sphere_name(heritage_sphere((Heritage)r)));
         print_build(tag,&b);
         if (!build_is_valid(&b)) roster_ok=false;
     }
@@ -74,9 +74,9 @@ int main(void){
     /* ---- 3. On se compose une culture (versions légales) -------------- */
     printf("\n── 3. On se compose une culture (légalement) ──\n");
     /* Clanique charismatique : Robuste (majeur Phys) + Charismatique (mineur Social) + Indolent (défaut Intel). */
-    SpeciesBuild clan_charm = {{ T_ROBUSTE, T_CHARISMATIQUE, T_INDOLENT }};
+    HeritageBuild clan_charm = {{ T_ROBUSTE, T_CHARISMATIQUE, T_INDOLENT }};
     /* Ésotérique martial : Longévif (mineur Phys) + Belliqueux (majeur Social) + Sourd à l'arcane (défaut Intel). */
-    SpeciesBuild eso_war    = {{ T_LONGEVIF, T_BELLIQUEUX, T_SOURD_ARCANE }};
+    HeritageBuild eso_war    = {{ T_LONGEVIF, T_BELLIQUEUX, T_SOURD_ARCANE }};
     print_build("Clanique charismatique", &clan_charm);
     print_build("Ésotérique martial",     &eso_war);
     ok("clanique charismatique légal (1 maj + 1 min + 1 déf)", build_is_valid(&clan_charm));
@@ -85,34 +85,34 @@ int main(void){
     /* ---- 4. Le validateur rejette l'illégal -------------------------- */
     printf("\n── 4. Le validateur tient la règle ──\n");
     /* Endurant, Charismatique, Frondeur — deux Sociaux, aucun Intellectuel → REJETÉ (axe doublé). */
-    SpeciesBuild illegal_cat = {{ T_ENDURANT, T_CHARISMATIQUE, T_FRONDEUR }};
+    HeritageBuild illegal_cat = {{ T_ENDURANT, T_CHARISMATIQUE, T_FRONDEUR }};
     ok("rejette deux traditions du même axe (Frondeur en slot Intel)",
        !build_is_valid(&illegal_cat));
     /* trois atouts → pas de défaut : illégal. */
-    SpeciesBuild three_pos = {{ T_ROBUSTE, T_BELLIQUEUX, T_INVENTIF }};
+    HeritageBuild three_pos = {{ T_ROBUSTE, T_BELLIQUEUX, T_INVENTIF }};
     ok("rejette trois atouts (il faut exactement 1 défaut)", !build_is_valid(&three_pos));
     /* deux mineurs, pas de majeur → illégal (il faut 1 majeur +2). */
-    SpeciesBuild no_major = {{ T_PROLIFIQUE, T_CHARISMATIQUE, T_INDOLENT }};
+    HeritageBuild no_major = {{ T_PROLIFIQUE, T_CHARISMATIQUE, T_INDOLENT }};
     ok("rejette l'absence d'atout majeur (2 mineurs + 1 défaut)", !build_is_valid(&no_major));
     /* deux défauts → illégal (il faut exactement 2 atouts : 1 majeur + 1 mineur). */
-    SpeciesBuild two_neg = {{ T_FRELE, T_FACTIEUX, T_INVENTIF }};
+    HeritageBuild two_neg = {{ T_FRELE, T_FACTIEUX, T_INVENTIF }};
     ok("rejette deux défauts (il faut 1 majeur + 1 mineur)", !build_is_valid(&two_neg));
 
     /* ---- Leviers composés (le code voit les chiffres ; le joueur des mots) */
     printf("\n── Leviers composés par héritage (échelle moteur) ──\n");
     for (int r=0;r<HERITAGE_COUNT;r++){
-        SpeciesBuild b=species_default_build((SpeciesArchetype)r);
-        SpeciesLeviers L=build_leviers(&b);
+        HeritageBuild b=heritage_default_build((Heritage)r);
+        HeritageLeviers L=build_leviers(&b);
         printf("   %-9s : démo×%.2f prod×%.2f | K%+.1f P%+.1f H%+.1f arcane%+.1f"
                " fract%+.1f dérive×%.2f infl%+.2f\n",
-               species_name((SpeciesArchetype)r),
+               heritage_name((Heritage)r),
                1.f+L.demographie, 1.f+L.productivite,
                L.capacite, L.permeabilite, L.coercition, L.arcane,
                L.fracture, 1.f+L.derive, L.influence);
     }
 
     /* ---- Matrice de sphères (continuum, pas mur) --------------------- */
-    printf("\n── Distance de sphère (continuum : 5 demi-elfes, 7 demi-orques) ──\n");
+    printf("\n── Distance de sphère (continuum : 5 demi-ésotériques, 7 demi-claniques) ──\n");
     printf("   %-11s","");
     for (int j=0;j<SPHERE_COUNT;j++) printf("%-11s", sphere_name((Sphere)j));
     printf("\n");

@@ -132,7 +132,7 @@ int main(void){
             e->n_regions=1; e->ipm=1.f;
             RegionEconomy *re=&e->region[0];
             re->active=re->colonized=true; re->owner=-1; re->culture.settled=true;
-            re->culture.ethos=ETHOS_MERCANTILE; re->culture.race=HERITAGE_ADAPTATIF;
+            re->culture.ethos=ETHOS_MERCANTILE; re->culture.heritage=HERITAGE_ADAPTATIF;
             re->last_pole=1; re->import_margin=1.f; re->import_toll_region=-1;
             re->strata[CLASS_LABORER].pop=2000.f; re->strata[CLASS_BOURGEOIS].pop=300.f;
             re->strata[CLASS_ELITE].pop=50.f; re->tech_prod=1.f;

@@ -6,11 +6,11 @@
  * Prouve les 6 points de vérification : la FORME (3 thèmes × 3 fonctions = 9
  * quartiers, faustien au bord), le DÉPART (6 bâtiments de base seulement), une
  * tech = un DÉVERROUILLAGE, le FAUSTIEN partout (→ la Brèche ; seule la Société
- * métabolise), les ORPHELINES de race (greffe par la population), le COÛT qui
+ * métabolise), les ORPHELINES de heritage (greffe par la population), le COÛT qui
  * scale ∝ population.
  */
 #include "scps_tech.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include <stdio.h>
 
 static int g_pass=0,g_fail=0;
@@ -22,7 +22,7 @@ static void research(TechState *s, TechId id, unsigned acc){
         printf("  + %-22s [%s·%s t.%d] → %s\n", tech_name(id),
                tech_theme_name(n->theme), tech_function_name(n->func), n->tier, tech_unlocks(id));
     else
-        printf("  ✗ %-22s (prérequis / accès de race / porte arcane manquants)\n", tech_name(id));
+        printf("  ✗ %-22s (prérequis / accès de heritage / porte arcane manquants)\n", tech_name(id));
 }
 
 int main(void){
@@ -71,7 +71,7 @@ int main(void){
 
     /* ---- 5. FAUSTIEN PARTOUT → la Brèche (seule la Société métabolise) - */
     printf("\n── 5. Le faustien partout → la Brèche (K métabolise) ──\n");
-    unsigned human=tech_race_bit(HERITAGE_ADAPTATIF);
+    unsigned human=tech_heritage_bit(HERITAGE_ADAPTATIF);
     printf("  RUN A — ruée arcane sans socle :\n");
     TechState a; tech_state_init(&a,/*ruines*/true);
     research(&a,TECH_SAVOIR_GUERRE,human); research(&a,TECH_MAGIE_BATAILLE,human); research(&a,TECH_EVEIL,human);
@@ -92,19 +92,19 @@ int main(void){
        tech_node(TECH_CASTE_MARTIALE)->faustian&&tech_node(TECH_CASTE_MARTIALE)->theme==THM_SOCIETE);
 
     /* ---- 6. ORPHELINES DE RACE (greffe par la population) -------------- */
-    printf("\n── 6. Orphelines de race (greffe par la population / conquête) ──\n");
+    printf("\n── 6. Orphelines de heritage (greffe par la population / conquête) ──\n");
     TechState f; tech_state_init(&f,false);
     research(&f,TECH_ARMURERIE,human); research(&f,TECH_POUDRIERE,human);   /* prérequis de la Forge à runes */
-    ok("NAIN sans ARCANE : la Forge à runes (runique × arcane) reste INSUFFISANTE",
-       !tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(HERITAGE_METALLURGISTE)));
-    ok("NAIN + ARCANE (elfe en contact) : la Forge à runes se GREFFE (combo §syncrétique)",
-       tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(HERITAGE_METALLURGISTE)|tech_race_bit(HERITAGE_ESOTERIQUE)));
-    ok("un empire NAIN+ELFE la recherche (native naine + combo elfe réunis)",
-       tech_can_research(&f,TECH_FORGE_RUNES, tech_race_bit(HERITAGE_METALLURGISTE)|tech_race_bit(HERITAGE_ESOTERIQUE)));
+    ok("MÉTALLURGISTE sans ARCANE : la Forge à runes (runique × arcane) reste INSUFFISANTE",
+       !tech_can_research(&f,TECH_FORGE_RUNES, human|tech_heritage_bit(HERITAGE_METALLURGISTE)));
+    ok("MÉTALLURGISTE + ARCANE (ésotérique en contact) : la Forge à runes se GREFFE (combo §syncrétique)",
+       tech_can_research(&f,TECH_FORGE_RUNES, human|tech_heritage_bit(HERITAGE_METALLURGISTE)|tech_heritage_bit(HERITAGE_ESOTERIQUE)));
+    ok("un empire MÉTALLURGISTE+ÉSOTÉRIQUE la recherche (native naine + combo ésotérique réunis)",
+       tech_can_research(&f,TECH_FORGE_RUNES, tech_heritage_bit(HERITAGE_METALLURGISTE)|tech_heritage_bit(HERITAGE_ESOTERIQUE)));
     ok("la signature HALFELINE (Abondance) est la MOINS faustienne (charge nulle)",
        !tech_node(TECH_ABONDANCE)->faustian && tech_node(TECH_ABONDANCE)->charge==0.f &&
        tech_node(TECH_ABONDANCE)->native==HERITAGE_AGRAIRE);
-    ok("l'Esclavage est la signature ORQUE (la tech d'asservissement, gate du §4c)",
+    ok("l'Esclavage est la signature CLANIQUE (la tech d'asservissement, gate du §4c)",
        tech_node(TECH_ESCLAVAGE)->native==HERITAGE_CLANIQUE && tech_node(TECH_ESCLAVAGE)->faustian);
 
     /* ---- 7. LE COÛT QUI SCALE ∝ POPULATION ---------------------------- */

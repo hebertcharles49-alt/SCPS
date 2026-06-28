@@ -1,16 +1,16 @@
 /*
- * scps_species.c — roster de races & traits (voir scps_species.h)
+ * scps_heritage.c — roster de héritages & traits (voir scps_heritage.h)
  *
  * Data-driven et autonome. Les leviers (chiffres) sont calibrables ; la
  * structure (12 traits/pool, atouts/défauts appariés, équilibre à 0) est fixe.
  */
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include <stddef.h>
 
 /* ===================================================================== */
 /* SPHÈRES                                                                */
 /* ===================================================================== */
-/* Continuum (pas un mur) : 5 = demi-elfes courants, 7 = demi-orques rares. */
+/* Continuum (pas un mur) : 5 = demi-ésotériques courants, 7 = demi-claniques rares. */
 static const float SPHERE_DIST[SPHERE_COUNT][SPHERE_COUNT] = {
     /*            Anciens Hommes Étrangers */
     /* Anciens */ { 0.f,   5.f,   7.f },
@@ -161,20 +161,20 @@ static const Sphere RACE_SPHERE[HERITAGE_COUNT] = {
     [HERITAGE_ESOTERIQUE]=SPHERE_ANCIENS, [HERITAGE_METALLURGISTE]=SPHERE_ANCIENS, [HERITAGE_MECANISTE]=SPHERE_ANCIENS,
     [HERITAGE_ADAPTATIF]=SPHERE_HOMMES, [HERITAGE_AGRAIRE]=SPHERE_HOMMES, [HERITAGE_CLANIQUE]=SPHERE_ETRANGERS,
 };
-Sphere species_sphere(SpeciesArchetype r){
+Sphere heritage_sphere(Heritage r){
     return (r>=0&&r<HERITAGE_COUNT)?RACE_SPHERE[r]:SPHERE_HOMMES;
 }
-const char *species_name(SpeciesArchetype r){
-    /* GR1 — l'HÉRITAGE par FONCTION (mêmes valeurs/ordre que l'ex-race). */
+const char *heritage_name(Heritage r){
+    /* GR1 — l'HÉRITAGE par FONCTION (mêmes valeurs/ordre que l'ex-heritage). */
     static const char *N[HERITAGE_COUNT]={"Ésotérique","Métallurgiste",
                                           "Mécaniste","Adaptatif","Agraire","Clanique"};
     return (r>=0&&r<HERITAGE_COUNT)?N[r]:"?";
 }
 
 /* Builds par défaut — une tradition par axe {Physique, Social, Intellectuel}, chacun
- * 1 majeur (+2) + 1 mineur (+1) + 1 défaut (−1). (« Plus de races » : ces presets ne sont
+ * 1 majeur (+2) + 1 mineur (+1) + 1 défaut (−1). (« Plus de héritages » : ces presets ne sont
  * plus que des points de DÉPART de tradition — la culture personnalisable les remplace.) */
-static const SpeciesBuild ROSTER[HERITAGE_COUNT] = {
+static const HeritageBuild ROSTER[HERITAGE_COUNT] = {
     [HERITAGE_ESOTERIQUE]    = {{ T_LONGEVIF,   T_DEBONNAIRE, T_ARCANIQUE }},      /* +1 / −1 / +2 */
     [HERITAGE_METALLURGISTE] = {{ T_ROBUSTE,    T_FACTIEUX,   T_BATISSEUR }},      /* +2 / −1 / +1 */
     [HERITAGE_MECANISTE]     = {{ T_FRELE,      T_CHARISMATIQUE, T_INVENTIF }},    /* −1 / +1 / +2 */
@@ -182,9 +182,9 @@ static const SpeciesBuild ROSTER[HERITAGE_COUNT] = {
     [HERITAGE_AGRAIRE]       = {{ T_SOBRE,      T_SOUDE,      T_TRADITIONALISTE }},/* +1 / +2 / −1 (ex-Ouvert : il fallait 1 majeur) */
     [HERITAGE_CLANIQUE]      = {{ T_ENDURANT,   T_BELLIQUEUX, T_BORNE }},          /* +1 / +2 / −1 */
 };
-SpeciesBuild species_default_build(SpeciesArchetype r){
+HeritageBuild heritage_default_build(Heritage r){
     if (r>=0&&r<HERITAGE_COUNT) return ROSTER[r];
-    SpeciesBuild empty = {{ T_PROLIFIQUE, T_FRONDEUR, T_INVENTIF }};
+    HeritageBuild empty = {{ T_PROLIFIQUE, T_FRONDEUR, T_INVENTIF }};
     return empty;
 }
 
@@ -195,7 +195,7 @@ SpeciesBuild species_default_build(SpeciesArchetype r){
  * 3 AXES Physique/Social/Intellectuel — jamais deux fois le même axe), FORCÉ à EXACTEMENT
  * 1 atout MAJEUR (+2) + 1 atout MINEUR (+1) + 1 défaut (−1, plus de défaut majeur). Le joueur
  * choisit QUEL axe porte le revers et lequel est majeur. Antonymes interdits (opposables). */
-bool build_is_valid(const SpeciesBuild *b){
+bool build_is_valid(const HeritageBuild *b){
     int major=0, minor=0, def=0;
     for (int c=0;c<CAT_COUNT;c++){
         TraitId t=b->trait[c];
@@ -211,12 +211,12 @@ bool build_is_valid(const SpeciesBuild *b){
     return true;
 }
 
-SpeciesLeviers build_leviers(const SpeciesBuild *b){
-    SpeciesLeviers L = {0};
+HeritageLeviers build_leviers(const HeritageBuild *b){
+    HeritageLeviers L = {0};
     for (int c=0;c<CAT_COUNT;c++){
         TraitId t=b->trait[c];
         if (t<0||t>=TRAIT_COUNT) continue;
-        const SpeciesLeviers *d=&TRAITS[t].lev;
+        const HeritageLeviers *d=&TRAITS[t].lev;
         L.demographie  += d->demographie;  L.productivite += d->productivite;
         L.influence    += d->influence;    L.coercition   += d->coercition;
         L.capacite     += d->capacite;     L.permeabilite += d->permeabilite;
@@ -231,11 +231,11 @@ SpeciesLeviers build_leviers(const SpeciesBuild *b){
  * (l'héritage ne touche QUE les noms) : c'est ce que l'IA reçoit (« traditions choisies au
  * hasard ») et le défaut tant que le joueur n'a pas composé la sienne. Antonymes impossibles
  * (ils partagent un axe, or on prend une tradition par axe). */
-SpeciesBuild culture_random_build(uint32_t seed){
+HeritageBuild culture_random_build(uint32_t seed){
     uint32_t h=(seed*2654435761u)^0x9E3779B9u; h^=h>>13; h*=0x85ebca6bu; h^=h>>16;
     static const int PERM[6][3]={{0,1,2},{0,2,1},{1,0,2},{1,2,0},{2,0,1},{2,1,0}};
     const int *role=PERM[h%6]; h/=6;          /* role[axe] : 0=majeur 1=mineur 2=défaut */
-    SpeciesBuild b={{0,0,0}};
+    HeritageBuild b={{0,0,0}};
     for (int c=0;c<CAT_COUNT;c++){
         TraitId pool[TRAIT_COUNT]; int np=0;
         for (int t=0;t<TRAIT_COUNT;t++){
@@ -258,9 +258,9 @@ SpeciesBuild culture_random_build(uint32_t seed){
 #define CULTURE_MAX_CID 512   /* ≥ SCPS_MAX_COUNTRY ; découplé de scps_types.h */
 typedef struct {
     bool             active;
-    SpeciesArchetype heritage;
+    Heritage heritage;
     int              ethos;      /* Ethos (scps_culture.h) — int pour éviter le cycle d'include */
-    SpeciesBuild     build;
+    HeritageBuild     build;
 } CultureSlot;
 static CultureSlot g_slot[CULTURE_SLOTS];           /* défaut : tout {false,…} (BSS) */
 static int  g_cid_slot[CULTURE_MAX_CID];            /* cid→slot, -1 = aucun (init au 1er reset) */
@@ -270,7 +270,7 @@ static void cid_map_ensure(void){
     if (!g_cid_map_init){ for (int i=0;i<CULTURE_MAX_CID;i++) g_cid_slot[i]=-1; g_cid_map_init=true; }
 }
 
-void culture_slot_set(int slot, SpeciesArchetype heritage, int ethos, SpeciesBuild build){
+void culture_slot_set(int slot, Heritage heritage, int ethos, HeritageBuild build){
     if (slot<0 || slot>=CULTURE_SLOTS) return;
     g_slot[slot].active   = true;
     g_slot[slot].heritage = (heritage>=0&&heritage<HERITAGE_COUNT) ? heritage : HERITAGE_ADAPTATIF;
@@ -283,7 +283,7 @@ void culture_slot_clear_all(void){
     for (int i=0;i<CULTURE_MAX_CID;i++) g_cid_slot[i]=-1;
 }
 bool             culture_slot_active(int slot){ return (slot>=0&&slot<CULTURE_SLOTS) && g_slot[slot].active; }
-SpeciesArchetype culture_slot_heritage(int slot){ return culture_slot_active(slot)?g_slot[slot].heritage:HERITAGE_ADAPTATIF; }
+Heritage culture_slot_heritage(int slot){ return culture_slot_active(slot)?g_slot[slot].heritage:HERITAGE_ADAPTATIF; }
 int              culture_slot_ethos(int slot){ return culture_slot_active(slot)?g_slot[slot].ethos:2; }
 
 void culture_reset_cid_map(void){ cid_map_ensure(); for (int i=0;i<CULTURE_MAX_CID;i++) g_cid_slot[i]=-1; }
@@ -292,7 +292,7 @@ int  culture_slot_of_cid(int cid){ cid_map_ensure(); return (cid>=0&&cid<CULTURE
 
 bool culture_any_active(void){ for (int s=0;s<CULTURE_SLOTS;s++) if (g_slot[s].active) return true; return false; }
 
-SpeciesBuild culture_build_for(uint32_t cid){
+HeritageBuild culture_build_for(uint32_t cid){
     int slot = culture_slot_of_cid((int)cid);
     if (slot>=0 && culture_slot_active(slot)) return g_slot[slot].build;
     return culture_random_build(cid);
@@ -324,7 +324,7 @@ bool culture_slots_load(FILE *f){
         if (fread(&act,1,1,f)!=1 || fread(&her,4,1,f)!=1 || fread(&eth,4,1,f)!=1) return false;
         if (fread(tr,4,CAT_COUNT,f)!=(size_t)CAT_COUNT) return false;
         g_slot[s].active   = act!=0;
-        g_slot[s].heritage = (her>=0&&her<HERITAGE_COUNT) ? (SpeciesArchetype)her : HERITAGE_ADAPTATIF;
+        g_slot[s].heritage = (her>=0&&her<HERITAGE_COUNT) ? (Heritage)her : HERITAGE_ADAPTATIF;
         g_slot[s].ethos    = eth;
         for (int c=0;c<CAT_COUNT;c++)
             g_slot[s].build.trait[c] = (tr[c]>=0&&tr[c]<TRAIT_COUNT) ? (TraitId)tr[c] : T_PROLIFIQUE;
@@ -341,7 +341,7 @@ bool culture_slots_load(FILE *f){
 }
 
 /* ---- Compat « joueur » = slot 0 ------------------------------------------- */
-void culture_player_compose(SpeciesArchetype heritage, int ethos, SpeciesBuild build){
+void culture_player_compose(Heritage heritage, int ethos, HeritageBuild build){
     culture_slot_set(0, heritage, ethos, build);
 }
 void culture_player_bind(int cid){ culture_bind_cid(cid, 0); }
@@ -352,5 +352,5 @@ int  culture_player_cid(void){
     for (int i=0;i<CULTURE_MAX_CID;i++) if (g_cid_slot[i]==0) return i;
     return -1;
 }
-SpeciesArchetype culture_player_heritage(void){ return culture_slot_heritage(0); }
+Heritage culture_player_heritage(void){ return culture_slot_heritage(0); }
 int              culture_player_ethos(void){ return culture_slot_ethos(0); }

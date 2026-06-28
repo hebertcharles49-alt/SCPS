@@ -19,7 +19,7 @@
 #include "scps_readout.h"   /* LA MEMBRANE : province_readout/country_readout → mots */
 #include "scps_lang.h"      /* tr() : noms de conseillers (StrId) → mot */
 #include "scps_provlog.h"   /* journal d'évènements provincial */
-#include "scps_species.h"   /* CRÉATEUR DE CULTURE : héritages, traditions, override joueur */
+#include "scps_heritage.h"   /* CRÉATEUR DE CULTURE : héritages, traditions, override joueur */
 #include "scps_culture.h"   /* ethos_name, enum Ethos */
 #include "scps_world.h"     /* culture_make_name (ethnonyme façon Stellaris) */
 #include "scps_save.h"      /* SAUVEGARDE partagée : scps_save_game/load/slot_info */
@@ -299,7 +299,7 @@ void scps_province_info(ScpsSim *s, int pid, ScpsProvInfo *out){
     out->terrain        = sz(pr.terrain);
     out->climat         = sz(pr.climat);
     out->relief         = sz(pr.relief);
-    out->race           = sz(pr.race);
+    out->heritage           = sz(pr.heritage);
     out->stature        = sz(label_stature(pr.stature));
     out->flux           = sz(label_flux(pr.flux));
     out->lignee         = sz(label_lignee(pr.lignee));
@@ -457,7 +457,7 @@ int scps_province_groups(ScpsSim *s, int pid, ScpsGroup *out, int max){
     int ng = province_composition(&re->pop, s->sim.drift, crown, 5.f, 5.f, gr, SCPS_MAX_GROUPS);
     if(ng>max) ng=max;
     for(int i=0;i<ng;i++){
-        out[i].race     = sz(gr[i].race);
+        out[i].heritage     = sz(gr[i].heritage);
         out[i].culture  = sz(gr[i].culture);
         out[i].religion = sz(gr[i].religion);
         out[i].klass    = sz(gr[i].klass);
@@ -917,7 +917,7 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
     if(!out || max<=0 || !s || !s->ready) return 0;
     int p = s->sim.player;
     if(p<0 || p>=s->w->n_countries) return 0;
-    unsigned acc = ai_race_access(s->w, s->sim.econ, s->sim.rn, p);
+    unsigned acc = ai_heritage_access(s->w, s->sim.econ, s->sim.rn, p);
     float pop = (float)scps_country_pop(s, p);
     TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, pop, &tt);
     int n = (tt.n < max) ? tt.n : max;
@@ -946,7 +946,7 @@ void scps_tech_info(ScpsSim *s, ScpsTechInfo *out){
     if(!s || !s->ready) return;
     int p = s->sim.player;
     if(p<0 || p>=s->w->n_countries) return;
-    unsigned acc = ai_race_access(s->w, s->sim.econ, s->sim.rn, p);
+    unsigned acc = ai_heritage_access(s->w, s->sim.econ, s->sim.rn, p);
     float pop = (float)scps_country_pop(s, p);
     TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, pop, &tt);
     out->points = tt.points;
@@ -1517,10 +1517,10 @@ int scps_heritage_list(ScpsHeritage *out, int max){
     static char ex[HERITAGE_COUNT][32];   /* ethnonymes-exemples (persistent le temps que l'hôte copie) */
     int n=0;
     for(int h=0; h<HERITAGE_COUNT && n<max; h++){
-        culture_make_name(ex[h], (int)sizeof ex[h], (SpeciesArchetype)h, 1u);
+        culture_make_name(ex[h], (int)sizeof ex[h], (Heritage)h, 1u);
         out[n].id      = h;
-        out[n].nom     = species_name((SpeciesArchetype)h);
-        out[n].sphere  = sphere_name(species_sphere((SpeciesArchetype)h));
+        out[n].nom     = heritage_name((Heritage)h);
+        out[n].sphere  = sphere_name(heritage_sphere((Heritage)h));
         out[n].exemple = ex[h];
         n++;
     }
@@ -1566,23 +1566,23 @@ int scps_tradition_list(ScpsTradition *out, int max){
 }
 
 /* construit un build depuis 3 ids (le slot = l'axe, comme build_is_valid l'exige). */
-static SpeciesBuild api_build_of(int t0, int t1, int t2){
-    SpeciesBuild b;
+static HeritageBuild api_build_of(int t0, int t1, int t2){
+    HeritageBuild b;
     b.trait[0]=(TraitId)t0; b.trait[1]=(TraitId)t1; b.trait[2]=(TraitId)t2;
     return b;
 }
 
 int scps_culture_validate(int t0, int t1, int t2){
     if(t0<0||t0>=TRAIT_COUNT||t1<0||t1>=TRAIT_COUNT||t2<0||t2>=TRAIT_COUNT) return 0;
-    SpeciesBuild b = api_build_of(t0,t1,t2);
+    HeritageBuild b = api_build_of(t0,t1,t2);
     return build_is_valid(&b) ? 1 : 0;
 }
 
 int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max){
     if(!out || max<=0) return 0;
     if(t0<0||t0>=TRAIT_COUNT||t1<0||t1>=TRAIT_COUNT||t2<0||t2>=TRAIT_COUNT) return 0;
-    SpeciesBuild b = api_build_of(t0,t1,t2);
-    SpeciesLeviers L = build_leviers(&b);
+    HeritageBuild b = api_build_of(t0,t1,t2);
+    HeritageLeviers L = build_leviers(&b);
     /* les 9 leviers du moteur, dans l'ordre de la struct → un MOT par axe touché. */
     float v[9] = { L.demographie, L.productivite, L.influence, L.coercition,
                    L.capacite, L.permeabilite, L.arcane, L.derive, L.fracture };
@@ -1604,7 +1604,7 @@ int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max){
 const char *scps_culture_name(int heritage, uint32_t seed){
     static char buf[40];
     int h = (heritage>=0 && heritage<HERITAGE_COUNT) ? heritage : HERITAGE_ADAPTATIF;
-    culture_make_name(buf, (int)sizeof buf, (SpeciesArchetype)h, seed);
+    culture_make_name(buf, (int)sizeof buf, (Heritage)h, seed);
     return buf;
 }
 
@@ -1613,8 +1613,8 @@ int scps_set_empire_culture(int slot, int heritage, int ethos, int t0, int t1, i
     if(!scps_culture_validate(t0,t1,t2)) return 0;
     if(heritage<0||heritage>=HERITAGE_COUNT) return 0;
     if(ethos<0||ethos>=ETHOS_COUNT) return 0;
-    SpeciesBuild b = api_build_of(t0,t1,t2);
-    culture_slot_set(slot, (SpeciesArchetype)heritage, ethos, b);
+    HeritageBuild b = api_build_of(t0,t1,t2);
+    culture_slot_set(slot, (Heritage)heritage, ethos, b);
     return 1;
 }
 

@@ -6,8 +6,8 @@
  * PARTAGÉE par le viewer SDL ET la façade Godot (scps_api) : un seul format, une
  * seule vérité. Le moteur reste C ; ce module ne fait qu'aspirer/restaurer l'état.
  *
- * Le front fournit son IDENTITÉ DE CULTURE de setup (setup_race/setup_ethos) — le
- * viewer ses globals g_player_race/g_setup_ethos, la façade le slot 0 du joueur —
+ * Le front fournit son IDENTITÉ DE CULTURE de setup (setup_heritage/setup_ethos) — le
+ * viewer ses globals g_player_heritage/g_setup_ethos, la façade le slot 0 du joueur —
  * pour que la membrane de SaveMisc reste neutre (aucun global de front ici).
  *
  * ── Historique des versions (bump = struct sérialisée plus large ⇒ « ère antérieure ») ──
@@ -48,12 +48,12 @@ typedef struct {
 const char *save_slot_path(int slot);
 /* lit l'en-tête CLAIR d'un slot (pour l'écran Charger) ; false si absent/mauvais magic. */
 bool scps_save_slot_info(int slot, SaveHeader *out);
-/* sauve la partie ENTIÈRE (atomique). setup_race∈[0,HERITAGE_COUNT)·setup_ethos∈[0,ETHOS_COUNT)
+/* sauve la partie ENTIÈRE (atomique). setup_heritage∈[0,HERITAGE_COUNT)·setup_ethos∈[0,ETHOS_COUNT)
  * = l'identité de culture du front (mémorisée dans SaveMisc). false si l'écriture échoue. */
-bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int setup_race, int setup_ethos);
-/* charge un slot : 0 ok · 1 absent/corrompu · 2 « ère antérieure » (version). out_race et
+bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int setup_heritage, int setup_ethos);
+/* charge un slot : 0 ok · 1 absent/corrompu · 2 « ère antérieure » (version). out_heritage et
  * out_ethos ← l'identité de setup restaurée (le front y remet ses globals) ; NULL si indifférent. */
-int  scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_race, int *out_ethos);
+int  scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_heritage, int *out_ethos);
 /* garde-fou post-chargement : revalide tous les comptes/indices désérialisés (refus net). */
 bool scps_save_sane(const World *w, const Sim *s, int player);
 

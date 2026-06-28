@@ -171,7 +171,7 @@ typedef struct {
     const char   *terrain;     /* mot (biome nommé) */
     const char   *climat;      /* mot (climat dérivé : Tempéré/Aride/Tropical/Froid…) */
     const char   *relief;      /* mot (relief dérivé de l'altitude : Plaines/Collines/Montagnes) */
-    const char   *race;        /* mot (espèce de la population) */
+    const char   *heritage;        /* mot (espèce de la population) */
     BandStature   stature;
     long          ames;        /* population — nombre tangible */
     BandFlux      flux;
@@ -258,7 +258,7 @@ const char *map_lens_name(MapLens lens);
 /* §11/§12 — lecture PRÉVISIONNELLE d'un nœud syncrétique (le cercle). Bandes + chemin
  * DIÉGÉTIQUE : où en est la diffusion, et ce qui l'ouvrirait. AC_ACQUIS = loqué (permanent,
  * même si la source s'est fondue). Aucun flottant ne traverse ; les chaînes parlent
- * cultures et savoir-faire, jamais races ni coordonnées. `sync_idx` = indice 0..SYNC_COUNT-1. */
+ * cultures et savoir-faire, jamais héritages ni coordonnées. `sync_idx` = indice 0..SYNC_COUNT-1. */
 typedef struct {
     BandAcces      acces;        /* lointain → acquis */
     BandProfondeur atteinte;     /* profondeur de contact ATTEINTE pour la source */
@@ -381,7 +381,7 @@ typedef struct {
     int         tier;       /* le RAYON (profondeur) */
     TreeState   state;
     bool        faustian;   /* ⚠ bout interdit */
-    bool        orphan;     /* signature d'une AUTRE race, accès manquant (greffe possible) */
+    bool        orphan;     /* signature d'une AUTRE heritage, accès manquant (greffe possible) */
     bool        is_base;    /* bâtiment de base (le centre) */
     const char *name;
     const char *unlocks;    /* le bâtiment/capacité déverrouillé */
@@ -399,8 +399,8 @@ typedef struct {
     const char *function[3]; /* "Production" / "Armée" / "Renforcement" */
 } TechTreeReadout;
 /* Remplit le readout depuis l'état de tech d'un empire : son masque d'accès de
- * race (pour les orphelines) et sa population (pour le coût). */
-void tech_tree_readout(const TechState *ts, unsigned race_access, float population,
+ * heritage (pour les orphelines) et sa population (pour le coût). */
+void tech_tree_readout(const TechState *ts, unsigned heritage_access, float population,
                        TechTreeReadout *out);
 const char *label_tree_state(TreeState s);   /* "verrouillé"/"disponible"/"acquis" */
 

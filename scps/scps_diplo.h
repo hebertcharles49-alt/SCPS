@@ -224,7 +224,7 @@ float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region);
  * prise vers son CŒUR (capitale) : un groupe DIASPORA non-intégré (restif) de
  * culture étrangère → le D̄ du maître monte, la fracture s'installe au centre.
  * Renvoie le nombre de captifs ; 0 si `enslaves` est faux. GATE = la TECH
- * d'asservissement (TECH_ESCLAVAGE, signature Orque) ; l'appelant passe le booléen.
+ * d'asservissement (TECH_ESCLAVAGE, signature Clanique) ; l'appelant passe le booléen.
  * Appelé par diplo_conquer_region ; exposé pour le banc d'essai. */
 long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves);
 

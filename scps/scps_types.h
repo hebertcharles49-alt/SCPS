@@ -183,8 +183,8 @@ typedef enum {
     RES_NAVAL_SUPPLIES,         /* production (bois+goudron) */
     RES_EAU_DE_VIE,                   /* boisson des Cités/Sylvain (eau-de-vie) — palier MORAL */
     RES_BEER,                   /* boisson des Clans/Souterrain/Sauvage (bière) — palier MORAL */
-    RES_PRECIOUS_WARE,          /* bien précieux des 4 races (porcelaine, bière…) */
-    RES_PRECIOUS_CLOTH,         /* étoffe précieuse des 4 races */
+    RES_PRECIOUS_WARE,          /* bien précieux des 4 héritages (porcelaine, bière…) */
+    RES_PRECIOUS_CLOTH,         /* étoffe précieuse des 4 héritages */
     RES_PAPER,                  /* transformation           */
     RES_TOOLS,                  /* fer + bois → outils (Atelier d'outillage, DIRECT) → MULTIPLICATEUR de productivité */
     RES_ESSENCE,                /* ARCANE : mana raffiné (cristal brûlé) → sa combustion MONTE la Brèche */
@@ -261,9 +261,9 @@ typedef struct {
     char     name[32];          /* nom courant (= variante humaine) */
     /* Toponymie des 4 peuples (préfixe/suffixe liés à l'environnement) */
     char     name_hum[32];      /* langue commune (descriptif) */
-    char     name_elf[32];      /* elfique — mélodique */
-    char     name_dwarf[32];    /* nain — gutturalo-minéral */
-    char     name_orc[32];      /* orque — rauque */
+    char     name_elf[32];      /* ésotérique — mélodique */
+    char     name_dwarf[32];    /* métallurgiste — gutturalo-minéral */
+    char     name_orc[32];      /* clanique — rauque */
 } Region;
 
 /* ---- Rôle politique d'un pays ----------------------------------------- *

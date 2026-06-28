@@ -8,8 +8,8 @@
  *      inondations le long des RIVIÈRES ; sécheresses dans le SEC ; peste le
  *      long des ROUTES (un empire fermé est épargné).
  *   2. SAVEUR par la fiche : le MÊME état (marche lointaine instable) produit
- *      « Mater dans le sang » chez l'orque Dominateur, « Affranchir le commerce »
- *      chez le gnome Mercantile — quatre récits, un seul déclencheur.
+ *      « Mater dans le sang » chez le clanique Dominateur, « Affranchir le commerce »
+ *      chez le mécaniste Mercantile — quatre récits, un seul déclencheur.
  *   3. ÂGES émergents : ils n'arrivent pas à DATE mais quand le monde ATTEINT un
  *      état ; à l'avènement, une coordonnée globale bouge + un palier s'ouvre.
  *   4. BRÈCHE : pousser la charge faustienne fait advenir l'Âge de la Brèche →
@@ -49,12 +49,12 @@ static float region_pop(const WorldEconomy *e, int r){
     return e->region[r].strata[CLASS_LABORER].pop + e->region[r].strata[CLASS_BOURGEOIS].pop
          + e->region[r].strata[CLASS_ELITE].pop;
 }
-static PopCulture make_fiche(float valeurs, Ethos e, SpeciesArchetype race){
+static PopCulture make_fiche(float valeurs, Ethos e, Heritage heritage){
     PopCulture pc; memset(&pc,0,sizeof pc);
     pc.langue=5.f; pc.valeurs=valeurs; pc.subsistance=6.f; pc.parente=5.f; pc.religion=5.f;
     pc.ethos=e; pc.lifeway=LIFE_FARMER; pc.structure=STRUCT_LIGNAGER;
     pc.credo=CREDO_PLURALISTE; pc.rel_branch=REL_ABRAHAMIQUE; pc.econ=ECON_RENTE_AGRAIRE;
-    pc.martial=MART_MUR_BOUCLIERS; pc.race=race; pc.settled=true; pc.age=200;
+    pc.martial=MART_MUR_BOUCLIERS; pc.heritage=heritage; pc.settled=true; pc.age=200;
     return pc;
 }
 
@@ -152,11 +152,11 @@ int main(int argc, char **argv){
 
     /* ═══ 3. SAVEUR PAR LA FICHE — un état, quatre récits ═══════════════ */
     printf("\n── 3. Le MÊME état (marche lointaine instable) → un récit PAR culture ──\n");
-    struct { Ethos e; SpeciesArchetype race; const char *who; int expect; } V[4]={
-        { ETHOS_DOMINATEUR, HERITAGE_CLANIQUE,   "Orque Dominateur",  EVID_INTEG_DOMINATEUR },
-        { ETHOS_MERCANTILE, HERITAGE_MECANISTE,   "Gnome Mercantile",  EVID_INTEG_MERCANTILE },
+    struct { Ethos e; Heritage heritage; const char *who; int expect; } V[4]={
+        { ETHOS_DOMINATEUR, HERITAGE_CLANIQUE,   "Clanique Dominateur",  EVID_INTEG_DOMINATEUR },
+        { ETHOS_MERCANTILE, HERITAGE_MECANISTE,   "Mécaniste Mercantile",  EVID_INTEG_MERCANTILE },
         { ETHOS_BUREAUCRATE,HERITAGE_ADAPTATIF,  "Humain Bureaucrate",EVID_INTEG_BUREAUCRATE },
-        { ETHOS_PACIFISTE,  HERITAGE_ESOTERIQUE,    "Elfe Ancien",       EVID_INTEG_ANCIEN },
+        { ETHOS_PACIFISTE,  HERITAGE_ESOTERIQUE,    "Ésotérique Ancien",       EVID_INTEG_ANCIEN },
     };
     /* On a besoin de 4 pays + 4 régions-marches. */
     int nC=s.w->n_countries; bool flavor_ok = (nC>=4);
@@ -165,7 +165,7 @@ int main(int argc, char **argv){
         int cid=i;                                   /* un pays par variante */
         int capr=cap_region(s.w,cid);
         if (capr<0){ flavor_ok=false; break; }
-        s.econ->region[capr].culture = make_fiche(5.f, V[i].e, V[i].race);   /* le TRÔNE porte l'éthos */
+        s.econ->region[capr].culture = make_fiche(5.f, V[i].e, V[i].heritage);   /* le TRÔNE porte l'éthos */
         s.econ->region[capr].culture.religion=1.f;          /* … sur une foi marquée */
         s.econ->region[capr].owner=(int16_t)cid;
         /* une marche conquise lointaine, fraîche, agitée, possédée par ce pays */
@@ -177,7 +177,7 @@ int main(int argc, char **argv){
             march=r; break;
         }
         if (march<0){ flavor_ok=false; break; }
-        PopCulture far = make_fiche(5.f, V[i].e, V[i].race);
+        PopCulture far = make_fiche(5.f, V[i].e, V[i].heritage);
         far.valeurs=0.f; far.religion=10.f; far.subsistance=1.f;   /* D∞ ≫ 6 du trône */
         s.econ->region[march].culture=far;
         s.econ->region[march].owner=(int16_t)cid;

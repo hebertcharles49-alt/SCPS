@@ -35,7 +35,7 @@
 #include "scps_factions.h"
 #include "scps_labor.h"
 #include "scps_ai.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include "scps_sim.h"       /* le TICK PARTAGÉ : Sim, sim_init, sim_day, regions_of (ex-inline) */
 #include "scps_religion.h"  /* RELIGION : télémétrie (root_count, of_country/region, g_religion_count) */
 #include "miniz.h"          /* HARNAIS DE DÉTERMINISME : mz_crc32 (vendoré, third_party) */
@@ -955,7 +955,7 @@ int main(int argc, char **argv){
         }
 
         /* SYNCRÉTISME (§tech culturelle) : les nœuds à PORTE D'ARCHÉTYPE (ex-signatures de
-         * race, désormais ouvertes par la CULTURE gouvernée — soi ou contact) — combien
+         * heritage, désormais ouvertes par la CULTURE gouvernée — soi ou contact) — combien
          * acquis, et la DISPERSION entre empires : deux contacts différents → arbres différents. */
         { int sync_total=0, nmax=0, nmin=999, nemp=0, combo=0, diff_total=0; int arch_reached[HERITAGE_COUNT]={0};
           for (int c=0;c<w->n_countries;c++){
@@ -1208,7 +1208,7 @@ int main(int argc, char **argv){
     printf("   batailles dans le temps ..... %ld livrées · %.0f j/bataille · %ld déroutes · %ld ralliement(s) · %ld décrochages · %ld renforts · %ld nuls | morts choc %ld vs POURSUITE %ld (ratio %.1fx — la poursuite doit DOMINER le choc si la cavalerie domine la compo)\n",
            tot_bt, tot_bt? (double)tot_btj/tot_bt:0.0, tot_routs, tot_rallies, tot_deseng, tot_renf, tot_nul,
            tot_mchoc, tot_mpour, tot_mchoc? (double)tot_mpour/tot_mchoc:0.0);
-    printf("   syncrétisme culturel ........ %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus race ; la diffusion par contact DIVERGE)\n",
+    printf("   syncrétisme culturel ........ %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus heritage ; la diffusion par contact DIVERGE)\n",
            (double)tot_sync/(nsims>0?nsims:1), (double)tot_sync_distinct/(nsims>0?nsims:1));
     printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (monde ATHÉE au départ ; racines ≤ ⌈empires/3⌉ genèse · ≤ 2 schismes/racine)\n",
            (double)tot_relig_roots/(nsims>0?nsims:1), (double)tot_relig_schisms/(nsims>0?nsims:1),

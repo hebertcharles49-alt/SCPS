@@ -1,11 +1,11 @@
 /*
- * pop_demo.c — la population PRÉCISE : race × culture × foi × CLASSE émergente
+ * pop_demo.c — la population PRÉCISE : heritage × culture × foi × CLASSE émergente
  *
  *   make pop_demo && ./pop_demo
  *
  * Prouve le modèle de population fin, en banc d'essai ISOLÉ (il ne touche pas l'éco
  * vivante) :
- *   1. Une province = des BANDES distinctes (race × culture × foi), pas une masse.
+ *   1. Une province = des BANDES distinctes (heritage × culture × foi), pas une masse.
  *   2. La CLASSE n'est jamais posée : elle ÉMERGE des emplois (capitale → Nobles,
  *      ateliers → Bourgeois, le reste → Journaliers), par paquets de 100, au
  *      prorata de la taille de chaque bande.
@@ -30,7 +30,7 @@ static long band_sum(const PopBand *b){
 
 int main(void){
     printf("══════════════════════════════════════════════════════════════\n");
-    printf(" POPULATION PRÉCISE — race × culture × foi × CLASSE émergente\n");
+    printf(" POPULATION PRÉCISE — heritage × culture × foi × CLASSE émergente\n");
     printf("══════════════════════════════════════════════════════════════\n");
 
     PopSim P; popsim_init(&P);
@@ -39,7 +39,7 @@ int main(void){
     popsim_add_band(&P, HERITAGE_CLANIQUE,    ETHOS_DOMINATEUR,  REL_ANIMISTE,    2000);
     popsim_add_band(&P, HERITAGE_ESOTERIQUE,     ETHOS_PACIFISTE,   REL_DHARMIQUE,   1000);
 
-    printf("\n── 1. Une province = des BANDES distinctes (race × culture × foi) ──\n");
+    printf("\n── 1. Une province = des BANDES distinctes (heritage × culture × foi) ──\n");
     ok("trois bandes distinctes coexistent (pas une masse homogène)", P.n_bands==3);
     ok("le total tient (5000 + 2000 + 1000 = 8000 âmes)", popsim_total(&P)==8000);
     /* fusion d'une identité déjà présente (pas une 4e bande). */
@@ -59,7 +59,7 @@ int main(void){
     for (int i=0;i<P.n_bands;i++){
         const PopBand *b=&P.band[i];
         printf("     %s/%s/%s (%ld) → Nobles %ld · Bourgeois %ld · Journaliers %ld\n",
-               species_name(b->race), ethos_name(b->culture), religion_branch_name(b->faith),
+               heritage_name(b->heritage), ethos_name(b->culture), religion_branch_name(b->faith),
                b->count, b->by_class[POPCL_ELITE], b->by_class[POPCL_ARTISAN], b->by_class[POPCL_LABORER]);
     }
     ok("la classe a ÉMERGÉ : des Nobles et des Bourgeois apparaissent (≠ 0)",
@@ -71,7 +71,7 @@ int main(void){
        popsim_class_total(&P,POPCL_LABORER)+popsim_class_total(&P,POPCL_ARTISAN)
        +popsim_class_total(&P,POPCL_ELITE)==8000);
     ok("répartition au PRORATA : la plus grande bande (Humains) a le plus de Nobles ; "
-       "la plus petite (Elfes, 1000) n'atteint pas un paquet noble (0)",
+       "la plus petite (Ésotériques, 1000) n'atteint pas un paquet noble (0)",
        P.band[0].by_class[POPCL_ELITE] > P.band[1].by_class[POPCL_ELITE]
        && P.band[2].by_class[POPCL_ELITE]==0);
     ok("tout est par PAQUETS DE 100 (chaque classe est un multiple de 100)",
@@ -92,7 +92,7 @@ int main(void){
        popsim_class_total(&P,POPCL_LABORER)+popsim_class_total(&P,POPCL_ARTISAN)
        +popsim_class_total(&P,POPCL_ELITE)==8000);
 
-    printf("\n── 4. Le croisement PRÉCIS foi × classe · race · foi (membrane) ──\n");
+    printf("\n── 4. Le croisement PRÉCIS foi × classe · heritage · foi (membrane) ──\n");
     P.cap_tier=5; P.artisan_jobs=800; popsim_emerge(&P);
     long abr_nobles = popsim_faith_class(&P, REL_ABRAHAMIQUE, POPCL_ELITE);
     long ani_nobles = popsim_faith_class(&P, REL_ANIMISTE,    POPCL_ELITE);
@@ -100,8 +100,8 @@ int main(void){
     ok("on lit le croisement FOI × CLASSE (les « Nobles abrahamiques » ≠ les « Nobles animistes »)",
        abr_nobles != ani_nobles && abr_nobles>0);
     ok("agrégats par FOI et par RACE cohérents (membrane : des nombres tangibles)",
-       popsim_faith_total(&P,REL_ABRAHAMIQUE)==5000 && popsim_race_total(&P,HERITAGE_CLANIQUE)==2000
-       && popsim_race_total(&P,HERITAGE_ESOTERIQUE)==1000);
+       popsim_faith_total(&P,REL_ABRAHAMIQUE)==5000 && popsim_heritage_total(&P,HERITAGE_CLANIQUE)==2000
+       && popsim_heritage_total(&P,HERITAGE_ESOTERIQUE)==1000);
     ok("le mot de classe est diégétique (Journaliers / Bourgeois / Nobles)",
        !strcmp(popclass_name(POPCL_ELITE),"Nobles") && popclass_name(POPCL_LABORER)[0]);
 

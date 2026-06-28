@@ -5,7 +5,7 @@
  *
  * Hier une province était une fiche HOMOGÈNE → D interne nul, H injouable,
  * assimilation orpheline. Ici une province contient des groupes
- * (race, culture, classe, effectif). Un seul changement rend réels d'un coup :
+ * (heritage, culture, classe, effectif). Un seul changement rend réels d'un coup :
  *   - D interne PAR province (distance ENTRE groupes) ;
  *   - H jouable (on réprime UNE province et ses minorités restives) ;
  *   - l'assimilation incarnée (la culture d'une minorité DÉRIVE vers la
@@ -19,7 +19,7 @@
  */
 #include "scps_world.h"      /* World, WorldEconomy (l'intégration au moteur) */
 #include "scps_econ.h"       /* PopGroup, ProvincePop, PopCulture, SocialClass */
-#include "scps_species.h"    /* SpeciesArchetype, Sphere */
+#include "scps_heritage.h"    /* Heritage, Sphere */
 #include "scps_modifier.h"   /* la pile de dérive (assimilation/suppression) */
 #include "scps_routes.h"     /* S2 : RouteNetwork (contact commercial) */
 #include "scps_diplo.h"      /* S2 : DiploState (la guerre coupe le contact) */
@@ -53,7 +53,7 @@ CoercionEffect province_apply_coercion(ProvincePop *pp, ModifierStack *drift, fl
 void           province_lift_coercion (ProvincePop *pp, ModifierStack *drift);  /* la botte se lève (Kuran) */
 
 /* ---- Assimilation — DÉRIVE durable, timer ∝ D∞ (gouffre, §5) ---------- */
-float assimilation_years(float Dinf, float P, float K);   /* Halfelin ~20 ans, Orque 80-150 */
+float assimilation_years(float Dinf, float P, float K);   /* Agraire ~20 ans, Clanique 80-150 */
 /* Fait dériver chaque minorité vers le dominant d'un pas (years_per_tick). Fusion
  * quand la distance < EPS. Renvoie le nb de groupes fusionnés ce tick. */
 int   assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, float years_per_tick);
@@ -67,7 +67,7 @@ int   assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K,
 void  faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
                          float years_held, float years_per_tick);
 
-/* ---- Migration passive — emporte race + culture (§4) ----------------- */
+/* ---- Migration passive — emporte heritage + culture (§4) ----------------- */
 /* Déplace `amount` du groupe `gi` de `from` vers `to` (adjacence/prospérité
  * jugées par l'appelant). Crée une minorité/diaspora à l'arrivée → du D interne.
  * `new_drift_id` : clé fraîche si une diaspora doit être créée. */
@@ -80,7 +80,7 @@ float country_L   (const ProvincePop *provs, int n);
 
 /* ---- Composition (§6) — la membrane : mots, jamais de SCPS brut ------- */
 typedef struct {
-    const char *race;      /* "Humain", "Orque"… (diégétique) */
+    const char *heritage;      /* "Humain", "Clanique"… (diégétique) */
     const char *culture;   /* nom de culture (diégétique) */
     const char *religion;  /* branche de foi (diégétique) — pour le camembert Religion */
     const char *klass;     /* "Noblesse" / "Artisans" / "Laboureurs" */

@@ -42,7 +42,7 @@ typedef struct {
     float fragilite;     /* part de l'ordre tenue par la contrainte [0..10] */
     float fracture;      /* sécession latente */
     float L;             /* légitimité agrégée [0..10] */
-    float K;             /* capacité EFFECTIVE (tech+race+bâti) */
+    float K;             /* capacité EFFECTIVE (tech+heritage+bâti) */
     float Dinf_interne;  /* diversité interne max — le COÛT d'avaler du lointain */
     float PE;            /* prospérité réalisée */
     float tresor;        /* trésor disponible (somme régionale) */
@@ -87,7 +87,7 @@ typedef struct {
 
     /* Personnalité EFFECTIVE — la résultante des factions-éthos (§3), qui GLISSE
      * quand la composition change : socle de la culture régnante, MODULÉ par l'écart
-     * entre le penchant du peuple et celui du trône (conquérir des orques monte la
+     * entre le penchant du peuple et celui du trône (conquérir des claniques monte la
      * conquête). Lue partout dans le moteur (agression, recherche, casus belli). */
     float    w_expand;       /* conquête    (faction Conquérants) */
     float    w_trade;        /* commerce    (faction Marchands) */
@@ -173,8 +173,8 @@ void   ai_speculate_tick(AiActor *a, WorldEconomy *econ);
 
 /* RECHERCHE (1 JOUR) : à sa cadence, l'empire accumule des points (rendement
  * Savoir × population) et déverrouille UN nœud choisi par ses BUTS + le PENCHANT
- * de sa race + le FREIN (faustien évité quand on est fragile). Aucun « si race ».
- * L'ACCÈS de race (sa population) débloque les orphelines → diffusion par conquête. */
+ * de sa heritage + le FREIN (faustien évité quand on est fragile). Aucun « si heritage ».
+ * L'ACCÈS de heritage (sa population) débloque les orphelines → diffusion par conquête. */
 void   ai_research_step(AiActor *a, TechState *ts, const World *w,
                         const WorldEconomy *econ, const RouteNetwork *rn,
                         const WorldProsperity *wp, int day);
@@ -182,9 +182,9 @@ void   ai_research_step(AiActor *a, TechState *ts, const World *w,
  * Dominateur→ARMÉE · Bureaucrate→RENFORCEMENT · Mercantile→PRODUCTION). */
 TechFunction ai_ethos_pref_func(Ethos e);
 
-/* Masque des races présentes dans la population de l'empire (sa propre race +
+/* Masque des héritages présentes dans la population de l'empire (sa propre heritage +
  * conquises/migrées) → l'accès aux techs orphelines. Exposé pour le banc d'essai. */
-unsigned ai_race_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid);
+unsigned ai_heritage_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid);
 
 /* §syncrétique — RAFRAÎCHIT le cercle d'un empire : recalcule la profondeur de contact
  * par archétype, la met en cache (ts->arch_depth, lu par la membrane) et loquette les

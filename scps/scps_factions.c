@@ -7,7 +7,7 @@
  */
 #include "scps_factions.h"
 #include <stdio.h>
-#include "scps_species.h"   /* SpeciesArchetype */
+#include "scps_heritage.h"   /* Heritage */
 #include <string.h>         /* memset (reset des stances) */
 
 /* K2 — faction_name() a MIGRÉ au readout (membrane : le moteur n'expose que l'enum). */
@@ -35,8 +35,8 @@ void group_ethos_lean(const PopCulture *c, float w[FAC_COUNT]){
         case ETHOS_PACIFISTE:   w[FAC_COMMUNAUTAIRE]+=1.0f; break;
         default: break;
     }
-    /* 2) SIGNATURE de race — le penchant inné du peuple (§2). */
-    switch (c->race){
+    /* 2) SIGNATURE de heritage — le penchant inné du peuple (§2). */
+    switch (c->heritage){
         case HERITAGE_CLANIQUE:    w[FAC_CONQUERANT]+=0.5f;    w[FAC_TRANSGRESSEUR]+=0.5f; break; /* guerre + interdit */
         case HERITAGE_METALLURGISTE:     w[FAC_LEGISTE]+=0.4f;       w[FAC_TRANSGRESSEUR]+=0.4f; break; /* forge à runes */
         case HERITAGE_AGRAIRE: w[FAC_MARCHAND]+=0.4f;      w[FAC_COMMUNAUTAIRE]+=0.5f; break;
@@ -142,7 +142,7 @@ EthosWeights faction_effective_weights(const float w[FAC_COUNT]){
 float faction_fracture(const float w[FAC_COUNT]){
     /* « Contesté » de la direction : la seconde faction talonne-t-elle la première ?
      * Une tête écrasante → 0 ; deux fortes au coude-à-coude (45/40) → ~1. Pondéré
-     * par le poids cumulé des deux têtes (une paralysie de nains ne paralyse rien). */
+     * par le poids cumulé des deux têtes (une paralysie de métallurgistes ne paralyse rien). */
     float s1=0.f, s2=0.f;
     for (int f=0; f<FAC_COUNT; f++){
         if (w[f] > s1){ s2=s1; s1=w[f]; }

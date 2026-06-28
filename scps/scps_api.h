@@ -93,7 +93,7 @@ typedef struct {
 #define SCPS_PROV_MODS 8
 typedef struct {
     int         valid;                  /* 0 si province hors-borne */
-    const char *nom, *terrain, *climat, *relief, *race;
+    const char *nom, *terrain, *climat, *relief, *heritage;
     const char *stature, *flux, *vocation, *ressource;
     const char *humeur, *lignee;
     const char *aisance;                /* mot de la jauge prospérité locale */
@@ -178,7 +178,7 @@ int  scps_region_sunken(const ScpsSim *s, int region);
  * composition (camemberts culture/idéologie), les revenus (production), la pop
  * par classe (barre empilée) et l'ossature de capitale. Tous membrane/tangibles. */
 typedef struct {
-    const char *race, *culture, *religion, *klass, *etat, *loyaute;  /* mots résolus */
+    const char *heritage, *culture, *religion, *klass, *etat, *loyaute;  /* mots résolus */
     int         percent;     /* part de la province */
 } ScpsGroup;
 /* remplit out[0..min(n,max)-1] avec les groupes pop ; retourne le nombre écrit. */

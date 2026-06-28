@@ -253,17 +253,17 @@ void faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
 }
 
 /* ===================================================================== */
-/* MIGRATION PASSIVE — emporte race + culture (§4)                        */
+/* MIGRATION PASSIVE — emporte heritage + culture (§4)                        */
 /* ===================================================================== */
 bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id){
     if (gi<0||gi>=from->n_groups) return false;
     PopGroup *src=&from->groups[gi];
     if (amount>src->count) amount=src->count;
     if (amount<=0) return false;
-    /* groupe d'accueil = même race ET même culture d'origine ? sinon DIASPORA. */
+    /* groupe d'accueil = même heritage ET même culture d'origine ? sinon DIASPORA. */
     int dst=-1;
     for (int i=0;i<to->n_groups;i++)
-        if (to->groups[i].race==src->race && content_dist(&to->groups[i].origin,&src->origin)<FUSE_EPS){ dst=i; break; }
+        if (to->groups[i].heritage==src->heritage && content_dist(&to->groups[i].origin,&src->origin)<FUSE_EPS){ dst=i; break; }
     if (dst<0){
         if (to->n_groups>=DEMO_MAX_GROUPS) return false;
         PopGroup ng=*src;                    /* garde species/culture → minorité à l'arrivée */
@@ -331,7 +331,7 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
         const PopGroup *g=&pp->groups[i];
         PopCulture eff=group_culture_effective(g,drift);
         GroupReadout *r=&out[n];
-        r->race    = species_name(g->race);
+        r->heritage    = heritage_name(g->heritage);
         r->culture = ethos_name(eff.ethos);
         r->religion= religion_branch_name(eff.rel_branch);
         r->klass   = labor_class_word(g->klass);
@@ -375,7 +375,7 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
                           + re->strata[CLASS_ELITE].pop);
         if (total<1) total=1;
         PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g));
-        g->race=re->culture.race; g->origin_sphere=species_sphere(re->culture.race);
+        g->heritage=re->culture.heritage; g->origin_sphere=heritage_sphere(re->culture.heritage);
         g->origin=re->culture; g->culture=re->culture;     /* substrat = effective au départ */
         g->klass=CLASS_LABORER; g->count=total;
         g->pop_by_class[CLASS_LABORER]=total;        /* repli : tout Journalier avant la 1re émergence */
@@ -404,7 +404,7 @@ void demography_dyn_id_rebase(const WorldEconomy *econ){
     g_dyn_drift_id=hi+1;
 }
 
-/* ÉMERGENCE DE CLASSE (§pop précise) : la classe de CHAQUE groupe (race×culture×foi)
+/* ÉMERGENCE DE CLASSE (§pop précise) : la classe de CHAQUE groupe (heritage×culture×foi)
  * sort des EMPLOIS de la région — la capitale (tier·100 emplois NOBLES, le tier que
  * la pop débloque) + les ateliers (emploi BOURGEOIS ≈ ouvriers des manufactures),
  * répartis sur les groupes AU PRORATA, par paquets de 100. Σ pop_by_class = count.
@@ -458,7 +458,7 @@ static void culture_to_pc(const Culture *c, PopCulture *p){
     p->langue=c->langue; p->valeurs=c->valeurs; p->subsistance=c->subsistance;
     p->parente=c->parente; p->religion=c->religion; p->ethos=c->ethos; p->lifeway=c->lifeway;
     p->structure=c->structure; p->credo=c->credo; p->rel_branch=c->rel_branch;
-    p->martial=c->martial; p->econ=c->econ; p->age=c->age;   /* settled/race PRÉSERVÉS */
+    p->martial=c->martial; p->econ=c->econ; p->age=c->age;   /* settled/heritage PRÉSERVÉS */
 }
 static long g_contact_cryst = 0;   /* cristallisations par contact, cumul de la sim (télémétrie) */
 void demography_contact_reset(void){ g_contact_cryst = 0; }
@@ -576,7 +576,7 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
     if (crown && pp->n_groups<SCPS_MAX_GROUPS){
         long total=province_total_pop(pp);
         PopGroup g; memset(&g,0,sizeof g);
-        g.race=crown->race; g.origin_sphere=species_sphere(crown->race);
+        g.heritage=crown->heritage; g.origin_sphere=heritage_sphere(crown->heritage);
         g.origin=*crown; g.culture=*crown; g.klass=CLASS_ELITE;
         g.count=total/5+50; g.L=7.f; g.agit_base=agit_from_L(7.f); g.integration=1.f;
         g.diaspora=true; g.drift_id=demography_dyn_id_next();

@@ -23,7 +23,7 @@ env.Append(CPPPATH=["src/", "../scps/", "../third_party/"])
 #    demos/audio ; + scps_render (render_map) + scps_api (la façade)). ──────────
 ENGINE_MODULES = [
     "world", "econ", "tune", "trade", "culture", "tech", "core", "legitimacy",
-    "prosperity", "readout", "lang", "species", "diplo", "routes", "intertrade",
+    "prosperity", "readout", "lang", "heritage", "diplo", "routes", "intertrade",
     "statecraft", "agency", "events", "provlog", "demography", "labor", "modifier", "revolt",
     "army", "warhost", "campaign", "missions", "navy", "endgame", "factions",
     "ai", "credit", "crypt", "save_io", "save", "religion", "render", "sim", "api",

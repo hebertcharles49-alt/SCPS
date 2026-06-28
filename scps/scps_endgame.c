@@ -178,13 +178,13 @@ static int cataclysm_resplit_empire(World *w, WorldEconomy *econ, int country) {
                     int firstreg = -1; for (int i = 0; i < nr; i++) if (comp[i] == k) { firstreg = regs[i]; break; }
                     int newc = endgame_free_slot(w, econ, country);
                     if (newc >= 0) {                       /* un successeur naît */
-                        SpeciesArchetype race = econ->region[firstreg].culture.race;
+                        Heritage heritage = econ->region[firstreg].culture.heritage;
                         Ethos ethos = econ->region[firstreg].culture.ethos;
                         Country *nc = &w->country[newc]; memset(nc, 0, sizeof *nc);
                         nc->role = POLITY_ANTAGONIST;
                         nc->continent = (firstreg < w->n_regions) ? w->region[firstreg].continent : 0;
-                        nc->color = country_race_color(race, newc);
-                        country_make_name(nc->name, sizeof nc->name, race, ethos, newc);
+                        nc->color = country_heritage_color(heritage, newc);
+                        country_make_name(nc->name, sizeof nc->name, heritage, ethos, newc);
                         for (int i = 0; i < nr; i++) if (comp[i] == k) {
                             econ->region[regs[i]].owner = (int16_t)newc;
                             region_set_country(w, regs[i], newc);

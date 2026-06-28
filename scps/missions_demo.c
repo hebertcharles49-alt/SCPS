@@ -8,7 +8,7 @@
  */
 #include "scps_missions.h"
 #include "scps_culture.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

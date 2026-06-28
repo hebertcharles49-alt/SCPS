@@ -6,7 +6,7 @@
  * diversité (et la fracture) en découle dans le moteur d'ordre.
  */
 #include "scps_diplo.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include "scps_culture.h"
 #include <stdio.h>
 #include <string.h>
@@ -593,10 +593,10 @@ static float geo_dist(const World *w, int a, int b){
     float dy=(float)(w->province[pa].seed_y-w->province[pb].seed_y);
     return sqrtf(dx*dx+dy*dy);
 }
-static float race_influence(const World *w, const WorldEconomy *econ, int cid){
+static float heritage_influence(const World *w, const WorldEconomy *econ, int cid){
     const PopCulture *pc=cap_culture(w,econ,cid);
     if (!pc) return 0.f;
-    SpeciesBuild sb=culture_build_for((uint32_t)cid);   /* traditions de l'empire (joueur : sa compo ; IA : tirage) */
+    HeritageBuild sb=culture_build_for((uint32_t)cid);   /* traditions de l'empire (joueur : sa compo ; IA : tirage) */
     return build_leviers(&sb).influence;
 }
 
@@ -615,10 +615,10 @@ float diplo_mil_power(const World *w, const WorldEconomy *econ, int cid){
         kit += re->mil_stock + re->stock[RES_GUNPOWDER];           /* F6 : FORCE D'ARMÉE (canal dédié) + poudre — découplé du RES_ARMS que la levée consomme */
     }
     const PopCulture *pc=cap_culture(w,econ,cid);
-    float race_coerc=0.f, mart=0.f;
+    float heritage_coerc=0.f, mart=0.f;
     if (pc){
-        SpeciesBuild sb=culture_build_for((uint32_t)cid);   /* traditions de l'empire (joueur : sa compo ; IA : tirage) */
-        race_coerc=build_leviers(&sb).coercition;
+        HeritageBuild sb=culture_build_for((uint32_t)cid);   /* traditions de l'empire (joueur : sa compo ; IA : tirage) */
+        heritage_coerc=build_leviers(&sb).coercition;
         if (pc->martial==MART_HORDE_MONTEE||pc->martial==MART_LEVEE_MASSIVE||
             pc->martial==MART_THALASSO_PREDATRICE) mart=0.7f;   /* traditions offensives */
     }
@@ -628,14 +628,14 @@ float diplo_mil_power(const World *w, const WorldEconomy *econ, int cid){
     /* Armes & poudre de BASE : équipent la levée — rendements décroissants,
      * plafonnés plus bas que l'arcane (le fer arme, l'arcane décide). */
     float gear = 1.8f*(1.f - 1.f/(1.f + kit*0.03f));
-    return sqrtf(pop)*0.04f + H + race_coerc + mart + ench + gear;
+    return sqrtf(pop)*0.04f + H + heritage_coerc + mart + ench + gear;
 }
 
 static float threat_of(const World *w, const WorldEconomy *econ,
                        const WorldProsperity *wp, const DiploState *d, int a, int b){
     float eco=diplo_eco_power(wp,b), mil=diplo_mil_power(w,econ,b);
     float dist=geo_dist(w,a,b);
-    float infl=race_influence(w,econ,b);          /* l'influence étend la portée */
+    float infl=heritage_influence(w,econ,b);          /* l'influence étend la portée */
     float eff=dist/(1.f+0.10f*infl);
     float base=(eco+mil)/(eff*0.02f + 1.f);
     /* MOMENTUM : la FULGURANCE effraie plus que la masse — un empire qui snowballe
@@ -656,7 +656,7 @@ Relation diplo_relation(const World *w, const WorldEconomy *econ,
     r.complement = uni>0 ? (float)(uni-inter)/(float)uni : 0.f;
 
     const PopCulture *ca=cap_culture(w,econ,a), *cb=cap_culture(w,econ,b);
-    r.kinship = (ca&&cb) ? sphere_distance(species_sphere(ca->race),species_sphere(cb->race)) : 0.f;
+    r.kinship = (ca&&cb) ? sphere_distance(heritage_sphere(ca->heritage),heritage_sphere(cb->heritage)) : 0.f;
 
     if (ca&&cb){
         bool same_branch=(ca->rel_branch==cb->rel_branch);
@@ -891,9 +891,9 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
 }
 
 /* ---- guerre : ESCLAVAGE (§4c) — déporter la population prise ----------- *
- * GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Orque) : l'appelant
+ * GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Clanique) : l'appelant
  * passe `enslaves` = l'empire a-t-il l'Économie servile débloquée. La tech circule
- * avec les peuples (orpheline) → ce sont les Orques et ceux qui les ont absorbés. */
+ * avec les peuples (orpheline) → ce sont les Claniques et ceux qui les ont absorbés. */
 long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves){
     if (!enslaves) return 0;                                          /* société sans l'Économie servile */
     if (conqueror<0||conqueror>=w->n_countries||region<0||region>=econ->n_regions) return 0;
@@ -914,7 +914,7 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
     /* déportation au CŒUR : on crée un cohorte DIASPORA non-intégrée (restive) de
      * culture étrangère → le D̄ du maître monte (la fracture s'installe au centre).
      * Toujours DISTINCTE (jamais fondue dans un groupe libre co-culturel). */
-    PopGroup ng=src->groups[gi];                      /* garde race/culture/origine */
+    PopGroup ng=src->groups[gi];                      /* garde heritage/culture/origine */
     ng.count=captives; ng.diaspora=true; ng.integration=0.f;
     ng.drift_id=SLAVE_DRIFT_BASE + region*SCPS_MAX_GROUPS + dst->n_groups;
     dst->groups[dst->n_groups++]=ng;

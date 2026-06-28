@@ -9,7 +9,7 @@
  */
 #include "scps_revolt.h"
 #include "scps_tune.h"   /* Arc J : calibrage */
-#include "scps_species.h"   /* species_name */
+#include "scps_heritage.h"   /* heritage_name */
 #include "scps_culture.h"   /* ethos_name (via culture nom) */
 #include "scps_factions.h"  /* §5 : la tension de coup d'une faction forte aliénée */
 #include "scps_labor.h"     /* capitale_* : la capacité de service (logement/services) de la région */
@@ -76,7 +76,7 @@
  * une conquête fraîche qui, elle, SÉCÈDE) dont l'éthos appartient à une faction forte
  * et ALIÉNÉE — opposée à la direction effective. Ses membres veulent SAISIR l'État
  * pour imposer leur éthos. L'éthos d'un groupe survit à l'assimilation (signature de
- * race + trait d'éthos), donc une minorité enracinée reste porteuse de SA faction. */
+ * heritage + trait d'éthos), donc une minorité enracinée reste porteuse de SA faction. */
 #define COUP_ETHOS_W       1.0f   /* une faction fortement aliénée peut soulever seule (motif politique) */
 #define COUP_ETHOS_TRIGGER 0.18f  /* §C2 : seuil RELEVÉ 0.12→0.18 — le coup exige un grief plus net
                                    * (le 0.12 faisait tomber le couperet trop tôt → 0-ou-92). */
@@ -231,7 +231,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
      * faction saisit l'État pour imposer son éthos. Sinon, la nature usuelle (sécession
      * d'une nation conquise, jacquerie de classe). */
     rb->kind = would_coup ? REBEL_COUP : revolt_classify(g, drift, crown);
-    rb->race=g->race; rb->klass=g->klass;
+    rb->heritage=g->heritage; rb->klass=g->klass;
     rb->culture=group_culture_effective(g, drift);
     rb->drift_id=g->drift_id; rb->mobilized=mob; rb->deficit=wd;
     rb->outcome=OUT_ONGOING; rb->spawned=-1;
@@ -367,7 +367,7 @@ static int spawn_secession(World *w, WorldEconomy *econ, WorldLegitimacy *wl, Re
                      ? w->region[rb->region].province_ids[0] : -1;
     nc->n_regions=1; nc->region_ids[0]=(int16_t)rb->region;
     nc->color=0xC08040u;
-    snprintf(nc->name,sizeof nc->name,"%s libre", species_name(rb->race));
+    snprintf(nc->name,sizeof nc->name,"%s libre", heritage_name(rb->heritage));
 
     RegionEconomy *re=&econ->region[rb->region];
     re->owner=(int16_t)nid;

@@ -36,7 +36,7 @@
 #include <stdio.h>          /* FILE* : helpers de save (prod_cap) */
 #include "scps_types.h"
 #include "scps_culture.h"   /* PopCulture embarque les traits dérivés (Ethos, …) */
-#include "scps_species.h"   /* couche biologique : race + traits (leviers) */
+#include "scps_heritage.h"   /* couche biologique : heritage + traits (leviers) */
 #include "scps_tech.h"      /* TechState : §B1 abonde prod_mult par les techs de production */
 #include "scps_tune.h"      /* tune_f : lu par les modificateurs provinciaux (inline ci-dessous) */
 
@@ -132,27 +132,27 @@ typedef struct {
     EconTrait    econ;
     int  age;       /* ticks d'existence (dérive) */
     bool settled;   /* false = région vierge, pas encore peuplée */
-    /* Couche BIOLOGIQUE (superposée à la culture) : la race et ses leviers
+    /* Couche BIOLOGIQUE (superposée à la culture) : la heritage et ses leviers
      * (démographie, K, P, H, dérive, fracture…). Posée par worldgen_seed_peoples. */
-    SpeciesArchetype race;
+    Heritage heritage;
 } PopCulture;
 
 /* ---- GROUPES de population (clé de voûte démographique) ---------------- *
  * Une province ne contient plus une fiche homogène mais des GROUPES
- * (race, culture, classe, effectif). D interne = distance ENTRE groupes ;
+ * (heritage, culture, classe, effectif). D interne = distance ENTRE groupes ;
  * H agit SUR eux ; l'assimilation fait DÉRIVER la culture d'une minorité.
  * `culture` est la fiche EFFECTIVE (cache recalculé = origine + dérive) — ce que
  * lisent prosperity/legitimacy ; `origin` est le substrat FIXE. Rétro-compat :
  * une province à UN groupe reproduit exactement les nombres d'hier. */
 #define SCPS_MAX_GROUPS 8
 typedef struct {
-    SpeciesArchetype race;
+    Heritage heritage;
     Sphere       origin_sphere;  /* FIXE : pour le gouffre */
     PopCulture   origin;         /* substrat FIXE */
     PopCulture   culture;        /* fiche EFFECTIVE (cache = origine + dérive) */
     SocialClass  klass;          /* (hérité) la classe « principale » du groupe */
     long         count;
-    /* CLASSE ÉMERGENTE (§pop précise) : combien de ce groupe (race×culture×foi) sont
+    /* CLASSE ÉMERGENTE (§pop précise) : combien de ce groupe (heritage×culture×foi) sont
      * Journaliers / Bourgeois / Nobles — sort des EMPLOIS (capitale + ateliers), par
      * paquets de 100. Σ pop_by_class = count. Jamais posé : recalculé au tick. */
     long         pop_by_class[CLASS_COUNT];

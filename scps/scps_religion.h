@@ -131,7 +131,7 @@ int  religion_found_random(int cid, int centre_cell, uint32_t seed); /* fonde un
 int  religion_adopt_existing(int cid, uint32_t seed); /* RALLIE une racine existante + set_country ; -1 si aucune */
 
 /* ===================================================================== */
-/* i18n — mots RÉSOLUS (membrane ; même mécanisme que credo_name/species_name) */
+/* i18n — mots RÉSOLUS (membrane ; même mécanisme que credo_name/heritage_name) */
 /* ===================================================================== */
 const char *relig_axis_name(ReligAxis a);   /* Sang/Feu/Seuil/… */
 const char *relig_pole_name(ReligPole p);   /* Fécondité/Offrande/… */

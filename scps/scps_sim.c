@@ -49,7 +49,7 @@ static int  g_wild_contact[SCPS_MAX_REG];   /* années de contact PACIFIQUE par 
 
 /* HAMEAUX LIBRES — ralliement CULTUREL (la règle neuve de B4). Un hameau WILD en contact
  * PACIFIQUE soutenu avec l'empire VOISIN s'y RALLIE : owner → empire, après WILD_DEFECT_YEARS
- * d'adjacence à la paix OU dès que sa culture a CONVERGÉ (race = celle du voisin, via
+ * d'adjacence à la paix OU dès que sa culture a CONVERGÉ (heritage = celle du voisin, via
  * l'assimilation). Sa pop + sa culture DISTINCTE deviennent minorité dans l'empire →
  * assimilation_tick / off_culture_fraction / xénophile-xénophobe la digèrent (existant). */
 static void wild_cultural_tick(Sim *s, World *w){
@@ -73,7 +73,7 @@ static void wild_cultural_tick(Sim *s, World *w){
         g_wild_contact[r]++;
         int cap=w->country[best_emp].capital_prov;
         int cr=(cap>=0&&cap<w->n_provinces)? w->province[cap].region : -1;
-        bool converged=(cr>=0 && cr<e->n_regions && re->culture.race==e->region[cr].culture.race);
+        bool converged=(cr>=0 && cr<e->n_regions && re->culture.heritage==e->region[cr].culture.heritage);
         if (g_wild_contact[r]>=defect_years || converged){
             double pop=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
             re->owner=(int16_t)best_emp;    /* RALLIEMENT : transfert d'owner (réutilise le modèle) */
@@ -433,7 +433,7 @@ void sim_day(Sim *s, World *w) {
      * coût plein ; jamais un bonus plat). human=-1 ⇒ research_target reste -1 ⇒ NO-OP chronique. */
     if (s->research_target>=0 && s->human_player>=0 && s->human_player<w->n_countries){
         int pl=s->human_player;
-        unsigned access = ai_race_access(w, s->econ, s->rn, pl);
+        unsigned access = ai_heritage_access(w, s->econ, s->rn, pl);
         if (!tech_can_research(&s->ts[pl], (TechId)s->research_target, access)){
             s->research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
         } else {

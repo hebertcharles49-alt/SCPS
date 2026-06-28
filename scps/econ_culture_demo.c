@@ -15,7 +15,7 @@
  */
 #include "scps_world.h"
 #include "scps_econ.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,10 +26,10 @@ static void ok(const char *what, bool cond){
     if (cond) g_pass++; else g_fail++;
 }
 
-/* Pose un groupe (race, sphère, effectif, intégration). */
-static void set_group(PopGroup *g, SpeciesArchetype race, Sphere sph, long count, float integ){
+/* Pose un groupe (heritage, sphère, effectif, intégration). */
+static void set_group(PopGroup *g, Heritage heritage, Sphere sph, long count, float integ){
     memset(g,0,sizeof *g);
-    g->race=race; g->origin_sphere=sph; g->count=count; g->integration=integ;
+    g->heritage=heritage; g->origin_sphere=sph; g->count=count; g->integration=integ;
 }
 
 int main(int argc, char **argv){
@@ -47,7 +47,7 @@ int main(int argc, char **argv){
     ok("province HOMOGÈNE (un peuple) → aucune pénalité off-culture",
        econ_off_culture_fraction(&pp) < 0.001f);
 
-    /* On conquiert : une minorité ORQUE (sphère Étrangers), non assimilée. */
+    /* On conquiert : une minorité CLANIQUE (sphère Étrangers), non assimilée. */
     set_group(&pp.groups[1], HERITAGE_CLANIQUE, SPHERE_ETRANGERS, 500, 0.f);
     pp.n_groups=2;
     float off_raw = econ_off_culture_fraction(&pp);
@@ -61,7 +61,7 @@ int main(int argc, char **argv){
     ok("l'ASSIMILATION efface la pénalité (la demande dérive vers la dominante)",
        off_assim < off_raw - 0.10f);
 
-    /* Une minorité de la MÊME sphère (Anciens : elfe sous nain) gêne moins qu'une
+    /* Une minorité de la MÊME sphère (Anciens : ésotérique sous métallurgiste) gêne moins qu'une
      * sphère lointaine (Étrangers). */
     set_group(&pp.groups[0], HERITAGE_METALLURGISTE, SPHERE_ANCIENS, 1000, 1.f);
     set_group(&pp.groups[1], HERITAGE_ESOTERIQUE, SPHERE_ANCIENS, 500, 0.f);

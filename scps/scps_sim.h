@@ -44,7 +44,7 @@
 #include "scps_factions.h"
 #include "scps_labor.h"
 #include "scps_ai.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include <stdbool.h>
 
 /* ---- JOURNAL DE COMMANDES JOUEUR (déterministe) -------------------------

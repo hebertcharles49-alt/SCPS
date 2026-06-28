@@ -470,17 +470,17 @@ int main(int argc,char**argv){
         int srcR=-1; for(int r=0;r<econ->n_regions;r++) if(r!=capR){ srcR=r; break; }
         if(capR>=0 && srcR>=0){
             /* Le banc tourne en mono-groupe : on PEUPLE explicitement le cœur (natifs)
-             * et une province source (un groupe ÉTRANGER — des orques). */
+             * et une province source (un groupe ÉTRANGER — des claniques). */
             PopGroup nat; memset(&nat,0,sizeof nat);
-            nat.race=HERITAGE_ADAPTATIF; nat.klass=CLASS_BOURGEOIS; nat.count=8000;
-            nat.integration=1.f; nat.L=6.f; nat.drift_id=111; nat.origin_sphere=species_sphere(HERITAGE_ADAPTATIF);
+            nat.heritage=HERITAGE_ADAPTATIF; nat.klass=CLASS_BOURGEOIS; nat.count=8000;
+            nat.integration=1.f; nat.L=6.f; nat.drift_id=111; nat.origin_sphere=heritage_sphere(HERITAGE_ADAPTATIF);
             econ->region[capR].pop.n_groups=1; econ->region[capR].pop.groups[0]=nat;
             PopGroup foe; memset(&foe,0,sizeof foe);
-            foe.race=HERITAGE_CLANIQUE; foe.klass=CLASS_LABORER; foe.count=4000;
-            foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=species_sphere(HERITAGE_CLANIQUE);
+            foe.heritage=HERITAGE_CLANIQUE; foe.klass=CLASS_LABORER; foe.count=4000;
+            foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=heritage_sphere(HERITAGE_CLANIQUE);
             econ->region[srcR].pop.n_groups=1; econ->region[srcR].pop.groups[0]=foe;
 
-            /* GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Orque) : booléen. */
+            /* GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Clanique) : booléen. */
             long captives=diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/true);
             printf("   captifs déportés au cœur : %ld (sur 4000)\n",captives);
             ok("un empire doté de l'Économie servile DÉPORTE ≈¼ de la population prise",
@@ -489,7 +489,7 @@ int main(int argc,char**argv){
                econ->region[capR].pop.n_groups==2);
             PopGroup *g=&econ->region[capR].pop.groups[econ->region[capR].pop.n_groups-1];
             ok("le groupe d'esclaves est RESTIF (non-intégré + diaspora → D̄↑ au centre)",
-               g->integration<0.01f && g->diaspora && g->race==HERITAGE_CLANIQUE);
+               g->integration<0.01f && g->diaspora && g->heritage==HERITAGE_CLANIQUE);
             ok("la province prise PERD la population déportée",
                econ->region[srcR].pop.groups[0].count < 4000);
             /* GATE : sans la TECH d'asservissement (enslaves=false), personne n'est asservi. */

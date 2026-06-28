@@ -12,7 +12,7 @@
 #include "scps_world.h"
 #include "scps_econ.h"
 #include "scps_culture.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include "scps_faith.h"
 #include <stdio.h>
 #include <stdlib.h>

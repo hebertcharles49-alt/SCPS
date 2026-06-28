@@ -7,7 +7,7 @@
  * câblées). On vérifie :
  *   1. BRASSERIE — le grain devient de la BIÈRE (la chaîne vivrière du commun).
  *   2. VARIANTE CULTURELLE — le palier MORAL (boisson) est une variante : une
- *      culture de basse subsistance (clans/nains/orques) est CONTENTE avec la
+ *      culture de basse subsistance (clans/métallurgistes/claniques) est CONTENTE avec la
  *      bière et BOUDE le eau-de-vie ; une culture urbaine, l'inverse.
  *   3. FOI — un Temple bâti SOUTIENT la légitimité locale (sacraliser le trône
  *      apaise sans réprimer) — la coordonnée que la légitimité LIT.

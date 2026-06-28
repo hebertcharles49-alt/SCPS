@@ -225,7 +225,7 @@ static const double DAYS_PER_SEC[SPEED_COUNT] = { 0.0, 3.0, 8.0, 14.0, 24.0 };
 static const char  *SPEED_LABEL[SPEED_COUNT]  = { "❙❙", "▸ ×1", "▸▸ ×2", "▸▸ ×3", "▸▸▸ ×5" };
 static SDL_Rect g_speed_zone;   /* le cran est CLIQUABLE (clic = cran suivant, repasse à ×1) */
 static GameSpeed g_last_speed = SPEED_1;   /* Espace repart sur le DERNIER cran choisi */
-static SpeciesArchetype g_player_race = HERITAGE_ADAPTATIF;   /* le choix de l'écran de création (shell) */
+static Heritage g_player_heritage = HERITAGE_ADAPTATIF;   /* le choix de l'écran de création (shell) */
 #define GAME_YEARS 250
 
 /* ---- État caméra ----------------------------------------------------- */
@@ -1396,7 +1396,7 @@ static void draw_tech_tree(SDL_Renderer *ren, int win_w, int win_h,
     if (cid<0 || cid>=w->n_countries) return;
     TechTreeReadout tr;
     ai_sync_refresh(w, econ, rn, &ts[cid], cid);   /* §syncrétique : cercle à jour à l'image (hors cadence IA) */
-    unsigned acc = ai_race_access(w, econ, rn, cid);
+    unsigned acc = ai_heritage_access(w, econ, rn, cid);
     float    pop = ai_country_population(w, econ, cid);
     tech_tree_readout(&ts[cid], acc, pop, &tr);
 
@@ -1968,7 +1968,7 @@ static void sim_day(Sim *s, World *w) {
     if (g_research_target>=0 && s->player>=0 && s->player<w->n_countries){
         int pl=s->player;
         float pop = ai_country_population(w, s->econ, pl);
-        unsigned access = ai_race_access(w, s->econ, s->rn, pl);
+        unsigned access = ai_heritage_access(w, s->econ, s->rn, pl);
         if (!tech_can_research(&s->ts[pl], (TechId)g_research_target, access)){
             g_research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
         } else {
@@ -2121,7 +2121,7 @@ static void sim_rebuild(Sim *s, World *w) {
         || !s->ag || !s->ev || !s->drift || !s->labor || !s->rs || !s->host || !s->camp || !s->navy || !s->eg) return;
     econ_init(s->econ, w);
     gen_population(w, s->econ);
-    worldgen_seed_peoples(w, s->econ, g_player_race);   /* la race CHOISIE ancre le gradient */
+    worldgen_seed_peoples(w, s->econ, g_player_heritage);   /* la heritage CHOISIE ancre le gradient */
     legitimacy_init(s->wl, w, s->econ);
     prosperity_init(s->wp, w);
     trade_network_build(s->net, w, s->econ);
@@ -2524,9 +2524,9 @@ static int sb_capital_region(const Sim *s, const World *w){
  * (place_make_name, le syllabaire par RACE de scps_world) flavoré par la culture
  * DOMINANTE de la région ; déterministe par région, décorrélé des noms d'empire. */
 static void region_make_name(char *out, int n, const WorldEconomy *e, int region){
-    SpeciesArchetype race = (e && region>=0 && region<e->n_regions)
-                          ? e->region[region].culture.race : HERITAGE_ADAPTATIF;
-    place_make_name(out, n, race, (uint32_t)region ^ 0x5EEDu);
+    Heritage heritage = (e && region>=0 && region<e->n_regions)
+                          ? e->region[region].culture.heritage : HERITAGE_ADAPTATIF;
+    place_make_name(out, n, heritage, (uint32_t)region ^ 0x5EEDu);
 }
 
 /* ── panneau ÉCONOMIE : Commerce · Marché · Import/Export ─────────────────── */
@@ -3633,7 +3633,7 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
           y += 18;
       } }
 
-    /* CAMEMBERTS — Culture + Religion côte à côte (la race SUIT la culture :
+    /* CAMEMBERTS — Culture + Religion côte à côte (la heritage SUIT la culture :
      * pas de 3ᵉ disque). Surface sobre ; le détail vit dans le survol. */
     {
         int reg = (pid>=0 && pid<w->n_provinces) ? w->province[pid].region : -1;
@@ -3648,7 +3648,7 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             GroupReadout gr[SCPS_MAX_GROUPS];
             int ng = province_composition(&econ->region[reg].pop, drift, crown, 5.f, 5.f,
                                           gr, SCPS_MAX_GROUPS);
-            /* parts de CULTURE : un secteur par groupe (la race le suit, en survol). */
+            /* parts de CULTURE : un secteur par groupe (la heritage le suit, en survol). */
             int cper[SCPS_MAX_GROUPS]={0}; SDL_Color ccol[SCPS_MAX_GROUPS]={{0}};
             for (int i=0;i<ng;i++){ cper[i]=gr[i].percent; ccol[i]=SLICE_PAL[i&7];
                 if (i>0 && gr[i].loyaute<=HU_FRONDEUSE) restive=true; }
@@ -3669,7 +3669,7 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             cn += snprintf(chov+cn, sizeof chov-cn, "Culture : ");
             for (int i=0;i<ng && cn<(int)sizeof chov-48;i++)
                 cn += snprintf(chov+cn, sizeof chov-cn, "%s%d%% %s (%s — %s)",
-                               i?" · ":"", gr[i].percent, gr[i].culture, gr[i].race, label_humeur(gr[i].loyaute));
+                               i?" · ":"", gr[i].percent, gr[i].culture, gr[i].heritage, label_humeur(gr[i].loyaute));
             rn2 += snprintf(rhov+rn2, sizeof rhov-rn2, "Idéologie · doctrine du trône : %s %s — ",
                             credo_name(crown->credo), religion_branch_name(crown->rel_branch));  /* GR2 : credo × vision CUMULÉS */
             for (int i=0;i<nr && rn2<(int)sizeof rhov-40;i++)
@@ -3679,7 +3679,7 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             y = cyc + pr_ + 16;
         } else {
             ui_section(ren, x, &y, "PEUPLE");
-            ui_row(ren,x,&y,rw,"Race", p.race, COL_PARCH,
+            ui_row(ren,x,&y,rw,"Héritage", p.heritage, COL_PARCH,
                    "L'espèce de la population.");
         }
     }
@@ -3710,7 +3710,7 @@ static void draw_province_panel(SDL_Renderer *ren, int win_w, int win_h,
             ui_section(ren, x, &y, "POPULATION");
             const RegionEconomy *re2=&econ->region[reg];
             /* la composition de classe ÉMERGE des groupes (§pop précise) : Σ des
-             * pop_by_class de chaque groupe race×culture×foi. Repli sur les strates. */
+             * pop_by_class de chaque groupe heritage×culture×foi. Repli sur les strates. */
             long cp[3] = {0,0,0};
             const ProvincePop *pp2=&re2->pop;
             if (pp2->n_groups>0){
@@ -4145,7 +4145,7 @@ static bool over_panel(int mx, int my, int win_w, int win_h, int selected){
     return false;
 }
 /* P0.3 — PANNEAU DIPLOMATIQUE rapide (clic-droit sur une région étrangère) : le
- * SQUELETTE — nom · race · statut · menace (+ score si en guerre). Les ACTIONS
+ * SQUELETTE — nom · heritage · statut · menace (+ score si en guerre). Les ACTIONS
  * viendront avec l'arc guerre (emplacement réservé) ; ici, lecture seule. */
 static void draw_diplo_popup(SDL_Renderer *ren, int win_w, const World *w, const Sim *s){
     int cid=g_diplo_target; if (cid<0||cid>=w->n_countries) return;
@@ -4156,8 +4156,8 @@ static void draw_diplo_popup(SDL_Renderer *ren, int win_w, const World *w, const
     int x=px+14, y=py+12; char buf[96];
     draw_text(ren, g_font, x, y, COL_COPPER, sb_country_name(w,cid)); y+=24;
     int cr=(w->country[cid].capital_prov>=0)? w->province[w->country[cid].capital_prov].region : -1;
-    const char *race=(cr>=0 && cr<s->econ->n_regions)? species_name(s->econ->region[cr].culture.race) : "—";
-    tr_fmt(buf,sizeof buf,STR_DIPLO_RACE_FMT,race);                draw_text(ren,fs,x,y,COL_PARCH,buf); y+=17;
+    const char *heritage=(cr>=0 && cr<s->econ->n_regions)? heritage_name(s->econ->region[cr].culture.heritage) : "—";
+    tr_fmt(buf,sizeof buf,STR_DIPLO_RACE_FMT,heritage);                draw_text(ren,fs,x,y,COL_PARCH,buf); y+=17;
     DiploStatus st=diplo_status(s->dp,s->player,cid);
     const char *sw=(st==DIPLO_WAR)?tr(STR_DIPLO_GUERRE):(st==DIPLO_ALLIED)?tr(STR_DIPLO_ALLIE):
                    (diplo_suzerain(s->dp,cid)==s->player)?tr(STR_DIPLO_VASSAL):
@@ -4284,7 +4284,7 @@ static const char *army_people(const World *w, const WorldEconomy *econ,
     GroupReadout gr[SCPS_MAX_GROUPS];
     int ng=province_composition(&econ->region[reg].pop, drift, &econ->region[reg].culture,
                                 5.f, 5.f, gr, SCPS_MAX_GROUPS);
-    return (ng>0) ? gr[0].race : "—";
+    return (ng>0) ? gr[0].heritage : "—";
 }
 
 /* Centre-écran d'une région = barycentre des graines de ses PROVINCES (coords de
@@ -4471,7 +4471,7 @@ static void save_ppm(const char *path, const uint32_t *px, int w, int h) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 static bool g_pause_menu=false, g_quit_confirm=false, g_show_tuto=false;
 static int  g_tuto_page=0;
-static int  g_setup_ethos=5, g_setup_race=(int)HERITAGE_ADAPTATIF, g_setup_terre=5;  /* défauts : Pacifiste? non → voir tables */
+static int  g_setup_ethos=5, g_setup_heritage=(int)HERITAGE_ADAPTATIF, g_setup_terre=5;  /* défauts : Pacifiste? non → voir tables */
 static char g_open_terre_line[120]="";
 static WorldParams g_stage;            /* l'écran de création édite une COPIE */
 static bool g_pending_open=false;      /* après la forge : entrer en OUVERTURE */
@@ -4673,7 +4673,7 @@ typedef struct {
                                 * faite sous d'autres tunables, rechargée, évolue sous d'AUTRES règles : on le DÉTECTE */
 } SaveHeader;
 typedef struct { int32_t day, year, player, prev_dawned; uint32_t camp_rng;
-                 int32_t race, ethos; int16_t prev_owner[SCPS_MAX_REG]; } SaveMisc;
+                 int32_t heritage, ethos; int16_t prev_owner[SCPS_MAX_REG]; } SaveMisc;
 static const char *save_slot_path(int slot){
     static char p[64]; snprintf(p,sizeof p,"saves/slot_%d.scps",slot); return p;
 }
@@ -4781,7 +4781,7 @@ static bool game_save(int slot, World *w, Sim *s, const WorldParams *params){
     ok&=sv_w(f,SVT_AION, s->ai_on, sizeof(bool)*SCPS_MAX_COUNTRY);
     { SaveMisc m; memset(&m,0,sizeof m);
       m.day=s->day; m.year=s->year; m.player=s->player; m.prev_dawned=s->prev_dawned;
-      m.camp_rng=s->camp_rng; m.race=(int32_t)g_player_race; m.ethos=g_setup_ethos;
+      m.camp_rng=s->camp_rng; m.heritage=(int32_t)g_player_heritage; m.ethos=g_setup_ethos;
       memcpy(m.prev_owner,s->prev_owner_mo,sizeof m.prev_owner);
       ok&=sv_w(f,SVT_MISC, &m, sizeof m); }
     /* les modules à ÉTATS STATIQUES possèdent leur sérialisation */
@@ -4991,9 +4991,9 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
       ok&=sv_r(f,SVT_MISC, &m, sizeof m);
       if (ok){ s->day=m.day; s->year=m.year; s->player=m.player; s->prev_dawned=m.prev_dawned;
                s->camp_rng=m.camp_rng;
-               if (m.race <0 || m.race >=(int32_t)HERITAGE_COUNT)  m.race =(int32_t)HERITAGE_ADAPTATIF;
+               if (m.heritage <0 || m.heritage >=(int32_t)HERITAGE_COUNT)  m.heritage =(int32_t)HERITAGE_ADAPTATIF;
                if (m.ethos<0 || m.ethos>=(int32_t)ETHOS_COUNT) m.ethos=0;
-               g_player_race=(SpeciesArchetype)m.race; g_setup_ethos=m.ethos;
+               g_player_heritage=(Heritage)m.heritage; g_setup_ethos=m.ethos;
                memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner); } }
     ok&=sv_r(f,SVT_ITRD, NULL,0); ok&=intertrade_load(f);
     ok&=sv_r(f,SVT_AGYS, NULL,0); ok&=agency_load(f);
@@ -5086,12 +5086,12 @@ static void shell_draw(SDL_Renderer *ren,int win_w,int win_h,World *w,Sim *s,
             draw_text(ren,g_font_small,px+8,py+3,on?COL_COPPER:COL_PARCH,lab);
             shhit_add((SDL_Rect){px,py,330,20},SH_PICK_ETHOS,e); py+=22;
         }
-        py+=8; draw_text(ren,g_font_small,px,py,COL_DIM,"Race"); py+=18;
+        py+=8; draw_text(ren,g_font_small,px,py,COL_DIM,"Héritage"); py+=18;
         for (int r=0;r<(int)HERITAGE_COUNT;r++){
-            bool on=(g_setup_race==r);
+            bool on=(g_setup_heritage==r);
             int cx2=px+(r%3)*112, cy2=py+(r/3)*24;
             fill_rect(ren,cx2,cy2,104,20,on?(SDL_Color){0x3a,0x2c,0x1a,0xff}:(SDL_Color){0x12,0x18,0x24,0xff});
-            draw_text(ren,g_font_small,cx2+8,cy2+3,on?COL_COPPER:COL_PARCH,species_name((SpeciesArchetype)r));
+            draw_text(ren,g_font_small,cx2+8,cy2+3,on?COL_COPPER:COL_PARCH,heritage_name((Heritage)r));
             shhit_add((SDL_Rect){cx2,cy2,104,20},SH_PICK_RACE,r);
         }
         py+=56; draw_text(ren,g_font_small,px,py,COL_DIM,"Terre de départ (un vœu — jamais un mur)"); py+=18;
@@ -5107,7 +5107,7 @@ static void shell_draw(SDL_Renderer *ren,int win_w,int win_h,World *w,Sim *s,
         snprintf(rec,200,"Un monde %s%s · %d empires · un peuple %s %s cherchant %s.",
                  stage->world_age<0.4f?"jeune":"vieux",
                  stage->mountains>0.6f?" et montagneux":"",
-                 stage->n_empires, species_name((SpeciesArchetype)g_setup_race),
+                 stage->n_empires, heritage_name((Heritage)g_setup_heritage),
                  SH_ETHOS_N[g_setup_ethos],
                  g_setup_terre<5?SH_TERRE_N[g_setup_terre]:"sa chance");
         draw_text(ren,g_font,60,win_h-86,COL_DIM,rec);
@@ -5898,7 +5898,7 @@ int main(int argc, char **argv) {
                                 case SH_SLIDER_UP: sh_apply_slider(&g_stage,sh2->a,+1); break;
                                 case SH_SEED_DICE: g_stage.seed ^= (uint32_t)SDL_GetTicks()*2654435761u; if(!g_stage.seed)g_stage.seed=1u; break;
                                 case SH_PICK_ETHOS: g_setup_ethos=sh2->a; break;
-                                case SH_PICK_RACE:  g_setup_race=sh2->a; g_player_race=(SpeciesArchetype)sh2->a; break;
+                                case SH_PICK_RACE:  g_setup_heritage=sh2->a; g_player_heritage=(Heritage)sh2->a; break;
                                 case SH_PICK_TERRE: g_setup_terre=sh2->a; break;
                                 case SH_BACK: g_gs=GS_MENU; break;
                                 case SH_FORGER:
@@ -5957,7 +5957,7 @@ int main(int argc, char **argv) {
                         }
                         /* P5.26 — clic sur une tech ACCESSIBLE → la recherche SE LANCE (file de 1). */
                         if (hit>=0 && sim.ready && sim.player>=0 && sim.player<world->n_countries){
-                            unsigned acc = ai_race_access(world, sim.econ, sim.rn, sim.player);
+                            unsigned acc = ai_heritage_access(world, sim.econ, sim.rn, sim.player);
                             if (tech_can_research(&sim.ts[sim.player], (TechId)hit, acc)){
                                 g_research_target=hit; sim.ts[sim.player].research_points=0.f;
                             }
@@ -6118,7 +6118,7 @@ int main(int argc, char **argv) {
                     ev.button.button == SDL_BUTTON_RIGHT)
                     panning = false;
                 /* P0.3 — CLIC-DROIT (sans glissé) sur une région ÉTRANGÈRE, hors panneau →
-                 * panneau diplomatique (squelette : nom, race, relation, statut). */
+                 * panneau diplomatique (squelette : nom, heritage, relation, statut). */
                 if (ev.button.button == SDL_BUTTON_RIGHT && g_gs==GS_PLAYING && sim.ready
                     && abs(ev.button.x-rdown_x)<5 && abs(ev.button.y-rdown_y)<5
                     && !over_panel(ev.button.x,ev.button.y,win_w,win_h,selected)){
@@ -6312,7 +6312,7 @@ int main(int argc, char **argv) {
                 }
                 rp.region_tint = g_region_tint;
             } else if ((mode==VIEW_COUNTRIES || mode==VIEW_TERRAIN) && sim.ready) {
-                /* P1.6 — carte politique : teinte par OWNER COURANT (race-famille),
+                /* P1.6 — carte politique : teinte par OWNER COURANT (heritage-famille),
                  * non-colonisé = 0 → terrain nu. P1.7 — en vue RELIEF, render_map n'en
                  * garde QUE le liseré de frontière (la souveraineté se lit sur le relief). */
                 static uint32_t g_owner_tint[SCPS_MAX_REG];

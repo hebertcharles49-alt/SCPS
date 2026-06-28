@@ -21,7 +21,7 @@ mode="${1:-full}"
 # readout ne doivent plus passer sous le radar (le rouge de l'audit éco est
 # longtemps resté invisible faute d'être ici).
 BENCHES_FULL=(
-  core_demo monde_reel readout_demo species_demo tech_demo faith_demo
+  core_demo monde_reel readout_demo heritage_demo tech_demo faith_demo
   intertrade_demo routes_demo save_io_demo statecraft_demo pop_demo army_demo
   demography_demo demography_integ_demo revolt_demo social_demo agency_demo
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo

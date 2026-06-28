@@ -190,7 +190,7 @@ static bool integ_base(const EventCtx *cx, int r){
     return dinf > 6.f && yh < 30.f && agit > 40.f;
 }
 static Ethos  owner_ethos (const EventCtx *cx,int r){ const PopCulture*p=ruling_culture(cx->w,cx->econ,cx->econ->region[r].owner); return p?p->ethos:ETHOS_ORDRE; }
-static Sphere owner_sphere(const EventCtx *cx,int r){ const PopCulture*p=ruling_culture(cx->w,cx->econ,cx->econ->region[r].owner); return p?species_sphere(p->race):SPHERE_HOMMES; }
+static Sphere owner_sphere(const EventCtx *cx,int r){ const PopCulture*p=ruling_culture(cx->w,cx->econ,cx->econ->region[r].owner); return p?heritage_sphere(p->heritage):SPHERE_HOMMES; }
 
 static bool trig_integ_dom(const EventCtx *cx,int r){
     if (!integ_base(cx,r)) return false;
