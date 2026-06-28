@@ -909,7 +909,7 @@ static const char *const TECH_UTILITY[TECH_COUNT] = {
     [TECH_COMBO_FOEDERATI]     = "+moral & +cohésion (mercenaires) [Adaptatif×Clanique]",
     [TECH_COMBO_HORDE_ECO]     = "+moral & +production (razzia) [Agraire×Clanique]",
 };
-void tech_tree_readout(const TechState *ts, unsigned heritage_access, float population,
+void tech_tree_readout(const TechState *ts, unsigned heritage_access, float n_provinces,
                        TechTreeReadout *out){
     if (!out) return;
     memset(out, 0, sizeof(*out));
@@ -928,7 +928,7 @@ void tech_tree_readout(const TechState *ts, unsigned heritage_access, float popu
         nr->name     = n->name;
         nr->unlocks  = n->unlocks;
         nr->effet    = TECH_UTILITY[i] ? TECH_UTILITY[i] : n->unlocks;   /* l'utilité concrète */
-        nr->cost     = (int)(tech_cost((TechId)i, population) + 0.5f);
+        nr->cost     = (int)(tech_cost((TechId)i, n_provinces) + 0.5f);
         bool done = ts && ts->unlocked[i];
         bool open = ts && tech_can_research(ts, (TechId)i, heritage_access);
         nr->state    = done ? TREE_DONE : (open ? TREE_OPEN : TREE_LOCKED);

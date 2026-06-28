@@ -399,8 +399,8 @@ typedef struct {
     const char *function[3]; /* "Production" / "Armée" / "Renforcement" */
 } TechTreeReadout;
 /* Remplit le readout depuis l'état de tech d'un empire : son masque d'accès de
- * heritage (pour les orphelines) et sa population (pour le coût). */
-void tech_tree_readout(const TechState *ts, unsigned heritage_access, float population,
+ * heritage (pour les orphelines) et son nombre de PROVINCES (pour le coût ∝ √N). */
+void tech_tree_readout(const TechState *ts, unsigned heritage_access, float n_provinces,
                        TechTreeReadout *out);
 const char *label_tree_state(TreeState s);   /* "verrouillé"/"disponible"/"acquis" */
 

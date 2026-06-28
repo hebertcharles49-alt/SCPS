@@ -17,15 +17,17 @@
 #define CRISIS_SCALE    12.0f   /* échelle de la courbe proximité = f(charge) */
 #define SHOCK_MAGIE      0.50f   /* l'arcane gonfle l'ampleur du choc */
 #define DEREAL_P_COEF    0.10f   /* terme (P/10)·C */
-/* COÛT ∝ POP TOTALE (§A — « le coût force les choix »). Le revenu de recherche monte
- * DÉJÀ avec la pop (plus de monde = plus de chercheurs) ; en scalant le COÛT sur la pop
- * AUSSI, le rapport revenu/coût devient ~indépendant de la TAILLE → l'arbitrage de branche
- * est une affaire de STRATÉGIE, pas de volume (uniforme du métallurgiste au géant). COST_SCALE relève
- * l'ensemble pour qu'un empire ne s'offre que ~40-60 % de l'arbre sur 200 ans → il se SPÉCIALISE
- * (magie OU industrie OU négoce, pas tout). La spine Savoir·Production reste l'accélérateur. */
-#define COST_SCALE       14.4f   /* P5.29 : coût des techs ×3 (T2 216→~650) — l'income suit (IA ×3, joueur par tier) */
-#define POP_REF          5000.f  /* pop de référence : coût = BASE × COST_SCALE × pop/POP_REF */
-#define COST_POP_FLOOR   0.5f    /* plancher pop : un tout petit empire paie au moins BASE×SCALE×0.5 (jamais ~gratuit) */
+/* COÛT ∝ N^exp — DÉCOUPLÉ DE LA POP (2026-06-28). Le revenu de recherche monte avec la POP
+ * (∝ N, plus de monde = plus de chercheurs) ; en scalant le COÛT sur √N (SOUS-linéaire), le
+ * coût MARGINAL d'une province reste INFÉRIEUR à son apport de recherche → l'EXPANSION (wide)
+ * est RÉCOMPENSÉE, mais sous-linéairement (le coût croît quand même → frein au snowball ;
+ * rythme/empire ∝ N/√N = √N). Calé près des GRANDS empires (où vit l'essentiel de la pop)
+ * pour borner le re-baseline ; plancher = un empire mono-province ne paie jamais ~rien.
+ * COST_SCALE relève l'ensemble : un empire ne s'offre que ~40-60 % de l'arbre → il SPÉCIALISE. */
+#define COST_SCALE        14.4f  /* P5.29 : coût des techs ×3 — l'income suit (IA ×3, joueur par tier) */
+#define TECH_COST_N_K     0.90f  /* coefficient du coût ∝ N^exp (calé sur les grands empires : N~20 ≈ ancien popf) */
+#define TECH_COST_N_EXP   0.5f   /* exposant SOUS-linéaire (0.5 = √N) — le cœur du « wide récompensé » */
+#define TECH_COST_N_FLOOR 0.5f   /* plancher : un empire mono-province paie au moins BASE×SCALE×0.5 */
 static const float BASE_COST[6] = { 0.f, 40.f, 90.f, 160.f, 260.f, 400.f }; /* par tier (rayon) */
 
 /* ====================================================================== */
@@ -437,14 +439,15 @@ bool tech_research(TechState *s, TechId id, unsigned heritage_access) {
     return true;
 }
 
-float tech_cost(TechId id, float population){
+float tech_cost(TechId id, float n_provinces){
     const TechNode *n=tech_node(id);
     if (!n) return 0.f;
     int t=n->tier; if (t<0) t=0; if (t>5) t=5;
-    float popf = (population>0.f?population:0.f)/POP_REF;   /* coût ∝ pop totale (size-neutral vs revenu) */
-    if (popf<COST_POP_FLOOR) popf=COST_POP_FLOOR;
-    if (!(popf<1e6f)) popf=1e6f;   /* une pop inf/NaN ne doit pas geler la recherche (coût inf) */
-    return BASE_COST[t] * COST_SCALE * popf;
+    float N = (n_provinces>1.f ? n_provinces : 1.f);
+    float f = TECH_COST_N_K * powf(N, TECH_COST_N_EXP);    /* coût ∝ √N : wide récompensé sous-linéairement */
+    if (f<TECH_COST_N_FLOOR) f=TECH_COST_N_FLOOR;
+    if (!(f<1e6f)) f=1e6f;   /* un N inf/NaN ne doit pas geler la recherche (coût inf) */
+    return BASE_COST[t] * COST_SCALE * f;
 }
 
 /* ---- La Brèche (verrou SCPS, inchangé) -------------------------------- */

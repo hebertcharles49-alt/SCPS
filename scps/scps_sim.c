@@ -437,7 +437,6 @@ void sim_day(Sim *s, World *w) {
         if (!tech_can_research(&s->ts[pl], (TechId)s->research_target, access)){
             s->research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
         } else {
-            float pop   = ai_country_population(w, s->econ, pl);
             float month = sim_player_savoir_month(s->labor);    /* capital par tier × staffing */
             float yield = tech_research_yield(&s->ts[pl]);       /* institutions Savoir : ×1..2.5 */
             CountryReadout cr = country_readout(s->wp, s->ts, w, pl);
@@ -445,7 +444,7 @@ void sim_day(Sim *s, World *w) {
             float metab = 1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)     /* MÉTABOLISATION (Temps 1) : creuset → +recherche */
                               * econ_country_metabolized(w, s->econ, pl);
             s->ts[pl].research_points += (month/30.4f) * yield * prosp * metab; /* /mois → /jour */
-            if (s->ts[pl].research_points >= tech_cost((TechId)s->research_target, pop)){
+            if (s->ts[pl].research_points >= tech_cost((TechId)s->research_target, (float)w->country[pl].n_regions)){
                 tech_research(&s->ts[pl], (TechId)s->research_target, access);   /* DÉBLOQUÉ */
                 s->ts[pl].research_points = 0.f; s->research_target=-1;          /* file de 1 : terminé */
             }

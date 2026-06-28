@@ -1397,8 +1397,7 @@ static void draw_tech_tree(SDL_Renderer *ren, int win_w, int win_h,
     TechTreeReadout tr;
     ai_sync_refresh(w, econ, rn, &ts[cid], cid);   /* §syncrétique : cercle à jour à l'image (hors cadence IA) */
     unsigned acc = ai_heritage_access(w, econ, rn, cid);
-    float    pop = ai_country_population(w, econ, cid);
-    tech_tree_readout(&ts[cid], acc, pop, &tr);
+    tech_tree_readout(&ts[cid], acc, (float)w->country[cid].n_regions, &tr);
 
     int cx=win_w/2, cy=win_h/2 - 4;
     float ring = (float)win_h * 0.082f;            /* 4 anneaux (tiers 1..4) tiennent dans la hauteur */
@@ -1967,7 +1966,6 @@ static void sim_day(Sim *s, World *w) {
      * DE PROSPÉRITÉ (P5.28, lecteur core — jamais un bonus plat) ; coût ×3 (P5.29). File de 1. */
     if (g_research_target>=0 && s->player>=0 && s->player<w->n_countries){
         int pl=s->player;
-        float pop = ai_country_population(w, s->econ, pl);
         unsigned access = ai_heritage_access(w, s->econ, s->rn, pl);
         if (!tech_can_research(&s->ts[pl], (TechId)g_research_target, access)){
             g_research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
@@ -1977,7 +1975,7 @@ static void sim_day(Sim *s, World *w) {
             CountryReadout cr = country_readout(s->wp, s->ts, w, pl);
             float prosp = 0.4f + (float)cr.m_prosperite.value/100.f*1.2f;   /* P5.28 : ×[0.4..1.6] selon la prospérité */
             s->ts[pl].research_points += (month/30.4f) * yield * prosp;     /* /mois → /jour */
-            if (s->ts[pl].research_points >= tech_cost((TechId)g_research_target, pop)){
+            if (s->ts[pl].research_points >= tech_cost((TechId)g_research_target, (float)w->country[pl].n_regions)){
                 tech_research(&s->ts[pl], (TechId)g_research_target, access);   /* DÉBLOQUÉ */
                 s->ts[pl].research_points = 0.f; g_research_target=-1;          /* file de 1 : terminé */
             }

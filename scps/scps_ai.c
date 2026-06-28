@@ -1752,7 +1752,7 @@ void ai_sync_refresh(const World *w, const WorldEconomy *econ, const RouteNetwor
  * n'est pris que si la pente dépasse le frein). Aucun « si heritage==X ». */
 static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w,
                            const WorldEconomy *econ, const WorldProsperity *wp,
-                           unsigned access, float pop){
+                           unsigned access, float nprov){
     AiView v = ai_observe(wp, w, econ, a->cid);
     float brake = ai_consolidation_pressure(&v);
     TechTheme affinity = tech_heritage_affinity(ai_capital_heritage(w,econ,a->cid));
@@ -1777,7 +1777,7 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
         TechId id=(TechId)i;
         if (!tech_can_research(ts,id,access)) continue;
         const TechNode *n=tech_node(id);
-        float cost=tech_cost(id,pop) * ai_tech_cost_mult(eth,n);   /* l'éthos pèse sur le coût (biais, jamais mur) */
+        float cost=tech_cost(id,nprov) * ai_tech_cost_mult(eth,n);   /* l'éthos pèse sur le coût (biais, jamais mur) */
         if (cost > ts->research_points + 0.01f) continue;          /* pas encore les moyens */
         float score=0.f;
         /* BUTS — la fonction du nœud répond à un besoin lu de la VUE (pas de script). */
@@ -1845,7 +1845,9 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     if (!ts || day < a->next_research_day) return;
     a->next_research_day = day + AI_RESEARCH_CADENCE;
     float pop = ai_country_population(w, econ, a->cid);
-    /* ASSIETTE : la pop PRODUIT la recherche — et la renchérit (tech_cost) → équilibre. */
+    float nprov = (float)w->country[a->cid].n_regions;   /* coût des techs ∝ √N (provinces), découplé de la pop */
+    /* ASSIETTE : la pop PRODUIT la recherche (revenu ∝ pop) ; le COÛT monte ∝ √N (provinces),
+     * sous-linéaire → l'expansion (wide) est récompensée (coût marginal < apport), sans snowball. */
     float income = (AI_RESEARCH_RATE/365.f)*AI_RESEARCH_CADENCE
                  * tech_research_yield(ts) * (1.f + pop/AI_RESEARCH_POPREF);
     /* MÉTABOLISATION (Temps 1) — un empire CREUSET (qui a digéré des âmes d'un autre
@@ -1858,7 +1860,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     /* BARRE D'ACCÈS (Temps 2) : tier par héritage = MAX(profondeur cachée, métabolisation). */
     float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, a->cid, metab);
     unsigned access = heritage_access_pack(ts->arch_depth, metab, ai_capital_heritage(w, econ, a->cid));
-    TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, pop);
+    TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, nprov);
     /* §4 COUPLAGE : une fois l'Industrie en poche, l'empire AFFAMÉ DE FER ÉPARGNE pour la
      * foreuse (chère, faustienne) plutôt que d'éparpiller — l'issue tentante précipite sa Brèche. */
     if (pick!=TECH_FOREUSE && tech_can_research(ts, TECH_FOREUSE, access)){
@@ -1875,7 +1877,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         if (tgt!=TECH_COUNT && !ts->unlocked[tgt]){
             TechId step=ai_step_toward(ts, tgt, access);
             if (step!=TECH_COUNT){
-                float sc=tech_cost(step,pop)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
+                float sc=tech_cost(step,nprov)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
                 if (ts->research_points < sc) return;      /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                 /* on AVANCE vers l'échappatoire */
             }
@@ -1899,7 +1901,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                 const TechNode *tn=tech_node((TechId)id);
                 if (tn->native==HERITAGE_COUNT || tn->faustian || ts->unlocked[id]) continue;
                 if (!tech_can_research(ts, (TechId)id, access)) continue;     /* accessible (accès+prérequis) */
-                float cc=tech_cost((TechId)id, pop)*ai_tech_cost_mult(eg, tn);
+                float cc=tech_cost((TechId)id, nprov)*ai_tech_cost_mult(eg, tn);
                 if (cc<sigcost){ sig=(TechId)id; sigcost=cc; }                /* la moins chère d'abord */
             }
             if (sig!=TECH_COUNT){
@@ -1926,7 +1928,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         if (ai_faustian_appetite(cr, val) >= AI_FAUST_QUEST){               /* la SOIF d'interdit (rare) */
             TechId step=ai_step_toward(ts, TECH_FORGE_RUNES, access);
             if (step!=TECH_COUNT){
-                float sc=tech_cost(step,pop)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
+                float sc=tech_cost(step,nprov)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
                 if (ts->research_points < sc) return;                      /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                                 /* on AVANCE vers l'emblème */
             }
@@ -1952,13 +1954,13 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
       if (tgt!=TECH_COUNT){
           TechId step=ai_step_toward(ts, tgt, access);
           if (step!=TECH_COUNT){
-              float sc=tech_cost(step,pop)*ai_tech_cost_mult(eth, tech_node(step));
+              float sc=tech_cost(step,nprov)*ai_tech_cost_mult(eth, tech_node(step));
               if (ts->research_points < sc) return;              /* on ÉPARGNE pour le pas suivant */
               pick=step;                                         /* on AVANCE vers la tech d'unité */
           }
       } }
     if (pick!=TECH_COUNT){
-        float cost = tech_cost(pick, pop) * ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(pick));
+        float cost = tech_cost(pick, nprov) * ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(pick));
         if (ts->research_points >= cost && tech_research(ts, pick, access)){
             ts->research_points -= cost;
             a->stats.techs++;

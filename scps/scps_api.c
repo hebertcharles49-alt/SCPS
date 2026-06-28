@@ -921,8 +921,8 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
     int p = s->sim.player;
     if(p<0 || p>=s->w->n_countries) return 0;
     unsigned acc = ai_heritage_access(s->w, s->sim.econ, s->sim.rn, p);
-    float pop = (float)scps_country_pop(s, p);
-    TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, pop, &tt);
+    float nprov = (float)s->w->country[p].n_regions;
+    TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, nprov, &tt);
     int n = (tt.n < max) ? tt.n : max;
     for(int i=0;i<n;i++){
         const TreeNodeReadout *nd = &tt.node[i];
@@ -950,8 +950,8 @@ void scps_tech_info(ScpsSim *s, ScpsTechInfo *out){
     int p = s->sim.player;
     if(p<0 || p>=s->w->n_countries) return;
     unsigned acc = ai_heritage_access(s->w, s->sim.econ, s->sim.rn, p);
-    float pop = (float)scps_country_pop(s, p);
-    TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, pop, &tt);
+    float nprov = (float)s->w->country[p].n_regions;
+    TechTreeReadout tt; tech_tree_readout(&s->sim.ts[p], acc, nprov, &tt);
     out->points = tt.points;
     for(int i=0;i<3;i++){ out->theme[i]=sz(tt.theme[i]); out->function[i]=sz(tt.function[i]); }
     const TechState *ts = &s->sim.ts[p];
@@ -1171,8 +1171,7 @@ int scps_research_target(ScpsSim *s, float *progress01){
     int t  = s->sim.research_target;
     if (t<0 || pl<0 || pl>=s->w->n_countries) return -1;
     if (progress01){
-        float pop  = ai_country_population(s->w, s->sim.econ, pl);
-        float cost = tech_cost((TechId)t, pop);
+        float cost = tech_cost((TechId)t, (float)s->w->country[pl].n_regions);
         float f = (cost>0.f) ? (s->sim.ts[pl].research_points / cost) : 0.f;
         *progress01 = f<0.f ? 0.f : (f>1.f ? 1.f : f);
     }

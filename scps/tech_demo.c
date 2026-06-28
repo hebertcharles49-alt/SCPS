@@ -107,15 +107,16 @@ int main(void){
     ok("l'Esclavage est la signature CLANIQUE (la tech d'asservissement, gate du §4c)",
        tech_node(TECH_ESCLAVAGE)->native==HERITAGE_CLANIQUE && tech_node(TECH_ESCLAVAGE)->faustian);
 
-    /* ---- 7. LE COÛT QUI SCALE ∝ POPULATION ---------------------------- */
-    printf("\n── 7. Le coût qui scale ∝ étendue ∝ population ──\n");
-    float c_small=tech_cost(TECH_ACADEMIE, 2000.f), c_big=tech_cost(TECH_ACADEMIE, 50000.f);
-    printf("  Académie : petit empire (2k hab) = %.0f pts · grand empire (50k hab) = %.0f pts\n",c_small,c_big);
-    ok("un GRAND empire paie PLUS cher chaque tech qu'un petit (frein au snowball)", c_big > c_small);
-    ok("le rayon (tier) renchérit : Université > Académie > Scriptorium (à population égale)",
-       tech_cost(TECH_UNIVERSITE,1e4f) > tech_cost(TECH_ACADEMIE,1e4f) &&
-       tech_cost(TECH_ACADEMIE,1e4f)  > tech_cost(TECH_SCRIPTORIUM,1e4f));
-    ok("les bâtiments de base (tier 0, le centre) sont GRATUITS", tech_cost(TECH_BIBLIOTHEQUE,9e4f)==0.f);
+    /* ---- 7. LE COÛT QUI SCALE ∝ √N (provinces), SOUS-LINÉAIRE ---------- */
+    printf("\n── 7. Le coût qui scale ∝ √N (provinces) — wide récompensé sous-linéairement ──\n");
+    float c_small=tech_cost(TECH_ACADEMIE, 1.f), c_big=tech_cost(TECH_ACADEMIE, 25.f);
+    printf("  Académie : mono-province (N=1) = %.0f pts · grand empire (N=25) = %.0f pts\n",c_small,c_big);
+    ok("un GRAND empire paie PLUS cher chaque tech qu'un petit (coût ∝ √N)", c_big > c_small);
+    ok("MAIS sous-linéaire : ×N provinces ne ×N pas le coût (√25=5×, pas 25×)", c_big < c_small*25.f);
+    ok("le rayon (tier) renchérit : Université > Académie > Scriptorium (à N égal)",
+       tech_cost(TECH_UNIVERSITE,8.f) > tech_cost(TECH_ACADEMIE,8.f) &&
+       tech_cost(TECH_ACADEMIE,8.f)  > tech_cost(TECH_SCRIPTORIUM,8.f));
+    ok("les bâtiments de base (tier 0, le centre) sont GRATUITS", tech_cost(TECH_BIBLIOTHEQUE,16.f)==0.f);
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);

@@ -949,6 +949,22 @@
   §27 gaté an-180, **combos VIVANTS : 15-32 empires tiennent une fusion/sim**). Télémétrie chronicle « combos
   tier-4 ». Hook par-unité (vrai « +X% arquebusiers » ciblé) + apex triple (Arquebuse runique Méca×Métal×Éso)
   = différés (le `weapon_power` large suffit). À VENIR : coût en N-provinces, reorg tiers 1-5, UI Medusa.
+- **COÛT DES TECHS EN √N-PROVINCES — wide récompensé (2026-06-28)** : le coût de recherche cesse d'être ∝ POP
+  (size-neutral : ancien `popf = pop/POP_REF`, plancher 0.5) pour devenir **∝ √N** (N = provinces de l'empire).
+  Le revenu de recherche monte DÉJÀ ∝ pop (∝ N) ; en scalant le coût ∝ **√N** (sous-linéaire), le coût MARGINAL
+  d'une province reste INFÉRIEUR à son apport → **l'EXPANSION est récompensée** (rythme/empire ∝ N/√N = √N),
+  mais sans snowball (le coût croît quand même). `tech_cost(id, n_provinces) = BASE_COST[tier]·COST_SCALE·
+  max(FLOOR, K·√N)` (`#define` dans scps_tech.c, le module reste PUR — pas de tune_f) ; tunables `TECH_COST_N_K`
+  **0.90** · `_EXP` 0.5 (=√N) · `_FLOOR` 0.5. **k=0.90 calé sur les GRANDS empires** (N~28 ⇒ coût ≈ l'ancien
+  popf des gros — re-baseline BORNÉ là où vit l'essentiel de la pop) ; les petits paient ~1.8× plus (tall
+  relativement freiné = la contrepartie du wide récompensé). Mesuré (NDIAG, gated `SCPS_NDIAG`) : N=1 ⇒ ~15 techs,
+  N=28 ⇒ ~26 — **corrélation taille→tech POSITIVE mais sous-linéaire**. Tous les appelants passent désormais
+  `w->country[cid].n_regions` (ai_pick_tech/ai_research_step, sim/viewer voie joueur, façade `scps_tech_*`,
+  `tech_tree_readout`, bancs). ⚠ **RE-BASELINE golden** · `determinism` STABLE · 0 warning · tech_demo **23/23**
+  (+1 : « ×N provinces ne ×N pas le coût ») · readout/ai/api verts · sweep 5×250 SAIN (satisfaction 69/79/85,
+  hégémon mortel 5/5, §27 gaté an-180, IPM 1.23 ; **monde plus EXPANSIONNISTE** — guerres 33→45/sim, l'expansion
+  payant, mais les soupapes tiennent). **SAVE non bumpé** (rien de sérialisé ne change). Dialable d'une ligne
+  (`TECH_COST_N_K` ↑ pour freiner l'expansion, ↓ pour la pousser). À VENIR : reorg tiers 1-5, UI Medusa.
 
 ## Disciplines non négociables
 

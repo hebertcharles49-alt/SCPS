@@ -926,6 +926,24 @@ int main(int argc, char **argv){
           printf("              combos tier-4 : %d empire(s) tiennent une fusion d'héritages · %d combo(s) au total\n",
                  ncombo_emp, ncombo_tot); }
 
+        /* CALIBRATION coût-tech-N (gated SCPS_NDIAG) : la relation pop↔provinces par empire,
+         * pour caler k de tech_cost(N) — l'ancien coût ∝ pop/5000 (popf), le neuf ∝ √N. */
+        if (getenv("SCPS_NDIAG")){
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].role==POLITY_WILD) continue;
+                int nreg=0; double pop=0;
+                for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==c){
+                    nreg++;
+                    pop += s.econ->region[r].strata[CLASS_LABORER].pop
+                         + s.econ->region[r].strata[CLASS_BOURGEOIS].pop
+                         + s.econ->region[r].strata[CLASS_ELITE].pop;
+                }
+                if (nreg<=0) continue;
+                printf("              NDIAG c%d : N=%2d pop=%6.0f pop/N=%5.0f tech=%2d coût(Académie t2)=%.0f\n",
+                       c, nreg, pop, pop/nreg, s.ts[c].n_unlocked, tech_cost(TECH_ACADEMIE, (float)nreg));
+            }
+        }
+
         /* LEVIERS & SUZERAINETÉ (brief leviers) : l'usage par sim — sans ces lignes,
          * on ne sait ni si l'IA s'en sert, ni si elle s'en sert TROP. */
         { int rep,ass,pur; long dead; agency_levier_stats(&rep,&ass,&pur,&dead);

@@ -234,10 +234,11 @@ bool  tech_research(TechState *s, TechId id, unsigned heritage_access);
 int  tech_sync_tick(TechState *s, const unsigned char depth[ARCH_COUNT]);
 const SyncNode *tech_sync_node(int i);   /* lecture (UI/membrane/télémétrie) ; NULL hors borne */
 
-/* COÛT en points de recherche : BASE_COST[tier] × (1 + EXTENT_W·population/BASE).
- * Plus l'empire est ÉTENDU (∝ population), plus CHAQUE tech coûte → frein au
- * snowball, « tall » viable. Les bâtiments de base (tier 0) coûtent 0. */
-float tech_cost(TechId id, float population);
+/* COÛT en points de recherche : BASE_COST[tier] × COST_SCALE × √N (N = nb de PROVINCES de
+ * l'empire). DÉCOUPLÉ de la pop : le revenu monte ∝ pop (∝ N), le coût ∝ √N (sous-linéaire)
+ * ⇒ le coût marginal d'une province < son apport → l'EXPANSION est récompensée, sans snowball
+ * (rythme/empire ∝ √N). Plancher pour le mono-province. Les bâtiments de base (tier 0) = 0. */
+float tech_cost(TechId id, float n_provinces);
 
 /* Rendement de recherche : multiplicateur issu du SAVOIR·Production (Bibliothèque
  * → Scriptorium → Académie → Université). La POPULATION fournit l'assiette (côté
