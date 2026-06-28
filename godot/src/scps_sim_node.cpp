@@ -996,20 +996,24 @@ Dictionary ScpsWorld::border_segments_col(int level) {
     Dictionary d;
     PackedVector2Array pts;
     PackedInt32Array owners;
+    PackedInt32Array others;
     if (sim) {
         static const int MAXSEG = 50000;
         static ScpsSegC seg[MAXSEG];
         int n = scps_border_segments_col(sim, level, seg, MAXSEG);
         pts.resize(n * 2);
         owners.resize(n);
+        others.resize(n);
         for (int i = 0; i < n; i++) {
             pts.set(i * 2,     Vector2(seg[i].x0, seg[i].y0));
             pts.set(i * 2 + 1, Vector2(seg[i].x1, seg[i].y1));
             owners.set(i, seg[i].owner);
+            others.set(i, seg[i].other);
         }
     }
     d["pts"] = pts;
     d["owner"] = owners;
+    d["other"] = others;     /* >=0 autre empire (hachure) · -1 terre libre · -2 mer (non émis) */
     return d;
 }
 

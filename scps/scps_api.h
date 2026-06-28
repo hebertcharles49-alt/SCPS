@@ -443,10 +443,11 @@ int scps_river_path(ScpsSim *s, int i, ScpsRiverPt *out, int max, float *flow);
 typedef struct { float x0, y0, x1, y1; } ScpsSeg;
 int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max);
 
-/* Idem mais chaque segment porte l'OWNER (pays) — pour colorer l'outline PAR EMPIRE/entité.
- * Niveau 0/1 : owner = le pays du joint (province/région interne) ; niveau 2 : owner = own_a
- * si >=0, sinon own_b (le côté terre du contour). owner = -1 si indéfini. */
-typedef struct { float x0, y0, x1, y1; int owner; } ScpsSegC;
+/* Idem mais chaque segment porte l'OWNER (pays, côté terre) ET l'autre côté `other` — pour colorer
+ * PAR EMPIRE et savoir si la frontière touche une AUTRE entité (hachures). `other` >= 0 = un autre
+ * pays (frontière INTER-EMPIRE → à hachurer) · -1 = terre libre (marche) · -2 = MER/lac.
+ * ⚠ Niveau 2 : les joints qui touchent la MER (côte) NE SONT PAS émis (le rivage suffit). */
+typedef struct { float x0, y0, x1, y1; int owner, other; } ScpsSegC;
 int scps_border_segments_col(ScpsSim *s, int level, ScpsSegC *out, int max);
 
 /* ROUTES TERRAIN-AWARE (port de viewer.c, en RÉSEAU à JONCTIONS) : A* sur la grille

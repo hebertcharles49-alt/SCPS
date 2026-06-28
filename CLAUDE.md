@@ -1110,6 +1110,17 @@
   Tunables d'overlay : `ROAD_INK` · `ROAD_DASH` 6.5 · `ROAD_GAP` 4.0. (Le `_ink_brush` 5-passes est
   réservé aux blocs d'empire — sur le réseau routier dense entier il étranglait le rendu.) DISPLAY-ONLY,
   moteur intact.
+- **GODOT parchemin — frontières affinées + noms en forme de pays (2026-06-29)** : 4 retouches lecture.
+  (1) **CÔTES invisibles** : `scps_border_segments_col` (façade) n'émet plus les joints pays touchant la
+  MER (le rivage du shader suffit) ; chaque segment porte désormais `owner` ET `other` (le voisin). (2)
+  **HACHURES inter-empire** : un joint qui touche un AUTRE empire (`other`>=0) reçoit un tick
+  perpendiculaire (hachure) en plus du trait — la marche (terre libre) reste un trait seul. (3) **NOMS
+  qui SUIVENT LA FORME** : axe principal par **ACP** des centroïdes de région PROJETÉS (Chili vertical,
+  Russie en travers) — orienté seulement si élongation > 1.8 ; ancre = barycentre (hors hubs routiers) ;
+  ×1.35 pour la lisibilité ; toujours sans boîte. (4) **anti-blob** : le trait d'empire passe du pinceau
+  5-passes (core 2.6/feather 7) à un **trait fin** (core 1.3 + halo réduit) ≈ moitié ; `BORDER_JIT`
+  0.4→0.25. ⚠ `ScpsSegC` gagne `other` (façade/binding). DISPLAY-ONLY : `scps_api.c` hors chronicle ⇒
+  **golden IDENTIQUE** ; déterminisme/save intacts. scons 0 warning. Tunable overlay : `HATCH_LEN` 1.1.
 
 ## Disciplines non négociables
 
