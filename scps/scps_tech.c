@@ -310,7 +310,15 @@ const char *tech_function_name(TechFunction f){
 int  tech_quarter(TechTheme t, TechFunction f){ return (int)t*FN_COUNT + (int)f; }
 bool tech_is_base(TechId id){ return (id>=0&&id<TECH_COUNT)&&NODES[id].tier==0; }
 
-unsigned tech_heritage_bit(Heritage r){ return (r>=0&&r<HERITAGE_COUNT)?(1u<<r):0u; }
+/* ACCÈS D'HÉRITAGE GRADUÉ (Temps 2) — le masque `heritage_access` n'est plus binaire : il
+ * encode, par héritage, le TIER d'accès atteint (0..3) sur 2 bits → tier·(1<<2r). Une tech
+ * de signature au tier T n'est recherchable que si l'accès à son héritage atteint T (la
+ * « barre » : commerce → tier 1-2, gouvernance/métabolisation → tier 3). tech_heritage_bit
+ * garde sa SÉMANTIQUE D'OCTROI PLEIN (tier 3) pour les bancs/helpers qui « donnent l'accès ». */
+unsigned tech_heritage_bit(Heritage r){ return (r>=0&&r<HERITAGE_COUNT)?(3u<<(2*r)):0u; }
+int tech_heritage_access_tier(unsigned access, Heritage r){
+    return (r>=0&&r<HERITAGE_COUNT) ? (int)((access>>(2*r))&3u) : 0;
+}
 
 /* §SYNCRÉTIQUE — COMBINAISON (brief Forge §5/§8) : un nœud-pointe peut exiger DEUX
  * archétypes culturels en contact, pas un seul. Emblème : les armes enchantées (Forge
@@ -331,10 +339,10 @@ bool tech_can_research(const TechState *s, TechId id, unsigned heritage_access) 
     const TechNode *n=&NODES[id];
     /* PORTE D'ARCHÉTYPE : une tech-signature exige que l'empire ATTEIGNE l'archétype
      * (par sa culture ou un contact de gouvernance — le masque est calculé ainsi côté IA). */
-    if (n->native!=UNIV && !(heritage_access & tech_heritage_bit(n->native))) return false;
-    /* COMBINAISON : certains nœuds exigent un SECOND archétype (ET). */
+    if (n->native!=UNIV && tech_heritage_access_tier(heritage_access, n->native) < n->tier) return false;
+    /* COMBINAISON : certains nœuds exigent un SECOND archétype (ET), au tier du nœud. */
     { Heritage combo=tech_combo_native(id);
-      if (combo!=UNIV && !(heritage_access & tech_heritage_bit(combo))) return false; }
+      if (combo!=UNIV && tech_heritage_access_tier(heritage_access, combo) < n->tier) return false; }
     /* Porte arcane : les bouts faustiens du Savoir profond exigent une ruine. */
     if (n->needs_ruins && !s->has_ruins_access) return false;
     /* Prérequis : le nœud précédent du quartier doit être acquis. */

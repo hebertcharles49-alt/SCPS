@@ -490,6 +490,10 @@ float econ_off_culture_fraction(const ProvincePop *pp);
  * recherche (boost) et la membrane (hover « métabolisation +X% »). Twin-inverse de
  * econ_off_culture_fraction (qui pèse le foreign NON encore digéré). */
 float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid);
+/* MÉTABOLISATION VENTILÉE — out[r] = part [0..1] des âmes diaspora d'héritage r digérées.
+ * Lu par la barre d'accès tech (Temps 2 : digérer le peuple r ⇒ accès aux signatures de r). */
+void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, int cid,
+                                    float out[HERITAGE_COUNT]);
 /* Poids du boost de recherche par métabolisation (Temps 1) — fallback compilé du
  * tunable runtime AI_METAB_RES_W (registre scps_tune_list.h). income ×= 1 + W·métabolisé. */
 #ifndef AI_METAB_RES_W

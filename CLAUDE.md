@@ -907,6 +907,25 @@
   `determinism` **STABLE** · `tech_demo` 22/22 · suite **38 runnable verts** (3 KO pré-existants Windows) · 0 warning ·
   sweep 5×250 SAIN (hégémon mortel 5/5, §27 gaté an-180, arbre 51-60 %/empire encore DIFFÉRENCIÉ, satisfaction
   ~67/75/82). À VENIR (Temps 2) : la barre de métabolisation gate ces rungs par tier + la remise de prix.
+- **MÉTABOLISATION — Temps 2a : la BARRE D'ACCÈS GRADUÉE (2026-06-28)** : l'accès tech cesse d'être BINAIRE.
+  Le masque `heritage_access` (un `unsigned`) encode désormais **2 bits/héritage = le TIER d'accès atteint (0..3)** ;
+  `tech_can_research` exige `tech_heritage_access_tier(access, native) >= node.tier` (la signature tier-3 ne s'ouvre
+  qu'à tier 3, les rungs ÉTOFFE tier-1/2 à leur tier). Le tier par héritage = **MAX de deux voies** : (1) la
+  PROFONDEUR de contact (`ai_archetype_depth`, déjà graduée : commerce SURFACE→tier 1, frontière/foi MÉTIER→tier 2,
+  gouvernance digérée PROFOND→tier 3) — « les techs s'échangent par le commerce JUSQU'À UN SEUIL » ; (2) la
+  MÉTABOLISATION active (`econ_country_heritage_digested` : part d'âmes diaspora digérées de CET héritage ≥ T1/T2/T3
+  ⇒ tier 1/2/3) — « incorporer ce peuple ouvre ses techs ». L'héritage NATIF = plein (tier 3). `tech_heritage_bit`
+  garde sa sémantique d'OCTROI PLEIN (tier 3) pour les bancs/helpers. Câblé : `heritage_access_pack` (scps_ai.c, lu
+  par `ai_heritage_access` ET la voie recherche) ; combos S3 (Forge runique) et orphelin de readout passent au tier.
+  ⊕ Effet : le COMMERCE ouvre enfin les rungs peu profonds d'un voisin (Venise lit la Grèce sans la conquérir), la
+  signature profonde restant réservée à la gouvernance/métabolisation — le canal ACTIF (Temps 1) et le canal PASSIF
+  (commerce) convergent dans UNE barre. ⚠ **RE-BASELINE golden** (l'accès gradué mord dès l'an-0 : le commerce ouvre
+  des rungs étrangers ; golden mis à jour) · `determinism` STABLE · tech_demo 22/22 · ai_demo 26/26 · scps_api_demo
+  91/91 · readout_demo 27/27 (orphelin tier-aware) · sweep 5×250 SAIN (satisfaction 66/77/82, hégémon mortel 5/5,
+  §27 gaté an-180, arbre 55 %/empire — l'accès gradué ENRICHIT sans inonder l'arbre ni déstabiliser). Tunables
+  registre J : `METAB_TIER1` 0.10 · `_TIER2` 0.20 · `_TIER3` 0.35. **SAVE non bumpé** (l'accès se recalcule ;
+  `arch_depth` déjà sérialisé, sens inchangé). À VENIR (Temps 2b) : la REMISE de prix (tech qu'un autre empire
+  possède = moins chère) ; puis coût en N-provinces, reorg tiers 1-5, UI Medusa.
 
 ## Disciplines non négociables
 

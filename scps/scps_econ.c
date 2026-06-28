@@ -412,6 +412,30 @@ float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid
     return (tot>0.0) ? (float)(dig/tot) : 0.f;
 }
 
+/* Comme econ_country_metabolized mais VENTILÉ PAR HÉRITAGE : out[r] = part [0..1] des âmes
+ * de l'empire qui sont des NOUVEAUX VENUS (diaspora) d'héritage r, pondérée par ce qu'on en a
+ * digéré (×integration). UNE passe sur les régions. Lu par la BARRE D'ACCÈS tech (Temps 2) :
+ * digérer le peuple r ⇒ accès progressif aux signatures d'héritage r (« X% de B ⇒ techs de B »). */
+void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, int cid,
+                                    float out[HERITAGE_COUNT]){
+    for (int r=0;r<HERITAGE_COUNT;r++) out[r]=0.f;
+    if (!w || !econ || cid<0 || cid>=w->n_countries) return;
+    double dig[HERITAGE_COUNT]; for (int r=0;r<HERITAGE_COUNT;r++) dig[r]=0.0;
+    double tot=0.0;
+    for (int reg=0;reg<econ->n_regions;reg++){
+        const RegionEconomy *re=&econ->region[reg];
+        if (re->owner!=cid) continue;
+        const ProvincePop *pp=&re->pop;
+        for (int i=0;i<pp->n_groups;i++){
+            const PopGroup *g=&pp->groups[i];
+            tot += (double)g->count;
+            if (g->diaspora && g->heritage>=0 && g->heritage<HERITAGE_COUNT)
+                dig[g->heritage] += (double)g->count * (double)clampf(g->integration,0.f,1.f);
+        }
+    }
+    if (tot>0.0) for (int r=0;r<HERITAGE_COUNT;r++) out[r]=(float)(dig[r]/tot);
+}
+
 const char *social_class_name(SocialClass c) {
     static const char *N[CLASS_COUNT]={"Laborers","Bourgeois","Élites"};
     return (c>=0&&c<CLASS_COUNT)?N[c]:"?";

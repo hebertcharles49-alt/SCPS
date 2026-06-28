@@ -903,8 +903,8 @@ void tech_tree_readout(const TechState *ts, unsigned heritage_access, float popu
         bool done = ts && ts->unlocked[i];
         bool open = ts && tech_can_research(ts, (TechId)i, heritage_access);
         nr->state    = done ? TREE_DONE : (open ? TREE_OPEN : TREE_LOCKED);
-        /* orphelin = signature d'une AUTRE heritage dont l'empire n'a pas l'accès. */
-        nr->orphan   = (n->native!=HERITAGE_COUNT) && !(heritage_access & tech_heritage_bit(n->native));
+        /* orphelin = signature d'héritage dont l'accès n'atteint pas le TIER du nœud (barre graduée). */
+        nr->orphan   = (n->native!=HERITAGE_COUNT) && tech_heritage_access_tier(heritage_access, n->native) < n->tier;
     }
 }
 

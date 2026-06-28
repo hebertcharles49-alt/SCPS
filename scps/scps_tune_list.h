@@ -82,6 +82,12 @@
      * income ×= 1 + W·métabolisé. Le signal est ~0 tôt (l'assimilation prend des décennies)
      * ⇒ golden-safe. W=1 ⇒ « métabolisation X% = +X% recherche » (lisible au hover) */ \
     X(AI_METAB_RES_W,         1.0f) \
+    /* BARRE D'ACCÈS TECH (Temps 2) — la part d'âmes DIGÉRÉES d'un héritage qui débloque ses
+     * signatures par TIER : ≥T1 ⇒ tier-1, ≥T2 ⇒ tier-2, ≥T3 ⇒ la signature tier-3. Voie ACTIVE,
+     * en MAX avec la profondeur de contact (commerce/gouvernance). « X% de B ⇒ techs de B ». */ \
+    X(METAB_TIER1,            0.10f) \
+    X(METAB_TIER2,            0.20f) \
+    X(METAB_TIER3,            0.35f) \
     /* EXPLOITATION — boost d'EXTRACTION par brute (modificateur provincial à construire) : +PER_TIER
      * par palier d'amélioration (scale sur les bras), plafonné à MAX_TIER paliers · coût d'or par palier
      * · seuil de déficit (forecast) qui ARME l'amélioration */ \

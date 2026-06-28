@@ -1702,15 +1702,40 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
         }
     }
 }
-/* Masque des ARCHÉTYPES profonds (bit par heritage-signature) recherchables : une signature
- * de l'arbre de base (nœud profond) exige l'archétype atteint au SECRET/PROFOND — donc
- * par GOUVERNANCE ou par SOI. Le commerce/la frontière (surface/métier) n'ouvrent QUE
- * les nœuds syncrétiques peu profonds (tech_sync_tick). La heritage seule n'ouvre rien. */
+/* Fallbacks compilés des seuils de la BARRE D'ACCÈS (registre scps_tune_list.h). */
+#ifndef METAB_TIER1
+#define METAB_TIER1 0.10f
+#define METAB_TIER2 0.20f
+#define METAB_TIER3 0.35f
+#endif
+
+/* BARRE D'ACCÈS GRADUÉE (Temps 2) — par héritage, le TIER d'accès (0..3) recherchable, en MAX
+ * de DEUX voies : (1) la PROFONDEUR de contact (ai_archetype_depth : commerce→SURFACE→tier 1,
+ * frontière/foi→MÉTIER→tier 2, gouvernance digérée→PROFOND→tier 3) — « les techs s'échangent
+ * par le commerce jusqu'à un seuil » ; (2) la MÉTABOLISATION active (part d'âmes digérées de cet
+ * héritage : ≥T1/T2/T3 ⇒ tier 1/2/3) — « incorporer ce peuple ouvre ses techs ». L'héritage
+ * NATIF = plein (tier 3). Encodé 2 bits/héritage (cf. tech_heritage_access_tier). */
+static unsigned heritage_access_pack(const unsigned char depth[ARCH_COUNT],
+                                     const float metab[HERITAGE_COUNT], Heritage native){
+    float t1=tune_f("METAB_TIER1",METAB_TIER1), t2=tune_f("METAB_TIER2",METAB_TIER2),
+          t3=tune_f("METAB_TIER3",METAB_TIER3);
+    unsigned m=0;
+    for (int r=0;r<HERITAGE_COUNT;r++){
+        int dt = (depth[r]>=(unsigned char)PROF_PROFOND)?3
+               : (depth[r]>=(unsigned char)PROF_METIER) ?2
+               : (depth[r]>=(unsigned char)PROF_SURFACE)?1 : 0;
+        float mb = metab?metab[r]:0.f;
+        int mt = (mb>=t3)?3 : (mb>=t2)?2 : (mb>=t1)?1 : 0;
+        int t = dt>mt?dt:mt;
+        if ((int)r==(int)native) t=3;               /* son propre héritage : accès PLEIN */
+        m |= ((unsigned)(t&3)) << (2*r);
+    }
+    return m;
+}
 unsigned ai_heritage_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid){
     unsigned char depth[ARCH_COUNT]; ai_archetype_depth(w, econ, rn, cid, depth);
-    unsigned m=0;
-    for (int r=0;r<HERITAGE_COUNT;r++) if (depth[r]>=(unsigned char)PROF_PROFOND) m|=tech_heritage_bit((Heritage)r);
-    return m;
+    float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, cid, metab);
+    return heritage_access_pack(depth, metab, ai_capital_heritage(w, econ, cid));
 }
 /* §syncrétique — rafraîchit le cercle d'un empire : cache la profondeur de contact par
  * archétype (lue par la membrane) et loquette les nœuds de diffusion atteints. */
@@ -1830,8 +1855,9 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                      * econ_country_metabolized(w, econ, a->cid));
     ts->research_points += income;
     ai_sync_refresh(w, econ, rn, ts, a->cid);                   /* §4-13 : cache la profondeur + loquette la diffusion (+ S1 : le commerce) */
-    unsigned access=0;
-    for (int r=0;r<HERITAGE_COUNT;r++) if (ts->arch_depth[r]>=(unsigned char)PROF_PROFOND) access|=tech_heritage_bit((Heritage)r);
+    /* BARRE D'ACCÈS (Temps 2) : tier par héritage = MAX(profondeur cachée, métabolisation). */
+    float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, a->cid, metab);
+    unsigned access = heritage_access_pack(ts->arch_depth, metab, ai_capital_heritage(w, econ, a->cid));
     TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, pop);
     /* §4 COUPLAGE : une fois l'Industrie en poche, l'empire AFFAMÉ DE FER ÉPARGNE pour la
      * foreuse (chère, faustienne) plutôt que d'éparpiller — l'issue tentante précipite sa Brèche. */
@@ -1891,7 +1917,8 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
      * d'appétit) et COÛTEUX (la charge → Brèche borne les conséquences) ; on NE touche PAS la
      * foreuse. Le frein AI_TECH_FAUSTIAN abaissé (2.5→1.2) scelle la rencontre appétit/frein. */
     if (!ts->unlocked[TECH_FORGE_RUNES]
-        && (access & tech_heritage_bit(HERITAGE_METALLURGISTE)) && (access & tech_heritage_bit(HERITAGE_ESOTERIQUE))){
+        && tech_heritage_access_tier(access, HERITAGE_METALLURGISTE)>=3
+        && tech_heritage_access_tier(access, HERITAGE_ESOTERIQUE)>=3){
         Credo cr=CREDO_PLURALISTE; float val=5.f;
         { int cp=w->country[a->cid].capital_prov;
           int crg=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
@@ -1916,7 +1943,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
       if (eth==ETHOS_DOMINATEUR||eth==ETHOS_HONNEUR){
           if (!ts->unlocked[TECH_POUDRIERE]) tgt=TECH_POUDRIERE;
       } else if (a->w_faustian>0.30f){
-          bool s3=(access&tech_heritage_bit(HERITAGE_METALLURGISTE))&&(access&tech_heritage_bit(HERITAGE_ESOTERIQUE))&&!ts->unlocked[TECH_FORGE_RUNES];
+          bool s3=tech_heritage_access_tier(access,HERITAGE_METALLURGISTE)>=3&&tech_heritage_access_tier(access,HERITAGE_ESOTERIQUE)>=3&&!ts->unlocked[TECH_FORGE_RUNES];
           if (!s3){                                              /* sinon la Forge runique (S3) a la priorité */
               if      (!ts->unlocked[TECH_MAGIE_BATAILLE]) tgt=TECH_MAGIE_BATAILLE;
               else if (!ts->unlocked[TECH_ALCHIMIE])       tgt=TECH_ALCHIMIE;

@@ -196,6 +196,10 @@ bool        tech_is_base(TechId id);          /* tier 0 = bâtiment de base (cen
 /* Masque de RACES accessibles à un empire (sa propre heritage + héritages conquises/
  * migrées). Une tech native d'une heritage n'est recherchable qu'avec l'accès. */
 unsigned    tech_heritage_bit(Heritage r);
+/* ACCÈS GRADUÉ (Temps 2) : le masque encode 2 bits/héritage = le TIER d'accès atteint (0..3).
+ * tech_heritage_bit(r) octroie le tier PLEIN (3) ; ce lecteur extrait le tier pour un héritage.
+ * Une tech-signature au tier T exige tech_heritage_access_tier(access, native) >= T. */
+int         tech_heritage_access_tier(unsigned access, Heritage r);
 
 /* Prérequis remplis, pas déjà pris, porte arcane ok, ACCÈS de heritage ok ? */
 bool  tech_can_research(const TechState *s, TechId id, unsigned heritage_access);
