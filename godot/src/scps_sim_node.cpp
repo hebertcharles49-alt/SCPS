@@ -58,6 +58,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("tech_info"),                      &ScpsWorld::tech_info);
     ClassDB::bind_method(D_METHOD("tech_nodes"),                     &ScpsWorld::tech_nodes);
     ClassDB::bind_method(D_METHOD("heritage_access"),                &ScpsWorld::heritage_access);
+    ClassDB::bind_method(D_METHOD("tunables"),                       &ScpsWorld::tunables);
+    ClassDB::bind_method(D_METHOD("tune_set", "nom", "value"),       &ScpsWorld::tune_set);
     ClassDB::bind_method(D_METHOD("country_budget", "country"),      &ScpsWorld::country_budget);
     ClassDB::bind_method(D_METHOD("budget_summary", "country"),      &ScpsWorld::budget_summary);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
@@ -563,6 +565,25 @@ Dictionary ScpsWorld::tech_info() {
     d["themes"]    = themes;
     d["functions"] = funcs;
     return d;
+}
+
+/* MODTOOLS — registre des tunables (panneau dev) : lister + éditer en direct. GLOBAL. */
+Array ScpsWorld::tunables() {
+    Array a;
+    int n = scps_tune_count();
+    for (int i = 0; i < n; i++) {
+        ScpsTunable t; scps_tune_at(i, &t);
+        Dictionary d;
+        d["nom"]        = String::utf8(t.nom ? t.nom : "");
+        d["value"]      = t.value;
+        d["def"]        = t.def_value;
+        d["overridden"] = (bool)t.overridden;
+        a.push_back(d);
+    }
+    return a;
+}
+void ScpsWorld::tune_set(const String &nom, double value) {
+    scps_tune_set_val(nom.utf8().get_data(), value);
 }
 
 /* ACCÈS D'HÉRITAGE (barre de métabolisation) : par héritage, tier 0..3 + part digérée. */

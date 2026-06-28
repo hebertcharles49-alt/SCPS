@@ -107,6 +107,13 @@ int tune_n_active(void){
     return n;
 }
 
+/* ── Énumération du registre (MODTOOLS — panneau dev : lister + éditer en direct) ── */
+int         tune_count(void){ return g_n; }
+const char *tune_name_at(int i){ return (i>=0&&i<g_n)?g_reg[i].name:NULL; }
+float       tune_value_at(int i){ if(!g_inited)tune_init(); return (i>=0&&i<g_n)?g_reg[i].val:0.f; }
+float       tune_default_at(int i){ return (i>=0&&i<g_n)?g_reg[i].def:0.f; }
+int         tune_overridden_at(int i){ if(!g_inited)tune_init(); return (i>=0&&i<g_n)?g_reg[i].overridden:0; }
+
 const char *tune_active_string(void){
     if (!g_inited) tune_init();
     return g_active;

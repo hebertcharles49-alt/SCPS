@@ -14,6 +14,7 @@ var _econ: Control
 var _prov_detail: Control
 var _menu: Control
 var _religion: Control
+var _devpanel: Control         # MODTOOLS : panneau dev (tunables live, F10)
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _sel_prov := -1
 
@@ -113,6 +114,11 @@ func _ready() -> void:
 	_religion.closed.connect(func(): Sim.set_speed(2))   # fermer le créateur → le jeu reprend
 	Sim.ticked.connect(_on_tick_faith)                   # surveille la pose du 1er édifice religieux
 
+	_devpanel = load("res://ui/devpanel.gd").new()       # MODTOOLS : tunables live (F10)
+	_devpanel.name = "DevPanel"
+	_devpanel.visible = false
+	ui.add_child(_devpanel)
+
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
 func _unhandled_input(e: InputEvent) -> void:
@@ -145,6 +151,9 @@ func _unhandled_input(e: InputEvent) -> void:
 					_religion.hide(); Sim.set_speed(2)
 				else:
 					Sim.set_speed(0); _religion.open()
+		KEY_F10:                         # MODTOOLS : panneau dev (tunables live)
+			if _devpanel != null:
+				_devpanel.visible = not _devpanel.visible
 		KEY_SPACE:                       # pause ↔ reprise (parité viewer.c)
 			Sim.toggle_pause()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:        # « + » : accélérer

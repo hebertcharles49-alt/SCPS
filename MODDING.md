@@ -23,6 +23,11 @@ Le save enregistre une empreinte des surcharges actives : charger une partie sou
 règles **avertit** (replays / graines partagées invalides). C'est voulu : un monde modé n'est
 plus « vanilla ».
 
+**En jeu (Godot), touche `F10`** : le panneau dev liste les ~168 tunables (filtrable) et les
+édite **EN DIRECT** — l'effet apparaît au tick suivant, là où le moteur relit la valeur. Même
+empreinte de surcharge dans le save. (`SCPS_TUNE` au lancement reste le canal pour un run
+headless / reproductible.)
+
 ## 2. Valeurs en TABLE — `SCPS_MODS` (prix, recettes, tech, unités ; zéro recompile)
 
 Les valeurs qui sont des TABLES (pas des tunables scalaires) s'éditent par un fichier
@@ -95,9 +100,9 @@ L'outil ne modifie PAS le code (il imprime) ; tu colles aux endroits indiqués, 
 motif (enum + table — cf. le tableau ci-dessus) ; non scaffoldés (ils touchent des recettes/prereqs
 structurels — à faire à la main avec le tableau).
 
-> **À venir (optionnel)** : un **panneau dev Godot** (sliders live sur les tunables, au-dessus de
-> ces canaux fichier). Les paliers VALEURS (1 : éco · 2 : recettes/tech/unités) et CONTENU
-> (générateur) sont en place.
+Les **4 paliers** sont en place : VALEURS (1 : éco · 2 : recettes/tech/unités, par fichier
+`SCPS_MODS`), CONTENU (3 : `gen_content.py`), et l'ÉDITION LIVE (4 : **panneau dev Godot, `F10`** —
+les ~168 tunables réglables en jeu, cf. §1).
 
 ## Disciplines (à respecter pour tout devtool)
 

@@ -989,6 +989,17 @@ int scps_player_heritage_access(ScpsSim *s, ScpsHeritageAccess *out, int max){
     return n;
 }
 
+/* MODTOOLS — registre des tunables (panneau dev). GLOBAL : pas de s->sim. */
+int  scps_tune_count(void){ return tune_count(); }
+void scps_tune_at(int i, ScpsTunable *out){
+    if(!out) return;
+    out->nom        = sz(tune_name_at(i));
+    out->value      = (double)tune_value_at(i);
+    out->def_value  = (double)tune_default_at(i);
+    out->overridden = tune_overridden_at(i);
+}
+void scps_tune_set_val(const char *nom, double value){ tune_set(nom, (float)value); }
+
 int scps_country_budget(ScpsSim *s, int cid, ScpsFluxLine *out, int max){
     if(!out || max<=0 || !s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
     int n=0;

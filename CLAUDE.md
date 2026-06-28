@@ -1044,6 +1044,21 @@
   non bumpé** (tables non sérialisées) · 0 warning · bancs econ/tech/army/api verts · round-trip 3 tables prouvé
   (recipe/unit/basecost surchargés → 3 messages `[mods]`). MODDING.md mis à jour. À VENIR : codegen de contenu ·
   panneau dev Godot.
+- **MODTOOLS — palier 4 : le PANNEAU DEV Godot (tunables EN DIRECT, F10) (2026-06-28)** : le 3e canal
+  `SCPS_TUNE` (~168 scalaires du registre J) devient ÉDITABLE sans relancer. **Énumérateur** (`scps_tune.{h,c}`,
+  additif) : `tune_count`/`tune_name_at`/`tune_value_at`/`tune_default_at`/`tune_overridden_at` parcourent
+  `g_reg[]` (le registre X-macro existant) ; `tune_set` (déjà là) marque `overridden` et reconstruit la chaîne
+  active. **Façade** (`scps_api.{h,c}`) : `ScpsTunable {nom,value,def_value,overridden}` + `scps_tune_count`/
+  `scps_tune_at`/`scps_tune_set_val` (GLOBAL, pas par-sim — le registre est process-wide). **Binding** Godot
+  (`scps_sim_node`) : `tunables()→Array[Dict]` + `tune_set(nom,value)`. **Panneau** `ui/devpanel.gd` (touche
+  **F10**, câblé dans `main.gd`) : liste filtrable du registre, une LineEdit par tunable, Entrée applique la
+  surcharge LIVE (l'effet apparaît là où le moteur relit `tune_f` au tick) ; `*` marque le surchargé. RÈGLE
+  D'OR tenue (GUI → façade, zéro logique sim ; on ÉDITE des coefficients que le moteur LIT déjà). Probe headless
+  **`devpanel_audit`** (168 tunables énumérés ; `tune_set` mute la valeur ET bascule `overridden`). ⊕ **golden
+  IDENTIQUE** (chronicle n'appelle jamais `tune_set` ; tout est additif/pur) · GDExtension `scons` 0 warning ·
+  **SAVE non bumpé** (le registre n'est pas sérialisé). Un monde modé en direct n'est plus rejouable vanilla
+  (comme `SCPS_TUNE`). ⊕ Le modtools est COMPLET sur ses 3 canaux : valeurs (`SCPS_MODS` fichier + F10 live) ·
+  chaînes (`scps_lang.txt`, F4) · contenu (`gen_content.py` + 1 recompile).
 
 ## Disciplines non négociables
 

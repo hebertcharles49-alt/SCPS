@@ -501,6 +501,18 @@ typedef struct {
     int native;            /* 1 = héritage natif de l'empire (toujours tier 3) */
 } ScpsHeritageAccess;
 int scps_player_heritage_access(ScpsSim *s, ScpsHeritageAccess *out, int max);  /* retourne HERITAGE_COUNT */
+
+/* MODTOOLS — registre des TUNABLES (panneau dev : lister + éditer en direct). GLOBAL (pas
+ * par-sim). scps_tune_set_val applique la surcharge LIVE (effet là où tune_f est relu au tick). */
+typedef struct {
+    const char *nom;
+    double      value;       /* valeur active (surcharge ou défaut) */
+    double      def_value;   /* défaut compilé */
+    int         overridden;  /* 1 si surchargé (env ou panneau) */
+} ScpsTunable;
+int  scps_tune_count(void);
+void scps_tune_at(int i, ScpsTunable *out);
+void scps_tune_set_val(const char *nom, double value);
 void scps_tech_info(ScpsSim *s, ScpsTechInfo *out);
 
 /* ---- BUDGET / FISCAL (econ_flux_get × FluxComp + crédit) -------------- *
