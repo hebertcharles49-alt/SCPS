@@ -85,8 +85,8 @@ var _country_names := []  ## nom de chaque pays (figé au générate) — pour l
 var _borders := {}        ## 0 = TRAME FINE (provinces+régions) → PackedVector2Array jittée
 var _borders_col := {}    ## owner (pays) → PackedVector2Array : outline d'empire jittée, par entité
 var _borders_hatch := {}  ## owner → PackedVector2Array : tirets de HACHURE (frontières inter-empire)
-const BORDER_JIT := 0.25  ## amplitude du wobble « plume » des frontières (unités monde) — réduit (anti-blob)
-const HATCH_LEN := 1.1    ## demi-longueur d'un tick de hachure (unités monde, perpendiculaire au trait)
+const BORDER_JIT := 0.18  ## amplitude du wobble « plume » des frontières (unités monde) — réduit (continuité)
+const HATCH_LEN := 0.8    ## demi-longueur d'un tick de hachure (unités monde, perpendiculaire au trait) — court
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
@@ -107,9 +107,10 @@ var _alb_l: Image = null  ## terrain albedo (cache) → couleur/luminosité du S
 # et rend l'eau DANS le relief — cœur propre, berges fondues, continu jusqu'à la mer. L'overlay n'en
 # garde QUE le nuage de points (`_rivers`) pour interdire de BÂTIR sur le fil.
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
-const ROAD_INK  := Color(0.30, 0.18, 0.08, 0.72) ## route : encre sépia (carte au trésor), trait FIN allégé
-const ROAD_DASH := 3.5     ## longueur de tiret (px écran) — POINTILLÉ de DIRECTION (carte pirate)
-const ROAD_GAP  := 5.5     ## espace entre tirets (px écran) — trous BIEN OUVERTS (allège)
+const ROAD_INK    := Color(0.09, 0.07, 0.06, 0.52) ## route : encre NOIRE (≠ frontières de province sépia), peu opaque
+const ROAD_DASH   := 4.5    ## longueur de tiret MOYENNE (px écran) — jittée par tiret (≠ points uniformes)
+const ROAD_GAP    := 5.5    ## espace entre tirets (px écran) — trous bien ouverts (carte au trésor)
+const ROAD_WOBBLE := 0.7    ## déplacement perpendiculaire par tiret (noise directionnel, unités monde)
 # MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
 const ROADSIDE := [
 	"DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW",
@@ -505,7 +506,7 @@ func _rebuild_borders() -> void:
 		var arr: PackedVector2Array = _borders_col[o]
 		arr.push_back(pa); arr.push_back(pb)
 		_borders_col[o] = arr
-		if i < oth.size() and oth[i] >= 0:                  # INTER-EMPIRE → tick de hachure perpendiculaire
+		if i < oth.size() and oth[i] >= 0 and (i % 2) == 0:   # INTER-EMPIRE, 1 tick sur 2 → hachure ESPACÉE
 			var dir := pb - pa
 			var ln := dir.length()
 			if ln > 0.001:
@@ -573,20 +574,32 @@ func _dash_poly(poly: PackedVector2Array, dash: float, gap: float) -> PackedVect
 		if L < 0.0001:
 			continue
 		var dir := (b - a) / L
+		var perp := Vector2(-dir.y, dir.x)
 		# parcourt les MULTIPLES de période qui couvrent ce segment [d, d+L] (k croît STRICTEMENT → fini)
 		var k := int(floor(d / period))
 		while true:
 			var ds := float(k) * period          # début du tiret (abscisse globale)
 			if ds > d + L:
 				break
-			var s0 := maxf(ds, d)                 # chevauchement [ds, ds+dash] ∩ [d, d+L]
-			var s1 := minf(ds + dash, d + L)
+			# JITTER par tiret (hash de k+position) : longueur VARIÉE + déplacement perpendiculaire
+			# (noise directionnel) → trait « tracé à la main », plus des points uniformes.
+			var hh := _h1(float(k) * 0.7321 + a.x * 0.013 + a.y * 0.017)
+			var hw := _h1(float(k) * 1.9731 + a.x * 0.029 + a.y * 0.011)
+			var dlen := dash * (0.45 + 1.1 * hh)  # 0.45..1.55 × dash → tirets de longueurs INÉGALES
+			var wob := (hw - 0.5) * ROAD_WOBBLE   # offset perpendiculaire (même des deux bouts → tiret droit décalé)
+			var s0 := maxf(ds, d)
+			var s1 := minf(ds + dlen, d + L)
 			if s1 > s0:
-				out.push_back(a + dir * (s0 - d))
-				out.push_back(a + dir * (s1 - d))
+				out.push_back(a + dir * (s0 - d) + perp * wob)
+				out.push_back(a + dir * (s1 - d) + perp * wob)
 			k += 1
 		d += L
 	return out
+
+## hash scalaire → [0,1) (déterministe, display-only) — varie tirets/wobble des routes.
+func _h1(x: float) -> float:
+	var v := sin(x * 12.9898) * 43758.5453
+	return v - floor(v)
 
 ## (re)charge le réseau de routes + sa méta + l'habillage, et DATE les chantiers neufs.
 ## Appelé hors zoom (générate/tick) → les routes initiales démarrent dès l'an de fondation,
@@ -864,12 +877,13 @@ func _draw_iso(w, mv: Node2D) -> void:
 		if oseg.size() < 2:
 			continue
 		var ec := _empire_ink(o)
-		draw_multiline(oseg, Color(ec.r, ec.g, ec.b, ec.a * 0.28), 3.0 / zoom, true)   # halo doux (réduit)
-		draw_multiline(oseg, ec, 1.3 / zoom, true)                                       # cœur fin (≈ moitié)
+		draw_multiline(oseg, Color(ec.r, ec.g, ec.b, ec.a * 0.25), 3.2 / zoom, true)   # halo doux
+		draw_multiline(oseg, ec, 1.6 / zoom, true)                                       # TRAIT CONTINU (la frontière)
 	for o in _borders_hatch:
 		var hseg := _project_segs_iso(mv, _borders_hatch[o])
 		if hseg.size() >= 2:
-			draw_multiline(hseg, _empire_ink(o), 1.1 / zoom, true)                       # HACHURES (inter-empire)
+			var ec2 := _empire_ink(o)
+			draw_multiline(hseg, Color(ec2.r, ec2.g, ec2.b, ec2.a * 0.7), 0.9 / zoom, true)  # hachures SUBORDONNÉES
 
 	# ── ROUTES : POINTILLÉ + trait de PINCEAU, sépia RENFORCÉ à OPACITÉ LIMITÉE (encre sur parchemin).
 	#    Croissance organique (1 an/province) ; tous les tirets cumulés → UN seul pinceau (batch). ──

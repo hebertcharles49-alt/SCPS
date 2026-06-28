@@ -90,6 +90,13 @@ bool near_wet(vec2 cell, float r) {
 	}
 	return false;
 }
+// fraction de TERRE FERME sur un anneau (CONTINU 0..1) → proximité de côte DOUCE (pas de bandes discrètes).
+float ring_solid(vec2 cell, float r) {
+	float n = 0.0;
+	for (float a = 0.0; a < 6.2831; a += 1.0472)
+		if (is_solid(biome_at(cell + vec2(cos(a), sin(a)) * r))) n += 1.0;
+	return n / 6.0;
+}
 
 // ROSE DES VENTS — ancrée à un point carte mais dessinée en espace ÉCRAN (`ci` = centre projeté) → cercles.
 float compass(vec2 ip, vec2 ci, float R) {
@@ -161,11 +168,13 @@ void fragment() {
 		col += jit3 * (2.0 * rgb_jitter / 255.0);
 
 		if (is_water(b)) {
-			// MER : assombrie + écume près de la TERRE FERME (PAS le marais → estuaire OUVERT)
-			if (near_solid(cw, 2.2)) col *= 0.86;
-			if (near_solid(cw, 1.2)) col *= 0.90;
-			if (near_solid(cw, 1.8) && !near_solid(cw, 1.2)) col = mix(col, vec3(0.78, 0.82, 0.80), 0.40);
-			col *= mix(1.0, 0.96, smoothstep(0.6, 1.0, sin(iso.y * 1.6)));   // gravure
+			// MER : assombrissement CÔTIER CONTINU (proximité de terre lissée → plus de bandes discrètes
+			// « bancs de sable ») + écume FINE et douce au tout bord. Estuaire (marais) reste OUVERT.
+			float coast = max(ring_solid(cw, 1.3), ring_solid(cw, 2.5) * 0.65);   // 0..1 doux
+			col *= mix(1.0, 0.84, coast);
+			float foam = clamp(ring_solid(cw, 1.1) - ring_solid(cw, 0.55), 0.0, 1.0);   // anneau IMMÉDIAT
+			col = mix(col, vec3(0.74, 0.79, 0.78), foam * 0.16);                  // écume subtile (pas un banc)
+			col *= mix(1.0, 0.97, smoothstep(0.6, 1.0, sin(iso.y * 1.6)));        // gravure
 		} else if (is_wetland(b)) {
 			// MARAIS : SYMBOLE de tirets horizontaux (cartographie) — DISCRET (le marais se FOND dans le
 			// papier, plus un semis de « trucs » noirs) ; wetland reste « humide » → estuaire ouvert.
@@ -186,12 +195,18 @@ void fragment() {
 		// RIVIÈRE = ENCRE FANÉE mais OPAQUE (pas un bleu uniforme « Google Maps », mais le sol ne TRANSPARAÎT
 		// PAS — c'est moche). Couleur DÉSATURÉE avec PROFONDEUR : HAUT-FOND bleu-vert pâle à la berge → CHENAL
 		// bleu-gris au cœur ; teinte variée par le grain du papier. Seul le BORD (la berge) se fond doucement.
-		float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r;
+		// ADOUCISSANT : champ débit moyenné sur 5 taps (centre + 4 voisins) → berges DOUCES, pas crénelées.
+		float rv = texture(river_map, (cell + vec2(0.5)) / map_size).r * 0.36
+		         + texture(river_map, (cell + vec2(1.4, 0.5)) / map_size).r * 0.16
+		         + texture(river_map, (cell + vec2(-0.4, 0.5)) / map_size).r * 0.16
+		         + texture(river_map, (cell + vec2(0.5, 1.4)) / map_size).r * 0.16
+		         + texture(river_map, (cell + vec2(0.5, -0.4)) / map_size).r * 0.16;
 		float rv_noise = texture(noise_tex, cell * 0.35 + vec2(1.3, 4.7)).r;
 		float paper = texture(noise_tex, cell * 0.6 + vec2(7.0, 2.0)).r;   // grain du papier (teinte inégale)
-		// OPACITÉ : le CORPS de la rivière est PLEIN (encre opaque) ; seule la berge (bord fin) se fond.
-		float edge  = smoothstep(0.05, 0.22, rv) * (0.92 + 0.08 * rv_noise);
-		float depth = smoothstep(0.16, 0.62, rv);             // 0 = HAUT-FOND (berge) · 1 = CHENAL profond
+		// SEUIL plus haut + transition plus douce : sous le seuil rien ne s'imprime (plus de « bancs de
+		// sable » pâles dans les zones de faible débit). Le bord (berge) se fond.
+		float edge  = smoothstep(0.14, 0.40, rv) * (0.92 + 0.08 * rv_noise);
+		float depth = smoothstep(0.22, 0.66, rv);             // 0 = HAUT-FOND (berge) · 1 = CHENAL profond
 		// encre RGB ±4 % par canal (jamais uniforme — elle bave, se concentre) + légère dérive du grain
 		vec3 water_ink = (vec3(vnoise(cell * 0.7 + vec2(11.0, 3.0)),
 		                       vnoise(cell * 0.7 + vec2(5.0, 19.0)),
@@ -201,8 +216,10 @@ void fragment() {
 		vec3 riv_col = mix(shoal, deep, depth) + water_ink + (paper - 0.5) * 0.05;
 		// l'encre RECOUVRE le sol (corps OPAQUE ~0.95) ; le bord fondu donne la berge — JAMAIS de terrain
 		// qui transparaît à travers le lit (fade par la COULEUR désaturée, pas par la transparence).
-		float river_amt = edge * (is_water(b) ? 0.7 : (is_wetland(b) ? 0.88 : 0.95));
-		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.96));
+		// BLEND À LA MER : sur l'eau salée, la rivière se FOND fortement (faible opacité) → l'embouchure se
+		// dissout dans la mer au lieu d'un patch pâle « banc de sable ». Pleine sur terre/marais.
+		float river_amt = edge * (is_water(b) ? 0.28 : (is_wetland(b) ? 0.82 : 0.95));
+		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.95));
 
 		// RELIEF (massifs clusterisés ∝ densité → pas de hachures éparses)
 		float rd = relief_density(cw);

@@ -2572,6 +2572,22 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
         econ->region[r].culture.rel_branch=REL_ANIMISTE;
         econ->region[r].culture.religion=1.0f;            /* axe bas */
     }
+    /* WILD : un NOM TRIBAL ÉTHOS-DÉPENDANT (« Barbares/Maraudeurs/Clan/Tribu/… XX ») + une COULEUR
+     * DISTINCTE, lus d'une région WILD représentative (sa culture a été forcée distincte du voisin) —
+     * le slot WILD réservé n'a pas de capitale, donc son nom/couleur d'origine était générique. */
+    for (int r=0;r<w->n_regions && r<econ->n_regions;r++){
+        int o=econ->region[r].owner;
+        if (o<0 || o>=w->n_countries || w->country[o].role!=POLITY_WILD) continue;
+        static const char *WILD_EPI[ETHOS_COUNT]={  /* DOMINATEUR·HONNEUR·ORDRE·BUREAUCRATE·MERCANTILE·PACIFISTE */
+            "Barbares","Maraudeurs","Clan","Tribu","Marchands libres","Peuple libre" };
+        Heritage wr=econ->region[r].culture.heritage;
+        Ethos    we=econ->region[r].culture.ethos;
+        int e=(we>=0 && we<ETHOS_COUNT)?(int)we:ETHOS_BUREAUCRATE;
+        char core[24]; place_make_name(core,(int)sizeof core, wr, (uint32_t)(o*131u+(uint32_t)r));
+        snprintf(w->country[o].name,sizeof w->country[o].name,"%s %s", WILD_EPI[e], core);
+        w->country[o].color = country_heritage_color(wr, o);
+        break;   /* un seul slot WILD (cf. réservation) */
+    }
 }
 
 /* ========================================================================

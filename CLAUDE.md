@@ -1123,6 +1123,20 @@
   5-passes (core 2.6/feather 7) à un **trait fin** (core 1.3 + halo réduit) ≈ moitié ; `BORDER_JIT`
   0.4→0.25. ⚠ `ScpsSegC` gagne `other` (façade/binding). DISPLAY-ONLY : `scps_api.c` hors chronicle ⇒
   **golden IDENTIQUE** ; déterminisme/save intacts. scons 0 warning. Tunable overlay : `HATCH_LEN` 1.1.
+- **GODOT parchemin — passe de finition (2026-06-29)** : 5 retouches. (1) **Routes** : jitter de
+  LONGUEUR par tiret (0.45..1.55×) + **noise directionnel** (offset perpendiculaire par tiret, `_h1`
+  hash) → tirets « tracés à la main » (plus des points uniformes) ; encre **NOIRE** peu opaque (≠ la
+  trame de provinces sépia) (`ROAD_INK` α 0.52, `ROAD_WOBBLE` 0.7). (2) **Frontières d'empire qui « se
+  coupaient »** : les longs ticks de hachure noyaient le trait → **trait CONTINU** (1.6px) au-dessus
+  d'un halo, hachures **COURTES** (`HATCH_LEN` 0.8) **espacées** (1 sur 2) et SUBORDONNÉES (α 0.7) ;
+  `BORDER_JIT` 0.25→0.18. (3) **Shader rivière** : **adoucissant** (champ débit moyenné 5 taps) +
+  **SEUIL** plus haut (smoothstep 0.14-0.40, sous le seuil rien ne s'imprime → plus de « bancs de sable »
+  pâles) + **blend à la MER** (sur l'eau salée la rivière se fond, α 0.28) ; côte LISSÉE en continu
+  (`ring_solid` proximité, plus de bandes discrètes). (4) **WILD** (`scps_world.c`) : NOM **TRIBAL
+  ÉTHOS-DÉPENDANT** (« Barbares/Maraudeurs/Clan/Tribu/Marchands libres/Peuple libre XX ») + **COULEUR
+  distincte** (recolorés depuis leur héritage WILD réel) — le slot réservé n'avait qu'un nom générique.
+  ⚠ Nom/couleur = champs d'AFFICHAGE (pas dans le hash) ⇒ **golden IDENTIQUE** (vérifié). DISPLAY +
+  worldgen-display-only ; déterminisme/save intacts. scons 0 warning.
 
 ## Disciplines non négociables
 
