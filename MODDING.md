@@ -81,10 +81,23 @@ save). Emplacements :
 | Tech        | `TechId` (scps_tech.h)       | `NODES[]` (scps_tech.c)                  |
 | Unité       | `UnitType` (scps_army.h)     | `UNITS[]` (scps_army.c)                  |
 
-> **À venir (devtools, par paliers)** : extension de `SCPS_MODS` aux **recettes / coûts-deltas tech /
-> stats d'unité** ; un **codegen** (manifeste TSV → enums + tables générées) pour ajouter du contenu
-> en éditant un fichier ; un **panneau dev Godot** (sliders live sur les tunables). Le palier 1
-> (valeurs éco) est en place.
+### Générateur de boilerplate — `tools/gen_content.py` (ressources)
+
+Pour ne RIEN oublier (l'enum + toutes les tables), un manifeste TSV → les lignes EXACTES à coller :
+
+```sh
+python tools/gen_content.py tools/content_example.tsv   # imprime les blocs + la checklist
+# format : resource <TAB> <Nom> <TAB> <RES_ENUM> <TAB> price=.. <TAB> yield=.. <TAB> food=0|1
+```
+
+L'outil ne modifie PAS le code (il imprime) ; tu colles aux endroits indiqués, tu bumps
+`SAVE_VERSION`, puis `make golden-update && make test`. Les bâtiments/unités/techs suivent le même
+motif (enum + table — cf. le tableau ci-dessus) ; non scaffoldés (ils touchent des recettes/prereqs
+structurels — à faire à la main avec le tableau).
+
+> **À venir (optionnel)** : un **panneau dev Godot** (sliders live sur les tunables, au-dessus de
+> ces canaux fichier). Les paliers VALEURS (1 : éco · 2 : recettes/tech/unités) et CONTENU
+> (générateur) sont en place.
 
 ## Disciplines (à respecter pour tout devtool)
 
