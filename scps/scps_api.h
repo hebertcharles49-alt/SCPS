@@ -447,8 +447,12 @@ int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max);
  * PAR EMPIRE et savoir si la frontière touche une AUTRE entité (hachures). `other` >= 0 = un autre
  * pays (frontière INTER-EMPIRE → à hachurer) · -1 = terre libre (marche) · -2 = MER/lac.
  * ⚠ Niveau 2 : les joints qui touchent la MER (côte) NE SONT PAS émis (le rivage suffit). */
-typedef struct { float x0, y0, x1, y1; int owner, other; } ScpsSegC;
+typedef struct { float x0, y0, x1, y1; int owner, other; float nx, ny; } ScpsSegC;  /* nx,ny = normale unité vers l'EXTÉRIEur */
 int scps_border_segments_col(ScpsSim *s, int level, ScpsSegC *out, int max);
+
+/* éthos DOMINANT d'un pays (lu de la capitale) → 0..5 (DOMINATEUR..PACIFISTE), -1 si indéfini.
+ * Pour colorer la frontière sur l'axe ordre↔chaos (la membrane mappe l'index → teinte). */
+int scps_country_ethos(const ScpsSim *s, int c);
 
 /* ROUTES TERRAIN-AWARE (port de viewer.c, en RÉSEAU à JONCTIONS) : A* sur la grille
  * (coût = relief + biome ; mer/lac contournés, fleuve = pont), reliant les régions des

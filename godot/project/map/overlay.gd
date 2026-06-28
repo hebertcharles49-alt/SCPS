@@ -83,10 +83,20 @@ var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwe
 var _clear_set := {}      ## clairance 0-1 par cellule autour des villes (1 = cœur déboisé -> 0 = lisière) — fondu, pas binaire
 var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
 var _borders := {}        ## 0 = TRAME FINE (provinces+régions) → PackedVector2Array jittée
-var _borders_col := {}    ## owner (pays) → PackedVector2Array : outline d'empire jittée, par entité
-var _borders_hatch := {}  ## owner → PackedVector2Array : tirets de HACHURE (frontières inter-empire)
-const BORDER_JIT := 0.18  ## amplitude du wobble « plume » des frontières (unités monde) — réduit (continuité)
-const HATCH_LEN := 0.8    ## demi-longueur d'un tick de hachure (unités monde, perpendiculaire au trait) — court
+# DÉGRADÉ de frontière façon Civ : un RUBAN par entité — trait DARK à l'EXTÉRIEUR (outline) + ton
+# CLAIR à l'INTÉRIEUR (inline), décalés le long de la normale int.→ext. La teinte suit l'éthos
+# (axe ordre↔chaos) ; les cités-états en or↔argent.
+var _b_in := {}           ## entité → PackedVector2Array : segments INLINE (intérieur, ton clair)
+var _b_out := {}          ## entité → PackedVector2Array : segments OUTLINE (extérieur, ton foncé)
+const BAND_IN := 1.0      ## décalage de l'inline vers l'INTÉRIEUR (unités monde)
+const BAND_OUT := 0.1     ## décalage de l'outline vers l'extérieur (≈ sur l'arête)
+const CS_GOLD := Color(0.62, 0.46, 0.10, 0.96)   ## OR (outline cité-état, extérieur)
+const CS_SILVER := Color(0.93, 0.92, 0.84, 0.92) ## ARGENT/crème (inline cité-état, intérieur)
+## teinte par ÉTHOS sur l'axe ordre↔chaos (index DOMINATEUR·HONNEUR·ORDRE·BUREAUCRATE·MERCANTILE·PACIFISTE) :
+## chaos = chaud (rouge/orange) · ordre = froid (bleu/cyan). Outline = teinte SATURÉE, inline = teinte CLAIRE.
+const ETHOS_HUE := [0.00, 0.07, 0.60, 0.50, 0.13, 0.53]
+const BORDER_JIT := 0.18  ## amplitude du wobble « plume » des frontières d'EMPIRE (unités monde) — continuité
+const FINE_JIT   := 0.5   ## wobble PLUS FORT de la trame fine (provinces) → casse l'escalier des arêtes
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
@@ -107,7 +117,7 @@ var _alb_l: Image = null  ## terrain albedo (cache) → couleur/luminosité du S
 # et rend l'eau DANS le relief — cœur propre, berges fondues, continu jusqu'à la mer. L'overlay n'en
 # garde QUE le nuage de points (`_rivers`) pour interdire de BÂTIR sur le fil.
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
-const ROAD_INK    := Color(0.09, 0.07, 0.06, 0.52) ## route : encre NOIRE (≠ frontières de province sépia), peu opaque
+const ROAD_INK    := Color(0.52, 0.40, 0.24, 0.62) ## route : sépia CLAIR (≠ frontières de province NOIRES)
 const ROAD_DASH   := 4.5    ## longueur de tiret MOYENNE (px écran) — jittée par tiret (≠ points uniformes)
 const ROAD_GAP    := 5.5    ## espace entre tirets (px écran) — trous bien ouverts (carte au trésor)
 const ROAD_WOBBLE := 0.7    ## déplacement perpendiculaire par tiret (noise directionnel, unités monde)
@@ -483,64 +493,83 @@ func _rebuild_borders() -> void:
 	var w = Sim.world
 	if w == null:
 		return
-	# 1px : la TRAME FINE — provinces (0) + régions (1), jittée « plume » (encre neutre, fanée).
+	# 1px : la TRAME FINE — provinces (0) + régions (1), FORTEMENT jittée (casse l'escalier des arêtes).
 	var fine := PackedVector2Array()
-	fine.append_array(_jitter_segs(w.border_segments(0)))
-	fine.append_array(_jitter_segs(w.border_segments(1)))
+	fine.append_array(_jitter_segs(w.border_segments(0), FINE_JIT))
+	fine.append_array(_jitter_segs(w.border_segments(1), FINE_JIT))
 	_borders[0] = fine
-	# BLOCS d'empire (2), GROUPÉS PAR OWNER → couleur par entité. La façade EXCLUT déjà les côtes
-	# (joint touchant la mer = invisible). `other` >=0 ⇒ frontière INTER-EMPIRE → on bâtit en plus des
-	# HACHURES (tirets perpendiculaires) ; -1 ⇒ marche (terre libre) → trait seul.
-	_borders_col.clear()
-	_borders_hatch.clear()
+	# BLOCS (2) en RUBAN int.→ext. : par ENTITÉ, on bâtit l'INLINE (décalé vers l'intérieur, ton clair)
+	# et l'OUTLINE (sur l'arête, ton foncé), le long de la normale extérieure. La façade exclut les côtes
+	# d'EMPIRE (le rivage suffit) mais GARDE celles des cités-états (leur ruban or-argent doit se voir).
+	_b_in.clear()
+	_b_out.clear()
 	var cd: Dictionary = w.border_segments_col(2)
 	var pts: PackedVector2Array = cd.get("pts", PackedVector2Array())
+	var nrm: PackedVector2Array = cd.get("nrm", PackedVector2Array())
 	var own: PackedInt32Array = cd.get("owner", PackedInt32Array())
 	var oth: PackedInt32Array = cd.get("other", PackedInt32Array())
+	var role_cache := {}
 	for i in range(own.size()):
 		var o: int = own[i]
+		var ot: int = oth[i] if i < oth.size() else -1
+		var n: Vector2 = nrm[i] if i < nrm.size() else Vector2.ZERO   # extérieur DEPUIS own
 		var pa: Vector2 = pts[i * 2] + _jit(pts[i * 2])
 		var pb: Vector2 = pts[i * 2 + 1] + _jit(pts[i * 2 + 1])
-		if not _borders_col.has(o):
-			_borders_col[o] = PackedVector2Array()
-		var arr: PackedVector2Array = _borders_col[o]
-		arr.push_back(pa); arr.push_back(pb)
-		_borders_col[o] = arr
-		if i < oth.size() and oth[i] >= 0 and (i % 2) == 0:   # INTER-EMPIRE, 1 tick sur 2 → hachure ESPACÉE
-			var dir := pb - pa
-			var ln := dir.length()
-			if ln > 0.001:
-				dir /= ln
-				var perp := Vector2(-dir.y, dir.x) * HATCH_LEN
-				var m := (pa + pb) * 0.5
-				if not _borders_hatch.has(o):
-					_borders_hatch[o] = PackedVector2Array()
-				var hk: PackedVector2Array = _borders_hatch[o]
-				hk.push_back(m - perp); hk.push_back(m + perp)
-				_borders_hatch[o] = hk
+		if not role_cache.has(o):
+			role_cache[o] = int(w.country_role(o))
+		# ENTITÉ qui colore + DIRECTION de son intérieur : par défaut `own` (intérieur = −normale).
+		# Si une CITÉ-ÉTAT est de l'AUTRE côté, c'est ELLE qui colore (intérieur = +normale).
+		var entity := o
+		var idir := -1.0
+		if int(role_cache[o]) == 2:
+			idir = -1.0
+		elif ot >= 0:
+			if not role_cache.has(ot):
+				role_cache[ot] = int(w.country_role(ot))
+			if int(role_cache[ot]) == 2:
+				entity = ot; idir = 1.0
+		var ni := n * idir                                # vers l'INTÉRIEUR de l'entité
+		if not _b_in.has(entity):
+			_b_in[entity] = PackedVector2Array()
+			_b_out[entity] = PackedVector2Array()
+		var ai: PackedVector2Array = _b_in[entity]
+		ai.push_back(pa + ni * BAND_IN); ai.push_back(pb + ni * BAND_IN); _b_in[entity] = ai
+		var ao: PackedVector2Array = _b_out[entity]
+		ao.push_back(pa - ni * BAND_OUT); ao.push_back(pb - ni * BAND_OUT); _b_out[entity] = ao
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
 
-## offset déterministe ∝ position (hash) → wobble « main levée » ; MÊME point monde → MÊME offset
-## (les segments partagés restent JOINTS, pas de trou). L'effet plume/calligraphie de l'outline.
-func _jit(p: Vector2) -> Vector2:
+## paire [outline FONCÉ (extérieur), inline CLAIR (intérieur)] d'une entité : cité-état or↔argent,
+## sinon empire teinté par l'ÉTHOS (axe ordre↔chaos) ; repli = couleur de pays.
+func _border_pair(e: int) -> Array:
+	if e < 0:
+		return [Color(0.20, 0.14, 0.09, 0.92), Color(0.55, 0.46, 0.34, 0.85)]
+	if int(Sim.world.country_role(e)) == 2:
+		return [CS_GOLD, CS_SILVER]
+	var eth := int(Sim.world.country_ethos(e))
+	if eth >= 0 and eth < ETHOS_HUE.size():
+		var hue: float = ETHOS_HUE[eth]
+		return [Color.from_hsv(hue, 0.72, 0.52, 0.95), Color.from_hsv(hue, 0.40, 0.93, 0.9)]
+	var c := _country_color(e)
+	return [Color(c.r * 0.45, c.g * 0.45, c.b * 0.45, 0.95),
+			Color(c.r * 0.5 + 0.5, c.g * 0.5 + 0.5, c.b * 0.5 + 0.5, 0.9)]
+
+## offset déterministe ∝ position (hash), amplitude `amt` ; MÊME point monde → MÊME offset (segments
+## partagés restent JOINTS, pas de trou). L'effet plume/calligraphie + casse l'escalier des arêtes.
+func _jit_a(p: Vector2, amt: float) -> Vector2:
 	var a := sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453
 	var b := sin(p.x * 39.346 + p.y * 11.135) * 24634.6345
-	return Vector2((a - floor(a)) - 0.5, (b - floor(b)) - 0.5) * BORDER_JIT
+	return Vector2((a - floor(a)) - 0.5, (b - floor(b)) - 0.5) * amt
 
-func _jitter_segs(segs: PackedVector2Array) -> PackedVector2Array:
+func _jit(p: Vector2) -> Vector2:
+	return _jit_a(p, BORDER_JIT)
+
+func _jitter_segs(segs: PackedVector2Array, amt := BORDER_JIT) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	out.resize(segs.size())
 	for i in range(segs.size()):
-		out[i] = segs[i] + _jit(segs[i])
+		out[i] = segs[i] + _jit_a(segs[i], amt)
 	return out
-
-## encre d'empire : la couleur du pays FONCÉE → lisible sur parchemin, mais teintée par entité.
-func _empire_ink(o: int) -> Color:
-	if o < 0:
-		return Color(0.20, 0.14, 0.09, 0.92)         # contour externe / indéfini → encre brune
-	var c := _country_color(o)
-	return Color(c.r * 0.50, c.g * 0.50, c.b * 0.50, 0.95)
 
 ## TRAIT DE PINCEAU : pile de passes translucides (bave d'encre) du LARGE plumé au cœur dense,
 ## TOUTES antialiasées → feutre le crénelage des arêtes + bord doux = effet brosse. `core_w`/`feather`
@@ -864,26 +893,26 @@ func _draw_iso(w, mv: Node2D) -> void:
 	# la TRAME FINE fond en survol (sinon mosaïque illisible) et se révèle au plan rapproché — toutes
 	# les provinces RESTENT tracées (1px), juste graduées au zoom (LOD ; les blocs d'empire, eux, toujours).
 	if _borders.has(0):
-		var fine_a := clampf((zoom - 1.6) / 2.4, 0.0, 1.0) * 0.42
+		var fine_a := clampf((zoom - 1.6) / 2.4, 0.0, 1.0) * 0.45
 		if fine_a > 0.02:
 			var fseg := _project_segs_iso(mv, _borders[0])
 			if fseg.size() >= 2:
-				# 1px provinces : 2 passes douces (feutrage léger, sans épaissir) — pinceau fin
-				draw_multiline(fseg, Color(0.30, 0.22, 0.15, fine_a * 0.45), 2.4 / zoom, true)
-				draw_multiline(fseg, Color(0.30, 0.22, 0.15, fine_a), 1.0 / zoom, true)
-	# BLOCS d'empire : trait FIN à l'encre (moitié de l'ancien — anti-blob) + HACHURES inter-empire.
-	for o in _borders_col:
-		var oseg := _project_segs_iso(mv, _borders_col[o])
-		if oseg.size() < 2:
-			continue
-		var ec := _empire_ink(o)
-		draw_multiline(oseg, Color(ec.r, ec.g, ec.b, ec.a * 0.25), 3.2 / zoom, true)   # halo doux
-		draw_multiline(oseg, ec, 1.6 / zoom, true)                                       # TRAIT CONTINU (la frontière)
-	for o in _borders_hatch:
-		var hseg := _project_segs_iso(mv, _borders_hatch[o])
-		if hseg.size() >= 2:
-			var ec2 := _empire_ink(o)
-			draw_multiline(hseg, Color(ec2.r, ec2.g, ec2.b, ec2.a * 0.7), 0.9 / zoom, true)  # hachures SUBORDONNÉES
+				# 1px provinces NOIRES : fort feutrage (3 passes du large doux au cœur fin) → l'escalier
+				# des arêtes se fond (anti-alias), aspect tracé à l'encre, plus de marches.
+				var fink := Color(0.07, 0.06, 0.05, fine_a)
+				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.22), 3.2 / zoom, true)
+				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.5), 1.8 / zoom, true)
+				draw_multiline(fseg, fink, 0.9 / zoom, true)
+	# BLOCS : RUBAN façon Civ — inline CLAIR (intérieur, large) + outline FONCÉ (extérieur, fin). La
+	# teinte suit l'ÉTHOS (ordre↔chaos) ; cités-états en or↔argent. Dégradé int.→ext. par le décalage.
+	for entity in _b_out:
+		var pair := _border_pair(entity)
+		var ins := _project_segs_iso(mv, _b_in[entity])
+		if ins.size() >= 2:
+			draw_multiline(ins, pair[1], 2.8 / zoom, true)   # INLINE clair (le ruban, côté intérieur)
+		var outs := _project_segs_iso(mv, _b_out[entity])
+		if outs.size() >= 2:
+			draw_multiline(outs, pair[0], 1.4 / zoom, true)  # OUTLINE foncé (l'arête, côté extérieur)
 
 	# ── ROUTES : POINTILLÉ + trait de PINCEAU, sépia RENFORCÉ à OPACITÉ LIMITÉE (encre sur parchemin).
 	#    Croissance organique (1 an/province) ; tous les tirets cumulés → UN seul pinceau (batch). ──

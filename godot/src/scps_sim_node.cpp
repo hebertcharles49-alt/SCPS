@@ -118,6 +118,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("river_paths"),                    &ScpsWorld::river_paths);
     ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
     ClassDB::bind_method(D_METHOD("border_segments_col", "level"),   &ScpsWorld::border_segments_col);
+    ClassDB::bind_method(D_METHOD("country_ethos", "c"),             &ScpsWorld::country_ethos);
     ClassDB::bind_method(D_METHOD("road_paths"),                     &ScpsWorld::road_paths);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
@@ -995,6 +996,7 @@ PackedVector2Array ScpsWorld::border_segments(int level) {
 Dictionary ScpsWorld::border_segments_col(int level) {
     Dictionary d;
     PackedVector2Array pts;
+    PackedVector2Array nrm;
     PackedInt32Array owners;
     PackedInt32Array others;
     if (sim) {
@@ -1002,19 +1004,26 @@ Dictionary ScpsWorld::border_segments_col(int level) {
         static ScpsSegC seg[MAXSEG];
         int n = scps_border_segments_col(sim, level, seg, MAXSEG);
         pts.resize(n * 2);
+        nrm.resize(n);
         owners.resize(n);
         others.resize(n);
         for (int i = 0; i < n; i++) {
             pts.set(i * 2,     Vector2(seg[i].x0, seg[i].y0));
             pts.set(i * 2 + 1, Vector2(seg[i].x1, seg[i].y1));
+            nrm.set(i, Vector2(seg[i].nx, seg[i].ny));
             owners.set(i, seg[i].owner);
             others.set(i, seg[i].other);
         }
     }
     d["pts"] = pts;
+    d["nrm"] = nrm;          /* normale vers l'extérieur (par segment) — dégradé int.→ext. */
     d["owner"] = owners;
-    d["other"] = others;     /* >=0 autre empire (hachure) · -1 terre libre · -2 mer (non émis) */
+    d["other"] = others;     /* >=0 autre empire · -1 terre libre · -2 mer */
     return d;
+}
+
+int ScpsWorld::country_ethos(int c) const {
+    return sim ? scps_country_ethos(sim, c) : -1;
 }
 
 Array ScpsWorld::road_paths() {

@@ -275,6 +275,14 @@ int scps_country_role(const ScpsSim *s, int c){
     return (int)s->w->country[c].role;
 }
 
+int scps_country_ethos(const ScpsSim *s, int c){
+    if(!s || !s->ready || c<0 || c>=s->w->n_countries) return -1;
+    int cp=s->w->country[c].capital_prov;
+    int cr=(cp>=0 && cp<s->w->n_provinces)? s->w->province[cp].region : -1;
+    if (cr>=0 && cr<s->sim.econ->n_regions) return (int)s->sim.econ->region[cr].culture.ethos;
+    return -1;
+}
+
 /* ---- PICKING & READOUTS (la membrane traverse le binding) ------------- */
 
 static const char *sz(const char *p){ return p ? p : ""; }   /* NULL → "" (Godot String) */
@@ -1318,14 +1326,24 @@ int scps_border_segments_col(ScpsSim *s, int level, ScpsSegC *out, int max){
             int pva=a->province, pvb=b?b->province:-1;
             int lvl=-1, owner=-1, other=-1;
             if (own_a!=own_b && (own_a>=0||own_b>=0)){
-                if (sea_a || sea_b) continue;            /* CÔTE : pas de frontière (le rivage suffit) */
-                lvl=2; owner=(own_a>=0?own_a:own_b); other=(own_a>=0?own_b:own_a);
+                int land_own  = (own_a>=0?own_a:own_b);
+                int land_other= (own_a>=0?own_b:own_a);
+                int is_cs = (land_own>=0 && land_own<s->w->n_countries
+                             && s->w->country[land_own].role==POLITY_CITY_STATE);
+                /* CÔTE : invisible pour un EMPIRE (le rivage suffit) ; GARDÉE pour une CITÉ-ÉTAT (son
+                 * contour or-argent doit se voir, et les marchés sont côtiers). */
+                if ((sea_a || sea_b) && !is_cs) continue;
+                lvl=2; owner=land_own; other=(sea_a||sea_b)?-2:land_other;
             }
             else if (rga!=rgb && rga>=0 && rgb>=0){    lvl=1; owner=own_a; }
             else if (pva!=pvb && pva>=0 && pvb>=0){    lvl=0; owner=own_a; }
             if (lvl!=level) continue;
             if (d==0){ out[n].x0=(float)(x+1); out[n].y0=(float)y;     out[n].x1=(float)(x+1); out[n].y1=(float)(y+1); }
             else     { out[n].x0=(float)x;     out[n].y0=(float)(y+1); out[n].x1=(float)(x+1); out[n].y1=(float)(y+1); }
+            /* normale vers l'EXTÉRIEUR : owner côté A ⇒ l'extérieur est vers B (+) ; sinon vers A (−).
+             * arête EST → normale en X ; arête SUD → normale en Y. (Sert au dégradé int.→ext.) */
+            float sgn=(own_a>=0)?1.f:-1.f;
+            out[n].nx=(d==0)?sgn:0.f; out[n].ny=(d==1)?sgn:0.f;
             out[n].owner=owner; out[n].other=other; n++;
         }
     }

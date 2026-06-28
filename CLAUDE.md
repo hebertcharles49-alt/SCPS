@@ -1138,6 +1138,18 @@
   ⚠ Nom/couleur = champs d'AFFICHAGE (pas dans le hash) ⇒ **golden IDENTIQUE** (vérifié). DISPLAY +
   worldgen-display-only ; déterminisme/save intacts. scons 0 warning.
 
+- **GODOT parchemin — frontières en RUBAN façon Civ + cités-états or-argent (2026-06-29)** : refonte
+  des outlines. (1) **Provinces** : trame fine NOIRE + fort feutrage (3 passes) + jitter accru
+  (`FINE_JIT` 0.5) → l'escalier des arêtes se fond (plus de marches). (2) **Routes** : sépia CLAIR (≠
+  provinces noires), tirets à longueur JITTÉE + wobble directionnel (`_h1`, `ROAD_WOBBLE`). (3) **Blocs
+  (empires + cités-états)** : RUBAN dégradé INTÉRIEUR→EXTÉRIEUR — façade `scps_border_segments_col`
+  gagne une **normale extérieure** (`ScpsSegC.nx,ny`) par segment ; l'overlay décale l'**inline** (ton
+  CLAIR, côté intérieur, large) et l'**outline** (ton FONCÉ, côté extérieur, fin). Teinte EMPIRE par
+  **ÉTHOS** sur l'axe ordre↔chaos (`scps_country_ethos` → 0..5 ; `ETHOS_HUE` : chaos chaud/rouge →
+  ordre froid/bleu) ; **CITÉS-ÉTATS or↔argent** (et la façade GARDE leur côte — exception au « côtes
+  invisibles » — pour que le ruban se voie). ⚠ `ScpsSegC` +nx,ny ; binding +`country_ethos` +"nrm".
+  DISPLAY/façade hors chronicle ⇒ **golden IDENTIQUE** ; déterminisme/save intacts. scons 0 warning.
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
