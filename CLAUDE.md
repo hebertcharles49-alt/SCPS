@@ -1176,6 +1176,21 @@
   (contour d'une région + normale). Tout DISPLAY/façade (hors chronicle) + noms NON hashés ⇒ **golden
   IDENTIQUE** ; déterminisme/save intacts. scons 0 warning.
 
+- **GODOT parchemin — palette de PIGMENTS limitée (anti-néon) + capitale en LISERÉ fin (2026-06-29)** :
+  les bandes blendées tiraient leurs teintes de la roue HSV (`HERITAGE_HUE`/`ETHOS_INLINE_HUE`) → des
+  bleus/magentas FLUO même désaturés, et le ruban (5 couches à α 0.95) s'empilait en stries SATURÉES =
+  effet « cyberpunk ». Deux gestes (overlay.gd, GDScript SEUL). (1) **PALETTE CURÉE** : `HERITAGE_PIG`
+  (outline, 6 ENCRES sombres terreuses choisies à la main — ardoise/rouille/sienne/olive/ocre/prune) +
+  `ETHOS_PIG` (inline, 6 lavis CLAIRS de la même gamme — terre cuite/sable/ardoise pâle/céladon/ocre
+  pâle/sauge), variation par pays sur la **VALEUR seule** (`_shade`, jamais la teinte → pas de dérive
+  néon) ; cités-états or/argent FANÉS. (2) **RUBAN EN LAVIS** : `_draw_band` rampe désormais l'ALPHA d'un
+  trait d'encre net (extérieur, α `BAND_A_OUT` 0.90) à un lavis ténu (intérieur, α `BAND_A_IN` 0.16) → le
+  parchemin/terrain TRANSPARAÎT, la frontière se FOND dans le territoire au lieu d'une strie opaque. (3)
+  **CAPITALE = LISERÉ FIN** : le contour de capitale passe d'une BANDE pleine (`_draw_band`) à un FILET
+  pourpre sourd (`_draw_cap_lisere`, `CAP_INK` + halo doux, 1.1 px) posé juste à l'intérieur du contour —
+  un accent discret, plus une bande qui « prend tout ». DISPLAY-ONLY (aucun fichier C) ⇒ **golden
+  IDENTIQUE**, déterminisme/save intacts ; pas de rebuild DLL (façade inchangée).
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.

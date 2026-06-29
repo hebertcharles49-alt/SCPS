@@ -90,18 +90,33 @@ var _b_segs := {}         ## entité → PackedVector2Array : segments de fronti
 var _b_norm := {}         ## entité → PackedVector2Array : normale vers l'INTÉRIEUR, 1 par segment
 var _cap_segs := {}       ## pays → PackedVector2Array : contour de sa CAPITALE (liseré pourpre)
 var _cap_norm := {}       ## pays → PackedVector2Array : normale intérieure du contour capitale
-const CAP_OUT := Color(0.34, 0.10, 0.42, 0.95)   ## pourpre FONCÉ (outline capitale)
-const CAP_IN  := Color(0.74, 0.42, 0.90, 0.92)   ## pourpre CLAIR (inline capitale)
+# PALETTE de PIGMENTS LIMITÉE (anti-néon) : des encres NATURELLES choisies à la main (terre de Sienne,
+# ocre, ardoise, olive…), pas un échantillonnage de la roue HSV (qui donne des bleus/magentas fluo même
+# désaturés). On reste dans une gamme TERREUSE compatible parchemin → fin de l'effet cyberpunk.
+const PARCHMENT := Color(0.80, 0.72, 0.54)       ## le ton du papier (toutes les teintes y tendent)
+const CAP_INK := Color(0.40, 0.24, 0.36)         ## pourpre SOURD (liseré FIN de capitale, pas une bande)
 const N_BAND := 5         ## nb de couches du blend (extérieur→intérieur)
 const BAND_OUT_PX := 1.0  ## décalage EXTÉRIEUR de la 1re couche (px écran)
 const BAND_IN_PX := 4.2   ## décalage INTÉRIEUR de la dernière (px écran)
 const LAYER_W_PX := 2.6   ## largeur d'une couche (px écran) — > l'espacement ⇒ les couches se FONDENT
-const CS_GOLD := Color(0.66, 0.49, 0.11, 0.96)   ## OR (outline cité-état, extérieur)
-const CS_SILVER := Color(0.93, 0.92, 0.84, 0.92) ## ARGENT/crème (inline cité-état, intérieur)
-## OUTLINE par HÉRITAGE (6 cultures) : Éso · Métal · Méca · Adapt · Agra · Clan — teintes distinctes.
-const HERITAGE_HUE := [0.58, 0.04, 0.13, 0.34, 0.11, 0.92]
-## INLINE par ÉTHOS sur l'axe MARTIAL↔ORDRE (Dom·Hon·Ordre·Bur·Merc·Pac) : martial chaud → ordre froid.
-const ETHOS_INLINE_HUE := [0.02, 0.06, 0.55, 0.50, 0.12, 0.58]
+## OUTLINE par HÉRITAGE (6 cultures) : Éso · Métal · Méca · Adapt · Agra · Clan — ENCRES SOMBRES terreuses.
+const HERITAGE_PIG := [
+	Color(0.31, 0.35, 0.42),   ## Ésotérique  : ardoise (bleu-gris sourd)
+	Color(0.46, 0.29, 0.23),   ## Métallurgiste : rouille de fer
+	Color(0.48, 0.35, 0.21),   ## Mécaniste   : terre de Sienne brûlée
+	Color(0.33, 0.37, 0.25),   ## Adaptatif   : olive
+	Color(0.47, 0.39, 0.22),   ## Agraire     : ocre brun
+	Color(0.42, 0.28, 0.33),   ## Clanique    : prune sourde
+]
+## INLINE par ÉTHOS (lavis CLAIR de la même gamme, axe martial↔ordre) : Dom·Hon·Ordre·Bur·Merc·Pac.
+const ETHOS_PIG := [
+	Color(0.74, 0.57, 0.49),   ## Dominateur  : terre cuite poussiéreuse (martial chaud)
+	Color(0.76, 0.61, 0.47),   ## Honneur     : sable chaud
+	Color(0.57, 0.63, 0.66),   ## Ordre       : ardoise pâle (ordre froid)
+	Color(0.56, 0.65, 0.63),   ## Bureaucrate : céladon terne
+	Color(0.78, 0.67, 0.47),   ## Mercantile  : ocre pâle
+	Color(0.60, 0.66, 0.61),   ## Pacifiste   : sauge douce
+]
 const BORDER_JIT := 0.18  ## amplitude du wobble « plume » des frontières d'EMPIRE (unités monde) — continuité
 const FINE_JIT   := 0.5   ## wobble PLUS FORT de la trame fine (provinces) → casse l'escalier des arêtes
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
@@ -563,25 +578,35 @@ func _rebuild_borders() -> void:
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
 
-## paire [outline (extérieur), inline (intérieur)] : OUTLINE par HÉRITAGE (culture, 6 familles +
-## variation RGB par pays) ; INLINE par ÉTHOS (axe martial↔ordre) ; cité-état or↔argent.
+## assombrit/éclaircit un pigment d'un cheveu (variation par pays SANS sortir de la gamme : on touche
+## la VALEUR seulement, jamais la teinte → pas de dérive néon). `dv` ∈ ~[-0.06, +0.06].
+func _shade(c: Color, dv: float) -> Color:
+	return Color(clampf(c.r + dv, 0.0, 1.0), clampf(c.g + dv, 0.0, 1.0), clampf(c.b + dv, 0.0, 1.0), c.a)
+
+## or/argent FANÉS des cités-états (encres, pas du métal brillant) — dans la même gamme terreuse.
+const CS_GOLD := Color(0.62, 0.50, 0.28)         ## or vieilli (extérieur)
+const CS_SILVER := Color(0.66, 0.66, 0.62)       ## argent terne (intérieur)
+
+## paire [outline (extérieur, FONCÉ), inline (intérieur, lavis CLAIR)] piochée dans la palette LIMITÉE :
+## OUTLINE = encre d'HÉRITAGE (culture) ; INLINE = lavis d'ÉTHOS (axe martial↔ordre) ; cité-état or↔argent.
 func _border_pair(e: int) -> Array:
 	if e < 0:
-		return [Color(0.20, 0.14, 0.09, 0.92), Color(0.55, 0.46, 0.34, 0.85)]
+		return [Color(0.30, 0.24, 0.18, 0.92), Color(0.55, 0.46, 0.34, 0.85)]
 	if int(Sim.world.country_role(e)) == 2:
 		return [CS_GOLD, CS_SILVER]
 	var h := int(Sim.world.country_heritage(e))
-	var ohue: float = HERITAGE_HUE[h] if (h >= 0 and h < HERITAGE_HUE.size()) else fmod(float(e) * 0.137, 1.0)
-	var jr := _h1(float(e) * 1.73)                          # variation par pays (cohérente dans la famille)
-	var jv := _h1(float(e) * 3.11)
-	var outline := Color.from_hsv(fposmod(ohue + (jr - 0.5) * 0.05, 1.0), 0.62, 0.50 + (jv - 0.5) * 0.12, 0.95)
+	var jv := (_h1(float(e) * 3.11) - 0.5) * 0.10            # variation par pays : VALEUR seulement (gamme tenue)
+	var outline: Color = HERITAGE_PIG[h] if (h >= 0 and h < HERITAGE_PIG.size()) else Color(0.40, 0.32, 0.24)
 	var et := int(Sim.world.country_ethos(e))
-	var ihue: float = ETHOS_INLINE_HUE[et] if (et >= 0 and et < ETHOS_INLINE_HUE.size()) else ohue
-	var inline := Color.from_hsv(ihue, 0.42, 0.93, 0.9)
-	return [outline, inline]
+	var inline: Color = ETHOS_PIG[et] if (et >= 0 and et < ETHOS_PIG.size()) else Color(0.66, 0.58, 0.46)
+	return [_shade(outline, jv * 0.6), _shade(inline, jv)]
 
 ## RUBAN BLENDÉ : N couches de l'extérieur (outline) à l'intérieur (inline), décalées le long de la
-## normale intérieure (px ÉCRAN ÷ zoom) et teintées par lerp → un vrai DÉGRADÉ, pas deux traits.
+## normale intérieure (px ÉCRAN ÷ zoom). La TEINTE lerp outline→inline ET l'ALPHA RAMPE d'un trait
+## d'encre net (extérieur, opaque) à un LAVIS ténu (intérieur) → le parchemin/terrain transparaît, la
+## frontière se FOND dans le territoire (jamais un ruban plastique saturé = fin de l'effet néon).
+const BAND_A_OUT := 0.90   ## alpha de l'arête extérieure (le trait d'encre net)
+const BAND_A_IN := 0.16    ## alpha du bord intérieur (lavis presque effacé → le papier respire)
 func _draw_band(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2Array, outline: Color, inline: Color, zoom: float) -> void:
 	var nseg := norms.size()
 	if nseg < 1:
@@ -590,6 +615,7 @@ func _draw_band(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2Array,
 		var t := float(k) / float(N_BAND - 1)
 		var off := lerpf(-BAND_OUT_PX, BAND_IN_PX, t) / zoom      # extérieur(−) → intérieur(+), en monde
 		var col := outline.lerp(inline, t)
+		var a := lerpf(BAND_A_OUT, BAND_A_IN, t)                  # encre nette → lavis ténu (le papier transparaît)
 		var layer := PackedVector2Array()
 		layer.resize(segs.size())
 		for i in range(nseg):
@@ -598,7 +624,25 @@ func _draw_band(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2Array,
 			layer[i * 2 + 1] = segs[i * 2 + 1] + ni * off
 		var proj := _project_segs_iso(mv, layer)
 		if proj.size() >= 2:
-			draw_multiline(proj, col, LAYER_W_PX / zoom, true)
+			draw_multiline(proj, Color(col.r, col.g, col.b, a), LAYER_W_PX / zoom, true)
+
+## LISERÉ de capitale : un SEUL trait FIN pourpre sourd, posé JUSTE à l'intérieur du contour (décalé
+## le long de la normale intérieure) — un filet discret, PAS une bande qui prend toute la capitale.
+func _draw_cap_lisere(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2Array, zoom: float) -> void:
+	var nseg := norms.size()
+	if nseg < 1:
+		return
+	var off := 1.4 / zoom                                   # rentré d'un cheveu (px écran) → le filet borde l'intérieur
+	var layer := PackedVector2Array()
+	layer.resize(segs.size())
+	for i in range(nseg):
+		var ni: Vector2 = norms[i]
+		layer[i * 2] = segs[i * 2] + ni * off
+		layer[i * 2 + 1] = segs[i * 2 + 1] + ni * off
+	var proj := _project_segs_iso(mv, layer)
+	if proj.size() >= 2:
+		draw_multiline(proj, Color(CAP_INK.r, CAP_INK.g, CAP_INK.b, 0.28), 2.2 / zoom, true)  # halo doux
+		draw_multiline(proj, Color(CAP_INK.r, CAP_INK.g, CAP_INK.b, 0.85), 1.1 / zoom, true)  # filet net
 
 ## offset déterministe ∝ position (hash), amplitude `amt` ; MÊME point monde → MÊME offset (segments
 ## partagés restent JOINTS, pas de trou). L'effet plume/calligraphie + casse l'escalier des arêtes.
@@ -950,12 +994,12 @@ func _draw_iso(w, mv: Node2D) -> void:
 				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.5), 1.8 / zoom, true)
 				draw_multiline(fseg, fink, 0.9 / zoom, true)
 	# BLOCS : RUBAN BLENDÉ (dégradé extérieur→intérieur). OUTLINE = CULTURE (héritage) ; INLINE = ÉTHOS
-	# (martial↔ordre) ; cités-états or↔argent. Puis le liseré POURPRE de chaque capitale, AU-DESSUS.
+	# (martial↔ordre) ; cités-états or↔argent. Puis le LISERÉ POURPRE FIN de chaque capitale, AU-DESSUS.
 	for entity in _b_segs:
 		var pair := _border_pair(entity)
 		_draw_band(mv, _b_segs[entity], _b_norm[entity], pair[0], pair[1], zoom)
 	for cc in _cap_segs:
-		_draw_band(mv, _cap_segs[cc], _cap_norm[cc], CAP_OUT, CAP_IN, zoom)
+		_draw_cap_lisere(mv, _cap_segs[cc], _cap_norm[cc], zoom)
 
 	# ── ROUTES : POINTILLÉ + trait de PINCEAU, sépia RENFORCÉ à OPACITÉ LIMITÉE (encre sur parchemin).
 	#    Croissance organique (1 an/province) ; tous les tirets cumulés → UN seul pinceau (batch). ──
