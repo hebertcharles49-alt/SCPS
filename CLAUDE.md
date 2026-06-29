@@ -1191,6 +1191,29 @@
   un accent discret, plus une bande qui « prend tout ». DISPLAY-ONLY (aucun fichier C) ⇒ **golden
   IDENTIQUE**, déterminisme/save intacts ; pas de rebuild DLL (façade inchangée).
 
+- **GODOT parchemin — ÉPAISSEUR DE TRAIT ADAPTATIVE AU ZOOM (inspirée de CK3) (2026-06-29)** : les traits
+  étaient tous `largeur_px / zoom` = px ÉCRAN constant (jamais soudés au terrain). On imite le RENDU de CK3
+  (étude des shaders : `gfx/map/borders/settings.txt` seuils par tier · `camera.fxh` `GetZoomedInZoomedOutFactor`
+  · `pdxverticalborder.shader` `clamp(1−f·2.5,0,1)`) : CK bake ses bordures en géométrie MONDE (elles
+  GROSSISSENT à l'écran quand la caméra descend) puis les fond par un shader d'opacité SÉPARÉ. Un overlay 2D
+  immédiat ne peut pas rebaker → helper **`_w(zoom, base, min, max)` = `clamp(base·zoom, min_px, max_px)/zoom`**
+  (rend une largeur MONDE) : trois régimes C0-continus en px écran — **plancher** min_px (zoom OUT : le trait
+  ne DISPARAÎT jamais au plan large) · **approche** = base (CONSTANTE en monde → SOUDÉE au terrain, s'épaissit
+  à l'écran) · **plafond** max_px (zoom IN : une bordure n'AVALE jamais une province). L'OPACITÉ (fondu de la
+  trame fine, gates routes/villes) reste la couche de visibilité INDÉPENDANTE (exactement CK). **HIÉRARCHIE par
+  asymétrie de rails** : la bande d'EMPIRE respire fort (`ZW_EMPIRE_BASE` 0.85 · `_MIN` 2.0 · `_MAX` 3.4 →
+  2.0px au plan / 3.4px au zoom profond, toujours dominante) tandis que la trame de PROVINCES reste un cheveu
+  (cœur ≤1.3px, gouvernée par son fondu) → l'empire DOMINE, la province ÉMERGE (mirroir du « domain 0-20 vs
+  province 0-10 » de CK). **8 sites** passent à `_w` (trame fine ×3, bande d'empire, routes ×2, anneau de phase
+  d'armée, anneau d'épicentre §27) ; les 7 marqueurs (liseré de capitale, ligne/losange d'armée, étoile de
+  capitale) restent en px écran (`min==max` ⇒ `_w` se réduit ALGÉBRIQUEMENT à `min/zoom`, byte-identique — on
+  les laisse littéralement inchangés). Pièges ÉVITÉS : `_w` rend déjà une largeur MONDE (jamais `_w(...)/zoom`) ;
+  les LONGUEURS/MOTIFS (`ROAD_DASH`/`ROAD_GAP`, rayon de pulse, demi-losange `s`, rayons de ville, offsets de
+  normale) restent `/zoom`. Vérifié au rendu (seed 9, an 120) : bandes lisibles au fit (2px), épaissies à
+  l'approche, gelées au zoom 12 sans dominer ; trame fine en cheveu. DISPLAY-ONLY (overlay.gd SEUL, aucun
+  fichier C) ⇒ **golden IDENTIQUE**, déterminisme/save intacts, pas de rebuild DLL. Dialable d'une ligne
+  (`ZW_EMPIRE_MAX` ↓ si lourd).
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.

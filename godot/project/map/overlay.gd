@@ -99,6 +99,19 @@ const N_BAND := 5         ## nb de couches du blend (extérieur→intérieur)
 const BAND_OUT_PX := 1.0  ## décalage EXTÉRIEUR de la 1re couche (px écran)
 const BAND_IN_PX := 4.2   ## décalage INTÉRIEUR de la dernière (px écran)
 const LAYER_W_PX := 2.6   ## largeur d'une couche (px écran) — > l'espacement ⇒ les couches se FONDENT
+# ── ÉPAISSEUR DE TRAIT ADAPTATIVE AU ZOOM (inspirée de CK3) ────────────────────────────────────────
+# CK bake ses bordures en géométrie MONDE (elles GROSSISSENT à l'écran quand la caméra descend) puis les
+# fond par un shader d'opacité SÉPARÉ (camera.fxh / pdxverticalborder). Un overlay 2D ne peut pas rebaker
+# une géométrie par frame → on imite le RENDU : `_w(zoom, base, min, max)` = clamp(base·zoom, min, max)/zoom.
+#   - zoom OUT  : plancher min_px → le trait ne DISPARAÎT jamais au plan large.
+#   - APPROCHE  : largeur = base (CONSTANTE en monde) → le trait est SOUDÉ au terrain et s'épaissit à l'écran.
+#   - zoom IN   : plafond max_px → au zoom profond une bordure n'AVALE jamais une province.
+# L'opacité (fondu de la trame fine, gates routes/villes) reste la couche de visibilité INDÉPENDANTE (CK).
+# HIÉRARCHIE par asymétrie de rails : la bande d'EMPIRE respire fort (toujours lisible) ; la trame de
+# provinces reste un cheveu (≤1.3px) gouvernée par son fondu → l'empire DOMINE, la province ÉMERGE.
+const ZW_EMPIRE_BASE := 0.85   ## bande d'empire : épaisseur MONDE (respire ~2.0→3.4px sur zoom ~2.35..4.0)
+const ZW_EMPIRE_MIN  := 2.0    ## plancher — GARANTIT que le liseré de royaume survit au plan large (~0.55)
+const ZW_EMPIRE_MAX  := 3.4    ## plafond — un ruban épais au zoom profond, jamais une dalle (baisser à 3.0 si lourd)
 ## OUTLINE par HÉRITAGE (6 cultures) : Éso · Métal · Méca · Adapt · Agra · Clan — ENCRES SOMBRES terreuses.
 const HERITAGE_PIG := [
 	Color(0.31, 0.35, 0.42),   ## Ésotérique  : ardoise (bleu-gris sourd)
@@ -607,6 +620,14 @@ func _border_pair(e: int) -> Array:
 ## frontière se FOND dans le territoire (jamais un ruban plastique saturé = fin de l'effet néon).
 const BAND_A_OUT := 0.90   ## alpha de l'arête extérieure (le trait d'encre net)
 const BAND_A_IN := 0.16    ## alpha du bord intérieur (lavis presque effacé → le papier respire)
+
+## ÉPAISSEUR ADAPTATIVE (CK) : rend une largeur en unités MONDE à passer DIRECTEMENT à draw_* (le /zoom est
+## déjà fait). `base·zoom` = px ÉCRAN voulu à taille monde constante, borné aux rails [min,max] de lisibilité.
+## min_px == max_px ⇒ se réduit ALGÉBRIQUEMENT à `min_px/zoom` (px écran constant, l'ancien comportement).
+## ⚠ NE JAMAIS écrire `_w(...)/zoom` (le /zoom est inclus) ; ne PAS router des longueurs/motifs ici.
+func _w(zoom: float, base_world: float, min_px: float, max_px: float) -> float:
+	return clampf(base_world * zoom, min_px, max_px) / maxf(zoom, 0.0001)
+
 func _draw_band(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2Array, outline: Color, inline: Color, zoom: float) -> void:
 	var nseg := norms.size()
 	if nseg < 1:
@@ -624,7 +645,8 @@ func _draw_band(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2Array,
 			layer[i * 2 + 1] = segs[i * 2 + 1] + ni * off
 		var proj := _project_segs_iso(mv, layer)
 		if proj.size() >= 2:
-			draw_multiline(proj, Color(col.r, col.g, col.b, a), LAYER_W_PX / zoom, true)
+			# CK : la bande d'empire est SOUDÉE au terrain (s'épaissit à l'approche), bornée aux rails.
+			draw_multiline(proj, Color(col.r, col.g, col.b, a), _w(zoom, ZW_EMPIRE_BASE, ZW_EMPIRE_MIN, ZW_EMPIRE_MAX), true)
 
 ## LISERÉ de capitale : un SEUL trait FIN pourpre sourd, posé JUSTE à l'intérieur du contour (décalé
 ## le long de la normale intérieure) — un filet discret, PAS une bande qui prend toute la capitale.
@@ -990,9 +1012,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 				# 1px provinces NOIRES : fort feutrage (3 passes du large doux au cœur fin) → l'escalier
 				# des arêtes se fond (anti-alias), aspect tracé à l'encre, plus de marches.
 				var fink := Color(0.07, 0.06, 0.05, fine_a)
-				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.22), 3.2 / zoom, true)
-				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.5), 1.8 / zoom, true)
-				draw_multiline(fseg, fink, 0.9 / zoom, true)
+				# CK : la trame de provinces reste un CHEVEU (cœur ≤1.3px) — elle ÉMERGE par le fondu, ne
+				# DOMINE jamais la bande d'empire ; chaque passe a ses propres rails (le feutrage est encodé).
+				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.22), _w(zoom, 1.6, 2.4, 4.5), true)
+				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.5), _w(zoom, 0.9, 1.4, 2.6), true)
+				draw_multiline(fseg, fink, _w(zoom, 0.45, 0.7, 1.3), true)
 	# BLOCS : RUBAN BLENDÉ (dégradé extérieur→intérieur). OUTLINE = CULTURE (héritage) ; INLINE = ÉTHOS
 	# (martial↔ordre) ; cités-états or↔argent. Puis le LISERÉ POURPRE FIN de chaque capitale, AU-DESSUS.
 	for entity in _b_segs:
@@ -1027,8 +1051,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if alldash.size() >= 2:
 				# CARTE PIRATE : direction en POINTILLÉ FIN — un seul trait délicat (halo MINUSCULE qui ne
 				# comble pas les trous), sépia léger. Allégé (plus de gros web brun).
-				draw_multiline(alldash, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b, ROAD_INK.a * 0.22), 2.1 / zoom, true)
-				draw_multiline(alldash, ROAD_INK, 1.2 / zoom, true)
+				# CK : les routes s'épaississent légèrement à l'approche (rails serrés ; le MOTIF dash/gap
+				# reste en px écran — on ne route JAMAIS ROAD_DASH/ROAD_GAP par _w).
+				draw_multiline(alldash, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b, ROAD_INK.a * 0.22), _w(zoom, 0.5, 1.6, 2.6), true)
+				draw_multiline(alldash, ROAD_INK, _w(zoom, 0.28, 1.0, 1.5), true)
 
 	# ── VILLES : glyphe d'encre par région (taille ∝ tier), capitale étoilée. ──
 	if zoom >= CITY_ZOOM_MIN:
@@ -1065,7 +1091,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if dw.x >= 0:
 				draw_line(ctr, mv.iso_pos(dw.x, dw.y), Color(_phase_color(phase), 0.7), 1.4 / zoom)
 		var s := 5.0 / zoom
-		draw_circle(ctr, s + 1.8 / zoom, Color(_phase_color(phase), 0.9))
+		draw_circle(ctr, s + _w(zoom, 0.45, 1.4, 2.6), Color(_phase_color(phase), 0.9))  # anneau de phase : respire à l'approche, borné
 		var diamond := PackedVector2Array([
 			ctr + Vector2(0, -s), ctr + Vector2(s, 0), ctr + Vector2(0, s), ctr + Vector2(-s, 0)])
 		draw_colored_polygon(diamond, col)
@@ -1133,7 +1159,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var t := Time.get_ticks_msec() / 1000.0
 			for k in range(3):
 				var rad := (7.0 + k * 6.0 + fmod(t * 5.0, 6.0)) / zoom
-				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), 1.0 / zoom, true)
+				# §27 : l'anneau d'épicentre DOIT se lire au plan large (drame global) ; trait borné, le rayon de pulse reste /zoom.
+				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), _w(zoom, 0.35, 1.2, 2.4), true)
 
 ## glyphe de ville à l'encre : cercle crème cerné d'encre, taille ∝ tier ; capitale (tier≥4) étoilée.
 func _draw_town(ip: Vector2, tier: int, zoom: float, ink: Color) -> void:
