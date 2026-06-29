@@ -130,8 +130,12 @@ const ETHOS_PIG := [
 	Color(0.78, 0.67, 0.47),   ## Mercantile  : ocre pâle
 	Color(0.60, 0.66, 0.61),   ## Pacifiste   : sauge douce
 ]
-const BORDER_JIT := 0.18  ## amplitude du wobble « plume » des frontières d'EMPIRE (unités monde) — continuité
-const FINE_JIT   := 0.5   ## wobble PLUS FORT de la trame fine (provinces) → casse l'escalier des arêtes
+# LISSAGE des frontières (escaliers → courbes) : on casse d'abord la FRÉQUENCE de l'escalier
+# (ré-échantillonnage grossier + passe-bas Laplacien), PUIS on arrondit (Chaikin). Chaikin seul ne
+# faisait qu'arrondir les marches (« escaliers courbés ») — il faut DÉPLACER les points hors des marches.
+const SMOOTH_RESAMPLE := 3.0  ## pas de ré-échantillonnage (cellules) — > 1 cellule ⇒ casse la fréquence des marches
+const SMOOTH_LAPLACIAN := 4   ## itérations de moyenne mobile (passe-bas : aplatit l'escalier vers la diagonale)
+const SMOOTH_CHAIKIN := 2     ## passes de corner-cutting (arrondi final de la courbe)
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
@@ -528,10 +532,16 @@ func _rebuild_borders() -> void:
 	var w = Sim.world
 	if w == null:
 		return
-	# 1px : la TRAME FINE — provinces (0) + régions (1), FORTEMENT jittée (casse l'escalier des arêtes).
+	# TRAME FINE (provinces 0 + régions 1) : CHAÎNÉE en polylignes ordonnées puis Chaikin → COURBES
+	# (fin de l'escalier — les arêtes de cellule deviennent un tracé lissé, pas des marches).
+	var fine_raw := PackedVector2Array()
+	fine_raw.append_array(w.border_segments(0))
+	fine_raw.append_array(w.border_segments(1))
 	var fine := PackedVector2Array()
-	fine.append_array(_jitter_segs(w.border_segments(0), FINE_JIT))
-	fine.append_array(_jitter_segs(w.border_segments(1), FINE_JIT))
+	for ch in _chain_segments(fine_raw):
+		var poly: PackedVector2Array = _smooth_poly(ch)
+		for i in range(poly.size() - 1):
+			fine.push_back(poly[i]); fine.push_back(poly[i + 1])
 	_borders[0] = fine
 	# BLOCS (2) en RUBAN int.→ext. : par ENTITÉ, on bâtit l'INLINE (décalé vers l'intérieur, ton clair)
 	# et l'OUTLINE (sur l'arête, ton foncé), le long de la normale extérieure. La façade exclut les côtes
@@ -544,12 +554,12 @@ func _rebuild_borders() -> void:
 	var own: PackedInt32Array = cd.get("owner", PackedInt32Array())
 	var oth: PackedInt32Array = cd.get("other", PackedInt32Array())
 	var role_cache := {}
+	var ent_flat := {}    # entité → paires BRUTES (non jittées, entières → chaînables par sommet partagé)
+	var ent_nrm := {}     # entité → normale INTÉRIEURE par segment (parallèle à ent_flat)
 	for i in range(own.size()):
 		var o: int = own[i]
 		var ot: int = oth[i] if i < oth.size() else -1
 		var n: Vector2 = nrm[i] if i < nrm.size() else Vector2.ZERO   # extérieur DEPUIS own
-		var pa: Vector2 = pts[i * 2] + _jit(pts[i * 2])
-		var pb: Vector2 = pts[i * 2 + 1] + _jit(pts[i * 2 + 1])
 		if not role_cache.has(o):
 			role_cache[o] = int(w.country_role(o))
 		# ENTITÉ qui colore + DIRECTION de son intérieur : par défaut `own` (intérieur = −normale).
@@ -561,13 +571,16 @@ func _rebuild_borders() -> void:
 				role_cache[ot] = int(w.country_role(ot))
 			if int(role_cache[ot]) == 2:
 				entity = ot; idir = 1.0
-		if not _b_segs.has(entity):
-			_b_segs[entity] = PackedVector2Array()
-			_b_norm[entity] = PackedVector2Array()
-		var s: PackedVector2Array = _b_segs[entity]
-		s.push_back(pa); s.push_back(pb); _b_segs[entity] = s
-		var nm: PackedVector2Array = _b_norm[entity]
-		nm.push_back(n * idir); _b_norm[entity] = nm        # normale vers l'INTÉRIEUR de l'entité
+		if not ent_flat.has(entity):
+			ent_flat[entity] = PackedVector2Array(); ent_nrm[entity] = PackedVector2Array()
+		var ef: PackedVector2Array = ent_flat[entity]
+		ef.push_back(pts[i * 2]); ef.push_back(pts[i * 2 + 1]); ent_flat[entity] = ef
+		var en: PackedVector2Array = ent_nrm[entity]
+		en.push_back(n * idir); ent_nrm[entity] = en        # normale vers l'INTÉRIEUR de l'entité
+	# CHAÎNE + Chaikin chaque entité → ruban en COURBES (normale intérieure recalculée le long du tracé).
+	for entity in ent_flat:
+		var r := _smooth_border(ent_flat[entity], ent_nrm[entity])
+		_b_segs[entity] = r[0]; _b_norm[entity] = r[1]
 	# CAPITALES : contour de la province-capitale de chaque EMPIRE → liseré POURPRE (au-dessus).
 	_cap_segs.clear()
 	_cap_norm.clear()
@@ -583,13 +596,196 @@ func _rebuild_borders() -> void:
 		var rn: PackedVector2Array = rc.get("nrm", PackedVector2Array())
 		if rp.size() < 2:
 			continue
-		var cs := PackedVector2Array(); var cn := PackedVector2Array()
+		var inrm := PackedVector2Array(); inrm.resize(rn.size())
 		for i in range(rn.size()):
-			cs.push_back(rp[i * 2] + _jit(rp[i * 2])); cs.push_back(rp[i * 2 + 1] + _jit(rp[i * 2 + 1]))
-			cn.push_back(-rn[i])                             # normale extérieure → on stocke l'INTÉRIEURE
-		_cap_segs[c] = cs; _cap_norm[c] = cn
+			inrm[i] = -rn[i]                                 # normale extérieure → INTÉRIEURE
+		var rcap := _smooth_border(rp, inrm)             # chaîné + lissé (liseré en courbe)
+		_cap_segs[c] = rcap[0]; _cap_norm[c] = rcap[1]
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
+
+# ── LISSAGE GÉOMÉTRIQUE DES FRONTIÈRES (escaliers → courbes) ──────────────────────────────────────
+# La façade rend les arêtes en SEGMENTS UNITAIRES alignés sur la grille (escalier par construction). Le
+# SSAA n'y change rien (c'est de la GÉOMÉTRIE, pas de l'aliasing). On CHAÎNE donc les segments en
+# polylignes ordonnées puis on les courbe par Chaikin — comme les routes. Pour le RUBAN, la normale
+# INTÉRIEURE est recalculée le long de la courbe (l'intérieur d'une chaîne de frontière reste d'un côté
+# constant → décidé au 1er segment via la normale d'origine).
+
+## clé entière d'un point de grille (coords façade = entiers, ≤1024×512) → identité de sommet stable.
+func _node_key(p: Vector2) -> int:
+	return int(round(p.x)) * 4096 + int(round(p.y))
+
+## CHAÎNE une soupe de segments (paires) en polylignes ordonnées. Jonctions (degré≠2) = fin de chaîne ;
+## boucles fermées gérées. Retour : Array[PackedVector2Array].
+func _chain_segments(flat: PackedVector2Array) -> Array:
+	var ctx := _chain_build(flat)
+	var chains := []
+	for ch in _chain_walk_all(ctx):
+		chains.append(ch["poly"])
+	return chains
+
+## CHAÎNE avec NORMALE : comme _chain_segments mais renvoie aussi le côté INTÉRIEUR par chaîne (in_left),
+## déduit de la normale d'origine du 1er segment. Retour : Array[{poly, in_left}].
+func _chain_segments_n(flat: PackedVector2Array, enrm: PackedVector2Array) -> Array:
+	var ctx := _chain_build(flat)
+	ctx["nrm"] = enrm
+	return _chain_walk_all(ctx)
+
+## construit l'index de chaînage (sommets, adjacence) — partagé par les deux variantes.
+func _chain_build(flat: PackedVector2Array) -> Dictionary:
+	var nseg := flat.size() >> 1
+	var node_pt := []            # id → Vector2
+	var key2id := {}             # clé → id
+	var sa := PackedInt32Array(); var sb := PackedInt32Array()
+	sa.resize(nseg); sb.resize(nseg)
+	var adj := {}                # id → Array[seg]
+	for i in range(nseg):
+		var ka := _node_key(flat[i * 2]); var kb := _node_key(flat[i * 2 + 1])
+		var ia: int = key2id.get(ka, -1)
+		if ia < 0:
+			ia = node_pt.size(); key2id[ka] = ia; node_pt.append(flat[i * 2]); adj[ia] = []
+		var ib: int = key2id.get(kb, -1)
+		if ib < 0:
+			ib = node_pt.size(); key2id[kb] = ib; node_pt.append(flat[i * 2 + 1]); adj[ib] = []
+		sa[i] = ia; sb[i] = ib
+		adj[ia].append(i); adj[ib].append(i)
+	return {"sa": sa, "sb": sb, "adj": adj, "node_pt": node_pt, "nseg": nseg, "flat": flat}
+
+## parcourt toutes les chaînes : départs aux noeuds de degré≠2 (bouts/jonctions), puis boucles restantes.
+func _chain_walk_all(ctx: Dictionary) -> Array:
+	var adj: Dictionary = ctx["adj"]
+	var sa: PackedInt32Array = ctx["sa"]
+	var nseg: int = ctx["nseg"]
+	var node_pt: Array = ctx["node_pt"]
+	var used := PackedByteArray(); used.resize(nseg)
+	var has_n: bool = ctx.has("nrm")
+	var chains := []
+	for nid in range(node_pt.size()):
+		var inc: Array = adj[nid]
+		if inc.size() == 2:
+			continue
+		for si in inc:
+			if used[si] == 0:
+				chains.append(_chain_one(si, nid, ctx, used, has_n))
+	for i in range(nseg):
+		if used[i] == 0:
+			chains.append(_chain_one(i, sa[i], ctx, used, has_n))
+	return chains
+
+## suit UNE chaîne depuis (start_seg, start_node) jusqu'à une jonction / un bout / le bouclage.
+func _chain_one(start_seg: int, start_node: int, ctx: Dictionary, used: PackedByteArray, has_n: bool) -> Dictionary:
+	var sa: PackedInt32Array = ctx["sa"]
+	var sb: PackedInt32Array = ctx["sb"]
+	var adj: Dictionary = ctx["adj"]
+	var node_pt: Array = ctx["node_pt"]
+	var poly := PackedVector2Array()
+	var cur := start_node
+	poly.push_back(node_pt[cur])
+	# côté INTÉRIEUR (pour le ruban) : direction de marche vs normale d'origine du 1er segment.
+	var in_left := true
+	if has_n:
+		var nrm: PackedVector2Array = ctx["nrm"]
+		var nxt0: int = sb[start_seg] if sa[start_seg] == cur else sa[start_seg]
+		var d0: Vector2 = node_pt[nxt0] - node_pt[cur]
+		in_left = nrm[start_seg].dot(Vector2(-d0.y, d0.x)) > 0.0
+	var seg := start_seg
+	while true:
+		used[seg] = 1
+		var nxt: int = sb[seg] if sa[seg] == cur else sa[seg]
+		poly.push_back(node_pt[nxt])
+		cur = nxt
+		var inc: Array = adj[cur]
+		if inc.size() != 2:
+			break
+		var nseg2 := -1
+		for s in inc:
+			if used[s] == 0:
+				nseg2 = s
+		if nseg2 < 0:
+			break
+		seg = nseg2
+	return {"poly": poly, "in_left": in_left}
+
+## Chaikin (corner-cutting) : détecte la BOUCLE (1er≈dernier) → lissée cycliquement ; sinon extrémités fixes.
+func _chaikin(poly: PackedVector2Array, passes: int) -> PackedVector2Array:
+	var p := poly
+	for _it in range(passes):
+		var n := p.size()
+		if n < 3:
+			break
+		var closed := p[0].distance_to(p[n - 1]) < 0.001
+		var out := PackedVector2Array()
+		if closed:
+			var src := p.slice(0, n - 1)
+			var m := src.size()
+			for i in range(m):
+				var a: Vector2 = src[i]; var b: Vector2 = src[(i + 1) % m]
+				out.push_back(a * 0.75 + b * 0.25); out.push_back(a * 0.25 + b * 0.75)
+			out.push_back(out[0])                 # referme la boucle
+		else:
+			out.push_back(p[0])
+			for i in range(n - 1):
+				var a: Vector2 = p[i]; var b: Vector2 = p[i + 1]
+				out.push_back(a * 0.75 + b * 0.25); out.push_back(a * 0.25 + b * 0.75)
+			out.push_back(p[n - 1])
+		p = out
+	return p
+
+## LISSE une polyligne : ré-échantillonnage grossier (casse la fréquence de l'escalier) → passe-bas
+## Laplacien (aplatit les marches vers la diagonale) → Chaikin (arrondi). C'est le pipeline qui transforme
+## les marches en COURBE (et non plus en « escalier arrondi »). Détecte la boucle (extrémités préservées).
+func _smooth_poly(poly: PackedVector2Array) -> PackedVector2Array:
+	if poly.size() < 3:
+		return poly
+	var closed := poly[0].distance_to(poly[poly.size() - 1]) < 0.001
+	var p := _resample_polyline(poly, SMOOTH_RESAMPLE) if SMOOTH_RESAMPLE > 0.0 else poly
+	p = _laplacian(p, SMOOTH_LAPLACIAN, closed)
+	p = _chaikin(p, SMOOTH_CHAIKIN)
+	return p
+
+## passe-bas (moyenne mobile pondérée 0.25/0.5/0.25) — itérée. Boucle : cyclique (dédup de l'extrémité) ;
+## chaîne ouverte : extrémités FIXES (les jonctions restent jointes entre chaînes voisines).
+func _laplacian(poly: PackedVector2Array, iters: int, closed: bool) -> PackedVector2Array:
+	var n := poly.size()
+	if n < 3 or iters <= 0:
+		return poly
+	if closed:
+		var src := poly.slice(0, n - 1)
+		var m := src.size()
+		for _it in range(iters):
+			var out := PackedVector2Array(); out.resize(m)
+			for i in range(m):
+				out[i] = src[i] * 0.5 + (src[(i - 1 + m) % m] + src[(i + 1) % m]) * 0.25
+			src = out
+		src.push_back(src[0])                  # referme la boucle
+		return src
+	var p := poly
+	for _it in range(iters):
+		var out := PackedVector2Array(); out.resize(n)
+		out[0] = p[0]; out[n - 1] = p[n - 1]   # extrémités fixes (jonctions)
+		for i in range(1, n - 1):
+			out[i] = p[i] * 0.5 + (p[i - 1] + p[i + 1]) * 0.25
+		p = out
+	return p
+
+## chaîne + lisse une soupe de segments à NORMALE → [segs (paires), norms (intérieure/segment)].
+## La normale est perpendiculaire à la COURBE locale, orientée selon le côté intérieur de la chaîne.
+func _smooth_border(flat: PackedVector2Array, enrm: PackedVector2Array) -> Array:
+	var out_segs := PackedVector2Array(); var out_norm := PackedVector2Array()
+	for ch in _chain_segments_n(flat, enrm):
+		var poly: PackedVector2Array = _smooth_poly(ch["poly"])
+		if poly.size() < 2:
+			continue
+		var in_left: bool = ch["in_left"]
+		for i in range(poly.size() - 1):
+			var a: Vector2 = poly[i]; var b: Vector2 = poly[i + 1]
+			var dd: Vector2 = b - a
+			if dd.length() < 0.00001:
+				continue
+			out_segs.push_back(a); out_segs.push_back(b)
+			var nn := Vector2(-dd.y, dd.x) if in_left else Vector2(dd.y, -dd.x)
+			out_norm.push_back(nn.normalized())
+	return [out_segs, out_norm]
 
 ## assombrit/éclaircit un pigment d'un cheveu (variation par pays SANS sortir de la gamme : on touche
 ## la VALEUR seulement, jamais la teinte → pas de dérive néon). `dv` ∈ ~[-0.06, +0.06].
@@ -666,22 +862,6 @@ func _draw_cap_lisere(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2
 		draw_multiline(proj, Color(CAP_INK.r, CAP_INK.g, CAP_INK.b, 0.28), 2.2 / zoom, true)  # halo doux
 		draw_multiline(proj, Color(CAP_INK.r, CAP_INK.g, CAP_INK.b, 0.85), 1.1 / zoom, true)  # filet net
 
-## offset déterministe ∝ position (hash), amplitude `amt` ; MÊME point monde → MÊME offset (segments
-## partagés restent JOINTS, pas de trou). L'effet plume/calligraphie + casse l'escalier des arêtes.
-func _jit_a(p: Vector2, amt: float) -> Vector2:
-	var a := sin(p.x * 12.9898 + p.y * 78.233) * 43758.5453
-	var b := sin(p.x * 39.346 + p.y * 11.135) * 24634.6345
-	return Vector2((a - floor(a)) - 0.5, (b - floor(b)) - 0.5) * amt
-
-func _jit(p: Vector2) -> Vector2:
-	return _jit_a(p, BORDER_JIT)
-
-func _jitter_segs(segs: PackedVector2Array, amt := BORDER_JIT) -> PackedVector2Array:
-	var out := PackedVector2Array()
-	out.resize(segs.size())
-	for i in range(segs.size()):
-		out[i] = segs[i] + _jit_a(segs[i], amt)
-	return out
 
 ## TRAIT DE PINCEAU : pile de passes translucides (bave d'encre) du LARGE plumé au cœur dense,
 ## TOUTES antialiasées → feutre le crénelage des arêtes + bord doux = effet brosse. `core_w`/`feather`

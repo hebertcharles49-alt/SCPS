@@ -1214,6 +1214,28 @@
   fichier C) ⇒ **golden IDENTIQUE**, déterminisme/save intacts, pas de rebuild DLL. Dialable d'une ligne
   (`ZW_EMPIRE_MAX` ↓ si lourd).
 
+- **GODOT parchemin — FRONTIÈRES EN COURBES (escaliers → tracé lissé) (2026-06-29)** : la façade rend
+  les arêtes en SEGMENTS UNITAIRES alignés sur la grille (escalier par CONSTRUCTION) — le SSAA/MSAA n'y
+  change rien (c'est de la GÉOMÉTRIE, pas de l'aliasing ; vérifié : un ×4 surfacique donne un escalier
+  proprement dessiné, pas une courbe). On lisse donc la GÉOMÉTRIE, display-only dans `overlay.gd`.
+  **Pipeline** (3 étages, le 1er Chaikin seul ne faisait qu'« arrondir les marches ») : (1) **CHAÎNAGE**
+  de la soupe de segments en polylignes ORDONNÉES (`_chain_segments`/`_chain_segments_n` : index de
+  sommets entiers, adjacence, marche jusqu'aux jonctions degré≠2 ou bouclage ; pour le ruban, le côté
+  INTÉRIEUR est déduit de la normale d'origine du 1er segment et tenu sur toute la chaîne). (2)
+  **`_smooth_poly`** = ré-échantillonnage grossier (`SMOOTH_RESAMPLE` 3.0 cellules — **casse la FRÉQUENCE
+  de l'escalier**) → passe-bas **Laplacien** (`SMOOTH_LAPLACIAN` 4 itérations — aplatit les marches vers
+  la diagonale, extrémités/jonctions FIXES, boucles cycliques) → **Chaikin** (`SMOOTH_CHAIKIN` 2 passes —
+  arrondi final). (3) Pour le ruban, la normale intérieure est **recalculée perpendiculaire à la COURBE**
+  locale (orientée par le côté de la chaîne). Appliqué à la trame fine (provinces+régions), aux bandes
+  d'empire et au liseré de capitale. Le **jitter** « plume » (`_jit_a`/`_jit_poly`, `BORDER_JIT`/`FINE_JIT`)
+  est RETIRÉ (il rajoutait du bruit ; la courbe EST le rendu voulu). **MSAA 2D** (`map_view.gd`) est GARDÉ
+  derrière `RenderingServer.get_rendering_device() != null` : il n'existe PAS sous GL Compatibility (GLES3,
+  warning) — il s'activera tout seul sous Forward+/Mobile ; sous GL Compat la netteté vient du lissage
+  géométrique + de l'antialiasing par-trait (`draw_* antialiased`). Vérifié au rendu (seeds 9/11, zooms
+  fit/mid/deep) : courbes lisses, pas de trou aux jonctions ni de province écrasée ; **0 warning**.
+  DISPLAY-ONLY (aucun fichier C) ⇒ **golden IDENTIQUE**, déterminisme/save intacts, pas de rebuild DLL.
+  Dialable : `SMOOTH_RESAMPLE`/`_LAPLACIAN`/`_CHAIKIN` ↑ = plus lisse (plus cher).
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.

@@ -44,8 +44,12 @@ func _ready() -> void:
 	_ground.scale = Vector2(1.0, TILT_Y)   # inclinaison : le sol est comprimé en Y comme l'overlay (iso_pos)
 	add_child(_ground)
 
-	# anti-crénelage 2D (côtes/encre nettes au zoom)
-	get_viewport().msaa_2d = Viewport.MSAA_4X
+	# anti-crénelage 2D MATÉRIEL (côtes/encre nettes au zoom) — UNIQUEMENT si le renderer le supporte.
+	# Le MSAA 2D n'existe PAS sous GL Compatibility (GLES3) : un RenderingDevice non-nul ⇒ Forward+/Mobile
+	# (Vulkan/D3D12/Metal) qui, lui, le gère. Sous GL Compatibility on saute (sinon warning), et la netteté
+	# vient du lissage géométrique des frontières + de l'antialiasing par-trait (draw_* `antialiased`).
+	if RenderingServer.get_rendering_device() != null:
+		get_viewport().msaa_2d = Viewport.MSAA_4X
 	_camera = Camera2D.new()
 	add_child(_camera)
 	_camera.make_current()
