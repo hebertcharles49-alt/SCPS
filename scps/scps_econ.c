@@ -983,16 +983,18 @@ void econ_init(WorldEconomy *e, const World *w) {
      * l'autre bout du monde). nearest-first → les plus proches d'abord. Chaque hameau :
      * WILD_POP (graine EXACTE), plafond WILD_CAP, réserve WILD_HOARD. WILD_PER_PLAYABLE=0 → aucun. */
     {
-        int wild_cid=-1;
-        for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_WILD){ wild_cid=c; break; }
+        /* slots WILD réservés (un par hameau) : chaque hameau prend le SUIVANT → entité distincte. */
+        static int wslots[SCPS_MAX_REG]; int n_wslots=0, wnext=0;
+        for (int c=0;c<w->n_countries && n_wslots<SCPS_MAX_REG;c++)
+            if (w->country[c].role==POLITY_WILD) wslots[n_wslots++]=c;
         int per=(int)tune_f("WILD_PER_PLAYABLE",2.f), hops=(int)tune_f("WILD_SPAWN_HOPS",3.f);
-        if (wild_cid>=0 && per>0 && hops>0){
+        if (n_wslots>0 && per>0 && hops>0){
             float wpop=tune_f("WILD_POP",750.f), wvar=tune_f("WILD_POP_VAR",0.f);
             float wcap=tune_f("WILD_CAP",1600.f), whoard=tune_f("WILD_HOARD",60.f), wfood=tune_f("WILD_FOOD",8.f);
-            /* Pose un hameau libre sur la région WS (graine exacte WILD_POP, sous ½·WILD_CAP). */
-            #define WILD_PLANT(WS) do { \
+            /* Pose un hameau sur WS, possédé par le slot WILD DISTINCT `wown` (graine WILD_POP, < ½·WILD_CAP). */
+            #define WILD_PLANT(WS, wown) do { \
                 int ws_=(WS); RegionEconomy *wre=&e->region[ws_]; \
-                wre->owner=(int16_t)wild_cid; wre->colonized=true; wre->culture.settled=true; \
+                wre->owner=(int16_t)(wown); wre->colonized=true; wre->culture.settled=true; \
                 wre->cap_pop=wcap; \
                 uint32_t hh=(uint32_t)ws_*2654435761u + (uint32_t)cid*40503u; \
                 hh ^= hh>>13; hh *= 0x85ebca6bu; hh ^= hh>>16; \
@@ -1019,14 +1021,15 @@ void econ_init(WorldEconomy *e, const World *w) {
                         if (!e->adj[r][s] || dist[s]>=0) continue;
                         dist[s]=dist[r]+1;
                         RegionEconomy *re=&e->region[s];
-                        if (re->active && !re->colonized && !re->impassable && re->cap_pop>0.f){
-                            WILD_PLANT(s); got++;
+                        if (re->active && !re->colonized && !re->impassable && re->cap_pop>0.f && wnext<n_wslots){
+                            WILD_PLANT(s, wslots[wnext]); wnext++; got++;   /* un slot WILD DISTINCT par hameau */
                         }
                         if (dist[s]<hops) q[qt++]=s;
                     }
                 }
             }
             #undef WILD_PLANT
+            (void)wnext;   /* les slots WILD non plantés repassent UNCLAIMED dans worldgen_seed_peoples (w non-const) */
         }
     }
 

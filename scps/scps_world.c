@@ -2130,9 +2130,16 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
     /* HAMEAUX LIBRES (POLITY_WILD) — on RÉSERVE un slot-pays (le 1er VIERGE après empires+
      * cités, par poids) comme PORTEUR des Peuples Libres ; econ_init y rattache les hameaux
      * (BFS près des jouables). WILD_PER_PLAYABLE=0 → désactivé (aucun slot réservé). */
+    /* On réserve UN slot WILD PAR HAMEAU à planter (per × nb de jouables) → chaque hameau libre est
+     * une ENTITÉ POLITIQUE DISTINCTE (id+nom propres) : en vassaliser/rallier un n'entraîne pas les
+     * autres. econ_init rattache un hameau par slot ; les slots non utilisés repassent UNCLAIMED. */
     if (tune_f("WILD_PER_PLAYABLE", 2.f) > 0.f){
-        for (int c=0;c<ncty;c++) if (w->country[c].role==POLITY_UNCLAIMED){
-            w->country[c].role=POLITY_WILD; break; }
+        int per=(int)tune_f("WILD_PER_PLAYABLE",2.f), nplay=0;
+        for (int c=0;c<ncty;c++)
+            if (w->country[c].role==POLITY_PLAYER || w->country[c].role==POLITY_ANTAGONIST) nplay++;
+        int need=per*nplay, got=0;
+        for (int c=0;c<ncty && got<need;c++) if (w->country[c].role==POLITY_UNCLAIMED){
+            w->country[c].role=POLITY_WILD; got++; }
     }
 
     /* Propage région/pays/continent sur les cellules (pour le rendu). */
@@ -2586,7 +2593,16 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
         char core[24]; place_make_name(core,(int)sizeof core, wr, (uint32_t)(o*131u+(uint32_t)r));
         snprintf(w->country[o].name,sizeof w->country[o].name,"%s %s", WILD_EPI[e], core);
         w->country[o].color = country_heritage_color(wr, o);
-        break;   /* un seul slot WILD (cf. réservation) */
+        /* PAS de break : CHAQUE slot WILD (un par hameau) reçoit SON nom + SA couleur, distincts. */
+    }
+    /* slots WILD réservés mais SANS région (pas de terre viable près du spawn) → repassent UNCLAIMED
+     * (pas de pays WILD vide). w est non-const ici (contrairement à econ_init). */
+    for (int c=0;c<w->n_countries;c++){
+        if (w->country[c].role!=POLITY_WILD) continue;
+        bool has=false;
+        for (int r=0;r<w->n_regions && r<econ->n_regions;r++)
+            if (econ->region[r].owner==c){ has=true; break; }
+        if (!has) w->country[c].role=POLITY_UNCLAIMED;
     }
 }
 

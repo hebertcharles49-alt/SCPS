@@ -1150,6 +1150,19 @@
   invisibles » — pour que le ruban se voie). ⚠ `ScpsSegC` +nx,ny ; binding +`country_ethos` +"nrm".
   DISPLAY/façade hors chronicle ⇒ **golden IDENTIQUE** ; déterminisme/save intacts. scons 0 warning.
 
+- **HAMEAUX LIBRES — UN SLOT PAR HAMEAU (entités politiques DISTINCTES) (2026-06-29)** : avant, TOUS
+  les hameaux libres partageaient UN seul slot-pays WILD → en vassaliser/rallier un les entraînait
+  tous. Désormais on réserve **un slot WILD par hameau** (`worldgen` : `need = WILD_PER_PLAYABLE ×
+  nb_jouables` slots UNCLAIMED passés WILD) et `econ_init` rattache **un hameau par slot** (compteur
+  `wnext` sur `wslots[]`) → chaque hameau est une ENTITÉ avec son **id + nom + couleur** propres ;
+  les slots réservés non plantés (pas de terre viable) repassent UNCLAIMED dans `worldgen_seed_peoples`
+  (w non-const). Le **nom tribal éthos-dépendant** (« Barbares/Maraudeurs/Clan/Tribu/Marchands libres/
+  Peuple libre XX ») est posé par slot (plus de `break`). Vassalisation/ralliement/conquête désormais
+  INDÉPENDANTS par hameau. ⚠ **RE-BASELINE golden** (les `region.owner` des hameaux passent d'un index
+  unique à des index distincts) ; `determinism` STABLE ; sweep SAIN (seed 9 : 10 entités WILD distinctes
+  à l'an-0, monde stable, hégémon mortel). `econ_init` reste `const World*` (le revert UNCLAIMED se fait
+  côté worldgen). `scps_country_role`==4 = WILD.
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
