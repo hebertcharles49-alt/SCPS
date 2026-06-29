@@ -1241,6 +1241,26 @@
   DISPLAY-ONLY (aucun fichier C) ⇒ **golden IDENTIQUE**, déterminisme/save intacts, pas de rebuild DLL.
   Dialable : `SMOOTH_RESAMPLE`/`_TAUBIN`/`_CHAIKIN` ↑ = plus lisse (plus cher).
 
+- **GODOT parchemin — DA « atlas » : frontières gravées (admin vs politique) + routes présentes (2026-06-29)** :
+  retour DA — les grosses lignes noires « disaient grille de jeu avant carte ». Trois gestes (overlay.gd,
+  display-only). (1) **PROVINCE = administrative, DISCRÈTE** : la trame fine passe du NOIR (3 passes
+  feutrées) au **brun sombre gravé** `PROV_INK` #2a2419, **−30 % d'opacité** (LOD max 0.45→0.34 ⇒ cœur
+  ≈ alpha 0.35) et **2 passes** seulement (halo doux + cœur ~1px). (2) **PAYS = politique, DOUBLE PASSE
+  GRAVÉE** (remplace l'ancien ruban blendé 5-couches) : `_draw_band` trace sur la ligne lissée un **halo
+  brun très sombre LARGE** (`POL_HALO` #17110b, α 0.45, `_w` 2.6→4.6px = le « creux » qui détache la
+  frontière du terrain) puis un **pigment politique FIN** (`_entity_pigment` = encre d'HÉRITAGE +
+  variation par pays sur la valeur, α 0.85, `_w` 1.4→2.4px). Sépare nettement admin (cheveu brun) du
+  politique (trait coloré net). Cités-états = or fané. (3) **ROUTES plus PRÉSENTES** : `ROAD_INK` passe
+  du sépia clair à une **encre BRUNE franche** (α 0.82) et les **ARTÈRES (niveau 0)** sont séparées des
+  dessertes/mineures (`ROAD_INK_MINOR`, pâle & fin) — batches distincts, artères plus épaisses + léger
+  halo « tracé à la plume ». Supprimés (orphelins du ruban blendé) : `N_BAND`/`BAND_*`/`LAYER_W_PX`/
+  `ZW_EMPIRE_*`/`ETHOS_PIG`/`CS_SILVER`/`_border_pair`. Vérifié au rendu (seed 9, fit/mid/deep/ville) :
+  hiérarchie admin<politique tenue, routes lisibles, parchemin respire ; **0 warning**. DISPLAY-ONLY ⇒
+  **golden IDENTIQUE**, déterminisme/save intacts, pas de rebuild DLL. À VENIR (priorités 3-4 du brief) :
+  EAU « statut carte » (shader : bleu vert-gris, liseré de lac, rivière ∝ débit, côte irrégulière) ·
+  PORTS visibles (⚠ besoin d'un reader façade `scps_region_has_port` + rebuild) · capitales en sceau ·
+  hachures de révolte (façade `agitation` déjà dispo) · lignes de commerce · sélection/survol lumineux.
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
