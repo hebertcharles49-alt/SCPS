@@ -174,7 +174,10 @@ public:
      * 0=province · 1=région · 2=pays. Port du balayage bseg de viewer.c. */
     PackedVector2Array border_segments(int level);
     Dictionary         border_segments_col(int level);   /* segments + owner + normale (dégradé int.→ext.) */
-    int                country_ethos(int c) const;        /* éthos dominant 0..5 (-1) — teinte ordre↔chaos */
+    int                country_ethos(int c) const;        /* éthos dominant 0..5 (-1) — inline ordre↔chaos */
+    int                country_heritage(int c) const;      /* héritage/culture 0..5 (-1) — outline par culture */
+    int                country_capital_region(int c) const; /* région-capitale (-1) */
+    Dictionary         region_border_segments(int region);  /* contour d'une région {pts,nrm} — liseré capitale */
 
     /* ROUTES : réseau à jonctions (A* « routes attirent routes »). Array de
      * Dictionary { points: PackedVector2Array (centres de cellule) · level: int

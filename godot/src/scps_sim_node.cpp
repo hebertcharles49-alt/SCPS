@@ -119,6 +119,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("border_segments", "level"),       &ScpsWorld::border_segments);
     ClassDB::bind_method(D_METHOD("border_segments_col", "level"),   &ScpsWorld::border_segments_col);
     ClassDB::bind_method(D_METHOD("country_ethos", "c"),             &ScpsWorld::country_ethos);
+    ClassDB::bind_method(D_METHOD("country_heritage", "c"),          &ScpsWorld::country_heritage);
+    ClassDB::bind_method(D_METHOD("country_capital_region", "c"),    &ScpsWorld::country_capital_region);
+    ClassDB::bind_method(D_METHOD("region_border_segments", "region"), &ScpsWorld::region_border_segments);
     ClassDB::bind_method(D_METHOD("road_paths"),                     &ScpsWorld::road_paths);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
@@ -1024,6 +1027,32 @@ Dictionary ScpsWorld::border_segments_col(int level) {
 
 int ScpsWorld::country_ethos(int c) const {
     return sim ? scps_country_ethos(sim, c) : -1;
+}
+
+int ScpsWorld::country_heritage(int c) const {
+    return sim ? scps_country_heritage(sim, c) : -1;
+}
+
+int ScpsWorld::country_capital_region(int c) const {
+    return sim ? scps_country_capital_region(sim, c) : -1;
+}
+
+Dictionary ScpsWorld::region_border_segments(int region) {
+    Dictionary d;
+    PackedVector2Array pts, nrm;
+    if (sim) {
+        static const int MAXSEG = 20000;
+        static ScpsSegC seg[MAXSEG];
+        int n = scps_region_border_segments(sim, region, seg, MAXSEG);
+        pts.resize(n * 2); nrm.resize(n);
+        for (int i = 0; i < n; i++) {
+            pts.set(i * 2,     Vector2(seg[i].x0, seg[i].y0));
+            pts.set(i * 2 + 1, Vector2(seg[i].x1, seg[i].y1));
+            nrm.set(i, Vector2(seg[i].nx, seg[i].ny));
+        }
+    }
+    d["pts"] = pts; d["nrm"] = nrm;
+    return d;
 }
 
 Array ScpsWorld::road_paths() {

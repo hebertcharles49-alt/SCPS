@@ -2604,6 +2604,44 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
             if (econ->region[r].owner==c){ has=true; break; }
         if (!has) w->country[c].role=POLITY_UNCLAIMED;
     }
+    /* ── UNICITÉ DES NOMS (pas deux pays identiques, mondes HUGE inclus) ── : si le nom d'un pays
+     * VIVANT répète celui d'un pays précédent, on RE-TIRE son CORE (l'épithète/préfixe gardé) avec une
+     * graine bumpée jusqu'à unicité ; fallback numéral (jamais atteint en pratique : 256 cores/héritage). */
+    for (int c=0;c<w->n_countries;c++){
+        if (w->country[c].role==POLITY_UNCLAIMED) continue;
+        for (int tries=0; tries<200; tries++){
+            bool dup=false;
+            for (int d=0; d<c; d++){
+                if (w->country[d].role==POLITY_UNCLAIMED) continue;
+                if (strcmp(w->country[c].name, w->country[d].name)==0){ dup=true; break; }
+            }
+            if (!dup) break;
+            /* préfixe = avant le 1er espace ; héritage = capitale (ou région WILD) */
+            char *sp=strchr(w->country[c].name,' ');
+            int pl=sp? (int)(sp - w->country[c].name) : 0;
+            if (pl>23) pl=23;
+            if (pl<0)  pl=0;
+            char prefix[24];
+            if (pl>0) memcpy(prefix, w->country[c].name, (size_t)pl);
+            prefix[pl]='\0';
+            int cp=w->country[c].capital_prov;
+            int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
+            Heritage hr=(cr>=0&&cr<econ->n_regions)? econ->region[cr].culture.heritage : HERITAGE_ADAPTATIF;
+            if (w->country[c].role==POLITY_WILD)
+                for (int r=0;r<w->n_regions && r<econ->n_regions;r++)
+                    if (econ->region[r].owner==c){ hr=econ->region[r].culture.heritage; break; }
+            char core[24];
+            place_make_name(core,(int)sizeof core, hr, (uint32_t)((c+1)*2654435761u + (uint32_t)(tries+1)*40503u));
+            /* on bâtit dans un grand tampon puis on COPIE borné dans name[32] (snprintf-safe, 0 warning) */
+            char tmp[80];
+            if (pl>0) snprintf(tmp,sizeof tmp,"%s %s", prefix, core);
+            else      snprintf(tmp,sizeof tmp,"%s", core);
+            if (tries>=190){ size_t l=strlen(tmp); snprintf(tmp+l,sizeof tmp-l,"-%d", c); }   /* fallback ultime */
+            size_t cl=strlen(tmp); size_t cap=sizeof w->country[c].name - 1;
+            if (cl>cap) cl=cap;
+            memcpy(w->country[c].name, tmp, cl); w->country[c].name[cl]='\0';   /* copie bornée (0 warning) */
+        }
+    }
 }
 
 /* ========================================================================
@@ -3837,12 +3875,15 @@ static const char *NAME_SUFF[HERITAGE_COUNT][4] = {
     {"iel","wen","dor","ond"}, {"gan","din","mar","rok"}, {"il","ex","top","yn"},
     {"or","wic","yan","red"},  {"ling","wick","by","ton"},  {"nak","dush","rak","gor"},
 };
-/* TOPONYME (lieu) : racine+suffixe du syllabaire de la RACE, SANS épithète d'éthos
- * (réservée aux empires). Déterministe par `seed` — sert aux Centres commerciaux. */
+/* terminaisons partagées (la moitié vides → noms courts gardés) → ×8 le nombre de combinaisons. */
+static const char *NAME_END[8] = { "", "", "a", "or", "yn", "el", "is", "ka" };
+/* TOPONYME (lieu) : racine+suffixe(+terminaison) du syllabaire de la RACE, SANS épithète d'éthos
+ * (réservée aux empires). Déterministe par `seed`. 8×4×8 = 256 variantes/héritage (anti-collision,
+ * mondes HUGE) ; l'unicité finale est GARANTIE par la passe de dédup (worldgen_seed_peoples). */
 void place_make_name(char *out, int n, Heritage heritage, uint32_t seed){
     int r=(heritage>=0&&heritage<HERITAGE_COUNT)?(int)heritage:HERITAGE_ADAPTATIF;
-    uint32_t h=(seed*2654435761u)^0x9E3779B9u;
-    snprintf(out,(size_t)n,"%s%s", NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3]);
+    uint32_t h=(seed*2654435761u)^0x9E3779B9u; h^=h>>13; h*=0x85ebca6bu; h^=h>>16;
+    snprintf(out,(size_t)n,"%s%s%s", NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3], NAME_END[(h>>13)&7]);
 }
 void country_make_name(char *out, int n, Heritage heritage, Ethos ethos, int cid){
     static const char *EPI[ETHOS_COUNT] = {   /* DOMINATEUR..PACIFISTE */

@@ -83,18 +83,25 @@ var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwe
 var _clear_set := {}      ## clairance 0-1 par cellule autour des villes (1 = cœur déboisé -> 0 = lisière) — fondu, pas binaire
 var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
 var _borders := {}        ## 0 = TRAME FINE (provinces+régions) → PackedVector2Array jittée
-# DÉGRADÉ de frontière façon Civ : un RUBAN par entité — trait DARK à l'EXTÉRIEUR (outline) + ton
-# CLAIR à l'INTÉRIEUR (inline), décalés le long de la normale int.→ext. La teinte suit l'éthos
-# (axe ordre↔chaos) ; les cités-états en or↔argent.
-var _b_in := {}           ## entité → PackedVector2Array : segments INLINE (intérieur, ton clair)
-var _b_out := {}          ## entité → PackedVector2Array : segments OUTLINE (extérieur, ton foncé)
-const BAND_IN := 1.0      ## décalage de l'inline vers l'INTÉRIEUR (unités monde)
-const BAND_OUT := 0.1     ## décalage de l'outline vers l'extérieur (≈ sur l'arête)
-const CS_GOLD := Color(0.62, 0.46, 0.10, 0.96)   ## OR (outline cité-état, extérieur)
+# DÉGRADÉ de frontière : un RUBAN par entité, BLENDÉ (N couches du ton EXTÉRIEUR au ton INTÉRIEUR,
+# décalées le long de la normale → vrai dégradé, pas deux traits posés). OUTLINE = CULTURE (héritage,
+# 6 familles + variation RGB par pays) ; INLINE = ÉTHOS (axe martial↔ordre, fluide). Cités-états or↔argent.
+var _b_segs := {}         ## entité → PackedVector2Array : segments de frontière (jittés)
+var _b_norm := {}         ## entité → PackedVector2Array : normale vers l'INTÉRIEUR, 1 par segment
+var _cap_segs := {}       ## pays → PackedVector2Array : contour de sa CAPITALE (liseré pourpre)
+var _cap_norm := {}       ## pays → PackedVector2Array : normale intérieure du contour capitale
+const CAP_OUT := Color(0.34, 0.10, 0.42, 0.95)   ## pourpre FONCÉ (outline capitale)
+const CAP_IN  := Color(0.74, 0.42, 0.90, 0.92)   ## pourpre CLAIR (inline capitale)
+const N_BAND := 5         ## nb de couches du blend (extérieur→intérieur)
+const BAND_OUT_PX := 1.0  ## décalage EXTÉRIEUR de la 1re couche (px écran)
+const BAND_IN_PX := 4.2   ## décalage INTÉRIEUR de la dernière (px écran)
+const LAYER_W_PX := 2.6   ## largeur d'une couche (px écran) — > l'espacement ⇒ les couches se FONDENT
+const CS_GOLD := Color(0.66, 0.49, 0.11, 0.96)   ## OR (outline cité-état, extérieur)
 const CS_SILVER := Color(0.93, 0.92, 0.84, 0.92) ## ARGENT/crème (inline cité-état, intérieur)
-## teinte par ÉTHOS sur l'axe ordre↔chaos (index DOMINATEUR·HONNEUR·ORDRE·BUREAUCRATE·MERCANTILE·PACIFISTE) :
-## chaos = chaud (rouge/orange) · ordre = froid (bleu/cyan). Outline = teinte SATURÉE, inline = teinte CLAIRE.
-const ETHOS_HUE := [0.00, 0.07, 0.60, 0.50, 0.13, 0.53]
+## OUTLINE par HÉRITAGE (6 cultures) : Éso · Métal · Méca · Adapt · Agra · Clan — teintes distinctes.
+const HERITAGE_HUE := [0.58, 0.04, 0.13, 0.34, 0.11, 0.92]
+## INLINE par ÉTHOS sur l'axe MARTIAL↔ORDRE (Dom·Hon·Ordre·Bur·Merc·Pac) : martial chaud → ordre froid.
+const ETHOS_INLINE_HUE := [0.02, 0.06, 0.55, 0.50, 0.12, 0.58]
 const BORDER_JIT := 0.18  ## amplitude du wobble « plume » des frontières d'EMPIRE (unités monde) — continuité
 const FINE_JIT   := 0.5   ## wobble PLUS FORT de la trame fine (provinces) → casse l'escalier des arêtes
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
@@ -501,8 +508,8 @@ func _rebuild_borders() -> void:
 	# BLOCS (2) en RUBAN int.→ext. : par ENTITÉ, on bâtit l'INLINE (décalé vers l'intérieur, ton clair)
 	# et l'OUTLINE (sur l'arête, ton foncé), le long de la normale extérieure. La façade exclut les côtes
 	# d'EMPIRE (le rivage suffit) mais GARDE celles des cités-états (leur ruban or-argent doit se voir).
-	_b_in.clear()
-	_b_out.clear()
+	_b_segs.clear()
+	_b_norm.clear()
 	var cd: Dictionary = w.border_segments_col(2)
 	var pts: PackedVector2Array = cd.get("pts", PackedVector2Array())
 	var nrm: PackedVector2Array = cd.get("nrm", PackedVector2Array())
@@ -521,38 +528,77 @@ func _rebuild_borders() -> void:
 		# Si une CITÉ-ÉTAT est de l'AUTRE côté, c'est ELLE qui colore (intérieur = +normale).
 		var entity := o
 		var idir := -1.0
-		if int(role_cache[o]) == 2:
-			idir = -1.0
-		elif ot >= 0:
+		if int(role_cache[o]) != 2 and ot >= 0:
 			if not role_cache.has(ot):
 				role_cache[ot] = int(w.country_role(ot))
 			if int(role_cache[ot]) == 2:
 				entity = ot; idir = 1.0
-		var ni := n * idir                                # vers l'INTÉRIEUR de l'entité
-		if not _b_in.has(entity):
-			_b_in[entity] = PackedVector2Array()
-			_b_out[entity] = PackedVector2Array()
-		var ai: PackedVector2Array = _b_in[entity]
-		ai.push_back(pa + ni * BAND_IN); ai.push_back(pb + ni * BAND_IN); _b_in[entity] = ai
-		var ao: PackedVector2Array = _b_out[entity]
-		ao.push_back(pa - ni * BAND_OUT); ao.push_back(pb - ni * BAND_OUT); _b_out[entity] = ao
+		if not _b_segs.has(entity):
+			_b_segs[entity] = PackedVector2Array()
+			_b_norm[entity] = PackedVector2Array()
+		var s: PackedVector2Array = _b_segs[entity]
+		s.push_back(pa); s.push_back(pb); _b_segs[entity] = s
+		var nm: PackedVector2Array = _b_norm[entity]
+		nm.push_back(n * idir); _b_norm[entity] = nm        # normale vers l'INTÉRIEUR de l'entité
+	# CAPITALES : contour de la province-capitale de chaque EMPIRE → liseré POURPRE (au-dessus).
+	_cap_segs.clear()
+	_cap_norm.clear()
+	for c in range(w.country_count()):
+		var rl := int(w.country_role(c))
+		if rl != 0 and rl != 1:                              # empires (joueur/IA) seulement
+			continue
+		var creg := int(w.country_capital_region(c))
+		if creg < 0:
+			continue
+		var rc: Dictionary = w.region_border_segments(creg)
+		var rp: PackedVector2Array = rc.get("pts", PackedVector2Array())
+		var rn: PackedVector2Array = rc.get("nrm", PackedVector2Array())
+		if rp.size() < 2:
+			continue
+		var cs := PackedVector2Array(); var cn := PackedVector2Array()
+		for i in range(rn.size()):
+			cs.push_back(rp[i * 2] + _jit(rp[i * 2])); cs.push_back(rp[i * 2 + 1] + _jit(rp[i * 2 + 1]))
+			cn.push_back(-rn[i])                             # normale extérieure → on stocke l'INTÉRIEURE
+		_cap_segs[c] = cs; _cap_norm[c] = cn
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
 
-## paire [outline FONCÉ (extérieur), inline CLAIR (intérieur)] d'une entité : cité-état or↔argent,
-## sinon empire teinté par l'ÉTHOS (axe ordre↔chaos) ; repli = couleur de pays.
+## paire [outline (extérieur), inline (intérieur)] : OUTLINE par HÉRITAGE (culture, 6 familles +
+## variation RGB par pays) ; INLINE par ÉTHOS (axe martial↔ordre) ; cité-état or↔argent.
 func _border_pair(e: int) -> Array:
 	if e < 0:
 		return [Color(0.20, 0.14, 0.09, 0.92), Color(0.55, 0.46, 0.34, 0.85)]
 	if int(Sim.world.country_role(e)) == 2:
 		return [CS_GOLD, CS_SILVER]
-	var eth := int(Sim.world.country_ethos(e))
-	if eth >= 0 and eth < ETHOS_HUE.size():
-		var hue: float = ETHOS_HUE[eth]
-		return [Color.from_hsv(hue, 0.72, 0.52, 0.95), Color.from_hsv(hue, 0.40, 0.93, 0.9)]
-	var c := _country_color(e)
-	return [Color(c.r * 0.45, c.g * 0.45, c.b * 0.45, 0.95),
-			Color(c.r * 0.5 + 0.5, c.g * 0.5 + 0.5, c.b * 0.5 + 0.5, 0.9)]
+	var h := int(Sim.world.country_heritage(e))
+	var ohue: float = HERITAGE_HUE[h] if (h >= 0 and h < HERITAGE_HUE.size()) else fmod(float(e) * 0.137, 1.0)
+	var jr := _h1(float(e) * 1.73)                          # variation par pays (cohérente dans la famille)
+	var jv := _h1(float(e) * 3.11)
+	var outline := Color.from_hsv(fposmod(ohue + (jr - 0.5) * 0.05, 1.0), 0.62, 0.50 + (jv - 0.5) * 0.12, 0.95)
+	var et := int(Sim.world.country_ethos(e))
+	var ihue: float = ETHOS_INLINE_HUE[et] if (et >= 0 and et < ETHOS_INLINE_HUE.size()) else ohue
+	var inline := Color.from_hsv(ihue, 0.42, 0.93, 0.9)
+	return [outline, inline]
+
+## RUBAN BLENDÉ : N couches de l'extérieur (outline) à l'intérieur (inline), décalées le long de la
+## normale intérieure (px ÉCRAN ÷ zoom) et teintées par lerp → un vrai DÉGRADÉ, pas deux traits.
+func _draw_band(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2Array, outline: Color, inline: Color, zoom: float) -> void:
+	var nseg := norms.size()
+	if nseg < 1:
+		return
+	for k in range(N_BAND):
+		var t := float(k) / float(N_BAND - 1)
+		var off := lerpf(-BAND_OUT_PX, BAND_IN_PX, t) / zoom      # extérieur(−) → intérieur(+), en monde
+		var col := outline.lerp(inline, t)
+		var layer := PackedVector2Array()
+		layer.resize(segs.size())
+		for i in range(nseg):
+			var ni: Vector2 = norms[i]
+			layer[i * 2] = segs[i * 2] + ni * off
+			layer[i * 2 + 1] = segs[i * 2 + 1] + ni * off
+		var proj := _project_segs_iso(mv, layer)
+		if proj.size() >= 2:
+			draw_multiline(proj, col, LAYER_W_PX / zoom, true)
 
 ## offset déterministe ∝ position (hash), amplitude `amt` ; MÊME point monde → MÊME offset (segments
 ## partagés restent JOINTS, pas de trou). L'effet plume/calligraphie + casse l'escalier des arêtes.
@@ -903,16 +949,13 @@ func _draw_iso(w, mv: Node2D) -> void:
 				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.22), 3.2 / zoom, true)
 				draw_multiline(fseg, Color(fink.r, fink.g, fink.b, fine_a * 0.5), 1.8 / zoom, true)
 				draw_multiline(fseg, fink, 0.9 / zoom, true)
-	# BLOCS : RUBAN façon Civ — inline CLAIR (intérieur, large) + outline FONCÉ (extérieur, fin). La
-	# teinte suit l'ÉTHOS (ordre↔chaos) ; cités-états en or↔argent. Dégradé int.→ext. par le décalage.
-	for entity in _b_out:
+	# BLOCS : RUBAN BLENDÉ (dégradé extérieur→intérieur). OUTLINE = CULTURE (héritage) ; INLINE = ÉTHOS
+	# (martial↔ordre) ; cités-états or↔argent. Puis le liseré POURPRE de chaque capitale, AU-DESSUS.
+	for entity in _b_segs:
 		var pair := _border_pair(entity)
-		var ins := _project_segs_iso(mv, _b_in[entity])
-		if ins.size() >= 2:
-			draw_multiline(ins, pair[1], 2.8 / zoom, true)   # INLINE clair (le ruban, côté intérieur)
-		var outs := _project_segs_iso(mv, _b_out[entity])
-		if outs.size() >= 2:
-			draw_multiline(outs, pair[0], 1.4 / zoom, true)  # OUTLINE foncé (l'arête, côté extérieur)
+		_draw_band(mv, _b_segs[entity], _b_norm[entity], pair[0], pair[1], zoom)
+	for cc in _cap_segs:
+		_draw_band(mv, _cap_segs[cc], _cap_norm[cc], CAP_OUT, CAP_IN, zoom)
 
 	# ── ROUTES : POINTILLÉ + trait de PINCEAU, sépia RENFORCÉ à OPACITÉ LIMITÉE (encre sur parchemin).
 	#    Croissance organique (1 an/province) ; tous les tirets cumulés → UN seul pinceau (batch). ──

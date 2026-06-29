@@ -1163,6 +1163,19 @@
   à l'an-0, monde stable, hégémon mortel). `econ_init` reste `const World*` (le revert UNCLAIMED se fait
   côté worldgen). `scps_country_role`==4 = WILD.
 
+- **GODOT parchemin — bandes de frontière BLENDÉES (culture×éthos) + capitale pourpre + noms uniques (2026-06-29)** :
+  3 retouches. (1) **NOMS UNIQUES** : `place_make_name` gagne une terminaison (`NAME_END[8]`, 8×4×8 =
+  256 variantes/héritage, ex-32) + une **passe de DÉDUP** dans `worldgen_seed_peoples` (re-tire le CORE
+  d'un nom dupliqué jusqu'à unicité, copie bornée 0-warning) → 0 doublon (vérifié seeds 9/11/42, mondes
+  HUGE couverts). (2) **RUBAN BLENDÉ** (`_draw_band`) : N=5 couches du ton EXTÉRIEUR au ton INTÉRIEUR,
+  décalées le long de la normale (px écran ÷ zoom) et teintées par `lerp` → un VRAI dégradé, pas deux
+  traits. **OUTLINE = CULTURE** (héritage, 6 familles `HERITAGE_HUE` + variation RGB par pays via `_h1`) ;
+  **INLINE = ÉTHOS** (axe martial↔ordre `ETHOS_INLINE_HUE`, fluide) ; cités-états or↔argent. Façade
+  `scps_country_heritage`. (3) **CAPITALE POURPRE** : un liseré (bande pourpre) autour de la
+  province-capitale de chaque empire — façade `scps_country_capital_region` + `scps_region_border_segments`
+  (contour d'une région + normale). Tout DISPLAY/façade (hors chronicle) + noms NON hashés ⇒ **golden
+  IDENTIQUE** ; déterminisme/save intacts. scons 0 warning.
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.

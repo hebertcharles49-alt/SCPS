@@ -450,9 +450,14 @@ int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max);
 typedef struct { float x0, y0, x1, y1; int owner, other; float nx, ny; } ScpsSegC;  /* nx,ny = normale unité vers l'EXTÉRIEur */
 int scps_border_segments_col(ScpsSim *s, int level, ScpsSegC *out, int max);
 
-/* éthos DOMINANT d'un pays (lu de la capitale) → 0..5 (DOMINATEUR..PACIFISTE), -1 si indéfini.
+/* éthos DOMINANT d'un pays (capitale, sinon 1re région) → 0..5 (DOMINATEUR..PACIFISTE), -1 si indéfini.
  * Pour colorer la frontière sur l'axe ordre↔chaos (la membrane mappe l'index → teinte). */
 int scps_country_ethos(const ScpsSim *s, int c);
+/* HÉRITAGE (culture de base) d'un pays → 0..HERITAGE_COUNT-1, -1 si indéfini. Outline par CULTURE. */
+int scps_country_heritage(const ScpsSim *s, int c);
+/* RÉGION-capitale d'un pays (-1) + CONTOUR d'une région (normale extérieure) — liseré pourpre capitale. */
+int scps_country_capital_region(const ScpsSim *s, int c);
+int scps_region_border_segments(ScpsSim *s, int region, ScpsSegC *out, int max);
 
 /* ROUTES TERRAIN-AWARE (port de viewer.c, en RÉSEAU à JONCTIONS) : A* sur la grille
  * (coût = relief + biome ; mer/lac contournés, fleuve = pont), reliant les régions des

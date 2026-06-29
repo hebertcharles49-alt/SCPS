@@ -280,7 +280,46 @@ int scps_country_ethos(const ScpsSim *s, int c){
     int cp=s->w->country[c].capital_prov;
     int cr=(cp>=0 && cp<s->w->n_provinces)? s->w->province[cp].region : -1;
     if (cr>=0 && cr<s->sim.econ->n_regions) return (int)s->sim.econ->region[cr].culture.ethos;
+    /* repli (slot sans capitale, ex. WILD) : éthos de la 1re région possédée */
+    for (int r=0;r<s->sim.econ->n_regions;r++)
+        if (s->sim.econ->region[r].owner==c) return (int)s->sim.econ->region[r].culture.ethos;
     return -1;
+}
+
+int scps_country_heritage(const ScpsSim *s, int c){
+    if(!s || !s->ready || c<0 || c>=s->w->n_countries) return -1;
+    int cp=s->w->country[c].capital_prov;
+    int cr=(cp>=0 && cp<s->w->n_provinces)? s->w->province[cp].region : -1;
+    if (cr>=0 && cr<s->sim.econ->n_regions) return (int)s->sim.econ->region[cr].culture.heritage;
+    for (int r=0;r<s->sim.econ->n_regions;r++)
+        if (s->sim.econ->region[r].owner==c) return (int)s->sim.econ->region[r].culture.heritage;
+    return -1;
+}
+
+int scps_country_capital_region(const ScpsSim *s, int c){
+    if(!s || !s->ready || c<0 || c>=s->w->n_countries) return -1;
+    int cp=s->w->country[c].capital_prov;
+    return (cp>=0 && cp<s->w->n_provinces)? s->w->province[cp].region : -1;
+}
+
+/* CONTOUR d'UNE région (arêtes où le voisin change de région) — normale vers l'EXTÉRIEUR. Sert au
+ * liseré POURPRE de la capitale (un anneau autour de la province-capitale). */
+int scps_region_border_segments(ScpsSim *s, int region, ScpsSegC *out, int max){
+    if(!s || !s->ready || !out || max<=0 || region<0) return 0;
+    int n=0;
+    for (int y=0; y<SCPS_H && n<max; y++) for (int x=0; x<SCPS_W && n<max; x++){
+        const Cell *a=scps_cellc(s->w,x,y);
+        if (a->region!=region) continue;
+        const Cell *e=(x+1<SCPS_W)?scps_cellc(s->w,x+1,y):NULL;
+        if ((!e||e->region!=region) && n<max){ out[n].x0=(float)(x+1);out[n].y0=(float)y;out[n].x1=(float)(x+1);out[n].y1=(float)(y+1);out[n].nx=1;out[n].ny=0;out[n].owner=region;out[n].other=-1;n++; }
+        const Cell *we=(x>0)?scps_cellc(s->w,x-1,y):NULL;
+        if ((!we||we->region!=region) && n<max){ out[n].x0=(float)x;out[n].y0=(float)y;out[n].x1=(float)x;out[n].y1=(float)(y+1);out[n].nx=-1;out[n].ny=0;out[n].owner=region;out[n].other=-1;n++; }
+        const Cell *so=(y+1<SCPS_H)?scps_cellc(s->w,x,y+1):NULL;
+        if ((!so||so->region!=region) && n<max){ out[n].x0=(float)x;out[n].y0=(float)(y+1);out[n].x1=(float)(x+1);out[n].y1=(float)(y+1);out[n].nx=0;out[n].ny=1;out[n].owner=region;out[n].other=-1;n++; }
+        const Cell *no=(y>0)?scps_cellc(s->w,x,y-1):NULL;
+        if ((!no||no->region!=region) && n<max){ out[n].x0=(float)x;out[n].y0=(float)y;out[n].x1=(float)(x+1);out[n].y1=(float)y;out[n].nx=0;out[n].ny=-1;out[n].owner=region;out[n].other=-1;n++; }
+    }
+    return n;
 }
 
 /* ---- PICKING & READOUTS (la membrane traverse le binding) ------------- */
