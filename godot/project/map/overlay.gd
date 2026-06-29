@@ -130,12 +130,16 @@ const ETHOS_PIG := [
 	Color(0.78, 0.67, 0.47),   ## Mercantile  : ocre pâle
 	Color(0.60, 0.66, 0.61),   ## Pacifiste   : sauge douce
 ]
-# LISSAGE des frontières (escaliers → courbes) : on casse d'abord la FRÉQUENCE de l'escalier
-# (ré-échantillonnage grossier + passe-bas Laplacien), PUIS on arrondit (Chaikin). Chaikin seul ne
-# faisait qu'arrondir les marches (« escaliers courbés ») — il faut DÉPLACER les points hors des marches.
-const SMOOTH_RESAMPLE := 3.0  ## pas de ré-échantillonnage (cellules) — > 1 cellule ⇒ casse la fréquence des marches
-const SMOOTH_LAPLACIAN := 4   ## itérations de moyenne mobile (passe-bas : aplatit l'escalier vers la diagonale)
+# LISSAGE des frontières (escaliers → courbes) : on casse la FRÉQUENCE de l'escalier (ré-échantillonnage
+# + passe-bas TAUBIN), PUIS on arrondit (Chaikin). ⚠ Taubin et NON Laplacien pur : le Laplacien RÉTRÉCIT
+# les boucles vers leur centre (cumulatif) → les frontières dérivaient de leur vraie ligne et BULGEAIENT
+# par-dessus les VILLES (« placement avalé »). Taubin alterne un pas adoucissant (λ) et un pas regonflant
+# (μ) → lisse SANS rétrécir : la frontière reste sur la diagonale MOYENNE de l'escalier = sa vraie ligne.
+const SMOOTH_RESAMPLE := 2.0  ## pas de ré-échantillonnage (cellules) — casse la fréquence SANS écraser la forme
+const SMOOTH_TAUBIN := 6      ## itérations Taubin λ|μ (passe-bas non-rétrécissant)
 const SMOOTH_CHAIKIN := 2     ## passes de corner-cutting (arrondi final de la courbe)
+const TAUBIN_LAMBDA := 0.5    ## pas adoucissant (>0)
+const TAUBIN_MU := -0.53      ## pas regonflant (<0, |μ|>λ) → compense le rétrécissement du pas λ
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
@@ -739,33 +743,41 @@ func _smooth_poly(poly: PackedVector2Array) -> PackedVector2Array:
 		return poly
 	var closed := poly[0].distance_to(poly[poly.size() - 1]) < 0.001
 	var p := _resample_polyline(poly, SMOOTH_RESAMPLE) if SMOOTH_RESAMPLE > 0.0 else poly
-	p = _laplacian(p, SMOOTH_LAPLACIAN, closed)
+	p = _taubin(p, SMOOTH_TAUBIN, closed)
 	p = _chaikin(p, SMOOTH_CHAIKIN)
 	return p
 
-## passe-bas (moyenne mobile pondérée 0.25/0.5/0.25) — itérée. Boucle : cyclique (dédup de l'extrémité) ;
-## chaîne ouverte : extrémités FIXES (les jonctions restent jointes entre chaînes voisines).
-func _laplacian(poly: PackedVector2Array, iters: int, closed: bool) -> PackedVector2Array:
+## un pas de lissage Laplacien : p[i] += factor·(moyenne des 2 voisins − p[i]). factor>0 = adoucit (et
+## rétrécit), factor<0 = regonfle. Extrémités FIXES (chaîne ouverte → jonctions intactes) ; cyclique (boucle).
+func _lap_step(poly: PackedVector2Array, factor: float, closed: bool) -> PackedVector2Array:
 	var n := poly.size()
-	if n < 3 or iters <= 0:
+	if n < 3:
 		return poly
 	if closed:
 		var src := poly.slice(0, n - 1)
 		var m := src.size()
-		for _it in range(iters):
-			var out := PackedVector2Array(); out.resize(m)
-			for i in range(m):
-				out[i] = src[i] * 0.5 + (src[(i - 1 + m) % m] + src[(i + 1) % m]) * 0.25
-			src = out
-		src.push_back(src[0])                  # referme la boucle
-		return src
+		var out := PackedVector2Array(); out.resize(m)
+		for i in range(m):
+			var avg: Vector2 = (src[(i - 1 + m) % m] + src[(i + 1) % m]) * 0.5
+			out[i] = src[i] + (avg - src[i]) * factor
+		out.push_back(out[0])                  # referme la boucle
+		return out
+	var out2 := PackedVector2Array(); out2.resize(n)
+	out2[0] = poly[0]; out2[n - 1] = poly[n - 1]   # extrémités fixes (jonctions)
+	for i in range(1, n - 1):
+		var avg2: Vector2 = (poly[i - 1] + poly[i + 1]) * 0.5
+		out2[i] = poly[i] + (avg2 - poly[i]) * factor
+	return out2
+
+## TAUBIN λ|μ : alterne un pas adoucissant (λ>0) et un pas regonflant (μ<0) → passe-bas qui lisse l'escalier
+## SANS rétrécir la forme (la frontière garde sa vraie position → ne bulge pas sur les villes).
+func _taubin(poly: PackedVector2Array, iters: int, closed: bool) -> PackedVector2Array:
+	if poly.size() < 3 or iters <= 0:
+		return poly
 	var p := poly
 	for _it in range(iters):
-		var out := PackedVector2Array(); out.resize(n)
-		out[0] = p[0]; out[n - 1] = p[n - 1]   # extrémités fixes (jonctions)
-		for i in range(1, n - 1):
-			out[i] = p[i] * 0.5 + (p[i - 1] + p[i + 1]) * 0.25
-		p = out
+		p = _lap_step(p, TAUBIN_LAMBDA, closed)
+		p = _lap_step(p, TAUBIN_MU, closed)
 	return p
 
 ## chaîne + lisse une soupe de segments à NORMALE → [segs (paires), norms (intérieure/segment)].

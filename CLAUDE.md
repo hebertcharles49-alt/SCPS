@@ -1222,19 +1222,24 @@
   de la soupe de segments en polylignes ORDONNÉES (`_chain_segments`/`_chain_segments_n` : index de
   sommets entiers, adjacence, marche jusqu'aux jonctions degré≠2 ou bouclage ; pour le ruban, le côté
   INTÉRIEUR est déduit de la normale d'origine du 1er segment et tenu sur toute la chaîne). (2)
-  **`_smooth_poly`** = ré-échantillonnage grossier (`SMOOTH_RESAMPLE` 3.0 cellules — **casse la FRÉQUENCE
-  de l'escalier**) → passe-bas **Laplacien** (`SMOOTH_LAPLACIAN` 4 itérations — aplatit les marches vers
-  la diagonale, extrémités/jonctions FIXES, boucles cycliques) → **Chaikin** (`SMOOTH_CHAIKIN` 2 passes —
-  arrondi final). (3) Pour le ruban, la normale intérieure est **recalculée perpendiculaire à la COURBE**
+  **`_smooth_poly`** = ré-échantillonnage (`SMOOTH_RESAMPLE` 2.0 cellules — **casse la FRÉQUENCE de
+  l'escalier** sans écraser la forme) → passe-bas **TAUBIN λ|μ** (`SMOOTH_TAUBIN` 6 itérations,
+  `TAUBIN_LAMBDA` 0.5 / `TAUBIN_MU` −0.53 — aplatit les marches vers la diagonale moyenne, extrémités/
+  jonctions FIXES, boucles cycliques) → **Chaikin** (`SMOOTH_CHAIKIN` 2 passes — arrondi final). ⚠ TAUBIN
+  et non Laplacien PUR : le Laplacien RÉTRÉCIT les boucles vers leur centre (cumulatif) → les frontières
+  dérivaient et BULGEAIENT par-dessus les VILLES (« placement avalé ») ; Taubin alterne un pas adoucissant
+  (λ) et un pas regonflant (μ) → lisse SANS rétrécir, la frontière reste sur sa vraie ligne. (3) Pour le
+  ruban, la normale intérieure est **recalculée perpendiculaire à la COURBE**
   locale (orientée par le côté de la chaîne). Appliqué à la trame fine (provinces+régions), aux bandes
   d'empire et au liseré de capitale. Le **jitter** « plume » (`_jit_a`/`_jit_poly`, `BORDER_JIT`/`FINE_JIT`)
   est RETIRÉ (il rajoutait du bruit ; la courbe EST le rendu voulu). **MSAA 2D** (`map_view.gd`) est GARDÉ
   derrière `RenderingServer.get_rendering_device() != null` : il n'existe PAS sous GL Compatibility (GLES3,
   warning) — il s'activera tout seul sous Forward+/Mobile ; sous GL Compat la netteté vient du lissage
   géométrique + de l'antialiasing par-trait (`draw_* antialiased`). Vérifié au rendu (seeds 9/11, zooms
-  fit/mid/deep) : courbes lisses, pas de trou aux jonctions ni de province écrasée ; **0 warning**.
+  fit/mid/deep + gros plan VILLE) : courbes lisses, frontières FIDÈLES à leur ligne (villes bien dans
+  leur cellule, plus avalées), pas de trou aux jonctions ni de province écrasée ; **0 warning**.
   DISPLAY-ONLY (aucun fichier C) ⇒ **golden IDENTIQUE**, déterminisme/save intacts, pas de rebuild DLL.
-  Dialable : `SMOOTH_RESAMPLE`/`_LAPLACIAN`/`_CHAIKIN` ↑ = plus lisse (plus cher).
+  Dialable : `SMOOTH_RESAMPLE`/`_TAUBIN`/`_CHAIKIN` ↑ = plus lisse (plus cher).
 
 ## Disciplines non négociables
 
