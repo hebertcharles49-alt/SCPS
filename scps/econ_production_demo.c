@@ -90,6 +90,12 @@ int main(int argc, char **argv){
     printf("\n── 4. Les outils s'usent (il faut les entretenir) ──\n");
     RegionEconomy *re2=&e->region[2];
     re2->active=true; re2->colonized=true; re2->culture.settled=true;
+    /* EMPIRE ISOLÉ (slot pays INUTILISÉ) : l'usure du PARC NATIONAL (×0.97/tick) est
+     * hoistée par EMPIRE → une région SANS owner valide n'entre dans aucun pool et
+     * n'use JAMAIS ses outils. On en fait un empire mono-région (pool = cette seule
+     * région, pshare=1 ⇒ usure NETTE) ; sans ressources ⇒ pas de §NF qui rebâtirait
+     * l'atelier. (La re-baseline worldgen #3 a fait passer region[2] en non-possédée.) */
+    re2->owner = (w->n_countries < SCPS_MAX_COUNTRY) ? w->n_countries : SCPS_MAX_COUNTRY-1;
     for (int k=0;k<RES_COUNT;k++){ re2->raw_cap[k]=0.f; re2->stock[k]=0.f; }
     re2->n_bld=0;   /* AUCUN atelier → pas d'entretien */
     re2->strata[CLASS_LABORER].pop=600.f;

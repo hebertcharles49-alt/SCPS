@@ -1313,6 +1313,43 @@
   légèrement RELEVÉE par les vallées plus fertiles —, 39 guerres/sim, hégémon mortel 5/5, IPM 1.23, §27
   gaté). **SAVE non bumpé** (aucune struct sérialisée ne change). Reste (à greenlighter) : #3 priority-flood
   + `trace_rivers` émergent — le couple hydrologique à fort risque (cf. entrée #2/#4).
+- **WORLDGEN #3 + RIVIÈRES ÉMERGENTES (le couple hydrologique, plan Gleba) (2026-06-30)** : le gros
+  morceau, conçu par panel (dossier + 4 lentilles + juge ; le min-risque a survécu, raffiné à la main).
+  **(A) RIVIÈRES ÉMERGENTES** — `trace_rivers` ne FORCE plus la hiérarchie N/2N/4N (sources = maxima locaux,
+  SEEK d'un champ BFS distance-mer, qsort flottant) ; il SUIT le réseau de drainage que `step_erosion` a
+  déjà calculé sur le relief érodé #1 — `cell.flow_dir` (D8 aval) + `cell.river` (flux 0-255). Approche
+  **bouche-amont** : EMBOUCHURES (cellule rivière qui se jette dans l'eau/endoréique) triées par flux
+  DÉCROISSANT (tri par dénombrement 256 godets, départage par index → ordre total, **plus de clé
+  flottante** : le risque qsort du dossier disparaît) ; pour chaque bassin, `trace_stem` remonte le MAIN
+  STEM (contributeur amont de plus fort flux) → TRONC, et ses plus gros contributeurs (≥`RIVER_TRIB_T`)
+  deviennent une file d'AFFLUENTS plafonnée `RIVER_MAX_TRIB`/bassin → **réseau dendritique RÉPARTI entre
+  bassins** (le budget 64 ne s'épuise pas sur un seul). `flow_max` = flux de POINTE (continu, plus l'échelle
+  figée 1.0/0.62/0.34). Les 5 helpers forcés (`river_src_cmp`/`river_dist_to`/`_to_sea`/`river_seek`/
+  `RiverSrc`) SUPPRIMÉS. Le rendu Godot (parchemin) lit ces mêmes polylignes (`river_paths`→`_build_river_field`
+  →shader) → le réseau émergent passe par le carve/méandre EXISTANT, 0 changement front. **(B) #3 LACS
+  PRIORITY-FLOOD** (Barnes 2014) — `fill_lakes` remplacé : inonde TOUTE dépression fermée jusqu'au
+  débordement depuis les exutoires (mer+bords), via un tas min à **clé entière** (`niveau<<32|index`, ordre
+  total, **aucun flottant** → déterministe), puis étiquetage en composantes connexes + **PORTE** : un bassin
+  ALIMENTÉ (flux≥`LAKE_INFLOW_MIN`) reçoit `cell.lake` (accès EAU jeu) ; s'il est aussi GRAND
+  (≥`LAKE_VISIBLE_MIN`) il SURFACE en mer intérieure VISIBLE (`BIO_SHALLOW`+niveau aplani). Cuvette SANS
+  apport = playa SÈCHE. Respecte les « lacs discrets » : quelques grandes mers intérieures (seed 9/7/11/42 :
+  22/18/17/8 visibles), pas une nuée de mares. **(C) barrière de province** : `build_cross_cost` traite
+  `cell.lake` comme infranchissable (comme la mer) → un grand lac BORNE les provinces, jamais colonisé.
+  ⚠ **Décalage de bouche assumé** : `cell.river`/`flow_dir` ne sont PAS recalculés après le flood (la
+  poignée de cellules de bassin visible montent à SEA_LEVEL+0.004 ; `trace_stem` casse sur `cell.lake` ⇒
+  n'y entre jamais) — le ré-accumulation de flux (lac à exutoire hydro-correct) est le palier risqué SUIVANT,
+  laissé hors scope (chaîne port/marine/estuaire). Tunables LOCAUX (`#define`, comme HYD_*) : `RIVER_FLUX_T`
+  60 · `RIVER_TRIB_T` 110 · `RIVER_MAX_TRIB` 6 · `RIVER_MIN_PTS` 12 · `LAKE_DEPTH_MIN` 0.004 · `LAKE_VISIBLE_MIN`
+  60 · `LAKE_INFLOW_MIN` 48. Télémétrie console (`[scps] lacs…`/`rivières…` : visibles/alimentés ·
+  gravées/écartées). ⚠ **RE-BASELINE** (le monde change dès l'an-0 → `golden_hashes.txt` re-baseliné) ·
+  `determinism` **STABLE** (tas & tri à clés ENTIÈRES, marche pure flow_dir, 0 rand). 1 banc recalibré
+  (intention préservée) : `econ_production_demo` #4 (usure d'outils) — `region[2]` devenu NON-possédé par la
+  re-baseline ⇒ hors pool ⇒ jamais d'usure ; rendu empire ISOLÉ mono-région (slot inutilisé) → usure NETTE.
+  `make test` **38 verts** (3 KO Windows pré-existants seuls) · sweep 5×250 SAIN (satisfaction 61-78/79-84/
+  85-91, hégémon mortel 5/5, IPM 1.22, **§27 gaté an-180**, 313 routes maritimes, exit 0) · 0 warning ·
+  visuel mapshot (réseau dendritique troncs+affluents aux vallées, mers intérieures, embouchures aux côtes).
+  **SAVE non bumpé** (River struct + champs Cell inchangés ; le monde se régénère de la graine). ⊕ Le plan
+  Gleba est COMPLET : #1 érosion · #2/#4 pré-existants · #3 lacs · #5 biomes · rivières émergentes.
 
 ## Disciplines non négociables
 

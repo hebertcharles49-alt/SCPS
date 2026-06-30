@@ -1406,63 +1406,113 @@ static Biome assign_biome(float h, float m, float t) {
 }
 
 /* ========================================================================
- * LACS
+ * LACS — PRIORITY-FLOOD (Barnes/Lehman/Sandwell 2014) (#3, plan Gleba)
  * ====================================================================== */
-/* Détecte les dépressions topographiques terrestres et les inonde jusqu'à
- * leur niveau de débordement (brim-fill simple). Les lacs résultants sont
- * naturellement dans les vallées et ont une forme liée au terrain, pas un
- * disque parfait. Pour garder les performances on limite la taille : un lac
- * qui demanderait > MAX_LAKE_CELLS cellules n'est pas retenu. */
-/* Lacs dans les cuvettes : détecte les dépressions cardinales et les étend
- * aux voisins immédiats légèrement plus bas (max 25 cellules). Les lacs
- * résultent d'une forme qui suit la vallée, pas un disque parfait.
- * Seules les dépressions bien encaissées (altitude > SEA_LEVEL+0.020) sont
- * retenues — évite de noyer les plaines côtières. */
-#define MAX_LAKE_CELLS 100
+/* Inonde TOUTE dépression fermée jusqu'à son niveau de DÉBORDEMENT, depuis les
+ * exutoires (mer + bords de carte), via une file de priorité (tas min) — tout
+ * draine donc vers la mer (plus de cuvette endoréique bloquée). Puis ÉTIQUETAGE
+ * en composantes connexes + PORTE : un bassin ALIMENTÉ (flux d'apport ≥ seuil)
+ * reçoit cell.lake (accès EAU du jeu) ; s'il est aussi GRAND il SURFACE en mer
+ * intérieure VISIBLE (BIO_SHALLOW + niveau aplani). Une cuvette SANS apport
+ * reste une PLAYA sèche (on ne touche rien). La carte parchemin garde ses
+ * « lacs discrets » — quelques grandes mers intérieures, pas une nuée de mares.
+ * DÉTERMINISTE : tas à clé ENTIÈRE (niveau quantifié << 32 | index) ⇒ ordre
+ * total (niveau puis index), AUCUNE comparaison de flottant. */
+#define LAKE_DEPTH_MIN    0.004f   /* (water_level - height) min pour qu'une cellule compte « mouillée » */
+#define LAKE_VISIBLE_MIN  60       /* aire min (cellules) pour qu'un bassin SURFACE en lac visible */
+#define LAKE_INFLOW_MIN   48       /* flux max min dans le bassin pour l'ALIMENTER (sinon playa sèche) */
+
+static int g_lake_visible=0, g_lake_fed=0;   /* télémétrie (gravée en console par world_generate) */
+
+/* tas binaire min LOCAL (≠ heap_push global, à clé flottante) : clés uint64 =
+ * (niveau quantifié 20 bits << 32) | index ⇒ ordre total déterministe. */
+static void pflood_push(uint64_t *h, int *n, uint64_t key){
+    int i=(*n)++; h[i]=key;
+    while (i>0){ int p=(i-1)>>1; if (h[p]<=h[i]) break; uint64_t t=h[p]; h[p]=h[i]; h[i]=t; i=p; }
+}
+static uint64_t pflood_pop(uint64_t *h, int *n){
+    uint64_t top=h[0]; h[0]=h[--(*n)];
+    int i=0;
+    for(;;){
+        int l=2*i+1, r=2*i+2, m=i;
+        if (l<*n && h[l]<h[m]) m=l;
+        if (r<*n && h[r]<h[m]) m=r;
+        if (m==i) break;
+        uint64_t t=h[m]; h[m]=h[i]; h[i]=t; i=m;
+    }
+    return top;
+}
+static inline uint64_t pflood_key(float wl, int idx){
+    float c = clampf(wl,0.f,1.f);
+    return ((uint64_t)(uint32_t)(c*1000000.f)<<32) | (uint32_t)idx;
+}
+
 static void fill_lakes(float *height, Cell *cells) {
-    bool *inlake=(bool*)calloc(SCPS_N,sizeof(bool));
-    int   batch[MAX_LAKE_CELLS];
-    if (!inlake) return;
+    const int N=SCPS_N;
+    g_lake_visible=g_lake_fed=0;
+    float    *wl =(float*)malloc((size_t)N*sizeof(float));
+    uint8_t  *cl =(uint8_t*)calloc(N,1);
+    uint64_t *hp =(uint64_t*)malloc((size_t)N*sizeof(uint64_t));
+    int hn=0;
+    if (!wl||!cl||!hp){ free(wl); free(cl); free(hp); return; }
 
-    for (int y=2;y<SCPS_H-2;y++) for (int x=2;x<SCPS_W-2;x++) {
+    /* INIT : mer + bords de carte = exutoires, à leur propre niveau */
+    for (int i=0;i<N;i++) wl[i]=1e9f;
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
         int i=scps_idx(x,y);
-        if (height[i]<SEA_LEVEL+0.030f||inlake[i]) continue;
-        /* RÉTENTION DANS UN BASSIN NATUREL (formation réaliste d'un lac) : le creux ne retient de l'eau
-         * libre que s'il REÇOIT un APPORT — un débit accumulé en amont qui s'y déverse (cells[].river =
-         * aire de bassin drainée). Un creux SANS apport reste une cuvette SÈCHE (playa/salant), pas un lac
-         * — c'est ce qui semait les petits « lacs/trucs » épars (chaque pothole humide se remplissait). */
-        if (cells[i].river < 48) continue;
-        /* Dépression STRICTE sur les 8 voisins : un vrai creux fermé, pas une
-         * simple ride de bruit (l'ancien test 4-cardinal en retenait trop). */
-        bool dep=true;
-        for (int d=0;d<8;d++) {
-            if (height[scps_idx(x+DDX[d],y+DDY[d])]<height[i]){dep=false;break;}
-        }
-        if (!dep) continue;
-
-        /* Expansion aux voisins dans un rayon de 1 et à hauteur proche */
-        float hdep=height[i];
-        float thr =hdep+0.008f;   /* seuil strict : petite cuvette seulement */
-        int sz=0;
-        batch[sz++]=i;
-        for (int d=0;d<8;d++) {
-            int nx2=x+DDX[d],ny2=y+DDY[d];
-            if (nx2<1||nx2>=SCPS_W-1||ny2<1||ny2>=SCPS_H-1) continue;
-            int j=scps_idx(nx2,ny2);
-            if (inlake[j]||height[j]<SEA_LEVEL+0.010f) continue;
-            if (height[j]<=thr) batch[sz++]=j;
-            if (sz>=MAX_LAKE_CELLS) break;
-        }
-        for (int k=0;k<sz;k++) {
-            cells[batch[k]].lake=true;            /* couche d'accès EAU (région) — reste DISCRET sur la carte
-                                                   * (pas mis en biome bleu : sinon une nuée de mares révélées
-                                                   * recrée les « trucs ». Les lacs VISIBLES = bassins endoréiques
-                                                   * sous le niveau marin + bras morts, posés à part). */
-            height[batch[k]]=SEA_LEVEL+0.005f;
-            inlake[batch[k]]=true;
+        int border=(x==0||y==0||x==SCPS_W-1||y==SCPS_H-1);
+        if (height[i]<SEA_LEVEL || border){ wl[i]=height[i]; cl[i]=1; pflood_push(hp,&hn,pflood_key(wl[i],i)); }
+    }
+    /* FLOOD vers l'intérieur : chaque cellule reçoit le niveau de débordement MINIMAL
+     * (le tas pop le plus bas d'abord ⇒ la première arrivée est la moins haute). */
+    while (hn>0){
+        int c=(int)(uint32_t)pflood_pop(hp,&hn);
+        int cx=c%SCPS_W, cy=c/SCPS_W;
+        for (int d=0;d<8;d++){
+            int nx=cx+DDX[d], ny=cy+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int ni=scps_idx(nx,ny);
+            if (cl[ni]) continue;
+            float nl=(height[ni]>wl[c])?height[ni]:wl[c];   /* monte sur le terrain, sinon hérite du débordement */
+            wl[ni]=nl; cl[ni]=1; pflood_push(hp,&hn,pflood_key(nl,ni));
         }
     }
-    free(inlake);
+    free(hp);
+
+    /* ÉTIQUETAGE des cellules MOUILLÉES (depth>min) en composantes connexes ;
+     * aire + apport (flux max) par bassin → porte d'alimentation + visibilité. */
+    uint8_t *wet =(uint8_t*)calloc(N,1);
+    int     *stk =(int*)malloc((size_t)N*sizeof(int));
+    uint8_t *seen=(uint8_t*)calloc(N,1);
+    int     *comp=(int*)malloc((size_t)N*sizeof(int));
+    if (!wet||!stk||!seen||!comp){ free(wl);free(cl);free(wet);free(stk);free(seen);free(comp); return; }
+    for (int i=0;i<N;i++) if (height[i]>=SEA_LEVEL && (wl[i]-height[i])>LAKE_DEPTH_MIN) wet[i]=1;
+    for (int i0=0;i0<N;i0++){
+        if (!wet[i0]||seen[i0]) continue;
+        int sp=0, cn=0, area=0, inflow=0;
+        stk[sp++]=i0; seen[i0]=1;
+        while (sp>0){
+            int c=stk[--sp]; comp[cn++]=c; area++;
+            if (cells[c].river>inflow) inflow=cells[c].river;
+            int cx=c%SCPS_W, cy=c/SCPS_W;
+            for (int d=0;d<8;d++){
+                int nx=cx+DDX[d], ny=cy+DDY[d];
+                if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+                int ni=scps_idx(nx,ny);
+                if (wet[ni]&&!seen[ni]){ seen[ni]=1; stk[sp++]=ni; }
+            }
+        }
+        if (inflow<LAKE_INFLOW_MIN) continue;        /* cuvette SANS apport = playa SÈCHE : on ne touche rien */
+        g_lake_fed++;
+        int visible=(area>=LAKE_VISIBLE_MIN);
+        if (visible) g_lake_visible++;
+        for (int k=0;k<cn;k++){
+            int c=comp[k];
+            cells[c].lake=true;                       /* accès EAU (jeu) — tout bassin alimenté (barrière de province) */
+            if (visible){ height[c]=SEA_LEVEL+0.004f; cells[c].biome=BIO_SHALLOW; }  /* mer intérieure VISIBLE */
+        }
+    }
+    free(wl); free(cl); free(wet); free(stk); free(seen); free(comp);
 }
 
 /* OXBOW / BRAS MORT (2e voie de formation d'un lac, IRL) : au cours INFÉRIEUR d'un fleuve/rivière — la
@@ -1618,6 +1668,7 @@ static void build_cross_cost(const World *w, const float *height,
     for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
         int i=scps_idx(x,y);
         if (height[i]<SEA_LEVEL){ ccost[i]=1e30f; continue; }  /* mer : infranchie */
+        if (w->cell[i].lake){ ccost[i]=1e30f; continue; }      /* lac : barrière (comme la mer) — pas de province sur l'eau */
         float cost=1.0f;
         float r=w->cell[i].river/255.f;
         if (r>0.06f) cost += 13.0f*powf((r-0.06f)/0.94f,1.15f);  /* rivière/fleuve */
@@ -2746,164 +2797,141 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
 }
 
 /* ========================================================================
- * TRACÉ DES RIVIÈRES PRINCIPALES
+ * TRACÉ DES RIVIÈRES — ÉMERGENT (#1+, plan Gleba)
  * ====================================================================== */
-/* ---- générateur de rivières FORCÉ : hiérarchie CONNECTÉE (jeu) -------------------------------
- * Comment marche une vraie rivière : source en altitude → DESCENTE (jamais la côte) → les affluents
- * SE JETTENT dans plus gros → fleuve → mer. On FORCE cette hiérarchie connectée (équilibre + rendu) :
- *   N fleuves (long, source mont → mer) · 2N rivières (raccord à un fleuve) · 4N affluents (raccord
- *   à une rivière/fleuve). Chaque brin SEEK son parent (champ de distance BFS) → toujours CONNECTÉ. */
-typedef struct { int idx; float h; } RiverSrc;
-static int river_src_cmp(const void *a, const void *b){
-    float ha=((const RiverSrc*)a)->h, hb=((const RiverSrc*)b)->h;
-    return (ha<hb) - (ha>hb);                    /* altitude DÉCROISSANTE */
+/* On ne FORCE plus une hiérarchie N/2N/4N : on SUIT le réseau de drainage
+ * ÉMERGENT que step_erosion a calculé sur le relief érodé (#1) — cell.flow_dir
+ * (D8 vers l'aval, -1 = exutoire/cuvette) + cell.river (flux accumulé 0-255).
+ * On part des TÊTES de chenal (flux ≥ seuil, AUCUN contributeur amont au seuil)
+ * et on DESCEND le flow_dir jusqu'à la mer / un lac / une confluence → réseau
+ * DENDRITIQUE réel (troncs + affluents) sur les chenaux RÉELLEMENT creusés.
+ * flow_max = le flux de POINTE le long du tracé (continu, plus l'échelle figée
+ * 1.0/0.62/0.34). DÉTERMINISTE : tri par dénombrement (256 godets de flux
+ * d'EMBOUCHURE, départage par index — AUCUNE clé flottante) ; marche PURE sur
+ * la topologie flow_dir (plus de champ de distance BFS ni de qsort flottant).
+ * MÉANDRE & LARGEUR restent posés au RENDU (la donnée moteur = médiane propre). */
+#define RIVER_FLUX_T   60      /* flux min (cell.river, 0-255) pour qu'une cellule porte une rivière (étendue) */
+#define RIVER_TRIB_T   110     /* flux min qu'un AFFLUENT doit atteindre pour être tracé (affluents majeurs) */
+#define RIVER_MAX_TRIB 6       /* affluents majeurs tracés par BASSIN (répartit le budget entre bassins) */
+#define RIVER_MIN_PTS  12      /* points min d'une polyligne pour la retenir (anti-stub) */
+#define RIVER_TRIB_CAP 512     /* taille de la file d'affluents d'un bassin */
+
+static int g_river_drop_cap=0, g_river_drop_short=0, g_river_drop_long=0;  /* télémétrie (gravée par world_generate) */
+
+/* cellule en AVAL de i selon flow_dir, ou -1 (exutoire / cuvette / hors carte) */
+static inline int river_down(const Cell *cell, int i){
+    int d=cell[i].flow_dir;
+    if (d<0||d>7) return -1;
+    int x=i%SCPS_W, y=i/SCPS_W;
+    int nx=x+DDX[d], ny=y+DDY[d];
+    if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) return -1;
+    return scps_idx(nx,ny);
 }
-/* BFS : dist[cellule de terre] = nb de pas jusqu'à la rivière la plus proche de niveau [lo..hi]. */
-static void river_dist_to(World *w, float *height, uint8_t *mark, int lo, int hi, int *dist, int *q){
-    (void)w; int qt=0;
-    for (int i=0;i<SCPS_N;i++){
-        dist[i]=-1;
-        if (height[i]>=SEA_LEVEL && mark[i]>=lo && mark[i]<=hi){ dist[i]=0; q[qt++]=i; }
-    }
-    for (int qh=0; qh<qt; qh++){
-        int c=q[qh], cx=c%SCPS_W, cy=c/SCPS_W;
-        for (int d=0;d<8;d++){
+
+/* Remonte le MAIN STEM depuis `start` (cellule rivière NON marquée) : à chaque
+ * pas suit le contributeur amont (river_down(n)==cur) de plus FORT flux ; les
+ * AUTRES contributeurs ≥ RIVER_TRIB_T deviennent des graines d'affluent (C amont,
+ * J jonction). Écrit la polyligne dans buf[] en ordre AMONT (buf[0]=start …
+ * buf[len-1]=tête), MARQUE chaque cellule, renvoie le flux de POINTE. DÉTERMINISTE
+ * (voisinage d=0..7 fixe, départage par index). */
+static int trace_stem(const Cell *cell, uint8_t *mark, int start, int *buf, int *out_len,
+                      int *trib_C, int *trib_J, int *ntrib, int trib_cap){
+    int len=0, cur=start, peak=0, guard=0;
+    while (len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN+2){
+        buf[len++]=cur; mark[cur]=1;
+        if (cell[cur].river>peak) peak=cell[cur].river;
+        int cx=cur%SCPS_W, cy=cur/SCPS_W;
+        int best=-1, bestflux=-1;
+        for (int d=0;d<8;d++){                                  /* contributeur amont de plus fort flux */
             int nx=cx+DDX[d], ny=cy+DDY[d];
             if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
             int ni=scps_idx(nx,ny);
-            if (height[ni]<SEA_LEVEL || dist[ni]>=0) continue;
-            dist[ni]=dist[c]+1; q[qt++]=ni;
+            if (mark[ni] || cell[ni].river<RIVER_FLUX_T) continue;
+            if (river_down(cell,ni)!=cur) continue;            /* ni se jette dans cur */
+            if ((int)cell[ni].river>bestflux){ bestflux=(int)cell[ni].river; best=ni; }
         }
-    }
-}
-/* BFS : dist[cellule de terre] = nb de pas jusqu'à la MER (ou un lac) le/la plus proche ; 0 sur l'eau.
- * Champ SANS minimum local sur la terre → un fleuve qui le descend ATTEINT TOUJOURS l'eau (fin des bras
- * endoréiques bloqués dans une cuvette au-dessus du niveau marin : c'était le « ne se jette dans aucune
- * mer » du continent gauche). */
-static void river_dist_to_sea(float *height, int *dist, int *q){
-    int qt=0;
-    for (int i=0;i<SCPS_N;i++){
-        if (height[i]<SEA_LEVEL){ dist[i]=0; q[qt++]=i; }
-        else dist[i]=-1;
-    }
-    for (int qh=0; qh<qt; qh++){
-        int c=q[qh], cx=c%SCPS_W, cy=c/SCPS_W;
-        for (int d=0;d<8;d++){
+        if (best<0) break;                                     /* tête atteinte */
+        for (int d=0;d<8;d++){                                  /* les AUTRES gros contributeurs = affluents */
             int nx=cx+DDX[d], ny=cy+DDY[d];
             if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
             int ni=scps_idx(nx,ny);
-            if (dist[ni]>=0) continue;
-            dist[ni]=dist[c]+1; q[qt++]=ni;
+            if (ni==best || mark[ni] || cell[ni].river<RIVER_TRIB_T) continue;
+            if (river_down(cell,ni)!=cur) continue;
+            if (*ntrib<trib_cap){ trib_C[*ntrib]=ni; trib_J[*ntrib]=cur; (*ntrib)++; }
         }
+        cur=best;
     }
-}
-/* SEEK générique : descend le champ `dist` vers la CIBLE (la MER pour un fleuve ; une rivière déjà
- * tracée pour un affluent — la cible est toujours dist 0). Le coût est DOMINÉ par un BRUIT à TRIPLE
- * fréquence (méandres larges + ondulation + jitter fin) → AUCUNE ligne droite, quitte à former des
- * angles ; la distance n'est qu'un FAIBLE guide. */
-/* SEEK : descente du champ `dist` vers la CIBLE (dist 0 = la MER pour un fleuve, une rivière déjà tracée
- * pour un affluent) — voisin de plus BASSE distance, MAIS **JAMAIS EN MONTÉE** : une rivière ne franchit
- * pas une crête (fini les fleuves qui « passent par-dessus la montagne »). Marche AUTO-ÉVITANTE (`seen`)
- * → pas de boucle ; si tous les voisins descendants sont bloqués (CUVETTE endoréique), on s'échappe par le
- * rim le plus BAS vers la cible (montée minimale, jamais une crête). Le champ dist (BFS, sans minimum local)
- * garantit l'arrivée. MÉANDRE & LARGEUR sont posés au RENDU (la donnée moteur reste une médiane propre). */
-static int river_seek(World *w, float *height, int *dist, uint8_t *mark, int *seen, int gen,
-                      int sx, int sy, int level, float flow, River *rv){
-    (void)w;
-    rv->len=0; rv->flow_max=flow;
-    int s0=scps_idx(sx,sy);
-    if (dist[s0]<0) return 0;
-    const float UPHILL_EPS=0.004f;                        /* tolère un faux-plat (bruit), bloque un vrai talus */
-    int cx=sx, cy=sy, guard=0;
-    while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
-        int ci=scps_idx(cx,cy);
-        rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
-        seen[ci]=gen;
-        if (dist[ci]==0) break;                          /* TOUCHE la cible (mer/lac ou rivière) */
-        if (mark[ci]>=1 && rv->len>1) break;             /* tombe sur une rivière tracée → RACCORD */
-        float hcur=height[ci];
-        int best=-1, bd=1<<30; float bh=1e9f;
-        for (int d=0;d<8;d++){                            /* descente PURE : plus basse dist, JAMAIS en montée */
-            int nx=cx+DDX[d], ny=cy+DDY[d];
-            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
-            int ni=scps_idx(nx,ny);
-            if (dist[ni]<0 || seen[ni]==gen) continue;
-            if (height[ni] > hcur+UPHILL_EPS) continue;  /* pas de franchissement de crête */
-            if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
-        }
-        if (best<0){                                     /* CUVETTE : échappe par le rim le plus bas vers la cible */
-            bd=1<<30; bh=1e9f;
-            for (int d=0;d<8;d++){
-                int nx=cx+DDX[d], ny=cy+DDY[d];
-                if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
-                int ni=scps_idx(nx,ny);
-                if (dist[ni]<0 || seen[ni]==gen) continue;
-                if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
-            }
-            if (best<0) break;
-        }
-        cx=best%SCPS_W; cy=best/SCPS_W;
-    }
-    int minlen=(level==1)?14:7;                           /* un fleuve doit être LONG */
-    if (rv->len<minlen) return 0;
-    for (int k=0;k<rv->len;k++){ int mi=scps_idx(rv->x[k],rv->y[k]); if (mark[mi]==0) mark[mi]=(uint8_t)level; }
-    return 1;
+    *out_len=len;
+    return peak;
 }
 static void trace_rivers(World *w, float *height) {
+    Cell *cell=w->cell;
     int n=0;
-    uint8_t *mark=(uint8_t*)calloc(SCPS_N,1);
-    int *dist=(int*)malloc(SCPS_N*sizeof(int));
-    int *q   =(int*)malloc(SCPS_N*sizeof(int));
-    int *seen=(int*)calloc(SCPS_N,sizeof(int));           /* marche auto-évitante du seek (estampille `gen`) */
-    RiverSrc *src=(RiverSrc*)malloc(20000*sizeof(RiverSrc));
-    if (!mark||!dist||!q||!seen||!src){ free(mark); free(dist); free(q); free(seen); free(src); w->n_rivers=0; return; }
-    const int RN=6;                                       /* N ~ empires jouables */
-    int ucx[64], ucy[64], nu=0, gen=0;                    /* sources retenues (espacement) ; gén. `seen` */
+    g_river_drop_cap=g_river_drop_short=g_river_drop_long=0;
+    uint8_t *mark  =(uint8_t*)calloc(SCPS_N,1);
+    int     *buf   =(int*)malloc((size_t)SCPS_RIVER_MAXLEN*sizeof(int));
+    int     *mouths=(int*)malloc((size_t)SCPS_N*sizeof(int));
+    int     *bcount=(int*)calloc(257,sizeof(int));
+    int     *boff  =(int*)calloc(257,sizeof(int));
+    int     *trC   =(int*)malloc((size_t)RIVER_TRIB_CAP*sizeof(int));
+    int     *trJ   =(int*)malloc((size_t)RIVER_TRIB_CAP*sizeof(int));
+    if (!mark||!buf||!mouths||!bcount||!boff||!trC||!trJ){
+        free(mark);free(buf);free(mouths);free(bcount);free(boff);free(trC);free(trJ); w->n_rivers=0; return;
+    }
 
-    /* sources candidates = SOMMETS LOCAUX au-dessus du seuil amont, triés par altitude décroissante */
-    int ns=0;
-    for (int y=2;y<SCPS_H-2;y+=2) for (int x=2;x<SCPS_W-2;x+=2){
-        int i=scps_idx(x,y);
-        if (height[i] < SEA_LEVEL+0.10f) continue;
-        int ismax=1;
-        for (int d=0;d<8;d++){ int nx=x+DDX[d],ny=y+DDY[d];
-            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
-            if (height[scps_idx(nx,ny)]>height[i]){ ismax=0; break; } }
-        if (!ismax) continue;
-        if (ns<20000){ src[ns].idx=i; src[ns].h=height[i]; ns++; }
+    /* EMBOUCHURES : cellule rivière (flux≥T) qui se jette dans l'EAU (mer/lac) ou
+     * TERMINE endoréique. Tri par dénombrement sur le flux DÉCROISSANT (gros fleuves
+     * d'abord ; départage par index → ordre total déterministe, aucune clé flottante). */
+    int nm=0;
+    for (int i=0;i<SCPS_N;i++){
+        if (cell[i].river<RIVER_FLUX_T || height[i]<SEA_LEVEL || cell[i].lake) continue;
+        int j=river_down(cell,i);
+        int is_mouth = (j<0) || (height[j]<SEA_LEVEL) || cell[j].lake;
+        if (is_mouth){ mouths[nm++]=i; bcount[cell[i].river]++; }
     }
-    qsort(src, ns, sizeof(RiverSrc), river_src_cmp);
+    { int acc=0; for (int b=255;b>=0;b--){ boff[b]=acc; acc+=bcount[b]; } }
+    int *order=(int*)malloc((size_t)(nm?nm:1)*sizeof(int));
+    if (!order){ free(mark);free(buf);free(mouths);free(bcount);free(boff);free(trC);free(trJ); w->n_rivers=0; return; }
+    for (int k=0;k<nm;k++){ int b=cell[mouths[k]].river; order[boff[b]++]=mouths[k]; }
+    free(mouths); free(bcount); free(boff);
 
-    /* 1) N FLEUVES : sources les plus HAUTES, ESPACÉES → SEEK la MER (champ dist-mer = jamais bloqué) */
-    river_dist_to_sea(height,dist,q);
-    for (int s=0; s<ns && n<RN; s++){
-        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
-        if (mark[si]) continue;
-        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<140*140){tooclose=1;break;} }
-        if (tooclose) continue;
-        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,1,1.0f,&w->river[n])){ ucx[nu]=sx; ucy[nu]=sy; nu++; n++; }
+    /* Par BASSIN (embouchure décroissante) : TRONC + ses plus gros AFFLUENTS (file
+     * de bassin, plafonnée RIVER_MAX_TRIB) → réseau dendritique RÉPARTI entre bassins
+     * (le budget global ne s'épuise pas sur un seul). */
+    for (int mi=0; mi<nm && n<SCPS_MAX_RIVERS; mi++){
+        int mouth=order[mi];
+        if (mark[mouth]) continue;
+        int ntrib=0, len=0;
+        int peak=trace_stem(cell,mark,mouth,buf,&len,trC,trJ,&ntrib,RIVER_TRIB_CAP);
+        if (len>=SCPS_RIVER_MAXLEN) g_river_drop_long++;
+        if (len>=RIVER_MIN_PTS){                                /* commit TRONC : tête→embouchure(+cellule d'eau) */
+            River *rv=&w->river[n]; int p=0;
+            for (int k=len-1;k>=0 && p<SCPS_RIVER_MAXLEN;k--){ rv->x[p]=(int16_t)(buf[k]%SCPS_W); rv->y[p]=(int16_t)(buf[k]/SCPS_W); p++; }
+            int jw=river_down(cell,mouth);
+            if (jw>=0 && p<SCPS_RIVER_MAXLEN){ rv->x[p]=(int16_t)(jw%SCPS_W); rv->y[p]=(int16_t)(jw/SCPS_W); p++; }
+            rv->len=p; rv->flow_max=(float)peak/255.f; n++;
+        } else g_river_drop_short++;
+        int traced=0;                                          /* AFFLUENTS du bassin (les plus gros d'abord) */
+        while (n<SCPS_MAX_RIVERS && traced<RIVER_MAX_TRIB){
+            int bk=-1, bf=-1;
+            for (int k=0;k<ntrib;k++){ int c=trC[k]; if (c<0||mark[c]) continue; if ((int)cell[c].river>bf){ bf=(int)cell[c].river; bk=k; } }
+            if (bk<0) break;
+            int C=trC[bk], J=trJ[bk]; trC[bk]=-1;
+            if (mark[C]) continue;
+            int tlen=0;
+            int tpeak=trace_stem(cell,mark,C,buf,&tlen,trC,trJ,&ntrib,RIVER_TRIB_CAP);
+            if (tlen>=SCPS_RIVER_MAXLEN) g_river_drop_long++;
+            if (tlen>=RIVER_MIN_PTS){
+                River *rv=&w->river[n]; int p=0;
+                for (int k=tlen-1;k>=0 && p<SCPS_RIVER_MAXLEN;k--){ rv->x[p]=(int16_t)(buf[k]%SCPS_W); rv->y[p]=(int16_t)(buf[k]/SCPS_W); p++; }
+                if (p<SCPS_RIVER_MAXLEN){ rv->x[p]=(int16_t)(J%SCPS_W); rv->y[p]=(int16_t)(J/SCPS_W); p++; }  /* raccord au tronc */
+                rv->len=p; rv->flow_max=(float)tpeak/255.f; n++; traced++;
+            } else g_river_drop_short++;
+        }
     }
-    /* 2) 2N RIVIÈRES : SEEK le fleuve le plus proche (espacées) */
-    river_dist_to(w,height,mark,1,1,dist,q);
-    for (int s=0; s<ns && n<SCPS_MAX_RIVERS && (n-RN)<2*RN; s++){
-        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
-        if (mark[si] || dist[si]<0) continue;
-        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<70*70){tooclose=1;break;} }
-        if (tooclose) continue;
-        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,2,0.62f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; }
-    }
-    /* 3) 4N AFFLUENTS : SEEK rivière OU fleuve (espacés serré) */
-    river_dist_to(w,height,mark,1,2,dist,q);
-    int na=0;
-    for (int s=0; s<ns && n<SCPS_MAX_RIVERS && na<4*RN; s++){
-        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
-        if (mark[si] || dist[si]<0) continue;
-        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<40*40){tooclose=1;break;} }
-        if (tooclose) continue;
-        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,3,0.34f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; na++; }
-    }
+    for (int mi=0; mi<nm; mi++) if (!mark[order[mi]]) g_river_drop_cap++;   /* bassins jamais atteints (cap) */
     w->n_rivers=n;
-    free(mark); free(dist); free(q); free(seen); free(src);
+    free(order); free(mark); free(buf); free(trC); free(trJ);
 }
 
 /* ========================================================================
@@ -3787,8 +3815,10 @@ void world_generate(World *w, const WorldParams *P) {
     }
     printf("ok\n");
 
+    printf("[scps] lacs...         "); fflush(stdout);
     fill_lakes(height,w->cell);
     for (int i=0;i<SCPS_N;i++) w->cell[i].height=height[i];
+    printf("ok (%d visible(s) / %d alimenté(s))\n", g_lake_visible, g_lake_fed);
 
     printf("[scps] reconquête...   "); fflush(stdout);
     step_weathering(w,height,seed_f);     printf("ok\n");
@@ -3853,7 +3883,8 @@ void world_generate(World *w, const WorldParams *P) {
     printf("[scps] rivières...     "); fflush(stdout);
     trace_rivers(w,height);
     carve_oxbows(w,height);               /* bras morts (2e voie de lac) le long des cours inférieurs */
-    printf("ok (%d riv.)\n",w->n_rivers);
+    printf("ok (%d riv. ; écartées : %d cap · %d courtes · %d longues)\n",
+           w->n_rivers, g_river_drop_cap, g_river_drop_short, g_river_drop_long);
 
 end:
     free(height); free(moisture); free(temp); free(odist);
