@@ -1261,6 +1261,29 @@
   PORTS visibles (⚠ besoin d'un reader façade `scps_region_has_port` + rebuild) · capitales en sceau ·
   hachures de révolte (façade `agitation` déjà dispo) · lignes de commerce · sélection/survol lumineux.
 
+- **WORLDGEN #1 — ÉROSION HYDRAULIQUE par gouttelettes (keystone, plan Gleba) (2026-06-30)** : 1er PR du
+  plan d'amélioration worldgen. `step_hydraulic_erosion` (`scps_world.c`, ~110 lignes, d'après Sebastian
+  Lague) : 200 000 gouttes seedées (xorshift `seed^0xE5051234`) descendent le gradient bilinéaire, ÉROSENT
+  en montée de capacité (`cap = max(-dh,minSlope)·vel·eau·CAP`) et DÉPOSENT en remontée/saturation →
+  réseau dendritique, vallées, plaines alluviales ÉMERGENTS sur le `height`. Insérée **après l'érosion
+  thermique, AVANT `step_erosion`** (l'accumulation de flux D8 recalcule alors `cell.river` sur le relief
+  CREUSÉ → les chenaux sont déjà là). Pinceau rayon 2 (étale l'érosion, pas de puits 1-cellule) ; **bornée
+  par la pente locale `-dh`** → ne rabote PAS les crêtes (le risque « lisse tout » du plan, évité).
+  DÉTERMINISTE : xorshift + ordre de gouttes fixe → `determinism` STABLE (bit-identique). Tunables en
+  `#define` locaux (`HYD_*` : DROPLETS/LIFETIME/INERTIA/CAPACITY/DEPOSIT/ERODE/EVAP/GRAVITY/MIN_SLOPE/
+  BRUSH_R). ⚠ **RE-BASELINE TOTAL** (le `height` change partout → mondes des graines de référence changés ;
+  `golden_hashes.txt` re-baseliné). Bancs sensibles recalibrés (intention préservée) : `econ_arcane_demo`
+  (armes enchantées mesurées au PAYS, pas la région-forge — la pop-share P1 a bougé) · `audit_eco`
+  (plancher de matériaux à la capitale chaque mois : la borne ACCESSION teste la loi des prix, pas la
+  disette — l'ext de matière monte avec la taille d'empire qui a changé). `make test` = **38 verts** (seuls
+  les 3 KO Windows pré-existants restent : intertrade `setenv`, campaign/warhost stack-overflow) ;
+  `determinism` STABLE ; vérif visuelle (mapshot + Godot nature, DLL rebâtie) : montagnes PRÉSERVÉES,
+  rivières en vallées, monde sain. ⚠ ASan/UBSan NON vérifiés ici (libasan/libubsan absents du MinGW —
+  limite d'env, comme les 3 KO ; le code est borné — chaque index gardé). **SAVE non bumpé** (la worldgen
+  se régénère de la graine ; aucune struct sérialisée ne change). À VENIR (plan Gleba) : #2 plaques→
+  orogenèse (relief structuré) · #3 priority-flood (lacs/drainage) · #4 ombre pluvio · #5 biomes pente/sol ·
+  rendre `trace_rivers` ÉMERGENT (suivre l'accumulation creusée) — ensemble = l'effet spectaculaire.
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.

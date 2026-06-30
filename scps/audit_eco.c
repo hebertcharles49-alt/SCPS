@@ -132,7 +132,16 @@ int main(int argc, char **argv){
                 long pop   =labor_pop_total(lab);
                 if (bouche != pop/100 && mouth_ok){ mouth_ok=false; mouth_bad_month=day/30; }
                 /* borne 4 : le banc paie sa première GARNISON (360 j) dès que possible —
-                 * débit de l'or NATIONAL de l'owner via crédit (un seul livre d'or). */
+                 * débit de l'or NATIONAL de l'owner via crédit (un seul livre d'or).
+                 * On TIENT un PLANCHER de matériaux à la capitale chaque mois : le banc ne lance pas
+                 * l'intertrade (pas d'import réel), et le besoin de matière monte avec la TAILLE du
+                 * pays (ext) — qui varie avec le monde (l'érosion #1 a élargi des empires). La borne 4
+                 * teste la LOI DES PRIX / l'accession (payer l'or à temps), PAS la disette de matériaux ;
+                 * on isole donc le test du drainage en réapprovisionnant (= l'import que ferait le vrai jeu). */
+                if (paid_360_year<0 && cap_reg>=0){ RegionEconomy *cr=&econ->region[cap_reg];
+                    if (cr->stock[RES_WOOD] <300.f) cr->stock[RES_WOOD] =300.f;
+                    if (cr->stock[RES_STONE]<300.f) cr->stock[RES_STONE]=300.f;
+                    if (cr->stock[RES_CLAY] <300.f) cr->stock[RES_CLAY] =300.f; }
                 if (paid_360_year<0 && cap_reg>=0
                     && agency_build_acct(ag, econ, w, cap_reg, EDI_GARNISON, owner))
                     paid_360_year = yr;

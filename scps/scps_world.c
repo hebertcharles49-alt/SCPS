@@ -804,6 +804,107 @@ static void step_architecture(float *height, float seed_f) {
  * COUCHE 3 — ÉROSION
  * D8 flow + accumulation → rivières + creusement
  * ====================================================================== */
+/* ========================================================================
+ * ÉROSION HYDRAULIQUE PAR GOUTTELETTES (« droplet », d'après Sebastian Lague)
+ *
+ * Des PARTICULES d'eau tracent l'écoulement et CREUSENT le relief : elles
+ * descendent le gradient, érodent en montée de capacité, déposent quand elles
+ * ralentissent/remontent. ⇒ réseau DENDRITIQUE, vallées en V, plaines
+ * alluviales — ÉMERGENTS, au lieu d'un tracé plaqué. Aucune crête n'est
+ * franchie (l'eau coule en descente). Insérée APRÈS l'érosion thermique et
+ * AVANT l'accumulation de flux (step_erosion recompute alors cell.river sur le
+ * relief CREUSÉ → les chenaux sont déjà là).
+ *
+ * DÉTERMINISTE : xorshift seedé depuis w->seed + ordre de gouttes FIXE +
+ * boucle interne fixe → bit-identique entre deux runs du même binaire.
+ * Borné par la pente locale (jamais creuser plus que -dh) → ne « lisse » pas
+ * les montagnes. Tunables = #define locaux (le module reste pur, cf. CLAUDE.md).
+ * ===================================================================== */
+#define HYD_DROPLETS   200000   /* nb de gouttes (~ SCPS_N/2.6) */
+#define HYD_LIFETIME   30       /* pas max par goutte */
+#define HYD_INERTIA    0.05f    /* 0 = suit le gradient ; 1 = ligne droite */
+#define HYD_CAPACITY   3.0f     /* capacité de charge ∝ pente·vitesse·eau */
+#define HYD_DEPOSIT    0.30f    /* fraction déposée du surplus de sédiment */
+#define HYD_ERODE      0.30f    /* fraction érodée du déficit de capacité */
+#define HYD_EVAP       0.02f    /* évaporation par pas */
+#define HYD_GRAVITY    4.0f     /* gain de vitesse en descente */
+#define HYD_MIN_SLOPE  0.01f    /* capacité plancher (évite stagnation) */
+#define HYD_BRUSH_R    2        /* rayon du pinceau d'érosion (étale → pas de puits 1-cellule) */
+
+static inline uint32_t hyd_xs(uint32_t *s){ uint32_t x=*s; x^=x<<13; x^=x>>17; x^=x<<5; *s=x; return x; }
+static inline float    hyd_f01(uint32_t *s){ return (hyd_xs(s)>>8)*(1.f/16777216.f); }
+
+static void step_hydraulic_erosion(float *height, uint32_t seed) {
+    uint32_t st = seed ^ 0xE5051234u; if (!st) st=1u;
+    /* pinceau : poids décroissants normalisés (somme=1) → l'érosion s'étale
+     * sur un petit disque au lieu de creuser une seule cellule (artefacts). */
+    const int br = HYD_BRUSH_R, bw = 2*HYD_BRUSH_R+1;
+    float bweight[(2*HYD_BRUSH_R+1)*(2*HYD_BRUSH_R+1)];
+    float bsum=0.f; int bn=0;
+    for (int dy=-br;dy<=br;dy++) for (int dx=-br;dx<=br;dx++){
+        float d=sqrtf((float)(dx*dx+dy*dy));
+        float wv=(d<=(float)br)?(1.f-d/((float)br+1.f)):0.f;
+        bweight[bn++]=wv; bsum+=wv;
+    }
+    if (bsum<=0.f) bsum=1.f;
+    for (int b=0;b<bn;b++) bweight[b]/=bsum;
+    (void)bw;
+
+    for (int k=0;k<HYD_DROPLETS;k++){
+        float px=hyd_f01(&st)*(float)(SCPS_W-1);
+        float py=hyd_f01(&st)*(float)(SCPS_H-1);
+        float dx_=0.f, dy_=0.f, vel=0.f, water=1.f, sed=0.f;
+        for (int life=0; life<HYD_LIFETIME; life++){
+            int gx=(int)px, gy=(int)py;
+            if (gx<0||gx>=SCPS_W-1||gy<0||gy>=SCPS_H-1) break;
+            float fx=px-(float)gx, fy=py-(float)gy;
+            int i00=scps_idx(gx,gy), i10=scps_idx(gx+1,gy), i01=scps_idx(gx,gy+1), i11=scps_idx(gx+1,gy+1);
+            float h00=height[i00],h10=height[i10],h01=height[i01],h11=height[i11];
+            float gradX=(h10-h00)*(1.f-fy)+(h11-h01)*fy;     /* ∂h/∂x bilinéaire */
+            float gradY=(h01-h00)*(1.f-fx)+(h11-h10)*fx;     /* ∂h/∂y bilinéaire */
+            float hOld=h00*(1-fx)*(1-fy)+h10*fx*(1-fy)+h01*(1-fx)*fy+h11*fx*fy;
+            dx_=dx_*HYD_INERTIA - gradX*(1.f-HYD_INERTIA);   /* nouvelle direction */
+            dy_=dy_*HYD_INERTIA - gradY*(1.f-HYD_INERTIA);
+            float len=sqrtf(dx_*dx_+dy_*dy_);
+            if (len<1e-6f) break;                            /* plat/puits : la goutte meurt */
+            dx_/=len; dy_/=len;
+            float nx=px+dx_, ny=py+dy_;
+            int ngx=(int)nx, ngy=(int)ny;
+            if (ngx<0||ngx>=SCPS_W-1||ngy<0||ngy>=SCPS_H-1) break;
+            float nfx=nx-(float)ngx, nfy=ny-(float)ngy;
+            int j00=scps_idx(ngx,ngy),j10=scps_idx(ngx+1,ngy),j01=scps_idx(ngx,ngy+1),j11=scps_idx(ngx+1,ngy+1);
+            float hNew=height[j00]*(1-nfx)*(1-nfy)+height[j10]*nfx*(1-nfy)+height[j01]*(1-nfx)*nfy+height[j11]*nfx*nfy;
+            float dh=hNew-hOld;                              /* <0 = descente */
+            float cap=fmaxf(-dh,HYD_MIN_SLOPE)*vel*water*HYD_CAPACITY;
+            if (sed>cap || dh>0.f){
+                /* DÉPÔT (remonte, ou trop chargée) → comble (plaine alluviale, delta) */
+                float dep=(dh>0.f)?fminf(dh,sed):(sed-cap)*HYD_DEPOSIT;
+                sed-=dep;
+                height[i00]+=dep*(1-fx)*(1-fy);
+                height[i10]+=dep*fx*(1-fy);
+                height[i01]+=dep*(1-fx)*fy;
+                height[i11]+=dep*fx*fy;
+            } else {
+                /* ÉROSION (bornée à la pente -dh → ne rabote pas les crêtes), étalée au pinceau */
+                float ero=fminf((cap-sed)*HYD_ERODE, -dh);
+                int b=0;
+                for (int ddy=-br;ddy<=br;ddy++) for (int ddx=-br;ddx<=br;ddx++){
+                    float wv=bweight[b++]; if (wv<=0.f) continue;
+                    int bx=gx+ddx, by=gy+ddy;
+                    if (bx<0||bx>=SCPS_W||by<0||by>=SCPS_H) continue;
+                    float take=ero*wv;
+                    height[scps_idx(bx,by)]-=take; sed+=take;
+                }
+            }
+            vel=sqrtf(fmaxf(vel*vel + (-dh)*HYD_GRAVITY, 0.f));
+            water*=(1.f-HYD_EVAP);
+            px=nx; py=ny;
+            if (water<0.01f) break;
+        }
+    }
+    normalize_f(height,SCPS_N);
+}
+
 static void step_erosion(float *height, Cell *cells, float erosion) {
     int8_t *fdir  = (int8_t*)malloc(SCPS_N*sizeof(int8_t));
     float  *accum = (float *)malloc(SCPS_N*sizeof(float));
@@ -3547,6 +3648,12 @@ void world_generate(World *w, const WorldParams *P) {
 
     printf("[scps] altération...   "); fflush(stdout);
     step_thermal_erosion(height,thermal_iters); printf("ok\n");
+
+    printf("[scps] érosion hydro... "); fflush(stdout);
+    /* KEYSTONE : des gouttelettes creusent les chenaux (réseau dendritique,
+     * vallées, plaines alluviales) AVANT l'accumulation de flux → cell.river
+     * suit les chenaux réels, le relief perd son aspect « bruit mou ». */
+    step_hydraulic_erosion(height,w->seed); printf("ok\n");
 
     printf("[scps] érosion...      "); fflush(stdout);
     step_erosion(height,w->cell,P->erosion); printf("ok\n");

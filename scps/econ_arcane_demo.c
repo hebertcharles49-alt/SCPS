@@ -99,7 +99,10 @@ int main(int argc, char **argv){
         if (bi>=0) e->region[rid].bld[bi].level=3.f;
     }
     for (int t=0;t<5;t++) econ_tick(e,1.f);   /* la chaîne tourne : cristal→essence→armes */
-    float arms = e->region[rid].stock[RES_ENCHANTED_ARMS];
+    /* P1 — comme l'essence : les armes vont au POOL NATIONAL puis sont redistribuées au prorata de la
+     * pop ; lire la SEULE région-forge en sous-estime la part (et le relief #1 a changé sa pop-share).
+     * On mesure donc la production d'armes à l'échelle du PAYS (Σ régions de cid). */
+    float arms=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) arms+=e->region[r].stock[RES_ENCHANTED_ARMS];
     float mil1 = diplo_mil_power(w, e, cid);
     printf("   armes enchantées en stock = %.1f | puissance militaire %.2f → %.2f\n", arms, mil0, mil1);
     ok("la forge céleste PRODUIT des armes enchantées (fer céleste + essence)", arms > 0.5f);
