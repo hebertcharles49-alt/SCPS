@@ -11,7 +11,7 @@
 #include <stddef.h>
 
 #define NONE TECH_COUNT     /* sentinelle « pas de prérequis » */
-#define UNIV RACE_COUNT     /* sentinelle « tech universelle (pas de race native) » */
+#define UNIV HERITAGE_COUNT     /* sentinelle « tech universelle (pas de race native) » */
 
 /* ---- Constantes de calibrage (surface d'équilibrage) ------------------ */
 #define CRISIS_SCALE    12.0f   /* échelle de la courbe proximité = f(charge) */
@@ -49,7 +49,7 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0,0, 0,1.0f, 0, 0, 0, 0.05f, 0.3f, false },
 [TECH_MAGIE_BATAILLE] = { "Magie de bataille","Tour de mages", THM_SAVOIR,FN_ARMEE,2, TECH_SAVOIR_GUERRE, false,false,UNIV,
     0,0,0, 0,2.0f, 0, 0, 1.0f, 0.50f, 1.5f, false },
-[TECH_INVOCATION] = { "Invocation","Cercle d'invocation", THM_SAVOIR,FN_ARMEE,3, TECH_MAGIE_BATAILLE, true,true,RACE_ELFE,
+[TECH_INVOCATION] = { "Invocation","Cercle d'invocation", THM_SAVOIR,FN_ARMEE,3, TECH_MAGIE_BATAILLE, true,true,HERITAGE_ESOTERIQUE,
     0,0,0, 0,2.0f, 0, 0, 3.0f, 1.50f, 3.0f, false },
 [TECH_EVEIL] = { "L'Éveil","Le Réveil (armée sans pop)", THM_SAVOIR,FN_ARMEE,4, TECH_MAGIE_BATAILLE, true,true,UNIV,
     0,0,0, 0,0, 0, 0, 6.0f, 3.00f, 6.0f, true },
@@ -58,7 +58,7 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0.5f,1.0f, 0,0, 0, 0, 0, 0, 0.3f, false },
 [TECH_SCRYING] = { "Scrying","Bassin de scrying", THM_SAVOIR,FN_RENFORCEMENT,2, TECH_WARDS, false,false,UNIV,
     0,0,0.5f, 0,0, 0, 0, 0.5f, 0.30f, 1.0f, false },
-[TECH_COMMUNION] = { "Communion","Bosquet de communion", THM_SAVOIR,FN_RENFORCEMENT,3, TECH_SCRYING, false,false,RACE_ELFE,
+[TECH_COMMUNION] = { "Communion","Bosquet de communion", THM_SAVOIR,FN_RENFORCEMENT,3, TECH_SCRYING, false,false,HERITAGE_ESOTERIQUE,
     0,1.0f,2.0f, 0,0, 0, -1.0f, 0.5f, 0.10f, 0.5f, false },
 [TECH_SAVOIR_INTERDIT] = { "Savoir interdit","Crypte interdite", THM_SAVOIR,FN_RENFORCEMENT,4, TECH_SCRYING, true,true,UNIV,
     0,0,0, 0,0, 0, 0, 4.0f, 2.00f, 4.0f, false },
@@ -85,7 +85,7 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0,0, 0,1.5f, 0, 0, 0, 0, 0.3f, false },
 [TECH_POUDRIERE] = { "Poudrière","Poudrière", THM_FORGE,FN_ARMEE,2, TECH_ARMURERIE, false,false,UNIV,
     0,0,0, 0,2.5f, 0, 0, 0, 0.20f, 1.0f, false },
-[TECH_FORGE_RUNES] = { "Forge à runes","Forge céleste", THM_FORGE,FN_ARMEE,3, TECH_POUDRIERE, true,false,RACE_NAIN,
+[TECH_FORGE_RUNES] = { "Forge à runes","Forge céleste", THM_FORGE,FN_ARMEE,3, TECH_POUDRIERE, true,false,HERITAGE_METALLURGISTE,
     0,0,0, 0,3.0f, 0, 0, 3.0f, 1.00f, 2.0f, false },
 [TECH_OEUVRE_NOIRE] = { "L'Œuvre noire","L'Œuvre noire", THM_FORGE,FN_ARMEE,4, TECH_POUDRIERE, true,false,UNIV,
     0,0,0, 2.0f,5.0f, 3.0f, 2.0f, 2.0f, 1.50f, 5.0f, false },
@@ -96,7 +96,7 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0,1.0f, 0.5f,0, 0, 0, 0, 0, 0, false },
 [TECH_FORTIFICATIONS] = { "Fortifications","Forteresse → Citadelle", THM_FORGE,FN_RENFORCEMENT,2, TECH_QUALITE_MATERIAUX, false,false,UNIV,
     0,0,1.5f, 0,1.0f, 0, 0, 0, 0, 0.2f, false },
-[TECH_AUTOMATES] = { "Automates","Grand Engrenage (Golems)", THM_FORGE,FN_RENFORCEMENT,3, TECH_FORTIFICATIONS, true,false,RACE_GNOME,
+[TECH_AUTOMATES] = { "Automates","Grand Engrenage (Golems)", THM_FORGE,FN_RENFORCEMENT,3, TECH_FORTIFICATIONS, true,false,HERITAGE_MECANISTE,
     0,0,0, 3.0f,3.0f, 0, 0, 1.0f, 1.00f, 2.0f, false },
 
 /* ---- SOCIÉTÉ · PRODUCTION (croissance / commerce / impôt — sûre) ------ */
@@ -108,7 +108,7 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0,0, 2.0f,0, 0, 0, 0, 0, 0, false },
 [TECH_CADASTRE] = { "Cadastre","Cadastre (impôt)", THM_SOCIETE,FN_PRODUCTION,3, TECH_COMMERCE, false,false,UNIV,
     0,0.5f,0, 1.5f,0, 0, 0, 0, 0, 0, false },
-[TECH_ABONDANCE] = { "Abondance","Grenier d'abondance", THM_SOCIETE,FN_PRODUCTION,3, TECH_COMMERCE, false,false,RACE_HALFELIN,
+[TECH_ABONDANCE] = { "Abondance","Grenier d'abondance", THM_SOCIETE,FN_PRODUCTION,3, TECH_COMMERCE, false,false,HERITAGE_AGRAIRE,
     0,1.0f,0, 3.0f,0, 0, -0.5f, 0, 0, 0, false },
 /* E2 §13 — la branche MARCHANDE : le Comptoir branche la province au Centre
  * commercial (marge de transport réduite) ; les Halles ouvrent l'Entrepôt
@@ -124,7 +124,7 @@ static const TechNode NODES[TECH_COUNT] = {
     0,0,0, 0,1.5f, 0, 0, 0, 0, 0, false },
 [TECH_ORGANISATION] = { "Organisation militaire","État-major", THM_SOCIETE,FN_ARMEE,2, TECH_CONSCRIPTION, false,false,UNIV,
     0,0,0.5f, 0,2.0f, 0, 0, 0, 0, 0, false },
-[TECH_ESCLAVAGE] = { "Économie servile","Marché aux esclaves", THM_SOCIETE,FN_ARMEE,3, TECH_ORGANISATION, true,false,RACE_ORQUE,
+[TECH_ESCLAVAGE] = { "Économie servile","Marché aux esclaves", THM_SOCIETE,FN_ARMEE,3, TECH_ORGANISATION, true,false,HERITAGE_CLANIQUE,
     0,0,0, 3.0f,2.0f, 1.0f, 3.0f, 0, 0, 2.0f, false },
 [TECH_CASTE_MARTIALE] = { "Caste martiale","Caste martiale", THM_SOCIETE,FN_ARMEE,4, TECH_ORGANISATION, true,false,UNIV,
     0,0,0, 0,4.0f, 2.0f, 2.0f, 0, 0, 2.5f, false },
@@ -133,7 +133,7 @@ static const TechNode NODES[TECH_COUNT] = {
     3.0f,0,0, 0,0, 0, 0, 0, 0, 0, false },
 [TECH_FOI] = { "Foi","Temple → Cathédrale", THM_SOCIETE,FN_RENFORCEMENT,2, TECH_CHANCELLERIE, false,false,UNIV,
     0,3.0f,0, 0,0, 0, 0, 0, 0, 0, false },
-[TECH_INTEGRATION] = { "Droit d'intégration","Creuset (assimilation)", THM_SOCIETE,FN_RENFORCEMENT,3, TECH_FOI, false,false,RACE_HUMAIN,
+[TECH_INTEGRATION] = { "Droit d'intégration","Creuset (assimilation)", THM_SOCIETE,FN_RENFORCEMENT,3, TECH_FOI, false,false,HERITAGE_ADAPTATIF,
     0,1.0f,0, 0,0, 0, -3.0f, 0, 0, 0, false },
 [TECH_CULTE_IMPERIAL] = { "Culte impérial","Mythe homogénéisant", THM_SOCIETE,FN_RENFORCEMENT,4, TECH_FOI, true,false,UNIV,
     1.0f,2.0f,0, 0,0, 0, -2.0f, 0, 0.50f, 3.0f, false },
@@ -171,12 +171,12 @@ const FusionRecipe *tech_fusion_table(void) { return FUSIONS; }
 /* Chaque nœud PEND d'un nœud de base POSITIONNÉ (tier ≥ 1) : il n'apparaît dans le cercle
  * qu'une fois ce parent acquis, et le clic sur le parent ouvre l'anneau de ses sous-techs. */
 static const SyncNode SYNCS[SYNC_COUNT] = {
-    { "Comptoir arcanique","Rudiments arcanes",    RACE_ELFE,    PROF_SURFACE, TECH_SAVOIR_GUERRE,    1.0f,0,0,   0,0 },
-    { "Maçonnerie runique","Pierre des montagnes", RACE_NAIN,    PROF_METIER,  TECH_QUALITE_MATERIAUX,0,0.5f,0,   0.5f,0 },
-    { "École d'ingénierie","Mécanismes empruntés", RACE_GNOME,   PROF_METIER,  TECH_FONDERIE,         0,0,0,      1.5f,0 },
-    { "Doctrine d'accueil","Creuset emprunté",     RACE_HUMAIN,  PROF_METIER,  TECH_CHANCELLERIE,     0,0.5f,1.0f,0,0 },
-    { "Hospice pastoral","Abondance partagée",     RACE_HALFELIN,PROF_SURFACE, TECH_IRRIGATION,       0,1.0f,0,   1.0f,0 },
-    { "Garde étrangère","Discipline d'emprunt",    RACE_ORQUE,   PROF_METIER,  TECH_CONSCRIPTION,     0,0,0,      0,1.5f },
+    { "Comptoir arcanique","Rudiments arcanes",    HERITAGE_ESOTERIQUE,    PROF_SURFACE, TECH_SAVOIR_GUERRE,    1.0f,0,0,   0,0 },
+    { "Maçonnerie runique","Pierre des montagnes", HERITAGE_METALLURGISTE,    PROF_METIER,  TECH_QUALITE_MATERIAUX,0,0.5f,0,   0.5f,0 },
+    { "École d'ingénierie","Mécanismes empruntés", HERITAGE_MECANISTE,   PROF_METIER,  TECH_FONDERIE,         0,0,0,      1.5f,0 },
+    { "Doctrine d'accueil","Creuset emprunté",     HERITAGE_ADAPTATIF,  PROF_METIER,  TECH_CHANCELLERIE,     0,0.5f,1.0f,0,0 },
+    { "Hospice pastoral","Abondance partagée",     HERITAGE_AGRAIRE,PROF_SURFACE, TECH_IRRIGATION,       0,1.0f,0,   1.0f,0 },
+    { "Garde étrangère","Discipline d'emprunt",    HERITAGE_CLANIQUE,   PROF_METIER,  TECH_CONSCRIPTION,     0,0,0,      0,1.5f },
     /* profils d'ÉTHOS (briefs Savoir/Société §5) : la bureaucratie diffuse le scriptorium
      * au coude-à-coude (métier), le marchand répand le comptoir/cothon par le négoce (surface). */
     { "Scriptorium d'emprunt","Écriture administrative", ARCH_BUREAUCRATIQUE, PROF_METIER,  TECH_WARDS,    1.5f,0,0, 0,0 },
@@ -272,7 +272,7 @@ const char *tech_function_name(TechFunction f){
 int  tech_quarter(TechTheme t, TechFunction f){ return (int)t*FN_COUNT + (int)f; }
 bool tech_is_base(TechId id){ return (id>=0&&id<TECH_COUNT)&&NODES[id].tier==0; }
 
-unsigned tech_race_bit(SpeciesArchetype r){ return (r>=0&&r<RACE_COUNT)?(1u<<r):0u; }
+unsigned tech_race_bit(SpeciesArchetype r){ return (r>=0&&r<HERITAGE_COUNT)?(1u<<r):0u; }
 
 /* §SYNCRÉTIQUE — COMBINAISON (brief Forge §5/§8) : un nœud-pointe peut exiger DEUX
  * archétypes culturels en contact, pas un seul. Emblème : les armes enchantées (Forge
@@ -282,7 +282,7 @@ unsigned tech_race_bit(SpeciesArchetype r){ return (r>=0&&r<RACE_COUNT)?(1u<<r):
  * reste NODES[].native ; le masque `race_access` encode désormais l'ACCÈS D'ARCHÉTYPE. */
 static SpeciesArchetype tech_combo_native(TechId id){
     switch (id){
-        case TECH_FORGE_RUNES: return RACE_ELFE;   /* runique (nain) ET arcane (elfe) */
+        case TECH_FORGE_RUNES: return HERITAGE_ESOTERIQUE;   /* runique (nain) ET arcane (elfe) */
         default:               return UNIV;
     }
 }

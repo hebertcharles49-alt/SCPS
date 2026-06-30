@@ -25,16 +25,18 @@ static void ok(const char *what, bool cond){
 }
 
 static void print_build(const char *who, const SpeciesBuild *b){
-    int bud = build_budget(b);
-    printf("   %-22s %-14s %-14s %-16s  budget=%d %s\n",
+    int pos=0,neg=0;
+    for (int c=0;c<CAT_COUNT;c++){ const TraitDef *d=trait_def(b->trait[c]);
+        if (d->pts>0) pos++; else if (d->pts<0) neg++; }
+    printf("   %-22s %-14s %-14s %-16s  %d+/%d−  %s\n",
            who, trait_name(b->trait[CAT_PHYSIQUE]),
            trait_name(b->trait[CAT_SOCIAL]), trait_name(b->trait[CAT_INTELLECTUEL]),
-           bud, build_is_valid(b)?"✓ valide":"✗ INVALIDE");
+           pos, neg, build_is_valid(b)?"✓ valide":"✗ INVALIDE");
 }
 
 int main(void){
     printf("══════════════════════════════════════════════════════════════\n");
-    printf(" ROSTER DE RACES & TRAITS — un trait par catégorie, équilibré à 0\n");
+    printf(" ROSTER & TRADITIONS — une tradition par axe, FORCÉ 1 majeur + 1 mineur + 1 défaut\n");
     printf("══════════════════════════════════════════════════════════════\n");
 
     /* ---- 1. Structure des pools ---------------------------------------- */
@@ -59,7 +61,7 @@ int main(void){
     /* ---- 2. Le roster ------------------------------------------------- */
     printf("\n── 2. Roster (builds par défaut) ──\n");
     bool roster_ok=true;
-    for (int r=0;r<RACE_COUNT;r++){
+    for (int r=0;r<HERITAGE_COUNT;r++){
         SpeciesBuild b=species_default_build((SpeciesArchetype)r);
         char tag[48]; snprintf(tag,sizeof tag,"%s [%s]",
                                species_name((SpeciesArchetype)r),
@@ -67,35 +69,38 @@ int main(void){
         print_build(tag,&b);
         if (!build_is_valid(&b)) roster_ok=false;
     }
-    ok("les 6 races par défaut sont valides (équilibrées à 0)", roster_ok);
+    ok("les 6 héritages par défaut sont valides (1 majeur + 1 mineur + 1 défaut)", roster_ok);
 
-    /* ---- 3. Flexibilité Stellaris (versions légales) ------------------ */
-    printf("\n── 3. Flexibilité — on se compose un peuple (légalement) ──\n");
-    /* orque charismatique : Belliqueux→Charismatique, Borné→Indolent (Intel −1). */
-    SpeciesBuild orc_charm = {{ T_ENDURANT, T_CHARISMATIQUE, T_INDOLENT }};
-    /* elfe belliqueux : Débonnaire→Belliqueux, Arcanique→Sourd à l'arcane. */
-    SpeciesBuild elf_war   = {{ T_LONGEVIF, T_BELLIQUEUX, T_SOURD_ARCANE }};
-    print_build("Orque charismatique", &orc_charm);
-    print_build("Elfe belliqueux",     &elf_war);
-    ok("orque charismatique légal & équilibré", build_is_valid(&orc_charm));
-    ok("elfe belliqueux légal & équilibré",     build_is_valid(&elf_war));
+    /* ---- 3. On se compose une culture (versions légales) -------------- */
+    printf("\n── 3. On se compose une culture (légalement) ──\n");
+    /* Clanique charismatique : Robuste (majeur Phys) + Charismatique (mineur Social) + Indolent (défaut Intel). */
+    SpeciesBuild clan_charm = {{ T_ROBUSTE, T_CHARISMATIQUE, T_INDOLENT }};
+    /* Ésotérique martial : Longévif (mineur Phys) + Belliqueux (majeur Social) + Sourd à l'arcane (défaut Intel). */
+    SpeciesBuild eso_war    = {{ T_LONGEVIF, T_BELLIQUEUX, T_SOURD_ARCANE }};
+    print_build("Clanique charismatique", &clan_charm);
+    print_build("Ésotérique martial",     &eso_war);
+    ok("clanique charismatique légal (1 maj + 1 min + 1 déf)", build_is_valid(&clan_charm));
+    ok("ésotérique martial légal (1 maj + 1 min + 1 déf)",     build_is_valid(&eso_war));
 
     /* ---- 4. Le validateur rejette l'illégal -------------------------- */
     printf("\n── 4. Le validateur tient la règle ──\n");
-    /* L'exemple LITTÉRAL du doc : Endurant, Charismatique, Frondeur — deux
-     * Sociaux, aucun Intellectuel → doit être REJETÉ. */
+    /* Endurant, Charismatique, Frondeur — deux Sociaux, aucun Intellectuel → REJETÉ (axe doublé). */
     SpeciesBuild illegal_cat = {{ T_ENDURANT, T_CHARISMATIQUE, T_FRONDEUR }};
-    ok("rejette deux traits de la même catégorie (Frondeur en slot Intel)",
+    ok("rejette deux traditions du même axe (Frondeur en slot Intel)",
        !build_is_valid(&illegal_cat));
-    /* build déséquilibré : trois atouts → budget ≠ 0. */
-    SpeciesBuild unbalanced = {{ T_ROBUSTE, T_BELLIQUEUX, T_INVENTIF }};
-    ok("rejette un build déséquilibré (budget != 0)", !build_is_valid(&unbalanced));
-    printf("     (Robuste+Belliqueux+Inventif : budget=%d → trois atouts, illégal)\n",
-           build_budget(&unbalanced));
+    /* trois atouts → pas de défaut : illégal. */
+    SpeciesBuild three_pos = {{ T_ROBUSTE, T_BELLIQUEUX, T_INVENTIF }};
+    ok("rejette trois atouts (il faut exactement 1 défaut)", !build_is_valid(&three_pos));
+    /* deux mineurs, pas de majeur → illégal (il faut 1 majeur +2). */
+    SpeciesBuild no_major = {{ T_PROLIFIQUE, T_CHARISMATIQUE, T_INDOLENT }};
+    ok("rejette l'absence d'atout majeur (2 mineurs + 1 défaut)", !build_is_valid(&no_major));
+    /* deux défauts → illégal (il faut exactement 2 atouts : 1 majeur + 1 mineur). */
+    SpeciesBuild two_neg = {{ T_FRELE, T_FACTIEUX, T_INVENTIF }};
+    ok("rejette deux défauts (il faut 1 majeur + 1 mineur)", !build_is_valid(&two_neg));
 
     /* ---- Leviers composés (le code voit les chiffres ; le joueur des mots) */
-    printf("\n── Leviers composés par race (échelle moteur) ──\n");
-    for (int r=0;r<RACE_COUNT;r++){
+    printf("\n── Leviers composés par héritage (échelle moteur) ──\n");
+    for (int r=0;r<HERITAGE_COUNT;r++){
         SpeciesBuild b=species_default_build((SpeciesArchetype)r);
         SpeciesLeviers L=build_leviers(&b);
         printf("   %-9s : démo×%.2f prod×%.2f | K%+.1f P%+.1f H%+.1f arcane%+.1f"

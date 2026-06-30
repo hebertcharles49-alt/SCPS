@@ -100,7 +100,7 @@ int  navy_transport_packets_free(const NavyState *ns, int cid);
  * contraint par le champ — un pays porté + transport disponible colonise la
  * meilleure région côtière vierge JOIGNABLE (jours de mer ≤ seuil), le score
  * préférant ce que les courants rapprochent. À appeler au pas mensuel. */
-int  navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days);
+int  navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days, int skip_cid);
 
 /* Jours de mer port-à-port entre les rades de deux régions (< 0 si impossible). */
 float navy_sea_days_regions(const World *w, int reg_a, int reg_b);

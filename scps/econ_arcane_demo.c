@@ -44,7 +44,7 @@ int main(int argc, char **argv){
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
     econ_init(e,w); gen_population(w,e);
-    worldgen_seed_peoples(w,e,RACE_HUMAIN);
+    worldgen_seed_peoples(w,e,HERITAGE_ADAPTATIF);
     prosperity_init(wp,w); legitimacy_init(wl,w,e);
     for (int c=0;c<w->n_countries;c++) tech_state_init(&ts[c],false);
 
@@ -74,11 +74,14 @@ int main(int argc, char **argv){
 
     /* ═══ 2-3. L'atelier brûle le cristal → essence + charge ═════════════ */
     printf("\n── 2-3. L'atelier de mage brûle le cristal → essence (charge arcane) ──\n");
-    float ess0=e->region[rid].stock[RES_ESSENCE];
+    /* P1 — l'essence produite va au POOL NATIONAL puis est redistribuée aux régions au prorata de la
+     * pop : lire la SEULE région-atelier en sous-estime la part (≈ sa pop-share). On mesure donc
+     * l'essence à l'échelle du PAYS (Σ régions de cid) = la vraie production raffinée. */
+    float ess0=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) ess0+=e->region[r].stock[RES_ESSENCE];
     for (int t=0;t<3;t++) econ_tick(e,1.f);
-    float ess1=e->region[rid].stock[RES_ESSENCE];
+    float ess1=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) ess1+=e->region[r].stock[RES_ESSENCE];
     float charge=e->region[rid].arcane_charge;
-    printf("   région %d : essence %.1f→%.1f | charge arcane ce tick = %.2f\n", rid, ess0, ess1, charge);
+    printf("   pays %d : essence (pool) %.1f→%.1f | charge arcane (rég %d) = %.2f\n", cid, ess0, ess1, rid, charge);
     ok("l'atelier de mage PRODUIT de l'essence (le cristal raffiné)", ess1 > ess0 + 0.5f);
     ok("brûler le cristal CHARGE l'arcane (arcane_charge > 0)", charge > 0.01f);
 

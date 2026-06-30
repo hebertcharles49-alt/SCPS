@@ -37,12 +37,12 @@ void group_ethos_lean(const PopCulture *c, float w[FAC_COUNT]){
     }
     /* 2) SIGNATURE de race — le penchant inné du peuple (§2). */
     switch (c->race){
-        case RACE_ORQUE:    w[FAC_CONQUERANT]+=0.5f;    w[FAC_TRANSGRESSEUR]+=0.5f; break; /* guerre + interdit */
-        case RACE_NAIN:     w[FAC_LEGISTE]+=0.4f;       w[FAC_TRANSGRESSEUR]+=0.4f; break; /* forge à runes */
-        case RACE_HALFELIN: w[FAC_MARCHAND]+=0.4f;      w[FAC_COMMUNAUTAIRE]+=0.5f; break;
-        case RACE_GNOME:    w[FAC_MARCHAND]+=0.5f;      w[FAC_COMMUNAUTAIRE]+=0.3f; break; /* négoce, bien commun */
-        case RACE_ELFE:     w[FAC_TRANSGRESSEUR]+=0.4f; w[FAC_GARDIEN]+=0.3f;       break; /* arcane + tradition */
-        case RACE_HUMAIN:   w[FAC_MARCHAND]+=0.2f;      w[FAC_LEGISTE]+=0.2f;       break; /* l'intégrateur */
+        case HERITAGE_CLANIQUE:    w[FAC_CONQUERANT]+=0.5f;    w[FAC_TRANSGRESSEUR]+=0.5f; break; /* guerre + interdit */
+        case HERITAGE_METALLURGISTE:     w[FAC_LEGISTE]+=0.4f;       w[FAC_TRANSGRESSEUR]+=0.4f; break; /* forge à runes */
+        case HERITAGE_AGRAIRE: w[FAC_MARCHAND]+=0.4f;      w[FAC_COMMUNAUTAIRE]+=0.5f; break;
+        case HERITAGE_MECANISTE:    w[FAC_MARCHAND]+=0.5f;      w[FAC_COMMUNAUTAIRE]+=0.3f; break; /* négoce, bien commun */
+        case HERITAGE_ESOTERIQUE:     w[FAC_TRANSGRESSEUR]+=0.4f; w[FAC_GARDIEN]+=0.3f;       break; /* arcane + tradition */
+        case HERITAGE_ADAPTATIF:   w[FAC_MARCHAND]+=0.2f;      w[FAC_LEGISTE]+=0.2f;       break; /* l'intégrateur */
         default: break;
     }
     /* 3) CREDO — la ferveur nourrit les Gardiens ; la tolérance, l'ouverture. */

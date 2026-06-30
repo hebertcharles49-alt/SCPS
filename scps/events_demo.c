@@ -73,7 +73,7 @@ int main(int argc, char **argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(s.w,&p);
-    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ);
@@ -153,10 +153,10 @@ int main(int argc, char **argv){
     /* ═══ 3. SAVEUR PAR LA FICHE — un état, quatre récits ═══════════════ */
     printf("\n── 3. Le MÊME état (marche lointaine instable) → un récit PAR culture ──\n");
     struct { Ethos e; SpeciesArchetype race; const char *who; int expect; } V[4]={
-        { ETHOS_DOMINATEUR, RACE_ORQUE,   "Orque Dominateur",  EVID_INTEG_DOMINATEUR },
-        { ETHOS_MERCANTILE, RACE_GNOME,   "Gnome Mercantile",  EVID_INTEG_MERCANTILE },
-        { ETHOS_BUREAUCRATE,RACE_HUMAIN,  "Humain Bureaucrate",EVID_INTEG_BUREAUCRATE },
-        { ETHOS_PACIFISTE,  RACE_ELFE,    "Elfe Ancien",       EVID_INTEG_ANCIEN },
+        { ETHOS_DOMINATEUR, HERITAGE_CLANIQUE,   "Orque Dominateur",  EVID_INTEG_DOMINATEUR },
+        { ETHOS_MERCANTILE, HERITAGE_MECANISTE,   "Gnome Mercantile",  EVID_INTEG_MERCANTILE },
+        { ETHOS_BUREAUCRATE,HERITAGE_ADAPTATIF,  "Humain Bureaucrate",EVID_INTEG_BUREAUCRATE },
+        { ETHOS_PACIFISTE,  HERITAGE_ESOTERIQUE,    "Elfe Ancien",       EVID_INTEG_ANCIEN },
     };
     /* On a besoin de 4 pays + 4 régions-marches. */
     int nC=s.w->n_countries; bool flavor_ok = (nC>=4);

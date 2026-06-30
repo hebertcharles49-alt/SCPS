@@ -27,9 +27,15 @@
  *   territoire (province) → 3-5 = région → 3-5 = pays
  *   continent = masse continentale géographique (séparée par l'océan),
  *   hébergeant ~4-7 pays. */
-#define SCPS_MAX_PROV      320
-#define SCPS_MAX_REG       130
-#define SCPS_MAX_COUNTRY    56
+/* PLAFONDS — le monde SCALE avec le nombre d'entités (cf. WORLD_PROV_* / assign_provinces) :
+ * le compte de territoires est f(empires) SANS clamp artificiel — ces plafonds ne font que
+ * DIMENSIONNER les tableaux pour le mode le plus grand (HUGE = 12 empires ⇒ ~1284 terr.).
+ * Défaut = 6 empires (~654 terr.). En-dessous de 12 empires le compte n'est JAMAIS rogné.
+ * INVARIANT anti-débordement : MAX_REG ≥ MAX_PROV / REG_TARGET_MIN (une région = ≥2 terr.),
+ * donc l'agglomération (qui ne clampe PAS nreg) ne peut jamais dépasser MAX_REG. */
+#define SCPS_MAX_PROV     1664
+#define SCPS_MAX_REG       832
+#define SCPS_MAX_COUNTRY   320
 #define SCPS_MAX_CONTINENT  16
 #define SCPS_REG_TARGET_MIN 2   /* territoires par région (unités plus fines → plus de pays) */
 #define SCPS_REG_TARGET_MAX 3
@@ -86,6 +92,8 @@ typedef enum {
     BIO_MANGROVE,      /* côte tropicale ennoyée (ajouté par l'altération) */
     BIO_BOG,           /* tourbière froide / lande humide */
     BIO_VOLCANO,       /* cône/caldeira — roche nue et cendres */
+    BIO_THORNS,        /* CAPSTONE §27 : ronces apocalyptiques — posé UNIQUEMENT par la
+                        * corruption (jamais par assign_biome) ; terre infranchissable */
     BIO_COUNT
 } Biome;
 
@@ -265,7 +273,9 @@ typedef enum {
     POLITY_PLAYER = 0,   /* le joueur — capitale peuplée au départ */
     POLITY_ANTAGONIST,   /* IA majeure — peuplée, colonise */
     POLITY_CITY_STATE,   /* cité-état — peuplée sur toute sa région, colonise ses propres territoires */
-    POLITY_UNCLAIMED     /* terres vierges colonisables (pays sans départ) */
+    POLITY_UNCLAIMED,    /* terres vierges colonisables (pays sans départ) */
+    POLITY_WILD          /* PEUPLES LIBRES — hameaux épars près des jouables ; défendent, jamais
+                          * n'attaquent ; absorbables par conquête, vassalité OU défection culturelle */
 } PolityRole;
 
 /* ---- Pays : capacité 32 régions (agglomération peut dépasser 12 en cas de

@@ -74,6 +74,33 @@ static const float BASE_PRICE[RES_COUNT] = {
     [RES_REMEDE]        = 7.0f,    /* remèdes — santé/confort */
 };
 
+/* ── REFONTE A1 — RENDEMENT D'EXTRACTION PAR OUVRIER (unités/ouvrier/AN) ──────
+ * La brute n'est plus extraite ∝ terrain×√pop : elle suit les BRAS. Chaque ouvrier
+ * affecté à une brute en tire EXTRACT_YIELD[r] par AN (à geo_eff=1, effort=1). La
+ * valeur EST « production annuelle par 100 ouvriers ÷ 100 » (donc grain 800/100 = 8).
+ * Au tick (mensuel) on multiplie par dt (=1/12). Les brutes manufacturées (≥
+ * RES_PROD_FIRST) ne s'extraient pas (0). Le ×2 historique bois/fer/or est REPLIÉ ici
+ * (bois/fer portent leur poids dans le rendement, plus de multiplicateur ad hoc).
+ *   🔒 ancrés : grain 8 · poisson 4 · gibier/élevage 3 · bois 0.5 · pierre/argile 0.25.
+ *   ◇ dérivés : métaux 0.25-0.40 · fibres/sucre 0.60 · épices/minéraux 0.30-0.40 ·
+ *               or 0.08 · rares (perle/teinture/arcane/céleste) 0.03-0.06. */
+static const float EXTRACT_YIELD[RES_COUNT] = {
+    /* nourriture (interchangeable : grain/poisson/viande) */
+    [RES_GRAIN]=8.0f, [RES_FISH]=4.0f, [RES_LIVESTOCK]=3.0f,
+    /* vrac de construction & bois de feu */
+    [RES_WOOD]=0.50f, [RES_STONE]=0.25f, [RES_CLAY]=0.25f,
+    /* métaux & charbon */
+    [RES_IRON]=0.30f, [RES_COAL]=0.40f, [RES_COPPER]=0.25f,
+    /* fibres & douceurs (intrants manufacture) */
+    [RES_WOOL]=0.60f, [RES_SUGAR]=0.60f, [RES_COTTON]=0.60f,
+    /* épices, minéraux mineurs, fourrure */
+    [RES_SALT]=0.30f, [RES_MED_HERBS]=0.30f, [RES_SALTPETER]=0.30f, [RES_SULFUR]=0.30f, [RES_FUR]=0.40f,
+    /* précieux & rares (rendement maigre, valeur haute) */
+    [RES_GOLD]=0.08f, [RES_PRECIOUS_METAL]=0.05f, [RES_PEARL]=0.05f,
+    [RES_MUREX]=0.05f, [RES_INDIGO]=0.06f,
+    [RES_ARCANE_CRYSTAL]=0.04f, [RES_CELESTIAL_IRON]=0.03f,
+};
+
 /* Recette d'une manufacture : jusqu'à 2 intrants → 1 produit. */
 typedef struct {
     Resource in1;  float q1;
@@ -155,22 +182,32 @@ static const Recipe RECIPE[BLD_TYPE_COUNT] = {
  * préférence) ; la case RES_PRECIOUS_WARE = palier STATUT (orfèvrerie/étoffe
  * précieuse). On allège l'étoffe (en pénurie) et le bois de feu ; tout le reste
  * tend de +10 % via DEMAND_TENSION appliqué à `units` (demande tendue permanente). */
+/* ── REFONTE A2 — la BOUCHE est ANNUELLE (1 food = une ration-personne-an) ────
+ * La nourriture & le bois de feu sont des besoins ANNUELS, CALIBRÉS à la géographie
+ * (le réglage fin passe par le tunable FOOD_NEED, défaut 1.0). La table reste « par
+ * 100 hab / TICK » (mensuel, ×12/an). Grain & poisson sont INTERCHANGEABLES (food_sat
+ * les agrège l.~1703 ; le pool national les met en commun) ; la nourriture du SPAWN
+ * (A5) ancre chaque empire. ⚠ La bouche est l'apparié des hauts rendements A1, MAIS
+ * elle reste BORNÉE : un bond ×8 (la cible « 100/100hab » brute) ÉCRASE la fertilité
+ * — needs_met (le moteur de croissance, poids 0.85) chute quand la nourriture monopolise
+ * le budget des journaliers (les autres paliers passent sous τ). On garde donc une
+ * bouche ~3-4× l'ancienne (annuelle, signifiante) sans assécher la vitalité. Le CONFORT
+ * (étoffe/vin/papier/sel/remède/fourrure/statut) garde ses valeurs. */
 static const float NEED[CLASS_COUNT][RES_COUNT] = {
     [CLASS_LABORER] = {
-        [RES_GRAIN]=1.00f, [RES_WINE]=0.35f, [RES_FISH]=0.30f, [RES_WOOD]=0.35f, [RES_TUNIQUE]=0.40f, /* §moral : la BIÈRE (palier moral du commun, via préférence) est le levier — brassée du SURPLUS de grain (réserve vivrière protégée) ; calée pour ~60 % de satisfaction journalière */
+        [RES_GRAIN]=3.50f, [RES_FISH]=1.00f,     /* A2 : nourriture ANNUELLE (grain+poisson INTERCHANGEABLES, food_sat les agrège) */
+        [RES_WOOD]=1.00f,                         /* A2 : bois de FEU annuel (~3× l'ancien 0.35) */
+        [RES_WINE]=0.35f, [RES_TUNIQUE]=0.40f,   /* confort INCHANGÉ (bière/vin via préférence) */
     },
     [CLASS_BOURGEOIS] = {
-        [RES_GRAIN]=1.00f, [RES_CLOTH]=0.34f, [RES_PAPER]=0.25f, [RES_WINE]=0.30f,
-        [RES_SALT]=0.20f, [RES_REMEDE]=0.15f,   /* santé urbaine (apothicaire) */
+        [RES_GRAIN]=4.00f,                        /* A2 : nourriture ANNUELLE */
+        [RES_CLOTH]=0.34f, [RES_PAPER]=0.25f, [RES_WINE]=0.30f,
+        [RES_SALT]=0.20f, [RES_REMEDE]=0.15f,   /* santé urbaine (apothicaire) — confort INCHANGÉ */
     },
     [CLASS_ELITE] = {
-        /* §panier — rééquilibré vers les paliers PRODUCTIBLES (le statut écrasait à 73 %).
-         * Conforts relevés (fourrure/papier/vin, que l'éco SAIT fournir), STATUT abaissé
-         * (orfèvrerie 0.90→0.55, le maillon rare). Combiné au déblocage progressif. */
-        [RES_GRAIN]=1.00f, [RES_FUR]=0.12f, [RES_PAPER]=0.12f, [RES_WINE]=0.28f,
-        [RES_PRECIOUS_WARE]=0.13f,   /* palier STATUT : servi en orfèvrerie OU étoffe ; débloqué EN DERNIER ; calé pour ~60 % */
-        /* §panier — besoins confort/luxe encore allégés de 0.10 (le grain vital reste 1.0) :
-         * l'élite se contente d'un peu moins → satisfaction relevée d'un cran de plus. */
+        [RES_GRAIN]=4.00f,                        /* A2 : nourriture ANNUELLE */
+        [RES_FUR]=0.12f, [RES_PAPER]=0.12f, [RES_WINE]=0.28f,
+        [RES_PRECIOUS_WARE]=0.13f,   /* palier STATUT (orfèvrerie OU étoffe) — confort INCHANGÉ */
     },
 };
 /* §besoins progressifs — ORDRE de priorité par classe (subsistance → confort → STATUT).
@@ -179,7 +216,7 @@ static const float NEED[CLASS_COUNT][RES_COUNT] = {
  * le panier (statut compris). Ainsi le luxe se MÉRITE avec le développement — et l'élite
  * d'un bourg n'est pas punie de ne pas avoir d'orfèvrerie. Le palier STATUT vient DERNIER. */
 static const Resource NEED_ORDER[CLASS_COUNT][8] = {
-    [CLASS_LABORER]   = { RES_GRAIN, RES_WINE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_NONE },  /* bière (RES_WINE→préférée) en palier moral PRÉCOCE : le commun veut sa chope */
+    [CLASS_LABORER]   = { RES_GRAIN, RES_WINE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_NONE },  /* bière (RES_WINE→préférée) en palier moral PRÉCOCE ; poisson = nourriture interchangeable (A2) */
     [CLASS_BOURGEOIS] = { RES_GRAIN, RES_SALT, RES_CLOTH, RES_REMEDE, RES_WINE, RES_PAPER, RES_NONE },
     [CLASS_ELITE]     = { RES_GRAIN, RES_FUR, RES_PAPER, RES_WINE, RES_PRECIOUS_WARE, RES_NONE },
 };
@@ -189,6 +226,9 @@ static int need_rank(int c, Resource r){
     for (int i=0;i<8 && NEED_ORDER[c][i]!=RES_NONE;i++) if (NEED_ORDER[c][i]==r) return i;
     return 99;
 }
+/* REFONTE A2 — une SOURCE DE NOURRITURE interchangeable (grain/poisson/viande). FOOD_NEED
+ * calibre leur demande à l'échelle du monde (la cible 100/100hab borne la géographie). */
+static inline bool res_is_food(Resource r){ return r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK; }
 
 /* Part de chaque strate dans la population à l'initialisation. */
 static const float CLASS_SHARE[CLASS_COUNT] = { 0.80f, 0.15f, 0.05f };
@@ -233,13 +273,22 @@ static inline Resource preferred_luxe(const PopCulture *c){
  * l'usage). L'outil n'entre PAS dans le panier : il ne touche QUE la productivité, JAMAIS
  * la satisfaction. Fini le prix planché à demande nulle qui rendait l'outillage inerte. */
 #define TOOLS_PER_LABORER  0.15f   /* stock-outil VISÉ par journalier (palier d'équipement) → tools_pc ≈ 1.5 à plein, prod_mult ≈ +18 % ; la demande est le DÉFICIT vers ce palier (saturant), pas un flux pop-illimité */
-/* §collecte — INTENSIFICATION : la récolte d'une tuile suit les BRAS qui l'occupent, pas
- * le seul terrain. raw_cap = RICHESSE de référence ; l'intensité ∝ √(pop/réf) (rendements
- * DÉCROISSANTS, plafonnés). Une région peuplée tire plus de sa terre → la production SUIT
- * la population, sans toucher les manufactures. EXTRACT_POP_REF : pop active donnant une
- * intensité de 1 (réglage du seuil). EXTRACT_INTENS_CAP : plafond physique de la tuile. */
-#define EXTRACT_POP_REF    300.f
-#define EXTRACT_INTENS_CAP 2.5f
+/* §collecte — REFONTE LABOR-BOUND (ressource PAR OUVRIER). La récolte d'une brute =
+ * OUVRIERS affectés × EXTRACT_YIELD[r] (rendement/ouvrier/an) × geo_eff (qualité de tuile)
+ * × effort de marché (le prix). Plus de √pop : la collecte est LINÉAIRE en bras.
+ *  · EXTRACT_GEO_REF : raw_cap de référence donnant geo_eff = 1 (la tuile « standard »).
+ *  · EXTRACT_GEO_CAP : plafond de qualité (une tuile exceptionnelle ne va pas à l'infini).
+ *  · EXTRACT_LABOR_SHARE : part des JOURNALIERS dédiée à l'extraction (le reste staffe les
+ *    manufactures) ; les ouvriers se répartissent entre brutes ∝ geo_eff×prix (la tuile
+ *    riche/chère attire). C'est le levier de CALIBRAGE du volume brut. */
+#define EXTRACT_GEO_REF      4.5f    /* calibré seed 9 : pop/needs_met = baseline (cf. CLAUDE.md) */
+#define EXTRACT_GEO_CAP      3.0f
+#define EXTRACT_LABOR_SHARE  0.65f
+/* REFONTE A5 — LA NOURRITURE DU SPAWN (la SEULE règle vivrière de worldgen). La région
+ * CAPITALE de chaque empire naît avec un socle de grain (raw_cap), un grenier de départ.
+ * Tout le reste de la carte est pure GÉOLOGIE (grain/poisson dans la vocation) + COMMERCE.
+ * Valeur = qualité de tuile (raw_cap) : SPAWN_FOOD_RAW/GEO_REF = geo_eff du grenier. */
+#define SPAWN_FOOD_RAW       12.0f
 #define TECH_RATE    0.010f  /* conversion richesse élite → tech */
 #define PRICE_INERTIA 0.65f  /* lissage du prix (0=instantané,1=figé) */
 #define EPS          1e-4f
@@ -265,7 +314,7 @@ static inline Resource preferred_luxe(const PopCulture *c){
 #define RELOC_COERCION_BASE 0.25f   /* pic de coercition de base par évènement       */
 #define COERCION_DECAY      0.93f   /* demi-vie ≈ 10 ticks                            */
 
-static inline float clampf(float v,float lo,float hi){return v<lo?lo:(v>hi?hi:v);}
+static inline float clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:(v>hi?hi:v));}
 
 /* TENSION DE DEMANDE : +10 % de besoins partout (appliqué au facteur `units`) → une
  * demande tendue en permanence, le marché presse toujours sur l'offre. */
@@ -356,6 +405,64 @@ static void econ_seed_population(RegionEconomy *re, float total_pop) {
 
 /* §11.4 — LIMITEUR DE PRODUCTION joueur : cap par (pays,ressource). -1 = ∞ (désactivé). */
 static float g_prod_cap[SCPS_MAX_COUNTRY][RES_COUNT];
+/* (RE)CONSTRUIT l'adjacence de régions (terre, 4-connexe) : un lien ssi AUCUNE des
+ * deux régions n'est infranchissable (glaciers/déserts/RONCES/MER = barrières). Zéroïe
+ * d'abord — réutilisable après une carve (capstone §27 : côtes & barrières déplacées). */
+void econ_build_adjacency(WorldEconomy *e, const World *w) {
+    memset(e->adj, 0, sizeof e->adj);
+    static const int DX4[4]={1,-1,0,0}, DY4[4]={0,0,1,-1};
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
+        int ra=w->cell[scps_idx(x,y)].region;
+        if (ra<0) continue;
+        for (int d=0;d<4;d++) {
+            int nx=x+DX4[d], ny=y+DY4[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int rb=w->cell[scps_idx(nx,ny)].region;
+            if (rb<0||rb==ra) continue;
+            if (!e->region[ra].impassable && !e->region[rb].impassable) {
+                e->adj[ra][rb]=1; e->adj[rb][ra]=1;
+            }
+        }
+    }
+}
+
+/* CAPSTONE §27 FROID — recompute la fertilité vivrière depuis la carte REFROIDIE.
+ * Le socle de grain (raw_cap[RES_GRAIN], posé à l'init = cap_pop/100 × (1.15+0.70·hab),
+ * floor anti-famine 1.15×) est RE-dérivé de l'habitabilité COURANTE des cellules (biome
+ * × confort thermique). Tant que hab ≥ 0.30 la formule d'init est conservée À L'IDENTIQUE
+ * (zéro choc en jeu normal) ; SOUS 0.30 (terre gelée) elle PLONGE proportionnellement →
+ * le grain tombe sous la conso → food_sat < 0.35 → la pop décline (la famine ÉMERGE de
+ * la chaîne, pas d'un modificateur plat). build.food_cap (grenier/irrigation) est INTACT
+ * (canal séparé). N'agit que sur les régions vivantes (owner≥0, franchissables). */
+void econ_cold_refresh(WorldEconomy *e, const World *w) {
+    static float hab_sum[SCPS_MAX_REG]; static int cnt[SCPS_MAX_REG];
+    memset(hab_sum, 0, sizeof hab_sum); memset(cnt, 0, sizeof cnt);
+    for (int i=0;i<SCPS_N;i++){
+        const Cell *c=&w->cell[i];
+        if (c->height < SEA_LEVEL) continue;            /* terre seule */
+        int r=c->region; if (r<0 || r>=e->n_regions || r>=SCPS_MAX_REG) continue;
+        float hcell = biome_habitability(c->biome, c->temperature, c->height);
+        if (c->coast && hcell < 0.32f) hcell = 0.32f;   /* PLANCHER CÔTIER : la côte reste vivable (Chili) */
+        hab_sum[r] += hcell;
+        cnt[r]++;
+    }
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
+        if (cnt[r]==0) continue;
+        RegionEconomy *re=&e->region[r];
+        if (re->owner<0 || re->impassable) continue;
+        float hab = hab_sum[r]/(float)cnt[r];
+        re->habitability = hab;
+        float fac = (hab >= 0.30f) ? (1.15f + 0.70f*hab)               /* jeu normal : IDENTIQUE à l'init */
+                                   : (1.15f + 0.70f*hab) * (hab/0.30f);  /* gel : plonge vers 0 */
+        /* REFONTE (carte nue géologique) : le froid RÉDUIT le grain de la tuile (vocation/spawn),
+         * il n'en AJOUTE jamais — on borne par la valeur existante. Quand le gel plonge fac sous
+         * elle, le grain tombe → l'extraction vivrière s'effondre → famine. (L'ancien overwrite
+         * cap_pop-based plantait du grain partout, incohérent avec le food géologique du refonte.) */
+        float cold_grain = (re->cap_pop/100.f) * fac;
+        if (cold_grain < re->raw_cap[RES_GRAIN]) re->raw_cap[RES_GRAIN] = cold_grain;
+    }
+}
+
 void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(e,0,sizeof(*e));
@@ -372,6 +479,19 @@ void econ_init(WorldEconomy *e, const World *w) {
     float reg_hab[SCPS_MAX_REG]={0};
     bool  reg_impass[SCPS_MAX_REG]={0};   /* zone morte (déterminée ici, RÉUTILISÉE en Passe 3) */
     float cty_cap[SCPS_MAX_COUNTRY]={0};
+    /* Une région PORTEUSE de la capitale d'un empire/cité ne peut être déclarée morte : la capitale est
+     * posée sur sa province habitable (choisie pour l'eau+nourriture), mais le poids de rôle préfère les
+     * sièges CÔTIERS — la région agrège alors assez de provinces mortes (côte/glacier) pour franchir le
+     * seuil d'infranchissabilité. Sans garde, un empire (voire le JOUEUR) naît SANS aucune région
+     * colonisée (capitale inactive). On exonère donc la région-siège du verdict de zone morte. */
+    bool is_cap[SCPS_MAX_REG]={0};
+    for (int c=0;c<w->n_countries;c++){
+        PolityRole rl=w->country[c].role;
+        if (rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST && rl!=POLITY_CITY_STATE) continue;
+        int cp=w->country[c].capital_prov;
+        int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
+        if (cr>=0&&cr<w->n_regions) is_cap[cr]=true;
+    }
     for (int rid=0; rid<w->n_regions; rid++) {
         const Region *rg=&w->region[rid];
         e->region[rid].import_margin = 1.f;          /* I6 : marché 1:1 par défaut (intertrade l'ajuste) */
@@ -390,15 +510,17 @@ void econ_init(WorldEconomy *e, const World *w) {
             cap  += a * (0.25f + 0.75f*clampf(subs/10.f,0.f,1.f));
             hab_w += pv->habitability * a;
             area += a;
-            if (pv->habitability < 0.01f) dead_area += a;   /* glacier/pic/volcan/désert hyperaride */
+            if (pv->habitability <= 0.25f) dead_area += a;   /* SEUIL D'ACCÈS : ≤25 % = inaccessible (glacier/pic/volcan/montagne escarpée/désert/froid) */
         }
         if (area<1.f) continue;
         float hab = hab_w / area;   /* habitabilité pondérée par surface */
         reg_hab[rid] = hab;
         reg_cap[rid] = cap * hab;   /* la capacité est nulle pour les zones mortes */
-        /* Zone morte : ≥35 % d'aire à habitabilité nulle (barrière même diluée par
-         * une vallée) OU habitabilité moyenne < 12 % (désert hyperaride sans pic). */
-        reg_impass[rid] = (dead_area/area >= 0.35f) || (hab < 0.12f);
+        /* SEUIL D'ACCÈS UNIFIÉ (≤25 %) : une région est inaccessible si elle est
+         * MAJORITAIREMENT sous le seuil (≥50 % d'aire ≤25 %) OU si sa moyenne tombe
+         * elle-même ≤25 %. Remplace les ex-seuils ad-hoc (0.01 / 35 % / 12 %). La
+         * région-siège reste exemptée (la capitale tient sur sa province habitable). */
+        reg_impass[rid] = ((dead_area/area >= 0.50f) || (hab <= 0.25f)) && !is_cap[rid];
         int cid=rg->country;
         /* La capacité-pays ne compte que les terres VIVABLES → la cible (Passe 2)
          * se répartit sur les seules régions actives : aucune part « fuite » dans
@@ -445,6 +567,7 @@ void econ_init(WorldEconomy *e, const World *w) {
         bool is_impass = reg_impass[rid];
 
         re->habitability = reg_hab[rid];
+        re->is_capital   = is_cap[rid];   /* région-siège : EXEMPTE du malus d'habitabilité (province de départ) */
         if (area_sum<1.f || reg_cap[rid]<=0.f || is_impass) {
             re->active     = false;
             re->impassable = is_impass;
@@ -479,12 +602,13 @@ void econ_init(WorldEconomy *e, const World *w) {
 
         /* ---- Capacité d'extraction : héritée des ressources brutes des
          *      provinces. Chaque province « pose » sa ressource dominante. */
-        bool coastal=false;
+        bool coastal=false; int wooded=0;
         for (int k=0;k<rg->n_provinces;k++) {
             int pid=rg->province_ids[k];
             if (pid<0||pid>=w->n_provinces) continue;
             const Province *pv=&w->province[pid];
             if (pv->coastal) coastal=true;
+            { Biome bw=pv->biome_dominant; if (bw==BIO_FOREST||bw==BIO_WOODS||bw==BIO_JUNGLE) wooded++; }
             /* débit proportionnel à la surface (P3.18 : la SPÉCIALISATION — le brut
              * DOMINANT de la province est franc, la 2e brute mineure ; le reste vient
              * du COMMERCE, plus jamais du sol). */
@@ -507,13 +631,20 @@ void econ_init(WorldEconomy *e, const World *w) {
          * ~90% de la population, laissant la satisfaction refléter les biens
          * supérieurs et non une famine universelle. */
         float subsist = total_pop / 100.f;
-        /* Le socle vivrier DOIT dépasser la consommation (≈1.0/100/tête, toutes
-         * classes) — sinon le monde meurt de faim. On le porte au-dessus du seuil,
-         * pondéré par la FERTILITÉ moyenne de la région (les bonnes terres
-         * nourrissent plus). */
-        re->raw_cap[RES_GRAIN] += subsist * (1.15f + 0.70f*reg_hab[rid]);   /* vivrier : COMMUN à tous (anti-famine) */
+        /* PLUS de socle vivrier UNIVERSEL (anti-famine retiré, à la demande) : la
+         * NOURRITURE suit la GÉOLOGIE comme toute brute (les terres fertiles ont le
+         * grain dans leur resource/resource2 ; une province « bois+argile » n'a PAS de
+         * grain). Le vivrier de base est au SPAWN (stock de la cité-état, CS_TRADE_POOL ;
+         * la capitale d'empire en stock) et au COMMERCE — pas extrait par chaque tuile.
+         * ⚠ Des FAMINES sont possibles (assumé pour l'instant). subsist sert encore aux
+         * socles de cité-état (plus bas). */
         re->coastal = coastal;                       /* lu par la marine (rade) et l'agency (gate du Port) */
         re->estuary = false;                         /* posé au balayage des cellules ci-dessous */
+        /* Dons géo SÉLECTIFS (gibier/halieutique) : ~1/3 des régions BOISÉES (majorité de
+         * provinces forestières) et ~1/3 des CÔTIÈRES — tirage DÉTERMINISTE par région. */
+        { unsigned hg=(unsigned)rid*2654435761u;
+          if (rg->n_provinces>0 && wooded*2>=rg->n_provinces && (hg%3u)==0u) re->prov_geo |= PROVF_GIBIER;
+          if (coastal && ((hg>>8)%3u)==0u)                                   re->prov_geo |= PROVF_HALIEUTIQUE; }
 
         /* ──────────────────────────────────────────────────────────────────────
          * MISE À NU — À L'EXCEPTION DES CITÉS-ÉTATS.
@@ -579,14 +710,25 @@ void econ_init(WorldEconomy *e, const World *w) {
             if (re->raw_cap[RES_IRON]>0.f){
                 if (((uint32_t)(rid*40503u+7u) % 9u)==0u) re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* nœud riche SEUL */
             }
-            /* VOCATION (la tuile produit X et Y, pas la liste complète) : on ne garde que le
-             * VIVRIER (grain), les STRATÉGIQUES rares (fer céleste / cristal arcanique) et les
-             * REGION_RAW_KEEP brutes les plus FORTES ; la longue traîne des brutes mineures
-             * (agrégée des provinces) tombe → spécialisation régionale. Le manquant vient du
-             * COMMERCE (pool national + routes). « Plus jamais du sol » partout. */
-            int keep = (int)tune_f("REGION_RAW_KEEP", 3.f);
+            /* WORLDGEN NE POSE AUCUN BÂTIMENT pour l'empire : la carte naît NUE — l'IA/agency
+             * élèvent les manufactures DANS LE TEMPS (plus d'implantation au gisement). */
+        }
+        /* VOCATION — « 2 BRUTES PAR PROVINCE », SANS EXCEPTION (empire ET CITÉ-ÉTAT).
+         * On ne garde que les REGION_RAW_KEEP=2 brutes EXTRAITES les plus FORTES (plus le
+         * vivrier et les stratégiques rares, protégés) ; la longue traîne — agrégée des
+         * provinces, socles de cité-état, voiles diffus — TOMBE. Le manquant vient du
+         * COMMERCE (pool national + routes). La cité-état n'est PLUS exemptée du plafond
+         * d'EXTRACTION : sa richesse vient de son gros STOCK de base (CS_TRADE_POOL), non
+         * d'extraire davantage ; ses manufactures (posées plus haut, sur le raw AVANT coupe)
+         * restent l'atelier du monde. (Coupe DÉPLACÉE hors du if/else → frappe TOUT le monde.) */
+        {
+            int keep = (int)tune_f("REGION_RAW_KEEP", 2.f);
             bool prot[RES_COUNT]; for (int g=0;g<RES_COUNT;g++) prot[g]=false;
-            prot[RES_GRAIN]=prot[RES_CELESTIAL_IRON]=prot[RES_ARCANE_CRYSTAL]=true;  /* vivres + stratégiques */
+            /* le GRAIN n'est PLUS protégé : il concourt comme toute brute (food = géologie).
+             * Seuls les stratégiques RARES (fer céleste / cristal arcanique) restent protégés
+             * — sinon la chaîne faustienne/endgame perdrait sa matière (ce n'est pas un
+             * ajustement d'éco : c'est garder l'intrant rare de la tech). */
+            prot[RES_CELESTIAL_IRON]=prot[RES_ARCANE_CRYSTAL]=true;
             for (int k=0;k<keep;k++){
                 int best=-1; float bv=0.f;
                 for (int g=1;g<RES_PROD_FIRST;g++){ if (prot[g]||re->raw_cap[g]<=0.f) continue;
@@ -595,8 +737,6 @@ void econ_init(WorldEconomy *e, const World *w) {
                 prot[best]=true;
             }
             for (int g=1;g<RES_PROD_FIRST;g++) if (!prot[g]) re->raw_cap[g]=0.f;   /* la traîne tombe */
-            /* WORLDGEN NE POSE AUCUN BÂTIMENT pour l'empire : la carte naît NUE — l'IA/agency
-             * élèvent les manufactures DANS LE TEMPS (plus d'implantation au gisement). */
         }
 
         /* ---- Prix & stock de départ. */
@@ -624,68 +764,70 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
-    /* ---- Adjacence de régions (terre, 4-connexe) pour la colonisation ---- *
-     * On ne trace un lien que si AUCUNE des deux régions n'est infranchissable.
-     * Cela rend les glaciers et déserts hyperarides des barrières naturelles :
-     * une civilisation ne peut pas coloniser « de l'autre côté » d'une zone morte
-     * sans contourner par une région habitable adjacente.                     */
-    static const int DX4[4]={1,-1,0,0}, DY4[4]={0,0,1,-1};
-    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
-        int ra=w->cell[scps_idx(x,y)].region;
-        if (ra<0) continue;
-        for (int d=0;d<4;d++) {
-            int nx=x+DX4[d], ny=y+DY4[d];
-            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
-            int rb=w->cell[scps_idx(nx,ny)].region;
-            if (rb<0||rb==ra) continue;
-            /* Ne créer un lien que si les deux régions sont franchissables */
-            if (!e->region[ra].impassable && !e->region[rb].impassable) {
-                e->adj[ra][rb]=1; e->adj[rb][ra]=1;
-            }
-        }
-    }
+    /* ---- Adjacence de régions (terre, 4-connexe) pour la colonisation ----
+     * Extraite en econ_build_adjacency (réutilisée par le recalcul du capstone
+     * §27 : une carve eau/ronces déplace côtes et barrières). */
+    econ_build_adjacency(e, w);
 
-    /* ---- Peuplement initial : la GRAINE mondiale, le reste vierge ---------- *
-     * Q6 re-baseline — le DOUBLEMENT 48k→96k. On répartit une graine TOTALE fixe
-     * (SEED_POP ≈ 48k) sur toutes les régions actives des polités (empire +
-     * cité-état), AU PRORATA de leur cap_pop. Chaque région démarre donc sous
-     * son apex (cap_pop, lui-même VISÉ plus haut : EMPIRE_CAP/CITY_CAP) et CROÎT
-     * vers lui ; le monde traverse ~96k au siècle (seul moteur : la croissance,
-     * aucun taux trafiqué — la capacité visée, elle, est calibrée).
-     *   · La capitale (région la plus riche, sur tuile nourricière) reçoit
-     *     MÉCANIQUEMENT la plus grosse part (∝ son cap).
-     *   · Graine DÉCOUPLÉE du cap → Σ graines = SEED_POP PILE (plus de déficit,
-     *     même si une polité tombe sur une terre maigre).
-     *   · La friche vierge reste à zéro : frontière que les empires colonisent
-     *     (gain TERRITORIAL ; négligeable en pop, cap 200/pays).
-     * Membrane : on n'ajoute pas un bonus, on AMORCE la pop sous son plafond. */
-    /* Distribution UNIFORME à l'an-0 (Q6) : la même pop dans chaque région de polité
-     * (SEED_POP réparti à parts ÉGALES), bornée par le plancher ½·cap_pop (la terre nue,
-     * = eff_cap quand rien n'est bâti) → pas de famine d'amorçage. À l'an-0 nul ne domine ;
-     * la DIVERGENCE vient ENSUITE du bâti (qui développe ses manufactures grossit). */
-    int n_pr=0;
-    for (int cid=0; cid<w->n_countries; cid++) {
-        PolityRole role=w->country[cid].role;
-        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST && role!=POLITY_CITY_STATE) continue;
-        const Country *ct=&w->country[cid];
-        for (int ri=0; ri<ct->n_regions; ri++){
-            int rid=ct->region_ids[ri];
-            if (rid>=0&&rid<e->n_regions&&e->region[rid].active) n_pr++;
-        }
-    }
-    float seed_per = (n_pr>0) ? tune_f("SEED_POP",48000.f)/(float)n_pr : 0.f;
+    /* ---- Peuplement initial : la GRAINE PAR-POLITÉ, le reste vierge -------- *
+     * Re-baseline — la pop an-0 est SEMÉE PAR ENTITÉ (plus de total plat 48k réparti) :
+     *   EMPIRE     → EMPIRE_SEED (4000) ;
+     *   CITÉ-ÉTAT  → CITY_SEED   (2000) ;
+     *   (WILD      → 2/empire · WILD_POP ≈ 750, plus bas).
+     * La graine d'une polité se répartit UNIFORMÉMENT sur ses régions ACTIVES, bornée par
+     * le plancher ½·cap_pop (la terre nue = eff_cap quand rien n'est bâti → pas de famine
+     * d'amorçage). À l'an-0 nul ne domine DANS une polité ; la DIVERGENCE vient ENSUITE du
+     * bâti. La capacité VISÉE (apex) reste EMPIRE_CAP/CITY_CAP (Passe 2) : la pop CROÎT de
+     * sa graine vers son apex. La friche vierge reste à zéro (frontière à coloniser).
+     * Membrane : on n'ajoute pas un bonus, on AMORCE la pop sous son plafond.
+     *   an-0 ≈ n·EMPIRE_SEED + nCS·CITY_SEED + 2n·WILD_POP. */
+    float empire_seed = tune_f("EMPIRE_SEED", 4000.f);
+    float city_seed   = tune_f("CITY_SEED",   2000.f);
     for (int cid=0; cid<w->n_countries; cid++) {
         const Country *ct=&w->country[cid];
         PolityRole role=ct->role;
-        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST && role!=POLITY_CITY_STATE) continue;
+        float pol_seed;
+        if      (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) pol_seed=empire_seed;
+        else if (role==POLITY_CITY_STATE)                        pol_seed=city_seed;
+        else continue;
+        /* Σ cap_pop des régions ACTIVES = clé de répartition (∝ capacité → la capitale, la
+         * plus capable, en prend le plus). La graine de la polité se RÉPARTIT EXACTEMENT
+         * (Σ parts = pol_seed PILE, aucune perte au plancher) : la pop an-0 est ainsi LOCKÉE
+         * sur la formule n·EMPIRE_SEED + nCS·CITY_SEED + 2n·WILD_POP. Comme l'apex visé
+         * (EMPIRE_CAP/CITY_CAP) > 2·graine, chaque part reste SOUS ½·cap_pop (anti-famine). */
+        float capsum=0.f;
+        for (int ri=0; ri<ct->n_regions; ri++){
+            int rid=ct->region_ids[ri];
+            if (rid>=0&&rid<e->n_regions&&e->region[rid].active) capsum+=e->region[rid].cap_pop;
+        }
+        if (capsum<=0.f) continue;
         for (int ri=0; ri<ct->n_regions; ri++){
             int rid=ct->region_ids[ri];
             if (rid<0||rid>=e->n_regions) continue;
             RegionEconomy *re=&e->region[rid];
             if (!re->active) continue;
-            econ_seed_population(re, fminf(seed_per, re->cap_pop*0.5f));   /* uniforme, sous le plancher */
+            econ_seed_population(re, pol_seed * (re->cap_pop/capsum));   /* ∝ capacité, Σ = pol_seed PILE */
             re->colonized=true;
             re->owner=(int16_t)cid;
+        }
+    }
+
+    /* REFONTE A5 — LA NOURRITURE DU SPAWN (la SEULE règle vivrière ; le reste = GÉOLOGIE).
+     * Chaque EMPIRE naît avec une base vivrière sur sa région-CAPITALE : un socle de grain
+     * qui en fait un GRENIER de départ (posé APRÈS la coupe de vocation → protégé). Les
+     * autres régions tirent leur nourriture de la GÉOLOGIE (grain/poisson dans leur
+     * vocation) et du COMMERCE (pool national + routes). Pas de socle UNIVERSEL : un empire
+     * né sur terre stérile dépend de sa capitale et de ses échanges (la « Mali » qui commerce). */
+    {
+        float spawn_food = tune_f("SPAWN_FOOD_RAW", SPAWN_FOOD_RAW);
+        for (int cid=0; cid<w->n_countries; cid++){
+            PolityRole role=w->country[cid].role;
+            if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+            int cp=w->country[cid].capital_prov;
+            int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
+            if (cr<0||cr>=e->n_regions||!e->region[cr].active) continue;
+            if (e->region[cr].raw_cap[RES_GRAIN] < spawn_food)
+                e->region[cr].raw_cap[RES_GRAIN] = spawn_food;   /* grenier de spawn (vocation vivrière garantie) */
         }
     }
 
@@ -702,12 +844,68 @@ void econ_init(WorldEconomy *e, const World *w) {
             for (int r=0; r<e->n_regions; r++){
                 RegionEconomy *re=&e->region[r];
                 if (re->owner!=cid || !re->active) continue;
+                re->stock[RES_GRAIN] += pool;   /* + NOURRITURE de base (la cité-état nourrit le marché) */
                 re->stock[RES_WOOD]  += pool;
                 re->stock[RES_IRON]  += pool;
                 re->stock[RES_CLAY]  += pool;
                 re->stock[RES_STONE] += pool;
                 break;   /* une réserve par cité-état (sa première région active = pivot) */
             }
+        }
+    }
+
+    /* ──────────────────────────────────────────────────────────────────────
+     * HAMEAUX LIBRES (POLITY_WILD) — les PEUPLES LIBRES. Pour CHAQUE empire on PLANTE
+     * WILD_PER_PLAYABLE hameaux sur les régions VIERGES viables les plus PROCHES — BFS
+     * multi-source BORNÉ à WILD_SPAWN_HOPS (un rayon de 2-3 tuiles autour du spawn : assez
+     * près pour tuer le « siècle d'inertie » — 2 objectifs voisins dès l'an 0 —, jamais à
+     * l'autre bout du monde). nearest-first → les plus proches d'abord. Chaque hameau :
+     * WILD_POP (graine EXACTE), plafond WILD_CAP, réserve WILD_HOARD. WILD_PER_PLAYABLE=0 → aucun. */
+    {
+        int wild_cid=-1;
+        for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_WILD){ wild_cid=c; break; }
+        int per=(int)tune_f("WILD_PER_PLAYABLE",2.f), hops=(int)tune_f("WILD_SPAWN_HOPS",3.f);
+        if (wild_cid>=0 && per>0 && hops>0){
+            float wpop=tune_f("WILD_POP",750.f), wvar=tune_f("WILD_POP_VAR",0.f);
+            float wcap=tune_f("WILD_CAP",1600.f), whoard=tune_f("WILD_HOARD",60.f), wfood=tune_f("WILD_FOOD",8.f);
+            /* Pose un hameau libre sur la région WS (graine exacte WILD_POP, sous ½·WILD_CAP). */
+            #define WILD_PLANT(WS) do { \
+                int ws_=(WS); RegionEconomy *wre=&e->region[ws_]; \
+                wre->owner=(int16_t)wild_cid; wre->colonized=true; wre->culture.settled=true; \
+                wre->cap_pop=wcap; \
+                uint32_t hh=(uint32_t)ws_*2654435761u + (uint32_t)cid*40503u; \
+                hh ^= hh>>13; hh *= 0x85ebca6bu; hh ^= hh>>16; \
+                float jit=(wvar>0.f)? ((float)(hh % 2001u)/1000.f - 1.f)*wvar : 0.f; /* WILD_POP_VAR=0 → 0 (graine LOCKÉE) */ \
+                econ_seed_population(wre, fminf(fmaxf(wpop+jit, 50.f), wcap*0.5f)); \
+                wre->raw_cap[RES_GRAIN]=fmaxf(wre->raw_cap[RES_GRAIN], wfood); /* raw food FORCÉE : le hameau se nourrit */ \
+                for (int g=1; g<RES_PROD_FIRST; g++) if (wre->raw_cap[g]>0.f) wre->stock[g]+=whoard; \
+            } while(0)
+            for (int cid=0; cid<w->n_countries; cid++){
+                PolityRole role=w->country[cid].role;
+                if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+                static int dist[SCPS_MAX_REG], q[SCPS_MAX_REG];   /* BFS multi-source depuis les régions de cid */
+                for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++) dist[r]=-1;
+                int qh=0, qt=0;
+                for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
+                    if (e->region[r].owner==cid){ dist[r]=0; q[qt++]=r; }
+                int got=0;
+                /* BFS BORNÉ au rayon hops (2-3 tuiles), nearest-first : les régions vierges
+                 * viables LES PLUS PROCHES du spawn d'abord. */
+                while (qh<qt && got<per){
+                    int r=q[qh++];
+                    if (dist[r]>=hops) continue;
+                    for (int s=0;s<e->n_regions && s<SCPS_MAX_REG && got<per;s++){
+                        if (!e->adj[r][s] || dist[s]>=0) continue;
+                        dist[s]=dist[r]+1;
+                        RegionEconomy *re=&e->region[s];
+                        if (re->active && !re->colonized && !re->impassable && re->cap_pop>0.f){
+                            WILD_PLANT(s); got++;
+                        }
+                        if (dist[s]<hops) q[qt++]=s;
+                    }
+                }
+            }
+            #undef WILD_PLANT
         }
     }
 
@@ -718,8 +916,10 @@ void econ_init(WorldEconomy *e, const World *w) {
             for (int c=0;c<CLASS_COUNT;c++) seedsum+=e->region[r].strata[c].pop;
         }
         for (int c=0;c<w->n_countries;c++){ int rr=w->country[c].role; if(rr>=0&&rr<4) nrole[rr]++; }
-        fprintf(stderr,"[CAPDIAG] active=%d cap_pop_sum=%.0f seed_pop=%.0f | PLAYER=%d ANTAG=%d CS=%d UNCL=%d\n",
-                nact, capsum, seedsum, nrole[0],nrole[1],nrole[2],nrole[3]);
+        int n_wild=0; for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized){
+            int o=e->region[r].owner; if (o>=0&&o<w->n_countries&&w->country[o].role==POLITY_WILD) n_wild++; }
+        fprintf(stderr,"[CAPDIAG] active=%d cap_pop_sum=%.0f seed_pop=%.0f | PLAYER=%d ANTAG=%d CS=%d UNCL=%d | hameaux WILD=%d\n",
+                nact, capsum, seedsum, nrole[0],nrole[1],nrole[2],nrole[3], n_wild);
     }
 }
 
@@ -1170,6 +1370,12 @@ void econ_tick(WorldEconomy *e, float dt) {
      * sur un pool partagé le décaierait N fois). tools_pc lira ce parc déjà usé. */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (epop[c]>0.f) pool[c][RES_TOOLS]*=0.97f;
 
+    /* REFONTE A0/A2 — les leviers éco labor-bound, lus UNE fois/tick (SCPS_TUNE-ables). */
+    const float ext_geo_ref   = tune_f("EXTRACT_GEO_REF",     EXTRACT_GEO_REF);
+    const float ext_geo_cap   = tune_f("EXTRACT_GEO_CAP",     EXTRACT_GEO_CAP);
+    const float ext_lab_share = tune_f("EXTRACT_LABOR_SHARE", EXTRACT_LABOR_SHARE);
+    const float food_need     = tune_f("FOOD_NEED",           1.0f);   /* A2 : calibrage de la bouche vivrière */
+
     for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++) {
         RegionEconomy *re=&e->region[rid];
         if (!re->active || !re->colonized) continue;
@@ -1224,24 +1430,37 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (re->balafre_days>0.f){ re->balafre_days-=dt*365.f; prod_mult*=0.5f; }
         if (re->raid_cd_days>0.f)  re->raid_cd_days-=dt*365.f;
         if (rid<SCPS_MAX_REG && g_friche[rid]) prod_mult*=FRICHE_FACTOR;  /* E1bis.10 : entretien IMPAYÉ → friche */
+        /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE produit moins : malus = (1−hab)·HAB_MALUS_K
+         * (habitabilité 50 % → −10 % de prod). Lit la COORDONNÉE (re->habitability), n'assigne
+         * aucun modificateur plat. La région-SIÈGE (province de départ) en est EXEMPTÉE. */
+        if (!re->is_capital)
+            prod_mult *= fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
 
-        /* ---- 1. EXTRACTION = COLLECTE PASSIVE (∝ JOURNALIERS × TERRAIN) -
-         * La récolte suit les BRAS qui occupent la tuile, pas le seul terrain : plus de
-         * journaliers → plus de collecte, en rendements DÉCROISSANTS (√, la tuile sature).
-         * raw_cap = RICHESSE de référence ; pop_intens l'exploite ∝ √(pop/réf). Une région
-         * peuplée tire plus de sa terre qu'une région vide → la production SUIT la pop.
-         * Borné par la main-d'œuvre dispo (ratio) et l'effort de marché (demande). */
-        float pop_active = re->strata[CLASS_LABORER].pop;
-        float pop_intens = clampf(sqrtf(fmaxf(pop_active,0.f)/EXTRACT_POP_REF), 0.25f, EXTRACT_INTENS_CAP);
-        for (int r=0;r<RES_COUNT;r++) {
+        /* ---- 1. EXTRACTION = LABOR-BOUND (ressource PAR OUVRIER, refonte A0) ---
+         * out[r] = OUVRIERS[r] × YIELD[r] × geo_eff[r] × effort(prix) × prod_mult.
+         *   · geo_eff = qualité de tuile (raw_cap/REF, plafonné) — un multiplicateur, pas
+         *     la base ; raw_cap n'est plus le rendement mais la RICHESSE qui module.
+         *   · ouvriers : la part EXTRACT_LABOR_SHARE des journaliers, répartie entre les
+         *     brutes ∝ geo_eff×prix (la tuile riche/chère attire les bras). Le reste des
+         *     journaliers reste pour les manufactures (labor_used le réserve).
+         *   · plus de ×2 bois/fer/or (replié dans YIELD).
+         * La production est ainsi LINÉAIRE en main-d'œuvre (elle SUIT la pop) ; le commerce
+         * comble ce que la géologie locale ne donne pas (vocation : 2 brutes/région). */
+        float egeo[RES_COUNT], eeff[RES_COUNT], ew[RES_COUNT], ewsum=0.f;
+        for (int r=1;r<RES_PROD_FIRST;r++){
+            ew[r]=0.f;
             if (re->raw_cap[r]<=0.f) continue;
-            float want_labor = re->raw_cap[r]*0.5f*pop_intens;        /* la collecte intensifiée occupe plus de bras */
-            float avail = labor_avail-labor_used;
-            float ratio = (want_labor>0.f)? clampf(avail/want_labor,0.f,1.f) : 0.f;
-            float eff  = market_effort(re->price[r], BASE_PRICE[r]);   /* SURPLUS NATUREL : l'effort suit le prix */
-            float out = re->raw_cap[r]*pop_intens*ratio*prod_mult*eff; /* √pop × terrain × outils × effort */
-            if (r==RES_WOOD || r==RES_IRON || r==RES_GOLD) out *= 2.0f; /* apport BOIS & FER doublé (épine métal/outils + chauffe) ; OR doublé → nourrir la joaillerie (voie or martiale) */
-            labor_used += want_labor*ratio*eff;                        /* le glut LIBÈRE des bras */
+            egeo[r] = clampf(re->raw_cap[r]/ext_geo_ref, 0.f, ext_geo_cap);          /* qualité ∈ [0..CAP] */
+            eeff[r] = market_effort(re->price[r], BASE_PRICE[r]);                     /* l'effort suit le prix */
+            ew[r]   = egeo[r]*eeff[r];                                               /* poids d'allocation des bras */
+            ewsum  += ew[r];
+        }
+        float L_ext = labor_avail*ext_lab_share;   /* main-d'œuvre dédiée à l'extraction */
+        if (ewsum>EPS) for (int r=1;r<RES_PROD_FIRST;r++){
+            if (ew[r]<=0.f) continue;
+            float workers = L_ext*ew[r]/ewsum;                          /* bras affectés à la brute r */
+            float out = workers*EXTRACT_YIELD[r]*dt*egeo[r]*eeff[r]*prod_mult;  /* /ouvrier/an × dt × qualité × prix × outils */
+            labor_used += workers;
             S[r] += out;                                               /* dépôt au STOCK NATIONAL */
             supply[r]    += out;
             float value = out*re->price[r];
@@ -1256,7 +1475,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * stabilisateur actif ; elle refonte lentement chaque tick (CHARGE_DECAY ≪ accumulation
          * sous spawn soutenu) → dabbler puis cesser = récupérable, spawn continu = fracture.
          * L'IMMÉDIAT (arcane_charge : mage + spawn du tick) est remis à zéro (per-tick, comme avant). */
-        re->faust_charge = fmaxf(0.f, re->faust_charge - tune_f("CHARGE_DECAY", 0.04f));
+        re->faust_charge = fminf(1.0e6f, fmaxf(0.f, re->faust_charge - tune_f("CHARGE_DECAY", 0.04f)));   /* P1 : plafond anti-dérive-inf (jamais atteint en jeu : ~unités avant la fin §27 ; borne juste l'accumulateur non clampé) */
         re->arcane_charge=0.f;
         for (int i=0;i<re->n_bld;i++) {
             Building *b=&re->bld[i];
@@ -1279,7 +1498,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float pop = (owner_>=0 && owner_<SCPS_MAX_COUNTRY) ? epop[owner_]
                           : re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
                           + re->strata[CLASS_ELITE].pop;
-                float reserve = pop/100.f * 1.20f;      /* besoin de grain (1/100 hab) + marge */
+                float reserve = pop/100.f * 5.0f * food_need;   /* REFONTE A2 : on protège le besoin VIVRIER (≈4/100hab × calibrage) + marge — on ne brasse QUE le surplus */
                 float spare   = fmaxf(0.f, S[RES_GRAIN] - reserve);
                 float gq = (rc->in1==RES_GRAIN)?rc->q1:rc->q2;
                 lim = fminf(lim, spare/fmaxf(gq,EPS));
@@ -1504,6 +1723,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float need=NEED[c][r];
                 if (need<=0.f) continue;
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* besoin pas encore débloqué */
+                if (res_is_food((Resource)r)) need*=food_need;            /* A2 : calibrage de la bouche */
                 Resource tgt=(Resource)r;
                 if      (r==RES_WINE)          tgt=preferred_drink(&re->culture);
                 else if (r==RES_PRECIOUS_WARE) tgt=preferred_luxe(&re->culture);
@@ -1541,7 +1761,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             int   nbasket=0, nsat=0;       /* catégories du panier total · satisfaites (got≥τ) */
             for (int rr=0;rr<RES_COUNT;rr++) if (NEED[c][rr]>0.f) nbasket++;   /* dénominateur = panier COMPLET */
             for (int r=0;r<RES_COUNT;r++) {
-                float need=NEED[c][r]*units;
+                float need=NEED[c][r]*units*(res_is_food((Resource)r)?food_need:1.f);   /* A2 : calibrage de la bouche */
                 if (need<=0.f) continue;
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* §progressif : besoin pas encore débloqué → ne pèse pas */
                 /* ── Palier MORAL (boisson) : VARIANTE culturelle bière/vin ──
@@ -1609,7 +1829,10 @@ void econ_tick(WorldEconomy *e, float dt) {
             re->strata[c].wealth=fmaxf(0.f,budget);
             float basket=(need_w>0.f)?met_w/need_w:0.5f;
             /* la surtaxe (§6) gronde : elle ABAISSE la satisfaction → agitation */
-            re->strata[c].satisfaction=clampf(basket - over_tax[c]*K_TAX_AGIT, 0.f, 1.f);
+            /* CICATRICE D'ANNEXION (étage 3d) : la plaie douce frappe la STABILITÉ — elle ABAISSE
+             * la satisfaction (donc l'agitation monte) sans toucher la croissance (≠ revolt_scar). */
+            re->strata[c].satisfaction=clampf(basket - over_tax[c]*K_TAX_AGIT
+                                              - re->annex_scar*tune_f("ANNEX_SAT_W",0.5f), 0.f, 1.f);
             if (rid<SCPS_MAX_REG) g_basket_pc[rid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
             float nm_c=(nbasket>0)?(float)nsat/(float)nbasket:0.f;   /* part BRUTE du panier couverte */
             nmsum += nm_c*re->strata[c].pop; nmpop += re->strata[c].pop;
@@ -1631,30 +1854,50 @@ void econ_tick(WorldEconomy *e, float dt) {
             re->society_sat *= (1.f - 0.60f*econ_off_culture_fraction(&re->pop));
         }
 
-        /* FERTILITÉ = f(BESOINS SATISFAITS). Doublement ~100 ans au PLANCHER (besoins
-         * vides), ~50 ans (×4/siècle) au PANIER PLEIN : net = r_base·(1+demo)·(1+B), avec
+        /* FERTILITÉ = f(BESOINS SATISFAITS). Doublement ~40 ans au PLANCHER (besoins
+         * vides), ~20 ans au PANIER PLEIN : net = r_base·(1+demo)·(1+B), avec
          * B∈[0,1] = part du panier couverte (needs_met, 0.85) + prospérité normalisée (0.15).
          * food_s ne MULTIPLIE plus la base — il ne sert qu'au pic de famine (<0.35) ; soc_s
          * n'est plus lu. Plafond souple (cap_factor, plus bas) inchangé. */
         float food_s = re->food_sat;
-        /* Démographie modulée par la RACE (Prolifique/Régénérant → + de naissances ;
-         * Lent à croître → moins). Levier de la couche biologique. */
-        SpeciesBuild sb_demo = species_default_build(re->culture.race);
+        /* Démographie modulée par les TRADITIONS de l'empire (Prolifique → + de naissances ;
+         * Lent à croître → moins) — INDÉPENDANT de l'héritage (qui ne fait que les noms).
+         * IA : tirées au hasard par empire ; joueur : sa composition (via la façade, à venir). */
+        SpeciesBuild sb_demo = culture_random_build((uint32_t)(re->owner<0?0:re->owner));
         float demo = build_leviers(&sb_demo).demographie;
-        float r_base  = tune_f("POP_R_BASE", 0.00693f);   /* ln2/100 = ×2/siècle plancher */
+        /* MODIFICATEURS PROVINCIAUX diégétiques → entrée DÉMO (pas un bonus plat) : la
+         * TERRE D'ABONDANCE repeuple les régions sous-remplies & nourries (le rebond des
+         * low seeds). Auto-ciblé → les régions pleines (seeds riches) reçoivent 0. */
+        { ProvModHit pm[PMOD_COUNT]; int npm=provmod_collect(re, pm, PMOD_COUNT);
+          for (int i=0;i<npm;i++) demo += pm[i].demo_bonus; }
+        float r_base  = tune_f("POP_R_BASE", 0.01733f);   /* ln2/40 = ×2/40ans plancher (vitalité) */
         float prosp_n = clampf((re->prosperity - tune_f("POP_PROSP_MID",0.2f))
                               / tune_f("POP_PROSP_SPAN",1.8f), 0.f, 1.f);   /* PIB/tête → [0,1] (bande haute ≈2.0) */
         float bonus   = tune_f("POP_PROSP_W",0.15f)*prosp_n
                       + tune_f("POP_NEEDS_W",0.85f)*re->needs_met;          /* B ∈ [0,1] */
+        /* COUPLAGE SATISFACTION ASYMÉTRIQUE : une province CONTENTE croît plus vite (part au-dessus
+         * de 0.5 SEULEMENT) ; la satisfaction basse ne soustrait RIEN (un peuple nourri mais grognon
+         * croît quand même → pas de creusement du creux des low seeds, et la reprise est PRIMÉE). */
+        bonus += tune_f("POP_SAT_W",0.20f) * fmaxf(0.f, re->satisfaction - 0.5f);
         float net_growth = r_base*(1.f+demo)*(1.f+bonus);                   /* ×2 plancher → ×4 au plein */
         if (food_s < 0.35f)
             net_growth -= (0.35f - food_s) * 0.12f;   /* pic de mortalité famine */
         net_growth = clampf(net_growth, -0.10f, 0.06f);
         /* CICATRICE DE RÉVOLTE : une province récemment soulevée se développe mal —
          * −50 % de croissance tant que la plaie n'est pas refermée (fade ~4 ans). */
-        re->revolt_scar = fmaxf(0.f, re->revolt_scar - 0.25f*dt);
+        /* RECONSTRUCTION (lot 2) : une cicatrice PROFONDE amorce la renaissance — chargée
+         * pendant la crise, libérée à mesure que la plaie se referme (recon·(1−scar)). */
+        if (re->revolt_scar > 0.5f) re->reconstruction = 1.f;
+        re->revolt_scar    = fmaxf(0.f, re->revolt_scar    - 0.25f*dt);
+        re->ferveur        = fmaxf(0.f, re->ferveur        - tune_f("PROVMOD_FERVEUR_DECAY",0.067f)*dt);
+        re->reconstruction = fmaxf(0.f, re->reconstruction - tune_f("PROVMOD_RECON_DECAY",  0.10f )*dt);
+        re->annex_scar     = fmaxf(0.f, re->annex_scar     - tune_f("ANNEX_SCAR_DECAY",    0.20f )*dt);  /* étage 3d : ~5 ans */
         /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE région — pas seulement colonisée.) */
         net_growth *= (1.f - 0.5f*re->revolt_scar);
+        /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE peuple moins vite : même malus que la prod,
+         * (1−hab)·HAB_MALUS_K, EXEMPTANT la région-siège (province de départ). */
+        if (!re->is_capital)
+            net_growth *= fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
         net_growth *= dt;   /* cumulatif → suit le pas (mensuel : 1/12 d'an) */
 
         float total_pop_now=0.f;
@@ -1775,6 +2018,99 @@ void econ_tick(WorldEconomy *e, float dt) {
 }
 
 /* ====================================================================== */
+/* PRÉVISION ÉCONOMIQUE (pipeline IA, étage 1)                             */
+/* ====================================================================== */
+/* Conso ANNUELLE par tête d'un bien (toutes classes pondérées). Lue de NEED. */
+float econ_conso_per_capita_year(Resource g){
+    if (g<=RES_NONE || g>=RES_COUNT) return 0.f;
+    float per100=0.f;
+    for (int c=0;c<CLASS_COUNT;c++) per100 += NEED[c][g]*CLASS_SHARE[c];
+    float fn = res_is_food(g) ? tune_f("FOOD_NEED",1.f) : 1.f;
+    return per100/100.f * 12.f * DEMAND_TENSION * fn;   /* /100hab/tick → /hab/an, demande tendue, calibrage food */
+}
+
+/* Forecast d'un pays : runway/shortfall/déficit-structurel par flux, depuis les SEULES
+ * coordonnées du moteur (pop, raw_cap, demande, offre, stock, eff_cap, needs_met). Aucune
+ * hiérarchie de criticité codée — la criticité ÉMERGE du prix × runway × manque (étage 2). */
+void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconForecast *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    for (int g=0; g<RES_COUNT; g++) out->runway[g]=1.0e9f;
+    out->food_runway=1.0e9f;
+    if (!e || cid<0 || cid>=SCPS_MAX_COUNTRY) return;
+    const float geo_ref   = tune_f("EXTRACT_GEO_REF",     EXTRACT_GEO_REF);
+    const float geo_cap   = tune_f("EXTRACT_GEO_CAP",     EXTRACT_GEO_CAP);
+    const float lab_share = tune_f("EXTRACT_LABOR_SHARE", EXTRACT_LABOR_SHARE);
+    double P0=0, effcap=0, nm_w=0;
+    double sup[RES_COUNT], dem[RES_COUNT], stk[RES_COUNT], pot[RES_COUNT];
+    for (int g=0; g<RES_COUNT; g++){ sup[g]=dem[g]=stk[g]=pot[g]=0.0; }
+    for (int r=0; r<e->n_regions; r++){
+        const RegionEconomy *re=&e->region[r];
+        if (re->owner!=cid || !re->active || !re->colonized) continue;
+        double p=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
+        double ec=econ_region_effcap(re);
+        P0+=p; effcap+=ec; nm_w+=re->needs_met*p;
+        for (int g=1; g<RES_COUNT; g++){
+            sup[g]+=re->supply[g]*12.0;   /* tick mensuel → annuel */
+            dem[g]+=re->demand[g]*12.0;
+            stk[g]+=re->stock[g];
+        }
+        /* POTENTIEL (pour le déficit STRUCTUREL) : la prod MAX si la région mettait son plein
+         * labor (au plein eff_cap) sur la brute — borne OPTIMISTE du « jamais assez ». */
+        for (int g=1; g<RES_PROD_FIRST; g++){
+            if (re->raw_cap[g]<=0.f) continue;
+            double geo=re->raw_cap[g]/geo_ref; if (geo>geo_cap) geo=geo_cap;
+            pot[g]+= ec*0.8*lab_share * EXTRACT_YIELD[g] * geo;
+        }
+    }
+    if (P0<1.0) return;
+    out->pop=(float)P0; out->eff_cap=(float)effcap;
+    float nm=(float)(nm_w/P0);
+    float r=tune_f("POP_R_BASE",0.01733f)*(1.f+0.85f*nm);   /* taux annualisé approx (la fertilité moteur) */
+    if (effcap <= P0*1.05) r*=0.2f;                          /* proche du plafond → la croissance s'éteint */
+    out->growth_r=r;
+    double lnr=log(1.0+(r>1e-4f?r:1e-4f));
+    double grow=pow(1.0+r, horizon);
+    for (int g=1; g<RES_COUNT; g++){
+        double d0=dem[g], s0=sup[g], k=stk[g];
+        if (d0<=1e-3 && s0<=1e-3 && k<=1e-3) continue;       /* flux inerte */
+        /* CAPACITÉ de production : pour une brute = le POTENTIEL (au plein labor) ; pour un
+         * manufacturé = l'offre courante (capacité = ateliers, non projetée ici). L'offre SUIT
+         * la pop (plus de bras) jusqu'à ce plafond, la demande AUSSI → un flux en équilibre RESTE
+         * en équilibre. Le mur n'est que STRUCTUREL : quand la demande dépasse la CAPACITÉ. */
+        double cap_g = (g<RES_PROD_FIRST) ? pot[g] : s0;
+        double dh = d0*grow;
+        out->shortfall_proj[g]=(float)(dh - (cap_g<dh?cap_g:dh));   /* ce que la capacité NE couvre pas à l'horizon */
+        if (cap_g >= d0){
+            double hr=(d0>1e-3)? cap_g/d0 : 1e9;             /* la demande croît jusqu'à la capacité */
+            double rw=(hr>1.0)? log(hr)/lnr : 0.0;
+            rw += (d0>1e-3)? k/d0 : 0.0;                     /* + le coussin de stock (en années) */
+            out->runway[g]=(float)rw;
+        } else {                                             /* déjà au-delà de la capacité : le stock draine */
+            double drain=d0-s0;
+            out->runway[g]=(drain>1e-3)? (float)(k/drain) : 0.f;
+        }
+        if (out->runway[g]<0.f) out->runway[g]=0.f;
+        if (out->runway[g]>1.0e9f) out->runway[g]=1.0e9f;
+        if (g<RES_PROD_FIRST){                               /* STRUCTUREL : potentiel < conso au plein eff_cap */
+            double need_full=(double)econ_conso_per_capita_year((Resource)g)*effcap;
+            out->struct_deficit[g]=(pot[g] < need_full*0.95) ? 1 : 0;
+        }
+    }
+    /* FOOD agrégé (grain+poisson+viande interchangeables) — l'existentiel. */
+    {
+        double fd=dem[RES_GRAIN]+dem[RES_FISH]+dem[RES_LIVESTOCK];
+        double fpot=pot[RES_GRAIN]+pot[RES_FISH]+pot[RES_LIVESTOCK];
+        double fs=sup[RES_GRAIN]+sup[RES_FISH]+sup[RES_LIVESTOCK];
+        double fk=stk[RES_GRAIN]+stk[RES_FISH]+stk[RES_LIVESTOCK];
+        if (fd>1e-3){
+            if (fpot>=fd){ double hr=fpot/fd; double rw=(hr>1.0)?log(hr)/lnr:0.0; rw+=fk/fd; out->food_runway=(float)rw; }
+            else { double drain=fd-fs; out->food_runway=(drain>1e-3)?(float)(fk/drain):0.f; }
+        }
+    }
+}
+
+/* ====================================================================== */
 /* COLONISATION                                                            */
 /* ====================================================================== */
 /* Joueur/Antagoniste : essaiment vers toute région vierge adjacente.
@@ -1801,6 +2137,7 @@ static void colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid) {
     dst->colonized=true;
     dst->culture.settled=true;   /* la culture de biome (gen_population) s'active */
     dst->owner=(int16_t)cid;
+    dst->ferveur=1.f;            /* FERVEUR FONDATRICE (lot 2) : la jeune colonie a faim d'avenir */
 }
 
 /* L5 — COLONIE OUTRE-MER : mêmes PORTES que l'essaimage terrestre (pop, vivres,
@@ -1830,24 +2167,62 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
         PolityRole role=ct->role;
 
         if (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) {
-            /* Cherche la meilleure paire (source, cible) du pays. */
-            int best_src=-1, best_dst=-1; float best_score=-1.f;
+            /* COLONISATION NEEDS-AWARE (pipeline IA, étage 3a) : la cible vaut ce qu'elle COMBLE.
+             * score(dst) = Σ_g max(0,shortfall_PROJETÉ[g]) × dst->raw_cap[g] × prix[g] (la valeur
+             * ÉMERGE — aucune hiérarchie codée). Le gate vivrier (food_sat) et COLONY_MIN_POP sont
+             * LEVÉS vers une tuile-DÉFICIT (runway court / déficit structurel) → expédition de survie :
+             * « je colonise le grenier vide même affamé, il va me nourrir ». Anti-spirale : food
+             * critique + aucune source au gate normal → on FORCE une colonie de survie vers la food. */
+            float proj_h = tune_f("AI_PROJ_HORIZON",25.f);
+            EconForecast fc; econ_country_forecast(e, cid, proj_h, &fc);
+            float safety = tune_f("AI_SAFETY_HORIZON",12.f);
+            float geo_ref = tune_f("EXTRACT_GEO_REF",EXTRACT_GEO_REF);
+            float geo_cap = tune_f("EXTRACT_GEO_CAP",EXTRACT_GEO_CAP);
+            float needs_w = tune_f("AI_COLONY_NEEDS_W",1.5f);
+            bool  food_crit = fc.food_runway < safety;
+            float survive_min = tune_f("COLONY_SURVIVE_SEED",0.5f)*COLONY_MIN_POP;
+            int best_src=-1, best_dst=-1; float best_score=-1.f;   /* colonisation au gate NORMAL */
+            int surv_src=-1, surv_dst=-1; float surv_score=-1.f;   /* expédition de SURVIE (gate levé) */
             for (int rs=0; rs<e->n_regions; rs++) {
                 RegionEconomy *src=&e->region[rs];
                 if (!src->colonized || src->owner!=cid) continue;
                 float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
-                if (spop<COLONY_MIN_POP || src->food_sat<COLONY_FOOD_GATE) continue;
+                bool normal_ok  = (spop>=COLONY_MIN_POP && src->food_sat>=COLONY_FOOD_GATE);
+                bool survive_ok = (spop>=survive_min);
+                if (!normal_ok && !survive_ok) continue;
                 for (int rd=0; rd<e->n_regions; rd++) {
                     if (!e->adj[rs][rd]) continue;
                     RegionEconomy *dst=&e->region[rd];
                     if (!dst->active || dst->colonized) continue;
-                    float score = dst->cap_pop*0.001f + (spop-COLONY_MIN_POP)*0.0005f
-                                + src->food_sat;
-                    if (score>best_score){ best_score=score; best_src=rs; best_dst=rd; }
+                    /* score de BASE = expansion vers la CAPACITÉ (préserve la croissance saine, le
+                     * comportement d'avant : la pop ne s'effondre pas). Un STEER needs-aware NORMALISÉ
+                     * biaise vers une tuile RICHE d'un flux à déficit URGENT (runway<SAFETY ou
+                     * structurel) — la valeur ÉMERGE du prix —, SANS que le volume brut écrase la
+                     * capacité (borne geo_eff × prime de prix). Sans urgence → steer=0 → capacité pure. */
+                    float base = dst->cap_pop*0.001f + (spop-COLONY_MIN_POP)*0.0005f + src->food_sat;
+                    float steer=0.f;
+                    for (int g=1; g<RES_PROD_FIRST; g++){
+                        if (dst->raw_cap[g]<=0.f) continue;
+                        if (fc.runway[g] < safety || fc.struct_deficit[g]){
+                            float rich = clampf(dst->raw_cap[g]/geo_ref, 0.f, geo_cap);            /* ≈ geo_eff du gisement */
+                            float val  = src->price[g]/fmaxf(BASE_PRICE[g],0.1f);                  /* prime de prix (valeur émergente) */
+                            steer += rich*val;
+                        }
+                    }
+                    float score = base + needs_w*steer;
+                    if (normal_ok && score>best_score){ best_score=score; best_src=rs; best_dst=rd; }
+                    /* ANTI-SPIRALE (étage 3a) : la meilleure tuile VIVRIÈRE à portée, gate levé —
+                     * réservée à la crise FOOD (sinon les colonies de survie draineraient les petites
+                     * sources hors crise et la pop s'effondrerait). Une seule, quand rien d'autre. */
+                    bool food_tile = (dst->raw_cap[RES_GRAIN]>0.f || dst->raw_cap[RES_FISH]>0.f
+                                    || dst->raw_cap[RES_LIVESTOCK]>0.f);
+                    if (survive_ok && food_tile && base>surv_score){ surv_score=base; surv_src=rs; surv_dst=rd; }
                 }
             }
-            if (best_src>=0 && best_dst>=0) {
-                colonize_from(e, best_src, best_dst, cid);
+            int csrc=best_src, cdst=best_dst;
+            if (csrc<0 && food_crit){ csrc=surv_src; cdst=surv_dst; }   /* anti-spirale : SEULEMENT en crise vivrière */
+            if (csrc>=0 && cdst>=0) {
+                colonize_from(e, csrc, cdst, cid);
                 founded++;
             }
 

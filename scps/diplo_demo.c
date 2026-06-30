@@ -18,6 +18,7 @@
 #include "scps_prosperity.h"
 #include "scps_readout.h"
 #include "scps_diplo.h"
+#include "scps_tune.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,13 @@ static float content_dist(const PopCulture*a,const PopCulture*b){
 }
 
 int main(int argc,char**argv){
+    /* Fixture STABLE : monde pinné à ~320 territoires (le banc teste la diplomatie/valeur de
+     * province, pas le scaling f(empires) ; un monde géant change les compteurs et fausse les seuils). */
+    if (!getenv("SCPS_TUNE")){
+        tune_set("WORLD_PROV_BASE",320.f);
+        tune_set("WORLD_PROV_PER_EMPIRE",0.f);
+        tune_set("WORLD_PROV_PER_CITY",0.f);
+    }
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
     World*w=malloc(sizeof(World)); WorldEconomy*econ=malloc(sizeof(WorldEconomy));
     TradeNetwork*net=malloc(sizeof(TradeNetwork)); TechState*ts=calloc(SCPS_MAX_COUNTRY,sizeof(TechState));
@@ -47,7 +55,7 @@ int main(int argc,char**argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
-    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
     trade_network_build(net,w,econ);
     for(int c=0;c<w->n_countries;c++) tech_state_init(&ts[c],false);
     prosperity_init(wp,w); legitimacy_init(wl,w,econ); diplo_init(dp);
@@ -464,12 +472,12 @@ int main(int argc,char**argv){
             /* Le banc tourne en mono-groupe : on PEUPLE explicitement le cœur (natifs)
              * et une province source (un groupe ÉTRANGER — des orques). */
             PopGroup nat; memset(&nat,0,sizeof nat);
-            nat.race=RACE_HUMAIN; nat.klass=CLASS_BOURGEOIS; nat.count=8000;
-            nat.integration=1.f; nat.L=6.f; nat.drift_id=111; nat.origin_sphere=species_sphere(RACE_HUMAIN);
+            nat.race=HERITAGE_ADAPTATIF; nat.klass=CLASS_BOURGEOIS; nat.count=8000;
+            nat.integration=1.f; nat.L=6.f; nat.drift_id=111; nat.origin_sphere=species_sphere(HERITAGE_ADAPTATIF);
             econ->region[capR].pop.n_groups=1; econ->region[capR].pop.groups[0]=nat;
             PopGroup foe; memset(&foe,0,sizeof foe);
-            foe.race=RACE_ORQUE; foe.klass=CLASS_LABORER; foe.count=4000;
-            foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=species_sphere(RACE_ORQUE);
+            foe.race=HERITAGE_CLANIQUE; foe.klass=CLASS_LABORER; foe.count=4000;
+            foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=species_sphere(HERITAGE_CLANIQUE);
             econ->region[srcR].pop.n_groups=1; econ->region[srcR].pop.groups[0]=foe;
 
             /* GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Orque) : booléen. */
@@ -481,13 +489,103 @@ int main(int argc,char**argv){
                econ->region[capR].pop.n_groups==2);
             PopGroup *g=&econ->region[capR].pop.groups[econ->region[capR].pop.n_groups-1];
             ok("le groupe d'esclaves est RESTIF (non-intégré + diaspora → D̄↑ au centre)",
-               g->integration<0.01f && g->diaspora && g->race==RACE_ORQUE);
+               g->integration<0.01f && g->diaspora && g->race==HERITAGE_CLANIQUE);
             ok("la province prise PERD la population déportée",
                econ->region[srcR].pop.groups[0].count < 4000);
             /* GATE : sans la TECH d'asservissement (enslaves=false), personne n'est asservi. */
             ok("sans la TECH d'asservissement (TECH_ESCLAVAGE), personne n'est capturé",
                diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/false)==0);
         } else ok("(monde trop petit pour le test d'esclavage)", true);
+    }
+
+    /* ── INVARIANT ANTI-MODIFICATEUR (pipeline diplo, valeur subjective) ────────────
+     * Deux empires regardent le MÊME grenier : l'AFFAMÉ (runway food court → stress haut) le
+     * valorise HAUT, le REPU (runway long → stress nul) s'en tient au prix OBJECTIF. Mêmes
+     * valeurs = échec (cela voudrait dire une hiérarchie de criticité CODÉE, pas émergente). */
+    printf("\n── Valeur SUBJECTIVE de province (besoin ⇒ valeur, pas de hiérarchie codée) ──\n");
+    {
+        int fr=-1;
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].raw_cap[RES_GRAIN]>0.5f){ fr=r; break; }
+        if (fr<0){ fr=0; econ->region[0].raw_cap[RES_GRAIN]=8.f; }
+        econ->region[fr].price[RES_GRAIN]=econ_base_price(RES_GRAIN)*2.f;   /* grain RARE (cher) */
+        EconForecast hungry, sated;
+        memset(&hungry,0,sizeof hungry); memset(&sated,0,sizeof sated);
+        for (int g=0;g<RES_COUNT;g++){ hungry.runway[g]=100.f; sated.runway[g]=100.f; }
+        hungry.runway[RES_GRAIN]=2.f;     /* AFFAMÉ : le grain manque dans 2 ans */
+        float v_hungry=ai_province_value(econ, player, fr, &hungry);
+        float v_sated =ai_province_value(econ, player, fr, &sated);
+        float objective=diplo_province_price(econ, fr);
+        printf("   grenier (rég %d) : affamé=%.1f vs repu=%.1f (objectif=%.1f)\n", fr, v_hungry, v_sated, objective);
+        ok("l'AFFAMÉ valorise le grenier PLUS HAUT que le REPU (valeur subjective émergente)",
+           v_hungry > v_sated + 1.f);
+        ok("le covet du REPU est BIEN MOINDRE que celui de l'affamé (il s'éteint avec le runway long)",
+           (v_sated - objective) < 0.3f*(v_hungry - objective));
+    }
+
+    /* ── VASSALITÉ SUR LA DURÉE (pipeline diplo étage 3) ──────────────────────────────
+     * La VALEUR cible, l'ÉTHOS décide la MÉTHODE. On vérifie : (a) la cicatrice d'annexion est
+     * une COORDONNÉE surfacée (fléau, demo_bonus=0 — pas un modificateur de croissance plat) ;
+     * (b) l'intégration MONTE à la paix mais LENTEMENT (sur la durée) ; (c) un maître ANNEXEUR
+     * DIGÈRE le vassal intégré (processus → transfert + cicatrice douce + mort du vassal). */
+    printf("\n── Vassalité sur la durée : intégration · contribution · digestion (étage 3) ──\n");
+    {
+        /* (a) la cicatrice d'annexion = COORDONNÉE de STABILITÉ surfacée, PAS un bonus de natalité. */
+        int r0 = (cap_reg>=0)?cap_reg:0;
+        econ->region[r0].annex_scar = 0.5f;
+        ProvModHit hits[PMOD_COUNT]; int nh = provmod_collect(&econ->region[r0], hits, PMOD_COUNT);
+        bool found=false; float db=-1.f, inten=-1.f;
+        for(int i=0;i<nh;i++) if(hits[i].kind==PMOD_ANNEX_SCAR){ found=true; db=hits[i].demo_bonus; inten=hits[i].intensity; }
+        ok("la cicatrice d'annexion est SURFACÉE dans le slot MODIFICATEURS (fléau visible)", found);
+        ok("elle ne touche PAS la natalité (demo_bonus=0 — c'est la STABILITÉ, lue ailleurs, pas un bonus plat)",
+           found && db==0.f);
+        ok("son intensité SUIT la plaie (la bande reflète la coordonnée [0..1])", found && inten>0.4f && inten<=1.f);
+        econ->region[r0].annex_scar = 0.f;
+
+        /* un vassal V : un pays VIVANT ≠ joueur tenant ≥1 région. */
+        int S=player, V=-1;
+        for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            if(c==S || w->country[c].role==POLITY_UNCLAIMED) continue;
+            int rc=0; for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==c) rc++;
+            if(rc>0){ V=c; break; }
+        }
+        if(V<0){ ok("(monde trop petit : pas de vassal disponible)", true); }
+        else {
+            int capS=cap_reg, cpV=w->country[V].capital_prov, capV=(cpV>=0)?w->province[cpV].region:-1;
+            if(capS>=0 && capV>=0){                              /* capitales RAPPROCHÉES (prox≈1) → test net */
+                PopCulture cs=econ->region[capS].culture;
+                econ->region[capV].culture.valeurs=cs.valeurs;   econ->region[capV].culture.subsistance=cs.subsistance;
+                econ->region[capV].culture.parente=cs.parente;   econ->region[capV].culture.religion=cs.religion;
+                econ->region[capS].culture.ethos=ETHOS_MERCANTILE;  /* tient-et-traire, NE digère pas */
+            }
+            /* (b) INTÉGRATION : V vassal de S, à la paix → le lien MÛRIT, lentement. */
+            diplo_set_vassal(dp,S,V,CONTRAT_PROTECTORAT);
+            dp->v_integration[V]=0.f; dp->v_grief[V]=0.f;
+            diplo_suzerainty_tick(dp,w,econ,wp);
+            float i1=dp->v_integration[V];
+            ok("l'intégration MONTE dès la 1re année de paix", i1>0.f);
+            ok("mais LENTEMENT (une année ne mûrit pas le lien : sous le seuil de contribution 0.65)", i1<0.65f);
+            for(int t=0;t<25;t++){ dp->v_grief[V]=0.05f; diplo_suzerainty_tick(dp,w,econ,wp); }
+            ok("après ~25 ans de paix, le lien a MÛRI (intégration ≥0.6) et reste BORNÉE ≤1",
+               dp->v_integration[V]>=0.6f && dp->v_integration[V]<=1.f);
+            /* (c) DIGESTION : maître ANNEXEUR + vassal bien intégré (amorcé près du terme) → absorption. */
+            if(capS>=0) econ->region[capS].culture.ethos=ETHOS_DOMINATEUR;
+            dp->v_integration[V]=0.9f; dp->v_annex[V]=0.95f;
+            int annex0=dp->n_annex;
+            for(int t=0;t<12 && w->country[V].role!=POLITY_UNCLAIMED;t++){
+                dp->v_grief[V]=0.05f;
+                if(capS>=0) econ->region[capS].treasury=1.0e9f;   /* de quoi payer la digestion */
+                diplo_suzerainty_tick(dp,w,econ,wp);
+            }
+            int vleft=0; bool scar=false;
+            for(int r=0;r<econ->n_regions;r++){
+                if(econ->region[r].owner==V) vleft++;
+                if(econ->region[r].owner==S && econ->region[r].annex_scar>0.f) scar=true;
+            }
+            ok("un maître ANNEXEUR DIGÈRE le vassal intégré (annexion-processus aboutie)", dp->n_annex>annex0);
+            ok("le vassal digéré DISPARAÎT (role=UNCLAIMED)", w->country[V].role==POLITY_UNCLAIMED);
+            ok("les régions de l'ex-vassal passent au maître (plus aucune à V)", vleft==0);
+            ok("au moins une région annexée porte une cicatrice DOUCE (la plaie de fierté)", scar);
+        }
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

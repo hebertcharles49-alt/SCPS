@@ -26,6 +26,7 @@
 #include "scps_campaign.h"
 #include "scps_navy.h"
 #include "scps_diplo.h"
+#include "scps_endgame.h"  /* capstone §27 : entropie + 4 fins + merveille */
 #include "scps_events.h"
 #include "scps_modifier.h"
 #include "scps_demography.h"
@@ -35,6 +36,7 @@
 #include "scps_labor.h"
 #include "scps_ai.h"
 #include "scps_species.h"
+#include "scps_sim.h"       /* le TICK PARTAGÉ : Sim, sim_init, sim_day, regions_of (ex-inline) */
 #include "miniz.h"          /* HARNAIS DE DÉTERMINISME : mz_crc32 (vendoré, third_party) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,392 +45,11 @@
 #include <math.h>   /* sqrt : σ du lissage des prix (E3 §16) */
 #include <time.h>   /* PROF : horloge monotone (profiler de boucle, OFF par défaut) */
 
-/* ── PROFILER DE BOUCLE (OFF par défaut ; SCPS_PROF=1) ─────────────────────────
- * Classe les blocs de sim_day par temps CPU. Zéro coût éteint : PROF se réduit à
- * `stmt` quand g_prof_on=0 → le hash de déterminisme reste INCHANGÉ sans la var. */
-typedef enum { PB_AGENCY,PB_AI,PB_EVENTS,PB_NAVY_J,PB_ECON,PB_DEMO,PB_NAVY_M,PB_BUILD,
-               PB_REVOLT,PB_LEGIT,PB_INTERTRADE,PB_CONTACT,PB_PROSP,PB_WARHOST,PB_CAMPAGNE,
-               PB_COUNT } ProfBlock;
-static const char *PB_NAME[PB_COUNT]={"agency","ai","events","navy_j","econ","demo","navy_m",
-    "build","revolt","legit","intertrade","contact","prosp","warhost","campagne"};
-static double g_prof[PB_COUNT], g_prof_prev[PB_COUNT];
-static int g_prof_on=-1;
-static inline double prof_now(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
-    return (double)t.tv_sec*1e3 + (double)t.tv_nsec*1e-6; }
-#define PROF(blk, stmt) do{ if(g_prof_on<0) g_prof_on=getenv("SCPS_PROF")?1:0; \
-    if(g_prof_on){ double _t0=prof_now(); stmt; g_prof[blk]+=prof_now()-_t0; } else { stmt; } }while(0)
-static void prof_flush(int year){ if(g_prof_on<=0) return;
-    double dt=0,ct=0; for(int i=0;i<PB_COUNT;i++){ ct+=g_prof[i]; dt+=g_prof[i]-g_prof_prev[i]; }
-    fprintf(stderr,"[PROF an %d] annee %.0f ms (cumul %.0f) |",year,dt,ct);
-    for(int i=0;i<PB_COUNT;i++){ double d=g_prof[i]-g_prof_prev[i];
-        if(d>0.5) fprintf(stderr," %s %.0f(%.0f%%)",PB_NAME[i],d,dt>0?100*d/dt:0); }
-    fprintf(stderr,"\n"); for(int i=0;i<PB_COUNT;i++) g_prof_prev[i]=g_prof[i]; }
 
 #define CORR_CAPTURED 30   /* §C3 : seuil « polity tenue par une faction » (corr 0-100) */
 
-/* ── État de simulation (copié de viewer.c, sans SDL) ───────────────────── */
-typedef struct {
-    WorldEconomy *econ; WorldProsperity *wp; WorldLegitimacy *wl; TradeNetwork *net;
-    TechState *ts; Statecraft *sc; AgencyState *ag; EventsState *ev; ModifierStack *drift;
-    LaborEcon *labor; DiploState *dp; RouteNetwork *rn; AiActor *ai; bool *ai_on;
-    RevoltState *rs;
-    WarHost     *host;   /* armées levées par pays (mobilisation) */
-    Campaign    *camp;   /* armées de campagne : marche/siège/bataille sur la carte (non-invasif) */
-    uint32_t     camp_rng;
-    MissionsState *missions; /* missions décennales (rythme + injection de ressources) */
-    NavyState   *navy;   /* la flotte (mer §5) : coques, chantier, entretien */
-    int16_t prev_owner_mo[SCPS_MAX_REG];   /* propriétaires au mois précédent (détection de conquête) */
-    int prev_dawned;         /* dernier âge avéné traité (engagement d'âge §7) */
-    int day, year, player;
-} Sim;
-
-static int regions_of(const WorldEconomy *e, int c);   /* défini plus bas */
-/* compteurs de FLUX d'occupation (§terrain) — cumul tous-sims, posés par le harvest. */
-static long g_tot_occ_posed=0, g_tot_occ_lifted=0;
-static long g_peak_u[U_COUNT];   /* FORGEDIAG : pic d'effectif debout par type d'unité (sur tout le siècle, pas le seul snapshot) */
-
-/* Les armées de CAMPAGNE : chaque pays mobilisé ET en guerre projette sa force vers
- * le front ennemi adjacent (marche §1 → siège → bataille §2/§3). NON-INVASIF : la
- * campagne LIT econ, ne change JAMAIS la propriété des régions — la conquête
- * abstraite (prix/volume) reste seule maîtresse du qui-tient-quoi ; ici, les armées
- * VIVENT seulement sur la carte (la fondation que l'UI §4 dessinera). */
-/* L1 — PRIORITÉ DÉFENSE (mensuelle) : une de MES régions subit un SIÈGE ennemi →
- * mon armée marche À LA RENCONTRE (redirection en route autorisée ; une armée
- * fraîche SORT de la place assiégée elle-même — la garnison fait une sortie).
- * C'est le chaînon manquant des batailles : l'assiégeant est interceptable
- * (le test de paires accroche FA_SIEGE), mais personne n'y ALLAIT. */
-static void sim_campaign_defense(Sim *s, World *w) {
-    (void)w;
-    for (int k=0; k<SCPS_MAX_COUNTRY; k++) {
-        const FieldArmy *en=&s->camp->army[k];
-        if (!en->active || en->phase!=FA_SIEGE) continue;
-        if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
-        int def=s->econ->region[en->loc].owner;
-        if (def<0 || def>=SCPS_MAX_COUNTRY || def==en->owner) continue;
-        if (diplo_status(s->dp,def,en->owner)!=DIPLO_WAR) continue;
-        if (campaign_active(s->camp,def) && campaign_phase(s->camp,def)!=FA_IDLE){
-            campaign_redirect(s->camp, s->econ, s->dp, def, en->loc);     /* on déroute l'armée en route */
-        } else if (warhost_units(s->host,def)>0){
-            campaign_order(s->camp, s->econ, def, en->loc, en->loc, &s->host->army[def]);  /* la sortie */
-        }
-    }
-}
-
-static void sim_campaign_orders(Sim *s, World *w) {
-    for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++) {
-        if (campaign_active(s->camp,c) && campaign_phase(s->camp,c)!=FA_IDLE) continue; /* déjà en route */
-        if (warhost_units(s->host, c) <= 0) continue;                                   /* rien à projeter */
-        int frontier=-1, target=-1;
-        /* B5 — PRIORITÉ DE LIBÉRATION : une de mes régions tenue par un occupant
-         * ENNEMI (occupier[r] hostile) est la cible n°1. J'y marche depuis une
-         * région voisine que je tiens ENCORE (et qui n'est pas elle-même occupée) :
-         * le siège mené à terme y LÈVE l'occupation (récolte plus bas → diplo_liberate).
-         * Sans ça, les armées ne ciblaient que l'offensive → 1100 occupations posées
-         * pour 1-4 levées : le sol repris ne l'était jamais par les armes. */
-        for (int r=0; r<s->econ->n_regions && frontier<0; r++) {
-            if (s->econ->region[r].owner!=c) continue;
-            int occ=s->dp->occupier[r];
-            if (occ<0 || occ==c || diplo_status(s->dp,c,occ)!=DIPLO_WAR) continue;
-            for (int sn=0; sn<s->econ->n_regions; sn++) {
-                if (!s->econ->adj[r][sn]) continue;
-                if (s->econ->region[sn].owner!=c || s->dp->occupier[sn]>=0) continue;
-                frontier=sn; target=r; break;                       /* libérer MA région */
-            }
-        }
-        /* sinon : une frontière chaude (région ENNEMIE adjacente — l'offensive). */
-        for (int r=0; r<s->econ->n_regions && frontier<0; r++) {
-            if (s->econ->region[r].owner!=c) continue;
-            for (int sn=0; sn<s->econ->n_regions; sn++) {
-                if (!s->econ->adj[r][sn]) continue;
-                int ob=s->econ->region[sn].owner;
-                if (ob<0 || ob==c || diplo_status(s->dp,c,ob)!=DIPLO_WAR) continue;
-                /* P3/doctrine — on n'attaque qu'avec un AVANTAGE DE FORCE (≥1.2× le
-                 * défenseur) : sinon l'assaut s'use sur le relief et la guerre tourne à
-                 * vide. (La LIBÉRATION de NOTRE sol, plus haut, n'est PAS soumise au seuil.) */
-                if ((float)warhost_units(s->host,c) < tune_f("BT_ATK_RATIO",1.2f)*(float)warhost_units(s->host,ob)) continue;
-                frontier=r; target=sn; break;                       /* une frontière chaude OÙ l'on PÈSE */
-            }
-        }
-        if (frontier>=0){
-            campaign_order(s->camp, s->econ, c, frontier, target, &s->host->army[c]);
-        } else {
-            /* pas de frontière TERRESTRE : la guerre passe la mer si un port, des
-             * transports et un chemin existent (mer §6/§8 — contraint par le champ). */
-            int port=navy_best_port(w,s->econ,c);
-            if (port>=0 && navy_transport_packets_free(s->navy,c)>0){
-                int tgt=-1;
-                for (int r2=0;r2<s->econ->n_regions && tgt<0;r2++){
-                    int ob=s->econ->region[r2].owner;
-                    if (ob<0||ob==c||diplo_status(s->dp,c,ob)!=DIPLO_WAR) continue;
-                    if (!s->econ->region[r2].coastal) continue;
-                    tgt=r2;
-                }
-                if (tgt>=0)
-                    campaign_order_sea(s->camp, w, s->econ, s->navy, c, port, tgt, &s->host->army[c]);
-            }
-        }
-    }
-}
-
-static void sim_campaign_year(Sim *s, World *w) {
-    /* L1 — la campagne RESPIRE AU MOIS : la défense intercepte en route, la récolte
-     * tombe au fil de l'an et l'attaquant re-cible sans attendre janvier. (Le test
-     * de paires de campaign_tick s'évalue désormais 12×/an — deux armées qui se
-     * croisent se TROUVENT ; l'ordre frais de projection reste annuel.) */
-    for (int month=0; month<12; month++){
-        if (month==0) sim_campaign_orders(s, w);            /* les ordres frais : annuels (inchangé) */
-        sim_campaign_defense(s, w);                          /* L1 : la défense marche À LA RENCONTRE */
-        campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f/12.f);
-        campaign_release_transports(s->camp, s->navy);       /* les transports rentrent à la rade */
-        /* RÉCOLTE (couche sim) : chaque siège mené à terme (taken_region) pose une
-         * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
-         * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne est restée lectrice. */
-        for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
-            FieldArmy *a=&s->camp->army[i];
-            if (a->taken_region<0) continue;
-            int reg=a->taken_region; a->taken_region=-1;
-            if (reg<0 || reg>=s->econ->n_regions) continue;
-            if (s->econ->region[reg].owner==a->owner){
-                if (s->dp->occupier[reg]>=0) g_tot_occ_lifted++;   /* une occupation réellement levée */
-                diplo_liberate(s->dp, s->econ, reg);
-            } else {
-                if (diplo_occupy(s->dp, s->econ, a->owner, reg)) g_tot_occ_posed++;
-            }
-            /* L1 — L'ATTAQUANT NE DORT PAS : après la prise, re-cibler — l'armée
-             * ennemie qui assiège NOTRE sol d'abord, sinon la frontière suivante. */
-            int ntgt=-1;
-            for (int k=0;k<SCPS_MAX_COUNTRY && ntgt<0;k++){
-                const FieldArmy *en=&s->camp->army[k];
-                if (!en->active || en->phase!=FA_SIEGE || en->owner==a->owner) continue;
-                if (en->loc<0 || en->loc>=s->econ->n_regions) continue;
-                if (s->econ->region[en->loc].owner!=a->owner) continue;
-                if (diplo_status(s->dp,a->owner,en->owner)!=DIPLO_WAR) continue;
-                ntgt=en->loc;
-            }
-            for (int sn=0; sn<s->econ->n_regions && ntgt<0; sn++){
-                if (!s->econ->adj[reg][sn]) continue;
-                int ob=s->econ->region[sn].owner;
-                if (ob<0||ob==a->owner||diplo_status(s->dp,a->owner,ob)!=DIPLO_WAR) continue;
-                if (s->dp->occupier[sn]==a->owner) continue;        /* déjà tenue : au suivant */
-                ntgt=sn;
-            }
-            if (ntgt>=0) campaign_redirect(s->camp, s->econ, s->dp, a->owner, ntgt);
-        }
-    }
-}
-
-static void sim_day(Sim *s, World *w) {
-    PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
-    /* leviers intérieurs : draine les coûts SCPS différés (purge/mater) vers TechState */
-    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-        float ch,fr,hh;
-        if (agency_drain_levier_costs(c,&ch,&fr,&hh)){
-            s->ts[c].charge+=ch; s->ts[c].fracture+=fr; s->ts[c].H+=hh;
-        }
-    }
-    routes_advance(s->rn, w, s->econ, 1);
-    PROF(PB_AI, { for (int c=0;c<w->n_countries;c++) if (s->ai_on[c]){
-        ai_step(&s->ai[c], w, s->econ, s->wp, s->wl, s->ag, s->rn, s->dp, s->day);
-        ai_research_step(&s->ai[c], &s->ts[c], w, s->econ, s->rn, s->wp, s->day);  /* l'arbre vivant (S1 : + le commerce) */
-    } });
-    PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1));
-    labor_tick(s->labor);
-    /* navy_tick (chantier + entretien) est passé MENSUEL (bloc plus bas) : il pesait ~½ du coût/an
-     * en quotidien, et il est pleinement dt-scalé (rien ne le veut au jour). */
-    /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
-    if (s->day % 30 == 29) {
-        econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
-        statecraft_council_apply(s->sc, w, s->econ, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or */
-        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
-            if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c);   /* Q1 : l'IA pourvoit son siège d'éthos */
-        PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
-        statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
-        PROF(PB_DEMO, demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f));
-        labor_resync_pop(s->labor, s->econ);   /* E0.1 : labor RELIT la pop (le monde la possède) */
-        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)   /* E3 : l'IA stockeuse (mensuel) */
-            if (s->ai_on[c]) ai_speculate_tick(&s->ai[c], s->econ);
-        /* — conquête du mois : un peuple passé sous une couronne ÉTRANGÈRE devient
-         *   restif (intégration à zéro, L au plancher) → terreau de sécession. */
-        for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
-            int16_t no=s->econ->region[r].owner, po=s->prev_owner_mo[r];
-            if (po>=0 && no>=0 && no!=po){
-                demography_on_conquest(w, s->econ, s->drift, r, no);
-                revolt_on_conquest(s->rs, r);    /* subir la conquête arme le séparatisme (≈10 ans) */
-            }
-            s->prev_owner_mo[r]=no;
-        }
-        /* — la révolte INCARNÉE : la misère SOUTENUE d'une région (le pire déficit
-         *   de groupe : faim, sur-taxe, aliénation, non-intégration) allume un
-         *   soulèvement, puis on tranche (sécession, coup, jacquerie, écrasement).
-         *   Un pays NÉ d'une sécession prend vie. */
-        PROF(PB_NAVY_M, { navy_tick(s->navy, w, s->econ, s->dp, 30.f);   /* chantier + entretien : MENSUEL (ex-quotidien) */
-        navy_colonize_tick(s->navy, w, s->econ, 30.f);   /* mer §8 : on découvre ce que la volta touche */
-        navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng,
-                         -1, 30.f);   /* coques : la course (raids - saignee - blocus - verdicts) */
-        navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng); });   /* les convois se chassent */
-        /* IA navale FRUGALE (mer §5/§8) : un pays côtier prospère bâtit son port,
-         * puis un transport, puis tente la route MARITIME — décision par éthos
-         * (les poids fins viendront avec la passe course). */
-        PROF(PB_BUILD, { for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-            if (!s->ai_on[c]) continue;
-            int hr=s->ai[c].home_region;
-            if (hr<0||hr>=s->econ->n_regions) continue;
-            RegionEconomy *re=&s->econ->region[hr];
-            if (re->owner!=c) continue;
-            /* V3/WG — la rade s'ouvre sur la MEILLEURE CÔTE : navy_best_coast LIT l'aptitude
-             * portuaire (Region.harbor, la FORME du littoral) + un appoint de pop + l'avantage
-             * de siège — une baie franche peut l'emporter sur un cap capital exposé. */
-            int pr=navy_best_coast(w,s->econ,c);
-            if (pr>=0 && s->econ->region[pr].build.port<=0.f && s->econ->region[pr].treasury>400.f){
-                if (getenv("SCPS_HARBORDIAG")){   /* WG : la rade choisie par aptitude portuaire (vs la région de la capitale) */
-                    int cp=w->country[c].capital_prov;
-                    int capr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
-                    float cap_h=(capr>=0&&capr<w->n_regions)?w->region[capr].harbor:-1.f;
-                    bool cap_coast=(capr>=0&&capr<s->econ->n_regions)?s->econ->region[capr].coastal:false;
-                    const char *why = (pr==capr)?"" :
-                                      (!cap_coast)?"  <- la capitale est enclavee : rade sur la meilleure cote" :
-                                      "  <- la FORME l'emporte sur le siege cotier expose";
-                    printf("      [HARBOR] pays %d : rade region %d (harbor %.2f) ; region-capitale %d (harbor %.2f, cote=%d)%s\n",
-                           c, pr, w->region[pr].harbor, capr, cap_h, cap_coast?1:0, why);
-                }
-                agency_build(s->ag, s->econ, w, pr, EDI_PORT);
-            } else if (navy_best_port(w,s->econ,c)>=0 && s->navy->n[c].build_hull<0){
-                if (s->navy->n[c].hull[HULL_TRANSPORT]<2 && re->treasury>500.f)
-                    navy_order_build(s->navy, w, s->econ, c, HULL_TRANSPORT);
-                else if (s->navy->n[c].hull[HULL_MERCHANT]<1 && re->treasury>700.f)
-                    navy_order_build(s->navy, w, s->econ, c, HULL_MERCHANT);
-            }
-            /* la route maritime : depuis la RADE (le meilleur port, pas forcément la
-             * capitale) vers un partenaire PORTÉ d'un autre pays — et la SOBRIÉTÉ :
-             * trois liens maritimes au plus par rade. */
-            int hp=navy_best_port(w,s->econ,c);
-            if (s->day%180==29 && hp>=0){
-                int mine=0;
-                for (int i=0;i<s->rn->n;i++){
-                    const TradeRoute *t=&s->rn->route[i];
-                    if (t->maritime && (t->ra==hp||t->rb==hp)) mine++;
-                }
-                for (int r2=0;r2<s->econ->n_regions && mine<3;r2++){
-                    if (s->econ->region[r2].owner==c||s->econ->region[r2].owner<0) continue;
-                    if (!navy_region_is_port(w,s->econ,r2)) continue;
-                    if (routes_order(s->rn, w, s->econ, hp, r2, true)){ mine++; break; }
-                }
-            }
-        } });
-        PROF(PB_REVOLT, { revolt_scan(s->rs, w, s->econ, s->drift, 30);
-        revolt_tick(s->rs, w, s->econ, s->drift, s->wl, s->wp, 30); });
-        if (s->rs->last_spawned>=0){
-            /* un pays vient de naître : on donne vie (IA) à tout sécessionniste
-             * vivant pas encore piloté (plusieurs peuvent éclore le même mois). */
-            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-                if (s->ai_on[c]) continue;
-                if (w->country[c].role==POLITY_ANTAGONIST && w->country[c].capital_prov>=0
-                    && regions_of(s->econ,c)>0){
-                    s->ai_on[c]=true;
-                    ai_actor_init(&s->ai[c], w, s->econ, c, w->seed ^ (uint32_t)(c*2654435761u));
-                }
-            }
-            /* une SÉCESSION a changé des propriétaires CE mois : resynchroniser, sinon
-             * la détection de conquête du mois prochain prendrait l'indépendance pour
-             * une invasion (le peuple libéré deviendrait restif envers SON propre État). */
-            for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++)
-                s->prev_owner_mo[r]=s->econ->region[r].owner;
-        }
-    }
-    if (s->day % 365 == 364) {
-        econ_colonize_tick(s->econ, w, -1); econ_migrate_tick(s->econ, w);
-        world_tick(w, s->econ, 1.0f);
-        PROF(PB_LEGIT, legitimacy_tick(s->wl, w, s->econ, s->ts));
-        trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
-        PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
-        PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
-        PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));
-        /* DIPLOMATIE annuelle : usure de guerre, FONTE des trêves & du momentum
-         * (la guerre peut reprendre après le répit), et le SCORE DE GUERRE (bras-de-fer
-         * + attrition qui saigne les armes). */
-        PROF(PB_WARHOST, warhost_tick(s->host, w, s->econ, s->dp, s->ts, 1.0f));   /* la mobilisation : les armées vivent */
-        PROF(PB_CAMPAGNE, sim_campaign_year(s, w));                           /* … et MARCHENT : campagne sur la carte */
-        if (getenv("SCPS_FORGEDIAG")){   /* pic d'effectif par type sur tout le siècle (démasque la démob) */
-            long yu[U_COUNT]; memset(yu,0,sizeof yu);
-            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
-                for (int i=0;i<s->host->army[c].n_units;i++){ int ty=s->host->army[c].units[i].type;
-                    if (ty>=0&&ty<U_COUNT) yu[ty]+=s->host->army[c].units[i].count; }
-            for (int t=0;t<U_COUNT;t++) if (yu[t]>g_peak_u[t]) g_peak_u[t]=yu[t];
-        }
-        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
-            diplo_set_faustian(s->dp, c, s->ts[c].charge);  /* souillure faustienne → croisades */
-        diplo_tick(s->dp, 365.f);
-        credit_year_tick(s->econ, s->wl, w);               /* dette : intérêt annuel (creuse le débiteur, crédite le prêteur) */
-        diplo_suzerainty_tick(s->dp, w, s->econ, s->wp);   /* suzeraineté + FRONDE : tributs, ligues, défections */
-        diplo_war_tick(s->dp, w, s->econ, s->wp, 1.0f);
-        missions_tick(s->missions, w, s->econ, s->ts, s->year);  /* missions décennales : rythme + récompense */
-        faction_levers_decay(0.07f);   /* §4 : une stance non entretenue s'efface (~15 ans) */
-        if (s->ev->ages.last_dawned != s->prev_dawned){          /* §7 : un âge se lève → engagement */
-            int age=s->ev->ages.last_dawned;
-            if (age>=0) for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
-                if (w->country[c].role!=POLITY_UNCLAIMED && regions_of(s->econ,c)>0)
-                    faction_age_engage(w, s->econ, c, age);       /* la faction-patronne s'avance (l'IA accepte) */
-            s->prev_dawned = s->ev->ages.last_dawned;
-        }
-        prof_flush(s->year);   /* PROF : classement de l'année (no-op si SCPS_PROF non posé) */
-    }
-    if (++s->day % 365 == 0) s->year++;
-}
-
-static void sim_init(Sim *s, World *w) {
-    econ_init(s->econ, w); gen_population(w, s->econ);
-    worldgen_seed_peoples(w, s->econ, RACE_HUMAIN);
-    legitimacy_init(s->wl, w, s->econ); prosperity_init(s->wp, w);
-    trade_network_build(s->net, w, s->econ);
-    statecraft_init(s->sc, w); agency_init(s->ag); diplo_init(s->dp); routes_init(s->rn);
-    diplo_seed_rng(s->dp, w->seed);   /* la fronde tire sa graine du monde (séquence par sim) */
-    intertrade_reset();   /* embargos décrétés + flux inter-pays : RAZ par sim */
-    demography_contact_reset();   /* S2 : compteur de cristallisations culturelles par contact */
-    intertrade_seed_centres(w, s->econ);   /* P3.20 : les Centres commerciaux (hubs) — géographiques */
-    intertrade_seed_citystate_arms(w, s->econ);   /* F-arc : chaque cité-état naît armurier (manufacture d'armes aléatoire sur son Centre) */
-    agency_seed_capital_markets(w, s->econ);   /* DÉPART : chaque empire naît avec un Marché sur sa capitale (carte nue) */
-    econ_set_arms_pump(intertrade_market_pull);   /* F-arc : la levée s'arme au marché (propre→Centre cité-état→mondial) */
-    /* RAZ PLEINE PLAGE (SCPS_MAX_COUNTRY, pas n_countries) : n_countries GRANDIT par
-     * sécession en cours de sim — la sim suivante repart plus bas. Sans ça, les slots
-     * hauts gardent ai_on=true + un acteur/TechState PÉRIMÉS d'un autre monde : un pays
-     * sécessionniste né à cet index sautait son init (« if (ai_on) continue ») → piloté
-     * par un fantôme (home_region d'un ancien monde, cadences mortes, arbre de tech
-     * hérité) et sa télémétrie polluait les totaux par sim. */
-    for (int c=0;c<SCPS_MAX_COUNTRY;c++){ s->ai_on[c]=false; tech_state_init(&s->ts[c], false); }
-    s->player = 0;
-    for (int c=0;c<w->n_countries;c++) if (w->country[c].role==POLITY_PLAYER){ s->player=c; break; }
-    /* PAS DE JOUEUR HUMAIN dans la chronique : TOUT pays habitable est piloté par
-     * l'IA — y compris l'ex-emplacement « joueur ». Sinon ce pays restait inerte
-     * (il ne bâtissait rien, ne se défendait pas) et FAUSSAIT le balayage (un trou
-     * mort sur la carte). Le LaborEcon reste calé sur s->player (modèle isolé : il
-     * ne nourrit pas l'éco partagée, les capitales agissent via capitale_* en direct). */
-    for (int c=0;c<w->n_countries;c++){
-        s->ai_on[c] = (w->country[c].role!=POLITY_UNCLAIMED
-                       && w->country[c].capital_prov>=0);
-        if (s->ai_on[c]) ai_actor_init(&s->ai[c], w, s->econ, c, w->seed ^ (uint32_t)(c*2654435761u));
-    }
-    ai_ensure_dominator(s->ai, s->ai_on, w->n_countries);   /* §war : un monde tout en alliances reste atone */
-    demography_attach(w, s->econ, s->drift);
-    demography_dyn_id_rebase(s->econ);   /* compteur de drift_id : repart au socle par sim */
-    revolt_init(s->rs); warhost_init(s->host); missions_init(s->missions);
-    credit_init();
-    navy_init(s->navy);
-    campaign_init(s->camp, w, s->econ);                  /* armées de campagne : table de terrain + RAZ */
-    s->camp_rng = w->seed ^ 0xCA117A11u;                 /* graine de campagne, propre à la sim */
-    faction_levers_reset();   /* §4 : stances de factions remises à zéro pour cette sim */
-    s->prev_dawned=-1;        /* §7 : aucun âge encore traité */
-    for (int r=0;r<SCPS_MAX_REG;r++)
-        s->prev_owner_mo[r] = (r<s->econ->n_regions)? s->econ->region[r].owner : -1;
-    events_init(s->ev, w, w->seed);
-    labor_init(s->labor, w); labor_seed_from_world(s->labor, w, s->econ, s->player);
-    s->day=0; s->year=0;
-}
 
 /* ── Lectures de la chronique ────────────────────────────────────────────── */
-/* Combien de régions un pays tient-il (les conquêtes/effondrements bougent ça). */
-static int regions_of(const WorldEconomy *e, int c){
-    int n=0; for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c) n++; return n;
-}
 /* Pays VIVANTS : ceux qui tiennent ≥1 région. */
 static int living_countries(const World *w, const WorldEconomy *e){
     int n=0;
@@ -689,11 +310,11 @@ int main(int argc, char **argv){
     s.drift=malloc(sizeof(ModifierStack)); s.labor=malloc(sizeof(LaborEcon));
     s.dp=malloc(sizeof(DiploState)); s.rn=malloc(sizeof(RouteNetwork));
     s.ai=calloc(SCPS_MAX_COUNTRY,sizeof(AiActor)); s.ai_on=calloc(SCPS_MAX_COUNTRY,sizeof(bool));
-    s.rs=malloc(sizeof(RevoltState)); s.host=malloc(sizeof(WarHost));
+    s.rs=malloc(sizeof(RevoltState)); s.host=calloc(1,sizeof(WarHost));   /* P1 : scratch NULL d'emblée (warhost_free sûr) */
     s.missions=malloc(sizeof(MissionsState)); s.camp=malloc(sizeof(Campaign));
-    s.navy=malloc(sizeof(NavyState));
+    s.navy=malloc(sizeof(NavyState)); s.eg=calloc(1,sizeof(EndgameState));
     if (!w||!s.econ||!s.wp||!s.wl||!s.net||!s.ts||!s.sc||!s.ag||!s.ev||!s.drift
-        ||!s.labor||!s.dp||!s.rn||!s.ai||!s.ai_on||!s.rs||!s.host||!s.missions||!s.camp||!s.navy){
+        ||!s.labor||!s.dp||!s.rn||!s.ai||!s.ai_on||!s.rs||!s.host||!s.missions||!s.camp||!s.navy||!s.eg){
         fprintf(stderr,"OOM\n"); return 1; }
 
     printf("══════════════════════════════════════════════════════════════════════\n");
@@ -713,7 +334,8 @@ int main(int argc, char **argv){
     long tot_tree_pct=0; int tot_tree_sims=0;   /* §A : fraction d'arbre déverrouillée (le coût force les choix) */
     long tot_reloc=0;   /* §reloc : ensemencements de pop pour combler une pénurie */
     long tot_repress=0, tot_assim=0, tot_purge=0, tot_purge_dead=0;       /* leviers intérieurs */
-    long tot_serv=0, tot_prot=0, tot_conc=0, tot_cite=0, tot_defect=0;    /* suzeraineté */
+    long tot_serv=0, tot_prot=0, tot_conc=0, tot_cite=0, tot_defect=0, tot_annex=0;    /* suzeraineté */
+    long tot_wcb[CB_ANTIPIRATERIE+1]={0};    /* guerres motivées : déclarations par casus belli (cumul) */
     long tot_ligues=0, tot_frondes=0, tot_indep=0, tot_renvers=0, tot_ecrase=0;   /* fronde */
     long tot_bt=0, tot_btj=0, tot_routs=0, tot_rallies=0, tot_mchoc=0, tot_mpour=0, tot_deseng=0, tot_renf=0, tot_nul=0;   /* batailles */
     double tot_sat[CLASS_COUNT]={0}; double tot_trade=0;   /* §distrib : satisfaction par classe + commerce */
@@ -925,6 +547,17 @@ int main(int argc, char **argv){
                  (double)s.wp->entropy, s.wp->entropy_terminal?" [TERMINAL]":"",
                  s.wp->faust_consumed[0], s.wp->faust_consumed[1], s.wp->faust_consumed[2],
                  fract, npr?pir/npr:0.0, pmax, (double)econ_base_price(RES_IRON), arms); }
+        /* CAPSTONE §27 — la FIN, si elle s'est déclenchée (la preuve d'émergence). */
+        if (s.eg && s.eg->fired){
+            static const char *FN[]={"—","ENGLOUTISSEMENT","GRAND HIVER","RONCES","ASCENSION"};
+            int fin=(int)s.eg->fin; if(fin<0||fin>4)fin=0;
+            printf("              §27 FIN : %s (an %d) · épicentre rég %d · fauteur pays %d",
+                   FN[fin], s.eg->fin_year, s.eg->epicenter_reg, s.eg->fauteur_country);
+            if (s.eg->fin==FIN_EAU)        printf(" · %d région(s) englouties (%d en cours)", s.eg->n_sunken, s.eg->sink_pending);
+            else if (s.eg->fin==FIN_FROID) printf(" · refroidissement %.0f%%", (double)s.eg->cold_offset*100.0);
+            else if (s.eg->fin==FIN_RONCES)printf(" · front de ronces %d cellule(s)", s.eg->thorn_front_n);
+            printf("\n");
+        }
         if (getenv("SCPS_FORGEDIAG")){
             long bld[BLD_TYPE_COUNT]; memset(bld,0,sizeof bld);
             double sup[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)sup[g]=0.0;
@@ -942,6 +575,8 @@ int main(int argc, char **argv){
                     s.year,u[U_HALLEBARDIER],u[U_ARQUEBUSIER],u[U_ALCHIMISTE],u[U_GARDE_RUNIQUE],u[U_ARCHER],u[U_CAV_LOURDE],u[U_PIQUIER],u[U_EPEISTE]);
             fprintf(stderr,"[FORGEDIAG] PIC (sur le siècle) : hallebardier %ld · arquebusier %ld · alchimiste %ld · garde runique %ld · archer %ld · cav lourde %ld | piquier %ld · épéiste %ld\n",
                     g_peak_u[U_HALLEBARDIER],g_peak_u[U_ARQUEBUSIER],g_peak_u[U_ALCHIMISTE],g_peak_u[U_GARDE_RUNIQUE],g_peak_u[U_ARCHER],g_peak_u[U_CAV_LOURDE],g_peak_u[U_PIQUIER],g_peak_u[U_EPEISTE]);
+            fprintf(stderr,"[FORGEDIAG] PIC roster-22 (les 10 neuves) : arb.lourd %ld · berserker %ld · lancier-choc %ld · milice %ld · harceleur %ld · traqueur %ld · lame-franche %ld · garde-escorte %ld · cuirassée %ld · cav-raid %ld\n",
+                    g_peak_u[U_ARBALETE_LOURDE],g_peak_u[U_BERSERKER],g_peak_u[U_LANCIER_CHOC],g_peak_u[U_MILICE],g_peak_u[U_HARCELEUR],g_peak_u[U_TRAQUEUR],g_peak_u[U_LAME_FRANCHE],g_peak_u[U_GARDE_ESCORTE],g_peak_u[U_CAV_CUIRASSEE],g_peak_u[U_CAV_RAID]);
             { double stk[RES_COUNT]; for(int g=0;g<RES_COUNT;g++)stk[g]=0.0;
               for (int r=0;r<s.econ->n_regions;r++){ if(s.econ->region[r].owner<0)continue;
                   for(int g=0;g<RES_COUNT;g++) stk[g]+=s.econ->region[r].stock[g]; }
@@ -1073,19 +708,23 @@ int main(int argc, char **argv){
             for (int i=0;i<cont && i<4;i++) printf(" C%d %.0fk", ord[i], pc[ord[i]]/1000.0);
             printf("\n");
             if (getenv("SCPS_CAPDIAG")) {
-                double poptot=0, cap_col=0, cap_act=0, fsat_w=0, fsat_p=0, bldlvl=0; int ncol=0, nact=0;
+                double poptot=0, cap_col=0, cap_act=0, fsat_w=0, fsat_p=0, bldlvl=0, effcap=0, nm_w=0; int ncol=0, nact=0;
                 for (int r=0;r<s.econ->n_regions;r++){
                     const RegionEconomy *re=&s.econ->region[r];
                     double p=0; for(int cc=0;cc<CLASS_COUNT;cc++) p+=re->strata[cc].pop;
                     poptot+=p;
                     if (re->active)   { nact++; cap_act+=re->cap_pop; }
-                    if (re->colonized){ ncol++; cap_col+=re->cap_pop; fsat_w+=re->food_sat*p; fsat_p+=p;
-                        for(int b=0;b<re->n_bld;b++) bldlvl+=re->bld[b].level; }
+                    if (re->colonized){ ncol++; cap_col+=re->cap_pop; fsat_w+=re->food_sat*p; fsat_p+=p; nm_w+=re->needs_met*p;
+                        double mh=0; for(int b=0;b<re->n_bld;b++){ bldlvl+=re->bld[b].level; mh+=re->bld[b].level; }
+                        mh = fmin(mh*100.0, re->cap_pop*0.5);                       /* HOUSE_MANUF=100 (diag) */
+                        effcap += re->cap_pop*0.5 + mh + re->build.food_cap*250.0;  /* eff_cap réel (Q6) */
+                    }
                 }
-                fprintf(stderr,"[FILLDIAG] pop=%.0f | colonisées=%d/%d cap_col=%.0f cap_act=%.0f | remplissage_col=%.0f%% cap_act=%.0f%% | food_sat=%.2f | Σmanuf_lvl=%.0f\n",
+                fprintf(stderr,"[FILLDIAG] pop=%.0f | colonisées=%d/%d cap_col=%.0f cap_act=%.0f | remplissage_col=%.0f%% cap_act=%.0f%% | pop/EFF_CAP=%.0f%% | food_sat=%.2f | needs_met=%.2f | Σmanuf_lvl=%.0f\n",
                         poptot, ncol, nact, cap_col, cap_act,
                         cap_col>0?100.0*poptot/cap_col:0, cap_act>0?100.0*poptot/cap_act:0,
-                        fsat_p>0?fsat_w/fsat_p:0, bldlvl);
+                        effcap>0?100.0*poptot/effcap:0,
+                        fsat_p>0?fsat_w/fsat_p:0, fsat_p>0?nm_w/fsat_p:0, bldlvl);
             }
         }
         /* EXPANSION : provinces colonisées (vierges peuplées) vs PRISES de force. */
@@ -1202,12 +841,27 @@ int main(int argc, char **argv){
           printf("              recherche : %d nœuds déverrouillés (dont %d faustiens) · %d relocalisation(s) pour combler une pénurie (peupler sa province-ressource)\n", sim_techs, sim_faust, sim_reloc);
           tot_techs += sim_techs; tot_faustian += sim_faust; tot_reloc += sim_reloc; }
 
+        /* PRÉVISION (pipeline IA éco étages 1-2) : l'IA n'est plus AVEUGLE de ses flux. Le forecast
+         * distingue le STRUCTUREL (cap < conso à PLEIN eff_cap : le manque PERMANENT qui ARME
+         * import/colonisation) du transitoire. On surface l'existentiel — le déficit VIVRIER
+         * structurel (ne peut se nourrir même à plein → import vital) + la tension de runway. */
+        { int n_foodstruct=0, n_foodten=0, nctry=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+              if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].role==POLITY_WILD) continue;
+              nctry++;
+              EconForecast fc; econ_country_forecast(s.econ, c, 25.f, &fc);
+              if (fc.struct_deficit[RES_GRAIN] || fc.struct_deficit[RES_FISH] || fc.struct_deficit[RES_LIVESTOCK]) n_foodstruct++;
+              if (fc.food_runway < 12.f) n_foodten++;
+          }
+          printf("              prévision : %d/%d pays en déficit vivrier STRUCTUREL (ne se nourrit pas à plein → import vital) · %d sous tension de runway (< 12 ans)\n",
+                 n_foodstruct, nctry, n_foodten); }
+
         /* LEVIERS & SUZERAINETÉ (brief leviers) : l'usage par sim — sans ces lignes,
          * on ne sait ni si l'IA s'en sert, ni si elle s'en sert TROP. */
         { int rep,ass,pur; long dead; agency_levier_stats(&rep,&ass,&pur,&dead);
-          printf("              leviers : %d matage(s) · %d formation(s) · %d purge(s) (%ld morts) | suzeraineté : %d servage · %d protectorat · %d concordat · %d cité · %d défection(s)\n",
+          printf("              leviers : %d matage(s) · %d formation(s) · %d purge(s) (%ld morts) | suzeraineté : %d servage · %d protectorat · %d concordat · %d cité · %d défection(s) · %d annexion(s) par digestion\n",
                  rep, ass, pur, dead,
-                 s.dp->n_servage, s.dp->n_protectorat, s.dp->n_concordat, s.dp->n_cite, s.dp->n_defections);
+                 s.dp->n_servage, s.dp->n_protectorat, s.dp->n_concordat, s.dp->n_cite, s.dp->n_defections, s.dp->n_annex);
           { int ndette=0, nlien=0;
             for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
                 if (country_gold(s.econ,c) < 0.0) ndette++;
@@ -1220,6 +874,12 @@ int main(int argc, char **argv){
                  s.dp->n_lev_don, s.dp->n_lev_allege, s.dp->n_lev_divise, s.dp->n_lev_intim);
           tot_ligues+=s.dp->n_ligues; tot_frondes+=s.dp->n_frondes; tot_indep+=s.dp->n_indep;
           tot_renvers+=s.dp->n_renvers; tot_ecrase+=s.dp->n_ecrase;
+          /* GUERRES MOTIVÉES (pipeline diplo) : le casus belli DIT le pourquoi — la part
+           * ÉCONOMIQUE (convoitise d'un bien, étage 2) à côté de la territoriale/subjugation. */
+          { int wc[CB_ANTIPIRATERIE+1]; diplo_war_cb_counts(wc);
+            printf("              guerres motivées : %d territoriale(s) · %d économique(s) · %d subjugation · %d religieuse(s) · %d anti-piraterie\n",
+                   wc[CB_TERRITORIAL], wc[CB_ECONOMIC], wc[CB_SUBJUGATION], wc[CB_RELIGIOUS], wc[CB_ANTIPIRATERIE]);
+            for (int i=0;i<=CB_ANTIPIRATERIE;i++) tot_wcb[i]+=wc[i]; }
 
         /* BATAILLES DANS LE TEMPS (§8) : durées, déroutes, et LA vérif — la poursuite
          * doit dominer le choc, sinon on a juste ralenti l'ancien modèle. */
@@ -1232,7 +892,7 @@ int main(int argc, char **argv){
         tot_deseng+=s.camp->n_disengage; tot_renf+=s.camp->n_reinforce; tot_nul+=s.camp->n_stalemate;
           tot_repress+=rep; tot_assim+=ass; tot_purge+=pur; tot_purge_dead+=dead;
           tot_serv+=s.dp->n_servage; tot_prot+=s.dp->n_protectorat; tot_conc+=s.dp->n_concordat;
-          tot_cite+=s.dp->n_cite; tot_defect+=s.dp->n_defections; }
+          tot_cite+=s.dp->n_cite; tot_defect+=s.dp->n_defections; tot_annex+=s.dp->n_annex; }
 
         /* ARBRE (§A) : fraction de l'arbre déverrouillée PAR EMPIRE (cible < 100 % → l'empire
          * doit CHOISIR) + thème DOMINANT (deux empires aux choix différents → divergence). */
@@ -1257,21 +917,21 @@ int main(int argc, char **argv){
         /* SYNCRÉTISME (§tech culturelle) : les nœuds à PORTE D'ARCHÉTYPE (ex-signatures de
          * race, désormais ouvertes par la CULTURE gouvernée — soi ou contact) — combien
          * acquis, et la DISPERSION entre empires : deux contacts différents → arbres différents. */
-        { int sync_total=0, nmax=0, nmin=999, nemp=0, combo=0, diff_total=0; int arch_reached[RACE_COUNT]={0};
+        { int sync_total=0, nmax=0, nmin=999, nemp=0, combo=0, diff_total=0; int arch_reached[HERITAGE_COUNT]={0};
           for (int c=0;c<w->n_countries;c++){
               if (!s.ai_on[c] || regions_of(s.econ,c)==0) continue;     /* vivant seulement */
               int n=0;
               for (int id=0; id<TECH_COUNT; id++)
-                  if (s.ts[c].unlocked[id] && tech_node((TechId)id)->native!=RACE_COUNT){
+                  if (s.ts[c].unlocked[id] && tech_node((TechId)id)->native!=HERITAGE_COUNT){
                       n++; arch_reached[tech_node((TechId)id)->native]=1; }
               if (s.ts[c].unlocked[TECH_FORGE_RUNES]) combo++;          /* §18.3 : armes enchantées = forge runique × arcane */
               diff_total += s.ts[c].n_sync;                             /* §8 : nœuds de diffusion (contact peu profond) loqués */
               sync_total+=n; if(n>nmax)nmax=n; if(n<nmin)nmin=n; nemp++;
           }
-          int distinct=0; for (int ar=0;ar<RACE_COUNT;ar++) distinct+=arch_reached[ar];   /* ar : ne pas masquer le r extérieur (-Wshadow) */
+          int distinct=0; for (int ar=0;ar<HERITAGE_COUNT;ar++) distinct+=arch_reached[ar];   /* ar : ne pas masquer le r extérieur (-Wshadow) */
           if (nemp>0){
               printf("              syncrétisme : %d nœud(s) profond(s) (gouvernance) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane · %ld cristallisation(s) culturelle(s) par contact (S2)\n",
-                     sync_total, diff_total, distinct, (int)RACE_COUNT, nmin, nmax, combo, demography_contact_count());
+                     sync_total, diff_total, distinct, (int)HERITAGE_COUNT, nmin, nmax, combo, demography_contact_count());
               tot_sync += sync_total; tot_sync_distinct += distinct;
           }
         }
@@ -1482,6 +1142,9 @@ int main(int argc, char **argv){
     printf("   occupations (terrain) ....... %ld posée(s) · %ld levée(s)   (les sièges tiennent le sol entre deux paix)\n", g_tot_occ_posed, g_tot_occ_lifted);
     printf("   pays absorbés (morts) ....... %ld   (moy. %.1f/sim)\n", tot_absorbed, (double)tot_absorbed/nsims);
     printf("   pays émergés (sécession) .... %ld   (moy. %.1f/sim ; la carte politique respire)\n", tot_emerged, (double)tot_emerged/nsims);
+    printf("   hameaux libres (WILD) ....... %.1f semés/sim · %ld ralliés culturellement (%.1f/sim · pop moy. %.0f) ; l'absorption MILITAIRE passe par la conquête\n",
+           (double)g_wild_spawned/nsims, g_wild_defected, (double)g_wild_defected/nsims,
+           g_wild_defected>0?g_wild_absorb_pop/(double)g_wild_defected:0.0);
     printf("   nœuds de tech débloqués ..... %ld   (moy. %.1f/sim ; %ld faustiens)\n", tot_techs, (double)tot_techs/nsims, tot_faustian);
     printf("   arbre déverrouillé / empire . %ld%%   (le coût force les choix : cible < 100 %% → spécialisation)\n",
            tot_tree_sims>0? tot_tree_pct/tot_tree_sims : 0);
@@ -1489,8 +1152,10 @@ int main(int argc, char **argv){
            tot_reloc, (double)tot_reloc/nsims);
     printf("   leviers intérieurs .......... %ld matage(s) · %ld formation(s) · %ld purge(s) (%ld morts — RARE attendu)\n",
            tot_repress, tot_assim, tot_purge, tot_purge_dead);
-    printf("   suzeraineté ................. %ld servage · %ld protectorat · %ld concordat · %ld cité · %ld défection(s)\n",
-           tot_serv, tot_prot, tot_conc, tot_cite, tot_defect);
+    printf("   suzeraineté ................. %ld servage · %ld protectorat · %ld concordat · %ld cité · %ld défection(s) · %ld annexion(s) par digestion (étage 3)\n",
+           tot_serv, tot_prot, tot_conc, tot_cite, tot_defect, tot_annex);
+    printf("   guerres motivées ............ %ld territoriale(s) · %ld économique(s) · %ld subjugation · %ld religieuse(s) · %ld anti-piraterie (le casus belli DIT le pourquoi)\n",
+           tot_wcb[CB_TERRITORIAL], tot_wcb[CB_ECONOMIC], tot_wcb[CB_SUBJUGATION], tot_wcb[CB_RELIGIOUS], tot_wcb[CB_ANTIPIRATERIE]);
     printf("   fronde vassale .............. %ld ligue(s) · %ld fronde(s) → %ld indép. · %ld renversement(s) · %ld écrasée(s)  (les TROIS fins doivent exister)\n",
            tot_ligues, tot_frondes, tot_indep, tot_renvers, tot_ecrase);
     printf("   batailles dans le temps ..... %ld livrées · %.0f j/bataille · %ld déroutes · %ld ralliement(s) · %ld décrochages · %ld renforts · %ld nuls | morts choc %ld vs POURSUITE %ld (ratio %.1fx — la poursuite doit DOMINER le choc si la cavalerie domine la compo)\n",
@@ -1565,6 +1230,6 @@ int main(int argc, char **argv){
     free(s.ag); free(s.ev); free(s.drift); free(s.labor); free(s.dp); free(s.rn);
     warhost_free(s.host); free(s.camp); free(s.ai); free(s.ai_on); free(s.rs); free(s.host);
     free(s.missions);   /* fuyait (6 496 o, vu par LeakSanitizer) */
-    free(s.navy);
+    free(s.navy); free(s.eg);
     return 0;
 }

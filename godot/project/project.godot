@@ -1,0 +1,29 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="SCPS"
+run/main_scene="res://main/Main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[autoload]
+
+Sim="*res://autoload/sim.gd"
+ECUtilities="*res://addons/easy_charts/utilities/scripts/ec_utilities.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/easy_charts/plugin.cfg", "res://addons/medusa/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

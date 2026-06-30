@@ -93,7 +93,7 @@ int main(int argc, char **argv){
      * On laisse de la place dans la table des pays pour qu'une sécession PUISSE
      * faire naître un nouveau pays (le worldgen en remplit parfois jusqu'au plafond). */
     w->n_countries=8;
-    PopCulture crown=cult(5,5,5,5,RACE_HUMAIN);
+    PopCulture crown=cult(5,5,5,5,HERITAGE_ADAPTATIF);
     int OWNER=5;
     w->country[OWNER].capital_prov=w->region[0].province_ids[0];
     w->country[OWNER].role=POLITY_ANTAGONIST;
@@ -103,9 +103,9 @@ int main(int argc, char **argv){
 
     /* ═══ 1. DÉFICIT — le grief est ANCRÉ ═══════════════════════════════ */
     printf("\n── 1. Le déficit : la misère ANCRÉE sur un groupe ──\n");
-    PopCulture foreign=cult(9,9,2,9,RACE_ORQUE);   /* loin de la couronne (D≈4) */
-    PopGroup misery = grp(RACE_ORQUE, CLASS_LABORER, 8000, 2.f, 0.15f, foreign, 101);
-    PopGroup content= grp(RACE_HUMAIN, CLASS_LABORER, 8000, 7.f, 1.00f, crown, 102);
+    PopCulture foreign=cult(9,9,2,9,HERITAGE_CLANIQUE);   /* loin de la couronne (D≈4) */
+    PopGroup misery = grp(HERITAGE_CLANIQUE, CLASS_LABORER, 8000, 2.f, 0.15f, foreign, 101);
+    PopGroup content= grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 8000, 7.f, 1.00f, crown, 102);
     float d_mis = revolt_group_deficit(&misery,  drift, &crown, 0.05f, 0.20f, 0.4f, 0.4f);
     float d_con = revolt_group_deficit(&content, drift, &crown, 0.95f, 0.90f, 0.0f, 0.0f);
     printf("   déficit : affamé/étranger=%.2f  vs  rassasié/natif=%.2f\n", d_mis, d_con);
@@ -123,7 +123,7 @@ int main(int argc, char **argv){
 
     /* ═══ 3. NATURE — qui se lève → ce qu'il veut ═══════════════════════ */
     printf("\n── 3. La nature : qui se lève détermine ce qu'il veut ──\n");
-    PopGroup noble = grp(RACE_HUMAIN, CLASS_ELITE, 400, 3.f, 1.0f, crown, 103);
+    PopGroup noble = grp(HERITAGE_ADAPTATIF, CLASS_ELITE, 400, 3.f, 1.0f, crown, 103);
     ok("l'ÉLITE vise le trône (coup d'État)",        revolt_classify(&noble, drift,&crown)==REBEL_COUP);
     ok("la nation étrangère mal liée fait SÉCESSION", revolt_classify(&misery,drift,&crown)==REBEL_SECESSION);
     ok("le natif mécontent fait une JACQUERIE",       revolt_classify(&content,drift,&crown)==REBEL_CLASS);
@@ -132,7 +132,7 @@ int main(int argc, char **argv){
     printf("\n── 4. Le choc économique : les mobilisés quittent la main-d'œuvre ──\n");
     RevoltState rs; revolt_init(&rs);
     rig(e, 1, OWNER, 0.05f, 0.20f, 0.4f, 0.f);
-    push(e, 1, grp(RACE_ORQUE, CLASS_LABORER, 8000, 2.f, 0.15f, foreign, 201));
+    push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 8000, 2.f, 0.15f, foreign, 201));
     float labor_before=e->region[1].strata[CLASS_LABORER].pop;
     int idx=revolt_ignite(&rs, w, e, drift, 1, 0.4f);
     float labor_after=e->region[1].strata[CLASS_LABORER].pop;
@@ -146,7 +146,7 @@ int main(int argc, char **argv){
     revolt_init(&rs);
     solo_owner(e, 2, OWNER);
     rig(e, 2, OWNER, 0.05f, 0.20f, 0.3f, 20.f);   /* H=20 → garnison écrasante */
-    push(e, 2, grp(RACE_HUMAIN, CLASS_LABORER, 4000, 2.f, 1.0f, crown, 202)); /* natif → jacquerie */
+    push(e, 2, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 4000, 2.f, 1.0f, crown, 202)); /* natif → jacquerie */
     int before_countries=w->n_countries;
     long pop_lost_before=rs.pop_lost;
     int ix=revolt_ignite(&rs, w, e, drift, 2, 0.4f);
@@ -163,7 +163,7 @@ int main(int argc, char **argv){
     revolt_init(&rs);
     solo_owner(e, 3, OWNER);
     rig(e, 3, OWNER, 0.02f, 0.10f, 0.5f, 0.f);    /* H=0 → garnison faible */
-    push(e, 3, grp(RACE_ORQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 203));
+    push(e, 3, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 203));
     int sec_before=w->n_countries;
     int iy=revolt_ignite(&rs, w, e, drift, 3, 0.5f);
     revolt_tick(&rs, w, e, drift, wl, wp, 120);
@@ -180,7 +180,7 @@ int main(int argc, char **argv){
     revolt_init(&rs);
     solo_owner(e, 4, OWNER);
     rig(e, 4, OWNER, 0.0f, 0.0f, 1.0f, 0.f);      /* misère totale, garnison faible */
-    push(e, 4, grp(RACE_HUMAIN, CLASS_LABORER, 9000, 2.f, 1.0f, crown, 204)); /* natif désespéré */
+    push(e, 4, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 9000, 2.f, 1.0f, crown, 204)); /* natif désespéré */
     float sat_before=e->region[4].satisfaction;
     int iz=revolt_ignite(&rs, w, e, drift, 4, 1.0f);
     revolt_tick(&rs, w, e, drift, wl, wp, 120);
@@ -195,7 +195,7 @@ int main(int argc, char **argv){
     revolt_init(&rs);
     solo_owner(e, 1, OWNER);
     rig(e, 1, OWNER, 0.02f, 0.05f, 0.5f, 0.f);
-    push(e, 1, grp(RACE_ORQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 211));
+    push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 211));
     int months=0;
     for (; months<6 && revolt_active_count(&rs)==0; months++) revolt_scan(&rs, w, e, drift, 30);
     printf("   région désespérée : soulèvement au bout de %d mois de misère soutenue\n", months);
@@ -204,7 +204,7 @@ int main(int argc, char **argv){
     revolt_init(&rs);
     solo_owner(e, 2, OWNER);
     rig(e, 2, OWNER, 0.95f, 0.90f, 0.0f, 0.f);
-    push(e, 2, grp(RACE_HUMAIN, CLASS_LABORER, 9000, 7.f, 1.0f, crown, 212));
+    push(e, 2, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 9000, 7.f, 1.0f, crown, 212));
     for (int mo=0; mo<6; mo++) revolt_scan(&rs, w, e, drift, 30);
     ok("une région contente ne se soulève jamais (aucun grief)", revolt_active_count(&rs)==0);
 
@@ -214,7 +214,7 @@ int main(int argc, char **argv){
     revolt_init(&rs);
     solo_owner(e, 1, OWNER);
     rig(e, 1, OWNER, 0.4f, 0.4f, 0.3f, 10.f);
-    push(e, 1, grp(RACE_ORQUE, CLASS_LABORER, 6000, 2.f, 0.12f, foreign, 221));
+    push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 6000, 2.f, 0.12f, foreign, 221));
     int j1=revolt_ignite(&rs, w, e, drift, 1, 0.3f);
     revolt_tick(&rs, w, e, drift, wl, wp, 120);
     int out_plain = (j1>=0)?rs.list[j1].outcome:-1;
@@ -222,7 +222,7 @@ int main(int argc, char **argv){
     revolt_init(&rs);
     solo_owner(e, 2, OWNER);
     rig(e, 2, OWNER, 0.4f, 0.4f, 0.3f, 10.f);
-    push(e, 2, grp(RACE_ORQUE, CLASS_LABORER, 6000, 2.f, 0.12f, foreign, 222));
+    push(e, 2, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 6000, 2.f, 0.12f, foreign, 222));
     revolt_on_conquest(&rs, 2);                /* on vient de la soumettre */
     int j2=revolt_ignite(&rs, w, e, drift, 2, 0.3f);
     revolt_tick(&rs, w, e, drift, wl, wp, 120);
@@ -237,7 +237,7 @@ int main(int argc, char **argv){
     revolt_init(&rs);
     solo_owner(e, 4, OWNER);
     rig(e, 4, OWNER, 0.05f, 0.20f, 0.3f, 20.f);   /* H haut → écrasement */
-    push(e, 4, grp(RACE_HUMAIN, CLASS_LABORER, 4000, 2.f, 1.0f, crown, 241));
+    push(e, 4, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 4000, 2.f, 1.0f, crown, 241));
     e->region[4].revolt_scar=0.f;
     revolt_ignite(&rs, w, e, drift, 4, 0.4f);
     revolt_tick(&rs, w, e, drift, wl, wp, 120);

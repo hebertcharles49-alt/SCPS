@@ -14,6 +14,10 @@
 #include "scps_culture.h"
 #include <stdio.h>
 
+/* ---- mini-cadre d'ASSERTION (banc auto-vérifiant : le harnais lit « X réussis, Y échoués ») ---- */
+static int g_pass=0, g_fail=0;
+#define CK(cond,msg) do{ if (cond) g_pass++; else { g_fail++; printf("  ✗ %s\n",(msg)); } }while(0)
+
 static void print_culture(const Culture *c, const char *tag){
     printf("  %-10s « %s »%s\n", tag, c->name, c->is_hybrid?"  [hybride]":"");
     printf("     éthos=%-11s  mode=%-22s  struct=%-15s  credo=%s/%s\n",
@@ -48,6 +52,10 @@ int main(void){
         print_culture(&b,"B");
         printf("     → pire rival : même corps (subs %.1f), âme contraire "
                "(val %.1f vs %.1f)\n", a.subsistance, a.valeurs, b.valeurs);
+        /* INVARIANT §8 : même CORPS (mode de vie + subsistance identiques), âme CONTRAIRE (valeurs ≠). */
+        CK(a.lifeway == b.lifeway,            "paire/biome : même mode de vie");
+        CK(a.subsistance == b.subsistance,    "paire/biome : même corps (subsistance)");
+        CK(a.valeurs != b.valeurs,            "paire/biome : âme contraire (valeurs)");
     }
 
     /* 2. Le viking des steppes (§4) --------------------------------------- */
@@ -66,6 +74,8 @@ int main(void){
     print_culture(&merch_mount,"muté");
     printf("  → commerce sans voies → %s ; garde → %s.\n",
            econ_name(merch_mount.econ), martial_name(merch_mount.martial));
+    /* INVARIANT §4 : l'éthos hérité MUTE quand le biome verrouille (la razzia maritime sans mer). */
+    CK(viking_step.martial != viking_orig.martial, "Honneur côte→steppe : la doctrine MUTE (plus de mer)");
 
     /* 3. Distance & relations (§9) ---------------------------------------- */
     printf("\n── 3. LECTURE DE DISTANCE (contenu vs horloge) ──\n");
@@ -78,6 +88,12 @@ int main(void){
     Culture zealA = culture_make(BIO_DESERT, ETHOS_HONNEUR, REL_ABRAHAMIQUE, CREDO_EVANGELISTE);
     Culture zealB = culture_make(BIO_DESERT, ETHOS_DOMINATEUR, REL_ABRAHAMIQUE, CREDO_PURIFICATEUR);
     print_relation(&zealA, &zealB);             /* ennemis-schismatiques */
+    /* INVARIANT §9 : DEUX CANAUX distincts. Les jumeaux (step_far ne diverge QUE l'horloge/langue) sont
+     * PROCHES en contenu mais LOIN sur l'horloge ; un étranger (grenier) est plus loin EN CONTENU. */
+    float cd_twin = culture_content_distance(&viking_step, &step_far);
+    float ck_twin = culture_clock_distance  (&viking_step, &step_far);
+    CK(ck_twin > cd_twin,                                                  "jumeaux : l'horloge diverge plus que le contenu");
+    CK(culture_content_distance(&viking_step,&grenier) > cd_twin,          "étranger : plus distant EN CONTENU que les jumeaux");
 
     /* 4. Syncrétisme : le GOUFFRE est un continuum, pas un mur (v3) -------- */
     printf("\n── 4. SYNCRÉTISME — tout s'assimile, à différentes échelles ──\n");
@@ -106,14 +122,26 @@ int main(void){
     }
     printf("\n  → jamais un « impossible » : le gouffre s'ouvre à forte P+K, lentement (temps ∝ D∞).\n");
     Culture fused;
-    if (culture_syncretize(&doux, &dur, &fused)){   /* la fusion produit toujours une fiche */
+    bool fused_ok = culture_syncretize(&doux, &dur, &fused);   /* la fusion produit toujours une fiche */
+    if (fused_ok){
         printf("  fusion forêt↔désert (porte ouverte, après le temps requis) :\n");
         print_culture(&fused,"hybride");
     }
+    /* INVARIANT v3 : le syncrétisme est un CONTINUUM. La porte s'OUVRE avec P+K ; le « gouffre »
+     * (doux↔dur) est plus DUR et plus LENT que le proche (substrat↔élite) ; la fusion rend un hybride. */
+    SyncFeasibility sp_lo = culture_can_syncretize(&substrat,&elite,5.f,5.f);
+    SyncFeasibility sp_hi = culture_can_syncretize(&substrat,&elite,9.f,9.f);
+    SyncFeasibility gf_hi = culture_can_syncretize(&doux,&dur,9.f,9.f);
+    CK(sp_hi.openness > sp_lo.openness,     "la porte de syncrétisme s'OUVRE avec P+K");
+    CK(sp_hi.feasible,                      "proche à P+K haut : OUVERTE");
+    CK(gf_hi.openness < sp_hi.openness,     "le gouffre est plus DUR que le proche (à P+K égal)");
+    CK(gf_hi.time_ticks > sp_hi.time_ticks, "temps de fusion ∝ distance (le gouffre plus lent)");
+    CK(fused_ok && fused.is_hybrid,         "la fusion produit un HYBRIDE");
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" La friction lit D_inf sur le contenu ; le cousinage lit l'horloge.\n");
     printf(" Tout le drame vit dans l'écart entre les deux canaux.\n");
     printf("══════════════════════════════════════════════════════════════\n");
-    return 0;
+    printf("\n BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
+    return g_fail ? 1 : 0;
 }

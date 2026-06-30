@@ -12,7 +12,7 @@
 #include <string.h>
 #include <math.h>
 
-static inline float clampf(float v,float lo,float hi){return v<lo?lo:(v>hi?hi:v);}
+static inline float clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:(v>hi?hi:v));}
 static inline float absf(float v){return v<0?-v:v;}
 
 /* ---- Diplomatie d'équilibre — surface d'équilibrage ------------------- */
@@ -56,11 +56,20 @@ static inline float absf(float v){return v<0?-v:v;}
 #define RANCOR_RALLY_NORM 3.0f          /* échelle de saturation du ralliement */
 
 static int g_intim_cd[SCPS_MAX_COUNTRY];   /* l'intimidation n'est pas gratuite : ~5 ans entre deux démonstrations */
+/* TÉLÉMÉTRIE « guerres motivées » (chronicle) — le casus belli DIT le pourquoi. Compteur
+ * PAR MOTIF des déclarations CB-taguées (la guerre motivée a une RAISON ; la fronde/défection
+ * n'en pose pas). Statique = remis à plat par diplo_init (par sim), JAMAIS sérialisé, JAMAIS lu
+ * par le moteur ⇒ déterminisme/hash/SAVE intacts. */
+static int g_war_cb[CB_ANTIPIRATERIE+1];
+void diplo_war_cb_counts(int out[CB_ANTIPIRATERIE+1]){
+    for (int i=0;i<=CB_ANTIPIRATERIE;i++) out[i]=g_war_cb[i];
+}
 void diplo_save_statics(FILE *f){ fwrite(g_intim_cd,sizeof g_intim_cd,1,f); }
 bool diplo_load_statics(FILE *f){ return fread(g_intim_cd,sizeof g_intim_cd,1,f)==1; }
 void diplo_init(DiploState *d){
     memset(d,0,sizeof(*d));
     memset(g_intim_cd,0,sizeof g_intim_cd);
+    memset(g_war_cb,0,sizeof g_war_cb);   /* télémétrie « guerres motivées » : RAZ par sim */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) d->suzerain[c]=-1;   /* tous libres au départ */
     for (int r=0;r<SCPS_MAX_REG;r++)     d->occupier[r]=-1;   /* aucune région occupée */
     d->fronde_suz=-1; d->fronde_lead=-1; d->fronde_rng=0x9E3779B9u;
@@ -144,10 +153,55 @@ static Credo suz_credo(const World *w, const WorldEconomy *econ, int c){
 static SuzContrat contrat_adouci(SuzContrat c){
     return (c==CONTRAT_SERVAGE)?CONTRAT_PROTECTORAT:(c==CONTRAT_PROTECTORAT)?CONTRAT_CONCORDAT:c;
 }
+/* ── VASSALITÉ SUR LA DURÉE (pipeline diplo étage 3) — helpers ────────────────────────
+ * La VALEUR (prix) choisit la CIBLE ; l'ÉTHOS décide la MÉTHODE (tenir-et-traire vs digérer).
+ * Tout mord APRÈS l'an-12 (seuils inatteignables dans la fenêtre golden) → déterminisme intact. */
+static void polity_death(DiploState *d, World *w, WorldEconomy *econ, int dead);  /* défini plus bas */
+
+/* PROXIMITÉ CULTURELLE [0..1] de deux pays (par leur capitale) — 1 = identique. D∞ sur les axes
+ * de CONTENU de la PopCulture (mêmes axes que culture_content_distance), normalisé sur [0..10]. */
+static float suz_culture_prox(const World *w, const WorldEconomy *econ, int a, int b){
+    int ca=(a>=0&&a<w->n_countries)?w->country[a].capital_prov:-1;
+    int cb=(b>=0&&b<w->n_countries)?w->country[b].capital_prov:-1;
+    int ra=(ca>=0&&ca<w->n_provinces)?w->province[ca].region:-1;
+    int rb=(cb>=0&&cb<w->n_provinces)?w->province[cb].region:-1;
+    if (ra<0||ra>=econ->n_regions||rb<0||rb>=econ->n_regions) return 0.5f;   /* inconnu → neutre */
+    const PopCulture *pa=&econ->region[ra].culture, *pb=&econ->region[rb].culture;
+    float dv=absf(pa->valeurs-pb->valeurs),   ds=absf(pa->subsistance-pb->subsistance),
+          dp=absf(pa->parente-pb->parente),   dr=absf(pa->religion-pb->religion);
+    float D=dv; if(ds>D)D=ds; if(dp>D)D=dp; if(dr>D)D=dr;
+    return clampf(1.f - D/10.f, 0.f, 1.f);
+}
+/* FONCTION d'un vassal — sa plus forte VOCATION (somme sur ses régions). Sort aussi les
+ * trois potentiels (le canal reçoit une part de CELUI de sa fonction). */
+typedef enum { VFN_COMMERCE=0, VFN_AGRAIRE, VFN_MARTIAL } VassalFunction;
+static VassalFunction vassal_function(const WorldEconomy *e, int cid,
+                                      float *out_food, float *out_gold, float *out_mil){
+    float food=0.f, gold=0.f, mil=0.f;
+    for (int r=0;r<e->n_regions;r++){
+        const RegionEconomy *re=&e->region[r];
+        if (re->owner!=cid) continue;
+        food += re->raw_cap[RES_GRAIN]+re->raw_cap[RES_LIVESTOCK]+re->raw_cap[RES_FISH];
+        gold += re->raw_cap[RES_GOLD] + re->treasury*0.01f;
+        mil  += re->raw_cap[RES_IRON]+re->raw_cap[RES_COPPER] + re->mil_stock;
+    }
+    if (out_food) *out_food=food;
+    if (out_gold) *out_gold=gold;
+    if (out_mil)  *out_mil =mil;
+    if (food>=gold && food>=mil) return VFN_AGRAIRE;
+    if (mil >=gold && mil >=food) return VFN_MARTIAL;
+    return VFN_COMMERCE;
+}
+/* PRIX OBJECTIF d'un pays (Σ prix de ses régions) — borne la DURÉE et le COÛT de la digestion. */
+static float country_price(const WorldEconomy *e, int cid){
+    float p=0.f;
+    for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==cid) p+=diplo_province_price(e,r);
+    return p;
+}
 #define FRONDE_RATIO     1.2f
 #define FRONDE_GRIEF_MIN 0.45f
 
-void diplo_suzerainty_tick(DiploState *d, const World *w, WorldEconomy *econ,
+void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                            const WorldProsperity *wp){
     if (!d||!w||!econ) return;
     int capreg[SCPS_MAX_COUNTRY];                /* où coule le tribut */
@@ -257,6 +311,54 @@ void diplo_suzerainty_tick(DiploState *d, const World *w, WorldEconomy *econ,
           if (d->v_loyal[v]>0.f){ g-=0.04f; d->v_loyal[v]-=365.f; }   /* loyauté achetée : décline + bloque la ligue */
           else g-=0.01f;
           d->v_grief[v]=clampf(g,0.f,1.f);
+        }
+        /* ── VASSALITÉ SUR LA DURÉE (étage 3) : intégration → contribution typée → digestion ──
+         * À la PAIX (hors ligue), le lien MÛRIT : le vassal s'intègre, puis CONTRIBUE selon sa
+         * fonction ; un maître ANNEXEUR (éthos) le DIGÈRE alors par un PROCESSUS de durée. Tous
+         * les seuils (0.65) sont INATTEIGNABLES en 12 ans (max 12/20=0.60) ⇒ golden intact. */
+        if (d->status[s][v]!=DIPLO_WAR && !d->v_ligue[v]){
+            float prox=suz_culture_prox(w,econ,s,v), appr=1.f-d->v_grief[v];
+            /* (a) INTÉGRATION — d'autant plus vite que les cultures sont PROCHES et le grief BAS. */
+            float irate=(1.f/tune_f("AI_VASSAL_INTEGRATE_YEARS",20.f))*(0.3f+0.7f*prox)*appr;
+            d->v_integration[v]=clampf(d->v_integration[v]+irate,0.f,1.f);
+            float gate=tune_f("AI_VASSAL_CONTRIB_GATE",0.65f);
+            /* (b) CONTRIBUTION TYPÉE — bond MÛRI : le vassal verse selon sa FONCTION × appréciation,
+             *     dans le canal correspondant du maître (capitale = pool national P1). */
+            if (d->v_integration[v]>=gate && capreg[s]>=0 && capreg[s]<econ->n_regions){
+                float food=0.f,gold=0.f,mil=0.f; VassalFunction fn=vassal_function(econ,v,&food,&gold,&mil);
+                float base=tune_f("AI_VASSAL_CONTRIB_BASE",0.05f)*appr;
+                RegionEconomy *sc=&econ->region[capreg[s]];
+                if      (fn==VFN_AGRAIRE) sc->stock[RES_GRAIN]+=base*food;   /* vivres → pool national */
+                else if (fn==VFN_MARTIAL) sc->mil_stock       +=base*mil;    /* la levée du vassal */
+                else                      sc->treasury        +=base*gold;   /* l'or marchand */
+            }
+            /* (c) ANNEXION-PROCESSUS — un maître ANNEXEUR (Dominateur/Honneur) DIGÈRE un vassal
+             *     INTÉGRÉ : durée ∝ prix × (1−DISCOUNT·intégration), payée en or/an ; à 1.0 →
+             *     transfert + cicatrice DOUCE (la voie patiente = bien intégré ⇒ peu de plaie). */
+            Ethos es=suz_ethos(w,econ,s);
+            bool annexeur=(es==ETHOS_DOMINATEUR||es==ETHOS_HONNEUR);
+            if (annexeur && d->v_integration[v]>=tune_f("AI_ANNEX_MIN_INTEGRATION",0.65f)
+                && capreg[s]>=0 && capreg[s]<econ->n_regions){
+                float price=country_price(econ,v);
+                float gcost=tune_f("AI_ANNEX_GOLD_PER_PRICE",2.f)*price;
+                RegionEconomy *sc=&econ->region[capreg[s]];
+                if (sc->treasury>=gcost){
+                    sc->treasury-=gcost;
+                    float years=fmaxf(1.f, tune_f("AI_ANNEX_YEARS_PER_PRICE",0.5f)*price
+                                       *(1.f-tune_f("ANNEX_INTEGRATION_DISCOUNT",0.6f)*d->v_integration[v]));
+                    d->v_annex[v]=clampf(d->v_annex[v]+1.f/years,0.f,1.f);
+                } else d->v_annex[v]=fmaxf(0.f,d->v_annex[v]-0.10f);   /* sans or, le projet s'essouffle */
+                if (d->v_annex[v]>=1.f){                               /* DIGESTION ABOUTIE */
+                    float soft=tune_f("ANNEX_SOFT_SCAR",0.4f)*(1.f-d->v_integration[v]);
+                    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==v){
+                        econ->region[r].owner=(int16_t)s; econ->region[r].colonized=true;
+                        if (econ->region[r].annex_scar<soft) econ->region[r].annex_scar=soft;
+                    }
+                    polity_death(d,w,econ,v);   /* le vassal disparaît, DIGÉRÉ dans le maître */
+                    d->n_annex++;
+                    continue;                   /* v est mort : ne pas le traiter plus avant */
+                }
+            } else if (d->v_annex[v]>0.f) d->v_annex[v]=fmaxf(0.f,d->v_annex[v]-0.10f);  /* maître non-annexeur : retombe */
         }
         /* DÉFECTION individuelle (§4) : trop seul pour se liguer → changer de maître. */
         if (!d->v_ligue[v] && d->v_grief[v]>0.70f){
@@ -413,7 +515,8 @@ void diplo_declare_war  (DiploState *d,int a,int b){ set_sym(d,a,b,DIPLO_WAR); }
 void diplo_declare_war_cb(DiploState *d,int a,int b,CasusBelli cb){
     set_sym(d,a,b,DIPLO_WAR);
     if (a>=0&&a<SCPS_MAX_COUNTRY&&b>=0&&b<SCPS_MAX_COUNTRY){ d->cb[a][b]=(int8_t)cb;  /* le but de l'AGRESSEUR */
-        if (cb==CB_ANTIPIRATERIE) d->n_war_antipirate++; }
+        if (cb==CB_ANTIPIRATERIE) d->n_war_antipirate++;
+        if (cb>=0 && cb<=CB_ANTIPIRATERIE) g_war_cb[cb]++; }   /* télémétrie : guerre motivée par son CB */
 }
 CasusBelli diplo_war_goal(const DiploState *d,int a,int b){
     if (a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY) return CB_NONE;
@@ -493,7 +596,7 @@ static float geo_dist(const World *w, int a, int b){
 static float race_influence(const World *w, const WorldEconomy *econ, int cid){
     const PopCulture *pc=cap_culture(w,econ,cid);
     if (!pc) return 0.f;
-    SpeciesBuild sb=species_default_build(pc->race);
+    SpeciesBuild sb=culture_random_build((uint32_t)cid);   /* traditions de l'empire (indép. héritage) */
     return build_leviers(&sb).influence;
 }
 
@@ -514,7 +617,7 @@ float diplo_mil_power(const World *w, const WorldEconomy *econ, int cid){
     const PopCulture *pc=cap_culture(w,econ,cid);
     float race_coerc=0.f, mart=0.f;
     if (pc){
-        SpeciesBuild sb=species_default_build(pc->race);
+        SpeciesBuild sb=culture_random_build((uint32_t)cid);   /* traditions de l'empire (indép. héritage) */
         race_coerc=build_leviers(&sb).coercition;
         if (pc->martial==MART_HORDE_MONTEE||pc->martial==MART_LEVEE_MASSIVE||
             pc->martial==MART_THALASSO_PREDATRICE) mart=0.7f;   /* traditions offensives */
@@ -727,9 +830,11 @@ static void polity_death(DiploState *d, World *w, WorldEconomy *econ, int dead){
     }
     d->momentum[dead]=0.f; d->faustian[dead]=0.f; d->pirate_disarm[dead]=0;
     d->suzerain[dead]=-1; d->contrat[dead]=CONTRAT_NONE;            /* plus le vassal de personne */
+    d->v_integration[dead]=0.f; d->v_annex[dead]=0.f;              /* étage 3 : plus d'état de vassalité */
     for (int v=0;v<SCPS_MAX_COUNTRY;v++)                            /* ses vassaux : LIBÉRÉS */
         if (d->suzerain[v]==dead){ d->suzerain[v]=-1; d->contrat[v]=CONTRAT_NONE;
-                                   d->v_grief[v]=0.f; d->v_ligue[v]=0; }
+                                   d->v_grief[v]=0.f; d->v_ligue[v]=0;
+                                   d->v_annex[v]=0.f; }            /* étage 3 : digestion interrompue */
     if (d->fronde_suz==dead || d->fronde_lead==dead){ d->fronde_suz=-1; d->fronde_lead=-1; }
     for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
         if (d->occupier[r]==dead) d->occupier[r]=-1;                /* il ne tient plus rien */
@@ -747,13 +852,16 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
         for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
             if (d->occupier[r]==winner && econ->region[r].owner==loser
                 && econ->region[r].culture.settled) list[n++]=r;
-        /* tri : adjacentes au vainqueur d'abord, puis prix croissant (insertion, n petit). */
+        /* tri (pipeline diplo, étage 2 — butin NEEDS-DRIVEN) : adjacentes au vainqueur d'abord,
+         * puis VALEUR SUBJECTIVE décroissante — l'affamé EXIGE le GRENIER, pas la grande cité.
+         * Le BUDGET (prix OBJECTIF, plus bas) borne toujours la prise ; seul l'ORDRE change. */
+        EconForecast fc; econ_country_forecast(econ, winner, tune_f("AI_PROJ_HORIZON",25.f), &fc);
         for (int i=1;i<n;i++){
-            int r=list[i]; bool ra=settle_adj_winner(econ,winner,r); float rp=diplo_province_price(econ,r);
+            int r=list[i]; bool ra=settle_adj_winner(econ,winner,r); float rv=ai_province_value(econ,winner,r,&fc);
             int j=i-1;
             while (j>=0){
-                bool ja=settle_adj_winner(econ,winner,list[j]); float jp=diplo_province_price(econ,list[j]);
-                if ((!ja && ra) || (ja==ra && jp>rp)){ list[j+1]=list[j]; j--; } else break;
+                bool ja=settle_adj_winner(econ,winner,list[j]); float jv=ai_province_value(econ,winner,list[j],&fc);
+                if ((!ja && ra) || (ja==ra && jv<rv)){ list[j+1]=list[j]; j--; } else break;
             }
             list[j+1]=r;
         }
@@ -942,6 +1050,36 @@ float diplo_province_price(const WorldEconomy *econ, int region){
     price *= scar;
     return clampf(price, PRICE_FLOOR, PRICE_CAP);
 }
+
+/* ── VALEUR SUBJECTIVE D'UNE PROVINCE (pipeline diplo, étage 1) ──────────────────
+ * La valeur OBJECTIVE (diplo_province_price : pop+bâti, identique pour tous) ne dit pas ce
+ * dont CE pays a BESOIN — l'IA raflait la plus RICHE, pas celle qu'il lui FAUT. On ajoute le
+ * BESOIN (= le score de colonisation appliqué aux provinces d'AUTRUI : Σ raw_cap × stress(runway
+ * de `cid`) × prix) + un terme STRATÉGIQUE (adjacence à moi, port). DÉRIVÉE — lue de raw_cap/
+ * runway/prix/bâti, AUCUN état stocké, AUCUN modificateur. Le forecast `fc` est celui de `cid`
+ * (calculé UNE fois par l'appelant). La valeur ÉMERGE : le grenier vaut cher pour l'AFFAMÉ
+ * (runway food court → stress haut), rien pour le REPU — aucune hiérarchie de criticité codée. */
+float ai_province_value(const WorldEconomy *econ, int cid, int region, const EconForecast *fc){
+    if (!econ || region<0 || region>=econ->n_regions) return 0.f;
+    const RegionEconomy *re=&econ->region[region];
+    float base = diplo_province_price(econ, region);   /* socle OBJECTIF (pop+bâti) */
+    float covet=0.f;
+    if (fc){
+        float safety=tune_f("AI_SAFETY_HORIZON",12.f);
+        for (int g=1; g<RES_PROD_FIRST; g++){
+            if (re->raw_cap[g]<=0.f) continue;
+            float rw=fc->runway[g]; if (rw<0.05f) rw=0.05f;
+            float stress=clampf(safety/rw, 0.f, 4.f);            /* runway court → convoité */
+            covet += re->raw_cap[g] * stress * re->price[g];     /* BESOIN (subjectif, anticipé) */
+        }
+    }
+    float strat=0.f;                                            /* STRATÉGIQUE : front + débouché */
+    if (cid>=0) for (int s=0;s<econ->n_regions;s++)
+        if (econ->adj[region][s] && econ->region[s].owner==cid){ strat+=2.f; break; }
+    if (re->build.port>0.f) strat += 1.f;
+    return base + covet + strat;   /* covet à poids 1 ici ; AI_COVET_W pondère AU SITE (ai_pick_rival) */
+}
+
 #define BUDGET_DOM    300.f  /* valeur achetable par cran de domination militaire (au-delà de 0.5) */
 #define BUDGET_SCORE  0.40f  /* … + une prime du score accumulé (une victoire décisive prend plus) */
 float diplo_war_budget(const DiploState *d, const World *w, const WorldEconomy *econ, int a, int b){

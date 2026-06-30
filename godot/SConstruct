@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+#
+# SConstruct — bâtit la GDExtension `libscps` : le MOTEUR SCPS (C) + la façade
+# `scps_api` + le binding C++ (godot-cpp), en UNE bibliothèque partagée chargée
+# par Godot. Le moteur n'est PAS modifié — on compile les mêmes .c que `make`.
+#
+# Prérequis : godot-cpp 4.x à côté (submodule ou clone) :
+#   cd godot && git clone -b 4.3 https://github.com/godotengine/godot-cpp
+#   scons            # debug   → project/bin/libscps.<platform>.template_debug.<arch>.<so|dll>
+#   scons target=template_release
+#
+# Les objets sont bâtis dans godot/build/ (jamais dans ../scps/ : le moteur reste
+# un arbre source PROPRE — pas de .os scattered chez le voisin).
+#
+import os
+
+env = SConscript("godot-cpp/SConstruct")
+
+# en-têtes : le binding (src/), le moteur (../scps), les vendorés (../third_party)
+env.Append(CPPPATH=["src/", "../scps/", "../third_party/"])
+
+# ── le MOTEUR SCPS, en C (même liste que CHRONICLE_OBJS, SANS chronicle/viewer/
+#    demos/audio ; + scps_render (render_map) + scps_api (la façade)). ──────────
+ENGINE_MODULES = [
+    "world", "econ", "tune", "trade", "culture", "tech", "core", "legitimacy",
+    "prosperity", "readout", "lang", "species", "diplo", "routes", "intertrade",
+    "statecraft", "agency", "events", "provlog", "demography", "labor", "modifier", "revolt",
+    "army", "warhost", "campaign", "missions", "navy", "endgame", "factions",
+    "ai", "credit", "render", "sim", "api",
+]
+engine_sources = ["../scps/scps_%s.c" % m for m in ENGINE_MODULES]
+engine_sources.append("../third_party/miniz.c")
+
+# le moteur est du C99 ; miniz se compile comme dans le Makefile.
+env.Append(CFLAGS=["-std=c99"])
+env.Append(CPPDEFINES=["MINIZ_NO_STDIO", "MINIZ_NO_TIME", "MINIZ_NO_ARCHIVE_APIS"])
+
+# Windows + MinGW (ta chaîne MSYS2) : static-linker les runtimes GCC/pthread → la
+# DLL est AUTONOME. Sans ça, Godot crie « can't open dynamic library » faute de
+# libstdc++-6 / libgcc_s / libwinpthread-1 sur le PATH. (No-op hors windows+mingw.)
+if env["platform"] == "windows" and env.get("use_mingw", False):
+    env.Append(LINKFLAGS=["-static", "-static-libgcc", "-static-libstdc++"])
+
+# le binding C++
+cpp_sources = [str(s) for s in Glob("src/*.cpp")]
+
+# compiler CHAQUE source en .os DANS godot/build/ (cible explicite) — sinon SCons
+# pose l'objet à côté de la source et pollue ../scps/ et ../third_party/.
+build_dir = "build"
+def obj_for(src):
+    name = os.path.splitext(os.path.basename(src))[0]
+    return env.SharedObject(target=os.path.join(build_dir, name), source=src)
+
+objects = [obj_for(s) for s in (engine_sources + cpp_sources)]
+
+# nom attendu par scps.gdextension : libscps<suffix><shlibsuffix>
+# (env["suffix"] = .linux.template_debug.x86_64, etc. — posé par godot-cpp)
+libpath = "project/bin/libscps{}{}".format(env["suffix"], env["SHLIBSUFFIX"])
+library = env.SharedLibrary(libpath, source=objects)
+
+Default(library)

@@ -478,6 +478,10 @@ static int biggest_minority(const ProvincePop *pp){
 }
 /* une TRANCHE annuelle de purge : le groupe meurt par fraction, la province saigne. */
 static void purge_slice(WorldEconomy *econ, WorldLegitimacy *wl, int reg){
+    if (reg<0 || reg>=econ->n_regions) return;             /* P0 : reg vient d'un ordre (potentiellement forgé)
+                                                            * — la boucle PURGE d'agency_advance NOUS appelle SANS
+                                                            * la garde d'apply_action ; sans ce filtre, &econ->region[reg]
+                                                            * + l'écriture pg->count seraient HORS-BORNES. */
     RegionEconomy *re=&econ->region[reg];
     int gi=biggest_minority(&re->pop);
     if (gi<0) return;                                  /* plus de minorité : la purge s'éteint */

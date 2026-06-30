@@ -35,15 +35,15 @@ int main(void){
 
     PopSim P; popsim_init(&P);
     /* Une province mêlée : trois identités distinctes. */
-    popsim_add_band(&P, RACE_HUMAIN,   ETHOS_BUREAUCRATE, REL_ABRAHAMIQUE, 5000);
-    popsim_add_band(&P, RACE_ORQUE,    ETHOS_DOMINATEUR,  REL_ANIMISTE,    2000);
-    popsim_add_band(&P, RACE_ELFE,     ETHOS_PACIFISTE,   REL_DHARMIQUE,   1000);
+    popsim_add_band(&P, HERITAGE_ADAPTATIF,   ETHOS_BUREAUCRATE, REL_ABRAHAMIQUE, 5000);
+    popsim_add_band(&P, HERITAGE_CLANIQUE,    ETHOS_DOMINATEUR,  REL_ANIMISTE,    2000);
+    popsim_add_band(&P, HERITAGE_ESOTERIQUE,     ETHOS_PACIFISTE,   REL_DHARMIQUE,   1000);
 
     printf("\n── 1. Une province = des BANDES distinctes (race × culture × foi) ──\n");
     ok("trois bandes distinctes coexistent (pas une masse homogène)", P.n_bands==3);
     ok("le total tient (5000 + 2000 + 1000 = 8000 âmes)", popsim_total(&P)==8000);
     /* fusion d'une identité déjà présente (pas une 4e bande). */
-    popsim_add_band(&P, RACE_HUMAIN, ETHOS_BUREAUCRATE, REL_ABRAHAMIQUE, 0);  /* 0 → ignoré */
+    popsim_add_band(&P, HERITAGE_ADAPTATIF, ETHOS_BUREAUCRATE, REL_ABRAHAMIQUE, 0);  /* 0 → ignoré */
     ok("une identité déjà présente FUSIONNE (toujours 3 bandes)", P.n_bands==3);
 
     printf("\n── 2. La CLASSE ÉMERGE des emplois (capitale + ateliers), par 100 ──\n");
@@ -100,8 +100,8 @@ int main(void){
     ok("on lit le croisement FOI × CLASSE (les « Nobles abrahamiques » ≠ les « Nobles animistes »)",
        abr_nobles != ani_nobles && abr_nobles>0);
     ok("agrégats par FOI et par RACE cohérents (membrane : des nombres tangibles)",
-       popsim_faith_total(&P,REL_ABRAHAMIQUE)==5000 && popsim_race_total(&P,RACE_ORQUE)==2000
-       && popsim_race_total(&P,RACE_ELFE)==1000);
+       popsim_faith_total(&P,REL_ABRAHAMIQUE)==5000 && popsim_race_total(&P,HERITAGE_CLANIQUE)==2000
+       && popsim_race_total(&P,HERITAGE_ESOTERIQUE)==1000);
     ok("le mot de classe est diégétique (Journaliers / Bourgeois / Nobles)",
        !strcmp(popclass_name(POPCL_ELITE),"Nobles") && popclass_name(POPCL_LABORER)[0]);
 

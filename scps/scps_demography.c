@@ -52,7 +52,7 @@ static int g_dyn_drift_id = DYN_DRIFT_BASE;
 #define CONVERT_AXIS       1.5f   /* évangéliste : bascule quand l'axe a quasi convergé */
 #define CONVERT_AXIS_HARD  4.0f   /* purificateur : bascule de force, axe encore distant */
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static inline float absf(float v){ return v<0?-v:v; }
 
 /* Distance de CONTENU (L∞, langue exclue) — la friction. */

@@ -20,6 +20,7 @@
 #include "scps_world.h"
 #include "scps_culture.h"   /* culture_make(), lifeway_*, ethos_nearest() */
 #include "scps_species.h"   /* race + leviers (worldgen_seed_peoples, dérive) */
+#include "scps_tune.h"      /* HAMEAUX LIBRES : WILD_PER_PLAYABLE (réserve du slot WILD) */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -43,7 +44,7 @@ static float rng_f(void)       { return (rng_u() & 0xFFFFFFu) * (1.f/0x1000000u)
  * Utilitaires
  * ====================================================================== */
 static inline float clampf(float v, float lo, float hi) {
-    return v < lo ? lo : v > hi ? hi : v;
+    return v!=v?lo:(v < lo ? lo : v > hi ? hi : v);
 }
 static inline int clampi(int v, int lo, int hi) {
     return v < lo ? lo : v > hi ? hi : v;
@@ -1217,8 +1218,24 @@ static void gen_climate(World *w, float *height, float *moisture,
                 - subtrop            /* ceinture subtropicale → Sahara/Gobi */
                 - inland_dry;        /* intérieur profond → steppes/déserts froids */
 
-        /* Corridor riparien : le fleuve verdit sa vallée même dans le désert */
-        m += (cells[i].river/255.f)*0.28f;
+        /* GREENIFICATION EN CONSÉQUENCE DES COURS D'EAU (pas « un lâcher de pluie ») : maintenant que les
+         * rivières ont des cours réels, on VERDIT leurs BERGES. SEULEMENT le long d'un VRAI cours (débit
+         * accumulé fort, > 0.30·255 — pas le ruissellement diffus), corridor de vallée SERRÉ (rayon 3,
+         * débit décroissant). La terre LOIN d'une rivière garde son climat naturel (aride si aride). */
+        float riv=0.f;
+        for (int ry=-3; ry<=3; ry++) for (int rx=-3; rx<=3; rx++){
+            int qx=x+rx, qy=y+ry;
+            if (qx<0||qx>=SCPS_W||qy<0||qy>=SCPS_H) continue;
+            float dd=sqrtf((float)(rx*rx+ry*ry)); if (dd>3.f) continue;
+            float fl=cells[scps_idx(qx,qy)].river/255.f;
+            if (fl<0.30f) continue;                          /* le COURS, pas le ruissellement */
+            float c=fl*(1.f-dd/4.f);
+            if (c>riv) riv=c;
+        }
+        /* PLAFONNÉ sous le seuil de MARAIS (0.58 < 0.60) : la berge verdit en PRAIRIE/FORÊT, JAMAIS en
+         * marécage → fini les petits « lacs/trucs » épars que l'ancien lâcher de pluie semait aux bas-fonds. */
+        float boost=riv*0.60f*(1.f-clampf(m,0.f,1.f));
+        m=fminf(m+boost, fmaxf(m,0.58f));
 
         moisture[i]=clampf(m,0.f,1.f);
     }
@@ -1309,11 +1326,11 @@ static void fill_lakes(float *height, Cell *cells) {
     for (int y=2;y<SCPS_H-2;y++) for (int x=2;x<SCPS_W-2;x++) {
         int i=scps_idx(x,y);
         if (height[i]<SEA_LEVEL+0.030f||inlake[i]) continue;
-        /* Un lac a besoin d'un APPORT d'eau : pas de lac dans un bassin SEC
-         * (désert, steppe) — il devient cuvette/salant, pas de l'eau libre.
-         * C'est ce qui faisait « gruyère » : chaque creux de bruit, même aride,
-         * se remplissait. On le conditionne désormais à l'humidité locale. */
-        if (cells[i].moisture<0.42f) continue;
+        /* RÉTENTION DANS UN BASSIN NATUREL (formation réaliste d'un lac) : le creux ne retient de l'eau
+         * libre que s'il REÇOIT un APPORT — un débit accumulé en amont qui s'y déverse (cells[].river =
+         * aire de bassin drainée). Un creux SANS apport reste une cuvette SÈCHE (playa/salant), pas un lac
+         * — c'est ce qui semait les petits « lacs/trucs » épars (chaque pothole humide se remplissait). */
+        if (cells[i].river < 48) continue;
         /* Dépression STRICTE sur les 8 voisins : un vrai creux fermé, pas une
          * simple ride de bruit (l'ancien test 4-cardinal en retenait trop). */
         bool dep=true;
@@ -1336,12 +1353,49 @@ static void fill_lakes(float *height, Cell *cells) {
             if (sz>=MAX_LAKE_CELLS) break;
         }
         for (int k=0;k<sz;k++) {
-            cells[batch[k]].lake=true;
+            cells[batch[k]].lake=true;            /* couche d'accès EAU (région) — reste DISCRET sur la carte
+                                                   * (pas mis en biome bleu : sinon une nuée de mares révélées
+                                                   * recrée les « trucs ». Les lacs VISIBLES = bassins endoréiques
+                                                   * sous le niveau marin + bras morts, posés à part). */
             height[batch[k]]=SEA_LEVEL+0.005f;
             inlake[batch[k]]=true;
         }
     }
     free(inlake);
+}
+
+/* OXBOW / BRAS MORT (2e voie de formation d'un lac, IRL) : au cours INFÉRIEUR d'un fleuve/rivière — la
+ * plaine où il méandre — un ancien méandre se RECOUPE, laissant un petit lac en CROISSANT à côté du lit.
+ * Déterministe (graine × index) : ~1 cours sur 3 en porte un, sur la terre BASSE adjacente au lit. */
+static void carve_oxbows(World *w, float *height){
+    for (int r=0; r<w->n_rivers; r++){
+        const River *rv=&w->river[r];
+        if (rv->flow_max < 0.5f || rv->len < 45) continue;       /* fleuve/rivière assez long */
+        uint32_t hsh=(uint32_t)w->seed*2654435761u + (uint32_t)(r+1)*40503u;
+        if ((hsh % 3u)!=0u) continue;                            /* ~1 sur 3 a un bras mort */
+        int lo=rv->len*55/100, hi=rv->len*88/100;
+        int span=(hi-lo>1)?hi-lo:1;
+        int idx=lo + (int)(hsh % (uint32_t)span);
+        int ia=(idx-4>0)?idx-4:0, ib=(idx+4<rv->len)?idx+4:rv->len-1;
+        float tx=(float)(rv->x[ib]-rv->x[ia]), ty=(float)(rv->y[ib]-rv->y[ia]);
+        float tl=sqrtf(tx*tx+ty*ty); if (tl<2.f) continue;
+        tx/=tl; ty/=tl;
+        float perpx=-ty, perpy=tx;
+        float side=(hsh & 1u)?1.f:-1.f;
+        float off=3.5f+(float)((hsh>>8)%3u);                     /* 3.5-5.5 cellules du lit */
+        float ccx=(float)rv->x[idx]+perpx*off*side, ccy=(float)rv->y[idx]+perpy*off*side;
+        for (int s=-2;s<=2;s++){                                  /* croissant ~5 de long × 2 de large */
+            for (int ww=0; ww<2; ww++){
+                int lx=(int)(ccx + tx*(float)s + perpx*(float)ww*side + 0.5f);
+                int ly=(int)(ccy + ty*(float)s + perpy*(float)ww*side + 0.5f);
+                if (lx<2||lx>=SCPS_W-2||ly<2||ly>=SCPS_H-2) continue;
+                int li=scps_idx(lx,ly);
+                if (height[li]<SEA_LEVEL+0.008f || height[li]>SEA_LEVEL+0.20f) continue;  /* terre BASSE (ni mer ni pente) */
+                if (w->cell[li].lake) continue;
+                w->cell[li].lake=true; w->cell[li].biome=BIO_SHALLOW; height[li]=SEA_LEVEL+0.004f;
+            }
+        }
+    }
 }
 
 /* ========================================================================
@@ -1418,12 +1472,12 @@ static void compute_fertility(float *height, float *moisture, float *temperature
  * rencontrent, la frontière tombe sur l'obstacle → fleuves et montagnes
  * deviennent des frontières naturelles, sans les tracer à la main.
  * ====================================================================== */
-#define MIN_PROV_DIST 18     /* serré → territoires nombreux (place pour 4 niveaux) */
 
 static int g_pseedx[SCPS_MAX_PROV];
 static int g_pseedy[SCPS_MAX_PROV];
 
-static int pick_seeds(Cell *cells, int want) {
+static int pick_seeds(Cell *cells, int want, int min_dist) {
+    if (min_dist<3) min_dist=3;
     /* Distribution pondérée par la fertilité, avec espacement minimum.
      * Somme préfixe (une passe) + recherche dichotomique → chaque tirage est
      * en O(log N) au lieu de O(N) : indispensable quand l'espacement serré
@@ -1443,7 +1497,7 @@ static int pick_seeds(Cell *cells, int want) {
         bool ok=true;
         for (int k=0;k<n&&ok;k++){
             int dx=cx-g_pseedx[k],dy=cy-g_pseedy[k];
-            if (dx*dx+dy*dy<MIN_PROV_DIST*MIN_PROV_DIST) ok=false;
+            if (dx*dx+dy*dy<min_dist*min_dist) ok=false;
         }
         if (ok){ g_pseedx[n]=cx; g_pseedy[n]=cy; n++; fails=0; }
         else fails++;
@@ -1508,8 +1562,18 @@ static HNode heap_pop(void){
     return top;
 }
 
-static void assign_provinces(World *w, float *height, float seed_f) {
-    int n=pick_seeds(w->cell, SCPS_MAX_PROV);
+static void assign_provinces(World *w, float *height, float seed_f, int want_prov) {
+    if (want_prov<4) want_prov=4;
+    if (want_prov>SCPS_MAX_PROV) want_prov=SCPS_MAX_PROV;   /* borne dure = taille des tableaux */
+    /* L'espacement des germes (Poisson) SUIT la cible : la terre sature à ~PROV_SAT_K/dist²
+     * germes (≈384 à dist 18). Pour atteindre want_prov on RÉTRÉCIT le pas :
+     * dist = sqrt(K/want), borné [PROV_DIST_MIN, PROV_DIST_MAX] (jamais de territoires dégénérés
+     * ni trop grossiers). Petit monde ⇒ grand pas (territoires vastes) ; Huge ⇒ pas fin. */
+    float K = tune_f("WORLD_PROV_SAT_K", 124416.f);    /* 384 · 18² : calage de saturation */
+    int min_dist = (int)(sqrtf(K/(float)want_prov) + 0.5f);
+    if (min_dist < 8)  min_dist = 8;
+    if (min_dist > 30) min_dist = 30;
+    int n=pick_seeds(w->cell, want_prov, min_dist);
     if (n<4) n=4;
     w->n_provinces=n;
 
@@ -1977,10 +2041,56 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
              * gracieuse : on en assigne autant qu'il y en a.) */
             const int N_EMPIRE = want_empires>0 ? want_empires : 15;
             const int N_CITY   = want_cities >0 ? want_cities  : 20;
-            for (int i=1; i<N_EMPIRE && i<ncty; i++)
-                w->country[ord[i]].role=POLITY_ANTAGONIST;
-            for (int i=N_EMPIRE; i<N_EMPIRE+N_CITY && i<ncty; i++)
-                w->country[ord[i]].role=POLITY_CITY_STATE;
+            /* SPAWN « SAFE » (anti-voisin-collé) — un empire ne s'installe qu'à ≥ SPAWN_SAFE_HOPS
+             * tuiles-région d'un autre empire (BFS land-adj sur radj). Dans cette zone-tampon les
+             * CITÉS-ÉTATS et les HAMEAUX libres sont OK (eux ne sont pas bornés) — seuls deux
+             * EMPIRES ne se collent pas. La mer COUPE l'adjacence (radj land-only) ⇒ une île isolée
+             * est à distance infinie de tout empire ⇒ elle PASSE toujours : les « Angleterre »
+             * insulaires deviennent des spawns de choix. Dégradation gracieuse : si le monde ne peut
+             * caser N_EMPIRE empires espacés, on en pose moins (la post-passe continent rattrape). */
+            /* SPAWN « SAFE » ADAPTATIF — on pose les empires au rayon le plus LARGE qui les case
+             * TOUS : on tente SPAWN_SAFE_HOPS (6), et si la géométrie (continents/forme) ne peut
+             * tous les espacer, on RESSERRE d'un cran jusqu'à SPAWN_SAFE_HOPS_MIN (5). « Tout caser »
+             * prime, à l'espacement MAXIMAL possible. HUGE=12 retombe ainsi naturellement sur 5 ;
+             * un preset qui tient à 6 le garde. (Dégradation : si même le min ne case pas tout, on
+             * garde le tour le plus rempli — la post-passe continent rattrape les masses vides.) */
+            int safe_max = (int)tune_f("SPAWN_SAFE_HOPS",     6.f);
+            int safe_min = (int)tune_f("SPAWN_SAFE_HOPS_MIN", 5.f);
+            if (safe_min > safe_max) safe_min = safe_max;
+            int demp[SCPS_MAX_REG], bq[SCPS_MAX_REG];
+            /* demp[r] = distance-région (sauts radj) au plus proche empire déjà posé (BFS multi-source). */
+            #define DEMP_RECOMPUTE() do { \
+                int bh=0,bt=0; \
+                for (int r=0;r<nreg;r++) demp[r]=nreg+1; \
+                for (int r=0;r<nreg;r++){ int cc=w->region[r].country; \
+                    if (cc>=0&&cc<ncty && (w->country[cc].role==POLITY_PLAYER||w->country[cc].role==POLITY_ANTAGONIST)){ demp[r]=0; bq[bt++]=r; } } \
+                while (bh<bt){ int r=bq[bh++]; for(int s=0;s<nreg;s++) if(radj[r*nreg+s] && demp[s]>demp[r]+1){ demp[s]=demp[r]+1; bq[bt++]=s; } } \
+            } while(0)
+            int n_emp=1;                                   /* le joueur compte */
+            for (int safe=safe_max; safe>=safe_min; safe--){
+                /* repli : relâche les antagonistes du tour précédent (le joueur reste) avant de retenter. */
+                for (int c=0;c<ncty;c++) if (w->country[c].role==POLITY_ANTAGONIST) w->country[c].role=POLITY_UNCLAIMED;
+                n_emp=1;
+                DEMP_RECOMPUTE();
+                for (int i=1; i<ncty && n_emp<N_EMPIRE; i++){
+                    int c=ord[i];
+                    if (w->country[c].role!=POLITY_UNCLAIMED) continue;
+                    const Country *ct=&w->country[c];
+                    int mind=nreg+1;
+                    for (int ri=0; ri<ct->n_regions; ri++){ int rr=ct->region_ids[ri]; if (rr>=0&&rr<nreg&&demp[rr]<mind) mind=demp[rr]; }
+                    if (mind>=safe){ w->country[c].role=POLITY_ANTAGONIST; n_emp++; DEMP_RECOMPUTE(); }
+                }
+                if (n_emp>=N_EMPIRE) break;   /* tous casés au rayon le plus large possible */
+            }
+            #undef DEMP_RECOMPUTE
+            /* CITÉS-ÉTATS — les plus pesants restants, SANS contrainte d'espacement (elles peuplent
+             * volontiers les zones-tampon des empires : « CE ok » dans la safe zone). */
+            int n_cs=0;
+            for (int i=1; i<ncty && n_cs<N_CITY; i++){
+                int c=ord[i];
+                if (w->country[c].role!=POLITY_UNCLAIMED) continue;
+                w->country[c].role=POLITY_CITY_STATE; n_cs++;
+            }
 
             /* L4 — PEUPLER LES CONTINENTS : les rôles suivent le POIDS global, donc
              * tout s'agglutine sur le grand continent et les autres restent VIERGES
@@ -2015,6 +2125,14 @@ static void build_hierarchy(World *w, int want_empires, int want_cities) {
                 }
             }
         }
+    }
+
+    /* HAMEAUX LIBRES (POLITY_WILD) — on RÉSERVE un slot-pays (le 1er VIERGE après empires+
+     * cités, par poids) comme PORTEUR des Peuples Libres ; econ_init y rattache les hameaux
+     * (BFS près des jouables). WILD_PER_PLAYABLE=0 → désactivé (aucun slot réservé). */
+    if (tune_f("WILD_PER_PLAYABLE", 2.f) > 0.f){
+        for (int c=0;c<ncty;c++) if (w->country[c].role==POLITY_UNCLAIMED){
+            w->country[c].role=POLITY_WILD; break; }
     }
 
     /* Propage région/pays/continent sur les cellules (pour le rendu). */
@@ -2085,6 +2203,123 @@ static void compute_render_flags(World *w, float *height) {
         float nlen=sqrtf(gx*gx+gy*gy+1.f);
         float dot=((-gx)*LX+(-gy)*LY+(1.f/nlen)*LZ)/(nlen*LLEN);
         w->cell[i].shade=clampf(0.35f+0.65f*dot,0.f,1.f);
+    }
+}
+
+/* ========================================================================
+ * CAPSTONE §27 — CARVE : engloutir une cellule + recalcul d'adjacence
+ * ====================================================================== */
+/* Habitabilité [0..1] d'un biome à une température donnée : base biome (plafond
+ * dur ; Glacier/Pic/Volcan = 0 absolu) × confort thermique (pénalité froid/chaud).
+ * SOURCE UNIQUE partagée par le worldgen ET le capstone FROID (qui la rejoue sur
+ * une carte refroidie). */
+float biome_habitability(Biome B, float tmp, float height) {
+    float hab_base;
+    switch (B) {
+        case BIO_GLACIER:
+        case BIO_PEAK:
+        case BIO_VOLCANO:        hab_base=0.00f; break;  /* zéro absolu */
+        case BIO_DESERT:         hab_base=0.08f; break;
+        case BIO_COASTAL_DESERT: hab_base=0.18f; break;
+        case BIO_DRYLANDS:       hab_base=0.28f; break;
+        case BIO_MOUNTAINS:      hab_base=0.32f; break;
+        case BIO_STEPPE:
+        case BIO_SAVANNA:        hab_base=0.45f; break;
+        case BIO_MARSH:
+        case BIO_BOG:            hab_base=0.50f; break;
+        case BIO_HILLS:
+        case BIO_HIGHLANDS:      hab_base=0.60f; break;
+        case BIO_JUNGLE:
+        case BIO_MANGROVE:       hab_base=0.65f; break;
+        case BIO_FOREST:
+        case BIO_WOODS:          hab_base=0.72f; break;
+        case BIO_GRASSLAND:      hab_base=0.75f; break;
+        case BIO_COAST:
+        case BIO_SHALLOW:        hab_base=0.78f; break;
+        case BIO_PLAINS:         hab_base=0.88f; break;
+        case BIO_FARMLAND:       hab_base=0.95f; break;
+        default:                 hab_base=0.55f; break;
+    }
+    /* Confort thermique : [0.30..0.72] = confort total ; sous (froid) et au-dessus
+     * (chaud) pénalité sévère. C'est le LEVIER du froid : tmp baisse → t_comfort
+     * s'effondre → habitabilité chute. */
+    float t_comfort;
+    if (tmp >= 0.30f && tmp <= 0.72f) t_comfort = 1.0f;
+    else if (tmp < 0.30f)             t_comfort = clampf(tmp / 0.30f, 0.f, 1.f);
+    else                              t_comfort = clampf((1.f - tmp) / 0.28f, 0.f, 1.f);
+    /* RELIEF (3e axe) — l'ESCARPEMENT, pas l'altitude brute : un PLATEAU (highlands/hills)
+     * reste habitable (les plateaux éthiopiens = berceau de civilisation), un haut-relief
+     * ESCARPÉ s'effondre. La pénalité ne mord QUE le terrain haut NON-plateau (forêt/
+     * montagne d'altitude) ; highlands/hills en sont EXEMPTÉS. Un pic/glacier (base 0)
+     * reste mort de toute façon. Cale les montagnes escarpées sous le seuil d'accès 0.25. */
+    float f_relief = 1.0f;
+    if (B != BIO_HIGHLANDS && B != BIO_HILLS && height > 0.62f)
+        f_relief = clampf(1.0f - 2.2f*(height - 0.62f), 0.30f, 1.0f);
+    return (hab_base <= 0.f) ? 0.f
+         : clampf(hab_base * (0.45f + 0.55f*t_comfort) * f_relief, 0.f, 1.f);
+}
+
+/* Recalcule le biome d'UNE cellule de terre depuis (height, moisture, température)
+ * — capstone FROID : la température mutée blanchit les biomes (forêt→steppe→glacier). */
+void world_rebiome_cell(Cell *c) {
+    if (c->height < SEA_LEVEL) return;          /* la mer reste mer */
+    c->biome = assign_biome(c->height, c->moisture, c->temperature);
+}
+
+/* Engloutit UNE cellule (apocalypse d'eau / fond de ronces écroulé) : la terre
+ * passe sous le niveau de mer, le biome devient océan (assign_biome), la
+ * hiérarchie est strippée (province/région/pays/continent = -1). Le littoral
+ * exact (cabotage) est refait par world_recompute_adjacency après coup. */
+void world_sink_cell(Cell *c, float new_height) {
+    if (new_height >= SEA_LEVEL) new_height = SEA_LEVEL - 0.02f;   /* garantit la mer */
+    c->height   = new_height;
+    c->biome    = assign_biome(c->height, c->moisture, c->temperature);  /* → océan */
+    c->sea      = SEA_VIVE;            /* classe par défaut ; littoral refait au recalcul */
+    c->lake     = false;
+    c->river    = 0; c->flow_dir = -1;
+    c->province = c->region = c->country = c->continent = -1;
+    c->coast    = false;
+    c->cur_vx   = c->cur_vy = 0;
+}
+
+/* Recalcul CIBLÉ après une carve (eau/ronces). NE rappelle PAS build_hierarchy
+ * (qui réassignerait les ids — la région DOIT garder son indice) : recompute
+ * seulement les côtes/littoral (depuis c->height) et les frontières (depuis la
+ * hiérarchie mutée). L'adjacence ÉCO (econ_build_adjacency) est rebâtie par
+ * l'appelant (qui tient le WorldEconomy) — scps_world.o ne dépend pas de l'éco. */
+void world_recompute_adjacency(World *w) {
+    static const int NDX[4]={1,-1,0,0}, NDY[4]={0,0,1,-1};
+    /* 1. côtes (cellule terrestre adjacente à la mer) + littoral neuf (cabotage). */
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        Cell *c=&w->cell[scps_idx(x,y)];
+        bool land = (c->height >= SEA_LEVEL);
+        bool near_land=false;
+        c->coast=false;
+        for (int d=0;d<4;d++){
+            int nx=x+NDX[d], ny=y+NDY[d];
+            if (nx<0||ny<0||nx>=SCPS_W||ny>=SCPS_H) continue;
+            const Cell *n=&w->cell[scps_idx(nx,ny)];
+            if (land && n->height < SEA_LEVEL) c->coast=true;
+            if (!land && n->height >= SEA_LEVEL) near_land=true;
+        }
+        if (!land && near_land) c->sea=SEA_CABOTAGE;   /* la côte ennoyée devient cabotage */
+    }
+    /* 2. frontières (depuis la hiérarchie mutée par la carve). */
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        Cell *c=&w->cell[scps_idx(x,y)];
+        c->border_prov=c->border_reg=c->border_country=c->border_continent=false;
+        for (int d=0;d<4;d++){
+            int nx=x+NDX[d], ny=y+NDY[d];
+            int pv=-1,rg=-1,ct=-1;
+            if (nx>=0&&ny>=0&&nx<SCPS_W&&ny<SCPS_H){
+                const Cell *n=&w->cell[scps_idx(nx,ny)];
+                pv=n->province; rg=n->region; ct=n->country;
+                if (c->continent!=n->continent) c->border_continent=true;
+            }
+            if (c->province!=pv && (c->province>=0||pv>=0)) c->border_prov=true;
+            if (c->region  !=rg && (c->region  >=0||rg>=0)) c->border_reg=true;
+            if (c->country !=ct && (c->country >=0||ct>=0)) c->border_country=true;
+        }
     }
 }
 
@@ -2219,9 +2454,9 @@ void world_tick(World *w, WorldEconomy *econ, float dt) {
         PopCulture *pc=&econ->region[r].culture;
         Culture tmp; memset(&tmp,0,sizeof(tmp));
         tmp.langue=pc->langue; tmp.age=pc->age;
-        /* Dérive modulée par la race : Adaptable/Éphémère vite, Longévif/
-         * Traditionaliste lent (levier « dérive » de la couche biologique). */
-        SpeciesBuild sb=species_default_build(pc->race);
+        /* Dérive modulée par les TRADITIONS de l'empire (Adaptable vite, Traditionaliste lent)
+         * — INDÉPENDANT de l'héritage (qui ne fait que les noms). */
+        SpeciesBuild sb=culture_random_build((uint32_t)(econ->region[r].owner<0?0:econ->region[r].owner));
         float drift=0.002f*dt*(1.f + build_leviers(&sb).derive);
         if (drift < 0.f) drift = 0.f;
         culture_age_tick(&tmp, drift);
@@ -2257,7 +2492,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
         if (c==player){ crace[c]=player_race; continue; }
         uint32_t h = (uint32_t)(c+1)*2654435761u ^ ((uint32_t)w->seed*40503u + 0x9E3779B9u);
         h ^= h>>16; h *= 0x7feb352du; h ^= h>>15; h *= 0x846ca68bu; h ^= h>>16;
-        crace[c] = (SpeciesArchetype)(h % (uint32_t)RACE_COUNT);
+        crace[c] = (SpeciesArchetype)(h % (uint32_t)HERITAGE_COUNT);
     }
 
     /* Pose l'héritage sur toutes les régions (substrat). */
@@ -2267,10 +2502,10 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
     }
 
     /* Diagnostic : la distribution des héritages, DÉCORRÉLÉE de la géo. */
-    { int cnt[RACE_COUNT]={0};
-      for (int c=0;c<w->n_countries;c++) if (crace[c]>=0&&crace[c]<RACE_COUNT) cnt[crace[c]]++;
+    { int cnt[HERITAGE_COUNT]={0};
+      for (int c=0;c<w->n_countries;c++) if (crace[c]>=0&&crace[c]<HERITAGE_COUNT) cnt[crace[c]]++;
       printf("[peuples] joueur=%s ; héritages DÉBRAYÉS de la géo :", species_name(player_race));
-      for (int r=0;r<RACE_COUNT;r++) if (cnt[r]) printf(" %s\xc3\x97%d", species_name((SpeciesArchetype)r), cnt[r]);
+      for (int r=0;r<HERITAGE_COUNT;r++) if (cnt[r]) printf(" %s\xc3\x97%d", species_name((SpeciesArchetype)r), cnt[r]);
       printf("\n"); }
 
     /* P1.5/P1.9 — recolore ET RENOMME chaque EMPIRE par sa famille de RACE + son
@@ -2279,72 +2514,206 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, SpeciesArchetype player
         int cp=w->country[c].capital_prov;
         int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
         bool ok=(cr>=0&&cr<econ->n_regions);
-        SpeciesArchetype rc=ok? econ->region[cr].culture.race  : RACE_HUMAIN;
+        SpeciesArchetype rc=ok? econ->region[cr].culture.race  : HERITAGE_ADAPTATIF;
         Ethos            ec=ok? econ->region[cr].culture.ethos : ETHOS_ORDRE;
         w->country[c].color = country_race_color(rc, c);
         country_make_name(w->country[c].name, (int)sizeof w->country[c].name, rc, ec, c);
+    }
+
+    /* HAMEAUX LIBRES (POLITY_WILD) — culture DISTINCTE du voisin + AUCUNE religion : des
+     * enclaves ÉTRANGÈRES, sinon l'absorption culturelle/défection (B4) n'aurait pas de sens.
+     * La race est tirée DÉTERMINISTE et forcée ≠ l'empire adjacent (WILD_CULTURE_DISTINCT) ;
+     * le credo PLURALISTE (pas d'Église), la branche ANIMISTE folk, l'axe religion bas. */
+    bool wild_distinct = tune_f("WILD_CULTURE_DISTINCT", 1.f) > 0.f;
+    for (int r=0;r<w->n_regions && r<econ->n_regions;r++){
+        int o=econ->region[r].owner;
+        if (o<0||o>=w->n_countries || w->country[o].role!=POLITY_WILD) continue;
+        SpeciesArchetype neigh=HERITAGE_ADAPTATIF;     /* race de l'empire ADJACENT (à éviter) */
+        Ethos neigh_eth=ETHOS_ORDRE;            /* éthos du voisin (à éviter) */
+        for (int s=0;s<econ->n_regions;s++){
+            if (!econ->adj[r][s]) continue;
+            int os=econ->region[s].owner;
+            if (os>=0 && os<w->n_countries
+                && (w->country[os].role==POLITY_PLAYER || w->country[os].role==POLITY_ANTAGONIST)){
+                neigh=econ->region[s].culture.race; neigh_eth=econ->region[s].culture.ethos; break; }
+        }
+        if (wild_distinct){
+            uint32_t h=(uint32_t)(r+1)*2246822519u ^ ((uint32_t)w->seed*374761393u);
+            h ^= h>>15; h *= 0x2c1b3c6du; h ^= h>>13;
+            SpeciesArchetype wr=(SpeciesArchetype)(h % (uint32_t)HERITAGE_COUNT);
+            if (wr==neigh) wr=(SpeciesArchetype)(((int)wr+1)%(int)HERITAGE_COUNT);   /* race forcée ≠ voisin */
+            econ->region[r].culture.race=wr;
+            /* ÉTHOS distinct du voisin (« si le voisin est Dominateur, les hameaux sont p.ex.
+             * Mercantile et Ordre ») — pas de culture WILD spéciale, juste un éthos NORMAL ≠ voisin. */
+            Ethos we=(Ethos)((h>>3) % (uint32_t)ETHOS_COUNT);
+            if (we==neigh_eth) we=(Ethos)(((int)we+1)%(int)ETHOS_COUNT);
+            econ->region[r].culture.ethos=we;
+        }
+        econ->region[r].culture.credo=CREDO_PLURALISTE;   /* AUCUNE religion organisée */
+        econ->region[r].culture.rel_branch=REL_ANIMISTE;
+        econ->region[r].culture.religion=1.0f;            /* axe bas */
     }
 }
 
 /* ========================================================================
  * TRACÉ DES RIVIÈRES PRINCIPALES
  * ====================================================================== */
-static void trace_rivers(World *w, float *height) {
-    int n=0;
-    /* Cellules déjà couvertes par un fleuve, pour éviter de retracer dix fois
-     * le même cours d'eau depuis des sources voisines. */
-    uint8_t *traced=(uint8_t*)calloc(SCPS_N,sizeof(uint8_t));
-    bool    *seen  =(bool*)   calloc(SCPS_N,sizeof(bool));
-    if (!traced||!seen){ free(traced); free(seen); w->n_rivers=0; return; }
-
-    for (int y=2;y<SCPS_H-2&&n<SCPS_MAX_RIVERS;y+=3)
-    for (int x=2;x<SCPS_W-2&&n<SCPS_MAX_RIVERS;x+=3) {
-        int i=scps_idx(x,y);
-        /* Source = cellule d'altitude (le débit y est nul par construction ;
-         * il grossit en descendant). On ne filtre PAS sur le débit ici. */
-        if (height[i]<MOUNTAIN_H-0.10f) continue;
-        if (traced[i]) continue;
-
-        River *rv=&w->river[n];
-        rv->len=0; rv->flow_max=0.f;
-        memset(seen,0,SCPS_N*sizeof(bool));
-
-        int cx=x,cy=y;
-        for (int s=0;s<SCPS_RIVER_MAXLEN;s++) {
-            if (cx<0||cx>=SCPS_W||cy<0||cy>=SCPS_H) break;
-            int ci=scps_idx(cx,cy);
-            if (seen[ci]) break;          /* anti-boucle */
-            seen[ci]=true;
-            rv->x[rv->len]=(int16_t)cx;
-            rv->y[rv->len]=(int16_t)cy;
-            rv->len++;
-            float fl=w->cell[ci].river/255.f;
-            if (fl>rv->flow_max) rv->flow_max=fl;
-            if (height[ci]<SEA_LEVEL) break;   /* atteint la mer */
-
-            /* Descente : voisin le plus bas (D8 stocké, sinon recherche) */
-            int dir=w->cell[ci].flow_dir;
-            if (dir<0) {
-                float mh=height[ci]; int best=-1;
-                for (int d=0;d<8;d++){
-                    int nx2=cx+DDX[d],ny2=cy+DDY[d];
-                    if (nx2<0||nx2>=SCPS_W||ny2<0||ny2>=SCPS_H)continue;
-                    if (height[scps_idx(nx2,ny2)]<mh){mh=height[scps_idx(nx2,ny2)];best=d;}
-                }
-                if (best<0) break;          /* cuvette : fin du cours */
-                dir=best;
-            }
-            cx+=DDX[dir]; cy+=DDY[dir];
-        }
-
-        /* On retient le fleuve s'il est long ET devient un vrai cours d'eau */
-        if (rv->len>14 && rv->flow_max>0.30f) {
-            for (int s=0;s<rv->len;s++) traced[scps_idx(rv->x[s],rv->y[s])]=1;
-            n++;
+/* ---- générateur de rivières FORCÉ : hiérarchie CONNECTÉE (jeu) -------------------------------
+ * Comment marche une vraie rivière : source en altitude → DESCENTE (jamais la côte) → les affluents
+ * SE JETTENT dans plus gros → fleuve → mer. On FORCE cette hiérarchie connectée (équilibre + rendu) :
+ *   N fleuves (long, source mont → mer) · 2N rivières (raccord à un fleuve) · 4N affluents (raccord
+ *   à une rivière/fleuve). Chaque brin SEEK son parent (champ de distance BFS) → toujours CONNECTÉ. */
+typedef struct { int idx; float h; } RiverSrc;
+static int river_src_cmp(const void *a, const void *b){
+    float ha=((const RiverSrc*)a)->h, hb=((const RiverSrc*)b)->h;
+    return (ha<hb) - (ha>hb);                    /* altitude DÉCROISSANTE */
+}
+/* BFS : dist[cellule de terre] = nb de pas jusqu'à la rivière la plus proche de niveau [lo..hi]. */
+static void river_dist_to(World *w, float *height, uint8_t *mark, int lo, int hi, int *dist, int *q){
+    (void)w; int qt=0;
+    for (int i=0;i<SCPS_N;i++){
+        dist[i]=-1;
+        if (height[i]>=SEA_LEVEL && mark[i]>=lo && mark[i]<=hi){ dist[i]=0; q[qt++]=i; }
+    }
+    for (int qh=0; qh<qt; qh++){
+        int c=q[qh], cx=c%SCPS_W, cy=c/SCPS_W;
+        for (int d=0;d<8;d++){
+            int nx=cx+DDX[d], ny=cy+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int ni=scps_idx(nx,ny);
+            if (height[ni]<SEA_LEVEL || dist[ni]>=0) continue;
+            dist[ni]=dist[c]+1; q[qt++]=ni;
         }
     }
-    free(traced); free(seen);
+}
+/* BFS : dist[cellule de terre] = nb de pas jusqu'à la MER (ou un lac) le/la plus proche ; 0 sur l'eau.
+ * Champ SANS minimum local sur la terre → un fleuve qui le descend ATTEINT TOUJOURS l'eau (fin des bras
+ * endoréiques bloqués dans une cuvette au-dessus du niveau marin : c'était le « ne se jette dans aucune
+ * mer » du continent gauche). */
+static void river_dist_to_sea(float *height, int *dist, int *q){
+    int qt=0;
+    for (int i=0;i<SCPS_N;i++){
+        if (height[i]<SEA_LEVEL){ dist[i]=0; q[qt++]=i; }
+        else dist[i]=-1;
+    }
+    for (int qh=0; qh<qt; qh++){
+        int c=q[qh], cx=c%SCPS_W, cy=c/SCPS_W;
+        for (int d=0;d<8;d++){
+            int nx=cx+DDX[d], ny=cy+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int ni=scps_idx(nx,ny);
+            if (dist[ni]>=0) continue;
+            dist[ni]=dist[c]+1; q[qt++]=ni;
+        }
+    }
+}
+/* SEEK générique : descend le champ `dist` vers la CIBLE (la MER pour un fleuve ; une rivière déjà
+ * tracée pour un affluent — la cible est toujours dist 0). Le coût est DOMINÉ par un BRUIT à TRIPLE
+ * fréquence (méandres larges + ondulation + jitter fin) → AUCUNE ligne droite, quitte à former des
+ * angles ; la distance n'est qu'un FAIBLE guide. */
+/* SEEK : descente du champ `dist` vers la CIBLE (dist 0 = la MER pour un fleuve, une rivière déjà tracée
+ * pour un affluent) — voisin de plus BASSE distance, MAIS **JAMAIS EN MONTÉE** : une rivière ne franchit
+ * pas une crête (fini les fleuves qui « passent par-dessus la montagne »). Marche AUTO-ÉVITANTE (`seen`)
+ * → pas de boucle ; si tous les voisins descendants sont bloqués (CUVETTE endoréique), on s'échappe par le
+ * rim le plus BAS vers la cible (montée minimale, jamais une crête). Le champ dist (BFS, sans minimum local)
+ * garantit l'arrivée. MÉANDRE & LARGEUR sont posés au RENDU (la donnée moteur reste une médiane propre). */
+static int river_seek(World *w, float *height, int *dist, uint8_t *mark, int *seen, int gen,
+                      int sx, int sy, int level, float flow, River *rv){
+    (void)w;
+    rv->len=0; rv->flow_max=flow;
+    int s0=scps_idx(sx,sy);
+    if (dist[s0]<0) return 0;
+    const float UPHILL_EPS=0.004f;                        /* tolère un faux-plat (bruit), bloque un vrai talus */
+    int cx=sx, cy=sy, guard=0;
+    while (rv->len<SCPS_RIVER_MAXLEN && guard++<SCPS_RIVER_MAXLEN){
+        int ci=scps_idx(cx,cy);
+        rv->x[rv->len]=(int16_t)cx; rv->y[rv->len]=(int16_t)cy; rv->len++;
+        seen[ci]=gen;
+        if (dist[ci]==0) break;                          /* TOUCHE la cible (mer/lac ou rivière) */
+        if (mark[ci]>=1 && rv->len>1) break;             /* tombe sur une rivière tracée → RACCORD */
+        float hcur=height[ci];
+        int best=-1, bd=1<<30; float bh=1e9f;
+        for (int d=0;d<8;d++){                            /* descente PURE : plus basse dist, JAMAIS en montée */
+            int nx=cx+DDX[d], ny=cy+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int ni=scps_idx(nx,ny);
+            if (dist[ni]<0 || seen[ni]==gen) continue;
+            if (height[ni] > hcur+UPHILL_EPS) continue;  /* pas de franchissement de crête */
+            if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
+        }
+        if (best<0){                                     /* CUVETTE : échappe par le rim le plus bas vers la cible */
+            bd=1<<30; bh=1e9f;
+            for (int d=0;d<8;d++){
+                int nx=cx+DDX[d], ny=cy+DDY[d];
+                if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+                int ni=scps_idx(nx,ny);
+                if (dist[ni]<0 || seen[ni]==gen) continue;
+                if (dist[ni]<bd || (dist[ni]==bd && height[ni]<bh)){ bd=dist[ni]; bh=height[ni]; best=ni; }
+            }
+            if (best<0) break;
+        }
+        cx=best%SCPS_W; cy=best/SCPS_W;
+    }
+    int minlen=(level==1)?14:7;                           /* un fleuve doit être LONG */
+    if (rv->len<minlen) return 0;
+    for (int k=0;k<rv->len;k++){ int mi=scps_idx(rv->x[k],rv->y[k]); if (mark[mi]==0) mark[mi]=(uint8_t)level; }
+    return 1;
+}
+static void trace_rivers(World *w, float *height) {
+    int n=0;
+    uint8_t *mark=(uint8_t*)calloc(SCPS_N,1);
+    int *dist=(int*)malloc(SCPS_N*sizeof(int));
+    int *q   =(int*)malloc(SCPS_N*sizeof(int));
+    int *seen=(int*)calloc(SCPS_N,sizeof(int));           /* marche auto-évitante du seek (estampille `gen`) */
+    RiverSrc *src=(RiverSrc*)malloc(20000*sizeof(RiverSrc));
+    if (!mark||!dist||!q||!seen||!src){ free(mark); free(dist); free(q); free(seen); free(src); w->n_rivers=0; return; }
+    const int RN=6;                                       /* N ~ empires jouables */
+    int ucx[64], ucy[64], nu=0, gen=0;                    /* sources retenues (espacement) ; gén. `seen` */
+
+    /* sources candidates = SOMMETS LOCAUX au-dessus du seuil amont, triés par altitude décroissante */
+    int ns=0;
+    for (int y=2;y<SCPS_H-2;y+=2) for (int x=2;x<SCPS_W-2;x+=2){
+        int i=scps_idx(x,y);
+        if (height[i] < SEA_LEVEL+0.10f) continue;
+        int ismax=1;
+        for (int d=0;d<8;d++){ int nx=x+DDX[d],ny=y+DDY[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            if (height[scps_idx(nx,ny)]>height[i]){ ismax=0; break; } }
+        if (!ismax) continue;
+        if (ns<20000){ src[ns].idx=i; src[ns].h=height[i]; ns++; }
+    }
+    qsort(src, ns, sizeof(RiverSrc), river_src_cmp);
+
+    /* 1) N FLEUVES : sources les plus HAUTES, ESPACÉES → SEEK la MER (champ dist-mer = jamais bloqué) */
+    river_dist_to_sea(height,dist,q);
+    for (int s=0; s<ns && n<RN; s++){
+        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
+        if (mark[si]) continue;
+        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<140*140){tooclose=1;break;} }
+        if (tooclose) continue;
+        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,1,1.0f,&w->river[n])){ ucx[nu]=sx; ucy[nu]=sy; nu++; n++; }
+    }
+    /* 2) 2N RIVIÈRES : SEEK le fleuve le plus proche (espacées) */
+    river_dist_to(w,height,mark,1,1,dist,q);
+    for (int s=0; s<ns && n<SCPS_MAX_RIVERS && (n-RN)<2*RN; s++){
+        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
+        if (mark[si] || dist[si]<0) continue;
+        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<70*70){tooclose=1;break;} }
+        if (tooclose) continue;
+        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,2,0.62f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; }
+    }
+    /* 3) 4N AFFLUENTS : SEEK rivière OU fleuve (espacés serré) */
+    river_dist_to(w,height,mark,1,2,dist,q);
+    int na=0;
+    for (int s=0; s<ns && n<SCPS_MAX_RIVERS && na<4*RN; s++){
+        int si=src[s].idx, sx=si%SCPS_W, sy=si/SCPS_W;
+        if (mark[si] || dist[si]<0) continue;
+        int tooclose=0; for (int u=0;u<nu;u++){ int dx=ucx[u]-sx,dy=ucy[u]-sy; if (dx*dx+dy*dy<40*40){tooclose=1;break;} }
+        if (tooclose) continue;
+        if (river_seek(w,height,dist,mark,seen,++gen,sx,sy,3,0.34f,&w->river[n])){ if(nu<64){ucx[nu]=sx;ucy[nu]=sy;nu++;} n++; na++; }
+    }
     w->n_rivers=n;
+    free(mark); free(dist); free(q); free(seen); free(src);
 }
 
 /* ========================================================================
@@ -2662,50 +3031,13 @@ static void gen_resources(World *w) {
             for (int r=1;r<RES_PROD_FIRST;r++){ acc2+=wt[r]; if(acc2>=roll2){ pr->resource2=(Resource)r; break; } }
         }
 
-        /* ---- Habitabilité de la province [0..1] -------------------------
-         * Base biome (plafond dur) × confort thermique (pénalité froid/chaud).
-         * Glacier/Pic/Volcan → 0 absolu (infranchissable).
-         * Sahara chaud → ~0.05 ; steppe froide → 0.25-0.40 ;
-         * plaines tempérées → 0.80-0.90. */
-        float hab_base;
-        switch (B) {
-            case BIO_GLACIER:
-            case BIO_PEAK:
-            case BIO_VOLCANO:        hab_base=0.00f; break;  /* zéro absolu */
-            case BIO_DESERT:         hab_base=0.08f; break;
-            case BIO_COASTAL_DESERT: hab_base=0.18f; break;
-            case BIO_DRYLANDS:       hab_base=0.28f; break;
-            case BIO_MOUNTAINS:      hab_base=0.32f; break;
-            case BIO_STEPPE:
-            case BIO_SAVANNA:        hab_base=0.45f; break;
-            case BIO_MARSH:
-            case BIO_BOG:            hab_base=0.50f; break;
-            case BIO_HILLS:
-            case BIO_HIGHLANDS:      hab_base=0.60f; break;
-            case BIO_JUNGLE:
-            case BIO_MANGROVE:       hab_base=0.65f; break;
-            case BIO_FOREST:
-            case BIO_WOODS:          hab_base=0.72f; break;
-            case BIO_GRASSLAND:      hab_base=0.75f; break;
-            case BIO_COAST:
-            case BIO_SHALLOW:        hab_base=0.78f; break;
-            case BIO_PLAINS:         hab_base=0.88f; break;
-            case BIO_FARMLAND:       hab_base=0.95f; break;
-            default:                 hab_base=0.55f; break;
-        }
-        /* Confort thermique : [0.30..0.72] = confort total ;
-         * en-dessous (froid) et au-dessus (chaud) pénalité sévère */
-        float t_comfort;
-        if (tmp >= 0.30f && tmp <= 0.72f) {
-            t_comfort = 1.0f;
-        } else if (tmp < 0.30f) {
-            t_comfort = clampf(tmp / 0.30f, 0.f, 1.f);
-        } else {
-            t_comfort = clampf((1.f - tmp) / 0.28f, 0.f, 1.f);
-        }
-        /* hab_base : zéro absolu court-circuite le calcul (GLACIER/PEAK/VOLCANO) */
-        pr->habitability = (hab_base <= 0.f) ? 0.f
-                         : clampf(hab_base * (0.45f + 0.55f*t_comfort), 0.f, 1.f);
+        /* ---- Habitabilité de la province [0..1] : biome × confort thermique
+         * (formule extraite en biome_habitability — partagée avec le capstone froid). */
+        pr->habitability = biome_habitability(B, tmp, pr->height_avg);
+        /* PLANCHER CÔTIER : une côte reste TOUJOURS vivable (pêche + commerce) — un liseré
+         * côtier sous des montagnes/déserts morts garde sa civilisation (le Chili, le Pérou,
+         * la Norvège). Sans ça, pas de nation côtière coincée contre un relief mort. */
+        if (pr->coastal && pr->habitability < 0.32f) pr->habitability = 0.32f;
     }
 }
 
@@ -2730,9 +3062,13 @@ static float biome_food(Biome b) {
     }
 }
 
+/* Axes de score INDÉPENDANTS — eau douce, nourriture (FERTILITÉ du biome),
+ * habitabilité (VIVABILITÉ : climat/relief, séparée de la bouffe — la Sibérie peut
+ * nourrir l'été sans être vivable ; le Val de Loire est les deux) et ressources. */
 #define START_FOOD_MIN 0.30f
-#define START_W_WATER  0.35f
-#define START_W_FOOD   0.50f
+#define START_W_WATER  0.30f
+#define START_W_FOOD   0.35f
+#define START_W_HAB    0.20f
 #define START_W_RES    0.15f
 
 static void refine_capitals(World *w) {
@@ -2758,14 +3094,19 @@ static void refine_capitals(World *w) {
                 const Province *pv=&w->province[pid];
                 float water = (has_river[pid] && pv->coastal) ? 1.0f
                             : (has_river[pid] || has_lake[pid]) ? 0.7f : 0.0f;  /* estuaire/eau douce/sec */
-                float food = 0.5f*biome_food(pv->biome_dominant) + 0.5f*pv->habitability;
+                float food = biome_food(pv->biome_dominant);  /* FERTILITÉ pure (≠ vivabilité) */
                 if (pv->coastal) food += 0.10f;          /* pêche côtière */
                 if (food > 1.f)  food = 1.f;
+                float hab = pv->habitability;            /* VIVABILITÉ pure (axe séparé) */
                 float resval = 0.f;
                 if (pv->resource > RES_NONE)
                     resval = (pv->resource==RES_GOLD || pv->resource==RES_PRECIOUS_METAL
                               || pv->resource>=RES_PROD_FIRST) ? 0.30f : 0.15f;
-                float s = START_W_WATER*water + START_W_FOOD*food + START_W_RES*resval;
+                float s = START_W_WATER*water + START_W_FOOD*food
+                        + START_W_HAB*hab + START_W_RES*resval;
+                /* SPAWN SUR TERRE HABITABLE : une province inaccessible (≤25 %) n'est qu'un
+                 * dernier recours — une capitale DOIT naître sur du vivable si possible. */
+                if (pv->habitability <= 0.25f) s *= 0.15f;
                 if (s > bs){ bs=s; best=pid; }
             }
         }
@@ -2774,8 +3115,7 @@ static void refine_capitals(World *w) {
         const Province *pv=&w->province[best];
         float water = (has_river[best] && pv->coastal) ? 1.0f
                     : (has_river[best] || has_lake[best]) ? 0.7f : 0.0f;
-        float food = 0.5f*biome_food(pv->biome_dominant) + 0.5f*pv->habitability
-                   + (pv->coastal ? 0.10f : 0.f);
+        float food = biome_food(pv->biome_dominant) + (pv->coastal ? 0.10f : 0.f);
         ncap++;
         if      (water >= 1.0f) est++;
         else if (water >  0.0f) fresh++;
@@ -3223,7 +3563,14 @@ void world_generate(World *w, const WorldParams *P) {
     compute_fertility(height,moisture,temp,w->cell); printf("ok\n");
 
     printf("[scps] territoires...  "); fflush(stdout);
-    assign_provinces(w,height,seed_f);
+    /* SCALE DU MONDE — le nombre de territoires SUIT le nombre d'entités jouées (f(empires),
+     * sans clamp artificiel ; seul SCPS_MAX_PROV — taille des tableaux, calibré HUGE=12 — borne).
+     * Peu d'empires ⇒ monde compact ; 6 ⇒ vaste & confortable ; 12 ⇒ Huge. */
+    int want_prov = (int)(tune_f("WORLD_PROV_BASE",24.f)
+                        + tune_f("WORLD_PROV_PER_EMPIRE",95.f) * (float)(P->n_empires>0?P->n_empires:6)
+                        + tune_f("WORLD_PROV_PER_CITY", 5.f) * (float)(P->n_city_states>0?P->n_city_states:0));
+    if (want_prov<80) want_prov=80;     /* plancher : jamais un monde dégénéré */
+    assign_provinces(w,height,seed_f,want_prov);
     printf("ok (%d terr.)\n",w->n_provinces);
 
     printf("[scps] continents...   "); fflush(stdout);
@@ -3271,6 +3618,7 @@ void world_generate(World *w, const WorldParams *P) {
 
     printf("[scps] rivières...     "); fflush(stdout);
     trace_rivers(w,height);
+    carve_oxbows(w,height);               /* bras morts (2e voie de lac) le long des cours inférieurs */
     printf("ok (%d riv.)\n",w->n_rivers);
 
 end:
@@ -3307,6 +3655,7 @@ uint32_t biome_base_color(Biome b) {
         0xFF2E6848u, /* MANGROVE       */
         0xFF566848u, /* BOG            */
         0xFF402820u, /* VOLCANO — basalte sombre */
+        0xFF3A1C42u, /* THORNS — ronces violacées, sombres (corruption) */
     };
     return (b>=0&&b<BIO_COUNT)?C[(int)b]:0xFFFF00FFu;
 }
@@ -3318,7 +3667,7 @@ const char *biome_name(Biome b) {
         "Savane","Terres sèches","Désert","Désert côtier",
         "Forêt","Bois","Jungle","Marais",
         "Hauts plateaux","Collines","Montagnes","Sommets","Glacier",
-        "Mangrove","Tourbière","Volcan",
+        "Mangrove","Tourbière","Volcan","Ronces",
     };
     return (b>=0&&b<BIO_COUNT)?N[(int)b]:"?";
 }
@@ -3397,12 +3746,12 @@ uint32_t province_palette(int id) {
 uint32_t country_race_color(SpeciesArchetype race, int cid){
     float baseh, s, l;                       /* h en TOURS [0..1] (comme hue2rgb_f) */
     switch(race){
-        case RACE_HUMAIN:   baseh=0.585f; s=0.55f; l=0.52f; break;  /* bleu */
-        case RACE_ELFE:     baseh=0.355f; s=0.48f; l=0.46f; break;  /* vert */
-        case RACE_NAIN:     baseh=0.020f; s=0.30f; l=0.46f; break;  /* gris-rouge */
-        case RACE_ORQUE:    baseh=0.072f; s=0.55f; l=0.34f; break;  /* marron */
-        case RACE_HALFELIN: baseh=0.133f; s=0.66f; l=0.56f; break;  /* jaune */
-        case RACE_GNOME:    baseh=0.500f; s=0.46f; l=0.48f; break;  /* turquoise */
+        case HERITAGE_ADAPTATIF:   baseh=0.585f; s=0.55f; l=0.52f; break;  /* bleu */
+        case HERITAGE_ESOTERIQUE:     baseh=0.355f; s=0.48f; l=0.46f; break;  /* vert */
+        case HERITAGE_METALLURGISTE:     baseh=0.020f; s=0.30f; l=0.46f; break;  /* gris-rouge */
+        case HERITAGE_CLANIQUE:    baseh=0.072f; s=0.55f; l=0.34f; break;  /* marron */
+        case HERITAGE_AGRAIRE: baseh=0.133f; s=0.66f; l=0.56f; break;  /* jaune */
+        case HERITAGE_MECANISTE:    baseh=0.500f; s=0.46f; l=0.48f; break;  /* turquoise */
         default:            baseh=0.820f; s=0.38f; l=0.50f; break;  /* violet (exotiques) */
     }
     uint32_t hsh=(uint32_t)cid*2654435761u;
@@ -3420,23 +3769,25 @@ uint32_t country_race_color(SpeciesArchetype race, int cid){
 /* P1.9 — NOM D'EMPIRE procédural = f(RACE, ETHOS) : syllabaire par race (racine +
  * suffixe) + ÉPITHÈTE d'ethos. Déterministe par pays (donc par graine). « Horde
  * Grukgor » (orque dominateur) · « Sylve Aeriel » (elfe) · « Couronne Aldwic ». */
-/* Syllabaire par RACE (racine + suffixe) — partagé : toponymes ET noms d'empire. */
-static const char *NAME_ROOT[RACE_COUNT][8] = {
-    {"Aer","Syl","Lór","Thal","Elen","Cael","Mith","Vael"},   /* ELFE */
-    {"Gron","Dur","Khaz","Bral","Thrum","Kar","Bor","Dhûr"},  /* NAIN */
-    {"Tik","Zen","Pyx","Fizz","Cog","Bel","Nim","Vex"},       /* GNOME */
-    {"Ald","Bren","Cael","Dorn","Estr","Far","Gual","Marn"},  /* HUMAIN */
-    {"Bram","Tuck","Fal","Hob","Mer","Pip","Wyn","Bre"},      /* HALFELIN */
-    {"Gruk","Mor","Karg","Drog","Nazg","Urk","Brak","Gho"},   /* ORQUE */
+/* Syllabaire par HÉRITAGE (racine + suffixe) — partagé : toponymes, noms d'empire ET de culture.
+ * « Plus de races » : ce ne sont pas des langues d'espèces mais les banques de noms des LIGNÉES
+ * culturelles (la sonorité ésotérique reste « elfique », la clanique « orque », par tradition). */
+static const char *NAME_ROOT[HERITAGE_COUNT][8] = {
+    {"Aer","Syl","Lór","Thal","Elen","Cael","Mith","Vael"},   /* ESOTERIQUE */
+    {"Gron","Dur","Khaz","Bral","Thrum","Kar","Bor","Dhûr"},  /* METALLURGISTE */
+    {"Tik","Zen","Pyx","Fizz","Cog","Bel","Nim","Vex"},       /* MECANISTE */
+    {"Ald","Bren","Cael","Dorn","Estr","Far","Gual","Marn"},  /* ADAPTATIF */
+    {"Bram","Tuck","Fal","Hob","Mer","Pip","Wyn","Bre"},      /* AGRAIRE */
+    {"Gruk","Mor","Karg","Drog","Nazg","Urk","Brak","Gho"},   /* CLANIQUE */
 };
-static const char *NAME_SUFF[RACE_COUNT][4] = {
+static const char *NAME_SUFF[HERITAGE_COUNT][4] = {
     {"iel","wen","dor","ond"}, {"gan","din","mar","rok"}, {"il","ex","top","yn"},
     {"or","wic","yan","red"},  {"ling","wick","by","ton"},  {"nak","dush","rak","gor"},
 };
 /* TOPONYME (lieu) : racine+suffixe du syllabaire de la RACE, SANS épithète d'éthos
  * (réservée aux empires). Déterministe par `seed` — sert aux Centres commerciaux. */
 void place_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed){
-    int r=(race>=0&&race<RACE_COUNT)?(int)race:RACE_HUMAIN;
+    int r=(race>=0&&race<HERITAGE_COUNT)?(int)race:HERITAGE_ADAPTATIF;
     uint32_t h=(seed*2654435761u)^0x9E3779B9u;
     snprintf(out,(size_t)n,"%s%s", NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3]);
 }
@@ -3446,6 +3797,18 @@ void country_make_name(char *out, int n, SpeciesArchetype race, Ethos ethos, int
     int e=(ethos>=0&&ethos<ETHOS_COUNT)?(int)ethos:ETHOS_ORDRE;
     char core[24]; place_make_name(core,sizeof core, race, (uint32_t)cid);
     snprintf(out,(size_t)n,"%s %s", EPI[e], core);
+}
+/* NOM DE CULTURE (le PEUPLE) procédural — un ETHNONYME inventé, façon Stellaris : sans lui, les
+ * cultures de l'IA s'afficheraient toutes par leur AXE (« Honneur », « Mercantile »…) — moche &
+ * répétitif. L'axe (éthos) n'est PAS un nom. Dérivé de (héritage + seed=cid), déterministe ⇒ rien
+ * à sérialiser (comme les toponymes). Racine+suffixe du syllabaire d'héritage + une terminaison
+ * ethnonymique → ~256 variantes/héritage. P.ex. « Caeldoriens », « Brenwicar », « Tikilites ». */
+void culture_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed){
+    static const char *ETHNO[8] = { "iens","ar","ites","esi","ane","oï","uri","ade" };
+    int r=(race>=0&&race<HERITAGE_COUNT)?(int)race:HERITAGE_ADAPTATIF;
+    uint32_t h=(seed*2654435761u)^0x9E3779B9u; h^=h>>13; h*=0x85ebca6bu; h^=h>>16;
+    snprintf(out,(size_t)n,"%s%s%s",
+             NAME_ROOT[r][(h>>3)&7], NAME_SUFF[r][(h>>9)&3], ETHNO[(h>>15)&7]);
 }
 
 /* ════════════════════════════════════════════════════════════════════════

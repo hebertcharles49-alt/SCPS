@@ -19,7 +19,9 @@
  * La distribution de factions du pays (enracinée dans sa pop) pondère la RECETTE
  * de levée ; le moteur ne lit ensuite QUE les unités. Conquérir un peuple déplace
  * la distribution → l'armée dérive avec la société. Colonnes = ordre de UnitType :
- *   PIQ LAN EPE ARC ARB CVL CVH MAG HAL AQB ALC GRU
+ *   PIQ LAN EPE ARC ARB CVL CVH MAG HAL AQB ALC GRU | ABL BSK LCH MIL HRC TRQ LMF GES CVC CVR
+ * (les 10 nouvelles : Arbalète lourde · Berserker · Lancier de choc · Milice · Harceleur ·
+ *  Traqueur · Lame franche · Garde d'escorte · Cav cuirassée · Cav de raid)
  * Lignes = ordre de EthosFaction. Motivé : l'Ordre/Légiste préfère l'arquebuse
  * (l'arme drillée et standardisée de l'arsenal d'État) ; le Conquérant la
  * cavalerie (le choc et la poursuite) ; le Marchand le tir (ne pas saigner le
@@ -27,15 +29,29 @@
  * moral) ; le Transgresseur l'arcane (mage/alchimie/runes — la dette d'entropie) ;
  * le Communautaire la milice (pique + archers de village, défensif). */
 static const float AFF[FAC_COUNT][U_COUNT] = {
-    /* CONQUERANT    */ { 0,2,2,0,0, 3,3,0, 0,0,0,1 },
-    /* MARCHAND      */ { 0,0,0,2,3, 2,0,0, 0,2,1,0 },
-    /* LEGISTE       */ { 1,0,2,0,0, 0,0,0, 3,3,0,0 },
-    /* GARDIEN       */ { 3,1,2,1,1, 0,0,0, 1,0,0,0 },
-    /* TRANSGRESSEUR */ { 0,0,0,0,0, 0,0,3, 0,0,3,3 },
-    /* COMMUNAUTAIRE */ { 3,1,1,2,1, 0,0,0, 0,0,0,0 },
+    /*                     PIQ LAN EPE ARC ARB  CVL CVH MAG  HAL AQB ALC GRU   ABL BSK LCH MIL HRC TRQ LMF GES CVC CVR */
+    /* CONQUERANT    */ { 0,2,2,0,0, 3,3,0, 0,0,0,1,   0,3,0,0,0,0,0,0,3,3 },  /* cavalerie, choc, berserker, cuirassée/raid */
+    /* MARCHAND      */ { 0,0,0,2,3, 2,0,0, 0,2,1,0,   3,0,0,0,3,1,3,0,0,0 },  /* tir ; le HARCELEUR (mercenaire mobile) > traqueur */
+    /* LEGISTE       */ { 1,0,2,0,0, 0,0,0, 3,3,0,0,   2,0,2,0,0,0,0,3,0,0 },  /* arme drillée : arbalète lourde, lancier de choc, garde d'escorte */
+    /* GARDIEN       */ { 3,1,2,1,1, 0,0,0, 1,0,0,0,   0,0,3,1,0,0,0,2,0,0 },  /* la hampe consacrée : lancier de choc, garde d'escorte, milice */
+    /* TRANSGRESSEUR */ { 0,0,0,0,0, 0,0,3, 0,0,3,3,   0,3,0,0,0,0,0,0,0,2 },  /* l'arcane + le berserker/raid transgressifs */
+    /* COMMUNAUTAIRE */ { 3,1,1,2,1, 0,0,0, 0,0,0,0,   0,0,0,3,1,3,0,0,0,0 },  /* la milice ; le TRAQUEUR (chasseur de village) > harceleur */
 };
 /* garde-fou C99 : si le roster (U_COUNT) ou les factions (FAC_COUNT) changent, AFF DOIT suivre. */
-typedef char aff_dims_check[(FAC_COUNT==6 && U_COUNT==12) ? 1 : -1];
+typedef char aff_dims_check[(FAC_COUNT==6 && U_COUNT==22) ? 1 : -1];
+
+/* lecture seule de la table AFF (UI de construction) — n'influe sur aucun calcul. */
+float warhost_unit_affinity(int f, int u){
+    return (f>=0 && f<FAC_COUNT && u>=0 && u<U_COUNT) ? AFF[f][u] : 0.f;
+}
+
+/* PAYS JOUEUR (main humaine) : pour lui, warhost_tick ne MOBILISE/DÉMOBILISE pas
+ * tout seul — l'humain compose son armée au panneau. -1 = aucun (l'IA gère tout,
+ * comme en chronique). Statique de module, remis à -1 par warhost_init (donc la
+ * chronique, qui n'appelle jamais le setter, garde le comportement IA → déterminisme
+ * inchangé). Il PAIE toujours la solde (l'armée coûte). */
+static int g_human_player = -1;
+void warhost_set_human(int cid){ g_human_player = cid; }
 
 /* unit_res_arm (la catégorie d'arme macro d'une unité) vit dans scps_army.c — un seul point de
  * vérité, partagé entre le warhost (levée/démob) et le campaign (renfort). */
@@ -63,6 +79,7 @@ void warhost_init(WarHost *h){
     memset(h->army, 0, sizeof(h->army));
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ army_init(&h->army[c]); h->levy[c]=WH_LEVY_GARDE; }
     h->scratch = (LaborEcon*)calloc(1, sizeof(LaborEcon));
+    g_human_player = -1;            /* RAZ : par défaut l'IA gère toutes les armées */
 }
 /* Jauge de levée (sidebar §5) : un palier, pas un float. */
 void warhost_set_levy(WarHost *h, int cid, int levy){
@@ -157,6 +174,22 @@ static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
     }
 }
 
+/* ACTION JOUEUR — lever `packs` paquets d'un TYPE choisi (le verbe que l'IA n'a pas :
+ * elle compose par AFF). Mêmes gates que la levée : tech (unit_recruitable), classe
+ * (élite ⇒ pop d'élite requise), et ARMES en stock macro (consommées). La pop est
+ * affectée (pas retirée du pool). Renvoie les paquets RÉELLEMENT levés (0 si gate). */
+long warhost_player_recruit(WarHost *h, const World *w, WorldEconomy *econ,
+                            const TechState *ts, int cid, UnitType t, long packs){
+    if (!h || !h->scratch || cid<0 || cid>=SCPS_MAX_COUNTRY || packs<=0) return 0;
+    if (!unit_recruitable(ts, t)) return 0;
+    long elite = seed_scratch(h->scratch, w, econ, cid);
+    const UnitDef *d = unit_def(t);
+    if (d && d->from==LAB_ELITE && elite<=200) return 0;
+    long before = warhost_units(h, cid);
+    wh_arm_unit(&h->army[cid], h->scratch, econ, cid, t, packs);
+    return warhost_units(h, cid) - before;
+}
+
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                   const DiploState *dp, const TechState *ts, float dt){
     if (!h || !h->scratch || dt<=0.f) return;
@@ -203,6 +236,10 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 cre->coercion = fminf(1.f, cre->coercion + 0.08f*dt);   /* le prix de la masse */
             }
         }
+        /* PAYS JOUEUR : l'humain compose son armée à la main (panneau Construction) →
+         * on saute la MOBILISATION/DÉMOBILISATION auto (la solde ci-dessus est déjà
+         * payée : son armée coûte ; mais elle ne croît/fond plus toute seule). */
+        if (c == g_human_player) continue;
         /* GUERRE = MOBILISER · PAIX = DÉMOBILISER. La guerre lève au pied de guerre
          * vers le plafond de pop (la cadence rate-limite la montée) ; la paix tend
          * vers une GARNISON ∝ jauge (le « plancher de levée ») — au-dessus on

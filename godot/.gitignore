@@ -1,0 +1,23 @@
+# Le clone godot-cpp (régénérable : git clone -b 4.3 …) — pas dans le repo SCPS.
+godot-cpp/
+
+# Artefacts de build (par plateforme : on les rebâtit avec scons).
+build/
+project/bin/
+*.os
+*.o
+*.obj
+.sconsign.dblite
+
+# Cache de l'éditeur Godot.
+project/.godot/
+project/.import/
+# Sidecars d'import (.import) : le projet charge les PNG en Image brute (hors
+# pipeline d'import) — aucun n'est suivi ; l'éditeur les régénère à l'ouverture.
+*.import
+
+# Captures headless des scènes de vérification (shot.gd / shot_zoom.gd) — régénérables.
+project/globe.png
+project/iso_play.png
+project/iso_terrain.png
+project/roads_test.png

@@ -32,6 +32,7 @@
 #include "scps_agency.h"
 #include "scps_routes.h"
 #include "scps_diplo.h"
+#include "scps_statecraft.h"   /* #26 : l'OPINION ±100 → ai_consider_offer */
 #include "scps_tech.h"
 #include <stdint.h>
 
@@ -54,6 +55,11 @@ typedef struct {
     float    gap_acuity; /* gravité agrégée du manque [0..1] */
     float    take_pressure; /* acuité d'un bien NON-productible localement → ne reste que PRENDRE/COMMERCER [0..1] */
     float    ethos_fracture; /* fracture de VALEURS interne (factions opposées) [0..1] — frein interne (§6) */
+    /* PIPELINE ÉCO (étages 1-2) — la PRÉVISION + la FILE DE PRIORITÉS, lues des coordonnées. */
+    EconForecast fc;        /* runway/shortfall/déficit structurel par flux (étage 1) */
+    Resource top_flow;      /* le flux PRIORITAIRE = argmax(stress(runway)×prix×deficit_vs_safe) — la motivation éco */
+    float    top_priority;  /* sa valeur (0 = aucun flux pressant) */
+    bool     food_alert;    /* food_runway < AI_SAFETY_HORIZON (le mur vivrier approche) */
 } AiView;
 
 /* ---- Compteurs (preuve d'émergence : on tally par acteur) ------------------ */
@@ -142,10 +148,20 @@ float  ai_consolidation_pressure(const AiView *v);
 float  ai_aggression(const AiActor *a, const AiView *v);
 
 /* Un tick (1 JOUR) : l'acteur dort jusqu'à ses cadences, lit l'état, choisit un
- * levier, l'exécute par la MÊME couche d'action que le joueur. */
+ * levier, l'exécute par la MÊME couche d'action que le joueur.
+ * #26 : `sc` (l'OPINION ±100) rend les alliances IA BILATÉRALES — NULL = pas de porte
+ * d'opinion (comportement relation-seule d'avant ; les bancs passent NULL). */
 void   ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
                WorldLegitimacy *wl, AgencyState *ag, RouteNetwork *rn,
-               DiploState *diplo, int day);
+               DiploState *diplo, const Statecraft *sc, int day);
+
+/* #26 — `to` ÉVALUE une OFFRE de `from` (alliance/paix/pacte) et l'ACCEPTE ou la REFUSE.
+ * Lue de l'OPINION (±100, mémoire des actes) + la relation structurelle + le score de guerre.
+ * Le verbe diplo JOUEUR (§3) et la diplo IA-IA passent par CE chemin → consentement BILATÉRAL.
+ * sc == NULL ⇒ pas de porte d'opinion (décision relation-seule, rétro-compatible bancs). */
+typedef enum { OFFER_ALLIANCE = 0, OFFER_PEACE, OFFER_TRADE_PACT } OfferKind;
+bool   ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldProsperity *wp,
+                         const DiploState *d, const Statecraft *sc, int from, int to, OfferKind kind);
 
 /* E3 — L'IA STOCKEUSE (tick MENSUEL) : lit le prix courant de sa région-hub vs
  * sa moyenne mobile (~1 an, par ressource). Bas (<0.8 x̄) + trésor sain →

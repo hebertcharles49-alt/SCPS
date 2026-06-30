@@ -14,6 +14,8 @@
 #include "scps_lang.h"   /* la table de chaînes : les MOTS vivent dans les tables compilées */
 #include "scps_factions.h"   /* EthosFaction (la balance des factions-éthos, §9) */
 #include "scps_agency.h"     /* K2 : Edifice — les noms d'édifices vivent ICI (readout), pas au moteur */
+#include "scps_tune.h"       /* capstone §27 : ENTROPY_FIN (le seuil reste DERRIÈRE la membrane) */
+#include "scps_endgame.h"    /* capstone §27 : la membrane traduit FinType/MervPhase en miroirs */
 #include <stddef.h>   /* NULL */
 #include <string.h>   /* memset */
 #include <math.h>     /* roundf */
@@ -42,12 +44,13 @@ const char *edifice_name(int e){
         [EDI_SANCTUAIRE]=STR_EDI_SANCTUAIRE, [EDI_TEMPLE]=STR_EDI_TEMPLE, [EDI_CATHEDRALE]=STR_EDI_CATHEDRALE,
         [EDI_BIBLIOTHEQUE]=STR_EDI_BIBLIOTHEQUE, [EDI_MONASTERE]=STR_EDI_MONASTERE,
         [EDI_COMPTOIR]=STR_EDI_COMPTOIR, [EDI_BANQUE]=STR_EDI_BANQUE,
+        [EDI_TRADE_CENTER]=STR_EDI_TRADE_CENTER,
     };
     return (e>=0&&e<EDIFICE_COUNT) ? tr(ID[e]) : "?";
 }
 
 static inline float rclampf(float v, float lo, float hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
+    return v!=v?lo:(v < lo ? lo : (v > hi ? hi : v));
 }
 static inline int   iclamp(int v, int lo, int hi) {
     return v < lo ? lo : (v > hi ? hi : v);
@@ -219,6 +222,15 @@ BandPresage band_presage(float charge) {
     if (charge < 7.0f) return PG_OMBRE;
     return PG_SEUIL;
 }
+/* CAPSTONE §27 — l'entropie MONDE classée sur le RATIO entropy/seuil ; le seuil
+ * (ENTROPY_FIN) reste un flottant moteur passé en paramètre, jamais affiché. */
+BandEntropie band_entropie(float entropy, float fin) {
+    float r = (fin > 0.f) ? entropy / fin : 0.f;
+    if (r < 0.25f) return ENT_STABLE;
+    if (r < 0.55f) return ENT_FREMISSANTE;
+    if (r < 0.85f) return ENT_INSTABLE;
+    return ENT_AU_BORD;
+}
 BandHumeur band_humeur(float L) {
     if (L < 2.0f) return HU_REVOLTEE;
     if (L < 4.0f) return HU_FRONDEUSE;
@@ -283,6 +295,36 @@ int metric_agitation(float L_local, float coercion, float diversity_tension,
     float calm = (country_stability/100.f) * 20.f                /* Stabilité 100 : −20   */
                + rclampf(garrison_H,0.f,8.f) * 4.0f;             /* citadelle : jusqu'à −32 */
     return iclamp((int)roundf(raise - calm), 0, 100);
+}
+
+/* Les MODIFICATEURS PROVINCIAUX d'agitation — CONCRETS et PROPRES À LA PROVINCE
+ * (style grande stratégie) : conquête récente (temporaire, se digère −4/an), culture
+ * étrangère sous la couronne, coercition (la province tenue par la force), garnison
+ * (apaise). PAS d'agrégat abstrait (« consentement bas » = symptôme de la coercition,
+ * pas une cause) NI de facteur national (« stabilité du royaume » n'est pas un
+ * modificateur DE province). Nom + apport SIGNÉ + résorption/an si temporaire. */
+BreakdownReadout metric_agitation_breakdown(float coercion, float diversity_tension,
+        float years_held, float garrison_H, int value, const char *band_word) {
+    BreakdownReadout b; memset(&b, 0, sizeof b);
+    b.value = value; b.word = band_word;
+    float conquest = (years_held < 5.f) ? (1.f - years_held/5.f) : 0.f;   /* 1→0 sur 5 ans */
+    BreakdownLine all[BREAKDOWN_LINES]; int m=0;
+    all[m].cause = tr(STR_AGIT_CAUSE_CHOC);     all[m].delta = +(int)roundf(conquest*20.f);                           all[m].decay = (conquest>0.f)?4:0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_CULTURE);  all[m].delta = +(int)roundf(rclampf(diversity_tension,0.f,10.f)*2.0f); all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_COERCION); all[m].delta = +(int)roundf(rclampf(coercion,0.f,1.f)*25.f);           all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_GARNISON); all[m].delta = -(int)roundf(rclampf(garrison_H,0.f,8.f)*4.0f);         all[m].decay = 0; m++;
+    /* garder les NON-NULS, triés par |delta| décroissant (le modificateur dominant en tête) */
+    int order[BREAKDOWN_LINES], k=0;
+    for (int i=0;i<m;i++) if (all[i].delta!=0) order[k++]=i;
+    for (int i=0;i<k;i++) for (int j=i+1;j<k;j++){
+        int ai = all[order[i]].delta, aj = all[order[j]].delta;
+        if (ai<0) ai=-ai;
+        if (aj<0) aj=-aj;
+        if (aj>ai){ int t=order[i]; order[i]=order[j]; order[j]=t; }
+    }
+    for (int i=0;i<k;i++) b.line[i]=all[order[i]];
+    b.n=k;
+    return b;
 }
 
 /* ===================================================================== */
@@ -363,6 +405,7 @@ LBL(label_concorde,     BandConcorde,     STR_BANDE_CONCORDE, 4)
 LBL(label_prosp,     BandProsp,     STR_BANDE_PROSP, 5)
 LBL(label_savoir,     BandSavoir,     STR_BANDE_SAVOIR, 4)
 LBL(label_presage,     BandPresage,     STR_BANDE_PRESAGE, 4)
+LBL(label_entropie,     BandEntropie,     STR_BANDE_ENTROPIE, 4)
 LBL(label_stature,     BandStature,     STR_BANDE_STATURE, 5)
 LBL(label_flux,     BandFlux,     STR_BANDE_FLUX, 5)
 LBL(label_aisance,     BandAisance,     STR_BANDE_AISANCE, 4)
@@ -390,6 +433,7 @@ const char *hover_concorde(void){ return tr(STR_HOVER_CONCORDE); }
 const char *hover_prosp(void){ return tr(STR_HOVER_PROSP); }
 const char *hover_savoir(void){ return tr(STR_HOVER_SAVOIR); }
 const char *hover_presage(void){ return tr(STR_HOVER_PRESAGE); }
+const char *hover_entropie(void){ return tr(STR_HOVER_ENTROPIE); }
 const char *hover_stature(void){ return tr(STR_HOVER_STATURE); }
 const char *hover_flux(void){ return tr(STR_HOVER_FLUX); }
 const char *hover_aisance(void){ return tr(STR_HOVER_AISANCE); }
@@ -399,6 +443,54 @@ const char *hover_lignee(void){ return tr(STR_HOVER_LIGNEE); }
 const char *hover_agitation(void){ return tr(STR_HOVER_AGITATION); }
 const char *hover_foi(void){ return tr(STR_HOVER_FOI); }
 const char *hover_sedition(void){ return tr(STR_HOVER_SEDITION); }
+
+/* CAPSTONE §27 — LE DESTIN PARTAGÉ (membrane). Lit l'entropie monde + l'état
+ * cataclysme, traduit en bandes / projections 0-100 / enums MIROIRS / bitmap
+ * d'indices. Le seuil ENTROPY_FIN reste un flottant moteur (jamais affiché) ;
+ * le viewer ne reçoit que des mots et des nombres tangibles. */
+EndgameReadout endgame_readout(const WorldProsperity *wp, const struct EndgameState *eg) {
+    EndgameReadout r; memset(&r, 0, sizeof r);
+    float fin = tune_f("ENTROPY_FIN", 50.f);
+    float entropy = wp ? wp->entropy : 0.f;
+    r.entropie = band_entropie(entropy, fin);
+    { float ratio = (fin > 0.f) ? entropy / fin : 0.f;
+      int pct = (int)(ratio * 100.f + 0.5f);
+      r.entropie_pct = (pct < 0) ? 0 : (pct > 100) ? 100 : pct; }
+    switch (r.entropie) {                       /* augure : muet si stable */
+        case ENT_FREMISSANTE: r.augure = tr(STR_AUGURE_ENTROPIE_0); break;
+        case ENT_INSTABLE:    r.augure = tr(STR_AUGURE_ENTROPIE_1); break;
+        case ENT_AU_BORD:     r.augure = tr(STR_AUGURE_ENTROPIE_2); break;
+        default:              r.augure = NULL;                      break;
+    }
+    r.fin = RFIN_AUCUNE; r.merv = RMERV_NONE;
+    r.epicenter_reg = wp ? wp->entropy_epicenter : -1;
+    r.sunken = NULL;
+    if (eg) {
+        switch (eg->fin) {                      /* FinType → miroir (même ordre) */
+            case FIN_EAU:       r.fin = RFIN_EAU;       break;
+            case FIN_FROID:     r.fin = RFIN_FROID;     break;
+            case FIN_RONCES:    r.fin = RFIN_RONCES;    break;
+            case FIN_ASCENSION: r.fin = RFIN_ASCENSION; break;
+            default:            r.fin = RFIN_AUCUNE;    break;
+        }
+        switch (eg->merv) {                     /* MervPhase → miroir (_DONE fond dans son palier) */
+            case MERV_FORGE: case MERV_FORGE_DONE:     r.merv = RMERV_FORGE;    break;
+            case MERV_SOCIETE: case MERV_SOCIETE_DONE: r.merv = RMERV_SOCIETE;  break;
+            case MERV_SAVOIR: case MERV_SAVOIR_DONE:   r.merv = RMERV_SAVOIR;   break;
+            case MERV_ASCENDED:                        r.merv = RMERV_ASCENDED; break;
+            default:                                   r.merv = RMERV_NONE;     break;
+        }
+        { int mp = (int)(eg->merv_progress * 100.f + 0.5f);
+          r.merv_progress_pct = (mp < 0) ? 0 : (mp > 100) ? 100 : mp; }
+        { int cp = (int)(eg->cold_offset * 100.f + 0.5f);   /* cold_offset borné [0,1] */
+          r.cold_pct = (cp < 0) ? 0 : (cp > 100) ? 100 : cp; }
+        { int tot = eg->n_sunken + eg->sink_pending;
+          r.sink_intensity = (tot > 0) ? (100 * eg->n_sunken / tot) : 0; }
+        if (eg->fired) r.epicenter_reg = eg->epicenter_reg;
+        if (eg->fin == FIN_EAU) r.sunken = eg->sunken;
+    }
+    return r;
+}
 
 /* ===================================================================== */
 /* ENVELOPPES SIM — lisent les sorties STOCKÉES, jamais scps_core         */
@@ -544,6 +636,7 @@ IncomeReadout province_income(const WorldEconomy *econ, int region) {
         r.line[r.n].source       = resource_name((Resource)best);
         r.line[r.n].per_day      = qty[best];         /* unités/jour (1 décimale à l'affichage) */
         r.line[r.n].manufactured = (best >= RES_PROD_FIRST);
+        r.line[r.n].good         = best;              /* l'indice Resource → sprite côté façade */
         r.n++;
     }
     return r;
@@ -643,6 +736,8 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     int   agit = metric_agitation(L_local, coercion, div_tension, recent_shock,
                                   country_stab, garrison);
     pr.agitation     = mk_metric(agit, label_agitation(band_agitation(agit)), hover_agitation());
+    pr.agitation_why = metric_agitation_breakdown(coercion, div_tension, yh,
+                                  garrison, agit, pr.agitation.word);
     pr.seuil_revolte = revolt_threshold_reached(agit);
 
     /* ── BÂTIMENTS — capacité CONSOMMÉE par la population : chaque âme occupe
@@ -678,6 +773,48 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
          * comptoir, atelier…) — lu de la ressource/géo, comme la vocation. */
         pr.specialisation = pr.vocation;
         pr.specialisation_hover = "Slot SPÉCIALISATION : ce que la province exploite ou raffine le mieux (mine, pêcheries, comptoir, atelier…).";
+    }
+
+    /* MODIFICATEURS PROVINCIAUX (slot réservé, multiple) — surfacer les effets diégétiques
+     * que le moteur DÉRIVE de l'état (cicatrice de révolte, terre d'abondance…). Le renderer
+     * ne lit que ces mots + le signe ; aucun flottant ne traverse. */
+    pr.n_mods = 0;
+    if (re) {
+        ProvModHit pm[PMOD_COUNT];
+        int npm = provmod_collect(re, pm, PMOD_COUNT);
+        for (int i = 0; i < npm && pr.n_mods < PROV_READOUT_MODS; i++) {
+            ProvinceMod *m = &pr.mods[pr.n_mods];
+            switch (pm[i].kind) {
+                case PMOD_CICATRICE:
+                    m->nom = tr(STR_PMOD_CICATRICE_NOM); m->effet = tr(STR_PMOD_CICATRICE_EFF);
+                    m->faveur = false; pr.n_mods++; break;
+                case PMOD_ABONDANCE:
+                    m->nom = tr(STR_PMOD_ABONDANCE_NOM); m->effet = tr(STR_PMOD_ABONDANCE_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_FERVEUR:
+                    m->nom = tr(STR_PMOD_FERVEUR_NOM); m->effet = tr(STR_PMOD_FERVEUR_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_RECONSTRUCTION:
+                    m->nom = tr(STR_PMOD_RECONSTRUCTION_NOM); m->effet = tr(STR_PMOD_RECONSTRUCTION_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_LIMON:
+                    m->nom = tr(STR_PMOD_LIMON_NOM); m->effet = tr(STR_PMOD_LIMON_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_GIBIER:
+                    m->nom = tr(STR_PMOD_GIBIER_NOM); m->effet = tr(STR_PMOD_GIBIER_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_HALIEUTIQUE:
+                    m->nom = tr(STR_PMOD_HALIEU_NOM); m->effet = tr(STR_PMOD_HALIEU_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_ADMIN:
+                    m->nom = tr(STR_PMOD_ADMIN_NOM); m->effet = tr(STR_PMOD_ADMIN_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_ANNEX_SCAR:
+                    m->nom = tr(STR_PMOD_ANNEX_NOM); m->effet = tr(STR_PMOD_ANNEX_EFF);
+                    m->faveur = false; pr.n_mods++; break;
+                default: break;
+            }
+        }
     }
     return pr;
 }
@@ -767,7 +904,7 @@ void tech_tree_readout(const TechState *ts, unsigned race_access, float populati
         bool open = ts && tech_can_research(ts, (TechId)i, race_access);
         nr->state    = done ? TREE_DONE : (open ? TREE_OPEN : TREE_LOCKED);
         /* orphelin = signature d'une AUTRE race dont l'empire n'a pas l'accès. */
-        nr->orphan   = (n->native!=RACE_COUNT) && !(race_access & tech_race_bit(n->native));
+        nr->orphan   = (n->native!=HERITAGE_COUNT) && !(race_access & tech_race_bit(n->native));
     }
 }
 

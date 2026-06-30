@@ -14,7 +14,7 @@
 #include <string.h>
 #include <math.h>
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 
 /* ── Surface d'équilibrage ──────────────────────────────────────────────── */
 #define NAVY_MIN_PRICE       0.5f     /* plancher de prix (même rôle que BUILD_MIN_PRICE) */
@@ -254,10 +254,11 @@ float navy_sea_days_regions(const World *w, int reg_a, int reg_b){
 }
 
 /* ── LA COLONISATION OUTRE-MER (mer §8) : on découvre ce que la volta touche ── */
-int navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days){
+int navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days, int skip_cid){
     (void)dt_days;
     int founded=0;
     for (int cid=0;cid<w->n_countries && cid<SCPS_MAX_COUNTRY;cid++){
+        if (cid==skip_cid) continue;   /* le JOUEUR essaime outre-mer à la main (gate IA-off, skip_cid=-1 ⇒ no-op chronique) */
         const Country *ct=&w->country[cid];
         if (ct->role!=POLITY_PLAYER && ct->role!=POLITY_ANTAGONIST) continue;
         Navy *n=&ns->n[cid];

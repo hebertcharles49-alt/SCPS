@@ -46,7 +46,10 @@ endif
 # SDL n'est requis QUE par le visualiseur (scps_viewer). Les bancs d'essai
 # headless (core_demo, scps_dump, …) se construisent sans SDL. La détection
 # est silencieuse : en l'absence de sdl2-config, SDL_* reste vide.
-SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
+# `-Dmain=SDL_main` est FILTRÉ : le sdl2-config MinGW l'émet, mais ce renommage
+# casse le `main` des outils headless (chronicle, bancs → undefined WinMain). Le
+# viewer, lui, n'en a pas besoin — SDL_main.h le fait déjà via #include <SDL.h>.
+SDL_CFLAGS := $(filter-out -Dmain=SDL_main,$(shell sdl2-config --cflags 2>/dev/null))
 SDL_LIBS   := $(shell sdl2-config --libs   2>/dev/null)
 
 ifeq ($(WIN),1)
@@ -97,7 +100,7 @@ monde_reel: $(MONDE_REEL_OBJS)
 # Prouve le test décisif « Tenue · Contrainte » et la couverture du lexique.
 READOUT_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                      $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_culture.o \
-                     $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_tech.o \
+                     $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_tune.o \
                      $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_readout_demo.o
 readout_demo: $(READOUT_DEMO_OBJS)
 	$(CC) $(READOUT_DEMO_OBJS) -o $@ -lm
@@ -123,11 +126,11 @@ SCPS_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
              $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
              $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_diplo.o \
              $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_statecraft.o \
-             $(OBJDIR)/scps_scps_agency.o $(OBJDIR)/scps_scps_events.o \
+             $(OBJDIR)/scps_scps_agency.o $(OBJDIR)/scps_scps_events.o $(OBJDIR)/scps_scps_provlog.o \
              $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o \
              $(OBJDIR)/scps_scps_modifier.o $(OBJDIR)/scps_scps_revolt.o $(OBJDIR)/scps_scps_missions.o $(OBJDIR)/scps_scps_intertrade.o \
              $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o \
-             $(OBJDIR)/scps_scps_navy.o \
+             $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o \
              $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_crypt.o \
              $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/tp_miniz.o \
              $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_stbiw.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_viewer.o
@@ -275,7 +278,7 @@ faith_demo: $(FAITH_DEMO_OBJS)
 FACTIONS_DEMO_OBJS := $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o \
                       $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_core.o \
                       $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_culture.o \
-                      $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_tech.o \
+                      $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_tune.o \
                       $(OBJDIR)/scps_factions_demo.o
 factions_demo: $(FACTIONS_DEMO_OBJS)
 	$(CC) $(FACTIONS_DEMO_OBJS) -o $@ -lm
@@ -312,6 +315,20 @@ WARHOST_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
 warhost_demo: $(WARHOST_DEMO_OBJS)
 	$(CC) $(WARHOST_DEMO_OBJS) -o $@ -lm
 
+# ---- navy_demo : LA FLOTTE (rade · chantier · emport · conversion · invariants save_sane) ----
+NAVY_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+                  $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_trade.o \
+                  $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
+                  $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
+                  $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_species.o \
+                  $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
+                  $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_labor.o \
+                  $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
+                  $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_campaign.o \
+                  $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_navy_demo.o
+navy_demo: $(NAVY_DEMO_OBJS)
+	$(CC) $(NAVY_DEMO_OBJS) -o $@ -lm
+
 # ---- La campagne : les armées sur la carte (marche, siège, bataille) -------
 # Pose les primitives combat-dans-le-temps (déplacement/siège/bataille/doctrine)
 # sur une vraie carte ; non-invasif (lecture seule sur econ).
@@ -345,6 +362,7 @@ AI_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_readout.o $(OBJD
                 $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
                 $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_agency.o \
                 $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_intertrade.o \
+                $(OBJDIR)/scps_scps_statecraft.o \
                 $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_ai_demo.o
 ai_demo: $(AI_DEMO_OBJS)
 	$(CC) $(AI_DEMO_OBJS) -o $@ -lm
@@ -369,12 +387,13 @@ CHRONICLE_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDI
                   $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_species.o \
                   $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
                   $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_agency.o \
-                  $(OBJDIR)/scps_scps_events.o $(OBJDIR)/scps_scps_demography.o \
+                  $(OBJDIR)/scps_scps_events.o $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_demography.o \
                   $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_modifier.o \
                   $(OBJDIR)/scps_scps_revolt.o $(OBJDIR)/scps_scps_army.o \
                   $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o $(OBJDIR)/scps_scps_missions.o \
-                  $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/tp_miniz.o \
-                  $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_chronicle.o
+                  $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o $(OBJDIR)/tp_miniz.o \
+                  $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o \
+                  $(OBJDIR)/scps_scps_sim.o $(OBJDIR)/scps_chronicle.o
 chronicle: $(CHRONICLE_OBJS)
 	$(CC) $(CHRONICLE_OBJS) -o $@ -lm $(OMPFLAG)
 
@@ -387,6 +406,28 @@ audit_eco: $(AUDIT_OBJS)
 audit: audit_eco
 	./audit_eco 7 10
 .PHONY: audit
+
+# ---- scps_api_demo : le banc de la FAÇADE C (scps_api) -----------------------
+# scps_api est la surface de binding pour un hôte natif (Godot/GDExtension) : le
+# moteur reste 100 % C, l'hôte affiche/saisit. Ce banc prouve génération + rendu
+# (render_map) + couches + avancement + REPRODUCTIBILITÉ, sans Godot. Lie le
+# moteur complet + scps_render. (Le binding C++ Godot vit dans godot/, à part.)
+API_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS)) \
+                 $(OBJDIR)/scps_scps_render.o $(OBJDIR)/scps_scps_api.o $(OBJDIR)/scps_scps_api_demo.o
+scps_api_demo: $(API_DEMO_OBJS)
+	$(CC) $(API_DEMO_OBJS) -o $@ -lm $(OMPFLAG)
+
+# ---- fx-proof : PREUVE VISUELLE headless des animations FX (hors test) -------
+# Composite les 4 planches FX (mer/côte/armée/vortex) sur un terrain render_map
+# RÉEL via un renderer LOGICIEL → fx_proof.png. Aucun affichage requis (driver
+# vidéo « dummy »). Requiert SDL2 (comme le viewer). Outil de vérif, pas un banc.
+FX_PROOF_SRCS := $(patsubst $(OBJDIR)/scps_%.o,scps/%.c,\
+                   $(filter-out $(OBJDIR)/tp_miniz.o $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS))) \
+                 scps/scps_render.c
+fx-proof:
+	@test -n "$(HAVE_SDL)" || { echo "SDL2 introuvable : installer libsdl2-dev"; exit 1; }
+	$(CC) -O2 -std=c99 -Iscps -Ithird_party $(SDL_CFLAGS) tools/fx_proof.c $(FX_PROOF_SRCS) -o fx_proof $(SDL_LIBS) -lm
+.PHONY: fx-proof
 
 # ---- Banc audio : le mixeur procédural sort du son (build §9.6) -----------
 AUDIO_DEMO_OBJS := $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_audio_demo.o
@@ -419,6 +460,57 @@ determinism: chronicle
 	   echo "  run B :"; printf '%s\n' "$$B"; exit 1; \
 	 fi
 .PHONY: determinism
+
+# ---- make determinism-deep : le déterminisme sur des SIÈCLES (nightly, pas pre-commit) ----
+# Le gate à 12 ans (ci-dessus) n'exerce JAMAIS l'endgame §27 (ENDGAME_YEAR_OPEN=180), le clamp
+# anti-emballement crédit (tardif), ni les mutations de carte (cataclysm_sink_region / rebiome) —
+# exactement les siècles où vit une partie joueur. On rejoue 2 graines × DEEP_YEARS ans DEUX FOIS
+# et on exige A==B (self-cohérence longue ; complète le golden 12 ans).
+DEEP_YEARS ?= 200
+determinism-deep: chronicle
+	@ok=1; for s in 7 9; do \
+	   A=$$(./chronicle --hash $$s 2 $(DEEP_YEARS) 2>/dev/null | grep '^HASH'); \
+	   B=$$(./chronicle --hash $$s 2 $(DEEP_YEARS) 2>/dev/null | grep '^HASH'); \
+	   if [ -n "$$A" ] && [ "$$A" = "$$B" ]; then echo "deep graine $$s : STABLE ($(DEEP_YEARS) ans)"; \
+	   else echo "deep graine $$s : DIVERGE —"; printf 'A:\n%s\nB:\n%s\n' "$$A" "$$B"; ok=0; fi; \
+	 done; [ $$ok -eq 1 ] || { echo "determinism-deep ÉCHEC"; exit 1; }
+.PHONY: determinism-deep
+
+# ---- make golden : NON-RÉGRESSION du monde (le hash comme CONTRAT public) --
+# `determinism` ci-dessus prouve la SELF-COHÉRENCE (A==B sur le MÊME binaire) — il reste VERT
+# si un changement DÉCALE le monde, tant que les deux runs du nouveau binaire concordent. Or
+# « monde reproductible » (graines partageables, replays, compat-save) repose sur le hash comme
+# CONTRAT. `golden` diffe la sortie courante CONTRE un golden COMMITÉ (scps/golden_hashes.txt) :
+# une re-baseline DÉLIBÉRÉE devient un diff d'UNE LIGNE, revu (puis `make golden-update`), au
+# lieu d'un glissement silencieux. (Le golden suit DET_YEARS=12 ; le long-run est un gate à part.)
+golden: chronicle
+	@CUR=$$(./chronicle --hash 7 5 $(DET_YEARS) 2>/dev/null | grep '^HASH'); \
+	 GOLD=$$(cat scps/golden_hashes.txt 2>/dev/null); \
+	 if [ -n "$$CUR" ] && [ "$$CUR" = "$$GOLD" ]; then \
+	   echo "golden OK : hash monde IDENTIQUE au golden commité (5 graines × $(DET_YEARS) ans)"; \
+	 else \
+	   echo "golden ÉCHEC : le hash monde a CHANGÉ vs scps/golden_hashes.txt —"; \
+	   echo "  re-baseline DÉLIBÉRÉE ? → revoir le diff ci-dessous, puis : make golden-update"; \
+	   printf '  golden :\n%s\n  actuel :\n%s\n' "$$GOLD" "$$CUR"; exit 1; \
+	 fi
+.PHONY: golden
+
+# Re-baseline ASSUMÉE : régénère le golden (à committer, le diff étant revu — le pendant outillé
+# des notes « ⚠ RE-BASELINE » faites à la main).
+golden-update: chronicle
+	@./chronicle --hash 7 5 $(DET_YEARS) 2>/dev/null | grep '^HASH' > scps/golden_hashes.txt
+	@echo "golden RE-BASELINÉ : scps/golden_hashes.txt mis à jour (à committer, diff revu)."
+.PHONY: golden-update
+
+# ---- make fuzz-save : DURCISSEMENT du save (audit P0-1, bonus) ------------
+# (1) forge chaque COMPTEUR désérialisé hors-borne → save_sane DOIT rejeter (le vecteur d'écriture
+# hors-bornes) ; (2) fuzz d'octets du fichier → game_load ne plante JAMAIS. Headless via SDL dummy.
+# HORS `make test` : le viewer a besoin de SDL ; les bancs, non. (~50 s ; idéal sous un build ASan.)
+fuzz-save: scps_viewer
+	@out=$$(SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./scps_viewer --fuzztest 9 2>&1); rc=$$?; \
+	 printf '%s\n' "$$out" | grep -E "BILAN|✗|flippés"; \
+	 if [ $$rc -eq 0 ]; then echo "fuzz-save OK"; else echo "fuzz-save ÉCHEC (rc=$$rc)"; exit 1; fi
+.PHONY: fuzz-save
 
 # ---- Diagnostic mémoire : chronicle sous AddressSanitizer + UBSan ---------
 # Compile les sources d'un bloc AVEC les sanitizers (compile + link ensemble),
@@ -456,7 +548,7 @@ EVENTS_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJ
                     $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
                     $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
-                    $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_events.o \
+                    $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_events.o $(OBJDIR)/scps_scps_provlog.o \
                     $(OBJDIR)/scps_events_demo.o
 events_demo: $(EVENTS_DEMO_OBJS)
 	$(CC) $(EVENTS_DEMO_OBJS) -o $@ -lm
@@ -470,7 +562,7 @@ STRUCTURAL_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_demograp
                     $(OBJDIR)/scps_scps_species.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
                     $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_agency.o \
-                    $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_events.o \
+                    $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_events.o $(OBJDIR)/scps_scps_provlog.o \
                     $(OBJDIR)/scps_structural_demo.o
 structural_demo: $(STRUCTURAL_DEMO_OBJS)
 	$(CC) $(STRUCTURAL_DEMO_OBJS) -o $@ -lm
@@ -548,11 +640,36 @@ SOCIAL_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_demography.o
 social_demo: $(SOCIAL_DEMO_OBJS)
 	$(CC) $(SOCIAL_DEMO_OBJS) -o $@ -lm
 
+# ---- Capstone §27 : Entropie mondiale + 4 fins + Merveille ----------------
+# Banc auto-vérifiant du cataclysme (contrôles C0-C6). N'a besoin que des
+# briques moteur traversées par scps_endgame (econ/prosperity/tech/routes/navy/diplo).
+ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+                     $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
+                     $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
+                     $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
+                     $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_species.o \
+                     $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
+                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_navy.o \
+                     $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_campaign.o \
+                     $(OBJDIR)/scps_scps_endgame.o $(OBJDIR)/scps_endgame_demo.o
+endgame_demo: $(ENDGAME_DEMO_OBJS)
+	$(CC) $(ENDGAME_DEMO_OBJS) -o $@ -lm
+
+# Tous les binaires de bancs (MIROIR de run_tests.sh — à garder synchrone) +
+# les legacy + les outils + les variantes .exe (MSYS2/Windows) et _asan.
+BENCH_BINS := core_demo monde_reel readout_demo species_demo tech_demo faith_demo \
+  intertrade_demo routes_demo save_io_demo statecraft_demo pop_demo army_demo \
+  demography_demo demography_integ_demo revolt_demo social_demo agency_demo \
+  campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \
+  econ_production_demo labor_demo missions_demo ai_demo diplo_demo warhost_demo \
+  events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
+  endgame_demo audit_eco lang_demo scps_api_demo audio_demo econ_demo culture_demo navy_demo
+TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan fx_proof
+
 clean:
-	rm -rf $(OBJDIR) scps_viewer scps_viewer.exe scps_dump scps_batch econ_demo \
-	       tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo core_demo monde_reel readout_demo species_demo \
-	       chronicle chronicle_asan econ_scan \
-	       out_*.ppm montage.bmp
+	rm -rf $(OBJDIR) $(BENCH_BINS) $(TOOL_BINS) \
+	       $(addsuffix .exe,$(BENCH_BINS) $(TOOL_BINS)) \
+	       out_*.ppm montage.bmp fx_proof.png
 
 .PHONY: all scps run_scps clean core_demo monde_reel readout_demo lang_demo species_demo scps_dump scps_batch asan \
         econ_demo tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo
@@ -617,8 +734,25 @@ calibrate-smoke: chronicle
 .PHONY: calibrate-smoke
 
 # ---- make test : tous les bancs non-SDL (Arc K3.3) ; rc≠0 si un rouge ----
-# membrane-check est en DÉPENDANCE : la cloison readout→renderer est gardée
-# AVANT les bancs, et son rc≠0 stoppe `make test` (propagation native).
-test: membrane-check
-	@bash tools/run_tests.sh
+# membrane-check ET lang-check sont en DÉPENDANCE : les deux cliquets (cloison
+# readout→renderer, ratchet de localisation) sont gardés AVANT les bancs, et
+# leur rc≠0 stoppe `make test` (propagation native).
+test: membrane-check lang-check
+	@bash tools/run_tests.sh full
 .PHONY: test
+
+# ---- make smoke : feedback RAPIDE (la colonne vertébrale en quelques secondes) ----
+# Les deux cliquets + un sous-ensemble de bancs (worldgen/éco/IA + bornes audit &
+# langue). Pour la boucle serrée du dev ; le gardien COMPLET reste `make test`.
+smoke: membrane-check lang-check
+	@bash tools/run_tests.sh smoke
+.PHONY: smoke
+
+# ---- make full-test : LE GARDIEN LOURD (porte avant un push moteur) ----
+# La suite COMPLÈTE, puis le juge de paix du déterminisme, puis ASan+UBSan muets
+# sur un run court. Tout ce qui doit être vert avant de toucher au cœur.
+full-test: test determinism golden asan
+	@echo "── full-test : ASan+UBSan sur un run court (doit rester muet) ──"
+	@./chronicle_asan 7 1 20 6 12 >/dev/null
+	@echo "full-test OK : bancs + déterminisme + ASan/UBSan tous verts"
+.PHONY: full-test

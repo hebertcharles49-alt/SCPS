@@ -121,6 +121,9 @@ int   labor_region_cap_tier(int region);
 /* E0.3 — LE SOLDE DE L'ARMÉE (lecture) : coût/jour des enrôlés — 0.5 or + 1
  * nourriture (ration de campagne, EN SUS de la bouche universelle) par 100. */
 void  labor_army_upkeep(const LaborEcon *e, long *gold_j, long *food_j);
+/* Solde d'entretien par PAQUET de 100 (uniforme) — pour l'UI de construction.
+ * gold_x10 = or/100/jour ×10 (½ or → 5) ; food = ration/100/jour. */
+void  labor_upkeep_per100(int *gold_x10, int *food);
 /* Indice de prospérité [0..10] que l'économie PRODUIT (sécurité alimentaire +
  * revenu et matériaux par tête). Se projette sur la métrique Prospérité 0-100
  * (la même que voit le joueur) — le pont avec la membrane/les métriques. */

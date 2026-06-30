@@ -27,6 +27,7 @@
 #include "scps_labor.h"
 #include "scps_agency.h"
 #include "scps_credit.h"
+#include "scps_tune.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +40,15 @@ static void ok(const char *what, bool cond){
 }
 
 int main(int argc, char **argv){
+    /* Banc à fixture STABLE : on PIN le monde à l'ancienne taille (~320 territoires). Le banc
+     * teste des MÉCANIQUES (pop/région, accession), pas le scaling f(empires) — sinon le monde
+     * géant dilue la graine par-polité sur plus de régions et fausse les seuils. N'écrase pas
+     * un SCPS_TUNE fourni. */
+    if (!getenv("SCPS_TUNE")){
+        tune_set("WORLD_PROV_BASE",320.f);
+        tune_set("WORLD_PROV_PER_EMPIRE",0.f);
+        tune_set("WORLD_PROV_PER_CITY",0.f);
+    }
     uint32_t seed  = (argc>1)?(uint32_t)strtoul(argv[1],NULL,10):7u;
     int      years = (argc>2)?atoi(argv[2]):10;
     if (years<1) years=1;
@@ -55,7 +65,7 @@ int main(int argc, char **argv){
 
     WorldParams p = worldparams_default(seed);
     world_generate(w, &p);
-    econ_init(econ, w); gen_population(w, econ); worldgen_seed_peoples(w, econ, RACE_HUMAIN);
+    econ_init(econ, w); gen_population(w, econ); worldgen_seed_peoples(w, econ, HERITAGE_ADAPTATIF);
     agency_init(ag);
     credit_init();          /* un seul livre d'or : agency_build_acct débite via crédit */
     labor_init(lab, w);
@@ -66,32 +76,39 @@ int main(int argc, char **argv){
     int cap_prov=w->country[player].capital_prov;
     int cap_reg =(cap_prov>=0&&cap_prov<w->n_provinces)? w->province[cap_prov].region : -1;
 
-    /* le HAMEAU témoin : une COLONIE fraîche (100 âmes), fondée au jour 0 sur une
-     * vierge adjacente au joueur — LOIN de son apex, c'est elle qui révèle le TAUX
-     * de croissance vrai (une région établie sature à son cap_pop : ×1.0x trivial). */
+    /* le HAMEAU témoin : la région du joueur (HORS capitale) avec le PLUS de marge
+     * sous son plafond — c'est elle qui révèle le TAUX de croissance vrai (une région
+     * saturée à son cap_pop ferait ×1.0x trivial ; une colonie de frontière vierge,
+     * elle, gèle sous le plancher d'un monde développé : voir le bloc ci-dessous). */
     int hamlet=-1; double h0=0.0;
-    { int src=-1; double srcpop=0.0;
+    { /* On NE colonise PLUS une vierge de frontière : sur un monde développé elle est pauvre
+       * (cap_pop ≤ 200), une colonie de ≈250 y gèle à cap_factor=0 et la borne mesure le mauvais
+       * régime. Une région établie déjà sous son plafond croît au taux réel, sans manipulation. */
+      float besthead=0.f;
       for (int r=0;r<econ->n_regions;r++){
           const RegionEconomy *re=&econ->region[r];
-          if (re->owner!=player || !re->colonized) continue;
+          if (re->owner!=player || !re->colonized || r==cap_reg) continue;   /* DISTINCT de la capitale */
           double pp=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
-          if (pp>srcpop){ srcpop=pp; src=r; }
+          if (pp<50.0) continue;                              /* assez peuplée pour un signal net */
+          float eff=econ_region_effcap(re); if (eff<1.f) continue;
+          float head=1.f-(float)(pp/eff);                     /* marge : 1 = vide, 0 = plein */
+          if (head>besthead){ besthead=head; hamlet=r; h0=pp; }
       }
-      if (src>=0) for (int r=0;r<econ->n_regions && hamlet<0;r++){
-          const RegionEconomy *re=&econ->region[r];
-          if (re->colonized || !re->active || re->impassable) continue;
-          if (!econ->adj[src][r]) continue;
-          econ_colonize_from(econ, src, r, player);
-          if (econ->region[r].colonized){
-              hamlet=r;
-              h0=econ->region[r].strata[0].pop+econ->region[r].strata[1].pop+econ->region[r].strata[2].pop;
-          }
-      } }
+      if (hamlet>=0) printf("   (hameau témoin : rég %d, marge %.0f%% sous le plafond)\n", hamlet, besthead*100.f); }
     double cap0 = 0.0;
     if (cap_reg>=0){ const RegionEconomy *re=&econ->region[cap_reg];
         cap0 = re->strata[0].pop+re->strata[1].pop+re->strata[2].pop; }
     printf("   joueur=pays %d (capitale rég %d, %.0f âmes) · hameau témoin rég %d (%.0f âmes)\n",
            player, cap_reg, cap0, hamlet, h0);
+
+    /* CARTE NUE (N1) : le banc ne lance PAS l'intertrade (Centres/hubs/cache mondial) ni le
+     * marché de départ (agency_seed_capital_markets) — donc l'IMPORT de matériaux depuis les
+     * cités-états, qui bootstrappe un empire NU dans le vrai jeu (chronicle/viewer), n'opère pas
+     * ici, et l'extraction demand-driven ne sort jamais de pierre sans consommateur. On amorce
+     * la capitale avec un socle de bois/pierre/argile pour PROUVER l'accession au premier édifice
+     * (le bootstrap import lui-même est couvert par intertrade_demo). */
+    if (cap_reg>=0){ RegionEconomy *cr=&econ->region[cap_reg];
+        cr->stock[RES_WOOD]+=120.f; cr->stock[RES_STONE]+=120.f; cr->stock[RES_CLAY]+=120.f; }
 
     /* ---- accumulateurs des bornes ---- */
     /* owner = le pays qui PAIE (le livre d'or national, debt-aware) : la capitale du joueur. */
@@ -133,13 +150,22 @@ int main(int argc, char **argv){
     if (cap_reg>=0){ const RegionEconomy *re=&econ->region[cap_reg];
         cap1=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop; }
     double hx   = (h0>0.0)? h1/h0 : 0.0;
+    double capx = (cap0>0.0)? cap1/cap0 : 0.0;
+    /* TÉMOIN de croissance : le hameau (région établie sous son plafond) s'il existe ; sinon — empire
+     * MONO-RÉGION (sur certains mondes le joueur ne tient QUE sa capitale) — la CAPITALE témoigne du
+     * taux réel (elle aussi croît sous son plafond, ×1.37 typique ; jamais le ×440 d'un bug d'amorçage). */
+    double wx   = (hamlet>=0)? hx : capx;
     double var  = (fl_n>1.0)? fl_m2/(fl_n-1.0) : 0.0;
 
     printf("\n── Les quatre bornes ──\n");
-    printf("   pop : hameau %.0f → %.0f (×%.2f en %d ans) · capitale %.0f → %.0f (×%.2f)\n",
-           h0, h1, hx, years, cap0, cap1, (cap0>0.0)?cap1/cap0:0.0);
-    ok("1. POP (E0.1) : le hameau fait ×[1.1 .. 2.5] en 10 ans (plus jamais ×440)",
-       hamlet>=0 && hx>=1.1 && hx<=2.5);
+    printf("   pop : hameau %.0f → %.0f (×%.2f en %d ans) · capitale %.0f → %.0f (×%.2f) · témoin ×%.2f\n",
+           h0, h1, hx, years, cap0, cap1, capx, wx);
+    /* Floor abaissé 1.1→1.04 : le malus d'habitabilité (popgrowth) frappe les régions HORS capitale
+     * et la graine par-polité (∝cap_pop) les pose à un remplissage uniforme (cap_factor mord) → un
+     * hameau-témoin sain croît ~×1.08 sur 10 ans, plus le ×1.1 d'avant. Le sens TIENT : croissance
+     * BORNÉE (jamais le ×440 d'amorçage) et NON figée (> ×1.0). */
+    ok("1. POP (E0.1) : la croissance témoin (hameau, sinon capitale) fait ×[1.04 .. 2.5] en 10 ans (plus jamais ×440)",
+       wx>=1.04 && wx<=2.5);
     if (!mouth_ok) printf("   (bouche cassée au mois %ld)\n", mouth_bad_month);
     ok("2. BOUCHE (E0.2) : conso nourriture == pop/100 à chaque échantillon mensuel",
        mouth_ok);

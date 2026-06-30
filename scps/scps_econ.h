@@ -38,6 +38,7 @@
 #include "scps_culture.h"   /* PopCulture embarque les traits dérivés (Ethos, …) */
 #include "scps_species.h"   /* couche biologique : race + traits (leviers) */
 #include "scps_tech.h"      /* TechState : §B1 abonde prod_mult par les techs de production */
+#include "scps_tune.h"      /* tune_f : lu par les modificateurs provinciaux (inline ci-dessous) */
 
 /* §C — L'INTERRUPTEUR de l'inflation monétaire. 1 = active ; 0 = RETIRE tout effet
  * (l'IPM reste à 1.0, le multiplieur de prix est l'identité — la variable est gardée
@@ -235,6 +236,17 @@ typedef struct {
     /* Cicatrice de révolte [0..1] : une province récemment soulevée se développe
      * MAL (−50 % de croissance ET de production) ; décroît sur quelques années. */
     float      revolt_scar;
+    /* FAVEURS provinciales À ÉTAT (modificateurs diégétiques, lot 2) — [0..1], décroissent
+     * chaque tick. ferveur = l'élan d'une colonie fraîchement fondée (semée à la colonisation) ;
+     * reconstruction = la renaissance d'après-choc (amorcée par une cicatrice PROFONDE, elle
+     * OUTLASTE la plaie → la reprise suit la paix). Routées par l'entrée DÉMO (provmod_collect). */
+    float      ferveur;
+    float      reconstruction;
+    /* CICATRICE D'ANNEXION [0..1] (pipeline diplo, étage 3d) : une province ANNEXÉE par voie
+     * de vassalité porte une plaie DOUCE — frappe la STABILITÉ (satisfaction/légitimité), PAS
+     * la croissance (distincte de revolt_scar) — qui décroît sur ~5 ans. L'intégration la
+     * RABAISSE → la voie patiente paie. Surfacée dans le slot MODIFICATEURS (fléau décroissant). */
+    float      annex_scar;
     /* Anti-saccage (§4 guerre) : une province DÉPOUILLÉE ne peut l'être à nouveau
      * avant ~5 ans (plus rien à prendre) — compteur en années, décroît chaque tick. */
     float      pillage_cd;
@@ -253,6 +265,8 @@ typedef struct {
     int16_t    owner;                /* pays qui contrôle la région (-1 = vierge) */
     bool       coastal;              /* une province au moins touche la mer (posé à econ_init) */
     bool       estuary;              /* une EMBOUCHURE vit ici (mer ∩ gros fleuve) — l'entrepôt naturel */
+    bool       is_capital;           /* région-SIÈGE (porte la capitale d'un empire/cité) — EXEMPTE du malus d'habitabilité (la province de départ) */
+    uint8_t    prov_geo;             /* dons GÉO sélectifs (drapeaux PROVF_*, posés à econ_init) : gibier/halieutique */
     /* LA COURSE (coques §4) : balafre côtière et immunité au raid. */
     float      balafre_days;         /* > 0 : côte balafrée (production entaillée ~1 an) */
     float      raid_cd_days;         /* > 0 : immunisée (~5 ans — on ne trait pas la même vache) */
@@ -281,6 +295,114 @@ typedef struct {
 /* Initialise pops, capacités d'extraction et manufactures à partir de la
  * géographie/ressources du monde déjà généré. */
 void econ_init(WorldEconomy *e, const World *w);
+/* (Re)construit l'adjacence de régions (terre 4-connexe, barrières = infranchissable).
+ * Appelée par econ_init ; exposée pour le recalcul du capstone §27 (carve eau/ronces). */
+void econ_build_adjacency(WorldEconomy *e, const World *w);
+/* Capstone §27 FROID : re-dérive la fertilité vivrière (raw_cap[RES_GRAIN]) de
+ * l'habitabilité COURANTE (carte refroidie) → la famine émerge sous le gel. */
+void econ_cold_refresh(WorldEconomy *e, const World *w);
+
+/* ---- MODIFICATEURS PROVINCIAUX (diégétiques) -------------------------- *
+ * Un effet NOMMÉ, DÉRIVÉ de l'état réel de la région (remplissage, nourriture,
+ * cicatrice) — PAS un champ stocké : recalculé à chaque lecture (le moteur ET la
+ * membrane appellent la même fonction), donc AUCUN bump de save. L'effet passe par
+ * une ENTRÉE moteur (la démographie de la croissance), jamais un bonus plat sur la
+ * sortie ; le readout le traduit en mots. Les modificateurs À ÉTAT (ferveur fondatrice,
+ * reconstruction) viendront avec un champ sérialisé (et son bump). */
+/* Dons géo sélectifs (RegionEconomy.prov_geo), posés à econ_init (tirage déterministe). */
+#define PROVF_GIBIER       0x01u   /* ~1/3 des régions boisées : gibier abondant */
+#define PROVF_HALIEUTIQUE  0x02u   /* ~1/3 des régions côtières : manne halieutique */
+typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE,
+               PMOD_FERVEUR, PMOD_RECONSTRUCTION, PMOD_LIMON,
+               PMOD_GIBIER, PMOD_HALIEUTIQUE, PMOD_ADMIN,
+               PMOD_ANNEX_SCAR, PMOD_COUNT } ProvModKind;
+typedef struct {
+    uint8_t kind;        /* ProvModKind */
+    float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
+    float   demo_bonus;  /* delta ajouté à l'entrée DÉMOGRAPHIE de la croissance (0 = fléau, pur affichage) */
+} ProvModHit;
+/* eff_cap d'une région (Q6 : ½·cap_pop + logements bâtis plafonnés + grenier). INLINE :
+ * partagée par le moteur (croissance) ET la membrane (readout) sans dépendance de LIEN
+ * (les bancs readout/factions ne tirent pas scps_econ.o). Pure, sans libc-math. */
+static inline float econ_region_effcap(const RegionEconomy *re){
+    float house_manuf = tune_f("HOUSE_MANUF", 100.f);
+    float manuf_h = 0.f;
+    for (int bi = 0; bi < re->n_bld; bi++) manuf_h += re->bld[bi].level;
+    float cap_half = re->cap_pop * 0.5f;
+    float housed = manuf_h * house_manuf; if (housed > cap_half) housed = cap_half;
+    return cap_half + housed + re->build.food_cap * 250.f;
+}
+/* Collecte les modificateurs provinciaux ACTIFS, DÉRIVÉS de l'état (aucun champ stocké). */
+static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int max){
+    int n = 0;
+    float scar = re->revolt_scar; if (scar < 0.f) scar = 0.f; else if (scar > 1.f) scar = 1.f;
+    /* FLÉAU — la cicatrice (mécanique −50 % appliquée AILLEURS ; ici on la SURFACE, demo_bonus=0). */
+    if (scar > 0.05f && n < max){ out[n].kind = PMOD_CICATRICE; out[n].intensity = scar; out[n].demo_bonus = 0.f; n++; }
+    /* FLÉAU — CICATRICE D'ANNEXION (étage 3d) : plaie douce de STABILITÉ (appliquée à la
+     * satisfaction AILLEURS), surfacée ici (demo_bonus=0 — n'entre pas dans la croissance). */
+    { float as = re->annex_scar; if (as<0.f) as=0.f; else if (as>1.f) as=1.f;
+      if (as > 0.05f && n < max){ out[n].kind = PMOD_ANNEX_SCAR; out[n].intensity = as; out[n].demo_bonus = 0.f; n++; } }
+    /* FAVEUR — TERRE D'ABONDANCE : sous-peuplée + nourrie + en paix → +natalité (entrée DÉMO). */
+    float eff = econ_region_effcap(re);
+    if (eff > 1.f && n < max){
+        float pop = 0.f; for (int c = 0; c < CLASS_COUNT; c++) pop += re->strata[c].pop;
+        float ref   = tune_f("PROVMOD_ABOND_REF", 0.45f);
+        float fill  = pop / eff;
+        float under = (ref > fill) ? (ref - fill) : 0.f;
+        float denom = (ref > 1e-3f) ? ref : 1e-3f;
+        float inten = (under / denom) * re->food_sat * (1.f - scar);
+        if (inten > 0.02f){
+            if (inten > 1.f) inten = 1.f;
+            out[n].kind = PMOD_ABONDANCE; out[n].intensity = inten;
+            out[n].demo_bonus = tune_f("PROVMOD_ABOND_K", 2.0f) * under * re->food_sat * (1.f - scar);
+            n++;
+        }
+    }
+    /* FAVEUR — FERVEUR FONDATRICE : une colonie/jeune nation fraîchement fondée croît avec élan. */
+    if (re->ferveur > 0.02f && n < max){
+        float f = re->ferveur > 1.f ? 1.f : re->ferveur;
+        out[n].kind = PMOD_FERVEUR; out[n].intensity = f;
+        out[n].demo_bonus = tune_f("PROVMOD_FERVEUR_K", 0.5f) * f;
+        n++;
+    }
+    /* FAVEUR — RECONSTRUCTION : la renaissance d'après-choc. Amorcée par une cicatrice profonde,
+     * elle CULMINE à mesure que la plaie se referme (recon·(1−scar)) → la reprise SUIT la paix. */
+    {
+        float recon = re->reconstruction * (1.f - scar);
+        if (recon > 0.02f && n < max){
+            out[n].kind = PMOD_RECONSTRUCTION; out[n].intensity = recon > 1.f ? 1.f : recon;
+            out[n].demo_bonus = tune_f("PROVMOD_RECON_K", 0.6f) * recon;
+            n++;
+        }
+    }
+    /* FAVEUR — LIMON FERTILE : une embouchure (delta, mer ∩ grand fleuve) nourrit une natalité dense. */
+    if (re->estuary && n < max){
+        out[n].kind = PMOD_LIMON; out[n].intensity = 1.f;
+        out[n].demo_bonus = tune_f("PROVMOD_LIMON_K", 0.15f);
+        n++;
+    }
+    /* FAVEUR — GIBIER ABONDANT : une terre boisée giboyeuse, bien nourrie, soutient plus de bouches. */
+    if ((re->prov_geo & PROVF_GIBIER) && n < max){
+        out[n].kind = PMOD_GIBIER; out[n].intensity = 1.f;
+        out[n].demo_bonus = tune_f("PROVMOD_GIBIER_K", 0.10f);
+        n++;
+    }
+    /* FAVEUR — MANNE HALIEUTIQUE : une côte poissonneuse nourrit une population dense. */
+    if ((re->prov_geo & PROVF_HALIEUTIQUE) && n < max){
+        out[n].kind = PMOD_HALIEUTIQUE; out[n].intensity = 1.f;
+        out[n].demo_bonus = tune_f("PROVMOD_HALIEU_K", 0.10f);
+        n++;
+    }
+    /* FAVEUR — BONNE ADMINISTRATION : des institutions solides (K bâti) tiennent l'ordre et les
+     * services → les familles prospèrent. Le pendant DÉMO du levier K (« admin efficace → dévelop. »). */
+    if (re->build.K_inst > 1.5f && n < max){
+        float k = re->build.K_inst - 1.5f; if (k > 4.f) k = 4.f;   /* k ∈ [0,4] → k/4 ∈ [0,1] (clamp manuel, en-tête sans math.h) */
+        out[n].kind = PMOD_ADMIN; out[n].intensity = k/4.f;
+        out[n].demo_bonus = tune_f("PROVMOD_ADMIN_K", 0.06f) * k;
+        n++;
+    }
+    return n;
+}
 
 /* Avance la simulation d'un pas. dt = années/tick (1 en annuel, 1/12 en mensuel) :
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
@@ -336,6 +458,26 @@ float econ_tax_tolerance(Ethos e, SocialClass c);
  * une minorité d'une autre SPHÈRE réclame ses variantes ; l'assimilation efface
  * la pénalité. 0 si la province est homogène. Frappe la satisfaction SOCIALE. */
 float econ_off_culture_fraction(const ProvincePop *pp);
+
+/* ── PIPELINE IA — PRÉVISION (étage 1) : ce que l'IA LIT pour voir le mur venir ──
+ * Forecast par PAYS et par flux, DÉRIVÉ des seules coordonnées du moteur (pop, raw_cap,
+ * demande, offre, stock, eff_cap, needs_met). Recalculé au tick, JAMAIS sérialisé.
+ *   runway[g]        : années avant le déficit (demande projetée > offre+stock) ; +inf si jamais.
+ *   shortfall_proj[g]: besoin(HORIZON) − offre actuelle (annualisé ; >0 = on sera court).
+ *   struct_deficit[g]: la production MAX possible (au plein eff_cap) < la conso à plein → déficit
+ *                      DURABLE (import/colonie/plafond), pas un creux passager.
+ *   food_runway      : le runway AGRÉGÉ des sources vivrières (grain+poisson+viande) — l'existentiel. */
+typedef struct {
+    float runway[RES_COUNT];
+    float shortfall_proj[RES_COUNT];
+    unsigned char struct_deficit[RES_COUNT];
+    float food_runway;
+    float pop, eff_cap, growth_r;     /* trajectoire f(pop) (lecture/télémétrie) */
+} EconForecast;
+/* Calcule le forecast du pays `cid` à l'horizon `horizon` ans. Lecture pure (const econ). */
+void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconForecast *out);
+/* Conso ANNUELLE par tête d'un bien (table NEED × parts de classe × tension × FOOD_NEED si food). */
+float econ_conso_per_capita_year(Resource g);
 
 /* Pas de colonisation : joueur et antagonistes essaiment vers les régions
  * vierges voisines ; les cités-états colonisent leurs propres territoires

@@ -10,6 +10,24 @@
 #include <string.h>
 #include <math.h>
 #include "scps_tune.h"
+#include "scps_provlog.h"   /* journal provincial : on POUSSE les évènements EV_PROVINCE (display) */
+
+/* signe d'un effet pour le journal : +1 fléau · -1 faveur · 0 neutre */
+static int ev_sign(const EvEffect *e){
+    if (e->d_agitation>0.1f || e->d_L<-0.1f || e->pop_mult<0.999f) return +1;
+    if (e->d_agitation<-0.1f || e->d_L>0.1f) return -1;
+    return 0;
+}
+/* directions d'effet pour le HOVER du journal (2 bits/stat : 1 hausse · 2 baisse) */
+static unsigned ev_effdir(const EvEffect *e){
+    unsigned d=0;
+    if (e->pop_mult   > 1.001f) d|=1u<<(2*JEFF_POP);    else if (e->pop_mult   < 0.999f) d|=2u<<(2*JEFF_POP);
+    if (e->d_food_cap >  0.01f) d|=1u<<(2*JEFF_PROD);   else if (e->d_food_cap < -0.01f) d|=2u<<(2*JEFF_PROD);
+    if (e->d_agitation>  0.1f)  d|=1u<<(2*JEFF_AGIT);   else if (e->d_agitation< -0.1f)  d|=2u<<(2*JEFF_AGIT);
+    if (e->d_L        >  0.01f) d|=1u<<(2*JEFF_LEGIT);  else if (e->d_L        < -0.01f) d|=2u<<(2*JEFF_LEGIT);
+    if (e->d_treasury >  0.1f)  d|=1u<<(2*JEFF_TRESOR); else if (e->d_treasury < -0.1f)  d|=2u<<(2*JEFF_TRESOR);
+    return d;
+}
 
 /* ===================================================================== */
 /* Le bundle de pointeurs systèmes passé aux triggers/effets             */
@@ -27,7 +45,7 @@ struct EventCtx {
 };
 
 /* ---- Utilitaires ------------------------------------------------------ */
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static inline float absf(float v){ return v<0?-v:v; }
 /* §G2 — fwd : un fait NOTABLE inscrit une MÉMOIRE (l'âge en est un, défini plus haut
  * que le bloc directeur ⇒ on annonce le ressort de mémoire ici). */
@@ -208,6 +226,44 @@ static bool trig_schism(const EventCtx *cx,int c){
     }
     return false;
 }
+/* Floraison COSMOPOLITE (province) : plusieurs cultures CONVERGENT (forte minorité installée)
+ * sous un éthos ACCUEILLANT (Bureaucrate « tient la diversité » · Mercantile « carrefours » ·
+ * Pacifiste « ne fracture jamais »), et la province est APAISÉE (la diversité s'intègre au lieu
+ * de fracturer) → le creuset porte ses fruits. Le récit suit la FICHE (l'éthos), comme tout le
+ * module ; les éthos xénophobes (Dominateur/Honneur, mauvais intégrateurs) n'y ont pas droit. */
+static bool trig_xenophile(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    Ethos e=owner_ethos(cx,r);
+    if (e!=ETHOS_BUREAUCRATE && e!=ETHOS_MERCANTILE && e!=ETHOS_PACIFISTE) return false;
+    if (econ_off_culture_fraction(&re->pop) < 0.20f) return false;   /* convergence RÉELLE, pas un monolithe */
+    float agit=(cx->sc && r<SCPS_MAX_REG)?cx->sc->agitation[r]:0.f;
+    return agit < 30.f && re->satisfaction > 0.55f;                  /* la diversité INTÈGRE */
+}
+/* Miroir XÉNOPHOBE (province) : la cohésion par la MÉTABOLISATION. Symétrique du creuset, mais
+ * l'éthos MARTIAL (Dominateur « conquête » · Honneur « gloire », les mauvais intégrateurs) ne
+ * GARDE pas la diversité : il la DIGÈRE. Il faut donc qu'il y ait EU de la diversité (plusieurs
+ * peuples, off-culture réelle) ET qu'elle soit DIGÉRÉE — les minorités assimilées en profondeur
+ * (intégration pop-pondérée haute, `g->integration`, qui met des décennies à monter → le tirage
+ * est TARDIF, le déterminisme court terme tient). Les conquis sont devenus un seul sang. */
+static bool trig_xenophobe(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    Ethos e=owner_ethos(cx,r);
+    if (e!=ETHOS_DOMINATEUR && e!=ETHOS_HONNEUR) return false;
+    const ProvincePop *pp=&re->pop;
+    if (pp->n_groups < 2 || econ_off_culture_fraction(pp) < 0.15f) return false;  /* de la diversité À DIGÉRER */
+    /* MÉTABOLISATION = intégration pop-pondérée des MINORITÉS (non-dominantes). Haute → digérées. */
+    int dom=0; long best=pp->groups[0].count;
+    for (int i=1;i<pp->n_groups;i++) if (pp->groups[i].count>best){ best=pp->groups[i].count; dom=i; }
+    double w=0.0, t=0.0;
+    for (int i=0;i<pp->n_groups;i++) if (i!=dom){ w+=(double)pp->groups[i].count; t+=(double)pp->groups[i].count*pp->groups[i].integration; }
+    if (w < 1.0) return false;
+    float metab=(float)(t/w);
+    return metab > 0.75f && re->satisfaction > 0.55f;   /* les peuples conquis fondus en un seul */
+}
 
 /* ===================================================================== */
 /* LA TABLE D'ÉVÈNEMENTS (effets = coordonnées ; textes = mots)           */
@@ -268,6 +324,18 @@ static const EventDef EVENTS[EVID_COUNT] = {
           { .d_agitation=-10.f, .d_L=-0.3f, .unlock_branch=-1 }, 0.5f },
         { "Imposer l'orthodoxie", "Une seule doctrine, par la force s'il le faut — et la dissidence gronde.",
           { .d_H_coerc=1.0f, .d_coercion=0.3f, .d_agitation=10.f, .unlock_branch=-1 }, 0.5f } }, 2 },
+    /* ---- Floraison cosmopolite : le creuset qui réussit (positif, par l'éthos) ---- */
+    [EVID_XENOPHILE] = { EVID_XENOPHILE, EV_PROVINCE, "Le creuset des peuples",
+        trig_xenophile, 2400.f, NULL, {
+        { "Célébrer la concorde", "Tant de peuples sous un même toit, et la paix tient : les talents affluent, "
+          "les comptoirs prospèrent, et le renom de la couronne tolérante porte au loin.",
+          { .d_L=1.2f, .d_food_cap=0.5f, .d_treasury=120.f, .d_influence=4.f, .pop_mult=1.02f, .unlock_branch=-1 }, 1.f } }, 1 },
+    /* ---- Miroir xénophobe : la cohésion du creuset DIGÉRÉ (positif pour l'éthos martial) ---- */
+    [EVID_XENOPHOBE] = { EVID_XENOPHOBE, EV_PROVINCE, "Le creuset digéré",
+        trig_xenophobe, 3000.f, NULL, {
+        { "Sceller l'unité", "Les peuples conquis se sont fondus dans le creuset du vainqueur : un seul "
+          "sang désormais, une seule loi — la cohésion farouche de qui a tout digéré tient sans effort.",
+          { .d_L=1.0f, .d_H_coerc=0.5f, .d_agitation=-15.f, .d_influence=3.f, .unlock_branch=-1 }, 1.f } }, 1 },
 };
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
@@ -323,6 +391,8 @@ static void fire_event(EventCtx *cx, int evid, int subject){
     for (int i=0;i<d->n_options;i++) if (d->options[i].ai_chance>bw){ bw=d->options[i].ai_chance; best=i; }
     apply_effect(cx, d->scope, subject, &d->options[best].eff);
     cx->ev->last_id=evid; cx->ev->last_name=d->name; cx->ev->n_fired++;
+    if (d->scope==EV_PROVINCE && subject>=0)
+        provlog_push_event(subject, d->name, ev_sign(&d->options[best].eff), ev_effdir(&d->options[best].eff));
 }
 
 /* ===================================================================== */
@@ -335,6 +405,8 @@ void events_strike(EventsState *ev, World *w, WorldEconomy *econ,
     if (shock<0||shock>=EVID_COUNT) return;
     apply_effect(&cx, EVENTS[shock].scope, region, &EVENTS[shock].options[0].eff);
     ev->last_id=shock; ev->last_name=EVENTS[shock].name; ev->n_fired++;
+    if (EVENTS[shock].scope==EV_PROVINCE && region>=0)
+        provlog_push_event(region, EVENTS[shock].name, ev_sign(&EVENTS[shock].options[0].eff), ev_effdir(&EVENTS[shock].options[0].eff));
 }
 
 /* ===================================================================== */
@@ -358,6 +430,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
         e.d_agitation = 18.f - 3.f*h;
         EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL};
         apply_effect(&cx, EV_PROVINCE, r, &e);
+        provlog_push_event(r, EVENTS[EVID_PLAGUE].name, +1, ev_effdir(&e));   /* journal provincial : la peste */
         infected++;
         if (h>=4) continue;                         /* portée bornée */
         for (int i=0;i<rn->n;i++){
@@ -1016,6 +1089,15 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SUCCESSION].mtth_days,days)) fire_event(&cx,EVID_SUCCESSION,c);
         if (EVENTS[EVID_SCHISM].trigger(&cx,c) &&
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SCHISM].mtth_days,days)) fire_event(&cx,EVID_SCHISM,c);
+    }
+    /* 2ter. FLORAISON COSMOPOLITE — une province DIVERSE, accueillante et apaisée (les cultures
+     * CONVERGENT) prospère. Court-circuit (trigger && frand) : aucun tirage tant qu'aucun creuset
+     * n'existe → le déterminisme court terme ne bouge pas tant que la diversité n'a pas mûri. */
+    for (int r=0;r<econ->n_regions;r++){
+        if (EVENTS[EVID_XENOPHILE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_XENOPHILE].mtth_days,days)) fire_event(&cx,EVID_XENOPHILE,r);
+        if (EVENTS[EVID_XENOPHOBE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_XENOPHOBE].mtth_days,days)) fire_event(&cx,EVID_XENOPHOBE,r);
     }
 
     /* 2bis. LE DIRECTEUR (§F) — lit la TEMPÉRATURE du monde, puis stabilise ou

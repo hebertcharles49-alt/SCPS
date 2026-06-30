@@ -1,0 +1,80 @@
+extends Control
+## Topbar — bandeau PLEINE LARGEUR (cadre d'écran) : capsule de date (An N), pop &
+## nombre de pays à gauche, contrôle de VITESSE cliquable à DROITE. Suit la largeur
+## de la fenêtre (size_changed). Display-only sauf le verbe vitesse. Lit Sim.
+
+const VKit  = preload("res://ui/vkit.gd")
+const UIKit = preload("res://ui/uikit.gd")
+const Frame = preload("res://ui/frame.gd")
+const H := Frame.TOPBAR_H
+
+var _speed_rect := Rect2()
+
+func _ready() -> void:
+	mouse_filter = Control.MOUSE_FILTER_STOP   # la barre capte ses clics (pas la carte dessous)
+	_resize()
+	get_viewport().size_changed.connect(_resize)
+	Sim.generated.connect(_on_change)
+	Sim.ticked.connect(_on_tick)
+
+func _resize() -> void:
+	position = Vector2.ZERO
+	size = Vector2(get_viewport_rect().size.x, H)
+	queue_redraw()
+
+func _on_tick(_year: int) -> void:
+	queue_redraw()
+
+func _on_change() -> void:
+	queue_redraw()
+
+func _draw() -> void:
+	var ww := size.x
+	# barre PLEINE LARGEUR : navy + liseré cuivre en bas (cadre franc, pas arrondi)
+	VKit.fill(self, Rect2(0, 0, ww, H), VKit.COL_PANEL)
+	VKit.fill(self, Rect2(0, H - 2, ww, 2), VKit.COL_COPPER)
+	var cy := (H - 18.0) * 0.5     # centrage vertical du contenu
+
+	if Sim.world == null:
+		VKit.text(self, Vector2(16, cy), VKit.COL_DIM, "(libscps absente — voir README)")
+		return
+	if not Sim.world.has_method("province_at"):
+		VKit.text(self, Vector2(12, cy), VKit.sense(0.5),
+			"⚠ libscps OBSOLÈTE — rebâtir : scons platform=windows use_mingw=yes")
+		return
+
+	var w = Sim.world
+	# capsule de date : An N
+	UIKit.draw_chrome(self, "topbar_date_capsule", Rect2(10, 4, 92, H - 8))
+	VKit.text(self, Vector2(22, cy), VKit.COL_PARCH, "An %d" % w.year())
+
+	# pop · pays, chacun avec icône
+	UIKit.draw_icon(self, "population_group", Vector2(116, cy - 2), 18)
+	VKit.text(self, Vector2(138, cy), VKit.COL_PARCH, _grp(w.world_pop()))
+	UIKit.draw_icon(self, "politics_crown", Vector2(232, cy - 2), 18)
+	VKit.text(self, Vector2(254, cy), VKit.COL_PARCH, "%d pays" % w.country_count())
+
+	# contrôle de vitesse, ancré à DROITE de la barre
+	_speed_rect = Rect2(ww - 116, 4, 108, H - 8)
+	UIKit.draw_chrome(self, "topbar_resource_chip", _speed_rect)
+	var paused: bool = Sim.speed_index == 0
+	UIKit.draw_icon(self, "tool_speed" if paused else "tool_pause",
+		Vector2(_speed_rect.position.x + 6, cy - 2), 18)
+	VKit.text(self, Vector2(_speed_rect.position.x + 28, cy), VKit.COL_COPPER, Sim.speed_label())
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _speed_rect.has_point(event.position):
+			Sim.cycle_speed()
+			queue_redraw()
+
+func _grp(n) -> String:
+	var s := str(absi(int(n)))
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = " " + out
+	return ("-" if int(n) < 0 else "") + out

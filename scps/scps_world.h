@@ -17,6 +17,20 @@ WorldParams worldparams_default(uint32_t seed);
 /* Génère un monde complet (géographie seule) selon les paramètres. ~200ms. */
 void world_generate(World *w, const WorldParams *params);
 
+/* CAPSTONE §27 — CARVE. world_sink_cell : engloutit une cellule (terre→mer,
+ * biome océan, hiérarchie strippée). world_recompute_adjacency : recalcul CIBLÉ
+ * des côtes/frontières (depuis c->height & la hiérarchie mutée) SANS rappeler
+ * build_hierarchy (les ids de région restent figés). L'adjacence ÉCO se rebâtit
+ * à part via econ_build_adjacency (l'appelant tient le WorldEconomy). */
+void world_sink_cell(Cell *c, float new_height);
+void world_recompute_adjacency(World *w);
+/* Habitabilité [0..1] = f(biome) × f(température) × f(relief). Source unique worldgen
+ * + capstone froid. `height` = altitude de la tuile/province : le RELIEF escarpé
+ * (hors plateau highlands/hills) écrase l'habitabilité ; un plateau reste un berceau. */
+float biome_habitability(Biome B, float tmp, float height);
+/* Rebiome une cellule de terre depuis sa température mutée (capstone froid). */
+void  world_rebiome_cell(Cell *c);
+
 /* Intensité agricole [0..10] d'un biome — source unique de vérité partagée
  * avec l'axe de subsistance culturel (cf. lifeway_subs). Sert de proxy de
  * capacité d'accueil dans econ_init. */
@@ -53,6 +67,9 @@ uint32_t country_race_color(SpeciesArchetype race, int cid);
 void country_make_name(char *out, int n, SpeciesArchetype race, Ethos ethos, int cid);
 /* P3.20 — TOPONYME procédural (lieu) : syllabaire de la RACE, sans épithète d'éthos. */
 void place_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed);
+/* NOM DE CULTURE (peuple) procédural — ethnonyme inventé (façon Stellaris) : l'IA ne
+ * s'affiche JAMAIS « culture <éthos> ». Dérivé (héritage + seed), déterministe. */
+void culture_make_name(char *out, int n, SpeciesArchetype race, uint32_t seed);
 
 /* ── LA MER (brief mer §4) : le mouvement directionnel sur le champ de courants ──
  * coût(tuile, direction) = base / (1 + k·max(0, v̂·d̂)) × (1 + m·max(0, −v̂·d̂)) ;

@@ -51,7 +51,7 @@ static void world_step(Sim *s, AiActor *act, int n_act, int day){
     agency_advance(s->ag, s->w, s->econ, s->wl, NULL, STEP);
     routes_advance(s->rn, s->w, s->econ, STEP);
     for (int i=0;i<n_act;i++) ai_step(&act[i], s->w, s->econ, s->wp, s->wl,
-                                      s->ag, s->rn, s->dp, day);
+                                      s->ag, s->rn, s->dp, NULL, day);   /* #26 : NULL = pas de porte d'opinion (banc relation-seule) */
     legitimacy_tick(s->wl, s->w, s->econ, s->ts);
     prosperity_tick(s->wp, s->w, s->econ, s->net, s->ts, s->wl);
     diplo_tick(s->dp, (float)STEP);
@@ -70,7 +70,7 @@ static PopCulture make_fiche(float valeurs, Ethos e, EconTrait ec, Credo cr){
     pc.langue=5.f; pc.valeurs=valeurs; pc.subsistance=6.f; pc.parente=5.f; pc.religion=5.f;
     pc.ethos=e; pc.lifeway=LIFE_FARMER; pc.structure=STRUCT_LIGNAGER;
     pc.credo=cr; pc.rel_branch=REL_ABRAHAMIQUE; pc.econ=ec; pc.martial=MART_MUR_BOUCLIERS;
-    pc.race=RACE_HUMAIN; pc.settled=true; pc.age=200;
+    pc.race=HERITAGE_ADAPTATIF; pc.settled=true; pc.age=200;
     return pc;
 }
 static void set_capital_fiche(Sim *s, int cid, PopCulture fiche, float healthK){
@@ -111,7 +111,7 @@ int main(int argc, char **argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(s.w,&p);
-    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ); agency_init(s.ag);
@@ -269,14 +269,16 @@ int main(int argc, char **argv){
     /* Bâtisseur +K — RE-BASELINE « carte nue » (2026-06-16) : l'empire naît SANS bâti
      * (eff_cap = ½·cap_pop, sans logement) → il démarre AU PLAFOND et reste sous le frein
      * (digestion permanente) ; sa voie K bascule alors en builds_other (l.942 scps_ai.c).
-     * Le Bâtisseur reste LE bâtisseur — il pose le plus d'ÉDIFICES civils — mais l'étiquette
-     * K-proactif / digestion suit le MONDE. On garde donc le ROBUSTE « il métabolise le plus »
-     * (K proactif OU édifices civils) ; l'APPÉTIT de K (w_build) est, lui, vérifié STRICT plus
-     * haut. (Les 3 archétypes sont des empires ; le marché-cité-état qui ravitaille la mise à
-     * nu — CS_TRADE_POOL — n'existe pas dans ce banc fermé : il opère en chronique/viewer.) */
-    ok("le Bâtisseur métabolise le PLUS (K proactif ou édifices civils)",
-       strict_max(act[2].stats.builds_k,     act[0].stats.builds_k,     act[1].stats.builds_k)
-    || strict_max(act[2].stats.builds_other, act[0].stats.builds_other, act[1].stats.builds_other));
+     * Le Bâtisseur reste LE bâtisseur — il développe le plus — mais le CANAL réalisé suit le MONDE :
+     * K proactif (terre à digérer), édifices civils (greniers/marchés), OU — démarré AU PLAFOND sur
+     * carte nue, sans terre neuve où s'étendre — CONSOLIDATIONS (il digère/améliore l'existant, sa
+     * 3e voie de métabolisme). On garde donc le ROBUSTE « il métabolise le plus » sur ces TROIS canaux ;
+     * l'APPÉTIT de K (w_build) est, lui, vérifié STRICT plus haut. (Les 3 archétypes sont des empires ;
+     * le marché-cité-état CS_TRADE_POOL n'existe pas dans ce banc fermé : il opère en chronique/viewer.) */
+    ok("le Bâtisseur métabolise le PLUS (K proactif, édifices civils ou consolidations)",
+       strict_max(act[2].stats.builds_k,       act[0].stats.builds_k,       act[1].stats.builds_k)
+    || strict_max(act[2].stats.builds_other,   act[0].stats.builds_other,   act[1].stats.builds_other)
+    || strict_max(act[2].stats.consolidations, act[0].stats.consolidations, act[1].stats.consolidations));
     {
         int aD=act[0].stats.wars+act[0].stats.conquests;
         int aM=act[1].stats.wars+act[1].stats.conquests;
@@ -296,7 +298,7 @@ int main(int argc, char **argv){
     printf("\n── Vérification : l'éthos effectif glisse avec la composition (§3) ──\n");
     {
         int day=horizon;
-        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,day);
+        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,day);
         float expand_before=act[1].w_expand;
         int rg=-1;
         for (int r=0;r<s.econ->n_regions;r++)
@@ -304,14 +306,14 @@ int main(int argc, char **argv){
                 && s.econ->region[r].owner!=cidD && s.econ->region[r].owner!=cidB){ rg=r; break; }
         if (rg>=0){
             RegionEconomy *re=&s.econ->region[rg];
-            PopCulture oc=make_fiche(9.f,ETHOS_DOMINATEUR,ECON_TRIBUT,CREDO_PLURALISTE); oc.race=RACE_ORQUE;
+            PopCulture oc=make_fiche(9.f,ETHOS_DOMINATEUR,ECON_TRIBUT,CREDO_PLURALISTE); oc.race=HERITAGE_CLANIQUE;
             re->owner=(int16_t)cidM; re->colonized=true; re->culture=oc;
             memset(&re->pop,0,sizeof re->pop);
-            re->pop.groups[0].race=RACE_ORQUE; re->pop.groups[0].origin=oc; re->pop.groups[0].culture=oc;
+            re->pop.groups[0].race=HERITAGE_CLANIQUE; re->pop.groups[0].origin=oc; re->pop.groups[0].culture=oc;
             re->pop.groups[0].klass=CLASS_LABORER; re->pop.groups[0].count=3000;
             re->pop.n_groups=1;
         }
-        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,day);
+        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,day);
         float expand_after=act[1].w_expand;
         printf("   Mercantile : w_expand effectif %.3f → après avoir avalé une province orque → %.3f\n",
                expand_before, expand_after);
@@ -472,11 +474,41 @@ int main(int argc, char **argv){
         act[0].next_econ_day=INT_MAX;             /* gèle l'éco (pas de K bâti → frein figé) */
         act[0].peace_lock_until=0;
         int d0=horizon;
-        for (int k=0;k<6;k++){ act[0].next_strat_day=d0; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,d0); }
+        for (int k=0;k<6;k++){ act[0].next_strat_day=d0; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,d0); }
         printf("  Sous le frein : guerres +%d, consolidations +%d\n",
                act[0].stats.wars-wars0, act[0].stats.consolidations-cons0);
         ok("le Dominateur surétendu CESSE de déclarer la guerre", act[0].stats.wars==wars0);
         ok("le Dominateur surétendu consolide (il digère)", act[0].stats.consolidations>cons0);
+    }
+
+    /* ── #26 — ai_consider_offer : l'OPINION ±100 gate l'acceptation d'une OFFRE (« évaluer-offre ») ──
+     * `B` ACCEPTE l'alliance de `A` s'il l'apprécie (opinion haute) + compatibilité réciproque ;
+     * la REFUSE si l'opinion est basse (la mémoire d'un acte pèse). sc==NULL ⇒ pas de porte d'opinion. */
+    printf("\n── #26 : ai_consider_offer (l'opinion gate l'acceptation d'une offre) ──\n");
+    {
+        Statecraft *tsc = (Statecraft*)malloc(sizeof(Statecraft));
+        if (tsc){
+            statecraft_init(tsc, s.w);
+            int A=-1,B=-1;   /* une paire en paix, structurellement compatible (relation.alliance>0), B a un slot */
+            for (int a=0;a<s.w->n_countries && A<0;a++) for (int b=0;b<s.w->n_countries;b++){
+                if (a==b || s.w->country[a].role==POLITY_UNCLAIMED || s.w->country[b].role==POLITY_UNCLAIMED) continue;
+                if (diplo_status(s.dp,a,b)!=DIPLO_WAR
+                    && diplo_relation(s.w,s.econ,s.wp,s.dp,b,a).alliance > 0.5f
+                    && diplo_ally_count(s.dp,b) < DIPLO_ALLY_SLOTS){ A=a; B=b; break; }
+            }
+            if (A<0) ok("(#26) pas de paire structurellement compatible — monde", true);
+            else {
+                tsc->opinion[B][A] = 40.f;     /* B APPRÉCIE A */
+                ok("ai_consider_offer : opinion HAUTE → B ACCEPTE l'alliance de A",
+                   ai_consider_offer(s.w,s.econ,s.wp,s.dp,tsc, A, B, OFFER_ALLIANCE));
+                tsc->opinion[B][A] = -40.f;    /* B MÉPRISE A (la mémoire d'un acte pèse) */
+                ok("ai_consider_offer : opinion BASSE → B REFUSE l'alliance",
+                   !ai_consider_offer(s.w,s.econ,s.wp,s.dp,tsc, A, B, OFFER_ALLIANCE));
+                ok("ai_consider_offer : sc==NULL → pas de porte d'opinion (relation-seule, rétro-compat)",
+                   ai_consider_offer(s.w,s.econ,s.wp,s.dp,NULL, A, B, OFFER_ALLIANCE));
+            }
+            free(tsc);
+        }
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");
