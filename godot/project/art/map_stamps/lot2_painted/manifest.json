@@ -1,0 +1,320 @@
+{
+  "name": "SCPS Lot 2 - Painted Map Dressing Marks",
+  "style": "subtle late-medieval painted atlas terrain marks",
+  "background_key": "#FF00FF",
+  "source_sheet_chromakey": "sheet/scps_lot2_painted_marks_sheet_chromakey.png",
+  "source_sheet_alpha": "sheet/scps_lot2_painted_marks_sheet_alpha.png",
+  "preview": "preview/scps_lot2_painted_marks_preview_on_parchment.png",
+  "crop_method": "4x4_cell_then_content_bbox",
+  "items": [
+    {
+      "id": "mountain_single_01",
+      "category": "mountain",
+      "layer": "relief",
+      "alpha_png": "assets_alpha/mountain_single_01.png",
+      "chromakey_png": "assets_chromakey/mountain_single_01.png",
+      "source_bbox": {
+        "x": 50,
+        "y": 116,
+        "width": 247,
+        "height": 194
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "mountain_single_02",
+      "category": "mountain",
+      "layer": "relief",
+      "alpha_png": "assets_alpha/mountain_single_02.png",
+      "chromakey_png": "assets_chromakey/mountain_single_02.png",
+      "source_bbox": {
+        "x": 342,
+        "y": 80,
+        "width": 263,
+        "height": 234
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "mountain_range_01",
+      "category": "mountain_range",
+      "layer": "relief",
+      "alpha_png": "assets_alpha/mountain_range_01.png",
+      "chromakey_png": "assets_chromakey/mountain_range_01.png",
+      "source_bbox": {
+        "x": 627,
+        "y": 135,
+        "width": 313,
+        "height": 165
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "mountain_range_02",
+      "category": "mountain_range",
+      "layer": "relief",
+      "alpha_png": "assets_alpha/mountain_range_02.png",
+      "chromakey_png": "assets_chromakey/mountain_range_02.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 105,
+        "width": 314,
+        "height": 203
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "mountain_pass_01",
+      "category": "mountain_pass",
+      "layer": "relief",
+      "alpha_png": "assets_alpha/mountain_pass_01.png",
+      "chromakey_png": "assets_chromakey/mountain_pass_01.png",
+      "source_bbox": {
+        "x": 33,
+        "y": 428,
+        "width": 281,
+        "height": 171
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "hill_mark_01",
+      "category": "hill",
+      "layer": "relief",
+      "alpha_png": "assets_alpha/hill_mark_01.png",
+      "chromakey_png": "assets_chromakey/hill_mark_01.png",
+      "source_bbox": {
+        "x": 321,
+        "y": 455,
+        "width": 279,
+        "height": 135
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "hill_cluster_01",
+      "category": "hill",
+      "layer": "relief",
+      "alpha_png": "assets_alpha/hill_cluster_01.png",
+      "chromakey_png": "assets_chromakey/hill_cluster_01.png",
+      "source_bbox": {
+        "x": 631,
+        "y": 440,
+        "width": 274,
+        "height": 146
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "rocky_outcrop_01",
+      "category": "rocks",
+      "layer": "relief",
+      "alpha_png": "assets_alpha/rocky_outcrop_01.png",
+      "chromakey_png": "assets_chromakey/rocky_outcrop_01.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 409,
+        "width": 259,
+        "height": 189
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "tree_broadleaf_01",
+      "category": "tree",
+      "layer": "vegetation",
+      "alpha_png": "assets_alpha/tree_broadleaf_01.png",
+      "chromakey_png": "assets_chromakey/tree_broadleaf_01.png",
+      "source_bbox": {
+        "x": 51,
+        "y": 704,
+        "width": 221,
+        "height": 204
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "tree_pine_01",
+      "category": "tree",
+      "layer": "vegetation",
+      "alpha_png": "assets_alpha/tree_pine_01.png",
+      "chromakey_png": "assets_chromakey/tree_pine_01.png",
+      "source_bbox": {
+        "x": 374,
+        "y": 673,
+        "width": 157,
+        "height": 246
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "forest_sparse_01",
+      "category": "forest",
+      "layer": "vegetation",
+      "alpha_png": "assets_alpha/forest_sparse_01.png",
+      "chromakey_png": "assets_chromakey/forest_sparse_01.png",
+      "source_bbox": {
+        "x": 627,
+        "y": 698,
+        "width": 313,
+        "height": 216
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "forest_dense_01",
+      "category": "forest",
+      "layer": "vegetation",
+      "alpha_png": "assets_alpha/forest_dense_01.png",
+      "chromakey_png": "assets_chromakey/forest_dense_01.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 683,
+        "width": 270,
+        "height": 234
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "reeds_01",
+      "category": "reeds",
+      "layer": "wetland",
+      "alpha_png": "assets_alpha/reeds_01.png",
+      "chromakey_png": "assets_chromakey/reeds_01.png",
+      "source_bbox": {
+        "x": 52,
+        "y": 961,
+        "width": 223,
+        "height": 229
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "water_ripples_01",
+      "category": "water_motion",
+      "layer": "water",
+      "alpha_png": "assets_alpha/water_ripples_01.png",
+      "chromakey_png": "assets_chromakey/water_ripples_01.png",
+      "source_bbox": {
+        "x": 319,
+        "y": 1021,
+        "width": 270,
+        "height": 155
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "scrub_brush_01",
+      "category": "scrub",
+      "layer": "dry_vegetation",
+      "alpha_png": "assets_alpha/scrub_brush_01.png",
+      "chromakey_png": "assets_chromakey/scrub_brush_01.png",
+      "source_bbox": {
+        "x": 627,
+        "y": 1011,
+        "width": 260,
+        "height": 173
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "dune_wind_lines_01",
+      "category": "dune_wind",
+      "layer": "dry",
+      "alpha_png": "assets_alpha/dune_wind_lines_01.png",
+      "chromakey_png": "assets_chromakey/dune_wind_lines_01.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 1022,
+        "width": 260,
+        "height": 166
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    }
+  ],
+  "audit": {
+    "visible_magenta_like": 0,
+    "transparent_magenta_like": 0,
+    "visible_pinkish": 0
+  }
+}

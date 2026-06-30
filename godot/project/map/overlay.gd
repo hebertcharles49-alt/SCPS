@@ -9,15 +9,86 @@ extends Node2D
 
 const UIKit = preload("res://ui/uikit.gd")
 const VKit = preload("res://ui/vkit.gd")
+const SettlementStamps = preload("res://map/settlement_stamps.gd")  ## tampons de peuplement (lot 1, atlas)
 const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
 const LAYER_WATER := 4       ## SCPS_LAYER_WATER : masque mer OU LAC (≥1 = eau) — l'assise des
                              ## bourgs tient l'EAU COMPLÈTE (les lacs intérieurs, ignorés par SEA seul)
+const LAYER_SEA := 1         ## SCPS_LAYER_SEA : mer SALÉE seule (≥1) — pour distinguer LAC (eau douce) de MER
+# SIÈGE du tampon — les humains habitent près de l'EAU DOUCE (rivière/lac), sinon le RIVAGE (mer), décalé
+# vers l'INTÉRIEUR. Rayons de recherche (cellules) depuis le centroïde + décalage inland du siège.
+const SEAT_FRESH_R := 11     ## cherche une eau DOUCE (lac/rivière) à ≤ ce rayon → ville au bord
+const SEAT_FRESH_INLAND := 2 ## siège à ~2 cellules en retrait de l'eau douce (pas dans l'eau)
+const SEAT_SEA_R := 13       ## sinon, cherche la MER à ≤ ce rayon → ville côtière
+const SEAT_SEA_INLAND := 4   ## siège plus en retrait du rivage marin (vers l'intérieur/centre)
 ## Seuils de zoom ISO (px/unité-monde de la Camera2D). L'ISO est la surface de JEU : on y montre
 ## ROUTES & ASSETS (bourg). L'entrée en ISO est à zoom ≈ ISO_FAR (4.0) → assets déjà lisibles.
 const CITY_ZOOM_MIN := 3.5   ## villes + bourg
-const DECOR_ZOOM_MIN := 3.0  ## forêts/arbres
+const DECOR_ZOOM_MIN := 3.0  ## forêts/arbres + DRESSING de terrain (lot 2)
+# ── DRESSING DE TERRAIN (lot 2, marques peintes) : semé par BIOME, display-only, SOUS frontières/villes,
+# basse densité, taille ÉCRAN constante. Biome (couche LAYER_BIOME, enum Biome de scps_types.h) → ids.
+const LAYER_BIOME := 2       ## SCPS_LAYER_BIOME : index de biome par cellule
+const DRESS_SPACING := 9     ## pas de la grille de semis (cellules) — DENSIFIÉ (trame continue, pas des stickers)
+const DRESS_ALPHA := 0.50    ## opacité FADE — translucides : le parchemin transparaît, elles se FONDENT
+                             ## (chevauchement des marques denses → trame qui s'auto-construit, pas « posé là »)
+const DRESS_BY_BIOME := {
+	# RELIEF (lot 2)
+	18: ["mountain_range_01", "mountain_range_02", "mountain_single_01", "mountain_single_02", "mountain_pass_01"],  # MONTAGNES
+	19: ["mountain_single_01", "mountain_single_02", "mountain_range_01"],   # PIC
+	23: ["mountain_single_01", "rocky_outcrop_01"],                          # VOLCAN
+	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02"],           # HAUTES-TERRES
+	17: ["hill_mark_01", "hill_cluster_01", "rocky_outcrop_01"],             # COLLINES
+	# FORÊTS (lot 2)
+	12: ["forest_dense_01", "forest_sparse_01", "tree_broadleaf_01"],        # FORÊT
+	13: ["forest_sparse_01", "tree_broadleaf_01", "tree_pine_01"],           # BOIS
+	14: ["forest_dense_01", "tree_broadleaf_01"],                            # JUNGLE
+	# PLAINES / PRAIRIE (lot 3 — herbe peinte ; comblent les biomes plats jadis NUS)
+	4:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01", "plain_wind_strokes_01"],  # PLAINES
+	5:  ["plain_sparse_tufts_01", "plain_grass_02"],                         # CHAMPS (épars, pas de cultures)
+	6:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01"],       # PRAIRIE
+	# STEPPE / SÈCHE (lot 3 + lot 2)
+	7:  ["steppe_grass_01", "steppe_grass_02", "steppe_dry_strokes_01", "steppe_tufts_01"],      # STEPPE
+	9:  ["steppe_dry_strokes_01", "steppe_tufts_01", "scrub_brush_01", "rocky_outcrop_01"],      # TERRES SÈCHES
+	8:  ["savanna_grass_01", "savanna_grass_02", "savanna_sparse_tree_01", "acacia_mark_01"],    # SAVANE
+	# DÉSERTS (lot 2)
+	10: ["dune_wind_lines_01"],                                             # DÉSERT
+	11: ["dune_wind_lines_01"],                                             # DÉSERT CÔTIER
+	# ZONES HUMIDES (lot 3)
+	15: ["marsh_reeds_01", "marsh_reeds_02", "marsh_tufts_01", "marsh_ripple_reeds_01"],  # MARAIS
+	21: ["marsh_reeds_01", "marsh_reeds_02", "tree_broadleaf_01"],          # MANGROVE
+	22: ["marsh_reeds_02", "marsh_tufts_01", "marsh_ripple_reeds_01"],      # TOURBIÈRE
+	20: ["tree_pine_01", "rocky_outcrop_01"],                              # GLACIER (sapins/cailloux épars)
+	# EAU — MOUVEMENT seul (lot 3) : rides, houle, courants ; jamais un aplat
+	0:  ["ocean_swell_lines_01", "ocean_current_swirl_01"],                # OCÉAN PROFOND (très épars)
+	1:  ["sea_ripples_01", "sea_ripples_02", "ocean_swell_lines_01"],      # OCÉAN
+	2:  ["sea_ripples_01", "sea_ripples_02"],                              # HAUT-FOND
+}
+## probabilité de poser une marque par biome (densité) — DENSIFIÉ (trame continue) ; eau reste ÉPARSE.
+const DRESS_DENSITY := {
+	4: 0.65, 5: 0.38, 6: 0.68,                          # plaines/prairie : herbe DENSE (jadis trop nue)
+	7: 0.70, 8: 0.62, 9: 0.68, 10: 0.80, 11: 0.72,
+	12: 0.95, 13: 0.90, 14: 0.95, 15: 0.88, 21: 0.72, 22: 0.82,
+	16: 0.85, 17: 0.80, 18: 0.96, 19: 0.92, 23: 0.82, 20: 0.52,
+	0: 0.07, 1: 0.18, 2: 0.20,                          # eau : épars (mouvement seul)
+}
+## PASSES SUPPLÉMENTAIRES par biome (marques EN PLUS par cellule de grille) → CANOPÉE dense. Surtout les
+## forêts (le « densifié » demandé) : 1 + N marques jittées par cellule → couvert continu, pas des arbres isolés.
+const DRESS_EXTRA := {
+	12: 3, 14: 3, 13: 2,        # FORÊT/JUNGLE/BOIS : canopée dense (3-4 marques/cellule)
+	18: 1, 19: 1, 16: 1,        # relief : un peu plus fourni
+}
+## LOT 4 — easter eggs RARES (serpents de mer, épaves, récifs, lapins) : placés par une passe à GROS pas.
+const EGG_SPACING := 46      ## grille grossière (rare)
+const EGG_ALPHA := 0.85      ## moins fadé que le dressing (ce sont des « figures », pas de la trame)
+const EGG_WRECKS := ["shipwreck_hull_01", "broken_mast_01", "half_sunk_wreck_01", "floating_debris_01",
+	"jagged_reef_01", "low_rocks_01", "sea_stacks_01", "shoal_stones_01"]
+const EGG_RABBITS := ["apoc_rabbit_banner_01", "apoc_rabbit_horn_01", "apoc_rabbit_spear_01", "apoc_rabbit_crown_01"]
+# TAMPONS de peuplement (lot 1) : taille à l'ÉCRAN (px), par tier t1→t7. Réduite (les tampons doivent
+# PONCTUER la carte, pas l'écraser). Constante à l'écran (÷zoom au tracé) → lisible à tous les zooms.
+const STAMP_PX_MIN := 22.0   ## tier 1 (hameau) — petit (agrandi légèrement)
+const STAMP_PX_MAX := 48.0   ## tier 7 (capitale couronnée) — le plus gros (agrandi légèrement)
+const STAMP_ALPHA := 0.90    ## léger FADE des tampons de ville (blend dans le parchemin sans perdre en lisibilité)
 const BLD_SIZE := 9.0        ## taille MONDE UNIFORME d'un bâti de bourg (égalisée — variété par le sprite, pas l'échelle)
 const CITY_CORE_SIZE := 18.0 ## taille MONDE FIXE du centre-ville (la ville ne GRANDIT pas ; l'importance = le variant T1-T7)
 const STRUCT_SIZE := 12.0    ## hauteur MONDE d'un MONUMENT EDI_* épars (repli ; voir hiérarchie SZ_* ci-dessous)
@@ -79,6 +150,13 @@ var _raws_dirty := true    ## la production a bougé (an-0 nu → extraction ét
 var _region_centre := {}  ## région colonisée → TERRAIN du centre-ville (plaine/foret/montagne/estuaire/portuaire/lacustre)
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
+var _region_seat := {}    ## région colonisée → SIÈGE du tampon : cellule INTÉRIEURE de province (jamais sur une jonction)
+var _stamp_tex := {}      ## id de tampon → Texture2D (cache ; chargé paresseux, fallback Image.load)
+var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cache)
+var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
+var _dressing_dirty := true ## la géo a changé (génération/chargement) → re-semer le dressing
+var nature_mode := false  ## MODE NATURE : on ne montre QUE le terrain + le dressing (pas de frontières/
+                          ## villes/routes/armées/noms) — la carte « vierge », touche N. Display-only.
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
 var _clear_set := {}      ## clairance 0-1 par cellule autour des villes (1 = cœur déboisé -> 0 = lisière) — fondu, pas binaire
 var _country_names := []  ## nom de chaque pays (figé au générate) — pour les étiquettes d'empire
@@ -270,6 +348,7 @@ func _on_generated() -> void:
 	_road_tiles_dirty = true    # monde neuf → reposer les tuiles de route
 	_bridges_dirty = true       # … et les ponts
 	_borders_dirty = true       # monde neuf → frontières ET routes à refaire
+	_dressing_dirty = true      # … et le dressing de terrain (biome semé)
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
 	_owner_sig = -1
@@ -355,14 +434,18 @@ func _build_anchors() -> void:
 	_region_anchor.clear()
 	_region_citymax.clear()
 	_clear_set.clear()
+	_region_seat.clear()
 	var w = Sim.world
 	if w == null:
 		return
 	var sea: Image = w.layer_image(LAYER_WATER)   # mer OU lac : 0 = terre, ≥ 1 = eau
+	var seaonly: Image = w.layer_image(LAYER_SEA) # mer SALÉE seule → distingue le lac (eau douce)
+	var rf: Image = _carved_river_field()         # champ de débit des rivières (eau douce ; peut être null)
 	for r in range(w.region_count()):
 		var t: int = w.region_tier(r)
-		if t < 0:
-			continue
+		var rl: int = int(w.country_role(w.region_owner(r))) if w.region_owner(r) >= 0 else -1
+		if t < 0 and rl != 2 and rl != 4:
+			continue                              # wilderness sans ville (mais on garde cité-état/hameau libre)
 		var ctr: Vector2 = w.region_centroid(r)
 		if ctr.x < 0:
 			continue
@@ -385,6 +468,7 @@ func _build_anchors() -> void:
 					break
 		_region_anchor[r] = best
 		_region_citymax[r] = best_sz
+		_region_seat[r] = _find_seat(w, sea, seaonly, rf, r, ctr)  # SIÈGE : près de l'eau douce → rivage, ≠ jonction
 		# DÉBOISE un disque autour de l'assise (∝ tier) → le bourg respire dans une
 		# clairière au lieu d'être noyé sous la canopée (comme le masque de viewer.c).
 		# Couvre TOUTE l'emprise du bourg (champs au large à r≈12) + une marge franche.
@@ -423,6 +507,131 @@ func _snap_to_land(sea: Image, c: Vector2) -> Vector2:
 				if int(sea.get_pixel(nx, ny).r * 255.0 + 0.5) < 1:
 					return Vector2(nx, ny)
 	return c
+
+## SIÈGE du tampon — où les HUMAINS habiteraient : au bord de l'EAU DOUCE (rivière/lac) si elle est proche,
+## sinon sur le RIVAGE marin, décalé vers l'INTÉRIEUR ; à défaut, au cœur intérieur de la région. Toujours
+## sur TERRE, dans la région r, de préférence INTÉRIEUR de province (≠ jonction). Le centroïde ne sert que
+## d'ORIGINE de recherche / dernier repli (sa position brute tombe pile sur une jonction).
+func _find_seat(w, water: Image, seaonly: Image, rf: Image, r: int, c0: Vector2) -> Vector2:
+	if water == null:
+		return c0
+	var cx := int(round(c0.x))
+	var cy := int(round(c0.y))
+	# 1) EAU DOUCE (lac ou rivière) proche → ville au bord, léger retrait (jamais SUR l'eau).
+	var fresh := _nearest_water(water, seaonly, rf, cx, cy, SEAT_FRESH_R, true)
+	if fresh.x >= 0:
+		var s1 := _seat_inland(w, water, rf, r, fresh, c0, SEAT_FRESH_INLAND)
+		if s1.x >= 0:
+			return s1
+	# 2) sinon MER → ville côtière, retrait plus marqué vers l'intérieur.
+	var salt := _nearest_water(water, seaonly, rf, cx, cy, SEAT_SEA_R, false)
+	if salt.x >= 0:
+		var s2 := _seat_inland(w, water, rf, r, salt, c0, SEAT_SEA_INLAND)
+		if s2.x >= 0:
+			return s2
+	# 3) intérieur : cellule de r, intérieure de province, la plus proche du centroïde.
+	return _interior_seat(w, water, rf, r, c0)
+
+## VRAI si (x,y) est de l'EAU DOUCE (lac = eau mais pas mer, OU rivière) quand `fresh`, sinon de la MER.
+func _water_match(water: Image, seaonly: Image, rf: Image, x: int, y: int, fresh: bool) -> bool:
+	var is_water := int(water.get_pixel(x, y).r * 255.0 + 0.5) >= 1
+	var is_sea := seaonly != null and int(seaonly.get_pixel(x, y).r * 255.0 + 0.5) >= 1
+	if fresh:
+		var is_lake := is_water and not is_sea
+		var is_river := rf != null and x < rf.get_width() and y < rf.get_height() and rf.get_pixel(x, y).r >= RIVER_WATER_MIN
+		return is_lake or is_river
+	return is_sea
+
+## cellule d'eau la plus proche de (cx,cy) (≤ maxrad) qui matche eau-douce/mer ; (-1,-1) si aucune.
+func _nearest_water(water: Image, seaonly: Image, rf: Image, cx: int, cy: int, maxrad: int, fresh: bool) -> Vector2:
+	var sw := water.get_width()
+	var sh := water.get_height()
+	for R in range(1, maxrad + 1):
+		for dy in range(-R, R + 1):
+			for dx in range(-R, R + 1):
+				if absi(dx) != R and absi(dy) != R:
+					continue                            # bord d'anneau seulement (du plus proche au plus loin)
+				var x := cx + dx
+				var y := cy + dy
+				if x < 0 or y < 0 or x >= sw or y >= sh:
+					continue
+				if _water_match(water, seaonly, rf, x, y, fresh):
+					return Vector2(x, y)
+	return Vector2(-1, -1)
+
+## pose le siège sur TERRE SÈCHE de la région r, à ~`inland` cellules de l'eau, vers le centroïde.
+func _seat_inland(w, water: Image, rf: Image, r: int, water_pt: Vector2, c0: Vector2, inland: float) -> Vector2:
+	var dir := c0 - water_pt
+	if dir.length() < 0.5:
+		dir = Vector2(0, -1)
+	dir = dir.normalized()
+	var target := water_pt + dir * inland
+	return _snap_region_land(w, water, rf, r, target)
+
+## VRAI si (x,y) est de la TERRE SÈCHE : ni mer/lac (LAYER_WATER), ni RIVIÈRE (champ rf). ⚠ les rivières
+## ne sont PAS dans LAYER_WATER → sans ce test on poserait le tampon EN PLEIN MILIEU du fleuve.
+func _is_dry_land(water: Image, rf: Image, x: int, y: int) -> bool:
+	if int(water.get_pixel(x, y).r * 255.0 + 0.5) >= 1:
+		return false                                    # mer ou lac
+	return not _in_river_water(rf, x, y)                # ni rivière
+
+## cellule de TERRE SÈCHE de r la plus proche de `target`, de préférence INTÉRIEURE de province ; (-1,-1) sinon.
+func _snap_region_land(w, water: Image, rf: Image, r: int, target: Vector2) -> Vector2:
+	var sw := water.get_width()
+	var sh := water.get_height()
+	var tx := int(round(target.x))
+	var ty := int(round(target.y))
+	var fallback := Vector2(-1, -1)
+	for R in range(0, 10):
+		for dy in range(-R, R + 1):
+			for dx in range(-R, R + 1):
+				if R > 0 and absi(dx) != R and absi(dy) != R:
+					continue
+				var x := tx + dx
+				var y := ty + dy
+				if x < 1 or y < 1 or x >= sw - 1 or y >= sh - 1:
+					continue
+				if not _is_dry_land(water, rf, x, y):
+					continue                            # eau (mer/lac/rivière)
+				var pv: int = w.province_at(x, y)
+				if pv < 0 or w.province_region(pv) != r:
+					continue                            # hors région r
+				if w.province_at(x - 1, y) == pv and w.province_at(x + 1, y) == pv \
+				   and w.province_at(x, y - 1) == pv and w.province_at(x, y + 1) == pv:
+					return Vector2(x, y)                # intérieur de province
+				if fallback.x < 0:
+					fallback = Vector2(x, y)
+	return fallback
+
+## cœur INTÉRIEUR de la région (cellule SÈCHE de r, intérieure de province, la + proche du centroïde). Dernier repli.
+func _interior_seat(w, water: Image, rf: Image, r: int, c0: Vector2) -> Vector2:
+	var sw := water.get_width()
+	var sh := water.get_height()
+	var cx := int(round(c0.x))
+	var cy := int(round(c0.y))
+	var fallback := Vector2(-1, -1)
+	for R in range(0, 14):
+		for dy in range(-R, R + 1):
+			for dx in range(-R, R + 1):
+				if R > 0 and absi(dx) != R and absi(dy) != R:
+					continue
+				var x := cx + dx
+				var y := cy + dy
+				if x < 1 or y < 1 or x >= sw - 1 or y >= sh - 1:
+					continue
+				if not _is_dry_land(water, rf, x, y):
+					continue
+				var pv: int = w.province_at(x, y)
+				if pv < 0 or w.province_region(pv) != r:
+					continue
+				if w.province_at(x - 1, y) == pv and w.province_at(x + 1, y) == pv \
+				   and w.province_at(x, y - 1) == pv and w.province_at(x, y + 1) == pv:
+					return Vector2(x, y)
+				if fallback.x < 0:
+					fallback = Vector2(x, y)
+	if fallback.x >= 0:
+		return fallback
+	return _snap_to_land(water, c0)
 
 ## direction NORMALISÉE vers la mer la plus proche (≤ maxrad), Vector2.ZERO si aucune.
 func _nearest_sea_dir(sea: Image, c: Vector2, maxrad: int) -> Vector2:
@@ -1108,6 +1317,24 @@ func _in_river_water(rf: Image, ix: int, iy: int) -> bool:
 		return false
 	return rf.get_pixel(ix, iy).r >= RIVER_WATER_MIN
 
+## VRAI si (x,y) est SUR ou À CÔTÉ d'une rivière VISIBLE (seuil BAS + voisinage 1 cellule) → aucune marque
+## de dressing ici (sinon, la rivière étant translucide, la marque transparaît « sous » l'eau = artefact).
+const DRESS_RIVER_MIN := 0.08   ## seuil bas (la rivière du shader s'imprime dès ~0.13 ; on l'attrape + marge)
+func _near_river(rf: Image, x: int, y: int) -> bool:
+	if rf == null:
+		return false
+	var rw := rf.get_width()
+	var rh := rf.get_height()
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			var nx := x + dx
+			var ny := y + dy
+			if nx < 0 or ny < 0 or nx >= rw or ny >= rh:
+				continue
+			if rf.get_pixel(nx, ny).r >= DRESS_RIVER_MIN:
+				return true
+	return false
+
 func _process(_dt: float) -> void:
 	# pendant un cataclysme, on redessine en continu pour PULSER l'épicentre
 	# (horloge MUR, hors déterminisme). Sinon : aucun coût (le tick suffit).
@@ -1156,8 +1383,8 @@ func _draw() -> void:
 	if mv == null:
 		return
 	_draw_iso(w, mv)
-	# MODE RESSOURCES (9) : les icônes de brutes par tuile, AU-DESSUS de tout
-	if int(mv.get("mode")) == 9:
+	# MODE RESSOURCES (9) : les icônes de brutes par tuile, AU-DESSUS de tout (sauf en mode NATURE).
+	if not nature_mode and int(mv.get("mode")) == 9:
 		_draw_resources(w, mv, true)
 
 ## CARTE PARCHEMIN — acteurs tracés en ENCRE vectorielle (zéro sprite) : frontières, routes,
@@ -1168,6 +1395,35 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
 	var INK := Color(0.20, 0.14, 0.09, 0.95)         # encre brun-sépia (le trait de plume)
+
+	# ── DRESSING DE TERRAIN (lot 2) : marques de biome (relief/végétation/zones), SOUS tout le reste. ──
+	if zoom >= DECOR_ZOOM_MIN:
+		if _dressing_dirty:
+			_build_dressing()
+			_dressing_dirty = false
+		var dress_col := Color(1, 1, 1, DRESS_ALPHA)
+		var egg_col := Color(1, 1, 1, EGG_ALPHA)
+		for d in _dressing:
+			var wp: Vector2 = d["pos"]
+			var dip: Vector2 = mv.iso_pos(wp.x, wp.y)
+			var dss: Vector2 = vt * dip
+			if dss.x < -90 or dss.y < -90 or dss.x > vp.x + 90 or dss.y > vp.y + 90:
+				continue
+			var did: String = d["id"]
+			var dtex := _dress_get(did)
+			if dtex == null:
+				continue
+			var is_egg: bool = d.get("egg", false)
+			var dh := _dress_size(did) * float(d["scale"]) / zoom        # hauteur MONDE (taille écran constante)
+			var dw := dh
+			if did.begins_with("sea_serpent"):
+				dw = dh * 2.0                                            # serpent : sprite 2:1 (large)
+			draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
+				egg_col if is_egg else dress_col)
+
+	# MODE NATURE : juste le terrain + le dressing — on saute frontières, routes, villes, armées, noms, §27.
+	if nature_mode:
+		return
 
 	# ── FRONTIÈRES à l'ENCRE (calligraphie) : TRAME FINE 1px (toutes provinces+régions) + BLOCS
 	#    d'empire 3px, COULEUR PAR ENTITÉ, en 2 passes (bave d'encre douce + plume nette, jittées). ──
@@ -1232,20 +1488,24 @@ func _draw_iso(w, mv: Node2D) -> void:
 				draw_multiline(dash_main, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b, ROAD_INK.a * 0.28), _w(zoom, 0.7, 2.0, 3.2), true)
 				draw_multiline(dash_main, ROAD_INK, _w(zoom, 0.40, 1.3, 2.0), true)
 
-	# ── VILLES : glyphe d'encre par région (taille ∝ tier), capitale étoilée. ──
+	# ── VILLES : TAMPONS d'atlas (lot 1) — cité (t1-t7), cité-état & hameau libre (assets DÉDIÉS). ──
+	# CENTRÉS sur le SIÈGE intérieur de province (≠ jonction ; le centroïde brut tombe pile à l'intersection
+	# des provinces). Cité-état (rôle 2) & hameau libre (rôle 4) toujours tracés même sans tier de ville.
 	if zoom >= CITY_ZOOM_MIN:
 		for r in range(w.region_count()):
 			var tier: int = w.region_tier(r)
-			if tier < 0:
-				continue
-			var ctr: Vector2 = _region_anchor.get(r, w.region_centroid(r))
+			var owner: int = w.region_owner(r)
+			var role: int = int(w.country_role(owner)) if owner >= 0 else -1
+			if tier < 0 and role != 2 and role != 4:
+				continue                                  # wilderness sans ville → rien (mais on garde cité-état/libre)
+			var ctr: Vector2 = _region_seat.get(r, w.region_centroid(r))
 			if ctr.x < 0:
 				continue
 			var ip: Vector2 = mv.iso_pos(ctr.x, ctr.y)
 			var ss: Vector2 = vt * ip
-			if ss.x < -20 or ss.y < -20 or ss.x > vp.x + 20 or ss.y > vp.y + 20:
+			if ss.x < -40 or ss.y < -40 or ss.x > vp.x + 40 or ss.y > vp.y + 40:
 				continue
-			_draw_town(ip, tier, zoom, INK)
+			_draw_settlement(w, r, role, ip, zoom)
 
 	# ── ARMÉES : jeton vectoriel (losange + anneau de phase) + ligne de marche. ──
 	for c in range(w.country_count()):
@@ -1337,6 +1597,172 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var rad := (7.0 + k * 6.0 + fmod(t * 5.0, 6.0)) / zoom
 				# §27 : l'anneau d'épicentre DOIT se lire au plan large (drame global) ; trait borné, le rayon de pulse reste /zoom.
 				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), _w(zoom, 0.35, 1.2, 2.4), true)
+
+## charge (paresseux) un TAMPON de peuplement par id → Texture2D. `load()` (importé) puis repli Image.load
+## (PNG brut, robuste si l'import n'a pas tourné). Cache (y compris le null) → pas de rechargement par frame.
+func _stamp_get(id: String) -> Texture2D:
+	if _stamp_tex.has(id):
+		return _stamp_tex[id]
+	var path := "res://art/map_stamps/lot1/assets_alpha/%s.png" % id
+	var tex: Texture2D = null
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	if tex == null:
+		var img := Image.new()
+		if img.load(path) == OK:
+			tex = ImageTexture.create_from_image(img)
+	_stamp_tex[id] = tex
+	return tex
+
+## charge (paresseux) une MARQUE DE TERRAIN par id → Texture2D (cache). Cherche dans lot 3 (biomes plats/
+## eau) PUIS lot 2 (relief/forêt/désert) — les ids sont uniques entre lots. Fallback Image.load (PNG brut).
+func _dress_get(id: String) -> Texture2D:
+	if _dress_tex.has(id):
+		return _dress_tex[id]
+	var tex := _dress_load("res://art/map_stamps/lot3_biomes/assets_alpha/%s.png" % id)
+	if tex == null:
+		tex = _dress_load("res://art/map_stamps/lot2_painted/assets_alpha/%s.png" % id)
+	if tex == null:
+		tex = _dress_load("res://art/map_stamps/lot4_easter_eggs/assets_alpha/%s.png" % id)
+	_dress_tex[id] = tex
+	return tex
+
+func _dress_load(path: String) -> Texture2D:
+	if ResourceLoader.exists(path):
+		return load(path)
+	if FileAccess.file_exists(path):              # garde : pas d'Image.load sur un fichier absent (≠ spam d'erreurs)
+		var img := Image.new()
+		if img.load(path) == OK:
+			return ImageTexture.create_from_image(img)
+	return null
+
+## taille à l'ÉCRAN (px) d'une marque selon sa famille (montagnes grandes, herbe de plaine petite).
+func _dress_size(id: String) -> float:
+	if id.begins_with("sea_serpent"): return 84.0          # lot 4 : serpent (largeur ×2 au tracé → 2:1)
+	if id.begins_with("mountain_range"): return 50.0
+	if id.begins_with("mountain"): return 42.0
+	if id.begins_with("forest"): return 38.0
+	if id.begins_with("dune") or id.begins_with("sea_") or id.begins_with("ocean") or id.begins_with("water"): return 34.0
+	if id.begins_with("apoc_rabbit"): return 32.0          # lot 4 : lapin marginalia
+	if id.begins_with("hill"): return 30.0
+	if id.begins_with("shipwreck") or id.begins_with("broken") or id.begins_with("half_sunk") or id.begins_with("floating") \
+	   or id.begins_with("jagged") or id.begins_with("low_rocks") or id.begins_with("sea_stacks") or id.begins_with("shoal"): return 30.0  # épaves/récifs
+	if id.begins_with("savanna") or id.begins_with("acacia") or id.begins_with("steppe") or id.begins_with("marsh"): return 28.0
+	if id.begins_with("tree") or id.begins_with("reeds") or id.begins_with("rocky"): return 26.0
+	if id.begins_with("plain"): return 24.0
+	return 24.0
+
+## SÈME les marques de terrain par BIOME (grille jittée déterministe), une fois à la génération. Display-only.
+func _build_dressing() -> void:
+	_dressing.clear()
+	var w = Sim.world
+	if w == null:
+		return
+	var bio: Image = w.layer_image(LAYER_BIOME)
+	if bio == null:
+		return
+	var rf: Image = _carved_river_field()      # champ rivière → on N'ENTASSE PAS de marques sur les fleuves
+	var sw := bio.get_width()
+	var sh := bio.get_height()
+	var i := 0
+	var y := roundi(DRESS_SPACING * 0.5)
+	while y < sh:
+		var x := roundi(DRESS_SPACING * 0.5)
+		while x < sw:
+			# 1 + N passes selon le biome de la cellule (forêts = canopée DENSE → plusieurs marques/cellule).
+			var bb := int(bio.get_pixel(clampi(x, 0, sw - 1), clampi(y, 0, sh - 1)).r * 255.0 + 0.5)
+			var passes := 1 + int(DRESS_EXTRA.get(bb, 0))
+			for p in range(passes):
+				i += 1
+				_try_place_dress(i, x, y, bio, rf, sw, sh)
+			x += DRESS_SPACING
+		y += DRESS_SPACING
+	_build_easter_eggs(bio, rf, sw, sh)        # lot 4 : serpents/épaves/récifs/lapins (rares)
+	# TRI par id → les marques de même texture sont DESSINÉES À LA SUITE (le batcher 2D les fusionne) : perf
+	# tenable malgré le grand nombre de marques (canopée dense).
+	_dressing.sort_custom(func(a, b): return String(a["id"]) < String(b["id"]))
+
+## tente UNE marque jittée à partir de (x,y) : hors rivière, biome connu, sous la densité → ajoutée.
+func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh: int) -> void:
+	var jx := int((_h1(float(i) * 1.7) - 0.5) * float(DRESS_SPACING))
+	var jy := int((_h1(float(i) * 3.3) - 0.5) * float(DRESS_SPACING))
+	var px := clampi(x + jx, 0, sw - 1)
+	var py := clampi(y + jy, 0, sh - 1)
+	if _near_river(rf, px, py):
+		return                                 # JAMAIS sur/au bord d'une rivière (sinon elle transparaît sous la marque)
+	var b := int(bio.get_pixel(px, py).r * 255.0 + 0.5)
+	if not DRESS_BY_BIOME.has(b):
+		return
+	var dens: float = DRESS_DENSITY.get(b, 0.6)
+	if _h1(float(i) * 5.1) > dens:
+		return
+	var ids: Array = DRESS_BY_BIOME[b]
+	var id: String = ids[int(_h1(float(i) * 7.7) * float(ids.size())) % ids.size()]
+	var scl := 0.85 + 0.30 * _h1(float(i) * 9.9)   # 0.85..1.15 : variété d'échelle
+	_dressing.append({"pos": Vector2(px, py), "id": id, "scale": scl})
+
+## LOT 4 — easter eggs RARES : serpent sur l'océan profond (cap 3), épave/récif sur le haut-fond, lapin
+## marginalia sur terre (cap 2). Grille grossière + faibles probas → rares mais présents.
+func _build_easter_eggs(bio: Image, rf: Image, sw: int, sh: int) -> void:
+	var serp := 0
+	var rab := 0
+	var i := 100000
+	var y := roundi(EGG_SPACING * 0.5)
+	while y < sh:
+		var x := roundi(EGG_SPACING * 0.5)
+		while x < sw:
+			i += 1
+			var b := int(bio.get_pixel(clampi(x, 0, sw - 1), clampi(y, 0, sh - 1)).r * 255.0 + 0.5)
+			var r := _h1(float(i) * 2.13)
+			if b == 0 and serp < 3 and r < 0.10:                       # OCÉAN PROFOND → serpent
+				var sid := "sea_serpent_01" if _h1(float(i) * 4.4) < 0.5 else "sea_serpent_02"
+				_dressing.append({"pos": Vector2(x, y), "id": sid, "scale": 1.0, "egg": true})
+				serp += 1
+			elif b == 2 and r < 0.05:                                  # HAUT-FOND → épave/récif
+				var wid: String = EGG_WRECKS[int(_h1(float(i) * 6.6) * float(EGG_WRECKS.size())) % EGG_WRECKS.size()]
+				_dressing.append({"pos": Vector2(x, y), "id": wid, "scale": 1.0, "egg": true})
+			elif b >= 4 and b <= 9 and rab < 2 and r > 0.99 and not _near_river(rf, x, y):  # TERRE → lapin (ultra-rare)
+				var rid: String = EGG_RABBITS[int(_h1(float(i) * 8.8) * float(EGG_RABBITS.size())) % EGG_RABBITS.size()]
+				_dressing.append({"pos": Vector2(x, y), "id": rid, "scale": 1.0, "egg": true})
+				rab += 1
+			x += EGG_SPACING
+		y += EGG_SPACING
+
+## tier de tampon (1-7) d'après la POPULATION (paliers CITY_POP_BANDS) → un VRAI étalement de tailles
+## (le region_tier de la façade se tasse à 4 ; la pop donne la variété t1..t7 demandée).
+func _pop_tier(pop: int) -> int:
+	var t := 1
+	for thr in CITY_POP_BANDS:
+		if pop >= thr:
+			t += 1
+		else:
+			break
+	return clampi(t, 1, 7)
+
+## TAMPON D'ATLAS d'une région, CENTRÉ sur le siège. Cité-état & hameau libre → assets DÉDIÉS
+## (`city_state` / `wild_hamlet`). Cités normales → `city_t1..t4` selon la POP (PAS de t5-t7 : pas de
+## faux air de capitale ; la VRAIE capitale est déjà désignée par le liseré pourpre). Pas de variante
+## portuaire. Repli sur le glyphe d'encre si le tampon manque. Display-only.
+func _draw_settlement(w, r: int, role: int, ip: Vector2, zoom: float) -> void:
+	var is_cs := role == 2
+	var is_wild := role == 4
+	# tier par POPULATION, plafonné à T4 — la capitale n'a PAS de stamp couronné (le liseré pourpre la marque).
+	var st := mini(_pop_tier(int(w.region_pop(r))), 4)
+	var id: String = SettlementStamps.id_for_settlement(st, false, is_wild, is_cs)
+	var tex := _stamp_get(id)
+	if tex == null:
+		_draw_town(ip, maxi(st - 1, 1), zoom, Color(0.20, 0.14, 0.09, 0.95))   # repli vectoriel
+		return
+	# taille (px ÉCRAN) : cité-état imposante (asset fixe), hameau libre petit, sinon ∝ tier de pop.
+	var size_tier := st
+	if is_cs:
+		size_tier = 6
+	elif is_wild:
+		size_tier = 2
+	var sz_px := lerpf(STAMP_PX_MIN, STAMP_PX_MAX, clampf(float(size_tier - 1) / 6.0, 0.0, 1.0))
+	var sz := sz_px / maxf(zoom, 0.0001)                                    # → unités MONDE (taille écran constante)
+	# ancre CENTRE : le tampon est posé AU MILIEU du siège (centré sur le point, pas au-dessus). Léger fade.
+	draw_texture_rect(tex, Rect2(ip - Vector2(sz * 0.5, sz * 0.5), Vector2(sz, sz)), false, Color(1, 1, 1, STAMP_ALPHA))
 
 ## glyphe de ville à l'encre : cercle crème cerné d'encre, taille ∝ tier ; capitale (tier≥4) étoilée.
 func _draw_town(ip: Vector2, tier: int, zoom: float, ink: Color) -> void:

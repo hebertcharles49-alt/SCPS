@@ -35,6 +35,7 @@ var _himg: Image                ## couche HEIGHT (figée) — lue par l'overlay 
 
 var _ground: Node2D             ## sol PARCHEMIN (iso_ground.gd, shader cartographique)
 var _camera: Camera2D
+var _overlay: Node2D            ## overlay des acteurs (frontières/villes/dressing) — toggle mode NATURE
 
 func _ready() -> void:
 	# SOL PARCHEMIN — le shader cartographique peint tout (display-only).
@@ -59,6 +60,7 @@ func _ready() -> void:
 	ov.set_script(load("res://map/overlay.gd"))
 	ov.name = "Overlay"
 	add_child(ov)
+	_overlay = ov
 
 	Sim.generated.connect(_on_generated)
 	Sim.ticked.connect(_on_ticked)
@@ -111,6 +113,12 @@ func set_mode(m: int) -> void:
 
 # ── navigation ───────────────────────────────────────────
 func _input(event: InputEvent) -> void:
+	# touche N : bascule le MODE NATURE (carte vierge — terrain + dressing seuls, sans frontières/villes).
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N:
+		if _overlay != null:
+			_overlay.nature_mode = not _overlay.nature_mode
+			_overlay.queue_redraw()
+		return
 	if event is InputEventMouseMotion and (event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_LEFT)):
 		if event.position.distance_to(_press_pos) > CLICK_SLOP:
 			_dragged = true

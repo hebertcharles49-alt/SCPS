@@ -171,9 +171,9 @@ void fragment() {
 			// MER : assombrissement CÔTIER CONTINU (proximité de terre lissée → plus de bandes discrètes
 			// « bancs de sable ») + écume FINE et douce au tout bord. Estuaire (marais) reste OUVERT.
 			float coast = max(ring_solid(cw, 1.3), ring_solid(cw, 2.5) * 0.65);   // 0..1 doux
-			col *= mix(1.0, 0.84, coast);
+			col *= mix(1.0, 0.88, coast);                                        // bord mer ADOUCI (fade)
 			float foam = clamp(ring_solid(cw, 1.1) - ring_solid(cw, 0.55), 0.0, 1.0);   // anneau IMMÉDIAT
-			col = mix(col, vec3(0.74, 0.79, 0.78), foam * 0.16);                  // écume subtile (pas un banc)
+			col = mix(col, vec3(0.74, 0.79, 0.78), foam * 0.10);                  // écume TRÈS subtile (bord fondu)
 			col *= mix(1.0, 0.97, smoothstep(0.6, 1.0, sin(iso.y * 1.6)));        // gravure
 		} else if (is_wetland(b)) {
 			// MARAIS : SYMBOLE de tirets horizontaux (cartographie) — DISCRET (le marais se FOND dans le
@@ -183,13 +183,13 @@ void fragment() {
 			float dash = sin(iso.x * 1.7 + step(0.0, rows) * 1.6);     // tirets décalés rangée/rangée
 			col = mix(col, col * 0.88, rowOn * smoothstep(0.2, 0.7, dash) * 0.40);
 		} else {
-			// TERRE FERME : trait d'ENCRE de côte contre l'eau ET le marais (la rive solide) + bave
-			if (near_wet(cw, 2.4)) col = mix(col, vec3(0.30, 0.24, 0.17), ink * 0.35);
-			if (near_wet(cw, 1.1)) col = mix(col, vec3(0.20, 0.15, 0.10), ink);
-			if (near_wet(cw, 2.2) && !near_wet(cw, 1.2)) {
-				float bleed = texture(noise_tex, cell * 0.2 + vec2(9.0, 3.0)).r;
-				col = mix(col, vec3(0.30, 0.24, 0.18), bleed * 0.15);
-			}
+			// TERRE FERME : « FADE TOUS LES BORDS » — l'eau déteint en dégradé LARGE sur la rive (bave
+			// aquarelle), et le trait d'encre de côte devient un simple VOILE humide : plus d'arête nette,
+			// la côte est un GRADIENT peint (rivière/lac/mer ↔ terre se fondent).
+			if (near_wet(cw, 4.0)) col = mix(col, vec3(0.53, 0.61, 0.61), 0.045);
+			if (near_wet(cw, 2.8)) col = mix(col, vec3(0.50, 0.59, 0.60), 0.060);
+			if (near_wet(cw, 1.7)) col = mix(col, vec3(0.47, 0.57, 0.59), 0.085);
+			if (near_wet(cw, 1.0)) col = mix(col, vec3(0.40, 0.46, 0.46), 0.120);   // bord = voile humide (pas d'encre dure)
 		}
 
 		// RIVIÈRE = ENCRE FANÉE mais OPAQUE (pas un bleu uniforme « Google Maps », mais le sol ne TRANSPARAÎT
@@ -205,8 +205,10 @@ void fragment() {
 		float paper = texture(noise_tex, cell * 0.6 + vec2(7.0, 2.0)).r;   // grain du papier (teinte inégale)
 		// SEUIL plus haut + transition plus douce : sous le seuil rien ne s'imprime (plus de « bancs de
 		// sable » pâles dans les zones de faible débit). Le bord (berge) se fond.
-		float edge  = smoothstep(0.14, 0.40, rv) * (0.92 + 0.08 * rv_noise);
-		float depth = smoothstep(0.22, 0.66, rv);             // 0 = HAUT-FOND (berge) · 1 = CHENAL profond
+		// SEUIL RELEVÉ : sous ~0.13 rien ne s'imprime → plus de lavis PÂLE de faible débit (les « artefacts »
+		// que le seuil bas faisait ressortir). La berge reste douce par le `body` (opacité) + le haut du smoothstep.
+		float edge  = smoothstep(0.13, 0.46, rv) * (0.92 + 0.08 * rv_noise);
+		float depth = smoothstep(0.20, 0.66, rv);             // 0 = HAUT-FOND (berge) · 1 = CHENAL profond
 		// encre RGB ±4 % par canal (jamais uniforme — elle bave, se concentre) + légère dérive du grain
 		vec3 water_ink = (vec3(vnoise(cell * 0.7 + vec2(11.0, 3.0)),
 		                       vnoise(cell * 0.7 + vec2(5.0, 19.0)),
@@ -216,10 +218,30 @@ void fragment() {
 		vec3 riv_col = mix(shoal, deep, depth) + water_ink + (paper - 0.5) * 0.05;
 		// l'encre RECOUVRE le sol (corps OPAQUE ~0.95) ; le bord fondu donne la berge — JAMAIS de terrain
 		// qui transparaît à travers le lit (fade par la COULEUR désaturée, pas par la transparence).
-		// BLEND À LA MER : sur l'eau salée, la rivière se FOND fortement (faible opacité) → l'embouchure se
-		// dissout dans la mer au lieu d'un patch pâle « banc de sable ». Pleine sur terre/marais.
-		float river_amt = edge * (is_water(b) ? 0.28 : (is_wetland(b) ? 0.82 : 0.95));
-		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.95));
+		// AQUARELLE QUI BAVE : opacité DÉGRESSIVE — la berge est TRANSLUCIDE (le sol transparaît, l'eau y
+		// « bave » comme une peinture), le CHENAL est plus plein. Plus d'aplat opaque dur. Et sur la MER,
+		// l'embouchure se dissout (faible opacité). `body` rampe berge→chenal selon la profondeur.
+		float body = mix(0.34, 0.86, depth);
+		// FUSION AVEC LA MER (le fleuve côtier qui « ne merge pas ») : proximité d'eau salée sur PLUSIEURS
+		// anneaux (jusqu'à 5 cellules — la bande de terre est souvent > 3). Près de la côte, l'eau du fleuve
+		// (1) prend la TEINTE de la mer → jonction SANS couture, et (2) son opacité S'AMINCIT → il se dissout
+		// dans la mer. Loin des côtes (to_sea=0), le fleuve garde sa couleur/pleine opacité.
+		float to_sea = 0.0;
+		if (near_wet(cw, 5.0)) to_sea = 0.40;
+		if (near_wet(cw, 3.2)) to_sea = 0.70;
+		if (near_wet(cw, 1.7)) to_sea = 1.0;
+		riv_col = mix(riv_col, antique_color(1), to_sea * 0.72);       // teinte → MER près de la côte
+		float land_fac;
+		if (is_water(b)) {
+			float near_land = clamp(ring_solid(cw, 2.0), 0.0, 1.0);   // 1 au rivage → 0 au large
+			land_fac = mix(0.08, 0.42, near_land);
+		} else if (is_wetland(b)) {
+			land_fac = 0.85;
+		} else {
+			land_fac = mix(1.0, 0.32, to_sea);                       // fleuve côtier : s'amincit fort près de la mer
+		}
+		float river_amt = edge * body * land_fac;
+		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.90));
 
 		// RELIEF (massifs clusterisés ∝ densité → pas de hachures éparses)
 		float rd = relief_density(cw);

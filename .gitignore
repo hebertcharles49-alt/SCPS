@@ -116,3 +116,12 @@ navy_demo
 
 # Backup local des assets (rollback overhaul) — pas dans le repo
 godot/project/assets/scps/pack_old/
+
+# Binaire Godot (248 Mo, régénéré depuis godot.org)
+Godot_v4.6.3-stable_mono_win64/
+
+# App-userdata Godot (généré au runtime)
+godot/project/Godot/
+
+# Sorties outils SLP (BMP générés par slp_decode.js)
+tools/clf_out/

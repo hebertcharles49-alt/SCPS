@@ -1,0 +1,416 @@
+{
+  "name": "SCPS Lot 3 - Biome Dressing Marks",
+  "style": "subtle late-medieval painted atlas biome marks",
+  "background_key": "#FF00FF",
+  "source_sheet_chromakey": "sheet/scps_lot3_biome_marks_sheet_chromakey.png",
+  "source_sheet_alpha": "sheet/scps_lot3_biome_marks_sheet_alpha.png",
+  "preview": "preview/scps_lot3_biome_marks_preview_on_parchment.png",
+  "crop_method": "4x5_cell_then_content_bbox",
+  "items": [
+    {
+      "id": "savanna_grass_01",
+      "category": "savanna",
+      "layer": "dry_vegetation",
+      "alpha_png": "assets_alpha/savanna_grass_01.png",
+      "chromakey_png": "assets_chromakey/savanna_grass_01.png",
+      "source_bbox": {
+        "x": 36,
+        "y": 96,
+        "width": 248,
+        "height": 155
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "savanna_grass_02",
+      "category": "savanna",
+      "layer": "dry_vegetation",
+      "alpha_png": "assets_alpha/savanna_grass_02.png",
+      "chromakey_png": "assets_chromakey/savanna_grass_02.png",
+      "source_bbox": {
+        "x": 343,
+        "y": 58,
+        "width": 247,
+        "height": 193
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "acacia_mark_01",
+      "category": "savanna",
+      "layer": "dry_vegetation",
+      "alpha_png": "assets_alpha/acacia_mark_01.png",
+      "chromakey_png": "assets_chromakey/acacia_mark_01.png",
+      "source_bbox": {
+        "x": 634,
+        "y": 64,
+        "width": 253,
+        "height": 187
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "savanna_sparse_tree_01",
+      "category": "savanna",
+      "layer": "dry_vegetation",
+      "alpha_png": "assets_alpha/savanna_sparse_tree_01.png",
+      "chromakey_png": "assets_chromakey/savanna_sparse_tree_01.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 82,
+        "width": 281,
+        "height": 169
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "marsh_reeds_01",
+      "category": "marsh",
+      "layer": "wetland",
+      "alpha_png": "assets_alpha/marsh_reeds_01.png",
+      "chromakey_png": "assets_chromakey/marsh_reeds_01.png",
+      "source_bbox": {
+        "x": 37,
+        "y": 305,
+        "width": 247,
+        "height": 194
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "marsh_reeds_02",
+      "category": "marsh",
+      "layer": "wetland",
+      "alpha_png": "assets_alpha/marsh_reeds_02.png",
+      "chromakey_png": "assets_chromakey/marsh_reeds_02.png",
+      "source_bbox": {
+        "x": 348,
+        "y": 304,
+        "width": 219,
+        "height": 198
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "marsh_ripple_reeds_01",
+      "category": "marsh",
+      "layer": "wetland",
+      "alpha_png": "assets_alpha/marsh_ripple_reeds_01.png",
+      "chromakey_png": "assets_chromakey/marsh_ripple_reeds_01.png",
+      "source_bbox": {
+        "x": 627,
+        "y": 308,
+        "width": 275,
+        "height": 194
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "marsh_tufts_01",
+      "category": "marsh",
+      "layer": "wetland",
+      "alpha_png": "assets_alpha/marsh_tufts_01.png",
+      "chromakey_png": "assets_chromakey/marsh_tufts_01.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 251,
+        "width": 270,
+        "height": 251
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "sea_ripples_01",
+      "category": "sea_ocean",
+      "layer": "water",
+      "alpha_png": "assets_alpha/sea_ripples_01.png",
+      "chromakey_png": "assets_chromakey/sea_ripples_01.png",
+      "source_bbox": {
+        "x": 41,
+        "y": 589,
+        "width": 231,
+        "height": 133
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "sea_ripples_02",
+      "category": "sea_ocean",
+      "layer": "water",
+      "alpha_png": "assets_alpha/sea_ripples_02.png",
+      "chromakey_png": "assets_chromakey/sea_ripples_02.png",
+      "source_bbox": {
+        "x": 314,
+        "y": 586,
+        "width": 256,
+        "height": 136
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "ocean_swell_lines_01",
+      "category": "sea_ocean",
+      "layer": "water",
+      "alpha_png": "assets_alpha/ocean_swell_lines_01.png",
+      "chromakey_png": "assets_chromakey/ocean_swell_lines_01.png",
+      "source_bbox": {
+        "x": 627,
+        "y": 576,
+        "width": 269,
+        "height": 144
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "ocean_current_swirl_01",
+      "category": "sea_ocean",
+      "layer": "water",
+      "alpha_png": "assets_alpha/ocean_current_swirl_01.png",
+      "chromakey_png": "assets_chromakey/ocean_current_swirl_01.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 576,
+        "width": 278,
+        "height": 140
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "plain_grass_01",
+      "category": "plain",
+      "layer": "grassland",
+      "alpha_png": "assets_alpha/plain_grass_01.png",
+      "chromakey_png": "assets_chromakey/plain_grass_01.png",
+      "source_bbox": {
+        "x": 34,
+        "y": 810,
+        "width": 244,
+        "height": 142
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "plain_grass_02",
+      "category": "plain",
+      "layer": "grassland",
+      "alpha_png": "assets_alpha/plain_grass_02.png",
+      "chromakey_png": "assets_chromakey/plain_grass_02.png",
+      "source_bbox": {
+        "x": 332,
+        "y": 820,
+        "width": 244,
+        "height": 135
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "plain_wind_strokes_01",
+      "category": "plain",
+      "layer": "grassland",
+      "alpha_png": "assets_alpha/plain_wind_strokes_01.png",
+      "chromakey_png": "assets_chromakey/plain_wind_strokes_01.png",
+      "source_bbox": {
+        "x": 627,
+        "y": 814,
+        "width": 253,
+        "height": 137
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "plain_sparse_tufts_01",
+      "category": "plain",
+      "layer": "grassland",
+      "alpha_png": "assets_alpha/plain_sparse_tufts_01.png",
+      "chromakey_png": "assets_chromakey/plain_sparse_tufts_01.png",
+      "source_bbox": {
+        "x": 942,
+        "y": 825,
+        "width": 257,
+        "height": 123
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "steppe_grass_01",
+      "category": "steppe",
+      "layer": "dry_grassland",
+      "alpha_png": "assets_alpha/steppe_grass_01.png",
+      "chromakey_png": "assets_chromakey/steppe_grass_01.png",
+      "source_bbox": {
+        "x": 33,
+        "y": 1021,
+        "width": 234,
+        "height": 167
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "steppe_grass_02",
+      "category": "steppe",
+      "layer": "dry_grassland",
+      "alpha_png": "assets_alpha/steppe_grass_02.png",
+      "chromakey_png": "assets_chromakey/steppe_grass_02.png",
+      "source_bbox": {
+        "x": 322,
+        "y": 1027,
+        "width": 252,
+        "height": 176
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "steppe_dry_strokes_01",
+      "category": "steppe",
+      "layer": "dry_grassland",
+      "alpha_png": "assets_alpha/steppe_dry_strokes_01.png",
+      "chromakey_png": "assets_chromakey/steppe_dry_strokes_01.png",
+      "source_bbox": {
+        "x": 629,
+        "y": 1045,
+        "width": 247,
+        "height": 153
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "steppe_tufts_01",
+      "category": "steppe",
+      "layer": "dry_grassland",
+      "alpha_png": "assets_alpha/steppe_tufts_01.png",
+      "chromakey_png": "assets_chromakey/steppe_tufts_01.png",
+      "source_bbox": {
+        "x": 950,
+        "y": 1068,
+        "width": 255,
+        "height": 133
+      },
+      "recommended_map_size_px": [
+        18,
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    }
+  ],
+  "audit": {
+    "visible_magenta_like": 0,
+    "transparent_magenta_like": 0,
+    "visible_pinkish": 0
+  }
+}
