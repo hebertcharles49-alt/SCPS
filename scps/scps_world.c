@@ -3742,10 +3742,48 @@ void world_generate(World *w, const WorldParams *P) {
                 + stb_perlin_noise3    (nx2*16.f,ny2*15.f, seed_f+902.f,0,0,0)     *0.035f;
         float jm= stb_perlin_fbm_noise3(nx2*5.f, ny2*4.5f,seed_f+901.f,2.f,0.5f,4)*0.055f
                 + stb_perlin_noise3    (nx2*15.f,ny2*16.f, seed_f+903.f,0,0,0)     *0.028f;
+        Biome b=assign_biome(height[i],moisture[i]+jm,temp[i]+jt);
+        /* ── #5 BIOMES PENTE/SOL — la PENTE locale et le LIMON fluvial affinent
+         *    le biome posé par (h,m,t). APPLIQUÉ APRÈS assign_biome (ne re-route
+         *    pas les bandes climatiques) ; ne touche QUE le BAS-PAYS (sous la
+         *    bande de collines) et jamais un biome déjà humide. Il exploite le
+         *    relief sculpté par l'érosion hydraulique #1 (vallées plates +
+         *    épaules raides + dépôt alluvial le long des cours). */
+        if (height[i]>=SEA_LEVEL && height[i]<MOUNTAIN_H-0.05f) {
+            float slope=0.f;
+            for (int d=0;d<8;d++){
+                int sx=x+DDX[d], sy=y+DDY[d];
+                if (sx<0||sx>=SCPS_W||sy<0||sy>=SCPS_H) continue;
+                float dd=fabsf(height[i]-height[scps_idx(sx,sy)]);
+                if (dd>slope) slope=dd;
+            }
+            int flux=w->cell[i].river;   /* aire de drainage (le limon en aval) */
+            float tt=temp[i];
+            if (slope>0.030f) {
+                /* ÉPAULE RAIDE : escarpement sous les sommets → collines nues
+                 * (le sol fin ne tient pas la pente). Seuil ÉLEVÉ ⇒ rare, ne
+                 * grignote pas les terres arables — juste les vrais talus. */
+                if (b==BIO_PLAINS||b==BIO_GRASSLAND||b==BIO_WOODS||
+                    b==BIO_DRYLANDS||b==BIO_SAVANNA||b==BIO_STEPPE)
+                    b=(tt<0.30f)?BIO_HIGHLANDS:BIO_HILLS;
+            } else if (slope<0.006f && flux>=48) {
+                /* PLANCHER ALLUVIAL : vallée plate qui REÇOIT un débit → le
+                 * limon déposé (#1) fertilise → un cran plus verdoyant. */
+                switch (b){
+                    case BIO_DESERT: case BIO_COASTAL_DESERT: case BIO_DRYLANDS:
+                        b=(tt<0.55f)?BIO_GRASSLAND:BIO_SAVANNA; break;
+                    case BIO_STEPPE:    b=BIO_GRASSLAND; break;
+                    case BIO_SAVANNA:   b=BIO_GRASSLAND; break;
+                    case BIO_PLAINS:    b=BIO_GRASSLAND; break;
+                    case BIO_GRASSLAND: b=BIO_WOODS;     break;
+                    default: break;     /* forêt/jungle/marais déjà luxuriants */
+                }
+            }
+        }
         w->cell[i].height     =height[i];
         w->cell[i].moisture   =moisture[i];
         w->cell[i].temperature=temp[i];
-        w->cell[i].biome=assign_biome(height[i],moisture[i]+jm,temp[i]+jt);
+        w->cell[i].biome=b;
     }
     printf("ok\n");
 

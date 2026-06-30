@@ -1280,9 +1280,39 @@
   `determinism` STABLE ; vérif visuelle (mapshot + Godot nature, DLL rebâtie) : montagnes PRÉSERVÉES,
   rivières en vallées, monde sain. ⚠ ASan/UBSan NON vérifiés ici (libasan/libubsan absents du MinGW —
   limite d'env, comme les 3 KO ; le code est borné — chaque index gardé). **SAVE non bumpé** (la worldgen
-  se régénère de la graine ; aucune struct sérialisée ne change). À VENIR (plan Gleba) : #2 plaques→
-  orogenèse (relief structuré) · #3 priority-flood (lacs/drainage) · #4 ombre pluvio · #5 biomes pente/sol ·
-  rendre `trace_rivers` ÉMERGENT (suivre l'accumulation creusée) — ensemble = l'effet spectaculaire.
+  se régénère de la graine ; aucune struct sérialisée ne change).
+- **WORLDGEN #2 & #4 — DÉJÀ EN PLACE (audit du plan Gleba, 2026-06-30)** : la revue du plan a trouvé
+  que **DEUX des cinq étapes EXISTAIENT déjà** (l'auteur du plan, une session antérieure, ne le savait
+  pas). **#2 plaques→orogenèse** : `plates_init` (germes continentaux/océaniques, dérive, rifts) +
+  `step_architecture` font déjà l'orogenèse par CONVERGENCE (`conv=(1-dot)·0.5` ⇒ collision continentale
+  → chaînes `bump=bs·conv·1.10`, subduction océanique → Andes 0.65, crêtes ALIGNÉES sur la frontière avec
+  bruit hiérarchique R1/R2, volcans le long de la subduction, dureté différentielle) — plus riche que le
+  croquis du plan. **#4 ombre pluviométrique** : `gen_climate` a déjà la marche de VENT directionnelle
+  (`oro=humidity·rise·ORO_K` au versant au vent, `humidity-=p` ⇒ ombre sous le vent, ré-évaporation
+  forestière) + ceinture subtropicale de Hadley + assèchement continental ; et **#1 a rendu le relief
+  ANISOTROPE** ⇒ cette ombre existante AIGUISE désormais les déserts derrière les chaînes pour rien
+  (l'effet diffus que le plan craignait disparaît). **Conclusion** : #2/#4 NON ré-implémentés (redondant +
+  risqué) ; le travail neuf se concentre sur #5 (ci-dessous). #3 (priority-flood) et `trace_rivers`
+  ÉMERGENT restent un COUPLE à fort risque (chaîne rivière→port→marine→estuaire→rendu + l'esthétique de
+  lacs DISCRETS du parchemin que `fill_lakes` préserve volontairement) — à GREENLIGHTER à part, pas en
+  aveugle.
+- **WORLDGEN #5 — BIOMES PENTE/SOL (alluvial émergent, plan Gleba) (2026-06-30)** : dernier PR à faible
+  risque du plan ; exploite le relief sculpté par #1. La boucle de pose des biomes (`scps_world.c`) gagne,
+  APRÈS `assign_biome(h,m,t)`, un raffinement par PENTE locale (max |Δh| sur 8 voisins) et LIMON fluvial
+  (`cell.river` = aire de drainage, déjà dampée par l'aridité). Deux règles, **uniquement sur le bas-pays**
+  (sous la bande de collines `h<MOUNTAIN_H-0.05`) et **jamais sur un biome déjà humide** : (1) **ÉPAULE
+  RAIDE** (`slope>0.030`, seuil ÉLEVÉ ⇒ rare) — un escarpement sous les sommets devient collines nues
+  (HILLS/HIGHLANDS selon t) : le sol fin ne tient pas la pente ; (2) **PLANCHER ALLUVIAL** (`slope<0.006`
+  ET `flux≥48`) — une vallée plate qui REÇOIT un débit monte d'un cran de verdure (désert/drylands→
+  prairie/savane · steppe/savane/plaine→prairie · prairie→bois) : c'est la « dé-aridification » du plan,
+  mais ÉMERGENTE (le fleuve dépose le limon — #1 — qui fertilise). `assign_biome` garde sa signature
+  `(h,m,t)` ; slope/alluvial sont DÉRIVÉS dans la boucle (aucun champ stocké). DÉTERMINISTE (pure fonction
+  du relief). ⚠ **RE-BASELINE** (les biomes changent dès l'an-0 → `golden_hashes.txt` re-baseliné). `make
+  test` = **38 verts** (les 3 KO Windows pré-existants seuls ; **aucun banc cassé par #5** — ai/social/
+  scps_api/endgame/econ tous verts) ; `determinism` STABLE ; sweep 5×250 SAIN (satisfaction 70/78/81 —
+  légèrement RELEVÉE par les vallées plus fertiles —, 39 guerres/sim, hégémon mortel 5/5, IPM 1.23, §27
+  gaté). **SAVE non bumpé** (aucune struct sérialisée ne change). Reste (à greenlighter) : #3 priority-flood
+  + `trace_rivers` émergent — le couple hydrologique à fort risque (cf. entrée #2/#4).
 
 ## Disciplines non négociables
 
