@@ -627,11 +627,18 @@ static void econ_aggregate_regions(WorldEconomy *e){
     static RegionEconomy agg[SCPS_MAX_REG];
     static float popsum[SCPS_MAX_REG], satsum[SCPS_MAX_REG], foodsum[SCPS_MAX_REG];
     static float socsum[SCPS_MAX_REG], nmsum[SCPS_MAX_REG], otsum[SCPS_MAX_REG], scarsum[SCPS_MAX_REG];
+    /* Satisfaction PAR CLASSE (pop-pondérée) — champ PopStratum.satisfaction, distinct de
+     * l'agrégat RegionEconomy.satisfaction (satsum ci-dessus). Sans cet accumulateur,
+     * ag->strata[c].satisfaction restait au memset (0) : c'est ce que lit chronicle::
+     * world_class_sat (« satisfaction Laborer/Bourgeois/Élite »), donc 0% en permanence
+     * malgré des provinces qui satisfont réellement leurs strates. */
+    static float csatsum[SCPS_MAX_REG][CLASS_COUNT];
     static int   n_active[SCPS_MAX_REG], n_impass[SCPS_MAX_REG], n_colonized[SCPS_MAX_REG], n_mem[SCPS_MAX_REG];
     static int   cap_owner[SCPS_MAX_REG], best_pop_owner[SCPS_MAX_REG], rep_pid[SCPS_MAX_REG];
     static float best_pop[SCPS_MAX_REG];
     memset(popsum,0,sizeof popsum); memset(satsum,0,sizeof satsum); memset(foodsum,0,sizeof foodsum);
     memset(socsum,0,sizeof socsum); memset(nmsum,0,sizeof nmsum); memset(otsum,0,sizeof otsum); memset(scarsum,0,sizeof scarsum);
+    memset(csatsum,0,sizeof csatsum);
     memset(n_active,0,sizeof n_active); memset(n_impass,0,sizeof n_impass);
     memset(n_colonized,0,sizeof n_colonized); memset(n_mem,0,sizeof n_mem);
     int   nreg = e->n_regions; if (nreg>SCPS_MAX_REG) nreg=SCPS_MAX_REG;
@@ -685,7 +692,8 @@ static void econ_aggregate_regions(WorldEconomy *e){
         ag->build.food_cap+=pe->build.food_cap; ag->build.faith+=pe->build.faith;
         ag->build.savoir+=pe->build.savoir; ag->build.port+=pe->build.port;
         float ppop=0.f; for (int c=0;c<CLASS_COUNT;c++){ ag->strata[c].pop+=pe->strata[c].pop;
-            ag->strata[c].wealth+=pe->strata[c].wealth; ppop+=pe->strata[c].pop; }
+            ag->strata[c].wealth+=pe->strata[c].wealth; ppop+=pe->strata[c].pop;
+            csatsum[r][c] += pe->strata[c].satisfaction*pe->strata[c].pop; }
         popsum[r] += ppop;
         satsum[r] += pe->satisfaction*ppop; foodsum[r] += pe->food_sat*ppop;
         socsum[r] += pe->society_sat*ppop; nmsum[r] += pe->needs_met*ppop; otsum[r] += pe->over_tax*ppop;
@@ -731,6 +739,12 @@ static void econ_aggregate_regions(WorldEconomy *e){
         } else {
             ag->food_sat=0.5f; ag->society_sat=0.5f;
         }
+        /* Satisfaction PAR CLASSE (pop-pondérée sur SA propre strate, pas le total toutes
+         * classes confondues — une strate à pop nulle ne doit pas être divisée par la pop des
+         * autres). Lue par chronicle::world_class_sat (télémétrie « Laborer/Bourgeois/Élite »)
+         * et toute autre membrane par-classe. */
+        for (int c=0;c<CLASS_COUNT;c++)
+            ag->strata[c].satisfaction = (ag->strata[c].pop>EPS) ? csatsum[r][c]/ag->strata[c].pop : 0.f;
         ag->prosperity = ag->gdp/(popsum[r]+1.f);
         e->region[r] = *ag;
     }
@@ -2597,6 +2611,29 @@ void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     if (sp<0 || dp<0) return;
     colonize_from_prov(e, sp, dp, cid);
 }
+/* Sème le GROUPE-SUBSTRAT (clé de voûte démographique) d'une province qui vient
+ * d'être colonisée, à partir de SA propre culture (déjà posée par gen_population/
+ * worldgen_seed_peoples sur TOUTE province de la région, active ou non — seul
+ * `settled` change à la colonisation). Sans ce groupe, econ_off_culture_fraction/
+ * econ_country_metabolized/la barre d'accès tech (qui lisent prov[].pop.n_groups)
+ * verraient une province colonisée mais CULTURE-LESS (n_groups=0). drift_id dans la
+ * plage STATIQUE 1..SCPS_MAX_PROV (jamais ≥ DYN_DRIFT_BASE=1e6 côté scps_demography.c ;
+ * unique par province — pas de collision entre deux fondations, ni avec l'init). */
+static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long total) {
+    ProvincePop *pp=&dst->pop;
+    memset(pp,0,sizeof(*pp));
+    pp->prov = dst_pid;
+    pp->prosperity = dst->prosperity;
+    if (total<1) total=1;
+    PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g));
+    g->heritage=dst->culture.heritage; g->origin_sphere=heritage_sphere(dst->culture.heritage);
+    g->origin=dst->culture; g->culture=dst->culture;
+    g->klass=CLASS_LABORER; g->count=total;
+    g->pop_by_class[CLASS_LABORER]=total; g->pop_by_class[CLASS_BOURGEOIS]=0; g->pop_by_class[CLASS_ELITE]=0;
+    g->L=7.f; g->agit_base=0.f;   /* agit_from_L(7)=0 (colons de la couronne, intégrés) */
+    g->integration=1.f; g->diaspora=false; g->drift_id=dst_pid+1;
+    pp->n_groups=1;
+}
 static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int cid) {
     ProvinceEconomy *src=&e->prov[src_pid];
     ProvinceEconomy *dst=&e->prov[dst_pid];
@@ -2608,11 +2645,13 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
      * tout ce qu'on a prélevé (plancher = graine minimale), pas de saignée du
      * convoi → la colonisation REDISTRIBUE la pop sans la détruire (la mer, elle,
      * garde son surcoût ×2 via econ_colonize_overseas, prélevé en amont). */
-    econ_seed_population(dst, fmaxf(take, COLONY_SEED_POP));
+    float seeded=fmaxf(take, COLONY_SEED_POP);
+    econ_seed_population(dst, seeded);
     dst->colonized=true;
     dst->culture.settled=true;   /* la culture de biome (gen_population) s'active */
     dst->owner=(int16_t)cid;
     dst->ferveur=1.f;            /* FERVEUR FONDATRICE (lot 2) : la jeune colonie a faim d'avenir */
+    colonize_seed_pop_group(dst, dst_pid, (long)seeded);   /* HÉRITE la culture (charte : colonisation propage) */
 }
 
 /* L5 — COLONIE OUTRE-MER : mêmes PORTES que l'essaimage terrestre (pop, vivres,

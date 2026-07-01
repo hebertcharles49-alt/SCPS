@@ -2540,7 +2540,15 @@ void gen_population(World *w, WorldEconomy *econ) {
     }
     float maxr=sqrtf((float)(SCPS_W*SCPS_W+SCPS_H*SCPS_H))/2.f;
 
-    /* ---- Profil culturel de chaque région -------------------------------- */
+    /* ---- Profil culturel de chaque région -------------------------------- *
+     * Charte PROVINCE_MODEL.md : la culture VIT à la province (econ->prov[].culture,
+     * lue par econ_off_culture_fraction/preferred_drink/preferred_luxe/needs_met… dans
+     * la boucle de tick, qui opère par province). On calcule le profil UNE fois par
+     * région (RNG inchangé — même ordre, même tirage, déterminisme préservé) puis on
+     * le PROPAGE à CHAQUE province membre — econ->region[r].culture reste écrit en
+     * miroir (immédiat, lu par legitimacy_init/worldgen_seed_peoples avant le premier
+     * econ_tick ; econ_aggregate_regions le re-dérivera ensuite de la province
+     * représentative, à l'identique). */
     for (int r=0;r<w->n_regions;r++){
         const Region *rg=&w->region[r];
         PopCulture   *pc=&econ->region[r].culture;
@@ -2596,6 +2604,18 @@ void gen_population(World *w, WorldEconomy *econ) {
         pc->langue=clampf(mind/maxr*10.f+(rng_f()-0.5f)*1.5f,0.f,10.f);
 
         pc->settled=econ->region[r].colonized;
+
+        /* PROPAGATION PROVINCE (charte) : chaque province membre reçoit le MÊME profil
+         * (même heritage/ethos/credo/langue — la charte ne demande pas de variation
+         * intra-région ici), mais `settled` reflète SA PROPRE colonisation (une province
+         * vierge de la région ne doit pas se prétendre peuplée). */
+        for (int k=0;k<rg->n_provinces;k++){
+            int pid=rg->province_ids[k];
+            if (pid<0||pid>=w->n_provinces||pid>=SCPS_MAX_PROV) continue;
+            PopCulture *ppc=&econ->prov[pid].culture;
+            *ppc=*pc;
+            ppc->settled=econ->prov[pid].colonized;
+        }
     }
 }
 
@@ -2608,19 +2628,39 @@ void gen_population(World *w, WorldEconomy *econ) {
  * ====================================================================== */
 void world_tick(World *w, WorldEconomy *econ, float dt) {
     if (!econ) return;
+    /* Charte PROVINCE_MODEL.md : la culture (donc sa dérive) VIT à la province —
+     * econ->region[r].culture N'EST QU'UN AGRÉGAT, réécrit par econ_aggregate_regions
+     * à CHAQUE econ_tick (avant ce world_tick, dans la boucle annuelle) depuis la
+     * province représentative. Muter la copie régionale ici serait un no-op : le
+     * prochain econ_tick l'écraserait. On dérive donc CHAQUE PROVINCE peuplée de la
+     * région (même taux, même RNG-free — culture_age_tick est une fonction pure du
+     * dt), puis on rafraîchit le miroir région pour les lecteurs immédiats de CE tick. */
     for (int r=0;r<w->n_regions;r++){
         if (!econ->region[r].culture.settled) continue;
-        PopCulture *pc=&econ->region[r].culture;
-        Culture tmp; memset(&tmp,0,sizeof(tmp));
-        tmp.langue=pc->langue; tmp.age=pc->age;
-        /* Dérive modulée par les TRADITIONS de l'empire (Adaptable vite, Traditionaliste lent)
-         * — INDÉPENDANT de l'héritage (qui ne fait que les noms). */
         HeritageBuild sb=culture_build_for((uint32_t)(econ->region[r].owner<0?0:econ->region[r].owner));
         float drift=0.002f*dt*(1.f + build_leviers(&sb).derive);
         if (drift < 0.f) drift = 0.f;
-        culture_age_tick(&tmp, drift);
-        pc->langue=tmp.langue;
-        pc->age   =tmp.age;
+        const Region *rg=&w->region[r];
+        for (int k=0;k<rg->n_provinces;k++){
+            int pid=rg->province_ids[k];
+            if (pid<0||pid>=w->n_provinces||pid>=SCPS_MAX_PROV) continue;
+            PopCulture *ppc=&econ->prov[pid].culture;
+            if (!ppc->settled) continue;
+            Culture tmp; memset(&tmp,0,sizeof(tmp));
+            tmp.langue=ppc->langue; tmp.age=ppc->age;
+            culture_age_tick(&tmp, drift);
+            ppc->langue=tmp.langue;
+            ppc->age   =tmp.age;
+        }
+        /* Miroir région (immédiat) : la province-capitale a dérivé pareil, mais
+         * econ_aggregate_regions ne repasse qu'au PROCHAIN econ_tick — on rafraîchit
+         * la langue/l'âge du miroir tout de suite pour les lecteurs de ce tick-ci. */
+        int rep=(econ->region_rep_prov[r]>=0 && econ->region_rep_prov[r]<SCPS_MAX_PROV)
+                ? econ->region_rep_prov[r] : -1;
+        if (rep>=0){
+            econ->region[r].culture.langue=econ->prov[rep].culture.langue;
+            econ->region[r].culture.age   =econ->prov[rep].culture.age;
+        }
     }
 }
 
@@ -2633,6 +2673,26 @@ void world_tick(World *w, WorldEconomy *econ, float dt) {
  * distante). La heritage est posée sur toutes les régions du pays. À appeler après
  * gen_population.
  * ====================================================================== */
+
+/* Recopie econ->region[r].culture (heritage/ethos/credo/rel_branch/religion — tout SAUF
+ * langue/age/settled, propres à chaque province) sur CHAQUE province membre de la région.
+ * Charte PROVINCE_MODEL.md : la province est la vérité (lue par econ_off_culture_fraction/
+ * preferred_drink/preferred_luxe/needs_met… dans la boucle de tick, à la province) ;
+ * econ->region[r].culture n'est qu'un miroir que econ_aggregate_regions réécrit à chaque
+ * econ_tick — sans cette propagation, toute mutation ici ne survivrait pas au 1er tick. */
+static void region_culture_push_to_provinces(World *w, WorldEconomy *econ, int r) {
+    if (r<0 || r>=w->n_regions || r>=econ->n_regions) return;
+    const Region *rg=&w->region[r];
+    const PopCulture *src=&econ->region[r].culture;
+    for (int k=0;k<rg->n_provinces;k++){
+        int pid=rg->province_ids[k];
+        if (pid<0||pid>=w->n_provinces||pid>=SCPS_MAX_PROV) continue;
+        PopCulture *dst=&econ->prov[pid].culture;
+        float langue=dst->langue; int age=dst->age; bool settled=dst->settled;
+        *dst=*src;
+        dst->langue=langue; dst->age=age; dst->settled=settled;   /* propres à la province */
+    }
+}
 
 void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritage) {
     if (!econ || w->n_countries<=0) return;
@@ -2658,10 +2718,12 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
         cheritage[c] = (Heritage)(h % (uint32_t)HERITAGE_COUNT);
     }
 
-    /* Pose l'héritage sur toutes les régions (substrat). */
+    /* Pose l'héritage sur toutes les régions (substrat), PROPAGÉ à leurs provinces
+     * (charte : la province est la vérité — cf. region_culture_push_to_provinces). */
     for (int r=0;r<w->n_regions;r++){
         int cc=w->region[r].country;
         econ->region[r].culture.heritage = (cc>=0&&cc<w->n_countries) ? cheritage[cc] : player_heritage;
+        region_culture_push_to_provinces(w, econ, r);
     }
 
     /* Diagnostic : la distribution des héritages, DÉCORRÉLÉE de la géo. */
@@ -2683,6 +2745,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
             econ->region[r].culture.ethos=pe;
             for (int g=0; g<econ->region[r].pop.n_groups; g++)
                 econ->region[r].pop.groups[g].culture.ethos=pe;
+            region_culture_push_to_provinces(w, econ, r);
         }
     }
 
@@ -2730,6 +2793,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
         econ->region[r].culture.credo=CREDO_PLURALISTE;   /* AUCUNE religion organisée */
         econ->region[r].culture.rel_branch=REL_ANIMISTE;
         econ->region[r].culture.religion=1.0f;            /* axe bas */
+        region_culture_push_to_provinces(w, econ, r);
     }
     /* WILD : un NOM TRIBAL ÉTHOS-DÉPENDANT (« Barbares/Maraudeurs/Clan/Tribu/… XX ») + une COULEUR
      * DISTINCTE, lus d'une région WILD représentative (sa culture a été forcée distincte du voisin) —
@@ -2793,6 +2857,39 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
             if (cl>cap) cl=cap;
             memcpy(w->country[c].name, tmp, cl); w->country[c].name[cl]='\0';   /* copie bornée (0 warning) */
         }
+    }
+
+    /* ── GROUPES DE POPULATION (clé de voûte démographique, charte PROVINCE_MODEL.md) ──
+     * La province est désormais la vérité : econ_off_culture_fraction, econ_country_metabolized,
+     * la barre d'accès tech, prosperity/legitimacy (via re->pop.n_groups>0) lisent
+     * econ->prov[pid].pop, PAS econ->region[r].pop (qui n'est qu'un miroir écrasé à chaque
+     * econ_tick par econ_aggregate_regions, depuis la province représentative). Chaque province
+     * COLONISÉE (la capitale/cité-état semée par econ_init, tout hameau WILD planté) reçoit UN
+     * groupe-substrat MONO-GROUPE — même construction que demography_attach (scps_demography.c),
+     * rejouée ici À LA PROVINCE puisque la culture n'est connue qu'après cette fonction. Une
+     * province encore vierge (colonisation ultérieure) reste n_groups=0 ; econ_colonize_from en
+     * sème un à la fondation (cf. colonize_from_prov, scps_econ.c). */
+    { int id=1;   /* drift_id STATIQUE 1..n_prov (jamais ≥ DYN_DRIFT_BASE=1e6, cf. scps_demography.c) */
+      for (int pid=0; pid<w->n_provinces && pid<SCPS_MAX_PROV; pid++){
+        ProvinceEconomy *pe=&econ->prov[pid];
+        ProvincePop *pp=&pe->pop;
+        memset(pp,0,sizeof(*pp));
+        pp->prov = pid;
+        pp->prosperity = pe->prosperity;
+        if (!pe->culture.settled) continue;
+        long total=(long)(pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop
+                        + pe->strata[CLASS_ELITE].pop);
+        if (total<1) total=1;
+        PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g));
+        g->heritage=pe->culture.heritage; g->origin_sphere=heritage_sphere(pe->culture.heritage);
+        g->origin=pe->culture; g->culture=pe->culture;      /* substrat = effective au départ */
+        g->klass=CLASS_LABORER; g->count=total;
+        g->pop_by_class[CLASS_LABORER]=total;                /* repli : tout Journalier avant la 1re émergence */
+        g->pop_by_class[CLASS_BOURGEOIS]=0; g->pop_by_class[CLASS_ELITE]=0;
+        g->L=7.f; g->agit_base=0.f;   /* agit_from_L(7)=clampf((6-7)*15,0,100)=0 (natifs intégrés, cf. scps_demography.c) */
+        g->integration=1.f; g->diaspora=false; g->drift_id=id++;
+        pp->n_groups=1;
+      }
     }
 }
 
