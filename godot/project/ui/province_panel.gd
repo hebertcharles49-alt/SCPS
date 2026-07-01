@@ -60,6 +60,8 @@ func _draw() -> void:
 	UIKit.bar(self, Rect2(gx, y + 2, gw, 14), int(info["aisance_val"]))
 	var nb := str(info["aisance_val"])
 	VKit.text(self, Vector2(gx - VKit.text_w(nb) - 6, y), VKit.COL_PARCH, nb)
+	# labelle la jauge (c'était un « 9 » nu — le joueur ne savait pas ce que c'était)
+	VKit.text(self, Vector2(gx, y + 17), VKit.COL_DIM, "Prospérité", VKit.FS_SMALL)
 	# climat · relief · statut de capitale
 	var cap: Dictionary = w.province_capitale(_pid)
 	VKit.text(self, Vector2(x + hsz + 8, y + 18), VKit.COL_PARCH,

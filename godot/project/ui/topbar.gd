@@ -1,7 +1,8 @@
 extends Control
-## Topbar — bandeau PLEINE LARGEUR (cadre d'écran) : capsule de date (An N), pop &
-## nombre de pays à gauche, contrôle de VITESSE cliquable à DROITE. Suit la largeur
-## de la fenêtre (size_changed). Display-only sauf le verbe vitesse. Lit Sim.
+## Topbar — bandeau PLEINE LARGEUR (cadre d'écran) : capsule de date (An N) + le
+## roll-up du PAYS JOUÉ (nom · or · pop empire · régions · savoir) à gauche, contrôle
+## de VITESSE cliquable à DROITE. Suit la largeur de la fenêtre (size_changed).
+## Display-only sauf le verbe vitesse. Lit Sim.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -48,11 +49,24 @@ func _draw() -> void:
 	UIKit.draw_chrome(self, "topbar_date_capsule", Rect2(10, 4, 92, H - 8))
 	VKit.text(self, Vector2(22, cy), VKit.COL_PARCH, "An %d" % w.year())
 
-	# pop · pays, chacun avec icône
-	UIKit.draw_icon(self, "population_group", Vector2(116, cy - 2), 18)
-	VKit.text(self, Vector2(138, cy), VKit.COL_PARCH, _grp(w.world_pop()))
-	UIKit.draw_icon(self, "politics_crown", Vector2(232, cy - 2), 18)
-	VKit.text(self, Vector2(254, cy), VKit.COL_PARCH, "%d pays" % w.country_count())
+	# LE PAYS JOUÉ (roll-up d'affichage — le pays n'a pas d'incidence propre : juste
+	# l'agrégat de ses provinces) : nom · or · pop EMPIRE · régions · savoir.
+	var me: int = w.player()
+	var ci: Dictionary = w.country_info(me)
+	var px := 116.0
+	if bool(ci.get("valide", false)):
+		UIKit.draw_icon(self, "politics_crown", Vector2(px, cy - 2), 18); px += 22
+		var nom := String(ci["nom"])
+		VKit.text(self, Vector2(px, cy), VKit.COL_COPPER, nom); px += VKit.text_w(nom) + 20
+		UIKit.draw_icon(self, "gold_coin", Vector2(px, cy - 2), 16); px += 20
+		var org := _grp(ci["or"]); VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, org); px += VKit.text_w(org) + 20
+		UIKit.draw_icon(self, "population_group", Vector2(px, cy - 2), 16); px += 20
+		var popg := _grp(ci["pop"]); VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, popg); px += VKit.text_w(popg) + 20
+		# « régions » ici ; deviendra « provinces » quand l'éco descendra à la province
+		var rt := "%d régions" % int(ci["regions"])
+		VKit.text(self, Vector2(px, cy), VKit.COL_DIM, rt); px += VKit.text_w(rt) + 18
+		UIKit.draw_icon(self, "knowledge_book", Vector2(px, cy - 2), 16); px += 20
+		VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, "%d" % int(ci["savoir"]))
 
 	# contrôle de vitesse, ancré à DROITE de la barre
 	_speed_rect = Rect2(ww - 116, 4, 108, H - 8)
