@@ -1047,6 +1047,19 @@ void econ_init(WorldEconomy *e, const World *w) {
      * de la colonisation — plus aucun split de pop à t=0. */
     float empire_seed = tune_f("EMPIRE_SEED", 4000.f);
     float city_seed   = tune_f("CITY_SEED",   2000.f);
+    /* BUG 1 fix (province-economy re-key) — la province de DÉPART est une ville ÉTABLIE
+     * (charte règle 7 : « ~tier 4 »), pas une friche géo-dérivée : son cap_pop DOIT tenir
+     * SA graine + de la marge pour croître. Or cap_pop géo-dérivé (Passe 2) répartit la
+     * cible-pays au PRORATA de surface/habitabilité de la province — sur un pays à
+     * plusieurs provinces, la part de la seule capitale est souvent bien SOUS la graine
+     * qu'on y déverse en entier (mesuré : ~1000-1600 pour une graine de 4000). Comme
+     * eff_cap ≈ ½·cap_pop à la genèse (aucune manufacture/grenier encore bâti,
+     * ECON_EFFCAP_BODY), cap_factor = max(0, 1-pop/(eff_cap·1.1)) clampe à 0 pour de bon
+     * → la capitale ne grandit JAMAIS (audit_eco borne 1, cf. CLAUDE.md). Plancher :
+     * cap_pop ≥ SEED_PROV_CAP_MULT·seed, calibré pour que eff_cap (≈½·cap_pop) dépasse la
+     * graine d'assez de marge (K=3 ⇒ eff_cap≈1.5×seed) sans changer les provinces NON
+     * semées (qui gardent leur cap_pop géo-dérivé — elles se développent en se colonisant). */
+    float seed_cap_mult = tune_f("SEED_PROV_CAP_MULT", 3.0f);
     for (int cid=0; cid<w->n_countries; cid++) {
         const Country *ct=&w->country[cid];
         PolityRole role=ct->role;
@@ -1068,6 +1081,7 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
         if (start<0) continue;   /* aucune province active → pas de départ (friche) */
         ProvinceEconomy *pe=&e->prov[start];
+        pe->cap_pop = fmaxf(pe->cap_pop, seed*seed_cap_mult);   /* BUG 1 : la ville-siège tient sa graine + croît */
         econ_seed_population(pe, seed);   /* TOUTE la graine sur UNE province (jamais splitée) */
         pe->colonized=true;
         pe->owner=(int16_t)cid;
