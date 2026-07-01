@@ -103,6 +103,7 @@ func globe_to_screen(_wx: float, _wy: float, _lift: float = 0.0) -> Dictionary:
 # ════════════════════════ commun ════════════════════════
 func _on_generated() -> void:
 	_himg = Sim.world.layer_image(LAYER_HEIGHT)
+	focus_player()   # nouveau monde → cadrer d'emblée sur la capitale du JOUEUR (« je joue qui / où »)
 
 func _on_ticked(_year: int) -> void:
 	pass
@@ -178,4 +179,22 @@ func fit() -> void:
 	z = clampf(z, ZOOM_MIN, ZOOM_MAX)
 	_camera.zoom = Vector2(z, z)
 	_camera.position = iso_pos(W * 0.5, Sim.world.map_h() * 0.5)
+	queue_redraw()
+
+## FOCUS DÉPART : cadre la caméra sur la CAPITALE du joueur, à un zoom de lecture
+## confortable (le joueur voit tout de suite QUI il joue et OÙ il commence — au lieu
+## d'un plan large anonyme sur le monde entier).
+const ZOOM_START := 4.0        ## ni plan large, ni bourg : on voit la capitale + son voisinage
+func focus_player() -> void:
+	if Sim.world == null or _camera == null:
+		return
+	var me: int = Sim.world.player()
+	var cap: int = Sim.world.country_capital_region(me)
+	if cap < 0:
+		fit()
+		return
+	var c: Vector2 = Sim.world.region_centroid(cap)   # cellule monde
+	var z := clampf(ZOOM_START, ZOOM_MIN, ZOOM_MAX)
+	_camera.zoom = Vector2(z, z)
+	_camera.position = iso_pos(c.x, c.y)
 	queue_redraw()
