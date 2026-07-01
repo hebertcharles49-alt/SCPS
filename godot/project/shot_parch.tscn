@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8shotparch01"]
+
+[ext_resource type="Script" path="res://shot_parch.gd" id="1_sparch"]
+
+[node name="ShotParch" type="Node"]
+script = ExtResource("1_sparch")

@@ -7,7 +7,7 @@
  */
 #include "scps_factions.h"
 #include <stdio.h>
-#include "scps_species.h"   /* SpeciesArchetype */
+#include "scps_heritage.h"   /* Heritage */
 #include <string.h>         /* memset (reset des stances) */
 
 /* K2 — faction_name() a MIGRÉ au readout (membrane : le moteur n'expose que l'enum). */
@@ -35,14 +35,14 @@ void group_ethos_lean(const PopCulture *c, float w[FAC_COUNT]){
         case ETHOS_PACIFISTE:   w[FAC_COMMUNAUTAIRE]+=1.0f; break;
         default: break;
     }
-    /* 2) SIGNATURE de race — le penchant inné du peuple (§2). */
-    switch (c->race){
-        case RACE_ORQUE:    w[FAC_CONQUERANT]+=0.5f;    w[FAC_TRANSGRESSEUR]+=0.5f; break; /* guerre + interdit */
-        case RACE_NAIN:     w[FAC_LEGISTE]+=0.4f;       w[FAC_TRANSGRESSEUR]+=0.4f; break; /* forge à runes */
-        case RACE_HALFELIN: w[FAC_MARCHAND]+=0.4f;      w[FAC_COMMUNAUTAIRE]+=0.5f; break;
-        case RACE_GNOME:    w[FAC_MARCHAND]+=0.5f;      w[FAC_COMMUNAUTAIRE]+=0.3f; break; /* négoce, bien commun */
-        case RACE_ELFE:     w[FAC_TRANSGRESSEUR]+=0.4f; w[FAC_GARDIEN]+=0.3f;       break; /* arcane + tradition */
-        case RACE_HUMAIN:   w[FAC_MARCHAND]+=0.2f;      w[FAC_LEGISTE]+=0.2f;       break; /* l'intégrateur */
+    /* 2) SIGNATURE de heritage — le penchant inné du peuple (§2). */
+    switch (c->heritage){
+        case HERITAGE_CLANIQUE:    w[FAC_CONQUERANT]+=0.5f;    w[FAC_TRANSGRESSEUR]+=0.5f; break; /* guerre + interdit */
+        case HERITAGE_METALLURGISTE:     w[FAC_LEGISTE]+=0.4f;       w[FAC_TRANSGRESSEUR]+=0.4f; break; /* forge à runes */
+        case HERITAGE_AGRAIRE: w[FAC_MARCHAND]+=0.4f;      w[FAC_COMMUNAUTAIRE]+=0.5f; break;
+        case HERITAGE_MECANISTE:    w[FAC_MARCHAND]+=0.5f;      w[FAC_COMMUNAUTAIRE]+=0.3f; break; /* négoce, bien commun */
+        case HERITAGE_ESOTERIQUE:     w[FAC_TRANSGRESSEUR]+=0.4f; w[FAC_GARDIEN]+=0.3f;       break; /* arcane + tradition */
+        case HERITAGE_ADAPTATIF:   w[FAC_MARCHAND]+=0.2f;      w[FAC_LEGISTE]+=0.2f;       break; /* l'intégrateur */
         default: break;
     }
     /* 3) CREDO — la ferveur nourrit les Gardiens ; la tolérance, l'ouverture. */
@@ -142,7 +142,7 @@ EthosWeights faction_effective_weights(const float w[FAC_COUNT]){
 float faction_fracture(const float w[FAC_COUNT]){
     /* « Contesté » de la direction : la seconde faction talonne-t-elle la première ?
      * Une tête écrasante → 0 ; deux fortes au coude-à-coude (45/40) → ~1. Pondéré
-     * par le poids cumulé des deux têtes (une paralysie de nains ne paralyse rien). */
+     * par le poids cumulé des deux têtes (une paralysie de métallurgistes ne paralyse rien). */
     float s1=0.f, s2=0.f;
     for (int f=0; f<FAC_COUNT; f++){
         if (w[f] > s1){ s2=s1; s1=w[f]; }
@@ -294,9 +294,13 @@ void faction_age_engage(const World *w, WorldEconomy *econ, int cid, int age){
     (void)w;
     if (!econ || cid<0) return;
     faction_lever_apply(cid, age_patron(age), ENGAGE_LEVER);   /* la faction de l'heure s'avance */
+    /* RE-KEY PROVINCE : satisfaction province-owned — route sur la représentative de
+     * chaque région (region[r].satisfaction est un DÉRIVÉ pop-pondéré, écrasé au
+     * prochain econ_tick si écrit directement). */
     for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
-        float s=econ->region[r].satisfaction + ENGAGE_SAT;     /* cohésion du régime (apaise l'agitation) */
-        econ->region[r].satisfaction = s>1.f?1.f:s;
+        int pid=econ_region_rep_province(econ,r); if (pid<0||pid>=econ->n_prov) continue;
+        float s=econ->prov[pid].satisfaction + ENGAGE_SAT;     /* cohésion du régime (apaise l'agitation) */
+        econ->prov[pid].satisfaction = s>1.f?1.f:s;
     }
 }
 void faction_levers_on_coup(int cid){

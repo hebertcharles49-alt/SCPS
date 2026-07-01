@@ -10,6 +10,8 @@
 #include "scps_readout.h"   /* metric_agitation / metric_stability (réutilisés) */
 #include "scps_lang.h"      /* Q1 : STR_COUNCIL_NAME_* (noms de candidats) */
 #include "scps_culture.h"   /* Q1 : ETHOS_* (l'IA recrute selon l'éthos) */
+#include "scps_tune.h"      /* #26 : tunables OPINION_* */
+#include "scps_intertrade.h"/* #26 : intertrade_embargoed (la mémoire de l'embargo) */
 #include <string.h>
 
 /* ---- Calibrage --------------------------------------------------------- */
@@ -20,7 +22,7 @@
 #define REVOLT_SUSTAIN_DAYS 365      /* agitation au seuil pendant un an → révolte      */
 #define DIP_PER_INFLUENCE   25       /* +1 diplomate par 25 d'Influence                 */
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static inline int   iclamp(int v,int lo,int hi){ return v<lo?lo:(v>hi?hi:v); }
 static inline float toward(float cur,float tgt,float k){ return cur + (tgt-cur)*clampf(k,0.f,1.f); }
 static inline float absf(float v){ return v<0?-v:v; }
@@ -140,7 +142,11 @@ void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy
         if (cost<=0.f) continue;
         int cap=w->country[c].capital_prov;                                            /* ponction au trésor de la couronne */
         int cr =(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
-        if (cr>=0 && cr<e->n_regions){ e->region[cr].treasury -= cost; econ_flux_add(c, FX_CONSEIL, -cost); }
+        /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative. */
+        if (cr>=0 && cr<e->n_regions){
+            int crp=econ_region_rep_province(e,cr);
+            if (crp>=0 && crp<e->n_prov){ e->prov[crp].treasury -= cost; econ_flux_add(c, FX_CONSEIL, -cost); }
+        }
     }
 }
 /* Q1 — IA du conseil : l'éthos de la capitale privilégie un siège ; on le pourvoit
@@ -220,9 +226,12 @@ void statecraft_on_betrayal(Statecraft *sc, int cid){
     if (cid<0||cid>=sc->n_countries) return;
     sc->prestige[cid]  = clampf(sc->prestige[cid]-12.f, 0.f, 30.f);
     sc->influence[cid] = clampf(sc->influence[cid]-15.f, 0.f, 100.f);
-    /* La parole rompue crève l'opinion que les AUTRES ont du traître. */
+    /* La parole rompue crève l'opinion que les AUTRES ont du traître — #26 : la trahison entre
+     * dans la MÉMOIRE DURABLE (opinion_mem), elle SURVIT au statut et s'estompe sur des années
+     * (≠ un coup transient qui se reconvergerait en un mois). */
+    float bet = tune_f("OPINION_MEM_BETRAYAL",35.f), cap = tune_f("OPINION_MEM_CAP",100.f);
     for (int b=0;b<sc->n_countries;b++) if (b!=cid)
-        sc->opinion[b][cid] = clampf(sc->opinion[b][cid]-35.f, -100.f, 100.f);
+        sc->opinion_mem[b][cid] = clampf(sc->opinion_mem[b][cid]-bet, -cap, cap);
 }
 
 /* ---- Missions ---------------------------------------------------------- */
@@ -315,19 +324,33 @@ void statecraft_tick(Statecraft *sc, World *w, WorldEconomy *econ,
         sc->staff[c].count = staff_cap(sc, c);
     }
 
-    /* ---- Opinion → relation (lecteurs) + statut de guerre, avec inertie ----
-     * O(n²) : appelé au pas MENSUEL par la boucle (diplo rep tous les mois, pas
-     * tous les jours) → coût tenu même à 50+ pays. */
-    for (int a=0;a<NC;a++) for (int b=0;b<NC;b++){
+    /* ---- Opinion (#26) → MODIFICATEURS DE STATUT (temporaires) + MÉMOIRE d'actes (durable) ----
+     * Les relations TENDENT VERS 0 (decay naturelle) : un statut ACTIF (alliance/guerre/vassalité/
+     * pacte/embargo) tire l'opinion TANT QU'IL TIENT ; à la RUPTURE, le modificateur DISPARAÎT →
+     * l'opinion retombe vers 0. La TRAHISON laisse une mémoire DURABLE (opinion_mem) qui s'estompe
+     * sur des années. La STRUCTURE (kinship/complément) reste dans diplo_relation (le « avec qui »).
+     * O(n²) au pas MENSUEL (diplo rep tous les mois) → coût tenu même à 50+ pays. */
+    { float memdecay = tune_f("OPINION_MEM_DECAY",0.0003f)*fd;
+      float oally=tune_f("OPINION_ALLY",50.f),   owar=tune_f("OPINION_WAR",60.f),
+            ovas=tune_f("OPINION_VASSAL",30.f),   opact=tune_f("OPINION_PACT",15.f),
+            oemb=tune_f("OPINION_EMBARGO",25.f),  orw=tune_f("OPINION_RANCOR_W",8.f),
+            omcap=tune_f("OPINION_MEM_CAP",100.f);
+      for (int a=0;a<NC;a++) for (int b=0;b<NC;b++){
         if (a==b) continue;
-        Relation rel = diplo_relation(w, econ, wp, diplo, a, b);
-        float base = (3.5f - rel.kinship) * 10.f;          /* même sphère +35 … étranger −35 */
-        float thr  = clampf(rel.threat*2.f, 0.f, 40.f);
-        float tgt  = base + rel.complement*30.f - thr - rel.schism*40.f;
-        if (diplo && diplo_status(diplo,a,b)==DIPLO_WAR)   tgt -= 60.f;   /* la guerre crève l'opinion */
-        if (diplo && diplo_status(diplo,a,b)==DIPLO_ALLIED)tgt += 25.f;
+        sc->opinion_mem[a][b] = clampf(sc->opinion_mem[a][b]*(1.f-memdecay), -omcap, omcap); /* la mémoire → 0 */
+        float tgt = sc->opinion_mem[a][b];               /* socle = ce dont `a` se SOUVIENT de `b` */
+        if (diplo){
+            DiploStatus st = diplo_status(diplo,a,b);
+            if      (st==DIPLO_ALLIED) tgt += oally;     /* +50 TANT QUE l'alliance tient */
+            else if (st==DIPLO_WAR)    tgt -= owar;      /* la guerre crève l'opinion (transient) */
+            if (diplo_suzerain(diplo,a)==b || diplo_suzerain(diplo,b)==a) tgt += ovas;   /* lien de vassalité */
+            if (diplo_trade_pact(diplo,a,b)) tgt += opact;
+            tgt -= orw * diplo_rancor(diplo,a,b);        /* la RIVALITÉ territoriale (décroît déjà) */
+        }
+        if (intertrade_embargoed(a,b)) tgt -= oemb;      /* l'embargo, TANT QU'il dure */
         tgt = clampf(tgt, -100.f, 100.f);
         sc->opinion[a][b] = clampf(toward(sc->opinion[a][b], tgt, SC_OPINION_RATE*fd), -100.f, 100.f);
+      }
     }
 
     /* ---- Diplomates : avancer, appliquer à l'échéance ------------------- */

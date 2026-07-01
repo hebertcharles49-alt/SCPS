@@ -14,6 +14,8 @@
 #include "scps_lang.h"   /* la table de chaînes : les MOTS vivent dans les tables compilées */
 #include "scps_factions.h"   /* EthosFaction (la balance des factions-éthos, §9) */
 #include "scps_agency.h"     /* K2 : Edifice — les noms d'édifices vivent ICI (readout), pas au moteur */
+#include "scps_tune.h"       /* capstone §27 : ENTROPY_FIN (le seuil reste DERRIÈRE la membrane) */
+#include "scps_endgame.h"    /* capstone §27 : la membrane traduit FinType/MervPhase en miroirs */
 #include <stddef.h>   /* NULL */
 #include <string.h>   /* memset */
 #include <math.h>     /* roundf */
@@ -42,12 +44,13 @@ const char *edifice_name(int e){
         [EDI_SANCTUAIRE]=STR_EDI_SANCTUAIRE, [EDI_TEMPLE]=STR_EDI_TEMPLE, [EDI_CATHEDRALE]=STR_EDI_CATHEDRALE,
         [EDI_BIBLIOTHEQUE]=STR_EDI_BIBLIOTHEQUE, [EDI_MONASTERE]=STR_EDI_MONASTERE,
         [EDI_COMPTOIR]=STR_EDI_COMPTOIR, [EDI_BANQUE]=STR_EDI_BANQUE,
+        [EDI_TRADE_CENTER]=STR_EDI_TRADE_CENTER,
     };
     return (e>=0&&e<EDIFICE_COUNT) ? tr(ID[e]) : "?";
 }
 
 static inline float rclampf(float v, float lo, float hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
+    return v!=v?lo:(v < lo ? lo : (v > hi ? hi : v));
 }
 static inline int   iclamp(int v, int lo, int hi) {
     return v < lo ? lo : (v > hi ? hi : v);
@@ -109,7 +112,7 @@ BandForge band_forge(float l) {
 }
 /* SYNCRÉTIQUE (§12) — bandes des cercles de contact, classées sur des NUS (la cloison
  * tient : aucun type moteur ici). Les libellés sont DIÉGÉTIQUES et parlent de cultures
- * et de savoir-faire, jamais de races ni de coordonnées. */
+ * et de savoir-faire, jamais de héritages ni de coordonnées. */
 BandProfondeur band_profondeur(int d) {
     switch (d) {
         case 0:  return PROF_OBSCURE;
@@ -161,7 +164,7 @@ void map_lens_tints(const WorldEconomy *econ, const WorldLegitimacy *wl,
     static const uint32_t T_PROSP[5]  = { 0xFF5a3d2e,0xFF8a6a3a,0xFFb0975a,0xFFd4b96a,0xFFf0d878 }; /* misère→opulence */
     static const uint32_t T_HUMEUR[5] = { 0xFFb03030,0xFFc07040,0xFFb0a060,0xFF7aa060,0xFF4a9a6a }; /* révoltée→dévouée */
     static const uint32_t T_MARCHE[5] = { 0xFF383838,0xFFc04038,0xFFc08040,0xFF6a9a70,0xFF8090a8 }; /* mort·pénurie·tendu·sain·engorgé */
-    static const Resource BASKET[5]   = { RES_GRAIN, RES_TOOLS, RES_IRON, RES_CLOTH, RES_WINE };    /* la tension qui compte */
+    static const Resource BASKET[5]   = { RES_GRAIN, RES_TOOLS, RES_IRON, RES_CLOTH, RES_EAU_DE_VIE };    /* la tension qui compte */
     for (int r=0; r<SCPS_MAX_REG; r++) out[r]=0xFF202020u;
     if (!econ) return;
     for (int r=0; r<econ->n_regions && r<SCPS_MAX_REG; r++) {
@@ -218,6 +221,15 @@ BandPresage band_presage(float charge) {
     if (charge < 4.0f) return PG_FREMISSEMENT;
     if (charge < 7.0f) return PG_OMBRE;
     return PG_SEUIL;
+}
+/* CAPSTONE §27 — l'entropie MONDE classée sur le RATIO entropy/seuil ; le seuil
+ * (ENTROPY_FIN) reste un flottant moteur passé en paramètre, jamais affiché. */
+BandEntropie band_entropie(float entropy, float fin) {
+    float r = (fin > 0.f) ? entropy / fin : 0.f;
+    if (r < 0.25f) return ENT_STABLE;
+    if (r < 0.55f) return ENT_FREMISSANTE;
+    if (r < 0.85f) return ENT_INSTABLE;
+    return ENT_AU_BORD;
 }
 BandHumeur band_humeur(float L) {
     if (L < 2.0f) return HU_REVOLTEE;
@@ -283,6 +295,36 @@ int metric_agitation(float L_local, float coercion, float diversity_tension,
     float calm = (country_stability/100.f) * 20.f                /* Stabilité 100 : −20   */
                + rclampf(garrison_H,0.f,8.f) * 4.0f;             /* citadelle : jusqu'à −32 */
     return iclamp((int)roundf(raise - calm), 0, 100);
+}
+
+/* Les MODIFICATEURS PROVINCIAUX d'agitation — CONCRETS et PROPRES À LA PROVINCE
+ * (style grande stratégie) : conquête récente (temporaire, se digère −4/an), culture
+ * étrangère sous la couronne, coercition (la province tenue par la force), garnison
+ * (apaise). PAS d'agrégat abstrait (« consentement bas » = symptôme de la coercition,
+ * pas une cause) NI de facteur national (« stabilité du royaume » n'est pas un
+ * modificateur DE province). Nom + apport SIGNÉ + résorption/an si temporaire. */
+BreakdownReadout metric_agitation_breakdown(float coercion, float diversity_tension,
+        float years_held, float garrison_H, int value, const char *band_word) {
+    BreakdownReadout b; memset(&b, 0, sizeof b);
+    b.value = value; b.word = band_word;
+    float conquest = (years_held < 5.f) ? (1.f - years_held/5.f) : 0.f;   /* 1→0 sur 5 ans */
+    BreakdownLine all[BREAKDOWN_LINES]; int m=0;
+    all[m].cause = tr(STR_AGIT_CAUSE_CHOC);     all[m].delta = +(int)roundf(conquest*20.f);                           all[m].decay = (conquest>0.f)?4:0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_CULTURE);  all[m].delta = +(int)roundf(rclampf(diversity_tension,0.f,10.f)*2.0f); all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_COERCION); all[m].delta = +(int)roundf(rclampf(coercion,0.f,1.f)*25.f);           all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_GARNISON); all[m].delta = -(int)roundf(rclampf(garrison_H,0.f,8.f)*4.0f);         all[m].decay = 0; m++;
+    /* garder les NON-NULS, triés par |delta| décroissant (le modificateur dominant en tête) */
+    int order[BREAKDOWN_LINES], k=0;
+    for (int i=0;i<m;i++) if (all[i].delta!=0) order[k++]=i;
+    for (int i=0;i<k;i++) for (int j=i+1;j<k;j++){
+        int ai = all[order[i]].delta, aj = all[order[j]].delta;
+        if (ai<0) ai=-ai;
+        if (aj<0) aj=-aj;
+        if (aj>ai){ int t=order[i]; order[i]=order[j]; order[j]=t; }
+    }
+    for (int i=0;i<k;i++) b.line[i]=all[order[i]];
+    b.n=k;
+    return b;
 }
 
 /* ===================================================================== */
@@ -363,6 +405,7 @@ LBL(label_concorde,     BandConcorde,     STR_BANDE_CONCORDE, 4)
 LBL(label_prosp,     BandProsp,     STR_BANDE_PROSP, 5)
 LBL(label_savoir,     BandSavoir,     STR_BANDE_SAVOIR, 4)
 LBL(label_presage,     BandPresage,     STR_BANDE_PRESAGE, 4)
+LBL(label_entropie,     BandEntropie,     STR_BANDE_ENTROPIE, 4)
 LBL(label_stature,     BandStature,     STR_BANDE_STATURE, 5)
 LBL(label_flux,     BandFlux,     STR_BANDE_FLUX, 5)
 LBL(label_aisance,     BandAisance,     STR_BANDE_AISANCE, 4)
@@ -390,6 +433,7 @@ const char *hover_concorde(void){ return tr(STR_HOVER_CONCORDE); }
 const char *hover_prosp(void){ return tr(STR_HOVER_PROSP); }
 const char *hover_savoir(void){ return tr(STR_HOVER_SAVOIR); }
 const char *hover_presage(void){ return tr(STR_HOVER_PRESAGE); }
+const char *hover_entropie(void){ return tr(STR_HOVER_ENTROPIE); }
 const char *hover_stature(void){ return tr(STR_HOVER_STATURE); }
 const char *hover_flux(void){ return tr(STR_HOVER_FLUX); }
 const char *hover_aisance(void){ return tr(STR_HOVER_AISANCE); }
@@ -399,6 +443,54 @@ const char *hover_lignee(void){ return tr(STR_HOVER_LIGNEE); }
 const char *hover_agitation(void){ return tr(STR_HOVER_AGITATION); }
 const char *hover_foi(void){ return tr(STR_HOVER_FOI); }
 const char *hover_sedition(void){ return tr(STR_HOVER_SEDITION); }
+
+/* CAPSTONE §27 — LE DESTIN PARTAGÉ (membrane). Lit l'entropie monde + l'état
+ * cataclysme, traduit en bandes / projections 0-100 / enums MIROIRS / bitmap
+ * d'indices. Le seuil ENTROPY_FIN reste un flottant moteur (jamais affiché) ;
+ * le viewer ne reçoit que des mots et des nombres tangibles. */
+EndgameReadout endgame_readout(const WorldProsperity *wp, const struct EndgameState *eg) {
+    EndgameReadout r; memset(&r, 0, sizeof r);
+    float fin = tune_f("ENTROPY_FIN", 50.f);
+    float entropy = wp ? wp->entropy : 0.f;
+    r.entropie = band_entropie(entropy, fin);
+    { float ratio = (fin > 0.f) ? entropy / fin : 0.f;
+      int pct = (int)(ratio * 100.f + 0.5f);
+      r.entropie_pct = (pct < 0) ? 0 : (pct > 100) ? 100 : pct; }
+    switch (r.entropie) {                       /* augure : muet si stable */
+        case ENT_FREMISSANTE: r.augure = tr(STR_AUGURE_ENTROPIE_0); break;
+        case ENT_INSTABLE:    r.augure = tr(STR_AUGURE_ENTROPIE_1); break;
+        case ENT_AU_BORD:     r.augure = tr(STR_AUGURE_ENTROPIE_2); break;
+        default:              r.augure = NULL;                      break;
+    }
+    r.fin = RFIN_AUCUNE; r.merv = RMERV_NONE;
+    r.epicenter_reg = wp ? wp->entropy_epicenter : -1;
+    r.sunken = NULL;
+    if (eg) {
+        switch (eg->fin) {                      /* FinType → miroir (même ordre) */
+            case FIN_EAU:       r.fin = RFIN_EAU;       break;
+            case FIN_FROID:     r.fin = RFIN_FROID;     break;
+            case FIN_RONCES:    r.fin = RFIN_RONCES;    break;
+            case FIN_ASCENSION: r.fin = RFIN_ASCENSION; break;
+            default:            r.fin = RFIN_AUCUNE;    break;
+        }
+        switch (eg->merv) {                     /* MervPhase → miroir (_DONE fond dans son palier) */
+            case MERV_FORGE: case MERV_FORGE_DONE:     r.merv = RMERV_FORGE;    break;
+            case MERV_SOCIETE: case MERV_SOCIETE_DONE: r.merv = RMERV_SOCIETE;  break;
+            case MERV_SAVOIR: case MERV_SAVOIR_DONE:   r.merv = RMERV_SAVOIR;   break;
+            case MERV_ASCENDED:                        r.merv = RMERV_ASCENDED; break;
+            default:                                   r.merv = RMERV_NONE;     break;
+        }
+        { int mp = (int)(eg->merv_progress * 100.f + 0.5f);
+          r.merv_progress_pct = (mp < 0) ? 0 : (mp > 100) ? 100 : mp; }
+        { int cp = (int)(eg->cold_offset * 100.f + 0.5f);   /* cold_offset borné [0,1] */
+          r.cold_pct = (cp < 0) ? 0 : (cp > 100) ? 100 : cp; }
+        { int tot = eg->n_sunken + eg->sink_pending;
+          r.sink_intensity = (tot > 0) ? (100 * eg->n_sunken / tot) : 0; }
+        if (eg->fired) r.epicenter_reg = eg->epicenter_reg;
+        if (eg->fin == FIN_EAU) r.sunken = eg->sunken;
+    }
+    return r;
+}
 
 /* ===================================================================== */
 /* ENVELOPPES SIM — lisent les sorties STOCKÉES, jamais scps_core         */
@@ -544,6 +636,7 @@ IncomeReadout province_income(const WorldEconomy *econ, int region) {
         r.line[r.n].source       = resource_name((Resource)best);
         r.line[r.n].per_day      = qty[best];         /* unités/jour (1 décimale à l'affichage) */
         r.line[r.n].manufactured = (best >= RES_PROD_FIRST);
+        r.line[r.n].good         = best;              /* l'indice Resource → sprite côté façade */
         r.n++;
     }
     return r;
@@ -563,11 +656,19 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     pr.relief    = relief_word(p->height_avg, p->biome_dominant);
     pr.ressource = (p->resource > RES_NONE) ? resource_name(p->resource) : "—";
 
-    const RegionEconomy *re = (reg >= 0 && reg < econ->n_regions) ? &econ->region[reg] : NULL;
-    pr.race = re ? species_name(re->culture.race) : "—";
+    /* LA VÉRITÉ (charte PROVINCE_MODEL.md) : chaque province a SA PROPRE économie
+     * (pop/strates/culture/bâtiments/raw_cap/stock), plus individualisée que l'ancien
+     * agrégat région — deux provinces d'une même région montrent désormais des chiffres
+     * DIFFÉRENTS. `pe` == NULL seulement si pid est hors-borne du tableau prov[]. */
+    const ProvinceEconomy *pe = (pid >= 0 && pid < econ->n_prov) ? &econ->prov[pid] : NULL;
+    /* Province VIERGE (jamais colonisée) : seuls terrain+ressource sont significatifs —
+     * pop et bâtiments restent à zéro (déjà memset), mais `valid` (posé par l'appelant
+     * scps_province_info) doit rester vrai pour que le panneau rende terrain/ressource. */
+    bool colonized = pe && pe->colonized;
+    pr.heritage = (colonized) ? heritage_name(pe->culture.heritage) : "—";
     float pop = 0.f;
-    if (re) pop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
-                + re->strata[CLASS_ELITE].pop;
+    if (colonized) pop = pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop
+                        + pe->strata[CLASS_ELITE].pop;
     pr.ames = (long)pop;
 
     if      (pop <   50.f) pr.stature = STA_DESERT;
@@ -576,18 +677,18 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     else if (pop < 6000.f) pr.stature = STA_CITE;
     else                   pr.stature = STA_METROPOLE;
 
-    float sat = re ? re->satisfaction : 0.5f;
+    float sat = colonized ? pe->satisfaction : 0.5f;
     if      (sat < 0.30f) pr.aisance = AI_MISERE;
     else if (sat < 0.55f) pr.aisance = AI_SUFFISANCE;
     else if (sat < 0.80f) pr.aisance = AI_AISANCE;
     else                  pr.aisance = AI_FASTE;
     /* PROSPÉRITÉ 0-100 (la jauge de l'en-tête) : l'indice local 0..10 projeté. */
-    pr.m_aisance = mk_metric(metric_prosperity(re ? re->prosperity : 5.f),
+    pr.m_aisance = mk_metric(metric_prosperity(colonized ? pe->prosperity : 5.f),
                              label_aisance(pr.aisance), hover_aisance());
 
     /* Flux : proxy (la migration crée de la diaspora à destination → afflux).
      * La vraie balance migratoire par province viendra avec la prospérité locale. */
-    float dia = re ? re->diaspora_pop : 0.f;
+    float dia = colonized ? pe->diaspora_pop : 0.f;
     pr.flux     = (dia > 50.f) ? FX_RUEE : (dia > 5.f) ? FX_AFFLUX : FX_STABLE;
     pr.diaspora = (dia > 0.5f);
 
@@ -596,8 +697,8 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * (Marché/Entrepôt) + la prospérité locale font le pôle ; la surchauffe du
      * pays le déchire (le seuil de déréalisation). */
     {
-        float hub = re ? (re->build.PE_infra + re->route_pe
-                          + rclampf(re->prosperity*2.f, 0.f, 3.f)) : 0.f;
+        float hub = colonized ? (pe->build.PE_infra + pe->route_pe
+                          + rclampf(pe->prosperity*2.f, 0.f, 3.f)) : 0.f;
         int   cc  = w->province[pid].country;
         bool  overheat = (cc>=0 && cc<wp->n_countries && wp->country[cc].surchauffe > 2.f);
         if      (hub < 1.0f) pr.carrefour = CF_NONE;
@@ -606,15 +707,17 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
         else                 pr.carrefour = CF_BOUILLONNANTE;
     }
 
-    /* Allégeance — les lectures les plus proches du SCPS. */
+    /* Allégeance — les lectures les plus proches du SCPS. WorldLegitimacy reste au
+     * grain RÉGION (charte règle 4 : la légitimité est un « groupement politique »,
+     * pas une incidence par-province) — indexé par reg, inchangé. */
     float L_local = (wl && reg >= 0 && reg < SCPS_MAX_REG) ? wl->L[reg] : 5.f;
     pr.humeur = band_humeur(L_local);
     pr.m_humeur = mk_metric(metric_legitimacy(L_local), label_humeur(pr.humeur), hover_humeur());
 
-    int cid = re ? re->owner : -1;
+    int cid = colonized ? pe->owner : -1;
     const PopCulture *ruling = (cid >= 0) ? pc_ruling(w, econ, cid) : NULL;
-    if (re && ruling) {
-        const PopCulture *rc = &re->culture;
+    if (colonized && ruling) {
+        const PopCulture *rc = &pe->culture;
         float clock   = rc->langue - ruling->langue; if (clock < 0) clock = -clock;
         float content = pc_content_dist(rc, ruling);
         bool same_branch  = (rc->rel_branch == ruling->rel_branch);
@@ -632,9 +735,9 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * étrangère) + choc récent (conquête, coercition), ABATTUE par la stabilité
      * du pays et la garnison (H bâti) — révolte au-dessus du seuil. C'est l'effet
      * EXISTANT de L/H sur l'ordre, surfacé en un nombre lisible. */
-    float div_tension = (re && ruling) ? pc_content_dist(&re->culture, ruling) : 0.f;
-    float garrison    = re ? re->build.H_coerc : 0.f;
-    float coercion    = re ? re->coercion : 0.f;
+    float div_tension = (colonized && ruling) ? pc_content_dist(&pe->culture, ruling) : 0.f;
+    float garrison    = colonized ? pe->build.H_coerc : 0.f;
+    float coercion    = colonized ? pe->coercion : 0.f;
     float yh          = (wl && reg >= 0 && reg < SCPS_MAX_REG) ? wl->years_held[reg] : 50.f;
     float recent_shock= (yh < 5.f) ? (1.f - yh/5.f) : 0.f;
     if (coercion > recent_shock) recent_shock = coercion;
@@ -643,31 +746,35 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     int   agit = metric_agitation(L_local, coercion, div_tension, recent_shock,
                                   country_stab, garrison);
     pr.agitation     = mk_metric(agit, label_agitation(band_agitation(agit)), hover_agitation());
+    pr.agitation_why = metric_agitation_breakdown(coercion, div_tension, yh,
+                                  garrison, agit, pr.agitation.word);
     pr.seuil_revolte = revolt_threshold_reached(agit);
 
     /* ── BÂTIMENTS — capacité CONSOMMÉE par la population : chaque âme occupe
      * 1 logement et 1 service. On affiche les places ENCORE LIBRES (capacité − pop),
      * pas un score abstrait. Plus deux SLOTS RÉSERVÉS lus de l'état bâti. ──────── */
     {
-        float food_cap = re ? re->build.food_cap : 0.f;
-        float K_inst   = re ? re->build.K_inst   : 0.f;
-        float savoir   = re ? re->build.savoir   : 0.f;
-        float faith    = re ? re->build.faith    : 0.f;
-        float cap_pop  = re ? re->cap_pop        : 0.f;
-        float H        = re ? re->build.H_coerc  : 0.f;
-        /* LOGEMENTS (Q6) : la capacité VIENT DU BÂTI. Plancher = ½·cap_pop (la terre
-         * nue) ; les MANUFACTURES la doublent vers son plein (+100/niveau, plafond
-         * ½·cap_pop) ; le grenier/aqueduc gardent leur rôle NOURRITURE. Le joueur VOIT
-         * donc ses places libres monter quand il bâtit. (Miroir de l'eff_cap moteur.) */
+        float food_cap = colonized ? pe->build.food_cap : 0.f;
+        float K_inst   = colonized ? pe->build.K_inst   : 0.f;
+        float savoir   = colonized ? pe->build.savoir   : 0.f;
+        float faith    = colonized ? pe->build.faith    : 0.f;
+        float cap_pop  = colonized ? pe->cap_pop        : 0.f;
+        float H        = colonized ? pe->build.H_coerc  : 0.f;
+        /* LOGEMENTS (MERGÉ) : miroir EXACT de l'eff_cap moteur (ECON_EFFCAP_BODY).
+         * tier_housing (capital tier × 1000) + manufacture housing + grenier. */
         float manuf_h=0.f;
-        if (re) for (int bi=0;bi<re->n_bld;bi++) manuf_h += re->bld[bi].level;
+        if (colonized) for (int bi=0;bi<pe->n_bld;bi++) manuf_h += pe->bld[bi].level;
         manuf_h = fminf(manuf_h*100.f, cap_pop*0.5f);
-        long house_cap = (long)(cap_pop*0.5f + manuf_h + food_cap*250.f);
+        int _rtier = 1;
+        if (pop>=10000) _rtier=7; else if (pop>=8000) _rtier=6; else if (pop>=5000) _rtier=5;
+        else if (pop>=4000) _rtier=4; else if (pop>=3000) _rtier=3; else if (pop>=2000) _rtier=2;
+        long _radm = (long)_rtier*100; if (_radm>(long)pop) _radm=((long)pop/100)*100;
+        long _rpk = _radm/100; float tier_h = (float)((_rpk<_rtier?_rpk:_rtier)*1000);
+        long house_cap = (long)(cap_pop*0.5f + tier_h + manuf_h + food_cap*250.f);
         pr.logements_cap    = house_cap;
         pr.logements_libres = house_cap - (long)pop;
-        /* SERVICES : chaque point d'édifice civique (admin/savoir/foi) sert ~700 âmes ;
-         * chaque âme consomme UN service → places libres = capacité − population. */
-        long serv_cap = (long)((K_inst + savoir + faith) * 700.f);
+        /* SERVICES (MERGÉ) : tier × 1000 (base) + institutions AJOUTENT. */
+        long serv_cap = (long)(tier_h + (K_inst + savoir + faith) * 700.f);
         pr.services_cap    = serv_cap;
         pr.services_libres = serv_cap - (long)pop;
         /* SLOT DÉFENSE : la fortification bâtie (la coercition BÂTIE H). */
@@ -678,6 +785,48 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
          * comptoir, atelier…) — lu de la ressource/géo, comme la vocation. */
         pr.specialisation = pr.vocation;
         pr.specialisation_hover = "Slot SPÉCIALISATION : ce que la province exploite ou raffine le mieux (mine, pêcheries, comptoir, atelier…).";
+    }
+
+    /* MODIFICATEURS PROVINCIAUX (slot réservé, multiple) — surfacer les effets diégétiques
+     * que le moteur DÉRIVE de l'état (cicatrice de révolte, terre d'abondance…). Le renderer
+     * ne lit que ces mots + le signe ; aucun flottant ne traverse. */
+    pr.n_mods = 0;
+    if (colonized) {
+        ProvModHit pm[PMOD_COUNT];
+        int npm = provmod_collect_prov(pe, pm, PMOD_COUNT);
+        for (int i = 0; i < npm && pr.n_mods < PROV_READOUT_MODS; i++) {
+            ProvinceMod *m = &pr.mods[pr.n_mods];
+            switch (pm[i].kind) {
+                case PMOD_CICATRICE:
+                    m->nom = tr(STR_PMOD_CICATRICE_NOM); m->effet = tr(STR_PMOD_CICATRICE_EFF);
+                    m->faveur = false; pr.n_mods++; break;
+                case PMOD_ABONDANCE:
+                    m->nom = tr(STR_PMOD_ABONDANCE_NOM); m->effet = tr(STR_PMOD_ABONDANCE_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_FERVEUR:
+                    m->nom = tr(STR_PMOD_FERVEUR_NOM); m->effet = tr(STR_PMOD_FERVEUR_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_RECONSTRUCTION:
+                    m->nom = tr(STR_PMOD_RECONSTRUCTION_NOM); m->effet = tr(STR_PMOD_RECONSTRUCTION_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_LIMON:
+                    m->nom = tr(STR_PMOD_LIMON_NOM); m->effet = tr(STR_PMOD_LIMON_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_GIBIER:
+                    m->nom = tr(STR_PMOD_GIBIER_NOM); m->effet = tr(STR_PMOD_GIBIER_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_HALIEUTIQUE:
+                    m->nom = tr(STR_PMOD_HALIEU_NOM); m->effet = tr(STR_PMOD_HALIEU_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_ADMIN:
+                    m->nom = tr(STR_PMOD_ADMIN_NOM); m->effet = tr(STR_PMOD_ADMIN_EFF);
+                    m->faveur = true;  pr.n_mods++; break;
+                case PMOD_ANNEX_SCAR:
+                    m->nom = tr(STR_PMOD_ANNEX_NOM); m->effet = tr(STR_PMOD_ANNEX_EFF);
+                    m->faveur = false; pr.n_mods++; break;
+                default: break;
+            }
+        }
     }
     return pr;
 }
@@ -742,8 +891,41 @@ static const char *const TECH_UTILITY[TECH_COUNT] = {
     [TECH_FOI]               = "+légitimité & services idéologiques (temple → cathédrale)",
     [TECH_INTEGRATION]       = "+cohésion (l'assimilation des peuples)",
     [TECH_CULTE_IMPERIAL]    = "⚠ +cohésion forcée — rapproche la Brèche",
+    /* ÉTOFFE — rungs culturels d'héritage : l'effet JOUEUR concret (sur leviers vivants).
+     * Les FN_ARMÉE passent par army_doctrine (combat), pas par la production. */
+    [TECH_GLYPHES_ETHERES]     = "+stabilité (glyphes protecteurs)",
+    [TECH_COMMUNION_ETHEREE]   = "+stabilité & +cohésion (l'harmonie éthérée)",
+    [TECH_ALLIAGES_NAINS]      = "+dégâts d'armes (métallurgie de fond)",
+    [TECH_GRAVURE_RUNES]       = "+dégâts d'armes & +puissance arcane (runes)",
+    [TECH_MECANISTE_ROUAGES]   = "+production (mécanique de précision)",
+    [TECH_MECANISTE_HORLOGERIE]= "+efficacité d'emploi (synchronisation)",
+    [TECH_DROIT_COUTUMIER]     = "+stabilité (droit coutumier)",
+    [TECH_LANGUE_FRANQUE]      = "+cohésion & +stabilité (langue commune)",
+    [TECH_VERGERS_ETAGES]      = "+production agricole (vergers étagés)",
+    [TECH_PATURAGES_INTEGRES]  = "+production & +croissance (polyculture)",
+    [TECH_RITES_GUERRIERS]     = "+moral des troupes (discipline martiale)",
+    [TECH_HORDES_CONQUERANTES] = "+moral des troupes ⚠ +tension interne",
+    /* COMBOS tier-4 (fusion de 2 héritages métabolisés) — l'effet JOUEUR de la synergie. */
+    [TECH_COMBO_POUDRE]        = "+dégâts (armes à feu) & poudre [Méca×Métal]",
+    [TECH_COMBO_AUTOMATES_ARC] = "+production & +puissance (golems) [Éso×Méca]",
+    [TECH_COMBO_ACADEMIE]      = "+recherche (savoir cosmopolite) [Éso×Adaptatif]",
+    [TECH_COMBO_DRUIDE]        = "+production agricole & +stabilité [Éso×Agraire]",
+    [TECH_COMBO_CHAMAN]        = "+magie de guerre [Éso×Clanique]",
+    [TECH_COMBO_GUILDES]       = "+production & +or (guildes) [Métal×Adaptatif]",
+    [TECH_COMBO_CHARRUES]      = "+production agricole (outils de fer) [Métal×Agraire]",
+    [TECH_COMBO_POLIORCETIQUE] = "+dégâts (forges de guerre) [Métal×Clanique]",
+    [TECH_COMBO_HORLOGE_MARCH] = "+efficacité & +or [Méca×Adaptatif]",
+    [TECH_COMBO_MACHINES_AGRI] = "+production agricole (machines) [Méca×Agraire]",
+    [TECH_COMBO_SIEGE]         = "+dégâts (engins de siège) [Méca×Clanique]",
+    [TECH_COMBO_GRENIER_COLON] = "+stabilité & +croissance (colonies) [Adaptatif×Agraire]",
+    [TECH_COMBO_FOEDERATI]     = "+moral & +cohésion (mercenaires) [Adaptatif×Clanique]",
+    [TECH_COMBO_HORDE_ECO]     = "+moral & +production (razzia) [Agraire×Clanique]",
+    /* APEX TRIPLES (fusion de 3 héritages) — le pinacle. */
+    [TECH_APEX_ARQUEBUSE]      = "+dégâts & +arquebusiers ciblés (feu runique) [Méca×Métal×Éso]",
+    [TECH_APEX_CONCILE]        = "+recherche & +efficacité (le concile) [Éso×Adaptatif×Méca]",
+    [TECH_APEX_LEGION]         = "+moral & +cohésion (la légion des nations) [Adaptatif×Métal×Clanique]",
 };
-void tech_tree_readout(const TechState *ts, unsigned race_access, float population,
+void tech_tree_readout(const TechState *ts, unsigned heritage_access, float n_provinces,
                        TechTreeReadout *out){
     if (!out) return;
     memset(out, 0, sizeof(*out));
@@ -762,12 +944,12 @@ void tech_tree_readout(const TechState *ts, unsigned race_access, float populati
         nr->name     = n->name;
         nr->unlocks  = n->unlocks;
         nr->effet    = TECH_UTILITY[i] ? TECH_UTILITY[i] : n->unlocks;   /* l'utilité concrète */
-        nr->cost     = (int)(tech_cost((TechId)i, population) + 0.5f);
+        nr->cost     = (int)(tech_cost((TechId)i, n_provinces) + 0.5f);
         bool done = ts && ts->unlocked[i];
-        bool open = ts && tech_can_research(ts, (TechId)i, race_access);
+        bool open = ts && tech_can_research(ts, (TechId)i, heritage_access);
         nr->state    = done ? TREE_DONE : (open ? TREE_OPEN : TREE_LOCKED);
-        /* orphelin = signature d'une AUTRE race dont l'empire n'a pas l'accès. */
-        nr->orphan   = (n->native!=RACE_COUNT) && !(race_access & tech_race_bit(n->native));
+        /* orphelin = signature d'héritage dont l'accès n'atteint pas le TIER du nœud (barre graduée). */
+        nr->orphan   = (n->native!=HERITAGE_COUNT) && tech_heritage_access_tier(heritage_access, n->native) < n->tier;
     }
 }
 

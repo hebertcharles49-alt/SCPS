@@ -73,6 +73,20 @@ float tune_f(const char *name, float def){
     return t ? t->val : def;   /* t->def doit égaler def (source unique = la X-macro) */
 }
 
+void tune_set(const char *name, float val){
+    if (!g_inited) tune_init();        /* l'env est parsé d'abord ; tune_set surcharge ensuite */
+    Tunable *t = find(name);
+    if (!t) return;
+    t->val = val; t->overridden = 1;
+    /* reconstruit la chaîne des surcharges actives (ordre du registre, stable) */
+    size_t o = 0;
+    for (int i=0;i<g_n && o < sizeof g_active - 1;i++){
+        if (!g_reg[i].overridden) continue;
+        o += (size_t)snprintf(g_active + o, sizeof g_active - o, "%s%s=%g",
+                              o ? "," : "", g_reg[i].name, g_reg[i].val);
+    }
+}
+
 void tune_list(FILE *out){
     if (!g_inited) tune_init();
     fprintf(out, "tunables (%d) — SCPS_TUNE=\"NOM=VAL,…\" surcharge :\n", g_n);
@@ -92,6 +106,13 @@ int tune_n_active(void){
     int n=0; for (int i=0;i<g_n;i++) if (g_reg[i].overridden) n++;
     return n;
 }
+
+/* ── Énumération du registre (MODTOOLS — panneau dev : lister + éditer en direct) ── */
+int         tune_count(void){ return g_n; }
+const char *tune_name_at(int i){ return (i>=0&&i<g_n)?g_reg[i].name:NULL; }
+float       tune_value_at(int i){ if(!g_inited)tune_init(); return (i>=0&&i<g_n)?g_reg[i].val:0.f; }
+float       tune_default_at(int i){ return (i>=0&&i<g_n)?g_reg[i].def:0.f; }
+int         tune_overridden_at(int i){ if(!g_inited)tune_init(); return (i>=0&&i<g_n)?g_reg[i].overridden:0; }
 
 const char *tune_active_string(void){
     if (!g_inited) tune_init();

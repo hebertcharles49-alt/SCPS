@@ -24,6 +24,10 @@ typedef enum {
     VIEW_HABITABILITY,  /* Habitabilité : rouge=mort, jaune=marginal, vert=fertile */
     VIEW_CULTURE,       /* Culture dominante par région (teinte fournie par l'appelant) */
     VIEW_FAITH,         /* Foi dominante par région (teinte fournie par l'appelant) */
+    VIEW_STABILITY,     /* Stabilité : agitation par région (teinte fournie par l'appelant) */
+    VIEW_TRADE,         /* Commerce : activité marchande par région (teinte appelant) */
+    VIEW_WAR,           /* Guerre : occupation / belligérance par région (teinte appelant) */
+    VIEW_DIPLO,         /* Diplomatie : relation au JOUEUR par région (teinte appelant) */
     VIEW_COUNT
 } ViewMode;
 

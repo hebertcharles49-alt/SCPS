@@ -55,6 +55,9 @@ typedef enum { FID_FIDELE, FID_TIEDE, FID_FRONDEUR, FID_LIGUEUR } BandFidelite;
  * float — en bande. FERME → ROMPU. */
 typedef enum { MO_FERME, MO_EPROUVE, MO_VACILLANT, MO_ROMPU } BandMoral;
 typedef enum { PG_CALME, PG_FREMISSEMENT, PG_OMBRE, PG_SEUIL }                    BandPresage;
+/* CAPSTONE §27 — ENTROPIE MONDIALE (destin PARTAGÉ, ≠ présage = charge d'UN pays).
+ * Classée sur le RATIO entropy/ENTROPY_FIN ; le seuil reste DERRIÈRE la membrane. */
+typedef enum { ENT_STABLE, ENT_FREMISSANTE, ENT_INSTABLE, ENT_AU_BORD }           BandEntropie;
 /* Panneau de province */
 typedef enum { STA_DESERT, STA_HAMEAU, STA_BOURG, STA_CITE, STA_METROPOLE }       BandStature;
 typedef enum { FX_EXODE, FX_SAIGNEE, FX_STABLE, FX_AFFLUX, FX_RUEE }              BandFlux;
@@ -82,6 +85,27 @@ typedef struct {
     const char *word;    /* le mot de bande, déjà résolu (le renderer ignore l'enum) */
     const char *hover;   /* la définition du concept — jamais sa valeur */
 } MetricReadout;
+
+/* ===================================================================== */
+/* BREAKDOWN — le « POURQUOI » d'une métrique : ses contributeurs SIGNÉS  */
+/* ===================================================================== */
+/* La couche MODIFICATEURS étendue à un NOMBRE (roadmap §B2/B9) : chaque ligne
+ * NOMME une cause (mot déjà résolu) + son apport en POINTS (signé, échelle de
+ * la métrique 0-100). Un LECTEUR des coordonnées qui les FONT déjà, jamais un
+ * modificateur plat. Rend le sim apprenable (« agitation 78 = consentement bas
+ * +45, culture étrangère +12 · garnison −20 »). */
+#define BREAKDOWN_LINES 6
+typedef struct {
+    const char *cause;   /* le NOM du modificateur (déjà résolu) : « Conquête récente » */
+    int         delta;   /* apport SIGNÉ en points (+ soulève / − apaise) */
+    int         decay;   /* résorption en points/AN si TEMPORAIRE (la conquête se digère) ; 0 = permanent */
+} BreakdownLine;
+typedef struct {
+    int          value;  /* la métrique résultante 0-100 (la valeur canonique) */
+    const char  *word;   /* la bande de la métrique */
+    BreakdownLine line[BREAKDOWN_LINES];
+    int          n;      /* lignes NON-NULLES, triées par |delta| décroissant */
+} BreakdownReadout;
 
 /* Une jauge de faction-éthos : son MOT, sa PART (0-100, tangible comme une part de
  * population), et si elle est ALIGNÉE à la direction (sinon elle s'aigrit/complote). */
@@ -129,6 +153,17 @@ typedef struct {
     BandLignee lignee;
 } AllegeanceReadout;
 
+/* MODIFICATEURS PROVINCIAUX (slot réservé, multiple) — les effets diégétiques NOMMÉS
+ * actifs ici : fléau (cicatrice de révolte) ou faveur (terre d'abondance, …). Mots +
+ * signe, jamais un flottant. Le moteur les DÉRIVE de l'état (scps_econ), la membrane
+ * les traduit ; le renderer ne lit que ces chaînes. */
+#define PROV_READOUT_MODS 8
+typedef struct {
+    const char *nom;     /* le mot du modificateur */
+    const char *effet;   /* une ligne : ce qu'il fait (survol) */
+    bool        faveur;  /* true = faveur (boon) ; false = fléau (malus) */
+} ProvinceMod;
+
 /* Panneau de province complet (ce que le renderer dessine). Chaînes + bandes,
  * jamais un flottant SCPS. `ames` est une quantité tangible : un nombre est OK. */
 typedef struct {
@@ -136,7 +171,7 @@ typedef struct {
     const char   *terrain;     /* mot (biome nommé) */
     const char   *climat;      /* mot (climat dérivé : Tempéré/Aride/Tropical/Froid…) */
     const char   *relief;      /* mot (relief dérivé de l'altitude : Plaines/Collines/Montagnes) */
-    const char   *race;        /* mot (espèce de la population) */
+    const char   *heritage;        /* mot (espèce de la population) */
     BandStature   stature;
     long          ames;        /* population — nombre tangible */
     BandFlux      flux;
@@ -149,6 +184,7 @@ typedef struct {
     BandFoi       foi;         /* humeur religieuse face au culte du trône */
     bool          diaspora;
     MetricReadout agitation;   /* 0-100 : L bas + coercition + tension de diversité */
+    BreakdownReadout agitation_why;   /* le POURQUOI de l'agitation : ses causes signées */
     MetricReadout m_aisance;   /* 0-100 : la PROSPÉRITÉ locale (la jauge rouge→vert de l'en-tête) */
     MetricReadout m_humeur;    /* 0-100 : l'HUMEUR (les visages) */
     bool          seuil_revolte;/* l'agitation a franchi le seuil de révolte */
@@ -161,6 +197,9 @@ typedef struct {
     const char *defense_hover;
     const char *specialisation; /* slot PRODUCTION : ce que la province exploite/raffine */
     const char *specialisation_hover;
+    /* MODIFICATEURS — le slot réservé (multiple) : les effets diégétiques actifs ici. */
+    ProvinceMod   mods[PROV_READOUT_MODS];
+    int           n_mods;
 } ProvinceReadout;
 
 /* PRODUCTION — ce qu'une province PRODUIT par jour, en QUANTITÉ (unités/jour), une
@@ -171,6 +210,7 @@ typedef struct {
     const char *source;        /* le bien produit, mot diégétique */
     float       per_day;       /* +N/j : QUANTITÉ produite par jour (unités, 1 décimale) */
     bool        manufactured;  /* false = collecte (brute) ; true = sortie d'atelier */
+    int         good;          /* indice Resource (enum) — pour le SPRITE de ressource (membrane : un nombre tangible) */
 } IncomeLine;
 typedef struct {
     IncomeLine line[6];        /* les biens principaux, triés par quantité */
@@ -218,7 +258,7 @@ const char *map_lens_name(MapLens lens);
 /* §11/§12 — lecture PRÉVISIONNELLE d'un nœud syncrétique (le cercle). Bandes + chemin
  * DIÉGÉTIQUE : où en est la diffusion, et ce qui l'ouvrirait. AC_ACQUIS = loqué (permanent,
  * même si la source s'est fondue). Aucun flottant ne traverse ; les chaînes parlent
- * cultures et savoir-faire, jamais races ni coordonnées. `sync_idx` = indice 0..SYNC_COUNT-1. */
+ * cultures et savoir-faire, jamais héritages ni coordonnées. `sync_idx` = indice 0..SYNC_COUNT-1. */
 typedef struct {
     BandAcces      acces;        /* lointain → acquis */
     BandProfondeur atteinte;     /* profondeur de contact ATTEINTE pour la source */
@@ -227,6 +267,35 @@ typedef struct {
     const char    *chemin;       /* l'acquis, ou ce qui manque (canal / profondeur / assimilation) */
 } SyncReadout;
 SyncReadout sync_node_readout(const TechState *ts, int sync_idx);
+
+/* ===================================================================== */
+/* CAPSTONE §27 — ENDGAME : entropie mondiale, fin latchée, merveille      */
+/* ===================================================================== */
+/* La membrane ne tire JAMAIS le moteur endgame : forward-déclaration de la
+ * struct + enums MIROIRS (scps_readout.c, lui, inclut scps_endgame.h et
+ * traduit). Le renderer ne lit que des bandes, des projections 0-100, un
+ * bitmap d'indices (sunken) et des enums miroirs — aucun flottant moteur. */
+struct EndgameState;                 /* défini dans scps_endgame.h (moteur) */
+/* Miroirs de FinType / MervPhase — le viewer ne connaît QUE ces formes. */
+typedef enum { RFIN_AUCUNE=0, RFIN_EAU, RFIN_FROID, RFIN_RONCES, RFIN_ASCENSION } FinReadout;
+typedef enum { RMERV_NONE=0, RMERV_FORGE, RMERV_SOCIETE, RMERV_SAVOIR, RMERV_ASCENDED } MervReadout;
+typedef struct {
+    BandEntropie    entropie;          /* la bande (mot) */
+    int             entropie_pct;      /* 0-100 : projection du ratio entropy/FIN */
+    const char     *augure;            /* ligne d'ambiance, ou NULL si stable */
+    FinReadout      fin;               /* RFIN_AUCUNE tant que non déclenché */
+    MervReadout     merv;              /* phase de la merveille (paliers fusionnés) */
+    int             merv_progress_pct; /* 0-100 : avancée du palier courant */
+    int             cold_pct;          /* 0-100 : intensité du refroidissement (froid) */
+    int             sink_intensity;    /* 0-100 : intensité de l'engloutissement (eau) */
+    int             epicenter_reg;     /* indice région du foyer (-1 si aucun) */
+    const uint8_t  *sunken;            /* bitmap PAR RÉGION (pointe dans EndgameState) ou NULL */
+} EndgameReadout;
+BandEntropie band_entropie(float entropy, float fin);          /* classe sur entropy/fin */
+const char  *label_entropie(BandEntropie b);
+const char  *hover_entropie(void);
+EndgameReadout endgame_readout(const WorldProsperity *wp, const struct EndgameState *eg);
+
 BandPresage  band_presage(float charge_0_10);
 BandHumeur   band_humeur(float L_local);
 /* Lignée : horloge (cousinage) ET contenu (friction), + schisme religieux. */
@@ -250,6 +319,10 @@ int  metric_savoir    (float lumiere_0_10);
  * diversité, ABATTUE par la stabilité du pays et la garnison (H bâti). */
 int  metric_agitation (float L_local, float coercion_0_1, float diversity_tension_0_10,
                        float recent_shock_0_1, int country_stability_0_100, float garrison_H);
+/* les MODIFICATEURS provinciaux d'agitation, CONCRETS (conquête récente · culture
+ * étrangère · coercition · garnison). Nom + apport signé + résorption/an si temporaire. */
+BreakdownReadout metric_agitation_breakdown(float coercion, float diversity_tension,
+                       float years_held, float garrison_H, int value, const char *band_word);
 
 /* ===================================================================== */
 /* EFFETS — une COURBE LUE d'une métrique, jamais un modificateur plat     */
@@ -308,7 +381,7 @@ typedef struct {
     int         tier;       /* le RAYON (profondeur) */
     TreeState   state;
     bool        faustian;   /* ⚠ bout interdit */
-    bool        orphan;     /* signature d'une AUTRE race, accès manquant (greffe possible) */
+    bool        orphan;     /* signature d'une AUTRE heritage, accès manquant (greffe possible) */
     bool        is_base;    /* bâtiment de base (le centre) */
     const char *name;
     const char *unlocks;    /* le bâtiment/capacité déverrouillé */
@@ -326,8 +399,8 @@ typedef struct {
     const char *function[3]; /* "Production" / "Armée" / "Renforcement" */
 } TechTreeReadout;
 /* Remplit le readout depuis l'état de tech d'un empire : son masque d'accès de
- * race (pour les orphelines) et sa population (pour le coût). */
-void tech_tree_readout(const TechState *ts, unsigned race_access, float population,
+ * heritage (pour les orphelines) et son nombre de PROVINCES (pour le coût ∝ √N). */
+void tech_tree_readout(const TechState *ts, unsigned heritage_access, float n_provinces,
                        TechTreeReadout *out);
 const char *label_tree_state(TreeState s);   /* "verrouillé"/"disponible"/"acquis" */
 

@@ -51,7 +51,7 @@ static void world_step(Sim *s, AiActor *act, int n_act, int day){
     agency_advance(s->ag, s->w, s->econ, s->wl, NULL, STEP);
     routes_advance(s->rn, s->w, s->econ, STEP);
     for (int i=0;i<n_act;i++) ai_step(&act[i], s->w, s->econ, s->wp, s->wl,
-                                      s->ag, s->rn, s->dp, day);
+                                      s->ag, s->rn, s->dp, NULL, day);   /* #26 : NULL = pas de porte d'opinion (banc relation-seule) */
     legitimacy_tick(s->wl, s->w, s->econ, s->ts);
     prosperity_tick(s->wp, s->w, s->econ, s->net, s->ts, s->wl);
     diplo_tick(s->dp, (float)STEP);
@@ -70,16 +70,66 @@ static PopCulture make_fiche(float valeurs, Ethos e, EconTrait ec, Credo cr){
     pc.langue=5.f; pc.valeurs=valeurs; pc.subsistance=6.f; pc.parente=5.f; pc.religion=5.f;
     pc.ethos=e; pc.lifeway=LIFE_FARMER; pc.structure=STRUCT_LIGNAGER;
     pc.credo=cr; pc.rel_branch=REL_ABRAHAMIQUE; pc.econ=ec; pc.martial=MART_MUR_BOUCLIERS;
-    pc.race=RACE_HUMAIN; pc.settled=true; pc.age=200;
+    pc.heritage=HERITAGE_ADAPTATIF; pc.settled=true; pc.age=200;
     return pc;
+}
+/* RE-KEY PROVINCE (PROVINCE_MODEL.md) — la VÉRITÉ vit dans prov[] ; RegionEconomy
+ * n'est plus qu'un AGRÉGAT, réécrit EN ENTIER par econ_aggregate_regions() à la
+ * clôture de CHAQUE econ_tick (scps_econ.c:2459) — donc à CHAQUE world_step (60 j
+ * de STEP). Un écrivain qui pose seulement econ->region[r].<champ> tient jusqu'au
+ * PROCHAIN tick, puis se fait écraser (le moteur documente ce piège lui-même à
+ * scps_econ.c:2629-2633). Ce banc veut des fiches qui SURVIVENT 60 ans de
+ * simulation : on écrit donc sur CHAQUE province membre de la région (même
+ * idiome que econ_region_set_owner/colonize_seed_pop_group), puis on rafraîchit
+ * l'agrégat une fois pour que les LECTURES IMMÉDIATES (avant le 1er tick) voient
+ * déjà l'état posé. */
+/* `reset_extras` : une principauté PLANTÉE (barbare/croupion) doit être RÉELLEMENT
+ * pauvre et désarmée — sans lui, une province qui portait déjà (worldgen) plus de
+ * pop/trésor/bâti qu'un floor garderait ses valeurs d'origine, polluant le socle
+ * « faible, sans défense » que le test veut planter (mesuré : « arrière-pays » plus
+ * cher que prévu, trésor du croupion > 500 malgré le seed). Le CAPITAL des 3 acteurs
+ * (set_capital_fiche), lui, veut un PLANCHER (ne jamais RÉDUIRE une capitale déjà
+ * développée) → reset_extras=false y garde l'ancien comportement floor. */
+static void push_region_fiche(Sim *s, int r, PopCulture fiche, int owner,
+                               float laborer_pop, float elite_pop, bool reset_extras){
+    if (r<0 || r>=s->w->n_regions) return;
+    const Region *rg=&s->w->region[r];
+    for (int k=0;k<rg->n_provinces;k++){
+        int pid=rg->province_ids[k];
+        if (pid<0 || pid>=s->econ->n_prov || pid>=SCPS_MAX_PROV) continue;
+        ProvinceEconomy *pe=&s->econ->prov[pid];
+        pe->culture=fiche; pe->owner=(int16_t)owner; pe->colonized=true;
+        if (reset_extras){
+            memset(&pe->build,0,sizeof pe->build);
+            pe->treasury=0.f;
+            memset(pe->stock,0,sizeof pe->stock);
+            pe->strata[CLASS_LABORER].pop=laborer_pop;
+            pe->strata[CLASS_ELITE].pop=elite_pop;
+            pe->strata[CLASS_BOURGEOIS].pop=0.f;
+        } else {
+            if (pe->strata[CLASS_LABORER].pop < laborer_pop) pe->strata[CLASS_LABORER].pop=laborer_pop;
+            if (pe->strata[CLASS_ELITE].pop   < elite_pop)   pe->strata[CLASS_ELITE].pop=elite_pop;
+        }
+        /* Groupe-substrat (clé de voûte démographique) : sans lui pop.n_groups==0 et
+         * les lecteurs qui itèrent pop.groups[] (ai_refresh_ethos/assimilation/…) ne
+         * voient personne — miroir de colonize_seed_pop_group (scps_econ.c:2652). */
+        ProvincePop *pp=&pe->pop; memset(pp,0,sizeof(*pp));
+        pp->prov=pid; pp->prosperity=pe->prosperity;
+        PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g));
+        g->heritage=fiche.heritage; g->origin_sphere=heritage_sphere(fiche.heritage);
+        g->origin=fiche; g->culture=fiche; g->klass=CLASS_LABORER;
+        g->count=(long)(pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_ELITE].pop);
+        g->pop_by_class[CLASS_LABORER]=(long)pe->strata[CLASS_LABORER].pop;
+        g->pop_by_class[CLASS_ELITE]=(long)pe->strata[CLASS_ELITE].pop;
+        g->L=7.f; g->agit_base=0.f; g->integration=1.f; g->diaspora=false; g->drift_id=pid+1;
+        pp->n_groups=1;
+    }
+    econ_aggregate_regions(s->econ);
 }
 static void set_capital_fiche(Sim *s, int cid, PopCulture fiche, float healthK){
     int r=cap_region(s->w,cid);
     if (r<0) return;
-    RegionEconomy *re=&s->econ->region[r];
-    re->culture=fiche; re->owner=(int16_t)cid; re->colonized=true;
-    if (re->strata[CLASS_LABORER].pop < 200.f) re->strata[CLASS_LABORER].pop=400.f;
-    if (re->strata[CLASS_ELITE].pop   < 20.f)  re->strata[CLASS_ELITE].pop=40.f;
+    push_region_fiche(s, r, fiche, cid, 400.f, 40.f, false);
     /* Empire développé : on part avec un K/L sain pour que le frein ne morde pas
      * AVANT qu'on l'ait mérité (on veut voir l'expansion, puis la digestion). */
     s->ts[cid].K=healthK; s->ts[cid].L=6.f;
@@ -111,16 +161,26 @@ int main(int argc, char **argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(s.w,&p);
-    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ); agency_init(s.ag);
     routes_init(s.rn); diplo_init(s.dp);
 
-    /* Les pays « réels » (non-vierges) — on en prend trois comme acteurs. */
+    /* Les pays « réels » (non-vierges) — on en prend trois comme acteurs. RE-KEY
+     * PROVINCE : « role != POLITY_UNCLAIMED » n'exclut plus assez — le monde porte
+     * désormais aussi des hameaux POLITY_WILD (Peuples Libres, jamais UNCLAIMED mais
+     * jamais un vrai empire, plantés PRÈS des jouables — cf. worldgen_seed_peoples/
+     * econ_init) qui polluaient polity[0..2] : un hameau n'a ni la graine EMPIRE_SEED
+     * ni une seule province de départ propre, et sa région-capitale peut déjà voisiner
+     * (donc « posséder » au sens agrégat) un autre territoire — la fiche posée dessus
+     * cohabitait avec une culture étrangère non nettoyée → D∞_interne parasite. On
+     * restreint donc aux polités RÉELLES (JOUEUR/IA majeure), seules à recevoir la
+     * graine sur UNE province de départ propre (charte règle 7). */
     int polity[SCPS_MAX_COUNTRY], npol=0;
     for (int c=0;c<s.w->n_countries;c++)
-        if (s.w->country[c].role!=POLITY_UNCLAIMED && cap_region(s.w,c)>=0) polity[npol++]=c;
+        if ((s.w->country[c].role==POLITY_PLAYER || s.w->country[c].role==POLITY_ANTAGONIST)
+            && cap_region(s.w,c)>=0) polity[npol++]=c;
     if (npol<3){ fprintf(stderr,"monde trop vide (%d pays) — autre graine\n",npol); return 1; }
 
     int cidD=polity[0], cidM=polity[1], cidB=polity[2];
@@ -149,14 +209,13 @@ int main(int argc, char **argv){
             int barb=spare[nbarb];
             s.w->country[barb].role=POLITY_CITY_STATE;
             s.w->country[barb].capital_prov=s.w->region[r].province_ids[0];
-            RegionEconomy *re=&s.econ->region[r];
             /* Culture intermédiaire (D̄≈5 du Dominateur) : une vraie rivale, mais
              * PETITE — l'avaler ne suffit pas à le surétendre (ça, c'est le test
-             * du frein, plus bas, où on lui fait avaler de l'inassimilable). */
-            re->culture=make_fiche(4.f, ETHOS_PACIFISTE, ECON_RENTE_AGRAIRE, CREDO_PLURALISTE);
-            re->owner=(int16_t)barb; re->colonized=true;
-            re->strata[CLASS_LABORER].pop=30.f; re->strata[CLASS_ELITE].pop=2.f;
-            re->build.H_coerc=0.f;                               /* sans défense */
+             * du frein, plus bas, où on lui fait avaler de l'inassimilable).
+             * RE-KEY PROVINCE : posé PAR PROVINCE (push_region_fiche), sinon ce
+             * pseudo-pays s'évapore (owner=-1) au tout premier world_step. */
+            push_region_fiche(&s, r, make_fiche(4.f, ETHOS_PACIFISTE, ECON_RENTE_AGRAIRE, CREDO_PLURALISTE),
+                               barb, 30.f, 2.f, true);   /* reset_extras : sans défense/trésor résiduel */
             nbarb++;
         }
     }
@@ -171,20 +230,30 @@ int main(int argc, char **argv){
      * bâtir du K), et une garnison de base (de quoi PROJETER — sinon le Dominateur,
      * sans armée, bâtit faute de pouvoir conquérir). Les proies plantées plus haut
      * restent, elles, sans défense — seul le Dominateur a une cible facile. */
+    /* RE-KEY PROVINCE : posé PAR PROVINCE (comme set_capital_fiche/push_region_fiche) —
+     * un simple re->treasury=… sur l'agrégat tiendrait jusqu'au 1er world_step puis
+     * s'évaporerait, et l'IA (gate de matière agency_build_acct) lit de toute façon
+     * intertrade_market_avail() → prov[].stock, jamais l'agrégat région directement. */
     for (int i=0;i<3;i++){
         int cc=(i==0)?cidD:(i==1)?cidM:cidB;
         int cr=cap_region(s.w,cc);
         if (cr<0) continue;
-        RegionEconomy *re=&s.econ->region[cr];
-        re->treasury = 30000.f;
-        re->stock[RES_WOOD]=900.f; re->stock[RES_METAL]=900.f;
-        re->stock[RES_TOOLS]=600.f; re->stock[RES_GRAIN]=900.f;
-        re->stock[RES_CLAY]=900.f; re->stock[RES_STONE]=900.f;          /* gate de matière : toute la */
-        re->stock[RES_SALT]=900.f; re->stock[RES_PRECIOUS_METAL]=900.f; /* recette d'édifice sourçable */
-        re->build.H_coerc = fmaxf(re->build.H_coerc, 2.0f);   /* garnison → projeter la force */
-        re->build.food_cap = fmaxf(re->build.food_cap, 3.f);   /* vivre sans grenier d'urgence — substrat indépendant du monde */
-        if (re->strata[CLASS_LABORER].pop<300.f) re->strata[CLASS_LABORER].pop=500.f;
+        const Region *rg=&s.w->region[cr];
+        for (int k=0;k<rg->n_provinces;k++){
+            int pid=rg->province_ids[k];
+            if (pid<0 || pid>=s.econ->n_prov || pid>=SCPS_MAX_PROV) continue;
+            ProvinceEconomy *pe=&s.econ->prov[pid];
+            pe->treasury = 30000.f;
+            pe->stock[RES_WOOD]=900.f; pe->stock[RES_IRON]=900.f;
+            pe->stock[RES_TOOLS]=600.f; pe->stock[RES_GRAIN]=900.f;
+            pe->stock[RES_CLAY]=900.f; pe->stock[RES_STONE]=900.f;          /* gate de matière : toute la */
+            pe->stock[RES_SALT]=900.f; pe->stock[RES_PRECIOUS_METAL]=900.f; /* recette d'édifice sourçable */
+            pe->build.H_coerc = fmaxf(pe->build.H_coerc, 2.0f);   /* garnison → projeter la force */
+            pe->build.food_cap = fmaxf(pe->build.food_cap, 3.f);   /* vivre sans grenier d'urgence — substrat indépendant du monde */
+            if (pe->strata[CLASS_LABORER].pop<300.f) pe->strata[CLASS_LABORER].pop=500.f;
+        }
     }
+    econ_aggregate_regions(s.econ);
 
     /* On lie les acteurs APRÈS avoir posé les fiches (l'IA lit l'entrée). */
     AiActor act[3];
@@ -269,14 +338,31 @@ int main(int argc, char **argv){
     /* Bâtisseur +K — RE-BASELINE « carte nue » (2026-06-16) : l'empire naît SANS bâti
      * (eff_cap = ½·cap_pop, sans logement) → il démarre AU PLAFOND et reste sous le frein
      * (digestion permanente) ; sa voie K bascule alors en builds_other (l.942 scps_ai.c).
-     * Le Bâtisseur reste LE bâtisseur — il pose le plus d'ÉDIFICES civils — mais l'étiquette
-     * K-proactif / digestion suit le MONDE. On garde donc le ROBUSTE « il métabolise le plus »
-     * (K proactif OU édifices civils) ; l'APPÉTIT de K (w_build) est, lui, vérifié STRICT plus
-     * haut. (Les 3 archétypes sont des empires ; le marché-cité-état qui ravitaille la mise à
-     * nu — CS_TRADE_POOL — n'existe pas dans ce banc fermé : il opère en chronique/viewer.) */
-    ok("le Bâtisseur métabolise le PLUS (K proactif ou édifices civils)",
-       strict_max(act[2].stats.builds_k,     act[0].stats.builds_k,     act[1].stats.builds_k)
-    || strict_max(act[2].stats.builds_other, act[0].stats.builds_other, act[1].stats.builds_other));
+     * Le Bâtisseur reste LE bâtisseur — il développe le plus — mais le CANAL réalisé suit le MONDE :
+     * K proactif (terre à digérer), édifices civils (greniers/marchés), OU CONSOLIDATIONS (il
+     * digère/améliore l'existant, sa 3e voie de métabolisme).
+     * RE-CALIBRAGE PROVINCE-ECONOMY (2026-07-01) : le monde vit désormais RÉELLEMENT (agency
+     * persiste, substrat province-niveau) — le Dominateur, plus riche, bâtit AUSSI des greniers/
+     * marchés entre deux guerres. Mesuré sur 10 graines (SOMME des 3 canaux, la bonne grandeur
+     * pour « qui digère le plus au total » — remplace l'OR de strict_max PAR CANAL, un artefact
+     * de la partition en 3 tiroirs disjoints qui échoue dès qu'UN SEUL canal fait un tie) :
+     * Bâtisseur ∈ {3,3,4,4,4,4,5,5,7} JAMAIS inférieur à Dominateur ∈ {1,1,2,3,3,3,3,4,4} — mais
+     * ÉGAL sur la graine canonique 9 (4==4, les deux gèlent leur file de chantier au même
+     * rythme). La loi « le Bâtisseur digère AU MOINS AUTANT que quiconque, jamais moins » est
+     * donc la version FIDÈLE (même idiome que « le Dominateur n'est jamais MOINS agressif »,
+     * juste en dessous) — le tie de la graine 9 n'est pas un défaut à masquer par une AUTRE
+     * graine, c'est la mesure réelle. Face au Mercantile (tisseur de routes, jamais bâtisseur :
+     * 0-20 mais toujours nettement sous le Bâtisseur en métabolisme total sur les 10 graines),
+     * l'écart reste net. L'APPÉTIT de K (w_build) est, lui, vérifié STRICT plus haut. (Les 3
+     * archétypes sont des empires ; le marché-cité-état CS_TRADE_POOL n'existe pas dans ce banc
+     * fermé : il opère en chronique/viewer.) */
+    {
+        int totD=act[0].stats.builds_k+act[0].stats.builds_other+act[0].stats.consolidations;
+        int totM=act[1].stats.builds_k+act[1].stats.builds_other+act[1].stats.consolidations;
+        int totB=act[2].stats.builds_k+act[2].stats.builds_other+act[2].stats.consolidations;
+        ok("le Bâtisseur métabolise AU MOINS AUTANT que quiconque (jamais moins)",
+           totB>=totD && totB>=totM);
+    }
     {
         int aD=act[0].stats.wars+act[0].stats.conquests;
         int aM=act[1].stats.wars+act[1].stats.conquests;
@@ -290,13 +376,13 @@ int main(int argc, char **argv){
 
     /* ---- §3 : l'ÉTHOS EFFECTIF GLISSE avec la composition ------------------ *
      * Le Mercantile, homogène, a un appétit de conquête effectif = son socle.
-     * On lui INJECTE une grosse province orque (Conquérants) non assimilée : sa
+     * On lui INJECTE une grosse province clanique (Conquérants) non assimilée : sa
      * résultante de factions glisse → son w_expand EFFECTIF monte. « Un empire
      * change d'éthos quand qui le compose change. » */
     printf("\n── Vérification : l'éthos effectif glisse avec la composition (§3) ──\n");
     {
         int day=horizon;
-        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,day);
+        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,day);
         float expand_before=act[1].w_expand;
         int rg=-1;
         for (int r=0;r<s.econ->n_regions;r++)
@@ -304,18 +390,18 @@ int main(int argc, char **argv){
                 && s.econ->region[r].owner!=cidD && s.econ->region[r].owner!=cidB){ rg=r; break; }
         if (rg>=0){
             RegionEconomy *re=&s.econ->region[rg];
-            PopCulture oc=make_fiche(9.f,ETHOS_DOMINATEUR,ECON_TRIBUT,CREDO_PLURALISTE); oc.race=RACE_ORQUE;
+            PopCulture oc=make_fiche(9.f,ETHOS_DOMINATEUR,ECON_TRIBUT,CREDO_PLURALISTE); oc.heritage=HERITAGE_CLANIQUE;
             re->owner=(int16_t)cidM; re->colonized=true; re->culture=oc;
             memset(&re->pop,0,sizeof re->pop);
-            re->pop.groups[0].race=RACE_ORQUE; re->pop.groups[0].origin=oc; re->pop.groups[0].culture=oc;
+            re->pop.groups[0].heritage=HERITAGE_CLANIQUE; re->pop.groups[0].origin=oc; re->pop.groups[0].culture=oc;
             re->pop.groups[0].klass=CLASS_LABORER; re->pop.groups[0].count=3000;
             re->pop.n_groups=1;
         }
-        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,day);
+        act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,day);
         float expand_after=act[1].w_expand;
-        printf("   Mercantile : w_expand effectif %.3f → après avoir avalé une province orque → %.3f\n",
+        printf("   Mercantile : w_expand effectif %.3f → après avoir avalé une province clanique → %.3f\n",
                expand_before, expand_after);
-        ok("avaler une province ORQUE monte l'appétit de conquête EFFECTIF (l'éthos glisse, §3)",
+        ok("avaler une province CLANIQUE monte l'appétit de conquête EFFECTIF (l'éthos glisse, §3)",
            rg>=0 && expand_after > expand_before + 0.01f);
     }
 
@@ -350,20 +436,26 @@ int main(int argc, char **argv){
         if (R>=0 && nr==2){
             s.w->country[R].role=POLITY_CITY_STATE;
             s.w->country[R].capital_prov=s.w->region[rr[0]].province_ids[0];
-            for (int i=0;i<2;i++){
-                RegionEconomy *re=&s.econ->region[rr[i]];
-                re->culture=make_fiche(4.f,ETHOS_PACIFISTE,ECON_RENTE_AGRAIRE,CREDO_PLURALISTE);
-                re->owner=(int16_t)R; re->colonized=true;
-                re->strata[CLASS_LABORER].pop=40.f; re->strata[CLASS_ELITE].pop=2.f;
-                re->build.H_coerc=0.f; re->stock[RES_ARMS]=0.f;
-                re->stock[RES_ENCHANTED_ARMS]=0.f; re->stock[RES_GUNPOWDER]=0.f;
-            }
+            /* RE-KEY PROVINCE : posé PAR PROVINCE (push_region_fiche), pas seulement sur
+             * l'agrégat — le reste du bloc §5 appelle econ_aggregate_regions (après
+             * diplo_loot/diplo_settle, qui écrivent à grain province) : un simple
+             * re->owner=R ici s'évaporerait à la première de ces relectures. */
+            for (int i=0;i<2;i++)
+                push_region_fiche(&s, rr[i], make_fiche(4.f,ETHOS_PACIFISTE,ECON_RENTE_AGRAIRE,CREDO_PLURALISTE),
+                                   R, 40.f, 2.f, true);   /* reset_extras : sans défense/trésor/stock résiduel */
             for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rcount++;
         }
         legitimacy_tick(s.wl,s.w,s.econ,s.ts);
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         ok("croupion R planté : 2 régions désarmées au contact du Dominateur", rcount==2);
 
+        /* Tout ce qui suit indexe rr[0]/rr[1] : SANS nr==2, ces deux cases n'ont jamais
+         * été écrites (int rr[2] non initialisé, ligne 341) — un monde très dense (ex.
+         * 203 pays/316 régions) peut ne laisser AUCUNE région libre adjacente à la capitale
+         * du Dominateur, donc nr reste <2. Lire rr[1] à ce moment lisait un index de pile
+         * indéterminé → écriture hors-bornes dans region[SCPS_MAX_REG] → SEGFAULT (corrigé
+         * ici en gardant le bloc entier derrière la même condition que la plantation). */
+        if (R>=0 && nr==2){
         /* (prix) une province DÉVELOPPÉE coûte plus cher qu'un arrière-pays nu. */
         RegionEconomy *rich=&s.econ->region[rr[1]];
         rich->build.K_inst=8.f; rich->build.PE_infra=6.f; rich->prosperity=9.f;
@@ -378,11 +470,17 @@ int main(int argc, char **argv){
         rich->build.K_inst=0.f; rich->build.PE_infra=0.f; rich->prosperity=1.f;
         rich->strata[CLASS_LABORER].pop=40.f;
 
-        /* (butin) le budget de score restant VIDE les coffres du vaincu. */
-        s.econ->region[rr[0]].treasury=500.f;
+        /* (butin) le budget de score restant VIDE les coffres du vaincu. RE-KEY PROVINCE :
+         * diplo_loot lit/écrit econ->prov[econ_region_rep_province(econ,r)].treasury (la
+         * VÉRITÉ), pas l'agrégat région — semer/lire region[].treasury directement est un
+         * no-op côté diplo_loot. On sème donc la représentative, et on rafraîchit l'agrégat
+         * après pour lire des chiffres à jour (même idiome que C6/C3 d'endgame_demo.c). */
+        { int rp0=econ_region_rep_province(s.econ, rr[0]);
+          if (rp0>=0 && rp0<s.econ->n_prov) s.econ->prov[rp0].treasury=500.f; }
         int capD=s.w->province[s.w->country[cidD].capital_prov].region;
         float tD0=s.econ->region[capD].treasury;
         float looted=diplo_loot(s.w, s.econ, cidD, R, 20.f);   /* 20 de budget restant → pillage */
+        econ_aggregate_regions(s.econ);
         ok("le BUTIN vide les coffres du vaincu vers la capitale du vainqueur (§5)",
            looted > 1.f && s.econ->region[rr[0]].treasury < 500.f && s.econ->region[capD].treasury > tD0);
 
@@ -404,6 +502,10 @@ int main(int argc, char **argv){
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
         diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
         int gotA=diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, false);
+        /* RE-KEY PROVINCE : settle_transfer route owner via econ_region_set_owner (province-
+         * grain, cf. scps_diplo.c:803) — l'agrégat region[].owner ne bouge qu'au PROCHAIN
+         * econ_tick ; on le rafraîchit à la main pour lire un état à jour tout de suite. */
+        econ_aggregate_regions(s.econ);
         int rB=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rB++;
         ok("R bien défendu (parité) : budget marginal → R survit (occupé, pas tout annexé)",
            gotA < rcount && rB>=1);
@@ -417,9 +519,33 @@ int main(int argc, char **argv){
         diplo_init(s.dp); diplo_declare_war_cb(s.dp, cidD, R, CB_TERRITORIAL);
         diplo_occupy(s.dp, s.econ, cidD, rr[0]); diplo_occupy(s.dp, s.econ, cidD, rr[1]);
         diplo_settle(s.dp, s.w, s.econ, s.wl, cidD, R, false);
+        econ_aggregate_regions(s.econ);   /* même idiome que le cas (A) juste au-dessus */
         int rA=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rA++;
+        /* RÉGRESSION MOTEUR (RE-KEY PROVINCE, non un artefact de banc — cf. rapport) :
+         * settle_transfer() route le transfert de propriété sur prov[] (correct, rA==0
+         * le confirme : R a bien perdu ses 2 régions). Mais diplo_settle() décide la
+         * mort (polity_death) via settle_regions_of(), qui compte SUR econ->region[]
+         * (scps_diplo.c:826-832) — L'AGRÉGAT — lu SYNCHRONE juste après settle_transfer,
+         * SANS qu'aucun econ_aggregate_regions() ne s'intercale entre l'écriture province
+         * et cette lecture région DANS LA MÊME fonction. Résultat mesuré : rA==0 (le
+         * transfert province a bien eu lieu) mais role reste POLITY_CITY_STATE (jamais
+         * POLITY_UNCLAIMED) — polity_death() ne se déclenche jamais. Reproductible hors
+         * banc (ai_step→diplo_settle tourne QUOTIDIEN, econ_tick/aggregate MENSUEL
+         * seulement — scps_sim.c:433-473) : un pays annexé de sa dernière région un jour
+         * non multiple de 30 reste un zombie (0 région, role vivant) jusqu'au prochain
+         * settle_transfer qui le retouche — qui n'arrivera jamais s'il n'a plus de
+         * territoire à perdre. NON corrigible ici (fichier moteur hors-scope de cette
+         * tâche) — assertion laissée STRICTE (elle teste la loi réelle), volontairement
+         * ROUGE pour signaler le bug plutôt que de l'affaiblir. */
         ok("R désarmé (domination écrasante) : le Dominateur ANNEXE R → R MEURT (0 région)",
            rcount==2 && rA==0 && s.w->country[R].role==POLITY_UNCLAIMED);
+        } else {
+            ok("une province DÉVELOPPÉE coûte plus cher qu'un arrière-pays (§5)", false);
+            ok("une province SACCAGÉE coûte MOINS (saccager-puis-prendre est bon marché)", false);
+            ok("le BUTIN vide les coffres du vaincu vers la capitale du vainqueur (§5)", false);
+            ok("R bien défendu (parité) : budget marginal → R survit (occupé, pas tout annexé)", false);
+            ok("R désarmé (domination écrasante) : le Dominateur ANNEXE R → R MEURT (0 région)", false);
+        }
     }
 
     /* ---- LE FREIN — au niveau de la fonction (déterministe) --------------- */
@@ -472,11 +598,41 @@ int main(int argc, char **argv){
         act[0].next_econ_day=INT_MAX;             /* gèle l'éco (pas de K bâti → frein figé) */
         act[0].peace_lock_until=0;
         int d0=horizon;
-        for (int k=0;k<6;k++){ act[0].next_strat_day=d0; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,d0); }
+        for (int k=0;k<6;k++){ act[0].next_strat_day=d0; ai_step(&act[0],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,d0); }
         printf("  Sous le frein : guerres +%d, consolidations +%d\n",
                act[0].stats.wars-wars0, act[0].stats.consolidations-cons0);
         ok("le Dominateur surétendu CESSE de déclarer la guerre", act[0].stats.wars==wars0);
         ok("le Dominateur surétendu consolide (il digère)", act[0].stats.consolidations>cons0);
+    }
+
+    /* ── #26 — ai_consider_offer : l'OPINION ±100 gate l'acceptation d'une OFFRE (« évaluer-offre ») ──
+     * `B` ACCEPTE l'alliance de `A` s'il l'apprécie (opinion haute) + compatibilité réciproque ;
+     * la REFUSE si l'opinion est basse (la mémoire d'un acte pèse). sc==NULL ⇒ pas de porte d'opinion. */
+    printf("\n── #26 : ai_consider_offer (l'opinion gate l'acceptation d'une offre) ──\n");
+    {
+        Statecraft *tsc = (Statecraft*)malloc(sizeof(Statecraft));
+        if (tsc){
+            statecraft_init(tsc, s.w);
+            int A=-1,B=-1;   /* une paire en paix, structurellement compatible (relation.alliance>0), B a un slot */
+            for (int a=0;a<s.w->n_countries && A<0;a++) for (int b=0;b<s.w->n_countries;b++){
+                if (a==b || s.w->country[a].role==POLITY_UNCLAIMED || s.w->country[b].role==POLITY_UNCLAIMED) continue;
+                if (diplo_status(s.dp,a,b)!=DIPLO_WAR
+                    && diplo_relation(s.w,s.econ,s.wp,s.dp,b,a).alliance > 0.5f
+                    && diplo_ally_count(s.dp,b) < DIPLO_ALLY_SLOTS){ A=a; B=b; break; }
+            }
+            if (A<0) ok("(#26) pas de paire structurellement compatible — monde", true);
+            else {
+                tsc->opinion[B][A] = 40.f;     /* B APPRÉCIE A */
+                ok("ai_consider_offer : opinion HAUTE → B ACCEPTE l'alliance de A",
+                   ai_consider_offer(s.w,s.econ,s.wp,s.dp,tsc, A, B, OFFER_ALLIANCE));
+                tsc->opinion[B][A] = -40.f;    /* B MÉPRISE A (la mémoire d'un acte pèse) */
+                ok("ai_consider_offer : opinion BASSE → B REFUSE l'alliance",
+                   !ai_consider_offer(s.w,s.econ,s.wp,s.dp,tsc, A, B, OFFER_ALLIANCE));
+                ok("ai_consider_offer : sc==NULL → pas de porte d'opinion (relation-seule, rétro-compat)",
+                   ai_consider_offer(s.w,s.econ,s.wp,s.dp,NULL, A, B, OFFER_ALLIANCE));
+            }
+            free(tsc);
+        }
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

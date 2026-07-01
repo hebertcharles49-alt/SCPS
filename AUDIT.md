@@ -1,30 +1,126 @@
 # AUDIT — SCPS (moteur de grande stratégie C99)
 
-> État POST-arc K (« état vérifiable »). Source de vérité = les bancs (`make test`),
-> jamais ce fichier. Daté : 2026-06-11. Build : gcc 13 · -O2 -Wall -Wextra -std=c99
-> + durcissement (`-fstack-protector-strong -D_FORTIFY_SOURCE=2`).
+> État vérifiable. Source de vérité = les bancs (`make test`), jamais ce fichier.
+> Daté : 2026-06-18 (entête rafraîchi ; les entrées datées plus bas gardent leur
+> compte d'époque). Build : gcc 13 · -O2 -Wall -Wextra -std=c99 + durcissement
+> (`-fstack-protector-strong -D_FORTIFY_SOURCE=2`). SAVE_VERSION = **31** (le
+> format a fusionné les deux lignées : endgame §27 + assets/armée du collègue ;
+> puis v30 ROSTER militaire 12→22, v31 empreinte tunables — cf. correctifs d'audit).
 
 ---
 
 ## (a) Résultats MESURÉS (`make test`, K3 appliqué)
 
-**32 bancs VERTS / 32** — `make test` les bâtit, les lance, compte les BILAN :
+**40 bancs VERTS / 40** — `make test` les bâtit, les lance, compte les BILAN
+(snapshot 2026-06-26 ; le compte AUTORITAIRE est la sortie de `make test`, pas
+cette liste — gardée à jour pour le coup d'œil ; +navy_demo +culture_demo
++scps_api_demo depuis l'audit Steam, diplo monté 49→61 avec l'étage-3 vassalité) :
 
 core 35/35 · monde_reel 10/10 · readout 27/27 · species 9/9 · tech 22/22 ·
-faith 14/14 · intertrade 14/14 · routes 4/4 · save_io 8/8 · statecraft 22/22 ·
-pop 14/14 · army 49/49 · demography 19/19 · demography_integ 6/6 · revolt 23/23 ·
-social 10/10 · agency 18/18 · campaign 19/19 · factions 32/32 · econ_tax 8/8 ·
-econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 44/44 ·
-missions 8/8 · **diplo 49/49 (K4b)** · **warhost 4/4 (K4c)** · **events 27/27 (K4a)** ·
-**structural 16/16 (K5+K6)** · **ai 23/23 (L6)** · **forks 34/34 (M)** · prosperity OK (sans format BILAN).
+faith 14/14 · intertrade 25/25 · routes 4/4 · save_io 14/14 · statecraft 27/27 ·
+pop 14/14 · army 48/48 · demography 19/19 · demography_integ 6/6 · revolt 23/23 ·
+social 10/10 · agency 16/16 · campaign 19/19 · factions 35/35 · econ_tax 8/8 ·
+econ_culture 6/6 · econ_arcane 6/6 · econ_production 4/4 · labor 37/37 ·
+missions 8/8 · diplo 61/61 · warhost 4/4 · events 41/41 · structural 16/16 ·
+ai 23/23 · forks 35/35 · prosperity 17/17 · credit 16/16 ·
+cap 5/5 · endgame 76/76 · **audit_eco 4/4** · **lang 26/26** · **navy 20/20** ·
+**culture 23/23** · **scps_api 18/18**.
 
-**0 banc rouge** — H3 maintient 32/32.
+**0 banc rouge.** `audit_eco` et `lang_demo` sont désormais DANS le harnais
+(`tools/run_tests.sh`) — le rouge de `make audit` (longtemps invisible) serait
+capté. `make smoke` = sous-ensemble rapide ; `make full-test` = bancs +
+déterminisme + ASan. Statut mesuré sur ce build, pas supposé.
 
-**V1 (2026-06, build PORTABLE)** : `make test` 32/32 et `make chronicle` **0 warning** —
-`intertrade_demo` 14/14 (le `setenv` du banc est rendu visible sous `-std=c99` strict via
-`#define _POSIX_C_SOURCE 200809L` ; la chaîne « Mécaniste » dé-malformée — l'octet `\xa9`
-était suivi d'un `c` (chiffre hex) → échappement avalé, corrigé en UTF-8 source). Statut
-mesuré sur ce build, pas supposé.
+## (a-ter) Refonte ÉCO + pipelines IA + hameaux libres + diplo subjectif (2026-06-25)
+
+Quatre arcs livrés et MESURÉS (40/40 bancs · determinism STABLE & golden re-baseliné
+vert · 0 warning) :
+- **Refonte ÉCO (A0-A5)** : extraction LABOR-BOUND `out = ouvriers × YIELD × geo_eff ×
+  prix` (table ancrée grain 800/poisson 400/bois 50…), bouche ANNUELLE calibrée
+  (`FOOD_NEED`, sinon needs_met s'effondre), nourriture du SPAWN (capitale = socle de
+  grain, SEULE règle vivrière de worldgen). Calibré seed 9 : pop 38.4k (= baseline 38.8k),
+  needs_met 0.52, remplissage 63 %. `EXTRACT_GEO_REF` 4.5 · `EXTRACT_LABOR_SHARE` 0.65.
+- **Pipeline IA éco** : `econ_country_forecast` (runway/shortfall/déficit structurel +
+  food_runway, l'offre suit la pop jusqu'au potentiel → seuls les déficits STRUCTURELS
+  arment) → priorités émergentes (prix×stress×manque) → colonisation needs-aware (capacité
+  + steer urgence) + anti-spirale food + relocate projeté + grenier stock-safe. SAVE non
+  bumpé (AiView = cache de tick).
+- **Hameaux libres (POLITY_WILD)** : N hameaux épars/jouable (BFS), pop ≈750±, culture +
+  éthos DISTINCTS du voisin, AUCUNE religion, raw food forcée, PASSIFS (ai_on=false).
+  Ralliement CULTUREL au voisin (contact pacifique soutenu) ; absorption militaire par
+  conquête. seed 9 : 4 semés, 4 ralliés/100 ans.
+- **Pipeline diplo (étages 1-2)** : `ai_province_value` SUBJECTIVE (prix objectif + BESOIN
+  Σ raw_cap×stress(runway)×prix) → `ai_pick_rival` convoite (AI_COVET_W), `diplo_settle`
+  butin needs-driven (l'affamé exige le grenier). Banc INVARIANT anti-modificateur
+  (diplo_demo 51/51 : affamé 123 vs repu 30).
+- **Pipeline diplo (étage 3) — VASSALITÉ SUR LA DURÉE** : la VALEUR cible, l'ÉTHOS la MÉTHODE.
+  Dans `diplo_suzerainty_tick` : `v_integration` monte à la paix (∝ proximité culturelle ×
+  appréciation, 1/`AI_VASSAL_INTEGRATE_YEARS`) ; passé `AI_VASSAL_CONTRIB_GATE` (0.65) le vassal
+  VERSE une contribution TYPÉE (agraire→vivres / martial→mil_stock / commerce→or, `vassal_function`)
+  à la capitale du maître ; un maître ANNEXEUR (Dom/Honneur) DIGÈRE un vassal intégré — PROCESSUS
+  de durée ∝ prix×(1−intégration), payé en or, à terme transfert + `polity_death` + `annex_scar`
+  DOUCE (∝ 1−intégration) qui frappe la SATISFACTION (pas la croissance), décroît ~5 ans, surfacée
+  en `PMOD_ANNEX_SCAR`. **Golden-safe PAR CONSTRUCTION** : seuils 0.65 inatteignables en 12 ans
+  (max 12/20=0.60) ⇒ `make golden` IDENTIQUE (pas de re-baseline). Vivant au-delà : seed 9 1 annexion
+  /200 ans (rare/borné). ⚠ **SAVE BUMP 31→32** (DiploState +3 champs · RegionEconomy +annex_scar ;
+  `save_sane` borne). Banc diplo_demo 61/61 (+10). `suzerainty_tick` → `World*` non-const.
+
+Étages éco/IA/wild/diplo-1-2 : SAVE non bumpés. Diplo étage 3 : **SAVE 31→32** (structs grandies).
+RE-BASELINE du hash 12 ans pour les arcs ÉCO (golden mis à jour) ; diplo étage 3 N'A PAS re-baseliné
+(golden IDENTIQUE — l'étage mord après l'an-12).
+
+## (a-quater) Télémétrie + #26 OPINION à mémoire (2026-06-26)
+
+- **Télémétrie chronicle** : lignes `prévision` (déficit vivrier structurel vs tension de runway,
+  dérivé `econ_country_forecast`) + `guerres motivées` (déclarations par casus belli ; compteur
+  `g_war_cb` statique, hors-moteur). Golden IDENTIQUE.
+- **#26 — opinion ±100 à MÉMOIRE + `ai_consider_offer`** (le seul gros « vrai code » moteur restant
+  de la roadmap Steam §2). Opinion en deux couches (modificateurs de statut TEMPORAIRES + mémoire
+  d'actes DURABLE `opinion_mem`), **« tend vers 0 »** (decay naturelle) ; `ai_consider_offer` évalue
+  une offre (alliance/paix/pacte) lue de l'opinion+relation+war_score → alliances IA BILATÉRALES.
+  Réconciliation doc (38→40, diplo 49→61) faite en amont. ⚠ **SAVE 32→33** (opinion_mem) · ⚠
+  **RE-BASELINE diplo** (golden mis à jour, 4/5 graines). Alliances respirent (1-2/100 ans, 4 seeds).
+  Bancs : statecraft_demo +4, ai_demo +3 (40/40). determinism STABLE (v33 round-trip).
+- **§3 — VERBES DIPLO JOUEUR** (capstone #26) : le journal de commandes gagne 5 verbes (déclarer
+  guerre · paix blanche · offrir alliance/pacte · embargo) ; alliance/paix/pacte passent par
+  `ai_consider_offer` (le vis-à-vis CONSENT via l'opinion). Façade `scps_player_*` additive, ENFILE
+  (différé, revalidé au drain). Chronique n'enfile pas → **golden IDENTIQUE · SAVE non bumpé**. Banc
+  scps_api_demo +3 · ASan muet.
+- **§3 — surface de verbes COMPLÈTE + bande d'opinion** : +13 verbes (intérieur repress/assim/purge/
+  conseil · commerce route/marché · guerre campaign/posture/refill/navy/disband), même motif additif
+  (CMD_* + case revalidé au drain + façade scps_player_*). `ScpsRelation` gagne `opinion` (±100, la
+  membrane porte l'opinion #26). Chronique n'enfile pas → **golden IDENTIQUE · SAVE non bumpé**. Banc
+  scps_api_demo 24/24 (40/40) · ASan muet · 0 warning. Couverture de verbes joueur roadmap §3 COMPLÈTE ;
+  restent les reads d'OPTIONS (coups légaux) + l'UI Godot, hors moteur.
+
+---
+
+## (a-bis) Passe de STABILISATION (2026-06-18)
+
+Suite à l'audit technique du 18 juin (point bloquant : `make audit` ROUGE 2/4).
+
+- **`make audit` au VERT (4/4)** — deux bornes étaient rouges depuis longtemps,
+  jamais captées (audit_eco n'était pas dans le harnais). Les DEUX échecs sont
+  des artefacts du BANC, pas des bugs moteur :
+  - **POP (E0.1)** : le banc colonisait une vierge de FRONTIÈRE comme hameau
+    témoin. Sur un monde N1 (carte nue) développé, la frontière est pauvre
+    (cap_pop ≤ 200) : une colonie de ≈250 âmes y naît DÉJÀ au-dessus du plafond
+    (cap_factor=0, pop gelée) → la borne mesurait le mauvais régime. Fix : le
+    témoin est la région du joueur (HORS capitale) avec le PLUS de marge sous
+    son eff_cap. → rég 55, ×1.19 ∈ [1.1 .. 2.5].
+  - **ACCESSION (E1 §9)** : le banc ne lance ni l'intertrade ni le marché de
+    départ (`agency_seed_capital_markets`) — l'import de matériaux depuis les
+    cités-états (qui bootstrappe un empire NU dans le vrai jeu) n'opère pas ici,
+    donc la capitale ne voyait jamais de PIERRE. **Diagnostic RES_STONE** : ce
+    n'est PAS un bug de marché — l'extraction est demand-driven et sans Centre/
+    cache mondial dans le banc, il n'y a pas de consommateur ni de source ; le
+    vrai jeu importe via `CS_TRADE_POOL` (N1, accession 3e empire an 43, prouvée
+    en chronique). Fix de banc : amorcer la capitale d'un socle bois/pierre/
+    argile (+120) ; le bootstrap import reste couvert par `intertrade_demo`.
+- **Harnais durci** : `audit_eco` + `lang_demo` rejoignent `run_tests.sh`
+  (35 → 37 bancs) ; `timeout` par banc ; split `make smoke` / `make full-test`.
+- **Aucune entrée moteur touchée** : `make test` 37/37, déterminisme STABLE,
+  aucun hash bougé. Re-baseline NULLE (purs fixes de banc + doc + harnais).
 
 ---
 
@@ -71,7 +167,9 @@ mesuré sur ce build, pas supposé.
   la taille PLEINE nourrie. **Bâtir double la région ½→plein** : la pop SUIT le bâti (seed 9
   monte 48→56→69→75→80→89k, monotone). Graine **UNIFORME** à l'an-0 (divergence ENSUITE).
   Readout viewer = miroir de l'eff_cap (les logements montent quand on bâtit). Tunables :
-  `EMPIRE_CAP` 10300 / `CITY_CAP` 5150 (taille nourrie) · `HOUSE_MANUF` 100. make test
+  `EMPIRE_CAP` 10300 / `CITY_CAP` 5150 (taille nourrie ; ⚠ valeur d'ÉPOQUE — code courant
+  **13000 / 6500**, cf. `scps_tune_list.h` ; les valeurs CAP des entrées datées plus bas sont
+  toutes archivales, la source de vérité est le registre) · `HOUSE_MANUF` 100. make test
   **32/32** (les 2 contrôles `ai_demo` sensibles au monde — aggression/routes réalisées —
   rendus robustes : la conquête du Dominateur peut hériter des routes, hors appétit marchand).
   **À VENIR (#5)** : « le commerce nourrit le marché » (cités-états = hubs alimentaires)

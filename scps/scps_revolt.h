@@ -55,7 +55,7 @@ typedef struct {
     int              owner;      /* la couronne visée */
     RebelKind        kind;
     /* identité du groupe soulevé — pour la résolution ET le chroniqueur */
-    SpeciesArchetype race;
+    Heritage heritage;
     SocialClass      klass;
     PopCulture       culture;    /* fiche effective au moment du soulèvement */
     int              drift_id;   /* clé du groupe (le retrouver dans la province) */

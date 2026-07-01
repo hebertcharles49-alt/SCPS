@@ -46,7 +46,7 @@ static const int LEVEL_JOBS[6] = { 100,100,200,300,500,1000 };  /* capacité AJO
  * même propriétaire). Les bâtiments d'extraction/atelier (LB_SAWMILL…LB_WORKSHOP)
  * restent dans l'enum mais sont INERTES (per_job_output ne leur rend plus rien). */
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 
 /* ===================================================================== */
 /* JOBS & NIVEAUX (§9)                                                    */
@@ -320,6 +320,10 @@ void labor_army_upkeep(const LaborEcon *e, long *gold_j, long *food_j){
     long packs = labor_pop_in_army(e)/POP_PER_SLOT;
     if (gold_j) *gold_j = (long)(SOLDE_GOLD_PER100*(float)packs + 0.5f);
     if (food_j) *food_j = packs*SOLDE_FOOD_PER100;
+}
+void labor_upkeep_per100(int *gold_x10, int *food){
+    if (gold_x10) *gold_x10 = (int)(SOLDE_GOLD_PER100*10.f + 0.5f);
+    if (food)     *food     = (int)SOLDE_FOOD_PER100;
 }
 long labor_food_balance(const LaborEcon *e){
     long ration; labor_army_upkeep(e,NULL,&ration);

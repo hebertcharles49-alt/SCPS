@@ -24,12 +24,23 @@ static void ok(const char *what, bool cond){
     if (cond) g_pass++; else g_fail++;
 }
 
-/* (ré)installe le scénario : empire 0 pauvre, cité-état 1 riche. */
+/* (ré)installe le scénario : empire 0 pauvre, cité-état 1 riche.
+ * RE-KEY PROVINCE (PROVINCE_MODEL.md) : treasury/pop sont PROVINCE-OWNED — credit_spend/
+ * credit_year_tick routent désormais sur econ_region_rep_province (region[r].treasury
+ * est un DÉRIVÉ Σ, écrasé par econ_aggregate_regions). Ce banc À LA MAIN (pas de
+ * world_generate/econ_init) pose donc la vérité sur prov[] ; econ_aggregate_regions()
+ * est appelée après pour que les lecteurs region[]-grain (econ_country_gold, ce banc)
+ * restent à jour — même idiome que forks_demo.c/social_demo.c. */
 static void setup(WorldEconomy *e, float emp_tres, float cs_tres){
-    e->region[0].owner=0; e->region[0].treasury=emp_tres;
-    e->region[1].owner=1; e->region[1].treasury=cs_tres;
-    e->region[0].strata[CLASS_LABORER].pop=1000.f;   /* pop => ligne de crédit > 0 */
-    e->region[1].strata[CLASS_LABORER].pop=300.f;
+    e->n_prov=2;
+    e->prov[0].owner=0; e->prov[0].region=0; e->prov[0].active=true; e->prov[0].colonized=true;
+    e->prov[0].treasury=emp_tres;
+    e->prov[1].owner=1; e->prov[1].region=1; e->prov[1].active=true; e->prov[1].colonized=true;
+    e->prov[1].treasury=cs_tres;
+    e->prov[0].strata[CLASS_LABORER].pop=1000.f;   /* pop => ligne de crédit > 0 */
+    e->prov[1].strata[CLASS_LABORER].pop=300.f;
+    e->region_rep_prov[0]=0; e->region_rep_prov[1]=1;   /* 1 province/région : la représentative est directe */
+    econ_aggregate_regions(e);   /* region[] à jour pour econ_country_gold et les lectures du banc */
 }
 
 int main(void){
@@ -57,9 +68,12 @@ int main(void){
     ok("au-delà du trésor mais SOUS la ligne : autorisé (on s'endette)", credit_can_spend(e,w,0,400.f));
     ok("au-delà de la ligne : REFUSÉ (plafond émergent)", !credit_can_spend(e,w,0,700.f));
 
-    /* — 2. dépenser au-delà creuse la dette + assigne un créancier — */
+    /* — 2. dépenser au-delà creuse la dette + assigne un créancier —
+     * RE-KEY PROVINCE : credit_spend route sur prov[] — on rafraîchit region[] (PUR,
+     * aucun effet de temps) pour que econ_country_gold/les lectures directes suivent. */
     printf("\n── 2. Dépenser au-delà du trésor ──\n");
     credit_spend(e,w,0,400.f);
+    econ_aggregate_regions(e);
     ok("le trésor net passe NÉGATIF (dette)", econ_country_gold(e,0) < 0.0);
     ok("un créancier solvable est assigné (la cité-état)", credit_of(0)==1);
 
@@ -68,12 +82,14 @@ int main(void){
     double emp_before = econ_country_gold(e,0);
     double cs_before  = e->region[1].treasury;
     credit_year_tick(e, wl, w);
+    econ_aggregate_regions(e);
     ok("l'intérêt CREUSE le débiteur", econ_country_gold(e,0) < emp_before);
     ok("l'intérêt CRÉDITE le créancier (cité-état)", e->region[1].treasury > cs_before);
 
     /* — 4. soldé => le lien se dénoue — */
     printf("\n── 4. Solder la dette dénoue le lien ──\n");
-    e->region[0].treasury = 200.f;                 /* repasse en positif */
+    e->prov[0].treasury = 200.f;                 /* repasse en positif (province, la vérité) */
+    econ_aggregate_regions(e);
     credit_year_tick(e, wl, w);
     ok("or >= 0 => plus de créancier", credit_of(0) < 0);
 
@@ -104,11 +120,13 @@ int main(void){
     int P=0;   /* le pays joueur (POLITY_PLAYER) */
     float build_cost = (float)econ_country_gold(e,P) + 350.f;   /* > trésor, taille chantier, sous la ligne */
     credit_spend(e,w,P,build_cost);
+    econ_aggregate_regions(e);
     ok("le chantier pousse l'or du JOUEUR sous zéro (dette)", econ_country_gold(e,P) < 0.0);
     ok("un créancier (cité-état/mercantile) est assigné au joueur", credit_of(P) >= 0);
     double p_before  = econ_country_gold(e,P);
     double len_before= e->region[credit_of(P)].treasury;
     credit_year_tick(e, wl, w);
+    econ_aggregate_regions(e);
     ok("l'intérêt CREUSE encore le joueur (la dette grandit)", econ_country_gold(e,P) < p_before);
     ok("l'intérêt CRÉDITE le prêteur du joueur", e->region[credit_of(P)].treasury > len_before);
 

@@ -124,6 +124,14 @@
     X(STR_HOVER_AGITATION, "La colère qui monte dans la province ; soutenue, elle vire à la révolte — qu'apaisent la stabilité du royaume, la garnison et la légitimité.") \
     X(STR_HOVER_FOI, "The province's adherence to the throne's ideology; convinced, it feeds legitimacy — dissident, it breeds schism.") \
     X(STR_HOVER_SEDITION, "La tension d'une faction forte dont les valeurs s'opposent à la direction du régime ; séditieuse, elle complote le coup d'État pour imposer son éthos.") \
+    X(STR_AGIT_CAUSE_COERCION,  "Coercion") \
+    X(STR_AGIT_CAUSE_CULTURE,   "Foreign culture") \
+    X(STR_AGIT_CAUSE_CHOC,      "Recent conquest") \
+    X(STR_AGIT_CAUSE_GARNISON,  "Garrison") \
+    X(STR_JLOG_CHOC_EFF, "Heightened unrest, fades over time") \
+    X(STR_JLOG_POP,    "Population") \
+    X(STR_JLOG_PROD,   "Production") \
+    X(STR_JLOG_TRESOR, "Treasury") \
     X(STR_TUTO_TITLE_0, "1 · Ce monde se lit.") \
     X(STR_TUTO_TITLE_1, "2 · Le temps coule en jours.") \
     X(STR_TUTO_TITLE_2, "3 · Ton empire.") \
@@ -233,7 +241,6 @@
     X(STR_RES_BOIS, "Wood") \
     X(STR_RES_ARGILE, "Clay") \
     X(STR_RES_PIERRE, "Stone") \
-    X(STR_RES_METAL, "Metal") \
     X(STR_RES_OUTILS, "Tools") \
     X(STR_ENTREPOT_HOV, "Without a Warehouse, regional stock saturates at 200 per resource (surplus is lost); each Warehouse built adds +500. Buy low, sell high.") \
     X(STR_MER_CABOTAGE, "coastal · fixed speed") \
@@ -286,6 +293,7 @@
     X(STR_FORK_ALAMBIC_2,      "The Alembic of {0} sells calm — priced in saltpetre.") \
     X(STR_EDI_COMPTOIR,     "Trading Post") \
     X(STR_EDI_BANQUE,       "Bank") \
+    X(STR_EDI_TRADE_CENTER, "Trade Center") \
     X(STR_FAC_CONQUERANT,    "Conquerors") \
     X(STR_FAC_MARCHAND,      "Merchants") \
     X(STR_FAC_LEGISTE,       "Legalists") \
@@ -317,6 +325,37 @@
     X(STR_COUNCIL_NAME_5, "Velmor Circle") \
     X(STR_COUNCIL_NAME_6, "Brask Lodge") \
     X(STR_COUNCIL_NAME_7, "Dovric Syndic") \
+    /* CAPSTONE §27 — world Entropy (shared fate, not per-country). */ \
+    X(STR_BANDE_ENTROPIE_0, "Stable") \
+    X(STR_BANDE_ENTROPIE_1, "Stirring") \
+    X(STR_BANDE_ENTROPIE_2, "Unstable") \
+    X(STR_BANDE_ENTROPIE_3, "On the brink") \
+    X(STR_HOVER_ENTROPIE, "The world's drift toward the Breach: faustian knowledge and transmutation stoke it. At the threshold, the real gives way.") \
+    X(STR_AUGURE_ENTROPIE_0, "The sky takes on a hue no almanac can name.") \
+    X(STR_AUGURE_ENTROPIE_1, "Needles spin wild; matter falters on its own laws.") \
+    X(STR_AUGURE_ENTROPIE_2, "The real grows thin. The threshold of the Breach awaits only its shape.") \
+    /* PROVINCE MODIFIERS (diegetic) — province UI slot (multiple). */ \
+    X(STR_PMOD_SECTION,        "MODIFIERS") \
+    X(STR_PMOD_FAVEUR,         "Boon") \
+    X(STR_PMOD_FLEAU,          "Bane") \
+    X(STR_PMOD_CICATRICE_NOM,  "Scar of Revolt") \
+    X(STR_PMOD_CICATRICE_EFF,  "A province recently risen or sacked develops poorly: growth and production are gashed until the wound closes.") \
+    X(STR_PMOD_ABONDANCE_NOM,  "Land of Plenty") \
+    X(STR_PMOD_ABONDANCE_EFF,  "A wide, well-fed land at peace draws families in: births soar while its fields are not yet full.") \
+    X(STR_PMOD_FERVEUR_NOM,    "Founding Fervor") \
+    X(STR_PMOD_FERVEUR_EFF,    "A freshly founded colony hungers for the future: its early years carry a surge of births that settles as it takes root.") \
+    X(STR_PMOD_RECONSTRUCTION_NOM, "Reconstruction") \
+    X(STR_PMOD_RECONSTRUCTION_EFF, "Once the wound of revolt or sack has closed, the province rebounds: post-shock reconstruction quickens births.") \
+    X(STR_PMOD_LIMON_NOM,      "Fertile Silt") \
+    X(STR_PMOD_LIMON_EFF,      "A great river's mouth lays down rich silt: the delta's fields feed a dense population.") \
+    X(STR_PMOD_GIBIER_NOM,     "Abundant Game") \
+    X(STR_PMOD_GIBIER_EFF,     "The woods teem with game: the hunt fills tables and sustains a denser population.") \
+    X(STR_PMOD_HALIEU_NOM,     "Fishery Bounty") \
+    X(STR_PMOD_HALIEU_EFF,     "Shoals of fish swarm offshore: the catch feeds a populous coast.") \
+    X(STR_PMOD_ADMIN_NOM,      "Good Governance") \
+    X(STR_PMOD_ADMIN_EFF,      "Solid institutions keep order and services: sheltered from disorder, families prosper.") \
+    X(STR_PMOD_ANNEX_NOM,      "Recent Annexation") \
+    X(STR_PMOD_ANNEX_EFF,      "A province torn from its former master by annexation carries a wound of pride: stability stays brittle and the mood sulks until minds have settled under the new banner.") \
     /* GLOSSARY concept TITLES (hover_*) — twin order; definitions reuse STR_HOVER_*. */ \
     X(STR_GLOSS_STAB,      "Stability") \
     X(STR_GLOSS_LEGIT,     "Legitimacy") \

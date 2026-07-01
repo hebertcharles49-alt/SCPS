@@ -138,9 +138,9 @@ int main(void) {
     printf("\n── Arbre de tech concentrique (angle=quartier · rayon=tier · mots) ──\n");
     {
         TechState ts; tech_state_init(&ts, /*ruines*/false);
-        unsigned human = tech_race_bit(RACE_HUMAIN);
+        unsigned human = tech_heritage_bit(HERITAGE_ADAPTATIF);
         tech_research(&ts, TECH_SCRIPTORIUM, human);          /* Savoir·Prod t1 acquis */
-        TechTreeReadout tr; tech_tree_readout(&ts, human, /*pop*/10000.f, &tr);
+        TechTreeReadout tr; tech_tree_readout(&ts, human, /*N provinces*/8.f, &tr);
         ok("le readout couvre tout l'arbre (n = TECH_COUNT)", tr.n==TECH_COUNT);
         ok("3 secteurs (thèmes) × 3 anneaux fonctionnels", tr.n_themes==3 && tr.n_functions==3);
         ok("l'angle se LIT (quartier 0..8) et le rayon = tier",
@@ -154,7 +154,7 @@ int main(void) {
            tr.node[TECH_ACADEMIE].state==TREE_OPEN &&
            tr.node[TECH_UNIVERSITE].state==TREE_LOCKED);
         ok("le bout FAUSTIEN est signalé (L'Éveil)", tr.node[TECH_EVEIL].faustian);
-        ok("une signature d'AUTRE race est ORPHELINE pour l'Humain (Forge à runes, naine)",
+        ok("une signature d'AUTRE heritage est ORPHELINE pour l'Humain (Forge à runes, naine)",
            tr.node[TECH_FORGE_RUNES].orphan);
         ok("le COÛT est un nombre tangible et croît avec le rayon",
            tr.node[TECH_ACADEMIE].cost>0 && tr.node[TECH_UNIVERSITE].cost>tr.node[TECH_SCRIPTORIUM].cost);

@@ -27,9 +27,15 @@
  *   territoire (province) → 3-5 = région → 3-5 = pays
  *   continent = masse continentale géographique (séparée par l'océan),
  *   hébergeant ~4-7 pays. */
-#define SCPS_MAX_PROV      320
-#define SCPS_MAX_REG       130
-#define SCPS_MAX_COUNTRY    56
+/* PLAFONDS — le monde SCALE avec le nombre d'entités (cf. WORLD_PROV_* / assign_provinces) :
+ * le compte de territoires est f(empires) SANS clamp artificiel — ces plafonds ne font que
+ * DIMENSIONNER les tableaux pour le mode le plus grand (HUGE = 12 empires ⇒ ~1284 terr.).
+ * Défaut = 6 empires (~654 terr.). En-dessous de 12 empires le compte n'est JAMAIS rogné.
+ * INVARIANT anti-débordement : MAX_REG ≥ MAX_PROV / REG_TARGET_MIN (une région = ≥2 terr.),
+ * donc l'agglomération (qui ne clampe PAS nreg) ne peut jamais dépasser MAX_REG. */
+#define SCPS_MAX_PROV     1664
+#define SCPS_MAX_REG       832
+#define SCPS_MAX_COUNTRY   320
 #define SCPS_MAX_CONTINENT  16
 #define SCPS_REG_TARGET_MIN 2   /* territoires par région (unités plus fines → plus de pays) */
 #define SCPS_REG_TARGET_MAX 3
@@ -86,6 +92,8 @@ typedef enum {
     BIO_MANGROVE,      /* côte tropicale ennoyée (ajouté par l'altération) */
     BIO_BOG,           /* tourbière froide / lande humide */
     BIO_VOLCANO,       /* cône/caldeira — roche nue et cendres */
+    BIO_THORNS,        /* CAPSTONE §27 : ronces apocalyptiques — posé UNIQUEMENT par la
+                        * corruption (jamais par assign_biome) ; terre infranchissable */
     BIO_COUNT
 } Biome;
 
@@ -149,6 +157,7 @@ typedef enum {
     RES_COTTON,         /* flatlands arides             */
     RES_SUGAR,          /* côtes arides                 */
     RES_WOOD,           /* régions boisées              */
+    RES_FRUIT,          /* fruits — un peu PARTOUT, + en forêt ; repli du EAU-DE-VIE (compense le sucre tropical) */
     RES_MED_HERBS,      /* herbes médicinales — wetland d'altitude */
     /* --- Brutes : minéral & stratégique --- */
     RES_COPPER,         /* montagnes, collines, mesas   */
@@ -172,13 +181,12 @@ typedef enum {
     RES_PROD_FIRST,
     RES_CLOTH = RES_PROD_FIRST, /* production               */
     RES_NAVAL_SUPPLIES,         /* production (bois+goudron) */
-    RES_WINE,                   /* boisson des Cités/Sylvain (vin) — palier MORAL */
+    RES_EAU_DE_VIE,                   /* boisson des Cités/Sylvain (eau-de-vie) — palier MORAL */
     RES_BEER,                   /* boisson des Clans/Souterrain/Sauvage (bière) — palier MORAL */
-    RES_PRECIOUS_WARE,          /* bien précieux des 4 races (porcelaine, bière…) */
-    RES_PRECIOUS_CLOTH,         /* étoffe précieuse des 4 races */
+    RES_PRECIOUS_WARE,          /* bien précieux des 4 héritages (porcelaine, bière…) */
+    RES_PRECIOUS_CLOTH,         /* étoffe précieuse des 4 héritages */
     RES_PAPER,                  /* transformation           */
-    RES_METAL,                  /* fer + charbon → métal (Fonderie) — intrant outils/armes */
-    RES_TOOLS,                  /* métal + bois → outils (Atelier) → MULTIPLICATEUR de productivité */
+    RES_TOOLS,                  /* fer + bois → outils (Atelier d'outillage, DIRECT) → MULTIPLICATEUR de productivité */
     RES_ESSENCE,                /* ARCANE : mana raffiné (cristal brûlé) → sa combustion MONTE la Brèche */
     RES_ENCHANTED_ARMS,         /* armes/armures enchantées (fer céleste + essence) → puissance militaire */
     RES_ARMS,                   /* armes LÉGÈRES (fer → Armurerie légère) ; RES_ARMS_LIGHT en alias F1 */
@@ -193,6 +201,9 @@ typedef enum {
     RES_ARMS_RANGED,            /* F1 : armes de TRAIT (fer + bois → Atelier d'arc) — archer, arbalétrier */
     RES_FIREARM,                /* F1 : armes à FEU (cuivre+fer+poudre → Arquebuserie) — arquebusier */
     RES_MAGE_STAFF,             /* F1/F3 : bâton de mage (Atelier de mage, secondaire) — mage */
+    /* === BIENS DE CONFORT issus du brut de construction (la DEMANDE qui entretient les RAW-WORKS) === */
+    RES_POTTERY,                /* poterie : argile → vaisselle/tuiles (confort journalier/bourgeois) → bonheur */
+    RES_STATUE,                 /* statuaire : pierre → statues/ornements (confort bourgeois/élite) → bonheur */
     RES_COUNT
 } Resource;
 #define RES_ARMS_LIGHT RES_ARMS   /* F1 : alias SAVE-safe — RES_ARMS EST l'arme légère (slot préservé) */
@@ -250,9 +261,9 @@ typedef struct {
     char     name[32];          /* nom courant (= variante humaine) */
     /* Toponymie des 4 peuples (préfixe/suffixe liés à l'environnement) */
     char     name_hum[32];      /* langue commune (descriptif) */
-    char     name_elf[32];      /* elfique — mélodique */
-    char     name_dwarf[32];    /* nain — gutturalo-minéral */
-    char     name_orc[32];      /* orque — rauque */
+    char     name_elf[32];      /* ésotérique — mélodique */
+    char     name_dwarf[32];    /* métallurgiste — gutturalo-minéral */
+    char     name_orc[32];      /* clanique — rauque */
 } Region;
 
 /* ---- Rôle politique d'un pays ----------------------------------------- *
@@ -265,7 +276,9 @@ typedef enum {
     POLITY_PLAYER = 0,   /* le joueur — capitale peuplée au départ */
     POLITY_ANTAGONIST,   /* IA majeure — peuplée, colonise */
     POLITY_CITY_STATE,   /* cité-état — peuplée sur toute sa région, colonise ses propres territoires */
-    POLITY_UNCLAIMED     /* terres vierges colonisables (pays sans départ) */
+    POLITY_UNCLAIMED,    /* terres vierges colonisables (pays sans départ) */
+    POLITY_WILD          /* PEUPLES LIBRES — hameaux épars près des jouables ; défendent, jamais
+                          * n'attaquent ; absorbables par conquête, vassalité OU défection culturelle */
 } PolityRole;
 
 /* ---- Pays : capacité 32 régions (agglomération peut dépasser 12 en cas de

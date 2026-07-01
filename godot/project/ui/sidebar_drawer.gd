@@ -1,0 +1,427 @@
+extends Control
+## SidebarDrawer — le TIROIR de la sidebar : s'ouvre à droite du rail (même bande
+## que le panneau de province, mutuellement exclusifs). En-tête à plaque + icône,
+## puis le contenu de l'onglet. Les 8 onglets sont PORTÉS (read-only, lus de la
+## façade) : Économie (budget + commerce), Démographie, Stocks, Marché, Armée,
+## Filtres (pilote la carte), Diplomatie, Conseil. Display-only.
+
+const VKit  = preload("res://ui/vkit.gd")
+const UIKit = preload("res://ui/uikit.gd")
+const DX := 46.0
+const DY := 102.0
+const DW := 312.0
+
+const TAB_ICON := ["menu_economy", "menu_demography", "menu_stocks", "menu_market",
+	"menu_army", "menu_filters", "menu_diplomacy", "menu_council"]
+const TAB_NAME := ["Économie", "Démographie", "Stocks", "Marché",
+	"Armée", "Filtres", "Diplomatie", "Conseil"]
+
+# Filtres : modes render_map offerts (culture/foi exigent des teintes → omis).
+# [label, ViewMode]. Groupés comme viewer.c.
+const FILT_GROUPS := [
+	["Souveraineté", [["Politique", 1], ["Pays", 3], ["Régions", 2], ["Continents", 4]]],
+	["Gouvernance", [["Stabilité", 13], ["Commerce", 14], ["Guerre", 15], ["Diplomatie", 16]]],
+	["Terre", [["Relief", 0], ["Altitude", 5], ["Fertilité", 6], ["Humidité", 7],
+		["Température", 8], ["Ressources", 9], ["Habitabilité", 10]]],
+]
+
+signal charts_requested        ## Économie → « Courbes dans le temps » : ouvre le panneau Easy Charts
+
+var _tab := -1
+var _map                       # MapView (pour Filtres → set_mode)
+var _active_mode := 0
+var _chips := []               # [{rect, mode}] cliquables (Filtres)
+var _chart_btn := Rect2()      # bouton « Courbes dans le temps » (onglet Économie)
+var _diplo_btns := []          # [{rect, act, target, nom}] boutons d'action diplo (onglet Diplomatie)
+var _diplo_flash := ""         # retour du dernier verbe diplo émis
+var _diplo_flash_ok := true
+var _hover_zones := []         # [{rect, text}] survols (sprites de ressource → nom)
+var _hover_text := ""
+var _hover_pos := Vector2.ZERO
+
+func setup(map) -> void:
+	_map = map
+
+func _ready() -> void:
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	_layout()
+	get_viewport().size_changed.connect(_layout)
+	Sim.ticked.connect(func(_y): if visible: queue_redraw())
+	hide()
+
+func _layout() -> void:
+	position = Vector2(DX, DY)
+	size = Vector2(DW, maxf(80.0, get_viewport_rect().size.y - DY - 26.0))
+
+func show_tab(i: int) -> void:
+	_tab = i
+	_hover_text = ""
+	visible = i >= 0
+	queue_redraw()
+
+func _draw() -> void:
+	if _tab < 0:
+		return
+	_hover_zones.clear()
+	VKit.panel_bg(self, Rect2(0, 0, DW, size.y))
+	VKit.fill(self, Rect2(DW - 2, 0, 2, size.y), VKit.COL_COPPER)
+	var x := 14.0
+	var y := 10.0
+	UIKit.draw_chrome(self, "panel_title_plaque", Rect2(8, 6, DW - 16, 30))
+	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x, y + 1), 22)
+	VKit.text(self, Vector2(x + 28, y + 3), VKit.COL_COPPER, TAB_NAME[_tab], VKit.FS_BIG)
+	y += 42
+	var w = Sim.world
+	if w == null:
+		return
+	var me: int = w.player()
+	match _tab:
+		0: _draw_eco(x, y, me)
+		1: _draw_demo(x, y, me)
+		2: _draw_stocks(x, y, me)
+		3: _draw_marche(x, y, me)
+		4: _draw_armee(x, y, me)
+		5: _draw_filtres(x, y)
+		6: _draw_diplo(x, y, me)
+		7: _draw_conseil(x, y, me)
+		_: VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(panneau à venir — port viewer.c)")
+
+	# tooltip de survol (sprite de ressource → son nom)
+	if _hover_text != "":
+		var tw := VKit.text_w(_hover_text, VKit.FS_SMALL) + 12.0
+		var tx := minf(_hover_pos.x + 12.0, DW - tw - 4.0)
+		var ty := maxf(2.0, _hover_pos.y - 20.0)
+		VKit.fill(self, Rect2(tx, ty, tw, 17), VKit.COL_PANEL2)
+		VKit.box(self, Rect2(tx, ty, tw, 17), VKit.COL_COPPER)
+		VKit.text(self, Vector2(tx + 6, ty + 1), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
+
+# ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
+func _draw_demo(x: float, y: float, me: int) -> void:
+	var d: Dictionary = Sim.world.country_demo(me)
+	var total: int = int(d["pop_total"])
+	VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+		"population : %s · %d région(s)" % [_grp(total), int(d["n_regions"])])
+	y += 24
+	for cl in d["classes"]:
+		var pct: int = 0 if total == 0 else int(round(100.0 * int(cl["pop"]) / total))
+		UIKit.draw_icon(self, "population_group", Vector2(x, y), 14)
+		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(cl["nom"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 110, y), VKit.COL_PARCH, "%s (%d%%)" % [_grp(cl["pop"]), pct], VKit.FS_SMALL)
+		UIKit.bar(self, Rect2(x + 200, y, 84, 12), int(cl["satisfaction"]))
+		y += 20
+
+# ── STOCKS (sb_panel_stocks, read-only) ────────────────────────────────────
+func _draw_stocks(x: float, y: float, me: int) -> void:
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          stock   net/j   couv.", VKit.FS_SMALL)
+	y += 16
+	for st in Sim.world.country_stocks(me):
+		if y > size.y - 18:
+			break
+		var col := _marche_col(int(st["market_band"]))
+		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
+		VKit.text(self, Vector2(x + 110, y), col, _grp(st["stock"]), VKit.FS_SMALL)
+		var net: float = st["net_day"]
+		VKit.text(self, Vector2(x + 165, y), col, ("%+.1f" % net) if net != 0.0 else "0.0", VKit.FS_SMALL)
+		var cov: int = int(st["coverage_days"])
+		var covs := ("" if cov < 0 else (">1 an" if cov >= 366 else "%d j" % cov))
+		VKit.text(self, Vector2(x + 225, y), col, covs, VKit.FS_SMALL)
+		y += 18
+
+## cellule d'identité d'une ressource : le SPRITE (assets/scps/pack/resources, par
+## id), sinon le nom en texte ; survol → le nom dans tous les cas.
+func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> void:
+	var spr := UIKit.resource_sprite(res_id, name)
+	if spr != null:
+		draw_texture_rect(spr, Rect2(x, y - 3, 18, 18), false)
+	else:
+		VKit.text(self, Vector2(x, y), col, name, VKit.FS_SMALL)
+	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 104, 18), "text": name})
+
+# ── ÉCONOMIE : Budget (econ_flux) + Commerce (intertrade), read-only ───────
+func _draw_eco(x: float, y: float, me: int) -> void:
+	# bouton : les COURBES dans le temps sont DERRIÈRE ce sous-menu (pas affichées d'office)
+	_chart_btn = Rect2(x, y, DW - 2.0 * x, 20.0)
+	VKit.fill(self, _chart_btn, VKit.COL_PANEL2)
+	VKit.box(self, _chart_btn, VKit.COL_COPPER)
+	UIKit.draw_icon(self, "menu_economy", Vector2(x + 4, y + 3), 13)
+	VKit.text(self, Vector2(x + 24, y + 3), VKit.COL_COPPER, "Courbes dans le temps  ▸", VKit.FS_SMALL)
+	y += 28
+	# — Trésor & budget de l'année (la décomposition du flux d'or) —
+	var b: Dictionary = Sim.world.budget_summary(me)
+	UIKit.draw_icon(self, "gold_coin", Vector2(x, y - 1), 16)
+	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, "Trésor : %s or" % _grp(b["gold"]))
+	y += 18
+	var net: float = b["net"]
+	var ncol := VKit.sense(0.80) if net >= 0 else VKit.sense(0.12)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Budget (an)", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 74, y), VKit.sense(0.80), "+%s" % _grp(b["income"]), VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 138, y), VKit.sense(0.12), "−%s" % _grp(b["expense"]), VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 206, y), ncol, "net %s%s" % ["+" if net >= 0 else "−", _grp(absf(net))], VKit.FS_SMALL)
+	y += 16
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "crédit : %s or" % _grp(b["credit_line"]), VKit.FS_SMALL)
+	if int(b.get("creditor", -1)) >= 0:
+		VKit.text(self, Vector2(x + 140, y), VKit.sense(0.30), "dette → %s" % String(b.get("creditor_name", "")), VKit.FS_SMALL)
+	y += 18
+	# postes de flux (signés : revenu vert / dépense rouge) — quelques-uns
+	var shown := 0
+	for p in Sim.world.country_budget(me):
+		if shown >= 5 or y > size.y - 96:
+			break
+		var amt: float = p["amount"]
+		var pcol := VKit.sense(0.78) if amt >= 0 else VKit.sense(0.18)
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_PARCH, String(p["name"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 150, y), pcol, "%s%s" % ["+" if amt >= 0 else "−", _grp(absf(amt))], VKit.FS_SMALL)
+		y += 14
+		shown += 1
+	y += 4
+	VKit.fill(self, Rect2(x, y, DW - 2.0 * x, 1), VKit.COL_EDGE)
+	y += 8
+	# — Commerce (routes + partenaires) —
+	var t: Dictionary = Sim.world.country_trade(me)
+	UIKit.draw_icon(self, "menu_economy", Vector2(x, y - 1), 16)
+	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH,
+		"%d route(s) · export %d or/an" % [int(t["routes"]), int(t["export_gold"])])
+	y += 20
+	var partners: Array = t["partners"]
+	if partners.is_empty():
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, "(aucun partenaire)", VKit.FS_SMALL)
+		return
+	for p in partners:
+		if y > size.y - 18:
+			break
+		var col := VKit.sense(0.12) if bool(p["at_war"]) else (VKit.COL_COPPER if bool(p["embargo"]) else VKit.COL_PARCH)
+		VKit.text(self, Vector2(x + 8, y), col, String(p["name"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, "%d or/an" % int(p["value"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 228, y), col, String(p["status"]), VKit.FS_SMALL)
+		y += 15
+
+# ── MARCHÉ (sb_panel_marche, table des prix, read-only) ────────────────────
+func _draw_marche(x: float, y: float, me: int) -> void:
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          prix(or)   marché", VKit.FS_SMALL)
+	y += 16
+	for st in Sim.world.country_stocks(me):
+		if y > size.y - 18:
+			break
+		var col := _marche_col(int(st["market_band"]))
+		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
+		VKit.text(self, Vector2(x + 110, y), col, "%.2f" % float(st["price"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 178, y), VKit.COL_DIM, String(st["marche"]), VKit.FS_SMALL)
+		y += 18
+
+# ── CONSEIL (sb_panel_conseil, read-only) ──────────────────────────────────
+func _draw_conseil(x: float, y: float, me: int) -> void:
+	for seat in Sim.world.country_council(me):
+		UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 16)
+		VKit.text(self, Vector2(x + 20, y), VKit.COL_COPPER, String(seat["seat"]))
+		y += 18
+		if bool(seat["filled"]):
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH,
+				"%s — tier %d" % [seat["councilor"], int(seat["tier"])], VKit.FS_SMALL)
+		else:
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant)", VKit.FS_SMALL)
+		y += 22
+
+# ── ARMÉE (sb_panel_armee, read-only) ──────────────────────────────────────
+func _draw_armee(x: float, y: float, me: int) -> void:
+	var a: Dictionary = Sim.world.country_army(me)
+	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 18)
+	VKit.text(self, Vector2(x + 22, y), VKit.COL_PARCH, "force mobilisée : %d régiments" % int(a["regiments"]))
+	y += 22
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "levée :")
+	VKit.text(self, Vector2(x + 52, y), VKit.COL_COPPER, String(a["levy_name"]))
+	y += 24
+	var ar: Dictionary = Sim.world.army_info(me)
+	if bool(ar.get("active", false)):
+		VKit.text(self, Vector2(x, y), VKit.COL_COPPER,
+			"armée de campagne — région %d · %s" % [int(ar["region"]), ar["phase"]], VKit.FS_SMALL)
+		y += 16
+		VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+			"inf %d · arch %d · cav %d · mages %d  (Σ %d)" % [
+				int(ar["inf"]), int(ar["arch"]), int(ar["cav"]), int(ar["mages"]), int(ar["units"])], VKit.FS_SMALL)
+		y += 20
+	else:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(pas d'armée de campagne déployée)", VKit.FS_SMALL)
+		y += 20
+	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 16)
+	VKit.text(self, Vector2(x + 20, y), VKit.COL_DIM, "Flotte : %d coque(s)" % int(a["fleet"]))
+
+# ── FILTRES (sb_panel_filtres) : sélecteur de mode carte, FONCTIONNEL ──────
+func _draw_filtres(x: float, y: float) -> void:
+	_chips.clear()
+	if _map != null:
+		_active_mode = _map.mode
+	for grp in FILT_GROUPS:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, String(grp[0]), VKit.FS_SMALL)
+		y += 16
+		var cx := x
+		for it in grp[1]:
+			var label: String = it[0]
+			var mode: int = it[1]
+			var tw := VKit.text_w(label, VKit.FS_SMALL) + 14.0
+			if cx + tw > DW - 12.0:
+				cx = x; y += 22
+			var active := (_active_mode == mode)
+			var r := Rect2(cx, y, tw, 18)
+			VKit.fill(self, r, VKit.COL_COPPER if active else VKit.COL_PANEL2)
+			VKit.box(self, r, VKit.COL_EDGE)
+			VKit.text(self, Vector2(cx + 7, y + 1), VKit.COL_PANEL if active else VKit.COL_PARCH, label, VKit.FS_SMALL)
+			_chips.append({"rect": r, "mode": mode})
+			cx += tw + 4
+		y += 26
+
+# ── DIPLOMATIE (sb_panel_diplo) : INTERACTIF — opinion #26 + verbes du joueur §3 ──
+# Chaque pays : nom + statut, BARRE D'OPINION (±100, la mémoire de ses actes envers
+# nous), puis les boutons d'action GRISÉS par la légalité (diplo_options). Un bouton
+# permis mais dont l'offre serait REFUSÉE (would_accept faux) s'affiche en ambre.
+const DIPLO_ACTS := [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"],
+	["pact", "Pacte"], ["emb", "Embargo"]]
+
+func _draw_diplo(x: float, y: float, me: int) -> void:
+	_diplo_btns.clear()
+	for rel in Sim.world.country_relations(me):
+		if y > size.y - 58:
+			break
+		var target: int = int(rel["country"])
+		var at_war: bool = bool(rel["at_war"])
+		var allied: bool = bool(rel["allied"])
+		var col := VKit.sense(0.12) if at_war else (VKit.sense(0.78) if allied else VKit.COL_PARCH)
+		# ligne 1 : nom + statut
+		VKit.text(self, Vector2(x, y), col, String(rel["name"]), VKit.FS_SMALL)
+		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, String(rel["status"]), VKit.FS_SMALL)
+		y += 14
+		# ligne 2 : opinion ±100 (ce que CE pays pense de nous)
+		var op: int = int(rel["opinion"])
+		_opinion_bar(x, y, 150.0, op)
+		VKit.text(self, Vector2(x + 158, y - 3), _opinion_col(op), "%+d" % op, VKit.FS_SMALL)
+		y += 14
+		# ligne 3 : boutons d'action, grisés selon diplo_options
+		var o: Dictionary = Sim.world.diplo_options(target)
+		var bx := x
+		for act in DIPLO_ACTS:
+			var key: String = act[0]
+			var label: String = act[1]
+			var can := false
+			var warn := false   # permis mais refus probable (would_accept faux)
+			match key:
+				"war":   can = bool(o.get("can_declare_war", false))
+				"peace": can = bool(o.get("can_make_peace", false)); warn = can and not bool(o.get("would_accept_peace", false))
+				"ally":  can = bool(o.get("can_offer_alliance", false)); warn = can and not bool(o.get("would_accept_alliance", false))
+				"pact":  can = bool(o.get("can_offer_pact", false)); warn = can and not bool(o.get("would_accept_pact", false))
+				"emb":
+					if bool(o.get("can_lift_embargo", false)):
+						label = "Lever"; can = true
+					else:
+						can = bool(o.get("can_embargo", false))
+			var bw := VKit.text_w(label, VKit.FS_SMALL) + 10.0
+			if bx + bw > DW - 12.0:
+				bx = x; y += 18
+			var r := Rect2(bx, y, bw, 16)
+			var fgc := VKit.COL_DIM
+			if can:
+				fgc = VKit.sense(0.40) if warn else VKit.COL_COPPER
+			VKit.fill(self, r, VKit.COL_PANEL2)
+			VKit.box(self, r, VKit.COL_EDGE if not can else fgc)
+			VKit.text(self, Vector2(bx + 5, y + 1), fgc, label, VKit.FS_SMALL)
+			if can:
+				_diplo_btns.append({"rect": r, "act": key, "target": target, "nom": String(rel["name"])})
+			bx += bw + 4
+		y += 22
+		VKit.fill(self, Rect2(x, y - 6, DW - 2.0 * x, 1), VKit.COL_EDGE)
+	if _diplo_flash != "":
+		VKit.text(self, Vector2(x, size.y - 18),
+			(VKit.sense(0.85) if _diplo_flash_ok else VKit.sense(0.10)), _diplo_flash, VKit.FS_SMALL)
+
+## barre d'opinion ±100 : repère central (zéro), remplissage vert (favorable) ou
+## rouge (hostile) depuis le centre.
+func _opinion_bar(x: float, y: float, w: float, op: int) -> void:
+	VKit.fill(self, Rect2(x, y, w, 8), VKit.COL_PANEL2)
+	VKit.box(self, Rect2(x, y, w, 8), VKit.COL_EDGE)
+	var mid := x + w * 0.5
+	VKit.fill(self, Rect2(mid, y, 1, 8), VKit.COL_DIM)
+	var frac := clampf(op / 100.0, -1.0, 1.0)
+	if frac >= 0.0:
+		VKit.fill(self, Rect2(mid, y + 1, (w * 0.5) * frac, 6), VKit.sense(0.80))
+	else:
+		var ww := (w * 0.5) * (-frac)
+		VKit.fill(self, Rect2(mid - ww, y + 1, ww, 6), VKit.sense(0.12))
+
+func _opinion_col(op: int) -> Color:
+	if op > 15: return VKit.sense(0.80)
+	if op < -15: return VKit.sense(0.15)
+	return VKit.COL_DIM
+
+## le CLIC émet le verbe joueur (façade) — l'ordre est ENFILÉ (journal déterministe),
+## il s'applique au prochain tick. Les offres passent par ai_consider_offer (le
+## vis-à-vis peut REFUSER) : « ordre émis » ≠ « accepté » (cf. l'aperçu would_accept).
+func _diplo_act(act: String, target: int, nom: String) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	var ok := false
+	var verb := ""
+	match act:
+		"war":   ok = w.player_declare_war(target);    verb = "guerre à"
+		"peace": ok = w.player_make_peace(target);      verb = "paix offerte à"
+		"ally":  ok = w.player_offer_alliance(target);  verb = "alliance proposée à"
+		"pact":  ok = w.player_offer_pact(target);       verb = "pacte proposé à"
+		"emb":
+			var o: Dictionary = w.diplo_options(target)
+			var on := not bool(o.get("can_lift_embargo", false))
+			ok = w.player_embargo(target, on)
+			verb = "embargo sur" if on else "embargo levé sur"
+	_diplo_flash_ok = ok
+	_diplo_flash = ("⚑ %s %s — ordre émis" % [verb, nom]) if ok else ("✗ %s %s — refusé" % [verb, nom])
+	queue_redraw()
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		var h := ""
+		for z in _hover_zones:
+			if z.rect.has_point(event.position):
+				h = z.text
+				break
+		if h != _hover_text:
+			_hover_text = h
+			_hover_pos = event.position
+			queue_redraw()
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _tab == 0 and _chart_btn.has_point(event.position):   # Économie → ouvre les courbes
+			charts_requested.emit()
+			accept_event()
+			return
+		if _tab == 5:
+			for ch in _chips:
+				if ch.rect.has_point(event.position):
+					_active_mode = ch.mode
+					if _map != null:
+						_map.set_mode(ch.mode)
+					queue_redraw()
+					accept_event()
+					return
+		if _tab == 6:
+			for b in _diplo_btns:
+				if b.rect.has_point(event.position):
+					_diplo_act(String(b.act), int(b.target), String(b.nom))
+					accept_event()
+					return
+
+# couleur d'état de marché (BandMarche : mort · pénurie · tendu · sain · engorgé)
+func _marche_col(band: int) -> Color:
+	match band:
+		1: return VKit.sense(0.10)   # pénurie : rouge
+		2: return VKit.sense(0.40)   # tendu : ambre
+		3: return VKit.sense(0.80)   # sain : vert
+		4: return VKit.COL_COPPER    # engorgé : cuivre
+		_: return VKit.COL_DIM       # mort
+
+func _grp(n) -> String:
+	var s := str(absi(int(n)))
+	var out := ""
+	var c := 0
+	for i in range(s.length() - 1, -1, -1):
+		out = s[i] + out
+		c += 1
+		if c % 3 == 0 and i > 0:
+			out = " " + out
+	return ("-" if int(n) < 0 else "") + out

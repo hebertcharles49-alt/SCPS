@@ -10,9 +10,10 @@
  * coordonnée de consolidation. Aucune branche « si pays==X ».
  */
 #include "scps_ai.h"
+#include "scps_religion.h"   /* P7 : schisme IA + emploi du lettré (gated) */
 #include "scps_tune.h"   /* Arc J : calibrage */
 #include "scps_tech.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include "scps_factions.h"   /* l'éthos effectif + la fracture de valeurs (frein interne §6) */
 #include "scps_intertrade.h" /* §leviers : l'embargo — la guerre commerciale du Mercantile */
 #include "scps_labor.h"      /* F-arc : capitale_max_tier (le tier de capitale qui gate les manufactures) */
@@ -63,7 +64,7 @@
 #define AI_RESEARCH_CADENCE 365  /* ~1 an entre déverrouillages potentiels */
 #define AI_RESEARCH_RATE    42.f /* P5.29 : ×3 pour suivre le coût ×3 → rythme IA inchangé */
 #define AI_RESEARCH_POPREF  8000.f /* population qui DOUBLE l'assiette de recherche */
-#define AI_TECH_PENCHANT    2.0f  /* biais vers le thème de SA race (penchant, pas « si ») */
+#define AI_TECH_PENCHANT    2.0f  /* biais vers le thème de SA heritage (penchant, pas « si ») */
 /* ── M1 (design §6, VERBATIM) — ETHOS_FN[ETHOS][FN] : l'éthos pèse la FONCTION.
  * Indexée sur l'enum réel TechFunction (FN_PRODUCTION=0, FN_ARMEE, FN_RENFORCEMENT)
  * par initialiseurs désignés — l'inversion de colonnes est impossible. */
@@ -107,7 +108,7 @@ static float ai_faustian_appetite(Credo cr, float valeurs){
 #define AI_FAITH_FAUSTIAN   3.0f  /* §4 : l'orthodoxie INTERDIT le faustien, le culte le SACRALISE */
 
 /* ---- Utilitaires ------------------------------------------------------ */
-static inline float clampf(float v, float lo, float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v, float lo, float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static uint32_t xs32(uint32_t *s){ uint32_t x=*s; x^=x<<13; x^=x>>17; x^=x<<5; return *s=x?x:1u; }
 static float frand(uint32_t *s){ return (float)(xs32(s)&0xffffffu) / (float)0x1000000u; }
 
@@ -145,7 +146,7 @@ void ai_derive_weights(AiActor *a, const PopCulture *self){
                : (self->credo==CREDO_EVANGELISTE)  ? 0.6f
                : 0.1f;
 
-    /* Pente faustienne : appétit d'arcane (de base ; la race Arcanique l'amplifie
+    /* Pente faustienne : appétit d'arcane (de base ; la heritage Arcanique l'amplifie
      * via ses leviers, lus ailleurs). */
     a->w_faustian = 0.2f;
 
@@ -182,7 +183,7 @@ void ai_ensure_dominator(AiActor *ai, const bool *ai_on, int n){
  * culture de trône, elle suit la RÉSULTANTE de ses factions. On module le socle
  * par l'ÉCART entre le penchant du PEUPLE (distribution enracinée) et celui du
  * TRÔNE (culture régnante) : un empire homogène ne bouge pas (écart nul, équilibre
- * préservé) ; un empire qui a avalé des orques voit sa conquête (et son faustien)
+ * préservé) ; un empire qui a avalé des claniques voit sa conquête (et son faustien)
  * MONTER, son commerce baisser — « un empire change d'éthos quand qui le compose
  * change ». Borné : la résultante infléchit, elle ne renverse pas le socle. */
 #define AI_ETHOS_GLIDE 1.0f
@@ -294,6 +295,36 @@ AiView ai_observe(const WorldProsperity *wp, const World *w,
         if (chain!=RES_NONE && chain<RES_PROD_FIRST && rawcap[chain]<0.1f) take += 0.4f;
         v.take_pressure = clampf(take, 0.f, 1.f);
     }
+
+    /* ── ÉTAGES 1-2 : la PRÉVISION + la FILE DE PRIORITÉS (la motivation éco ÉMERGE) ──
+     * Le forecast (runway/shortfall/déficit structurel) se lit des coordonnées (étage 1).
+     * La PRIORITÉ d'un flux = stress(runway court) × prix (la valeur de marché, émergente)
+     * × deficit_vs_safe (manque sous le coussin de réserve). AUCUNE hiérarchie codée : un
+     * empire-bijoux dont l'or crise priorise l'or ; un empire affamé, la nourriture. */
+    econ_country_forecast(econ, cid, tune_f("AI_PROJ_HORIZON",25.f), &v.fc);
+    v.food_alert = (v.fc.food_runway < tune_f("AI_SAFETY_HORIZON",12.f));
+    {
+        float safety = tune_f("AI_SAFETY_HORIZON",12.f);
+        float safe_months = tune_f("AI_SAFE_STOCK_MONTHS",6.f);
+        float pr_sum[RES_COUNT]; float dem_m[RES_COUNT]; float stk2[RES_COUNT]; int pn[RES_COUNT];
+        for (int g=0; g<RES_COUNT; g++){ pr_sum[g]=0.f; dem_m[g]=0.f; stk2[g]=0.f; pn[g]=0; }
+        for (int r=0; r<econ->n_regions; r++) if (econ->region[r].owner==cid && econ->region[r].colonized){
+            const RegionEconomy *re=&econ->region[r];
+            for (int g=1; g<RES_COUNT; g++){ pr_sum[g]+=re->price[g]; pn[g]++; dem_m[g]+=re->demand[g]; stk2[g]+=re->stock[g]; }
+        }
+        Resource top=RES_NONE; float topp=0.f;
+        for (int g=1; g<RES_COUNT; g++){
+            if (dem_m[g] < 0.01f) continue;                       /* flux non demandé → pas une motivation */
+            float pr = (pn[g]>0)? pr_sum[g]/(float)pn[g] : econ_base_price((Resource)g);
+            float rw = v.fc.runway[g]; if (rw<0.05f) rw=0.05f;
+            float stress = clampf(safety/rw, 0.f, 4.f);          /* runway court → urgent */
+            float safe_stock = safe_months * dem_m[g];           /* coussin = N mois de demande */
+            float dvs = (safe_stock>1e-3f)? clampf((safe_stock-stk2[g])/safe_stock, 0.f, 1.f) : 0.f;
+            float prio = stress * pr * dvs;                      /* émergent : urgence × valeur × manque */
+            if (prio>topp){ topp=prio; top=(Resource)g; }
+        }
+        v.top_flow=top; v.top_priority=topp;
+    }
     return v;
 }
 
@@ -326,6 +357,48 @@ static int ai_world_war_pairs(const World *w, const DiploState *d){
             if (diplo_status(d,a,b)==DIPLO_WAR) n++;
     return n;
 }
+/* ── PRÉVISION DIPLO — la menace ENTRANTE (qui va m'attaquer, et suis-je couvert ?), lue des
+ * coordonnées : diplo_relation (menace de b sur moi) + ma puissance + la menace ambiante. PURE
+ * (const), recalculée au tick, JAMAIS sérialisée — l'analogue diplomatique d'EconForecast. */
+typedef struct {
+    float threat_in_max;     /* la menace ENTRANTE la plus forte (mon pire voisin hostile) */
+    float threat_in_sum;     /* masse de menace entrante (coalition potentielle) */
+    int   threat_top;        /* le cid derrière threat_in_max (-1 = aucun) */
+    float war_risk;          /* [0..1] = threat_in_max / (ma puissance + menace ambiante) */
+    float alliance_need;     /* [0..1] urgence d'allié (menacé ET mon bloc ne couvre pas) */
+    float war_outlook_worst; /* pire war_score sur mes guerres EN COURS (négatif = je perds) */
+    int   losing_war;        /* 1 si une guerre en cours est nettement perdue */
+} DiploForecast;
+static DiploForecast ai_diplo_forecast(const World *w, const WorldEconomy *econ,
+                                       const WorldProsperity *wp, const DiploState *d, int cid){
+    DiploForecast f; memset(&f,0,sizeof f); f.threat_top=-1; f.war_outlook_worst=100.f;
+    if (!w||!econ||!d||cid<0||cid>=w->n_countries) return f;
+    float my_power = diplo_mil_power(w,econ,cid) + diplo_eco_power(wp,cid);
+    float amb = (d->ambient_threat>1e-4f)? d->ambient_threat : 1.f;
+    float allied = 0.f;
+    for (int b=0;b<w->n_countries;b++){
+        if (b==cid) continue;
+        DiploStatus st = diplo_status(d,cid,b);
+        if (st==DIPLO_ALLIED){ allied += diplo_mil_power(w,econ,b)+diplo_eco_power(wp,b); continue; }
+        /* ENNEMI POTENTIEL : déjà en guerre, OU rancune contre moi, OU casus belli (b → moi). */
+        bool menacing = (st==DIPLO_WAR) || diplo_rancor(d,b,cid)>0.f
+                       || diplo_casus_belli(w,econ,wp,d,b,cid,RES_NONE)!=CB_NONE;
+        if (!menacing) continue;
+        Relation rel = diplo_relation(w,econ,wp,d,cid,b);   /* rel.threat = menace de b sur cid */
+        f.threat_in_sum += rel.threat;
+        if (rel.threat > f.threat_in_max){ f.threat_in_max=rel.threat; f.threat_top=b; }
+        if (st==DIPLO_WAR){
+            float ws = diplo_war_score(d,cid,b);
+            if (ws < f.war_outlook_worst) f.war_outlook_worst = ws;
+            if (ws < tune_f("AI_WAR_LOSING",-25.f) && d->war_years[cid][b]>0.f) f.losing_war=1;
+        }
+    }
+    f.war_risk = clampf(f.threat_in_max/(my_power+amb), 0.f, 1.f);
+    float cover = (f.threat_in_max>1e-4f)? clampf(allied/f.threat_in_max,0.f,1.f) : 1.f;
+    f.alliance_need = clampf(f.war_risk*(1.f-cover), 0.f, 1.f);
+    return f;
+}
+
 float ai_aggression(const AiActor *a, const AiView *v){
     float brake = ai_consolidation_pressure(v);
     float base  = a->w_expand + 0.5f*a->w_faith;
@@ -371,6 +444,10 @@ static int ai_pick_rival(const AiActor *a, const World *w, const WorldEconomy *e
                          const WorldProsperity *wp, const DiploState *diplo, float my_army,
                          Resource want){
     int best=-1; float bestscore=0.f;
+    /* VALEUR SUBJECTIVE (pipeline diplo, étage 2) : on vise qui TIENT ce qu'on convoite, pas
+     * seulement le faible/menaçant. Le forecast de `a` (runway/shortfall) se calcule UNE fois. */
+    EconForecast fc; econ_country_forecast(econ, a->cid, tune_f("AI_PROJ_HORIZON",25.f), &fc);
+    float covet_w = tune_f("AI_COVET_W", 0.5f);
     for (int b=0; b<w->n_countries; b++){
         if (b==a->cid) continue;
         if (w->country[b].role==POLITY_UNCLAIMED) continue;
@@ -394,11 +471,17 @@ static int ai_pick_rival(const AiActor *a, const World *w, const WorldEconomy *e
         /* CROISADE : une foi orthodoxe a une CHANCE de frapper qui développe le
          * faustien — pesée par sa ferveur (w_faith). Gardiens vs Transgresseurs. */
         float crusade = diplo_faustian_cb(w,econ,diplo,a->cid,b) ? AI_CRUSADE_W*(0.4f+a->w_faith) : 0.f;
+        /* CONVOITISE : la province la plus PRÉCIEUSE (subjectivement) que b me tient → on vise
+         * qui détient ce qui me MANQUE (l'affamé fond sur le tenant du grenier). Émergent. */
+        float coveted=0.f;
+        for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==b){
+            float v=ai_province_value(econ, a->cid, r, &fc); if (v>coveted) coveted=v; }
         float score = rel.threat
                     + a->w_expand * 3.0f * (opportunism>0.f ? opportunism : 0.f)
                     + a->w_faith  * 5.0f * rel.schism
                     + AI_RANCOR_W * diplo_rancor(diplo, a->cid, b)
                     + crusade
+                    + covet_w * coveted                       /* VALEUR = cible (l'éthos décide la méthode) */
                     - rel.alliance
                     - AI_WIDEN_W * widen;
         if (sea_adj) score *= AI_SEA_WAR_PENALTY; /* H3 : outre-mer = logistique plus dure */
@@ -444,17 +527,57 @@ static int weakest_ally(const AiActor *a, const World *w, const WorldEconomy *ec
     if (out_score) *out_score = (worst>=0)? wv : 0.f;
     return worst;
 }
+/* #26 — `to` ÉVALUE une OFFRE de `from` et l'ACCEPTE/REFUSE (le « code IA évaluer-offre »).
+ * Lu de l'OPINION ±100 (mémoire des actes) + la relation STRUCTURELLE + le score de guerre.
+ * sc == NULL ⇒ pas de porte d'opinion (décision relation-seule, rétro-compatible bancs). */
+bool ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldProsperity *wp,
+                       const DiploState *d, const Statecraft *sc, int from, int to, OfferKind kind){
+    if (!w||!econ||!wp||!d) return false;
+    if (from<0||to<0||from==to||from>=w->n_countries||to>=w->n_countries) return false;
+    if (w->country[to].role==POLITY_UNCLAIMED || w->country[from].role==POLITY_UNCLAIMED) return false;
+    int op = sc ? statecraft_opinion(sc, to, from) : 0;   /* ce que `to` pense de `from` (l'offrant) */
+    switch (kind){
+        case OFFER_ALLIANCE:
+            if (diplo_status(d,to,from)==DIPLO_WAR) return false;                 /* pas d'alliance avec un ennemi actif */
+            if (diplo_ally_count(d,to) >= DIPLO_ALLY_SLOTS) return false;         /* plus de slot libre */
+            if (sc && op < (int)tune_f("AI_OFFER_ALLY_OPINION",10.f)) return false;   /* opinion trop basse → REFUS */
+            return diplo_relation(w,econ,wp,d,to,from).alliance > 0.f;            /* + compatibilité réciproque */
+        case OFFER_PEACE: {
+            if (diplo_status(d,to,from)!=DIPLO_WAR) return true;                  /* déjà en paix : trivialement oui */
+            float sf  = diplo_war_score(d, from, to);                            /* score de l'OFFRANT contre `to` */
+            float yrs = d->war_years[from][to];
+            return sf >= tune_f("AI_WAR_DECISIVE",50.f)*0.5f || yrs >= tune_f("AI_WAR_EXHAUST",10.f);
+        }                                                                        /* `to` cède s'il PERD ou s'épuise */
+        case OFFER_TRADE_PACT:
+            if (diplo_status(d,to,from)==DIPLO_WAR) return false;
+            if (sc && op < (int)tune_f("AI_OFFER_PACT_OPINION",0.f)) return false;
+            return diplo_relation(w,econ,wp,d,to,from).complement > 0.1f;         /* un pacte = un intérêt commercial */
+    }
+    return false;
+}
 static int ai_pick_ally(const AiActor *a, const World *w, const WorldEconomy *econ,
-                        const WorldProsperity *wp, const DiploState *d){
+                        const WorldProsperity *wp, const DiploState *d, const Statecraft *sc){
     int best=-1; float bestsc=AI_ALLY_SEUIL;
+    /* PRÉVISION DIPLO — BESOIN D'ALLIÉ : menacé ET mon bloc ne couvre pas (alliance_need haut) → je
+     * COURTISE en priorité la puissance qui COUVRE ma pire menace, au lieu de la seule affinité.
+     * Gaté (need>0.5, rare <12 ans) ⇒ la fenêtre golden reste byte-identique. Le consentement (#26)
+     * et les slots restent les portes INCHANGÉES — le forecast ne change que l'URGENCE de sélection. */
+    DiploForecast a_dfc = ai_diplo_forecast(w, econ, wp, d, a->cid);
     for (int b=0;b<w->n_countries;b++){
         if (b==a->cid || w->country[b].role==POLITY_UNCLAIMED) continue;
         if (diplo_status(d,a->cid,b)!=DIPLO_NEUTRAL) continue;     /* déjà allié ou en guerre */
         if (!countries_adjacent(econ,a->cid,b)) continue;
         if (diplo_ally_count(d,b) >= DIPLO_ALLY_SLOTS) continue;           /* §D-sat : le candidat n'a plus de slot */
         if (crosses_existing(w,d,a->cid,b)) continue;             /* §D-sat : pas d'alliance croisée */
+        if (!ai_consider_offer(w,econ,wp,d,sc, a->cid, b, OFFER_ALLIANCE)) continue;  /* #26 : `b` CONSENT-il ? (bilatéral) */
         Relation rel=diplo_relation(w,econ,wp,d,a->cid,b);
-        if (rel.alliance>bestsc){ bestsc=rel.alliance; best=b; }
+        float score=rel.alliance;
+        if (a_dfc.alliance_need > 0.5f){                          /* menacé & sous-couvert → URGENCE */
+            float ally_help = clampf((diplo_mil_power(w,econ,b)+diplo_eco_power(wp,b))
+                                     /(a_dfc.threat_in_max+1e-4f), 0.f, 1.f);
+            score += tune_f("AI_ALLY_NEED_W", 1.0f) * a_dfc.alliance_need * ally_help;
+        }
+        if (score>bestsc){ bestsc=score; best=b; }
     }
     return best;
 }
@@ -557,6 +680,8 @@ static Edifice ai_next_savoir_edifice(const WorldEconomy *econ, int region){
     return (econ->region[region].build.savoir < 1.5f) ? EDI_BIBLIOTHEQUE : EDI_MONASTERE;
 }
 #define AI_FAITH_L 3.0f   /* consentement DÉFAILLANT (Légit<30) → le trône se SACRALISE */
+#define AI_FAITH_ZEAL 0.5f /* ZÈLE : un crédo prosélyte (évangéliste 0.6 / purificateur 1.0 ⇒ w_faith haut)
+                            * FONDE sa foi PROACTIVEMENT (pas seulement en crise) ; pluraliste 0.1 jamais */
 #define AI_SAVOIR_K 2.5f  /* B3 : dès la Chancellerie (K≥2.5) posée, un centre établi se dote
                            * d'une ŒUVRE DE SAVOIR (Bibliothèque 360 → Monastère 540 — qui
                            * consomme des OUTILS, §B2) AVANT de couronner par l'Académie (960).
@@ -586,7 +711,6 @@ static EthosFaction ai_lever_for_edifice(Edifice e){
  * martial déporte volontiers vers ses mines, le marchand/pacifiste répugne et reste court.
  * Pour l'empire qui A la terre de fer mais ne la peuple pas, c'est l'issue ; le marché tient ensuite (§3). */
 static void ai_relocate_turn(AiActor *a, WorldEconomy *econ, const AiView *v, int day){
-    (void)v;
     if (day < a->next_reloc_day) return;
     /* VOLONTÉ ∝ éthos (via les poids effectifs) : conquête haute → déporte ; commerce haut → répugne. */
     float w_reloc = 0.20f + 0.65f*a->w_expand - 0.45f*a->w_trade + 0.20f*a->w_build;
@@ -631,7 +755,9 @@ static void ai_relocate_turn(AiActor *a, WorldEconomy *econ, const AiView *v, in
         float margin = (AI_RELOC_SEED - lab)/AI_RELOC_SEED; if (margin<0.f) margin=0.f;
         for (int g=1;g<RES_COUNT;g++){
             if (re->raw_cap[g] <= 0.f) continue;
-            float shortfall = agg_d[g] - (agg_s[g]+agg_k[g]);
+            /* shortfall ANTICIPÉ (étage 3) : le manque immédiat OU le projeté (forecast) — on
+             * peuple la province-ressource AVANT le mur, pas une fois la pénurie installée. */
+            float shortfall = fmaxf(agg_d[g] - (agg_s[g]+agg_k[g]), v->fc.shortfall_proj[g]);
             if (shortfall <= 0.5f) continue;               /* l'empire n'est pas court de ce raw */
             float score = shortfall * (0.4f+margin) * re->raw_cap[g];
             if (score > best){ best=score; tgt=r; }
@@ -807,21 +933,29 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
     }
 }
 
-/* L'IA DÉVELOPPE — la VOLONTÉ de bâtir. Un empire ne THÉSAURISE pas le brut (le bien manufacturé
- * vaut plus) : il POSE la fabrique qui TRANSFORME le raw qu'il extrait. On REMPLIT LES SLOTS — pour
- * chaque région possédée qui extrait un intrant brut SANS la manufacture qui le mange, on la bâtit
- * (peu importe laquelle ; la moins chère T1 d'abord, gisement le + riche d'abord), tier-gatée par la
- * taille de la province. Une par tour. C'est ce qui convertit la terre en ateliers — et appelle les
- * bras (la relocalisation suit). Le marché écoule, le raw ne dort plus en stock. */
+/* L'IA DÉVELOPPE — la VOLONTÉ de bâtir, PILOTÉE PAR LE LOGEMENT (§dev). Une manufacture LOGE juste en
+ * étant bâtie (econ Q6 : eff_cap += Σniveaux·HOUSE_MANUF, plafond ½·cap_pop) — donc on bâtit dans la
+ * province la PLUS SOUS-LOGÉE, pas dans la capitale-gisement (qui sur-bâtissait AU-DELÀ du plafond
+ * pendant que les provinces pauvres en brut restaient à ½ à vie : cette CONCENTRATION était le vrai
+ * verrou du ½→plein, pas la cadence ni le crédit). L'intrant n'a PAS à être extrait sur place : le pool
+ * national P1 nourrit la fabrique d'où que tombe la matière. Tier-gatée, staffée (pas dans le vide). Une
+ * par tour. C'est ce qui DOUBLE les provinces vers leur plein — la pop suit le bâti. */
 static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
     int cap=a->home_region; if (cap<0||cap>=econ->n_regions) return;
-    int br=-1; BuildingType bb=BLD_TYPE_COUNT; float bestcap=0.5f;
+    const float house_manuf = tune_f("HOUSE_MANUF", 100.f);
+    int br=-1; BuildingType bb=BLD_TYPE_COUNT; float best_deficit=house_manuf;  /* ≥ 1 niveau de logement manquant pour agir */
     for (int r=0;r<econ->n_regions;r++){
         RegionEconomy *re=&econ->region[r];
         if (re->owner!=a->cid || !re->colonized) continue;
         float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
         if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;  /* SOUS-STAFFÉ : on NE bâtit PAS dans le vide */
+        /* §dev — LE DÉFICIT DE LOGEMENT pilote (et non le gisement) : combien de logement bâti il
+         * manque encore pour le plein (½·cap_pop). On vise la province la PLUS sous-logée. */
+        float manuf_h=0.f; for (int i=0;i<re->n_bld;i++) manuf_h += re->bld[i].level;
+        float deficit = re->cap_pop*0.5f - manuf_h*house_manuf;
+        if (deficit <= best_deficit) continue;                        /* déjà (presque) plein, ou moins sous-logé qu'un candidat */
         int rtier=capitale_max_tier((long)rpop);
+        BuildingType pick=BLD_TYPE_COUNT; float pick_raw=-1.f;
         for (int b=0;b<BLD_TYPE_COUNT;b++){
             if (bld_is_faustian((BuildingType)b)) continue;          /* pas les transmuteurs (charge/tech) */
             if (rtier < bld_min_tier((BuildingType)b)) continue;      /* province trop petite pour cette fabrique */
@@ -832,13 +966,18 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
              * diplomatie) → emballement des guerres. Le civil métabolise le brut sans armer le monde. */
             if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
                 || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX) continue;
-            if (re->raw_cap[in1] <= bestcap) continue;               /* l'intrant doit être EXTRAIT ici (et + riche) */
             bool have=false; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==(BuildingType)b){ have=true; break; }
             if (have) continue;                                       /* slot déjà rempli */
-            bestcap=re->raw_cap[in1]; br=r; bb=(BuildingType)b;
+            /* §dev — l'intrant doit être NOURRISSABLE : extrait ICI, OU produit ailleurs dans l'empire (le
+             * pool P1 l'amène). Fin du gate « gisement sur place » qui condamnait les provinces pauvres ;
+             * à feedabilité égale on prend la manuf au gisement local le + riche (efficacité conservée). */
+            if (re->raw_cap[in1] <= 0.f && !empire_has_raw(econ, a->cid, in1)) continue;
+            if (re->raw_cap[in1] > pick_raw){ pick_raw=re->raw_cap[in1]; pick=(BuildingType)b; }
         }
+        if (pick==BLD_TYPE_COUNT) continue;                           /* aucune manuf nourrissable posable ici */
+        best_deficit=deficit; br=r; bb=pick;
     }
-    if (br<0) return;                                                /* tous les slots-ressource sont remplis */
+    if (br<0) return;                                                /* toutes les provinces sont (presque) pleines */
     float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(econ);  /* T1 : la moins chère (le développement de base) */
     if (!credit_can_spend(econ, w, a->cid, cost)) return;            /* bloque seulement au-delà de la ligne de crédit */
     if (econ_build_manufacture(econ, br, bb)){
@@ -847,11 +986,60 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
     }
 }
 
+/* EXPLOITATION PAR LE FORECAST (décision ÉCONOMIQUE, pas un seuil arbitraire) — on améliore une
+ * exploitation (+1 palier de boost, +RAW_BOOST_PER_TIER) SSI les DEUX conditions tiennent :
+ *   (1) PÉNURIE APPROCHANTE — fc->runway[r] < AI_SAFETY_HORIZON. Le runway est désormais BOOST-AWARE
+ *       (le forecast inclut les paliers déjà posés) → il REMONTE à mesure qu'on boost → la décision se
+ *       RÉGULE (l'ancien gate shortfall>0.5 était quasi toujours vrai → 500 paliers/sim, prix cassés).
+ *   (2) ROI — le +5% d'extraction ANNUELLE de la brute, valorisé au prix RÉGIONAL (qui MONTE avec la
+ *       rareté → le boost devient rentable PILE quand c'est rare), rembourse le coût en PAYBACK ans.
+ * On vise la brute au runway le plus COURT (la plus urgente). Une amélioration par tour. */
+static bool ai_build_raw_boost(AiActor *a, const World *w, WorldEconomy *econ, const EconForecast *fc){
+    int   max_tier = (int)tune_f("RAW_BOOST_MAX_TIER", 8.f);
+    float safety   = tune_f("AI_SAFETY_HORIZON", 12.f);
+    float payback  = tune_f("RAW_BOOST_PAYBACK", 8.f);
+    float per_tier = tune_f("RAW_BOOST_PER_TIER", 0.05f);
+    float cost     = tune_f("RAW_BOOST_COST", 40.f) * econ_world_ipm(econ);
+    Resource pick=RES_NONE; float urgent=1e30f; int pick_region=-1;
+    for (int r=1;r<RES_PROD_FIRST;r++){
+        if (fc->runway[r] >= safety) continue;                /* (1) pas de pénurie APPROCHANTE (boost-aware) */
+        int br=-1; float bcap=0.f;
+        for (int rr=0;rr<econ->n_regions;rr++){
+            RegionEconomy *re=&econ->region[rr];
+            if (re->owner!=a->cid || !re->colonized) continue;
+            if (re->raw_cap[r] <= 0.f || re->raw_boost[r] >= max_tier) continue;  /* brute ABSENTE ou au plafond */
+            if (re->raw_cap[r] > bcap){ bcap=re->raw_cap[r]; br=rr; }              /* la province la + riche */
+        }
+        if (br<0) continue;
+        /* (2) ROI : +5% de l'extraction ANNUELLE (supply×12) × prix RÉGIONAL (rareté incluse). */
+        float O_year  = econ->region[br].supply[r]*12.f;
+        float val_year= per_tier * O_year * econ->region[br].price[r];
+        if (val_year*payback < cost) continue;                /* le palier ne se rembourse pas → on s'abstient */
+        if (fc->runway[r] < urgent){ urgent=fc->runway[r]; pick=(Resource)r; pick_region=br; }
+    }
+    if (pick==RES_NONE || pick_region<0) return false;
+    if (!credit_can_spend(econ, w, a->cid, cost)) return false;
+    credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);
+    econ->region[pick_region].raw_boost[pick]++;              /* +1 palier d'EXPLOITATION (boost d'extraction) */
+    a->stats.builds_other++;
+    return true;
+}
+
 /* Économie : commercer OU bâtir (le frein réoriente l'énergie vers le K). */
+/* ── ALLOCATION DE MAIN-D'ŒUVRE & l'IA ──
+ * MESURÉ : un override par poids (proportionnel) sous-performe le split AUTO glouton de l'IA
+ * (66-69 % vs 75 % de satisfaction journalier), parce que l'auto FAIT COULER les bras vers les
+ * seuls puits qui peuvent les employer (qui peut tourner les prend) et CONCENTRE sur la pénurie,
+ * là où un poids fixe en gâche sur les bâtiments bornés en intrant. L'AUTO prix-driven EST donc
+ * l'allocation « avisée » de l'IA — on ne l'override pas. L'override (alloc_on) reste l'outil du
+ * JOUEUR (micro-gestion de SON empire), exposé par la façade scps_player_alloc_*. */
 static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const AiView *v,
                          AgencyState *ag, RouteNetwork *rn, float brake, int day){
-    /* Famine d'abord : un peuple affamé ne bâtit ni cours ni comptoir. */
-    if (v->food < AI_FOOD_FLOOR && a->home_region>=0){
+    /* Famine d'abord : un peuple affamé ne bâtit ni cours ni comptoir. STOCK-SAFE (étage 3b) :
+     * on bâtit le GRENIER aussi quand la PRÉVISION voit le mur vivrier (food_alert = food_runway
+     * < SAFETY) — proactif, AVANT que la marge ne s'effondre (le grenier relève le plafond de
+     * stock + la capacité nourrie → coussin de réserve). */
+    if ((v->food < AI_FOOD_FLOOR || v->food_alert) && a->home_region>=0){
         if (agency_build(ag, econ, w, a->home_region, EDI_GRENIER)) a->stats.builds_other++;
         return;
     }
@@ -894,7 +1082,12 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             if (roll < t_mil){
                 ai_build_manufacture(a, w, econ);            /* l'arsenal militaire (tier + or, par doctrine) */
             } else if (roll < t_civm){
-                ai_build_civmanuf(a, w, econ);               /* la manufacture civile (remplir les slots) */
+                /* EXPLOITATION (forecast) D'ABORD dans le créneau manufacture civile : une brute en
+                 * déficit qu'on extrait → on AMÉLIORE son exploitation (+1 palier de boost d'extraction)
+                 * avant toute autre fabrique. Pas de déficit boostable → manufacture civile normale.
+                 * Le créneau FOI/SAVOIR/K (ci-dessous) reste INTACT → la foi peut toujours s'ériger. */
+                if (!ai_build_raw_boost(a, w, econ, &v->fc))
+                    ai_build_civmanuf(a, w, econ);            /* la manufacture civile (remplir les slots) */
             } else {
             /* le BÂTIMENT CIVIL (la voie existante) : on métabolise (K) ; un trône au consentement bas
              * se SACRALISE d'abord (la foi soutient L) ; institutions mûres → SAVOIR. Dominateur/Honneur
@@ -904,7 +1097,21 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             int hr = a->home_region;
             const ProvBuild *bd = (hr>=0&&hr<econ->n_regions)?&econ->region[hr].build:NULL;
             bool faith_crisis = (bd && v->L < AI_FAITH_L && bd->faith < 5.0f);
-            if (!faith_crisis && (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && hr>=0){
+            /* ZÈLE PROACTIF — un crédo prosélyte (w_faith haut) qui n'a PAS encore de foi bâtit son
+             * PREMIER sanctuaire DE LUI-MÊME → la foi se FONDE (bloc RELIGION ci-dessous, sous le
+             * plafond ⌈N/3⌉) au lieu de n'émerger qu'en crise de légitimité. On LIT w_faith (l'entrée
+             * moteur dérivée du crédo), pas un bonus plat ; borné à UN chantier : athée + faith<1 +
+             * aucun chantier de foi déjà en file (anti-spam — agency_build est asynchrone). */
+            bool faith_pending = false;
+            if (ag && hr>=0) for (int oi=0; oi<ag->n; oi++)
+                if (ag->order[oi].active && ag->order[oi].kind==AGY_BUILD && ag->order[oi].region==hr){
+                    Edifice pe=(Edifice)ag->order[oi].param;
+                    if (pe==EDI_SANCTUAIRE||pe==EDI_TEMPLE||pe==EDI_CATHEDRALE||pe==EDI_MONASTERE){ faith_pending=true; break; }
+                }
+            bool faith_zeal = (bd && hr>=0 && !faith_pending && bd->faith < 1.0f
+                               && religion_of_country(a->cid) < 0
+                               && a->w_faith >= tune_f("AI_FAITH_ZEAL",AI_FAITH_ZEAL));
+            if (!faith_crisis && !faith_zeal && (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && hr>=0){
                 RegionEconomy *cre=&econ->region[hr];
                 float price=cre->price[RES_ARMS]; if (price<0.2f) price=0.2f;
                 float cost =20.f*price*(cre->import_margin>0.f?cre->import_margin:1.f);
@@ -916,8 +1123,8 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 }
             } else {
                 Edifice e; int kind = 0;                   /* 0 = voie K (builds_k) · 2 = réseau */
-                if (faith_crisis){
-                    e = ai_next_faith_edifice(econ, hr);   /* consentement défaillant → foi (universel) */
+                if (faith_crisis || faith_zeal){
+                    e = ai_next_faith_edifice(econ, hr);   /* crise de consentement OU zèle prosélyte → foi */
                 } else if (eth==ETHOS_MERCANTILE){
                     e = EDI_MARCHE; kind = 2;              /* la largeur du marchand : le RÉSEAU, toujours */
                 } else if (bd && eth!=ETHOS_BUREAUCRATE
@@ -1012,8 +1219,8 @@ static float ai_occupied_value(const DiploState *d, const WorldEconomy *econ, in
 
 /* Stratégie : conquérir, déclarer la guerre, ou CONSOLIDER (le frein). */
 static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
-                          WorldLegitimacy *wl, DiploState *diplo, const AiView *v,
-                          float brake, int day){
+                          WorldLegitimacy *wl, DiploState *diplo, const Statecraft *sc,
+                          const AiView *v, float brake, int day){
     if (ai_owned_regions(econ, a->cid)==0) return;      /* polité ABSORBÉE : inerte (plus de stratégie) */
     /* FREIN DUR : on a trop avalé / l'ordre craque → paix générale + verrou. */
     if (brake > AI_BRAKE_HARD){
@@ -1027,6 +1234,76 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             a->stats.consolidations++;
         }
         return;
+    }
+
+    /* RELIGION — le PLAFOND mondial ⌈N/3⌉ borne le TOTAL des religions (fondation ET schisme).
+     * N = empires de GENÈSE (religion_empire_ref, stable) : « 6 empires ⇒ 2 religions » même quand
+     * les sécessions multiplient les polities. */
+    int n_emp = religion_empire_ref();
+
+    /* FONDER au 1er édifice religieux (comme le joueur) : si le pays a bâti un sanctuaire/temple/…
+     * et n'a pas de foi, il en FONDE une (aléatoire) tant que le TOTAL est sous le plafond ; au-delà,
+     * il RALLIE une foi existante (les empires se PARTAGENT les religions). GATED : aucun édifice ⇒ no-op. */
+    if (religion_of_country(a->cid) < 0){
+        uint32_t emask=(1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE)|(1u<<EDI_MONASTERE);
+        int has_edi=0;
+        for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
+            if (econ->region[r].owner==a->cid && (econ->region[r].edi_built & emask)){ has_edi=1; break; }
+        if (has_edi){
+            int cp=w->country[a->cid].capital_prov, centre=0;
+            if (cp>=0 && cp<w->n_provinces){ int sx=w->province[cp].seed_x, sy=w->province[cp].seed_y;
+                if (sx>=0 && sy>=0) centre=sy*SCPS_W+sx; }
+            uint32_t h=(uint32_t)(a->cid*0x9e3779b1u) ^ (uint32_t)((day+7)*2654435761u);
+            int rid = religion_can_found(n_emp)
+                      ? religion_found_random(a->cid, centre, h)
+                      : religion_adopt_existing(a->cid, h);
+            if (rid>=0) religion_inherit_regions(w, a->cid);
+        }
+    }
+
+    /* RELIGION (P7) — SCHISME : si le pays ne contrôle plus le centre de sa foi (RUPTURE,
+     * centre conquis), il ROMPT en une foi AUTONOME — repick ALÉATOIRE valide (2 slots),
+     * crédo & teinte aléatoires, et l'adopte (son nouveau centre = sa capitale → l'éligibilité
+     * se résout, pas de spam). GATED par le PLAFOND PAR RACINE : au plus RELIG_SCHISM_MAX schismes
+     * par foi fondatrice (la foi en exil PERSISTE au-delà) — sans foi, éligibilité NONE ⇒ no-op. */
+    if (religion_schism_eligible(w, a->cid) == RSE_RUPTURE
+        && religion_can_schism(religion_of_country(a->cid))){
+        int parent = religion_of_country(a->cid);
+        if (parent >= 0){
+            int cp = w->country[a->cid].capital_prov, centre = 0;
+            if (cp>=0 && cp<w->n_provinces){ int sx=w->province[cp].seed_x, sy=w->province[cp].seed_y;
+                if (sx>=0 && sy>=0) centre = sy*SCPS_W + sx; }
+            uint32_t h = (uint32_t)(a->cid*2654435761u) ^ (uint32_t)((day+1)*40503u);
+            for (int tries=0; tries<16; tries++){
+                h ^= h>>13; h *= 0x5bd1e995u; h ^= h>>15;
+                int sa = (int)(h%3u); h/=3u;
+                int sb = (sa + 1 + (int)(h%2u)) % 3; h/=2u;             /* sb != sa */
+                int pa = (int)(h%(uint32_t)RP_COUNT); h/=(uint32_t)RP_COUNT;
+                h ^= h>>11; h *= 0x9e3779b1u;
+                int pb = (int)(h%(uint32_t)RP_COUNT); h/=(uint32_t)RP_COUNT;
+                int nc = (int)(h%(uint32_t)CREDO_COUNT);
+                int trad[3]; for(int i=0;i<3;i++) trad[i]=g_religions[parent].traditions[i];
+                trad[sa]=pa; trad[sb]=pb;
+                if (!religion_picks_valid(trad[0],trad[1],trad[2])) continue;
+                int child = religion_schism(parent, sa,pa, sb,pb, nc, centre, a->cid, 1, h);
+                if (child >= 0){
+                    religion_set_country(a->cid, child);     /* adopte la foi autonome */
+                    religion_inherit_regions(w, a->cid);     /* ses régions suivent */
+                }
+                break;
+            }
+        }
+    }
+    /* RELIGION (P7) — EMPLOI du LETTRÉ : une région de foi MINORITAIRE gronde et aucun
+     * lettré n'est déployé → en recruter un dessus (rôle dérivé du crédo). GATED. */
+    if (religion_of_country(a->cid) >= 0 && !religion_scholar_active(a->cid)){
+        int mine = religion_of_country(a->cid), target = -1;
+        for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++){
+            if (econ->region[r].owner!=a->cid) continue;
+            int rr=religion_of_region(r);
+            if (rr>=0 && rr!=mine){ target=r; break; }
+        }
+        if (target>=0) religion_scholar_recruit(a->cid, target);
     }
 
     /* REDDITION (§3) : si l'on est DÉFENSEUR dans une guerre nettement PERDUE (le
@@ -1053,6 +1330,13 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
      * fendus ne SPIRALENT plus à 25 : plus il y a de guerres en cours, moins on en ajoute). */
     { float aggr = ai_aggression(a, v) + tune_f("AI_WAR_BASELINE", 0.05f);
       aggr /= (1.f + tune_f("AI_WAR_SATURATION", 0.20f) * (float)ai_world_war_pairs(w, diplo));
+      /* PRÉVISION DIPLO — FREIN À LA MENACE ENTRANTE : si mon pire voisin hostile m'écrase
+       * (war_risk au-delà du seuil), je FREINE ma PROPRE offensive — anticiper la coalition qui se
+       * forme plutôt que d'ouvrir un second front. Deadband (AI_THREAT_GATE) : sous le seuil, AUCUN
+       * effet → la fenêtre golden (voisins peu menaçants en 12 ans) reste byte-identique. */
+      DiploForecast dfc = ai_diplo_forecast(w, econ, wp, diplo, a->cid);
+      if (dfc.war_risk > tune_f("AI_THREAT_GATE", 0.55f))
+          aggr *= (1.f - tune_f("AI_THREAT_BRAKE", 0.5f) * dfc.war_risk);
       a->credit_war += aggr; }
     if (a->credit_war < 1.f) return;
     /* §war-smoothing — CAP mondial : au-delà de N paires en guerre, on N'EN OUVRE PLUS (le monde
@@ -1161,7 +1445,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
      * AI_ALLY_SLOTS pactes : l'alliance est une ressource RARE qu'on arbitre, pas un seuil
      * que tout le monde franchit. Slots pleins → on n'élargit pas ; on n'ÉVINCE le plus
      * faible que si le nouveau le dépasse NETTEMENT (marge) — sinon on garde ce qu'on a. */
-    int ally = ai_pick_ally(a, w, econ, wp, diplo);
+    int ally = ai_pick_ally(a, w, econ, wp, diplo, sc);
     if (ally>=0){
         if (diplo_ally_count(diplo, a->cid) < DIPLO_ALLY_SLOTS){
             diplo_form_alliance(diplo, a->cid, ally);
@@ -1203,15 +1487,15 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
 }
 
 /* ===================================================================== */
-/* RECHERCHE — l'arbre de tech vivant (buts + penchant de race + frein)     */
+/* RECHERCHE — l'arbre de tech vivant (buts + penchant de heritage + frein)     */
 /* ===================================================================== */
-static SpeciesArchetype ai_capital_race(const World *w, const WorldEconomy *econ, int cid){
-    if (cid<0||cid>=w->n_countries) return RACE_HUMAIN;
+static Heritage ai_capital_heritage(const World *w, const WorldEconomy *econ, int cid){
+    if (cid<0||cid>=w->n_countries) return HERITAGE_ADAPTATIF;
     int cp=w->country[cid].capital_prov;
-    if (cp<0||cp>=w->n_provinces) return RACE_HUMAIN;
+    if (cp<0||cp>=w->n_provinces) return HERITAGE_ADAPTATIF;
     int cr=w->province[cp].region;
-    if (cr<0||cr>=econ->n_regions) return RACE_HUMAIN;
-    return econ->region[cr].culture.race;
+    if (cr<0||cr>=econ->n_regions) return HERITAGE_ADAPTATIF;
+    return econ->region[cr].culture.heritage;
 }
 static Ethos ai_capital_ethos(const World *w, const WorldEconomy *econ, int cid){
     if (cid<0||cid>=w->n_countries) return ETHOS_ORDRE;
@@ -1272,12 +1556,12 @@ float ai_country_population(const World *w, const WorldEconomy *econ, int cid){
     return pop;
 }
 /* §SYNCRÉTIQUE — la porte de tech n'est plus la RACE mais le PROFIL CULTUREL.
- * Chaque race-signature des NODES[] définit un ARCHÉTYPE = le CENTROÏDE culturel de
+ * Chaque heritage-signature des NODES[] définit un ARCHÉTYPE = le CENTROÏDE culturel de
  * ses porteurs au monde (axes de contenu, pondéré pop). Un empire ATTEINT l'archétype
  * — donc peut chercher ses techs-signatures — si une culture qu'il GOUVERNE (la sienne
  * comprise) est à portée du centroïde (D∞ ≤ PORTEE). C'est l'accès par SOI OU par
- * CONTACT de gouvernance (le seul canal qui atteint le secret). La race seule n'ouvre
- * plus RIEN : un elfe assimilé au marchand perd l'accès arcane ; un non-elfe au profil
+ * CONTACT de gouvernance (le seul canal qui atteint le secret). La heritage seule n'ouvre
+ * plus RIEN : un ésotérique assimilé au marchand perd l'accès arcane ; un non-ésotérique au profil
  * arcane l'obtient. Le déverrouillage reste LOQUETÉ (tech unlocked[] permanent) → la
  * tech survit à l'assimilation/disparition de la source. Topologie de l'arbre intacte. */
 #define ARCH_PORTEE_PROFIL 2.5f   /* D∞ max (axes [0..10]) pour « porter » l'archétype — surface d'équilibrage */
@@ -1289,26 +1573,26 @@ static float pc_content_dist(const PopCulture *a, const PopCulture *b){
           dp=fabsf(a->parente-b->parente),   dr=fabsf(a->religion-b->religion);
     float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
 }
-/* Centroïde culturel (contenu) de chaque race-archétype au monde, pondéré population. */
-static void world_archetype_centroids(const WorldEconomy *econ, PopCulture cen[RACE_COUNT], bool present[RACE_COUNT]){
-    double sv[RACE_COUNT]={0}, ss[RACE_COUNT]={0}, sp[RACE_COUNT]={0}, sr[RACE_COUNT]={0}, wsum[RACE_COUNT]={0};
+/* Centroïde culturel (contenu) de chaque heritage-archétype au monde, pondéré population. */
+static void world_archetype_centroids(const WorldEconomy *econ, PopCulture cen[HERITAGE_COUNT], bool present[HERITAGE_COUNT]){
+    double sv[HERITAGE_COUNT]={0}, ss[HERITAGE_COUNT]={0}, sp[HERITAGE_COUNT]={0}, sr[HERITAGE_COUNT]={0}, wsum[HERITAGE_COUNT]={0};
     for (int r=0;r<econ->n_regions;r++){
         const RegionEconomy *re=&econ->region[r];
         if (!re->active || !re->colonized) continue;
         if (re->pop.n_groups>0){
             for (int g=0;g<re->pop.n_groups;g++){
-                const PopGroup *pg=&re->pop.groups[g]; int rr=pg->race;
-                if (rr<0||rr>=RACE_COUNT || pg->count<=0) continue;
+                const PopGroup *pg=&re->pop.groups[g]; int rr=pg->heritage;
+                if (rr<0||rr>=HERITAGE_COUNT || pg->count<=0) continue;
                 double wq=(double)pg->count; const PopCulture *c=&pg->culture;
                 sv[rr]+=wq*c->valeurs; ss[rr]+=wq*c->subsistance; sp[rr]+=wq*c->parente; sr[rr]+=wq*c->religion; wsum[rr]+=wq;
             }
         } else {
-            int rr=re->culture.race; if (rr<0||rr>=RACE_COUNT) continue;
+            int rr=re->culture.heritage; if (rr<0||rr>=HERITAGE_COUNT) continue;
             const PopCulture *c=&re->culture;
             sv[rr]+=c->valeurs; ss[rr]+=c->subsistance; sp[rr]+=c->parente; sr[rr]+=c->religion; wsum[rr]+=1.0;
         }
     }
-    for (int r=0;r<RACE_COUNT;r++){
+    for (int r=0;r<HERITAGE_COUNT;r++){
         present[r]=(wsum[r]>0.0);
         if (present[r]){ cen[r].valeurs=(float)(sv[r]/wsum[r]); cen[r].subsistance=(float)(ss[r]/wsum[r]);
                          cen[r].parente=(float)(sp[r]/wsum[r]); cen[r].religion=(float)(sr[r]/wsum[r]); }
@@ -1319,11 +1603,11 @@ static void world_archetype_centroids(const WorldEconomy *econ, PopCulture cen[R
  * culture portant l'archétype atteint l'empire — GOUVERNANCE (secret) > FRONTIÈRE/FOI
  * (métier) > COMMERCE/diffusion lointaine (surface). C'est ce qui décide jusqu'où une
  * tradition diffuse : le comptoir passe la surface, seule la gouvernance atteint le secret.
- * depth[] indexé par race-signature (archétype ↔ race, 1:1). */
-/* La culture porte-t-elle l'archétype ar ? — distance au centroïde (signatures de race,
- * 0..RACE_COUNT-1) ou correspondance d'ÉTHOS (profils d'éthos au-delà : bureaucrate, marchand). */
-static bool culture_bears_arch(const PopCulture *c, int ar, const PopCulture cen[RACE_COUNT], const bool present[RACE_COUNT]){
-    if (ar>=0 && ar<RACE_COUNT) return present[ar] && pc_content_dist(c,&cen[ar])<=ARCH_PORTEE_PROFIL;
+ * depth[] indexé par heritage-signature (archétype ↔ heritage, 1:1). */
+/* La culture porte-t-elle l'archétype ar ? — distance au centroïde (signatures de heritage,
+ * 0..HERITAGE_COUNT-1) ou correspondance d'ÉTHOS (profils d'éthos au-delà : bureaucrate, marchand). */
+static bool culture_bears_arch(const PopCulture *c, int ar, const PopCulture cen[HERITAGE_COUNT], const bool present[HERITAGE_COUNT]){
+    if (ar>=0 && ar<HERITAGE_COUNT) return present[ar] && pc_content_dist(c,&cen[ar])<=ARCH_PORTEE_PROFIL;
     if (ar==ARCH_BUREAUCRATIQUE) return c->ethos==ETHOS_BUREAUCRATE;
     if (ar==ARCH_MERCANTILE)     return c->ethos==ETHOS_MERCANTILE;
     return false;
@@ -1339,7 +1623,7 @@ static float region_cohesion(const RegionEconomy *re){
     return (sw>0.0)?(float)(si/sw):1.0f;
 }
 static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid, unsigned char depth[ARCH_COUNT]){
-    PopCulture cen[RACE_COUNT]; bool present[RACE_COUNT];
+    PopCulture cen[HERITAGE_COUNT]; bool present[HERITAGE_COUNT];
     world_archetype_centroids(econ, cen, present);
     for (int r=0;r<ARCH_COUNT;r++) depth[r]=PROF_NONE;
     /* credo dominant (capitale) → canal RELIGION (la foi partagée ouvre le métier). */
@@ -1418,15 +1702,40 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
         }
     }
 }
-/* Masque des ARCHÉTYPES profonds (bit par race-signature) recherchables : une signature
- * de l'arbre de base (nœud profond) exige l'archétype atteint au SECRET/PROFOND — donc
- * par GOUVERNANCE ou par SOI. Le commerce/la frontière (surface/métier) n'ouvrent QUE
- * les nœuds syncrétiques peu profonds (tech_sync_tick). La race seule n'ouvre rien. */
-unsigned ai_race_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid){
-    unsigned char depth[ARCH_COUNT]; ai_archetype_depth(w, econ, rn, cid, depth);
+/* Fallbacks compilés des seuils de la BARRE D'ACCÈS (registre scps_tune_list.h). */
+#ifndef METAB_TIER1
+#define METAB_TIER1 0.10f
+#define METAB_TIER2 0.20f
+#define METAB_TIER3 0.35f
+#endif
+
+/* BARRE D'ACCÈS GRADUÉE (Temps 2) — par héritage, le TIER d'accès (0..3) recherchable, en MAX
+ * de DEUX voies : (1) la PROFONDEUR de contact (ai_archetype_depth : commerce→SURFACE→tier 1,
+ * frontière/foi→MÉTIER→tier 2, gouvernance digérée→PROFOND→tier 3) — « les techs s'échangent
+ * par le commerce jusqu'à un seuil » ; (2) la MÉTABOLISATION active (part d'âmes digérées de cet
+ * héritage : ≥T1/T2/T3 ⇒ tier 1/2/3) — « incorporer ce peuple ouvre ses techs ». L'héritage
+ * NATIF = plein (tier 3). Encodé 2 bits/héritage (cf. tech_heritage_access_tier). */
+static unsigned heritage_access_pack(const unsigned char depth[ARCH_COUNT],
+                                     const float metab[HERITAGE_COUNT], Heritage native){
+    float t1=tune_f("METAB_TIER1",METAB_TIER1), t2=tune_f("METAB_TIER2",METAB_TIER2),
+          t3=tune_f("METAB_TIER3",METAB_TIER3);
     unsigned m=0;
-    for (int r=0;r<RACE_COUNT;r++) if (depth[r]>=(unsigned char)PROF_PROFOND) m|=tech_race_bit((SpeciesArchetype)r);
+    for (int r=0;r<HERITAGE_COUNT;r++){
+        int dt = (depth[r]>=(unsigned char)PROF_PROFOND)?3
+               : (depth[r]>=(unsigned char)PROF_METIER) ?2
+               : (depth[r]>=(unsigned char)PROF_SURFACE)?1 : 0;
+        float mb = metab?metab[r]:0.f;
+        int mt = (mb>=t3)?3 : (mb>=t2)?2 : (mb>=t1)?1 : 0;
+        int t = dt>mt?dt:mt;
+        if ((int)r==(int)native) t=3;               /* son propre héritage : accès PLEIN */
+        m |= ((unsigned)(t&3)) << (2*r);
+    }
     return m;
+}
+unsigned ai_heritage_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid){
+    unsigned char depth[ARCH_COUNT]; ai_archetype_depth(w, econ, rn, cid, depth);
+    float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, cid, metab);
+    return heritage_access_pack(depth, metab, ai_capital_heritage(w, econ, cid));
 }
 /* §syncrétique — rafraîchit le cercle d'un empire : cache la profondeur de contact par
  * archétype (lue par la membrane) et loquette les nœuds de diffusion atteints. */
@@ -1438,15 +1747,47 @@ void ai_sync_refresh(const World *w, const WorldEconomy *econ, const RouteNetwor
     tech_sync_tick(ts, adepth);                                 /* §8 : diffusion par contact (auto-latch) */
 }
 
+/* REMISE DE PRIX PAR DIFFUSION (métabolisation, 3e effet) — « une tech déjà déverrouillée par
+ * un autre empire coûte moins cher » : le savoir diffuse, la (re)découverte d'un savoir RÉPANDU
+ * est plus facile. g_tech_diff[id] = nb d'empires VIVANTS qui possèdent la tech (recalculé chaque
+ * tick par tech_diffusion_refresh, appelé depuis sim_day — DÉTERMINISTE, non sérialisé : fonction
+ * pure des TechState). À 0 (bancs qui n'appellent pas refresh) ⇒ mult=1 (aucune remise). */
+#ifndef AI_TECH_DIFFUSE_MAX
+#define AI_TECH_DIFFUSE_MAX 0.40f   /* remise MAX (tech possédée par tous les autres ⇒ −40 %) */
+#endif
+static int g_tech_diff[TECH_COUNT];
+static int g_tech_living = 0;
+void tech_diffusion_refresh(const World *w, const TechState *all, int n_ts){
+    for (int i=0;i<TECH_COUNT;i++) g_tech_diff[i]=0;
+    g_tech_living=0;
+    if (!w || !all) return;
+    for (int c=0;c<w->n_countries && c<n_ts;c++){
+        PolityRole role=w->country[c].role;
+        if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
+        g_tech_living++;
+        for (int i=0;i<TECH_COUNT;i++) if (all[c].unlocked[i]) g_tech_diff[i]++;
+    }
+}
+float tech_diffusion_mult(TechId id){
+    if (id<0 || id>=TECH_COUNT || g_tech_living<=1) return 1.f;
+    float frac = (float)g_tech_diff[id] / (float)g_tech_living;   /* part qui la possède déjà */
+    if (frac>1.f) frac=1.f;
+    return 1.f - tune_f("AI_TECH_DIFFUSE_MAX",AI_TECH_DIFFUSE_MAX) * frac;
+}
+/* coût EFFECTIF d'une tech pour l'IA : géologie (√N) × biais d'éthos × remise de diffusion. */
+static float ai_effective_cost(TechId id, float nprov, Ethos eth){
+    return tech_cost(id, nprov) * ai_tech_cost_mult(eth, tech_node(id)) * tech_diffusion_mult(id);
+}
+
 /* Le nœud à déverrouiller : score = BUTS (la fonction répond au besoin lu) +
- * PENCHANT de race (biais vers son thème + ses signatures) − FREIN (le faustien
- * n'est pris que si la pente dépasse le frein). Aucun « si race==X ». */
+ * PENCHANT de heritage (biais vers son thème + ses signatures) − FREIN (le faustien
+ * n'est pris que si la pente dépasse le frein). Aucun « si heritage==X ». */
 static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w,
                            const WorldEconomy *econ, const WorldProsperity *wp,
-                           unsigned access, float pop){
+                           unsigned access, float nprov){
     AiView v = ai_observe(wp, w, econ, a->cid);
     float brake = ai_consolidation_pressure(&v);
-    TechTheme affinity = tech_race_affinity(ai_capital_race(w,econ,a->cid));
+    TechTheme affinity = tech_heritage_affinity(ai_capital_heritage(w,econ,a->cid));
     Ethos eth = ai_capital_ethos(w,econ,a->cid);           /* §éthos : biais de coût par fonction */
     float faith_stance = ai_faith_stance(w,econ,a->cid);   /* §4 : orthodoxe interdit, culte sacralise */
     /* M4 (design §3) — les signaux du score MULTIPLICATIF : credo+valeurs de la
@@ -1468,7 +1809,7 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
         TechId id=(TechId)i;
         if (!tech_can_research(ts,id,access)) continue;
         const TechNode *n=tech_node(id);
-        float cost=tech_cost(id,pop) * ai_tech_cost_mult(eth,n);   /* l'éthos pèse sur le coût (biais, jamais mur) */
+        float cost=ai_effective_cost(id, nprov, eth);   /* géologie √N × biais d'éthos × remise de diffusion */
         if (cost > ts->research_points + 0.01f) continue;          /* pas encore les moyens */
         float score=0.f;
         /* BUTS — la fonction du nœud répond à un besoin lu de la VUE (pas de script). */
@@ -1485,7 +1826,7 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
                      * (n->faustian ? ai_faustian_appetite(credo, valeurs) : 1.0f)
                      * ((n->faustian && !has_arcane_raw) ? 0.6f : 1.0f);
           score = (score + 0.4f) * mult; }
-        if (n->native!=RACE_COUNT) score += AI_TECH_SIGNATURE;     /* une signature accessible se prend */
+        if (n->native!=HERITAGE_COUNT) score += AI_TECH_SIGNATURE;     /* une signature accessible se prend */
         /* FREIN — le faustien rapproche la Brèche : pris seulement si la pente l'emporte. */
         if (n->faustian){          /* la pente faustienne, FREINÉE ou BÉNIE par la foi (§4) */
             float religious = (faith_stance - 0.5f)*2.f;   /* −1 orthodoxe (sacrilège) … +1 culte */
@@ -1536,14 +1877,22 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     if (!ts || day < a->next_research_day) return;
     a->next_research_day = day + AI_RESEARCH_CADENCE;
     float pop = ai_country_population(w, econ, a->cid);
-    /* ASSIETTE : la pop PRODUIT la recherche — et la renchérit (tech_cost) → équilibre. */
+    float nprov = (float)w->country[a->cid].n_regions;   /* coût des techs ∝ √N (provinces), découplé de la pop */
+    /* ASSIETTE : la pop PRODUIT la recherche (revenu ∝ pop) ; le COÛT monte ∝ √N (provinces),
+     * sous-linéaire → l'expansion (wide) est récompensée (coût marginal < apport), sans snowball. */
     float income = (AI_RESEARCH_RATE/365.f)*AI_RESEARCH_CADENCE
                  * tech_research_yield(ts) * (1.f + pop/AI_RESEARCH_POPREF);
+    /* MÉTABOLISATION (Temps 1) — un empire CREUSET (qui a digéré des âmes d'un autre
+     * héritage) cherche plus vite : « incorporer d'autres gens dans sa culture fonctionne ».
+     * Signal ~0 tôt (l'assimilation prend des décennies) ⇒ la fenêtre golden ne bouge pas. */
+    income *= (1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)
+                     * econ_country_metabolized(w, econ, a->cid));
     ts->research_points += income;
     ai_sync_refresh(w, econ, rn, ts, a->cid);                   /* §4-13 : cache la profondeur + loquette la diffusion (+ S1 : le commerce) */
-    unsigned access=0;
-    for (int r=0;r<RACE_COUNT;r++) if (ts->arch_depth[r]>=(unsigned char)PROF_PROFOND) access|=tech_race_bit((SpeciesArchetype)r);
-    TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, pop);
+    /* BARRE D'ACCÈS (Temps 2) : tier par héritage = MAX(profondeur cachée, métabolisation). */
+    float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, a->cid, metab);
+    unsigned access = heritage_access_pack(ts->arch_depth, metab, ai_capital_heritage(w, econ, a->cid));
+    TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, nprov);
     /* §4 COUPLAGE : une fois l'Industrie en poche, l'empire AFFAMÉ DE FER ÉPARGNE pour la
      * foreuse (chère, faustienne) plutôt que d'éparpiller — l'issue tentante précipite sa Brèche. */
     if (pick!=TECH_FOREUSE && tech_can_research(ts, TECH_FOREUSE, access)){
@@ -1560,7 +1909,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         if (tgt!=TECH_COUNT && !ts->unlocked[tgt]){
             TechId step=ai_step_toward(ts, tgt, access);
             if (step!=TECH_COUNT){
-                float sc=tech_cost(step,pop)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
+                float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid));
                 if (ts->research_points < sc) return;      /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                 /* on AVANCE vers l'échappatoire */
             }
@@ -1576,15 +1925,15 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     if (a->w_trade > 0.5f || a->w_build > 0.5f){
         int got=0;
         for (int id=0; id<TECH_COUNT; id++)
-            if (ts->unlocked[id] && tech_node((TechId)id)->native!=RACE_COUNT) got++;
+            if (ts->unlocked[id] && tech_node((TechId)id)->native!=HERITAGE_COUNT) got++;
         if (got < 2){
             Ethos eg = ai_capital_ethos(w,econ,a->cid);
             TechId sig=TECH_COUNT; float sigcost=1e30f;
             for (int id=0; id<TECH_COUNT; id++){
                 const TechNode *tn=tech_node((TechId)id);
-                if (tn->native==RACE_COUNT || tn->faustian || ts->unlocked[id]) continue;
+                if (tn->native==HERITAGE_COUNT || tn->faustian || ts->unlocked[id]) continue;
                 if (!tech_can_research(ts, (TechId)id, access)) continue;     /* accessible (accès+prérequis) */
-                float cc=tech_cost((TechId)id, pop)*ai_tech_cost_mult(eg, tn);
+                float cc=ai_effective_cost((TechId)id, nprov, eg);
                 if (cc<sigcost){ sig=(TechId)id; sigcost=cc; }                /* la moins chère d'abord */
             }
             if (sig!=TECH_COUNT){
@@ -1602,7 +1951,8 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
      * d'appétit) et COÛTEUX (la charge → Brèche borne les conséquences) ; on NE touche PAS la
      * foreuse. Le frein AI_TECH_FAUSTIAN abaissé (2.5→1.2) scelle la rencontre appétit/frein. */
     if (!ts->unlocked[TECH_FORGE_RUNES]
-        && (access & tech_race_bit(RACE_NAIN)) && (access & tech_race_bit(RACE_ELFE))){
+        && tech_heritage_access_tier(access, HERITAGE_METALLURGISTE)>=3
+        && tech_heritage_access_tier(access, HERITAGE_ESOTERIQUE)>=3){
         Credo cr=CREDO_PLURALISTE; float val=5.f;
         { int cp=w->country[a->cid].capital_prov;
           int crg=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
@@ -1610,7 +1960,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
         if (ai_faustian_appetite(cr, val) >= AI_FAUST_QUEST){               /* la SOIF d'interdit (rare) */
             TechId step=ai_step_toward(ts, TECH_FORGE_RUNES, access);
             if (step!=TECH_COUNT){
-                float sc=tech_cost(step,pop)*ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(step));
+                float sc=ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid));
                 if (ts->research_points < sc) return;                      /* on ÉPARGNE pour le pas suivant */
                 pick=step;                                                 /* on AVANCE vers l'emblème */
             }
@@ -1627,7 +1977,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
       if (eth==ETHOS_DOMINATEUR||eth==ETHOS_HONNEUR){
           if (!ts->unlocked[TECH_POUDRIERE]) tgt=TECH_POUDRIERE;
       } else if (a->w_faustian>0.30f){
-          bool s3=(access&tech_race_bit(RACE_NAIN))&&(access&tech_race_bit(RACE_ELFE))&&!ts->unlocked[TECH_FORGE_RUNES];
+          bool s3=tech_heritage_access_tier(access,HERITAGE_METALLURGISTE)>=3&&tech_heritage_access_tier(access,HERITAGE_ESOTERIQUE)>=3&&!ts->unlocked[TECH_FORGE_RUNES];
           if (!s3){                                              /* sinon la Forge runique (S3) a la priorité */
               if      (!ts->unlocked[TECH_MAGIE_BATAILLE]) tgt=TECH_MAGIE_BATAILLE;
               else if (!ts->unlocked[TECH_ALCHIMIE])       tgt=TECH_ALCHIMIE;
@@ -1636,13 +1986,13 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
       if (tgt!=TECH_COUNT){
           TechId step=ai_step_toward(ts, tgt, access);
           if (step!=TECH_COUNT){
-              float sc=tech_cost(step,pop)*ai_tech_cost_mult(eth, tech_node(step));
+              float sc=ai_effective_cost(step, nprov, eth);
               if (ts->research_points < sc) return;              /* on ÉPARGNE pour le pas suivant */
               pick=step;                                         /* on AVANCE vers la tech d'unité */
           }
       } }
     if (pick!=TECH_COUNT){
-        float cost = tech_cost(pick, pop) * ai_tech_cost_mult(ai_capital_ethos(w,econ,a->cid), tech_node(pick));
+        float cost = ai_effective_cost(pick, nprov, ai_capital_ethos(w,econ,a->cid));
         if (ts->research_points >= cost && tech_research(ts, pick, access)){
             ts->research_points -= cost;
             a->stats.techs++;
@@ -1721,7 +2071,7 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
 /* ===================================================================== */
 void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
              WorldLegitimacy *wl, AgencyState *ag, RouteNetwork *rn,
-             DiploState *diplo, int day){
+             DiploState *diplo, const Statecraft *sc, int day){
     if (a->cid<0 || a->cid>=w->n_countries) return;
     bool econ_due  = (day >= a->next_econ_day);
     bool strat_due = (day >= a->next_strat_day);
@@ -1744,8 +2094,10 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
             if (corr > 40 && cr>=0){
                 bool held = faction_capture_total(a->cid) > 0.4f;            /* une faction TIENT → elle résiste */
                 float cost = (50.f + 8.f*(float)corr) * econ_world_ipm(econ) * (held?2.f:1.f);
-                if (econ->region[cr].treasury >= cost){
-                    econ->region[cr].treasury -= cost;
+                /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative. */
+                int crp=econ_region_rep_province(econ,cr);
+                if (crp>=0 && crp<econ->n_prov && econ->prov[crp].treasury >= cost){
+                    econ->prov[crp].treasury -= cost;
                     econ_flux_add(a->cid, FX_AUDIT, -cost);    /* I0 : la ligne audits */
                     faction_audit(a->cid);
                     if (wl) wl->L[cr] = clampf(wl->L[cr] + (corr>50?0.3f:-0.3f), 0.f, 10.f);
@@ -1773,7 +2125,7 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
     }
     if (strat_due){
         ai_refresh_ethos(a, w, econ);   /* §3 : l'éthos effectif GLISSE avec la composition avant d'agir */
-        ai_strat_turn(a, w, econ, wp, wl, diplo, &v, brake, day);
+        ai_strat_turn(a, w, econ, wp, wl, diplo, sc, &v, brake, day);
         a->next_strat_day = day + AI_STRAT_CADENCE/2 + (int)(frand(&a->rng)*AI_STRAT_CADENCE);
     }
 }

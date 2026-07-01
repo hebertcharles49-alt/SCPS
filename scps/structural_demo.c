@@ -64,7 +64,7 @@ static void chain_to(Sim *s, AgeId target){
     }
 }
 
-/* Façonne les ENTRÉES d'ordre d'un pays (H/K/L/C/race) pour isoler un cas. */
+/* Façonne les ENTRÉES d'ordre d'un pays (H/K/L/C/heritage) pour isoler un cas. */
 static void shape(Sim *s, int cid, float techH, float techK, float Lval, float Cval){
     if (cid<0||cid>=s->w->n_countries) return;
     s->ts[cid].H=techH; s->ts[cid].K=techK; s->ts[cid].L=Lval;
@@ -72,7 +72,7 @@ static void shape(Sim *s, int cid, float techH, float techK, float Lval, float C
         if (r<SCPS_MAX_REG){ s->wl->L[r]=Lval; s->wl->years_held[r]=60.f; }
         s->econ->region[r].build.H_coerc=0.f; s->econ->region[r].build.K_inst=0.f;
         s->econ->region[r].coercion=0.f; s->econ->region[r].build.food_cap=3.f;
-        s->econ->region[r].culture.race=RACE_HUMAIN;   /* race neutre : H = tech seul */
+        s->econ->region[r].culture.heritage=HERITAGE_ADAPTATIF;   /* heritage neutre : H = tech seul */
     }
     if (cid<s->wp->n_countries) s->wp->country[cid].C=Cval;
 }
@@ -105,7 +105,7 @@ int main(int argc, char **argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(s.w,&p);
-    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ);
@@ -206,12 +206,12 @@ int main(int argc, char **argv){
         PopCulture fb; memset(&fb,0,sizeof fb);
         fb.langue=5;fb.valeurs=4.5f;fb.subsistance=6;fb.parente=5;fb.religion=5;fb.ethos=ETHOS_BUREAUCRATE;
         fb.lifeway=LIFE_FARMER;fb.structure=STRUCT_LIGNAGER;fb.credo=CREDO_PLURALISTE;fb.rel_branch=REL_ABRAHAMIQUE;
-        fb.econ=ECON_RENTE_AGRAIRE;fb.martial=MART_MUR_BOUCLIERS;fb.race=RACE_HUMAIN;fb.settled=true;fb.age=200;
+        fb.econ=ECON_RENTE_AGRAIRE;fb.martial=MART_MUR_BOUCLIERS;fb.heritage=HERITAGE_ADAPTATIF;fb.settled=true;fb.age=200;
         PopCulture fd=fb; fd.valeurs=9.f; fd.ethos=ETHOS_DOMINATEUR;
         if (rB>=0){ s.econ->region[rB].culture=fb; s.econ->region[rB].owner=(int16_t)cidB; }
         if (rD>=0){ s.econ->region[rD].culture=fd; s.econ->region[rD].owner=(int16_t)cidD; }
         shape(&s,cidB, 5.f,3.f,1.0f,3.f); shape(&s,cidD, 5.f,3.f,1.0f,3.f);  /* crise : L très basse */
-        if (rB>=0) s.econ->region[rB].culture=fb;   /* shape a écrasé la race → on repose la fiche */
+        if (rB>=0) s.econ->region[rB].culture=fb;   /* shape a écrasé la heritage → on repose la fiche */
         if (rD>=0) s.econ->region[rD].culture=fd;
         s.wp->age_I_bonus=2.0f;                       /* la pression des idées (crise ouverte) */
         tickP(&s);
@@ -233,15 +233,15 @@ int main(int argc, char **argv){
         for (int hr=0; hr<2; hr++){ int r=(hr==0)?aB.home_region:aD.home_region;
             if (r<0||r>=s.econ->n_regions) continue; RegionEconomy *re=&s.econ->region[r];
             re->stock[RES_WOOD]=2000.f; re->stock[RES_STONE]=2000.f; re->stock[RES_CLAY]=2000.f;
-            re->stock[RES_METAL]=2000.f; re->stock[RES_TOOLS]=2000.f; re->stock[RES_SALT]=2000.f;
+            re->stock[RES_IRON]=2000.f; re->stock[RES_TOOLS]=2000.f; re->stock[RES_SALT]=2000.f;
             re->stock[RES_PRECIOUS_METAL]=2000.f; }
         AiView vB=ai_observe(s.wp,s.w,s.econ,cidB), vD=ai_observe(s.wp,s.w,s.econ,cidD);
         printf("   Bureaucrate : w_expand=%.2f SI=%.1f (crise) | Dominateur : w_expand=%.2f SI=%.1f (crise)\n",
                aB.w_expand, vB.SI, aD.w_expand, vD.SI);
         for (int k=0;k<8;k++){
             int day=k*600;
-            aB.next_econ_day=day; aB.next_strat_day=INT_MAX; ai_step(&aB,s.w,s.econ,s.wp,s.wl,&ag,s.rn,s.dp,day);
-            aD.next_econ_day=day; aD.next_strat_day=INT_MAX; ai_step(&aD,s.w,s.econ,s.wp,s.wl,&ag,s.rn,s.dp,day);
+            aB.next_econ_day=day; aB.next_strat_day=INT_MAX; ai_step(&aB,s.w,s.econ,s.wp,s.wl,&ag,s.rn,s.dp,NULL,day);
+            aD.next_econ_day=day; aD.next_strat_day=INT_MAX; ai_step(&aD,s.w,s.econ,s.wp,s.wl,&ag,s.rn,s.dp,NULL,day);
         }
         printf("   bâtiments sous la crise — Bureaucrate : K=%d H=%d | Dominateur : K=%d H=%d\n",
                aB.stats.builds_k+aB.stats.builds_other, aB.stats.builds_h,

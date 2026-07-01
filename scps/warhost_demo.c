@@ -10,7 +10,7 @@
 #include "scps_world.h"
 #include "scps_econ.h"
 #include "scps_culture.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include "scps_diplo.h"
 #include "scps_army.h"
 #include "scps_labor.h"
@@ -37,7 +37,7 @@ int main(int argc,char**argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
-    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
     for(int t=0;t<8;t++) econ_tick(econ,1.f);     /* peuple les strates (pop par classe) */
 
     /* trois pays qui possèdent des régions : ca & cb en guerre, cp en paix. On les

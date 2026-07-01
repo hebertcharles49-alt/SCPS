@@ -16,6 +16,13 @@
 #include <math.h>
 #include <time.h>
 
+/* ---- mini-cadre d'ASSERTION (banc auto-vérifiant : le harnais lit « X réussis, Y échoués ») ---- */
+static int g_pass=0, g_fail=0;
+#define CHECKF(got,exp,tol,msg) do{ float _g=(got),_e=(exp); \
+    if (fabsf(_g-_e)<=(tol)){ g_pass++; } \
+    else { g_fail++; printf("  ✗ %s : obtenu %.3f, attendu %.3f\n",(msg),_g,_e); } }while(0)
+#define CHECK(cond,msg) do{ if (cond){ g_pass++; } else { g_fail++; printf("  ✗ %s\n",(msg)); } }while(0)
+
 /* ---- Fonctions locales pour la section §9 Vérification ----------------- */
 static float bell_f_local(float d) {
     if (d < 0.f) d = 0.f;
@@ -57,8 +64,8 @@ int main(int argc, char **argv) {
     econ_init(econ, w);
     /* Profil culturel des populations régionales (après création des régions). */
     gen_population(w, econ);
-    /* Races en gradient autour du joueur (couche biologique). */
-    worldgen_seed_peoples(w, econ, RACE_HUMAIN);
+    /* Héritages en gradient autour du joueur (couche biologique). */
+    worldgen_seed_peoples(w, econ, HERITAGE_ADAPTATIF);
 
     /* ---- Init réseau commercial ----------------------------------------- */
     printf("=== Construction du réseau commercial ===\n");
@@ -161,6 +168,30 @@ int main(int argc, char **argv) {
 
     printf("╚══════════════════════════════════════════════════════════════╝\n");
 
+    /* §9 — ASSERTIONS sur l'exemple numérique du document (les valeurs « attendu » ci-dessus,
+     * indépendantes de la graine : pure arithmétique de la cloche/sigmoïde de prospérité). */
+    CHECKF(bell_int, 0.84f, 0.01f, "bell_f(3.0)");
+    CHECKF(metro_int, 0.690f, 0.01f, "sigma metropole interne");
+    CHECKF(PE_int, 3.48f, 0.01f, "PE interne");
+    CHECKF(bellA, 0.75f, 0.01f, "bell_f contact A");  CHECKF(metroA, 0.832f, 0.01f, "sigma A");  CHECKF(PEA, 3.74f, 0.01f, "PE A");
+    CHECKF(bellB, 0.91f, 0.01f, "bell_f contact B");  CHECKF(metroB, 0.119f, 0.01f, "sigma B");  CHECKF(PEB, 0.65f, 0.01f, "PE B");
+    CHECKF(bellC, 0.59f, 0.01f, "bell_f contact C");  CHECKF(metroC, 0.917f, 0.01f, "sigma C");  CHECKF(PEC, 3.25f, 0.01f, "PE C");
+    CHECKF(P_pot, 11.12f, 0.02f, "P_pot");
+    CHECKF(rendement, 0.621f, 0.01f, "rendement");
+    CHECKF(P_real, 6.91f, 0.02f, "P_realise");
+
+    /* VÉRIF SIM (§27) : la prospérité tournée laisse une entropie SAINE, et la barre d'Entropie monde
+     * RÉPOND à la charge faustienne régionale (la contribution Σ faust_charge — le ressort du capstone). */
+    float ent0 = wp->entropy;
+    CHECK(isfinite(ent0) && ent0 >= 0.f, "entropie monde finie & >= 0 apres la sim");
+    int rinj=-1; for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner>=0){ rinj=r; break; }
+    if (rinj>=0){
+        econ->region[rinj].faust_charge += 50.f;          /* l'entropie monde = Σ des faust_charge régionales */
+        prosperity_tick(wp, w, econ, net, ts, wl);
+        CHECK(wp->entropy > ent0 + 0.5f, "la charge faustienne FAIT MONTER l'entropie monde (§27)");
+    }
+
+    printf("\n BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     free(w); free(econ); free(net); free(ts); free(wp); free(wl);
-    return 0;
+    return g_fail ? 1 : 0;
 }

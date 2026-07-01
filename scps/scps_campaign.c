@@ -393,7 +393,8 @@ static float army_cav_frac(const ArmyState *a){
     long cav=0, tot=0;
     for (int i=0;i<a->n_units;i++){
         long n=a->units[i].count; if (n<=0) continue; tot+=n;
-        if (a->units[i].type==U_CAV_LEGERE || a->units[i].type==U_CAV_LOURDE) cav+=n;
+        UnitType ut=a->units[i].type;
+        if (ut==U_CAV_LEGERE||ut==U_CAV_LOURDE||ut==U_CAV_CUIRASSEE||ut==U_CAV_RAID) cav+=n;
     }
     return tot>0 ? (float)cav/(float)tot : 0.f;
 }
@@ -785,9 +786,13 @@ ArmyComposition campaign_composition(const Campaign *c, int o){
         long n=a->units[i].count; if (n<=0) continue;
         switch (a->units[i].type){
             case U_PIQUIER: case U_LANCIER: case U_EPEISTE:
-            case U_HALLEBARDIER:                                 z.infanterie+=n; break;  /* la mêlée de ligne */
-            case U_ARCHER: case U_ARBALETE: case U_ARQUEBUSIER:  z.archers   +=n; break;  /* tir & feu */
-            case U_CAV_LEGERE: case U_CAV_LOURDE:                z.cavalerie +=n; break;
+            case U_HALLEBARDIER:
+            case U_BERSERKER: case U_LANCIER_CHOC: case U_MILICE:
+            case U_LAME_FRANCHE: case U_GARDE_ESCORTE:           z.infanterie+=n; break;  /* la mêlée de ligne */
+            case U_ARCHER: case U_ARBALETE: case U_ARQUEBUSIER:
+            case U_ARBALETE_LOURDE: case U_HARCELEUR: case U_TRAQUEUR: z.archers+=n; break;  /* tir & feu */
+            case U_CAV_LEGERE: case U_CAV_LOURDE:
+            case U_CAV_CUIRASSEE: case U_CAV_RAID:               z.cavalerie +=n; break;
             case U_MAGE: case U_ALCHIMISTE: case U_GARDE_RUNIQUE:z.mages     +=n; break;  /* l'arcane (porte la dette d'entropie) */
             default: break;
         }

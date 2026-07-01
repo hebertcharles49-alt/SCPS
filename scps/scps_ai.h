@@ -32,6 +32,7 @@
 #include "scps_agency.h"
 #include "scps_routes.h"
 #include "scps_diplo.h"
+#include "scps_statecraft.h"   /* #26 : l'OPINION ±100 → ai_consider_offer */
 #include "scps_tech.h"
 #include <stdint.h>
 
@@ -41,7 +42,7 @@ typedef struct {
     float fragilite;     /* part de l'ordre tenue par la contrainte [0..10] */
     float fracture;      /* sécession latente */
     float L;             /* légitimité agrégée [0..10] */
-    float K;             /* capacité EFFECTIVE (tech+race+bâti) */
+    float K;             /* capacité EFFECTIVE (tech+heritage+bâti) */
     float Dinf_interne;  /* diversité interne max — le COÛT d'avaler du lointain */
     float PE;            /* prospérité réalisée */
     float tresor;        /* trésor disponible (somme régionale) */
@@ -54,6 +55,11 @@ typedef struct {
     float    gap_acuity; /* gravité agrégée du manque [0..1] */
     float    take_pressure; /* acuité d'un bien NON-productible localement → ne reste que PRENDRE/COMMERCER [0..1] */
     float    ethos_fracture; /* fracture de VALEURS interne (factions opposées) [0..1] — frein interne (§6) */
+    /* PIPELINE ÉCO (étages 1-2) — la PRÉVISION + la FILE DE PRIORITÉS, lues des coordonnées. */
+    EconForecast fc;        /* runway/shortfall/déficit structurel par flux (étage 1) */
+    Resource top_flow;      /* le flux PRIORITAIRE = argmax(stress(runway)×prix×deficit_vs_safe) — la motivation éco */
+    float    top_priority;  /* sa valeur (0 = aucun flux pressant) */
+    bool     food_alert;    /* food_runway < AI_SAFETY_HORIZON (le mur vivrier approche) */
 } AiView;
 
 /* ---- Compteurs (preuve d'émergence : on tally par acteur) ------------------ */
@@ -81,7 +87,7 @@ typedef struct {
 
     /* Personnalité EFFECTIVE — la résultante des factions-éthos (§3), qui GLISSE
      * quand la composition change : socle de la culture régnante, MODULÉ par l'écart
-     * entre le penchant du peuple et celui du trône (conquérir des orques monte la
+     * entre le penchant du peuple et celui du trône (conquérir des claniques monte la
      * conquête). Lue partout dans le moteur (agression, recherche, casus belli). */
     float    w_expand;       /* conquête    (faction Conquérants) */
     float    w_trade;        /* commerce    (faction Marchands) */
@@ -142,10 +148,20 @@ float  ai_consolidation_pressure(const AiView *v);
 float  ai_aggression(const AiActor *a, const AiView *v);
 
 /* Un tick (1 JOUR) : l'acteur dort jusqu'à ses cadences, lit l'état, choisit un
- * levier, l'exécute par la MÊME couche d'action que le joueur. */
+ * levier, l'exécute par la MÊME couche d'action que le joueur.
+ * #26 : `sc` (l'OPINION ±100) rend les alliances IA BILATÉRALES — NULL = pas de porte
+ * d'opinion (comportement relation-seule d'avant ; les bancs passent NULL). */
 void   ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
                WorldLegitimacy *wl, AgencyState *ag, RouteNetwork *rn,
-               DiploState *diplo, int day);
+               DiploState *diplo, const Statecraft *sc, int day);
+
+/* #26 — `to` ÉVALUE une OFFRE de `from` (alliance/paix/pacte) et l'ACCEPTE ou la REFUSE.
+ * Lue de l'OPINION (±100, mémoire des actes) + la relation structurelle + le score de guerre.
+ * Le verbe diplo JOUEUR (§3) et la diplo IA-IA passent par CE chemin → consentement BILATÉRAL.
+ * sc == NULL ⇒ pas de porte d'opinion (décision relation-seule, rétro-compatible bancs). */
+typedef enum { OFFER_ALLIANCE = 0, OFFER_PEACE, OFFER_TRADE_PACT } OfferKind;
+bool   ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldProsperity *wp,
+                         const DiploState *d, const Statecraft *sc, int from, int to, OfferKind kind);
 
 /* E3 — L'IA STOCKEUSE (tick MENSUEL) : lit le prix courant de sa région-hub vs
  * sa moyenne mobile (~1 an, par ressource). Bas (<0.8 x̄) + trésor sain →
@@ -157,8 +173,8 @@ void   ai_speculate_tick(AiActor *a, WorldEconomy *econ);
 
 /* RECHERCHE (1 JOUR) : à sa cadence, l'empire accumule des points (rendement
  * Savoir × population) et déverrouille UN nœud choisi par ses BUTS + le PENCHANT
- * de sa race + le FREIN (faustien évité quand on est fragile). Aucun « si race ».
- * L'ACCÈS de race (sa population) débloque les orphelines → diffusion par conquête. */
+ * de sa heritage + le FREIN (faustien évité quand on est fragile). Aucun « si heritage ».
+ * L'ACCÈS de heritage (sa population) débloque les orphelines → diffusion par conquête. */
 void   ai_research_step(AiActor *a, TechState *ts, const World *w,
                         const WorldEconomy *econ, const RouteNetwork *rn,
                         const WorldProsperity *wp, int day);
@@ -166,9 +182,15 @@ void   ai_research_step(AiActor *a, TechState *ts, const World *w,
  * Dominateur→ARMÉE · Bureaucrate→RENFORCEMENT · Mercantile→PRODUCTION). */
 TechFunction ai_ethos_pref_func(Ethos e);
 
-/* Masque des races présentes dans la population de l'empire (sa propre race +
+/* Masque des héritages présentes dans la population de l'empire (sa propre heritage +
  * conquises/migrées) → l'accès aux techs orphelines. Exposé pour le banc d'essai. */
-unsigned ai_race_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid);
+unsigned ai_heritage_access(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid);
+
+/* REMISE DE PRIX PAR DIFFUSION (métabolisation) — une tech possédée par d'autres empires coûte
+ * moins cher. tech_diffusion_refresh recompte (chaque tick, depuis sim_day) combien d'empires
+ * VIVANTS ont chaque tech ; tech_diffusion_mult(id) ∈ [1−MAX, 1] est le facteur de coût. */
+void  tech_diffusion_refresh(const World *w, const TechState *all, int n_ts);
+float tech_diffusion_mult(TechId id);
 
 /* §syncrétique — RAFRAÎCHIT le cercle d'un empire : recalcule la profondeur de contact
  * par archétype, la met en cache (ts->arch_depth, lu par la membrane) et loquette les

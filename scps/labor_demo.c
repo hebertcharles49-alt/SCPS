@@ -214,7 +214,7 @@ int main(int argc, char **argv){
     printf("\n── 9. Intégration : seeder un pays du monde ; la richesse suit la terre ──\n");
     WorldEconomy *econ=malloc(sizeof(WorldEconomy));
     if (econ){
-        econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+        econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
         /* moyenne du flux géo par pays sur ses régions possédées → riche vs pauvre. */
         int cRich=-1,cPoor=-1; float bestF=-1.f, worstF=1e9f;
         for (int c=0;c<w->n_countries;c++){

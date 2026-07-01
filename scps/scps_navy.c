@@ -14,7 +14,7 @@
 #include <string.h>
 #include <math.h>
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 
 /* ── Surface d'équilibrage ──────────────────────────────────────────────── */
 #define NAVY_MIN_PRICE       0.5f     /* plancher de prix (même rôle que BUILD_MIN_PRICE) */
@@ -25,9 +25,9 @@ static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v
 #define NAVY_COLONY_CD       (2.f*365.f)  /* une colonie outre-mer / 2 ans / pays   */
 #define NAVY_TRANSPORT_PKTS  10       /* 1 transport = 10 paquets = 1 000 hommes   */
 
-typedef struct { float supplies, wood, metal; int days; } HullCost;
+typedef struct { float supplies, wood, copper; int days; } HullCost;   /* la coque de guerre coûte du CUIVRE (clous/doublage), pas un « métal » manufacturé */
 static const HullCost HULLS[HULL_COUNT]={
-    [HULL_WAR]      ={ 30.f, 40.f, 25.f, 360 },   /* E1.7 : la coque LOURDE — recalée au palier 360 j (l'institution qui s'élève, comme Garnison/Port) ; 420 j était hors-grille */
+    [HULL_WAR]      ={ 30.f, 40.f, 25.f, 360 },   /* E1.7 : la coque LOURDE — recalée au palier 360 j ; 25 = CUIVRE (ex-métal) */
     [HULL_TRANSPORT]={ 20.f, 30.f,  0.f, 180 },   /* E1 : coque LÉGÈRE — alignée au palier 180 j */
     [HULL_MERCHANT] ={ 15.f, 25.f,  0.f, 180 },   /* E1 : coque LÉGÈRE — alignée au palier 180 j */
     [HULL_PIRATE]   ={  6.f,  8.f,  0.f,  60 },   /* la CONVERSION coûte peu : c'est sa nature */
@@ -121,7 +121,7 @@ float navy_build_gold(const WorldEconomy *econ, int region, HullType t){
     float gold=0.f, p;
     p=re->price[RES_NAVAL_SUPPLIES]; if (p<NAVY_MIN_PRICE) p=NAVY_MIN_PRICE; gold+=h->supplies*p;
     p=re->price[RES_WOOD];           if (p<NAVY_MIN_PRICE) p=NAVY_MIN_PRICE; gold+=h->wood*p;
-    if (h->metal>0.f){ p=re->price[RES_METAL]; if (p<NAVY_MIN_PRICE) p=NAVY_MIN_PRICE; gold+=h->metal*p; }
+    if (h->copper>0.f){ p=re->price[RES_COPPER]; if (p<NAVY_MIN_PRICE) p=NAVY_MIN_PRICE; gold+=h->copper*p; }
     return gold;
 }
 
@@ -139,7 +139,7 @@ bool navy_order_build(NavyState *ns, const World *w, WorldEconomy *econ, int cid
     re->treasury-=gold;
     re->stock[RES_NAVAL_SUPPLIES]-=h->supplies; if (re->stock[RES_NAVAL_SUPPLIES]<0.f) re->stock[RES_NAVAL_SUPPLIES]=0.f;
     re->stock[RES_WOOD]          -=h->wood;     if (re->stock[RES_WOOD]<0.f)           re->stock[RES_WOOD]=0.f;
-    if (h->metal>0.f){ re->stock[RES_METAL]-=h->metal; if (re->stock[RES_METAL]<0.f) re->stock[RES_METAL]=0.f; }
+    if (h->copper>0.f){ re->stock[RES_COPPER]-=h->copper; if (re->stock[RES_COPPER]<0.f) re->stock[RES_COPPER]=0.f; }
     re->demand[RES_NAVAL_SUPPLIES]+=h->supplies;         /* le marché VOIT le chantier */
     re->demand[RES_WOOD]          +=h->wood;
     n->supplies_eaten+=h->supplies;
@@ -254,10 +254,11 @@ float navy_sea_days_regions(const World *w, int reg_a, int reg_b){
 }
 
 /* ── LA COLONISATION OUTRE-MER (mer §8) : on découvre ce que la volta touche ── */
-int navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days){
+int navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float dt_days, int skip_cid){
     (void)dt_days;
     int founded=0;
     for (int cid=0;cid<w->n_countries && cid<SCPS_MAX_COUNTRY;cid++){
+        if (cid==skip_cid) continue;   /* le JOUEUR essaime outre-mer à la main (gate IA-off, skip_cid=-1 ⇒ no-op chronique) */
         const Country *ct=&w->country[cid];
         if (ct->role!=POLITY_PLAYER && ct->role!=POLITY_ANTAGONIST) continue;
         Navy *n=&ns->n[cid];
@@ -489,15 +490,24 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                     else { success=false; identified=(crs_f(rng)<0.85f); }   /* capturé, il DÉSIGNE */
                 } else identified=(crs_f(rng)<0.35f);
                 if (success && n->hull[HULL_PIRATE]>0){
+                    /* RE-KEY PROVINCE : balafre_days/raid_cd_days/treasury sont PROVINCE-OWNED
+                     * (charte règle 1, max/Σ-agrégés) — stock[]/price[] restent au grain
+                     * RÉGION (le marché, INTACT). */
                     float loot=0.f;
                     for (int g=1;g<RES_COUNT;g++){
                         loot += re->stock[g]*COURSE_RAID_TITHE*re->price[g];
                         re->stock[g]*=(1.f-COURSE_RAID_TITHE);
                     }
-                    re->balafre_days=COURSE_BALAFRE_J;                  /* « côte balafrée » */
-                    re->raid_cd_days=COURSE_IMMUNITE_J;
+                    int bpid=econ_region_rep_province(econ,best);
+                    if (bpid>=0 && bpid<econ->n_prov){
+                        econ->prov[bpid].balafre_days=COURSE_BALAFRE_J;   /* « côte balafrée » */
+                        econ->prov[bpid].raid_cd_days=COURSE_IMMUNITE_J;
+                    }
                     int hp=navy_best_port(w,econ,c);
-                    if (hp>=0) econ->region[hp].treasury+=loot;         /* la course est un revenu d'ÉTAT */
+                    if (hp>=0){
+                        int hpp=econ_region_rep_province(econ,hp);
+                        if (hpp>=0 && hpp<econ->n_prov) econ->prov[hpp].treasury+=loot;   /* la course est un revenu d'ÉTAT */
+                    }
                     n->raids_done++; n->loot_gold+=loot;
                     if (identified && victim>=0) diplo_pirate_grief(dp,victim,c,COURSE_GRIEF_RAID);
                 } else if (identified && victim>=0)

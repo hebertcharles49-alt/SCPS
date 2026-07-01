@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8cultureaudit01"]
+
+[ext_resource type="Script" path="res://culture_audit.gd" id="1_caudit"]
+
+[node name="CultureAudit" type="Node"]
+script = ExtResource("1_caudit")

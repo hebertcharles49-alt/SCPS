@@ -6,11 +6,11 @@
  * Prouve les 6 points de vérification : la FORME (3 thèmes × 3 fonctions = 9
  * quartiers, faustien au bord), le DÉPART (6 bâtiments de base seulement), une
  * tech = un DÉVERROUILLAGE, le FAUSTIEN partout (→ la Brèche ; seule la Société
- * métabolise), les ORPHELINES de race (greffe par la population), le COÛT qui
+ * métabolise), les ORPHELINES de heritage (greffe par la population), le COÛT qui
  * scale ∝ population.
  */
 #include "scps_tech.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include <stdio.h>
 
 static int g_pass=0,g_fail=0;
@@ -22,7 +22,7 @@ static void research(TechState *s, TechId id, unsigned acc){
         printf("  + %-22s [%s·%s t.%d] → %s\n", tech_name(id),
                tech_theme_name(n->theme), tech_function_name(n->func), n->tier, tech_unlocks(id));
     else
-        printf("  ✗ %-22s (prérequis / accès de race / porte arcane manquants)\n", tech_name(id));
+        printf("  ✗ %-22s (prérequis / accès de heritage / porte arcane manquants)\n", tech_name(id));
 }
 
 int main(void){
@@ -71,7 +71,7 @@ int main(void){
 
     /* ---- 5. FAUSTIEN PARTOUT → la Brèche (seule la Société métabolise) - */
     printf("\n── 5. Le faustien partout → la Brèche (K métabolise) ──\n");
-    unsigned human=tech_race_bit(RACE_HUMAIN);
+    unsigned human=tech_heritage_bit(HERITAGE_ADAPTATIF);
     printf("  RUN A — ruée arcane sans socle :\n");
     TechState a; tech_state_init(&a,/*ruines*/true);
     research(&a,TECH_SAVOIR_GUERRE,human); research(&a,TECH_MAGIE_BATAILLE,human); research(&a,TECH_EVEIL,human);
@@ -92,30 +92,31 @@ int main(void){
        tech_node(TECH_CASTE_MARTIALE)->faustian&&tech_node(TECH_CASTE_MARTIALE)->theme==THM_SOCIETE);
 
     /* ---- 6. ORPHELINES DE RACE (greffe par la population) -------------- */
-    printf("\n── 6. Orphelines de race (greffe par la population / conquête) ──\n");
+    printf("\n── 6. Orphelines de heritage (greffe par la population / conquête) ──\n");
     TechState f; tech_state_init(&f,false);
     research(&f,TECH_ARMURERIE,human); research(&f,TECH_POUDRIERE,human);   /* prérequis de la Forge à runes */
-    ok("NAIN sans ARCANE : la Forge à runes (runique × arcane) reste INSUFFISANTE",
-       !tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(RACE_NAIN)));
-    ok("NAIN + ARCANE (elfe en contact) : la Forge à runes se GREFFE (combo §syncrétique)",
-       tech_can_research(&f,TECH_FORGE_RUNES, human|tech_race_bit(RACE_NAIN)|tech_race_bit(RACE_ELFE)));
-    ok("un empire NAIN+ELFE la recherche (native naine + combo elfe réunis)",
-       tech_can_research(&f,TECH_FORGE_RUNES, tech_race_bit(RACE_NAIN)|tech_race_bit(RACE_ELFE)));
+    ok("MÉTALLURGISTE sans ARCANE : la Forge à runes (runique × arcane) reste INSUFFISANTE",
+       !tech_can_research(&f,TECH_FORGE_RUNES, human|tech_heritage_bit(HERITAGE_METALLURGISTE)));
+    ok("MÉTALLURGISTE + ARCANE (ésotérique en contact) : la Forge à runes se GREFFE (combo §syncrétique)",
+       tech_can_research(&f,TECH_FORGE_RUNES, human|tech_heritage_bit(HERITAGE_METALLURGISTE)|tech_heritage_bit(HERITAGE_ESOTERIQUE)));
+    ok("un empire MÉTALLURGISTE+ÉSOTÉRIQUE la recherche (native naine + combo ésotérique réunis)",
+       tech_can_research(&f,TECH_FORGE_RUNES, tech_heritage_bit(HERITAGE_METALLURGISTE)|tech_heritage_bit(HERITAGE_ESOTERIQUE)));
     ok("la signature HALFELINE (Abondance) est la MOINS faustienne (charge nulle)",
        !tech_node(TECH_ABONDANCE)->faustian && tech_node(TECH_ABONDANCE)->charge==0.f &&
-       tech_node(TECH_ABONDANCE)->native==RACE_HALFELIN);
-    ok("l'Esclavage est la signature ORQUE (la tech d'asservissement, gate du §4c)",
-       tech_node(TECH_ESCLAVAGE)->native==RACE_ORQUE && tech_node(TECH_ESCLAVAGE)->faustian);
+       tech_node(TECH_ABONDANCE)->native==HERITAGE_AGRAIRE);
+    ok("l'Esclavage est la signature CLANIQUE (la tech d'asservissement, gate du §4c)",
+       tech_node(TECH_ESCLAVAGE)->native==HERITAGE_CLANIQUE && tech_node(TECH_ESCLAVAGE)->faustian);
 
-    /* ---- 7. LE COÛT QUI SCALE ∝ POPULATION ---------------------------- */
-    printf("\n── 7. Le coût qui scale ∝ étendue ∝ population ──\n");
-    float c_small=tech_cost(TECH_ACADEMIE, 2000.f), c_big=tech_cost(TECH_ACADEMIE, 50000.f);
-    printf("  Académie : petit empire (2k hab) = %.0f pts · grand empire (50k hab) = %.0f pts\n",c_small,c_big);
-    ok("un GRAND empire paie PLUS cher chaque tech qu'un petit (frein au snowball)", c_big > c_small);
-    ok("le rayon (tier) renchérit : Université > Académie > Scriptorium (à population égale)",
-       tech_cost(TECH_UNIVERSITE,1e4f) > tech_cost(TECH_ACADEMIE,1e4f) &&
-       tech_cost(TECH_ACADEMIE,1e4f)  > tech_cost(TECH_SCRIPTORIUM,1e4f));
-    ok("les bâtiments de base (tier 0, le centre) sont GRATUITS", tech_cost(TECH_BIBLIOTHEQUE,9e4f)==0.f);
+    /* ---- 7. LE COÛT QUI SCALE ∝ √N (provinces), SOUS-LINÉAIRE ---------- */
+    printf("\n── 7. Le coût qui scale ∝ √N (provinces) — wide récompensé sous-linéairement ──\n");
+    float c_small=tech_cost(TECH_ACADEMIE, 1.f), c_big=tech_cost(TECH_ACADEMIE, 25.f);
+    printf("  Académie : mono-province (N=1) = %.0f pts · grand empire (N=25) = %.0f pts\n",c_small,c_big);
+    ok("un GRAND empire paie PLUS cher chaque tech qu'un petit (coût ∝ √N)", c_big > c_small);
+    ok("MAIS sous-linéaire : ×N provinces ne ×N pas le coût (√25=5×, pas 25×)", c_big < c_small*25.f);
+    ok("le rayon (tier) renchérit : Université > Académie > Scriptorium (à N égal)",
+       tech_cost(TECH_UNIVERSITE,8.f) > tech_cost(TECH_ACADEMIE,8.f) &&
+       tech_cost(TECH_ACADEMIE,8.f)  > tech_cost(TECH_SCRIPTORIUM,8.f));
+    ok("les bâtiments de base (tier 0, le centre) sont GRATUITS", tech_cost(TECH_BIBLIOTHEQUE,16.f)==0.f);
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);

@@ -20,6 +20,7 @@
 # include <windows.h>
 #else
 # include <unistd.h>
+# include <fcntl.h>     /* open() du répertoire parent pour fsync post-rename */
 #endif
 
 uint32_t scps_crc32(const void *p, size_t n){
@@ -80,6 +81,19 @@ bool save_write_atomic(const char *path, const void *buf, size_t len){
     }
 #else
     if (rename(tmp, path) != 0){ remove(tmp); return false; }   /* échec → ancien slot préservé */
+    /* Durabilité du RENAME lui-même : sur POSIX, l'entrée de répertoire créée par
+     * rename() n'est pas garantie sur le média tant que le RÉPERTOIRE parent n'est
+     * pas fsync'é — un crash juste après le rename pourrait laisser le slot pointer
+     * sur l'ancien fichier (ou rien). Best-effort : les octets ET le rename ont déjà
+     * réussi, donc un échec d'ouverture du répertoire ne défait pas l'écriture. */
+    { char dir[1024]; const char *slash = NULL;
+      for (size_t i = strlen(path); i > 0; i--) if (path[i-1] == '/'){ slash = &path[i-1]; break; }
+      if (slash){ size_t dl = (size_t)(slash - path); if (dl == 0) dl = 1;   /* "/x" → "/" */
+                  if (dl >= sizeof dir) dl = sizeof dir - 1;
+                  memcpy(dir, path, dl); dir[dl] = '\0'; }
+      else { dir[0] = '.'; dir[1] = '\0'; }                                  /* slot dans le cwd */
+      int dfd = open(dir, O_RDONLY);
+      if (dfd >= 0){ (void)fsync(dfd); close(dfd); } }
 #endif
     return true;
 }

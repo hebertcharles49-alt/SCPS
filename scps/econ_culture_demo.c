@@ -15,7 +15,7 @@
  */
 #include "scps_world.h"
 #include "scps_econ.h"
-#include "scps_species.h"
+#include "scps_heritage.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,10 +26,31 @@ static void ok(const char *what, bool cond){
     if (cond) g_pass++; else g_fail++;
 }
 
-/* Pose un groupe (race, sphère, effectif, intégration). */
-static void set_group(PopGroup *g, SpeciesArchetype race, Sphere sph, long count, float integ){
+/* Pose un groupe (heritage, sphère, effectif, intégration). */
+static void set_group(PopGroup *g, Heritage heritage, Sphere sph, long count, float integ){
     memset(g,0,sizeof *g);
-    g->race=race; g->origin_sphere=sph; g->count=count; g->integration=integ;
+    g->heritage=heritage; g->origin_sphere=sph; g->count=count; g->integration=integ;
+}
+
+/* Province REPRÉSENTATIVE d'une région (charte PROVINCE_MODEL.md : l'économie
+ * vit à la province, la région n'est qu'un agrégat) — repli : scan direct. */
+static int rep_prov(WorldEconomy *e, int r){
+    if (r>=0 && r<SCPS_MAX_REG && e->region_rep_prov[r]>=0) return e->region_rep_prov[r];
+    for (int p=0;p<e->n_prov;p++) if (e->prov[p].region==r) return p;
+    return -1;
+}
+
+/* ÉTEINT toute province SŒUR (même région, ≠ pid) : la région AGRÈGE (règle 2) —
+ * sans ça les autres provinces (semées par world_generate/gen_population)
+ * contaminent la satisfaction agrégée que le banc lit sur e->region[r]. */
+static void mute_siblings(WorldEconomy *e, int r, int pid){
+    for (int p=0;p<e->n_prov;p++){
+        if (p==pid || e->prov[p].region!=r) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        pe->active=false; pe->colonized=false;
+        memset(pe->strata,0,sizeof pe->strata);
+        memset(&pe->pop,0,sizeof pe->pop);
+    }
 }
 
 int main(int argc, char **argv){
@@ -42,13 +63,13 @@ int main(int argc, char **argv){
     printf("\n── 1-3. Off-culture & assimilation ──\n");
     ProvincePop pp; memset(&pp,0,sizeof pp);
 
-    set_group(&pp.groups[0], RACE_HUMAIN, SPHERE_HOMMES, 1000, 1.f);
+    set_group(&pp.groups[0], HERITAGE_ADAPTATIF, SPHERE_HOMMES, 1000, 1.f);
     pp.n_groups=1;
     ok("province HOMOGÈNE (un peuple) → aucune pénalité off-culture",
        econ_off_culture_fraction(&pp) < 0.001f);
 
-    /* On conquiert : une minorité ORQUE (sphère Étrangers), non assimilée. */
-    set_group(&pp.groups[1], RACE_ORQUE, SPHERE_ETRANGERS, 500, 0.f);
+    /* On conquiert : une minorité CLANIQUE (sphère Étrangers), non assimilée. */
+    set_group(&pp.groups[1], HERITAGE_CLANIQUE, SPHERE_ETRANGERS, 500, 0.f);
     pp.n_groups=2;
     float off_raw = econ_off_culture_fraction(&pp);
     printf("   dominante Hommes + 1/3 minorité Étrangers (integration 0) : pénalité=%.2f\n", off_raw);
@@ -61,12 +82,12 @@ int main(int argc, char **argv){
     ok("l'ASSIMILATION efface la pénalité (la demande dérive vers la dominante)",
        off_assim < off_raw - 0.10f);
 
-    /* Une minorité de la MÊME sphère (Anciens : elfe sous nain) gêne moins qu'une
+    /* Une minorité de la MÊME sphère (Anciens : ésotérique sous métallurgiste) gêne moins qu'une
      * sphère lointaine (Étrangers). */
-    set_group(&pp.groups[0], RACE_NAIN, SPHERE_ANCIENS, 1000, 1.f);
-    set_group(&pp.groups[1], RACE_ELFE, SPHERE_ANCIENS, 500, 0.f);
+    set_group(&pp.groups[0], HERITAGE_METALLURGISTE, SPHERE_ANCIENS, 1000, 1.f);
+    set_group(&pp.groups[1], HERITAGE_ESOTERIQUE, SPHERE_ANCIENS, 500, 0.f);
     float off_near = econ_off_culture_fraction(&pp);
-    set_group(&pp.groups[1], RACE_ORQUE, SPHERE_ETRANGERS, 500, 0.f);
+    set_group(&pp.groups[1], HERITAGE_CLANIQUE, SPHERE_ETRANGERS, 500, 0.f);
     float off_far  = econ_off_culture_fraction(&pp);
     printf("   minorité MÊME sphère=%.2f vs sphère LOINTAINE=%.2f\n", off_near, off_far);
     ok("une sphère LOINTAINE gêne plus qu'une sphère proche (variantes plus distantes)",
@@ -78,23 +99,45 @@ int main(int argc, char **argv){
     if(!w||!e){ fprintf(stderr,"OOM\n"); return 1; }
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p); econ_init(e,w); gen_population(w,e);
-    /* on prend une région peuplée */
+    /* on prend une région peuplée, puis SA province représentative (charte : l'économie
+     * — dont pop.groups, lu par econ_off_culture_fraction — vit à la province) */
     int rr=-1; for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized && e->region[r].strata[0].pop>50.f){ rr=r; break; }
     if (rr<0) rr=0;
-    long pop = (long)(e->region[rr].strata[0].pop+e->region[rr].strata[1].pop+e->region[rr].strata[2].pop);
+    int pid=rep_prov(e,rr);
+    if (pid<0) pid=0;
+    long pop=1000;   /* signal net, comme le fixe wealth/stock ci-dessous (banc isolé) */
+
+    /* Dote la province : budget + stock PLEINS sur toutes les ressources, pour que le
+     * panier social ait une vraie chance d'être comblé (sans ça, society_sat plafonne
+     * près de 0 pour tout le monde — la province représentative peut être pauvre en
+     * sortie de gen_population — et masque la pénalité off-culture qu'on veut isoler). */
 
     /* cas homogène */
-    memset(&e->region[rr].pop,0,sizeof e->region[rr].pop);
-    set_group(&e->region[rr].pop.groups[0], RACE_HUMAIN, SPHERE_HOMMES, pop, 1.f);
-    e->region[rr].pop.n_groups=1;
+    mute_siblings(e,rr,pid);
+    ProvinceEconomy *pe=&e->prov[pid];
+    pe->active=true; pe->colonized=true; pe->culture.settled=true;
+    for (int k=0;k<RES_COUNT;k++) pe->stock[k]=1.0e5f;
+    pe->strata[CLASS_LABORER].pop=pop*0.7f;   pe->strata[CLASS_LABORER].wealth=1.0e6f;
+    pe->strata[CLASS_BOURGEOIS].pop=pop*0.2f; pe->strata[CLASS_BOURGEOIS].wealth=1.0e6f;
+    pe->strata[CLASS_ELITE].pop=pop*0.1f;     pe->strata[CLASS_ELITE].wealth=1.0e6f;
+    memset(&pe->pop,0,sizeof pe->pop);
+    set_group(&pe->pop.groups[0], HERITAGE_ADAPTATIF, SPHERE_HOMMES, pop, 1.f);
+    pe->pop.n_groups=1;
     for (int t=0;t<3;t++) econ_tick(e, 1.f);
     float soc_homo = e->region[rr].society_sat, food_homo = e->region[rr].food_sat;
 
     /* cas bigarré : on injecte une forte minorité étrangère non assimilée */
     econ_init(e,w); gen_population(w,e);
-    set_group(&e->region[rr].pop.groups[0], RACE_HUMAIN, SPHERE_HOMMES, pop/2, 1.f);
-    set_group(&e->region[rr].pop.groups[1], RACE_ORQUE,  SPHERE_ETRANGERS, pop/2, 0.f);
-    e->region[rr].pop.n_groups=2;
+    mute_siblings(e,rr,pid);
+    pe=&e->prov[pid];
+    pe->active=true; pe->colonized=true; pe->culture.settled=true;
+    for (int k=0;k<RES_COUNT;k++) pe->stock[k]=1.0e5f;
+    pe->strata[CLASS_LABORER].pop=pop*0.7f;   pe->strata[CLASS_LABORER].wealth=1.0e6f;
+    pe->strata[CLASS_BOURGEOIS].pop=pop*0.2f; pe->strata[CLASS_BOURGEOIS].wealth=1.0e6f;
+    pe->strata[CLASS_ELITE].pop=pop*0.1f;     pe->strata[CLASS_ELITE].wealth=1.0e6f;
+    set_group(&pe->pop.groups[0], HERITAGE_ADAPTATIF, SPHERE_HOMMES, pop/2, 1.f);
+    set_group(&pe->pop.groups[1], HERITAGE_CLANIQUE,  SPHERE_ETRANGERS, pop/2, 0.f);
+    pe->pop.n_groups=2;
     for (int t=0;t<3;t++) econ_tick(e, 1.f);
     float soc_mix = e->region[rr].society_sat, food_mix = e->region[rr].food_sat;
 

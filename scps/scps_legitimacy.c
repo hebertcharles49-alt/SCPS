@@ -20,7 +20,7 @@
 #define K_FAITH          0.7f     /* la foi BÂTIE (temples) SOUTIENT L (contre l'ombre) */
 
 static inline float clampf(float v, float lo, float hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
+    return v!=v?lo:(v < lo ? lo : (v > hi ? hi : v));
 }
 static inline float absf(float v) { return v < 0.f ? -v : v; }
 

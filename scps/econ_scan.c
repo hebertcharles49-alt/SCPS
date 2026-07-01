@@ -54,7 +54,7 @@ int main(int argc,char**argv){
                 wealth_w[c]+=re->strata[c].wealth;
             }
             pg+=avg_price(e,RES_GRAIN); pc+=avg_price(e,RES_CLOTH);
-            pw+=avg_price(e,RES_PRECIOUS_WARE); pv+=avg_price(e,RES_WINE);
+            pw+=avg_price(e,RES_PRECIOUS_WARE); pv+=avg_price(e,RES_EAU_DE_VIE);
             pt+=avg_price(e,RES_TOOLS); np++;
         }
     }
@@ -69,7 +69,7 @@ int main(int argc,char**argv){
       printf("  PART de pop (E0.7 mobilité) : Laborer %.1f%% · Bourgeois %.1f%% · Élite %.1f%%\n",
              100.0*pop_w[0]/tp, 100.0*pop_w[1]/tp, 100.0*pop_w[2]/tp); }
     if (np>0)
-        printf("  marché : grain %.2f · étoffe %.2f · orfèvrerie %.2f · vin %.2f · outils %.2f\n",
+        printf("  marché : grain %.2f · étoffe %.2f · orfèvrerie %.2f · eau-de-vie %.2f · outils %.2f\n",
                pg/np, pc/np, pw/np, pv/np, pt/np);
     printf("══════════════════════════════════════════════════════════════════════\n");
     printf(" MAIN-D'ŒUVRE : emploi Σ %.0f vs pop laborer Σ %.0f (%.1f%% employée) · régions main-d'œuvre TENDUE (>85%%) : %.0f/%ld\n",

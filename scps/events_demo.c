@@ -8,8 +8,8 @@
  *      inondations le long des RIVIÈRES ; sécheresses dans le SEC ; peste le
  *      long des ROUTES (un empire fermé est épargné).
  *   2. SAVEUR par la fiche : le MÊME état (marche lointaine instable) produit
- *      « Mater dans le sang » chez l'orque Dominateur, « Affranchir le commerce »
- *      chez le gnome Mercantile — quatre récits, un seul déclencheur.
+ *      « Mater dans le sang » chez le clanique Dominateur, « Affranchir le commerce »
+ *      chez le mécaniste Mercantile — quatre récits, un seul déclencheur.
  *   3. ÂGES émergents : ils n'arrivent pas à DATE mais quand le monde ATTEINT un
  *      état ; à l'avènement, une coordonnée globale bouge + un palier s'ouvre.
  *   4. BRÈCHE : pousser la charge faustienne fait advenir l'Âge de la Brèche →
@@ -49,12 +49,12 @@ static float region_pop(const WorldEconomy *e, int r){
     return e->region[r].strata[CLASS_LABORER].pop + e->region[r].strata[CLASS_BOURGEOIS].pop
          + e->region[r].strata[CLASS_ELITE].pop;
 }
-static PopCulture make_fiche(float valeurs, Ethos e, SpeciesArchetype race){
+static PopCulture make_fiche(float valeurs, Ethos e, Heritage heritage){
     PopCulture pc; memset(&pc,0,sizeof pc);
     pc.langue=5.f; pc.valeurs=valeurs; pc.subsistance=6.f; pc.parente=5.f; pc.religion=5.f;
     pc.ethos=e; pc.lifeway=LIFE_FARMER; pc.structure=STRUCT_LIGNAGER;
     pc.credo=CREDO_PLURALISTE; pc.rel_branch=REL_ABRAHAMIQUE; pc.econ=ECON_RENTE_AGRAIRE;
-    pc.martial=MART_MUR_BOUCLIERS; pc.race=race; pc.settled=true; pc.age=200;
+    pc.martial=MART_MUR_BOUCLIERS; pc.heritage=heritage; pc.settled=true; pc.age=200;
     return pc;
 }
 
@@ -73,7 +73,7 @@ int main(int argc, char **argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(s.w,&p);
-    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ);
@@ -121,22 +121,42 @@ int main(int argc, char **argv){
     for (int r=0;r<s.econ->n_regions;r++)
         if (s.econ->region[r].culture.settled && region_pop(s.econ,r)>10.f){ rstrike=r; break; }
     if (rstrike<0) rstrike=(rFlat>=0)?rFlat:0;
-    s.econ->region[rstrike].build.K_inst=3.0f;
+    /* RE-KEY PROVINCE : events_strike (→apply_region_eff) route ses mutations sur la
+     * province représentative — region[r] est un DÉRIVÉ, jamais rafraîchi par
+     * events_strike seul (le jeu réel tourne econ_tick chaque mois). On pose donc le
+     * fixture au même grain (province), puis on rafraîchit l'agrégat à la main (PUR,
+     * aucun effet de temps) après chaque choc, pour relire region[] à jour. */
+    { int rp=econ_region_rep_province(s.econ,rstrike); if (rp>=0) s.econ->prov[rp].build.K_inst=3.0f; }
+    econ_aggregate_regions(s.econ);
     float pop0=region_pop(s.econ,rstrike), agit0=s.sc->agitation[rstrike];
     events_strike(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,rstrike,EVID_QUAKE);
+    econ_aggregate_regions(s.econ);
     ok("le tremblement détruit du bâti (institutions), tue de la pop, soulève l'agitation",
        s.econ->region[rstrike].build.K_inst<3.0f && region_pop(s.econ,rstrike)<pop0
        && s.sc->agitation[rstrike]>agit0);
     /* L'inondation : pertes immédiates MAIS fertilité après (double tranchant). */
     int rfl=rstrike; float food0=s.econ->region[rfl].build.food_cap;
     events_strike(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,rfl,EVID_FLOOD);
+    econ_aggregate_regions(s.econ);
     ok("l'inondation laisse une terre plus grasse (fertilité ↑ après la crue)",
        s.econ->region[rfl].build.food_cap > food0);
 
     /* ═══ 2. PESTE LE LONG DES ROUTES (empire fermé épargné) ════════════ */
     printf("\n── 2. La peste remonte les ROUTES — l'isolé est épargné ──\n");
     int chain[4]={-1,-1,-1,-1}, nc=0;
-    for (int r=0;r<s.econ->n_regions && nc<4;r++) if (s.econ->region[r].culture.settled) chain[nc++]=r;
+    /* évite rstrike (le séisme+l'inondation plus haut l'ont déjà ravalé près de zéro) ET
+     * exige que la PROVINCE REPRÉSENTATIVE (où apply_region_eff route sa mutation,
+     * RE-KEY PROVINCE) porte l'essentiel de la pop de la région — sinon la peste
+     * dépeuplerait une province quasi-vide pendant que region_pop (Σ vraie) lit une
+     * région où le gros de la pop vit AILLEURS (autre province membre non touchée). */
+    for (int r=0;r<s.econ->n_regions && nc<4;r++){
+        if (!s.econ->region[r].culture.settled || r==rstrike) continue;
+        float rp=region_pop(s.econ,r); if (rp<=10.f) continue;
+        int pid=econ_region_rep_province(s.econ,r); if (pid<0) continue;
+        float pp=s.econ->prov[pid].strata[CLASS_LABORER].pop+s.econ->prov[pid].strata[CLASS_BOURGEOIS].pop+s.econ->prov[pid].strata[CLASS_ELITE].pop;
+        if (pp < rp*0.5f) continue;         /* la représentative doit porter au moins la moitié */
+        chain[nc++]=r;
+    }
     if (nc>=4){
         int A=chain[0],B=chain[1],C=chain[2],D=chain[3];
         routes_order(s.rn,NULL,s.econ,A,B,false);
@@ -144,6 +164,7 @@ int main(int argc, char **argv){
         routes_advance(s.rn,s.w,s.econ,150);     /* ouvre les routes (terre 90 j) ; D reste isolée */
         float pA=region_pop(s.econ,A),pB=region_pop(s.econ,B),pC=region_pop(s.econ,C),pD=region_pop(s.econ,D);
         int infected=events_plague_spread(s.ev,s.w,s.econ,s.wl,s.sc,s.rn,A);
+        econ_aggregate_regions(s.econ);   /* RE-KEY PROVINCE : la peste route via apply_region_eff */
         printf("   foyer en rég %d ; routes %d-%d-%d ouvertes, rég %d isolée ; %d régions touchées\n",A,A,B,C,D,infected);
         ok("la peste atteint les régions reliées par routes (A→B→C)",
            region_pop(s.econ,A)<pA && region_pop(s.econ,B)<pB && region_pop(s.econ,C)<pC);
@@ -152,11 +173,11 @@ int main(int argc, char **argv){
 
     /* ═══ 3. SAVEUR PAR LA FICHE — un état, quatre récits ═══════════════ */
     printf("\n── 3. Le MÊME état (marche lointaine instable) → un récit PAR culture ──\n");
-    struct { Ethos e; SpeciesArchetype race; const char *who; int expect; } V[4]={
-        { ETHOS_DOMINATEUR, RACE_ORQUE,   "Orque Dominateur",  EVID_INTEG_DOMINATEUR },
-        { ETHOS_MERCANTILE, RACE_GNOME,   "Gnome Mercantile",  EVID_INTEG_MERCANTILE },
-        { ETHOS_BUREAUCRATE,RACE_HUMAIN,  "Humain Bureaucrate",EVID_INTEG_BUREAUCRATE },
-        { ETHOS_PACIFISTE,  RACE_ELFE,    "Elfe Ancien",       EVID_INTEG_ANCIEN },
+    struct { Ethos e; Heritage heritage; const char *who; int expect; } V[4]={
+        { ETHOS_DOMINATEUR, HERITAGE_CLANIQUE,   "Clanique Dominateur",  EVID_INTEG_DOMINATEUR },
+        { ETHOS_MERCANTILE, HERITAGE_MECANISTE,   "Mécaniste Mercantile",  EVID_INTEG_MERCANTILE },
+        { ETHOS_BUREAUCRATE,HERITAGE_ADAPTATIF,  "Humain Bureaucrate",EVID_INTEG_BUREAUCRATE },
+        { ETHOS_PACIFISTE,  HERITAGE_ESOTERIQUE,    "Ésotérique Ancien",       EVID_INTEG_ANCIEN },
     };
     /* On a besoin de 4 pays + 4 régions-marches. */
     int nC=s.w->n_countries; bool flavor_ok = (nC>=4);
@@ -165,7 +186,7 @@ int main(int argc, char **argv){
         int cid=i;                                   /* un pays par variante */
         int capr=cap_region(s.w,cid);
         if (capr<0){ flavor_ok=false; break; }
-        s.econ->region[capr].culture = make_fiche(5.f, V[i].e, V[i].race);   /* le TRÔNE porte l'éthos */
+        s.econ->region[capr].culture = make_fiche(5.f, V[i].e, V[i].heritage);   /* le TRÔNE porte l'éthos */
         s.econ->region[capr].culture.religion=1.f;          /* … sur une foi marquée */
         s.econ->region[capr].owner=(int16_t)cid;
         /* une marche conquise lointaine, fraîche, agitée, possédée par ce pays */
@@ -177,7 +198,7 @@ int main(int argc, char **argv){
             march=r; break;
         }
         if (march<0){ flavor_ok=false; break; }
-        PopCulture far = make_fiche(5.f, V[i].e, V[i].race);
+        PopCulture far = make_fiche(5.f, V[i].e, V[i].heritage);
         far.valeurs=0.f; far.religion=10.f; far.subsistance=1.f;   /* D∞ ≫ 6 du trône */
         s.econ->region[march].culture=far;
         s.econ->region[march].owner=(int16_t)cid;

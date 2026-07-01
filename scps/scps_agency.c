@@ -478,7 +478,16 @@ static int biggest_minority(const ProvincePop *pp){
 }
 /* une TRANCHE annuelle de purge : le groupe meurt par fraction, la province saigne. */
 static void purge_slice(WorldEconomy *econ, WorldLegitimacy *wl, int reg){
-    RegionEconomy *re=&econ->region[reg];
+    if (reg<0 || reg>=econ->n_regions) return;             /* P0 : reg vient d'un ordre (potentiellement forgé)
+                                                            * — la boucle PURGE d'agency_advance NOUS appelle SANS
+                                                            * la garde d'apply_action ; sans ce filtre, &econ->region[reg]
+                                                            * + l'écriture pg->count seraient HORS-BORNES. */
+    /* RE-KEY PROVINCE : écrire econ->region[reg] directement serait EFFACÉ par le prochain
+     * econ_aggregate_regions (region[] est reconstruit EN ENTIER depuis prov[] à chaque
+     * econ_tick) — on route sur la province représentative, qui SURVIT (charte). */
+    int pid=econ_region_rep_province(econ, reg);
+    if (pid<0 || pid>=econ->n_prov) return;
+    ProvinceEconomy *re=&econ->prov[pid];
     int gi=biggest_minority(&re->pop);
     if (gi<0) return;                                  /* plus de minorité : la purge s'éteint */
     PopGroup *pg=&re->pop.groups[gi];
@@ -520,7 +529,14 @@ static void apply_action(WorldEconomy *econ, WorldLegitimacy *wl, ModifierStack 
                          const BuildOrder *o){
     int reg=o->region;
     if (reg<0 || reg>=econ->n_regions) return;
-    RegionEconomy *re=&econ->region[reg];
+    /* RE-KEY PROVINCE (PROVINCE_MODEL.md) : une action de bâtisseur est PROVINCE-OWNED
+     * (bâtiments/ressources/culture/pop locale, charte règle 1) — router directement sur
+     * econ->region[reg] serait ÉCRASÉ au prochain econ_tick (econ_aggregate_regions
+     * RECONSTRUIT region[] EN ENTIER depuis prov[]). On écrit sur la province représentative
+     * de la région ; l'agrégation la re-somme/re-reflète au tick suivant. */
+    int pid=econ_region_rep_province(econ, reg);
+    if (pid<0 || pid>=econ->n_prov) return;
+    ProvinceEconomy *re=&econ->prov[pid];
     switch (o->kind){
         case AGY_BUILD: {
             Edifice e=(Edifice)o->param;

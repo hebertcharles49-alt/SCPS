@@ -39,9 +39,9 @@ typedef enum {
 /* PENCHANT D'ÉTHOS D'UN GROUPE — d'où viennent les factions (§2)          */
 /* ===================================================================== */
 /* Un vecteur sur les six factions (Σ=1), dérivé de la culture du groupe :
- * son ÉTHOS (la direction première), sa SIGNATURE de race (orque→Conquérant+
- * Transgresseur, nain→Légiste+Transgresseur, halfelin/gnome→Marchand+
- * Communautaire, elfe→arcane+tradition), son CREDO (la ferveur nourrit les
+ * son ÉTHOS (la direction première), sa SIGNATURE de heritage (clanique→Conquérant+
+ * Transgresseur, métallurgiste→Légiste+Transgresseur, agraire/mécaniste→Marchand+
+ * Communautaire, ésotérique→arcane+tradition), son CREDO (la ferveur nourrit les
  * Gardiens, la tolérance l'ouverture). */
 void group_ethos_lean(const PopCulture *c, float out[FAC_COUNT]);
 

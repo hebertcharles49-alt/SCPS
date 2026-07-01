@@ -5,7 +5,7 @@
  * divise en 3 THÈMES (Savoir · Forge · Société) ; chaque thème rejoue 3 FONCTIONS
  * (Production · Armée · Renforcement) — auto-similaire → 9 QUARTIERS. Le RAYON est
  * la profondeur (tier) : plus loin = plus cher, plus puissant, plus risqué. Le
- * FAUSTIEN est au bord ; les techs ORPHELINES de race s'y greffent.
+ * FAUSTIEN est au bord ; les techs ORPHELINES de heritage s'y greffent.
  *
  *      angle = quartier (3 thèmes × 3 fonctions)   rayon = profondeur/tier
  *
@@ -26,7 +26,8 @@
 #define SCPS_TECH_H
 
 #include <stdbool.h>
-#include "scps_species.h"   /* SpeciesArchetype : la race native d'une tech signature */
+#include <stdio.h>           /* FILE* : MODTOOLS dump/load */
+#include "scps_heritage.h"   /* Heritage : la heritage native d'une tech signature */
 
 /* ---- Thèmes (3) — la Magie est fondue dans le Savoir ------------------- */
 typedef enum { THM_SAVOIR = 0, THM_FORGE, THM_SOCIETE, THM_COUNT } TechTheme;
@@ -71,6 +72,41 @@ typedef enum {
      * la Corne divine réutilise TECH_FORGE_RUNES (métallurgie céleste, FAU4). */
     TECH_ALCHIMIE,
     TECH_TRANSMUTATION,
+    /* ÉTOFFE (2026-06-28) — BRANCHES CULTURELLES D'HÉRITAGE (tier 1-2, native=héritage).
+     * Chaque héritage gagne 2 spécialités PEU PROFONDES menant vers sa signature tier-3 :
+     * la « barre de métabolisation » (Temps 2) ouvrira l'accès par tier (peu → t1, plus → t2,
+     * beaucoup → la signature t3). Appendus (index stable) ; la table NODES les place par
+     * initialiseur désigné. Branches PARALLÈLES (la signature garde son prérequis d'origine). */
+    TECH_GLYPHES_ETHERES,    TECH_COMMUNION_ETHEREE,   /* Ésotérique (Savoir) */
+    TECH_ALLIAGES_NAINS,     TECH_GRAVURE_RUNES,       /* Métallurgiste (Forge) */
+    TECH_MECANISTE_ROUAGES,  TECH_MECANISTE_HORLOGERIE,/* Mécaniste (Forge) */
+    TECH_DROIT_COUTUMIER,    TECH_LANGUE_FRANQUE,      /* Adaptatif (Société) */
+    TECH_VERGERS_ETAGES,     TECH_PATURAGES_INTEGRES,  /* Agraire (Société) */
+    TECH_RITES_GUERRIERS,    TECH_HORDES_CONQUERANTES, /* Clanique (Société) */
+    /* COMBOS (2026-06-28) — TIER-4 COMBINATOIRE EXCLUSIF : un nœud par PAIRE d'héritages,
+     * recherchable seulement avec l'ACCÈS PLEIN (tier 3 — natif OU métabolisé) aux DEUX.
+     * Symétrie : si un empire métabolise B ET C, le combo B×C lui est ouvert (même s'il
+     * n'est ni B ni C). Forge runique (Métal×Éso) existe déjà ; voici les 14 autres paires.
+     * Effets routés sur les leviers VIVANTS (army_doctrine / NODE_PROD_PCT / prospérité). */
+    TECH_COMBO_POUDRE,        /* Méca × Métal — Arquebuserie de précision (Forge·Armée) */
+    TECH_COMBO_AUTOMATES_ARC, /* Éso × Méca — Automates arcanes (Forge·Renf) */
+    TECH_COMBO_ACADEMIE,      /* Éso × Adaptatif — Académie cosmopolite (Savoir·Prod) */
+    TECH_COMBO_DRUIDE,        /* Éso × Agraire — Abondance druidique (Société·Prod) */
+    TECH_COMBO_CHAMAN,        /* Éso × Clanique — Chamanisme de guerre (Savoir·Armée) */
+    TECH_COMBO_GUILDES,       /* Métal × Adaptatif — Guildes maîtresses (Société·Prod) */
+    TECH_COMBO_CHARRUES,      /* Métal × Agraire — Charrues lourdes (Société·Prod) */
+    TECH_COMBO_POLIORCETIQUE, /* Métal × Clanique — Poliorcétique (Forge·Armée) */
+    TECH_COMBO_HORLOGE_MARCH, /* Méca × Adaptatif — Horlogerie marchande (Forge·Renf) */
+    TECH_COMBO_MACHINES_AGRI, /* Méca × Agraire — Machines agricoles (Société·Prod) */
+    TECH_COMBO_SIEGE,         /* Méca × Clanique — Engins de siège (Forge·Armée) */
+    TECH_COMBO_GRENIER_COLON, /* Adaptatif × Agraire — Grenier colonial (Société·Renf) */
+    TECH_COMBO_FOEDERATI,     /* Adaptatif × Clanique — Foederati (Société·Armée) */
+    TECH_COMBO_HORDE_ECO,     /* Agraire × Clanique — Économie de horde (Société·Armée) */
+    /* APEX TRIPLES (2026-06-28) — TIER-5 : la fusion de TROIS héritages métabolisés/possédés
+     * (accès PLEIN aux 3). Le pinacle. Mécanisme N=3 : native + tech_combo_native + tech_combo_native2. */
+    TECH_APEX_ARQUEBUSE,      /* Méca × Métal × Éso — Arquebuse runique (Forge·Armée : +arquebusiers ciblés) */
+    TECH_APEX_CONCILE,        /* Éso × Adaptatif × Méca — Concile des savants (Savoir·Prod : +recherche) */
+    TECH_APEX_LEGION,         /* Adaptatif × Métal × Clanique — Légion universelle (Société·Armée : +moral) */
     TECH_COUNT
 } TechId;
 
@@ -84,7 +120,7 @@ typedef struct {
     TechId          prereq;      /* nœud précédent (TECH_COUNT = aucun) */
     bool            faustian;    /* ⚠ bout interdit (monte charge/flux → Brèche) */
     bool            needs_ruins; /* porte arcane : accès ruine/relique */
-    SpeciesArchetype native;     /* race signature ; RACE_COUNT = universelle */
+    Heritage native;     /* heritage signature ; HERITAGE_COUNT = universelle */
 
     /* Écriture SCPS (deltas appliqués au TechState). */
     float dK, dL, dF;            /* socle : capacité narrative, ordre, fédéralisme */
@@ -105,14 +141,14 @@ typedef struct {
  * requis à la profondeur requise — AUTOMATIQUE (diffusion, pas recherche). */
 typedef enum { PROF_NONE=0, PROF_SURFACE, PROF_METIER, PROF_PROFOND, PROF_SECRET } Profondeur;
 
-/* ARCHÉTYPES (briefs §7) : un PROFIL culturel, pas une race. Les indices 0..RACE_COUNT-1
- * sont les 6 signatures de race (centroïdes culturels — arcane=elfe, forge runique=nain,
- * artificier=gnome, assimilationniste=humain, pastoral=halfelin, martial-servile=orque,
- * MÊME ORDRE que SpeciesArchetype) ; au-delà, des profils d'ÉTHOS. depth[] est indexé
+/* ARCHÉTYPES (briefs §7) : un PROFIL culturel, pas une heritage. Les indices 0..HERITAGE_COUNT-1
+ * sont les 6 signatures de heritage (centroïdes culturels — arcane=ésotérique, forge runique=métallurgiste,
+ * artificier=mécaniste, assimilationniste=adaptatif, pastoral=agraire, martial-servile=clanique,
+ * MÊME ORDRE que Heritage) ; au-delà, des profils d'ÉTHOS. depth[] est indexé
  * sur ARCH_COUNT. Un archétype d'éthos est « porté » par toute culture de cet éthos. */
-#define ARCH_BUREAUCRATIQUE (RACE_COUNT)       /* éthos bureaucrate : scriptorium, cadastre */
-#define ARCH_MERCANTILE     (RACE_COUNT+1)     /* éthos mercantile : comptoir, cothon */
-#define ARCH_COUNT          (RACE_COUNT+2)
+#define ARCH_BUREAUCRATIQUE (HERITAGE_COUNT)       /* éthos bureaucrate : scriptorium, cadastre */
+#define ARCH_MERCANTILE     (HERITAGE_COUNT+1)     /* éthos mercantile : comptoir, cothon */
+#define ARCH_COUNT          (HERITAGE_COUNT+2)
 
 typedef struct {
     const char      *name;
@@ -182,28 +218,38 @@ const char *tech_function_name(TechFunction f);/* "Production"/"Armée"/"Renforc
 int         tech_quarter(TechTheme t, TechFunction f);  /* 0..8 — l'angle */
 bool        tech_is_base(TechId id);          /* tier 0 = bâtiment de base (centre) */
 
-/* Masque de RACES accessibles à un empire (sa propre race + races conquises/
- * migrées). Une tech native d'une race n'est recherchable qu'avec l'accès. */
-unsigned    tech_race_bit(SpeciesArchetype r);
+/* Masque de RACES accessibles à un empire (sa propre heritage + héritages conquises/
+ * migrées). Une tech native d'une heritage n'est recherchable qu'avec l'accès. */
+unsigned    tech_heritage_bit(Heritage r);
+/* ACCÈS GRADUÉ (Temps 2) : le masque encode 2 bits/héritage = le TIER d'accès atteint (0..3).
+ * tech_heritage_bit(r) octroie le tier PLEIN (3) ; ce lecteur extrait le tier pour un héritage.
+ * Une tech-signature au tier T exige tech_heritage_access_tier(access, native) >= T. */
+int         tech_heritage_access_tier(unsigned access, Heritage r);
 
-/* Prérequis remplis, pas déjà pris, porte arcane ok, ACCÈS de race ok ? */
-bool  tech_can_research(const TechState *s, TechId id, unsigned race_access);
+/* Prérequis remplis, pas déjà pris, porte arcane ok, ACCÈS de heritage ok ? */
+bool  tech_can_research(const TechState *s, TechId id, unsigned heritage_access);
 /* Applique les deltas SCPS, la charge et le flux ; marque comme acquis.
  * (Le PAIEMENT en points de recherche est géré par l'appelant via tech_cost.) */
-bool  tech_research(TechState *s, TechId id, unsigned race_access);
+bool  tech_research(TechState *s, TechId id, unsigned heritage_access);
 
 /* §syncrétique — LATCH AUTOMATIQUE des nœuds de diffusion : pour chaque nœud dont le
  * PARENT est acquis et dont l'archétype-source est atteint à la PROFONDEUR requise
- * (depth[] indexé par race-signature : PROF_NONE..PROF_SECRET), loquette de façon
+ * (depth[] indexé par heritage-signature : PROF_NONE..PROF_SECRET), loquette de façon
  * PERMANENTE et écrit ses deltas SCPS. Renvoie le nb de nœuds nouvellement loqués.
  * À appeler chaque pas — idempotent (un nœud loqué n'est jamais recalculé). */
 int  tech_sync_tick(TechState *s, const unsigned char depth[ARCH_COUNT]);
 const SyncNode *tech_sync_node(int i);   /* lecture (UI/membrane/télémétrie) ; NULL hors borne */
 
-/* COÛT en points de recherche : BASE_COST[tier] × (1 + EXTENT_W·population/BASE).
- * Plus l'empire est ÉTENDU (∝ population), plus CHAQUE tech coûte → frein au
- * snowball, « tall » viable. Les bâtiments de base (tier 0) coûtent 0. */
-float tech_cost(TechId id, float population);
+/* COÛT en points de recherche : BASE_COST[tier] × COST_SCALE × √N (N = nb de PROVINCES de
+ * l'empire). DÉCOUPLÉ de la pop : le revenu monte ∝ pop (∝ N), le coût ∝ √N (sous-linéaire)
+ * ⇒ le coût marginal d'une province < son apport → l'EXPANSION est récompensée, sans snowball
+ * (rythme/empire ∝ √N). Plancher pour le mono-province. Les bâtiments de base (tier 0) = 0. */
+float tech_cost(TechId id, float n_provinces);
+
+/* MODTOOLS — surcharge des coûts de tier (BASE_COST) et des bonus prod/eff par fichier
+ * (l'app charge via SCPS_MODS ; sans fichier ⇒ valeurs compilées, golden-safe). */
+void tech_moddata_dump(FILE *f);
+int  tech_moddata_load(const char *path);
 
 /* Rendement de recherche : multiplicateur issu du SAVOIR·Production (Bibliothèque
  * → Scriptorium → Académie → Université). La POPULATION fournit l'assiette (côté
@@ -216,9 +262,9 @@ float tech_research_yield(const TechState *s);
  * dispatchés thématiquement (Forge/Société·Prod → prod ; Savoir·Prod → eff). */
 float tech_prod_bonus(const TechState *s);   /* Σ prod_pct (fraction, ex. 0.30 = +30 %) */
 float tech_eff_bonus(const TechState *s);    /* Σ eff_pct */
-/* Le PENCHANT d'une race : le thème vers lequel sa signature la porte (biais IA,
- * jamais un « si race==X » : c'est une lecture de la table). */
-TechTheme tech_race_affinity(SpeciesArchetype r);
+/* Le PENCHANT d'une heritage : le thème vers lequel sa signature la porte (biais IA,
+ * jamais un « si heritage==X » : c'est une lecture de la table). */
+TechTheme tech_heritage_affinity(Heritage r);
 
 /* ---- API : la Brèche (verrou SCPS, inchangé) -------------------------- */
 float tech_dereal(const TechState *s);          /* max(0,(P/10)·C + flux − K) */

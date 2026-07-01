@@ -9,7 +9,7 @@
  */
 #include "scps_revolt.h"
 #include "scps_tune.h"   /* Arc J : calibrage */
-#include "scps_species.h"   /* species_name */
+#include "scps_heritage.h"   /* heritage_name */
 #include "scps_culture.h"   /* ethos_name (via culture nom) */
 #include "scps_factions.h"  /* §5 : la tension de coup d'une faction forte aliénée */
 #include "scps_labor.h"     /* capitale_* : la capacité de service (logement/services) de la région */
@@ -76,7 +76,7 @@
  * une conquête fraîche qui, elle, SÉCÈDE) dont l'éthos appartient à une faction forte
  * et ALIÉNÉE — opposée à la direction effective. Ses membres veulent SAISIR l'État
  * pour imposer leur éthos. L'éthos d'un groupe survit à l'assimilation (signature de
- * race + trait d'éthos), donc une minorité enracinée reste porteuse de SA faction. */
+ * heritage + trait d'éthos), donc une minorité enracinée reste porteuse de SA faction. */
 #define COUP_ETHOS_W       1.0f   /* une faction fortement aliénée peut soulever seule (motif politique) */
 #define COUP_ETHOS_TRIGGER 0.18f  /* §C2 : seuil RELEVÉ 0.12→0.18 — le coup exige un grief plus net
                                    * (le 0.12 faisait tomber le couperet trop tôt → 0-ou-92). */
@@ -94,7 +94,7 @@ static float ethos_coup_boost(const PopGroup *g, EthosFaction alien_fac, float c
 }
 #define CRUSH_KILL    0.55f    /* part des mobilisés tués si écrasés */
 
-static inline float clampf(float v,float lo,float hi){ return v<lo?lo:(v>hi?hi:v); }
+static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static inline float absf(float v){ return v<0?-v:v; }
 
 /* Distance de CONTENU (valeurs/subsistance/parenté/religion, langue exclue) —
@@ -189,7 +189,14 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     RegionEconomy *re=&econ->region[region];
     int owner=re->owner;
     if (owner<0) return -1;
-    ProvincePop *pp=&re->pop;
+    /* RE-KEY PROVINCE : re->pop est un MIROIR (copie de la province représentative) — muter
+     * un groupe à travers `pp` ne toucherait QUE cette copie, effacée au prochain econ_tick.
+     * On route la MUTATION (count/strata) sur la vraie province ; les LECTURES via `re`
+     * (food_sat/society_sat/coercion, agrégats pop-pondérés/max) restent au grain région. */
+    int pid=econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return -1;
+    ProvinceEconomy *pe=&econ->prov[pid];
+    ProvincePop *pp=&pe->pop;
     if (pp->n_groups<=0) return -1;
     /* un seul soulèvement vif par région (la colère couve déjà ici) */
     for (int i=0;i<rs->count;i++) if (rs->list[i].active && rs->list[i].region==region) return -1;
@@ -231,7 +238,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
      * faction saisit l'État pour imposer son éthos. Sinon, la nature usuelle (sécession
      * d'une nation conquise, jacquerie de classe). */
     rb->kind = would_coup ? REBEL_COUP : revolt_classify(g, drift, crown);
-    rb->race=g->race; rb->klass=g->klass;
+    rb->heritage=g->heritage; rb->klass=g->klass;
     rb->culture=group_culture_effective(g, drift);
     rb->drift_id=g->drift_id; rb->mobilized=mob; rb->deficit=wd;
     rb->outcome=OUT_ONGOING; rb->spawned=-1;
@@ -240,9 +247,9 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
      * ses bras (l'atelier tourne au ralenti) — la révolte a un coût immédiat. */
     g->count -= mob;
     float take=(float)mob;
-    if (re->strata[CLASS_LABORER].pop>=take) re->strata[CLASS_LABORER].pop-=take;
-    else { take-=re->strata[CLASS_LABORER].pop; re->strata[CLASS_LABORER].pop=0.f;
-           re->strata[CLASS_BOURGEOIS].pop=fmaxf(0.f, re->strata[CLASS_BOURGEOIS].pop-take); }
+    if (pe->strata[CLASS_LABORER].pop>=take) pe->strata[CLASS_LABORER].pop-=take;
+    else { take-=pe->strata[CLASS_LABORER].pop; pe->strata[CLASS_LABORER].pop=0.f;
+           pe->strata[CLASS_BOURGEOIS].pop=fmaxf(0.f, pe->strata[CLASS_BOURGEOIS].pop-take); }
 
     rs->n_ignited++;
     return slot;
@@ -332,10 +339,14 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
 /* Rend les survivants au travail (après échec/concession/coup). */
 static void demobilize(WorldEconomy *econ, Rebellion *rb, long survivors){
     if (survivors<=0) return;
-    RegionEconomy *re=&econ->region[rb->region];
-    int gi=find_group(&re->pop, rb->drift_id);
-    if (gi>=0) re->pop.groups[gi].count += survivors;
-    re->strata[CLASS_LABORER].pop += (float)survivors;
+    /* RE-KEY PROVINCE : .pop/.strata sont PROVINCE-OWNED — route sur la représentative
+     * (comme revolt_ignite qui a mobilisé ces mêmes bras). */
+    int pid=econ_region_rep_province(econ, rb->region);
+    if (pid<0 || pid>=econ->n_prov) return;
+    ProvinceEconomy *pe=&econ->prov[pid];
+    int gi=find_group(&pe->pop, rb->drift_id);
+    if (gi>=0) pe->pop.groups[gi].count += survivors;
+    pe->strata[CLASS_LABORER].pop += (float)survivors;
 }
 
 /* Un emplacement de pays RÉUTILISABLE : un placeholder vierge (UNCLAIMED) qui ne
@@ -367,17 +378,24 @@ static int spawn_secession(World *w, WorldEconomy *econ, WorldLegitimacy *wl, Re
                      ? w->region[rb->region].province_ids[0] : -1;
     nc->n_regions=1; nc->region_ids[0]=(int16_t)rb->region;
     nc->color=0xC08040u;
-    snprintf(nc->name,sizeof nc->name,"%s libre", species_name(rb->race));
+    snprintf(nc->name,sizeof nc->name,"%s libre", heritage_name(rb->heritage));
 
-    RegionEconomy *re=&econ->region[rb->region];
-    re->owner=(int16_t)nid;
+    /* RE-KEY PROVINCE : la sécession est un événement DE RÉGION (une région entière change
+     * de maître) — owner sur TOUTES ses provinces (econ_region_set_owner, comme la
+     * conquête) ; coercion/.pop sont PROVINCE-OWNED, routés sur la représentative
+     * (region[rb->region].<champ> serait écrasé au prochain econ_tick). */
+    econ_region_set_owner(econ, w, rb->region, nid);
     if (rb->region<w->n_regions) w->region[rb->region].country=(int16_t)nid;
     /* la nation libérée se relégitime ; les colons de l'ancienne couronne fondent */
     if (rb->region<SCPS_MAX_REG){ wl->L[rb->region]=7.0f; wl->years_held[rb->region]=0.f; }
-    re->coercion=0.f;
-    int gi=find_group(&re->pop, rb->drift_id);
-    if (gi>=0){ re->pop.groups[gi].L=7.f; re->pop.groups[gi].integration=1.f;
-                re->pop.groups[gi].agit_base=0.f; re->pop.groups[gi].diaspora=false; }
+    int pid=econ_region_rep_province(econ, rb->region);
+    if (pid>=0 && pid<econ->n_prov){
+        ProvinceEconomy *pe=&econ->prov[pid];
+        pe->coercion=0.f;
+        int gi=find_group(&pe->pop, rb->drift_id);
+        if (gi>=0){ pe->pop.groups[gi].L=7.f; pe->pop.groups[gi].integration=1.f;
+                    pe->pop.groups[gi].agit_base=0.f; pe->pop.groups[gi].diaspora=false; }
+    }
     return nid;
 }
 
@@ -389,10 +407,17 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
         Rebellion *rb=&rs->list[i];
         if (!rb->active) continue;
         rb->days += days;
-        RegionEconomy *re=&econ->region[rb->region];
+        RegionEconomy *re=&econ->region[rb->region];   /* LECTURES (agrégats) */
+        /* RE-KEY PROVINCE : les MUTATIONS ci-dessous (coercion/culture/satisfaction/
+         * build.K_inst/.pop.groups[].L,agit_base/revolt_scar/treasury) sont PROVINCE-OWNED
+         * (charte règle 1) — region[rb->region].<champ> serait écrasé au prochain econ_tick,
+         * on route sur la province représentative. */
+        int rpid=econ_region_rep_province(econ, rb->region);
+        ProvinceEconomy *pe=(rpid>=0 && rpid<econ->n_prov) ? &econ->prov[rpid] : NULL;
 
         /* la couronne a-t-elle changé / la région perdue ? le soulèvement tombe. */
         if (re->owner!=rb->owner){ rb->active=false; continue; }
+        if (!pe){ rb->active=false; continue; }
 
         if (rb->days < REBEL_DECIDE_DAYS) continue;   /* la lutte couve */
 
@@ -427,10 +452,10 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
             long survivors=rb->mobilized-killed;
             rs->pop_lost += killed; rs->n_crushed++;
             demobilize(econ, rb, survivors);
-            int gi=find_group(&re->pop, rb->drift_id);
-            if (gi>=0){ re->pop.groups[gi].L=clampf(re->pop.groups[gi].L-2.f,0.f,10.f);
-                        re->pop.groups[gi].agit_base=clampf(re->pop.groups[gi].agit_base+15.f,0.f,100.f); }
-            re->coercion=1.f;                                   /* loi martiale durable */
+            int gi=find_group(&pe->pop, rb->drift_id);
+            if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L-2.f,0.f,10.f);
+                        pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base+15.f,0.f,100.f); }
+            pe->coercion=1.f;                                   /* loi martiale durable */
             if (rb->region<SCPS_MAX_REG) wl->L[rb->region]*=0.75f;  /* régner par la peur ronge L */
             rb->outcome=OUT_CRUSHED;
         } else {
@@ -445,13 +470,16 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                 case REBEL_COUP: {
                     /* l'élite prend le trône : la couronne adopte SA culture, lune
                      * de miel de légitimité ; les hommes rentrent (affaire de palais). */
-                    re->culture = rb->culture;
+                    pe->culture = rb->culture;
                     int cap = (rb->owner<w->n_countries)?w->country[rb->owner].capital_prov:-1;
                     int cr  = (cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
-                    if (cr>=0&&cr<econ->n_regions) econ->region[cr].culture=rb->culture;
+                    if (cr>=0&&cr<econ->n_regions){
+                        int crp=econ_region_rep_province(econ,cr);
+                        if (crp>=0&&crp<econ->n_prov) econ->prov[crp].culture=rb->culture;
+                    }
                     for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==rb->owner && r<SCPS_MAX_REG)
                         wl->L[r]=clampf(wl->L[r]+1.5f,0.f,10.f);
-                    re->coercion=fmaxf(0.f, re->coercion-0.3f);
+                    pe->coercion=fmaxf(0.f, pe->coercion-0.3f);
                     demobilize(econ, rb, rb->mobilized);
                     faction_levers_on_coup(rb->owner);   /* §4 : le coup purge la rancœur (plus de spirale) */
                     if (rb->owner>=0 && rb->owner<SCPS_MAX_COUNTRY)
@@ -462,7 +490,8 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                     int cid=rb->owner;
                     int capr=(cid>=0&&cid<w->n_countries)?w->country[cid].capital_prov:-1;
                     capr=(capr>=0&&capr<w->n_provinces)?w->province[capr].region:-1;
-                    float treas=(capr>=0&&capr<econ->n_regions)?econ->region[capr].treasury:0.f;
+                    int caprp=(capr>=0&&capr<econ->n_regions)?econ_region_rep_province(econ,capr):-1;
+                    float treas=(caprp>=0&&caprp<econ->n_prov)?econ->prov[caprp].treasury:0.f;
                     float capL =(capr>=0&&capr<SCPS_MAX_REG)?wl->L[capr]:0.f;
                     bool can_concede = (cid<0||cid>=SCPS_MAX_COUNTRY||g_concede_cd[cid]<=0.f)  /* pas déjà concédé ce décennie */
                                     && (treas>CONCEDE_TREAS_FLOOR || capL>CONCEDE_L_FLOOR);     /* … et de quoi céder */
@@ -471,22 +500,22 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                         long killed=(long)((float)rb->mobilized*CRUSH_KILL);
                         rs->pop_lost += killed; rs->n_crushed++;
                         demobilize(econ, rb, rb->mobilized-killed);
-                        int gi=find_group(&re->pop, rb->drift_id);
-                        if (gi>=0){ re->pop.groups[gi].L=clampf(re->pop.groups[gi].L-2.f,0.f,10.f);
-                                    re->pop.groups[gi].agit_base=clampf(re->pop.groups[gi].agit_base+15.f,0.f,100.f); }
-                        re->coercion=1.f;
+                        int gi=find_group(&pe->pop, rb->drift_id);
+                        if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L-2.f,0.f,10.f);
+                                    pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base+15.f,0.f,100.f); }
+                        pe->coercion=1.f;
                         if (rb->region<SCPS_MAX_REG) wl->L[rb->region]*=0.75f;
                         rb->outcome=OUT_CRUSHED;
                         break;
                     }
-                    if (capr>=0&&capr<econ->n_regions && treas>CONCEDE_TREAS_FLOOR)
-                        econ->region[capr].treasury=fmaxf(0.f, econ->region[capr].treasury-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));  /* acheter la paix */
+                    if (caprp>=0&&caprp<econ->n_prov && treas>CONCEDE_TREAS_FLOOR)
+                        econ->prov[caprp].treasury=fmaxf(0.f, econ->prov[caprp].treasury-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));  /* acheter la paix */
                     if (cid>=0&&cid<SCPS_MAX_COUNTRY) g_concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
-                    re->satisfaction=clampf(re->satisfaction+0.20f,0.f,1.f);
-                    re->coercion=fmaxf(0.f, re->coercion-0.4f);
-                    int gi=find_group(&re->pop, rb->drift_id);
-                    if (gi>=0){ re->pop.groups[gi].L=clampf(re->pop.groups[gi].L+2.f,0.f,10.f);
-                                re->pop.groups[gi].agit_base=clampf(re->pop.groups[gi].agit_base-25.f,0.f,100.f); }
+                    pe->satisfaction=clampf(pe->satisfaction+0.20f,0.f,1.f);
+                    pe->coercion=fmaxf(0.f, pe->coercion-0.4f);
+                    int gi=find_group(&pe->pop, rb->drift_id);
+                    if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L+2.f,0.f,10.f);
+                                pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base-25.f,0.f,100.f); }
                     demobilize(econ, rb, rb->mobilized);
                     /* §C3 — la concession a un PRIX : la faction de l'extorqueur CAPTURE
                      * l'État (rot↑ → malus noble), et l'OSSATURE ploie sans rebond
@@ -494,7 +523,7 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                     { float lean[FAC_COUNT]; group_ethos_lean(&rb->culture, lean);
                       int wf=0; for (int f=1;f<FAC_COUNT;f++) if (lean[f]>lean[wf]) wf=f;
                       faction_concede(rb->owner, (EthosFaction)wf); }
-                    re->build.K_inst = fmaxf(0.f, re->build.K_inst - tune_f("C3_K_HOLLOW",C3_K_HOLLOW));
+                    pe->build.K_inst = fmaxf(0.f, pe->build.K_inst - tune_f("C3_K_HOLLOW",C3_K_HOLLOW));
                     if (rb->region<SCPS_MAX_REG)
                         wl->L[rb->region] = clampf(wl->L[rb->region]-tune_f("C3_L_HOLLOW",C3_L_HOLLOW), 0.f, 10.f);
                     rs->n_concession++; rb->outcome=OUT_CONCESSION;
@@ -506,9 +535,10 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
         if (rb->region<SCPS_MAX_REG && rb->outcome!=OUT_SECEDED)
             rs->desperation_days[rb->region] = -REVOLT_COOLDOWN;
         /* CICATRICE : la province convulsée se développe mal quelques années
-         * (−50 % croissance & production) — la révolte laisse une plaie économique. */
-        if (rb->region>=0 && rb->region<econ->n_regions)
-            econ->region[rb->region].revolt_scar = 1.0f;
+         * (−50 % croissance & production) — la révolte laisse une plaie économique.
+         * RE-KEY PROVINCE : `pe` pointe TOUJOURS la même province représentative
+         * (spawn_secession n'a fait que changer son owner via econ_region_set_owner). */
+        pe->revolt_scar = 1.0f;
         /* usure : le slot se libère (la liste se compacte au prochain allumage) */
         rb->active=false;
     }

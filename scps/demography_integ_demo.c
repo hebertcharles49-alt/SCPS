@@ -50,7 +50,7 @@ int main(int argc, char **argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
-    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,RACE_HUMAIN);
+    econ_init(econ,w); gen_population(w,econ); worldgen_seed_peoples(w,econ,HERITAGE_ADAPTATIF);
     for (int c=0;c<w->n_countries;c++) tech_state_init(&ts[c],false);
     prosperity_init(wp,w); legitimacy_init(wl,w,econ);
     for (int t=0;t<20;t++){ econ_tick(econ, 1.f); econ_colonize_tick(econ,w,-1); world_tick(w,econ,1.f);
@@ -80,7 +80,7 @@ int main(int argc, char **argv){
     int rP=-1;
     for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==player && econ->region[r].pop.n_groups>0){
         PopGroup *g=&econ->region[r].pop.groups[0];
-        g->origin=crown; g->culture=crown; g->race=crown.race; g->origin_sphere=SPHERE_HOMMES;
+        g->origin=crown; g->culture=crown; g->heritage=crown.heritage; g->origin_sphere=SPHERE_HOMMES;
         g->L=7.f; g->integration=1.f; econ->region[r].pop.n_groups=1; econ->region[r].culture=crown;
         if (rP<0) rP=r;
     }
@@ -92,7 +92,7 @@ int main(int argc, char **argv){
     mc.subsistance=(crown.subsistance<5?9.f:1.f); mc.parente=(crown.parente<5?9.f:1.f);
     ProvincePop *pp=&econ->region[rP].pop;
     PopGroup m; memset(&m,0,sizeof m);
-    m.race=RACE_ORQUE; m.origin_sphere=SPHERE_ETRANGERS; m.origin=mc; m.culture=mc; m.klass=CLASS_LABORER;
+    m.heritage=HERITAGE_CLANIQUE; m.origin_sphere=SPHERE_ETRANGERS; m.origin=mc; m.culture=mc; m.klass=CLASS_LABORER;
     m.count=pp->groups[0].count/3+50; m.L=5.f; m.integration=0.f; m.diaspora=true; m.drift_id=50000;
     pp->groups[pp->n_groups++]=m;
     float pdinf=province_Dinf(pp,drift);

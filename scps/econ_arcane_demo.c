@@ -44,7 +44,7 @@ int main(int argc, char **argv){
     WorldParams p=worldparams_default(seed);
     world_generate(w,&p);
     econ_init(e,w); gen_population(w,e);
-    worldgen_seed_peoples(w,e,RACE_HUMAIN);
+    worldgen_seed_peoples(w,e,HERITAGE_ADAPTATIF);
     prosperity_init(wp,w); legitimacy_init(wl,w,e);
     for (int c=0;c<w->n_countries;c++) tech_state_init(&ts[c],false);
 
@@ -58,45 +58,57 @@ int main(int argc, char **argv){
     printf("   nœuds de cristal : %d régions sur %d peuplées\n", n_nodes, n_settled);
     ok("le cristal est rare (pas dans toute région)", n_nodes < n_settled);
 
-    /* On force un nœud + atelier de mage sur une région d'un PAYS, pour isoler
-     * le fil arcane même si la graine n'a pas placé de nœud chez lui. */
+    /* On force un nœud + atelier de mage sur une PROVINCE d'un PAYS (charte : l'économie
+     * brute — dont raw_cap — vit à la province ; la région n'est qu'un agrégat recalculé
+     * CHAQUE tick par econ_aggregate_regions — poker region[].raw_cap directement serait
+     * écrasé au 1er econ_tick), pour isoler le fil arcane même si la graine n'a pas placé
+     * de nœud chez lui. */
     int rid=-1, cid=-1;
     for (int r=0;r<e->n_regions;r++) if (e->region[r].owner>=0 && e->region[r].colonized){ rid=r; cid=e->region[r].owner; break; }
     if (rid<0){ rid=0; cid=e->region[0].owner; }
-    e->region[rid].raw_cap[RES_ARCANE_CRYSTAL] = 4.0f;   /* un nœud généreux */
+    int pid=e->region_rep_prov[rid];
+    if (pid<0){ for (int p=0;p<e->n_prov;p++) if (e->prov[p].region==rid){ pid=p; break; } }
+    ProvinceEconomy *pre=&e->prov[pid];
+    pre->raw_cap[RES_ARCANE_CRYSTAL] = 4.0f;   /* un nœud généreux */
     /* atelier de mage (si pas déjà là) — on lui donne un niveau pour qu'il tourne */
     {
         int bi=-1;
-        for (int i=0;i<e->region[rid].n_bld;i++) if (e->region[rid].bld[i].type==BLD_MAGE_WORKSHOP) bi=i;
-        if (bi<0 && e->region[rid].n_bld<ECON_MAX_BLD){ bi=e->region[rid].n_bld++; e->region[rid].bld[bi].type=BLD_MAGE_WORKSHOP; }
-        if (bi>=0) e->region[rid].bld[bi].level=3.f;
+        for (int i=0;i<pre->n_bld;i++) if (pre->bld[i].type==BLD_MAGE_WORKSHOP) bi=i;
+        if (bi<0 && pre->n_bld<ECON_MAX_BLD){ bi=pre->n_bld++; pre->bld[bi].type=BLD_MAGE_WORKSHOP; }
+        if (bi>=0) pre->bld[bi].level=3.f;
     }
 
     /* ═══ 2-3. L'atelier brûle le cristal → essence + charge ═════════════ */
     printf("\n── 2-3. L'atelier de mage brûle le cristal → essence (charge arcane) ──\n");
-    float ess0=e->region[rid].stock[RES_ESSENCE];
+    /* P1 — l'essence produite va au POOL NATIONAL puis est redistribuée aux régions au prorata de la
+     * pop : lire la SEULE région-atelier en sous-estime la part (≈ sa pop-share). On mesure donc
+     * l'essence à l'échelle du PAYS (Σ régions de cid) = la vraie production raffinée. */
+    float ess0=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) ess0+=e->region[r].stock[RES_ESSENCE];
     for (int t=0;t<3;t++) econ_tick(e,1.f);
-    float ess1=e->region[rid].stock[RES_ESSENCE];
+    float ess1=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) ess1+=e->region[r].stock[RES_ESSENCE];
     float charge=e->region[rid].arcane_charge;
-    printf("   région %d : essence %.1f→%.1f | charge arcane ce tick = %.2f\n", rid, ess0, ess1, charge);
+    printf("   pays %d : essence (pool) %.1f→%.1f | charge arcane (rég %d) = %.2f\n", cid, ess0, ess1, rid, charge);
     ok("l'atelier de mage PRODUIT de l'essence (le cristal raffiné)", ess1 > ess0 + 0.5f);
     ok("brûler le cristal CHARGE l'arcane (arcane_charge > 0)", charge > 0.01f);
 
     /* ═══ 4. La forge céleste : fer céleste + essence → armes enchantées → puissance ═ */
     printf("\n── 4. Forge céleste : fer céleste + essence → armes enchantées → puissance militaire ──\n");
     float mil0 = diplo_mil_power(w, e, cid);
-    e->region[rid].raw_cap[RES_CELESTIAL_IRON] = 3.0f;     /* un filon de fer céleste */
-    e->region[rid].raw_cap[RES_COAL]           = 3.0f;     /* + le CHARBON : in2 de la forge (fer céleste + CHARBON → armes
-                                                              enchantées). La « carte nue » ne pose plus charbonnière ni socle
-                                                              de charbon d'office → le banc fournit l'intrant explicitement. */
+    pre->raw_cap[RES_CELESTIAL_IRON] = 3.0f;     /* un filon de fer céleste */
+    pre->raw_cap[RES_COAL]           = 3.0f;     /* + le CHARBON : in2 de la forge (fer céleste + CHARBON → armes
+                                                    enchantées). La « carte nue » ne pose plus charbonnière ni socle
+                                                    de charbon d'office → le banc fournit l'intrant explicitement. */
     {
         int bi=-1;
-        for (int i=0;i<e->region[rid].n_bld;i++) if (e->region[rid].bld[i].type==BLD_CELESTIAL_FORGE) bi=i;
-        if (bi<0 && e->region[rid].n_bld<ECON_MAX_BLD){ bi=e->region[rid].n_bld++; e->region[rid].bld[bi].type=BLD_CELESTIAL_FORGE; }
-        if (bi>=0) e->region[rid].bld[bi].level=3.f;
+        for (int i=0;i<pre->n_bld;i++) if (pre->bld[i].type==BLD_CELESTIAL_FORGE) bi=i;
+        if (bi<0 && pre->n_bld<ECON_MAX_BLD){ bi=pre->n_bld++; pre->bld[bi].type=BLD_CELESTIAL_FORGE; }
+        if (bi>=0) pre->bld[bi].level=3.f;
     }
     for (int t=0;t<5;t++) econ_tick(e,1.f);   /* la chaîne tourne : cristal→essence→armes */
-    float arms = e->region[rid].stock[RES_ENCHANTED_ARMS];
+    /* P1 — comme l'essence : les armes vont au POOL NATIONAL puis sont redistribuées au prorata de la
+     * pop ; lire la SEULE région-forge en sous-estime la part (et le relief #1 a changé sa pop-share).
+     * On mesure donc la production d'armes à l'échelle du PAYS (Σ régions de cid). */
+    float arms=0.f; for(int r=0;r<e->n_regions;r++) if(e->region[r].owner==cid) arms+=e->region[r].stock[RES_ENCHANTED_ARMS];
     float mil1 = diplo_mil_power(w, e, cid);
     printf("   armes enchantées en stock = %.1f | puissance militaire %.2f → %.2f\n", arms, mil0, mil1);
     ok("la forge céleste PRODUIT des armes enchantées (fer céleste + essence)", arms > 0.5f);
@@ -118,8 +130,13 @@ int main(int argc, char **argv){
      * RECHARGE depuis le STOCK, pas seulement l'extraction du tick), la charge ne
      * retombe pas et la déréalisation reste identique. Sans nœud NI stock, la
      * combustion cesse vraiment → charge→0 → le flux faustien reflue. */
-    e->region[rid].raw_cap[RES_ARCANE_CRYSTAL]=0.f;
-    e->region[rid].stock[RES_ARCANE_CRYSTAL]=0.f;
+    pre->raw_cap[RES_ARCANE_CRYSTAL]=0.f;
+    /* le cristal DÉJÀ extrait vit au POOL NATIONAL (P1 : toute brute produite va au stock
+     * de SON empire) — vider la seule province-atelier ne suffit pas si le pool a déjà
+     * redistribué au prorata de la pop sur les AUTRES provinces de cid. On vide partout. */
+    for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==cid){
+        for (int p=0;p<e->n_prov;p++) if (e->prov[p].region==r) e->prov[p].stock[RES_ARCANE_CRYSTAL]=0.f;
+    }
     for (int t=0;t<4;t++) econ_tick(e,1.f);   /* la charge retombe à 0 */
     prosperity_tick(wp,w,e,NULL,ts,wl);
     float dereal_quiet = wp->country[cid].dereal;

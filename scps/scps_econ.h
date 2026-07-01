@@ -9,7 +9,7 @@
  *                captent le profit, demandent des biens manufacturés.
  *   ELITES     — aristocratie. Vivent de la taxe et de la rente, produisent
  *                la TECH (recherche) et exigent des biens de luxe (joaillerie,
- *                étoffe précieuse, vin).
+ *                étoffe précieuse, eau-de-vie).
  *
  * Unité de simulation : la RÉGION (= le « marché régional » du cahier des
  * charges). Chaque région a :
@@ -36,8 +36,9 @@
 #include <stdio.h>          /* FILE* : helpers de save (prod_cap) */
 #include "scps_types.h"
 #include "scps_culture.h"   /* PopCulture embarque les traits dérivés (Ethos, …) */
-#include "scps_species.h"   /* couche biologique : race + traits (leviers) */
+#include "scps_heritage.h"   /* couche biologique : heritage + traits (leviers) */
 #include "scps_tech.h"      /* TechState : §B1 abonde prod_mult par les techs de production */
+#include "scps_tune.h"      /* tune_f : lu par les modificateurs provinciaux (inline ci-dessous) */
 
 /* §C — L'INTERRUPTEUR de l'inflation monétaire. 1 = active ; 0 = RETIRE tout effet
  * (l'IPM reste à 1.0, le multiplieur de prix est l'identité — la variable est gardée
@@ -65,14 +66,13 @@ typedef enum {
     BLD_TEXTILE = 0,   /* laine   → tissu               */
     BLD_SAWMILL,       /* bois    → fournitures navales */
     BLD_PAPERMILL,     /* bois    → papier              */
-    BLD_WINERY,        /* sucre   → vin                 */
+    BLD_DISTILLERY,        /* sucre   → eau-de-vie                 */
     BLD_BREWERY,       /* grain   → bière (palier moral des Clans/Souterrain) */
     BLD_JEWELER,       /* or+métal précieux → joaillerie (bien d'élite) */
     BLD_WEAVER_LUX,    /* tissu   → étoffe précieuse    */
     BLD_MAGE_WORKSHOP, /* ARCANE : cristal → essence (mana) — sa combustion MONTE la Brèche */
     BLD_CELESTIAL_FORGE,/* ARCANE militaire : fer céleste + essence → armes enchantées */
-    BLD_FOUNDRY,       /* fer + charbon → métal (haut-fourneau) */
-    BLD_TOOLWORKS,     /* métal + bois → outils → MULTIPLICATEUR de productivité */
+    BLD_TOOLWORKS,     /* fer + bois → outils (DIRECT) → MULTIPLICATEUR de productivité */
     BLD_ARMORY,        /* fer → armes (armurerie) → puissance militaire de base */
     BLD_POWDERMILL,    /* salpêtre + charbon → poudre (poudrière) → puissance militaire */
     BLD_APOTHECARY,    /* simples → remèdes (apothicaire) → santé/confort */
@@ -88,6 +88,9 @@ typedef enum {
     BLD_ARMORY_HEAVY,  /* F2 : fer ×3 → armes LOURDES */
     BLD_BOWYER,        /* F2 : fer + bois → armes de TRAIT */
     BLD_ARQUEBUS,      /* F2 : fer + poudre (cuivre repli) → armes à FEU (gate TECH_POUDRIERE, F7) */
+    /* === CONFORT du brut de bâti : la DEMANDE qui tire l'extraction d'argile/pierre (manuf normale) === */
+    BLD_POTTERY,       /* poterie            : argile → poterie (confort journalier/bourgeois → bonheur) */
+    BLD_SCULPTURE,     /* atelier de sculpture : pierre → statuaire (confort bourgeois/élite → bonheur) */
     BLD_TYPE_COUNT
 } BuildingType;
 
@@ -100,7 +103,7 @@ typedef struct {
 #define ECON_MAX_BLD BLD_TYPE_COUNT  /* une manufacture de CHAQUE type par région — calé sur
                                       * l'enum (était figé à 6 alors que les types ont grimpé à
                                       * 14 : les bâtiments communs saturaient les slots et
-                                      * évinçaient les rares — joaillerie, fonderie, outillage —
+                                      * éeau-de-vieçaient les rares — joaillerie, fonderie, outillage —
                                       * d'où leur pénurie. Désormais auto-calé : plus de désync). */
 
 /* E2 §11 — plafond de STOCK régional par ressource : base sans Entrepôt, +cap
@@ -129,27 +132,27 @@ typedef struct {
     EconTrait    econ;
     int  age;       /* ticks d'existence (dérive) */
     bool settled;   /* false = région vierge, pas encore peuplée */
-    /* Couche BIOLOGIQUE (superposée à la culture) : la race et ses leviers
+    /* Couche BIOLOGIQUE (superposée à la culture) : la heritage et ses leviers
      * (démographie, K, P, H, dérive, fracture…). Posée par worldgen_seed_peoples. */
-    SpeciesArchetype race;
+    Heritage heritage;
 } PopCulture;
 
 /* ---- GROUPES de population (clé de voûte démographique) ---------------- *
  * Une province ne contient plus une fiche homogène mais des GROUPES
- * (race, culture, classe, effectif). D interne = distance ENTRE groupes ;
+ * (heritage, culture, classe, effectif). D interne = distance ENTRE groupes ;
  * H agit SUR eux ; l'assimilation fait DÉRIVER la culture d'une minorité.
  * `culture` est la fiche EFFECTIVE (cache recalculé = origine + dérive) — ce que
  * lisent prosperity/legitimacy ; `origin` est le substrat FIXE. Rétro-compat :
  * une province à UN groupe reproduit exactement les nombres d'hier. */
 #define SCPS_MAX_GROUPS 8
 typedef struct {
-    SpeciesArchetype race;
+    Heritage heritage;
     Sphere       origin_sphere;  /* FIXE : pour le gouffre */
     PopCulture   origin;         /* substrat FIXE */
     PopCulture   culture;        /* fiche EFFECTIVE (cache = origine + dérive) */
     SocialClass  klass;          /* (hérité) la classe « principale » du groupe */
     long         count;
-    /* CLASSE ÉMERGENTE (§pop précise) : combien de ce groupe (race×culture×foi) sont
+    /* CLASSE ÉMERGENTE (§pop précise) : combien de ce groupe (heritage×culture×foi) sont
      * Journaliers / Bourgeois / Nobles — sort des EMPLOIS (capitale + ateliers), par
      * paquets de 100. Σ pop_by_class = count. Jamais posé : recalculé au tick. */
     long         pop_by_class[CLASS_COUNT];
@@ -183,7 +186,13 @@ typedef struct {
                       * Caravansérail ouvre P sans donner de rade). Posé par EDI_PORT. */
 } ProvBuild;
 
-/* ---- Économie d'une région -------------------------------------------- */
+/* ---- Économie d'une PROVINCE (charte PROVINCE_MODEL.md) ----------------
+ * L'unité individualisée — l'économie BRUTE (au sens du modèle EU4) VIT ici :
+ * pop, strates, culture locale, EXACTEMENT 2 ressources brutes, bâtiments,
+ * production, stock, croissance, colonisé, propriétaire. La RÉGION (plus bas)
+ * n'est plus qu'un AGRÉGAT calculé depuis ses provinces — elle ne produit rien
+ * elle-même. Champ-à-champ identique à l'ex-RegionEconomy (même sémantique,
+ * mêmes tunables) — seul le GRAIN change (province au lieu de région). */
 typedef struct {
     PopStratum strata[CLASS_COUNT];
     PopCulture culture;   /* profil culturel DOMINANT (synchronisé sur le plus gros groupe) */
@@ -192,19 +201,31 @@ typedef struct {
     uint32_t   edi_built; /* E1bis.11 : masque des ÉDIFICES bâtis (par-édifice → upgrades familiales) */
     float      route_pe;  /* PE apporté par les routes commerciales (transitoire) */
     float      import_margin;     /* I6 : marge d'achat au marché (1.0 défaut) — ÉCRITE par intertrade, LUE par agency */
-    int16_t    import_toll_region;/* I6 : région-Centre qui touche le péage (-1 si aucun) — transitoire */
+    int16_t    import_toll_region;/* I6 : province-Centre qui touche le péage (-1 si aucun) — transitoire */
     /* M3 (forks §8) — L'HYSTÉRÉSIS DU PÔLE : last_pole = le pôle VALIDÉ (celui que
      * les forks lisent) ; pole_since_day = depuis quand un pôle DIFFÉRENT s'observe
      * (0 = aligné). Un candidat doit tenir ≥ 360 j avant de devenir le pôle lu. */
     int8_t     last_pole;         /* TechPole validé (POLE_ORDRE par défaut) */
     int32_t    pole_since_day;    /* jour où le candidat divergent est apparu (0 = aucun) */
 
-    float      raw_cap[RES_COUNT];   /* extraction max/tick par matière première */
+    float      raw_cap[RES_COUNT];   /* extraction max/tick par matière première (EXACTEMENT 2 brutes non-nulles après vocation) */
+    uint8_t    raw_boost[RES_COUNT]; /* EXPLOITATION : palier de boost d'extraction PAR brute (+RAW_BOOST_PER_TIER/palier) — bâti & amélioré comme une manufacture, scale sur les bras d'extraction */
     Building   bld[ECON_MAX_BLD];
     int        n_bld;
 
-    float      stock [RES_COUNT];    /* entrepôt régional — PLAFONNÉ : 200/ressource + 500 par Entrepôt bâti (E2 §11) */
-    float      price [RES_COUNT];    /* prix de marché courant */
+    /* ALLOCATION DE MAIN-D'ŒUVRE (joueur/IA) — override du split AUTO du tick.
+     *  · alloc_on=0 (DÉFAUT) ⇒ comportement AUTO : extraction ∝ geo×prix sous
+     *    EXTRACT_LABOR_SHARE, manufacture gloutonne par ordre de bâtiment.
+     *  · alloc_on=1 ⇒ le bassin labor_avail (journaliers+bourgeois) est réparti par les
+     *    POIDS ci-dessous — extraction ET manufacture dans UN SEUL budget (somme=100 % à l'UI).
+     *    Un poids 0 sur un bâtiment = FERMÉ (aucune sortie, aucun intrant consommé). */
+    uint8_t    alloc_on;                       /* 0 = auto (défaut, déterminisme préservé) ; 1 = override */
+    uint8_t    alloc_raw[RES_PROD_FIRST];      /* poids d'allocation par brute extraite (0-255) */
+    uint8_t    alloc_bld[BLD_TYPE_COUNT];      /* poids d'allocation par type de bâtiment (0 = fermé) */
+    uint8_t    bld_input[BLD_TYPE_COUNT];      /* choix d'intrant : 0 = primaire (in1) ; 1 = repli (alt1) */
+
+    float      stock [RES_COUNT];    /* entrepôt local — PLAFONNÉ : 200/ressource + 500 par Entrepôt bâti (E2 §11) */
+    float      price [RES_COUNT];    /* prix de marché courant (province ISOLÉE) / miroir du prix RÉGIONAL projeté */
     float      demand[RES_COUNT];    /* demande agrégée (dernier tick) */
     float      supply[RES_COUNT];    /* offre agrégée (dernier tick) */
     uint8_t    n_entrepot;           /* E2 §11 : Entrepôts BÂTIS ici (chacun +500 de cap de stock) */
@@ -220,7 +241,7 @@ typedef struct {
     float      gdp;                  /* valeur produite au dernier tick */
     float      satisfaction;         /* satisfaction générale [0..1] */
     float      food_sat;             /* satisfaction alimentaire [0..1] (grain+fish) */
-    float      society_sat;          /* satisfaction sociale [0..1] (cloth+wine+…) */
+    float      society_sat;          /* satisfaction sociale [0..1] (cloth+eau-de-vie+…) */
     float      needs_met;            /* [0..1] : fraction ABSOLUE du panier couverte (catégories ≥τ / total du panier), pop-pondérée — pilote la FERTILITÉ (×2 subsistance → ×4 plein) */
     float      over_tax;             /* surtaxe ressentie par les laboureurs [0..1] (grief → révolte) */
     float      cap_pop;              /* capacité d'accueil (pop cible à terme) */
@@ -235,6 +256,17 @@ typedef struct {
     /* Cicatrice de révolte [0..1] : une province récemment soulevée se développe
      * MAL (−50 % de croissance ET de production) ; décroît sur quelques années. */
     float      revolt_scar;
+    /* FAVEURS provinciales À ÉTAT (modificateurs diégétiques, lot 2) — [0..1], décroissent
+     * chaque tick. ferveur = l'élan d'une colonie fraîchement fondée (semée à la colonisation) ;
+     * reconstruction = la renaissance d'après-choc (amorcée par une cicatrice PROFONDE, elle
+     * OUTLASTE la plaie → la reprise suit la paix). Routées par l'entrée DÉMO (provmod_collect). */
+    float      ferveur;
+    float      reconstruction;
+    /* CICATRICE D'ANNEXION [0..1] (pipeline diplo, étage 3d) : une province ANNEXÉE par voie
+     * de vassalité porte une plaie DOUCE — frappe la STABILITÉ (satisfaction/légitimité), PAS
+     * la croissance (distincte de revolt_scar) — qui décroît sur ~5 ans. L'intégration la
+     * RABAISSE → la voie patiente paie. Surfacée dans le slot MODIFICATEURS (fléau décroissant). */
+    float      annex_scar;
     /* Anti-saccage (§4 guerre) : une province DÉPOUILLÉE ne peut l'être à nouveau
      * avant ~5 ans (plus rien à prendre) — compteur en années, décroît chaque tick. */
     float      pillage_cd;
@@ -242,26 +274,114 @@ typedef struct {
     /* ARCANE (§ fil arcane) : essence brûlée ce tick par les ateliers de mage.
      * prosperity_tick l'agrège dans le flux faustien → déréalisation/Brèche. */
     float      arcane_charge;       /* FAU0 : activité faustienne CE tick (reset/tick, += par faust_charge_add) */
-    float      faust_charge;        /* FAU0/FAU1 : entropie CUMULÉE de la région (accumule l'activité, décrue passive) */
+    float      faust_charge;        /* FAU0/FAU1 : entropie CUMULÉE de la province (accumule l'activité, décrue passive) */
     float      faust_consumed[3];   /* FAU0 #3 : conso cumulée (0 essence/foreuse · 1 flux/réplicateur · 2 fer céleste/corne) — caché */
     float      mil_stock;           /* F6 : canal de FORCE D'ARMÉE (warhost → diplo_mil_power), DÉCOUPLÉ du RES_ARMS économique que la levée consomme */
 
-    float      habitability;          /* habitabilité moyenne [0..1] — héritée des provinces */
+    float      habitability;          /* habitabilité [0..1] (propre à la province) */
     bool       active;               /* terre habitable (colonisable) */
     bool       impassable;           /* zone morte : infranchissable pour colonisation et commerce */
     bool       colonized;            /* effectivement peuplée/settlée */
-    int16_t    owner;                /* pays qui contrôle la région (-1 = vierge) */
-    bool       coastal;              /* une province au moins touche la mer (posé à econ_init) */
+    int16_t    owner;                /* pays qui contrôle la province (-1 = vierge) */
+    int16_t    region;               /* RÉGION géographique qui la groupe (miroir de World.province[].region,
+                                       * caché ici pour qu'econ_tick puisse agréger SANS World* — la signature
+                                       * publique econ_tick(WorldEconomy*, dt) ne change pas). Posé à econ_init. */
+    bool       coastal;              /* la province touche la mer (posé à econ_init) */
     bool       estuary;              /* une EMBOUCHURE vit ici (mer ∩ gros fleuve) — l'entrepôt naturel */
+    bool       is_capital;           /* province-SIÈGE (porte la capitale d'un empire/cité) — EXEMPTE du malus d'habitabilité (la province de départ) */
+    uint8_t    prov_geo;             /* dons GÉO sélectifs (drapeaux PROVF_*, posés à econ_init) : gibier/halieutique */
     /* LA COURSE (coques §4) : balafre côtière et immunité au raid. */
     float      balafre_days;         /* > 0 : côte balafrée (production entaillée ~1 an) */
     float      raid_cd_days;         /* > 0 : immunisée (~5 ans — on ne trait pas la même vache) */
+} ProvinceEconomy;
+
+/* ---- Agrégat d'une RÉGION (charte PROVINCE_MODEL.md) --------------------
+ * La région ne produit RIEN elle-même : elle REFLÈTE ses provinces (prospérité,
+ * satisfaction, marché, légitimité, agitation = sommes/moyennes pop-pondérées
+ * des ProvinceEconomy membres, recalculées par econ_tick après la boucle
+ * province). Elle reste le grain lu par guerre/diplo/commerce/endgame (règle 4
+ * de la charte) et porte le MARCHÉ (prix/offre/demande) — le pool de ses
+ * provinces. Champs identiques à l'ancien RegionEconomy pour ne rien casser
+ * côté lecteurs (legitimacy/revolt/statecraft/diplo/prosperity/campaign). */
+typedef struct {
+    PopStratum strata[CLASS_COUNT];
+    PopCulture culture;   /* profil culturel DOMINANT (synchronisé sur le plus gros groupe/province) */
+    ProvincePop pop;      /* GROUPES agrégés (miroir de la province-capitale/dominante) */
+    ProvBuild  build;     /* densité institutionnelle bâtie — somme des provinces membres */
+    uint32_t   edi_built; /* union des masques d'édifices des provinces membres */
+    float      route_pe;
+    float      import_margin;
+    int16_t    import_toll_region;
+    int8_t     last_pole;
+    int32_t    pole_since_day;
+
+    float      raw_cap[RES_COUNT];   /* Σ provinces */
+    uint8_t    raw_boost[RES_COUNT]; /* max provinces */
+    Building   bld[ECON_MAX_BLD];    /* miroir informatif (agrégat simple, cf. econ_tick) */
+    int        n_bld;
+
+    uint8_t    alloc_on;
+    uint8_t    alloc_raw[RES_PROD_FIRST];
+    uint8_t    alloc_bld[BLD_TYPE_COUNT];
+    uint8_t    bld_input[BLD_TYPE_COUNT];
+
+    float      stock [RES_COUNT];    /* pool régional = Σ stocks provinces */
+    float      price [RES_COUNT];    /* prix de MARCHÉ régional (soldé ici, lu par les provinces membres) */
+    float      demand[RES_COUNT];    /* Σ demande des provinces */
+    float      supply[RES_COUNT];    /* Σ offre des provinces */
+    uint8_t    n_entrepot;
+
+    float      treasury;             /* Σ trésor des provinces */
+    float      tech;                 /* Σ tech des provinces */
+    float      tech_prod;
+    bool       tech_foreuse;
+    bool       tech_alchimie;
+    bool       tech_replicateur;
+    bool       tech_corne;
+    bool       tech_arquebus;
+    float      gdp;                  /* Σ PIB des provinces */
+    float      satisfaction;         /* pop-pondérée */
+    float      food_sat;             /* pop-pondérée */
+    float      society_sat;          /* pop-pondérée */
+    float      needs_met;            /* pop-pondérée */
+    float      over_tax;             /* pop-pondérée */
+    float      cap_pop;              /* Σ provinces */
+    float      prosperity;           /* PIB/tête régional */
+
+    float      diaspora_pop;
+    float      diaspora_innovation;
+
+    float      coercion;             /* max provinces */
+    float      revolt_scar;          /* pop-pondérée (max des cicatrices vives) */
+    float      ferveur;
+    float      reconstruction;
+    float      annex_scar;
+    float      pillage_cd;
+
+    float      arcane_charge;        /* Σ provinces */
+    float      faust_charge;         /* Σ provinces */
+    float      faust_consumed[3];    /* Σ provinces */
+    float      mil_stock;            /* Σ provinces */
+
+    float      habitability;         /* pop-pondérée (repli : moyenne surface si pop nulle) */
+    bool       active;               /* au moins une province active */
+    bool       impassable;           /* TOUTES les provinces membres sont infranchissables */
+    bool       colonized;            /* au moins une province colonisée */
+    int16_t    owner;                /* pays de la province-CAPITALE (ou majoritaire à défaut) */
+    bool       coastal;              /* au moins une province côtière */
+    bool       estuary;              /* au moins une province-embouchure */
+    bool       is_capital;           /* la région porte la province-capitale d'un empire/cité */
+    uint8_t    prov_geo;             /* union des drapeaux PROVF_* des provinces membres */
+    float      balafre_days;         /* max provinces */
+    float      raid_cd_days;         /* max provinces */
 } RegionEconomy;
 
 /* Conteneur — possédé par l'appelant, séparé du World pour ne pas alourdir
  * son ABI. */
 typedef struct {
-    RegionEconomy region[SCPS_MAX_REG];
+    ProvinceEconomy prov[SCPS_MAX_PROV];   /* LA VÉRITÉ : l'économie vit ici (charte PROVINCE_MODEL.md) */
+    int              n_prov;
+    RegionEconomy   region[SCPS_MAX_REG]; /* AGRÉGAT (reflète prov[]) — lu tel quel par guerre/diplo/commerce/endgame */
     int           n_regions;
     int           tick;
 
@@ -274,6 +394,13 @@ typedef struct {
     /* Adjacence de régions (terre, 4-connexe) — calculée à l'init, sert à
      * la colonisation (expansion vers une région vierge voisine). */
     uint8_t       adj[SCPS_MAX_REG][SCPS_MAX_REG];
+    /* Adjacence de PROVINCES (terre, 4-connexe) — colonisation par-province (charte règle 5). */
+    uint8_t       *prov_adj;   /* alloué dynamiquement [SCPS_MAX_PROV*SCPS_MAX_PROV] (1664² ≈ 2.7 Mo — trop gros pour la pile/BSS d'un tableau statique 2D) */
+    /* Province REPRÉSENTATIVE de chaque région (capitale, sinon la plus peuplée, sinon la
+     * première active) — cache posé par econ_build_adjacency (qui a le World*). Résout le
+     * grain public historique « région » (econ_build_manufacture, …) vers la province où
+     * l'économie VIT réellement (charte), sans changer ces signatures publiques. -1 = aucune. */
+    int16_t       region_rep_prov[SCPS_MAX_REG];
 } WorldEconomy;
 
 /* ---- API -------------------------------------------------------------- */
@@ -281,11 +408,166 @@ typedef struct {
 /* Initialise pops, capacités d'extraction et manufactures à partir de la
  * géographie/ressources du monde déjà généré. */
 void econ_init(WorldEconomy *e, const World *w);
+/* MODTOOLS — surcharge des VALEURS éco (prix/rendement) par fichier TSV name-keyed.
+ * dump : écrit le point de départ éditable. load : applique les surcharges (auto à
+ * econ_init si l'env SCPS_MODS pointe un fichier). Sans fichier ⇒ valeurs compilées. */
+void econ_moddata_dump(FILE *f);
+int  econ_moddata_load(const char *path);
+/* (Re)construit l'adjacence de régions (terre 4-connexe, barrières = infranchissable).
+ * Appelée par econ_init ; exposée pour le recalcul du capstone §27 (carve eau/ronces). */
+void econ_build_adjacency(WorldEconomy *e, const World *w);
+/* Province REPRÉSENTATIVE d'une région (capitale, sinon la plus peuplée, sinon la première
+ * active — cache posé par econ_build_adjacency). RE-KEY PROVINCE (PROVINCE_MODEL.md) : tout
+ * écrivain HORS TICK (agency/diplo/credit/revolt/…) qui touchait `region[r].<champ>` entre
+ * deux econ_tick() voyait son écriture EFFACÉE au tick suivant (econ_aggregate_regions
+ * reconstruit region[] EN ENTIER depuis prov[]) — router l'écriture ICI, sur la province
+ * représentative, la fait SURVIVRE (l'agrégation la re-somme/re-reflète au tick d'après).
+ * -1 si la région n'a aucune province active. */
+int econ_region_rep_province(const WorldEconomy *e, int region);
+/* Reconstruit region[] EN ENTIER depuis prov[] (le CŒUR d'econ_tick, exposé nu — PURE
+ * fonction de prov[], AUCUN effet de temps/dt). Exposée pour les BANCS : un fixture qui
+ * pose l'économie directement sur prov[] (charte : la vérité vit là) doit pouvoir rafraîchir
+ * l'agrégat region[] SANS faire tourner un tick entier (croissance/production/décroissance)
+ * juste pour que les lecteurs qui lisent encore region[] (agency/diplo/revolt/…, grain public
+ * historique) voient un état à jour. Le jeu réel n'en a jamais besoin (econ_tick l'appelle
+ * déjà en clôture, chaque jour). */
+void econ_aggregate_regions(WorldEconomy *e);
+/* GAMEPLAY — garantit argile + pierre dans le rayon 1-2 de la capitale du joueur (force si absent).
+ * À appeler après econ_init (adjacence) ET l'assignation des capitales (worldgen_seed_peoples). */
+void econ_guarantee_player_construction(WorldEconomy *e, const World *w, int player_cid);
+/* Capstone §27 FROID : re-dérive la fertilité vivrière (raw_cap[RES_GRAIN]) de
+ * l'habitabilité COURANTE (carte refroidie) → la famine émerge sous le gel. */
+void econ_cold_refresh(WorldEconomy *e, const World *w);
+
+/* ---- MODIFICATEURS PROVINCIAUX (diégétiques) -------------------------- *
+ * Un effet NOMMÉ, DÉRIVÉ de l'état réel de la région (remplissage, nourriture,
+ * cicatrice) — PAS un champ stocké : recalculé à chaque lecture (le moteur ET la
+ * membrane appellent la même fonction), donc AUCUN bump de save. L'effet passe par
+ * une ENTRÉE moteur (la démographie de la croissance), jamais un bonus plat sur la
+ * sortie ; le readout le traduit en mots. Les modificateurs À ÉTAT (ferveur fondatrice,
+ * reconstruction) viendront avec un champ sérialisé (et son bump). */
+/* Dons géo sélectifs (RegionEconomy.prov_geo), posés à econ_init (tirage déterministe). */
+#define PROVF_GIBIER       0x01u   /* ~1/3 des régions boisées : gibier abondant */
+#define PROVF_HALIEUTIQUE  0x02u   /* ~1/3 des régions côtières : manne halieutique */
+typedef enum { PMOD_NONE=0, PMOD_CICATRICE, PMOD_ABONDANCE,
+               PMOD_FERVEUR, PMOD_RECONSTRUCTION, PMOD_LIMON,
+               PMOD_GIBIER, PMOD_HALIEUTIQUE, PMOD_ADMIN,
+               PMOD_ANNEX_SCAR, PMOD_COUNT } ProvModKind;
+typedef struct {
+    uint8_t kind;        /* ProvModKind */
+    float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
+    float   demo_bonus;  /* delta ajouté à l'entrée DÉMOGRAPHIE de la croissance (0 = fléau, pur affichage) */
+} ProvModHit;
+/* eff_cap d'une PROVINCE (MERGÉ : tier housing + manufacture housing + grenier).
+ * INLINE, générique par macro : partagée par le moteur (croissance, par-province) ET la
+ * membrane (readout région/pays) sans dépendance de LIEN. Pure, sans libc-math.
+ *   eff_cap = ½·cap_pop (terre nue)
+ *           + tier_housing (capital tier × 1000 — le bâtiment principal)
+ *           + manuf_housing (Σ bld.level × HOUSE_MANUF — les manufactures AJOUTENT)
+ *           + grenier (food_cap × 250)
+ * Le tier est DÉRIVÉ de la pop (pas un champ stocké) — même table que capitale_max_tier. */
+#define ECON_EFFCAP_BODY(re) \
+    do { \
+        float _tpop = 0.f; \
+        for (int _ci = 0; _ci < CLASS_COUNT; _ci++) _tpop += (re)->strata[_ci].pop; \
+        int _tier = (_tpop>=10000.f)?7:(_tpop>=8000.f)?6:(_tpop>=5000.f)?5: \
+                    (_tpop>=4000.f)?4:(_tpop>=3000.f)?3:(_tpop>=2000.f)?2:1; \
+        long _admin = (long)_tier * 100; \
+        if (_admin > (long)_tpop) _admin = ((long)_tpop/100)*100; \
+        long _packs = _admin / 100; \
+        float tier_h = (float)((_packs < _tier ? _packs : _tier) * 1000); \
+        float house_manuf = tune_f("HOUSE_MANUF", 100.f); \
+        float manuf_h = 0.f; \
+        for (int bi = 0; bi < (re)->n_bld; bi++) manuf_h += (re)->bld[bi].level; \
+        float cap_half = (re)->cap_pop * 0.5f; \
+        float housed = manuf_h * house_manuf; if (housed > cap_half) housed = cap_half; \
+        float pot_d=(re)->demand[RES_POTTERY], pot_av=(re)->supply[RES_POTTERY]+(re)->stock[RES_POTTERY]; \
+        float sta_d=(re)->demand[RES_STATUE],  sta_av=(re)->supply[RES_STATUE] +(re)->stock[RES_STATUE]; \
+        if (pot_d>0.1f && pot_av>=pot_d*0.95f && sta_d>0.1f && sta_av>=sta_d*0.95f){ \
+            float relief = tune_f("COMFORT_HOUSE_RELIEF", 0.15f); \
+            if (relief>0.f && relief<0.9f) housed *= 1.f/(1.f-relief); \
+        } \
+        return cap_half + tier_h + housed + (re)->build.food_cap * 250.f; \
+    } while (0)
+static inline float econ_prov_effcap(const ProvinceEconomy *re){ ECON_EFFCAP_BODY(re); }
+static inline float econ_region_effcap(const RegionEconomy *re){ ECON_EFFCAP_BODY(re); }
+#undef ECON_EFFCAP_BODY
+
+/* Collecte les modificateurs provinciaux ACTIFS, DÉRIVÉS de l'état (aucun champ stocké).
+ * Même motif générique : ECON_PROVMOD_BODY instancié pour ProvinceEconomy (moteur) et
+ * RegionEconomy (membrane/readout agrégé). `effcap_fn` = econ_prov_effcap|econ_region_effcap. */
+#define ECON_PROVMOD_BODY(re, out, max, effcap_fn) \
+    do { \
+        int n = 0; \
+        float scar = (re)->revolt_scar; if (scar < 0.f) scar = 0.f; else if (scar > 1.f) scar = 1.f; \
+        if (scar > 0.05f && n < (max)){ (out)[n].kind = PMOD_CICATRICE; (out)[n].intensity = scar; (out)[n].demo_bonus = 0.f; n++; } \
+        { float as = (re)->annex_scar; if (as<0.f) as=0.f; else if (as>1.f) as=1.f; \
+          if (as > 0.05f && n < (max)){ (out)[n].kind = PMOD_ANNEX_SCAR; (out)[n].intensity = as; (out)[n].demo_bonus = 0.f; n++; } } \
+        float eff = effcap_fn(re); \
+        if (eff > 1.f && n < (max)){ \
+            float pop = 0.f; for (int c = 0; c < CLASS_COUNT; c++) pop += (re)->strata[c].pop; \
+            float ref   = tune_f("PROVMOD_ABOND_REF", 0.45f); \
+            float fill  = pop / eff; \
+            float under = (ref > fill) ? (ref - fill) : 0.f; \
+            float denom = (ref > 1e-3f) ? ref : 1e-3f; \
+            float inten = (under / denom) * (re)->food_sat * (1.f - scar); \
+            if (inten > 0.02f){ \
+                if (inten > 1.f) inten = 1.f; \
+                (out)[n].kind = PMOD_ABONDANCE; (out)[n].intensity = inten; \
+                (out)[n].demo_bonus = tune_f("PROVMOD_ABOND_K", 2.0f) * under * (re)->food_sat * (1.f - scar); \
+                n++; \
+            } \
+        } \
+        if ((re)->ferveur > 0.02f && n < (max)){ \
+            float f = (re)->ferveur > 1.f ? 1.f : (re)->ferveur; \
+            (out)[n].kind = PMOD_FERVEUR; (out)[n].intensity = f; \
+            (out)[n].demo_bonus = tune_f("PROVMOD_FERVEUR_K", 0.5f) * f; \
+            n++; \
+        } \
+        { \
+            float recon = (re)->reconstruction * (1.f - scar); \
+            if (recon > 0.02f && n < (max)){ \
+                (out)[n].kind = PMOD_RECONSTRUCTION; (out)[n].intensity = recon > 1.f ? 1.f : recon; \
+                (out)[n].demo_bonus = tune_f("PROVMOD_RECON_K", 0.6f) * recon; \
+                n++; \
+            } \
+        } \
+        if ((re)->estuary && n < (max)){ \
+            (out)[n].kind = PMOD_LIMON; (out)[n].intensity = 1.f; \
+            (out)[n].demo_bonus = tune_f("PROVMOD_LIMON_K", 0.15f); \
+            n++; \
+        } \
+        if (((re)->prov_geo & PROVF_GIBIER) && n < (max)){ \
+            (out)[n].kind = PMOD_GIBIER; (out)[n].intensity = 1.f; \
+            (out)[n].demo_bonus = tune_f("PROVMOD_GIBIER_K", 0.10f); \
+            n++; \
+        } \
+        if (((re)->prov_geo & PROVF_HALIEUTIQUE) && n < (max)){ \
+            (out)[n].kind = PMOD_HALIEUTIQUE; (out)[n].intensity = 1.f; \
+            (out)[n].demo_bonus = tune_f("PROVMOD_HALIEU_K", 0.10f); \
+            n++; \
+        } \
+        if ((re)->build.K_inst > 1.5f && n < (max)){ \
+            float k = (re)->build.K_inst - 1.5f; if (k > 4.f) k = 4.f; \
+            (out)[n].kind = PMOD_ADMIN; (out)[n].intensity = k/4.f; \
+            (out)[n].demo_bonus = tune_f("PROVMOD_ADMIN_K", 0.06f) * k; \
+            n++; \
+        } \
+        return n; \
+    } while (0)
+static inline int provmod_collect_prov(const ProvinceEconomy *re, ProvModHit out[], int max){
+    ECON_PROVMOD_BODY(re, out, max, econ_prov_effcap);
+}
+static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int max){
+    ECON_PROVMOD_BODY(re, out, max, econ_region_effcap);
+}
+#undef ECON_PROVMOD_BODY
 
 /* Avance la simulation d'un pas. dt = années/tick (1 en annuel, 1/12 en mensuel) :
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
  * production/consommation s'équilibrent par tick (satisfaction préservée). */
 void econ_tick(WorldEconomy *e, float dt);
+void econ_set_human(int cid);   /* §NF skippe les provinces du joueur humain (-1 = aucun) */
 /* Q1 — LE CONSEIL : pose le multiplicateur d'un siège (0=Savoir 1=Société 2=Industrie)
  * pour un pays. Rafraîchi chaque tick par la couche sim depuis l'état conseil. 1.0=neutre. */
 void econ_set_council_mult(int cid, int seat, float m);
@@ -337,6 +619,41 @@ float econ_tax_tolerance(Ethos e, SocialClass c);
  * la pénalité. 0 si la province est homogène. Frappe la satisfaction SOCIALE. */
 float econ_off_culture_fraction(const ProvincePop *pp);
 
+/* MÉTABOLISATION — part [0..1] des âmes de l'empire qui sont d'un AUTRE héritage que
+ * la capitale ET assimilées (×integration) : le signal « creuset digéré ». Lu par la
+ * recherche (boost) et la membrane (hover « métabolisation +X% »). Twin-inverse de
+ * econ_off_culture_fraction (qui pèse le foreign NON encore digéré). */
+float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid);
+/* MÉTABOLISATION VENTILÉE — out[r] = part [0..1] des âmes diaspora d'héritage r digérées.
+ * Lu par la barre d'accès tech (Temps 2 : digérer le peuple r ⇒ accès aux signatures de r). */
+void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, int cid,
+                                    float out[HERITAGE_COUNT]);
+/* Poids du boost de recherche par métabolisation (Temps 1) — fallback compilé du
+ * tunable runtime AI_METAB_RES_W (registre scps_tune_list.h). income ×= 1 + W·métabolisé. */
+#ifndef AI_METAB_RES_W
+#define AI_METAB_RES_W 1.0f
+#endif
+
+/* ── PIPELINE IA — PRÉVISION (étage 1) : ce que l'IA LIT pour voir le mur venir ──
+ * Forecast par PAYS et par flux, DÉRIVÉ des seules coordonnées du moteur (pop, raw_cap,
+ * demande, offre, stock, eff_cap, needs_met). Recalculé au tick, JAMAIS sérialisé.
+ *   runway[g]        : années avant le déficit (demande projetée > offre+stock) ; +inf si jamais.
+ *   shortfall_proj[g]: besoin(HORIZON) − offre actuelle (annualisé ; >0 = on sera court).
+ *   struct_deficit[g]: la production MAX possible (au plein eff_cap) < la conso à plein → déficit
+ *                      DURABLE (import/colonie/plafond), pas un creux passager.
+ *   food_runway      : le runway AGRÉGÉ des sources vivrières (grain+poisson+viande) — l'existentiel. */
+typedef struct {
+    float runway[RES_COUNT];
+    float shortfall_proj[RES_COUNT];
+    unsigned char struct_deficit[RES_COUNT];
+    float food_runway;
+    float pop, eff_cap, growth_r;     /* trajectoire f(pop) (lecture/télémétrie) */
+} EconForecast;
+/* Calcule le forecast du pays `cid` à l'horizon `horizon` ans. Lecture pure (const econ). */
+void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconForecast *out);
+/* Conso ANNUELLE par tête d'un bien (table NEED × parts de classe × tension × FOOD_NEED si food). */
+float econ_conso_per_capita_year(Resource g);
+
 /* Pas de colonisation : joueur et antagonistes essaiment vers les régions
  * vierges voisines ; les cités-états colonisent leurs propres territoires
  * non encore peuplés. À appeler après econ_tick(). Renvoie le nb de régions
@@ -348,6 +665,14 @@ bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid);
 /* Fonde une colonie de `cid` sur `dst` depuis `src` (pop essaimée, owner posé).
  * Exposé pour la colonisation OUTRE-MER (scps_navy §8) — même acte fondateur. */
 void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid);
+/* RE-KEY PROVINCE — transfert de PROPRIÉTÉ D'UNE RÉGION ENTIÈRE (conquête/annexion/
+ * sécession/cataclysme) : pose `new_owner` (et `colonized`) sur TOUTES les provinces
+ * membres de `region`. econ->region[r].owner est un DÉRIVÉ (capitale, sinon meilleure
+ * pop) recalculé par econ_aggregate_regions à chaque econ_tick — écrire region[r].owner
+ * directement ne survit PAS au tick suivant. new_owner<0 = perte (colonized suit à
+ * false). N'écrit PAS World (le pays/cellules) : l'appelant garde region_set_country
+ * ou équivalent pour la hiérarchie World, si besoin. */
+void econ_region_set_owner(WorldEconomy *e, const World *w, int region, int new_owner);
 
 /* Migration interne basée sur la prospérité : les bourgeois et élites
  * migrent vers les régions plus riches adjacentes. Crée de la diaspora et
@@ -371,6 +696,7 @@ const char *social_class_name(SocialClass c);
 const char *building_name(BuildingType b);
 /* Recette d'un bâtiment (intrants → extrant) — pour la perception IA. */
 void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resource *out);
+Resource    building_alt_input(BuildingType b);   /* intrant alternatif (repli) — UI d'allocation */
 /* M6 (forks §14) — le DELTA DE FLUX d'une manufacture arcane : Forge Céleste +1.2 ·
  * Atelier du Mage +0.8 · Alambic −0.3 (le puits) · 0 sinon. Table de design, lue par
  * le banc ; le PUITS est branché dans econ_tick (l'essence purifiée neutralise la charge). */

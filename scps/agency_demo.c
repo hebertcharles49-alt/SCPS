@@ -86,7 +86,7 @@ int main(int argc, char **argv){
     float SI_ctrl, K_ctrl;
     {
         world_generate(s.w,&p);
-        econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+        econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
         trade_network_build(s.net,s.w,s.econ);
         for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
         prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ); agency_init(s.ag);
@@ -100,7 +100,7 @@ int main(int argc, char **argv){
     world_generate(s.w,&p);
     econ_init(s.econ,s.w);
     gen_population(s.w,s.econ);
-    worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+    worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w);
@@ -212,7 +212,7 @@ int main(int argc, char **argv){
         /* Marché de RÉFÉRENCE uniforme (prix=1 partout) : on teste le TIER (la recette :
          * Grenier 40+15+10 unités vs Citadelle 60+220+150), PAS les oscillations du marché. */
         for (int r=0;r<RES_COUNT;r++) re->price[r]=1.0f;
-        re->stock[RES_WOOD]=1000.f; re->stock[RES_METAL]=1000.f; re->stock[RES_CLAY]=1000.f;
+        re->stock[RES_WOOD]=1000.f; re->stock[RES_IRON]=1000.f; re->stock[RES_CLAY]=1000.f;
         re->stock[RES_STONE]=1000.f; re->stock[RES_TOOLS]=1000.f; re->stock[RES_PRECIOUS_METAL]=1000.f;
         re->stock[RES_SALT]=1000.f;   /* gate de matière : la recette de l'édifice doit être SOURÇABLE en propre */
         re->treasury=100000.f;

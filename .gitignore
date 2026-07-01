@@ -28,6 +28,9 @@ lang_demo
 # Sorties générées
 out_*.ppm
 out_*.png
+wg_*.png
+s7_*.png
+river_shot.png
 montage.bmp
 scps_ui.ppm
 scps_ui.png
@@ -48,6 +51,7 @@ ai_demo
 statecraft_demo
 credit_demo
 cap_demo
+endgame_demo
 
 events_demo
 structural_demo
@@ -96,3 +100,28 @@ audit_eco
 tools/results.csv
 forks_demo
 a.out
+
+# Preuve visuelle FX (binaire + PNG générés ; la SOURCE tools/fx_proof.c est suivie)
+fx_proof
+fx_proof.png
+
+# Banc de la façade C (binaire généré)
+scps_api_demo
+
+# Banc de la flotte (binaire généré)
+navy_demo
+
+# Objets SCons (.os) — au cas où un build godot écrirait dans l'arbre moteur
+*.os
+
+# Backup local des assets (rollback overhaul) — pas dans le repo
+godot/project/assets/scps/pack_old/
+
+# Binaire Godot (248 Mo, régénéré depuis godot.org)
+Godot_v4.6.3-stable_mono_win64/
+
+# App-userdata Godot (généré au runtime)
+godot/project/Godot/
+
+# Sorties outils SLP (BMP générés par slp_decode.js)
+tools/clf_out/

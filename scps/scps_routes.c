@@ -104,7 +104,13 @@ static float route_dbar(const WorldEconomy *econ, int ra, int rb){
 
 void routes_advance(RouteNetwork *rn, const World *w, WorldEconomy *econ, int days){
     (void)w;
-    for (int r=0;r<econ->n_regions;r++) econ->region[r].route_pe=0.f;
+    /* RE-KEY PROVINCE : route_pe est PROVINCE-OWNED (Σ-agrégé, charte règle 1) —
+     * region[r].route_pe est un DÉRIVÉ, écrasé au prochain econ_tick s'il est écrit
+     * directement. Route le reset ET l'accumulation (plus bas) sur la représentative. */
+    for (int r=0;r<econ->n_regions;r++){
+        int rp=econ_region_rep_province(econ,r);
+        if (rp>=0 && rp<econ->n_prov) econ->prov[rp].route_pe=0.f;
+    }
     for (int i=0;i<rn->n;i++){
         TradeRoute *t=&rn->route[i];
         if (!t->open){
@@ -127,8 +133,9 @@ void routes_advance(RouteNetwork *rn, const World *w, WorldEconomy *econ, int da
             if (t->pirate_press>=90.f) t->yield=0.f;        /* blocus : le lien est COUPÉ */
             else t->yield *= 1.f/(1.f+0.08f*t->pirate_press);
         }
-        econ->region[t->ra].route_pe += t->yield;
-        econ->region[t->rb].route_pe += t->yield;
+        { int rap=econ_region_rep_province(econ,t->ra), rbp=econ_region_rep_province(econ,t->rb);
+          if (rap>=0 && rap<econ->n_prov) econ->prov[rap].route_pe += t->yield;
+          if (rbp>=0 && rbp<econ->n_prov) econ->prov[rbp].route_pe += t->yield; }
     }
 }
 

@@ -1,0 +1,5 @@
+# Exemple de manifeste de CONTENU pour gen_content.py (TSV, séparateur = TABULATION).
+#   python tools/gen_content.py tools/content_example.tsv
+# kind        Nom affiché          RES_ENUM          champs (price= yield= food=)
+resource	Obsidienne	RES_OBSIDIAN	price=12	yield=0.3	food=0
+resource	Champignon	RES_MUSHROOM	price=2	yield=3.0	food=1

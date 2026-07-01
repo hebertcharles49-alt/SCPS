@@ -129,6 +129,14 @@
     X(STR_HOVER_AGITATION, "La colère qui monte dans la province ; soutenue, elle vire à la révolte — qu'apaisent la stabilité du royaume, la garnison et la légitimité.") \
     X(STR_HOVER_FOI, "L'adhésion de la province à l'idéologie du trône ; convaincue, elle nourrit la légitimité — dissidente, elle couve le schisme.") \
     X(STR_HOVER_SEDITION, "La tension d'une faction forte dont les valeurs s'opposent à la direction du régime ; séditieuse, elle complote le coup d'État pour imposer son éthos.") \
+    X(STR_AGIT_CAUSE_COERCION,  "Coercition") \
+    X(STR_AGIT_CAUSE_CULTURE,   "Culture étrangère") \
+    X(STR_AGIT_CAUSE_CHOC,      "Conquête récente") \
+    X(STR_AGIT_CAUSE_GARNISON,  "Garnison") \
+    X(STR_JLOG_CHOC_EFF, "Agitation accrue, se résorbe avec le temps") \
+    X(STR_JLOG_POP,    "Population") \
+    X(STR_JLOG_PROD,   "Production") \
+    X(STR_JLOG_TRESOR, "Trésor") \
     X(STR_TUTO_TITLE_0, "1 · Ce monde se lit.") \
     X(STR_TUTO_TITLE_1, "2 · Le temps coule en jours.") \
     X(STR_TUTO_TITLE_2, "3 · Ton empire.") \
@@ -238,7 +246,6 @@
     X(STR_RES_BOIS, "Bois") \
     X(STR_RES_ARGILE, "Argile") \
     X(STR_RES_PIERRE, "Pierre") \
-    X(STR_RES_METAL, "Métal") \
     X(STR_RES_OUTILS, "Outils") \
     X(STR_ENTREPOT_HOV, "Sans Entrepôt, le stock régional sature à 200 par ressource (le surplus se perd) ; chaque Entrepôt bâti ajoute +500. Stocker bas, vendre haut.") \
     X(STR_MER_CABOTAGE, "cabotage · vitesse fixe") \
@@ -292,6 +299,7 @@
     X(STR_FORK_ALAMBIC_2,      "L'Alambic de {0} vend le calme — au prix du salpêtre.") \
     X(STR_EDI_COMPTOIR,     "Comptoir") \
     X(STR_EDI_BANQUE,       "Banque") \
+    X(STR_EDI_TRADE_CENTER, "Centre commercial") \
     X(STR_FAC_CONQUERANT,    "Conquérants") \
     X(STR_FAC_MARCHAND,      "Marchands") \
     X(STR_FAC_LEGISTE,       "Légistes") \
@@ -326,6 +334,37 @@
     X(STR_COUNCIL_NAME_5, "Cercle Velmor") \
     X(STR_COUNCIL_NAME_6, "Loge Brask") \
     X(STR_COUNCIL_NAME_7, "Syndic Dovric") \
+    /* CAPSTONE §27 — Entropie mondiale (destin partagé, pas par-pays). */ \
+    X(STR_BANDE_ENTROPIE_0, "Stable") \
+    X(STR_BANDE_ENTROPIE_1, "Frémissante") \
+    X(STR_BANDE_ENTROPIE_2, "Instable") \
+    X(STR_BANDE_ENTROPIE_3, "Au bord") \
+    X(STR_HOVER_ENTROPIE, "La dérive du monde vers la Brèche : le savoir faustien et la transmutation l'attisent. Au seuil, le réel cède.") \
+    X(STR_AUGURE_ENTROPIE_0, "Le ciel se voile d'une teinte qu'aucun almanach ne nomme.") \
+    X(STR_AUGURE_ENTROPIE_1, "Les aiguilles s'affolent ; la matière hésite sur ses propres lois.") \
+    X(STR_AUGURE_ENTROPIE_2, "Le réel s'amincit. Le seuil de la Brèche n'attend plus que sa forme.") \
+    /* MODIFICATEURS PROVINCIAUX (diégétiques) — slot UI province (multiple). */ \
+    X(STR_PMOD_SECTION,        "MODIFICATEURS") \
+    X(STR_PMOD_FAVEUR,         "Faveur") \
+    X(STR_PMOD_FLEAU,          "Fléau") \
+    X(STR_PMOD_CICATRICE_NOM,  "Cicatrice de révolte") \
+    X(STR_PMOD_CICATRICE_EFF,  "Une province récemment soulevée ou saccagée se développe mal : croissance et production entaillées tant que la plaie ne s'est pas refermée.") \
+    X(STR_PMOD_ABONDANCE_NOM,  "Terre d'abondance") \
+    X(STR_PMOD_ABONDANCE_EFF,  "Une terre vaste, nourrie et en paix appelle les familles : la natalité s'envole tant que ses champs ne sont pas pleins.") \
+    X(STR_PMOD_FERVEUR_NOM,    "Ferveur fondatrice") \
+    X(STR_PMOD_FERVEUR_EFF,    "Une colonie fraîchement fondée a faim d'avenir : ses premières années portent un élan de natalité qui s'apaise à mesure qu'elle s'enracine.") \
+    X(STR_PMOD_RECONSTRUCTION_NOM, "Reconstruction") \
+    X(STR_PMOD_RECONSTRUCTION_EFF, "Une fois la plaie d'une révolte ou d'un sac refermée, la province se relève d'un bond : la reconstruction d'après-choc presse la natalité.") \
+    X(STR_PMOD_LIMON_NOM,      "Limon fertile") \
+    X(STR_PMOD_LIMON_EFF,      "L'embouchure d'un grand fleuve dépose un limon gras : les champs du delta nourrissent une population dense.") \
+    X(STR_PMOD_GIBIER_NOM,     "Gibier abondant") \
+    X(STR_PMOD_GIBIER_EFF,     "Les bois fourmillent de gibier : la chasse garnit les tables et soutient une population plus dense.") \
+    X(STR_PMOD_HALIEU_NOM,     "Manne halieutique") \
+    X(STR_PMOD_HALIEU_EFF,     "Des bancs de poissons grouillent au large : la pêche nourrit une côte populeuse.") \
+    X(STR_PMOD_ADMIN_NOM,      "Bonne administration") \
+    X(STR_PMOD_ADMIN_EFF,      "Des institutions solides tiennent l'ordre et les services : à l'abri du désordre, les familles prospèrent.") \
+    X(STR_PMOD_ANNEX_NOM,      "Annexion récente") \
+    X(STR_PMOD_ANNEX_EFF,      "Une province arrachée à son ancien maître par l'annexion porte une plaie de fierté : la stabilité reste fragile et l'humeur boude tant que les esprits ne se sont pas faits à la nouvelle bannière.") \
     /* GLOSSAIRE des concepts (hover_*) — TITRES des fiches (la définition réutilise
      * les STR_HOVER_* existants). Catégorie & alias vivent dans la table C
      * (scps_lang.c) ; ici, seul le mot-titre face-joueur. */ \

@@ -18,11 +18,11 @@
 const char *VIEW_NAMES[VIEW_COUNT] = {
     "Terrain","Territoires","Régions","Pays","Continents","Altimétrie",
     "Fertilité","Humidité","Température","Ressources","Habitabilité",
-    "Culture","Foi"
+    "Culture","Foi","Stabilité","Commerce","Guerre","Diplomatie"
 };
 
 /* ---- Primitives couleur ---------------------------------------------- */
-static inline float    clampf(float v,float lo,float hi){return v<lo?lo:v>hi?hi:v;}
+static inline float    clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:v>hi?hi:v);}
 static inline uint8_t  u8(float v) { return (v<0.f)?0:(v>1.f)?255:(uint8_t)(v*255.f); }
 static inline float    ch_r(uint32_t c) { return ((c>>16)&0xFF)/255.f; }
 static inline float    ch_g(uint32_t c) { return ((c>> 8)&0xFF)/255.f; }
@@ -58,19 +58,39 @@ static inline uint32_t alpha_over(uint32_t dst, uint32_t src, float alpha) {
 }
 
 /* ---- Eau : gradient profondeur propre (sans relief sous-marin apparent) */
+static const uint32_t WATER_SHALLOW = 0xFF5AA6BEu;  /* haut-fond turquoise (bord de terre) */
 static const uint32_t WATER_COAST   = 0xFF3B7EAAu;  /* plateau continental */
 static const uint32_t WATER_MID     = 0xFF1A4870u;  /* mer ouverte */
 static const uint32_t WATER_DEEP    = 0xFF091626u;  /* abysses */
 
 static uint32_t water_color(float height) {
     float depth = clampf((SEA_LEVEL - height) / 0.55f, 0.f, 1.f); /* normalisé */
-    /* Trois stops : côte → mer → abysses, sans sinusoïde sur height */
+    /* Quatre stops : haut-fond → côte → mer → abysses (le haut-fond turquoise
+     * ouvre la transition terre→mer côté eau, sans sinusoïde sur height). */
     uint32_t col;
-    if (depth < 0.35f)
-        col = lerp_color(WATER_COAST, WATER_MID,  depth/0.35f);
+    if (depth < 0.10f)
+        col = lerp_color(WATER_SHALLOW, WATER_COAST, depth/0.10f);
+    else if (depth < 0.35f)
+        col = lerp_color(WATER_COAST,   WATER_MID,  (depth-0.10f)/0.25f);
     else
-        col = lerp_color(WATER_MID,   WATER_DEEP, (depth-0.35f)/0.65f);
+        col = lerp_color(WATER_MID,     WATER_DEEP, (depth-0.35f)/0.65f);
     return col;
+}
+
+/* RIM DE HAUT-FOND : une cellule d'EAU qui touche la TERRE s'éclaircit vers le
+ * turquoise → la côte cesse d'être un mur de couleur, la mer FOND vers le rivage
+ * (continuité eau↔terre côté eau ; le foam asset s'y pose ensuite). Présentation
+ * pure : ne lit que height (jamais une coordonnée SCPS). */
+static uint32_t water_shore_rim(const World *w, int cx, int cy, uint32_t wc) {
+    int land=0;
+    int xm=(cx-1+SCPS_W)%SCPS_W, xp=(cx+1)%SCPS_W;
+    int ym=(cy>0)?cy-1:cy, yp=(cy+1<SCPS_H)?cy+1:cy;
+    if (scps_cellc(w,xm,cy)->height>=SEA_LEVEL) land++;
+    if (scps_cellc(w,xp,cy)->height>=SEA_LEVEL) land++;
+    if (scps_cellc(w,cx,ym)->height>=SEA_LEVEL) land++;
+    if (scps_cellc(w,cx,yp)->height>=SEA_LEVEL) land++;
+    if (!land) return wc;
+    return lerp_color(wc, WATER_SHALLOW, (land>=2)?0.45f:0.28f);
 }
 
 /* ---- Heatmap [0..1] → ARGB ------------------------------------------ */
@@ -118,7 +138,7 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
             float d = h / SEA_LEVEL;
             return rgba(d*0.2f, d*0.3f, d*0.5f+0.1f, 1.f);
         }
-        return water_color(h);
+        return water_shore_rim(w, cx, cy, water_color(h));   /* haut-fond fondu vers le rivage */
     }
 
     /* ---- Altimétrie -------------------------------------------------- */
@@ -144,6 +164,8 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
         if (h < SEA_LEVEL) return water_color(h);
         float hab = 0.f;
         if (c->province >= 0) hab = w->province[c->province].habitability;
+        /* SEUIL D'ACCÈS : ≤25 % = INACCESSIBLE → rendu SOMBRE (zone morte, distincte du dégradé). */
+        if (hab <= 0.25f) { float shd = 0.40f + c->shade*0.30f; return rgba(0.16f*shd, 0.14f*shd, 0.20f*shd, 1.f); }
         /* 0→rouge vif, 0.15→orange, 0.40→jaune, 0.70→vert clair, 1→vert */
         float r2, g2, b2;
         if (hab < 0.15f) {
@@ -224,8 +246,10 @@ static uint32_t cell_color(const World *w, int cx, int cy, float fx, float fy,
     }
     /* ---- Overlay CULTURE / FOI : teinte par région, fournie par l'appelant
      *      (le viewer la calcule depuis l'éco ; le renderer ne lit rien de SCPS). */
-    if ((mode == VIEW_CULTURE || mode == VIEW_FAITH) && region_tint && c->region >= 0) {
-        terrain = alpha_over(terrain, region_tint[c->region], 0.55f);
+    if ((mode == VIEW_CULTURE || mode == VIEW_FAITH || mode == VIEW_STABILITY ||
+         mode == VIEW_TRADE || mode == VIEW_WAR || mode == VIEW_DIPLO)
+        && region_tint && c->region >= 0) {
+        terrain = alpha_over(terrain, region_tint[c->region], 0.58f);
     }
     /* ---- Overlay OCCUPATION (brief terrain) : HACHURE de la couleur de l'occupant
      *      sur la carte politique (la région est TENUE par les armes, pas possédée —

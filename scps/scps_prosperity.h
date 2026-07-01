@@ -52,7 +52,7 @@ typedef struct {
     float fracture;        /* sécession latente : diverse ET non consentie     */
     float dereal;          /* déréalisation (§2.3 faustien) — lue par les Âges  */
     float L;               /* légitimité pays agrégée (entrée vivante, exposée) */
-    float K;               /* capacité EFFECTIVE (tech+race+bâti) — lue par l'IA */
+    float K;               /* capacité EFFECTIVE (tech+heritage+bâti) — lue par l'IA */
     int   mode;            /* ScpsMode (stocké en int : n'expose pas scps_core) */
 } CountryProsperity;
 

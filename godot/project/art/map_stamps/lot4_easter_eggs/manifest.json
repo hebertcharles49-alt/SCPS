@@ -1,0 +1,338 @@
+{
+  "name": "SCPS Lot 4 - Sea Serpents, Wrecks, Reefs, Rabbits",
+  "style": "subtle late-medieval painted atlas rare map marks",
+  "background_key": "#FF00FF",
+  "source_sheet_chromakey": "sheet/scps_lot4_sheet_chromakey.png",
+  "source_sheet_alpha": "sheet/scps_lot4_sheet_alpha.png",
+  "preview": "preview/scps_lot4_preview_on_parchment.png",
+  "crop_method": "mixed_row_spans_then_content_bbox",
+  "items": [
+    {
+      "id": "sea_serpent_01",
+      "category": "sea_serpent",
+      "layer": "sea_easter_egg",
+      "size": [
+        1024,
+        512
+      ],
+      "alpha_png": "assets_alpha/sea_serpent_01.png",
+      "chromakey_png": "assets_chromakey/sea_serpent_01.png",
+      "source_bbox": {
+        "x": 0,
+        "y": 108,
+        "width": 623,
+        "height": 206
+      },
+      "recommended_map_size_px": [
+        48,
+        72,
+        96
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "sea_serpent_02",
+      "category": "sea_serpent",
+      "layer": "sea_easter_egg",
+      "size": [
+        1024,
+        512
+      ],
+      "alpha_png": "assets_alpha/sea_serpent_02.png",
+      "chromakey_png": "assets_chromakey/sea_serpent_02.png",
+      "source_bbox": {
+        "x": 627,
+        "y": 109,
+        "width": 604,
+        "height": 205
+      },
+      "recommended_map_size_px": [
+        48,
+        72,
+        96
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "shipwreck_hull_01",
+      "category": "shipwreck",
+      "layer": "wreck",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/shipwreck_hull_01.png",
+      "chromakey_png": "assets_chromakey/shipwreck_hull_01.png",
+      "source_bbox": {
+        "x": 16,
+        "y": 419,
+        "width": 298,
+        "height": 204
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "broken_mast_01",
+      "category": "shipwreck",
+      "layer": "wreck",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/broken_mast_01.png",
+      "chromakey_png": "assets_chromakey/broken_mast_01.png",
+      "source_bbox": {
+        "x": 342,
+        "y": 393,
+        "width": 264,
+        "height": 226
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "floating_debris_01",
+      "category": "shipwreck",
+      "layer": "wreck",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/floating_debris_01.png",
+      "chromakey_png": "assets_chromakey/floating_debris_01.png",
+      "source_bbox": {
+        "x": 627,
+        "y": 464,
+        "width": 280,
+        "height": 160
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "half_sunk_wreck_01",
+      "category": "shipwreck",
+      "layer": "wreck",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/half_sunk_wreck_01.png",
+      "chromakey_png": "assets_chromakey/half_sunk_wreck_01.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 422,
+        "width": 295,
+        "height": 205
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "jagged_reef_01",
+      "category": "reef_stones",
+      "layer": "hazard",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/jagged_reef_01.png",
+      "chromakey_png": "assets_chromakey/jagged_reef_01.png",
+      "source_bbox": {
+        "x": 15,
+        "y": 686,
+        "width": 278,
+        "height": 190
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "low_rocks_01",
+      "category": "reef_stones",
+      "layer": "hazard",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/low_rocks_01.png",
+      "chromakey_png": "assets_chromakey/low_rocks_01.png",
+      "source_bbox": {
+        "x": 323,
+        "y": 741,
+        "width": 281,
+        "height": 134
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "sea_stacks_01",
+      "category": "reef_stones",
+      "layer": "hazard",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/sea_stacks_01.png",
+      "chromakey_png": "assets_chromakey/sea_stacks_01.png",
+      "source_bbox": {
+        "x": 643,
+        "y": 677,
+        "width": 245,
+        "height": 198
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "shoal_stones_01",
+      "category": "reef_stones",
+      "layer": "hazard",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/shoal_stones_01.png",
+      "chromakey_png": "assets_chromakey/shoal_stones_01.png",
+      "source_bbox": {
+        "x": 940,
+        "y": 764,
+        "width": 293,
+        "height": 114
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "apoc_rabbit_banner_01",
+      "category": "apocalypse_rabbit",
+      "layer": "map_easter_egg",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/apoc_rabbit_banner_01.png",
+      "chromakey_png": "assets_chromakey/apoc_rabbit_banner_01.png",
+      "source_bbox": {
+        "x": 34,
+        "y": 940,
+        "width": 241,
+        "height": 233
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "apoc_rabbit_horn_01",
+      "category": "apocalypse_rabbit",
+      "layer": "map_easter_egg",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/apoc_rabbit_horn_01.png",
+      "chromakey_png": "assets_chromakey/apoc_rabbit_horn_01.png",
+      "source_bbox": {
+        "x": 348,
+        "y": 954,
+        "width": 206,
+        "height": 219
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "apoc_rabbit_spear_01",
+      "category": "apocalypse_rabbit",
+      "layer": "map_easter_egg",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/apoc_rabbit_spear_01.png",
+      "chromakey_png": "assets_chromakey/apoc_rabbit_spear_01.png",
+      "source_bbox": {
+        "x": 684,
+        "y": 940,
+        "width": 194,
+        "height": 236
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    },
+    {
+      "id": "apoc_rabbit_crown_01",
+      "category": "apocalypse_rabbit",
+      "layer": "map_easter_egg",
+      "size": [
+        512,
+        512
+      ],
+      "alpha_png": "assets_alpha/apoc_rabbit_crown_01.png",
+      "chromakey_png": "assets_chromakey/apoc_rabbit_crown_01.png",
+      "source_bbox": {
+        "x": 972,
+        "y": 940,
+        "width": 210,
+        "height": 233
+      },
+      "recommended_map_size_px": [
+        24,
+        32,
+        48
+      ],
+      "anchor": "center"
+    }
+  ],
+  "audit": {
+    "visible_magenta_like": 0,
+    "transparent_magenta_like": 0,
+    "visible_pinkish": 0
+  }
+}

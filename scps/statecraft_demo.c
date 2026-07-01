@@ -62,7 +62,7 @@ int main(int argc, char **argv){
 
     WorldParams p=worldparams_default(seed);
     world_generate(s.w,&p);
-    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,RACE_HUMAIN);
+    econ_init(s.econ,s.w); gen_population(s.w,s.econ); worldgen_seed_peoples(s.w,s.econ,HERITAGE_ADAPTATIF);
     trade_network_build(s.net,s.w,s.econ);
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ);
@@ -256,6 +256,34 @@ int main(int argc, char **argv){
         ok("Conseil : RENVOYER rétablit le neutre (1.0) sans coût",
            statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f
            && statecraft_council_seated(s.sc,cid,seat)<0 && statecraft_council_cost(s.sc,seed,cid,1.f)==0.f);
+    }
+
+    /* ── #26 — L'OPINION À MÉMOIRE : modificateurs TEMPORAIRES + mémoire DURABLE, tout TEND VERS 0 ──
+     * (a) un STATUT actif (guerre) creuse l'opinion ; à la RUPTURE (paix) le modificateur disparaît →
+     *     l'opinion REMONTE vers 0 (« au lieu de tendre vers −60, ça tend vers 0 »). (b) la TRAHISON
+     *     laisse une marque DURABLE (opinion_mem) qui SURVIT au statut et s'estompe lentement vers 0. */
+    printf("\n── #26 : opinion à mémoire (statuts temporaires + mémoire durable, tend vers 0) ──\n");
+    {
+        int A=0, B=1;
+        /* (a) la GUERRE — un modificateur de STATUT, temporaire */
+        statecraft_init(s.sc,s.w); diplo_init(s.dp);
+        diplo_declare_war(s.dp, A, B);
+        for (int m=0;m<24;m++) statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,30);   /* 2 ans de guerre */
+        int op_war = statecraft_opinion(s.sc, A, B);
+        ok("la GUERRE (statut actif) creuse l'opinion (< -20)", op_war < -20);
+        diplo_make_peace(s.dp, A, B);
+        for (int m=0;m<48;m++) statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,30);   /* 4 ans de paix */
+        int op_peace = statecraft_opinion(s.sc, A, B);
+        ok("à la PAIX le modificateur DISPARAÎT → l'opinion REMONTE vers 0", op_peace > op_war + 15 && op_peace > -10);
+        /* (b) la TRAHISON — une mémoire DURABLE qui survit au statut */
+        statecraft_init(s.sc,s.w); diplo_init(s.dp);
+        statecraft_on_betrayal(s.sc, A);                 /* A trahit : les AUTRES le retiennent */
+        for (int m=0;m<6;m++) statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,30);
+        int op_bet = statecraft_opinion(s.sc, B, A);     /* ce que B pense du traître A (hors tout statut) */
+        ok("la TRAHISON marque DURABLEMENT (B→A < -10, aucun statut actif)", op_bet < -10);
+        for (int m=0;m<360;m++) statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,30);  /* 30 ans */
+        int op_faded = statecraft_opinion(s.sc, B, A);
+        ok("la mémoire de la trahison S'ESTOMPE vers 0 (decay naturelle)", op_faded > op_bet + 5 && op_faded > -6);
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

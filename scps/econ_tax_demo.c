@@ -23,11 +23,40 @@ static void ok(const char *what, bool cond){
     if (cond) g_pass++; else g_fail++;
 }
 
-/* Fige une région en banc d'essai fiscal : pas de production (raw_cap=0,
- * 0 bâtiment), seule l'élite a de la richesse → le trésor = l'impôt SUR l'élite.
- * Stock plein → le panier se remplit (la satisfaction ne dépend que de l'impôt). */
+/* Province REPRÉSENTATIVE d'une région (charte PROVINCE_MODEL.md : l'économie
+ * vit à la province, la région n'est qu'un agrégat) — repli : scan direct si le
+ * cache n'a rien retenu pour cette région. */
+static int rep_prov(WorldEconomy *e, int r){
+    if (r>=0 && r<SCPS_MAX_REG && e->region_rep_prov[r]>=0) return e->region_rep_prov[r];
+    for (int p=0;p<e->n_prov;p++) if (e->prov[p].region==r) return p;
+    return -1;
+}
+
+/* ÉTEINT toute province SŒUR de `pid` (même région, indices ≠ pid) : la région
+ * AGRÈGE (charte règle 2) — sans ça, les autres provinces de la région (semées
+ * par world_generate/gen_population, hors du contrôle du banc) contaminent le
+ * trésor/pop/satisfaction agrégés que le banc lit sur e->region[r]. Isole la
+ * région au SEUL contenu que le banc pose, comme l'ancien poke direct. */
+static void mute_siblings(WorldEconomy *e, int r, int pid){
+    for (int p=0;p<e->n_prov;p++){
+        if (p==pid || e->prov[p].region!=r) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        pe->active=false; pe->colonized=false;
+        memset(pe->strata,0,sizeof pe->strata);
+        pe->treasury=0.f;
+    }
+}
+
+/* Fige une PROVINCE (LA vérité économique) en banc d'essai fiscal : pas de
+ * production (raw_cap=0, 0 bâtiment), seule l'élite a de la richesse → le
+ * trésor = l'impôt SUR l'élite. Stock plein → le panier se remplit (la
+ * satisfaction ne dépend que de l'impôt). La RÉGION agrège après econ_tick —
+ * les lectures e->region[r].* restent valides (1 province ⇒ agrégat = elle). */
 static void rig(WorldEconomy *e, int r, Ethos ethos, float elite_wealth, float sat){
-    RegionEconomy *re=&e->region[r];
+    int pid=rep_prov(e,r);
+    if (pid<0) return;
+    mute_siblings(e,r,pid);
+    ProvinceEconomy *re=&e->prov[pid];
     re->active=true; re->colonized=true; re->culture.settled=true;
     re->culture.ethos=ethos;
     re->n_bld=0;

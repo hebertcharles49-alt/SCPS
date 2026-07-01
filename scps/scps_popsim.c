@@ -1,7 +1,7 @@
 /*
  * scps_popsim.c — la population précise : la classe ÉMERGE des emplois, par bande
  *
- * Une bande = race × culture × foi. Les emplois (capitale → Nobles, ateliers →
+ * Une bande = heritage × culture × foi. Les emplois (capitale → Nobles, ateliers →
  * Bourgeois) se répartissent sur les bandes au PRORATA de leur taille, par paquets
  * de 100 ; le reste de chaque bande est Journalier. Rien n'est posé : la structure
  * d'emplois sculpte le tissu social, bande par bande.
@@ -11,16 +11,16 @@
 
 void popsim_init(PopSim *p){ memset(p, 0, sizeof *p); p->cap_tier = 1; }
 
-int popsim_add_band(PopSim *p, SpeciesArchetype race, Ethos culture,
+int popsim_add_band(PopSim *p, Heritage heritage, Ethos culture,
                     ReligionBranch faith, long count){
     if (count <= 0) return -1;
     for (int i=0;i<p->n_bands;i++)                       /* fusionne une identité déjà présente */
-        if (p->band[i].race==race && p->band[i].culture==culture && p->band[i].faith==faith){
+        if (p->band[i].heritage==heritage && p->band[i].culture==culture && p->band[i].faith==faith){
             p->band[i].count += count; return i;
         }
     if (p->n_bands >= POPSIM_MAX_BANDS) return -1;
     PopBand *b=&p->band[p->n_bands];
-    b->race=race; b->culture=culture; b->faith=faith; b->count=count;
+    b->heritage=heritage; b->culture=culture; b->faith=faith; b->count=count;
     b->by_class[POPCL_LABORER]=count;                   /* repli : tout Journalier avant l'émergence */
     b->by_class[POPCL_ARTISAN]=0; b->by_class[POPCL_ELITE]=0;
     return p->n_bands++;
@@ -60,8 +60,8 @@ long popsim_class_total(const PopSim *p, PopClass c){
 long popsim_faith_total(const PopSim *p, ReligionBranch f){
     long t=0; for (int i=0;i<p->n_bands;i++) if (p->band[i].faith==f) t+=p->band[i].count; return t;
 }
-long popsim_race_total(const PopSim *p, SpeciesArchetype r){
-    long t=0; for (int i=0;i<p->n_bands;i++) if (p->band[i].race==r) t+=p->band[i].count; return t;
+long popsim_heritage_total(const PopSim *p, Heritage r){
+    long t=0; for (int i=0;i<p->n_bands;i++) if (p->band[i].heritage==r) t+=p->band[i].count; return t;
 }
 long popsim_faith_class(const PopSim *p, ReligionBranch f, PopClass c){
     if (c<0 || c>=POPCL_COUNT) return 0;

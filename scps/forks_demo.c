@@ -130,17 +130,28 @@ int main(void){
         WorldEconomy *e=calloc(1,sizeof(WorldEconomy));
         if (e){
             e->n_regions=1; e->ipm=1.f;
+            /* charte PROVINCE_MODEL.md : l'économie VIT à la province — econ_tick ne lit/
+             * n'écrit QUE e->prov[] ; econ_aggregate_regions écrase ensuite e->region[]
+             * depuis les provinces. On rige donc LA VÉRITÉ (prov[0]), région=0, 1 province
+             * ⇒ l'agrégat région après tick == cette province (les lectures e->region[0].*
+             * post-tick restent valides, comme econ_tax_demo.c). */
+            e->n_prov=1;
+            ProvinceEconomy *pr=&e->prov[0];
+            pr->active=pr->colonized=true; pr->owner=-1; pr->region=0; pr->culture.settled=true;
+            pr->culture.ethos=ETHOS_MERCANTILE; pr->culture.heritage=HERITAGE_ADAPTATIF;
+            pr->last_pole=1; pr->import_margin=1.f; pr->import_toll_region=-1;
+            pr->strata[CLASS_LABORER].pop=2000.f; pr->strata[CLASS_BOURGEOIS].pop=300.f;
+            pr->strata[CLASS_ELITE].pop=50.f; pr->tech_prod=1.f;
+            pr->raw_cap[RES_ARCANE_CRYSTAL]=2.f; pr->raw_cap[RES_SALTPETER]=2.f;
+            pr->raw_cap[RES_GRAIN]=8.f;
+            /* econ_bld_can_build lit e->region[region] (prédicat, avant tout tick) : le
+             * fixture n'a pas encore été agrégé, on projette donc aussi sur region[0] pour
+             * ces lectures PRÉ-tick (raw_cap agrégé = Σ provinces = cette province seule). */
             RegionEconomy *re=&e->region[0];
-            re->active=re->colonized=true; re->owner=-1; re->culture.settled=true;
-            re->culture.ethos=ETHOS_MERCANTILE; re->culture.race=RACE_HUMAIN;
-            re->last_pole=1; re->import_margin=1.f; re->import_toll_region=-1;
-            re->strata[CLASS_LABORER].pop=2000.f; re->strata[CLASS_BOURGEOIS].pop=300.f;
-            re->strata[CLASS_ELITE].pop=50.f; re->tech_prod=1.f;
             re->raw_cap[RES_ARCANE_CRYSTAL]=2.f; re->raw_cap[RES_SALTPETER]=2.f;
-            re->raw_cap[RES_GRAIN]=8.f;
             ok("gate MATIÈRE : la Forge céleste exige le fer céleste (absent → non)",
                !econ_bld_can_build(e,0,BLD_CELESTIAL_FORGE));
-            re->raw_cap[RES_CELESTIAL_IRON]=1.f;
+            pr->raw_cap[RES_CELESTIAL_IRON]=1.f; re->raw_cap[RES_CELESTIAL_IRON]=1.f;
             ok("gate MATIÈRE : le fer céleste présent → la Forge se bâtit",
                econ_bld_can_build(e,0,BLD_CELESTIAL_FORGE));
             ok("l'Alambic exige le salpêtre (présent ici)", econ_bld_can_build(e,0,BLD_ALAMBIC));
@@ -150,18 +161,18 @@ int main(void){
                econ_bld_flux_delta(BLD_ALAMBIC) >= 0.f);
             /* L'ALAMBIC EN MARCHE : il distille le salpêtre → FLUX (la supply du Réplicateur).
              * Et il ne PURGE plus la charge : le mage+alambic ne fait pas chuter la charge. */
-            re->bld[0]=(Building){BLD_MAGE_WORKSHOP,1.f,0.f}; re->n_bld=1;
-            re->stock[RES_ARCANE_CRYSTAL]=50.f;
+            pr->bld[0]=(Building){BLD_MAGE_WORKSHOP,1.f,0.f}; pr->n_bld=1;
+            pr->stock[RES_ARCANE_CRYSTAL]=50.f;
             econ_tick(e,1.f/12.f);
-            float charge_seul=re->arcane_charge;
-            re->bld[1]=(Building){BLD_ALAMBIC,1.f,0.f}; re->n_bld=2;
-            re->stock[RES_ARCANE_CRYSTAL]=50.f; re->stock[RES_SALTPETER]=50.f;
-            re->stock[RES_FLUX]=0.f;
+            float charge_seul=e->region[0].arcane_charge;
+            pr->bld[1]=(Building){BLD_ALAMBIC,1.f,0.f}; pr->n_bld=2;
+            pr->stock[RES_ARCANE_CRYSTAL]=50.f; pr->stock[RES_SALTPETER]=50.f;
+            pr->stock[RES_FLUX]=0.f;
             econ_tick(e,1.f/12.f);
-            float charge_apres=re->arcane_charge;
+            float charge_apres=e->region[0].arcane_charge;
             printf("   flux distillé : %.2f · charge mage seul %.2f → mage+alambic %.2f (plus de purge)\n",
-                   re->stock[RES_FLUX], charge_seul, charge_apres);
-            ok("F3 : l'Alambic DISTILLE le flux (salpêtre → flux)", re->stock[RES_FLUX] > 0.f);
+                   e->region[0].stock[RES_FLUX], charge_seul, charge_apres);
+            ok("F3 : l'Alambic DISTILLE le flux (salpêtre → flux)", e->region[0].stock[RES_FLUX] > 0.f);
             ok("F-arc RETRAIT : l'Alambic ne PURGE plus la charge (≥ mage seul)",
                charge_seul > 0.f && charge_apres >= charge_seul - 0.001f);
             free(e);

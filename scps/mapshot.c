@@ -38,7 +38,8 @@ int main(int argc,char**argv){
         .selected_prov=-1,
         .show_rivers=true, .show_borders=true, .show_grid=false
     };
-    ViewMode vm = (view==1)?VIEW_POLITICAL:VIEW_TERRAIN;
+    /* view = index brut de ViewMode (0=terrain, 1=politique, 10=habitabilité…). */
+    ViewMode vm = (view>=0 && view<VIEW_COUNT) ? (ViewMode)view : VIEW_TERRAIN;
 
     for (int k=0;k<n;k++){
         uint32_t seed=base+(uint32_t)k*101u;
