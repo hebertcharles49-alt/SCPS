@@ -595,9 +595,11 @@ int scps_tradition_list(ScpsTradition *out, int max);   /* retourne TRAIT_COUNT 
  * EXACTEMENT 1 majeur + 1 mineur + 1 défaut, sans antonymes. 1 = valide, 0 = non. */
 int scps_culture_validate(int t0, int t1, int t2);
 
-/* APERÇU des leviers d'une composition (membrane : un MOT + un SIGNE), pour le survol.
- * signe : +1 atout · −1 revers (les zéros sont omis). Retourne le nombre de lignes. */
-typedef struct { const char *nom; int signe; } ScpsLevierLine;
+/* APERÇU des leviers d'une composition (membrane : un MOT + un SIGNE + la MAGNITUDE),
+ * pour l'aperçu chiffré. signe : +1 atout · −1 revers (les zéros sont omis). `value` =
+ * le delta brut ; `is_pct` = 1 si RELATIF (s'applique en 1+x → l'UI l'affiche « +15 % »),
+ * 0 si ABSOLU (additif sur l'échelle 0..10 → l'UI l'affiche « +1.5 »). Retourne le nb de lignes. */
+typedef struct { const char *nom; int signe; float value; int is_pct; } ScpsLevierLine;
 int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max);
 
 /* NOM DE CULTURE (ethnonyme façon Stellaris) pour un héritage + une graine — pour

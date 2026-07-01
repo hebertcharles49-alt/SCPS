@@ -333,7 +333,14 @@ func _refresh() -> void:
 	var t2 := _cur_trait(2)
 	var parts := PackedStringArray()
 	for lv in Sim.world.culture_preview(t0, t1, t2):
-		parts.append("%s %s" % [String(lv["nom"]), "▲" if int(lv["signe"]) > 0 else "▼"])
+		# CHIFFRE (plus la flèche seule) : relatif → « +15 % » · absolu → « +1.5 »
+		var val := float(lv.get("value", 0.0))
+		var num := ""
+		if int(lv.get("is_pct", 0)) != 0:
+			num = "%+d %%" % int(round(val * 100.0))
+		else:
+			num = "%+.1f" % val
+		parts.append("%s %s" % [String(lv["nom"]), num])
 	_preview_lbl.text = ("Effets : " + ", ".join(parts)) if parts.size() > 0 else "Effets : —"
 
 	# validité (la façade fait foi) + message d'aide

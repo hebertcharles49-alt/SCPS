@@ -812,8 +812,10 @@ Array ScpsWorld::culture_preview(int t0, int t1, int t2) {
     int n = scps_culture_preview(t0, t1, t2, lv, 16);
     for (int i = 0; i < n; i++) {
         Dictionary d;
-        d["nom"]   = String::utf8(lv[i].nom);
-        d["signe"] = lv[i].signe;
+        d["nom"]    = String::utf8(lv[i].nom);
+        d["signe"]  = lv[i].signe;
+        d["value"]  = lv[i].value;   // magnitude du delta (chiffre, plus la flèche seule)
+        d["is_pct"] = lv[i].is_pct;  // 1 = relatif (+15 %) · 0 = absolu (+1.5)
         a.push_back(d);
     }
     return a;

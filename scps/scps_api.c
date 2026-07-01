@@ -1720,11 +1720,15 @@ int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max){
         "Démographie", "Productivité", "Influence", "Coercition (militaire)",
         "Capacité (diversité)", "Perméabilité (assimilation)", "Affinité arcane",
         "Dérive culturelle", "Fracture" };
+    /* RELATIFS (1+x → affichés en %) : demographie(0), productivite(1), derive(7).
+     * Les autres sont ABSOLUS (additifs échelle 0..10). Cf. HeritageLeviers (scps_heritage.h). */
     int n=0;
     for(int i=0;i<9 && n<max;i++){
         if(v[i] > 0.0001f || v[i] < -0.0001f){
-            out[n].nom   = NM[i];
-            out[n].signe = (v[i] > 0.f) ? +1 : -1;
+            out[n].nom    = NM[i];
+            out[n].signe  = (v[i] > 0.f) ? +1 : -1;
+            out[n].value  = v[i];
+            out[n].is_pct = (i==0 || i==1 || i==7) ? 1 : 0;
             n++;
         }
     }
