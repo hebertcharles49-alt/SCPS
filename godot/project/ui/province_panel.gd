@@ -11,6 +11,15 @@ const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const PW := 312.0
 
+# HOVERS (point : « je ne sais pas ce qu'est un laborer, ni pourquoi l'humeur varie »).
+const TIPS := {
+	"Laboureurs": "La masse : fournit le travail (extraction + manufactures) et demande les biens de base (vivres, étoffe, bois de feu).",
+	"Artisans":   "Marchands & artisans : possèdent les manufactures, captent le profit, demandent les biens manufacturés.",
+	"Noblesse":   "L'aristocratie : vit de la taxe et de la rente, produit la recherche, exige le luxe (joaillerie, étoffe précieuse).",
+	"humeur":     "L'humeur locale (légitimité de la province) : monte avec l'ordre et les besoins comblés ; chute sous la surtaxe, la coercition et les cicatrices de révolte.",
+}
+var _tips: Array = []
+
 var _pid := -1
 
 func _ready() -> void:
@@ -46,6 +55,7 @@ func _draw() -> void:
 	var rw := PW - 30.0
 	VKit.panel_bg(self, Rect2(0, 0, PW, ph))
 	VKit.fill(self, Rect2(PW - 2, 0, 2, ph), VKit.COL_COPPER)
+	_tips.clear()
 	var x := 16.0
 	var y := 14.0
 
@@ -105,6 +115,7 @@ func _draw() -> void:
 		y = VKit.row(self, x, y, "Héritage", String(info["heritage"]), VKit.COL_PARCH)
 
 	# ── HUMEUR : rangée de visages + chiffre ──────────────────────────────────
+	var hy0 := y
 	y = VKit.section(self, x, y, "HUMEUR")
 	var nf := 5
 	var fr := 9.0
@@ -116,6 +127,7 @@ func _draw() -> void:
 		VKit.face(self, Vector2(x + fr + i * (2 * fr + gap), fy), fr, float(i) / (nf - 1), i == lit)
 	VKit.text(self, Vector2(x + nf * (2 * fr + gap) + 6, y), VKit.sense(moodv), str(info["humeur_val"]))
 	y = fy + fr + 8
+	_tips.append([Rect2(0.0, hy0, PW, y - hy0), String(TIPS["humeur"])])
 
 	# ── POPULATION : barre empilée des classes + légende ──────────────────────
 	var cls: Dictionary = w.province_classes(_pid)
@@ -136,6 +148,7 @@ func _draw() -> void:
 	for i in range(3):
 		VKit.fill(self, Rect2(x, y + 3, 9, 9), cc[i])
 		VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, "%s %s" % [cnames[i], _grp(cp[i])])
+		_tips.append([Rect2(0.0, y - 1.0, PW, 18.0), String(TIPS.get(cnames[i], ""))])
 		y += 18
 
 	# ── RESSOURCES + PRODUCTION ───────────────────────────────────────────────
@@ -193,3 +206,10 @@ func _grp(n) -> String:
 		if c % 3 == 0 and i > 0:
 			out = " " + out
 	return ("-" if int(n) < 0 else "") + out
+
+## HOVER natif : Godot appelle ceci au survol → texte de la zone touchée (classe / humeur).
+func _get_tooltip(at_position: Vector2) -> String:
+	for t in _tips:
+		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":
+			return String(t[1])
+	return ""

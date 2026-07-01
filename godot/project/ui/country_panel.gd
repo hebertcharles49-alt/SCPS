@@ -18,6 +18,16 @@ const ROWS := [
 	["savoir",     "Savoir",     "knowledge_book"],
 ]
 
+# HOVERS (point : « je ne sais pas ce qu'est la stabilité ») — explications au survol.
+const TIPS := {
+	"stabilite":  "Solidité du régime : haute = ordre tenu ; basse = risque de coup d'État ou de révolte. Nourrie par la légitimité et la prospérité.",
+	"prosperite": "Richesse par tête de l'empire (biens produits et consommés). Haute = population comblée.",
+	"legitimite": "Consentement des gouvernés envers la couronne. Basse = agitation, puis sécession.",
+	"cohesion":   "Unité culturelle de l'empire. Basse = fractures, minorités frondeuses.",
+	"savoir":     "Avancée de la recherche : c'est elle qui ouvre les technologies.",
+}
+var _tips: Array = []   ## [ [Rect2, texte], … ] reconstruit à chaque _draw, hit-testé au survol
+
 var _cid := -1
 
 func _ready() -> void:
@@ -48,6 +58,7 @@ func _draw() -> void:
 	if not bool(info.get("valide", false)):
 		return
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
+	_tips.clear()
 	var x := 16.0
 	var y := 12.0
 
@@ -66,6 +77,7 @@ func _draw() -> void:
 
 	for r in ROWS:
 		_gauge_row(x, y, String(r[1]), String(r[2]), int(info[r[0]]))
+		_tips.append([Rect2(0.0, y - 2.0, PW, 22.0), String(TIPS.get(r[0], ""))])
 		y += 24
 
 	y += 2
@@ -112,3 +124,10 @@ func _grp(n) -> String:
 		if c % 3 == 0 and i > 0:
 			out = " " + out
 	return ("-" if int(n) < 0 else "") + out
+
+## HOVER natif : Godot appelle ceci au survol → on rend le texte de la zone touchée.
+func _get_tooltip(at_position: Vector2) -> String:
+	for t in _tips:
+		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":
+			return String(t[1])
+	return ""
