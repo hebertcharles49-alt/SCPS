@@ -20,6 +20,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("year"),                    &ScpsWorld::year);
     ClassDB::bind_method(D_METHOD("player"),                  &ScpsWorld::player);
     ClassDB::bind_method(D_METHOD("country_count"),           &ScpsWorld::country_count);
+    ClassDB::bind_method(D_METHOD("country_province_count", "country"), &ScpsWorld::country_province_count);
     ClassDB::bind_method(D_METHOD("region_count"),            &ScpsWorld::region_count);
     ClassDB::bind_method(D_METHOD("world_pop"),               &ScpsWorld::world_pop);
     ClassDB::bind_method(D_METHOD("country_pop", "country"),  &ScpsWorld::country_pop);
@@ -160,6 +161,7 @@ Ref<Image> ScpsWorld::layer_image(int layer) {
 int     ScpsWorld::year()          const { return scps_year(sim); }
 int     ScpsWorld::player()        const { return scps_player(sim); }
 int     ScpsWorld::country_count() const { return scps_country_count(sim); }
+int     ScpsWorld::country_province_count(int c) const { return scps_country_province_count(sim, c); }
 int     ScpsWorld::region_count()  const { return scps_region_count(sim); }
 int64_t ScpsWorld::world_pop()     const { return (int64_t)scps_world_pop(sim); }
 int64_t ScpsWorld::country_pop(int c)  const { return (int64_t)scps_country_pop(sim, c); }

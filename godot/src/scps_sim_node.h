@@ -45,6 +45,7 @@ public:
     int     year() const;
     int     player() const;
     int     country_count() const;
+    int     country_province_count(int country) const;   /* provinces possédées (topbar EU4) */
     int     region_count() const;
     int64_t world_pop() const;
     int64_t country_pop(int country) const;
