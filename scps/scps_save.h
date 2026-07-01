@@ -11,6 +11,11 @@
  * pour que la membrane de SaveMisc reste neutre (aucun global de front ici).
  *
  * ── Historique des versions (bump = struct sérialisée plus large ⇒ « ère antérieure ») ──
+ * v47 : ÉCONOMIE PAR-PROVINCE — WorldEconomy gagne prov[SCPS_MAX_PROV]+n_prov (LA VÉRITÉ
+ *       économique, charte PROVINCE_MODEL.md) ; region[] n'est plus qu'un AGRÉGAT ; +prov_adj
+ *       (POINTEUR TAS, adjacence de provinces — JAMAIS sérialisé comme adresse valide : écrasé
+ *       à NULL puis REBÂTI par econ_build_adjacency au chargement, avec region_rep_prov).
+ *       sizeof(WorldEconomy) ~2.5 Mo → ~7.9 Mo. <v47 refusé.
  * v39 : LETTRÉS — la section RELG gagne g_scholar[] (agents religieux déployés). <v39 refusé.
  * v38 : RELIGION par RÉGION — la section RELG gagne g_region_religion[] (fracture/sécession). <v38 refusé.
  * v37 : RELIGION — section RELG (religion_save/load : registre g_religions + liens pays→religion).
@@ -27,7 +32,7 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 46u           /* v46 : APEX TRIPLES — +3 nœuds tier-5 (fusion de 3 héritages) ⇒ TECH_COUNT grandit (TechState) ; + ArmyDoctrine.firearm_power (ArmyState block sérialisé sizeof). v45 : COMBOS — +14 nœuds de tech tier-4 (fusion de 2 héritages) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v44 : ÉTOFFE — +12 nœuds de tech (branches culturelles d'héritage tier 1-2) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v43 : RES_METAL SUPPRIMÉ (outils = fer+bois DIRECT ; coques = cuivre) ⇒ RES_COUNT change → tableaux [RES_COUNT] de RegionEconomy rétrécissent. v42 : ALLOCATION main-d'œuvre. v41 : EXPLOITATION (raw_boost) */
+#define SAVE_VERSION 47u           /* v47 : ÉCONOMIE PAR-PROVINCE — WorldEconomy.prov[]+n_prov (vérité) + prov_adj (heap, rebuilt) ; region[] agrégat. v46 : APEX TRIPLES — +3 nœuds tier-5 (fusion de 3 héritages) ⇒ TECH_COUNT grandit (TechState) ; + ArmyDoctrine.firearm_power (ArmyState block sérialisé sizeof). v45 : COMBOS — +14 nœuds de tech tier-4 (fusion de 2 héritages) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v44 : ÉTOFFE — +12 nœuds de tech (branches culturelles d'héritage tier 1-2) ⇒ TECH_COUNT grandit → TechState.unlocked[TECH_COUNT] change de taille. v43 : RES_METAL SUPPRIMÉ (outils = fer+bois DIRECT ; coques = cuivre) ⇒ RES_COUNT change → tableaux [RES_COUNT] de RegionEconomy rétrécissent. v42 : ALLOCATION main-d'œuvre. v41 : EXPLOITATION (raw_boost) */
 #define SAVE_F_CRYPT 1u
 
 typedef struct {

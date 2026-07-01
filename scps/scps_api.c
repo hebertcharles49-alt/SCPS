@@ -236,6 +236,16 @@ int  scps_country_count(const ScpsSim *s){ return (s && s->ready) ? s->w->n_coun
 int  scps_region_count (const ScpsSim *s){ return (s && s->ready) ? s->sim.econ->n_regions : 0; }
 int  scps_province_count(const ScpsSim *s){ return (s && s->ready) ? s->w->n_provinces : 0; }
 
+/* nombre de provinces possédées par `country` : compte direct sur prov[] (la vérité de
+ * propriété, charte PROVINCE_MODEL.md) — alimente la topbar "provinces". */
+int scps_country_province_count(const ScpsSim *s, int country){
+    if(!s || !s->ready || country<0 || country>=s->w->n_countries) return 0;
+    int n = 0;
+    for(int pid=0; pid<s->sim.econ->n_prov; pid++)
+        if(s->sim.econ->prov[pid].owner==country) n++;
+    return n;
+}
+
 long scps_region_pop(const ScpsSim *s, int r){
     if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return 0;
     return region_pop_i(s, r);
@@ -341,7 +351,6 @@ void scps_province_info(ScpsSim *s, int pid, ScpsProvInfo *out){
     if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return;
 
     ProvinceReadout pr = province_readout(s->w, s->sim.econ, s->sim.wp, s->sim.wl, pid);
-    int reg = s->w->province[pid].region;
 
     out->valid          = 1;
     out->nom            = sz(pr.nom);
@@ -359,7 +368,10 @@ void scps_province_info(ScpsSim *s, int pid, ScpsProvInfo *out){
     out->defense        = sz(pr.defense);
     out->specialisation = sz(pr.specialisation);
     out->ames           = pr.ames;
-    out->owner          = (reg>=0 && reg<s->sim.econ->n_regions) ? s->sim.econ->region[reg].owner : -1;
+    /* PROPRIÉTAIRE : la vérité vit sur la province elle-même (charte PROVINCE_MODEL.md) —
+     * econ->region[reg].owner n'est qu'un REPRÉSENTANT (capitale, sinon la plus peuplée de
+     * la région) et mentirait pour toute province non-dominante de sa région. */
+    out->owner          = (pid>=0 && pid<s->sim.econ->n_prov) ? s->sim.econ->prov[pid].owner : -1;
     out->agitation      = pr.agitation.value;
     out->aisance_val    = pr.m_aisance.value;
     out->humeur_val     = pr.m_humeur.value;
@@ -551,12 +563,14 @@ int scps_province_agitation(ScpsSim *s, int pid, int *out_value, ScpsBreakdownLi
 }
 
 /* les MANUFACTURES bâties dans la province : nom + niveau (capacité) + ouvriers
- * (emploi effectif). Lues de RegionEconomy.bld[]. Retourne n (trié par niveau desc). */
+ * (emploi effectif). Lues de ProvinceEconomy.bld[] DIRECT (charte PROVINCE_MODEL.md :
+ * le bâti est une vérité par-province ; RegionEconomy.bld[] n'est qu'un miroir de la
+ * province REPRÉSENTATIVE de la région, pas une somme — lire la province évite de
+ * montrer les bâtiments d'une voisine). Retourne n (trié par niveau desc). */
 int scps_province_buildings(ScpsSim *s, int pid, ScpsProvBld *out, int max){
     if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
-    int reg = s->w->province[pid].region;
-    if(reg<0 || reg>=s->sim.econ->n_regions) return 0;
-    const RegionEconomy *re = &s->sim.econ->region[reg];
+    if(pid>=s->sim.econ->n_prov) return 0;
+    const ProvinceEconomy *re = &s->sim.econ->prov[pid];
     /* indices triés par niveau décroissant (le bâti le plus gros en tête) */
     int idx[ECON_MAX_BLD], k=0;
     for(int i=0;i<re->n_bld && i<ECON_MAX_BLD;i++) if(re->bld[i].level > 0.05f) idx[k++]=i;
@@ -606,19 +620,19 @@ int scps_province_log(ScpsSim *s, int pid, ScpsLogEntry *out, int max){
 
 void scps_province_classes(ScpsSim *s, int pid, long *lab, long *bourg, long *elite){
     long cp[3] = {0,0,0};
-    if(s && s->ready && pid>=0 && pid<s->w->n_provinces){
-        int reg = s->w->province[pid].region;
-        if(reg>=0 && reg<s->sim.econ->n_regions){
-            RegionEconomy *re = &s->sim.econ->region[reg];
-            const ProvincePop *pp = &re->pop;
-            if(pp->n_groups>0){
-                for(int gi=0; gi<pp->n_groups; gi++)
-                    for(int cc=0; cc<3; cc++) cp[cc] += pp->groups[gi].pop_by_class[cc];
-            } else {
-                cp[0]=(long)re->strata[CLASS_LABORER].pop;
-                cp[1]=(long)re->strata[CLASS_BOURGEOIS].pop;
-                cp[2]=(long)re->strata[CLASS_ELITE].pop;
-            }
+    if(s && s->ready && pid>=0 && pid<s->w->n_provinces && pid<s->sim.econ->n_prov){
+        /* la province est la vérité (charte PROVINCE_MODEL.md) : strata[] y est TENU à
+         * jour par econ_tick ; pop.n_groups n'y est pas encore peuplé (câblage moteur à
+         * venir) → le repli sur strata[] fait le bon calcul dès aujourd'hui. */
+        const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+        const ProvincePop *pp = &pe->pop;
+        if(pp->n_groups>0){
+            for(int gi=0; gi<pp->n_groups; gi++)
+                for(int cc=0; cc<3; cc++) cp[cc] += pp->groups[gi].pop_by_class[cc];
+        } else {
+            cp[0]=(long)pe->strata[CLASS_LABORER].pop;
+            cp[1]=(long)pe->strata[CLASS_BOURGEOIS].pop;
+            cp[2]=(long)pe->strata[CLASS_ELITE].pop;
         }
     }
     if(lab)   *lab   = cp[0];
@@ -629,10 +643,12 @@ void scps_province_classes(ScpsSim *s, int pid, long *lab, long *bourg, long *el
 void scps_province_capitale(ScpsSim *s, int pid, ScpsCapitale *out){
     if(!out) return;
     memset(out, 0, sizeof *out); out->statut = "";
-    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return;
-    int reg = s->w->province[pid].region;
-    if(reg<0 || reg>=s->sim.econ->n_regions) return;
-    long pop = region_pop_i(s, reg);
+    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces || pid>=s->sim.econ->n_prov) return;
+    /* la population de LA province-siège (pas l'agrégat de sa région entière — une
+     * région peut porter d'autres provinces que la capitale, charte PROVINCE_MODEL.md). */
+    const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+    long pop = (long)(pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop
+                     + pe->strata[CLASS_ELITE].pop);
     int tier = capitale_max_tier(pop);
     long admin = capitale_admin_pop(tier); if(admin>pop) admin = (pop/100)*100;
     out->statut       = sz(capitale_status(tier));

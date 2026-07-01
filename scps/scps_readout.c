@@ -656,11 +656,19 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     pr.relief    = relief_word(p->height_avg, p->biome_dominant);
     pr.ressource = (p->resource > RES_NONE) ? resource_name(p->resource) : "—";
 
-    const RegionEconomy *re = (reg >= 0 && reg < econ->n_regions) ? &econ->region[reg] : NULL;
-    pr.heritage = re ? heritage_name(re->culture.heritage) : "—";
+    /* LA VÉRITÉ (charte PROVINCE_MODEL.md) : chaque province a SA PROPRE économie
+     * (pop/strates/culture/bâtiments/raw_cap/stock), plus individualisée que l'ancien
+     * agrégat région — deux provinces d'une même région montrent désormais des chiffres
+     * DIFFÉRENTS. `pe` == NULL seulement si pid est hors-borne du tableau prov[]. */
+    const ProvinceEconomy *pe = (pid >= 0 && pid < econ->n_prov) ? &econ->prov[pid] : NULL;
+    /* Province VIERGE (jamais colonisée) : seuls terrain+ressource sont significatifs —
+     * pop et bâtiments restent à zéro (déjà memset), mais `valid` (posé par l'appelant
+     * scps_province_info) doit rester vrai pour que le panneau rende terrain/ressource. */
+    bool colonized = pe && pe->colonized;
+    pr.heritage = (colonized) ? heritage_name(pe->culture.heritage) : "—";
     float pop = 0.f;
-    if (re) pop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
-                + re->strata[CLASS_ELITE].pop;
+    if (colonized) pop = pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop
+                        + pe->strata[CLASS_ELITE].pop;
     pr.ames = (long)pop;
 
     if      (pop <   50.f) pr.stature = STA_DESERT;
@@ -669,18 +677,18 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     else if (pop < 6000.f) pr.stature = STA_CITE;
     else                   pr.stature = STA_METROPOLE;
 
-    float sat = re ? re->satisfaction : 0.5f;
+    float sat = colonized ? pe->satisfaction : 0.5f;
     if      (sat < 0.30f) pr.aisance = AI_MISERE;
     else if (sat < 0.55f) pr.aisance = AI_SUFFISANCE;
     else if (sat < 0.80f) pr.aisance = AI_AISANCE;
     else                  pr.aisance = AI_FASTE;
     /* PROSPÉRITÉ 0-100 (la jauge de l'en-tête) : l'indice local 0..10 projeté. */
-    pr.m_aisance = mk_metric(metric_prosperity(re ? re->prosperity : 5.f),
+    pr.m_aisance = mk_metric(metric_prosperity(colonized ? pe->prosperity : 5.f),
                              label_aisance(pr.aisance), hover_aisance());
 
     /* Flux : proxy (la migration crée de la diaspora à destination → afflux).
      * La vraie balance migratoire par province viendra avec la prospérité locale. */
-    float dia = re ? re->diaspora_pop : 0.f;
+    float dia = colonized ? pe->diaspora_pop : 0.f;
     pr.flux     = (dia > 50.f) ? FX_RUEE : (dia > 5.f) ? FX_AFFLUX : FX_STABLE;
     pr.diaspora = (dia > 0.5f);
 
@@ -689,8 +697,8 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * (Marché/Entrepôt) + la prospérité locale font le pôle ; la surchauffe du
      * pays le déchire (le seuil de déréalisation). */
     {
-        float hub = re ? (re->build.PE_infra + re->route_pe
-                          + rclampf(re->prosperity*2.f, 0.f, 3.f)) : 0.f;
+        float hub = colonized ? (pe->build.PE_infra + pe->route_pe
+                          + rclampf(pe->prosperity*2.f, 0.f, 3.f)) : 0.f;
         int   cc  = w->province[pid].country;
         bool  overheat = (cc>=0 && cc<wp->n_countries && wp->country[cc].surchauffe > 2.f);
         if      (hub < 1.0f) pr.carrefour = CF_NONE;
@@ -699,15 +707,17 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
         else                 pr.carrefour = CF_BOUILLONNANTE;
     }
 
-    /* Allégeance — les lectures les plus proches du SCPS. */
+    /* Allégeance — les lectures les plus proches du SCPS. WorldLegitimacy reste au
+     * grain RÉGION (charte règle 4 : la légitimité est un « groupement politique »,
+     * pas une incidence par-province) — indexé par reg, inchangé. */
     float L_local = (wl && reg >= 0 && reg < SCPS_MAX_REG) ? wl->L[reg] : 5.f;
     pr.humeur = band_humeur(L_local);
     pr.m_humeur = mk_metric(metric_legitimacy(L_local), label_humeur(pr.humeur), hover_humeur());
 
-    int cid = re ? re->owner : -1;
+    int cid = colonized ? pe->owner : -1;
     const PopCulture *ruling = (cid >= 0) ? pc_ruling(w, econ, cid) : NULL;
-    if (re && ruling) {
-        const PopCulture *rc = &re->culture;
+    if (colonized && ruling) {
+        const PopCulture *rc = &pe->culture;
         float clock   = rc->langue - ruling->langue; if (clock < 0) clock = -clock;
         float content = pc_content_dist(rc, ruling);
         bool same_branch  = (rc->rel_branch == ruling->rel_branch);
@@ -725,9 +735,9 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * étrangère) + choc récent (conquête, coercition), ABATTUE par la stabilité
      * du pays et la garnison (H bâti) — révolte au-dessus du seuil. C'est l'effet
      * EXISTANT de L/H sur l'ordre, surfacé en un nombre lisible. */
-    float div_tension = (re && ruling) ? pc_content_dist(&re->culture, ruling) : 0.f;
-    float garrison    = re ? re->build.H_coerc : 0.f;
-    float coercion    = re ? re->coercion : 0.f;
+    float div_tension = (colonized && ruling) ? pc_content_dist(&pe->culture, ruling) : 0.f;
+    float garrison    = colonized ? pe->build.H_coerc : 0.f;
+    float coercion    = colonized ? pe->coercion : 0.f;
     float yh          = (wl && reg >= 0 && reg < SCPS_MAX_REG) ? wl->years_held[reg] : 50.f;
     float recent_shock= (yh < 5.f) ? (1.f - yh/5.f) : 0.f;
     if (coercion > recent_shock) recent_shock = coercion;
@@ -744,18 +754,18 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * 1 logement et 1 service. On affiche les places ENCORE LIBRES (capacité − pop),
      * pas un score abstrait. Plus deux SLOTS RÉSERVÉS lus de l'état bâti. ──────── */
     {
-        float food_cap = re ? re->build.food_cap : 0.f;
-        float K_inst   = re ? re->build.K_inst   : 0.f;
-        float savoir   = re ? re->build.savoir   : 0.f;
-        float faith    = re ? re->build.faith    : 0.f;
-        float cap_pop  = re ? re->cap_pop        : 0.f;
-        float H        = re ? re->build.H_coerc  : 0.f;
+        float food_cap = colonized ? pe->build.food_cap : 0.f;
+        float K_inst   = colonized ? pe->build.K_inst   : 0.f;
+        float savoir   = colonized ? pe->build.savoir   : 0.f;
+        float faith    = colonized ? pe->build.faith    : 0.f;
+        float cap_pop  = colonized ? pe->cap_pop        : 0.f;
+        float H        = colonized ? pe->build.H_coerc  : 0.f;
         /* LOGEMENTS (Q6) : la capacité VIENT DU BÂTI. Plancher = ½·cap_pop (la terre
          * nue) ; les MANUFACTURES la doublent vers son plein (+100/niveau, plafond
          * ½·cap_pop) ; le grenier/aqueduc gardent leur rôle NOURRITURE. Le joueur VOIT
          * donc ses places libres monter quand il bâtit. (Miroir de l'eff_cap moteur.) */
         float manuf_h=0.f;
-        if (re) for (int bi=0;bi<re->n_bld;bi++) manuf_h += re->bld[bi].level;
+        if (colonized) for (int bi=0;bi<pe->n_bld;bi++) manuf_h += pe->bld[bi].level;
         manuf_h = fminf(manuf_h*100.f, cap_pop*0.5f);
         long house_cap = (long)(cap_pop*0.5f + manuf_h + food_cap*250.f);
         pr.logements_cap    = house_cap;
@@ -779,9 +789,9 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * que le moteur DÉRIVE de l'état (cicatrice de révolte, terre d'abondance…). Le renderer
      * ne lit que ces mots + le signe ; aucun flottant ne traverse. */
     pr.n_mods = 0;
-    if (re) {
+    if (colonized) {
         ProvModHit pm[PMOD_COUNT];
-        int npm = provmod_collect(re, pm, PMOD_COUNT);
+        int npm = provmod_collect_prov(pe, pm, PMOD_COUNT);
         for (int i = 0; i < npm && pr.n_mods < PROV_READOUT_MODS; i++) {
             ProvinceMod *m = &pr.mods[pr.n_mods];
             switch (pm[i].kind) {

@@ -463,8 +463,10 @@ const char *building_name(BuildingType b) {
 /* INITIALISATION                                                         */
 /* ====================================================================== */
 
-/* Ajoute une manufacture de type t si absente, et renvoie son index. */
-static int region_ensure_building(RegionEconomy *re, BuildingType t) {
+/* Ajoute une manufacture de type t si absente, et renvoie son index. GRAIN PROVINCE
+ * (charte : les bâtiments VIVENT sur la province ; toutes les places d'appel de ce
+ * helper opèrent désormais sur ProvinceEconomy). */
+static int region_ensure_building(ProvinceEconomy *re, BuildingType t) {
     for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==t) return i;
     if (re->n_bld>=ECON_MAX_BLD) return -1;
     int i=re->n_bld++;
@@ -472,9 +474,9 @@ static int region_ensure_building(RegionEconomy *re, BuildingType t) {
     return i;
 }
 
-/* Injecte une population répartie en strates dans une région (peuplement
+/* Injecte une population répartie en strates dans une PROVINCE (peuplement
  * initial ou arrivée de colons). N'écrase pas les manufactures/prix. */
-static void econ_seed_population(RegionEconomy *re, float total_pop) {
+static void econ_seed_population(ProvinceEconomy *re, float total_pop) {
     for (int c=0;c<CLASS_COUNT;c++) {
         re->strata[c].pop         = total_pop*CLASS_SHARE[c];
         re->strata[c].wealth      = re->strata[c].pop * (c==CLASS_ELITE?6.f:c==CLASS_BOURGEOIS?2.f:0.5f);
@@ -484,93 +486,253 @@ static void econ_seed_population(RegionEconomy *re, float total_pop) {
 
 /* §11.4 — LIMITEUR DE PRODUCTION joueur : cap par (pays,ressource). -1 = ∞ (désactivé). */
 static float g_prod_cap[SCPS_MAX_COUNTRY][RES_COUNT];
-/* (RE)CONSTRUIT l'adjacence de régions (terre, 4-connexe) : un lien ssi AUCUNE des
+
+/* Adjacence de PROVINCES (charte : la vérité géographique fine — colonisation par-province,
+ * garantie joueur, hameaux libres). Allouée dynamiquement (1664² octets ≈ 2.7 Mo — trop pour
+ * un tableau statique BSS confortable à côté du reste). Possédée par le module (une seule
+ * instance vivante par process — comme les autres globals statics d'econ.c). */
+static uint8_t *g_prov_adj = NULL;
+static inline uint8_t padj_get(int a, int b){ return g_prov_adj[(size_t)a*SCPS_MAX_PROV+b]; }
+static inline void   padj_set(int a, int b){ g_prov_adj[(size_t)a*SCPS_MAX_PROV+b]=1; }
+
+/* (RE)CONSTRUIT l'adjacence de RÉGIONS (terre, 4-connexe) : un lien ssi AUCUNE des
  * deux régions n'est infranchissable (glaciers/déserts/RONCES/MER = barrières). Zéroïe
- * d'abord — réutilisable après une carve (capstone §27 : côtes & barrières déplacées). */
+ * d'abord — réutilisable après une carve (capstone §27 : côtes & barrières déplacées).
+ * ET l'adjacence de PROVINCES (même règle, grain fin — colonisation §5 de la charte). */
 void econ_build_adjacency(WorldEconomy *e, const World *w) {
     memset(e->adj, 0, sizeof e->adj);
+    if (!g_prov_adj) g_prov_adj = (uint8_t*)malloc((size_t)SCPS_MAX_PROV*(size_t)SCPS_MAX_PROV);
+    if (g_prov_adj) memset(g_prov_adj, 0, (size_t)SCPS_MAX_PROV*(size_t)SCPS_MAX_PROV);
+    e->prov_adj = g_prov_adj;
     static const int DX4[4]={1,-1,0,0}, DY4[4]={0,0,1,-1};
     for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
-        int ra=w->cell[scps_idx(x,y)].region;
-        if (ra<0) continue;
+        int idxa=scps_idx(x,y);
+        int ra=w->cell[idxa].region;
+        int pa=w->cell[idxa].province;
         for (int d=0;d<4;d++) {
             int nx=x+DX4[d], ny=y+DY4[d];
             if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
-            int rb=w->cell[scps_idx(nx,ny)].region;
-            if (rb<0||rb==ra) continue;
-            if (!e->region[ra].impassable && !e->region[rb].impassable) {
+            int idxb=scps_idx(nx,ny);
+            int rb=w->cell[idxb].region;
+            int pb=w->cell[idxb].province;
+            if (ra>=0 && rb>=0 && ra!=rb
+                && !e->region[ra].impassable && !e->region[rb].impassable) {
                 e->adj[ra][rb]=1; e->adj[rb][ra]=1;
             }
+            if (g_prov_adj && pa>=0 && pb>=0 && pa!=pb && pa<SCPS_MAX_PROV && pb<SCPS_MAX_PROV
+                && !e->prov[pa].impassable && !e->prov[pb].impassable) {
+                padj_set(pa,pb); padj_set(pb,pa);
+            }
         }
+    }
+    /* Cache région → province REPRÉSENTATIVE (capitale, sinon la plus peuplée, sinon la
+     * première active) : résout le grain public historique « région » (econ_build_manufacture)
+     * vers où l'économie VIT (charte), sans changer ces signatures. */
+    for (int rid=0; rid<w->n_regions && rid<SCPS_MAX_REG; rid++){
+        const Region *rg=&w->region[rid];
+        int best=-1; float best_pop=-1.f; int first_active=-1; int cap=-1;
+        for (int k=0;k<rg->n_provinces;k++){
+            int pid=rg->province_ids[k];
+            if (pid<0||pid>=w->n_provinces||pid>=SCPS_MAX_PROV) continue;
+            const ProvinceEconomy *pe=&e->prov[pid];
+            if (pe->is_capital){ cap=pid; break; }
+            if (!pe->active) continue;
+            if (first_active<0) first_active=pid;
+            float pop=0.f; for (int c=0;c<CLASS_COUNT;c++) pop+=pe->strata[c].pop;
+            if (pop>best_pop){ best_pop=pop; best=pid; }
+        }
+        e->region_rep_prov[rid] = (int16_t)((cap>=0)? cap : (best>=0? best : first_active));
     }
 }
 
 /* GAMEPLAY — GARANTIE DES BRUTES DE BASE PRÈS DU JOUEUR : la worldgen tire les brutes SELON LE BIOME
  * (argile aux terres d'eau, pierre au relief, fer/bois aux gisements) — par malchance, la capitale
  * peut en manquer à portée. On FORCE une tuile de chaque (argile, pierre, FER, BOIS) dans le RAYON 1-2
- * de la capitale (via l'adjacence éco) : le joueur ne doit JAMAIS être privé de construction NI d'outils.
- * IDEMPOTENT (présent dans le rayon ⇒ on ne force rien) ; APRÈS econ_init (adjacence) + les capitales. */
+ * de la capitale (via l'adjacence de PROVINCES — la vérité fine, charte §1) : le joueur ne doit JAMAIS
+ * être privé de construction NI d'outils. IDEMPOTENT ; APRÈS econ_init (adjacence) + les capitales. */
 void econ_guarantee_player_construction(WorldEconomy *e, const World *w, int player_cid){
-    if (!e || !w || player_cid<0 || player_cid>=w->n_countries) return;
+    if (!e || !w || player_cid<0 || player_cid>=w->n_countries || !e->prov_adj) return;
     int cp = w->country[player_cid].capital_prov;
-    if (cp<0 || cp>=w->n_provinces) return;
-    int caphr = w->province[cp].region;
-    if (caphr<0 || caphr>=e->n_regions || caphr>=SCPS_MAX_REG) return;
-    int N = (e->n_regions < SCPS_MAX_REG) ? e->n_regions : SCPS_MAX_REG;
-    static bool inrad[SCPS_MAX_REG];
-    for (int r=0;r<N;r++) inrad[r]=false;
-    inrad[caphr]=true;                                        /* rayon 0 : la capitale */
-    for (int r=0;r<N;r++) if (e->adj[caphr][r]){ inrad[r]=true;   /* rayon 1 */
-        for (int r2=0;r2<N;r2++) if (e->adj[r][r2]) inrad[r2]=true; }  /* rayon 2 */
+    if (cp<0 || cp>=w->n_provinces || cp>=SCPS_MAX_PROV) return;
+    int N = (e->n_prov < SCPS_MAX_PROV) ? e->n_prov : SCPS_MAX_PROV;
+    static bool inrad[SCPS_MAX_PROV];
+    for (int p=0;p<N;p++) inrad[p]=false;
+    inrad[cp]=true;                                        /* rayon 0 : la capitale */
+    for (int p=0;p<N;p++) if (padj_get(cp,p)){ inrad[p]=true;   /* rayon 1 */
+        for (int p2=0;p2<N;p2++) if (padj_get(p,p2)) inrad[p2]=true; }  /* rayon 2 */
     const float amt = tune_f("PLAYER_GUARANTEE_RAW", 4.f);
     const Resource gg[4] = { RES_CLAY, RES_STONE, RES_IRON, RES_WOOD };   /* les 4 brutes de base à portée */
     for (int i=0;i<4;i++){ Resource g=gg[i];
         int present=0, target=-1;
-        for (int r=0;r<N;r++){ if(!inrad[r] || !e->region[r].active) continue;
-            if (e->region[r].raw_cap[g] >= 1.f){ present=1; break; }
-            if (target<0 && r!=caphr) target=r;              /* préfère un VOISIN distinct (capitale garde sa vocation) */
+        for (int p=0;p<N;p++){ if(!inrad[p] || !e->prov[p].active) continue;
+            if (e->prov[p].raw_cap[g] >= 1.f){ present=1; break; }
+            if (target<0 && p!=cp) target=p;              /* préfère un VOISIN distinct (capitale garde sa vocation) */
         }
         if (!present){
-            if (target<0) target=caphr;                      /* aucun voisin franchissable → la capitale elle-même */
-            e->region[target].raw_cap[g] = amt;              /* « Clay + X » / « Pierre + Y » */
+            if (target<0) target=cp;                      /* aucun voisin franchissable → la capitale elle-même */
+            e->prov[target].raw_cap[g] = amt;             /* « Clay + X » / « Pierre + Y » */
         }
     }
 }
 
 /* CAPSTONE §27 FROID — recompute la fertilité vivrière depuis la carte REFROIDIE.
  * Le socle de grain (raw_cap[RES_GRAIN], posé à l'init = cap_pop/100 × (1.15+0.70·hab),
- * floor anti-famine 1.15×) est RE-dérivé de l'habitabilité COURANTE des cellules (biome
+ * floor anti-famine 1.15×) est RE-dérivé de l'habitabilité COURANTE de LA province (biome
  * × confort thermique). Tant que hab ≥ 0.30 la formule d'init est conservée À L'IDENTIQUE
  * (zéro choc en jeu normal) ; SOUS 0.30 (terre gelée) elle PLONGE proportionnellement →
  * le grain tombe sous la conso → food_sat < 0.35 → la pop décline (la famine ÉMERGE de
  * la chaîne, pas d'un modificateur plat). build.food_cap (grenier/irrigation) est INTACT
- * (canal séparé). N'agit que sur les régions vivantes (owner≥0, franchissables). */
+ * (canal séparé). N'agit que sur les provinces vivantes (owner≥0, franchissables). */
 void econ_cold_refresh(WorldEconomy *e, const World *w) {
-    static float hab_sum[SCPS_MAX_REG]; static int cnt[SCPS_MAX_REG];
+    static float hab_sum[SCPS_MAX_PROV]; static int cnt[SCPS_MAX_PROV];
     memset(hab_sum, 0, sizeof hab_sum); memset(cnt, 0, sizeof cnt);
     for (int i=0;i<SCPS_N;i++){
         const Cell *c=&w->cell[i];
         if (c->height < SEA_LEVEL) continue;            /* terre seule */
-        int r=c->region; if (r<0 || r>=e->n_regions || r>=SCPS_MAX_REG) continue;
+        int p=c->province; if (p<0 || p>=e->n_prov || p>=SCPS_MAX_PROV) continue;
         float hcell = biome_habitability(c->biome, c->temperature, c->height);
         if (c->coast && hcell < 0.32f) hcell = 0.32f;   /* PLANCHER CÔTIER : la côte reste vivable (Chili) */
-        hab_sum[r] += hcell;
-        cnt[r]++;
+        hab_sum[p] += hcell;
+        cnt[p]++;
     }
-    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
-        if (cnt[r]==0) continue;
-        RegionEconomy *re=&e->region[r];
-        if (re->owner<0 || re->impassable) continue;
-        float hab = hab_sum[r]/(float)cnt[r];
-        re->habitability = hab;
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        if (cnt[p]==0) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        if (pe->owner<0 || pe->impassable) continue;
+        float hab = hab_sum[p]/(float)cnt[p];
+        pe->habitability = hab;
         float fac = (hab >= 0.30f) ? (1.15f + 0.70f*hab)               /* jeu normal : IDENTIQUE à l'init */
                                    : (1.15f + 0.70f*hab) * (hab/0.30f);  /* gel : plonge vers 0 */
         /* REFONTE (carte nue géologique) : le froid RÉDUIT le grain de la tuile (vocation/spawn),
          * il n'en AJOUTE jamais — on borne par la valeur existante. Quand le gel plonge fac sous
          * elle, le grain tombe → l'extraction vivrière s'effondre → famine. (L'ancien overwrite
          * cap_pop-based plantait du grain partout, incohérent avec le food géologique du refonte.) */
-        float cold_grain = (re->cap_pop/100.f) * fac;
-        if (cold_grain < re->raw_cap[RES_GRAIN]) re->raw_cap[RES_GRAIN] = cold_grain;
+        float cold_grain = (pe->cap_pop/100.f) * fac;
+        if (cold_grain < pe->raw_cap[RES_GRAIN]) pe->raw_cap[RES_GRAIN] = cold_grain;
+    }
+}
+
+/* Agrège prov[] → region[] (charte règle 2 : « la RÉGION AGRÈGE. Prospérité,
+ * satisfaction, marché, légitimité, agitation = sommant/pondérant les provinces
+ * de la région »). Appelée en clôture d'econ_init ET à chaque econ_tick (après
+ * la boucle province) — les lecteurs externes (guerre/diplo/commerce/endgame,
+ * §4 charte) continuent de lire RegionEconomy tel quel. World*-FREE : groupe par
+ * ProvinceEconomy.region (posé à econ_init) — econ_tick(WorldEconomy*, dt) n'a pas
+ * de World* et ne doit pas en gagner un (signature publique préservée). Voir le
+ * contrat détaillé en tête de fichier (agrégation Σ / pop-pondérée / max / capitale). */
+static void econ_aggregate_regions(WorldEconomy *e){
+    /* STATIC (hors pile) : RegionEconomy pèse ~3 Ko × SCPS_MAX_REG (832) ≈ 2.5 Mo — bien
+     * au-delà d'une pile de thread (1 Mo sur Windows, cf. CLAUDE.md campaign/warhost_demo).
+     * Même motif que supply_nat/demand_nat plus haut (statics = accumulateurs hors pile). */
+    static RegionEconomy agg[SCPS_MAX_REG];
+    static float popsum[SCPS_MAX_REG], satsum[SCPS_MAX_REG], foodsum[SCPS_MAX_REG];
+    static float socsum[SCPS_MAX_REG], nmsum[SCPS_MAX_REG], otsum[SCPS_MAX_REG], scarsum[SCPS_MAX_REG];
+    static int   n_active[SCPS_MAX_REG], n_impass[SCPS_MAX_REG], n_colonized[SCPS_MAX_REG], n_mem[SCPS_MAX_REG];
+    static int   cap_owner[SCPS_MAX_REG], best_pop_owner[SCPS_MAX_REG], rep_pid[SCPS_MAX_REG];
+    static float best_pop[SCPS_MAX_REG];
+    memset(popsum,0,sizeof popsum); memset(satsum,0,sizeof satsum); memset(foodsum,0,sizeof foodsum);
+    memset(socsum,0,sizeof socsum); memset(nmsum,0,sizeof nmsum); memset(otsum,0,sizeof otsum); memset(scarsum,0,sizeof scarsum);
+    memset(n_active,0,sizeof n_active); memset(n_impass,0,sizeof n_impass);
+    memset(n_colonized,0,sizeof n_colonized); memset(n_mem,0,sizeof n_mem);
+    int   nreg = e->n_regions; if (nreg>SCPS_MAX_REG) nreg=SCPS_MAX_REG;
+    for (int r=0;r<nreg;r++){
+        memset(&agg[r],0,sizeof agg[r]);
+        agg[r].owner=-1; agg[r].import_toll_region=-1;
+        agg[r].last_pole=e->region[r].last_pole;         /* repli : pas de membre actif */
+        agg[r].pole_since_day=e->region[r].pole_since_day;
+        cap_owner[r]=-1; best_pop_owner[r]=-1; best_pop[r]=-1.f; rep_pid[r]=-1;
+    }
+    int nprov = e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int pid=0; pid<nprov; pid++){
+        const ProvinceEconomy *pe=&e->prov[pid];
+        int r=pe->region; if (r<0||r>=nreg) continue;
+        RegionEconomy *ag=&agg[r];
+        n_mem[r]++;
+        if (pe->active) n_active[r]++;
+        if (pe->impassable) n_impass[r]++;
+        if (pe->colonized) n_colonized[r]++;
+        if (pe->is_capital){ ag->is_capital=true; cap_owner[r]=pe->owner; rep_pid[r]=pid; }
+        if (pe->coastal) ag->coastal=true;
+        if (pe->estuary) ag->estuary=true;
+        ag->prov_geo |= pe->prov_geo;
+        ag->edi_built |= pe->edi_built;
+        ag->route_pe += pe->route_pe;
+        ag->n_entrepot += pe->n_entrepot;
+        ag->cap_pop += pe->cap_pop;
+        ag->gdp += pe->gdp;
+        ag->treasury += pe->treasury;
+        ag->tech += pe->tech;
+        ag->diaspora_pop += pe->diaspora_pop;
+        ag->diaspora_innovation += pe->diaspora_innovation;
+        ag->arcane_charge += pe->arcane_charge;
+        ag->faust_charge  += pe->faust_charge;
+        ag->mil_stock     += pe->mil_stock;
+        for (int i3=0;i3<3;i3++) ag->faust_consumed[i3]+=pe->faust_consumed[i3];
+        for (int g=0;g<RES_COUNT;g++){
+            ag->raw_cap[g]+=pe->raw_cap[g]; ag->stock[g]+=pe->stock[g];
+            ag->demand[g]+=pe->demand[g]; ag->supply[g]+=pe->supply[g];
+            if (pe->raw_boost[g]>ag->raw_boost[g]) ag->raw_boost[g]=pe->raw_boost[g];
+        }
+        if (pe->coercion>ag->coercion) ag->coercion=pe->coercion;
+        if (pe->ferveur>ag->ferveur) ag->ferveur=pe->ferveur;
+        if (pe->reconstruction>ag->reconstruction) ag->reconstruction=pe->reconstruction;
+        if (pe->annex_scar>ag->annex_scar) ag->annex_scar=pe->annex_scar;
+        if (pe->pillage_cd>ag->pillage_cd) ag->pillage_cd=pe->pillage_cd;
+        if (pe->balafre_days>ag->balafre_days) ag->balafre_days=pe->balafre_days;
+        if (pe->raid_cd_days>ag->raid_cd_days) ag->raid_cd_days=pe->raid_cd_days;
+        ag->build.K_inst+=pe->build.K_inst; ag->build.H_coerc+=pe->build.H_coerc;
+        ag->build.P_open+=pe->build.P_open; ag->build.PE_infra+=pe->build.PE_infra;
+        ag->build.food_cap+=pe->build.food_cap; ag->build.faith+=pe->build.faith;
+        ag->build.savoir+=pe->build.savoir; ag->build.port+=pe->build.port;
+        float ppop=0.f; for (int c=0;c<CLASS_COUNT;c++){ ag->strata[c].pop+=pe->strata[c].pop;
+            ag->strata[c].wealth+=pe->strata[c].wealth; ppop+=pe->strata[c].pop; }
+        popsum[r] += ppop;
+        satsum[r] += pe->satisfaction*ppop; foodsum[r] += pe->food_sat*ppop;
+        socsum[r] += pe->society_sat*ppop; nmsum[r] += pe->needs_met*ppop; otsum[r] += pe->over_tax*ppop;
+        scarsum[r]+= pe->revolt_scar*ppop;
+        /* habitabilité : moyenne SIMPLE des provinces membres (pas de pondération par
+         * surface — World* indisponible ici ; la surface varie peu entre provinces). */
+        ag->habitability += pe->habitability;
+        if (ppop>best_pop[r]){ best_pop[r]=ppop; best_pop_owner[r]=pe->owner; if (rep_pid[r]<0 || !e->prov[rep_pid[r]].is_capital) rep_pid[r]=pid; }
+        /* miroir des bâtiments/culture/pop-groupes : la province-CAPITALE (sinon la plus
+         * peuplée) sert de représentant informatif (agrégation exacte des bâtiments par
+         * niveau nécessiterait une clé composite type+province — hors du besoin des
+         * lecteurs externes, qui lisent surtout raw_cap/stock/prix agrégés ci-dessus). */
+    }
+    for (int r=0;r<nreg;r++){
+        RegionEconomy *ag=&agg[r];
+        int rep_owner = (cap_owner[r]>=0)? cap_owner[r] : best_pop_owner[r];
+        int rp = rep_pid[r];
+        if (rp>=0){
+            const ProvinceEconomy *pe=&e->prov[rp];
+            ag->culture=pe->culture; ag->pop=pe->pop;
+            ag->n_bld=pe->n_bld; for (int i=0;i<pe->n_bld;i++) ag->bld[i]=pe->bld[i];
+            ag->import_margin=pe->import_margin; ag->import_toll_region=pe->import_toll_region;
+            ag->tech_prod=pe->tech_prod; ag->tech_foreuse=pe->tech_foreuse; ag->tech_alchimie=pe->tech_alchimie;
+            ag->tech_replicateur=pe->tech_replicateur; ag->tech_corne=pe->tech_corne; ag->tech_arquebus=pe->tech_arquebus;
+            ag->alloc_on=pe->alloc_on;
+            for (int rr=0;rr<RES_PROD_FIRST;rr++) ag->alloc_raw[rr]=pe->alloc_raw[rr];
+            for (int b=0;b<BLD_TYPE_COUNT;b++){ ag->alloc_bld[b]=pe->alloc_bld[b]; ag->bld_input[b]=pe->bld_input[b]; }
+            ag->last_pole=pe->last_pole; ag->pole_since_day=pe->pole_since_day;
+            for (int rr=0;rr<RES_COUNT;rr++) ag->price[rr]=pe->price[rr];
+        } else {
+            ag->import_margin=1.f;
+            for (int rr=0;rr<RES_COUNT;rr++) ag->price[rr]=BASE_PRICE[rr];
+        }
+
+        ag->owner = rep_owner;
+        ag->active = (n_active[r]>0);
+        ag->impassable = (n_mem[r]>0 && n_impass[r]==n_mem[r]);
+        ag->colonized = (n_colonized[r]>0);
+        ag->habitability = (n_mem[r]>0)? ag->habitability/(float)n_mem[r] : 0.f;
+        if (popsum[r]>EPS){
+            ag->satisfaction=satsum[r]/popsum[r]; ag->food_sat=foodsum[r]/popsum[r]; ag->society_sat=socsum[r]/popsum[r];
+            ag->needs_met=nmsum[r]/popsum[r]; ag->over_tax=otsum[r]/popsum[r]; ag->revolt_scar=scarsum[r]/popsum[r];
+        } else {
+            ag->food_sat=0.5f; ag->society_sat=0.5f;
+        }
+        ag->prosperity = ag->gdp/(popsum[r]+1.f);
+        e->region[r] = *ag;
     }
 }
 
@@ -578,65 +740,47 @@ void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(e,0,sizeof(*e));
     econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */
+    e->n_prov=w->n_provinces;
     e->n_regions=w->n_regions;
     e->tick=0;
     e->ipm=1.f; e->ipm_ref=0.f;         /* §C : IPM neutre, référence non encore captée */
 
-    /* ---- Passe 1 : capacité et habitabilité de chaque région ------------- *
-     * reg_hab = habitabilité moyenne pondérée par la surface (province).
-     * reg_cap = capacité brute, MULTIPLIÉE par reg_hab → les zones glaciaires
-     * et les déserts hyperarides ont cap_pop ≈ 0, reflétant la réalité.     */
-    float reg_cap[SCPS_MAX_REG]={0};
-    float reg_hab[SCPS_MAX_REG]={0};
-    bool  reg_impass[SCPS_MAX_REG]={0};   /* zone morte (déterminée ici, RÉUTILISÉE en Passe 3) */
+    /* ---- Passe 1 : capacité et habitabilité de CHAQUE PROVINCE (charte : la
+     * province EST l'unité — plus besoin de sommer sur rg->province_ids). ---- */
+    float prov_cap[SCPS_MAX_PROV]={0};
+    bool  prov_impass[SCPS_MAX_PROV]={0};   /* zone morte (déterminée ici, RÉUTILISÉE en Passe 3) */
     float cty_cap[SCPS_MAX_COUNTRY]={0};
-    /* Une région PORTEUSE de la capitale d'un empire/cité ne peut être déclarée morte : la capitale est
-     * posée sur sa province habitable (choisie pour l'eau+nourriture), mais le poids de rôle préfère les
-     * sièges CÔTIERS — la région agrège alors assez de provinces mortes (côte/glacier) pour franchir le
-     * seuil d'infranchissabilité. Sans garde, un empire (voire le JOUEUR) naît SANS aucune région
-     * colonisée (capitale inactive). On exonère donc la région-siège du verdict de zone morte. */
-    bool is_cap[SCPS_MAX_REG]={0};
+    /* Une province PORTEUSE de la capitale d'un empire/cité ne peut être déclarée morte
+     * (siège garanti habitable — choisi pour l'eau+nourriture). */
+    bool is_cap[SCPS_MAX_PROV]={0};
     for (int c=0;c<w->n_countries;c++){
         PolityRole rl=w->country[c].role;
         if (rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST && rl!=POLITY_CITY_STATE) continue;
         int cp=w->country[c].capital_prov;
-        int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
-        if (cr>=0&&cr<w->n_regions) is_cap[cr]=true;
+        if (cp>=0 && cp<w->n_provinces && cp<SCPS_MAX_PROV) is_cap[cp]=true;
     }
-    for (int rid=0; rid<w->n_regions; rid++) {
-        const Region *rg=&w->region[rid];
-        e->region[rid].import_margin = 1.f;          /* I6 : marché 1:1 par défaut (intertrade l'ajuste) */
-        e->region[rid].import_toll_region = -1;
-        e->region[rid].last_pole = 1;                /* M3 : POLE_ORDRE par défaut (sinon memset→MARTIAL) */
-        e->region[rid].pole_since_day = 0;
-        float cap=0.f, area=0.f, hab_w=0.f, dead_area=0.f;
-        for (int k=0;k<rg->n_provinces;k++) {
-            int pid=rg->province_ids[k];
-            if (pid<0||pid>=w->n_provinces) continue;
-            const Province *pv=&w->province[pid];
-            float a = (float)pv->area;
-            /* Intensité agricole du biome (même source de vérité que l'axe
-             * subsistance culturel) → capacité d'accueil brute. */
-            float subs = subsistance_for_biome(pv->biome_dominant);
-            cap  += a * (0.25f + 0.75f*clampf(subs/10.f,0.f,1.f));
-            hab_w += pv->habitability * a;
-            area += a;
-            if (pv->habitability <= 0.25f) dead_area += a;   /* SEUIL D'ACCÈS : ≤25 % = inaccessible (glacier/pic/volcan/montagne escarpée/désert/froid) */
-        }
-        if (area<1.f) continue;
-        float hab = hab_w / area;   /* habitabilité pondérée par surface */
-        reg_hab[rid] = hab;
-        reg_cap[rid] = cap * hab;   /* la capacité est nulle pour les zones mortes */
-        /* SEUIL D'ACCÈS UNIFIÉ (≤25 %) : une région est inaccessible si elle est
-         * MAJORITAIREMENT sous le seuil (≥50 % d'aire ≤25 %) OU si sa moyenne tombe
-         * elle-même ≤25 %. Remplace les ex-seuils ad-hoc (0.01 / 35 % / 12 %). La
-         * région-siège reste exemptée (la capitale tient sur sa province habitable). */
-        reg_impass[rid] = ((dead_area/area >= 0.50f) || (hab <= 0.25f)) && !is_cap[rid];
-        int cid=rg->country;
+    for (int pid=0; pid<w->n_provinces && pid<SCPS_MAX_PROV; pid++) {
+        const Province *pv=&w->province[pid];
+        ProvinceEconomy *pe=&e->prov[pid];
+        pe->import_margin = 1.f;          /* I6 : marché 1:1 par défaut (intertrade l'ajuste) */
+        pe->import_toll_region = -1;
+        pe->last_pole = 1;                /* M3 : POLE_ORDRE par défaut (sinon memset→MARTIAL) */
+        pe->pole_since_day = 0;
+        float a = (float)pv->area; if (a<1.f) a=1.f;
+        /* Intensité agricole du biome (même source de vérité que l'axe
+         * subsistance culturel) → capacité d'accueil brute. */
+        float subs = subsistance_for_biome(pv->biome_dominant);
+        float cap  = a * (0.25f + 0.75f*clampf(subs/10.f,0.f,1.f));
+        float hab  = pv->habitability;
+        prov_cap[pid] = cap * hab;   /* la capacité est nulle pour les zones mortes */
+        /* SEUIL D'ACCÈS (≤25 % = inaccessible : glacier/pic/volcan/montagne escarpée/désert/
+         * froid) — la province-siège reste exemptée (elle tient sur sa propre habitabilité). */
+        prov_impass[pid] = (hab <= 0.25f) && !is_cap[pid];
+        int cid=pv->country;
         /* La capacité-pays ne compte que les terres VIVABLES → la cible (Passe 2)
-         * se répartit sur les seules régions actives : aucune part « fuite » dans
+         * se répartit sur les seules provinces actives : aucune part « fuite » dans
          * une zone morte. cap_pop_sum vaut alors EXACTEMENT Σ cibles. */
-        if (cid>=0 && cid<SCPS_MAX_COUNTRY && !reg_impass[rid]) cty_cap[cid]+=reg_cap[rid];
+        if (cid>=0 && cid<SCPS_MAX_COUNTRY && !prov_impass[pid]) cty_cap[cid]+=prov_cap[pid];
     }
 
     /* ---- Passe 2 : capacité d'accueil par RÔLE (Q6 re-baseline) -----------
@@ -660,87 +804,73 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
-    /* ---- Passe 3 : peuplement de chaque région --------------------------- */
-    for (int rid=0; rid<w->n_regions; rid++) {
-        RegionEconomy *re=&e->region[rid];
-        const Region *rg=&w->region[rid];
+    /* ---- Passe 3 : peuplement de CHAQUE PROVINCE (charte : l'économie brute
+     * VIT ici — pop/strates/raw_cap/bâtiments/vocation par PROVINCE). -------- */
+    for (int pid=0; pid<w->n_provinces && pid<SCPS_MAX_PROV; pid++) {
+        ProvinceEconomy *pe=&e->prov[pid];
+        const Province *pv=&w->province[pid];
 
-        float area_sum=0.f;
-        for (int k=0;k<rg->n_provinces;k++) {
-            int pid=rg->province_ids[k];
-            if (pid<0||pid>=w->n_provinces) continue;
-            area_sum += w->province[pid].area;
-        }
-        /* Zone morte / infranchissable (glacier, pic, volcan, désert hyperaride) :
-         * déjà tranchée en Passe 1 (≥35 % d'aire à habitabilité nulle, ou moyenne
-         * < 12 %) et RÉUTILISÉE ici — même verdict que le calcul de cty_cap, donc
-         * aucune part de cible ne fuite dans une région qu'on déclare ensuite morte. */
-        bool is_impass = reg_impass[rid];
-
-        re->habitability = reg_hab[rid];
-        re->is_capital   = is_cap[rid];   /* région-siège : EXEMPTE du malus d'habitabilité (province de départ) */
-        if (area_sum<1.f || reg_cap[rid]<=0.f || is_impass) {
-            re->active     = false;
-            re->impassable = is_impass;
-            re->colonized  = false;
-            re->owner      = -1;
+        bool is_impass = prov_impass[pid];
+        pe->habitability = pv->habitability;
+        pe->is_capital   = is_cap[pid];   /* province-siège : EXEMPTE du malus d'habitabilité (départ) */
+        pe->region       = pv->region;    /* miroir géo — permet l'agrégation SANS World* (econ_tick) */
+        if (prov_cap[pid]<=0.f || is_impass) {
+            pe->active     = false;
+            pe->impassable = is_impass;
+            pe->colonized  = false;
+            pe->owner      = -1;
             continue;
         }
-        re->active=true;
-        re->impassable=false;
-        re->colonized=false;
-        re->owner=-1;
+        pe->active=true;
+        pe->impassable=false;
+        pe->colonized=false;
+        pe->owner=-1;
 
         /* Capacité d'accueil : pop cible à terme (sert au peuplement initial
          * de la capitale et de plafond souple à la croissance). */
-        int cid=rg->country;
+        int cid=pv->country;
         float total_pop;
         if (cid>=0 && cid<SCPS_MAX_COUNTRY && cty_cap[cid]>0.f)
-            total_pop = cty_target[cid] * reg_cap[rid] / cty_cap[cid];
+            total_pop = cty_target[cid] * prov_cap[pid] / cty_cap[cid];
         else
-            total_pop = 40.f + reg_cap[rid]*12.f;
-        re->cap_pop = total_pop;
+            total_pop = 40.f + prov_cap[pid]*12.f;
+        pe->cap_pop = total_pop;
 
         /* Population : laissée à ZÉRO par défaut. Le monde démarre vide ;
-         * seules la capitale du joueur et quelques cités-états seront
-         * peuplées (voir plus bas). Tout le reste est colonisable. */
+         * seule la capitale du joueur/des antagonistes et les cités-états
+         * seront peuplées (voir plus bas). Tout le reste est colonisable. */
         for (int c=0;c<CLASS_COUNT;c++) {
-            re->strata[c].pop         = 0.f;
-            re->strata[c].wealth      = 0.f;
-            re->strata[c].satisfaction= 0.5f;
+            pe->strata[c].pop         = 0.f;
+            pe->strata[c].wealth      = 0.f;
+            pe->strata[c].satisfaction= 0.5f;
         }
-        re->food_sat=0.5f; re->society_sat=0.5f;
+        pe->food_sat=0.5f; pe->society_sat=0.5f;
 
-        /* ---- Capacité d'extraction : héritée des ressources brutes des
-         *      provinces. Chaque province « pose » sa ressource dominante. */
-        bool coastal=false; int wooded=0;
-        for (int k=0;k<rg->n_provinces;k++) {
-            int pid=rg->province_ids[k];
-            if (pid<0||pid>=w->n_provinces) continue;
-            const Province *pv=&w->province[pid];
-            if (pv->coastal) coastal=true;
-            { Biome bw=pv->biome_dominant; if (bw==BIO_FOREST||bw==BIO_WOODS||bw==BIO_JUNGLE) wooded++; }
-            /* débit proportionnel à la surface (P3.18 : la SPÉCIALISATION — le brut
-             * DOMINANT de la province est franc, la 2e brute mineure ; le reste vient
-             * du COMMERCE, plus jamais du sol). */
-            float base = 1.5f + pv->area*0.05f;
-            Resource r=pv->resource;
-            if (r>RES_NONE && r<RES_PROD_FIRST) re->raw_cap[r] += base*1.5f;   /* P3.18 : dominante franche */
-            Resource r2=pv->resource2;                      /* §6b : 2e brute, mineure ×0.4 */
-            if (r2>RES_NONE && r2<RES_PROD_FIRST) re->raw_cap[r2] += base*0.5f;
-            /* E1 — matériaux de construction LUS de la géo : la pierre sort du
-             * relief, l'argile des terres d'eau. Francs là où la terre les donne. */
-            Biome bd=pv->biome_dominant;
-            if (bd==BIO_HILLS||bd==BIO_HIGHLANDS||bd==BIO_MOUNTAINS||bd==BIO_PEAK
-                ||bd==BIO_VOLCANO||pv->height_avg>0.55f)
-                re->raw_cap[RES_STONE] += base*0.5f;
-            if (bd==BIO_MARSH||bd==BIO_BOG||bd==BIO_MANGROVE)
-                re->raw_cap[RES_CLAY]  += base*0.5f;
-            /* FRUIT — vergers/cueillette : FORÊT/BOIS/JUNGLE SEULEMENT (plus « partout ») → le fruit
-             * ne vole PAS les bras d'extraction au grain dans les régions céréalières (la bière survit).
-             * Nourriture de substitution (food-fill, plus bas) + repli du EAU-DE-VIE. Protégé de la coupe. */
-            if (bd==BIO_FOREST||bd==BIO_WOODS||bd==BIO_JUNGLE) re->raw_cap[RES_FRUIT] += base*0.65f;
-        }
+        /* ---- Capacité d'extraction : héritée des DEUX ressources brutes de LA
+         *      province (charte règle 6 : EXACTEMENT 2 ressources/province — déjà
+         *      la géométrie native de Province.resource/resource2). */
+        bool coastal=pv->coastal; bool wooded=false;
+        { Biome bw=pv->biome_dominant; if (bw==BIO_FOREST||bw==BIO_WOODS||bw==BIO_JUNGLE) wooded=true; }
+        /* débit proportionnel à la surface (P3.18 : la SPÉCIALISATION — le brut
+         * DOMINANT de la province est franc, la 2e brute mineure ; le reste vient
+         * du COMMERCE, plus jamais du sol). */
+        float base = 1.5f + pv->area*0.05f;
+        Resource r=pv->resource;
+        if (r>RES_NONE && r<RES_PROD_FIRST) pe->raw_cap[r] += base*1.5f;   /* P3.18 : dominante franche */
+        Resource r2=pv->resource2;                      /* §6b : 2e brute, mineure ×0.4 */
+        if (r2>RES_NONE && r2<RES_PROD_FIRST) pe->raw_cap[r2] += base*0.5f;
+        /* E1 — matériaux de construction LUS de la géo : la pierre sort du
+         * relief, l'argile des terres d'eau. Francs là où la terre les donne. */
+        Biome bd=pv->biome_dominant;
+        if (bd==BIO_HILLS||bd==BIO_HIGHLANDS||bd==BIO_MOUNTAINS||bd==BIO_PEAK
+            ||bd==BIO_VOLCANO||pv->height_avg>0.55f)
+            pe->raw_cap[RES_STONE] += base*0.5f;
+        if (bd==BIO_MARSH||bd==BIO_BOG||bd==BIO_MANGROVE)
+            pe->raw_cap[RES_CLAY]  += base*0.5f;
+        /* FRUIT — vergers/cueillette : FORÊT/BOIS/JUNGLE SEULEMENT (plus « partout ») → le fruit
+         * ne vole PAS les bras d'extraction au grain dans les provinces céréalières (la bière survit).
+         * Nourriture de substitution (food-fill, plus bas) + repli du EAU-DE-VIE. Protégé de la coupe. */
+        if (bd==BIO_FOREST||bd==BIO_WOODS||bd==BIO_JUNGLE) pe->raw_cap[RES_FRUIT] += base*0.65f;
 
         /* Subsistance locale : vivres et bois de feu dimensionnés pour couvrir
          * ~90% de la population, laissant la satisfaction refléter les biens
@@ -753,13 +883,13 @@ void econ_init(WorldEconomy *e, const World *w) {
          * la capitale d'empire en stock) et au COMMERCE — pas extrait par chaque tuile.
          * ⚠ Des FAMINES sont possibles (assumé pour l'instant). subsist sert encore aux
          * socles de cité-état (plus bas). */
-        re->coastal = coastal;                       /* lu par la marine (rade) et l'agency (gate du Port) */
-        re->estuary = false;                         /* posé au balayage des cellules ci-dessous */
-        /* Dons géo SÉLECTIFS (gibier/halieutique) : ~1/3 des régions BOISÉES (majorité de
-         * provinces forestières) et ~1/3 des CÔTIÈRES — tirage DÉTERMINISTE par région. */
-        { unsigned hg=(unsigned)rid*2654435761u;
-          if (rg->n_provinces>0 && wooded*2>=rg->n_provinces && (hg%3u)==0u) re->prov_geo |= PROVF_GIBIER;
-          if (coastal && ((hg>>8)%3u)==0u)                                   re->prov_geo |= PROVF_HALIEUTIQUE; }
+        pe->coastal = coastal;                       /* lu par la marine (rade) et l'agency (gate du Port) */
+        pe->estuary = false;                         /* posé au balayage des cellules ci-dessous */
+        /* Dons géo SÉLECTIFS (gibier/halieutique) : ~1/3 des provinces BOISÉES et ~1/3 des
+         * CÔTIÈRES — tirage DÉTERMINISTE par province. */
+        { unsigned hg=(unsigned)pid*2654435761u;
+          if (wooded && (hg%3u)==0u)            pe->prov_geo |= PROVF_GIBIER;
+          if (coastal && ((hg>>8)%3u)==0u)      pe->prov_geo |= PROVF_HALIEUTIQUE; }
 
         /* ──────────────────────────────────────────────────────────────────────
          * MISE À NU — À L'EXCEPTION DES CITÉS-ÉTATS.
@@ -770,70 +900,70 @@ void econ_init(WorldEconomy *e, const World *w) {
          *     l'ATELIER du monde où les empires pompent leurs biens. Elle naît donc
          *     ÉQUIPÉE comme avant la mise à nu : socles de matière, voiles arcanes,
          *     MANUFACTURES implantées au gisement, niveaux dimensionnés.
-         * (cid = rg->country, connu l.462 ; owner pas encore posé sur re ici.) */
+         * (cid = pv->country ; owner pas encore posé sur pe ici.) */
         bool is_city_state = (cid>=0 && cid<w->n_countries
                               && w->country[cid].role==POLITY_CITY_STATE);
         if (is_city_state){
             /* — socles de matière MINIMES (la cité-état file/scie/bâtit dès l'an 0) — */
-            re->raw_cap[RES_WOOD]  += subsist * 0.12f;
-            re->raw_cap[RES_CLAY]  += subsist * 0.08f;
-            re->raw_cap[RES_STONE] += subsist * 0.05f;
-            if (coastal) re->raw_cap[RES_FISH] += subsist * 0.10f;
+            pe->raw_cap[RES_WOOD]  += subsist * 0.12f;
+            pe->raw_cap[RES_CLAY]  += subsist * 0.08f;
+            pe->raw_cap[RES_STONE] += subsist * 0.05f;
+            if (coastal) pe->raw_cap[RES_FISH] += subsist * 0.10f;
             /* — ARCANE : cristal des nœuds telluriques (nœud riche 1/4 + voile diffus 0.2) — */
-            if (re->raw_cap[RES_SULFUR]>0.f || re->raw_cap[RES_PRECIOUS_METAL]>0.f){
-                re->raw_cap[RES_ARCANE_CRYSTAL] += 0.2f;                                   /* voile diffus */
-                if (((uint32_t)(rid*2654435761u) % 4u)==0u) re->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* + nœud riche */
+            if (pe->raw_cap[RES_SULFUR]>0.f || pe->raw_cap[RES_PRECIOUS_METAL]>0.f){
+                pe->raw_cap[RES_ARCANE_CRYSTAL] += 0.2f;                                   /* voile diffus */
+                if (((uint32_t)(pid*2654435761u) % 4u)==0u) pe->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* + nœud riche */
             }
             /* — Fer céleste : météorique (nœud riche 1/9 + voile diffus 0.2) — */
-            if (re->raw_cap[RES_IRON]>0.f){
-                re->raw_cap[RES_CELESTIAL_IRON] += 0.2f;                                   /* voile diffus */
-                if (((uint32_t)(rid*40503u+7u) % 9u)==0u) re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* + nœud riche */
+            if (pe->raw_cap[RES_IRON]>0.f){
+                pe->raw_cap[RES_CELESTIAL_IRON] += 0.2f;                                   /* voile diffus */
+                if (((uint32_t)(pid*40503u+7u) % 9u)==0u) pe->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* + nœud riche */
             }
             /* — MANUFACTURES implantées là où l'intrant est extrait (cohérence de la chaîne) — */
-            if (re->raw_cap[RES_WOOL] > 0.f){ region_ensure_building(re,BLD_TEXTILE);
-                                              region_ensure_building(re,BLD_TUNIC); }  /* la tunique naît où l'on file */
-            if (re->raw_cap[RES_WOOD] > 0.f) {
-                region_ensure_building(re,BLD_SAWMILL);
-                region_ensure_building(re,BLD_PAPERMILL);
-                region_ensure_building(re,BLD_CHARCOAL);   /* charbon DU BOIS */
+            if (pe->raw_cap[RES_WOOL] > 0.f){ region_ensure_building(pe,BLD_TEXTILE);
+                                              region_ensure_building(pe,BLD_TUNIC); }  /* la tunique naît où l'on file */
+            if (pe->raw_cap[RES_WOOD] > 0.f) {
+                region_ensure_building(pe,BLD_SAWMILL);
+                region_ensure_building(pe,BLD_PAPERMILL);
+                region_ensure_building(pe,BLD_CHARCOAL);   /* charbon DU BOIS */
             }
-            if (re->raw_cap[RES_SUGAR] > 0.f) region_ensure_building(re,BLD_DISTILLERY);
-            if (re->raw_cap[RES_GRAIN] > 0.f) region_ensure_building(re,BLD_BREWERY);   /* la bière naît du grain */
-            if (re->raw_cap[RES_GOLD] > 0.f || re->raw_cap[RES_PEARL] > 0.f)
-                region_ensure_building(re,BLD_JEWELER);
-            if (re->raw_cap[RES_MUREX] > 0.f || re->raw_cap[RES_INDIGO] > 0.f)
-                region_ensure_building(re,BLD_WEAVER_LUX);
-            if (re->raw_cap[RES_IRON] > 0.f && re->raw_cap[RES_WOOD] > 0.f)
-                region_ensure_building(re,BLD_TOOLWORKS);   /* fer + bois → outils (DIRECT) */
-            if (re->raw_cap[RES_ARCANE_CRYSTAL] > 0.5f) region_ensure_building(re,BLD_MAGE_WORKSHOP);   /* nœud riche seul */
-            if (re->raw_cap[RES_CELESTIAL_IRON] > 0.5f) region_ensure_building(re,BLD_CELESTIAL_FORGE);
-            if (re->raw_cap[RES_IRON] > 0.f) region_ensure_building(re,BLD_ARMORY);
-            if (re->raw_cap[RES_SALTPETER] > 0.f && re->raw_cap[RES_COAL] > 0.f)
-                region_ensure_building(re,BLD_POWDERMILL);
-            if (re->raw_cap[RES_MED_HERBS] > 0.f) region_ensure_building(re,BLD_APOTHECARY);
+            if (pe->raw_cap[RES_SUGAR] > 0.f) region_ensure_building(pe,BLD_DISTILLERY);
+            if (pe->raw_cap[RES_GRAIN] > 0.f) region_ensure_building(pe,BLD_BREWERY);   /* la bière naît du grain */
+            if (pe->raw_cap[RES_GOLD] > 0.f || pe->raw_cap[RES_PEARL] > 0.f)
+                region_ensure_building(pe,BLD_JEWELER);
+            if (pe->raw_cap[RES_MUREX] > 0.f || pe->raw_cap[RES_INDIGO] > 0.f)
+                region_ensure_building(pe,BLD_WEAVER_LUX);
+            if (pe->raw_cap[RES_IRON] > 0.f && pe->raw_cap[RES_WOOD] > 0.f)
+                region_ensure_building(pe,BLD_TOOLWORKS);   /* fer + bois → outils (DIRECT) */
+            if (pe->raw_cap[RES_ARCANE_CRYSTAL] > 0.5f) region_ensure_building(pe,BLD_MAGE_WORKSHOP);   /* nœud riche seul */
+            if (pe->raw_cap[RES_CELESTIAL_IRON] > 0.5f) region_ensure_building(pe,BLD_CELESTIAL_FORGE);
+            if (pe->raw_cap[RES_IRON] > 0.f) region_ensure_building(pe,BLD_ARMORY);
+            if (pe->raw_cap[RES_SALTPETER] > 0.f && pe->raw_cap[RES_COAL] > 0.f)
+                region_ensure_building(pe,BLD_POWDERMILL);
+            if (pe->raw_cap[RES_MED_HERBS] > 0.f) region_ensure_building(pe,BLD_APOTHECARY);
             /* Niveau initial : dimensionné sur la capacité d'accueil (infrastructure latente). */
-            float invest = re->cap_pop*CLASS_SHARE[CLASS_BOURGEOIS];
-            for (int i=0;i<re->n_bld;i++)
-                re->bld[i].level = 0.5f + invest*0.01f;
+            float invest = pe->cap_pop*CLASS_SHARE[CLASS_BOURGEOIS];
+            for (int i=0;i<pe->n_bld;i++)
+                pe->bld[i].level = 0.5f + invest*0.01f;
         } else {
             /* EMPIRE / JOUEUR — nœuds stratégiques RARES (plus de voile diffus), puis VOCATION. */
-            if (re->raw_cap[RES_SULFUR]>0.f || re->raw_cap[RES_PRECIOUS_METAL]>0.f){
-                if (((uint32_t)(rid*2654435761u) % 4u)==0u) re->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* nœud riche SEUL */
+            if (pe->raw_cap[RES_SULFUR]>0.f || pe->raw_cap[RES_PRECIOUS_METAL]>0.f){
+                if (((uint32_t)(pid*2654435761u) % 4u)==0u) pe->raw_cap[RES_ARCANE_CRYSTAL] += 1.0f;  /* nœud riche SEUL */
             }
-            if (re->raw_cap[RES_IRON]>0.f){
-                if (((uint32_t)(rid*40503u+7u) % 9u)==0u) re->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* nœud riche SEUL */
+            if (pe->raw_cap[RES_IRON]>0.f){
+                if (((uint32_t)(pid*40503u+7u) % 9u)==0u) pe->raw_cap[RES_CELESTIAL_IRON] += 0.8f;     /* nœud riche SEUL */
             }
             /* WORLDGEN NE POSE AUCUN BÂTIMENT pour l'empire : la carte naît NUE — l'IA/agency
              * élèvent les manufactures DANS LE TEMPS (plus d'implantation au gisement). */
         }
-        /* VOCATION — « 2 BRUTES PAR PROVINCE », SANS EXCEPTION (empire ET CITÉ-ÉTAT).
-         * On ne garde que les REGION_RAW_KEEP=2 brutes EXTRAITES les plus FORTES (plus le
-         * vivrier et les stratégiques rares, protégés) ; la longue traîne — agrégée des
-         * provinces, socles de cité-état, voiles diffus — TOMBE. Le manquant vient du
-         * COMMERCE (pool national + routes). La cité-état n'est PLUS exemptée du plafond
-         * d'EXTRACTION : sa richesse vient de son gros STOCK de base (CS_TRADE_POOL), non
-         * d'extraire davantage ; ses manufactures (posées plus haut, sur le raw AVANT coupe)
-         * restent l'atelier du monde. (Coupe DÉPLACÉE hors du if/else → frappe TOUT le monde.) */
+        /* VOCATION — « EXACTEMENT 2 BRUTES PAR PROVINCE » (charte règle 6), SANS EXCEPTION
+         * (empire ET cité-état). On ne garde que les REGION_RAW_KEEP=2 brutes EXTRAITES les
+         * plus FORTES (plus le vivrier et les stratégiques rares, protégés) ; la longue traîne
+         * (socles de cité-état, voiles diffus) TOMBE. Le manquant vient du COMMERCE (pool
+         * national + routes). La cité-état n'est PLUS exemptée du plafond d'EXTRACTION : sa
+         * richesse vient de son gros STOCK de base (CS_TRADE_POOL), non d'extraire davantage ;
+         * ses manufactures (posées plus haut, sur le raw AVANT coupe) restent l'atelier du
+         * monde. (Coupe DÉPLACÉE hors du if/else → frappe TOUTE province.) */
         {
             int keep = (int)tune_f("REGION_RAW_KEEP", 2.f);
             bool prot[RES_COUNT]; for (int g=0;g<RES_COUNT;g++) prot[g]=false;
@@ -852,91 +982,87 @@ void econ_init(WorldEconomy *e, const World *w) {
             prot[RES_FRUIT]=true;
             for (int k=0;k<keep;k++){
                 int best=-1; float bv=0.f;
-                for (int g=1;g<RES_PROD_FIRST;g++){ if (prot[g]||re->raw_cap[g]<=0.f) continue;
-                    if (re->raw_cap[g]>bv){ bv=re->raw_cap[g]; best=g; } }
+                for (int g=1;g<RES_PROD_FIRST;g++){ if (prot[g]||pe->raw_cap[g]<=0.f) continue;
+                    if (pe->raw_cap[g]>bv){ bv=pe->raw_cap[g]; best=g; } }
                 if (best<0) break;
                 prot[best]=true;
             }
-            for (int g=1;g<RES_PROD_FIRST;g++) if (!prot[g]) re->raw_cap[g]=0.f;   /* la traîne tombe */
+            for (int g=1;g<RES_PROD_FIRST;g++) if (!prot[g]) pe->raw_cap[g]=0.f;   /* la traîne tombe */
         }
 
         /* ---- Prix & stock de départ. */
-        for (int r=0;r<RES_COUNT;r++) {
-            re->price[r]=BASE_PRICE[r];
-            re->stock[r]=0.f;
+        for (int r3=0;r3<RES_COUNT;r3++) {
+            pe->price[r3]=BASE_PRICE[r3];
+            pe->stock[r3]=0.f;
         }
     }
 
     /* ---- ESTUAIRES (commerce asym. §4) : la charnière fleuve ⇄ mer — là où le
      * vrac d'un bassin versant converge. Une cellule de CÔTE au débit notable
-     * fait de sa région un entrepôt naturel (la bande Carrefour y montera). */
+     * fait de sa PROVINCE un entrepôt naturel (la bande Carrefour y montera). */
     for (int i=0;i<SCPS_N;i++){
         const Cell *c=&w->cell[i];
         if (!c->coast || c->river<40) continue;
-        int r=c->region;
-        if (r>=0 && r<e->n_regions){
+        int p=c->province;
+        if (p>=0 && p<e->n_prov && p<SCPS_MAX_PROV){
             /* E1 : la plaine alluviale d'un estuaire est une argilière naturelle —
              * RESTAURÉE pour les CITÉS-ÉTATS seules (exemptées de la mise à nu) ; pour
              * l'empire l'argile vient de la GÉO (terres d'eau) soumise à la vocation. */
-            int rc = w->region[r].country;
-            bool cs = (rc>=0 && rc<w->n_countries && w->country[rc].role==POLITY_CITY_STATE);
-            if (cs && !e->region[r].estuary) e->region[r].raw_cap[RES_CLAY] += 1.5f;
-            e->region[r].estuary=true;
+            int pc = w->province[p].country;
+            bool cs = (pc>=0 && pc<w->n_countries && w->country[pc].role==POLITY_CITY_STATE);
+            if (cs && !e->prov[p].estuary) e->prov[p].raw_cap[RES_CLAY] += 1.5f;
+            e->prov[p].estuary=true;
         }
     }
 
-    /* ---- Adjacence de régions (terre, 4-connexe) pour la colonisation ----
-     * Extraite en econ_build_adjacency (réutilisée par le recalcul du capstone
-     * §27 : une carve eau/ronces déplace côtes et barrières). */
+    /* ---- Adjacence de régions ET de provinces (terre, 4-connexe) pour la
+     * colonisation. Extraite en econ_build_adjacency (réutilisée par le recalcul
+     * du capstone §27 : une carve eau/ronces déplace côtes et barrières). */
     econ_build_adjacency(e, w);
 
-    /* ---- Peuplement initial : la GRAINE PAR-POLITÉ, le reste vierge -------- *
-     * Re-baseline — la pop an-0 est SEMÉE PAR ENTITÉ (plus de total plat 48k réparti) :
-     *   EMPIRE     → EMPIRE_SEED (4000) ;
-     *   CITÉ-ÉTAT  → CITY_SEED   (2000) ;
-     *   (WILD      → 2/empire · WILD_POP ≈ 750, plus bas).
-     * La graine d'une polité se répartit UNIFORMÉMENT sur ses régions ACTIVES, bornée par
-     * le plancher ½·cap_pop (la terre nue = eff_cap quand rien n'est bâti → pas de famine
-     * d'amorçage). À l'an-0 nul ne domine DANS une polité ; la DIVERGENCE vient ENSUITE du
-     * bâti. La capacité VISÉE (apex) reste EMPIRE_CAP/CITY_CAP (Passe 2) : la pop CROÎT de
-     * sa graine vers son apex. La friche vierge reste à zéro (frontière à coloniser).
-     * Membrane : on n'ajoute pas un bonus, on AMORCE la pop sous son plafond.
-     *   an-0 ≈ n·EMPIRE_SEED + nCS·CITY_SEED + 2n·WILD_POP. */
+    /* ---- Peuplement initial : la GRAINE PAR-POLITÉ, SUR UNE SEULE PROVINCE -- *
+     * Charte règle 5/7 : « départ = 1 province ». Re-baseline — la pop an-0 est
+     * SEMÉE PAR ENTITÉ, ENTIÈREMENT sur UNE province développée (jamais SPLITÉE) :
+     *   EMPIRE/JOUEUR → EMPIRE_SEED (4000) sur SA province-CAPITALE ;
+     *   CITÉ-ÉTAT     → CITY_SEED   (2000) sur SA province-CAPITALE (sinon sa meilleure) ;
+     *   (WILD         → 2/empire · WILD_POP ≈ 750, plus bas).
+     * TOUTES les autres provinces de l'entité restent owner=-1/non-colonisées (pop 0) :
+     * econ_colonize_tick les essaime ensuite (l'empire/joueur colonise n'importe où ;
+     * la cité-état, uniquement DANS SA région). Le principe est UNIFORME : chaque entité
+     * démarre sur UNE ville établie (~tier 4 à 4000, ~tier 2 à 2000), le reste vient
+     * de la colonisation — plus aucun split de pop à t=0. */
     float empire_seed = tune_f("EMPIRE_SEED", 4000.f);
     float city_seed   = tune_f("CITY_SEED",   2000.f);
     for (int cid=0; cid<w->n_countries; cid++) {
         const Country *ct=&w->country[cid];
         PolityRole role=ct->role;
-        float pol_seed;
-        if      (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) pol_seed=empire_seed;
-        else if (role==POLITY_CITY_STATE)                        pol_seed=city_seed;
+        float seed;
+        if      (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) seed=empire_seed;
+        else if (role==POLITY_CITY_STATE)                        seed=city_seed;
         else continue;
-        /* Σ cap_pop des régions ACTIVES = clé de répartition (∝ capacité → la capitale, la
-         * plus capable, en prend le plus). La graine de la polité se RÉPARTIT EXACTEMENT
-         * (Σ parts = pol_seed PILE, aucune perte au plancher) : la pop an-0 est ainsi LOCKÉE
-         * sur la formule n·EMPIRE_SEED + nCS·CITY_SEED + 2n·WILD_POP. Comme l'apex visé
-         * (EMPIRE_CAP/CITY_CAP) > 2·graine, chaque part reste SOUS ½·cap_pop (anti-famine). */
-        float capsum=0.f;
-        for (int ri=0; ri<ct->n_regions; ri++){
-            int rid=ct->region_ids[ri];
-            if (rid>=0&&rid<e->n_regions&&e->region[rid].active) capsum+=e->region[rid].cap_pop;
+        /* Province de DÉPART = la capitale si ACTIVE, sinon la MEILLEURE (cap_pop max)
+         * province active du pays. Une seule est peuplée ; les sœurs restent vierges. */
+        int start=-1;
+        int cp=ct->capital_prov;
+        if (cp>=0 && cp<w->n_provinces && cp<SCPS_MAX_PROV && e->prov[cp].active) start=cp;
+        if (start<0){
+            float best=-1.f;
+            for (int pid=0; pid<w->n_provinces && pid<SCPS_MAX_PROV; pid++){
+                if (w->province[pid].country!=cid || !e->prov[pid].active) continue;
+                if (e->prov[pid].cap_pop>best){ best=e->prov[pid].cap_pop; start=pid; }
+            }
         }
-        if (capsum<=0.f) continue;
-        for (int ri=0; ri<ct->n_regions; ri++){
-            int rid=ct->region_ids[ri];
-            if (rid<0||rid>=e->n_regions) continue;
-            RegionEconomy *re=&e->region[rid];
-            if (!re->active) continue;
-            econ_seed_population(re, pol_seed * (re->cap_pop/capsum));   /* ∝ capacité, Σ = pol_seed PILE */
-            re->colonized=true;
-            re->owner=(int16_t)cid;
-        }
+        if (start<0) continue;   /* aucune province active → pas de départ (friche) */
+        ProvinceEconomy *pe=&e->prov[start];
+        econ_seed_population(pe, seed);   /* TOUTE la graine sur UNE province (jamais splitée) */
+        pe->colonized=true;
+        pe->owner=(int16_t)cid;
     }
 
     /* REFONTE A5 — LA NOURRITURE DU SPAWN (la SEULE règle vivrière ; le reste = GÉOLOGIE).
-     * Chaque EMPIRE naît avec une base vivrière sur sa région-CAPITALE : un socle de grain
+     * Chaque EMPIRE naît avec une base vivrière sur sa PROVINCE-CAPITALE : un socle de grain
      * qui en fait un GRENIER de départ (posé APRÈS la coupe de vocation → protégé). Les
-     * autres régions tirent leur nourriture de la GÉOLOGIE (grain/poisson dans leur
+     * autres provinces tirent leur nourriture de la GÉOLOGIE (grain/poisson dans leur
      * vocation) et du COMMERCE (pool national + routes). Pas de socle UNIVERSEL : un empire
      * né sur terre stérile dépend de sa capitale et de ses échanges (la « Mali » qui commerce). */
     {
@@ -945,16 +1071,15 @@ void econ_init(WorldEconomy *e, const World *w) {
             PolityRole role=w->country[cid].role;
             if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
             int cp=w->country[cid].capital_prov;
-            int cr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
-            if (cr<0||cr>=e->n_regions||!e->region[cr].active) continue;
-            if (e->region[cr].raw_cap[RES_GRAIN] < spawn_food)
-                e->region[cr].raw_cap[RES_GRAIN] = spawn_food;   /* grenier de spawn (vocation vivrière garantie) */
+            if (cp<0||cp>=w->n_provinces||cp>=SCPS_MAX_PROV||!e->prov[cp].active) continue;
+            if (e->prov[cp].raw_cap[RES_GRAIN] < spawn_food)
+                e->prov[cp].raw_cap[RES_GRAIN] = spawn_food;   /* grenier de spawn (vocation vivrière garantie) */
         }
     }
 
     /* POOL TRADABLE DES CITÉS-ÉTATS (2026-06-16) : chaque cité-état naît avec une RÉSERVE
      * de matières BRUTES — CS_TRADE_POOL (1000) de BOIS / FER / ARGILE / PIERRE — sur sa
-     * région-pivot. Le marché mondial (ses Centres, #5) la revend aux EMPIRES nés NUS : le
+     * PROVINCE-PIVOT. Le marché mondial (ses Centres, #5) la revend aux EMPIRES nés NUS : le
      * trio du bâti (bois/pierre/argile des chantiers) + le fer des outils/armes ont enfin
      * une SOURCE, l'empire importe de quoi élever ses manufactures au lieu de stagner au
      * plancher ½·cap_pop. (Posé APRÈS la remise à zéro des stocks de l.« Prix & stock ».) */
@@ -962,30 +1087,30 @@ void econ_init(WorldEconomy *e, const World *w) {
         float pool = tune_f("CS_TRADE_POOL", 1000.f);
         for (int cid=0; cid<w->n_countries; cid++){
             if (w->country[cid].role!=POLITY_CITY_STATE) continue;
-            for (int r=0; r<e->n_regions; r++){
-                RegionEconomy *re=&e->region[r];
-                if (re->owner!=cid || !re->active) continue;
-                re->stock[RES_GRAIN] += pool;   /* + NOURRITURE de base (la cité-état nourrit le marché) */
-                re->stock[RES_WOOD]  += pool;
-                re->stock[RES_IRON]  += pool;
-                re->stock[RES_CLAY]  += pool;
-                re->stock[RES_STONE] += pool;
-                break;   /* une réserve par cité-état (sa première région active = pivot) */
+            for (int pid=0; pid<w->n_provinces && pid<SCPS_MAX_PROV; pid++){
+                ProvinceEconomy *pe=&e->prov[pid];
+                if (pe->owner!=cid || !pe->active) continue;
+                pe->stock[RES_GRAIN] += pool;   /* + NOURRITURE de base (la cité-état nourrit le marché) */
+                pe->stock[RES_WOOD]  += pool;
+                pe->stock[RES_IRON]  += pool;
+                pe->stock[RES_CLAY]  += pool;
+                pe->stock[RES_STONE] += pool;
+                break;   /* une réserve par cité-état (sa première province active = pivot) */
             }
         }
     }
 
     /* ──────────────────────────────────────────────────────────────────────
      * HAMEAUX LIBRES (POLITY_WILD) — les PEUPLES LIBRES. Pour CHAQUE empire on PLANTE
-     * WILD_PER_PLAYABLE hameaux sur les régions VIERGES viables les plus PROCHES — BFS
-     * multi-source BORNÉ à WILD_SPAWN_HOPS (un rayon de 2-3 tuiles autour du spawn : assez
+     * WILD_PER_PLAYABLE hameaux sur les PROVINCES VIERGES viables les plus PROCHES — BFS
+     * multi-source BORNÉ à WILD_SPAWN_HOPS (un rayon de 2-3 provinces autour du spawn : assez
      * près pour tuer le « siècle d'inertie » — 2 objectifs voisins dès l'an 0 —, jamais à
      * l'autre bout du monde). nearest-first → les plus proches d'abord. Chaque hameau :
      * WILD_POP (graine EXACTE), plafond WILD_CAP, réserve WILD_HOARD. WILD_PER_PLAYABLE=0 → aucun. */
-    {
+    if (e->prov_adj) {
         /* slots WILD réservés (un par hameau) : chaque hameau prend le SUIVANT → entité distincte. */
-        static int wslots[SCPS_MAX_REG]; int n_wslots=0, wnext=0;
-        for (int c=0;c<w->n_countries && n_wslots<SCPS_MAX_REG;c++)
+        static int wslots[SCPS_MAX_PROV]; int n_wslots=0, wnext=0;
+        for (int c=0;c<w->n_countries && n_wslots<SCPS_MAX_PROV;c++)
             if (w->country[c].role==POLITY_WILD) wslots[n_wslots++]=c;
         int per=(int)tune_f("WILD_PER_PLAYABLE",2.f), hops=(int)tune_f("WILD_SPAWN_HOPS",3.f);
         if (n_wslots>0 && per>0 && hops>0){
@@ -993,35 +1118,35 @@ void econ_init(WorldEconomy *e, const World *w) {
             float wcap=tune_f("WILD_CAP",1600.f), whoard=tune_f("WILD_HOARD",60.f), wfood=tune_f("WILD_FOOD",8.f);
             /* Pose un hameau sur WS, possédé par le slot WILD DISTINCT `wown` (graine WILD_POP, < ½·WILD_CAP). */
             #define WILD_PLANT(WS, wown) do { \
-                int ws_=(WS); RegionEconomy *wre=&e->region[ws_]; \
-                wre->owner=(int16_t)(wown); wre->colonized=true; wre->culture.settled=true; \
-                wre->cap_pop=wcap; \
+                int ws_=(WS); ProvinceEconomy *wpe=&e->prov[ws_]; \
+                wpe->owner=(int16_t)(wown); wpe->colonized=true; wpe->culture.settled=true; \
+                wpe->cap_pop=wcap; \
                 uint32_t hh=(uint32_t)ws_*2654435761u + (uint32_t)cid*40503u; \
                 hh ^= hh>>13; hh *= 0x85ebca6bu; hh ^= hh>>16; \
                 float jit=(wvar>0.f)? ((float)(hh % 2001u)/1000.f - 1.f)*wvar : 0.f; /* WILD_POP_VAR=0 → 0 (graine LOCKÉE) */ \
-                econ_seed_population(wre, fminf(fmaxf(wpop+jit, 50.f), wcap*0.5f)); \
-                wre->raw_cap[RES_GRAIN]=fmaxf(wre->raw_cap[RES_GRAIN], wfood); /* raw food FORCÉE : le hameau se nourrit */ \
-                for (int g=1; g<RES_PROD_FIRST; g++) if (wre->raw_cap[g]>0.f) wre->stock[g]+=whoard; \
+                econ_seed_population(wpe, fminf(fmaxf(wpop+jit, 50.f), wcap*0.5f)); \
+                wpe->raw_cap[RES_GRAIN]=fmaxf(wpe->raw_cap[RES_GRAIN], wfood); /* raw food FORCÉE : le hameau se nourrit */ \
+                for (int g=1; g<RES_PROD_FIRST; g++) if (wpe->raw_cap[g]>0.f) wpe->stock[g]+=whoard; \
             } while(0)
             for (int cid=0; cid<w->n_countries; cid++){
                 PolityRole role=w->country[cid].role;
                 if (role!=POLITY_PLAYER && role!=POLITY_ANTAGONIST) continue;
-                static int dist[SCPS_MAX_REG], q[SCPS_MAX_REG];   /* BFS multi-source depuis les régions de cid */
-                for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++) dist[r]=-1;
+                static int dist[SCPS_MAX_PROV], q[SCPS_MAX_PROV];   /* BFS multi-source depuis les provinces de cid */
+                for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++) dist[p]=-1;
                 int qh=0, qt=0;
-                for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++)
-                    if (e->region[r].owner==cid){ dist[r]=0; q[qt++]=r; }
+                for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++)
+                    if (e->prov[p].owner==cid){ dist[p]=0; q[qt++]=p; }
                 int got=0;
-                /* BFS BORNÉ au rayon hops (2-3 tuiles), nearest-first : les régions vierges
+                /* BFS BORNÉ au rayon hops (2-3 provinces), nearest-first : les provinces vierges
                  * viables LES PLUS PROCHES du spawn d'abord. */
                 while (qh<qt && got<per){
-                    int r=q[qh++];
-                    if (dist[r]>=hops) continue;
-                    for (int s=0;s<e->n_regions && s<SCPS_MAX_REG && got<per;s++){
-                        if (!e->adj[r][s] || dist[s]>=0) continue;
-                        dist[s]=dist[r]+1;
-                        RegionEconomy *re=&e->region[s];
-                        if (re->active && !re->colonized && !re->impassable && re->cap_pop>0.f && wnext<n_wslots){
+                    int p=q[qh++];
+                    if (dist[p]>=hops) continue;
+                    for (int s=0;s<e->n_prov && s<SCPS_MAX_PROV && got<per;s++){
+                        if (!padj_get(p,s) || dist[s]>=0) continue;
+                        dist[s]=dist[p]+1;
+                        ProvinceEconomy *pe=&e->prov[s];
+                        if (pe->active && !pe->colonized && !pe->impassable && pe->cap_pop>0.f && wnext<n_wslots){
                             WILD_PLANT(s, wslots[wnext]); wnext++; got++;   /* un slot WILD DISTINCT par hameau */
                         }
                         if (dist[s]<hops) q[qt++]=s;
@@ -1033,15 +1158,18 @@ void econ_init(WorldEconomy *e, const World *w) {
         }
     }
 
+    /* ---- Clôture : AGRÈGE prov[] → region[] (charte règle 2). ------------- */
+    econ_aggregate_regions(e);
+
     if (getenv("SCPS_CAPDIAG")) {
         double capsum=0, seedsum=0; int nact=0, nrole[4]={0};
-        for (int r=0;r<e->n_regions;r++){
-            if (e->region[r].active){ capsum+=e->region[r].cap_pop; nact++; }
-            for (int c=0;c<CLASS_COUNT;c++) seedsum+=e->region[r].strata[c].pop;
+        for (int p=0;p<e->n_prov;p++){
+            if (e->prov[p].active){ capsum+=e->prov[p].cap_pop; nact++; }
+            for (int c=0;c<CLASS_COUNT;c++) seedsum+=e->prov[p].strata[c].pop;
         }
         for (int c=0;c<w->n_countries;c++){ int rr=w->country[c].role; if(rr>=0&&rr<4) nrole[rr]++; }
-        int n_wild=0; for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized){
-            int o=e->region[r].owner; if (o>=0&&o<w->n_countries&&w->country[o].role==POLITY_WILD) n_wild++; }
+        int n_wild=0; for (int p=0;p<e->n_prov;p++) if (e->prov[p].colonized){
+            int o=e->prov[p].owner; if (o>=0&&o<w->n_countries&&w->country[o].role==POLITY_WILD) n_wild++; }
         fprintf(stderr,"[CAPDIAG] active=%d cap_pop_sum=%.0f seed_pop=%.0f | PLAYER=%d ANTAG=%d CS=%d UNCL=%d | hameaux WILD=%d\n",
                 nact, capsum, seedsum, nrole[0],nrole[1],nrole[2],nrole[3], n_wild);
     }
@@ -1093,56 +1221,68 @@ static void econ_build_tick(WorldEconomy *e){
     /* 1. disponibilité d'intrant À L'ÉCHELLE DU PAYS (extraction + offre, n'importe où). */
     static float owner_avail[SCPS_MAX_COUNTRY][RES_COUNT];
     for (int o=0;o<SCPS_MAX_COUNTRY;o++) for (int g=0;g<RES_COUNT;g++) owner_avail[o][g]=0.f;
-    for (int r=0;r<e->n_regions;r++){
-        RegionEconomy *re=&e->region[r];
-        if (!re->active || !re->colonized || re->owner<0 || re->owner>=SCPS_MAX_COUNTRY) continue;
-        for (int g=1; g<RES_COUNT; g++) owner_avail[re->owner][g] += re->raw_cap[g] + re->supply[g];
+    for (int p=0;p<e->n_prov;p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        if (!pe->active || !pe->colonized || pe->owner<0 || pe->owner>=SCPS_MAX_COUNTRY) continue;
+        for (int g=1; g<RES_COUNT; g++) owner_avail[pe->owner][g] += pe->raw_cap[g] + pe->supply[g];
     }
-    /* 2. par région PEUPLÉE : bâtir le producteur d'un bien LOCALEMENT en pénurie, si son
+    /* 2. par province PEUPLÉE : bâtir le producteur d'un bien LOCALEMENT en pénurie, si son
      *    intrant existe dans le royaume (ou déjà importé en stock). Plus de gate raw LOCAL. */
-    for (int r=0;r<e->n_regions;r++){
-        RegionEconomy *re=&e->region[r];
-        if (!re->active || !re->colonized || re->owner<0 || re->owner>=SCPS_MAX_COUNTRY) continue;
-        float rpop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop + re->strata[CLASS_ELITE].pop;
+    for (int p=0;p<e->n_prov;p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        if (!pe->active || !pe->colonized || pe->owner<0 || pe->owner>=SCPS_MAX_COUNTRY) continue;
+        float rpop = pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop + pe->strata[CLASS_ELITE].pop;
         if (rpop < NF_POP_FLOOR) continue;
-        const float *avail = owner_avail[re->owner];
+        const float *avail = owner_avail[pe->owner];
         for (int b=0;b<BLD_TYPE_COUNT;b++){
             const Recipe *rc=&RECIPE[b];
             if (rc->out<=RES_NONE || rc->out>=RES_COUNT || BASE_PRICE[rc->out]<=0.f) continue;
-            if (b==BLD_FOREUSE && !re->tech_foreuse) continue;                   /* §B2 : foreuse gatée par la tech faustienne */
-            if (b==BLD_ALAMBIC && !re->tech_alchimie) continue;                  /* F3 : alambic gaté par TECH_ALCHIMIE */
-            if (b==BLD_REPLICATEUR && !re->tech_replicateur) continue;           /* FAU4 : gate TECH_TRANSMUTATION */
-            if (b==BLD_CORNE && !re->tech_corne) continue;                       /* FAU4 : gate TECH_FORGE_RUNES */
-            if (b==BLD_ARQUEBUS && !re->tech_arquebus) continue;                 /* F7 : gate TECH_POUDRIERE */
-            if (re->price[rc->out] < BASE_PRICE[rc->out]*NF_SHORTAGE) continue;   /* output pas en pénurie ICI */
+            if (b==BLD_FOREUSE && !pe->tech_foreuse) continue;                   /* §B2 : foreuse gatée par la tech faustienne */
+            if (b==BLD_ALAMBIC && !pe->tech_alchimie) continue;                  /* F3 : alambic gaté par TECH_ALCHIMIE */
+            if (b==BLD_REPLICATEUR && !pe->tech_replicateur) continue;           /* FAU4 : gate TECH_TRANSMUTATION */
+            if (b==BLD_CORNE && !pe->tech_corne) continue;                       /* FAU4 : gate TECH_FORGE_RUNES */
+            if (b==BLD_ARQUEBUS && !pe->tech_arquebus) continue;                 /* F7 : gate TECH_POUDRIERE */
+            if (pe->price[rc->out] < BASE_PRICE[rc->out]*NF_SHORTAGE) continue;   /* output pas en pénurie ICI */
             bool feed1 = (rc->in1==RES_NONE)
-                      || avail[rc->in1] > NF_REALM_MIN || re->stock[rc->in1] >= NF_STOCK_MIN
-                      || (rc->alt1!=RES_NONE && (avail[rc->alt1] > NF_REALM_MIN || re->stock[rc->alt1] >= NF_STOCK_MIN));
+                      || avail[rc->in1] > NF_REALM_MIN || pe->stock[rc->in1] >= NF_STOCK_MIN
+                      || (rc->alt1!=RES_NONE && (avail[rc->alt1] > NF_REALM_MIN || pe->stock[rc->alt1] >= NF_STOCK_MIN));
             bool feed2 = (rc->in2==RES_NONE)
-                      || avail[rc->in2] > NF_REALM_MIN || re->stock[rc->in2] >= NF_STOCK_MIN;
+                      || avail[rc->in2] > NF_REALM_MIN || pe->stock[rc->in2] >= NF_STOCK_MIN;
             if (!feed1 || !feed2) continue;        /* le royaume ne sait pas le nourrir → on ne bâtit pas à vide */
-            int bi=region_ensure_building(re,(BuildingType)b);
-            if (bi>=0 && re->bld[bi].level < NF_SEED_LEVEL) re->bld[bi].level = NF_SEED_LEVEL;
+            int bi=region_ensure_building(pe,(BuildingType)b);
+            if (bi>=0 && pe->bld[bi].level < NF_SEED_LEVEL) pe->bld[bi].level = NF_SEED_LEVEL;
         }
     }
 }
 
-/* §B1 — pousse le bonus de PRODUCTION du pays propriétaire vers ses régions. prod_pct
+/* §B1 — pousse le bonus de PRODUCTION du pays propriétaire vers SES PROVINCES. prod_pct
  * (production) et eff_pct (efficacité d'emploi) se cumulent dans un seul multiplicateur
  * sur prod_mult — gain modeste, partout, NON faustien. Appelé avant econ_tick. */
 void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
     if (!e) return;
+    for (int p=0;p<e->n_prov;p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        int o=pe->owner;
+        pe->tech_prod = (ts && o>=0 && o<n_ts)
+                      ? 1.f + tech_prod_bonus(&ts[o]) + tech_eff_bonus(&ts[o])
+                      : 1.f;
+        pe->tech_foreuse = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FOREUSE] : false;  /* §B2 : gate de BLD_FOREUSE */
+        pe->tech_alchimie = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_ALCHIMIE] : false; /* F3 : gate de BLD_ALAMBIC */
+        pe->tech_replicateur = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_TRANSMUTATION] : false; /* FAU4 : gate de BLD_REPLICATEUR */
+        pe->tech_corne = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FORGE_RUNES] : false;          /* FAU4 : gate de BLD_CORNE */
+        pe->tech_arquebus = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_POUDRIERE] : false;          /* F7 : gate de BLD_ARQUEBUS */
+    }
+    /* miroir région (lecteurs externes qui appellent econ_apply_country_tech puis lisent
+     * region[].tech_* AVANT le prochain econ_tick — rare, mais gardons-les cohérents). */
     for (int r=0;r<e->n_regions;r++){
         RegionEconomy *re=&e->region[r];
         int o=re->owner;
-        re->tech_prod = (ts && o>=0 && o<n_ts)
-                      ? 1.f + tech_prod_bonus(&ts[o]) + tech_eff_bonus(&ts[o])
-                      : 1.f;
-        re->tech_foreuse = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FOREUSE] : false;  /* §B2 : gate de BLD_FOREUSE */
-        re->tech_alchimie = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_ALCHIMIE] : false; /* F3 : gate de BLD_ALAMBIC */
-        re->tech_replicateur = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_TRANSMUTATION] : false; /* FAU4 : gate de BLD_REPLICATEUR */
-        re->tech_corne = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FORGE_RUNES] : false;          /* FAU4 : gate de BLD_CORNE */
-        re->tech_arquebus = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_POUDRIERE] : false;          /* F7 : gate de BLD_ARQUEBUS */
+        re->tech_prod = (ts && o>=0 && o<n_ts) ? 1.f + tech_prod_bonus(&ts[o]) + tech_eff_bonus(&ts[o]) : 1.f;
+        re->tech_foreuse = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FOREUSE] : false;
+        re->tech_alchimie = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_ALCHIMIE] : false;
+        re->tech_replicateur = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_TRANSMUTATION] : false;
+        re->tech_corne = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_FORGE_RUNES] : false;
+        re->tech_arquebus = (ts && o>=0 && o<n_ts) ? ts[o].unlocked[TECH_POUDRIERE] : false;
     }
 }
 
@@ -1181,8 +1321,8 @@ void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
  * plus haut, au-dessus duquel mordent les ponctions anti-thésaurisation (faste/admin/IPM). */
 #define SINK_FLOOR           500.f
 #define DEF_UPKEEP_MULT      1.5f    /* I3 — la famille défensive (H) s'entretient ×1.5 */
-static bool g_friche[SCPS_MAX_REG];   /* E1bis.10 : région en friche (entretien/encadrement impayé) */
-static long g_n_friche;               /* télémétrie : régions en friche au dernier tick */
+static bool g_friche[SCPS_MAX_PROV];  /* E1bis.10 : province en friche (entretien/encadrement impayé) */
+static long g_n_friche;               /* télémétrie : provinces en friche au dernier tick */
 long econ_friche_count(void){ return g_n_friche; }
 
 /* M6 (forks §14) — la table des deltas de flux arcanes (design, lue par le banc).
@@ -1201,9 +1341,22 @@ float econ_bld_flux_delta(BuildingType b){
         default:                  return  0.f;
     }
 }
-/* M6 — la MATIÈRE gate l'arcane (design §4.2 : la rareté EST le verrou). */
+/* Province REPRÉSENTATIVE d'une région (grain public historique de econ_build_manufacture) :
+ * lit le cache posé par econ_build_adjacency (capitale, sinon la plus peuplée, sinon la
+ * première active) — c'est LÀ que vit désormais l'économie (charte) ; un appelant qui « bâtit
+ * dans la région » bâtit en fait sur son siège logique. */
+static int econ_region_rep_province(const WorldEconomy *e, int region){
+    if (!e || region<0 || region>=SCPS_MAX_REG) return -1;
+    return e->region_rep_prov[region];
+}
+
+/* M6 — la MATIÈRE gate l'arcane (design §4.2 : la rareté EST le verrou). GRAIN PUBLIC
+ * historique = région (résolue vers sa province représentative, cf. ci-dessus). */
 bool econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b){
     if (!e || region<0 || region>=e->n_regions) return false;
+    /* raw_cap AGRÉGÉ de la région (Σ provinces, déjà maintenu par econ_aggregate_regions)
+     * suffit ici : c'est un PRÉDICAT (le gisement existe-t-il quelque part dans la région),
+     * pas une écriture — aucun risque d'être écrasé par la prochaine agrégation. */
     const RegionEconomy *re=&e->region[region];
     switch(b){
         case BLD_CELESTIAL_FORGE: return re->raw_cap[RES_CELESTIAL_IRON] > 0.f;
@@ -1279,15 +1432,25 @@ int bld_min_tier(BuildingType b){
     }
 }
 /* POSER une manufacture DÉLIBÉRÉMENT (le joueur/IA la choisit ; pas d'auto-bâti). L'appelant a vérifié
- * le tier + payé l'or. Renvoie true si bâtie (ou déjà présente). */
+ * le tier + payé l'or. GRAIN PUBLIC historique = région, résolue vers sa PROVINCE représentative
+ * (charte : l'économie vit sur la province) — le miroir région[] est aussi mis à jour pour que les
+ * lecteurs de la MÊME frame (avant le prochain econ_tick/agrégation) voient déjà le bâtiment.
+ * Renvoie true si bâtie (ou déjà présente). */
 bool econ_build_manufacture(WorldEconomy *econ, int region, BuildingType b){
     if (!econ || region<0 || region>=econ->n_regions) return false;
-    RegionEconomy *re=&econ->region[region];
-    int bi=region_ensure_building(re, b);
+    int pid=econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return false;
+    ProvinceEconomy *pe=&econ->prov[pid];
+    int bi=region_ensure_building(pe, b);
     if (bi<0) return false;
     /* une fabrique DÉLIBÉRÉE (payée) naît SUBSTANTIELLE — un vrai atelier, pas une semence : elle
      * produit assez pour armer des régiments (la prod plafonne de toute façon sur l'intrant + les bras). */
-    if (re->bld[bi].level < 5.f) re->bld[bi].level = 5.f;
+    if (pe->bld[bi].level < 5.f) pe->bld[bi].level = 5.f;
+    /* miroir immédiat région[] (informatif — l'agrégation exacte reviendra au prochain econ_tick). */
+    RegionEconomy *re=&econ->region[region];
+    int rbi=-1; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==b){ rbi=i; break; }
+    if (rbi<0 && re->n_bld<ECON_MAX_BLD){ rbi=re->n_bld++; re->bld[rbi].type=b; re->bld[rbi].workers=0.f; }
+    if (rbi>=0 && re->bld[rbi].level<5.f) re->bld[rbi].level=5.f;
     return true;
 }
 
@@ -1345,14 +1508,14 @@ static inline float council_m(int owner, int seat){
 #define PROMOTE_SAT_GATE          0.50f  /* B4 — jamais de promotion VERS une strate dont la
                                           * satisfaction est < 50 % (on ne grossit pas une élite
                                           * misérable — la cause du « 13 % à la pire satisfaction ») */
-static float   g_basket_pc[SCPS_MAX_REG][CLASS_COUNT];   /* panier/tête capté au tick */
-static uint8_t g_lowsat_streak[SCPS_MAX_REG][CLASS_COUNT];/* mois consécutifs de sat < 30 % */
+static float   g_basket_pc[SCPS_MAX_PROV][CLASS_COUNT];   /* panier/tête capté au tick */
+static uint8_t g_lowsat_streak[SCPS_MAX_PROV][CLASS_COUNT];/* mois consécutifs de sat < 30 % */
 void econ_mobility_reset(void){
     memset(g_basket_pc,0,sizeof g_basket_pc);
     memset(g_lowsat_streak,0,sizeof g_lowsat_streak);
     memset(g_friche,0,sizeof g_friche); g_n_friche=0;
 }
-static void mobility_move(RegionEconomy *re, int from, int to, float frac){
+static void mobility_move(ProvinceEconomy *re, int from, int to, float frac){
     float pop=re->strata[from].pop; if (pop<1.f || frac<=0.f) return;
     float moved=pop*frac; if (moved<0.01f) return;
     float wmoved=re->strata[from].wealth*(moved/pop);     /* la richesse SUIT */
@@ -1365,7 +1528,7 @@ static void mobility_move(RegionEconomy *re, int from, int to, float frac){
  * des nobles : + d'élite est normal) ; le plafond ne coupe que l'emballement. */
 #define SHARE_CAP_BOURGEOIS 0.32f
 #define SHARE_CAP_ELITE     0.11f   /* B4 — resserré (0.20→0.11) : l'élite visait 5-9 %, pas 13-20 % */
-static void mobility_tick_region(RegionEconomy *re, int rid){
+static void mobility_tick_region(ProvinceEconomy *re, int rid){
     bool manuf = re->n_bld>0;                              /* manufactures actives = débouché */
     float totp = re->strata[0].pop+re->strata[1].pop+re->strata[2].pop; if (totp<1.f) totp=1.f;
     /* PROMOTIONS : wealth/tête > seuil → fraction ∝ excédent, ÉTEINTE au plafond doux. */
@@ -1428,7 +1591,7 @@ double econ_country_gold(const WorldEconomy *e, int c){
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
-    g_n_friche=0;                      /* E1bis.10 : recompte les régions en friche ce tick */
+    g_n_friche=0;                      /* E1bis.10 : recompte les provinces en friche ce tick */
 
 #if SCPS_IPM
     /* §C — INFLATION MONÉTAIRE (un seul interrupteur). L'IPM = indice des prix :
@@ -1438,9 +1601,9 @@ void econ_tick(WorldEconomy *e, float dt) {
      * événements (§F) ÉMERGE : le Filon/la Débase injectent de l'or → IPM↑ ; les
      * Moissons font des biens → IPM↓ — aucun hook dédié. */
     { double gold=0.0, goods=0.0;
-      for (int r=0;r<e->n_regions;r++){ if (!e->region[r].colonized) continue;
-          gold  += e->region[r].treasury;
-          goods += e->region[r].gdp; }
+      for (int p=0;p<e->n_prov;p++){ if (!e->prov[p].colonized) continue;
+          gold  += e->prov[p].treasury;
+          goods += e->prov[p].gdp; }
       if (goods>1.0){
           float ratio = (float)(gold/goods);
           if (e->ipm_ref<=0.f) e->ipm_ref = ratio;                          /* amorce la tendance */
@@ -1451,36 +1614,36 @@ void econ_tick(WorldEconomy *e, float dt) {
     }
 #endif
 
-    /* I3 — ADMIN : compte les régions par pays (le multiplicateur de TAILLE :
+    /* I3 — ADMIN : compte les provinces par pays (le multiplicateur de TAILLE :
      * l'hégémon paie sa bureaucratie, les petits respirent). */
     int rcount[SCPS_MAX_COUNTRY]={0};
-    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
-        if (e->region[r].colonized && e->region[r].owner>=0 && e->region[r].owner<SCPS_MAX_COUNTRY)
-            rcount[e->region[r].owner]++;
-        /* K4b — le timer anti-saccage décroît pour TOUTE région (c'est un compteur, pas de
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        if (e->prov[p].colonized && e->prov[p].owner>=0 && e->prov[p].owner<SCPS_MAX_COUNTRY)
+            rcount[e->prov[p].owner]++;
+        /* K4b — le timer anti-saccage décroît pour TOUTE province (c'est un compteur, pas de
          * la production) : une province non colonisée mais sacquée se rouvre quand même
          * après ~5 ans. (Avant : décrément gaté par colonized → jamais pour l'incolonisée.) */
-        e->region[r].pillage_cd = fmaxf(0.f, e->region[r].pillage_cd - dt);
+        e->prov[p].pillage_cd = fmaxf(0.f, e->prov[p].pillage_cd - dt);
     }
 
     /* ====================================================================
      * STOCK NATIONAL (le pool d'empire) — « toute ressource produite va dans le
-     * stock de SON empire ». On AGRÈGE les stocks régionaux en un pool par pays :
+     * stock de SON empire ». On AGRÈGE les stocks des provinces en un pool par pays :
      * l'extraction y dépose, la manufacture & la consommation Y PUISENT (la
      * matière d'une province nourrit l'atelier d'une autre — fin de la
      * fragmentation qui bloquait les chaînes). La MAIN-D'ŒUVRE reste LOCALE (on ne
      * staffe pas une fabrique avec les bras d'ailleurs). En clôture de tick, le
-     * pool est REDISTRIBUÉ aux régions au prorata de la population (Σ re->stock =
+     * pool est REDISTRIBUÉ aux provinces au prorata de la population (Σ pe->stock =
      * pool) → les lecteurs externes (intertrade/Centres, viewer, butin de guerre,
-     * save) gardent une vue régionale cohérente, sans réécriture des 280 sites.
-     * ── PRIX NATIONAL (refonte) : le prix n'est PLUS soldé par-région (pop-share) — ce qui
-     * créait un ARTEFACT spatial (un bien fait dans 1 région flambait dans les autres : outils
+     * save) gardent une vue cohérente, sans réécriture des 280 sites.
+     * ── PRIX NATIONAL (refonte) : le prix n'est PLUS soldé par-province (pop-share) — ce qui
+     * créait un ARTEFACT spatial (un bien fait dans 1 province flambait dans les autres : outils
      * à 51×). Il est soldé UNE FOIS par empire sur l'offre/demande NATIONALES (supply_nat/
      * demand_nat ci-dessous) vs le pool → MÊMES paliers ⇒ ratio invariant à l'échelle : ni
-     * artefact régional, ni effondrement d'effort (le piège évité était le MÉLANGE demande
-     * régionale / stock national). Le prix national est PROJETÉ sur re->price de chaque région
-     * (matérialisation, comme re->stock). Empire mono-région ⇒ national = local : IDENTIQUE.
-     * Région ISOLÉE (owner<0, fixtures) ⇒ prix soldé LOCALEMENT (repli inchangé). */
+     * artefact spatial, ni effondrement d'effort (le piège évité était le MÉLANGE demande
+     * locale / stock national). Le prix national est PROJETÉ sur pe->price de chaque province
+     * (matérialisation, comme pe->stock). Empire mono-province ⇒ national = local : IDENTIQUE.
+     * Province ISOLÉE (owner<0, fixtures) ⇒ prix soldé LOCALEMENT (repli inchangé). */
     float pool[SCPS_MAX_COUNTRY][RES_COUNT];
     memset(pool, 0, sizeof pool);
     /* accumulateurs NATIONAUX (statiques = hors pile) du tick courant, pour le prix national. */
@@ -1488,8 +1651,8 @@ void econ_tick(WorldEconomy *e, float dt) {
     memset(supply_nat, 0, sizeof supply_nat);
     memset(demand_nat, 0, sizeof demand_nat);
     float epop[SCPS_MAX_COUNTRY]={0}, elab[SCPS_MAX_COUNTRY]={0}, ecap[SCPS_MAX_COUNTRY]={0};
-    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
-        RegionEconomy *ar=&e->region[r];
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        ProvinceEconomy *ar=&e->prov[p];
         if (!ar->active || !ar->colonized) continue;
         int o=ar->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
         for (int g=0;g<RES_COUNT;g++) pool[o][g]+=ar->stock[g];
@@ -1497,7 +1660,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         elab[o]+=ar->strata[CLASS_LABORER].pop+ar->strata[CLASS_BOURGEOIS].pop;   /* bassin de travail NATIONAL = journaliers + bourgeois */
         ecap[o]+=ECON_STOCK_CAP_BASE+ECON_STOCK_CAP_ENTREPOT*(float)ar->n_entrepot;
     }
-    /* OUTILS — l'usure du PARC NATIONAL se fait UNE fois/tick (un ×0.97 par-région
+    /* OUTILS — l'usure du PARC NATIONAL se fait UNE fois/tick (un ×0.97 par-province
      * sur un pool partagé le décaierait N fois). tools_pc lira ce parc déjà usé. */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) if (epop[c]>0.f) pool[c][RES_TOOLS]*=0.97f;
 
@@ -1507,8 +1670,8 @@ void econ_tick(WorldEconomy *e, float dt) {
     const float ext_lab_share = tune_f("EXTRACT_LABOR_SHARE", EXTRACT_LABOR_SHARE);
     const float food_need     = tune_f("FOOD_NEED",           1.0f);   /* A2 : calibrage de la bouche vivrière */
 
-    for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++) {
-        RegionEconomy *re=&e->region[rid];
+    for (int pid=0; pid<e->n_prov && pid<SCPS_MAX_PROV; pid++) {
+        ProvinceEconomy *re=&e->prov[pid];
         if (!re->active || !re->colonized) continue;
 
         float supply[RES_COUNT]={0}, demand[RES_COUNT]={0};
@@ -1522,7 +1685,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         float profit_pool = 0.f;   /* → bourgeois */
         float tax_pool    = 0.f;   /* → rente d'élite */
         float over_tax[CLASS_COUNT]={0};   /* surtaxe par classe (grogne, §6) */
-        /* STOCK NATIONAL : cette région opère sur le pool de SON empire (matière
+        /* STOCK NATIONAL : cette province opère sur le pool de SON empire (matière
          * fongible) ; sa PART de population (pshare) sert à solder le prix à
          * l'échelle locale (le signal-effort ne s'effondre pas). elab_ = la
          * main-d'œuvre de TOUT l'empire (le parc d'outils est national). */
@@ -1563,10 +1726,10 @@ void econ_tick(WorldEconomy *e, float dt) {
          * entaillée ~1 an ; l'immunité au raid décroît en parallèle. */
         if (re->balafre_days>0.f){ re->balafre_days-=dt*365.f; prod_mult*=0.5f; }
         if (re->raid_cd_days>0.f)  re->raid_cd_days-=dt*365.f;
-        if (rid<SCPS_MAX_REG && g_friche[rid]) prod_mult*=FRICHE_FACTOR;  /* E1bis.10 : entretien IMPAYÉ → friche */
+        if (pid<SCPS_MAX_PROV && g_friche[pid]) prod_mult*=FRICHE_FACTOR;  /* E1bis.10 : entretien IMPAYÉ → friche */
         /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE produit moins : malus = (1−hab)·HAB_MALUS_K
          * (habitabilité 50 % → −10 % de prod). Lit la COORDONNÉE (re->habitability), n'assigne
-         * aucun modificateur plat. La région-SIÈGE (province de départ) en est EXEMPTÉE. */
+         * aucun modificateur plat. La province-SIÈGE (départ) en est EXEMPTÉE. */
         if (!re->is_capital)
             prod_mult *= fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
 
@@ -1579,7 +1742,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          *     journaliers reste pour les manufactures (labor_used le réserve).
          *   · plus de ×2 bois/fer/or (replié dans YIELD).
          * La production est ainsi LINÉAIRE en main-d'œuvre (elle SUIT la pop) ; le commerce
-         * comble ce que la géologie locale ne donne pas (vocation : 2 brutes/région). */
+         * comble ce que la géologie locale ne donne pas (vocation : 2 brutes/province). */
         /* ALLOCATION JOUEUR/IA — si alloc_on, on répartit labor_avail (journaliers+bourgeois)
          * par les POIDS du joueur : extraction ET manufacture partagent UN budget (somme des
          * poids = alloc_total). Sinon, alloc_total reste 0 et le split AUTO ci-dessous opère. */
@@ -1735,11 +1898,11 @@ void econ_tick(WorldEconomy *e, float dt) {
             /* FAU0/FAU2 — LA CHARGE FAUSTIENNE (hook UNIQUE faust_charge_add) : le mage (essence)
              * ET les transmuteurs (chaque spawn ∝ output = le VOLUME) nourrissent la Brèche. Les
              * transmuteurs comptent aussi le rare consommé (capteur caché du capstone §27). */
-            if (b->type==BLD_MAGE_WORKSHOP) faust_charge_add(re, out);   /* arcane ordinaire : IMMÉDIAT seul (per-tick, comme avant) */
+            if (b->type==BLD_MAGE_WORKSHOP) re->arcane_charge += out;   /* arcane ordinaire : IMMÉDIAT seul (per-tick, comme avant) — équivalent inline de faust_charge_add(RegionEconomy*) pour une ProvinceEconomy */
             else if (bld_is_faustian(b->type)){
                 float spawn = out * tune_f("FAUST_SPAWN_CHARGE", 0.15f);
-                faust_charge_add(re, spawn);     /* l'IMMÉDIAT (flux du tick) */
-                re->faust_charge += spawn;       /* FAU1 : et l'entropie CUMULÉE (la pente vers la Brèche) */
+                re->arcane_charge += spawn;      /* l'IMMÉDIAT (flux du tick) */
+                re->faust_charge  += spawn;      /* FAU1 : et l'entropie CUMULÉE (la pente vers la Brèche) */
                 int k=(b->type==BLD_FOREUSE)?0:(b->type==BLD_REPLICATEUR)?1:2;   /* essence · flux · fer céleste */
                 re->faust_consumed[k] += lim*rc->q1;
             }
@@ -1788,7 +1951,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         float ipmf = (e->ipm>0.f)? e->ipm : 1.f;
         float opf  = tune_f("SINK_FLOOR", SINK_FLOOR);    /* I3bis — plancher de SUBSISTANCE (friche) */
         float hof  = tune_f("COURT_FLOOR", COURT_FLOOR);  /* seuil de HOARDING : les ponctions ne mordent qu'au-dessus */
-        if (rid<SCPS_MAX_REG){
+        if (pid<SCPS_MAX_PROV){
             /* I3 — DÉFENSIF : la famille Garnison/Forteresse/Citadelle (re->build.H_coerc)
              * s'entretient ×1.5 (remparts à réparer, garnisons à nourrir) ; le reste suit
              * la loi commune. (On lit le delta H agrégé : pas besoin de la liste d'édifices.)
@@ -1807,14 +1970,14 @@ void econ_tick(WorldEconomy *e, float dt) {
             float base_up = (infra*BUILD_GOLD_PER_DELTA/tune_f("ENTRETIEN_DIV",ENTRETIEN_DIV)) * 365.f * dt;
             /* FRICHE = SURBÂTI CATASTROPHIQUE : l'entretien dépasse TOUT le trésor (pas juste
              * le surplus au-dessus de la réserve) — l'État ne peut littéralement pas tenir son
-             * infra. Une région qui repose sur sa réserve d'exploitation (peu d'infra, peu
+             * infra. Une province qui repose sur sa réserve d'exploitation (peu d'infra, peu
              * d'impôt) n'est PAS en friche : elle sous-finance sans la falaise de prod. */
             bool fr = (base_up > re->treasury);
             float surplus = re->treasury - opf;
             float paid_up = (surplus > 0.f) ? fminf(base_up, surplus) : 0.f;
             re->treasury -= paid_up;                                       /* payé du surplus, la réserve tient */
             if (re->owner>=0) econ_flux_add(re->owner, FX_UPKEEP, -paid_up);  /* I0 : entretien édifices */
-            g_friche[rid] = fr;
+            g_friche[pid] = fr;
             if (fr) g_n_friche++;
             /* SURCOÛTS ANTI-HOARDING (G0.4 surtaxe IPM sur l'entretien + H7 encadrement des
              * manufactures) : du SURPLUS au-dessus du seuil de HOARDING SEULEMENT — jamais une
@@ -1833,11 +1996,11 @@ void econ_tick(WorldEconomy *e, float dt) {
         { float cf=tune_f("COURT_FLOOR",COURT_FLOOR);
           if (re->treasury > cf){ float court=(re->treasury - cf) * tune_f("COURT_RATE",COURT_RATE) * (dt*12.f);
               re->treasury -= court; if (re->owner>=0) econ_flux_add(re->owner, FX_COURT, -court); } }
-        /* I3 — ADMIN : la part de cette région dans la bureaucratie du pays. Total pays =
-         * base × n^exp ; par région = base × n^(exp−1). Croît avec la TAILLE (×IPM). Du
+        /* I3 — ADMIN : la part de cette province dans la bureaucratie du pays. Total pays =
+         * base × n^exp ; par province = base × n^(exp−1). Croît avec la TAILLE (×IPM). Du
          * SURPLUS au-dessus du seuil de hoarding : l'admin pèse sur les grands trésors, pas
          * sur le bas de laine qui finance les chantiers (sinon l'État ne bootstrappe jamais). */
-        if (rid<SCPS_MAX_REG && re->owner>=0 && re->owner<SCPS_MAX_COUNTRY && re->treasury>hof){
+        if (pid<SCPS_MAX_PROV && re->owner>=0 && re->owner<SCPS_MAX_COUNTRY && re->treasury>hof){
             int nreg=rcount[re->owner]; if (nreg<1) nreg=1;
             float admin = tune_f("ADMIN_BASE",ADMIN_BASE)
                         * powf((float)nreg, tune_f("ADMIN_EXP",ADMIN_EXP)-1.f) * ipmf * (dt*12.f);
@@ -1869,7 +2032,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * le signal-prix — le pouvoir d'achat rendu ici en est le carburant indirect. */
 
         /* §besoins progressifs — combien de besoins (par ordre de priorité) sont ACTIFS
-         * dans cette région : f(niveau de capitale, que la POP débloque). Petit centre →
+         * dans cette province : f(niveau de capitale, que la POP débloque). Petit centre →
          * 2 besoins (les bases) ; grande capitale → tout le panier (statut compris). Un
          * besoin non encore débloqué ne crée NI demande NI manque de satisfaction. */
         long rpop_nd = (long)(re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
@@ -2024,12 +2187,12 @@ void econ_tick(WorldEconomy *e, float dt) {
              * la satisfaction (donc l'agitation monte) sans toucher la croissance (≠ revolt_scar). */
             re->strata[c].satisfaction=clampf(basket + comfort_joy - over_tax[c]*K_TAX_AGIT
                                               - re->annex_scar*tune_f("ANNEX_SAT_W",0.5f), 0.f, 1.f);
-            if (rid<SCPS_MAX_REG) g_basket_pc[rid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
+            if (pid<SCPS_MAX_PROV) g_basket_pc[pid][c]=(units>0.f)?need_w/units:0.f;  /* E0.7 : panier/tête */
             float nm_c=(nbasket>0)?(float)nsat/(float)nbasket:0.f;   /* part BRUTE du panier couverte */
             nmsum += nm_c*re->strata[c].pop; nmpop += re->strata[c].pop;
         }
         re->needs_met = (nmpop>0.f)? clampf(nmsum/nmpop,0.f,1.f) : 0.f;   /* pilote la fertilité (avant la croissance) */
-        if (rid<SCPS_MAX_REG) mobility_tick_region(re, rid);   /* E0.7 — le dégel des classes */
+        if (pid<SCPS_MAX_PROV) mobility_tick_region(re, pid);   /* E0.7 — le dégel des classes */
 
         /* FRUIT — NOURRITURE DE SUBSTITUTION : comble le déficit vivrier RÉSIDUEL (grain/poisson
          * non couverts) avec le fruit du pool national, là où il pousse (forêt/tempéré). Crée la
@@ -2071,9 +2234,9 @@ void econ_tick(WorldEconomy *e, float dt) {
         HeritageBuild sb_demo = culture_build_for((uint32_t)(re->owner<0?0:re->owner));
         float demo = build_leviers(&sb_demo).demographie;
         /* MODIFICATEURS PROVINCIAUX diégétiques → entrée DÉMO (pas un bonus plat) : la
-         * TERRE D'ABONDANCE repeuple les régions sous-remplies & nourries (le rebond des
-         * low seeds). Auto-ciblé → les régions pleines (seeds riches) reçoivent 0. */
-        { ProvModHit pm[PMOD_COUNT]; int npm=provmod_collect(re, pm, PMOD_COUNT);
+         * TERRE D'ABONDANCE repeuple les provinces sous-remplies & nourries (le rebond des
+         * low seeds). Auto-ciblé → les provinces pleines (seeds riches) reçoivent 0. */
+        { ProvModHit pm[PMOD_COUNT]; int npm=provmod_collect_prov(re, pm, PMOD_COUNT);
           for (int i=0;i<npm;i++) demo += pm[i].demo_bonus; }
         /* RELIGION (P4) : le canal RC_POPGROWTH (Fécondité/Offrande) nudge la natalité
          * via la MÊME entrée DÉMO. GATED → aucun effet sans religion (golden intact). */
@@ -2101,10 +2264,10 @@ void econ_tick(WorldEconomy *e, float dt) {
         re->ferveur        = fmaxf(0.f, re->ferveur        - tune_f("PROVMOD_FERVEUR_DECAY",0.067f)*dt);
         re->reconstruction = fmaxf(0.f, re->reconstruction - tune_f("PROVMOD_RECON_DECAY",  0.10f )*dt);
         re->annex_scar     = fmaxf(0.f, re->annex_scar     - tune_f("ANNEX_SCAR_DECAY",    0.20f )*dt);  /* étage 3d : ~5 ans */
-        /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE région — pas seulement colonisée.) */
+        /* (K4b : pillage_cd décrémenté plus haut, pour TOUTE province — pas seulement colonisée.) */
         net_growth *= (1.f - 0.5f*re->revolt_scar);
         /* UTILITÉ DE L'HABITABILITÉ — la terre RUDE peuple moins vite : même malus que la prod,
-         * (1−hab)·HAB_MALUS_K, EXEMPTANT la région-siège (province de départ). */
+         * (1−hab)·HAB_MALUS_K, EXEMPTANT la province-siège (départ). */
         if (!re->is_capital)
             net_growth *= fmaxf(0.f, 1.f - (1.f - re->habitability) * tune_f("HAB_MALUS_K", 0.20f));
         net_growth *= dt;   /* cumulatif → suit le pas (mensuel : 1/12 d'an) */
@@ -2118,7 +2281,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          *   · le GRENIER garde son rôle NOURRITURE (food_cap·250), pas logement.
          * Bâtir = la seule façon de remplir la moitié haute → la pop SUIT le bâti. */
         /* eff_cap UNIFIÉ via le helper (Q6 + BONUS CONFORT poterie/statuaire = −15 % besoin logement). */
-        float eff_cap = econ_region_effcap(re);
+        float eff_cap = econ_prov_effcap(re);
         float cap_factor = fmaxf(0.f, 1.f - total_pop_now/(eff_cap*1.1f));
         net_growth *= cap_factor;
 
@@ -2136,10 +2299,12 @@ void econ_tick(WorldEconomy *e, float dt) {
         /* RELIGION (P8) : une région de foi MINORITAIRE (≠ celle de son pays, après
          * fracture/schisme) gronde — la D-interne religieuse ABAISSE la satisfaction →
          * alimente l'agitation/sécession (système existant). GATED → aucun effet sans
-         * religion (chronique : religion_of_region ≡ -1 ⇒ golden intact). */
+         * religion (chronique : religion_of_region ≡ -1 ⇒ golden intact). Religion est un
+         * concept RÉGION (grain politique, charte §4) : on lit via re->region (la région
+         * géographique qui groupe cette province — cf. ProvinceEconomy.region). */
         if (re->owner>=0){
-            int rrg=religion_of_region(rid);
-            if (rrg>=0 && rrg!=religion_of_country(re->owner) && !religion_region_stabilized(rid))
+            int rrg=religion_of_region(re->region);
+            if (rrg>=0 && rrg!=religion_of_country(re->owner) && !religion_region_stabilized(re->region))
                 re->satisfaction = fmaxf(0.f, re->satisfaction - tune_f("RELIG_MINORITY_SAT",0.15f));
         }
         re->prosperity = re->gdp/(popsum+1.f);
@@ -2178,7 +2343,7 @@ void econ_tick(WorldEconomy *e, float dt) {
 
         /* E2 §11 — LE PLAFOND DE STOCK (Σ des caps régionaux) et la décrue des
          * périssables s'appliquent au POOL NATIONAL une fois/tick, en clôture (ci-dessous,
-         * hors de cette boucle) : un ×0.85 ou un plafond par-région sur un stock partagé
+         * hors de cette boucle) : un ×0.85 ou un plafond par-province sur un stock partagé
          * le décaierait/raboterait N fois. */
 
         /* Diaspora : bonus tech par innovation culturelle accumulée.
@@ -2201,15 +2366,15 @@ void econ_tick(WorldEconomy *e, float dt) {
 
     /* PRIX NATIONAL — soldé UNE FOIS par empire sur demande/(pool+offre) NATIONALES (mêmes
      * paliers ⇒ ratio invariant à l'échelle : ni artefact spatial, ni effondrement d'effort),
-     * puis PROJETÉ sur re->price de toutes ses régions (matérialisation). Inertie amorcée du prix
+     * puis PROJETÉ sur re->price de toutes ses provinces (matérialisation). Inertie amorcée du prix
      * national du tick précédent (re->price, uniforme par empire). Itération par index = stable
-     * (déterminisme). Les régions ISOLÉES (owner<0) ont déjà soldé leur prix localement, plus haut. */
+     * (déterminisme). Les provinces ISOLÉES (owner<0) ont déjà soldé leur prix localement, plus haut. */
     {
         float infl = (e->ipm>0.f)? e->ipm : 1.f;
         static float pn[SCPS_MAX_COUNTRY][RES_COUNT];   /* prix national soldé (hors pile) */
         bool done[SCPS_MAX_COUNTRY]; for (int c=0;c<SCPS_MAX_COUNTRY;c++) done[c]=false;
-        for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++){
-            RegionEconomy *re=&e->region[rid];
+        for (int pid=0; pid<e->n_prov && pid<SCPS_MAX_PROV; pid++){
+            ProvinceEconomy *re=&e->prov[pid];
             if (!re->active || !re->colonized) continue;
             int c=re->owner; if (c<0||c>=SCPS_MAX_COUNTRY) continue;
             if (!done[c]){
@@ -2222,11 +2387,11 @@ void econ_tick(WorldEconomy *e, float dt) {
                     pn[c][r]     = clampf(p, BASE_PRICE[r]*0.15f, BASE_PRICE[r]*8.f);
                 }
             }
-            for (int r=0;r<RES_COUNT;r++) re->price[r]=pn[c][r];   /* PROJECTION : toutes les régions de l'empire = même prix */
+            for (int r=0;r<RES_COUNT;r++) re->price[r]=pn[c][r];   /* PROJECTION : toutes les provinces de l'empire = même prix */
         }
     }
 
-    /* STOCK NATIONAL — CLÔTURE : plafond du pool (Σ des caps régionaux : Entrepôts
+    /* STOCK NATIONAL — CLÔTURE : plafond du pool (Σ des caps par pays : Entrepôts
      * bâtis), puis décrue des périssables (×0.85, le surplus s'évapore — fin de
      * l'accumulation infinie), UNE fois par empire. */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){
@@ -2236,19 +2401,19 @@ void econ_tick(WorldEconomy *e, float dt) {
             pool[c][g]*=0.85f;
         }
     }
-    /* REDISTRIBUTION du pool aux régions au PRORATA de leur population (post-croissance,
-     * pour Σ re->stock = pool exactement) → intertrade/Centres, viewer, butin de guerre
-     * et save voient un stock régional cohérent, sans toucher leurs 280 sites. */
+    /* REDISTRIBUTION du pool aux provinces au PRORATA de leur population (post-croissance,
+     * pour Σ pe->stock = pool exactement) → intertrade/Centres, viewer, butin de guerre
+     * et save voient un stock cohérent, sans toucher leurs 280 sites. */
     {
         float epop2[SCPS_MAX_COUNTRY]={0};
-        for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++){
-            RegionEconomy *re=&e->region[rid];
+        for (int pid=0; pid<e->n_prov && pid<SCPS_MAX_PROV; pid++){
+            ProvinceEconomy *re=&e->prov[pid];
             if (!re->active || !re->colonized) continue;
             int o=re->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
             epop2[o]+=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
         }
-        for (int rid=0; rid<e->n_regions && rid<SCPS_MAX_REG; rid++){
-            RegionEconomy *re=&e->region[rid];
+        for (int pid=0; pid<e->n_prov && pid<SCPS_MAX_PROV; pid++){
+            ProvinceEconomy *re=&e->prov[pid];
             if (!re->active || !re->colonized) continue;
             int o=re->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
             if (epop2[o]<=EPS) continue;   /* empire sans population : on ne redistribue pas (laisse le stock en l'état) */
@@ -2258,6 +2423,12 @@ void econ_tick(WorldEconomy *e, float dt) {
         }
     }
     econ_build_tick(e);   /* §NF v2 — la construction suit le MARCHÉ (demande + bras), plus le gisement */
+
+    /* AGRÉGATION : reflète prov[] → region[] (charte règle 2) pour les lecteurs externes
+     * (guerre/diplo/commerce/endgame, statecraft/légitimité/révolte/prospérité — règle 4).
+     * econ_tick(WorldEconomy*, dt) ne prend pas de World* : econ_aggregate_regions groupe par
+     * ProvinceEconomy.region (miroir géo posé à econ_init), jamais par Region.province_ids. */
+    econ_aggregate_regions(e);
 }
 
 /* ====================================================================== */
@@ -2380,20 +2551,55 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
 }
 
 /* ====================================================================== */
-/* COLONISATION                                                            */
+/* COLONISATION (charte règle 5 : « départ = 1 province · le joueur colonise    */
+/* N'IMPORTE QUELLE province · la cité-état colonise SA région · pas d'exception ») */
 /* ====================================================================== */
-/* Joueur/Antagoniste : essaiment vers toute région vierge adjacente.
- * Cité-État        : essaime uniquement vers ses propres régions vacantes.
+/* Joueur/Antagoniste : essaiment vers toute PROVINCE vierge adjacente (le
+ * monde entier est éligible, pas seulement leur région).
+ * Cité-État        : essaime uniquement vers les provinces vacantes DE SA
+ *                     PROPRE région (elle ne colonise pas hors de chez elle).
  * Dans les deux cas : au plus une fondation par polité par tick.           */
 
-static void colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid);
-void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid){
-    if (src_rid<0||src_rid>=e->n_regions||dst_rid<0||dst_rid>=e->n_regions) return;
-    colonize_from(e,src_rid,dst_rid,cid);
+/* Province REPRÉSENTATIVE d'une région pour la résolution du grain public
+ * historique « région » (econ_colonize_from/overseas) — cf. econ_build_manufacture. */
+static int econ_region_best_colonized_prov(const WorldEconomy *e, int region, int cid){
+    if (!e || region<0 || region>=SCPS_MAX_REG) return -1;
+    /* On ne connaît les membres d'une région qu'via prov[].region (pas de World* ici) :
+     * on balaie prov[] (borné n_prov) — coût négligeable (colonisation = rare, 1×/tick/pays). */
+    int best=-1; float best_pop=-1.f;
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        const ProvinceEconomy *pe=&e->prov[p];
+        if (pe->region!=region || !pe->colonized || pe->owner!=cid) continue;
+        float pop=0.f; for (int c=0;c<CLASS_COUNT;c++) pop+=pe->strata[c].pop;
+        if (pop>best_pop){ best_pop=pop; best=p; }
+    }
+    return best;
 }
-static void colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid) {
-    RegionEconomy *src=&e->region[src_rid];
-    RegionEconomy *dst=&e->region[dst_rid];
+static int econ_region_best_vacant_prov(const WorldEconomy *e, int region){
+    if (!e || region<0 || region>=SCPS_MAX_REG) return -1;
+    int best=-1; float best_cap=-1.f;
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        const ProvinceEconomy *pe=&e->prov[p];
+        if (pe->region!=region || !pe->active || pe->colonized) continue;
+        if (pe->cap_pop>best_cap){ best_cap=pe->cap_pop; best=p; }
+    }
+    return best;
+}
+
+static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int cid);
+/* GRAIN PUBLIC historique = région (8 appelants externes) : résolue vers la MEILLEURE
+ * province colonisée de src_rid (possédée par cid) et la meilleure province VACANTE de
+ * dst_rid — c'est LÀ que la charte veut l'acte fondateur (charte : « départ = 1 province »). */
+void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid){
+    if (!e || src_rid<0||src_rid>=e->n_regions||dst_rid<0||dst_rid>=e->n_regions) return;
+    int sp=econ_region_best_colonized_prov(e, src_rid, cid);
+    int dp=econ_region_best_vacant_prov(e, dst_rid);
+    if (sp<0 || dp<0) return;
+    colonize_from_prov(e, sp, dp, cid);
+}
+static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int cid) {
+    ProvinceEconomy *src=&e->prov[src_pid];
+    ProvinceEconomy *dst=&e->prov[dst_pid];
     float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
     float take=fminf(COLONY_COST_POP, spop*0.25f);
     for (int c=0;c<CLASS_COUNT;c++)
@@ -2412,10 +2618,14 @@ static void colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid) {
 /* L5 — COLONIE OUTRE-MER : mêmes PORTES que l'essaimage terrestre (pop, vivres,
  * cible vierge), mais le COÛT EN POP est ×2 — le convoi maritime saigne la
  * mère-patrie deux fois plus. L'appelant (harnais) a vérifié Port + coque +
- * portée de courants ; ici vivent les portes et le prix. */
+ * portée de courants ; ici vivent les portes et le prix. GRAIN PUBLIC historique =
+ * région (scps_navy passe un port/une cible RÉGION) résolue vers ses provinces. */
 bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid){
-    if (src_rid<0||src_rid>=e->n_regions||dst_rid<0||dst_rid>=e->n_regions) return false;
-    RegionEconomy *src=&e->region[src_rid], *dst=&e->region[dst_rid];
+    if (!e || src_rid<0||src_rid>=e->n_regions||dst_rid<0||dst_rid>=e->n_regions) return false;
+    int sp=econ_region_best_colonized_prov(e, src_rid, cid);
+    int dp=econ_region_best_vacant_prov(e, dst_rid);
+    if (sp<0 || dp<0) return false;
+    ProvinceEconomy *src=&e->prov[sp], *dst=&e->prov[dp];
     if (!dst->active || dst->colonized) return false;
     if (!src->colonized || src->owner!=cid) return false;
     float spop=0.f; for (int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
@@ -2423,7 +2633,7 @@ bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     float extra=fminf(COLONY_COST_POP, spop*0.25f);     /* la 2e ponction (coût ×2) */
     for (int c=0;c<CLASS_COUNT;c++)
         src->strata[c].pop -= extra*(src->strata[c].pop/fmaxf(spop,EPS));
-    colonize_from(e, src_rid, dst_rid, cid);            /* la 1re ponction + la fondation */
+    colonize_from_prov(e, sp, dp, cid);                 /* la 1re ponction + la fondation */
     return true;
 }
 
@@ -2436,12 +2646,16 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
         PolityRole role=ct->role;
 
         if (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) {
-            /* COLONISATION NEEDS-AWARE (pipeline IA, étage 3a) : la cible vaut ce qu'elle COMBLE.
-             * score(dst) = Σ_g max(0,shortfall_PROJETÉ[g]) × dst->raw_cap[g] × prix[g] (la valeur
-             * ÉMERGE — aucune hiérarchie codée). Le gate vivrier (food_sat) et COLONY_MIN_POP sont
-             * LEVÉS vers une tuile-DÉFICIT (runway court / déficit structurel) → expédition de survie :
-             * « je colonise le grenier vide même affamé, il va me nourrir ». Anti-spirale : food
-             * critique + aucune source au gate normal → on FORCE une colonie de survie vers la food. */
+            /* COLONISATION NEEDS-AWARE (pipeline IA, étage 3a), GRAIN PROVINCE (charte règle 5) :
+             * la cible vaut ce qu'elle COMBLE. score(dst) = Σ_g max(0,shortfall_PROJETÉ[g]) ×
+             * dst->raw_cap[g] × prix[g] (la valeur ÉMERGE — aucune hiérarchie codée). Le gate
+             * vivrier (food_sat) et COLONY_MIN_POP sont LEVÉS vers une tuile-DÉFICIT (runway court
+             * / déficit structurel) → expédition de survie : « je colonise le grenier vide même
+             * affamé, il va me nourrir ». Anti-spirale : food critique + aucune source au gate
+             * normal → on FORCE une colonie de survie vers la food. N'IMPORTE QUELLE province du
+             * monde est éligible en cible (charte) — l'adjacence PROVINCE (e->prov_adj) borde
+             * l'expansion à la frontière colonisée, comme avant au grain région. */
+            if (!e->prov_adj) continue;
             float proj_h = tune_f("AI_PROJ_HORIZON",25.f);
             EconForecast fc; econ_country_forecast(e, cid, proj_h, &fc);
             float safety = tune_f("AI_SAFETY_HORIZON",12.f);
@@ -2452,16 +2666,17 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
             float survive_min = tune_f("COLONY_SURVIVE_SEED",0.5f)*COLONY_MIN_POP;
             int best_src=-1, best_dst=-1; float best_score=-1.f;   /* colonisation au gate NORMAL */
             int surv_src=-1, surv_dst=-1; float surv_score=-1.f;   /* expédition de SURVIE (gate levé) */
-            for (int rs=0; rs<e->n_regions; rs++) {
-                RegionEconomy *src=&e->region[rs];
+            int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+            for (int ps=0; ps<nprov; ps++) {
+                ProvinceEconomy *src=&e->prov[ps];
                 if (!src->colonized || src->owner!=cid) continue;
                 float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
                 bool normal_ok  = (spop>=COLONY_MIN_POP && src->food_sat>=COLONY_FOOD_GATE);
                 bool survive_ok = (spop>=survive_min);
                 if (!normal_ok && !survive_ok) continue;
-                for (int rd=0; rd<e->n_regions; rd++) {
-                    if (!e->adj[rs][rd]) continue;
-                    RegionEconomy *dst=&e->region[rd];
+                for (int pd=0; pd<nprov; pd++) {
+                    if (!padj_get(ps,pd)) continue;
+                    ProvinceEconomy *dst=&e->prov[pd];
                     if (!dst->active || dst->colonized) continue;
                     /* score de BASE = expansion vers la CAPACITÉ (préserve la croissance saine, le
                      * comportement d'avant : la pop ne s'effondre pas). Un STEER needs-aware NORMALISÉ
@@ -2479,45 +2694,51 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
                         }
                     }
                     float score = base + needs_w*steer;
-                    if (normal_ok && score>best_score){ best_score=score; best_src=rs; best_dst=rd; }
+                    if (normal_ok && score>best_score){ best_score=score; best_src=ps; best_dst=pd; }
                     /* ANTI-SPIRALE (étage 3a) : la meilleure tuile VIVRIÈRE à portée, gate levé —
                      * réservée à la crise FOOD (sinon les colonies de survie draineraient les petites
                      * sources hors crise et la pop s'effondrerait). Une seule, quand rien d'autre. */
                     bool food_tile = (dst->raw_cap[RES_GRAIN]>0.f || dst->raw_cap[RES_FISH]>0.f
                                     || dst->raw_cap[RES_LIVESTOCK]>0.f);
-                    if (survive_ok && food_tile && base>surv_score){ surv_score=base; surv_src=rs; surv_dst=rd; }
+                    if (survive_ok && food_tile && base>surv_score){ surv_score=base; surv_src=ps; surv_dst=pd; }
                 }
             }
             int csrc=best_src, cdst=best_dst;
             if (csrc<0 && food_crit){ csrc=surv_src; cdst=surv_dst; }   /* anti-spirale : SEULEMENT en crise vivrière */
             if (csrc>=0 && cdst>=0) {
-                colonize_from(e, csrc, cdst, cid);
+                colonize_from_prov(e, csrc, cdst, cid);
                 founded++;
             }
 
         } else if (role==POLITY_CITY_STATE) {
-            /* Ne peut coloniser que ses propres régions vacantes adjacentes à
-             * une de ses régions déjà peuplées. */
+            /* Charte règle 5 : « la cité-état colonise SA région » — uniquement les provinces
+             * vacantes de ses PROPRES régions (ct->region_ids, connu du World — une cité-état
+             * peut tenir plusieurs régions), adjacentes à une de ses provinces déjà peuplées. */
+            if (!e->prov_adj) continue;
+            bool own_region[SCPS_MAX_REG]={false};
+            for (int ri=0; ri<ct->n_regions; ri++){
+                int rid=ct->region_ids[ri];
+                if (rid>=0 && rid<SCPS_MAX_REG) own_region[rid]=true;
+            }
             int best_src=-1, best_dst=-1; float best_score=-1.f;
-            for (int ri=0; ri<ct->n_regions; ri++) {
-                int rs=ct->region_ids[ri];
-                if (rs<0||rs>=e->n_regions) continue;
-                RegionEconomy *src=&e->region[rs];
+            int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+            for (int ps=0; ps<nprov; ps++) {
+                ProvinceEconomy *src=&e->prov[ps];
                 if (!src->colonized || src->owner!=cid) continue;
                 float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
                 if (spop<COLONY_MIN_POP || src->food_sat<COLONY_FOOD_GATE) continue;
-                /* Cibles : uniquement les régions sœurs du même pays */
-                for (int rj=0; rj<ct->n_regions; rj++) {
-                    int rd=ct->region_ids[rj];
-                    if (rd<0||rd>=e->n_regions||!e->adj[rs][rd]) continue;
-                    RegionEconomy *dst=&e->region[rd];
+                /* Cibles : uniquement les provinces des régions PROPRES du pays (jamais hors chez elle). */
+                for (int pd=0; pd<nprov; pd++) {
+                    if (!padj_get(ps,pd)) continue;
+                    ProvinceEconomy *dst=&e->prov[pd];
+                    if (dst->region<0 || dst->region>=SCPS_MAX_REG || !own_region[dst->region]) continue;
                     if (!dst->active || dst->colonized) continue;
                     float score = dst->cap_pop*0.001f + spop*0.0005f;
-                    if (score>best_score){ best_score=score; best_src=rs; best_dst=rd; }
+                    if (score>best_score){ best_score=score; best_src=ps; best_dst=pd; }
                 }
             }
             if (best_src>=0 && best_dst>=0) {
-                colonize_from(e, best_src, best_dst, cid);
+                colonize_from_prov(e, best_src, best_dst, cid);
                 founded++;
             }
         }
@@ -2537,16 +2758,20 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
  * forcée (econ_relocate_pop).                                                  */
 
 int econ_migrate_tick(WorldEconomy *e, const World *w) {
-    (void)w;  /* adj est dans e ; w réservé pour extensions futures */
+    (void)w;  /* prov_adj est dans e ; w réservé pour extensions futures */
     int flows=0;
+    if (!e->prov_adj) return 0;
+    int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
 
-    for (int rs=0; rs<e->n_regions; rs++) {
-        RegionEconomy *src=&e->region[rs];
+    /* GRAIN PROVINCE (charte : l'économie — dont la migration interne — vit sur la
+     * province ; écrire re->region[] ici serait écrasé par la prochaine agrégation). */
+    for (int rs=0; rs<nprov; rs++) {
+        ProvinceEconomy *src=&e->prov[rs];
         if (!src->colonized || src->gdp<=0.f) continue;
 
-        for (int rd=0; rd<e->n_regions; rd++) {
-            if (!e->adj[rs][rd]) continue;
-            RegionEconomy *dst=&e->region[rd];
+        for (int rd=0; rd<nprov; rd++) {
+            if (!padj_get(rs,rd)) continue;
+            ProvinceEconomy *dst=&e->prov[rd];
             if (!dst->colonized) continue;
 
             /* Différentiel de prospérité : dst doit être significativement
@@ -2602,9 +2827,14 @@ int econ_migrate_tick(WorldEconomy *e, const World *w) {
  * déplacée. La destination subit un léger choc d'accueil (stress social).  */
 
 void econ_relocate_pop(WorldEconomy *e, int src_rid, int dst_rid, float amount) {
-    if (src_rid<0||src_rid>=e->n_regions||dst_rid<0||dst_rid>=e->n_regions) return;
-    RegionEconomy *src=&e->region[src_rid];
-    RegionEconomy *dst=&e->region[dst_rid];
+    if (!e || src_rid<0||src_rid>=e->n_regions||dst_rid<0||dst_rid>=e->n_regions) return;
+    /* GRAIN PUBLIC historique = région, résolue vers ses provinces représentatives (charte :
+     * écrire directement region[] serait écrasé par la prochaine agrégation econ_tick). */
+    int sp=econ_region_rep_province(e, src_rid);
+    int dp=econ_region_rep_province(e, dst_rid);
+    if (sp<0 || dp<0 || sp>=e->n_prov || dp>=e->n_prov) return;
+    ProvinceEconomy *src=&e->prov[sp];
+    ProvinceEconomy *dst=&e->prov[dp];
     if (!src->colonized||!dst->colonized||amount<1.f) return;
 
     float src_pop=0.f;

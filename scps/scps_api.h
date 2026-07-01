@@ -59,6 +59,9 @@ int    scps_player       (const ScpsSim *s);
 int    scps_country_count(const ScpsSim *s);
 int    scps_region_count (const ScpsSim *s);
 int    scps_province_count(const ScpsSim *s);
+/* nombre de PROVINCES possédées par `country` (charte : la province est la vérité de
+ * propriété — la topbar "provinces" compte ceci, pas un nombre de régions). */
+int    scps_country_province_count(const ScpsSim *s, int country);
 long   scps_world_pop    (const ScpsSim *s);
 long   scps_country_pop  (const ScpsSim *s, int country);
 double scps_country_gold (const ScpsSim *s, int country);

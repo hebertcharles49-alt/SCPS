@@ -100,6 +100,13 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
                s->year, (s->player>=0&&s->player<w->n_countries)?w->country[s->player].name:"?", nreg); }
     bool ok = true;
     ok&=sv_w(f,SVT_WRLD, w,        sizeof *w);
+    /* ECON : WorldEconomy embarque désormais prov_adj, un POINTEUR TAS (adjacence de
+     * provinces, ~2.7 Mo, possédé par le module econ.c). On écrit le struct tel quel —
+     * les octets du pointeur finissent dans le fichier mais ne sont JAMAIS relus comme
+     * une adresse valide : au chargement on l'écrase à NULL puis on REBÂTIT l'adjacence
+     * (régions ET provinces) + le cache region_rep_prov via econ_build_adjacency, qui
+     * alloue/possède sa propre copie module-static (cf. scps_econ.c g_prov_adj). Ne PAS
+     * faire confiance à la valeur désérialisée du pointeur, jamais. */
     ok&=sv_w(f,SVT_ECON, s->econ,  sizeof *s->econ);
     ok&=sv_w(f,SVT_PROS, s->wp,    sizeof *s->wp);
     ok&=sv_w(f,SVT_LEGI, s->wl,    sizeof *s->wl);
@@ -191,6 +198,15 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (re->owner < -1 || re->owner >= w->n_countries) return false;
         if (re->pop.n_groups<0 || re->pop.n_groups>SCPS_MAX_GROUPS) return false;
         if (!(re->annex_scar>=0.f && re->annex_scar<=1.f)) return false; }
+    /* ÉCONOMIE PAR-PROVINCE (v47) : prov[] est LA VÉRITÉ désormais — mêmes bornes que
+     * region[] ci-dessus (owner) + region (mirroir de World.province[].region, lu par
+     * econ_tick pour agréger SANS World*) doit indexer une région du monde chargé. */
+    if (s->econ->n_prov<0 || s->econ->n_prov>SCPS_MAX_PROV) return false;
+    for (int p=0;p<s->econ->n_prov;p++){ const ProvinceEconomy *pe=&s->econ->prov[p];
+        if (pe->owner < -1 || pe->owner >= w->n_countries) return false;
+        if (pe->region < -1 || pe->region >= w->n_regions) return false;
+        if (pe->pop.n_groups<0 || pe->pop.n_groups>SCPS_MAX_GROUPS) return false;
+        if (!(pe->annex_scar>=0.f && pe->annex_scar<=1.f)) return false; }
     if (s->rn->n<0 || s->rn->n>SCPS_MAX_ROUTES) return false;
     for (int i=0;i<s->rn->n;i++){ const TradeRoute *rt=&s->rn->route[i];
         if (rt->ra<0 || rt->ra>=s->econ->n_regions || rt->rb<0 || rt->rb>=s->econ->n_regions) return false;
@@ -271,6 +287,12 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     bool ok=true;
     ok&=sv_r(f,SVT_WRLD, w,        sizeof *w);
     ok&=sv_r(f,SVT_ECON, s->econ,  sizeof *s->econ);
+    /* prov_adj est un POINTEUR TAS — la valeur désérialisée est une adresse d'un AUTRE
+     * process/run, jamais valide ici. On l'écrase à NULL puis on REBÂTIT l'adjacence
+     * (régions ET provinces) + le cache region_rep_prov depuis prov[]/n_prov (la vérité
+     * qui, elle, EST sérialisée) via econ_build_adjacency — jamais faire confiance au
+     * pointeur ni au cache désérialisés. */
+    if (ok){ s->econ->prov_adj = NULL; econ_build_adjacency(s->econ, w); }
     ok&=sv_r(f,SVT_PROS, s->wp,    sizeof *s->wp);
     ok&=sv_r(f,SVT_LEGI, s->wl,    sizeof *s->wl);
     ok&=sv_r(f,SVT_NETW, s->net,   sizeof *s->net);

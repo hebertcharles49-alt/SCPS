@@ -26,6 +26,13 @@
 5. **Colonisation** : départ = **1 province** · le joueur colonise **n'importe quelle**
    province · la cité-état colonise **sa région** · pas d'exception.
 6. **2 ressources par province** (`REGION_RAW_KEEP` → 2, appliqué par province).
+7. **Pop de départ (an-0) — CHAQUE entité démarre sur UNE province développée, JAMAIS
+   de split** : empire = **4000 hab** sur sa capitale · cité-état = **2000** sur SA
+   capitale · hameau sauvage = **750**. Toutes les AUTRES provinces de l'entité (y compris
+   la cité-état sur SA région) naissent **VIERGES** (pop 0, colonized=false) et se
+   colonisent ensuite. Le pool ne se splitte PAS entre les provinces d'une région au t=0.
+   Tunables EXISTANTS (déjà à ces valeurs) : `EMPIRE_SEED` 4000 · `CITY_SEED` 2000 ·
+   `WILD_POP` 750. Réparti sur les strates (laboureurs/bourgeois/noblesse) au ratio existant.
 
 ## Conséquences assumées
 
