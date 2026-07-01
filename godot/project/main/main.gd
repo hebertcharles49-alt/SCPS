@@ -34,6 +34,9 @@ func _ready() -> void:
 	var topbar: Control = topbar_script.new()
 	topbar.name = "Topbar"
 	ui.add_child(topbar)
+	topbar.tech_requested.connect(func():
+		_tech.visible = not _tech.visible
+		_tech.queue_redraw())
 
 	_prov_panel = load("res://ui/province_panel.gd").new()
 	_prov_panel.name = "ProvincePanel"
@@ -94,6 +97,11 @@ func _ready() -> void:
 	_prov_detail.name = "ProvinceDetail"
 	_prov_detail.visible = false
 	ui.add_child(_prov_detail)
+
+	# Construction depuis le panneau province → toggle du panneau de construction
+	_prov_panel.build_requested.connect(func():
+		_construct.visible = not _construct.visible
+		_construct.queue_redraw())
 
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)

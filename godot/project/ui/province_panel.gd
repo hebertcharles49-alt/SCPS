@@ -20,7 +20,10 @@ const TIPS := {
 }
 var _tips: Array = []
 
+signal build_requested
+
 var _pid := -1
+var _build_rect := Rect2()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP   # le panneau capte ses propres clics
@@ -195,6 +198,16 @@ func _draw() -> void:
 	if int(cap.get("prod_pct", 0)) > 0:
 		y = VKit.row(self, x, y, "Productivité", "+%d%%" % int(cap["prod_pct"]), VKit.sense(0.7))
 
+	# ── BOUTON CONSTRUIRE ─────────────────────────────────────────────────
+	y += 8
+	var bw := 120.0
+	var bbh := 28.0
+	_build_rect = Rect2(x, y, bw, bbh)
+	VKit.fill(self, _build_rect, VKit.COL_PANEL2)
+	VKit.box(self, _build_rect, VKit.COL_COPPER)
+	UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
+	VKit.text(self, Vector2(x + 28, y + 5), VKit.COL_COPPER, "Construire")
+
 # milliers lisibles : 12345 → "12 345"
 func _grp(n) -> String:
 	var s := str(absi(int(n)))
@@ -206,6 +219,11 @@ func _grp(n) -> String:
 		if c % 3 == 0 and i > 0:
 			out = " " + out
 	return ("-" if int(n) < 0 else "") + out
+
+func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _build_rect.has_point(event.position):
+			build_requested.emit()
 
 ## HOVER natif : Godot appelle ceci au survol → texte de la zone touchée (classe / humeur).
 func _get_tooltip(at_position: Vector2) -> String:

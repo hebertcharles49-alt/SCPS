@@ -9,7 +9,10 @@ const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const H := Frame.TOPBAR_H
 
+signal tech_requested
+
 var _speed_rect := Rect2()
+var _savoir_rect := Rect2()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP   # la barre capte ses clics (pas la carte dessous)
@@ -65,8 +68,11 @@ func _draw() -> void:
 		# modèle province (EU4) : le pays compte ses PROVINCES (pas ses régions)
 		var rt := "%d provinces" % w.country_province_count(me)
 		VKit.text(self, Vector2(px, cy), VKit.COL_DIM, rt); px += VKit.text_w(rt) + 18
+		var sx0 := px
 		UIKit.draw_icon(self, "knowledge_book", Vector2(px, cy - 2), 16); px += 20
-		VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, "%d" % int(ci["savoir"]))
+		var sv := "%d" % int(ci["savoir"])
+		VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, sv)
+		_savoir_rect = Rect2(sx0 - 4, 0, 24 + VKit.text_w(sv) + 8, H)
 
 	# contrôle de vitesse, ancré à DROITE de la barre
 	_speed_rect = Rect2(ww - 116, 4, 108, H - 8)
@@ -78,7 +84,9 @@ func _draw() -> void:
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if _speed_rect.has_point(event.position):
+		if _savoir_rect.has_point(event.position):
+			tech_requested.emit()
+		elif _speed_rect.has_point(event.position):
 			Sim.cycle_speed()
 			queue_redraw()
 

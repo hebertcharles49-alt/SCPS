@@ -31,6 +31,7 @@ const LEGENDS := {
 var _map
 var _mode := 0
 var _mode_btns := []
+var _nature_btn: Control
 var _mb: HBoxContainer
 var _zb: HBoxContainer
 
@@ -52,6 +53,12 @@ func _ready() -> void:
 		b.selected = (int(m[0]) == _mode)
 		b.pressed.connect(_on_mode.bind(int(m[0])))
 		_mode_btns.append(b)
+
+	# NATURE : toggle indépendant des modes de carte (bascule la carte vierge — terrain seul)
+	_nature_btn = IconButton.new()
+	_mb.add_child(_nature_btn)
+	_nature_btn.setup_icon("layer_forest", BTN)
+	_nature_btn.pressed.connect(_on_nature)
 
 	_zb = HBoxContainer.new()
 	_zb.add_theme_constant_override("separation", 4)
@@ -135,6 +142,12 @@ func _on_mode(m: int) -> void:
 	for i in range(_mode_btns.size()):
 		_mode_btns[i].selected = (int(MODES[i][0]) == m)
 		_mode_btns[i].queue_redraw()
+
+func _on_nature() -> void:
+	if _map != null:
+		_map.toggle_nature()
+		_nature_btn.selected = _map.is_nature()
+		_nature_btn.queue_redraw()
 
 func _zin() -> void:  if _map != null: _map.zoom_in()
 func _zout() -> void: if _map != null: _map.zoom_out()

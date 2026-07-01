@@ -114,12 +114,7 @@ func set_mode(m: int) -> void:
 
 # ── navigation ───────────────────────────────────────────
 func _input(event: InputEvent) -> void:
-	# touche N : bascule le MODE NATURE (carte vierge — terrain + dressing seuls, sans frontières/villes).
-	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N:
-		if _overlay != null:
-			_overlay.nature_mode = not _overlay.nature_mode
-			_overlay.queue_redraw()
-		return
+	# (touche N retirée — le toggle est dans la barre de modes controls.gd)
 	if event is InputEventMouseMotion and (event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_LEFT)):
 		if event.position.distance_to(_press_pos) > CLICK_SLOP:
 			_dragged = true
@@ -165,6 +160,14 @@ func _pick_at_mouse() -> void:
 	province_picked.emit(prov, region, owner)
 
 # ── verbes publics (boutons de carte) ──
+func toggle_nature() -> void:
+	if _overlay != null:
+		_overlay.nature_mode = not _overlay.nature_mode
+		_overlay.queue_redraw()
+
+func is_nature() -> bool:
+	return _overlay != null and _overlay.nature_mode
+
 func zoom_in() -> void:  _zoom(0.8)
 func zoom_out() -> void: _zoom(1.0 / 0.8)
 
