@@ -1020,10 +1020,12 @@ func _entity_pigment(e: int) -> Color:
 		return Color(0.30, 0.24, 0.18)
 	if int(Sim.world.country_role(e)) == 2:
 		return CS_GOLD
-	var h := int(Sim.world.country_heritage(e))
-	var pig: Color = HERITAGE_PIG[h] if (h >= 0 and h < HERITAGE_PIG.size()) else Color(0.40, 0.32, 0.24)
-	var jv := (_h1(float(e) * 3.11) - 0.5) * 0.10            # variation par pays : VALEUR seulement (gamme tenue)
-	return _shade(pig, jv * 0.6)
+	# DISTINCT PAR EMPIRE : jadis la frontière était codée par HÉRITAGE (6 familles) →
+	# deux empires du même héritage = MÊME couleur, indistinguables. Désormais une teinte
+	# propre à chaque pays, étalée en golden-ratio par id (voisins bien séparés en teinte),
+	# SATURATION/VALEUR MUETTES (gamme parchemin terreuse — anti-néon).
+	var hue := fmod(float(e) * 0.1607 + 0.04, 1.0)
+	return Color.from_hsv(hue, 0.45, 0.55)
 
 ## ÉPAISSEUR ADAPTATIVE (CK) : rend une largeur en unités MONDE à passer DIRECTEMENT à draw_* (le /zoom est
 ## déjà fait). `base·zoom` = px ÉCRAN voulu à taille monde constante, borné aux rails [min,max] de lisibilité.
@@ -1335,11 +1337,28 @@ func _near_river(rf: Image, x: int, y: int) -> bool:
 				return true
 	return false
 
-func _process(_dt: float) -> void:
+var _sig_poll := 0.0
+func _process(dt: float) -> void:
 	# pendant un cataclysme, on redessine en continu pour PULSER l'épicentre
 	# (horloge MUR, hors déterminisme). Sinon : aucun coût (le tick suffit).
 	if _cataclysm:
 		queue_redraw()
+	# FRONTIÈRES/ASSETS DÉCOUPLÉS DU TICK : jadis seul `_on_tick` (qui ne fire PAS en
+	# pause) recalculait la souveraineté → frontières/routes/villes ne se rafraîchissaient
+	# qu'au DÉBLOCAGE de la pause. On sonde ~4×/s (même en pause) : la carte reflète l'état
+	# COURANT, elle n'attend plus qu'on relève la pause.
+	_sig_poll += dt
+	if _sig_poll >= 0.25:
+		_sig_poll = 0.0
+		if Sim.world != null:
+			var sig := _owner_signature(Sim.world)
+			if sig != _owner_sig:
+				_owner_sig = sig
+				_borders_dirty = true
+				_roads_dirty = true
+				_struct_dirty = true
+				_clutter_dirty = true
+				queue_redraw()
 
 ## pop d'une région → bande de ville 1-8 (les paliers des sprites CITY_POP_BAND).
 const CITY_POP_BANDS := [150, 400, 900, 1800, 3500, 7000, 14000]   # 7 seuils → 8 bandes
