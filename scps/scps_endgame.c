@@ -111,12 +111,24 @@ static void region_set_country(World *w, int r, int newc) {
  * infranchissable ; armées échouées ; détachée du pays World. La région GARDE son
  * indice (rien n'est réordonné → save_sane satisfait). PARTAGÉ C3 (eau) / C5 (ronces). */
 static void cataclysm_strip_region_econ(World *w, WorldEconomy *econ, Campaign *camp, int r) {
-    RegionEconomy *re = &econ->region[r];
-    for (int cl = 0; cl < CLASS_COUNT; cl++) re->strata[cl].pop = 0.f;
-    re->pop.n_groups = 0;
-    re->owner = -1; re->active = false; re->colonized = false; re->impassable = true;
-    re->coastal = false; re->n_bld = 0; re->cap_pop = 0.f; re->diaspora_pop = 0.f;
-    for (int g = 0; g < RES_COUNT; g++) { re->stock[g]=0.f; re->supply[g]=0.f; re->demand[g]=0.f; re->raw_cap[g]=0.f; }
+    /* RE-KEY PROVINCE : la région ENGLOUTIE perd TOUTES ses provinces (le sol lui-même
+     * disparaît sous les flots) — un strip sur econ->region[r] seul serait à la fois
+     * ÉCRASÉ au prochain econ_tick (les champs Σ/miroir province-owned) ET incomplet
+     * (les provinces-sœurs de la région resteraient vivantes, actives). On efface
+     * CHAQUE province membre ; econ_region_set_owner pose owner=-1 partout. */
+    if (r >= 0 && r < w->n_regions) {
+        const Region *rg = &w->region[r];
+        for (int k = 0; k < rg->n_provinces; k++) {
+            int pid = rg->province_ids[k];
+            if (pid < 0 || pid >= econ->n_prov) continue;
+            ProvinceEconomy *pe = &econ->prov[pid];
+            for (int cl = 0; cl < CLASS_COUNT; cl++) pe->strata[cl].pop = 0.f;
+            pe->pop.n_groups = 0;
+            pe->owner = -1; pe->active = false; pe->colonized = false; pe->impassable = true;
+            pe->coastal = false; pe->n_bld = 0; pe->cap_pop = 0.f; pe->diaspora_pop = 0.f;
+            for (int g = 0; g < RES_COUNT; g++) { pe->stock[g]=0.f; pe->supply[g]=0.f; pe->demand[g]=0.f; pe->raw_cap[g]=0.f; }
+        }
+    }
     if (r < w->n_regions) w->region[r].country = -1;   /* province.country reste ≥0 (save_sane) */
     if (camp) for (int c = 0; c < SCPS_MAX_COUNTRY; c++) {
         FieldArmy *a = &camp->army[c];
@@ -185,19 +197,21 @@ static int cataclysm_resplit_empire(World *w, WorldEconomy *econ, int country) {
                         nc->continent = (firstreg < w->n_regions) ? w->region[firstreg].continent : 0;
                         nc->color = country_heritage_color(heritage, newc);
                         country_make_name(nc->name, sizeof nc->name, heritage, ethos, newc);
+                        /* RE-KEY PROVINCE : owner sur TOUTES les provinces de la région
+                         * (econ_region_set_owner) — region[r].owner est un DÉRIVÉ. */
                         for (int i = 0; i < nr; i++) if (comp[i] == k) {
-                            econ->region[regs[i]].owner = (int16_t)newc;
+                            econ_region_set_owner(econ, w, regs[i], newc);
                             region_set_country(w, regs[i], newc);
                         }
                         born++;
                     } else {                               /* table pleine : perdu */
                         for (int i = 0; i < nr; i++) if (comp[i] == k) {
-                            econ->region[regs[i]].owner = -1; region_set_country(w, regs[i], -1);
+                            econ_region_set_owner(econ, w, regs[i], -1); region_set_country(w, regs[i], -1);
                         }
                     }
                 } else {                                   /* trop petit : perdu */
                     for (int i = 0; i < nr; i++) if (comp[i] == k) {
-                        econ->region[regs[i]].owner = -1; region_set_country(w, regs[i], -1);
+                        econ_region_set_owner(econ, w, regs[i], -1); region_set_country(w, regs[i], -1);
                     }
                 }
             }
@@ -415,9 +429,19 @@ static bool endgame_tree_complete(const TechState *ts) {
 static void endgame_empire_vanish(World *w, WorldEconomy *econ, int player) {
     for (int r = 0; r < econ->n_regions; r++) {
         if (econ->region[r].owner != player) continue;
-        RegionEconomy *re = &econ->region[r];
-        for (int cl = 0; cl < CLASS_COUNT; cl++) re->strata[cl].pop = 0.f;
-        re->pop.n_groups = 0; re->owner = -1; re->colonized = false;          /* active/passable INTACT */
+        /* RE-KEY PROVINCE : strata/pop/owner/colonized sont PROVINCE-OWNED — la région
+         * ENTIÈRE se vide (l'empire disparaît) donc CHAQUE province membre est vidée
+         * (region[r].* est un DÉRIVÉ, écrasé au prochain econ_tick sinon). */
+        if (r < w->n_regions) {
+            const Region *rg = &w->region[r];
+            for (int k = 0; k < rg->n_provinces; k++) {
+                int pid = rg->province_ids[k];
+                if (pid < 0 || pid >= econ->n_prov) continue;
+                ProvinceEconomy *pe = &econ->prov[pid];
+                for (int cl = 0; cl < CLASS_COUNT; cl++) pe->strata[cl].pop = 0.f;
+                pe->pop.n_groups = 0; pe->owner = -1; pe->colonized = false;   /* active/passable INTACT */
+            }
+        }
         if (r < w->n_regions) w->region[r].country = -1;
     }
     for (int i = 0; i < SCPS_N; i++) if (w->cell[i].country == player) w->cell[i].country = -1;
@@ -439,9 +463,15 @@ static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
         if (feed > 0.f) {                                       /* la rare alimente → on bâtit */
             eg->merv_progress += 365.f / tune_f("MERV_PHASE_DAYS", 3650.f);
             if (site >= 0 && site < econ->n_regions) {          /* charge-additive (la Brèche se rapproche) */
+                /* RE-KEY PROVINCE : arcane_charge/faust_charge sont PROVINCE-OWNED (Σ-agrégés) —
+                 * route sur la représentative (équivalent inline de faust_charge_add(RegionEconomy*)
+                 * pour une ProvinceEconomy, même idiome que scps_econ.c:1915). */
                 float ch = tune_f("MERV_CHARGE_PER_TICK", 0.5f);
-                faust_charge_add(&econ->region[site], ch);
-                econ->region[site].faust_charge += ch;
+                int sitep = econ_region_rep_province(econ, site);
+                if (sitep >= 0 && sitep < econ->n_prov) {
+                    econ->prov[sitep].arcane_charge += ch;
+                    econ->prov[sitep].faust_charge += ch;
+                }
             }
             if (eg->merv_progress >= 1.0f) { eg->merv_progress = 0.f; eg->merv = (MervPhase)(eg->merv + 1); }
         }

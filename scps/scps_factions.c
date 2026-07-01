@@ -294,9 +294,13 @@ void faction_age_engage(const World *w, WorldEconomy *econ, int cid, int age){
     (void)w;
     if (!econ || cid<0) return;
     faction_lever_apply(cid, age_patron(age), ENGAGE_LEVER);   /* la faction de l'heure s'avance */
+    /* RE-KEY PROVINCE : satisfaction province-owned — route sur la représentative de
+     * chaque région (region[r].satisfaction est un DÉRIVÉ pop-pondéré, écrasé au
+     * prochain econ_tick si écrit directement). */
     for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
-        float s=econ->region[r].satisfaction + ENGAGE_SAT;     /* cohésion du régime (apaise l'agitation) */
-        econ->region[r].satisfaction = s>1.f?1.f:s;
+        int pid=econ_region_rep_province(econ,r); if (pid<0||pid>=econ->n_prov) continue;
+        float s=econ->prov[pid].satisfaction + ENGAGE_SAT;     /* cohésion du régime (apaise l'agitation) */
+        econ->prov[pid].satisfaction = s>1.f?1.f:s;
     }
 }
 void faction_levers_on_coup(int cid){

@@ -55,10 +55,26 @@ static int pick_lender(const WorldEconomy *e, const World *w, int c){
     }
     return best;
 }
+/* or NET d'un pays lu DIRECTEMENT sur prov[] (Σ) — contrepartie province-fraîche
+ * d'econ_country_gold (qui lit region[], un DÉRIVÉ pas encore ré-agrégé juste après
+ * une écriture prov[] ; cf. credit_spend ci-dessous, qui a besoin du total À JOUR
+ * AU MÊME APPEL, avant qu'econ_tick ne ré-agrège). */
+static double country_gold_prov(const WorldEconomy *e, int c){
+    double g=0.0; int n=e->n_prov; if(n>SCPS_MAX_PROV)n=SCPS_MAX_PROV;
+    for(int p=0;p<n;p++) if(e->prov[p].owner==c) g+=e->prov[p].treasury;
+    return g;
+}
 void credit_spend(WorldEconomy *e, const World *w, int c, float cost){
     int hr=home_reg(w,c); if(hr<0||hr>=e->n_regions) return;
-    e->region[hr].treasury-=cost;                                   /* peut passer NET négatif = dette */
-    if(econ_country_gold(e,c)<0.0 && g_creditor[c]<0){
+    /* RE-KEY PROVINCE : treasury est Σ-agrégé depuis prov[] à chaque econ_tick — écrire
+     * region[hr] directement serait effacé au tick suivant. Route sur la province
+     * représentative (capitale, charte). */
+    int pid=econ_region_rep_province(e, hr); if(pid<0||pid>=e->n_prov) return;
+    e->prov[pid].treasury-=cost;                                   /* peut passer NET négatif = dette */
+    /* country_gold_prov (PAS econ_country_gold) : la dépense qu'on vient de faire n'a
+     * pas encore traversé econ_aggregate_regions — lire region[] ici verrait l'ANCIEN
+     * trésor (stale) et manquerait systématiquement le seuil de dette. */
+    if(country_gold_prov(e,c)<0.0 && g_creditor[c]<0){
         int L=pick_lender(e,w,c); if(L>=0) g_creditor[c]=(int16_t)L;
     }
 }
@@ -84,10 +100,11 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         float rate=tune_f("CREDIT_RATE_BASE",0.05f)*(1.f+ratio+(10.f-legit)/10.f);
         double idebt=debt; if(idebt>(double)rcap*(double)line) idebt=(double)rcap*(double)line;
         double interest=idebt*(double)rate;
-        int hr=home_reg(w,c); if(hr>=0&&hr<e->n_regions) e->region[hr].treasury-=interest;
+        int hr=home_reg(w,c);
+        if(hr>=0&&hr<e->n_regions){ int hp=econ_region_rep_province(e,hr); if(hp>=0&&hp<e->n_prov) e->prov[hp].treasury-=interest; }
         int Cr=g_creditor[c];
         if(Cr>=0&&Cr<w->n_countries){ int hc=home_reg(w,Cr);
-            if(hc>=0&&hc<e->n_regions) e->region[hc].treasury+=interest; }
+            if(hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if(cp>=0&&cp<e->n_prov) e->prov[cp].treasury+=interest; } }
     }
 }
 bool credit_save(FILE *f){ return fwrite(g_creditor,sizeof g_creditor,1,f)==1; }

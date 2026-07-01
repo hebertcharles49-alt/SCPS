@@ -928,8 +928,17 @@ void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out){
     WorldEconomy *e = s->sim.econ;
     if (region<0 || region>=e->n_regions) return;
     RegionEconomy *re = &e->region[region];
+    /* RE-KEY PROVINCE : alloc_on/alloc_raw/alloc_bld/bld_input sont PROVINCE-OWNED
+     * (miroir, cf. econ_aggregate_regions) — un verbe joueur (scps_player_alloc_*) les
+     * pose sur la province représentative au drain du MÊME jour (scps_sim_advance_days),
+     * mais econ_tick (qui re-dérive region[].alloc_* depuis prov[]) ne tourne QUE
+     * mensuellement — sans lire ICI la province, le panneau verrait l'override 1 mois
+     * en retard. On lit donc alloc_* sur la province (fraîcheur immédiate) ; le reste
+     * (pool/raw_cap/bâtiments, agrégats stables) continue de lire l'agrégat région. */
+    int pid = econ_region_rep_province(e, region);
+    const ProvinceEconomy *pe = (pid>=0 && pid<e->n_prov) ? &e->prov[pid] : NULL;
     out->region = region;
-    out->on     = re->alloc_on;
+    out->on     = pe ? pe->alloc_on : re->alloc_on;
     out->pool   = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop;
     int n=0;
     float estw[SCPS_ALLOC_MAX];   /* estimation de bras par puits (mode AUTO) */
@@ -942,8 +951,8 @@ void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out){
         k->kind=0; k->id=g; k->name=sz(resource_name((Resource)g));
         k->output=NULL; k->closed=0; k->input=-1; k->alt_name=NULL; k->in_name=NULL;
         estw[n] = (sumrc>1e-6f)? L_ext*re->raw_cap[g]/sumrc : 0.f;
-        k->workers = re->alloc_on ? 0.f : estw[n];
-        k->weight  = re->alloc_on ? re->alloc_raw[g] : 0;
+        k->workers = out->on ? 0.f : estw[n];
+        k->weight  = out->on ? (pe ? pe->alloc_raw[g] : re->alloc_raw[g]) : 0;
         n++;
     }
     /* — manufactures bâties : bras RÉELS (b->workers) — */
@@ -957,11 +966,11 @@ void scps_region_alloc(ScpsSim *s, int region, ScpsAlloc *out){
         k->output  = (o>RES_NONE)? sz(resource_name(o)) : NULL;
         k->in_name = (in1>RES_NONE)? sz(resource_name(in1)) : NULL;
         k->alt_name= (alt!=RES_NONE)? sz(resource_name(alt)) : NULL;
-        k->input   = (alt!=RES_NONE)? (int)re->bld_input[b] : -1;
-        k->closed  = (re->alloc_on && re->alloc_bld[b]==0)?1:0;
+        k->input   = (alt!=RES_NONE)? (int)(pe ? pe->bld_input[b] : re->bld_input[b]) : -1;
+        k->closed  = (out->on && (pe ? pe->alloc_bld[b] : re->alloc_bld[b])==0)?1:0;
         k->workers = re->bld[i].workers;
         estw[n]    = re->bld[i].workers;
-        k->weight  = re->alloc_on ? re->alloc_bld[b] : 0;
+        k->weight  = out->on ? (pe ? pe->alloc_bld[b] : re->alloc_bld[b]) : 0;
         n++;
     }
     out->n = n;

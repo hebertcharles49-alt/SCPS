@@ -366,6 +366,13 @@ int main(int argc, char **argv){
         prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl);
         ok("croupion R planté : 2 régions désarmées au contact du Dominateur", rcount==2);
 
+        /* Tout ce qui suit indexe rr[0]/rr[1] : SANS nr==2, ces deux cases n'ont jamais
+         * été écrites (int rr[2] non initialisé, ligne 341) — un monde très dense (ex.
+         * 203 pays/316 régions) peut ne laisser AUCUNE région libre adjacente à la capitale
+         * du Dominateur, donc nr reste <2. Lire rr[1] à ce moment lisait un index de pile
+         * indéterminé → écriture hors-bornes dans region[SCPS_MAX_REG] → SEGFAULT (corrigé
+         * ici en gardant le bloc entier derrière la même condition que la plantation). */
+        if (R>=0 && nr==2){
         /* (prix) une province DÉVELOPPÉE coûte plus cher qu'un arrière-pays nu. */
         RegionEconomy *rich=&s.econ->region[rr[1]];
         rich->build.K_inst=8.f; rich->build.PE_infra=6.f; rich->prosperity=9.f;
@@ -422,6 +429,13 @@ int main(int argc, char **argv){
         int rA=0; for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].owner==R) rA++;
         ok("R désarmé (domination écrasante) : le Dominateur ANNEXE R → R MEURT (0 région)",
            rcount==2 && rA==0 && s.w->country[R].role==POLITY_UNCLAIMED);
+        } else {
+            ok("une province DÉVELOPPÉE coûte plus cher qu'un arrière-pays (§5)", false);
+            ok("une province SACCAGÉE coûte MOINS (saccager-puis-prendre est bon marché)", false);
+            ok("le BUTIN vide les coffres du vaincu vers la capitale du vainqueur (§5)", false);
+            ok("R bien défendu (parité) : budget marginal → R survit (occupé, pas tout annexé)", false);
+            ok("R désarmé (domination écrasante) : le Dominateur ANNEXE R → R MEURT (0 région)", false);
+        }
     }
 
     /* ---- LE FREIN — au niveau de la fonction (déterministe) --------------- */

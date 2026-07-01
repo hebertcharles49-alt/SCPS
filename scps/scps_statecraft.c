@@ -142,7 +142,11 @@ void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy
         if (cost<=0.f) continue;
         int cap=w->country[c].capital_prov;                                            /* ponction au trésor de la couronne */
         int cr =(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
-        if (cr>=0 && cr<e->n_regions){ e->region[cr].treasury -= cost; econ_flux_add(c, FX_CONSEIL, -cost); }
+        /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative. */
+        if (cr>=0 && cr<e->n_regions){
+            int crp=econ_region_rep_province(e,cr);
+            if (crp>=0 && crp<e->n_prov){ e->prov[crp].treasury -= cost; econ_flux_add(c, FX_CONSEIL, -cost); }
+        }
     }
 }
 /* Q1 — IA du conseil : l'éthos de la capitale privilégie un siège ; on le pourvoit

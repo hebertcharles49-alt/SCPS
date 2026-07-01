@@ -25,10 +25,34 @@ static void ok(const char *what, bool cond){
     if (cond) g_pass++; else g_fail++;
 }
 
-/* Fige une région en banc d'essai de production : fer+charbon+bois+grain, plus
- * un atelier d'outillage (fer + bois → outils, DIRECT), sur une pop de travail donnée. */
+/* Province REPRÉSENTATIVE d'une région (charte PROVINCE_MODEL.md : l'économie
+ * vit à la province, la région n'est qu'un agrégat) — repli : scan direct. */
+static int rep_prov(WorldEconomy *e, int r){
+    if (r>=0 && r<SCPS_MAX_REG && e->region_rep_prov[r]>=0) return e->region_rep_prov[r];
+    for (int p=0;p<e->n_prov;p++) if (e->prov[p].region==r) return p;
+    return -1;
+}
+
+/* ÉTEINT toute province SŒUR (même région, ≠ pid) : la région AGRÈGE (règle 2) —
+ * sans ça les autres provinces (semées par world_generate/gen_population)
+ * contaminent stock/supply agrégés que le banc lit sur e->region[r]. */
+static void mute_siblings(WorldEconomy *e, int r, int pid){
+    for (int p=0;p<e->n_prov;p++){
+        if (p==pid || e->prov[p].region!=r) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        pe->active=false; pe->colonized=false;
+        memset(pe->strata,0,sizeof pe->strata);
+        for (int k=0;k<RES_COUNT;k++){ pe->raw_cap[k]=0.f; pe->stock[k]=0.f; pe->supply[k]=0.f; }
+    }
+}
+
+/* Fige la PROVINCE représentative de la région r en banc d'essai de production :
+ * fer+charbon+bois+grain, plus un atelier d'outillage (fer + bois → outils,
+ * DIRECT), sur une pop de travail donnée. */
 static void rig(WorldEconomy *e, int r, float tools){
-    RegionEconomy *re=&e->region[r];
+    int pid=rep_prov(e,r);
+    mute_siblings(e,r,pid);
+    ProvinceEconomy *re=&e->prov[pid];
     re->active=true; re->colonized=true; re->culture.settled=true;
     re->owner=-1;   /* ISOLATION : hors domaine §NF (sinon la construction demande-menée
                      * bâtirait un atelier qui CONSOMME le métal que le test veut accumuler) */
@@ -88,12 +112,14 @@ int main(int argc, char **argv){
 
     /* ═══ 4. Les outils s'usent ═════════════════════════════════════════ */
     printf("\n── 4. Les outils s'usent (il faut les entretenir) ──\n");
-    RegionEconomy *re2=&e->region[2];
+    int pid2=rep_prov(e,2);
+    mute_siblings(e,2,pid2);
+    ProvinceEconomy *re2=&e->prov[pid2];
     re2->active=true; re2->colonized=true; re2->culture.settled=true;
     /* EMPIRE ISOLÉ (slot pays INUTILISÉ) : l'usure du PARC NATIONAL (×0.97/tick) est
-     * hoistée par EMPIRE → une région SANS owner valide n'entre dans aucun pool et
-     * n'use JAMAIS ses outils. On en fait un empire mono-région (pool = cette seule
-     * région, pshare=1 ⇒ usure NETTE) ; sans ressources ⇒ pas de §NF qui rebâtirait
+     * hoistée par EMPIRE → une province SANS owner valide n'entre dans aucun pool et
+     * n'use JAMAIS ses outils. On en fait un empire mono-province (pool = cette seule
+     * province, pshare=1 ⇒ usure NETTE) ; sans ressources ⇒ pas de §NF qui rebâtirait
      * l'atelier. (La re-baseline worldgen #3 a fait passer region[2] en non-possédée.) */
     re2->owner = (w->n_countries < SCPS_MAX_COUNTRY) ? w->n_countries : SCPS_MAX_COUNTRY-1;
     for (int k=0;k<RES_COUNT;k++){ re2->raw_cap[k]=0.f; re2->stock[k]=0.f; }

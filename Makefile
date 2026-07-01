@@ -101,7 +101,8 @@ monde_reel: $(MONDE_REEL_OBJS)
 READOUT_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                      $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_culture.o \
                      $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_tune.o \
-                     $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_readout_demo.o
+                     $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_labor.o \
+                     $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_readout_demo.o
 readout_demo: $(READOUT_DEMO_OBJS)
 	$(CC) $(READOUT_DEMO_OBJS) -o $@ -lm
 
@@ -284,6 +285,7 @@ FACTIONS_DEMO_OBJS := $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o 
                       $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_core.o \
                       $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_culture.o \
                       $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_tune.o \
+                      $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_religion.o \
                       $(OBJDIR)/scps_factions_demo.o
 factions_demo: $(FACTIONS_DEMO_OBJS)
 	$(CC) $(FACTIONS_DEMO_OBJS) -o $@ -lm

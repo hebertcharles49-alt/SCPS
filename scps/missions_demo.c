@@ -60,7 +60,10 @@ int main(int argc, char **argv){
 
     /* ═══ 2. ACCOMPLISSEMENT → RÉCOMPENSE OR + MATIÈRES ════════════════ */
     printf("\n── 2. Accomplir la mission verse or + matières ──\n");
-    float tre0=econ->region[cr].treasury;
+    /* RE-KEY PROVINCE : mission_grant route le trésor sur la province représentative
+     * (treasury province-owned) — on lit/pose donc au même grain (comme econ_tax_demo.c). */
+    int crp=econ_region_rep_province(econ,cr);
+    float tre0=econ->prov[crp].treasury;
     Resource rmat = m?m->reward_mat:RES_NONE;
     float mat0 = (rmat>RES_NONE)?econ->region[cr].stock[rmat]:0.f;
     /* on SATISFAIT la mission de bâti : toutes les coordonnées bâties au-delà du seuil. */
@@ -69,7 +72,7 @@ int main(int argc, char **argv){
     missions_tick(ms, w, econ, ts, 1);             /* an 1 : vérifie → accomplie */
     const Mission *m2=mission_of(ms,cid);
     ok("la mission est marquée ACCOMPLIE une fois la cible atteinte", m2 && m2->done);
-    ok("la récompense en OR a abondé le trésor de la capitale", econ->region[cr].treasury > tre0 + 1.f);
+    ok("la récompense en OR a abondé le trésor de la capitale", econ->prov[crp].treasury > tre0 + 1.f);
     ok("la récompense en MATIÈRES a abondé le marché",
        rmat<=RES_NONE || econ->region[cr].stock[rmat] > mat0 + 1.f);
 

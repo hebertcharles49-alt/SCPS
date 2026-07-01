@@ -121,22 +121,42 @@ int main(int argc, char **argv){
     for (int r=0;r<s.econ->n_regions;r++)
         if (s.econ->region[r].culture.settled && region_pop(s.econ,r)>10.f){ rstrike=r; break; }
     if (rstrike<0) rstrike=(rFlat>=0)?rFlat:0;
-    s.econ->region[rstrike].build.K_inst=3.0f;
+    /* RE-KEY PROVINCE : events_strike (→apply_region_eff) route ses mutations sur la
+     * province représentative — region[r] est un DÉRIVÉ, jamais rafraîchi par
+     * events_strike seul (le jeu réel tourne econ_tick chaque mois). On pose donc le
+     * fixture au même grain (province), puis on rafraîchit l'agrégat à la main (PUR,
+     * aucun effet de temps) après chaque choc, pour relire region[] à jour. */
+    { int rp=econ_region_rep_province(s.econ,rstrike); if (rp>=0) s.econ->prov[rp].build.K_inst=3.0f; }
+    econ_aggregate_regions(s.econ);
     float pop0=region_pop(s.econ,rstrike), agit0=s.sc->agitation[rstrike];
     events_strike(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,rstrike,EVID_QUAKE);
+    econ_aggregate_regions(s.econ);
     ok("le tremblement détruit du bâti (institutions), tue de la pop, soulève l'agitation",
        s.econ->region[rstrike].build.K_inst<3.0f && region_pop(s.econ,rstrike)<pop0
        && s.sc->agitation[rstrike]>agit0);
     /* L'inondation : pertes immédiates MAIS fertilité après (double tranchant). */
     int rfl=rstrike; float food0=s.econ->region[rfl].build.food_cap;
     events_strike(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,rfl,EVID_FLOOD);
+    econ_aggregate_regions(s.econ);
     ok("l'inondation laisse une terre plus grasse (fertilité ↑ après la crue)",
        s.econ->region[rfl].build.food_cap > food0);
 
     /* ═══ 2. PESTE LE LONG DES ROUTES (empire fermé épargné) ════════════ */
     printf("\n── 2. La peste remonte les ROUTES — l'isolé est épargné ──\n");
     int chain[4]={-1,-1,-1,-1}, nc=0;
-    for (int r=0;r<s.econ->n_regions && nc<4;r++) if (s.econ->region[r].culture.settled) chain[nc++]=r;
+    /* évite rstrike (le séisme+l'inondation plus haut l'ont déjà ravalé près de zéro) ET
+     * exige que la PROVINCE REPRÉSENTATIVE (où apply_region_eff route sa mutation,
+     * RE-KEY PROVINCE) porte l'essentiel de la pop de la région — sinon la peste
+     * dépeuplerait une province quasi-vide pendant que region_pop (Σ vraie) lit une
+     * région où le gros de la pop vit AILLEURS (autre province membre non touchée). */
+    for (int r=0;r<s.econ->n_regions && nc<4;r++){
+        if (!s.econ->region[r].culture.settled || r==rstrike) continue;
+        float rp=region_pop(s.econ,r); if (rp<=10.f) continue;
+        int pid=econ_region_rep_province(s.econ,r); if (pid<0) continue;
+        float pp=s.econ->prov[pid].strata[CLASS_LABORER].pop+s.econ->prov[pid].strata[CLASS_BOURGEOIS].pop+s.econ->prov[pid].strata[CLASS_ELITE].pop;
+        if (pp < rp*0.5f) continue;         /* la représentative doit porter au moins la moitié */
+        chain[nc++]=r;
+    }
     if (nc>=4){
         int A=chain[0],B=chain[1],C=chain[2],D=chain[3];
         routes_order(s.rn,NULL,s.econ,A,B,false);
@@ -144,6 +164,7 @@ int main(int argc, char **argv){
         routes_advance(s.rn,s.w,s.econ,150);     /* ouvre les routes (terre 90 j) ; D reste isolée */
         float pA=region_pop(s.econ,A),pB=region_pop(s.econ,B),pC=region_pop(s.econ,C),pD=region_pop(s.econ,D);
         int infected=events_plague_spread(s.ev,s.w,s.econ,s.wl,s.sc,s.rn,A);
+        econ_aggregate_regions(s.econ);   /* RE-KEY PROVINCE : la peste route via apply_region_eff */
         printf("   foyer en rég %d ; routes %d-%d-%d ouvertes, rég %d isolée ; %d régions touchées\n",A,A,B,C,D,infected);
         ok("la peste atteint les régions reliées par routes (A→B→C)",
            region_pop(s.econ,A)<pA && region_pop(s.econ,B)<pB && region_pop(s.econ,C)<pC);

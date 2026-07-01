@@ -416,6 +416,22 @@ int  econ_moddata_load(const char *path);
 /* (Re)construit l'adjacence de régions (terre 4-connexe, barrières = infranchissable).
  * Appelée par econ_init ; exposée pour le recalcul du capstone §27 (carve eau/ronces). */
 void econ_build_adjacency(WorldEconomy *e, const World *w);
+/* Province REPRÉSENTATIVE d'une région (capitale, sinon la plus peuplée, sinon la première
+ * active — cache posé par econ_build_adjacency). RE-KEY PROVINCE (PROVINCE_MODEL.md) : tout
+ * écrivain HORS TICK (agency/diplo/credit/revolt/…) qui touchait `region[r].<champ>` entre
+ * deux econ_tick() voyait son écriture EFFACÉE au tick suivant (econ_aggregate_regions
+ * reconstruit region[] EN ENTIER depuis prov[]) — router l'écriture ICI, sur la province
+ * représentative, la fait SURVIVRE (l'agrégation la re-somme/re-reflète au tick d'après).
+ * -1 si la région n'a aucune province active. */
+int econ_region_rep_province(const WorldEconomy *e, int region);
+/* Reconstruit region[] EN ENTIER depuis prov[] (le CŒUR d'econ_tick, exposé nu — PURE
+ * fonction de prov[], AUCUN effet de temps/dt). Exposée pour les BANCS : un fixture qui
+ * pose l'économie directement sur prov[] (charte : la vérité vit là) doit pouvoir rafraîchir
+ * l'agrégat region[] SANS faire tourner un tick entier (croissance/production/décroissance)
+ * juste pour que les lecteurs qui lisent encore region[] (agency/diplo/revolt/…, grain public
+ * historique) voient un état à jour. Le jeu réel n'en a jamais besoin (econ_tick l'appelle
+ * déjà en clôture, chaque jour). */
+void econ_aggregate_regions(WorldEconomy *e);
 /* GAMEPLAY — garantit argile + pierre dans le rayon 1-2 de la capitale du joueur (force si absent).
  * À appeler après econ_init (adjacence) ET l'assignation des capitales (worldgen_seed_peoples). */
 void econ_guarantee_player_construction(WorldEconomy *e, const World *w, int player_cid);
@@ -638,6 +654,14 @@ bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid);
 /* Fonde une colonie de `cid` sur `dst` depuis `src` (pop essaimée, owner posé).
  * Exposé pour la colonisation OUTRE-MER (scps_navy §8) — même acte fondateur. */
 void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid);
+/* RE-KEY PROVINCE — transfert de PROPRIÉTÉ D'UNE RÉGION ENTIÈRE (conquête/annexion/
+ * sécession/cataclysme) : pose `new_owner` (et `colonized`) sur TOUTES les provinces
+ * membres de `region`. econ->region[r].owner est un DÉRIVÉ (capitale, sinon meilleure
+ * pop) recalculé par econ_aggregate_regions à chaque econ_tick — écrire region[r].owner
+ * directement ne survit PAS au tick suivant. new_owner<0 = perte (colonized suit à
+ * false). N'écrit PAS World (le pays/cellules) : l'appelant garde region_set_country
+ * ou équivalent pour la hiérarchie World, si besoin. */
+void econ_region_set_owner(WorldEconomy *e, const World *w, int region, int new_owner);
 
 /* Migration interne basée sur la prospérité : les bourgeois et élites
  * migrent vers les régions plus riches adjacentes. Crée de la diaspora et

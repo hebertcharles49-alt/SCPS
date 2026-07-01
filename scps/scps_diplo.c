@@ -280,16 +280,20 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
         SuzContrat c=(SuzContrat)d->contrat[v];
         float frac=(c==CONTRAT_SERVAGE)?0.08f:(c==CONTRAT_PROTECTORAT)?0.02f:0.f;
         if (frac>0.f && capreg[s]>=0 && capreg[s]<econ->n_regions){
+            /* RE-KEY PROVINCE : treasury/coercion sont PROVINCE-OWNED — le tribut ponctionne
+             * chaque région du vassal sur sa province représentative (region[r].treasury est
+             * un DÉRIVÉ Σ, l'y écrire serait écrasé au prochain econ_tick). */
             float take=0.f;
             for (int r=0;r<econ->n_regions;r++){
-                RegionEconomy *re=&econ->region[r];
-                if (re->owner!=v) continue;
-                float t=re->treasury*frac; re->treasury-=t; take+=t;
+                if (econ->region[r].owner!=v) continue;
+                int rp=econ_region_rep_province(econ,r); if (rp<0||rp>=econ->n_prov) continue;
+                float t=econ->prov[rp].treasury*frac; econ->prov[rp].treasury-=t; take+=t;
             }
-            econ->region[capreg[s]].treasury += take;
+            int scp=econ_region_rep_province(econ,capreg[s]);
+            if (scp>=0 && scp<econ->n_prov) econ->prov[scp].treasury += take;
             if (c==CONTRAT_SERVAGE && capreg[v]>=0 && capreg[v]<econ->n_regions){
-                RegionEconomy *cv=&econ->region[capreg[v]];
-                cv->coercion = fminf(1.f, cv->coercion+0.04f);
+                int vcp=econ_region_rep_province(econ,capreg[v]);
+                if (vcp>=0 && vcp<econ->n_prov) econ->prov[vcp].coercion = fminf(1.f, econ->prov[vcp].coercion+0.04f);
             }
         }
         if (c==CONTRAT_PROTECTORAT||c==CONTRAT_SERVAGE){
@@ -327,10 +331,14 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
             if (d->v_integration[v]>=gate && capreg[s]>=0 && capreg[s]<econ->n_regions){
                 float food=0.f,gold=0.f,mil=0.f; VassalFunction fn=vassal_function(econ,v,&food,&gold,&mil);
                 float base=tune_f("AI_VASSAL_CONTRIB_BASE",0.05f)*appr;
+                /* RE-KEY PROVINCE : mil_stock/treasury sont PROVINCE-OWNED (Σ-agrégés) — route
+                 * sur la province représentative. stock[] (grain) reste au grain RÉGION (marché,
+                 * charte : « la région tient le marché »), INTACT. */
                 RegionEconomy *sc=&econ->region[capreg[s]];
-                if      (fn==VFN_AGRAIRE) sc->stock[RES_GRAIN]+=base*food;   /* vivres → pool national */
-                else if (fn==VFN_MARTIAL) sc->mil_stock       +=base*mil;    /* la levée du vassal */
-                else                      sc->treasury        +=base*gold;   /* l'or marchand */
+                int spid=econ_region_rep_province(econ, capreg[s]);
+                if      (fn==VFN_AGRAIRE) sc->stock[RES_GRAIN]+=base*food;   /* vivres → pool RÉGIONAL (marché) */
+                else if (fn==VFN_MARTIAL){ if (spid>=0&&spid<econ->n_prov) econ->prov[spid].mil_stock+=base*mil; }  /* la levée du vassal */
+                else                     { if (spid>=0&&spid<econ->n_prov) econ->prov[spid].treasury +=base*gold; }  /* l'or marchand */
             }
             /* (c) ANNEXION-PROCESSUS — un maître ANNEXEUR (Dominateur/Honneur) DIGÈRE un vassal
              *     INTÉGRÉ : durée ∝ prix × (1−DISCOUNT·intégration), payée en or/an ; à 1.0 →
@@ -341,18 +349,27 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                 && capreg[s]>=0 && capreg[s]<econ->n_regions){
                 float price=country_price(econ,v);
                 float gcost=tune_f("AI_ANNEX_GOLD_PER_PRICE",2.f)*price;
-                RegionEconomy *sc=&econ->region[capreg[s]];
-                if (sc->treasury>=gcost){
-                    sc->treasury-=gcost;
+                /* RE-KEY PROVINCE : treasury est PROVINCE-OWNED — route sur la représentative. */
+                int spid=econ_region_rep_province(econ, capreg[s]);
+                float streasury = (spid>=0&&spid<econ->n_prov) ? econ->prov[spid].treasury : 0.f;
+                if (spid>=0 && streasury>=gcost){
+                    econ->prov[spid].treasury-=gcost;
                     float years=fmaxf(1.f, tune_f("AI_ANNEX_YEARS_PER_PRICE",0.5f)*price
                                        *(1.f-tune_f("ANNEX_INTEGRATION_DISCOUNT",0.6f)*d->v_integration[v]));
                     d->v_annex[v]=clampf(d->v_annex[v]+1.f/years,0.f,1.f);
                 } else d->v_annex[v]=fmaxf(0.f,d->v_annex[v]-0.10f);   /* sans or, le projet s'essouffle */
                 if (d->v_annex[v]>=1.f){                               /* DIGESTION ABOUTIE */
                     float soft=tune_f("ANNEX_SOFT_SCAR",0.4f)*(1.f-d->v_integration[v]);
-                    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==v){
-                        econ->region[r].owner=(int16_t)s; econ->region[r].colonized=true;
-                        if (econ->region[r].annex_scar<soft) econ->region[r].annex_scar=soft;
+                    /* transfert de TOUTES les régions du vassal (événement DE RÉGION, comme la
+                     * conquête) : owner sur chaque province membre + colonized/annex_scar. */
+                    for (int r=0;r<econ->n_regions && r<w->n_regions;r++) if (econ->region[r].owner==v){
+                        econ_region_set_owner(econ, w, r, s);
+                        const Region *rg=&w->region[r];
+                        for (int k=0;k<rg->n_provinces;k++){
+                            int pid=rg->province_ids[k]; if (pid<0||pid>=econ->n_prov) continue;
+                            econ->prov[pid].colonized=true;
+                            if (econ->prov[pid].annex_scar<soft) econ->prov[pid].annex_scar=soft;
+                        }
                     }
                     polity_death(d,w,econ,v);   /* le vassal disparaît, DIGÉRÉ dans le maître */
                     d->n_annex++;
@@ -443,8 +460,10 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                     g_intim_cd[s0]=5;
                     for (int k=0;k<nm;k++){
                         int cv=capreg[members[k]];
-                        if (cv>=0&&cv<econ->n_regions)
-                            econ->region[cv].coercion=fminf(1.f,econ->region[cv].coercion+0.30f);
+                        if (cv>=0&&cv<econ->n_regions){
+                            int cvp=econ_region_rep_province(econ,cv);   /* RE-KEY PROVINCE : coercion province-owned */
+                            if (cvp>=0&&cvp<econ->n_prov) econ->prov[cvp].coercion=fminf(1.f,econ->prov[cvp].coercion+0.30f);
+                        }
                     }
                     fronde_hesite=true;
                     d->n_lev_intim++;
@@ -776,11 +795,19 @@ void diplo_liberate(DiploState *d, const WorldEconomy *econ, int region){
  * bascule de propriété, cicatrice, fulgurance, rancune, légitimité, saccage, captifs. */
 static void settle_transfer(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
                             int winner, int loser, int region, bool winner_enslaves){
-    RegionEconomy *re=&econ->region[region];
     float price = diplo_province_price(econ, region);   /* prix INTACT (avant le saccage) */
-    re->owner = winner;                                 /* la diversité suit le transfert */
-    re->colonized = true;
-    re->revolt_scar = 1.0f;                             /* la prise CONVULSE (−50 % dévelop.) */
+    /* RE-KEY PROVINCE : econ->region[region] est un DÉRIVÉ (econ_aggregate_regions le
+     * reconstruit ENTIER à chaque econ_tick) — un simple re->owner=winner ici serait
+     * écrasé au tick suivant. La conquête est un événement DE RÉGION (charte règle 4 :
+     * guerre/diplo restent au grain politique) → on transfère TOUTES ses provinces. */
+    econ_region_set_owner(econ, w, region, winner);      /* la diversité suit le transfert */
+    { const Region *rg=(region>=0&&region<w->n_regions)?&w->region[region]:NULL;
+      for (int k=0; rg && k<rg->n_provinces; k++){
+          int pid=rg->province_ids[k];
+          if (pid<0||pid>=econ->n_prov) continue;
+          econ->prov[pid].colonized=true;
+          econ->prov[pid].revolt_scar=1.0f;              /* la prise CONVULSE (−50 % dévelop.) */
+      } }
     if (winner>=0 && winner<SCPS_MAX_COUNTRY){
         d->momentum[winner] += MOMENTUM_PER_CONQ;       /* la fulgurance EFFRAIE (→ coalition) */
         if (loser>=0 && loser<SCPS_MAX_COUNTRY){
@@ -900,7 +927,12 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
     int cp=w->country[conqueror].capital_prov;
     int crr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
     if (crr<0||crr>=econ->n_regions||crr==region) return 0;
-    ProvincePop *src=&econ->region[region].pop, *dst=&econ->region[crr].pop;
+    /* RE-KEY PROVINCE : .pop est un MIROIR (copie de la province représentative, pas une
+     * somme) — écrire econ->region[r].pop est perdu au prochain econ_tick. Route sur les
+     * provinces représentatives source (prise) et destination (cœur du conquérant). */
+    int spid=econ_region_rep_province(econ, region), dpid=econ_region_rep_province(econ, crr);
+    if (spid<0||spid>=econ->n_prov||dpid<0||dpid>=econ->n_prov) return 0;
+    ProvincePop *src=&econ->prov[spid].pop, *dst=&econ->prov[dpid].pop;
     /* les captifs sortent du plus GROS groupe de la province prise. */
     int gi=-1; long best=0;
     for (int i=0;i<src->n_groups;i++) if (src->groups[i].count>best){ best=src->groups[i].count; gi=i; }
@@ -929,19 +961,28 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
 #define PILLAGE_STOCK_FRAC 0.5f    /* ~6 mois de production en entrepôt, fondus en or */
 float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region){
     if (!econ || region<0 || region>=econ->n_regions) return 0.f;
-    RegionEconomy *re=&econ->region[region];
-    if (re->pillage_cd > 0.f) return 0.f;          /* déjà dépouillée → plus rien à prendre */
-    float loot = PILLAGE_GOLD_FRAC * re->treasury; /* l'or des coffres */
-    re->treasury *= (1.f - PILLAGE_GOLD_FRAC);
-    for (int g=1; g<RES_COUNT; g++){               /* l'entrepôt, valorisé au prix courant */
+    RegionEconomy *re=&econ->region[region];        /* stock[]/price[] = MARCHÉ (charte : grain région, INTACT) */
+    /* RE-KEY PROVINCE : treasury/revolt_scar/pillage_cd sont PROVINCE-OWNED (charte règle 1) —
+     * region[region].<champ> est un DÉRIVÉ écrasé au prochain econ_tick ; route sur la province
+     * représentative (le GATE anti-re-saccage aussi, sinon un 2e appel dans le MÊME tick lirait
+     * l'ancien re->pillage_cd, jamais rafraîchi). stock[]/price[] restent au grain RÉGION (marché, intact). */
+    int pid=econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return 0.f;
+    ProvinceEconomy *pp=&econ->prov[pid];
+    if (pp->pillage_cd > 0.f) return 0.f;          /* déjà dépouillée → plus rien à prendre */
+    float loot = PILLAGE_GOLD_FRAC * pp->treasury; /* l'or des coffres */
+    pp->treasury *= (1.f - PILLAGE_GOLD_FRAC);
+    for (int g=1; g<RES_COUNT; g++){               /* l'entrepôt RÉGIONAL, valorisé au prix courant */
         float take = PILLAGE_STOCK_FRAC * re->stock[g];
         loot += take * re->price[g];
         re->stock[g] -= take;
     }
-    re->revolt_scar = 1.0f;                         /* le sac CONVULSE : gel du développement */
-    re->pillage_cd  = PILLAGE_COOLDOWN_Y;           /* ne pourra être re-saccagée avant ~5 ans */
-    if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region)
-        econ->region[dst_region].treasury += loot;  /* fondu dans le trésor de l'occupant */
+    pp->revolt_scar = 1.0f;                         /* le sac CONVULSE : gel du développement */
+    pp->pillage_cd  = PILLAGE_COOLDOWN_Y;           /* ne pourra être re-saccagée avant ~5 ans */
+    if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
+        int dpid=econ_region_rep_province(econ, dst_region);
+        if (dpid>=0 && dpid<econ->n_prov) econ->prov[dpid].treasury += loot;  /* fondu dans le trésor de l'occupant */
+    }
     return loot;
 }
 
@@ -1111,12 +1152,17 @@ float diplo_reparations(DiploState *d, World *w, WorldEconomy *econ, int a, int 
     float frac=REP_RATE*fminf(1.f, absf(s)/100.f);       /* plus la défaite est nette, plus on saigne */
     int cap=w->country[winner].capital_prov;
     int dst=(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
+    /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative de chaque région. */
     float total=0.f;
     for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==loser){
-        float pay=frac*econ->region[r].treasury;
-        econ->region[r].treasury-=pay; total+=pay;       /* indemnité prélevée sur tout le royaume */
+        int rp=econ_region_rep_province(econ,r); if (rp<0||rp>=econ->n_prov) continue;
+        float pay=frac*econ->prov[rp].treasury;
+        econ->prov[rp].treasury-=pay; total+=pay;       /* indemnité prélevée sur tout le royaume */
     }
-    if (dst>=0&&dst<econ->n_regions) econ->region[dst].treasury+=total;
+    if (dst>=0&&dst<econ->n_regions){
+        int dp=econ_region_rep_province(econ,dst);
+        if (dp>=0&&dp<econ->n_prov) econ->prov[dp].treasury+=total;
+    }
     return total;
 }
 
@@ -1131,12 +1177,17 @@ float diplo_loot(World *w, WorldEconomy *econ, int attacker, int defender, float
     float want = leftover_value * LOOT_GOLD_PER_VALUE;
     int cap=w->country[attacker].capital_prov;
     int dst=(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
+    /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative de chaque région. */
     float total=0.f;
     for (int r=0;r<econ->n_regions && total<want;r++) if (econ->region[r].owner==defender){
-        float take=fminf(econ->region[r].treasury, want-total);
-        if (take>0.f){ econ->region[r].treasury-=take; total+=take; }   /* on vide les coffres */
+        int rp=econ_region_rep_province(econ,r); if (rp<0||rp>=econ->n_prov) continue;
+        float take=fminf(econ->prov[rp].treasury, want-total);
+        if (take>0.f){ econ->prov[rp].treasury-=take; total+=take; }   /* on vide les coffres */
     }
-    if (dst>=0&&dst<econ->n_regions) econ->region[dst].treasury+=total;
+    if (dst>=0&&dst<econ->n_regions){
+        int dp=econ_region_rep_province(econ,dst);
+        if (dp>=0&&dp<econ->n_prov) econ->prov[dp].treasury+=total;
+    }
     return total;
 }
 

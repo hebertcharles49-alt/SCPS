@@ -206,7 +206,12 @@ int main(void) {
     CHECK("au moins une région engloutie", eg.n_sunken > 0);
     CHECK("n_regions INCHANGÉ (la région garde son indice)", econ->n_regions == n_reg0);
 
-    /* (b) toute région englouti : owner=-1, impassable, cellules en mer */
+    /* (b) toute région englouti : owner=-1, impassable, cellules en mer.
+     * RE-KEY PROVINCE : cataclysm_strip_region_econ route owner/impassable/… sur CHAQUE
+     * province membre (econ->region[r] est un DÉRIVÉ, jamais rafraîchi par endgame_tick
+     * seul — le jeu réel tourne econ_tick chaque mois ; ici on rafraîchit l'agrégat à la
+     * main, PUR). */
+    econ_aggregate_regions(econ);
     bool sink_ok = true, cell_ok = true;
     for (int r = 0; r < econ->n_regions; r++) {
         if (eg.sunken[r] != 2) continue;
@@ -365,6 +370,11 @@ int main(void) {
     CHECK("ordre imposé : pas de SAVOIR avant FORGE/SOCIÉTÉ", eg.merv < MERV_SAVOIR);
     double ci1 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) ci1 += econ->region[r].stock[RES_CELESTIAL_IRON];
     CHECK("FORGE dévore le fer céleste", ci1 < ci0);
+    /* RE-KEY PROVINCE : wonder_tick route faust_charge sur la province représentative
+     * (econ->region[capr] est un DÉRIVÉ, jamais rafraîchi par endgame_tick seul — un
+     * econ_tick RÉEL tourne chaque mois dans le jeu ; ici on rafraîchit l'agrégat à la
+     * main, PUR, sans faire tourner un tick complet). */
+    econ_aggregate_regions(econ);
     float site_ch1 = (capr >= 0 && capr < econ->n_regions) ? econ->region[capr].faust_charge : 0.f;
     CHECK("charge-additive : la Brèche se rapproche pendant le chantier", site_ch1 > site_ch0);
     /* déroule jusqu'à SAVOIR_DONE — SANS conditions de victoire → pas d'ascension */
@@ -390,6 +400,10 @@ int main(void) {
     ts[pl].unlocked[0] = true;
     endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 52);
     CHECK("conditions réunies → ASCENSION", eg.merv == MERV_ASCENDED && eg.fired && eg.fin == FIN_ASCENSION);
+    /* RE-KEY PROVINCE : endgame_empire_vanish route owner=-1 sur CHAQUE province membre
+     * (econ->region[r].owner est un DÉRIVÉ, jamais rafraîchi par endgame_tick seul — cf.
+     * le rafraîchissement PUR plus haut). */
+    econ_aggregate_regions(econ);
     int owned = 0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) owned++;
     CHECK("l'empire DISPARAÎT (plus aucune région au joueur)", owned == 0);
     CHECK("terre INTACTE (biome/height inchangés — pas de carve)",

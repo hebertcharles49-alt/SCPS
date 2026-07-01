@@ -106,9 +106,12 @@ int main(int argc, char **argv){
      * cités-états, qui bootstrappe un empire NU dans le vrai jeu (chronicle/viewer), n'opère pas
      * ici, et l'extraction demand-driven ne sort jamais de pierre sans consommateur. On amorce
      * la capitale avec un socle de bois/pierre/argile pour PROUVER l'accession au premier édifice
-     * (le bootstrap import lui-même est couvert par intertrade_demo). */
-    if (cap_reg>=0){ RegionEconomy *cr=&econ->region[cap_reg];
-        cr->stock[RES_WOOD]+=120.f; cr->stock[RES_STONE]+=120.f; cr->stock[RES_CLAY]+=120.f; }
+     * (le bootstrap import lui-même est couvert par intertrade_demo). Charte PROVINCE_MODEL.md :
+     * le stock VIT à la province — poker region[cap_reg].stock ici serait écrasé au tout premier
+     * econ_tick (l'agrégation le recalcule Σ provinces) avant même le 1er réapprovisionnement
+     * mensuel (jour 29). On sème donc la province-CAPITALE elle-même. */
+    if (cap_reg>=0 && cap_prov>=0 && cap_prov<SCPS_MAX_PROV){ ProvinceEconomy *cp=&econ->prov[cap_prov];
+        cp->stock[RES_WOOD]+=120.f; cp->stock[RES_STONE]+=120.f; cp->stock[RES_CLAY]+=120.f; }
 
     /* ---- accumulateurs des bornes ---- */
     /* owner = le pays qui PAIE (le livre d'or national, debt-aware) : la capitale du joueur. */

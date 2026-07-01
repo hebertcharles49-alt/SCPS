@@ -27,10 +27,23 @@ static void ok(const char *what, bool cond){
     if (cond) g_pass++; else g_fail++;
 }
 
+/* Province REPRÉSENTATIVE d'une région (charte PROVINCE_MODEL.md : l'économie
+ * vit à la province, la région n'est qu'un agrégat recalculé par econ_tick) —
+ * repli : scan direct si le cache region_rep_prov n'a rien retenu. Même idiome
+ * que econ_tax_demo.c. */
+static int rep_prov(WorldEconomy *e, int r){
+    if (r>=0 && r<SCPS_MAX_REG && e->region_rep_prov[r]>=0) return e->region_rep_prov[r];
+    for (int p=0;p<e->n_prov;p++) if (e->prov[p].region==r) return p;
+    return -1;
+}
+
 /* Société servie avec UNE boisson donnée, pour une culture de subsistance donnée.
- * Tous les AUTRES biens sociaux sont abondants → la BOISSON est la variable. */
+ * Tous les AUTRES biens sociaux sont abondants → la BOISSON est la variable.
+ * Rige la PROVINCE (la vérité) ; la région-r n'a qu'UNE province membre après
+ * econ_init ⇒ l'agrégat post-tick e->region[r] reflète exactement cette province. */
 static float society_with_drink(WorldEconomy *e, int r, float subsistance, Resource drink){
-    RegionEconomy *re=&e->region[r];
+    int pid=rep_prov(e,r); if (pid<0) return 0.f;
+    ProvinceEconomy *re=&e->prov[pid];
     re->active=true; re->colonized=true; re->culture.settled=true;
     re->culture.subsistance=subsistance; re->owner=-1;   /* polité ISOLÉE : son propre stock, hors pool national (le banc compare UNE région) */
     re->n_bld=0; re->coercion=0.f; re->over_tax=0.f;
@@ -45,14 +58,15 @@ static float society_with_drink(WorldEconomy *e, int r, float subsistance, Resou
     /* la SEULE boisson disponible = celle testée */
     re->stock[drink]=1e5f;
     econ_tick(e, 1.f);
-    return re->society_sat;
+    return e->region[r].society_sat;
 }
 
 /* Satisfaction de l'ÉLITE servie d'UN luxe donné (orfèvrerie ou étoffe), pour une
  * culture de subsistance donnée. Les deux boissons sont servies (palier moral
  * neutralisé) → seul le LUXE varie. */
 static float elite_sat_with_luxe(WorldEconomy *e, int r, float subsistance, Resource luxe){
-    RegionEconomy *re=&e->region[r];
+    int pid=rep_prov(e,r); if (pid<0) return 0.f;
+    ProvinceEconomy *re=&e->prov[pid];
     re->active=true; re->colonized=true; re->culture.settled=true;
     re->culture.subsistance=subsistance; re->owner=-1;   /* polité ISOLÉE : son propre stock, hors pool national (le banc compare UNE région) */
     re->n_bld=0; re->coercion=0.f; re->over_tax=0.f;
@@ -67,13 +81,14 @@ static float elite_sat_with_luxe(WorldEconomy *e, int r, float subsistance, Reso
     re->stock[RES_EAU_DE_VIE]=1e5f; re->stock[RES_BEER]=1e5f;     /* boisson satisfaite quoi qu'il arrive */
     re->stock[luxe]=1e5f;                                   /* SEUL ce luxe est disponible */
     econ_tick(e, 1.f);
-    return re->strata[CLASS_ELITE].satisfaction;
+    return e->region[r].strata[CLASS_ELITE].satisfaction;
 }
 
 /* Recherche accumulée en un tick pour un niveau de SAVOIR bâti donné (toutes
  * choses égales par ailleurs : mêmes élites, même satisfaction). */
 static float tech_with_savoir(WorldEconomy *e, int r, float savoir){
-    RegionEconomy *re=&e->region[r];
+    int pid=rep_prov(e,r); if (pid<0) return 0.f;
+    ProvinceEconomy *re=&e->prov[pid];
     re->active=true; re->colonized=true; re->culture.settled=true; re->owner=0;
     re->culture.subsistance=8.f; re->coercion=0.f; re->over_tax=0.f;
     re->n_bld=0;
@@ -88,7 +103,7 @@ static float tech_with_savoir(WorldEconomy *e, int r, float savoir){
     memset(&re->build,0,sizeof re->build); re->build.savoir=savoir;
     re->tech=0.f;
     econ_tick(e, 1.f);
-    return re->tech;
+    return e->region[r].tech;
 }
 
 int main(int argc, char **argv){
@@ -116,7 +131,9 @@ int main(int argc, char **argv){
     /* ═══ 1. BRASSERIE — grain → bière ══════════════════════════════════ */
     printf("\n── 1. La brasserie : le grain devient de la bière ──\n");
     {
-        RegionEconomy *re=&e->region[0];
+        int pid=rep_prov(e,0);
+        if (pid<0){ fprintf(stderr,"région 0 sans province active\n"); return 1; }
+        ProvinceEconomy *re=&e->prov[pid];
         /* polité ISOLÉE (owner=-1) : son propre stock, HORS pool national — sinon la bière
          * brassée ici se dilue au prorata pop sur les régions-sœurs NUES (worldgen ne pose
          * plus de brasserie : « carte nue », cités-états exceptées). Le banc compare UNE région. */
@@ -128,7 +145,7 @@ int main(int argc, char **argv){
         re->strata[CLASS_LABORER].pop=400.f; re->strata[CLASS_LABORER].wealth=400.f;
         re->strata[CLASS_BOURGEOIS].pop=80.f; re->strata[CLASS_ELITE].pop=40.f;
         for (int t=0;t<6;t++) econ_tick(e,1.f);
-        float beer=re->stock[RES_BEER];
+        float beer=e->region[0].stock[RES_BEER];
         printf("   après 6 mois de brassage : bière en stock = %.1f\n", beer);
         ok("la Brasserie produit de la BIÈRE (grain → bière)", beer > 0.5f);
     }
@@ -136,7 +153,9 @@ int main(int argc, char **argv){
     /* ═══ 1b. CHAÎNES MILITAIRES & SANTÉ — armurerie, poudrière, apothicaire ═ */
     printf("\n── 1b. Les chaînes complétées : armes, poudre, remèdes ──\n");
     {
-        RegionEconomy *re=&e->region[3];
+        int pid=rep_prov(e,3);
+        if (pid<0){ fprintf(stderr,"région 3 sans province active\n"); return 1; }
+        ProvinceEconomy *re=&e->prov[pid];
         /* ISOLÉE (owner=-1), comme la brasserie : son stock PROPRE, hors pool national — sinon la
          * poudre/les remèdes se diluent au prorata pop sur les régions-sœurs du pays (P1), d'autant
          * plus que le monde est vaste. Le banc compare UNE région isolée → robuste à la taille du monde. */
@@ -151,11 +170,12 @@ int main(int argc, char **argv){
         re->strata[CLASS_LABORER].pop=600.f; re->strata[CLASS_LABORER].wealth=400.f;
         re->strata[CLASS_BOURGEOIS].pop=100.f; re->strata[CLASS_ELITE].pop=50.f;
         for (int t=0;t<6;t++) econ_tick(e,1.f);
+        RegionEconomy *rg=&e->region[3];
         printf("   après 6 mois : armes=%.1f · poudre=%.1f · remèdes=%.1f\n",
-               re->stock[RES_ARMS], re->stock[RES_GUNPOWDER], re->stock[RES_REMEDE]);
-        ok("l'Armurerie produit des ARMES (fer → armes)",            re->stock[RES_ARMS]>0.5f);
-        ok("la Poudrière produit de la POUDRE (salpêtre+charbon)",   re->stock[RES_GUNPOWDER]>0.5f);
-        ok("l'Apothicaire produit des REMÈDES (simples → remèdes)",  re->stock[RES_REMEDE]>0.5f);
+               rg->stock[RES_ARMS], rg->stock[RES_GUNPOWDER], rg->stock[RES_REMEDE]);
+        ok("l'Armurerie produit des ARMES (fer → armes)",            rg->stock[RES_ARMS]>0.5f);
+        ok("la Poudrière produit de la POUDRE (salpêtre+charbon)",   rg->stock[RES_GUNPOWDER]>0.5f);
+        ok("l'Apothicaire produit des REMÈDES (simples → remèdes)",  rg->stock[RES_REMEDE]>0.5f);
     }
 
     /* ═══ 2. VARIANTE CULTURELLE — la bonne boisson contente ════════════ */

@@ -345,7 +345,15 @@ const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[e
 /* ===================================================================== */
 static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
     if (r<0||r>=cx->econ->n_regions) return;
-    RegionEconomy *re=&cx->econ->region[r];
+    /* RE-KEY PROVINCE : build.K_inst/H_coerc/food_cap, coercion, treasury, strata sont
+     * PROVINCE-OWNED (charte règle 1) — econ->region[r] est un DÉRIVÉ (econ_aggregate_regions
+     * le reconstruit
+     * ENTIER à chaque econ_tick), un écrivain direct s'y perdrait au tick suivant. Route
+     * sur la province représentative de la région (grain public historique inchangé
+     * pour les appelants : ils passent toujours une région). */
+    int pid=econ_region_rep_province(cx->econ, r);
+    if (pid<0 || pid>=cx->econ->n_prov) return;
+    ProvinceEconomy *re=&cx->econ->prov[pid];
     re->build.K_inst  = fmaxf(0.f, re->build.K_inst  + e->d_K_inst);
     re->build.H_coerc = fmaxf(0.f, re->build.H_coerc + e->d_H_coerc);
     re->build.food_cap= fmaxf(0.f, re->build.food_cap+ e->d_food_cap);
@@ -938,7 +946,11 @@ static void dir_apply(EventCtx *cx, int id, int subject, int day){
         case DIR_SCHISME:  fire_event(cx,EVID_SCHISM,subject);                dir_touch(D,day,cap_region(w,subject),subject,true); break;
         case DIR_FILON:
             dir_region_eff(cx,subject,0.f,15.f,3000.f,1.f);   /* la ruée : or local + agitation */
-            if (econ->region[subject].build.H_coerc<1.f) econ->region[subject].revolt_scar=1.f;  /* camps sauvages si la poigne manque */
+            if (econ->region[subject].build.H_coerc<1.f){    /* camps sauvages si la poigne manque */
+                /* RE-KEY PROVINCE : revolt_scar province-owned — route sur la représentative. */
+                int fpid=econ_region_rep_province(econ,subject);
+                if (fpid>=0 && fpid<econ->n_prov) econ->prov[fpid].revolt_scar=1.f;
+            }
             dir_touch(D,day,subject,econ->region[subject].owner,true); break;
         case DIR_PESTE:
             events_plague_spread(cx->ev,w,econ,cx->wl,cx->sc,cx->rn,subject);  /* suit les ROUTES (C est le vecteur) */

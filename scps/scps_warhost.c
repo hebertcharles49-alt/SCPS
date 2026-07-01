@@ -206,7 +206,11 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
         { long u = warhost_units(h,c);
           int cpp = w->country[c].capital_prov;
           int crp = (cpp>=0&&cpp<w->n_provinces)?w->province[cpp].region:-1;
-          if (u>0 && crp>=0 && crp<econ->n_regions){
+          /* RE-KEY PROVINCE : treasury/coercion/mil_stock sont PROVINCE-OWNED (charte
+           * règle 1) — route sur la province représentative de la capitale (sinon
+           * écrasé au prochain econ_tick, econ_aggregate_regions). */
+          int crpp = (crp>=0&&crp<econ->n_regions)?econ_region_rep_province(econ,crp):-1;
+          if (u>0 && crpp>=0 && crpp<econ->n_prov){
               /* warhost_tick est ANNUEL (dt=1 an) → ×12 : REGIMENT_PAY est MENSUEL.
                * 80 rgt × 1.5 × 12 = 1440/an = 120/mois. */
               /* I1 — la JAUGE renchérit la solde : pied de guerre ×1.25, levée en masse ×1.5
@@ -214,14 +218,14 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
               float lvmult = (h->levy[c]==WH_LEVY_GUERRE)?1.25f : (h->levy[c]==WH_LEVY_MASSE)?1.5f : 1.f;
               float pay = (float)u * tune_f("REGIMENT_PAY",1.5f) * econ_world_ipm(econ)
                         * (at_war?1.5f:1.f) * lvmult * dt * 12.f;
-              float paid = fminf(pay, econ->region[crp].treasury);
-              econ->region[crp].treasury -= paid;
+              float paid = fminf(pay, econ->prov[crpp].treasury);
+              econ->prov[crpp].treasury -= paid;
               econ_flux_add(c, FX_SOLDE, -paid);                /* I0 : la ligne soldes */
               /* IG — LA GARDE DE BUDGET (le garde-fou anti-famine) : si la capitale ne
                * couvre plus ~3 mois de la solde (pay annuel ×0.25), on DÉGRAISSE (jauge −1)
                * — l'armée cesse de croître et fond, plutôt qu'étrangler le trésor en spirale
                * de friche. En paix seulement : on ne désarme pas sous le feu. */
-              if (!at_war && pay>0.f && econ->region[crp].treasury < pay*0.25f && h->levy[c]>0)
+              if (!at_war && pay>0.f && econ->prov[crpp].treasury < pay*0.25f && h->levy[c]>0)
                   h->levy[c] -= 1;
           } }
         /* la JAUGE DE LEVÉE module la cadence : basse 0.4× · garde 1× · guerre 1.6× ·
@@ -232,8 +236,9 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
             int cpm=w->country[c].capital_prov;
             int crm=(cpm>=0&&cpm<w->n_provinces)?w->province[cpm].region:-1;
             if (crm>=0 && crm<econ->n_regions){
-                RegionEconomy *cre=&econ->region[crm];
-                cre->coercion = fminf(1.f, cre->coercion + 0.08f*dt);   /* le prix de la masse */
+                int crmp=econ_region_rep_province(econ,crm);
+                if (crmp>=0&&crmp<econ->n_prov)
+                    econ->prov[crmp].coercion = fminf(1.f, econ->prov[crmp].coercion + 0.08f*dt);   /* le prix de la masse */
             }
         }
         /* PAYS JOUEUR : l'humain compose son armée à la main (panneau Construction) →
@@ -272,10 +277,11 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
           if (grown > 0){
               int cpp2=w->country[c].capital_prov;
               int crp2=(cpp2>=0&&cpp2<w->n_provinces)?w->province[cpp2].region:-1;
-              if (crp2>=0 && crp2<econ->n_regions){
+              int crp2p=(crp2>=0&&crp2<econ->n_regions)?econ_region_rep_province(econ,crp2):-1;
+              if (crp2p>=0 && crp2p<econ->n_prov){
                   float price = (float)grown * tune_f("REGIMENT_PRICE",12.f) * econ_world_ipm(econ);
-                  float paid = fminf(price, econ->region[crp2].treasury);
-                  econ->region[crp2].treasury -= paid;
+                  float paid = fminf(price, econ->prov[crp2p].treasury);
+                  econ->prov[crp2p].treasury -= paid;
                   econ_flux_add(c, FX_SOLDE, -paid);
               }
           } }
@@ -285,7 +291,10 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
         long units = warhost_units(h, c);
         int cp = w->country[c].capital_prov;
         int crr = (cp>=0 && cp<w->n_provinces) ? w->province[cp].region : -1;
-        if (crr>=0 && crr<econ->n_regions)
-            econ->region[crr].mil_stock = (float)units * WH_ARMS_PER_UNIT;
+        if (crr>=0 && crr<econ->n_regions){
+            int crrp=econ_region_rep_province(econ,crr);
+            if (crrp>=0 && crrp<econ->n_prov)
+                econ->prov[crrp].mil_stock = (float)units * WH_ARMS_PER_UNIT;
+        }
     }
 }

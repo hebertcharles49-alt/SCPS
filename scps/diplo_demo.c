@@ -142,9 +142,17 @@ int main(int argc,char**argv){
         }
         diplo_occupy(dp,econ,player,target);
         int got=diplo_settle(dp,w,econ,wl,player,tgt_owner,false);
-        bool took=(got>0 && econ->region[target].owner==player);
+        /* RE-KEY PROVINCE : settle_transfer route owner sur les PROVINCES membres —
+         * econ->region[target].owner ne se re-dérive qu'au prochain econ_tick (aggregate).
+         * On vérifie directement au grain province (econ_region_rep_province). */
+        int target_pid=econ_region_rep_province(econ,target);
+        bool took=(got>0 && target_pid>=0 && econ->prov[target_pid].owner==player);
 
-        /* recalcul : la région conquise est désormais à nous → diversité. */
+        /* recalcul : la région conquise est désormais à nous → diversité (econ_tick
+         * ré-agrège region[] depuis prov[] — ici via legitimacy/prosperity ticks qui ne
+         * ré-agrègent PAS ; on force un econ_tick pour que la lecture region[] post-conquête
+         * (Dbar/fracture plus bas, via country_readout) reflète le nouveau territoire). */
+        econ_tick(econ,1.f/12.f);
         for(int t=0;t<3;t++){ legitimacy_tick(wl,w,econ,ts); prosperity_tick(wp,w,econ,net,ts,wl); }
         float Dbar1=cp->profile.D_bar_int, frac1=cp->fracture;
         CountryReadout r1=country_readout(wp,ts,w,player);
@@ -290,9 +298,15 @@ int main(int argc,char**argv){
     printf("\n── 6. Saccage (or + production → trésor de l'occupant · 1×/5 ans) ──\n");
     if(econ->n_regions>=2){
         int vic=0, occ=1;
-        RegionEconomy *rv=&econ->region[vic], *ro=&econ->region[occ];
+        /* RE-KEY PROVINCE : treasury/revolt_scar/pillage_cd sont PROVINCE-OWNED (routés par
+         * diplo_pillage_region sur econ_region_rep_province) — stock[]/price[] restent au
+         * grain RÉGION (le marché, charte). On pose/lit donc sur la province représentative
+         * pour treasury/scar/cd, et sur la région pour stock/price. */
+        int vic_pid=econ_region_rep_province(econ,vic), occ_pid=econ_region_rep_province(econ,occ);
+        RegionEconomy *rvr=&econ->region[vic];
+        ProvinceEconomy *rv=&econ->prov[vic_pid], *ro=&econ->prov[occ_pid];
         rv->pillage_cd=0.f; rv->revolt_scar=0.f; rv->treasury=1000.f;
-        for(int g=1;g<RES_COUNT;g++){ rv->stock[g]=10.f; rv->price[g]=1.f; }
+        for(int g=1;g<RES_COUNT;g++){ rvr->stock[g]=10.f; rvr->price[g]=1.f; }
         float occ0=ro->treasury, vic0=rv->treasury;
         float loot=diplo_pillage_region(econ,vic,occ);
         printf("   sac de la région %d → %d : butin = %.0f or-équiv.\n",vic,occ,loot);
@@ -305,7 +319,7 @@ int main(int argc,char**argv){
         ok("on ne RE-saccage pas avant 5 ans (plus rien à prendre)", loot2==0.f);
         ok("le compteur anti-saccage est armé (~5 ans)", rv->pillage_cd > 4.5f);
         for(int t=0;t<6;t++) econ_tick(econ,1.f);   /* 6 ans s'écoulent (cd décroît par an) */
-        ok("après ~5 ans, la province REDEVIENT saccageable", rv->pillage_cd <= 0.f);
+        ok("après ~5 ans, la province REDEVIENT saccageable", econ->prov[vic_pid].pillage_cd <= 0.f);
     } else ok("(monde trop petit pour le test de saccage)", true);
 
     /* ---- 7. Paix proportionnelle (§5) : revendication ∝ domination · surexpansion → coalition ---- */
@@ -468,17 +482,21 @@ int main(int argc,char**argv){
         int A=player;
         int capR=(w->country[A].capital_prov>=0)? w->province[w->country[A].capital_prov].region : -1;
         int srcR=-1; for(int r=0;r<econ->n_regions;r++) if(r!=capR){ srcR=r; break; }
-        if(capR>=0 && srcR>=0){
+        /* RE-KEY PROVINCE : .pop est PROVINCE-OWNED (miroir, pas Σ) — diplo_enslave_capture
+         * route désormais sur econ_region_rep_province. Setup ET vérifications au même grain. */
+        int capP=(capR>=0)?econ_region_rep_province(econ,capR):-1;
+        int srcP=(srcR>=0)?econ_region_rep_province(econ,srcR):-1;
+        if(capP>=0 && srcP>=0){
             /* Le banc tourne en mono-groupe : on PEUPLE explicitement le cœur (natifs)
              * et une province source (un groupe ÉTRANGER — des claniques). */
             PopGroup nat; memset(&nat,0,sizeof nat);
             nat.heritage=HERITAGE_ADAPTATIF; nat.klass=CLASS_BOURGEOIS; nat.count=8000;
             nat.integration=1.f; nat.L=6.f; nat.drift_id=111; nat.origin_sphere=heritage_sphere(HERITAGE_ADAPTATIF);
-            econ->region[capR].pop.n_groups=1; econ->region[capR].pop.groups[0]=nat;
+            econ->prov[capP].pop.n_groups=1; econ->prov[capP].pop.groups[0]=nat;
             PopGroup foe; memset(&foe,0,sizeof foe);
             foe.heritage=HERITAGE_CLANIQUE; foe.klass=CLASS_LABORER; foe.count=4000;
             foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=heritage_sphere(HERITAGE_CLANIQUE);
-            econ->region[srcR].pop.n_groups=1; econ->region[srcR].pop.groups[0]=foe;
+            econ->prov[srcP].pop.n_groups=1; econ->prov[srcP].pop.groups[0]=foe;
 
             /* GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Clanique) : booléen. */
             long captives=diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/true);
@@ -486,12 +504,12 @@ int main(int argc,char**argv){
             ok("un empire doté de l'Économie servile DÉPORTE ≈¼ de la population prise",
                captives>0 && captives<=1100);
             ok("la capitale gagne un GROUPE de plus — les captifs au cœur",
-               econ->region[capR].pop.n_groups==2);
-            PopGroup *g=&econ->region[capR].pop.groups[econ->region[capR].pop.n_groups-1];
+               econ->prov[capP].pop.n_groups==2);
+            PopGroup *g=&econ->prov[capP].pop.groups[econ->prov[capP].pop.n_groups-1];
             ok("le groupe d'esclaves est RESTIF (non-intégré + diaspora → D̄↑ au centre)",
                g->integration<0.01f && g->diaspora && g->heritage==HERITAGE_CLANIQUE);
             ok("la province prise PERD la population déportée",
-               econ->region[srcR].pop.groups[0].count < 4000);
+               econ->prov[srcP].pop.groups[0].count < 4000);
             /* GATE : sans la TECH d'asservissement (enslaves=false), personne n'est asservi. */
             ok("sans la TECH d'asservissement (TECH_ESCLAVAGE), personne n'est capturé",
                diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/false)==0);
@@ -571,15 +589,20 @@ int main(int argc,char**argv){
             if(capS>=0) econ->region[capS].culture.ethos=ETHOS_DOMINATEUR;
             dp->v_integration[V]=0.9f; dp->v_annex[V]=0.95f;
             int annex0=dp->n_annex;
+            /* RE-KEY PROVINCE : la digestion paie le trésor de la province représentative de
+             * la capitale (econ_region_rep_province, comme diplo_suzerainty_tick le lit). */
+            int capSp=(capS>=0)?econ_region_rep_province(econ,capS):-1;
             for(int t=0;t<12 && w->country[V].role!=POLITY_UNCLAIMED;t++){
                 dp->v_grief[V]=0.05f;
-                if(capS>=0) econ->region[capS].treasury=1.0e9f;   /* de quoi payer la digestion */
+                if(capSp>=0) econ->prov[capSp].treasury=1.0e9f;   /* de quoi payer la digestion */
                 diplo_suzerainty_tick(dp,w,econ,wp);
             }
+            /* owner/annex_scar sont désormais posés au grain PROVINCE (econ_region_set_owner) —
+             * region[r].owner/.annex_scar ne se re-dérivent qu'au prochain econ_tick (aggregate). */
             int vleft=0; bool scar=false;
-            for(int r=0;r<econ->n_regions;r++){
-                if(econ->region[r].owner==V) vleft++;
-                if(econ->region[r].owner==S && econ->region[r].annex_scar>0.f) scar=true;
+            for(int p=0;p<econ->n_prov;p++){
+                if(econ->prov[p].owner==V) vleft++;
+                if(econ->prov[p].owner==S && econ->prov[p].annex_scar>0.f) scar=true;
             }
             ok("un maître ANNEXEUR DIGÈRE le vassal intégré (annexion-processus aboutie)", dp->n_annex>annex0);
             ok("le vassal digéré DISPARAÎT (role=UNCLAIMED)", w->country[V].role==POLITY_UNCLAIMED);

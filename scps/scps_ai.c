@@ -2094,8 +2094,10 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
             if (corr > 40 && cr>=0){
                 bool held = faction_capture_total(a->cid) > 0.4f;            /* une faction TIENT → elle résiste */
                 float cost = (50.f + 8.f*(float)corr) * econ_world_ipm(econ) * (held?2.f:1.f);
-                if (econ->region[cr].treasury >= cost){
-                    econ->region[cr].treasury -= cost;
+                /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative. */
+                int crp=econ_region_rep_province(econ,cr);
+                if (crp>=0 && crp<econ->n_prov && econ->prov[crp].treasury >= cost){
+                    econ->prov[crp].treasury -= cost;
                     econ_flux_add(a->cid, FX_AUDIT, -cost);    /* I0 : la ligne audits */
                     faction_audit(a->cid);
                     if (wl) wl->L[cr] = clampf(wl->L[cr] + (corr>50?0.3f:-0.3f), 0.f, 10.f);

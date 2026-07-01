@@ -95,7 +95,10 @@ static void mission_grant(const World *w, WorldEconomy *econ, int cid, const Mis
      * les anciens mondes ; un monde re-baseliné peut les dissocier → la récompense tombait à côté. */
     int cr=capital_region(w,econ,cid);
     if (cr<0) return;
-    econ->region[cr].treasury += m->reward_gold;                 /* or au trésor */
+    /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative.
+     * stock[] reste au grain RÉGION (le marché, charte, INTACT). */
+    int crp=econ_region_rep_province(econ,cr);
+    if (crp>=0 && crp<econ->n_prov) econ->prov[crp].treasury += m->reward_gold;   /* or au trésor */
     if (m->reward_mat>RES_NONE && m->reward_mat<RES_COUNT)
         econ->region[cr].stock[m->reward_mat] += m->reward_qty;  /* matières au marché */
 }

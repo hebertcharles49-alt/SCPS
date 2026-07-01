@@ -620,7 +620,7 @@ void econ_cold_refresh(WorldEconomy *e, const World *w) {
  * ProvinceEconomy.region (posé à econ_init) — econ_tick(WorldEconomy*, dt) n'a pas
  * de World* et ne doit pas en gagner un (signature publique préservée). Voir le
  * contrat détaillé en tête de fichier (agrégation Σ / pop-pondérée / max / capitale). */
-static void econ_aggregate_regions(WorldEconomy *e){
+void econ_aggregate_regions(WorldEconomy *e){
     /* STATIC (hors pile) : RegionEconomy pèse ~3 Ko × SCPS_MAX_REG (832) ≈ 2.5 Mo — bien
      * au-delà d'une pile de thread (1 Mo sur Windows, cf. CLAUDE.md campaign/warhost_demo).
      * Même motif que supply_nat/demand_nat plus haut (statics = accumulateurs hors pile). */
@@ -1359,7 +1359,7 @@ float econ_bld_flux_delta(BuildingType b){
  * lit le cache posé par econ_build_adjacency (capitale, sinon la plus peuplée, sinon la
  * première active) — c'est LÀ que vit désormais l'économie (charte) ; un appelant qui « bâtit
  * dans la région » bâtit en fait sur son siège logique. */
-static int econ_region_rep_province(const WorldEconomy *e, int region){
+int econ_region_rep_province(const WorldEconomy *e, int region){
     if (!e || region<0 || region>=SCPS_MAX_REG) return -1;
     return e->region_rep_prov[region];
 }
@@ -2610,6 +2610,22 @@ void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     int dp=econ_region_best_vacant_prov(e, dst_rid);
     if (sp<0 || dp<0) return;
     colonize_from_prov(e, sp, dp, cid);
+}
+
+/* RE-KEY PROVINCE — transfert de propriété d'une région ENTIÈRE (guerre/annexion/
+ * sécession/cataclysme, cf. header) : bascule owner sur CHAQUE province membre —
+ * region[r].owner est un DÉRIVÉ recalculé par econ_aggregate_regions, un écrivain qui
+ * pose econ->region[r].owner directement se fait écraser au tick suivant. Ne touche PAS
+ * `colonized` (sémantique différente par appelant — settle_transfer colonise, un
+ * cataclysme dépeuple : laissé à l'appelant, comme avant). */
+void econ_region_set_owner(WorldEconomy *e, const World *w, int region, int new_owner){
+    if (!e || !w || region<0 || region>=w->n_regions || region>=SCPS_MAX_REG) return;
+    const Region *rg=&w->region[region];
+    for (int k=0;k<rg->n_provinces;k++){
+        int pid=rg->province_ids[k];
+        if (pid<0 || pid>=e->n_prov || pid>=SCPS_MAX_PROV) continue;
+        e->prov[pid].owner=(int16_t)new_owner;
+    }
 }
 /* Sème le GROUPE-SUBSTRAT (clé de voûte démographique) d'une province qui vient
  * d'être colonisée, à partir de SA propre culture (déjà posée par gen_population/
