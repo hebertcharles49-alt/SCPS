@@ -113,11 +113,9 @@ void  labor_seed_from_world(LaborEcon *e, const World *w, const WorldEconomy *ec
  * pool de chaque province labor depuis les strates de sa région adossée. labor ne
  * fait plus naître personne — il RELIT. (Province autonome region=-1 : pop figée.) */
 void  labor_resync_pop(LaborEcon *e, const WorldEconomy *econ);
-/* E0.4 — L'AGITATION EST CONSOMMÉE : publie le tier de capitale RÉELLEMENT BÂTI
- * par région (registre module) ; le moteur de révolte le lit (mal-logés/mal-servis
- * du tier payé, pas du tier que la pop débloquerait). -1 = région non gouvernée. */
-void  labor_publish_capitals(const LaborEcon *e);
-int   labor_region_cap_tier(int region);
+/* (E0.4 « tier payé » RETIRÉ : depuis P-arc la capitale monte GRATUITEMENT dès que la
+ * pop la débloque (capitale_upgrade dans labor_tick) ⇒ tier publié ≡ tier dérivé de la
+ * pop — le registre ne pouvait plus rien dire de plus que le repli du lecteur revolt.) */
 /* E0.3 — LE SOLDE DE L'ARMÉE (lecture) : coût/jour des enrôlés — 0.5 or + 1
  * nourriture (ration de campagne, EN SUS de la bouche universelle) par 100. */
 void  labor_army_upkeep(const LaborEcon *e, long *gold_j, long *food_j);

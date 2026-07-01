@@ -26,7 +26,8 @@
 #endif
 
 typedef struct { int32_t day, year, player, prev_dawned; uint32_t camp_rng;
-                 int32_t heritage, ethos; int16_t prev_owner[SCPS_MAX_REG]; } SaveMisc;
+                 int32_t heritage, ethos; int16_t prev_owner[SCPS_MAX_REG];
+                 int32_t player_age_engaged; } SaveMisc;   /* v48 : engagement d'âge JOUEUR (§7) */
 
 const char *save_slot_path(int slot){
     static char p[64]; snprintf(p,sizeof p,"saves/slot_%d.scps",slot); return p;
@@ -69,7 +70,8 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(CRDT,'C','R','D','T')  /* dette : g_creditor[]        */ \
     X(PCAP,'P','C','A','P')  /* limiteur de production (v24) */ \
     X(CULT,'C','U','L','T')  /* v36 : slots de culture + map cid→slot */ \
-    X(RELG,'R','E','L','G')  /* v37 : registre religion + liens pays */
+    X(RELG,'R','E','L','G')  /* v37 : registre religion + liens pays */ \
+    X(WILD,'W','I','L','D')  /* v48 : compteurs de contact des hameaux libres (ralliement) */
 #define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
 SV_SECTIONS(SV_DECL_TAG)
 #undef SV_DECL_TAG
@@ -131,6 +133,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
       m.day=s->day; m.year=s->year; m.player=s->player; m.prev_dawned=s->prev_dawned;
       m.camp_rng=s->camp_rng; m.heritage=(int32_t)setup_heritage; m.ethos=(int32_t)setup_ethos;
       memcpy(m.prev_owner,s->prev_owner_mo,sizeof m.prev_owner);
+      m.player_age_engaged=(int32_t)s->player_age_engaged;
       ok&=sv_w(f,SVT_MISC, &m, sizeof m); }
     ok&=sv_w(f,SVT_ITRD, NULL,0); intertrade_save(f);
     ok&=sv_w(f,SVT_AGYS, NULL,0); agency_save(f);
@@ -141,6 +144,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     if (s->eg) ok&=sv_w(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
     ok&=sv_w(f,SVT_CULT, NULL,0); culture_slots_save(f);   /* v36 : cultures composées (joueur + IA) */
     ok&=sv_w(f,SVT_RELG, NULL,0); religion_save(f);        /* v37 : registre religion + liens pays */
+    ok&=sv_w(f,SVT_WILD, NULL,0); sim_wild_save(f);        /* v48 : compteurs de ralliement des hameaux */
     if (ok && fflush(f)!=0) ok=false;
     long psz = ok ? ftell(f) : -1;
     if (!ok || psz<0){ fclose(f); return false; }
@@ -327,7 +331,9 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
                if (m.ethos<0 || m.ethos>=(int32_t)ETHOS_COUNT)    m.ethos=0;
                if (out_heritage)  *out_heritage  = (int)m.heritage;
                if (out_ethos) *out_ethos = (int)m.ethos;
-               memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner); } }
+               memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner);
+               s->player_age_engaged = (m.player_age_engaged>=-1 && m.player_age_engaged<1024)
+                                       ? (int)m.player_age_engaged : -1; } }   /* v48 : borné (forge → -1) */
     ok&=sv_r(f,SVT_ITRD, NULL,0); ok&=intertrade_load(f);
     ok&=sv_r(f,SVT_AGYS, NULL,0); ok&=agency_load(f);
     ok&=sv_r(f,SVT_DPLS, NULL,0); ok&=diplo_load_statics(f);
@@ -337,6 +343,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     if (s->eg) ok&=sv_r(f,SV_TAG('E','G','A','M'), s->eg, sizeof *s->eg);
     ok&=sv_r(f,SVT_CULT, NULL,0); ok&=culture_slots_load(f);   /* v36 : cultures composées */
     ok&=sv_r(f,SVT_RELG, NULL,0); ok&=(religion_load(f)==0);   /* v37 : religion + liens pays */
+    ok&=sv_r(f,SVT_WILD, NULL,0); ok&=sim_wild_load(f);        /* v48 : compteurs de ralliement des hameaux */
     long p1=ftell(f); fclose(f);
     if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;
     if (!scps_save_sane(w, s, s->player)) return 1;

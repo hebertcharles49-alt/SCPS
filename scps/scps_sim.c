@@ -47,6 +47,17 @@ long g_peak_u[U_COUNT];   /* FORGEDIAG : pic d'effectif debout par type d'unité
 long g_wild_spawned=0, g_wild_defected=0; double g_wild_absorb_pop=0.0;
 static int  g_wild_contact[SCPS_MAX_REG];   /* années de contact PACIFIQUE par hameau (reset à sim_init) */
 
+/* section WILD du save partagé (v48) : les compteurs de contact SONT du gameplay
+ * (le ralliement culturel se déclenche à WILD_DEFECT_YEARS) — sans sérialisation,
+ * un chargement en processus frais retardait le ralliement de jusqu'à 8 ans. */
+void sim_wild_save(FILE *f){ fwrite(g_wild_contact, sizeof g_wild_contact, 1, f); }
+bool sim_wild_load(FILE *f){
+    if (fread(g_wild_contact, sizeof g_wild_contact, 1, f)!=1) return false;
+    for (int r=0;r<SCPS_MAX_REG;r++)                       /* forge → borne (pas d'index, simple vraisemblance) */
+        if (g_wild_contact[r]<0 || g_wild_contact[r]>100000) g_wild_contact[r]=0;
+    return true;
+}
+
 /* HAMEAUX LIBRES — ralliement CULTUREL (la règle neuve de B4). Un hameau WILD en contact
  * PACIFIQUE soutenu avec l'empire VOISIN s'y RALLIE : owner → empire, après WILD_DEFECT_YEARS
  * d'adjacence à la paix OU dès que sa culture a CONVERGÉ (heritage = celle du voisin, via
@@ -413,6 +424,16 @@ static void sim_cmd_drain(Sim *s, World *w){
             int rp=econ_region_rep_province(s->econ,r); if (rp<0||rp>=s->econ->n_prov) break;
             s->econ->prov[rp].alloc_on=0;
             break; }
+          /* ── §7 — ENGAGEMENT D'ÂGE : l'IA s'engage auto au lever d'un âge ; le joueur
+           *    CHOISIT (gate human_player dans le bloc annuel) — ce verbe est son choix.
+           *    Une fois par âge (player_age_engaged retient le dernier engagé). ── */
+          case CMD_AGE_ENGAGE: {
+            int age = s->ev->ages.last_dawned;
+            if (age<0 || s->player_age_engaged==age) break;   /* rien de levé / déjà engagé */
+            if (regions_of(s->econ,p)<=0) break;               /* royaume mort : refus net */
+            faction_age_engage(w, s->econ, p, age);
+            s->player_age_engaged = age;
+            break; }
         }
     }
     s->cmd_n = 0;
@@ -667,6 +688,7 @@ void sim_init(Sim *s, World *w) {
     s->human_player = -1;   /* aucun humain par DÉFAUT (la chronique reste 100 % IA) ; la façade débraye après coup */
     s->cmd_n = 0;           /* journal de commandes joueur : vide (la chronique n'enfile jamais) */
     s->research_target = -1;   /* aucune cible de recherche joueur (la chronique n'en pose jamais ⇒ bloc no-op) */
+    s->player_age_engaged = -1;   /* §7 : aucun âge engagé par le joueur */
     /* PAS DE JOUEUR HUMAIN dans la chronique : TOUT pays habitable est piloté par
      * l'IA — y compris l'ex-emplacement « joueur ». Sinon ce pays restait inerte
      * (il ne bâtissait rien, ne se défendait pas) et FAUSSAIT le balayage (un trou

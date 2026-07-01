@@ -420,6 +420,12 @@ int  scps_player_alloc_raw     (ScpsSim *s, int region, int resource, int weight
 int  scps_player_alloc_bld     (ScpsSim *s, int region, int bld_type, int weight);
 int  scps_player_alloc_input   (ScpsSim *s, int region, int bld_type, int input);
 int  scps_player_alloc_auto    (ScpsSim *s, int region);   /* retour au split AUTO */
+/* §7 — ENGAGEMENT D'ÂGE : l'IA s'engage AUTO au lever d'un âge, le joueur CHOISIT.
+ * scps_age_state = l'âge COURANT (-1 = aucun levé), *engaged ← le joueur l'a déjà
+ * engagé, name ← son NOM (mot résolu — membrane). scps_player_age_engage ENFILE
+ * CMD_AGE_ENGAGE (drain déterministe, une fois par âge). */
+int  scps_age_state         (ScpsSim *s, int *engaged, char *name, int cap);
+int  scps_player_age_engage (ScpsSim *s);
 /* LECTURE : cible de recherche courante (-1 = aucune) ; *progress01 ← fraction [0..1]. */
 int  scps_research_target(ScpsSim *s, float *progress01);
 

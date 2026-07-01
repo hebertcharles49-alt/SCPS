@@ -147,7 +147,6 @@ float capitale_unrest(const LProvince *p){
 void labor_init(LaborEcon *e, const World *w){
     memset(e, 0, sizeof(*e));
     e->market.price = BASE_PRICE; e->market.supply = 1.f;
-    labor_publish_capitals(NULL);   /* E0.4 : registre des capitales bâties — RAZ par partie */
 
     /* accumulateurs par province (P-arc : les comptes de biome forêt/colline/montagne
      * sont tombés avec la couche matériau — seules fertilité & rivière sont relues). */
@@ -456,22 +455,9 @@ void labor_resync_pop(LaborEcon *e, const WorldEconomy *econ){
     }
 }
 
-/* E0.4 — le registre des capitales BÂTIES (tier payé, pas tier débloqué) : publié
- * par le viewer après le tick labor, LU par le moteur de révolte (mal-logés/
- * mal-servis réels du joueur). -1 = région non gouvernée par le modèle labor. */
-static int8_t g_cap_tier_reg[SCPS_MAX_REG];
-void labor_publish_capitals(const LaborEcon *e){
-    memset(g_cap_tier_reg, -1, sizeof g_cap_tier_reg);
-    if (!e) return;
-    for (int i=0;i<e->n_prov;i++){
-        const LProvince *p=&e->prov[i];
-        if (p->region>=0 && p->region<SCPS_MAX_REG)
-            g_cap_tier_reg[p->region]=(int8_t)(p->cap_tier<1?1:(p->cap_tier>7?7:p->cap_tier));
-    }
-}
-int labor_region_cap_tier(int region){
-    return (region>=0 && region<SCPS_MAX_REG)? (int)g_cap_tier_reg[region] : -1;
-}
+/* (E0.4 : le registre « tier payé » et son publish sont RETIRÉS — la capitale monte
+ * gratuitement dès que la pop la débloque (P-arc), le registre ne divergeait plus du
+ * repli pop-derived du lecteur revolt. Dernier appelant : l'ancien tick forké du viewer.) */
 
 /* P3.19 — main-d'œuvre LIBRE d'une province (pop − armée − admin − déjà employés). */
 static long prov_free_pop(const LProvince *p){

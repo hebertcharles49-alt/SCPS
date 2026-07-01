@@ -309,11 +309,10 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
             long rpop = (long)(re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
                              + re->strata[CLASS_ELITE].pop);
             if (rpop>0){
-                /* E0.4 — l'agitation est CONSOMMÉE : si le modèle labor gouverne la
-                 * région (le joueur), on lit le tier RÉELLEMENT BÂTI (payé) — pas le
-                 * tier que la pop débloquerait. Croître sans bâtir devient un grief. */
-                int  ctier = labor_region_cap_tier(r);
-                if (ctier<1) ctier = capitale_max_tier(rpop);
+                /* le tier de capitale que la POP débloque (depuis P-arc la capitale
+                 * monte gratuitement dès le déblocage ⇒ « payé » ≡ « débloqué » ;
+                 * l'ancien registre E0.4 publié par le viewer est retiré). */
+                int  ctier = capitale_max_tier(rpop);
                 long nob   = capitale_admin_pop(ctier); if (nob>rpop) nob=rpop;
                 float rot  = (o>=0 && o<SCPS_MAX_COUNTRY)? faction_capture_total(o) : 0.f;  /* §C3 */
                 float serv = ((float)capitale_housing(ctier, nob)                       /* la capitale */

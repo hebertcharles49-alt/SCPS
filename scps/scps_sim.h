@@ -46,6 +46,7 @@
 #include "scps_ai.h"
 #include "scps_heritage.h"
 #include <stdbool.h>
+#include <stdio.h>   /* FILE : sim_wild_save/load (section WILD du save partagé) */
 
 /* ---- JOURNAL DE COMMANDES JOUEUR (déterministe) -------------------------
  * Les ordres du joueur (la façade Godot) ne s'appliquent PAS à l'instant de
@@ -66,6 +67,8 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        CMD_CAMPAIGN, CMD_POSTURE, CMD_REFILL, CMD_NAVY_BUILD, CMD_DISBAND,
        /* ALLOCATION de main-d'œuvre (onglet province) : poids par puits, fermeture, intrant, retour AUTO */
        CMD_ALLOC_RAW, CMD_ALLOC_BLD, CMD_ALLOC_INPUT, CMD_ALLOC_AUTO,
+       /* §7 — l'ENGAGEMENT D'ÂGE du joueur (l'IA s'engage auto ; le joueur CHOISIT — ce verbe) */
+       CMD_AGE_ENGAGE,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
@@ -89,6 +92,7 @@ typedef struct {
     int human_player;        /* index du pays piloté À LA MAIN (-1 = aucun : la chronique headless reste 100 % IA) */
     PlayerCmd cmdq[SCPS_CMDQ_MAX]; int cmd_n;   /* journal de commandes JOUEUR (vidé au tick, déterministe) */
     int research_target;   /* cible de recherche du JOUEUR (-1 = aucune ; file de 1, modèle viewer) */
+    int player_age_engaged;   /* §7 : dernier âge ENGAGÉ par le joueur (-1 = aucun) — persiste (SaveMisc v48) */
 } Sim;
 
 /* allocation/libération des MEMBRES (heap) — la chronique alloue inline (intacte) ;
@@ -104,6 +108,12 @@ int  regions_of(const WorldEconomy *e, int c);   /* régions tenues par un pays 
 /* enfile un ordre JOUEUR (façade). false si la file est pleine. L'ordre est
  * REVALIDÉ et appliqué au prochain sim_day (drain déterministe). */
 bool sim_cmd_push(Sim *s, PlayerCmd c);
+
+/* HAMEAUX LIBRES — sérialisation des compteurs de contact pacifique (section WILD, v48).
+ * Sans elle, un CHARGEMENT en processus frais remettait le ralliement à zéro (retardé
+ * jusqu'à WILD_DEFECT_YEARS vs le fil continu) : continuation ≠ sauve-recharge. */
+void sim_wild_save(FILE *f);
+bool sim_wild_load(FILE *f);
 
 /* télémétrie partagée (la chronique les lit pour ses bilans) */
 extern long g_tot_occ_posed, g_tot_occ_lifted;   /* occupations posées / levées */

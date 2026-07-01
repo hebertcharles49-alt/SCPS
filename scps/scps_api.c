@@ -1281,6 +1281,25 @@ int scps_player_alloc_auto(ScpsSim *s, int region){
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 
+/* §7 — ENGAGEMENT D'ÂGE (le verbe du joueur ; l'IA s'engage auto au lever). */
+int scps_player_age_engage(ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_AGE_ENGAGE, { 0, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* l'âge COURANT (dernier levé, -1 = aucun) + le joueur l'a-t-il engagé + son NOM
+ * (mot résolu — membrane). Lecture pure. */
+int scps_age_state(ScpsSim *s, int *engaged, char *name, int cap){
+    if (engaged) *engaged = 0;
+    if (name && cap>0) name[0]='\0';
+    if (!s || !s->ready || !s->sim.ev) return -1;
+    int age = s->sim.ev->ages.last_dawned;
+    if (age < 0) return -1;
+    if (engaged) *engaged = (s->sim.player_age_engaged==age) ? 1 : 0;
+    if (name && cap>0) snprintf(name, (size_t)cap, "%s", age_name((AgeId)age));
+    return age;
+}
+
 /* LECTURE : la cible de recherche COURANTE (-1 = aucune) ; *progress01 ← fraction
  * acquise [0..1] (points / coût plein) pour la jauge UI. Lecture pure. */
 int scps_research_target(ScpsSim *s, float *progress01){
