@@ -125,40 +125,17 @@ func _unhandled_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
 	match e.keycode:
-		KEY_B:
-			if _construct != null:
-				_construct.visible = not _construct.visible
-				_construct.queue_redraw()
-		KEY_T:
-			if _tech != null:
-				_tech.visible = not _tech.visible
-				_tech.queue_redraw()
-		KEY_G:
-			if _econ != null:
-				_econ.visible = not _econ.visible
-				_econ.queue_redraw()
-		KEY_V:
-			if _prov_detail != null:
-				_prov_detail.show_province(_sel_prov)
-				_prov_detail.visible = not _prov_detail.visible
-				_prov_detail.queue_redraw()
-		KEY_ESCAPE:                      # rouvrir le menu principal (monde en pause)
+		KEY_ESCAPE:
 			if _menu != null:
 				_menu.open()
-		KEY_R:                           # créateur de foi / panneau religion (monde en pause)
-			if _religion != null:
-				if _religion.visible:
-					_religion.hide(); Sim.set_speed(2)
-				else:
-					Sim.set_speed(0); _religion.open()
-		KEY_F10:                         # MODTOOLS : panneau dev (tunables live)
+		KEY_F10:
 			if _devpanel != null:
 				_devpanel.visible = not _devpanel.visible
-		KEY_SPACE:                       # pause ↔ reprise (parité viewer.c)
+		KEY_SPACE:
 			Sim.toggle_pause()
-		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:        # « + » : accélérer
+		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:
 			Sim.faster()
-		KEY_MINUS, KEY_KP_SUBTRACT:             # « - » : ralentir
+		KEY_MINUS, KEY_KP_SUBTRACT:
 			Sim.slower()
 
 ## DÉCLENCHEUR « créateur de foi » : à chaque pas, si le joueur a bâti son 1er édifice
