@@ -65,7 +65,7 @@ func _draw() -> void:
 	y += 26
 
 	for r in ROWS:
-		_gauge_row(x, y, String(r[1]), String(r[2]), int(info[r[0]]), String(info[r[0] + "_mot"]))
+		_gauge_row(x, y, String(r[1]), String(r[2]), int(info[r[0]]))
 		y += 24
 
 	y += 2
@@ -95,12 +95,12 @@ func _draw() -> void:
 				rew += (" + " if rg > 0 else "") + "%d %s" % [rq, String(mis.get("reward_mat", ""))]
 			VKit.text(self, Vector2(x + 4, y), VKit.COL_DIM, rew, VKit.FS_SMALL)
 
-## icône · libellé · jauge texturée · "valeur mot"
-func _gauge_row(x: float, y: float, label: String, icon: String, value: int, word: String) -> void:
+## icône · libellé · jauge texturée · CHIFFRE (plus de mot de bande — chiffre + nom seuls)
+func _gauge_row(x: float, y: float, label: String, icon: String, value: int) -> void:
 	UIKit.draw_icon(self, icon, Vector2(x, y - 1), 18)
 	VKit.text(self, Vector2(x + 22, y), VKit.COL_DIM, label, VKit.FS_SMALL)
 	UIKit.bar(self, Rect2(x + 96, y, 88, 14), value)
-	VKit.text(self, Vector2(x + 190, y), VKit.COL_PARCH, "%d · %s" % [value, word], VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 190, y), VKit.COL_PARCH, str(value), VKit.FS_SMALL)
 
 func _grp(n) -> String:
 	var s := str(absi(int(n)))
