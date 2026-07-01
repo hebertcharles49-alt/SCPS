@@ -1254,6 +1254,8 @@ float econ_tax_tolerance(Ethos e, SocialClass c){
  * bâtiment suit donc le MARCHÉ (demande + main-d'œuvre), pas l'extraction. region_ensure_
  * building est idempotent → sûr à appeler chaque tick ; le prix qui retombe éteint le signal. */
 #define NF_REALM_MIN 0.5f   /* intrant « fournissable » s'il est extrait/produit ≥ ça quelque part dans le pays */
+static int g_econ_human = -1;
+void econ_set_human(int cid){ g_econ_human = cid; }
 static void econ_build_tick(WorldEconomy *e){
     /* 1. disponibilité d'intrant À L'ÉCHELLE DU PAYS (extraction + offre, n'importe où). */
     static float owner_avail[SCPS_MAX_COUNTRY][RES_COUNT];
@@ -1268,6 +1270,7 @@ static void econ_build_tick(WorldEconomy *e){
     for (int p=0;p<e->n_prov;p++){
         ProvinceEconomy *pe=&e->prov[p];
         if (!pe->active || !pe->colonized || pe->owner<0 || pe->owner>=SCPS_MAX_COUNTRY) continue;
+        if (pe->owner == g_econ_human) continue;   /* le JOUEUR construit à la main (panneau B) */
         float rpop = pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop + pe->strata[CLASS_ELITE].pop;
         if (rpop < NF_POP_FLOOR) continue;
         const float *avail = owner_avail[pe->owner];

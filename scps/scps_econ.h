@@ -567,6 +567,7 @@ static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
  * production/consommation s'équilibrent par tick (satisfaction préservée). */
 void econ_tick(WorldEconomy *e, float dt);
+void econ_set_human(int cid);   /* §NF skippe les provinces du joueur humain (-1 = aucun) */
 /* Q1 — LE CONSEIL : pose le multiplicateur d'un siège (0=Savoir 1=Société 2=Industrie)
  * pour un pays. Rafraîchi chaque tick par la couche sim depuis l'état conseil. 1.0=neutre. */
 void econ_set_council_mult(int cid, int seat, float m);

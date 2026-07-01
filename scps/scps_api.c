@@ -122,6 +122,7 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     s->sim.human_player = s->sim.player;
     s->sim.ai_on[s->sim.player] = false;
     warhost_set_human(s->sim.player);   /* la main humaine : l'armée du joueur ne s'auto-mobilise plus */
+    econ_set_human(s->sim.player);     /* §NF : la construction autonome SKIPPE le joueur (il construit via le panneau B) */
     econ_flux_reset();   /* budget façade : repart d'une ardoise propre (le flux est un état GLOBAL) */
     s->ready = true;
     api_centroids(s);   /* centroïdes région (géo figée par worldgen) */
@@ -1953,6 +1954,7 @@ int scps_sim_load(ScpsSim *s, int slot){
     s->sim.human_player = s->sim.player;
     s->sim.ai_on[s->sim.player] = false;
     warhost_set_human(s->sim.player);
+    econ_set_human(s->sim.player);
     econ_flux_reset();
     s->ready = true;
     api_centroids(s);   /* la carte chargée : recalcule les centroïdes */
