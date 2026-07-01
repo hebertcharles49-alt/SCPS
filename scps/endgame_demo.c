@@ -287,7 +287,13 @@ int main(void) {
     CHECK("FROID déclenchée", eg.fired && eg.fin == FIN_FROID);
     for (int y = 0; y < 220; y++)
         endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 181 + y);
-    /* mesures APRÈS */
+    /* mesures APRÈS — RE-KEY PROVINCE : econ_cold_refresh (dans cold_step) route le
+     * plancher de grain sur CHAQUE ProvinceEconomy.raw_cap[RES_GRAIN] (la vérité) ;
+     * econ->region[r] n'est qu'un AGRÉGAT, jamais rafraîchi par endgame_tick seul (le
+     * jeu réel tourne econ_tick chaque mois) — on rafraîchit l'agrégat à la main, PUR,
+     * même idiome que C3 (l.214) et C6, sinon grain1 lit un miroir périmé (le grain
+     * gelé n'y apparaît jamais → faux négatif de famine). */
+    econ_aggregate_regions(econ);
     int n_sea1 = 0, n_cold1 = 0; double grain1 = 0.0; float t1 = (probe >= 0) ? w->cell[probe].temperature : 0.f;
     for (int i = 0; i < SCPS_N; i++) {
         if (w->cell[i].height < SEA_LEVEL) n_sea1++;
@@ -348,16 +354,30 @@ int main(void) {
     printf("\nC6 merveille d'Ascension (paliers + charge + victoire)\n");
     world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
     int pl = -1;
-    for (int c = 0; c < w->n_countries; c++) if (w->country[c].role != POLITY_UNCLAIMED) { pl = c; break; }
+    /* RE-KEY PROVINCE : « role != POLITY_UNCLAIMED » n'exclut plus assez — le monde
+     * porte désormais aussi des hameaux POLITY_WILD (Peuples Libres, jamais UNCLAIMED
+     * mais jamais un vrai empire) plantés près des jouables ; le premier pays non-vierge
+     * peut être un hameau SANS province semée (owner=-1 partout) → ci0 reste à 0, toute
+     * la course FORGE→SAVOIR ne peut jamais avancer. On restreint donc au JOUEUR/IA
+     * majeure réels (POLITY_PLAYER/POLITY_ANTAGONIST), la seule polité qui reçoit la
+     * graine EMPIRE_SEED sur sa capitale (charte règle 7). */
+    for (int c = 0; c < w->n_countries; c++)
+        if (w->country[c].role == POLITY_PLAYER || w->country[c].role == POLITY_ANTAGONIST) { pl = c; break; }
     CHECK("un empire joueur existe", pl >= 0);
     for (int c = 0; c < SCPS_MAX_COUNTRY; c++) for (int t = 0; t < TECH_COUNT; t++) ts[c].unlocked[t] = false;
     for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
-    /* injecte les 3 rares dans le pool du joueur */
-    for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) {
-        econ->region[r].stock[RES_CELESTIAL_IRON] += 100.f;
-        econ->region[r].stock[RES_FLUX]           += 100.f;
-        econ->region[r].stock[RES_ESSENCE]        += 100.f;
+    /* injecte les 3 rares dans le pool du joueur — RE-KEY PROVINCE : la VÉRITÉ vit dans
+     * prov[] (charte règle 1) ; injecter uniquement sur l'agrégat region[] tient jusqu'au
+     * premier econ_aggregate_regions() (l.391 plus bas), qui l'ÉCRASE depuis les provinces
+     * jamais dotées → flux/essence retombent à 0 en pleine course (paliers SOCIÉTÉ/SAVOIR
+     * meurent de faim). On dote donc CHAQUE province membre (même idiome que econ_init
+     * l.1121-1126, le pool tradable des cités-états). */
+    for (int p = 0; p < econ->n_prov; p++) if (econ->prov[p].owner == pl) {
+        econ->prov[p].stock[RES_CELESTIAL_IRON] += 100.f;
+        econ->prov[p].stock[RES_FLUX]           += 100.f;
+        econ->prov[p].stock[RES_ESSENCE]        += 100.f;
     }
+    econ_aggregate_regions(econ);   /* miroir immédiat : ci0/le 1er endgame_tick lisent l'agrégat */
     int capr = -1; { int cap = w->country[pl].capital_prov; if (cap >= 0 && cap < w->n_provinces) capr = w->province[cap].region; }
     endgame_init(&eg);
     endgame_start_wonder(&eg, pl, capr);

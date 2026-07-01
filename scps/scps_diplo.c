@@ -822,12 +822,17 @@ static void settle_transfer(DiploState *d, World *w, WorldEconomy *econ, WorldLe
     diplo_enslave_capture(w, econ, winner, region, winner_enslaves);  /* §4c : gate = TECH_ESCLAVAGE */
     d->occupier[region] = -1;                           /* possédée : ce n'est plus une occupation */
 }
-/* régions PEUPLÉES possédées par cid. */
+/* territoire PEUPLÉ possédé par cid — compté à la PROVINCE (la vérité de propriété
+ * du modèle EU4). region[].owner/.settled n'est qu'un AGRÉGAT réécrit à econ_tick :
+ * le lire ici, en SYNCHRONE juste après settle_transfer (qui vient de muter prov[].
+ * owner), rendait une donnée PÉRIMÉE → un pays annexé de sa dernière province n'était
+ * pas marqué mort → pays ZOMBIE (0 territoire, rôle vivant). Le retour n'est lu qu'en
+ * ==0 (mort du pays), donc compter les provinces vaut le prédicat sur les régions. */
 static int settle_regions_of(const WorldEconomy *econ, int cid){
     if (!econ||cid<0) return 0;
     int n=0;
-    for (int r=0;r<econ->n_regions;r++)
-        if (econ->region[r].owner==cid && econ->region[r].culture.settled) n++;
+    for (int p=0;p<econ->n_prov;p++)
+        if (econ->prov[p].owner==cid && econ->prov[p].colonized) n++;
     return n;
 }
 /* la région r touche-t-elle le territoire du vainqueur ? (pas d'exclave gratuite) */
