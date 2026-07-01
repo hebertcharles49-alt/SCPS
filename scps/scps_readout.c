@@ -760,19 +760,21 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
         float faith    = colonized ? pe->build.faith    : 0.f;
         float cap_pop  = colonized ? pe->cap_pop        : 0.f;
         float H        = colonized ? pe->build.H_coerc  : 0.f;
-        /* LOGEMENTS (Q6) : la capacité VIENT DU BÂTI. Plancher = ½·cap_pop (la terre
-         * nue) ; les MANUFACTURES la doublent vers son plein (+100/niveau, plafond
-         * ½·cap_pop) ; le grenier/aqueduc gardent leur rôle NOURRITURE. Le joueur VOIT
-         * donc ses places libres monter quand il bâtit. (Miroir de l'eff_cap moteur.) */
+        /* LOGEMENTS (MERGÉ) : miroir EXACT de l'eff_cap moteur (ECON_EFFCAP_BODY).
+         * tier_housing (capital tier × 1000) + manufacture housing + grenier. */
         float manuf_h=0.f;
         if (colonized) for (int bi=0;bi<pe->n_bld;bi++) manuf_h += pe->bld[bi].level;
         manuf_h = fminf(manuf_h*100.f, cap_pop*0.5f);
-        long house_cap = (long)(cap_pop*0.5f + manuf_h + food_cap*250.f);
+        int _rtier = 1;
+        if (pop>=10000) _rtier=7; else if (pop>=8000) _rtier=6; else if (pop>=5000) _rtier=5;
+        else if (pop>=4000) _rtier=4; else if (pop>=3000) _rtier=3; else if (pop>=2000) _rtier=2;
+        long _radm = (long)_rtier*100; if (_radm>(long)pop) _radm=((long)pop/100)*100;
+        long _rpk = _radm/100; float tier_h = (float)((_rpk<_rtier?_rpk:_rtier)*1000);
+        long house_cap = (long)(cap_pop*0.5f + tier_h + manuf_h + food_cap*250.f);
         pr.logements_cap    = house_cap;
         pr.logements_libres = house_cap - (long)pop;
-        /* SERVICES : chaque point d'édifice civique (admin/savoir/foi) sert ~700 âmes ;
-         * chaque âme consomme UN service → places libres = capacité − population. */
-        long serv_cap = (long)((K_inst + savoir + faith) * 700.f);
+        /* SERVICES (MERGÉ) : tier × 1000 (base) + institutions AJOUTENT. */
+        long serv_cap = (long)(tier_h + (K_inst + savoir + faith) * 700.f);
         pr.services_cap    = serv_cap;
         pr.services_libres = serv_cap - (long)pop;
         /* SLOT DÉFENSE : la fortification bâtie (la coercition BÂTIE H). */

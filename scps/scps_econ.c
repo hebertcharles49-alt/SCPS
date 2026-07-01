@@ -1083,6 +1083,15 @@ void econ_init(WorldEconomy *e, const World *w) {
         ProvinceEconomy *pe=&e->prov[start];
         pe->cap_pop = fmaxf(pe->cap_pop, seed*seed_cap_mult);   /* BUG 1 : la ville-siège tient sa graine + croît */
         econ_seed_population(pe, seed);   /* TOUTE la graine sur UNE province (jamais splitée) */
+        /* FILL THE JOBS : le tier donne les postes d'élite, le reste = laboureurs.
+         * Les bourgeois émergent naturellement quand les ateliers/marchés se bâtissent. */
+        { int tier = capitale_max_tier((long)seed);
+          long elite_jobs = (long)tier * 100;   /* CAP_ADMIN_PER_TIER = 100 */
+          if (elite_jobs > (long)seed) elite_jobs = (long)seed;
+          pe->strata[CLASS_ELITE].pop     = (float)elite_jobs;
+          pe->strata[CLASS_BOURGEOIS].pop = 0.f;
+          pe->strata[CLASS_LABORER].pop   = seed - (float)elite_jobs;
+        }
         pe->colonized=true;
         pe->owner=(int16_t)cid;
     }

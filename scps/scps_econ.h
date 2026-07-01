@@ -458,14 +458,24 @@ typedef struct {
     float   intensity;   /* [0..1] — vivacité (pour la bande d'affichage) */
     float   demo_bonus;  /* delta ajouté à l'entrée DÉMOGRAPHIE de la croissance (0 = fléau, pur affichage) */
 } ProvModHit;
-/* eff_cap d'une PROVINCE (Q6 : ½·cap_pop + logements bâtis plafonnés + grenier). INLINE,
- * générique par macro : partagée par le moteur (croissance, par-province) ET la membrane
- * (readout région/pays) sans dépendance de LIEN (les bancs readout/factions ne tirent pas
- * scps_econ.o). Pure, sans libc-math. Une seule DÉFINITION source (ECON_EFFCAP_BODY),
- * instanciée pour ProvinceEconomy (la vérité, lue par econ_tick) et RegionEconomy
- * (l'agrégat, lu par la membrane/les lecteurs externes — mêmes noms de champs). */
+/* eff_cap d'une PROVINCE (MERGÉ : tier housing + manufacture housing + grenier).
+ * INLINE, générique par macro : partagée par le moteur (croissance, par-province) ET la
+ * membrane (readout région/pays) sans dépendance de LIEN. Pure, sans libc-math.
+ *   eff_cap = ½·cap_pop (terre nue)
+ *           + tier_housing (capital tier × 1000 — le bâtiment principal)
+ *           + manuf_housing (Σ bld.level × HOUSE_MANUF — les manufactures AJOUTENT)
+ *           + grenier (food_cap × 250)
+ * Le tier est DÉRIVÉ de la pop (pas un champ stocké) — même table que capitale_max_tier. */
 #define ECON_EFFCAP_BODY(re) \
     do { \
+        float _tpop = 0.f; \
+        for (int _ci = 0; _ci < CLASS_COUNT; _ci++) _tpop += (re)->strata[_ci].pop; \
+        int _tier = (_tpop>=10000.f)?7:(_tpop>=8000.f)?6:(_tpop>=5000.f)?5: \
+                    (_tpop>=4000.f)?4:(_tpop>=3000.f)?3:(_tpop>=2000.f)?2:1; \
+        long _admin = (long)_tier * 100; \
+        if (_admin > (long)_tpop) _admin = ((long)_tpop/100)*100; \
+        long _packs = _admin / 100; \
+        float tier_h = (float)((_packs < _tier ? _packs : _tier) * 1000); \
         float house_manuf = tune_f("HOUSE_MANUF", 100.f); \
         float manuf_h = 0.f; \
         for (int bi = 0; bi < (re)->n_bld; bi++) manuf_h += (re)->bld[bi].level; \
@@ -477,7 +487,7 @@ typedef struct {
             float relief = tune_f("COMFORT_HOUSE_RELIEF", 0.15f); \
             if (relief>0.f && relief<0.9f) housed *= 1.f/(1.f-relief); \
         } \
-        return cap_half + housed + (re)->build.food_cap * 250.f; \
+        return cap_half + tier_h + housed + (re)->build.food_cap * 250.f; \
     } while (0)
 static inline float econ_prov_effcap(const ProvinceEconomy *re){ ECON_EFFCAP_BODY(re); }
 static inline float econ_region_effcap(const RegionEconomy *re){ ECON_EFFCAP_BODY(re); }

@@ -654,8 +654,15 @@ void scps_province_capitale(ScpsSim *s, int pid, ScpsCapitale *out){
     out->statut       = sz(capitale_status(tier));
     out->tier         = tier;
     out->pop          = pop;
-    out->logement_cap = capitale_housing(tier, admin);
-    out->service_cap  = capitale_housing(tier, admin);
+    /* MERGÉ : logement = tier_housing + manuf + grenier (miroir eff_cap moteur) ;
+     * services = tier_housing + institutions. UN SEUL pool chacun. */
+    float tier_h = (float)capitale_housing(tier, admin);
+    float manuf_h = 0.f;
+    for (int bi=0; bi<pe->n_bld; bi++) manuf_h += pe->bld[bi].level;
+    float cap_half = pe->cap_pop * 0.5f;
+    manuf_h *= 100.f; if (manuf_h > cap_half) manuf_h = cap_half;
+    out->logement_cap = (long)(cap_half + tier_h + manuf_h + pe->build.food_cap * 250.f);
+    out->service_cap  = (long)(tier_h + (pe->build.K_inst + pe->build.savoir + pe->build.faith) * 700.f);
     out->prod_pct     = (int)((capitale_prodmult(tier, admin) - 1.f) * 100.f + 0.5f);
 }
 
