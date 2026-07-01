@@ -416,6 +416,10 @@ int  econ_moddata_load(const char *path);
 /* (Re)construit l'adjacence de régions (terre 4-connexe, barrières = infranchissable).
  * Appelée par econ_init ; exposée pour le recalcul du capstone §27 (carve eau/ronces). */
 void econ_build_adjacency(WorldEconomy *e, const World *w);
+/* CHARGEMENT : rebâtit le SEUL prov_adj (pointeur tas, jamais sérialisable) SANS toucher
+ * adj/region_rep_prov (états SÉRIALISÉS — les recalculer à l'état courant casserait la
+ * continuation déterministe sauve-recharge ; le rep « plus peuplée » bouge avec la pop). */
+void econ_rebuild_prov_adj(WorldEconomy *e, const World *w);
 /* Province REPRÉSENTATIVE d'une région (capitale, sinon la plus peuplée, sinon la première
  * active — cache posé par econ_build_adjacency). RE-KEY PROVINCE (PROVINCE_MODEL.md) : tout
  * écrivain HORS TICK (agency/diplo/credit/revolt/…) qui touchait `region[r].<champ>` entre

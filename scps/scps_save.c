@@ -168,6 +168,12 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
 bool scps_save_sane(const World *w, const Sim *s, int player){
     if (w->n_provinces <0 || w->n_provinces >SCPS_MAX_PROV)      return false;
     if (w->n_regions   <0 || w->n_regions   >SCPS_MAX_REG)       return false;
+    /* le cache région→province représentative est TRUSTÉ au load (état sérialisé,
+     * continuation déterministe) ⇒ chaque index désérialisé se REVALIDE ici. */
+    for (int r=0;r<w->n_regions && r<SCPS_MAX_REG;r++){
+        int rp=s->econ->region_rep_prov[r];
+        if (rp < -1 || rp >= s->econ->n_prov) return false;
+    }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
     for (int c=0;c<w->n_countries;c++)
@@ -288,11 +294,12 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     ok&=sv_r(f,SVT_WRLD, w,        sizeof *w);
     ok&=sv_r(f,SVT_ECON, s->econ,  sizeof *s->econ);
     /* prov_adj est un POINTEUR TAS — la valeur désérialisée est une adresse d'un AUTRE
-     * process/run, jamais valide ici. On l'écrase à NULL puis on REBÂTIT l'adjacence
-     * (régions ET provinces) + le cache region_rep_prov depuis prov[]/n_prov (la vérité
-     * qui, elle, EST sérialisée) via econ_build_adjacency — jamais faire confiance au
-     * pointeur ni au cache désérialisés. */
-    if (ok){ s->econ->prov_adj = NULL; econ_build_adjacency(s->econ, w); }
+     * process/run, jamais valide ici : écrasée puis REBÂTIE (pure géographie). En revanche
+     * adj[] et region_rep_prov[] sont des ÉTATS SÉRIALISÉS et on les GARDE : les recalculer
+     * à l'état courant divergeait du fil continu (le rep « province la plus peuplée » bouge
+     * avec la pop — sauve-recharge ≠ continuation, pris par scps_viewer --savetest). Le
+     * cache rep désérialisé est BORNÉ par scps_save_sane (P0-1). */
+    if (ok){ s->econ->prov_adj = NULL; econ_rebuild_prov_adj(s->econ, w); }
     ok&=sv_r(f,SVT_PROS, s->wp,    sizeof *s->wp);
     ok&=sv_r(f,SVT_LEGI, s->wl,    sizeof *s->wl);
     ok&=sv_r(f,SVT_NETW, s->net,   sizeof *s->net);

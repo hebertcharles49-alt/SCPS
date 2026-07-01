@@ -545,6 +545,32 @@ void econ_build_adjacency(WorldEconomy *e, const World *w) {
     }
 }
 
+/* REBUILD DU SEUL prov_adj (le POINTEUR TAS, jamais sérialisable) — pour le CHARGEMENT.
+ * À la différence d'econ_build_adjacency (init / cataclysme §27), on ne touche NI e->adj
+ * NI region_rep_prov : ce sont des ÉTATS SÉRIALISÉS — les recalculer à l'état COURANT
+ * casserait la continuation déterministe (le rep « province la plus peuplée » BOUGE avec
+ * la pop ; sauve-recharge divergeait du fil continu — pris par scps_viewer --savetest).
+ * Le cache rep désérialisé est borné par scps_save_sane (discipline P0-1). */
+void econ_rebuild_prov_adj(WorldEconomy *e, const World *w){
+    if (!g_prov_adj) g_prov_adj = (uint8_t*)malloc((size_t)SCPS_MAX_PROV*(size_t)SCPS_MAX_PROV);
+    if (g_prov_adj) memset(g_prov_adj, 0, (size_t)SCPS_MAX_PROV*(size_t)SCPS_MAX_PROV);
+    e->prov_adj = g_prov_adj;
+    if (!g_prov_adj) return;
+    static const int DX4[4]={1,-1,0,0}, DY4[4]={0,0,1,-1};
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
+        int pa=w->cell[scps_idx(x,y)].province;
+        if (pa<0 || pa>=SCPS_MAX_PROV || e->prov[pa].impassable) continue;
+        for (int d=0;d<4;d++) {
+            int nx=x+DX4[d], ny=y+DY4[d];
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            int pb=w->cell[scps_idx(nx,ny)].province;
+            if (pb>=0 && pb!=pa && pb<SCPS_MAX_PROV && !e->prov[pb].impassable){
+                padj_set(pa,pb); padj_set(pb,pa);
+            }
+        }
+    }
+}
+
 /* GAMEPLAY — GARANTIE DES BRUTES DE BASE PRÈS DU JOUEUR : la worldgen tire les brutes SELON LE BIOME
  * (argile aux terres d'eau, pierre au relief, fer/bois aux gisements) — par malchance, la capitale
  * peut en manquer à portée. On FORCE une tuile de chaque (argile, pierre, FER, BOIS) dans le RAYON 1-2

@@ -139,6 +139,7 @@ SCPS_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
              $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o \
              $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_crypt.o \
              $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/tp_miniz.o \
+             $(OBJDIR)/scps_scps_sim.o $(OBJDIR)/scps_scps_save.o \
              $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_stbiw.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_viewer.o
 SCPS_TARGET := scps_viewer$(EXE)
 # Sous DEV : l'overlay Nuklear rejoint le lien, le binaire change de NOM (le
