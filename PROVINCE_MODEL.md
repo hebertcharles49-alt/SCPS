@@ -2,6 +2,12 @@
 
 > Décidé avec l'auteur (2026-07-01). Ce fichier est la **north star** du re-key.
 > Si un choix d'implémentation contredit ce tableau, c'est le tableau qui gagne.
+>
+> ✅ **STATUT : COMPLET & VALIDÉ (2026-07-01)** — bancs 38/38 faisables verts (3 KO
+> Windows pré-existants), déterminisme STABLE, golden re-baseliné, sweep 5×250 SAIN
+> (satisfaction 73/82/79 · commerce 3834/an · §27 gaté an-180). Sur la branche, pas
+> encore mergé sur main. Raffinement futur connu : `region.stock` agrégé comme le
+> treasury (écritures stock d'intertrade partiellement perdues ; le monde reste sain).
 
 ## Les trois étages
 
