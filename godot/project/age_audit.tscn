@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8ageaudit001"]
+
+[ext_resource type="Script" path="res://age_audit.gd" id="1_gaudit"]
+
+[node name="AgeAudit" type="Node"]
+script = ExtResource("1_gaudit")

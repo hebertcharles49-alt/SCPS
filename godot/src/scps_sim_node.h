@@ -109,6 +109,8 @@ public:
     void       player_set_levy(int level);            /* enfile le réglage de la jauge de levée 0-3 */
     int        player_research(int tech);             /* fixe la cible de tech (file de 1) ; tech<0 ⇒ annule ; 1 = mis en file */
     Dictionary research_status();                     /* { target:int(-1=aucune), progress:float[0..1] } */
+    Dictionary age_state();                           /* §7 : { age:int(-1=aucun), engaged:bool, name:String } */
+    bool       player_age_engage();                   /* §7 : engager l'âge courant (une fois par âge) */
 
     /* §3 — VERBES DIPLO du joueur (proposer → ai_consider_offer évalue) ; true = ordre enfilé */
     bool       player_declare_war(int target);        /* déclarer la guerre */

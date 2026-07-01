@@ -69,6 +69,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
     ClassDB::bind_method(D_METHOD("player_research", "tech"),        &ScpsWorld::player_research);
     ClassDB::bind_method(D_METHOD("research_status"),               &ScpsWorld::research_status);
+    ClassDB::bind_method(D_METHOD("age_state"),                     &ScpsWorld::age_state);
+    ClassDB::bind_method(D_METHOD("player_age_engage"),             &ScpsWorld::player_age_engage);
     ClassDB::bind_method(D_METHOD("player_declare_war", "target"),    &ScpsWorld::player_declare_war);
     ClassDB::bind_method(D_METHOD("player_make_peace", "target"),     &ScpsWorld::player_make_peace);
     ClassDB::bind_method(D_METHOD("player_offer_alliance", "target"), &ScpsWorld::player_offer_alliance);
@@ -696,6 +698,20 @@ Dictionary ScpsWorld::research_status() {
     d["target"] = t;
     d["progress"] = prog;
     return d;
+}
+
+/* §7 — l'âge courant (index -1 = aucun levé) + le joueur l'a-t-il engagé + son nom. */
+Dictionary ScpsWorld::age_state() {
+    Dictionary d;
+    int engaged = 0; char name[64] = {0};
+    int age = sim ? scps_age_state(sim, &engaged, name, (int)sizeof name) : -1;
+    d["age"]     = age;
+    d["engaged"] = engaged != 0;
+    d["name"]    = String::utf8(name);
+    return d;
+}
+bool ScpsWorld::player_age_engage() {
+    return sim ? scps_player_age_engage(sim) != 0 : false;
 }
 
 bool ScpsWorld::player_declare_war(int target) {

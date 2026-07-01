@@ -13,6 +13,7 @@ signal tech_requested
 
 var _speed_rect := Rect2()
 var _savoir_rect := Rect2()
+var _age_rect := Rect2()   # §7 : chip « Âge levé — Engager » (vide quand rien à engager)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP   # la barre capte ses clics (pas la carte dessous)
@@ -74,6 +75,19 @@ func _draw() -> void:
 		VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, sv)
 		_savoir_rect = Rect2(sx0 - 4, 0, 24 + VKit.text_w(sv) + 8, H)
 
+	# §7 — ENGAGEMENT D'ÂGE : un âge s'est levé et le joueur ne l'a pas engagé →
+	# chip ambre cliquable (l'IA s'engage auto ; le joueur choisit — verbe CMD_AGE_ENGAGE).
+	_age_rect = Rect2()
+	if w.has_method("age_state"):
+		var ag: Dictionary = w.age_state()
+		if int(ag.get("age", -1)) >= 0 and not bool(ag.get("engaged", true)):
+			var lab := "Engager : %s" % String(ag.get("name", ""))
+			var aw := VKit.text_w(lab) + 34.0
+			_age_rect = Rect2(ww - 116 - aw - 10, 4, aw, H - 8)
+			UIKit.draw_chrome(self, "topbar_resource_chip", _age_rect)
+			UIKit.draw_icon(self, "politics_crown", Vector2(_age_rect.position.x + 6, cy - 2), 16)
+			VKit.text(self, Vector2(_age_rect.position.x + 26, cy), Color(0.85, 0.65, 0.3), lab)
+
 	# contrôle de vitesse, ancré à DROITE de la barre
 	_speed_rect = Rect2(ww - 116, 4, 108, H - 8)
 	UIKit.draw_chrome(self, "topbar_resource_chip", _speed_rect)
@@ -86,6 +100,10 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _savoir_rect.has_point(event.position):
 			tech_requested.emit()
+		elif _age_rect.size.x > 0 and _age_rect.has_point(event.position):
+			if Sim.world != null and Sim.world.has_method("player_age_engage"):
+				Sim.world.player_age_engage()   # enfilé ; le chip s'éteint au drain (engaged=true)
+				queue_redraw()
 		elif _speed_rect.has_point(event.position):
 			Sim.cycle_speed()
 			queue_redraw()
