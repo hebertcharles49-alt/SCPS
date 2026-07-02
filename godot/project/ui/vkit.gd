@@ -30,8 +30,40 @@ const FS := 14
 const FS_SMALL := 11
 const FS_BIG := 18
 
+# ── POLICES (DA parchemin) : Alegreya Sans = l'UI (humaniste, lisible en bouton/panneau/
+#    tooltip) ; IM Fell English SC = la CARTE (cartouches, noms de lieux — le vieux livre
+#    imprimé). Chargées paresseusement depuis assets/fonts ; ABSENTES → fallback système
+#    (le projet tourne sans). L'encre de carte n'est JAMAIS un noir pur : #2a2419, posée
+#    sur un HALO brun clair (le noir plat « autocollant » disparaît).
+const COL_INK_MAP  := Color(0x2a / 255.0, 0x24 / 255.0, 0x19 / 255.0)
+const COL_INK_HALO := Color(0.87, 0.80, 0.65, 0.55)
+static var _font_ui: Font = null
+static var _font_map: Font = null
+static var _fonts_tried := false
+
+static func _ttf(path: String) -> Font:
+	if ResourceLoader.exists(path):
+		return load(path)
+	if FileAccess.file_exists(path):          # pas d'import éditeur → chargement dynamique
+		var ff := FontFile.new()
+		if ff.load_dynamic_font(path) == OK:
+			return ff
+	return null
+
+static func _load_fonts() -> void:
+	_fonts_tried = true
+	_font_ui = _ttf("res://assets/fonts/AlegreyaSans-Regular.ttf")
+	_font_map = _ttf("res://assets/fonts/IMFellEnglishSC-Regular.ttf")
+
 static func font() -> Font:
-	return ThemeDB.fallback_font
+	if not _fonts_tried:
+		_load_fonts()
+	return _font_ui if _font_ui != null else ThemeDB.fallback_font
+
+static func font_map() -> Font:
+	if not _fonts_tried:
+		_load_fonts()
+	return _font_map if _font_map != null else font()
 
 ## sense_color : 0 = rouge … 0.5 = ambre … 1 = vert (viewer.c, ligne 1146)
 static func sense(good: float) -> Color:
@@ -51,6 +83,20 @@ static func text(ci: CanvasItem, pos: Vector2, col: Color, s: String, size: int 
 
 static func text_w(s: String, size: int = FS) -> float:
 	return font().get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+
+## texte de CARTE (IM Fell) : encre #2a2419 + HALO brun clair doux (contour) — pour les
+## cartouches, noms de lieux et noms d'empire. Renvoie la largeur.
+static func text_map(ci: CanvasItem, pos: Vector2, s: String, size: int = FS,
+		col: Color = COL_INK_MAP, outline: int = 2, halo: Color = COL_INK_HALO) -> float:
+	var f := font_map()
+	var p := Vector2(pos.x, pos.y + f.get_ascent(size))
+	if outline > 0:
+		ci.draw_string_outline(f, p, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, outline, halo)
+	ci.draw_string(f, p, s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+	return f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+
+static func text_map_w(s: String, size: int = FS) -> float:
+	return font_map().get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 
 # ── primitives rectangulaires ──────────────────────────────────────────────
 static func box(ci: CanvasItem, r: Rect2, c: Color) -> void:

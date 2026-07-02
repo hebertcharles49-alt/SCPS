@@ -2017,10 +2017,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 		var name_ink := Color(pig.r * 0.40, pig.g * 0.40, pig.b * 0.40, (0.95 if is_emp else 0.70) * name_fade)
 		var halo := Color(0.97, 0.91, 0.74, (0.75 if is_emp else 0.5) * name_fade)
 		var disp := nm.to_upper() if is_emp else nm
-		# largeur TRACKÉE (par caractère) pour centrer
+		# largeur TRACKÉE (par caractère) pour centrer — police de CARTE (IM Fell)
 		var tw := 0.0
 		for k in range(disp.length()):
-			tw += VKit.text_w(disp[k], VKit.FS_SMALL) + (track * 6.0 if k < disp.length() - 1 else 0.0)
+			tw += VKit.text_map_w(disp[k], VKit.FS_SMALL) + (track * 6.0 if k < disp.length() - 1 else 0.0)
 		# LA RÈGLE EU4 : le nom est ANCRÉ MONDE et DIMENSIONNÉ À SON TERRITOIRE — il s'étire
 		# sur l'étendue du pays (≈3σ de l'axe ACP majeur), jamais sur la mer d'à côté. Il
 		# grossit donc à l'écran en zoomant, jusqu'au fondu (le relais KCD des bannières).
@@ -2034,9 +2034,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 		var cx0 := -tw * 0.5
 		for k in range(disp.length()):
 			var ch := disp[k]
-			VKit.text(self, Vector2(cx0 + 0.7, -6.3), halo, ch, VKit.FS_SMALL)
-			VKit.text(self, Vector2(cx0, -7.0), name_ink, ch, VKit.FS_SMALL)
-			cx0 += VKit.text_w(ch, VKit.FS_SMALL) + track * 6.0
+			# IM FELL (police de carte) : encre entité (jamais noir pur) sur HALO papier doux
+			VKit.text_map(self, Vector2(cx0, -7.0), ch, VKit.FS_SMALL, name_ink, 2, halo)
+			cx0 += VKit.text_map_w(ch, VKit.FS_SMALL) + track * 6.0
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ── ÉPICENTRE du cataclysme §27 : anneaux pulsants à l'encre de la fin. ──
@@ -3147,7 +3147,7 @@ func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
 	if nm == "":
 		return
 	var sc := 1.0 / maxf(zoom, 0.0001)
-	var tw := VKit.text_w(nm, VKit.FS_SMALL) * sc
+	var tw := VKit.text_map_w(nm, VKit.FS_SMALL) * sc   # cartouche : police de CARTE (IM Fell)
 	var bh := 14.0 * sc
 	var hpad := 5.0 * sc
 	var dotw := 7.0 * sc                                   # place de la pastille de propriétaire
@@ -3162,7 +3162,8 @@ func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
 	var dot: Color = _entity_pigment(own) if own >= 0 else Color(0.52, 0.46, 0.36)
 	draw_circle(Vector2(rect.position.x + hpad + 1.5 * sc, rect.position.y + bh * 0.5), 2.6 * sc, Color(dot, a))
 	draw_set_transform(Vector2(rect.position.x + hpad + dotw, rect.position.y + 1.0 * sc), 0.0, Vector2(sc, sc))
-	VKit.text(self, Vector2.ZERO, Color(0.20, 0.14, 0.08, 0.95 * a), nm, VKit.FS_SMALL)
+	VKit.text_map(self, Vector2.ZERO, nm, VKit.FS_SMALL,
+		Color(VKit.COL_INK_MAP.r, VKit.COL_INK_MAP.g, VKit.COL_INK_MAP.b, 0.95 * a), 0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## glyphe de ville à l'encre : cercle crème cerné d'encre, taille ∝ tier ; capitale (tier≥4) étoilée.

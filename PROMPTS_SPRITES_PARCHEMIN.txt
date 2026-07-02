@@ -1,0 +1,233 @@
+================================================================================
+SCPS — CAHIER DE PROMPTS : SPRITES UI « PARCHEMIN »
+================================================================================
+But : refaire le chrome & les icônes de l'UI pour coller à la carte parchemin
+(lavis sépia, encre brune gravée, papier). Chaque bloc ci-dessous = UNE planche
+à générer. Copier le PRÉAMBULE COMMUN en tête de chaque prompt, puis le bloc.
+
+--------------------------------------------------------------------------------
+PRÉAMBULE COMMUN (à coller en tête de CHAQUE prompt)
+--------------------------------------------------------------------------------
+Style global — « atlas ancien » : dessin à l'encre brune GRAVÉE (traits nets,
+hachures discrètes) rehaussé de LAVIS aquarelle ; papier vieilli. AUCUN style
+« jeu mobile », AUCUN token RPG mignon, AUCUN rendu 3D/plastique/brillant.
+Registre : gravure d'encyclopédie XVIIe + carte marine.
+
+Palette IMPOSÉE (ne pas s'en écarter) :
+  encre sombre   #2a2419   (JAMAIS de noir pur #000000)
+  encre moyenne  #4a3b28
+  brun cuir      #3a3128
+  parchemin      #e8dcc0   (clair)  ·  #cdbb92 (moyen)  ·  #b09f78 (ombré)
+  rehauts lavis  : ocre #b08a4a · terre cuite #a05a3c · olive #6a7a4a ·
+                   ardoise #4a5a66 · prune #5a4458 · or vieilli #9a7a3c
+Lumière douce du NORD-OUEST. PAS d'ombre portée cuite sous les objets (l'ombre
+est ajoutée par le jeu). Contours anti-aliasés doux (pas de pixel-art dur).
+
+Format : image 1024×1024, GRILLE STRICTE 4×4 de cellules 256×256 (16 pièces).
+UNE pièce par cellule, CENTRÉE, marge intérieure ≥ 12 % — jamais à cheval sur
+deux cellules. FOND UNI MAGENTA #FF00FF plein (il sera détouré). Pas de texte.
+Chaque pièce doit rester LISIBLE réduite à la taille-cible indiquée.
+
+--------------------------------------------------------------------------------
+PLANCHE 1 — CHROME DE PANNEAU (9-slice)                    cible : étiré, bords 24px
+--------------------------------------------------------------------------------
+16 pièces de CADRE pour panneaux d'interface, pensées pour découpe 9-slice
+(coins/bords étirables, centre uni) :
+  01 cadre « CUIR SOMBRE » complet 240×240 (fond #3a3128 uni au centre, bord
+     double filet d'encre + rivets d'angle discrets)
+  02 le même, variante EN-TÊTE (bande haute plus sombre intégrée)
+  03 cadre « FEUILLE DE PARCHEMIN » complet (papier #e8dcc0, bord déchiré/bruni
+     très léger, filet d'encre intérieur)
+  04 le même, coins renforcés d'écoinçons gravés (volutes fines)
+  05 plaque de SECTION (bandeau horizontal 240×64, cuir + filet, bouts biseautés)
+  06 plaque de TITRE (bandeau parchemin 240×64, léger enroulement aux bouts)
+  07 séparateur ornemental horizontal 240×24 (fleuron central + filets)
+  08 séparateur simple 240×12 (filet double s'affinant aux bouts)
+  09 cadre de TOOLTIP 200×120 (parchemin clair, bord net fin)
+  10 cadre de CHIP 160×56 (petit cartouche arrondi cuir)
+  11 chip parchemin 160×56 (le cartouche de nom de lieu — coins à onglets)
+  12 coin d'angle décoratif seul 96×96 (volute d'encre, pour habiller)
+  13 fond de LISTE alterné 240×48 (papier à peine plus sombre, texture fibre)
+  14 encoche d'ONGLET actif 140×48 (languette parchemin qui « sort » du bord)
+  15 encoche d'onglet inactif 140×48 (même languette, enfoncée/ombrée)
+  16 pastille vide ronde 96×96 (médaillon parchemin cerclé d'encre, pour icône)
+
+--------------------------------------------------------------------------------
+PLANCHE 2 — BOUTONS (états + petits contrôles)             cible : 28-40px de haut
+--------------------------------------------------------------------------------
+  01-04 bouton RECTANGULAIRE 220×64, 4 états dans 4 cellules :
+        normal (cuir #3a3128, filet or vieilli) · survol (cuir éclairci, filet
+        plus lumineux) · pressé (enfoncé, assombri, filet vers le bas) ·
+        désactivé (délavé, filet gris-brun)
+  05-08 bouton CARRÉ D'ICÔNE 72×72, mêmes 4 états
+  09    bouton de fermeture ✕ 56×56 (croix d'encre dans médaillon parchemin)
+  10    flèche gauche 56×56 (pointe de plume gravée)  11 flèche droite
+  12    [−] 56×56 et  13  [+] 56×56 (glyphes gravés dans pastille)
+  14    coche ✓ 56×56 (encre olive)   15  case vide 56×56 (carré parchemin)
+  16    puce de MENU DÉROULANT 56×56 (chevron bas gravé)
+
+--------------------------------------------------------------------------------
+PLANCHE 3 — POPUP « OYEZ OYEZ » & SCEAUX                   cible : bandeau ~480px
+--------------------------------------------------------------------------------
+  01 GRAND bandeau de popup 240×160 : parchemin DÉROULÉ horizontal, deux
+     enroulements latéraux, pensé 9-slice (centre uni étirable)
+  02 le même SANS enroulements (feuille plate à bord bruni, 9-slice)
+  03 en-tête de crieur : petite trompette/bannière gravée 200×80 (frise haute)
+  04 SCEAU DE CIRE rouge terre-cuite 96×96 (bouton d'action primaire)
+  05 sceau de cire olive 96×96 (action secondaire)
+  06 sceau de cire brisé 96×96 (refus/annuler)
+  07 ruban sous sceau 140×60 (deux queues de ruban, lavis terre cuite)
+  08 punaise/clou de placard 48×48 (fixe le popup au « tableau »)
+  09 coin déchiré de parchemin 96×96 (haut-gauche)  10 (haut-droit)
+  11 tampon à l'encre « étoile de garnison » 96×96 (marque d'urgence militaire)
+  12 tampon « couronne » 96×96 (étatique)  13 tampon « épi » 96×96 (économie)
+  14 tampon « flamme » 96×96 (révolte)     15 tampon « colombe » 96×96 (paix)
+  16 filigrane rosace pâle 200×200 (fond de popup, presque invisible)
+
+--------------------------------------------------------------------------------
+PLANCHE 4 — JAUGES & BARRES                                 cible : hauteur 10-16px
+--------------------------------------------------------------------------------
+Pièces pensées pour étirage horizontal (bords nets, centre uniforme) :
+  01 gouttière de jauge 240×32 (creux de papier ombré, filet d'encre)
+  02 remplissage OR vieilli 240×24     03 remplissage OLIVE (bon) 240×24
+  04 remplissage TERRE CUITE (mauvais) 240×24   05 remplissage ARDOISE 240×24
+  06 remplissage PRUNE 240×24
+  07 barre d'OPINION : gouttière avec REPÈRE CENTRAL gravé 240×32
+  08 capuchon de barre gauche 32×32 · 09 capuchon droit 32×32 (bouts arrondis)
+  10 barre de PROGRESSION DE CHANTIER 240×32 (échelle graduée en encre, style
+     règle de charpentier)
+  11 curseur de slider 48×48 (pommeau de laiton gravé)
+  12 rail de slider 240×16
+  13 pastille de METEO D'ENTROPIE 64×64 (petit œil de tempête à l'encre)
+  14 flamme de vitesse ▶ 56×56 · 15 ▶▶ 56×56 · 16 pause ❙❙ 56×56 (glyphes gravés)
+
+--------------------------------------------------------------------------------
+PLANCHE 5 — ICÔNES DE TECH (fonctions & états)              cible : 30-40px
+--------------------------------------------------------------------------------
+Médaillons RONDS uniformes (cercle d'encre + fond parchemin), le SYMBOLE gravé
+au centre, un SEUL rehaut de lavis par pièce :
+  01 FORGE (enclume + marteau, rehaut terre cuite)
+  02 SOCIÉTÉ (deux mains liées / faisceau, rehaut olive)
+  03 SAVOIR (livre ouvert + étoile, rehaut ardoise)
+  04 PRODUCTION (roue dentée en bois, rehaut ocre)
+  05 RENFORT (bouclier, rehaut ardoise)
+  06 ARMÉE (deux lances croisées, rehaut terre cuite)
+  07 FAUSTIEN (flamme dans un œil, rehaut prune — le SEUL inquiétant)
+  08 SIGNATURE D'HÉRITAGE (rune dans losange, rehaut or)
+  09 COMBO tier-4 (deux anneaux entrelacés, or)
+  10 APEX tier-5 (trois anneaux entrelacés, or + prune)
+  11 état VERROUILLÉ (cadenas d'encre pâle, sans lavis)
+  12 état DISPONIBLE (le médaillon vide, filet or qui « appelle »)
+  13 état ACQUIS (coche olive discrète en surcharge)
+  14 PRÉSAGE/CRISE (comète à l'encre, prune)
+  15 anneau de tier seul (cercle gradué, pour composer)
+  16 étoile de recherche EN COURS (astrolabe simplifié)
+
+--------------------------------------------------------------------------------
+PLANCHE 6 — ICÔNES DE BÂTIMENTS · ÉDIFICES D'ÉTAT (16)      cible : 40-64px
+--------------------------------------------------------------------------------
+Vignettes GRAVÉES « élévation frontale simplifiée » dans un carré à filet
+d'encre (PAS de sol peint, PAS de personnage) — une pièce par édifice :
+  01 Tribunal (fronton + balance)      02 Chancellerie (plume + rouleau sur façade)
+  03 Académie (portique à colonnes)    04 Garnison (tour carrée crénelée)
+  05 Forteresse (double tour + mur)    06 Citadelle (donjon massif étoilé)
+  07 Port (môle + phare court)         08 Caravansérail (arche + chameau stylisé)
+  09 Marché (halle ouverte + étal)     10 Entrepôt (long toit + tonneaux)
+  11 Grenier (silo sur pilotis)        12 Irrigation (noria/canal)
+  13 Aqueduc (trois arches)            14 Sanctuaire (autel + fumée)
+  15 Temple (fronton + flamme)         16 Cathédrale (flèche + rosace)
+
+--------------------------------------------------------------------------------
+PLANCHE 7 — ICÔNES DE BÂTIMENTS · ÉDIFICES & ŒUVRES (16)    cible : 40-64px
+--------------------------------------------------------------------------------
+Même registre que la planche 6 :
+  01 Bibliothèque (rayonnage)          02 Monastère (cloître + cloche)
+  03 Comptoir (balance + sac scellé)   04 Banque (coffre ferré)
+  05 Arsenal (râtelier d'armes)        06 Amirauté (ancre + tour)
+  07 Port marchand (grue de quai)      08 Bibliothèque militaire (livre + épée)
+  09 Observatoire (coupole + lunette)  10 Centre commercial (double halle)
+  11 Scierie (lame + billots)          12 Carrière (front de taille + coins)
+  13 Four à brique (four voûté)        14 Poterie (tour de potier + jarres)
+  15 Atelier de sculpture (buste ébauché + ciseau)
+  16 Charbonnière (meule fumante)
+
+--------------------------------------------------------------------------------
+PLANCHE 8 — ICÔNES DE BÂTIMENTS · MANUFACTURES (16)         cible : 40-64px
+--------------------------------------------------------------------------------
+  01 Brasserie (cuve + houblon)        02 Vignoble/pressoir (grappe + pressoir)
+  03 Tissage (métier à tisser)         04 Taillanderie (outils : faux + marteau)
+  05 Armurerie lourde (plastron)       06 Arquebuserie (canon d'arquebuse)
+  07 Poudrière (baril + poudre)        08 Alambic (cornue de cuivre)
+  09 Foreuse (trépan + charpente)      10 Réplicateur arcane (prisme + rouages)
+  11 Corne d'abondance (corne + épis)  12 Forge à runes (enclume runique, prune)
+  13 Salines (pyramide de sel)         14 Fumoir/pêcherie (poisson pendu)
+  15 Moulin à vent (déjà en jeu — REDESSINER assorti)  16 Moulin à eau (roue)
+
+--------------------------------------------------------------------------------
+PLANCHE 9 — ICÔNES D'UNITÉS (16)                            cible : 36-56px
+--------------------------------------------------------------------------------
+BUSTES DE PROFIL gravés (tête + épaule + arme visible), médaillon octogonal à
+filet d'encre, un rehaut de lavis par ARME (fer=ardoise · bois=ocre · magie=prune) :
+  01 Piquier (pique verticale)         02 Lancier (lance + petit écu)
+  03 Épéiste (épée à l'épaule)         04 Hallebardier (fer de hallebarde)
+  05 Archer (arc bandé de profil)      06 Arbalétrier (arbalète en joue)
+  07 Arbalétrier lourd (pavois dans le dos)
+  08 Arquebusier (arquebuse + mèche)   09 Cav. légère (tête de cheval nerveuse)
+  10 Cav. lourde (chanfrein barde)     11 Cav. cuirassée (heaume fermé + plume)
+  12 Cav. de raid (cheval + torche)    13 Berserker (torse nu + hache double)
+  14 Lancier de choc (lance couchée)   15 Milice (fourche + capuche)
+  16 Garde d'escorte (pertuisane + tabard)
+
+--------------------------------------------------------------------------------
+PLANCHE 10 — UNITÉS SPÉCIALES & LETTRES (16)                cible : 36-56px
+--------------------------------------------------------------------------------
+  01 Sorcier (bâton + orbe, prune)     02 Alchimiste (fiole fumante)
+  03 Chaman (masque + os)              04 Harceleur (fronde)
+  05 Traqueur (arc court + capuche)    06 Lame franche (dague inversée)
+  07 Pique (pique + morion)            08 Missionnaire (bâton + livre)
+  09 Gourou (mains ouvertes, aura)     10 Moine (capuche + chapelet)
+  11 DIPLOMATE/émissaire (rouleau scellé tendu)  ← utilisé par le CD diplo
+  12 Colon (balluchon + bâton)         ← chantier de colonisation
+  13 Capitaine de flotte (tricorne + longue-vue)
+  14 Général (bâton de commandement)   15 Espion (masque + cape)
+  16 Héraut (tabard + trompette)
+
+--------------------------------------------------------------------------------
+PLANCHE 11 — ICÔNES SYSTÈME (remplaçants des action_*/alert_*) cible : 16-30px
+--------------------------------------------------------------------------------
+TRÈS simples (2-3 traits d'encre + 1 lavis), lisibles à 16 px :
+  01 or (pièce frappée)                02 population (deux silhouettes)
+  03 nourriture (gerbe de blé)         04 savoir (livre)
+  05 construire (marteau)              06 recruter (tambour)
+  07 rechercher (astrolabe)            08 commercer (balance)
+  09 traité (deux sceaux liés)         10 décret (rouleau + sceau)
+  11 alerte GUERRE (épées croisées)    12 alerte RÉVOLTE (torche)
+  13 alerte FAMINE (bol vide)          14 alerte SIÈGE (tour fissurée)
+  15 cloche d'évènement                16 couronne (capitale/état)
+
+--------------------------------------------------------------------------------
+PLANCHE 12 — CARTE : CARTOUCHES & MARQUES                   cible : variable
+--------------------------------------------------------------------------------
+  01 GRAND cartouche de titre de carte 240×120 (parchemin + volutes, vide)
+  02 cartouche moyen 200×80 (pour noms de région, vide)
+  03 petit cartouche 160×56 (nom de ville, vide — remplace le chip actuel)
+  04 SCEAU DE CAPITALE 96×96 (cire + couronne, à poser sur la carte)
+  05 rose des vents 200×200 (redessin fin assorti, 8 aiguilles)
+  06 ancre de PORT 64×64 (marque de carte)
+  07 tente de SIÈGE 64×64 (marque de campagne)
+  08 épées croisées de BATAILLE 64×64
+  09 flamme de PILLAGE 64×64          10 crâne discret (zone morte) 64×64
+  11 gerbe (grenier régional) 64×64   12 pioche (mine) 64×64
+  13 poisson (pêcherie) 64×64         14 caravane (route marchande) 64×64
+  15 monstre marin ORNEMENTAL 200×120 (marginalia, redessin assorti)
+  16 navire ORNEMENTAL 160×100 (marginalia)
+
+================================================================================
+NOTES DE LIVRAISON
+- 12 planches × 16 = 192 pièces ; découpe atlas par mes soins (grille stricte).
+- Si le générateur « joue » les bâtiments en tokens 3D mignons : REFUSER et
+  régénérer en insistant « gravure d'encyclopédie, élévation frontale plate,
+  aucun personnage, aucun sol » (leçon des lots précédents).
+- Les pièces 9-slice (planches 1-4) doivent avoir des BORDS PROPRES et un
+  CENTRE UNI (elles seront étirées).
+================================================================================

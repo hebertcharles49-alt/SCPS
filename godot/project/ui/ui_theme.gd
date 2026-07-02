@@ -20,6 +20,13 @@ static func _box(bg: Color, border: Color, bw: int = 1, shift_down := false) -> 
 
 static func build() -> Theme:
 	var th := Theme.new()
+	# POLICE DE BASE : Alegreya Sans (humaniste, calligraphique mais lisible) — toute
+	# l'UI Control (boutons, panneaux, tooltips) en hérite via le thème de la fenêtre.
+	var VKit := preload("res://ui/vkit.gd")
+	var fui: Font = VKit.font()
+	if fui != null:
+		th.default_font = fui
+		th.default_font_size = 15
 	# ── BOUTONS : 4 états NETTEMENT distincts (le cœur du feedback) ──
 	var normal := _box(Color(0.23, 0.19, 0.14), Color(0.42, 0.35, 0.24))
 	var hover := _box(Color(0.32, 0.27, 0.19), Color(0.68, 0.56, 0.34))
