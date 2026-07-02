@@ -1204,6 +1204,7 @@ func _augment_roads(w) -> void:
 	var sea: Image = w.layer_image(LAYER_WATER)
 	var rf: Image = _carved_river_field()
 	var mv := _mv_ref()
+	var bundle := {}   # hash spatial (cellule 1.0) des points DÉJÀ tracés — magnétisme de couloir
 	for rd in _roads:
 		var pts: PackedVector2Array = rd["points"]
 		# PROVINCES traversées (cadence du chantier 1 an/province) — sur le tracé BRUT (A*).
@@ -1231,9 +1232,42 @@ func _augment_roads(w) -> void:
 			if _region_anchor.has(rb):
 				var a1: Vector2 = _region_anchor[rb]
 				pts = _snap_endpoint(pts, mv.tile_anchor_world(a1.x, a1.y), false)
+		# 3) ANTI-DÉDOUBLEMENT — le MAGNÉTISME DE COULOIR : un point qui passe à ≤ 0.65 cellule
+		#    d'une route DÉJÀ tracée se COLLE dessus → les A* voisins PARTAGENT la chaussée au
+		#    lieu de dessiner deux lignes parallèles « far-west ». Les 3 points d'about restent
+		#    libres (le raccord au bourg prime). Hash spatial, une passe par route.
+		for k in range(3, pts.size() - 3):
+			var p5: Vector2 = pts[k]
+			var gx := int(floor(p5.x))
+			var gy := int(floor(p5.y))
+			var bestd := 0.42          # 0.65² : rayon de collage au couloir
+			var bestp := p5
+			for oy in range(-1, 2):
+				for ox in range(-1, 2):
+					var kk := (gx + ox) * 100000 + (gy + oy)
+					if bundle.has(kk):
+						for q5 in bundle[kk]:
+							var dd: float = p5.distance_squared_to(q5)
+							if dd < bestd:
+								bestd = dd
+								bestp = q5
+			pts[k] = bestp
+		for k in range(pts.size()):    # cette route ENTRE dans le couloir commun
+			var kk2 := int(floor(pts[k].x)) * 100000 + int(floor(pts[k].y))
+			if not bundle.has(kk2):
+				bundle[kk2] = []
+			bundle[kk2].append(pts[k])
 		rd["ra"] = ra            # mémorisé : le bâti du bourg s'organise le long des routes de SA ville
 		rd["rb"] = rb
 		rd["points"] = pts
+
+## projette une polyligne MONDE en iso (helper du dessin de routes).
+func _road_iso(poly: PackedVector2Array, mv) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.resize(poly.size())
+	for k in range(poly.size()):
+		out[k] = mv.iso_pos(poly[k].x, poly[k].y)
+	return out
 
 ## portion BÂTIE d'un tracé (du départ, par longueur) — `frac` ∈ [0,1] → croissance organique.
 func _road_partial(pts: PackedVector2Array, frac: float) -> PackedVector2Array:
@@ -1564,6 +1598,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var year: int = w.year()
 			var polys_main := []
 			var polys_minor := []
+			var seen := {}   # dédup : un TRONÇON partagé (couloir commun) ne s'encre qu'UNE fois
 			for ri in range(_roads.size()):
 				var rd: Dictionary = _roads[ri]
 				var pts: PackedVector2Array = rd["points"]
@@ -1575,14 +1610,26 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var poly := _road_partial(pts, frac)
 				if poly.size() < 2:
 					continue
-				var ipoly := PackedVector2Array()
-				ipoly.resize(poly.size())
-				for k in range(poly.size()):
-					ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
-				if int(rd.get("level", 1)) <= 0:
-					polys_main.append(ipoly)
-				else:
-					polys_minor.append(ipoly)
+				var is_main: bool = int(rd.get("level", 1)) <= 0
+				# découpe en SOUS-POLYLIGNES de segments inédits (les tronçons déjà encrés sautent)
+				var run := PackedVector2Array()
+				for k in range(poly.size() - 1):
+					var a7: Vector2 = poly[k]
+					var b7: Vector2 = poly[k + 1]
+					var ka := int(a7.x * 4.0) * 8388608 + int(a7.y * 4.0)
+					var kb := int(b7.x * 4.0) * 8388608 + int(b7.y * 4.0)
+					var kseg := str(mini(ka, kb)) + "_" + str(maxi(ka, kb))
+					if seen.has(kseg):
+						if run.size() >= 2:
+							(polys_main if is_main else polys_minor).append(_road_iso(run, mv))
+						run = PackedVector2Array()
+						continue
+					seen[kseg] = true
+					if run.is_empty():
+						run.append(a7)
+					run.append(b7)
+				if run.size() >= 2:
+					(polys_main if is_main else polys_minor).append(_road_iso(run, mv))
 			# PAR POLYLIGNE (joints RONDS aux coudes — le multiline ouvrait des fentes) ; l'ordre
 			# des passes fait le modelé : ombre sépia → terre crème → filet de lumière central.
 			for pl2 in polys_minor:
@@ -1877,6 +1924,14 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 			var pa := TAU * float(k) / 10.0
 			var pr := 0.60 * (0.86 + 0.26 * _h1(float(r) * 3.3 + float(k) * 1.9))
 			plaza.push_back(jpt + Vector2(cos(pa), sin(pa) * 0.80) * pr)
+	# ── le PLAN v4 : rue principale + RANG ARRIÈRE (30 %) + RUELLES perpendiculaires —
+	#    fini la « ligne western » ; la relaxation ci-dessous tasse le tout en TISSU. ──
+	var lane_n := 0
+	var lane_s := []
+	if on_road and n >= 8:
+		lane_n = 1 if n < 14 else 2
+		for k in range(lane_n):
+			lane_s.append((_h1(float(r) * 8.3 + float(k) * 3.1) - 0.5) * extent * 1.2)
 	for i in range(n):
 		var hh := _h1(float(r) * 13.7 + float(i) * 2.31)
 		var hv := _h1(float(r) * 7.9 + float(i) * 5.17)
@@ -1887,13 +1942,25 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 			wp = jpt + Vector2(cos(a6), sin(a6) * 0.85) * (0.98 + 0.18 * hh)
 			extent = maxf(extent, jpt.distance_to(org) + 1.0)
 		elif on_road:
-			# DEUX RANGÉES le long de la rue : pas ~0.85 cellule, retrait ±0.5, jitter léger
 			var i2 := i - ring_n
 			var n2 := n - ring_n
-			var s := (float(i2 / 2) - float((n2 + 1) / 2 - 1) * 0.5) * 0.85
-			var sd := (0.5 + 0.22 * hh) * (1.0 if (i2 % 2) == 0 else -1.0)
-			wp = org + axis * (s + (hv - 0.5) * 0.3) + side * sd
-			extent = maxf(extent, absf(s) + 0.8)
+			var nlane: int = (n2 / 3) if lane_n > 0 else 0     # un tiers du bâti part en ruelles
+			if i2 < nlane:
+				# RUELLE : perpendiculaire à la rue, maisons des deux côtés en profondeur
+				var li := i2 % lane_n
+				var s0: float = lane_s[li]
+				var along := 0.62 + 0.60 * float(i2 / (2 * lane_n))
+				var lsd := (0.34 + 0.20 * hh) * (1.0 if (i2 % 2) == 0 else -1.0)
+				var ldir := 1.0 if _h1(float(r) * 5.9 + float(li) * 2.7) < 0.5 else -1.0
+				wp = org + axis * (s0 + lsd) + side * (along * ldir)
+			else:
+				# la RUE : deux rangées serrées + un RANG ARRIÈRE clairsemé (30 %)
+				var i3 := i2 - nlane
+				var s := (float(i3 / 2) - float((n2 - nlane + 1) / 2 - 1) * 0.5) * 0.78
+				var back := _h1(float(r) * 4.7 + float(i3) * 1.9) < 0.30
+				var sd := ((1.08 + 0.25 * hh) if back else (0.5 + 0.22 * hh)) * (1.0 if (i3 % 2) == 0 else -1.0)
+				wp = org + axis * (s + (hv - 0.5) * 0.3) + side * sd
+				extent = maxf(extent, absf(s) + 0.8)
 		else:
 			# amas radial (spirale dorée) autour du siège
 			var a := (0.618034 * float(i) + _h1(float(r) * 9.1)) * TAU
@@ -1905,18 +1972,39 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 		# le MONUMENT : posé en retrait de la rue, côté opposé au gros des maisons
 		var lm: Vector2 = (org + side * -0.9) if on_road else ctr
 		houses.append({"w": lm, "s": 0.46, "k": landmark, "v": 0})
-	# tri du FOND vers l'AVANT (y monde croissant ≈ y iso croissant) : les recouvrements lisent bien
-	houses.sort_custom(func(a, b): return (a["w"].x + a["w"].y) < (b["w"].x + b["w"].y))
-	# ── la CLAIRIÈRE : un blob IRRÉGULIER de terre battue sous le bourg (14 pts jittés) ──
+	# ── RELAXATION : 3 passes de séparation (min 0.55 cellule) — plus de chevauchements,
+	#    le plan se TASSE organiquement (le bourg, pas la file indienne). ──
+	for _it in range(3):
+		for i in range(houses.size()):
+			for j in range(i + 1, houses.size()):
+				var pi: Vector2 = houses[i]["w"]
+				var pj: Vector2 = houses[j]["w"]
+				var dv := pj - pi
+				var d := dv.length()
+				if d < 0.55 and d > 0.001:
+					var push := dv.normalized() * (0.55 - d) * 0.5
+					houses[i]["w"] = pi - push
+					houses[j]["w"] = pj + push
+	# ── le CENTRE BÂTI : muraille & clairière suivent la VILLE réelle (pas le siège abstrait
+	#    — le mur ne coupe plus le bâti quand la route passe loin du centroïde de région). ──
+	var bc := Vector2.ZERO
+	var brad := 0.0
+	for hd0 in houses:
+		bc += hd0["w"]
+	bc /= float(maxi(houses.size(), 1))
+	for hd0 in houses:
+		brad = maxf(brad, bc.distance_to(hd0["w"]))
+	# ── la CLAIRIÈRE : un blob IRRÉGULIER de terre battue sous le bourg (14 pts jittés),
+	#    CENTRÉE SUR LE BÂTI et dimensionnée par lui ──
 	var gnd := PackedVector2Array()
-	var g_r := (ring_rad + 0.5) if ring_rad > 0.0 else (extent * 0.72 + 0.6)
+	var g_r := brad + 0.7
 	for k in range(14):
 		var ga := TAU * float(k) / 14.0
 		var gr := g_r * (0.82 + 0.36 * _h1(float(r) * 5.3 + float(k) * 1.77))
 		# la clairière s'ÉTIRE le long de la rue (ellipse orientée par l'axe)
-		var u := cos(ga) * (1.25 if on_road else 1.0)
+		var u := cos(ga) * (1.20 if on_road else 1.0)
 		var v := sin(ga) * 0.85
-		gnd.push_back(org + axis * (u * gr) + side * (v * gr))
+		gnd.push_back(bc + axis * (u * gr) + side * (v * gr))
 	# ── CHAMPS EN LANIÈRES (t2+) : des bandes PERPENDICULAIRES à la rue, aux abouts du bourg ──
 	var fields := []
 	if tier >= 2 or ring_rad > 0.0:
@@ -1934,18 +2022,20 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 				fc + fp * hl + fl * hw, fc + fp * hl - fl * hw,
 				fc - fp * hl - fl * hw, fc - fp * hl + fl * hw]),
 				"d": fp, "c": fc, "hl": hl, "hw": hw})
-	# ── l'ENCEINTE (cité-état) : arcs entre PORTES (routes qui franchissent le mur) + TOURS ──
+	# ── l'ENCEINTE (cité-état) : CENTRÉE SUR LE BÂTI, rayon = le bâti + une marge (le mur
+	#    ENCLOT la ville — il ne la coupe plus) ; arcs entre PORTES (routes) + TOURS ──
 	var arcs := []
 	var towers := []
 	var gates := []
 	if ring_rad > 0.0:
-		for rd in _roads:                          # angles de PORTE : croisement route × cercle
+		var wrad := maxf(brad + 0.60, 1.7)
+		for rd in _roads:                          # angles de PORTE : croisement route × muraille
 			var pts: PackedVector2Array = rd["points"]
 			for k in range(pts.size() - 1):
-				var da := pts[k].distance_to(ctr) - ring_rad
-				var db := pts[k + 1].distance_to(ctr) - ring_rad
+				var da := pts[k].distance_to(bc) - wrad
+				var db := pts[k + 1].distance_to(bc) - wrad
 				if da * db < 0.0 and gates.size() < 4:
-					var ang := ((pts[k] + pts[k + 1]) * 0.5 - ctr).angle()
+					var ang := ((pts[k] + pts[k + 1]) * 0.5 - bc).angle()
 					var dup := false
 					for g2 in gates:
 						if absf(angle_difference(float(g2), ang)) < 0.45:
@@ -1953,18 +2043,15 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 					if not dup:
 						gates.append(ang)
 		var gw := 0.16                             # demi-ouverture de porte (rad)
-		var cuts := []                             # fenêtres angulaires à SAUTER
-		for g3 in gates:
-			cuts.append([float(g3) - gw, float(g3) + gw])
 		var seg := PackedVector2Array()
 		var steps := 72
 		for k in range(steps + 1):
 			var a4 := TAU * float(k) / float(steps)
 			var in_gate := false
-			for cu in cuts:
-				if absf(angle_difference(a4, (float(cu[0]) + float(cu[1])) * 0.5)) < gw:
+			for g3 in gates:
+				if absf(angle_difference(a4, float(g3))) < gw:
 					in_gate = true
-			var wpt := ctr + Vector2(cos(a4), sin(a4)) * ring_rad
+			var wpt := bc + Vector2(cos(a4), sin(a4)) * wrad
 			if in_gate:
 				if seg.size() >= 2:
 					arcs.append(seg)
@@ -1980,7 +2067,7 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 				if absf(angle_difference(ta, float(g4))) < 0.30:
 					skip = true
 			if not skip:
-				towers.append(ctr + Vector2(cos(ta), sin(ta)) * ring_rad)
+				towers.append(bc + Vector2(cos(ta), sin(ta)) * wrad)
 	# ── les QUAIS : si le bourg touche l'EAU (mer ou rivière carvée) à ≤ 3 cellules —
 	#    une ou deux jetées de bois perpendiculaires au rivage ; une barque amarrée (t3+). ──
 	var quays := []
@@ -2008,8 +2095,30 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 		if tier >= 3 or ring_rad > 0.0:
 			quays.append({"a": wpt + wside * 0.65, "d": wdir})
 			boat = {"c": wpt + wdir * 1.55 + wside * -0.55, "ax": wside}
+	# ── les ÉDIFICES LOGIQUES : chaque bâtiment a une RAISON d'être là — l'entrepôt dort
+	#    près des barques, la roue du moulin trempe au fil de l'eau, la grange borde les
+	#    lanières, le moulin à vent prend le large des champs, la forge FUME en ville. ──
+	if not quays.is_empty():
+		var qd0: Dictionary = quays[0]
+		var wside2 := Vector2(-(qd0["d"] as Vector2).y, (qd0["d"] as Vector2).x)
+		houses.append({"w": (qd0["a"] as Vector2) - (qd0["d"] as Vector2) * 0.55 + wside2 * -0.5,
+			"s": 0.44, "k": 4, "v": 1})                       # ENTREPÔT (long, toit ardoise)
+		if tier >= 3 or ring_rad > 0.0:
+			houses.append({"w": (qd0["a"] as Vector2) + wside2 * 1.15, "s": 0.40, "k": 5, "v": 0})  # MOULIN À EAU
+	if not fields.is_empty():
+		var f0: Dictionary = fields[0]
+		houses.append({"w": (f0["c"] as Vector2).lerp(bc, 0.35), "s": 0.42, "k": 4, "v": 0})        # GRANGE
+		if quays.is_empty() and tier >= 2:
+			houses.append({"w": (f0["c"] as Vector2) + (f0["d"] as Vector2) * (float(f0["hl"]) + 0.9),
+				"s": 0.44, "k": 3, "v": 0})                   # MOULIN À VENT
+	if tier >= 3 or ring_rad > 0.0:
+		var fi := int(_h1(float(r) * 44.1) * float(n))        # la FORGE : une maison de rue qui fume
+		if fi < houses.size() and int(houses[fi]["k"]) == 0:
+			houses[fi]["f"] = 1
+	# tri du FOND vers l'AVANT — APRÈS tous les ajouts (les recouvrements lisent bien)
+	houses.sort_custom(func(a, b): return (a["w"].x + a["w"].y) < (b["w"].x + b["w"].y))
 	var pal: Array = ROOF_PAL[int(_h1(float(r) * 31.7) * 3.0) % 3]
-	return {"h": houses, "arcs": arcs, "towers": towers, "gates": gates, "ring_c": ctr,
+	return {"h": houses, "arcs": arcs, "towers": towers, "gates": gates, "ring_c": bc,
 		"gnd": gnd, "fields": fields, "pal": pal,
 		"plaza": plaza, "well": well, "has_plaza": has_plaza, "quays": quays, "boat": boat}
 
@@ -2051,12 +2160,58 @@ func _ink_house(p: Vector2, half: float, tilt: float, roof: Color, zoom: float) 
 	draw_polyline(PackedVector2Array([q["a"], q["b"], q["c"], q["d"], q["e"], q["f"], q["g"], q["a"]]),
 		TOWN_INK, _w(zoom, 0.05, 0.45, 0.85), true)
 
-## ÉGLISE (nef + flèche + croix) / DONJON (tour crénelée + fanion AU PIGMENT DU PAYS) —
-## les monuments, mêmes encres. Ombre portée incluse (masse au sol).
+## ÉGLISE (nef + flèche + croix) / DONJON (tour crénelée + fanion AU PIGMENT DU PAYS) /
+## MOULIN À VENT (tour + ailes) / GRANGE-ENTREPÔT (long corps bas) / MOULIN À EAU (roue) —
+## les monuments & édifices logiques, mêmes encres. Ombre portée incluse (masse au sol).
 func _ink_landmark(p: Vector2, half: float, kind: int, zoom: float, pen: Color) -> void:
 	var iw := _w(zoom, 0.06, 0.5, 0.95)
 	# ombre de masse (décalée SE, comme les maisons)
 	var so := Vector2(0.30, 0.26) * half
+	if kind == 3:
+		# MOULIN À VENT : tour trapèze + calotte + QUATRE AILES en croix
+		var mt := half * 0.42
+		var tower3 := PackedVector2Array([p + Vector2(-mt, half * 0.75), p + Vector2(mt, half * 0.75),
+			p + Vector2(mt * 0.62, -half * 0.95), p + Vector2(-mt * 0.62, -half * 0.95)])
+		draw_colored_polygon(PackedVector2Array([tower3[0] + so, tower3[1] + so, tower3[2] + so, tower3[3] + so]), TOWN_SHADOW)
+		draw_colored_polygon(tower3, TOWN_WALL)
+		draw_polyline(PackedVector2Array([tower3[0], tower3[1], tower3[2], tower3[3], tower3[0]]), TOWN_INK, iw, true)
+		draw_colored_polygon(PackedVector2Array([p + Vector2(-mt * 0.66, -half * 0.95),
+			p + Vector2(mt * 0.66, -half * 0.95), p + Vector2(0, -half * 1.28)]), Color(0.42, 0.30, 0.20, 0.94))
+		var hub := p + Vector2(0, -half * 1.02)
+		for k in range(4):
+			var wa := PI * 0.25 + float(k) * PI * 0.5
+			draw_line(hub, hub + Vector2(cos(wa), sin(wa)) * half * 1.15, TOWN_INK, iw, true)
+		return
+	if kind == 4:
+		# GRANGE / ENTREPÔT : long corps bas, toit en croupe (bois v=0 · ardoise v=1 via pen? non —
+		# le toit suit TOWN_ROOF2/ardoise selon l'appelant ; ici bois patiné, sobre)
+		var gw2 := half * 1.7
+		var gh := half * 0.62
+		var body := PackedVector2Array([p + Vector2(-gw2, gh), p + Vector2(gw2, gh),
+			p + Vector2(gw2, -gh * 0.4), p + Vector2(-gw2, -gh * 0.4)])
+		draw_colored_polygon(PackedVector2Array([body[0] + so, body[1] + so, body[2] + so, body[3] + so]), TOWN_SHADOW)
+		draw_colored_polygon(body, TOWN_WALL)
+		var roof4 := PackedVector2Array([p + Vector2(-gw2 * 1.06, -gh * 0.4), p + Vector2(gw2 * 1.06, -gh * 0.4),
+			p + Vector2(gw2 * 0.62, -gh * 1.35), p + Vector2(-gw2 * 0.62, -gh * 1.35)])
+		draw_colored_polygon(roof4, Color(0.44, 0.32, 0.22, 0.94))
+		draw_polyline(PackedVector2Array([body[0], body[1], roof4[1], roof4[2], roof4[3], roof4[0], body[0]]),
+			TOWN_INK, iw, true)
+		return
+	if kind == 5:
+		# MOULIN À EAU : petite maison + ROUE à aubes sur le flanc
+		var q5 := _house_pts(p, half * 0.9, 0.0)
+		draw_colored_polygon(PackedVector2Array([q5["a"], q5["b"], q5["c"], q5["g"]]), TOWN_WALL)
+		draw_colored_polygon(PackedVector2Array([q5["f"], q5["m"], q5["e"]]), Color(0.46, 0.33, 0.21, 0.94).lightened(0.12))
+		draw_colored_polygon(PackedVector2Array([q5["m"], q5["d"], q5["e"]]), Color(0.46, 0.33, 0.21, 0.94).darkened(0.12))
+		draw_polyline(PackedVector2Array([q5["a"], q5["b"], q5["c"], q5["d"], q5["e"], q5["f"], q5["g"], q5["a"]]),
+			TOWN_INK, iw, true)
+		var wc := p + Vector2(-half * 1.18, half * 0.25)
+		draw_arc(wc, half * 0.55, 0.0, TAU, 16, TOWN_INK, iw, true)
+		for k in range(4):
+			var sa2 := PI * 0.25 + float(k) * PI * 0.5
+			draw_line(wc - Vector2(cos(sa2), sin(sa2)) * half * 0.5,
+				wc + Vector2(cos(sa2), sin(sa2)) * half * 0.5, TOWN_INK, iw * 0.8, true)
+		return
 	if kind == 1:
 		draw_colored_polygon(PackedVector2Array([p + so + Vector2(-half, half * 0.7),
 			p + so + Vector2(half, half * 0.7), p + so + Vector2(half, -half * 0.3),
@@ -2262,7 +2417,7 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 		if _roads.is_empty():
 			_draw_town(ip, maxi(st - 1, 1), zoom, Color(0.20, 0.14, 0.09, 0.95))   # routes pas prêtes : glyphe, sans figer
 			return
-		var n: int = 2 if is_wild else (16 if is_cs else [3, 3, 6, 10, 14][st])
+		var n: int = 3 if is_wild else (22 if is_cs else [4, 4, 8, 13, 18][st])
 		var owner0: int = w.region_owner(r)
 		var is_cap: bool = owner0 >= 0 and w.province_region(w.country_capital_province(owner0)) == r
 		var landmark := 2 if is_cap else (1 if (is_cs or st >= 3) else 0)
@@ -2354,11 +2509,13 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 		apts.resize((arc as PackedVector2Array).size())
 		for k in range((arc as PackedVector2Array).size()):
 			apts[k] = mv.iso_pos(arc[k].x, arc[k].y)
-		draw_polyline(apts, Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.30), _w(zoom, 0.20, 1.0, 2.2), true)
-		draw_polyline(apts, TOWN_INK, _w(zoom, 0.08, 0.55, 1.1), true)
+		# la MURAILLE en RUBAN DE PIERRE (3 passes) : ombre portée large → pierre crème → arête d'encre
+		draw_polyline(apts, Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.35), _w(zoom, 0.30, 1.8, 3.8), true)
+		draw_polyline(apts, Color(TOWN_WALL.r, TOWN_WALL.g, TOWN_WALL.b, 0.95), _w(zoom, 0.20, 1.2, 2.6), true)
+		draw_polyline(apts, TOWN_INK, _w(zoom, 0.07, 0.5, 1.0), true)
 	for tw2 in town["towers"]:
 		var tp: Vector2 = mv.iso_pos((tw2 as Vector2).x, (tw2 as Vector2).y)
-		var ts := _w(zoom, 0.16, 1.2, 2.6)
+		var ts := _w(zoom, 0.19, 1.4, 3.0)
 		draw_colored_polygon(PackedVector2Array([tp + Vector2(-ts, ts), tp + Vector2(ts, ts),
 			tp + Vector2(ts, -ts), tp + Vector2(-ts, -ts)]), TOWN_WALL)
 		draw_polyline(PackedVector2Array([tp + Vector2(-ts, ts), tp + Vector2(ts, ts),
@@ -2382,10 +2539,14 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 			_ink_landmark(p, half * 1.35, kind, zoom, pen)
 		else:
 			var tilt := (_h1(wp.x * 12.9 + wp.y * 7.1) - 0.5) * 0.24   # ±7° : « dessiné à la main »
-			_ink_house(p, half, tilt, pal[int(hd["v"]) % 2], zoom)
-			# la FUMÉE de cheminée — au TRÈS gros plan, sur ~1 toit sur 3 : un souffle
-			# gris chaud à peine posé (deux passes très transparentes), qui dérive à l'est.
-			if zoom >= 9.0 and _h1(wp.x * 3.7 + wp.y * 9.2) < 0.34:
+			var is_forge: bool = int(hd.get("f", 0)) == 1
+			var rc: Color = pal[int(hd["v"]) % 2]
+			if is_forge:
+				rc = rc.darkened(0.22)                        # la FORGE : toit noirci de suie
+			_ink_house(p, half, tilt, rc, zoom)
+			# la FUMÉE de cheminée — la FORGE fume toujours (dès le zoom moyen) ; les autres
+			# toits, ~1 sur 3 au TRÈS gros plan : un souffle gris chaud à peine posé.
+			if (is_forge and zoom >= 6.0) or (zoom >= 9.0 and _h1(wp.x * 3.7 + wp.y * 9.2) < 0.34):
 				var sp := p + Vector2(0.0, -1.30 * half)
 				var curl := PackedVector2Array([sp,
 					sp + Vector2(0.14 * half, -0.55 * half),
