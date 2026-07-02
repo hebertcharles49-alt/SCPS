@@ -427,6 +427,27 @@ func _draw_diplo(x: float, y: float, me: int) -> void:
 		_opinion_bar(x, y, 150.0, op)
 		VKit.text(self, Vector2(x + 158, y - 3), _opinion_col(op), "%+d" % op, VKit.FS_SMALL)
 		y += 14
+		# ligne 2bis : le RÉSUMÉ — POURQUOI (les composantes vers lesquelles l'opinion
+		# converge : statuts actifs · rancune territoriale · MÉMOIRE des actes — trahison,
+		# sécession d'une guerre civile). Seules les composantes NON NULLES s'affichent.
+		var parts: Dictionary = Sim.world.opinion_summary(target)
+		if not parts.is_empty():
+			var tx := x
+			var drew := false
+			for pk in [["Alliance", "ally"], ["Guerre", "war"], ["Vassalité", "vassal"],
+				["Pacte", "pact"], ["Embargo", "embargo"], ["Rancune", "rancor"], ["Mémoire", "memory"]]:
+				var v: int = int(parts.get(pk[1], 0))
+				if v == 0:
+					continue
+				var seg := "%s %+d" % [pk[0], v]
+				var segw := VKit.text_w(seg, VKit.FS_SMALL)
+				if tx + segw > DW - 16.0:
+					break
+				VKit.text(self, Vector2(tx, y), VKit.sense(0.78) if v > 0 else VKit.sense(0.15), seg, VKit.FS_SMALL)
+				tx += segw + 10.0
+				drew = true
+			if drew:
+				y += 13
 		# ligne 3 : boutons d'action, grisés selon diplo_options
 		var o: Dictionary = Sim.world.diplo_options(target)
 		var bx := x

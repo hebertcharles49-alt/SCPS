@@ -90,6 +90,7 @@ public:
     Array      country_stocks(int country);           /* biens : stock · net · couverture · marché */
     Array      country_relations(int country);        /* diplomatie : statut + opinion #26 par pays */
     Dictionary diplo_options(int target);             /* §3 : légalité des verbes diplo contre `target` (boutons grisés) */
+    Dictionary opinion_summary(int country);          /* #26 : le RÉSUMÉ d'opinion (total + composantes) */
     Dictionary country_army(int country);             /* mobilisation + flotte */
     Dictionary country_trade(int country);            /* commerce : routes · or · partenaires */
     Array      country_council(int country);          /* conseil : 3 sièges (+age v49) */

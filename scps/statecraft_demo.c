@@ -309,6 +309,26 @@ int main(int argc, char **argv){
         for (int m=0;m<360;m++) statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,30);  /* 30 ans */
         int op_faded = statecraft_opinion(s.sc, B, A);
         ok("la mémoire de la trahison S'ESTOMPE vers 0 (decay naturelle)", op_faded > op_bet + 5 && op_faded > -6);
+        /* (c) la SÉCESSION (#26bis) — le pays né d'une guerre civile AIME MOINS l'empire père
+         * (Flandre vs France) : mémoire DURABLE dans UN SEUL SENS (le fils porte la plaie). */
+        statecraft_init(s.sc,s.w); diplo_init(s.dp);
+        statecraft_on_secession(s.sc, B, A);             /* B fait sécession de A */
+        for (int m=0;m<6;m++) statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,30);
+        int op_sec = statecraft_opinion(s.sc, B, A);     /* ce que le FILS pense du PÈRE */
+        int op_rev = statecraft_opinion(s.sc, A, B);     /* le père : AUCUNE mémoire ajoutée */
+        ok("la SÉCESSION marque le fils DURABLEMENT (fils→père < -12)", op_sec < -12);
+        ok("un seul sens : le père ne gagne pas de mémoire (père→fils ~ 0)", op_rev > -6 && op_rev < 6);
+        for (int m=0;m<360;m++) statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,30);  /* 30 ans */
+        int op_secf = statecraft_opinion(s.sc, B, A);
+        ok("la rancune de sécession S'ESTOMPE (decay naturelle)", op_secf > op_sec + 5 && op_secf > -8);
+        /* (d) le RÉSUMÉ (statecraft_opinion_parts) — les composantes = la CIBLE du lissage */
+        statecraft_init(s.sc,s.w); diplo_init(s.dp);
+        diplo_declare_war(s.dp, A, B);
+        statecraft_on_secession(s.sc, A, B);             /* A garde AUSSI une mémoire contre B */
+        OpinionParts pp; statecraft_opinion_parts(s.sc, s.dp, A, B, &pp);
+        ok("résumé : la GUERRE paraît en composante (war < 0)", pp.war < -1.f);
+        ok("résumé : la MÉMOIRE paraît en composante (mem < 0)", pp.mem < -1.f);
+        ok("résumé : les statuts inactifs restent à 0", pp.ally==0.f && pp.pact==0.f && pp.vassal==0.f);
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

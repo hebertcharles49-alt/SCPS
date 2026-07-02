@@ -628,6 +628,18 @@ void sim_day(Sim *s, World *w) {
                     && regions_of(s->econ,c)>0){
                     s->ai_on[c]=true;
                     ai_actor_init(&s->ai[c], w, s->econ, c, w->seed ^ (uint32_t)(c*2654435761u));
+                    /* #26bis — LA MÉMOIRE DU SÉCESSIONNISTE : né d'une guerre civile, le
+                     * nouveau pays garde une dent DURABLE contre l'empire père (Flandre vs
+                     * France), qui s'estompe sur des années (opinion_mem). Idempotent par
+                     * ai_on (on ne passe ici qu'UNE fois par naissance) ; un pays né
+                     * autrement (cataclysme §27) n'a pas de bande → pas de rancune. */
+                    for (int i=0;i<s->rs->count;i++){
+                        const Rebellion *rb=&s->rs->list[i];
+                        if (rb->spawned==c && rb->owner!=c){
+                            statecraft_on_secession(s->sc, c, rb->owner);
+                            break;
+                        }
+                    }
                 }
             }
             /* une SÉCESSION a changé des propriétaires CE mois : resynchroniser, sinon

@@ -55,6 +55,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
     ClassDB::bind_method(D_METHOD("country_relations", "country"),   &ScpsWorld::country_relations);
     ClassDB::bind_method(D_METHOD("diplo_options", "target"),        &ScpsWorld::diplo_options);
+    ClassDB::bind_method(D_METHOD("opinion_summary", "country"),     &ScpsWorld::opinion_summary);
     ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
     ClassDB::bind_method(D_METHOD("country_trade", "country"),       &ScpsWorld::country_trade);
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
@@ -514,6 +515,22 @@ Dictionary ScpsWorld::diplo_options(int target) {
     d["would_accept_alliance"]= (bool)(ok && o.would_accept_alliance);
     d["would_accept_pact"]    = (bool)(ok && o.would_accept_pact);
     d["would_accept_peace"]   = (bool)(ok && o.would_accept_peace);
+    return d;
+}
+
+/* #26 — le RÉSUMÉ d'opinion : total courant + composantes (mémoire, statuts, rancune). */
+Dictionary ScpsWorld::opinion_summary(int country) {
+    Dictionary d;
+    ScpsOpinionParts p;
+    if (!sim || scps_opinion_summary(sim, country, &p) != 0) return d;
+    d["total"]   = p.total;
+    d["memory"]  = p.memory;
+    d["ally"]    = p.ally;
+    d["war"]     = p.war;
+    d["vassal"]  = p.vassal;
+    d["pact"]    = p.pact;
+    d["embargo"] = p.embargo;
+    d["rancor"]  = p.rancor;
     return d;
 }
 

@@ -241,6 +241,25 @@ int statecraft_opinion(const Statecraft *sc, int a, int b){
     if (a<0||a>=sc->n_countries||b<0||b>=sc->n_countries) return 0;
     return iclamp((int)(sc->opinion[a][b]+(sc->opinion[a][b]<0?-0.5f:0.5f)), -100, 100);
 }
+/* #26 — le RÉSUMÉ : les composantes de la CIBLE d'opinion de `a` envers `b`. MIROIR EXACT
+ * du bloc opinion de statecraft_tick (garder les deux synchrones si l'un évolue) — l'UI
+ * montre POURQUOI l'opinion est ce qu'elle est (statuts + rancune + mémoire des actes). */
+void statecraft_opinion_parts(const Statecraft *sc, const DiploState *diplo,
+                              int a, int b, OpinionParts *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    if (!sc||a<0||a>=sc->n_countries||b<0||b>=sc->n_countries||a==b) return;
+    out->mem = sc->opinion_mem[a][b];
+    if (diplo){
+        DiploStatus st = diplo_status(diplo,a,b);
+        if      (st==DIPLO_ALLIED) out->ally =  tune_f("OPINION_ALLY",50.f);
+        else if (st==DIPLO_WAR)    out->war  = -tune_f("OPINION_WAR",60.f);
+        if (diplo_suzerain(diplo,a)==b || diplo_suzerain(diplo,b)==a) out->vassal = tune_f("OPINION_VASSAL",30.f);
+        if (diplo_trade_pact(diplo,a,b)) out->pact = tune_f("OPINION_PACT",15.f);
+        out->rancor = -tune_f("OPINION_RANCOR_W",8.f) * diplo_rancor(diplo,a,b);
+    }
+    if (intertrade_embargoed(a,b)) out->embargo = -tune_f("OPINION_EMBARGO",25.f);
+}
 static int staff_cap(const Statecraft *sc, int cid){
     int c = SC_BASE_DIPLOMATS + (int)(sc->influence[cid]/DIP_PER_INFLUENCE);
     return iclamp(c, SC_BASE_DIPLOMATS, SC_MAX_DIPLOMATS);
@@ -279,6 +298,16 @@ void statecraft_on_betrayal(Statecraft *sc, int cid){
     float bet = tune_f("OPINION_MEM_BETRAYAL",35.f), cap = tune_f("OPINION_MEM_CAP",100.f);
     for (int b=0;b<sc->n_countries;b++) if (b!=cid)
         sc->opinion_mem[b][cid] = clampf(sc->opinion_mem[b][cid]-bet, -cap, cap);
+}
+void statecraft_on_secession(Statecraft *sc, int child, int parent){
+    /* #26bis — le pays NÉ D'UNE GUERRE CIVILE aime moins l'empire père (Flandre vs France) :
+     * même canal que la trahison — mémoire DURABLE (opinion_mem), s'estompe sur des années
+     * (OPINION_MEM_DECAY). UN SEUL SENS : c'est le sécessionniste qui porte la plaie.
+     * Bornes SCPS_MAX_COUNTRY (pas n_countries) : le fils vient de naître, le compteur
+     * statecraft peut encore retarder d'un tick sur le monde. */
+    if (!sc||child<0||child>=SCPS_MAX_COUNTRY||parent<0||parent>=SCPS_MAX_COUNTRY||child==parent) return;
+    float sec = tune_f("OPINION_MEM_SECESSION",45.f), cap = tune_f("OPINION_MEM_CAP",100.f);
+    sc->opinion_mem[child][parent] = clampf(sc->opinion_mem[child][parent]-sec, -cap, cap);
 }
 
 /* ---- Missions ---------------------------------------------------------- */

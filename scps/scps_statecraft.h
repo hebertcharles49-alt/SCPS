@@ -128,6 +128,18 @@ int  statecraft_influence      (const Statecraft *sc, int cid);          /* 0..1
 float statecraft_influence_flux(const Statecraft *sc, const WorldEconomy *econ,
                                 const WorldProsperity *wp, int cid);
 int  statecraft_opinion        (const Statecraft *sc, int a, int b);     /* −100..100 */
+
+/* ---- #26 — le RÉSUMÉ d'opinion (UI) : les COMPOSANTES de la cible d'opinion de `a`
+ * envers `b` — mémoire d'actes (durable) + modificateurs de STATUT actifs. L'opinion
+ * COURANTE (statecraft_opinion) CONVERGE vers leur somme (lissage SC_OPINION_RATE) :
+ * total ≠ somme en transitoire, c'est voulu. Mêmes lectures que le bloc du tick. */
+typedef struct {
+    float mem;                                /* mémoire des actes (trahison, sécession…) */
+    float ally, war, vassal, pact, embargo;   /* statuts actifs (0 = inactif) */
+    float rancor;                             /* rivalité territoriale (−) */
+} OpinionParts;
+void statecraft_opinion_parts(const Statecraft *sc, const DiploState *diplo,
+                              int a, int b, OpinionParts *out);
 int  statecraft_missions_cap   (const Statecraft *sc, int cid);          /* plafond simultané */
 int  statecraft_missions_active(const Statecraft *sc, int cid);
 int  statecraft_agitation      (const Statecraft *sc, int region);       /* 0..100 soutenue */
@@ -136,6 +148,9 @@ bool statecraft_revolt_fired   (const Statecraft *sc, int region);
 /* ---- Événements qui déplacent l'Influence (la réputation suit l'acte) --- */
 void statecraft_on_accord_kept(Statecraft *sc, int cid);   /* alliance tenue, paix honorée */
 void statecraft_on_betrayal   (Statecraft *sc, int cid);   /* trahir un allié : chute nette */
+/* #26bis — la MÉMOIRE DU SÉCESSIONNISTE : le pays né d'une guerre civile garde une dent
+ * DURABLE contre l'empire père (opinion_mem fils→père ; s'estompe comme la trahison). */
+void statecraft_on_secession  (Statecraft *sc, int child, int parent);
 
 /* ---- Missions : occupe un agent pendant des JOURS ---------------------- *
  * false si le vivier est saturé (plafond d'Influence) ou la cible invalide.  */

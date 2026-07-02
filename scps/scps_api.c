@@ -875,6 +875,27 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     return 1;
 }
 
+/* #26 — le RÉSUMÉ D'OPINION : ce que `country` pense du JOUEUR, décomposé (l'opinion
+ * courante converge vers la somme des composantes — statecraft_opinion_parts). */
+int scps_opinion_summary(ScpsSim *s, int country, ScpsOpinionParts *out){
+    if (!out) return -1;
+    memset(out, 0, sizeof *out);
+    if (!s || !s->ready) return -1;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    if (p<0 || p>=s->w->n_countries || country<0 || country>=s->w->n_countries || country==p) return -1;
+    OpinionParts pp;
+    statecraft_opinion_parts(s->sim.sc, s->sim.dp, country, p, &pp);
+    out->total   = statecraft_opinion(s->sim.sc, country, p);
+    out->memory  = (int)(pp.mem  + (pp.mem<0.f ? -0.5f : 0.5f));
+    out->ally    = (int)(pp.ally    + 0.5f);
+    out->war     = (int)(pp.war     - 0.5f);
+    out->vassal  = (int)(pp.vassal  + 0.5f);
+    out->pact    = (int)(pp.pact    + 0.5f);
+    out->embargo = (int)(pp.embargo - 0.5f);
+    out->rancor  = (int)(pp.rancor  - 0.5f);
+    return 0;
+}
+
 /* §3 — LÉGALITÉ de construction PAR RÉGION (le roster `debloque` gate la TECH ; ici la RÉGION+l'OR). */
 int scps_build_legal(ScpsSim *s, int region, int edifice){
     if (!s || !s->ready || edifice<0 || edifice>=EDIFICE_COUNT) return 0;

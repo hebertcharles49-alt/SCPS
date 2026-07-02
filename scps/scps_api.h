@@ -297,6 +297,20 @@ typedef struct {
     int would_accept_peace;     /* le vis-à-vis CÉDERAIT (score de guerre / épuisement) */
 } ScpsDiploOptions;
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
+
+/* ── le RÉSUMÉ D'OPINION (#26) : POURQUOI ce pays nous voit ainsi. `total` = l'opinion
+ * COURANTE ±100 (lissée) ; le reste = les COMPOSANTES de la cible vers laquelle elle
+ * converge : la MÉMOIRE des actes (durable — trahison, sécession d'une guerre civile —
+ * s'estompe sur des années) + les modificateurs de STATUT (0 = inactif) + la rancune
+ * territoriale. Des nombres tangibles, membrane tenue. */
+typedef struct {
+    int total;                                /* opinion courante ±100 */
+    int memory;                               /* mémoire des actes (±, durable) */
+    int ally, war, vassal, pact, embargo;     /* statuts actifs (0 si inactif) */
+    int rancor;                               /* rivalité territoriale (−) */
+} ScpsOpinionParts;
+/* ce que `country` pense du JOUEUR, décomposé. 0 rempli · -1 cible invalide. */
+int scps_opinion_summary(ScpsSim *s, int country, ScpsOpinionParts *out);
 /* §3 — LÉGALITÉ de CONSTRUCTION par RÉGION : 1 si le joueur peut bâtir `edifice` dans `region`
  * MAINTENANT (non bloqué par le palier ET payable au crédit). Le roster (debloque) gate la TECH ;
  * ce prédicat gate la RÉGION + l'OR. region<0 ⇒ capitale. */

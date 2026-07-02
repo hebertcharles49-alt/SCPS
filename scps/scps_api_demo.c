@@ -240,6 +240,23 @@ int main(int argc, char **argv){
            scps_feed_poll(s2, last, fe, 32)==0);
     }
 
+    /* ── RÉSUMÉ D'OPINION (#26) : la décomposition — une cible EN GUERRE porte la
+     *    composante guerre, le total reste borné ±100. ── */
+    {
+        ScpsOpinionParts op;
+        int tgt=-1;
+        for (int c=0;c<scps_country_count(s2) && tgt<0;c++){
+            ScpsOpinionParts t;
+            if (scps_opinion_summary(s2,c,&t)==0 && t.war<0) tgt=c;
+        }
+        ok("résumé d'opinion : une cible EN GUERRE porte la composante guerre (<0)", tgt>=0);
+        if (tgt>=0){
+            scps_opinion_summary(s2,tgt,&op);
+            ok("résumé d'opinion : total borné ±100 et composante guerre négative",
+               op.total>=-100 && op.total<=100 && op.war<0);
+        }
+    }
+
     /* ── COLONISATION (le verbe qui manquait au front — charte : « le joueur colonise
      *    n'importe quelle province ») : compter → coloniser une VIERGE légale → drain → +1. ── */
     {
