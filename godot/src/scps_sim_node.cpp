@@ -70,6 +70,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_budget", "country"),      &ScpsWorld::country_budget);
     ClassDB::bind_method(D_METHOD("budget_summary", "country"),      &ScpsWorld::budget_summary);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
+    ClassDB::bind_method(D_METHOD("country_factions", "country"),    &ScpsWorld::country_factions);
     ClassDB::bind_method(D_METHOD("player_build", "edifice", "region"), &ScpsWorld::player_build, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("player_recruit", "unit"),         &ScpsWorld::player_recruit);
     ClassDB::bind_method(D_METHOD("player_set_levy", "level"),       &ScpsWorld::player_set_levy);
@@ -786,6 +787,28 @@ Dictionary ScpsWorld::mission_info(int country) {
     d["reward_qty"]  = m.reward_qty;
     d["issued_year"] = m.issued_year;
     d["done"]        = (bool)m.done;
+    return d;
+}
+
+/* LES FACTIONS du pays (spectre d'éthos interne) : {list:[{name,part,grief,dominant}],
+ * coup 0-100, corruption 0-100}. Lecture pure (sidebar). */
+Dictionary ScpsWorld::country_factions(int country) {
+    Dictionary d;
+    Array list;
+    ScpsFaction f[8];
+    int coup = 0, cor = 0;
+    int n = sim ? scps_country_factions(sim, country, f, 8, &coup, &cor) : 0;
+    for (int i = 0; i < n; i++) {
+        Dictionary e;
+        e["name"]     = String::utf8(f[i].name);
+        e["part"]     = f[i].part;
+        e["grief"]    = f[i].grief;
+        e["dominant"] = (bool)f[i].dominant;
+        list.push_back(e);
+    }
+    d["list"] = list;
+    d["coup"] = coup;
+    d["corruption"] = cor;
     return d;
 }
 

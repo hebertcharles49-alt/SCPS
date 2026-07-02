@@ -655,6 +655,18 @@ typedef struct {
 } ScpsMission;
 void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out);
 
+/* ---- FACTIONS (le spectre d'éthos interne — §9 UI) --------------------- *
+ * La distribution EFFECTIVE (groupes + stance des leviers), la rancœur par
+ * faction, la dominante ; + la tension de COUP et la CORRUPTION (capture). */
+typedef struct {
+    const char *name;    /* mot résolu (faction_name — membrane) */
+    int  part;           /* 0-100 : part du spectre effectif */
+    int  grief;          /* 0-100 : rancœur (couve un coup) */
+    int  dominant;       /* 0/1 : donne la direction (l'éthos effectif) */
+} ScpsFaction;
+int scps_country_factions(ScpsSim *s, int cid, ScpsFaction *out, int max,
+                          int *coup, int *corruption);
+
 /* ====================================================================== */
 /* CRÉATEUR DE CULTURE (façon Stellaris) — le JOUEUR compose son empire :   */
 /* un HÉRITAGE (la lignée → les NOMS) · un ÉTHOS (les valeurs → le nom du    */

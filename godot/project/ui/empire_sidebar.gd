@@ -141,6 +141,83 @@ func _draw() -> void:
 			y += 16
 		y += 6
 
+	# ── COUR & FACTIONS : influence · bonheur par classe · le spectre d'éthos interne ──
+	y = VKit.section(self, x, y, "COUR & FACTIONS")
+	var ci: Dictionary = w.country_info(me)
+	var dm: Dictionary = w.country_demo(me) if w.has_method("country_demo") else {}
+	UIKit.draw_icon(self, "politics_crown", Vector2(x, y - 2), 14)
+	VKit.text(self, Vector2(x + 18, y), VKit.COL_PARCH, "Influence %d" % int(ci.get("influence", 0)), VKit.FS_SMALL)
+	# BONHEUR : la satisfaction des trois classes (J·B·N)
+	var cls: Array = dm.get("classes", [])
+	if cls.size() >= 3:
+		var sat_avg := 0.0
+		var wsum := 0.0
+		for cl in cls:
+			var p := float(cl.get("pop", 0))
+			sat_avg += float(cl.get("satisfaction", 0)) * p
+			wsum += p
+		sat_avg = sat_avg / maxf(wsum, 1.0)
+		UIKit.draw_icon(self, "happiness_medallion", Vector2(x + 128, y - 2), 14)
+		VKit.text(self, Vector2(x + 146, y), VKit.sense(clampf(sat_avg / 100.0, 0.0, 1.0)),
+			"Bonheur %d %%" % int(round(sat_avg)), VKit.FS_SMALL)
+		y += 15
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+			"J %d · B %d · N %d" % [int(cls[0].get("satisfaction", 0)),
+				int(cls[1].get("satisfaction", 0)), int(cls[2].get("satisfaction", 0))], VKit.FS_SMALL)
+	y += 17
+	if w.has_method("country_factions"):
+		var fx: Dictionary = w.country_factions(me)
+		for fe in fx.get("list", []):
+			var part := int(fe.get("part", 0))
+			if part <= 2 and not bool(fe.get("dominant", false)):
+				continue                          # les factions marginales n'encombrent pas
+			var nm2 := String(fe.get("name", ""))
+			var dom := bool(fe.get("dominant", false))
+			VKit.text(self, Vector2(x, y), VKit.COL_COPPER if dom else VKit.COL_PARCH,
+				("★ " if dom else "") + nm2, VKit.FS_SMALL)
+			UIKit.bar(self, Rect2(x + 132, y + 2, 80, 8), part)
+			var g := int(fe.get("grief", 0))
+			if g >= 25:
+				VKit.text(self, Vector2(x + 218, y), VKit.sense(0.15), "⚑%d" % g, VKit.FS_SMALL)
+			y += 14
+		var coup := int(fx.get("coup", 0))
+		var cor := int(fx.get("corruption", 0))
+		if coup >= 20 or cor > 0:
+			VKit.text(self, Vector2(x, y),
+				VKit.sense(0.15) if coup >= 45 else VKit.COL_DIM,
+				"tension de coup %d · corruption %d" % [coup, cor], VKit.FS_SMALL)
+			y += 15
+	y += 5
+
+	# ── MISSION décennale : le texte + la récompense promise ──
+	if w.has_method("mission_info"):
+		var mi: Dictionary = w.mission_info(me)
+		if bool(mi.get("active", false)):
+			y = VKit.section(self, x, y, "MISSION")
+			var mtxt := String(mi.get("text", ""))
+			# coupe en 2 lignes max à la largeur de la bande
+			while VKit.text_w(mtxt, VKit.FS_SMALL) > (W - 26.0) * 2.0 and mtxt.length() > 10:
+				mtxt = mtxt.substr(0, mtxt.length() - 6) + "…"
+			var line1 := mtxt
+			var line2 := ""
+			if VKit.text_w(mtxt, VKit.FS_SMALL) > W - 26.0:
+				var cut := int(mtxt.length() * (W - 26.0) / maxf(VKit.text_w(mtxt, VKit.FS_SMALL), 1.0))
+				var sp := mtxt.rfind(" ", cut)
+				if sp > 4:
+					line1 = mtxt.substr(0, sp)
+					line2 = mtxt.substr(sp + 1)
+			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, line1, VKit.FS_SMALL)
+			y += 14
+			if line2 != "":
+				VKit.text(self, Vector2(x, y), VKit.COL_PARCH, line2, VKit.FS_SMALL)
+				y += 14
+			var rw := "récompense : %d or" % int(mi.get("reward_gold", 0))
+			var mat := String(mi.get("reward_mat", ""))
+			if mat != "" and float(mi.get("reward_qty", 0)) > 0.0:
+				rw += " + %d %s" % [int(mi.get("reward_qty", 0)), mat]
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, rw + " (an %d)" % int(mi.get("issued_year", 0)), VKit.FS_SMALL)
+			y += 17
+
 	# ── LE LOG : le fil de notifications (persistant, le plus récent en tête) ──
 	y = VKit.section(self, x, y, "JOURNAL")
 	if _log.is_empty():

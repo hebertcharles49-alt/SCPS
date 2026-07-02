@@ -9,7 +9,6 @@ extends Node2D
 
 const UIKit = preload("res://ui/uikit.gd")
 const VKit = preload("res://ui/vkit.gd")
-const SettlementStamps = preload("res://map/settlement_stamps.gd")  ## tampons de peuplement (lot 1, atlas)
 const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
@@ -138,7 +137,6 @@ const GROUND_TINT_BLD := 0.11 ## fraction de teinte du sol mêlée à un BÂTIME
 const GROUND_TINT_DEC := 0.07 ## idem, plus discret, pour le DRESSING (arbres : ne pas mudder les verts)
 # FONDATION : dalle de terre battue (diamant iso 2:1) sous chaque centre/bâtiment → l'édifice REPOSE sur
 # le terrain (fin du « posé là » : l'art n'a pas de base baked). Teintée au sol local (fond FORT).
-const FOUND_DIR := "res://assets/scps/pack/foundations/"
 const FOUND_BASE := Color(0.98, 0.95, 0.90, 1.0)    ## terre claire ; la dalle DOIT se voir autour du pied
 const GROUND_TINT_FOUND := 0.18                     ## se mêle au sol mais reste LISIBLE (terre battue)
 const FOUND_W_MULT := 2.1                            ## dalle nettement plus large que le bâti → les bords débordent
@@ -158,7 +156,6 @@ var _region_centre := {}  ## région colonisée → TERRAIN du centre-ville (pla
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
 var _region_seat := {}    ## région colonisée → SIÈGE du tampon : cellule INTÉRIEURE de province (jamais sur une jonction)
-var _stamp_tex := {}      ## id de tampon → Texture2D (cache ; chargé paresseux, fallback Image.load)
 var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cache)
 var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
 var _dressing_dirty := true ## la géo a changé (génération/chargement) → re-semer le dressing
@@ -300,7 +297,6 @@ const MAIN_ST_LEN := 9.0         ## longueur de la RUE PRINCIPALE (vers le sud/a
 const ROADS_IN_SHADER := true    ## les routes sont rendues au niveau TERRAIN (iso_blend) → overlay muet
 const DRAW_BRIDGES := true        ## asset pont réparé (alpha OK) → ponts réactivés
 const USE_ROAD_TILES := true
-const ROUTE_TILE_DIR := "res://assets/scps/pack/iso_tiles/"
 const ROUTE_GRID_K := 5          ## DOIT égaler map_view.TILE_K (cellules-monde par losange)
 const ROUTE_SURFACE := "road_cobble"
 const ROUTE_SPLAT_EXP := 1.6     ## extension des arêtes CONNECTÉES (chevauchement du voisin → continuité)
@@ -314,7 +310,6 @@ var _route_meshes := {}          ## masque → ArrayMesh : splat UNIDIRECTIONNEL
 # ── PONTS (kit modulaire RGBA) : là où une route franchit un FLEUVE (le moteur l'y route déjà), on
 # pose start→span×N→end en overlay AU-DESSUS de l'eau. Orientation EW (horizontal écran) / NS (vertical)
 # selon la direction du franchissement. Sprite 384² centré sur le centre de la tuile-route (losange). ──
-const BRIDGE_DIR := "res://assets/scps/pack/bridges/"
 var _bridge_tex := {}            ## "ew_start".."ns_end" → Texture2D
 var _bridges := []               ## [{tex, tl:Vector2(iso coin haut-gauche), sz:float}]
 var _bridges_dirty := true
@@ -2055,22 +2050,6 @@ func _draw_iso(w, mv: Node2D) -> void:
 				# §27 : l'anneau d'épicentre DOIT se lire au plan large (drame global) ; trait borné, le rayon de pulse reste /zoom.
 				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), _w(zoom, 0.35, 1.2, 2.4), true)
 
-## charge (paresseux) un TAMPON de peuplement par id → Texture2D. `load()` (importé) puis repli Image.load
-## (PNG brut, robuste si l'import n'a pas tourné). Cache (y compris le null) → pas de rechargement par frame.
-func _stamp_get(id: String) -> Texture2D:
-	if _stamp_tex.has(id):
-		return _stamp_tex[id]
-	var path := "res://art/map_stamps/lot1/assets_alpha/%s.png" % id
-	var tex: Texture2D = null
-	if ResourceLoader.exists(path):
-		tex = load(path)
-	if tex == null:
-		var img := Image.new()
-		if img.load(path) == OK:
-			tex = ImageTexture.create_from_image(img)
-	_stamp_tex[id] = tex
-	return tex
-
 ## ── L'URBANISTE : villes PROCÉDURALES à l'encre, POSÉES SUR LA ROUTE ──────────────────
 ## L'outil (display-only) qui remplace les tampons : chaque bourg est un AMAS déterministe
 ## de petites maisons à pignon (murs crème, toits brun-rouge, cerne d'encre — le langage
@@ -2629,8 +2608,6 @@ func _dress_get(id: String) -> Texture2D:
 	if tex == null:
 		tex = _dress_load("res://art/map_stamps/lot4_easter_eggs/assets_alpha/%s.png" % id)
 	if tex == null:
-		tex = _dress_load("res://art/map_stamps/lot5_kcd/oriented_16/forests/%s.png" % id)   # lot 5 : masses de forêt
-	if tex == null:
 		tex = _dress_load("res://art/map_stamps/lot6_da/%s.png" % id)   # lot 6 : singles individuels (arbres/sol)
 	if tex == null:
 		tex = _dress_load("res://art/map_stamps/lot6_front32/%s.png" % id)   # front32 : bâtiments (élévations)
@@ -2661,8 +2638,6 @@ func _dress_load(path: String) -> Texture2D:
 ## taille à l'ÉCRAN (px) d'une marque selon sa famille (montagnes grandes, herbe de plaine petite).
 func _dress_size(id: String) -> float:
 	if id.begins_with("sea_serpent"): return 84.0          # lot 4 : serpent (largeur ×2 au tracé → 2:1)
-	if id.begins_with("forest_mass"): return 54.0          # lot 5 : MASSE de canopée (grande, remplit le bloc)
-	if id.begins_with("forest_edge"): return 44.0          # lot 5 : lisière allongée
 	if id.begins_with("lot6_broadleaf") or id.begins_with("lot6_conifer"): return 18.0   # lot 6 : arbre isolé (registre canopée)
 	if id.begins_with("lot6_ground"): return 22.0          # lot 6 : détail de sol (buisson/rocher/herbe)
 	if id.begins_with("mountain_range"): return 50.0

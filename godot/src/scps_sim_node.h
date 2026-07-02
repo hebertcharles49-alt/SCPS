@@ -108,6 +108,7 @@ public:
     Array      country_budget(int country);            /* budget : postes de flux de l'année (signés) */
     Dictionary budget_summary(int country);            /* budget : or · revenus · dépenses · net · crédit · prêteur */
     Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année */
+    Dictionary country_factions(int country);          /* spectre de factions : parts/griefs/dominante + coup/corruption */
 
     /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */
     bool       player_build(int edifice, int region); /* enfile un chantier (region<0 ⇒ capitale) ; false = file pleine/hors-domaine */

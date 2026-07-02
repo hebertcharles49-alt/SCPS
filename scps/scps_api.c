@@ -17,6 +17,7 @@
 #include "scps_render.h"    /* render_map, RenderParams, ViewMode */
 #include "scps_tune.h"      /* tune_init (lit SCPS_TUNE une fois) */
 #include "scps_readout.h"   /* LA MEMBRANE : province_readout/country_readout → mots */
+#include "scps_factions.h"  /* le SPECTRE de factions (sidebar : parts/griefs/coup/corruption) */
 #include "scps_lang.h"      /* tr() : noms de conseillers (StrId) → mot */
 #include "scps_provlog.h"   /* journal d'évènements provincial */
 #include "scps_heritage.h"   /* CRÉATEUR DE CULTURE : héritages, traditions, override joueur */
@@ -1457,6 +1458,31 @@ int scps_diplo_cd(const ScpsSim *s){
     if (!s || !s->ready) return 0;
     int left = s->sim.diplo_ready_day - s->sim.day;
     return left>0 ? left : 0;
+}
+/* LES FACTIONS d'un pays (le spectre d'éthos interne, §9 UI) : la distribution
+ * EFFECTIVE (groupes + stance des leviers), la RANCŒUR par faction, la faction
+ * DOMINANTE, la TENSION DE COUP et la CORRUPTION (capture de l'État). Mots résolus
+ * (faction_name — membrane), parts en 0-100. Lecture pure. Renvoie n (≤ max). */
+int scps_country_factions(ScpsSim *s, int cid, ScpsFaction *out, int max,
+                          int *coup, int *corruption){
+    if (coup) *coup = 0;
+    if (corruption) *corruption = 0;
+    if (!s || !s->ready || !out || max<=0 || cid<0 || cid>=s->w->n_countries) return 0;
+    float wgt[FAC_COUNT];
+    EthosFaction dom = faction_effective_distribution(s->w, s->sim.econ, cid, wgt);
+    int n = FAC_COUNT < max ? FAC_COUNT : max;
+    for (int f=0; f<n; f++){
+        out[f].name     = faction_name((EthosFaction)f);
+        out[f].part     = (int)(wgt[f]*100.f + 0.5f);
+        out[f].grief    = (int)(faction_grievance(cid, (EthosFaction)f)*100.f + 0.5f);
+        out[f].dominant = (f == (int)dom) ? 1 : 0;
+    }
+    if (coup){
+        EthosFaction al;
+        *coup = (int)(faction_coup_tension_c(s->w, s->sim.econ, cid, &al)*100.f + 0.5f);
+    }
+    if (corruption) *corruption = faction_corruption_0_100(cid);
+    return n;
 }
 /* total de provinces COLONISÉES (toutes entités) — la SIGNATURE de souveraineté du front
  * (une colonisation intra-région ne bouge pas l'owner agrégé de région : sans ce compte,
