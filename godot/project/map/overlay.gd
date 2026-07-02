@@ -39,10 +39,11 @@ const DRESS_BY_BIOME := {
 	23: ["mountain_single_01", "rocky_outcrop_01"],                          # VOLCAN
 	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02", "forest_mass_conifer_01"],  # HAUTES-TERRES (lot 5 : sapinière)
 	17: ["hill_mark_01", "hill_cluster_01", "rocky_outcrop_01"],             # COLLINES
-	# FORÊTS (lot 2 + MASSES lot 5 — les grandes canopées peintes KCD dominent, les arbres isolés accentuent)
-	12: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_mass_mixed_01", "forest_dense_01", "tree_broadleaf_01"],  # FORÊT
-	13: ["forest_mass_mixed_01", "forest_edge_01", "forest_sparse_01", "tree_broadleaf_01", "tree_pine_01"],                       # BOIS
-	14: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_dense_01", "tree_broadleaf_01"],                          # JUNGLE
+	# FORÊTS — MASSES lot 5 SEULES (ancrées au MONDE + passes denses → canopée CONTINUE qui
+	# s'overlappe ; les arbres ISOLÉS n'y collent plus — ils vivent en plaine et près des bourgs)
+	12: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_mass_mixed_01"],   # FORÊT
+	13: ["forest_mass_mixed_01", "forest_mass_broadleaf_01", "forest_edge_01"],             # BOIS
+	14: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_mass_mixed_01"],   # JUNGLE
 	# PLAINES / PRAIRIE (lot 3 — herbe peinte ; comblent les biomes plats jadis NUS)
 	4:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01", "plain_wind_strokes_01"],  # PLAINES
 	5:  ["plain_sparse_tufts_01", "plain_grass_02"],                         # CHAMPS (épars, pas de cultures)
@@ -75,7 +76,7 @@ const DRESS_DENSITY := {
 ## PASSES SUPPLÉMENTAIRES par biome (marques EN PLUS par cellule de grille) → CANOPÉE dense. Surtout les
 ## forêts (le « densifié » demandé) : 1 + N marques jittées par cellule → couvert continu, pas des arbres isolés.
 const DRESS_EXTRA := {
-	12: 3, 14: 3, 13: 2,        # FORÊT/JUNGLE/BOIS : canopée dense (3-4 marques/cellule)
+	12: 4, 14: 4, 13: 3,        # FORÊT/JUNGLE/BOIS : canopée DENSE (masses monde qui s'overlappent)
 	18: 1, 19: 1, 16: 1,        # relief : un peu plus fourni
 }
 ## LOT 4 — easter eggs RARES (serpents de mer, épaves, récifs, lapins) : placés par une passe à GROS pas.
@@ -1536,7 +1537,15 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if dtex == null:
 				continue
 			var is_egg: bool = d.get("egg", false)
-			var dh := _dress_size(did) * float(d["scale"]) / zoom        # hauteur MONDE (taille écran constante)
+			var dh: float
+			if did.begins_with("forest_mass"):
+				# MASSES DE CANOPÉE : ancrées au MONDE (base ~7.5 cellules, bornes px) → les blocs
+				# s'OVERLAPPENT en forêt continue à TOUS les zooms (fini les patchs discontinus)
+				dh = _w(zoom, 7.5 * float(d["scale"]), 26.0, 96.0)
+			elif did.begins_with("forest_edge"):
+				dh = _w(zoom, 5.5 * float(d["scale"]), 20.0, 70.0)
+			else:
+				dh = _dress_size(did) * float(d["scale"]) / zoom         # hauteur MONDE (taille écran constante)
 			var dw := dh
 			if did.begins_with("sea_serpent"):
 				dw = dh * 2.0                                            # serpent : sprite 2:1 (large)
@@ -1961,11 +1970,13 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 				var ldir := 1.0 if _h1(float(r) * 5.9 + float(li) * 2.7) < 0.5 else -1.0
 				wp = org + axis * (s0 + lsd) + side * (along * ldir)
 			else:
-				# la RUE : deux rangées serrées + un RANG ARRIÈRE clairsemé (30 %)
+				# la RUE : deux rangées + un RANG ARRIÈRE clairsemé (30 %). Les PETITS bourgs
+				# respirent (pas élargi) — le « tas » vient d'un pas trop serré à faible n.
 				var i3 := i2 - nlane
-				var s := (float(i3 / 2) - float((n2 - nlane + 1) / 2 - 1) * 0.5) * 0.78
+				var pas := 0.95 if (n2 - nlane) <= 8 else 0.78
+				var s := (float(i3 / 2) - float((n2 - nlane + 1) / 2 - 1) * 0.5) * pas
 				var back := _h1(float(r) * 4.7 + float(i3) * 1.9) < 0.30
-				var sd := ((1.08 + 0.25 * hh) if back else (0.5 + 0.22 * hh)) * (1.0 if (i3 % 2) == 0 else -1.0)
+				var sd := ((1.12 + 0.25 * hh) if back else (0.52 + 0.24 * hh)) * (1.0 if (i3 % 2) == 0 else -1.0)
 				wp = org + axis * (s + (hv - 0.5) * 0.3) + side * sd
 				extent = maxf(extent, absf(s) + 0.8)
 		else:
@@ -1979,8 +1990,10 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 		# le MONUMENT : posé en retrait de la rue, côté opposé au gros des maisons
 		var lm: Vector2 = (org + side * -0.9) if on_road else ctr
 		houses.append({"w": lm, "s": 0.46, "k": landmark, "v": 0})
-	# ── RELAXATION : 3 passes de séparation (min 0.55 cellule) — plus de chevauchements,
-	#    le plan se TASSE organiquement (le bourg, pas la file indienne). ──
+	# ── RELAXATION : 3 passes de séparation — plus de chevauchements, le plan se TASSE
+	#    organiquement. Les PETITS bourgs se DESSERRENT plus (min-sep élargi) : quelques
+	#    maisons espacées, pas un tas. ──
+	var sep := 0.80 if n <= 8 else 0.58
 	for _it in range(3):
 		for i in range(houses.size()):
 			for j in range(i + 1, houses.size()):
@@ -1988,8 +2001,8 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 				var pj: Vector2 = houses[j]["w"]
 				var dv := pj - pi
 				var d := dv.length()
-				if d < 0.55 and d > 0.001:
-					var push := dv.normalized() * (0.55 - d) * 0.5
+				if d < sep and d > 0.001:
+					var push := dv.normalized() * (sep - d) * 0.5
 					houses[i]["w"] = pi - push
 					houses[j]["w"] = pj + push
 	# ── le CENTRE BÂTI : muraille & clairière suivent la VILLE réelle (pas le siège abstrait
@@ -2122,8 +2135,31 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 		var fi := int(_h1(float(r) * 44.1) * float(n))        # la FORGE : une maison de rue qui fume
 		if fi < houses.size() and int(houses[fi]["k"]) == 0:
 			houses[fi]["f"] = 1
+	# ── la VIE : des ARBRES ISOLÉS (les singles des anciens lots — chassés des blocs de
+	#    forêt, ils vivent ICI) semés au bord de la clairière + un ou deux dans le tissu. ──
+	var nveg := 3 + int(_h1(float(r) * 27.7) * 3.0) + (2 if n >= 13 else 0)
+	for k in range(nveg):
+		var va := TAU * (_h1(float(r) * 15.1 + float(k) * 4.3))
+		var inner: bool = k >= nveg - 2 and n >= 8
+		var vr := (brad * (0.35 + 0.30 * _h1(float(r) * 6.7 + float(k)))) if inner \
+			else (brad + 0.35 + 0.65 * _h1(float(r) * 9.7 + float(k) * 2.1))
+		var vid: String = ["tree_broadleaf_01", "tree_pine_01", "scrub_brush_01"][int(_h1(float(r) * 3.9 + float(k) * 1.7) * 3.0) % 3]
+		houses.append({"w": bc + Vector2(cos(va), sin(va) * 0.85) * vr, "s": 0.30, "k": 6,
+			"v": 0, "id": vid, "sc": 0.8 + 0.5 * _h1(float(r) * 12.3 + float(k))})
 	# tri du FOND vers l'AVANT — APRÈS tous les ajouts (les recouvrements lisent bien)
 	houses.sort_custom(func(a, b): return (a["w"].x + a["w"].y) < (b["w"].x + b["w"].y))
+	# ── la PERSPECTIVE : le FOND rapetisse, l'AVANT grossit (profondeur de vignette) —
+	#    l'échelle par maison suit la profondeur (x+y), posée UNE fois au plan. ──
+	if houses.size() >= 2:
+		var dmin := 1e30
+		var dmax := -1e30
+		for hd1 in houses:
+			var dep: float = (hd1["w"] as Vector2).x + (hd1["w"] as Vector2).y
+			dmin = minf(dmin, dep)
+			dmax = maxf(dmax, dep)
+		for hd1 in houses:
+			var t4 := clampf((((hd1["w"] as Vector2).x + (hd1["w"] as Vector2).y) - dmin) / maxf(dmax - dmin, 0.001), 0.0, 1.0)
+			hd1["ps"] = lerpf(0.80, 1.15, t4)
 	var pal: Array = ROOF_PAL[int(_h1(float(r) * 31.7) * 3.0) % 3]
 	return {"h": houses, "arcs": arcs, "towers": towers, "gates": gates, "ring_c": bc,
 		"gnd": gnd, "fields": fields, "pal": pal,
@@ -2532,7 +2568,7 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 	for hd in town["h"]:
 		if int(hd["k"]) == 0:
 			var wp0: Vector2 = hd["w"]
-			var half0 := _w(zoom, float(hd["s"]), 1.9, 6.5)
+			var half0 := _w(zoom, float(hd["s"]), 1.9, 6.5) * float(hd.get("ps", 1.0))
 			var tilt0 := (_h1(wp0.x * 12.9 + wp0.y * 7.1) - 0.5) * 0.24
 			_house_shadow(mv.iso_pos(wp0.x, wp0.y), half0, tilt0)
 	# 5. les MAISONS (toit deux-tons à la palette du bourg, porte au zoom franc) + MONUMENT
@@ -2540,8 +2576,17 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 	for hd in town["h"]:
 		var wp: Vector2 = hd["w"]
 		var p: Vector2 = mv.iso_pos(wp.x, wp.y)
-		var half := _w(zoom, float(hd["s"]), 1.9, 6.5)     # taille monde, bornée en px écran
+		# taille monde bornée px écran × PERSPECTIVE (le fond rapetisse, l'avant grossit)
+		var half := _w(zoom, float(hd["s"]), 1.9, 6.5) * float(hd.get("ps", 1.0))
 		var kind: int = hd["k"]
+		if kind == 6:
+			# la VIE : un arbre isolé des anciens lots, ancré au sol (base au point)
+			var vtex := _dress_get(String(hd["id"]))
+			if vtex != null:
+				var vh := _w(zoom, 0.95 * float(hd["sc"]), 8.0, 26.0)
+				draw_texture_rect(vtex, Rect2(p - Vector2(vh * 0.5, vh * 0.82), Vector2(vh, vh)),
+					false, Color(1, 1, 1, 0.62))
+			continue
 		if kind > 0:
 			_ink_landmark(p, half * 1.35, kind, zoom, pen)
 		else:
