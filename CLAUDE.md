@@ -1350,6 +1350,35 @@
   visuel mapshot (réseau dendritique troncs+affluents aux vallées, mers intérieures, embouchures aux côtes).
   **SAVE non bumpé** (River struct + champs Cell inchangés ; le monde se régénère de la graine). ⊕ Le plan
   Gleba est COMPLET : #1 érosion · #2/#4 pré-existants · #3 lacs · #5 biomes · rivières émergentes.
+- **VIEWER DÉDOUBLONNÉ + AUDIT v48 + CARTE JOUABLE (2026-07-02, 4 commits)** : le but est d'intégrer
+  viewer.c DANS Godot — en attendant il cesse de FORKER le moteur. **(a) Dedup** (−856 lignes) : le
+  typedef `Sim`, le `sim_day` local (divergent : sans religion/hameaux/drain joueur/fix fuite warhost)
+  et le bloc save v35 FOSSILE sont SUPPRIMÉS ; le viewer tient le MÊME `scps_sim` + `scps_save` que
+  chronique/Godot (gates joueur miroir de la façade : `human_player` · `ai_on[joueur]=false` ·
+  `warhost/econ_set_human`) ⇒ **slots de save INTERCHANGEABLES viewer ↔ Godot**. Il builde ICI :
+  `make WIN=1 scps` (le flag manuel — WINLIBS/AUDIO_LIBS Windows). Harnais `--savetest`/`--fuzztest`
+  = la vérif. **Bug moteur PRIS par le savetest (touchait Godot)** : `scps_load_game` écrasait
+  `region_rep_prov` (état SÉRIALISÉ, figé genèse) d'un recalcul à l'état courant (« plus peuplée »
+  bouge avec la pop) → sauve-recharge ≠ continuation ; fix `econ_rebuild_prov_adj` (ne rebâtit que le
+  pointeur tas) + rep borné par `save_sane`. **(b) Audit** : ⚠ **SAVE BUMP 47→48** — section WILD
+  (compteurs de ralliement des hameaux : un load en processus frais les remettait à 0 → ralliement
+  retardé ≤8 ans) + `SaveMisc.player_age_engaged`. **CMD_AGE_ENGAGE** (§7) : l'IA s'engage auto au
+  lever d'un âge, le joueur CHOISIT — verbe journalisé + façade `scps_age_state`/`scps_player_age_
+  engage` + chip topbar AMBRE « Engager : <âge> » + probe `age_audit` (round-trip OK an 20). **E0.4
+  ENTERRÉ** (`labor_publish_capitals`/`labor_region_cap_tier` + branche lectrice revolt) : depuis
+  P-arc la capitale monte GRATUITEMENT au déblocage ⇒ le registre « tier payé » ne divergeait plus du
+  repli pop-derived — byte-identique (golden INTACT). **(c) La carte Godot devient JOUABLE** (mesuré
+  par captures avant/après fit·mid·deep) : **LAVIS POLITIQUE** (façade `scps_map_owner` → binding
+  `political_image(pal)`, boucle 512k cellules en C++ — l'aquarelle de territoire sous l'encre, 0.36
+  au fit → 0.15 au zoom : la carte DIT qui tient quoi) · **TRAME DISCIPLINÉE** (joints à deux rives
+  vierges non tracés — `border_segments_col` 0/1 gagne `other` ; LOD 2.2+, plafond 0.24 : fin de la
+  « boue craquelée » sur la terre sauvage) · **SÉLECTION dorée** (`scps_province_border_segments` →
+  contour lissé or au grain de panneau — la régression parchemin résorbée) · **UNE famille de couleur
+  par entité** (`_entity_hue` source unique → encre frontière sat 0.45/val 0.55 · lavis 0.60/0.82 ·
+  jeton d'armée +0.22 · NOM teinté & agrandi 1.35→1.9 — jadis 3 roues indépendantes). golden IDENTIQUE
+  partout · determinism STABLE · savetest A==B · fuzztest 7/7 · api_demo 90 · smoke 8/8 · 0 warning.
+  Doublons d'affichage RESTANTS (assumés, deux fronts) : bseg viewer vs façade borders, teintes SDL vs
+  pigments Godot — se résorbent quand Godot absorbe le reste du viewer.
 
 ## Disciplines non négociables
 
