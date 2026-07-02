@@ -1403,7 +1403,7 @@ int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max){
     int n = feed_poll(after_seq, fe, (max<FEED_CAP)?max:FEED_CAP);
     for (int i=0;i<n;i++){
         out[i].seq = fe[i].seq; out[i].year = fe[i].year;
-        out[i].kind = fe[i].kind; out[i].region = fe[i].region;
+        out[i].kind = fe[i].kind; out[i].region = fe[i].region; out[i].v = fe[i].v;
         out[i].a_name = (fe[i].a>=0 && fe[i].a<s->w->n_countries) ? sz(s->w->country[fe[i].a].name) : "";
         out[i].b_name = (fe[i].b>=0 && fe[i].b<s->w->n_countries) ? sz(s->w->country[fe[i].b].name) : "";
     }

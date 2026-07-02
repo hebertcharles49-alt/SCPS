@@ -52,6 +52,7 @@ static int  g_wild_contact[SCPS_MAX_REG];   /* années de contact PACIFIQUE par 
  * silence au 1er passage, comme provlog_modifier_diff) : un diff raté au chargement
  * coûte UNE notification, jamais un état de jeu. ── */
 static uint8_t g_feed_war[SCPS_MAX_COUNTRY];      /* en guerre avec le joueur ? (diff → GUERRE/PAIX) */
+static int8_t  g_feed_score[SCPS_MAX_COUNTRY];    /* DERNIER score de guerre connu vs c (le verdict de paix) */
 static float   g_feed_balafre[SCPS_MAX_REG];      /* balafre_days précédent (montée → PILLAGE) */
 static uint8_t g_feed_rev[SCPS_MAX_REG];          /* revolt_fired précédent (front montant → RÉVOLTE) */
 static bool    g_feed_primed = false;             /* 1er passage = amorce muette */
@@ -186,10 +187,30 @@ static void sim_campaign_year(Sim *s, World *w) {
      * tombe au fil de l'an et l'attaquant re-cible sans attendre janvier. (Le test
      * de paires de campaign_tick s'évalue désormais 12×/an — deux armées qui se
      * croisent se TROUVENT ; l'ordre frais de projection reste annuel.) */
+    /* FIL D'ÉVÈNEMENTS : observer la BATAILLE RANGÉE du joueur (transition HORS de
+     * FA_BATTLE au fil des mois — gagnée si l'ost tient encore debout, perdue sinon). */
+    int hp_fb = s->human_player;
+    int fb_prev_ph  = (hp_fb>=0 && hp_fb<SCPS_MAX_COUNTRY) ? (int)campaign_phase(s->camp, hp_fb) : (int)FA_IDLE;
+    int fb_prev_loc = (hp_fb>=0 && hp_fb<SCPS_MAX_COUNTRY && s->camp->army[hp_fb].active) ? s->camp->army[hp_fb].loc : -1;
     for (int month=0; month<12; month++){
         if (month==0) sim_campaign_orders(s, w);            /* les ordres frais : annuels (inchangé) */
         sim_campaign_defense(s, w);                          /* L1 : la défense marche À LA RENCONTRE */
         campaign_tick(s->camp, w, s->econ, s->dp, &s->camp_rng, 365.f/12.f);
+        if (hp_fb>=0 && hp_fb<SCPS_MAX_COUNTRY){
+            int ph = (int)campaign_phase(s->camp, hp_fb);
+            if (fb_prev_ph==(int)FA_BATTLE && ph!=(int)FA_BATTLE){
+                bool alive = s->camp->army[hp_fb].active;
+                int foe=-1;                                  /* l'adversaire : une armée ENNEMIE au lieu de l'accrochage */
+                for (int k=0;k<SCPS_MAX_COUNTRY && foe<0;k++){
+                    if (k==hp_fb) continue;
+                    const FieldArmy *en=&s->camp->army[k];
+                    if (en->loc==fb_prev_loc && diplo_status(s->dp,hp_fb,k)==DIPLO_WAR) foe=k;
+                }
+                feed_push(alive?FEED_BATTLE_WON:FEED_BATTLE_LOST, hp_fb, foe, fb_prev_loc, 0);
+            }
+            fb_prev_ph = ph;
+            if (s->camp->army[hp_fb].active) fb_prev_loc = s->camp->army[hp_fb].loc;
+        }
         campaign_release_transports(s->camp, s->navy);       /* les transports rentrent à la rade */
         /* RÉCOLTE (couche sim) : chaque siège mené à terme (taken_region) pose une
          * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
@@ -203,13 +224,13 @@ static void sim_campaign_year(Sim *s, World *w) {
                 if (s->dp->occupier[reg]>=0) g_tot_occ_lifted++;   /* une occupation réellement levée */
                 diplo_liberate(s->dp, s->econ, reg);
                 if (s->human_player>=0 && a->owner==s->human_player)
-                    feed_push(FEED_LIBERATED, a->owner, -1, reg);  /* fil display : MA place reprise */
+                    feed_push(FEED_LIBERATED, a->owner, -1, reg, 0);  /* fil display : MA place reprise */
             } else {
                 int prev_owner=s->econ->region[reg].owner;
                 if (diplo_occupy(s->dp, s->econ, a->owner, reg)){
                     g_tot_occ_posed++;
                     if (s->human_player>=0 && (a->owner==s->human_player || prev_owner==s->human_player))
-                        feed_push(FEED_SIEGE_FALLEN, a->owner, prev_owner, reg);  /* victoire de siège / place perdue */
+                        feed_push(FEED_SIEGE_FALLEN, a->owner, prev_owner, reg, 0);  /* victoire de siège / place perdue */
                 }
             }
             /* L1 — L'ATTAQUANT NE DORT PAS : après la prise, re-cibler — l'armée
@@ -622,23 +643,28 @@ void sim_day(Sim *s, World *w) {
             int hp=s->human_player;
             for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){        /* GUERRE / PAIX (diff de statut) */
                 uint8_t at=(c!=hp && diplo_status(s->dp,hp,c)==DIPLO_WAR)?1:0;
+                if (at){                                                     /* en guerre : suivre le SCORE (le verdict) */
+                    float sc=diplo_war_score(s->dp, hp, c);
+                    g_feed_score[c]=(int8_t)((sc<-100.f)?-100:(sc>100.f)?100:(int)sc);
+                }
                 if (g_feed_primed && at!=g_feed_war[c])
-                    feed_push(at?FEED_WAR_DECLARED:FEED_PEACE, c, hp, -1);
+                    feed_push(at?FEED_WAR_DECLARED:FEED_PEACE, c, hp, -1,
+                              at?0:(int)g_feed_score[c]);                    /* la PAIX porte le score final */
                 g_feed_war[c]=at;
             }
             for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
                 const RegionEconomy *re=&s->econ->region[r];
                 float b=re->balafre_days;                                    /* PILLAGE : la balafre MONTE */
                 if (g_feed_primed && re->owner==hp && b>g_feed_balafre[r]+1.f)
-                    feed_push(FEED_PILLAGE,-1,-1,r);
+                    feed_push(FEED_PILLAGE,-1,-1,r,0);
                 g_feed_balafre[r]=b;
                 uint8_t rv=statecraft_revolt_fired(s->sc,r)?1:0;             /* RÉVOLTE : front MONTANT */
                 if (g_feed_primed && re->owner==hp && rv && !g_feed_rev[r])
-                    feed_push(FEED_REVOLT,-1,-1,r);
+                    feed_push(FEED_REVOLT,-1,-1,r,0);
                 g_feed_rev[r]=rv;
             }
             if (g_feed_primed && s->rs->last_spawned>=0)                     /* SÉCESSION : un pays est né */
-                feed_push(FEED_SECESSION, s->rs->last_spawned, -1, -1);
+                feed_push(FEED_SECESSION, s->rs->last_spawned, -1, -1, 0);
             g_feed_primed=true;
         }
     }
@@ -725,6 +751,7 @@ void sim_init(Sim *s, World *w) {
     /* FIL D'ÉVÈNEMENTS : trackers d'observation remis à plat (l'anneau lui-même est
      * RAZ par provlog_reset ci-dessus) — le 1er passage ré-amorce en silence. */
     memset(g_feed_war, 0, sizeof g_feed_war);
+    memset(g_feed_score, 0, sizeof g_feed_score);
     memset(g_feed_balafre, 0, sizeof g_feed_balafre);
     memset(g_feed_rev, 0, sizeof g_feed_rev);
     g_feed_primed = false;

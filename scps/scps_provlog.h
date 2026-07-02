@@ -61,16 +61,19 @@ const ProvLogEntry *provlog_at(int region, int i); /* i=0 = la PLUS RÉCENTE ; N
 typedef enum {
     FEED_NONE = 0,
     FEED_WAR_DECLARED,   /* la GUERRE : a = l'autre pays, b = le joueur */
-    FEED_PEACE,          /* la PAIX signée : a = l'autre pays, b = le joueur */
+    FEED_PEACE,          /* la PAIX signée : a = l'autre pays · v = SCORE DE GUERRE final
+                          * (±100, point de vue du JOUEUR — le verdict gagné/perdu/blanche) */
     FEED_SIEGE_FALLEN,   /* une place est TOMBÉE : a = le preneur, b = l'ancien tenant, region */
     FEED_LIBERATED,      /* une place REPRISE par les armes : a = le libérateur, region */
     FEED_PILLAGE,        /* une côte/province BALAFRÉE (sac) : region */
     FEED_REVOLT,         /* un soulèvement ÉCLATE : region */
     FEED_SECESSION,      /* un pays NAÎT d'une sécession : a = le nouveau pays */
+    FEED_BATTLE_WON,     /* BATAILLE RANGÉE gagnée : b = l'adversaire (-1 si inconnu), region */
+    FEED_BATTLE_LOST,    /* … perdue (l'ost est brisé) : b = l'adversaire, region */
     FEED_COUNT
 } FeedKind;
-typedef struct { int seq, year, kind, a, b, region; } FeedEntry;
-void feed_push(int kind, int a, int b, int region);       /* write-only (l'an vient de provlog_set_year) */
+typedef struct { int seq, year, kind, a, b, region, v; } FeedEntry;   /* v = valeur libre (score…) */
+void feed_push(int kind, int a, int b, int region, int v);/* write-only (l'an vient de provlog_set_year) */
 int  feed_poll(int after_seq, FeedEntry *out, int max);   /* entrées seq > after_seq, ordre chrono */
 
 #endif

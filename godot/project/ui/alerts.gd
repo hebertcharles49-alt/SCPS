@@ -33,12 +33,14 @@ const FEED_MAX := 8   ## évènements gardés à l'écran (les plus récents ; c
 ## fmt : {a}/{b} = pays · {r} = région · {y} = an.
 const FEED_KINDS := {
 	1: {"icon": "dipl_rivalry",   "col": COL_ARMEE, "fmt": "GUERRE — {a} entre en guerre contre nous (an {y})"},
-	2: {"icon": "dipl_alliance",  "col": COL_ETAT,  "fmt": "PAIX signée avec {a} (an {y})"},
+	2: {"icon": "dipl_alliance",  "col": COL_ETAT,  "fmt": "PAIX signée avec {a} (an {y})"},   # tip enrichi du VERDICT (score {v}) dans _poll_feed
 	3: {"icon": "alert_siege",    "col": COL_ARMEE, "fmt": "Une place est TOMBÉE — {a} occupe la région {r} (an {y})"},
 	4: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "Région {r} REPRISE par nos armes (an {y})"},
 	5: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "PILLAGE — la région {r} a été mise à sac (an {y})"},
 	6: {"icon": "alert_revolt",   "col": COL_ETAT,  "fmt": "RÉVOLTE — un soulèvement éclate en région {r} (an {y})"},
 	7: {"icon": "settlement_cluster", "col": COL_ETAT, "fmt": "SÉCESSION — {a} proclame son indépendance (an {y})"},
+	8: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "BATAILLE GAGNÉE contre {b} en région {r} (an {y})"},
+	9: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "BATAILLE PERDUE contre {b} — l'ost est brisé (région {r}, an {y})"},
 }
 
 var _alerts := []    ## [{icon, col, tip, act, …}] conditions, recalculées à chaque _refresh
@@ -77,6 +79,11 @@ func _poll_feed() -> void:
 		var k: Dictionary = FEED_KINDS[kind]
 		var tip := String(k["fmt"]).replace("{a}", String(ev["a"])).replace("{b}", String(ev["b"])) \
 			.replace("{r}", str(int(ev["region"]))).replace("{y}", str(int(ev["year"])))
+		if kind == 2:
+			# la PAIX porte le SCORE DE GUERRE final (±100, notre point de vue) → le VERDICT
+			var sc := int(ev.get("v", 0))
+			var verdict := "guerre GAGNÉE" if sc >= 10 else ("guerre PERDUE" if sc <= -10 else "paix blanche")
+			tip += " — %s (score %+d)" % [verdict, sc]
 		_events.append({"icon": k["icon"], "col": k["col"], "tip": tip + "  (clic : acquitter)", "seq": int(ev["seq"])})
 	while _events.size() > FEED_MAX:
 		_events.pop_front()   # bornés : les plus récents restent

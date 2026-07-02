@@ -32,12 +32,12 @@ static const signed char JMOD_SIGN[JMOD_COUNT] = { +1, +1, -1, -1, -1 };
 static FeedEntry g_feed[FEED_CAP];
 static int g_feed_seq = 0;    /* seq du DERNIER poussé (0 = fil vide) */
 
-void feed_push(int kind, int a, int b, int region){
+void feed_push(int kind, int a, int b, int region, int v){
     if (kind <= FEED_NONE || kind >= FEED_COUNT) return;
     FeedEntry *e = &g_feed[g_feed_seq % FEED_CAP];
     g_feed_seq++;
     e->seq = g_feed_seq; e->year = g_year; e->kind = kind;
-    e->a = a; e->b = b; e->region = region;
+    e->a = a; e->b = b; e->region = region; e->v = v;
 }
 int feed_poll(int after_seq, FeedEntry *out, int max){
     if (!out || max <= 0) return 0;

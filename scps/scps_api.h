@@ -452,6 +452,7 @@ int  scps_research_target(ScpsSim *s, float *progress01);
  * scps_provlog.h). Les NOMS sont résolus (membrane). Poll incrémental par seq. */
 typedef struct {
     int seq, year, kind, region;   /* region -1 si non localisé */
+    int v;                         /* valeur libre du kind (FEED_PEACE : SCORE de guerre ±100) */
     const char *a_name, *b_name;   /* pays concernés ("" si -1) */
 } ScpsFeedEvent;
 int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max);
