@@ -78,7 +78,7 @@ const DRESS_EXTRA := {
 ## ── LA CANOPÉE COMPOSÉE (lot 6) : la forêt est un PEUPLEMENT d'arbres individuels — pas
 ## fin (5 cellules), ancrés au MONDE (la forêt reste pleine à tous les zooms), ancrage au
 ## PIED + tri de profondeur (ils s'empilent comme une canopée), essences par biome. ──
-const CANOPY_STEP := 3
+const CANOPY_STEP := 2
 const CANOPY_BY_BIOME := {
 	12: ["lot6_broadleaf_01", "lot6_broadleaf_03", "lot6_broadleaf_07", "lot6_broadleaf_08", "lot6_broadleaf_13", "lot6_broadleaf_15"],  # FORÊT : chênes pleins
 	13: ["lot6_broadleaf_02", "lot6_broadleaf_05", "lot6_broadleaf_09", "lot6_broadleaf_10", "lot6_broadleaf_12", "lot6_conifer_03"],    # BOIS : plus clair, mêlé
@@ -163,6 +163,9 @@ var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cach
 var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
 var _dressing_dirty := true ## la géo a changé (génération/chargement) → re-semer le dressing
 var _dress_clear := []    ## [[Vector2, r²]] — la CLAIRIÈRE des bourgs (aucune marque dedans)
+var _canopy_batches := [] ## [{mm: MultiMesh, tex}] — la canopée servie en MULTIMESH (un draw/essence),
+                          ## rebâtie avec le dressing ; instances en espace MONDE (coût par-frame nul)
+var _canopy_mesh: ArrayMesh = null ## quad partagé des arbres (pied à l'origine, y vers le bas)
 var nature_mode := false  ## MODE NATURE : on ne montre QUE le terrain + le dressing (pas de frontières/
                           ## villes/routes/armées/noms) — la carte « vierge », touche N. Display-only.
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
@@ -1692,10 +1695,15 @@ func _draw_iso(w, mv: Node2D) -> void:
 		draw_texture_rect(_pol_tex, Rect2(p0, p1 - p0), false, Color(1, 1, 1, wash_a))
 
 	# ── DRESSING DE TERRAIN (lot 2) : marques de biome (relief/végétation/zones), SOUS tout le reste. ──
+	if _dressing_dirty:
+		_build_dressing()
+		_dressing_dirty = false
+	# ── LA CANOPÉE (MultiMesh, un draw call par essence) : même seuil que le décor — au
+	#    plan large le peuplement dense virerait au BRUIT (35k specks sur le parchemin). ──
 	if zoom >= DECOR_ZOOM_MIN:
-		if _dressing_dirty:
-			_build_dressing()
-			_dressing_dirty = false
+		for b in _canopy_batches:
+			draw_multimesh(b["mm"], b["tex"])
+	if zoom >= DECOR_ZOOM_MIN:
 		var dress_col := Color(1, 1, 1, DRESS_ALPHA)
 		var egg_col := Color(1, 1, 1, EGG_ALPHA)
 		for d in _dressing:
@@ -1709,25 +1717,12 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if dtex == null:
 				continue
 			var is_egg: bool = d.get("egg", false)
-			var is_canopy: bool = d.get("wa", false)
-			var dh: float
-			if is_canopy:
-				# ARBRE DE CANOPÉE : ancré au MONDE (~1.6 cellule — l'échelle SYMBOLE d'atlas,
-				# un arbre ≈ 2-3 maisons, jamais une ville), bornes px ; le NOMBRE fait le
-				# massif (pas fin + doublement), les individus s'empilent (tri de profondeur)
-				dh = _w(zoom, 1.6 * float(d["scale"]), 6.0, 20.0)
-			else:
-				dh = _dress_size(did) * float(d["scale"]) / zoom         # hauteur MONDE (taille écran constante)
+			var dh := _dress_size(did) * float(d["scale"]) / zoom        # hauteur MONDE (taille écran constante)
 			var dw := dh
 			if did.begins_with("sea_serpent"):
 				dw = dh * 2.0                                            # serpent : sprite 2:1 (large)
-			if is_canopy:
-				# ancrage au PIED (le tronc au point) : l'empilement lit comme une canopée
-				draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.85), Vector2(dw, dh)), false,
-					d.get("tint", dress_col))
-			else:
-				draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
-					egg_col if is_egg else d.get("tint", dress_col))
+			draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
+				egg_col if is_egg else d.get("tint", dress_col))
 	# MODE NATURE : juste le terrain + le dressing — on saute frontières, routes, villes, armées, noms, §27.
 	if nature_mode:
 		return
@@ -2599,20 +2594,24 @@ func _build_dressing() -> void:
 				_try_place_dress(i, x, y, bio, rf, sw, sh)
 			x += DRESS_SPACING
 		y += DRESS_SPACING
-	# ── LA CANOPÉE COMPOSÉE : passe dédiée à PAS FIN sur les biomes de forêt — chaque
-	#    arbre est un INDIVIDU (lot 6) ancré au monde ; ils s'empilent en peuplement. ──
+	# ── LA CANOPÉE COMPOSÉE : passe dédiée à PAS FIN sur les biomes de forêt — chaque arbre
+	#    est un INDIVIDU (lot 6) en espace MONDE, servi en MULTIMESH (un draw call par essence :
+	#    des dizaines de milliers d'instances pour un coût par-frame NUL — jamais dans _dressing). ──
+	var buckets := {}                          # id d'essence → [[pos monde, hauteur monde, teinte], …]
 	var ci := 500000
-	var cy := 2
+	var cy := 1
 	while cy < sh:
-		var cx := 2
+		var cx := 1
 		while cx < sw:
 			ci += 1
-			var jx := int((_h1(float(ci) * 1.9) - 0.5) * float(CANOPY_STEP))
-			var jy := int((_h1(float(ci) * 3.7) - 0.5) * float(CANOPY_STEP))
-			var px := clampi(cx + jx, 0, sw - 1)
-			var py := clampi(cy + jy, 0, sh - 1)
+			# jitter FRACTIONNAIRE (jamais tronqué en cellule) : au pas fin, un jitter entier
+			# retombe pile sur la grille → colonnes d'arbres visibles. On sème en float.
+			var fx := clampf(float(cx) + (_h1(float(ci) * 1.9) - 0.5) * float(CANOPY_STEP) * 1.2, 0.0, float(sw - 1))
+			var fy := clampf(float(cy) + (_h1(float(ci) * 3.7) - 0.5) * float(CANOPY_STEP) * 1.2, 0.0, float(sh - 1))
+			var px := int(fx)
+			var py := int(fy)
 			# VOTE DE VOISINAGE (3 échantillons) : la carte de biomes est BRUITÉE à la cellule —
-			# un seul point troue le peuplement. 3/3 = cœur PLEIN (+2e arbre), 1/3 = lisière plumée.
+			# un seul point troue le peuplement. 3/3 = cœur PLEIN (+3 individus), 1/3 = lisière plumée.
 			var hits := 0
 			var bhit := -1
 			for off in [[0, 0], [3, 1], [-2, 3]]:
@@ -2636,26 +2635,29 @@ func _build_dressing() -> void:
 					var tt2: Variant = _dress_tint(cid)
 					var tc: Color = tt2 if tt2 != null else Color(1, 1, 1, 0.6)
 					var vj := 0.90 + 0.20 * _h1(float(ci) * 9.3)   # variation de VALEUR par arbre (vie)
-					_dressing.append({"pos": Vector2(px, py), "id": cid,
-						"scale": 0.72 + 0.55 * _h1(float(ci) * 11.7),
-						"tint": Color(tc.r * vj, tc.g * vj, tc.b * vj, tc.a), "wa": true})
-					# cœur & mi-lisière : des individus EN PLUS — des arbres PETITS demandent le NOMBRE
-					# (2e à 2/3, 2e + 3e à 3/3 ; offsets hashés distincts)
-					var extra := (hits - 1) if not skip else 0
+					if not buckets.has(cid):
+						buckets[cid] = []
+					buckets[cid].append([Vector2(fx, fy), 1.6 * (0.72 + 0.55 * _h1(float(ci) * 11.7)),
+						Color(tc.r * vj, tc.g * vj, tc.b * vj, tc.a)])
+					# cœur & mi-lisière : des individus EN PLUS — l'échelle symbole demande le NOMBRE
+					# (+1 à 2/3, +3 au cœur 3/3 ; offsets hashés ±3 cellules = débord organique)
+					var extra: int = [0, 0, 1, 3][hits]
 					for e in range(extra):
 						var eb := float(ci) * (13.1 + 8.6 * float(e))
-						var qx := clampi(px + int((_h1(eb) - 0.5) * 4.0), 0, sw - 1)
-						var qy := clampi(py + int((_h1(eb * 1.7) - 0.5) * 4.0), 0, sh - 1)
-						if not _near_river(rf, qx, qy):
+						var qfx := clampf(fx + (_h1(eb) - 0.5) * 6.0, 0.0, float(sw - 1))
+						var qfy := clampf(fy + (_h1(eb * 1.7) - 0.5) * 6.0, 0.0, float(sh - 1))
+						if not _near_river(rf, int(qfx), int(qfy)):
 							var cid2: String = cids[int(_h1(eb * 1.9) * float(cids.size())) % cids.size()]
 							var vj2 := 0.90 + 0.20 * _h1(eb * 2.3)
-							_dressing.append({"pos": Vector2(qx, qy), "id": cid2,
-								"scale": 0.72 + 0.55 * _h1(eb * 2.9),
-								"tint": Color(tc.r * vj2, tc.g * vj2, tc.b * vj2, tc.a), "wa": true})
+							if not buckets.has(cid2):
+								buckets[cid2] = []
+							buckets[cid2].append([Vector2(qfx, qfy), 1.6 * (0.72 + 0.55 * _h1(eb * 2.9)),
+								Color(tc.r * vj2, tc.g * vj2, tc.b * vj2, tc.a)])
 			cx += CANOPY_STEP
 		cy += CANOPY_STEP
+	_canopy_flush(buckets)                     # → MultiMesh par essence (tri fond→avant interne)
 	_build_easter_eggs(bio, rf, sw, sh)        # lot 4 : serpents/épaves/récifs/lapins (rares)
-	# TRI (bande de profondeur, puis id) : la canopée s'EMPILE du fond vers l'avant (y croissant)
+	# TRI (bande de profondeur, puis id) : le décor s'empile du fond vers l'avant (y croissant)
 	# tout en gardant les mêmes textures CONSÉCUTIVES dans une bande (le batcher 2D fusionne).
 	_dressing.sort_custom(func(a, b):
 		var ba := int((a["pos"] as Vector2).y) >> 2
@@ -2663,6 +2665,55 @@ func _build_dressing() -> void:
 		if ba != bb3:
 			return ba < bb3
 		return String(a["id"]) < String(b["id"]))
+
+## LA CANOPÉE EN MULTIMESH : un quad partagé (pied à l'origine, y vers le bas), une instance
+## par arbre (transform en espace ISO + teinte), UN batch par essence — le coût par frame est
+## indépendant du nombre (des dizaines de milliers d'arbres = ~20 draw calls, zéro GDScript).
+func _canopy_flush(buckets: Dictionary) -> void:
+	_canopy_batches.clear()
+	var mv := _mv_ref()
+	if mv == null:
+		return
+	if _canopy_mesh == null:
+		# quad 1×1 : pied (bas) à l'origine, sommet à y=-1 ; uv(0,0) = haut de l'image → droit
+		var verts := PackedVector2Array([Vector2(-0.5, -1), Vector2(0.5, -1), Vector2(0.5, 0), Vector2(-0.5, 0)])
+		var uvs := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+		var idx := PackedInt32Array([0, 1, 2, 0, 2, 3])
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
+		arrays[Mesh.ARRAY_INDEX] = idx
+		_canopy_mesh = ArrayMesh.new()
+		_canopy_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var keys := buckets.keys()
+	keys.sort()                                # ordre de dessin STABLE entre rebuilds
+	for tid in keys:
+		var arr: Array = buckets[tid]
+		var tex := _dress_get(String(tid))
+		if tex == null or arr.is_empty():
+			continue
+		# tri fond→avant DANS l'essence (l'empilement inter-essences reste au hasard : invisible
+		# à l'échelle symbole, et il garde chaque essence en un seul batch)
+		arr.sort_custom(func(a, b): return (a[0] as Vector2).y < (b[0] as Vector2).y)
+		var tsz: Vector2 = tex.get_size()
+		var asp: float = tsz.x / maxf(tsz.y, 1.0)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_2D
+		mm.use_colors = true
+		mm.mesh = _canopy_mesh
+		mm.instance_count = arr.size()
+		for k in range(arr.size()):
+			var it: Array = arr[k]
+			var wp: Vector2 = it[0]
+			var dh: float = it[1]
+			var ip: Vector2 = mv.iso_pos(wp.x, wp.y)
+			# le pied du quad au point ; le tronc vit à ~85 % de la hauteur de l'image
+			# → on descend le quad de 15 % (même ancrage que l'ancien draw_texture_rect)
+			mm.set_instance_transform_2d(k, Transform2D(Vector2(dh * asp, 0.0), Vector2(0.0, dh),
+				ip + Vector2(0.0, dh * 0.15)))
+			mm.set_instance_color(k, it[2])
+		_canopy_batches.append({"mm": mm, "tex": tex})
 
 ## tente UNE marque jittée à partir de (x,y) : hors rivière, biome connu, sous la densité → ajoutée.
 func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh: int) -> void:
