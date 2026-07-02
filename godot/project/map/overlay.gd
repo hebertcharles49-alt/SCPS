@@ -37,17 +37,17 @@ const DRESS_BY_BIOME := {
 	18: ["mountain_range_01", "mountain_range_02", "mountain_single_01", "mountain_single_02", "mountain_pass_01"],  # MONTAGNES
 	19: ["mountain_single_01", "mountain_single_02", "mountain_range_01"],   # PIC
 	23: ["mountain_single_01", "rocky_outcrop_01"],                          # VOLCAN
-	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02", "forest_mass_conifer_01"],  # HAUTES-TERRES (lot 5 : sapinière)
-	17: ["hill_mark_01", "hill_cluster_01", "rocky_outcrop_01"],             # COLLINES
+	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02", "forest_mass_conifer_01", "lot6_conifer_01"],  # HAUTES-TERRES
+	17: ["hill_mark_01", "hill_cluster_01", "rocky_outcrop_01", "lot6_ground_05"],  # COLLINES (lot 6 : amas de rochers)
 	# FORÊTS — MASSES lot 5 SEULES (ancrées au MONDE + passes denses → canopée CONTINUE qui
 	# s'overlappe ; les arbres ISOLÉS n'y collent plus — ils vivent en plaine et près des bourgs)
 	12: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_mass_mixed_01"],   # FORÊT
 	13: ["forest_mass_mixed_01", "forest_mass_broadleaf_01", "forest_edge_01"],             # BOIS
 	14: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_mass_mixed_01"],   # JUNGLE
-	# PLAINES / PRAIRIE (lot 3 — herbe peinte ; comblent les biomes plats jadis NUS)
-	4:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01", "plain_wind_strokes_01"],  # PLAINES
-	5:  ["plain_sparse_tufts_01", "plain_grass_02"],                         # CHAMPS (épars, pas de cultures)
-	6:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01"],       # PRAIRIE
+	# PLAINES / PRAIRIE (lot 3 herbe + SINGLES lot 6 : l'arbre isolé vit ICI, pas en forêt)
+	4:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01", "plain_wind_strokes_01", "lot6_broadleaf_01", "lot6_ground_01"],  # PLAINES
+	5:  ["plain_sparse_tufts_01", "plain_grass_02", "lot6_broadleaf_10"],    # CHAMPS (épars)
+	6:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01", "lot6_broadleaf_07", "lot6_ground_12"],  # PRAIRIE
 	# STEPPE / SÈCHE (lot 3 + lot 2)
 	7:  ["steppe_grass_01", "steppe_grass_02", "steppe_dry_strokes_01", "steppe_tufts_01"],      # STEPPE
 	9:  ["steppe_dry_strokes_01", "steppe_tufts_01", "scrub_brush_01", "rocky_outcrop_01"],      # TERRES SÈCHES
@@ -59,7 +59,7 @@ const DRESS_BY_BIOME := {
 	15: ["marsh_reeds_01", "marsh_reeds_02", "marsh_tufts_01", "marsh_ripple_reeds_01"],  # MARAIS
 	21: ["marsh_reeds_01", "marsh_reeds_02", "tree_broadleaf_01"],          # MANGROVE
 	22: ["marsh_reeds_02", "marsh_tufts_01", "marsh_ripple_reeds_01"],      # TOURBIÈRE
-	20: ["tree_pine_01", "forest_mass_conifer_01", "rocky_outcrop_01"],    # GLACIER (sapins/cailloux épars ; lot 5 : sapinière)
+	20: ["tree_pine_01", "forest_mass_conifer_01", "lot6_conifer_02", "rocky_outcrop_01"],  # GLACIER
 	# EAU — MOUVEMENT seul (lot 3) : rides, houle, courants ; jamais un aplat
 	0:  ["ocean_swell_lines_01", "ocean_current_swirl_01"],                # OCÉAN PROFOND (très épars)
 	1:  ["sea_ripples_01", "sea_ripples_02", "ocean_swell_lines_01"],      # OCÉAN
@@ -1717,7 +1717,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if did.begins_with("sea_serpent"):
 				dw = dh * 2.0                                            # serpent : sprite 2:1 (large)
 			draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
-				egg_col if is_egg else dress_col)
+				egg_col if is_egg else d.get("tint", dress_col))
 	# MODE NATURE : juste le terrain + le dressing — on saute frontières, routes, villes, armées, noms, §27.
 	if nature_mode:
 		return
@@ -2335,7 +2335,7 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 		var inner: bool = k >= nveg - 2 and n >= 8
 		var vr := (brad * (0.35 + 0.30 * _h1(float(r) * 6.7 + float(k)))) if inner \
 			else (brad + 0.35 + 0.65 * _h1(float(r) * 9.7 + float(k) * 2.1))
-		var vid: String = ["tree_broadleaf_01", "tree_pine_01", "scrub_brush_01"][int(_h1(float(r) * 3.9 + float(k) * 1.7) * 3.0) % 3]
+		var vid: String = ["lot6_broadleaf_02", "lot6_broadleaf_06", "lot6_ground_01"][int(_h1(float(r) * 3.9 + float(k) * 1.7) * 3.0) % 3]
 		houses.append({"w": bc + Vector2(cos(va), sin(va) * 0.85) * vr, "s": 0.30, "k": 6,
 			"v": 0, "id": vid, "sc": 0.8 + 0.5 * _h1(float(r) * 12.3 + float(k))})
 	# tri du FOND vers l'AVANT — APRÈS tous les ajouts (les recouvrements lisent bien)
@@ -2504,8 +2504,22 @@ func _dress_get(id: String) -> Texture2D:
 		tex = _dress_load("res://art/map_stamps/lot4_easter_eggs/assets_alpha/%s.png" % id)
 	if tex == null:
 		tex = _dress_load("res://art/map_stamps/lot5_kcd/oriented_16/forests/%s.png" % id)   # lot 5 : masses de forêt
+	if tex == null:
+		tex = _dress_load("res://art/map_stamps/lot6_da/%s.png" % id)   # lot 6 : singles individuels (arbres/sol)
 	_dress_tex[id] = tex
 	return tex
+
+## teinte de DESSIN par famille lot 6 (modulate) : les feuillus livrés KAKI sont ramenés vers
+## l'olive de la carte, les conifères vers le sapin — sans retoucher un fichier. Les autres
+## familles gardent le blanc-glacis standard (null → dress_col).
+func _dress_tint(id: String) -> Variant:
+	if id.begins_with("lot6_broadleaf"):
+		return Color(0.74, 0.82, 0.55, 0.60)
+	if id.begins_with("lot6_conifer"):
+		return Color(0.60, 0.72, 0.54, 0.58)
+	if id.begins_with("lot6_ground"):
+		return Color(0.95, 0.93, 0.86, 0.52)
+	return null
 
 func _dress_load(path: String) -> Texture2D:
 	if ResourceLoader.exists(path):
@@ -2521,6 +2535,8 @@ func _dress_size(id: String) -> float:
 	if id.begins_with("sea_serpent"): return 84.0          # lot 4 : serpent (largeur ×2 au tracé → 2:1)
 	if id.begins_with("forest_mass"): return 54.0          # lot 5 : MASSE de canopée (grande, remplit le bloc)
 	if id.begins_with("forest_edge"): return 44.0          # lot 5 : lisière allongée
+	if id.begins_with("lot6_broadleaf") or id.begins_with("lot6_conifer"): return 30.0   # lot 6 : arbre isolé
+	if id.begins_with("lot6_ground"): return 22.0          # lot 6 : détail de sol (buisson/rocher/herbe)
 	if id.begins_with("mountain_range"): return 50.0
 	if id.begins_with("mountain"): return 42.0
 	if id.begins_with("forest"): return 38.0
@@ -2598,7 +2614,11 @@ func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh
 	var ids: Array = DRESS_BY_BIOME[b]
 	var id: String = ids[int(_h1(float(i) * 7.7) * float(ids.size())) % ids.size()]
 	var scl := 0.85 + 0.30 * _h1(float(i) * 9.9)   # 0.85..1.15 : variété d'échelle
-	_dressing.append({"pos": Vector2(px, py), "id": id, "scale": scl})
+	var entry := {"pos": Vector2(px, py), "id": id, "scale": scl}
+	var tt: Variant = _dress_tint(id)              # teinte lot 6 posée au BUILD (coût nul au draw)
+	if tt != null:
+		entry["tint"] = tt
+	_dressing.append(entry)
 
 ## LOT 4 — easter eggs RARES : serpent sur l'océan profond (cap 3), épave/récif sur le haut-fond, lapin
 ## marginalia sur terre (cap 2). Grille grossière + faibles probas → rares mais présents.
@@ -2772,12 +2792,15 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 		var half := _w(zoom, float(hd["s"]), 1.9, 6.5) * float(hd.get("ps", 1.0))
 		var kind: int = hd["k"]
 		if kind == 6:
-			# la VIE : un arbre isolé des anciens lots, ancré au sol (base au point)
+			# la VIE : un arbre isolé (lot 6, teinté olive au draw), ancré au sol (base au point)
 			var vtex := _dress_get(String(hd["id"]))
 			if vtex != null:
 				var vh := _w(zoom, 0.95 * float(hd["sc"]), 8.0, 26.0)
+				var vt2: Variant = _dress_tint(String(hd["id"]))
+				var vcol: Color = vt2 if vt2 != null else Color(1, 1, 1, 0.62)
+				vcol.a = maxf(vcol.a, 0.62)   # en ville, la vie est un cran plus présente
 				draw_texture_rect(vtex, Rect2(p - Vector2(vh * 0.5, vh * 0.82), Vector2(vh, vh)),
-					false, Color(1, 1, 1, 0.62))
+					false, vcol)
 			continue
 		if kind > 0:
 			_ink_landmark(p, half * 1.35, kind, zoom, pen)
