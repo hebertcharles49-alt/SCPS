@@ -164,18 +164,20 @@ void fragment() {
 		               texture(noise_tex, cell * 0.02 + vec2(4.0, 1.0)).r) - 0.5;
 		float g = texture(noise_tex, (cell + wv * 7.0) * 0.18).r;
 		float g2 = texture(noise_tex, cell * 0.012 + vec2(3.0, 7.0)).r;
-		float grain_s = is_wet(b) ? paper_grain * 0.5 : paper_grain;
+		// l'EAU reste PROPRE : quasi pas de grain/marbrure sur la mer (l'encre d'eau n'est
+		// pas du papier) ; le marais garde un demi-grain (c'est de la terre humide).
+		float grain_s = is_water(b) ? paper_grain * 0.12 : (is_wetland(b) ? paper_grain * 0.5 : paper_grain);
 		grain_s *= mix(1.0, 0.40, zdeep);
 		col *= mix(1.0 - grain_s, 1.0 + grain_s, g) * mix(0.93, 1.05, g2);
 		float fine = texture(noise_tex, cell * 1.35 + vec2(9.0, 4.0)).r;   // la DENT fine (zoom profond)
-		col *= mix(1.0, mix(0.958, 1.042, fine), zdeep);
+		col *= mix(1.0, mix(0.958, 1.042, fine), zdeep * (is_water(b) ? 0.15 : 1.0));
 		// VARIATION PERLIN intra-biome : jitter RGB ±rgb_jitter/255 PAR CANAL (3 bruits décorrélés → micro
 		// dérive de teinte, pas juste de luminance) → les aplats RESPIRENT au lieu d'être morts.
 		// Atténuée au zoom profond (les blobs de teinte magnifiés participaient au bavage).
 		vec3 jit3 = vec3(vnoise(cell * jitter_freq),
 		                 vnoise(cell * jitter_freq + vec2(37.2, 11.5)),
 		                 vnoise(cell * jitter_freq + vec2(91.7, 53.1))) - 0.5;
-		col += jit3 * (2.0 * rgb_jitter / 255.0) * mix(1.0, 0.45, zdeep);
+		col += jit3 * (2.0 * rgb_jitter / 255.0) * mix(1.0, 0.45, zdeep) * (is_water(b) ? 0.25 : 1.0);
 
 		if (is_water(b)) {
 			// MER : assombrissement CÔTIER CONTINU (proximité de terre lissée → plus de bandes discrètes
@@ -218,19 +220,20 @@ void fragment() {
 		// que le seuil bas faisait ressortir). La berge reste douce par le `body` (opacité) + le haut du smoothstep.
 		float edge  = smoothstep(0.13, 0.46, rv) * (0.92 + 0.08 * rv_noise);
 		float depth = smoothstep(0.20, 0.66, rv);             // 0 = HAUT-FOND (berge) · 1 = CHENAL profond
-		// encre RGB ±4 % par canal (jamais uniforme — elle bave, se concentre) + légère dérive du grain
+		// l'ENCRE D'EAU reste PROPRE : dérive RGB réduite (±1.5 %) et grain de papier quasi nul
+		// dans le lit — la texture appartient à la TERRE, pas à l'eau.
 		vec3 water_ink = (vec3(vnoise(cell * 0.7 + vec2(11.0, 3.0)),
 		                       vnoise(cell * 0.7 + vec2(5.0, 19.0)),
-		                       vnoise(cell * 0.7 + vec2(23.0, 7.0))) - 0.5) * 0.08;
+		                       vnoise(cell * 0.7 + vec2(23.0, 7.0))) - 0.5) * 0.03;
 		vec3 shoal = vec3(0.55, 0.63, 0.60);                  // HAUT-FOND : bleu-vert PÂLE (eau peu profonde)
 		vec3 deep  = vec3(0.34, 0.45, 0.54);                  // CHENAL : bleu-gris FANÉ
-		vec3 riv_col = mix(shoal, deep, depth) + water_ink + (paper - 0.5) * 0.05;
+		vec3 riv_col = mix(shoal, deep, depth) + water_ink + (paper - 0.5) * 0.015;
 		// l'encre RECOUVRE le sol (corps OPAQUE ~0.95) ; le bord fondu donne la berge — JAMAIS de terrain
 		// qui transparaît à travers le lit (fade par la COULEUR désaturée, pas par la transparence).
 		// AQUARELLE QUI BAVE : opacité DÉGRESSIVE — la berge est TRANSLUCIDE (le sol transparaît, l'eau y
 		// « bave » comme une peinture), le CHENAL est plus plein. Plus d'aplat opaque dur. Et sur la MER,
 		// l'embouchure se dissout (faible opacité). `body` rampe berge→chenal selon la profondeur.
-		float body = mix(0.34, 0.86, depth);
+		float body = mix(0.40, 0.93, depth);   // chenal plus PLEIN (le grain du sol ne remonte plus au milieu du lit)
 		// FUSION AVEC LA MER (le fleuve côtier qui « ne merge pas ») : proximité d'eau salée sur PLUSIEURS
 		// anneaux (jusqu'à 5 cellules — la bande de terre est souvent > 3). Près de la côte, l'eau du fleuve
 		// (1) prend la TEINTE de la mer → jonction SANS couture, et (2) son opacité S'AMINCIT → il se dissout
@@ -251,6 +254,20 @@ void fragment() {
 		}
 		float river_amt = edge * body * land_fac;
 		col = mix(col, riv_col, clamp(river_amt, 0.0, 0.90));
+
+		// ── la BERGE (shoreline de RIVIÈRE) : un liseré sur la TERRE qui borde le lit —
+		//    PLAGE légère (sable) en plaine/pays sec, ROCAILLE grise en relief. Le rim vit
+		//    juste SOUS le seuil d'impression de l'eau, et s'efface là où l'encre couvre. ──
+		// le rim démarre à ras du seuil d'ENCRE (0.13) : la plage borde l'eau VISIBLE seulement
+		// (plus bas, il peignait un lit sableux fantôme sur les tronçons à faible débit).
+		float rim = smoothstep(0.095, 0.135, rv) * (1.0 - smoothstep(0.135, 0.24, rv)) * (1.0 - edge);
+		if (rim > 0.003 && is_solid(b)) {
+			bool rocky = (b >= 16 && b <= 19) || b == 23;                 // hauteurs/collines/montagnes/volcan
+			vec3 shore = rocky ? vec3(0.63, 0.59, 0.52) : vec3(0.86, 0.79, 0.60);
+			if (b >= 9 && b <= 11) shore = vec3(0.88, 0.81, 0.58);        // pays sec : sable plus franc
+			float rimg = texture(noise_tex, cell * 0.9 + vec2(5.5, 8.5)).r;   // berge INÉGALE (pas un ourlet)
+			col = mix(col, shore, rim * (0.30 + 0.24 * rimg));
+		}
 
 		// RELIEF (massifs clusterisés ∝ densité → pas de hachures éparses)
 		float rd = relief_density(cw);

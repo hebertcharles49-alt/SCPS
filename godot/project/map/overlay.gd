@@ -212,8 +212,9 @@ const HERITAGE_PIG := [
 # les boucles vers leur centre (cumulatif) → les frontières dérivaient de leur vraie ligne et BULGEAIENT
 # par-dessus les VILLES (« placement avalé »). Taubin alterne un pas adoucissant (λ) et un pas regonflant
 # (μ) → lisse SANS rétrécir : la frontière reste sur la diagonale MOYENNE de l'escalier = sa vraie ligne.
-const SMOOTH_RESAMPLE := 2.0  ## pas de ré-échantillonnage (cellules) — casse la fréquence SANS écraser la forme
-const SMOOTH_TAUBIN := 6      ## itérations Taubin λ|μ (passe-bas non-rétrécissant)
+const SMOOTH_RESAMPLE := 1.4  ## pas de ré-échantillonnage (cellules) — RESSERRÉ (2.0 gonflait les petites
+                              ## provinces en BLOBS qui débordaient leur territoire)
+const SMOOTH_TAUBIN := 4      ## itérations Taubin λ|μ (passe-bas non-rétrécissant) — allégé (anti-blob)
 const SMOOTH_CHAIKIN := 2     ## passes de corner-cutting (arrondi final de la courbe)
 const TAUBIN_LAMBDA := 0.5    ## pas adoucissant (>0)
 const TAUBIN_MU := -0.53      ## pas regonflant (<0, |μ|>λ) → compense le rétrécissement du pas λ
@@ -244,6 +245,7 @@ var _roads_dirty := true  ## le réseau commercial a pu bouger → recharger les
 var _struct_dirty := false ## le bourg dépend de pop+bâtiments (évolue) → reconstruit à la demande
 var _road_placed := 0     ## logements/ateliers réellement posés LE LONG des routes (le reste comble en anneau)
 var _rivers := []         ## [Vector3(x, y, ang)] — nuage de points (façade) gardé pour l'anti-bâti SUR le fil
+var _river_hash := {}     ## hash spatial du fil de rivière (Vector2 par cellule) — snap des frontières
 var _mv: Node2D = null    ## le MapView parent (porte la projection GLOBE monde→écran)
 var _himg_l: Image = null ## couche HEIGHT (cache local) → ombrage cohérent des assets/routes
 var _alb_l: Image = null  ## terrain albedo (cache) → couleur/luminosité du SOL sous l'asset
@@ -379,6 +381,7 @@ func _on_generated() -> void:
 	_town_cache.clear()         # urbaniste : plans de bourgs recalculés (routes neuves)
 	_sea_img = null             # couches eau recachées (quais)
 	_rf_img = null
+	_river_hash.clear()         # snap de frontières : fil de rivière re-haché (monde neuf)
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
@@ -925,7 +928,10 @@ func _chain_build(flat: PackedVector2Array) -> Dictionary:
 		adj[ia].append(i); adj[ib].append(i)
 	return {"sa": sa, "sb": sb, "adj": adj, "node_pt": node_pt, "nseg": nseg, "flat": flat}
 
-## parcourt toutes les chaînes : départs aux noeuds de degré≠2 (bouts/jonctions), puis boucles restantes.
+## parcourt toutes les chaînes : départs aux noeuds de degré≠2 (bouts/jonctions VRAIES), puis boucles.
+## Le degré 4 N'EST PAS un départ : c'est le COIN DE DAMIER (4 cellules alternées) — un escalier
+## diagonal en produit UN PAR MARCHE ; casser là fragmentait la frontière en chaînes de 2 points
+## qu'aucun lissage ne peut courber (l'origine des « crénelures incurables »). On le TRAVERSE.
 func _chain_walk_all(ctx: Dictionary) -> Array:
 	var adj: Dictionary = ctx["adj"]
 	var sa: PackedInt32Array = ctx["sa"]
@@ -936,7 +942,7 @@ func _chain_walk_all(ctx: Dictionary) -> Array:
 	var chains := []
 	for nid in range(node_pt.size()):
 		var inc: Array = adj[nid]
-		if inc.size() == 2:
+		if inc.size() == 2 or inc.size() == 4:
 			continue
 		for si in inc:
 			if used[si] == 0:
@@ -969,12 +975,25 @@ func _chain_one(start_seg: int, start_node: int, ctx: Dictionary, used: PackedBy
 		poly.push_back(node_pt[nxt])
 		cur = nxt
 		var inc: Array = adj[cur]
-		if inc.size() != 2:
-			break
 		var nseg2 := -1
-		for s in inc:
-			if used[s] == 0:
-				nseg2 = s
+		if inc.size() == 2:
+			for s in inc:
+				if used[s] == 0:
+					nseg2 = s
+		elif inc.size() == 4:
+			# COIN DE DAMIER / croisement : on CONTINUE le plus DROIT possible (meilleure
+			# continuation directionnelle) — l'escalier diagonal devient UNE chaîne courbable.
+			var pdir: Vector2 = (node_pt[cur] - poly[poly.size() - 2]).normalized()
+			var bestd := 0.25
+			for s in inc:
+				if used[s] == 1:
+					continue
+				var other: int = sb[s] if sa[s] == cur else sa[s]
+				var sd: Vector2 = ((node_pt[other] as Vector2) - (node_pt[cur] as Vector2)).normalized()
+				var dt := pdir.dot(sd)
+				if dt > bestd:
+					bestd = dt
+					nseg2 = s
 		if nseg2 < 0:
 			break
 		seg = nseg2
@@ -1008,14 +1027,94 @@ func _chaikin(poly: PackedVector2Array, passes: int) -> PackedVector2Array:
 ## LISSE une polyligne : ré-échantillonnage grossier (casse la fréquence de l'escalier) → passe-bas
 ## Laplacien (aplatit les marches vers la diagonale) → Chaikin (arrondi). C'est le pipeline qui transforme
 ## les marches en COURBE (et non plus en « escalier arrondi »). Détecte la boucle (extrémités préservées).
+## ÉPINGLAGE RIVIÈRE : un point de frontière SUR/AU BORD d'une rivière visible est FIXÉ pendant le
+## Taubin — le lissage ne tire plus la frontière EN TRAVERS du fleuve, elle en épouse le cours
+## (les arêtes de cellules suivent déjà la rivière ; c'est le passe-bas qui les décollait).
 func _smooth_poly(poly: PackedVector2Array) -> PackedVector2Array:
 	if poly.size() < 3:
 		return poly
 	var closed := poly[0].distance_to(poly[poly.size() - 1]) < 0.001
 	var p := _resample_polyline(poly, SMOOTH_RESAMPLE) if SMOOTH_RESAMPLE > 0.0 else poly
-	p = _taubin(p, SMOOTH_TAUBIN, closed)
-	p = _chaikin(p, SMOOTH_CHAIKIN)
+	# ── SNAP RIVIÈRE : la géométrie moteur le long d'un fleuve est une DENT DE SCIE (les
+	#    cellules alternent de rive) qu'aucun lissage ne répare — cartographiquement, la
+	#    frontière DOIT suivre le fleuve. Un point de frontière à ≤ 1.3 cellule du FIL de
+	#    rivière est COLLÉ dessus (plus proche point du nuage river_points, hash spatial),
+	#    puis ANCRÉ (lissage réduit + rappel) : la frontière ÉPOUSE le cours d'eau. ──
+	var pins := PackedByteArray()
+	pins.resize(p.size())
+	var any_pin := false
+	if not _rivers.is_empty():
+		if _river_hash.is_empty():
+			for rp in _rivers:                       # le nuage est en Vector3 (x, y, angle)
+				var rv2 := Vector2((rp as Vector3).x, (rp as Vector3).y)
+				var hk := int(floor(rv2.x)) * 100000 + int(floor(rv2.y))
+				if not _river_hash.has(hk):
+					_river_hash[hk] = []
+				_river_hash[hk].append(rv2)
+		for i in range(p.size()):
+			var gx := int(floor(p[i].x))
+			var gy := int(floor(p[i].y))
+			var bestd := 1.69   # (1.3 cellule)²
+			var bestp: Vector2 = p[i]
+			var found := false
+			for oy in range(-1, 2):
+				for ox in range(-1, 2):
+					var hk2 := (gx + ox) * 100000 + (gy + oy)
+					if _river_hash.has(hk2):
+						for q in _river_hash[hk2]:
+							var dd: float = p[i].distance_squared_to(q)
+							if dd < bestd:
+								bestd = dd
+								bestp = q
+								found = true
+			if found:
+				p[i] = bestp
+				pins[i] = 1
+				any_pin = true
+	p = _taubin_pinned(p, SMOOTH_TAUBIN, closed, pins) if any_pin else _taubin(p, SMOOTH_TAUBIN, closed)
+	p = _chaikin(p, SMOOTH_CHAIKIN)   # arrondi local ≤ ¼ de segment : ne saute pas un fleuve
 	return p
+
+## Taubin à ÉPINGLES DOUCES : un point de rivière est LISSÉ à 30 % (l'escalier fond quand
+## même) puis RAPPELÉ élastiquement vers sa position d'origine (la frontière reste SUR le
+## fleuve sans re-créneler — l'épingle dure ressuscitait l'escalier).
+func _taubin_pinned(poly: PackedVector2Array, iters: int, closed: bool, pins: PackedByteArray) -> PackedVector2Array:
+	if poly.size() < 3 or iters <= 0:
+		return poly
+	var orig := poly.duplicate()
+	var p := poly
+	for _it in range(iters):
+		p = _lap_step_pinned(p, TAUBIN_LAMBDA, closed, pins)
+		p = _lap_step_pinned(p, TAUBIN_MU, closed, pins)
+	for i in range(mini(p.size(), orig.size())):
+		if i < pins.size() and pins[i] == 1:
+			p[i] = (p[i] as Vector2).lerp(orig[i], 0.35)   # rappel : ancré au cours d'eau
+	return p
+
+func _lap_step_pinned(poly: PackedVector2Array, factor: float, closed: bool, pins: PackedByteArray) -> PackedVector2Array:
+	var n := poly.size()
+	if n < 3:
+		return poly
+	if closed:
+		var src := poly.slice(0, n - 1)
+		var m := src.size()
+		var out := PackedVector2Array()
+		out.resize(m)
+		for i in range(m):
+			var f := factor * (0.45 if (i < pins.size() and pins[i] == 1) else 1.0)
+			var avg: Vector2 = (src[(i - 1 + m) % m] + src[(i + 1) % m]) * 0.5
+			out[i] = src[i] + (avg - src[i]) * f
+		out.push_back(out[0])
+		return out
+	var out2 := PackedVector2Array()
+	out2.resize(n)
+	out2[0] = poly[0]
+	out2[n - 1] = poly[n - 1]
+	for i in range(1, n - 1):
+		var f2 := factor * (0.45 if (i < pins.size() and pins[i] == 1) else 1.0)
+		var avg2: Vector2 = (poly[i - 1] + poly[i + 1]) * 0.5
+		out2[i] = poly[i] + (avg2 - poly[i]) * f2
+	return out2
 
 ## un pas de lissage Laplacien : p[i] += factor·(moyenne des 2 voisins − p[i]). factor>0 = adoucit (et
 ## rétrécit), factor<0 = regonfle. Extrémités FIXES (chaîne ouverte → jonctions intactes) ; cyclique (boucle).
@@ -1052,9 +1151,21 @@ func _taubin(poly: PackedVector2Array, iters: int, closed: bool) -> PackedVector
 
 ## chaîne + lisse une soupe de segments à NORMALE → [segs (paires), norms (intérieure/segment)].
 ## La normale est perpendiculaire à la COURBE locale, orientée selon le côté intérieur de la chaîne.
+## GÉNÉRALISATION : les BOUCLES-CONFETTIS (≤ ~7 cellules de périmètre = une cellule isolée en
+## damier de possession, fréquent le long des fleuves) ne sont PAS cernées — un atlas ne
+## détoure pas les poussières, le lavis politique porte déjà l'information.
 func _smooth_border(flat: PackedVector2Array, enrm: PackedVector2Array) -> Array:
 	var out_segs := PackedVector2Array(); var out_norm := PackedVector2Array()
 	for ch in _chain_segments_n(flat, enrm):
+		var raw: PackedVector2Array = ch["poly"]
+		var per := 0.0
+		for i in range(raw.size() - 1):
+			per += raw[i].distance_to(raw[i + 1])
+		var isloop := raw.size() >= 3 and raw[0].distance_to(raw[raw.size() - 1]) < 0.001
+		# confettis : boucle d'îlot (< 7 cellules) OU stub ouvert (< 4.5 — les cellules
+		# isolées du damier CÔTIER perdent leur arête d'eau → fragments incourbables).
+		if (isloop and per < 7.0) or (not isloop and per < 4.5):
+			continue
 		var poly: PackedVector2Array = _smooth_poly(ch["poly"])
 		if poly.size() < 2:
 			continue
