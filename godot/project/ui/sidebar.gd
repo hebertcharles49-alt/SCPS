@@ -90,3 +90,8 @@ func _on_tab(i: int) -> void:
 func close() -> void:
 	if _sel != -1:
 		_on_tab(_sel)   # re-cliquer l'onglet courant → repli
+
+## OUVRE un onglet donné (les ALERTES y envoient) — no-op s'il est déjà ouvert.
+func open_tab(i: int) -> void:
+	if i >= 0 and _sel != i:
+		_on_tab(i)

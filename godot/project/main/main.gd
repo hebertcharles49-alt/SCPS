@@ -134,6 +134,22 @@ func _ready() -> void:
 	_devpanel.visible = false
 	ui.add_child(_devpanel)
 
+	# ALERTES (façon EU4/CK3) : la pile des « éléments en attente » au bord droit —
+	# code couleur par domaine, clic = le panneau concerné (ou le geste direct).
+	var alerts = load("res://ui/alerts.gd").new()
+	alerts.name = "Alerts"
+	ui.add_child(alerts)
+	alerts.open_tab.connect(func(i): _sidebar.open_tab(i))
+	alerts.open_tech.connect(func():
+		_tech.visible = true
+		_tech.queue_redraw())
+	alerts.open_construct.connect(func():
+		_construct.visible = true
+		_construct.queue_redraw())
+	alerts.open_religion.connect(func():
+		if _religion != null:
+			_religion.open())
+
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
 func _unhandled_input(e: InputEvent) -> void:
