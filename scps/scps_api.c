@@ -333,6 +333,38 @@ int scps_region_border_segments(ScpsSim *s, int region, ScpsSegC *out, int max){
     return n;
 }
 
+/* CONTOUR d'une PROVINCE (miroir du contour de région, comparaison cell.province) —
+ * la SURBRILLANCE DE SÉLECTION du front (le grain de panneau, charte EU4). */
+int scps_province_border_segments(ScpsSim *s, int prov, ScpsSegC *out, int max){
+    if(!s || !s->ready || !out || max<=0 || prov<0) return 0;
+    int n=0;
+    for (int y=0; y<SCPS_H && n<max; y++) for (int x=0; x<SCPS_W && n<max; x++){
+        const Cell *a=scps_cellc(s->w,x,y);
+        if (a->province!=prov) continue;
+        const Cell *e=(x+1<SCPS_W)?scps_cellc(s->w,x+1,y):NULL;
+        if ((!e||e->province!=prov) && n<max){ out[n].x0=(float)(x+1);out[n].y0=(float)y;out[n].x1=(float)(x+1);out[n].y1=(float)(y+1);out[n].nx=1;out[n].ny=0;out[n].owner=prov;out[n].other=-1;n++; }
+        const Cell *we=(x>0)?scps_cellc(s->w,x-1,y):NULL;
+        if ((!we||we->province!=prov) && n<max){ out[n].x0=(float)x;out[n].y0=(float)y;out[n].x1=(float)x;out[n].y1=(float)(y+1);out[n].nx=-1;out[n].ny=0;out[n].owner=prov;out[n].other=-1;n++; }
+        const Cell *so=(y+1<SCPS_H)?scps_cellc(s->w,x,y+1):NULL;
+        if ((!so||so->province!=prov) && n<max){ out[n].x0=(float)x;out[n].y0=(float)(y+1);out[n].x1=(float)(x+1);out[n].y1=(float)(y+1);out[n].nx=0;out[n].ny=1;out[n].owner=prov;out[n].other=-1;n++; }
+        const Cell *no=(y>0)?scps_cellc(s->w,x,y-1):NULL;
+        if ((!no||no->province!=prov) && n<max){ out[n].x0=(float)x;out[n].y0=(float)y;out[n].x1=(float)(x+1);out[n].y1=(float)y;out[n].nx=0;out[n].ny=-1;out[n].owner=prov;out[n].other=-1;n++; }
+    }
+    return n;
+}
+
+/* LAVIS POLITIQUE — l'owner effectif par cellule (même lecture que les frontières :
+ * border_owner_of = pays VALIDE d'une région colonisée), -1 = mer/terre vierge. */
+static int border_owner_of(const ScpsSim *s, const Cell *c);   /* défini plus bas (frontières) */
+void scps_map_owner(ScpsSim *s, int16_t *out){
+    if (!out) return;
+    if (!s || !s->ready){ for (int i=0;i<SCPS_W*SCPS_H;i++) out[i]=-1; return; }
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        const Cell *c = scps_cellc(s->w, x, y);
+        out[y*SCPS_W+x] = (int16_t)((c->sea||c->lake) ? -1 : border_owner_of(s, c));
+    }
+}
+
 /* ---- PICKING & READOUTS (la membrane traverse le binding) ------------- */
 
 static const char *sz(const char *p){ return p ? p : ""; }   /* NULL → "" (Godot String) */
@@ -1426,8 +1458,8 @@ int scps_border_segments_col(ScpsSim *s, int level, ScpsSegC *out, int max){
                 if ((sea_a || sea_b) && !is_cs) continue;
                 lvl=2; owner=land_own; other=(sea_a||sea_b)?-2:land_other;
             }
-            else if (rga!=rgb && rga>=0 && rgb>=0){    lvl=1; owner=own_a; }
-            else if (pva!=pvb && pva>=0 && pvb>=0){    lvl=0; owner=own_a; }
+            else if (rga!=rgb && rga>=0 && rgb>=0){    lvl=1; owner=own_a; other=own_b; }
+            else if (pva!=pvb && pva>=0 && pvb>=0){    lvl=0; owner=own_a; other=own_b; }
             if (lvl!=level) continue;
             if (d==0){ out[n].x0=(float)(x+1); out[n].y0=(float)y;     out[n].x1=(float)(x+1); out[n].y1=(float)(y+1); }
             else     { out[n].x0=(float)x;     out[n].y0=(float)(y+1); out[n].x1=(float)(x+1); out[n].y1=(float)(y+1); }

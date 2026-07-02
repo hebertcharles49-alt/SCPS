@@ -151,6 +151,8 @@ func _pick_at_mouse() -> void:
 	_selected_prov = prov
 	if _ground != null:
 		_ground.queue_redraw()
+	if _overlay != null:
+		_overlay.queue_redraw()   # la SURBRILLANCE de sélection vit dans l'overlay (contour doré)
 	var region := -1
 	var owner := -1
 	if prov >= 0:

@@ -7,6 +7,8 @@
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
+#include <vector>    /* political_image : tampon owner int16 (boucle 512k cellules en C++) */
+#include <cstring>
 
 using namespace godot;
 
@@ -17,6 +19,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("map_h"),                   &ScpsWorld::map_h);
     ClassDB::bind_method(D_METHOD("map_image", "mode", "selected_prov"), &ScpsWorld::map_image, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("layer_image", "layer"),    &ScpsWorld::layer_image);
+    ClassDB::bind_method(D_METHOD("political_image", "pal"),  &ScpsWorld::political_image);
     ClassDB::bind_method(D_METHOD("year"),                    &ScpsWorld::year);
     ClassDB::bind_method(D_METHOD("player"),                  &ScpsWorld::player);
     ClassDB::bind_method(D_METHOD("country_count"),           &ScpsWorld::country_count);
@@ -125,6 +128,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_heritage", "c"),          &ScpsWorld::country_heritage);
     ClassDB::bind_method(D_METHOD("country_capital_region", "c"),    &ScpsWorld::country_capital_region);
     ClassDB::bind_method(D_METHOD("region_border_segments", "region"), &ScpsWorld::region_border_segments);
+    ClassDB::bind_method(D_METHOD("province_border_segments", "prov"), &ScpsWorld::province_border_segments);
     ClassDB::bind_method(D_METHOD("road_paths"),                     &ScpsWorld::road_paths);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
@@ -158,6 +162,31 @@ Ref<Image> ScpsWorld::layer_image(int layer) {
     PackedByteArray buf; buf.resize((int64_t)w * h);
     if (sim) scps_map_layer(sim, buf.ptrw(), layer);
     return Image::create_from_data(w, h, false, Image::FORMAT_L8, buf);
+}
+
+/* LAVIS POLITIQUE : owner effectif par cellule (façade) teinté par la palette du front
+ * (pal[pays] = pigment, alpha compris) → Image RGBA (transparent hors territoire). La
+ * boucle 512k cellules vit ICI (C++) — en GDScript elle bloquerait la frame. */
+Ref<Image> ScpsWorld::political_image(PackedColorArray pal) {
+    int w = scps_map_w(), h = scps_map_h();
+    PackedByteArray buf; buf.resize((int64_t)w * h * 4);
+    uint8_t *dst = buf.ptrw();
+    memset(dst, 0, (size_t)w * h * 4);
+    if (sim) {
+        std::vector<int16_t> own((size_t)w * h);
+        scps_map_owner(sim, own.data());
+        const int np = (int)pal.size();
+        for (int64_t i = 0; i < (int64_t)w * h; i++) {
+            int o = own[(size_t)i];
+            if (o < 0 || o >= np) continue;
+            Color c = pal[o];
+            dst[i*4+0] = (uint8_t)CLAMP((int)(c.r * 255.0f + 0.5f), 0, 255);
+            dst[i*4+1] = (uint8_t)CLAMP((int)(c.g * 255.0f + 0.5f), 0, 255);
+            dst[i*4+2] = (uint8_t)CLAMP((int)(c.b * 255.0f + 0.5f), 0, 255);
+            dst[i*4+3] = (uint8_t)CLAMP((int)(c.a * 255.0f + 0.5f), 0, 255);
+        }
+    }
+    return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);
 }
 
 int     ScpsWorld::year()          const { return scps_year(sim); }
@@ -1064,6 +1093,25 @@ Dictionary ScpsWorld::region_border_segments(int region) {
         static const int MAXSEG = 20000;
         static ScpsSegC seg[MAXSEG];
         int n = scps_region_border_segments(sim, region, seg, MAXSEG);
+        pts.resize(n * 2); nrm.resize(n);
+        for (int i = 0; i < n; i++) {
+            pts.set(i * 2,     Vector2(seg[i].x0, seg[i].y0));
+            pts.set(i * 2 + 1, Vector2(seg[i].x1, seg[i].y1));
+            nrm.set(i, Vector2(seg[i].nx, seg[i].ny));
+        }
+    }
+    d["pts"] = pts; d["nrm"] = nrm;
+    return d;
+}
+
+/* contour d'une PROVINCE (le grain de panneau) — la SURBRILLANCE de sélection. */
+Dictionary ScpsWorld::province_border_segments(int prov) {
+    Dictionary d;
+    PackedVector2Array pts, nrm;
+    if (sim) {
+        static const int MAXSEG = 20000;
+        static ScpsSegC seg[MAXSEG];
+        int n = scps_province_border_segments(sim, prov, seg, MAXSEG);
         pts.resize(n * 2); nrm.resize(n);
         for (int i = 0; i < n; i++) {
             pts.set(i * 2,     Vector2(seg[i].x0, seg[i].y0));

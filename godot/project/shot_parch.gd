@@ -27,13 +27,23 @@ func _run() -> void:
 			ov.nature_mode = true
 			ov.queue_redraw()
 	var zoom := float(_arg("zoom=", "0"))
+	var cx := float(_arg("cx=", str(Sim.world.map_w() * 0.5)))
+	var cy := float(_arg("cy=", str(Sim.world.map_h() * 0.5)))
 	if zoom > 0.0:
-		var cx := float(_arg("cx=", str(Sim.world.map_w() * 0.5)))
-		var cy := float(_arg("cy=", str(Sim.world.map_h() * 0.5)))
 		_map._camera.zoom = Vector2(zoom, zoom)
 		_map._camera.position = _map.iso_pos(cx, cy)
 	else:
 		_map.fit()
+	# sel=N force la PROVINCE SÉLECTIONNÉE ; sel=auto la résout au centre (cx,cy) —
+	# vérifie le CONTOUR DORÉ de sélection (province_border_segments) sans souris.
+	var sarg := _arg("sel=", "")
+	if sarg != "":
+		var selp: int = Sim.world.province_at(int(cx), int(cy)) if sarg == "auto" else int(sarg)
+		if selp >= 0:
+			_map._selected_prov = selp
+			var ov2 := _map.get_node_or_null("Overlay")
+			if ov2 != null:
+				ov2.queue_redraw()
 	for i in range(8): await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw

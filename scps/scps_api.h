@@ -467,6 +467,11 @@ int scps_country_heritage(const ScpsSim *s, int c);
 /* RÉGION-capitale d'un pays (-1) + CONTOUR d'une région (normale extérieure) — liseré pourpre capitale. */
 int scps_country_capital_region(const ScpsSim *s, int c);
 int scps_region_border_segments(ScpsSim *s, int region, ScpsSegC *out, int max);
+/* CONTOUR d'une PROVINCE (même forme) — la SURBRILLANCE DE SÉLECTION (le grain de panneau). */
+int scps_province_border_segments(ScpsSim *s, int prov, ScpsSegC *out, int max);
+/* LAVIS POLITIQUE — l'owner EFFECTIF par CELLULE (pays d'une région colonisée, -1 sinon :
+ * mer, terre vierge). `out` = SCPS_W×SCPS_H int16. Le front en teinte un wash de territoire. */
+void scps_map_owner(ScpsSim *s, int16_t *out);
 
 /* ROUTES TERRAIN-AWARE (port de viewer.c, en RÉSEAU à JONCTIONS) : A* sur la grille
  * (coût = relief + biome ; mer/lac contournés, fleuve = pont), reliant les régions des

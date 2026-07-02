@@ -10,6 +10,7 @@
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_color_array.hpp>   /* political_image(pal) */
 
 extern "C" {
 #include "scps_api.h"
@@ -40,6 +41,7 @@ public:
     int   map_h() const;
     Ref<Image> map_image(int mode, int selected_prov);  /* render_map → Image RGBA8 (sel. surlignée) */
     Ref<Image> layer_image(int layer);  /* couche brute → Image L8 (shaders) */
+    Ref<Image> political_image(PackedColorArray pal);   /* LAVIS : owner/cellule teinté par pal[pays] (RGBA, transparent hors territoire) */
 
     /* nombres tangibles (membrane) */
     int     year() const;
@@ -181,6 +183,7 @@ public:
     int                country_heritage(int c) const;      /* héritage/culture 0..5 (-1) — outline par culture */
     int                country_capital_region(int c) const; /* région-capitale (-1) */
     Dictionary         region_border_segments(int region);  /* contour d'une région {pts,nrm} — liseré capitale */
+    Dictionary         province_border_segments(int prov);   /* contour d'une PROVINCE {pts,nrm} — surbrillance de sélection */
 
     /* ROUTES : réseau à jonctions (A* « routes attirent routes »). Array de
      * Dictionary { points: PackedVector2Array (centres de cellule) · level: int

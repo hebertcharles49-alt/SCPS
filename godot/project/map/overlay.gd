@@ -216,6 +216,17 @@ const TAUBIN_LAMBDA := 0.5    ## pas adoucissant (>0)
 const TAUBIN_MU := -0.53      ## pas regonflant (<0, |μ|>λ) → compense le rétrécissement du pas λ
 var _borders_dirty := true ## la souveraineté a bougé (conquête/colonisation) → refaire les frontières
 var _owner_sig := -1      ## signature de la photo des propriétaires → détecte le changement de souveraineté
+# ── LAVIS POLITIQUE (aquarelle de territoire) : owner/cellule teinté au PIGMENT d'entité (une seule
+# famille de couleur : lavis = frontière = armée = nom), bâti en C++ (political_image), rebâti avec les
+# frontières (même signal de souveraineté). Fort au plan LARGE (la lecture politique du fit), s'efface
+# vers le zoom profond (le terrain parle). Transparent hors territoire — le parchemin transparaît. ──
+var _pol_tex: ImageTexture = null
+const WASH_A_FAR  := 0.36  ## opacité du lavis au fit (qui tient quoi, d'un regard)
+const WASH_A_NEAR := 0.15  ## ... au zoom profond
+# ── SÉLECTION : contour DORÉ de la province choisie (le grain de panneau, charte EU4) ──
+var _sel_prov_cache := -2
+var _sel_segs := PackedVector2Array()
+const SEL_GOLD := Color(0.86, 0.68, 0.26)   ## or de sélection (net, au-dessus du creux d'encre)
 var _roads := []          ## [{points, level, nprov, key}] — réseau de routes (façade + méta locale)
 var _road_dress := []     ## [{name, pos, road}] — mobilier de BORDURE (apparaît à la FIN du chantier)
 var _road_cells := {}     ## cellules occupées par une route (+ marge) → le bourg en SPIRALE les évite
@@ -742,11 +753,20 @@ func _rebuild_borders() -> void:
 	var w = Sim.world
 	if w == null:
 		return
-	# TRAME FINE (provinces 0 + régions 1) : CHAÎNÉE en polylignes ordonnées puis Chaikin → COURBES
-	# (fin de l'escalier — les arêtes de cellule deviennent un tracé lissé, pas des marches).
+	# TRAME FINE (provinces 0 + régions 1) : SEULEMENT là où la civilisation touche — un joint
+	# dont les DEUX rives sont vierges (owner<0 et other<0) n'apprend rien au joueur et noyait
+	# la carte sous un filet de « boue craquelée » sur toute la terre sauvage. Puis CHAÎNÉE en
+	# polylignes ordonnées et lissée → courbes (fin de l'escalier).
 	var fine_raw := PackedVector2Array()
-	fine_raw.append_array(w.border_segments(0))
-	fine_raw.append_array(w.border_segments(1))
+	for lvl in [0, 1]:
+		var fd: Dictionary = w.border_segments_col(lvl)
+		var fp: PackedVector2Array = fd.get("pts", PackedVector2Array())
+		var fo: PackedInt32Array = fd.get("owner", PackedInt32Array())
+		var ft: PackedInt32Array = fd.get("other", PackedInt32Array())
+		for i in range(fo.size()):
+			if fo[i] < 0 and (i >= ft.size() or ft[i] < 0):
+				continue                                   # terre vierge des deux côtés : muette
+			fine_raw.push_back(fp[i * 2]); fine_raw.push_back(fp[i * 2 + 1])
 	var fine := PackedVector2Array()
 	for ch in _chain_segments(fine_raw):
 		var poly: PackedVector2Array = _smooth_poly(ch)
@@ -811,6 +831,20 @@ func _rebuild_borders() -> void:
 			inrm[i] = -rn[i]                                 # normale extérieure → INTÉRIEURE
 		var rcap := _smooth_border(rp, inrm)             # chaîné + lissé (liseré en courbe)
 		_cap_segs[c] = rcap[0]; _cap_norm[c] = rcap[1]
+	# LAVIS POLITIQUE : la palette = le pigment d'entité ÉCLAIRCI (aquarelle, pas une dalle) ;
+	# l'image owner→teinte est bâtie en C++ (political_image) — même signal que les frontières.
+	if w.has_method("political_image"):
+		var pal := PackedColorArray()
+		pal.resize(w.country_count())
+		for c in range(w.country_count()):
+			pal[c] = _entity_wash(c)
+		var pimg: Image = w.political_image(pal)
+		if pimg != null:
+			if _pol_tex == null or _pol_tex.get_size() != Vector2(pimg.get_size()):
+				_pol_tex = ImageTexture.create_from_image(pimg)
+			else:
+				_pol_tex.update(pimg)
+	_sel_prov_cache = -2                                 # la géographie/souveraineté a bougé → recache la sélection
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
 
@@ -1015,6 +1049,11 @@ const CS_GOLD := Color(0.62, 0.50, 0.28)         ## or vieilli
 
 ## PIGMENT POLITIQUE d'une entité (le trait fin du pays) : encre d'HÉRITAGE (culture, prune/rouille/
 ## sienne/olive/ocre/ardoise) + variation par pays sur la VALEUR seule (gamme tenue) ; cité-état = or fané.
+## TEINTE (hue) unique d'une entité — LA source partagée de TOUTE sa famille de couleurs
+## (frontière · lavis · armée · nom) : golden-ratio par id (voisins bien séparés).
+func _entity_hue(e: int) -> float:
+	return fmod(float(e) * 0.1607 + 0.04, 1.0)
+
 func _entity_pigment(e: int) -> Color:
 	if e < 0:
 		return Color(0.30, 0.24, 0.18)
@@ -1022,10 +1061,18 @@ func _entity_pigment(e: int) -> Color:
 		return CS_GOLD
 	# DISTINCT PAR EMPIRE : jadis la frontière était codée par HÉRITAGE (6 familles) →
 	# deux empires du même héritage = MÊME couleur, indistinguables. Désormais une teinte
-	# propre à chaque pays, étalée en golden-ratio par id (voisins bien séparés en teinte),
-	# SATURATION/VALEUR MUETTES (gamme parchemin terreuse — anti-néon).
-	var hue := fmod(float(e) * 0.1607 + 0.04, 1.0)
-	return Color.from_hsv(hue, 0.45, 0.55)
+	# propre à chaque pays (_entity_hue), SATURATION/VALEUR MUETTES (encre terreuse — anti-néon).
+	return Color.from_hsv(_entity_hue(e), 0.45, 0.55)
+
+## LAVIS de territoire : MÊME teinte, plus SATURÉE et CLAIRE — l'aquarelle doit TEINTER le
+## parchemin (à sat 0.45 le wash lisait GRIS : il assombrissait sans colorer). L'anti-néon
+## tient par l'ALPHA bas du wash, pas par la désaturation.
+func _entity_wash(e: int) -> Color:
+	if e < 0:
+		return Color(0.55, 0.50, 0.40)
+	if int(Sim.world.country_role(e)) == 2:
+		return Color(0.82, 0.68, 0.34)               # cité-état : or clair
+	return Color.from_hsv(_entity_hue(e), 0.60, 0.82)
 
 ## ÉPAISSEUR ADAPTATIVE (CK) : rend une largeur en unités MONDE à passer DIRECTEMENT à draw_* (le /zoom est
 ## déjà fait). `base·zoom` = px ÉCRAN voulu à taille monde constante, borné aux rails [min,max] de lisibilité.
@@ -1363,9 +1410,13 @@ func _process(dt: float) -> void:
 ## pop d'une région → bande de ville 1-8 (les paliers des sprites CITY_POP_BAND).
 const CITY_POP_BANDS := [150, 400, 900, 1800, 3500, 7000, 14000]   # 7 seuils → 8 bandes
 func _country_color(c: int) -> Color:
+	# UNE SEULE FAMILLE de couleur par entité : la teinte du pigment politique (frontière =
+	# lavis = armée = nom), en version FORTE pour un acteur posé SUR la carte (le jeton doit
+	# se détacher du lavis muet). Jadis une roue HSV vive INDÉPENDANTE (0.137·c, sat 0.72) :
+	# l'armée d'un pays n'avait PAS la couleur de sa frontière.
 	if c < 0:
 		return Color(0.7, 0.7, 0.72)
-	return Color.from_hsv(fmod(c * 0.137, 1.0), 0.72, 0.90)
+	return _shade(_entity_pigment(c), 0.22)
 
 func _phase_color(phase: int) -> Color:
 	match phase:
@@ -1415,6 +1466,16 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vp := get_viewport_rect().size
 	var INK := Color(0.20, 0.14, 0.09, 0.95)         # encre brun-sépia (le trait de plume)
 
+	# ── LAVIS POLITIQUE (aquarelle) : le territoire teinté SOUS tout — la carte DIT qui tient
+	#    quoi d'un regard au plan large ; le lavis s'efface vers le zoom profond (le terrain parle). ──
+	if not nature_mode and _pol_tex != null:
+		if _borders_dirty:
+			_rebuild_borders()                        # le lavis se rebâtit avec les frontières
+		var wash_a := lerpf(WASH_A_FAR, WASH_A_NEAR, clampf((zoom - 1.0) / 7.0, 0.0, 1.0))
+		var p0: Vector2 = mv.iso_pos(0, 0)
+		var p1: Vector2 = mv.iso_pos(w.map_w(), w.map_h())
+		draw_texture_rect(_pol_tex, Rect2(p0, p1 - p0), false, Color(1, 1, 1, wash_a))
+
 	# ── DRESSING DE TERRAIN (lot 2) : marques de biome (relief/végétation/zones), SOUS tout le reste. ──
 	if zoom >= DECOR_ZOOM_MIN:
 		if _dressing_dirty:
@@ -1451,16 +1512,15 @@ func _draw_iso(w, mv: Node2D) -> void:
 	# la TRAME FINE fond en survol (sinon mosaïque illisible) et se révèle au plan rapproché — toutes
 	# les provinces RESTENT tracées (1px), juste graduées au zoom (LOD ; les blocs d'empire, eux, toujours).
 	if _borders.has(0):
-		# PROVINCE = administrative, DISCRÈTE : brun sombre GRAVÉ (≠ noir), −30 % d'opacité (max 0.34 vs
-		# 0.45) → elle « dit carte » avant de dire « grille de jeu ». Émerge par le fondu, ne domine pas.
-		var fine_a := clampf((zoom - 1.6) / 2.4, 0.0, 1.0) * 0.34
+		# PROVINCE = administrative, un CHUCHOTEMENT : déjà restreinte à la terre ADMINISTRÉE
+		# (rebuild), elle n'émerge qu'au plan rapproché (zoom 2.2+) et plafonne bas (0.24) —
+		# le lavis + la frontière d'empire portent la lecture, la trame ne fait que détailler.
+		var fine_a := clampf((zoom - 2.2) / 2.6, 0.0, 1.0) * 0.24
 		if fine_a > 0.02:
 			var fseg := _project_segs_iso(mv, _borders[0])
 			if fseg.size() >= 2:
-				# 2 passes seulement (halo doux pour l'anti-alias + cœur ~1px) — plus léger que l'ancien
-				# triple-feutrage noir. Le cœur à `fine_a` (≈0.34 à plein) = le « alpha ~35 % » voulu.
-				draw_multiline(fseg, Color(PROV_INK.r, PROV_INK.g, PROV_INK.b, fine_a * 0.45), _w(zoom, 0.8, 1.1, 2.0), true)
-				draw_multiline(fseg, Color(PROV_INK.r, PROV_INK.g, PROV_INK.b, fine_a), _w(zoom, 0.42, 0.7, 1.1), true)
+				draw_multiline(fseg, Color(PROV_INK.r, PROV_INK.g, PROV_INK.b, fine_a * 0.45), _w(zoom, 0.6, 0.9, 1.5), true)
+				draw_multiline(fseg, Color(PROV_INK.r, PROV_INK.g, PROV_INK.b, fine_a), _w(zoom, 0.34, 0.6, 0.9), true)
 	# PAYS : trait GRAVÉ en double passe (halo brun sombre LARGE + pigment politique FIN), pour bien
 	# SÉPARER l'administratif (province, cheveu brun) du politique (pays, trait coloré net). Puis le
 	# LISERÉ POURPRE FIN de chaque capitale, AU-DESSUS.
@@ -1468,6 +1528,27 @@ func _draw_iso(w, mv: Node2D) -> void:
 		_draw_band(mv, _b_segs[entity], _entity_pigment(entity), zoom)
 	for cc in _cap_segs:
 		_draw_cap_lisere(mv, _cap_segs[cc], _cap_norm[cc], zoom)
+
+	# ── SÉLECTION : contour DORÉ de la province choisie (creux d'encre + or net), AU-DESSUS
+	#    des frontières — le retour visuel du clic (le panneau dit QUOI, le contour dit OÙ). ──
+	var selp := int(mv.get("_selected_prov"))
+	if selp >= 0:
+		if selp != _sel_prov_cache and w.has_method("province_border_segments"):
+			_sel_prov_cache = selp
+			_sel_segs = PackedVector2Array()
+			var sd: Dictionary = w.province_border_segments(selp)
+			var sp: PackedVector2Array = sd.get("pts", PackedVector2Array())
+			for ch in _chain_segments(sp):
+				var poly: PackedVector2Array = _smooth_poly(ch)
+				for i in range(poly.size() - 1):
+					_sel_segs.push_back(poly[i]); _sel_segs.push_back(poly[i + 1])
+		if _sel_segs.size() >= 2:
+			var sseg := _project_segs_iso(mv, _sel_segs)
+			draw_multiline(sseg, Color(0.12, 0.08, 0.04, 0.80), _w(zoom, 1.3, 2.6, 4.4), true)
+			draw_multiline(sseg, Color(SEL_GOLD.r, SEL_GOLD.g, SEL_GOLD.b, 0.95), _w(zoom, 0.7, 1.5, 2.6), true)
+	elif _sel_prov_cache != -2:
+		_sel_prov_cache = -2
+		_sel_segs = PackedVector2Array()
 
 	# ── ROUTES : POINTILLÉ + trait de PINCEAU, sépia RENFORCÉ à OPACITÉ LIMITÉE (encre sur parchemin).
 	#    Croissance organique (1 an/province) ; tous les tirets cumulés → UN seul pinceau (batch). ──
@@ -1594,11 +1675,14 @@ func _draw_iso(w, mv: Node2D) -> void:
 		var ip := Vector2(mx, my)
 		var lw := VKit.text_w(nm, VKit.FS_SMALL)
 		# CALLIGRAPHIE : AUCUNE boîte (fond transparent) — encre directe + halo papier, le nom écrit à
-		# la plume LE LONG du pays (échelle ÉCRAN constante, un peu agrandie pour la lisibilité).
-		var nsc := 1.35 / zoom
+		# la plume LE LONG du pays. AGRANDI (1.35→1.9 : lisible au fit, là où la carte se joue) et
+		# TEINTÉ au pigment de l'entité assombri (même famille que frontière/lavis — cohérence).
+		var pig := _entity_pigment(c)
+		var name_ink := Color(pig.r * 0.42, pig.g * 0.42, pig.b * 0.42, 0.97)
+		var nsc := 1.9 / zoom
 		draw_set_transform(ip, ang, Vector2(nsc, nsc))
-		VKit.text(self, Vector2(-lw * 0.5 + 0.7, -6.3), Color(0.97, 0.91, 0.74, 0.6), nm, VKit.FS_SMALL)  # halo papier
-		VKit.text(self, Vector2(-lw * 0.5, -7.0), Color(0.18, 0.12, 0.07, 0.96), nm, VKit.FS_SMALL)        # encre
+		VKit.text(self, Vector2(-lw * 0.5 + 0.7, -6.3), Color(0.97, 0.91, 0.74, 0.78), nm, VKit.FS_SMALL)  # halo papier
+		VKit.text(self, Vector2(-lw * 0.5, -7.0), name_ink, nm, VKit.FS_SMALL)                              # encre teintée
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ── ÉPICENTRE du cataclysme §27 : anneaux pulsants à l'encre de la fin. ──
