@@ -55,13 +55,16 @@ vec3 antique_color(int b) {
 }
 
 // couleur de base LISSÉE sur un petit voisinage → dissout le SEMIS de cellules en aplats régionaux.
+// CONSCIENTE DE L'EAU : un voisin de l'autre côté de la ligne d'eau NE compte PAS — le bleu ne
+// bave plus dans la plage ni la plage dans la mer (la « bouillie » de côte venait de là).
 vec3 antique_base(vec2 c, int bc) {
+	bool wc = is_water(bc);
 	vec3 a = antique_color(bc); float n = 1.0;
-	int b1 = biome_at(c + vec2(2.3, 0.7));   if (b1 >= 0) { a += antique_color(b1); n += 1.0; }
-	int b2 = biome_at(c + vec2(-1.8, 1.9));  if (b2 >= 0) { a += antique_color(b2); n += 1.0; }
-	int b3 = biome_at(c + vec2(0.6, -2.4));  if (b3 >= 0) { a += antique_color(b3); n += 1.0; }
-	int b4 = biome_at(c + vec2(-2.1, -1.3)); if (b4 >= 0) { a += antique_color(b4); n += 1.0; }
-	int b5 = biome_at(c + vec2(1.5, 2.2));   if (b5 >= 0) { a += antique_color(b5); n += 1.0; }
+	int b1 = biome_at(c + vec2(2.3, 0.7));   if (b1 >= 0 && is_water(b1) == wc) { a += antique_color(b1); n += 1.0; }
+	int b2 = biome_at(c + vec2(-1.8, 1.9));  if (b2 >= 0 && is_water(b2) == wc) { a += antique_color(b2); n += 1.0; }
+	int b3 = biome_at(c + vec2(0.6, -2.4));  if (b3 >= 0 && is_water(b3) == wc) { a += antique_color(b3); n += 1.0; }
+	int b4 = biome_at(c + vec2(-2.1, -1.3)); if (b4 >= 0 && is_water(b4) == wc) { a += antique_color(b4); n += 1.0; }
+	int b5 = biome_at(c + vec2(1.5, 2.2));   if (b5 >= 0 && is_water(b5) == wc) { a += antique_color(b5); n += 1.0; }
 	return a / n;
 }
 
@@ -209,6 +212,14 @@ void fragment() {
 			if (near_wet(cw, 2.6)) col = mix(col, vec3(0.51, 0.60, 0.60), 0.040);
 			if (near_wet(cw, 1.6)) col = mix(col, vec3(0.47, 0.57, 0.59), 0.070);
 			if (near_wet(cw, 1.0)) col = mix(col, vec3(0.41, 0.47, 0.47), 0.105);   // bord = voile humide (pas d'encre dure)
+			// le FIL D'EAU : un liseré d'encre FANÉE au contact immédiat (la ligne que le
+			// cartographe pose au pinceau fin) — la côte se LIT, les frontières y meurent
+			// proprement. Inégal (bruit), doux (α faible) : un trait peint, pas un vecteur.
+			float shoreink = clamp(1.0 - ring_solid(cw, 0.85), 0.0, 1.0) * float(near_wet(cw, 1.0));
+			if (shoreink > 0.02) {
+				float sg = texture(noise_tex, cell * 0.7 + vec2(3.3, 6.1)).r;
+				col = mix(col, vec3(0.34, 0.32, 0.27), shoreink * (0.16 + 0.10 * sg));
+			}
 		}
 
 		// RIVIÈRE = ENCRE FANÉE mais OPAQUE (pas un bleu uniforme « Google Maps », mais le sol ne TRANSPARAÎT
