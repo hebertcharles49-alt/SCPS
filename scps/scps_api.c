@@ -568,8 +568,8 @@ int scps_province_groups(ScpsSim *s, int pid, ScpsGroup *out, int max){
 
 int scps_province_income(ScpsSim *s, int pid, ScpsIncome *out, int max){
     if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
-    int reg = s->w->province[pid].region;
-    IncomeReadout inc = province_income(s->sim.econ, reg);
+    /* v50 — au grain PROVINCE (l'UI montrait l'agrégat de toute la RÉGION) */
+    IncomeReadout inc = province_income_prov(s->sim.econ, pid);
     int n = inc.n; if(n>max) n=max;
     for(int i=0;i<n;i++){
         out[i].source       = sz(inc.line[i].source);

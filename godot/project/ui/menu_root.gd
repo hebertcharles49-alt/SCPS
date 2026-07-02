@@ -195,6 +195,7 @@ func _on_load(slot: int) -> void:
 	if rc == 0:
 		hide()              # partie chargée : on referme le menu (monde en pause)
 		Sim.set_speed(0)
+		Sim.game_on = true  # la partie EST commencée : alertes & popups s'éveillent
 		game_started.emit()
 	else:
 		_load_msg.text = "Chargement impossible (emplacement vide ou version différente)."
@@ -212,6 +213,7 @@ func _show(which: Control) -> void:
 
 func _on_launched() -> void:
 	hide()                 # le shell se referme : la carte (en pause an 0) apparaît
+	Sim.game_on = true     # la partie EST commencée : alertes & popups s'éveillent
 	game_started.emit()
 
 ## ré-ouvre le menu (touche Échap en jeu) — met le monde en pause.

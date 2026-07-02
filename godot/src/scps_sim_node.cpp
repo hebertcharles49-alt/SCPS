@@ -98,6 +98,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_navy_build", "hull"),         &ScpsWorld::player_navy_build);
     ClassDB::bind_method(D_METHOD("player_disband"),                    &ScpsWorld::player_disband);
     ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
+    ClassDB::bind_method(D_METHOD("colony_status"),                 &ScpsWorld::colony_status);
+    ClassDB::bind_method(D_METHOD("country_food", "c"),             &ScpsWorld::country_food);
+    ClassDB::bind_method(D_METHOD("diplo_cd"),                      &ScpsWorld::diplo_cd);
     ClassDB::bind_method(D_METHOD("country_capital_province", "c"), &ScpsWorld::country_capital_province);
     ClassDB::bind_method(D_METHOD("player_declare_war", "target"),    &ScpsWorld::player_declare_war);
     ClassDB::bind_method(D_METHOD("player_make_peace", "target"),     &ScpsWorld::player_make_peace);
@@ -882,6 +885,22 @@ bool ScpsWorld::can_colonize(int prov) {
 }
 int ScpsWorld::colonized_total() const {
     return sim ? scps_colonized_total(sim) : 0;
+}
+/* v50 — le CHANTIER de colonisation du joueur (Dictionary : active/dst/days_left/total_days/cd_days/yield_pct). */
+Dictionary ScpsWorld::colony_status() const {
+    Dictionary d;
+    int dst=-1, left=0, tot=0, cd=0, yp=0;
+    int act = sim ? scps_colony_status(sim, &dst, &left, &tot, &cd, &yp) : 0;
+    d["active"] = act != 0;
+    d["dst"] = dst; d["days_left"] = left; d["total_days"] = tot;
+    d["cd_days"] = cd; d["yield_pct"] = yp;
+    return d;
+}
+double ScpsWorld::country_food(int c) const {
+    return sim ? scps_country_food(sim, c) : 0.0;
+}
+int ScpsWorld::diplo_cd() const {
+    return sim ? scps_diplo_cd(sim) : 0;
 }
 int ScpsWorld::country_capital_province(int c) const {
     return sim ? scps_country_capital_province(sim, c) : -1;

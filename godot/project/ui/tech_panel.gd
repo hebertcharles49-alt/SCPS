@@ -10,8 +10,9 @@ extends Control
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
-const PW := 720.0
-const PH := 560.0
+# taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
+var PW := 720.0
+var PH := 560.0
 const HEAD := 52.0          # hauteur d'en-tête (titre + jauges)
 const FOOT := 22.0          # pied (détail du nœud sélectionné)
 const METAH := 52.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage)
@@ -42,7 +43,16 @@ func _ready() -> void:
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size
+	var pw0 := PW
+	var ph0 := PH
+	PW = clampf(vp.x * 0.52, 720.0, 1150.0)
+	PH = clampf(vp.y * 0.64, 560.0, 900.0)
+	size = Vector2(PW, PH)
 	position = Vector2((vp.x - PW) * 0.5, (vp.y - PH) * 0.5)
+	if _built and (absf(PW - pw0) > 1.0 or absf(PH - ph0) > 1.0):
+		_built = false                       # le graphe se rebâtit à la nouvelle taille
+		if visible:
+			_build()
 
 func _on_visibility() -> void:
 	if visible and not _built and Sim.world != null:

@@ -22,6 +22,7 @@ const TABS := [
 
 signal tab_selected(index: int)   ## -1 = aucun (replié)
 signal charts_requested           ## le tiroir Économie demande les courbes (sous-menu)
+signal open_country(cid: int)     ## le tiroir Diplomatie demande la FENÊTRE d'un pays
 
 var _btns := []
 var _sel := -1
@@ -60,6 +61,7 @@ func _ready() -> void:
 	_drawer.name = "SidebarDrawer"
 	add_child(_drawer)
 	_drawer.charts_requested.connect(func(): charts_requested.emit())
+	_drawer.open_country.connect(func(cid): open_country.emit(cid))
 	if _map != null:
 		_drawer.setup(_map)
 

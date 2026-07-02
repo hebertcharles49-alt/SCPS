@@ -30,6 +30,8 @@ var _last_speed := 2            ## dernière vitesse non-pause (pour la bascule 
 var _accum := 0.0
 var day_count := 0              ## jours simulés CETTE SESSION (display-only : croissance des
                                 ## routes & co à grain fin — seuls les DELTAS comptent)
+var game_on := false            ## la PARTIE a commencé (Lancer/Charger) — avant : le monde de
+                                ## fond tourne en vitrine, alertes & popups restent muets
 
 func _ready() -> void:
 	if not ClassDB.class_exists("ScpsWorld"):

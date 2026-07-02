@@ -23,6 +23,7 @@ const ZOOM_MAX := 16.0          ## le plus ZOOMÉ (on plonge dans un bourg)
 enum { VIEW_GLOBE = 0, VIEW_ISO = 1 }
 
 signal province_picked(province: int, region: int, owner: int)
+signal country_context(owner: int)   ## CLIC DROIT sur un territoire → l'UI diplomatique du pays
 signal mode_changed(m: int)     ## le mode render a changé (légende, sélecteurs)
 
 var mode := 0                   ## ViewMode de carte (0 terrain · 1 politique · 2 régions · 3 pays)
@@ -131,6 +132,23 @@ func _input(event: InputEvent) -> void:
 				_dragged = false
 			elif not _dragged and get_viewport().gui_get_hovered_control() == null:
 				_pick_at_mouse()
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			if event.pressed:
+				_press_pos = event.position
+				_dragged = false
+			elif not _dragged and get_viewport().gui_get_hovered_control() == null:
+				# CLIC DROIT : l'UI diplomatique du pays sous le curseur
+				if Sim.world != null and Sim.world.has_method("province_at"):
+					var wp2 := unproj(get_global_mouse_position().x, get_global_mouse_position().y)
+					var px2 := int(floor(wp2.x))
+					var py2 := int(floor(wp2.y))
+					if px2 >= 0 and py2 >= 0 and px2 < Sim.world.map_w() and py2 < Sim.world.map_h():
+						var pr2: int = Sim.world.province_at(px2, py2)
+						if pr2 >= 0:
+							var rg2: int = Sim.world.province_region(pr2)
+							var ow2: int = Sim.world.region_owner(rg2) if rg2 >= 0 else -1
+							if ow2 >= 0:
+								country_context.emit(ow2)
 
 ## zoom CONTINU : facteur < 1 = on s'approche.
 func _zoom(factor: float) -> void:

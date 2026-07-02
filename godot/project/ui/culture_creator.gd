@@ -50,6 +50,7 @@ var _valid_lbl: Label
 var _preview_lbl: Label
 var _seed_spin: SpinBox
 var _start_btn: Button
+var _panel: PanelContainer
 var _rng := RandomNumberGenerator.new()
 
 
@@ -60,6 +61,18 @@ func _ready() -> void:
 	_build_ui()
 	_load_data()
 	_refresh()
+	get_viewport().size_changed.connect(_adapt)
+	_adapt()
+
+## taille ADAPTATIVE : le panneau suit la fenêtre (42 % de large, borné) — natif plein écran.
+func _adapt() -> void:
+	if _panel == null:
+		return
+	var vp := get_viewport_rect().size
+	var w := clampf(vp.x * 0.42, 640.0, 940.0)
+	_panel.custom_minimum_size = Vector2(w, 0)
+	if _preview_lbl != null:
+		_preview_lbl.custom_minimum_size = Vector2(w - 40.0, 0)
 
 
 # ── le voile plein écran (assombrit la carte derrière la modale) ───────────────
@@ -84,6 +97,7 @@ func _build_ui() -> void:
 	sb.set_content_margin_all(20)
 	panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(panel)
+	_panel = panel
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 10)
@@ -242,7 +256,9 @@ func _load_data() -> void:
 	for ax in range(3):
 		var opt: OptionButton = _trad_opt[ax]
 		for t in _axis_traits[ax]:
-			opt.add_item("%s  (%s)" % [String(t["nom"]), _rang_str(int(t["rang"]))])
+			# les POINTS ne s'affichent plus (le mot suffit) — le CHIFFRE vit dans le
+			# tooltip du menu (survol), cf. _refresh (« un hover qui donne la stat »).
+			opt.add_item("%s — %s" % [String(t["nom"]), _rang_word(int(t["rang"]))])
 			opt.set_item_metadata(opt.item_count - 1, int(t["id"]))
 
 	# défaut sensé : une compo VALIDE d'entrée (majeur Phys / mineur Soc / défaut Int)
@@ -254,6 +270,13 @@ func _rang_str(r: int) -> String:
 	elif r == 1: return "+1 mineur"
 	elif r < 0: return "−1 défaut"
 	return "0"
+
+## le MOT seul (les points restent au survol)
+func _rang_word(r: int) -> String:
+	if r >= 2: return "majeur"
+	elif r == 1: return "mineur"
+	elif r < 0: return "défaut"
+	return "neutre"
 
 
 # choisit, par axe, le 1er trait du rang voulu (rôle[ax] : 0 majeur · 1 mineur · 2 défaut)
@@ -286,6 +309,36 @@ func _trait_hover(id: int) -> String:
 			if int(t["id"]) == id:
 				return String(t["hover"])
 	return ""
+
+func _trait_name(id: int) -> String:
+	for ax in range(3):
+		for t in _axis_traits[ax]:
+			if int(t["id"]) == id:
+				return String(t["nom"])
+	return ""
+
+## GRISE les options IMPOSSIBLES de chaque menu : la compo exige EXACTEMENT
+## {majeur, mineur, défaut} sur les 3 axes — vu les DEUX autres choix courants,
+## un rang déjà « épuisé » se grise (le menu reste dans son scope : son axe).
+func _regray() -> void:
+	for ax in range(3):
+		var others := []
+		for bx in range(3):
+			if bx != ax:
+				others.append(_norm_rank(_trait_rank(_cur_trait(bx))))
+		var opt: OptionButton = _trad_opt[ax]
+		for i in range(opt.item_count):
+			var r := _norm_rank(_trait_rank(int(opt.get_item_metadata(i))))
+			# permis ssi {r} ∪ others peut ENCORE devenir {2,1,-1} : r ne doit pas
+			# être déjà porté par LES DEUX autres axes (un doublon reste réparable).
+			var dup := 0
+			for o in others:
+				if o == r:
+					dup += 1
+			opt.set_item_disabled(i, dup >= 2)
+
+func _norm_rank(r: int) -> int:
+	return 2 if r >= 2 else (1 if r == 1 else -1)
 
 
 func _cur_heritage() -> int:
@@ -320,28 +373,36 @@ func _refresh() -> void:
 		if int(e["id"]) == eth:
 			_eth_info.text = "« %s … » — %s" % [String(e["epithete"]), String(e["hint"])]
 			break
-	# traditions : le survol du trait choisi sous chaque axe
+	# traditions : le survol du trait choisi sous chaque axe + TOOLTIP chiffré (les
+	# points ne s'affichent plus en clair — ils vivent au survol du menu)
 	for ax in range(3):
-		_trad_hover[ax].text = _trait_hover(_cur_trait(ax))
+		var tid := _cur_trait(ax)
+		_trad_hover[ax].text = _trait_hover(tid)
+		var opt: OptionButton = _trad_opt[ax]
+		opt.tooltip_text = "%s\n%s\nRang : %s" % [_trait_name(tid), _trait_hover(tid), _rang_str(_trait_rank(tid))]
+	_regray()
 
 	# nom de culture (le PEUPLE)
 	_culture_lbl.text = "Votre peuple : les %s" % Sim.world.culture_name(her, seed)
 
-	# aperçu des leviers (membrane : mots + signe)
+	# aperçu des leviers — des MOTS + une flèche ; les CHIFFRES au survol (tooltip)
 	var t0 := _cur_trait(0)
 	var t1 := _cur_trait(1)
 	var t2 := _cur_trait(2)
 	var parts := PackedStringArray()
+	var tips := PackedStringArray()
 	for lv in Sim.world.culture_preview(t0, t1, t2):
-		# CHIFFRE (plus la flèche seule) : relatif → « +15 % » · absolu → « +1.5 »
 		var val := float(lv.get("value", 0.0))
+		parts.append("%s %s" % [String(lv["nom"]), "▲" if val > 0.0 else "▼"])
 		var num := ""
 		if int(lv.get("is_pct", 0)) != 0:
 			num = "%+d %%" % int(round(val * 100.0))
 		else:
-			num = "%+.1f" % val
-		parts.append("%s %s" % [String(lv["nom"]), num])
+			num = "%+.2f" % val
+		tips.append("%s : %s" % [String(lv["nom"]), num])
 	_preview_lbl.text = ("Effets : " + ", ".join(parts)) if parts.size() > 0 else "Effets : —"
+	_preview_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+	_preview_lbl.tooltip_text = "\n".join(tips) if tips.size() > 0 else ""
 
 	# validité (la façade fait foi) + message d'aide
 	var ok: bool = Sim.world.culture_validate(t0, t1, t2)

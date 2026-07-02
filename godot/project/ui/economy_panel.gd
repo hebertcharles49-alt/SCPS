@@ -10,8 +10,9 @@ const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const VKitDropdown = preload("res://ui/vkit_dropdown.gd")
 const LINECHART = preload("res://addons/easy_charts/control_charts/LineChart/line_chart.tscn")
-const PW := 720.0
-const PH := 482.0
+# taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
+var PW := 720.0
+var PH := 482.0
 const HEAD := 40.0
 const CAP := 300             # plafond d'historique (≈ 3 siècles)
 
@@ -60,7 +61,13 @@ func _ready() -> void:
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size
+	PW = clampf(vp.x * 0.48, 720.0, 1100.0)
+	PH = clampf(vp.y * 0.55, 482.0, 820.0)
+	size = Vector2(PW, PH)
 	position = Vector2((vp.x - PW) * 0.5, (vp.y - PH) * 0.5)
+	if _chart != null and is_instance_valid(_chart):
+		_chart.size = Vector2(PW - 32, PH - HEAD - 24)
+		_chart.custom_minimum_size = _chart.size
 
 func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:

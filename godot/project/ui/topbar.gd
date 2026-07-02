@@ -72,8 +72,22 @@ func _draw() -> void:
 		var sx0 := px
 		UIKit.draw_icon(self, "knowledge_book", Vector2(px, cy - 2), 16); px += 20
 		var sv := "%d" % int(ci["savoir"])
-		VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, sv)
+		VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, sv); px += VKit.text_w(sv) + 20
 		_savoir_rect = Rect2(sx0 - 4, 0, 24 + VKit.text_w(sv) + 8, H)
+		# NOURRITURE DISPONIBLE (v50) : Σ stock vivrier de l'empire — la réserve en rations
+		if w.has_method("country_food"):
+			UIKit.draw_icon(self, "grain_bundle", Vector2(px, cy - 2), 16); px += 20
+			var fg := _grp(int(w.country_food(me)))
+			VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, fg); px += VKit.text_w(fg) + 20
+		# CHANTIER DE COLONISATION (v50) : la colonie qui mûrit / la cadence de l'ordre suivant
+		if w.has_method("colony_status"):
+			var cs: Dictionary = w.colony_status()
+			if bool(cs.get("active", false)):
+				var tot := maxi(1, int(cs.get("total_days", 1)))
+				var pct := int(round(100.0 * float(tot - int(cs.get("days_left", 0))) / float(tot)))
+				var ctxt := "Colonie %d %%" % pct
+				UIKit.draw_icon(self, "settlement_cluster", Vector2(px, cy - 2), 16); px += 20
+				VKit.text(self, Vector2(px, cy), Color(0.62, 0.78, 0.52), ctxt); px += VKit.text_w(ctxt) + 20
 
 	# §7 — ENGAGEMENT D'ÂGE : un âge s'est levé et le joueur ne l'a pas engagé →
 	# chip ambre cliquable (l'IA s'engage auto ; le joueur choisit — verbe CMD_AGE_ENGAGE).

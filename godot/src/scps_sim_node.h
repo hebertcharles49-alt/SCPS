@@ -136,6 +136,9 @@ public:
     bool       player_navy_build(int hull);           /* flotte : mettre une coque en chantier */
     bool       player_disband();                      /* guerre : dissoudre la réserve levée */
     int        colonized_total() const;               /* Σ provinces colonisées — signature de souveraineté */
+    Dictionary colony_status() const;                 /* v50 : le CHANTIER de colonisation du joueur */
+    double     country_food(int c) const;             /* v50 : Σ stock vivrier (topbar) */
+    int        diplo_cd() const;                      /* v50 : jours avant l'émissaire dispo (0 = prêt) */
     int        country_capital_province(int c) const; /* province-capitale (liseré au grain charte) */
 
     /* §3 — VERBES DIPLO du joueur (proposer → ai_consider_offer évalue) ; true = ordre enfilé */

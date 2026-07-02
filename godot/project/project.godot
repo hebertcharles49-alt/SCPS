@@ -18,10 +18,16 @@ config/name="SCPS"
 run/main_scene="res://main/Main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/size/mode=3
+
 [autoload]
 
 Sim="*res://autoload/sim.gd"
-ECUtilities="*res://addons/easy_charts/utilities/scripts/ec_utilities.gd"
+ECUtilities="*uid://cip7vyqyn45sf"
 
 [editor_plugins]
 

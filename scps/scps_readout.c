@@ -616,6 +616,29 @@ static const char *relief_word(float height_avg, Biome b) {
     return "Plaines";
 }
 
+/* v50 — l'income AU GRAIN PROVINCE : l'UI de province montre les flux de LA province
+ * (pe->supply, la vérité v47), plus jamais l'agrégat de sa région entière. */
+IncomeReadout province_income_prov(const WorldEconomy *econ, int pid) {
+    IncomeReadout r; memset(&r, 0, sizeof r);
+    if (!econ || pid < 0 || pid >= econ->n_prov) return r;
+    const ProvinceEconomy *pe = &econ->prov[pid];
+    float qty[RES_COUNT];
+    for (int i=0;i<RES_COUNT;i++) qty[i] = pe->supply[i] / 30.f;
+    bool taken[RES_COUNT]; memset(taken,0,sizeof taken);
+    for (int k=0;k<6;k++){
+        int best=-1; float bv=0.02f;                 /* seuil bas : une province produit moins qu'une région */
+        for (int i=1;i<RES_COUNT;i++){ if (taken[i]) continue; if (qty[i]>bv){ bv=qty[i]; best=i; } }
+        if (best<0) break;
+        taken[best]=true;
+        r.line[r.n].source       = resource_name((Resource)best);
+        r.line[r.n].per_day      = qty[best];
+        r.line[r.n].manufactured = (best >= RES_PROD_FIRST);
+        r.line[r.n].good         = best;
+        r.n++;
+    }
+    return r;
+}
+
 /* PRODUCTION — la QUANTITÉ produite par bien et par jour (unités/jour), via l'offre
  * réelle du dernier tick. PAS de prix : c'est l'income en ressource (ou en or si le
  * bien EST de l'or) ; la vente est une autre histoire. Le tick vaut un MOIS → /30. */

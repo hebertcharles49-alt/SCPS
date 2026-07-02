@@ -14,11 +14,18 @@ var _econ: Control
 var _prov_detail: Control
 var _menu: Control
 var _religion: Control
+var _country_actions: Control  # fenêtre diplomatique par pays (liste diplo + clic droit)
 var _devpanel: Control         # MODTOOLS : panneau dev (tunables live, F10)
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _sel_prov := -1
 
 func _ready() -> void:
+	# THÈME GLOBAL + feedback de clic : états de bouton visibles (hover/pressed/disabled)
+	# hérités par TOUTE l'UI, flash de clic accroché à chaque BaseButton (présent + futur).
+	var UiTheme := load("res://ui/ui_theme.gd")
+	get_window().theme = UiTheme.build()
+	UiTheme.attach_feedback(get_tree())
+
 	# la carte (Node2D, caméra dedans)
 	var map_script := load("res://map/map_view.gd")
 	var map: Node2D = map_script.new()
@@ -109,6 +116,26 @@ func _ready() -> void:
 	_prov_panel.build_requested.connect(func():
 		_construct.visible = not _construct.visible
 		_construct.queue_redraw())
+	# … et depuis l'onglet CONSTRUCTIONS du détail (sa maison désormais)
+	_prov_detail.build_requested.connect(func():
+		_construct.visible = true
+		_construct.queue_redraw())
+
+	# EMPIRE SIDEBAR (droite) : résumé d'empire (villes/armées/colonisation/flotte) + LOG
+	var esb = load("res://ui/empire_sidebar.gd").new()
+	esb.name = "EmpireSidebar"
+	ui.add_child(esb)
+
+	# FENÊTRE DIPLOMATIQUE PAR PAYS : ouverte par la liste diplo (sidebar) et le CLIC DROIT
+	_country_actions = load("res://ui/country_actions.gd").new()
+	_country_actions.name = "CountryActions"
+	ui.add_child(_country_actions)
+	map.country_context.connect(func(owner):
+		if Sim.game_on and owner != Sim.world.player():
+			_country_actions.open_country(owner))
+	_sidebar.open_country.connect(func(cid):
+		_sidebar.close()
+		_country_actions.open_country(cid))
 
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
@@ -207,7 +234,7 @@ func _on_tick_faith(_year: int) -> void:
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).
 func _close_topmost() -> bool:
-	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel]:
+	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions]:
 		if p != null and p.visible:
 			p.visible = false
 			return true

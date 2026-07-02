@@ -26,15 +26,14 @@ const FILT_GROUPS := [
 ]
 
 signal charts_requested        ## Économie → « Courbes dans le temps » : ouvre le panneau Easy Charts
+signal open_country(cid: int)  ## Diplomatie → la FENÊTRE d'actions du pays cliqué
 
 var _tab := -1
 var _map                       # MapView (pour Filtres → set_mode)
 var _active_mode := 0
 var _chips := []               # [{rect, mode}] cliquables (Filtres)
 var _chart_btn := Rect2()      # bouton « Courbes dans le temps » (onglet Économie)
-var _diplo_btns := []          # [{rect, act, target, nom}] boutons d'action diplo (onglet Diplomatie)
-var _diplo_flash := ""         # retour du dernier verbe diplo émis
-var _diplo_flash_ok := true
+var _diplo_btns := []          # [{rect, act="open", target, nom}] fiches pays cliquables (onglet Diplomatie)
 var _hover_zones := []         # [{rect, text}] survols (sprites de ressource → nom)
 var _hover_text := ""
 var _hover_pos := Vector2.ZERO
@@ -402,12 +401,10 @@ func _draw_filtres(x: float, y: float) -> void:
 			cx += tw + 4
 		y += 26
 
-# ── DIPLOMATIE (sb_panel_diplo) : INTERACTIF — opinion #26 + verbes du joueur §3 ──
-# Chaque pays : nom + statut, BARRE D'OPINION (±100, la mémoire de ses actes envers
-# nous), puis les boutons d'action GRISÉS par la légalité (diplo_options). Un bouton
-# permis mais dont l'offre serait REFUSÉE (would_accept faux) s'affiche en ambre.
-const DIPLO_ACTS := [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"],
-	["pact", "Pacte"], ["emb", "Embargo"]]
+# ── DIPLOMATIE (sb_panel_diplo) : la LISTE-RÉSUMÉ, SANS boutons — chaque pays connu :
+# nom + statut, BARRE D'OPINION (±100), le POURQUOI (composantes) et la MÉMOIRE datée.
+# Les ACTIONS vivent dans la FENÊTRE PAR PAYS (country_actions) : CLIC sur la ligne
+# (ou clic droit carte) → elle s'ouvre. (Le brouillard de guerre limitera la liste.)
 ## le JOURNAL D'ACTES (DiplogAct moteur) : [libellé quand LUI agit, libellé quand NOUS
 ## agissons, hostile?] — la sous-détaille datée de « Mémoire ».
 const DACT_LABEL := {
@@ -428,6 +425,7 @@ func _draw_diplo(x: float, y: float, me: int) -> void:
 	for rel in Sim.world.country_relations(me):
 		if y > size.y - 58:
 			break
+		var row_y0 := y
 		var target: int = int(rel["country"])
 		var at_war: bool = bool(rel["at_war"])
 		var allied: bool = bool(rel["allied"])
@@ -482,44 +480,12 @@ func _draw_diplo(x: float, y: float, me: int) -> void:
 			VKit.text(self, Vector2(x + 6, y), lc, line, VKit.FS_SMALL)
 			y += 12
 			shown += 1
-		if shown > 0:
-			y += 4   # respiration avant les boutons (le journal ne se glisse pas dessous)
-		# ligne 3 : boutons d'action, grisés selon diplo_options
-		var o: Dictionary = Sim.world.diplo_options(target)
-		var bx := x
-		for act in DIPLO_ACTS:
-			var key: String = act[0]
-			var label: String = act[1]
-			var can := false
-			var warn := false   # permis mais refus probable (would_accept faux)
-			match key:
-				"war":   can = bool(o.get("can_declare_war", false))
-				"peace": can = bool(o.get("can_make_peace", false)); warn = can and not bool(o.get("would_accept_peace", false))
-				"ally":  can = bool(o.get("can_offer_alliance", false)); warn = can and not bool(o.get("would_accept_alliance", false))
-				"pact":  can = bool(o.get("can_offer_pact", false)); warn = can and not bool(o.get("would_accept_pact", false))
-				"emb":
-					if bool(o.get("can_lift_embargo", false)):
-						label = "Lever"; can = true
-					else:
-						can = bool(o.get("can_embargo", false))
-			var bw := VKit.text_w(label, VKit.FS_SMALL) + 10.0
-			if bx + bw > DW - 12.0:
-				bx = x; y += 18
-			var r := Rect2(bx, y, bw, 16)
-			var fgc := VKit.COL_DIM
-			if can:
-				fgc = VKit.sense(0.40) if warn else VKit.COL_COPPER
-			VKit.fill(self, r, VKit.COL_PANEL2)
-			VKit.box(self, r, VKit.COL_EDGE if not can else fgc)
-			VKit.text(self, Vector2(bx + 5, y + 1), fgc, label, VKit.FS_SMALL)
-			if can:
-				_diplo_btns.append({"rect": r, "act": key, "target": target, "nom": String(rel["name"])})
-			bx += bw + 4
-		y += 22
+		# PAS de boutons ici : toute la FICHE est cliquable → la fenêtre d'actions du pays
+		var row_rect := Rect2(x - 4.0, row_y0 - 2.0, DW - 2.0 * x + 8.0, (y - row_y0) + 4.0)
+		_diplo_btns.append({"rect": row_rect, "act": "open", "target": target, "nom": String(rel["name"])})
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "▸ cliquer : actions diplomatiques", VKit.FS_SMALL)
+		y += 16
 		VKit.fill(self, Rect2(x, y - 6, DW - 2.0 * x, 1), VKit.COL_EDGE)
-	if _diplo_flash != "":
-		VKit.text(self, Vector2(x, size.y - 18),
-			(VKit.sense(0.85) if _diplo_flash_ok else VKit.sense(0.10)), _diplo_flash, VKit.FS_SMALL)
 
 ## barre d'opinion ±100 : repère central (zéro), remplissage vert (favorable) ou
 ## rouge (hostile) depuis le centre.
@@ -539,29 +505,6 @@ func _opinion_col(op: int) -> Color:
 	if op > 15: return VKit.sense(0.80)
 	if op < -15: return VKit.sense(0.15)
 	return VKit.COL_DIM
-
-## le CLIC émet le verbe joueur (façade) — l'ordre est ENFILÉ (journal déterministe),
-## il s'applique au prochain tick. Les offres passent par ai_consider_offer (le
-## vis-à-vis peut REFUSER) : « ordre émis » ≠ « accepté » (cf. l'aperçu would_accept).
-func _diplo_act(act: String, target: int, nom: String) -> void:
-	var w = Sim.world
-	if w == null:
-		return
-	var ok := false
-	var verb := ""
-	match act:
-		"war":   ok = w.player_declare_war(target);    verb = "guerre à"
-		"peace": ok = w.player_make_peace(target);      verb = "paix offerte à"
-		"ally":  ok = w.player_offer_alliance(target);  verb = "alliance proposée à"
-		"pact":  ok = w.player_offer_pact(target);       verb = "pacte proposé à"
-		"emb":
-			var o: Dictionary = w.diplo_options(target)
-			var on := not bool(o.get("can_lift_embargo", false))
-			ok = w.player_embargo(target, on)
-			verb = "embargo sur" if on else "embargo levé sur"
-	_diplo_flash_ok = ok
-	_diplo_flash = ("⚑ %s %s — ordre émis" % [verb, nom]) if ok else ("✗ %s %s — refusé" % [verb, nom])
-	queue_redraw()
 
 ## Armée : levée [-]/[+], posture, recompléter/dissoudre, mise en chantier de coque —
 ## verbes journalisés (drainés au tick), aucun n'échoue localement sauf navy_build.
@@ -689,7 +632,7 @@ func _gui_input(event: InputEvent) -> void:
 		if _tab == 6:
 			for b in _diplo_btns:
 				if b.rect.has_point(event.position):
-					_diplo_act(String(b.act), int(b.target), String(b.nom))
+					open_country.emit(int(b.target))   # la fiche → la FENÊTRE d'actions du pays
 					accept_event()
 					return
 		if _tab == 7:

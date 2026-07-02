@@ -217,6 +217,8 @@ typedef struct {
     int        n;
 } IncomeReadout;
 IncomeReadout province_income(const WorldEconomy *econ, int region);
+/* v50 — le MÊME income au grain PROVINCE (l'UI province montre SES flux, pas la région). */
+IncomeReadout province_income_prov(const WorldEconomy *econ, int pid);
 
 /* ===================================================================== */
 /* SEUILLAGE — flottants NUS → bandes (la membrane testable)              */

@@ -61,11 +61,23 @@ func _ready() -> void:
 ## recalcule la pile + repositionne le contrôle (il n'occupe QUE sa colonne de chips —
 ## jamais un plein-écran qui mangerait les clics de la carte).
 func _refresh() -> void:
+	# GATE : tant que la PARTIE n'a pas commencé (menu/setup), aucune alerte ni popup —
+	# le monde de fond tourne pour la vitrine, ses évènements ne concernent pas le joueur.
+	if not Sim.game_on:
+		_alerts = []
+		_events = []
+		if Sim.world != null and Sim.world.has_method("feed_poll"):
+			for ev in Sim.world.feed_poll(_seen_seq):   # on JETTE le fil pré-partie (acquitté)
+				_seen_seq = maxi(_seen_seq, int(ev["seq"]))
+		visible = false
+		return
+	visible = true
 	_alerts = _collect()
 	_poll_feed()
 	var n := _events.size() + _alerts.size()
 	var vw := get_viewport_rect().size.x
-	position = Vector2(vw - CHIP - 10.0, Frame.TOPBAR_H + 10.0)
+	# décalé à GAUCHE de l'empire-sidebar (bande droite permanente en jeu)
+	position = Vector2(vw - CHIP - 10.0 - (274.0 if Sim.game_on else 0.0), Frame.TOPBAR_H + 10.0)
 	size = Vector2(CHIP, maxf(1.0, n * (CHIP + GAP)))
 	visible = n > 0
 	queue_redraw()

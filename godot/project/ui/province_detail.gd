@@ -9,11 +9,12 @@ extends Control
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
-const PW := 648.0
-const PH := 512.0
+# taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
+var PW := 648.0
+var PH := 512.0
 const HEAD := 34.0
 const BODY := 92.0          # y de départ du corps d'onglet (sous titre + onglets)
-const TABS := ["Peuples", "Production", "Bâtiments", "Journal", "Main-d'œuvre"]
+const TABS := ["Peuples", "Production", "Constructions", "Journal", "Main-d'œuvre", "Empire"]
 const ALLOC_STEP := 10      # pas d'ajustement de poids (clic [−]/[+])
 
 var _pid := -1
@@ -25,6 +26,9 @@ var _hover_pos := Vector2.ZERO
 var _alloc_btns := []       # [{rect, act, sink}] boutons de l'onglet Main-d'œuvre
 var _alloc_cache := {}      # dernier readout region_alloc (pour pousser l'allocation COMPLÈTE)
 var _close_rect := Rect2()
+var _build_btn := Rect2()   # onglet Constructions : « Bâtir… » (ouvre le panneau de construction)
+
+signal build_requested      ## Constructions → ouvrir le panneau de construction (sa maison)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -37,6 +41,9 @@ func _ready() -> void:
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size
+	PW = clampf(vp.x * 0.44, 648.0, 1000.0)
+	PH = clampf(vp.y * 0.58, 512.0, 840.0)
+	size = Vector2(PW, PH)
 	position = Vector2((vp.x - PW) * 0.5, (vp.y - PH) * 0.5)
 
 func show_province(pid: int) -> void:
@@ -88,6 +95,7 @@ func _draw() -> void:
 		2: _draw_batiments(x, BODY, w)
 		3: _draw_journal(x, BODY, w)
 		4: _draw_alloc(x, BODY, w, info)
+		5: _draw_empire(x, BODY, w)
 
 	# tooltip de survol (Journal : les effets de l'entrée)
 	if _hover_text != "":
@@ -182,6 +190,16 @@ func _draw_peuples(x: float, y: float, w) -> void:
 
 # ── ONGLET BÂTIMENTS : les manufactures bâties ─────────────────────────────────
 func _draw_batiments(x: float, y: float, w) -> void:
+	# CONSTRUCTIONS : les bâtiments EXISTANTS (slots) + le sous-onglet BÂTIR (le
+	# panneau de construction s'ouvre d'ici — c'est SA maison, plus un raccourci épars).
+	_build_btn = Rect2()
+	var info: Dictionary = w.province_info(_pid)
+	if int(info.get("owner", -2)) == int(w.player()):
+		_build_btn = Rect2(PW - 130.0, y - 2.0, 110.0, 24.0)
+		VKit.fill(self, _build_btn, VKit.COL_PANEL2)
+		VKit.box(self, _build_btn, VKit.COL_COPPER)
+		UIKit.draw_icon(self, "action_build", Vector2(_build_btn.position.x + 6, _build_btn.position.y + 4), 16)
+		VKit.text(self, Vector2(_build_btn.position.x + 28, _build_btn.position.y + 4), VKit.COL_COPPER, "Bâtir…", VKit.FS_SMALL)
 	var blds: Array = w.province_buildings(_pid)
 	if blds.is_empty():
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucune manufacture bâtie (carte nue : l'IA/le joueur élèvent dans le temps)", VKit.FS_SMALL)
@@ -201,6 +219,37 @@ func _draw_batiments(x: float, y: float, w) -> void:
 		VKit.text(self, Vector2(x + 326, y), VKit.COL_PARCH, str(lv), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
 		y += 19
+
+# ── ONGLET EMPIRE (« à développer ») : les JAUGES d'État — sorties de la barre du haut,
+#    elles vivent ici (savoir en topbar ; le reste = l'état de l'EMPIRE entier). ──
+const EMPIRE_BANDS := [
+	["stabilite",  "Stabilité",  "stability_shield"],
+	["prosperite", "Prospérité", "prosperity_sprout"],
+	["legitimite", "Légitimité", "politics_crown"],
+	["cohesion",   "Cohésion",   "happiness_medallion"],
+]
+func _draw_empire(x: float, y: float, w) -> void:
+	var me: int = w.player()
+	var ci: Dictionary = w.country_info(me)
+	if not bool(ci.get("valide", false)):
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(pays invalide)", VKit.FS_SMALL)
+		return
+	VKit.text(self, Vector2(x, y), VKit.COL_COPPER, String(ci.get("nom", "")), VKit.FS_BIG)
+	y += 26
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+		"L'état de l'EMPIRE entier (la province n'en est qu'une part).", VKit.FS_SMALL)
+	y += 22
+	for band in EMPIRE_BANDS:
+		var v := int(ci.get(band[0], 0))
+		UIKit.draw_icon(self, band[2], Vector2(x, y - 2), 18)
+		VKit.text(self, Vector2(x + 24, y), VKit.COL_PARCH, band[1], VKit.FS_SMALL)
+		UIKit.bar(self, Rect2(x + 130, y + 2, 200, 12), v)
+		VKit.text(self, Vector2(x + 338, y), VKit.COL_PARCH, str(v), VKit.FS_SMALL)
+		y += 24
+	y += 8
+	UIKit.draw_icon(self, "knowledge_book", Vector2(x, y - 2), 16)
+	VKit.text(self, Vector2(x + 22, y), VKit.COL_DIM,
+		"Savoir : %d (affiché en barre du haut)" % int(ci.get("savoir", 0)), VKit.FS_SMALL)
 
 # ── ONGLET MAIN-D'ŒUVRE : allocation des bras par PUITS (extraction + manufactures) ──
 #    Régler les % (somme normalisée), FERMER un bâtiment (poids 0), choisir l'INTRANT.
@@ -377,6 +426,11 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		# onglet Constructions : « Bâtir… » ouvre le panneau de construction
+		if _tab == 2 and _build_btn.size.x > 0 and _build_btn.has_point(event.position):
+			build_requested.emit()
+			accept_event()
+			return
 		# onglet Main-d'œuvre : boutons d'allocation (poids ± · fermer · intrant · auto)
 		for b in _alloc_btns:
 			if b.rect.has_point(event.position):
