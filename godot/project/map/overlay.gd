@@ -1409,13 +1409,13 @@ func _ensure_roads(prebuild := false) -> void:
 					if t0.length() > 0.5:
 						_ink_bridges.append({"w": mid, "t": t0})
 					inw0 = -1
-	var yr0: int = w.year()
 	for rd in _roads:
 		if not _road_start.has(rd["key"]):
 			if prebuild:
-				_road_start[rd["key"]] = yr0 - int(rd.get("nprov", 1)) - 1   # déjà bâtie (monde mûr)
+				# déjà bâtie (monde mûr) : datée assez loin dans le passé pour paraître finie
+				_road_start[rd["key"]] = Sim.day_count - int(rd.get("nprov", 1)) * 365 - 400
 			else:
-				_road_start[rd["key"]] = yr0     # route NEUVE → chantier daté à maintenant (croît)
+				_road_start[rd["key"]] = Sim.day_count   # route NEUVE → chantier daté à maintenant (croît en JOURS)
 	_roads_dirty = false
 
 ## marque les cellules occupées par une route (+ marge 1) → le bourg en spirale les ÉVITE
@@ -1829,7 +1829,6 @@ func _draw_iso(w, mv: Node2D) -> void:
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
 		if not _roads.is_empty():
-			var year: int = w.year()
 			var polys_main := []
 			var polys_minor := []
 			var polys_main_f := []    # tronçons SOUS LA CANOPÉE (forêt) : la route s'efface
@@ -1840,9 +1839,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var pts: PackedVector2Array = rd["points"]
 				if pts.size() < 2:
 					continue
-				var st: int = _road_start.get(rd["key"], year)
+				# croissance à GRAIN JOUR (l'année entière sautait 0→1 au nouvel an = « instantané ») :
+				# une route POUSSE sur ~1 an par province traversée, visible au fil des ticks.
+				var st: int = _road_start.get(rd["key"], Sim.day_count)
 				var nprov: int = maxi(1, int(rd.get("nprov", 1)))
-				var frac := clampf(float(year - st) / float(nprov), 0.0, 1.0)
+				var frac := clampf(float(Sim.day_count - st) / (float(nprov) * 365.0), 0.0, 1.0)
 				var poly := _road_partial(pts, frac)
 				if poly.size() < 2:
 					continue
@@ -1915,8 +1916,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var tier: int = w.region_tier(r)
 			var owner: int = w.region_owner(r)
 			var role: int = int(w.country_role(owner)) if owner >= 0 else -1
-			if tier < 0 and role != 2 and role != 4:
-				continue                                  # wilderness sans ville → rien (mais on garde cité-état/libre)
+			# un BOURG demande des HABITANTS (≥150 âmes) et un propriétaire — plus de villes
+			# fantômes sur la terre vide ; cité-état (2) & hameau libre (4) toujours tracés.
+			if (tier < 0 or owner < 0 or int(w.region_pop(r)) < 150) and role != 2 and role != 4:
+				continue
 			var ctr: Vector2 = _region_seat.get(r, w.region_centroid(r))
 			if ctr.x < 0:
 				continue
@@ -2692,7 +2695,8 @@ func _build_dressing() -> void:
 		var tier: int = w.region_tier(r)
 		var owner: int = w.region_owner(r)
 		var role: int = int(w.country_role(owner)) if owner >= 0 else -1
-		if tier < 0 and role != 2 and role != 4:
+		# même gate que le dessin des bourgs : pas d'habitants ⇒ pas de clairière
+		if (tier < 0 or owner < 0 or int(w.region_pop(r)) < 150) and role != 2 and role != 4:
 			continue
 		var c: Vector2 = _region_seat.get(r, w.region_centroid(r))
 		if c.x < 0:

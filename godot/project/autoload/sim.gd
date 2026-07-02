@@ -28,6 +28,8 @@ var world = null                ## le handle moteur (GDExtension) ; null si libs
 var speed_index := 2            ## « normal » par défaut
 var _last_speed := 2            ## dernière vitesse non-pause (pour la bascule Espace)
 var _accum := 0.0
+var day_count := 0              ## jours simulés CETTE SESSION (display-only : croissance des
+                                ## routes & co à grain fin — seuls les DELTAS comptent)
 
 func _ready() -> void:
 	if not ClassDB.class_exists("ScpsWorld"):
@@ -74,6 +76,7 @@ func _process(delta: float) -> void:
 	else:
 		_accum -= float(nd)
 	world.advance_days(nd)
+	day_count += nd
 	ticked.emit(world.year())
 
 func set_speed(i: int) -> void:
