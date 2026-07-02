@@ -114,7 +114,12 @@ func _draw() -> void:
 	y += 16
 	var fl := int(ca.get("fleet", 0))
 	if fl > 0:
-		VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "Flotte : %d coque(s) disponibles" % fl)
+		# nef de guerre gravée (planche 24) devant la ligne de flotte
+		var bt: Texture2D = UIKit.parch_tex("sheet24_topbar_boats_menu_11")
+		if bt != null:
+			draw_texture_rect(bt, Rect2(x - 2, y - 3, 18, 18), false)
+		VKit.text(self, Vector2(x + (20 if bt != null else 0), y), VKit.COL_PARCH,
+			"Flotte : %d coque(s) disponibles" % fl)
 		y += 16
 	y += 6
 
@@ -173,13 +178,19 @@ func _draw() -> void:
 				continue                          # les factions marginales n'encombrent pas
 			var nm2 := String(fe.get("name", ""))
 			var dom := bool(fe.get("dominant", false))
-			VKit.text(self, Vector2(x, y), VKit.COL_COPPER if dom else VKit.COL_PARCH,
+			var g := int(fe.get("grief", 0))
+			# blason de faction (planche 14) — la variante EN COLÈRE quand la rancœur couve
+			var bl: Texture2D = UIKit.faction_blason(nm2, g >= 25)
+			var tx := x
+			if bl != null:
+				draw_texture_rect(bl, Rect2(x, y - 3, 15, 15), false)
+				tx = x + 19
+			VKit.text(self, Vector2(tx, y), VKit.COL_COPPER if dom else VKit.COL_PARCH,
 				("★ " if dom else "") + nm2, VKit.FS_SMALL)
 			UIKit.bar(self, Rect2(x + 132, y + 2, 80, 8), part)
-			var g := int(fe.get("grief", 0))
 			if g >= 25:
 				VKit.text(self, Vector2(x + 218, y), VKit.sense(0.15), "⚑%d" % g, VKit.FS_SMALL)
-			y += 14
+			y += 16
 		var coup := int(fx.get("coup", 0))
 		var cor := int(fx.get("corruption", 0))
 		if coup >= 20 or cor > 0:

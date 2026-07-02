@@ -69,15 +69,35 @@ func _center() -> void:
 	position = Vector2((vp.x - W) * 0.5, (vp.y - size.y) * 0.42)
 	queue_redraw()
 
+## kind d'évènement → TAMPON à l'encre (planche 3) : guerre=étoile · paix=colombe ·
+## révolte=flamme · sécession/directeur=couronne.
+const STAMP_OF := {1: "sheet03_popup_seals_11", 2: "sheet03_popup_seals_15",
+	6: "sheet03_popup_seals_14", 7: "sheet03_popup_seals_12", 10: "sheet03_popup_seals_12"}
+
 func _draw() -> void:
 	size = Vector2(W, _height())
 	VKit.panel_bg(self, Rect2(0, 0, W, size.y))
 	VKit.box(self, Rect2(0, 0, W, size.y), VKit.COL_COPPER)
+	# — filigrane rosace (presque invisible) au centre du parchemin —
+	var flg: Texture2D = UIKit.parch_tex("sheet03_popup_seals_16")
+	if flg != null:
+		var fs := minf(W, size.y) * 0.72
+		draw_texture_rect(flg, Rect2((W - fs) * 0.5, (size.y - fs) * 0.5, fs, fs),
+			false, Color(1, 1, 1, 0.10))
 	# — LE CRIEUR : bandeau sombre + « ⚜ OYEZ OYEZ ⚜ » cuivre, reconnaissable entre tous —
 	VKit.fill(self, Rect2(0, 0, W, 34), Color(0.09, 0.07, 0.05, 0.96))
 	VKit.fill(self, Rect2(0, 32, W, 2), VKit.COL_COPPER)
 	var oy := "— OYEZ  OYEZ —"
 	VKit.text(self, Vector2((W - VKit.text_w(oy, VKit.FS_BIG)) * 0.5, 8), VKit.COL_COPPER, oy, VKit.FS_BIG)
+	# — TAMPON du kind, posé de biais sur le coin haut-droit (la lettre marquée) —
+	var stp: String = STAMP_OF.get(int(_cur.get("kind", -1)), "")
+	if stp != "":
+		var st: Texture2D = UIKit.parch_tex(stp)
+		if st != null:
+			var ss := 84.0
+			draw_set_transform(Vector2(W - 58.0, 76.0), -0.20, Vector2.ONE)
+			draw_texture_rect(st, Rect2(-ss * 0.5, -ss * 0.5, ss, ss), false, Color(1, 1, 1, 0.95))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# — titre + an —
 	var title := String(_cur.get("title", ""))
 	VKit.text(self, Vector2(18, 44), VKit.COL_PARCH, title, VKit.FS_BIG)

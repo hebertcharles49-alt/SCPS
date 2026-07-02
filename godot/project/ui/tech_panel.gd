@@ -162,6 +162,21 @@ func _make_atom(nd: Dictionary, target: Vector2):
 		1: atom.status = Atom.Status.AVAILABLE
 		2: atom.status = Atom.Status.UNLOCKED
 		_: atom.status = Atom.Status.LOCKED
+	# MÉDAILLON parchemin (nom connu > apex/combo/faustien > fonction du quartier)
+	var md: Texture2D = UIKit.tech_medallion(String(nd["name"]),
+		bool(nd.get("faustian", false)), int(nd["tier"]), int(nd["quarter"]))
+	if md != null:
+		var mr := TextureRect.new()
+		mr.texture = md
+		mr.stretch_mode = TextureRect.STRETCH_SCALE
+		mr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE   # sinon min-size = 256² (texture)
+		var ms := rr * 1.5
+		mr.size = Vector2(ms, ms)
+		mr.position = Vector2(rr - ms * 0.5, rr - ms * 0.5)
+		mr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# verrouillé = fané ; le lavis d'état (couleur d'atome) reste lisible derrière
+		mr.modulate = Color(1, 1, 1, 0.55) if st == 0 else Color(1, 1, 1, 0.95)
+		atom.add_child(mr)
 	return atom
 
 func _on_atom_selected(atom) -> void:

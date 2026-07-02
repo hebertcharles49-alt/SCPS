@@ -6,13 +6,16 @@ extends Control
 signal game_started   ## une partie vient d'être lancée → le shell se referme
 
 const NewGame = preload("res://ui/new_game_panel.gd")
+const UIKit = preload("res://ui/uikit.gd")
+const VKit = preload("res://ui/vkit.gd")
 
 const C_BG    := Color(0.03, 0.03, 0.05, 0.98)
-const C_PANEL := Color(0.09, 0.085, 0.12, 0.99)
+## panneaux SEMI-TRANSPARENTS : la table du cartographe transparaît derrière
+const C_PANEL := Color(0.07, 0.06, 0.05, 0.84)
 const C_EDGE  := Color(0.78, 0.55, 0.30)
 const C_TEXT  := Color(0.88, 0.86, 0.82)
-const C_DIM   := Color(0.60, 0.58, 0.56)
-const C_TITLE := Color(0.86, 0.70, 0.42)
+const C_DIM   := Color(0.66, 0.62, 0.56)
+const C_TITLE := Color(0.90, 0.76, 0.48)
 
 var _main: Control
 var _new_game: Control
@@ -25,6 +28,7 @@ var _load_msg: Label = null
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_build_bg()
 	_build_main()
 	_new_game = NewGame.new()
 	_new_game.name = "NewGamePanel"
@@ -40,6 +44,30 @@ func _ready() -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), C_BG, true)
+
+
+## FOND : la table du cartographe (1920×1080) en COVER plein cadre + un voile léger
+## pour la lisibilité — le _draw() sombre reste en repli si l'image manque.
+func _build_bg() -> void:
+	var tex: Texture2D = null
+	if FileAccess.file_exists("res://assets/scps/ui/menu_main_background.png"):
+		var img := Image.load_from_file("res://assets/scps/ui/menu_main_background.png")
+		if img != null:
+			tex = ImageTexture.create_from_image(img)
+	if tex == null:
+		return
+	var tr := TextureRect.new()
+	tr.name = "MenuBg"
+	tr.texture = tex
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	tr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tr)
+	var veil := ColorRect.new()
+	veil.color = Color(0.02, 0.02, 0.04, 0.28)
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(veil)
 
 
 func _build_main() -> void:
@@ -59,8 +87,13 @@ func _build_main() -> void:
 
 	var title := Label.new()
 	title.text = "SCPS"
-	title.add_theme_font_size_override("font_size", 56)
+	var fmap: Font = VKit.font_map()
+	if fmap != null:
+		title.add_theme_font_override("font", fmap)   # IM Fell : le titre appartient à la carte
+	title.add_theme_font_size_override("font_size", 64)
 	title.add_theme_color_override("font_color", C_TITLE)
+	title.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.03, 0.75))
+	title.add_theme_constant_override("outline_size", 6)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
 
@@ -69,6 +102,20 @@ func _build_main() -> void:
 	sub.add_theme_color_override("font_color", C_DIM)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(sub)
+
+	# fleuron cartographique (planche 24) sous le titre — recadré à son encre (bbox)
+	var fp: Dictionary = UIKit.parch_piece("sheet24_topbar_boats_menu_15")
+	if fp.has("tex"):
+		var at := AtlasTexture.new()
+		at.atlas = fp["tex"]
+		at.region = fp["rect"]
+		var flr := TextureRect.new()
+		flr.texture = at
+		flr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		flr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		flr.custom_minimum_size = Vector2(300, 86)
+		flr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(flr)
 
 	col.add_child(_spacer(20))
 

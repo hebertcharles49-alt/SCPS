@@ -35,7 +35,214 @@ const PARCH_ICON := {
 	"alert_event_bell":   "sheet11_system_icons_15",
 	"alert_warning":      "sheet11_system_icons_15",
 	"politics_crown":     "sheet11_system_icons_16",
+	# série 2 — TOPBAR fine (planche 24 : médaillons sobres pensés pour 16 px)
+	"tool_speed":         "sheet24_topbar_boats_menu_05",
+	"tool_pause":         "sheet24_topbar_boats_menu_06",
+	"settlement_cluster": "sheet24_topbar_boats_menu_08",
+	"fine_date":          "sheet24_topbar_boats_menu_01",
+	"fine_coin":          "sheet24_topbar_boats_menu_02",
+	"fine_grain":         "sheet24_topbar_boats_menu_03",
+	"fine_knowledge":     "sheet24_topbar_boats_menu_04",
+	"fine_age":           "sheet24_topbar_boats_menu_07",
+	# SIDEBAR GAUCHE (planche 23) + divers
+	"menu_economy":       "sheet23_remaining_chrome_sidebar_05",
+	"menu_demography":    "sheet23_remaining_chrome_sidebar_06",
+	"menu_stocks":        "sheet23_remaining_chrome_sidebar_07",
+	"menu_market":        "sheet23_remaining_chrome_sidebar_08",
+	"menu_army":          "sheet23_remaining_chrome_sidebar_09",
+	"menu_filters":       "sheet23_remaining_chrome_sidebar_10",
+	"menu_diplomacy":     "sheet23_remaining_chrome_sidebar_11",
+	"menu_council":       "sheet23_remaining_chrome_sidebar_12",
+	"menu_kingdom":       "sheet23_remaining_chrome_sidebar_13",
+	"menu_religion":      "sheet23_remaining_chrome_sidebar_14",
+	"laurel_success":     "sheet23_remaining_chrome_sidebar_15",
+	"mourning_veil":      "sheet23_remaining_chrome_sidebar_16",
 }
+
+## une PIÈCE parchemin par nom nu (« sheet24_topbar_boats_menu_11 ») — l'accès public.
+static func parch_tex(piece: String) -> Texture2D:
+	return _tex(PARCH + piece + ".png")
+
+## FACTIONS (planche 14) : nom → blason (base + variante EN COLÈRE quand la rancœur couve)
+const PARCH_FACTION := {
+	"Conquérants":     ["sheet14_factions_01", "sheet14_factions_07"],
+	"Marchands":       ["sheet14_factions_02", "sheet14_factions_08"],
+	"Légistes":        ["sheet14_factions_03", "sheet14_factions_09"],
+	"Gardiens":        ["sheet14_factions_04", "sheet14_factions_10"],
+	"Transgresseurs":  ["sheet14_factions_05", "sheet14_factions_11"],
+	"Communautaires":  ["sheet14_factions_06", "sheet14_factions_12"],
+}
+static func faction_blason(nom: String, angry: bool) -> Texture2D:
+	if not PARCH_FACTION.has(nom):
+		return null
+	return _tex(PARCH + PARCH_FACTION[nom][1 if angry else 0] + ".png")
+
+## CONSEILLERS (planche 13) : siège 0-7 → buste (variante féminine = +8, par graine)
+static func advisor_portrait(seat: int, fem: bool = false) -> Texture2D:
+	if seat < 0 or seat > 7:
+		return null
+	return _tex(PARCH + "sheet13_advisors_%02d.png" % (seat + 1 + (8 if fem else 0)))
+
+## UNITÉS (planches 9-10) : aligné sur UNIT_FILE (l'ordre U_* du moteur)
+const PARCH_UNIT := [
+	"sheet09_unit_icons_01", "sheet09_unit_icons_02", "sheet09_unit_icons_03",
+	"sheet09_unit_icons_05", "sheet09_unit_icons_06", "sheet09_unit_icons_09",
+	"sheet09_unit_icons_10", "sheet10_special_units_letters_01", "sheet09_unit_icons_04",
+	"sheet09_unit_icons_08", "sheet10_special_units_letters_02", "sheet10_special_units_letters_03",
+	"sheet09_unit_icons_07", "sheet09_unit_icons_13", "sheet09_unit_icons_14",
+	"sheet09_unit_icons_15", "sheet10_special_units_letters_04", "sheet10_special_units_letters_05",
+	"sheet10_special_units_letters_06", "sheet09_unit_icons_16",
+	"sheet09_unit_icons_11", "sheet09_unit_icons_12",
+]
+## ÉDIFICES (planches 6-7) : aligné sur BLD_FILE (l'ordre EDI_* du moteur)
+const PARCH_BLD := [
+	"sheet06_buildings_state_01", "sheet06_buildings_state_02", "sheet06_buildings_state_03",
+	"sheet06_buildings_state_04", "sheet06_buildings_state_05", "sheet06_buildings_state_06",
+	"sheet06_buildings_state_07", "sheet06_buildings_state_08", "sheet06_buildings_state_09",
+	"sheet06_buildings_state_10", "sheet06_buildings_state_11", "sheet06_buildings_state_12",
+	"sheet06_buildings_state_13", "sheet06_buildings_state_14", "sheet06_buildings_state_15",
+	"sheet06_buildings_state_16", "sheet07_buildings_works_01", "sheet07_buildings_works_02",
+	"sheet07_buildings_works_03", "sheet07_buildings_works_04", "sheet07_buildings_works_05",
+	"sheet07_buildings_works_06", "sheet07_buildings_works_07", "sheet07_buildings_works_08",
+	"sheet07_buildings_works_09", "sheet07_buildings_works_10",
+]
+
+## MANUFACTURES (planche 8) : nom d'affichage moteur → vignette gravée (partiel —
+## les types sans pièce retombent sur le marteau générique de l'appelant).
+const PARCH_MANUF := {
+	"Brasserie": "sheet08_buildings_manufactures_01",
+	"Distillerie": "sheet08_buildings_manufactures_02",
+	"Manufacture textile": "sheet08_buildings_manufactures_03",
+	"Atelier d'outillage": "sheet08_buildings_manufactures_04",
+	"Armurerie lourde": "sheet08_buildings_manufactures_05",
+	"Arquebuserie": "sheet08_buildings_manufactures_06",
+	"Poudrière": "sheet08_buildings_manufactures_07",
+	"Alambic": "sheet08_buildings_manufactures_08",
+	"Foreuse arcanique": "sheet08_buildings_manufactures_09",
+	"Réplicateur ligneux": "sheet08_buildings_manufactures_10",
+	"Corne divine": "sheet08_buildings_manufactures_11",
+	"Forge céleste": "sheet08_buildings_manufactures_12",
+}
+static func manuf_sprite(nom: String) -> Texture2D:
+	if not PARCH_MANUF.has(nom):
+		return null
+	return _tex(PARCH + PARCH_MANUF[nom] + ".png")
+
+## RESSOURCES (planche 19) : clé normalisée (resource_key) → chip gravée
+const PARCH_RES := {
+	"cereales": "sheet19_resources_01", "poisson": "sheet19_resources_02",
+	"betail": "sheet19_resources_03", "fruits": "sheet19_resources_04",
+	"bois": "sheet19_resources_05", "pierre": "sheet19_resources_06",
+	"argile": "sheet19_resources_07", "fer": "sheet19_resources_08",
+	"cuivre": "sheet19_resources_09", "or": "sheet19_resources_10",
+	"sel": "sheet19_resources_11", "laine": "sheet19_resources_12",
+	"fourrure": "sheet19_resources_13", "charbon": "sheet19_resources_14",
+	"cristal_arcanique": "sheet19_resources_15", "fer_celeste": "sheet19_resources_16",
+}
+
+## FONDS DE PROVINCE (planches 20-22) : mot de terrain/climat → paysage enluminé
+static func biome_painting(terrain: String, climat: String) -> Texture2D:
+	var t := (terrain + " " + climat).to_lower()
+	var piece := "sheet20_province_biomes_01_04_01"          # défaut : plaines
+	if t.contains("glac") or t.contains("toundra") or t.contains("polaire"):
+		piece = "sheet22_province_biomes_09_12_02"
+	elif t.contains("taïga") or t.contains("taiga") or (t.contains("froid") and (t.contains("forêt") or t.contains("bois"))):
+		piece = "sheet22_province_biomes_09_12_01"
+	elif t.contains("jungle"):
+		piece = "sheet21_province_biomes_05_08_04"
+	elif t.contains("marais") or t.contains("tourb") or t.contains("mangrove"):
+		piece = "sheet21_province_biomes_05_08_03"
+	elif t.contains("désert") or t.contains("desert") or t.contains("dune") or t.contains("aride"):
+		piece = "sheet21_province_biomes_05_08_01"
+	elif t.contains("steppe") or t.contains("savane"):
+		piece = "sheet21_province_biomes_05_08_02"
+	elif t.contains("mont") or t.contains("pic") or t.contains("volcan"):
+		piece = "sheet20_province_biomes_01_04_03"
+	elif t.contains("colline") or t.contains("haut"):
+		piece = "sheet22_province_biomes_09_12_03"
+	elif t.contains("fleuve") or t.contains("delta") or t.contains("estuaire"):
+		piece = "sheet22_province_biomes_09_12_04"
+	elif t.contains("côt") or t.contains("cot") or t.contains("littoral") or t.contains("mer"):
+		piece = "sheet20_province_biomes_01_04_04"
+	elif t.contains("forêt") or t.contains("foret") or t.contains("bois"):
+		piece = "sheet20_province_biomes_01_04_02"
+	return _tex(PARCH + piece + ".png")
+
+## TECHS : nom connu (planches 15-18) > apex/combo/faustien > FONCTION du quartier
+## (planche 5 : quartier = thème×3+fonction ; fonction 0 Prod → 04, 1 Armée → 06,
+## 2 Renfort → 05).
+const PARCH_TECH_FN_BY_FUNC := ["sheet05_tech_icons_04", "sheet05_tech_icons_06", "sheet05_tech_icons_05"]
+const PARCH_TECH_NAME := {
+	"Rouages de précision": "sheet15_tech_foundation_01",
+	"Mécanisme d'horlogerie": "sheet15_tech_foundation_02",
+	"Alliages des profondeurs": "sheet15_tech_foundation_03",
+	"Gravure runique": "sheet15_tech_foundation_04",
+	"Glyphes éthérés": "sheet15_tech_foundation_05",
+	"Communion éthérée": "sheet15_tech_foundation_06",
+	"Droit coutumier": "sheet15_tech_foundation_07",
+	"Langue franque": "sheet15_tech_foundation_08",
+	"Vergers étagés": "sheet15_tech_foundation_09",
+	"Pâturages intégrés": "sheet15_tech_foundation_10",
+	"Rites guerriers": "sheet15_tech_foundation_11",
+	"Hordes conquérantes": "sheet15_tech_foundation_12",
+	# l'ESSOR (planche 16) — matchs sûrs nom moteur ↔ sujet gravé
+	"Poudrière": "sheet16_tech_rise_01",
+	"Armurerie": "sheet16_tech_rise_02",
+	"Fonderie": "sheet16_tech_rise_04",
+	"Comptoirs marchands": "sheet16_tech_rise_06",
+	"Commerce": "sheet16_tech_rise_07",
+	"Manufacture": "sheet16_tech_rise_08",
+	"Scriptorium": "sheet16_tech_rise_09",
+	"Université": "sheet16_tech_rise_10",
+	"Fortifications": "sheet16_tech_rise_12",
+	"Atelier de construction": "sheet16_tech_rise_14",
+	"Abondance": "sheet16_tech_rise_16",
+	# les SIGNATURES & alentours (planche 17)
+	"Forge à runes": "sheet17_tech_signatures_01",
+	"Communion": "sheet17_tech_signatures_02",
+	"Automates": "sheet17_tech_signatures_03",
+	"Droit d'intégration": "sheet17_tech_signatures_04",
+	"Irrigation & greniers": "sheet17_tech_signatures_05",
+	"Conscription": "sheet17_tech_signatures_06",
+	"Alchimie": "sheet17_tech_signatures_07",
+	"Scrying": "sheet17_tech_signatures_08",
+	"Savoir de guerre": "sheet17_tech_signatures_09",
+	"Organisation militaire": "sheet17_tech_signatures_10",
+	"Cadastre": "sheet17_tech_signatures_11",
+	"Halles & entrepôts": "sheet17_tech_signatures_15",
+	"Collecte de nourriture": "sheet17_tech_signatures_16",
+	# COMBOS tier-4 (planche 18, anneaux d'or)
+	"Arquebuserie de précision": "sheet18_tech_combos_apex_01",
+	"Poliorcétique": "sheet18_tech_combos_apex_02",
+	"Engins de siège": "sheet18_tech_combos_apex_03",
+	"Chamanisme de guerre": "sheet18_tech_combos_apex_04",
+	"Foederati": "sheet18_tech_combos_apex_05",
+	"Économie de horde": "sheet18_tech_combos_apex_06",
+	"Automates arcanes": "sheet18_tech_combos_apex_07",
+	"Abondance druidique": "sheet18_tech_combos_apex_08",
+	"Guildes maîtresses": "sheet18_tech_combos_apex_09",
+	"Charrues lourdes": "sheet18_tech_combos_apex_10",
+	"Machines agricoles": "sheet18_tech_combos_apex_11",
+	"Horlogerie marchande": "sheet18_tech_combos_apex_12",
+	"Académie cosmopolite": "sheet18_tech_combos_apex_13",
+	"Grenier colonial": "sheet18_tech_combos_apex_14",
+	# APEX tier-5 (« Légion universelle » n'a PAS de pièce → repli apex générique 05_10)
+	"Arquebuse runique": "sheet18_tech_combos_apex_15",
+	"Concile des savants": "sheet18_tech_combos_apex_16",
+}
+static func tech_medallion(nom: String, faustian: bool, tier: int, quarter: int) -> Texture2D:
+	if PARCH_TECH_NAME.has(nom):
+		return _tex(PARCH + PARCH_TECH_NAME[nom] + ".png")
+	if tier >= 5:
+		return _tex(PARCH + "sheet05_tech_icons_10.png")
+	if tier >= 4:
+		return _tex(PARCH + "sheet05_tech_icons_09.png")
+	if faustian:
+		return _tex(PARCH + "sheet05_tech_icons_07.png")
+	var fn := quarter % 3
+	if fn >= 0 and fn < PARCH_TECH_FN_BY_FUNC.size():
+		return _tex(PARCH + PARCH_TECH_FN_BY_FUNC[fn] + ".png")
+	return null
 
 ## pièce parch : texture + BBOX opaque (les cellules 256² ont de larges marges vides —
 ## on ne dessine que la matière). Cache {tex, rect}.
@@ -302,16 +509,26 @@ static func _tile(dir: String, key: String) -> Texture2D:
 	_tile_cache[path] = tex
 	return tex
 
-## tuile d'UNITÉ par UnitType (0-21) ; null si l'asset manque (l'appelant retombe sur le texte).
+## tuile d'UNITÉ par UnitType (0-21) ; parchemin (planches 9-10) d'abord, sinon
+## l'ancienne tuile ; null si tout manque (l'appelant retombe sur le texte).
 static func unit_sprite(unit_type: int) -> Texture2D:
 	if unit_type < 0 or unit_type >= UNIT_FILE.size():
 		return null
+	if unit_type < PARCH_UNIT.size():
+		var t := _tex(PARCH + PARCH_UNIT[unit_type] + ".png")
+		if t != null:
+			return t
 	return _tile(UNITS_DIR, UNIT_FILE[unit_type])
 
-## tuile d'ÉDIFICE par Edifice (0-25) ; null si l'asset manque.
+## tuile d'ÉDIFICE par Edifice (0-25) ; parchemin (planches 6-7) d'abord, sinon
+## l'ancienne tuile ; null si tout manque.
 static func building_sprite(edi_type: int) -> Texture2D:
 	if edi_type < 0 or edi_type >= BLD_FILE.size():
 		return null
+	if edi_type < PARCH_BLD.size():
+		var t := _tex(PARCH + PARCH_BLD[edi_type] + ".png")
+		if t != null:
+			return t
 	return _tile(BUILDINGS_DIR, BLD_FILE[edi_type])
 
 # ── ASSETS MONDE à ALPHA (cités par bande de pop · dressing nature) — RGBA DIRECT
@@ -510,6 +727,10 @@ static func resource_key(res_name: String) -> String:
 const RES_ATLAS_COLS := 16   # feuille « sheet.png » : grille de 16 colonnes (ordre enum)
 
 static func resource_sprite(res_id: int, res_name: String) -> Texture2D:
+	var pkey := resource_key(res_name)
+	if PARCH_RES.has(pkey):
+		var pt := _tex(PARCH + PARCH_RES[pkey] + ".png")         # chip PARCHEMIN (planche 19)
+		if pt != null: return pt
 	if res_id >= 0:
 		var t := _tex(RESOURCES + str(res_id) + ".png")          # fichier par indice
 		if t != null: return t
@@ -527,6 +748,10 @@ static func resource_sprite(res_id: int, res_name: String) -> Texture2D:
 ## variante par NOM seul (income/province, où l'on n'a pas l'id).
 static func resource_icon(res_name: String) -> Texture2D:
 	var key := resource_key(res_name)
+	if PARCH_RES.has(key):
+		var pt := _tex(PARCH + PARCH_RES[key] + ".png")          # chip PARCHEMIN (planche 19)
+		if pt != null:
+			return pt
 	var t := _tex(RESOURCES + key + ".png")
 	if t != null:
 		return t

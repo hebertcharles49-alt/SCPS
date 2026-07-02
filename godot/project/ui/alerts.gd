@@ -145,7 +145,7 @@ func _popup_of(kind: int, ev: Dictionary, tip: String) -> Dictionary:
 				btns = [{"label": "Y aller", "act": "goto", "region": reg}, {"label": "Vu", "act": "close"}]
 			else:
 				btns = [{"label": "Vu", "act": "close"}]
-	return {"title": title, "body": tip, "buttons": btns}
+	return {"title": title, "body": tip, "buttons": btns, "kind": kind}
 
 ## LA COLLECTE : chaque « élément en attente » du gameplay, lu de la façade.
 func _collect() -> Array:

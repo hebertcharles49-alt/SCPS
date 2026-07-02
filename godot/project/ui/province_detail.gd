@@ -212,7 +212,12 @@ func _draw_batiments(x: float, y: float, w) -> void:
 	for b in blds:
 		if y > PH - 24:
 			break
-		UIKit.draw_icon(self, "build_hammer", Vector2(x, y - 1), 14)
+		# vignette de manufacture (planche 8) quand elle existe, sinon le marteau
+		var mt: Texture2D = UIKit.manuf_sprite(String(b["nom"]))
+		if mt != null:
+			draw_texture_rect(mt, Rect2(x - 1, y - 2, 16, 16), false)
+		else:
+			UIKit.draw_icon(self, "build_hammer", Vector2(x, y - 1), 14)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(b["nom"]), VKit.FS_SMALL)
 		var lv := int(b["niveau"])
 		VKit.fill(self, Rect2(x + 230, y + 2, 90.0 * float(lv) / float(maxlv), 10), VKit.COL_COPPER)
@@ -287,7 +292,11 @@ func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 		var closed := bool(s.get("closed", false))
 		# icône + nom (→ sortie pour les manufactures)
 		if is_bld:
-			UIKit.draw_icon(self, "build_hammer", Vector2(x, ry - 1), 14)
+			var mt2: Texture2D = UIKit.manuf_sprite(String(s.get("name", "")))
+			if mt2 != null:
+				draw_texture_rect(mt2, Rect2(x - 1, ry - 2, 16, 16), false)
+			else:
+				UIKit.draw_icon(self, "build_hammer", Vector2(x, ry - 1), 14)
 		else:
 			var spr := UIKit.resource_sprite(int(s.get("id", -1)), String(s.get("name", "")))
 			if spr != null: draw_texture_rect(spr, Rect2(x - 2, ry - 2, 18, 18), false)

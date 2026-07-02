@@ -241,10 +241,20 @@ func _draw_conseil(x: float, y: float, me: int) -> void:
 	_conseil_btns.clear()
 	var idx := 0
 	for seat in Sim.world.country_council(me):
-		UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 16)
+		var filled := bool(seat["filled"])
+		# BUSTE du conseiller assis (planche 13) — sièges moteur Savoir/Société/Industrie
+		# → Maître des savoirs (06) / Chancelier (01) / Intendant (04) ; fem. par hash du nom.
+		var pt: Texture2D = null
+		if filled:
+			var pmap := [5, 0, 3]
+			pt = UIKit.advisor_portrait(pmap[idx] if idx < pmap.size() else idx % 8,
+				String(seat["councilor"]).hash() % 2 == 1)
+		if pt != null:
+			draw_texture_rect(pt, Rect2(x - 2, y - 3, 20, 20), false)
+		else:
+			UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 16)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_COPPER, String(seat["seat"]))
 		y += 18
-		var filled := bool(seat["filled"])
 		if filled:
 			# le ministre ASSIS : nom · tier · ÂGE (il vieillit ; la retraite vide le siège vers 66-73)
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH,
@@ -356,18 +366,23 @@ func _draw_armee(x: float, y: float, me: int) -> void:
 	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 16)
 	VKit.text(self, Vector2(x + 20, y), VKit.COL_DIM, "Flotte : %d coque(s)" % int(a["fleet"]))
 	y += 20
-	# — Flotte : mise en chantier (verbe : player_navy_build) —
+	# — Flotte : mise en chantier (verbe : player_navy_build) — bateau gravé par coque
+	var hull_boat := ["sheet24_topbar_boats_menu_11", "sheet24_topbar_boats_menu_13", "sheet24_topbar_boats_menu_10"]
 	cx = x
 	for it in HULL_LABELS:
 		var label: String = it[0]
 		var hull: int = it[1]
-		var tw := VKit.text_w(label, VKit.FS_SMALL) + 12.0
+		var bt: Texture2D = UIKit.parch_tex(hull_boat[hull]) if hull < hull_boat.size() else null
+		var iw := 18.0 if bt != null else 0.0
+		var tw := VKit.text_w(label, VKit.FS_SMALL) + 12.0 + iw
 		if cx + tw > DW - 12.0:
 			cx = x; y += 20
 		var r := Rect2(cx, y, tw, 18)
 		VKit.fill(self, r, VKit.COL_PANEL2)
 		VKit.box(self, r, VKit.COL_COPPER)
-		VKit.text(self, Vector2(cx + 6, y + 1), VKit.COL_COPPER, label, VKit.FS_SMALL)
+		if bt != null:
+			draw_texture_rect(bt, Rect2(cx + 3, y + 1, 16, 16), false)
+		VKit.text(self, Vector2(cx + 6 + iw, y + 1), VKit.COL_COPPER, label, VKit.FS_SMALL)
 		_navy_btns.append({"rect": r, "hull": hull})
 		cx += tw + 4
 	if _armee_flash != "":

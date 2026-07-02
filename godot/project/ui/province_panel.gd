@@ -67,6 +67,20 @@ func _draw() -> void:
 	var x := 16.0
 	var y := 14.0
 
+	# ── FOND DE BIOME (planches 20-22) : le paysage enluminé derrière l'en-tête ──
+	var bio: Texture2D = UIKit.biome_painting(String(info.get("relief", "")), String(info.get("climat", "")))
+	if bio != null:
+		var bh := 58.0
+		var tw := float(bio.get_width())
+		var reg_h := tw * bh / (PW - 4.0)
+		draw_texture_rect_region(bio, Rect2(2, 2, PW - 4.0, bh),
+			Rect2(0, tw * 0.16, tw, reg_h), Color(0.88, 0.84, 0.78))
+		draw_rect(Rect2(2, 2, PW - 4.0, bh), Color(0.05, 0.04, 0.03, 0.30), true)
+		# fondu bas → le paysage se dissout dans le panneau
+		for i in range(5):
+			draw_rect(Rect2(2, 2 + bh - 10 + i * 2, PW - 4.0, 2),
+				Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.18 + 0.16 * i), true)
+
 	# ── EN-TÊTE : héraldique (tour de capitale) · nom · jauge de prospérité ───
 	var hsz := 30.0
 	VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_COPPER)
@@ -90,6 +104,8 @@ func _draw() -> void:
 	VKit.text(self, Vector2(x + hsz + 8, y + 18), VKit.COL_PARCH,
 		"%s · %s · %s" % [info["climat"], info["relief"], cap.get("statut", "")])
 	y += hsz + 8
+	if bio != null:
+		y = maxf(y, 70.0)   # le contenu reprend SOUS la bande-paysage (fondu compris)
 
 	# ── HABITANTS ─────────────────────────────────────────────────────────────
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "%s habitants" % _grp(info["ames"]))

@@ -49,7 +49,7 @@ func _draw() -> void:
 		return
 
 	var w = Sim.world
-	# capsule de date : An N
+	# capsule de date : An N (la capsule porte déjà sa rose des vents — pas d'icône en plus)
 	UIKit.draw_chrome(self, "topbar_date_capsule", Rect2(10, 4, 92, H - 8))
 	VKit.text(self, Vector2(22, cy), VKit.COL_PARCH, "An %d" % w.year())
 
@@ -62,7 +62,7 @@ func _draw() -> void:
 		UIKit.draw_icon(self, "politics_crown", Vector2(px, cy - 2), 18); px += 22
 		var nom := String(ci["nom"])
 		VKit.text(self, Vector2(px, cy), VKit.COL_COPPER, nom); px += VKit.text_w(nom) + 20
-		UIKit.draw_icon(self, "gold_coin", Vector2(px, cy - 2), 16); px += 20
+		UIKit.draw_icon(self, "fine_coin", Vector2(px, cy - 2), 16); px += 20
 		var org := _grp(ci["or"]); VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, org); px += VKit.text_w(org) + 20
 		UIKit.draw_icon(self, "population_group", Vector2(px, cy - 2), 16); px += 20
 		var popg := _grp(ci["pop"]); VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, popg); px += VKit.text_w(popg) + 20
@@ -70,13 +70,13 @@ func _draw() -> void:
 		var rt := "%d provinces" % w.country_province_count(me)
 		VKit.text(self, Vector2(px, cy), VKit.COL_DIM, rt); px += VKit.text_w(rt) + 18
 		var sx0 := px
-		UIKit.draw_icon(self, "knowledge_book", Vector2(px, cy - 2), 16); px += 20
+		UIKit.draw_icon(self, "fine_knowledge", Vector2(px, cy - 2), 16); px += 20
 		var sv := "%d" % int(ci["savoir"])
 		VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, sv); px += VKit.text_w(sv) + 20
 		_savoir_rect = Rect2(sx0 - 4, 0, 24 + VKit.text_w(sv) + 8, H)
 		# NOURRITURE DISPONIBLE (v50) : Σ stock vivrier de l'empire — la réserve en rations
 		if w.has_method("country_food"):
-			UIKit.draw_icon(self, "grain_bundle", Vector2(px, cy - 2), 16); px += 20
+			UIKit.draw_icon(self, "fine_grain", Vector2(px, cy - 2), 16); px += 20
 			var fg := _grp(int(w.country_food(me)))
 			VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, fg); px += VKit.text_w(fg) + 20
 		# CHANTIER DE COLONISATION (v50) : la colonie qui mûrit / la cadence de l'ordre suivant
@@ -99,7 +99,7 @@ func _draw() -> void:
 			var aw := VKit.text_w(lab) + 34.0
 			_age_rect = Rect2(ww - 116 - aw - 10, 4, aw, H - 8)
 			UIKit.draw_chrome(self, "topbar_resource_chip", _age_rect)
-			UIKit.draw_icon(self, "politics_crown", Vector2(_age_rect.position.x + 6, cy - 2), 16)
+			UIKit.draw_icon(self, "fine_age", Vector2(_age_rect.position.x + 6, cy - 2), 16)
 			VKit.text(self, Vector2(_age_rect.position.x + 26, cy), Color(0.85, 0.65, 0.3), lab)
 
 	# contrôle de vitesse, ancré à DROITE de la barre
