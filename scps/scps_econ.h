@@ -401,6 +401,21 @@ typedef struct {
      * grain public historique « région » (econ_build_manufacture, …) vers la province où
      * l'économie VIT réellement (charte), sans changer ces signatures publiques. -1 = aucune. */
     int16_t       region_rep_prov[SCPS_MAX_REG];
+
+    /* ── CHANTIER DE COLONISATION (voie JOUEUR — l'IA garde son tick ANNUEL instantané) :
+     * une colonie MÛRIT (~1 an si frontalière, plus loin = plus long, borné 3 ans) ; UNE à
+     * la fois par pays + cadence 1 ordre/an (cd_days). Le convoi est PAYÉ à l'ordre
+     * (ponction pop immédiate) ; l'arrivée sème `seed_base × yield` — rendement dégressif
+     * LOGARITHMIQUE en f(distance à la CAPITALE, en sauts de provinces). Tout à -1/0 =
+     * inactif : la chronique n'ordonne jamais → aucun flux moteur ne bouge (golden). ── */
+    struct ColonyWork {
+        int16_t src, dst;        /* provinces (-1 = pas de chantier) */
+        int16_t days_left;       /* jours avant la fondation */
+        int16_t total_days;      /* durée totale (readout de progression) */
+        int16_t cd_days;         /* cadence : jours avant le PROCHAIN ordre permis */
+        float   seed_base;       /* colons embarqués (ponction déjà faite) */
+        float   yield;           /* rendement à l'arrivée (0..1) */
+    } colony[SCPS_MAX_COUNTRY];
 } WorldEconomy;
 
 /* ---- API -------------------------------------------------------------- */
@@ -670,8 +685,14 @@ bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid);
  * Exposé pour la colonisation OUTRE-MER (scps_navy §8) — même acte fondateur. */
 void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid);
 /* VERBE JOUEUR au grain PROVINCE (charte : « le joueur colonise n'importe quelle province ») :
- * portes de l'essaimage terrestre (pop/vivres/cible vierge). false = refus, rien ne bouge. */
-bool econ_colonize_province(WorldEconomy *e, int src_pid, int dst_pid, int cid);
+ * portes de l'essaimage terrestre (pop/vivres/cible vierge) + CADENCE (un chantier à la
+ * fois, 1 ordre/an). L'ordre OUVRE un CHANTIER (ponction pop immédiate) ; la colonie est
+ * FONDÉE par econ_colony_day au terme (~1 an frontalier, plus loin = plus long).
+ * false = refus, rien ne bouge. */
+bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int dst_pid, int cid);
+/* QUOTIDIEN — mûrit les chantiers de colonisation (cadences, délais, fondation à l'arrivée
+ * au rendement log-distance). No-op intégral quand aucun chantier (chronique → golden). */
+void econ_colony_day(WorldEconomy *e, const World *w);
 /* RE-KEY PROVINCE — transfert de PROPRIÉTÉ D'UNE RÉGION ENTIÈRE (conquête/annexion/
  * sécession/cataclysme) : pose `new_owner` (et `colonized`) sur TOUTES les provinces
  * membres de `region`. econ->region[r].owner est un DÉRIVÉ (capitale, sinon meilleure

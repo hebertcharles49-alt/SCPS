@@ -27,7 +27,8 @@
 
 typedef struct { int32_t day, year, player, prev_dawned; uint32_t camp_rng;
                  int32_t heritage, ethos; int16_t prev_owner[SCPS_MAX_REG];
-                 int32_t player_age_engaged; } SaveMisc;   /* v48 : engagement d'âge JOUEUR (§7) */
+                 int32_t player_age_engaged;   /* v48 : engagement d'âge JOUEUR (§7) */
+                 int32_t diplo_ready_day; } SaveMisc;   /* v50 : le DIPLOMATE (1 acte / 2 mois) */
 
 const char *save_slot_path(int slot){
     static char p[64]; snprintf(p,sizeof p,"saves/slot_%d.scps",slot); return p;
@@ -134,6 +135,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
       m.camp_rng=s->camp_rng; m.heritage=(int32_t)setup_heritage; m.ethos=(int32_t)setup_ethos;
       memcpy(m.prev_owner,s->prev_owner_mo,sizeof m.prev_owner);
       m.player_age_engaged=(int32_t)s->player_age_engaged;
+      m.diplo_ready_day=(int32_t)s->diplo_ready_day;
       ok&=sv_w(f,SVT_MISC, &m, sizeof m); }
     ok&=sv_w(f,SVT_ITRD, NULL,0); intertrade_save(f);
     ok&=sv_w(f,SVT_AGYS, NULL,0); agency_save(f);
@@ -224,6 +226,15 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (pe->region < -1 || pe->region >= w->n_regions) return false;
         if (pe->pop.n_groups<0 || pe->pop.n_groups>SCPS_MAX_GROUPS) return false;
         if (!(pe->annex_scar>=0.f && pe->annex_scar<=1.f)) return false; }
+    /* v50 — chantiers de colonisation : src/dst indexent prov[] (ou -1), délais/cadence
+     * bornés (une forge hors-borne indexerait la fondation ou gèlerait la cadence). */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        const struct ColonyWork *cw=&s->econ->colony[c];
+        if (cw->src < -1 || cw->src >= s->econ->n_prov) return false;
+        if (cw->dst < -1 || cw->dst >= s->econ->n_prov) return false;
+        if (cw->days_left<0 || cw->days_left>2000 || cw->total_days<0 || cw->total_days>2000) return false;
+        if (cw->cd_days<0 || cw->cd_days>2000) return false;
+        if (!(cw->yield>=0.f && cw->yield<=1.f) || !(cw->seed_base>=0.f && cw->seed_base<=1e6f)) return false; }
     if (s->rn->n<0 || s->rn->n>SCPS_MAX_ROUTES) return false;
     for (int i=0;i<s->rn->n;i++){ const TradeRoute *rt=&s->rn->route[i];
         if (rt->ra<0 || rt->ra>=s->econ->n_regions || rt->rb<0 || rt->rb>=s->econ->n_regions) return false;
@@ -340,7 +351,9 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
                if (out_ethos) *out_ethos = (int)m.ethos;
                memcpy(s->prev_owner_mo,m.prev_owner,sizeof m.prev_owner);
                s->player_age_engaged = (m.player_age_engaged>=-1 && m.player_age_engaged<1024)
-                                       ? (int)m.player_age_engaged : -1; } }   /* v48 : borné (forge → -1) */
+                                       ? (int)m.player_age_engaged : -1;   /* v48 : borné (forge → -1) */
+               s->diplo_ready_day = (m.diplo_ready_day>=0 && m.diplo_ready_day<=m.day+120)
+                                    ? (int)m.diplo_ready_day : 0; } }   /* v50 : borné (forge → dispo) */
     ok&=sv_r(f,SVT_ITRD, NULL,0); ok&=intertrade_load(f);
     ok&=sv_r(f,SVT_AGYS, NULL,0); ok&=agency_load(f);
     ok&=sv_r(f,SVT_DPLS, NULL,0); ok&=diplo_load_statics(f);

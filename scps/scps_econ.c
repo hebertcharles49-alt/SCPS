@@ -779,6 +779,7 @@ void econ_aggregate_regions(WorldEconomy *e){
 void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(e,0,sizeof(*e));
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){ e->colony[c].src=-1; e->colony[c].dst=-1; }   /* aucun chantier */
     econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */
     e->n_prov=w->n_provinces;
     e->n_regions=w->n_regions;
@@ -2653,6 +2654,7 @@ static int econ_region_best_vacant_prov(const WorldEconomy *e, int region){
 }
 
 static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int cid);
+static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long total);
 /* GRAIN PUBLIC historique = région (8 appelants externes) : résolue vers la MEILLEURE
  * province colonisée de src_rid (possédée par cid) et la meilleure province VACANTE de
  * dst_rid — c'est LÀ que la charte veut l'acte fondateur (charte : « départ = 1 province »). */
@@ -2664,20 +2666,105 @@ void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     colonize_from_prov(e, sp, dp, cid);
 }
 
-/* VERBE JOUEUR (charte : « le joueur colonise n'importe quelle province ») — le grain
- * PROVINCE public : fonde une colonie sur la province VACANTE dst_pid depuis la province
- * COLONISÉE src_pid (à cid). Portes = celles de l'essaimage terrestre (pop source ≥
- * COLONY_MIN_POP · vivres ≥ COLONY_FOOD_GATE · cible active & vierge) — colonize_from_prov
- * n'en a pas en propre (elles vivent chez les appelants). false = refus, rien ne bouge. */
-bool econ_colonize_province(WorldEconomy *e, int src_pid, int dst_pid, int cid){
-    if (!e || src_pid<0||src_pid>=e->n_prov || dst_pid<0||dst_pid>=e->n_prov || src_pid==dst_pid) return false;
+/* VERBE JOUEUR (charte : « le joueur colonise n'importe quelle province ») — portes de
+ * l'essaimage terrestre (pop ≥ COLONY_MIN_POP · vivres ≥ COLONY_FOOD_GATE · cible active
+ * & vierge) + CADENCE : l'ordre ouvre un CHANTIER (une colonie MÛRIT, elle n'apparaît plus
+ * instantanément), un seul à la fois, 1 ordre/an. */
+/* ── CADENCE & MÛRISSEMENT (voie JOUEUR) ─────────────────────────────────────────
+ * BFS sur l'adjacence de provinces depuis un ENSEMBLE de départ (marqué true) →
+ * nb de sauts jusqu'à `dst` (1 = frontalier). -1 = inatteignable par terre (île). */
+static int colony_hops_to(const WorldEconomy *e, const bool *start, int dst_pid){
+    static int16_t dist[SCPS_MAX_PROV];
+    static int16_t q[SCPS_MAX_PROV];
+    if (!g_prov_adj) return -1;
+    int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    int qn=0;
+    for (int p=0;p<nprov;p++){ dist[p] = start[p] ? 0 : -1; if (start[p]) q[qn++]=(int16_t)p; }
+    for (int qi=0; qi<qn; qi++){
+        int a=q[qi];
+        if (a==dst_pid) return dist[a];
+        for (int b=0;b<nprov;b++){
+            if (dist[b]>=0 || !padj_get(a,b)) continue;
+            if (!e->prov[b].active) continue;          /* les zones mortes ne se traversent pas */
+            dist[b]=(int16_t)(dist[a]+1);
+            if (b==dst_pid) return dist[b];
+            q[qn++]=(int16_t)b;
+        }
+    }
+    return -1;
+}
+#define COLONY_BASE_DAYS  360    /* frontalier : la colonie se fait en UN AN */
+#define COLONY_MAX_DAYS   1080   /* borne : jamais plus de 3 ans */
+#define COLONY_CD_DAYS    360    /* cadence : 1 ordre par an */
+#define COLONY_YIELD_HREF 4.f    /* échelle du rendement log-distance capitale (sauts) */
+
+/* L'ordre PAIE le convoi (ponction pop immédiate) et OUVRE le chantier : durée = 1 an si
+ * la cible touche le territoire, × (1+log2(sauts)) sinon (borné 3 ans — une île lointaine
+ * prend le plafond) ; le RENDEMENT à l'arrivée décroît en log(sauts depuis la CAPITALE). */
+bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int dst_pid, int cid){
+    if (!e || !w || src_pid<0||src_pid>=e->n_prov || dst_pid<0||dst_pid>=e->n_prov || src_pid==dst_pid) return false;
+    if (cid<0 || cid>=SCPS_MAX_COUNTRY) return false;
     ProvinceEconomy *src=&e->prov[src_pid], *dst=&e->prov[dst_pid];
     if (!dst->active || dst->colonized) return false;
     if (!src->colonized || src->owner!=cid) return false;
+    struct ColonyWork *cw=&e->colony[cid];
+    if (cw->dst>=0 || cw->cd_days>0) return false;     /* un chantier à la fois · 1 ordre/an */
     float spop=0.f; for (int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
     if (spop<COLONY_MIN_POP || src->food_sat<COLONY_FOOD_GATE) return false;
-    colonize_from_prov(e, src_pid, dst_pid, cid);
+    /* distances : FRONTIÈRE (durée) et CAPITALE (rendement), en sauts de provinces */
+    static bool start[SCPS_MAX_PROV];
+    int nprov=e->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++) start[p] = (e->prov[p].colonized && e->prov[p].owner==cid);
+    int hops_border = colony_hops_to(e, start, dst_pid);
+    int cap_prov = (cid<w->n_countries) ? w->country[cid].capital_prov : -1;
+    int hops_cap = hops_border;
+    if (cap_prov>=0 && cap_prov<nprov){
+        for (int p=0;p<nprov;p++) start[p]=false;
+        start[cap_prov]=true;
+        hops_cap = colony_hops_to(e, start, dst_pid);
+    }
+    if (hops_border<1) hops_border = 8;                /* île / hors-terre : loin par défaut */
+    if (hops_cap<1)    hops_cap    = 12;
+    float days = (float)COLONY_BASE_DAYS * (1.f + log2f((float)hops_border));
+    days = clampf(days, (float)COLONY_BASE_DAYS, (float)COLONY_MAX_DAYS);
+    float yield = 1.f / (1.f + logf(1.f + (float)hops_cap/COLONY_YIELD_HREF));
+    yield = clampf(yield, 0.30f, 1.f);
+    /* le convoi PART : ponction immédiate (les colons quittent la mère-patrie) */
+    float take=fminf(COLONY_COST_POP, spop*0.25f);
+    for (int c=0;c<CLASS_COUNT;c++)
+        src->strata[c].pop -= take*(src->strata[c].pop/fmaxf(spop,EPS));
+    cw->src=(int16_t)src_pid; cw->dst=(int16_t)dst_pid;
+    cw->days_left=(int16_t)days; cw->total_days=(int16_t)days;
+    cw->cd_days=COLONY_CD_DAYS;
+    cw->seed_base=fmaxf(take, COLONY_SEED_POP);
+    cw->yield=yield;
     return true;
+}
+
+/* QUOTIDIEN — cadences & chantiers : décrémente cd_days ; un chantier arrivé à terme
+ * FONDE la colonie (revalidée : la cible peut avoir été prise entre-temps → les colons
+ * sont PERDUS, le convoi était payé). Boucle de purs no-ops quand tout est inactif. */
+void econ_colony_day(WorldEconomy *e, const World *w){
+    if (!e || !w) return;
+    int nc=w->n_countries; if (nc>SCPS_MAX_COUNTRY) nc=SCPS_MAX_COUNTRY;
+    for (int cid=0; cid<nc; cid++){
+        struct ColonyWork *cw=&e->colony[cid];
+        if (cw->cd_days>0) cw->cd_days--;
+        if (cw->dst<0) continue;
+        if (--cw->days_left > 0) continue;
+        ProvinceEconomy *dst=(cw->dst<e->n_prov)?&e->prov[cw->dst]:NULL;
+        if (dst && dst->active && !dst->colonized){
+            float seeded=fmaxf(cw->seed_base*cw->yield, 40.f);
+            econ_seed_population(dst, seeded);
+            dst->colonized=true;
+            dst->culture.settled=true;
+            dst->owner=(int16_t)cid;
+            dst->ferveur=1.f;                          /* FERVEUR FONDATRICE (lot 2) */
+            colonize_seed_pop_group(dst, cw->dst, (long)seeded);
+        }
+        cw->src=cw->dst=-1; cw->days_left=cw->total_days=0;
+        cw->seed_base=0.f; cw->yield=0.f;
+    }
 }
 
 /* RE-KEY PROVINCE — transfert de propriété d'une région ENTIÈRE (guerre/annexion/

@@ -459,9 +459,18 @@ int  scps_age_state         (ScpsSim *s, int *engaged, char *name, int cap);
 int  scps_player_age_engage (ScpsSim *s);
 /* COLONISATION (charte : « le joueur colonise n'importe quelle province ») — ENFILE
  * CMD_COLONIZE (source = sa province la plus peuplée, portes au drain) ; scps_can_colonize
- * = le read de légalité (cible vierge + une source aux portes) pour griser le bouton. */
+ * = le read de légalité (cible vierge + une source aux portes + CADENCE v50) pour griser. */
 int  scps_player_colonize   (ScpsSim *s, int prov);
 int  scps_can_colonize      (ScpsSim *s, int prov);
+/* CHANTIER de colonisation du joueur (v50 : une colonie MÛRIT — ~1 an frontalier, plus
+ * loin = plus long ; rendement log-distance capitale ; 1 ordre/an). Renvoie 1 si un
+ * chantier est en cours (dst/days/total remplis) ; cd_days/yield_pct toujours remplis. */
+int  scps_colony_status     (ScpsSim *s, int *dst_prov, int *days_left, int *total_days,
+                             int *cd_days, int *yield_pct);
+/* NOURRITURE disponible d'un pays (Σ stock vivrier de ses provinces — topbar). */
+double scps_country_food    (const ScpsSim *s, int c);
+/* LE DIPLOMATE (v50) : jours avant le prochain acte diplo joueur permis (0 = prêt). */
+int  scps_diplo_cd          (const ScpsSim *s);
 /* total de provinces COLONISÉES (signature de souveraineté du front — une colonisation
  * intra-région ne bouge pas l'owner agrégé de région) + province-CAPITALE d'un pays. */
 int  scps_colonized_total   (const ScpsSim *s);

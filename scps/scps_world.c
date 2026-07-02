@@ -3289,7 +3289,8 @@ static void gen_resources(World *w) {
             case BIO_WOODS:     ADD(RES_WOOD,3.0f); ADD(RES_GRAIN,1.4f); ADD(RES_MED_HERBS,0.8f); break;
             case BIO_JUNGLE:    ADD(RES_WOOD,3.2f); ADD(RES_SUGAR,1.6f); ADD(RES_MED_HERBS,1.2f); break;
             /* ── Zones humides ── */
-            case BIO_MARSH:     ADD(RES_FISH,0.9f); ADD(RES_MED_HERBS,1.4f); ADD(RES_SALT,0.2f); ADD(RES_IRON,0.10f); break;  /* fer des marais (secondaire) */
+            case BIO_MARSH:     if (coastal[p]) ADD(RES_FISH,0.9f);   /* le poisson est CÔTIER : marais enclavé ⇒ pas de pêcherie */
+                                ADD(RES_MED_HERBS,1.4f); ADD(RES_SALT,0.2f); ADD(RES_IRON,0.10f); break;  /* fer des marais (secondaire) */
             case BIO_BOG:
                 ADD(RES_MED_HERBS,2.6f); ADD(RES_COAL,0.4f); ADD(RES_IRON,0.10f);   /* fer des tourbières (secondaire) */
                 if (cold) ADD(RES_FUR,1.5f);
@@ -3311,8 +3312,9 @@ static void gen_resources(World *w) {
         }
         /* MESA (aride + relief) : filons de cuivre/fer à découvert (bonus). */
         if (mesa) { ADD(RES_COPPER,1.5f); ADD(RES_IRON,1.5f); }
-        /* Grande rivière : pêche fluviale d'appoint (hors biomes déjà halieutiques). */
-        if (bigriver && B!=BIO_COAST && B!=BIO_MANGROVE && B!=BIO_MARSH) ADD(RES_FISH,0.9f);
+        /* Le poisson est une ressource CÔTIÈRE — la pêche fluviale d'appoint est retirée
+         * (un grand fleuve enclavé ne porte plus de pêcherie). */
+        (void)bigriver;
         /* RARES STRATÉGIQUES (§3) : une pincée PARTOUT (0.05) pour que les chaînes de
          * pointe ne meurent jamais — fer céleste (armes enchantées) & cristal arcanique
          * (essence). Voulus rares, mais jamais absents (≥ 3-4 nœuds / ~100 régions). */

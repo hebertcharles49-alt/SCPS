@@ -1404,6 +1404,11 @@ int scps_can_colonize(ScpsSim *s, int prov){
     const ProvinceEconomy *dst = &s->sim.econ->prov[prov];
     if (!dst->active || dst->colonized) return 0;
     int p = s->sim.player;
+    /* CADENCE (v50) : un chantier à la fois, 1 ordre/an — le bouton se grise pendant */
+    if (p>=0 && p<SCPS_MAX_COUNTRY){
+        const struct ColonyWork *cw=&s->sim.econ->colony[p];
+        if (cw->dst>=0 || cw->cd_days>0) return 0;
+    }
     for (int q=0;q<s->sim.econ->n_prov;q++){
         const ProvinceEconomy *pe=&s->sim.econ->prov[q];
         if (pe->owner!=p || !pe->colonized) continue;
@@ -1411,6 +1416,47 @@ int scps_can_colonize(ScpsSim *s, int prov){
         if (pp>=800.f && pe->food_sat>=0.5f) return 1;   /* approximation UI des portes (le drain revalide) */
     }
     return 0;
+}
+/* LE CHANTIER DE COLONISATION du joueur (readout sidebar/topbar) : active=1 s'il mûrit.
+ * days_left/total_days = la progression ; cd_days = cadence avant le prochain ordre ;
+ * yield_pct = le rendement attendu à l'arrivée (log-distance capitale). Lecture pure. */
+int scps_colony_status(ScpsSim *s, int *dst_prov, int *days_left, int *total_days,
+                       int *cd_days, int *yield_pct){
+    if (dst_prov) *dst_prov=-1;
+    if (days_left) *days_left=0;
+    if (total_days) *total_days=0;
+    if (cd_days) *cd_days=0;
+    if (yield_pct) *yield_pct=0;
+    if (!s || !s->ready) return 0;
+    int p=s->sim.player;
+    if (p<0 || p>=SCPS_MAX_COUNTRY) return 0;
+    const struct ColonyWork *cw=&s->sim.econ->colony[p];
+    if (cd_days) *cd_days=cw->cd_days;
+    if (cw->dst<0) return 0;
+    if (dst_prov) *dst_prov=cw->dst;
+    if (days_left) *days_left=cw->days_left;
+    if (total_days) *total_days=cw->total_days;
+    if (yield_pct) *yield_pct=(int)(cw->yield*100.f+0.5f);
+    return 1;
+}
+/* NOURRITURE DISPONIBLE du pays (topbar) : Σ stock vivrier (grain·poisson·bétail·fruit)
+ * sur ses provinces — le nombre TANGIBLE (rations en réserve). Lecture pure. */
+double scps_country_food(const ScpsSim *s, int c){
+    if (!s || !s->ready || c<0) return 0.0;
+    double tot=0.0;
+    for (int q=0;q<s->sim.econ->n_prov;q++){
+        const ProvinceEconomy *pe=&s->sim.econ->prov[q];
+        if (pe->owner!=c || !pe->colonized) continue;
+        tot += pe->stock[RES_GRAIN]+pe->stock[RES_FISH]+pe->stock[RES_LIVESTOCK]+pe->stock[RES_FRUIT];
+    }
+    return tot;
+}
+/* LE DIPLOMATE (v50) : jours avant que l'émissaire du joueur soit à nouveau disponible
+ * (0 = prêt). L'UI grise les verbes diplo et affiche « émissaire en tournée (N j) ». */
+int scps_diplo_cd(const ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    int left = s->sim.diplo_ready_day - s->sim.day;
+    return left>0 ? left : 0;
 }
 /* total de provinces COLONISÉES (toutes entités) — la SIGNATURE de souveraineté du front
  * (une colonisation intra-région ne bouge pas l'owner agrégé de région : sans ce compte,

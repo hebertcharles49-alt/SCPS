@@ -122,9 +122,16 @@ int main(int argc, char **argv){
         int nc2 = scps_country_count(s2);
         ScpsRelation rel[64]; int nr = scps_country_relations(s2, pl, rel, 64);
         int wars0=0; for (int i=0;i<nr;i++) wars0 += rel[i].at_war;
-        int enq=0;
-        for (int c=0;c<nc2;c++){ if (c==pl) continue; if (scps_player_declare_war(s2, c)) enq++; }
-        ok("verbe DÉCLARER LA GUERRE : ordre(s) ENFILÉ(s) (différé)", enq>0);
+        /* v50 (le DIPLOMATE) : UN acte / 2 mois — on vise UNE cible dont la déclaration
+         * est LÉGALE (options) et qui paraît dans les relations (pas un hameau libre). */
+        int wt=-1;
+        for (int c=0;c<nc2 && wt<0;c++){
+            if (c==pl || scps_country_role(s2,c)==4) continue;
+            ScpsDiploOptions op;
+            if (scps_diplo_options(s2, c, &op) && op.can_declare_war) wt=c;
+        }
+        int enq = (wt>=0) ? scps_player_declare_war(s2, wt) : 0;
+        ok("verbe DÉCLARER LA GUERRE : ordre ENFILÉ (différé, cible légale)", enq>0);
         scps_sim_advance_days(s2, 1);                       /* le drain applique */
         nr = scps_country_relations(s2, pl, rel, 64);
         int wars1=0; for (int i=0;i<nr;i++) wars1 += rel[i].at_war;
@@ -168,10 +175,12 @@ int main(int argc, char **argv){
          * GUERRE (déclaration UNILATÉRALE, déterministe) → PAIX offrable, DÉCLARATION grisée. Cibler un
          * index fixe (pl+1) serait fragile : le pays-joueur varie d'un monde à l'autre, et l'index voisin
          * peut tomber sur la friche (0 région) — c'était la cause de l'échec, pas le rôle de la cible. */
+        /* v50 (le DIPLOMATE) : l'émissaire est UNIQUE (1 acte / 2 mois) — on ne redéclare
+         * pas, on réutilise la cible DÉJÀ en guerre (celle du bloc précédent) : c'est
+         * précisément l'état « paix offrable, déclaration grisée » qu'on veut prouver. */
         int tgt=-1;
-        for (int c=0;c<nc2;c++){ if (c==pl) continue; ScpsDiploOptions tmp; if (scps_diplo_options(s2,c,&tmp)){ tgt=c; break; } }
-        scps_player_declare_war(s2, tgt);
-        scps_sim_advance_days(s2, 1);                       /* le drain applique la guerre */
+        for (int c=0;c<nc2;c++){ if (c==pl) continue; ScpsDiploOptions tmp;
+            if (scps_diplo_options(s2,c,&tmp) && tmp.can_make_peace){ tgt=c; break; } }
         ScpsDiploOptions dop; int gotd = (tgt>=0) && scps_diplo_options(s2, tgt, &dop);
         ok("scps_diplo_options : cible valide → rempli", gotd==1);
         ok("options diplo COHÉRENTES (jamais guerre ET paix offrables ensemble)",
@@ -270,8 +279,9 @@ int main(int argc, char **argv){
         }
     }
 
-    /* ── COLONISATION (le verbe qui manquait au front — charte : « le joueur colonise
-     *    n'importe quelle province ») : compter → coloniser une VIERGE légale → drain → +1. ── */
+    /* ── COLONISATION (charte : « le joueur colonise n'importe quelle province ») — v50 :
+     *    l'ordre OUVRE un CHANTIER (la colonie MÛRIT ~1 an frontalier) : ordre → drain →
+     *    chantier actif (cadence : plus d'autre ordre) → avance total_days → FONDÉE (+1). ── */
     {
         int before = scps_country_province_count(s2, pl);
         int tgt=-1, np=scps_province_count(s2);
@@ -280,10 +290,20 @@ int main(int argc, char **argv){
         ok("colonisation : une cible LÉGALE existe (scps_can_colonize)", tgt>=0);
         if (tgt>=0){
             ok("verbe COLONISER : ordre ENFILÉ (différé)", scps_player_colonize(s2, tgt)==1);
-            scps_sim_advance_days(s2, 2);                   /* le drain fonde */
+            scps_sim_advance_days(s2, 2);                   /* le drain OUVRE le chantier */
+            int cdst=-1, cleft=0, ctot=0, ccd=0, cy=0;
+            int act = scps_colony_status(s2, &cdst, &cleft, &ctot, &ccd, &cy);
+            printf("   chantier : actif=%d dst=%d %d/%d j · cd %d j · rendement %d%%\n",
+                   act, cdst, cleft, ctot, ccd, cy);
+            ok("chantier OUVERT au drain (la colonie mûrit, pas d'apparition instantanée)",
+               act==1 && cdst==tgt && ctot>=360 && cleft>0);
+            ok("cadence : AUCUNE autre cible colonisable pendant le chantier",
+               scps_can_colonize(s2, tgt)==0);
+            ok("rendement borné (log-distance capitale)", cy>=30 && cy<=100);
+            scps_sim_advance_days(s2, ctot+5);              /* la colonie MÛRIT puis FONDE */
             int after = scps_country_province_count(s2, pl);
-            printf("   colonisation joueur : %d → %d province(s) après le drain\n", before, after);
-            ok("verbe COLONISER : APPLIQUÉ au drain (+1 province au joueur)", after == before+1);
+            printf("   colonisation joueur : %d → %d province(s) au terme\n", before, after);
+            ok("colonie FONDÉE au terme du chantier (+1 province au joueur)", after == before+1);
             ok("colonisation : la cible n'est PLUS colonisable (fondée)", scps_can_colonize(s2, tgt)==0);
         }
     }

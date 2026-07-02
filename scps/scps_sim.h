@@ -95,6 +95,8 @@ typedef struct {
     PlayerCmd cmdq[SCPS_CMDQ_MAX]; int cmd_n;   /* journal de commandes JOUEUR (vidé au tick, déterministe) */
     int research_target;   /* cible de recherche du JOUEUR (-1 = aucune ; file de 1, modèle viewer) */
     int player_age_engaged;   /* §7 : dernier âge ENGAGÉ par le joueur (-1 = aucun) — persiste (SaveMisc v48) */
+    int diplo_ready_day;   /* le DIPLOMATE : jour où le prochain acte diplo JOUEUR est permis
+                            * (UN émissaire, 1 action / 2 mois) — persiste (SaveMisc v49) */
 } Sim;
 
 /* allocation/libération des MEMBRES (heap) — la chronique alloue inline (intacte) ;

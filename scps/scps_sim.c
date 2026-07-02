@@ -294,6 +294,16 @@ static void sim_cmd_drain(Sim *s, World *w){
     if (p < 0 || p >= w->n_countries){ s->cmd_n = 0; return; }   /* pas d'humain : on jette (sécurité) */
     for (int i=0; i<s->cmd_n; i++){
         const PlayerCmd *c = &s->cmdq[i];
+        /* le DIPLOMATE : les actes diplo passent par UN émissaire — 1 action / 2 mois.
+         * Un ordre INVALIDE (cible hors-borne, soi-même, pays mort) ne le fait pas partir ;
+         * un ordre arrivé pendant sa tournée est IGNORÉ (l'UI lit scps_diplo_cd et grise). */
+        if (c->verb==CMD_DECLARE_WAR || c->verb==CMD_MAKE_PEACE || c->verb==CMD_OFFER_ALLIANCE
+         || c->verb==CMD_OFFER_PACT  || c->verb==CMD_EMBARGO){
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p || regions_of(s->econ, t)<=0) continue;
+            if (s->day < s->diplo_ready_day) continue;
+            s->diplo_ready_day = s->day + 60;
+        }
         switch (c->verb){
           case CMD_BUILD: {
             int e = c->a[0];
@@ -484,7 +494,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                 float pp=0.f; for (int k=0;k<CLASS_COUNT;k++) pp+=pe->strata[k].pop;
                 if (pp>best){ best=pp; src=q; }
             }
-            if (src>=0) econ_colonize_province(s->econ, src, dst, p);
+            if (src>=0) econ_colonize_province(s->econ, w, src, dst, p);
             break; }
         }
     }
@@ -495,6 +505,7 @@ void sim_day(Sim *s, World *w) {
     provlog_set_year(s->year);   /* l'an courant pour les pushs d'évènements du directeur (display) */
     PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
     sim_cmd_drain(s, w);   /* JOUEUR : ses ordres s'appliquent ICI, après agency_advance, AVANT l'IA (point fixe) */
+    econ_colony_day(s->econ, w);   /* chantiers de colonisation JOUEUR (no-op intégral sans chantier → golden) */
     religion_scholar_tick(w, s->econ);   /* P6 : lettrés (quotidien) — Missionnaire répand la foi ; gated (no-op sans foi) */
     /* leviers intérieurs : draine les coûts SCPS différés (purge/mater) vers TechState */
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
@@ -792,6 +803,7 @@ void sim_init(Sim *s, World *w) {
     s->cmd_n = 0;           /* journal de commandes joueur : vide (la chronique n'enfile jamais) */
     s->research_target = -1;   /* aucune cible de recherche joueur (la chronique n'en pose jamais ⇒ bloc no-op) */
     s->player_age_engaged = -1;   /* §7 : aucun âge engagé par le joueur */
+    s->diplo_ready_day = 0;       /* l'émissaire est disponible dès l'an 0 */
     /* PAS DE JOUEUR HUMAIN dans la chronique : TOUT pays habitable est piloté par
      * l'IA — y compris l'ex-emplacement « joueur ». Sinon ce pays restait inerte
      * (il ne bâtissait rien, ne se défendait pas) et FAUSSAIT le balayage (un trou
