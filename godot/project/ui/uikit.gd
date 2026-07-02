@@ -122,6 +122,19 @@ const PARCH_MANUF := {
 	"Réplicateur ligneux": "sheet08_buildings_manufactures_10",
 	"Corne divine": "sheet08_buildings_manufactures_11",
 	"Forge céleste": "sheet08_buildings_manufactures_12",
+	# COMPLÉMENT série 3 (planche 27) — le roster manufactures est COUVERT
+	"Armurerie légère": "sheet27_manufactures_complement_01",
+	"Atelier d'arc": "sheet27_manufactures_complement_02",
+	"Charbonnière": "sheet27_manufactures_complement_03",
+	"Papeterie": "sheet27_manufactures_complement_04",
+	"Scierie navale": "sheet27_manufactures_complement_05",
+	"Joaillerie": "sheet27_manufactures_complement_06",
+	"Atelier d'étoffe précieuse": "sheet27_manufactures_complement_07",
+	"Apothicaire": "sheet27_manufactures_complement_08",
+	"Atelier de tunique": "sheet27_manufactures_complement_09",
+	"Atelier de mage": "sheet27_manufactures_complement_10",
+	"Poterie": "sheet27_manufactures_complement_11",           # le four voûté à briques = le four du potier
+	"Atelier de sculpture": "sheet27_manufactures_complement_14",
 }
 static func manuf_sprite(nom: String) -> Texture2D:
 	if not PARCH_MANUF.has(nom):
@@ -226,9 +239,32 @@ const PARCH_TECH_NAME := {
 	"Horlogerie marchande": "sheet18_tech_combos_apex_12",
 	"Académie cosmopolite": "sheet18_tech_combos_apex_13",
 	"Grenier colonial": "sheet18_tech_combos_apex_14",
-	# APEX tier-5 (« Légion universelle » n'a PAS de pièce → repli apex générique 05_10)
+	# APEX tier-5
 	"Arquebuse runique": "sheet18_tech_combos_apex_15",
 	"Concile des savants": "sheet18_tech_combos_apex_16",
+	"Légion universelle": "sheet26_tech_complement_apex_reserves_06",
+	# COMPLÉMENT série 3 (planches 25-26) — plus AUCUN médaillon générique nommable
+	"Bibliothèque": "sheet25_tech_complement_knowledge_arcane_01",
+	"Académie": "sheet25_tech_complement_knowledge_arcane_02",
+	"Magie de bataille": "sheet25_tech_complement_knowledge_arcane_03",
+	"Invocation": "sheet25_tech_complement_knowledge_arcane_04",
+	"L'Éveil": "sheet25_tech_complement_knowledge_arcane_05",
+	"Gardes runiques": "sheet25_tech_complement_knowledge_arcane_06",
+	"Savoir interdit": "sheet25_tech_complement_knowledge_arcane_07",
+	"Collecte de bois": "sheet25_tech_complement_knowledge_arcane_08",
+	"Collecte d'argile": "sheet25_tech_complement_knowledge_arcane_09",
+	"Outillage": "sheet25_tech_complement_knowledge_arcane_10",
+	"Industrie de masse": "sheet25_tech_complement_knowledge_arcane_11",
+	"Foreuse arcanique": "sheet25_tech_complement_knowledge_arcane_12",
+	"L'Œuvre noire": "sheet25_tech_complement_knowledge_arcane_13",
+	"Qualité des matériaux": "sheet25_tech_complement_knowledge_arcane_14",
+	"Caserne": "sheet25_tech_complement_knowledge_arcane_15",
+	"Économie servile": "sheet25_tech_complement_knowledge_arcane_16",
+	"Caste martiale": "sheet26_tech_complement_apex_reserves_01",
+	"Chancellerie": "sheet26_tech_complement_apex_reserves_02",
+	"Foi": "sheet26_tech_complement_apex_reserves_03",
+	"Culte impérial": "sheet26_tech_complement_apex_reserves_04",
+	"Transmutation": "sheet26_tech_complement_apex_reserves_05",
 }
 static func tech_medallion(nom: String, faustian: bool, tier: int, quarter: int) -> Texture2D:
 	if PARCH_TECH_NAME.has(nom):

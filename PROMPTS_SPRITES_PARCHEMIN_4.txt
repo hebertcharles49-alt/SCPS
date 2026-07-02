@@ -1,0 +1,146 @@
+================================================================================
+SCPS — CAHIER DE PROMPTS · SÉRIE 4 : HÉRALDIQUE PROCÉDURALE & PIONS D'ARMÉE
+« LE PLATEAU » (Risk / Warhammer — des figurines qu'on déplace sur la table)
+================================================================================
+Même protocole que les séries 1-3. Copier le PRÉAMBULE COMMUN en tête de chaque
+prompt, puis le bloc de planche. Livrer les 1024² BRUTS magenta seuls (la
+découpe/alpha est refaite maison).
+
+LE PARTI PRIS DE CETTE SÉRIE — deux registres qui cohabitent :
+- Ce qui est PEINT (villes, forêts, routes, frontières) vit DANS la carte,
+  translucide, au glacis — c'est l'encre du cartographe.
+- Les PIONS (armées, flottes) vivent SUR la table : ce sont des FIGURINES DE
+  PLATEAU posées sur le parchemin — opaques, du volume, comme le compas et le
+  sceau de cire du fond de menu. Pas des dessins : des OBJETS.
+
+--------------------------------------------------------------------------------
+PRÉAMBULE COMMUN (à coller en tête de CHAQUE prompt)
+--------------------------------------------------------------------------------
+Style global — « atlas ancien » : dessin à l'encre brune GRAVÉE (traits nets,
+hachures discrètes) rehaussé de LAVIS aquarelle ; papier vieilli. AUCUN style
+« jeu mobile », AUCUN token RPG mignon, AUCUN rendu 3D/plastique/brillant.
+Registre : gravure d'encyclopédie XVIIe + carte marine + enluminure.
+(Pour la planche 32 UNIQUEMENT, le registre devient « figurine de wargame
+ancienne » — voir son bloc.)
+
+Palette IMPOSÉE (ne pas s'en écarter) :
+  encre sombre   #2a2419   (JAMAIS de noir pur #000000)
+  encre moyenne  #4a3b28
+  brun cuir      #3a3128
+  parchemin      #e8dcc0 (clair) · #cdbb92 (moyen) · #b09f78 (ombré)
+  rehauts lavis  : ocre #b08a4a · terre cuite #a05a3c · olive #6a7a4a ·
+                   ardoise #4a5a66 · prune #5a4458 · or vieilli #9a7a3c
+  GRIS TEINTABLE #c8c8c8 — RÉSERVÉ aux zones marquées « teintable » : gris
+  clair PLAT, PARFAITEMENT NEUTRE (R=G=B), sans lavis — le jeu le colore.
+Lumière douce du NORD-OUEST. PAS d'ombre portée (le jeu la dessine). AA doux.
+
+Format : image 1024×1024, GRILLE STRICTE 4×4 de cellules 256×256 (16 pièces),
+UNE pièce par cellule, CENTRÉE, marge ≥ 12 %, FOND MAGENTA #FF00FF plein.
+Pas de texte. Chaque pièce doit lire à la taille-cible indiquée.
+
+--------------------------------------------------------------------------------
+PLANCHE 29 — HÉRALDIQUE · ÉCUS & STRUCTURE                   cible : 20-48 px
+--------------------------------------------------------------------------------
+Les SUPPORTS du générateur d'armoiries. Le jeu compose : écu teinté aux
+couleurs du pays + meuble d'encre posé dessus + ornement de rang. Le CHAMP de
+chaque écu est donc en GRIS TEINTABLE #c8c8c8 STRICT (aucun lavis, aucun
+motif), seuls le CONTOUR d'encre et un très léger ombrage de volume (gris
+neutre plus sombre, R=G=B) l'habillent :
+  01 écu « ancien » (heater, pointe en accolade) — champ teintable
+  02 écu en amande (kite arrondi) — champ teintable
+  03 targe ronde (bouclier circulaire cerclé) — champ teintable
+  04 bannière verticale à queue d'aronde — champ teintable
+  05 le MÊME écu 01 en version USÉE (éraflures d'encre, coin écorné)
+  06 couronne murale (crénelée) À POSER sur un écu — cité-état
+  07 couronne royale simple À POSER — empire hégémon
+  08 totem de bois brut (pieu + crâne + plumes) — hameaux WILD (l'écu fruste)
+  09 supports : deux rameaux de laurier en couronne ouverte (à poser autour)
+  10 supports : deux lances croisées derrière l'écu
+  11 listel (banderole de devise) VIERGE sous l'écu
+  12 lambrequins sobres (feuillage d'encre, deux volutes latérales)
+  13 chef (bande horizontale haute) — pièce de partition en GRIS TEINTABLE
+     plus FONCÉ (#9a9a9a) découpée à la forme de l'écu 01
+  14 pal (bande verticale) idem, forme écu 01
+  15 bande (diagonale) idem, forme écu 01
+  16 bordure (liseré épais) idem, forme écu 01
+(Les partitions 13-16 = calques à poser sur l'écu 01 et à teinter d'une
+SECONDE couleur — le générateur écartèle/coupe/tranche en les combinant.)
+
+--------------------------------------------------------------------------------
+PLANCHE 30 — HÉRALDIQUE · MEUBLES I (marital & ordre)        cible : 12-28 px
+--------------------------------------------------------------------------------
+Les CHARGES héraldiques. Chaque meuble = SILHOUETTE D'ENCRE SOMBRE #2a2419
+PLEINE et STYLISÉE (gravure plate, AUCUNE couleur, AUCUN volume, AUCUN cadre —
+le jeu la pose sur l'écu teinté et peut l'éclaircir en « métal »). Formes
+héraldiques classiques, épaisses, lisibles à 12 px :
+  — DOMINATEUR (la serre) :        01 lion rampant · 02 masse d'armes en pal ·
+                                   03 griffe/serre d'aigle · 04 tour crénelée
+  — HONNEUR (le serment) :         05 aigle éployée · 06 épée haute en pal ·
+                                   07 heaume de face · 08 étoile à huit rais
+  — BUREAUCRATE (l'ordre) :        09 clef en pal · 10 soleil rayonnant ·
+                                   11 balance · 12 pont à trois arches
+  — MERCANTILE (le comptoir) :     13 nef à voile carrée · 14 besant (disque) ·
+                                   15 corne d'abondance · 16 ancre
+
+--------------------------------------------------------------------------------
+PLANCHE 31 — HÉRALDIQUE · MEUBLES II (foi, nature & arcane)  cible : 12-28 px
+--------------------------------------------------------------------------------
+Même règle : silhouettes d'encre pleines, plates, sans couleur ni cadre.
+  — PACIFISTE (le havre) :         01 colombe essorante · 02 rameau d'olivier ·
+                                   03 gerbe de blé liée · 04 ruche
+  — ÉSOTÉRIQUE (le voile) :        05 œil ouvert · 06 croissant de lune ·
+                                   07 flamme à trois langues · 08 serpent noué
+  — CLANIQUE / HÉRITAGES :         09 corne de guerre · 10 tête de sanglier ·
+                                   11 marteau de forge (nain) · 12 arbre
+                                   déraciné (elfe) · 13 rouage denté (mécaniste)
+  — CLASSIQUES de remplissage :    14 cerf passant · 15 corbeau · 16 dragon lové
+
+--------------------------------------------------------------------------------
+PLANCHE 32 — LES PIONS D'ARMÉE (le plateau)                  cible : 24-48 px
+--------------------------------------------------------------------------------
+REGISTRE PROPRE À CETTE PLANCHE : des FIGURINES DE WARGAME ANCIEN — étain
+patiné et bois tourné peint à la main, posées sur un SOCLE ROND épais (disque
+de bois, vue de trois quarts très légèrement plongeante, comme une pièce
+d'échecs regardée sur une table). De la MATIÈRE (patine, usure du métal,
+peinture écaillée discrète) mais les tons restent dans la palette (étain =
+gris-brun chaud, PAS d'argent brillant). Le LISERÉ SUPÉRIEUR DU SOCLE et
+toute ÉTOFFE (fanion, caparaçon) sont en GRIS TEINTABLE #c8c8c8 STRICT —
+c'est là que la couleur du pays se pose. Une figurine par cellule, profil
+tourné vers la DROITE :
+  01 PIQUIER (pique verticale, pavois au dos)
+  02 ARCHER (arc bandé, carquois)
+  03 CAVALIER (cheval au pas, lance couchée, caparaçon teintable)
+  04 MAGE (bâton levé, petite gemme, pan de robe teintable)
+  05 PORTE-ÉTENDARD (hampe + GRANDE flamme rectangulaire teintable — l'écu
+     du pays s'y imprimera)
+  06 GÉNÉRAL (figurine à cape + bâton de commandement, socle plus large)
+  07 TRÉBUCHET (machine de siège en bois, pion compact)
+  08 TENTE DE CAMP (pion tente conique + fanion teintable — le siège)
+  09 JETON « BATAILLE » : disque de bois plat gravé de deux épées croisées
+  10 JETON « DÉROUTE » : disque de bois plat gravé d'un bouclier brisé
+  11 NEF DE GUERRE en pion (coque + château, socle-vague sculpté)
+  12 GALÈRE en pion (rangée de rames, socle-vague)
+  13 COTRE MARCHAND en pion (voile aurique, socle-vague)
+  14 PIQUIER version MARCHE (jambe avancée, pique à l'épaule — l'anim à 2 poses)
+  15 CAVALIER version CHARGE (cheval étendu — l'anim à 2 poses)
+  16 socle rond NU (le disque seul, liseré teintable — pour composer/réserve)
+
+================================================================================
+NOTES DE LIVRAISON & D'INTÉGRATION (côté jeu, pour mémoire)
+- HÉRALDIQUE = DÉRIVÉE, jamais stockée : écu (forme ← hash pays) teinté à la
+  famille de pigment du pays (la même que les frontières), partition (calques
+  13-16 pl. 29, seconde teinte), meuble (famille ← ÉTHOS, pièce ← hash),
+  ornement (couronne murale = cité-état, totem = hameau libre, couronne = rang).
+  Composée une fois par pays dans une Image, cachée. S'affiche : fenêtre diplo,
+  panneau province (propriétaire), topbar, capitale au zoom, flamme du
+  porte-étendard.
+- PIONS : le nombre de figurines dans la pile suit l'EFFECTIF par bandes, le
+  mix suit la COMPOSITION (inf/arch/cav/mages — la façade la donne déjà) ;
+  phase marche = pions 14-15 alternés le long de la route (position interpolée
+  au grain du jour) ; siège = tente 08 + trébuchet 07 devant la ville ;
+  bataille = jeton 09 entre les deux piles ; déroute = jeton 10. Flottes =
+  pions 11-13 en rade. Ombre de contact dessinée PAR LE JEU (passe silhouette
+  SE, comme les bâtiments front32) — d'où l'interdit d'ombre dans les pièces.
+- Le GRIS TEINTABLE doit rester R=G=B STRICT : le jeu multiplie (modulate) —
+  toute dérive de teinte dans le gris fausserait la couleur du pays.
+================================================================================

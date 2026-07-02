@@ -25,6 +25,7 @@ func _ready() -> void:
 	var UiTheme := load("res://ui/ui_theme.gd")
 	get_window().theme = UiTheme.build()
 	UiTheme.attach_feedback(get_tree())
+	_setup_cursor()
 
 	# la carte (Node2D, caméra dedans)
 	var map_script := load("res://map/map_view.gd")
@@ -249,6 +250,26 @@ func _close_topmost() -> bool:
 		_clear_selection()
 		return true
 	return false
+
+## CURSEUR PLUME (planche 28) : la pièce a la pointe en bas-droite → rotation 180°
+## pour poser le bec en HAUT-GAUCHE (hotspot 2,2). Absente → curseur système.
+func _setup_cursor() -> void:
+	var path := "res://assets/scps/ui/parch/sheet28_end_rituals_loading_cursors_09.png"
+	if not FileAccess.file_exists(path):
+		return
+	var img := Image.load_from_file(path)
+	if img == null:
+		return
+	var used := img.get_used_rect()
+	if used.size.x < 4:
+		return
+	img = img.get_region(used)
+	img.rotate_180()
+	var h := 38
+	var wpx := int(round(float(img.get_width()) * float(h) / float(img.get_height())))
+	img.resize(wpx, h, Image.INTERPOLATE_LANCZOS)
+	Input.set_custom_mouse_cursor(ImageTexture.create_from_image(img),
+		Input.CURSOR_ARROW, Vector2(2, 2))
 
 ## désélection PLEINE : panneaux de sélection refermés + le contour doré s'éteint.
 func _clear_selection() -> void:
