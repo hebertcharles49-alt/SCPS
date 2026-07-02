@@ -2596,8 +2596,12 @@ func _build_dressing() -> void:
 		y += DRESS_SPACING
 	# ── LA CANOPÉE COMPOSÉE : passe dédiée à PAS FIN sur les biomes de forêt — chaque arbre
 	#    est un INDIVIDU (lot 6) en espace MONDE, servi en MULTIMESH (un draw call par essence :
-	#    des dizaines de milliers d'instances pour un coût par-frame NUL — jamais dans _dressing). ──
-	var buckets := {}                          # id d'essence → [[pos monde, hauteur monde, teinte], …]
+	#    des CENTAINES de milliers d'instances pour un coût par-frame NUL — jamais dans _dressing).
+	#    Seaux en 3 Array PARALLÈLES (pos/taille/teinte) — ⚠ JAMAIS de packed array dans un
+	#    conteneur : type VALEUR (COW), `(bk[0] as Packed…).append()` mute une COPIE et les
+	#    seaux restent VIDES (forêt disparue, pris au shot). L'ordre de semis (lignes y
+	#    croissantes) EST le tri fond→avant. ──
+	var buckets := {}                          # id d'essence → [Array(Vector2), Array(float), Array(Color)]
 	var ci := 500000
 	var cy := 1
 	while cy < sh:
@@ -2636,23 +2640,28 @@ func _build_dressing() -> void:
 					var tc: Color = tt2 if tt2 != null else Color(1, 1, 1, 0.6)
 					var vj := 0.90 + 0.20 * _h1(float(ci) * 9.3)   # variation de VALEUR par arbre (vie)
 					if not buckets.has(cid):
-						buckets[cid] = []
-					buckets[cid].append([Vector2(fx, fy), 1.6 * (0.72 + 0.55 * _h1(float(ci) * 11.7)),
-						Color(tc.r * vj, tc.g * vj, tc.b * vj, tc.a)])
+						buckets[cid] = [[], [], []]
+					var bk: Array = buckets[cid]
+					(bk[0] as Array).append(Vector2(fx, fy))
+					(bk[1] as Array).append(1.6 * (0.72 + 0.55 * _h1(float(ci) * 11.7)))
+					(bk[2] as Array).append(Color(tc.r * vj, tc.g * vj, tc.b * vj, tc.a))
 					# cœur & mi-lisière : des individus EN PLUS — l'échelle symbole demande le NOMBRE
-					# (+1 à 2/3, +3 au cœur 3/3 ; offsets hashés ±3 cellules = débord organique)
-					var extra: int = [0, 0, 1, 3][hits]
+					# (lisière ~1, mi-lisière ~20, cœur 40/point ; offsets hashés ±3.5 cellules =
+					# les grappes se fondent, jamais de motif de grille)
+					var extra: int = [0, 3, 19, 39][hits]
 					for e in range(extra):
 						var eb := float(ci) * (13.1 + 8.6 * float(e))
-						var qfx := clampf(fx + (_h1(eb) - 0.5) * 6.0, 0.0, float(sw - 1))
-						var qfy := clampf(fy + (_h1(eb * 1.7) - 0.5) * 6.0, 0.0, float(sh - 1))
+						var qfx := clampf(fx + (_h1(eb) - 0.5) * 7.0, 0.0, float(sw - 1))
+						var qfy := clampf(fy + (_h1(eb * 1.7) - 0.5) * 7.0, 0.0, float(sh - 1))
 						if not _near_river(rf, int(qfx), int(qfy)):
 							var cid2: String = cids[int(_h1(eb * 1.9) * float(cids.size())) % cids.size()]
 							var vj2 := 0.90 + 0.20 * _h1(eb * 2.3)
 							if not buckets.has(cid2):
-								buckets[cid2] = []
-							buckets[cid2].append([Vector2(qfx, qfy), 1.6 * (0.72 + 0.55 * _h1(eb * 2.9)),
-								Color(tc.r * vj2, tc.g * vj2, tc.b * vj2, tc.a)])
+								buckets[cid2] = [[], [], []]
+							var bk2: Array = buckets[cid2]
+							(bk2[0] as Array).append(Vector2(qfx, qfy))
+							(bk2[1] as Array).append(1.6 * (0.72 + 0.55 * _h1(eb * 2.9)))
+							(bk2[2] as Array).append(Color(tc.r * vj2, tc.g * vj2, tc.b * vj2, tc.a))
 			cx += CANOPY_STEP
 		cy += CANOPY_STEP
 	_canopy_flush(buckets)                     # → MultiMesh par essence (tri fond→avant interne)
@@ -2689,30 +2698,32 @@ func _canopy_flush(buckets: Dictionary) -> void:
 	var keys := buckets.keys()
 	keys.sort()                                # ordre de dessin STABLE entre rebuilds
 	for tid in keys:
-		var arr: Array = buckets[tid]
+		var bk: Array = buckets[tid]
+		var pos: Array = bk[0]
+		var siz: Array = bk[1]
+		var col: Array = bk[2]
 		var tex := _dress_get(String(tid))
-		if tex == null or arr.is_empty():
+		if tex == null or pos.is_empty():
 			continue
-		# tri fond→avant DANS l'essence (l'empilement inter-essences reste au hasard : invisible
-		# à l'échelle symbole, et il garde chaque essence en un seul batch)
-		arr.sort_custom(func(a, b): return (a[0] as Vector2).y < (b[0] as Vector2).y)
+		# PAS de tri : l'ordre de semis (lignes y croissantes) est déjà fond→avant à ±3.5
+		# cellules près — invisible à l'échelle symbole, et un sort_custom sur des centaines
+		# de milliers d'entrées coûterait des dizaines de secondes.
 		var tsz: Vector2 = tex.get_size()
 		var asp: float = tsz.x / maxf(tsz.y, 1.0)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_2D
 		mm.use_colors = true
 		mm.mesh = _canopy_mesh
-		mm.instance_count = arr.size()
-		for k in range(arr.size()):
-			var it: Array = arr[k]
-			var wp: Vector2 = it[0]
-			var dh: float = it[1]
+		mm.instance_count = pos.size()
+		for k in range(pos.size()):
+			var wp: Vector2 = pos[k]
+			var dh: float = siz[k]
 			var ip: Vector2 = mv.iso_pos(wp.x, wp.y)
 			# le pied du quad au point ; le tronc vit à ~85 % de la hauteur de l'image
 			# → on descend le quad de 15 % (même ancrage que l'ancien draw_texture_rect)
 			mm.set_instance_transform_2d(k, Transform2D(Vector2(dh * asp, 0.0), Vector2(0.0, dh),
 				ip + Vector2(0.0, dh * 0.15)))
-			mm.set_instance_color(k, it[2])
+			mm.set_instance_color(k, col[k])
 		_canopy_batches.append({"mm": mm, "tex": tex})
 
 ## tente UNE marque jittée à partir de (x,y) : hors rivière, biome connu, sous la densité → ajoutée.
