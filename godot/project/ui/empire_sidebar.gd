@@ -11,11 +11,14 @@ const Frame = preload("res://ui/frame.gd")
 const AlertsK = preload("res://ui/alerts.gd")   # la TABLE DU FIL (FEED_KINDS) partagée
 
 const W := 268.0
+const HANDLE_W := 14.0      ## bande réduite quand la sidebar est REPLIÉE (rabat)
 const LOG_MAX := 14
 
 var _seen_seq := 0
 var _log := []              ## [{txt, y(an)}] — fil accumulé (le plus récent en tête)
 var _city_names := {}       ## region → nom (cache, résolu via province_at(siège))
+var _collapsed := false     ## rabat (pièces planche 23 : 01 replier · 02 déplier)
+var _handle_rect := Rect2()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE   # lecture seule : la carte reste cliquable au travers ? Non — bande opaque
@@ -27,8 +30,17 @@ func _ready() -> void:
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size
-	position = Vector2(vp.x - W, Frame.TOPBAR_H)
-	size = Vector2(W, vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H)
+	var w := HANDLE_W if _collapsed else W
+	position = Vector2(vp.x - w, Frame.TOPBAR_H)
+	size = Vector2(w, vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H)
+
+func _gui_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+		if _handle_rect.has_point(e.position):
+			_collapsed = not _collapsed
+			_layout()
+			queue_redraw()
+			accept_event()
 
 func _poll() -> void:
 	var w = Sim.world
@@ -68,8 +80,24 @@ func _draw() -> void:
 		return
 	var w = Sim.world
 	var me: int = w.player()
+	# RABAT (planche 23) : languette au bord gauche, à mi-hauteur — la flèche pointe
+	# le sens du geste (chevron droit 02 = replier vers le bord · gauche 01 = rouvrir).
+	_handle_rect = Rect2(0, size.y * 0.5 - 22, HANDLE_W, 44)
+	if _collapsed:
+		VKit.fill(self, Rect2(0, 0, HANDLE_W, size.y), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.90))
+		VKit.fill(self, Rect2(0, 0, 2, size.y), VKit.COL_GOLD)
+		var hd: Texture2D = UIKit.parch_tex("sheet23_remaining_chrome_sidebar_01")
+		if hd != null:
+			draw_texture_rect(hd, _handle_rect, false)
+		else:
+			VKit.text(self, Vector2(5, 22), VKit.COL_GOLD, "«")
+		return
 	VKit.fill(self, Rect2(0, 0, W, size.y), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.94))
-	VKit.fill(self, Rect2(0, 0, 2, size.y), VKit.COL_COPPER)
+	VKit.fill(self, Rect2(0, 0, 2, size.y), VKit.COL_GOLD)
+	var hd2: Texture2D = UIKit.parch_tex("sheet23_remaining_chrome_sidebar_02")
+	if hd2 != null:
+		draw_texture_rect(hd2, Rect2(_handle_rect.position - Vector2(2, 0),
+			_handle_rect.size + Vector2(4, 0)), false, Color(1, 1, 1, 0.70))
 	var x := 12.0
 	var y := 10.0
 
@@ -185,7 +213,7 @@ func _draw() -> void:
 			if bl != null:
 				draw_texture_rect(bl, Rect2(x, y - 3, 15, 15), false)
 				tx = x + 19
-			VKit.text(self, Vector2(tx, y), VKit.COL_COPPER if dom else VKit.COL_PARCH,
+			VKit.text(self, Vector2(tx, y), VKit.COL_GOLD if dom else VKit.COL_PARCH,
 				("★ " if dom else "") + nm2, VKit.FS_SMALL)
 			UIKit.bar(self, Rect2(x + 132, y + 2, 80, 8), part)
 			if g >= 25:

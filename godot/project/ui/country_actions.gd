@@ -32,8 +32,8 @@ func _ready() -> void:
 func _build() -> void:
 	_panel = PanelContainer.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.09, 0.085, 0.12, 0.98)
-	sb.border_color = Color(0.78, 0.55, 0.30)
+	sb.bg_color = Color(0.10, 0.08, 0.055, 0.98)
+	sb.border_color = Color(0.79, 0.64, 0.29)
 	sb.set_border_width_all(2)
 	sb.set_corner_radius_all(6)
 	sb.set_content_margin_all(14)

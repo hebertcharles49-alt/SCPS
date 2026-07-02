@@ -4,7 +4,7 @@ extends Control
 ## métrique (Population · Trésor · Prospérité) — chacune prend toute l'échelle
 ## verticale (auto-ajustée à sa plage). L'historique s'accumule an par an depuis
 ## la façade (country_pop / budget_summary / country_info), même panneau caché.
-## Charte bleu nuit / cuivre. Display-only.
+## Charte parchemin (cuir/or). Display-only.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -122,7 +122,7 @@ func _replot() -> void:
 	cp.origin = false
 	cp.x_scale = 8
 	cp.y_scale = 6                       # l'échelle Y s'auto-ajuste à la plage de CETTE métrique
-	# CHARTE : fond transparent (navy du panneau), axes+texte parchemin, grille bleu-gris
+	# CHARTE : fond transparent (cuir du panneau), axes+texte parchemin, grille discrète
 	cp.background = false
 	cp.colors.bounding_box = VKit.COL_PARCH
 	cp.colors.grid = VKit.COL_EDGE
@@ -138,12 +138,12 @@ func _notification(what: int) -> void:
 func _draw() -> void:
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
 	UIKit.draw_icon(self, "menu_economy", Vector2(14, 10), 18)
-	VKit.text(self, Vector2(40, 11), VKit.COL_COPPER, "Économie dans le temps", VKit.FS_BIG)
+	VKit.text(self, Vector2(40, 11), VKit.COL_GOLD, "Économie dans le temps", VKit.FS_BIG)
 
 	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
 	_close_rect = Rect2(PW - 26, 6, 20, 20)
 	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 
 	if _years.size() < 2:

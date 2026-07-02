@@ -461,8 +461,8 @@ func _draw_resources(w, mv: Node2D, is_iso: bool) -> void:
 			if spr != null:
 				draw_texture_rect(spr, Rect2(tl, Vector2(sz, sz)), false)
 			else:                                          # pas de sprite : pastille nommée (couverture complète)
-				draw_rect(Rect2(tl, Vector2(sz, sz)), Color(0.10, 0.11, 0.14, 0.92))
-				draw_rect(Rect2(tl, Vector2(sz, sz)), VKit.COL_COPPER, false, 1.0)
+				draw_rect(Rect2(tl, Vector2(sz, sz)), Color(0.13, 0.11, 0.08, 0.92))
+				draw_rect(Rect2(tl, Vector2(sz, sz)), VKit.COL_GOLD, false, 1.0)
 				if sz >= 11.0:
 					VKit.text(self, tl + Vector2(2.0, sz * 0.5 - 5.0), Color(0.92, 0.86, 0.70), String(rr.get("name", "?")).substr(0, 3), VKit.FS_SMALL)
 

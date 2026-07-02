@@ -9,10 +9,10 @@ const NewGame = preload("res://ui/new_game_panel.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const VKit = preload("res://ui/vkit.gd")
 
-const C_BG    := Color(0.03, 0.03, 0.05, 0.98)
+const C_BG    := Color(0.04, 0.03, 0.02, 0.98)
 ## panneaux SEMI-TRANSPARENTS : la table du cartographe transparaît derrière
 const C_PANEL := Color(0.07, 0.06, 0.05, 0.84)
-const C_EDGE  := Color(0.78, 0.55, 0.30)
+const C_EDGE  := Color(0.79, 0.64, 0.29)          # or vieilli (charte parchemin)
 const C_TEXT  := Color(0.88, 0.86, 0.82)
 const C_DIM   := Color(0.66, 0.62, 0.56)
 const C_TITLE := Color(0.90, 0.76, 0.48)

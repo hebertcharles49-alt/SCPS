@@ -23,7 +23,7 @@ const MODES := [
 # (lo→hi) ; « sw » = pastilles discrètes. La box est VARIABLE (taille au mode courant).
 const LEGENDS := {
 	13: {"t": "Stabilité", "grad": [Color(0.94, 0.12, 0.16), Color(0.55, 0.50, 0.16), Color(0.10, 0.86, 0.16)], "lo": "instable", "hi": "stable"},
-	14: {"t": "Commerce", "grad": [Color(0.17, 0.17, 0.20), Color(0.96, 0.65, 0.22)], "lo": "faible", "hi": "actif"},
+	14: {"t": "Commerce", "grad": [Color(0.19, 0.16, 0.12), Color(0.96, 0.65, 0.22)], "lo": "faible", "hi": "actif"},
 	15: {"t": "Guerre", "sw": [[Color(0.75, 0.16, 0.13), "occupé"], [Color(0.75, 0.47, 0.13), "belligérant"], [Color(0.21, 0.31, 0.18), "paix"]]},
 	16: {"t": "Diplomatie", "sw": [[Color(0.18, 0.39, 0.75), "soi"], [Color(0.18, 0.63, 0.31), "allié"], [Color(0.75, 0.16, 0.16), "guerre"], [Color(0.44, 0.44, 0.47), "neutre"]]},
 }
@@ -82,9 +82,9 @@ func _resize() -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	# barre PLEINE LARGEUR : navy + liseré cuivre en haut
+	# barre PLEINE LARGEUR : cuir sombre + liseré or en haut
 	VKit.fill(self, Rect2(0, 0, size.x, H), VKit.COL_PANEL)
-	VKit.fill(self, Rect2(0, 0, size.x, 2), VKit.COL_COPPER)
+	VKit.fill(self, Rect2(0, 0, size.x, 2), VKit.COL_GOLD)
 	_draw_legend()
 
 ## la LÉGENDE du mode courant, en BOX au-dessus des boutons de mode (y négatif = au-dessus
@@ -103,8 +103,8 @@ func _draw_legend() -> void:
 	var bh := 42.0
 	var y := -(bh + 6.0)
 	VKit.fill(self, Rect2(x, y, bw, bh), VKit.COL_PANEL2)
-	VKit.box(self, Rect2(x, y, bw, bh), VKit.COL_COPPER)
-	VKit.text(self, Vector2(x + 8, y + 5), VKit.COL_COPPER, String(L["t"]), VKit.FS_SMALL)
+	VKit.box(self, Rect2(x, y, bw, bh), VKit.COL_GOLD)
+	VKit.text(self, Vector2(x + 8, y + 5), VKit.COL_GOLD, String(L["t"]), VKit.FS_SMALL)
 	if L.has("grad"):
 		var gx := x + 8.0
 		var gy := y + 23.0

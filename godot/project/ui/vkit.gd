@@ -1,21 +1,20 @@
 extends RefCounted
-## VKit — le KIT visuel de viewer.c, porté en Godot À L'IDENTIQUE : la palette
+## VKit — le KIT visuel de l'UI Godot : palette, sense_color, SLICE_PAL et les
+## primitives immédiates (panel_bg, box, gauge, pie, face, section, row, text).
 ## (consommé via `const VKit = preload("res://ui/vkit.gd")` — robuste en headless,
 ##  pas de dépendance au cache de class_name de l'éditeur).
-## EXACTE (COL_*), sense_color, SLICE_PAL et les primitives immédiates (panel_bg,
-## box, gauge, pie, face, section, row, text). Les panneaux dessinent AVEC ce kit
-## dans leur _draw → même look que le viewer SDL (parchemin/cuivre/navy, jauges
-## rouge→vert, camemberts, visages d'humeur). Aucune logique de sim : display-only.
+## DA PARCHEMIN : cuir sombre + or vieilli + encre brune — le code couleur
+## bleu nuit/cuivre de la v0 (viewer SDL) est SUPPRIMÉ. Display-only.
 
-# ── palette (hex exacts de viewer.c, lignes 1136-1143) ─────────────────────
-const COL_PANEL    := Color(0x0d/255.0, 0x14/255.0, 0x20/255.0, 0xf6/255.0)
-const COL_PANEL2   := Color(0x17/255.0, 0x23/255.0, 0x35/255.0, 0xf6/255.0)
-const COL_PANEL_HI := Color(0x26/255.0, 0x36/255.0, 0x4c/255.0, 0x4d/255.0)
-const COL_COPPER   := Color(0xc8/255.0, 0x82/255.0, 0x3e/255.0, 1.0)
+# ── palette (la famille du chrome parchemin — cuir / or / encre) ────────────
+const COL_PANEL    := Color(0x17/255.0, 0x11/255.0, 0x09/255.0, 0xf6/255.0)   # cuir profond
+const COL_PANEL2   := Color(0x2a/255.0, 0x21/255.0, 0x15/255.0, 0xf6/255.0)   # cuir clair (chips/champs)
+const COL_PANEL_HI := Color(0x4a/255.0, 0x3a/255.0, 0x24/255.0, 0x4d/255.0)   # reflet chaud
+const COL_GOLD     := Color(0xc9/255.0, 0xa2/255.0, 0x4b/255.0, 1.0)          # or vieilli (accent)
 const COL_PARCH    := Color(0xed/255.0, 0xe3/255.0, 0xcd/255.0, 1.0)
 const COL_DIM      := Color(0x96/255.0, 0x8d/255.0, 0x79/255.0, 1.0)
-const COL_EDGE     := Color(0x34/255.0, 0x42/255.0, 0x57/255.0, 1.0)
-const COL_SHADOW   := Color(0x00/255.0, 0x02/255.0, 0x05/255.0, 0x6e/255.0)
+const COL_EDGE     := Color(0x4a/255.0, 0x3b/255.0, 0x26/255.0, 1.0)          # filet brun doré
+const COL_SHADOW   := Color(0x05/255.0, 0x03/255.0, 0x01/255.0, 0x6e/255.0)
 
 # palette de parts (camemberts, barres empilées) — viewer.c SLICE_PAL[8]
 const SLICE_PAL := [
@@ -105,10 +104,8 @@ static func box(ci: CanvasItem, r: Rect2, c: Color) -> void:
 static func fill(ci: CanvasItem, r: Rect2, c: Color) -> void:
 	ci.draw_rect(r, c, true)
 
-## panel_bg : ombre portée + corps navy arrondi + voile clair + double liseré cuivre
+## panel_bg : le cadre CUIR riveté (planche 1) en 9-slice ; repli = aplat cuir + liseré or
 static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
-	# PARCHEMIN d'abord : le cadre CUIR riveté (planche 1, pièce 01) en 9-slice —
-	# fond sombre, le texte clair existant reste lisible. Repli = l'aplat navy.
 	var UIKit := load("res://ui/uikit.gd")
 	var psb: StyleBox = UIKit.parch_box("sheet01_panel_chrome_01", 26)
 	if psb != null:
@@ -122,7 +119,7 @@ static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
 	ci.draw_style_box(sb_shadow, Rect2(r.position + Vector2(4, 6), r.size))
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = COL_PANEL; sb.set_corner_radius_all(8)
-	sb.border_color = COL_COPPER; sb.set_border_width_all(2)
+	sb.border_color = COL_GOLD; sb.set_border_width_all(2)
 	ci.draw_style_box(sb, r)
 	var sheen := StyleBoxFlat.new()
 	sheen.bg_color = COL_PANEL_HI; sheen.set_corner_radius_all(7)
@@ -159,7 +156,7 @@ static func pie(ci: CanvasItem, center: Vector2, radius: float, percents: Array,
 
 ## un VISAGE : cercle + yeux + bouche parabolique (courbure = humeur 0..1)
 static func face(ci: CanvasItem, center: Vector2, r: float, mood: float, lit: bool) -> void:
-	var c := sense(mood) if lit else Color(0x4a/255.0, 0x52/255.0, 0x5e/255.0)
+	var c := sense(mood) if lit else Color(0x52/255.0, 0x4a/255.0, 0x3e/255.0)
 	ci.draw_arc(center, r, 0, TAU, 24, c, 1.0, true)
 	fill(ci, Rect2(center.x - r/2.0, center.y - r/4.0, 2, 2), c)
 	fill(ci, Rect2(center.x + r/2.0 - 1, center.y - r/4.0, 2, 2), c)
@@ -178,7 +175,7 @@ static func face(ci: CanvasItem, center: Vector2, r: float, mood: float, lit: bo
 #    renvoie le nouveau y (GDScript n'a pas de int*). ─────────────────────────
 static func section(ci: CanvasItem, x: float, y: float, title: String) -> float:
 	y += 9
-	text(ci, Vector2(x, y), COL_COPPER, title)
+	text(ci, Vector2(x, y), COL_GOLD, title)
 	return y + 21
 
 static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, wc: Color) -> float:

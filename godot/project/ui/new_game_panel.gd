@@ -12,9 +12,9 @@ signal back       ## retour au menu principal
 const Creator = preload("res://ui/culture_creator.gd")
 
 # palette
-const C_BG    := Color(0.04, 0.04, 0.06, 0.92)
-const C_PANEL := Color(0.09, 0.085, 0.12, 0.98)
-const C_EDGE  := Color(0.78, 0.55, 0.30)
+const C_BG    := Color(0.04, 0.03, 0.02, 0.92)
+const C_PANEL := Color(0.10, 0.08, 0.055, 0.98)   # cuir sombre
+const C_EDGE  := Color(0.79, 0.64, 0.29)          # or vieilli
 const C_TEXT  := Color(0.88, 0.86, 0.82)
 const C_DIM   := Color(0.62, 0.60, 0.58)
 const C_TITLE := Color(0.86, 0.70, 0.42)
@@ -208,7 +208,7 @@ func _rebuild_empire_list() -> void:
 	for slot in range(n_emp):
 		var row := PanelContainer.new()
 		var rb := StyleBoxFlat.new()
-		rb.bg_color = Color(0.12, 0.12, 0.16, 0.9); rb.set_corner_radius_all(4); rb.set_content_margin_all(6)
+		rb.bg_color = Color(0.16, 0.13, 0.09, 0.9); rb.set_corner_radius_all(4); rb.set_content_margin_all(6)
 		row.add_theme_stylebox_override("panel", rb)
 		var hb := HBoxContainer.new()
 		row.add_child(hb)

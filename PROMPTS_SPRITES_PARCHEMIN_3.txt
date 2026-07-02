@@ -1,0 +1,140 @@
+================================================================================
+SCPS — CAHIER DE PROMPTS · SÉRIE 3 (FINALE) : TECHS RESTANTES · MANUFACTURES
+RESTANTES · RITUELS DE FIN (victoire/deuil) & DIVERS
+================================================================================
+Même protocole que les séries 1-2 (24 planches livrées & intégrées). Copier le
+PRÉAMBULE COMMUN en tête de chaque prompt, puis le bloc de planche.
+Ces 4 planches CLÔTURENT le chantier sprites : après elles, chaque objet du jeu
+a sa pièce gravée (plus aucun repli générique).
+
+--------------------------------------------------------------------------------
+PRÉAMBULE COMMUN (à coller en tête de CHAQUE prompt)
+--------------------------------------------------------------------------------
+Style global — « atlas ancien » : dessin à l'encre brune GRAVÉE (traits nets,
+hachures discrètes) rehaussé de LAVIS aquarelle ; papier vieilli. AUCUN style
+« jeu mobile », AUCUN token RPG mignon, AUCUN rendu 3D/plastique/brillant.
+Registre : gravure d'encyclopédie XVIIe + carte marine + enluminure.
+
+Palette IMPOSÉE (ne pas s'en écarter) :
+  encre sombre   #2a2419   (JAMAIS de noir pur #000000)
+  encre moyenne  #4a3b28
+  brun cuir      #3a3128
+  parchemin      #e8dcc0 (clair) · #cdbb92 (moyen) · #b09f78 (ombré)
+  rehauts lavis  : ocre #b08a4a · terre cuite #a05a3c · olive #6a7a4a ·
+                   ardoise #4a5a66 · prune #5a4458 · or vieilli #9a7a3c
+Lumière douce du NORD-OUEST. PAS d'ombre portée cuite. Anti-aliasing doux.
+
+Format : image 1024×1024, GRILLE STRICTE 4×4 de cellules 256×256 (16 pièces),
+UNE pièce par cellule, CENTRÉE, marge ≥ 12 %, FOND MAGENTA #FF00FF plein
+(la découpe/alpha est refaite maison — le magenta peut toucher l'art, mais
+JAMAIS de dessin en magenta/rose vif).
+Pas de texte. Chaque pièce doit lire à la taille-cible indiquée.
+
+--------------------------------------------------------------------------------
+PLANCHE 25 — TECHS · COMPLÉMENT 1 (savoir & arcane)          cible : 24-36 px
+--------------------------------------------------------------------------------
+Médaillons RONDS uniformes (cercle d'encre + fond parchemin), le SUJET gravé
+au centre, un SEUL rehaut de lavis par pièce — EXACTEMENT le registre des
+planches 15-18 déjà livrées (mêmes proportions, même cerne) :
+  01 Bibliothèque (étagère à rouleaux, ardoise)
+  02 Académie (chaire + globe, ardoise)
+  03 Magie de bataille (éclair tenu dans un gantelet, prune)
+  04 Invocation (cercle rituel + fumée, prune)
+  05 L'Éveil (œil qui s'ouvre dans une étoile, prune — INQUIÉTANT, faustien)
+  06 Gardes runiques (pierre levée cerclée de glyphes, ardoise)
+  07 Savoir interdit (livre enchaîné DESCELLÉ, prune — faustien)
+  08 Collecte de bois (serpe + fagot, olive)
+  09 Collecte d'argile (panier + motte, ocre)
+  10 Outillage (marteau + gabarit, ocre)
+  11 Industrie de masse (trois roues dentées alignées, terre cuite)
+  12 Foreuse arcanique (trépan cerclé d'un halo, prune — faustien)
+  13 L'Œuvre noire (creuset qui fume noir, prune — faustien, le PLUS sombre)
+  14 Qualité des matériaux (équerre + lingot poinçonné, ocre)
+  15 Caserne (râtelier d'armes + tambour, terre cuite)
+  16 Économie servile (chaînes + gerbe, terre cuite sombre — dur, pas gore)
+
+--------------------------------------------------------------------------------
+PLANCHE 26 — TECHS · COMPLÉMENT 2 + APEX MANQUANT            cible : 24-36 px
+--------------------------------------------------------------------------------
+Mêmes médaillons que la planche 25. Les pièces 07-16 sont des RÉSERVES pour
+les techs à venir (modding/extensions) — génériques mais dans le registre :
+  01 Caste martiale (heaume à cimier sur un socle, terre cuite)
+  02 Chancellerie (sceau pendant sur charte, ardoise)
+  03 Foi (flamme votive dans une main ouverte, ocre)
+  04 Culte impérial (couronne rayonnante sur autel, or vieilli)
+  05 Transmutation (deux fioles dont les flux s'échangent, prune — faustien)
+  06 LÉGION UNIVERSELLE — APEX tier-5 (TROIS anneaux d'or entrelacés en
+     bordure + trois étendards différents liés en faisceau ; fond légèrement
+     enluminé — la SŒUR des deux apex de la planche 18)
+  07 réserve SAVOIR (astrolabe simple, ardoise)
+  08 réserve SAVOIR (plume + encrier, ardoise)
+  09 réserve FORGE (enclume nue, terre cuite)
+  10 réserve FORGE (tenailles + lingot, terre cuite)
+  11 réserve SOCIÉTÉ (deux mains liées, olive)
+  12 réserve SOCIÉTÉ (balance simple, olive)
+  13 réserve ARCANE (cristal à facettes, prune)
+  14 réserve ARCANE (spirale d'énergie, prune)
+  15 réserve AGRICOLE (épi + faucille, ocre)
+  16 réserve MILITAIRE (deux épées croisées, terre cuite)
+
+--------------------------------------------------------------------------------
+PLANCHE 27 — MANUFACTURES · COMPLÉMENT (les 15 sans pièce)   cible : 20-32 px
+--------------------------------------------------------------------------------
+Vignettes GRAVÉES « intérieur d'atelier simplifié » dans un carré à filet
+d'encre — EXACTEMENT le registre de la planche 8 (mêmes cadres) :
+  01 Armurerie légère (cotte de mailles sur mannequin)
+  02 Atelier d'arc (arc en cours de cintrage sur banc)
+  03 Charbonnière (meule de bois fumant sous terre)
+  04 Papeterie (cuve + feuilles suspendues)
+  05 Scierie navale (scie de long + membrure de coque)
+  06 Joaillerie (loupe + gemme sur étau)
+  07 Atelier d'étoffe précieuse (métier + fil d'or)
+  08 Apothicaire (balance + bocaux d'herbes)
+  09 Atelier de tunique (ciseaux + patron sur table)
+  10 Atelier de mage (cristal serti sous verre, prune)
+  11 Four à brique (four voûté + briques empilées)
+  12 Carrière (coin + masse dans un front de pierre)
+  13 Scierie (chevalet + tronc entamé)
+  14 Atelier de sculpture (buste ébauché + ciseau)
+  15 Salines (bassins en damier + tas de sel) — remplace la 08_13 jamais utilisée
+  16 réserve : Fumoir (poissons pendus dans la fumée)
+
+--------------------------------------------------------------------------------
+PLANCHE 28 — RITUELS DE FIN · CHARGEMENT · CURSEURS          cible : mixte
+--------------------------------------------------------------------------------
+Les pièces d'ÉCRAN (grandes, lisibles à 96-256 px) pour la victoire, la
+défaite et l'attente — le futur écran de fin les consommera :
+  01 GRANDE couronne de laurier d'or (victoire — pleine cellule, rubans)
+  02 GRAND voile de deuil sur écu brisé (défaite — sobre, prune + encre)
+  03 sceau de cire « TRIOMPHE » (aigle/soleil levant, or vieilli, 96 px)
+  04 sceau de cire « CHUTE » (tour renversée, prune, 96 px)
+  05 bandeau d'enluminure horizontal pour titre de fin (frise végétale, 480×120)
+  06 le MÊME bandeau en version ENDEUILLÉE (frise fanée, encre seule)
+  07 rosace d'ATTENTE (roue de compas à 8 branches, pensée pour TOURNER)
+  08 sablier de chargement (grand, cadre or)
+  09 curseur PLUME (pointe vers le haut-gauche, 48 px, liseré clair)
+  10 curseur PLUME qui écrit (goutte d'encre à la pointe — état « clic »)
+  11 curseur MAIN gantée qui pointe (48 px)
+  12 curseur ÉPÉE (visée/attaque, 48 px)
+  13 coin d'enluminure haut-gauche (pour cadrer l'écran de fin)
+  14 coin d'enluminure haut-droit (miroir)
+  15 étoile d'accomplissement (petit laurier + étoile, 32 px — succès/hauts faits)
+  16 fleur de deuil (chardon à l'encre, 32 px — nécrologe des empires morts)
+
+================================================================================
+NOTES DE LIVRAISON
+- Priorité d'intégration : 25-26 (l'arbre tech n'aura plus AUCUN médaillon
+  générique) · 27 (idem manufactures) · 28 (rituels — l'écran de fin est à
+  bâtir côté Godot, les pièces l'attendent).
+- La DÉCOUPE est refaite maison depuis le magenta (keyer robuste en place) —
+  livrer les 1024² bruts suffit, pas besoin de cellules pré-découpées.
+- Rappel des mappings code (uikit.gd) : PARCH_TECH_NAME (nom moteur exact →
+  pièce), PARCH_MANUF (nom d'affichage → pièce). Les noms moteur des techs de
+  la planche 25-26 : « Bibliothèque », « Académie », « Magie de bataille »,
+  « Invocation », « L'Éveil », « Gardes runiques », « Savoir interdit »,
+  « Collecte de bois », « Collecte d'argile », « Outillage »,
+  « Industrie de masse », « Foreuse arcanique », « L'Œuvre noire »,
+  « Qualité des matériaux », « Caserne », « Économie servile »,
+  « Caste martiale », « Chancellerie », « Foi », « Culte impérial »,
+  « Transmutation », « Légion universelle ».
+================================================================================

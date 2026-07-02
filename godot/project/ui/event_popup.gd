@@ -77,18 +77,18 @@ const STAMP_OF := {1: "sheet03_popup_seals_11", 2: "sheet03_popup_seals_15",
 func _draw() -> void:
 	size = Vector2(W, _height())
 	VKit.panel_bg(self, Rect2(0, 0, W, size.y))
-	VKit.box(self, Rect2(0, 0, W, size.y), VKit.COL_COPPER)
+	VKit.box(self, Rect2(0, 0, W, size.y), VKit.COL_GOLD)
 	# — filigrane rosace (presque invisible) au centre du parchemin —
 	var flg: Texture2D = UIKit.parch_tex("sheet03_popup_seals_16")
 	if flg != null:
 		var fs := minf(W, size.y) * 0.72
 		draw_texture_rect(flg, Rect2((W - fs) * 0.5, (size.y - fs) * 0.5, fs, fs),
 			false, Color(1, 1, 1, 0.10))
-	# — LE CRIEUR : bandeau sombre + « ⚜ OYEZ OYEZ ⚜ » cuivre, reconnaissable entre tous —
+	# — LE CRIEUR : bandeau sombre + « ⚜ OYEZ OYEZ ⚜ » doré, reconnaissable entre tous —
 	VKit.fill(self, Rect2(0, 0, W, 34), Color(0.09, 0.07, 0.05, 0.96))
-	VKit.fill(self, Rect2(0, 32, W, 2), VKit.COL_COPPER)
+	VKit.fill(self, Rect2(0, 32, W, 2), VKit.COL_GOLD)
 	var oy := "— OYEZ  OYEZ —"
-	VKit.text(self, Vector2((W - VKit.text_w(oy, VKit.FS_BIG)) * 0.5, 8), VKit.COL_COPPER, oy, VKit.FS_BIG)
+	VKit.text(self, Vector2((W - VKit.text_w(oy, VKit.FS_BIG)) * 0.5, 8), VKit.COL_GOLD, oy, VKit.FS_BIG)
 	# — TAMPON du kind, posé de biais sur le coin haut-droit (la lettre marquée) —
 	var stp: String = STAMP_OF.get(int(_cur.get("kind", -1)), "")
 	if stp != "":
@@ -117,8 +117,8 @@ func _draw() -> void:
 		bx -= bw
 		var r := Rect2(bx, size.y - BTN_H - 12.0, bw, BTN_H)
 		VKit.fill(self, r, VKit.COL_PANEL2)
-		VKit.box(self, r, VKit.COL_COPPER)
-		VKit.text(self, Vector2(r.position.x + 11, r.position.y + 5), VKit.COL_COPPER, label)
+		VKit.box(self, r, VKit.COL_GOLD)
+		VKit.text(self, Vector2(r.position.x + 11, r.position.y + 5), VKit.COL_GOLD, label)
 		_btn_rects.append([r, String(b.get("act", "close")), int(b.get("region", -1))])
 		bx -= 8.0
 

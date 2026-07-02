@@ -63,12 +63,12 @@ func _draw() -> void:
 		return
 	_hover_zones.clear()
 	VKit.panel_bg(self, Rect2(0, 0, DW, size.y))
-	VKit.fill(self, Rect2(DW - 2, 0, 2, size.y), VKit.COL_COPPER)
+	VKit.fill(self, Rect2(DW - 2, 0, 2, size.y), VKit.COL_GOLD)
 	var x := 14.0
 	var y := 10.0
 	UIKit.draw_chrome(self, "panel_title_plaque", Rect2(8, 6, DW - 16, 30))
 	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x, y + 1), 22)
-	VKit.text(self, Vector2(x + 28, y + 3), VKit.COL_COPPER, TAB_NAME[_tab], VKit.FS_BIG)
+	VKit.text(self, Vector2(x + 28, y + 3), VKit.COL_GOLD, TAB_NAME[_tab], VKit.FS_BIG)
 	y += 42
 	var w = Sim.world
 	if w == null:
@@ -91,7 +91,7 @@ func _draw() -> void:
 		var tx := minf(_hover_pos.x + 12.0, DW - tw - 4.0)
 		var ty := maxf(2.0, _hover_pos.y - 20.0)
 		VKit.fill(self, Rect2(tx, ty, tw, 17), VKit.COL_PANEL2)
-		VKit.box(self, Rect2(tx, ty, tw, 17), VKit.COL_COPPER)
+		VKit.box(self, Rect2(tx, ty, tw, 17), VKit.COL_GOLD)
 		VKit.text(self, Vector2(tx + 6, ty + 1), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
 
 # ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
@@ -141,9 +141,9 @@ func _draw_eco(x: float, y: float, me: int) -> void:
 	# bouton : les COURBES dans le temps sont DERRIÈRE ce sous-menu (pas affichées d'office)
 	_chart_btn = Rect2(x, y, DW - 2.0 * x, 20.0)
 	VKit.fill(self, _chart_btn, VKit.COL_PANEL2)
-	VKit.box(self, _chart_btn, VKit.COL_COPPER)
+	VKit.box(self, _chart_btn, VKit.COL_GOLD)
 	UIKit.draw_icon(self, "menu_economy", Vector2(x + 4, y + 3), 13)
-	VKit.text(self, Vector2(x + 24, y + 3), VKit.COL_COPPER, "Courbes dans le temps  ▸", VKit.FS_SMALL)
+	VKit.text(self, Vector2(x + 24, y + 3), VKit.COL_GOLD, "Courbes dans le temps  ▸", VKit.FS_SMALL)
 	y += 28
 	# — Trésor & budget de l'année (la décomposition du flux d'or) —
 	var b: Dictionary = Sim.world.budget_summary(me)
@@ -188,7 +188,7 @@ func _draw_eco(x: float, y: float, me: int) -> void:
 	for p in partners:
 		if y > size.y - 18:
 			break
-		var col := VKit.sense(0.12) if bool(p["at_war"]) else (VKit.COL_COPPER if bool(p["embargo"]) else VKit.COL_PARCH)
+		var col := VKit.sense(0.12) if bool(p["at_war"]) else (VKit.COL_GOLD if bool(p["embargo"]) else VKit.COL_PARCH)
 		VKit.text(self, Vector2(x + 8, y), col, String(p["name"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, "%d or/an" % int(p["value"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 228, y), col, String(p["status"]), VKit.FS_SMALL)
@@ -253,7 +253,7 @@ func _draw_conseil(x: float, y: float, me: int) -> void:
 			draw_texture_rect(pt, Rect2(x - 2, y - 3, 20, 20), false)
 		else:
 			UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 16)
-		VKit.text(self, Vector2(x + 20, y), VKit.COL_COPPER, String(seat["seat"]))
+		VKit.text(self, Vector2(x + 20, y), VKit.COL_GOLD, String(seat["seat"]))
 		y += 18
 		if filled:
 			# le ministre ASSIS : nom · tier · ÂGE (il vieillit ; la retraite vide le siège vers 66-73)
@@ -308,23 +308,23 @@ func _draw_armee(x: float, y: float, me: int) -> void:
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "levée :")
 	var bx := x + 52.0
 	var rm := Rect2(bx, y - 2, 16, 16)
-	VKit.fill(self, rm, VKit.COL_PANEL2); VKit.box(self, rm, VKit.COL_EDGE if levy <= 0 else VKit.COL_COPPER)
-	VKit.text(self, Vector2(bx + 5, y - 1), VKit.COL_DIM if levy <= 0 else VKit.COL_COPPER, "−", VKit.FS_SMALL)
+	VKit.fill(self, rm, VKit.COL_PANEL2); VKit.box(self, rm, VKit.COL_EDGE if levy <= 0 else VKit.COL_GOLD)
+	VKit.text(self, Vector2(bx + 5, y - 1), VKit.COL_DIM if levy <= 0 else VKit.COL_GOLD, "−", VKit.FS_SMALL)
 	if levy > 0:
 		_levy_btns.append({"rect": rm, "delta": -1})
 	bx += 20
 	var lw := VKit.text_w(String(a["levy_name"]), VKit.FS) + 8.0
-	VKit.text(self, Vector2(bx, y), VKit.COL_COPPER, String(a["levy_name"]))
+	VKit.text(self, Vector2(bx, y), VKit.COL_GOLD, String(a["levy_name"]))
 	bx += lw + 4
 	var rp := Rect2(bx, y - 2, 16, 16)
-	VKit.fill(self, rp, VKit.COL_PANEL2); VKit.box(self, rp, VKit.COL_EDGE if levy >= 3 else VKit.COL_COPPER)
-	VKit.text(self, Vector2(bx + 5, y - 1), VKit.COL_DIM if levy >= 3 else VKit.COL_COPPER, "+", VKit.FS_SMALL)
+	VKit.fill(self, rp, VKit.COL_PANEL2); VKit.box(self, rp, VKit.COL_EDGE if levy >= 3 else VKit.COL_GOLD)
+	VKit.text(self, Vector2(bx + 5, y - 1), VKit.COL_DIM if levy >= 3 else VKit.COL_GOLD, "+", VKit.FS_SMALL)
 	if levy < 3:
 		_levy_btns.append({"rect": rp, "delta": 1})
 	y += 24
 	var ar: Dictionary = Sim.world.army_info(me)
 	if bool(ar.get("active", false)):
-		VKit.text(self, Vector2(x, y), VKit.COL_COPPER,
+		VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
 			"armée de campagne — région %d · %s" % [int(ar["region"]), ar["phase"]], VKit.FS_SMALL)
 		y += 16
 		VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
@@ -344,7 +344,7 @@ func _draw_armee(x: float, y: float, me: int) -> void:
 		var tw := VKit.text_w(label, VKit.FS_SMALL) + 12.0
 		var active := (post_now == p)
 		var r := Rect2(cx, y, tw, 18)
-		VKit.fill(self, r, VKit.COL_COPPER if active else VKit.COL_PANEL2)
+		VKit.fill(self, r, VKit.COL_GOLD if active else VKit.COL_PANEL2)
 		VKit.box(self, r, VKit.COL_EDGE)
 		VKit.text(self, Vector2(cx + 6, y + 1), VKit.COL_PANEL if active else VKit.COL_PARCH, label, VKit.FS_SMALL)
 		_posture_btns.append({"rect": r, "p": p})
@@ -353,14 +353,14 @@ func _draw_armee(x: float, y: float, me: int) -> void:
 	# — Recompléter / Dissoudre (verbes : player_refill / player_disband) —
 	var b1w := VKit.text_w("Recompléter", VKit.FS_SMALL) + 14.0
 	var r1 := Rect2(x, y, b1w, 18)
-	VKit.fill(self, r1, VKit.COL_PANEL2); VKit.box(self, r1, VKit.COL_COPPER)
-	VKit.text(self, Vector2(x + 7, y + 1), VKit.COL_COPPER, "Recompléter", VKit.FS_SMALL)
+	VKit.fill(self, r1, VKit.COL_PANEL2); VKit.box(self, r1, VKit.COL_GOLD)
+	VKit.text(self, Vector2(x + 7, y + 1), VKit.COL_GOLD, "Recompléter", VKit.FS_SMALL)
 	_army_btns.append({"rect": r1, "act": "refill"})
 	var b2x := x + b1w + 6.0
 	var b2w := VKit.text_w("Dissoudre", VKit.FS_SMALL) + 14.0
 	var r2 := Rect2(b2x, y, b2w, 18)
-	VKit.fill(self, r2, VKit.COL_PANEL2); VKit.box(self, r2, VKit.COL_COPPER)
-	VKit.text(self, Vector2(b2x + 7, y + 1), VKit.COL_COPPER, "Dissoudre", VKit.FS_SMALL)
+	VKit.fill(self, r2, VKit.COL_PANEL2); VKit.box(self, r2, VKit.COL_GOLD)
+	VKit.text(self, Vector2(b2x + 7, y + 1), VKit.COL_GOLD, "Dissoudre", VKit.FS_SMALL)
 	_army_btns.append({"rect": r2, "act": "disband"})
 	y += 26
 	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 16)
@@ -379,10 +379,10 @@ func _draw_armee(x: float, y: float, me: int) -> void:
 			cx = x; y += 20
 		var r := Rect2(cx, y, tw, 18)
 		VKit.fill(self, r, VKit.COL_PANEL2)
-		VKit.box(self, r, VKit.COL_COPPER)
+		VKit.box(self, r, VKit.COL_GOLD)
 		if bt != null:
 			draw_texture_rect(bt, Rect2(cx + 3, y + 1, 16, 16), false)
-		VKit.text(self, Vector2(cx + 6 + iw, y + 1), VKit.COL_COPPER, label, VKit.FS_SMALL)
+		VKit.text(self, Vector2(cx + 6 + iw, y + 1), VKit.COL_GOLD, label, VKit.FS_SMALL)
 		_navy_btns.append({"rect": r, "hull": hull})
 		cx += tw + 4
 	if _armee_flash != "":
@@ -409,7 +409,7 @@ func _draw_filtres(x: float, y: float) -> void:
 				cx = x; y += 22
 			var active := (_active_mode == mode)
 			var r := Rect2(cx, y, tw, 18)
-			VKit.fill(self, r, VKit.COL_COPPER if active else VKit.COL_PANEL2)
+			VKit.fill(self, r, VKit.COL_GOLD if active else VKit.COL_PANEL2)
 			VKit.box(self, r, VKit.COL_EDGE)
 			VKit.text(self, Vector2(cx + 7, y + 1), VKit.COL_PANEL if active else VKit.COL_PARCH, label, VKit.FS_SMALL)
 			_chips.append({"rect": r, "mode": mode})
@@ -663,7 +663,7 @@ func _marche_col(band: int) -> Color:
 		1: return VKit.sense(0.10)   # pénurie : rouge
 		2: return VKit.sense(0.40)   # tendu : ambre
 		3: return VKit.sense(0.80)   # sain : vert
-		4: return VKit.COL_COPPER    # engorgé : cuivre
+		4: return VKit.COL_GOLD    # engorgé : or
 		_: return VKit.COL_DIM       # mort
 
 func _grp(n) -> String:

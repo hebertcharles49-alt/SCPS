@@ -1,5 +1,5 @@
 extends Control
-## VKitDropdown — un menu déroulant DESSINÉ À LA CHARTE (bleu nuit / cuivre /
+## VKitDropdown — un menu déroulant DESSINÉ À LA CHARTE (cuir / or /
 ## parchemin), en immédiat VKit comme le reste de l'UI (pas d'OptionButton natif,
 ## impossible à teinter proprement). Émet `selected(index)`. Le Control grandit en
 ## hauteur quand il est ouvert (la zone cliquable suit la liste visible).
@@ -37,12 +37,12 @@ func _set_open(v: bool) -> void:
 
 func _draw() -> void:
 	var w: float = size.x
-	# la boîte repliée : nom courant + chevron cuivre
+	# la boîte repliée : nom courant + chevron or
 	VKit.fill(self, Rect2(0, 0, w, ROW), VKit.COL_PANEL2)
-	VKit.box(self, Rect2(0, 0, w, ROW), VKit.COL_COPPER)
+	VKit.box(self, Rect2(0, 0, w, ROW), VKit.COL_GOLD)
 	var cur := String(_items[_idx]) if _idx < _items.size() else ""
 	VKit.text(self, Vector2(8, 4), VKit.COL_PARCH, cur, VKit.FS_SMALL)
-	VKit.text(self, Vector2(w - 16, 4), VKit.COL_COPPER, "▾", VKit.FS_SMALL)
+	VKit.text(self, Vector2(w - 16, 4), VKit.COL_GOLD, "▾", VKit.FS_SMALL)
 	# la liste déroulée
 	if _open:
 		for i in _items.size():
@@ -50,7 +50,7 @@ func _draw() -> void:
 			var hot := (i == _idx)
 			VKit.fill(self, Rect2(0, ry, w, ROW), VKit.COL_PANEL_HI if hot else VKit.COL_PANEL)
 			VKit.box(self, Rect2(0, ry, w, ROW), VKit.COL_EDGE)
-			VKit.text(self, Vector2(8, ry + 4), VKit.COL_COPPER if hot else VKit.COL_PARCH,
+			VKit.text(self, Vector2(8, ry + 4), VKit.COL_GOLD if hot else VKit.COL_PARCH,
 				String(_items[i]), VKit.FS_SMALL)
 
 func _gui_input(e: InputEvent) -> void:

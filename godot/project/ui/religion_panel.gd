@@ -7,8 +7,8 @@ extends Control
 
 signal closed   ## le panneau se ferme → le jeu reprend (main.gd)
 
-const C_BG    := Color(0.04, 0.04, 0.06, 0.74)
-const C_PANEL := Color(0.09, 0.085, 0.12, 0.98)
+const C_BG    := Color(0.04, 0.03, 0.02, 0.74)
+const C_PANEL := Color(0.10, 0.08, 0.055, 0.98)   # cuir sombre
 const C_EDGE  := Color(0.55, 0.42, 0.78)        # liseré violet (religion)
 const C_TEXT  := Color(0.88, 0.86, 0.82)
 const C_DIM   := Color(0.62, 0.60, 0.58)

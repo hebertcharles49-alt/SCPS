@@ -462,8 +462,8 @@ static func settlement_sprite(tier: int, group: int) -> Texture2D:
 
 static var _cache := {}
 
-# ── TUILES de CONSTRUCTION (unités · édifices) : des PNG auto-encadrés (fond navy
-#    arrondi + liseré cuivre + art). On ôte seulement le NOIR des coins → alpha, la
+# ── TUILES de CONSTRUCTION (unités · édifices) : des PNG auto-encadrés (fond sombre
+#    arrondi + liseré doré + art). On ôte seulement le NOIR des coins → alpha, la
 #    tuile survit. Mappage indice d'enum moteur → nom de fichier (certaines clés
 #    d'asset diffèrent de l'identifiant C : U_FOUDRIER←U_ARQUEBUSIER, etc.). ────────
 const UNITS_DIR := "res://assets/scps/pack/units/"
@@ -486,7 +486,7 @@ const BLD_FILE := [
 ]
 static var _tile_cache := {}
 
-## ôte le NOIR du fond (coins de la tuile, somme RGB < 24) → alpha ; navy/liseré/art survivent.
+## ôte le NOIR du fond (coins de la tuile, somme RGB < 24) → alpha ; fond/liseré/art survivent.
 static func _key_black(img: Image) -> Texture2D:
 	if img.get_format() != Image.FORMAT_RGBA8:
 		img.convert(Image.FORMAT_RGBA8)
@@ -844,7 +844,7 @@ static func bar(ci: CanvasItem, rect: Rect2, value: int) -> void:
 	if empty != null:
 		ci.draw_texture_rect(empty, rect, false)
 	else:
-		ci.draw_rect(rect, Color(0.09, 0.08, 0.12), true)
+		ci.draw_rect(rect, Color(0.11, 0.09, 0.06), true)
 		ci.draw_rect(rect, Color(0.78, 0.51, 0.24), false, 1.0)
 	var kind := "bar_fill_green" if value >= 60 else ("bar_fill_gold" if value >= 35 else "bar_fill_red")
 	var fill := chrome(kind)

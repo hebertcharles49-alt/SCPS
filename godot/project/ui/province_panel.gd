@@ -62,7 +62,7 @@ func _draw() -> void:
 	var ph := size.y
 	var rw := PW - 30.0
 	VKit.panel_bg(self, Rect2(0, 0, PW, ph))
-	VKit.fill(self, Rect2(PW - 2, 0, 2, ph), VKit.COL_COPPER)
+	VKit.fill(self, Rect2(PW - 2, 0, 2, ph), VKit.COL_GOLD)
 	_tips.clear()
 	var x := 16.0
 	var y := 14.0
@@ -83,10 +83,10 @@ func _draw() -> void:
 
 	# ── EN-TÊTE : héraldique (tour de capitale) · nom · jauge de prospérité ───
 	var hsz := 30.0
-	VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_COPPER)
+	VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_GOLD)
 	VKit.fill(self, Rect2(x + 1, y + 3, hsz - 2, hsz - 2), VKit.COL_PANEL2)
 	UIKit.draw_icon(self, "capital_tower", Vector2(x + 3, y + 5), hsz - 6)
-	VKit.text(self, Vector2(x + hsz + 8, y), VKit.COL_COPPER, String(info["nom"]), VKit.FS_BIG)
+	VKit.text(self, Vector2(x + hsz + 8, y), VKit.COL_GOLD, String(info["nom"]), VKit.FS_BIG)
 	var gw := 64.0
 	var gx := PW - 16.0 - gw
 	UIKit.bar(self, Rect2(gx, y + 2, gw, 14), int(info["aisance_val"]))
@@ -95,7 +95,7 @@ func _draw() -> void:
 	# ✕ — tout panneau se ferme (Échap aussi, via la pile de main) ; ferme = DÉSÉLECTIONNE
 	_close_rect = Rect2(PW - 20, 3, 16, 16)
 	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
 	# labelle la jauge (c'était un « 9 » nu — le joueur ne savait pas ce que c'était)
 	VKit.text(self, Vector2(gx, y + 17), VKit.COL_DIM, "Prospérité", VKit.FS_SMALL)
@@ -216,7 +216,7 @@ func _draw() -> void:
 
 	# ── CAPITALE ──────────────────────────────────────────────────────────────
 	y = VKit.section(self, x, y, "CAPITALE")
-	y = VKit.row(self, x, y, "Statut", "%s · tier %d" % [cap.get("statut", ""), int(cap.get("tier", 0))], VKit.COL_COPPER)
+	y = VKit.row(self, x, y, "Statut", "%s · tier %d" % [cap.get("statut", ""), int(cap.get("tier", 0))], VKit.COL_GOLD)
 	var libres: int = int(cap.get("logement_cap", 0)) - int(cap.get("pop", 0))
 	y = VKit.row(self, x, y, "Logement", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("logement_cap", 0))],
 		VKit.COL_PARCH if libres >= 0 else VKit.sense(0.12))
@@ -238,9 +238,9 @@ func _draw() -> void:
 	if powner == me:
 		_build_rect = Rect2(x, y, bw, bbh)
 		VKit.fill(self, _build_rect, VKit.COL_PANEL2)
-		VKit.box(self, _build_rect, VKit.COL_COPPER)
+		VKit.box(self, _build_rect, VKit.COL_GOLD)
 		UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
-		VKit.text(self, Vector2(x + 28, y + 5), VKit.COL_COPPER, "Construire")
+		VKit.text(self, Vector2(x + 28, y + 5), VKit.COL_GOLD, "Construire")
 		y += bbh + 6
 		_act_chips(x, y, [["Réprimer", "repress"], ["Assimiler", "assimilate"],
 			["Purger", "purge"], ["Détail", "detail"]])
@@ -270,7 +270,7 @@ func _act_chips(x: float, y: float, items: Array) -> void:
 		var cw := VKit.text_w(label, VKit.FS_SMALL) + 14.0
 		var r := Rect2(cx, y, cw, 20.0)
 		VKit.fill(self, r, VKit.COL_PANEL2)
-		VKit.box(self, r, VKit.COL_COPPER)
+		VKit.box(self, r, VKit.COL_GOLD)
 		VKit.text(self, Vector2(cx + 7, y + 3), VKit.COL_PARCH, label, VKit.FS_SMALL)
 		_acts.append([r, String(it[1])])
 		cx += cw + 6.0

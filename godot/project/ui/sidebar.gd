@@ -1,7 +1,7 @@
 extends Control
 ## Sidebar — le RAIL gauche PLEINE HAUTEUR (cadre d'écran), entre le bandeau haut et
 ## le bandeau bas : 8 onglets menu_* (économie · démographie · stocks · marché ·
-## armée · filtres · diplomatie · conseil). Fond Panel navy + liseré cuivre (capte
+## armée · filtres · diplomatie · conseil). Fond cuir sombre + liseré or (capte
 ## ses clics). Le TIROIR (panneaux éco/démo/…) sort à droite du rail. Suit la hauteur.
 
 const VKit = preload("res://ui/vkit.gd")
@@ -35,11 +35,11 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
-	# rail de fond PLEINE HAUTEUR : Panel navy + liseré cuivre à droite (capte ses clics)
+	# rail de fond PLEINE HAUTEUR : cuir sombre + liseré or à droite (capte ses clics)
 	_rail = Panel.new()
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = VKit.COL_PANEL
-	sb.border_color = VKit.COL_COPPER
+	sb.border_color = VKit.COL_GOLD
 	sb.set_border_width(SIDE_RIGHT, 2)
 	_rail.add_theme_stylebox_override("panel", sb)
 	add_child(_rail)

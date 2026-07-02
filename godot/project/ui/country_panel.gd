@@ -66,11 +66,11 @@ func _draw() -> void:
 
 	# titre + couronne
 	UIKit.draw_icon(self, "politics_crown", Vector2(x, y - 1), 20)
-	VKit.text(self, Vector2(x + 26, y), VKit.COL_COPPER, String(info["nom"]), VKit.FS_BIG)
+	VKit.text(self, Vector2(x + 26, y), VKit.COL_GOLD, String(info["nom"]), VKit.FS_BIG)
 	# ✕ — tout panneau se ferme (Échap aussi, via la pile de main)
 	_close_rect = Rect2(PW - 22, 4, 16, 16)
 	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
 	y += 24
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "%s · %d régions" % [info["ethos"], int(info["regions"])])
@@ -100,7 +100,7 @@ func _draw() -> void:
 		y += 26
 		VKit.fill(self, Rect2(x, y, PW - 2.0 * x, 1), VKit.COL_EDGE)
 		y += 6
-		VKit.text(self, Vector2(x, y), VKit.COL_COPPER, "✦ Mission", VKit.FS_SMALL)
+		VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "✦ Mission", VKit.FS_SMALL)
 		y += 16
 		VKit.text(self, Vector2(x + 4, y), VKit.COL_PARCH, String(mis["text"]), VKit.FS_SMALL)
 		var rg := int(mis.get("reward_gold", 0))

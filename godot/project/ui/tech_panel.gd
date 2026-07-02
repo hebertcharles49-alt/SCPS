@@ -214,12 +214,12 @@ func _draw() -> void:
 	_draw_tier_rings()          # guides de TIER (rayon = profondeur) sous le graphe — lisibilité
 	var info: Dictionary = w.tech_info()
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, 12), 20)
-	VKit.text(self, Vector2(42, 13), VKit.COL_COPPER, "Arbre de technologie", VKit.FS_BIG)
+	VKit.text(self, Vector2(42, 13), VKit.COL_GOLD, "Arbre de technologie", VKit.FS_BIG)
 
 	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
 	_close_rect = Rect2(PW - 26, 6, 20, 20)
 	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 
 	VKit.text(self, Vector2(PW - 250, 13), VKit.COL_PARCH, "Points : %d" % int(info.get("points", 0)), VKit.FS_SMALL)
@@ -233,7 +233,7 @@ func _draw() -> void:
 	if rt >= 0 and rt < _nodes.size():
 		var rname := String(_nodes[rt].get("name", "?"))
 		var prog := clampf(float(rs.get("progress", 0.0)), 0.0, 1.0)
-		VKit.text(self, Vector2(220, 13), VKit.COL_COPPER, "Recherche : %s" % rname, VKit.FS_SMALL)
+		VKit.text(self, Vector2(220, 13), VKit.COL_GOLD, "Recherche : %s" % rname, VKit.FS_SMALL)
 		var bx := 220.0
 		var bw := 200.0
 		VKit.box(self, Rect2(bx, 30, bw, 9), VKit.COL_DIM)
@@ -280,7 +280,7 @@ func _draw_metab(info: Dictionary) -> void:
 	VKit.fill(self, Rect2(12, y0, PW - 24, 1), VKit.COL_EDGE)
 	var mp := int(info.get("metab_pct", 0))
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, y0 + 4), 14)
-	VKit.text(self, Vector2(36, y0 + 5), VKit.COL_COPPER,
+	VKit.text(self, Vector2(36, y0 + 5), VKit.COL_GOLD,
 		"Métabolisation : +%d%% recherche (le creuset digéré)" % mp, VKit.FS_SMALL)
 	if Sim.world == null:
 		return
@@ -298,7 +298,7 @@ func _draw_metab(info: Dictionary) -> void:
 			nm = nm.substr(0, 8)
 		var nativ := bool(h.get("native", false))
 		var tier := int(h.get("tier", 0))
-		VKit.text(self, Vector2(x, ry), (VKit.COL_COPPER if nativ else VKit.COL_PARCH),
+		VKit.text(self, Vector2(x, ry), (VKit.COL_GOLD if nativ else VKit.COL_PARCH),
 			("★" if nativ else "") + nm, VKit.FS_SMALL)
 		for k in 3:                                   # 3 pips de tier (rempli = accessible)
 			VKit.fill(self, Rect2(x + k * 9.0, ry + 14, 6, 6),

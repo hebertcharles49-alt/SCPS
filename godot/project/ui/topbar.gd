@@ -35,9 +35,9 @@ func _on_change() -> void:
 
 func _draw() -> void:
 	var ww := size.x
-	# barre PLEINE LARGEUR : navy + liseré cuivre en bas (cadre franc, pas arrondi)
+	# barre PLEINE LARGEUR : cuir sombre + liseré or en bas (cadre franc, pas arrondi)
 	VKit.fill(self, Rect2(0, 0, ww, H), VKit.COL_PANEL)
-	VKit.fill(self, Rect2(0, H - 2, ww, 2), VKit.COL_COPPER)
+	VKit.fill(self, Rect2(0, H - 2, ww, 2), VKit.COL_GOLD)
 	var cy := (H - 18.0) * 0.5     # centrage vertical du contenu
 
 	if Sim.world == null:
@@ -61,7 +61,7 @@ func _draw() -> void:
 	if bool(ci.get("valide", false)):
 		UIKit.draw_icon(self, "politics_crown", Vector2(px, cy - 2), 18); px += 22
 		var nom := String(ci["nom"])
-		VKit.text(self, Vector2(px, cy), VKit.COL_COPPER, nom); px += VKit.text_w(nom) + 20
+		VKit.text(self, Vector2(px, cy), VKit.COL_GOLD, nom); px += VKit.text_w(nom) + 20
 		UIKit.draw_icon(self, "fine_coin", Vector2(px, cy - 2), 16); px += 20
 		var org := _grp(ci["or"]); VKit.text(self, Vector2(px, cy), VKit.COL_PARCH, org); px += VKit.text_w(org) + 20
 		UIKit.draw_icon(self, "population_group", Vector2(px, cy - 2), 16); px += 20
@@ -91,6 +91,9 @@ func _draw() -> void:
 
 	# §7 — ENGAGEMENT D'ÂGE : un âge s'est levé et le joueur ne l'a pas engagé →
 	# chip ambre cliquable (l'IA s'engage auto ; le joueur choisit — verbe CMD_AGE_ENGAGE).
+	# Les deux chips CLIQUABLES sont des bandes parchemin (planche 2) — le chrome
+	# capsule s'étirait mal sur un libellé long.
+	var chip_sb: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_01", 7, 12.0, 5.0, 0.5)
 	_age_rect = Rect2()
 	if w.has_method("age_state"):
 		var ag: Dictionary = w.age_state()
@@ -98,17 +101,23 @@ func _draw() -> void:
 			var lab := "Engager : %s" % String(ag.get("name", ""))
 			var aw := VKit.text_w(lab) + 34.0
 			_age_rect = Rect2(ww - 116 - aw - 10, 4, aw, H - 8)
-			UIKit.draw_chrome(self, "topbar_resource_chip", _age_rect)
+			if chip_sb != null:
+				draw_style_box(chip_sb, _age_rect)
+			else:
+				UIKit.draw_chrome(self, "topbar_resource_chip", _age_rect)
 			UIKit.draw_icon(self, "fine_age", Vector2(_age_rect.position.x + 6, cy - 2), 16)
-			VKit.text(self, Vector2(_age_rect.position.x + 26, cy), Color(0.85, 0.65, 0.3), lab)
+			VKit.text(self, Vector2(_age_rect.position.x + 26, cy), Color(0.90, 0.72, 0.34), lab)
 
 	# contrôle de vitesse, ancré à DROITE de la barre
 	_speed_rect = Rect2(ww - 116, 4, 108, H - 8)
-	UIKit.draw_chrome(self, "topbar_resource_chip", _speed_rect)
+	if chip_sb != null:
+		draw_style_box(chip_sb, _speed_rect)
+	else:
+		UIKit.draw_chrome(self, "topbar_resource_chip", _speed_rect)
 	var paused: bool = Sim.speed_index == 0
 	UIKit.draw_icon(self, "tool_speed" if paused else "tool_pause",
 		Vector2(_speed_rect.position.x + 6, cy - 2), 18)
-	VKit.text(self, Vector2(_speed_rect.position.x + 28, cy), VKit.COL_COPPER, Sim.speed_label())
+	VKit.text(self, Vector2(_speed_rect.position.x + 28, cy), VKit.COL_GOLD, Sim.speed_label())
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:

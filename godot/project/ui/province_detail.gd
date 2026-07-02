@@ -5,7 +5,7 @@ extends Control
 ##                  /an pour les temporaires comme « Conquête récente »). Pas de prose.
 ##   • Production : les flux +X/j par bien (sprite de ressource sous la barre).
 ##   • Bâtiments  : les manufactures bâties (niveau + ouvriers).
-## Pattern onglets + survol calqué sur sidebar_drawer. Charte bleu nuit / cuivre.
+## Pattern onglets + survol calqué sur sidebar_drawer. Charte parchemin (cuir/or).
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
@@ -62,12 +62,12 @@ func _draw() -> void:
 	_hover_zones.clear()
 	var x := 16.0
 	UIKit.draw_icon(self, "capital_tower", Vector2(14, 8), 18)
-	VKit.text(self, Vector2(40, 9), VKit.COL_COPPER, "Province — %s" % String(info["nom"]), VKit.FS_BIG)
+	VKit.text(self, Vector2(40, 9), VKit.COL_GOLD, "Province — %s" % String(info["nom"]), VKit.FS_BIG)
 
 	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
 	_close_rect = Rect2(PW - 26, 6, 20, 20)
 	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 
 	VKit.text(self, Vector2(x, HEAD + 4), VKit.COL_PARCH,
@@ -82,7 +82,7 @@ func _draw() -> void:
 		var tw := VKit.text_w(label, VKit.FS_SMALL) + 18.0
 		var r := Rect2(tx, ty, tw, 20.0)
 		var active := (_tab == i)
-		VKit.fill(self, r, VKit.COL_COPPER if active else VKit.COL_PANEL2)
+		VKit.fill(self, r, VKit.COL_GOLD if active else VKit.COL_PANEL2)
 		VKit.box(self, r, VKit.COL_EDGE)
 		VKit.text(self, Vector2(tx + 9, ty + 2), VKit.COL_PANEL if active else VKit.COL_PARCH, label, VKit.FS_SMALL)
 		_tab_rects.append({"rect": r, "idx": i})
@@ -103,7 +103,7 @@ func _draw() -> void:
 		var tx2 := minf(_hover_pos.x + 14.0, PW - tw - 6.0)
 		var ty2 := minf(maxf(4.0, _hover_pos.y - 22.0), PH - 22.0)
 		VKit.fill(self, Rect2(tx2, ty2, tw, 18), VKit.COL_PANEL2)
-		VKit.box(self, Rect2(tx2, ty2, tw, 18), VKit.COL_COPPER)
+		VKit.box(self, Rect2(tx2, ty2, tw, 18), VKit.COL_GOLD)
 		VKit.text(self, Vector2(tx2 + 7, ty2 + 2), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
 
 # ── ONGLET PEUPLES : camemberts culture/religion + classes + agitation (hover) ──
@@ -197,9 +197,9 @@ func _draw_batiments(x: float, y: float, w) -> void:
 	if int(info.get("owner", -2)) == int(w.player()):
 		_build_btn = Rect2(PW - 130.0, y - 2.0, 110.0, 24.0)
 		VKit.fill(self, _build_btn, VKit.COL_PANEL2)
-		VKit.box(self, _build_btn, VKit.COL_COPPER)
+		VKit.box(self, _build_btn, VKit.COL_GOLD)
 		UIKit.draw_icon(self, "action_build", Vector2(_build_btn.position.x + 6, _build_btn.position.y + 4), 16)
-		VKit.text(self, Vector2(_build_btn.position.x + 28, _build_btn.position.y + 4), VKit.COL_COPPER, "Bâtir…", VKit.FS_SMALL)
+		VKit.text(self, Vector2(_build_btn.position.x + 28, _build_btn.position.y + 4), VKit.COL_GOLD, "Bâtir…", VKit.FS_SMALL)
 	var blds: Array = w.province_buildings(_pid)
 	if blds.is_empty():
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucune manufacture bâtie (carte nue : l'IA/le joueur élèvent dans le temps)", VKit.FS_SMALL)
@@ -220,7 +220,7 @@ func _draw_batiments(x: float, y: float, w) -> void:
 			UIKit.draw_icon(self, "build_hammer", Vector2(x, y - 1), 14)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(b["nom"]), VKit.FS_SMALL)
 		var lv := int(b["niveau"])
-		VKit.fill(self, Rect2(x + 230, y + 2, 90.0 * float(lv) / float(maxlv), 10), VKit.COL_COPPER)
+		VKit.fill(self, Rect2(x + 230, y + 2, 90.0 * float(lv) / float(maxlv), 10), VKit.COL_GOLD)
 		VKit.text(self, Vector2(x + 326, y), VKit.COL_PARCH, str(lv), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
 		y += 19
@@ -239,7 +239,7 @@ func _draw_empire(x: float, y: float, w) -> void:
 	if not bool(ci.get("valide", false)):
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(pays invalide)", VKit.FS_SMALL)
 		return
-	VKit.text(self, Vector2(x, y), VKit.COL_COPPER, String(ci.get("nom", "")), VKit.FS_BIG)
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, String(ci.get("nom", "")), VKit.FS_BIG)
 	y += 26
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM,
 		"L'état de l'EMPIRE entier (la province n'en est qu'une part).", VKit.FS_SMALL)
@@ -268,13 +268,13 @@ func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 	var on := bool(al.get("on", false))
 	var sinks: Array = al.get("sinks", [])
 	# — entête : bassin + mode + bouton Auto —
-	VKit.text(self, Vector2(x, y), VKit.COL_COPPER,
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD,
 		"Bassin : %s bras (journaliers + bourgeois)" % _grp(al.get("pool", 0)), VKit.FS_SMALL)
 	var mode_txt := ("RÉPARTI (manuel)" if on else "AUTO (réparti par le marché)")
 	VKit.text(self, Vector2(x, y + 18), VKit.COL_DIM, "mode : %s" % mode_txt, VKit.FS_SMALL)
 	if mine and on:
 		var ar := Rect2(PW - 96, y - 2, 78, 18)
-		VKit.fill(self, ar, VKit.COL_PANEL2); VKit.box(self, ar, VKit.COL_COPPER)
+		VKit.fill(self, ar, VKit.COL_PANEL2); VKit.box(self, ar, VKit.COL_GOLD)
 		VKit.text(self, Vector2(ar.position.x + 10, ar.position.y + 2), VKit.COL_PARCH, "↻ Auto", VKit.FS_SMALL)
 		_alloc_btns.append({"rect": ar, "act": "auto", "sink": -1})
 	if not mine:
@@ -310,7 +310,7 @@ func _draw_alloc(x: float, y: float, w, info: Dictionary) -> void:
 		var bx := x + 250.0
 		VKit.fill(self, Rect2(bx, ry + 2, 80, 10), VKit.COL_PANEL2)
 		if not closed:
-			VKit.fill(self, Rect2(bx, ry + 2, 80.0 * float(pct) / 100.0, 10), VKit.COL_COPPER)
+			VKit.fill(self, Rect2(bx, ry + 2, 80.0 * float(pct) / 100.0, 10), VKit.COL_GOLD)
 		VKit.box(self, Rect2(bx, ry + 2, 80, 10), VKit.COL_EDGE)
 		VKit.text(self, Vector2(bx + 86, ry), VKit.COL_PARCH, "%d%%" % pct, VKit.FS_SMALL)
 		# contrôles (région à soi seulement)
@@ -373,8 +373,8 @@ func _draw_journal(x: float, y: float, w) -> void:
 
 # ── ONGLET PRODUCTION : flux +X/j par bien (sprite de ressource dessous) ───────
 func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
-	VKit.text(self, Vector2(fx, fy), VKit.COL_COPPER, "Production en direct (par an)", VKit.FS_SMALL)
-	VKit.fill(self, Rect2(fx + 200.0, fy + 2.0, 9, 9), VKit.COL_COPPER)
+	VKit.text(self, Vector2(fx, fy), VKit.COL_GOLD, "Production en direct (par an)", VKit.FS_SMALL)
+	VKit.fill(self, Rect2(fx + 200.0, fy + 2.0, 9, 9), VKit.COL_GOLD)
 	VKit.text(self, Vector2(fx + 214.0, fy), VKit.COL_DIM, "ressource brute", VKit.FS_SMALL)
 	VKit.fill(self, Rect2(fx + 330.0, fy + 2.0, 9, 9), VKit.SLICE_PAL[7])
 	VKit.text(self, Vector2(fx + 344.0, fy), VKit.COL_DIM, "sortie d'atelier", VKit.FS_SMALL)
@@ -403,7 +403,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 		var v: float = vals[i]
 		var bhh: float = absf(v) / maxv * barmax
 		var manuf := bool(inc[i]["manufactured"])
-		var col := VKit.SLICE_PAL[7] if manuf else VKit.COL_COPPER
+		var col := VKit.SLICE_PAL[7] if manuf else VKit.COL_GOLD
 		VKit.fill(self, Rect2(cx - bw / 2.0, base - bhh, bw, bhh), col)
 		var vs := "+%.0f" % v
 		VKit.text(self, Vector2(cx - VKit.text_w(vs, VKit.FS_SMALL) / 2.0, base - bhh - 13.0), VKit.COL_PARCH, vs, VKit.FS_SMALL)

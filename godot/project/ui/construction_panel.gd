@@ -56,7 +56,7 @@ func _draw() -> void:
 	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
 	_close_rect = Rect2(PW - 26, 6, 20, 20)
 	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.box(self, _close_rect, VKit.COL_GOLD)
 	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 
 	# ── UNITÉS (grille de tuiles) ──────────────────────────────────────────
@@ -100,7 +100,7 @@ func _draw() -> void:
 		_draw_tooltip()
 
 ## une tuile : le sprite (grisé si verrouillé), repli texte si l'asset manque, ✦ si
-## verrouillé, cadre cuivre au survol.
+## verrouillé, cadre or au survol.
 func _tile(cell: Rect2, tex: Texture2D, name: String, enabled: bool) -> void:
 	if tex != null:
 		draw_texture_rect(tex, cell, false, (Color.WHITE if enabled else Color(0.5, 0.5, 0.55, 0.65)))
@@ -109,9 +109,9 @@ func _tile(cell: Rect2, tex: Texture2D, name: String, enabled: bool) -> void:
 		VKit.box(self, cell, VKit.COL_EDGE)
 		VKit.text(self, cell.position + Vector2(3, 15), (VKit.COL_PARCH if enabled else VKit.COL_DIM), name.substr(0, 7), VKit.FS_SMALL)
 	if not enabled:
-		VKit.text(self, cell.position + Vector2(TILE - 13, 1), VKit.COL_COPPER, "✦", VKit.FS_SMALL)
+		VKit.text(self, cell.position + Vector2(TILE - 13, 1), VKit.COL_GOLD, "✦", VKit.FS_SMALL)
 	if _has_hover and _hover_rect == cell:
-		VKit.box(self, Rect2(cell.position - Vector2(1, 1), cell.size + Vector2(2, 2)), VKit.COL_COPPER)
+		VKit.box(self, Rect2(cell.position - Vector2(1, 1), cell.size + Vector2(2, 2)), VKit.COL_GOLD)
 
 func _draw_tooltip() -> void:
 	var w := VKit.text_w(_hover_head, VKit.FS)
@@ -122,8 +122,8 @@ func _draw_tooltip() -> void:
 	var px := minf(_hover_pos.x + 16, PW - bw - 6)
 	var py := minf(_hover_pos.y + 2, PH - bh - 6)
 	VKit.fill(self, Rect2(px, py, bw, bh), VKit.COL_PANEL2)
-	VKit.box(self, Rect2(px, py, bw, bh), VKit.COL_COPPER)
-	VKit.text(self, Vector2(px + 9, py + 5), VKit.COL_COPPER, _hover_head, VKit.FS)
+	VKit.box(self, Rect2(px, py, bw, bh), VKit.COL_GOLD)
+	VKit.text(self, Vector2(px + 9, py + 5), VKit.COL_GOLD, _hover_head, VKit.FS)
 	var yy := py + 24.0
 	for ln in _hover_lines:
 		VKit.text(self, Vector2(px + 9, yy), VKit.COL_PARCH, ln, VKit.FS_SMALL)
