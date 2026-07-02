@@ -78,7 +78,7 @@ const DRESS_EXTRA := {
 ## ── LA CANOPÉE COMPOSÉE (lot 6) : la forêt est un PEUPLEMENT d'arbres individuels — pas
 ## fin (5 cellules), ancrés au MONDE (la forêt reste pleine à tous les zooms), ancrage au
 ## PIED + tri de profondeur (ils s'empilent comme une canopée), essences par biome. ──
-const CANOPY_STEP := 4
+const CANOPY_STEP := 3
 const CANOPY_BY_BIOME := {
 	12: ["lot6_broadleaf_01", "lot6_broadleaf_03", "lot6_broadleaf_07", "lot6_broadleaf_08", "lot6_broadleaf_13", "lot6_broadleaf_15"],  # FORÊT : chênes pleins
 	13: ["lot6_broadleaf_02", "lot6_broadleaf_05", "lot6_broadleaf_09", "lot6_broadleaf_10", "lot6_broadleaf_12", "lot6_conifer_03"],    # BOIS : plus clair, mêlé
@@ -1712,10 +1712,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var is_canopy: bool = d.get("wa", false)
 			var dh: float
 			if is_canopy:
-				# ARBRE DE CANOPÉE : ancré au MONDE (~4.4 cellules ≈ le pas de semis → la canopée
-				# se FERME par chevauchement), bornes px — le peuplement reste PLEIN à tous les
-				# zooms, les individus s'empilent (tri de profondeur)
-				dh = _w(zoom, 4.4 * float(d["scale"]), 14.0, 64.0)
+				# ARBRE DE CANOPÉE : ancré au MONDE (~1.6 cellule — l'échelle SYMBOLE d'atlas,
+				# un arbre ≈ 2-3 maisons, jamais une ville), bornes px ; le NOMBRE fait le
+				# massif (pas fin + doublement), les individus s'empilent (tri de profondeur)
+				dh = _w(zoom, 1.6 * float(d["scale"]), 6.0, 20.0)
 			else:
 				dh = _dress_size(did) * float(d["scale"]) / zoom         # hauteur MONDE (taille écran constante)
 			var dw := dh
@@ -2545,7 +2545,7 @@ func _dress_size(id: String) -> float:
 	if id.begins_with("sea_serpent"): return 84.0          # lot 4 : serpent (largeur ×2 au tracé → 2:1)
 	if id.begins_with("forest_mass"): return 54.0          # lot 5 : MASSE de canopée (grande, remplit le bloc)
 	if id.begins_with("forest_edge"): return 44.0          # lot 5 : lisière allongée
-	if id.begins_with("lot6_broadleaf") or id.begins_with("lot6_conifer"): return 30.0   # lot 6 : arbre isolé
+	if id.begins_with("lot6_broadleaf") or id.begins_with("lot6_conifer"): return 18.0   # lot 6 : arbre isolé (registre canopée)
 	if id.begins_with("lot6_ground"): return 22.0          # lot 6 : détail de sol (buisson/rocher/herbe)
 	if id.begins_with("mountain_range"): return 50.0
 	if id.begins_with("mountain"): return 42.0
@@ -2639,14 +2639,18 @@ func _build_dressing() -> void:
 					_dressing.append({"pos": Vector2(px, py), "id": cid,
 						"scale": 0.72 + 0.55 * _h1(float(ci) * 11.7),
 						"tint": Color(tc.r * vj, tc.g * vj, tc.b * vj, tc.a), "wa": true})
-					if hits == 3:                   # cœur du massif : un 2e individu ferme la voûte
-						var qx := clampi(px + (1 if _h1(float(ci) * 13.1) < 0.5 else -2), 0, sw - 1)
-						var qy := clampi(py + (2 if _h1(float(ci) * 17.9) < 0.5 else -1), 0, sh - 1)
+					# cœur & mi-lisière : des individus EN PLUS — des arbres PETITS demandent le NOMBRE
+					# (2e à 2/3, 2e + 3e à 3/3 ; offsets hashés distincts)
+					var extra := (hits - 1) if not skip else 0
+					for e in range(extra):
+						var eb := float(ci) * (13.1 + 8.6 * float(e))
+						var qx := clampi(px + int((_h1(eb) - 0.5) * 4.0), 0, sw - 1)
+						var qy := clampi(py + int((_h1(eb * 1.7) - 0.5) * 4.0), 0, sh - 1)
 						if not _near_river(rf, qx, qy):
-							var cid2: String = cids[int(_h1(float(ci) * 19.3) * float(cids.size())) % cids.size()]
-							var vj2 := 0.90 + 0.20 * _h1(float(ci) * 23.7)
+							var cid2: String = cids[int(_h1(eb * 1.9) * float(cids.size())) % cids.size()]
+							var vj2 := 0.90 + 0.20 * _h1(eb * 2.3)
 							_dressing.append({"pos": Vector2(qx, qy), "id": cid2,
-								"scale": 0.72 + 0.55 * _h1(float(ci) * 29.1),
+								"scale": 0.72 + 0.55 * _h1(eb * 2.9),
 								"tint": Color(tc.r * vj2, tc.g * vj2, tc.b * vj2, tc.a), "wa": true})
 			cx += CANOPY_STEP
 		cy += CANOPY_STEP
