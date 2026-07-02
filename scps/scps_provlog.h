@@ -85,4 +85,35 @@ void feed_set_focus(int cid);
 void feed_push(int kind, int a, int b, int region, int v);/* write-only (l'an vient de provlog_set_year) */
 int  feed_poll(int after_seq, FeedEntry *out, int max);   /* entrées seq > after_seq, ordre chrono */
 
+/* ── LE JOURNAL DIPLOMATIQUE (display/UI) — l'HISTOIRE DATÉE des actes entre pays :
+ * la SOUS-DÉTAILLE de « Mémoire » au panneau diplo (« a déclaré la guerre », « pacte
+ * commercial », « a trahi », « né d'une sécession »…). MÊME CHARTE que le fil :
+ * anneau RUNTIME global (RAZ provlog_reset), write-only pour le moteur (jamais relu
+ * → déterminisme intact), FOCUS PARTAGÉ avec le fil (feed_set_focus) → la chronique
+ * (focus -1) n'écrit RIEN ; non sérialisé (l'histoire d'avant un load repart vide).
+ * `delta` ≠ 0 = acte de MÉMOIRE (trahison, sécession) : le poids initial dans
+ * opinion_mem — il DÉCAYE au même rythme (OPINION_MEM_DECAY), la façade recalcule
+ * le poids restant à l'affichage. Les actes de STATUT (guerre, pacte…) ont delta 0
+ * (leur poids vit dans le RÉSUMÉ tant que le statut tient). */
+#define DIPLOG_CAP 128
+typedef enum {
+    DACT_NONE = 0,
+    DACT_WAR_DECLARED,   /* a a déclaré la guerre à b */
+    DACT_PEACE,          /* la paix signée a↔b */
+    DACT_ALLIANCE,       /* l'alliance nouée a↔b */
+    DACT_PACT,           /* le pacte commercial scellé a↔b */
+    DACT_PACT_END,       /* le pacte rompu */
+    DACT_EMBARGO,        /* a décrète l'embargo contre b */
+    DACT_EMBARGO_LIFT,   /* a lève son embargo */
+    DACT_BETRAYAL,       /* a a trahi sa parole (delta = mémoire) */
+    DACT_SECESSION,      /* a est NÉ d'une sécession de b — guerre civile (delta = mémoire) */
+    DACT_RELATIONS,      /* a a soigné les relations avec b (mission aboutie) */
+    DACT_COUNT
+} DiplogAct;
+typedef struct { int seq, year, act, a, b; float delta; } DiplogEntry;
+/* b < 0 ⇒ « envers le monde » : remappé sur le pays SUIVI (l'entrée le concerne). */
+void diplog_push(int act, int a, int b, float delta);
+/* les actes impliquant la PAIRE (x,y), le plus RÉCENT d'abord ; retourne le nombre. */
+int  diplog_pair(int x, int y, DiplogEntry *out, int max);
+
 #endif

@@ -55,6 +55,32 @@ int feed_poll(int after_seq, FeedEntry *out, int max){
     return n;
 }
 
+/* ── LE JOURNAL DIPLOMATIQUE (voir header) : l'histoire datée des actes — même anneau
+ *    runtime, même focus que le fil. ── */
+static DiplogEntry g_diplog[DIPLOG_CAP];
+static int g_diplog_seq = 0;
+
+void diplog_push(int act, int a, int b, float delta){
+    if (act <= DACT_NONE || act >= DACT_COUNT) return;
+    if (g_feed_focus < 0) return;                          /* la chronique : rien à garder */
+    if (b < 0) b = g_feed_focus;                           /* « envers le monde » → le suivi */
+    if (a == b) return;
+    if (a != g_feed_focus && b != g_feed_focus) return;    /* seule l'histoire du suivi compte */
+    DiplogEntry *e = &g_diplog[g_diplog_seq % DIPLOG_CAP];
+    g_diplog_seq++;
+    e->seq = g_diplog_seq; e->year = g_year; e->act = act;
+    e->a = a; e->b = b; e->delta = delta;
+}
+int diplog_pair(int x, int y, DiplogEntry *out, int max){
+    if (!out || max <= 0) return 0;
+    int n = 0;
+    for (int s = g_diplog_seq; s >= 1 && s > g_diplog_seq - DIPLOG_CAP && n < max; s--){
+        const DiplogEntry *e = &g_diplog[(s - 1) % DIPLOG_CAP];
+        if ((e->a == x && e->b == y) || (e->a == y && e->b == x)) out[n++] = *e;
+    }
+    return n;
+}
+
 void provlog_reset(void){
     memset(g_log, 0, sizeof g_log);
     memset(g_total, 0, sizeof g_total);
@@ -64,6 +90,8 @@ void provlog_reset(void){
     memset(g_feed, 0, sizeof g_feed);                      /* le fil d'évènements repart à vide */
     g_feed_seq = 0;
     g_feed_focus = -1;                                     /* le focus se REPOSE après (façade/viewer) */
+    memset(g_diplog, 0, sizeof g_diplog);                  /* le journal diplomatique aussi */
+    g_diplog_seq = 0;
 }
 
 void provlog_set_year(int year){ g_year = year; }

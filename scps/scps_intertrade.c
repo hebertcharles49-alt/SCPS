@@ -8,6 +8,7 @@
 #include "scps_intertrade.h"
 #include "scps_agency.h"   /* E2 §10 : lire EDI_COMPTOIR dans le masque d'édifices bâtis */
 #include "scps_tune.h"     /* I6 : marges d'import calibrables */
+#include "scps_provlog.h"  /* le JOURNAL diplomatique (embargo décrété/levé, display) */
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -543,7 +544,11 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
 }
 
 void  intertrade_order_embargo(int cid, int target, bool on){
-    if (cid_ok(cid) && cid_ok(target) && cid!=target) g_embargo[cid][target]=on;
+    if (cid_ok(cid) && cid_ok(target) && cid!=target){
+        if ((g_embargo[cid][target]!=0)!=on)                  /* journal : au FLIP seulement */
+            diplog_push(on?DACT_EMBARGO:DACT_EMBARGO_LIFT, cid, target, 0.f);
+        g_embargo[cid][target]=on;
+    }
 }
 bool  intertrade_embargoed(int cid, int target){
     if (!cid_ok(cid) || !cid_ok(target)) return false;

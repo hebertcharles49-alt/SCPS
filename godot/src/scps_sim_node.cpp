@@ -56,6 +56,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_relations", "country"),   &ScpsWorld::country_relations);
     ClassDB::bind_method(D_METHOD("diplo_options", "target"),        &ScpsWorld::diplo_options);
     ClassDB::bind_method(D_METHOD("opinion_summary", "country"),     &ScpsWorld::opinion_summary);
+    ClassDB::bind_method(D_METHOD("diplo_journal", "country"),       &ScpsWorld::diplo_journal);
     ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
     ClassDB::bind_method(D_METHOD("country_trade", "country"),       &ScpsWorld::country_trade);
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
@@ -532,6 +533,24 @@ Dictionary ScpsWorld::opinion_summary(int country) {
     d["embargo"] = p.embargo;
     d["rancor"]  = p.rancor;
     return d;
+}
+
+/* le JOURNAL D'ACTES joueur↔country : histoire datée (la sous-détaille de « Mémoire »). */
+Array ScpsWorld::diplo_journal(int country) {
+    Array a;
+    if (!sim) return a;
+    ScpsDiploAct acts[12];
+    int n = scps_diplo_journal(sim, country, acts, 12);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["year"]  = acts[i].year;
+        d["act"]   = acts[i].act;
+        d["a"]     = acts[i].a_id;
+        d["b"]     = acts[i].b_id;
+        d["delta"] = acts[i].delta_now;
+        a.append(d);
+    }
+    return a;
 }
 
 Dictionary ScpsWorld::country_army(int country) {

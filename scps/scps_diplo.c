@@ -8,6 +8,7 @@
 #include "scps_diplo.h"
 #include "scps_heritage.h"
 #include "scps_culture.h"
+#include "scps_provlog.h"  /* le JOURNAL diplomatique (display, focus-gaté — la chronique n'écrit rien) */
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -107,6 +108,8 @@ bool diplo_trade_pact(const DiploState *d, int a, int b){
 /* M3 — signer/rompre un pacte commercial : RÉCIPROQUE (les deux sens à la fois). */
 void diplo_set_trade_pact(DiploState *d, int a, int b, bool on){
     if (!d||a<0||b<0||a==b||a>=SCPS_MAX_COUNTRY||b>=SCPS_MAX_COUNTRY) return;
+    if ((d->trade_pact[a][b]!=0) != on)                       /* journal : au FLIP seulement */
+        diplog_push(on?DACT_PACT:DACT_PACT_END, a, b, 0.f);
     d->trade_pact[a][b]=d->trade_pact[b][a]=(uint8_t)(on?1:0);
 }
 void diplo_set_vassal(DiploState *d, int suz, int vas, SuzContrat c){
@@ -530,9 +533,13 @@ static void set_sym(DiploState *d, int a, int b, DiploStatus s){
     if (a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY||a==b) return;
     d->status[a][b]=d->status[b][a]=s;
 }
-void diplo_declare_war  (DiploState *d,int a,int b){ set_sym(d,a,b,DIPLO_WAR); }
+void diplo_declare_war  (DiploState *d,int a,int b){
+    set_sym(d,a,b,DIPLO_WAR);
+    diplog_push(DACT_WAR_DECLARED, a, b, 0.f);   /* journal display (focus gate — chronique muette) */
+}
 void diplo_declare_war_cb(DiploState *d,int a,int b,CasusBelli cb){
     set_sym(d,a,b,DIPLO_WAR);
+    diplog_push(DACT_WAR_DECLARED, a, b, 0.f);
     if (a>=0&&a<SCPS_MAX_COUNTRY&&b>=0&&b<SCPS_MAX_COUNTRY){ d->cb[a][b]=(int8_t)cb;  /* le but de l'AGRESSEUR */
         if (cb==CB_ANTIPIRATERIE) d->n_war_antipirate++;
         if (cb>=0 && cb<=CB_ANTIPIRATERIE) g_war_cb[cb]++; }   /* télémétrie : guerre motivée par son CB */
@@ -547,7 +554,10 @@ const char *diplo_cb_name(CasusBelli cb){
                 case CB_ANTIPIRATERIE: return "anti-piraterie";
                 default: return "aucun"; }
 }
-void diplo_form_alliance(DiploState *d,int a,int b){ set_sym(d,a,b,DIPLO_ALLIED); }
+void diplo_form_alliance(DiploState *d,int a,int b){
+    set_sym(d,a,b,DIPLO_ALLIED);
+    diplog_push(DACT_ALLIANCE, a, b, 0.f);
+}
 /* §D-sat : nombre d'alliances ACTIVES d'une polité (plafond DIPLO_ALLY_SLOTS). */
 int diplo_ally_count(const DiploState *d, int a){
     if (!d || a<0 || a>=SCPS_MAX_COUNTRY) return 0;
@@ -556,6 +566,7 @@ int diplo_ally_count(const DiploState *d, int a){
 }
 void diplo_make_peace   (DiploState *d,int a,int b){
     set_sym(d,a,b,DIPLO_NEUTRAL);
+    diplog_push(DACT_PEACE, a, b, 0.f);
     if (a>=0&&a<SCPS_MAX_COUNTRY&&b>=0&&b<SCPS_MAX_COUNTRY){
         /* TRÊVE : une longue guerre → une longue trêve. On ne peut redéclarer
          * avant qu'elle fonde — l'enchaînement conquête→reconquête est cassé. */

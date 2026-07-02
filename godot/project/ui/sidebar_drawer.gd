@@ -408,6 +408,20 @@ func _draw_filtres(x: float, y: float) -> void:
 # permis mais dont l'offre serait REFUSÉE (would_accept faux) s'affiche en ambre.
 const DIPLO_ACTS := [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"],
 	["pact", "Pacte"], ["emb", "Embargo"]]
+## le JOURNAL D'ACTES (DiplogAct moteur) : [libellé quand LUI agit, libellé quand NOUS
+## agissons, hostile?] — la sous-détaille datée de « Mémoire ».
+const DACT_LABEL := {
+	1: ["nous a déclaré la GUERRE", "guerre déclarée par nous", true],
+	2: ["paix signée", "paix signée", false],
+	3: ["alliance nouée", "alliance nouée", false],
+	4: ["pacte commercial scellé", "pacte commercial scellé", false],
+	5: ["pacte commercial rompu", "pacte rompu par nous", true],
+	6: ["nous a mis sous EMBARGO", "embargo décrété par nous", true],
+	7: ["a levé son embargo", "embargo levé par nous", false],
+	8: ["a TRAHI sa parole", "notre parole rompue", true],
+	9: ["né d'une SÉCESSION de notre couronne", "sécession", true],
+	10: ["a soigné les relations", "relations soignées par nous", false],
+}
 
 func _draw_diplo(x: float, y: float, me: int) -> void:
 	_diplo_btns.clear()
@@ -448,6 +462,28 @@ func _draw_diplo(x: float, y: float, me: int) -> void:
 				drew = true
 			if drew:
 				y += 13
+		# ligne 2ter : le JOURNAL — chaque acte DATÉ (« mémoire » sous-détaillée) : les
+		# 3 plus récents ; un acte de MÉMOIRE (trahison, sécession) porte son poids
+		# RESTANT (décayé) — « s'estompe » quand il a déjà fondu.
+		var me2: int = Sim.world.player()
+		var shown := 0
+		for e in Sim.world.diplo_journal(target):
+			if shown >= 3:
+				break
+			if not DACT_LABEL.has(int(e["act"])):
+				continue
+			var lab: Array = DACT_LABEL[int(e["act"])]
+			var by_us: bool = (int(e["a"]) == me2)
+			var line := "an %d · %s" % [int(e["year"]), String(lab[1] if by_us else lab[0])]
+			var dv: int = int(e["delta"])
+			if dv != 0:
+				line += "  (%+d, s'estompe)" % dv
+			var lc: Color = VKit.sense(0.20) if bool(lab[2]) else VKit.COL_DIM
+			VKit.text(self, Vector2(x + 6, y), lc, line, VKit.FS_SMALL)
+			y += 12
+			shown += 1
+		if shown > 0:
+			y += 4   # respiration avant les boutons (le journal ne se glisse pas dessous)
 		# ligne 3 : boutons d'action, grisés selon diplo_options
 		var o: Dictionary = Sim.world.diplo_options(target)
 		var bx := x

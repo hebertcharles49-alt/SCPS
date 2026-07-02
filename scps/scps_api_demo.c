@@ -10,6 +10,7 @@
  */
 #include "scps_api.h"
 #include "scps_religion.h"   /* P3 : test de persistance religion */
+#include "scps_provlog.h"    /* DACT_* : le journal d'actes diplomatique */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -254,6 +255,18 @@ int main(int argc, char **argv){
             scps_opinion_summary(s2,tgt,&op);
             ok("résumé d'opinion : total borné ±100 et composante guerre négative",
                op.total>=-100 && op.total<=100 && op.war<0);
+            /* le JOURNAL D'ACTES (la sous-détaille de « Mémoire ») : la déclaration de
+             * guerre est LOGGÉE, datée, avec la bonne paire. */
+            ScpsDiploAct ja[12];
+            int nj = scps_diplo_journal(s2, tgt, ja, 12);
+            int has_decl=0;
+            for (int i=0;i<nj;i++)
+                if (ja[i].act==DACT_WAR_DECLARED &&
+                    (ja[i].a_id==pl || ja[i].b_id==pl) && ja[i].year>=0) has_decl=1;
+            printf("   journal diplo : %d acte(s) avec la cible %d\n", nj, tgt);
+            ok("journal d'actes : la déclaration de guerre est loggée (datée, bonne paire)", has_decl);
+            ok("journal d'actes : le plus récent d'abord (seq décroissant)",
+               nj<2 || ja[0].year >= ja[nj-1].year);
         }
     }
 

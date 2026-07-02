@@ -215,7 +215,7 @@ ECON_CULTURE_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_wor
 econ_culture_demo: $(ECON_CULTURE_DEMO_OBJS)
 	$(CC) $(ECON_CULTURE_DEMO_OBJS) -o $@ -lm
 
-ECON_ARCANE_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+ECON_ARCANE_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
                   $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                   $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -250,7 +250,7 @@ prosperity_demo: $(PROSPERITY_DEMO_OBJS)
 	$(CC) $(PROSPERITY_DEMO_OBJS) -o $@ -lm
 
 # ---- Couche d'agency : actions, temps, bâtiments-leviers (§1-§2) ----------
-AGENCY_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_modifier.o $(OBJDIR)/scps_scps_render.o \
+AGENCY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_modifier.o $(OBJDIR)/scps_scps_render.o \
                     $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
                     $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                     $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -262,7 +262,7 @@ agency_demo: $(AGENCY_DEMO_OBJS)
 	$(CC) $(AGENCY_DEMO_OBJS) -o $@ -lm
 
 # ---- Diplomatie & guerre (§5-§6) -----------------------------------------
-DIPLO_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+DIPLO_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
                    $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
                    $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                    $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -301,7 +301,7 @@ MISSIONS_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o
 missions_demo: $(MISSIONS_DEMO_OBJS)
 	$(CC) $(MISSIONS_DEMO_OBJS) -o $@ -lm
 
-INTERTRADE_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+INTERTRADE_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
                    $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
                    $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                    $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -312,7 +312,7 @@ INTERTRADE_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world
 intertrade_demo: $(INTERTRADE_DEMO_OBJS)
 	$(CC) $(INTERTRADE_DEMO_OBJS) -o $@ -lm
 
-WARHOST_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+WARHOST_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
                    $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_trade.o \
                    $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                    $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -324,7 +324,7 @@ warhost_demo: $(WARHOST_DEMO_OBJS)
 	$(CC) $(WARHOST_DEMO_OBJS) -o $@ -lm
 
 # ---- navy_demo : LA FLOTTE (rade · chantier · emport · conversion · invariants save_sane) ----
-NAVY_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+NAVY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_trade.o \
                   $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                   $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -340,7 +340,7 @@ navy_demo: $(NAVY_DEMO_OBJS)
 # ---- La campagne : les armées sur la carte (marche, siège, bataille) -------
 # Pose les primitives combat-dans-le-temps (déplacement/siège/bataille/doctrine)
 # sur une vraie carte ; non-invasif (lecture seule sur econ).
-CAMPAIGN_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+CAMPAIGN_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
                    $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_trade.o \
                    $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                    $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -364,7 +364,7 @@ routes_demo: $(ROUTES_DEMO_OBJS)
 
 # ---- Boucle de décision IA : un lecteur de coordonnées qui choisit des leviers (§13.1)
 # Aucune dépendance membrane (l'IA lit les coordonnées du moteur, pas les mots).
-AI_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_modifier.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o \
+AI_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_modifier.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o \
                 $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                 $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \
                 $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
@@ -540,7 +540,7 @@ asan: $(CHRONICLE_SRCS)
 # ---- Métriques de jeu (0-100), Influence, Diplomates & Révolte -----------
 # La membrane projette les coordonnées en nombres+mots ; le statecraft est SIM
 # (il lit des flottants), son API ne rend que des entiers de jeu.
-STATECRAFT_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o \
+STATECRAFT_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o \
                         $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                         $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \
                         $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
@@ -601,7 +601,7 @@ army_demo: $(ARMY_DEMO_OBJS)
 
 # ---- Le refactor démographique : la province contient des GROUPES (clé de voûte)
 # Branche scps_modifier (pile de dérive). Alimente scps_order (inchangé).
-DEMOGRAPHY_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
+DEMOGRAPHY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
                     $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o \
                     $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \
                     $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
@@ -612,7 +612,7 @@ demography_demo: $(DEMOGRAPHY_DEMO_OBJS)
 	$(CC) $(DEMOGRAPHY_DEMO_OBJS) -o $@ -lm
 
 # ---- L'intégration au moteur vivant (la province réelle porte des groupes) -
-DEMOGRAPHY_INTEG_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
+DEMOGRAPHY_INTEG_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
                     $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                     $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o \
                     $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -626,7 +626,7 @@ demography_integ_demo: $(DEMOGRAPHY_INTEG_OBJS)
 # ---- La révolte INCARNÉE : un soulèvement est un acteur ancré sur un groupe -
 # QUI se lève (pire déficit), COMBIEN (fraction mobilisée qui quitte le travail),
 # ce qu'il VEUT (jacquerie/sécession/coup), ce qu'il ADVIENT (écrasé/né/concession).
-REVOLT_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
+REVOLT_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
                     $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                     $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o \
                     $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -640,7 +640,7 @@ revolt_demo: $(REVOLT_DEMO_OBJS)
 # ---- Le tissu social : brasserie + boisson culturelle + foi (Temple→L) -----
 # Première passe du catalogue SOCIAL : une chaîne (grain→bière), la variante
 # culturelle du palier moral (bière/vin), et la foi qui soutient la légitimité.
-SOCIAL_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o \
+SOCIAL_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o \
                     $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_culture.o \
                     $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o \
                     $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \
@@ -654,7 +654,7 @@ social_demo: $(SOCIAL_DEMO_OBJS)
 # ---- Capstone §27 : Entropie mondiale + 4 fins + Merveille ----------------
 # Banc auto-vérifiant du cataclysme (contrôles C0-C6). N'a besoin que des
 # briques moteur traversées par scps_endgame (econ/prosperity/tech/routes/navy/diplo).
-ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
+ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
                      $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
                      $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_tech.o \
                      $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_legitimacy.o \

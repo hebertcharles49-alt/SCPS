@@ -91,6 +91,7 @@ public:
     Array      country_relations(int country);        /* diplomatie : statut + opinion #26 par pays */
     Dictionary diplo_options(int target);             /* §3 : légalité des verbes diplo contre `target` (boutons grisés) */
     Dictionary opinion_summary(int country);          /* #26 : le RÉSUMÉ d'opinion (total + composantes) */
+    Array      diplo_journal(int country);            /* le JOURNAL d'actes daté (sous-détaille de Mémoire) */
     Dictionary country_army(int country);             /* mobilisation + flotte */
     Dictionary country_trade(int country);            /* commerce : routes · or · partenaires */
     Array      country_council(int country);          /* conseil : 3 sièges (+age v49) */

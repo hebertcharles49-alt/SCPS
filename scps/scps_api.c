@@ -896,6 +896,30 @@ int scps_opinion_summary(ScpsSim *s, int country, ScpsOpinionParts *out){
     return 0;
 }
 
+/* le JOURNAL D'ACTES : l'histoire datée joueur↔country (diplog), le poids des actes
+ * de MÉMOIRE recalculé au taux de decay du moteur (le chiffre montré = ce qui reste). */
+int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max){
+    if (!s || !s->ready || !out || max<=0) return 0;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    if (p<0 || country<0 || country>=s->w->n_countries || country==p) return 0;
+    DiplogEntry fe[24];
+    int n = diplog_pair(country, p, fe, (max<24)?max:24);
+    int ynow = scps_year(s);
+    float decay = tune_f("OPINION_MEM_DECAY", 0.0003f);
+    for (int i=0;i<n;i++){
+        out[i].year = fe[i].year; out[i].act = fe[i].act;
+        out[i].a_id = fe[i].a;    out[i].b_id = fe[i].b;
+        float dn = 0.f;
+        if (fe[i].delta != 0.f){                    /* acte de MÉMOIRE : le restant décayé */
+            float days = (float)(ynow - fe[i].year) * 365.f;
+            if (days < 0.f) days = 0.f;
+            dn = fe[i].delta * powf(1.f - decay, days);
+        }
+        out[i].delta_now = (int)(dn + (dn<0.f ? -0.5f : 0.5f));
+    }
+    return n;
+}
+
 /* §3 — LÉGALITÉ de construction PAR RÉGION (le roster `debloque` gate la TECH ; ici la RÉGION+l'OR). */
 int scps_build_legal(ScpsSim *s, int region, int edifice){
     if (!s || !s->ready || edifice<0 || edifice>=EDIFICE_COUNT) return 0;

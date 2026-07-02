@@ -311,6 +311,15 @@ typedef struct {
 } ScpsOpinionParts;
 /* ce que `country` pense du JOUEUR, décomposé. 0 rempli · -1 cible invalide. */
 int scps_opinion_summary(ScpsSim *s, int country, ScpsOpinionParts *out);
+
+/* ── le JOURNAL D'ACTES : la SOUS-DÉTAILLE de « Mémoire » — l'histoire DATÉE des actes
+ * entre le JOUEUR et `country` (« a déclaré la guerre », « pacte commercial », « a
+ * trahi », « né d'une sécession »…). `act` = DiplogAct (scps_provlog.h) ; a_id → b_id
+ * = qui a agi envers qui. `delta_now` ≠ 0 = acte de MÉMOIRE : le poids RESTANT dans
+ * l'opinion (décayé — s'estompe sur des années). Le plus RÉCENT d'abord. Runtime :
+ * l'histoire d'avant un chargement repart vide (même charte que le journal province). */
+typedef struct { int year, act, a_id, b_id, delta_now; } ScpsDiploAct;
+int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max);
 /* §3 — LÉGALITÉ de CONSTRUCTION par RÉGION : 1 si le joueur peut bâtir `edifice` dans `region`
  * MAINTENANT (non bloqué par le palier ET payable au crédit). Le roster (debloque) gate la TECH ;
  * ce prédicat gate la RÉGION + l'OR. region<0 ⇒ capitale. */

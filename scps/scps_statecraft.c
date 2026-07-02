@@ -12,6 +12,7 @@
 #include "scps_culture.h"   /* Q1 : ETHOS_* (l'IA recrute selon l'éthos) */
 #include "scps_tune.h"      /* #26 : tunables OPINION_* */
 #include "scps_intertrade.h"/* #26 : intertrade_embargoed (la mémoire de l'embargo) */
+#include "scps_provlog.h"   /* le JOURNAL diplomatique (trahison/sécession/relations, display) */
 #include <string.h>
 
 /* ---- Calibrage --------------------------------------------------------- */
@@ -298,6 +299,7 @@ void statecraft_on_betrayal(Statecraft *sc, int cid){
     float bet = tune_f("OPINION_MEM_BETRAYAL",35.f), cap = tune_f("OPINION_MEM_CAP",100.f);
     for (int b=0;b<sc->n_countries;b++) if (b!=cid)
         sc->opinion_mem[b][cid] = clampf(sc->opinion_mem[b][cid]-bet, -cap, cap);
+    diplog_push(DACT_BETRAYAL, cid, -1, -bet);   /* journal : « a trahi » (b<0 → le pays suivi) */
 }
 void statecraft_on_secession(Statecraft *sc, int child, int parent){
     /* #26bis — le pays NÉ D'UNE GUERRE CIVILE aime moins l'empire père (Flandre vs France) :
@@ -308,6 +310,7 @@ void statecraft_on_secession(Statecraft *sc, int child, int parent){
     if (!sc||child<0||child>=SCPS_MAX_COUNTRY||parent<0||parent>=SCPS_MAX_COUNTRY||child==parent) return;
     float sec = tune_f("OPINION_MEM_SECESSION",45.f), cap = tune_f("OPINION_MEM_CAP",100.f);
     sc->opinion_mem[child][parent] = clampf(sc->opinion_mem[child][parent]-sec, -cap, cap);
+    diplog_push(DACT_SECESSION, child, parent, -sec);   /* journal : « né d'une sécession de » */
 }
 
 /* ---- Missions ---------------------------------------------------------- */
@@ -355,6 +358,7 @@ static void mission_complete(Statecraft *sc, World *w, WorldEconomy *econ,
         case DIP_RELATIONS:
             sc->opinion[cid][ag->target] = clampf(sc->opinion[cid][ag->target]+20.f, -100.f, 100.f);
             sc->opinion[ag->target][cid] = clampf(sc->opinion[ag->target][cid]+12.f, -100.f, 100.f);
+            diplog_push(DACT_RELATIONS, cid, ag->target, 0.f);   /* journal : « a soigné les relations » */
             break;
         case DIP_ALLIANCE:
             if (diplo && sc->opinion[cid][ag->target] >= 0.f &&
