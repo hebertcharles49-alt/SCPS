@@ -156,6 +156,7 @@ var _stamp_tex := {}      ## id de tampon → Texture2D (cache ; chargé paresse
 var _dress_tex := {}      ## id de marque de terrain (lot 2) → Texture2D (cache)
 var _dressing := []       ## [{pos(monde), id, scale}] — marques de biome semées (display-only)
 var _dressing_dirty := true ## la géo a changé (génération/chargement) → re-semer le dressing
+var _dress_clear := []    ## [[Vector2, r²]] — la CLAIRIÈRE des bourgs (aucune marque dedans)
 var nature_mode := false  ## MODE NATURE : on ne montre QUE le terrain + le dressing (pas de frontières/
                           ## villes/routes/armées/noms) — la carte « vierge », touche N. Display-only.
 var _bk := {}             ## noms de structures triés en bancs (civic/craft/dwell/field), calculé 1×
@@ -1169,6 +1170,23 @@ func _ensure_roads(prebuild := false) -> void:
 		return
 	_roads = w.road_paths()
 	_augment_roads(w)
+	# les PONTS : là où le tracé LISSE traverse l'eau de rivière carvée — milieu + tangente.
+	_ink_bridges.clear()
+	var rfb: Image = _carved_river_field()
+	if rfb != null:
+		for rd0 in _roads:
+			var pts0: PackedVector2Array = rd0["points"]
+			var inw0 := -1
+			for k in range(pts0.size()):
+				var inw := _in_river_water(rfb, int(pts0[k].x), int(pts0[k].y))
+				if inw and inw0 < 0:
+					inw0 = k
+				elif (not inw or k == pts0.size() - 1) and inw0 >= 0:
+					var mid: Vector2 = pts0[clampi((inw0 + k) / 2, 0, pts0.size() - 1)]
+					var t0: Vector2 = (pts0[mini(k, pts0.size() - 1)] - pts0[maxi(inw0 - 1, 0)]).normalized()
+					if t0.length() > 0.5:
+						_ink_bridges.append({"w": mid, "t": t0})
+					inw0 = -1
 	var yr0: int = w.year()
 	for rd in _roads:
 		if not _road_start.has(rd["key"]):
@@ -1486,7 +1504,6 @@ func _draw_iso(w, mv: Node2D) -> void:
 				dw = dh * 2.0                                            # serpent : sprite 2:1 (large)
 			draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
 				egg_col if is_egg else dress_col)
-
 	# MODE NATURE : juste le terrain + le dressing — on saute frontières, routes, villes, armées, noms, §27.
 	if nature_mode:
 		return
@@ -1543,8 +1560,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 		_ensure_roads()
 		if not _roads.is_empty():
 			var year: int = w.year()
-			var seg_main := PackedVector2Array()
-			var seg_minor := PackedVector2Array()
+			var polys_main := []
+			var polys_minor := []
 			for ri in range(_roads.size()):
 				var rd: Dictionary = _roads[ri]
 				var pts: PackedVector2Array = rd["points"]
@@ -1556,22 +1573,40 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var poly := _road_partial(pts, frac)
 				if poly.size() < 2:
 					continue
-				var dst := seg_main if int(rd.get("level", 1)) <= 0 else seg_minor
-				var prev: Vector2 = mv.iso_pos(poly[0].x, poly[0].y)
-				for k in range(1, poly.size()):
-					var cur: Vector2 = mv.iso_pos(poly[k].x, poly[k].y)
-					dst.push_back(prev)
-					dst.push_back(cur)
-					prev = cur
-			# MINEURES dessous (fines, plus pâles), ARTÈRES par-dessus (larges). L'ordre des
-			# passes fait le modelé : ombre sépia → terre crème → filet de lumière central.
-			if seg_minor.size() >= 2:
-				draw_multiline(seg_minor, ROAD_MINOR_EDGE, _w(zoom, 0.65, 1.4, 2.6), true)
-				draw_multiline(seg_minor, ROAD_MINOR_MAIN, _w(zoom, 0.36, 0.8, 1.5), true)
-			if seg_main.size() >= 2:
-				draw_multiline(seg_main, ROAD_EDGE, _w(zoom, 1.1, 2.2, 4.0), true)
-				draw_multiline(seg_main, ROAD_MAIN, _w(zoom, 0.62, 1.3, 2.4), true)
-				draw_multiline(seg_main, ROAD_LIGHT, _w(zoom, 0.26, 0.55, 1.0), true)
+				var ipoly := PackedVector2Array()
+				ipoly.resize(poly.size())
+				for k in range(poly.size()):
+					ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
+				if int(rd.get("level", 1)) <= 0:
+					polys_main.append(ipoly)
+				else:
+					polys_minor.append(ipoly)
+			# PAR POLYLIGNE (joints RONDS aux coudes — le multiline ouvrait des fentes) ; l'ordre
+			# des passes fait le modelé : ombre sépia → terre crème → filet de lumière central.
+			for pl2 in polys_minor:
+				draw_polyline(pl2, ROAD_MINOR_EDGE, _w(zoom, 0.65, 1.4, 2.6), true)
+			for pl2 in polys_minor:
+				draw_polyline(pl2, ROAD_MINOR_MAIN, _w(zoom, 0.36, 0.8, 1.5), true)
+			for pl2 in polys_main:
+				draw_polyline(pl2, ROAD_EDGE, _w(zoom, 1.1, 2.2, 4.0), true)
+			for pl2 in polys_main:
+				draw_polyline(pl2, ROAD_MAIN, _w(zoom, 0.62, 1.3, 2.4), true)
+			for pl2 in polys_main:
+				draw_polyline(pl2, ROAD_LIGHT, _w(zoom, 0.26, 0.55, 1.0), true)
+			# les PONTS D'ENCRE : deux garde-corps bombés en travers du franchissement de rivière
+			for br in _ink_bridges:
+				var bp: Vector2 = mv.iso_pos((br["w"] as Vector2).x, (br["w"] as Vector2).y)
+				var bt: Vector2 = (mv.iso_pos((br["w"] as Vector2).x + (br["t"] as Vector2).x,
+					(br["w"] as Vector2).y + (br["t"] as Vector2).y) - bp).normalized()
+				var bperp := Vector2(-bt.y, bt.x)
+				var bl := _w(zoom, 0.62, 2.4, 5.2)
+				var bw := _w(zoom, 0.26, 1.0, 2.2)
+				var biw := _w(zoom, 0.07, 0.5, 1.0)
+				for sgn in [-1.0, 1.0]:
+					var o3 := bperp * bw * float(sgn)
+					draw_polyline(PackedVector2Array([bp - bt * bl + o3,
+						bp + o3 + bperp * (bw * 0.5 * float(sgn)),   # le bombé du tablier
+						bp + bt * bl + o3]), TOWN_INK, biw, true)
 
 	# ── VILLES : TAMPONS d'atlas (lot 1) — cité (t1-t7), cité-état & hameau libre (assets DÉDIÉS). ──
 	# CENTRÉS sur le SIÈGE intérieur de province (≠ jonction ; le centroïde brut tombe pile à l'intersection
@@ -1743,10 +1778,20 @@ func _stamp_get(id: String) -> Texture2D:
 ## pour la cité-état. Ancré au MONDE (la ville tient sur sa rue à tous les zooms), tailles
 ## bornées en px écran par _w. Cache par région (RAZ au generate ; jamais figé sans routes).
 const TOWN_WALL   := Color(0.92, 0.87, 0.74, 0.96)   ## murs crème
-const TOWN_ROOF   := Color(0.54, 0.27, 0.19, 0.94)   ## toits brun-rouge (lavis brique)
-const TOWN_ROOF2  := Color(0.42, 0.30, 0.20, 0.94)   ## variante toit (bois sombre)
 const TOWN_INK    := Color(0.16, 0.11, 0.07, 0.90)   ## cerne d'encre
-var _town_cache := {}       ## region → {h: [{w:Vector2, s:float, k:int, v:int}], ring: PackedVector2Array}
+const TOWN_SHADOW := Color(0.16, 0.11, 0.07, 0.16)   ## ombre portée (assoit le bâti)
+const TOWN_GROUND := Color(0.88, 0.82, 0.64, 0.30)   ## la CLAIRIÈRE (terre battue du bourg)
+const FIELD_FILL  := Color(0.82, 0.78, 0.52, 0.30)   ## champs en lanières (lavis paille)
+const FIELD_FURROW:= Color(0.45, 0.38, 0.22, 0.30)   ## sillons
+## trois PALETTES de toits — chaque bourg a la sienne (brique · bois · ardoise), la
+## variante par maison joue la valeur : un village = une matière, pas un arlequin.
+const ROOF_PAL := [
+	[Color(0.58, 0.28, 0.19, 0.94), Color(0.48, 0.23, 0.16, 0.94)],   # brique
+	[Color(0.46, 0.33, 0.21, 0.94), Color(0.38, 0.27, 0.17, 0.94)],   # bois
+	[Color(0.42, 0.40, 0.42, 0.94), Color(0.34, 0.33, 0.36, 0.94)],   # ardoise
+]
+var _town_cache := {}       ## region → plan du bourg (voir _build_town)
+var _ink_bridges := []      ## [{w:Vector2, t:Vector2}] — ponts aux franchissements route×rivière
 
 ## point de ROUTE le plus proche du siège + TANGENTE locale (espace monde).
 ## Retourne {d2, p, t} ; d2 = 1e30 si aucune route.
@@ -1769,13 +1814,16 @@ func _seat_road(ctr: Vector2) -> Dictionary:
 
 ## bâtit (une fois) le PLAN du bourg : maisons en unités MONDE. k : 0 maison · 1 église ·
 ## 2 donjon. v : variante de toit. Rangées le long de la route si elle passe à ≤ 3 cellules.
-func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float) -> Dictionary:
+## Le plan porte aussi : la CLAIRIÈRE (blob irrégulier), les CHAMPS en lanières (t2+),
+## l'ENCEINTE à TOURS avec PORTES là où les routes la franchissent (cité-état).
+func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, tier: int) -> Dictionary:
 	var houses := []
 	var rr := _seat_road(ctr)
 	var on_road: bool = float(rr["d2"]) < 9.0
 	var axis: Vector2 = rr["t"] if on_road else Vector2.from_angle(_h1(float(r) * 3.7) * TAU)
 	var side := Vector2(-axis.y, axis.x)
 	var org: Vector2 = rr["p"] if on_road else ctr
+	var extent := 0.9   # demi-longueur de la rue bâtie (pour clairière/champs)
 	for i in range(n):
 		var hh := _h1(float(r) * 13.7 + float(i) * 2.31)
 		var hv := _h1(float(r) * 7.9 + float(i) * 5.17)
@@ -1785,11 +1833,13 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float) -
 			var s := (float(i / 2) - float((n + 1) / 2 - 1) * 0.5) * 0.85
 			var sd := (0.5 + 0.22 * hh) * (1.0 if (i % 2) == 0 else -1.0)
 			wp = org + axis * (s + (hv - 0.5) * 0.3) + side * sd
+			extent = maxf(extent, absf(s) + 0.8)
 		else:
 			# amas radial (spirale dorée) autour du siège
 			var a := (0.618034 * float(i) + _h1(float(r) * 9.1)) * TAU
 			var rad := sqrt((float(i) + 0.6) / float(n)) * (0.9 + 0.35 * float(n) / 10.0)
 			wp = ctr + Vector2(cos(a), sin(a)) * rad
+			extent = maxf(extent, rad + 0.6)
 		houses.append({"w": wp, "s": 0.34 + 0.12 * hh, "k": 0, "v": int(hv * 2.0)})
 	if landmark > 0:
 		# le MONUMENT : posé en retrait de la rue, côté opposé au gros des maisons
@@ -1797,58 +1847,172 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float) -
 		houses.append({"w": lm, "s": 0.46, "k": landmark, "v": 0})
 	# tri du FOND vers l'AVANT (y monde croissant ≈ y iso croissant) : les recouvrements lisent bien
 	houses.sort_custom(func(a, b): return (a["w"].x + a["w"].y) < (b["w"].x + b["w"].y))
-	var ring := PackedVector2Array()
+	# ── la CLAIRIÈRE : un blob IRRÉGULIER de terre battue sous le bourg (14 pts jittés) ──
+	var gnd := PackedVector2Array()
+	var g_r := (ring_rad + 0.5) if ring_rad > 0.0 else (extent * 0.72 + 0.6)
+	for k in range(14):
+		var ga := TAU * float(k) / 14.0
+		var gr := g_r * (0.82 + 0.36 * _h1(float(r) * 5.3 + float(k) * 1.77))
+		# la clairière s'ÉTIRE le long de la rue (ellipse orientée par l'axe)
+		var u := cos(ga) * (1.25 if on_road else 1.0)
+		var v := sin(ga) * 0.85
+		gnd.push_back(org + axis * (u * gr) + side * (v * gr))
+	# ── CHAMPS EN LANIÈRES (t2+) : des bandes PERPENDICULAIRES à la rue, aux abouts du bourg ──
+	var fields := []
+	if tier >= 2 or ring_rad > 0.0:
+		var nf := 2 + tier + (2 if ring_rad > 0.0 else 0)
+		for k in range(nf):
+			var fh := _h1(float(r) * 21.3 + float(k) * 3.9)
+			var fh2 := _h1(float(r) * 17.1 + float(k) * 7.3)
+			var endd := 1.0 if (k % 2) == 0 else -1.0
+			var fc: Vector2 = org + axis * endd * (extent + 0.9 + 1.5 * fh) + side * (fh2 - 0.5) * 2.6
+			var fl := axis.rotated(0.12 * (fh - 0.5))            # lanière ~perpendiculaire à la rue
+			var fp := Vector2(-fl.y, fl.x)
+			var hl := 0.75 + 0.45 * fh2                          # demi-longueur
+			var hw := 0.20 + 0.10 * fh                           # demi-largeur
+			fields.append({"q": PackedVector2Array([
+				fc + fp * hl + fl * hw, fc + fp * hl - fl * hw,
+				fc - fp * hl - fl * hw, fc - fp * hl + fl * hw]),
+				"d": fp, "c": fc, "hl": hl, "hw": hw})
+	# ── l'ENCEINTE (cité-état) : arcs entre PORTES (routes qui franchissent le mur) + TOURS ──
+	var arcs := []
+	var towers := []
+	var gates := []
 	if ring_rad > 0.0:
-		for k in range(29):
-			var a2 := TAU * float(k) / 28.0
-			ring.push_back(ctr + Vector2(cos(a2), sin(a2)) * ring_rad)
-	return {"h": houses, "ring": ring}
+		for rd in _roads:                          # angles de PORTE : croisement route × cercle
+			var pts: PackedVector2Array = rd["points"]
+			for k in range(pts.size() - 1):
+				var da := pts[k].distance_to(ctr) - ring_rad
+				var db := pts[k + 1].distance_to(ctr) - ring_rad
+				if da * db < 0.0 and gates.size() < 4:
+					var ang := ((pts[k] + pts[k + 1]) * 0.5 - ctr).angle()
+					var dup := false
+					for g2 in gates:
+						if absf(angle_difference(float(g2), ang)) < 0.45:
+							dup = true
+					if not dup:
+						gates.append(ang)
+		var gw := 0.16                             # demi-ouverture de porte (rad)
+		var cuts := []                             # fenêtres angulaires à SAUTER
+		for g3 in gates:
+			cuts.append([float(g3) - gw, float(g3) + gw])
+		var seg := PackedVector2Array()
+		var steps := 72
+		for k in range(steps + 1):
+			var a4 := TAU * float(k) / float(steps)
+			var in_gate := false
+			for cu in cuts:
+				if absf(angle_difference(a4, (float(cu[0]) + float(cu[1])) * 0.5)) < gw:
+					in_gate = true
+			var wpt := ctr + Vector2(cos(a4), sin(a4)) * ring_rad
+			if in_gate:
+				if seg.size() >= 2:
+					arcs.append(seg)
+				seg = PackedVector2Array()
+			else:
+				seg.push_back(wpt)
+		if seg.size() >= 2:
+			arcs.append(seg)
+		for k in range(7):                         # TOURS régulières, hors portes
+			var ta := TAU * float(k) / 7.0 + _h1(float(r) * 2.9) * 0.5
+			var skip := false
+			for g4 in gates:
+				if absf(angle_difference(ta, float(g4))) < 0.30:
+					skip = true
+			if not skip:
+				towers.append(ctr + Vector2(cos(ta), sin(ta)) * ring_rad)
+	var pal: Array = ROOF_PAL[int(_h1(float(r) * 31.7) * 3.0) % 3]
+	return {"h": houses, "arcs": arcs, "towers": towers, "gates": gates, "ring_c": ctr,
+		"gnd": gnd, "fields": fields, "pal": pal}
 
-## une MAISON à pignon (encre + lavis), quasi droite (jitter ±7°) — la rangée suit la rue,
-## les pignons restent debout comme sur les vignettes d'atlas. `half` en unités monde.
-func _ink_house(p: Vector2, half: float, tilt: float, roof: Color, zoom: float) -> void:
+## les POINTS d'une maison à pignon (repère local tourné) — partagés entre l'OMBRE
+## (silhouette décalée) et la maison elle-même.
+func _house_pts(p: Vector2, half: float, tilt: float) -> Dictionary:
 	var ca := cos(tilt)
 	var sa := sin(tilt)
 	var rot := func(v: Vector2) -> Vector2:
 		return p + Vector2(v.x * ca - v.y * sa, v.x * sa + v.y * ca) * half
-	var a: Vector2 = rot.call(Vector2(-1.0, 0.75))
-	var b: Vector2 = rot.call(Vector2(1.0, 0.75))
-	var c: Vector2 = rot.call(Vector2(1.0, -0.30))
-	var d: Vector2 = rot.call(Vector2(1.18, -0.30))
-	var e: Vector2 = rot.call(Vector2(0.0, -1.25))
-	var f: Vector2 = rot.call(Vector2(-1.18, -0.30))
-	var g: Vector2 = rot.call(Vector2(-1.0, -0.30))
-	draw_colored_polygon(PackedVector2Array([a, b, c, g]), TOWN_WALL)
-	draw_colored_polygon(PackedVector2Array([f, d, e]), roof)
-	draw_polyline(PackedVector2Array([a, b, c, d, e, f, g, a]), TOWN_INK, _w(zoom, 0.05, 0.45, 0.85), true)
+	return {
+		"a": rot.call(Vector2(-1.0, 0.75)),  "b": rot.call(Vector2(1.0, 0.75)),
+		"c": rot.call(Vector2(1.0, -0.30)),  "d": rot.call(Vector2(1.18, -0.30)),
+		"e": rot.call(Vector2(0.0, -1.25)),  "f": rot.call(Vector2(-1.18, -0.30)),
+		"g": rot.call(Vector2(-1.0, -0.30)), "m": rot.call(Vector2(0.0, -0.30)),
+	}
 
-## ÉGLISE (nef + flèche) / DONJON (tour + fanion) — les monuments, mêmes encres.
-func _ink_landmark(p: Vector2, half: float, kind: int, zoom: float) -> void:
+## l'OMBRE PORTÉE d'une maison : sa silhouette, décalée vers le SE (soleil de NO) — assoit
+## le bâti sur le parchemin. Passe SÉPARÉE (toutes les ombres sous toutes les maisons).
+func _house_shadow(p: Vector2, half: float, tilt: float) -> void:
+	var off := Vector2(0.34, 0.30) * half
+	var q := _house_pts(p + off, half, tilt)
+	draw_colored_polygon(PackedVector2Array([q["a"], q["b"], q["c"], q["d"], q["e"], q["f"], q["g"]]), TOWN_SHADOW)
+
+## une MAISON à pignon (encre + lavis), quasi droite (jitter ±7°) — la rangée suit la rue,
+## les pignons restent debout comme sur les vignettes d'atlas. `half` en unités monde.
+## Toit DEUX-TONS (versant NO éclairé / SE ombré — le soleil des cartes) + PORTE au zoom franc.
+func _ink_house(p: Vector2, half: float, tilt: float, roof: Color, zoom: float) -> void:
+	var q := _house_pts(p, half, tilt)
+	draw_colored_polygon(PackedVector2Array([q["a"], q["b"], q["c"], q["g"]]), TOWN_WALL)
+	draw_colored_polygon(PackedVector2Array([q["f"], q["m"], q["e"]]), roof.lightened(0.16))   # versant au soleil
+	draw_colored_polygon(PackedVector2Array([q["m"], q["d"], q["e"]]), roof.darkened(0.14))    # versant à l'ombre
+	if half * zoom > 3.4:   # la PORTE n'éclot qu'au zoom franc (sinon bruit)
+		var db: Vector2 = (q["a"] as Vector2).lerp(q["b"], 0.5)
+		var dt: Vector2 = db + ((q["m"] as Vector2) - db) * 0.42
+		var dhw: Vector2 = ((q["b"] as Vector2) - (q["a"] as Vector2)) * 0.10
+		draw_colored_polygon(PackedVector2Array([db - dhw, db + dhw, dt + dhw, dt - dhw]),
+			Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.75))
+	draw_polyline(PackedVector2Array([q["a"], q["b"], q["c"], q["d"], q["e"], q["f"], q["g"], q["a"]]),
+		TOWN_INK, _w(zoom, 0.05, 0.45, 0.85), true)
+
+## ÉGLISE (nef + flèche + croix) / DONJON (tour crénelée + fanion AU PIGMENT DU PAYS) —
+## les monuments, mêmes encres. Ombre portée incluse (masse au sol).
+func _ink_landmark(p: Vector2, half: float, kind: int, zoom: float, pen: Color) -> void:
 	var iw := _w(zoom, 0.06, 0.5, 0.95)
+	# ombre de masse (décalée SE, comme les maisons)
+	var so := Vector2(0.30, 0.26) * half
 	if kind == 1:
-		# nef basse + flèche haute
+		draw_colored_polygon(PackedVector2Array([p + so + Vector2(-half, half * 0.7),
+			p + so + Vector2(half, half * 0.7), p + so + Vector2(half, -half * 0.3),
+			p + so + Vector2(0, -half * 2.1), p + so + Vector2(-half, -half * 0.3)]), TOWN_SHADOW)
+		# nef basse + flèche haute + croix
 		var nave := PackedVector2Array([p + Vector2(-half, half * 0.7), p + Vector2(half, half * 0.7),
 			p + Vector2(half, -half * 0.3), p + Vector2(-half, -half * 0.3)])
 		draw_colored_polygon(nave, TOWN_WALL)
 		var spire := PackedVector2Array([p + Vector2(-half * 0.32, -half * 0.3),
 			p + Vector2(half * 0.32, -half * 0.3), p + Vector2(0, -half * 2.1)])
-		draw_colored_polygon(spire, TOWN_ROOF2)
+		draw_colored_polygon(spire, Color(0.34, 0.33, 0.36, 0.94))
 		draw_polyline(PackedVector2Array([p + Vector2(-half, half * 0.7), p + Vector2(half, half * 0.7),
 			p + Vector2(half, -half * 0.3), p + Vector2(half * 0.32, -half * 0.3), p + Vector2(0, -half * 2.1),
 			p + Vector2(-half * 0.32, -half * 0.3), p + Vector2(-half, -half * 0.3), p + Vector2(-half, half * 0.7)]),
 			TOWN_INK, iw, true)
+		draw_line(p + Vector2(0, -half * 2.1), p + Vector2(0, -half * 2.45), TOWN_INK, iw, true)
+		draw_line(p + Vector2(-half * 0.14, -half * 2.3), p + Vector2(half * 0.14, -half * 2.3), TOWN_INK, iw, true)
 	else:
-		# donjon : tour carrée + fanion
 		var tw := half * 0.72
+		draw_colored_polygon(PackedVector2Array([p + so + Vector2(-tw, half * 0.7),
+			p + so + Vector2(tw, half * 0.7), p + so + Vector2(tw, -half * 1.5),
+			p + so + Vector2(-tw, -half * 1.5)]), TOWN_SHADOW)
+		# donjon : tour CRÉNELÉE + fanion au pigment du PAYS
 		var tower := PackedVector2Array([p + Vector2(-tw, half * 0.7), p + Vector2(tw, half * 0.7),
 			p + Vector2(tw, -half * 1.5), p + Vector2(-tw, -half * 1.5)])
 		draw_colored_polygon(tower, TOWN_WALL)
-		draw_polyline(PackedVector2Array([p + Vector2(-tw, half * 0.7), p + Vector2(tw, half * 0.7),
-			p + Vector2(tw, -half * 1.5), p + Vector2(-tw, -half * 1.5), p + Vector2(-tw, half * 0.7)]),
-			TOWN_INK, iw, true)
-		draw_line(p + Vector2(0, -half * 1.5), p + Vector2(0, -half * 2.3), TOWN_INK, iw, true)
-		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -half * 2.3),
-			p + Vector2(half * 0.55, -half * 2.05), p + Vector2(0, -half * 1.85)]), TOWN_ROOF)
+		var top := -half * 1.5
+		var cren := PackedVector2Array([p + Vector2(-tw, half * 0.7), p + Vector2(-tw, top)])
+		var nt := 4
+		for k in range(nt):                        # créneaux : dents carrées sur le parapet
+			var x0 := -tw + tw * 2.0 * float(k) / float(nt)
+			var x1 := x0 + tw * 2.0 / float(nt) * 0.55
+			cren.push_back(p + Vector2(x0, top))
+			cren.push_back(p + Vector2(x0, top - half * 0.22))
+			cren.push_back(p + Vector2(x1, top - half * 0.22))
+			cren.push_back(p + Vector2(x1, top))
+		cren.push_back(p + Vector2(tw, top))
+		cren.push_back(p + Vector2(tw, half * 0.7))
+		cren.push_back(p + Vector2(-tw, half * 0.7))
+		draw_polyline(cren, TOWN_INK, iw, true)
+		draw_line(p + Vector2(0, top - half * 0.22), p + Vector2(0, -half * 2.4), TOWN_INK, iw, true)
+		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -half * 2.4),
+			p + Vector2(half * 0.62, -half * 2.12), p + Vector2(0, -half * 1.88)]),
+			Color(pen.r, pen.g, pen.b, 0.95))
 
 ## charge (paresseux) une MARQUE DE TERRAIN par id → Texture2D (cache). Cherche dans lot 3 (biomes plats/
 ## eau) PUIS lot 2 (relief/forêt/désert) — les ids sont uniques entre lots. Fallback Image.load (PNG brut).
@@ -1902,6 +2066,20 @@ func _build_dressing() -> void:
 	if bio == null:
 		return
 	var rf: Image = _carved_river_field()      # champ rivière → on N'ENTASSE PAS de marques sur les fleuves
+	# la CLAIRIÈRE DES BOURGS : aucune marque de terrain dans le rayon d'un lieu HABITÉ
+	# (les arbres ne poussent pas sur les toits ; l'urbaniste y pose sa terre battue).
+	_dress_clear.clear()
+	for r in range(w.region_count()):
+		var tier: int = w.region_tier(r)
+		var owner: int = w.region_owner(r)
+		var role: int = int(w.country_role(owner)) if owner >= 0 else -1
+		if tier < 0 and role != 2 and role != 4:
+			continue
+		var c: Vector2 = _region_seat.get(r, w.region_centroid(r))
+		if c.x < 0:
+			continue
+		var rad := 2.3 + 0.5 * float(maxi(tier, 1)) + (1.4 if role == 2 else 0.0)
+		_dress_clear.append([c, rad * rad])
 	var sw := bio.get_width()
 	var sh := bio.get_height()
 	var i := 0
@@ -1930,6 +2108,9 @@ func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh
 	var py := clampi(y + jy, 0, sh - 1)
 	if _near_river(rf, px, py):
 		return                                 # JAMAIS sur/au bord d'une rivière (sinon elle transparaît sous la marque)
+	for cl in _dress_clear:                    # ni dans la CLAIRIÈRE d'un bourg (l'urbaniste y règne)
+		if (cl[0] as Vector2).distance_squared_to(Vector2(px, py)) < float(cl[1]):
+			return
 	var b := int(bio.get_pixel(px, py).r * 255.0 + 0.5)
 	if not DRESS_BY_BIOME.has(b):
 		return
@@ -1987,37 +2168,85 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 	var is_cs := role == 2
 	var is_wild := role == 4
 	var st := mini(_pop_tier(int(w.region_pop(r))), 4)
-	# ── L'URBANISTE : le PLAN du bourg (cache par région) — maisons rangées sur la route. ──
-	if not _town_cache.has(r):
+	# ── L'URBANISTE : le PLAN du bourg (cache par région) — maisons rangées sur la route.
+	#    Le plan se REBÂTIT quand le TIER change : le bourg GRANDIT avec sa population. ──
+	if not _town_cache.has(r) or int(_town_cache[r].get("st", -1)) != st:
 		if _roads.is_empty():
 			_draw_town(ip, maxi(st - 1, 1), zoom, Color(0.20, 0.14, 0.09, 0.95))   # routes pas prêtes : glyphe, sans figer
 			return
 		var n: int = 2 if is_wild else (16 if is_cs else [3, 3, 6, 10, 14][st])
-		var owner: int = w.region_owner(r)
-		var is_cap: bool = owner >= 0 and w.province_region(w.country_capital_province(owner)) == r
+		var owner0: int = w.region_owner(r)
+		var is_cap: bool = owner0 >= 0 and w.province_region(w.country_capital_province(owner0)) == r
 		var landmark := 2 if is_cap else (1 if (is_cs or st >= 3) else 0)
 		var ring := 2.4 if is_cs else 0.0
-		_town_cache[r] = _build_town(r, ctr, n, landmark, ring)
+		var plan := _build_town(r, ctr, n, landmark, ring, st)
+		plan["st"] = st
+		_town_cache[r] = plan
 	var town: Dictionary = _town_cache[r]
-	# l'ENCEINTE d'abord (sous les maisons) : double trait d'encre, cité-état seulement
-	var ring_w: PackedVector2Array = town["ring"]
-	if ring_w.size() > 2:
-		var rpts := PackedVector2Array()
-		rpts.resize(ring_w.size())
-		for k in range(ring_w.size()):
-			rpts[k] = mv.iso_pos(ring_w[k].x, ring_w[k].y)
-		draw_polyline(rpts, Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.35), _w(zoom, 0.16, 0.8, 1.8), true)
-		draw_polyline(rpts, TOWN_INK, _w(zoom, 0.07, 0.5, 1.0), true)
+	var pal: Array = town["pal"]
+	# 1. la CLAIRIÈRE — le sol du bourg, un lavis de terre battue au bord irrégulier
+	var gnd: PackedVector2Array = town["gnd"]
+	if gnd.size() > 2:
+		var gpts := PackedVector2Array()
+		gpts.resize(gnd.size())
+		for k in range(gnd.size()):
+			gpts[k] = mv.iso_pos(gnd[k].x, gnd[k].y)
+		draw_colored_polygon(gpts, TOWN_GROUND)
+	# 2. les CHAMPS EN LANIÈRES — lavis paille + 3 sillons, aux abouts de la rue (t2+)
+	for fd in town["fields"]:
+		var fq: PackedVector2Array = fd["q"]
+		var fpts := PackedVector2Array()
+		fpts.resize(fq.size())
+		for k in range(fq.size()):
+			fpts[k] = mv.iso_pos(fq[k].x, fq[k].y)
+		draw_colored_polygon(fpts, FIELD_FILL)
+		draw_polyline(PackedVector2Array([fpts[0], fpts[1], fpts[2], fpts[3], fpts[0]]),
+			Color(FIELD_FURROW.r, FIELD_FURROW.g, FIELD_FURROW.b, 0.22), _w(zoom, 0.04, 0.3, 0.6), true)
+		var fc2: Vector2 = fd["c"]
+		var fdir: Vector2 = fd["d"]
+		var fl2: float = fd["hl"]
+		var fw2: float = fd["hw"]
+		var fperp := Vector2(-fdir.y, fdir.x)
+		for s2 in [-0.5, 0.0, 0.5]:                       # les SILLONS (3 traits le long de la lanière)
+			var o2: Vector2 = fperp * (float(s2) * fw2 * 1.3)
+			draw_line(mv.iso_pos(fc2.x + fdir.x * fl2 * 0.85 + o2.x, fc2.y + fdir.y * fl2 * 0.85 + o2.y),
+				mv.iso_pos(fc2.x - fdir.x * fl2 * 0.85 + o2.x, fc2.y - fdir.y * fl2 * 0.85 + o2.y),
+				FIELD_FURROW, _w(zoom, 0.035, 0.3, 0.5), true)
+	# 3. l'ENCEINTE — arcs de muraille COUPÉS AUX PORTES (routes), tours crénelées ponctuelles
+	for arc in town["arcs"]:
+		var apts := PackedVector2Array()
+		apts.resize((arc as PackedVector2Array).size())
+		for k in range((arc as PackedVector2Array).size()):
+			apts[k] = mv.iso_pos(arc[k].x, arc[k].y)
+		draw_polyline(apts, Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.30), _w(zoom, 0.20, 1.0, 2.2), true)
+		draw_polyline(apts, TOWN_INK, _w(zoom, 0.08, 0.55, 1.1), true)
+	for tw2 in town["towers"]:
+		var tp: Vector2 = mv.iso_pos((tw2 as Vector2).x, (tw2 as Vector2).y)
+		var ts := _w(zoom, 0.16, 1.2, 2.6)
+		draw_colored_polygon(PackedVector2Array([tp + Vector2(-ts, ts), tp + Vector2(ts, ts),
+			tp + Vector2(ts, -ts), tp + Vector2(-ts, -ts)]), TOWN_WALL)
+		draw_polyline(PackedVector2Array([tp + Vector2(-ts, ts), tp + Vector2(ts, ts),
+			tp + Vector2(ts, -ts), tp + Vector2(-ts, -ts), tp + Vector2(-ts, ts)]),
+			TOWN_INK, _w(zoom, 0.05, 0.45, 0.9), true)
+	# 4. les OMBRES PORTÉES (toutes, sous toutes les maisons — le soleil de NO assoit le bourg)
+	for hd in town["h"]:
+		if int(hd["k"]) == 0:
+			var wp0: Vector2 = hd["w"]
+			var half0 := _w(zoom, float(hd["s"]), 1.9, 6.5)
+			var tilt0 := (_h1(wp0.x * 12.9 + wp0.y * 7.1) - 0.5) * 0.24
+			_house_shadow(mv.iso_pos(wp0.x, wp0.y), half0, tilt0)
+	# 5. les MAISONS (toit deux-tons à la palette du bourg, porte au zoom franc) + MONUMENT
+	var pen := _entity_pigment(w.region_owner(r)) if w.region_owner(r) >= 0 else TOWN_INK
 	for hd in town["h"]:
 		var wp: Vector2 = hd["w"]
 		var p: Vector2 = mv.iso_pos(wp.x, wp.y)
 		var half := _w(zoom, float(hd["s"]), 1.9, 6.5)     # taille monde, bornée en px écran
 		var kind: int = hd["k"]
 		if kind > 0:
-			_ink_landmark(p, half * 1.35, kind, zoom)
+			_ink_landmark(p, half * 1.35, kind, zoom, pen)
 		else:
 			var tilt := (_h1(wp.x * 12.9 + wp.y * 7.1) - 0.5) * 0.24   # ±7° : « dessiné à la main »
-			_ink_house(p, half, tilt, TOWN_ROOF if int(hd["v"]) == 0 else TOWN_ROOF2, zoom)
+			_ink_house(p, half, tilt, pal[int(hd["v"]) % 2], zoom)
 
 ## BANNIÈRE DE LIEU (référence KCD) : chip parchemin + liseré d'encre + NOM du siège +
 ## pastille au pigment du propriétaire — taille ÉCRAN constante, posée AU-DESSUS du tampon.
