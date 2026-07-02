@@ -147,6 +147,7 @@ var _bio_img: Image = null ## couche biome (cache) → interdit le PIED d'un ass
 var _region_variant := {} ## région colonisée → nom de variante de ville TERRAIN (petits bourgs)
 var _region_raws := {}    ## région → [{id, name}] : les BRUTES extraites (≤2) — mode carte RESSOURCES (9)
 var _raws_dirty := true    ## la production a bougé (an-0 nu → extraction établie) → recache les brutes
+var _region_label := {}   ## région → NOM du siège (bannière de lieu KCD, cache paresseux)
 var _region_centre := {}  ## région colonisée → TERRAIN du centre-ville (plaine/foret/montagne/estuaire/portuaire/lacustre)
 var _region_anchor := {}  ## région colonisée → assise de ville CALÉE SUR TERRE (centroïde snappé + rabat côtier)
 var _region_citymax := {} ## région colonisée → plus grande taille de sprite de ville TENANT au sec (anti-débord mer)
@@ -221,8 +222,13 @@ var _owner_sig := -1      ## signature de la photo des propriétaires → détec
 # frontières (même signal de souveraineté). Fort au plan LARGE (la lecture politique du fit), s'efface
 # vers le zoom profond (le terrain parle). Transparent hors territoire — le parchemin transparaît. ──
 var _pol_tex: ImageTexture = null
-const WASH_A_FAR  := 0.36  ## opacité du lavis au fit (qui tient quoi, d'un regard)
-const WASH_A_NEAR := 0.15  ## ... au zoom profond
+## DEUX RÉGIMES (références de DA) : dézoomé = EU4 — le POLITIQUE domine (aplats presque
+## pleins, grands noms) ; zoomé = KCD — le TERRAIN domine (politique quasi absent, bannières
+## de lieux). La bascule vit ici (lavis) + dans les noms (fondu) + les bannières (éclosion).
+const WASH_A_FAR  := 0.72  ## aplat politique au plan large (EU4 : on lit un atlas politique)
+const WASH_A_NEAR := 0.06  ## ... au plan rapproché (KCD : le parchemin terrain reprend tout)
+const WASH_FADE_LO := 1.8  ## zoom où l'aplat commence à céder
+const WASH_FADE_HI := 4.5  ## zoom où le terrain a (presque) tout repris
 # ── SÉLECTION : contour DORÉ de la province choisie (le grain de panneau, charte EU4) ──
 var _sel_prov_cache := -2
 var _sel_segs := PackedVector2Array()
@@ -362,6 +368,7 @@ func _on_generated() -> void:
 	_dressing_dirty = true      # … et le dressing de terrain (biome semé)
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
+	_region_label.clear()       # bannières de lieux : noms recachés (monde neuf)
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
@@ -1484,7 +1491,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 	if not nature_mode and _pol_tex != null:
 		if _borders_dirty:
 			_rebuild_borders()                        # le lavis se rebâtit avec les frontières
-		var wash_a := lerpf(WASH_A_FAR, WASH_A_NEAR, clampf((zoom - 1.0) / 7.0, 0.0, 1.0))
+		var wash_a := lerpf(WASH_A_FAR, WASH_A_NEAR,
+			clampf((zoom - WASH_FADE_LO) / (WASH_FADE_HI - WASH_FADE_LO), 0.0, 1.0))
 		var p0: Vector2 = mv.iso_pos(0, 0)
 		var p1: Vector2 = mv.iso_pos(w.map_w(), w.map_h())
 		draw_texture_rect(_pol_tex, Rect2(p0, p1 - p0), false, Color(1, 1, 1, wash_a))
@@ -1619,6 +1627,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if ss.x < -40 or ss.y < -40 or ss.x > vp.x + 40 or ss.y > vp.y + 40:
 				continue
 			_draw_settlement(w, r, role, ip, zoom)
+			# RÉGIME KCD : la BANNIÈRE de lieu éclot au plan rapproché — le relais des
+			# noms de pays (régime EU4) qui se sont effacés au même seuil de zoom.
+			if zoom >= 4.0:
+				_draw_banner(w, r, ip, zoom, clampf((zoom - 4.0) / 1.2, 0.0, 1.0))
 
 	# ── ARMÉES : jeton vectoriel (losange + anneau de phase) + ligne de marche. ──
 	for c in range(w.country_count()):
@@ -1691,16 +1703,39 @@ func _draw_iso(w, mv: Node2D) -> void:
 		# CALLIGRAPHIE : AUCUNE boîte (fond transparent) — encre directe + halo papier, le nom écrit à
 		# la plume LE LONG du pays. AGRANDI (1.35→1.9 : lisible au fit, là où la carte se joue) et
 		# TEINTÉ au pigment de l'entité assombri (même famille que frontière/lavis — cohérence).
+		# RÉGIME EU4 : les noms de PAYS vivent au plan LARGE — grands, en capitales ESPACÉES
+		# le long de l'axe du pays, à l'échelle de sa TAILLE — et s'EFFACENT au zoom (le plan
+		# rapproché appartient aux bannières de lieux, régime KCD).
+		var name_fade := 1.0 - clampf((zoom - 3.2) / 1.6, 0.0, 1.0)
+		if name_fade <= 0.02:
+			continue
 		var pig := _entity_pigment(c)
-		# HIÉRARCHIE de labels : EMPIRE pleine taille ; cité-état/hameau réduits & discrets
-		# (le même correctif mono-région les a révélés — utiles, mais ils ne crient pas).
 		var rl := int(w.country_role(c))
 		var is_emp := (rl == 0 or rl == 1)
-		var name_ink := Color(pig.r * 0.42, pig.g * 0.42, pig.b * 0.42, 0.97 if is_emp else 0.72)
-		var nsc := (1.9 if is_emp else 1.15) / zoom
+		var track := 0.45 if is_emp else 0.0            # espacement de capitales (E U 4)
+		var name_ink := Color(pig.r * 0.40, pig.g * 0.40, pig.b * 0.40, (0.95 if is_emp else 0.70) * name_fade)
+		var halo := Color(0.97, 0.91, 0.74, (0.75 if is_emp else 0.5) * name_fade)
+		var disp := nm.to_upper() if is_emp else nm
+		# largeur TRACKÉE (par caractère) pour centrer
+		var tw := 0.0
+		for k in range(disp.length()):
+			tw += VKit.text_w(disp[k], VKit.FS_SMALL) + (track * 6.0 if k < disp.length() - 1 else 0.0)
+		# LA RÈGLE EU4 : le nom est ANCRÉ MONDE et DIMENSIONNÉ À SON TERRITOIRE — il s'étire
+		# sur l'étendue du pays (≈3σ de l'axe ACP majeur), jamais sur la mer d'à côté. Il
+		# grossit donc à l'écran en zoomant, jusqu'au fondu (le relais KCD des bannières).
+		var nsc: float
+		if is_emp:
+			var span := clampf(2.8 * sqrt(maxf(l1, 0.0)) + 16.0, 22.0, 220.0)   # étendue-monde du nom
+			nsc = span / maxf(tw, 1.0)
+		else:
+			nsc = 1.1 / zoom                              # petites entités : chip écran-constant
 		draw_set_transform(ip, ang, Vector2(nsc, nsc))
-		VKit.text(self, Vector2(-lw * 0.5 + 0.7, -6.3), Color(0.97, 0.91, 0.74, 0.78 if is_emp else 0.5), nm, VKit.FS_SMALL)  # halo papier
-		VKit.text(self, Vector2(-lw * 0.5, -7.0), name_ink, nm, VKit.FS_SMALL)                              # encre teintée
+		var cx0 := -tw * 0.5
+		for k in range(disp.length()):
+			var ch := disp[k]
+			VKit.text(self, Vector2(cx0 + 0.7, -6.3), halo, ch, VKit.FS_SMALL)
+			VKit.text(self, Vector2(cx0, -7.0), name_ink, ch, VKit.FS_SMALL)
+			cx0 += VKit.text_w(ch, VKit.FS_SMALL) + track * 6.0
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ── ÉPICENTRE du cataclysme §27 : anneaux pulsants à l'encre de la fin. ──
@@ -1884,6 +1919,42 @@ func _draw_settlement(w, r: int, role: int, ip: Vector2, zoom: float) -> void:
 	var sz := sz_px / maxf(zoom, 0.0001)                                    # → unités MONDE (taille écran constante)
 	# ancre CENTRE : le tampon est posé AU MILIEU du siège (centré sur le point, pas au-dessus). Léger fade.
 	draw_texture_rect(tex, Rect2(ip - Vector2(sz * 0.5, sz * 0.5), Vector2(sz, sz)), false, Color(1, 1, 1, STAMP_ALPHA))
+
+## BANNIÈRE DE LIEU (référence KCD) : chip parchemin + liseré d'encre + NOM du siège +
+## pastille au pigment du propriétaire — taille ÉCRAN constante, posée AU-DESSUS du tampon.
+## Éclot au plan rapproché (a = fondu d'éclosion), le relais des noms de pays effacés.
+func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
+	if a <= 0.02:
+		return
+	if not _region_label.has(r):
+		var nmv := ""
+		var anc: Vector2 = _region_seat.get(r, Vector2(-1, -1))
+		if anc.x >= 0 and w.has_method("province_at"):
+			var pid: int = w.province_at(int(anc.x), int(anc.y))
+			if pid >= 0:
+				nmv = String(w.province_info(pid).get("nom", ""))
+		_region_label[r] = nmv
+	var nm: String = _region_label[r]
+	if nm == "":
+		return
+	var sc := 1.0 / maxf(zoom, 0.0001)
+	var tw := VKit.text_w(nm, VKit.FS_SMALL) * sc
+	var bh := 14.0 * sc
+	var hpad := 5.0 * sc
+	var dotw := 7.0 * sc                                   # place de la pastille de propriétaire
+	var bw := tw + hpad * 2.0 + dotw
+	var top := ip.y - 34.0 * sc - bh                       # au-dessus du tampon (écran constant)
+	var rect := Rect2(Vector2(ip.x - bw * 0.5, top), Vector2(bw, bh))
+	# ombre portée + parchemin CLAIR + liseré : le chip se détache du terrain pâle (KCD)
+	draw_rect(Rect2(rect.position + Vector2(1.2 * sc, 1.4 * sc), rect.size), Color(0.10, 0.07, 0.04, 0.35 * a))
+	draw_rect(rect, Color(0.97, 0.93, 0.80, 0.94 * a))                       # le parchemin du chip
+	draw_rect(rect, Color(0.25, 0.18, 0.10, 0.95 * a), false, 1.2 * sc)      # liseré d'encre franc
+	var own := int(w.region_owner(r))
+	var dot: Color = _entity_pigment(own) if own >= 0 else Color(0.52, 0.46, 0.36)
+	draw_circle(Vector2(rect.position.x + hpad + 1.5 * sc, rect.position.y + bh * 0.5), 2.6 * sc, Color(dot, a))
+	draw_set_transform(Vector2(rect.position.x + hpad + dotw, rect.position.y + 1.0 * sc), 0.0, Vector2(sc, sc))
+	VKit.text(self, Vector2.ZERO, Color(0.20, 0.14, 0.08, 0.95 * a), nm, VKit.FS_SMALL)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## glyphe de ville à l'encre : cercle crème cerné d'encre, taille ∝ tier ; capitale (tier≥4) étoilée.
 func _draw_town(ip: Vector2, tier: int, zoom: float, ink: Color) -> void:
