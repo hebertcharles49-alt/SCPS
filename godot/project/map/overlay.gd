@@ -37,12 +37,12 @@ const DRESS_BY_BIOME := {
 	18: ["mountain_range_01", "mountain_range_02", "mountain_single_01", "mountain_single_02", "mountain_pass_01"],  # MONTAGNES
 	19: ["mountain_single_01", "mountain_single_02", "mountain_range_01"],   # PIC
 	23: ["mountain_single_01", "rocky_outcrop_01"],                          # VOLCAN
-	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02"],           # HAUTES-TERRES
+	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02", "forest_mass_conifer_01"],  # HAUTES-TERRES (lot 5 : sapinière)
 	17: ["hill_mark_01", "hill_cluster_01", "rocky_outcrop_01"],             # COLLINES
-	# FORÊTS (lot 2)
-	12: ["forest_dense_01", "forest_sparse_01", "tree_broadleaf_01"],        # FORÊT
-	13: ["forest_sparse_01", "tree_broadleaf_01", "tree_pine_01"],           # BOIS
-	14: ["forest_dense_01", "tree_broadleaf_01"],                            # JUNGLE
+	# FORÊTS (lot 2 + MASSES lot 5 — les grandes canopées peintes KCD dominent, les arbres isolés accentuent)
+	12: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_mass_mixed_01", "forest_dense_01", "tree_broadleaf_01"],  # FORÊT
+	13: ["forest_mass_mixed_01", "forest_edge_01", "forest_sparse_01", "tree_broadleaf_01", "tree_pine_01"],                       # BOIS
+	14: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_dense_01", "tree_broadleaf_01"],                          # JUNGLE
 	# PLAINES / PRAIRIE (lot 3 — herbe peinte ; comblent les biomes plats jadis NUS)
 	4:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01", "plain_wind_strokes_01"],  # PLAINES
 	5:  ["plain_sparse_tufts_01", "plain_grass_02"],                         # CHAMPS (épars, pas de cultures)
@@ -58,7 +58,7 @@ const DRESS_BY_BIOME := {
 	15: ["marsh_reeds_01", "marsh_reeds_02", "marsh_tufts_01", "marsh_ripple_reeds_01"],  # MARAIS
 	21: ["marsh_reeds_01", "marsh_reeds_02", "tree_broadleaf_01"],          # MANGROVE
 	22: ["marsh_reeds_02", "marsh_tufts_01", "marsh_ripple_reeds_01"],      # TOURBIÈRE
-	20: ["tree_pine_01", "rocky_outcrop_01"],                              # GLACIER (sapins/cailloux épars)
+	20: ["tree_pine_01", "forest_mass_conifer_01", "rocky_outcrop_01"],    # GLACIER (sapins/cailloux épars ; lot 5 : sapinière)
 	# EAU — MOUVEMENT seul (lot 3) : rides, houle, courants ; jamais un aplat
 	0:  ["ocean_swell_lines_01", "ocean_current_swirl_01"],                # OCÉAN PROFOND (très épars)
 	1:  ["sea_ripples_01", "sea_ripples_02", "ocean_swell_lines_01"],      # OCÉAN
@@ -369,6 +369,7 @@ func _on_generated() -> void:
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
 	_region_label.clear()       # bannières de lieux : noms recachés (monde neuf)
+	_o16_dir.clear()            # lot 5 : orientations d'habitat recalculées (routes neuves)
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
@@ -1626,7 +1627,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var ss: Vector2 = vt * ip
 			if ss.x < -40 or ss.y < -40 or ss.x > vp.x + 40 or ss.y > vp.y + 40:
 				continue
-			_draw_settlement(w, r, role, ip, zoom)
+			_draw_settlement(w, r, role, ctr, ip, zoom, mv)
 			# RÉGIME KCD : la BANNIÈRE de lieu éclot au plan rapproché — le relais des
 			# noms de pays (régime EU4) qui se sont effacés au même seuil de zoom.
 			if zoom >= 4.0:
@@ -1770,6 +1771,58 @@ func _stamp_get(id: String) -> Texture2D:
 	_stamp_tex[id] = tex
 	return tex
 
+## ── LOT 5 (oriented_16) : HABITATS ORIENTÉS — le sprite 16px porte une SORTIE DE ROUTE
+## (n/s/e/o/ne/no/se/so) ; on choisit la variante dont la sortie pointe vers la route la
+## plus proche → l'entrée du bourg est propre (modèle du pack : le sprite donne l'ancre,
+## la route organique possède le reste). Pré-agrandi ×4 NEAREST (pixel-art net). ──
+var _o16_tex := {}          ## nom → Texture2D (null si absent)
+var _o16_dir := {}          ## region → suffixe d'orientation ("s", "ne"…), cache par monde
+const O16_DIRS := ["e", "se", "s", "so", "o", "no", "n", "ne"]   # secteurs de 45° depuis +X (Y bas)
+
+func _o16_get(name: String) -> Texture2D:
+	if _o16_tex.has(name):
+		return _o16_tex[name]
+	var tex: Texture2D = null
+	var path := "res://art/map_stamps/lot5_kcd/oriented_16/sprites/%s.png" % name
+	if FileAccess.file_exists(path):
+		var img := Image.new()
+		if img.load(path) == OK:
+			img.resize(img.get_width() * 4, img.get_height() * 4, Image.INTERPOLATE_NEAREST)
+			tex = ImageTexture.create_from_image(img)
+	_o16_tex[name] = tex
+	return tex
+
+## suffixe d'orientation d'une région : la direction (espace iso) vers le point de ROUTE
+## le plus proche du siège, snappée aux 8 secteurs. Sans route à portée → variante hashée.
+func _o16_dir_of(r: int, ctr: Vector2, ip: Vector2, mv) -> String:
+	if _o16_dir.has(r):
+		return _o16_dir[r]
+	if _roads.is_empty():                                  # routes pas encore bâties : ne PAS figer le cache
+		return O16_DIRS[int(_h1(float(r) * 3.7) * 8.0) % 8]
+	var best_d := 1e30
+	var best_p := Vector2.ZERO
+	for rd in _roads:
+		var pts: PackedVector2Array = rd["points"]
+		var k := 0
+		while k < pts.size():
+			var d := ctr.distance_squared_to(pts[k])
+			if d < best_d:
+				best_d = d
+				best_p = pts[k]
+			k += 3
+	var suf: String
+	if best_d > 64.0:   # aucune route à ≤ 8 cellules : orientation hashée (variété)
+		suf = O16_DIRS[int(_h1(float(r) * 3.7) * 8.0) % 8]
+	else:
+		var dv: Vector2 = mv.iso_pos(best_p.x, best_p.y) - ip
+		var ang := atan2(dv.y, dv.x)                       # 0 = +X (est), Y vers le bas
+		var sect := int(floor((ang + PI / 8.0) / (PI / 4.0))) % 8
+		if sect < 0:
+			sect += 8
+		suf = O16_DIRS[sect]
+	_o16_dir[r] = suf
+	return suf
+
 ## charge (paresseux) une MARQUE DE TERRAIN par id → Texture2D (cache). Cherche dans lot 3 (biomes plats/
 ## eau) PUIS lot 2 (relief/forêt/désert) — les ids sont uniques entre lots. Fallback Image.load (PNG brut).
 func _dress_get(id: String) -> Texture2D:
@@ -1780,6 +1833,8 @@ func _dress_get(id: String) -> Texture2D:
 		tex = _dress_load("res://art/map_stamps/lot2_painted/assets_alpha/%s.png" % id)
 	if tex == null:
 		tex = _dress_load("res://art/map_stamps/lot4_easter_eggs/assets_alpha/%s.png" % id)
+	if tex == null:
+		tex = _dress_load("res://art/map_stamps/lot5_kcd/oriented_16/forests/%s.png" % id)   # lot 5 : masses de forêt
 	_dress_tex[id] = tex
 	return tex
 
@@ -1795,6 +1850,8 @@ func _dress_load(path: String) -> Texture2D:
 ## taille à l'ÉCRAN (px) d'une marque selon sa famille (montagnes grandes, herbe de plaine petite).
 func _dress_size(id: String) -> float:
 	if id.begins_with("sea_serpent"): return 84.0          # lot 4 : serpent (largeur ×2 au tracé → 2:1)
+	if id.begins_with("forest_mass"): return 54.0          # lot 5 : MASSE de canopée (grande, remplit le bloc)
+	if id.begins_with("forest_edge"): return 44.0          # lot 5 : lisière allongée
 	if id.begins_with("mountain_range"): return 50.0
 	if id.begins_with("mountain"): return 42.0
 	if id.begins_with("forest"): return 38.0
@@ -1899,16 +1956,11 @@ func _pop_tier(pop: int) -> int:
 ## (`city_state` / `wild_hamlet`). Cités normales → `city_t1..t4` selon la POP (PAS de t5-t7 : pas de
 ## faux air de capitale ; la VRAIE capitale est déjà désignée par le liseré pourpre). Pas de variante
 ## portuaire. Repli sur le glyphe d'encre si le tampon manque. Display-only.
-func _draw_settlement(w, r: int, role: int, ip: Vector2, zoom: float) -> void:
+func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: float, mv) -> void:
 	var is_cs := role == 2
 	var is_wild := role == 4
 	# tier par POPULATION, plafonné à T4 — la capitale n'a PAS de stamp couronné (le liseré pourpre la marque).
 	var st := mini(_pop_tier(int(w.region_pop(r))), 4)
-	var id: String = SettlementStamps.id_for_settlement(st, false, is_wild, is_cs)
-	var tex := _stamp_get(id)
-	if tex == null:
-		_draw_town(ip, maxi(st - 1, 1), zoom, Color(0.20, 0.14, 0.09, 0.95))   # repli vectoriel
-		return
 	# taille (px ÉCRAN) : cité-état imposante (asset fixe), hameau libre petit, sinon ∝ tier de pop.
 	var size_tier := st
 	if is_cs:
@@ -1917,6 +1969,18 @@ func _draw_settlement(w, r: int, role: int, ip: Vector2, zoom: float) -> void:
 		size_tier = 2
 	var sz_px := lerpf(STAMP_PX_MIN, STAMP_PX_MAX, clampf(float(size_tier - 1) / 6.0, 0.0, 1.0))
 	var sz := sz_px / maxf(zoom, 0.0001)                                    # → unités MONDE (taille écran constante)
+	# ── LOT 5 D'ABORD : l'HABITAT ORIENTÉ (16px KCD) — la ligne du sprite suit le tier
+	#    (hameau→village→bourg→cité), sa SORTIE DE ROUTE pointe vers la route la plus proche. ──
+	var row: String = "city_state" if is_cs else ("hamlet" if is_wild else ["hamlet", "hamlet", "village", "town", "city_state"][st])
+	var o16 := _o16_get("%s_%s" % [row, _o16_dir_of(r, ctr, ip, mv)])
+	if o16 != null:
+		draw_texture_rect(o16, Rect2(ip - Vector2(sz * 0.5, sz * 0.5), Vector2(sz, sz)), false, Color(1, 1, 1, STAMP_ALPHA))
+		return
+	var id: String = SettlementStamps.id_for_settlement(st, false, is_wild, is_cs)
+	var tex := _stamp_get(id)
+	if tex == null:
+		_draw_town(ip, maxi(st - 1, 1), zoom, Color(0.20, 0.14, 0.09, 0.95))   # repli vectoriel
+		return
 	# ancre CENTRE : le tampon est posé AU MILIEU du siège (centré sur le point, pas au-dessus). Léger fade.
 	draw_texture_rect(tex, Rect2(ip - Vector2(sz * 0.5, sz * 0.5), Vector2(sz, sz)), false, Color(1, 1, 1, STAMP_ALPHA))
 

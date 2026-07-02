@@ -27,8 +27,18 @@ func _run() -> void:
 			ov.nature_mode = true
 			ov.queue_redraw()
 	var zoom := float(_arg("zoom=", "0"))
-	var cx := float(_arg("cx=", str(Sim.world.map_w() * 0.5)))
-	var cy := float(_arg("cy=", str(Sim.world.map_h() * 0.5)))
+	# cap=1 : centre sur la CAPITALE DU JOUEUR (évite de deviner des coordonnées monde)
+	var def_cx: String = str(Sim.world.map_w() * 0.5)
+	var def_cy: String = str(Sim.world.map_h() * 0.5)
+	if _arg("cap=", "0") == "1":
+		var me: int = Sim.world.player()
+		var capr: int = Sim.world.province_region(Sim.world.country_capital_province(me))
+		if capr >= 0:
+			var cc: Vector2 = Sim.world.region_centroid(capr)
+			def_cx = str(cc.x)
+			def_cy = str(cc.y)
+	var cx := float(_arg("cx=", def_cx))
+	var cy := float(_arg("cy=", def_cy))
 	if zoom > 0.0:
 		_map._camera.zoom = Vector2(zoom, zoom)
 		_map._camera.position = _map.iso_pos(cx, cy)

@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b8shotdiplo01"]
+
+[ext_resource type="Script" path="res://shot_diplo.gd" id="1_sdiplo"]
+
+[node name="ShotDiplo" type="Node"]
+script = ExtResource("1_sdiplo")
