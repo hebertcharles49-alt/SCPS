@@ -1,0 +1,192 @@
+================================================================================
+SCPS — CAHIER DE PROMPTS · SÉRIE 2 : CONSEILLERS · FACTIONS · TECHS · RESSOURCES
+· FONDS DE PROVINCE · CHROME RESTANT (rabats, notifs, sidebar, topbar, bateaux, menu)
+================================================================================
+Même protocole que la série 1 (12 planches livrées & intégrées). Copier le
+PRÉAMBULE COMMUN en tête de chaque prompt, puis le bloc de planche.
+
+--------------------------------------------------------------------------------
+PRÉAMBULE COMMUN (à coller en tête de CHAQUE prompt)
+--------------------------------------------------------------------------------
+Style global — « atlas ancien » : dessin à l'encre brune GRAVÉE (traits nets,
+hachures discrètes) rehaussé de LAVIS aquarelle ; papier vieilli. AUCUN style
+« jeu mobile », AUCUN token RPG mignon, AUCUN rendu 3D/plastique/brillant.
+Registre : gravure d'encyclopédie XVIIe + carte marine + enluminure.
+
+Palette IMPOSÉE (ne pas s'en écarter) :
+  encre sombre   #2a2419   (JAMAIS de noir pur #000000)
+  encre moyenne  #4a3b28
+  brun cuir      #3a3128
+  parchemin      #e8dcc0 (clair) · #cdbb92 (moyen) · #b09f78 (ombré)
+  rehauts lavis  : ocre #b08a4a · terre cuite #a05a3c · olive #6a7a4a ·
+                   ardoise #4a5a66 · prune #5a4458 · or vieilli #9a7a3c
+Lumière douce du NORD-OUEST. PAS d'ombre portée cuite. Anti-aliasing doux.
+
+Format : image 1024×1024, GRILLE STRICTE 4×4 de cellules 256×256 (16 pièces),
+UNE pièce par cellule, CENTRÉE, marge ≥ 12 %, FOND MAGENTA #FF00FF plein.
+Pas de texte. Chaque pièce doit lire à la taille-cible indiquée.
+(EXCEPTIONS de format : planches 20-22 « fonds de province » et 24 « menu » —
+format propre indiqué dans leur bloc.)
+
+--------------------------------------------------------------------------------
+PLANCHE 13 — CONSEILLERS (portraits de fonction)            cible : 48-72 px
+--------------------------------------------------------------------------------
+BUSTES DE TROIS-QUARTS gravés dans un médaillon OVALE à filet d'encre (cadre de
+miniature), visage GÉNÉRIQUE d'époque (pas de personnage moderne), un attribut
+de fonction + un rehaut de lavis par siège :
+  01 CHANCELIER (rouleau scellé, ardoise)      02 TRÉSORIER (bourse + clef, or)
+  03 MARÉCHAL (bâton de commandement, terre cuite)
+  04 INTENDANT (registre + balance, ocre)      05 GRAND PRÊTRE (encensoir, prune)
+  06 MAÎTRE DES SAVOIRS (astrolabe, ardoise)   07 ÉMISSAIRE/diplomate (missive tendue)
+  08 MAÎTRE-ESPION (demi-masque, encre pâle)
+  09-16 : les MÊMES HUIT sièges en variante FÉMININE (mêmes attributs/lavis).
+
+--------------------------------------------------------------------------------
+PLANCHE 14 — FACTIONS (blasons du spectre d'éthos)          cible : 24-48 px
+--------------------------------------------------------------------------------
+ÉCUS/BLASONS gravés (écu en pointe simple, filet d'encre, champ parchemin,
+UN meuble central + lavis de la faction). Les 6 factions × 2 états :
+  01 CONQUÉRANTS (poing ganté / masse d'armes, terre cuite)
+  02 MARCHANDS (balance + pièce, or vieilli)
+  03 LÉGISTES (rouleau de lois + sceau, ardoise)
+  04 GARDIENS (flamme votive dans un cercle, ocre)
+  05 TRANSGRESSEURS (œil dans un triangle brisé, prune)
+  06 COMMUNAUTAIRES (gerbe liée + mains, olive)
+  07-12 : les MÊMES SIX en version « EN COLÈRE » : champ assombri, meuble
+          identique, une FISSURE d'encre en travers de l'écu (la rancœur qui couve)
+  13 couronne de DOMINANTE (petit laurier d'or à poser SUR un écu)
+  14 fissure de COUP seule (surcharge transparente, à poser sur un écu)
+  15 écu VIDE parchemin (gabarit)              16 écu vide CUIR sombre (gabarit)
+
+--------------------------------------------------------------------------------
+PLANCHES 15-18 — TECHS : ICÔNES INDIVIDUELLES (4 planches = 64 pièces)  cible : 30-44 px
+--------------------------------------------------------------------------------
+Médaillon ROND uniforme (cercle d'encre + fond parchemin) ; le SUJET de CHAQUE
+tech gravé au centre, UN rehaut de lavis par FONCTION (Forge=terre cuite ·
+Société=olive · Savoir=ardoise · faustien=prune · production=ocre).
+
+PLANCHE 15 — le SOCLE (tiers 1-2, seize techs) :
+  01 Rouages de précision (deux engrenages bois)   02 Mécanisme d'horlogerie (échappement)
+  03 Alliages des profondeurs (creuset + lingot)   04 Gravure runique (burin sur pierre runée)
+  05 Glyphes éthérés (plume traçant un glyphe)     06 Communion éthérée (deux mains + halo)
+  07 Droit coutumier (bâton de parole + anneau)    08 Langue franque (deux phylactères noués)
+  09 Vergers étagés (arbre en espalier)            10 Pâturages intégrés (clôture + bête)
+  11 Rites guerriers (tambour + lance)             12 Hordes conquérantes (étendard au vent)
+  13 Charrue lourde (soc)                          14 Moulinage (meule)
+  15 Voile latine (voile triangulaire)             16 Maçonnerie (fil à plomb + truelle)
+
+PLANCHE 16 — l'ESSOR (tiers 2-3) :
+  01 Poudrière (baril cerclé)                      02 Arquebuse (platine à mèche)
+  03 Charbonnage (meule fumante)                   04 Haut fourneau (gueulard)
+  05 Imprimerie (presse à vis)                     06 Cartographie (compas sur carte)
+  07 Banque & lettres de change (lettre scellée + pièces)
+  08 Guildes (poinçon de maître)                   09 Scolastique (lutrin + livre enchaîné)
+  10 Astronomie (sphère armillaire)                11 Médecine des simples (mortier + herbes)
+  12 Fortification bastionnée (tracé étoilé)       13 Route pavée (borne milliaire)
+  14 Grue de chantier (grue à roue)                15 Écluse (porte à vantaux)
+  16 Sélection des semences (épi + main)
+
+PLANCHE 17 — les SIGNATURES d'héritage (tier 3, une par peuple + variantes) :
+  01 Forge à runes (enclume runée rougeoyante, prune+terre cuite)
+  02 Communion profonde (cercle de menhirs)        03 Automate de guilde (poupée mécanique)
+  04 Code des marches (stèle gravée)               05 Grenier impérial (silo scellé)
+  06 Chant des hordes (corne de guerre)            07 Alambic arcanique (cornue + étoile)
+  08 Miroir céleste (miroir + constellation)       09 Charpente de siège (bélier couvert)
+  10 Compagnies franches (deux épées liées)        11 Cadastre royal (plan quadrillé + sceau)
+  12 Serres froides (châssis vitré)                13 Poudre noire raffinée (fiole + grains)
+  14 Batellerie (gabare)                           15 Halles franches (halle + franchise scellée)
+  16 Rite de la terre (main dans un sillon)
+
+PLANCHE 18 — COMBOS & APEX (tier 4-5, anneaux d'or) :
+  01-14 : quatorze fusions TIER-4 — le médaillon porte DEUX anneaux d'or
+  entrelacés en bordure + le sujet : 01 Poudre runique (baril + rune) ·
+  02 Poliorcétique savante (tour + compas) · 03 Siège mécanique (trébuchet) ·
+  04 Chamanisme de guerre (crâne peint) · 05 Foederati (poignée de mains armée) ·
+  06 Horde mécanisée (roue + étendard) · 07 Automates arcanes (golem d'atelier) ·
+  08 Druidisme de verger (faucille + gui) · 09 Guildes marchandes (nef + poinçon) ·
+  10 Charrues franches (soc + affranchissement) · 11 Machines agricoles (semoir) ·
+  12 Horlogerie marchande (montre + balance) · 13 Académie syncrétique (deux plumes
+  croisées) · 14 Grenier colonial (silo + navire)
+  15-16 : deux APEX TIER-5 (TROIS anneaux d'or + fond légèrement enluminé) :
+  15 Arquebuse runique (canon runé) · 16 Concile des savants (trois chaires en cercle)
+
+--------------------------------------------------------------------------------
+PLANCHE 19 — RESSOURCES (les biens, chips d'inventaire)     cible : 20-32 px
+--------------------------------------------------------------------------------
+PASTILLES rondes à filet d'encre, le BIEN gravé plein cadre, lavis naturel :
+  01 Céréales (gerbe)         02 Poisson (poisson courbé)   03 Bétail (tête de bœuf)
+  04 Fruits (panier)          05 Bois (bûches liées)        06 Pierre (bloc taillé)
+  07 Argile (motte + tour)    08 Fer (lingot + pic)         09 Cuivre (lingot vert-de-gris)
+  10 Or (pépite/pièces)       11 Sel (pain de sel)          12 Laine (toison)
+  13 Fourrure (peau tendue)   14 Charbon (morceaux)         15 Cristal arcanique
+                                                               (prisme prune)
+  16 Fer céleste (météore ferreux étoilé)
+
+--------------------------------------------------------------------------------
+PLANCHES 20-22 — FONDS DE PROVINCE PAR BIOME (« cadre Magic », enluminure)
+FORMAT PROPRE : 1024×1024 en grille 2×2 de cellules 512×512 (4 pièces/planche,
+12 fonds au total). Cible d'usage : bandeau d'en-tête du panneau de province
+(~640×220 recadré) — PAYSAGE PEINT entre la peinture à l'huile et l'ENLUMINURE :
+lavis riches, lumière dorée, UN cadre intérieur fin à l'encre (comme l'art d'une
+carte Magic), AUCUN personnage, AUCUN bâtiment moderne. Chaque pièce = un biome,
+horizon aux 2/3, ciel parcheminé (pas de bleu saturé).
+--------------------------------------------------------------------------------
+PLANCHE 20 :
+  01 PLAINES/CHAMPS (blés dorés, haies, chemin)   02 FORÊT de feuillus (futaie, rai de lumière)
+  03 MONTAGNES (pics ocres, éboulis, col)         04 CÔTE (falaise + anse, voile au loin)
+PLANCHE 21 :
+  05 DÉSERT (dunes, roche rouge, caravane ténue)  06 STEPPE (herbe rase, ciel large)
+  07 MARAIS (eaux mortes, roseaux, brume)         08 JUNGLE (canopée dense, lianes, orchidée)
+PLANCHE 22 :
+  09 TAÏGA/pinède (sapins sous brume froide)      10 TOUNDRA/GLACIER (neige bleutée, aurore pâle)
+  11 COLLINES/vignobles (terrasses, cyprès)       12 FLEUVE/delta (méandres, limons, barque)
+
+--------------------------------------------------------------------------------
+PLANCHE 23 — CHROME RESTANT : rabats · notifs · sidebar gauche  cible : 16-40 px
+--------------------------------------------------------------------------------
+  01 RABAT de panneau « replier » (chevron gauche dans languette cuir)
+  02 rabat « déplier » (chevron droit)             03 rabat VERTICAL bas (replier)
+  04 épingle « garder ouvert » (punaise d'or)
+  — SIDEBAR GAUCHE (mêmes médaillons que la planche 11) :
+  05 ÉCONOMIE (bourse + épi)                       06 DÉMOGRAPHIE (trois silhouettes)
+  07 STOCKS (tonneaux empilés)                     08 MARCHÉ (étal + balance)
+  09 ARMÉE (heaume)                                10 FILTRES/CALQUES (deux cartes superposées
+                                                       — le calque politique qui se soulève)
+  11 DIPLOMATIE (deux fanions croisés)             12 CONSEIL (chaire + rouleau)
+  13 ROYAUME (couronne sur écu)                    14 RELIGION (flamme votive)
+  — NOTIFS/POPUP (compléments planche 3) :
+  15 succès/victoire (laurier)                     16 échec/deuil (voile noir sur écu)
+
+--------------------------------------------------------------------------------
+PLANCHE 24 — TOPBAR · BATEAUX · MENU PRINCIPAL
+FORMAT : 1024×1024 grille 4×4 SAUF pièce 16 (voir note).      cible : topbar 16-22 px
+--------------------------------------------------------------------------------
+  — TOPBAR (médaillons FINS, plus sobres que la planche 11 — ils vivent à 16 px) :
+  01 date/an (sablier)          02 trésor (pièce frappée fine)
+  03 vivres (épi seul)          04 savoir (plume + encrier)
+  05 vitesse (voile de moulin)  06 pause (deux colonnes)
+  07 âge/époque (couronne de laurier + étoile)
+  08 chantier de colonisation (charrette bâchée)
+  — BATEAUX (profil gravé, flottaison nette, pour la carte & la flotte) :
+  09 barque de pêche (voile carguée)        10 cotre marchand (voile aurique)
+  11 nef de guerre (château avant + pavois) 12 galère (rangée de rames)
+  13 navire colonial (coque ronde + tonneaux arrimés)
+  14 épave (coque brisée à demi immergée)
+  — MENU :
+  15 fleuron de TITRE du menu principal (grand ornement calligraphique horizontal,
+     volutes + couronne centrale, ~480×160 dans la cellule)
+  16 FOND DU MENU PRINCIPAL — ⚠ à générer À PART en 1920×1080 SANS grille :
+     une table de cartographe vue de dessus, carte parchemin déroulée, compas,
+     encrier, bougie éteinte, coin de sceau — sombre sur les bords (vignette),
+     le CENTRE CALME (les boutons se posent dessus). Même palette, même encre.
+
+================================================================================
+NOTES DE LIVRAISON
+- Priorité d'intégration : 13 (conseil) · 14 (factions — la sidebar les attend) ·
+  19 (ressources) · 23 (sidebar gauche) · 24 (topbar+menu) · 15-18 (techs) ·
+  20-22 (fonds de province).
+- Les médaillons de tech (15-18) doivent partager EXACTEMENT le même cercle/fond
+  que la planche 5 (états verrouillé/dispo/acquis déjà livrés s'y superposent).
+- Fonds de province (20-22) : prévoir de la MATIÈRE sur toute la cellule (le
+  recadrage 640×220 se fait à l'intégration, horizon visible dans la bande).
+================================================================================

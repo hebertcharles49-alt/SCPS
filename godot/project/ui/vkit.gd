@@ -107,6 +107,16 @@ static func fill(ci: CanvasItem, r: Rect2, c: Color) -> void:
 
 ## panel_bg : ombre portée + corps navy arrondi + voile clair + double liseré cuivre
 static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
+	# PARCHEMIN d'abord : le cadre CUIR riveté (planche 1, pièce 01) en 9-slice —
+	# fond sombre, le texte clair existant reste lisible. Repli = l'aplat navy.
+	var UIKit := load("res://ui/uikit.gd")
+	var psb: StyleBox = UIKit.parch_box("sheet01_panel_chrome_01", 26)
+	if psb != null:
+		var sh := StyleBoxFlat.new()
+		sh.bg_color = COL_SHADOW; sh.set_corner_radius_all(10)
+		ci.draw_style_box(sh, Rect2(r.position + Vector2(4, 6), r.size))
+		ci.draw_style_box(psb, r)
+		return
 	var sb_shadow := StyleBoxFlat.new()
 	sb_shadow.bg_color = COL_SHADOW; sb_shadow.set_corner_radius_all(10)
 	ci.draw_style_box(sb_shadow, Rect2(r.position + Vector2(4, 6), r.size))

@@ -27,11 +27,19 @@ static func build() -> Theme:
 	if fui != null:
 		th.default_font = fui
 		th.default_font_size = 15
-	# ── BOUTONS : 4 états NETTEMENT distincts (le cœur du feedback) ──
-	var normal := _box(Color(0.23, 0.19, 0.14), Color(0.42, 0.35, 0.24))
-	var hover := _box(Color(0.32, 0.27, 0.19), Color(0.68, 0.56, 0.34))
-	var press := _box(Color(0.14, 0.11, 0.08), Color(0.55, 0.44, 0.26), 1, true)
-	var disab := _box(Color(0.20, 0.17, 0.14, 0.55), Color(0.30, 0.26, 0.20, 0.5))
+	# ── BOUTONS : 4 états NETTEMENT distincts (le cœur du feedback) — les pièces
+	#    PARCHEMIN (planche 2 : cuir/or, survol clair, pressé sombre, gris fané) en
+	#    9-slice quand elles sont là ; repli = les StyleBoxFlat.
+	var UIKit := preload("res://ui/uikit.gd")
+	var normal: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_01", 7, 12.0, 5.0, 0.5)
+	var hover: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_02", 7, 12.0, 5.0, 0.5)
+	var press: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_03", 7, 12.0, 5.0, 0.5)
+	var disab: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_04", 7, 12.0, 5.0, 0.5)
+	if normal == null or hover == null or press == null or disab == null:
+		normal = _box(Color(0.23, 0.19, 0.14), Color(0.42, 0.35, 0.24))
+		hover = _box(Color(0.32, 0.27, 0.19), Color(0.68, 0.56, 0.34))
+		press = _box(Color(0.14, 0.11, 0.08), Color(0.55, 0.44, 0.26), 1, true)
+		disab = _box(Color(0.20, 0.17, 0.14, 0.55), Color(0.30, 0.26, 0.20, 0.5))
 	var focus := StyleBoxFlat.new()
 	focus.draw_center = false
 	focus.border_color = Color(0.86, 0.68, 0.26, 0.55)   # l'or de sélection, discret

@@ -10,6 +10,158 @@ const CHROME := "res://assets/scps/ui/chrome/"
 const ICONS  := "res://assets/scps/ui/icons/"
 const RESOURCES := "res://assets/scps/pack/resources/"
 const MAP := "res://assets/scps/pack/map/"
+const PARCH := "res://assets/scps/ui/parch/"   ## les 12 planches PARCHEMIN (cellules 256², alpha)
+
+## LE RESKIN PARCHEMIN passe par ICI : nom d'icône historique → pièce des nouvelles
+## planches. Le remap est consulté en PREMIER par icon() — aucun panneau à retoucher ;
+## pièce absente → l'ancienne icône (le jeu tourne à moitié reskiné sans casse).
+const PARCH_ICON := {
+	"gold_coin":          "sheet11_system_icons_01",
+	"population_group":   "sheet11_system_icons_02",
+	"grain_bundle":       "sheet11_system_icons_03",
+	"knowledge_book":     "sheet11_system_icons_04",
+	"action_build":       "sheet11_system_icons_05",
+	"build_hammer":       "sheet11_system_icons_05",
+	"action_recruit":     "sheet11_system_icons_06",
+	"action_research":    "sheet11_system_icons_07",
+	"action_trade":       "sheet11_system_icons_08",
+	"action_treaty":      "sheet11_system_icons_09",
+	"action_decree":      "sheet11_system_icons_10",
+	"dipl_rivalry":       "sheet11_system_icons_11",
+	"alert_revolt":       "sheet11_system_icons_12",
+	"alert_famine":       "sheet11_system_icons_13",
+	"alert_shortage":     "sheet11_system_icons_13",
+	"alert_siege":        "sheet11_system_icons_14",
+	"alert_event_bell":   "sheet11_system_icons_15",
+	"alert_warning":      "sheet11_system_icons_15",
+	"politics_crown":     "sheet11_system_icons_16",
+}
+
+## pièce parch : texture + BBOX opaque (les cellules 256² ont de larges marges vides —
+## on ne dessine que la matière). Cache {tex, rect}.
+static var _parch_cache := {}
+static func parch_piece(piece: String) -> Dictionary:
+	if _parch_cache.has(piece):
+		return _parch_cache[piece]
+	var out := {}
+	var path := PARCH + piece + ".png"
+	if FileAccess.file_exists(path):
+		var img := Image.load_from_file(path)
+		if img != null:
+			var used := img.get_used_rect()
+			img.generate_mipmaps()
+			out = {"tex": ImageTexture.create_from_image(img), "rect": used}
+	_parch_cache[piece] = out
+	return out
+
+## STYLEBOX 9-slice sur la BANDE opaque d'une pièce (le CORPS d'un bouton, hors fleuron
+## décoratif) : on mesure la largeur opaque de chaque ligne, la bande = les lignes à
+## ≥85 % du max (le crest étroit au-dessus est exclu) → le 9-slice ne s'écrase plus.
+static var _parch_band := {}
+static func parch_band_box(piece: String, tm: int, cmh: float = -1.0, cmv: float = -1.0,
+		scale: float = 1.0) -> StyleBox:
+	var key := "%s@%d@%.0f@%.0f@%.2f" % [piece, tm, cmh, cmv, scale]
+	if _parch_band.has(key):
+		return _parch_band[key]
+	var sb: StyleBox = null
+	var path := PARCH + piece + ".png"
+	if FileAccess.file_exists(path):
+		var img := Image.load_from_file(path)
+		if img != null:
+			if img.get_format() != Image.FORMAT_RGBA8:
+				img.convert(Image.FORMAT_RGBA8)
+			if scale != 1.0:
+				# les marges 9-slice sont en px SOURCE : une bordure de 14 px écraserait un
+				# bouton de 38 px — on RÉDUIT la source pour ramener la bordure à l'échelle UI
+				img.resize(int(img.get_width() * scale), int(img.get_height() * scale),
+					Image.INTERPOLATE_LANCZOS)
+			var w := img.get_width()
+			var h := img.get_height()
+			var data := img.get_data()
+			var x0s := PackedInt32Array(); x0s.resize(h)
+			var x1s := PackedInt32Array(); x1s.resize(h)
+			var wid := PackedInt32Array(); wid.resize(h)
+			var maxw := 0
+			for y in range(h):
+				var a0 := -1
+				var a1 := -1
+				var row := y * w * 4
+				for x in range(w):
+					if data[row + x * 4 + 3] > 24:
+						if a0 < 0:
+							a0 = x
+						a1 = x
+				x0s[y] = a0; x1s[y] = a1
+				wid[y] = (a1 - a0 + 1) if a0 >= 0 else 0
+				maxw = maxi(maxw, wid[y])
+			if maxw > 8:
+				var thr := int(maxw * 0.85)
+				# la PLUS LONGUE plage CONTIGUË ≥ seuil : le corps du bouton — une 2e ligne
+				# pleine largeur ailleurs (ombre sous la pièce) ne s'invite plus dans la région
+				var y0 := -1
+				var y1 := -1
+				var run0 := -1
+				for y in range(h + 1):
+					var on: bool = (y < h) and wid[y] >= thr
+					if on and run0 < 0:
+						run0 = y
+					elif not on and run0 >= 0:
+						if y0 < 0 or (y - run0) > (y1 - y0 + 1):
+							y0 = run0
+							y1 = y - 1
+						run0 = -1
+				var rx0 := w
+				var rx1 := 0
+				if y0 >= 0:
+					for y in range(y0, y1 + 1):
+						if wid[y] > 0:
+							rx0 = mini(rx0, x0s[y])
+							rx1 = maxi(rx1, x1s[y])
+				if y0 >= 0 and y1 > y0:
+					img.generate_mipmaps()
+					var st := StyleBoxTexture.new()
+					st.texture = ImageTexture.create_from_image(img)
+					st.region_rect = Rect2(rx0, y0, rx1 - rx0 + 1, y1 - y0 + 1)
+					st.texture_margin_left = tm
+					st.texture_margin_right = tm
+					st.texture_margin_top = tm
+					st.texture_margin_bottom = tm
+					if cmh >= 0.0:
+						st.content_margin_left = cmh
+						st.content_margin_right = cmh
+					if cmv >= 0.0:
+						st.content_margin_top = cmv
+						st.content_margin_bottom = cmv
+					sb = st
+	_parch_band[key] = sb
+	return sb
+
+## STYLEBOX 9-slice depuis une pièce parch (bbox → region_rect, marges de texture tm,
+## marges de contenu cmh/cmv). null si la pièce manque → l'appelant garde son repli.
+static var _parch_sb := {}
+static func parch_box(piece: String, tm: int, cmh: float = -1.0, cmv: float = -1.0) -> StyleBox:
+	var key := "%s@%d@%.0f@%.0f" % [piece, tm, cmh, cmv]
+	if _parch_sb.has(key):
+		return _parch_sb[key]
+	var sb: StyleBox = null
+	var p := parch_piece(piece)
+	if not p.is_empty():
+		var st := StyleBoxTexture.new()
+		st.texture = p["tex"]
+		st.region_rect = p["rect"]
+		st.texture_margin_left = tm
+		st.texture_margin_right = tm
+		st.texture_margin_top = tm
+		st.texture_margin_bottom = tm
+		if cmh >= 0.0:
+			st.content_margin_left = cmh
+			st.content_margin_right = cmh
+		if cmv >= 0.0:
+			st.content_margin_top = cmv
+			st.content_margin_bottom = cmv
+		sb = st
+	_parch_sb[key] = sb
+	return sb
 
 const SETTLE_CELL := 96   # atlas settlements : 6 tiers (col) × 6 groupes (ligne), 96 px
 
@@ -395,6 +547,10 @@ static func _tex(path: String) -> Texture2D:
 	return tex
 
 static func icon(name: String) -> Texture2D:
+	if PARCH_ICON.has(name):
+		var t := _tex(PARCH + PARCH_ICON[name] + ".png")
+		if t != null:
+			return t
 	return _tex(ICONS + name + ".png")
 
 static func chrome(name: String) -> Texture2D:
@@ -440,8 +596,25 @@ static func draw_chrome(ci: CanvasItem, name: String, rect: Rect2, mod: Color = 
 
 ## JAUGE TEXTURÉE : cadre vide + remplissage (région clippée à `value` 0-100).
 ## La couleur du remplissage suit le sens : vert (haut) · or (moyen) · rouge (bas).
+## PARCHEMIN d'abord (planche 4 : gouttière 01 + remplissages olive 03 / or 02 /
+## terre cuite 04, dessinés par BBOX — les cellules ont de larges marges vides).
 static func bar(ci: CanvasItem, rect: Rect2, value: int) -> void:
 	value = clampi(value, 0, 100)
+	var trough := parch_piece("sheet04_gauges_bars_01")
+	if not trough.is_empty():
+		ci.draw_texture_rect_region(trough["tex"], rect, trough["rect"])
+		var fname := "sheet04_gauges_bars_03" if value >= 60 else \
+			("sheet04_gauges_bars_02" if value >= 35 else "sheet04_gauges_bars_04")
+		var fp := parch_piece(fname)
+		if not fp.is_empty() and value > 0:
+			var fr: Rect2 = fp["rect"]
+			var inset := Vector2(rect.size.y * 0.18, rect.size.y * 0.18)
+			var area := Rect2(rect.position + inset, rect.size - inset * 2.0)
+			var fw := area.size.x * value / 100.0
+			ci.draw_texture_rect_region(fp["tex"],
+				Rect2(area.position, Vector2(fw, area.size.y)),
+				Rect2(fr.position, Vector2(fr.size.x * value / 100.0, fr.size.y)))
+		return
 	var empty := chrome("bar_empty_prosperity")
 	if empty != null:
 		ci.draw_texture_rect(empty, rect, false)

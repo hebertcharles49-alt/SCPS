@@ -193,6 +193,13 @@ func _ready() -> void:
 	popup.goto_region.connect(goto_fn)
 	popup.open_tab.connect(func(i): _sidebar.open_tab(i))
 
+	# ⚠ THÈME : la propagation s'arrête au CanvasLayer (ni Control ni Window) — le thème
+	# de la fenêtre n'atteint JAMAIS les panneaux de la couche UI tout seul. On le pose
+	# donc sur CHAQUE Control de premier niveau (leurs enfants en héritent normalement).
+	for c in ui.get_children():
+		if c is Control:
+			c.theme = get_window().theme
+
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 
 func _unhandled_input(e: InputEvent) -> void:

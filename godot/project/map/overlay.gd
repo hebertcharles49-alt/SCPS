@@ -3129,10 +3129,14 @@ func _draw_banner(w, r: int, ip: Vector2, zoom: float, a: float) -> void:
 	var bw := tw + hpad * 2.0 + dotw
 	var top := ip.y - 34.0 * sc - bh                       # au-dessus du tampon (écran constant)
 	var rect := Rect2(Vector2(ip.x - bw * 0.5, top), Vector2(bw, bh))
-	# ombre portée + parchemin CLAIR + liseré : le chip se détache du terrain pâle (KCD)
+	# ombre portée + CARTOUCHE parchemin (planche 1, pièce 11) — repli : rects plats
 	draw_rect(Rect2(rect.position + Vector2(1.2 * sc, 1.4 * sc), rect.size), Color(0.10, 0.07, 0.04, 0.35 * a))
-	draw_rect(rect, Color(0.97, 0.93, 0.80, 0.94 * a))                       # le parchemin du chip
-	draw_rect(rect, Color(0.25, 0.18, 0.10, 0.95 * a), false, 1.2 * sc)      # liseré d'encre franc
+	var chip: Dictionary = UIKit.parch_piece("sheet01_panel_chrome_11")
+	if not chip.is_empty():
+		draw_texture_rect_region(chip["tex"], rect, chip["rect"], Color(1, 1, 1, a))
+	else:
+		draw_rect(rect, Color(0.97, 0.93, 0.80, 0.94 * a))                       # le parchemin du chip
+		draw_rect(rect, Color(0.25, 0.18, 0.10, 0.95 * a), false, 1.2 * sc)      # liseré d'encre franc
 	var own := int(w.region_owner(r))
 	var dot: Color = _entity_pigment(own) if own >= 0 else Color(0.52, 0.46, 0.36)
 	draw_circle(Vector2(rect.position.x + hpad + 1.5 * sc, rect.position.y + bh * 0.5), 2.6 * sc, Color(dot, a))
