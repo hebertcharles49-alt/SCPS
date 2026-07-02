@@ -200,12 +200,12 @@ const POL_HALO := Color(0.090, 0.067, 0.043)     ## #17110b brun très sombre �
 # HIÉRARCHIE par asymétrie de rails : la bande d'EMPIRE respire fort (toujours lisible) ; la trame de
 # provinces reste un cheveu (≤1.3px) gouvernée par son fondu → l'empire DOMINE, la province ÉMERGE.
 # largeurs zoom-adaptatives (_w) du trait de PAYS : halo LARGE + pigment FIN (la province reste un cheveu).
-const POL_HALO_BASE := 1.1   ## halo de pays : épaisseur MONDE (≈ 2.6→3.2 px écran selon le zoom)
-const POL_HALO_MIN  := 2.6   ## plancher px (survit au plan large)
-const POL_HALO_MAX  := 3.2   ## plafond px SERRÉ : au zoom bourg, la frontière ne domine plus la ville
-const POL_PIG_BASE  := 0.55  ## pigment politique FIN par-dessus le halo (≈ 1.4→1.8 px écran)
-const POL_PIG_MIN   := 1.4
-const POL_PIG_MAX   := 1.8
+const POL_HALO_BASE := 0.85  ## creux gravé sous l'outline (≈ 2.0→2.4 px écran) — discret
+const POL_HALO_MIN  := 2.0   ## plancher px (survit au plan large)
+const POL_HALO_MAX  := 2.4   ## plafond px SERRÉ : plus jamais un boudin
+const POL_PIG_BASE  := 0.45  ## l'OUTLINE d'éthos net (≈ 1.2→1.5 px écran)
+const POL_PIG_MIN   := 1.2
+const POL_PIG_MAX   := 1.5
 ## OUTLINE par HÉRITAGE (6 cultures) : Éso · Métal · Méca · Adapt · Agra · Clan — ENCRES SOMBRES terreuses.
 const HERITAGE_PIG := [
 	Color(0.31, 0.35, 0.42),   ## Ésotérique  : ardoise (bleu-gris sourd)
@@ -1278,17 +1278,67 @@ func _entity_wash(e: int) -> Color:
 func _w(zoom: float, base_world: float, min_px: float, max_px: float) -> float:
 	return clampf(base_world * zoom, min_px, max_px) / maxf(zoom, 0.0001)
 
-## frontière de PAYS en DOUBLE PASSE (gravé, façon Civ/atlas) : (1) halo brun très sombre LARGE = le
-## « creux » gravé qui DÉTACHE la frontière du terrain ; (2) pigment politique FIN par-dessus = la couleur
-## de l'entité. Tracé SUR la ligne lissée (les normales ne servent plus qu'au liseré de capitale).
-func _draw_band(mv: Node2D, segs: PackedVector2Array, pigment: Color, zoom: float) -> void:
+## frontière de PAYS façon CIV/STELLARIS — fin des « boudins » : (1) un creux gravé discret,
+## (2) l'OUTLINE net SUR la ligne = f(ÉTHOS) (l'axe politique se lit à la frontière), (3) un
+## LAVIS INTÉRIEUR = f(HÉRITAGE), 3 couches décalées le long de la NORMALE intérieure, alpha
+## dégressif → la lueur de territoire, jamais une saucisse opaque. Cité-état = or fané.
+const ETHOS_INK := [
+	Color(0.47, 0.22, 0.16),   # 0 — braise (le pôle martial/chaos, chaud)
+	Color(0.54, 0.34, 0.16),   # 1 — bronze
+	Color(0.44, 0.38, 0.20),   # 2 — terre d'ombre
+	Color(0.28, 0.38, 0.26),   # 3 — mousse
+	Color(0.22, 0.33, 0.42),   # 4 — ardoise d'eau
+	Color(0.28, 0.26, 0.46),   # 5 — indigo (le pôle ordre, froid)
+]
+const HERITAGE_WASH := [
+	Color(0.58, 0.42, 0.62),   # Ésotérique — lilas de prune
+	Color(0.72, 0.44, 0.30),   # Métallurgiste — rouille
+	Color(0.70, 0.56, 0.34),   # Mécaniste — laiton
+	Color(0.52, 0.62, 0.38),   # Adaptatif — olive claire
+	Color(0.78, 0.64, 0.34),   # Agraire — ocre blé
+	Color(0.60, 0.36, 0.32),   # Clanique — sang délavé
+]
+func _ethos_ink(e: int) -> Color:
+	var idx := 0
+	if e >= 0 and Sim.world != null:
+		idx = clampi(int(Sim.world.country_ethos(e)), 0, 5)
+	var c: Color = ETHOS_INK[idx]
+	var v := 0.92 + 0.16 * _h1(float(e) * 17.3)     # valeur jittée par pays (jamais la teinte)
+	return Color(c.r * v, c.g * v, c.b * v)
+
+func _heritage_wash(e: int) -> Color:
+	var idx := 0
+	if e >= 0 and Sim.world != null:
+		idx = clampi(int(Sim.world.country_heritage(e)), 0, 5)
+	return HERITAGE_WASH[idx]
+
+func _draw_band(mv: Node2D, segs: PackedVector2Array, nrms: PackedVector2Array, entity: int, zoom: float) -> void:
 	if segs.size() < 2:
 		return
-	var proj := _project_segs_iso(mv, segs)
-	if proj.size() < 2:
+	var is_cs: bool = entity >= 0 and Sim.world != null and int(Sim.world.country_role(entity)) == 2
+	var out_col: Color = CS_GOLD if is_cs else _ethos_ink(entity)
+	var in_col: Color = Color(0.80, 0.68, 0.40) if is_cs else _heritage_wash(entity)
+	# l'INLINE d'abord (sous l'outline) : le lavis d'héritage, décalé vers l'INTÉRIEUR
+	var have_n := nrms.size() * 2 >= segs.size()
+	if have_n:
+		var lw := _w(zoom, 0.55, 1.8, 3.4)
+		for k in range(3):
+			# ⚠ _b_norm porte la normale EXTÉRIEURE (héritée de la façade) → l'intérieur est à -n
+			var off := -(0.45 + 0.62 * float(k))
+			var a: float = [0.34, 0.20, 0.10][k]
+			var proj := PackedVector2Array()
+			proj.resize(segs.size())
+			for i in range(0, segs.size() - 1, 2):
+				var n: Vector2 = nrms[i >> 1] * off
+				proj[i] = mv.iso_pos(segs[i].x + n.x, segs[i].y + n.y)
+				proj[i + 1] = mv.iso_pos(segs[i + 1].x + n.x, segs[i + 1].y + n.y)
+			draw_multiline(proj, Color(in_col.r, in_col.g, in_col.b, a), lw, true)
+	# le CREUX gravé (discret) + l'OUTLINE d'éthos NET, sur la ligne
+	var proj0 := _project_segs_iso(mv, segs)
+	if proj0.size() < 2:
 		return
-	draw_multiline(proj, Color(POL_HALO.r, POL_HALO.g, POL_HALO.b, 0.45), _w(zoom, POL_HALO_BASE, POL_HALO_MIN, POL_HALO_MAX), true)
-	draw_multiline(proj, Color(pigment.r, pigment.g, pigment.b, 0.85), _w(zoom, POL_PIG_BASE, POL_PIG_MIN, POL_PIG_MAX), true)
+	draw_multiline(proj0, Color(POL_HALO.r, POL_HALO.g, POL_HALO.b, 0.36), _w(zoom, POL_HALO_BASE, POL_HALO_MIN, POL_HALO_MAX), true)
+	draw_multiline(proj0, Color(out_col.r, out_col.g, out_col.b, 0.92), _w(zoom, POL_PIG_BASE, POL_PIG_MIN, POL_PIG_MAX), true)
 
 ## LISERÉ de capitale : un SEUL trait FIN pourpre sourd, posé JUSTE à l'intérieur du contour (décalé
 ## le long de la normale intérieure) — un filet discret, PAS une bande qui prend toute la capitale.
@@ -1748,7 +1798,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 	# SÉPARER l'administratif (province, cheveu brun) du politique (pays, trait coloré net). Puis le
 	# LISERÉ POURPRE FIN de chaque capitale, AU-DESSUS.
 	for entity in _b_segs:
-		_draw_band(mv, _b_segs[entity], _entity_pigment(entity), zoom)
+		_draw_band(mv, _b_segs[entity], _b_norm.get(entity, PackedVector2Array()), int(entity), zoom)
 	for cc in _cap_segs:
 		_draw_cap_lisere(mv, _cap_segs[cc], _cap_norm[cc], zoom)
 

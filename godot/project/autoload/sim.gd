@@ -10,13 +10,15 @@ signal ticked(year: int)        ## un pas de simulation vient d'avancer
 
 const SEED_DEFAULT := 9
 
-## jours simulés par PAS, selon la vitesse (index 0 = pause). Ticks ALLONGÉS pour
-## un déroulé OBSERVABLE : à « normal » l'an 100 prend ~8 min (et non ~20 s) ; on
-## peut accélérer. (Display-only : aucun impact sur le déterminisme — advance_days(N)
-## roule la MÊME suite de sim_day, juste regroupée autrement.)
-const SPEED_DAYS := [0, 7, 20, 50]   ## pause · lent · normal · rapide (jours/pas)
+## CADENCE en jours simulés / SECONDE (index 0 = pause) — la baseline demandée :
+## un AN (365 j) ≈ 100 s en v1 · 45 s en v2 · 20 s en v3. Accumulateur fractionnaire
+## (3.6 j/s ne tombe pas rond par frame) ; sur les grosses sims un pas peut durer
+## plus longtemps — la baseline est un PLANCHER de lenteur, pas une promesse.
+## (Display-only : aucun impact sur le déterminisme — advance_days(N) roule la
+## MÊME suite de sim_day, juste regroupée autrement.)
+const SPEED_RATE := [0.0, 3.65, 8.1, 18.25]   ## pause · v1 · v2 · v3 (jours/seconde)
 const SPEED_LABELS := ["❙❙", "▶ lent", "▶▶ normal", "▶▶▶ rapide"]
-const STEP_PERIOD := 0.25       ## secondes entre deux pas
+const CATCHUP_MAX := 30         ## jours max rattrapés d'un coup (lag spike → pas de rafale)
 
 # `world` est UNTYPED à dessein : référencer le type `ScpsWorld` à la compilation
 # ferait échouer l'OUVERTURE du projet si la GDExtension n'est pas encore bâtie.
@@ -59,23 +61,28 @@ func save_slots() -> Array:
 func _process(delta: float) -> void:
 	if world == null:
 		return
-	var step: int = SPEED_DAYS[speed_index]
-	if step <= 0:
+	var rate: float = SPEED_RATE[speed_index]
+	if rate <= 0.0:
 		return
-	_accum += delta
-	if _accum < STEP_PERIOD:
+	_accum += delta * rate
+	var nd := int(_accum)
+	if nd <= 0:
 		return
-	_accum = 0.0
-	world.advance_days(step)
+	if nd > CATCHUP_MAX:            # gel/lag : on rattrape borné, le reste est abandonné
+		nd = CATCHUP_MAX
+		_accum = 0.0
+	else:
+		_accum -= float(nd)
+	world.advance_days(nd)
 	ticked.emit(world.year())
 
 func set_speed(i: int) -> void:
-	speed_index = clampi(i, 0, SPEED_DAYS.size() - 1)
+	speed_index = clampi(i, 0, SPEED_RATE.size() - 1)
 	if speed_index > 0:
 		_last_speed = speed_index
 
 func cycle_speed() -> void:
-	set_speed((speed_index + 1) % SPEED_DAYS.size())
+	set_speed((speed_index + 1) % SPEED_RATE.size())
 
 ## Espace : bascule pause ↔ dernière vitesse (parité viewer.c SDLK_SPACE)
 func toggle_pause() -> void:
@@ -83,7 +90,7 @@ func toggle_pause() -> void:
 
 ## +/- : monter / descendre d'un cran (sans repasser par la pause en montant)
 func faster() -> void:
-	set_speed(mini(speed_index + 1, SPEED_DAYS.size() - 1))
+	set_speed(mini(speed_index + 1, SPEED_RATE.size() - 1))
 
 func slower() -> void:
 	set_speed(maxi(speed_index - 1, 0))
