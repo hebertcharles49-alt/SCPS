@@ -153,19 +153,29 @@ void fragment() {
 		int bb = biome_at(cw);
 		if (bb >= 0) b = bb;
 		col = antique_base(cw, b);
-		// grain de PAPIER
+		// ── LOD ANTI-BAVE (dérivées écran) : les bruits du lavis sont calés en MONDE pour le
+		// plan moyen — au zoom PROFOND, magnifiés et interpolés, ils COULENT en taches molles
+		// (« ça bave »). `deep` (px écran/cellule) ESTOMPE les taches larges au rapproché et
+		// fait monter à la place une DENT DE PAPIER fine — le détail suit l'œil. ──
+		float ppc = 1.0 / max(fwidth(cell.x), 1e-5);
+		float zdeep = clamp((ppc - 5.0) / 9.0, 0.0, 1.0);
+		// grain de PAPIER (marbrure warpée = les grandes volutes ; atténuée au zoom profond)
 		vec2 wv = vec2(texture(noise_tex, cell * 0.02).r,
 		               texture(noise_tex, cell * 0.02 + vec2(4.0, 1.0)).r) - 0.5;
-		float g = texture(noise_tex, (cell + wv * 9.0) * 0.18).r;
+		float g = texture(noise_tex, (cell + wv * 7.0) * 0.18).r;
 		float g2 = texture(noise_tex, cell * 0.012 + vec2(3.0, 7.0)).r;
 		float grain_s = is_wet(b) ? paper_grain * 0.5 : paper_grain;
+		grain_s *= mix(1.0, 0.40, zdeep);
 		col *= mix(1.0 - grain_s, 1.0 + grain_s, g) * mix(0.93, 1.05, g2);
+		float fine = texture(noise_tex, cell * 1.35 + vec2(9.0, 4.0)).r;   // la DENT fine (zoom profond)
+		col *= mix(1.0, mix(0.958, 1.042, fine), zdeep);
 		// VARIATION PERLIN intra-biome : jitter RGB ±rgb_jitter/255 PAR CANAL (3 bruits décorrélés → micro
 		// dérive de teinte, pas juste de luminance) → les aplats RESPIRENT au lieu d'être morts.
+		// Atténuée au zoom profond (les blobs de teinte magnifiés participaient au bavage).
 		vec3 jit3 = vec3(vnoise(cell * jitter_freq),
 		                 vnoise(cell * jitter_freq + vec2(37.2, 11.5)),
 		                 vnoise(cell * jitter_freq + vec2(91.7, 53.1))) - 0.5;
-		col += jit3 * (2.0 * rgb_jitter / 255.0);
+		col += jit3 * (2.0 * rgb_jitter / 255.0) * mix(1.0, 0.45, zdeep);
 
 		if (is_water(b)) {
 			// MER : assombrissement CÔTIER CONTINU (proximité de terre lissée → plus de bandes discrètes
@@ -183,13 +193,12 @@ void fragment() {
 			float dash = sin(iso.x * 1.7 + step(0.0, rows) * 1.6);     // tirets décalés rangée/rangée
 			col = mix(col, col * 0.88, rowOn * smoothstep(0.2, 0.7, dash) * 0.40);
 		} else {
-			// TERRE FERME : « FADE TOUS LES BORDS » — l'eau déteint en dégradé LARGE sur la rive (bave
-			// aquarelle), et le trait d'encre de côte devient un simple VOILE humide : plus d'arête nette,
-			// la côte est un GRADIENT peint (rivière/lac/mer ↔ terre se fondent).
-			if (near_wet(cw, 4.0)) col = mix(col, vec3(0.53, 0.61, 0.61), 0.045);
-			if (near_wet(cw, 2.8)) col = mix(col, vec3(0.50, 0.59, 0.60), 0.060);
-			if (near_wet(cw, 1.7)) col = mix(col, vec3(0.47, 0.57, 0.59), 0.085);
-			if (near_wet(cw, 1.0)) col = mix(col, vec3(0.40, 0.46, 0.46), 0.120);   // bord = voile humide (pas d'encre dure)
+			// TERRE FERME : la rive déteint en voile humide COURT — resserré (l'ancien dégradé
+			// sur 4 cellules « bavait » en permanence autour de toute eau) ; la côte reste un
+			// gradient peint, mais tenu contre le rivage.
+			if (near_wet(cw, 2.6)) col = mix(col, vec3(0.51, 0.60, 0.60), 0.040);
+			if (near_wet(cw, 1.6)) col = mix(col, vec3(0.47, 0.57, 0.59), 0.070);
+			if (near_wet(cw, 1.0)) col = mix(col, vec3(0.41, 0.47, 0.47), 0.105);   // bord = voile humide (pas d'encre dure)
 		}
 
 		// RIVIÈRE = ENCRE FANÉE mais OPAQUE (pas un bleu uniforme « Google Maps », mais le sol ne TRANSPARAÎT
