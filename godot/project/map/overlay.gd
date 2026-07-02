@@ -255,11 +255,13 @@ const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
 # CHEMIN DE TERRE À 3 TRAITS (le motif cartographique classique — KCD/atlas) : un
 # sous-trait sépia sombre (l'ombre du creux), le corps CRÈME pâle (la terre battue),
 # un filet clair central. Le pointillé « carte au trésor » s'émiettait au zoom.
-const ROAD_EDGE  := Color(0.46, 0.31, 0.17, 0.42)  ## sous-trait : sépia sombre, large
-const ROAD_MAIN  := Color(0.957, 0.855, 0.655, 0.92) ## corps : crème (terre battue)
-const ROAD_LIGHT := Color(1.0, 0.965, 0.835, 0.45)  ## filet central clair
-const ROAD_MINOR_EDGE := Color(0.46, 0.31, 0.17, 0.30) ## desserte : plus ténue
-const ROAD_MINOR_MAIN := Color(0.957, 0.855, 0.655, 0.72)
+## GLACIS : le crème quasi-blanc « brillait » sur le lavis — rabattu vers le ton parchemin,
+## alphas baissés (la route est une trace DANS la carte, pas un ruban posé dessus).
+const ROAD_EDGE  := Color(0.46, 0.31, 0.17, 0.32)  ## sous-trait : sépia sombre, large
+const ROAD_MAIN  := Color(0.88, 0.79, 0.60, 0.66)  ## corps : terre battue (rabattu)
+const ROAD_LIGHT := Color(0.96, 0.90, 0.74, 0.22)  ## filet central (à peine)
+const ROAD_MINOR_EDGE := Color(0.46, 0.31, 0.17, 0.22) ## desserte : plus ténue
+const ROAD_MINOR_MAIN := Color(0.88, 0.79, 0.60, 0.46)
 # MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
 const ROADSIDE := [
 	"DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW",
@@ -1826,25 +1828,30 @@ func _stamp_get(id: String) -> Texture2D:
 ## amas radial. Monument au siège selon le tier (église t3+, donjon en capitale), ENCEINTE
 ## pour la cité-état. Ancré au MONDE (la ville tient sur sa rue à tous les zooms), tailles
 ## bornées en px écran par _w. Cache par région (RAZ au generate ; jamais figé sans routes).
-const TOWN_WALL   := Color(0.92, 0.87, 0.74, 0.96)   ## murs crème
-const TOWN_INK    := Color(0.16, 0.11, 0.07, 0.90)   ## cerne d'encre
-const TOWN_SHADOW := Color(0.16, 0.11, 0.07, 0.16)   ## ombre portée (assoit le bâti)
-const TOWN_GROUND := Color(0.88, 0.82, 0.64, 0.30)   ## la CLAIRIÈRE (terre battue du bourg)
-const FIELD_FILL  := Color(0.82, 0.78, 0.52, 0.30)   ## champs en lanières (lavis paille)
-const FIELD_FURROW:= Color(0.45, 0.38, 0.22, 0.30)   ## sillons
+## DISCIPLINE DE GLACIS (le fond d'abord) : le dressing s'intègre parce qu'il est TRANSLUCIDE
+## (DRESS_ALPHA 0.50) — le bâti suit la même loi. Plage de VALEURS comprimée (encres
+## éclaircies, crèmes rabattues) + alphas ~0.55-0.78 : le grain du parchemin traverse
+## chaque aplat, la ville est PEINTE SUR la carte, pas posée dessus.
+const TOWN_WALL   := Color(0.86, 0.80, 0.65, 0.78)   ## murs (glacis crème rabattu)
+const TOWN_INK    := Color(0.23, 0.17, 0.11, 0.60)   ## cerne d'encre (éclairci, jamais noir)
+const TOWN_SHADOW := Color(0.20, 0.15, 0.10, 0.10)   ## ombre portée (souffle)
+const TOWN_GROUND := Color(0.88, 0.82, 0.64, 0.20)   ## la CLAIRIÈRE (terre battue, voile)
+const FIELD_FILL  := Color(0.82, 0.78, 0.52, 0.20)   ## champs en lanières (lavis paille)
+const FIELD_FURROW:= Color(0.45, 0.38, 0.22, 0.22)   ## sillons
 ## trois PALETTES de toits — chaque bourg a la sienne (brique · bois · ardoise), la
 ## variante par maison joue la valeur : un village = une matière, pas un arlequin.
+## Teintes DÉSATURÉES + alpha glacis (le rouge brique cru détonnait sur le lavis).
 const ROOF_PAL := [
-	[Color(0.58, 0.28, 0.19, 0.94), Color(0.48, 0.23, 0.16, 0.94)],   # brique
-	[Color(0.46, 0.33, 0.21, 0.94), Color(0.38, 0.27, 0.17, 0.94)],   # bois
-	[Color(0.42, 0.40, 0.42, 0.94), Color(0.34, 0.33, 0.36, 0.94)],   # ardoise
+	[Color(0.55, 0.33, 0.24, 0.75), Color(0.47, 0.28, 0.21, 0.75)],   # brique fanée
+	[Color(0.46, 0.34, 0.22, 0.75), Color(0.39, 0.28, 0.18, 0.75)],   # bois patiné
+	[Color(0.44, 0.42, 0.41, 0.75), Color(0.37, 0.35, 0.35, 0.75)],   # ardoise chaude
 ]
 ## v3 — les couleurs restent DANS la famille du fond (l'exigence : ne pas détonner) :
 ## la place = la clairière en un ton plus clair ; le bois des quais = la palette toit-bois ;
 ## la fumée = un gris chaud à alpha très bas (un souffle, pas un trait).
-const PLAZA_FILL  := Color(0.90, 0.85, 0.68, 0.36)   ## place de marché (terre claire tassée)
-const QUAY_WOOD   := Color(0.44, 0.32, 0.22, 0.90)   ## planches de quai (bois patiné)
-const BOAT_WOOD   := Color(0.37, 0.27, 0.19, 0.92)   ## coque (bois sombre)
+const PLAZA_FILL  := Color(0.90, 0.85, 0.68, 0.22)   ## place de marché (terre claire tassée)
+const QUAY_WOOD   := Color(0.44, 0.32, 0.22, 0.70)   ## planches de quai (bois patiné, glacis)
+const BOAT_WOOD   := Color(0.37, 0.27, 0.19, 0.74)   ## coque (bois sombre, glacis)
 const SMOKE_SOFT  := Color(0.60, 0.56, 0.50, 0.14)   ## fumée de cheminée (souffle gris chaud)
 var _town_cache := {}       ## region → plan du bourg (voir _build_town)
 var _ink_bridges := []      ## [{w:Vector2, t:Vector2}] — ponts aux franchissements route×rivière
@@ -2156,7 +2163,7 @@ func _ink_house(p: Vector2, half: float, tilt: float, roof: Color, zoom: float) 
 		var dt: Vector2 = db + ((q["m"] as Vector2) - db) * 0.42
 		var dhw: Vector2 = ((q["b"] as Vector2) - (q["a"] as Vector2)) * 0.10
 		draw_colored_polygon(PackedVector2Array([db - dhw, db + dhw, dt + dhw, dt - dhw]),
-			Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.75))
+			Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.55))
 	draw_polyline(PackedVector2Array([q["a"], q["b"], q["c"], q["d"], q["e"], q["f"], q["g"], q["a"]]),
 		TOWN_INK, _w(zoom, 0.05, 0.45, 0.85), true)
 
@@ -2176,7 +2183,7 @@ func _ink_landmark(p: Vector2, half: float, kind: int, zoom: float, pen: Color) 
 		draw_colored_polygon(tower3, TOWN_WALL)
 		draw_polyline(PackedVector2Array([tower3[0], tower3[1], tower3[2], tower3[3], tower3[0]]), TOWN_INK, iw, true)
 		draw_colored_polygon(PackedVector2Array([p + Vector2(-mt * 0.66, -half * 0.95),
-			p + Vector2(mt * 0.66, -half * 0.95), p + Vector2(0, -half * 1.28)]), Color(0.42, 0.30, 0.20, 0.94))
+			p + Vector2(mt * 0.66, -half * 0.95), p + Vector2(0, -half * 1.28)]), Color(0.42, 0.30, 0.20, 0.75))
 		var hub := p + Vector2(0, -half * 1.02)
 		for k in range(4):
 			var wa := PI * 0.25 + float(k) * PI * 0.5
@@ -2193,7 +2200,7 @@ func _ink_landmark(p: Vector2, half: float, kind: int, zoom: float, pen: Color) 
 		draw_colored_polygon(body, TOWN_WALL)
 		var roof4 := PackedVector2Array([p + Vector2(-gw2 * 1.06, -gh * 0.4), p + Vector2(gw2 * 1.06, -gh * 0.4),
 			p + Vector2(gw2 * 0.62, -gh * 1.35), p + Vector2(-gw2 * 0.62, -gh * 1.35)])
-		draw_colored_polygon(roof4, Color(0.44, 0.32, 0.22, 0.94))
+		draw_colored_polygon(roof4, Color(0.44, 0.32, 0.22, 0.75))
 		draw_polyline(PackedVector2Array([body[0], body[1], roof4[1], roof4[2], roof4[3], roof4[0], body[0]]),
 			TOWN_INK, iw, true)
 		return
@@ -2201,8 +2208,8 @@ func _ink_landmark(p: Vector2, half: float, kind: int, zoom: float, pen: Color) 
 		# MOULIN À EAU : petite maison + ROUE à aubes sur le flanc
 		var q5 := _house_pts(p, half * 0.9, 0.0)
 		draw_colored_polygon(PackedVector2Array([q5["a"], q5["b"], q5["c"], q5["g"]]), TOWN_WALL)
-		draw_colored_polygon(PackedVector2Array([q5["f"], q5["m"], q5["e"]]), Color(0.46, 0.33, 0.21, 0.94).lightened(0.12))
-		draw_colored_polygon(PackedVector2Array([q5["m"], q5["d"], q5["e"]]), Color(0.46, 0.33, 0.21, 0.94).darkened(0.12))
+		draw_colored_polygon(PackedVector2Array([q5["f"], q5["m"], q5["e"]]), Color(0.46, 0.33, 0.21, 0.75).lightened(0.12))
+		draw_colored_polygon(PackedVector2Array([q5["m"], q5["d"], q5["e"]]), Color(0.46, 0.33, 0.21, 0.75).darkened(0.12))
 		draw_polyline(PackedVector2Array([q5["a"], q5["b"], q5["c"], q5["d"], q5["e"], q5["f"], q5["g"], q5["a"]]),
 			TOWN_INK, iw, true)
 		var wc := p + Vector2(-half * 1.18, half * 0.25)
@@ -2222,7 +2229,7 @@ func _ink_landmark(p: Vector2, half: float, kind: int, zoom: float, pen: Color) 
 		draw_colored_polygon(nave, TOWN_WALL)
 		var spire := PackedVector2Array([p + Vector2(-half * 0.32, -half * 0.3),
 			p + Vector2(half * 0.32, -half * 0.3), p + Vector2(0, -half * 2.1)])
-		draw_colored_polygon(spire, Color(0.34, 0.33, 0.36, 0.94))
+		draw_colored_polygon(spire, Color(0.34, 0.33, 0.36, 0.75))
 		draw_polyline(PackedVector2Array([p + Vector2(-half, half * 0.7), p + Vector2(half, half * 0.7),
 			p + Vector2(half, -half * 0.3), p + Vector2(half * 0.32, -half * 0.3), p + Vector2(0, -half * 2.1),
 			p + Vector2(-half * 0.32, -half * 0.3), p + Vector2(-half, -half * 0.3), p + Vector2(-half, half * 0.7)]),
@@ -2511,7 +2518,7 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 			apts[k] = mv.iso_pos(arc[k].x, arc[k].y)
 		# la MURAILLE en RUBAN DE PIERRE (3 passes) : ombre portée large → pierre crème → arête d'encre
 		draw_polyline(apts, Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.35), _w(zoom, 0.30, 1.8, 3.8), true)
-		draw_polyline(apts, Color(TOWN_WALL.r, TOWN_WALL.g, TOWN_WALL.b, 0.95), _w(zoom, 0.20, 1.2, 2.6), true)
+		draw_polyline(apts, Color(TOWN_WALL.r, TOWN_WALL.g, TOWN_WALL.b, 0.72), _w(zoom, 0.20, 1.2, 2.6), true)
 		draw_polyline(apts, TOWN_INK, _w(zoom, 0.07, 0.5, 1.0), true)
 	for tw2 in town["towers"]:
 		var tp: Vector2 = mv.iso_pos((tw2 as Vector2).x, (tw2 as Vector2).y)
