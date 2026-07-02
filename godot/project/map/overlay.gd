@@ -37,13 +37,10 @@ const DRESS_BY_BIOME := {
 	18: ["mountain_range_01", "mountain_range_02", "mountain_single_01", "mountain_single_02", "mountain_pass_01"],  # MONTAGNES
 	19: ["mountain_single_01", "mountain_single_02", "mountain_range_01"],   # PIC
 	23: ["mountain_single_01", "rocky_outcrop_01"],                          # VOLCAN
-	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02", "forest_mass_conifer_01", "lot6_conifer_01"],  # HAUTES-TERRES
+	16: ["hill_cluster_01", "hill_mark_01", "mountain_single_02", "lot6_conifer_01", "lot6_conifer_05"],  # HAUTES-TERRES
 	17: ["hill_mark_01", "hill_cluster_01", "rocky_outcrop_01", "lot6_ground_05"],  # COLLINES (lot 6 : amas de rochers)
-	# FORÊTS — MASSES lot 5 SEULES (ancrées au MONDE + passes denses → canopée CONTINUE qui
-	# s'overlappe ; les arbres ISOLÉS n'y collent plus — ils vivent en plaine et près des bourgs)
-	12: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_mass_mixed_01"],   # FORÊT
-	13: ["forest_mass_mixed_01", "forest_mass_broadleaf_01", "forest_edge_01"],             # BOIS
-	14: ["forest_mass_broadleaf_01", "forest_mass_broadleaf_02", "forest_mass_mixed_01"],   # JUNGLE
+	# FORÊTS : AUCUNE entrée ici — la canopée est COMPOSÉE d'arbres INDIVIDUELS lot 6 par la
+	# passe dédiée CANOPY (pas fin, ancrage monde, tri de profondeur) — cf. _build_dressing.
 	# PLAINES / PRAIRIE (lot 3 herbe + SINGLES lot 6 : l'arbre isolé vit ICI, pas en forêt)
 	4:  ["plain_grass_01", "plain_grass_02", "plain_sparse_tufts_01", "plain_wind_strokes_01", "lot6_broadleaf_01", "lot6_ground_01"],  # PLAINES
 	5:  ["plain_sparse_tufts_01", "plain_grass_02", "lot6_broadleaf_10"],    # CHAMPS (épars)
@@ -59,7 +56,7 @@ const DRESS_BY_BIOME := {
 	15: ["marsh_reeds_01", "marsh_reeds_02", "marsh_tufts_01", "marsh_ripple_reeds_01"],  # MARAIS
 	21: ["marsh_reeds_01", "marsh_reeds_02", "tree_broadleaf_01"],          # MANGROVE
 	22: ["marsh_reeds_02", "marsh_tufts_01", "marsh_ripple_reeds_01"],      # TOURBIÈRE
-	20: ["tree_pine_01", "forest_mass_conifer_01", "lot6_conifer_02", "rocky_outcrop_01"],  # GLACIER
+	20: ["lot6_conifer_02", "lot6_conifer_06", "rocky_outcrop_01"],        # GLACIER (sapins épars)
 	# EAU — MOUVEMENT seul (lot 3) : rides, houle, courants ; jamais un aplat
 	0:  ["ocean_swell_lines_01", "ocean_current_swirl_01"],                # OCÉAN PROFOND (très épars)
 	1:  ["sea_ripples_01", "sea_ripples_02", "ocean_swell_lines_01"],      # OCÉAN
@@ -76,8 +73,16 @@ const DRESS_DENSITY := {
 ## PASSES SUPPLÉMENTAIRES par biome (marques EN PLUS par cellule de grille) → CANOPÉE dense. Surtout les
 ## forêts (le « densifié » demandé) : 1 + N marques jittées par cellule → couvert continu, pas des arbres isolés.
 const DRESS_EXTRA := {
-	12: 4, 14: 4, 13: 3,        # FORÊT/JUNGLE/BOIS : canopée DENSE (masses monde qui s'overlappent)
-	18: 1, 19: 1, 16: 1,        # relief : un peu plus fourni
+	18: 1, 19: 1, 16: 1,        # relief : un peu plus fourni (les forêts ont leur passe CANOPY)
+}
+## ── LA CANOPÉE COMPOSÉE (lot 6) : la forêt est un PEUPLEMENT d'arbres individuels — pas
+## fin (5 cellules), ancrés au MONDE (la forêt reste pleine à tous les zooms), ancrage au
+## PIED + tri de profondeur (ils s'empilent comme une canopée), essences par biome. ──
+const CANOPY_STEP := 4
+const CANOPY_BY_BIOME := {
+	12: ["lot6_broadleaf_01", "lot6_broadleaf_03", "lot6_broadleaf_07", "lot6_broadleaf_08", "lot6_broadleaf_13", "lot6_broadleaf_15"],  # FORÊT : chênes pleins
+	13: ["lot6_broadleaf_02", "lot6_broadleaf_05", "lot6_broadleaf_09", "lot6_broadleaf_10", "lot6_broadleaf_12", "lot6_conifer_03"],    # BOIS : plus clair, mêlé
+	14: ["lot6_broadleaf_04", "lot6_broadleaf_06", "lot6_broadleaf_08", "lot6_broadleaf_13", "lot6_broadleaf_14", "lot6_broadleaf_16"],  # JUNGLE : dense, tortueux
 }
 ## LOT 4 — easter eggs RARES (serpents de mer, épaves, récifs, lapins) : placés par une passe à GROS pas.
 const EGG_SPACING := 46      ## grille grossière (rare)
@@ -1704,20 +1709,25 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if dtex == null:
 				continue
 			var is_egg: bool = d.get("egg", false)
+			var is_canopy: bool = d.get("wa", false)
 			var dh: float
-			if did.begins_with("forest_mass"):
-				# MASSES DE CANOPÉE : ancrées au MONDE (base ~7.5 cellules, bornes px) → les blocs
-				# s'OVERLAPPENT en forêt continue à TOUS les zooms (fini les patchs discontinus)
-				dh = _w(zoom, 7.5 * float(d["scale"]), 26.0, 96.0)
-			elif did.begins_with("forest_edge"):
-				dh = _w(zoom, 5.5 * float(d["scale"]), 20.0, 70.0)
+			if is_canopy:
+				# ARBRE DE CANOPÉE : ancré au MONDE (~4.4 cellules ≈ le pas de semis → la canopée
+				# se FERME par chevauchement), bornes px — le peuplement reste PLEIN à tous les
+				# zooms, les individus s'empilent (tri de profondeur)
+				dh = _w(zoom, 4.4 * float(d["scale"]), 14.0, 64.0)
 			else:
 				dh = _dress_size(did) * float(d["scale"]) / zoom         # hauteur MONDE (taille écran constante)
 			var dw := dh
 			if did.begins_with("sea_serpent"):
 				dw = dh * 2.0                                            # serpent : sprite 2:1 (large)
-			draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
-				egg_col if is_egg else d.get("tint", dress_col))
+			if is_canopy:
+				# ancrage au PIED (le tronc au point) : l'empilement lit comme une canopée
+				draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.85), Vector2(dw, dh)), false,
+					d.get("tint", dress_col))
+			else:
+				draw_texture_rect(dtex, Rect2(dip - Vector2(dw * 0.5, dh * 0.5), Vector2(dw, dh)), false,
+					egg_col if is_egg else d.get("tint", dress_col))
 	# MODE NATURE : juste le terrain + le dressing — on saute frontières, routes, villes, armées, noms, §27.
 	if nature_mode:
 		return
@@ -2589,10 +2599,66 @@ func _build_dressing() -> void:
 				_try_place_dress(i, x, y, bio, rf, sw, sh)
 			x += DRESS_SPACING
 		y += DRESS_SPACING
+	# ── LA CANOPÉE COMPOSÉE : passe dédiée à PAS FIN sur les biomes de forêt — chaque
+	#    arbre est un INDIVIDU (lot 6) ancré au monde ; ils s'empilent en peuplement. ──
+	var ci := 500000
+	var cy := 2
+	while cy < sh:
+		var cx := 2
+		while cx < sw:
+			ci += 1
+			var jx := int((_h1(float(ci) * 1.9) - 0.5) * float(CANOPY_STEP))
+			var jy := int((_h1(float(ci) * 3.7) - 0.5) * float(CANOPY_STEP))
+			var px := clampi(cx + jx, 0, sw - 1)
+			var py := clampi(cy + jy, 0, sh - 1)
+			# VOTE DE VOISINAGE (3 échantillons) : la carte de biomes est BRUITÉE à la cellule —
+			# un seul point troue le peuplement. 3/3 = cœur PLEIN (+2e arbre), 1/3 = lisière plumée.
+			var hits := 0
+			var bhit := -1
+			for off in [[0, 0], [3, 1], [-2, 3]]:
+				var sx := clampi(px + int(off[0]), 0, sw - 1)
+				var sy := clampi(py + int(off[1]), 0, sh - 1)
+				var b3 := int(bio.get_pixel(sx, sy).r * 255.0 + 0.5)
+				if CANOPY_BY_BIOME.has(b3):
+					hits += 1
+					if bhit < 0:
+						bhit = b3
+			if bhit >= 0 and not _near_river(rf, px, py):
+				var skip := false
+				for cl in _dress_clear:            # la clairière des bourgs vaut aussi en forêt
+					if (cl[0] as Vector2).distance_squared_to(Vector2(px, py)) < float(cl[1]):
+						skip = true
+						break
+				var pk: float = [0.0, 0.35, 0.95, 1.0][hits]
+				if not skip and _h1(float(ci) * 5.3) < pk:
+					var cids: Array = CANOPY_BY_BIOME[bhit]
+					var cid: String = cids[int(_h1(float(ci) * 7.1) * float(cids.size())) % cids.size()]
+					var tt2: Variant = _dress_tint(cid)
+					var tc: Color = tt2 if tt2 != null else Color(1, 1, 1, 0.6)
+					var vj := 0.90 + 0.20 * _h1(float(ci) * 9.3)   # variation de VALEUR par arbre (vie)
+					_dressing.append({"pos": Vector2(px, py), "id": cid,
+						"scale": 0.72 + 0.55 * _h1(float(ci) * 11.7),
+						"tint": Color(tc.r * vj, tc.g * vj, tc.b * vj, tc.a), "wa": true})
+					if hits == 3:                   # cœur du massif : un 2e individu ferme la voûte
+						var qx := clampi(px + (1 if _h1(float(ci) * 13.1) < 0.5 else -2), 0, sw - 1)
+						var qy := clampi(py + (2 if _h1(float(ci) * 17.9) < 0.5 else -1), 0, sh - 1)
+						if not _near_river(rf, qx, qy):
+							var cid2: String = cids[int(_h1(float(ci) * 19.3) * float(cids.size())) % cids.size()]
+							var vj2 := 0.90 + 0.20 * _h1(float(ci) * 23.7)
+							_dressing.append({"pos": Vector2(qx, qy), "id": cid2,
+								"scale": 0.72 + 0.55 * _h1(float(ci) * 29.1),
+								"tint": Color(tc.r * vj2, tc.g * vj2, tc.b * vj2, tc.a), "wa": true})
+			cx += CANOPY_STEP
+		cy += CANOPY_STEP
 	_build_easter_eggs(bio, rf, sw, sh)        # lot 4 : serpents/épaves/récifs/lapins (rares)
-	# TRI par id → les marques de même texture sont DESSINÉES À LA SUITE (le batcher 2D les fusionne) : perf
-	# tenable malgré le grand nombre de marques (canopée dense).
-	_dressing.sort_custom(func(a, b): return String(a["id"]) < String(b["id"]))
+	# TRI (bande de profondeur, puis id) : la canopée s'EMPILE du fond vers l'avant (y croissant)
+	# tout en gardant les mêmes textures CONSÉCUTIVES dans une bande (le batcher 2D fusionne).
+	_dressing.sort_custom(func(a, b):
+		var ba := int((a["pos"] as Vector2).y) >> 2
+		var bb3 := int((b["pos"] as Vector2).y) >> 2
+		if ba != bb3:
+			return ba < bb3
+		return String(a["id"]) < String(b["id"]))
 
 ## tente UNE marque jittée à partir de (x,y) : hors rivière, biome connu, sous la densité → ajoutée.
 func _try_place_dress(i: int, x: int, y: int, bio: Image, rf: Image, sw: int, sh: int) -> void:
