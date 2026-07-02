@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b8verbsaud001"]
+
+[ext_resource type="Script" path="res://verbs_audit.gd" id="1_vaudit"]
+
+[node name="VerbsAudit" type="Node"]
+script = ExtResource("1_vaudit")

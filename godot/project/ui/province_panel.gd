@@ -22,11 +22,13 @@ var _tips: Array = []
 
 signal build_requested
 signal close_requested   ## ✕ — la désélection pleine vit dans main (_clear_selection)
+signal detail_requested  ## « Détail » — ouvre province_detail (main-d'œuvre & cie)
 
 var _pid := -1
 var _build_rect := Rect2()
 var _colonize_rect := Rect2()   ## bouton COLONISER (province vierge légale — scps_can_colonize)
 var _close_rect := Rect2()
+var _acts := []                 ## [[Rect2, verbe:String], …] — chips d'action contextuels (posés au _draw)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP   # le panneau capte ses propres clics
@@ -206,19 +208,26 @@ func _draw() -> void:
 	if int(cap.get("prod_pct", 0)) > 0:
 		y = VKit.row(self, x, y, "Productivité", "+%d%%" % int(cap["prod_pct"]), VKit.sense(0.7))
 
-	# ── BOUTON CONSTRUIRE / COLONISER (selon la propriété ; le drain revalide) ──
+	# ── ACTIONS CONTEXTUELLES (selon la propriété ; chaque verbe est journalisé,
+	#    le drain revalide) : à MOI = construire + intérieur + détail · VIERGE légale =
+	#    coloniser · ENNEMI en guerre = attaquer · ÉTRANGER en paix = routes. ──
 	y += 8
 	var bw := 120.0
 	var bbh := 28.0
 	_build_rect = Rect2()
 	_colonize_rect = Rect2()
+	_acts.clear()
 	var me: int = w.player()
-	if int(info.get("owner", -2)) == me:
+	var powner := int(info.get("owner", -2))
+	if powner == me:
 		_build_rect = Rect2(x, y, bw, bbh)
 		VKit.fill(self, _build_rect, VKit.COL_PANEL2)
 		VKit.box(self, _build_rect, VKit.COL_COPPER)
 		UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
 		VKit.text(self, Vector2(x + 28, y + 5), VKit.COL_COPPER, "Construire")
+		y += bbh + 6
+		_act_chips(x, y, [["Réprimer", "repress"], ["Assimiler", "assimilate"],
+			["Purger", "purge"], ["Détail", "detail"]])
 	elif w.has_method("can_colonize") and w.can_colonize(_pid):
 		# le verbe d'EXPANSION du joueur (charte : « le joueur colonise n'importe quelle
 		# province ») — visible seulement si LÉGAL (cible vierge + une source aux portes).
@@ -227,6 +236,53 @@ func _draw() -> void:
 		VKit.box(self, _colonize_rect, Color(0.55, 0.62, 0.38))
 		UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
 		VKit.text(self, Vector2(x + 28, y + 5), Color(0.62, 0.70, 0.42), "Coloniser")
+	elif powner >= 0 and powner != me:
+		var dop: Dictionary = w.diplo_options(powner) if w.has_method("diplo_options") else {}
+		if bool(dop.get("can_make_peace", false)):
+			# EN GUERRE avec ce pays → projeter l'ost sur CETTE région (depuis la capitale)
+			_act_chips(x, y, [["Attaquer ici", "campaign"]])
+		else:
+			# en paix → tenter une ROUTE commerciale depuis ma capitale (le moteur gate ports/pactes)
+			_act_chips(x, y, [["Route terre", "route_land"], ["Route mer", "route_sea"]])
+
+## une rangée de CHIPS d'action (petits boutons) — les rects sont mémorisés dans _acts
+## avec leur verbe, hit-testés au clic. Retourne rien (le layout suit x fixe).
+func _act_chips(x: float, y: float, items: Array) -> void:
+	var cx := x
+	for it in items:
+		var label: String = it[0]
+		var cw := VKit.text_w(label, VKit.FS_SMALL) + 14.0
+		var r := Rect2(cx, y, cw, 20.0)
+		VKit.fill(self, r, VKit.COL_PANEL2)
+		VKit.box(self, r, VKit.COL_COPPER)
+		VKit.text(self, Vector2(cx + 7, y + 3), VKit.COL_PARCH, label, VKit.FS_SMALL)
+		_acts.append([r, String(it[1])])
+		cx += cw + 6.0
+
+## dispatch d'un chip d'action → le VERBE journalisé (drainé au tick, revalidé là-bas).
+func _act_fire(verb: String) -> void:
+	var w = Sim.world
+	if w == null or _pid < 0:
+		return
+	var reg: int = w.province_region(_pid)
+	match verb:
+		"repress":
+			w.player_repress(reg)
+		"assimilate":
+			w.player_assimilate(reg, false)
+		"purge":
+			w.player_purge(reg)
+		"detail":
+			detail_requested.emit()
+		"campaign":
+			var capr: int = w.province_region(w.country_capital_province(w.player()))
+			if capr >= 0 and reg >= 0:
+				w.player_campaign(capr, reg)
+		"route_land", "route_sea":
+			var capr2: int = w.province_region(w.country_capital_province(w.player()))
+			if capr2 >= 0 and reg >= 0:
+				w.player_route(capr2, reg, verb == "route_sea")
+	queue_redraw()
 
 # milliers lisibles : 12345 → "12 345"
 func _grp(n) -> String:
@@ -252,6 +308,11 @@ func _gui_input(event: InputEvent) -> void:
 			if Sim.world != null and Sim.world.has_method("player_colonize"):
 				Sim.world.player_colonize(_pid)   # enfilé ; fondé au drain → le bouton s'éteint
 				queue_redraw()
+		else:
+			for a in _acts:
+				if (a[0] as Rect2).has_point(event.position):
+					_act_fire(String(a[1]))
+					break
 
 ## HOVER natif : Godot appelle ceci au survol → texte de la zone touchée (classe / humeur).
 func _get_tooltip(at_position: Vector2) -> String:

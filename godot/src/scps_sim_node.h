@@ -48,6 +48,7 @@ public:
     int     player() const;
     int     country_count() const;
     int     country_province_count(int country) const;   /* provinces possédées (topbar EU4) */
+    int     province_count() const;                       /* total de provinces du monde */
     int     region_count() const;
     int64_t world_pop() const;
     int64_t country_pop(int country) const;
@@ -115,6 +116,20 @@ public:
     bool       player_age_engage();                   /* §7 : engager l'âge courant (une fois par âge) */
     bool       player_colonize(int prov);             /* COLONISATION (charte) : fonder sur une province vierge */
     bool       can_colonize(int prov);                /* read de légalité (griser le bouton Coloniser) */
+    /* §3 — le RESTE de la surface de verbes (wiring UI complet) */
+    bool       player_repress(int region);            /* intérieur : réprimer l'agitation */
+    bool       player_assimilate(int region, bool creuset); /* intérieur : assimiler (creuset = TECH_INTEGRATION) */
+    bool       player_purge(int region);              /* intérieur : purger (coût SCPS différé) */
+    bool       player_council_hire(int seat, int slot);   /* conseil : pourvoir un siège */
+    bool       player_council_dismiss(int seat);      /* conseil : renvoyer */
+    bool       player_route(int ra, int rb, bool maritime); /* commerce : tracer une route */
+    bool       player_market_buy(int region, int good, int qty, int tier);  /* marché : acheter */
+    bool       player_market_sell(int region, int good, int qty, int tier); /* marché : vendre */
+    bool       player_campaign(int from_region, int target_region); /* guerre : projeter l'ost */
+    bool       player_posture(int posture);           /* guerre : 0 prudente · 1 standard · 2 agressive */
+    bool       player_refill();                       /* guerre : recompléter l'armée de campagne */
+    bool       player_navy_build(int hull);           /* flotte : mettre une coque en chantier */
+    bool       player_disband();                      /* guerre : dissoudre la réserve levée */
     int        colonized_total() const;               /* Σ provinces colonisées — signature de souveraineté */
     int        country_capital_province(int c) const; /* province-capitale (liseré au grain charte) */
 

@@ -195,40 +195,109 @@ func _draw_eco(x: float, y: float, me: int) -> void:
 		VKit.text(self, Vector2(x + 228, y), col, String(p["status"]), VKit.FS_SMALL)
 		y += 15
 
-# ── MARCHÉ (sb_panel_marche, table des prix, read-only) ────────────────────
+# ── MARCHÉ (sb_panel_marche, table des prix) : [A]cheter/[V]endre 10 sur la
+#    région-capitale (verbes : player_market_buy/_sell, journalisés) ──────────
+var _marche_btns := []   # [{rect, act, res_id}] boutons Acheter/Vendre
+var _marche_flash := ""
+var _marche_flash_ok := true
+const MARCHE_QTY := 10
+
 func _draw_marche(x: float, y: float, me: int) -> void:
+	_marche_btns.clear()
+	var cap_region := -1
+	var cap_prov: int = Sim.world.country_capital_province(me)
+	if cap_prov >= 0:
+		cap_region = Sim.world.province_region(cap_prov)
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          prix(or)   marché", VKit.FS_SMALL)
 	y += 16
 	for st in Sim.world.country_stocks(me):
 		if y > size.y - 18:
 			break
 		var col := _marche_col(int(st["market_band"]))
-		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
+		var res_id := int(st["res_id"])
+		_res_cell(x, y, res_id, String(st["name"]), col)
 		VKit.text(self, Vector2(x + 110, y), col, "%.2f" % float(st["price"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 178, y), VKit.COL_DIM, String(st["marche"]), VKit.FS_SMALL)
+		if cap_region >= 0:
+			var ra := Rect2(x + 240, y - 2, 18, 16)
+			VKit.fill(self, ra, VKit.COL_PANEL2); VKit.box(self, ra, VKit.sense(0.80))
+			VKit.text(self, Vector2(ra.position.x + 4, y - 1), VKit.sense(0.80), "A", VKit.FS_SMALL)
+			_marche_btns.append({"rect": ra, "act": "buy", "res_id": res_id})
+			var rv := Rect2(x + 262, y - 2, 18, 16)
+			VKit.fill(self, rv, VKit.COL_PANEL2); VKit.box(self, rv, VKit.sense(0.12))
+			VKit.text(self, Vector2(rv.position.x + 4, y - 1), VKit.sense(0.12), "V", VKit.FS_SMALL)
+			_marche_btns.append({"rect": rv, "act": "sell", "res_id": res_id})
 		y += 18
+	if _marche_flash != "":
+		VKit.text(self, Vector2(x, size.y - 18),
+			(VKit.sense(0.85) if _marche_flash_ok else VKit.sense(0.10)), _marche_flash, VKit.FS_SMALL)
 
-# ── CONSEIL (sb_panel_conseil, read-only) ──────────────────────────────────
+# ── CONSEIL (sb_panel_conseil) : [Recruter]/[Renvoyer] par siège (verbes :
+#    player_council_hire/_dismiss, journalisés — drainés au tick) ─────────────
+var _conseil_btns := []   # [{rect, act, seat}] boutons Recruter/Renvoyer
+var _conseil_flash := ""
+var _conseil_flash_ok := true
+
 func _draw_conseil(x: float, y: float, me: int) -> void:
+	_conseil_btns.clear()
+	var idx := 0
 	for seat in Sim.world.country_council(me):
 		UIKit.draw_icon(self, "menu_council", Vector2(x, y - 1), 16)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_COPPER, String(seat["seat"]))
 		y += 18
-		if bool(seat["filled"]):
+		var filled := bool(seat["filled"])
+		if filled:
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH,
 				"%s — tier %d" % [seat["councilor"], int(seat["tier"])], VKit.FS_SMALL)
 		else:
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant)", VKit.FS_SMALL)
+		var label := "Renvoyer" if filled else "Recruter"
+		var bw := VKit.text_w(label, VKit.FS_SMALL) + 14.0
+		var r := Rect2(DW - 14.0 - bw, y - 1, bw, 16)
+		VKit.fill(self, r, VKit.COL_PANEL2)
+		VKit.box(self, r, VKit.sense(0.12) if filled else VKit.sense(0.80))
+		VKit.text(self, Vector2(r.position.x + 7, y), VKit.sense(0.12) if filled else VKit.sense(0.80), label, VKit.FS_SMALL)
+		_conseil_btns.append({"rect": r, "act": ("dismiss" if filled else "hire"), "seat": idx})
 		y += 22
+		idx += 1
+	if _conseil_flash != "":
+		VKit.text(self, Vector2(x, size.y - 18),
+			(VKit.sense(0.85) if _conseil_flash_ok else VKit.sense(0.10)), _conseil_flash, VKit.FS_SMALL)
 
-# ── ARMÉE (sb_panel_armee, read-only) ──────────────────────────────────────
+# ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (levée/posture/flotte) ──
+const POSTURE_LABELS := ["Prudente", "Standard", "Agressive"]
+const HULL_LABELS := [["+Guerre", 0], ["+Transport", 1], ["+Marchand", 2]]   # HullType : HULL_WAR·HULL_TRANSPORT·HULL_MERCHANT
+
+var _levy_btns := []      # [{rect, delta}] boutons [-]/[+] de la jauge de levée
+var _posture_btns := []   # [{rect, p}] chips de posture
+var _army_btns := []      # [{rect, act}] Recompléter / Dissoudre
+var _navy_btns := []      # [{rect, hull}] +Guerre / +Transport / +Marchand
+var _posture_sel := 1     # dernier clic (affichage seul — aucun lecteur de posture actuelle)
+
 func _draw_armee(x: float, y: float, me: int) -> void:
+	_levy_btns.clear(); _posture_btns.clear(); _army_btns.clear(); _navy_btns.clear()
 	var a: Dictionary = Sim.world.country_army(me)
 	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 18)
 	VKit.text(self, Vector2(x + 22, y), VKit.COL_PARCH, "force mobilisée : %d régiments" % int(a["regiments"]))
 	y += 22
+	# — Levée : [-] nom [+] (verbe : player_set_levy, journalisé — drainé au tick) —
+	var levy: int = int(a["levy"])
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "levée :")
-	VKit.text(self, Vector2(x + 52, y), VKit.COL_COPPER, String(a["levy_name"]))
+	var bx := x + 52.0
+	var rm := Rect2(bx, y - 2, 16, 16)
+	VKit.fill(self, rm, VKit.COL_PANEL2); VKit.box(self, rm, VKit.COL_EDGE if levy <= 0 else VKit.COL_COPPER)
+	VKit.text(self, Vector2(bx + 5, y - 1), VKit.COL_DIM if levy <= 0 else VKit.COL_COPPER, "−", VKit.FS_SMALL)
+	if levy > 0:
+		_levy_btns.append({"rect": rm, "delta": -1})
+	bx += 20
+	var lw := VKit.text_w(String(a["levy_name"]), VKit.FS) + 8.0
+	VKit.text(self, Vector2(bx, y), VKit.COL_COPPER, String(a["levy_name"]))
+	bx += lw + 4
+	var rp := Rect2(bx, y - 2, 16, 16)
+	VKit.fill(self, rp, VKit.COL_PANEL2); VKit.box(self, rp, VKit.COL_EDGE if levy >= 3 else VKit.COL_COPPER)
+	VKit.text(self, Vector2(bx + 5, y - 1), VKit.COL_DIM if levy >= 3 else VKit.COL_COPPER, "+", VKit.FS_SMALL)
+	if levy < 3:
+		_levy_btns.append({"rect": rp, "delta": 1})
 	y += 24
 	var ar: Dictionary = Sim.world.army_info(me)
 	if bool(ar.get("active", false)):
@@ -242,8 +311,57 @@ func _draw_armee(x: float, y: float, me: int) -> void:
 	else:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(pas d'armée de campagne déployée)", VKit.FS_SMALL)
 		y += 20
+	# — Posture : 3 chips (verbe : player_posture) — surbrillance = dernier clic —
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "posture :", VKit.FS_SMALL)
+	y += 16
+	var cx := x
+	for p in range(POSTURE_LABELS.size()):
+		var label: String = POSTURE_LABELS[p]
+		var tw := VKit.text_w(label, VKit.FS_SMALL) + 12.0
+		var active := (_posture_sel == p)
+		var r := Rect2(cx, y, tw, 18)
+		VKit.fill(self, r, VKit.COL_COPPER if active else VKit.COL_PANEL2)
+		VKit.box(self, r, VKit.COL_EDGE)
+		VKit.text(self, Vector2(cx + 6, y + 1), VKit.COL_PANEL if active else VKit.COL_PARCH, label, VKit.FS_SMALL)
+		_posture_btns.append({"rect": r, "p": p})
+		cx += tw + 4
+	y += 26
+	# — Recompléter / Dissoudre (verbes : player_refill / player_disband) —
+	var b1w := VKit.text_w("Recompléter", VKit.FS_SMALL) + 14.0
+	var r1 := Rect2(x, y, b1w, 18)
+	VKit.fill(self, r1, VKit.COL_PANEL2); VKit.box(self, r1, VKit.COL_COPPER)
+	VKit.text(self, Vector2(x + 7, y + 1), VKit.COL_COPPER, "Recompléter", VKit.FS_SMALL)
+	_army_btns.append({"rect": r1, "act": "refill"})
+	var b2x := x + b1w + 6.0
+	var b2w := VKit.text_w("Dissoudre", VKit.FS_SMALL) + 14.0
+	var r2 := Rect2(b2x, y, b2w, 18)
+	VKit.fill(self, r2, VKit.COL_PANEL2); VKit.box(self, r2, VKit.COL_COPPER)
+	VKit.text(self, Vector2(b2x + 7, y + 1), VKit.COL_COPPER, "Dissoudre", VKit.FS_SMALL)
+	_army_btns.append({"rect": r2, "act": "disband"})
+	y += 26
 	UIKit.draw_icon(self, "harbor_anchor", Vector2(x, y - 1), 16)
 	VKit.text(self, Vector2(x + 20, y), VKit.COL_DIM, "Flotte : %d coque(s)" % int(a["fleet"]))
+	y += 20
+	# — Flotte : mise en chantier (verbe : player_navy_build) —
+	cx = x
+	for it in HULL_LABELS:
+		var label: String = it[0]
+		var hull: int = it[1]
+		var tw := VKit.text_w(label, VKit.FS_SMALL) + 12.0
+		if cx + tw > DW - 12.0:
+			cx = x; y += 20
+		var r := Rect2(cx, y, tw, 18)
+		VKit.fill(self, r, VKit.COL_PANEL2)
+		VKit.box(self, r, VKit.COL_COPPER)
+		VKit.text(self, Vector2(cx + 6, y + 1), VKit.COL_COPPER, label, VKit.FS_SMALL)
+		_navy_btns.append({"rect": r, "hull": hull})
+		cx += tw + 4
+	if _armee_flash != "":
+		VKit.text(self, Vector2(x, size.y - 18),
+			(VKit.sense(0.85) if _armee_flash_ok else VKit.sense(0.10)), _armee_flash, VKit.FS_SMALL)
+
+var _armee_flash := ""
+var _armee_flash_ok := true
 
 # ── FILTRES (sb_panel_filtres) : sélecteur de mode carte, FONCTIONNEL ──────
 func _draw_filtres(x: float, y: float) -> void:
@@ -373,6 +491,73 @@ func _diplo_act(act: String, target: int, nom: String) -> void:
 	_diplo_flash = ("⚑ %s %s — ordre émis" % [verb, nom]) if ok else ("✗ %s %s — refusé" % [verb, nom])
 	queue_redraw()
 
+## Armée : levée [-]/[+], posture, recompléter/dissoudre, mise en chantier de coque —
+## verbes journalisés (drainés au tick), aucun n'échoue localement sauf navy_build.
+func _armee_act(kind: String, val: int) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	match kind:
+		"levy":
+			w.player_set_levy(val)
+			_armee_flash_ok = true
+			_armee_flash = "⚑ levée réglée — ordre émis"
+		"posture":
+			_posture_sel = val
+			var ok: bool = w.player_posture(val)
+			_armee_flash_ok = ok
+			_armee_flash = ("⚑ posture %s — ordre émis" % POSTURE_LABELS[val]) if ok else "✗ posture — refusé"
+		"refill":
+			var ok: bool = w.player_refill()
+			_armee_flash_ok = ok
+			_armee_flash = "⚑ recomplètement — ordre émis" if ok else "✗ recomplètement — refusé"
+		"disband":
+			var ok: bool = w.player_disband()
+			_armee_flash_ok = ok
+			_armee_flash = "⚑ dissolution — ordre émis" if ok else "✗ dissolution — refusé"
+		"navy":
+			var ok: bool = w.player_navy_build(val)
+			_armee_flash_ok = ok
+			_armee_flash = "⚑ coque en chantier — ordre émis" if ok else "✗ chantier naval — refusé"
+	queue_redraw()
+
+## Marché : achat/vente de 10 unités sur la région-capitale (verbe journalisé).
+func _marche_act(act: String, res_id: int, me: int) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	var cap_prov: int = w.country_capital_province(me)
+	var cap_region: int = w.province_region(cap_prov) if cap_prov >= 0 else -1
+	if cap_region < 0:
+		_marche_flash_ok = false
+		_marche_flash = "✗ aucune capitale — refusé"
+		queue_redraw()
+		return
+	var ok := false
+	if act == "buy":
+		ok = w.player_market_buy(cap_region, res_id, MARCHE_QTY, 0)
+	else:
+		ok = w.player_market_sell(cap_region, res_id, MARCHE_QTY, 0)
+	_marche_flash_ok = ok
+	_marche_flash = ("⚑ %s — ordre émis" % ("achat" if act == "buy" else "vente")) if ok \
+		else ("✗ %s — refusé" % ("achat" if act == "buy" else "vente"))
+	queue_redraw()
+
+## Conseil : recruter (siège vacant, slot 0) / renvoyer (siège pourvu) — verbe journalisé.
+func _conseil_act(act: String, seat: int) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	var ok := false
+	if act == "hire":
+		ok = w.player_council_hire(seat, 0)
+	else:
+		ok = w.player_council_dismiss(seat)
+	_conseil_flash_ok = ok
+	_conseil_flash = ("⚑ %s — ordre émis" % ("recrutement" if act == "hire" else "renvoi")) if ok \
+		else ("✗ %s — refusé" % ("recrutement" if act == "hire" else "renvoi"))
+	queue_redraw()
+
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var h := ""
@@ -390,6 +575,36 @@ func _gui_input(event: InputEvent) -> void:
 			charts_requested.emit()
 			accept_event()
 			return
+		if _tab == 3:
+			for b in _marche_btns:
+				if b.rect.has_point(event.position):
+					var w = Sim.world
+					var me: int = w.player() if w != null else -1
+					_marche_act(String(b.act), int(b.res_id), me)
+					accept_event()
+					return
+		if _tab == 4:
+			for b in _levy_btns:
+				if b.rect.has_point(event.position):
+					var a: Dictionary = Sim.world.country_army(Sim.world.player())
+					_armee_act("levy", clampi(int(a["levy"]) + int(b.delta), 0, 3))
+					accept_event()
+					return
+			for b in _posture_btns:
+				if b.rect.has_point(event.position):
+					_armee_act("posture", int(b.p))
+					accept_event()
+					return
+			for b in _army_btns:
+				if b.rect.has_point(event.position):
+					_armee_act(String(b.act), 0)
+					accept_event()
+					return
+			for b in _navy_btns:
+				if b.rect.has_point(event.position):
+					_armee_act("navy", int(b.hull))
+					accept_event()
+					return
 		if _tab == 5:
 			for ch in _chips:
 				if ch.rect.has_point(event.position):
@@ -403,6 +618,12 @@ func _gui_input(event: InputEvent) -> void:
 			for b in _diplo_btns:
 				if b.rect.has_point(event.position):
 					_diplo_act(String(b.act), int(b.target), String(b.nom))
+					accept_event()
+					return
+		if _tab == 7:
+			for b in _conseil_btns:
+				if b.rect.has_point(event.position):
+					_conseil_act(String(b.act), int(b.seat))
 					accept_event()
 					return
 

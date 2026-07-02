@@ -42,6 +42,11 @@ func _ready() -> void:
 	_prov_panel.name = "ProvincePanel"
 	ui.add_child(_prov_panel)
 	_prov_panel.close_requested.connect(_clear_selection)   # ✕ = désélection pleine
+	_prov_panel.detail_requested.connect(func():
+		if _prov_detail != null and _sel_prov >= 0:
+			_prov_detail.show_province(_sel_prov)            # le DÉTAIL (main-d'œuvre & cie) s'ouvre enfin
+			_prov_detail.visible = true
+			_prov_detail.queue_redraw())
 
 	_country_panel = load("res://ui/country_panel.gd").new()
 	_country_panel.name = "CountryPanel"

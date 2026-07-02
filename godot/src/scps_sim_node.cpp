@@ -25,6 +25,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_count"),           &ScpsWorld::country_count);
     ClassDB::bind_method(D_METHOD("country_province_count", "country"), &ScpsWorld::country_province_count);
     ClassDB::bind_method(D_METHOD("region_count"),            &ScpsWorld::region_count);
+    ClassDB::bind_method(D_METHOD("province_count"),          &ScpsWorld::province_count);
     ClassDB::bind_method(D_METHOD("world_pop"),               &ScpsWorld::world_pop);
     ClassDB::bind_method(D_METHOD("country_pop", "country"),  &ScpsWorld::country_pop);
     ClassDB::bind_method(D_METHOD("country_gold", "country"), &ScpsWorld::country_gold);
@@ -76,6 +77,21 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_age_engage"),             &ScpsWorld::player_age_engage);
     ClassDB::bind_method(D_METHOD("player_colonize", "prov"),       &ScpsWorld::player_colonize);
     ClassDB::bind_method(D_METHOD("can_colonize", "prov"),          &ScpsWorld::can_colonize);
+    /* §3 — le RESTE de la surface de verbes (wiring UI complet) : intérieur · conseil ·
+     * commerce · guerre. Passe-plats vers scps_player_* (journal déterministe, drain revalidé). */
+    ClassDB::bind_method(D_METHOD("player_repress", "region"),          &ScpsWorld::player_repress);
+    ClassDB::bind_method(D_METHOD("player_assimilate", "region", "creuset"), &ScpsWorld::player_assimilate);
+    ClassDB::bind_method(D_METHOD("player_purge", "region"),            &ScpsWorld::player_purge);
+    ClassDB::bind_method(D_METHOD("player_council_hire", "seat", "slot"), &ScpsWorld::player_council_hire);
+    ClassDB::bind_method(D_METHOD("player_council_dismiss", "seat"),    &ScpsWorld::player_council_dismiss);
+    ClassDB::bind_method(D_METHOD("player_route", "ra", "rb", "maritime"), &ScpsWorld::player_route);
+    ClassDB::bind_method(D_METHOD("player_market_buy", "region", "good", "qty", "tier"),  &ScpsWorld::player_market_buy);
+    ClassDB::bind_method(D_METHOD("player_market_sell", "region", "good", "qty", "tier"), &ScpsWorld::player_market_sell);
+    ClassDB::bind_method(D_METHOD("player_campaign", "from_region", "target_region"), &ScpsWorld::player_campaign);
+    ClassDB::bind_method(D_METHOD("player_posture", "posture"),         &ScpsWorld::player_posture);
+    ClassDB::bind_method(D_METHOD("player_refill"),                     &ScpsWorld::player_refill);
+    ClassDB::bind_method(D_METHOD("player_navy_build", "hull"),         &ScpsWorld::player_navy_build);
+    ClassDB::bind_method(D_METHOD("player_disband"),                    &ScpsWorld::player_disband);
     ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
     ClassDB::bind_method(D_METHOD("country_capital_province", "c"), &ScpsWorld::country_capital_province);
     ClassDB::bind_method(D_METHOD("player_declare_war", "target"),    &ScpsWorld::player_declare_war);
@@ -198,6 +214,7 @@ int     ScpsWorld::player()        const { return scps_player(sim); }
 int     ScpsWorld::country_count() const { return scps_country_count(sim); }
 int     ScpsWorld::country_province_count(int c) const { return scps_country_province_count(sim, c); }
 int     ScpsWorld::region_count()  const { return scps_region_count(sim); }
+int     ScpsWorld::province_count() const { return scps_province_count(sim); }
 int64_t ScpsWorld::world_pop()     const { return (int64_t)scps_world_pop(sim); }
 int64_t ScpsWorld::country_pop(int c)  const { return (int64_t)scps_country_pop(sim, c); }
 double  ScpsWorld::country_gold(int c) const { return scps_country_gold(sim, c); }
@@ -750,6 +767,20 @@ bool ScpsWorld::player_age_engage() {
 bool ScpsWorld::player_colonize(int prov) {
     return sim ? scps_player_colonize(sim, prov) != 0 : false;
 }
+/* §3 — le RESTE de la surface (wiring UI complet) : intérieur · conseil · commerce · guerre. */
+bool ScpsWorld::player_repress(int region)               { return sim ? scps_player_repress(sim, region) != 0 : false; }
+bool ScpsWorld::player_assimilate(int region, bool creuset) { return sim ? scps_player_assimilate(sim, region, creuset ? 1 : 0) != 0 : false; }
+bool ScpsWorld::player_purge(int region)                 { return sim ? scps_player_purge(sim, region) != 0 : false; }
+bool ScpsWorld::player_council_hire(int seat, int slot)  { return sim ? scps_player_council_hire(sim, seat, slot) != 0 : false; }
+bool ScpsWorld::player_council_dismiss(int seat)         { return sim ? scps_player_council_dismiss(sim, seat) != 0 : false; }
+bool ScpsWorld::player_route(int ra, int rb, bool maritime) { return sim ? scps_player_route(sim, ra, rb, maritime ? 1 : 0) != 0 : false; }
+bool ScpsWorld::player_market_buy(int region, int good, int qty, int tier)  { return sim ? scps_player_market_buy(sim, region, good, (long)qty, tier) != 0 : false; }
+bool ScpsWorld::player_market_sell(int region, int good, int qty, int tier) { return sim ? scps_player_market_sell(sim, region, good, (long)qty, tier) != 0 : false; }
+bool ScpsWorld::player_campaign(int from_region, int target_region) { return sim ? scps_player_campaign(sim, from_region, target_region) != 0 : false; }
+bool ScpsWorld::player_posture(int posture)              { return sim ? scps_player_posture(sim, posture) != 0 : false; }
+bool ScpsWorld::player_refill()                          { return sim ? scps_player_refill(sim) != 0 : false; }
+bool ScpsWorld::player_navy_build(int hull)              { return sim ? scps_player_navy_build(sim, hull) != 0 : false; }
+bool ScpsWorld::player_disband()                         { return sim ? scps_player_disband(sim) != 0 : false; }
 bool ScpsWorld::can_colonize(int prov) {
     return sim ? scps_can_colonize(sim, prov) != 0 : false;
 }
