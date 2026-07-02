@@ -66,7 +66,7 @@ void statecraft_init(Statecraft *sc, const World *w){
     memset(sc, 0, sizeof(*sc));
     sc->n_countries = w->n_countries;
     for (int c=0;c<SCPS_MAX_COUNTRY;c++)                /* Q1 : memset→0 = slot 0 valide : tous VACANTS (-1) */
-        for (int s=0;s<SC_COUNCIL_SEATS;s++) sc->council[c][s]=-1;
+        for (int s=0;s<SC_COUNCIL_SEATS;s++){ sc->council[c][s]=-1; sc->council_gen[c][s]=-1; }
     for (int c=0;c<w->n_countries;c++){
         sc->influence[c]   = 35.f;             /* une réputation initiale modeste */
         sc->prestige[c]    = 8.f;
@@ -89,32 +89,78 @@ static uint32_t sc_hash(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
     h ^= h>>16; h *= 2246822519u; h ^= h>>13; h *= 3266489917u; h ^= h>>16;
     return h;
 }
-int statecraft_council_cand_tier(uint32_t seed, int cid, int seat, int slot){
-    uint32_t h = sc_hash(seed^0xC0FFEEu, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot) % 100u;
+/* ── GÉNÉRATIONS DE POOL + ÂGE (dérivés, jamais sérialisés) ────────────────────
+ * La pool se renouvelle par GÉNÉRATION (année/GEN_YEARS) : toujours 3 candidats
+ * par siège, jamais épuisée. gen 0 laisse la graine INTACTE → mêmes hash qu'avant
+ * (fenêtre golden intouchée). L'âge = base 30-51 + années écoulées dans la
+ * génération ; la retraite (66-73, jitter par identité) est IMPOSSIBLE avant
+ * l'an 16 (> golden 12) par construction. */
+static uint32_t sc_genseed(uint32_t seed, int gen){
+    return seed ^ ((uint32_t)(gen>0?gen:0) * 0x9E3779B9u);
+}
+int statecraft_council_gen(int year){
+    return (year>0 ? year : 0) / SC_COUNCIL_GEN_YEARS;
+}
+int statecraft_council_cand_tier(uint32_t seed, int cid, int seat, int slot, int gen){
+    uint32_t h = sc_hash(sc_genseed(seed,gen)^0xC0FFEEu, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot) % 100u;
     return (h<55)?1:(h<85)?2:3;   /* 55 % tier1 · 30 % tier2 · 15 % tier3 (les grands sont rares) */
 }
-int statecraft_council_cand_name(uint32_t seed, int cid, int seat, int slot){
-    uint32_t h = sc_hash(seed^0x5EAB011u, (uint32_t)cid, (uint32_t)(seat*7+slot), 0x9E37u);
+int statecraft_council_cand_name(uint32_t seed, int cid, int seat, int slot, int gen){
+    uint32_t h = sc_hash(sc_genseed(seed,gen)^0x5EAB011u, (uint32_t)cid, (uint32_t)(seat*7+slot), 0x9E37u);
     return (int)STR_COUNCIL_NAME_0 + (int)(h % (uint32_t)SC_COUNCIL_NAMES);
+}
+int statecraft_council_cand_age(uint32_t seed, int cid, int seat, int slot, int gen, int year){
+    int base = 30 + (int)(sc_hash(sc_genseed(seed,gen)^0xA6E11u, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot) % 22u);
+    int el = year - (gen>0?gen:0)*SC_COUNCIL_GEN_YEARS;
+    return base + (el>0 ? el : 0);      /* l'âge GRANDIT avec l'année */
+}
+static int sc_retire_age(uint32_t seed, int cid, int seat, int slot, int gen){
+    return 66 + (int)(sc_hash(sc_genseed(seed,gen)^0x0DDA6Eu, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot) % 8u);
 }
 int statecraft_council_seated(const Statecraft *sc, int cid, int seat){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return -1;
     int s=sc->council[cid][seat];
     return (s>=0 && s<SC_COUNCIL_CANDS) ? s : -1;
 }
-void statecraft_council_hire(Statecraft *sc, int cid, int seat, int slot){
+int statecraft_council_seated_gen(const Statecraft *sc, int cid, int seat){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return 0;
+    int g=sc->council_gen[cid][seat];
+    return (g>=0) ? g : 0;              /* garde : vacant/état legacy → génération 0 */
+}
+int statecraft_council_seated_age(const Statecraft *sc, uint32_t seed, int cid, int seat, int year){
+    int slot=statecraft_council_seated(sc,cid,seat);
+    if (slot<0) return -1;
+    return statecraft_council_cand_age(seed,cid,seat,slot,statecraft_council_seated_gen(sc,cid,seat),year);
+}
+void statecraft_council_hire(Statecraft *sc, int cid, int seat, int slot, int gen){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
     if (slot<0||slot>=SC_COUNCIL_CANDS) return;
     sc->council[cid][seat]=(int8_t)slot;
+    sc->council_gen[cid][seat]=(int8_t)((gen>=0 && gen<=120) ? gen : 0);   /* identité ÉPINGLÉE au moment de l'embauche */
 }
 void statecraft_council_dismiss(Statecraft *sc, int cid, int seat){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
     sc->council[cid][seat]=-1;
+    sc->council_gen[cid][seat]=-1;
+}
+/* LES ANNÉES PASSENT (annuel) : la retraite VIDE le siège — l'IA repourvoit au
+ * mois suivant (statecraft_council_ai), le joueur par l'UI. */
+void statecraft_council_age_tick(Statecraft *sc, uint32_t seed, int year){
+    if (!sc) return;
+    for (int c=0;c<sc->n_countries && c<SCPS_MAX_COUNTRY;c++)
+        for (int seat=0;seat<SC_COUNCIL_SEATS;seat++){
+            int slot=statecraft_council_seated(sc,c,seat);
+            if (slot<0) continue;
+            int gen=statecraft_council_seated_gen(sc,c,seat);
+            if (statecraft_council_cand_age(seed,c,seat,slot,gen,year)
+                >= sc_retire_age(seed,c,seat,slot,gen))
+                statecraft_council_dismiss(sc,c,seat);
+        }
 }
 float statecraft_council_seat_mult(const Statecraft *sc, uint32_t seed, int cid, int seat){
     int slot=statecraft_council_seated(sc,cid,seat);
     if (slot<0) return 1.f;
-    int tier=statecraft_council_cand_tier(seed,cid,seat,slot);
+    int tier=statecraft_council_cand_tier(seed,cid,seat,slot,statecraft_council_seated_gen(sc,cid,seat));
     return 1.f + SC_SEAT_BASE[seat]*SC_TIER_EFFET[tier];
 }
 float statecraft_council_cost(const Statecraft *sc, uint32_t seed, int cid, float ipm){
@@ -123,14 +169,14 @@ float statecraft_council_cost(const Statecraft *sc, uint32_t seed, int cid, floa
     for (int s=0;s<SC_COUNCIL_SEATS;s++){
         int slot=statecraft_council_seated(sc,cid,s);
         if (slot<0) continue;
-        tot += SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,s,slot) ] * ipm;
+        tot += SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,s,slot,statecraft_council_seated_gen(sc,cid,s)) ] * ipm;
     }
     return tot;
 }
-float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, float ipm){
+float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, int gen, float ipm){
     if (ipm<=0.f) ipm=1.f;
     if (cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS||slot<0||slot>=SC_COUNCIL_CANDS) return 0.f;
-    return SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,seat,slot) ] * ipm;
+    return SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,seat,slot,gen) ] * ipm;
 }
 void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy *e, uint32_t seed, float dt_year){
     if (!sc||!w||!e) return;
@@ -159,7 +205,7 @@ static int sc_ethos_seat(int ethos){
         default:                                       return 2;  /* Industrie (Dominateur/Honneur/Mercantile) */
     }
 }
-void statecraft_council_ai(Statecraft *sc, const World *w, const WorldEconomy *e, uint32_t seed, int cid){
+void statecraft_council_ai(Statecraft *sc, const World *w, const WorldEconomy *e, uint32_t seed, int cid, int year){
     if (!sc||!w||!e||cid<0||cid>=SCPS_MAX_COUNTRY) return;
     int cap=w->country[cid].capital_prov;
     int cr =(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
@@ -167,13 +213,14 @@ void statecraft_council_ai(Statecraft *sc, const World *w, const WorldEconomy *e
     int seat=sc_ethos_seat((int)e->region[cr].culture.ethos);
     if (statecraft_council_seated(sc,cid,seat)>=0) return;                 /* déjà pourvu */
     float tres=e->region[cr].treasury, ipm=econ_world_ipm(e);
+    int gen=statecraft_council_gen(year);                                  /* la pool COURANTE (toujours 3 candidats) */
     int best=-1, bestt=0;
     for (int slot=0; slot<SC_COUNCIL_CANDS; slot++){
-        int t=statecraft_council_cand_tier(seed,cid,seat,slot);
+        int t=statecraft_council_cand_tier(seed,cid,seat,slot,gen);
         if (SC_TIER_COST[t]*ipm*6.f > tres) continue;                     /* hors garde de budget (6 mois) */
         if (t>bestt){ bestt=t; best=slot; }
     }
-    if (best>=0) statecraft_council_hire(sc,cid,seat,best);
+    if (best>=0) statecraft_council_hire(sc,cid,seat,best,gen);
 }
 
 /* ---- Lecteurs ---------------------------------------------------------- */

@@ -84,6 +84,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_purge", "region"),            &ScpsWorld::player_purge);
     ClassDB::bind_method(D_METHOD("player_council_hire", "seat", "slot"), &ScpsWorld::player_council_hire);
     ClassDB::bind_method(D_METHOD("player_council_dismiss", "seat"),    &ScpsWorld::player_council_dismiss);
+    ClassDB::bind_method(D_METHOD("council_candidates", "seat"),        &ScpsWorld::council_candidates);
     ClassDB::bind_method(D_METHOD("player_route", "ra", "rb", "maritime"), &ScpsWorld::player_route);
     ClassDB::bind_method(D_METHOD("player_market_buy", "region", "good", "qty", "tier"),  &ScpsWorld::player_market_buy);
     ClassDB::bind_method(D_METHOD("player_market_sell", "region", "good", "qty", "tier"), &ScpsWorld::player_market_sell);
@@ -522,6 +523,8 @@ Dictionary ScpsWorld::country_army(int country) {
     d["levy"]      = ar.levy;
     d["levy_name"] = String::utf8(ar.levy_name);
     d["fleet"]     = ar.fleet;
+    d["posture"]      = ar.posture;                     /* lue du MOTEUR (fin de l'état local UI) */
+    d["posture_name"] = String::utf8(ar.posture_name);
     return d;
 }
 
@@ -558,6 +561,26 @@ Array ScpsWorld::country_council(int country) {
         d["filled"]    = (bool)seats[i].filled;
         d["councilor"] = String::utf8(seats[i].councilor);
         d["tier"]      = seats[i].tier;
+        d["age"]       = seats[i].age;   /* v49 : le ministre VIEILLIT (retraite 66-73) */
+        a.push_back(d);
+    }
+    return a;
+}
+
+/* CANDIDATS d'un siège (pool de la génération courante — toujours pleine) :
+ * nom · tier · ÂGE · coût/mois — l'embauche ÉCLAIRÉE du joueur. */
+Array ScpsWorld::council_candidates(int seat) {
+    Array a;
+    if (!sim) return a;
+    ScpsCouncilCand c[8];
+    int n = scps_council_candidates(sim, seat, c, 8);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["slot"] = c[i].slot;
+        d["nom"]  = String::utf8(c[i].nom);
+        d["tier"] = c[i].tier;
+        d["age"]  = c[i].age;
+        d["cost"] = c[i].cost;
         a.push_back(d);
     }
     return a;

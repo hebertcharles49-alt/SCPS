@@ -255,14 +255,20 @@ typedef struct {
 int scps_country_trade(ScpsSim *s, int country, int *routes, double *export_gold,
                        int *has_centre, ScpsTradePartner *out, int max);
 
-/* CONSEIL (sb_panel_conseil, read-only) : 3 sièges (Savoir · Société · Industrie). */
+/* CONSEIL (sb_panel_conseil) : 3 sièges (Savoir · Société · Industrie). */
 typedef struct {
     const char *seat;       /* nom du siège */
     int   filled;           /* 1 si pourvu */
     const char *councilor;  /* nom du conseiller (tr) si pourvu, "" sinon */
     int   tier;             /* 1-3 (effet ×1/×1.5/×2) si pourvu */
+    int   age;              /* ÂGE du ministre assis (grandit avec l'année ; retraite 66-73) ; 0 si vacant */
 } ScpsCouncilSeat;
 int scps_country_council(ScpsSim *s, int country, ScpsCouncilSeat *out, int max);
+/* CANDIDATS d'un siège (la pool de la génération COURANTE — se renouvelle tous les
+ * SC_COUNCIL_GEN_YEARS, toujours pleine) : nom résolu + tier + ÂGE + coût/mois (×IPM).
+ * Pour l'embauche ÉCLAIRÉE du joueur (player_council_hire(seat, slot)). */
+typedef struct { int slot; const char *nom; int tier; int age; float cost; } ScpsCouncilCand;
+int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max);
 
 /* RELATIONS diplomatiques d'un pays (sb_panel_diplo, read-only). */
 typedef struct {
@@ -303,6 +309,8 @@ typedef struct {
     int  levy;              /* cran de levée 0-3 */
     const char *levy_name;  /* Basse · Garde · Pied de guerre · Levée en masse */
     int  fleet;             /* total de coques */
+    int  posture;           /* posture de campagne 0 prudente · 1 standard · 2 agressive (lue du moteur) */
+    const char *posture_name;
 } ScpsArmy;
 void scps_country_army(ScpsSim *s, int country, ScpsArmy *out);
 

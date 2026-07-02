@@ -92,7 +92,8 @@ public:
     Dictionary diplo_options(int target);             /* §3 : légalité des verbes diplo contre `target` (boutons grisés) */
     Dictionary country_army(int country);             /* mobilisation + flotte */
     Dictionary country_trade(int country);            /* commerce : routes · or · partenaires */
-    Array      country_council(int country);          /* conseil : 3 sièges */
+    Array      country_council(int country);          /* conseil : 3 sièges (+age v49) */
+    Array      council_candidates(int seat);          /* pool du siège : {slot,nom,tier,age,cost} — embauche éclairée */
 
     /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */
     Array      unit_roster(int country);              /* unités : nom·classe·coût·éthos·contres·recrutable */

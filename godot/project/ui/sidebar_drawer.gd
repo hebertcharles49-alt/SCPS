@@ -247,18 +247,32 @@ func _draw_conseil(x: float, y: float, me: int) -> void:
 		y += 18
 		var filled := bool(seat["filled"])
 		if filled:
+			# le ministre ASSIS : nom · tier · ÂGE (il vieillit ; la retraite vide le siège vers 66-73)
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH,
-				"%s — tier %d" % [seat["councilor"], int(seat["tier"])], VKit.FS_SMALL)
+				"%s — tier %d · %d ans" % [seat["councilor"], int(seat["tier"]), int(seat.get("age", 0))], VKit.FS_SMALL)
+			var bw := VKit.text_w("Renvoyer", VKit.FS_SMALL) + 14.0
+			var r := Rect2(DW - 14.0 - bw, y - 1, bw, 16)
+			VKit.fill(self, r, VKit.COL_PANEL2)
+			VKit.box(self, r, VKit.sense(0.12))
+			VKit.text(self, Vector2(r.position.x + 7, y), VKit.sense(0.12), "Renvoyer", VKit.FS_SMALL)
+			_conseil_btns.append({"rect": r, "act": "dismiss", "seat": idx, "slot": -1})
+			y += 22
 		else:
-			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant)", VKit.FS_SMALL)
-		var label := "Renvoyer" if filled else "Recruter"
-		var bw := VKit.text_w(label, VKit.FS_SMALL) + 14.0
-		var r := Rect2(DW - 14.0 - bw, y - 1, bw, 16)
-		VKit.fill(self, r, VKit.COL_PANEL2)
-		VKit.box(self, r, VKit.sense(0.12) if filled else VKit.sense(0.80))
-		VKit.text(self, Vector2(r.position.x + 7, y), VKit.sense(0.12) if filled else VKit.sense(0.80), label, VKit.FS_SMALL)
-		_conseil_btns.append({"rect": r, "act": ("dismiss" if filled else "hire"), "seat": idx})
-		y += 22
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant — la pool se renouvelle par génération)", VKit.FS_SMALL)
+			y += 18
+			# l'embauche ÉCLAIRÉE : les CANDIDATS de la pool courante (nom · âge · ×tier · coût/mois)
+			if Sim.world.has_method("council_candidates"):
+				for cand in Sim.world.council_candidates(idx):
+					var lab := "%s · %d ans · ×%d · %.0f or/mois" % [
+						String(cand["nom"]), int(cand["age"]), int(cand["tier"]), float(cand["cost"])]
+					var cw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
+					var cr := Rect2(x + 16, y - 1, cw, 16)
+					VKit.fill(self, cr, VKit.COL_PANEL2)
+					VKit.box(self, cr, VKit.sense(0.80))
+					VKit.text(self, Vector2(cr.position.x + 7, y), VKit.COL_PARCH, lab, VKit.FS_SMALL)
+					_conseil_btns.append({"rect": cr, "act": "hire", "seat": idx, "slot": int(cand["slot"])})
+					y += 19
+			y += 4
 		idx += 1
 	if _conseil_flash != "":
 		VKit.text(self, Vector2(x, size.y - 18),
@@ -311,14 +325,15 @@ func _draw_armee(x: float, y: float, me: int) -> void:
 	else:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(pas d'armée de campagne déployée)", VKit.FS_SMALL)
 		y += 20
-	# — Posture : 3 chips (verbe : player_posture) — surbrillance = dernier clic —
+	# — Posture : 3 chips (verbe : player_posture) — surbrillance = l'état MOTEUR (reader v49) —
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "posture :", VKit.FS_SMALL)
 	y += 16
+	var post_now: int = int(a.get("posture", _posture_sel))
 	var cx := x
 	for p in range(POSTURE_LABELS.size()):
 		var label: String = POSTURE_LABELS[p]
 		var tw := VKit.text_w(label, VKit.FS_SMALL) + 12.0
-		var active := (_posture_sel == p)
+		var active := (post_now == p)
 		var r := Rect2(cx, y, tw, 18)
 		VKit.fill(self, r, VKit.COL_COPPER if active else VKit.COL_PANEL2)
 		VKit.box(self, r, VKit.COL_EDGE)
@@ -544,13 +559,13 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 	queue_redraw()
 
 ## Conseil : recruter (siège vacant, slot 0) / renvoyer (siège pourvu) — verbe journalisé.
-func _conseil_act(act: String, seat: int) -> void:
+func _conseil_act(act: String, seat: int, slot: int) -> void:
 	var w = Sim.world
 	if w == null:
 		return
 	var ok := false
 	if act == "hire":
-		ok = w.player_council_hire(seat, 0)
+		ok = w.player_council_hire(seat, slot)   # le CANDIDAT choisi (embauche éclairée)
 	else:
 		ok = w.player_council_dismiss(seat)
 	_conseil_flash_ok = ok
@@ -623,7 +638,7 @@ func _gui_input(event: InputEvent) -> void:
 		if _tab == 7:
 			for b in _conseil_btns:
 				if b.rect.has_point(event.position):
-					_conseil_act(String(b.act), int(b.seat))
+					_conseil_act(String(b.act), int(b.seat), int(b.get("slot", 0)))
 					accept_event()
 					return
 

@@ -789,12 +789,35 @@ int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
         out[n].seat = sz(tr((StrId)(STR_COUNCIL_SEAT_0+seat)));
         int slot = statecraft_council_seated(s->sim.sc, me, seat);
         if(slot>=0){
+            int sgen = statecraft_council_seated_gen(s->sim.sc, me, seat);   /* identité ÉPINGLÉE à l'embauche */
             out[n].filled    = 1;
-            out[n].councilor = sz(tr((StrId)statecraft_council_cand_name(seed, me, seat, slot)));
-            out[n].tier      = statecraft_council_cand_tier(seed, me, seat, slot);
+            out[n].councilor = sz(tr((StrId)statecraft_council_cand_name(seed, me, seat, slot, sgen)));
+            out[n].tier      = statecraft_council_cand_tier(seed, me, seat, slot, sgen);
+            out[n].age       = statecraft_council_seated_age(s->sim.sc, seed, me, seat, s->sim.year);
         } else {
-            out[n].filled = 0; out[n].councilor = ""; out[n].tier = 0;
+            out[n].filled = 0; out[n].councilor = ""; out[n].tier = 0; out[n].age = 0;
         }
+        n++;
+    }
+    return n;
+}
+
+/* CANDIDATS du siège (pool de la génération COURANTE — toujours pleine) : l'embauche
+ * ÉCLAIRÉE — nom · tier · ÂGE (grandit avec l'année) · coût/mois (×IPM). */
+int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max){
+    if(!out || max<=0 || !s || !s->ready || seat<0 || seat>=SC_COUNCIL_SEATS) return 0;
+    int me = s->sim.player;
+    if (me<0 || me>=s->w->n_countries) return 0;
+    uint32_t seed = s->w->seed;
+    int gen = statecraft_council_gen(s->sim.year);
+    float ipm = econ_world_ipm(s->sim.econ);
+    int n=0;
+    for (int slot=0; slot<SC_COUNCIL_CANDS && n<max; slot++){
+        out[n].slot = slot;
+        out[n].nom  = sz(tr((StrId)statecraft_council_cand_name(seed, me, seat, slot, gen)));
+        out[n].tier = statecraft_council_cand_tier(seed, me, seat, slot, gen);
+        out[n].age  = statecraft_council_cand_age(seed, me, seat, slot, gen, s->sim.year);
+        out[n].cost = statecraft_council_cand_cost(seed, me, seat, slot, gen, ipm);
         n++;
     }
     return n;
@@ -872,6 +895,8 @@ void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
     out->levy_name = sz(warhost_levy_name(out->levy));
     int f=0; for(int t=0; t<HULL_COUNT; t++) f += s->sim.navy->n[cid].hull[t];
     out->fleet = f;
+    out->posture      = campaign_posture(s->sim.camp, cid);      /* lue du MOTEUR (fin de l'état local UI) */
+    out->posture_name = sz(campaign_posture_name(out->posture));
 }
 
 /* ====================================================================== */

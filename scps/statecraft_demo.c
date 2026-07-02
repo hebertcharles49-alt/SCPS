@@ -243,15 +243,40 @@ int main(int argc, char **argv){
         int cid=0, seat=0;                              /* siège Savoir */
         ok("Conseil : siège vacant → multiplicateur NEUTRE (1.0)",
            statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f);
-        int best=0, bt=0;                               /* nomme le candidat de plus haut tier */
-        for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seat,sl); if(t>bt){bt=t;best=sl;} }
-        statecraft_council_hire(s.sc, cid, seat, best);
+        int best=0, bt=0;                               /* nomme le candidat de plus haut tier (pool gen 0) */
+        for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seat,sl,0); if(t>bt){bt=t;best=sl;} }
+        statecraft_council_hire(s.sc, cid, seat, best, 0);
         ok("Conseil : NOMMER monte le multiplicateur (>1) et pourvoit le siège",
            statecraft_council_seat_mult(s.sc,seed,cid,seat)>1.f && statecraft_council_seated(s.sc,cid,seat)==best);
         ok("Conseil : le conseiller a un COÛT mensuel (>0, ×IPM)",
            statecraft_council_cost(s.sc,seed,cid,1.f)>0.f);
         ok("Conseil : candidats DÉTERMINISTES (même seed → même tier)",
-           statecraft_council_cand_tier(seed,cid,seat,best)==bt);
+           statecraft_council_cand_tier(seed,cid,seat,best,0)==bt);
+        /* ── L'ÂGE : dérivé (base 30-51 + années écoulées), il GRANDIT avec l'année ── */
+        int a0 = statecraft_council_cand_age(seed,cid,seat,best,0,0);
+        ok("Conseil : l'âge de départ est humain (30-51 ans)", a0>=30 && a0<=51);
+        ok("Conseil : l'âge GRANDIT avec l'année (+7 ans à l'an 7)",
+           statecraft_council_cand_age(seed,cid,seat,best,0,7)==a0+7);
+        ok("Conseil : le ministre ASSIS vieillit aussi (lecture seated_age)",
+           statecraft_council_seated_age(s.sc,seed,cid,seat,10)==a0+10);
+        /* ── LA RETRAITE vide le siège (66-73 ans) — impossible < an 16 (golden intact) ── */
+        statecraft_council_age_tick(s.sc, seed, 12);
+        ok("Conseil : AUCUNE retraite dans la fenêtre golden (an 12)",
+           statecraft_council_seated(s.sc,cid,seat)==best);
+        statecraft_council_age_tick(s.sc, seed, 100);
+        ok("Conseil : passé l'âge, la RETRAITE vide le siège (an 100)",
+           statecraft_council_seated(s.sc,cid,seat)<0);
+        /* ── LA POOL TOURNE par génération et reste TOUJOURS DISPO (3 candidats valides) ── */
+        ok("Conseil : génération 1 à l'an 25 (rotation de pool)",
+           statecraft_council_gen(25)==1 && statecraft_council_gen(12)==0);
+        bool pool_ok=true;
+        for (int g=0; g<5 && pool_ok; g++)
+            for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
+                int t=statecraft_council_cand_tier(seed,cid,seat,sl,g);
+                int ag=statecraft_council_cand_age(seed,cid,seat,sl,g,g*SC_COUNCIL_GEN_YEARS);
+                if (t<1||t>3||ag<30||ag>51) pool_ok=false;
+            }
+        ok("Conseil : la pool est DISPO à toute génération (tiers 1-3, âges 30-51 au début de gen)", pool_ok);
         statecraft_council_dismiss(s.sc, cid, seat);
         ok("Conseil : RENVOYER rétablit le neutre (1.0) sans coût",
            statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f

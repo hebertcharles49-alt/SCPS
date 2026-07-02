@@ -81,26 +81,43 @@ typedef struct {
     float           unrest_days[SCPS_MAX_REG];                   /* temps au-dessus du seuil */
     bool            revolt_fired[SCPS_MAX_REG];                  /* a basculé ce tick */
     int8_t          council[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS]; /* Q1 : slot pourvu par siège (-1 = vacant) */
+    int8_t          council_gen[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS]; /* GÉNÉRATION du ministre ASSIS (identité
+                                                                      * épinglée : la pool tourne, lui vieillit ;
+                                                                      * -1 = vacant). v49. */
     int             n_countries;
 } Statecraft;
 
-/* Q1 — LE CONSEIL. Les candidats (tier 1-3 + nom) sont DÉTERMINISTES (dérivés du seed)
- * → régénérés au chargement, jamais sérialisés ; seul le siège POURVU (council[]) persiste.
- * Les multiplicateurs sont des LECTEURS (×savoir/×promo/×manuf), jamais des poses. */
-int   statecraft_council_cand_tier(uint32_t seed, int cid, int seat, int slot);   /* effet : 1/2/3 → ×1 / ×1.5 / ×2 */
-int   statecraft_council_cand_name(uint32_t seed, int cid, int seat, int slot);   /* StrId du nom (maison) */
+/* Q1 — LE CONSEIL. Les candidats (tier 1-3 + nom + ÂGE) sont DÉTERMINISTES (dérivés du seed)
+ * → régénérés au chargement, jamais sérialisés ; persistent le siège POURVU (council[]) et
+ * sa GÉNÉRATION (council_gen[]). La POOL se RENOUVELLE par génération (année/GEN_YEARS) :
+ * toujours SC_COUNCIL_CANDS candidats par siège, jamais épuisée — gen 0 laisse la graine
+ * INTACTE (hash identique à l'ancien monde). L'ÂGE = base 30-51 (hash) + années écoulées
+ * dans la génération : il GRANDIT avec l'année ; la RETRAITE (66-73 ans, jitter par identité)
+ * vide le siège — premier départ possible an 16 > fenêtre golden (12 ans). Les
+ * multiplicateurs restent des LECTEURS (×savoir/×promo/×manuf), jamais des poses. */
+#define SC_COUNCIL_GEN_YEARS 20   /* longueur d'une génération de pool (années) */
+int   statecraft_council_gen      (int year);                                     /* génération de pool courante */
+int   statecraft_council_cand_tier(uint32_t seed, int cid, int seat, int slot, int gen); /* effet : 1/2/3 → ×1 / ×1.5 / ×2 */
+int   statecraft_council_cand_name(uint32_t seed, int cid, int seat, int slot, int gen); /* StrId du nom (maison) */
+int   statecraft_council_cand_age (uint32_t seed, int cid, int seat, int slot, int gen, int year); /* 30-51 + années */
 int   statecraft_council_seated   (const Statecraft *sc, int cid, int seat);      /* slot pourvu, -1 sinon */
-void  statecraft_council_hire     (Statecraft *sc, int cid, int seat, int slot);
+int   statecraft_council_seated_gen(const Statecraft *sc, int cid, int seat);     /* génération du ministre assis (0 si legacy) */
+int   statecraft_council_seated_age(const Statecraft *sc, uint32_t seed, int cid, int seat, int year); /* -1 si vacant */
+void  statecraft_council_hire     (Statecraft *sc, int cid, int seat, int slot, int gen);
 void  statecraft_council_dismiss  (Statecraft *sc, int cid, int seat);
+/* LES ANNÉES PASSENT (annuel) : tout ministre à l'âge de la retraite VIDE son siège —
+ * l'IA repourvoit au mois suivant (statecraft_council_ai), le joueur par l'UI. */
+void  statecraft_council_age_tick (Statecraft *sc, uint32_t seed, int year);
 float statecraft_council_seat_mult(const Statecraft *sc, uint32_t seed, int cid, int seat); /* 1+base·effet ; 1 si vacant */
 float statecraft_council_cost     (const Statecraft *sc, uint32_t seed, int cid, float ipm); /* or/mois total (×IPM) */
-float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, float ipm);  /* coût d'UN candidat (×IPM), pour l'UI */
+float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, int gen, float ipm); /* coût d'UN candidat (×IPM), pour l'UI */
 /* Applique le conseil à l'éco pour le tick (mensuel) : pousse les multiplicateurs LECTEURS
  * et ponctionne le coût (×IPM) sur le trésor de la capitale, ligne FX_CONSEIL. Appelé
  * IDENTIQUEMENT par viewer ET chronicle (mêmes décisions de monde). dt_year = 1/12. */
 void  statecraft_council_apply    (const Statecraft *sc, const World *w, WorldEconomy *e, uint32_t seed, float dt_year);
-/* L'IA pourvoit le siège que son éthos privilégie, dans la garde de budget (no-op sinon). */
-void  statecraft_council_ai       (Statecraft *sc, const World *w, const WorldEconomy *e, uint32_t seed, int cid);
+/* L'IA pourvoit le siège que son éthos privilégie, dans la garde de budget (no-op sinon).
+ * `year` : la pool évaluée est celle de la génération COURANTE. */
+void  statecraft_council_ai       (Statecraft *sc, const World *w, const WorldEconomy *e, uint32_t seed, int cid, int year);
 
 void statecraft_init(Statecraft *sc, const World *w);
 

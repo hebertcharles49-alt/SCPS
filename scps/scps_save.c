@@ -178,6 +178,13 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         int rp=s->econ->region_rep_prov[r];
         if (rp < -1 || rp >= s->econ->n_prov) return false;
     }
+    /* v49 — conseil : slot ∈ [-1, CANDS) et génération ∈ [-1, 120] (désérialisés, indexent
+     * les fonctions de pool — une forge hors-borne est refusée net). */
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
+        for (int st=0;st<SC_COUNCIL_SEATS;st++){
+            if (s->sc->council[c][st] < -1 || s->sc->council[c][st] >= SC_COUNCIL_CANDS) return false;
+            if (s->sc->council_gen[c][st] < -1 || s->sc->council_gen[c][st] > 120) return false;
+        }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;
     for (int c=0;c<w->n_countries;c++)

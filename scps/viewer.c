@@ -2829,23 +2829,27 @@ static void sb_panel_conseil(SDL_Renderer *ren, int x, int y, int w, int h, Sim 
                             tr((StrId)(STR_COUNCIL_SEAT_0+seat)), pc, tr((StrId)(STR_COUNCIL_EFF_0+seat)));
         draw_text(ren,g_font,x+10,ry,COL_COPPER,hd); ry+=18;
         int slot=statecraft_council_seated(s->sc,cid,seat);
+        int cgen=statecraft_council_gen(s->year);            /* pool de la génération courante */
         if (slot>=0){
-            int tier=statecraft_council_cand_tier(seed,cid,seat,slot);
-            int nm  =statecraft_council_cand_name(seed,cid,seat,slot);
+            int sgen=statecraft_council_seated_gen(s->sc,cid,seat);   /* identité ÉPINGLÉE à l'embauche */
+            int tier=statecraft_council_cand_tier(seed,cid,seat,slot,sgen);
+            int nm  =statecraft_council_cand_name(seed,cid,seat,slot,sgen);
             char ts[8];  snprintf(ts,sizeof ts,"%d",tier);
-            char cs[12]; snprintf(cs,sizeof cs,"%.0f",statecraft_council_cand_cost(seed,cid,seat,slot,ipm));
+            char cs[12]; snprintf(cs,sizeof cs,"%.0f",statecraft_council_cand_cost(seed,cid,seat,slot,sgen,ipm));
             char line[96]; tr_fmt(line,sizeof line,STR_COUNCIL_SEATED_FMT, tr((StrId)nm), ts, cs);
             draw_text(ren,g_font_small,x+16,ry+2,COL_PARCH,line);
+            char ag[16]; snprintf(ag,sizeof ag,"%d ans",statecraft_council_seated_age(s->sc,seed,cid,seat,s->year));
+            draw_text(ren,g_font_small,x+w-136,ry+2,COL_DIM,ag);     /* l'âge — la retraite vide le siège vers 66-73 */
             sb_chip(ren,x+w-80,ry,tr(STR_COUNCIL_RENVOYER),false,SBH_COUNCIL,seat,-1,
                     "Renvoyer ce conseiller : le siège redevient vacant, le coût mensuel cesse.");
             ry+=22;
         } else {
             draw_text(ren,g_font_small,x+16,ry+2,COL_DIM,tr(STR_COUNCIL_VACANT)); ry+=18;
             for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
-                int tier=statecraft_council_cand_tier(seed,cid,seat,sl);
-                int nm  =statecraft_council_cand_name(seed,cid,seat,sl);
+                int tier=statecraft_council_cand_tier(seed,cid,seat,sl,cgen);
+                int nm  =statecraft_council_cand_name(seed,cid,seat,sl,cgen);
                 char ts[8];  snprintf(ts,sizeof ts,"%d",tier);
-                char cs[12]; snprintf(cs,sizeof cs,"%.0f",statecraft_council_cand_cost(seed,cid,seat,sl,ipm));
+                char cs[12]; snprintf(cs,sizeof cs,"%.0f",statecraft_council_cand_cost(seed,cid,seat,sl,cgen,ipm));
                 char lab[64]; tr_fmt(lab,sizeof lab,STR_COUNCIL_CAND_FMT, tr((StrId)nm), ts, cs);
                 sb_chip(ren,x+16,ry,lab,false,SBH_COUNCIL,seat,sl,
                         "Nommer ce conseiller (tier = effet ×1 / ×1.5 / ×2 ; coût mensuel ×IPM).");
@@ -3176,7 +3180,8 @@ static bool sidebar_click(Sim *s, World *world, int mx, int my, ViewMode *mode, 
             }
         } break;
         case SBH_COUNCIL:                                    /* Q1 : NOMMER (b≥0) ou RENVOYER (b=-1) un conseiller */
-            if (hh->b>=0) statecraft_council_hire(s->sc, s->player, hh->a, hh->b);
+            if (hh->b>=0) statecraft_council_hire(s->sc, s->player, hh->a, hh->b,
+                                                  statecraft_council_gen(s->year));   /* pool de la génération courante */
             else          statecraft_council_dismiss(s->sc, s->player, hh->a);
             break;
         case SBH_PROD_CAP: {                                 /* limiteur de production (onglet Stocks) */

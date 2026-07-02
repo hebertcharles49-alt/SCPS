@@ -337,7 +337,7 @@ static void sim_cmd_drain(Sim *s, World *w){
           case CMD_COUNCIL_HIRE: {
             int seat=c->a[0], slot=c->a[1];
             if (seat<0 || seat>=SC_COUNCIL_SEATS || slot<0 || slot>=SC_COUNCIL_CANDS) break;
-            statecraft_council_hire(s->sc, p, seat, slot);
+            statecraft_council_hire(s->sc, p, seat, slot, statecraft_council_gen(s->year));
             break; }
           case CMD_COUNCIL_DISMISS: {
             int seat=c->a[0];
@@ -505,7 +505,7 @@ void sim_day(Sim *s, World *w) {
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
         statecraft_council_apply(s->sc, w, s->econ, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or */
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
-            if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c);   /* Q1 : l'IA pourvoit son siège d'éthos */
+            if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */
         PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         PROF(PB_DEMO, demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f));
@@ -629,6 +629,7 @@ void sim_day(Sim *s, World *w) {
         diplo_suzerainty_tick(s->dp, w, s->econ, s->wp);   /* suzeraineté + FRONDE : tributs, ligues, défections */
         diplo_war_tick(s->dp, w, s->econ, s->wp, 1.0f);
         missions_tick(s->missions, w, s->econ, s->ts, s->year);  /* missions décennales : rythme + récompense */
+        statecraft_council_age_tick(s->sc, w->seed, s->year);    /* LES ANNÉES PASSENT : les conseillers vieillissent, la retraite vide le siège */
         faction_levers_decay(0.07f);   /* §4 : une stance non entretenue s'efface (~15 ans) */
         if (s->ev->ages.last_dawned != s->prev_dawned){          /* §7 : un âge se lève → engagement */
             int age=s->ev->ages.last_dawned;
