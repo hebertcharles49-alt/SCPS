@@ -149,12 +149,22 @@ func _ready() -> void:
 	alerts.open_religion.connect(func():
 		if _religion != null:
 			_religion.open())
-	alerts.goto_region.connect(func(r):
+	var goto_fn := func(r):
 		if r >= 0 and Sim.world != null:
 			var c: Vector2 = Sim.world.region_centroid(r)
 			if c.x >= 0:
 				map._camera.position = map.iso_pos(c.x, c.y)   # centre la carte sur l'alerte
-				map.queue_redraw())
+				map.queue_redraw()
+	alerts.goto_region.connect(goto_fn)
+
+	# OYEZ OYEZ : le popup d'évènement (directeur + alertes majeures) — PAUSE + boutons
+	# adaptatifs ; les kinds majeurs du fil y sont ROUTÉS par alerts (popup_requested).
+	var popup = load("res://ui/event_popup.gd").new()
+	popup.name = "EventPopup"
+	ui.add_child(popup)
+	alerts.popup_requested.connect(popup.enqueue)
+	popup.goto_region.connect(goto_fn)
+	popup.open_tab.connect(func(i): _sidebar.open_tab(i))
 
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 

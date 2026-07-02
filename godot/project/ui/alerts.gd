@@ -16,6 +16,7 @@ signal open_tech
 signal open_construct
 signal open_religion
 signal goto_region(r: int)  ## centre la carte sur la région de l'alerte (siège, famine, révolte)
+signal popup_requested(e: Dictionary)  ## évènement MAJEUR → le popup OYEZ OYEZ (pause + boutons)
 
 const COL_ETAT   := Color(0.55, 0.38, 0.66)   ## violet — étatique
 const COL_ARMEE  := Color(0.72, 0.28, 0.24)   ## rouge — armée
@@ -41,7 +42,10 @@ const FEED_KINDS := {
 	7: {"icon": "settlement_cluster", "col": COL_ETAT, "fmt": "SÉCESSION — {a} proclame son indépendance (an {y})"},
 	8: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "BATAILLE GAGNÉE contre {b} en région {r} (an {y})"},
 	9: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "BATAILLE PERDUE contre {b} — l'ost est brisé (région {r}, an {y})"},
+	10: {"icon": "alert_event_bell", "col": COL_ETAT, "fmt": "{label} — région {r} (an {y})"},   # ÉVÈNEMENT du directeur
 }
+## kinds MAJEURS → popup OYEZ OYEZ (pause + boutons adaptatifs) au lieu d'un chip.
+const POPUP_KINDS := [1, 2, 6, 7, 10]   # guerre · paix (verdict) · révolte · sécession · directeur
 
 var _alerts := []    ## [{icon, col, tip, act, …}] conditions, recalculées à chaque _refresh
 var _events := []    ## [{icon, col, tip, seq}] fil transient (clic = acquitté)
@@ -76,17 +80,60 @@ func _poll_feed() -> void:
 		var kind := int(ev["kind"])
 		if not FEED_KINDS.has(kind):
 			continue   # kind inconnu du front : silencieux (l'ajout = une ligne dans FEED_KINDS)
+		# ÉVÈNEMENT DU DIRECTEUR : filtre de PERTINENCE — ma région, ou mon pays
+		if kind == 10:
+			var mine := false
+			var me: int = w.player()
+			var evr := int(ev["region"])
+			if evr >= 0:
+				mine = (int(w.region_owner(evr)) == me)
+			else:
+				mine = (int(ev.get("a_id", -1)) == me)
+			if not mine:
+				continue
 		var k: Dictionary = FEED_KINDS[kind]
 		var tip := String(k["fmt"]).replace("{a}", String(ev["a"])).replace("{b}", String(ev["b"])) \
-			.replace("{r}", str(int(ev["region"]))).replace("{y}", str(int(ev["year"])))
+			.replace("{r}", str(int(ev["region"]))).replace("{y}", str(int(ev["year"]))) \
+			.replace("{label}", String(ev.get("label", "")))
 		if kind == 2:
 			# la PAIX porte le SCORE DE GUERRE final (±100, notre point de vue) → le VERDICT
 			var sc := int(ev.get("v", 0))
 			var verdict := "guerre GAGNÉE" if sc >= 10 else ("guerre PERDUE" if sc <= -10 else "paix blanche")
 			tip += " — %s (score %+d)" % [verdict, sc]
+		if kind in POPUP_KINDS:
+			popup_requested.emit(_popup_of(kind, ev, tip))   # MAJEUR → OYEZ OYEZ (pause)
+			continue
 		_events.append({"icon": k["icon"], "col": k["col"], "tip": tip + "  (clic : acquitter)", "seq": int(ev["seq"])})
 	while _events.size() > FEED_MAX:
 		_events.pop_front()   # bornés : les plus récents restent
+
+## bâtit le POPUP d'un kind majeur : titre + corps + BOUTONS ADAPTATIFS à la situation.
+func _popup_of(kind: int, ev: Dictionary, tip: String) -> Dictionary:
+	var reg := int(ev["region"])
+	var btns := []
+	var title := ""
+	match kind:
+		1:
+			title = "LA GUERRE !"
+			btns = [{"label": "Voir la diplomatie", "act": "diplo"},
+				{"label": "Lever l'ost", "act": "army"}, {"label": "Vu", "act": "close"}]
+		2:
+			title = "LA PAIX EST SIGNÉE"
+			btns = [{"label": "Vu", "act": "close"}]
+		6:
+			title = "RÉVOLTE !"
+			btns = [{"label": "Y aller", "act": "goto", "region": reg},
+				{"label": "Réprimer", "act": "repress", "region": reg}, {"label": "Vu", "act": "close"}]
+		7:
+			title = "SÉCESSION !"
+			btns = [{"label": "Vu", "act": "close"}]
+		10:
+			title = String(ev.get("label", "Évènement"))
+			if reg >= 0:
+				btns = [{"label": "Y aller", "act": "goto", "region": reg}, {"label": "Vu", "act": "close"}]
+			else:
+				btns = [{"label": "Vu", "act": "close"}]
+	return {"title": title, "body": tip, "buttons": btns}
 
 ## LA COLLECTE : chaque « élément en attente » du gameplay, lu de la façade.
 func _collect() -> Array:

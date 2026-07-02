@@ -664,7 +664,7 @@ void sim_day(Sim *s, World *w) {
                 g_feed_rev[r]=rv;
             }
             if (g_feed_primed && s->rs->last_spawned>=0)                     /* SÉCESSION : un pays est né */
-                feed_push(FEED_SECESSION, s->rs->last_spawned, -1, -1, 0);
+                feed_push(FEED_SECESSION, s->rs->last_spawned, hp, -1, 0);  /* b=joueur : nouvelle du monde (passe le focus) */
             g_feed_primed=true;
         }
     }

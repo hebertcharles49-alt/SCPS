@@ -123,6 +123,7 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     s->sim.ai_on[s->sim.player] = false;
     warhost_set_human(s->sim.player);   /* la main humaine : l'armée du joueur ne s'auto-mobilise plus */
     econ_set_human(s->sim.player);     /* §NF : la construction autonome SKIPPE le joueur (il construit via le panneau B) */
+    feed_set_focus(s->sim.player);     /* le fil d'évènements ne garde que ce qui LE concerne */
     econ_flux_reset();   /* budget façade : repart d'une ardoise propre (le flux est un état GLOBAL) */
     s->ready = true;
     api_centroids(s);   /* centroïdes région (géo figée par worldgen) */
@@ -1404,8 +1405,10 @@ int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max){
     for (int i=0;i<n;i++){
         out[i].seq = fe[i].seq; out[i].year = fe[i].year;
         out[i].kind = fe[i].kind; out[i].region = fe[i].region; out[i].v = fe[i].v;
+        out[i].a_id = fe[i].a; out[i].b_id = fe[i].b;
         out[i].a_name = (fe[i].a>=0 && fe[i].a<s->w->n_countries) ? sz(s->w->country[fe[i].a].name) : "";
         out[i].b_name = (fe[i].b>=0 && fe[i].b<s->w->n_countries) ? sz(s->w->country[fe[i].b].name) : "";
+        out[i].label  = (fe[i].kind==FEED_DIRECTOR) ? sz(events_name_of(fe[i].v)) : "";
     }
     return n;
 }
@@ -2141,6 +2144,7 @@ int scps_sim_load(ScpsSim *s, int slot){
     s->sim.ai_on[s->sim.player] = false;
     warhost_set_human(s->sim.player);
     econ_set_human(s->sim.player);
+    feed_set_focus(s->sim.player);   /* le fil repart, focalisé joueur (RAZ par le load) */
     econ_flux_reset();
     s->ready = true;
     api_centroids(s);   /* la carte chargée : recalcule les centroïdes */

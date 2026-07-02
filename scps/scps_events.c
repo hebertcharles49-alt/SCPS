@@ -401,6 +401,21 @@ static void fire_event(EventCtx *cx, int evid, int subject){
     cx->ev->last_id=evid; cx->ev->last_name=d->name; cx->ev->n_fired++;
     if (d->scope==EV_PROVINCE && subject>=0)
         provlog_push_event(subject, d->name, ev_sign(&d->options[best].eff), ev_effdir(&d->options[best].eff));
+    /* FIL D'ÉVÈNEMENTS (alertes/popup du front) : write-only, jamais relu → déterminisme
+     * intact. a = le pays CONCERNÉ (owner de la région si provincial) — le focus du fil
+     * (feed_set_focus) filtre à l'entrée, le front re-filtre en ceinture. */
+    int tgt = subject;
+    if (d->scope==EV_PROVINCE)
+        tgt = (cx->econ && subject>=0 && subject<cx->econ->n_regions)
+            ? cx->econ->region[subject].owner : -1;
+    feed_push(FEED_DIRECTOR, tgt, -1,
+              (d->scope==EV_PROVINCE) ? subject : -1,
+              evid);
+}
+
+/* NOM d'un évènement de la table (le fil le porte par ID ; la façade résout le MOT). */
+const char *events_name_of(int evid){
+    return (evid>=0 && evid<EVID_COUNT) ? EVENTS[evid].name : "";
 }
 
 /* ===================================================================== */
@@ -415,6 +430,10 @@ void events_strike(EventsState *ev, World *w, WorldEconomy *econ,
     ev->last_id=shock; ev->last_name=EVENTS[shock].name; ev->n_fired++;
     if (EVENTS[shock].scope==EV_PROVINCE && region>=0)
         provlog_push_event(region, EVENTS[shock].name, ev_sign(&EVENTS[shock].options[0].eff), ev_effdir(&EVENTS[shock].options[0].eff));
+    {   /* fil display : a = owner de la région frappée (le focus filtre à l'entrée) */
+        int own = (econ && region>=0 && region<econ->n_regions) ? econ->region[region].owner : -1;
+        feed_push(FEED_DIRECTOR, own, -1, region, (int)shock);
+    }
 }
 
 /* ===================================================================== */

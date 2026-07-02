@@ -70,9 +70,18 @@ typedef enum {
     FEED_SECESSION,      /* un pays NAÎT d'une sécession : a = le nouveau pays */
     FEED_BATTLE_WON,     /* BATAILLE RANGÉE gagnée : b = l'adversaire (-1 si inconnu), region */
     FEED_BATTLE_LOST,    /* … perdue (l'ost est brisé) : b = l'adversaire, region */
+    FEED_DIRECTOR,       /* ÉVÈNEMENT DU DIRECTEUR (inondation, peste, créuset…) : v = EvId
+                          * (nom résolu à la façade) · region si provincial, sinon a = pays visé.
+                          * Poussé par scps_events (non gaté — le FRONT filtre la pertinence). */
     FEED_COUNT
 } FeedKind;
 typedef struct { int seq, year, kind, a, b, region, v; } FeedEntry;   /* v = valeur libre (score…) */
+/* FOCUS du fil = le pays SUIVI (le joueur) : -1 (défaut/chronique) → TOUT est jeté au
+ * push (zéro écriture) ; sinon on ne garde que les entrées qui le CONCERNENT (a==focus,
+ * b==focus, ou a<0 = déjà scopé par l'appelant). Filtrer À L'ENTRÉE évite qu'un monde de
+ * 200 pays évince les évènements du joueur de l'anneau. Posé par la façade/le viewer
+ * après generate/load (jamais par la chronique). */
+void feed_set_focus(int cid);
 void feed_push(int kind, int a, int b, int region, int v);/* write-only (l'an vient de provlog_set_year) */
 int  feed_poll(int after_seq, FeedEntry *out, int max);   /* entrées seq > after_seq, ordre chrono */
 

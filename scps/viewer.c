@@ -49,6 +49,7 @@
 #include "scps_lang.h"     /* la table de chaînes : tout mot face-joueur vient des tables */
 #include "scps_sim.h"      /* LE TICK PARTAGÉ (chronicle · Godot · viewer) : Sim + sim_init + sim_day — fin du fork local */
 #include "scps_save.h"     /* LA SAUVEGARDE PARTAGÉE (v47) : un seul format viewer/Godot (scps_save_game/load) */
+#include "scps_provlog.h"  /* le FIL d'évènements (feed_set_focus : suivre le joueur) */
 #include "scps_map_dressing.h"  /* pack MAP DRESSING : décors de carte (champs, bâtiments, arbres, roches, buissons, rivières, routes) — display-only */
 /* L'atlas chargé (NULL = absent → carte lisse). Display-only, même régime éditable que scps_lang.txt. */
 static SDL_Texture *g_dress_tex = NULL;  /* atlas de dressing (décors de carte) — NULL si le .bmp est absent */
@@ -1819,6 +1820,7 @@ static void sim_rebuild(Sim *s, World *w) {
     s->ai_on[s->player] = false;
     warhost_set_human(s->player);   /* l'armée du joueur ne s'auto-mobilise pas */
     econ_set_human(s->player);      /* §NF : la construction autonome le skippe (panneau B) */
+    feed_set_focus(s->player);      /* le fil d'évènements suit le joueur */
     for (int t=0; t<GEN_BOOT_DAYS; t++){ sim_day(s, w); g_gen_day=t+1; }   /* amorce : une carte déjà vivante */
     g_age_alert_seen = s->ev->ages.last_dawned;   /* les âges de l'amorce ne sonnent pas */
     g_sim_ready = true;
@@ -4265,6 +4267,7 @@ static int game_load(int slot, World *w, Sim *s, WorldParams *params){
         s->human_player = s->player;
         s->ai_on[s->player] = false;
         econ_set_human(s->player);
+        feed_set_focus(s->player);
         g_age_alert_seen = s->ev->ages.last_dawned;   /* pas d'alerte fantôme au chargement */
         g_sim_ready = true;
     }

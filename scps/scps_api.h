@@ -452,8 +452,10 @@ int  scps_research_target(ScpsSim *s, float *progress01);
  * scps_provlog.h). Les NOMS sont résolus (membrane). Poll incrémental par seq. */
 typedef struct {
     int seq, year, kind, region;   /* region -1 si non localisé */
-    int v;                         /* valeur libre du kind (FEED_PEACE : SCORE de guerre ±100) */
+    int v;                         /* valeur libre du kind (FEED_PEACE : SCORE de guerre ±100 · FEED_DIRECTOR : EvId) */
+    int a_id, b_id;                /* index pays BRUTS (le filtre de pertinence du front) */
     const char *a_name, *b_name;   /* pays concernés ("" si -1) */
+    const char *label;             /* FEED_DIRECTOR : le NOM de l'évènement (résolu) ; "" sinon */
 } ScpsFeedEvent;
 int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max);
 /* VOIE CONDITIONS : les alertes d'ÉTAT du joueur, calculées en UN appel (C scanne,

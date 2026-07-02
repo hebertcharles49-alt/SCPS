@@ -204,6 +204,7 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
 /* ---- LE DIRECTEUR (§F) : lecteurs (UI / télémétrie) -------------------- */
 float       director_temperature(const EventsState *ev);          /* dernière T [0..1] (0 ronron, 1 chaos) */
 const char *director_event_name(int dir_id);                      /* nom diégétique d'un événement dirigé */
+const char *events_name_of(int evid);                              /* nom d'un EvId de la table ("" hors borne) — le fil le porte par id */
 int         director_fired(const EventsState *ev, int dir_id);     /* occurrences d'un événement dirigé */
 bool        director_is_destab(int dir_id);                        /* déstabilisateur ? */
 

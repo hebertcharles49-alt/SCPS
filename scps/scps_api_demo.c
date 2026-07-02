@@ -219,17 +219,25 @@ int main(int argc, char **argv){
     }
 
     /* ── LE FIL D'ÉVÈNEMENTS (alertes, voie « ce qui arrive ») : la guerre déclarée plus
-     *    haut doit PARAÎTRE au poll après le diff mensuel (observation gatée joueur). ── */
+     *    haut doit PARAÎTRE au poll après le diff mensuel (observation gatée joueur).
+     *    DRAIN EN BOUCLE (le fil porte aussi les évènements du directeur : > 32 possible). ── */
     {
         scps_sim_advance_days(s2, 35);                      /* passe une frontière de mois */
         ScpsFeedEvent fe[32];
-        int nf = scps_feed_poll(s2, 0, fe, 32);
-        int has_war=0;
-        for (int i=0;i<nf;i++) if (fe[i].kind==1 /* FEED_WAR_DECLARED */ && fe[i].a_name[0]) has_war=1;
-        printf("   fil d'évènements : %d entrée(s) au poll\n", nf);
+        int has_war=0, total=0, last=0;
+        for (int guard=0; guard<8; guard++){
+            int nf = scps_feed_poll(s2, last, fe, 32);
+            if (nf<=0) break;
+            total += nf;
+            for (int i=0;i<nf;i++){
+                if (fe[i].kind==1 /* FEED_WAR_DECLARED */ && fe[i].a_name[0]) has_war=1;
+                last = fe[i].seq;
+            }
+        }
+        printf("   fil d'évènements : %d entrée(s) drainée(s)\n", total);
         ok("fil d'évènements : la GUERRE déclarée paraît (kind war + nom résolu)", has_war);
         ok("fil d'évènements : poll incrémental (rien après le dernier seq)",
-           nf==0 || scps_feed_poll(s2, fe[nf-1].seq, fe, 32)==0);
+           scps_feed_poll(s2, last, fe, 32)==0);
     }
 
     /* ── COLONISATION (le verbe qui manquait au front — charte : « le joueur colonise

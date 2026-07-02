@@ -802,8 +802,11 @@ Array ScpsWorld::feed_poll(int after_seq) {
         d["kind"]   = ev[i].kind;
         d["region"] = ev[i].region;
         d["v"]      = ev[i].v;
+        d["a_id"]   = ev[i].a_id;
+        d["b_id"]   = ev[i].b_id;
         d["a"]      = String::utf8(ev[i].a_name);
         d["b"]      = String::utf8(ev[i].b_name);
+        d["label"]  = String::utf8(ev[i].label);
         a.push_back(d);
     }
     return a;

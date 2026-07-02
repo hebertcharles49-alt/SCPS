@@ -31,9 +31,14 @@ static const signed char JMOD_SIGN[JMOD_COUNT] = { +1, +1, -1, -1, -1 };
  *    moteur — la RAZ vit dans provlog_reset (un seul point d'hygiène par sim). ── */
 static FeedEntry g_feed[FEED_CAP];
 static int g_feed_seq = 0;    /* seq du DERNIER poussé (0 = fil vide) */
+static int g_feed_focus = -1; /* pays SUIVI (-1 = tout jeter — la chronique) */
+
+void feed_set_focus(int cid){ g_feed_focus = cid; }
 
 void feed_push(int kind, int a, int b, int region, int v){
     if (kind <= FEED_NONE || kind >= FEED_COUNT) return;
+    if (g_feed_focus < 0) return;                              /* personne ne regarde : rien à garder */
+    if (a >= 0 && a != g_feed_focus && b != g_feed_focus) return;  /* n'entre que ce qui CONCERNE le suivi */
     FeedEntry *e = &g_feed[g_feed_seq % FEED_CAP];
     g_feed_seq++;
     e->seq = g_feed_seq; e->year = g_year; e->kind = kind;
@@ -58,6 +63,7 @@ void provlog_reset(void){
     g_year = 0;
     memset(g_feed, 0, sizeof g_feed);                      /* le fil d'évènements repart à vide */
     g_feed_seq = 0;
+    g_feed_focus = -1;                                     /* le focus se REPOSE après (façade/viewer) */
 }
 
 void provlog_set_year(int year){ g_year = year; }
