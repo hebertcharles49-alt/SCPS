@@ -261,10 +261,11 @@ const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
 ## GLACIS : le crème quasi-blanc « brillait » sur le lavis — rabattu vers le ton parchemin,
 ## alphas baissés (la route est une trace DANS la carte, pas un ruban posé dessus).
 const ROAD_EDGE  := Color(0.46, 0.31, 0.17, 0.32)  ## sous-trait : sépia sombre, large
-const ROAD_MAIN  := Color(0.88, 0.79, 0.60, 0.66)  ## corps : terre battue (rabattu)
-const ROAD_LIGHT := Color(0.96, 0.90, 0.74, 0.22)  ## filet central (à peine)
-const ROAD_MINOR_EDGE := Color(0.46, 0.31, 0.17, 0.22) ## desserte : plus ténue
-const ROAD_MINOR_MAIN := Color(0.88, 0.79, 0.60, 0.46)
+const ROAD_MAIN  := Color(0.84, 0.74, 0.55, 0.58)  ## corps : terre battue (encore rabattu)
+const ROAD_LIGHT := Color(0.94, 0.87, 0.70, 0.15)  ## filet central (à peine)
+const ROAD_MINOR_EDGE := Color(0.46, 0.31, 0.17, 0.20) ## desserte : plus ténue
+const ROAD_MINOR_MAIN := Color(0.84, 0.74, 0.55, 0.40)
+const ROAD_FOREST_A := 0.22   ## SOUS LA CANOPÉE : la route s'efface (on la devine entre les masses)
 # MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
 const ROADSIDE := [
 	"DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW",
@@ -381,6 +382,7 @@ func _on_generated() -> void:
 	_town_cache.clear()         # urbaniste : plans de bourgs recalculés (routes neuves)
 	_sea_img = null             # couches eau recachées (quais)
 	_rf_img = null
+	_bio_img = null             # couche biome recachée (routes sous canopée)
 	_river_hash.clear()         # snap de frontières : fil de rivière re-haché (monde neuf)
 	_owner_sig = -1
 	_build_names()
@@ -1420,6 +1422,15 @@ func _augment_roads(w) -> void:
 		rd["rb"] = rb
 		rd["points"] = pts
 
+## range un tronçon de route dans son bucket (artère/desserte × plein/sous-canopée).
+func _road_bucket(run: PackedVector2Array, mv, is_main: bool, in_forest: bool,
+		pm: Array, pn: Array, pmf: Array, pnf: Array) -> void:
+	var ip := _road_iso(run, mv)
+	if is_main:
+		(pmf if in_forest else pm).append(ip)
+	else:
+		(pnf if in_forest else pn).append(ip)
+
 ## projette une polyligne MONDE en iso (helper du dessin de routes).
 func _road_iso(poly: PackedVector2Array, mv) -> PackedVector2Array:
 	var out := PackedVector2Array()
@@ -1765,6 +1776,8 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var year: int = w.year()
 			var polys_main := []
 			var polys_minor := []
+			var polys_main_f := []    # tronçons SOUS LA CANOPÉE (forêt) : la route s'efface
+			var polys_minor_f := []
 			var seen := {}   # dédup : un TRONÇON partagé (couloir commun) ne s'encre qu'UNE fois
 			for ri in range(_roads.size()):
 				var rd: Dictionary = _roads[ri]
@@ -1778,27 +1791,41 @@ func _draw_iso(w, mv: Node2D) -> void:
 				if poly.size() < 2:
 					continue
 				var is_main: bool = int(rd.get("level", 1)) <= 0
-				# découpe en SOUS-POLYLIGNES de segments inédits (les tronçons déjà encrés sautent)
+				# découpe en SOUS-POLYLIGNES : segments inédits (dédup) ET homogènes (forêt ou
+				# non) — sous la canopée le tronçon bascule dans le bucket « effacé ».
 				var run := PackedVector2Array()
+				var run_forest := false
 				for k in range(poly.size() - 1):
 					var a7: Vector2 = poly[k]
 					var b7: Vector2 = poly[k + 1]
 					var ka := int(a7.x * 4.0) * 8388608 + int(a7.y * 4.0)
 					var kb := int(b7.x * 4.0) * 8388608 + int(b7.y * 4.0)
 					var kseg := str(mini(ka, kb)) + "_" + str(maxi(ka, kb))
-					if seen.has(kseg):
+					var mid := (a7 + b7) * 0.5
+					var inf := _forest_at(int(mid.x), int(mid.y))
+					if seen.has(kseg) or (run.size() >= 2 and inf != run_forest):
 						if run.size() >= 2:
-							(polys_main if is_main else polys_minor).append(_road_iso(run, mv))
+							_road_bucket(run, mv, is_main, run_forest, polys_main, polys_minor, polys_main_f, polys_minor_f)
 						run = PackedVector2Array()
-						continue
+						if seen.has(kseg):
+							continue
 					seen[kseg] = true
 					if run.is_empty():
 						run.append(a7)
+						run_forest = inf
 					run.append(b7)
 				if run.size() >= 2:
-					(polys_main if is_main else polys_minor).append(_road_iso(run, mv))
-			# PAR POLYLIGNE (joints RONDS aux coudes — le multiline ouvrait des fentes) ; l'ordre
-			# des passes fait le modelé : ombre sépia → terre crème → filet de lumière central.
+					_road_bucket(run, mv, is_main, run_forest, polys_main, polys_minor, polys_main_f, polys_minor_f)
+			# PAR POLYLIGNE (joints RONDS aux coudes) ; l'ordre des passes fait le modelé :
+			# ombre sépia → terre crème → filet de lumière. SOUS LA CANOPÉE : un seul trait
+			# ténu (α×ROAD_FOREST_A) — on DEVINE le chemin entre les masses, il ne coupe plus
+			# la forêt en deux.
+			for pl2 in polys_minor_f:
+				draw_polyline(pl2, Color(ROAD_MINOR_MAIN.r, ROAD_MINOR_MAIN.g, ROAD_MINOR_MAIN.b,
+					ROAD_MINOR_MAIN.a * ROAD_FOREST_A), _w(zoom, 0.36, 0.8, 1.5), true)
+			for pl2 in polys_main_f:
+				draw_polyline(pl2, Color(ROAD_MAIN.r, ROAD_MAIN.g, ROAD_MAIN.b,
+					ROAD_MAIN.a * ROAD_FOREST_A), _w(zoom, 0.62, 1.3, 2.4), true)
 			for pl2 in polys_minor:
 				draw_polyline(pl2, ROAD_MINOR_EDGE, _w(zoom, 0.65, 1.4, 2.6), true)
 			for pl2 in polys_minor:
@@ -2022,6 +2049,15 @@ var _town_cache := {}       ## region → plan du bourg (voir _build_town)
 var _ink_bridges := []      ## [{w:Vector2, t:Vector2}] — ponts aux franchissements route×rivière
 var _sea_img: Image = null  ## couche EAU (cache par monde — quais)
 var _rf_img: Image = null   ## champ rivière carvé (cache par monde — quais fluviaux)
+## VRAI si la cellule est un biome de FORÊT (12-14) — la route y passe SOUS la canopée.
+## (réutilise le cache _bio_img déclaré en tête de fichier.)
+func _forest_at(x: int, y: int) -> bool:
+	if _bio_img == null and Sim.world != null:
+		_bio_img = Sim.world.layer_image(LAYER_BIOME)
+	if _bio_img == null or x < 0 or y < 0 or x >= _bio_img.get_width() or y >= _bio_img.get_height():
+		return false
+	var b := int(_bio_img.get_pixel(x, y).r * 255.0 + 0.5)
+	return b >= 12 and b <= 14
 
 ## VRAI si la cellule (x,y) est de l'EAU (mer OU rivière carvée) — pour poser les quais.
 func _water_at(x: int, y: int) -> bool:
