@@ -251,11 +251,14 @@ var _alb_l: Image = null  ## terrain albedo (cache) → couleur/luminosité du S
 # et rend l'eau DANS le relief — cœur propre, berges fondues, continu jusqu'à la mer. L'overlay n'en
 # garde QUE le nuage de points (`_rivers`) pour interdire de BÂTIR sur le fil.
 const ROAD_ZOOM_MIN := 2.5    ## routes (zoom ISO)
-const ROAD_INK    := Color(0.40, 0.28, 0.15, 0.82) ## route ARTÈRE : encre BRUNE franche (présente, « tracée à la plume »)
-const ROAD_INK_MINOR := Color(0.45, 0.34, 0.22, 0.50) ## desserte/mineure : sépia plus PÂLE & fin (hiérarchie)
-const ROAD_DASH   := 4.5    ## longueur de tiret MOYENNE (px écran) — jittée par tiret (≠ points uniformes)
-const ROAD_GAP    := 5.5    ## espace entre tirets (px écran) — trous bien ouverts (carte au trésor)
-const ROAD_WOBBLE := 0.7    ## déplacement perpendiculaire par tiret (noise directionnel, unités monde)
+# CHEMIN DE TERRE À 3 TRAITS (le motif cartographique classique — KCD/atlas) : un
+# sous-trait sépia sombre (l'ombre du creux), le corps CRÈME pâle (la terre battue),
+# un filet clair central. Le pointillé « carte au trésor » s'émiettait au zoom.
+const ROAD_EDGE  := Color(0.46, 0.31, 0.17, 0.42)  ## sous-trait : sépia sombre, large
+const ROAD_MAIN  := Color(0.957, 0.855, 0.655, 0.92) ## corps : crème (terre battue)
+const ROAD_LIGHT := Color(1.0, 0.965, 0.835, 0.45)  ## filet central clair
+const ROAD_MINOR_EDGE := Color(0.46, 0.31, 0.17, 0.30) ## desserte : plus ténue
+const ROAD_MINOR_MAIN := Color(0.957, 0.855, 0.655, 0.72)
 # MOBILIER de bord de route (habillage) — bornes/murets/buissons/rochers/bottes (pack dressing)
 const ROADSIDE := [
 	"DRESS_BUSH_LOW", "DRESS_BUSH_DENSE_GREEN", "DRESS_BUSH_DRY", "DRESS_BUSH_YELLOW",
@@ -369,7 +372,7 @@ func _on_generated() -> void:
 	_roads_dirty = true
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
 	_region_label.clear()       # bannières de lieux : noms recachés (monde neuf)
-	_o16_dir.clear()            # lot 5 : orientations d'habitat recalculées (routes neuves)
+	_town_cache.clear()         # urbaniste : plans de bourgs recalculés (routes neuves)
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
@@ -1148,46 +1151,7 @@ func _ink_brush(segs: PackedVector2Array, col: Color, core_w: float, feather: fl
 		draw_multiline(segs, Color(col.r, col.g, col.b, col.a * float(b[1])), ww / zoom, true)
 	draw_multiline(segs, col, core_w / zoom, true)            # plume nette (cœur)
 
-## découpe une polyligne en TIRETS (pointillé) — phase continue d'un segment à l'autre (suit la
-## longueur cumulée). `dash`/`gap` en unités MONDE (l'appelant divise les px écran par le zoom).
-func _dash_poly(poly: PackedVector2Array, dash: float, gap: float) -> PackedVector2Array:
-	var out := PackedVector2Array()
-	if poly.size() < 2 or dash <= 0.0:
-		return out
-	var period := dash + gap
-	if period < 0.001:
-		return out
-	var d := 0.0                                  # longueur cumulée (abscisse curviligne globale)
-	for i in range(poly.size() - 1):
-		var a := poly[i]
-		var b := poly[i + 1]
-		var L := a.distance_to(b)
-		if L < 0.0001:
-			continue
-		var dir := (b - a) / L
-		var perp := Vector2(-dir.y, dir.x)
-		# parcourt les MULTIPLES de période qui couvrent ce segment [d, d+L] (k croît STRICTEMENT → fini)
-		var k := int(floor(d / period))
-		while true:
-			var ds := float(k) * period          # début du tiret (abscisse globale)
-			if ds > d + L:
-				break
-			# JITTER par tiret (hash de k+position) : longueur VARIÉE + déplacement perpendiculaire
-			# (noise directionnel) → trait « tracé à la main », plus des points uniformes.
-			var hh := _h1(float(k) * 0.7321 + a.x * 0.013 + a.y * 0.017)
-			var hw := _h1(float(k) * 1.9731 + a.x * 0.029 + a.y * 0.011)
-			var dlen := dash * (0.45 + 1.1 * hh)  # 0.45..1.55 × dash → tirets de longueurs INÉGALES
-			var wob := (hw - 0.5) * ROAD_WOBBLE   # offset perpendiculaire (même des deux bouts → tiret droit décalé)
-			var s0 := maxf(ds, d)
-			var s1 := minf(ds + dlen, d + L)
-			if s1 > s0:
-				out.push_back(a + dir * (s0 - d) + perp * wob)
-				out.push_back(a + dir * (s1 - d) + perp * wob)
-			k += 1
-		d += L
-	return out
-
-## hash scalaire → [0,1) (déterministe, display-only) — varie tirets/wobble des routes.
+## hash scalaire → [0,1) (déterministe, display-only) — varie dressing/orientations.
 func _h1(x: float) -> float:
 	var v := sin(x * 12.9898) * 43758.5453
 	return v - floor(v)
@@ -1572,16 +1536,15 @@ func _draw_iso(w, mv: Node2D) -> void:
 		_sel_prov_cache = -2
 		_sel_segs = PackedVector2Array()
 
-	# ── ROUTES : POINTILLÉ + trait de PINCEAU, sépia RENFORCÉ à OPACITÉ LIMITÉE (encre sur parchemin).
-	#    Croissance organique (1 an/province) ; tous les tirets cumulés → UN seul pinceau (batch). ──
+	# ── ROUTES : CHEMIN DE TERRE À 3 TRAITS (sous-trait sépia + corps crème + filet clair) —
+	#    le motif cartographique classique, sur les polylignes DÉJÀ lissées (_augment_roads).
+	#    Croissance organique (1 an/province) ; segments cumulés → batchs par hiérarchie. ──
 	if zoom >= ROAD_ZOOM_MIN:
 		_ensure_roads()
 		if not _roads.is_empty():
 			var year: int = w.year()
-			# HIÉRARCHIE : on SÉPARE les ARTÈRES (niveau 0) des dessertes/mineures → batch distincts. Les
-			# artères sont plus PRÉSENTES (encre brune franche, plus épaisses) ; les mineures restent ténues.
-			var dash_main := PackedVector2Array()
-			var dash_minor := PackedVector2Array()
+			var seg_main := PackedVector2Array()
+			var seg_minor := PackedVector2Array()
 			for ri in range(_roads.size()):
 				var rd: Dictionary = _roads[ri]
 				var pts: PackedVector2Array = rd["points"]
@@ -1593,22 +1556,22 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var poly := _road_partial(pts, frac)
 				if poly.size() < 2:
 					continue
-				var ipoly := PackedVector2Array()
-				ipoly.resize(poly.size())
-				for k in range(poly.size()):
-					ipoly[k] = mv.iso_pos(poly[k].x, poly[k].y)
-				var dd := _dash_poly(ipoly, ROAD_DASH / zoom, ROAD_GAP / zoom)
-				if int(rd.get("level", 1)) <= 0:
-					dash_main.append_array(dd)
-				else:
-					dash_minor.append_array(dd)
-			# MINEURES d'abord (dessous, fines & pâles), puis ARTÈRES par-dessus (présentes). Halo léger sur
-			# les artères pour le « tracé à la plume ». Le MOTIF dash/gap reste en px écran (jamais via _w).
-			if dash_minor.size() >= 2:
-				draw_multiline(dash_minor, ROAD_INK_MINOR, _w(zoom, 0.26, 0.9, 1.4), true)
-			if dash_main.size() >= 2:
-				draw_multiline(dash_main, Color(ROAD_INK.r, ROAD_INK.g, ROAD_INK.b, ROAD_INK.a * 0.28), _w(zoom, 0.7, 2.0, 3.2), true)
-				draw_multiline(dash_main, ROAD_INK, _w(zoom, 0.40, 1.3, 2.0), true)
+				var dst := seg_main if int(rd.get("level", 1)) <= 0 else seg_minor
+				var prev: Vector2 = mv.iso_pos(poly[0].x, poly[0].y)
+				for k in range(1, poly.size()):
+					var cur: Vector2 = mv.iso_pos(poly[k].x, poly[k].y)
+					dst.push_back(prev)
+					dst.push_back(cur)
+					prev = cur
+			# MINEURES dessous (fines, plus pâles), ARTÈRES par-dessus (larges). L'ordre des
+			# passes fait le modelé : ombre sépia → terre crème → filet de lumière central.
+			if seg_minor.size() >= 2:
+				draw_multiline(seg_minor, ROAD_MINOR_EDGE, _w(zoom, 0.65, 1.4, 2.6), true)
+				draw_multiline(seg_minor, ROAD_MINOR_MAIN, _w(zoom, 0.36, 0.8, 1.5), true)
+			if seg_main.size() >= 2:
+				draw_multiline(seg_main, ROAD_EDGE, _w(zoom, 1.1, 2.2, 4.0), true)
+				draw_multiline(seg_main, ROAD_MAIN, _w(zoom, 0.62, 1.3, 2.4), true)
+				draw_multiline(seg_main, ROAD_LIGHT, _w(zoom, 0.26, 0.55, 1.0), true)
 
 	# ── VILLES : TAMPONS d'atlas (lot 1) — cité (t1-t7), cité-état & hameau libre (assets DÉDIÉS). ──
 	# CENTRÉS sur le SIÈGE intérieur de province (≠ jonction ; le centroïde brut tombe pile à l'intersection
@@ -1771,57 +1734,121 @@ func _stamp_get(id: String) -> Texture2D:
 	_stamp_tex[id] = tex
 	return tex
 
-## ── LOT 5 (oriented_16) : HABITATS ORIENTÉS — le sprite 16px porte une SORTIE DE ROUTE
-## (n/s/e/o/ne/no/se/so) ; on choisit la variante dont la sortie pointe vers la route la
-## plus proche → l'entrée du bourg est propre (modèle du pack : le sprite donne l'ancre,
-## la route organique possède le reste). Pré-agrandi ×4 NEAREST (pixel-art net). ──
-var _o16_tex := {}          ## nom → Texture2D (null si absent)
-var _o16_dir := {}          ## region → suffixe d'orientation ("s", "ne"…), cache par monde
-const O16_DIRS := ["e", "se", "s", "so", "o", "no", "n", "ne"]   # secteurs de 45° depuis +X (Y bas)
+## ── L'URBANISTE : villes PROCÉDURALES à l'encre, POSÉES SUR LA ROUTE ──────────────────
+## L'outil (display-only) qui remplace les tampons : chaque bourg est un AMAS déterministe
+## de petites maisons à pignon (murs crème, toits brun-rouge, cerne d'encre — le langage
+## des vignettes de cartes anciennes), rangées LE LONG DE LA ROUTE réelle (deux rangées,
+## quelle que soit son orientation — le vectoriel tourne gratuitement) ; sans route, un
+## amas radial. Monument au siège selon le tier (église t3+, donjon en capitale), ENCEINTE
+## pour la cité-état. Ancré au MONDE (la ville tient sur sa rue à tous les zooms), tailles
+## bornées en px écran par _w. Cache par région (RAZ au generate ; jamais figé sans routes).
+const TOWN_WALL   := Color(0.92, 0.87, 0.74, 0.96)   ## murs crème
+const TOWN_ROOF   := Color(0.54, 0.27, 0.19, 0.94)   ## toits brun-rouge (lavis brique)
+const TOWN_ROOF2  := Color(0.42, 0.30, 0.20, 0.94)   ## variante toit (bois sombre)
+const TOWN_INK    := Color(0.16, 0.11, 0.07, 0.90)   ## cerne d'encre
+var _town_cache := {}       ## region → {h: [{w:Vector2, s:float, k:int, v:int}], ring: PackedVector2Array}
 
-func _o16_get(name: String) -> Texture2D:
-	if _o16_tex.has(name):
-		return _o16_tex[name]
-	var tex: Texture2D = null
-	var path := "res://art/map_stamps/lot5_kcd/oriented_16/sprites/%s.png" % name
-	if FileAccess.file_exists(path):
-		var img := Image.new()
-		if img.load(path) == OK:
-			img.resize(img.get_width() * 4, img.get_height() * 4, Image.INTERPOLATE_NEAREST)
-			tex = ImageTexture.create_from_image(img)
-	_o16_tex[name] = tex
-	return tex
-
-## suffixe d'orientation d'une région : la direction (espace iso) vers le point de ROUTE
-## le plus proche du siège, snappée aux 8 secteurs. Sans route à portée → variante hashée.
-func _o16_dir_of(r: int, ctr: Vector2, ip: Vector2, mv) -> String:
-	if _o16_dir.has(r):
-		return _o16_dir[r]
-	if _roads.is_empty():                                  # routes pas encore bâties : ne PAS figer le cache
-		return O16_DIRS[int(_h1(float(r) * 3.7) * 8.0) % 8]
+## point de ROUTE le plus proche du siège + TANGENTE locale (espace monde).
+## Retourne {d2, p, t} ; d2 = 1e30 si aucune route.
+func _seat_road(ctr: Vector2) -> Dictionary:
 	var best_d := 1e30
 	var best_p := Vector2.ZERO
+	var best_t := Vector2.RIGHT
 	for rd in _roads:
 		var pts: PackedVector2Array = rd["points"]
-		var k := 0
-		while k < pts.size():
+		for k in range(pts.size()):
 			var d := ctr.distance_squared_to(pts[k])
 			if d < best_d:
 				best_d = d
 				best_p = pts[k]
-			k += 3
-	var suf: String
-	if best_d > 64.0:   # aucune route à ≤ 8 cellules : orientation hashée (variété)
-		suf = O16_DIRS[int(_h1(float(r) * 3.7) * 8.0) % 8]
+				var k2 := mini(k + 1, pts.size() - 1)
+				var k1 := maxi(k - 1, 0)
+				var tv := pts[k2] - pts[k1]
+				best_t = tv.normalized() if tv.length() > 0.001 else Vector2.RIGHT
+	return {"d2": best_d, "p": best_p, "t": best_t}
+
+## bâtit (une fois) le PLAN du bourg : maisons en unités MONDE. k : 0 maison · 1 église ·
+## 2 donjon. v : variante de toit. Rangées le long de la route si elle passe à ≤ 3 cellules.
+func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float) -> Dictionary:
+	var houses := []
+	var rr := _seat_road(ctr)
+	var on_road: bool = float(rr["d2"]) < 9.0
+	var axis: Vector2 = rr["t"] if on_road else Vector2.from_angle(_h1(float(r) * 3.7) * TAU)
+	var side := Vector2(-axis.y, axis.x)
+	var org: Vector2 = rr["p"] if on_road else ctr
+	for i in range(n):
+		var hh := _h1(float(r) * 13.7 + float(i) * 2.31)
+		var hv := _h1(float(r) * 7.9 + float(i) * 5.17)
+		var wp: Vector2
+		if on_road:
+			# DEUX RANGÉES le long de la rue : pas ~0.85 cellule, retrait ±0.5, jitter léger
+			var s := (float(i / 2) - float((n + 1) / 2 - 1) * 0.5) * 0.85
+			var sd := (0.5 + 0.22 * hh) * (1.0 if (i % 2) == 0 else -1.0)
+			wp = org + axis * (s + (hv - 0.5) * 0.3) + side * sd
+		else:
+			# amas radial (spirale dorée) autour du siège
+			var a := (0.618034 * float(i) + _h1(float(r) * 9.1)) * TAU
+			var rad := sqrt((float(i) + 0.6) / float(n)) * (0.9 + 0.35 * float(n) / 10.0)
+			wp = ctr + Vector2(cos(a), sin(a)) * rad
+		houses.append({"w": wp, "s": 0.34 + 0.12 * hh, "k": 0, "v": int(hv * 2.0)})
+	if landmark > 0:
+		# le MONUMENT : posé en retrait de la rue, côté opposé au gros des maisons
+		var lm: Vector2 = (org + side * -0.9) if on_road else ctr
+		houses.append({"w": lm, "s": 0.46, "k": landmark, "v": 0})
+	# tri du FOND vers l'AVANT (y monde croissant ≈ y iso croissant) : les recouvrements lisent bien
+	houses.sort_custom(func(a, b): return (a["w"].x + a["w"].y) < (b["w"].x + b["w"].y))
+	var ring := PackedVector2Array()
+	if ring_rad > 0.0:
+		for k in range(29):
+			var a2 := TAU * float(k) / 28.0
+			ring.push_back(ctr + Vector2(cos(a2), sin(a2)) * ring_rad)
+	return {"h": houses, "ring": ring}
+
+## une MAISON à pignon (encre + lavis), quasi droite (jitter ±7°) — la rangée suit la rue,
+## les pignons restent debout comme sur les vignettes d'atlas. `half` en unités monde.
+func _ink_house(p: Vector2, half: float, tilt: float, roof: Color, zoom: float) -> void:
+	var ca := cos(tilt)
+	var sa := sin(tilt)
+	var rot := func(v: Vector2) -> Vector2:
+		return p + Vector2(v.x * ca - v.y * sa, v.x * sa + v.y * ca) * half
+	var a: Vector2 = rot.call(Vector2(-1.0, 0.75))
+	var b: Vector2 = rot.call(Vector2(1.0, 0.75))
+	var c: Vector2 = rot.call(Vector2(1.0, -0.30))
+	var d: Vector2 = rot.call(Vector2(1.18, -0.30))
+	var e: Vector2 = rot.call(Vector2(0.0, -1.25))
+	var f: Vector2 = rot.call(Vector2(-1.18, -0.30))
+	var g: Vector2 = rot.call(Vector2(-1.0, -0.30))
+	draw_colored_polygon(PackedVector2Array([a, b, c, g]), TOWN_WALL)
+	draw_colored_polygon(PackedVector2Array([f, d, e]), roof)
+	draw_polyline(PackedVector2Array([a, b, c, d, e, f, g, a]), TOWN_INK, _w(zoom, 0.05, 0.45, 0.85), true)
+
+## ÉGLISE (nef + flèche) / DONJON (tour + fanion) — les monuments, mêmes encres.
+func _ink_landmark(p: Vector2, half: float, kind: int, zoom: float) -> void:
+	var iw := _w(zoom, 0.06, 0.5, 0.95)
+	if kind == 1:
+		# nef basse + flèche haute
+		var nave := PackedVector2Array([p + Vector2(-half, half * 0.7), p + Vector2(half, half * 0.7),
+			p + Vector2(half, -half * 0.3), p + Vector2(-half, -half * 0.3)])
+		draw_colored_polygon(nave, TOWN_WALL)
+		var spire := PackedVector2Array([p + Vector2(-half * 0.32, -half * 0.3),
+			p + Vector2(half * 0.32, -half * 0.3), p + Vector2(0, -half * 2.1)])
+		draw_colored_polygon(spire, TOWN_ROOF2)
+		draw_polyline(PackedVector2Array([p + Vector2(-half, half * 0.7), p + Vector2(half, half * 0.7),
+			p + Vector2(half, -half * 0.3), p + Vector2(half * 0.32, -half * 0.3), p + Vector2(0, -half * 2.1),
+			p + Vector2(-half * 0.32, -half * 0.3), p + Vector2(-half, -half * 0.3), p + Vector2(-half, half * 0.7)]),
+			TOWN_INK, iw, true)
 	else:
-		var dv: Vector2 = mv.iso_pos(best_p.x, best_p.y) - ip
-		var ang := atan2(dv.y, dv.x)                       # 0 = +X (est), Y vers le bas
-		var sect := int(floor((ang + PI / 8.0) / (PI / 4.0))) % 8
-		if sect < 0:
-			sect += 8
-		suf = O16_DIRS[sect]
-	_o16_dir[r] = suf
-	return suf
+		# donjon : tour carrée + fanion
+		var tw := half * 0.72
+		var tower := PackedVector2Array([p + Vector2(-tw, half * 0.7), p + Vector2(tw, half * 0.7),
+			p + Vector2(tw, -half * 1.5), p + Vector2(-tw, -half * 1.5)])
+		draw_colored_polygon(tower, TOWN_WALL)
+		draw_polyline(PackedVector2Array([p + Vector2(-tw, half * 0.7), p + Vector2(tw, half * 0.7),
+			p + Vector2(tw, -half * 1.5), p + Vector2(-tw, -half * 1.5), p + Vector2(-tw, half * 0.7)]),
+			TOWN_INK, iw, true)
+		draw_line(p + Vector2(0, -half * 1.5), p + Vector2(0, -half * 2.3), TOWN_INK, iw, true)
+		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -half * 2.3),
+			p + Vector2(half * 0.55, -half * 2.05), p + Vector2(0, -half * 1.85)]), TOWN_ROOF)
 
 ## charge (paresseux) une MARQUE DE TERRAIN par id → Texture2D (cache). Cherche dans lot 3 (biomes plats/
 ## eau) PUIS lot 2 (relief/forêt/désert) — les ids sont uniques entre lots. Fallback Image.load (PNG brut).
@@ -1959,30 +1986,38 @@ func _pop_tier(pop: int) -> int:
 func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: float, mv) -> void:
 	var is_cs := role == 2
 	var is_wild := role == 4
-	# tier par POPULATION, plafonné à T4 — la capitale n'a PAS de stamp couronné (le liseré pourpre la marque).
 	var st := mini(_pop_tier(int(w.region_pop(r))), 4)
-	# taille (px ÉCRAN) : cité-état imposante (asset fixe), hameau libre petit, sinon ∝ tier de pop.
-	var size_tier := st
-	if is_cs:
-		size_tier = 6
-	elif is_wild:
-		size_tier = 2
-	var sz_px := lerpf(STAMP_PX_MIN, STAMP_PX_MAX, clampf(float(size_tier - 1) / 6.0, 0.0, 1.0))
-	var sz := sz_px / maxf(zoom, 0.0001)                                    # → unités MONDE (taille écran constante)
-	# ── LOT 5 D'ABORD : l'HABITAT ORIENTÉ (16px KCD) — la ligne du sprite suit le tier
-	#    (hameau→village→bourg→cité), sa SORTIE DE ROUTE pointe vers la route la plus proche. ──
-	var row: String = "city_state" if is_cs else ("hamlet" if is_wild else ["hamlet", "hamlet", "village", "town", "city_state"][st])
-	var o16 := _o16_get("%s_%s" % [row, _o16_dir_of(r, ctr, ip, mv)])
-	if o16 != null:
-		draw_texture_rect(o16, Rect2(ip - Vector2(sz * 0.5, sz * 0.5), Vector2(sz, sz)), false, Color(1, 1, 1, STAMP_ALPHA))
-		return
-	var id: String = SettlementStamps.id_for_settlement(st, false, is_wild, is_cs)
-	var tex := _stamp_get(id)
-	if tex == null:
-		_draw_town(ip, maxi(st - 1, 1), zoom, Color(0.20, 0.14, 0.09, 0.95))   # repli vectoriel
-		return
-	# ancre CENTRE : le tampon est posé AU MILIEU du siège (centré sur le point, pas au-dessus). Léger fade.
-	draw_texture_rect(tex, Rect2(ip - Vector2(sz * 0.5, sz * 0.5), Vector2(sz, sz)), false, Color(1, 1, 1, STAMP_ALPHA))
+	# ── L'URBANISTE : le PLAN du bourg (cache par région) — maisons rangées sur la route. ──
+	if not _town_cache.has(r):
+		if _roads.is_empty():
+			_draw_town(ip, maxi(st - 1, 1), zoom, Color(0.20, 0.14, 0.09, 0.95))   # routes pas prêtes : glyphe, sans figer
+			return
+		var n: int = 2 if is_wild else (16 if is_cs else [3, 3, 6, 10, 14][st])
+		var owner: int = w.region_owner(r)
+		var is_cap: bool = owner >= 0 and w.province_region(w.country_capital_province(owner)) == r
+		var landmark := 2 if is_cap else (1 if (is_cs or st >= 3) else 0)
+		var ring := 2.4 if is_cs else 0.0
+		_town_cache[r] = _build_town(r, ctr, n, landmark, ring)
+	var town: Dictionary = _town_cache[r]
+	# l'ENCEINTE d'abord (sous les maisons) : double trait d'encre, cité-état seulement
+	var ring_w: PackedVector2Array = town["ring"]
+	if ring_w.size() > 2:
+		var rpts := PackedVector2Array()
+		rpts.resize(ring_w.size())
+		for k in range(ring_w.size()):
+			rpts[k] = mv.iso_pos(ring_w[k].x, ring_w[k].y)
+		draw_polyline(rpts, Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.35), _w(zoom, 0.16, 0.8, 1.8), true)
+		draw_polyline(rpts, TOWN_INK, _w(zoom, 0.07, 0.5, 1.0), true)
+	for hd in town["h"]:
+		var wp: Vector2 = hd["w"]
+		var p: Vector2 = mv.iso_pos(wp.x, wp.y)
+		var half := _w(zoom, float(hd["s"]), 1.9, 6.5)     # taille monde, bornée en px écran
+		var kind: int = hd["k"]
+		if kind > 0:
+			_ink_landmark(p, half * 1.35, kind, zoom)
+		else:
+			var tilt := (_h1(wp.x * 12.9 + wp.y * 7.1) - 0.5) * 0.24   # ±7° : « dessiné à la main »
+			_ink_house(p, half, tilt, TOWN_ROOF if int(hd["v"]) == 0 else TOWN_ROOF2, zoom)
 
 ## BANNIÈRE DE LIEU (référence KCD) : chip parchemin + liseré d'encre + NOM du siège +
 ## pastille au pigment du propriétaire — taille ÉCRAN constante, posée AU-DESSUS du tampon.

@@ -37,6 +37,15 @@ func _run() -> void:
 			var cc: Vector2 = Sim.world.region_centroid(capr)
 			def_cx = str(cc.x)
 			def_cy = str(cc.y)
+	if _arg("cs=", "0") == "1":   # centre sur la 1re CITÉ-ÉTAT (enceinte, marché)
+		for c in range(Sim.world.country_count()):
+			if int(Sim.world.country_role(c)) == 2:
+				var csr: int = Sim.world.province_region(Sim.world.country_capital_province(c))
+				if csr >= 0:
+					var c2: Vector2 = Sim.world.region_centroid(csr)
+					def_cx = str(c2.x)
+					def_cy = str(c2.y)
+					break
 	var cx := float(_arg("cx=", def_cx))
 	var cy := float(_arg("cy=", def_cy))
 	if zoom > 0.0:
