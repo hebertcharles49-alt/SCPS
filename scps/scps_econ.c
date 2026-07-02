@@ -2664,6 +2664,22 @@ void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     colonize_from_prov(e, sp, dp, cid);
 }
 
+/* VERBE JOUEUR (charte : « le joueur colonise n'importe quelle province ») — le grain
+ * PROVINCE public : fonde une colonie sur la province VACANTE dst_pid depuis la province
+ * COLONISÉE src_pid (à cid). Portes = celles de l'essaimage terrestre (pop source ≥
+ * COLONY_MIN_POP · vivres ≥ COLONY_FOOD_GATE · cible active & vierge) — colonize_from_prov
+ * n'en a pas en propre (elles vivent chez les appelants). false = refus, rien ne bouge. */
+bool econ_colonize_province(WorldEconomy *e, int src_pid, int dst_pid, int cid){
+    if (!e || src_pid<0||src_pid>=e->n_prov || dst_pid<0||dst_pid>=e->n_prov || src_pid==dst_pid) return false;
+    ProvinceEconomy *src=&e->prov[src_pid], *dst=&e->prov[dst_pid];
+    if (!dst->active || dst->colonized) return false;
+    if (!src->colonized || src->owner!=cid) return false;
+    float spop=0.f; for (int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
+    if (spop<COLONY_MIN_POP || src->food_sat<COLONY_FOOD_GATE) return false;
+    colonize_from_prov(e, src_pid, dst_pid, cid);
+    return true;
+}
+
 /* RE-KEY PROVINCE — transfert de propriété d'une région ENTIÈRE (guerre/annexion/
  * sécession/cataclysme, cf. header) : bascule owner sur CHAQUE province membre —
  * region[r].owner est un DÉRIVÉ recalculé par econ_aggregate_regions, un écrivain qui

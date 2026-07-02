@@ -218,6 +218,24 @@ int main(int argc, char **argv){
         }
     }
 
+    /* ── COLONISATION (le verbe qui manquait au front — charte : « le joueur colonise
+     *    n'importe quelle province ») : compter → coloniser une VIERGE légale → drain → +1. ── */
+    {
+        int before = scps_country_province_count(s2, pl);
+        int tgt=-1, np=scps_province_count(s2);
+        for (int pp=0; pp<np && tgt<0; pp++)
+            if (scps_can_colonize(s2, pp)) tgt=pp;
+        ok("colonisation : une cible LÉGALE existe (scps_can_colonize)", tgt>=0);
+        if (tgt>=0){
+            ok("verbe COLONISER : ordre ENFILÉ (différé)", scps_player_colonize(s2, tgt)==1);
+            scps_sim_advance_days(s2, 2);                   /* le drain fonde */
+            int after = scps_country_province_count(s2, pl);
+            printf("   colonisation joueur : %d → %d province(s) après le drain\n", before, after);
+            ok("verbe COLONISER : APPLIQUÉ au drain (+1 province au joueur)", after == before+1);
+            ok("colonisation : la cible n'est PLUS colonisable (fondée)", scps_can_colonize(s2, tgt)==0);
+        }
+    }
+
     scps_sim_free(s); scps_sim_free(s2);
 
     /* ── CRÉATEUR DE CULTURE : listes + validation + aperçu + composition (headless) ──

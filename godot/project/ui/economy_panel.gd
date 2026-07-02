@@ -27,6 +27,7 @@ var _last_year := -1
 var _sel := 0
 var _chart
 var _dropdown
+var _close_rect := Rect2()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -60,6 +61,13 @@ func _ready() -> void:
 func _layout() -> void:
 	var vp := get_viewport_rect().size
 	position = Vector2((vp.x - PW) * 0.5, (vp.y - PH) * 0.5)
+
+func _gui_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+		if _close_rect.has_point(e.position):
+			visible = false
+			accept_event()
+			return
 
 func _on_metric(idx: int) -> void:
 	_sel = clampi(idx, 0, METRICS.size() - 1)
@@ -124,7 +132,13 @@ func _draw() -> void:
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
 	UIKit.draw_icon(self, "menu_economy", Vector2(14, 10), 18)
 	VKit.text(self, Vector2(40, 11), VKit.COL_COPPER, "Économie dans le temps", VKit.FS_BIG)
-	VKit.text(self, Vector2(PW - 96, 13), VKit.COL_DIM, "[G] fermer", VKit.FS_SMALL)
+
+	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
+	_close_rect = Rect2(PW - 26, 6, 20, 20)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
+	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
+
 	if _years.size() < 2:
 		VKit.text(self, Vector2(16, HEAD + 24), VKit.COL_DIM,
 			"Collecte des données… (laissez le temps avancer)", VKit.FS_SMALL)

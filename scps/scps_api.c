@@ -1319,6 +1319,44 @@ int scps_player_age_engage(ScpsSim *s){
     PlayerCmd c = { CMD_AGE_ENGAGE, { 0, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+/* COLONISATION (charte : « le joueur colonise n'importe quelle province ») — ENFILE ;
+ * la source (province la plus peuplée du joueur) et les portes vivent au drain. */
+int scps_player_colonize(ScpsSim *s, int prov){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_COLONIZE, { prov, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* READ de légalité (griser le bouton) : la cible est-elle colonisable ET le joueur
+ * a-t-il une source aux portes (pop ≥ min, vivres) ? Miroir CONST du drain. */
+int scps_can_colonize(ScpsSim *s, int prov){
+    if (!s || !s->ready || prov<0 || prov>=s->sim.econ->n_prov) return 0;
+    const ProvinceEconomy *dst = &s->sim.econ->prov[prov];
+    if (!dst->active || dst->colonized) return 0;
+    int p = s->sim.player;
+    for (int q=0;q<s->sim.econ->n_prov;q++){
+        const ProvinceEconomy *pe=&s->sim.econ->prov[q];
+        if (pe->owner!=p || !pe->colonized) continue;
+        float pp=0.f; for (int k=0;k<CLASS_COUNT;k++) pp+=pe->strata[k].pop;
+        if (pp>=800.f && pe->food_sat>=0.5f) return 1;   /* approximation UI des portes (le drain revalide) */
+    }
+    return 0;
+}
+/* total de provinces COLONISÉES (toutes entités) — la SIGNATURE de souveraineté du front
+ * (une colonisation intra-région ne bouge pas l'owner agrégé de région : sans ce compte,
+ * le lavis/frontières au grain province ne se rebâtiraient pas). */
+int scps_colonized_total(const ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    int n=0;
+    for (int q=0;q<s->sim.econ->n_prov;q++)
+        if (s->sim.econ->prov[q].colonized && s->sim.econ->prov[q].owner>=0) n++;
+    return n;
+}
+/* province-CAPITALE d'un pays (-1 si aucune) — le liseré pourpre au grain de la charte. */
+int scps_country_capital_province(const ScpsSim *s, int c){
+    if (!s || !s->ready || c<0 || c>=s->w->n_countries) return -1;
+    int cp = s->w->country[c].capital_prov;
+    return (cp>=0 && cp<s->w->n_provinces) ? cp : -1;
+}
 /* l'âge COURANT (dernier levé, -1 = aucun) + le joueur l'a-t-il engagé + son NOM
  * (mot résolu — membrane). Lecture pure. */
 int scps_age_state(ScpsSim *s, int *engaged, char *name, int cap){
@@ -1394,9 +1432,14 @@ int scps_river_path(ScpsSim *s, int i, ScpsRiverPt *out, int max, float *flow){
 /* owner EFFECTIF d'une cellule (la lecture de la teinte politique) — -1 si mer,
  * terre vierge ou région non colonisée. Miroir de bseg_owner_of (viewer.c). */
 static int border_owner_of(const ScpsSim *s, const Cell *c){
-    if (!c || c->region<0 || c->region>=s->sim.econ->n_regions || c->region>=SCPS_MAX_REG) return -1;
-    int ow = s->sim.econ->region[c->region].owner;
-    return (ow>=0 && ow<s->w->n_countries && s->sim.econ->region[c->region].colonized) ? ow : -1;
+    /* GRAIN PROVINCE (charte EU4) : la carte montre la VÉRITÉ de propriété — la province
+     * COLONISÉE — pas l'agrégat région, qui peignait toute la région-capitale à l'an-0
+     * alors qu'UNE seule province est fondée (« on commence avec plusieurs provinces »
+     * n'était qu'un artefact d'affichage : le moteur sème bien 1 province). */
+    if (!c || c->province<0 || c->province>=s->sim.econ->n_prov || c->province>=SCPS_MAX_PROV) return -1;
+    const ProvinceEconomy *pe = &s->sim.econ->prov[c->province];
+    int ow = pe->owner;
+    return (ow>=0 && ow<s->w->n_countries && pe->colonized) ? ow : -1;
 }
 
 int scps_border_segments(ScpsSim *s, int level, ScpsSeg *out, int max){

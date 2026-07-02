@@ -113,6 +113,10 @@ public:
     Dictionary research_status();                     /* { target:int(-1=aucune), progress:float[0..1] } */
     Dictionary age_state();                           /* §7 : { age:int(-1=aucun), engaged:bool, name:String } */
     bool       player_age_engage();                   /* §7 : engager l'âge courant (une fois par âge) */
+    bool       player_colonize(int prov);             /* COLONISATION (charte) : fonder sur une province vierge */
+    bool       can_colonize(int prov);                /* read de légalité (griser le bouton Coloniser) */
+    int        colonized_total() const;               /* Σ provinces colonisées — signature de souveraineté */
+    int        country_capital_province(int c) const; /* province-capitale (liseré au grain charte) */
 
     /* §3 — VERBES DIPLO du joueur (proposer → ai_consider_offer évalue) ; true = ordre enfilé */
     bool       player_declare_war(int target);        /* déclarer la guerre */

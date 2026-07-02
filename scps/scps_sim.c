@@ -434,6 +434,21 @@ static void sim_cmd_drain(Sim *s, World *w){
             faction_age_engage(w, s->econ, p, age);
             s->player_age_engaged = age;
             break; }
+          /* ── COLONISATION (charte) : a[0] = la province CIBLE (vierge). La SOURCE = la
+           *    province colonisée du joueur la plus peuplée (miroir du modèle viewer) ;
+           *    les PORTES (pop/vivres/cible) vivent dans econ_colonize_province. ── */
+          case CMD_COLONIZE: {
+            int dst = c->a[0];
+            if (dst<0 || dst>=s->econ->n_prov) break;
+            int src=-1; float best=-1.f;
+            for (int q=0;q<s->econ->n_prov;q++){
+                const ProvinceEconomy *pe=&s->econ->prov[q];
+                if (pe->owner!=p || !pe->colonized) continue;
+                float pp=0.f; for (int k=0;k<CLASS_COUNT;k++) pp+=pe->strata[k].pop;
+                if (pp>best){ best=pp; src=q; }
+            }
+            if (src>=0) econ_colonize_province(s->econ, src, dst, p);
+            break; }
         }
     }
     s->cmd_n = 0;

@@ -669,6 +669,9 @@ bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid);
 /* Fonde une colonie de `cid` sur `dst` depuis `src` (pop essaimée, owner posé).
  * Exposé pour la colonisation OUTRE-MER (scps_navy §8) — même acte fondateur. */
 void econ_colonize_from(WorldEconomy *e, int src_rid, int dst_rid, int cid);
+/* VERBE JOUEUR au grain PROVINCE (charte : « le joueur colonise n'importe quelle province ») :
+ * portes de l'essaimage terrestre (pop/vivres/cible vierge). false = refus, rien ne bouge. */
+bool econ_colonize_province(WorldEconomy *e, int src_pid, int dst_pid, int cid);
 /* RE-KEY PROVINCE — transfert de PROPRIÉTÉ D'UNE RÉGION ENTIÈRE (conquête/annexion/
  * sécession/cataclysme) : pose `new_owner` (et `colonized`) sur TOUTES les provinces
  * membres de `region`. econ->region[r].owner est un DÉRIVÉ (capitale, sinon meilleure

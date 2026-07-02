@@ -22,6 +22,7 @@ var _builds := []
 var _hover_zones := []     # [{rect, head, lines}]
 var _click_zones := []     # [{rect, kind, type}]
 var _has_hover := false
+var _close_rect := Rect2()
 var _hover_rect := Rect2()
 var _hover_head := ""
 var _hover_lines := PackedStringArray()
@@ -51,6 +52,12 @@ func _draw() -> void:
 	_click_zones.clear()
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
 	VKit.text(self, Vector2(PADX, 8), VKit.COL_PARCH, "CONSTRUCTION", VKit.FS_BIG)
+
+	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
+	_close_rect = Rect2(PW - 26, 6, 20, 20)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
+	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
 
 	# ── UNITÉS (grille de tuiles) ──────────────────────────────────────────
 	var y0 := VKit.section(self, PADX, 30, "UNITÉS")
@@ -123,6 +130,11 @@ func _draw_tooltip() -> void:
 		yy += 14.0
 
 func _gui_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+		if _close_rect.has_point(e.position):
+			visible = false
+			accept_event()
+			return
 	if e is InputEventMouseMotion:
 		var found := false
 		for z in _hover_zones:

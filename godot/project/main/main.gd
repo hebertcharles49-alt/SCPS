@@ -41,10 +41,12 @@ func _ready() -> void:
 	_prov_panel = load("res://ui/province_panel.gd").new()
 	_prov_panel.name = "ProvincePanel"
 	ui.add_child(_prov_panel)
+	_prov_panel.close_requested.connect(_clear_selection)   # ✕ = désélection pleine
 
 	_country_panel = load("res://ui/country_panel.gd").new()
 	_country_panel.name = "CountryPanel"
 	ui.add_child(_country_panel)
+	_country_panel.close_requested.connect(_clear_selection)
 
 	# le DESTIN du monde (§27) : barre d'entropie + bandeau de fin, haut-centre
 	var endgame = load("res://ui/endgame_banner.gd").new()
@@ -134,7 +136,14 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	match e.keycode:
 		KEY_ESCAPE:
-			if _menu != null:
+			# PILE DE FERMETURE : Échap ferme d'abord le panneau flottant visible (un par
+			# pression), puis la sélection (panneau province/pays), et SEULEMENT ensuite
+			# ouvre le menu — « tout panneau affiché doit pouvoir être dismiss ».
+			if _menu != null and _menu.visible:
+				pass                                   # le menu gère ses écrans (Retour)
+			elif _close_topmost():
+				pass
+			elif _menu != null:
 				_menu.open()
 		KEY_F10:
 			if _devpanel != null:
@@ -157,6 +166,32 @@ func _on_tick_faith(_year: int) -> void:
 		_faith_prompted = true
 		Sim.set_speed(0)             # le monde s'arrête : moment de fondation
 		_religion.open()
+
+## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
+## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).
+func _close_topmost() -> bool:
+	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel]:
+		if p != null and p.visible:
+			p.visible = false
+			return true
+	if (_prov_panel != null and _prov_panel.visible) or (_country_panel != null and _country_panel.visible):
+		_clear_selection()
+		return true
+	return false
+
+## désélection PLEINE : panneaux de sélection refermés + le contour doré s'éteint.
+func _clear_selection() -> void:
+	_sel_prov = -1
+	if _prov_panel != null:
+		_prov_panel.show_province(-1)
+	if _country_panel != null:
+		_country_panel.show_country(-1)
+	var map := get_node_or_null("MapView")
+	if map != null:
+		map._selected_prov = -1
+		var ov := map.get_node_or_null("Overlay")
+		if ov != null:
+			ov.queue_redraw()
 
 func _on_province_picked(province: int, _region: int, owner: int) -> void:
 	if Sim.world == null:

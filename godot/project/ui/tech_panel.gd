@@ -28,6 +28,7 @@ var _info := {}            # Atom -> dict du nœud (pour le détail au clic)
 var _nodes := []           # le tableau de nœuds (lookup index → nom pour la cible)
 var _built := false
 var _sel := ""             # détail du nœud sélectionné (pied)
+var _close_rect := Rect2()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -172,6 +173,13 @@ func _on_atom_selected(atom) -> void:
 			_sel += "   → recherche lancée"
 	queue_redraw()
 
+func _gui_input(e: InputEvent) -> void:
+	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+		if _close_rect.has_point(e.position):
+			visible = false
+			accept_event()
+			return
+
 # ── chrome du panneau : fond + en-tête + pied (le graphe se dessine seul) ───
 func _draw() -> void:
 	var w = Sim.world
@@ -182,6 +190,13 @@ func _draw() -> void:
 	var info: Dictionary = w.tech_info()
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, 12), 20)
 	VKit.text(self, Vector2(42, 13), VKit.COL_COPPER, "Arbre de technologie", VKit.FS_BIG)
+
+	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
+	_close_rect = Rect2(PW - 26, 6, 20, 20)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
+	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
+
 	VKit.text(self, Vector2(PW - 250, 13), VKit.COL_PARCH, "Points : %d" % int(info.get("points", 0)), VKit.FS_SMALL)
 	var crise := int(info.get("crise_pct", 0))
 	var pcol := VKit.COL_DIM if crise < 25 else (VKit.sense(0.40) if crise < 60 else VKit.sense(0.10))
@@ -215,7 +230,6 @@ func _draw() -> void:
 		VKit.text(self, Vector2(16, PH - FOOT + 4), VKit.COL_PARCH, _sel, VKit.FS_SMALL)
 	else:
 		VKit.text(self, Vector2(16, PH - FOOT + 4), VKit.COL_DIM, "Cliquez un nœud pour son détail.", VKit.FS_SMALL)
-	VKit.text(self, Vector2(PW - 96, PH - FOOT + 4), VKit.COL_DIM, "[T] fermer", VKit.FS_SMALL)
 
 # ── bande de MÉTABOLISATION : le +% recherche du creuset + l'accès tech par héritage ──
 # Le "+X% recherche" répond à « métabolisation = +% tech visible sous la barre de savoir » ;

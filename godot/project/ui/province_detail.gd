@@ -24,6 +24,7 @@ var _hover_text := ""
 var _hover_pos := Vector2.ZERO
 var _alloc_btns := []       # [{rect, act, sink}] boutons de l'onglet Main-d'œuvre
 var _alloc_cache := {}      # dernier readout region_alloc (pour pousser l'allocation COMPLÈTE)
+var _close_rect := Rect2()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -55,7 +56,13 @@ func _draw() -> void:
 	var x := 16.0
 	UIKit.draw_icon(self, "capital_tower", Vector2(14, 8), 18)
 	VKit.text(self, Vector2(40, 9), VKit.COL_COPPER, "Province — %s" % String(info["nom"]), VKit.FS_BIG)
-	VKit.text(self, Vector2(PW - 96, 11), VKit.COL_DIM, "[V] fermer", VKit.FS_SMALL)
+
+	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
+	_close_rect = Rect2(PW - 26, 6, 20, 20)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
+	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
+
 	VKit.text(self, Vector2(x, HEAD + 4), VKit.COL_PARCH,
 		"%s habitants · %s · %s" % [_grp(info["ames"]), info["climat"], info["relief"]], VKit.FS_SMALL)
 
@@ -350,6 +357,11 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	VKit.fill(self, Rect2(fx, base, fw, 1), VKit.COL_DIM)
 
 func _gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if _close_rect.has_point(event.position):
+			visible = false
+			accept_event()
+			return
 	if event is InputEventMouseMotion:
 		var h := ""
 		for z in _hover_zones:

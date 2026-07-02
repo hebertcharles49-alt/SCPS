@@ -739,13 +739,17 @@ func _on_tick(_year: int) -> void:
 	_ensure_roads()            # date les chantiers neufs dès maintenant (même non zoomé)
 	queue_redraw()
 
-## signature de la photo des propriétaires de régions → détecte conquête/colonisation.
+## signature de la photo des propriétaires → détecte conquête/colonisation. Le compte de
+## provinces COLONISÉES y entre : une colonisation INTRA-région ne bouge pas l'owner agrégé
+## de région — sans lui, le lavis/frontières (grain PROVINCE, charte) ne se rebâtiraient pas.
 func _owner_signature(w) -> int:
 	if w == null:
 		return -1
 	var sig := 0
 	for r in range(w.region_count()):
 		sig = (sig * 1000003 + (w.region_owner(r) + 2)) & 0x3fffffff
+	if w.has_method("colonized_total"):
+		sig = (sig * 1000003 + int(w.colonized_total())) & 0x3fffffff
 	return sig
 
 ## reconstruit les segments de frontière (région + pays) depuis la façade (port bseg).
@@ -811,17 +815,26 @@ func _rebuild_borders() -> void:
 	for entity in ent_flat:
 		var r := _smooth_border(ent_flat[entity], ent_nrm[entity])
 		_b_segs[entity] = r[0]; _b_norm[entity] = r[1]
-	# CAPITALES : contour de la province-capitale de chaque EMPIRE → liseré POURPRE (au-dessus).
+	# CAPITALES : contour de la PROVINCE-capitale de chaque EMPIRE → liseré POURPRE (au-dessus).
+	# Grain PROVINCE (charte) : jadis le contour de toute la RÉGION-siège — incohérent depuis
+	# que la carte montre la propriété par province (le liseré entourait de la terre vierge).
 	_cap_segs.clear()
 	_cap_norm.clear()
 	for c in range(w.country_count()):
 		var rl := int(w.country_role(c))
 		if rl != 0 and rl != 1:                              # empires (joueur/IA) seulement
 			continue
-		var creg := int(w.country_capital_region(c))
-		if creg < 0:
-			continue
-		var rc: Dictionary = w.region_border_segments(creg)
+		var rc: Dictionary
+		if w.has_method("country_capital_province") and w.has_method("province_border_segments"):
+			var cpp := int(w.country_capital_province(c))
+			if cpp < 0:
+				continue
+			rc = w.province_border_segments(cpp)
+		else:
+			var creg := int(w.country_capital_region(c))
+			if creg < 0:
+				continue
+			rc = w.region_border_segments(creg)
 		var rp: PackedVector2Array = rc.get("pts", PackedVector2Array())
 		var rn: PackedVector2Array = rc.get("nrm", PackedVector2Array())
 		if rp.size() < 2:
@@ -1651,8 +1664,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var rc: Vector2 = w.region_centroid(r)
 				if rc.x >= 0:
 					ps.push_back(mv.iso_pos(rc.x, rc.y))
-		if ps.size() < 2:
-			continue
+		if ps.is_empty():
+			continue      # (1 centroïde = valide : ancre au point, pas d'orientation — l'empire
+			              #  mono-région du DÉPART charte garde son nom ; l'ACP exige ≥2 sinon)
 		# moyenne + matrice de covariance → axe principal (ACP 2D)
 		var mx := 0.0; var my := 0.0
 		for p in ps:
@@ -1678,10 +1692,14 @@ func _draw_iso(w, mv: Node2D) -> void:
 		# la plume LE LONG du pays. AGRANDI (1.35→1.9 : lisible au fit, là où la carte se joue) et
 		# TEINTÉ au pigment de l'entité assombri (même famille que frontière/lavis — cohérence).
 		var pig := _entity_pigment(c)
-		var name_ink := Color(pig.r * 0.42, pig.g * 0.42, pig.b * 0.42, 0.97)
-		var nsc := 1.9 / zoom
+		# HIÉRARCHIE de labels : EMPIRE pleine taille ; cité-état/hameau réduits & discrets
+		# (le même correctif mono-région les a révélés — utiles, mais ils ne crient pas).
+		var rl := int(w.country_role(c))
+		var is_emp := (rl == 0 or rl == 1)
+		var name_ink := Color(pig.r * 0.42, pig.g * 0.42, pig.b * 0.42, 0.97 if is_emp else 0.72)
+		var nsc := (1.9 if is_emp else 1.15) / zoom
 		draw_set_transform(ip, ang, Vector2(nsc, nsc))
-		VKit.text(self, Vector2(-lw * 0.5 + 0.7, -6.3), Color(0.97, 0.91, 0.74, 0.78), nm, VKit.FS_SMALL)  # halo papier
+		VKit.text(self, Vector2(-lw * 0.5 + 0.7, -6.3), Color(0.97, 0.91, 0.74, 0.78 if is_emp else 0.5), nm, VKit.FS_SMALL)  # halo papier
 		VKit.text(self, Vector2(-lw * 0.5, -7.0), name_ink, nm, VKit.FS_SMALL)                              # encre teintée
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 

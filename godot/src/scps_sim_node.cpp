@@ -74,6 +74,10 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("research_status"),               &ScpsWorld::research_status);
     ClassDB::bind_method(D_METHOD("age_state"),                     &ScpsWorld::age_state);
     ClassDB::bind_method(D_METHOD("player_age_engage"),             &ScpsWorld::player_age_engage);
+    ClassDB::bind_method(D_METHOD("player_colonize", "prov"),       &ScpsWorld::player_colonize);
+    ClassDB::bind_method(D_METHOD("can_colonize", "prov"),          &ScpsWorld::can_colonize);
+    ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
+    ClassDB::bind_method(D_METHOD("country_capital_province", "c"), &ScpsWorld::country_capital_province);
     ClassDB::bind_method(D_METHOD("player_declare_war", "target"),    &ScpsWorld::player_declare_war);
     ClassDB::bind_method(D_METHOD("player_make_peace", "target"),     &ScpsWorld::player_make_peace);
     ClassDB::bind_method(D_METHOD("player_offer_alliance", "target"), &ScpsWorld::player_offer_alliance);
@@ -741,6 +745,19 @@ Dictionary ScpsWorld::age_state() {
 }
 bool ScpsWorld::player_age_engage() {
     return sim ? scps_player_age_engage(sim) != 0 : false;
+}
+/* COLONISATION (charte) : le verbe + son read de légalité + la signature de souveraineté. */
+bool ScpsWorld::player_colonize(int prov) {
+    return sim ? scps_player_colonize(sim, prov) != 0 : false;
+}
+bool ScpsWorld::can_colonize(int prov) {
+    return sim ? scps_can_colonize(sim, prov) != 0 : false;
+}
+int ScpsWorld::colonized_total() const {
+    return sim ? scps_colonized_total(sim) : 0;
+}
+int ScpsWorld::country_capital_province(int c) const {
+    return sim ? scps_country_capital_province(sim, c) : -1;
 }
 
 bool ScpsWorld::player_declare_war(int target) {

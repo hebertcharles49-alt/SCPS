@@ -21,9 +21,12 @@ const TIPS := {
 var _tips: Array = []
 
 signal build_requested
+signal close_requested   ## ✕ — la désélection pleine vit dans main (_clear_selection)
 
 var _pid := -1
 var _build_rect := Rect2()
+var _colonize_rect := Rect2()   ## bouton COLONISER (province vierge légale — scps_can_colonize)
+var _close_rect := Rect2()
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP   # le panneau capte ses propres clics
@@ -73,6 +76,11 @@ func _draw() -> void:
 	UIKit.bar(self, Rect2(gx, y + 2, gw, 14), int(info["aisance_val"]))
 	var nb := str(info["aisance_val"])
 	VKit.text(self, Vector2(gx - VKit.text_w(nb) - 6, y), VKit.COL_PARCH, nb)
+	# ✕ — tout panneau se ferme (Échap aussi, via la pile de main) ; ferme = DÉSÉLECTIONNE
+	_close_rect = Rect2(PW - 20, 3, 16, 16)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
+	VKit.box(self, _close_rect, VKit.COL_COPPER)
+	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
 	# labelle la jauge (c'était un « 9 » nu — le joueur ne savait pas ce que c'était)
 	VKit.text(self, Vector2(gx, y + 17), VKit.COL_DIM, "Prospérité", VKit.FS_SMALL)
 	# climat · relief · statut de capitale
@@ -198,15 +206,27 @@ func _draw() -> void:
 	if int(cap.get("prod_pct", 0)) > 0:
 		y = VKit.row(self, x, y, "Productivité", "+%d%%" % int(cap["prod_pct"]), VKit.sense(0.7))
 
-	# ── BOUTON CONSTRUIRE ─────────────────────────────────────────────────
+	# ── BOUTON CONSTRUIRE / COLONISER (selon la propriété ; le drain revalide) ──
 	y += 8
 	var bw := 120.0
 	var bbh := 28.0
-	_build_rect = Rect2(x, y, bw, bbh)
-	VKit.fill(self, _build_rect, VKit.COL_PANEL2)
-	VKit.box(self, _build_rect, VKit.COL_COPPER)
-	UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
-	VKit.text(self, Vector2(x + 28, y + 5), VKit.COL_COPPER, "Construire")
+	_build_rect = Rect2()
+	_colonize_rect = Rect2()
+	var me: int = w.player()
+	if int(info.get("owner", -2)) == me:
+		_build_rect = Rect2(x, y, bw, bbh)
+		VKit.fill(self, _build_rect, VKit.COL_PANEL2)
+		VKit.box(self, _build_rect, VKit.COL_COPPER)
+		UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
+		VKit.text(self, Vector2(x + 28, y + 5), VKit.COL_COPPER, "Construire")
+	elif w.has_method("can_colonize") and w.can_colonize(_pid):
+		# le verbe d'EXPANSION du joueur (charte : « le joueur colonise n'importe quelle
+		# province ») — visible seulement si LÉGAL (cible vierge + une source aux portes).
+		_colonize_rect = Rect2(x, y, bw + 16, bbh)
+		VKit.fill(self, _colonize_rect, VKit.COL_PANEL2)
+		VKit.box(self, _colonize_rect, Color(0.55, 0.62, 0.38))
+		UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
+		VKit.text(self, Vector2(x + 28, y + 5), Color(0.62, 0.70, 0.42), "Coloniser")
 
 # milliers lisibles : 12345 → "12 345"
 func _grp(n) -> String:
@@ -222,8 +242,16 @@ func _grp(n) -> String:
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if _build_rect.has_point(event.position):
+		if _close_rect.has_point(event.position):
+			close_requested.emit()             # main désélectionne (panneau + contour doré)
+			accept_event()
+			return
+		if _build_rect.size.x > 0 and _build_rect.has_point(event.position):
 			build_requested.emit()
+		elif _colonize_rect.size.x > 0 and _colonize_rect.has_point(event.position):
+			if Sim.world != null and Sim.world.has_method("player_colonize"):
+				Sim.world.player_colonize(_pid)   # enfilé ; fondé au drain → le bouton s'éteint
+				queue_redraw()
 
 ## HOVER natif : Godot appelle ceci au survol → texte de la zone touchée (classe / humeur).
 func _get_tooltip(at_position: Vector2) -> String:

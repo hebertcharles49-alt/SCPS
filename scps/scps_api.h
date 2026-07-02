@@ -426,6 +426,15 @@ int  scps_player_alloc_auto    (ScpsSim *s, int region);   /* retour au split AU
  * CMD_AGE_ENGAGE (drain déterministe, une fois par âge). */
 int  scps_age_state         (ScpsSim *s, int *engaged, char *name, int cap);
 int  scps_player_age_engage (ScpsSim *s);
+/* COLONISATION (charte : « le joueur colonise n'importe quelle province ») — ENFILE
+ * CMD_COLONIZE (source = sa province la plus peuplée, portes au drain) ; scps_can_colonize
+ * = le read de légalité (cible vierge + une source aux portes) pour griser le bouton. */
+int  scps_player_colonize   (ScpsSim *s, int prov);
+int  scps_can_colonize      (ScpsSim *s, int prov);
+/* total de provinces COLONISÉES (signature de souveraineté du front — une colonisation
+ * intra-région ne bouge pas l'owner agrégé de région) + province-CAPITALE d'un pays. */
+int  scps_colonized_total   (const ScpsSim *s);
+int  scps_country_capital_province(const ScpsSim *s, int c);
 /* LECTURE : cible de recherche courante (-1 = aucune) ; *progress01 ← fraction [0..1]. */
 int  scps_research_target(ScpsSim *s, float *progress01);
 

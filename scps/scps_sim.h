@@ -69,6 +69,8 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        CMD_ALLOC_RAW, CMD_ALLOC_BLD, CMD_ALLOC_INPUT, CMD_ALLOC_AUTO,
        /* §7 — l'ENGAGEMENT D'ÂGE du joueur (l'IA s'engage auto ; le joueur CHOISIT — ce verbe) */
        CMD_AGE_ENGAGE,
+       /* COLONISATION (charte : « le joueur colonise n'importe quelle province ») — a[0] = province cible */
+       CMD_COLONIZE,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
