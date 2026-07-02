@@ -446,6 +446,27 @@ int  scps_country_capital_province(const ScpsSim *s, int c);
 /* LECTURE : cible de recherche courante (-1 = aucune) ; *progress01 ← fraction [0..1]. */
 int  scps_research_target(ScpsSim *s, float *progress01);
 
+/* ── ALERTES (les DEUX voies du front, façon EU4/CK3) ─────────────────────────────
+ * VOIE ÉVÈNEMENTS : le FIL poussé par sim_day (observation d'état gatée joueur —
+ * guerre/paix, place tombée/reprise, pillage, révolte, sécession ; kind = FeedKind,
+ * scps_provlog.h). Les NOMS sont résolus (membrane). Poll incrémental par seq. */
+typedef struct {
+    int seq, year, kind, region;   /* region -1 si non localisé */
+    const char *a_name, *b_name;   /* pays concernés ("" si -1) */
+} ScpsFeedEvent;
+int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max);
+/* VOIE CONDITIONS : les alertes d'ÉTAT du joueur, calculées en UN appel (C scanne,
+ * le front affiche) : révolte qui gronde · famine · siège ennemi sur mon sol ·
+ * prix EXORBITANT au marché · bien de conso INTROUVABLE. -1 / "" = pas d'alerte. */
+typedef struct {
+    int revolt_region;  int revolt_agit;          /* pire agitation ≥ 60 sur MON sol */
+    int famine_region;  int famine_pct;           /* pire food_sat < 60 % (colonisée) */
+    int siege_region;   const char *siege_by;     /* siège ENNEMI en cours sur mon sol */
+    int price_good;     int price_x10; const char *price_name;   /* prix ≥ 3× l'ancre (×10) */
+    int conso_good;     const char *conso_name;   /* demandé, stock ET offre ~nuls */
+} ScpsPlayerAlerts;
+void scps_player_alerts(ScpsSim *s, ScpsPlayerAlerts *out);
+
 /* ---- TRACÉS DE CARTE (overlays vectoriels du viewer) ----------------- *
  * RIVIÈRES : un point par cellule de fil (centre cellule) + l'ANGLE du fil (rad,
  * direction monde) — l'hôte y pose un sprite de rivière TOURNÉ, comme draw_map_rivers.

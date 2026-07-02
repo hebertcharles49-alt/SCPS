@@ -149,6 +149,12 @@ func _ready() -> void:
 	alerts.open_religion.connect(func():
 		if _religion != null:
 			_religion.open())
+	alerts.goto_region.connect(func(r):
+		if r >= 0 and Sim.world != null:
+			var c: Vector2 = Sim.world.region_centroid(r)
+			if c.x >= 0:
+				map._camera.position = map.iso_pos(c.x, c.y)   # centre la carte sur l'alerte
+				map.queue_redraw())
 
 	Sim.set_speed(0)            # monde en pause tant que le menu est ouvert
 

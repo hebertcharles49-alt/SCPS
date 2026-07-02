@@ -43,4 +43,34 @@ void provlog_modifier_diff(int region, unsigned mask);
 int  provlog_count(int region);                    /* entrées valides (<=PROVLOG_CAP) */
 const ProvLogEntry *provlog_at(int region, int i); /* i=0 = la PLUS RÉCENTE ; NULL hors borne */
 
+/* ── LE FIL D'ÉVÈNEMENTS GLOBAL (display/UI) — la voie « ce qui ARRIVE » des alertes
+ * (victoires, pertes, guerre/paix, pillages, révoltes, sécessions…). MÊME CHARTE que
+ * le journal : anneau RUNTIME (RAZ par provlog_reset), le moteur y POUSSE et ne le
+ * RELIT JAMAIS → déterminisme intact ; rien de sérialisé. Les pushes vivent dans
+ * scps_sim.c par OBSERVATION d'état, GATÉS human_player ≥ 0 → la chronique ne pousse
+ * RIEN (zéro coût, zéro bruit).
+ *
+ * AJOUTER UN ÉVÈNEMENT PAS ENCORE PRÉVU (le mode d'emploi, 3 gestes) :
+ *   1. une valeur FeedKind ci-dessous ;
+ *   2. un feed_push(...) au site d'OBSERVATION (scps_sim.c, gaté joueur) — ou, si
+ *      l'évènement n'est pas observable d'état, au site moteur qui le produit
+ *      (même régime que provlog_push_event : write-only, jamais relu) ;
+ *   3. une entrée dans la table du front (alerts.gd : icône · couleur de domaine ·
+ *      libellé). C'est TOUT — le poll, l'anneau et la membrane sont déjà là. */
+#define FEED_CAP 64
+typedef enum {
+    FEED_NONE = 0,
+    FEED_WAR_DECLARED,   /* la GUERRE : a = l'autre pays, b = le joueur */
+    FEED_PEACE,          /* la PAIX signée : a = l'autre pays, b = le joueur */
+    FEED_SIEGE_FALLEN,   /* une place est TOMBÉE : a = le preneur, b = l'ancien tenant, region */
+    FEED_LIBERATED,      /* une place REPRISE par les armes : a = le libérateur, region */
+    FEED_PILLAGE,        /* une côte/province BALAFRÉE (sac) : region */
+    FEED_REVOLT,         /* un soulèvement ÉCLATE : region */
+    FEED_SECESSION,      /* un pays NAÎT d'une sécession : a = le nouveau pays */
+    FEED_COUNT
+} FeedKind;
+typedef struct { int seq, year, kind, a, b, region; } FeedEntry;
+void feed_push(int kind, int a, int b, int region);       /* write-only (l'an vient de provlog_set_year) */
+int  feed_poll(int after_seq, FeedEntry *out, int max);   /* entrées seq > after_seq, ordre chrono */
+
 #endif

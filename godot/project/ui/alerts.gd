@@ -11,21 +11,39 @@ const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 
-signal open_tab(i: int)     ## onglet de la sidebar (4 = Armée · 7 = Conseil)
+signal open_tab(i: int)     ## onglet de la sidebar (3 = Marché · 4 = Armée · 7 = Conseil)
 signal open_tech
 signal open_construct
 signal open_religion
+signal goto_region(r: int)  ## centre la carte sur la région de l'alerte (siège, famine, révolte)
 
 const COL_ETAT   := Color(0.55, 0.38, 0.66)   ## violet — étatique
 const COL_ARMEE  := Color(0.72, 0.28, 0.24)   ## rouge — armée
 const COL_SOCIAL := Color(0.44, 0.62, 0.36)   ## vert — social/développement
 const COL_SAVOIR := Color(0.37, 0.54, 0.70)   ## bleu — savoir
 const COL_FOI    := Color(0.79, 0.64, 0.30)   ## doré — foi
+const COL_ECO    := Color(0.78, 0.52, 0.22)   ## orange — économie/commerce
 
 const CHIP := 30.0
 const GAP := 6.0
+const FEED_MAX := 8   ## évènements gardés à l'écran (les plus récents ; clic = acquitté)
 
-var _alerts := []   ## [{icon, col, tip, act}] recalculées à chaque _refresh
+## LA TABLE DU FIL (FeedKind → présentation) — AJOUTER UN ÉVÈNEMENT = une ligne ici
+## (+ la valeur enum + le feed_push au site d'observation, cf. scps_provlog.h).
+## fmt : {a}/{b} = pays · {r} = région · {y} = an.
+const FEED_KINDS := {
+	1: {"icon": "dipl_rivalry",   "col": COL_ARMEE, "fmt": "GUERRE — {a} entre en guerre contre nous (an {y})"},
+	2: {"icon": "dipl_alliance",  "col": COL_ETAT,  "fmt": "PAIX signée avec {a} (an {y})"},
+	3: {"icon": "alert_siege",    "col": COL_ARMEE, "fmt": "Une place est TOMBÉE — {a} occupe la région {r} (an {y})"},
+	4: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "Région {r} REPRISE par nos armes (an {y})"},
+	5: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "PILLAGE — la région {r} a été mise à sac (an {y})"},
+	6: {"icon": "alert_revolt",   "col": COL_ETAT,  "fmt": "RÉVOLTE — un soulèvement éclate en région {r} (an {y})"},
+	7: {"icon": "settlement_cluster", "col": COL_ETAT, "fmt": "SÉCESSION — {a} proclame son indépendance (an {y})"},
+}
+
+var _alerts := []    ## [{icon, col, tip, act, …}] conditions, recalculées à chaque _refresh
+var _events := []    ## [{icon, col, tip, seq}] fil transient (clic = acquitté)
+var _seen_seq := 0   ## dernier seq lu du fil
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -38,11 +56,30 @@ func _ready() -> void:
 ## jamais un plein-écran qui mangerait les clics de la carte).
 func _refresh() -> void:
 	_alerts = _collect()
+	_poll_feed()
+	var n := _events.size() + _alerts.size()
 	var vw := get_viewport_rect().size.x
 	position = Vector2(vw - CHIP - 10.0, Frame.TOPBAR_H + 10.0)
-	size = Vector2(CHIP, maxf(1.0, _alerts.size() * (CHIP + GAP)))
-	visible = _alerts.size() > 0
+	size = Vector2(CHIP, maxf(1.0, n * (CHIP + GAP)))
+	visible = n > 0
 	queue_redraw()
+
+## VOIE ÉVÈNEMENTS : poll incrémental du fil moteur → chips TRANSIENTS (clic = acquitté).
+func _poll_feed() -> void:
+	var w = Sim.world
+	if w == null or not w.has_method("feed_poll"):
+		return
+	for ev in w.feed_poll(_seen_seq):
+		_seen_seq = maxi(_seen_seq, int(ev["seq"]))
+		var kind := int(ev["kind"])
+		if not FEED_KINDS.has(kind):
+			continue   # kind inconnu du front : silencieux (l'ajout = une ligne dans FEED_KINDS)
+		var k: Dictionary = FEED_KINDS[kind]
+		var tip := String(k["fmt"]).replace("{a}", String(ev["a"])).replace("{b}", String(ev["b"])) \
+			.replace("{r}", str(int(ev["region"]))).replace("{y}", str(int(ev["year"])))
+		_events.append({"icon": k["icon"], "col": k["col"], "tip": tip + "  (clic : acquitter)", "seq": int(ev["seq"])})
+	while _events.size() > FEED_MAX:
+		_events.pop_front()   # bornés : les plus récents restent
 
 ## LA COLLECTE : chaque « élément en attente » du gameplay, lu de la façade.
 func _collect() -> Array:
@@ -98,45 +135,90 @@ func _collect() -> Array:
 	if w.has_method("religion_founding_ready") and int(w.religion_founding_ready(me)) == 1:
 		out.append({"icon": "faith_candle", "col": COL_FOI, "act": "religion",
 			"tip": "Votre peuple a bâti son premier sanctuaire — clic : FONDER la foi"})
+	# ── CONDITIONS MOTEUR (un seul appel C : révolte · famine · siège · prix · conso) ──
+	if w.has_method("player_alerts"):
+		var pa: Dictionary = w.player_alerts()
+		if int(pa.get("revolt_region", -1)) >= 0:
+			out.append({"icon": "alert_revolt", "col": COL_ETAT, "act": "goto",
+				"region": int(pa["revolt_region"]),
+				"tip": "La région %d GRONDE (agitation %d) — réprimer, assimiler ou apaiser (clic : y aller)" % [int(pa["revolt_region"]), int(pa["revolt_agit"])]})
+		if int(pa.get("famine_region", -1)) >= 0:
+			out.append({"icon": "alert_famine", "col": COL_SOCIAL, "act": "goto",
+				"region": int(pa["famine_region"]),
+				"tip": "FAMINE — la région %d ne mange qu'à %d %% (greniers, import, colonie vivrière) (clic : y aller)" % [int(pa["famine_region"]), int(pa["famine_pct"])]})
+		if int(pa.get("siege_region", -1)) >= 0:
+			out.append({"icon": "alert_siege", "col": COL_ARMEE, "act": "goto",
+				"region": int(pa["siege_region"]),
+				"tip": "SIÈGE — %s assiège notre région %d ! Lever l'ost (clic : y aller)" % [String(pa["siege_by"]), int(pa["siege_region"])]})
+		if int(pa.get("price_good", -1)) >= 0:
+			out.append({"icon": "alert_shortage", "col": COL_ECO, "act": "market",
+				"tip": "PRIX EXORBITANT — %s à ×%.1f de l'ancre au marché (clic : onglet Marché)" % [String(pa["price_name"]), float(pa["price_x10"]) / 10.0]})
+		if int(pa.get("conso_good", -1)) >= 0:
+			out.append({"icon": "alert_shortage", "col": COL_ECO, "act": "market",
+				"tip": "BIEN INTROUVABLE — %s est demandé mais ni produit ni en stock (clic : onglet Marché)" % String(pa["conso_name"])})
 	return out
+
+## la pile AFFICHÉE : les ÉVÈNEMENTS (récents en tête, transients) puis les CONDITIONS.
+func _stack() -> Array:
+	var st := []
+	for i in range(_events.size() - 1, -1, -1):   # le plus récent d'abord
+		st.append(_events[i])
+	st.append_array(_alerts)
+	return st
 
 func _draw() -> void:
 	var y := 0.0
-	for al in _alerts:
+	for al in _stack():
 		var r := Rect2(0, y, CHIP, CHIP)
 		VKit.fill(self, r, VKit.COL_PANEL)
 		var c: Color = al["col"]
 		draw_rect(r, c, false, 2.0)                       # le CODE COULEUR : liseré épais du domaine
 		draw_rect(Rect2(0, y + CHIP - 4, CHIP, 4), c)     # + socle plein (lisible même en périphérie)
 		UIKit.draw_icon(self, String(al["icon"]), Vector2(5, y + 3), 20)
+		if al.has("seq"):                                  # ÉVÈNEMENT : pastille « neuf » en coin
+			draw_circle(Vector2(CHIP - 4, y + 4), 3.0, Color(0.95, 0.90, 0.75))
 		y += CHIP + GAP
 
 func _gui_input(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
 		return
+	var st := _stack()
 	var idx := int(event.position.y / (CHIP + GAP))
-	if idx < 0 or idx >= _alerts.size():
+	if idx < 0 or idx >= st.size():
 		return
 	accept_event()
-	match String(_alerts[idx]["act"]):
-		"council":
-			open_tab.emit(7)
-		"army":
-			open_tab.emit(4)
-		"tech":
-			open_tech.emit()
-		"construct":
-			open_construct.emit()
-		"religion":
-			open_religion.emit()
-		"age":
-			if Sim.world != null and Sim.world.has_method("player_age_engage"):
-				Sim.world.player_age_engage()   # le geste EST l'action (drainé au tick)
+	var al: Dictionary = st[idx]
+	if al.has("seq"):
+		# ÉVÈNEMENT : le clic ACQUITTE (et centre la carte si localisé)
+		for i in range(_events.size()):
+			if int(_events[i]["seq"]) == int(al["seq"]):
+				_events.remove_at(i)
+				break
+	else:
+		match String(al.get("act", "")):
+			"council":
+				open_tab.emit(7)
+			"army":
+				open_tab.emit(4)
+			"market":
+				open_tab.emit(3)
+			"tech":
+				open_tech.emit()
+			"construct":
+				open_construct.emit()
+			"religion":
+				open_religion.emit()
+			"goto":
+				goto_region.emit(int(al.get("region", -1)))
+			"age":
+				if Sim.world != null and Sim.world.has_method("player_age_engage"):
+					Sim.world.player_age_engage()   # le geste EST l'action (drainé au tick)
 	_refresh()
 
 ## HOVER natif : le tooltip de l'alerte survolée.
 func _get_tooltip(at_position: Vector2) -> String:
+	var st := _stack()
 	var idx := int(at_position.y / (CHIP + GAP))
-	if idx >= 0 and idx < _alerts.size():
-		return String(_alerts[idx]["tip"])
+	if idx >= 0 and idx < st.size():
+		return String(st[idx]["tip"])
 	return ""

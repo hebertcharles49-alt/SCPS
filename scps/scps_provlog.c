@@ -27,12 +27,37 @@ static const StrId JMOD_EFF[JMOD_COUNT] = {
 };
 static const signed char JMOD_SIGN[JMOD_COUNT] = { +1, +1, -1, -1, -1 };
 
+/* ── LE FIL D'ÉVÈNEMENTS GLOBAL (voir header) : anneau write-only, jamais relu par le
+ *    moteur — la RAZ vit dans provlog_reset (un seul point d'hygiène par sim). ── */
+static FeedEntry g_feed[FEED_CAP];
+static int g_feed_seq = 0;    /* seq du DERNIER poussé (0 = fil vide) */
+
+void feed_push(int kind, int a, int b, int region){
+    if (kind <= FEED_NONE || kind >= FEED_COUNT) return;
+    FeedEntry *e = &g_feed[g_feed_seq % FEED_CAP];
+    g_feed_seq++;
+    e->seq = g_feed_seq; e->year = g_year; e->kind = kind;
+    e->a = a; e->b = b; e->region = region;
+}
+int feed_poll(int after_seq, FeedEntry *out, int max){
+    if (!out || max <= 0) return 0;
+    int first = g_feed_seq - FEED_CAP + 1;                 /* plus ancien encore dans l'anneau */
+    if (first < 1) first = 1;
+    if (after_seq + 1 > first) first = after_seq + 1;
+    int n = 0;
+    for (int s = first; s <= g_feed_seq && n < max; s++)
+        out[n++] = g_feed[(s - 1) % FEED_CAP];
+    return n;
+}
+
 void provlog_reset(void){
     memset(g_log, 0, sizeof g_log);
     memset(g_total, 0, sizeof g_total);
     memset(g_prevmask, 0, sizeof g_prevmask);
     memset(g_primed, 0, sizeof g_primed);
     g_year = 0;
+    memset(g_feed, 0, sizeof g_feed);                      /* le fil d'évènements repart à vide */
+    g_feed_seq = 0;
 }
 
 void provlog_set_year(int year){ g_year = year; }

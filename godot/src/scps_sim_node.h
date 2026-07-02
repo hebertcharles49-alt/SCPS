@@ -114,6 +114,8 @@ public:
     int        player_research(int tech);             /* fixe la cible de tech (file de 1) ; tech<0 ⇒ annule ; 1 = mis en file */
     Dictionary research_status();                     /* { target:int(-1=aucune), progress:float[0..1] } */
     Dictionary age_state();                           /* §7 : { age:int(-1=aucun), engaged:bool, name:String } */
+    Array      feed_poll(int after_seq);              /* FIL d'évènements joueur : [{seq,year,kind,region,a,b}] */
+    Dictionary player_alerts();                       /* CONDITIONS : révolte/famine/siège/prix/conso en un appel */
     bool       player_age_engage();                   /* §7 : engager l'âge courant (une fois par âge) */
     bool       player_colonize(int prov);             /* COLONISATION (charte) : fonder sur une province vierge */
     bool       can_colonize(int prov);                /* read de légalité (griser le bouton Coloniser) */

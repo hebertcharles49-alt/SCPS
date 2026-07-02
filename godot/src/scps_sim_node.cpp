@@ -75,6 +75,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("research_status"),               &ScpsWorld::research_status);
     ClassDB::bind_method(D_METHOD("age_state"),                     &ScpsWorld::age_state);
     ClassDB::bind_method(D_METHOD("player_age_engage"),             &ScpsWorld::player_age_engage);
+    ClassDB::bind_method(D_METHOD("feed_poll", "after_seq"),        &ScpsWorld::feed_poll);
+    ClassDB::bind_method(D_METHOD("player_alerts"),                 &ScpsWorld::player_alerts);
     ClassDB::bind_method(D_METHOD("player_colonize", "prov"),       &ScpsWorld::player_colonize);
     ClassDB::bind_method(D_METHOD("can_colonize", "prov"),          &ScpsWorld::can_colonize);
     /* §3 — le RESTE de la surface de verbes (wiring UI complet) : intérieur · conseil ·
@@ -785,6 +787,37 @@ Dictionary ScpsWorld::age_state() {
 }
 bool ScpsWorld::player_age_engage() {
     return sim ? scps_player_age_engage(sim) != 0 : false;
+}
+
+/* ── ALERTES : le FIL d'évènements (poll incrémental) + les CONDITIONS en un appel ── */
+Array ScpsWorld::feed_poll(int after_seq) {
+    Array a;
+    if (!sim) return a;
+    ScpsFeedEvent ev[64];
+    int n = scps_feed_poll(sim, after_seq, ev, 64);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["seq"]    = ev[i].seq;
+        d["year"]   = ev[i].year;
+        d["kind"]   = ev[i].kind;
+        d["region"] = ev[i].region;
+        d["a"]      = String::utf8(ev[i].a_name);
+        d["b"]      = String::utf8(ev[i].b_name);
+        a.push_back(d);
+    }
+    return a;
+}
+Dictionary ScpsWorld::player_alerts() {
+    Dictionary d;
+    ScpsPlayerAlerts al;
+    scps_player_alerts(sim, &al);
+    d["revolt_region"] = al.revolt_region; d["revolt_agit"] = al.revolt_agit;
+    d["famine_region"] = al.famine_region; d["famine_pct"]  = al.famine_pct;
+    d["siege_region"]  = al.siege_region;  d["siege_by"]    = String::utf8(al.siege_by);
+    d["price_good"]    = al.price_good;    d["price_x10"]   = al.price_x10;
+    d["price_name"]    = String::utf8(al.price_name);
+    d["conso_good"]    = al.conso_good;    d["conso_name"]  = String::utf8(al.conso_name);
+    return d;
 }
 /* COLONISATION (charte) : le verbe + son read de légalité + la signature de souveraineté. */
 bool ScpsWorld::player_colonize(int prov) {

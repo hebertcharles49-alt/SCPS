@@ -1395,6 +1395,73 @@ int scps_age_state(ScpsSim *s, int *engaged, char *name, int cap){
     return age;
 }
 
+/* ── ALERTES (les deux voies) ─────────────────────────────────────────────── */
+/* VOIE ÉVÈNEMENTS : poll incrémental du fil (membrane : noms résolus, kind brut). */
+int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max){
+    if (!s || !s->ready || !out || max<=0) return 0;
+    FeedEntry fe[FEED_CAP];
+    int n = feed_poll(after_seq, fe, (max<FEED_CAP)?max:FEED_CAP);
+    for (int i=0;i<n;i++){
+        out[i].seq = fe[i].seq; out[i].year = fe[i].year;
+        out[i].kind = fe[i].kind; out[i].region = fe[i].region;
+        out[i].a_name = (fe[i].a>=0 && fe[i].a<s->w->n_countries) ? sz(s->w->country[fe[i].a].name) : "";
+        out[i].b_name = (fe[i].b>=0 && fe[i].b<s->w->n_countries) ? sz(s->w->country[fe[i].b].name) : "";
+    }
+    return n;
+}
+/* VOIE CONDITIONS : l'état du joueur scanné EN C (le front n'itère pas 800 régions). */
+void scps_player_alerts(ScpsSim *s, ScpsPlayerAlerts *out){
+    if (!out) return;
+    memset(out, 0, sizeof *out);
+    out->revolt_region=-1; out->famine_region=-1; out->siege_region=-1;
+    out->price_good=-1; out->conso_good=-1;
+    out->siege_by=""; out->price_name=""; out->conso_name="";
+    if (!s || !s->ready) return;
+    int me = s->sim.player;
+    if (me<0 || me>=s->w->n_countries) return;
+    const WorldEconomy *e = s->sim.econ;
+    /* RÉVOLTE qui gronde + FAMINE : pire région à MOI (colonisée) */
+    float worst_agit=60.f, worst_food=0.60f;
+    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG;r++){
+        const RegionEconomy *re=&e->region[r];
+        if (re->owner!=me || !re->colonized) continue;
+        if (s->sim.sc->agitation[r] >= worst_agit){ worst_agit=s->sim.sc->agitation[r]; out->revolt_region=r; }
+        if (re->food_sat < worst_food){ worst_food=re->food_sat; out->famine_region=r; }
+    }
+    if (out->revolt_region>=0) out->revolt_agit=(int)(worst_agit+0.5f);
+    if (out->famine_region>=0) out->famine_pct=(int)(worst_food*100.f+0.5f);
+    /* SIÈGE ennemi sur MON sol (armée de campagne adverse en phase siège) */
+    for (int k=0;k<SCPS_MAX_COUNTRY;k++){
+        const FieldArmy *en=&s->sim.camp->army[k];
+        if (!en->active || en->phase!=FA_SIEGE || en->owner==me) continue;
+        if (en->loc<0 || en->loc>=e->n_regions || e->region[en->loc].owner!=me) continue;
+        out->siege_region=en->loc;
+        out->siege_by=(en->owner>=0 && en->owner<s->w->n_countries)? sz(s->w->country[en->owner].name):"";
+        break;
+    }
+    /* PRIX EXORBITANT + CONSO INTROUVABLE : lus au marché de la CAPITALE (prix national projeté) */
+    int cp = s->w->country[me].capital_prov;
+    int capr = (cp>=0 && cp<s->w->n_provinces) ? s->w->province[cp].region : -1;
+    if (capr>=0 && capr<e->n_regions){
+        const RegionEconomy *re=&e->region[capr];
+        float worst_ratio=3.f, worst_lack=1.f;
+        for (int g=1; g<RES_COUNT; g++){
+            float base=econ_base_price((Resource)g);
+            if (base>0.01f && re->price[g] >= base*worst_ratio){
+                worst_ratio = re->price[g]/base;
+                out->price_good=g; out->price_x10=(int)(worst_ratio*10.f+0.5f);
+                out->price_name=sz(resource_name((Resource)g));
+            }
+            /* un bien DEMANDÉ dont le stock ET l'offre sont ~nuls : le manque vécu */
+            if (re->demand[g] > worst_lack && re->stock[g] < re->demand[g]*0.05f
+                && re->supply[g] < re->demand[g]*0.10f){
+                worst_lack = re->demand[g];
+                out->conso_good=g; out->conso_name=sz(resource_name((Resource)g));
+            }
+        }
+    }
+}
+
 /* LECTURE : la cible de recherche COURANTE (-1 = aucune) ; *progress01 ← fraction
  * acquise [0..1] (points / coût plein) pour la jauge UI. Lecture pure. */
 int scps_research_target(ScpsSim *s, float *progress01){
