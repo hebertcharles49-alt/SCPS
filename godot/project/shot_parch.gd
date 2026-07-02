@@ -63,14 +63,20 @@ func _run() -> void:
 			var ov2 := _map.get_node_or_null("Overlay")
 			if ov2 != null:
 				ov2.queue_redraw()
-	# le monde est en PAUSE (aucun tick ne requeue le redraw) : on FORCE le redraw de
-	# l'overlay APRÈS le déplacement caméra — sinon le draw RETENU (pré-zoom, sous les
-	# seuils dressing/villes) persiste et le shot sort « nu » (flake observé).
+	# le monde est en PAUSE (aucun tick ne requeue le redraw) : on RE-POSE la caméra et on
+	# FORCE le redraw À CHAQUE frame d'attente — sinon un draw RETENU (fait avant que la
+	# caméra n'applique son transform, sous les seuils dressing/villes) persiste et le
+	# shot sort « nu » (flake observé, dépendant de l'ordre caméra/draw dans la frame).
 	var ov3 := _map.get_node_or_null("Overlay")
-	if ov3 != null:
-		ov3.queue_redraw()
-	_map.queue_redraw()
-	for i in range(8): await get_tree().process_frame
+	var want_zoom := zoom
+	for i in range(8):
+		if want_zoom > 0.0:
+			_map._camera.zoom = Vector2(want_zoom, want_zoom)
+			_map._camera.position = _map.iso_pos(cx, cy)
+		if ov3 != null:
+			ov3.queue_redraw()
+		_map.queue_redraw()
+		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	var out: String = "res://" + _arg("out=", "parch.png")

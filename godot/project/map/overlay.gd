@@ -374,6 +374,8 @@ func _on_generated() -> void:
 	_road_start.clear()         # chantiers remis à zéro (le monde neuf rebâtit ses routes)
 	_region_label.clear()       # bannières de lieux : noms recachés (monde neuf)
 	_town_cache.clear()         # urbaniste : plans de bourgs recalculés (routes neuves)
+	_sea_img = null             # couches eau recachées (quais)
+	_rf_img = null
 	_owner_sig = -1
 	_build_names()
 	_build_anchors()
@@ -1790,8 +1792,28 @@ const ROOF_PAL := [
 	[Color(0.46, 0.33, 0.21, 0.94), Color(0.38, 0.27, 0.17, 0.94)],   # bois
 	[Color(0.42, 0.40, 0.42, 0.94), Color(0.34, 0.33, 0.36, 0.94)],   # ardoise
 ]
+## v3 — les couleurs restent DANS la famille du fond (l'exigence : ne pas détonner) :
+## la place = la clairière en un ton plus clair ; le bois des quais = la palette toit-bois ;
+## la fumée = un gris chaud à alpha très bas (un souffle, pas un trait).
+const PLAZA_FILL  := Color(0.90, 0.85, 0.68, 0.36)   ## place de marché (terre claire tassée)
+const QUAY_WOOD   := Color(0.44, 0.32, 0.22, 0.90)   ## planches de quai (bois patiné)
+const BOAT_WOOD   := Color(0.37, 0.27, 0.19, 0.92)   ## coque (bois sombre)
+const SMOKE_SOFT  := Color(0.60, 0.56, 0.50, 0.14)   ## fumée de cheminée (souffle gris chaud)
 var _town_cache := {}       ## region → plan du bourg (voir _build_town)
 var _ink_bridges := []      ## [{w:Vector2, t:Vector2}] — ponts aux franchissements route×rivière
+var _sea_img: Image = null  ## couche EAU (cache par monde — quais)
+var _rf_img: Image = null   ## champ rivière carvé (cache par monde — quais fluviaux)
+
+## VRAI si la cellule (x,y) est de l'EAU (mer OU rivière carvée) — pour poser les quais.
+func _water_at(x: int, y: int) -> bool:
+	if _sea_img == null and Sim.world != null:
+		_sea_img = Sim.world.layer_image(LAYER_WATER)
+	if _rf_img == null:
+		_rf_img = _carved_river_field()
+	if _sea_img != null and x >= 0 and y >= 0 and x < _sea_img.get_width() and y < _sea_img.get_height():
+		if _sea_img.get_pixel(x, y).r > 0.5:
+			return true
+	return _in_river_water(_rf_img, x, y)
 
 ## point de ROUTE le plus proche du siège + TANGENTE locale (espace monde).
 ## Retourne {d2, p, t} ; d2 = 1e30 si aucune route.
@@ -1824,14 +1846,52 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 	var side := Vector2(-axis.y, axis.x)
 	var org: Vector2 = rr["p"] if on_road else ctr
 	var extent := 0.9   # demi-longueur de la rue bâtie (pour clairière/champs)
+	# ── la PLACE DE MARCHÉ : au CARREFOUR (≥ 2 routes passent au bourg), grandes villes
+	#    seulement — un octogone de terre claire, un puits au centre, une couronne de
+	#    maisons AUTOUR (le reste du bâti garde la rue). ──
+	var nroads := 0
+	var jpt := Vector2.ZERO
+	for rd in _roads:
+		var pts2: PackedVector2Array = rd["points"]
+		var bestd := 1e30
+		var bp := Vector2.ZERO
+		var k2 := 0
+		while k2 < pts2.size():
+			var d2 := ctr.distance_squared_to(pts2[k2])
+			if d2 < bestd:
+				bestd = d2
+				bp = pts2[k2]
+			k2 += 2
+		if bestd < 6.25:
+			nroads += 1
+			jpt += bp
+	var has_plaza: bool = on_road and nroads >= 2 and n >= 8
+	var plaza := PackedVector2Array()
+	var well := Vector2.ZERO
+	var ring_n := 0
+	if has_plaza:
+		jpt /= float(nroads)
+		well = jpt
+		ring_n = mini(6, n / 2)
+		for k in range(10):
+			var pa := TAU * float(k) / 10.0
+			var pr := 0.60 * (0.86 + 0.26 * _h1(float(r) * 3.3 + float(k) * 1.9))
+			plaza.push_back(jpt + Vector2(cos(pa), sin(pa) * 0.80) * pr)
 	for i in range(n):
 		var hh := _h1(float(r) * 13.7 + float(i) * 2.31)
 		var hv := _h1(float(r) * 7.9 + float(i) * 5.17)
 		var wp: Vector2
-		if on_road:
+		if i < ring_n:
+			# la COURONNE de la place : les maisons regardent le marché
+			var a6 := TAU * (float(i) + 0.5) / float(ring_n) + _h1(float(r) * 1.3) * TAU
+			wp = jpt + Vector2(cos(a6), sin(a6) * 0.85) * (0.98 + 0.18 * hh)
+			extent = maxf(extent, jpt.distance_to(org) + 1.0)
+		elif on_road:
 			# DEUX RANGÉES le long de la rue : pas ~0.85 cellule, retrait ±0.5, jitter léger
-			var s := (float(i / 2) - float((n + 1) / 2 - 1) * 0.5) * 0.85
-			var sd := (0.5 + 0.22 * hh) * (1.0 if (i % 2) == 0 else -1.0)
+			var i2 := i - ring_n
+			var n2 := n - ring_n
+			var s := (float(i2 / 2) - float((n2 + 1) / 2 - 1) * 0.5) * 0.85
+			var sd := (0.5 + 0.22 * hh) * (1.0 if (i2 % 2) == 0 else -1.0)
 			wp = org + axis * (s + (hv - 0.5) * 0.3) + side * sd
 			extent = maxf(extent, absf(s) + 0.8)
 		else:
@@ -1921,9 +1981,37 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 					skip = true
 			if not skip:
 				towers.append(ctr + Vector2(cos(ta), sin(ta)) * ring_rad)
+	# ── les QUAIS : si le bourg touche l'EAU (mer ou rivière carvée) à ≤ 3 cellules —
+	#    une ou deux jetées de bois perpendiculaires au rivage ; une barque amarrée (t3+). ──
+	var quays := []
+	var boat := {}
+	var bestw := 1e30
+	var wdir := Vector2.RIGHT
+	var wpt := Vector2.ZERO
+	for k in range(16):
+		var dirv := Vector2.from_angle(TAU * (float(k) + 0.5 * _h1(float(r) * 6.1)) / 16.0)
+		var lastland := ctr
+		var t3 := 0.5
+		while t3 <= 3.0:
+			var pp3: Vector2 = ctr + dirv * t3
+			if _water_at(int(pp3.x), int(pp3.y)):
+				if t3 < bestw:
+					bestw = t3
+					wdir = dirv
+					wpt = lastland
+				break
+			lastland = pp3
+			t3 += 0.5
+	if bestw < 3.0 and (tier >= 2 or ring_rad > 0.0):
+		var wside := Vector2(-wdir.y, wdir.x)
+		quays.append({"a": wpt, "d": wdir})
+		if tier >= 3 or ring_rad > 0.0:
+			quays.append({"a": wpt + wside * 0.65, "d": wdir})
+			boat = {"c": wpt + wdir * 1.55 + wside * -0.55, "ax": wside}
 	var pal: Array = ROOF_PAL[int(_h1(float(r) * 31.7) * 3.0) % 3]
 	return {"h": houses, "arcs": arcs, "towers": towers, "gates": gates, "ring_c": ctr,
-		"gnd": gnd, "fields": fields, "pal": pal}
+		"gnd": gnd, "fields": fields, "pal": pal,
+		"plaza": plaza, "well": well, "has_plaza": has_plaza, "quays": quays, "boat": boat}
 
 ## les POINTS d'une maison à pignon (repère local tourné) — partagés entre l'OMBRE
 ## (silhouette décalée) et la maison elle-même.
@@ -2212,6 +2300,54 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 			draw_line(mv.iso_pos(fc2.x + fdir.x * fl2 * 0.85 + o2.x, fc2.y + fdir.y * fl2 * 0.85 + o2.y),
 				mv.iso_pos(fc2.x - fdir.x * fl2 * 0.85 + o2.x, fc2.y - fdir.y * fl2 * 0.85 + o2.y),
 				FIELD_FURROW, _w(zoom, 0.035, 0.3, 0.5), true)
+	# 2bis. la PLACE DE MARCHÉ (carrefour) : octogone de terre claire + PUITS au centre
+	var plaza: PackedVector2Array = town.get("plaza", PackedVector2Array())
+	if plaza.size() > 2:
+		var ppts := PackedVector2Array()
+		ppts.resize(plaza.size())
+		for k in range(plaza.size()):
+			ppts[k] = mv.iso_pos(plaza[k].x, plaza[k].y)
+		draw_colored_polygon(ppts, PLAZA_FILL)
+		draw_polyline(PackedVector2Array(Array(ppts) + [ppts[0]]),
+			Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.18), _w(zoom, 0.04, 0.3, 0.6), true)
+		var wl: Vector2 = town["well"]
+		var wip: Vector2 = mv.iso_pos(wl.x, wl.y)
+		var wr := _w(zoom, 0.13, 1.0, 2.2)
+		draw_circle(wip, wr, TOWN_WALL)
+		draw_circle(wip, wr * 0.45, Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.80))
+		draw_arc(wip, wr, 0.0, TAU, 14, TOWN_INK, _w(zoom, 0.05, 0.4, 0.8), true)
+	# 2ter. les QUAIS : jetées de bois dans l'eau + barque amarrée — le bourg regarde le large
+	for qd in town.get("quays", []):
+		var qa: Vector2 = qd["a"]
+		var qv: Vector2 = qd["d"]
+		var q0: Vector2 = mv.iso_pos(qa.x, qa.y)
+		var q1: Vector2 = mv.iso_pos(qa.x + qv.x * 1.15, qa.y + qv.y * 1.15)
+		var qt := (q1 - q0).normalized()
+		var qp := Vector2(-qt.y, qt.x)
+		var qw := _w(zoom, 0.10, 0.8, 1.8)
+		draw_colored_polygon(PackedVector2Array([q0 + qp * qw, q1 + qp * qw, q1 - qp * qw, q0 - qp * qw]), QUAY_WOOD)
+		draw_polyline(PackedVector2Array([q0 + qp * qw, q1 + qp * qw, q1 - qp * qw, q0 - qp * qw, q0 + qp * qw]),
+			Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.65), _w(zoom, 0.035, 0.3, 0.6), true)
+		for ps in [0.3, 0.65, 1.0]:                       # les PIEUX (pointillés d'encre au bord)
+			var pp4: Vector2 = q0.lerp(q1, float(ps))
+			draw_circle(pp4 + qp * qw, _w(zoom, 0.03, 0.3, 0.55), TOWN_INK)
+			draw_circle(pp4 - qp * qw, _w(zoom, 0.03, 0.3, 0.55), TOWN_INK)
+	var bt: Dictionary = town.get("boat", {})
+	if bt.has("c"):
+		var bc: Vector2 = bt["c"]
+		var bax: Vector2 = bt["ax"]
+		var b0: Vector2 = mv.iso_pos(bc.x, bc.y)
+		var bxi: Vector2 = (mv.iso_pos(bc.x + bax.x, bc.y + bax.y) - b0).normalized()
+		var bpi := Vector2(-bxi.y, bxi.x)
+		var bl := _w(zoom, 0.30, 2.0, 4.4)
+		var bw2 := _w(zoom, 0.11, 0.8, 1.7)
+		var hull := PackedVector2Array([b0 - bxi * bl * 0.8 + bpi * bw2 * 0.7, b0 + bxi * bl * 0.55 + bpi * bw2,
+			b0 + bxi * bl, b0 + bxi * bl * 0.55 - bpi * bw2, b0 - bxi * bl * 0.8 - bpi * bw2 * 0.7])
+		draw_colored_polygon(hull, BOAT_WOOD)
+		draw_polyline(PackedVector2Array(Array(hull) + [hull[0]]),
+			Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.70), _w(zoom, 0.035, 0.3, 0.6), true)
+		draw_line(b0, b0 + Vector2(0, -bl * 0.9), Color(TOWN_INK.r, TOWN_INK.g, TOWN_INK.b, 0.75),
+			_w(zoom, 0.035, 0.3, 0.6), true)              # le mât nu (barque amarrée)
 	# 3. l'ENCEINTE — arcs de muraille COUPÉS AUX PORTES (routes), tours crénelées ponctuelles
 	for arc in town["arcs"]:
 		var apts := PackedVector2Array()
@@ -2247,6 +2383,17 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 		else:
 			var tilt := (_h1(wp.x * 12.9 + wp.y * 7.1) - 0.5) * 0.24   # ±7° : « dessiné à la main »
 			_ink_house(p, half, tilt, pal[int(hd["v"]) % 2], zoom)
+			# la FUMÉE de cheminée — au TRÈS gros plan, sur ~1 toit sur 3 : un souffle
+			# gris chaud à peine posé (deux passes très transparentes), qui dérive à l'est.
+			if zoom >= 9.0 and _h1(wp.x * 3.7 + wp.y * 9.2) < 0.34:
+				var sp := p + Vector2(0.0, -1.30 * half)
+				var curl := PackedVector2Array([sp,
+					sp + Vector2(0.14 * half, -0.55 * half),
+					sp + Vector2(-0.04 * half, -1.05 * half),
+					sp + Vector2(0.20 * half, -1.60 * half)])
+				draw_polyline(curl, Color(SMOKE_SOFT.r, SMOKE_SOFT.g, SMOKE_SOFT.b, SMOKE_SOFT.a * 0.5),
+					_w(zoom, 0.11, 0.9, 1.9), true)
+				draw_polyline(curl, SMOKE_SOFT, _w(zoom, 0.05, 0.4, 0.9), true)
 
 ## BANNIÈRE DE LIEU (référence KCD) : chip parchemin + liseré d'encre + NOM du siège +
 ## pastille au pigment du propriétaire — taille ÉCRAN constante, posée AU-DESSUS du tampon.
