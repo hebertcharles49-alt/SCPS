@@ -97,6 +97,14 @@ float ring_solid(vec2 cell, float r) {
 		if (is_solid(biome_at(cell + vec2(cos(a), sin(a)) * r))) n += 1.0;
 	return n / 6.0;
 }
+// fraction d'EAU SALÉE (mer, PAS marais) sur un anneau — proximité de mer CONTINUE pour la
+// fusion fleuve→mer (l'ancien near_wet booléen à 3 paliers imprimait des BANDES d'estuaire).
+float ring_sea(vec2 cell, float r) {
+	float n = 0.0;
+	for (float a = 0.0; a < 6.2831; a += 1.0472)
+		if (is_water(biome_at(cell + vec2(cos(a), sin(a)) * r))) n += 1.0;
+	return n / 6.0;
+}
 
 // ROSE DES VENTS — ancrée à un point carte mais dessinée en espace ÉCRAN (`ci` = centre projeté) → cercles.
 float compass(vec2 ip, vec2 ci, float R) {
@@ -238,15 +246,16 @@ void fragment() {
 		// anneaux (jusqu'à 5 cellules — la bande de terre est souvent > 3). Près de la côte, l'eau du fleuve
 		// (1) prend la TEINTE de la mer → jonction SANS couture, et (2) son opacité S'AMINCIT → il se dissout
 		// dans la mer. Loin des côtes (to_sea=0), le fleuve garde sa couleur/pleine opacité.
-		float to_sea = 0.0;
-		if (near_wet(cw, 5.0)) to_sea = 0.40;
-		if (near_wet(cw, 3.2)) to_sea = 0.70;
-		if (near_wet(cw, 1.7)) to_sea = 1.0;
+		// CONTINU (fin des paliers) : fraction d'eau SALÉE sur 3 anneaux pondérés — le dégradé
+		// d'estuaire est une rampe lisse, plus des bandes ; le marais ne tire plus la fusion.
+		float to_sea = clamp(ring_sea(cw, 1.7) * 0.9 + ring_sea(cw, 3.2) * 0.5 + ring_sea(cw, 5.0) * 0.3, 0.0, 1.0);
 		riv_col = mix(riv_col, antique_color(1), to_sea * 0.72);       // teinte → MER près de la côte
 		float land_fac;
 		if (is_water(b)) {
+			// sur MER/LAC, l'encre de rivière ne fait qu'un SOUPÇON au rivage — l'eau garde SA
+			// teinte (le double-rendu lac+rivière faisait les taches d'estuaire).
 			float near_land = clamp(ring_solid(cw, 2.0), 0.0, 1.0);   // 1 au rivage → 0 au large
-			land_fac = mix(0.08, 0.42, near_land);
+			land_fac = mix(0.04, 0.20, near_land);
 		} else if (is_wetland(b)) {
 			land_fac = 0.85;
 		} else {

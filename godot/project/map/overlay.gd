@@ -1156,16 +1156,61 @@ func _taubin(poly: PackedVector2Array, iters: int, closed: bool) -> PackedVector
 ## détoure pas les poussières, le lavis politique porte déjà l'information.
 func _smooth_border(flat: PackedVector2Array, enrm: PackedVector2Array) -> Array:
 	var out_segs := PackedVector2Array(); var out_norm := PackedVector2Array()
+	# ── COUTURE : les jonctions et menus trous FRAGMENTAIENT le contour d'une entité en
+	#    brins flottants (arcs qui meurent au milieu des terres — « messy »). On RECOUD :
+	#    deux bouts de chaînes OUVERTES à ≤ 2.2 cellules se raboutent (le trou devient un
+	#    segment, le lissage l'arrondit) — le contour redevient CONTINU. ──
+	var loops := []
+	var opens := []
 	for ch in _chain_segments_n(flat, enrm):
 		var raw: PackedVector2Array = ch["poly"]
 		var per := 0.0
 		for i in range(raw.size() - 1):
 			per += raw[i].distance_to(raw[i + 1])
 		var isloop := raw.size() >= 3 and raw[0].distance_to(raw[raw.size() - 1]) < 0.001
-		# confettis : boucle d'îlot (< 7 cellules) OU stub ouvert (< 4.5 — les cellules
-		# isolées du damier CÔTIER perdent leur arête d'eau → fragments incourbables).
-		if (isloop and per < 7.0) or (not isloop and per < 4.5):
-			continue
+		if isloop:
+			if per >= 7.0:            # boucle-confetti (îlot d'une cellule) : pas de bande
+				loops.append(ch)
+		else:
+			ch["per"] = per
+			opens.append(ch)
+	var stitched := true
+	while stitched:
+		stitched = false
+		for i in range(opens.size()):
+			if stitched:
+				break
+			var pa: PackedVector2Array = opens[i]["poly"]
+			for j in range(i + 1, opens.size()):
+				var pb: PackedVector2Array = opens[j]["poly"]
+				var d_ee := pa[pa.size() - 1].distance_to(pb[0])                    # fin A → début B
+				var d_er := pa[pa.size() - 1].distance_to(pb[pb.size() - 1])        # fin A → fin B
+				var d_se := pa[0].distance_to(pb[0])                                # début A → début B
+				var d_sr := pa[0].distance_to(pb[pb.size() - 1])                    # début A → fin B
+				var dm := minf(minf(d_ee, d_er), minf(d_se, d_sr))
+				if dm > 2.2:
+					continue
+				var joined := PackedVector2Array()
+				if dm == d_ee:
+					joined = pa.duplicate(); joined.append_array(pb)
+				elif dm == d_er:
+					joined = pa.duplicate()
+					for k in range(pb.size() - 1, -1, -1): joined.push_back(pb[k])
+				elif dm == d_se:
+					for k in range(pa.size() - 1, -1, -1): joined.push_back(pa[k])
+					joined.append_array(pb)
+				else:
+					joined = pb.duplicate(); joined.append_array(pa)
+				opens[i]["poly"] = joined
+				opens[i]["per"] = float(opens[i]["per"]) + float(opens[j]["per"]) + dm
+				opens.remove_at(j)
+				stitched = true
+				break
+	var kept := loops
+	for ch2 in opens:
+		if float(ch2["per"]) >= 2.5:  # les orphelins post-couture (slivers côtiers) tombent
+			kept.append(ch2)
+	for ch in kept:
 		var poly: PackedVector2Array = _smooth_poly(ch["poly"])
 		if poly.size() < 2:
 			continue
