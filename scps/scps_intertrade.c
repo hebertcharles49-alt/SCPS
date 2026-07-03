@@ -168,7 +168,9 @@ static float region_flow_score(const WorldEconomy *e, int r){
 /* M2 — g_centre DÉRIVE DU BÂTI : une région EST un Centre SSI EDI_TRADE_CENTER y est
  * posé (edi_built). Le flag spawné a disparu — le hub est CAUSAL (un bâtiment), donc
  * conquérable (le bâti voyage avec la région) et persistant. On ne marque la carte des
- * hubs « dirty » QUE si un Centre apparaît/disparaît (perf : pas de BFS chaque tick). */
+ * hubs « dirty » QUE si un Centre apparaît/disparaît (perf : pas de BFS chaque tick).
+ * LECTURE seule ici (region[].edi_built = l'agrégat OR des provinces membres, maintenu
+ * par econ_aggregate_regions) — jamais d'écriture, cf. les deux poseurs ci-dessous. */
 static void refresh_centres(const WorldEconomy *e){
     if (!e) return;
     int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
@@ -183,7 +185,13 @@ void intertrade_seed_centres(const World *w, WorldEconomy *e){
     /* M2 — CHAQUE cité-état NAÎT avec un Centre commercial BÂTI sur sa MEILLEURE région
      * (carrefour : adjacence + débouché côtier) : POLITY_CITY_STATE = hub PAR NATURE,
      * garanti dès l'an 0 (pas de cold-start du global). C'est un BÂTIMENT (edi_built),
-     * pas un flag → g_centre en dérive ; un EMPIRE marchand côtier peut AUSSI en bâtir un. */
+     * pas un flag → g_centre en dérive ; un EMPIRE marchand côtier peut AUSSI en bâtir un.
+     * RE-KEY PROVINCE (T4) : edi_built est PROVINCE-owned — region[].edi_built est un
+     * AGRÉGAT (OR des membres) reconstruit CHAQUE TICK par econ_aggregate_regions ; y
+     * écrire directement est effacé au 1er tick (même piège qu'apply_action/scps_agency.c,
+     * déjà réglé là). On pose sur la province REPRÉSENTATIVE (la vérité) + un miroir
+     * immédiat sur region[best] pour que refresh_centres() voie déjà l'état CETTE frame
+     * (avant le 1er econ_tick), comme econ_build_manufacture. */
     if (w) for (int c=0;c<w->n_countries;c++){
         if (w->country[c].role!=POLITY_CITY_STATE) continue;
         int best=-1; float bestc=-1.f;
@@ -191,7 +199,10 @@ void intertrade_seed_centres(const World *w, WorldEconomy *e){
             if (e->region[r].owner!=c) continue;
             float fc=region_flow_score(e,r); if(fc>bestc){bestc=fc;best=r;}
         }
-        if (best>=0) e->region[best].edi_built |= (1u<<EDI_TRADE_CENTER);
+        if (best<0) continue;
+        int pid=econ_region_rep_province(e,best);
+        if (pid>=0 && pid<e->n_prov) e->prov[pid].edi_built |= (1u<<EDI_TRADE_CENTER);
+        e->region[best].edi_built |= (1u<<EDI_TRADE_CENTER);   /* miroir immédiat (informatif) */
     }
     refresh_centres(e);
 }
@@ -245,11 +256,16 @@ int intertrade_country_centre(const WorldEconomy *e, int cid){
 bool intertrade_has_global_access(int cid){ return cid_ok(cid) && g_global_access[cid]; }
 /* RELOCALISER un Centre commercial (coût en or côté appelant) : le hub se DÉPLACE
  * de `from` vers `to` — il ne meurt pas, il bouge. `to` ne doit pas déjà en être un.
- * M2 — on déplace le BÂTIMENT (edi_built) ; g_centre en re-dérive. */
+ * M2 — on déplace le BÂTIMENT (edi_built) ; g_centre en re-dérive.
+ * RE-KEY PROVINCE (T4) : même piège que _seed_centres — on écrit sur les provinces
+ * représentatives (la vérité), avec un miroir region[] immédiat pour cette frame. */
 bool intertrade_relocate_centre(WorldEconomy *e, int from, int to){
     if (!e||from<0||from>=e->n_regions||to<0||to>=e->n_regions) return false;
     if (!((e->region[from].edi_built>>EDI_TRADE_CENTER)&1u) || ((e->region[to].edi_built>>EDI_TRADE_CENTER)&1u)) return false;
-    e->region[from].edi_built &= ~(1u<<EDI_TRADE_CENTER);
+    int pf=econ_region_rep_province(e,from), pt=econ_region_rep_province(e,to);
+    if (pf>=0 && pf<e->n_prov) e->prov[pf].edi_built &= ~(1u<<EDI_TRADE_CENTER);
+    if (pt>=0 && pt<e->n_prov) e->prov[pt].edi_built |=  (1u<<EDI_TRADE_CENTER);
+    e->region[from].edi_built &= ~(1u<<EDI_TRADE_CENTER);   /* miroir immédiat (informatif) */
     e->region[to].edi_built   |=  (1u<<EDI_TRADE_CENTER);
     refresh_centres(e); return true;
 }
