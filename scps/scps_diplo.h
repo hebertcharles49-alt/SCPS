@@ -88,6 +88,13 @@ typedef struct DiploState {
      * signé dans l'UI diplo. Il GARANTIT la route (comme la cité-état) ET, surtout, ouvre
      * l'ACCÈS AU MARCHÉ GLOBAL du partenaire : si l'un tient un Centre, l'autre y accède. */
     uint8_t  trade_pact[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
+    /* BRASSAGE — LE PACTE MIGRATOIRE : un accord RÉCIPROQUE (migration_pact[a][b]==[b][a]),
+     * un CRAN de confiance AU-DESSUS du pacte commercial (ouvrir ses frontières à la
+     * population de l'autre engage plus que commercer). Il autorise l'ÉCHANGE PASSIF de
+     * population entre les deux — à l'avantage du plus ATTRACTIF (la prospérité attire) — et
+     * SURTOUT la diaspora reçue diffuse son savoir (métabolisation). L'isolationniste stagne
+     * (Song), l'ouvert absorbe. Le tick vit dans demography_migration_pact_tick. */
+    uint8_t  migration_pact[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
     /* ── LA FRONDE VASSALE (brief fronde) — grief (combustible) × ratio (oxygène) ── */
     float    v_grief [SCPS_MAX_COUNTRY];  /* grief du vassal envers son maître [0..1] */
     float    v_loyal [SCPS_MAX_COUNTRY];  /* jours de LOYAUTÉ ACHETÉE (bloque l'entrée en ligue) */
@@ -126,6 +133,13 @@ const char *diplo_contrat_name(SuzContrat c);
 bool        diplo_trade_pact  (const DiploState *d, int a, int b);
 /* M3 — signer/rompre un pacte commercial RÉCIPROQUE (les deux sens). */
 void        diplo_set_trade_pact(DiploState *d, int a, int b, bool on);
+/* BRASSAGE — le pacte MIGRATOIRE (réciproque) : autorise l'échange passif de population. */
+bool        diplo_migration_pact(const DiploState *d, int a, int b);
+void        diplo_set_migration_pact(DiploState *d, int a, int b, bool on);
+/* Tick ANNUEL : entre pays sous pacte migratoire et à la PAIX, un flux passif de population
+ * s'échange — le plus ATTRACTIF (prospère) reçoit net ; les migrants portent leur héritage
+ * → diaspora chez l'hôte → métabolisation (diffusion du savoir). Renvoie le nb de flux. */
+int         demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp);
 /* Tick ANNUEL : TRIBUTS (servage lourd 8 %/an + coercition chez le serf ; protectorat
  * léger 2 %), APPEL du protecteur (les guerres du protégé l'appellent), DÉFECTION
  * (ratio de force < ~1.15 → dénonciation ; le serf part en guerre), ACCEPTATION par

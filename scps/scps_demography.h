@@ -118,6 +118,8 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift, const RouteNe
                             const DiploState *dp, float P, float K, float ypt);
 void demography_contact_reset(void);   /* RAZ du compteur de cristallisations (par sim) */
 long demography_contact_count(void);   /* cristallisations par contact cumulées (télémétrie) */
+void demography_migration_pact_reset(void);
+long demography_migration_pact_count(void);   /* flux de pacte migratoire cumulés (télémétrie) */
 
 /* Dépose `amount` du groupe dominant du pays `cid` (sa culture régnante) dans la
  * région conquise `region` → minorité de colons sous une couronne étrangère, OU

@@ -477,6 +477,9 @@ static void culture_to_pc(const Culture *c, PopCulture *p){
 static long g_contact_cryst = 0;   /* cristallisations par contact, cumul de la sim (télémétrie) */
 void demography_contact_reset(void){ g_contact_cryst = 0; }
 long demography_contact_count(void){ return g_contact_cryst; }
+static long g_migration_pact_flows = 0;   /* flux de pacte migratoire, cumul de la sim (télémétrie) */
+void demography_migration_pact_reset(void){ g_migration_pact_flows = 0; }
+long demography_migration_pact_count(void){ return g_migration_pact_flows; }
 int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
                             const RouteNetwork *rn, const DiploState *dp,
                             float P, float K, float ypt){
@@ -541,6 +544,57 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
     }
     g_contact_cryst += cryst;
     return cryst;
+}
+
+/* ===================================================================== */
+/* PACTE MIGRATOIRE (BRASSAGE) — l'échange passif de population entre alliés */
+/* ===================================================================== */
+/* Entre deux pays liés par un pacte migratoire et à la PAIX, chacun envoie un
+ * petit flux depuis sa province la plus peuplée vers celle de l'autre : le plus
+ * ATTRACTIF (prospère) reçoit NET (« à l'avantage de celui qui a le plus à
+ * offrir »). Les migrants portent leur héritage → diaspora ARR_MIGRANT chez
+ * l'hôte → métabolisation (le savoir DIFFUSE — l'inverse de l'isolement de Song). */
+int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp){
+    if (!e || !dp) return 0;
+    float frac = tune_f("MIG_PACT_FRAC", 0.006f);       /* ~0.6 %/an du dominant, modulé par l'attractivité */
+    long  fmin = (long)tune_f("MIG_PACT_MIN", 30.f);
+    int np = e->n_prov; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
+    /* province la plus peuplée + sa prospérité (proxy d'attractivité), par pays. */
+    static int   top_prov[SCPS_MAX_COUNTRY];
+    static long  top_pop [SCPS_MAX_COUNTRY];
+    static float attract [SCPS_MAX_COUNTRY];
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){ top_prov[c]=-1; top_pop[c]=0; attract[c]=0.f; }
+    for (int p=0;p<np;p++){
+        ProvinceEconomy *pe=&e->prov[p];
+        int o=pe->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
+        if (!pe->culture.settled || pe->pop.n_groups<=0) continue;
+        long tot=province_total_pop(&pe->pop);
+        if (tot>top_pop[o]){ top_pop[o]=tot; top_prov[o]=p; attract[o]=pe->pop.prosperity; }
+    }
+    int flows=0;
+    for (int a=0;a<SCPS_MAX_COUNTRY;a++){
+        if (top_prov[a]<0) continue;
+        for (int b=a+1;b<SCPS_MAX_COUNTRY;b++){
+            if (!dp->migration_pact[a][b] || top_prov[b]<0) continue;
+            if (diplo_status(dp,a,b)==DIPLO_WAR) continue;   /* la guerre suspend l'échange */
+            float sa=attract[a], sb=attract[b], tot_attr=sa+sb+1e-3f;
+            ProvincePop *pa=&e->prov[top_prov[a]].pop, *pb=&e->prov[top_prov[b]].pop;
+            /* a→b : ∝ attractivité de b (b, s'il est plus prospère, reçoit plus). */
+            PopGroup *da=(PopGroup*)province_dominant(pa);
+            if (da){
+                long amt=(long)((float)da->count*frac*(2.f*sb/tot_attr));
+                if (amt>=fmin && migration_move(pa,pb,(int)(da-pa->groups),amt,demography_dyn_id_next(),ARR_MIGRANT)) flows++;
+            }
+            /* b→a : ∝ attractivité de a (re-résoudre le dominant : le move a pu compacter). */
+            PopGroup *db=(PopGroup*)province_dominant(pb);
+            if (db){
+                long amt=(long)((float)db->count*frac*(2.f*sa/tot_attr));
+                if (amt>=fmin && migration_move(pb,pa,(int)(db-pb->groups),amt,demography_dyn_id_next(),ARR_MIGRANT)) flows++;
+            }
+        }
+    }
+    g_migration_pact_flows += flows;
+    return flows;
 }
 
 void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,

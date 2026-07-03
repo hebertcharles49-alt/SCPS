@@ -159,7 +159,7 @@ void   ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
  * Lue de l'OPINION (±100, mémoire des actes) + la relation structurelle + le score de guerre.
  * Le verbe diplo JOUEUR (§3) et la diplo IA-IA passent par CE chemin → consentement BILATÉRAL.
  * sc == NULL ⇒ pas de porte d'opinion (décision relation-seule, rétro-compatible bancs). */
-typedef enum { OFFER_ALLIANCE = 0, OFFER_PEACE, OFFER_TRADE_PACT } OfferKind;
+typedef enum { OFFER_ALLIANCE = 0, OFFER_PEACE, OFFER_TRADE_PACT, OFFER_MIGRATION } OfferKind;
 bool   ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldProsperity *wp,
                          const DiploState *d, const Statecraft *sc, int from, int to, OfferKind kind);
 

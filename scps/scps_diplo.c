@@ -112,6 +112,17 @@ void diplo_set_trade_pact(DiploState *d, int a, int b, bool on){
         diplog_push(on?DACT_PACT:DACT_PACT_END, a, b, 0.f);
     d->trade_pact[a][b]=d->trade_pact[b][a]=(uint8_t)(on?1:0);
 }
+/* BRASSAGE — le pacte MIGRATOIRE (réciproque) : autorise l'échange passif de population. */
+bool diplo_migration_pact(const DiploState *d, int a, int b){
+    if (!d||a<0||b<0||a>=SCPS_MAX_COUNTRY||b>=SCPS_MAX_COUNTRY) return false;
+    return d->migration_pact[a][b]!=0;
+}
+void diplo_set_migration_pact(DiploState *d, int a, int b, bool on){
+    if (!d||a<0||b<0||a==b||a>=SCPS_MAX_COUNTRY||b>=SCPS_MAX_COUNTRY) return;
+    if ((d->migration_pact[a][b]!=0) != on)                    /* journal : au FLIP (réutilise le DACT pacte) */
+        diplog_push(on?DACT_PACT:DACT_PACT_END, a, b, 0.f);
+    d->migration_pact[a][b]=d->migration_pact[b][a]=(uint8_t)(on?1:0);
+}
 void diplo_set_vassal(DiploState *d, int suz, int vas, SuzContrat c){
     if (!d||suz<0||vas<0||suz==vas||suz>=SCPS_MAX_COUNTRY||vas>=SCPS_MAX_COUNTRY) return;
     d->suzerain[vas]=(int16_t)suz; d->contrat[vas]=(int8_t)c;

@@ -705,6 +705,7 @@ void sim_day(Sim *s, World *w) {
         trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
         PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
         PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
+        demography_migration_pact_tick(s->econ, s->dp);   /* BRASSAGE : échange passif de population entre alliés (annuel) */
         wild_cultural_tick(s, w);   /* HAMEAUX LIBRES (B4) : ralliement culturel des hameaux WILD au voisin */
         PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));
         if (s->eg) endgame_tick(s->eg, w, s->econ, s->wp, s->ts, s->rn, s->navy, s->dp, s->camp, s->player, s->year);
@@ -772,6 +773,7 @@ void sim_init(Sim *s, World *w) {
     intertrade_reset();   /* embargos décrétés + flux inter-pays : RAZ par sim */
     provlog_reset();      /* journal provincial : RAZ par sim (runtime, hors save) */
     demography_contact_reset();   /* S2 : compteur de cristallisations culturelles par contact */
+    demography_migration_pact_reset();   /* BRASSAGE : compteur de flux de pacte migratoire */
     religion_reset();     /* RELIGION : monde ATHÉE à chaque sim (sinon les foi FUITENT entre sims) */
     { int ne=0; for (int c=0;c<w->n_countries;c++){ int rl=w->country[c].role;
           if (rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) ne++; }

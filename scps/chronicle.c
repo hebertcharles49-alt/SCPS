@@ -1035,6 +1035,8 @@ int main(int argc, char **argv){
           if (nemp>0){
               printf("              syncrétisme : %d nœud(s) profond(s) (gouvernance) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane · %ld cristallisation(s) culturelle(s) par contact (S2)\n",
                      sync_total, diff_total, distinct, (int)HERITAGE_COUNT, nmin, nmax, combo, demography_contact_count());
+              printf("              brassage : %ld flux de pacte migratoire (échange passif de population entre alliés → diaspora à métaboliser)\n",
+                     demography_migration_pact_count());
               tot_sync += sync_total; tot_sync_distinct += distinct;
           }
         }

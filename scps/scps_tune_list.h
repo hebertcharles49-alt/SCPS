@@ -92,6 +92,10 @@
      * soumis diffusent PLEIN (1.0, câblé) ; le DÉPORTÉ (esclave) diffuse FAIBLE — savoir
      * arraché, fragmenté, réprimé (janissaire/forge/créole : réel mais mineur). */ \
     X(METAB_DIFFUSE_SLAVE,   0.30f) \
+    /* PACTE MIGRATOIRE (BRASSAGE) — l'échange passif annuel : fraction du groupe dominant qui
+     * migre (×0..2 selon l'attractivité relative de la destination) + plancher anti-poussière. */ \
+    X(MIG_PACT_FRAC,        0.006f) \
+    X(MIG_PACT_MIN,          30.0f) \
     /* REMISE DE PRIX PAR DIFFUSION (métabolisation) — une tech possédée par TOUS les autres
      * empires coûte −MAX % (le savoir répandu se (re)découvre plus vite ; catch-up des retardataires) */ \
     X(AI_TECH_DIFFUSE_MAX,    0.40f) \
@@ -245,6 +249,9 @@
     X(OPINION_MEM_CAP,         100.0f) \
     X(AI_OFFER_ALLY_OPINION,    10.0f) \
     X(AI_OFFER_PACT_OPINION,     0.0f) \
+    /* BRASSAGE — le pacte migratoire (frontières ouvertes) exige plus de confiance que le
+     * commercial : l'IA ne le propose qu'à un ALLIÉ, ou à une opinion ≥ ce seuil. */ \
+    X(AI_OFFER_MIG_OPINION,     40.0f) \
     /* HAMEAUX LIBRES (POLITY_WILD) — Peuples Libres épars près des jouables (tue le « siècle
      * d'inertie » : chaque empire a 2 objectifs voisins dès l'an 0). WILD_PER_PLAYABLE hameaux
      * par jouable (0 = DÉSACTIVE) · WILD_POP graine EXACTE (750 ; WILD_POP_VAR=0 → an-0 LOCKÉ sur

@@ -557,6 +557,13 @@ bool ai_consider_offer(const World *w, const WorldEconomy *econ, const WorldPros
             if (diplo_status(d,to,from)==DIPLO_WAR) return false;
             if (sc && op < (int)tune_f("AI_OFFER_PACT_OPINION",0.f)) return false;
             return diplo_relation(w,econ,wp,d,to,from).complement > 0.1f;         /* un pacte = un intérêt commercial */
+        case OFFER_MIGRATION:
+            /* BRASSAGE — un CRAN de confiance AU-DESSUS du commercial : ouvrir ses frontières
+             * à la population de l'autre. `to` CONSENT s'il est ALLIÉ de l'offrant OU si son
+             * opinion est HAUTE (AI_OFFER_MIG_OPINION 40). Jamais en guerre. */
+            if (diplo_status(d,to,from)==DIPLO_WAR) return false;
+            if (diplo_status(d,to,from)==DIPLO_ALLIED) return true;               /* l'alliance suffit */
+            return sc && op >= (int)tune_f("AI_OFFER_MIG_OPINION",40.f);          /* sinon, forte confiance */
     }
     return false;
 }
@@ -1230,6 +1237,7 @@ static float ai_occupied_value(const DiploState *d, const WorldEconomy *econ, in
  * couvrant tout le territoire — l'arrache. Voir diplo_province_price / diplo_war_budget.) */
 
 /* Stratégie : conquérir, déclarer la guerre, ou CONSOLIDER (le frein). */
+static Heritage ai_capital_heritage(const World *w, const WorldEconomy *econ, int cid);   /* défini plus bas (recherche) */
 static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
                           WorldLegitimacy *wl, DiploState *diplo, const Statecraft *sc,
                           const AiView *v, float brake, int day){
@@ -1472,6 +1480,24 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             a->credit_war = fmaxf(0.f, a->credit_war - 0.5f);
             return;
         }
+    }
+
+    /* (2c) BRASSAGE — LE PACTE MIGRATOIRE avec un ALLIÉ d'un AUTRE héritage : la
+     * population échangée diffuse son savoir (métabolisation). Un cran de confiance
+     * au-dessus du commercial ⇒ réservé aux ALLIÉS ; l'autre héritage = l'intérêt à
+     * digérer (rien à apprendre d'un clone). Une proposition/tour, consentement
+     * bilatéral. Ne PASSE PAS avant l'an-12 (les alliances ne se forment pas si tôt →
+     * golden intact ; le brassage vit au-delà). */
+    { Heritage myh = ai_capital_heritage(w, econ, a->cid);
+      for (int b=0; b<w->n_countries && b<SCPS_MAX_COUNTRY; b++){
+          if (b==a->cid || diplo_status(diplo,a->cid,b)!=DIPLO_ALLIED) continue;
+          if (diplo_migration_pact(diplo,a->cid,b)) continue;              /* déjà lié */
+          if (ai_capital_heritage(w,econ,b)==myh) continue;               /* même héritage → rien à digérer */
+          if (ai_consider_offer(w,econ,wp,diplo,sc, a->cid, b, OFFER_MIGRATION)){
+              diplo_set_migration_pact(diplo, a->cid, b, true);
+              break;
+          }
+      }
     }
 
     /* (2b) LA COLERE DU GEANT (coques 5) — un commanditaire de pirates nous
