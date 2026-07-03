@@ -152,8 +152,13 @@ typedef struct {
  *  NATIF   : de souche (hétérogénéité de naissance) — NE diffuse PAS (choix initial).
  *  MIGRANT : venu volontairement (migration/pacte) — diffuse PLEIN, s'assimile.
  *  SOUMIS  : nation native CONQUISE (sur son sol, absorbée) — diffuse PLEIN, irrédentiste.
- *  DÉPORTÉ : esclave arraché — diffuse FAIBLE (savoir fragmenté : forge, créole, danse). */
-typedef enum { ARR_NATIF=0, ARR_MIGRANT, ARR_SOUMIS, ARR_DEPORTE, ARR_COUNT } Arrival;
+ *  DÉPORTÉ : esclave arraché — diffuse FAIBLE (savoir fragmenté : forge, créole, danse).
+ *  RÉFUGIÉ : a FUI la guerre (violence chez lui) vers une province voisine sûre — diffuse
+ *            PLEIN (il apporte ses métiers : Huguenots, Arméniens), mais RESPIRE : quand son
+ *            foyer s'apaise, une part RENTRE (Vichy, Espagne post-Franco), le reste se fixe
+ *            (Huguenots devenus prussiens) → métabolisation PARTIELLE. AUCUNE migration
+ *            n'est définitive : tout groupe DÉPLACÉ (migrant/réfugié) garde son `home_reg`. */
+typedef enum { ARR_NATIF=0, ARR_MIGRANT, ARR_SOUMIS, ARR_DEPORTE, ARR_REFUGIE, ARR_COUNT } Arrival;
 typedef struct {
     Heritage heritage;
     Sphere       origin_sphere;  /* FIXE : pour le gouffre */
@@ -171,6 +176,9 @@ typedef struct {
     bool         diaspora;       /* PAS de souche (migration/conquête/déportation) */
     uint8_t      arrival;        /* Arrival — mode d'arrivée (diffusion + comportement) */
     int          drift_id;       /* clé dans la pile de dérive du monde */
+    int          home_reg;       /* RÉGION d'origine d'un groupe DÉPLACÉ (migrant/réfugié) — le
+                                  * foyer vers lequel il RESPIRE (retour partiel quand il s'apaise) ;
+                                  * -1 = de souche/soumis/déporté (aucun « ailleurs » où rentrer). */
 } PopGroup;
 typedef struct {
     PopGroup groups[SCPS_MAX_GROUPS];

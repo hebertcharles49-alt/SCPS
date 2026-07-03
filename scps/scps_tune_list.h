@@ -100,6 +100,20 @@
      * migre (×0..2 selon l'attractivité relative de la destination) + plancher anti-poussière. */ \
     X(MIG_PACT_FRAC,        0.006f) \
     X(MIG_PACT_MIN,          30.0f) \
+    /* RÉFUGIÉS (BRASSAGE) — la guerre fait FUIR, l'apaisement fait RESPIRER. FLEE : une région
+     * ravagée (revolt_scar > SCAR : sac/révolte) déverse FRAC/an de chaque groupe (≥ MIN) vers la
+     * voisine la moins ravagée. HOME_CALM : foyer sous ce seuil ⇒ retour possible. RETURN_PULL :
+     * part du réfugié qui rentre/an (× (1−intégration) : le fixé reste) ; MIGRANT_RETURN ténu (le
+     * migrant économique respire aussi). SETTLE_INTEG : intégré au-delà ⇒ le réfugié se FIXE.
+     * ⚠ FLEE_FRAC calé BAS (0.03) : au-delà de ~0.04 le flot de réfugiés RESTIFS bascule les hôtes
+     * dans le bassin BAS de satisfaction (monde bistable) — 0.03 respire sans déstabiliser. */ \
+    X(REFUGEE_FLEE_SCAR,     0.50f) \
+    X(REFUGEE_FLEE_FRAC,     0.03f) \
+    X(REFUGEE_FLEE_MIN,      30.0f) \
+    X(REFUGEE_HOME_CALM,     0.25f) \
+    X(REFUGEE_RETURN_PULL,   0.12f) \
+    X(MIGRANT_RETURN_PULL,   0.015f) \
+    X(REFUGEE_SETTLE_INTEG,  0.90f) \
     /* REMISE DE PRIX PAR DIFFUSION (métabolisation) — une tech possédée par TOUS les autres
      * empires coûte −MAX % (le savoir répandu se (re)découvre plus vite ; catch-up des retardataires) */ \
     X(AI_TECH_DIFFUSE_MAX,    0.40f) \

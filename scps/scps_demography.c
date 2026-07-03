@@ -255,7 +255,7 @@ void faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
 /* ===================================================================== */
 /* MIGRATION PASSIVE — emporte heritage + culture (§4)                        */
 /* ===================================================================== */
-bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id, int mode){
+bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id, int mode, int home_reg){
     if (gi<0||gi>=from->n_groups) return false;
     PopGroup *src=&from->groups[gi];
     if (amount>src->count) amount=src->count;
@@ -268,7 +268,15 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
         if (to->n_groups>=DEMO_MAX_GROUPS) return false;
         PopGroup ng=*src;                    /* garde species/culture → minorité à l'arrivée */
         ng.count=amount; ng.diaspora=true; ng.integration=0.f; ng.drift_id=new_drift_id;
-        ng.arrival=(uint8_t)mode;            /* le MODE d'arrivée (migrant/déporté) → coeff de diffusion */
+        ng.arrival=(uint8_t)mode;            /* le MODE d'arrivée (migrant/réfugié/déporté) → coeff de diffusion */
+        /* BRASSAGE — le FOYER : un groupe déplacé RESPIRE vers son origine. On PRÉSERVE le
+         * home d'un DÉPLACÉ re-déplacé (un réfugié re-chassé vise toujours son VRAI foyer, pas
+         * le dernier camp) ; sinon on inscrit le point de départ. NB : `home_reg` est memset à
+         * 0 (région VALIDE) sur un natif — on ne peut PAS tester `<0` ; on teste le src RÉEL
+         * (déplacé = diaspora + arrivée migrant/réfugié) pour ne préserver qu'un vrai foyer. */
+        ng.home_reg = (src->diaspora && src->home_reg>=0
+                       && (src->arrival==ARR_MIGRANT || src->arrival==ARR_REFUGIE))
+                      ? src->home_reg : home_reg;
         to->groups[to->n_groups++]=ng;       /* crée du D interne dans la cible */
     } else {
         to->groups[dst].count += amount;
@@ -348,6 +356,9 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
         } else if (g->arrival==ARR_DEPORTE){
             snprintf(etat_buf[n],sizeof etat_buf[n], "déporté · %d%% intégré", (int)(100.f*g->integration+0.5f));
             r->etat=etat_buf[n];
+        } else if (g->arrival==ARR_REFUGIE){
+            snprintf(etat_buf[n],sizeof etat_buf[n], "réfugié · %d%% intégré", (int)(100.f*g->integration+0.5f));
+            r->etat=etat_buf[n];
         } else if (g->diaspora){ r->etat="diaspora"; }
         else if (g==dom){ r->etat="natif"; }
         else {
@@ -400,7 +411,7 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
         g->pop_by_class[CLASS_LABORER]=total;        /* repli : tout Journalier avant la 1re émergence */
         g->pop_by_class[CLASS_BOURGEOIS]=0; g->pop_by_class[CLASS_ELITE]=0;
         g->L=7.f; g->agit_base=agit_from_L(7.f); g->integration=1.f;   /* natifs intégrés */
-        g->diaspora=false; g->drift_id=id++;
+        g->diaspora=false; g->drift_id=id++; g->home_reg=-1;   /* de souche : aucun foyer « ailleurs » (memset 0 = région valide) */
         pp->n_groups=1;     /* MONO-GROUPE → non-régression (les nombres d'hier) */
     }
     g_dyn_drift_id=DYN_DRIFT_BASE;   /* nouvelle partie : le compteur dynamique repart au socle */
@@ -593,18 +604,119 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp){
             PopGroup *da=(PopGroup*)province_dominant(pa);
             if (da){
                 long amt=(long)((float)da->count*frac*(2.f*sb/tot_attr));
-                if (amt>=fmin && migration_move(pa,pb,(int)(da-pa->groups),amt,demography_dyn_id_next(),ARR_MIGRANT)) flows++;
+                if (amt>=fmin && migration_move(pa,pb,(int)(da-pa->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,e->prov[top_prov[a]].region)) flows++;
             }
             /* b→a : ∝ attractivité de a (re-résoudre le dominant : le move a pu compacter). */
             PopGroup *db=(PopGroup*)province_dominant(pb);
             if (db){
                 long amt=(long)((float)db->count*frac*(2.f*sa/tot_attr));
-                if (amt>=fmin && migration_move(pb,pa,(int)(db-pb->groups),amt,demography_dyn_id_next(),ARR_MIGRANT)) flows++;
+                if (amt>=fmin && migration_move(pb,pa,(int)(db-pb->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,e->prov[top_prov[b]].region)) flows++;
             }
         }
     }
     g_migration_pact_flows += flows;
     return flows;
+}
+
+/* ===================================================================== */
+/* RÉFUGIÉS (BRASSAGE) — la guerre fait FUIR ; l'apaisement fait RESPIRER  */
+/* ===================================================================== */
+/* La violence (province RAVAGÉE : sac de guerre OU révolte — revolt_scar haut) fait FUIR
+ * une part de la pop vers une région voisine SÛRE (« si possible » : nulle part de sûr ⇒
+ * on reste, piégé). Le réfugié garde son héritage → diaspora ARR_REFUGIE chez l'hôte,
+ * FOYER (home_reg) inscrit. Puis il RESPIRE : quand le foyer s'apaise, une part RENTRE
+ * (Vichy, Espagne post-Franco), décroissante avec l'intégration — le FIXÉ reste (Huguenot
+ * devenu prussien). AUCUN déplacé n'est définitif : même le migrant économique a un foyer
+ * (retour ténu). Un réfugié pleinement intégré cesse d'être réfugié (il s'est fixé). */
+static long g_refugee_fled = 0, g_refugee_returned = 0;
+void demography_refugee_reset(void){ g_refugee_fled = 0; g_refugee_returned = 0; }
+long demography_refugee_fled(void){ return g_refugee_fled; }
+long demography_refugee_returned(void){ return g_refugee_returned; }
+
+/* de retour au FOYER : fondre dans le groupe co-culturel s'il existe (il rejoint SES gens),
+ * sinon recréer un natif dé-diasporisé & intégré (il est chez lui). Retourne la part réellement
+ * réinstallée (0 si le foyer est saturé → les réfugiés restent chez l'hôte). */
+static long refugee_settle_home(ProvincePop *home, const PopGroup *ref, long amt, int new_id){
+    if (amt<=0) return 0;
+    for (int i=0;i<home->n_groups;i++)
+        if (home->groups[i].heritage==ref->heritage
+            && content_dist(&home->groups[i].origin,&ref->origin)<FUSE_EPS){
+            home->groups[i].count += amt; return amt;      /* rejoint ses gens (fusion) */
+        }
+    if (home->n_groups>=DEMO_MAX_GROUPS) return 0;          /* foyer plein → renonce (ils restent) */
+    PopGroup ng=*ref;
+    ng.count=amt; ng.diaspora=false; ng.arrival=ARR_NATIF; ng.home_reg=-1;
+    ng.integration=1.f; ng.L=6.f; ng.agit_base=agit_from_L(6.f); ng.drift_id=new_id;
+    home->groups[home->n_groups++]=ng;
+    return amt;
+}
+
+int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
+    (void)w; (void)dp;
+    if (!e) return 0;
+    float flee_scar = tune_f("REFUGEE_FLEE_SCAR", 0.5f);    /* révolte/sac au-delà ⇒ on fuit */
+    float flee_frac = tune_f("REFUGEE_FLEE_FRAC", 0.10f);   /* part d'un groupe qui fuit/an */
+    long  flee_min  = (long)tune_f("REFUGEE_FLEE_MIN", 30.f);
+    float calm      = tune_f("REFUGEE_HOME_CALM", 0.25f);   /* foyer sous ce seuil ⇒ retour possible */
+    float pull_ref  = tune_f("REFUGEE_RETURN_PULL", 0.12f); /* réfugié : retour FORT */
+    float pull_mig  = tune_f("MIGRANT_RETURN_PULL", 0.015f);/* migrant : retour TÉNU (respire) */
+    float settle    = tune_f("REFUGEE_SETTLE_INTEG", 0.90f);/* intégré ⇒ se fixe (n'est plus réfugié) */
+    int fled=0, returned=0;
+
+    /* ---- 1. FUITE : une région RAVAGÉE déverse vers la meilleure voisine SÛRE ---- */
+    for (int r=0; r<e->n_regions; r++){
+        int rp=econ_region_rep_province(e, r);
+        if (rp<0 || rp>=e->n_prov) continue;
+        ProvinceEconomy *pe=&e->prov[rp];
+        if (pe->pop.n_groups<=0 || !pe->culture.settled) continue;
+        if (pe->revolt_scar < flee_scar) continue;          /* pas de violence ici ⇒ personne ne fuit */
+        int best=-1; float bestcalm=flee_scar;              /* meilleure voisine : la moins ravagée sous le seuil */
+        for (int s=0;s<e->n_regions;s++){
+            if (s==r || !e->adj[r][s]) continue;
+            int rps=econ_region_rep_province(e, s);
+            if (rps<0 || rps>=e->n_prov) continue;
+            ProvinceEconomy *pes=&e->prov[rps];
+            if (!pes->culture.settled || pes->pop.n_groups<=0) continue;
+            if (pes->revolt_scar < bestcalm){ bestcalm=pes->revolt_scar; best=s; }
+        }
+        if (best<0) continue;                               /* nulle part où fuir ⇒ piégé (reste) */
+        int rpb=econ_region_rep_province(e, best);
+        if (rpb<0 || rpb>=e->n_prov) continue;
+        for (int i=pe->pop.n_groups-1; i>=0; i--){          /* la violence ne trie pas : chaque groupe fuit */
+            long amt=(long)((float)pe->pop.groups[i].count*flee_frac);
+            if (amt<flee_min) continue;
+            if (migration_move(&pe->pop, &e->prov[rpb].pop, i, amt, demography_dyn_id_next(), ARR_REFUGIE, r)) fled++;
+        }
+    }
+
+    /* ---- 2. RESPIRATION : le déplacé RENTRE quand son foyer s'apaise ---- */
+    for (int r=0; r<e->n_regions; r++){
+        int rp=econ_region_rep_province(e, r);
+        if (rp<0 || rp>=e->n_prov) continue;
+        ProvincePop *pp=&e->prov[rp].pop;
+        for (int i=pp->n_groups-1; i>=0; i--){
+            PopGroup *g=&pp->groups[i];
+            int hr=g->home_reg;
+            if (hr<0 || hr==r) continue;                    /* pas de foyer ailleurs */
+            if (g->arrival!=ARR_REFUGIE && g->arrival!=ARR_MIGRANT) continue;
+            if (g->arrival==ARR_REFUGIE && g->integration>=settle) g->arrival=ARR_MIGRANT; /* fixé : Huguenot devenu prussien */
+            int hrp=econ_region_rep_province(e, hr);
+            if (hrp<0 || hrp>=e->n_prov) continue;
+            ProvinceEconomy *hpe=&e->prov[hrp];
+            if (!hpe->culture.settled) continue;            /* foyer inhabitable (englouti/gelé) ⇒ pas de retour */
+            if (hpe->revolt_scar > calm) continue;          /* foyer encore en feu ⇒ on attend */
+            float pull=(g->arrival==ARR_REFUGIE)?pull_ref:pull_mig;
+            long amt=(long)((float)g->count*pull*(1.f-g->integration));  /* le FIXÉ rentre peu */
+            long got=refugee_settle_home(&hpe->pop, g, amt, demography_dyn_id_next());
+            if (got>0){
+                g->count -= got;
+                if (g->count<=0){ pp->groups[i]=pp->groups[pp->n_groups-1]; pp->n_groups--; }
+                returned++;
+            }
+        }
+    }
+    g_refugee_fled += fled; g_refugee_returned += returned;
+    return fled+returned;
 }
 
 void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
@@ -663,7 +775,7 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         long amount=dom->count/MIG_FRACTION;
         if (amount<MIG_MIN) continue;
         int gi=(int)(dom-pe->pop.groups);
-        migration_move(&pe->pop, &econ->prov[rpb].pop, gi, amount, demography_dyn_id_next(), ARR_MIGRANT);
+        migration_move(&pe->pop, &econ->prov[rpb].pop, gi, amount, demography_dyn_id_next(), ARR_MIGRANT, r);  /* home = région de départ (respire) */
     }
     /* 3. ÉMERGENCE DE CLASSE : la classe de chaque groupe sort des emplois (capitale
      *    + ateliers). Après migration/assimilation, le tissu social se recompose. */
@@ -707,6 +819,7 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
         g.origin=*crown; g.culture=*crown; g.klass=CLASS_ELITE;
         g.count=total/5+50; g.L=7.f; g.agit_base=agit_from_L(7.f); g.integration=1.f;
         g.diaspora=true; g.arrival=ARR_MIGRANT; g.drift_id=demography_dyn_id_next();
+        g.home_reg=-1;   /* colon délibéré (pas un déplacé) : ne « rentre » pas — home_reg memset 0 serait région 0 */
         pp->groups[pp->n_groups++]=g;
     }
 }

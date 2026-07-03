@@ -978,6 +978,7 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
      * Toujours DISTINCTE (jamais fondue dans un groupe libre co-culturel). */
     PopGroup ng=src->groups[gi];                      /* garde heritage/culture/origine */
     ng.count=captives; ng.diaspora=true; ng.arrival=ARR_DEPORTE; ng.integration=0.f;   /* déporté : diffuse FAIBLE */
+    ng.home_reg=-1;                                   /* l'esclave est TENU (pas de retour ; home_reg memset 0 serait région 0) */
     ng.drift_id=SLAVE_DRIFT_BASE + region*SCPS_MAX_GROUPS + dst->n_groups;
     dst->groups[dst->n_groups++]=ng;
     src->groups[gi].count-=captives;

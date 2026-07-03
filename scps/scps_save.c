@@ -225,8 +225,10 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (pe->owner < -1 || pe->owner >= w->n_countries) return false;
         if (pe->region < -1 || pe->region >= w->n_regions) return false;
         if (pe->pop.n_groups<0 || pe->pop.n_groups>SCPS_MAX_GROUPS) return false;
-        for (int g=0;g<pe->pop.n_groups;g++)
+        for (int g=0;g<pe->pop.n_groups;g++){
             if (pe->pop.groups[g].arrival>=ARR_COUNT) return false;   /* mode d'arrivée borné (coeff de diffusion) */
+            if (pe->pop.groups[g].home_reg < -1 || pe->pop.groups[g].home_reg >= w->n_regions) return false;  /* v52 : foyer du déplacé (indexe une région) */
+        }
         if (!(pe->annex_scar>=0.f && pe->annex_scar<=1.f)) return false; }
     /* v50 — chantiers de colonisation : src/dst indexent prov[] (ou -1), délais/cadence
      * bornés (une forge hors-borne indexerait la fondation ou gèlerait la cadence). */

@@ -404,6 +404,8 @@ static float metab_diffuse_coeff(uint8_t arrival){
     switch (arrival){
         case ARR_MIGRANT: return 1.f;
         case ARR_SOUMIS:  return 1.f;
+        case ARR_REFUGIE: return 1.f;   /* réfugié : apporte ses métiers (Huguenots) ; la
+                                         * partialité vient du RETOUR + de l'intégration, pas du coeff. */
         case ARR_DEPORTE: return tune_f("METAB_DIFFUSE_SLAVE", 0.3f);
         default:          return 0.f;   /* ARR_NATIF */
     }

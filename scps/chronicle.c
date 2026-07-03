@@ -1037,6 +1037,8 @@ int main(int argc, char **argv){
                      sync_total, diff_total, distinct, (int)HERITAGE_COUNT, nmin, nmax, combo, demography_contact_count());
               printf("              brassage : %ld flux de pacte migratoire (échange passif de population entre alliés → diaspora à métaboliser)\n",
                      demography_migration_pact_count());
+              printf("              réfugiés : %ld fuite(s) de guerre → voisine sûre · %ld retour(s) au foyer apaisé (la pop RESPIRE ; aucune migration définitive)\n",
+                     demography_refugee_fled(), demography_refugee_returned());
               tot_sync += sync_total; tot_sync_distinct += distinct;
           }
         }

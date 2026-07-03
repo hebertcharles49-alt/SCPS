@@ -44,6 +44,7 @@ static PopGroup grp(Heritage heritage, Sphere sph, PopCulture o, SocialClass k,
     PopGroup g; memset(&g,0,sizeof g);
     g.heritage=heritage; g.origin_sphere=sph; g.origin=o; g.culture=o; g.klass=k; g.count=count;
     g.L=L; g.agit_base=agitL(L); g.integration=integ; g.diaspora=diaspora; g.drift_id=g_id++;
+    g.home_reg=-1;   /* défaut : pas de foyer ailleurs (le test le surcharge si besoin) */
     return g;
 }
 
@@ -200,7 +201,7 @@ int main(int argc, char **argv){
     rich.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,humc,CLASS_LABORER,800,8.f,1.f,false);
     rich.n_groups=1;
     float rich_d_before=province_Dinf(&rich,drift);
-    bool moved = (rich.prosperity>poor.prosperity) && migration_move(&poor,&rich,0,200, g_id++, ARR_MIGRANT);
+    bool moved = (rich.prosperity>poor.prosperity) && migration_move(&poor,&rich,0,200, g_id++, ARR_MIGRANT, 0 /*home_reg*/);
     float rich_d_after=province_Dinf(&rich,drift);
     bool diaspora = (rich.n_groups==2 && rich.groups[1].diaspora && rich.groups[1].heritage==HERITAGE_CLANIQUE);
     printf("   les Claniques affluent (prospérité 3→8) : province d'accueil D∞ %.0f→%.1f, diaspora=%d\n",
@@ -265,6 +266,34 @@ int main(int argc, char **argv){
         ok("le captif est nommé « déporté » (l'esclave, diffusion faible)", e_depo!=NULL);
         ok("l'état SURFACE l'intégration en % (la métabolisation, nombre tangible)",
            e_soum && strstr(e_soum,"%")!=NULL);
+    }
+
+    /* ═══ 9. BRASSAGE — le RÉFUGIÉ + le FOYER (home_reg : aucune migration définitive) ══ */
+    printf("\n── 9. Réfugié : membrane + FOYER préservé (la pop RESPIRE) ──\n");
+    {
+        /* membrane : un groupe ARR_REFUGIE se lit « réfugié · N% intégré » */
+        ProvincePop rp2; memset(&rp2,0,sizeof rp2);
+        rp2.groups[0]=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_BOURGEOIS, 5000,6.f,1.f,false);
+        PopGroup ref=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS, cult(8,2,8,7,ETHOS_HONNEUR), CLASS_LABORER, 1000,4.f,0.20f,true);
+        ref.arrival=ARR_REFUGIE; ref.home_reg=5; rp2.groups[1]=ref; rp2.n_groups=2;
+        GroupReadout c9[DEMO_MAX_GROUPS];
+        int n9=province_composition(&rp2,drift,&crown,5.f,5.f,c9,DEMO_MAX_GROUPS);
+        const char *e_ref=NULL;
+        for (int i=0;i<n9;i++) if (c9[i].etat && strstr(c9[i].etat,"réfugié")) e_ref=c9[i].etat;
+        ok("le fuyard de guerre est nommé « réfugié » (voie de brassage neuve)", e_ref!=NULL);
+
+        /* home_reg : un NATIF déplacé prend le foyer PASSÉ ; un DÉPLACÉ re-chassé le GARDE.
+         * (le piège : home_reg est memset à 0 = région VALIDE — un natif ne doit PAS être vu
+         * comme « ayant un foyer 0 » ; migration_move teste le src RÉEL, pas home_reg<0.) */
+        ProvincePop A,B,C; memset(&A,0,sizeof A); memset(&B,0,sizeof B); memset(&C,0,sizeof C);
+        A.groups[0]=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS, cult(8,2,8,7,ETHOS_HONNEUR), CLASS_LABORER, 900,5.f,1.f,false);
+        A.n_groups=1;
+        migration_move(&A,&B,0, 300, 900, ARR_REFUGIE, 5 /*foyer = région 5*/);
+        ok("un natif déplacé inscrit son FOYER = la région de départ (5)",
+           B.n_groups==1 && B.groups[0].arrival==ARR_REFUGIE && B.groups[0].home_reg==5);
+        migration_move(&B,&C,0, 100, 901, ARR_REFUGIE, 8 /*re-chassé vers un autre camp (8)*/);
+        ok("un réfugié RE-chassé garde son VRAI foyer (5), pas le dernier camp (8)",
+           C.n_groups==1 && C.groups[0].home_reg==5);
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

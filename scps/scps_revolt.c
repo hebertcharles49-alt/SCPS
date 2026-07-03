@@ -400,7 +400,10 @@ static int spawn_secession(World *w, WorldEconomy *econ, WorldLegitimacy *wl, Re
         pe->coercion=0.f;
         int gi=find_group(&pe->pop, rb->drift_id);
         if (gi>=0){ pe->pop.groups[gi].L=7.f; pe->pop.groups[gi].integration=1.f;
-                    pe->pop.groups[gi].agit_base=0.f; pe->pop.groups[gi].diaspora=false; }
+                    pe->pop.groups[gi].agit_base=0.f; pe->pop.groups[gi].diaspora=false;
+                    /* BRASSAGE : le sécessionniste devient le peuple SOUVERAIN de cette terre —
+                     * il est chez lui, plus un déplacé qui « rentre » (arrival/home_reg naturalisés). */
+                    pe->pop.groups[gi].arrival=ARR_NATIF; pe->pop.groups[gi].home_reg=-1; }
     }
     return nid;
 }

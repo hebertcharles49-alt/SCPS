@@ -71,8 +71,10 @@ void  faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
 /* Déplace `amount` du groupe `gi` de `from` vers `to` (adjacence/prospérité
  * jugées par l'appelant). Crée une minorité/diaspora à l'arrivée → du D interne.
  * `new_drift_id` : clé fraîche si une diaspora doit être créée. `mode` (Arrival) :
- * ARR_MIGRANT (migration/pacte, diffuse plein) ou ARR_DEPORTE (esclave, diffuse faible). */
-bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id, int mode);
+ * ARR_MIGRANT (migration/pacte) / ARR_REFUGIE (fuite de guerre) / ARR_DEPORTE (esclave).
+ * `home_reg` : RÉGION d'origine inscrite sur la diaspora créée (le foyer où RESPIRER, -1 =
+ * aucun) ; un groupe DÉJÀ déplacé garde son home d'origine (jamais écrasé). */
+bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id, int mode, int home_reg);
 
 /* ---- Agrégation PAYS (§2, §6) — alimente scps_order (inchangé) -------- */
 float country_Dbar(const ProvincePop *provs, int n, const ModifierStack *drift);
@@ -120,6 +122,15 @@ void demography_contact_reset(void);   /* RAZ du compteur de cristallisations (p
 long demography_contact_count(void);   /* cristallisations par contact cumulées (télémétrie) */
 void demography_migration_pact_reset(void);
 long demography_migration_pact_count(void);   /* flux de pacte migratoire cumulés (télémétrie) */
+
+/* RÉFUGIÉS (BRASSAGE) — la violence (revolt_scar haut : sac/révolte) fait FUIR vers une région
+ * voisine SÛRE (si possible), diaspora ARR_REFUGIE au FOYER inscrit ; puis, foyer apaisé, une
+ * part RENTRE (décroissante avec l'intégration — le fixé reste). Annuel. Aucun déplacé n'est
+ * définitif : le migrant économique respire aussi (retour ténu). Renvoie fuites+retours ce pas. */
+int  demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp);
+void demography_refugee_reset(void);           /* RAZ des compteurs (par sim) */
+long demography_refugee_fled(void);            /* réfugiés partis cumulés (télémétrie) */
+long demography_refugee_returned(void);        /* rentrés au foyer cumulés (télémétrie) */
 
 /* Dépose `amount` du groupe dominant du pays `cid` (sa culture régnante) dans la
  * région conquise `region` → minorité de colons sous une couronne étrangère, OU
