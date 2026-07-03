@@ -1379,6 +1379,36 @@
   partout · determinism STABLE · savetest A==B · fuzztest 7/7 · api_demo 90 · smoke 8/8 · 0 warning.
   Doublons d'affichage RESTANTS (assumés, deux fronts) : bseg viewer vs façade borders, teintes SDL vs
   pigments Godot — se résorbent quand Godot absorbe le reste du viewer.
+- **BRASSAGE DÉMOGRAPHIQUE — la métabolisation par TOUTES les voies (2026-07-03, 4 commits, SAVE v50→51)** :
+  la métabolisation (digérer une diaspora allophone ⇒ +recherche + accès tech) était **near-inerte**
+  (~0.4 % au plus digéré) — le seul canal vivant était la sécession post-cataclysme. On distingue enfin,
+  comme l'Histoire, la **DIASPORA** (venue libre) de la pop **acculturée/soumise/déportée**, chacune
+  diffusant selon son RAPPORT AU POUVOIR. **(1/4) LE MODE D'ARRIVÉE** : `PopGroup.arrival` (natif/migrant/
+  soumis/déporté ; ⚠ **SAVE BUMP 50→51**, blob WorldEconomy fwrite BRUT) pilote le coeff de diffusion du
+  savoir — `ARR_NATIF` 0 (l'hétérogénéité de NAISSANCE post-GR4 ne compte pas : la dynastie Song avait des
+  puits d'1 km sans diffusion), `ARR_MIGRANT`/`ARR_SOUMIS` plein (1.0), `ARR_DEPORTE` **faible** (0.30,
+  `METAB_DIFFUSE_SLAVE`). `econ_country_metabolized`/`_heritage_digested` pondèrent par ÂMES × intégration ×
+  coeff. La **CONQUÊTE** (`demography_on_conquest`) re-flagge les natifs allophones en `ARR_SOUMIS` (seed 42 :
+  0.4 % → 5-19 %). **(2/4) LE PACTE MIGRATOIRE** (voie PACIFIQUE) : `DiploState.migration_pact` (réciproque,
+  canal DISTINCT du pacte commercial) + `demography_migration_pact_tick` (échange passif annuel entre alliés
+  non en guerre, flux ∝ attractivité relative — prospérité — de la destination, `migration_move(..,ARR_MIGRANT)`).
+  L'IA le PROPOSE (`ai_strat_turn` 2c, aux alliés d'un autre héritage) ; `OFFER_MIGRATION` gate le consentement
+  (opinion #26). **(3/4) L'ESCLAVAGE dé-restreint** : le gate `can_enslave` ne suit plus la SEULE tech
+  (Économie servile, Clanique, quasi jamais) — un éthos CONQUÉRANT (Dominateur/Honneur) déporte par COUTUME
+  (Rome, empires esclavagistes). `SLAVE_FRACTION` tunable calé **BAS** (0.25→0.08, « taux très faible » :
+  janissaires/forge/créole, réel mais mineur) ; le double faible (volume × diffusion 0.30) rend l'apport
+  marginal, présent sans dominer. **(4/4) LE VERBE JOUEUR + membrane** : `CMD_OFFER_MIGRATION` (moteur → façade
+  `scps_player_offer_migration` + `diplo_options.{can,would_accept}_migration` → binding → bouton « Migration »
+  gaté/ambré dans country_actions.gd) ; la membrane NOMME la voie — `province_composition` : « soumis · N %
+  intégré » / « déporté · N % intégré » (le % SURFACE la métabolisation en cours, nombre tangible). ⚠
+  **RE-BASELINE golden DÉLIBÉRÉE** (HASH 7/209/411 — mondes belliqueux asservissent < an-12 ; 108/310 INCHANGÉS ;
+  le verbe joueur/readout sont golden-NEUTRES — drain no-op cmd_n=0, readout hors tick). Mesuré (6 graines × 3
+  sims × 250 ans) : métabolisation **max 14.7-24.7 %** au plus digéré, 4-15 empires creuset/sim, brassage 0-18
+  flux/sim (canal mineur, comme conçu), subjugation = casus belli prominent (la conquête digère) ; monde SAIN
+  (satisfaction 67-91 %, hégémon mortel 2-3/3, §27 gaté an-180). `make test` **38/38 runnable** (3 KO Windows
+  pré-existants), determinism STABLE (v51 byte-identique), GDExtension scons 0 warning. Tunables registre J :
+  `METAB_DIFFUSE_SLAVE` 0.30 · `SLAVE_FRACTION` 0.08 · `MIG_PACT_FRAC` 0.006 · `MIG_PACT_MIN` 30 ·
+  `AI_OFFER_MIG_OPINION` 40. Télémétrie chronicle « brassage » + « métabolisation ».
 
 ## Disciplines non négociables
 
