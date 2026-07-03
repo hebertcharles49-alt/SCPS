@@ -115,10 +115,18 @@ TechPole faction_pole_of(const float wgt[FAC_COUNT], int imperial_pole, bool por
 EthosFaction country_faction_weights(const World *w, const WorldEconomy *econ, int cid,
                                      float out[FAC_COUNT]){
     double acc[FAC_COUNT]={0};
+    /* RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir de
+     * LA SEULE province représentative (capitale, sinon la plus peuplée) de chaque région,
+     * pas un agrégat de toute la région. Ce poids alimente TOUT le comportement IA effectif
+     * (w_expand/w_trade/w_build/w_faith/w_faustian, cf. faction_effective_weights) : il doit
+     * voir TOUTE la diversité du pays (chaque province, chaque groupe), pas seulement un
+     * représentant par région — on scanne donc econ->prov[] (pattern a, comme
+     * econ_country_metabolized), province par province. */
     if (cid>=0 && econ){
-        for (int r=0; r<econ->n_regions; r++)
-            if (econ->region[r].owner==cid && econ->region[r].culture.settled)
-                accumulate(&econ->region[r].pop, acc);
+        int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+        for (int p=0; p<nprov; p++)
+            if (econ->prov[p].owner==cid && econ->prov[p].culture.settled)
+                accumulate(&econ->prov[p].pop, acc);
     }
     (void)w;
     return finalize(acc, out);

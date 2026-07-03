@@ -408,14 +408,20 @@ static float endgame_empire_consume(WorldEconomy *econ, int owner, Resource good
 
 /* VICTOIRE (décision 3) : toute culture du MONDE est INTÉGRÉE sous l'empire ascendant —
  * assimilation EFFECTIVE, pas seulement gouvernée. Toute région vivante settled est au
- * joueur ET ses groupes sont intégrés (integration ≈ 1). Quasi inatteignable par l'IA. */
+ * joueur ET ses groupes sont intégrés (integration ≈ 1). Quasi inatteignable par l'IA.
+ * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir de LA
+ * SEULE province représentative (capitale, sinon la plus peuplée) ; une CONDITION DE VICTOIRE
+ * ne doit JAMAIS juger sur un sous-ensemble — une minorité mal intégrée dans une province
+ * NON-représentative aurait été invisible (faux positif d'ascension). On scanne econ->prov[]
+ * en ENTIER (pattern a, comme econ_country_metabolized), province par province. */
 static bool endgame_world_assimilated(const WorldEconomy *econ, int player) {
-    for (int r = 0; r < econ->n_regions; r++) {
-        const RegionEconomy *re = &econ->region[r];
-        if (!re->active || re->owner < 0 || !re->culture.settled) continue;   /* friche/morte ignorée */
-        if (re->owner != player) return false;                                /* une terre étrangère vivante subsiste */
-        for (int g = 0; g < re->pop.n_groups; g++)
-            if (re->pop.groups[g].count > 0 && re->pop.groups[g].integration < 0.99f) return false;
+    int nprov = econ->n_prov; if (nprov > SCPS_MAX_PROV) nprov = SCPS_MAX_PROV;
+    for (int p = 0; p < nprov; p++) {
+        const ProvinceEconomy *pe = &econ->prov[p];
+        if (!pe->active || pe->owner < 0 || !pe->culture.settled) continue;   /* friche/morte ignorée */
+        if (pe->owner != player) return false;                                /* une terre étrangère vivante subsiste */
+        for (int g = 0; g < pe->pop.n_groups; g++)
+            if (pe->pop.groups[g].count > 0 && pe->pop.groups[g].integration < 0.99f) return false;
     }
     return true;
 }

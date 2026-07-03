@@ -406,11 +406,17 @@ int main(void) {
     int probe_r = -1; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) { probe_r = r; break; }
     int probe_cell = -1; Biome probe_bio = BIO_PLAINS; float probe_h = 0.f;
     if (probe_r >= 0) for (int i = 0; i < SCPS_N; i++) if (w->cell[i].region == probe_r && w->cell[i].height >= SEA_LEVEL) { probe_cell = i; probe_bio = w->cell[i].biome; probe_h = w->cell[i].height; break; }
-    for (int r = 0; r < econ->n_regions; r++) { RegionEconomy *re = &econ->region[r];
-        if (!re->active) continue;
-        re->owner = (int16_t)pl; re->culture.settled = true;
-        for (int g = 0; g < re->pop.n_groups; g++) re->pop.groups[g].integration = 1.f;
+    /* RE-KEY PROVINCE : endgame_world_assimilated lit désormais econ->prov[] EN ENTIER
+     * (la VÉRITÉ, charte règle 1 — un miroir region[].pop ne verrait qu'UNE province par
+     * région et laisserait passer une minorité mal intégrée ailleurs, cf. scps_endgame.c).
+     * On dote donc CHAQUE province active (pas seulement le mirror region[]), même idiome
+     * que l'injection des rares plus haut (l.375-379). */
+    for (int p = 0; p < econ->n_prov; p++) { ProvinceEconomy *pe = &econ->prov[p];
+        if (!pe->active) continue;
+        pe->owner = (int16_t)pl; pe->culture.settled = true;
+        for (int g = 0; g < pe->pop.n_groups; g++) pe->pop.groups[g].integration = 1.f;
     }
+    econ_aggregate_regions(econ);   /* miroir immédiat : les CHECK ci-dessous lisent region[] */
     for (int t = 0; t < TECH_COUNT; t++) ts[pl].unlocked[t] = true;
     /* un tech manquant → PAS de victoire (test négatif d'abord) */
     ts[pl].unlocked[0] = false;
