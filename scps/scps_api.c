@@ -2136,14 +2136,14 @@ int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
      * se PARTAGENT les religions) au lieu d'en fonder une nouvelle. */
     if(!religion_can_found(api_count_empires(s))){
         int rid=religion_adopt_existing(cid, (uint32_t)(cid+1));
-        if(rid>=0) religion_inherit_regions(s->w, cid);
+        if(rid>=0) religion_inherit_regions(s->w, s->sim.econ, cid);
         return rid;
     }
     int trad[3]={t0,t1,t2};
     int rid=religion_spawn(credo, trad, api_capital_cell(s,cid), cid, NULL);
     if(rid<0) return -1;
     religion_set_country(cid, rid);
-    religion_inherit_regions(s->w, cid);
+    religion_inherit_regions(s->w, s->sim.econ, cid);
     return rid;
 }
 int scps_religion_eligible(ScpsSim *s, int cid){
@@ -2151,7 +2151,7 @@ int scps_religion_eligible(ScpsSim *s, int cid){
     /* PLAFOND PAR RACINE : pas de schisme si la foi a déjà ses RELIG_SCHISM_MAX sectes (bouton grisé) —
      * la foi en exil PERSISTE alors au lieu d'essaimer une secte de plus. */
     if(!religion_can_schism(religion_of_country(cid))) return 0;
-    return (int)religion_schism_eligible(s->w, cid);
+    return (int)religion_schism_eligible(s->w, s->sim.econ, s->sim.wl, cid);
 }
 int scps_religion_schism(ScpsSim *s, int cid, int slot_a, int pole_a, int slot_b, int pole_b,
                          int new_credo, int *out_flipped){

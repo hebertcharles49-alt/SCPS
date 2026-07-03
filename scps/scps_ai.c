@@ -1005,6 +1005,37 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
     }
 }
 
+/* PHASE 1 — l'IA développe ses PÉRIPHÉRIES : les institutions civiques (K_inst/savoir/faith)
+ * n'étaient bâties QUE dans a->home_region (la capitale, figée à ai_actor_init) — les autres
+ * régions possédées n'accumulaient donc JAMAIS de service, quelle que soit leur croissance.
+ * scps_revolt.c (« CAPITALE SOUS-ÉQUIPÉE », ~ligne 337-351) juge CHAQUE région sur le même
+ * ratio pop/service ; une périphérie qui grossit sans jamais recevoir d'institution dérive
+ * mécaniquement vers ce plafond d'agitation → révoltes chroniques en dehors de la capitale.
+ * On choisit ici la région la PLUS SOUS-SERVIE parmi celles possédées (même idiome de boucle
+ * que ai_build_civmanuf ci-dessus) au lieu de toujours renvoyer la capitale — le score est le
+ * MÊME ratio (pop restante après le service capitale+K/savoir/faith) que celui que le moteur
+ * de révolte pénalise, donc l'IA comble exactement le manque que le moteur mesure. Comme la
+ * capitale démarre avec la plus grosse pop et 0 institution, elle reste naturellement la cible
+ * en début de partie (argmax) ; le tir dérive vers la périphérie SEULEMENT quand une région
+ * extérieure devient objectivement plus mal servie — la capitale n'est jamais délaissée sans
+ * raison. */
+static int ai_neediest_civic_region(const AiActor *a, const WorldEconomy *econ){
+    int best = a->home_region; float best_unserved = -1e30f; bool found = false;
+    for (int r=0; r<econ->n_regions; r++){
+        const RegionEconomy *re = &econ->region[r];
+        if (re->owner!=a->cid || !re->colonized) continue;
+        float rpop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop + re->strata[CLASS_ELITE].pop;
+        if (rpop <= 0.f) continue;
+        int  ctier = capitale_max_tier((long)rpop);
+        long nob   = capitale_admin_pop(ctier); if (nob>(long)rpop) nob=(long)rpop;
+        float serv = (float)capitale_housing(ctier, nob)
+                   + (re->build.K_inst + re->build.savoir + re->build.faith)*700.f;   /* miroir scps_revolt.c */
+        float unserved = rpop - serv;                          /* plus haut = plus pénalisé par le moteur de révolte */
+        if (!found || unserved > best_unserved){ best_unserved = unserved; best = r; found = true; }
+    }
+    return found ? best : a->home_region;                      /* aucune région staffée trouvée → repli capitale */
+}
+
 /* EXPLOITATION PAR LE FORECAST (décision ÉCONOMIQUE, pas un seuil arbitraire) — on améliore une
  * exploitation (+1 palier de boost, +RAW_BOOST_PER_TIER) SSI les DEUX conditions tiennent :
  *   (1) PÉNURIE APPROCHANTE — fc->runway[r] < AI_SAFETY_HORIZON. Le runway est désormais BOOST-AWARE
@@ -1142,26 +1173,33 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 }
             } else {
                 Edifice e; int kind = 0;                   /* 0 = voie K (builds_k) · 2 = réseau */
+                /* PHASE 1 — l'IA développe ses PÉRIPHÉRIES : le TRIO K_inst/savoir/faith (seul lu
+                 * par « CAPITALE SOUS-ÉQUIPÉE », scps_revolt.c ~337) se pose désormais dans la région
+                 * la PLUS SOUS-SERVIE, pas toujours a->home_region — sinon les régions extérieures
+                 * n'accumulent jamais de service et dérivent vers le plafond d'agitation à mesure
+                 * qu'elles grossissent. Le Marché (kind=2, PE_infra — hors du trio) et l'achat
+                 * d'arsenal Dominateur/Honneur ci-dessus restent à la capitale (hr) : hors sujet. */
+                int cr = ai_neediest_civic_region(a, econ);
                 if (faith_crisis || faith_zeal){
-                    e = ai_next_faith_edifice(econ, hr);   /* crise de consentement OU zèle prosélyte → foi */
+                    e = ai_next_faith_edifice(econ, cr);   /* crise de consentement OU zèle prosélyte → foi */
                 } else if (eth==ETHOS_MERCANTILE){
-                    e = EDI_MARCHE; kind = 2;              /* la largeur du marchand : le RÉSEAU, toujours */
+                    e = EDI_MARCHE; kind = 2; cr = hr;     /* la largeur du marchand : le RÉSEAU, toujours à la capitale */
                 } else if (bd && eth!=ETHOS_BUREAUCRATE
                            && bd->K_inst >= tune_f("AI_SAVOIR_K",AI_SAVOIR_K) && bd->savoir < 2.5f){
-                    e = ai_next_savoir_edifice(econ, hr);  /* institutions mûres → savoir (pas le Bureaucrate : K pur) */
+                    e = ai_next_savoir_edifice(econ, cr);  /* institutions mûres → savoir (pas le Bureaucrate : K pur) */
                     /* M5 — le savoir FORK à la BASE sur le pôle de la région (hystérésé) :
                      * martial → Bibliothèque militaire · fluide → Observatoire · l'Ordre
                      * garde Bibliothèque→Monastère. Branche close (frère bâti) → K. */
                     if (e==EDI_BIBLIOTHEQUE){
-                        TechPole p = edifice_region_pole(w, econ, hr, day);
+                        TechPole p = edifice_region_pole(w, econ, cr, day);
                         if      (p==POLE_MARTIAL) e=EDI_BIBLIO_MIL;
                         else if (p==POLE_FLUIDE)  e=EDI_OBSERVATOIRE;
                     }
-                    if (hr>=0 && edifice_build_blocked(econ,hr,e)) e=ai_next_k_edifice(econ,hr);
+                    if (cr>=0 && edifice_build_blocked(econ,cr,e)) e=ai_next_k_edifice(econ,cr);
                 } else {
-                    e = ai_next_k_edifice(econ, hr);       /* le métabolisme par défaut : K */
+                    e = ai_next_k_edifice(econ, cr);       /* le métabolisme par défaut : K */
                 }
-                if (hr>=0 && agency_build(ag, econ, w, hr, e)){
+                if (cr>=0 && agency_build(ag, econ, w, cr, e)){
                     /* développement institutionnel PROACTIF (la marque du Bâtisseur)
                      * vs DIGESTION imposée par le frein — on ne les confond pas. */
                     if      (kind==2)               a->stats.builds_other++;
@@ -1277,16 +1315,21 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             int rid = religion_can_found(n_emp)
                       ? religion_found_random(a->cid, centre, h)
                       : religion_adopt_existing(a->cid, h);
-            if (rid>=0) religion_inherit_regions(w, a->cid);
+            if (rid>=0) religion_inherit_regions(w, econ, a->cid);
         }
     }
 
-    /* RELIGION (P7) — SCHISME : si le pays ne contrôle plus le centre de sa foi (RUPTURE,
-     * centre conquis), il ROMPT en une foi AUTONOME — repick ALÉATOIRE valide (2 slots),
-     * crédo & teinte aléatoires, et l'adopte (son nouveau centre = sa capitale → l'éligibilité
-     * se résout, pas de spam). GATED par le PLAFOND PAR RACINE : au plus RELIG_SCHISM_MAX schismes
-     * par foi fondatrice (la foi en exil PERSISTE au-delà) — sans foi, éligibilité NONE ⇒ no-op. */
-    if (religion_schism_eligible(w, a->cid) == RSE_RUPTURE
+    /* RELIGION (P7) — SCHISME, deux modes :
+     *  · RUPTURE (le centre de la foi est conquis) → l'empire ROMPT et s'UNIT sur une foi autonome ;
+     *  · DÉRIVE (la Réforme : une marche SUR la foi d'État dérive culturellement de son centre) → un
+     *    schisme adapté à SA culture y prend, la couronne GARDANT le parent (minorité de même racine
+     *    = hérésie). La DÉRIVE est DOSÉE (1/AI_DERIVE_ODDS par tour éligible : elle mûrit sur des
+     *    décennies, elle n'éclate pas d'un bloc). GATED par le PLAFOND PAR RACINE (RELIG_SCHISM_MAX). */
+    ReligSchismMode smode = religion_schism_eligible(w, econ, wl, a->cid);
+    uint32_t d_odds = (uint32_t)tune_f("AI_DERIVE_ODDS", 8.f); if (d_odds<1u) d_odds=1u;
+    bool derive_now = (smode==RSE_DERIVE)
+        && ((((uint32_t)(a->cid*2246822519u) ^ (uint32_t)((day+7)*3266489917u)) % d_odds) == 0u);
+    if ((smode==RSE_RUPTURE || derive_now)
         && religion_can_schism(religion_of_country(a->cid))){
         int parent = religion_of_country(a->cid);
         if (parent >= 0){
@@ -1307,8 +1350,12 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
                 if (!religion_picks_valid(trad[0],trad[1],trad[2])) continue;
                 int child = religion_schism(parent, sa,pa, sb,pb, nc, centre, a->cid, 1, h);
                 if (child >= 0){
-                    religion_set_country(a->cid, child);     /* adopte la foi autonome */
-                    religion_inherit_regions(w, a->cid);     /* ses régions suivent */
+                    if (smode == RSE_RUPTURE){
+                        religion_set_country(a->cid, child);  /* RUPTURE : l'empire s'unit sur la foi autonome */
+                        religion_inherit_regions(w, econ, a->cid);
+                    } else {
+                        religion_fracture(w, econ, wl, a->cid, child);  /* DÉRIVE : la Réforme DIVISE (marches → enfant) */
+                    }
                 }
                 break;
             }

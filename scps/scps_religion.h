@@ -15,7 +15,11 @@
 #include "scps_legitimacy.h"/* WorldLegitimacy (L par région — fracture P8) */
 
 #define RELIG_MAX 64
-#define RELIG_SCHISM_MAX 2   /* schismes MAX par racine fondatrice (2 sectes/foi — cf. plafond ⌈N/3⌉ des racines) */
+#define RELIG_SCHISM_MAX 5   /* schismes MAX par racine fondatrice — relâché 2→5 pour la DÉRIVE
+                              * (la Réforme culturelle) : une foi peut se ramifier en plusieurs
+                              * courants adaptés aux cultures de ses marches (Rome → catholique +
+                              * protestant + orthodoxe…). La porte culture-mismatch (region_faith_drifts)
+                              * BORNE naturellement le nombre réel (un empire homogène n'y touche pas). */
 
 /* 8 axes ; pole>>1 == axe */
 typedef enum { RA_SANG, RA_FEU, RA_SEUIL, RA_SERMENT,
@@ -86,23 +90,33 @@ const ReligAccum* religion_country_acc(int cid);
 
 typedef enum { RSE_NONE = 0, RSE_RUPTURE, RSE_DERIVE } ReligSchismMode;
 /* éligibilité au schisme (LECTURE pure, aucun effet de bord). RUPTURE : le pays NE
- * contrôle PAS la cellule-centre de sa religion (centre conquis/étranger). DERIVE
- * (dérive province distance-centre) : phase ultérieure — renvoie RSE_NONE pour l'instant. */
-ReligSchismMode religion_schism_eligible(const World *w, int cid);
+ * contrôle PAS la cellule-centre de sa religion (centre conquis/étranger) → il rompt
+ * et s'unit sur une foi autonome. DÉRIVE (la Réforme) : le pays tient son centre mais
+ * une marche SUR la foi d'État dérive culturellement (distance au centre > seuil, L
+ * basse) → un schisme adapté à SA culture va y prendre, le centre gardant le parent
+ * (minorité de même racine = hérésie). econ/wl requis pour la porte de DÉRIVE. */
+ReligSchismMode religion_schism_eligible(const World *w, const WorldEconomy *econ,
+                                        const WorldLegitimacy *wl, int cid);
 
 /* ===================================================================== */
 /* P8 — religion par RÉGION (granularité du moteur : culture/L/agitation/  */
 /* sécession sont RÉGIONALES) + héritage + fracture. État GLOBAL (RELG).   */
 /* ===================================================================== */
 #define RELIG_MAX_REGION 1024   /* ≥ SCPS_MAX_REG */
-int  religion_of_region(int rg);              /* -1 = aucune */
-void religion_set_region(int rg, int rid);
-/* les régions du pays HÉRITENT de la religion du pays (à la fondation). */
-void religion_inherit_regions(const World *w, int cid);
+int  religion_of_region(int rg);              /* culte DOMINANT (cache dérivé des groupes) ; -1 = aucun */
+/* CACHE : recalcule le culte dominant d'une région / de toutes depuis PopGroup.faith. À
+ * appeler au tick (après la démographie) — la foi VIT sur le groupe, ceci n'est que le reflet. */
+void religion_refresh_region(const WorldEconomy *econ, int r);
+void religion_refresh_all   (const WorldEconomy *econ);
+/* convertit les NATIFS de souche de la région (rep-province) à `rid` (missionnaire / Contre-
+ * Réforme) + rafraîchit le cache ; les diasporas gardent leur foi portée. econ requis. */
+void religion_set_region(WorldEconomy *econ, int rg, int rid);
+/* les NATIFS des régions du pays HÉRITENT de la foi d'État (à la fondation) ; diasporas exemptées. */
+void religion_inherit_regions(const World *w, WorldEconomy *econ, int cid);
 /* FRACTURE : au schisme INTERNE, les régions du pays CULTURELLEMENT distantes du centre
  * ET peu légitimes (L bas) basculent vers la religion ENFANT ; le noyau garde le parent.
  * Renvoie le nombre de régions basculées. Pure mutation de g_region_religion. */
-int  religion_fracture(const World *w, const WorldEconomy *econ,
+int  religion_fracture(const World *w, WorldEconomy *econ,
                        const WorldLegitimacy *wl, int cid, int child_rid);
 
 /* ===================================================================== */

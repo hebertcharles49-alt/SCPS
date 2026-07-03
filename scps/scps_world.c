@@ -2890,7 +2890,7 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
         long total=(long)(pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop
                         + pe->strata[CLASS_ELITE].pop);
         if (total<1) total=1;
-        PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g));
+        PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g)); g->faith=-1;   /* GENÈSE athée (memset 0 = religion 0) */
         g->heritage=pe->culture.heritage; g->origin_sphere=heritage_sphere(pe->culture.heritage);
         g->origin=pe->culture; g->culture=pe->culture;      /* substrat = effective au départ */
         g->klass=CLASS_LABORER; g->count=total;

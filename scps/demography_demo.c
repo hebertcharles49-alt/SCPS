@@ -296,6 +296,24 @@ int main(int argc, char **argv){
            C.n_groups==1 && C.groups[0].home_reg==5);
     }
 
+    /* ═══ 10. AUTO-VÉRIF — un empire ULTRA-BÂTI + ULTRA-PROSPÈRE est un AIMANT migratoire ══ */
+    printf("\n── 10. Attractivité : bâti + prospérité → migration TRÈS élevée (aimant) ──\n");
+    {
+        float a_poor  = migration_attractivity(1.f, 0.f);    /* pauvre, non bâti */
+        float a_mild  = migration_attractivity(4.f, 1.5f);   /* moyen */
+        float a_ultra = migration_attractivity(10.f, 6.f);   /* ULTRA-bâti + ULTRA-prospère */
+        printf("   attractivité : pauvre %.1f · moyen %.1f · ULTRA %.1f\n", a_poor, a_mild, a_ultra);
+        ok("l'attractivité MONTE avec la prospérité ET le bâti", a_ultra>a_mild && a_mild>a_poor);
+        ok("le BÂTI (institutions) compte dans l'attraction — pas que la prospérité",
+           migration_attractivity(5.f,6.f) > migration_attractivity(5.f,0.f)+3.f);
+        /* le flux moteur ÉCHELONNE avec le gradient d'attractivité (pull ∝ gradient/MIG_GRADIENT,
+         * plafonné MIG_PULL_MAX) : un ULTRA a un gradient BIEN plus fort → migration TRÈS élevée. */
+        float grad_ultra=a_ultra-a_poor, grad_mild=a_mild-a_poor;
+        printf("   gradient d'attraction (vs pauvre) : ULTRA %.1f vs tiède %.1f\n", grad_ultra, grad_mild);
+        ok("l'empire ULTRA aimante BIEN plus fort qu'un tiède (le flux échelonne)",
+           grad_ultra > grad_mild*2.f);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

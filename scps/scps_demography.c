@@ -379,9 +379,16 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
 /* INTÉGRATION AU MOTEUR VIVANT (§7)                                      */
 /* ===================================================================== */
 /* ---- Migration vivante (surface d'équilibrage) ------------------------ */
-#define MIG_GRADIENT   1.5f    /* il faut une cible NOTABLEMENT plus prospère */
-#define MIG_FRACTION   200     /* 1/200 du groupe dominant par an (0.5 %) */
+#define MIG_GRADIENT   1.5f    /* il faut une cible NOTABLEMENT plus attractive */
+#define MIG_FRACTION   200     /* 1/200 du groupe dominant par an (0.5 %), à l'attractivité NEUTRE */
 #define MIG_MIN        20
+
+/* ATTRACTIVITÉ MIGRATOIRE = prospérité + BÂTI (institutions/développement). Un empire
+ * ULTRA-BÂTI ULTRA-PROSPÈRE est un AIMANT : le flux ÉCHELONNE avec l'attractivité (pas un
+ * seuil binaire) — le migrant va où il y a opportunité ET cadre (jobs + institutions). */
+float migration_attractivity(float prosperity, float K_inst){
+    return prosperity + tune_f("MIG_ATTRACT_INST_W", 1.0f) * K_inst;
+}
 
 void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
     (void)w;   /* signature publique conservée (appelants historiques) ; RE-KEY : plus besoin du World* */
@@ -412,6 +419,7 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
         g->pop_by_class[CLASS_BOURGEOIS]=0; g->pop_by_class[CLASS_ELITE]=0;
         g->L=7.f; g->agit_base=agit_from_L(7.f); g->integration=1.f;   /* natifs intégrés */
         g->diaspora=false; g->drift_id=id++; g->home_reg=-1;   /* de souche : aucun foyer « ailleurs » (memset 0 = région valide) */
+        g->faith=-1;        /* GENÈSE : monde ATHÉE (≠ 0 = religion 0 ; la foi vient plus tard) */
         pp->n_groups=1;     /* MONO-GROUPE → non-régression (les nombres d'hier) */
     }
     g_dyn_drift_id=DYN_DRIFT_BASE;   /* nouvelle partie : le compteur dynamique repart au socle */
@@ -455,6 +463,13 @@ static void demography_emerge_classes(ProvinceEconomy *re){
         }
         return;
     }
+    /* La classe ÉMERGE des EMPLOIS (job-derived, BORNÉ) : sièges nobles = tier de capitale·100,
+     * sièges bourgeois = Σ ouvriers d'atelier ; répartis AU PRORATA sur les groupes, par paquets
+     * de 100. Bornés par CONSTRUCTION (le tier de capitale change rarement, les ateliers lentement)
+     * ⇒ pas de rétroaction avec strata/révolte. ⚠ NE PAS dériver de `strata` : strata est mobile par
+     * richesse (E0.7) ET muté par la révolte dans le même tick → `pop_by_class` volatil → clout de
+     * faction (×3 élite) volatil → tension de coup → coups en boucle (~1/5 sims). Cf. AUDIT : la
+     * distribution par emplois est l'échelle pour laquelle les factions/l'armée sont calibrées. */
     long elite_jobs   = (long)capitale_max_tier(total)*100;                  /* capitale : tier·100 */
     long artisan_jobs = 0;
     for (int b=0;b<re->n_bld;b++) artisan_jobs += (long)re->bld[b].workers;  /* ateliers : ouvriers */
@@ -570,8 +585,21 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
 /* ===================================================================== */
 /* PACTE MIGRATOIRE (BRASSAGE) — l'échange passif de population entre alliés */
 /* ===================================================================== */
+/* BRASSAGE — le migrant entre par la FRONTIÈRE (une région de l'hôte ADJACENTE à l'origine),
+ * PAS dans la capitale : on reçoit ses migrants au plus près de leur départ (dispersion
+ * réaliste, cf. note utilisateur « ne pas tout balancer dans la capitale »). Renvoie la
+ * province représentative d'une région-frontière de `host` face à `src_region`, sinon -1. */
+static int pact_border_prov(const WorldEconomy *e, int host, int src_region){
+    if (src_region<0 || src_region>=e->n_regions) return -1;
+    for (int s=0;s<e->n_regions;s++){
+        if (e->region[s].owner!=host || !e->adj[src_region][s]) continue;
+        int rps=econ_region_rep_province(e,s);
+        if (rps>=0 && rps<e->n_prov && e->prov[rps].culture.settled && e->prov[rps].pop.n_groups>0) return rps;
+    }
+    return -1;
+}
 /* Entre deux pays liés par un pacte migratoire et à la PAIX, chacun envoie un
- * petit flux depuis sa province la plus peuplée vers celle de l'autre : le plus
+ * petit flux depuis sa province la plus peuplée vers la FRONTIÈRE de l'autre : le plus
  * ATTRACTIF (prospère) reçoit NET (« à l'avantage de celui qui a le plus à
  * offrir »). Les migrants portent leur héritage → diaspora ARR_MIGRANT chez
  * l'hôte → métabolisation (le savoir DIFFUSE — l'inverse de l'isolement de Song). */
@@ -590,7 +618,7 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp){
         int o=pe->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
         if (!pe->culture.settled || pe->pop.n_groups<=0) continue;
         long tot=province_total_pop(&pe->pop);
-        if (tot>top_pop[o]){ top_pop[o]=tot; top_prov[o]=p; attract[o]=pe->pop.prosperity; }
+        if (tot>top_pop[o]){ top_pop[o]=tot; top_prov[o]=p; attract[o]=migration_attractivity(pe->pop.prosperity, pe->build.K_inst); }
     }
     int flows=0;
     for (int a=0;a<SCPS_MAX_COUNTRY;a++){
@@ -599,18 +627,22 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp){
             if (!dp->migration_pact[a][b] || top_prov[b]<0) continue;
             if (diplo_status(dp,a,b)==DIPLO_WAR) continue;   /* la guerre suspend l'échange */
             float sa=attract[a], sb=attract[b], tot_attr=sa+sb+1e-3f;
-            ProvincePop *pa=&e->prov[top_prov[a]].pop, *pb=&e->prov[top_prov[b]].pop;
+            int rsrcA=e->prov[top_prov[a]].region, rsrcB=e->prov[top_prov[b]].region;
+            int dstAB=pact_border_prov(e,b,rsrcA); if (dstAB<0) dstAB=top_prov[b];  /* a→b : entre à la FRONTIÈRE de b */
+            int dstBA=pact_border_prov(e,a,rsrcB); if (dstBA<0) dstBA=top_prov[a];  /* b→a : entre à la FRONTIÈRE de a */
+            ProvincePop *srcA=&e->prov[top_prov[a]].pop, *dstB=&e->prov[dstAB].pop;
+            ProvincePop *srcB=&e->prov[top_prov[b]].pop, *dstA=&e->prov[dstBA].pop;
             /* a→b : ∝ attractivité de b (b, s'il est plus prospère, reçoit plus). */
-            PopGroup *da=(PopGroup*)province_dominant(pa);
+            PopGroup *da=(PopGroup*)province_dominant(srcA);
             if (da){
                 long amt=(long)((float)da->count*frac*(2.f*sb/tot_attr));
-                if (amt>=fmin && migration_move(pa,pb,(int)(da-pa->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,e->prov[top_prov[a]].region)) flows++;
+                if (amt>=fmin && migration_move(srcA,dstB,(int)(da-srcA->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,rsrcA)) flows++;
             }
             /* b→a : ∝ attractivité de a (re-résoudre le dominant : le move a pu compacter). */
-            PopGroup *db=(PopGroup*)province_dominant(pb);
+            PopGroup *db=(PopGroup*)province_dominant(srcB);
             if (db){
                 long amt=(long)((float)db->count*frac*(2.f*sa/tot_attr));
-                if (amt>=fmin && migration_move(pb,pa,(int)(db-pb->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,e->prov[top_prov[b]].region)) flows++;
+                if (amt>=fmin && migration_move(srcB,dstA,(int)(db-srcB->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,rsrcB)) flows++;
             }
         }
     }
@@ -744,7 +776,14 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
             group_L_tick(&pp->groups[i], drift, crown, re->satisfaction, 0.f, re->coercion, re->build.H_coerc);
             pp->groups[i].culture = group_culture_effective(&pp->groups[i], drift);
         }
-        assimilation_tick(pp, drift, P, K, dt);                  /* dérive durable (∝ D∞), au pas dt */
+        /* INSTITUTIONS RÉELLES dans la vitesse d'intégration (au lieu du K PLAT) : un hôte à
+         * institutions solides (école/service/état bâtis — build.K_inst) ASSIMILE VITE → pas de
+         * minorité restive (Italiens/Polonais dans la France des Trente Glorieuses) ; un hôte
+         * AFFAIBLI assimile LENTEMENT → sous-prolétariat non-intégré qui s'entasse en bas → émeutes
+         * (les institutions se cassent). Centré sur K=5 à K_inst=REF (non-régression), amplifié. */
+        float K_eff = K + (re->build.K_inst - tune_f("ASSIM_K_INST_REF",1.5f)) * tune_f("ASSIM_K_INST_AMP",4.f);
+        K_eff = clampf(K_eff, 0.f, 20.f);
+        assimilation_tick(pp, drift, P, K_eff, dt);              /* dérive durable (∝ D∞ / institutions), au pas dt */
         float yh = (wl && r < SCPS_MAX_REG) ? wl->years_held[r] : 100.f;
         faith_convert_tick(pp, crown, yh, dt);                  /* la FOI converge vers le trône (§2) */
         for (int i=0;i<pp->n_groups;i++)
@@ -760,19 +799,28 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         if (rp<0 || rp>=econ->n_prov) continue;
         ProvinceEconomy *pe=&econ->prov[rp];
         if (pe->pop.n_groups<=0 || !pe->culture.settled) continue;
-        int best=-1; float bestp=re->prosperity + MIG_GRADIENT;
+        float src_attr = migration_attractivity(re->prosperity, pe->build.K_inst);
+        int best=-1; float best_attr=src_attr + MIG_GRADIENT;
         for (int s=0;s<econ->n_regions;s++){
             int rps=econ_region_rep_province(econ, s);
             if (rps<0 || rps>=econ->n_prov) continue;
             const ProvinceEconomy *pes=&econ->prov[rps];
-            if (econ->adj[r][s] && pes->culture.settled && pes->pop.n_groups>0
-                && econ->region[s].prosperity>bestp){ bestp=econ->region[s].prosperity; best=s; }
+            if (econ->adj[r][s] && pes->culture.settled && pes->pop.n_groups>0){
+                float sattr=migration_attractivity(econ->region[s].prosperity, pes->build.K_inst);
+                if (sattr>best_attr){ best_attr=sattr; best=s; }
+            }
         }
         if (best<0) continue;
         int rpb=econ_region_rep_province(econ, best);
         if (rpb<0 || rpb>=econ->n_prov) continue;
         PopGroup *dom=(PopGroup*)province_dominant(&pe->pop);
-        long amount=dom->count/MIG_FRACTION;
+        /* ÉCHELONNE avec l'attractivité : un AIMANT (ULTRA-bâti + ULTRA-prospère) tire au
+         * plafond, un voisin à peine plus attractif tire la base → « migration TRÈS élevée ». */
+        float pull=(best_attr-src_attr)/MIG_GRADIENT;
+        float pullmax=tune_f("MIG_PULL_MAX", 5.f);
+        if (pull<1.f) pull=1.f;
+        if (pull>pullmax) pull=pullmax;
+        long amount=(long)((float)(dom->count/MIG_FRACTION)*pull);
         if (amount<MIG_MIN) continue;
         int gi=(int)(dom-pe->pop.groups);
         migration_move(&pe->pop, &econ->prov[rpb].pop, gi, amount, demography_dyn_id_next(), ARR_MIGRANT, r);  /* home = région de départ (respire) */
@@ -820,6 +868,7 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
         g.count=total/5+50; g.L=7.f; g.agit_base=agit_from_L(7.f); g.integration=1.f;
         g.diaspora=true; g.arrival=ARR_MIGRANT; g.drift_id=demography_dyn_id_next();
         g.home_reg=-1;   /* colon délibéré (pas un déplacé) : ne « rentre » pas — home_reg memset 0 serait région 0 */
+        g.faith=-1;      /* athée par défaut (memset 0 = religion 0) ; la conversion l'assimile à la foi d'État */
         pp->groups[pp->n_groups++]=g;
     }
 }

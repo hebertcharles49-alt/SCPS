@@ -117,10 +117,16 @@ HERITAGE_DEMO_OBJS := $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_heritage_dem
 heritage_demo: $(HERITAGE_DEMO_OBJS)
 	$(CC) $(HERITAGE_DEMO_OBJS) -o $@
 
-# ---- religion_demo : module fondation religion (P1, PUR) ---------------------
-RELIGION_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_religion_demo.o
+# ---- religion_demo : module religion (foi PAR GROUPE ⇒ couplé econ pour le cache dérivé) ------
+RELIGION_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
+                    $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o \
+                    $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \
+                    $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o \
+                    $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_modifier.o \
+                    $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o \
+                    $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_religion_demo.o
 religion_demo: $(RELIGION_DEMO_OBJS)
-	$(CC) $(RELIGION_DEMO_OBJS) -o $@
+	$(CC) $(RELIGION_DEMO_OBJS) -o $@ -lm
 
 # ---- Visualiseur de carte + UI diégétique (SDL2 + SDL_ttf) ---------------
 # Le viewer lie toute la chaîne sim (la membrane scps_readout traduit en mots),

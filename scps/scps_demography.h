@@ -76,6 +76,10 @@ void  faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
  * aucun) ; un groupe DÉJÀ déplacé garde son home d'origine (jamais écrasé). */
 bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id, int mode, int home_reg);
 
+/* ATTRACTIVITÉ MIGRATOIRE = prospérité + BÂTI (institutions). Un empire ultra-bâti ultra-prospère
+ * est un AIMANT : la migration échelonne avec l'attractivité. (exposé pour l'auto-vérif) */
+float migration_attractivity(float prosperity, float K_inst);
+
 /* ---- Agrégation PAYS (§2, §6) — alimente scps_order (inchangé) -------- */
 float country_Dbar(const ProvincePop *provs, int n, const ModifierStack *drift);
 float country_Dinf(const ProvincePop *provs, int n, const ModifierStack *drift);  /* maillon faible pays */

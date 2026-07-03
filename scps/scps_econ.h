@@ -179,6 +179,12 @@ typedef struct {
     int          home_reg;       /* RÉGION d'origine d'un groupe DÉPLACÉ (migrant/réfugié) — le
                                   * foyer vers lequel il RESPIRE (retour partiel quand il s'apaise) ;
                                   * -1 = de souche/soumis/déporté (aucun « ailleurs » où rentrer). */
+    int          faith;          /* FOI PORTÉE par le groupe (id dans g_religions[], -1 = athée). La
+                                  * religion descend au NIVEAU DU GROUPE (comme la culture) : un migrant/
+                                  * réfugié PORTE sa foi, une région peut mêler plusieurs cultes (diversité
+                                  * intrinsèque), l'hérésie = un groupe de foi dissidente. religion_of_region
+                                  * = le culte DOMINANT (cache dérivé). ⚠ -1 par DÉFAUT (≠ 0 = religion 0) :
+                                  * tout site de création DOIT poser faith=-1 explicitement. */
 } PopGroup;
 typedef struct {
     PopGroup groups[SCPS_MAX_GROUPS];

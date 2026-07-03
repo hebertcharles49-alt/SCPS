@@ -2836,7 +2836,7 @@ static void colonize_seed_pop_group(ProvinceEconomy *dst, int dst_pid, long tota
     pp->prov = dst_pid;
     pp->prosperity = dst->prosperity;
     if (total<1) total=1;
-    PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g));
+    PopGroup *g=&pp->groups[0]; memset(g,0,sizeof(*g)); g->faith=-1;   /* athée à la colonisation (memset 0 = religion 0) */
     g->heritage=dst->culture.heritage; g->origin_sphere=heritage_sphere(dst->culture.heritage);
     g->origin=dst->culture; g->culture=dst->culture;
     g->klass=CLASS_LABORER; g->count=total;

@@ -228,6 +228,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         for (int g=0;g<pe->pop.n_groups;g++){
             if (pe->pop.groups[g].arrival>=ARR_COUNT) return false;   /* mode d'arrivée borné (coeff de diffusion) */
             if (pe->pop.groups[g].home_reg < -1 || pe->pop.groups[g].home_reg >= w->n_regions) return false;  /* v52 : foyer du déplacé (indexe une région) */
+            if (pe->pop.groups[g].faith    < -1 || pe->pop.groups[g].faith    >= RELIG_MAX)     return false;  /* v54 : foi PORTÉE par le groupe (id de religion, borne registre) */
         }
         if (!(pe->annex_scar>=0.f && pe->annex_scar<=1.f)) return false; }
     /* v50 — chantiers de colonisation : src/dst indexent prov[] (ou -1), délais/cadence

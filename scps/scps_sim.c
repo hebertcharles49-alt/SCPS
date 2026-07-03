@@ -571,6 +571,7 @@ void sim_day(Sim *s, World *w) {
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         PROF(PB_DEMO, demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f));
         labor_resync_pop(s->labor, s->econ);   /* E0.1 : labor RELIT la pop (le monde la possède) */
+        religion_refresh_all(s->econ);   /* FOI PAR GROUPE : le culte DOMINANT par région suit les groupes (post-démo) */
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)   /* E3 : l'IA stockeuse (mensuel) */
             if (s->ai_on[c]) ai_speculate_tick(&s->ai[c], s->econ);
         /* — conquête du mois : un peuple passé sous une couronne ÉTRANGÈRE devient

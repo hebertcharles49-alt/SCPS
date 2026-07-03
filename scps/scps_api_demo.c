@@ -535,7 +535,8 @@ int main(int argc, char **argv){
         ok("région du joueur trouvée", prg>=0);
         int otr[3]={RP_OFFRANDE, RP_MUR, RP_ORTHODOXIE};
         int other=religion_spawn(CREDO_PURIFICATEUR, otr, 0, pl, NULL);
-        religion_set_region(prg, other);   /* rend la région MINORITAIRE */
+        religion_set_region(NULL, prg, other);   /* cache-only (econ opaque au banc) ; la conversion
+                                                   * de GROUPES par le Missionnaire est couverte en sim réelle */
         ok("région rendue minoritaire", scps_religion_of_region(ss,prg)==other);
         int role=scps_religion_recruit_scholar(ss, pl, prg);
         ok("Missionnaire recruté (CONVERT)", role==SCHOLAR_CONVERT);
@@ -565,10 +566,14 @@ int main(int argc, char **argv){
         ok("le rallié partage une foi existante", r2==r0 || r2==r1);
         /* SCHISME borné PAR RACINE : RELIG_SCHISM_MAX sectes par foi fondatrice */
         ok("racine r0 peut schismer (0 secte)", religion_can_schism(r0));
-        int k1=religion_schism(r0,1,RP_ACCUEIL,2,RP_ORTHODOXIE,2,30,1,1,0xABCDu);
-        int k2=religion_schism(r0,1,RP_MUR,2,RP_GNOSE,2,31,1,1,0xBCDEu);
-        ok("2 sectes créées sous r0", k1>r1 && k2>k1 && religion_root_of(k1)==r0 && religion_root_of(k2)==r0);
-        ok("au plafond : r0 ne peut plus schismer (2 sectes)", !religion_can_schism(r0));
+        int made=0, klast=r1;   /* crée jusqu'au PLAFOND (RELIG_SCHISM_MAX, relâché à 5) */
+        for(int s=0; s<RELIG_SCHISM_MAX && religion_can_schism(r0); s++){
+            int pa=(s%2)?RP_MUR:RP_ACCUEIL, pb=(s%2)?RP_GNOSE:RP_ORTHODOXIE;
+            int k=religion_schism(r0, 1, pa, 2, pb, 2, 30+s, 1, 1, 0xABCDu+(uint32_t)s);
+            if(k>r1 && religion_root_of(k)==r0){ made++; klast=k; }
+        }
+        ok("RELIG_SCHISM_MAX sectes créées sous r0", made==RELIG_SCHISM_MAX && klast>r1);
+        ok("au plafond : r0 ne peut plus schismer", !religion_can_schism(r0));
         ok("racine r1 (0 secte) PEUT encore schismer", religion_can_schism(r1));
         religion_reset();
     }

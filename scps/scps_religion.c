@@ -74,14 +74,57 @@ static void cr_ensure(void){
   }
 }
 int  religion_of_region(int rg){ cr_ensure(); return (rg>=0&&rg<RELIG_MAX_REGION)?g_region_religion[rg]:-1; }
-void religion_set_region(int rg,int rid){ cr_ensure(); if(rg>=0&&rg<RELIG_MAX_REGION) g_region_religion[rg]=rid; }
-void religion_inherit_regions(const World *w,int cid){
+/* pose la foi `rid` sur les NATIFS de souche de la région (rep-province) — fondation /
+ * missionnaire / Contre-Réforme convertissent la SOUCHE ; la diaspora garde sa foi portée
+ * (un migrant/réfugié ne se fait pas convertir d'office). */
+static void region_set_native_faith(WorldEconomy *econ, int r, int rid){
+  if(!econ || r<0 || r>=econ->n_regions) return;
+  int rpid=econ_region_rep_province(econ, r);
+  if(rpid<0 || rpid>=econ->n_prov) return;
+  ProvincePop *pp=&econ->prov[rpid].pop;
+  for(int i=0;i<pp->n_groups;i++)
+    if(!pp->groups[i].diaspora) pp->groups[i].faith=rid;
+}
+void religion_set_region(WorldEconomy *econ, int rg, int rid){
+  cr_ensure();
+  if(rg<0||rg>=RELIG_MAX_REGION) return;
+  region_set_native_faith(econ, rg, rid);
+  g_region_religion[rg]=rid;   /* cache immédiat (le refresh dérivera ensuite) */
+}
+void religion_inherit_regions(const World *w, WorldEconomy *econ, int cid){
   if(!w) return;
   cr_ensure();
   int rid=religion_of_country(cid);
   for(int r=0;r<w->n_regions && r<RELIG_MAX_REGION;r++){
-    if(w->region[r].country==cid) g_region_religion[r]=rid;
+    if(w->region[r].country!=cid) continue;
+    region_set_native_faith(econ, r, rid);   /* les natifs adoptent la foi d'État */
+    g_region_religion[r]=rid;
   }
+}
+
+/* CACHE DÉRIVÉ (foi par groupe) : le culte DOMINANT d'une région = la foi majoritaire (en
+ * pop) parmi ses groupes. La foi VIT sur le groupe (PopGroup.faith) ; g_region_religion n'en
+ * est que le REFLET, recalculé au tick → religion_of_region reste l'API des 17 lecteurs
+ * « dominant ». -1 = athée / aucun culte majoritaire. */
+void religion_refresh_region(const WorldEconomy *econ, int r){
+  cr_ensure();
+  if(!econ || r<0 || r>=RELIG_MAX_REGION || r>=econ->n_regions) return;
+  int rpid=econ_region_rep_province(econ, r);
+  if(rpid<0 || rpid>=econ->n_prov){ g_region_religion[r]=-1; return; }
+  const ProvincePop *pp=&econ->prov[rpid].pop;
+  long tally[RELIG_MAX]={0};
+  for(int i=0;i<pp->n_groups;i++){
+    int f=pp->groups[i].faith;
+    if(f>=0 && f<RELIG_MAX && f<g_religion_count) tally[f]+=pp->groups[i].count;
+  }
+  long best=0; int bestf=-1;
+  for(int f=0; f<g_religion_count && f<RELIG_MAX; f++) if(tally[f]>best){ best=tally[f]; bestf=f; }
+  g_region_religion[r]=bestf;
+}
+void religion_refresh_all(const WorldEconomy *econ){
+  if(!econ) return;
+  cr_ensure();
+  for(int r=0;r<econ->n_regions && r<RELIG_MAX_REGION;r++) religion_refresh_region(econ, r);
 }
 
 /* FRACTURE (P8) — au schisme INTERNE : les régions du pays distantes (culture vs centre)
@@ -89,7 +132,23 @@ void religion_inherit_regions(const World *w,int cid){
  * parent. D∞ inline sur les axes PopCulture (valeurs/subsistance/parenté/religion). */
 #define SCHISM_FLIP_D 5.0f   /* D∞ vs culture du centre (calibrable) */
 #define SCHISM_FLIP_L 4.0f   /* L locale sous laquelle le flip devient probable */
-int religion_fracture(const World *w, const WorldEconomy *econ,
+/* la province r DÉRIVE-t-elle de la foi du centre ? — culturellement DISTANTE du
+ * centre orthodoxe (D∞ > SCHISM_FLIP_D sur un axe PopCulture) ET peu légitime
+ * (L < SCHISM_FLIP_L). MÊME porte pour l'ÉLIGIBILITÉ (lecture) et la FRACTURE
+ * (mutation) : « la foi ne colle plus à la culture d'une marche » (Rome catholique
+ * → Germanie protestante ; → Grèce orthodoxe — le schisme SUIT la culture). */
+static bool region_faith_drifts(const WorldEconomy *econ, const WorldLegitimacy *wl,
+                                int r, const PopCulture *fc){
+  const PopCulture *rc=&econ->region[r].culture;
+  float dv=rc->valeurs-fc->valeurs;          if(dv<0)dv=-dv;
+  float ds=rc->subsistance-fc->subsistance;  if(ds<0)ds=-ds;
+  float dp=rc->parente-fc->parente;          if(dp<0)dp=-dp;
+  float dr=rc->religion-fc->religion;         if(dr<0)dr=-dr;
+  float dinf=dv; if(ds>dinf)dinf=ds; if(dp>dinf)dinf=dp; if(dr>dinf)dinf=dr;
+  float L=(wl && r<SCPS_MAX_REG)?wl->L[r]:5.f;
+  return (dinf>SCHISM_FLIP_D && L<SCHISM_FLIP_L);
+}
+int religion_fracture(const World *w, WorldEconomy *econ,
                       const WorldLegitimacy *wl, int cid, int child_rid){
   if(!w||!econ||child_rid<0||child_rid>=g_religion_count) return 0;
   cr_ensure();
@@ -101,15 +160,9 @@ int religion_fracture(const World *w, const WorldEconomy *econ,
   int flipped=0;
   for(int r=0;r<w->n_regions && r<RELIG_MAX_REGION && r<econ->n_regions;r++){
     if(w->region[r].country!=cid || r==centre_rg) continue;   /* le centre garde le parent */
-    const PopCulture *rc=&econ->region[r].culture;
-    float dv=rc->valeurs-fc->valeurs;          if(dv<0)dv=-dv;
-    float ds=rc->subsistance-fc->subsistance;  if(ds<0)ds=-ds;
-    float dp=rc->parente-fc->parente;          if(dp<0)dp=-dp;
-    float dr=rc->religion-fc->religion;         if(dr<0)dr=-dr;
-    float dinf=dv; if(ds>dinf)dinf=ds; if(dp>dinf)dinf=dp; if(dr>dinf)dinf=dr;
-    float L=(wl && r<SCPS_MAX_REG)?wl->L[r]:5.f;
     if(religion_region_resisted(r)) continue;   /* un Gourou y bloque la bascule (P6) */
-    if(dinf>SCHISM_FLIP_D && L<SCHISM_FLIP_L){ g_region_religion[r]=child_rid; flipped++; }
+    if(region_faith_drifts(econ, wl, r, fc)){ region_set_native_faith(econ, r, child_rid);   /* la SOUCHE schisme */
+                                              g_region_religion[r]=child_rid; flipped++; }
   }
   return flipped;
 }
@@ -208,7 +261,6 @@ int religion_adopt_existing(int cid, uint32_t seed){
 }
 
 void religion_scholar_tick(const World *w, WorldEconomy *econ){
-  (void)econ;
   cr_ensure();
   for(int c=0;c<RELIG_MAX_COUNTRY;c++){
     if(!g_scholar[c].active) continue;
@@ -216,7 +268,7 @@ void religion_scholar_tick(const World *w, WorldEconomy *econ){
     if(g_scholar[c].role==SCHOLAR_CONVERT && rg>=0 && rg<RELIG_MAX_REGION && (!w||rg<w->n_regions)
        && !religion_region_resisted(rg)){
       int rid=religion_of_country(c);
-      if(rid>=0) g_region_religion[rg]=rid;   /* le Missionnaire répand la foi d'État */
+      if(rid>=0){ region_set_native_faith(econ, rg, rid); g_region_religion[rg]=rid; }   /* Missionnaire répand la foi d'État sur la souche */
     }
     if(--g_scholar[c].timer<=0) g_scholar[c].active=0;
   }
@@ -245,15 +297,34 @@ void religion_reset(void){
   memset(g_scholar, 0, sizeof g_scholar);
 }
 
-/* éligibilité au schisme — RUPTURE : la cellule-centre de la religion du pays n'est
- * PAS sous son contrôle (conquise/étrangère). Lecture pure. (DERIVE : phase ultérieure.) */
-ReligSchismMode religion_schism_eligible(const World *w, int cid){
+/* éligibilité au schisme :
+ *  · RUPTURE — la cellule-centre de la foi du pays n'est PAS sous son contrôle
+ *    (conquise/étrangère) : l'empire ROMPT et adopte une foi autonome (il s'unit) ;
+ *  · DÉRIVE (la Réforme) — le pays TIENT son centre, mais une marche SUR la foi
+ *    d'État est culturellement DISTANTE du centre orthodoxe & peu légitime : la foi
+ *    ne colle plus à sa culture, un schisme adapté À SA CULTURE va y prendre (Rome
+ *    → Germanie protestante). Le centre garde le parent → minorité de MÊME RACINE
+ *    (hérésie). Lecture pure (même porte `region_faith_drifts` que la fracture). */
+ReligSchismMode religion_schism_eligible(const World *w, const WorldEconomy *econ,
+                                        const WorldLegitimacy *wl, int cid){
   if(!w) return RSE_NONE;
   int rid=religion_of_country(cid);
   if(rid<0||rid>=g_religion_count) return RSE_NONE;
   int centre=g_religions[rid].centre_cell;
   if(centre<0||centre>=SCPS_N) return RSE_NONE;
   if(w->cell[centre].country != cid) return RSE_RUPTURE;
+  if(econ){
+    int centre_rg=w->cell[centre].region;
+    if(centre_rg>=0 && centre_rg<econ->n_regions){
+      const PopCulture *fc=&econ->region[centre_rg].culture;
+      for(int r=0;r<w->n_regions && r<RELIG_MAX_REGION && r<econ->n_regions;r++){
+        if(w->region[r].country!=cid || r==centre_rg) continue;
+        if(religion_of_region(r)!=rid) continue;    /* déjà schismée/étrangère : autre grief */
+        if(religion_region_resisted(r)) continue;   /* un Gourou y bloque la dérive */
+        if(region_faith_drifts(econ, wl, r, fc)) return RSE_DERIVE;
+      }
+    }
+  }
   return RSE_NONE;
 }
 

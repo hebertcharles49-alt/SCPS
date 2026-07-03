@@ -13,6 +13,7 @@
 #include "scps_culture.h"   /* ethos_name (via culture nom) */
 #include "scps_factions.h"  /* §5 : la tension de coup d'une faction forte aliénée */
 #include "scps_labor.h"     /* capitale_* : la capacité de service (logement/services) de la région */
+#include "scps_religion.h"  /* dimension FOI : religion_of_region/_of_country/set_region (hérésie) */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -33,6 +34,10 @@
 /* ---- Allumage --------------------------------------------------------- */
 #define IGNITE_DEFICIT 0.20f
 #define MIN_REBELS     20L
+/* PHASE 1 — SEUIL DE POP : une région doit peser ce minimum d'âmes pour envisager une révolte
+ * (un hameau/une bourgade ne « fait » pas une insurrection). MIN_REBELS gate les COMBATTANTS
+ * (post-mobilisation), pas l'éligibilité — d'où ce plancher distinct sur la pop RÉGIONALE. */
+#define REVOLT_MIN_POP 3000L
 /* ---- Scan : la misère SOUTENUE finit par lever une région ------------- */
 #define SCAN_DEFICIT   0.48f   /* au-delà : CRISE aiguë (pas la pauvreté chronique douce) */
 #define SCAN_SUSTAIN   120     /* jours de désespérance avant le soulèvement */
@@ -60,11 +65,23 @@
 /* ---- Classification --------------------------------------------------- */
 #define SECEDE_D      2.6f   /* au-delà : nation étrangère sous la couronne */
 #define SECEDE_INTEG  0.55f  /* et mal intégrée → elle veut partir */
+/* ---- Grief de FOI (dimension religieuse) ------------------------------- *
+ * Une province de foi DISSIDENTE (≠ foi d'État, non calmée par un Moine) gronde
+ * pour sa religion : ce grief MONTE le déficit de révolte de la région → l'hérésie
+ * (schisme intérieur) et le zèle (culte étranger) deviennent PROMPTS à se lever
+ * (Réforme, guerres de religion), là où la seule misère économique ne suffisait pas. */
+#define FAITH_UNREST  0.22f
+/* Grief de foi au niveau du GROUPE : un groupe porteur d'une foi DISSIDENTE mène la
+ * révolte À MESURE qu'il est MAL INTÉGRÉ (×(1−integration)) → le nouvel arrivant aigri
+ * (réfugié déraciné) prend la tête, la minorité ÉTABLIE (les Juifs) reste sous le seuil. */
+#define FAITH_LEAD    0.20f
 /* ---- Résolution ------------------------------------------------------- */
 #define REBEL_DECIDE_DAYS 90   /* le soulèvement se décide en ~un trimestre */
 #define ZEAL_CLASS    1.0f
 #define ZEAL_SECEDE   1.25f
 #define ZEAL_COUP     3.0f     /* peu nombreux mais au cœur du pouvoir */
+#define ZEAL_HERESIE  1.15f    /* schisme intérieur : la foi donne du cœur au ventre */
+#define ZEAL_ZELOTE   1.30f    /* foi ÉTRANGÈRE : la guerre sainte, plus ardente encore */
 #define GARR_LOYAL    0.16f    /* part de la pop LOYALE (pondérée intégration) levable */
 #define GARR_H        220.f    /* chaque point de coercition bâtie = une garnison */
 #define REINFORCE     8.f      /* renforts de la couronne par point de mil_power (l'empire
@@ -86,6 +103,12 @@
  * Casse la BOUCLE de fréquence (un empire qui re-coupait via une autre province). */
 #define COUP_GRACE_DAYS 1825.f    /* ~5 ans de répit post-coup, par pays */
 static float g_coup_grace[SCPS_MAX_COUNTRY];   /* jours de répit restants, par PAYS */
+/* PHASE 1 — CD EMPIRE-WIDE DE RÉVOLTE : après TOUT soulèvement (n'importe quel type, n'importe
+ * quelle région), l'empire ENTIER se tait ~5 ans. « On ne peut pas encaisser un printemps arabe
+ * par jour » : une révolte à la fois par empire → fin du spam par-région ET du runaway de récursion.
+ * Généralise le patron coup-only (g_coup_grace) à TOUS les types de révolte. */
+#define REVOLT_GRACE_DAYS 1825.f  /* ~5 ans de répit post-révolte, sur TOUT l'empire */
+static float g_revolt_grace[SCPS_MAX_COUNTRY];   /* jours de répit empire-wide restants, par PAYS */
 static float ethos_coup_boost(const PopGroup *g, EthosFaction alien_fac, float coup_tension){
     if (coup_tension<=0.f || g->diaspora || g->integration < SECEDE_INTEG) return 0.f;  /* établi, pas sécessionniste */
     float lean[FAC_COUNT]; group_ethos_lean(&g->culture, lean);
@@ -128,6 +151,7 @@ static float g_concede_cd[SCPS_MAX_COUNTRY];   /* jours avant qu'une nouvelle co
 void revolt_init(RevoltState *rs){ memset(rs,0,sizeof *rs); rs->last_spawned=-1;
     memset(g_coup_grace,0,sizeof g_coup_grace);   /* §C2 : répit pays remis à zéro par sim */
     memset(g_concede_cd,0,sizeof g_concede_cd);   /* G0.2 : cooldown de concession par sim */
+    memset(g_revolt_grace,0,sizeof g_revolt_grace);  /* PHASE 1 : CD empire-wide remis à zéro par sim */
 }
 
 void revolt_on_conquest(RevoltState *rs, int region){
@@ -180,6 +204,17 @@ RebelKind revolt_classify(const PopGroup *g, const ModifierStack *drift, const P
     return REBEL_CLASS;                            /* sinon : on réclame, on ne part pas */
 }
 
+/* La foi PORTÉE par un groupe : un NATIF suit sa région (dissidence endogène/DÉRIVE) ;
+ * une DIASPORA (réfugié/migrant/soumis/déporté) porte la foi de son foyer d'ORIGINE
+ * (home_reg) — un réfugié protestant reste protestant en terre catholique. -1 = aucune. */
+static int group_carried_faith(const WorldEconomy *econ, const PopGroup *g, int region){
+    (void)econ; (void)region;
+    int f=g->faith;   /* FOI PAR GROUPE : lecture DIRECTE — un natif de foi schismatique OU une
+                       * diaspora de foi étrangère est vue individuellement (plus de proxy home_reg).
+                       * Une MINORITÉ de foi dissidente dans une province majoritaire mène l'hérésie. */
+    return (f>=0 && f<g_religion_count) ? f : -1;   /* borne REGISTRE : un id hors-borne (faith non
+                                                     * posé, banc sans religion) = athée, pas religion 0 */
+}
 /* ===================================================================== */
 /* ALLUMAGE — incarne le soulèvement sur le pire groupe                    */
 /* ===================================================================== */
@@ -189,6 +224,10 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     RegionEconomy *re=&econ->region[region];
     int owner=re->owner;
     if (owner<0) return -1;
+    /* PHASE 1 — CD EMPIRE-WIDE : un empire qui vient de connaître une révolte (n'importe où) se
+     * tait ~5 ans → UNE révolte à la fois par empire, fin du spam par-région ET de tout runaway
+     * de récursion (une région écrasée ne peut plus rallumer une voisine le mois d'après). */
+    if (owner<SCPS_MAX_COUNTRY && g_revolt_grace[owner]>0.f) return -1;
     /* RE-KEY PROVINCE : re->pop est un MIROIR (copie de la province représentative) — muter
      * un groupe à travers `pp` ne toucherait QUE cette copie, effacée au prochain econ_tick.
      * On route la MUTATION (count/strata) sur la vraie province ; les LECTURES via `re`
@@ -198,6 +237,9 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     ProvinceEconomy *pe=&econ->prov[pid];
     ProvincePop *pp=&pe->pop;
     if (pp->n_groups<=0) return -1;
+    /* PHASE 1 — SEUIL DE POP : une région trop peu peuplée ne fait pas d'insurrection. */
+    { long rpop=0; for (int i=0;i<pp->n_groups;i++) rpop+=pp->groups[i].count;
+      if (rpop < REVOLT_MIN_POP) return -1; }
     /* un seul soulèvement vif par région (la colère couve déjà ici) */
     for (int i=0;i<rs->count;i++) if (rs->list[i].active && rs->list[i].region==region) return -1;
     const PopCulture *crown = crown_of(w,econ,owner);
@@ -206,12 +248,19 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     float ct=0.f; EthosFaction cf=FAC_COMMUNAUTAIRE;
     ct = faction_coup_tension_c(w,econ,owner,&cf);   /* tension de coup AVEC le grief des leviers (§4) */
 
-    /* le groupe au plus fort déficit porte le soulèvement (grief politique compris) */
+    /* le groupe au plus fort déficit porte le soulèvement (grief politique + de FOI compris) */
+    int sfaith0=(owner<SCPS_MAX_COUNTRY)?religion_of_country(owner):-1;
     int worst=-1; float wd=0.f;
     for (int i=0;i<pp->n_groups;i++){
-        float d=revolt_group_deficit(&pp->groups[i], drift, crown,
+        PopGroup *gg=&pp->groups[i];
+        float d=revolt_group_deficit(gg, drift, crown,
                                      re->food_sat, re->society_sat, tax_pressure, re->coercion)
-              + ethos_coup_boost(&pp->groups[i], cf, ct);
+              + ethos_coup_boost(gg, cf, ct);
+        /* grief de FOI du GROUPE : un porteur de foi dissidente prend la tête À MESURE qu'il est
+         * mal intégré (le réfugié aigri mène ; la minorité établie reste sous le seuil — les Juifs). */
+        int gf=group_carried_faith(econ, gg, region);
+        if (gf>=0 && gf!=sfaith0 && !religion_region_stabilized(region))
+            d += FAITH_LEAD * (1.f - clampf(gg->integration,0.f,1.f));
         if (d>1.f) d=1.f;
         if (d>wd){ wd=d; worst=i; }
     }
@@ -238,6 +287,26 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
      * faction saisit l'État pour imposer son éthos. Sinon, la nature usuelle (sécession
      * d'une nation conquise, jacquerie de classe). */
     rb->kind = would_coup ? REBEL_COUP : revolt_classify(g, drift, crown);
+    /* DIMENSION FOI : une province de foi DISSIDENTE (≠ foi d'État, non calmée par un
+     * Moine) se soulève POUR SA FOI — que ce fût, sans la foi, une jacquerie (CLASS) OU
+     * une sécession (une marche conquise). Schisme de la MÊME racine → hérésie (Réforme
+     * intérieure) ; racine ÉTRANGÈRE → zélote (guerre sainte). On ne touche PAS le COUP
+     * (affaire de palais, orthogonale à la foi). La NATURE culturelle est préservée à la
+     * RÉSOLUTION : un peuple étranger, vainqueur, SÉCÈDE en État coreligionnaire (révolte
+     * de Hollande) ; un peuple intégré obtient la TOLÉRANCE (paix d'Augsbourg). */
+    if (rb->kind==REBEL_CLASS || rb->kind==REBEL_SECESSION){
+        /* La foi du GROUPE soulevé : un NATIF suit sa région (dissidence endogène, DÉRIVE) ;
+         * une DIASPORA (réfugié/migrant/soumis/déporté) PORTE la foi de son foyer d'origine
+         * (home_reg) — un réfugié protestant dans une région catholique reste un dissident de
+         * foi. Un migrant INTÉGRÉ & paisible (les Juifs, la diaspora établie) n'atteint pas le
+         * seuil d'allumage (W_UNINTEG bas ⇒ déficit sous IGNITE) : il est PERSÉCUTÉ, pas
+         * rebelle. Seul le nouvel arrivant AIGRI (réfugié déraciné, pauvre) se soulève. */
+        int gfaith = group_carried_faith(econ, g, region);
+        int sfaith=(owner<SCPS_MAX_COUNTRY)?religion_of_country(owner):-1;
+        if (gfaith>=0 && gfaith!=sfaith && !religion_region_stabilized(region))
+            rb->kind = (sfaith>=0 && religion_root_of(gfaith)==religion_root_of(sfaith))
+                     ? REBEL_HERESIE : REBEL_ZELOTE;
+    }
     rb->heritage=g->heritage; rb->klass=g->klass;
     rb->culture=group_culture_effective(g, drift);
     rb->drift_id=g->drift_id; rb->mobilized=mob; rb->deficit=wd;
@@ -251,7 +320,12 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     else { take-=pe->strata[CLASS_LABORER].pop; pe->strata[CLASS_LABORER].pop=0.f;
            pe->strata[CLASS_BOURGEOIS].pop=fmaxf(0.f, pe->strata[CLASS_BOURGEOIS].pop-take); }
 
+    /* PHASE 1 — la révolte APPARAÎT ⇒ l'empire entre en CD empire-wide (~5 ans) : plus aucune
+     * autre révolte dans ce pays avant l'expiration (une à la fois, fin du spam). */
+    if (owner<SCPS_MAX_COUNTRY) g_revolt_grace[owner] = REVOLT_GRACE_DAYS;
     rs->n_ignited++;
+    if (rb->kind==REBEL_HERESIE)      rs->n_heresy++;   /* dimension foi : schisme intérieur */
+    else if (rb->kind==REBEL_ZELOTE)  rs->n_zelote++;   /* dimension foi : culte étranger */
     return slot;
 }
 
@@ -266,7 +340,8 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
     char  cdone[SCPS_MAX_COUNTRY]; memset(cdone,0,sizeof cdone);
     /* §C2 : le répit post-coup s'écoule (par pays). */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ if (g_coup_grace[c]>0.f) g_coup_grace[c]-=(float)days;
-                                          if (g_concede_cd[c]>0.f) g_concede_cd[c]-=(float)days; }  /* G0.2 */
+                                          if (g_concede_cd[c]>0.f) g_concede_cd[c]-=(float)days;      /* G0.2 */
+                                          if (g_revolt_grace[c]>0.f) g_revolt_grace[c]-=(float)days; } /* PHASE 1 : CD empire-wide */
     /* SUREXTENSION : on compte les régions par pays UNE fois (cache O(n)). */
     int owned[SCPS_MAX_COUNTRY]; memset(owned,0,sizeof owned);
     for (int r=0;r<econ->n_regions;r++){ int o=econ->region[r].owner;
@@ -282,7 +357,7 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
         int rpid=econ_region_rep_province(econ, r);
         ProvinceEconomy *pe=(rpid>=0 && rpid<econ->n_prov) ? &econ->prov[rpid] : NULL;
         if (re->owner<0 || !re->culture.settled || !pe || pe->pop.n_groups<=0){
-            rs->desperation_days[r]=0.f; continue;
+            rs->desperation_days[r]=0.f; rs->revolt_cooldown[r]=0.f; continue;
         }
         const PopCulture *crown=crown_of(w,econ,re->owner);
         int o=re->owner; float ct=0.f; EthosFaction cf=FAC_COMMUNAUTAIRE;
@@ -329,10 +404,26 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
                 if (unserved>0.f) worst = clampf(worst + (unserved/(float)rpop)*K_CAP_UNREST, 0.f, 1.f);
             }
         }
-        /* le séparatisme post-conquête désespère la province « quoi qu'il arrive » */
-        if (worst>=SCAN_DEFICIT || revanchism_factor(rs,r)>0.f) rs->desperation_days[r] += (float)days;
-        else rs->desperation_days[r] = fmaxf(0.f, rs->desperation_days[r]-(float)days);
-        if (rs->desperation_days[r] >= (float)SCAN_SUSTAIN){
+        /* GRIEF DE FOI : une province de foi DISSIDENTE (≠ foi d'État, non calmée par
+         * un Moine) gronde pour SA religion → l'hérésie/le zèle deviennent prompts. */
+        {
+            int rf=religion_of_region(r);
+            int sf=(o>=0&&o<SCPS_MAX_COUNTRY)?religion_of_country(o):-1;
+            if (rf>=0 && rf!=sf && !religion_region_stabilized(r))
+                worst = clampf(worst + FAITH_UNREST, 0.f, 1.f);
+        }
+        /* DEUX compteurs SÉPARÉS (chacun un sens UNIQUE, plus de champ à double sémantique) :
+         *  · `desperation_days` = la misère SOUTENUE (≥0) : monte en crise, retombe au calme ;
+         *  · `revolt_cooldown`  = le RÉPIT post-révolte (≥0, jours restants) : décrémenté par le
+         *    TEMPS, il BLOQUE le ré-allumage tant qu'il court. Une province tout juste écrasée ne se
+         *    rallume donc pas avant l'expiration du répit (fin de la boucle écrasement/rallumage). */
+        if (rs->revolt_cooldown[r] > 0.f)
+            rs->revolt_cooldown[r] = fmaxf(0.f, rs->revolt_cooldown[r] - (float)days);   /* le répit se purge */
+        if (worst>=SCAN_DEFICIT || revanchism_factor(rs,r)>0.f)
+            rs->desperation_days[r] += (float)days;                                       /* crise : la misère s'accumule */
+        else
+            rs->desperation_days[r] = fmaxf(0.f, rs->desperation_days[r]-(float)days);    /* calme : la misère retombe */
+        if (rs->desperation_days[r] >= (float)SCAN_SUSTAIN && rs->revolt_cooldown[r] <= 0.f){
             if (revolt_ignite(rs, w, econ, drift, r, re->over_tax)>=0)
                 rs->desperation_days[r]=0.f;       /* la colère s'est faite acte */
         }
@@ -432,7 +523,9 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
 
         /* ── Forces en présence (en équivalents-combattants) ────────────── */
         float zeal = (rb->kind==REBEL_COUP)?ZEAL_COUP
-                   : (rb->kind==REBEL_SECESSION)?ZEAL_SECEDE : ZEAL_CLASS;
+                   : (rb->kind==REBEL_SECESSION)?ZEAL_SECEDE
+                   : (rb->kind==REBEL_HERESIE)?ZEAL_HERESIE
+                   : (rb->kind==REBEL_ZELOTE)?ZEAL_ZELOTE : ZEAL_CLASS;
         float rebel = (float)rb->mobilized * zeal;
         /* Séparatisme à durée CÂBLÉE : l'élan d'indépendance ∝ fraîcheur de la
          * conquête (plein à chaud, nul une fois la plaie refermée). */
@@ -471,6 +564,12 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
             pe->coercion=1.f;                                   /* loi martiale durable */
             if (rb->region<SCPS_MAX_REG) wl->L[rb->region]*=0.75f;  /* régner par la peur ronge L */
             rb->outcome=OUT_CRUSHED;
+            /* CONTRE-RÉFORME : une révolte de FOI écrasée est RECONVERTIE de force à la
+             * foi d'État — la couronne impose l'orthodoxie sur les cendres du schisme. */
+            if (rb->kind==REBEL_HERESIE || rb->kind==REBEL_ZELOTE){
+                int sf=(rb->owner>=0&&rb->owner<SCPS_MAX_COUNTRY)?religion_of_country(rb->owner):-1;
+                if (sf>=0) religion_set_region(econ, rb->region, sf);
+            }
         } else {
             /* ── LES REBELLES L'EMPORTENT : le verdict suit leur nature ───── */
             switch (rb->kind){
@@ -498,6 +597,39 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                     if (rb->owner>=0 && rb->owner<SCPS_MAX_COUNTRY)
                         g_coup_grace[rb->owner]=COUP_GRACE_DAYS;   /* §C2 : répit du nouveau régime */
                     rs->n_coup++; rb->outcome=OUT_COUP;
+                    break; }
+                case REBEL_HERESIE:
+                case REBEL_ZELOTE: {
+                    /* VICTOIRE d'une révolte de FOI — l'issue suit la NATURE culturelle :
+                     *  · peuple culturellement ÉTRANGER (nation conquise) → la foi ET la
+                     *    terre partent : SÉCESSION en État CORELIGIONNAIRE (révolte de
+                     *    Hollande — la guerre de religion devient guerre d'indépendance) ;
+                     *  · peuple INTÉGRÉ (même culture, foi dissidente) → paix d'Augsbourg :
+                     *    la province GARDE sa foi (déjà posée) et RESTE ; la L royale s'érode
+                     *    d'avoir échoué à imposer l'orthodoxie (un Dieu ÉTRANGER humilie plus). */
+                    const PopCulture *crown = crown_of(w, econ, rb->owner);
+                    /* une DIASPORA (réfugié/migrant) n'a AUCUNE revendication TERRITORIALE : sa
+                     * victoire de foi = TOLÉRANCE, jamais sécession. Seul un peuple NATIF étranger
+                     * (nation conquise sur SA terre) sécède en État coreligionnaire (Hollande). */
+                    int rgi = find_group(&pe->pop, rb->drift_id);
+                    bool is_dia = (rgi>=0) && pe->pop.groups[rgi].diaspora;
+                    bool separatist = crown && !is_dia && (content_dist(&rb->culture, crown) >= SECEDE_D);
+                    if (separatist){
+                        int nid=spawn_secession(w, econ, wl, rb);
+                        rb->spawned=nid; rs->last_spawned=nid;
+                        if (nid>=0){ rs->n_seceded++; rb->outcome=OUT_SECEDED; }
+                        else { demobilize(econ, rb, rb->mobilized); rb->outcome=OUT_CONCESSION; }
+                    } else {
+                        float lhit = (rb->kind==REBEL_ZELOTE)?1.5f:1.0f;
+                        if (rb->region<SCPS_MAX_REG)
+                            wl->L[rb->region]=clampf(wl->L[rb->region]-lhit,0.f,10.f);
+                        pe->satisfaction=clampf(pe->satisfaction+0.15f,0.f,1.f);
+                        pe->coercion=fmaxf(0.f, pe->coercion-0.3f);
+                        { int gi=find_group(&pe->pop, rb->drift_id);
+                          if (gi>=0) pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base-20.f,0.f,100.f); }
+                        demobilize(econ, rb, rb->mobilized);
+                        rs->n_concession++; rb->outcome=OUT_CONCESSION;   /* la couronne CÈDE sur la foi */
+                    }
                     break; }
                 default: {  /* REBEL_CLASS : la couronne CÈDE — SI elle peut (G0.2) */
                     int cid=rb->owner;
@@ -545,8 +677,10 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
         }
         /* après TOUT soulèvement résolu, la province est épuisée : elle se tait
          * quelques années (le grief doit se reconstruire) — fin des re-flambées. */
-        if (rb->region<SCPS_MAX_REG && rb->outcome!=OUT_SECEDED)
-            rs->desperation_days[rb->region] = -REVOLT_COOLDOWN;
+        if (rb->region<SCPS_MAX_REG && rb->outcome!=OUT_SECEDED){
+            rs->revolt_cooldown[rb->region]  = (float)REVOLT_COOLDOWN;  /* le RÉPIT court (jours restants) */
+            rs->desperation_days[rb->region]  = 0.f;                    /* la colère dépensée : la misère repart de 0 */
+        }
         /* CICATRICE : la province convulsée se développe mal quelques années
          * (−50 % croissance & production) — la révolte laisse une plaie économique.
          * RE-KEY PROVINCE : `pe` pointe TOUJOURS la même province représentative
@@ -569,6 +703,8 @@ const char *revolt_kind_word(RebelKind k){
     switch(k){ case REBEL_SECESSION: return "sécession";
                case REBEL_COUP:      return "coup d'État";
                case REBEL_CLASS:     return "jacquerie";
+               case REBEL_HERESIE:   return "hérésie";
+               case REBEL_ZELOTE:    return "zèle religieux";
                default:              return "agitation"; }
 }
 const char *revolt_outcome_word(int outcome){

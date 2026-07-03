@@ -1433,6 +1433,42 @@
   200 ans × 2 graines** STABLE (churn dynamique de groupes byte-identique au long horizon) · demography_demo
   +3. Tunables registre J (7 : `REFUGEE_FLEE_SCAR` 0.50 · `_FRAC` 0.03 · `_MIN` 30 · `_HOME_CALM` 0.25 ·
   `_RETURN_PULL` 0.12 · `MIGRANT_RETURN_PULL` 0.015 · `REFUGEE_SETTLE_INTEG` 0.90).
+- **RÉVOLTE REDESIGN + FOI PAR GROUPE (2026-07-04) — 3 étages** : les triggers de révolte
+  redeviennent empire/culture/faction/religion-wide (« pas région toutes les 5 min ») + la FOI
+  descend au niveau du GROUPE (l'insight « simuler les pops individuellement »).
+  **Phase 1 — le SPIRAL de révolte TUÉ** : (1) CD **empire-wide** (`g_revolt_grace`, 5 ans)
+  généralise le patron coup-only à TOUTE révolte — une à la fois par empire (« on n'encaisse pas un
+  printemps arabe par jour »). (2) SEUIL de pop (`REVOLT_MIN_POP` 3000) : un hameau n'insurge pas.
+  (3) **Le vrai bug** : le cooldown surchargeait `desperation_days` (sentinel négatif effacé au
+  moindre calme → boucle écrasement→rallumage → millions de morts vers l'an 105) — champ SÉPARÉ
+  `revolt_cooldown[SCPS_MAX_REG]` (⚠ SAVE **v52→53**). (4) l'IA développe ses PÉRIPHÉRIES
+  (`ai_neediest_civic_region`) : institutions à la région la plus démunie, pas qu'à la capitale.
+  ⊕ seed 9 morts de révolte **2 084 183 → ~150/sim** (÷10 000+), satisfaction 80-83 %, hégémon
+  mortel 5/5. **Phase 2 — la RELIGION, dimension de révolte** : `REBEL_HERESIE` (schisme de la foi
+  d'État, MÊME racine) vs `REBEL_ZELOTE` (foi ÉTRANGÈRE) — calibrés par le MISMATCH culture↔foi
+  (Rome catholique → Germanie protestante ; → Grèce orthodoxe). `RSE_DERIVE` implémenté (la Réforme :
+  une marche culturellement distante schisme ; `religion_schism_eligible(w,econ,wl,cid)` + porte DRY
+  `region_faith_drifts`, dosée `AI_DERIVE_ODDS`). Victoire → sécession coreligionnaire (diaspora sans
+  terre = TOLÉRANCE ; natif étranger = Hollande) ; écrasement → Contre-Réforme (reconversion). Plafond
+  schismes 2→5 (diversité riche). Compteurs `n_heresy`/`n_zelote` (dans v53). **FOI PAR GROUPE (le
+  refactor)** : `PopGroup.faith` (id de religion) — la foi vit sur le GROUPE comme la culture/classe ;
+  `religion_of_region` devient le culte DOMINANT (cache dérivé des groupes, `religion_refresh_all`
+  post-démo). La migration la PORTE (struct copy `ng=*src` : un réfugié reste protestant en terre
+  catholique). Fondation/mutations (`inherit`/`set_region`/`fracture`/missionnaire/Contre-Réforme)
+  retargetées sur les GROUPES natifs (`region_set_native_faith` ; les diasporas GARDENT leur foi
+  portée). 4 sites genèse `faith=-1` (piège memset 0 = religion 0) ; guard de borne-registre dans
+  `group_carried_faith`. ⚠ SAVE **v53→54** (WorldEconomy blob grandit) ; `religion_demo` couplé econ
+  (le cache dérivé). ⊕ La religion devient une dimension VIVE : le **ZÈLE** fire des réfugiés portant
+  leur foi (seed 3 : 26 soulèvements/5 sims), filtré par l'INTÉGRATION (la minorité ÉTABLIE reste
+  paisible — « les Juifs subissent les pogroms, ne se rebellent pas » ; seul le nouvel arrivant AIGRI
+  se lève). L'**HÉRÉSIE** (même racine) reste RARE (minorités same-root peu nombreuses + sous le seuil
+  de misère ; `AI_DERIVE_ODDS` ne bouge que le timing, pas le total) — fidèle à l'Histoire (la guerre
+  de Trente Ans fut l'EXCEPTION). ⚠ **RE-BASELINE golden** (5/5 graines — la foi mord dès l'an-0) ·
+  `determinism` STABLE (save/reload byte-identique v54) · bancs **37 runnable verts** (3 KO Windows
+  pré-existants : intertrade `setenv`, campaign/warhost stack) · stabilité SAINE (seeds 9/3/11 :
+  134-352 morts/sim, satisfaction 79-89 %, hégémon mortel 5/5). Tunables : `AI_DERIVE_ODDS` 8 ·
+  `FAITH_LEAD` 0.20 · `FAITH_UNREST` 0.22. À VENIR (Phase 3) : rebelles = ARMÉES avec war-score
+  (+ journal « Rebelles de X », soutien diplo aux rebelles, dé-doublonner les 2 systèmes de révolte).
 
 ## Disciplines non négociables
 

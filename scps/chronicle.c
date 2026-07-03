@@ -333,9 +333,11 @@ int main(int argc, char **argv){
     /* Agrégats sur toutes les sims */
     long tot_wars=0, tot_absorbed=0, tot_emerged=0, tot_peakrev=0, tot_ages=0, tot_conq=0;
     long tot_ignited=0, tot_seceded=0, tot_coup=0, tot_concession=0, tot_crushed=0, tot_revdead=0;
+    long tot_heresy=0, tot_zelote=0;   /* dimension FOI : schismes intérieurs vs cultes étrangers */
     long tot_techs=0, tot_faustian=0, tot_campaign=0, tot_alliances=0;   /* §D : pactes actifs */
     long tot_sync=0, tot_sync_distinct=0;   /* §syncrétique : nœuds à porte culturelle + dispersion */
     long tot_relig_roots=0, tot_relig_schisms=0, tot_relig_faith=0, tot_relig_minority=0;   /* RELIGION : foi émergente */
+    long tot_min_her=0, tot_min_for=0;   /* DIAG : minorités same-root (hérésie-éligible) vs foreign (zélote) */
     long tot_tree_pct=0; int tot_tree_sims=0;   /* §A : fraction d'arbre déverrouillée (le coût force les choix) */
     long tot_reloc=0;   /* §reloc : ensemencements de pop pour combler une pénurie */
     long tot_repress=0, tot_assim=0, tot_purge=0, tot_purge_dead=0;       /* leviers intérieurs */
@@ -1160,13 +1162,17 @@ int main(int argc, char **argv){
         tot_conq += conq_prov;
         tot_ignited += s.rs->n_ignited; tot_seceded += s.rs->n_seceded; tot_coup += s.rs->n_coup;
         tot_concession += s.rs->n_concession; tot_crushed += s.rs->n_crushed; tot_revdead += s.rs->pop_lost;
+        tot_heresy += s.rs->n_heresy; tot_zelote += s.rs->n_zelote;   /* dimension foi */
         /* RELIGION : foi(s) fondée(s) (racines) + schismes + pays fidèles + régions minoritaires. */
         { int rr_roots = religion_root_count();
           tot_relig_roots   += rr_roots;
           tot_relig_schisms += (g_religion_count - rr_roots);
           for (int c=0;c<w->n_countries;c++) if (religion_of_country(c)>=0) tot_relig_faith++;
           for (int r=0;r<s.econ->n_regions;r++){ int rg=religion_of_region(r), o=s.econ->region[r].owner;
-              if (rg>=0 && o>=0 && rg!=religion_of_country(o)) tot_relig_minority++; } }
+              if (rg>=0 && o>=0 && rg!=religion_of_country(o)){ tot_relig_minority++;
+                  int sf=religion_of_country(o);
+                  if (sf>=0 && religion_root_of(rg)==religion_root_of(sf)) tot_min_her++; else tot_min_for++;
+              } } }
         if (age_year[AGE_ORDRE_FER]>=0)   worlds_with_ironorder++;
         if (age_year[AGE_SOULEVEMENTS]>=0) worlds_with_uprising++;
         /* A5 — L'HÉGÉMON MORTEL : ce monde a-t-il vu un grand empire (≥10 rég)
@@ -1277,9 +1283,10 @@ int main(int argc, char **argv){
            tot_mchoc, tot_mpour, tot_mchoc? (double)tot_mpour/tot_mchoc:0.0);
     printf("   syncrétisme culturel ........ %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus heritage ; la diffusion par contact DIVERGE)\n",
            (double)tot_sync/(nsims>0?nsims:1), (double)tot_sync_distinct/(nsims>0?nsims:1));
-    printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (monde ATHÉE au départ ; racines ≤ ⌈empires/3⌉ genèse · ≤ 2 schismes/racine)\n",
+    printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (dont same-root/hérésie %.1f · foreign/zélote %.1f) (monde ATHÉE au départ ; racines ≤ ⌈empires/3⌉ genèse · ≤ 2 schismes/racine)\n",
            (double)tot_relig_roots/(nsims>0?nsims:1), (double)tot_relig_schisms/(nsims>0?nsims:1),
-           (double)tot_relig_faith/(nsims>0?nsims:1), (double)tot_relig_minority/(nsims>0?nsims:1));
+           (double)tot_relig_faith/(nsims>0?nsims:1), (double)tot_relig_minority/(nsims>0?nsims:1),
+           (double)tot_min_her/(nsims>0?nsims:1), (double)tot_min_for/(nsims>0?nsims:1));
     printf("   régions réduites (campagne) . %ld   (moy. %.1f/sim ; armées de terrain, hors conquête abstraite)\n", tot_campaign, (double)tot_campaign/nsims);
     printf("   la mer ...................... %ld coque(s) · %.0f fournitures consommées (NE doit plus être zéro) · %ld traversée(s) (%.0f j moy.) · %ld route(s) maritime(s) · %ld colonie(s) outre-mer\n",
            tot_hulls, tot_supplies, tot_sails, (tot_sails>0)?tot_saildays/(double)tot_sails:0.0, tot_searoutes, tot_colonies_om);
@@ -1290,8 +1297,8 @@ int main(int argc, char **argv){
     printf("   l'interception .............. %ld convoi(s) coulé(s) · %ld paquet(s) noyés (le transport sans escorte est une PROIE)\n",
            tot_intercepts, tot_drowned);
     printf("   pic de révolte moyen ........ %.1f pays\n", (double)tot_peakrev/nsims);
-    printf("   soulèvements incarnés ....... %ld allumés → %ld sécession(s) · %ld coup(s) · %ld concession(s) · %ld écrasé(s)\n",
-           tot_ignited, tot_seceded, tot_coup, tot_concession, tot_crushed);
+    printf("   soulèvements incarnés ....... %ld allumés → %ld sécession(s) · %ld coup(s) · %ld concession(s) · %ld écrasé(s)  | dont FOI : %ld hérésie(s) · %ld zèle(s)\n",
+           tot_ignited, tot_seceded, tot_coup, tot_concession, tot_crushed, tot_heresy, tot_zelote);
     printf("   corruption (le prix des concessions) : %d/%d sims avec ≥1 polity capturée · %.1f capturée(s)/sim · pire-corr moy %.0f/100\n",
            worlds_with_capture, nsims, (double)tot_captured/nsims, (double)tot_worstcorr/nsims);
     printf("   morts au combat (révoltes) .. %ld   (moy. %.0f/sim)\n", tot_revdead, (double)tot_revdead/nsims);

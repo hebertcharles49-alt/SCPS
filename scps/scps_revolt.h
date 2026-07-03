@@ -34,7 +34,13 @@ typedef enum {
     REBEL_NONE = 0,
     REBEL_CLASS,        /* une classe réclame des concessions (jacquerie)      */
     REBEL_SECESSION,    /* une nation conquise/étrangère se détache → nouveau pays */
-    REBEL_COUP          /* l'élite renverse la couronne (affaire de palais)    */
+    REBEL_COUP,         /* l'élite renverse la couronne (affaire de palais)    */
+    REBEL_HERESIE,      /* SCHISME de la foi d'État (même racine) : Réforme intérieure
+                         * — écrasé → Contre-Réforme (reconverti), vainqueur → paix
+                         * d'Augsbourg (garde sa foi schismatique, L royale ↓) */
+    REBEL_ZELOTE        /* foi EXTÉRIEURE (racine ≠ celle de l'État) : guerre sainte —
+                         * zélote plus ardent (ZEAL↑), même issue foi (reconv./tolérance)
+                         * mais l'humiliation d'un Dieu ÉTRANGER creuse plus la L royale */
 } RebelKind;
 
 /* ---- Verdict d'un soulèvement (rempli à la résolution) ----------------- */
@@ -69,12 +75,17 @@ typedef struct {
 typedef struct {
     Rebellion list[REVOLT_MAX];
     int       count;             /* slots actifs (liste compactée) */
-    float     desperation_days[SCPS_MAX_REG];  /* misère SOUTENUE par région → allumage */
+    float     desperation_days[SCPS_MAX_REG];  /* misère SOUTENUE par région → allumage (≥0, sens UNIQUE) */
+    float     revolt_cooldown[SCPS_MAX_REG];   /* RÉPIT post-révolte (jours restants, ≥0) : BLOQUE le
+                                                * ré-allumage tant qu'il n'est pas purgé → pas de boucle
+                                                * écrasement/rallumage. Séparé de desperation_days pour ne
+                                                * pas surcharger un même champ de deux sémantiques (l'ancien
+                                                * sentinel négatif était effacé au moindre calme → bug). */
     float     revanchism_days[SCPS_MAX_REG];   /* SÉPARATISME post-conquête (≈10 ans) :
                                                 * une province fraîchement soumise peut se
                                                 * soulever pour l'indépendance « quoi qu'il arrive » */
     /* compteurs de chronique (cumul sur la partie) */
-    int       n_ignited, n_crushed, n_seceded, n_concession, n_coup;
+    int       n_ignited, n_crushed, n_seceded, n_concession, n_coup, n_heresy, n_zelote;
     long      pop_lost;          /* morts au total */
     int       last_spawned;      /* dernier pays né (-1) — pour brancher l'IA */
 } RevoltState;

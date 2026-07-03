@@ -73,6 +73,10 @@
     X(AI_SAVOIR_K,            2.5f) \
     /* RELIGION — seuil de zèle : w_faith ≥ ce seuil ⇒ crédo prosélyte FONDE sa foi proactivement */ \
     X(AI_FAITH_ZEAL,          0.5f) \
+    /* RELIGION — la DÉRIVE (Réforme) : 1 chance sur N par tour d'empire éligible (une marche
+     * culturellement distante dérive vers un schisme adapté à sa culture) → dose le rythme
+     * (la Réforme MÛRIT sur des décennies, elle n'éclate pas d'un bloc). Plus haut = plus rare. */ \
+    X(AI_DERIVE_ODDS,         8.0f) \
     /* PRÉVISION DIPLO — frein à la menace ENTRANTE : war_risk > GATE ⇒ on freine l'offensive de BRAKE×risk */ \
     X(AI_THREAT_GATE,         0.55f) \
     X(AI_THREAT_BRAKE,        0.5f) \
@@ -105,8 +109,11 @@
      * voisine la moins ravagée. HOME_CALM : foyer sous ce seuil ⇒ retour possible. RETURN_PULL :
      * part du réfugié qui rentre/an (× (1−intégration) : le fixé reste) ; MIGRANT_RETURN ténu (le
      * migrant économique respire aussi). SETTLE_INTEG : intégré au-delà ⇒ le réfugié se FIXE.
-     * ⚠ FLEE_FRAC calé BAS (0.03) : au-delà de ~0.04 le flot de réfugiés RESTIFS bascule les hôtes
-     * dans le bassin BAS de satisfaction (monde bistable) — 0.03 respire sans déstabiliser. */ \
+     * FLEE_FRAC (0.03) : la fuite déplace cette part/an d'un groupe d'une région ravagée. Calé BAS —
+     * les réfugiés IGNORENT la capacité d'accueil (migration_move n'a pas de plafond eff_cap), donc un
+     * volume élevé sous stress SOUTENU (cataclysme : toutes régions ravagées longtemps) fait ENFLER une
+     * destination au-delà du soutenable → révolte massive → runaway (millions de morts). 0.03 = respire
+     * sans emballer ; l'instabilité conditionnelle vient de l'ABSORPTION (distance × institutions). */ \
     X(REFUGEE_FLEE_SCAR,     0.50f) \
     X(REFUGEE_FLEE_FRAC,     0.03f) \
     X(REFUGEE_FLEE_MIN,      30.0f) \
@@ -114,6 +121,17 @@
     X(REFUGEE_RETURN_PULL,   0.12f) \
     X(MIGRANT_RETURN_PULL,   0.015f) \
     X(REFUGEE_SETTLE_INTEG,  0.90f) \
+    /* ABSORPTION DU DÉPLACÉ — les INSTITUTIONS de l'hôte accélèrent l'intégration. ASSIM_K : la
+     * vitesse d'intégration lit les institutions RÉELLES (build.K_inst) au lieu d'un K plat —
+     * K_eff = K + (K_inst−REF)·AMP → institutions solides (école/service/état) assimilent VITE
+     * (Italiens/Polonais absorbés), institutions faibles assimilent LENTEMENT (minorité restive). */ \
+    X(ASSIM_K_INST_REF,      1.5f) \
+    X(ASSIM_K_INST_AMP,      4.0f) \
+    /* ATTRACTIVITÉ MIGRATOIRE — un empire ULTRA-BÂTI + ULTRA-PROSPÈRE est un AIMANT : attractivité =
+     * prospérité + INST_W·bâti ; le flux de migration ÉCHELONNE avec le gradient d'attractivité
+     * (jusqu'à PULL_MAX× la base) au lieu d'un seuil binaire — « migration très élevée » pour l'ultra. */ \
+    X(MIG_ATTRACT_INST_W,    1.0f) \
+    X(MIG_PULL_MAX,          5.0f) \
     /* REMISE DE PRIX PAR DIFFUSION (métabolisation) — une tech possédée par TOUS les autres
      * empires coûte −MAX % (le savoir répandu se (re)découvre plus vite ; catch-up des retardataires) */ \
     X(AI_TECH_DIFFUSE_MAX,    0.40f) \
