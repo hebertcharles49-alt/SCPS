@@ -9,6 +9,7 @@ extends Node2D
 
 const UIKit = preload("res://ui/uikit.gd")
 const VKit = preload("res://ui/vkit.gd")
+const HeraldryK = preload("res://ui/heraldry.gd")
 const PHASE_MARCH := 1
 const PHASE_SIEGE := 2
 const PHASE_BATTLE := 3
@@ -1928,7 +1929,9 @@ func _draw_iso(w, mv: Node2D) -> void:
 			if zoom >= 4.0:
 				_draw_banner(w, r, ip, zoom, clampf((zoom - 4.0) / 1.2, 0.0, 1.0))
 
-	# ── ARMÉES : jeton vectoriel (losange + anneau de phase) + ligne de marche. ──
+	# ── ARMÉES : PION DE PLATEAU (planche 32 — la figurine d'étain posée SUR la
+	#    table, drapeau teinté au pays, la POSE dit la phase) + ligne de marche.
+	#    Ombre de contact = la même pièce en silhouette, décalée SE (front32). ──
 	for c in range(w.country_count()):
 		var a: Dictionary = w.army_info(c)
 		if not bool(a.get("active", false)):
@@ -1940,22 +1943,32 @@ func _draw_iso(w, mv: Node2D) -> void:
 		if rctr.x < 0:
 			continue
 		var ctr: Vector2 = mv.iso_pos(rctr.x, rctr.y)
-		var col := _country_color(c)
 		var phase: int = a.get("phase_id", 0)
 		var dest: int = a.get("dest", -1)
 		if dest >= 0 and dest != reg:
 			var dw: Vector2 = w.region_centroid(dest)
 			if dw.x >= 0:
 				draw_line(ctr, mv.iso_pos(dw.x, dw.y), Color(_phase_color(phase), 0.7), 1.4 / zoom)
-		var s := 5.0 / zoom
-		draw_circle(ctr, s + _w(zoom, 0.45, 1.4, 2.6), Color(_phase_color(phase), 0.9))  # anneau de phase : respire à l'approche, borné
-		var diamond := PackedVector2Array([
-			ctr + Vector2(0, -s), ctr + Vector2(s, 0), ctr + Vector2(0, s), ctr + Vector2(-s, 0)])
-		draw_colored_polygon(diamond, col)
-		var bord := PackedVector2Array([
-			ctr + Vector2(0, -s), ctr + Vector2(s, 0), ctr + Vector2(0, s),
-			ctr + Vector2(-s, 0), ctr + Vector2(0, -s)])
-		draw_polyline(bord, Color(0.12, 0.09, 0.06, 0.9), 1.2 / zoom, true)
+		var pt: Texture2D = HeraldryK.pion(phase, c)
+		if pt != null:
+			var s := _w(zoom, 7.0, 34.0, 74.0)
+			var r := Rect2(ctr - Vector2(s * 0.5, s * 0.80), Vector2(s, s))
+			draw_texture_rect(pt, Rect2(r.position + Vector2(s * 0.05, s * 0.04), r.size),
+				false, Color(0.05, 0.03, 0.02, 0.32))       # ombre de contact SE
+			draw_texture_rect(pt, r, false)
+			if phase == PHASE_BATTLE:
+				var mk: Texture2D = HeraldryK.marker("battle")
+				if mk != null:
+					var ms := s * 0.42
+					draw_texture_rect(mk, Rect2(ctr + Vector2(s * 0.30, -s * 0.30), Vector2(ms, ms)), false)
+		else:
+			# repli vectoriel (pièce absente) : l'ancien losange teinté
+			var col := _country_color(c)
+			var sv := 5.0 / zoom
+			draw_circle(ctr, sv + _w(zoom, 0.45, 1.4, 2.6), Color(_phase_color(phase), 0.9))
+			var diamond := PackedVector2Array([
+				ctr + Vector2(0, -sv), ctr + Vector2(sv, 0), ctr + Vector2(0, sv), ctr + Vector2(-sv, 0)])
+			draw_colored_polygon(diamond, col)
 
 	# ── NOMS D'EMPIRE : SUIVENT LA FORME du pays (axe principal par ACP des centroïdes projetés →
 	#    Chili vertical, Russie en travers de la Sibérie), à l'encre, taille ÉCRAN constante. ──

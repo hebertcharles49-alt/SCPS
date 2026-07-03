@@ -26,6 +26,8 @@ func _ready() -> void:
 	get_window().theme = UiTheme.build()
 	UiTheme.attach_feedback(get_tree())
 	_setup_cursor()
+	# les ARMOIRIES dérivent des faits du monde → le cache se vide à chaque genèse
+	Sim.generated.connect(func(): load("res://ui/heraldry.gd").reset())
 
 	# la carte (Node2D, caméra dedans)
 	var map_script := load("res://map/map_view.gd")

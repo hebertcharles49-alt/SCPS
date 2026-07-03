@@ -16,6 +16,7 @@ var _cid := -1
 var _btns := {}          ## verbe → Button
 var _panel: PanelContainer
 var _head: Label
+var _arms_rect: TextureRect   ## les ARMES du pays cible (héraldique dérivée)
 var _status: Label
 var _opinion_bar: Rect2
 var _sum_lbl: Label
@@ -46,6 +47,11 @@ func _build() -> void:
 
 	var hrow := HBoxContainer.new()
 	col.add_child(hrow)
+	_arms_rect = TextureRect.new()
+	_arms_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_arms_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_arms_rect.custom_minimum_size = Vector2(34, 34)
+	hrow.add_child(_arms_rect)
 	_head = Label.new()
 	_head.add_theme_font_size_override("font_size", 18)
 	_head.add_theme_color_override("font_color", Color(0.86, 0.70, 0.42))
@@ -103,6 +109,8 @@ func open_country(cid: int) -> void:
 	_cid = cid
 	visible = true
 	_flash.text = ""
+	if _arms_rect != null:
+		_arms_rect.texture = load("res://ui/heraldry.gd").arms(cid)
 	_refresh()
 	_layout()
 

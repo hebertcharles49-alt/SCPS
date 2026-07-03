@@ -81,11 +81,17 @@ func _draw() -> void:
 			draw_rect(Rect2(2, 2 + bh - 10 + i * 2, PW - 4.0, 2),
 				Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.18 + 0.16 * i), true)
 
-	# ── EN-TÊTE : héraldique (tour de capitale) · nom · jauge de prospérité ───
+	# ── EN-TÊTE : les ARMES du propriétaire (héraldique dérivée) · nom · prospérité ───
 	var hsz := 30.0
-	VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_GOLD)
-	VKit.fill(self, Rect2(x + 1, y + 3, hsz - 2, hsz - 2), VKit.COL_PANEL2)
-	UIKit.draw_icon(self, "capital_tower", Vector2(x + 3, y + 5), hsz - 6)
+	var owner_arms: Texture2D = null
+	if int(info.get("owner", -1)) >= 0:
+		owner_arms = load("res://ui/heraldry.gd").arms(int(info["owner"]))
+	if owner_arms != null:
+		draw_texture_rect(owner_arms, Rect2(x - 2, y - 1, hsz + 6, hsz + 6), false)
+	else:
+		VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_GOLD)
+		VKit.fill(self, Rect2(x + 1, y + 3, hsz - 2, hsz - 2), VKit.COL_PANEL2)
+		UIKit.draw_icon(self, "capital_tower", Vector2(x + 3, y + 5), hsz - 6)
 	VKit.text(self, Vector2(x + hsz + 8, y), VKit.COL_GOLD, String(info["nom"]), VKit.FS_BIG)
 	var gw := 64.0
 	var gx := PW - 16.0 - gw

@@ -59,7 +59,13 @@ func _draw() -> void:
 	var ci: Dictionary = w.country_info(me)
 	var px := 116.0
 	if bool(ci.get("valide", false)):
-		UIKit.draw_icon(self, "politics_crown", Vector2(px, cy - 2), 18); px += 22
+		# les ARMES du joueur (héraldique dérivée) — repli couronne si pièces absentes
+		var parms: Texture2D = load("res://ui/heraldry.gd").arms(me)
+		if parms != null:
+			draw_texture_rect(parms, Rect2(px - 3, cy - 6, 26, 26), false)
+		else:
+			UIKit.draw_icon(self, "politics_crown", Vector2(px, cy - 2), 18)
+		px += 24
 		var nom := String(ci["nom"])
 		VKit.text(self, Vector2(px, cy), VKit.COL_GOLD, nom); px += VKit.text_w(nom) + 20
 		UIKit.draw_icon(self, "fine_coin", Vector2(px, cy - 2), 16); px += 20
