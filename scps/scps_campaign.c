@@ -420,7 +420,15 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     float cap=tune_f("CUREE_CAP",0.22f) + tune_f("CAV_CUREE_CAP",0.40f)*cavf;  /* la cavalerie relève le plafond de curée */
     P=fminf(cap,fmaxf(0.03f,P));
     long lp=force_units(&L->force);
+    /* T5 — PLANCHER DE POURSUITE : lp*P arrondi au plus proche retombe à 0 pour toute
+     * petite armée (lp≲10, fréquent chez les cités-états/pays périphériques) → la
+     * déroute A EU LIEU (un camp cède le terrain) mais ne coûte STRICTEMENT RIEN : la
+     * bataille se rejoue à l'identique, indéfiniment (les « batailles fantômes »). La
+     * poursuite est LE mécanisme qui « fait l'essentiel des morts » (commentaire ligne
+     * ~413) : dès que P>0 et lp≥1, elle DOIT mordre au moins un paquet — pas un bonus,
+     * juste l'arrondi qui ne doit plus annuler un événement déjà résolu. */
     long to_kill=(long)((float)lp*P+0.5f);
+    if (to_kill<1 && lp>=1) to_kill=1;
     if (!L->rally_used && to_kill>=lp) to_kill=lp-1;   /* L2 : le NOYAU survit pour se rallier */
     long pursued=kill_packets(&L->force,to_kill);
     c->dead_pursuit += pursued*100;                                    /* la curée : l'essentiel des morts */
@@ -522,7 +530,9 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
             if (who>=0){
                 FieldArmy *L=&c->army[who?bt->b:bt->a], *V=&c->army[who?bt->a:bt->b];
                 long lp=force_units(&L->force);
-                long pursued=kill_packets(&L->force,(long)((float)lp*0.08f+0.5f));
+                long dc_kill=(long)((float)lp*0.08f+0.5f);
+                if (dc_kill<1 && lp>=1) dc_kill=1;   /* T5 — même plancher qu'en poursuite (cf. bt_rout) */
+                long pursued=kill_packets(&L->force,dc_kill);
                 c->dead_pursuit+=pursued*100; c->n_disengage++;
                 bt_score(dp,V->owner,L->owner,2.f);
                 L->phase=FA_IDLE; L->dest=-1; L->next=-1; L->broken_days=10;
