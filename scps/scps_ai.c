@@ -2069,7 +2069,14 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             }
         }
     }
-    a->can_enslave = ts->unlocked[TECH_ESCLAVAGE];   /* §4c : le gate de l'esclavage suit la tech */
+    /* §4c : le gate de l'esclavage. La TECH (Économie servile, signature Clanique) l'INSTITUE ;
+     * mais un éthos CONQUÉRANT (Dominateur/Honneur) déporte le vaincu par COUTUME sans l'avoir
+     * recherché — l'esclavage devient la pratique des sociétés belliqueuses (Rome, empires
+     * esclavagistes), pas d'une seule ethnie. Le VOLUME reste faible (SLAVE_FRACTION) et l'apport
+     * de savoir marginal (METAB_DIFFUSE_SLAVE) : présent, jamais massif. */
+    { Ethos eeth = ai_capital_ethos(w, econ, a->cid);
+      a->can_enslave = ts->unlocked[TECH_ESCLAVAGE]
+                    || eeth==ETHOS_DOMINATEUR || eeth==ETHOS_HONNEUR; }
     if (a->cid>=0 && a->cid<SCPS_MAX_COUNTRY) g_ai_enslave[a->cid]=a->can_enslave;  /* cache pour le règlement d'un TIERS */
     a->has_creuset = ts->unlocked[TECH_INTEGRATION]; /* §leviers : le Creuset forme mieux */
     a->has_halles  = ts->unlocked[TECH_HALLES];      /* E3 : l'IA stockeuse exige les Halles */

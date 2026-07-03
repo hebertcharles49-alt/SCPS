@@ -46,7 +46,10 @@ static inline float absf(float v){return v<0?-v:v;}
 #define REP_MIN_SCORE     20.f  /* en-deçà de ce score : match nul → aucune indemnité */
 #define REP_RATE          0.5f  /* part max du trésor du perdant exigée (à 100 de score) */
 /* ---- Esclavage (§4c) -------------------------------------------------- */
-#define SLAVE_FRACTION    0.25f         /* part de la population prise déportée en captivité */
+/* SLAVE_FRACTION : part de la population prise déportée en captivité. Tunable (registre J) —
+ * calé BAS (« taux très faible », note utilisateur) : l'esclavage APPORTE (janissaires, forge,
+ * créole) mais jamais massivement ; le volume faible × le coeff de diffusion faible (déporté)
+ * rend l'apport de savoir marginal, présent sans déséquilibrer. */
 #define SLAVE_DRIFT_BASE  800000        /* plage de drift_id réservée aux groupes d'esclaves */
 /* ---- Rancune nationale (§6) ------------------------------------------ */
 #define RANCOR_PER_LOSS   1.0f          /* grief par province PERDUE (irrédentisme) */
@@ -964,7 +967,7 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
     int gi=-1; long best=0;
     for (int i=0;i<src->n_groups;i++) if (src->groups[i].count>best){ best=src->groups[i].count; gi=i; }
     if (gi<0) return 0;                              /* province non groupée → rien à déporter ici */
-    long captives=(long)((float)src->groups[gi].count*SLAVE_FRACTION);
+    long captives=(long)((float)src->groups[gi].count*tune_f("SLAVE_FRACTION", 0.08f));
     if (captives<=0) return 0;
     /* le cœur doit DÉJÀ être représenté en groupes : injecter dans une région
      * mono-groupe (n_groups=0) masquerait sa population native (repli ignoré dès

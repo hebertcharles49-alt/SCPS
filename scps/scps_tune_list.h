@@ -92,6 +92,10 @@
      * soumis diffusent PLEIN (1.0, câblé) ; le DÉPORTÉ (esclave) diffuse FAIBLE — savoir
      * arraché, fragmenté, réprimé (janissaire/forge/créole : réel mais mineur). */ \
     X(METAB_DIFFUSE_SLAVE,   0.30f) \
+    /* SLAVE_FRACTION — part de la population prise déportée à chaque conquête d'un esclavagiste
+     * (tech Économie servile OU éthos conquérant Dominateur/Honneur). Calé BAS : l'esclavage
+     * apporte (savoir arraché) sans jamais dominer — volume faible × diffusion faible. */ \
+    X(SLAVE_FRACTION,        0.08f) \
     /* PACTE MIGRATOIRE (BRASSAGE) — l'échange passif annuel : fraction du groupe dominant qui
      * migre (×0..2 selon l'attractivité relative de la destination) + plancher anti-poussière. */ \
     X(MIG_PACT_FRAC,        0.006f) \
