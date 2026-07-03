@@ -1409,6 +1409,30 @@
   pré-existants), determinism STABLE (v51 byte-identique), GDExtension scons 0 warning. Tunables registre J :
   `METAB_DIFFUSE_SLAVE` 0.30 · `SLAVE_FRACTION` 0.08 · `MIG_PACT_FRAC` 0.006 · `MIG_PACT_MIN` 30 ·
   `AI_OFFER_MIG_OPINION` 40. Télémétrie chronicle « brassage » + « métabolisation ».
+- **RÉFUGIÉS — la guerre fait FUIR, l'apaisement fait RESPIRER (2026-07-03, SAVE v51→52)** : statut
+  de réfugié + le principe que TOUT déplacement RESPIRE (aucune migration définitive). `PopGroup`
+  gagne `home_reg` (RÉGION d'origine ; ⚠ **SAVE BUMP 51→52**). **`demography_refugee_tick`** (annuel,
+  moteur pur, déterministe) : **(FUITE)** une région RAVAGÉE (`revolt_scar > REFUGEE_FLEE_SCAR` : sac
+  de guerre OU révolte) déverse `REFUGEE_FLEE_FRAC` de chaque groupe vers la voisine la MOINS ravagée
+  (« si possible » : nulle part de sûr ⇒ piégé, reste) → diaspora `ARR_REFUGIE`, foyer inscrit.
+  **(RESPIRATION)** foyer apaisé (`< REFUGEE_HOME_CALM`) + habitable ⇒ une part RENTRE ∝ `RETURN_PULL
+  ·(1−intégration)` (le FIXÉ reste — Huguenot devenu prussien ; le rentré fond dans ses gens, redevient
+  natif) ; réfugié intégré au-delà de `SETTLE_INTEG` se FIXE (`→ARR_MIGRANT`). **(NO DEFINITIVE)** le
+  migrant économique a AUSSI un `home_reg` (retour ténu, `MIGRANT_RETURN_PULL`) ; un re-chassé garde son
+  VRAI foyer. Diffusion : le réfugié apporte ses métiers (Huguenots : soie, horlogerie) ⇒ coeff PLEIN
+  (1.0), la partialité de métabolisation vient du RETOUR + de l'intégration. **CALIBRAGE** (paired OFF/ON,
+  5 graines × 3-4 sims × 200 ans) : `FLEE_FRAC` calé BAS **0.03** — au-delà de ~0.04 le flot de réfugiés
+  RESTIFS bascule les hôtes dans le bassin BAS de satisfaction (monde bistable, cf. `POP_R_BASE`) ; à 0.03
+  satisfaction 64-79 % (≈ baseline OFF 80), hégémon mortel 3/3, §27 gaté an-180, la pop RESPIRE (retours
+  ≳ fuites), métab max 8-48 %. ⚠ **PIÈGE (init)** : `home_reg` est memset à **0** — région VALIDE, pas un
+  sentinel ; un natif NE doit PAS être vu « ayant un foyer 0 » → `migration_move` teste le src RÉEL
+  (déplacé = diaspora + arrivée migrant/réfugié), `home_reg=-1` posé explicitement à la genèse native /
+  colon de conquête / esclave (tenu) / sécessionniste (souverain) ; `save_sane` borne ∈ [-1, n_regions).
+  Membrane : « réfugié · N% intégré ». Télémétrie « réfugiés : N fuite(s) · M retour(s) ». ⚠ RE-BASELINE
+  golden (HASH 7/108/310/411 ; 209 inchangé). `make test` 38/38 runnable · determinism **+ determinism-deep
+  200 ans × 2 graines** STABLE (churn dynamique de groupes byte-identique au long horizon) · demography_demo
+  +3. Tunables registre J (7 : `REFUGEE_FLEE_SCAR` 0.50 · `_FRAC` 0.03 · `_MIN` 30 · `_HOME_CALM` 0.25 ·
+  `_RETURN_PULL` 0.12 · `MIGRANT_RETURN_PULL` 0.015 · `REFUGEE_SETTLE_INTEG` 0.90).
 
 ## Disciplines non négociables
 
