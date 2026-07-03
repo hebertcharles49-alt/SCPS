@@ -2735,7 +2735,19 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
 
     /* CRÉATEUR DE CULTURE — l'ÉTHOS choisi de CHAQUE empire à slot (joueur OU IA) imprègne
      * SES régions : la dominante culturelle ET les groupes (factions, assimilation) — donc
-     * le NOM du pays (épithète, lu juste après) le suit. Aucun slot ⇒ rien (déterminisme). */
+     * le NOM du pays (épithète, lu juste après) le suit. Aucun slot ⇒ rien (déterminisme).
+     * RE-KEY PROVINCE (audit vague 3, site #1) : la boucle sur econ->region[r].pop.groups[]
+     * ci-dessous est un CHEMIN MORT — vérifié par lecture (n_groups==0 ici À COUP SÛR) :
+     * ce bloc s'exécute dans worldgen_seed_peoples, appelée depuis sim_init AVANT
+     * demography_attach (seule fonction qui, dans ce codepath, pose pop.n_groups>0), et
+     * AVANT le bloc « GROUPES DE POPULATION » de cette même fonction (plus bas, qui sème
+     * econ->prov[].pop — pas region[].pop). Aucun groupe n'existe encore ni côté region[]
+     * ni côté prov[] au moment où ce bloc tourne ⇒ 0 itération, dans les deux cas. Retiré
+     * (documenté, pas « corrigé ») plutôt que re-keyé vers prov[] — router un chemin mort
+     * vers prov[] resterait un chemin mort, juste sur une autre struct. L'éthos de slot
+     * atteint quand même chaque groupe via region_culture_push_to_provinces → les futurs
+     * groupes semés par le bloc GROUPES DE POPULATION (plus bas dans cette fonction)
+     * héritent de econ->prov[pid].culture, déjà mise à jour ici (ligne culture.ethos=pe). */
     if (culture_any_active()){
         for (int r=0;r<w->n_regions;r++){
             int cc=w->region[r].country;
@@ -2743,8 +2755,6 @@ void worldgen_seed_peoples(World *w, WorldEconomy *econ, Heritage player_heritag
             if (slot<0 || !culture_slot_active(slot)) continue;
             Ethos pe=(Ethos)culture_slot_ethos(slot);
             econ->region[r].culture.ethos=pe;
-            for (int g=0; g<econ->region[r].pop.n_groups; g++)
-                econ->region[r].pop.groups[g].culture.ethos=pe;
             region_culture_push_to_provinces(w, econ, r);
         }
     }

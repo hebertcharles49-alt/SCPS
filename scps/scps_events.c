@@ -917,7 +917,12 @@ static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
             s0=(int)(frand(rng)*(float)nr);
             for (int i=0;i<nr;i++){ int r=(s0+i)%nr;
                 if (!econ->region[r].colonized) continue;
-                if (econ->region[r].pop.n_groups < 2) continue;   /* une région composite (syncrétique) */
+                /* RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un
+                 * miroir de la province représentative. L'effet (dir_region_eff → apply_region_eff)
+                 * atterrit déjà sur cette même province représentative : on y juge la composition
+                 * pour rester cohérent avec ce qui recevra réellement l'effet. */
+                { int hpid=econ_region_rep_province(econ,r);
+                  if (hpid<0 || hpid>=econ->n_prov || econ->prov[hpid].pop.n_groups<2) continue; }  /* composite (syncrétique) */
                 if (!dir_ok_region(D,day,r,false)) continue;
                 *out=r; return true;
             }
