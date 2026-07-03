@@ -231,7 +231,8 @@ int main(int argc, char **argv){
         /* gate de matière : sourcer la recette des édifices dans la capitale de chaque acteur
          * (sinon refus sec — le test mesure la DÉCISION de bâtir, pas l'approvisionnement). */
         for (int hr=0; hr<2; hr++){ int r=(hr==0)?aB.home_region:aD.home_region;
-            if (r<0||r>=s.econ->n_regions) continue; RegionEconomy *re=&s.econ->region[r];
+            if (r<0||r>=s.econ->n_regions) continue;
+            RegionEconomy *re=&s.econ->region[r];
             re->stock[RES_WOOD]=2000.f; re->stock[RES_STONE]=2000.f; re->stock[RES_CLAY]=2000.f;
             re->stock[RES_IRON]=2000.f; re->stock[RES_TOOLS]=2000.f; re->stock[RES_SALT]=2000.f;
             re->stock[RES_PRECIOUS_METAL]=2000.f; }
