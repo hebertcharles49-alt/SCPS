@@ -183,7 +183,12 @@ void intertrade_seed_centres(const World *w, WorldEconomy *e){
     /* M2 — CHAQUE cité-état NAÎT avec un Centre commercial BÂTI sur sa MEILLEURE région
      * (carrefour : adjacence + débouché côtier) : POLITY_CITY_STATE = hub PAR NATURE,
      * garanti dès l'an 0 (pas de cold-start du global). C'est un BÂTIMENT (edi_built),
-     * pas un flag → g_centre en dérive ; un EMPIRE marchand côtier peut AUSSI en bâtir un. */
+     * pas un flag → g_centre en dérive ; un EMPIRE marchand côtier peut AUSSI en bâtir un.
+     * RE-KEY PROVINCE (T3) : écrire SEULEMENT region[].edi_built est ÉCRASÉ par le tout
+     * premier econ_aggregate_regions (appelé avant le 1er econ_tick) — l'union se
+     * reconstruit depuis prov[], qui n'a jamais reçu le flag → le Centre s'évapore au
+     * jour 1 (0% du commerce mondial passait par les Centres). On écrit sur la province
+     * représentative EN PLUS du miroir region[] (même patron qu'econ_build_manufacture). */
     if (w) for (int c=0;c<w->n_countries;c++){
         if (w->country[c].role!=POLITY_CITY_STATE) continue;
         int best=-1; float bestc=-1.f;
@@ -191,7 +196,11 @@ void intertrade_seed_centres(const World *w, WorldEconomy *e){
             if (e->region[r].owner!=c) continue;
             float fc=region_flow_score(e,r); if(fc>bestc){bestc=fc;best=r;}
         }
-        if (best>=0) e->region[best].edi_built |= (1u<<EDI_TRADE_CENTER);
+        if (best>=0){
+            e->region[best].edi_built |= (1u<<EDI_TRADE_CENTER);        /* miroir immédiat (même frame) */
+            int pid=econ_region_rep_province(e, best);
+            if (pid>=0 && pid<e->n_prov) e->prov[pid].edi_built |= (1u<<EDI_TRADE_CENTER);  /* SURVIT au tick */
+        }
     }
     refresh_centres(e);
 }
