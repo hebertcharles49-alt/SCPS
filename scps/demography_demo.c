@@ -243,6 +243,30 @@ int main(int argc, char **argv){
        nc>=2 && sumpct>=95 && sumpct<=100
        && comp[0].heritage && comp[0].klass && comp[0].etat);
 
+    /* ═══ 8. BRASSAGE — le mode d'arrivée nomme l'état (soumis / déporté) ══ */
+    printf("\n── 8. Mode d'arrivée : soumis (conquis) vs déporté (esclave) ──\n");
+    {
+        ProvincePop mp; memset(&mp,0,sizeof mp);
+        mp.groups[0]=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_BOURGEOIS, 6000,6.f,1.f,false); /* natifs */
+        PopGroup soum=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS, cult(8,2,8,7,ETHOS_HONNEUR), CLASS_LABORER, 2000,3.f,0.30f,true);
+        soum.arrival=ARR_SOUMIS;  mp.groups[1]=soum;      /* conquis allophone, 30 % digéré */
+        PopGroup depo=grp(HERITAGE_ESOTERIQUE, SPHERE_ETRANGERS, cult(9,1,9,8,ETHOS_DOMINATEUR), CLASS_LABORER, 800,2.f,0.05f,true);
+        depo.arrival=ARR_DEPORTE; mp.groups[2]=depo;      /* captif, 5 % digéré */
+        mp.n_groups=3;
+        GroupReadout c8[DEMO_MAX_GROUPS];
+        int n8=province_composition(&mp,drift,&crown,5.f,5.f,c8,DEMO_MAX_GROUPS);
+        const char *e_soum=NULL, *e_depo=NULL;
+        for (int i=0;i<n8;i++){
+            printf("   %3d%%  %-11s · %s\n", c8[i].percent, c8[i].heritage, c8[i].etat);
+            if (c8[i].etat && strstr(c8[i].etat,"soumis"))  e_soum=c8[i].etat;
+            if (c8[i].etat && strstr(c8[i].etat,"déporté")) e_depo=c8[i].etat;
+        }
+        ok("le conquis allophone est nommé « soumis » (voie coercitive ≠ diaspora libre)", e_soum!=NULL);
+        ok("le captif est nommé « déporté » (l'esclave, diffusion faible)", e_depo!=NULL);
+        ok("l'état SURFACE l'intégration en % (la métabolisation, nombre tangible)",
+           e_soum && strstr(e_soum,"%")!=NULL);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

@@ -305,7 +305,7 @@ static void sim_cmd_drain(Sim *s, World *w){
          * Un ordre INVALIDE (cible hors-borne, soi-même, pays mort) ne le fait pas partir ;
          * un ordre arrivé pendant sa tournée est IGNORÉ (l'UI lit scps_diplo_cd et grise). */
         if (c->verb==CMD_DECLARE_WAR || c->verb==CMD_MAKE_PEACE || c->verb==CMD_OFFER_ALLIANCE
-         || c->verb==CMD_OFFER_PACT  || c->verb==CMD_EMBARGO){
+         || c->verb==CMD_OFFER_PACT  || c->verb==CMD_OFFER_MIGRATION || c->verb==CMD_EMBARGO){
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || regions_of(s->econ, t)<=0) continue;
             if (s->day < s->diplo_ready_day) continue;
@@ -365,6 +365,12 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_TRADE_PACT))
                 diplo_set_trade_pact(s->dp, p, t, true);
+            break; }
+          case CMD_OFFER_MIGRATION: {  /* BRASSAGE : le pacte migratoire (échange passif de population) */
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_MIGRATION))
+                diplo_set_migration_pact(s->dp, p, t, true);
             break; }
           case CMD_EMBARGO: {
             int t = c->a[0];

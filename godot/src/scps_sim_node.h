@@ -147,6 +147,7 @@ public:
     bool       player_make_peace(int target);         /* offre de paix blanche */
     bool       player_offer_alliance(int target);     /* proposer une alliance */
     bool       player_offer_pact(int target);         /* proposer un pacte de commerce */
+    bool       player_offer_migration(int target);    /* BRASSAGE : proposer un pacte migratoire */
     bool       player_embargo(int target, bool on);   /* poser/lever un embargo */
 
     /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) — lire les puits + régler les poids.

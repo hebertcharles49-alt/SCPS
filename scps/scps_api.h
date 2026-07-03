@@ -290,10 +290,12 @@ typedef struct {
     int can_make_peace;         /* en guerre avec la cible */
     int can_offer_alliance;     /* pas en guerre · pas déjà allié · un slot libre des DEUX côtés */
     int can_offer_pact;         /* pas en guerre · pas déjà de pacte */
+    int can_offer_migration;    /* BRASSAGE : pas en guerre · pas déjà de pacte migratoire */
     int can_embargo;            /* pas d'embargo en cours */
     int can_lift_embargo;       /* embargo en cours */
     int would_accept_alliance;  /* le vis-à-vis CONSENTIRAIT (opinion + relation) */
     int would_accept_pact;      /* idem (opinion + complémentarité) */
+    int would_accept_migration; /* BRASSAGE : le vis-à-vis CONSENTIRAIT au pacte migratoire */
     int would_accept_peace;     /* le vis-à-vis CÉDERAIT (score de guerre / épuisement) */
 } ScpsDiploOptions;
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
@@ -428,6 +430,7 @@ int  scps_player_declare_war   (ScpsSim *s, int target);
 int  scps_player_make_peace    (ScpsSim *s, int target);   /* offre de paix BLANCHE (si l'autre cède) */
 int  scps_player_offer_alliance(ScpsSim *s, int target);
 int  scps_player_offer_pact    (ScpsSim *s, int target);
+int  scps_player_offer_migration(ScpsSim *s, int target); /* BRASSAGE : pacte migratoire (échange passif de pop) */
 int  scps_player_embargo       (ScpsSim *s, int target, int on);
 /* §3 — INTÉRIEUR · COMMERCE · GUERRE (plomberie additive ; ENFILENT, revalidé au drain).
  * `region` = index de région À SOI ; `seat` ∈ [0,3) ; `good` ∈ Resource ; `hull` ∈ HullType ;

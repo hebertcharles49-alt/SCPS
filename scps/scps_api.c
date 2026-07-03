@@ -868,10 +868,12 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     out->can_make_peace     = at_war ? 1:0;
     out->can_offer_alliance = (!at_war && st!=DIPLO_ALLIED && slot) ? 1:0;
     out->can_offer_pact     = (!at_war && !diplo_trade_pact(d,p,t)) ? 1:0;
+    out->can_offer_migration = (!at_war && !diplo_migration_pact(d,p,t)) ? 1:0;  /* BRASSAGE */
     out->can_embargo        = emb ? 0:1;
     out->can_lift_embargo   = emb ? 1:0;
     out->would_accept_alliance = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_ALLIANCE) ? 1:0;
     out->would_accept_pact     = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_TRADE_PACT) ? 1:0;
+    out->would_accept_migration = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_MIGRATION) ? 1:0;  /* BRASSAGE */
     out->would_accept_peace    = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_PEACE) ? 1:0;
     return 1;
 }
@@ -1288,6 +1290,11 @@ int scps_player_offer_alliance(ScpsSim *s, int target){
 int scps_player_offer_pact(ScpsSim *s, int target){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_OFFER_PACT, { target, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_offer_migration(ScpsSim *s, int target){   /* BRASSAGE : pacte migratoire */
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_OFFER_MIGRATION, { target, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 int scps_player_embargo(ScpsSim *s, int target, int on){

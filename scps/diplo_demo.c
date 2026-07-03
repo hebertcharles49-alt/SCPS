@@ -498,16 +498,20 @@ int main(int argc,char**argv){
             foe.integration=1.f; foe.L=5.f; foe.drift_id=222; foe.origin_sphere=heritage_sphere(HERITAGE_CLANIQUE);
             econ->prov[srcP].pop.n_groups=1; econ->prov[srcP].pop.groups[0]=foe;
 
-            /* GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Clanique) : booléen. */
+            /* GATE = esclavagiste (TECH_ESCLAVAGE OU éthos conquérant, résolu par l'appelant) : booléen.
+             * BRASSAGE : SLAVE_FRACTION calé BAS (0.08 « taux très faible ») — la déportation apporte
+             * (savoir arraché, diffusion faible) sans jamais dominer. */
             long captives=diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/true);
-            printf("   captifs déportés au cœur : %ld (sur 4000)\n",captives);
-            ok("un empire doté de l'Économie servile DÉPORTE ≈¼ de la population prise",
-               captives>0 && captives<=1100);
+            printf("   captifs déportés au cœur : %ld (sur 4000, ~8%%)\n",captives);
+            ok("un esclavagiste DÉPORTE une FRACTION FAIBLE (~8 %) de la population prise",
+               captives>0 && captives<=500);
             ok("la capitale gagne un GROUPE de plus — les captifs au cœur",
                econ->prov[capP].pop.n_groups==2);
             PopGroup *g=&econ->prov[capP].pop.groups[econ->prov[capP].pop.n_groups-1];
             ok("le groupe d'esclaves est RESTIF (non-intégré + diaspora → D̄↑ au centre)",
                g->integration<0.01f && g->diaspora && g->heritage==HERITAGE_CLANIQUE);
+            ok("BRASSAGE : le captif est flaggé DÉPORTÉ (diffuse FAIBLE, voie coercitive)",
+               g->arrival==ARR_DEPORTE);
             ok("la province prise PERD la population déportée",
                econ->prov[srcP].pop.groups[0].count < 4000);
             /* GATE : sans la TECH d'asservissement (enslaves=false), personne n'est asservi. */
@@ -515,6 +519,22 @@ int main(int argc,char**argv){
                diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/false)==0);
         } else ok("(monde trop petit pour le test d'esclavage)", true);
     }
+
+    /* ---- 10. BRASSAGE : le PACTE MIGRATOIRE (voie pacifique, RÉCIPROQUE) ---- */
+    printf("\n── 10. Pacte migratoire (brassage pacifique · réciproque) ──\n");
+    if (w->n_countries>=2){
+        int A=0, B=1;
+        ok("au départ, aucun pacte migratoire entre A et B",
+           !diplo_migration_pact(dp,A,B) && !diplo_migration_pact(dp,B,A));
+        diplo_set_migration_pact(dp,A,B,true);
+        ok("poser le pacte est RÉCIPROQUE (l'échange va dans les deux sens)",
+           diplo_migration_pact(dp,A,B) && diplo_migration_pact(dp,B,A));
+        ok("le pacte migratoire est DISTINCT du pacte commercial (canal séparé)",
+           !diplo_trade_pact(dp,A,B));
+        diplo_set_migration_pact(dp,A,B,false);
+        ok("le pacte se ROMPT des deux côtés",
+           !diplo_migration_pact(dp,A,B) && !diplo_migration_pact(dp,B,A));
+    } else ok("(monde trop petit pour le test de pacte migratoire)", true);
 
     /* ── INVARIANT ANTI-MODIFICATEUR (pipeline diplo, valeur subjective) ────────────
      * Deux empires regardent le MÊME grenier : l'AFFAMÉ (runway food court → stress haut) le

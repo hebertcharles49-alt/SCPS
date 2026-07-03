@@ -71,6 +71,8 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        CMD_AGE_ENGAGE,
        /* COLONISATION (charte : « le joueur colonise n'importe quelle province ») — a[0] = province cible */
        CMD_COLONIZE,
+       /* BRASSAGE — le joueur PROPOSE un pacte migratoire (le vis-à-vis ÉVALUE via ai_consider_offer) */
+       CMD_OFFER_MIGRATION,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

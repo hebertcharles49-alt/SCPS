@@ -107,6 +107,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_make_peace", "target"),     &ScpsWorld::player_make_peace);
     ClassDB::bind_method(D_METHOD("player_offer_alliance", "target"), &ScpsWorld::player_offer_alliance);
     ClassDB::bind_method(D_METHOD("player_offer_pact", "target"),     &ScpsWorld::player_offer_pact);
+    ClassDB::bind_method(D_METHOD("player_offer_migration", "target"),&ScpsWorld::player_offer_migration);
     ClassDB::bind_method(D_METHOD("player_embargo", "target", "on"),  &ScpsWorld::player_embargo);
 
     /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) */
@@ -515,10 +516,12 @@ Dictionary ScpsWorld::diplo_options(int target) {
     d["can_make_peace"]       = (bool)(ok && o.can_make_peace);
     d["can_offer_alliance"]   = (bool)(ok && o.can_offer_alliance);
     d["can_offer_pact"]       = (bool)(ok && o.can_offer_pact);
+    d["can_offer_migration"]  = (bool)(ok && o.can_offer_migration);
     d["can_embargo"]          = (bool)(ok && o.can_embargo);
     d["can_lift_embargo"]     = (bool)(ok && o.can_lift_embargo);
     d["would_accept_alliance"]= (bool)(ok && o.would_accept_alliance);
     d["would_accept_pact"]    = (bool)(ok && o.would_accept_pact);
+    d["would_accept_migration"]= (bool)(ok && o.would_accept_migration);
     d["would_accept_peace"]   = (bool)(ok && o.would_accept_peace);
     return d;
 }
@@ -940,6 +943,9 @@ bool ScpsWorld::player_offer_alliance(int target) {
 }
 bool ScpsWorld::player_offer_pact(int target) {
     return sim ? scps_player_offer_pact(sim, target) != 0 : false;
+}
+bool ScpsWorld::player_offer_migration(int target) {
+    return sim ? scps_player_offer_migration(sim, target) != 0 : false;
 }
 bool ScpsWorld::player_embargo(int target, bool on) {
     return sim ? scps_player_embargo(sim, target, on ? 1 : 0) != 0 : false;

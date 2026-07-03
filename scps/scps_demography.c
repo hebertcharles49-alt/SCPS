@@ -338,7 +338,17 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
         r->klass   = labor_class_word(g->klass);
         r->percent = (int)(100*g->count/total);
         r->loyaute = band_humeur(g->L);
-        if (g->diaspora){ r->etat="diaspora"; }
+        /* BRASSAGE — le MODE D'ARRIVÉE nomme l'état : la diaspora libre reste « diaspora »,
+         * mais le conquis allophone est « soumis » et le captif « déporté ». Pour ces deux
+         * voies coercitives, on SURFACE l'intégration (0-100 %) : c'est la métabolisation en
+         * cours — le savoir qu'on digère, le nombre tangible qui compte pour le joueur. */
+        if (g->arrival==ARR_SOUMIS){
+            snprintf(etat_buf[n],sizeof etat_buf[n], "soumis · %d%% intégré", (int)(100.f*g->integration+0.5f));
+            r->etat=etat_buf[n];
+        } else if (g->arrival==ARR_DEPORTE){
+            snprintf(etat_buf[n],sizeof etat_buf[n], "déporté · %d%% intégré", (int)(100.f*g->integration+0.5f));
+            r->etat=etat_buf[n];
+        } else if (g->diaspora){ r->etat="diaspora"; }
         else if (g==dom){ r->etat="natif"; }
         else {
             float d=content_dist(&eff, crown?crown:&domc);

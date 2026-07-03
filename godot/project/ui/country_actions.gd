@@ -84,7 +84,7 @@ func _build() -> void:
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	col.add_child(grid)
-	for v in [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"], ["pact", "Pacte"], ["embargo", "Embargo"]]:
+	for v in [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"], ["pact", "Pacte"], ["migration", "Migration"], ["embargo", "Embargo"]]:
 		var b := Button.new()
 		b.text = v[1]
 		var verb: String = v[0]
@@ -160,11 +160,13 @@ func _refresh() -> void:
 		"peace": bool(op2.get("can_make_peace", false)),
 		"ally": bool(op2.get("can_offer_alliance", false)),
 		"pact": bool(op2.get("can_offer_pact", false)),
+		"migration": bool(op2.get("can_offer_migration", false)),
 		"embargo": bool(op2.get("can_embargo", false)) or bool(op2.get("can_lift_embargo", false)),
 	}
 	var would := {
 		"ally": bool(op2.get("would_accept_alliance", true)),
 		"pact": bool(op2.get("would_accept_pact", true)),
+		"migration": bool(op2.get("would_accept_migration", true)),
 		"peace": bool(op2.get("would_accept_peace", true)),
 	}
 	for verb in _btns:
@@ -185,6 +187,7 @@ func _act(verb: String) -> void:
 		"peace": ok = bool(w.player_make_peace(_cid))
 		"ally": ok = bool(w.player_offer_alliance(_cid))
 		"pact": ok = bool(w.player_offer_pact(_cid))
+		"migration": ok = bool(w.player_offer_migration(_cid))
 		"embargo": ok = bool(w.player_embargo(_cid, 1))
 	_flash.text = "Ordre émis — l'émissaire part (verdict au drain)." if ok else "Ordre refusé."
 	_refresh()

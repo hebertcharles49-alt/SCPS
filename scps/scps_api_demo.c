@@ -142,9 +142,11 @@ int main(int argc, char **argv){
         int pe=0, em=0;
         for (int c=0;c<nc2;c++){ if (c==pl) continue; pe += scps_player_make_peace(s2,c); em += scps_player_embargo(s2,c,1); }
         int al = scps_player_offer_alliance(s2, (pl+1)%nc2);
+        int mig = scps_player_offer_migration(s2, (pl+1)%nc2);   /* BRASSAGE : pacte migratoire */
         scps_sim_advance_days(s2, 1);
         ok("verbes PAIX/EMBARGO/ALLIANCE : enfilés + drainés sans crash (membrane stable)",
            pe>=0 && em>=0 && (al==0 || al==1));
+        ok("BRASSAGE : le verbe pacte migratoire ENFILE + DRAINE sans crash", mig==0 || mig==1);
         /* #26 — l'OPINION traverse la membrane : la bande ±100 du vis-à-vis (mémoire des actes). */
         ScpsRelation rel2[64]; int nr2 = scps_country_relations(s2, pl, rel2, 64);
         int op_ok = (nr2>0);
@@ -188,8 +190,8 @@ int main(int argc, char **argv){
         ok("options diplo : en GUERRE ⇒ paix offrable, déclaration grisée",
            dop.can_make_peace==1 && dop.can_declare_war==0);
         ok("options diplo : aperçus de consentement ∈ {0,1} (l'opinion #26 prévisualisée)",
-           (dop.would_accept_alliance|dop.would_accept_pact|dop.would_accept_peace|
-            dop.can_offer_alliance|dop.can_offer_pact|dop.can_embargo|dop.can_lift_embargo) <= 1);
+           (dop.would_accept_alliance|dop.would_accept_pact|dop.would_accept_migration|dop.would_accept_peace|
+            dop.can_offer_alliance|dop.can_offer_pact|dop.can_offer_migration|dop.can_embargo|dop.can_lift_embargo) <= 1);
         ok("scps_build_legal : réponse bornée {0,1} (région · or)",
            (scps_build_legal(s2,-1,0) & ~1)==0);
     }
