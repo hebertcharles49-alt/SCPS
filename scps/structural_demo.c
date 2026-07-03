@@ -82,12 +82,22 @@ static void light_the_world(Sim *s){
         if (s->w->country[c].role!=POLITY_UNCLAIMED){ s->wp->country[c].Lumiere=12.f; s->wp->country[c].C=6.f; }
 }
 /* Donne à une région un propriétaire + une culture marquée (pour fabriquer de
- * la diversité interne réelle que le mythe suppkillera, puis libèrera au choc). */
+ * la diversité interne réelle que le mythe suppkillera, puis libèrera au choc).
+ * RE-KEY PROVINCE (T1) : econ->region[r].owner/.culture sont des DÉRIVÉS (miroir
+ * de la province représentative, recalculés par econ_aggregate_regions) — les
+ * poser SEULEMENT sur la région serait invisible aux lecteurs qui scannent prov[]
+ * (ex: compute_profile de scps_prosperity.c). On écrit aussi sur prov[rp]. */
 static void assign_region(Sim *s, int r, int cid, float axis){
     if (r<0||r>=s->econ->n_regions) return;
     RegionEconomy *re=&s->econ->region[r];
     re->owner=(int16_t)cid; re->colonized=true; re->culture.settled=true;
     re->culture.valeurs=axis; re->culture.religion=axis; re->culture.subsistance=axis;
+    int rp=econ_region_rep_province(s->econ, r);
+    if (rp>=0 && rp<s->econ->n_prov){
+        ProvinceEconomy *pe=&s->econ->prov[rp];
+        pe->owner=(int16_t)cid; pe->colonized=true; pe->culture.settled=true;
+        pe->culture.valeurs=axis; pe->culture.religion=axis; pe->culture.subsistance=axis;
+    }
 }
 
 int main(int argc, char **argv){
