@@ -395,6 +395,20 @@ float econ_off_culture_fraction(const ProvincePop *pp){
  * captif fraîchement pris (integration 0) ne rapporte rien ; il rapporte en se
  * digérant. ⇒ ~0 tôt (l'assimilation prend des années) → golden-safe. [0..1],
  * pondéré par les âmes (200 digérés ≠ 1000). */
+/* Coeff de DIFFUSION du savoir par MODE d'arrivée (Arrival) — le rapport au pouvoir
+ * règle combien un groupe allophone fait métaboliser son héritage. Natif = 0
+ * (hétérogénéité de naissance, choix initial) ; migrant/soumis = plein (le peuple
+ * apporte son savoir) ; déporté = FAIBLE (esclave : savoir fragmenté, réprimé —
+ * mais non nul : forge, créole, danse). */
+static float metab_diffuse_coeff(uint8_t arrival){
+    switch (arrival){
+        case ARR_MIGRANT: return 1.f;
+        case ARR_SOUMIS:  return 1.f;
+        case ARR_DEPORTE: return tune_f("METAB_DIFFUSE_SLAVE", 0.3f);
+        default:          return 0.f;   /* ARR_NATIF */
+    }
+}
+
 float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid){
     if (!w || !econ || cid<0 || cid>=w->n_countries) return 0.f;
     int cp = w->country[cid].capital_prov;
@@ -414,8 +428,10 @@ float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid
         for (int i=0;i<pp->n_groups;i++){
             const PopGroup *g=&pp->groups[i];
             tot += (double)g->count;
-            if (g->diaspora && g->heritage!=native)
-                dig += (double)g->count * (double)clampf(g->integration,0.f,1.f);
+            if (g->heritage!=native){
+                float df=metab_diffuse_coeff(g->arrival);   /* migrant/soumis plein · déporté faible · natif 0 */
+                if (df>0.f) dig += (double)g->count * (double)clampf(g->integration,0.f,1.f) * (double)df;
+            }
         }
     }
     return (tot>0.0) ? (float)(dig/tot) : 0.f;
@@ -440,8 +456,10 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
         for (int i=0;i<pp->n_groups;i++){
             const PopGroup *g=&pp->groups[i];
             tot += (double)g->count;
-            if (g->diaspora && g->heritage>=0 && g->heritage<HERITAGE_COUNT)
-                dig[g->heritage] += (double)g->count * (double)clampf(g->integration,0.f,1.f);
+            if (g->heritage>=0 && g->heritage<HERITAGE_COUNT){
+                float df=metab_diffuse_coeff(g->arrival);   /* la BARRE d'accès suit le même coeff que la métabolisation */
+                if (df>0.f) dig[g->heritage] += (double)g->count * (double)clampf(g->integration,0.f,1.f) * (double)df;
+            }
         }
     }
     if (tot>0.0) for (int r=0;r<HERITAGE_COUNT;r++) out[r]=(float)(dig[r]/tot);

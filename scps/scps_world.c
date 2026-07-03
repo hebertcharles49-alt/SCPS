@@ -3948,7 +3948,8 @@ void world_generate(World *w, const WorldParams *P) {
     float comfort = 1.f;
     if (clow>0.f && neb < (int)cfull && cfull>2.f)
         comfort = clow + (1.f-clow) * ((float)neb-2.f)/(cfull-2.f);   /* 2→_LOW … _FULL→1.0 */
-    if (comfort>1.f) comfort=1.f; if (comfort<0.05f) comfort=0.05f;
+    if (comfort>1.f) comfort=1.f;
+    if (comfort<0.05f) comfort=0.05f;
     int want_prov = (int)(tune_f("WORLD_PROV_BASE",24.f)
                         + tune_f("WORLD_PROV_PER_EMPIRE",95.f) * comfort * (float)neb
                         + tune_f("WORLD_PROV_PER_CITY", 5.f) * (float)(P->n_city_states>0?P->n_city_states:0));

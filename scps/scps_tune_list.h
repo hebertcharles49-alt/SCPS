@@ -88,6 +88,10 @@
     X(METAB_TIER1,            0.10f) \
     X(METAB_TIER2,            0.20f) \
     X(METAB_TIER3,            0.35f) \
+    /* BRASSAGE — coeff de DIFFUSION du savoir par MODE d'arrivée (Arrival) : migrant &
+     * soumis diffusent PLEIN (1.0, câblé) ; le DÉPORTÉ (esclave) diffuse FAIBLE — savoir
+     * arraché, fragmenté, réprimé (janissaire/forge/créole : réel mais mineur). */ \
+    X(METAB_DIFFUSE_SLAVE,   0.30f) \
     /* REMISE DE PRIX PAR DIFFUSION (métabolisation) — une tech possédée par TOUS les autres
      * empires coûte −MAX % (le savoir répandu se (re)découvre plus vite ; catch-up des retardataires) */ \
     X(AI_TECH_DIFFUSE_MAX,    0.40f) \

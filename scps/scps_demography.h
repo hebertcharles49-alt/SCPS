@@ -70,8 +70,9 @@ void  faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
 /* ---- Migration passive — emporte heritage + culture (§4) ----------------- */
 /* Déplace `amount` du groupe `gi` de `from` vers `to` (adjacence/prospérité
  * jugées par l'appelant). Crée une minorité/diaspora à l'arrivée → du D interne.
- * `new_drift_id` : clé fraîche si une diaspora doit être créée. */
-bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id);
+ * `new_drift_id` : clé fraîche si une diaspora doit être créée. `mode` (Arrival) :
+ * ARR_MIGRANT (migration/pacte, diffuse plein) ou ARR_DEPORTE (esclave, diffuse faible). */
+bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id, int mode);
 
 /* ---- Agrégation PAYS (§2, §6) — alimente scps_order (inchangé) -------- */
 float country_Dbar(const ProvincePop *provs, int n, const ModifierStack *drift);

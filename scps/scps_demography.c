@@ -255,7 +255,7 @@ void faith_convert_tick(ProvincePop *pp, const PopCulture *crown,
 /* ===================================================================== */
 /* MIGRATION PASSIVE — emporte heritage + culture (§4)                        */
 /* ===================================================================== */
-bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id){
+bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int new_drift_id, int mode){
     if (gi<0||gi>=from->n_groups) return false;
     PopGroup *src=&from->groups[gi];
     if (amount>src->count) amount=src->count;
@@ -268,6 +268,7 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
         if (to->n_groups>=DEMO_MAX_GROUPS) return false;
         PopGroup ng=*src;                    /* garde species/culture → minorité à l'arrivée */
         ng.count=amount; ng.diaspora=true; ng.integration=0.f; ng.drift_id=new_drift_id;
+        ng.arrival=(uint8_t)mode;            /* le MODE d'arrivée (migrant/déporté) → coeff de diffusion */
         to->groups[to->n_groups++]=ng;       /* crée du D interne dans la cible */
     } else {
         to->groups[dst].count += amount;
@@ -598,7 +599,7 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         long amount=dom->count/MIG_FRACTION;
         if (amount<MIG_MIN) continue;
         int gi=(int)(dom-pe->pop.groups);
-        migration_move(&pe->pop, &econ->prov[rpb].pop, gi, amount, demography_dyn_id_next());
+        migration_move(&pe->pop, &econ->prov[rpb].pop, gi, amount, demography_dyn_id_next(), ARR_MIGRANT);
     }
     /* 3. ÉMERGENCE DE CLASSE : la classe de chaque groupe sort des emplois (capitale
      *    + ateliers). Après migration/assimilation, le tissu social se recompose. */
@@ -619,17 +620,29 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
     if (rp<0 || rp>=econ->n_prov) return;
     ProvincePop *pp=&econ->prov[rp].pop;
     if (pp->n_groups<=0) return;
-    /* les conquis deviennent une minorité restive : l'intégration repart de zéro. */
-    for (int i=0;i<pp->n_groups;i++){ pp->groups[i].integration=0.1f; pp->groups[i].L=2.0f; pp->groups[i].agit_base=agit_from_L(2.0f); }
-    /* on dépose des colons de la couronne (culture du conquérant) → D INTERNE vécu. */
     const PopCulture *crown = dom_ruling_culture(w,econ,conqueror);
+    Heritage ch = crown ? crown->heritage : HERITAGE_ADAPTATIF;
+    /* les conquis deviennent une minorité restive : l'intégration repart de zéro.
+     * BRASSAGE — une nation native d'un AUTRE héritage vient d'être ABSORBÉE : elle
+     * n'est plus « de naissance » sous ce maître, c'est un peuple SOUMIS à digérer
+     * (Gaule romaine). Son savoir DIFFUSE (métabolisation), à côté de l'irrédentisme
+     * que porte déjà son L bas. Les conquis du MÊME héritage restent natifs (rien à
+     * digérer) mais aussi restifs. On ne re-soumet PAS les diaspora/déportés déjà là. */
+    for (int i=0;i<pp->n_groups;i++){
+        PopGroup *g=&pp->groups[i];
+        g->integration=0.1f; g->L=2.0f; g->agit_base=agit_from_L(2.0f);
+        if (g->arrival==ARR_NATIF && g->heritage!=ch){ g->arrival=ARR_SOUMIS; g->diaspora=true; }
+    }
+    /* on dépose des colons de la couronne (culture du conquérant) → D INTERNE vécu.
+     * Ce sont des gens du MAÎTRE (heritage=conquérant) → ne se métabolisent pas (rien
+     * d'allophone à digérer) : arrival MIGRANT sans effet de diffusion (heritage==natif). */
     if (crown && pp->n_groups<SCPS_MAX_GROUPS){
         long total=province_total_pop(pp);
         PopGroup g; memset(&g,0,sizeof g);
         g.heritage=crown->heritage; g.origin_sphere=heritage_sphere(crown->heritage);
         g.origin=*crown; g.culture=*crown; g.klass=CLASS_ELITE;
         g.count=total/5+50; g.L=7.f; g.agit_base=agit_from_L(7.f); g.integration=1.f;
-        g.diaspora=true; g.drift_id=demography_dyn_id_next();
+        g.diaspora=true; g.arrival=ARR_MIGRANT; g.drift_id=demography_dyn_id_next();
         pp->groups[pp->n_groups++]=g;
     }
 }

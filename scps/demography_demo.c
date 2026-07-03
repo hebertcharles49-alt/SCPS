@@ -200,7 +200,7 @@ int main(int argc, char **argv){
     rich.groups[0]=grp(HERITAGE_ADAPTATIF,SPHERE_HOMMES,humc,CLASS_LABORER,800,8.f,1.f,false);
     rich.n_groups=1;
     float rich_d_before=province_Dinf(&rich,drift);
-    bool moved = (rich.prosperity>poor.prosperity) && migration_move(&poor,&rich,0,200, g_id++);
+    bool moved = (rich.prosperity>poor.prosperity) && migration_move(&poor,&rich,0,200, g_id++, ARR_MIGRANT);
     float rich_d_after=province_Dinf(&rich,drift);
     bool diaspora = (rich.n_groups==2 && rich.groups[1].diaspora && rich.groups[1].heritage==HERITAGE_CLANIQUE);
     printf("   les Claniques affluent (prospérité 3→8) : province d'accueil D∞ %.0f→%.1f, diaspora=%d\n",

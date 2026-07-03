@@ -145,6 +145,15 @@ typedef struct {
  * lisent prosperity/legitimacy ; `origin` est le substrat FIXE. Rétro-compat :
  * une province à UN groupe reproduit exactement les nombres d'hier. */
 #define SCPS_MAX_GROUPS 8
+/* MODE D'ARRIVÉE d'un groupe allophone (le RAPPORT AU POUVOIR détermine la
+ * diffusion du savoir ET le comportement social — la « marge historique » entre
+ * une diaspora et une pop soumise). Coeff de diffusion = combien ce groupe fait
+ * MÉTABOLISER son héritage au maître (Song : le savoir cloisonné ne diffuse pas).
+ *  NATIF   : de souche (hétérogénéité de naissance) — NE diffuse PAS (choix initial).
+ *  MIGRANT : venu volontairement (migration/pacte) — diffuse PLEIN, s'assimile.
+ *  SOUMIS  : nation native CONQUISE (sur son sol, absorbée) — diffuse PLEIN, irrédentiste.
+ *  DÉPORTÉ : esclave arraché — diffuse FAIBLE (savoir fragmenté : forge, créole, danse). */
+typedef enum { ARR_NATIF=0, ARR_MIGRANT, ARR_SOUMIS, ARR_DEPORTE, ARR_COUNT } Arrival;
 typedef struct {
     Heritage heritage;
     Sphere       origin_sphere;  /* FIXE : pour le gouffre */
@@ -159,7 +168,8 @@ typedef struct {
     float        L;              /* légitimité du groupe envers la couronne */
     float        agit_base;      /* agitation VRAIE (la suppression la masque) */
     float        integration;    /* 0..1 → pilote l'assimilation */
-    bool         diaspora;       /* installé loin de sa terre (migration) */
+    bool         diaspora;       /* PAS de souche (migration/conquête/déportation) */
+    uint8_t      arrival;        /* Arrival — mode d'arrivée (diffusion + comportement) */
     int          drift_id;       /* clé dans la pile de dérive du monde */
 } PopGroup;
 typedef struct {
