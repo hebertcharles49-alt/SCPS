@@ -142,6 +142,12 @@
     X(WORLD_PROV_BASE,       24.0f) \
     X(WORLD_PROV_PER_EMPIRE,120.0f) \
     X(WORLD_PROV_PER_CITY,    5.0f) \
+    /* COMPACITÉ BAS RÉGIME (T8) : à peu d'empires, 120 prov/empire NOIE le duel dans le
+     * vide (le monde reste trop grand pour eux — l'hégémon ne plafonne jamais). Le confort
+     * par empire MONTE de _LOW (à 2 empires) à 1.0 (dès _FULL empires) : rare ⇒ duel frontal
+     * serré ; 6+ ⇒ vaste & confortable (inchangé, intention Q6). 0 = off (linéaire pur). */ \
+    X(WORLD_EMP_COMFORT_LOW, 0.58f) \
+    X(WORLD_EMP_COMFORT_FULL, 6.0f) \
     /* Calage de saturation Poisson : la terre tient ~SAT_K/pas² germes (384 à pas 18 ⇒ 384·18²).
      * assign_provinces en DÉRIVE le pas pour atteindre le nombre de territoires visé. */ \
     X(WORLD_PROV_SAT_K,  124416.0f) \

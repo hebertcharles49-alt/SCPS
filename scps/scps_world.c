@@ -3938,9 +3938,19 @@ void world_generate(World *w, const WorldParams *P) {
     printf("[scps] territoires...  "); fflush(stdout);
     /* SCALE DU MONDE — le nombre de territoires SUIT le nombre d'entités jouées (f(empires),
      * sans clamp artificiel ; seul SCPS_MAX_PROV — taille des tableaux, calibré HUGE=12 — borne).
-     * Peu d'empires ⇒ monde compact ; 6 ⇒ vaste & confortable ; 12 ⇒ Huge. */
+     * Peu d'empires ⇒ monde compact ; 6 ⇒ vaste & confortable ; 12 ⇒ Huge.
+     * T8 — SUR-COMPACITÉ au bas régime : le confort/empire monte de _LOW (2 empires) à 1.0
+     * (dès _FULL) → le DUEL à 2 empires se resserre (l'hégémon peut enfin plafonner le monde)
+     * sans toucher le régime 6+ (golden par défaut = 6 empires, INCHANGÉ). */
+    int neb = P->n_empires>0 ? P->n_empires : 6;
+    float cfull = tune_f("WORLD_EMP_COMFORT_FULL", 6.f);
+    float clow  = tune_f("WORLD_EMP_COMFORT_LOW", 0.58f);
+    float comfort = 1.f;
+    if (clow>0.f && neb < (int)cfull && cfull>2.f)
+        comfort = clow + (1.f-clow) * ((float)neb-2.f)/(cfull-2.f);   /* 2→_LOW … _FULL→1.0 */
+    if (comfort>1.f) comfort=1.f; if (comfort<0.05f) comfort=0.05f;
     int want_prov = (int)(tune_f("WORLD_PROV_BASE",24.f)
-                        + tune_f("WORLD_PROV_PER_EMPIRE",95.f) * (float)(P->n_empires>0?P->n_empires:6)
+                        + tune_f("WORLD_PROV_PER_EMPIRE",95.f) * comfort * (float)neb
                         + tune_f("WORLD_PROV_PER_CITY", 5.f) * (float)(P->n_city_states>0?P->n_city_states:0));
     if (want_prov<80) want_prov=80;     /* plancher : jamais un monde dégénéré */
     assign_provinces(w,height,seed_f,want_prov);
