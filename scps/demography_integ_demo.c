@@ -74,15 +74,23 @@ int main(int argc, char **argv){
 
     /* ═══ B. PROVINCE MIXTE VIVANTE → le moteur la LIT ═════════════════ */
     printf("\n── B. Un empire homogène conquiert une marche lointaine ──\n");
-    /* On part d'un empire HOMOGÈNE (natifs = couronne) — le cas-clé propre. */
+    /* On part d'un empire HOMOGÈNE (natifs = couronne) — le cas-clé propre.
+     * RE-KEY PROVINCE (T1) : les groupes vivent sur la province représentative
+     * (econ_region_rep_province) — econ->region[r].pop n'est qu'un miroir écrasé
+     * au prochain econ_tick ; la fixture route donc sur prov[rp], comme le moteur. */
     int cap_prov=w->country[player].capital_prov, crown_reg=w->province[cap_prov].region;
     PopCulture crown=econ->region[crown_reg].culture;
     int rP=-1;
-    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==player && econ->region[r].pop.n_groups>0){
-        PopGroup *g=&econ->region[r].pop.groups[0];
+    for (int r=0;r<econ->n_regions;r++){
+        int rp=econ_region_rep_province(econ, r);
+        if (rp<0 || rp>=econ->n_prov) continue;
+        ProvincePop *rpp=&econ->prov[rp].pop;
+        if (econ->region[r].owner!=player || rpp->n_groups<=0) continue;
+        PopGroup *g=&rpp->groups[0];
         g->origin=crown; g->culture=crown; g->heritage=crown.heritage; g->origin_sphere=SPHERE_HOMMES;
-        g->L=7.f; g->integration=1.f; econ->region[r].pop.n_groups=1; econ->region[r].culture=crown;
-        if (rP<0) rP=r;
+        g->L=7.f; g->integration=1.f; rpp->n_groups=1;
+        econ->prov[rp].culture=crown; econ->region[r].culture=crown;
+        if (rP<0) rP=rp;
     }
     prosperity_tick(wp,w,econ,NULL,ts,wl);
     float D0=wp->country[player].profile.D_inf_int, frac0=wp->country[player].fracture;
@@ -90,7 +98,7 @@ int main(int argc, char **argv){
     PopCulture mc=crown;
     mc.valeurs=(crown.valeurs<5?10.f:0.f); mc.religion=(crown.religion<5?10.f:0.f);
     mc.subsistance=(crown.subsistance<5?9.f:1.f); mc.parente=(crown.parente<5?9.f:1.f);
-    ProvincePop *pp=&econ->region[rP].pop;
+    ProvincePop *pp=&econ->prov[rP].pop;   /* rP = index PROVINCE (rep de la 1re région trouvée ci-dessus) */
     PopGroup m; memset(&m,0,sizeof m);
     m.heritage=HERITAGE_CLANIQUE; m.origin_sphere=SPHERE_ETRANGERS; m.origin=mc; m.culture=mc; m.klass=CLASS_LABORER;
     m.count=pp->groups[0].count/3+50; m.L=5.f; m.integration=0.f; m.diaspora=true; m.drift_id=50000;
@@ -98,7 +106,7 @@ int main(int argc, char **argv){
     float pdinf=province_Dinf(pp,drift);
     prosperity_tick(wp,w,econ,NULL,ts,wl);
     float D1=wp->country[player].profile.D_inf_int, frac1=wp->country[player].fracture;
-    printf("   région %d : %d groupes, D∞ interne=%.1f | pays : D∞ %.2f→%.2f, fracture %.2f→%.2f\n",
+    printf("   province %d : %d groupes, D∞ interne=%.1f | pays : D∞ %.2f→%.2f, fracture %.2f→%.2f\n",
            rP, pp->n_groups, pdinf, D0,D1, frac0,frac1);
     ok("la province devient mixte (≥2 groupes) → D∞ interne RÉEL", pp->n_groups>=2 && pdinf>6.f);
     ok("le moteur (prosperity/scps_order, INCHANGÉ) lit ce D → plus de fracture",
@@ -128,11 +136,11 @@ int main(int argc, char **argv){
            gone || dist1 < dist0 - 1.5f);
     }
 
-    /* ═══ D. La dominante mène — RegionEconomy.culture suit le majoritaire ═ */
-    printf("\n── D. RegionEconomy.culture suit le groupe DOMINANT ──\n");
-    const PopGroup *dom2=province_dominant(&econ->region[rP].pop);
-    ok("la culture de la région = celle du groupe dominant (la dominante mène)",
-       dom2 && cdist(&econ->region[rP].culture,&dom2->culture)<0.01f);
+    /* ═══ D. La dominante mène — ProvinceEconomy.culture suit le majoritaire ═ */
+    printf("\n── D. ProvinceEconomy.culture suit le groupe DOMINANT ──\n");
+    const PopGroup *dom2=province_dominant(&econ->prov[rP].pop);
+    ok("la culture de la province = celle du groupe dominant (la dominante mène)",
+       dom2 && cdist(&econ->prov[rP].culture,&dom2->culture)<0.01f);
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);

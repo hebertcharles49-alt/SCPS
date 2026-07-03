@@ -401,11 +401,16 @@ float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid
     int cr = (cp>=0 && cp<w->n_provinces) ? w->province[cp].region : -1;
     Heritage native = (cr>=0 && cr<econ->n_regions) ? econ->region[cr].culture.heritage
                                                     : HERITAGE_ADAPTATIF;
+    /* RE-KEY PROVINCE (T1) : econ->region[r].pop n'est qu'un MIROIR de la province
+     * représentative (copié par econ_aggregate_regions) — les groupes VIVENT sur
+     * econ->prov[]. On scanne TOUTES les provinces du pays (pas juste la représentative
+     * de chaque région) : plus complet que l'ancien modèle un-groupe-par-région. */
     double dig=0.0, tot=0.0;
-    for (int r=0;r<econ->n_regions;r++){
-        const RegionEconomy *re=&econ->region[r];
-        if (re->owner!=cid) continue;
-        const ProvincePop *pp=&re->pop;
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        const ProvinceEconomy *pe=&econ->prov[p];
+        if (pe->owner!=cid) continue;
+        const ProvincePop *pp=&pe->pop;
         for (int i=0;i<pp->n_groups;i++){
             const PopGroup *g=&pp->groups[i];
             tot += (double)g->count;
@@ -424,12 +429,14 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
                                     float out[HERITAGE_COUNT]){
     for (int r=0;r<HERITAGE_COUNT;r++) out[r]=0.f;
     if (!w || !econ || cid<0 || cid>=w->n_countries) return;
+    /* RE-KEY PROVINCE (T1) : cf. econ_country_metabolized — les groupes vivent sur prov[]. */
     double dig[HERITAGE_COUNT]; for (int r=0;r<HERITAGE_COUNT;r++) dig[r]=0.0;
     double tot=0.0;
-    for (int reg=0;reg<econ->n_regions;reg++){
-        const RegionEconomy *re=&econ->region[reg];
-        if (re->owner!=cid) continue;
-        const ProvincePop *pp=&re->pop;
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        const ProvinceEconomy *pe=&econ->prov[p];
+        if (pe->owner!=cid) continue;
+        const ProvincePop *pp=&pe->pop;
         for (int i=0;i<pp->n_groups;i++){
             const PopGroup *g=&pp->groups[i];
             tot += (double)g->count;

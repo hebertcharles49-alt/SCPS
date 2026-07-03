@@ -362,13 +362,21 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
 #define MIG_MIN        20
 
 void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
+    (void)w;   /* signature publique conservée (appelants historiques) ; RE-KEY : plus besoin du World* */
     if (drift) memset(drift, 0, sizeof(*drift));     /* la pile de dérive du monde, à neuf */
     int id=1;
+    /* RE-KEY PROVINCE (T1) : le groupe-substrat VIT sur la province représentative
+     * (econ_region_rep_province, ancrage figé) — écrire econ->region[r].pop serait
+     * effacé au 1er econ_tick (miroir). À la genèse, region[r].strata/culture sont
+     * encore le miroir tout frais d'econ_init (aucun econ_tick entre les deux) : lire
+     * la province directement est équivalent et plus robuste. */
     for (int r=0; r<econ->n_regions; r++){
-        RegionEconomy *re=&econ->region[r];
+        int rp=econ_region_rep_province(econ, r);
+        if (rp<0 || rp>=econ->n_prov) continue;
+        ProvinceEconomy *re=&econ->prov[rp];
         ProvincePop *pp=&re->pop;
         memset(pp, 0, sizeof(*pp));
-        pp->prov = (r<w->n_regions) ? w->region[r].province_ids[0] : -1;
+        pp->prov = rp;
         pp->prosperity = re->prosperity;
         if (!re->culture.settled) continue;
         long total = (long)(re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
@@ -396,8 +404,11 @@ void demography_attach(World *w, WorldEconomy *econ, ModifierStack *drift){
 int demography_dyn_id_next(void){ return g_dyn_drift_id++; }
 void demography_dyn_id_rebase(const WorldEconomy *econ){
     int hi=DYN_DRIFT_BASE-1;
-    for (int r=0;r<econ->n_regions;r++){
-        const ProvincePop *pp=&econ->region[r].pop;
+    /* RE-KEY PROVINCE (T1) : les groupes vivent sur prov[] — scanner region[].pop (miroir,
+     * potentiellement vide) sous-estimerait hi et rouvrirait des collisions de drift_id. */
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        const ProvincePop *pp=&econ->prov[p].pop;
         for (int i=0;i<pp->n_groups;i++)
             if (pp->groups[i].drift_id>hi) hi=pp->groups[i].drift_id;
     }
@@ -405,11 +416,13 @@ void demography_dyn_id_rebase(const WorldEconomy *econ){
 }
 
 /* ÉMERGENCE DE CLASSE (§pop précise) : la classe de CHAQUE groupe (heritage×culture×foi)
- * sort des EMPLOIS de la région — la capitale (tier·100 emplois NOBLES, le tier que
- * la pop débloque) + les ateliers (emploi BOURGEOIS ≈ ouvriers des manufactures),
- * répartis sur les groupes AU PRORATA, par paquets de 100. Σ pop_by_class = count.
- * Rien n'est posé : la structure d'emplois sculpte le tissu social, groupe par groupe. */
-static void demography_emerge_classes(RegionEconomy *re){
+ * sort des EMPLOIS de la province (RE-KEY T1 : re->bld[]/re->n_bld sont désormais ceux de
+ * la province-hôte, plus précis que l'ex-miroir région) — la capitale (tier·100 emplois
+ * NOBLES, le tier que la pop débloque) + les ateliers (emploi BOURGEOIS ≈ ouvriers des
+ * manufactures), répartis sur les groupes AU PRORATA, par paquets de 100. Σ pop_by_class
+ * = count. Rien n'est posé : la structure d'emplois sculpte le tissu social, groupe par
+ * groupe. */
+static void demography_emerge_classes(ProvinceEconomy *re){
     ProvincePop *pp=&re->pop;
     long total=0; for (int i=0;i<pp->n_groups;i++) total+=pp->groups[i].count;
     if (total<1){
@@ -471,9 +484,15 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
     float fuse_rate=tune_f("SYNC_FUSE_RATE",0.10f);            /* fraction du fossé comblée/an (mer soutenue) */
     float inner=FUSE_EPS*0.5f;                                  /* la bande de FRANCHISSEMENT (compté une fois) */
     int cryst=0;
+    /* RE-KEY PROVINCE (T1) : e->region[r].pop est un miroir — les groupes vivent sur la
+     * province représentative (econ_region_rep_province). L'adjacence commerciale (routes)
+     * reste au grain RÉGION (charte règle 4) : seul l'accès aux groupes est redirigé. */
     for (int r=0;r<n;r++){
         RegionEconomy *re=&e->region[r];
-        if (re->pop.n_groups<=0 || !re->culture.settled || re->owner<0) continue;
+        int rp=econ_region_rep_province(e, r);
+        if (rp<0 || rp>=e->n_prov) continue;
+        ProvinceEconomy *pe=&e->prov[rp];
+        if (pe->pop.n_groups<=0 || !pe->culture.settled || re->owner<0) continue;
         int partner=-1; bool sea=false;                        /* le MEILLEUR partenaire-route étranger */
         for (int i=0;i<rn->n;i++){
             const TradeRoute *t=&rn->route[i];
@@ -485,13 +504,17 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
             int fo=e->region[far].owner;
             if (fo<0 || fo==re->owner) continue;               /* un AUTRE pays */
             if (dp && diplo_status(dp,re->owner,fo)==DIPLO_WAR) continue;   /* la guerre coupe le contact */
-            if (e->region[far].pop.n_groups<=0 || !e->region[far].culture.settled) continue;
+            int rpf=econ_region_rep_province(e, far);
+            if (rpf<0 || rpf>=e->n_prov) continue;
+            if (e->prov[rpf].pop.n_groups<=0 || !e->prov[rpf].culture.settled) continue;
             if (t->maritime){ partner=far; sea=true; break; }  /* la MER d'abord (porte plus loin) */
             if (partner<0) partner=far;
         }
         if (partner<0) continue;
-        PopGroup *dom=(PopGroup*)province_dominant(&re->pop); if(!dom) continue;
-        const PopGroup *pd=province_dominant(&e->region[partner].pop); if(!pd) continue;
+        int rpp=econ_region_rep_province(e, partner);
+        if (rpp<0 || rpp>=e->n_prov) continue;
+        PopGroup *dom=(PopGroup*)province_dominant(&pe->pop); if(!dom) continue;
+        const PopGroup *pd=province_dominant(&e->prov[rpp].pop); if(!pd) continue;
         PopCulture a=group_culture_effective(dom, drift);      /* EFFECTIVE = origine + dérive DURABLE */
         PopCulture b=group_culture_effective(pd, drift);
         Culture ca,cb; pc_to_culture(&a,&ca); pc_to_culture(&b,&cb);
@@ -522,13 +545,24 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
 void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
                      ModifierStack *drift, float P, float K, float dt){
     if (dt<=0.f) dt=1.f;
+    /* RE-KEY PROVINCE (T1) : econ->region[r].pop n'est qu'un MIROIR de la province
+     * représentative (copié par econ_aggregate_regions) — y écrire des groupes est perdu
+     * au prochain econ_tick. Les groupes VIVENT sur econ->prov[rep_pid].pop (la vérité) ;
+     * on route dessus via econ_region_rep_province (ancrage FIGÉ, jamais recalculé à
+     * l'état courant — cf. scps_econ.h). L'itération reste PAR RÉGION (adjacence de
+     * migration, satisfaction/coercition lues en agrégat) : même comportement, juste le
+     * bon grain d'écriture. Une région sans province représentative valide (jamais
+     * colonisée) est ignorée, comme avant (pp->n_groups restait à 0). */
     /* 1. Par région : L par groupe, assimilation, rafraîchir le cache, sync dominante. */
     for (int r=0; r<econ->n_regions; r++){
         RegionEconomy *re=&econ->region[r];
-        ProvincePop *pp=&re->pop;
-        if (pp->n_groups<=0 || !re->culture.settled) continue;
+        int rp=econ_region_rep_province(econ, r);
+        if (rp<0 || rp>=econ->n_prov) continue;
+        ProvinceEconomy *pe=&econ->prov[rp];
+        ProvincePop *pp=&pe->pop;
+        if (pp->n_groups<=0 || !pe->culture.settled) continue;
         pp->prosperity = re->prosperity;
-        const PopCulture *crown = (re->owner>=0) ? dom_ruling_culture(w,econ,re->owner) : &re->culture;
+        const PopCulture *crown = (re->owner>=0) ? dom_ruling_culture(w,econ,re->owner) : &pe->culture;
         for (int i=0;i<pp->n_groups;i++){
             group_L_tick(&pp->groups[i], drift, crown, re->satisfaction, 0.f, re->coercion, re->build.H_coerc);
             pp->groups[i].culture = group_culture_effective(&pp->groups[i], drift);
@@ -539,35 +573,51 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         for (int i=0;i<pp->n_groups;i++)
             pp->groups[i].culture = group_culture_effective(&pp->groups[i], drift);
         const PopGroup *dom=province_dominant(pp);
-        if (dom) re->culture = dom->culture;                     /* la dominante mène la province */
+        if (dom){ pe->culture = dom->culture; re->culture = dom->culture; } /* la dominante mène ; miroir région immédiat (lecteurs de la même frame) */
     }
-    /* 2. Migration : les groupes affluent vers la prospérité voisine (round-robin). */
+    /* 2. Migration : les groupes affluent vers la prospérité voisine (round-robin),
+     *    toujours via la province représentative source/destination. */
     for (int r=0; r<econ->n_regions; r++){
         RegionEconomy *re=&econ->region[r];
-        if (re->pop.n_groups<=0 || !re->culture.settled) continue;
+        int rp=econ_region_rep_province(econ, r);
+        if (rp<0 || rp>=econ->n_prov) continue;
+        ProvinceEconomy *pe=&econ->prov[rp];
+        if (pe->pop.n_groups<=0 || !pe->culture.settled) continue;
         int best=-1; float bestp=re->prosperity + MIG_GRADIENT;
-        for (int s=0;s<econ->n_regions;s++)
-            if (econ->adj[r][s] && econ->region[s].culture.settled && econ->region[s].pop.n_groups>0
+        for (int s=0;s<econ->n_regions;s++){
+            int rps=econ_region_rep_province(econ, s);
+            if (rps<0 || rps>=econ->n_prov) continue;
+            const ProvinceEconomy *pes=&econ->prov[rps];
+            if (econ->adj[r][s] && pes->culture.settled && pes->pop.n_groups>0
                 && econ->region[s].prosperity>bestp){ bestp=econ->region[s].prosperity; best=s; }
+        }
         if (best<0) continue;
-        PopGroup *dom=(PopGroup*)province_dominant(&re->pop);
+        int rpb=econ_region_rep_province(econ, best);
+        if (rpb<0 || rpb>=econ->n_prov) continue;
+        PopGroup *dom=(PopGroup*)province_dominant(&pe->pop);
         long amount=dom->count/MIG_FRACTION;
         if (amount<MIG_MIN) continue;
-        int gi=(int)(dom-re->pop.groups);
-        migration_move(&re->pop, &econ->region[best].pop, gi, amount, demography_dyn_id_next());
+        int gi=(int)(dom-pe->pop.groups);
+        migration_move(&pe->pop, &econ->prov[rpb].pop, gi, amount, demography_dyn_id_next());
     }
     /* 3. ÉMERGENCE DE CLASSE : la classe de chaque groupe sort des emplois (capitale
      *    + ateliers). Après migration/assimilation, le tissu social se recompose. */
     for (int r=0; r<econ->n_regions; r++){
-        RegionEconomy *re=&econ->region[r];
-        if (re->pop.n_groups>0 && re->culture.settled) demography_emerge_classes(re);
+        int rp=econ_region_rep_province(econ, r);
+        if (rp<0 || rp>=econ->n_prov) continue;
+        ProvinceEconomy *pe=&econ->prov[rp];
+        if (pe->pop.n_groups>0 && pe->culture.settled) demography_emerge_classes(pe);
     }
 }
 
 void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, int region, int conqueror){
     (void)drift;
     if (region<0||region>=econ->n_regions) return;
-    ProvincePop *pp=&econ->region[region].pop;
+    /* RE-KEY PROVINCE (T1) : les groupes vivent sur la province représentative,
+     * comme demography_tick/_attach (même ancrage econ_region_rep_province). */
+    int rp=econ_region_rep_province(econ, region);
+    if (rp<0 || rp>=econ->n_prov) return;
+    ProvincePop *pp=&econ->prov[rp].pop;
     if (pp->n_groups<=0) return;
     /* les conquis deviennent une minorité restive : l'intégration repart de zéro. */
     for (int i=0;i<pp->n_groups;i++){ pp->groups[i].integration=0.1f; pp->groups[i].L=2.0f; pp->groups[i].agit_base=agit_from_L(2.0f); }

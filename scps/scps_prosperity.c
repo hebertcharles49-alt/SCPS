@@ -57,25 +57,30 @@ static void compute_profile(const WorldEconomy *econ, const World *w, int cid,
     (void)w;
 
     /* CLÉ DE VOÛTE : on collecte les fiches par GROUPE (clé de voûte démographique)
-     * à travers les régions possédées — le D interne se lit ENTRE les groupes.
-     * Repli mono-groupe : une région non attachée (n_groups=0) compte pour sa
-     * RegionEconomy.culture, et une région attachée à UN groupe-substrat donne la
-     * MÊME entrée → les nombres d'hier (non-régression). */
+     * à travers les PROVINCES possédées — le D interne se lit ENTRE les groupes.
+     * Repli mono-groupe : une province non attachée (n_groups=0) compte pour sa
+     * ProvinceEconomy.culture, et une province attachée à UN groupe-substrat donne la
+     * MÊME entrée → les nombres d'hier (non-régression).
+     * RE-KEY PROVINCE (T1) : econ->region[rid].pop n'est qu'un MIROIR de LA SEULE
+     * province représentative (copié par econ_aggregate_regions, potentiellement
+     * périmé d'un tick — demography_tick écrit désormais sur econ->prov[]) — les
+     * groupes VIVENT sur econ->prov[]. On scanne les provinces directement. */
     #define PROF_CAP (SCPS_MAX_REG * 2)
     const PopCulture *cs[PROF_CAP]; double wt[PROF_CAP]; int n = 0;
-    for (int rid = 0; rid < econ->n_regions; rid++) {
-        const RegionEconomy *re = &econ->region[rid];
-        if (re->owner != cid || !re->culture.settled) continue;
-        if (re->pop.n_groups > 0) {
-            for (int k = 0; k < re->pop.n_groups && n < PROF_CAP; k++) {
-                if (re->pop.groups[k].count <= 0) continue;
-                cs[n] = &re->pop.groups[k].culture; wt[n] = (double)re->pop.groups[k].count; n++;
+    int nprov = econ->n_prov; if (nprov > SCPS_MAX_PROV) nprov = SCPS_MAX_PROV;
+    for (int pid = 0; pid < nprov; pid++) {
+        const ProvinceEconomy *pe = &econ->prov[pid];
+        if (pe->owner != cid || !pe->culture.settled) continue;
+        if (pe->pop.n_groups > 0) {
+            for (int k = 0; k < pe->pop.n_groups && n < PROF_CAP; k++) {
+                if (pe->pop.groups[k].count <= 0) continue;
+                cs[n] = &pe->pop.groups[k].culture; wt[n] = (double)pe->pop.groups[k].count; n++;
             }
         } else if (n < PROF_CAP) {
-            double pop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
-                       + re->strata[CLASS_ELITE].pop;
+            double pop = pe->strata[CLASS_LABORER].pop + pe->strata[CLASS_BOURGEOIS].pop
+                       + pe->strata[CLASS_ELITE].pop;
             if (pop < 1.0) pop = 1.0;
-            cs[n] = &re->culture; wt[n] = pop; n++;
+            cs[n] = &pe->culture; wt[n] = pop; n++;
         }
     }
     if (n == 0) return;
