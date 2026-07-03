@@ -274,7 +274,14 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
     for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++){
         RegionEconomy *re=&econ->region[r];
         if (rs->revanchism_days[r]>0.f) rs->revanchism_days[r]=fmaxf(0.f, rs->revanchism_days[r]-(float)days);
-        if (re->owner<0 || !re->culture.settled || re->pop.n_groups<=0){
+        /* RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir
+         * de la province représentative, réécrit à chaque econ_tick (donc potentiellement VIDE
+         * ou périmé selon l'ordre des tick). On route sur la MÊME province que revolt_ignite
+         * mobilisera si ce scan déclenche (cohérence : le scan doit juger le groupe qui sera
+         * réellement soulevé, pas une diversité que l'ignition ne verra jamais). */
+        int rpid=econ_region_rep_province(econ, r);
+        ProvinceEconomy *pe=(rpid>=0 && rpid<econ->n_prov) ? &econ->prov[rpid] : NULL;
+        if (re->owner<0 || !re->culture.settled || !pe || pe->pop.n_groups<=0){
             rs->desperation_days[r]=0.f; continue;
         }
         const PopCulture *crown=crown_of(w,econ,re->owner);
@@ -284,13 +291,13 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
             ct=ctens[o]; cf=cfac[o];
         }
         float worst=0.f, min_integ=1.f;
-        for (int i=0;i<re->pop.n_groups;i++){
-            float d=revolt_group_deficit(&re->pop.groups[i], drift, crown,
+        for (int i=0;i<pe->pop.n_groups;i++){
+            float d=revolt_group_deficit(&pe->pop.groups[i], drift, crown,
                                          re->food_sat, re->society_sat, re->over_tax, re->coercion)
-                  + ethos_coup_boost(&re->pop.groups[i], cf, ct);   /* §5 : grief politique */
+                  + ethos_coup_boost(&pe->pop.groups[i], cf, ct);   /* §5 : grief politique */
             if (d>1.f) d=1.f;
             if (d>worst) worst=d;
-            if (re->pop.groups[i].integration < min_integ) min_integ = re->pop.groups[i].integration;
+            if (pe->pop.groups[i].integration < min_integ) min_integ = pe->pop.groups[i].integration;
         }
         /* SUREXTENSION : un empire trop vaste tient mal ses MARCHES — le grief monte
          * avec la taille, mais surtout là où la province est MAL INTÉGRÉE (conquête
@@ -432,10 +439,14 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
         /* Garnison locale : seuls les groupes LOYAUX (pondérés par leur intégration)
          * se lèvent pour l'ordre — le groupe soulevé, lui, ne se garnisonne pas. Une
          * province fraîchement conquise (peuple restif, mince élite coloniale) tient
-         * donc mal : c'est là que naissent les sécessions. */
+         * donc mal : c'est là que naissent les sécessions.
+         * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — on lit `pe` (déjà résolu ci-dessus
+         * sur econ_region_rep_province), la MÊME province d'où le groupe rebelle a été
+         * mobilisé (revolt_ignite) : la garnison face À CE soulèvement doit voir SES
+         * voisins de province, pas une diversité régionale qui n'a jamais pris les armes. */
         float loyal_pop = 0.f;
-        for (int gi=0; gi<re->pop.n_groups; gi++){
-            const PopGroup *g=&re->pop.groups[gi];
+        for (int gi=0; gi<pe->pop.n_groups; gi++){
+            const PopGroup *g=&pe->pop.groups[gi];
             if (g->drift_id==rb->drift_id) continue;
             loyal_pop += (float)g->count * clampf(g->integration, 0.f, 1.f);
         }

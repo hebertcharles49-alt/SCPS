@@ -193,13 +193,18 @@ static float glide_axis(float base, float pop_share, float crown_share){
 }
 static void ai_refresh_ethos(AiActor *a, const World *w, const WorldEconomy *econ){
     int cp = (a->cid>=0 && a->cid<w->n_countries) ? w->country[a->cid].capital_prov : -1;
-    int cr = (cp>=0 && cp<w->n_provinces) ? w->province[cp].region : -1;
-    if (cr<0 || cr>=econ->n_regions) return;
+    if (cp<0 || cp>=w->n_provinces || cp>=econ->n_prov) return;
     /* Le penchant du TRÔNE = celui de sa capitale (le siège du pouvoir) ; celui du
      * PEUPLE = la distribution de tout l'empire. Même source (les groupes) → un
      * empire homogène ne glisse PAS (capitale == empire), seule la diversité conquise
-     * écarte les deux. */
-    float crownlean[FAC_COUNT]; faction_weights_of(&econ->region[cr].pop, 1, crownlean);
+     * écarte les deux.
+     * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir
+     * de la province représentative (à jour seulement JUSQU'AU dernier econ_tick ; ai_step
+     * s'exécute AVANT econ_tick dans sim_day, donc lire le miroir serait un tick EN RETARD).
+     * On lit directement econ->prov[cp] (LA capitale, déjà en main ci-dessus) — précis et
+     * sans latence, plutôt que de traverser econ->region[cr] pour retomber sur la même
+     * province via rep_pid. */
+    float crownlean[FAC_COUNT]; faction_weights_of(&econ->prov[cp].pop, 1, crownlean);
     float pop[FAC_COUNT];       faction_effective_distribution(w, econ, a->cid, pop);  /* base + leviers (§4) */
     a->w_expand   = glide_axis(a->w_base[0], pop[FAC_CONQUERANT],    crownlean[FAC_CONQUERANT]);
     a->w_trade    = glide_axis(a->w_base[1], pop[FAC_MARCHAND],      crownlean[FAC_MARCHAND]);
@@ -788,19 +793,26 @@ static void ai_interior_turn(AiActor *a, const World *w, WorldEconomy *econ,
     bool at_war=false;
     for (int b=0;b<w->n_countries && b<SCPS_MAX_COUNTRY;b++)
         if (b!=a->cid && diplo_status(dp,a->cid,b)==DIPLO_WAR){ at_war=true; break; }
-    /* balayer SES provinces : la pire agitation, la plus grosse minorité mal intégrée */
+    /* balayer SES provinces : la pire agitation, la plus grosse minorité mal intégrée.
+     * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir
+     * périmé/vide selon l'ordre des tick (cf. econ_aggregate_regions). worst_min nourrit
+     * agency_order_assimilate/_purge (region id), dont l'effet RÉEL atterrit déjà sur la
+     * province représentative (apply_action/purge_slice, scps_agency.c) — on juge donc SUR
+     * LA MÊME province pour que la cible choisie soit celle qui sera vraiment traitée. */
     int worst_agit=-1; float worst_sat=1.f;
     int worst_min=-1;  long  min_count=0; float min_integ=1.f;
     for (int r=0;r<econ->n_regions;r++){
         RegionEconomy *re=&econ->region[r];
         if (re->owner!=a->cid || !re->colonized) continue;
         if (re->satisfaction<worst_sat && re->coercion<0.30f){ worst_sat=re->satisfaction; worst_agit=r; }
-        if (re->pop.n_groups>=2){
-            int dom=0; for (int g=1;g<re->pop.n_groups;g++) if (re->pop.groups[g].count>re->pop.groups[dom].count) dom=g;
-            long tot=0; for (int g=0;g<re->pop.n_groups;g++) tot+=re->pop.groups[g].count;
-            for (int g=0;g<re->pop.n_groups;g++){
+        int rpid=econ_region_rep_province(econ, r);
+        const ProvincePop *pp=(rpid>=0 && rpid<econ->n_prov) ? &econ->prov[rpid].pop : NULL;
+        if (pp && pp->n_groups>=2){
+            int dom=0; for (int g=1;g<pp->n_groups;g++) if (pp->groups[g].count>pp->groups[dom].count) dom=g;
+            long tot=0; for (int g=0;g<pp->n_groups;g++) tot+=pp->groups[g].count;
+            for (int g=0;g<pp->n_groups;g++){
                 if (g==dom) continue;
-                const PopGroup *pg=&re->pop.groups[g];
+                const PopGroup *pg=&pp->groups[g];
                 if (tot>0 && pg->count*3 >= tot && pg->count>min_count){
                     min_count=pg->count; min_integ=pg->integration; worst_min=r;
                 }
@@ -1573,22 +1585,28 @@ static float pc_content_dist(const PopCulture *a, const PopCulture *b){
           dp=fabsf(a->parente-b->parente),   dr=fabsf(a->religion-b->religion);
     float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
 }
-/* Centroïde culturel (contenu) de chaque heritage-archétype au monde, pondéré population. */
+/* Centroïde culturel (contenu) de chaque heritage-archétype au monde, pondéré population.
+ * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir de LA
+ * SEULE province représentative (capitale, sinon la plus peuplée), pas un agrégat de toute
+ * la région. Un centroïde MONDIAL doit voir TOUTE la diversité de population (chaque province,
+ * chaque groupe) — on scanne donc econ->prov[] directement (pattern a, comme
+ * econ_country_metabolized), plus fidèle qu'une région-par-région sur son seul représentant. */
 static void world_archetype_centroids(const WorldEconomy *econ, PopCulture cen[HERITAGE_COUNT], bool present[HERITAGE_COUNT]){
     double sv[HERITAGE_COUNT]={0}, ss[HERITAGE_COUNT]={0}, sp[HERITAGE_COUNT]={0}, sr[HERITAGE_COUNT]={0}, wsum[HERITAGE_COUNT]={0};
-    for (int r=0;r<econ->n_regions;r++){
-        const RegionEconomy *re=&econ->region[r];
-        if (!re->active || !re->colonized) continue;
-        if (re->pop.n_groups>0){
-            for (int g=0;g<re->pop.n_groups;g++){
-                const PopGroup *pg=&re->pop.groups[g]; int rr=pg->heritage;
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        const ProvinceEconomy *pe=&econ->prov[p];
+        if (!pe->active || !pe->colonized) continue;
+        if (pe->pop.n_groups>0){
+            for (int g=0;g<pe->pop.n_groups;g++){
+                const PopGroup *pg=&pe->pop.groups[g]; int rr=pg->heritage;
                 if (rr<0||rr>=HERITAGE_COUNT || pg->count<=0) continue;
                 double wq=(double)pg->count; const PopCulture *c=&pg->culture;
                 sv[rr]+=wq*c->valeurs; ss[rr]+=wq*c->subsistance; sp[rr]+=wq*c->parente; sr[rr]+=wq*c->religion; wsum[rr]+=wq;
             }
         } else {
-            int rr=re->culture.heritage; if (rr<0||rr>=HERITAGE_COUNT) continue;
-            const PopCulture *c=&re->culture;
+            int rr=pe->culture.heritage; if (rr<0||rr>=HERITAGE_COUNT) continue;
+            const PopCulture *c=&pe->culture;
             sv[rr]+=c->valeurs; ss[rr]+=c->subsistance; sp[rr]+=c->parente; sr[rr]+=c->religion; wsum[rr]+=1.0;
         }
     }
@@ -1614,13 +1632,42 @@ static bool culture_bears_arch(const PopCulture *c, int ar, const PopCulture cen
 }
 /* COHÉSION d'une région gouvernée [0..1] — l'assentiment du sol : intégration moyenne
  * (pondérée pop) des groupes. Une province homogène (cœur) est pleinement digérée (1.0) ;
- * une conquête fraîche, mal intégrée, est basse → elle ne transmet son art qu'à mi-voix. */
-static float region_cohesion(const RegionEconomy *re){
-    if (re->pop.n_groups<=0) return 1.0f;
+ * une conquête fraîche, mal intégrée, est basse → elle ne transmet son art qu'à mi-voix.
+ * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir de LA
+ * SEULE province représentative. La cohésion d'une région-GOUVERNANCE (le sceau qui ouvre le
+ * secret d'archétype) doit refléter TOUTES ses provinces membres — une capitale bien digérée
+ * ne doit pas maquiller une marche périphérique mal intégrée (ou l'inverse). Scan complet via
+ * le champ miroir prov[].region (comme econ_aggregate_regions), pas juste le représentant. */
+static float region_cohesion(const WorldEconomy *econ, int r){
     double si=0.0, sw=0.0;
-    for (int g=0;g<re->pop.n_groups;g++){ double wq=(double)re->pop.groups[g].count; if(wq<=0)continue;
-        si+=wq*re->pop.groups[g].integration; sw+=wq; }
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        const ProvinceEconomy *pe=&econ->prov[p];
+        if (pe->region!=r) continue;
+        for (int g=0;g<pe->pop.n_groups;g++){ double wq=(double)pe->pop.groups[g].count; if(wq<=0)continue;
+            si+=wq*pe->pop.groups[g].integration; sw+=wq; }
+    }
     return (sw>0.0)?(float)(si/sw):1.0f;
+}
+/* Une région (ses groupes de population) PORTE-t-elle l'archétype ar ? Le culture_bears_arch
+ * sur la culture-AGRÉGÉE (re->culture, un agrégat légitime — capitale/dominante, PAS .pop) est
+ * tenté d'abord (bon marché) ; sinon on cherche une MINORITÉ porteuse.
+ * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir de LA
+ * SEULE province représentative. Une minorité qui porte l'archétype peut vivre dans N'IMPORTE
+ * QUELLE province de la région (pas forcément la capitale/rep) — on scanne donc TOUTES les
+ * provinces membres (champ miroir prov[].region), pas seulement le représentant. */
+static bool region_bears_arch(const WorldEconomy *econ, int r, int ar,
+                              const PopCulture cen[HERITAGE_COUNT], const bool present[HERITAGE_COUNT]){
+    if (r<0 || r>=econ->n_regions) return false;
+    if (culture_bears_arch(&econ->region[r].culture, ar, cen, present)) return true;
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        const ProvinceEconomy *pe=&econ->prov[p];
+        if (pe->region!=r) continue;
+        for (int g=0;g<pe->pop.n_groups;g++)
+            if (culture_bears_arch(&pe->pop.groups[g].culture, ar, cen, present)) return true;
+    }
+    return false;
 }
 static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const RouteNetwork *rn, int cid, unsigned char depth[ARCH_COUNT]){
     PopCulture cen[HERITAGE_COUNT]; bool present[HERITAGE_COUNT];
@@ -1648,7 +1695,7 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
              * mal digéré (conquête fraîche, faible intégration) ne transmet son art qu'à
              * mi-voix (métier), pas jamais — il faut LÉGITIMER pour ouvrir le profond/secret.
              * Course avec l'assimilation : digérer avant que la source ne se fonde (§2). */
-            float coh=region_cohesion(re);
+            float coh=region_cohesion(econ, r);
             ch = (coh>=0.66f)?PROF_SECRET : (coh>=0.33f)?PROF_PROFOND : PROF_METIER;
         }
         else if (has_credo && re->culture.credo==mycredo)            ch=PROF_METIER;    /* co-religion */
@@ -1656,10 +1703,7 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
         else                                                         ch=PROF_SURFACE;   /* commerce / diffusion */
         for (int ar=0; ar<ARCH_COUNT; ar++){
             if (depth[ar]>=(unsigned char)ch) continue;
-            bool bears = culture_bears_arch(&re->culture, ar, cen, present);
-            for (int g=0; g<re->pop.n_groups && !bears; g++)
-                bears = culture_bears_arch(&re->pop.groups[g].culture, ar, cen, present);
-            if (bears) depth[ar]=(unsigned char)ch;
+            if (region_bears_arch(econ, r, ar, cen, present)) depth[ar]=(unsigned char)ch;
         }
     }
     /* S1 — LE CHEMIN COMMERCIAL vers l'archétype (Venise ← Grèce, sans conquérir). Un
@@ -1688,9 +1732,7 @@ static void ai_archetype_depth(const World *w, const WorldEconomy *econ, const R
             float vol=t->yield/yref; if(vol>1.f)vol=1.f; if(vol<0.f)vol=0.f;     /* le VOLUME module */
             float wgt=(t->maritime?sea_w:land_w)*(0.5f+0.5f*vol);                /* la MER pèse FORT */
             for (int ar=0; ar<ARCH_COUNT; ar++){
-                bool bears = culture_bears_arch(&fr->culture, ar, cen, present);
-                for (int g=0; g<fr->pop.n_groups && !bears; g++)
-                    bears = culture_bears_arch(&fr->pop.groups[g].culture, ar, cen, present);
+                bool bears = region_bears_arch(econ, far, ar, cen, present);
                 if (bears && wgt>gbest[ar][po]) gbest[ar][po]=wgt;              /* le MEILLEUR lien par ENTITÉ */
             }
         }

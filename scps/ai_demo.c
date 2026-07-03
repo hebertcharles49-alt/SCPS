@@ -389,13 +389,14 @@ int main(int argc, char **argv){
             if (s.econ->region[r].active && s.econ->region[r].owner!=cidM
                 && s.econ->region[r].owner!=cidD && s.econ->region[r].owner!=cidB){ rg=r; break; }
         if (rg>=0){
-            RegionEconomy *re=&s.econ->region[rg];
+            /* RE-KEY PROVINCE : ai_refresh_ethos (§3) lit désormais econ->prov[capitale]
+             * DIRECTEMENT (plus de traversée par econ->region[cr].pop, cf. scps_ai.c) —
+             * un écrivain qui pose seulement econ->region[rg].* est invisible (même piège
+             * documenté en tête de fichier, l.76-85). On route via push_region_fiche
+             * (même idiome que set_capital_fiche), qui écrit CHAQUE province membre +
+             * rafraîchit l'agrégat. */
             PopCulture oc=make_fiche(9.f,ETHOS_DOMINATEUR,ECON_TRIBUT,CREDO_PLURALISTE); oc.heritage=HERITAGE_CLANIQUE;
-            re->owner=(int16_t)cidM; re->colonized=true; re->culture=oc;
-            memset(&re->pop,0,sizeof re->pop);
-            re->pop.groups[0].heritage=HERITAGE_CLANIQUE; re->pop.groups[0].origin=oc; re->pop.groups[0].culture=oc;
-            re->pop.groups[0].klass=CLASS_LABORER; re->pop.groups[0].count=3000;
-            re->pop.n_groups=1;
+            push_region_fiche(&s, rg, oc, cidM, 3000.f, 0.f, true);
         }
         act[1].next_strat_day=day; ai_step(&act[1],s.w,s.econ,s.wp,s.wl,s.ag,s.rn,s.dp,NULL,day);
         float expand_after=act[1].w_expand;
