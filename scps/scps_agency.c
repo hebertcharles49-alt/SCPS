@@ -342,6 +342,18 @@ void agency_seed_capital_markets(const World *w, WorldEconomy *econ){
         if (re->edi_built & (1u<<EDI_MARCHE)) continue;          /* déjà posé → ne pas doubler le delta */
         apply_delta(&re->build, &EDIFICES[EDI_MARCHE].delta);
         re->edi_built |= (1u<<EDI_MARCHE);
+        /* RE-KEY PROVINCE (T3) : le miroir region[] ci-dessus est ÉCRASÉ par le tout premier
+         * econ_aggregate_regions (appelé avant le 1er econ_tick, cf. apply_action plus haut)
+         * — sans écrire aussi sur la province représentative, le Marché de départ s'évapore
+         * au jour 1 (le pays né NU redevient nu). Même patron que apply_action. */
+        { int pid=econ_region_rep_province(econ, r);
+          if (pid>=0 && pid<econ->n_prov){
+              ProvinceEconomy *pe=&econ->prov[pid];
+              if (!(pe->edi_built & (1u<<EDI_MARCHE))){
+                  apply_delta(&pe->build, &EDIFICES[EDI_MARCHE].delta);
+                  pe->edi_built |= (1u<<EDI_MARCHE);
+              }
+          } }
     }
 }
 TechId edifice_gate_tech(Edifice e){
