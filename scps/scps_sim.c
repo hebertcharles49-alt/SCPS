@@ -97,7 +97,14 @@ static void wild_cultural_tick(Sim *s, World *w){
         bool converged=(cr>=0 && cr<e->n_regions && re->culture.heritage==e->region[cr].culture.heritage);
         if (g_wild_contact[r]>=defect_years || converged){
             double pop=re->strata[0].pop+re->strata[1].pop+re->strata[2].pop;
-            re->owner=(int16_t)best_emp;    /* RALLIEMENT : transfert d'owner (réutilise le modèle) */
+            /* T6 — RE-KEY PROVINCE : re->owner est un DÉRIVÉ recalculé par
+             * econ_aggregate_regions à CHAQUE tick (capitale, sinon meilleure pop de
+             * PROVINCE) ; un simple re->owner=best_emp ici était écrasé au tick suivant
+             * (les provinces membres restaient WILD) → le hameau revenait WILD, le
+             * contact remûrissait ~WILD_DEFECT_YEARS plus tard, et se rallier À NOUVEAU
+             * (boucle : ~23× plus de ralliements que de hameaux semés sur 200 ans, soit
+             * ~200/8). Fix : transférer les PROVINCES membres (idiome de la conquête). */
+            econ_region_set_owner(e, w, r, best_emp);
             g_wild_contact[r]=0; g_wild_defected++; g_wild_absorb_pop+=pop;
         }
     }
