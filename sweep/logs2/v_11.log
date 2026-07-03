@@ -1,0 +1,426 @@
+══════════════════════════════════════════════════════════════════════
+ CHRONIQUE — balayage : 3 sims, 200 ans (empires 2→4, cités 5→7 ; sans joueur)
+══════════════════════════════════════════════════════════════════════
+[scps] géologie...     ok
+[scps] architecture... ok
+[scps] altération...   ok
+[scps] érosion hydro... ok
+[scps] érosion...      ok
+[scps] côtes fract...  ok
+[scps] carte fantôme.. ok
+[scps] fantôme négat.. ok
+[scps] lissage océan... ok
+[scps] continentalité...ok
+[scps] climat (vent)... ok
+[scps] vallées...      ok
+[scps] biomes...       ok
+[scps] lacs...         ok (17 visible(s) / 522 alimenté(s))
+[scps] reconquête...   (marais 13% bois 34% mangrove 0%) ok
+[scps] fertilité...    ok
+[scps] territoires...  ok (258 terr.)
+[scps] continents...   ok (2 cont.)
+[scps] hiérarchie...   ok (102 rég. 62 pays ; par continent : C0=8(59%) C1=3(41%))
+[scps] flags rendu...  ok
+[scps] courants...     (couloirs 40% · vives 51% · mortes 6% · cabotage 1% ; glaciers 4507 cell.) ok
+[scps] rades...        ok
+[scps] noms prov...    ok
+[scps] ressources...   ok
+[scps] sites départ... ok (36 estuaires, 26 eau douce, 0 secs ; food≥0.30 : 55/62)
+[scps] rivières...     ok (64 riv. ; écartées : 3905 cap · 35 courtes · 0 longues)
+[peuples] joueur=Adaptatif ; héritages DÉBRAYÉS de la géo : Ésotérique×9 Métallurgiste×14 Mécaniste×11 Adaptatif×11 Agraire×10 Clanique×7
+   mer : volta mesurée région 0 ⇄ 101 — aller 228 j · retour 224 j (asymétrie ×0.98)
+
+── Sim 1 (graine 11) — 2 empires · 5 cités-états · 2 continents · 102 régions ──
+              ressources (extraction, 91 rég actives) : Céréales 47(Σ2117) Bétail 14(Σ470) Laine 16(Σ543) Poisson 15(Σ365) Fourrure 6(Σ115) Sel 9(Σ199) Coton 2(Σ125) Bois 57(Σ3474) Fruits 61(Σ2343) Herbes médicinales 44(Σ1268) Cuivre 32(Σ1512) Fer 37(Σ1436) Charbon 8(Σ167) Soufre 2(Σ264) Salpêtre 4(Σ145) Or 10(Σ178) Métaux précieux 2(Σ60) Cristal arcanique 4(Σ71) Fer céleste 10(Σ82) Murex 7(Σ211) Argile 23(Σ137) Pierre 78(Σ2428)
+   an  20  ÂGE : Âge du Commerce Mondial
+   an  40 : 10 pays | pop    38k | armée    66 | colonisées  60 prov | transf. paix  11 prov | 1er empire  4 rég | prosp 22 stab 58 |  5 révolté(s)
+   an  50  ÂGE : Âge des Empires
+   an  80 :  9 pays | pop    68k | armée    77 | colonisées  85 prov | transf. paix  21 prov | 1er empire  8 rég | prosp 38 stab 50 |  4 révolté(s)
+   an 106  ÂGE : Âge de la Raison
+   an 120 : 12 pays | pop   105k | armée    91 | colonisées 105 prov | transf. paix  60 prov | 1er empire  9 rég | prosp 47 stab 57 |  4 révolté(s)
+   an 144  ÂGE : Âge de la Brèche
+   an 160 : 13 pays | pop   141k | armée   138 | colonisées 124 prov | transf. paix  78 prov | 1er empire 13 rég | prosp 56 stab 79 |  3 révolté(s)
+   an 173  ÂGE : Âge des Lumières
+   BILAN an 200 : 18 pays subsistent (2 absorbés · 11 émergés ; plancher 8) | 5 âge(s) ; 24 guerre(s) au total, pic 5 ; pic de révolte 14 (an 200)
+              faustien : entropie monde 58 · conso foreuse 0 · réplicateur 0 · corne 0 · 0 empire(s) au bord de la Brèche | FER prix moy 0.8 / max 2.0 (base 2.4) · armes produites 48
+              §27 FIN : RONCES (an 197) · épicentre rég 52 · fauteur pays 13 · front de ronces 390 cellule(s)
+              1er empire « Horde Bramwickka » : 18 régions (17% des terres) | Stabilité 100  Prospérité 78  Légitimité 58  Cohésion 90 — Assise Tyrannique
+              empires vivants (13) — métriques 0-100 :
+                · Horde Bramwickka  18 rég · pop    49k · Stab 100 Prosp  78 Légit  58 Cohés  90 Corr   0 · 30 tech ★
+                    classes : J 40.4k (83%) · B 6.1k (12%) · É 2.5k (5%) | or 286639 (+134.5/mois, dern. année) · armée 79 (4 rgt)
+                    marché : hub non · 46 route(s) · import 69.0 · export 88.6 (+495 or/an) | stocks Σ 26256 — Bétail 7159 Céréales 7111 Fruits 6347 Pierre 2003
+                · Ligue Gualyan      6 rég · pop    18k · Stab  97 Prosp 100 Légit  70 Cohés  94 Corr   0 · 35 tech
+                    classes : J 15.0k (84%) · B 1.9k (11%) · É 0.9k (5%) | or 110222 (-86.0/mois, dern. année) · armée 5 (62 rgt)
+                    marché : hub non · 9 route(s) · import 13.6 · export 33.2 (+125 or/an) | stocks Σ 9044 — Fruits 2800 Céréales 2431 Laine 1022 Bois 624
+                · Clanique libre     4 rég · pop    18k · Stab 100 Prosp 100 Légit  98 Cohés 100 Corr   0 · 18 tech
+                    classes : J 15.9k (88%) · B 1.3k (7%) · É 0.9k (5%) | or 104902 (+2103.4/mois, dern. année) · armée 7 (52 rgt)
+                    marché : hub OUI · 29 route(s) · import 63.2 · export 88.6 (+615 or/an) | stocks Σ 10865 — Céréales 2129 Fruits 2013 Armes de trait 1954 Laine 1336
+                · Clanique libre     3 rég · pop     5k · Stab  11 Prosp  10 Légit  56 Cohés  91 Corr   0 ·  0 tech
+                    classes : J 4.1k (81%) · B 0.5k (11%) · É 0.4k (8%) | or 15714 (+5.0/mois, dern. année) · armée 6 (12 rgt)
+                    marché : hub non · 7 route(s) · import 6.7 · export 10.7 (+111 or/an) | stocks Σ 3019 — Armes de trait 1025 Fruits 907 Céréales 506 Laine 116
+                · Havre Falwick      2 rég · pop     2k · Stab  68 Prosp  58 Légit  69 Cohés  97 Corr   0 ·  7 tech
+                    classes : J 1.2k (62%) · B 0.4k (23%) · É 0.3k (15%) | or 13865 (+63.5/mois, dern. année) · armée 2 (0 rgt)
+                    marché : hub non · 8 route(s) · import 15.3 · export 20.9 (+190 or/an) | stocks Σ 1570 — Fruits 744 Céréales 385 Bois 127 Outils 111
+                · Agraire libre      1 rég · pop     1k · Stab  94 Prosp  82 Légit  66 Cohés  89 Corr   0 · 21 tech
+                    classes : J 0.7k (61%) · B 0.3k (26%) · É 0.2k (13%) | or 8759 (-75.8/mois, dern. année) · armée 3 (2 rgt)
+                    marché : hub non · 3 route(s) · import 12.1 · export 8.2 (+34 or/an) | stocks Σ 501 — Céréales 130 Bétail 119 Pierre 51 Armes lourdes 42
+                · Agraire libre      1 rég · pop     4k · Stab 100 Prosp  67 Légit  85 Cohés 100 Corr   0 · 14 tech
+                    classes : J 3.8k (90%) · B 0.3k (8%) · É 0.1k (2%) | or 12170 (+9.0/mois, dern. année) · armée 4 (2 rgt)
+                    marché : hub non · 8 route(s) · import 14.2 · export 20.1 (+133 or/an) | stocks Σ 1447 — Fruits 340 Bois 328 Céréales 327 Armes lourdes 151
+                · Métallurgiste libre   1 rég · pop     1k · Stab  97 Prosp  85 Légit  81 Cohés  97 Corr   0 ·  2 tech
+                    classes : J 1.0k (91%) · B 0.1k (4%) · É 0.0k (4%) | or 1221 (+0.2/mois, dern. année) · armée 3 (2 rgt)
+                    marché : hub non · 3 route(s) · import 0.0 · export 4.0 (+15 or/an) | stocks Σ 474 — Céréales 306 Bois 60 Outils 47 Fruits 20
+                · Agraire libre      1 rég · pop     1k · Stab  94 Prosp  77 Légit  72 Cohés 100 Corr   0 · 13 tech
+                    classes : J 0.9k (88%) · B 0.1k (7%) · É 0.1k (5%) | or 1065 (-65.0/mois, dern. année) · armée 2 (3 rgt)
+                    marché : hub non · 3 route(s) · import 4.4 · export 3.4 (+5 or/an) | stocks Σ 648 — Céréales 291 Fruits 219 Bois 60 Outils 30
+                · Métallurgiste libre   1 rég · pop     0k · Stab  17 Prosp   0 Légit   0 Cohés 100 Corr   0 ·  0 tech
+                    classes : J 0.1k (80%) · B 0.0k (15%) · É 0.0k (5%) | or 310 (-15.8/mois, dern. année) · armée 0 (0 rgt)
+                    marché : hub non · 1 route(s) · import 3.0 · export 0.0 (+0 or/an) | stocks Σ 95 — Céréales 60 Fruits 19 Outils 8 Pierre 2
+                · Agraire libre      1 rég · pop     0k · Stab  53 Prosp  51 Légit  67 Cohés 100 Corr   0 ·  0 tech
+                    classes : J 0.0k (3%) · B 0.1k (70%) · É 0.0k (27%) | or 178 (+14.9/mois, dern. année) · armée 1 (0 rgt)
+                    marché : hub non · 3 route(s) · import 0.0 · export 0.3 (+0 or/an) | stocks Σ 21 — Herbes médicinales 5 Pierre 4 Céréales 4 Outils 3
+                · Métallurgiste libre   1 rég · pop     0k · Stab  45 Prosp  39 Légit  67 Cohés 100 Corr   0 ·  0 tech
+                    classes : J 0.0k (25%) · B 0.1k (57%) · É 0.0k (18%) | or 14 (+1.2/mois, dern. année) · armée 0 (0 rgt)
+                    marché : hub non · 4 route(s) · import 1.6 · export 0.2 (+0 or/an) | stocks Σ 40 — Fruits 11 Laine 9 Outils 6 Céréales 5
+                · Métallurgiste libre   1 rég · pop     0k · Stab  48 Prosp  38 Légit  67 Cohés 100 Corr   0 ·  0 tech
+                    classes : J 0.1k (74%) · B 0.0k (12%) · É 0.0k (14%) | or -1 (-0.0/mois, dern. année) · armée 2 (0 rgt)
+                    marché : hub non · 1 route(s) · import 0.0 · export 1.0 (+1 or/an) | stocks Σ 58 — Céréales 21 Fer 11 Outils 10 Pierre 7
+              vivier cités-états : 5 disponibles / 5 au départ (0 absorbées)
+              hubs : 78% du commerce mondial passe par les Centres des cités-états (1364 / 1743)
+              population : 151k au total ; par continent : C0 90k C1 60k
+              diplomatie : 4 pacte(s) d'alliance actif(s)
+              satisfaction (pop-pondérée, AVEC distribution) : Laborer 72% · Bourgeois 88% · Élite 81% | commerce inter-pays/an 2758
+              classes (E0.7, départ 80/15/5) : Laborer 86% · Bourgeois 8% · Élite 5% | friche (E1bis.10) : 6 rég impayée(s)
+              manufactures : 17×Manufacture textile 10×Scierie navale 17×Papeterie 25×Distillerie 21×Brasserie 5×Joaillerie 11×Atelier d'étoffe précieuse 1×Atelier de mage 31×Atelier d'outillage 3×Armurerie légère 2×Poudrière 8×Apothicaire 26×Atelier de tunique 10×Charbonnière 1×Alambic 2×Armurerie lourde 2×Atelier d'arc 2×Arquebuserie 33×Poterie 8×Atelier de sculpture
+              expansion : 141 prov colonisées · 105 prov TRANSFÉRÉES à la paix · armée finale 153
+              accession (1er édifice bâti) : 360 j an 2 · 540 j an 1 · 960 j an 191  (-1 = jamais)
+              spéculation (E3) : 1 entrepôt(s) · vol 0 (0.0/an) · or net +0 · 0 achat(s)/0 vente(s) | σ prix avant 0.326 (159 ans) → après 0.092 (41 ans)
+              lissage CENTRES (même époque, même classe) : σ centres À entrepôt 0.000 vs centres SANS 0.337
+              ── par âge (instantané à l'avènement) ──
+                an  20 Âge du Commerce Mondial | pays  9 · pop    28k · or Σ   81746 · PIB   2174 · tech  11
+                       marché : grain 1.59 · étoffe 9.40 · orfèvr. 50.25 · outils 29.77 | or/empire : Ligue Gualyan 18849(3r) Horde Bramwickka 17802(3r) Agraire libre 1181(2r)
+                an  50 Âge des Empires         | pays 10 · pop    45k · or Σ  175239 · PIB   4825 · tech  36
+                       marché : grain 1.28 · étoffe 8.82 · orfèvr. 51.58 · outils 19.40 | or/empire : Ligue Gualyan 55094(4r) Horde Bramwickka 34724(4r) Agraire libre 23474(3r)
+                an 106 Âge de la Raison        | pays 11 · pop    90k · or Σ  475669 · PIB  11445 · tech  97
+                       marché : grain 0.96 · étoffe 5.24 · orfèvr. 44.40 · outils 18.13 | or/empire : Ligue Gualyan 231347(9r) Horde Bramwickka 91812(8r) Agraire libre 31629(4r)
+                an 144 Âge de la Brèche       | pays 12 · pop   121k · or Σ  578063 · PIB  16446 · tech 172
+                       marché : grain 0.89 · étoffe 4.70 · orfèvr. 9.26 · outils 12.08 | or/empire : Horde Bramwickka 174086(12r) Ligue Gualyan 193857(9r) Clanique libre 38786(4r)
+                an 173 Âge des Lumières       | pays 14 · pop   140k · or Σ  680953 · PIB  18907 · tech 227
+                       marché : grain 0.78 · étoffe 4.78 · orfèvr. 8.87 · outils 12.19 | or/empire : Ligue Gualyan 200926(13r) Horde Bramwickka 191576(13r) Clanique libre 66061(4r)
+              révoltes : 4 en révolution (Légit moy 4.8 · capacité K 3.1 · stab.int SI 3.0) vs 14 stables (Légit 6.3 · K 8.3 · SI 9.2)
+              soulèvements : 115 allumés → 32 sécession(s) · 5 coup(s) · 4 concession(s) · 73 écrasé(s) (4091 morts au combat)
+              corruption : 0 polity(s) capturée(s) (corr≥30) · la plus pourrie « Ligue Cogynyn » corr 9 — tenue par les Marchands
+              recherche : 300 nœuds déverrouillés (dont 5 faustiens) · 49 relocalisation(s) pour combler une pénurie (peupler sa province-ressource)
+              prévision : 12/37 pays en déficit vivrier STRUCTUREL (ne se nourrit pas à plein → import vital) · 3 sous tension de runway (< 12 ans)
+              métabolisation : 4/37 empire(s) creuset (>1% digéré) · moyenne 0.9% · max 11.7% → +11.7% recherche au plus métabolisé
+              combos tier-4 : 5 empire(s) tiennent une fusion d'héritages · 5 combo(s) au total
+              remise diffusion : 24 tech(s) escomptée(s) (−5%+) · remise max −40%
+              leviers : 148 matage(s) · 1 formation(s) · 1 purge(s) (34 morts) | suzeraineté : 5 servage · 11 protectorat · 0 concordat · 2 cité · 2 défection(s) · 0 annexion(s) par digestion
+              dette : 2 débiteur(s) (or net < 0) · 0 créancier(s) assigné(s) [scps_credit]
+              fronde : 5 ligue(s) · 0 fronde(s) → 0 indépendance(s) · 0 RENVERSEMENT(s) · 0 écrasée(s) | défections 0 paisibles · 0 par reprise | contre-leviers : 0 don · 0 allègement · 1 division · 0 intimidation
+              guerres motivées : 16 territoriale(s) · 6 économique(s) · 0 subjugation · 1 religieuse(s) · 0 anti-piraterie
+              batailles : 104 livrée(s) · 19 j en moy. · 102 déroute(s) · 16 ralliement(s) · 2 décrochage(s) · 13 renfort(s) · 0 nul(s) | morts : 10700 au CHOC vs 11300 en POURSUITE
+              arbre : 27% déverrouillé/empire (min 8% · max 55%) · spécialisation — 2 Savoir · 5 Forge · 8 Société
+              syncrétisme : 91 nœud(s) profond(s) (gouvernance) · 72 diffusion(s) (commerce/frontière/foi) · 6/6 archétype(s) · dispersion 0–14/empire · 5 ont la COMBINAISON forge runique × arcane · 30 cristallisation(s) culturelle(s) par contact (S2)
+              campagne : 0 région(s) réduite(s) par les armées de terrain · 0 en mouvement (non-invasif)
+              mer : 123 coque(s) bâtie(s) · 4592 fournitures navales consommées · 18 traversée(s) (211 j/trav.) · 12 route(s) maritime(s) · 0 colonie(s) outre-mer
+              course : 0 raid(s) (0 or pillés) - 2 pirate(s) (1 nid(s) en eaux mortes) - 0 bataille(s) navale(s) - 0 prise(s) - 90 j de blocus - 0 désarmement(s) - 0 guerre(s) anti-piraterie - 0 balafre(s) actives
+              marine : 1750 marin(s) embarqués - 0 interception(s) - 0 paquet(s) noyés
+              commerce asym. : aval 11.73 vs amont 38.52 (ratio 0.3x) - vrac 5.16/8.00 - précieux 0.00/1.19 (aval/amont, 7 remontée(s) de luxe) - 1 route(s) fluviale(s), 12 maritime(s) ouverte(s)
+              entrepôts : 21 estuaire(s) en carrefour (≥2 routes)
+              continents : C0 575279 or (90k hab) C1 323642 or (60k hab)
+              détroits : 14 goulet(s) émergent(s) · 4 tenu(s) · 0 route(s) maritime(s) taxée(s) · péage CUMULÉ 0 or
+              hégémon (A5) : 1er empire 18 rég · Stabilité plancher 96 — CRAQUÉ (sous 50 ou coup/renversement)
+              directeur (F) : T fin 0.51 (pic 0.58) · 24 total — top La Réformatrice 12% (≤30) · 9 déstab · 15 stab · acharnement 0 (=0)
+              amplitude (G2) : pic 0.44 · fin 0.41 · trauma 342 j · budget 57 · 18 présage(s) · 10 mémoire(s)
+              inflation (C) : IPM final 1.10
+[scps] géologie...     ok
+[scps] architecture... ok
+[scps] altération...   ok
+[scps] érosion hydro... ok
+[scps] érosion...      ok
+[scps] côtes fract...  ok
+[scps] carte fantôme.. ok
+[scps] fantôme négat.. ok
+[scps] lissage océan... ok
+[scps] continentalité...ok
+[scps] climat (vent)... ok
+[scps] vallées...      ok
+[scps] biomes...       ok
+[scps] lacs...         ok (17 visible(s) / 410 alimenté(s))
+[scps] reconquête...   (marais 14% bois 34% mangrove 0%) ok
+[scps] fertilité...    ok
+[scps] territoires...  ok (414 terr.)
+[scps] continents...   ok (3 cont.)
+[scps] hiérarchie...   ok (160 rég. 101 pays ; par continent : C0=9(62%) C1=6(38%) C2=0(0%))
+[scps] flags rendu...  ok
+[scps] courants...     (couloirs 39% · vives 51% · mortes 7% · cabotage 1% ; glaciers 8382 cell.) ok
+[scps] rades...        ok
+[scps] noms prov...    ok
+[scps] ressources...   ok
+[scps] sites départ... ok (53 estuaires, 46 eau douce, 2 secs ; food≥0.30 : 98/101)
+[scps] rivières...     ok (64 riv. ; écartées : 3953 cap · 34 courtes · 0 longues)
+[peuples] joueur=Adaptatif ; héritages DÉBRAYÉS de la géo : Ésotérique×15 Métallurgiste×18 Mécaniste×13 Adaptatif×22 Agraire×16 Clanique×17
+   mer : volta mesurée région 0 ⇄ 157 — aller 428 j · retour 495 j (asymétrie ×1.15)
+
+── Sim 2 (graine 112) — 3 empires · 6 cités-états · 3 continents · 160 régions ──
+              ressources (extraction, 152 rég actives) : Céréales 79(Σ2233) Bétail 35(Σ918) Laine 26(Σ703) Poisson 43(Σ867) Fourrure 9(Σ108) Sel 33(Σ554) Coton 12(Σ268) Sucre 1(Σ26) Bois 87(Σ4069) Fruits 90(Σ2614) Herbes médicinales 88(Σ1969) Cuivre 31(Σ883) Fer 35(Σ922) Charbon 7(Σ73) Salpêtre 11(Σ337) Or 9(Σ143) Perle 8(Σ100) Cristal arcanique 11(Σ205) Fer céleste 20(Σ176) Murex 27(Σ569) Argile 51(Σ272) Pierre 90(Σ1819)
+   an  20  ÂGE : Âge du Commerce Mondial
+   an  40 : 15 pays | pop    48k | armée   102 | colonisées  77 prov | transf. paix  38 prov | 1er empire  7 rég | prosp 30 stab 43 | 11 révolté(s)
+   an  50  ÂGE : Âge des Empires
+   an  80 : 14 pays | pop    79k | armée   110 | colonisées 110 prov | transf. paix  84 prov | 1er empire  9 rég | prosp 28 stab 35 |  9 révolté(s)
+   an 108  ÂGE : Âge de la Brèche
+   an 120 : 13 pays | pop   124k | armée   123 | colonisées 148 prov | transf. paix 183 prov | 1er empire 12 rég | prosp 60 stab 57 |  8 révolté(s)
+   an 137  ÂGE : Âge de la Raison
+   an 160 : 12 pays | pop   189k | armée   247 | colonisées 197 prov | transf. paix 466 prov | 1er empire 27 rég | prosp 73 stab 84 | 11 révolté(s)
+   BILAN an 200 : 12 pays subsistent (7 absorbés · 6 émergés ; plancher 12) | 4 âge(s) ; 25 guerre(s) au total, pic 3 ; pic de révolte 21 (an 134)
+              faustien : entropie monde 370 · conso foreuse 0 · réplicateur 0 · corne 65 · 1 empire(s) au bord de la Brèche | FER prix moy 0.8 / max 2.4 (base 2.4) · armes produites 33
+              §27 FIN : GRAND HIVER (an 180) · épicentre rég 157 · fauteur pays 319 · refroidissement 10%
+              1er empire « Métallurgiste libre » : 42 régions (26% des terres) | Stabilité 93  Prospérité 100  Légitimité 33  Cohésion 88 — Assise Tyrannique
+              empires vivants (8) — métriques 0-100 :
+                · Métallurgiste libre  42 rég · pop   113k · Stab  93 Prosp 100 Légit  33 Cohés  88 Corr   0 · 56 tech ★
+                    classes : J 93.8k (83%) · B 9.9k (9%) · É 8.8k (8%) | or 720357 (+997.2/mois, dern. année) · armée 67 (4 rgt)
+                    marché : hub OUI · 133 route(s) · import 181.4 · export 245.3 (+1736 or/an) | stocks Σ 89632 — Bétail 17595 Fruits 17595 Céréales 17535 Poisson 16899
+                · Ésotérique libre   8 rég · pop    15k · Stab 100 Prosp 100 Légit  75 Cohés  96 Corr   0 · 24 tech
+                    classes : J 12.1k (81%) · B 2.0k (13%) · É 0.8k (5%) | or 96600 (+18.5/mois, dern. année) · armée 15 (2 rgt)
+                    marché : hub non · 32 route(s) · import 47.5 · export 60.6 (+111 or/an) | stocks Σ 9787 — Fruits 2204 Poisson 2186 Bétail 1769 Céréales 1732
+                · Ésotérique libre   7 rég · pop    14k · Stab  96 Prosp 100 Légit  64 Cohés  92 Corr   8 · 29 tech
+                    classes : J 12.0k (83%) · B 1.7k (12%) · É 0.7k (5%) | or 79510 (+66.1/mois, dern. année) · armée 4 (2 rgt)
+                    marché : hub non · 27 route(s) · import 8.8 · export 85.3 (+439 or/an) | stocks Σ 12432 — Fruits 2774 Bétail 2720 Poisson 1887 Céréales 1870
+                · Havre Aldyanor     5 rég · pop    22k · Stab  48 Prosp 100 Légit  87 Cohés  98 Corr   0 · 12 tech
+                    classes : J 21.6k (98%) · B 0.4k (2%) · É 0.2k (1%) | or 67928 (+119.7/mois, dern. année) · armée 6 (4 rgt)
+                    marché : hub non · 6 route(s) · import 23.2 · export 9.0 (+12 or/an) | stocks Σ 9933 — Poisson 2221 Céréales 1995 Sel 1234 Fruits 986
+                · Havre Grukdushka   5 rég · pop    40k · Stab  93 Prosp 100 Légit  81 Cohés  98 Corr   0 · 32 tech
+                    classes : J 34.4k (86%) · B 2.6k (6%) · É 3.1k (8%) | or 256558 (+159.3/mois, dern. année) · armée 10 (4 rgt)
+                    marché : hub non · 60 route(s) · import 171.5 · export 104.5 (+715 or/an) | stocks Σ 10070 — Fruits 2581 Céréales 2324 Poisson 2075 Bois 936
+                · Adaptatif libre    1 rég · pop     0k · Stab  96 Prosp  78 Légit  67 Cohés 100 Corr   0 ·  3 tech
+                    classes : J 0.0k (57%) · B 0.0k (21%) · É 0.0k (21%) | or -2778 (-231.5/mois, dern. année) · armée 0 (0 rgt)
+                    marché : hub OUI · 47 route(s) · import 0.0 · export 1.2 (+2 or/an) | stocks Σ 15 — Céréales 6 Poisson 3 Sel 3 Outils 3
+                · Ésotérique libre   1 rég · pop     0k · Stab  58 Prosp  56 Légit  47 Cohés  95 Corr   0 ·  3 tech
+                    classes : J 0.3k (89%) · B 0.0k (1%) · É 0.0k (10%) | or -46425 (-643.5/mois, dern. année) · armée 1 (0 rgt)
+                    marché : hub non · 6 route(s) · import 0.0 · export 3.3 (+52 or/an) | stocks Σ 58 — Céréales 21 Outils 10 Coton 8 Sel 6
+                · Ésotérique libre   1 rég · pop     1k · Stab   0 Prosp   0 Légit  56 Cohés  96 Corr   0 ·  1 tech
+                    classes : J 0.7k (92%) · B 0.0k (2%) · É 0.0k (6%) | or -15259 (-1248.6/mois, dern. année) · armée 0 (0 rgt)
+                    marché : hub non · 5 route(s) · import 0.0 · export 12.6 (+103 or/an) | stocks Σ 576 — Poisson 335 Céréales 127 Outils 65 Bière 25
+              vivier cités-états : 4 disponibles / 6 au départ (2 absorbées)
+              hubs : 61% du commerce mondial passe par les Centres des cités-états (1581 / 2606)
+              population : 247k au total ; par continent : C1 133k C0 114k C2 0k
+              diplomatie : 2 pacte(s) d'alliance actif(s)
+              satisfaction (pop-pondérée, AVEC distribution) : Laborer 85% · Bourgeois 88% · Élite 86% | commerce inter-pays/an 3831
+              classes (E0.7, départ 80/15/5) : Laborer 85% · Bourgeois 9% · Élite 6% | friche (E1bis.10) : 3 rég impayée(s)
+              manufactures : 30×Manufacture textile 20×Scierie navale 36×Papeterie 14×Distillerie 19×Brasserie 33×Joaillerie 5×Atelier d'étoffe précieuse 1×Atelier de mage 40×Atelier d'outillage 3×Poudrière 34×Apothicaire 32×Atelier de tunique 19×Charbonnière 1×Corne divine 4×Armurerie lourde 2×Atelier d'arc 3×Arquebuserie 41×Poterie 21×Atelier de sculpture
+              expansion : 223 prov colonisées · 615 prov TRANSFÉRÉES à la paix · armée finale 291
+              accession (1er édifice bâti) : 360 j an 3 · 540 j an 1 · 960 j an -1  (-1 = jamais)
+              spéculation (E3) : 2 entrepôt(s) · vol 0 (0.0/an) · or net +0 · 0 achat(s)/0 vente(s) | σ prix avant 0.224 (145 ans) → après 0.138 (55 ans)
+              lissage CENTRES (même époque, même classe) : σ centres À entrepôt 0.706 vs centres SANS 0.307
+              ── par âge (instantané à l'avènement) ──
+                an  20 Âge du Commerce Mondial | pays 15 · pop    35k · or Σ   94505 · PIB   2823 · tech  15
+                       marché : grain 1.53 · étoffe 10.34 · orfèvr. 27.40 · outils 29.54 | or/empire : Havre Grukdushka 35010(6r) Couronne Borrokel 21941(3r) Métallurgiste libre 1031(2r)
+                an  50 Âge des Empires         | pays 15 · pop    57k · or Σ  190297 · PIB   5850 · tech  60
+                       marché : grain 1.35 · étoffe 12.44 · orfèvr. 68.77 · outils 30.14 | or/empire : Havre Grukdushka 76651(9r) Métallurgiste libre 7388(3r) Couronne Borrokel 41407(3r)
+                an 108 Âge de la Brèche       | pays 14 · pop   106k · or Σ  437459 · PIB  13992 · tech 226
+                       marché : grain 1.23 · étoffe 7.74 · orfèvr. 86.21 · outils 34.12 | or/empire : Havre Grukdushka 172847(11r) Métallurgiste libre 124124(9r) Ésotérique libre 8414(4r)
+                an 137 Âge de la Raison        | pays 13 · pop   150k · or Σ  604831 · PIB  20769 · tech 423
+                       marché : grain 0.95 · étoffe 3.66 · orfèvr. 71.24 · outils 25.52 | or/empire : Métallurgiste libre 207972(21r) Havre Grukdushka 241005(13r) Ésotérique libre 31578(7r)
+              révoltes : 2 en révolution (Légit moy 7.2 · capacité K 5.2 · stab.int SI 2.4) vs 10 stables (Légit 5.5 · K 7.7 · SI 9.0)
+              soulèvements : 476 allumés → 347 sécession(s) · 3 coup(s) · 8 concession(s) · 102 écrasé(s) (4101 morts au combat)
+              corruption : 0 polity(s) capturée(s) (corr≥30) · la plus pourrie « Ésotérique libre » corr 8 — tenue par les Communautaires
+              recherche : 2293 nœuds déverrouillés (dont 16 faustiens) · 50 relocalisation(s) pour combler une pénurie (peupler sa province-ressource)
+              prévision : 4/316 pays en déficit vivrier STRUCTUREL (ne se nourrit pas à plein → import vital) · 1 sous tension de runway (< 12 ans)
+              métabolisation : 1/316 empire(s) creuset (>1% digéré) · moyenne 0.0% · max 7.4% → +7.4% recherche au plus métabolisé
+              combos tier-4 : 10 empire(s) tiennent une fusion d'héritages · 21 combo(s) au total
+              remise diffusion : 17 tech(s) escomptée(s) (−5%+) · remise max −40%
+              leviers : 465 matage(s) · 0 formation(s) · 0 purge(s) (0 morts) | suzeraineté : 2 servage · 63 protectorat · 8 concordat · 0 cité · 2 défection(s) · 33 annexion(s) par digestion
+              dette : 3 débiteur(s) (or net < 0) · 1 créancier(s) assigné(s) [scps_credit]
+              fronde : 16 ligue(s) · 2 fronde(s) → 0 indépendance(s) · 1 RENVERSEMENT(s) · 1 écrasée(s) | défections 3 paisibles · 0 par reprise | contre-leviers : 0 don · 1 allègement · 0 division · 1 intimidation
+              guerres motivées : 5 territoriale(s) · 12 économique(s) · 5 subjugation · 0 religieuse(s) · 0 anti-piraterie
+              batailles : 40 livrée(s) · 20 j en moy. · 39 déroute(s) · 6 ralliement(s) · 1 décrochage(s) · 0 renfort(s) · 0 nul(s) | morts : 1000 au CHOC vs 3900 en POURSUITE
+              arbre : 31% déverrouillé/empire (min 9% · max 83%) · spécialisation — 1 Savoir · 3 Forge · 8 Société
+              syncrétisme : 89 nœud(s) profond(s) (gouvernance) · 49 diffusion(s) (commerce/frontière/foi) · 6/6 archétype(s) · dispersion 0–29/empire · 8 ont la COMBINAISON forge runique × arcane · 194 cristallisation(s) culturelle(s) par contact (S2)
+              campagne : 3 région(s) réduite(s) par les armées de terrain · 0 en mouvement (non-invasif)
+              mer : 127 coque(s) bâtie(s) · 3842 fournitures navales consommées · 39 traversée(s) (159 j/trav.) · 0 route(s) maritime(s) · 28 colonie(s) outre-mer
+              course : 5 raid(s) (84 or pillés) - 6 pirate(s) (2 nid(s) en eaux mortes) - 0 bataille(s) navale(s) - 0 prise(s) - 0 j de blocus - 0 désarmement(s) - 0 guerre(s) anti-piraterie - 0 balafre(s) actives
+              marine : 1100 marin(s) embarqués - 0 interception(s) - 0 paquet(s) noyés
+              commerce asym. : aval 0.00 vs amont 0.00 (ratio 0.0x) - vrac 0.00/0.00 - précieux 0.00/0.00 (aval/amont, 0 remontée(s) de luxe) - 0 route(s) fluviale(s), 0 maritime(s) ouverte(s)
+              entrepôts : 41 estuaire(s) en carrefour (≥2 routes)
+              continents : C0 559469 or (114k hab) C1 748439 or (133k hab)
+              détroits : 24 goulet(s) émergent(s) · 9 tenu(s) · 0 route(s) maritime(s) taxée(s) · péage CUMULÉ 0 or
+              hégémon (A5) : 1er empire 42 rég · Stabilité plancher 2 — CRAQUÉ (sous 50 ou coup/renversement)
+              directeur (F) : T fin 0.37 (pic 0.55) · 29 total — top La Réformatrice 17% (≤30) · 6 déstab · 23 stab · acharnement 0 (=0)
+              amplitude (G2) : pic 0.44 · fin 0.35 · trauma 271 j · budget 225 · 21 présage(s) · 0 mémoire(s)
+              inflation (C) : IPM final 1.19
+[scps] géologie...     ok
+[scps] architecture... ok
+[scps] altération...   ok
+[scps] érosion hydro... ok
+[scps] érosion...      ok
+[scps] côtes fract...  ok
+[scps] carte fantôme.. ok
+[scps] fantôme négat.. ok
+[scps] lissage océan... ok
+[scps] continentalité...ok
+[scps] climat (vent)... ok
+[scps] vallées...      ok
+[scps] biomes...       ok
+[scps] lacs...         ok (10 visible(s) / 461 alimenté(s))
+[scps] reconquête...   (marais 22% bois 29% mangrove 0%) ok
+[scps] fertilité...    ok
+[scps] territoires...  ok (456 terr.)
+[scps] continents...   ok (3 cont.)
+[scps] hiérarchie...   ok (179 rég. 115 pays ; par continent : C0=13(57%) C1=4(24%) C2=2(19%))
+[scps] flags rendu...  ok
+[scps] courants...     (couloirs 41% · vives 49% · mortes 6% · cabotage 1% ; glaciers 1262 cell.) ok
+[scps] rades...        ok
+[scps] noms prov...    ok
+[scps] ressources...   ok
+[scps] sites départ... ok (55 estuaires, 60 eau douce, 0 secs ; food≥0.30 : 115/115)
+[scps] rivières...     ok (64 riv. ; écartées : 4318 cap · 83 courtes · 0 longues)
+[peuples] joueur=Adaptatif ; héritages DÉBRAYÉS de la géo : Ésotérique×20 Métallurgiste×18 Mécaniste×14 Adaptatif×14 Agraire×20 Clanique×29
+   mer : volta mesurée région 0 ⇄ 174 — aller 280 j · retour 286 j (asymétrie ×1.02)
+
+── Sim 3 (graine 213) — 4 empires · 7 cités-états · 3 continents · 179 régions ──
+              ressources (extraction, 179 rég actives) : Céréales 83(Σ1912) Bétail 48(Σ1115) Laine 34(Σ766) Poisson 73(Σ1588) Fourrure 7(Σ85) Sel 51(Σ668) Coton 14(Σ363) Sucre 3(Σ30) Bois 82(Σ2814) Fruits 88(Σ1830) Herbes médicinales 99(Σ2037) Cuivre 12(Σ235) Fer 30(Σ378) Charbon 16(Σ222) Salpêtre 12(Σ307) Or 9(Σ126) Perle 11(Σ175) Cristal arcanique 21(Σ311) Fer céleste 16(Σ242) Murex 52(Σ1151) Indigo 1(Σ24) Argile 78(Σ430) Pierre 52(Σ525)
+   an  20  ÂGE : Âge du Commerce Mondial
+   an  40 : 19 pays | pop    68k | armée   124 | colonisées 101 prov | transf. paix  73 prov | 1er empire  8 rég | prosp 34 stab 49 | 11 révolté(s)
+   an  50  ÂGE : Âge des Empires
+   an  80 : 20 pays | pop   100k | armée   176 | colonisées 150 prov | transf. paix 263 prov | 1er empire 18 rég | prosp 46 stab 58 | 23 révolté(s)
+   an  85  ÂGE : Âge de la Raison
+   an 120 : 20 pays | pop   132k | armée   222 | colonisées 173 prov | transf. paix 348 prov | 1er empire 24 rég | prosp 54 stab 67 | 21 révolté(s)
+   an 150  ÂGE : Âge de la Brèche
+   an 160 : 20 pays | pop   202k | armée   240 | colonisées 225 prov | transf. paix 355 prov | 1er empire 34 rég | prosp 53 stab 58 | 23 révolté(s)
+   BILAN an 200 : 20 pays subsistent (6 absorbés · 9 émergés ; plancher 14) | 4 âge(s) ; 32 guerre(s) au total, pic 5 ; pic de révolte 26 (an 153)
+              faustien : entropie monde 509 · conso foreuse 0 · réplicateur 0 · corne 0 · 0 empire(s) au bord de la Brèche | FER prix moy 0.6 / max 1.2 (base 2.4) · armes produites 19
+              §27 FIN : GRAND HIVER (an 180) · épicentre rég 59 · fauteur pays 32 · refroidissement 10%
+              1er empire « Ligue Durrokis » : 39 régions (21% des terres) | Stabilité 90  Prospérité 100  Légitimité 68  Cohésion 92 — Assise Consentie
+              empires vivants (13) — métriques 0-100 :
+                · Ligue Durrokis    39 rég · pop    98k · Stab  90 Prosp 100 Légit  68 Cohés  92 Corr   0 · 46 tech ★
+                    classes : J 82.4k (84%) · B 10.0k (10%) · É 5.1k (5%) | or 518280 (+499.5/mois, dern. année) · armée 15 (96 rgt)
+                    marché : hub non · 96 route(s) · import 78.1 · export 239.0 (+1222 or/an) | stocks Σ 77520 — Fruits 17706 Poisson 17221 Céréales 15171 Bétail 12123
+                · Couronne Dornwica  17 rég · pop    47k · Stab  98 Prosp 100 Légit  70 Cohés  94 Corr   0 · 38 tech
+                    classes : J 39.8k (85%) · B 3.5k (8%) · É 3.6k (8%) | or 291219 (+358.1/mois, dern. année) · armée 10 (4 rgt)
+                    marché : hub non · 69 route(s) · import 95.7 · export 139.1 (+796 or/an) | stocks Σ 30877 — Bétail 7119 Fruits 7119 Céréales 6886 Poisson 3714
+                · Métallurgiste libre   5 rég · pop     8k · Stab  98 Prosp 100 Légit  47 Cohés  87 Corr   0 · 21 tech
+                    classes : J 6.4k (80%) · B 1.1k (14%) · É 0.5k (6%) | or 14801 (+17.0/mois, dern. année) · armée 8 (0 rgt)
+                    marché : hub non · 11 route(s) · import 9.0 · export 31.1 (+224 or/an) | stocks Σ 5231 — Fruits 1561 Poisson 1209 Céréales 733 Bois 663
+                · Métallurgiste libre   4 rég · pop     2k · Stab  99 Prosp  44 Légit  18 Cohés  87 Corr   0 · 14 tech
+                    classes : J 1.9k (96%) · B 0.0k (2%) · É 0.0k (2%) | or 4496 (+4.7/mois, dern. année) · armée 7 (0 rgt)
+                    marché : hub non · 10 route(s) · import 6.0 · export 0.6 (+0 or/an) | stocks Σ 609 — Fruits 254 Bois 128 Céréales 87 Herbes médicinales 75
+                · Agraire libre      3 rég · pop     4k · Stab  93 Prosp  54 Légit  22 Cohés  79 Corr   0 · 21 tech
+                    classes : J 3.8k (89%) · B 0.3k (7%) · É 0.2k (4%) | or 7188 (+3.1/mois, dern. année) · armée 14 (0 rgt)
+                    marché : hub non · 15 route(s) · import 24.7 · export 22.6 (+179 or/an) | stocks Σ 2627 — Poisson 867 Céréales 679 Bétail 382 Laine 259
+                · Ligue Nimila       2 rég · pop    20k · Stab  97 Prosp  96 Légit  78 Cohés  97 Corr   0 · 23 tech
+                    classes : J 16.9k (85%) · B 2.3k (11%) · É 0.8k (4%) | or 59137 (+43.7/mois, dern. année) · armée 7 (0 rgt)
+                    marché : hub non · 10 route(s) · import 19.3 · export 10.2 (+93 or/an) | stocks Σ 4219 — Céréales 1437 Poisson 1151 Sel 304 Bétail 279
+                · Ésotérique libre   2 rég · pop     1k · Stab   0 Prosp   0 Légit   3 Cohés  65 Corr   0 ·  7 tech
+                    classes : J 0.5k (90%) · B 0.0k (7%) · É 0.0k (3%) | or 1705 (+0.4/mois, dern. année) · armée 13 (0 rgt)
+                    marché : hub non · 3 route(s) · import 0.1 · export 2.0 (+1 or/an) | stocks Σ 369 — Poisson 258 Céréales 60 Sel 14 Bétail 11
+                · Ésotérique libre   1 rég · pop     0k · Stab  21 Prosp  19 Légit  22 Cohés 100 Corr   0 · 19 tech
+                    classes : J 0.1k (96%) · B 0.0k (2%) · É 0.0k (2%) | or 500 (+0.0/mois, dern. année) · armée 0 (0 rgt)
+                    marché : hub non · 2 route(s) · import 0.0 · export 1.0 (+0 or/an) | stocks Σ 110 — Poisson 107 Céréales 2 Murex 1
+                · Ésotérique libre   1 rég · pop     6k · Stab  97 Prosp  83 Légit  83 Cohés  92 Corr   0 · 23 tech
+                    classes : J 5.8k (92%) · B 0.1k (2%) · É 0.3k (5%) | or 12381 (+7.0/mois, dern. année) · armée 3 (0 rgt)
+                    marché : hub non · 59 route(s) · import 200.0 · export 52.0 (+508 or/an) | stocks Σ 1420 — Bétail 340 Fruits 340 Céréales 219 Poisson 189
+                · Agraire libre      1 rég · pop     1k · Stab  94 Prosp  85 Légit  84 Cohés  97 Corr   0 · 16 tech
+                    classes : J 1.3k (97%) · B 0.0k (1%) · É 0.0k (2%) | or -236837 (-2135.7/mois, dern. année) · armée 1 (0 rgt)
+                    marché : hub non · 72 route(s) · import 0.0 · export 8.0 (+134 or/an) | stocks Σ 581 — Poisson 384 Céréales 141 Sel 30 Outils 11
+                · Métallurgiste libre   1 rég · pop     2k · Stab  85 Prosp 100 Légit  99 Cohés 100 Corr   0 · 12 tech
+                    classes : J 1.2k (69%) · B 0.3k (16%) · É 0.3k (15%) | or -14479 (-280.4/mois, dern. année) · armée 2 (2 rgt)
+                    marché : hub non · 16 route(s) · import 0.0 · export 12.0 (+102 or/an) | stocks Σ 790 — Fruits 573 Céréales 126 Herbes médicinales 34 Bois 17
+                · Ésotérique libre   1 rég · pop     2k · Stab  38 Prosp  31 Légit  58 Cohés  93 Corr   0 · 10 tech
+                    classes : J 1.4k (88%) · B 0.0k (2%) · É 0.2k (10%) | or -81513 (-573.7/mois, dern. année) · armée 1 (0 rgt)
+                    marché : hub non · 9 route(s) · import 0.0 · export 7.0 (+20 or/an) | stocks Σ 718 — Poisson 335 Céréales 148 Laine 110 Sel 61
+                · Couronne Lórdoryn   1 rég · pop    21k · Stab  99 Prosp 100 Légit  86 Cohés  98 Corr   0 · 23 tech
+                    classes : J 17.5k (84%) · B 1.1k (5%) · É 2.2k (10%) | or 60266 (+26.9/mois, dern. année) · armée 7 (0 rgt)
+                    marché : hub non · 29 route(s) · import 114.8 · export 20.2 (+331 or/an) | stocks Σ 2109 — Poisson 627 Bois 471 Fruits 340 Céréales 275
+              vivier cités-états : 7 disponibles / 7 au départ (0 absorbées)
+              hubs : 100% du commerce mondial passe par les Centres des cités-états (695 / 695)
+              population : 265k au total ; par continent : C0 133k C2 75k C1 57k
+              diplomatie : 7 pacte(s) d'alliance actif(s)
+              satisfaction (pop-pondérée, AVEC distribution) : Laborer 77% · Bourgeois 82% · Élite 78% | commerce inter-pays/an 3741
+              classes (E0.7, départ 80/15/5) : Laborer 85% · Bourgeois 8% · Élite 6% | friche (E1bis.10) : 7 rég impayée(s)
+              manufactures : 17×Manufacture textile 19×Scierie navale 27×Papeterie 22×Distillerie 38×Brasserie 37×Joaillerie 13×Atelier d'étoffe précieuse 1×Atelier de mage 1×Forge céleste 19×Atelier d'outillage 1×Armurerie légère 5×Poudrière 16×Apothicaire 14×Atelier de tunique 18×Charbonnière 1×Armurerie lourde 2×Atelier d'arc 5×Arquebuserie 17×Poterie 16×Atelier de sculpture
+              expansion : 244 prov colonisées · 367 prov TRANSFÉRÉES à la paix · armée finale 255
+              accession (1er édifice bâti) : 360 j an 53 · 540 j an 1 · 960 j an -1  (-1 = jamais)
+              spéculation (E3) : 1 entrepôt(s) · vol 0 (0.0/an) · or net +0 · 0 achat(s)/0 vente(s) | σ prix avant 0.342 (113 ans) → après 0.043 (87 ans)
+              lissage CENTRES (même époque, même classe) : σ centres À entrepôt 0.000 vs centres SANS 0.338
+              ── par âge (instantané à l'avènement) ──
+                an  20 Âge du Commerce Mondial | pays 18 · pop    49k · or Σ  123938 · PIB   3747 · tech  22
+                       marché : grain 1.44 · étoffe 8.76 · orfèvr. 27.26 · outils 41.77 | or/empire : Ligue Durrokis 31913(6r) Couronne Dornwica 37415(5r) Agraire libre 807(2r)
+                an  50 Âge des Empires         | pays 19 · pop    79k · or Σ  187210 · PIB   6378 · tech 106
+                       marché : grain 1.27 · étoffe 7.83 · orfèvr. 36.33 · outils 35.03 | or/empire : Ligue Durrokis 78906(8r) Couronne Dornwica 71905(6r) Métallurgiste libre 513(2r)
+                an  85 Âge de la Raison        | pays 20 · pop   107k · or Σ  122331 · PIB   8330 · tech 458
+                       marché : grain 1.13 · étoffe 5.84 · orfèvr. 75.06 · outils 28.30 | or/empire : Ligue Durrokis 111516(18r) Couronne Dornwica 84675(8r) Métallurgiste libre 1938(4r)
+                an 150 Âge de la Brèche       | pays 20 · pop   183k · or Σ  351448 · PIB  17465 · tech 2511
+                       marché : grain 0.85 · étoffe 4.57 · orfèvr. 9.92 · outils 24.81 | or/empire : Ligue Durrokis 294550(32r) Couronne Dornwica 175523(16r) Métallurgiste libre 7593(4r)
+              révoltes : 3 en révolution (Légit moy 2.7 · capacité K 6.9 · stab.int SI 2.0) vs 17 stables (Légit 5.6 · K 9.0 · SI 9.6)
+              soulèvements : 429 allumés → 321 sécession(s) · 0 coup(s) · 13 concession(s) · 75 écrasé(s) (2972 morts au combat)
+              corruption : 0 polity(s) capturée(s) (corr≥30) · la plus pourrie « Couronne Kargnak » corr 17 — tenue par les Légistes
+              recherche : 4552 nœuds déverrouillés (dont 13 faustiens) · 108 relocalisation(s) pour combler une pénurie (peupler sa province-ressource)
+              prévision : 6/314 pays en déficit vivrier STRUCTUREL (ne se nourrit pas à plein → import vital) · 0 sous tension de runway (< 12 ans)
+              métabolisation : 2/314 empire(s) creuset (>1% digéré) · moyenne 0.0% · max 6.8% → +6.8% recherche au plus métabolisé
+              combos tier-4 : 8 empire(s) tiennent une fusion d'héritages · 10 combo(s) au total
+              remise diffusion : 23 tech(s) escomptée(s) (−5%+) · remise max −40%
+              leviers : 329 matage(s) · 0 formation(s) · 0 purge(s) (0 morts) | suzeraineté : 0 servage · 37 protectorat · 21 concordat · 0 cité · 4 défection(s) · 4 annexion(s) par digestion
+              dette : 4 débiteur(s) (or net < 0) · 0 créancier(s) assigné(s) [scps_credit]
+              fronde : 14 ligue(s) · 1 fronde(s) → 0 indépendance(s) · 1 RENVERSEMENT(s) · 0 écrasée(s) | défections 1 paisibles · 0 par reprise | contre-leviers : 0 don · 0 allègement · 1 division · 1 intimidation
+              guerres motivées : 19 territoriale(s) · 1 économique(s) · 3 subjugation · 0 religieuse(s) · 0 anti-piraterie
+              batailles : 0 livrée(s) · 0 j en moy. · 0 déroute(s) · 0 ralliement(s) · 0 décrochage(s) · 0 renfort(s) · 0 nul(s) | morts : 0 au CHOC vs 0 en POURSUITE
+              arbre : 33% déverrouillé/empire (min 17% · max 70%) · spécialisation — 0 Savoir · 5 Forge · 15 Société
+              syncrétisme : 151 nœud(s) profond(s) (gouvernance) · 116 diffusion(s) (commerce/frontière/foi) · 6/6 archétype(s) · dispersion 3–20/empire · 8 ont la COMBINAISON forge runique × arcane · 42 cristallisation(s) culturelle(s) par contact (S2)
+              campagne : 5 région(s) réduite(s) par les armées de terrain · 0 en mouvement (non-invasif)
+              mer : 3 coque(s) bâtie(s) · 407 fournitures navales consommées · 11 traversée(s) (42 j/trav.) · 0 route(s) maritime(s) · 27 colonie(s) outre-mer
+              course : 0 raid(s) (0 or pillés) - 0 pirate(s) (0 nid(s) en eaux mortes) - 0 bataille(s) navale(s) - 0 prise(s) - 0 j de blocus - 0 désarmement(s) - 0 guerre(s) anti-piraterie - 0 balafre(s) actives
+              marine : 150 marin(s) embarqués - 0 interception(s) - 0 paquet(s) noyés
+              commerce asym. : aval 2.00 vs amont 0.00 (ratio 0.0x) - vrac 0.00/0.00 - précieux 0.00/0.00 (aval/amont, 0 remontée(s) de luxe) - 1 route(s) fluviale(s), 0 maritime(s) ouverte(s)
+              entrepôts : 36 estuaire(s) en carrefour (≥2 routes)
+              continents : C0 222776 or (133k hab) C1 85121 or (57k hab) C2 435342 or (75k hab)
+              détroits : 24 goulet(s) émergent(s) · 9 tenu(s) · 0 route(s) maritime(s) taxée(s) · péage CUMULÉ 0 or
+              hégémon (A5) : 1er empire 39 rég · Stabilité plancher 23 — CRAQUÉ (sous 50 ou coup/renversement)
+              directeur (F) : T fin 0.36 (pic 0.52) · 12 total — top La Réformatrice 16% (≤30) · 6 déstab · 6 stab · acharnement 0 (=0)
+              amplitude (G2) : pic 0.42 · fin 0.35 · trauma 268 j · budget 400 · 16 présage(s) · 0 mémoire(s)
+              inflation (C) : IPM final 0.95
+
+══════════════════════════════════════════════════════════════════════
+ SYNTHÈSE (3 sims × 200 ans)
+   âges éveillés (total) ....... 13   (moy. 4.3/sim)
+   guerres déclenchées (total) . 81   (moy. 27.0/sim)
+   alliances actives (fin de sim) 13   (moy. 4.3/sim ; la diplomatie respire)
+   satisfaction moy (AVEC distribution) : Laborer 78% · Bourgeois 86% · Élite 82% | commerce/an moy 3443
+   par empire (fin de sim) ..... trésor moy 69079 or · flux moy -20.7 or/mois (dern. année) · import moy 34.8 · export moy 39.6 (+250 or/an) · hub tenu 3/34
+   flux décomposé (I0, dern. année · or/mois/empire) : taxes +144.1 export +1.2 péages+ +0.1 entretien -1.9 cour -25.7 admin -0.3 encadr. -4.0 soldes +4.5 marine -0.0 audits +0.0 péages− +0.0 invest. +0.0 conseil -15.7 import -1.4
+   accession (E1 §9) ........... 360 j an 19.3 (3/3) · 540 j an 1.0 (3/3) · 960 j an 191.0 (1/3)  (moy. du 1er bâti)
+   l'IA stockeuse (E3 §16) ..... 4 entrepôt(s) · vol spéculé 0 (0.0/sim) · or net +0 | σ prix avant 0.297 → après 0.091 (les stocks doivent LISSER)
+   lissage CENTRES (E3 §16) .... σ centres À entrepôt 0.706 vs centres SANS 0.327 (même époque, même classe — la mesure causale)
+   hubs des cités-états ........ 72% du commerce mondial passe par leurs Centres (les premiers hubs vivants)
+   provinces transférées à la paix 1087   (moy. 362.3/sim ; la propriété ne change qu'au RÈGLEMENT)
+   occupations (terrain) ....... 55 posée(s) · 3 levée(s)   (les sièges tiennent le sol entre deux paix)
+   pays absorbés (morts) ....... 15   (moy. 5.0/sim)
+   pays émergés (sécession) .... 26   (moy. 8.7/sim ; la carte politique respire)
+   hameaux libres (WILD) ....... 4.0 semés/sim · 12 ralliés culturellement (4.0/sim · pop moy. 936) ; l'absorption MILITAIRE passe par la conquête
+   nœuds de tech débloqués ..... 7145   (moy. 2381.7/sim ; 34 faustiens)
+   arbre déverrouillé / empire . 30%   (le coût force les choix : cible < 100 % → spécialisation)
+   relocalisations (pénurie) ... 207   (moy. 69.0/sim ; l'IA peuple ses provinces-ressource sous-exploitées)
+   leviers intérieurs .......... 942 matage(s) · 1 formation(s) · 1 purge(s) (34 morts — RARE attendu)
+   suzeraineté ................. 7 servage · 111 protectorat · 29 concordat · 2 cité · 8 défection(s) · 37 annexion(s) par digestion (étage 3)
+   guerres motivées ............ 40 territoriale(s) · 19 économique(s) · 8 subjugation · 1 religieuse(s) · 0 anti-piraterie (le casus belli DIT le pourquoi)
+   fronde vassale .............. 35 ligue(s) · 3 fronde(s) → 0 indép. · 2 renversement(s) · 1 écrasée(s)  (les TROIS fins doivent exister)
+   batailles dans le temps ..... 144 livrées · 19 j/bataille · 141 déroutes · 22 ralliement(s) · 3 décrochages · 13 renforts · 0 nuls | morts choc 11700 vs POURSUITE 15200 (ratio 1.3x — la poursuite doit DOMINER le choc si la cavalerie domine la compo)
+   syncrétisme culturel ........ 110.3 nœud(s)/sim · 6.0 archétype(s) distincts/sim (porte = CULTURE, plus heritage ; la diffusion par contact DIVERGE)
+   religion .................... 0.3 foi(s) fondée(s)/sim · 0.7 schisme(s)/sim · 1.7 pays fidèle(s)/sim · 0.3 région(s) minoritaire(s)/sim (monde ATHÉE au départ ; racines ≤ ⌈empires/3⌉ genèse · ≤ 2 schismes/racine)
+   régions réduites (campagne) . 8   (moy. 2.7/sim ; armées de terrain, hors conquête abstraite)
+   la mer ...................... 253 coque(s) · 8840 fournitures consommées (NE doit plus être zéro) · 68 traversée(s) (154 j moy.) · 12 route(s) maritime(s) · 55 colonie(s) outre-mer
+   détroits (WG) ............... 20.7 goulet(s)/sim · 7.3 tenu(s)/sim · 0 route(s) taxée(s) · péage CUMULÉ moy. 0 or/sim · 0/3 sim(s) avec péage ENCAISSÉ (le verrou rapporte à qui le tient)
+   la course ................... 5 raid(s) (84 or) · 0 bataille(s) navale(s) · 0 prise(s) · 0 désarmement(s) · 0 guerre(s) anti-piraterie · 0 balafre(s) en fin de sim
+   l'interception .............. 0 convoi(s) coulé(s) · 0 paquet(s) noyés (le transport sans escorte est une PROIE)
+   pic de révolte moyen ........ 20.3 pays
+   soulèvements incarnés ....... 1020 allumés → 700 sécession(s) · 8 coup(s) · 25 concession(s) · 250 écrasé(s)
+   corruption (le prix des concessions) : 0/3 sims avec ≥1 polity capturée · 0.0 capturée(s)/sim · pire-corr moy 11/100
+   morts au combat (révoltes) .. 11164   (moy. 3721/sim)
+   sims atteignant les Soulèvements : 0/3   l'Ordre de Fer : 0/3
+   hégémon MORTEL (A5) .......... 3/3 sims où un empire ≥10 rég est passé sous Stab 50 OU a subi coup/renversement · Stab plancher moy 40 (la fragilité A1 mord)
+   directeur (F) ............... 21 déstabilisateur(s) · 44 stabilisateur(s) (7.0/14.7 par sim) · acharnement 0 (DOIT être 0)
+      par événement : La Mort du Charismatique×3 La Peste Fluviale×2 Les Enfants du Palais×3 Le Filon×2 L'Année Sans Été×4 Le Schisme dirigé×3 La Débase×4 Le Congrès×6 La Réformatrice×10 Le Cadastre×5 La Décennie des Moissons×8 La Paix du Marchand×8 Le Héros Culturel×7
+      G0.1 preuves : top ≤30% dans 3/3 sims (pire 17%) · stabilisateur-si-T>0.5 dans 3/3
+   directeur-amplitude (G2) .... pic moy 0.43 · fin moy 0.37 (le monde se calme) · 55 présage(s) (18.3/sim) · l'amplitude a VIBRÉ dans 3/3 sims [courbe : SCPS_AMPLDIAG]
+   inflation (C) ............... IPM final moyen 1.08 · pic 1.19 (1.00 = neutre ; SCPS_IPM=0 le retire)
+══════════════════════════════════════════════════════════════════════
