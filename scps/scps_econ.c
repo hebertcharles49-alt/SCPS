@@ -1634,6 +1634,14 @@ static void mobility_tick_region(ProvinceEconomy *re, int rid){
                               * pas le stock — un afflux d'or BRUSQUE (Filon/Débase) le fait monter
                               * puis il mean-reverte ; le thésaurisation LENTE ne compte pas (la
                               * référence la rattrape). Sans ça, or(stock)/pib(flux) dérive sans fin. */
+#define IPM_WARMUP_DAYS 60   /* T2 — le marché de genèse n'est pas encore établi (le PIB des tout
+                              * premiers jours est un artefact transitoire : prix de départ non
+                              * stabilisés, valeur ajoutée qui plonge en escalier avant que l'offre/
+                              * demande converge). Capter ipm_ref AVANT ce délai fige la référence
+                              * ~250× trop bas → target=ratio/ipm_ref cogne IPM_HI en permanence dès
+                              * les premières semaines et n'en redescend jamais (IPM figé au plafond,
+                              * identique sur tout monde). On amorce donc après WARMUP jours, une
+                              * fois le ratio or/PIB représentatif du régime stationnaire. */
 
 float econ_world_ipm(const WorldEconomy *e){ return (e && e->ipm>0.f)? e->ipm : 1.f; }
 
@@ -1663,20 +1671,25 @@ void econ_tick(WorldEconomy *e, float dt) {
 #if SCPS_IPM
     /* §C — INFLATION MONÉTAIRE (un seul interrupteur). L'IPM = indice des prix :
      * trop d'OR (Σtrésor) pour trop peu de BIENS (ΣPIB) → les prix montent. On lit
-     * l'état AGRÉGÉ du tick précédent, normalisé par le ratio de RÉFÉRENCE capté au
-     * 1er tick → IPM≈1 au départ ; glisse lentement, reste borné. Le couplage aux
-     * événements (§F) ÉMERGE : le Filon/la Débase injectent de l'or → IPM↑ ; les
-     * Moissons font des biens → IPM↓ — aucun hook dédié. */
+     * l'état AGRÉGÉ du tick précédent, normalisé par le ratio de RÉFÉRENCE capté
+     * APRÈS WARMUP (le marché de genèse stabilisé, cf. IPM_WARMUP_DAYS) → IPM≈1 à la
+     * sortie du warmup ; glisse lentement, reste borné. Le couplage aux événements
+     * (§F) ÉMERGE : le Filon/la Débase injectent de l'or → IPM↑ ; les Moissons font
+     * des biens → IPM↓ — aucun hook dédié. */
+    if (e->tick >= IPM_WARMUP_DAYS)
     { double gold=0.0, goods=0.0;
       for (int p=0;p<e->n_prov;p++){ if (!e->prov[p].colonized) continue;
           gold  += e->prov[p].treasury;
           goods += e->prov[p].gdp; }
       if (goods>1.0){
           float ratio = (float)(gold/goods);
-          if (e->ipm_ref<=0.f) e->ipm_ref = ratio;                          /* amorce la tendance */
+          if (e->ipm_ref<=0.f) e->ipm_ref = ratio;                          /* amorce la tendance (post-warmup) */
           float target = clampf(ratio/e->ipm_ref, IPM_LO, IPM_HI);          /* écart à la tendance */
           e->ipm     = clampf(e->ipm*IPM_INERTIA + target*(1.f-IPM_INERTIA), IPM_LO, IPM_HI);
           e->ipm_ref = e->ipm_ref*IPM_REF_INER + ratio*(1.f-IPM_REF_INER);  /* la tendance suit, lentement */
+          if (getenv("SCPS_IPMDIAG") && (e->tick<IPM_WARMUP_DAYS+40 || (e->tick%365)==0))
+              fprintf(stderr,"[IPMDIAG] tick=%d gold=%.0f goods=%.0f ratio=%.4f ipm_ref=%.4f target=%.4f ipm=%.4f\n",
+                      e->tick, gold, goods, ratio, e->ipm_ref, target, e->ipm);
       }
     }
 #endif
