@@ -2060,13 +2060,13 @@ int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max){
     HeritageBuild b = api_build_of(t0,t1,t2);
     HeritageLeviers L = build_leviers(&b);
     /* les 9 leviers du moteur, dans l'ordre de la struct → un MOT par axe touché. */
-    float v[9] = { L.demographie, L.productivite, L.influence, L.coercition,
+    float v[9] = { L.demographie, L.rendement, L.influence, L.coercition,
                    L.capacite, L.permeabilite, L.arcane, L.derive, L.fracture };
     static const char *NM[9] = {
         "Démographie", "Productivité", "Influence", "Coercition (militaire)",
         "Capacité (diversité)", "Perméabilité (assimilation)", "Affinité arcane",
         "Dérive culturelle", "Fracture" };
-    /* RELATIFS (1+x → affichés en %) : demographie(0), productivite(1), derive(7).
+    /* RELATIFS (1+x → affichés en %) : demographie(0), rendement(1), derive(7).
      * Les autres sont ABSOLUS (additifs échelle 0..10). Cf. HeritageLeviers (scps_heritage.h). */
     int n=0;
     for(int i=0;i<9 && n<max;i++){

@@ -106,7 +106,7 @@ int main(void){
         printf("   %-9s : démo×%.2f prod×%.2f | K%+.1f P%+.1f H%+.1f arcane%+.1f"
                " fract%+.1f dérive×%.2f infl%+.2f\n",
                heritage_name((Heritage)r),
-               1.f+L.demographie, 1.f+L.productivite,
+               1.f+L.demographie, 1.f+L.rendement,
                L.capacite, L.permeabilite, L.coercition, L.arcane,
                L.fracture, 1.f+L.derive, L.influence);
     }

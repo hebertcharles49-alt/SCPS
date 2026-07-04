@@ -52,12 +52,12 @@ typedef enum {
     TRAIT_COUNT
 } TraitId;
 
-/* Leviers (ancrés au moteur). Deltas : 0 = neutre. demographie/productivite/
+/* Leviers (ancrés au moteur). Deltas : 0 = neutre. demographie/rendement/
  * derive sont RELATIFS (s'appliquent comme 1+x) ; les autres sont ABSOLUS
  * (additifs sur l'échelle 0..10 du moteur, ou portée diplo). */
 typedef struct {
     float demographie;   /* croissance de pop */
-    float productivite;  /* rendement éco / contribution PE */
+    float rendement;  /* rendement éco / contribution PE */
     float influence;     /* portée diplo & culturelle */
     float coercition;    /* + H (militaire/contrôle) */
     float capacite;      /* + K (diversité métabolisée) */

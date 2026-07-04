@@ -36,7 +36,7 @@ const char *category_name(TraitCategory c) {
 static const TraitDef TRAITS[TRAIT_COUNT] = {
 /* ---- PHYSIQUE — atouts ---- */
 [T_ROBUSTE]      = { "Robuste",      CAT_PHYSIQUE, +2, T_FRELE,
-    { .coercition=+1.0f, .productivite=+0.20f },
+    { .coercition=+1.0f, .rendement=+0.20f },
     "Forte constitution : meilleur au combat et au travail de force." },
 [T_REGENERANT]   = { "Régénérant",   CAT_PHYSIQUE, +2, T_CONVALESCENT,
     { .demographie=+0.20f, .coercition=+1.0f },
@@ -51,11 +51,11 @@ static const TraitDef TRAITS[TRAIT_COUNT] = {
     { .demographie=+0.10f },
     "Résiste au climat et à la disette : tient hors de sa niche." },
 [T_SOBRE]        = { "Sobre",        CAT_PHYSIQUE, +1, T_VORACE,
-    { .productivite=+0.10f },
+    { .rendement=+0.10f },
     "Consomme peu : nourriture nette supérieure, entretien faible." },
 /* ---- PHYSIQUE — défauts ---- */
 [T_FRELE]        = { "Frêle",        CAT_PHYSIQUE, -1, T_ROBUSTE,
-    { .coercition=-1.0f, .productivite=-0.20f },
+    { .coercition=-1.0f, .rendement=-0.20f },
     "Faible constitution : médiocre au combat et au travail." },
 [T_CONVALESCENT] = { "Convalescent", CAT_PHYSIQUE, -1, T_REGENERANT,
     { .demographie=-0.20f, .coercition=-1.0f },
@@ -70,7 +70,7 @@ static const TraitDef TRAITS[TRAIT_COUNT] = {
     { .demographie=-0.10f },
     "Souffre hors de sa niche : croissance pénalisée en biome dur." },
 [T_VORACE]       = { "Vorace",       CAT_PHYSIQUE, -1, T_SOBRE,
-    { .productivite=-0.10f },
+    { .rendement=-0.10f },
     "Consomme beaucoup : entretien lourd, pression alimentaire." },
 /* ---- SOCIAL — atouts ---- */
 [T_BELLIQUEUX]   = { "Belliqueux",   CAT_SOCIAL, +2, T_DEBONNAIRE,
@@ -112,13 +112,13 @@ static const TraitDef TRAITS[TRAIT_COUNT] = {
     "Sa culture ne s'exporte pas : assimile lentement." },
 /* ---- INTELLECTUEL — atouts ---- */
 [T_INVENTIF]     = { "Inventif",     CAT_INTELLECTUEL, +2, T_BORNE,
-    { .productivite=+0.20f },
+    { .rendement=+0.20f },
     "Innovation : recherche accélérée, rendement supérieur." },
 [T_ARCANIQUE]    = { "Arcanique",    CAT_INTELLECTUEL, +2, T_SOURD_ARCANE,
     { .arcane=+1.0f },
     "Sensible à la magie : branche Magie facilitée — pente faustienne." },
 [T_STUDIEUX]     = { "Studieux",     CAT_INTELLECTUEL, +1, T_INCULTE,
-    { .productivite=+0.10f },
+    { .rendement=+0.10f },
     "Soif de savoir : recherche améliorée." },
 [T_BATISSEUR]    = { "Bâtisseur",    CAT_INTELLECTUEL, +1, T_BROUILLON,
     { .capacite=+0.5f },
@@ -127,17 +127,17 @@ static const TraitDef TRAITS[TRAIT_COUNT] = {
     { .derive=+0.20f },
     "Curieux : dérive rapide, prend la forme du biome, assimile vite." },
 [T_INDUSTRIEUX]  = { "Industrieux",  CAT_INTELLECTUEL, +1, T_INDOLENT,
-    { .productivite=+0.10f },
+    { .rendement=+0.10f },
     "Appliqué : rendement économique régulier." },
 /* ---- INTELLECTUEL — défauts ---- */
 [T_BORNE]        = { "Borné",        CAT_INTELLECTUEL, -1, T_INVENTIF,
-    { .productivite=-0.20f },
+    { .rendement=-0.20f },
     "Esprit fermé : recherche et rendement pénalisés." },
 [T_SOURD_ARCANE] = { "Sourd à l'arcane",CAT_INTELLECTUEL,-1, T_ARCANIQUE,
     { .arcane=-1.0f },
     "Imperméable à la magie : branche Magie très coûteuse." },
 [T_INCULTE]      = { "Inculte",      CAT_INTELLECTUEL, -1, T_STUDIEUX,
-    { .productivite=-0.10f },
+    { .rendement=-0.10f },
     "Indifférent au savoir : recherche affaiblie." },
 [T_BROUILLON]    = { "Brouillon",    CAT_INTELLECTUEL, -1, T_BATISSEUR,
     { .capacite=-0.5f },
@@ -146,7 +146,7 @@ static const TraitDef TRAITS[TRAIT_COUNT] = {
     { .derive=-0.20f },
     "Rigide : dérive lente, change mal — mais héritage très stable." },
 [T_INDOLENT]     = { "Indolent",     CAT_INTELLECTUEL, -1, T_INDUSTRIEUX,
-    { .productivite=-0.10f },
+    { .rendement=-0.10f },
     "Nonchalant : rendement économique faible." },
 };
 
@@ -217,7 +217,7 @@ HeritageLeviers build_leviers(const HeritageBuild *b){
         TraitId t=b->trait[c];
         if (t<0||t>=TRAIT_COUNT) continue;
         const HeritageLeviers *d=&TRAITS[t].lev;
-        L.demographie  += d->demographie;  L.productivite += d->productivite;
+        L.demographie  += d->demographie;  L.rendement += d->rendement;
         L.influence    += d->influence;    L.coercition   += d->coercition;
         L.capacite     += d->capacite;     L.permeabilite += d->permeabilite;
         L.arcane       += d->arcane;       L.derive       += d->derive;

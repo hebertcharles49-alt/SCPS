@@ -310,7 +310,7 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
                 st.H     = clampf(st.H     + lev.coercition,   0.f, 10.f);
                 st.D_bar = clampf(st.D_bar + lev.fracture,     0.f, 10.f);  /* fracture interne */
                 st.flux_faustien += lev.arcane;   /* arcane → pente faustienne (Ésotérique Arcanique) */
-                heritage_prod = lev.productivite;     /* Mécaniste Inventif / Clanique Borné → rendement */
+                heritage_prod = lev.rendement;     /* Mécaniste Inventif / Clanique Borné → rendement */
                 /* garde anti-contagion : un levier dégénéré (NaN/inf) polluerait
                  * toute la chaîne P_réalisé → tech_cost. clampf laisse passer NaN. */
                 if (!isfinite(heritage_prod)) heritage_prod = 0.f;
