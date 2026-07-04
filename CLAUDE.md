@@ -1614,8 +1614,31 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   Conséquence de BILAN : les révoltes deviennent MOINS nombreuses (une région en guerre civile ne
   rallume pas), plus LONGUES et plus SANGLANTES (les batailles) ; les **sécessions se RARÉFIENT** (la
   milice rebelle perd souvent contre l'armée de la couronne — fidèle à l'Histoire : la plupart des
-  révoltes échouent). Dialable (force rebelle, seuils de score). À VENIR : « Rebelles de X » au journal
-  (provlog) + télémétrie de guerre civile + dé-doublonner les 2 systèmes de révolte (statecraft/module).
+  révoltes échouent). Dialable (force rebelle, seuils de score). ⊕ SUITE (2026-07-04) : le journal
+  « Rebelles de X » + la télémétrie de guerre civile sont FAITS ; le dé-doublonnage des 2 systèmes de
+  révolte est INVESTIGUÉ → REPORTÉ en Phase 4 (cf. entrée suivante). RESTE Phase 4 : soutien diplo aux rebelles.
+- **FIL « Rebelles de X » + décision dé-doublonnage (2026-07-04, DISPLAY-ONLY, SAVE non bumpé)** : la
+  guerre civile incarnée (Phase 3a) apparaît désormais au fil (feed) sous le NOM du rebelle
+  (« Rebelles de X ») au lieu du `FEED_REVOLT` anonyme. Tampon STATIQUE `g_new_civilwar[16]` (hors
+  RevoltState ⇒ non sérialisé) : RAZ en tête de `revolt_scan`, poussé dans `revolt_ignite` quand une
+  guerre civile est déployée (`rebel_country>=0`) ; `sim_day` le lit après le tick et
+  `feed_push(FEED_REVOLT, rebel_country, hp, region, 0)` — `a`=rebel_country → la façade résout déjà
+  `w->country[a].name`. La boucle legacy `statecraft_revolt_fired` SAUTE les régions déjà rapportées
+  (pas de double-report). Godot `alerts.gd` : chip + popup portent le nom. Gaté `human_player>=0`
+  (chronicle ne pousse jamais) + tampon non sérialisé ⇒ **golden IDENTIQUE**, `determinism` STABLE,
+  smoke 8/8, chronicle 0 warning, revolt_demo 23/23, **SAVE non bumpé**. ⊕ **DÉ-DOUBLONNAGE des 2
+  systèmes de révolte : INVESTIGUÉ (agent read-only) → REPORTÉ en Phase 4**. Les deux systèmes sont
+  code-ISOLÉS (grep 2 sens = 0 cross-read ; la façade n'expose ni l'un ni l'autre) : le legacy
+  `statecraft_revolt` (agitation→L↓+loi martiale+prestige, `scps_statecraft.c` `statecraft_tick`) est lu
+  par 1 ligne UI (« ⚑ Au bord de la révolte ») + 1 ligne feed SEULEMENT — pas d'armée, pas de choc éco,
+  pas de cycle de vie de pays, **invisible à chronicle** (l'outil qui juge la balance). NO-GO maintenant :
+  le sous-système vient de re-baseliner 2× en un jour (v53→55), le golden 12 ans passe « à la marge »
+  (la guerre civile éclôt juste après la fenêtre) et la balance fraîchement recalibrée (Phase 1 : spirale
+  2 M→~150 morts) est fragile. Quand fait : **Option B** — `statecraft_tick` garde `agitation[]` en signal
+  UI/diagnostic PUR, on supprime son propre chemin de tir (`unrest_days`/fire) ; le `revolt_scan` du module
+  lit l'agitation comme une entrée de misère de plus ⇒ 1 déclencheur, 1 acteur, 1 feed. Pas de bump si les
+  champs `Statecraft` restent inertes ; re-baseline golden attendue. Landé APRÈS ≥1 cycle de sweep prouvant
+  la balance Phase 3a.
 
 ## Disciplines non négociables
 
