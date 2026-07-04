@@ -1639,6 +1639,32 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   lit l'agitation comme une entrée de misère de plus ⇒ 1 déclencheur, 1 acteur, 1 feed. Pas de bump si les
   champs `Statecraft` restent inertes ; re-baseline golden attendue. Landé APRÈS ≥1 cycle de sweep prouvant
   la balance Phase 3a.
+- **PHASE 4 — LA RÉVOLTE ABOUTIE (dé-doublonnage · soutien étranger · noyau de vétérans) (2026-07-04)** :
+  les trois chantiers restants de la révolte, orchestrés en hiérarchie multi-agents (Opus orchestrateur +
+  advisor read-only · Sonnet implémenteurs). **(1) DÉ-DOUBLONNAGE Option B (`69cb14a`)** : `statecraft_tick`
+  ne tire plus de révolte (garde `agitation[]` en signal UI PUR) ; le module `scps_revolt` en devient le
+  SEUL acteur — `revolt_scan` gagne `const Statecraft*` et FOLD l'agitation dans son `worst`
+  (`W_AGITATION_UNREST` 0.20) → l'unrest POLITIQUE (légitimité, que `revolt_group_deficit` ne lisait pas)
+  passe désormais par l'acteur unique ; la boucle feed legacy morte est retirée. ⊕ golden **IDENTIQUE**
+  (contre la prévision : statecraft ne tenait pas 365 j <12 ans + les révoltes du module éclosent >12 ans
+  ⇒ fenêtre golden inchangée — PAS de re-baseline), SAVE non bumpé (champs `Statecraft` inertes). **(2)
+  SOUTIEN ÉTRANGER (`9fe107b`, SAVE v55→56)** : une couronne en guerre civile attire un rival hostile qui
+  ouvre un SECOND FRONT (`diplo_declare_war_cb`, distrait l'armée royale) + un RENFORT MATÉRIEL modeste à
+  l'armée rebelle. AU PLUS UN bailleur/guerre (argmax déterministe). ⚠ le latch est `Rebellion.backing_tried`
+  SÉRIALISÉ (v56), PAS un module-static : un reload mid-guerre ne ré-offre plus (double renfort / 2e
+  bailleur) — même classe de bug que g_wild_contact, **capté par l'advisor Opus** avant commit. Tunables
+  `AI_REBEL_BACKING_*`. **(3) NOYAU DE VÉTÉRANS (`f6b3046`) — la SECESSION-RARITY** : diagnostic
+  `SCPS_REVDIAG` — l'armée rebelle (masse paysanne 1-2 paquets) était ANÉANTIE d'une bataille (score de
+  guerre −37, jamais +8) ⇒ **0 victoire rebelle / 25 sims** (la résolution par score de Phase 3a + le
+  soutien étranger restaient INERTES sur l'issue « le rebelle gagne »). Fix (choix joueur, « troupes plus
+  puissantes que la milice, éparses mais réelles ») : un noyau ADDITIF de piquiers (`REBEL_VET_ADD` 2,
+  déserteurs/vétérans qui REJOIGNENT la révolte en PLUS de la masse — pas prélevé sur l'armée minuscule) →
+  ~1 révolte sur 15 bat la couronne (« rare mais réel » ; testé ADD 1/2/4 : 4 emballe seed 11 à 72 %, 1
+  quasi-inerte, 2 vise juste). golden IDENTIQUE (déploiement >12 ans), SAVE non bumpé, diag `SCPS_REVDIAG`
+  gated gardé (style `SCPS_*DIAG`). ⊕ Vérif TRANSVERSE des 3 rounds : `determinism` 12yr + `determinism-deep`
+  200 ans STABLES, sweep 5×250 SAIN (satisfaction 77-91 %, hégémon mortel 4-5/5, sécessions 0.2-2.4/sim —
+  la carte respire, 0 spirale), bancs verts. ⊕ La révolte est COMPLÈTE : **trigger unifié** (1 acteur) ·
+  **géopolitique** (le voisin profite) · **issue occasionnellement victorieuse** (le rebelle peut vaincre).
 
 ## Disciplines non négociables
 
