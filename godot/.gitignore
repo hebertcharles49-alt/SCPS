@@ -15,9 +15,9 @@ project/.import/
 # Sidecars d'import (.import) : le projet charge les PNG en Image brute (hors
 # pipeline d'import) — aucun n'est suivi ; l'éditeur les régénère à l'ouverture.
 *.import
+# UID Godot 4 (.uid) : métadonnées régénérées par l'éditeur (même statut que .import) — non suivies.
+*.uid
 
-# Captures headless des scènes de vérification (shot.gd / shot_zoom.gd) — régénérables.
-project/globe.png
-project/iso_play.png
-project/iso_terrain.png
-project/roads_test.png
+# Captures headless des scènes de vérification/probes (shot/rv/nb/canopy/town/diplo/… — régénérables).
+# Les VRAIS assets vivent dans les sous-dossiers (pack/, art/, ui/, addons/) — ce motif ne touche QUE la racine.
+project/*.png
