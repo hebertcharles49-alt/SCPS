@@ -1,3 +1,123 @@
+# Workflow — Claude Code: Multi-Model Agent Hierarchy Planner
+
+A planning-only prompt for Claude Code. Drop it in `/plan` mode — it investigates your repo and proposes a custom multi-model agent hierarchy without touching a single file until you approve everything.
+
+## Fill in before using
+
+Replace each placeholder below, then paste the whole prompt into Claude Code.
+
+- **PRIMARY_MODEL** — your strongest model (e.g. `claude-opus-4-6`)
+- **EXECUTOR_MODEL** — mid-tier model for implementation (e.g. `claude-sonnet-4-6`)
+- **BUDGET_MODEL** — cheapest model for mechanical tasks (e.g. `claude-haiku-4-5`)
+- **ADVISOR_MODEL** — model to use as session-level advisor (e.g. `claude-opus-4-6`)
+- **EXTERNAL_TOOL** — any external API you already use for cheap text extraction or summarization, or write "none"
+- **PRIORITY_ORDER** — rank 1–2–3: Code quality and reliability / Token economy / Speed of completion
+- **PLAN_CONTEXT** — one sentence about what this repo is doing or will do
+
+## Mission
+
+Investigate this repo's current Claude Code configuration and propose — without implementing anything — a permanent multi-model agent hierarchy that becomes the standard for all future work here.
+
+Do not modify any file. The deliverable is a written investigation report plus a proposed change plan for me to approve before any implementation.
+
+Resolve every trade-off using the PRIORITY_ORDER defined above. If an optimization saves tokens but risks correctness, flag it as "requires explicit approval."
+
+## Architecture
+
+### Layer 1 — Model hierarchy
+
+PRIMARY_MODEL acts as orchestrator and final reviewer. It delegates scoped tasks to an "implementer" subagent running on EXECUTOR_MODEL, and reviews only the diff/summary returned by each completed task. It is the only level that decides a task is truly done.
+
+Why this saves tokens: each subagent runs in its own fresh context window. Only its final summary returns to the parent — not every file it read, every log it parsed, or every failed attempt. PRIMARY_MODEL only ever sees clean results.
+
+To reinforce EXECUTOR_MODEL's judgment, recommend one of two options:
+
+- **Option A** — Configure PRIMARY_MODEL's session with ADVISOR_MODEL as advisor. Lower overhead, simpler setup.
+- **Option B** — A dedicated read-only subagent running ADVISOR_MODEL that the implementer calls at explicit decision points. More expensive but works at any nesting depth. Recommend only if Option A is insufficient for this repo's risk profile.
+
+Verify actual behavior in this environment before committing to either option.
+
+### Layer 2 — Mechanical layer (hooks)
+
+Hooks fire on Read, Grep, Edit, Write, etc. for every agent in the hierarchy — they trigger recursively inside subagents. This is where you intercept expensive mechanical work before it hits any model's context.
+
+- If EXTERNAL_TOOL is not "none": keep routing extraction/summarization there. The implementer reviews anything it generates — not PRIMARY_MODEL.
+- If EXTERNAL_TOOL is "none": propose hooks that route the same work to BUDGET_MODEL instead, with the same output interface so nothing downstream breaks.
+
+Fallback when any cheap backend becomes unavailable: the hook tries the primary backend first; on quota failure it automatically falls through to the next cheapest option. Single hook script with a swappable backend — not separate scripts per backend.
+
+### Layer 3 — Research
+
+Common failure mode: one agent per search result or per link — can burn 100k+ tokens on a simple query. Replace any such flow with this:
+
+PRIMARY_MODEL breaks the question into sub-questions (target under 10, never one per result) → delegates to a "research-coordinator" subagent on EXECUTOR_MODEL → coordinator fires searches in parallel with a hard concurrency cap → each raw fetch passes through Layer 2 before returning → coordinator synthesizes one summary → PRIMARY_MODEL receives only that summary.
+
+Implement guardrails as hooks, never as prompt instructions. Prompt instructions fail under context pressure. Hook enforcement does not.
+
+- Hard cap on subagents per session or turn, blocking with an error code above the limit
+- 1 subagent per sub-topic, never 1 per search result or link
+- Query deduplication before firing a new search
+
+## Effort levels per subagent
+
+Subagent frontmatter supports an "effort" field that overrides the session level for that agent only. Available values: low, medium, high, xhigh (newer models only), max.
+
+Do not assign high or max to every agent — justify each value against the priority order. BUDGET_MODEL at low effort for extraction is almost always correct.
+
+## Task profiles
+
+There is no single hierarchy. The architecture should define named profiles, each mapped to a task type, plus a decision matrix so any future session knows which profile to use. Propose only profiles that match this repo's actual work — do not invent profiles for tasks that don't exist here.
+
+For each profile specify: main model and session effort, subagents involved with model and effort per agent and justifications against the priority order, advisor configuration (Option A or B), and objective entry criteria.
+
+Every profile needs a fallback mode for when PRIMARY_MODEL is unavailable. Do not just swap the main model without rethinking the advisor pairing — different models have different valid advisor pairings.
+
+Include at least one profile where EXECUTOR_MODEL is the orchestrator by design, not just as fallback.
+
+## What to investigate first
+
+1. **Full inventory** — read settings.json and settings.local.json if present, everything in .claude/hooks/, .claude/agents/, CLAUDE.md, and any skills. Map which hooks exist, which events they fire on, what matchers they use, what each one does. Check for CLAUDE_CODE_SUBAGENT_MODEL and any ANTHROPIC env vars — if set, they can silently override frontmatter model values. If EXTERNAL_TOOL is not "none", locate where and how it is invoked today.
+2. **Version check** — run `claude --version`. Advisor requires v2.1.98+ (v2.1.170+ for Fable-family models). If older, flag as a blocker and recommend `claude update`. The implementer and research-coordinator are 1-level-deep subagents — nested subagents are not required.
+3. **Conflict diagnosis**
+   - Hooks already on Read/Write/Edit/Bash that would collide or duplicate work with the new subagent roles
+   - Any existing mass-subagent restriction rule — where it lives and how to rewrite it to allow the structured exception without reopening uncontrolled fan-out
+   - Existing TaskCreated/SubagentStart/SubagentStop hooks to extend, not duplicate
+   - Model settings already fixed in settings files or env vars that conflict with per-profile model selection
+4. **Where the architecture should live** — identify the right durable home for the docs and decision matrix, something that survives context compaction and loads in every future session (e.g. a section in CLAUDE.md or .claude/docs/agent-hierarchy.md).
+
+## Mandatory consultation before drafting any agent
+
+Do not decide unilaterally how each agent should behave. Before writing any system prompt or frontmatter, produce specific questions per agent and per profile based on what you actually found in this repo. Examples:
+
+- **implementer**: How far can it go autonomously before pausing? Can it run migrations, install new dependencies, or delete dead code without asking? Does it follow the task plan literally or does it have judgment latitude?
+- **research-coordinator**: What is the acceptable sub-question count for the types of research this project actually does? Which source types skip arbitration — official docs vs. community blogs?
+- **Error tolerance**: if the hard cap hook blocks a legitimate task, what happens — abort, notify and wait, or reroute?
+- **Profiles**: which task types warrant a dedicated profile and where exactly is the line between them?
+
+Present these questions and stop. Do not continue to agent drafts until I respond, even if this splits the work into two conversations.
+
+Only after I answer: include the complete draft of each agent — still as written report content only, not written to .claude/agents/.
+
+## Expected deliverables
+
+**First delivery — stop here and wait for my answers**
+
+- Map of what exists today: hooks, agents, mass-agent rules, external tool integration, relevant env vars
+- Conflict diagnosis — what would break or duplicate if the new architecture were applied without adjustment
+- Advisor technical confirmation — actual behavior in this environment, reasoned recommendation between Option A and Option B
+- Proposed task profiles with decision matrix, including fallback modes and EXECUTOR_MODEL-as-orchestrator profile, with model and effort per agent and justifications against the priority order
+- Change plan for everything that is not agent content (hooks, settings, CLAUDE.md, architecture docs), file by file: path / current state / proposed change / reason referencing the priority order
+- The specific questions per agent and profile — then stop and wait
+
+**Second delivery — only after I answer**
+
+- Complete draft of each agent with system prompt and frontmatter reflecting my answers
+- Remaining risks and decisions that still require my explicit approval before anything is implemented
+
+Implement nothing in either delivery — only investigate, ask, and propose.
+
+---
+
 # SCPS — conventions du dépôt
 
 ## Principes de collaboration (non négociables)
