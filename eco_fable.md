@@ -16,7 +16,8 @@
   **DISSOLUTION LaborEcon** (golden-SAFE, save v59 — la levée LIT les strates econ, [019]). Les 4 « reste »
   TRANCHÉS : **C1 REFUTÉ** (PopGroup.L = primitif vivant : coercition + agit_base→révolte + loyauté readout,
   Invariant 2) · **C4** socle governance_P DÉLIBÉRÉ (non-action, le code prévient contre le double-compte) ·
-  **§5** décoratif (cap ne mord jamais ; skip documenté) · **C3** orphelins RC (chantier de DESIGN, pas un
+  **§5** IMPLÉMENTÉE ([020], le joueur a tranché le design) : pool commercial MENSUEL qui MORD (0.04/bourgeois
+  + 0.01/élite, save v60) · **C3** orphelins RC (chantier de DESIGN, pas un
   bug). determinism STABLE · savetest v59 byte-identique · test 37/37 runnable (3 KO Windows pré-existants) ·
   0 warning. **Zéro dette de correction ouverte** — ce qui reste est du DESIGN à arbitrer, pas de l'audit.
 - **Verdicts Phase 3 ([012])** : 2 bugs de câblage (C5 trou trade×guerre · C4 famille 5.f) · 3 dettes
@@ -824,3 +825,26 @@ L'audit de câblage & le refactor mathématique sont **CLOS** : la chaîne labor
 cartographiée, ses double-sources tranchées (gabarit collapsé, savoir unifié, LaborEcon dissous), ses trous
 bouchés (C5), ses faux-positifs réfutés (C1, C4, C10). Zéro dette de correction ouverte ; ce qui reste
 (§5 recalibrage · C3 wiring · C4 policy-feature) est du DESIGN à arbitrer, pas de l'audit à finir.
+
+---
+
+### [020] 2026-07-05 — §5 PUISSANCE COMMERCIALE IMPLÉMENTÉE (le joueur a tranché le design)
+
+[019] fermait §5 « décoratif, skip » (le câbler = une DÉCISION de design). Le joueur l'a PRISE : la
+puissance commerciale = le VOLUME de bien échangeable au marché, par empire et par mois — un POOL LIBRE
+que les achats DRAINENT (fin du « rafler tout le stock sans contrepartie »).
+
+Design (patron du savoir, choisi par le joueur) : `econ_country_commerce = 0.04·bourgeois + 0.01·élite`,
+× le bonus de la CHAÎNE COMMERCIALE (Σ `build.PE_infra` — les 6 édifices commerciaux : marché/entrepôt/
+comptoir/banque/port marchand/centre). Pool MENSUEL fixe (recalculé au roulement de mois par sim_day),
+scalé sur la pop marchande. Le poids 0.04 (baissé du 0.10 mesuré décoratif en [013]) MORD : 38-73 achats
+bornés/sim. Gate sur l'IMPORT de `intertrade_market_consume` (chantiers) + `intertrade_market_buy` (achat
+manuel), joueur ET IA ; stages propre+empire GRATUITS. Alimente `diplo_eco_power` (la bourgeoisie marchande
+pèse en menace/alliance/score de guerre). Membrane : menu marché (readout pool/restant + hover explicatif)
+via `scps_commerce_power` → binding → `sidebar_drawer`.
+
+⚠ RE-BASELINE golden (le cap mord dès l'an-0) · SAVE 59→60 (ITRD sérialise budget+spent, état intra-mois) ·
+flag `g_commerce_active` : inactif hors sim ⇒ bancs INCHANGÉS. Mesuré seed 9 : pool 80-289/mois (petits
+empires ~19 — l'échelle « 18/20 par mois » demandée —, gros ~546), monde SAIN (satisfaction 77/87/89 %,
+hégémon mortel, IPM 1.17). Commits `8ee31de` (moteur) + `56a3b00` (membrane + UI). §5 passe de
+« décoratif » à ÉQUILIBRAGE ACTIF — le seul des 4 « reste » que le design a rouvert et tranché.
