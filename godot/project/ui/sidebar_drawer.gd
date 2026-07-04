@@ -207,6 +207,19 @@ func _draw_marche(x: float, y: float, me: int) -> void:
 	var cap_prov: int = Sim.world.country_capital_province(me)
 	if cap_prov >= 0:
 		cap_region = Sim.world.province_region(cap_prov)
+	# §5 PUISSANCE COMMERCIALE : le volume achetable au marché ce mois-ci (borne les achats au marché).
+	var cpow: Dictionary = Sim.world.commerce_power(me)
+	var cp_pool := float(cpow.get("pool", 0.0))
+	var cp_rem := float(cpow.get("remaining", 0.0))
+	var cp_bonus := int(cpow.get("bonus_pct", 0))
+	var cp_col := VKit.sense(clampf(cp_rem / maxf(cp_pool, 1.0), 0.0, 1.0))   # vert plein → rouge à sec
+	var cp_lbl := "Puissance comm. : %d / %d ce mois" % [int(round(cp_rem)), int(round(cp_pool))]
+	if cp_bonus > 0:
+		cp_lbl += "  (+%d%% édifices)" % cp_bonus
+	VKit.text(self, Vector2(x, y), cp_col, cp_lbl, VKit.FS_SMALL)
+	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 264, 16),
+		"text": "Volume de biens achetable au marché ce mois-ci (0.04/bourgeois + 0.01/élite × la chaîne commerciale) — évite de rafler tout le stock d'un coup ; pèse aussi dans ta puissance éco diplomatique."})
+	y += 18
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          prix(or)   marché", VKit.FS_SMALL)
 	y += 16
 	for st in Sim.world.country_stocks(me):

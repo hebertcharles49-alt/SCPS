@@ -94,6 +94,7 @@ public:
     Array      diplo_journal(int country);            /* le JOURNAL d'actes daté (sous-détaille de Mémoire) */
     Dictionary country_army(int country);             /* mobilisation + flotte */
     Dictionary country_trade(int country);            /* commerce : routes · or · partenaires */
+    Dictionary commerce_power(int country);           /* §5 : pool commercial mensuel + restant + sources (hover) */
     Array      country_council(int country);          /* conseil : 3 sièges (+age v49) */
     Array      council_candidates(int seat);          /* pool du siège : {slot,nom,tier,age,cost} — embauche éclairée */
 

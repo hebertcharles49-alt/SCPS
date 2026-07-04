@@ -783,6 +783,29 @@ int scps_country_trade(ScpsSim *s, int me, int *routes, double *export_gold,
     return n;
 }
 
+/* §5 PUISSANCE COMMERCIALE — la membrane du menu marché : le pool mensuel + le restant + les
+ * sources (pop marchande, chaîne commerciale). Nombres tangibles, aucun flottant moteur. */
+void scps_commerce_power(ScpsSim *s, int me, ScpsCommerce *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    if(!s || !s->ready || me<0 || me>=s->w->n_countries) return;
+    out->pool      = intertrade_commerce_pool(me);
+    out->remaining = intertrade_commerce_remaining(me);
+    double bourg=0.0, elite=0.0, infra=0.0;
+    for(int r=0;r<s->sim.econ->n_regions;r++){
+        const RegionEconomy *re=&s->sim.econ->region[r];
+        if(re->owner!=me) continue;
+        bourg += re->strata[CLASS_BOURGEOIS].pop;
+        elite += re->strata[CLASS_ELITE].pop;
+        infra += re->build.PE_infra;
+    }
+    out->bourgeois=(float)bourg; out->elite=(float)elite;
+    float pct=(float)(infra*tune_f("COMMERCE_BLD_PER",COMMERCE_BLD_PER)), mx=tune_f("COMMERCE_BLD_MAX",COMMERCE_BLD_MAX);
+    if(pct>mx) pct=mx;
+    if(pct<0.f) pct=0.f;
+    out->bonus_pct=(int)(pct*100.f+0.5f);
+}
+
 int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
     if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
     uint32_t seed = s->w->seed;

@@ -59,6 +59,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("diplo_journal", "country"),       &ScpsWorld::diplo_journal);
     ClassDB::bind_method(D_METHOD("country_army", "country"),        &ScpsWorld::country_army);
     ClassDB::bind_method(D_METHOD("country_trade", "country"),       &ScpsWorld::country_trade);
+    ClassDB::bind_method(D_METHOD("commerce_power", "country"),      &ScpsWorld::commerce_power);
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
     ClassDB::bind_method(D_METHOD("unit_roster", "country"),         &ScpsWorld::unit_roster);
     ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
@@ -593,6 +594,18 @@ Dictionary ScpsWorld::country_trade(int country) {
         partners.push_back(p);
     }
     d["partners"] = partners;
+    return d;
+}
+
+Dictionary ScpsWorld::commerce_power(int country) {
+    ScpsCommerce cc;
+    scps_commerce_power(sim, country, &cc);
+    Dictionary d;
+    d["pool"]      = cc.pool;        // §5 : le budget MENSUEL de volume échangeable
+    d["remaining"] = cc.remaining;   // ce qu'il reste à acheter ce mois-ci
+    d["bourgeois"] = cc.bourgeois;   // pop marchande (source ×0.04)
+    d["elite"]     = cc.elite;       // élite (source ×0.01)
+    d["bonus_pct"] = cc.bonus_pct;   // bonus de la chaîne commerciale (%)
     return d;
 }
 

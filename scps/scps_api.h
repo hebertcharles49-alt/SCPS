@@ -255,6 +255,17 @@ typedef struct {
 int scps_country_trade(ScpsSim *s, int country, int *routes, double *export_gold,
                        int *has_centre, ScpsTradePartner *out, int max);
 
+/* §5 PUISSANCE COMMERCIALE (menu marché) : le pool MENSUEL de volume échangeable + ce qu'il RESTE
+ * + les sources (pop marchande, bonus de la chaîne commerciale) — la membrane du hover explicatif. */
+typedef struct {
+    float pool;        /* budget mensuel du volume échangeable au marché */
+    float remaining;   /* ce qu'il RESTE à acheter ce mois-ci */
+    float bourgeois;   /* pop marchande (source ×0.04) */
+    float elite;       /* élite (source ×0.01) */
+    int   bonus_pct;   /* bonus de la chaîne commerciale (édifices), en % */
+} ScpsCommerce;
+void scps_commerce_power(ScpsSim *s, int country, ScpsCommerce *out);
+
 /* CONSEIL (sb_panel_conseil) : 3 sièges (Savoir · Société · Industrie). */
 typedef struct {
     const char *seat;       /* nom du siège */

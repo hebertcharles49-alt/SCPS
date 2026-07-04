@@ -66,6 +66,15 @@ int main(int argc, char **argv){
     ok("20 ans écoulés", yr==20);
     ok("le monde VIT (pop a changé)", p20 != p0);
 
+    /* §5 PUISSANCE COMMERCIALE : la façade du menu marché — le pool mensuel est peuplé & borné. */
+    { ScpsCommerce cc; scps_commerce_power(s, scps_player(s), &cc);
+      printf("   puissance comm. joueur : pool=%.1f/mois · restant=%.1f · bourgeois=%.0f · +%d%%\n",
+             cc.pool, cc.remaining, cc.bourgeois, cc.bonus_pct);
+      ok("commerce_power : pool mensuel > 0 après 20 ans (la pop marchande produit)", cc.pool > 0.f);
+      ok("commerce_power : restant borné [0..pool]", cc.remaining >= 0.f && cc.remaining <= cc.pool + 1.f);
+      ok("commerce_power : sources cohérentes (bourgeois>0, bonus 0-50%)",
+         cc.bourgeois > 0.f && cc.bonus_pct >= 0 && cc.bonus_pct <= 50); }
+
     /* ── LECTURES DE FENÊTRES : arbre de tech · budget · missions (read-only) ──
      * LU AVANT le 2e sim : le flux fiscal est un état GLOBAL (règle « un seul Sim
      * actif/processus ») — créer s2 le RAZ. On lit donc le budget de s ICI, sur ~1
