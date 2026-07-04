@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
         total_founded    += econ_colonize_tick(e, w, -1);
         total_mig_flows  += econ_migrate_tick(e, w);
         world_tick(w, e, 1.0f);   /* dérive lente de l'horloge linguistique */
-        trade_tick(e, t);
+        trade_tick(e, t, NULL);
         /* Recalibrer le réseau tous les 5 ticks (colonisation → nouveaux nœuds). */
         if (tick>0 && tick%5==0) trade_network_build(t, w, e);
     }

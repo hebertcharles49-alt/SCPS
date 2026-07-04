@@ -73,7 +73,9 @@ void trade_network_build(TradeNetwork *net, const World *w,
 
 /* Un pas de commerce : échange les surplus, met à jour stock et prix.
  * À appeler APRÈS econ_tick(). */
-void trade_tick(WorldEconomy *e, TradeNetwork *net);
+/* C5 : link_blocked[li]=1 ⇒ lien coupé (guerre), PRÉ-CALCULÉ par l'appelant (sim.c a la diplo ;
+ * scps_trade reste un module FEUILLE, sans dépendance diplo). NULL ⇒ aucun gate (bancs). */
+void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked);
 
 /* Affiche la balance commerciale d'une région (imports/exports du dernier
  * tick) et ses voisins les plus importants. */

@@ -719,7 +719,19 @@ void sim_day(Sim *s, World *w) {
         econ_colonize_tick(s->econ, w, s->human_player); econ_migrate_tick(s->econ, w);   /* le JOUEUR essaime à la main (gate IA-off ; human=-1 ⇒ no-op chronique) */
         world_tick(w, s->econ, 1.0f);
         PROF(PB_LEGIT, legitimacy_tick(s->wl, w, s->econ, s->ts));
-        trade_network_build(s->net, w, s->econ); trade_tick(s->econ, s->net);
+        trade_network_build(s->net, w, s->econ);
+        {   /* C5 — pré-calcul des liens bloqués par la GUERRE (la diplo vit ICI ; scps_trade reste
+             * feuille). Un lien trans-frontière (owners ≠) en guerre sans pacte marchand est coupé. */
+            static uint8_t tblk[TRADE_MAX_LINKS];
+            int nl = s->net->n_links; if (nl>TRADE_MAX_LINKS) nl=TRADE_MAX_LINKS;
+            for (int li=0; li<nl; li++){
+                const TradeLink *lk=&s->net->link[li];
+                int ca=(lk->ra>=0&&lk->ra<s->econ->n_regions)? s->econ->region[lk->ra].owner : -1;
+                int cb=(lk->rb>=0&&lk->rb<s->econ->n_regions)? s->econ->region[lk->rb].owner : -1;
+                tblk[li]=(ca>=0&&cb>=0&&ca!=cb&&diplo_status(s->dp,ca,cb)==DIPLO_WAR&&!diplo_trade_pact(s->dp,ca,cb))?1:0;
+            }
+            trade_tick(s->econ, s->net, tblk);
+        }
         PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
         PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
         demography_migration_pact_tick(s->econ, s->dp);   /* BRASSAGE : échange passif de population entre alliés (annuel) */

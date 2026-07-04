@@ -183,7 +183,7 @@ static int flow_cmp(const void *a, const void *b) {
     return (va<vb)-(va>vb);
 }
 
-void trade_tick(WorldEconomy *e, TradeNetwork *net) {
+void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked) {
     net->n_flows=0;
 
     for (int li=0; li<net->n_links; li++) {
@@ -192,6 +192,9 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net) {
         if (ra<0 || ra>=e->n_regions || rb<0 || rb>=e->n_regions) continue;  /* lien corrompu : on saute */
         RegionEconomy *ea=&e->region[ra];
         RegionEconomy *eb=&e->region[rb];
+        /* C5 — un lien coupé par la GUERRE (pré-calculé par l'appelant, cf. sim.c) ne bouge rien.
+         * scps_trade reste FEUILLE : le verdict diplo est passé, pas calculé ici. */
+        if (link_blocked && link_blocked[li]) continue;
 
         for (int r=1; r<RES_COUNT; r++) {
             float pa=ea->price[r], pb=eb->price[r];

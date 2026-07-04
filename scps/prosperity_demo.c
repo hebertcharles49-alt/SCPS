@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
         legitimacy_tick(wl, w, econ, ts);   /* L émerge (lit l'éco du tick) AVANT la prospérité */
         if (tick > 0 && tick % 5 == 0)
             trade_network_build(net, w, econ);
-        trade_tick(econ, net);
+        trade_tick(econ, net, NULL);
         prosperity_tick(wp, w, econ, net, ts, wl);   /* assemble ScpsState avec le L frais */
     }
 
