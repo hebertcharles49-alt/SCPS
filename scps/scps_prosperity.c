@@ -43,7 +43,7 @@ static float bell_f(float d) {
 
 /* Sigmoïde : σ(x) = 1/(1+exp(-x)) */
 static float sigmoid(float x) {
-    return 1.f / (1.f + expf(-x));
+    return scps_sigmoid(x);   /* C7 : source unique (scps_core) — byte-identique */
 }
 
 /* ---- Profil culturel d'un pays ---------------------------------------- *

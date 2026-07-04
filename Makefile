@@ -211,13 +211,13 @@ econ_demo: $(ECON_DEMO_OBJS)
 
 ECON_TAX_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_render.o \
                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
-                  $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_econ_tax_demo.o
+                  $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_econ_tax_demo.o
 econ_tax_demo: $(ECON_TAX_DEMO_OBJS)
 	$(CC) $(ECON_TAX_DEMO_OBJS) -o $@ -lm
 
 ECON_CULTURE_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_render.o \
                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
-                  $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_econ_culture_demo.o
+                  $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_econ_culture_demo.o
 econ_culture_demo: $(ECON_CULTURE_DEMO_OBJS)
 	$(CC) $(ECON_CULTURE_DEMO_OBJS) -o $@ -lm
 
@@ -232,7 +232,7 @@ econ_arcane_demo: $(ECON_ARCANE_DEMO_OBJS)
 
 ECON_PRODUCTION_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_render.o \
                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_trade.o \
-                  $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_econ_production_demo.o
+                  $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_econ_production_demo.o
 econ_production_demo: $(ECON_PRODUCTION_DEMO_OBJS)
 	$(CC) $(ECON_PRODUCTION_DEMO_OBJS) -o $@ -lm
 
@@ -242,7 +242,8 @@ tech_demo: $(TECH_DEMO_OBJS)
 	$(CC) $(TECH_DEMO_OBJS) -o $@ -lm
 
 # ---- Banc d'essai des pools culturels ------------------------------------
-CULTURE_DEMO_OBJS := $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_culture_demo.o
+# C7 : scps_culture.o appelle scps_metabolisation ⇒ scps_core.o requis au lien.
+CULTURE_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_culture_demo.o
 culture_demo: $(CULTURE_DEMO_OBJS)
 	$(CC) $(CULTURE_DEMO_OBJS) -o $@ -lm
 
@@ -586,7 +587,7 @@ structural_demo: $(STRUCTURAL_DEMO_OBJS)
 
 # ---- L'économie des populations : main-d'œuvre, jobs, matériaux, marché ---
 # La prod scale sur les JOBS REMPLIS ; les sorties LISENT la géo du worldgen.
-LABOR_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_culture.o \
+LABOR_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_culture.o \
                    $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_heritage.o \
                    $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_labor_demo.o
 labor_demo: $(LABOR_DEMO_OBJS)
@@ -595,7 +596,7 @@ labor_demo: $(LABOR_DEMO_OBJS)
 # ---- Les armées : recrutement, armes, contres, combat au dé ---------------
 # Bâti sur l'économie (pop par classe + armes fabriquées). Autonome (pas de SDL).
 # ---- La population PRÉCISE : race × culture × foi × classe émergente -------
-POP_DEMO_OBJS := $(OBJDIR)/scps_scps_popsim.o $(OBJDIR)/scps_scps_culture.o \
+POP_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_popsim.o $(OBJDIR)/scps_scps_culture.o \
                  $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_pop_demo.o
 pop_demo: $(POP_DEMO_OBJS)
 	$(CC) $(POP_DEMO_OBJS) -o $@ -lm

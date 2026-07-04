@@ -6,6 +6,7 @@
  * distance. Aucun « +modificateur » : on pose des coordonnées, on les lit.
  */
 #include "scps_culture.h"
+#include "scps_core.h"      /* C7 : σ unifiée — scps_metabolisation (source unique de la porte) */
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -360,9 +361,10 @@ CultureRelation culture_relation(const Culture *a, const Culture *b){
 #define SYNC_TIME_BASE   30.f   /* ticks plancher d'une fusion (générations) */
 #define SYNC_TIME_SLOPE  18.f   /* ticks ajoutés par point de D∞             */
 
-/* La même porte que la prospérité de contact (§2.3) : σ(0.8(P−D∞)+0.35(K−5)). */
+/* La même porte que la prospérité de contact (§2.3) : σ(0.8(P−D∞)+0.35(K−5)).
+ * C7 : unifiée vers scps_metabolisation (scps_core) — byte-identique, source unique de la loi. */
 static float sync_gate(float P, float K, float dinf){
-    return 1.f / (1.f + expf(-(0.8f*(P - dinf) + 0.35f*(K - 5.f))));
+    return scps_metabolisation(P, dinf, K);
 }
 
 SyncFeasibility culture_can_syncretize(const Culture *a, const Culture *b,
