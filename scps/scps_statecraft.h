@@ -22,9 +22,15 @@
  *              la couche d'action (route, alliance, intégration). L'Influence
  *              fixe la taille du vivier.
  *
- * Et la RÉVOLTE : une agitation de province SOUTENUE au-dessus du seuil bascule
- * en révolte (le consentement s'effondre) — apaisée par la stabilité, la
- * garnison (H) et la légitimité, exactement comme la membrane le LIT.
+ * Et l'AGITATION (0-100, un pur SIGNAL) : lissée depuis L/coercion/choc de
+ * conquête/stabilité/garnison (H), c'est la ligne UI « ⚑ Au bord de la révolte ».
+ * Dédup Option B (2026-07-04) : ce module NE FAIT PLUS FIRE de révolte lui-même
+ * (l'ancien seuil-soutenu → L*=0.40/coercion=1/prestige↓/influence↓ est retiré) ;
+ * scps_revolt.c (la révolte INCARNÉE, groupe par groupe) est le SEUL acteur —
+ * il lit `statecraft_agitation` comme un grief politique de PLUS dans son propre
+ * allumage (aux côtés de la faim/taxe/aliénation/répression/non-intégration).
+ * `revolt_fired`/`unrest_days` restent des champs de struct INERTES (jamais
+ * écrits vrai/accumulés) — `statecraft_revolt_fired` renvoie donc toujours faux.
  *
  * Membrane : ce module est SIM (il lit des flottants SCPS comme diplo/prosperity).
  * Son API ne renvoie que des nombres de JEU (int 0-100, −100..100) — jamais un
@@ -77,9 +83,12 @@ typedef struct {
      * mémoire (≠ la projection memoryless d'avant). Sérialisé (blob SVT_STAT). */
     float           opinion_mem[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
     DiplomaticStaff staff    [SCPS_MAX_COUNTRY];
-    float           agitation  [SCPS_MAX_REG];                   /* 0..100 soutenue */
-    float           unrest_days[SCPS_MAX_REG];                   /* temps au-dessus du seuil */
-    bool            revolt_fired[SCPS_MAX_REG];                  /* a basculé ce tick */
+    float           agitation  [SCPS_MAX_REG];                   /* 0..100 soutenue (SEUL champ vivant) */
+    float           unrest_days[SCPS_MAX_REG];                   /* INERTE (dédup Option B) : jamais accumulé.
+                                                                   * Champ conservé pour NE PAS bumper SAVE_VERSION. */
+    bool            revolt_fired[SCPS_MAX_REG];                  /* INERTE (dédup Option B) : jamais écrit vrai —
+                                                                   * scps_revolt.c est le SEUL acteur de révolte.
+                                                                   * Champ conservé pour NE PAS bumper SAVE_VERSION. */
     int8_t          council[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS]; /* Q1 : slot pourvu par siège (-1 = vacant) */
     int8_t          council_gen[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS]; /* GÉNÉRATION du ministre ASSIS (identité
                                                                       * épinglée : la pool tourne, lui vieillit ;
@@ -143,6 +152,9 @@ void statecraft_opinion_parts(const Statecraft *sc, const DiploState *diplo,
 int  statecraft_missions_cap   (const Statecraft *sc, int cid);          /* plafond simultané */
 int  statecraft_missions_active(const Statecraft *sc, int cid);
 int  statecraft_agitation      (const Statecraft *sc, int region);       /* 0..100 soutenue */
+/* INERTE (dédup Option B) : statecraft ne fait plus fire de révolte — renvoie
+ * toujours faux. Conservée pour compat d'API (l'appelant feed du sim ne pousse
+ * donc plus jamais le FEED_REVOLT générique par cette voie). */
 bool statecraft_revolt_fired   (const Statecraft *sc, int region);
 
 /* ---- Événements qui déplacent l'Influence (la réputation suit l'acte) --- */
@@ -159,8 +171,9 @@ bool statecraft_send(Statecraft *sc, const World *w, const WorldEconomy *econ,
 
 /* ---- Un pas (jours) ---------------------------------------------------- *
  * Influence → standing (prospérité+taille+prestige) ; opinion → relation+histo ;
- * agents avancent et appliquent leur effet à l'échéance ; agitation soutenue →
- * révolte. econ/diplo/wl/rn peuvent être mutés (effets de mission, révolte). */
+ * agents avancent et appliquent leur effet à l'échéance ; agitation lissée (SIGNAL
+ * pur, dédup Option B — plus d'allumage de révolte ici). econ/diplo/wl/rn peuvent
+ * être mutés par l'effet de mission mûrie (route/alliance/intégration). */
 void statecraft_tick(Statecraft *sc, World *w, WorldEconomy *econ,
                      WorldProsperity *wp, WorldLegitimacy *wl,
                      DiploState *diplo, RouteNetwork *rn, int days);

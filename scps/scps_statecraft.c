@@ -1,10 +1,14 @@
 /*
- * scps_statecraft.c — Influence, Opinion, Diplomates & Révolte (voir .h)
+ * scps_statecraft.c — Influence, Opinion, Diplomates & Agitation (voir .h)
  *
  * Tout est ancré : l'Influence SUIT la prospérité/taille/prestige réels ;
  * l'Opinion PROJETTE les lecteurs de relation + l'historique ; une mission
- * OCCUPE un agent en jours puis agit par la couche d'action ; la révolte naît
- * d'une agitation soutenue que la stabilité/H/L abattent (mécanique existante).
+ * OCCUPE un agent en jours puis agit par la couche d'action ; l'AGITATION
+ * (0-100, lissée depuis L/coercion/choc de conquête/stabilité/H) est un pur
+ * SIGNAL — dédup Option B : ce module ne fait plus fire de révolte ni ne mute
+ * L/coercion/prestige/influence sur agitation soutenue. scps_revolt.c (le
+ * module INCARNÉ) est le SEUL acteur de révolte ; il lit `statecraft_agitation`
+ * comme un grief politique SUPPLÉMENTAIRE dans son propre allumage.
  */
 #include "scps_statecraft.h"
 #include "scps_readout.h"   /* metric_agitation / metric_stability (réutilisés) */
@@ -20,7 +24,6 @@
 #define SC_OPINION_RATE     0.006f   /* l'opinion bouge lentement (l'histoire colle)  */
 #define SC_PRESTIGE_DECAY   0.010f   /* le prestige s'érode sans entretien /jour       */
 #define SC_AGIT_RATE        0.020f   /* lissage de l'agitation soutenue /jour          */
-#define REVOLT_SUSTAIN_DAYS 365      /* agitation au seuil pendant un an → révolte      */
 #define DIP_PER_INFLUENCE   25       /* +1 diplomate par 25 d'Influence                 */
 
 static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
@@ -447,7 +450,18 @@ void statecraft_tick(Statecraft *sc, World *w, WorldEconomy *econ,
         }
     }
 
-    /* ---- Agitation soutenue → révolte ---------------------------------- */
+    /* ---- Agitation soutenue (SIGNAL, plus d'allumage indépendant) --------
+     * Option B (dédup des deux systèmes de révolte) : statecraft ne fait plus QUE
+     * lisser l'agitation 0-100 (le lecteur `statecraft_agitation` — la ligne UI
+     * « ⚑ Au bord de la révolte » — reste vivant) et NE MUTE PLUS L/coercion/
+     * prestige/influence, ne fait plus fire de révolte. L'INCARNÉ (scps_revolt.c,
+     * revolt_scan/_ignite) est désormais le SEUL acteur : il lit cette agitation
+     * comme un grief SUPPLÉMENTAIRE (le canal légitimité/coercition/culture que sa
+     * misère-de-groupe n'a pas) dans son propre `worst`, en plus de la faim/taxe/
+     * aliénation/répression/non-intégration. `revolt_fired`/`unrest_days` restent
+     * des CHAMPS de struct (INERTES : jamais accumulés/vrais) pour ne pas bumper
+     * SAVE_VERSION (sizeof(Statecraft) inchangé) ; `statecraft_revolt_fired`
+     * renverra donc toujours `false`. */
     for (int r=0;r<econ->n_regions;r++){
         sc->revolt_fired[r]=false;
         RegionEconomy *re=&econ->region[r];
@@ -465,21 +479,6 @@ void statecraft_tick(Statecraft *sc, World *w, WorldEconomy *econ,
                                      cstab, re->build.H_coerc);
 
         sc->agitation[r] = clampf(toward(sc->agitation[r], (float)agit, SC_AGIT_RATE*fd), 0.f, 100.f);
-
-        if (sc->agitation[r] >= AGIT_REVOLT_SEUIL) sc->unrest_days[r] += fd;
-        else                                       sc->unrest_days[r]  = 0.f;
-
-        if (sc->unrest_days[r] >= REVOLT_SUSTAIN_DAYS){
-            /* RÉVOLTE : le consentement s'effondre, loi martiale, le trône perd
-             * la face (l'effet existant : L↓ → fracture↑ dans le moteur d'ordre). */
-            sc->revolt_fired[r]=true;
-            if (r<SCPS_MAX_REG){ wl->L[r] *= 0.40f; }
-            re->coercion = 1.f;
-            sc->prestige[owner]  = clampf(sc->prestige[owner]-6.f, 0.f, 30.f);
-            sc->influence[owner] = clampf(sc->influence[owner]-8.f, 0.f, 100.f);
-            sc->unrest_days[r] = 0.f;
-            sc->agitation[r]  *= 0.5f;                  /* la colère se vide dans l'émeute */
-        }
     }
     (void)wl;
 }

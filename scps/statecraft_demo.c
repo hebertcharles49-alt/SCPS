@@ -194,8 +194,15 @@ int main(int argc, char **argv){
     ok("améliorer les relations monte l'opinion", op_rel > op0);
     ok("la guerre crève l'opinion", op_war < op_rel);
 
-    /* ═══ 5. AGITATION / RÉVOLTE ════════════════════════════════════════ */
-    printf("\n── 5. Agitation soutenue → révolte ; H + Stabilité l'apaisent ──\n");
+    /* ═══ 5. AGITATION — un SIGNAL soutenu ; H + Stabilité l'apaisent ═══════
+     * Dédup Option B (2026-07-04) : statecraft ne fait plus fire de révolte
+     * lui-même — scps_revolt.c (la révolte incarnée, groupe par groupe) est
+     * le SEUL acteur, et lit CE signal (statecraft_agitation) comme un grief
+     * politique de plus. Ce banc prouve donc que le SIGNAL franchit/ne
+     * franchit pas le seuil selon la province (le mécanisme marche), plus
+     * qu'un allumage indépendant (statecraft_revolt_fired reste INERTE,
+     * toujours faux — testé explicitement ci-dessous). */
+    printf("\n── 5. Agitation soutenue (SIGNAL) ; H + Stabilité l'apaisent ──\n");
     /* Unité : la garnison et la stabilité abattent l'agitation. */
     int agit_nu  = metric_agitation(/*L*/1.f,/*coerc*/0.6f,/*div*/8.f,/*shock*/1.f,/*stab*/40,/*H*/0.f);
     int agit_gar = metric_agitation(1.f, 0.6f, 8.f, 1.f, /*stab*/90, /*H*/8.f);
@@ -203,39 +210,43 @@ int main(int argc, char **argv){
     ok("sans garnison ni stabilité, l'agitation franchit le seuil de révolte", agit_nu >= AGIT_REVOLT_SEUIL);
     ok("garnison (H) + stabilité ramènent l'agitation sous le seuil", agit_gar < AGIT_REVOLT_SEUIL);
 
-    /* Intégration : une province à L basse, étrangère, sans garnison BASCULE. */
+    /* Intégration : une province à L basse, étrangère, sans garnison voit son
+     * AGITATION monter et TENIR au-dessus du seuil (le signal que scps_revolt.c
+     * viendra lire) — statecraft, lui, ne bascule plus jamais indépendamment. */
     statecraft_init(s.sc,s.w);
     int rRevolt=rFar>=0?rFar:rClose;
     s.econ->region[rRevolt].owner=(int16_t)player; s.econ->region[rRevolt].culture.settled=true;
     s.econ->region[rRevolt].culture.valeurs=(rul->valeurs<5.f)?rul->valeurs+9.f:rul->valeurs-9.f;
     s.econ->region[rRevolt].build.H_coerc=0.f; s.econ->region[rRevolt].coercion=1.0f;
     /* Conquête FRAÎCHE, zéro légitimité (déterministe) : la frondeuse franchit
-     * le seuil quelle que soit la géographie — on teste la RÉVOLTE, pas le monde. */
+     * le seuil quelle que soit la géographie — on teste le SIGNAL, pas le monde. */
     if (rRevolt<SCPS_MAX_REG){ s.wl->L[rRevolt]=0.0f; s.wl->years_held[rRevolt]=0.f; }
-    bool fired=false; int day_fired=-1;
-    for (int d=0; d<800 && !fired; d+=10){
+    bool crossed=false; int day_crossed=-1; bool fired_indep=false;
+    for (int d=0; d<800; d+=10){
         statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,10);
-        if (statecraft_revolt_fired(s.sc,rRevolt)){ fired=true; day_fired=d; }
+        if (statecraft_revolt_fired(s.sc,rRevolt)) fired_indep=true;      /* doit rester TOUJOURS faux */
+        if (!crossed && statecraft_agitation(s.sc,rRevolt) >= AGIT_REVOLT_SEUIL){ crossed=true; day_crossed=d; }
     }
-    printf("   Province frondeuse (L≈1, étrangère, sans garnison) : agitation %d → révolte au jour %d\n",
-           statecraft_agitation(s.sc,rRevolt), day_fired);
-    ok("une agitation soutenue au-dessus du seuil finit en RÉVOLTE", fired);
+    printf("   Province frondeuse (L≈1, étrangère, sans garnison) : agitation %d → seuil franchi au jour %d\n",
+           statecraft_agitation(s.sc,rRevolt), day_crossed);
+    ok("une misère soutenue fait MONTER l'agitation au-dessus du seuil (le SIGNAL marche)", crossed);
+    ok("statecraft NE FIRE JAMAIS de révolte indépendamment (dédup Option B)", !fired_indep);
 
-    /* Une province garnisonnée et légitime ne se révolte jamais. */
+    /* Une province garnisonnée et légitime voit son agitation rester SOUS le seuil. */
     statecraft_init(s.sc,s.w);
     int rCalm=rClose;
     s.econ->region[rCalm].owner=(int16_t)player; s.econ->region[rCalm].culture=*rul;
     s.econ->region[rCalm].culture.settled=true;
     s.econ->region[rCalm].build.H_coerc=6.f; s.econ->region[rCalm].coercion=0.f;
     if (rCalm<SCPS_MAX_REG){ s.wl->L[rCalm]=8.f; s.wl->years_held[rCalm]=60.f; }
-    bool calm_fired=false;
+    bool calm_crossed=false;
     for (int d=0; d<600; d+=10){
         statecraft_tick(s.sc,s.w,s.econ,s.wp,s.wl,s.dp,s.rn,10);
-        if (statecraft_revolt_fired(s.sc,rCalm)) calm_fired=true;
+        if (statecraft_agitation(s.sc,rCalm) >= AGIT_REVOLT_SEUIL) calm_crossed=true;
     }
-    printf("   Province loyale (L=8, du même sang, garnisonnée) : agitation %d → révolte=%s\n",
-           statecraft_agitation(s.sc,rCalm), calm_fired?"OUI":"non");
-    ok("une province légitime et garnisonnée ne se révolte pas", !calm_fired);
+    printf("   Province loyale (L=8, du même sang, garnisonnée) : agitation %d → seuil franchi=%s\n",
+           statecraft_agitation(s.sc,rCalm), calm_crossed?"OUI":"non");
+    ok("une province légitime et garnisonnée reste SOUS le seuil (aucun grief à lire)", !calm_crossed);
 
     /* ── Q1 — LE CONSEIL : nommer monte le multiplicateur ET coûte ; renvoyer rétablit ── */
     {

@@ -54,7 +54,6 @@ static int  g_wild_contact[SCPS_MAX_REG];   /* années de contact PACIFIQUE par 
 static uint8_t g_feed_war[SCPS_MAX_COUNTRY];      /* en guerre avec le joueur ? (diff → GUERRE/PAIX) */
 static int8_t  g_feed_score[SCPS_MAX_COUNTRY];    /* DERNIER score de guerre connu vs c (le verdict de paix) */
 static float   g_feed_balafre[SCPS_MAX_REG];      /* balafre_days précédent (montée → PILLAGE) */
-static uint8_t g_feed_rev[SCPS_MAX_REG];          /* revolt_fired précédent (front montant → RÉVOLTE) */
 static bool    g_feed_primed = false;             /* 1er passage = amorce muette */
 
 /* section WILD du save partagé (v48) : les compteurs de contact SONT du gameplay
@@ -642,7 +641,7 @@ void sim_day(Sim *s, World *w) {
                 }
             }
         } });
-        PROF(PB_REVOLT, { revolt_scan(s->rs, w, s->econ, s->drift, s->dp, s->camp, 30);
+        PROF(PB_REVOLT, { revolt_scan(s->rs, w, s->econ, s->drift, s->sc, s->dp, s->camp, 30);
         revolt_tick(s->rs, w, s->econ, s->drift, s->wl, s->wp, s->dp, s->camp, 30); });
         if (s->rs->last_spawned>=0){
             /* un pays vient de naître : on donne vie (IA) à tout sécessionniste
@@ -689,14 +688,13 @@ void sim_day(Sim *s, World *w) {
                               at?0:(int)g_feed_score[c]);                    /* la PAIX porte le score final */
                 g_feed_war[c]=at;
             }
-            /* RÉVOLTE INCARNÉE : une guerre civile a démarré ce scan (rebel_country≥0,
-             * scps_revolt.c) → on NOMME le rebelle (a=rebel_country, "Rebelles de X" déjà
-             * posé par spawn_rebel_polity) au lieu du FEED_REVOLT générique ci-dessous.
-             * On ne notifie QUE ce qui concerne le joueur (owner==hp, comme le legacy) —
-             * feed_push re-filtre de toute façon sur le focus (b=hp suffit à passer). Les
-             * régions ainsi couvertes sont marquées pour ÉVITER le double FEED_REVOLT du
-             * même mois via la voie legacy (statecraft_revolt_fired) juste en dessous. */
-            int reported_rgn[NEW_CIVILWAR_CAP]; int n_reported=0;
+            /* RÉVOLTE INCARNÉE (Option B — scps_revolt.c est le SEUL acteur) : une guerre
+             * civile a démarré ce scan (rebel_country≥0) → on NOMME le rebelle (a=rebel_
+             * country, "Rebelles de X" déjà posé par spawn_rebel_polity). On ne notifie QUE
+             * ce qui concerne le joueur (owner==hp) — feed_push re-filtre de toute façon sur
+             * le focus (b=hp suffit à passer). La voie legacy (statecraft_revolt_fired,
+             * FEED_REVOLT générique) est retirée : statecraft ne fire plus jamais, elle
+             * n'aurait plus rien à notifier. */
             for (int i=0, ncw=revolt_new_civilwar_count(); i<ncw; i++){
                 int owner=-1, region=-1;
                 int rebel=revolt_new_civilwar_at(i, &owner, &region);
@@ -704,8 +702,6 @@ void sim_day(Sim *s, World *w) {
                 if (owner!=hp) continue;                          /* ne concerne pas le suivi */
                 if (g_feed_primed)
                     feed_push(FEED_REVOLT, rebel, hp, region, 0);  /* a=rebel_country → la façade résout son NOM */
-                if (region>=0 && region<SCPS_MAX_REG && n_reported<NEW_CIVILWAR_CAP)
-                    reported_rgn[n_reported++]=region;
             }
             for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
                 const RegionEconomy *re=&s->econ->region[r];
@@ -713,14 +709,6 @@ void sim_day(Sim *s, World *w) {
                 if (g_feed_primed && re->owner==hp && b>g_feed_balafre[r]+1.f)
                     feed_push(FEED_PILLAGE,-1,-1,r,0);
                 g_feed_balafre[r]=b;
-                uint8_t rv=statecraft_revolt_fired(s->sc,r)?1:0;             /* RÉVOLTE : front MONTANT */
-                if (rv && !g_feed_rev[r]){
-                    bool already=false;                                     /* déjà nommée via la voie incarnée ? */
-                    for (int i=0;i<n_reported;i++) if (reported_rgn[i]==r){ already=true; break; }
-                    if (g_feed_primed && re->owner==hp && !already)
-                        feed_push(FEED_REVOLT,-1,-1,r,0);
-                }
-                g_feed_rev[r]=rv;
             }
             if (g_feed_primed && s->rs->last_spawned>=0)                     /* SÉCESSION : un pays est né */
                 feed_push(FEED_SECESSION, s->rs->last_spawned, hp, -1, 0);  /* b=joueur : nouvelle du monde (passe le focus) */
@@ -816,7 +804,6 @@ void sim_init(Sim *s, World *w) {
     memset(g_feed_war, 0, sizeof g_feed_war);
     memset(g_feed_score, 0, sizeof g_feed_score);
     memset(g_feed_balafre, 0, sizeof g_feed_balafre);
-    memset(g_feed_rev, 0, sizeof g_feed_rev);
     g_feed_primed = false;
     for (int r=0;r<s->econ->n_regions && r<SCPS_MAX_REG;r++){
         int o=s->econ->region[r].owner;

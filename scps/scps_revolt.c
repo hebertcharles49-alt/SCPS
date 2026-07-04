@@ -44,6 +44,10 @@
 #define SCAN_DEFICIT   0.48f   /* au-delà : CRISE aiguë (pas la pauvreté chronique douce) */
 #define SCAN_SUSTAIN   120     /* jours de désespérance avant le soulèvement */
 
+/* DÉDUP RÉVOLTE (Option B) : poids du repli d'agitation legacy (statecraft_agitation
+ * /100) dans le `worst` — tunable (registre J, scps_tune_list.h), défaut ici. */
+#define W_AGITATION_UNREST 0.20f
+
 /* SUREXTENSION : au-delà d'un seuil de régions, un empire tient mal ses marches —
  * chaque région excédentaire pousse le déficit séparatiste. Les conquêtes mal
  * digérées finissent par se détacher → de NOUVEAUX pays émergent de la démesure.
@@ -401,7 +405,8 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
 /* SCAN — la misère soutenue d'une région finit par la soulever            */
 /* ===================================================================== */
 void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
-                 const ModifierStack *drift, DiploState *dp, struct Campaign *camp, int days){
+                 const ModifierStack *drift, const Statecraft *sc,
+                 DiploState *dp, struct Campaign *camp, int days){
     new_civilwar_reset();   /* lisibilité fil : RAZ des guerres civiles incarnées CE scan */
     /* §5 : tension de coup PAR PAYS (faction forte aliénée) — calculée à la demande,
      * mise en cache (un pays a la même tension dans toutes ses régions ce tick). */
@@ -480,6 +485,16 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
             int sf=(o>=0&&o<SCPS_MAX_COUNTRY)?religion_of_country(o):-1;
             if (rf>=0 && rf!=sf && !religion_region_stabilized(r))
                 worst = clampf(worst + FAITH_UNREST, 0.f, 1.f);
+        }
+        /* DÉDUP RÉVOLTE (Option B) : le SIGNAL d'agitation legacy de statecraft
+         * (L/coercion/choc de conquête/stabilité/garnison, 0-100 lissé) replié comme
+         * un grief POLITIQUE supplémentaire — le canal légitimité/coercition/culture
+         * que la misère-de-groupe (faim/taxe/aliénation/répression/non-intégration)
+         * ne capte pas directement. statecraft ne fire plus lui-même : c'est ICI que
+         * son signal atteint encore une révolte réelle. sc peut être NULL (bancs). */
+        if (sc){
+            float ag = (float)statecraft_agitation(sc, r) / 100.f;
+            worst = clampf(worst + tune_f("W_AGITATION_UNREST", W_AGITATION_UNREST) * ag, 0.f, 1.f);
         }
         /* DEUX compteurs SÉPARÉS (chacun un sens UNIQUE, plus de champ à double sémantique) :
          *  · `desperation_days` = la misère SOUTENUE (≥0) : monte en crise, retombe au calme ;

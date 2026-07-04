@@ -431,6 +431,12 @@
     X(THORN_CELLS_PER_YEAR, 200.0f) \
     X(THORN_RANDOM_FRAC,      0.35f) \
     X(MERV_PHASE_DAYS,     3650.0f) \
-    X(MERV_CHARGE_PER_TICK,   0.5f)
+    X(MERV_CHARGE_PER_TICK,   0.5f) \
+    /* DÉDUP RÉVOLTE (Option B, 2026-07-04) — statecraft ne fait plus fire de révolte lui-même ;
+     * scps_revolt.c est le SEUL acteur. Il replie le SIGNAL d'agitation legacy (L/coercion/choc
+     * de conquête/stabilité/garnison, statecraft_agitation 0-100) dans son propre `worst` — le
+     * grief politique/de légitimité que la misère-de-groupe (faim/taxe/aliénation/répression/
+     * non-intégration) ne capte pas. W_AGITATION_UNREST : poids du bump (agitation/100 × W). */ \
+    X(W_AGITATION_UNREST,     0.20f)
 
 #endif /* SCPS_TUNE_LIST_H */

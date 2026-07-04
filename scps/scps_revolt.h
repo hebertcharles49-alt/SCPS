@@ -28,6 +28,7 @@
 #include "scps_prosperity.h"
 #include "scps_diplo.h"
 #include "scps_readout.h"
+#include "scps_statecraft.h"  /* dédup Option B : revolt_scan lit statecraft_agitation (Statecraft*) */
 
 /* Phase 3a — la révolte pousse un pays rebelle + une armée sur la carte : la
  * campagne (bataille/siège/score) est CÂBLÉE dans l'allumage et la résolution.
@@ -124,12 +125,20 @@ RebelKind revolt_classify(const PopGroup *g, const ModifierStack *drift, const P
 /* ---- SCAN : la misère SOUTENUE d'une région allume un soulèvement ------
  * Chaque région possédée : on lit le pire déficit de groupe ; au-delà du seuil,
  * la désespérance s'accumule ; soutenue assez longtemps → revolt_ignite. C'est
- * le déclencheur ANCRÉ sur les groupes (un conquis non-intégré finit par se lever),
- * complémentaire de l'agitation abstraite du statecraft. `days` = pas écoulé.
+ * le déclencheur ANCRÉ sur les groupes (un conquis non-intégré finit par se lever).
+ * `days` = pas écoulé.
+ * Dédup Option B (2026-07-04) — CE module est désormais le SEUL acteur de révolte :
+ * `sc` (Statecraft, peut être NULL — bancs) replie le SIGNAL d'agitation legacy
+ * (statecraft_agitation, 0-100 : L/coercion/choc de conquête/stabilité/garnison)
+ * dans le `worst` comme un grief politique SUPPLÉMENTAIRE (aux côtés de la misère
+ * de groupe), pondéré par le tunable W_AGITATION_UNREST. statecraft ne fire plus
+ * lui-même — cette lecture est la SEULE voie par laquelle son signal atteint
+ * encore une révolte réelle.
  * dp/camp (Phase 3a) : passés à l'allumage pour DÉCLARER la guerre civile et
  * DÉPLOYER l'armée rebelle ; NULL ⇒ résolution instantanée de repli (bancs). */
 void  revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
-                  const ModifierStack *drift, DiploState *dp, struct Campaign *camp, int days);
+                  const ModifierStack *drift, const Statecraft *sc,
+                  DiploState *dp, struct Campaign *camp, int days);
 
 /* ---- REVANCHISME : subir la conquête arme le séparatisme (≈10 ans) ------
  * À appeler quand une province passe sous une couronne ÉTRANGÈRE. Pendant la

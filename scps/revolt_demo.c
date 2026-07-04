@@ -219,7 +219,7 @@ int main(int argc, char **argv){
     rig(e, 1, OWNER, 0.02f, 0.05f, 0.5f, 0.f);
     push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 211));
     int months=0;
-    for (; months<6 && revolt_active_count(&rs)==0; months++) revolt_scan(&rs, w, e, drift, NULL, NULL, 30);
+    for (; months<6 && revolt_active_count(&rs)==0; months++) revolt_scan(&rs, w, e, drift, NULL, NULL, NULL, 30);
     printf("   région désespérée : soulèvement au bout de %d mois de misère soutenue\n", months);
     ok("une région désespérée finit par se SOULEVER (misère soutenue)", revolt_active_count(&rs)>0);
     /* une région contente, scannée autant, ne se lève JAMAIS */
@@ -227,7 +227,7 @@ int main(int argc, char **argv){
     solo_owner(e, 2, OWNER);
     rig(e, 2, OWNER, 0.95f, 0.90f, 0.0f, 0.f);
     push(e, 2, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 9000, 7.f, 1.0f, crown, 212));
-    for (int mo=0; mo<6; mo++) revolt_scan(&rs, w, e, drift, NULL, NULL, 30);
+    for (int mo=0; mo<6; mo++) revolt_scan(&rs, w, e, drift, NULL, NULL, NULL, 30);
     ok("une région contente ne se soulève jamais (aucun grief)", revolt_active_count(&rs)==0);
 
     /* ═══ 9. REVANCHISME — subir la conquête arme le séparatisme ════════ */
