@@ -4979,8 +4979,9 @@ int main(int argc, char **argv) {
                         diplo_set_trade_pact(sim.dp, sim.player, c, true); break;   /* 1 pacte actif (le reste « pas de pacte ») */
                     }
             } else if (shot_council){                /* Q1 : démo Conseil — un siège POURVU, deux vacants */
-                int best=0,bt=0; for(int sl=0;sl<SC_COUNCIL_CANDS;sl++){ int t=statecraft_council_cand_tier(world->seed,sim.player,0,sl); if(t>bt){bt=t;best=sl;} }
-                statecraft_council_hire(sim.sc, sim.player, 0, best);   /* siège Savoir pourvu (montre « Renvoyer ») */
+                int gen=statecraft_council_gen(sim.year);   /* pool COURANTE (miroir scps_sim/scps_statecraft) */
+                int best=0,bt=0; for(int sl=0;sl<SC_COUNCIL_CANDS;sl++){ int t=statecraft_council_cand_tier(world->seed,sim.player,0,sl,gen); if(t>bt){bt=t;best=sl;} }
+                statecraft_council_hire(sim.sc, sim.player, 0, best, gen);   /* siège Savoir pourvu (montre « Renvoyer ») */
                 g_sb.tab=SBT_ETAT; g_sb.anim=1.f;
             } else if (smode==VIEW_CULTURE){
                 static uint32_t tnt[SCPS_MAX_REG];
