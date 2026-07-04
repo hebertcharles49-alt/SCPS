@@ -579,10 +579,21 @@ float intertrade_pair_value (int cid,int other){
     return (cid_ok(cid)&&cid_ok(other))? g_pair[cid][other] : 0.f;
 }
 
-void intertrade_save(FILE *f){ fwrite(g_embargo,sizeof g_embargo,1,f); fwrite(g_centre,sizeof g_centre,1,f); }
-bool intertrade_load(FILE *f){ g_hub_dirty=true;   /* #5 : Centres rechargés → carte des hubs à refaire */
-                               return fread(g_embargo,sizeof g_embargo,1,f)==1
-                                   && fread(g_centre,sizeof g_centre,1,f)==1; }
+/* SAVETEST FIX — la carte des hubs (g_hub_of/dist, rebâtie SEULEMENT à un changement de Centres,
+ * pas chaque jour) + le cache mondial + le drapeau dirty sont LUS quotidiennement (agency_build_gold
+ * via intertrade_market_avail/buy_cost/consume) mais NON dérivés du tick : sans les sérialiser, un
+ * reload gardait la carte de FIN du run précédent → dérive économique (--savetest A≠B). On les
+ * restaure À L'IDENTIQUE — surtout PAS de g_hub_dirty=true forcé, qui rebâtirait une carte plus
+ * FRAÎCHE que celle du jour de save (le vrai bug de la 1re tentative dirty-check). */
+void intertrade_save(FILE *f){ fwrite(g_embargo,sizeof g_embargo,1,f); fwrite(g_centre,sizeof g_centre,1,f);
+                               fwrite(g_hub_of,sizeof g_hub_of,1,f);   fwrite(g_hub_dist,sizeof g_hub_dist,1,f);
+                               fwrite(&g_hub_dirty,sizeof g_hub_dirty,1,f); fwrite(g_global_cache,sizeof g_global_cache,1,f); }
+bool intertrade_load(FILE *f){ return fread(g_embargo,sizeof g_embargo,1,f)==1
+                                   && fread(g_centre,sizeof g_centre,1,f)==1
+                                   && fread(g_hub_of,sizeof g_hub_of,1,f)==1
+                                   && fread(g_hub_dist,sizeof g_hub_dist,1,f)==1
+                                   && fread(&g_hub_dirty,sizeof g_hub_dirty,1,f)==1
+                                   && fread(g_global_cache,sizeof g_global_cache,1,f)==1; }
 
 static bool pair_at_peace(const DiploState *dp, int ca, int cb){
     return !dp || diplo_status(dp, ca, cb) != DIPLO_WAR;

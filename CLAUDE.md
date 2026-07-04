@@ -1665,6 +1665,28 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   200 ans STABLES, sweep 5×250 SAIN (satisfaction 77-91 %, hégémon mortel 4-5/5, sécessions 0.2-2.4/sim —
   la carte respire, 0 spirale), bancs verts. ⊕ La révolte est COMPLÈTE : **trigger unifié** (1 acteur) ·
   **géopolitique** (le voisin profite) · **issue occasionnellement victorieuse** (le rebelle peut vaincre).
+- **SAVE/RELOAD BYTE-IDENTIQUE — sérialiser les accumulateurs/caches de module (2026-07-04, save v56→58)** :
+  `scps_viewer --savetest` (sauve→recharge→rejoue = A doit ÉGALER B, AU JOUR PRÈS) échouait sur ~5-6
+  graines/24 (dérive ~0.02 % du trésor sur les 400 jours post-reload ; ownership/tech INCHANGÉS). Cause :
+  le load restitue fidèlement l'état SÉRIALISÉ (SAVE(mem)==LOAD(dsk)) mais `scps_load_game` **ne reset ni
+  ne restaure les STATICS de module** → un accumulateur/cache NON sérialisé gardait la valeur de FIN du
+  run précédent. Un savestate qui diverge à chaque reload N'EST PAS viable (replays / graines partagées /
+  déterminisme). **Méthode** : la foreuse `--savetest` gagne une sonde de fidélité (SAVE(mem) vs LOAD(dsk),
+  isole load-infidèle vs divergence-au-tick) + un localisateur first-divergent-tick (jour+pays) ; puis on
+  ÉNUMÈRE tous les `static g_*` du moteur, on croise avec les sections sérialisées (AGYS/DPLS/FACT/CRDT/
+  PCAP couvraient déjà g_pend_*/g_intim_cd/g_lever_*/g_creditor/g_prod_cap). **Deux coupables restants,
+  sérialisés** : (1) **EMOB** — `g_friche[SCPS_MAX_PROV]` (friche → prod_mult, lu au tick SUIVANT) +
+  `g_lowsat_streak[][CLASS_COUNT]` (2 mois consécutifs sous seuil → mobilité de classe) : ACCUMULATEURS
+  croisant les ticks (`econ_mobility_save/load`) ; `g_basket_pc`/`g_n_friche` restent SCRATCH (per-tick).
+  (2) **ITRD +hub** — `g_hub_of/g_hub_dist` (carte des hubs, rebâtie SEULEMENT à un changement de Centres,
+  pas chaque jour) + `g_hub_dirty` + `g_global_cache` : caches DÉRIVÉS lus QUOTIDIENNEMENT (agency_build_gold)
+  mais non dérivés du tick → sérialisés À L'IDENTIQUE dans `intertrade_save/load`. ⚠ **PIÈGE écarté** : la 1re
+  tentative « dirty-check » (rebâtir le hub à la lecture quand dirty) RÉGRESSAIT les mondes sains (5→11 rouges) —
+  elle rebâtissait une carte plus FRAÎCHE que celle du jour de save ; la SÉRIALISATION (restaurer l'état exact,
+  sans forcer dirty=true au load) est la bonne. ⊕ **savetest 24/24 BYTE-IDENTIQUE**, golden IDENTIQUE (les 2
+  fixes sont save-only, zéro changement du fil continu), determinism STABLE, smoke 8/8, fuzztest 8/8, `make test`
+  38 runnable verts (3 KO Windows pré-existants). ⚠ **SAVE BUMP 56→58** (sections EMOB + ITRD grandies). Les
+  faits robustifient la façade Godot (le save est PARTAGÉ) : une partie chargée reprend AU BIT près.
 
 ## Disciplines non négociables
 

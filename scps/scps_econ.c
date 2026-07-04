@@ -1609,6 +1609,27 @@ void econ_mobility_reset(void){
     memset(g_lowsat_streak,0,sizeof g_lowsat_streak);
     memset(g_friche,0,sizeof g_friche); g_n_friche=0;
 }
+/* SAVETEST FIX (2026-07) — g_friche/g_lowsat_streak sont des ACCUMULATEURS croisant les
+ * ticks (le friche d'UN tick lit le calcul du tick PRÉCÉDENT, cf. le lecteur ligne ~1841 vs
+ * l'écrivain ligne ~2092 ; la mobilité de classe exige DEUX mois consécutifs sous le seuil,
+ * cf. ligne ~1655-1657) qui pilotent une vraie mutation économique (prod_mult, mobility_move
+ * déplaçant pop+richesse) — ils ne sont PAS du scratch. econ_mobility_reset() (ci-dessus) les
+ * remet à zéro sur un DÉMARRAGE FRAIS (via econ_init, appelé par sim_init), mais scps_load_game
+ * ne les restaure ni ne les remet à zéro : après un reload, ils gardaient la valeur laissée par
+ * la fin du run PRÉCÉDENT (celui qui a produit le fichier de save, potentiellement des centaines
+ * de jours après le point de sauvegarde), pas la valeur du jour où on a sauvegardé — d'où la
+ * divergence tick-side observée par --savetest (Σtreasury dérivant de quelques centièmes à ~15
+ * sur les 400 jours suivant un reload). g_basket_pc (recalculé ET consommé dans le MÊME passage
+ * de econ_tick, avant toute lecture) et g_n_friche (télémétrie, RAZ en tête de chaque econ_tick)
+ * restent SCRATCH à raison — ils ne sont pas sérialisés, par symétrie avec econ_prodcap_save. */
+void econ_mobility_save(FILE *f){
+    fwrite(g_friche,sizeof g_friche,1,f);
+    fwrite(g_lowsat_streak,sizeof g_lowsat_streak,1,f);
+}
+bool econ_mobility_load(FILE *f){
+    return fread(g_friche,sizeof g_friche,1,f)==1
+        && fread(g_lowsat_streak,sizeof g_lowsat_streak,1,f)==1;
+}
 static void mobility_move(ProvinceEconomy *re, int from, int to, float frac){
     float pop=re->strata[from].pop; if (pop<1.f || frac<=0.f) return;
     float moved=pop*frac; if (moved<0.01f) return;

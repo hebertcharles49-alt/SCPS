@@ -32,7 +32,25 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 56u           /* v56 : SOUTIEN ÉTRANGER aux rebelles — Rebellion gagne `backing_tried`
+#define SAVE_VERSION 58u           /* v58 : SAVETEST FIX (suite) — ITRD sérialise la CARTE DES HUBS
+                                    * (g_hub_of/g_hub_dist/g_hub_dirty + g_global_cache : caches dérivés lus
+                                    * quotidiennement par agency_build_gold mais rebâtis SEULEMENT à un changement
+                                    * de Centres — non dérivés du tick, donc stale après reload). ITRD grandit → <v58 refusé.
+                                    * v57 : SAVETEST FIX — section EMOB (économie/mobilité de classe :
+                                    * g_friche[SCPS_MAX_PROV] + g_lowsat_streak[SCPS_MAX_PROV][CLASS_COUNT],
+                                    * scps_econ.c). Ce sont des ACCUMULATEURS croisant les ticks (friche lue
+                                    * au tick SUIVANT son calcul ; mobilité de classe exige 2 mois consécutifs
+                                    * sous le seuil) qui pilotent une vraie mutation économique (prod_mult,
+                                    * mobility_move) — econ_mobility_reset() les remet à zéro sur un DÉMARRAGE
+                                    * FRAIS (via econ_init/sim_init) mais scps_load_game ne les restaurait NI
+                                    * ne les remettait à zéro : un reload gardait silencieusement la valeur
+                                    * laissée par la FIN du run précédent (pas celle du jour de save), d'où une
+                                    * divergence tick-side (--savetest A≠B, Σtreasury dérivant de centièmes à
+                                    * quelques unités sur les 400 jours suivant un reload — pris par la preuve
+                                    * checksum @save vs @post-load == @finA-avant-load). Nouvelle section, pas
+                                    * de struct existante agrandie ⇒ un save v56 est juste INCOMPLET pour v57
+                                    * (refusé par le contrôle de version, comme toute ère antérieure). <v57 refusé.
+                                    * v56 : SOUTIEN ÉTRANGER aux rebelles — Rebellion gagne `backing_tried`
                                     * (latch SÉRIALISÉ : le rate-limit du soutien étranger vit sur la guerre civile,
                                     * pas un module-static ; un reload mid-guerre ne ré-offre plus le renfort ⇒
                                     * déterminisme, même classe que g_wild_contact). sizeof(RevoltState) change → <v56 refusé.

@@ -626,6 +626,12 @@ double econ_country_gold(const WorldEconomy *e, int c);
 /* E0.7 — RAZ de la mobilité de classe (panier capté + séries de mauvaise sat.) ;
  * appelé à chaque nouvelle partie/sim depuis econ_init. (RAZ aussi la friche E1bis.10.) */
 void econ_mobility_reset(void);
+/* SAVETEST FIX — g_friche + g_lowsat_streak sont des ACCUMULATEURS croisant les ticks (pas du
+ * scratch : ils pilotent prod_mult/mobility_move) que econ_mobility_reset() remet à zéro sur un
+ * démarrage FRAIS mais que scps_load_game ne restaurait ni ne remettait à zéro. État statique →
+ * save/load dédiés (même patron que econ_prodcap_save/_load ci-dessus). */
+void econ_mobility_save(FILE *f);
+bool econ_mobility_load(FILE *f);
 /* E1bis.10 — régions EN FRICHE (entretien impayé) au dernier econ_tick (télémétrie). */
 long econ_friche_count(void);
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire (le robinet, ligne à ligne).
