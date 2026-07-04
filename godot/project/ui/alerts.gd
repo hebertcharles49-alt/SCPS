@@ -38,7 +38,7 @@ const FEED_KINDS := {
 	3: {"icon": "alert_siege",    "col": COL_ARMEE, "fmt": "Une place est TOMBÉE — {a} occupe la région {r} (an {y})"},
 	4: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "Région {r} REPRISE par nos armes (an {y})"},
 	5: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "PILLAGE — la région {r} a été mise à sac (an {y})"},
-	6: {"icon": "alert_revolt",   "col": COL_ETAT,  "fmt": "RÉVOLTE — un soulèvement éclate en région {r} (an {y})"},
+	6: {"icon": "alert_revolt",   "col": COL_ETAT,  "fmt": "RÉVOLTE — un soulèvement éclate en région {r} (an {y})"},   # {a} = "Rebelles de X" si la guerre civile est INCARNÉE (sinon générique) — cf. _poll_feed
 	7: {"icon": "settlement_cluster", "col": COL_ETAT, "fmt": "SÉCESSION — {a} proclame son indépendance (an {y})"},
 	8: {"icon": "stability_shield", "col": COL_ARMEE, "fmt": "BATAILLE GAGNÉE contre {b} en région {r} (an {y})"},
 	9: {"icon": "alert_warning",  "col": COL_ARMEE, "fmt": "BATAILLE PERDUE contre {b} — l'ost est brisé (région {r}, an {y})"},
@@ -112,6 +112,10 @@ func _poll_feed() -> void:
 			var sc := int(ev.get("v", 0))
 			var verdict := "guerre GAGNÉE" if sc >= 10 else ("guerre PERDUE" if sc <= -10 else "paix blanche")
 			tip += " — %s (score %+d)" % [verdict, sc]
+		if kind == 6 and int(ev.get("a_id", -1)) >= 0:
+			# GUERRE CIVILE INCARNÉE (scps_revolt.c spawn_rebel_polity) : {a} porte déjà le
+			# nom du rebelle ("Rebelles de <héritage>") — le fil le NOMME au lieu du générique.
+			tip += " — %s" % String(ev["a"])
 		if kind in POPUP_KINDS:
 			popup_requested.emit(_popup_of(kind, ev, tip))   # MAJEUR → OYEZ OYEZ (pause)
 			continue
@@ -133,7 +137,8 @@ func _popup_of(kind: int, ev: Dictionary, tip: String) -> Dictionary:
 			title = "LA PAIX EST SIGNÉE"
 			btns = [{"label": "Vu", "act": "close"}]
 		6:
-			title = "RÉVOLTE !"
+			# guerre civile INCARNÉE (a_id≥0) : le titre NOMME le rebelle ("Rebelles de X").
+			title = String(ev["a"]) if int(ev.get("a_id", -1)) >= 0 else "RÉVOLTE !"
 			btns = [{"label": "Y aller", "act": "goto", "region": reg},
 				{"label": "Réprimer", "act": "repress", "region": reg}, {"label": "Vu", "act": "close"}]
 		7:

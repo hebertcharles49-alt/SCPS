@@ -117,6 +117,30 @@ static long g_civilwars = 0;         /* soulèvements devenus une VRAIE guerre (
 static long g_rebel_victories = 0;   /* … remportés par les rebelles (l'armée de la couronne battue) */
 long revolt_civilwar_count(void){ return g_civilwars; }
 long revolt_rebel_victory_count(void){ return g_rebel_victories; }
+/* LISIBILITÉ FIL (feed) — guerres civiles INCARNÉES démarrées CE SCAN : un petit
+ * tampon STATIQUE (donc NON sérialisé, aucun bump save), RAZ en tête de revolt_scan,
+ * APPENDU par revolt_ignite quand un pays rebelle est déployé (rebel_country>=0).
+ * sim_day le lit juste après le tick pour pousser feed_push(FEED_REVOLT, rebel,
+ * owner, region, 0) — le rebelle est NOMMÉ ("Rebelles de X") au lieu du silence
+ * générique. Ordre d'ajout FIXE, taille BORNÉE (débordement ignoré) → déterministe.
+ * NEW_CIVILWAR_CAP est déclaré dans scps_revolt.h (sim_day y dimensionne son propre
+ * tableau de régions déjà rapportées). */
+typedef struct { int rebel_country, owner, region; } NewCivilWar;
+static NewCivilWar g_new_civilwar[NEW_CIVILWAR_CAP];
+static int         g_new_civilwar_n = 0;
+static void new_civilwar_reset(void){ g_new_civilwar_n = 0; }
+static void new_civilwar_push(int rebel_country, int owner, int region){
+    if (g_new_civilwar_n>=NEW_CIVILWAR_CAP) return;   /* débordement : silencieux, borné */
+    NewCivilWar *e=&g_new_civilwar[g_new_civilwar_n++];
+    e->rebel_country=rebel_country; e->owner=owner; e->region=region;
+}
+int revolt_new_civilwar_count(void){ return g_new_civilwar_n; }
+int revolt_new_civilwar_at(int i, int *owner, int *region){
+    if (i<0 || i>=g_new_civilwar_n) return -1;
+    if (owner)  *owner  = g_new_civilwar[i].owner;
+    if (region) *region = g_new_civilwar[i].region;
+    return g_new_civilwar[i].rebel_country;
+}
 static float ethos_coup_boost(const PopGroup *g, EthosFaction alien_fac, float coup_tension){
     if (coup_tension<=0.f || g->diaspora || g->integration < SECEDE_INTEG) return 0.f;  /* établi, pas sécessionniste */
     float lean[FAC_COUNT]; group_ethos_lean(&g->culture, lean);
@@ -365,7 +389,10 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
      * INSTANTANÉE (repli). Sans dp/camp (bancs), pas de guerre : repli aussi. */
     if (dp && camp){
         rb->rebel_country = spawn_rebel_polity(w, econ, rb);
-        if (rb->rebel_country>=0) deploy_rebel_army(dp, camp, econ, rb);
+        if (rb->rebel_country>=0){
+            deploy_rebel_army(dp, camp, econ, rb);
+            new_civilwar_push(rb->rebel_country, owner, region);   /* lisibilité fil : sim_day nommera "Rebelles de X" */
+        }
     }
     return slot;
 }
@@ -375,6 +402,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
 /* ===================================================================== */
 void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
                  const ModifierStack *drift, DiploState *dp, struct Campaign *camp, int days){
+    new_civilwar_reset();   /* lisibilité fil : RAZ des guerres civiles incarnées CE scan */
     /* §5 : tension de coup PAR PAYS (faction forte aliénée) — calculée à la demande,
      * mise en cache (un pays a la même tension dans toutes ses régions ce tick). */
     float ctens[SCPS_MAX_COUNTRY]; EthosFaction cfac[SCPS_MAX_COUNTRY];

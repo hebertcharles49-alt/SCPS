@@ -59,6 +59,10 @@ typedef enum {
 } RevoltOutcome;
 
 #define REVOLT_MAX 64
+/* LISIBILITÉ FIL (feed) : borne du tampon des guerres civiles incarnées démarrées au
+ * dernier revolt_scan (cf. revolt_new_civilwar_count/_at) — exposée ici pour que
+ * sim_day puisse dimensionner son propre petit tableau de régions déjà rapportées. */
+#define NEW_CIVILWAR_CAP 16
 
 /* ---- Un soulèvement incarné ------------------------------------------- */
 typedef struct {
@@ -161,6 +165,13 @@ int          revolt_active_count(const RevoltState *rs);
  * ENGAGÉES (armée rebelle déployée) et remportées par les rebelles. Statiques, non sérialisés. */
 long         revolt_civilwar_count(void);
 long         revolt_rebel_victory_count(void);
+/* LISIBILITÉ FIL (feed) : les guerres civiles INCARNÉES démarrées au DERNIER revolt_scan
+ * (tampon statique, RAZ en tête de scan, hors RevoltState ⇒ non sérialisé). sim_day les
+ * lit juste après le tick pour pousser un FEED_REVOLT nommé ("Rebelles de X") au lieu
+ * du générique. revolt_new_civilwar_at(i,&owner,&region) renvoie le rebel_country (-1
+ * hors borne) ; owner/region NULL-safe. */
+int          revolt_new_civilwar_count(void);
+int          revolt_new_civilwar_at(int i, int *owner, int *region);
 const char  *revolt_kind_word   (RebelKind k);   /* "jacquerie"/"sécession"/"coup d'État" */
 const char  *revolt_outcome_word(int outcome);   /* "écrasée"/"indépendance"/… */
 const char  *revolt_class_word  (SocialClass k); /* "Laboureurs"/"Artisans"/"Noblesse" */
