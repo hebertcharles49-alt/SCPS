@@ -1469,6 +1469,33 @@
   134-352 morts/sim, satisfaction 79-89 %, hégémon mortel 5/5). Tunables : `AI_DERIVE_ODDS` 8 ·
   `FAITH_LEAD` 0.20 · `FAITH_UNREST` 0.22. À VENIR (Phase 3) : rebelles = ARMÉES avec war-score
   (+ journal « Rebelles de X », soutien diplo aux rebelles, dé-doublonner les 2 systèmes de révolte).
+- **PHASE 3a — LA RÉVOLTE EST UNE VRAIE GUERRE (rebelles = armée à score de guerre) (2026-07-04,
+  save v54→55)** : la révolte cesse d'être un compare INSTANTANÉ garnison/rebelles (un « popup »). À
+  l'allumage, le soulèvement FAIT NAÎTRE un **pays rebelle** (`spawn_rebel_polity` : slot
+  POLITY_ANTAGONIST « Rebelles de X », NE TIENT AUCUNE RÉGION — l'enjeu reste à la couronne) + une
+  **armée de campagne** (`deploy_rebel_army` : milice ∝ mobilisés, +cavalerie lourde si l'ÉLITE se
+  lève = coup) qui **DÉCLARE la guerre** à la couronne et **ASSIÈGE** sa région (le siège pousse
+  l'occupation/score et provoque la sortie défensive de la couronne → bataille). La résolution suit le
+  **SCORE DE GUERRE** du système campagne/bataille EXISTANT. **VAINCU UNE SEULE FOIS** (règle joueur) :
+  dès que l'armée rebelle est BRISÉE (`broken_days>0`, déroute) OU DÉTRUITE (`!active`/force vidée)
+  APRÈS avoir combattu, OU que le score vire négatif, la révolte est **ÉCRASÉE** (pas de guerre
+  d'attrition) ; une victoire DÉCISIVE (armée intacte + score nettement positif, `REBEL_WARSCORE_WIN`
+  8) donne l'issue par nature (sécession/coup/concession/foi). Garde-fou `REBEL_WAR_MAX_DAYS` (5 ans)
+  → fizzle=écrasée. `end_civil_war` solde : le rebelle vainqueur signe une paix blanche (devient État),
+  le rebelle sans terre MEURT (`diplo_settle`→polity_death, slot libéré → pas de fuite de slots).
+  **REPLI INSTANTANÉ** conservé quand `rebel_country<0` (slot épuisé) ou dp/camp NULL (bancs) — les
+  issues (`apply_rebel_crush`/`_victory`) sont PARTAGÉES entre la guerre et le repli (DRY).
+  `revolt_scan`/`revolt_tick` prennent `DiploState*` + `struct Campaign*` (threadés depuis sim_day) ;
+  `revolt_demo` passe NULL (repli, fixtures inchangées). ⚠ SAVE **v54→55** (Rebellion +`rebel_country`/
+  `war_days` ; le pays rebelle vit dans world.country[]/WRLD, l'armée dans Campaign/CAMP — tous
+  sérialisés). ⊕ **golden IDENTIQUE** (la guerre civile n'éclôt qu'après les decide-days + le CD
+  empire-wide, > 12 ans) · `determinism` STABLE (le pays rebelle transitoire survit save/reload
+  byte-identique) · bancs verts · stabilité SAINE (satisfaction 79-89 %, hégémon mortel 4-5/5). ⚠
+  Conséquence de BILAN : les révoltes deviennent MOINS nombreuses (une région en guerre civile ne
+  rallume pas), plus LONGUES et plus SANGLANTES (les batailles) ; les **sécessions se RARÉFIENT** (la
+  milice rebelle perd souvent contre l'armée de la couronne — fidèle à l'Histoire : la plupart des
+  révoltes échouent). Dialable (force rebelle, seuils de score). À VENIR : « Rebelles de X » au journal
+  (provlog) + télémétrie de guerre civile + dé-doublonner les 2 systèmes de révolte (statecraft/module).
 
 ## Disciplines non négociables
 

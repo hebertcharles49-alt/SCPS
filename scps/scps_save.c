@@ -270,8 +270,11 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     }
     if (s->rs){
         if (s->rs->count < 0 || s->rs->count > REVOLT_MAX) return false;
-        for (int i=0;i<s->rs->count;i++)
+        for (int i=0;i<s->rs->count;i++){
             if (s->rs->list[i].region < -1 || s->rs->list[i].region >= s->econ->n_regions) return false;
+            /* Phase 3a — le pays rebelle incarné (-1 = aucun) indexe w->country[] : borne. */
+            if (s->rs->list[i].rebel_country < -1 || s->rs->list[i].rebel_country >= w->n_countries) return false;
+        }
     }
     for (int i=0;i<SCPS_MAX_COUNTRY;i++){
         if (s->camp->army[i].force.n_units < 0 || s->camp->army[i].force.n_units > ARMY_MAX_UNITS) return false;

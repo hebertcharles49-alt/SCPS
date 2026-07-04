@@ -29,6 +29,12 @@
 #include "scps_diplo.h"
 #include "scps_readout.h"
 
+/* Phase 3a — la révolte pousse un pays rebelle + une armée sur la carte : la
+ * campagne (bataille/siège/score) est CÂBLÉE dans l'allumage et la résolution.
+ * Forward-decl (comme campaign.h le fait pour NavyState) : pas de couplage d'en-tête,
+ * le .c inclut scps_campaign.h. dp/camp NULL ⇒ repli sur la résolution instantanée. */
+struct Campaign;
+
 /* ---- Nature du soulèvement (qui se lève → ce qu'il veut) --------------- */
 typedef enum {
     REBEL_NONE = 0,
@@ -70,6 +76,12 @@ typedef struct {
     int              days;       /* durée du soulèvement */
     int              outcome;    /* RevoltOutcome (0 = en cours) */
     int              spawned;    /* pays né de la sécession (-1 sinon) */
+    /* Phase 3a — LA RÉVOLTE EST UNE VRAIE GUERRE : le soulèvement fait NAÎTRE un
+     * pays rebelle + une armée de campagne qui DÉCLARE la guerre à la couronne et
+     * se bat par le système campagne/bataille/score-de-guerre EXISTANT. L'issue
+     * suit le SCORE DE GUERRE (plus un compare instantané garnison/rebelles). */
+    int              rebel_country; /* pays rebelle incarné (-1 = aucun → résolution INSTANTANÉE de repli) */
+    int              war_days;      /* durée de la guerre civile (jours) — plafond de patience */
 } Rebellion;
 
 typedef struct {
@@ -109,9 +121,11 @@ RebelKind revolt_classify(const PopGroup *g, const ModifierStack *drift, const P
  * Chaque région possédée : on lit le pire déficit de groupe ; au-delà du seuil,
  * la désespérance s'accumule ; soutenue assez longtemps → revolt_ignite. C'est
  * le déclencheur ANCRÉ sur les groupes (un conquis non-intégré finit par se lever),
- * complémentaire de l'agitation abstraite du statecraft. `days` = pas écoulé. */
+ * complémentaire de l'agitation abstraite du statecraft. `days` = pas écoulé.
+ * dp/camp (Phase 3a) : passés à l'allumage pour DÉCLARER la guerre civile et
+ * DÉPLOYER l'armée rebelle ; NULL ⇒ résolution instantanée de repli (bancs). */
 void  revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
-                  const ModifierStack *drift, int days);
+                  const ModifierStack *drift, DiploState *dp, struct Campaign *camp, int days);
 
 /* ---- REVANCHISME : subir la conquête arme le séparatisme (≈10 ans) ------
  * À appeler quand une province passe sous une couronne ÉTRANGÈRE. Pendant la
@@ -123,17 +137,23 @@ void  revolt_on_conquest(RevoltState *rs, int region);
 /* ---- ALLUMAGE : une région a basculé → on incarne le soulèvement -------
  * Choisit le groupe au plus fort déficit ; s'il dépasse le seuil, MOBILISE
  * (les combattants QUITTENT la main-d'œuvre → choc économique) et enregistre un
- * Rebellion. Renvoie l'index du soulèvement, ou -1 si aucun groupe ne se lève. */
+ * Rebellion. Renvoie l'index du soulèvement, ou -1 si aucun groupe ne se lève.
+ * dp/camp (Phase 3a) : si fournis, incarne un PAYS rebelle + une armée de campagne
+ * qui déclare la guerre à la couronne ; NULL ⇒ pas de guerre (repli instantané). */
 int   revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
-                    const ModifierStack *drift, int region, float tax_pressure);
+                    const ModifierStack *drift, DiploState *dp, struct Campaign *camp,
+                    int region, float tax_pressure);
 
 /* ---- RÉSOLUTION : un pas (jours). Les rebelles affrontent la garnison ---
  * garnison = pop loyale levée + H local + renforts de la couronne (mil_power) ;
  * force rebelle = mobilisés × zèle (le coup frappe fort, peu nombreux). Verdict :
  *   écrasés  → perte de pop + coercition (le pays se raidit) ;
- *   victoire → sécession (un PAYS NAÎT) / concession / coup (couronne changée). */
+ *   victoire → sécession (un PAYS NAÎT) / concession / coup (couronne changée).
+ * dp/camp (Phase 3a) : quand un soulèvement porte un pays rebelle, l'issue suit le
+ * SCORE DE GUERRE (diplo_war_score) au lieu du compare instantané ; NULL ⇒ repli. */
 void  revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *drift,
-                  WorldLegitimacy *wl, const WorldProsperity *wp, int days);
+                  WorldLegitimacy *wl, const WorldProsperity *wp,
+                  DiploState *dp, struct Campaign *camp, int days);
 
 /* ---- Membrane : des mots/nombres de JEU, jamais un flottant SCPS ------- */
 int          revolt_active_count(const RevoltState *rs);

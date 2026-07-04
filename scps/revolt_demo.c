@@ -154,7 +154,7 @@ int main(int argc, char **argv){
     push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 8000, 2.f, 0.15f, foreign, 201));
     int p1=rep_prov(e,1);
     float labor_before=e->prov[p1].strata[CLASS_LABORER].pop;
-    int idx=revolt_ignite(&rs, w, e, drift, 1, 0.4f);
+    int idx=revolt_ignite(&rs, w, e, drift, NULL, NULL, 1, 0.4f);
     float labor_after=e->prov[p1].strata[CLASS_LABORER].pop;
     printf("   main-d'œuvre : %.0f → %.0f (partis au combat : %ld)\n",
            labor_before, labor_after, idx>=0?rs.list[idx].mobilized:0);
@@ -169,8 +169,8 @@ int main(int argc, char **argv){
     push(e, 2, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 4000, 2.f, 1.0f, crown, 202)); /* natif → jacquerie */
     int before_countries=w->n_countries;
     long pop_lost_before=rs.pop_lost;
-    int ix=revolt_ignite(&rs, w, e, drift, 2, 0.4f);
-    revolt_tick(&rs, w, e, drift, wl, wp, 120);
+    int ix=revolt_ignite(&rs, w, e, drift, NULL, NULL, 2, 0.4f);
+    revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, 120);
     printf("   verdict : %s | morts=%ld | pays avant/après=%d/%d\n",
            ix>=0?revolt_outcome_word(rs.list[ix].outcome):"(rien)",
            rs.pop_lost-pop_lost_before, before_countries, w->n_countries);
@@ -185,8 +185,8 @@ int main(int argc, char **argv){
     rig(e, 3, OWNER, 0.02f, 0.10f, 0.5f, 0.f);    /* H=0 → garnison faible */
     push(e, 3, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 203));
     int sec_before=w->n_countries;
-    int iy=revolt_ignite(&rs, w, e, drift, 3, 0.5f);
-    revolt_tick(&rs, w, e, drift, wl, wp, 120);
+    int iy=revolt_ignite(&rs, w, e, drift, NULL, NULL, 3, 0.5f);
+    revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, 120);
     int born = (iy>=0)?rs.list[iy].spawned:-1;
     int p3=rep_prov(e,3);
     printf("   verdict : %s | pays né n°%d (table %d→%d) | propriétaire région 3 : %d→%d\n",
@@ -204,8 +204,8 @@ int main(int argc, char **argv){
     push(e, 4, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 9000, 2.f, 1.0f, crown, 204)); /* natif désespéré */
     int p4=rep_prov(e,4);
     float sat_before=e->prov[p4].satisfaction;
-    int iz=revolt_ignite(&rs, w, e, drift, 4, 1.0f);
-    revolt_tick(&rs, w, e, drift, wl, wp, 120);
+    int iz=revolt_ignite(&rs, w, e, drift, NULL, NULL, 4, 1.0f);
+    revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, 120);
     float sat_after=e->prov[p4].satisfaction;
     printf("   verdict : %s | satisfaction %.2f→%.2f\n",
            iz>=0?revolt_outcome_word(rs.list[iz].outcome):"(rien)", sat_before, sat_after);
@@ -219,7 +219,7 @@ int main(int argc, char **argv){
     rig(e, 1, OWNER, 0.02f, 0.05f, 0.5f, 0.f);
     push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 9000, 2.f, 0.12f, foreign, 211));
     int months=0;
-    for (; months<6 && revolt_active_count(&rs)==0; months++) revolt_scan(&rs, w, e, drift, 30);
+    for (; months<6 && revolt_active_count(&rs)==0; months++) revolt_scan(&rs, w, e, drift, NULL, NULL, 30);
     printf("   région désespérée : soulèvement au bout de %d mois de misère soutenue\n", months);
     ok("une région désespérée finit par se SOULEVER (misère soutenue)", revolt_active_count(&rs)>0);
     /* une région contente, scannée autant, ne se lève JAMAIS */
@@ -227,7 +227,7 @@ int main(int argc, char **argv){
     solo_owner(e, 2, OWNER);
     rig(e, 2, OWNER, 0.95f, 0.90f, 0.0f, 0.f);
     push(e, 2, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 9000, 7.f, 1.0f, crown, 212));
-    for (int mo=0; mo<6; mo++) revolt_scan(&rs, w, e, drift, 30);
+    for (int mo=0; mo<6; mo++) revolt_scan(&rs, w, e, drift, NULL, NULL, 30);
     ok("une région contente ne se soulève jamais (aucun grief)", revolt_active_count(&rs)==0);
 
     /* ═══ 9. REVANCHISME — subir la conquête arme le séparatisme ════════ */
@@ -237,8 +237,8 @@ int main(int argc, char **argv){
     solo_owner(e, 1, OWNER);
     rig(e, 1, OWNER, 0.4f, 0.4f, 0.3f, 10.f);
     push(e, 1, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 6000, 2.f, 0.12f, foreign, 221));
-    int j1=revolt_ignite(&rs, w, e, drift, 1, 0.3f);
-    revolt_tick(&rs, w, e, drift, wl, wp, 120);
+    int j1=revolt_ignite(&rs, w, e, drift, NULL, NULL, 1, 0.3f);
+    revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, 120);
     int out_plain = (j1>=0)?rs.list[j1].outcome:-1;
     /* …MÊME garnison, mais la province vient d'être conquise (revanchisme actif) → libre. */
     revolt_init(&rs);
@@ -246,8 +246,8 @@ int main(int argc, char **argv){
     rig(e, 2, OWNER, 0.4f, 0.4f, 0.3f, 10.f);
     push(e, 2, grp(HERITAGE_CLANIQUE, CLASS_LABORER, 6000, 2.f, 0.12f, foreign, 222));
     revolt_on_conquest(&rs, 2);                /* on vient de la soumettre */
-    int j2=revolt_ignite(&rs, w, e, drift, 2, 0.3f);
-    revolt_tick(&rs, w, e, drift, wl, wp, 120);
+    int j2=revolt_ignite(&rs, w, e, drift, NULL, NULL, 2, 0.3f);
+    revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, 120);
     int out_rev = (j2>=0)?rs.list[j2].outcome:-1;
     printf("   même citadelle (H=10) : sans revanchisme → %s ; juste conquise → %s\n",
            revolt_outcome_word(out_plain), revolt_outcome_word(out_rev));
@@ -261,8 +261,8 @@ int main(int argc, char **argv){
     rig(e, 4, OWNER, 0.05f, 0.20f, 0.3f, 20.f);   /* H haut → écrasement */
     push(e, 4, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 4000, 2.f, 1.0f, crown, 241));
     { int p4b=rep_prov(e,4); if (p4b>=0) e->prov[p4b].revolt_scar=0.f; }
-    revolt_ignite(&rs, w, e, drift, 4, 0.4f);
-    revolt_tick(&rs, w, e, drift, wl, wp, 120);
+    revolt_ignite(&rs, w, e, drift, NULL, NULL, 4, 0.4f);
+    revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, 120);
     int p4c=rep_prov(e,4);
     printf("   cicatrice après écrasement : %.2f\n", e->prov[p4c].revolt_scar);
     ok("une révolte résolue LAISSE une cicatrice de développement", e->prov[p4c].revolt_scar > 0.4f);

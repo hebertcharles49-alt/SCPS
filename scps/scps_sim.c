@@ -642,8 +642,8 @@ void sim_day(Sim *s, World *w) {
                 }
             }
         } });
-        PROF(PB_REVOLT, { revolt_scan(s->rs, w, s->econ, s->drift, 30);
-        revolt_tick(s->rs, w, s->econ, s->drift, s->wl, s->wp, 30); });
+        PROF(PB_REVOLT, { revolt_scan(s->rs, w, s->econ, s->drift, s->dp, s->camp, 30);
+        revolt_tick(s->rs, w, s->econ, s->drift, s->wl, s->wp, s->dp, s->camp, 30); });
         if (s->rs->last_spawned>=0){
             /* un pays vient de naître : on donne vie (IA) à tout sécessionniste
              * vivant pas encore piloté (plusieurs peuvent éclore le même mois). */

@@ -639,6 +639,7 @@ REVOLT_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o
                     $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_modifier.o \
                     $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_factions.o \
+                    $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_campaign.o \
                     $(OBJDIR)/scps_scps_revolt.o $(OBJDIR)/scps_revolt_demo.o
 revolt_demo: $(REVOLT_DEMO_OBJS)
 	$(CC) $(REVOLT_DEMO_OBJS) -o $@ -lm

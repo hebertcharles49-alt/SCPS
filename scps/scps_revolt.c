@@ -14,6 +14,8 @@
 #include "scps_factions.h"  /* §5 : la tension de coup d'une faction forte aliénée */
 #include "scps_labor.h"     /* capitale_* : la capacité de service (logement/services) de la région */
 #include "scps_religion.h"  /* dimension FOI : religion_of_region/_of_country/set_region (hérésie) */
+#include "scps_campaign.h"  /* Phase 3a : campaign_order — l'armée rebelle sur la carte */
+#include "scps_army.h"      /* Phase 3a : ArmyState/army_init/army_doctrine_base + U_MILICE/U_CAV_LOURDE */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -117,6 +119,21 @@ static float ethos_coup_boost(const PopGroup *g, EthosFaction alien_fac, float c
 }
 #define CRUSH_KILL    0.55f    /* part des mobilisés tués si écrasés */
 
+/* ---- Phase 3a — LA GUERRE CIVILE : DÉCISIVE, l'armée rebelle est un one-shot ---- *
+ * L'armée rebelle n'est PAS un belligérant d'attrition : elle est vaincue UNE SEULE
+ * FOIS. La PREMIÈRE bataille décisive tranche (pas d'accumulation de score sur une
+ * longue guerre) :
+ *   · le rebelle PERD sa bataille (armée BRISÉE/déroutée/détruite — état FieldArmy
+ *     direct : broken_days>0 OU !active OU force vidée, une fois battles>0) ⇒ ÉCRASÉ
+ *     IMMÉDIATEMENT (la révolte s'effondre au premier revers) ;
+ *   · le rebelle GAGNE (score NETTEMENT positif après SA victoire — il a battu l'armée
+ *     de la couronne et/ou tient la région : occupation → +50) ⇒ victoire du soulèvement.
+ * Un plafond (WAR_MAX_DAYS) est un GARDE-FOU : si AUCUNE bataille ne s'est résolue dans
+ * le délai (pas de sortie de la couronne, siège qui traîne), la révolte FIZZLE → ÉCRASÉE. */
+#define REBEL_WARSCORE_WIN     8.f      /* un score NETTEMENT positif après la victoire rebelle suffit (pas +20) */
+#define REBEL_WARSCORE_LOSE   -1.f      /* dès que le score passe NÉGATIF (une bataille a eu lieu, le rebelle a perdu l'échange) */
+#define REBEL_WAR_MAX_DAYS   (5*365)    /* garde-fou : sans bataille résolue au bout de ~5 ans, la révolte fizzle → écrasée */
+
 static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
 static inline float absf(float v){ return v<0?-v:v; }
 
@@ -139,6 +156,11 @@ static int find_group(const ProvincePop *pp, int drift_id){
     for (int i=0;i<pp->n_groups;i++) if (pp->groups[i].drift_id==drift_id) return i;
     return -1;
 }
+
+/* Phase 3a — prototypes (définis plus bas, appelés par revolt_ignite qui précède). */
+static int  spawn_rebel_polity(World *w, WorldEconomy *econ, Rebellion *rb);
+static void deploy_rebel_army (DiploState *dp, struct Campaign *camp,
+                               const WorldEconomy *econ, Rebellion *rb);
 
 /* G0.2 — anti-concession-systématique : un pays ne CÈDE qu'une fois par décennie ;
  * au-delà (ou s'il n'a rien à céder), il RÉPRIME (l'écrasement tranche). */
@@ -219,7 +241,8 @@ static int group_carried_faith(const WorldEconomy *econ, const PopGroup *g, int 
 /* ALLUMAGE — incarne le soulèvement sur le pire groupe                    */
 /* ===================================================================== */
 int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
-                  const ModifierStack *drift, int region, float tax_pressure){
+                  const ModifierStack *drift, DiploState *dp, struct Campaign *camp,
+                  int region, float tax_pressure){
     if (region<0||region>=econ->n_regions) return -1;
     RegionEconomy *re=&econ->region[region];
     int owner=re->owner;
@@ -311,6 +334,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     rb->culture=group_culture_effective(g, drift);
     rb->drift_id=g->drift_id; rb->mobilized=mob; rb->deficit=wd;
     rb->outcome=OUT_ONGOING; rb->spawned=-1;
+    rb->rebel_country=-1; rb->war_days=0;   /* Phase 3a : le memset a mis 0 = pays 0 VALIDE → forcer -1 */
 
     /* CHOC ÉCONOMIQUE : les mobilisés QUITTENT la main-d'œuvre. La province perd
      * ses bras (l'atelier tourne au ralenti) — la révolte a un coût immédiat. */
@@ -326,6 +350,16 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     rs->n_ignited++;
     if (rb->kind==REBEL_HERESIE)      rs->n_heresy++;   /* dimension foi : schisme intérieur */
     else if (rb->kind==REBEL_ZELOTE)  rs->n_zelote++;   /* dimension foi : culte étranger */
+
+    /* Phase 3a — INCARNER LA GUERRE CIVILE : si la couche sim fournit dp/camp, on
+     * fait NAÎTRE un pays rebelle + son armée (qui assiège la région et déclare la
+     * guerre) → l'issue se jouera au SCORE DE GUERRE dans revolt_tick. Si aucun slot
+     * de pays n'est libre (rebel_country reste -1), le tick retombe sur la résolution
+     * INSTANTANÉE (repli). Sans dp/camp (bancs), pas de guerre : repli aussi. */
+    if (dp && camp){
+        rb->rebel_country = spawn_rebel_polity(w, econ, rb);
+        if (rb->rebel_country>=0) deploy_rebel_army(dp, camp, econ, rb);
+    }
     return slot;
 }
 
@@ -333,7 +367,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
 /* SCAN — la misère soutenue d'une région finit par la soulever            */
 /* ===================================================================== */
 void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
-                 const ModifierStack *drift, int days){
+                 const ModifierStack *drift, DiploState *dp, struct Campaign *camp, int days){
     /* §5 : tension de coup PAR PAYS (faction forte aliénée) — calculée à la demande,
      * mise en cache (un pays a la même tension dans toutes ses régions ce tick). */
     float ctens[SCPS_MAX_COUNTRY]; EthosFaction cfac[SCPS_MAX_COUNTRY];
@@ -424,7 +458,7 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
         else
             rs->desperation_days[r] = fmaxf(0.f, rs->desperation_days[r]-(float)days);    /* calme : la misère retombe */
         if (rs->desperation_days[r] >= (float)SCAN_SUSTAIN && rs->revolt_cooldown[r] <= 0.f){
-            if (revolt_ignite(rs, w, econ, drift, r, re->over_tax)>=0)
+            if (revolt_ignite(rs, w, econ, drift, dp, camp, r, re->over_tax)>=0)
                 rs->desperation_days[r]=0.f;       /* la colère s'est faite acte */
         }
     }
@@ -457,24 +491,77 @@ static int free_country_slot(const World *w, const WorldEconomy *econ, int avoid
     }
     return -1;
 }
-/* SÉCESSION : un pays naît, prend la région, s'installe sur le groupe rebelle. */
-static int spawn_secession(World *w, WorldEconomy *econ, WorldLegitimacy *wl, Rebellion *rb){
-    /* GARDE AMONT : sans région valide, le spawn n'a aucun sens — et la suite ÉCRIT
-     * dans econ->region[rb->region] (hors-bornes si négatif). On refuse net. */
+/* ===================================================================== */
+/* Phase 3a — INCARNER LE PAYS REBELLE + SON ARMÉE (guerre civile réelle)  */
+/* ===================================================================== */
+/* Dérivé de spawn_secession, MAIS : ne transfère PAS la région (la couronne la
+ * garde — c'est l'ENJEU de la guerre) et ne réinitialise PAS la pop. Le pays
+ * rebelle naît SANS terre ; sa capitale POINTE la région du soulèvement (repère,
+ * et cible si la sécession l'emporte). Renvoie l'id, ou -1 si aucun slot libre. */
+static int spawn_rebel_polity(World *w, WorldEconomy *econ, Rebellion *rb){
     if (rb->region<0 || rb->region>=w->n_regions || rb->region>=econ->n_regions) return -1;
-    int nid = free_country_slot(w, econ, rb->owner);      /* d'abord un slot vierge */
-    if (nid<0){                                            /* sinon on agrandit la table */
+    int nid = free_country_slot(w, econ, rb->owner);      /* un slot vierge (sinon on agrandit) */
+    if (nid<0){
         if (w->n_countries>=SCPS_MAX_COUNTRY) return -1;
         nid=w->n_countries++;
     }
     Country *nc=&w->country[nid]; memset(nc,0,sizeof *nc);
+    nc->role=POLITY_ANTAGONIST;                           /* un belligérant, pas encore un État terrien */
+    nc->continent=w->region[rb->region].continent;
+    nc->capital_prov=(w->region[rb->region].n_provinces>0)
+                     ? w->region[rb->region].province_ids[0] : -1;
+    nc->n_regions=0;                                       /* NE TIENT AUCUNE RÉGION (l'enjeu reste à la couronne) */
+    nc->color=0xB03030u;                                   /* rouge insurrection */
+    snprintf(nc->name,sizeof nc->name,"Rebelles de %s", heritage_name(rb->heritage));
+    return nid;
+}
+/* Construit l'armée rebelle (milice ∝ mobilisés ; +cavalerie lourde si l'ÉLITE se
+ * lève — un coup rallie la noblesse à cheval) et la déploie SUR la région du
+ * soulèvement (qu'elle assiège : elle appartient à la couronne). DÉCLARE la guerre
+ * civile. Tout est gardé : sans dp/camp/slot valide, no-op (repli instantané). */
+static void deploy_rebel_army(DiploState *dp, struct Campaign *camp,
+                              const WorldEconomy *econ, Rebellion *rb){
+    if (!dp || !camp || rb->rebel_country<0 || rb->rebel_country>=SCPS_MAX_COUNTRY) return;
+    if (rb->region<0 || rb->region>=econ->n_regions) return;
+    /* la force : paquets de 100. La milice porte le gros ; l'élite soulevée (coup)
+     * amène un noyau de cavalerie lourde (peu nombreux mais mordants). */
+    long packets = rb->mobilized / 100; if (packets<1) packets=1;
+    long cav = (rb->klass==CLASS_ELITE) ? packets/4 : 0;   /* le coup : ~1/4 à cheval */
+    long mil = packets - cav; if (mil<1){ mil=1; if (cav>0 && packets>1) cav=packets-mil; else cav=0; }
+    ArmyState force; army_init(&force);
+    force.doctrine = army_doctrine_base();                 /* neutre : moral_mul=1 (side_reserve valide) */
+    int nu=0;
+    if (mil>0 && nu<ARMY_MAX_UNITS){ force.units[nu].type=U_MILICE;     force.units[nu].count=mil; force.units[nu].moral_courant=0.f; nu++; }
+    if (cav>0 && nu<ARMY_MAX_UNITS){ force.units[nu].type=U_CAV_LOURDE; force.units[nu].count=cav; force.units[nu].moral_courant=0.f; nu++; }
+    force.n_units=nu;
+    /* déploie sur la région du soulèvement (from==target : campaign_order la pose
+     * IDLE), puis campaign_redirect la fait ASSIÉGER (la terre est à la couronne,
+     * pas au rebelle) → le siège pousse l'occupation (score) et provoque la sortie
+     * de la couronne (bataille) via sim_campaign_defense. */
+    if (!campaign_order(camp, econ, rb->rebel_country, rb->region, rb->region, &force)) return;
+    campaign_redirect(camp, econ, dp, rb->rebel_country, rb->region);   /* → FA_SIEGE (région ennemie) */
+    /* LA GUERRE CIVILE est déclarée MAINTENANT (dès l'allumage) : sans DIPLO_WAR, ni
+     * le siège (diplo_occupy) ni la sortie de la couronne ne s'enclenchent. Le CB : la
+     * foi pour l'hérésie/le zèle, sinon territorial (l'insurrection veut la terre). */
+    CasusBelli cb = (rb->kind==REBEL_HERESIE || rb->kind==REBEL_ZELOTE) ? CB_RELIGIOUS : CB_TERRITORIAL;
+    diplo_declare_war_cb(dp, rb->rebel_country, rb->owner, cb);
+}
+
+/* SÉCESSION : un pays naît, prend la région, s'installe sur le groupe rebelle. */
+/* INSTALLER la sécession dans le pays `nid` (déjà alloué) : la région bascule à lui,
+ * le pays devient un État TERRIEN (capitale/région), la terre libérée se relégitime.
+ * Partagé par spawn_secession (nouveau slot, voie instantanée) et la voie GUERRE
+ * (réutilise rb->rebel_country → PAS de slot en fuite : le belligérant devient l'État). */
+static void secede_to_country(World *w, WorldEconomy *econ, WorldLegitimacy *wl, Rebellion *rb, int nid){
+    if (nid<0 || nid>=w->n_countries || nid>=SCPS_MAX_COUNTRY) return;
+    Country *nc=&w->country[nid];
     nc->role=POLITY_ANTAGONIST;                 /* un nouvel empire libre */
     bool rb_reg_ok = (rb->region>=0 && rb->region<w->n_regions);   /* garde : index région valide (≥0 ET < n) */
     nc->continent=rb_reg_ok ? w->region[rb->region].continent : 0;
     nc->capital_prov=(rb_reg_ok && w->region[rb->region].n_provinces>0)
                      ? w->region[rb->region].province_ids[0] : -1;
     nc->n_regions=1; nc->region_ids[0]=(int16_t)rb->region;
-    nc->color=0xC08040u;
+    nc->color=0xC08040u;                                          /* l'or souverain (≠ rouge insurrection) */
     snprintf(nc->name,sizeof nc->name,"%s libre", heritage_name(rb->heritage));
 
     /* RE-KEY PROVINCE : la sécession est un événement DE RÉGION (une région entière change
@@ -496,12 +583,185 @@ static int spawn_secession(World *w, WorldEconomy *econ, WorldLegitimacy *wl, Re
                      * il est chez lui, plus un déplacé qui « rentre » (arrival/home_reg naturalisés). */
                     pe->pop.groups[gi].arrival=ARR_NATIF; pe->pop.groups[gi].home_reg=-1; }
     }
+}
+static int spawn_secession(World *w, WorldEconomy *econ, WorldLegitimacy *wl, Rebellion *rb){
+    /* GARDE AMONT : sans région valide, le spawn n'a aucun sens — et la suite ÉCRIT
+     * dans econ->region[rb->region] (hors-bornes si négatif). On refuse net. */
+    if (rb->region<0 || rb->region>=w->n_regions || rb->region>=econ->n_regions) return -1;
+    int nid = free_country_slot(w, econ, rb->owner);      /* d'abord un slot vierge */
+    if (nid<0){                                            /* sinon on agrandit la table */
+        if (w->n_countries>=SCPS_MAX_COUNTRY) return -1;
+        nid=w->n_countries++;
+    }
+    memset(&w->country[nid],0,sizeof(Country));
+    secede_to_country(w, econ, wl, rb, nid);
     return nid;
 }
 
+/* ── L'ÉCRASEMENT : morts + le pays se raidit (coercition, L brisée) ─────────
+ * Corps commun aux DEUX voies (compare instantané ET défaite au score de guerre). */
+static void apply_rebel_crush(RevoltState *rs, World *w, WorldEconomy *econ,
+                              ProvinceEconomy *pe, WorldLegitimacy *wl, Rebellion *rb){
+    (void)w;   /* symétrie de signature avec apply_rebel_victory ; l'écrasement n'a pas besoin du World */
+    long killed=(long)((float)rb->mobilized*CRUSH_KILL);
+    long survivors=rb->mobilized-killed;
+    rs->pop_lost += killed; rs->n_crushed++;
+    demobilize(econ, rb, survivors);
+    int gi=find_group(&pe->pop, rb->drift_id);
+    if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L-2.f,0.f,10.f);
+                pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base+15.f,0.f,100.f); }
+    pe->coercion=1.f;                                   /* loi martiale durable */
+    if (rb->region<SCPS_MAX_REG) wl->L[rb->region]*=0.75f;  /* régner par la peur ronge L */
+    rb->outcome=OUT_CRUSHED;
+    /* CONTRE-RÉFORME : une révolte de FOI écrasée est RECONVERTIE de force à la
+     * foi d'État — la couronne impose l'orthodoxie sur les cendres du schisme. */
+    if (rb->kind==REBEL_HERESIE || rb->kind==REBEL_ZELOTE){
+        int sf=(rb->owner>=0&&rb->owner<SCPS_MAX_COUNTRY)?religion_of_country(rb->owner):-1;
+        if (sf>=0) religion_set_region(econ, rb->region, sf);
+    }
+}
+
+/* ── LA VICTOIRE REBELLE : le verdict suit la nature du soulèvement ──────────
+ * Corps commun aux DEUX voies. Pour la SÉCESSION, si un pays rebelle est DÉJÀ
+ * incarné (voie guerre : rb->rebel_country≥0), on le RÉUTILISE comme État souverain
+ * (pas de slot en fuite) ; sinon on en fait naître un (voie instantanée). */
+static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
+                                ProvinceEconomy *pe, WorldLegitimacy *wl, Rebellion *rb){
+    switch (rb->kind){
+        case REBEL_SECESSION: {
+            int nid;
+            if (rb->rebel_country>=0 && rb->rebel_country<w->n_countries){
+                nid=rb->rebel_country; secede_to_country(w, econ, wl, rb, nid);   /* le belligérant DEVIENT l'État */
+            } else nid=spawn_secession(w, econ, wl, rb);
+            rb->spawned=nid; rs->last_spawned=nid;
+            if (nid>=0){ rs->n_seceded++; rb->outcome=OUT_SECEDED; }
+            else { demobilize(econ, rb, rb->mobilized); rb->outcome=OUT_CONCESSION; }
+            break; }
+        case REBEL_COUP: {
+            /* l'élite prend le trône : la couronne adopte SA culture, lune
+             * de miel de légitimité ; les hommes rentrent (affaire de palais). */
+            pe->culture = rb->culture;
+            int cap = (rb->owner<w->n_countries)?w->country[rb->owner].capital_prov:-1;
+            int cr  = (cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
+            if (cr>=0&&cr<econ->n_regions){
+                int crp=econ_region_rep_province(econ,cr);
+                if (crp>=0&&crp<econ->n_prov) econ->prov[crp].culture=rb->culture;
+            }
+            for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==rb->owner && r<SCPS_MAX_REG)
+                wl->L[r]=clampf(wl->L[r]+1.5f,0.f,10.f);
+            pe->coercion=fmaxf(0.f, pe->coercion-0.3f);
+            demobilize(econ, rb, rb->mobilized);
+            faction_levers_on_coup(rb->owner);   /* §4 : le coup purge la rancœur (plus de spirale) */
+            if (rb->owner>=0 && rb->owner<SCPS_MAX_COUNTRY)
+                g_coup_grace[rb->owner]=COUP_GRACE_DAYS;   /* §C2 : répit du nouveau régime */
+            rs->n_coup++; rb->outcome=OUT_COUP;
+            break; }
+        case REBEL_HERESIE:
+        case REBEL_ZELOTE: {
+            /* VICTOIRE d'une révolte de FOI — l'issue suit la NATURE culturelle :
+             *  · peuple culturellement ÉTRANGER (nation conquise) → la foi ET la
+             *    terre partent : SÉCESSION en État CORELIGIONNAIRE (révolte de
+             *    Hollande — la guerre de religion devient guerre d'indépendance) ;
+             *  · peuple INTÉGRÉ (même culture, foi dissidente) → paix d'Augsbourg :
+             *    la province GARDE sa foi (déjà posée) et RESTE ; la L royale s'érode
+             *    d'avoir échoué à imposer l'orthodoxie (un Dieu ÉTRANGER humilie plus). */
+            const PopCulture *crown = crown_of(w, econ, rb->owner);
+            /* une DIASPORA (réfugié/migrant) n'a AUCUNE revendication TERRITORIALE : sa
+             * victoire de foi = TOLÉRANCE, jamais sécession. Seul un peuple NATIF étranger
+             * (nation conquise sur SA terre) sécède en État coreligionnaire (Hollande). */
+            int rgi = find_group(&pe->pop, rb->drift_id);
+            bool is_dia = (rgi>=0) && pe->pop.groups[rgi].diaspora;
+            bool separatist = crown && !is_dia && (content_dist(&rb->culture, crown) >= SECEDE_D);
+            if (separatist){
+                int nid;
+                if (rb->rebel_country>=0 && rb->rebel_country<w->n_countries){
+                    nid=rb->rebel_country; secede_to_country(w, econ, wl, rb, nid);
+                } else nid=spawn_secession(w, econ, wl, rb);
+                rb->spawned=nid; rs->last_spawned=nid;
+                if (nid>=0){ rs->n_seceded++; rb->outcome=OUT_SECEDED; }
+                else { demobilize(econ, rb, rb->mobilized); rb->outcome=OUT_CONCESSION; }
+            } else {
+                float lhit = (rb->kind==REBEL_ZELOTE)?1.5f:1.0f;
+                if (rb->region<SCPS_MAX_REG)
+                    wl->L[rb->region]=clampf(wl->L[rb->region]-lhit,0.f,10.f);
+                pe->satisfaction=clampf(pe->satisfaction+0.15f,0.f,1.f);
+                pe->coercion=fmaxf(0.f, pe->coercion-0.3f);
+                { int gi=find_group(&pe->pop, rb->drift_id);
+                  if (gi>=0) pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base-20.f,0.f,100.f); }
+                demobilize(econ, rb, rb->mobilized);
+                rs->n_concession++; rb->outcome=OUT_CONCESSION;   /* la couronne CÈDE sur la foi */
+            }
+            break; }
+        default: {  /* REBEL_CLASS : la couronne CÈDE — SI elle peut (G0.2) */
+            int cid=rb->owner;
+            int capr=(cid>=0&&cid<w->n_countries)?w->country[cid].capital_prov:-1;
+            capr=(capr>=0&&capr<w->n_provinces)?w->province[capr].region:-1;
+            int caprp=(capr>=0&&capr<econ->n_regions)?econ_region_rep_province(econ,capr):-1;
+            float treas=(caprp>=0&&caprp<econ->n_prov)?econ->prov[caprp].treasury:0.f;
+            float capL =(capr>=0&&capr<SCPS_MAX_REG)?wl->L[capr]:0.f;
+            bool can_concede = (cid<0||cid>=SCPS_MAX_COUNTRY||g_concede_cd[cid]<=0.f)  /* pas déjà concédé ce décennie */
+                            && (treas>CONCEDE_TREAS_FLOOR || capL>CONCEDE_L_FLOOR);     /* … et de quoi céder */
+            if (!can_concede){
+                /* REFUS : la couronne RÉPRIME plutôt que de céder encore (l'écrasement tranche). */
+                long killed=(long)((float)rb->mobilized*CRUSH_KILL);
+                rs->pop_lost += killed; rs->n_crushed++;
+                demobilize(econ, rb, rb->mobilized-killed);
+                int gi=find_group(&pe->pop, rb->drift_id);
+                if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L-2.f,0.f,10.f);
+                            pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base+15.f,0.f,100.f); }
+                pe->coercion=1.f;
+                if (rb->region<SCPS_MAX_REG) wl->L[rb->region]*=0.75f;
+                rb->outcome=OUT_CRUSHED;
+                break;
+            }
+            if (caprp>=0&&caprp<econ->n_prov && treas>CONCEDE_TREAS_FLOOR)
+                econ->prov[caprp].treasury=fmaxf(0.f, econ->prov[caprp].treasury-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));  /* acheter la paix */
+            if (cid>=0&&cid<SCPS_MAX_COUNTRY) g_concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
+            pe->satisfaction=clampf(pe->satisfaction+0.20f,0.f,1.f);
+            pe->coercion=fmaxf(0.f, pe->coercion-0.4f);
+            int gi=find_group(&pe->pop, rb->drift_id);
+            if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L+2.f,0.f,10.f);
+                        pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base-25.f,0.f,100.f); }
+            demobilize(econ, rb, rb->mobilized);
+            /* §C3 — la concession a un PRIX : la faction de l'extorqueur CAPTURE
+             * l'État (rot↑ → malus noble), et l'OSSATURE ploie sans rebond
+             * (K creusé + légitimité d'un cran) → l'empire concédant devient flasque. */
+            { float lean[FAC_COUNT]; group_ethos_lean(&rb->culture, lean);
+              int wf=0; for (int f=1;f<FAC_COUNT;f++) if (lean[f]>lean[wf]) wf=f;
+              faction_concede(rb->owner, (EthosFaction)wf); }
+            pe->build.K_inst = fmaxf(0.f, pe->build.K_inst - tune_f("C3_K_HOLLOW",C3_K_HOLLOW));
+            if (rb->region<SCPS_MAX_REG)
+                wl->L[rb->region] = clampf(wl->L[rb->region]-tune_f("C3_L_HOLLOW",C3_L_HOLLOW), 0.f, 10.f);
+            rs->n_concession++; rb->outcome=OUT_CONCESSION;
+            break; }
+    }
+}
+
+/* Phase 3a — CLÔTURER LA GUERRE CIVILE : le pays rebelle a joué son rôle. Pour la
+ * SÉCESSION VICTORIEUSE il SURVIT (État souverain, apply_rebel_victory l'a doté d'une
+ * région) → on solde juste la guerre par une paix blanche. Dans TOUS les autres cas
+ * (défaite OU victoire sans terre : coup/tolérance/concession) il ne tient aucune
+ * région → diplo_settle (couronne = vainqueur) le TUE (polity_death interne, aucun
+ * slot en fuite) et libère l'occupation. dp requis ; rebel_country validé. */
+static void end_civil_war(DiploState *dp, World *w, WorldEconomy *econ, WorldLegitimacy *wl, Rebellion *rb){
+    if (!dp || rb->rebel_country<0 || rb->rebel_country>=SCPS_MAX_COUNTRY) return;
+    int reb=rb->rebel_country, crown=rb->owner;
+    if (rb->outcome==OUT_SECEDED && rb->spawned==reb){
+        /* le nouvel État tient sa terre (secede_to_country l'y a installé) : on efface
+         * l'occupation résiduelle du siège (la région est SA propriété désormais) puis
+         * on signe la paix — il SURVIT en souverain. */
+        diplo_liberate(dp, econ, rb->region);
+        diplo_make_peace(dp, reb, crown);        /* le nouvel État et son ancienne couronne signent */
+    } else {
+        diplo_settle(dp, w, econ, wl, crown, reb, false);   /* le rebelle sans terre MEURT (polity_death) */
+    }
+    rb->rebel_country=-1;                         /* le lien est soldé (plus d'index vivant à traîner) */
+}
+
 void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *drift,
-                 WorldLegitimacy *wl, const WorldProsperity *wp, int days){
-    (void)drift;
+                 WorldLegitimacy *wl, const WorldProsperity *wp,
+                 DiploState *dp, struct Campaign *camp, int days){
+    (void)drift; (void)camp;
     rs->last_spawned=-1;
     for (int i=0;i<rs->count;i++){
         Rebellion *rb=&rs->list[i];
@@ -521,7 +781,61 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
 
         if (rb->days < REBEL_DECIDE_DAYS) continue;   /* la lutte couve */
 
-        /* ── Forces en présence (en équivalents-combattants) ────────────── */
+        /* ══ Phase 3a — LA GUERRE CIVILE : DÉCISIVE (une seule défaite) ═════════
+         * Un pays rebelle est incarné (rb->rebel_country≥0) : la campagne/bataille
+         * (ticke AVANT nous chaque jour) a déjà appliqué l'issue des combats de ce
+         * tick. On LIT l'ÉTAT de l'armée rebelle (FieldArmy) et le score, et on
+         * tranche AU PREMIER dénouement — pas d'attrition. (Le compare instantané
+         * reste le REPLI pour rebel_country<0 / dp NULL, plus bas.) */
+        if (rb->rebel_country>=0 && dp){
+            rb->war_days += days;
+            int reb=rb->rebel_country;
+            bool reb_alive = (reb<w->n_countries && w->country[reb].role!=POLITY_UNCLAIMED);
+            bool at_war = reb_alive && diplo_status(dp, reb, rb->owner)==DIPLO_WAR;
+            /* ── ÉTAT DE L'ARMÉE REBELLE (détection DIRECTE de la défaite) ──
+             * L'armée rebelle a-t-elle DÉJÀ livré bataille (camp->army[reb].battles>0) ?
+             * Si oui, une DÉROUTE la laisse BRISÉE (broken_days>0), voire DÉTRUITE
+             * (!active OU force vidée) — c'est LA défaite unique. bt_rout pousse alors
+             * le score de la couronne (rebelle NÉGATIF) : deux signaux concordants. */
+            const FieldArmy *ra = (camp && reb<SCPS_MAX_COUNTRY) ? &camp->army[reb] : NULL;
+            bool fought   = ra && ra->battles>0;
+            bool army_gone= !ra || !ra->active || campaign_units(camp, reb)<=0;  /* dissoute/anéantie */
+            bool army_broken = ra && ra->broken_days>0;                          /* déroutée (brisée) */
+            float ws = at_war ? diplo_war_score(dp, reb, rb->owner) : -100.f;
+
+            /* CROWN WINS — DÉFAITE UNIQUE : l'armée rebelle est brisée/détruite (après
+             * avoir combattu), OU le pays rebelle est déjà mort/en paix, OU le score a
+             * viré négatif suite à une bataille, OU le garde-fou de durée a sauté. */
+            bool crown_wins = !at_war
+                            || (fought && (army_broken || army_gone))
+                            || (fought && ws <= REBEL_WARSCORE_LOSE)
+                            || rb->war_days > REBEL_WAR_MAX_DAYS;
+            /* REBEL WINS — VICTOIRE DÉCISIVE : le rebelle tient (armée intacte, pas
+             * brisée) et son score est NETTEMENT positif (il a battu la couronne et/ou
+             * occupe la région). On exige l'armée VIVE pour ne pas confondre avec une
+             * victoire à la Pyrrhus où elle vient de se faire détruire. */
+            bool rebel_wins = at_war && !army_gone && !army_broken && ws >= REBEL_WARSCORE_WIN;
+
+            if (crown_wins){
+                apply_rebel_crush(rs, w, econ, pe, wl, rb);
+            } else if (rebel_wins){
+                apply_rebel_victory(rs, w, econ, pe, wl, rb);
+            } else {
+                continue;   /* rien de décisif ce tick (siège/marche en cours) : on attend */
+            }
+            end_civil_war(dp, w, econ, wl, rb);         /* solde la guerre (paix blanche ou mort du rebelle) */
+            /* épilogue commun (cooldown/cicatrice/désactivation) — partagé avec le repli. */
+            if (rb->region<SCPS_MAX_REG && rb->outcome!=OUT_SECEDED){
+                rs->revolt_cooldown[rb->region] = (float)REVOLT_COOLDOWN;
+                rs->desperation_days[rb->region] = 0.f;
+            }
+            pe->revolt_scar = 1.0f;
+            rb->active=false;
+            continue;
+        }
+
+        /* ── REPLI (rebel_country<0 / dp NULL) : compare INSTANTANÉ garnison/rebelles ──
+         * Forces en présence (en équivalents-combattants). */
         float zeal = (rb->kind==REBEL_COUP)?ZEAL_COUP
                    : (rb->kind==REBEL_SECESSION)?ZEAL_SECEDE
                    : (rb->kind==REBEL_HERESIE)?ZEAL_HERESIE
@@ -552,129 +866,8 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
         float garrison = (loyal_pop*GARR_LOYAL + re->build.H_coerc*GARR_H + reinforce) * morale;
         garrison *= (1.f - (1.f-REVANCHISM_GARR)*rf);  /* une province fraîchement prise tient mal */
 
-        if (garrison >= rebel){
-            /* ── ÉCRASÉS : morts + le pays se raidit (coercition, L brisée) ── */
-            long killed=(long)((float)rb->mobilized*CRUSH_KILL);
-            long survivors=rb->mobilized-killed;
-            rs->pop_lost += killed; rs->n_crushed++;
-            demobilize(econ, rb, survivors);
-            int gi=find_group(&pe->pop, rb->drift_id);
-            if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L-2.f,0.f,10.f);
-                        pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base+15.f,0.f,100.f); }
-            pe->coercion=1.f;                                   /* loi martiale durable */
-            if (rb->region<SCPS_MAX_REG) wl->L[rb->region]*=0.75f;  /* régner par la peur ronge L */
-            rb->outcome=OUT_CRUSHED;
-            /* CONTRE-RÉFORME : une révolte de FOI écrasée est RECONVERTIE de force à la
-             * foi d'État — la couronne impose l'orthodoxie sur les cendres du schisme. */
-            if (rb->kind==REBEL_HERESIE || rb->kind==REBEL_ZELOTE){
-                int sf=(rb->owner>=0&&rb->owner<SCPS_MAX_COUNTRY)?religion_of_country(rb->owner):-1;
-                if (sf>=0) religion_set_region(econ, rb->region, sf);
-            }
-        } else {
-            /* ── LES REBELLES L'EMPORTENT : le verdict suit leur nature ───── */
-            switch (rb->kind){
-                case REBEL_SECESSION: {
-                    int nid=spawn_secession(w, econ, wl, rb);
-                    rb->spawned=nid; rs->last_spawned=nid;
-                    if (nid>=0){ rs->n_seceded++; rb->outcome=OUT_SECEDED; }
-                    else { demobilize(econ, rb, rb->mobilized); rb->outcome=OUT_CONCESSION; }
-                    break; }
-                case REBEL_COUP: {
-                    /* l'élite prend le trône : la couronne adopte SA culture, lune
-                     * de miel de légitimité ; les hommes rentrent (affaire de palais). */
-                    pe->culture = rb->culture;
-                    int cap = (rb->owner<w->n_countries)?w->country[rb->owner].capital_prov:-1;
-                    int cr  = (cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
-                    if (cr>=0&&cr<econ->n_regions){
-                        int crp=econ_region_rep_province(econ,cr);
-                        if (crp>=0&&crp<econ->n_prov) econ->prov[crp].culture=rb->culture;
-                    }
-                    for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==rb->owner && r<SCPS_MAX_REG)
-                        wl->L[r]=clampf(wl->L[r]+1.5f,0.f,10.f);
-                    pe->coercion=fmaxf(0.f, pe->coercion-0.3f);
-                    demobilize(econ, rb, rb->mobilized);
-                    faction_levers_on_coup(rb->owner);   /* §4 : le coup purge la rancœur (plus de spirale) */
-                    if (rb->owner>=0 && rb->owner<SCPS_MAX_COUNTRY)
-                        g_coup_grace[rb->owner]=COUP_GRACE_DAYS;   /* §C2 : répit du nouveau régime */
-                    rs->n_coup++; rb->outcome=OUT_COUP;
-                    break; }
-                case REBEL_HERESIE:
-                case REBEL_ZELOTE: {
-                    /* VICTOIRE d'une révolte de FOI — l'issue suit la NATURE culturelle :
-                     *  · peuple culturellement ÉTRANGER (nation conquise) → la foi ET la
-                     *    terre partent : SÉCESSION en État CORELIGIONNAIRE (révolte de
-                     *    Hollande — la guerre de religion devient guerre d'indépendance) ;
-                     *  · peuple INTÉGRÉ (même culture, foi dissidente) → paix d'Augsbourg :
-                     *    la province GARDE sa foi (déjà posée) et RESTE ; la L royale s'érode
-                     *    d'avoir échoué à imposer l'orthodoxie (un Dieu ÉTRANGER humilie plus). */
-                    const PopCulture *crown = crown_of(w, econ, rb->owner);
-                    /* une DIASPORA (réfugié/migrant) n'a AUCUNE revendication TERRITORIALE : sa
-                     * victoire de foi = TOLÉRANCE, jamais sécession. Seul un peuple NATIF étranger
-                     * (nation conquise sur SA terre) sécède en État coreligionnaire (Hollande). */
-                    int rgi = find_group(&pe->pop, rb->drift_id);
-                    bool is_dia = (rgi>=0) && pe->pop.groups[rgi].diaspora;
-                    bool separatist = crown && !is_dia && (content_dist(&rb->culture, crown) >= SECEDE_D);
-                    if (separatist){
-                        int nid=spawn_secession(w, econ, wl, rb);
-                        rb->spawned=nid; rs->last_spawned=nid;
-                        if (nid>=0){ rs->n_seceded++; rb->outcome=OUT_SECEDED; }
-                        else { demobilize(econ, rb, rb->mobilized); rb->outcome=OUT_CONCESSION; }
-                    } else {
-                        float lhit = (rb->kind==REBEL_ZELOTE)?1.5f:1.0f;
-                        if (rb->region<SCPS_MAX_REG)
-                            wl->L[rb->region]=clampf(wl->L[rb->region]-lhit,0.f,10.f);
-                        pe->satisfaction=clampf(pe->satisfaction+0.15f,0.f,1.f);
-                        pe->coercion=fmaxf(0.f, pe->coercion-0.3f);
-                        { int gi=find_group(&pe->pop, rb->drift_id);
-                          if (gi>=0) pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base-20.f,0.f,100.f); }
-                        demobilize(econ, rb, rb->mobilized);
-                        rs->n_concession++; rb->outcome=OUT_CONCESSION;   /* la couronne CÈDE sur la foi */
-                    }
-                    break; }
-                default: {  /* REBEL_CLASS : la couronne CÈDE — SI elle peut (G0.2) */
-                    int cid=rb->owner;
-                    int capr=(cid>=0&&cid<w->n_countries)?w->country[cid].capital_prov:-1;
-                    capr=(capr>=0&&capr<w->n_provinces)?w->province[capr].region:-1;
-                    int caprp=(capr>=0&&capr<econ->n_regions)?econ_region_rep_province(econ,capr):-1;
-                    float treas=(caprp>=0&&caprp<econ->n_prov)?econ->prov[caprp].treasury:0.f;
-                    float capL =(capr>=0&&capr<SCPS_MAX_REG)?wl->L[capr]:0.f;
-                    bool can_concede = (cid<0||cid>=SCPS_MAX_COUNTRY||g_concede_cd[cid]<=0.f)  /* pas déjà concédé ce décennie */
-                                    && (treas>CONCEDE_TREAS_FLOOR || capL>CONCEDE_L_FLOOR);     /* … et de quoi céder */
-                    if (!can_concede){
-                        /* REFUS : la couronne RÉPRIME plutôt que de céder encore (l'écrasement tranche). */
-                        long killed=(long)((float)rb->mobilized*CRUSH_KILL);
-                        rs->pop_lost += killed; rs->n_crushed++;
-                        demobilize(econ, rb, rb->mobilized-killed);
-                        int gi=find_group(&pe->pop, rb->drift_id);
-                        if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L-2.f,0.f,10.f);
-                                    pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base+15.f,0.f,100.f); }
-                        pe->coercion=1.f;
-                        if (rb->region<SCPS_MAX_REG) wl->L[rb->region]*=0.75f;
-                        rb->outcome=OUT_CRUSHED;
-                        break;
-                    }
-                    if (caprp>=0&&caprp<econ->n_prov && treas>CONCEDE_TREAS_FLOOR)
-                        econ->prov[caprp].treasury=fmaxf(0.f, econ->prov[caprp].treasury-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));  /* acheter la paix */
-                    if (cid>=0&&cid<SCPS_MAX_COUNTRY) g_concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
-                    pe->satisfaction=clampf(pe->satisfaction+0.20f,0.f,1.f);
-                    pe->coercion=fmaxf(0.f, pe->coercion-0.4f);
-                    int gi=find_group(&pe->pop, rb->drift_id);
-                    if (gi>=0){ pe->pop.groups[gi].L=clampf(pe->pop.groups[gi].L+2.f,0.f,10.f);
-                                pe->pop.groups[gi].agit_base=clampf(pe->pop.groups[gi].agit_base-25.f,0.f,100.f); }
-                    demobilize(econ, rb, rb->mobilized);
-                    /* §C3 — la concession a un PRIX : la faction de l'extorqueur CAPTURE
-                     * l'État (rot↑ → malus noble), et l'OSSATURE ploie sans rebond
-                     * (K creusé + légitimité d'un cran) → l'empire concédant devient flasque. */
-                    { float lean[FAC_COUNT]; group_ethos_lean(&rb->culture, lean);
-                      int wf=0; for (int f=1;f<FAC_COUNT;f++) if (lean[f]>lean[wf]) wf=f;
-                      faction_concede(rb->owner, (EthosFaction)wf); }
-                    pe->build.K_inst = fmaxf(0.f, pe->build.K_inst - tune_f("C3_K_HOLLOW",C3_K_HOLLOW));
-                    if (rb->region<SCPS_MAX_REG)
-                        wl->L[rb->region] = clampf(wl->L[rb->region]-tune_f("C3_L_HOLLOW",C3_L_HOLLOW), 0.f, 10.f);
-                    rs->n_concession++; rb->outcome=OUT_CONCESSION;
-                    break; }
-            }
-        }
+        if (garrison >= rebel) apply_rebel_crush  (rs, w, econ, pe, wl, rb);  /* ÉCRASÉS */
+        else                   apply_rebel_victory(rs, w, econ, pe, wl, rb);  /* les rebelles l'emportent */
         /* après TOUT soulèvement résolu, la province est épuisée : elle se tait
          * quelques années (le grief doit se reconstruire) — fin des re-flambées. */
         if (rb->region<SCPS_MAX_REG && rb->outcome!=OUT_SECEDED){

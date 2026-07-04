@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 54u           /* v54 : FOI PAR GROUPE — PopGroup gagne `faith` (id de religion PORTÉ par le
+#define SAVE_VERSION 55u           /* v55 : RÉVOLTE = VRAIE GUERRE (Phase 3a) — Rebellion gagne `rebel_country`
+                                    * (le pays rebelle incarné qui déclare la guerre à la couronne ; -1 = aucun,
+                                    * repli sur la résolution instantanée) + `war_days` (durée de la guerre civile,
+                                    * plafond de patience). L'issue suit désormais le SCORE DE GUERRE (campagne/
+                                    * bataille), plus un compare garnison/rebelles. RevoltState est sérialisé en UN
+                                    * blob (sv_w SVT_RVLT) ⇒ sizeof(RevoltState) change → <v55 refusé. v54 : FOI PAR GROUPE — PopGroup gagne `faith` (id de religion PORTÉ par le
                                     * groupe ; la foi descend au niveau de la pop comme la culture : migration la
                                     * porte, une région mêle les cultes, hérésie = groupe dissident). g_region_religion
                                     * devient un CACHE dérivé (culte dominant). ⚠ sizeof(PopGroup)→sizeof(WorldEconomy)
