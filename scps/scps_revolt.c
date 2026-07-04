@@ -121,6 +121,15 @@ static long g_civilwars = 0;         /* soulèvements devenus une VRAIE guerre (
 static long g_rebel_victories = 0;   /* … remportés par les rebelles (l'armée de la couronne battue) */
 long revolt_civilwar_count(void){ return g_civilwars; }
 long revolt_rebel_victory_count(void){ return g_rebel_victories; }
+/* PHASE 3a suite — SOUTIEN ÉTRANGER : une fois par guerre civile INCARNÉE, on tente UNE fois de
+ * trouver un bailleur (rate-limit dur, pas un nag à chaque tick de 30 j). Clé = rebel_country
+ * (identité stable de la guerre civile pour toute sa durée) — STATIQUE, NON sérialisé (même
+ * patron que g_coup_grace/g_revolt_grace) : un reload peut ré-offrir une fois, sans conséquence.
+ * RAZ par sim dans revolt_init. */
+static long g_backing_wars = 0;      /* télémétrie : seconds fronts ouverts par un bailleur étranger */
+static long g_backing_materiel = 0;  /* … dont un renfort matériel a été envoyé à l'armée rebelle */
+long revolt_backing_war_count(void){ return g_backing_wars; }
+long revolt_backing_materiel_count(void){ return g_backing_materiel; }
 /* LISIBILITÉ FIL (feed) — guerres civiles INCARNÉES démarrées CE SCAN : un petit
  * tampon STATIQUE (donc NON sérialisé, aucun bump save), RAZ en tête de revolt_scan,
  * APPENDU par revolt_ignite quand un pays rebelle est déployé (rebel_country>=0).
@@ -209,6 +218,7 @@ void revolt_init(RevoltState *rs){ memset(rs,0,sizeof *rs); rs->last_spawned=-1;
     memset(g_concede_cd,0,sizeof g_concede_cd);   /* G0.2 : cooldown de concession par sim */
     memset(g_revolt_grace,0,sizeof g_revolt_grace);  /* PHASE 1 : CD empire-wide remis à zéro par sim */
     g_civilwars=0; g_rebel_victories=0;              /* télémétrie guerre civile RAZ par sim */
+    g_backing_wars=0; g_backing_materiel=0;   /* soutien étranger : télémétrie RAZ par sim (le latch vit sur la Rebellion, sérialisé) */
 }
 
 void revolt_on_conquest(RevoltState *rs, int region){
@@ -370,6 +380,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     rb->drift_id=g->drift_id; rb->mobilized=mob; rb->deficit=wd;
     rb->outcome=OUT_ONGOING; rb->spawned=-1;
     rb->rebel_country=-1; rb->war_days=0;   /* Phase 3a : le memset a mis 0 = pays 0 VALIDE → forcer -1 */
+    rb->backing_tried=false;                /* soutien étranger : neuf → pas encore tenté (latch sérialisé v56) */
 
     /* CHOC ÉCONOMIQUE : les mobilisés QUITTENT la main-d'œuvre. La province perd
      * ses bras (l'atelier tourne au ralenti) — la révolte a un coût immédiat. */
@@ -598,6 +609,106 @@ static void deploy_rebel_army(DiploState *dp, struct Campaign *camp,
     g_civilwars++;   /* télémétrie : une guerre civile RÉELLE est engagée (armée rebelle sur la carte) */
 }
 
+/* ===================================================================== */
+/* Phase 3a suite — SOUTIEN ÉTRANGER AUX REBELLES (géopolitique)           */
+/* ===================================================================== */
+/* Compte les guerres SIMULTANÉES d'un pays (capacité : on ne pioche pas un
+ * bailleur déjà surétendu — même filtre que le monde §war-smoothing, à
+ * l'échelle du PAYS plutôt que du monde). */
+static int country_war_count(const World *w, const DiploState *dp, int c){
+    int n=0;
+    for (int k=0;k<w->n_countries;k++) if (k!=c && diplo_status(dp,c,k)==DIPLO_WAR) n++;
+    return n;
+}
+/* Le pays est-il un belligérant VIVANT capable de guerre (miroir du gate IA de
+ * sim_init : ni UNCLAIMED ni WILD — les Peuples Libres sont PASSIFS, cf. charte). */
+static bool country_war_capable(const World *w, int c){
+    if (c<0 || c>=w->n_countries) return false;
+    PolityRole role = w->country[c].role;
+    return role!=POLITY_UNCLAIMED && role!=POLITY_WILD && w->country[c].capital_prov>=0;
+}
+/* Score d'HOSTILITÉ d'un rival `c` envers la couronne `crown` — les MÊMES signaux
+ * que le reste de la diplomatie IA (jamais un système parallèle) : déjà belliqueux
+ * ailleurs (ATWAR_W), opinion basse/négative envers la couronne (mémoire d'actes
+ * #26 — sc peut être NULL, bancs/repli), menace/rancune envers elle spécifiquement
+ * (diplo_relation.threat + diplo_rancor, les DEUX lus par ai_pick_rival ailleurs). */
+static float rebel_backer_hostility(const World *w, const WorldEconomy *econ, const WorldProsperity *wp,
+                                    const DiploState *dp, const Statecraft *sc, int c, int crown){
+    float score = 0.f;
+    if (country_war_count(w,dp,c) > 0) score += tune_f("AI_REBEL_BACKING_ATWAR_W", 0.35f);
+    if (sc){
+        int op = statecraft_opinion(sc, c, crown);            /* −100..100, ce que C pense de la couronne */
+        if (op<0) score += (float)(-op) / 100.f;               /* opinion NÉGATIVE seulement (mémoire d'actes) */
+    }
+    Relation rel = diplo_relation(w, econ, wp, dp, c, crown);  /* rel.threat = menace perçue de crown SUR c */
+    score += rel.threat;
+    score += diplo_rancor(dp, c, crown);                       /* vieux grief spécifique contre CETTE couronne */
+    return score;
+}
+/* Une fois par guerre civile INCARNÉE (rate-limit dur, cf. g_backing_tried) : le
+ * rival hostile le PLUS FORT (argmax déterministe, départage par cid croissant via
+ * `>` strict) ouvre un SECOND FRONT contre la couronne assiégée — et, modestement,
+ * envoie un renfort matériel à l'armée rebelle (avant sa première bataille SEULEMENT :
+ * moral_courant se recalcule de `count` au choc, cf. scps_army.c — jamais en cours de
+ * mêlée). Historiquement, c'est ainsi que certaines rébellions l'emportent (le soutien
+ * extérieur) — donc, mécaniquement, quelques révoltes de plus survivent à la couronne
+ * plutôt que d'être quasi-systématiquement écrasées. AU PLUS UN bailleur par guerre
+ * civile (pas de fan-out : la task exige un rate-limit dur). */
+static void rebel_foreign_backing(World *w, WorldEconomy *econ, const WorldProsperity *wp,
+                                  DiploState *dp, const Statecraft *sc, struct Campaign *camp,
+                                  Rebellion *rb){
+    if (!dp) return;
+    int reb=rb->rebel_country, crown=rb->owner;
+    if (reb<0 || reb>=SCPS_MAX_COUNTRY || crown<0 || crown>=SCPS_MAX_COUNTRY) return;
+    if (rb->backing_tried) return;                  /* déjà tenté pour CETTE guerre civile (latch SÉRIALISÉ v56) */
+    rb->backing_tried=true;                          /* qu'il trouve un bailleur ou non : UNE tentative, jamais un nag */
+
+    int maxwars = (int)tune_f("AI_REBEL_BACKING_MAXWARS", 1.f);
+    int best=-1; float best_score=tune_f("AI_REBEL_BACKING_OPINION", 1.60f);
+    for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++){
+        if (c==crown || c==reb) continue;
+        if (!country_war_capable(w,c)) continue;
+        if (diplo_status(dp,c,crown)==DIPLO_ALLIED) continue;     /* on ne trahit pas un allié de la couronne */
+        if (diplo_status(dp,c,crown)==DIPLO_WAR) continue;        /* déjà en guerre AVEC la couronne : pas un 2e front */
+        if (!diplo_can_declare(dp,c,crown)) continue;              /* TRÊVE respectée */
+        if (country_war_count(w,dp,c) >= maxwars) continue;        /* capacité : pas de bailleur surétendu */
+        if (diplo_casus_belli(w,econ,wp,dp,c,crown,RES_NONE)==CB_NONE) continue;   /* il faut une RAISON */
+        float score = rebel_backer_hostility(w,econ,wp,dp,sc,c,crown);
+        if (score > best_score){ best_score=score; best=c; }
+    }
+    if (best<0) return;   /* personne d'assez hostile/éligible : la couronne mate seule */
+
+    /* SECOND FRONT — le bailleur déclare sa PROPRE guerre à la couronne (même CB que
+     * diplo_casus_belli a validé), distincte de la guerre civile (rebelle vs couronne). */
+    CasusBelli cb = diplo_casus_belli(w,econ,wp,dp,best,crown,RES_NONE);
+    diplo_declare_war_cb(dp, best, crown, cb);
+    g_backing_wars++;
+
+    /* MATÉRIEL (secondaire, MODESTE) — un renfort UNIQUE de milice à l'armée rebelle,
+     * seulement si elle n'a PAS ENCORE combattu (avant la 1re bataille : moral_courant
+     * se déduit de `count` au choc, jamais touché en cours de mêlée). PROPORTIONNEL à
+     * la force rebelle ACTUELLE (fraction bornée, pas un paquet ABSOLU) — un paquet fixe
+     * doublerait un soulèvement au plancher (MIN_REBELS/MOBIL_CAP ⇒ ~12 paquets minimum)
+     * tout en restant anecdotique pour un gros soulèvement ; la fraction reste MODESTE
+     * aux deux échelles. */
+    if (camp && reb<SCPS_MAX_COUNTRY){
+        FieldArmy *fa=&camp->army[reb];
+        if (fa->active && fa->battles<=0){
+            ArmyState *force=&fa->force;
+            long cur=campaign_units(camp, reb);              /* la force ACTUELLE (paquets de 100), déjà exportée */
+            float frac=tune_f("AI_REBEL_MATERIEL_FRAC", 0.20f);
+            long boost=(long)((float)cur*frac); if (boost<1) boost=1;   /* plancher : le geste existe même minuscule */
+            int slot=-1;
+            for (int i=0;i<force->n_units;i++) if (force->units[i].type==U_MILICE){ slot=i; break; }
+            if (slot<0 && force->n_units<ARMY_MAX_UNITS){
+                slot=force->n_units++;
+                force->units[slot].type=U_MILICE; force->units[slot].count=0; force->units[slot].moral_courant=0.f;
+            }
+            if (slot>=0){ force->units[slot].count += boost; g_backing_materiel++; }
+        }
+    }
+}
+
 /* SÉCESSION : un pays naît, prend la région, s'installe sur le groupe rebelle. */
 /* INSTALLER la sécession dans le pays `nid` (déjà alloué) : la région bascule à lui,
  * le pays devient un État TERRIEN (capitale/région), la terre libérée se relégitime.
@@ -806,12 +917,16 @@ static void end_civil_war(DiploState *dp, World *w, WorldEconomy *econ, WorldLeg
     } else {
         diplo_settle(dp, w, econ, wl, crown, reb, false);   /* le rebelle sans terre MEURT (polity_death) */
     }
+    /* SOUTIEN ÉTRANGER : `backing_tried` vit sur la Rebellion — un slot `reb` RÉUTILISÉ par
+     * une future guerre civile repart à false via l'init d'allumage (revolt_ignite), donc
+     * aucune RAZ ici (et l'early-exit qui court-circuite end_civil_war n'introduit plus de
+     * staleness). */
     rb->rebel_country=-1;                         /* le lien est soldé (plus d'index vivant à traîner) */
 }
 
 void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *drift,
                  WorldLegitimacy *wl, const WorldProsperity *wp,
-                 DiploState *dp, struct Campaign *camp, int days){
+                 DiploState *dp, struct Campaign *camp, const Statecraft *sc, int days){
     (void)drift; (void)camp;
     rs->last_spawned=-1;
     for (int i=0;i<rs->count;i++){
@@ -843,6 +958,11 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
             int reb=rb->rebel_country;
             bool reb_alive = (reb<w->n_countries && w->country[reb].role!=POLITY_UNCLAIMED);
             bool at_war = reb_alive && diplo_status(dp, reb, rb->owner)==DIPLO_WAR;
+            /* SOUTIEN ÉTRANGER (géopolitique) — tant que la guerre civile est VIVE (le
+             * rebelle tient encore, at_war), un rival hostile de la couronne peut ouvrir
+             * un second front + envoyer un renfort modeste. UNE tentative par guerre
+             * civile (rb->backing_tried, latch SÉRIALISÉ dans rebel_foreign_backing). */
+            if (at_war) rebel_foreign_backing(w, econ, wp, dp, sc, camp, rb);
             /* ── ÉTAT DE L'ARMÉE REBELLE (détection DIRECTE de la défaite) ──
              * L'armée rebelle a-t-elle DÉJÀ livré bataille (camp->army[reb].battles>0) ?
              * Si oui, une DÉROUTE la laisse BRISÉE (broken_days>0), voire DÉTRUITE

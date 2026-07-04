@@ -87,6 +87,10 @@ typedef struct {
      * suit le SCORE DE GUERRE (plus un compare instantané garnison/rebelles). */
     int              rebel_country; /* pays rebelle incarné (-1 = aucun → résolution INSTANTANÉE de repli) */
     int              war_days;      /* durée de la guerre civile (jours) — plafond de patience */
+    bool             backing_tried; /* SOUTIEN ÉTRANGER déjà tenté pour CETTE guerre civile (rate-limit dur).
+                                     * SUR LA STRUCT (sérialisée v56), PAS un static : un reload mid-guerre ne
+                                     * doit PAS ré-offrir (double renfort matériel / 2e bailleur) → déterminisme
+                                     * (même classe que g_wild_contact, audit v47→48). */
 } Rebellion;
 
 typedef struct {
@@ -163,10 +167,14 @@ int   revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
  *   écrasés  → perte de pop + coercition (le pays se raidit) ;
  *   victoire → sécession (un PAYS NAÎT) / concession / coup (couronne changée).
  * dp/camp (Phase 3a) : quand un soulèvement porte un pays rebelle, l'issue suit le
- * SCORE DE GUERRE (diplo_war_score) au lieu du compare instantané ; NULL ⇒ repli. */
+ * SCORE DE GUERRE (diplo_war_score) au lieu du compare instantané ; NULL ⇒ repli.
+ * sc (Phase 3a suite, SOUTIEN ÉTRANGER) : l'OPINION ±100 (#26) d'un rival envers la
+ * couronne assiégée, un des trois signaux d'hostilité (avec belligérance ailleurs +
+ * menace/rancune) qui décident si un bailleur ouvre un second front — peut être NULL
+ * (bancs : pas de porte d'opinion, comportement structurel seul). */
 void  revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *drift,
                   WorldLegitimacy *wl, const WorldProsperity *wp,
-                  DiploState *dp, struct Campaign *camp, int days);
+                  DiploState *dp, struct Campaign *camp, const Statecraft *sc, int days);
 
 /* ---- Membrane : des mots/nombres de JEU, jamais un flottant SCPS ------- */
 int          revolt_active_count(const RevoltState *rs);
@@ -174,6 +182,11 @@ int          revolt_active_count(const RevoltState *rs);
  * ENGAGÉES (armée rebelle déployée) et remportées par les rebelles. Statiques, non sérialisés. */
 long         revolt_civilwar_count(void);
 long         revolt_rebel_victory_count(void);
+/* TÉLÉMÉTRIE soutien étranger (Phase 3a suite) : cumuls PAR SIM (RAZ dans revolt_init) — seconds
+ * fronts ouverts par un rival hostile de la couronne assiégée, dont ceux avec un renfort matériel
+ * envoyé à l'armée rebelle. Statiques, non sérialisés — la géopolitique de la révolte se lit ici. */
+long         revolt_backing_war_count(void);
+long         revolt_backing_materiel_count(void);
 /* LISIBILITÉ FIL (feed) : les guerres civiles INCARNÉES démarrées au DERNIER revolt_scan
  * (tampon statique, RAZ en tête de scan, hors RevoltState ⇒ non sérialisé). sim_day les
  * lit juste après le tick pour pousser un FEED_REVOLT nommé ("Rebelles de X") au lieu

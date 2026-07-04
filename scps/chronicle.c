@@ -335,6 +335,7 @@ int main(int argc, char **argv){
     long tot_ignited=0, tot_seceded=0, tot_coup=0, tot_concession=0, tot_crushed=0, tot_revdead=0;
     long tot_heresy=0, tot_zelote=0;   /* dimension FOI : schismes intérieurs vs cultes étrangers */
     long tot_civilwars=0, tot_rebel_vict=0;   /* Phase 3a : guerres civiles engagées vs remportées par les rebelles */
+    long tot_backing_wars=0, tot_backing_mat=0;   /* Phase 3a suite : seconds fronts + renforts matériels étrangers */
     long tot_techs=0, tot_faustian=0, tot_campaign=0, tot_alliances=0;   /* §D : pactes actifs */
     long tot_sync=0, tot_sync_distinct=0;   /* §syncrétique : nœuds à porte culturelle + dispersion */
     long tot_relig_roots=0, tot_relig_schisms=0, tot_relig_faith=0, tot_relig_minority=0;   /* RELIGION : foi émergente */
@@ -1165,6 +1166,7 @@ int main(int argc, char **argv){
         tot_concession += s.rs->n_concession; tot_crushed += s.rs->n_crushed; tot_revdead += s.rs->pop_lost;
         tot_heresy += s.rs->n_heresy; tot_zelote += s.rs->n_zelote;   /* dimension foi */
         tot_civilwars += revolt_civilwar_count(); tot_rebel_vict += revolt_rebel_victory_count();   /* Phase 3a */
+        tot_backing_wars += revolt_backing_war_count(); tot_backing_mat += revolt_backing_materiel_count();   /* Phase 3a suite */
         /* RELIGION : foi(s) fondée(s) (racines) + schismes + pays fidèles + régions minoritaires. */
         { int rr_roots = religion_root_count();
           tot_relig_roots   += rr_roots;
@@ -1303,6 +1305,8 @@ int main(int argc, char **argv){
            tot_ignited, tot_seceded, tot_coup, tot_concession, tot_crushed, tot_heresy, tot_zelote);
     printf("   guerre civile (Phase 3a) .... %.1f engagée(s)/sim → %.1f victoire(s) rebelle(s)/sim (le reste ÉCRASÉ ; la milice perd souvent contre l'armée de la couronne)\n",
            (double)tot_civilwars/(nsims>0?nsims:1), (double)tot_rebel_vict/(nsims>0?nsims:1));
+    printf("   soutien étranger aux rebelles  %.2f second(s) front(s)/sim · dont %.2f renfort(s) matériel/sim (un rival hostile PROFITE de la couronne affaiblie)\n",
+           (double)tot_backing_wars/(nsims>0?nsims:1), (double)tot_backing_mat/(nsims>0?nsims:1));
     printf("   corruption (le prix des concessions) : %d/%d sims avec ≥1 polity capturée · %.1f capturée(s)/sim · pire-corr moy %.0f/100\n",
            worlds_with_capture, nsims, (double)tot_captured/nsims, (double)tot_worstcorr/nsims);
     printf("   morts au combat (révoltes) .. %ld   (moy. %.0f/sim)\n", tot_revdead, (double)tot_revdead/nsims);

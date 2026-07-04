@@ -437,6 +437,26 @@
      * de conquête/stabilité/garnison, statecraft_agitation 0-100) dans son propre `worst` — le
      * grief politique/de légitimité que la misère-de-groupe (faim/taxe/aliénation/répression/
      * non-intégration) ne capte pas. W_AGITATION_UNREST : poids du bump (agitation/100 × W). */ \
-    X(W_AGITATION_UNREST,     0.20f)
+    X(W_AGITATION_UNREST,     0.20f) \
+    /* PHASE 3a suite — SOUTIEN ÉTRANGER AUX REBELLES (2026-07-04) : une guerre civile ACTIVE
+     * (rebel_country≥0, Phase 3a) attire l'opportunisme d'un rival hostile de la couronne — un
+     * SECOND FRONT (déclaration de guerre à la couronne assiégée) et, modestement, un renfort
+     * matériel à l'armée rebelle. Gaté sur une guerre civile INCARNÉE (> an-12) ⇒ golden intact.
+     * OPINION : seuil de score d'hostilité (déjà en guerre ailleurs + opinion basse/négative +
+     * menace/rancune envers la couronne, mêmes signaux que diplo_relation/diplo_rancor) au-delà
+     * duquel un rival BACKS les rebelles — délibérément HAUT (une combinaison de signaux, pas un
+     * seul suffit) : mesuré, le monde est CHAOTIQUE (une guerre de plus en reformule 100 autres
+     * sur 250 ans) donc ce seuil vise l'ORDRE de grandeur « occasionnel », pas un pourcentage
+     * exact — l'orchestrateur affine par un balayage multi-graines. ATWAR_W : poids du bonus
+     * « déjà belliqueux ». MAXWARS : le bailleur doit compter STRICTEMENT MOINS de guerres en
+     * cours que ce plafond (1 = doit être en PAIX PARTOUT ailleurs — capacité stricte, ne pas
+     * piocher un pays déjà surétendu).
+     * MATERIEL_FRAC : renfort de milice PROPORTIONNEL à la force rebelle ACTUELLE (jamais un
+     * paquet ABSOLU — un plancher fixe doublerait un soulèvement minimal tout en restant
+     * anecdotique pour un gros) ; la fraction reste MODESTE aux deux échelles. */ \
+    X(AI_REBEL_BACKING_OPINION,   1.60f) \
+    X(AI_REBEL_BACKING_ATWAR_W,   0.35f) \
+    X(AI_REBEL_BACKING_MAXWARS,   1.0f) \
+    X(AI_REBEL_MATERIEL_FRAC,     0.20f)
 
 #endif /* SCPS_TUNE_LIST_H */

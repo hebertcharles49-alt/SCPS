@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 55u           /* v55 : RÉVOLTE = VRAIE GUERRE (Phase 3a) — Rebellion gagne `rebel_country`
+#define SAVE_VERSION 56u           /* v56 : SOUTIEN ÉTRANGER aux rebelles — Rebellion gagne `backing_tried`
+                                    * (latch SÉRIALISÉ : le rate-limit du soutien étranger vit sur la guerre civile,
+                                    * pas un module-static ; un reload mid-guerre ne ré-offre plus le renfort ⇒
+                                    * déterminisme, même classe que g_wild_contact). sizeof(RevoltState) change → <v56 refusé.
+                                    * v55 : RÉVOLTE = VRAIE GUERRE (Phase 3a) — Rebellion gagne `rebel_country`
                                     * (le pays rebelle incarné qui déclare la guerre à la couronne ; -1 = aucun,
                                     * repli sur la résolution instantanée) + `war_days` (durée de la guerre civile,
                                     * plafond de patience). L'issue suit désormais le SCORE DE GUERRE (campagne/
