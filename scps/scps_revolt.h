@@ -157,6 +157,10 @@ void  revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *
 
 /* ---- Membrane : des mots/nombres de JEU, jamais un flottant SCPS ------- */
 int          revolt_active_count(const RevoltState *rs);
+/* TÉLÉMÉTRIE guerre civile (Phase 3a) : cumuls PAR SIM (RAZ dans revolt_init) — guerres civiles
+ * ENGAGÉES (armée rebelle déployée) et remportées par les rebelles. Statiques, non sérialisés. */
+long         revolt_civilwar_count(void);
+long         revolt_rebel_victory_count(void);
 const char  *revolt_kind_word   (RebelKind k);   /* "jacquerie"/"sécession"/"coup d'État" */
 const char  *revolt_outcome_word(int outcome);   /* "écrasée"/"indépendance"/… */
 const char  *revolt_class_word  (SocialClass k); /* "Laboureurs"/"Artisans"/"Noblesse" */

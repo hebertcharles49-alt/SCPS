@@ -111,6 +111,12 @@ static float g_coup_grace[SCPS_MAX_COUNTRY];   /* jours de répit restants, par 
  * Généralise le patron coup-only (g_coup_grace) à TOUS les types de révolte. */
 #define REVOLT_GRACE_DAYS 1825.f  /* ~5 ans de répit post-révolte, sur TOUT l'empire */
 static float g_revolt_grace[SCPS_MAX_COUNTRY];   /* jours de répit empire-wide restants, par PAYS */
+/* TÉLÉMÉTRIE guerre civile (Phase 3a) : compteurs de chronique STATIQUES (hors RevoltState ⇒
+ * NON sérialisés, aucun bump save ; RAZ par sim dans revolt_init, lus par chronicle.c). */
+static long g_civilwars = 0;         /* soulèvements devenus une VRAIE guerre (armée rebelle déployée) */
+static long g_rebel_victories = 0;   /* … remportés par les rebelles (l'armée de la couronne battue) */
+long revolt_civilwar_count(void){ return g_civilwars; }
+long revolt_rebel_victory_count(void){ return g_rebel_victories; }
 static float ethos_coup_boost(const PopGroup *g, EthosFaction alien_fac, float coup_tension){
     if (coup_tension<=0.f || g->diaspora || g->integration < SECEDE_INTEG) return 0.f;  /* établi, pas sécessionniste */
     float lean[FAC_COUNT]; group_ethos_lean(&g->culture, lean);
@@ -174,6 +180,7 @@ void revolt_init(RevoltState *rs){ memset(rs,0,sizeof *rs); rs->last_spawned=-1;
     memset(g_coup_grace,0,sizeof g_coup_grace);   /* §C2 : répit pays remis à zéro par sim */
     memset(g_concede_cd,0,sizeof g_concede_cd);   /* G0.2 : cooldown de concession par sim */
     memset(g_revolt_grace,0,sizeof g_revolt_grace);  /* PHASE 1 : CD empire-wide remis à zéro par sim */
+    g_civilwars=0; g_rebel_victories=0;              /* télémétrie guerre civile RAZ par sim */
 }
 
 void revolt_on_conquest(RevoltState *rs, int region){
@@ -545,6 +552,7 @@ static void deploy_rebel_army(DiploState *dp, struct Campaign *camp,
      * foi pour l'hérésie/le zèle, sinon territorial (l'insurrection veut la terre). */
     CasusBelli cb = (rb->kind==REBEL_HERESIE || rb->kind==REBEL_ZELOTE) ? CB_RELIGIOUS : CB_TERRITORIAL;
     diplo_declare_war_cb(dp, rb->rebel_country, rb->owner, cb);
+    g_civilwars++;   /* télémétrie : une guerre civile RÉELLE est engagée (armée rebelle sur la carte) */
 }
 
 /* SÉCESSION : un pays naît, prend la région, s'installe sur le groupe rebelle. */
@@ -820,6 +828,7 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
                 apply_rebel_crush(rs, w, econ, pe, wl, rb);
             } else if (rebel_wins){
                 apply_rebel_victory(rs, w, econ, pe, wl, rb);
+                g_rebel_victories++;   /* télémétrie : les rebelles ont VAINCU la couronne (guerre civile) */
             } else {
                 continue;   /* rien de décisif ce tick (siège/marche en cours) : on attend */
             }
