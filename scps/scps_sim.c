@@ -262,25 +262,10 @@ static void sim_campaign_year(Sim *s, World *w) {
     }
 }
 
-/* RECHERCHE JOUEUR — revenu SAVOIR mensuel de la capitale (réplique le viewer :
- * player_savoir_income_month). Le LaborEcon est calé sur s->player (== s->human_player
- * dans la façade) → prov[0] EST la capitale du joueur. Lecture PURE du LaborEcon. */
-static float sim_player_savoir_month(const LaborEcon *lab){
-    if (!lab || lab->n_prov<1) return 0.f;
-    const LProvince *cap=&lab->prov[0];
-    int ct=cap->cap_tier; if(ct<1)ct=1; if(ct>4)ct=4;
-    float m = 0.5f*(float)ct;                                   /* la capitale : ses nobles/lettrés */
-    for (int b=0;b<cap->n_bld;b++){
-        const LBuilding *bd=&cap->bld[b];
-        if (bd->type==LB_NONE) continue;
-        int slots=building_job_slots(bd->level); if(slots<1)slots=1;
-        float staffing=(float)bd->jobs_filled/(float)slots;
-        staffing = staffing<0.f ? 0.f : (staffing>1.f ? 1.f : staffing);
-        int tier=bd->level+1; if(tier<1)tier=1; if(tier>4)tier=4;
-        m += 0.5f*(float)tier*staffing;                         /* 0.5·tier /mois, au prorata */
-    }
-    return m;
-}
+/* RECHERCHE — le revenu de SAVOIR est désormais UNIFIÉ (joueur ET IA) via econ_country_savoir :
+ * la POP produit la recherche (strates pondérées × bonus bibliothèque). Fin du modèle isolé
+ * LaborEcon/tier-de-capitale, clampé 4, joueur-only (bug-gabarit de l'audit éco). Cf. le bloc de
+ * recherche dans sim_day. */
 
 /* enfile un ordre joueur (façade) — FIFO bornée ; false si pleine (jamais d'écrasement). */
 bool sim_cmd_push(Sim *s, PlayerCmd c){
@@ -542,13 +527,13 @@ void sim_day(Sim *s, World *w) {
         if (!tech_can_research(&s->ts[pl], (TechId)s->research_target, access)){
             s->research_target=-1;                              /* plus accessible (acquise / prérequis manquant) */
         } else {
-            float month = sim_player_savoir_month(s->labor);    /* capital par tier × staffing */
-            float yield = tech_research_yield(&s->ts[pl]);       /* institutions Savoir : ×1..2.5 */
+            float savoir = econ_country_savoir(s->econ, pl);     /* SAVOIR : la POP produit (strates × bibliothèque), annuel — la MÊME source que l'IA */
+            float yield = tech_research_yield(&s->ts[pl]);       /* institutions Savoir (arbre tech) : ×1..2.5 */
             CountryReadout cr = country_readout(s->wp, s->ts, w, pl);
             float prosp = 0.4f + (float)cr.m_prosperite.value/100.f*1.2f;   /* ×[0.4..1.6] selon la prospérité */
             float metab = 1.f + tune_f("AI_METAB_RES_W",AI_METAB_RES_W)     /* MÉTABOLISATION (Temps 1) : creuset → +recherche */
                               * econ_country_metabolized(w, s->econ, pl);
-            s->ts[pl].research_points += (month/30.4f) * yield * prosp * metab; /* /mois → /jour */
+            s->ts[pl].research_points += (savoir/365.f) * yield * prosp * metab; /* /an → /jour */
             if (s->ts[pl].research_points >= tech_cost((TechId)s->research_target, (float)w->country[pl].n_regions)
                                               * tech_diffusion_mult((TechId)s->research_target)){  /* remise de diffusion */
                 tech_research(&s->ts[pl], (TechId)s->research_target, access);   /* DÉBLOQUÉ */

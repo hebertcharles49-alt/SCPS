@@ -1918,8 +1918,7 @@ static void draw_topbar(SDL_Renderer *ren, int win_w, const Sim *s, const World 
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_CHAINES);
     x = topbar_sep(ren, x, yA);
     /* Accumulable : Savoir (clic → l'Arbre de tech, qui EXISTE) · Influence. */
-    float ppop = ai_country_population(w, s->econ, cid);
-    x0=x; x = draw_res(ren,x,yA, "Savoir",    (long)r.m_savoir.value, ai_research_income(&s->ts[cid], ppop),
+    x0=x; x = draw_res(ren,x,yA, "Savoir",    (long)r.m_savoir.value, ai_research_income(s->econ, &s->ts[cid], cid),
                  "Savoir — le niveau de lumière du royaume 0-100 (clic → Arbre de tech) ; le flux est la recherche que la population produit par jour.");
     topbtn_add((SDL_Rect){x0-3,yA-2,x-x0,19}, SYS_TECH);
     x0=x; x = draw_res(ren,x,yA, "Influence", (long)statecraft_influence(s->sc,cid), statecraft_influence_flux(s->sc,s->econ,s->wp,cid),

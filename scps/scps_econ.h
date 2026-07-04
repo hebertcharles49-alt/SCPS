@@ -678,6 +678,7 @@ float econ_off_culture_fraction(const ProvincePop *pp);
  * recherche (boost) et la membrane (hover « métabolisation +X% »). Twin-inverse de
  * econ_off_culture_fraction (qui pèse le foreign NON encore digéré). */
 float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid);
+float econ_country_savoir(const WorldEconomy *econ, int cid);   /* SAVOIR : Σ strates pondérées × bonus bibliothèque (annuel) — la pop produit la recherche */
 /* MÉTABOLISATION VENTILÉE — out[r] = part [0..1] des âmes diaspora d'héritage r digérées.
  * Lu par la barre d'accès tech (Temps 2 : digérer le peuple r ⇒ accès aux signatures de r). */
 void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, int cid,
@@ -686,6 +687,23 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
  * tunable runtime AI_METAB_RES_W (registre scps_tune_list.h). income ×= 1 + W·métabolisé. */
 #ifndef AI_METAB_RES_W
 #define AI_METAB_RES_W 1.0f
+#endif
+/* SAVOIR — fallbacks compilés (registre scps_tune_list.h) : la POP produit la recherche
+ * (0.01·élite + 0.005·bourgeois + 0.001·journalier /an), la bibliothèque module en % (PER, plafond MAX). */
+#ifndef SAVOIR_W_ELITE
+#define SAVOIR_W_ELITE     0.01f
+#endif
+#ifndef SAVOIR_W_BOURGEOIS
+#define SAVOIR_W_BOURGEOIS 0.005f
+#endif
+#ifndef SAVOIR_W_LABORER
+#define SAVOIR_W_LABORER   0.001f
+#endif
+#ifndef SAVOIR_LIB_PER
+#define SAVOIR_LIB_PER     0.067f
+#endif
+#ifndef SAVOIR_LIB_MAX
+#define SAVOIR_LIB_MAX     0.33f
 #endif
 
 /* ── PIPELINE IA — PRÉVISION (étage 1) : ce que l'IA LIT pour voir le mur venir ──

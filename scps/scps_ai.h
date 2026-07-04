@@ -200,8 +200,8 @@ void ai_sync_refresh(const World *w, const WorldEconomy *econ, const RouteNetwor
 /* Population totale de l'empire (assiette de recherche & d'échelle de coût). */
 float    ai_country_population(const World *w, const WorldEconomy *econ, int cid);
 
-/* Revenu de SAVOIR (points de recherche) par JOUR : l'assiette de pop × le
- * rendement du Savoir·Production. Sert au bandeau (Savoir accumulable + flux). */
-float    ai_research_income(const TechState *ts, float pop);
+/* Revenu de SAVOIR (points de recherche) par JOUR : econ_country_savoir (la POP produit —
+ * strates × bibliothèque) × le rendement du Savoir·Production. Bandeau (Savoir + flux). */
+float    ai_research_income(const WorldEconomy *econ, const TechState *ts, int cid);   /* SAVOIR unifié */
 
 #endif /* SCPS_AI_H */

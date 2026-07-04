@@ -1955,9 +1955,9 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
     return best;
 }
 
-float ai_research_income(const TechState *ts, float pop){
-    if (!ts) return 0.f;
-    return (AI_RESEARCH_RATE/365.f) * tech_research_yield(ts) * (1.f + pop/AI_RESEARCH_POPREF);
+float ai_research_income(const WorldEconomy *econ, const TechState *ts, int cid){
+    if (!ts || !econ) return 0.f;   /* SAVOIR unifié : la POP produit (strates × bibliothèque) × institutions Savoir */
+    return (econ_country_savoir(econ, cid)/365.f) * tech_research_yield(ts);
 }
 
 /* S3 — LE PROCHAIN PAS vers une cible (beeline) : remonte la chaîne de prérequis de `target`
@@ -1991,12 +1991,12 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                       const WorldProsperity *wp, int day){
     if (!ts || day < a->next_research_day) return;
     a->next_research_day = day + AI_RESEARCH_CADENCE;
-    float pop = ai_country_population(w, econ, a->cid);
     float nprov = (float)w->country[a->cid].n_regions;   /* coût des techs ∝ √N (provinces), découplé de la pop */
-    /* ASSIETTE : la pop PRODUIT la recherche (revenu ∝ pop) ; le COÛT monte ∝ √N (provinces),
-     * sous-linéaire → l'expansion (wide) est récompensée (coût marginal < apport), sans snowball. */
-    float income = (AI_RESEARCH_RATE/365.f)*AI_RESEARCH_CADENCE
-                 * tech_research_yield(ts) * (1.f + pop/AI_RESEARCH_POPREF);
+    /* SAVOIR unifié (la MÊME source que le joueur, econ_country_savoir) : la POP produit la recherche
+     * (strates pondérées × bonus BIBLIOTHÈQUE) ; le COÛT monte ∝ √N (provinces), sous-linéaire →
+     * l'expansion (wide) est récompensée (coût marginal < apport), sans snowball. */
+    float income = (econ_country_savoir(econ, a->cid)/365.f)*AI_RESEARCH_CADENCE
+                 * tech_research_yield(ts);
     /* MÉTABOLISATION (Temps 1) — un empire CREUSET (qui a digéré des âmes d'un autre
      * héritage) cherche plus vite : « incorporer d'autres gens dans sa culture fonctionne ».
      * Signal ~0 tôt (l'assimilation prend des décennies) ⇒ la fenêtre golden ne bouge pas. */

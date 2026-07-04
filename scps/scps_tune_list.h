@@ -86,6 +86,13 @@
      * income ×= 1 + W·métabolisé. Le signal est ~0 tôt (l'assimilation prend des décennies)
      * ⇒ golden-safe. W=1 ⇒ « métabolisation X% = +X% recherche » (lisible au hover) */ \
     X(AI_METAB_RES_W,         1.0f) \
+    /* SAVOIR — la POP produit la recherche (0.01·élite + 0.005·bourgeois + 0.001·journalier /an) ;
+     * la branche BIBLIOTHÈQUE module en % (Σ build.savoir · PER, plafonné MAX). Unifié joueur+IA. */ \
+    X(SAVOIR_W_ELITE,         0.01f) \
+    X(SAVOIR_W_BOURGEOIS,     0.005f) \
+    X(SAVOIR_W_LABORER,       0.001f) \
+    X(SAVOIR_LIB_PER,         0.067f) \
+    X(SAVOIR_LIB_MAX,         0.33f) \
     /* BARRE D'ACCÈS TECH (Temps 2) — la part d'âmes DIGÉRÉES d'un héritage qui débloque ses
      * signatures par TIER : ≥T1 ⇒ tier-1, ≥T2 ⇒ tier-2, ≥T3 ⇒ la signature tier-3. Voie ACTIVE,
      * en MAX avec la profondeur de contact (commerce/gouvernance). « X% de B ⇒ techs de B ». */ \

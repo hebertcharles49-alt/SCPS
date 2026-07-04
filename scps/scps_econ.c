@@ -411,6 +411,30 @@ static float metab_diffuse_coeff(uint8_t arrival){
     }
 }
 
+/* SAVOIR — la POP produit la recherche (même patron que la puissance commerciale) : Σ des trois
+ * strates pondérées (élite > bourgeois > journalier), × le bonus en % de la BRANCHE BIBLIOTHÈQUE
+ * (Σ build.savoir, clampé — PROPORTIONNEL, pas un montant fixe). Base ANNUELLE. Source UNIQUE,
+ * joueur et IA : c'est la pop qui produit, l'édifice qui module « quoi ». */
+float econ_country_savoir(const WorldEconomy *econ, int cid){
+    if (!econ || cid<0) return 0.f;
+    float we=tune_f("SAVOIR_W_ELITE",SAVOIR_W_ELITE),
+          wb=tune_f("SAVOIR_W_BOURGEOIS",SAVOIR_W_BOURGEOIS),
+          wl=tune_f("SAVOIR_W_LABORER",SAVOIR_W_LABORER);
+    double base=0.0, lib=0.0;
+    for (int r=0;r<econ->n_regions;r++){
+        const RegionEconomy *re=&econ->region[r];   /* strata & build : l'AGRÉGAT RÉGION est la vue fiable (cf. puissance commerciale / trade) */
+        if (re->owner!=cid) continue;
+        base += (double)we*re->strata[CLASS_ELITE].pop
+              + (double)wb*re->strata[CLASS_BOURGEOIS].pop
+              + (double)wl*re->strata[CLASS_LABORER].pop;
+        lib  += (double)re->build.savoir;   /* branche bibliothèque : bibliothèque/monastère/observatoire */
+    }
+    float pct=(float)(lib*tune_f("SAVOIR_LIB_PER",SAVOIR_LIB_PER)), mx=tune_f("SAVOIR_LIB_MAX",SAVOIR_LIB_MAX);
+    if (pct<0.f) pct=0.f;
+    if (pct>mx)  pct=mx;
+    return (float)base*(1.f+pct);   /* base annuelle × (1 + % bibliothèque) */
+}
+
 float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid){
     if (!w || !econ || cid<0 || cid>=w->n_countries) return 0.f;
     int cp = w->country[cid].capital_prov;
