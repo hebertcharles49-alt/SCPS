@@ -622,3 +622,42 @@ canaux RC orphelins) · **1 réfuté** (C10). §5 : mesuré décoratif, reporté
 **Phase 5** : patches minimaux, `make` + golden APRÈS CHAQUE patch (PRÉSERVANT cassé = bug→rejet ;
 CHANGEANT cassé = re-baseline après revue HUMAINE, jamais silencieux). §5 puissance commerciale
 seulement après C5 + re-mesure.
+
+---
+
+### [015] 2026-07-05 — Phase 4 · vérifs d'ouverture (les 2 incertitudes du conseiller LEVÉES)
+
+Deux greps ciblés (Invariant 2) résolvent les deux INCERTAIN de [012] :
+
+- **C7 sigmoïde bit-exact — CONFIRMÉ PRÉSERVANT** : `scps_prosperity.c` `sigmoid(x)` = `1.f/(1.f+expf(-x))`
+  — **IDENTIQUE au byte** à `scps_core.c:scps_sigmoid`. Donc : culler le helper local `sigmoid` de
+  prosperity au profit de `scps_sigmoid`, et router `sync_gate` (culture) → `scps_metabolisation`
+  (même assemblage d'arguments `0.8(P−D∞)+0.35(K−5)`) = **byte-identique**. C7 est le patch le plus
+  sûr du lot, famille PRÉSERVANT FERMÉE.
+- **C4 ordre de tick — PROBLÈME CONFIRMÉ (plus INCERTAIN)** : `demography_tick` = MENSUEL
+  (`scps_sim.c:sim_day`, day%30==29) ; `prosperity_tick` = ANNUEL (day%365==364) ; et
+  `demography_contact_tick` (annuel) tourne AVANT `prosperity_tick` dans le MÊME bloc annuel. Les
+  CONSOMMATEURS de K/P (démographie) tournent donc AVANT le PRODUCTEUR (prospérité). Brancher la vraie
+  K/P (C4) exige soit REORDONNER (prosperity_tick avant contact_tick + exposer cp->K/P persistant pour
+  le tick mensuel), soit ASSUMER un lag (≤1 an / ≤11 mois). **Décision de design pour l'humain** — le
+  reorder touche l'ordre canonique du tick annuel (risque de re-baseline en cascade au-delà de C4).
+
+**Phase 4 : ce qui reste (synthèse) + ce qui appelle une DÉCISION HUMAINE** (consultation, cf. l'éthos
+de la mission — présenter, ne pas trancher unilatéralement les choix porteurs) :
+1. **Collapse tier savoir** ([002]) — le terme TIER se repointe proprement sur `capitale_max_tier(pop
+   canonique)` (le motif sain, [002] fait n°2). ⚠ mais DEUX décisions : (a) le clamp 4 vs l'échelle
+   pleine 1→7 — équilibre du revenu de savoir : PRÉSERVER le clamp (patch pur) ou l'ouvrir (CHANGEANT
+   assumé) ? (b) le terme LBuilding (staffing des bâtiments capitale LaborEcon) : le repointer sur les
+   édifices Savoir d'econ RISQUE un double-compte avec `tech_research_yield` — à trancher (retirer ce
+   terme, ou le mapper avec soustraction du yield).
+2. **Dissolution LaborEcon** — table de repoint : savoir→province-capitale econ · levée
+   (`campaign_refill`/`army_recruit` prennent `LaborEcon*`)→pool pop econ (où loge `pop_in_army` ?
+   champ à créer côté econ OU réutiliser un mobilisé existant) · topbar viewer (LR_FOOD/pop_in_army)→
+   food econ + mobilisé · LMarket→retrait pur. **BUMP save** (section LABO retirée) à GROUPER avec le
+   retrait de `PopGroup.L` (C1) = UN seul bump. Décision humaine : timing du bump (maintenant vs
+   différer), et si la levée garde sa granularité capitale-only ou passe multi-province.
+3. **Ordre des patches** : les PRÉSERVANTS (C7 · C6 rename · C2/C3/C9 doc) peuvent tomber sans
+   consultation (golden reste vert, vérifiable). Les BUMPS et CHANGEANTS attendent le GO humain.
+
+⇒ **Checkpoint naturel** : le carnet porte tout le nécessaire ; la suite (rédaction des specs de patch
++ exécution Phase 5) demande des arbitrages humains listés ci-dessus. Présenter et attendre.
