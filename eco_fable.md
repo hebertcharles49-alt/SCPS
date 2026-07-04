@@ -9,14 +9,16 @@
 
 ---
 
-## RÉSUMÉ EXÉCUTIF (distillé, maintenu en tête — dernière mise à jour : entrée [016])
+## RÉSUMÉ EXÉCUTIF (distillé, maintenu en tête — dernière mise à jour : entrée [019])
 
-- **État** : Phases 0-4 CLOSES. **Phase 5 EN COURS — 5 patches landés & poussés ([016]-[017])** :
-  C7 σ · C6 rename · C2/C3/C9 doc (PRÉSERVANTS) · **C5 le trou trade×guerre** (CHANGEANT) · **SAVOIR
-  UNIFIÉ** (CHANGEANT — le bug-gabarit D'ORIGINE : la pop produit la recherche, joueur+IA, biblio en %,
-  mesuré façon C8). golden re-baseliné (C5 + savoir), determinism STABLE, bancs 38 runnable verts,
-  viewer 0 warning. RESTE (big-refactor + décisions d'équilibre) : dissolution LaborEcon complète
-  (+bump, grouper C1 ; le savoir en est déjà débranché) · §5 (re-mesurer post-C5) · C4 · C3 orphelins.
+- **État** : **MISSION CLOSE ([019]).** Phases 0-5 CLOSES. Patches landés & poussés : C7 σ · C6 rename ·
+  C2/C3/C9 doc · **C5 trou trade×guerre** · **SAVOIR UNIFIÉ** ([016]-[017]) · **VIEWER STRIP** (5768→278) ·
+  **DISSOLUTION LaborEcon** (golden-SAFE, save v59 — la levée LIT les strates econ, [019]). Les 4 « reste »
+  TRANCHÉS : **C1 REFUTÉ** (PopGroup.L = primitif vivant : coercition + agit_base→révolte + loyauté readout,
+  Invariant 2) · **C4** socle governance_P DÉLIBÉRÉ (non-action, le code prévient contre le double-compte) ·
+  **§5** décoratif (cap ne mord jamais ; skip documenté) · **C3** orphelins RC (chantier de DESIGN, pas un
+  bug). determinism STABLE · savetest v59 byte-identique · test 37/37 runnable (3 KO Windows pré-existants) ·
+  0 warning. **Zéro dette de correction ouverte** — ce qui reste est du DESIGN à arbitrer, pas de l'audit.
 - **Verdicts Phase 3 ([012])** : 2 bugs de câblage (C5 trou trade×guerre · C4 famille 5.f) · 3 dettes
   de doc/nommage (C2 stubs · C6 productivite · C9 faith de jure/de facto) · 1 silo à retirer (C1
   PopGroup.L, +bump) · 1 duplication (C7 σ ×4, unifier vers core) · 1 chantier à part (C3 ~12 canaux
@@ -758,3 +760,67 @@ de levée réécrits, format de save triple-change) = **session DÉDIÉE**, PAS 
 déjà énorme (un arrêt mi-chemin = build CASSÉ + risque sur le save). Et c'est du **NETTOYAGE**
 architectural — le bug FONCTIONNEL du savoir est DÉJÀ corrigé ([017]) — donc l'urgence est moindre
 qu'elle ne l'était. À lancer avec budget frais + savetest rigoureux à chaque bump.
+
+---
+
+### [019] 2026-07-05 — CLÔTURE DE LA MISSION : dissolution EXÉCUTÉE (golden-SAFE) + les 4 « reste » TRANCHÉS
+
+Session dédiée lancée (budget frais, cf. [018]). Deux gros morceaux LANDÉS + poussés, puis les 4 items
+« reste » tranchés — plusieurs par RÉFUTATION : l'audit conclut qu'il n'y a **plus de bug à corriger**.
+
+**VIEWER STRIP (commit d558a71)** — `viewer.c` 5768 → 278 lignes. Front interactif = Godot ; ne restent
+que les 6 outils CLI headless (savetest/fuzztest/dump-lang/readout/fnv/lang-audit) + sim_rebuild + les
+wrappers de save partagée. `#include <SDL.h>` gardé pour la SEULE compat d'entrée MinGW (-Dmain=SDL_main) ;
+aucun appel SDL ; lien Makefile INCHANGÉ. 0 warning, savetest byte-identique. Retire au passage le 3e
+lecteur de LaborEcon (topbar LR_FOOD/pop_in_army) → allège la dissolution.
+
+**DISSOLUTION LaborEcon (commit 08e745d)** — EXÉCUTÉE, et — SURPRISE — **golden-SAFE (PAS de re-baseline)**,
+contre l'attente [018]. Le plan est suivi mais SIMPLIFIÉ par trois découvertes :
+1. **La levée est un ADAPTATEUR, pas un consommateur.** Les deux pipelines (campaign_refill JOUEUR +
+   warhost seed_scratch IA) ne faisaient que SEMER un LaborEcon transitoire depuis econ (labor_seed_from_world)
+   pour que `class_free` lise `pop_by_class`. On repointe `army_recruit/can_recruit/class_free` sur
+   `(const WorldEconomy*, int cid)` → lecture DIRECTE des strates econ (Σ region.strata[cl].pop). L'adaptateur
+   (s->labor + h->scratch) ÉVAPORE ; `wh_country_elite` remplace seed_scratch.
+2. **`pop_in_army` était MORT** — écrit dans LProvince, lu SEULEMENT par la mobilité labor (morte : la
+   façade recalcule la capitale depuis econ) + la topbar viewer (retirée). SUPPRIMÉ, pas migré (le [018]
+   prévoyait de le CRÉER côté econ — inutile).
+3. **Pas de migration capitale_*** — au lieu de déplacer les 6 pures vers un module neuf (ripple Makefile +
+   cascade de link — la fausse-piste de début de session), on SLIM `scps_labor.{c,h}` : elles RESTENT dans
+   labor.o (lié partout) ; tout l'état (struct/LProvince/LMarket/tick/mobility) part.
+GOLDEN IDENTIQUE : dans la fenêtre 12 ans les gates de recrutement passent IDENTIQUEMENT (strates econ
+réelles vs semis labor 80/15/5 — les pools sont larges, le gate ne mord pas différemment) ET pop_in_army
+était mort ⇒ **PRÉSERVANT, pas CHANGEANT** (l'inverse de la prévision). SAVE : section LABO retirée →
+SAVE_VERSION 58→59 ; WarHost.scratch retiré (pointeur runtime, save-neutre). Vérifié : determinism STABLE ·
+savetest v59 byte-identique (2/2 × 9/11/42) · test 37/37 runnable (3 KO Windows pré-existants, crashs
+rc=127 à 0 assertion) · sweep 9×3×200 SAIN (armée 44→91, 20 guerres/sim, satisfaction 74/83/90 %, hégémon
+mortel, IPM 1.02).
+
+**LES 4 « RESTE » TRANCHÉS** :
+- **C1 (retrait `PopGroup.L`) — REFUTÉ (Invariant 2, 3e prise après C10/TechState.L).** L'A10
+  « écrit-jamais-lu » est FAUX. Grep : `PopGroup.L` pilote (a) le GATE DE COERCITION (`demography.c` :
+  `g->L >= COERCE_L_THRESH` → on ne réprime que le restif), (b) `agit_base = agit_from_L(g->L)` → révolte,
+  (c) le READOUT `r->loyaute = band_humeur(g->L)`, (d) des agrégats pop-pondérés, (e) les issues de révolte.
+  C'est un PRIMITIF vivant (loyauté 0-10), pas un silo ; agit_base en DÉRIVE (« migrer sur agit_base » est
+  impossible — c'est la dérivée). Les « trois L » sont TROIS concepts distincts, tous vivants (consentement
+  régional wl->L · loyauté de groupe PopGroup.L · ordre abstrait TechState.L). **PAS de retrait, PAS de bump.**
+- **C4 (`governance_P` stub 5.f écrase RC_P) — DÉLIBÉRÉ, pas un bug (le CODE le documente).**
+  `prosperity.c:131-134` : « SOCLE NEUTRE DÉLIBÉRÉ, pas un oubli. Ne PAS re-router governance_P vers
+  re->build.P_open — l'ouverture BÂTIE est DÉJÀ sommée dans st.P (bP) ». Re-router double-compterait. RC_P
+  VIT via le `P` local pour PE/babel/surchauffe ; seul le canal ORDRE prend le socle neutre, faute de
+  PRODUCTEUR (une politique nationale d'ouverture/centralisation — une FEATURE, pas un fix). **NON-ACTION.**
+- **§5 (puissance commerciale) — DÉCORATIF, skip assumé.** Mesuré [013] : volume externe réel 2-7/mois vs
+  budget de cap 7-270/mois (10-40× trop grand) ⇒ le cap ne mord JAMAIS. Le vrai commerce inter-pays fuyait
+  par le trou A1 — corrigé par C5. Le câbler serait un recalibrage d'équilibre (budget sur volume réel),
+  pas un bug. **Skip documenté** (mécanisme inerte, dialable si on veut un jour un vrai plafond).
+- **C3 (~12 canaux RC orphelins) — chantier de DESIGN, pas un bug.** `prosperity.c:238` : « SEULS 7 canaux
+  ch[RC_*] sont LUS en prod ». Les ~12 autres sont COMPUTÉS mais non consommés — roadmap ou calcul mort ;
+  décider consommer-ou-retirer par canal exige l'INTENTION de chaque coordonnée religieuse (design), pas un
+  correctif. Aucun n'est un bug FONCTIONNEL (des floats non lus, inertes). **Documenté comme chantier.**
+
+**BILAN MISSION.** Les VRAIS défauts trouvés sont TOUS corrigés : le bug-gabarit du savoir ([017]), le trou
+trade×guerre C5 ([016]), la dissolution LaborEcon (ici). Les restants se révèlent, à l'inspection rigoureuse,
+des NON-bugs (C1 primitif vivant · C4 socle délibéré) ou des DÉCISIONS/design (§5 décoratif · C3 orphelins).
+L'audit de câblage & le refactor mathématique sont **CLOS** : la chaîne labor→culture→religion→econ→stab est
+cartographiée, ses double-sources tranchées (gabarit collapsé, savoir unifié, LaborEcon dissous), ses trous
+bouchés (C5), ses faux-positifs réfutés (C1, C4, C10). Zéro dette de correction ouverte ; ce qui reste
+(§5 recalibrage · C3 wiring · C4 policy-feature) est du DESIGN à arbitrer, pas de l'audit à finir.
