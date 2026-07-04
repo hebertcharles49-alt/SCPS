@@ -25,8 +25,8 @@
 
 typedef struct {
     ArmyState  army[SCPS_MAX_COUNTRY];   /* l'armée levée de chaque pays (persiste) */
-    LaborEcon *scratch;                   /* labor transitoire, re-semé par pays */
     int        levy[SCPS_MAX_COUNTRY];   /* jauge de LEVÉE (sidebar §5) : 0 basse · 1 garde · 2 guerre · 3 masse */
+    /* (le `scratch` LaborEcon a disparu : la levée LIT désormais les strates econ du pays.) */
 } WarHost;
 
 /* Jauge de levée (décision joueur/IA) : module la cadence de mobilisation. La LEVÉE

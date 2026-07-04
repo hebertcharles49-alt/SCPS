@@ -69,7 +69,7 @@ static bool g_sim_ready      = false;
  *    d'amorce pour une carte déjà vivante. ── */
 static void sim_rebuild(Sim *s, World *w) {
     if (!s->econ || !s->wp || !s->wl || !s->net || !s->ts || !s->sc
-        || !s->ag || !s->ev || !s->drift || !s->labor || !s->rs || !s->host || !s->camp || !s->navy || !s->eg) return;
+        || !s->ag || !s->ev || !s->drift || !s->rs || !s->host || !s->camp || !s->navy || !s->eg) return;
     culture_player_compose(g_player_heritage, g_setup_ethos, heritage_default_build(g_player_heritage));
     culture_reset_cid_map();
     { int ord=1;
@@ -173,7 +173,6 @@ int main(int argc, char **argv) {
     sim.ag   = (AgencyState*)     malloc(sizeof(AgencyState));
     sim.ev   = (EventsState*)     malloc(sizeof(EventsState));
     sim.drift= (ModifierStack*)   malloc(sizeof(ModifierStack));
-    sim.labor= (LaborEcon*)       malloc(sizeof(LaborEcon));
     sim.dp   = (DiploState*)      malloc(sizeof(DiploState));
     sim.rn   = (RouteNetwork*)    malloc(sizeof(RouteNetwork));
     sim.rs   = (RevoltState*)     malloc(sizeof(RevoltState));

@@ -222,27 +222,32 @@ ArmyDoctrine army_doctrine(const TechState *t){
     return d;
 }
 
-static long class_free(const ArmyState *a, const LaborEcon *e, LaborClass cl){
-    long pool=0; for (int i=0;i<e->n_prov;i++) pool+=e->prov[i].pop_by_class[cl];
+/* Le POOL par classe du pays `cid` = Σ des strates econ de SES régions (la pop UNIQUE,
+ * fin de l'adaptateur LaborEcon) ; moins les paquets déjà affectés à l'armée. */
+static long class_free(const ArmyState *a, const WorldEconomy *econ, int cid, LaborClass cl){
+    long pool=0;
+    if (econ) for (int r=0;r<econ->n_regions;r++)
+        if (econ->region[r].owner==cid) pool += (long)econ->region[r].strata[cl].pop;
     long assigned = a->pop_by_class_in_army[cl];
     return pool - assigned;     /* pop de cette classe NON encore affectée à l'armée */
 }
 
-bool army_can_recruit(const ArmyState *a, const LaborEcon *e, UnitType t, long count){
+bool army_can_recruit(const ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count){
     if (t<0||t>=U_COUNT||count<=0) return false;
     const UnitDef *d=&UNITS[t];
-    if (a->weapons[d->weapon] < count) return false;                 /* pas d'armes → pas d'unité */
-    if (class_free(a,e,d->from) < count*POP_PER_UNIT) return false;  /* pas la bonne classe */
+    if (a->weapons[d->weapon] < count) return false;                       /* pas d'armes → pas d'unité */
+    if (class_free(a,econ,cid,d->from) < count*POP_PER_UNIT) return false; /* pas la bonne classe */
     return true;
 }
 
-long army_recruit(ArmyState *a, LaborEcon *e, UnitType t, long count){
-    if (!army_can_recruit(a,e,t,count)) return 0;
+long army_recruit(ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count){
+    if (!army_can_recruit(a,econ,cid,t,count)) return 0;
     const UnitDef *d=&UNITS[t];
     a->weapons[d->weapon]  -= count;                 /* consomme les armes */
-    /* prélève la pop : AFFECTÉE à l'armée, mais toujours dans le POOL (se reproduit). */
+    /* prélève la pop : AFFECTÉE à l'armée (a->pop_by_class_in_army), mais toujours dans
+     * le POOL econ (se reproduit). L'ancien compteur pop_in_army de LaborEcon (mort :
+     * lu par la mobilité labor & la topbar viewer, tous deux retirés) a disparu. */
     a->pop_by_class_in_army[d->from] += count*POP_PER_UNIT;
-    if (e->n_prov>0) e->prov[0].pop_in_army += count*POP_PER_UNIT;   /* assignation, pas retrait */
     /* fusionne dans une unité existante du même type, sinon en crée une. */
     for (int i=0;i<a->n_units;i++) if (a->units[i].type==t){ a->units[i].count+=count; return count; }
     if (a->n_units<ARMY_MAX_UNITS){

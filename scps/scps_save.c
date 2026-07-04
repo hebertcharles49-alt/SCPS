@@ -120,7 +120,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     ok&=sv_w(f,SVT_AGCY, s->ag,    sizeof *s->ag);
     ok&=sv_w(f,SVT_EVNT, s->ev,    sizeof *s->ev);
     ok&=sv_w(f,SVT_DRFT, s->drift, sizeof *s->drift);
-    ok&=sv_w(f,SVT_LABO, s->labor, sizeof *s->labor);
+    /* SVT_LABO retiré (dissolution LaborEcon : plus d'état labor à sérialiser). */
     ok&=sv_w(f,SVT_DIPL, s->dp,    sizeof *s->dp);
     ok&=sv_w(f,SVT_RTES, s->rn,    sizeof *s->rn);
     ok&=sv_w(f,SVT_RVLT, s->rs,    sizeof *s->rs);
@@ -340,7 +340,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     ok&=sv_r(f,SVT_AGCY, s->ag,    sizeof *s->ag);
     ok&=sv_r(f,SVT_EVNT, s->ev,    sizeof *s->ev);
     ok&=sv_r(f,SVT_DRFT, s->drift, sizeof *s->drift);
-    ok&=sv_r(f,SVT_LABO, s->labor, sizeof *s->labor);
+    /* SVT_LABO retiré (dissolution LaborEcon). */
     ok&=sv_r(f,SVT_DIPL, s->dp,    sizeof *s->dp);
     ok&=sv_r(f,SVT_RTES, s->rn,    sizeof *s->rn);
     ok&=sv_r(f,SVT_RVLT, s->rs,    sizeof *s->rs);

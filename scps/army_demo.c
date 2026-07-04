@@ -30,12 +30,18 @@ static void ok(const char *what, bool cond){
 /* Une économie de jouet : pop par classe (P-arc : la couche matériau labor a été
  * éradiquée — les armes viennent désormais du marché macro ; le banc remplit le
  * tampon a->weapons[W_*] DIRECTEMENT pour éprouver l'enrôlement). */
-static void setup_labor(LaborEcon *e, long laborer, long elite){
-    memset(e,0,sizeof(*e)); e->n_prov=1;
-    LProvince *p=&e->prov[0]; p->prov=0; p->colonized=true;
-    p->pop_by_class[LAB_LABORER]=laborer; p->pop_by_class[LAB_ELITE]=elite;
-    p->pop=laborer+elite;
-    e->market.supply=1.f; e->market.price=1.f;
+/* Une éco de jouet : un pays (cid 0) d'UNE région, avec sa pop par classe (les
+ * strates econ — la pop UNIQUE que la levée LIT désormais, fin de LaborEcon). Les
+ * armes viennent du marché macro ; le banc remplit a->weapons[W_*] DIRECTEMENT. */
+static void setup_econ(WorldEconomy *e, long laborer, long elite){
+    memset(e,0,sizeof(*e)); e->n_regions=1;
+    RegionEconomy *r=&e->region[0]; r->owner=0;
+    r->strata[CLASS_LABORER].pop=(float)laborer;
+    r->strata[CLASS_ELITE].pop  =(float)elite;
+}
+/* Pop enrôlée, toutes classes (remplace l'ancien labor_pop_in_army). */
+static long army_pop_enrolled(const ArmyState *a){
+    long s=0; for (int c=0;c<LAB_CLASS_COUNT;c++) s+=a->pop_by_class_in_army[c]; return s;
 }
 static ArmyState one(UnitType t, long count){
     ArmyState a; army_init(&a); a.n_units=1; a.units[0].type=t; a.units[0].count=count;
@@ -54,7 +60,7 @@ static int winrate(UnitType ta,long ca, UnitType tb,long cb, float terrain, int 
 
 int main(int argc, char **argv){
     uint32_t seed=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):42u;
-    LaborEcon *e=malloc(sizeof(LaborEcon));
+    WorldEconomy *e=malloc(sizeof(WorldEconomy));
     if(!e){ fprintf(stderr,"OOM\n"); return 1; }
 
     printf("══════════════════════════════════════════════════════════════\n");
@@ -63,31 +69,31 @@ int main(int argc, char **argv){
 
     /* ═══ 1. PAS UN BOUTON : pop + armes (le tampon, rempli au marché macro) + temps ══ */
     printf("\n── 1. Lever une armée coûte pop + ARMES (le tampon de combat) ──\n");
-    setup_labor(e, 2000, 200);
+    setup_econ(e, 2000, 200);
     ArmyState army; army_init(&army);
     ok("sans armes en stock, lever un piquier ÉCHOUE (ce n'est pas un bouton)",
-       !army_can_recruit(&army,e,U_PIQUIER,1) && army_recruit(&army,e,U_PIQUIER,1)==0);
+       !army_can_recruit(&army,e,0,U_PIQUIER,1) && army_recruit(&army,e,0,U_PIQUIER,1)==0);
     /* P-arc : plus de fabrication LRes — le tampon de combat se remplit du marché macro
      * (warhost). Le banc le pose DIRECTEMENT pour éprouver l'enrôlement. */
     army.weapons[W_PIQUE]=5;
-    long got=army_recruit(&army,e,U_PIQUIER,2);
+    long got=army_recruit(&army,e,0,U_PIQUIER,2);
     printf("   levée de 2 piquiers : %ld unités ; armes restantes %ld ; pop en armée %ld\n",
-           got, army.weapons[W_PIQUE], labor_pop_in_army(e));
+           got, army.weapons[W_PIQUE], army_pop_enrolled(&army));
     ok("avec armes en tampon + pop, la levée RÉUSSIT (consomme les armes)",
-       got==2 && army.weapons[W_PIQUE]==3 && labor_pop_in_army(e)==200);
+       got==2 && army.weapons[W_PIQUE]==3 && army_pop_enrolled(&army)==200);
 
     /* ═══ 2. LA CLASSE : cavalerie ← élite ; piétaille ← commun ═════════ */
     printf("\n── 2. La cavalerie noble vient de l'ÉLITE ; la masse fournit la piétaille ──\n");
-    setup_labor(e, 3000, 0);                 /* aucune élite */
+    setup_econ(e, 3000, 0);                  /* aucune élite */
     ArmyState a2; army_init(&a2);
     a2.weapons[W_MONTURE_H]=3;
     ok("sans élite, impossible de lever de la cavalerie lourde",
-       !army_can_recruit(&a2,e,U_CAV_LOURDE,1));
-    setup_labor(e, 3000, 300);               /* avec élite */
+       !army_can_recruit(&a2,e,0,U_CAV_LOURDE,1));
+    setup_econ(e, 3000, 300);                /* avec élite */
     ArmyState a3; army_init(&a3);
     a3.weapons[W_MONTURE_H]=2; a3.weapons[W_PIQUE]=5;
-    ok("avec une élite, la cavalerie lourde se lève", army_recruit(&a3,e,U_CAV_LOURDE,2)==2);
-    ok("la masse (commun) fournit la piétaille", army_recruit(&a3,e,U_PIQUIER,5)==5);
+    ok("avec une élite, la cavalerie lourde se lève", army_recruit(&a3,e,0,U_CAV_LOURDE,2)==2);
+    ok("la masse (commun) fournit la piétaille", army_recruit(&a3,e,0,U_PIQUIER,5)==5);
 
     /* ═══ 3. LES CONTRES (le réseau pierre-feuille-ciseaux) ════════════ */
     printf("\n── 3. Le contre PRIME sur la qualité (sur 21 batailles, à dés variés) ──\n");

@@ -585,13 +585,9 @@ STRUCTURAL_DEMO_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_demograp
 structural_demo: $(STRUCTURAL_DEMO_OBJS)
 	$(CC) $(STRUCTURAL_DEMO_OBJS) -o $@ -lm
 
-# ---- L'économie des populations : main-d'œuvre, jobs, matériaux, marché ---
-# La prod scale sur les JOBS REMPLIS ; les sorties LISENT la géo du worldgen.
-LABOR_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_culture.o \
-                   $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_heritage.o \
-                   $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_labor_demo.o
-labor_demo: $(LABOR_DEMO_OBJS)
-	$(CC) $(LABOR_DEMO_OBJS) -o $@ -lm
+# ---- (labor_demo RETIRÉ : le module LaborEcon a été DISSOUS — la pop est unique
+# ---- (strates econ), la levée LIT ces strates. scps_labor est réduit aux fonctions
+# ---- PURES de la capitale (voir scps_labor.h) ; il n'y a plus d'économie à éprouver.)
 
 # ---- Les armées : recrutement, armes, contres, combat au dé ---------------
 # Bâti sur l'économie (pop par classe + armes fabriquées). Autonome (pas de SDL).
@@ -601,8 +597,13 @@ POP_DEMO_OBJS := $(OBJDIR)/scps_scps_core.o $(OBJDIR)/scps_scps_popsim.o $(OBJDI
 pop_demo: $(POP_DEMO_OBJS)
 	$(CC) $(POP_DEMO_OBJS) -o $@ -lm
 
-ARMY_DEMO_OBJS := $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_army.o \
-                  $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_army_demo.o
+# army_demo : la levée LIT les strates econ (dissolution LaborEcon) ⇒ il tire econ.o + ses deps.
+ARMY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
+                  $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_tech.o $(OBJDIR)/scps_scps_core.o \
+                  $(OBJDIR)/scps_scps_legitimacy.o $(OBJDIR)/scps_scps_prosperity.o $(OBJDIR)/scps_scps_factions.o \
+                  $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o $(OBJDIR)/scps_scps_modifier.o \
+                  $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_labor.o $(OBJDIR)/scps_scps_diplo.o \
+                  $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_army_demo.o
 army_demo: $(ARMY_DEMO_OBJS)
 	$(CC) $(ARMY_DEMO_OBJS) -o $@ -lm
 
@@ -681,7 +682,7 @@ BENCH_BINS := core_demo monde_reel readout_demo heritage_demo tech_demo faith_de
   intertrade_demo routes_demo save_io_demo statecraft_demo pop_demo army_demo \
   demography_demo demography_integ_demo revolt_demo social_demo agency_demo \
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \
-  econ_production_demo labor_demo missions_demo ai_demo diplo_demo warhost_demo \
+  econ_production_demo missions_demo ai_demo diplo_demo warhost_demo \
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
   endgame_demo audit_eco lang_demo scps_api_demo audio_demo econ_demo culture_demo navy_demo
 TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan fx_proof

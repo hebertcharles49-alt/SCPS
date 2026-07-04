@@ -180,7 +180,8 @@ bool campaign_can_refill(const Campaign *c, const WorldEconomy *econ, int owner)
  * levés, `mat` matériaux pour les armes (achetés au marché, or si manque). Lecture. */
 void campaign_refill_cost(const Campaign *c, int owner, long *men, long *mat);
 /* RENFORCE l'armée : +1 paquet par type d'unité (fabrique l'arme en pompant le
- * marché si besoin, lève la pop), payé sur l'éco `labor`. Renvoie les paquets ajoutés. */
-int  campaign_refill(Campaign *c, int owner, WorldEconomy *econ, LaborEcon *labor);  /* F6 : pompe les armes macro */
+ * marché si besoin, lève la pop). Le POOL par classe est lu des strates econ du
+ * pays `owner` (pool pop UNIFIÉ — fin de LaborEcon). Renvoie les paquets ajoutés. */
+int  campaign_refill(Campaign *c, int owner, WorldEconomy *econ);  /* F6 : pompe les armes macro */
 
 #endif /* SCPS_CAMPAIGN_H */

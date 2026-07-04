@@ -15,7 +15,8 @@
  * Le contre PRIME sur la qualité brute — un mur de piquiers bon marché brise une
  * cavalerie d'élite.
  */
-#include "scps_labor.h"   /* LaborEcon : pop par classe, matériaux, armes fabriquées */
+#include "scps_labor.h"   /* LaborClass + capitale_* (module utilitaire slim, post-dissolution) */
+#include "scps_econ.h"    /* WorldEconomy : la levée LIT les strates du pays (pool pop UNIFIÉ — fin de LaborEcon) */
 #include "scps_tech.h"    /* TechState : l'arbre qui façonne la doctrine d'armée (§3) */
 
 #define POP_PER_UNIT     100   /* enrôlement par paquets de 100 */
@@ -129,10 +130,11 @@ void army_init(ArmyState *a);
 
 /* Peut-on lever `count` unités de ce type ? (pop libre de la bonne CLASSE +
  * armes en stock). Renvoie false sinon — ce n'est pas un bouton. */
-bool army_can_recruit(const ArmyState *a, const LaborEcon *e, UnitType t, long count);
+bool army_can_recruit(const ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count);
 /* Lève l'unité : prélève la pop (affectée, PAS retirée du pool) et consomme les
- * armes du tampon (rempli au préalable depuis le marché macro). Renvoie le nb levé. */
-long army_recruit(ArmyState *a, LaborEcon *e, UnitType t, long count);
+ * armes du tampon (rempli au préalable depuis le marché macro). Renvoie le nb levé.
+ * Le POOL par classe est LU des strates econ du pays `cid` (plus de LaborEcon). */
+long army_recruit(ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, long count);
 
 /* ---- Le pierre-feuille-ciseaux (§3) ----------------------------------- */
 /* >1 si `a` contre `b`, <1 si `a` est contré, 1 neutre. */

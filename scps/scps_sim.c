@@ -421,7 +421,7 @@ static void sim_cmd_drain(Sim *s, World *w){
             campaign_set_posture(s->camp, p, po);
             break; }
           case CMD_REFILL:
-            campaign_refill(s->camp, p, s->econ, s->labor);          /* recomplète l'armée de campagne */
+            campaign_refill(s->camp, p, s->econ);                    /* recomplète l'armée de campagne (pool = strates econ) */
             break;
           case CMD_NAVY_BUILD: {
             int h=c->a[0];
@@ -542,7 +542,6 @@ void sim_day(Sim *s, World *w) {
         }
     }
     PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1));
-    labor_tick(s->labor);
     /* navy_tick (chantier + entretien) est passé MENSUEL (bloc plus bas) : il pesait ~½ du coût/an
      * en quotidien, et il est pleinement dt-scalé (rien ne le veut au jour). */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
@@ -554,7 +553,6 @@ void sim_day(Sim *s, World *w) {
         PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         PROF(PB_DEMO, demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f));
-        labor_resync_pop(s->labor, s->econ);   /* E0.1 : labor RELIT la pop (le monde la possède) */
         religion_refresh_all(s->econ);   /* FOI PAR GROUPE : le culte DOMINANT par région suit les groupes (post-démo) */
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)   /* E3 : l'IA stockeuse (mensuel) */
             if (s->ai_on[c]) ai_speculate_tick(&s->ai[c], s->econ);
@@ -858,7 +856,6 @@ void sim_init(Sim *s, World *w) {
     for (int r=0;r<SCPS_MAX_REG;r++)
         s->prev_owner_mo[r] = (r<s->econ->n_regions)? s->econ->region[r].owner : -1;
     events_init(s->ev, w, w->seed);
-    labor_init(s->labor, w); labor_seed_from_world(s->labor, w, s->econ, s->player);
     s->day=0; s->year=0;
 }
 
@@ -869,19 +866,19 @@ bool sim_alloc(Sim *s) {
     s->wl=malloc(sizeof(WorldLegitimacy)); s->net=malloc(sizeof(TradeNetwork));
     s->ts=calloc(SCPS_MAX_COUNTRY,sizeof(TechState)); s->sc=malloc(sizeof(Statecraft));
     s->ag=malloc(sizeof(AgencyState)); s->ev=malloc(sizeof(EventsState));
-    s->drift=malloc(sizeof(ModifierStack)); s->labor=malloc(sizeof(LaborEcon));
+    s->drift=malloc(sizeof(ModifierStack));
     s->dp=malloc(sizeof(DiploState)); s->rn=malloc(sizeof(RouteNetwork));
     s->ai=calloc(SCPS_MAX_COUNTRY,sizeof(AiActor)); s->ai_on=calloc(SCPS_MAX_COUNTRY,sizeof(bool));
     s->rs=malloc(sizeof(RevoltState)); s->host=calloc(1,sizeof(WarHost));   /* P1 : calloc → scratch NULL d'emblée (free sûr) */
     s->missions=malloc(sizeof(MissionsState)); s->camp=malloc(sizeof(Campaign));
     s->navy=malloc(sizeof(NavyState)); s->eg=calloc(1,sizeof(EndgameState));
     return s->econ&&s->wp&&s->wl&&s->net&&s->ts&&s->sc&&s->ag&&s->ev&&s->drift
-        &&s->labor&&s->dp&&s->rn&&s->ai&&s->ai_on&&s->rs&&s->host&&s->missions&&s->camp&&s->navy&&s->eg;
+        &&s->dp&&s->rn&&s->ai&&s->ai_on&&s->rs&&s->host&&s->missions&&s->camp&&s->navy&&s->eg;
 }
 
 void sim_free_members(Sim *s) {
     free(s->econ); free(s->wp); free(s->wl); free(s->net); free(s->ts); free(s->sc);
-    free(s->ag); free(s->ev); free(s->drift); free(s->labor); free(s->dp); free(s->rn);
+    free(s->ag); free(s->ev); free(s->drift); free(s->dp); free(s->rn);
     free(s->ai); free(s->ai_on); free(s->rs); warhost_free(s->host); free(s->host); free(s->missions);   /* P1 : scratch warhost */
     free(s->camp); free(s->navy); free(s->eg);
 }

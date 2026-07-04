@@ -82,7 +82,7 @@ typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
 typedef struct {
     WorldEconomy *econ; WorldProsperity *wp; WorldLegitimacy *wl; TradeNetwork *net;
     TechState *ts; Statecraft *sc; AgencyState *ag; EventsState *ev; ModifierStack *drift;
-    LaborEcon *labor; DiploState *dp; RouteNetwork *rn; AiActor *ai; bool *ai_on;
+    DiploState *dp; RouteNetwork *rn; AiActor *ai; bool *ai_on;   /* (LaborEcon dissous : la levée LIT les strates econ) */
     RevoltState *rs;
     WarHost     *host;   /* armées levées par pays (mobilisation) */
     Campaign    *camp;   /* armées de campagne : marche/siège/bataille sur la carte (non-invasif) */

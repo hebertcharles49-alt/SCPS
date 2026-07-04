@@ -32,7 +32,11 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 58u           /* v58 : SAVETEST FIX (suite) — ITRD sérialise la CARTE DES HUBS
+#define SAVE_VERSION 59u           /* v59 : DISSOLUTION LaborEcon — la section LABO DISPARAÎT (le module
+                                    * s'est dissous : la levée LIT désormais les strates econ du pays ; la
+                                    * mobilité/marché/pop_in_army labor étaient morts, la topbar viewer retirée).
+                                    * <v59 refusé (le bloc LABO n'existe plus dans le flux).
+                                    * v58 : SAVETEST FIX (suite) — ITRD sérialise la CARTE DES HUBS
                                     * (g_hub_of/g_hub_dist/g_hub_dirty + g_global_cache : caches dérivés lus
                                     * quotidiennement par agency_build_gold mais rebâtis SEULEMENT à un changement
                                     * de Centres — non dérivés du tick, donc stale après reload). ITRD grandit → <v58 refusé.

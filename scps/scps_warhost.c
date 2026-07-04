@@ -68,17 +68,16 @@ static long wh_arms_take(WorldEconomy *econ, int cid, UnitType t, long want){
 /* F6 Option B — ARMER un paquet : puise les armes MACRO (RES_ARMS_*, source) → remplit le TAMPON de
  * combat a->weapons[W_*] (que le combat lit, INCHANGÉ) → enrôle. La source du tampon bascule de la
  * fabrication LRes (absorbée) vers le marché macro où la fabrique consomme le fer. */
-static void wh_arm_unit(ArmyState *a, LaborEcon *sc, WorldEconomy *econ, int cid, UnitType t, long want){
+static void wh_arm_unit(ArmyState *a, WorldEconomy *econ, int cid, UnitType t, long want){
     const UnitDef *d=unit_def(t); if(!d || want<=0) return;
     long got=wh_arms_take(econ, cid, t, want);
     a->weapons[d->weapon] += got;                   /* le tampon de combat, rempli depuis le macro */
-    army_recruit(a, sc, t, got);
+    army_recruit(a, econ, cid, t, got);             /* pool par classe = strates econ du pays (pool UNIFIÉ) */
 }
 
 void warhost_init(WarHost *h){
     memset(h->army, 0, sizeof(h->army));
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ army_init(&h->army[c]); h->levy[c]=WH_LEVY_GARDE; }
-    h->scratch = (LaborEcon*)calloc(1, sizeof(LaborEcon));
     g_human_player = -1;            /* RAZ : par défaut l'IA gère toutes les armées */
 }
 /* Jauge de levée (sidebar §5) : un palier, pas un float. */
@@ -95,7 +94,7 @@ const char *warhost_levy_name(int levy){
     static const char *N[4]={ "levée basse","garde","pied de guerre","levée en masse" };
     return (levy>=0&&levy<4)?N[levy]:"?";
 }
-void warhost_free(WarHost *h){ if (h){ free(h->scratch); h->scratch=NULL; } }
+void warhost_free(WarHost *h){ (void)h; /* plus de scratch à libérer : l'adaptateur LaborEcon a disparu */ }
 
 long warhost_units(const WarHost *h, int cid){
     if (!h || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
@@ -110,14 +109,13 @@ long warhost_disband(WarHost *h, int cid){
     return n;
 }
 
-/* Semer le labor transitoire depuis le pays (pop par classe par province), puis
- * DOTER la capacité matérielle de guerre ∝ population (on ne tick pas le labor :
- * la mobilisation puise dans un stock de guerre, pas dans la production courante). */
-static long seed_scratch(LaborEcon *e, const World *w, const WorldEconomy *econ, int cid){
-    labor_seed_from_world(e, w, econ, cid);
+/* L'ÉLITE du pays = Σ des strates econ de ses régions — le gate des unités d'élite
+ * (cavalerie lourde, mages…). La levée LIT désormais la pop UNIQUE (strates econ) ;
+ * plus de labor transitoire à semer (l'adaptateur LaborEcon a disparu). */
+static long wh_country_elite(const WorldEconomy *econ, int cid){
     long elite=0;
-    for (int p=0;p<e->n_prov;p++){ elite += e->prov[p].pop_by_class[LAB_ELITE]; }
-    e->market.supply=1.f; e->market.price=1.f;   /* P-arc : matériau & or vivent dans le pool éco, plus ici */
+    if (econ) for (int r=0;r<econ->n_regions;r++)
+        if (econ->region[r].owner==cid) elite += (long)econ->region[r].strata[CLASS_ELITE].pop;
     return elite;
 }
 
@@ -127,7 +125,7 @@ static long seed_scratch(LaborEcon *e, const World *w, const WorldEconomy *econ,
  * d'élite → pas d'unité d'élite). Plancher conventionnel si l'éthos ne désigne rien de
  * recrutable (Transgresseur sans arcane, p.ex.) : jamais d'armée vide. Chaque type tire SA
  * catégorie d'armes → fabrique spécialisée → FER (la demande diverse, la preuve F8). */
-static void wh_levy_batch(ArmyState *a, LaborEcon *sc, WorldEconomy *econ, const World *w,
+static void wh_levy_batch(ArmyState *a, WorldEconomy *econ, const World *w,
                           const TechState *t, int cid, long batch, long elite){
     if (batch<=0) return;
     float fw[FAC_COUNT];
@@ -146,10 +144,10 @@ static void wh_levy_batch(ArmyState *a, LaborEcon *sc, WorldEconomy *econ, const
         if (target[u]<=0.f) continue;
         long n=(long)((target[u]/sum)*(float)batch + 0.5f);
         if (n<=0) continue;
-        wh_arm_unit(a, sc, econ, cid, (UnitType)u, n);
+        wh_arm_unit(a, econ, cid, (UnitType)u, n);
         placed+=n;
     }
-    if (placed<=0) wh_arm_unit(a, sc, econ, cid, U_PIQUIER, batch);   /* garde-fou ultime */
+    if (placed<=0) wh_arm_unit(a, econ, cid, U_PIQUIER, batch);   /* garde-fou ultime */
 }
 
 /* DÉMOBILISER `n` paquets : les unités fondent (de la dernière vers la première), la pop affectée
@@ -180,19 +178,19 @@ static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
  * affectée (pas retirée du pool). Renvoie les paquets RÉELLEMENT levés (0 si gate). */
 long warhost_player_recruit(WarHost *h, const World *w, WorldEconomy *econ,
                             const TechState *ts, int cid, UnitType t, long packs){
-    if (!h || !h->scratch || cid<0 || cid>=SCPS_MAX_COUNTRY || packs<=0) return 0;
+    if (!h || !econ || cid<0 || cid>=SCPS_MAX_COUNTRY || packs<=0) return 0;
     if (!unit_recruitable(ts, t)) return 0;
-    long elite = seed_scratch(h->scratch, w, econ, cid);
+    long elite = wh_country_elite(econ, cid); (void)w;   /* w : réservé (plus de semis labor transitoire) */
     const UnitDef *d = unit_def(t);
     if (d && d->from==LAB_ELITE && elite<=200) return 0;
     long before = warhost_units(h, cid);
-    wh_arm_unit(&h->army[cid], h->scratch, econ, cid, t, packs);
+    wh_arm_unit(&h->army[cid], econ, cid, t, packs);
     return warhost_units(h, cid) - before;
 }
 
 void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                   const DiploState *dp, const TechState *ts, float dt){
-    if (!h || !h->scratch || dt<=0.f) return;
+    if (!h || !econ || dt<=0.f) return;
     for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
         if (w->country[c].role==POLITY_UNCLAIMED || w->country[c].capital_prov<0) continue;
         int nreg=0; for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==c){ nreg++; }
@@ -255,8 +253,8 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
         if (at_war){
             long batch = (long)(WH_BATCH_WAR*LEVY_MULT[lv]*dt + 0.5f);
             if (batch>0){
-                long elite = seed_scratch(h->scratch, w, econ, c);
-                wh_levy_batch(&h->army[c], h->scratch, econ, w, ts?&ts[c]:NULL, c, batch, elite);
+                long elite = wh_country_elite(econ, c);
+                wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite);
             }
         } else {
             long garrison = (long)(WH_GARRISON_UNITS*LEVY_MULT[lv] + 0.5f);
@@ -266,8 +264,8 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 long batch = (long)(WH_BATCH_PEACE*LEVY_MULT[lv]*dt + 0.5f);
                 long deficit = garrison - cur; if (batch>deficit) batch=deficit;
                 if (batch>0){
-                    long elite = seed_scratch(h->scratch, w, econ, c);
-                    wh_levy_batch(&h->army[c], h->scratch, econ, w, ts?&ts[c]:NULL, c, batch, elite);
+                    long elite = wh_country_elite(econ, c);
+                    wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite);
                 }
             }
         }

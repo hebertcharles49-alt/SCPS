@@ -772,8 +772,8 @@ void campaign_refill_cost(const Campaign *c, int owner, long *men, long *mat){
     if (men) *men=m;
     if (mat) *mat=mt;
 }
-int campaign_refill(Campaign *c, int owner, WorldEconomy *econ, LaborEcon *labor){
-    if (owner<0 || owner>=SCPS_MAX_COUNTRY || !labor) return 0;
+int campaign_refill(Campaign *c, int owner, WorldEconomy *econ){
+    if (owner<0 || owner>=SCPS_MAX_COUNTRY || !econ) return 0;
     ArmyState *a=&c->army[owner].force;
     int n=a->n_units, added=0;
     for (int i=0;i<n;i++){
@@ -783,7 +783,7 @@ int campaign_refill(Campaign *c, int owner, WorldEconomy *econ, LaborEcon *labor
          * paquet, puisées au stock de l'empire (→ demande → fer). Pas d'armes → pas de renfort. */
         if (econ && econ_arms_take(econ, owner, unit_res_arm(t), POP_PER_UNIT) < POP_PER_UNIT) continue;
         a->weapons[d->weapon] += 1;                       /* le tampon de combat (source : macro) */
-        if (army_recruit(a, labor, t, 1)) added++;        /* lève un paquet de 100 */
+        if (army_recruit(a, econ, owner, t, 1)) added++;   /* lève un paquet de 100 (pool = strates du pays) */
     }
     return added;
 }
