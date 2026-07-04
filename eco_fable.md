@@ -726,3 +726,35 @@ RE-BASELINE golden · determinism STABLE · 0 banc cassé · viewer 0 warning. T
 de plus vers la dissolution LaborEcon (le savoir en est débranché ; restent la levée militaire +
 la topbar viewer). RESTE encore : dissolution complète (+bump, C1) · §5 (re-mesure post-C5) · C4 ·
 C3 orphelins.
+
+---
+
+### [018] 2026-07-05 — CARTE DE DISSOLUTION LaborEcon (lecteur a761dde9, points porteurs re-VÉRIFIÉS) — refactor MAJEUR spécifié, NON exécuté
+
+Le périmètre réel est BIEN plus lourd que la spec anticipait — 3 claims porteurs re-grep-és, tous CONFIRMÉS :
+- **DEUX pipelines de levée** (pas un) : `campaign_refill` (JOUEUR, sur `s->labor`) + `warhost.scratch`
+  — [VÉRIFIÉ] `h->scratch = calloc(1, sizeof(LaborEcon))`, re-seedé par pays (`seed_scratch`→
+  `labor_seed_from_world`), c'est la levée IA. `army_recruit(a, LaborEcon*, …)` (campaign) et
+  `army_recruit(a, sc, …)` (warhost) — à RÉÉCRIRE (signature → WorldEconomy) ⇒ propage aux DEUX.
+- **AUCUN champ pop-mobilisée côté econ** — [VÉRIFIÉ] `ProvinceEconomy` n'a que `mil_stock` (DÉRIVÉ
+  warhost, pas un pool) ⇒ il faut **CRÉER `pop_in_army`** (champ SÉRIALISÉ → bump). `revolt.mobilized`
+  est un système DISTINCT (rébellion), à ne pas réutiliser.
+- **6 fonctions PURES `capitale_*`** (max_tier/status/defense/admin_pop/housing/prodmult) utilisées
+  PARTOUT (ai/econ/demography/campaign/revolt/api/viewer) ⇒ **DOIVENT survivre** : migrer vers
+  `scps_capitale.h`/.c (ou econ) + 7 `#include` à re-router.
+- **C1 (`PopGroup.L`)** : dépendance `L → agit_base` = DISCIPLINE de code (chaque écriture de `L`
+  republie `agit_base` via `agit_from_L`) ; **4 sites d'écriture de L dans revolt.c NON vérifiés**
+  (republient-ils agit_base ?) = prérequis BLOQUANT. Lecteur prod unique de L =
+  `revolt.province_apply_coercion` (test `L>=seuil`) → migrer sur agit_base.
+- **Mort trivial** : LMarket + ~15 fonctions labor (colonize/taxes/prosperity_index/…) sans appelant
+  prod ; `labor_demo` à SUPPRIMER, `army_demo` à RÉÉCRIRE, `warhost_demo`/`audit_eco` NON audités.
+- **⚠ RISQUE SAVE TRIPLE, un SEUL bump 58→59** : retrait section LABO + retrait `PopGroup.L`
+  (`sizeof(WorldEconomy)` change, `fwrite` BRUT → le padding se réarrange) + ajout `pop_in_army`.
+  `--savetest` byte-identique OBLIGATOIRE (le byte-identity durement gagné, cf. saga v57/v58).
+
+Plan ordonné complet (Phases A repointages → B retrait mort → C module+bump → D bancs → E savetest)
+dans le rapport de l'agent. **VERDICT ORCHESTRATEUR** : c'est un refactor MAJEUR (~50 edits, 2 pipelines
+de levée réécrits, format de save triple-change) = **session DÉDIÉE**, PAS la queue d'une session
+déjà énorme (un arrêt mi-chemin = build CASSÉ + risque sur le save). Et c'est du **NETTOYAGE**
+architectural — le bug FONCTIONNEL du savoir est DÉJÀ corrigé ([017]) — donc l'urgence est moindre
+qu'elle ne l'était. À lancer avec budget frais + savetest rigoureux à chaque bump.
