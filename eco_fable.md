@@ -9,10 +9,13 @@
 
 ---
 
-## RÉSUMÉ EXÉCUTIF (distillé, maintenu en tête — dernière mise à jour : entrée [014])
+## RÉSUMÉ EXÉCUTIF (distillé, maintenu en tête — dernière mise à jour : entrée [016])
 
-- **État** : Phases 0-3 CLOSES ([012]-[014]). **Phase 4 (synthèse) OUVERTE — dossier en [014].**
-  AUCUN patch écrit, AUCUN golden touché, tronc VIERGE.
+- **État** : Phases 0-4 CLOSES. **Phase 5 EN COURS — 4 patches landés & poussés ([016])** : C7 σ
+  (PRÉSERVANT) · C6 rename (PRÉSERVANT) · C2/C3/C9 doc (PRÉSERVANT) · **C5 le trou trade×guerre
+  fermé (CHANGEANT, re-baseline)**. golden re-baseliné (C5 seul), determinism STABLE, bancs 38
+  runnable verts. RESTE (big-refactor + décisions d'équilibre humaines) : collapse tier savoir ·
+  dissolution LaborEcon (+bump, grouper C1) · §5 (re-mesurer post-C5) · C4 · C3 orphelins.
 - **Verdicts Phase 3 ([012])** : 2 bugs de câblage (C5 trou trade×guerre · C4 famille 5.f) · 3 dettes
   de doc/nommage (C2 stubs · C6 productivite · C9 faith de jure/de facto) · 1 silo à retirer (C1
   PopGroup.L, +bump) · 1 duplication (C7 σ ×4, unifier vers core) · 1 chantier à part (C3 ~12 canaux
@@ -661,3 +664,39 @@ de la mission — présenter, ne pas trancher unilatéralement les choix porteur
 
 ⇒ **Checkpoint naturel** : le carnet porte tout le nécessaire ; la suite (rédaction des specs de patch
 + exécution Phase 5) demande des arbitrages humains listés ci-dessus. Présenter et attendre.
+
+---
+
+### [016] 2026-07-05 — Phase 5 EN COURS · patches landés (GO humain « fais tout, commit au fur et à mesure »)
+
+Discipline Invariant 1 tenue : chaque patch déclare sa famille, golden vérifié après chacun.
+
+- **C7** (`f429865`, PRÉSERVANT) : σ unifiée vers `scps_core` (sync_gate→scps_metabolisation ;
+  sigmoid local prosperity→scps_sigmoid) — 4 impl → 1. golden IDENTIQUE. ⚠ ripple lien : culture.o
+  appelle scps_metabolisation ⇒ `scps_core.o` ajouté à 6 listes _OBJS de bancs (Makefile).
+- **C6** (`af703d8`, PRÉSERVANT) : `HeritageLeviers.productivite`→`rendement` (18 sites, rename pur).
+  golden IDENTIQUE.
+- **C2/C3/C9** (`67ef50b`, PRÉSERVANT/doc) : stubs governance_P/F = socle neutre ; collapse Lt +
+  ~12 canaux RC orphelins ; faith de jure(int)≠de facto(axe) — DOCUMENTÉS. golden IDENTIQUE.
+- **C5** (`b448706`, CHANGEANT · re-baseline) : le commerce étage-2 ne franchit plus une frontière
+  EN GUERRE (le trou A1, chiffré 71-89 % cross-border par C8). **Design DÉCOUPLÉ** : `link_blocked[]`
+  pré-calculé par sim.c (qui a la diplo), passé à trade_tick — scps_trade reste FEUILLE (zéro ripple
+  diplo sur 7 bancs, zéro bump). golden RE-BASELINÉ (5 graines), determinism STABLE, sweep SAIN
+  (satisfaction 73/79/89, commerce recouvré 100 % hubs an-62). ⚠ suite : embargo DÉCRÉTÉ à l'étage 2
+  (intertrade_embargoed statique — non gaté ici, seule la GUERRE l'est).
+
+**RESTE (le gros — big-refactor + DÉCISIONS d'ÉQUILIBRE qui relèvent de l'humain)** :
+- **Collapse tier savoir** ([002]) : repointer `sim_player_savoir_month` sur `capitale_max_tier(pop
+  canonique)`. ⚠ 2 décisions : (a) préserver le clamp 4 (PRÉSERVANT) vs ouvrir l'échelle 1→7
+  (CHANGEANT, change le revenu de savoir) ; (b) le terme LBuilding — le retirer ou le mapper sans
+  double-compter `tech_research_yield`.
+- **Dissolution LaborEcon** ([005]-[007]) : 3 lecteurs (savoir · levée `campaign_refill`/
+  `army_recruit` · topbar viewer) + LMarket mort + **BUMP save** (section LABO) à GROUPER avec le
+  retrait de `PopGroup.L` (C1) = UN bump.
+- **§5 puissance commerciale** : RE-MESURER le volume externe MAINTENANT que C5 ferme le trou (le
+  commerce va basculer étage-2→intertrade gaté) ; puis trancher remplace/subsume/coexiste.
+- **C4** (vraie K/P) : exposer `cp->P` + reorder tick prospérité↔démographie. **C3 orphelins** :
+  chantier à part (un canal RC à la fois).
+
+Ces restes portent des arbitrages d'équilibre (clamp savoir, forme §5, timing du bump) = revue
+humaine (Invariant 1). Le carnet porte le plan complet ; à mener au prochain push.
