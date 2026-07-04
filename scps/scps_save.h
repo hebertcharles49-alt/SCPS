@@ -32,7 +32,10 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 59u           /* v59 : DISSOLUTION LaborEcon — la section LABO DISPARAÎT (le module
+#define SAVE_VERSION 60u           /* v60 : §5 PUISSANCE COMMERCIALE — la section ITRD grandit (le pool
+                                    * commercial MENSUEL : g_commerce_budget + g_commerce_spent, l'état
+                                    * intra-mois qui borne les achats au marché). <v60 refusé.
+                                    * v59 : DISSOLUTION LaborEcon — la section LABO DISPARAÎT (le module
                                     * s'est dissous : la levée LIT désormais les strates econ du pays ; la
                                     * mobilité/marché/pop_in_army labor étaient morts, la topbar viewer retirée).
                                     * <v59 refusé (le bloc LABO n'existe plus dans le flux).

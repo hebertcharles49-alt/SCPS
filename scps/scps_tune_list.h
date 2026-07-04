@@ -93,6 +93,14 @@
     X(SAVOIR_W_LABORER,       0.001f) \
     X(SAVOIR_LIB_PER,         0.067f) \
     X(SAVOIR_LIB_MAX,         0.33f) \
+    /* PUISSANCE COMMERCIALE — la POP MARCHANDE produit le volume échangeable au marché (0.04·bourgeois
+     * + 0.01·élite /mois) ; la CHAÎNE COMMERCIALE (Σ build.PE_infra) module en % (BLD_PER/point, plafond
+     * BLD_MAX) ; ECO_W = son poids dans la puissance éco diplo. Pool MENSUEL, drainé par les achats. */ \
+    X(COMMERCE_W_BOURGEOIS,   0.04f) \
+    X(COMMERCE_W_ELITE,       0.01f) \
+    X(COMMERCE_BLD_PER,       0.10f) \
+    X(COMMERCE_BLD_MAX,       0.50f) \
+    X(COMMERCE_ECO_W,         0.05f) \
     /* BARRE D'ACCÈS TECH (Temps 2) — la part d'âmes DIGÉRÉES d'un héritage qui débloque ses
      * signatures par TIER : ≥T1 ⇒ tier-1, ≥T2 ⇒ tier-2, ≥T3 ⇒ la signature tier-3. Voie ACTIVE,
      * en MAX avec la profondeur de contact (commerce/gouvernance). « X% de B ⇒ techs de B ». */ \

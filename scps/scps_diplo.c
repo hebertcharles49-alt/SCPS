@@ -153,7 +153,7 @@ float diplo_vassal_grief(const DiploState *d, int vassal){
 }
 /* puissance — LA MÊME échelle que la menace : éco + mil (pas de seconde échelle). */
 static float suz_power(const World *w, const WorldEconomy *econ, const WorldProsperity *wp, int c){
-    return diplo_eco_power(wp,c) + diplo_mil_power(w,econ,c);
+    return diplo_eco_power(wp,econ,c) + diplo_mil_power(w,econ,c);
 }
 static uint32_t fr_rng(DiploState *d){ uint32_t x=d->fronde_rng; x^=x<<13; x^=x>>17; x^=x<<5; return d->fronde_rng=x; }
 static Ethos suz_ethos(const World *w, const WorldEconomy *econ, int c){
@@ -645,9 +645,12 @@ static float heritage_influence(const World *w, const WorldEconomy *econ, int ci
 }
 
 /* ---- lecteurs --------------------------------------------------------- */
-float diplo_eco_power(const WorldProsperity *wp, int cid){
+float diplo_eco_power(const WorldProsperity *wp, const WorldEconomy *econ, int cid){
     if (cid<0||cid>=wp->n_countries) return 0.f;
-    return wp->country[cid].P_realise;
+    /* §5 : la PUISSANCE COMMERCIALE (la pop marchande × la chaîne commerciale) pèse dans le poids éco
+     * de la diplo — menace, alliance, score de guerre. (econ NULL → juste P_realise ; bancs inchangés.) */
+    float comm = econ ? tune_f("COMMERCE_ECO_W",COMMERCE_ECO_W) * econ_country_commerce(econ, cid) : 0.f;
+    return wp->country[cid].P_realise + comm;
 }
 float diplo_mil_power(const World *w, const WorldEconomy *econ, int cid){
     float pop=0.f, H=0.f, arms=0.f, kit=0.f;
@@ -677,7 +680,7 @@ float diplo_mil_power(const World *w, const WorldEconomy *econ, int cid){
 
 static float threat_of(const World *w, const WorldEconomy *econ,
                        const WorldProsperity *wp, const DiploState *d, int a, int b){
-    float eco=diplo_eco_power(wp,b), mil=diplo_mil_power(w,econ,b);
+    float eco=diplo_eco_power(wp,econ,b), mil=diplo_mil_power(w,econ,b);
     float dist=geo_dist(w,a,b);
     float infl=heritage_influence(w,econ,b);          /* l'influence étend la portée */
     float eff=dist/(1.f+0.10f*infl);

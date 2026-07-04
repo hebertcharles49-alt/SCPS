@@ -378,13 +378,13 @@ static DiploForecast ai_diplo_forecast(const World *w, const WorldEconomy *econ,
                                        const WorldProsperity *wp, const DiploState *d, int cid){
     DiploForecast f; memset(&f,0,sizeof f); f.threat_top=-1; f.war_outlook_worst=100.f;
     if (!w||!econ||!d||cid<0||cid>=w->n_countries) return f;
-    float my_power = diplo_mil_power(w,econ,cid) + diplo_eco_power(wp,cid);
+    float my_power = diplo_mil_power(w,econ,cid) + diplo_eco_power(wp,econ,cid);
     float amb = (d->ambient_threat>1e-4f)? d->ambient_threat : 1.f;
     float allied = 0.f;
     for (int b=0;b<w->n_countries;b++){
         if (b==cid) continue;
         DiploStatus st = diplo_status(d,cid,b);
-        if (st==DIPLO_ALLIED){ allied += diplo_mil_power(w,econ,b)+diplo_eco_power(wp,b); continue; }
+        if (st==DIPLO_ALLIED){ allied += diplo_mil_power(w,econ,b)+diplo_eco_power(wp,econ,b); continue; }
         /* ENNEMI POTENTIEL : déjà en guerre, OU rancune contre moi, OU casus belli (b → moi). */
         bool menacing = (st==DIPLO_WAR) || diplo_rancor(d,b,cid)>0.f
                        || diplo_casus_belli(w,econ,wp,d,b,cid,RES_NONE)!=CB_NONE;
@@ -585,7 +585,7 @@ static int ai_pick_ally(const AiActor *a, const World *w, const WorldEconomy *ec
         Relation rel=diplo_relation(w,econ,wp,d,a->cid,b);
         float score=rel.alliance;
         if (a_dfc.alliance_need > 0.5f){                          /* menacé & sous-couvert → URGENCE */
-            float ally_help = clampf((diplo_mil_power(w,econ,b)+diplo_eco_power(wp,b))
+            float ally_help = clampf((diplo_mil_power(w,econ,b)+diplo_eco_power(wp,econ,b))
                                      /(a_dfc.threat_in_max+1e-4f), 0.f, 1.f);
             score += tune_f("AI_ALLY_NEED_W", 1.0f) * a_dfc.alliance_need * ally_help;
         }

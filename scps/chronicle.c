@@ -783,6 +783,14 @@ int main(int argc, char **argv){
                  csat[CLASS_LABORER], csat[CLASS_BOURGEOIS], csat[CLASS_ELITE], tradev);
           for (int c=0;c<CLASS_COUNT;c++) tot_sat[c]+=csat[c];
           tot_trade += tradev; }
+        /* §5 PUISSANCE COMMERCIALE : le pool MENSUEL de volume échangeable (0.04·bourgeois + 0.01·élite,
+         * × chaîne commerciale) borne les achats au marché — la preuve d'équilibre = combien il MORD. */
+        { long cc_capped=0; double cc_drawn=0.0; intertrade_commerce_diag(&cc_capped,&cc_drawn);
+          double pool_sum=0.0, pool_max=0.0; int npool=0;
+          for (int c=0;c<SCPS_MAX_COUNTRY;c++){ float p=intertrade_commerce_pool(c);
+              if (p>0.f){ pool_sum+=p; npool++; if(p>pool_max)pool_max=p; } }
+          printf("              puissance commerciale : pool moy %.1f/mois · max %.1f · %ld achat(s) BORNÉ(S) (le cap mord) · %.0f volume tiré du marché\n",
+                 npool?pool_sum/npool:0.0, pool_max, cc_capped, cc_drawn); }
         { double cp[CLASS_COUNT]={0};   /* E0.7 parts de classe + E1bis.10 friche */
           for (int r=0;r<s.econ->n_regions;r++) if (s.econ->region[r].colonized)
               for (int c=0;c<CLASS_COUNT;c++) cp[c]+=s.econ->region[r].strata[c].pop;

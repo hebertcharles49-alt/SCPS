@@ -88,6 +88,11 @@ static float  g_expt_best[SCPS_MAX_COUNTRY][RES_COUNT];
 static int16_t g_imp_from[SCPS_MAX_COUNTRY][RES_COUNT];
 static int16_t g_expt_to [SCPS_MAX_COUNTRY][RES_COUNT];
 static float  g_gold[SCPS_MAX_COUNTRY];
+static float  g_commerce_budget[SCPS_MAX_COUNTRY];  /* §5 PUISSANCE COMMERCIALE : pool MENSUEL de volume échangeable (fixé au roulement de mois, scalé pop marchande × chaîne commerciale) */
+static float  g_commerce_spent [SCPS_MAX_COUNTRY];  /* volume déjà tiré du marché ce mois-ci (reset mensuel) */
+static long   g_comm_capped=0;   /* §5 télémétrie (non sérialisée, RAZ/sim) : nb d'achats BORNÉS par le pool — la preuve que ça mord */
+static double g_comm_drawn =0.0; /* §5 télémétrie : volume total tiré du marché (drainé du pool) */
+static bool   g_commerce_active=false;  /* §5 : le cap n'agit QUE dans une vraie sim (sim_day/load l'active) → pool non semé hors sim ⇒ bancs INCHANGÉS */
 static float  g_pair[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
 static bool   g_embargo[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];   /* [qui décrète][contre qui] */
 static bool   g_centre[SCPS_MAX_REG];   /* P3.20 : cette région EST un Centre commercial (hub) */
@@ -127,6 +132,8 @@ void intertrade_reset(void){
     memset(g_global_access,0,sizeof g_global_access);   /* V2 : ni d'accès global hérité */
     memset(g_choke_toll,0,sizeof g_choke_toll); g_n_choke_routes=0; g_choke_toll_total=0.f;  /* WG */
     memset(g_choke_toll_cumul,0,sizeof g_choke_toll_cumul); g_choke_toll_cumul_total=0.0;    /* WG : cumul RAZ par sim */
+    memset(g_commerce_budget,0,sizeof g_commerce_budget); memset(g_commerce_spent,0,sizeof g_commerce_spent);  /* §5 : pool commercial RAZ */
+    g_comm_capped=0; g_comm_drawn=0.0; g_commerce_active=false;   /* §5 : télémétrie RAZ + cap INACTIF tant que sim_day n'a pas fixé le pool */
     g_last_value=0.f;
 }
 static void flows_clear(void){
@@ -139,6 +146,27 @@ static void flows_clear(void){
     memset(g_choke_toll,0,sizeof g_choke_toll); g_n_choke_routes=0; g_choke_toll_total=0.f;  /* WG : péages du tick */
 }
 static inline bool cid_ok(int c){ return c>=0 && c<SCPS_MAX_COUNTRY; }
+
+/* ═══ §5 PUISSANCE COMMERCIALE — le pool MENSUEL de volume échangeable au marché ═══════════════════
+ * Fixé au ROULEMENT de mois (intertrade_commerce_reset, appelé par sim_day) : le budget = la pop
+ * MARCHANDE × la chaîne commerciale (econ_country_commerce) ; les achats (market_consume/_buy) le
+ * DRAINENT (commerce_draw) ; à sec, plus d'import ce mois — l'équilibrage qui empêche de rafler tout
+ * le stock d'un coup. Budget ET dépensé sont SÉRIALISÉS (état intra-mois → savetest byte-identique). */
+void  intertrade_commerce_reset(const WorldEconomy *e){
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+        g_commerce_budget[c] = e ? econ_country_commerce(e, c) : 0.f;
+        g_commerce_spent [c] = 0.f;
+    }
+    g_commerce_active = true;   /* le cap AGIT désormais (vraie sim) */
+}
+float intertrade_commerce_pool     (int cid){ return cid_ok(cid)? g_commerce_budget[cid] : 0.f; }
+float intertrade_commerce_remaining(int cid){
+    if (!cid_ok(cid)) return 0.f;
+    float rem = g_commerce_budget[cid] - g_commerce_spent[cid];
+    return rem>0.f ? rem : 0.f;
+}
+static void commerce_draw(int cid, float amount){ if (cid_ok(cid) && amount>0.f){ g_commerce_spent[cid] += amount; g_comm_drawn += (double)amount; } }
+void intertrade_commerce_diag(long *capped, double *drawn){ if(capped)*capped=g_comm_capped; if(drawn)*drawn=g_comm_drawn; }  /* §5 : la télémétrie de chronique */
 
 /* RE-KEY PROVINCE : treasury est PROVINCE-owned (Σ-agrégé dans region[].treasury à
  * chaque econ_tick/econ_aggregate_regions) — écrire region[r].treasury directement
@@ -413,19 +441,29 @@ void intertrade_market_consume(WorldEconomy *e, int region, int good, float qty,
     if (qty<=1e-3f) return;
     qty -= empire_take(e, e->region[region].owner, region, good, qty); /* 2. RESTE de l'empire — GRATUIT */
     if (qty<=1e-3f) return;
+    /* §5 PUISSANCE COMMERCIALE : l'IMPORT (Centres ÉTRANGERS) est borné au pool MENSUEL de l'empire.
+     * Les stages propre+empire ci-dessus sont GRATUITS (production maison) ; seul le MARCHÉ (import)
+     * tire le pool → on ne rafle plus tout le stock d'un coup. */
+    int cc_owner=e->region[region].owner;
+    if (g_commerce_active && cid_ok(cc_owner)){
+        float rem=intertrade_commerce_remaining(cc_owner);
+        if (qty>rem){ g_comm_capped++; qty=rem; }   /* §5 : le pool a MORDU (import borné) */
+        if (qty<=1e-3f) return;
+    }
+    float cc_imp0=qty;                                                 /* volume d'import autorisé */
     if (hub>=0 && hub!=region){                                        /* 3. Centre local étranger : IMPORT */
         float t = centre_take(e, hub, good, qty);
         float *tr=it_treasury(e,hub); if (tr) *tr += t * unit_price;   /* la SOURCE encaisse le NU (conservation) */
         qty -= t;
     }
-    if (qty<=1e-3f || hub<0) return;
-    for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){   /* 4. réseau mondial étranger : IMPORT */
+    if (hub>=0) for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && qty>1e-3f; r++){   /* 4. réseau mondial étranger : IMPORT */
         if (!g_centre[r]||r==hub||r==region) continue;
         float t = centre_take(e, r, good, qty);
         float *tr=it_treasury(e,r); if (tr) *tr += t * unit_price;      /* idem : la source encaisse le NU */
         qty -= t;
         if (qty<=1e-3f) break;
     }
+    if (g_commerce_active && cid_ok(cc_owner)) commerce_draw(cc_owner, cc_imp0-qty);   /* le volume réellement importé draine le pool */
 }
 
 /* F-arc — POMPE D'ARMES : même cascade que _market_consume (propre → Centre local de la cité-état
@@ -480,6 +518,13 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
     int hub=g_hub_of[region];
     if (hub<0) return 0;                                          /* aucun marché atteignable */
     if (tier<=0 && hub==region) return 0;                        /* V2 : pas de marché LOCAL avec SOI-MÊME (anti-exploit) */
+    /* §5 PUISSANCE COMMERCIALE : l'achat direct au marché est borné au pool MENSUEL de l'empire. */
+    int cc_owner=re->owner;
+    if (g_commerce_active && cid_ok(cc_owner)){
+        float rem=intertrade_commerce_remaining(cc_owner);
+        if ((float)want>rem){ g_comm_capped++; want=(long)rem; }   /* §5 : le pool a MORDU */
+        if (want<=0) return 0;
+    }
     float base=re->import_margin; if (base<1.f) base=1.f;
     float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
     float avail, mult;
@@ -520,6 +565,7 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
         }
     }
     g_global_cache[good]-=(float)qty; if(g_global_cache[good]<0.f)g_global_cache[good]=0.f;  /* V2.2 : cache à jour (anti sur-tirage intra-tick) */
+    if (g_commerce_active && cid_ok(cc_owner)) commerce_draw(cc_owner, (float)qty);   /* §5 : l'achat draine le pool commercial */
     if (spent) *spent=(long)(cost+0.5f);
     return qty;
 }
@@ -587,13 +633,18 @@ float intertrade_pair_value (int cid,int other){
  * FRAÎCHE que celle du jour de save (le vrai bug de la 1re tentative dirty-check). */
 void intertrade_save(FILE *f){ fwrite(g_embargo,sizeof g_embargo,1,f); fwrite(g_centre,sizeof g_centre,1,f);
                                fwrite(g_hub_of,sizeof g_hub_of,1,f);   fwrite(g_hub_dist,sizeof g_hub_dist,1,f);
-                               fwrite(&g_hub_dirty,sizeof g_hub_dirty,1,f); fwrite(g_global_cache,sizeof g_global_cache,1,f); }
-bool intertrade_load(FILE *f){ return fread(g_embargo,sizeof g_embargo,1,f)==1
+                               fwrite(&g_hub_dirty,sizeof g_hub_dirty,1,f); fwrite(g_global_cache,sizeof g_global_cache,1,f);
+                               fwrite(g_commerce_budget,sizeof g_commerce_budget,1,f); fwrite(g_commerce_spent,sizeof g_commerce_spent,1,f); }  /* §5 : pool commercial intra-mois */
+bool intertrade_load(FILE *f){ bool ok = fread(g_embargo,sizeof g_embargo,1,f)==1
                                    && fread(g_centre,sizeof g_centre,1,f)==1
                                    && fread(g_hub_of,sizeof g_hub_of,1,f)==1
                                    && fread(g_hub_dist,sizeof g_hub_dist,1,f)==1
                                    && fread(&g_hub_dirty,sizeof g_hub_dirty,1,f)==1
-                                   && fread(g_global_cache,sizeof g_global_cache,1,f)==1; }
+                                   && fread(g_global_cache,sizeof g_global_cache,1,f)==1
+                                   && fread(g_commerce_budget,sizeof g_commerce_budget,1,f)==1
+                                   && fread(g_commerce_spent,sizeof g_commerce_spent,1,f)==1;  /* §5 */
+                               g_commerce_active=true;   /* une partie chargée est une sim ACTIVE (le cap agit) */
+                               return ok; }
 
 static bool pair_at_peace(const DiploState *dp, int ca, int cb){
     return !dp || diplo_status(dp, ca, cb) != DIPLO_WAR;

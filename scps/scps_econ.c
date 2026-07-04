@@ -435,6 +435,31 @@ float econ_country_savoir(const WorldEconomy *econ, int cid){
     return (float)base*(1.f+pct);   /* base annuelle × (1 + % bibliothèque) */
 }
 
+/* PUISSANCE COMMERCIALE — la POP MARCHANDE produit le VOLUME échangeable au marché (même patron que
+ * le savoir) : Σ des strates marchandes pondérées (bourgeois > élite), × le bonus en % de la CHAÎNE
+ * COMMERCIALE (Σ build.PE_infra : marché/entrepôt/comptoir/banque/port marchand/centre, clampé —
+ * PROPORTIONNEL). C'est un POOL MENSUEL, jamais consommé durablement (recalculé) : les achats au
+ * marché (intertrade_market_consume/_buy) le DRAINENT ; à sec, plus d'achat ce mois-ci — l'équilibrage
+ * qui empêche de rafler tout le stock d'un coup. Source UNIQUE joueur+IA. Alimente aussi la puissance
+ * éco de la diplo (diplo_eco_power). */
+float econ_country_commerce(const WorldEconomy *econ, int cid){
+    if (!econ || cid<0) return 0.f;
+    float wb=tune_f("COMMERCE_W_BOURGEOIS",COMMERCE_W_BOURGEOIS),
+          we=tune_f("COMMERCE_W_ELITE",COMMERCE_W_ELITE);
+    double base=0.0, infra=0.0;
+    for (int r=0;r<econ->n_regions;r++){
+        const RegionEconomy *re=&econ->region[r];
+        if (re->owner!=cid) continue;
+        base  += (double)wb*re->strata[CLASS_BOURGEOIS].pop
+               + (double)we*re->strata[CLASS_ELITE].pop;
+        infra += (double)re->build.PE_infra;   /* chaîne commerciale : marché/entrepôt/comptoir/banque/port marchand/centre */
+    }
+    float pct=(float)(infra*tune_f("COMMERCE_BLD_PER",COMMERCE_BLD_PER)), mx=tune_f("COMMERCE_BLD_MAX",COMMERCE_BLD_MAX);
+    if (pct<0.f) pct=0.f;
+    if (pct>mx)  pct=mx;
+    return (float)base*(1.f+pct);   /* pool MENSUEL de volume échangeable × (1 + % chaîne commerciale) */
+}
+
 float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid){
     if (!w || !econ || cid<0 || cid>=w->n_countries) return 0.f;
     int cp = w->country[cid].capital_prov;

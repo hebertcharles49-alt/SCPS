@@ -68,6 +68,11 @@ int   intertrade_import_from(int cid, int good);   /* pays-source dominant (-1 s
 int   intertrade_export_to  (int cid, int good);   /* pays-client dominant (-1 si aucun) */
 float intertrade_export_gold(int cid);             /* or encaissé à l'export (dernier tick) */
 float intertrade_pair_value (int cid, int other);  /* valeur échangée avec ce partenaire */
+/* §5 PUISSANCE COMMERCIALE — le pool MENSUEL de volume échangeable au marché (borne les achats). */
+void  intertrade_commerce_reset(const WorldEconomy *e);  /* fixe le pool du mois (appelé au roulement de mois par sim_day) */
+float intertrade_commerce_pool     (int cid);            /* le budget MENSUEL de l'empire (membrane) */
+float intertrade_commerce_remaining(int cid);            /* ce qu'il RESTE à acheter ce mois-ci */
+void  intertrade_commerce_diag(long *capped, double *drawn);  /* §5 télémétrie chronique : achats bornés · volume tiré */
 
 /* ---- EMBARGO DÉCRÉTÉ (décision joueur/IA) -----------------------------------
  * En sus de l'embargo de guerre (automatique) : un pays peut DÉCRÉTER l'embargo

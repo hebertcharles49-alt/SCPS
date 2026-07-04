@@ -161,7 +161,7 @@ void diplo_save_statics(FILE *f);
 bool diplo_load_statics(FILE *f);
 
 /* ---- Lecteurs ---------------------------------------------------------- */
-float    diplo_eco_power(const WorldProsperity *wp, int cid);
+float    diplo_eco_power(const WorldProsperity *wp, const WorldEconomy *econ, int cid);  /* §5 : P_realise + poids de la puissance commerciale */
 float    diplo_mil_power(const World *w, const WorldEconomy *econ, int cid);
 Relation diplo_relation (const World *w, const WorldEconomy *econ,
                          const WorldProsperity *wp, const DiploState *d, int a, int b);

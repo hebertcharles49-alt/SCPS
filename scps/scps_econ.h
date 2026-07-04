@@ -679,6 +679,7 @@ float econ_off_culture_fraction(const ProvincePop *pp);
  * econ_off_culture_fraction (qui pèse le foreign NON encore digéré). */
 float econ_country_metabolized(const World *w, const WorldEconomy *econ, int cid);
 float econ_country_savoir(const WorldEconomy *econ, int cid);   /* SAVOIR : Σ strates pondérées × bonus bibliothèque (annuel) — la pop produit la recherche */
+float econ_country_commerce(const WorldEconomy *econ, int cid); /* PUISSANCE COMMERCIALE : pool MENSUEL de volume échangeable (Σ strates marchandes × bonus chaîne commerciale) — drainé par les achats au marché */
 /* MÉTABOLISATION VENTILÉE — out[r] = part [0..1] des âmes diaspora d'héritage r digérées.
  * Lu par la barre d'accès tech (Temps 2 : digérer le peuple r ⇒ accès aux signatures de r). */
 void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, int cid,
@@ -704,6 +705,25 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
 #endif
 #ifndef SAVOIR_LIB_MAX
 #define SAVOIR_LIB_MAX     0.33f
+#endif
+/* PUISSANCE COMMERCIALE — fallbacks compilés (registre scps_tune_list.h) : la POP MARCHANDE produit
+ * le volume échangeable au marché (0.04·bourgeois + 0.01·élite /mois), la CHAÎNE COMMERCIALE module
+ * en % (BLD_PER par point de PE_infra bâti, plafond BLD_MAX) ; ECO_W = son poids dans la puissance
+ * éco de la diplo (diplo_eco_power). */
+#ifndef COMMERCE_W_BOURGEOIS
+#define COMMERCE_W_BOURGEOIS 0.04f
+#endif
+#ifndef COMMERCE_W_ELITE
+#define COMMERCE_W_ELITE     0.01f
+#endif
+#ifndef COMMERCE_BLD_PER
+#define COMMERCE_BLD_PER     0.10f
+#endif
+#ifndef COMMERCE_BLD_MAX
+#define COMMERCE_BLD_MAX     0.50f
+#endif
+#ifndef COMMERCE_ECO_W
+#define COMMERCE_ECO_W       0.05f
 #endif
 
 /* ── PIPELINE IA — PRÉVISION (étage 1) : ce que l'IA LIT pour voir le mur venir ──

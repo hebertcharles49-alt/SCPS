@@ -500,6 +500,7 @@ static void sim_cmd_drain(Sim *s, World *w){
 
 void sim_day(Sim *s, World *w) {
     provlog_set_year(s->year);   /* l'an courant pour les pushs d'évènements du directeur (display) */
+    if (s->day % 30 == 0) intertrade_commerce_reset(s->econ);   /* §5 : le pool commercial se refait au ROULEMENT de mois (plein AVANT les achats) */
     PROF(PB_AGENCY, agency_advance(s->ag, w, s->econ, s->wl, s->drift, 1));
     sim_cmd_drain(s, w);   /* JOUEUR : ses ordres s'appliquent ICI, après agency_advance, AVANT l'IA (point fixe) */
     econ_colony_day(s->econ, w);   /* chantiers de colonisation JOUEUR (no-op intégral sans chantier → golden) */
