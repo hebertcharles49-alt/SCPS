@@ -1,0 +1,509 @@
+# eco_fable.md — Carnet de raisonnement : audit de câblage & refactor mathématique de l'économie
+
+> **Nature du document.** Carnet de laboratoire **append-only, chronologique** — le fil de pensée de
+> l'orchestrateur, pas un rapport. Destiné à un lecteur qui n'était pas là (l'auteur plus tard, ou une
+> session ultérieure) : le **pourquoi** de chaque conclusion, pas seulement le quoi. La matrice de
+> couplage et le plan de refactor **cristallisent** hors du raisonnement à mesure qu'il mûrit ; rien
+> n'y entre sans une preuve **vérifiée** consignée plus haut. Ancrage : `fichier:fonction:symbole`,
+> jamais un numéro de ligne.
+
+---
+
+## RÉSUMÉ EXÉCUTIF (distillé, maintenu en tête — dernière mise à jour : entrée [010])
+
+- **État** : Phases 0-2 CLOSES. Phase 3 (cohérence math + réconciliation §5) OUVERTE — conseiller
+  Opus sur les cas C1-C9 + mesureur en WORKTREE isolé (le cap mord-il ?). Aucun patch écrit.
+  Aucun golden touché.
+- **Le suspect P est TRANCHÉ, avec asymétrie ([009])** : `st.K` et `st.H` reçoivent les nudges
+  religieux INTACTS ; seul `st.P = governance_P(stub 5.f)` écrase — RC_P meurt pour le canal ORDRE
+  (fragilité/SI) mais vit pour PE/babel/surchauffe ; `st.F` = stub JAMAIS retouché ; `Lt` (le
+  3e L, TechState) VIT : `croissance_tick = δ·P_realise·(Lt/10)` — c'est LUI que la religion
+  pousse. La formule σ du syncrétisme est DUPLIQUÉE TEXTUELLEMENT (culture vs core).
+- **Culture vs PopCulture : candidat double-source RAYÉ** (type de passage, une seule source
+  vivante). **TODO api n_groups : PÉRIMÉ** (repli mort). **faith : DEUX champs** (int
+  institutionnel vs axe continu) à deux écrivains — divergence structurellement possible.
+- **Matrice (12 arêtes, [008])** : 7 CÂBLÉES · 2 PARTIELLES (culture→econ à deux portes ;
+  factions→savoir INFIRMÉ — le rot ne ronge PAS la recherche, malgré un commentaire d'econ qui le
+  suggère) · 2 NON-CÂBLÉES (**A1 le trou guerre/commerce frontalier, CONFIRMÉ EN FLUX** ; A10
+  `PopGroup.L` = silo écrit-jamais-lu) · 1 isolation confirmée (labor n'écrit rien dehors).
+  **FAMILLE FANTÔME « P/K neutres »** : gate syncrétique ET demography_tick reçoivent des
+  littéraux 5.f ; `governance_P/F` = stubs à 5.f. **SUSPECT NEUF ([008])** : dans
+  `prosperity_tick`, le P nudgé par la religion (RC_P) semble ÉCRASÉ par `st.P=governance_P(stub)`
+  — canal câblé-puis-jeté ? Phase 2 tranche.
+- **Gabarit (tier de capitale)** : double source CONFIRMÉE ([002]) ; le savoir lit AUSSI le
+  staffing des `LBuilding` — deux termes à collapser, pas un.
+- **Dissolution `LaborEcon`** : périmètre désormais COMPLET — 3 lecteurs vivants à repointer
+  (savoir · **levée militaire** `campaign_refill`/`army_recruit` [découverte, absente de la spec] ·
+  topbar viewer LR_FOOD/pop_in_army) ; `LMarket` est DÉJÀ MORT (supply figé 1.f, guichets or
+  supprimés, zéro lecteur de prod) ; LaborEcon est SÉRIALISÉ (section LABO) ⇒ dissolution = bump
+  save. Piège latent : labor seedé sur `s->player`, savoir gaté sur `s->human_player` — égalité
+  SUPPOSÉE, pas garantie ([006]).
+- **Puissance commerciale** : le terrain est cartographié — l'étage 3 (inter-pays) n'a AUCUN cap
+  pop-dépendant (TradeRoute.capacity = 1.0f constant) ; le SEUL précédent pop→flux est l'étage 2
+  (`link_capacity = 4 + pop·0.002`). Atterrissage sans collision de formule directe, mais
+  réconciliation conceptuelle étage 2 ↔ étage 3 toujours obligatoire (deux lois pop→flux).
+- **TROU n°1 CONFIRMÉ EN FLUX ([008] A1)** : `trade_tick` déplace stocks + richesse
+  (`exp->stock[r]-=vol; imp->stock[r]+=received` ; crédit bourgeois exportateur) sur tout lien
+  ADJACENT sans jamais tester owner/guerre/embargo — le commerce frontalier TRAVERSE la guerre.
+  Le commentaire d'intertrade (« intra-pays : déjà couvert par scps_trade ») prouve la croyance
+  erronée du concepteur : TROU, pas intention. Correctif = patch CHANGEANT (re-baseline).
+- **Silos de légitimité** : TROIS « L » (WorldLegitimacy.L[région] · PopGroup.L · TechState.L),
+  trois formules/cadences/grains, communication asymétrique — candidat n°1 de l'audit math
+  (Phase 3 dira si double-source ou grandeurs légitimement distinctes).
+- **Prototypes isolés** : `scps_faith.c` et `scps_popsim.c` ne sont liés QUE dans leurs demos
+  (Makefile vérifié) — pas des bugs, mais de la roadmap non réalisée + un risque de confusion.
+
+---
+
+## JOURNAL
+
+### [001] 2026-07-04 — Ouverture : mission, rôles, méthode de preuve, séquencement
+
+**Mission** (spec « Audit de câblage & refactor mathématique de l'économie SCPS ») : trois chantiers
+dans l'ordre — (1) auditer le câblage et les influences mutuelles de la chaîne
+`labor → culture → religion → econ → stab` (câblé ? mutuel ? mathématiquement cohérent ?) ;
+(2) collapser la double source du tier de capitale (le gabarit du patron) ;
+(3) introduire la puissance commerciale ET dissoudre totalement `LaborEcon` — **après**
+réconciliation avec la machinerie de commerce existante.
+
+**Rôles** (harnais CLAUDE.md) : orchestrateur = cette session (Fable) — tient ce carnet, garde la
+séquence, ne lit pas le code au-delà des vérifications mécaniques ; lecteurs/implémenteurs = agents
+Sonnet ; vérifications mécaniques = greps du harnais (inline pour 1-3 symboles, agents Haiku pour le
+volume) ; conseiller = agent Opus aux cas litigieux (Phase 3+).
+
+**Méthode de preuve (Invariant 2)** : toute citation d'un lecteur est re-grep-ée avant inscription.
+Une entrée non vérifiée est rejetée. Le carnet distingue explicitement : **[VÉRIFIÉ]** (grep du
+harnais, ce jour), **[RAPPORTÉ]** (affirmation d'un agent, en attente de vérification),
+**[CONTEXTE]** (changelog/CLAUDE.md — à re-vérifier avant usage dans la matrice).
+
+**Familles de patch (Invariant 1)** : *préservant-le-comportement* (golden DOIT rester vert, sinon
+le patch a un bug) vs *changeant-le-comportement* (golden re-baseliné DÉLIBÉRÉMENT après revue
+humaine). Chaque patch déclarera sa famille AVANT d'être écrit. Jamais de re-baseline silencieux.
+
+**Séquencement (la digue)** : matrice bouclée AVANT refactor · gabarit spécifié AVANT puissance
+commerciale · dissolution planifiée sur papier AVANT tout patch. Les phases 1-2-3 ne s'ouvrent
+qu'à la clôture écrite de la précédente.
+
+**Garde-fou opérationnel** (leçon de la session précédente, hors mission mais vital) : tous les
+agents reçoivent l'interdiction EXPLICITE de toucher git (commit/reset/checkout) — un agent de fond
+a déjà détruit des commits locaux en « nettoyant » ce qu'il prenait pour un processus intrus.
+
+---
+
+### [002] 2026-07-04 — Le gabarit [VÉRIFIÉ] : tier de capitale, double source econ ↔ labor
+
+Re-vérification mécanique de la trouvaille pré-amorcée (greps du harnais, ce jour). Tout confirme,
+et deux faits NOUVEAUX s'ajoutent à la spec.
+
+**Côté production (l'effet éco réel) — [VÉRIFIÉ]** : `scps_econ.c`, bloc capitale du calcul de
+productivité de province (fonction hôte à nommer en Phase 0) : recalcule
+`capitale_max_tier(rpop)` → `capitale_admin_pop(ctier)` → `capitale_prodmult(ctier, nob)`,
+sur la pop régionale VIVANTE, avec un facteur `(1 - rot)` (le « rot » de capture des factions —
+couplage factions→econ déjà câblé ici, à porter à la matrice). Échelle pleine 1→7
+(`scps_labor.c:capitale_max_tier` ; `labor_demo.c` : `capitale_max_tier(10000)==7`).
+
+**Côté savoir (le revenu de recherche joueur) — [VÉRIFIÉ]** : `scps_sim.c:sim_player_savoir_month`
+lit `lab->prov[0].cap_tier` **STOCKÉ** et le **clampe à [1,4]** (`if(ct>4)ct=4`), puis
+`m = 0.5·tier`. Appelé du bloc recherche joueur de `sim_day`, multiplié ensuite par
+`tech_research_yield × prosp × metab`.
+
+**Fait NOUVEAU n°1 (absent de la spec)** : `sim_player_savoir_month` ne lit pas QUE le tier — il
+boucle sur les `LBuilding` de la capitale LaborEcon (`cap->bld[]`, `building_job_slots`,
+`jobs_filled`) et ajoute `0.5·tier_bâtiment·staffing` par bâtiment. **Le collapse du gabarit doit
+donc statuer sur DEUX termes**, pas un : (a) le tier de capitale → repointer sur
+`capitale_max_tier(pop canonique)` ; (b) la contribution des bâtiments LaborEcon → vers quoi ?
+(les institutions Savoir passent DÉJÀ par `tech_research_yield` à côté — risque de double-comptage
+si on repointe naïvement vers les édifices econ). Question ouverte pour Phase 4.
+
+**Joueur-only — [VÉRIFIÉ]** : `scps_sim.c:sim_init` : `labor_seed_from_world(s->labor, w, s->econ,
+s->player)` ; commentaire in situ : « Le LaborEcon reste calé sur s->player (modèle isolé : il ne
+nourrit pas l'éco partagée, les capitales agissent via capitale_* en direct) ». Joueur et IA ne
+tournent pas la même économie de savoir.
+
+**Désync d'horloge — [VÉRIFIÉ]** : `scps_sim.c:sim_day`, bloc mensuel (`day%30==29`) :
+`labor_resync_pop(s->labor, s->econ)` — « labor RELIT la pop (le monde la possède) ». La pop de
+LaborEcon a donc jusqu'à ~29 jours de retard sur la pop vivante ⇒ divergence dépendante du jour du
+mois. (`labor_tick` est lui QUOTIDIEN — deux horloges dans le même module.)
+
+**Le chemin SAIN de référence — [VÉRIFIÉ]** : `scps_api.c` (lecteur capitale de la façade — nom de
+fonction à confirmer en Phase 0) recalcule `capitale_max_tier(pop)` → admin → `prod_pct` : cohérent
+avec la production. **Fait NOUVEAU n°2** : le motif sain est déjà MAJORITAIRE — `scps_ai.c` (T-gate
+manufactures, 3 sites), `scps_demography.c` (elite_jobs = tier·100), `scps_campaign.c`
+(`capitale_defense(capitale_max_tier(pop))`), `scps_revolt.c` (bloc K_CAP) recalculent TOUS depuis
+la pop. `scps_econ.h` le déclare même en toutes lettres : « Le tier est DÉRIVÉ de la pop (pas un
+champ stocké) — même table que capitale_max_tier ». **Le seul lecteur du tier STOCKÉ restant est
+`sim_player_savoir_month`.** Le collapse est donc une mise en conformité du dernier déviant, pas
+une migration de masse — ça borne le risque.
+
+**Symptômes du patron cochés** : double propriété (LProvince.cap_tier vs dérivation live) ·
+désync de timing (resync mensuel vs live) · incohérence d'échelle (clamp 4 vs 1→7) · périmètre
+asymétrique (joueur-only). **Doute à trancher (Phase 4)** : le clamp à 4 est-il un choix d'équilibre
+DÉLIBÉRÉ du revenu de savoir (auquel cas le collapse « scale 1→7 » est un patch
+*changeant-le-comportement* à re-baseliner en conscience) ou un accident historique ? Ne pas
+présumer — chercher trace d'intention (commentaire, commit, AUDIT.md) avant de choisir la famille.
+
+---
+
+### [003] 2026-07-04 — [CONTEXTE] Héritages du changelog à re-vérifier avant usage
+
+Éléments de CLAUDE.md pertinents au chantier, versés au dossier comme CONTEXTE (pas des preuves) :
+
+- **E0.4 « tier payé » ENTERRÉ** (audit v48) : `labor_publish_capitals`/`labor_region_cap_tier` +
+  branche lectrice revolt retirés comme byte-identiques — le registre « tier payé » ne divergeait
+  déjà plus du repli pop-derived. Cohérent avec le Fait n°2 de [002] : la dissolution continue un
+  mouvement déjà entamé.
+- **La pop est propriété de la démographie/province** (re-key v47 : `econ->prov[]` = vérité,
+  `region[]` = agrégat) ; labor « relit » (E0.1). Le « module de population unique » visé existe
+  donc déjà à moitié : c'est l'axe demography+econ.
+- **`LMarket`** : marché joueur-only de LaborEcon, redondant face aux trois étages
+  (`scps_econ` régional / `scps_trade` inter-régional / `scps_intertrade` inter-pays) — à
+  cartographier en Phase 0, y compris `labor_pump_market`/`labor_sell_market` (« les guichets OR »,
+  aperçus dans scps_labor.c lors d'une session antérieure).
+- **Save v58** : toute dissolution touchant des structs sérialisées (LaborEcon l'est-elle ? à
+  vérifier) imposera un bump — à inscrire dans le coût des patches de Phase 5.
+
+---
+
+### [004] 2026-07-04 — Lancement Phase 0 (cartographie) + surprises du premier Glob
+
+Le Glob de confirmation des noms (§4) révèle DEUX écarts au tableau de la spec, avant même de lire
+quoi que ce soit :
+
+1. **`scps_faith.c` existe À CÔTÉ de `scps_religion.c`** — la spec disait « + toute unité de foi
+   distincte » ; elle existe. Qui possède quoi (pôles/credo/schisme vs quoi d'autre ?) — au
+   cartographe.
+2. **`scps_popsim.c` existe** — absent du tableau §4 et de tout changelog récent lu. Or la mission
+   vise un « module de population unique ». Embryon ? Fossile ? Demo ? À cartographier AVANT de
+   dessiner la dissolution (si un module de pop existe déjà, la dissolution atterrit peut-être là).
+3. `scps_trade.c` confirmé (l'étage 2 du marché existe bien comme fichier propre).
+
+**Décision** : deux lecteurs Sonnet en parallèle, read-only, git interdit —
+- **Lecteur A « modules »** : structs d'état + API publique + inclusions croisées + sites de câblage
+  dans `scps_sim.c`/`scps_api.c`, pour labor/culture/heritage/religion/**faith**/econ/legitimacy/
+  prosperity/factions/**popsim**/demography. Signale au passage les influences déclarées en
+  commentaire mais non câblées (matière pour Phase 2).
+- **Lecteur B « marché »** : les QUATRE lieux du marché — solde régional d'econ (prix, caps de
+  stock, ipm), `scps_trade` (`TradeLink.capacity` : vérifier la sémantique « croît avec la pop »),
+  `scps_intertrade` (caps de route, embargo, Centres, péages, pompe d'armes, actionneur
+  `intertrade_market_buy/sell` : gates réels + qui l'appelle), `LMarket` (comportement propre ?
+  lecteurs ? joueur-only ?).
+
+Leurs rapports seront vérifiés (greps ciblés) avant inscription — clôture de Phase 0 = une entrée
+[00x] consignant la carte VÉRIFIÉE, puis ouverture de Phase 1.
+
+---
+
+### [005] 2026-07-04 — Rapport lecteur B (marché, 4 étages) — inscrit après vérification
+
+Affirmations porteuses re-grep-ées par le harnais : TOUTES CONFIRMÉES. La carte du marché :
+
+**Étage 1 (econ, régional→national)** : le prix est soldé UNE FOIS PAR EMPIRE
+(`scps_econ.c:econ_tick`, bloc « PRIX NATIONAL » : `demand_nat/(pool+supply_nat)`, lissage
+`PRICE_INERTIA`) puis PROJETÉ sur `re->price` de toutes les provinces ; caps de stock agrégés PAR
+PAYS (`ECON_STOCK_CAP_BASE 200` + `500·n_entrepot`) ; `ipm` (interrupteur `SCPS_IPM`). Pas de verbe
+joueur direct — la consommation des strates est interne ; `econ_arms_take` délègue à la pompe
+(`g_arms_pump` → `intertrade_market_pull`) quand branchée. [RAPPORTÉ, cohérent avec CLAUDE.md]
+
+**Étage 2 (scps_trade, inter-régional)** — [VÉRIFIÉ] :
+`scps_trade.c:link_capacity` = `4.f + (pop_ra+pop_rb)*0.002f` (« ~4 unités de base + 2 par 1000
+hab ») — **LE précédent pop→flux du moteur**, réellement implémenté, posé à chaque
+`trade_network_build`. Second plafond implicite [RAPPORTÉ] : `demand_est = pop_imp*0.01f` dans
+`trade_tick`. Cadence **ANNUELLE** [VÉRIFIÉ : `scps_sim.c:sim_day`, `trade_network_build` +
+`trade_tick` juste avant `intertrade_tick` dans le bloc annuel] + build à `sim_init`. Sérialisé
+(section NETW). VIVANT, mais l'étage le plus lent de la pile.
+
+**⚠ TROU DE CÂBLAGE CANDIDAT n°1** — [VÉRIFIÉ au niveau symboles] : `scps_trade.c` ne contient
+AUCUNE occurrence de `owner|diplo|embargo|war` (grep : zéro) ; ses liens naissent de l'ADJACENCE
+géographique (terre 4-connexe / bi-côtier / fleuve), qui inclut des paires trans-frontière. Et
+`scps_intertrade.c:intertrade_tick` saute `ca==cb` avec le commentaire « intra-pays : déjà couvert
+par scps_trade » [VÉRIFIÉ]. Lecture combinée : l'étage 2 commercerait À TRAVERS les frontières SANS
+gate guerre/embargo, pendant que l'étage 3 est soigneusement gaté (pair_at_peace + g_embargo,
+contournés par pacte). Reste à confirmer EN FLUX (Phase 1) que `trade_tick` déplace bien des biens
+entre régions d'owners différents — puis à trancher : intention (« le petit commerce frontalier
+survit à la guerre ») ou trou. Hypothèse par défaut : trou (l'étage 3 n'aurait pas ce commentaire
+sinon).
+
+**Étage 3 (scps_intertrade, inter-pays)** : `TradeRoute.capacity` posé `1.0f` à la création
+(`scps_routes.c`) et JAMAIS réécrit [VÉRIFIÉ] — **aucun cap pop-dépendant à cet étage** ; plafonds
+= constantes (`IT_EXPORT_FRAC 0.25`, `ARB_VOL_CAP` tunable) ou bornes de stock/trésor. Embargo à 2
+sources (guerre auto via `pair_at_peace` + décrété via `g_embargo`), pacte = laissez-passer.
+Centres/hub_map (cache sérialisé v58 — notre fix savetest). Péage de détroit `IT_CHOKE_TOLL 0.12`.
+**Actionneur joueur** `intertrade_market_buy/sell` : gates = hub atteignable · Centre-ou-pacte pour
+le tier mondial · stock dispo (`avail`) · TRÉSOR (clamp `can=treasury/prix`) ; seuls appelants =
+`CMD_MARKET_BUY/SELL` (façade → journal → drain) ; **AUCUNE IA ne l'appelle** [RAPPORTÉ, grep du
+lecteur]. La future puissance commerciale atterrirait ICI sans collision de formule directe — mais
+la réconciliation conceptuelle avec l'étage 2 (deux lois pop→flux à deux grains) reste à trancher
+en Phase 3.
+
+**Étage 4 (LMarket)** — [VÉRIFIÉ] : MORT en production. `market.supply` figé `1.f` (3 sites,
+commentaire « P-arc : matériau & or vivent dans le pool éco, plus ici ») ; `market.demand` écrit
+NULLE PART hors bancs ; les « guichets OR » `labor_pump_market`/`labor_sell_market` N'EXISTENT PLUS
+(seul un commentaire de suppression en témoigne — fantômes morts avant la mission) ; lecteurs =
+bancs d'essai uniquement. **MAIS** le rapport B remonte un 3e lecteur VIVANT de LaborEcon que la
+spec ne listait pas : **la LEVÉE MILITAIRE** — [VÉRIFIÉ] `scps_sim.c:sim_day` →
+`campaign_refill(s->camp, p, s->econ, s->labor)` ; `scps_army.c:army_recruit(ArmyState*,
+LaborEcon*, …)` → `prov[0].pop_in_army += count*POP_PER_UNIT`. Le viewer lit aussi
+`labor->stock[LR_FOOD]`/`flow` + `pop_in_army` (topbar). **Le périmètre de dissolution est donc :
+savoir + levée + topbar viewer** — trois repointages, pas un.
+
+**Tableau des plafonds de débit** (surface de collision §5) : pop-dépendants = `TradeLink.capacity`
+et `demand_est` (étage 2 SEULEMENT). Étage 3 : rien de pop-dépendant. Étage 1 : caps de STOCK (pas
+de flux). Conclusion pour §5 : pas de double-cap direct à l'étage 3 ; le risque est l'INCOHÉRENCE
+inter-étages (une loi pop→flux à l'étage 2, une autre à l'étage 3) plutôt que le double-comptage.
+
+---
+
+### [006] 2026-07-04 — Rapport lecteur A (modules) — inscrit après vérification
+
+Affirmations porteuses re-grep-ées : CONFIRMÉES (détail ci-dessous). Les dix trouvailles du
+lecteur, triées par poids pour la mission :
+
+**1. TROIS « L » (légitimité)** — [VÉRIFIÉ] : `scps_legitimacy.h:WorldLegitimacy.L[région]`
+(tick annuel, formule align/aisance) · `scps_econ.h:PopGroup.L` « légitimité du groupe envers la
+couronne » (muté par `scps_demography.c:group_L_tick`, mensuel, grain GROUPE) ·
+`scps_tech.h:TechState.L` « légitimité / ordre consenti » (nudgé par religion via
+`scps_prosperity.c:prosperity_tick`, `religion_country_acc->ch[RC_L/RC_STAB/RC_COHESION]`).
+Communication ASYMÉTRIQUE : religion LIT wl->L (schisme/fracture), demography ÉCRIT PopGroup.L,
+prosperity LIT TechState.L — trois silos, trois cadences, trois grains. **Prudence de méthode** :
+trois grandeurs nommées « légitimité » ne font pas automatiquement une double-source — ce peut
+être trois concepts légitimement distincts (consentement régional / loyauté de groupe / ordre
+abstrait pays). Phase 3 tranchera sur les FORMULES et sur qui consomme quoi.
+
+**2. LaborEcon n'est JAMAIS lu par la façade** — [VÉRIFIÉ] : grep `labor` dans `scps_api.c` →
+uniquement `CLASS_LABORER` (strates econ) et `labor_upkeep_per100` (fonction PURE, sans état).
+`scps_api.c:scps_province_capitale` recalcule tier/logement/services depuis `ProvinceEconomy` +
+`capitale_*` pures. Deux « vérités de capitale » coexistent en RAM (l'état `LProvince` tické et le
+recalcul à la volée de l'API) — la façade a déjà choisi le camp du recalcul (le motif sain).
+
+**3. Le piège `s->player` vs `s->human_player`** — [VÉRIFIÉ, avec la nuance exacte] :
+`sim_init` : `s->player` = pays POLITY_PLAYER de la genèse ; `s->human_player = -1` par défaut
+(« la façade débraye après coup »). Le bloc recherche du savoir gate sur `s->human_player`
+(`pl=s->human_player`) mais `labor_seed_from_world(..., s->player)`. Le commentaire de sim.c
+(« Le LaborEcon est calé sur s->player (== s->human_player… ») documente une ÉGALITÉ SUPPOSÉE —
+aucune garde ne l'impose. Si un humain contrôle un pays ≠ POLITY_PLAYER, savoir et levée lisent le
+LaborEcon du MAUVAIS pays, silencieusement. La dissolution PURGE ce piège par construction (plus
+de modèle isolé → plus d'hypothèse d'alignement).
+
+**4. `pop_by_class` en TROIS implémentations parallèles** — [RAPPORTÉ, structs citées] :
+`LProvince.pop_by_class[LAB_CLASS_COUNT]` (labor, `capitale_mobility_tick`) ·
+`PopGroup.pop_by_class[CLASS_COUNT]` (econ/demography, `demography_tick`) ·
+`PopBand.by_class[POPCL_COUNT]` (popsim, isolé). Les deux premières tournent SIMULTANÉMENT sans se
+synchroniser ; l'API réplique avec un repli `strata[]` et porte un TODO (« pop.n_groups n'y est pas
+encore peuplé (câblage moteur à venir) ») possiblement PÉRIMÉ — à vérifier en Phase 2.
+
+**5. `scps_faith.c` et `scps_popsim.c` = prototypes ISOLÉS** — [VÉRIFIÉ Makefile] :
+`scps_faith.o` n'apparaît que dans `FAITH_DEMO_OBJS`, `scps_popsim.o` que dans `POP_DEMO_OBJS` —
+ni chronicle, ni façade, ni viewer ne les lient. `scps_religion.c` est LE module de foi vivant
+(tick quotidien scholar + refresh mensuel). **Correction d'inférence du lecteur** : `pop_demo.exe
+« daté du 4 juillet » ne prouve pas une maintenance active — le `make test` du jour (harnais)
+rebâtit tous les bancs. L'intention déclarée de popsim.h (« l'intégration (porter ceci dans
+PopGroup) vient après ») = ROADMAP écrite, jamais réalisée. Pour la mission : le « module de
+population unique » visé a donc DÉJÀ un embryon conceptuel (bande heritage×culture×foi) — à
+considérer en Phase 4 comme RÉFÉRENCE de design, pas comme base de code (il est découplé du
+moteur).
+
+**6. Propriétaire réel de la pop** : `ProvincePop.groups[].count` dans `WorldEconomy.prov[]`
+(muté par demography), agrégé en `strata[]` par econ ; `LProvince.pop` RELIT (E0.1, resync
+mensuel), documenté « jamais grandi ici ». Cohérent avec la charte province. La chaîne de
+propriété est SAINE — c'est le lecteur savoir qui déviait.
+
+**7. LaborEcon est SÉRIALISÉ** — [VÉRIFIÉ antérieurement, scps_save.c : section `LABO`] : la
+dissolution emportera un bump de SAVE_VERSION (« ère antérieure »).
+
+**Divers à porter en Phase 1/2** : `Culture` (scps_culture.h) vs `PopCulture` (scps_econ.h) —
+deux types, mêmes 5 axes, conversion à vérifier · `faction_*` sans tick propre (calcul à la
+demande + `faction_levers_decay` annuel) · ordre annuel vérifié : `legitimacy_tick` →
+trade/intertrade → prosperity_tick → endgame (cohérent, L frais pour prosperity).
+
+---
+
+### [007] 2026-07-04 — CLÔTURE PHASE 0 · ouverture Phase 1
+
+**La carte est établie et vérifiée sur tous les points porteurs.** Ce qui change le plan par
+rapport à la spec initiale :
+
+1. **Le périmètre de dissolution s'élargit** : la spec listait marché/savoir/nourriture ; la
+   carte ajoute la LEVÉE MILITAIRE (`campaign_refill`/`army_recruit`) et la topbar viewer, et
+   confirme que `LMarket` est un cadavre (retrait trivial). Le bump save est acquis (section LABO).
+2. **La puissance commerciale a un terrain PLUS PROPRE que craint** : aucun cap pop-dépendant à
+   l'étage 3 — le risque n'est pas le double-comptage direct mais l'incohérence de LOI entre
+   étages (link_capacity à l'étage 2). La question §5 se reformule : une seule loi pop→flux pour
+   les deux étages, ou deux lois assumées à deux grains ?
+3. **Un trou de câblage candidat prioritaire est apparu** (guerre/embargo ↔ étage 2) — il passe
+   en tête de la Phase 1.
+4. **Les trois L** sont le premier chantier de la Phase 3 (cohérence math).
+
+**Phase 1 lancée** : un lecteur Sonnet, liste d'arêtes explicite (chaîne principale + couplages
+croisés §4 + le trou trade/guerre), consigne = preuve `fichier:fonction:symbole` par arête,
+verdict CÂBLÉ / NON-CÂBLÉ / PARTIEL, grandeur exacte lue + cadence. Le lecteur reçoit ce carnet
+comme contexte (il le LIT, il n'y écrit pas — seul l'orchestrateur écrit ici).
+
+---
+
+### [008] 2026-07-04 — LA MATRICE (Phase 1) — inscrite après re-vérification (7 greps, 7 confirmations)
+
+| Arête | Verdict | Grandeur & site | Cadence |
+|---|---|---|---|
+| A1 trade×guerre | **NON-CÂBLÉ = TROU** | `trade_tick` : `exp->stock[r]→imp->stock[r]` + richesse bourgeoise, AUCUN test owner/diplo (zéro symbole, zéro include diplo) [VÉRIFIÉ flux] | annuel |
+| A2 culture→econ | **PARTIEL (2 portes)** | `.demographie` → `scps_econ.c` (natalité, `culture_build_for`+`build_leviers`) ; éthos → tolérance fiscale & préférences ; MAIS `.productivite` (+capacite/coercition/permeabilite/arcane/fracture) → SEULEMENT `prosperity_tick` (`heritage_prod` → `P_realise`) [VÉRIFIÉ] | quotidien / annuel |
+| A3 culture→religion | CÂBLÉ | credo → `ai_derive_weights:w_faith` (fondation) ; 4 axes PopCulture + `wl->L[r]` → `region_faith_drifts` (schisme DÉRIVE/fracture) | à la demande |
+| A4 religion→econ | CÂBLÉ **DIRECT** | `region_set_native_faith` MUTE `PopGroup.faith` (3 voies : scholar quotidien, héritage fondation, fracture) ; `RC_POPGROWTH` lu par la natalité de `scps_econ.c` [VÉRIFIÉ] | quotidien |
+| A5 religion→stab | CÂBLÉ | `prosperity_tick` : RC_K→K, RC_P→P, RC_H→H, **RC_L+RC_STAB+RC_COHESION SOMMÉS dans `Lt`** [VÉRIFIÉ] ; revolt : `FAITH_UNREST 0.22` sur foi dissidente non stabilisée | annuel / à la demande |
+| A6 econ→stab | CÂBLÉ | `legitimacy_tick` lit culture/satisfaction/coercion/H_coerc/build.faith ; `prosperity_tick` lit profil, pression fiscale, densités K_inst/P_open/PE_infra/route_pe/charges | annuel |
+| A7 stab→econ (retour) | CÂBLÉ | revolt ÉCRIT satisfaction/coercion/treasury/pop des provinces ; mobilisation retire les bras (`revolt_mobilized`), démobilisation les rend | à la demande |
+| A8 factions→econ/savoir | **PARTIEL** | econ : `(1-faction_capture_total)` sur le bonus de capitale [re-VÉRIFIÉ] ; savoir : **RIEN** — `sim_player_savoir_month` et `tech_research_yield` ignorent le rot. ⚠ le commentaire d'econ au bloc rot MENTIONNE « recherche » — candidat déclaré-non-câblé (Phase 2 lit le texte complet) | quotidien |
+| A9 labor→econ | isolation CONFIRMÉE | `labor_tick` lu en entier : aucune écriture hors LaborEcon | quotidien |
+| A10 demography→stab | **NON-CÂBLÉ (silo)** | `PopGroup.L` écrit par `group_L_tick` (+ revolt le MUTE en issue) ; agrégats `province_L`/`country_L` appelés UNIQUEMENT par demography_demo [VÉRIFIÉ] — écrit, sérialisé, jamais consommé | mensuel |
+| A11 intertrade↔diplo | CÂBLÉ 2 sens | aller : `pair_at_peace`+`g_embargo` (pacte = laissez-passer) ; retour : `ai_province_value` (convoitise raw_cap×stress×prix) + `diplo_casus_belli:CB_ECONOMIC` (extraction). Rancune COMMERCIALE : n'existe pas (6 sites d'écriture de rancor, tous guerriers) | à la demande |
+| A12 prosperity→culture | CÂBLÉ mais **GÉNÉRIQUE** | `culture_can_syncretize(σ(0.8(P−D∞)+0.35(K−5)))` confirmé ; MAIS l'appelant (`demography_contact_tick` via sim_day) passe des LITTÉRAUX `5.f, 5.f` [VÉRIFIÉ] — le gate tourne sur du neutre, jamais la vraie P/K du pays | annuel |
+
+**Découvertes de la re-vérification (au-delà du rapport du lecteur)** :
+1. **SUSPECT « câblé-puis-jeté »** : dans `prosperity_tick`, les nudges religieux modifient les
+   locales K/P/H/Lt (bloc RC_*), puis PLUS BAS `st.P = governance_P(w,cid)` (STUB à 5.f) et
+   `st.L = Lg (« l'entrée vivante »)`. Si l'ordre est bien nudge-puis-écrasement pour P — le canal
+   RC_P serait MORT à l'arrivée ; et où coule `Lt` (vers `ts[cid].L` ?) reste à tracer. C'EST LE
+   PREMIER OBJET DE LA PHASE 2 (tracer le flux de variables de prosperity_tick, ligne à ligne).
+2. Le commentaire du bloc rot d'econ mentionne « recherche » alors qu'A8 prouve que le rot ne
+   touche pas la recherche — fantôme déclaré-non-câblé probable.
+3. `demography_tick` AUSSI reçoit `5.f, 5.f` (vu au grep [002]) — la famille des littéraux
+   neutres couvre les DEUX ticks démographiques, pas seulement le contact.
+
+**Câblages-fantômes recensés (entrée pour Phase 2)** : `governance_P`/`governance_F` (stubs 5.f,
+« tant qu'aucun levier n'est branché ») · littéraux `5.f,5.f` (contact_tick + demography_tick) ·
+`HeritageLeviers.productivite` (nom promet prod_mult, ne nourrit que prosperity) · TODO api
+n_groups ([006]) · commentaire rot/« recherche ».
+
+**Clôture Phase 1.** Bilan : 7 câblées · 2 partielles · 2 non-câblées (1 trou + 1 silo) ·
+1 isolation. Les verdicts SAINS d'apparence restent à passer au crible des 5 symptômes (Phase 3) ;
+la Phase 2 s'ouvre sur la mutualité fine et la famille fantôme, avec en tête le suspect
+« prosperity_tick écrase ses propres nudges ».
+
+---
+
+### [009] 2026-07-04 — Phase 2 (mutualité + fantômes) — inscrite après re-vérification (6 greps, 6 confirmations)
+
+**Q1 — LE SUSPECT TRANCHÉ, avec une asymétrie que personne n'avait vue.** Flux de variables de
+`prosperity_tick` tracé en entier [VÉRIFIÉ sur les sites st.*] :
+- `st.K = K` et `st.H = H` : les nudges religieux RC_K/RC_H arrivent INTACTS dans `scps_order`
+  (aucun stub gouvernance ne les intercepte) — canaux VIVANTS.
+- `st.P = governance_P(w,cid)` : un `=` PUR qui REMPLACE par le stub 5.f — le P nudgé par RC_P
+  n'atteint JAMAIS `scps_order` (fragilité/SI/mode)… mais il VIT ailleurs : babel gate (C_pe),
+  PE_interne, PE_externe, surchauffe. Verdict : câblé-puis-jeté sur UN canal sur quatre, pas mort.
+- `st.F = governance_F(w,cid)` : stub 5.f JAMAIS retouché ensuite (ni heritage ni bâti ni Âges) —
+  le canal le plus FIGÉ des sept entrées d'ordre.
+- `st.L = Lg` (legitimacy_country, la VRAIE légitimité régionale pop-pondérée) ; la religion
+  n'influence st.L qu'en AMONT (via legitimacy_tick), pas ici. Le repli `Lg = … : Lt` (si wl NULL)
+  est INATTEIGNABLE en jeu réel (sim_day passe toujours s->wl).
+- **`Lt` (TechState.L, le 3e L) VIT** : `cp->croissance_tick = DELTA · P_realise · (Lt/10)`
+  [VÉRIFIÉ] — la formule « croissance = δ·P·L/10 » du changelog utilise le L TECH nudgé par la
+  religion (RC_L+RC_STAB+RC_COHESION sommés), PAS la légitimité régionale. Insight structurant
+  pour C1 (les trois L) : chaque L a en fait UN consommateur distinct — wl->L → st.L (ordre),
+  TechState.L → croissance, PopGroup.L → personne (silo).
+- Non-cumulatif : K/P/H/Lt sont des copies locales, `ts_c` reste const — les nudges religieux se
+  recalculent chaque tick, aucun empilement.
+- `RC_I` n'est appliqué NULLE PART dans prosperity_tick (RC_F/RC_PE : statut à établir en Phase 3
+  — canaux religieux potentiellement orphelins).
+
+**Q2 — rot/« recherche » : fantôme déclaré CONFIRMÉ** [VÉRIFIÉ] : le commentaire §C3 d'econ dit
+en toutes lettres « moins de productivité de capitale, moins de recherche » ; le code n'applique
+`rot` qu'à `cap_bonus`. Le commentaire PROMET un effet non câblé.
+
+**Q3 — faith : DEUX champs, DEUX écrivains, DEUX vérités** [VÉRIFIÉ] :
+`religion.region_set_native_faith` écrit `groups[i].faith` (int institutionnel, id du registre) ;
+`demography.faith_convert_tick` écrit `origin.religion` (axe float continu) + bascule
+`rel_branch`/`credo` au seuil. Le culte dominant (`religion_refresh_region`) ne lit QUE l'int.
+Un groupe peut donc avoir un axe doctrinal 100 % aligné au trône et porter encore l'int d'une
+AUTRE foi (et inversement) — divergence structurellement possible, fréquence non quantifiée.
+Pas un double-écrivain du MÊME champ, mais deux modèles de conversion parallèles à réconcilier.
+
+**Q4 — la famille fantôme, périmètre complet** [VÉRIFIÉ sites] : gates lisant P/K =
+`assimilation_years/tick`, `province_composition`, `demography_tick` (K seul enrichi de
+`build.K_inst` — P reste NU), `demography_contact_tick`, `sync_gate`. Appels à littéraux `5.f` :
+sim_day ×2 (demography_tick mensuel + contact_tick annuel), **scps_api ×1 + viewer ×2** (readout
+composition — deux sites de plus que [008]). `governance_P/F` : aucun autre appelant (statics
+locales). **La vraie coordonnée EXISTE** — prosperity calcule K/P nudgés chaque tick (cp->K est
+même exposé) — jamais transmise : la démographie recalcule sa porte sur des constantes. **ET la
+formule σ est DUPLIQUÉE TEXTUELLEMENT** : `scps_culture.c:sync_gate` vs
+`scps_core.c:scps_metabolisation` (`0.8(P−D∞)+0.35(K−5)` mot pour mot) [VÉRIFIÉ] — deux
+implémentations de la même loi, risque de dérive de maintenance.
+
+**Q5 — TODO api PÉRIMÉ** : `demography_attach` (genèse, settled) et `colonize_seed_pop_group`
+(TOUTES les colonisations en partie) posent `n_groups=1` — le repli `strata[]` de
+`scps_province_classes` est mort en pratique ; le commentaire ment. Angle mort mineur signalé :
+dépeuplement total post-cataclysme (non vérifié).
+
+**Q6 — Culture vs PopCulture : candidat double-source RAYÉ.** `Culture` est un type de PASSAGE
+(copie champ-à-champ à la genèse, worldgen ; aller-retour `pc_to_culture`/`culture_to_pc` au
+syncrétisme) — jamais stocké côté monde. UNE source vivante : PopCulture.
+
+**Q7 — route_pe** [VÉRIFIÉ] : producteur = `scps_routes.c` (province-owned : RAZ puis
+`+= t->yield` aux deux bouts, la région n'est qu'un Σ-agrégat). Cadence du tick routes à
+confirmer si la Phase 3 en a besoin.
+
+**Q8 — mutualités restantes** : stab→labor = RIEN (grep legitimacy/revolt/factions : zéro
+écriture vers LaborEcon) — la dissolution n'a pas d'écrivain caché à débrancher.
+`assimilation_tick` = vase clos culturel (seul fil quasi-éco : K_inst via demography_tick).
+
+**Q9 — PopGroup.L est sérialisé** (blob ECON, memcpy brut de WorldEconomy) — état
+mort-mais-sérialisé, à peser en Phase 4 (le retirer = bump ; le câbler = re-baseline).
+
+**Q10 — sweep de dettes** : AUCUN autre TODO structurel dans les 8 fichiers — les vrais fantômes
+sont SILENCIEUX (constantes sans commentaire). Leçon de méthode consignée : le grep textuel ne
+trouve pas les fantômes, seule la lecture de FLUX les révèle.
+
+---
+
+### [010] 2026-07-04 — CLÔTURE PHASE 2 · ouverture Phase 3 (le crible + la mesure)
+
+**Le dossier de la Phase 3** — les cas au crible des 5 symptômes, numérotés pour le conseiller :
+
+- **C1 — les trois L** : chaque L a UN consommateur distinct (wl->L→ordre · TechState.L→croissance
+  · PopGroup.L→personne). Double-source ou trois grandeurs légitimes mal nommées ? Verdict + sort
+  du silo PopGroup.L (retirer/câbler).
+- **C2 — les stubs d'ordre** : st.P écrasé (asymétrie vs K/H), st.F figé. Que brancher — et le
+  stub P fait-il double emploi avec `lev.permeabilite` additionné juste après ?
+- **C3 — le collapse RC** : RC_L+RC_STAB+RC_COHESION sommés dans Lt (perte de distinction voulue ?)
+  + canaux RC_I/RC_F/RC_PE : appliqués QUELQUE PART ou orphelins ?
+- **C4 — la famille 5.f** : brancher la vraie K/P du pays dans l'assimilation/le syncrétisme ?
+  Analyse de SIGNE (un pays prospère assimilerait plus vite → boucle) et d'échelle.
+- **C5 — le trou A1** (trade×guerre) : familles de correctif (lien intra-pays seulement ·
+  gate paix · malus de guerre) — coût/risque de chacune.
+- **C6 — `.productivite` deux-portes** : le levier nommé « productivité » ne touche pas prod_mult
+  régional — renommer, re-router, ou documenter ?
+- **C7 — la formule σ dupliquée** (culture vs core) : unifier vers core ?
+- **C8 — §5 puissance commerciale** : remplace/subsume/coexiste vs link_capacity (étage 2) ;
+  LE CAP MORD-IL (mesure, pas devinette) ; signe de la boucle bourgeois→puissance→grain→bourgeois.
+- **C9 — faith deux-vérités** (int institutionnel vs axe continu) : réconciliation conceptuelle.
+
+**Répartition** : C1-C7 + C9 → le CONSEILLER (Opus, read-only, verdicts math + directives de patch
+avec famille golden). C8-mesure → un MESUREUR Sonnet en **WORKTREE ISOLÉ** (la mission autorise
+l'instrumentation en Phase 3 « à instrumenter, pas deviner » ; le worktree jetable garde le tronc
+VIERGE — leçon des agents destructeurs) : compteurs diag éphémères dans intertrade/trade, runs
+chronicle seeds 7/9/11, livrables = volume externe mensuel/pays en UNITÉS vs le cap 200 ·
+pop bourgeoise typique/pays (→ puissance typique) · volume étage 2 TRANS-FRONTIÈRE (quantifie
+le trou A1 au passage).
+
+---
+
+### [011] 2026-07-04 — SUSPENSION (limite de session) · consignes de REPRISE
+
+**État au gel** : Phases 0-2 CLOSES et VÉRIFIÉES ([002]-[009]). Phase 3 OUVERTE mais NON
+exécutée : le conseiller Opus est mort au lancement (« session limit, reset 19h10 Europe/Paris »),
+le mesureur C8 n'a jamais été lancé. AUCUN patch écrit, AUCUN golden touché, le tronc est VIERGE
+— la digue a tenu de bout en bout.
+
+**POUR LA SESSION SUIVANTE (reprise en 3 gestes)** :
+1. Lire ce carnet en entier (il est self-contained — ne re-cartographier RIEN).
+2. Relancer le CONSEILLER Opus sur le dossier C1-C7+C9+C10 de l'entrée [010] (le brief complet
+   est dans le prompt de l'orchestrateur : verdicts 5-symptômes + nature + directive + famille
+   golden + risque, ancrés fichier:fonction:symbole, re-vérifiés par grep avant inscription).
+3. Lancer le MESUREUR Sonnet en WORKTREE ISOLÉ pour C8 (brief en [010] : compteurs diag
+   éphémères intertrade/trade, seeds 7/9/11 × 100 ans, unités/mois/pays vs cap 200, pop
+   bourgeoise, volume étage-2 trans-frontière). JAMAIS d'agent avec droits git sur le tronc
+   (leçon [001] : un agent a déjà détruit des commits).
+Puis : clôture Phase 3 au carnet → Phase 4 (synthèse : collapse tier [002] · dissolution
+LaborEcon [005]-[007] · verdicts C1-C9) → Phase 5 (patches sous discipline golden, Invariant 1).
+
+**Rappels d'invariants pour la reprise** : preuve vérifiée avant inscription (Invariant 2) ·
+familles de patch déclarées, jamais de re-baseline silencieux (Invariant 1) · une population,
+une définition (Invariant 3) · patch minimal (Invariant 5) · séquence = la digue (§7).
