@@ -127,7 +127,11 @@ static float compute_C_base(const World *w, const TradeNetwork *net, int cid) {
 
 /* ---- Gouvernance & pression : entrées de scps_order -------------------- *
  * Tant qu'aucun levier (centralisation/ouverture, doc §7) n'est branché, P et
- * F sont neutres. La pression I émerge des besoins non couverts du pays. */
+ * F sont neutres. La pression I émerge des besoins non couverts du pays.
+ * C2 (audit éco) : SOCLE NEUTRE DÉLIBÉRÉ, pas un oubli. Ne PAS re-router governance_P vers
+ * re->build.P_open — l'ouverture BÂTIE est DÉJÀ sommée dans st.P plus bas (bP). Le vrai
+ * producteur serait une POLITIQUE nationale (loi d'ouverture/centralisation), inexistante ;
+ * governance_F n'a AUCUN producteur vivant (F est mort côté tech aussi, dF jamais lu). */
 static float governance_P(const World *w, int cid) { (void)w; (void)cid; return 5.f; }
 static float governance_F(const World *w, int cid) { (void)w; (void)cid; return 5.f; }
 
@@ -229,7 +233,12 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
          * destructif : K/Lt/P/H sont des copies locales, ts_c reste intact ⇒ pas
          * d'empilement inter-tick). GATED sur religion_of_country : aucun effet sans
          * religion ⇒ golden/determinism INTACTS (la chronique ne fonde jamais de foi).
-         * STAB & COHESION → +L (proxy de stabilité, ★ par défaut du mapping P4). */
+         * STAB & COHESION → +L (proxy de stabilité, ★ par défaut du mapping P4).
+         * C3 (audit éco) : le collapse RC_L+RC_STAB+RC_COHESION dans Lt est DÉLIBÉRÉ (proxy).
+         * ⚠ SEULS 7 canaux ch[RC_*] sont LUS en prod (ici K/P/H/L/STAB/COHESION + RC_POPGROWTH
+         * dans econ) ; le RESTE de l'enum (~12 : RC_I/F/PE/RESEARCH/ENTROPY/INFLUENCE/REVENUE/
+         * ASSIM/COERCION/AGITATION/MORALE/CONSCRIPT) est ÉCRIT par les pôles mais JAMAIS lu —
+         * chantier à part (les câbler = re-baseline, un canal à la fois). */
         if (religion_of_country(cid) >= 0) {
             const ReligAccum *ra = religion_country_acc(cid);
             K  = clampf(K  + ra->ch[RC_K], 0.f, 10.f);

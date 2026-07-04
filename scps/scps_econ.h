@@ -179,6 +179,11 @@ typedef struct {
     int          home_reg;       /* RÉGION d'origine d'un groupe DÉPLACÉ (migrant/réfugié) — le
                                   * foyer vers lequel il RESPIRE (retour partiel quand il s'apaise) ;
                                   * -1 = de souche/soumis/déporté (aucun « ailleurs » où rentrer). */
+    /* C9 (audit éco) : DUALITÉ VOULUE de jure ≠ de facto. `faith` = adhésion INSTITUTIONNELLE
+     * (culte d'État, id de registre ; ce que religion_refresh_region compte ; écrit par
+     * region_set_native_faith). L'axe CONTINU origin.religion + rel_branch/credo (écrit par
+     * demography faith_convert_tick) = pratique CULTURELLE. Deux concepts distincts, PAS un
+     * double-écrivain du même champ — ne pas fusionner. */
     int          faith;          /* FOI PORTÉE par le groupe (id dans g_religions[], -1 = athée). La
                                   * religion descend au NIVEAU DU GROUPE (comme la culture) : un migrant/
                                   * réfugié PORTE sa foi, une région peut mêler plusieurs cultes (diversité
