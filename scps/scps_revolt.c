@@ -16,6 +16,7 @@
 #include "scps_religion.h"  /* dimension FOI : religion_of_region/_of_country/set_region (hérésie) */
 #include "scps_campaign.h"  /* Phase 3a : campaign_order — l'armée rebelle sur la carte */
 #include "scps_army.h"      /* Phase 3a : ArmyState/army_init/army_doctrine_base + U_MILICE/U_CAV_LOURDE */
+#include <stdlib.h>         /* getenv — diagnostic SCPS_REVDIAG */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -585,16 +586,27 @@ static void deploy_rebel_army(DiploState *dp, struct Campaign *camp,
     if (!dp || !camp || rb->rebel_country<0 || rb->rebel_country>=SCPS_MAX_COUNTRY) return;
     if (rb->region<0 || rb->region>=econ->n_regions) return;
     /* la force : paquets de 100. La milice porte le gros ; l'élite soulevée (coup)
-     * amène un noyau de cavalerie lourde (peu nombreux mais mordants). */
+     * amène un noyau de cavalerie lourde (peu nombreux mais mordants) ; et un NOYAU DE
+     * VÉTÉRANS donne de vraies dents à l'insurrection (cf. plus bas). */
     long packets = rb->mobilized / 100; if (packets<1) packets=1;
     long cav = (rb->klass==CLASS_ELITE) ? packets/4 : 0;   /* le coup : ~1/4 à cheval */
     long mil = packets - cav; if (mil<1){ mil=1; if (cav>0 && packets>1) cav=packets-mil; else cav=0; }
+    /* NOYAU DE VÉTÉRANS — ADDITIF (déserteurs de la couronne, anciens soldats, meneurs
+     * aguerris qui REJOIGNENT la révolte, EN PLUS de la masse paysanne) : ÉPARS mais RÉEL.
+     * Prélevé sur la milice, il resterait dérisoire — l'armée rebelle est minuscule (1-2
+     * paquets) et se fait ANÉANTIR d'une bataille (ws −37). Ajouté, un noyau de piquiers
+     * disciplinés (piques ≫ armes de fortune) donne de vraies dents au soulèvement — assez
+     * pour qu'~1 sur 20 batte la couronne, le reste toujours écrasé. */
+    long vet = (long)tune_f("REBEL_VET_ADD", 2.f); if (vet<0) vet=0;
     ArmyState force; army_init(&force);
     force.doctrine = army_doctrine_base();                 /* neutre : moral_mul=1 (side_reserve valide) */
     int nu=0;
     if (mil>0 && nu<ARMY_MAX_UNITS){ force.units[nu].type=U_MILICE;     force.units[nu].count=mil; force.units[nu].moral_courant=0.f; nu++; }
+    if (vet>0 && nu<ARMY_MAX_UNITS){ force.units[nu].type=U_PIQUIER;    force.units[nu].count=vet; force.units[nu].moral_courant=0.f; nu++; }
     if (cav>0 && nu<ARMY_MAX_UNITS){ force.units[nu].type=U_CAV_LOURDE; force.units[nu].count=cav; force.units[nu].moral_courant=0.f; nu++; }
     force.n_units=nu;
+    if (getenv("SCPS_REVDIAG"))
+        fprintf(stderr,"[REVDEPLOY] reb=%d packets=%ld mil=%ld vet=%ld cav=%ld\n", rb->rebel_country, packets, mil, vet, cav);
     /* déploie sur la région du soulèvement (from==target : campaign_order la pose
      * IDLE), puis campaign_redirect la fait ASSIÉGER (la terre est à la couronne,
      * pas au rebelle) → le siège pousse l'occupation (score) et provoque la sortie
@@ -986,6 +998,11 @@ void revolt_tick(RevoltState *rs, World *w, WorldEconomy *econ, ModifierStack *d
              * occupe la région). On exige l'armée VIVE pour ne pas confondre avec une
              * victoire à la Pyrrhus où elle vient de se faire détruire. */
             bool rebel_wins = at_war && !army_gone && !army_broken && ws >= REBEL_WARSCORE_WIN;
+
+            if (getenv("SCPS_REVDIAG") && (crown_wins||rebel_wins))
+                fprintf(stderr,"[REVDIAG] reb=%d fought=%d broken=%d gone=%d ws=%.1f war_days=%d units=%ld -> %s\n",
+                        reb,(int)fought,(int)army_broken,(int)army_gone,ws,rb->war_days,
+                        campaign_units(camp,reb),rebel_wins?"REBEL":"CROWN");
 
             if (crown_wins){
                 apply_rebel_crush(rs, w, econ, pe, wl, rb);

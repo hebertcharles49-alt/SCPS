@@ -457,6 +457,11 @@
     X(AI_REBEL_BACKING_OPINION,   1.60f) \
     X(AI_REBEL_BACKING_ATWAR_W,   0.35f) \
     X(AI_REBEL_BACKING_MAXWARS,   1.0f) \
-    X(AI_REBEL_MATERIEL_FRAC,     0.20f)
+    X(AI_REBEL_MATERIEL_FRAC,     0.20f) \
+    /* REBEL_VET_ADD — noyau de VÉTÉRANS (déserteurs/anciens soldats) AJOUTÉ à l'armée
+     * rebelle : des paquets de piquiers disciplinés (≫ la milice paysanne) qui REJOIGNENT
+     * la révolte EN PLUS de la masse — ÉPARS mais RÉEL. L'armée rebelle nue (1-2 paquets)
+     * se fait anéantir ; ce noyau la rend RÉELLE → ~1 révolte sur 20 bat la couronne. */ \
+    X(REBEL_VET_ADD,              2.0f)
 
 #endif /* SCPS_TUNE_LIST_H */
