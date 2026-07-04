@@ -9,11 +9,22 @@
 
 ---
 
-## RÉSUMÉ EXÉCUTIF (distillé, maintenu en tête — dernière mise à jour : entrée [010])
+## RÉSUMÉ EXÉCUTIF (distillé, maintenu en tête — dernière mise à jour : entrée [014])
 
-- **État** : Phases 0-2 CLOSES. Phase 3 (cohérence math + réconciliation §5) OUVERTE — conseiller
-  Opus sur les cas C1-C9 + mesureur en WORKTREE isolé (le cap mord-il ?). Aucun patch écrit.
-  Aucun golden touché.
+- **État** : Phases 0-3 CLOSES ([012]-[014]). **Phase 4 (synthèse) OUVERTE — dossier en [014].**
+  AUCUN patch écrit, AUCUN golden touché, tronc VIERGE.
+- **Verdicts Phase 3 ([012])** : 2 bugs de câblage (C5 trou trade×guerre · C4 famille 5.f) · 3 dettes
+  de doc/nommage (C2 stubs · C6 productivite · C9 faith de jure/de facto) · 1 silo à retirer (C1
+  PopGroup.L, +bump) · 1 duplication (C7 σ ×4, unifier vers core) · 1 chantier à part (C3 ~12 canaux
+  RC orphelins) · **1 RÉFUTÉ** (C10 : l'Opus conseiller a cru TechState.L gelé — FAUX, `s->L+=n->dL`
+  scps_tech.c:461 ; le grep l'a pris — Invariant 2 en action).
+- **§5 puissance commerciale — MESURÉ DÉCORATIF ([013])** : volume externe réel 2-7 unités/mois/pays
+  vs budget proposé 7-270/mois (10-40× trop grand) → le cap ne mord jamais. Le VRAI commerce inter-pays
+  fuit par le trou A1 (étage-2 non gaté, 71-89 % cross-border ; seed 9 : canal gaté MORT). **§5
+  reporté APRÈS C5** (fermer le trou d'abord donne un vrai marché à capper), avec re-mesure.
+- **Plan Phase 4/5** : PRÉSERVANTS d'abord (C7 σ si sigmoïde bit-identique · C6 rename · C2/C3/C9 doc ·
+  collapse tier [002]) → BUMP groupé (C1 + dissolution LaborEcon [005]-[007]) → CHANGEANTS avec
+  re-baseline+revue humaine (C5 → §5 → C4 → C3 orphelins).
 - **Le suspect P est TRANCHÉ, avec asymétrie ([009])** : `st.K` et `st.H` reçoivent les nudges
   religieux INTACTS ; seul `st.P = governance_P(stub 5.f)` écrase — RC_P meurt pour le canal ORDRE
   (fragilité/SI) mais vit pour PE/babel/surchauffe ; `st.F` = stub JAMAIS retouché ; `Lt` (le
@@ -507,3 +518,107 @@ LaborEcon [005]-[007] · verdicts C1-C9) → Phase 5 (patches sous discipline go
 **Rappels d'invariants pour la reprise** : preuve vérifiée avant inscription (Invariant 2) ·
 familles de patch déclarées, jamais de re-baseline silencieux (Invariant 1) · une population,
 une définition (Invariant 3) · patch minimal (Invariant 5) · séquence = la digue (§7).
+
+---
+
+### [012] 2026-07-05 — REPRISE (Opus) · Phase 3 conseiller (C1-C10) — inscrit après re-vérif (4 greps, 1 RÉFUTATION)
+
+Conseiller Opus relancé après reset de session. Verdicts, avec ma re-vérification mécanique :
+
+- **C1 les trois L** — PAS double-source : 3 grandeurs distinctes (wl->L→ordre · TechState.L→croissance
+  · PopGroup.L→silo). PopGroup.L co-écrit avec `agit_base` (revolt/econ/demography), mais c'est
+  `agit_base` qui a l'aval, pas L. **Directive** : RETIRER le champ `PopGroup.L` (isoler `agit_base`
+  d'abord). **PRÉSERVANT + bump save** (champ sérialisé, blob ECON).
+- **C2 stubs d'ordre** — `governance_P/F` = socle neutre 5.f délibéré. [VÉRIFIÉ] `bP += build.P_open`
+  (prosperity.c:328) est DÉJÀ sommé dans st.P (336) ⇒ ne PAS re-router governance_P vers P_open
+  (double-compte). **DOCUMENTER** (le vrai producteur = une loi nationale d'ouverture, inexistante).
+  **PRÉSERVANT**.
+- **C3 collapse RC** — Lt = RC_L+RC_STAB+RC_COHESION sommés (proxy assumé). [VÉRIFIÉ] SEULS 7 canaux
+  RC lus en prod (RC_K/P/H/L/STAB/COHESION en prosperity:235-238 + RC_POPGROWTH en econ:2372) — le
+  reste de l'enum (~12) est ÉCRIT-jamais-lu. **DOCUMENTER le collapse ; les orphelins = chantier à
+  part** (câbler un canal = CHANGEANT, un par un).
+- **C4 famille 5.f** — bug de câblage assumé. Boucle POSITIVE (prospère→assimile+vite→homogénéise),
+  échelle NON-triviale (le 5 est le neutre ; vraie K bouge la porte). [VÉRIFIÉ] `cp->K` exposé
+  (prosperity.c:364) mais `cp->P` NON. **Directive** : exposer `cp->P`, élargir signatures
+  demography_tick/contact_tick pour lire `wp->country[cid].K/P`. **CHANGEANT**. ⚠ vérifier l'ordre
+  tick (prospérité annuelle vs démographie mensuelle — cp->K frais ?).
+- **C5 trou A1** — bug. **Recommande gate paix au tick** (famille ii : tester diplo_status dans
+  trade_tick, comme l'étage 3 — cohérence inter-étages) ; repli = lien intra-pays à la construction
+  (famille i, borne le trou mais coupe aussi le commerce frontalier pacifique). **CHANGEANT**.
+- **C6 .productivite deux-portes** — nourrit prosperity (heritage_prod→P_realise), jamais prod_mult
+  régional : dette de NOMMAGE. **RENAME** `HeritageLeviers.productivite`→`rendement` (15 sites),
+  PAS re-route. **PRÉSERVANT** (⚠ ne pas réordonner le struct — `scps_api.c` expose v[9]).
+- **C7 σ dupliquée** — [VÉRIFIÉ] QUATRE exemplaires : scps_core.c:57 (canon, `scps_sigmoid`),
+  culture.c:364 (`sync_gate`), prosperity.c a un `sigmoid` LOCAL (ligne 45) dupliqué. Include core
+  acyclique (VÉRIFIÉ : culture/core n'ont pas d'arête). **Unifier vers `scps_metabolisation`.**
+  **PRÉSERVANT SSI** le `sigmoid` local (prosperity:45) est bit-identique à `scps_sigmoid`
+  (`1/(1+expf(-x))`) — 1 grep à faire en ouverture Phase 4 ; sinon bascule CHANGEANT.
+- **C9 faith deux-vérités** — 2 concepts distincts (int institutionnel de jure / axe continu de
+  facto), pas un double-écrivain. **DOCUMENTER la dualité, ne pas fusionner.** **PRÉSERVANT**.
+- **C10 (le sien) — ⚠ RÉFUTÉ par ma vérif.** Le conseiller a affirmé `TechState.L` GELÉ à 3.0
+  (seul writer = init scps_tech.c:304, croissance = 0.3·δ·P). **FAUX** : grep montre `s->L += n->dL`
+  (scps_tech.c:461, à l'unlock d'un nœud) ET `s->L += sn->dL` (:291, diffusion) — **L EST muté par
+  la recherche** (les nœuds portant un delta dL montent l'ordre). « croissance = δ·P·L/10 » n'est
+  PAS gelée. C10 TOMBE. (dEco/dMil/dF restent morts — mais dK/dL vivent.) → Leçon Invariant 2 :
+  même l'Opus conseiller a halluciné « un seul writer » ; le grep l'a pris. **Rien à patcher pour
+  C10.**
+
+**Ordre de priorité (risque croissant), familles déclarées** :
+- PRÉSERVANT (golden vert) : C7 σ (si sigmoïde bit-identique) · C6 rename · C2/C3-collapse/C9 doc.
+- PRÉSERVANT + BUMP save (grouper) : C1 retrait PopGroup.L.
+- CHANGEANT (re-baseline, revue humaine) : C5 gate guerre → §5 puissance commerciale (après C5,
+  cf. [013]) → C4 vraie K/P → C3 orphelins (chantier à part).
+
+---
+
+### [013] 2026-07-05 — Phase 3 · MESURE C8 (le cap mord-il ?) — orchestrateur, worktree isolé jetable
+
+⚠ **Déviation de délégation assumée** : le worktree-harness a échoué (git Windows « unsafe location ») ;
+les sous-agents (Git-Bash) ne pilotent pas le toolchain MSYS2 ; C8 étant le pivot empirique de §5,
+l'orchestrateur l'a mesuré lui-même dans un worktree MANUEL (`git worktree add`, démonté ensuite —
+tronc resté vierge). Compteurs éphémères getenv `SCPS_C8DIAG` : intertrade via `g_expt/g_imp`
+existants (dump fin d'`intertrade_tick`) ; trade cross-border via `g_c8_xb/g_c8_tot` (`trade_tick`,
+`exp->owner!=imp->owner`). Jetés avec le worktree.
+
+**Résultats** (seeds 7/9/11, 1 sim × 100 ans, an-80) :
+| | seed 7 | seed 9 | seed 11 |
+|---|---|---|---|
+| ext inter-pays (unités/mois/pays) | méd 3.4 · max 5.6 | **0 (canal mort)** | méd 2.6 · max 6.8 |
+| bourgeois/pays | méd 67 · max 2198 | — | méd 377 · max 2677 |
+| puissance proposée /mois (10/100) | méd 6.7 · max 220 | — | méd 37.7 · max 268 |
+| trou A1 (étage-2 cross-border) | **71.5 %** | **83.0 %** | **88.7 %** |
+
+**VERDICT C8** : le cap 200/mois — et même le budget de puissance par pays — **NE MORD JAMAIS** sur le
+marché externe tel que speccé. Le volume réel (2-7 unités/mois) est **10-40× SOUS** le budget
+(7-270/mois) ⇒ la puissance commerciale appliquée à l'intertrade serait **DÉCORATIVE**. Pour mordre à
+l'externe, il faudrait ~0.3-1 par 100 bourgeois (pas 10). **MAIS** le vrai commerce inter-pays coule
+par le **TROU A1** (étage-2 non gaté : 5-6× plus de volume que l'intertrade gaté, 71-89 % cross-border ;
+seed 9 : intertrade MORT, tout fuit par l'étage-2). **Conséquence §5** : (1) capper un marché quasi-mort
+est vain ; (2) **C5 et §5 sont INTRIQUÉS** — fermer le trou A1 D'ABORD donne à la puissance commerciale
+un vrai marché à capper (le commerce basculera étage-2→intertrade gaté). **§5 est donc REPORTÉ après
+C5, avec re-mesure du volume externe une fois le trou fermé.** La forme finale (remplace/subsume/
+coexiste vs link_capacity) se décidera sur ces chiffres re-mesurés, pas sur la spec à l'aveugle.
+
+---
+
+### [014] 2026-07-05 — CLÔTURE PHASE 3 · dossier Phase 4
+
+Phase 3 CLOSE. Tronc VIERGE (worktree démonté + `git status` propre confirmé). Les 5 symptômes ont
+été passés sur les 12 arêtes ; l'audit tient. Bilan des cas : **2 bugs de câblage** (C5 trou A1 · C4
+famille 5.f) · **3 dettes de nommage/doc** (C2 stubs · C6 productivite · C9 faith) · **1 silo à
+retirer** (C1 PopGroup.L) · **1 dette de duplication** (C7 σ ×4) · **1 chantier à part** (C3 ~12
+canaux RC orphelins) · **1 réfuté** (C10). §5 : mesuré décoratif, reporté après C5.
+
+**Dossier Phase 4 (synthèse — NE PAS encore patcher)** :
+1. **2 vérifs d'ouverture** (greps ciblés) : sigmoïde bit-exact (C7, décide sa famille) + ordre tick
+   prospérité/démographie (C4).
+2. Reprendre le **gabarit [002]** : spécifier le collapse tier savoir (2 termes : tier→pop canonique
+   + le terme LBuilding, sans double-compter tech_research_yield) — PRÉSERVANT visé.
+3. Spécifier la **dissolution LaborEcon** ([005]-[007]) : 3 lecteurs vivants à repointer (savoir ·
+   levée `campaign_refill`/`army_recruit` · topbar viewer) + LMarket mort (retrait trivial) — BUMP
+   save (LABO), à GROUPER avec C1 (un seul bump).
+4. Ordonner tous les patches par famille (Invariant 1), PRÉSERVANTS avant CHANGEANTS.
+
+**Phase 5** : patches minimaux, `make` + golden APRÈS CHAQUE patch (PRÉSERVANT cassé = bug→rejet ;
+CHANGEANT cassé = re-baseline après revue HUMAINE, jamais silencieux). §5 puissance commerciale
+seulement après C5 + re-mesure.
