@@ -38,58 +38,60 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
      * requise. Hiérarchie relative PRÉSERVÉE (le monument reste le plus cher ; pierre aux
      * remparts/monuments, bois aux quais/marchés). L'or payé = Σ qty × prix de marché courant
      * (agency_build_gold, inchangé), × multiplicateurs géo/étendue existants. Deltas E1bis.11
-     * INCHANGÉS. Minimum 4 par ressource (arrondi, jamais 0 — un édifice reste un édifice). */
+     * INCHANGÉS. Minimum 4 par ressource (arrondi, jamais 0 — un édifice reste un édifice).
+     * ARRONDI LISIBLE (demande joueur) : toutes les quantités au multiple de 5 SUPÉRIEUR —
+     * « 16 semble tricoté, 20 beaucoup moins » ; ça rallonge un peu, c'est assumé. */
     /* Institutionnel → K (ce qui métabolise la distance, tient la diversité). */
-    [EDI_TRIBUNAL]     = { "Tribunal",      180, { .K_inst=1.0f }, {{RES_WOOD,RES_CLAY},{16,8}} },
+    [EDI_TRIBUNAL]     = { "Tribunal",      180, { .K_inst=1.0f }, {{RES_WOOD,RES_CLAY},{20,10}} },
     [EDI_CHANCELLERIE] = { "Chancellerie",  360, { .K_inst=2.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{20,10,5}} },  /* trio bois/pierre/argile, ÷2 */
     [EDI_ACADEMIE]     = { "Académie",      960, { .K_inst=4.0f, .P_open=0.5f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{7,16,9}} },  /* le monument : ÷2 de plus (960j seul) */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{10,20,10}} },  /* le monument : ÷2 de plus (960j seul) */
     /* Coercitif → H (tient l'ordre par la force — ronge L, voie fragile). */
     [EDI_GARNISON]     = { "Garnison",      360, { .H_coerc=1.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{20,10,5}} },
     [EDI_FORTERESSE]   = { "Forteresse",    540, { .H_coerc=3.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,20,10}} },  /* remparts : pierre dominante, ÷3 */
     [EDI_CITADELLE]    = { "Citadelle",     960, { .H_coerc=6.0f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{5,19,13}} },  /* martiale : ÷2 de plus (960j seul) */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{5,20,15}} },  /* martiale : ÷2 de plus (960j seul) */
     /* Ouverture → P (porte d'assimilation, contact, routes maritimes). */
-    [EDI_PORT]         = { "Port",          360, { .P_open=1.0f, .port=1.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{25,10,6}} },  /* quais : bois dominant, ÷2 */
-    [EDI_CARAVANSERAIL]= { "Caravansérail", 180, { .P_open=0.7f }, {{RES_WOOD,RES_CLAY},{18,10}} },  /* +12 % (cours, écuries) */
+    [EDI_PORT]         = { "Port",          360, { .P_open=1.0f, .port=1.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{25,10,10}} },  /* quais : bois dominant, ÷2 */
+    [EDI_CARAVANSERAIL]= { "Caravansérail", 180, { .P_open=0.7f }, {{RES_WOOD,RES_CLAY},{20,10}} },  /* +12 % (cours, écuries) */
     /* Prospérité → PE local (capte le carrefour). */
-    [EDI_MARCHE]       = { "Marché",        180, { .PE_infra=1.0f }, {{RES_WOOD,RES_CLAY},{16,6}} },
-    [EDI_ENTREPOT]     = { "Entrepôt",      180, { .PE_infra=0.7f }, {{RES_WOOD,RES_CLAY},{20,8}} },  /* +25 % bois (halles) */
+    [EDI_MARCHE]       = { "Marché",        180, { .PE_infra=1.0f }, {{RES_WOOD,RES_CLAY},{20,10}} },
+    [EDI_ENTREPOT]     = { "Entrepôt",      180, { .PE_infra=0.7f }, {{RES_WOOD,RES_CLAY},{20,10}} },  /* +25 % bois (halles) */
     /* Croissance → food (nourrit la pop ; l'aqueduc : santé urbaine → croissance). */
-    [EDI_GRENIER]      = { "Grenier",       180, { .food_cap=1.0f }, {{RES_WOOD,RES_CLAY,RES_STONE},{16,6,5}} },  /* trio */
-    [EDI_IRRIGATION]   = { "Irrigation",    360, { .food_cap=1.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{23,8,5}} },  /* canaux : bois, ÷2 */
-    [EDI_AQUEDUC]      = { "Aqueduc",       540, { .food_cap=1.2f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,21,8}} },  /* arches : pierre dominante, ÷3 */
+    [EDI_GRENIER]      = { "Grenier",       180, { .food_cap=1.0f }, {{RES_WOOD,RES_CLAY,RES_STONE},{20,10,5}} },  /* trio */
+    [EDI_IRRIGATION]   = { "Irrigation",    360, { .food_cap=1.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{25,10,5}} },  /* canaux : bois, ÷2 */
+    [EDI_AQUEDUC]      = { "Aqueduc",       540, { .food_cap=1.2f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,25,10}} },  /* arches : pierre dominante, ÷3 */
     /* Foi → SOUTIENT L (sacraliser le trône apaise sans réprimer — §4 du catalogue). */
-    [EDI_SANCTUAIRE]   = { "Sanctuaire",    180, { .faith=1.0f }, {{RES_WOOD,RES_CLAY},{14,8}} },  /* −12 % (humble) */
-    [EDI_TEMPLE]       = { "Temple",        540, { .faith=3.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,17,8}} },  /* pierre dominante, ÷3 */
+    [EDI_SANCTUAIRE]   = { "Sanctuaire",    180, { .faith=1.0f }, {{RES_WOOD,RES_CLAY},{15,10}} },  /* −12 % (humble) */
+    [EDI_TEMPLE]       = { "Temple",        540, { .faith=3.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,20,10}} },  /* pierre dominante, ÷3 */
     [EDI_CATHEDRALE]   = { "Cathédrale",    960, { .faith=6.5f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{8,37,20}} },  /* l'éclat de pierre, ÷3 */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{10,40,20}} },  /* l'éclat de pierre, ÷3 */
     /* Savoir → recherche (le monastère sacralise ET étudie — §5 du catalogue). */
-    [EDI_BIBLIOTHEQUE] = { "Bibliothèque",  360, { .savoir=1.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{20,9,5}} },  /* trio (le papier pèse peu), ÷2 */
-    [EDI_MONASTERE]    = { "Monastère",     540, { .savoir=2.5f, .faith=1.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,15,8}} },  /* frugal, ÷3 */
+    [EDI_BIBLIOTHEQUE] = { "Bibliothèque",  360, { .savoir=1.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{20,10,5}} },  /* trio (le papier pèse peu), ÷2 */
+    [EDI_MONASTERE]    = { "Monastère",     540, { .savoir=2.5f, .faith=1.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,15,10}} },  /* frugal, ÷3 */
     /* Commerce → PE local (capte le flux ; la banque finance l'État). */
-    [EDI_COMPTOIR]     = { "Comptoir",      180, { .PE_infra=0.8f }, {{RES_WOOD,RES_CLAY},{16,8}} },
-    [EDI_BANQUE]       = { "Banque",        540, { .PE_infra=1.4f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,17,10}} },  /* pierre dominante, ÷3 */
+    [EDI_COMPTOIR]     = { "Comptoir",      180, { .PE_infra=0.8f }, {{RES_WOOD,RES_CLAY},{20,10}} },
+    [EDI_BANQUE]       = { "Banque",        540, { .PE_infra=1.4f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,20,10}} },  /* pierre dominante, ÷3 */
     /* M5 (forks §9.3/§9.5) — LES FOURCHES v1. Maritime (540 j, ↑ Port — le fork
      * REMPLACE le Port, delta port conservé) : l'Arsenal projette (H), l'Amirauté
      * institue (K), le Port marchand capte (PE). Savoir (360 j, BASES alternatives
      * à la Bibliothèque) : la Bibliothèque militaire arme le savoir (H),
      * l'Observatoire ouvre le ciel (P). Deltas §14 mappés sur ProvBuild. */
     [EDI_ARSENAL]      = { "Arsenal",       540, { .port=1.0f, .H_coerc=1.2f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{5,18,12}} },  /* ÷3 */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{5,20,15}} },  /* ÷3 */
     [EDI_AMIRAUTE]     = { "Amirauté",      540, { .port=1.0f, .K_inst=0.8f, .H_coerc=0.4f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{5,17,10}} },  /* ÷3 */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{5,20,10}} },  /* ÷3 */
     [EDI_PORT_MARCHAND]= { "Port marchand", 540, { .port=1.0f, .PE_infra=1.5f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{5,15,8}} },  /* ÷3 */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{5,15,10}} },  /* ÷3 */
     [EDI_BIBLIO_MIL]   = { "Bibliothèque militaire", 360, { .savoir=1.2f, .H_coerc=0.4f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{20,9,5}} },  /* ÷2 */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{20,10,5}} },  /* ÷2 */
     [EDI_OBSERVATOIRE] = { "Observatoire",  360, { .savoir=1.5f, .P_open=0.3f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{18,10,5}} },  /* ÷2 */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{20,10,5}} },  /* ÷2 */
     /* M2 — LE CENTRE COMMERCIAL : le hub du réseau GLOBAL, bâti COÛTEUX (œuvre côtière/
      * estuaire). Une cité-état EN naît (l'expression de son rôle) ; un empire marchand
      * côtier peut en bâtir un et devenir hub. g_centre DÉRIVE de ce bâti (plus un flag). */
     [EDI_TRADE_CENTER] = { "Centre commercial", 540, { .PE_infra=2.0f, .P_open=0.5f },
-                           {{RES_WOOD,RES_STONE,RES_CLAY},{7,27,15}} },  /* ÷3 */
+                           {{RES_WOOD,RES_STONE,RES_CLAY},{10,30,15}} },  /* ÷3 */
 };
 
 const EdificeDef *edifice_def(Edifice e){ return (e>=0&&e<EDIFICE_COUNT)?&EDIFICES[e]:NULL; }
