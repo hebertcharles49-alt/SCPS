@@ -7,8 +7,11 @@ extends Control
 
 signal goto_region(region: int)   ## main.gd centre la carte (même motif que alerts/event_popup)
 
+const Epithet = preload("res://ui/epithet.gd")
+
 var _list: VBoxContainer
 var _status: Label
+var _reign: Label   ## « Règne de {pays}, dit {épithète} » — l'épithète ÉMERGE des annales
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -36,6 +39,10 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 22)
 	title.add_theme_color_override("font_color", Color(0.86, 0.74, 0.46))
 	col.add_child(title)
+
+	_reign = Label.new()
+	_reign.add_theme_color_override("font_color", Color(0.93, 0.89, 0.80))
+	col.add_child(_reign)
 
 	_status = Label.new()
 	_status.add_theme_color_override("font_color", Color(0.62, 0.60, 0.58))
@@ -71,6 +78,13 @@ func _rebuild() -> void:
 		_status.text = "(moteur des Annales absent)"
 		return
 	var entries: Array = Sim.world.annals()
+	# l'EN-TÊTE de règne : nom du pays + épithète émergente (dérivée du contenu même)
+	var me: int = Sim.world.player()
+	if me >= 0:
+		var ci: Dictionary = Sim.world.country_info(me)
+		_reign.text = "Règne de %s, dit %s" % [String(ci.get("nom", "—")), Epithet.derive(entries)]
+	else:
+		_reign.text = ""
 	if entries.is_empty():
 		_status.text = "Le règne n'a encore rien à raconter."
 		return

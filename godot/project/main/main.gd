@@ -17,7 +17,10 @@ var _religion: Control
 var _country_actions: Control  # fenêtre diplomatique par pays (liste diplo + clic droit)
 var _devpanel: Control         # MODTOOLS : panneau dev (tunables live, F10)
 var _chronique: Control        # LES ANNALES DU RÈGNE : le récit sélectif (lecture seule, H)
+var _age_recap: Control        # ÉCRAN DE CHAPITRE : récap d'âge au clic du chip « Engager »
+var _epilogue: Control         # ÉPILOGUE : la fin de partie en une phrase + la frise complète
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
+var _epilogue_shown := false   # l'épilogue ne s'ouvre qu'UNE fois par partie (latch UI)
 var _sel_prov := -1
 
 func _ready() -> void:
@@ -205,6 +208,23 @@ func _ready() -> void:
 	ui.add_child(_chronique)
 	_chronique.goto_region.connect(goto_fn)
 
+	# ÉCRAN DE CHAPITRE : le chip d'âge n'engage plus directement — il ouvre CE récap
+	# (monde en pause, tranche d'annales de l'âge écoulé, bilan) ; le verbe s'émet là.
+	_age_recap = load("res://ui/age_recap.gd").new()
+	_age_recap.name = "AgeRecap"
+	ui.add_child(_age_recap)
+	_age_recap.goto_region.connect(goto_fn)
+	alerts.age_recap_requested.connect(func(): _age_recap.open())
+
+	# ÉPILOGUE : à la PREMIÈRE fin signalée par endgame_info (apocalypse 1-3 ou
+	# ascension 4), l'écran « votre règne en une phrase » s'ouvre — une seule fois.
+	_epilogue = load("res://ui/epilogue.gd").new()
+	_epilogue.name = "Epilogue"
+	ui.add_child(_epilogue)
+	_epilogue.goto_region.connect(goto_fn)
+	Sim.ticked.connect(_on_tick_endgame)
+	Sim.generated.connect(func(): _epilogue_shown = false)
+
 	# MEMBRANE DE DÉCISION : un évènement à VRAIE décision (Marbrive…) qui concerne le
 	# joueur ATTEND son choix — distinct du popup OYEZ OYEZ (notification après coup) :
 	# ici RIEN n'est encore appliqué tant que le joueur n'a pas choisi.
@@ -263,10 +283,21 @@ func _on_tick_faith(_year: int) -> void:
 		Sim.set_speed(0)             # le monde s'arrête : moment de fondation
 		_religion.open()
 
+## DÉCLENCHEUR « épilogue » : la TRANSITION vers une fin (§27 apocalypse ou ascension
+## Merveille) ouvre l'écran d'épilogue — une seule fois par partie (latch UI).
+func _on_tick_endgame(_year: int) -> void:
+	if _epilogue_shown or _epilogue == null or Sim.world == null or not Sim.game_on:
+		return
+	var e: Dictionary = Sim.world.endgame_info()
+	var fin: int = int(e.get("fin", 0))
+	if fin > 0:
+		_epilogue_shown = true
+		_epilogue.open(fin)
+
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).
 func _close_topmost() -> bool:
-	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique]:
+	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue]:
 		if p != null and p.visible:
 			p.visible = false
 			return true

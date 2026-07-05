@@ -17,6 +17,7 @@ signal open_construct
 signal open_religion
 signal goto_region(r: int)  ## centre la carte sur la région de l'alerte (siège, famine, révolte)
 signal popup_requested(e: Dictionary)  ## évènement MAJEUR → le popup OYEZ OYEZ (pause + boutons)
+signal age_recap_requested             ## chip d'âge cliqué → l'ÉCRAN DE CHAPITRE (récap, pause)
 
 const COL_ETAT   := Color(0.55, 0.38, 0.66)   ## violet — étatique
 const COL_ARMEE  := Color(0.72, 0.28, 0.24)   ## rouge — armée
@@ -282,8 +283,9 @@ func _gui_input(event: InputEvent) -> void:
 			"goto":
 				goto_region.emit(int(al.get("region", -1)))
 			"age":
-				if Sim.world != null and Sim.world.has_method("player_age_engage"):
-					Sim.world.player_age_engage()   # le geste EST l'action (drainé au tick)
+				# le clic n'ENGAGE plus directement : il ouvre l'ÉCRAN DE CHAPITRE (récap
+				# d'âge, monde en pause) — c'est LÀ que le verbe s'émet, ou pas (« Plus tard »).
+				age_recap_requested.emit()
 	_refresh()
 
 ## HOVER natif : le tooltip de l'alerte survolée.
