@@ -615,13 +615,19 @@ static void econ_seed_population(ProvinceEconomy *re, float total_pop) {
 /* §11.4 — LIMITEUR DE PRODUCTION joueur : cap par (pays,ressource). -1 = ∞ (désactivé). */
 static float g_prod_cap[SCPS_MAX_COUNTRY][RES_COUNT];
 
-/* F1 — CADENCE DE COLONISATION PAR APPÉTIT (le motif g_wild/g_revolt_grace du dépôt :
- * un static de MODULE, RAZ à econ_init — PAS sérialisé, cf. econ_colonize_tick). Un pays
+/* F1 — CADENCE DE COLONISATION PAR APPÉTIT (static de MODULE, RAZ à econ_init). Un pays
  * saute l'année tant que son compteur n'est pas retombé à 0 ; remis à gate_years(w_expand)
- * à chaque fondation réussie. ⚠ Non-sérialisé ⇒ un reload le remet à 0 : au pire une
- * colonie fondée un an plus tôt qu'elle ne l'aurait été — sans conséquence (comme
- * g_revolt_grace), documenté ici plutôt que caché. */
+ * à chaque fondation réussie. ⚠ SÉRIALISÉ (section COLC, v61) : c'est un ACCUMULATEUR qui
+ * croise les ticks — non sérialisé, un reload le remettait à 0 (colonie un an plus tôt que
+ * le fil continu) et --savetest DIVERGEAIT (pris sur seed 11 ; même classe que EMOB v57). */
 static int8_t g_colony_cd[SCPS_MAX_COUNTRY];
+void econ_colony_cd_save(FILE *f){ fwrite(g_colony_cd,sizeof g_colony_cd,1,f); }
+bool econ_colony_cd_load(FILE *f){
+    if (fread(g_colony_cd,sizeof g_colony_cd,1,f)!=1) return false;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)                    /* save_sane : borne [0..64] */
+        if (g_colony_cd[c]<0 || g_colony_cd[c]>64) g_colony_cd[c]=0;
+    return true;
+}
 
 /* E7 (2026-07-05) — TÉLÉMÉTRIE COLONISATION : econ_colonize_tick RENVOIE déjà le nb de
  * fondations, mais la voie de scps_sim.c (le monde JOUEUR/Godot) jetait la valeur — la

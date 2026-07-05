@@ -73,7 +73,8 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(CULT,'C','U','L','T')  /* v36 : slots de culture + map cid→slot */ \
     X(RELG,'R','E','L','G')  /* v37 : registre religion + liens pays */ \
     X(WILD,'W','I','L','D')  /* v48 : compteurs de contact des hameaux libres (ralliement) */ \
-    X(EMOB,'E','M','O','B')  /* v57 : mobilité de classe — g_friche[] + g_lowsat_streak[][] (savetest fix) */
+    X(EMOB,'E','M','O','B')  /* v57 : mobilité de classe — g_friche[] + g_lowsat_streak[][] (savetest fix) */ \
+    X(COLC,'C','O','L','C')  /* v61 : répit de colonisation g_colony_cd[] (accumulateur F1, savetest fix) */
 #define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
 SV_SECTIONS(SV_DECL_TAG)
 #undef SV_DECL_TAG
@@ -149,6 +150,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     ok&=sv_w(f,SVT_RELG, NULL,0); religion_save(f);        /* v37 : registre religion + liens pays */
     ok&=sv_w(f,SVT_WILD, NULL,0); sim_wild_save(f);        /* v48 : compteurs de ralliement des hameaux */
     ok&=sv_w(f,SVT_EMOB, NULL,0); econ_mobility_save(f);   /* v57 : g_friche[] + g_lowsat_streak[][] */
+    ok&=sv_w(f,SVT_COLC, NULL,0); econ_colony_cd_save(f);  /* v61 : répit de colonisation (F1) */
     if (ok && fflush(f)!=0) ok=false;
     long psz = ok ? ftell(f) : -1;
     if (!ok || psz<0){ fclose(f); return false; }
@@ -375,6 +377,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     ok&=sv_r(f,SVT_RELG, NULL,0); ok&=(religion_load(f)==0);   /* v37 : religion + liens pays */
     ok&=sv_r(f,SVT_WILD, NULL,0); ok&=sim_wild_load(f);        /* v48 : compteurs de ralliement des hameaux */
     ok&=sv_r(f,SVT_EMOB, NULL,0); ok&=econ_mobility_load(f);   /* v57 : g_friche[] + g_lowsat_streak[][] */
+    ok&=sv_r(f,SVT_COLC, NULL,0); ok&=econ_colony_cd_load(f);  /* v61 : répit de colonisation (F1) */
     long p1=ftell(f); fclose(f);
     if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;
     if (!scps_save_sane(w, s, s->player)) return 1;

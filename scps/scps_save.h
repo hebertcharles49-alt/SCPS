@@ -32,7 +32,10 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 60u           /* v60 : §5 PUISSANCE COMMERCIALE — la section ITRD grandit (le pool
+#define SAVE_VERSION 61u           /* v61 : section COLC — le répit de colonisation g_colony_cd[] (F1,
+                                    * cadence ∝ w_expand) est un ACCUMULATEUR inter-ticks : non sérialisé,
+                                    * un reload le remettait à 0 → --savetest divergeait (seed 11). <v61 refusé.
+                                    * v60 : §5 PUISSANCE COMMERCIALE — la section ITRD grandit (le pool
                                     * commercial MENSUEL : g_commerce_budget + g_commerce_spent, l'état
                                     * intra-mois qui borne les achats au marché). <v60 refusé.
                                     * v59 : DISSOLUTION LaborEcon — la section LABO DISPARAÎT (le module

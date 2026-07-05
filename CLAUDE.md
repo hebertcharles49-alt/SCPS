@@ -1711,6 +1711,51 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   `determinism` STABLE · savetest 9/11/42 byte-identique · fuzz-save 8/8 · GDExtension scons 0 warning.
   **SAVE non bumpé** (rien de sérialisé ne change).
 
+- **MISSION ÉCO (2026-07-05) — MATIÈRE RÉELLE · IA colonisation/construction · calibrage « Anno »**
+  (hiérarchie multi-agents : orchestrateur + 3 audits + 4 implémenteurs sonnet ; 2 commits moteur) :
+  **(B) LA MATIÈRE FANTÔME ÉLIMINÉE** — region[] est une VUE reconstruite à chaque clôture
+  (econ_aggregate_regions) : TOUTE écriture directe y était EFFACÉE ≤ 30 j. Or l'or passait province
+  (it_treasury) mais la MATIÈRE non : le marché ne DÉPLÉTAIT jamais (l'acheteur dupliquait), les
+  coques/équipages navy étaient GRATUITS, le tribut de vassal s'évaporait, le pillage frappait l'or
+  sur du stock fantôme, la démob perdait ses armes, la marge d'import retombait à 1.0 onze mois sur
+  douze. Trois helpers RE-KEY (`econ_region_{stock,treasury,pop}_add` : porteuse d'abord, débit qui
+  déborde sur les sœurs, vue tenue à jour, delta RÉEL rendu, repli « fixture » explicite pour les
+  bancs synthétiques) + ~20 sites convertis (intertrade buy/sell/consume/routes/arbitrage — on
+  FACTURE le réel pris ; trade ; navy ×5 ; warhost ; diplo tribut/pillage/attrition ; spéculateur ;
+  péage agency). **(A) INSTRUMENT I0 COMPLET** — le trou taxes +2310 vs net +226 : lignes FX_BUILD
+  (chantiers), FX_REDEP (redépense publique I3bis), FX_CREDIT (intérêts). **(C1) PANNEAU B RÉEL** —
+  le §NF excluait le joueur (« il construit à la main ») mais la main N'EXISTAIT PAS : verbe
+  `CMD_BUILD_MANUF` (drain revalidé, miroir des gates IA civiles) + façade `scps_player_build_manuf`/
+  `scps_manuf_legal` + binding + section « Bâtir une manufacture » (province_detail) — le joueur
+  accède enfin au logement manufacturier (eff_cap ne plafonne plus à ½·cap_pop chez lui).
+  **(F1-F5) L'IA COHÉRENTE** — la colonisation suit la PERSONNALITÉ (cadence 1+(1-w_expand)·
+  `AI_COLONY_TEMPO`, compteur RAZ init) et s'arrête EN GUERRE (at_war[] précalculé côté sim, econ
+  reste diplo-free) ; le grenier vise la région AFFAMÉE (ai_hungriest_region, plus la capitale
+  figée) ; le gate d'admission chantier voit le POOL COMMERCIAL §5 (market_avail_ex + compteur
+  nocap — fin du TOCTOU or-plein/matière-tronquée) ; anti-DOUBLE-COMMANDE d'édifice (scan de file
+  généralisé, fenêtre 960 j fermée). **(E1-E7) CALIBRAGE « ANNO »** (demande joueur : stop aux
+  ~20 000 nourriture ; réf. Anno 1800 — besoins en fractions, stocks bornés entrepôt) : ancre
+  vivrière **÷1.5** (grain 8→5.33 · poisson/fruit 4→2.67 — le ÷2 MESURÉ puis REJETÉ : seed 11
+  passait sous le plancher 70 % ; retenu = Laborer 78 %/72 %, zéro famine, un fermier nourrit ~10) ;
+  plafond E2 VÉRIFIÉ SAIN (les « violations » = artefact econ_empire_stock sur régions partagées) ;
+  papier labor 0.7→**209** · remède 0.8→**404** (ils visaient ×299/×505 la demande de panier) ;
+  statuaire sous le gate de demande (motif orfèvrerie) ; readouts logement DÉLÈGUENT à
+  econ_prov_effcap (fin de la triplication divergente : le confort s'affiche juste) ;
+  `struct_deficit`→raw_boost câblé (mur nomat EDI_DBG : Port −13 %) ; top_flow en tie-break
+  civmanuf ; télémétrie colonisation (le retour JETÉ d'econ_colonize_tick → « N fondation(s) dont
+  M de survie » — mesuré : ~190 fondations/sim). **AFFICHAGE** : flux province en unités/JOUR à
+  1 décimale (fin du ×365 — les « +20 000 » étaient le cumul annuel d'un flux réel ×15 trop nourri).
+  ⚠ **RE-BASELINE golden** (matière réelle + rendements mordent dès l'an-0) · determinism STABLE ·
+  test 37/40 runnable verts (3 KO Windows pré-existants) · scps_api_demo 111/111 · scons 0 warning.
+  ⚠ **SAVE BUMP 60→61** (section **COLC**) : le répit de colonisation `g_colony_cd[]` est un
+  ACCUMULATEUR inter-ticks — non sérialisé, le --savetest DIVERGEAIT (pris sur seed 11, même classe
+  que EMOB v57) ; sérialisé + borné au load, **savetest 7/9/11/42 byte-identique**. Tunables
+  registre J : `AI_COLONY_TEMPO` 3.0. Restes assumés : E3 stockeuse (entrepôts jamais bâtis —
+  gate has_halles/hub à revisiter), prix convergence intertrade (nudge transitoire mort sous le
+  prix national, laissé commenté), accession 360 j désormais TARDIVE (an ~35-78 : la matière est
+  RÉELLE, l'ancien an-2 se payait en matière fantôme dupliquée) et 960 j toujours rare — point
+  d'équilibrage ouvert (dialables : coûts EDIFICES, CS_TRADE_POOL, priorité raw_boost).
+
 ## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.

@@ -655,6 +655,10 @@ void econ_mobility_reset(void);
  * save/load dédiés (même patron que econ_prodcap_save/_load ci-dessus). */
 void econ_mobility_save(FILE *f);
 bool econ_mobility_load(FILE *f);
+/* F1 (v61) — le répit de colonisation g_colony_cd[] est un accumulateur inter-ticks :
+ * sérialisé (section COLC) sinon un reload divergeait du fil continu (--savetest). */
+void econ_colony_cd_save(FILE *f);
+bool econ_colony_cd_load(FILE *f);
 /* E1bis.10 — régions EN FRICHE (entretien impayé) au dernier econ_tick (télémétrie). */
 long econ_friche_count(void);
 /* I0 — L'INSTRUMENT : décomposition du flux d'or par empire (le robinet, ligne à ligne).
