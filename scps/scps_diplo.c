@@ -347,11 +347,11 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
                 float food=0.f,gold=0.f,mil=0.f; VassalFunction fn=vassal_function(econ,v,&food,&gold,&mil);
                 float base=tune_f("AI_VASSAL_CONTRIB_BASE",0.05f)*appr;
                 /* RE-KEY PROVINCE : mil_stock/treasury sont PROVINCE-OWNED (Σ-agrégés) — route
-                 * sur la province représentative. stock[] (grain) reste au grain RÉGION (marché,
-                 * charte : « la région tient le marché »), INTACT. */
-                RegionEconomy *sc=&econ->region[capreg[s]];
+                 * sur la province représentative. Le GRAIN aussi : le pool P1 est sommé des
+                 * PROVINCES — un crédit sur la seule vue region[] s'évaporait à la clôture
+                 * (le tribut agraire ne nourrissait jamais personne). */
                 int spid=econ_region_rep_province(econ, capreg[s]);
-                if      (fn==VFN_AGRAIRE) sc->stock[RES_GRAIN]+=base*food;   /* vivres → pool RÉGIONAL (marché) */
+                if      (fn==VFN_AGRAIRE) econ_region_stock_add(econ, capreg[s], RES_GRAIN, base*food);   /* vivres → pool (province) */
                 else if (fn==VFN_MARTIAL){ if (spid>=0&&spid<econ->n_prov) econ->prov[spid].mil_stock+=base*mil; }  /* la levée du vassal */
                 else                     { if (spid>=0&&spid<econ->n_prov) econ->prov[spid].treasury +=base*gold; }  /* l'or marchand */
             }
@@ -1005,9 +1005,10 @@ float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region){
     float loot = PILLAGE_GOLD_FRAC * pp->treasury; /* l'or des coffres */
     pp->treasury *= (1.f - PILLAGE_GOLD_FRAC);
     for (int g=1; g<RES_COUNT; g++){               /* l'entrepôt RÉGIONAL, valorisé au prix courant */
-        float take = PILLAGE_STOCK_FRAC * re->stock[g];
+        /* RE-KEY : pris pour de VRAI (provinces) — l'or du butin suit le RÉEL, fin du
+         * robinet d'or sur stock fantôme (la vue seule se restaurait au mois suivant). */
+        float take = -econ_region_stock_add(econ, region, g, -(PILLAGE_STOCK_FRAC * re->stock[g]));
         loot += take * re->price[g];
-        re->stock[g] -= take;
     }
     pp->revolt_scar = 1.0f;                         /* le sac CONVULSE : gel du développement */
     pp->pillage_cd  = PILLAGE_COOLDOWN_Y;           /* ne pourra être re-saccagée avant ~5 ans */
@@ -1047,9 +1048,10 @@ int diplo_perceived_hegemon(const World *w, const WorldEconomy *econ,
 static void deplete_arms(WorldEconomy *econ, int cid, float frac){
     frac = clampf(frac, 0.f, 0.95f);
     for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
-        econ->region[r].stock[RES_ARMS]          *= (1.f-frac);
-        econ->region[r].stock[RES_GUNPOWDER]      *= (1.f-frac);
-        econ->region[r].stock[RES_ENCHANTED_ARMS] *= (1.f-frac);
+        /* RE-KEY : l'attrition mord les PROVINCES (la vue seule se restaurait au mois suivant). */
+        econ_region_stock_add(econ, r, RES_ARMS,           -econ->region[r].stock[RES_ARMS]*frac);
+        econ_region_stock_add(econ, r, RES_GUNPOWDER,      -econ->region[r].stock[RES_GUNPOWDER]*frac);
+        econ_region_stock_add(econ, r, RES_ENCHANTED_ARMS, -econ->region[r].stock[RES_ENCHANTED_ARMS]*frac);
     }
 }
 void diplo_war_tick(DiploState *d, World *w, WorldEconomy *econ,

@@ -1526,6 +1526,92 @@ int econ_region_rep_province(const WorldEconomy *e, int region){
     return e->region_rep_prov[region];
 }
 
+/* ---- RE-KEY : écritures PERSISTANTES au grain RÉGION -------------------- *
+ * region[] est une VUE reconstruite à chaque clôture (econ_aggregate_regions
+ * memset + Σ prov[]) : écrire l'agrégat est EFFACÉ au tick suivant. Ces
+ * helpers routent l'écriture sur les PROVINCES de la région (représentative
+ * d'abord, puis les sœurs pour un débit qui déborde) ET tiennent la VUE
+ * region[] à jour (les lecteurs intra-mois voient le mouvement immédiatement).
+ * Rendent le delta RÉELLEMENT appliqué (un débit est borné au disponible ;
+ * le trésor, lui, peut passer négatif = dette, comme credit_spend).
+ * Ordre de balayage FIXE (pid croissant) — déterminisme préservé. */
+float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta){
+    if (!e || region<0 || region>=e->n_regions || good<=RES_NONE || good>=RES_COUNT || delta==0.f) return 0.f;
+    RegionEconomy *rv=&e->region[region];
+    int rep=econ_region_rep_province(e,region);
+    if (delta>0.f){
+        if (rep<0 || rep>=e->n_prov) return 0.f;
+        e->prov[rep].stock[good]+=delta;
+        rv->stock[good]+=delta;
+        return delta;
+    }
+    float need=-delta, took=0.f;
+    if (rep>=0 && rep<e->n_prov && e->prov[rep].region==region){
+        float t=e->prov[rep].stock[good]; if(t>need)t=need;
+        if (t>0.f){ e->prov[rep].stock[good]-=t; need-=t; took+=t; }
+    }
+    for (int p=0; p<e->n_prov && need>1e-6f; p++){
+        if (p==rep) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        if (pe->region!=region || !pe->active) continue;
+        float t=pe->stock[good]; if(t>need)t=need;
+        if (t>0.f){ pe->stock[good]-=t; need-=t; took+=t; }
+    }
+    rv->stock[good]-=took; if (rv->stock[good]<0.f) rv->stock[good]=0.f;
+    return -took;
+}
+float econ_region_treasury_add(WorldEconomy *e, int region, float delta){
+    if (!e || region<0 || region>=e->n_regions || delta==0.f) return 0.f;
+    RegionEconomy *rv=&e->region[region];
+    int rep=econ_region_rep_province(e,region);
+    if (rep<0 || rep>=e->n_prov) return 0.f;
+    if (delta>0.f){
+        e->prov[rep].treasury+=delta; rv->treasury+=delta; return delta;
+    }
+    float need=-delta;
+    /* débit : d'abord le liquide des sœurs (clampé à 0), le RÉSIDU va sur la
+     * représentative (peut passer négatif = dette, philosophie credit_spend). */
+    if (e->prov[rep].region==region){
+        float t=e->prov[rep].treasury; if(t<0.f)t=0.f; if(t>need)t=need;
+        e->prov[rep].treasury-=t; need-=t;
+    }
+    for (int p=0; p<e->n_prov && need>1e-6f; p++){
+        if (p==rep) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        if (pe->region!=region || !pe->active) continue;
+        float t=pe->treasury; if(t<0.f)t=0.f; if(t>need)t=need;
+        if (t>0.f){ pe->treasury-=t; need-=t; }
+    }
+    if (need>1e-6f && rep>=0) e->prov[rep].treasury-=need;   /* le reste en dette */
+    rv->treasury+=delta;
+    return delta;
+}
+float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta){
+    if (!e || region<0 || region>=e->n_regions || cls<0 || cls>=CLASS_COUNT || delta==0.f) return 0.f;
+    RegionEconomy *rv=&e->region[region];
+    int rep=econ_region_rep_province(e,region);
+    if (delta>0.f){
+        if (rep<0 || rep>=e->n_prov) return 0.f;
+        e->prov[rep].strata[cls].pop+=delta;
+        rv->strata[cls].pop+=delta;
+        return delta;
+    }
+    float need=-delta, took=0.f;
+    if (rep>=0 && rep<e->n_prov && e->prov[rep].region==region){
+        float t=e->prov[rep].strata[cls].pop; if(t>need)t=need;
+        if (t>0.f){ e->prov[rep].strata[cls].pop-=t; need-=t; took+=t; }
+    }
+    for (int p=0; p<e->n_prov && need>1e-6f; p++){
+        if (p==rep) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        if (pe->region!=region || !pe->active) continue;
+        float t=pe->strata[cls].pop; if(t>need)t=need;
+        if (t>0.f){ pe->strata[cls].pop-=t; need-=t; took+=t; }
+    }
+    rv->strata[cls].pop-=took; if (rv->strata[cls].pop<0.f) rv->strata[cls].pop=0.f;
+    return -took;
+}
+
 /* M6 — la MATIÈRE gate l'arcane (design §4.2 : la rareté EST le verrou). GRAIN PUBLIC
  * historique = région (résolue vers sa province représentative, cf. ci-dessus). */
 bool econ_bld_can_build(const WorldEconomy *e, int region, BuildingType b){
@@ -1644,7 +1730,8 @@ const char *econ_flux_name(FluxComp comp){
     static const char *N[FX_COUNT]={
         "taxes","export","péages+",
         "entretien","cour","admin","encadr.",
-        "soldes","marine","audits","péages−","invest.","conseil","import" };
+        "soldes","marine","audits","péages−","invest.","conseil","import",
+        "chantiers","redépense","intérêts" };
     return (comp>=0&&comp<FX_COUNT)?N[comp]:"?";
 }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }
@@ -2233,6 +2320,7 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (depense > spendable) depense = spendable;
         if (depense < 0.f) depense = 0.f;
         re->treasury -= depense;
+        if (re->owner>=0) econ_flux_add(re->owner, FX_REDEP, -depense);   /* I0 : la redépense publique (le trou de l'instrument) */
         float payroll = depense * PAYROLL_FRACTION;
         if (coll_tot > 1e-6f)
             for (int c=0;c<CLASS_COUNT;c++)

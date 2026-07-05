@@ -164,7 +164,8 @@ static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n){
         if (a->pop_by_class_in_army[cl] < 0) a->pop_by_class_in_army[cl] = 0;
         Resource arm=unit_res_arm(t);
         if (arm!=RES_NONE && econ) for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==cid){
-            econ->region[r].stock[arm]+=(float)(take*POP_PER_UNIT); break; }   /* armes rendues au stock */
+            /* RE-KEY : rendues aux PROVINCES (la vue seule s'évaporait à la clôture). */
+            econ_region_stock_add(econ, r, arm, (float)(take*POP_PER_UNIT)); break; }   /* armes rendues au stock */
         if (a->units[i].count<=0){                 /* compacter : retirer l'unité vide */
             for (int j=i;j<a->n_units-1;j++) a->units[j]=a->units[j+1];
             a->n_units--;

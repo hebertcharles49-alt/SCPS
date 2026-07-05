@@ -413,8 +413,9 @@ float intertrade_buy_cost(const WorldEconomy *e, int region, int good, float qty
  * Renvoie la quantité prélevée. */
 static float centre_take(WorldEconomy *e, int r, int good, float want){
     if (want<=0.f) return 0.f;
-    float s=e->region[r].stock[good], t=(s<want?s:want);
-    e->region[r].stock[good]=s-t;
+    /* RE-KEY : débit PERSISTANT (provinces) — écrire la seule vue region[] serait
+     * effacé à la clôture (la matière « consommée » réapparaissait chaque mois). */
+    float t = -econ_region_stock_add(e, r, good, -want);
     if (r<SCPS_MAX_REG && g_centre[r]){
         g_global_cache[good]-=t; if(g_global_cache[good]<0.f) g_global_cache[good]=0.f;
     }
@@ -543,31 +544,42 @@ long intertrade_market_buy(WorldEconomy *e, int region, int good, long want, int
     if (!buyer_tr) return 0;
     long can=(long)(*buyer_tr/up); if (qty>can) qty=can;         /* borné par le trésor */
     if (qty<=0) return 0;
-    float cost=(float)qty*up;
-    *buyer_tr -= cost;                                            /* PUMP du trésor */
-    re->stock[good] += (float)qty;                               /* le bien entre au stock */
+    /* RE-KEY + CONSERVATION : on PRÉLÈVE d'abord le RÉEL (provinces, persistant —
+     * la vue seule serait effacée à la clôture), on facture et on livre CE réel :
+     * jamais de matière créée si la vue promettait plus que les provinces ne tiennent. */
+    long got=0; float cost=0.f;
     if (tier<=0){
-        e->region[hub].stock[good]-=(float)qty; if(e->region[hub].stock[good]<0.f)e->region[hub].stock[good]=0.f;
+        got=(long)(-econ_region_stock_add(e, hub, good, -(float)qty));
+        if (got<=0) return 0;
+        cost=(float)got*up;
+        *buyer_tr -= cost;                                        /* PUMP du trésor */
+        econ_region_stock_add(e, region, good, (float)got);       /* le bien entre au stock (province) */
         float *hub_tr=it_treasury(e,hub); if (hub_tr) *hub_tr += cost;   /* CONSERVATION : le hub (source+hôte) encaisse le plein */
     } else {
         long rem=qty; float nu_credited=0.f;
         for (int r=0;r<e->n_regions && r<SCPS_MAX_REG && rem>0;r++){
             if (!g_centre[r] || r==region) continue;             /* V2 : JAMAIS sa propre région */
-            long t=(long)e->region[r].stock[good]; if (t>rem) t=rem;
-            e->region[r].stock[good]-=(float)t; rem-=t;
+            long t=(long)(-econ_region_stock_add(e, r, good, -(float)rem));
+            if (t<=0) continue;
+            rem-=t;
             float nu=(float)t*price;
             float *src_tr=it_treasury(e,r); if (src_tr) *src_tr += nu; /* la source encaisse le NU */
             nu_credited += nu;
         }
+        got=qty-rem;
+        if (got<=0) return 0;
+        cost=(float)got*up;
+        *buyer_tr -= cost;                                        /* PUMP du trésor (facturé sur le RÉEL) */
+        econ_region_stock_add(e, region, good, (float)got);
         float toll = cost - nu_credited;                          /* la marge → cité-état hôte */
         if (toll>0.f && re->import_toll_region>=0 && re->import_toll_region<e->n_regions){
             float *toll_tr=it_treasury(e,re->import_toll_region); if (toll_tr) *toll_tr += toll;
         }
     }
-    g_global_cache[good]-=(float)qty; if(g_global_cache[good]<0.f)g_global_cache[good]=0.f;  /* V2.2 : cache à jour (anti sur-tirage intra-tick) */
-    if (g_commerce_active && cid_ok(cc_owner)) commerce_draw(cc_owner, (float)qty);   /* §5 : l'achat draine le pool commercial */
+    g_global_cache[good]-=(float)got; if(g_global_cache[good]<0.f)g_global_cache[good]=0.f;  /* V2.2 : cache à jour (anti sur-tirage intra-tick) */
+    if (g_commerce_active && cid_ok(cc_owner)) commerce_draw(cc_owner, (float)got);   /* §5 : l'achat draine le pool commercial */
     if (spent) *spent=(long)(cost+0.5f);
-    return qty;
+    return got;
 }
 /* la VENTE, l'inverse : on lâche `want` du stock propre AU marché (régional/mondial), on
  * encaisse au prix courant (sans marge — on vend au prix, on n'achète pas), le bien
@@ -588,21 +600,23 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
     long qty=want; if (qty>(long)re->stock[good]) qty=(long)re->stock[good];
     if (qty<=0) return 0;
     float price=re->price[good]; if (price<MARKET_MIN_PRICE) price=MARKET_MIN_PRICE;
-    float gain=(float)qty*price;
     float *seller_tr=it_treasury(e,region);
     float *dep_tr=it_treasury(e,dep);
     if (!seller_tr || !dep_tr) return 0;
-    if (gain > *dep_tr){                                          /* CONSERVATION : borné au trésor de l'absorbeur */
-        float k = (gain>0.f)? *dep_tr/gain : 0.f;
-        qty=(long)((float)qty*k); if (qty<=0) return 0;
-        gain=(float)qty*price; }
-    re->stock[good]-=(float)qty;
+    { float g0=(float)qty*price;
+      if (g0 > *dep_tr){                                          /* CONSERVATION : borné au trésor de l'absorbeur */
+          float k = (g0>0.f)? *dep_tr/g0 : 0.f;
+          qty=(long)((float)qty*k); if (qty<=0) return 0; } }
+    /* RE-KEY : débit RÉEL du vendeur (provinces, persistant) — l'encaissé suit CE réel. */
+    long sold=(long)(-econ_region_stock_add(e, region, good, -(float)qty));
+    if (sold<=0) return 0;
+    float gain=(float)sold*price;
     *seller_tr+=gain;
     *dep_tr-=gain;                                                /* l'absorbeur PAIE (vendeur +gain == dep −gain) */
-    e->region[dep].stock[good]+=(float)qty;                      /* le bien rejoint le marché (un AUTRE Centre) */
-    g_global_cache[good]+=(float)qty;                            /* V2.2 : cache à jour */
+    econ_region_stock_add(e, dep, good, (float)sold);            /* le bien rejoint le marché (un AUTRE Centre, province) */
+    g_global_cache[good]+=(float)sold;                           /* V2.2 : cache à jour */
     if (gained) *gained=(long)(gain+0.5f);
-    return qty;
+    return sold;
 }
 
 void  intertrade_order_embargo(int cid, int target, bool on){
@@ -684,13 +698,22 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             RegionEconomy *re=&e->region[r];
             re->import_margin=1.f; re->import_toll_region=-1;
             int o=re->owner;
-            if (!any_centre || o<0) continue;
-            int hub = (r<SCPS_MAX_REG)? g_hub_of[r] : -1;
-            if (hub<0){ re->import_margin=m_none; continue; }     /* aucun marché atteignable : enclavé */
-            bool own = (e->region[hub].owner==o) || (re->edi_built & (1u<<EDI_COMPTOIR));
-            int d = (r<SCPS_MAX_REG)? g_hub_dist[r] : 0; if (d>8) d=8;   /* rendement dégressif, plafonné */
-            re->import_margin = (own?m_own:m_third) * (1.f + dfall*(float)d);
-            if (!own) re->import_toll_region=(int16_t)hub;        /* péage à la cité-état hôte (la plus proche) */
+            if (any_centre && o>=0){
+                int hub = (r<SCPS_MAX_REG)? g_hub_of[r] : -1;
+                if (hub<0){ re->import_margin=m_none; }           /* aucun marché atteignable : enclavé */
+                else {
+                    bool own = (e->region[hub].owner==o) || (re->edi_built & (1u<<EDI_COMPTOIR));
+                    int d = (r<SCPS_MAX_REG)? g_hub_dist[r] : 0; if (d>8) d=8;   /* rendement dégressif, plafonné */
+                    re->import_margin = (own?m_own:m_third) * (1.f + dfall*(float)d);
+                    if (!own) re->import_toll_region=(int16_t)hub;   /* péage à la cité-état hôte (la plus proche) */
+                }
+            }
+            /* RE-KEY : MIROIR sur la province représentative — l'agrégation recopie
+             * margin/toll depuis ELLE ; sans miroir, ils retombaient à 1.0/-1 dès le
+             * mois suivant (la marge d'import ne « tenait » qu'un mois sur douze). */
+            { int pp=econ_region_rep_province(e,r);
+              if (pp>=0 && pp<e->n_prov){ e->prov[pp].import_margin=re->import_margin;
+                                          e->prov[pp].import_toll_region=re->import_toll_region; } }
         }
     }
     float trade_levy = tune_f("TRADE_LEVY", 0.10f);   /* prélèvement importateur (conservation) */
@@ -750,13 +773,18 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             float total=gross*(1.f+trade_levy);
             if (total > *dst_tr){ float k=*dst_tr/total; vol*=k; gross*=k; total=*dst_tr; }
             if (vol<=0.001f) continue;
+            /* RE-KEY : le bien bouge PROVINCE-persistant (la vue seule serait effacée
+             * à la clôture) — on livre et on facture le RÉEL pris à la source. */
+            { float moved = -econ_region_stock_add(e, src_r, g, -vol);
+              if (moved<=0.001f) continue;
+              if (moved<vol){ float k=moved/vol; gross*=k; total*=k; vol=moved; } }
+            econ_region_stock_add(e, dst_r, g, vol);
             { bool down=it_is_downstream(rt,a_to_b);  /* télémétrie : le tri par sens ÉMERGE */
               if (rt->maritime||rt->fluvial){
                   if (down) g_vol_down+=vol; else g_vol_up+=vol;
                   if (it_is_bulk(g))     { if (down) g_bulk_down+=vol; else g_bulk_up+=vol; }
                   if (it_is_precious(g)) { if (down) g_prec_down+=vol; else { g_prec_up+=vol; g_nprec_up++; } }
               } }
-            src->stock[g]-=vol; dst->stock[g]+=vol;             /* le bien remonte la pente de prix */
             *dst_tr -= total;                                   /* l'acheteur PAIE Y */
             *src_tr += total;                                   /* le vendeur ENCAISSE Y (trésor réel) */
             if (src->owner>=0){ econ_flux_add(src->owner, FX_EXPORT, gross);
@@ -817,7 +845,10 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             if (src<0 || lp<=sp*(1.f+minsp)) continue;            /* spread trop mince → rien */
             float vol=vcap; if (vol>e->region[src].stock[g]*0.20f) vol=e->region[src].stock[g]*0.20f;  /* ne vide pas la source */
             if (vol<0.5f) continue;
-            e->region[src].stock[g]-=vol; H->stock[g]+=vol;      /* le Centre stocke son marché local */
+            /* RE-KEY : drain/dépôt PROVINCE-persistants — l'or suit le RÉEL pris. */
+            vol = -econ_region_stock_add(e, src, g, -vol);
+            if (vol<0.5f) continue;
+            econ_region_stock_add(e, h, g, vol);                 /* le Centre stocke son marché local */
             { float *src_tr=it_treasury(e,src); if (src_tr) *src_tr += vol*sp*IT_MARGIN_TO_GOLD; } /* l'exportateur source encaisse l'or */
             float profit=vol*(lp-sp)*cap;                        /* le CE encaisse une PART BORNÉE du spread */
             { float *h_tr=it_treasury(e,h); if (h_tr) *h_tr += profit; } g_centre_val[h]+=profit;

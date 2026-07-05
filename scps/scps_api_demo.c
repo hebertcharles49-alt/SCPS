@@ -319,6 +319,34 @@ int main(int argc, char **argv){
         }
     }
 
+    /* ── PANNEAU B (manufacture joueur) : légalité + verbe enfilé + pose au drain.
+     *    On cherche un couple (région du joueur, type) LÉGAL ; s'il en existe un, la
+     *    pose au drain doit AJOUTER un bâtiment (puits kind==1 de scps_region_alloc). ── */
+    {
+        int nreg=scps_region_count(s2);
+        int lr=-1, lb=-1;
+        for (int r=0;r<nreg && lr<0;r++)
+            for (int b=1;b<64 && lr<0;b++)
+                if (scps_manuf_legal(s2, r, b)){ lr=r; lb=b; }
+        printf("   panneau B : couple légal (région %d, type %d)\n", lr, lb);
+        if (lr>=0){
+            ScpsAlloc al; scps_region_alloc(s2, lr, &al);
+            int nb_before=0; for (int i=0;i<al.n;i++) if (al.sink[i].kind==1) nb_before++;
+            ok("panneau B : verbe BUILD_MANUF enfilé", scps_player_build_manuf(s2, lr, lb)==1);
+            scps_sim_advance_days(s2, 2);                    /* le drain pose */
+            scps_region_alloc(s2, lr, &al);
+            int nb_after=0; for (int i=0;i<al.n;i++) if (al.sink[i].kind==1) nb_after++;
+            ok("panneau B : la manufacture est POSÉE au drain (+1 bâtiment)", nb_after == nb_before+1);
+            ok("panneau B : le même type n'est plus légal (slot rempli)", scps_manuf_legal(s2, lr, lb)==0);
+        } else {
+            ok("panneau B : aucun couple légal (monde nu précoce) — verbe refusé proprement",
+               scps_player_build_manuf(s2, 0, 1)==1);        /* enfilé ; le drain refusera sans crash */
+            scps_sim_advance_days(s2, 2);
+            ok("panneau B : drain sans crash sur refus", 1);
+        }
+        ok("panneau B : hors-borne refusé (type 999)", scps_manuf_legal(s2, 0, 999)==0);
+    }
+
     scps_sim_free(s); scps_sim_free(s2);
 
     /* ── CRÉATEUR DE CULTURE : listes + validation + aperçu + composition (headless) ──

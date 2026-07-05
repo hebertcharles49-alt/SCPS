@@ -2148,17 +2148,22 @@ void ai_speculate_tick(AiActor *a, WorldEconomy *econ){
             vol = fminf(vol, SPEC_VOL_ABS);                                           /* ≤ 50 unités (plafond dur) */
             vol = fminf(vol, (re->treasury-tune_f("SPEC_GOLD_FLOOR",SPEC_GOLD_FLOOR))*0.25f/fmaxf(p,0.05f));    /* jamais la famine d'or */
             if (vol>=1.f){
-                re->stock[g]-=vol; a->hoard[g]+=vol; held+=vol;
-                re->treasury -= vol*p;
-                a->stats.spec_vol+=vol; a->stats.spec_gold-=vol*p; a->stats.spec_buys++;
-                a->spec_cd[g]=SPEC_COOLDOWN;
+                /* RE-KEY : achat RÉEL (provinces) — la vue seule s'évaporait à la clôture. */
+                vol = -econ_region_stock_add(econ, hub, g, -vol);
+                if (vol>=1.f){
+                    a->hoard[g]+=vol; held+=vol;
+                    econ_region_treasury_add(econ, hub, -vol*p);
+                    a->stats.spec_vol+=vol; a->stats.spec_gold-=vol*p; a->stats.spec_buys++;
+                    a->spec_cd[g]=SPEC_COOLDOWN;
+                }
             }
         } else if (p > tune_f("SPEC_SELL_BAND",SPEC_SELL_BAND)*xb && a->hoard[g]>=1.f){
             float vol = fminf(a->hoard[g]*SPEC_SELL_FRAC, SPEC_VOL_ABS);              /* filet : 15 % du magot, ≤ 50 u */
             float room = cap_stock - re->stock[g]; if (vol>room) vol=room;            /* l'entrepôt ne déborde pas */
             if (vol>=1.f){
-                a->hoard[g]-=vol; re->stock[g]+=vol;                                  /* le bien REVIENT au marché */
-                re->treasury += vol*p;
+                a->hoard[g]-=vol;
+                econ_region_stock_add(econ, hub, g, vol);        /* le bien REVIENT au marché (RE-KEY : province) */
+                econ_region_treasury_add(econ, hub, vol*p);
                 a->stats.spec_vol+=vol; a->stats.spec_gold+=vol*p; a->stats.spec_sells++;
                 a->spec_cd[g]=SPEC_COOLDOWN;
             }

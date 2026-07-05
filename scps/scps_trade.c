@@ -11,6 +11,15 @@
 
 #define EPS 1e-4f
 
+/* RE-KEY : richesse de strate PERSISTANTE — province représentative + vue region[]
+ * du mois courant (écrire la seule vue serait effacé par l'agrégation de clôture). */
+static void trade_wealth_add(WorldEconomy *e, int region, int cls, float delta){
+    int pp=econ_region_rep_province(e,region);
+    if (pp>=0 && pp<e->n_prov){
+        float *w=&e->prov[pp].strata[cls].wealth; *w+=delta; if(*w<0.f)*w=0.f; }
+    float *v=&e->region[region].strata[cls].wealth; *v+=delta; if(*v<0.f)*v=0.f;
+}
+
 /* ====================================================================== */
 /* CONSTRUCTION DU RÉSEAU                                                  */
 /* ====================================================================== */
@@ -221,17 +230,19 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
 
             /* Transport : petite perte de fret. */
             float loss=lk->transport_cost*0.10f;
+            /* RE-KEY : le bien bouge PROVINCE-persistant (écrire la seule vue region[]
+             * serait effacé à la clôture) — on livre le RÉEL pris à l'exportateur. */
+            vol = -econ_region_stock_add(e, exporter, r, -vol);
+            if (vol<=EPS) continue;
             float received=vol*(1.f-loss);
-
-            exp->stock[r]-=vol;
-            imp->stock[r]+=received;
+            econ_region_stock_add(e, importer, r, received);
 
             /* Revenu de l'exportateur (vente au prix de l'importateur
              * moins le coût de transport = marge marchande). */
             float sale_price=imp->price[r]*(1.f-lk->transport_cost);
             float revenue=vol*sale_price;
-            /* Les bourgeois captent le profit commercial. */
-            exp->strata[CLASS_BOURGEOIS].wealth+=revenue;
+            /* Les bourgeois captent le profit commercial (RE-KEY : province + vue). */
+            trade_wealth_add(e, exporter, CLASS_BOURGEOIS, revenue);
             /* L'importateur paie. */
             float cost_imp=received*imp->price[r];
             /* Le coût est réparti entre les strates au prorata du besoin. */
@@ -244,7 +255,7 @@ void trade_tick(WorldEconomy *e, TradeNetwork *net, const uint8_t *link_blocked)
                 for(int c=0;c<CLASS_COUNT;c++){
                     float share=(imp->strata[c].wealth/need_tot);
                     float pay=cost_imp*share;
-                    imp->strata[c].wealth=fmaxf(0.f,imp->strata[c].wealth-pay);
+                    trade_wealth_add(e, importer, c, -pay);   /* RE-KEY : province + vue (clampé ≥0) */
                 }
             }
 

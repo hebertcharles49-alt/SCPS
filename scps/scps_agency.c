@@ -298,12 +298,13 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
      * ligne de crédit ; sinon le chantier passe et l'or peut filer négatif. */
     if (!credit_can_spend(econ, w, owner, gold)){ g_edi_nogold[e]++; return false; }
     credit_spend(econ, w, owner, gold);
+    if (owner>=0) econ_flux_add(owner, FX_BUILD, -gold);   /* I0 : la ligne chantiers (le trou de l'instrument) */
     /* I6/#5 — LE PÉAGE : la marge au-dessus du nu (transport + double taxe mondiale)
      * versée à la cité-état hôte (le hub le plus proche) — transfert, pas destruction :
      * les cités-états deviennent banquières du réseau. */
     if (gold > base_gold + 0.01f && re->import_toll_region >= 0 && re->import_toll_region < econ->n_regions){
         float toll = (gold - base_gold);   /* CONSERVATION : TOUTE la marge → l'hôte (le nu va aux sources via _consume) */
-        econ->region[re->import_toll_region].treasury += toll;
+        econ_region_treasury_add(econ, re->import_toll_region, toll);   /* RE-KEY : sur la PROVINCE (l'agrégat serait effacé) */
         if (re->owner>=0) econ_flux_add(re->owner, FX_TOLL_PAID, -toll);                       /* I0 */
         int tro=econ->region[re->import_toll_region].owner; if (tro>=0) econ_flux_add(tro, FX_TOLL_RECV, toll);
     }

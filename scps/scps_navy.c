@@ -135,17 +135,19 @@ bool navy_order_build(NavyState *ns, const World *w, WorldEconomy *econ, int cid
     if (gold>re->treasury) return false;
     if (re->strata[CLASS_LABORER].pop < (float)navy_hull_crew(t)+200.f) return false;  /* pas les bras */
     const HullCost *h=&HULLS[t];
-    re->treasury-=gold;
-    re->stock[RES_NAVAL_SUPPLIES]-=h->supplies; if (re->stock[RES_NAVAL_SUPPLIES]<0.f) re->stock[RES_NAVAL_SUPPLIES]=0.f;
-    re->stock[RES_WOOD]          -=h->wood;     if (re->stock[RES_WOOD]<0.f)           re->stock[RES_WOOD]=0.f;
-    if (h->copper>0.f){ re->stock[RES_COPPER]-=h->copper; if (re->stock[RES_COPPER]<0.f) re->stock[RES_COPPER]=0.f; }
-    re->demand[RES_NAVAL_SUPPLIES]+=h->supplies;         /* le marché VOIT le chantier */
+    /* RE-KEY : coût RÉEL (provinces) — la vue seule s'évaporait à la clôture :
+     * coques, matière et ÉQUIPAGE étaient de fait gratuits. */
+    econ_region_treasury_add(econ, port, -gold);
+    econ_region_stock_add(econ, port, RES_NAVAL_SUPPLIES, -h->supplies);
+    econ_region_stock_add(econ, port, RES_WOOD,           -h->wood);
+    if (h->copper>0.f) econ_region_stock_add(econ, port, RES_COPPER, -h->copper);
+    re->demand[RES_NAVAL_SUPPLIES]+=h->supplies;         /* le marché VOIT le chantier (flux recalculé/tick, transitoire assumé) */
     re->demand[RES_WOOD]          +=h->wood;
     n->supplies_eaten+=h->supplies;
     /* L'ÉQUIPAGE se lève sur la pop du port (le warhost de la mer) : 50 bras
      * par coque légère, 100 par bordée — vérifié AVANT le paiement. */
     { int crew=navy_hull_crew(t);
-      re->strata[CLASS_LABORER].pop -= (float)crew;
+      econ_region_pop_add(econ, port, CLASS_LABORER, -(float)crew);
       n->crew += crew; }
     n->build_hull=(int)t; n->build_days=(float)h->days; n->home_port=port;
     return true;
@@ -163,8 +165,9 @@ bool navy_convert(NavyState *ns, const World *w, WorldEconomy *econ, int cid, bo
     const HullCost *h=&HULLS[HULL_PIRATE];               /* le coût léger de la conversion */
     float gold=navy_build_gold(econ,port,HULL_PIRATE);
     if (gold>re->treasury) return false;
-    re->treasury-=gold;
-    re->stock[RES_NAVAL_SUPPLIES]-=h->supplies; if (re->stock[RES_NAVAL_SUPPLIES]<0.f) re->stock[RES_NAVAL_SUPPLIES]=0.f;
+    /* RE-KEY : coût RÉEL (provinces) — la vue seule s'évaporait à la clôture. */
+    econ_region_treasury_add(econ, port, -gold);
+    econ_region_stock_add(econ, port, RES_NAVAL_SUPPLIES, -h->supplies);
     n->supplies_eaten+=h->supplies;
     n->hull[from]--; n->hull[to]++;
     if (!to_pirate) n->nest_region=-1;                   /* désarmé : le nid se vide */
@@ -208,21 +211,17 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
              * désarmement existant plus bas) — c'est le « désarme des coques » d'IG. */
             { float gold = (float)hulls * tune_f("NAVY_UPKEEP_GOLD",1.5f)
                          * econ_world_ipm(econ) * (at_war?1.5f:1.f) * (dt_days/30.f);
-              float paid = fminf(gold, re->treasury);
-              if (re->treasury >= gold) re->treasury -= gold;
-              else { re->treasury=0.f; n->starve_days += dt_days; }
+              /* RE-KEY : payé pour de VRAI (provinces) — la vue seule s'évaporait. */
+              float paid = fminf(gold, fmaxf(0.f, re->treasury));
+              if (paid < gold) n->starve_days += dt_days;
+              if (paid > 0.f) econ_region_treasury_add(econ, n->home_port, -paid);
               econ_flux_add(c, FX_NAVY, -paid); }            /* I0 : la ligne marine */
             float need=need_y*(dt_days/365.f);
-            re->demand[RES_NAVAL_SUPPLIES]+=need;         /* la demande se VOIT au marché */
-            if (re->stock[RES_NAVAL_SUPPLIES]>=need){
-                re->stock[RES_NAVAL_SUPPLIES]-=need;
-                n->supplies_eaten+=need;
-                n->starve_days=0.f;
-            } else {
-                n->supplies_eaten+=re->stock[RES_NAVAL_SUPPLIES];
-                re->stock[RES_NAVAL_SUPPLIES]=0.f;
-                n->starve_days+=dt_days;
-            }
+            re->demand[RES_NAVAL_SUPPLIES]+=need;         /* la demande se VOIT au marché (flux/tick, transitoire assumé) */
+            { float got = -econ_region_stock_add(econ, n->home_port, RES_NAVAL_SUPPLIES, -need);   /* RE-KEY */
+              n->supplies_eaten+=got;
+              if (got >= need-1e-4f) n->starve_days=0.f;
+              else                   n->starve_days+=dt_days; }
         }
         if (n->starve_days>NAVY_STARVE_YEAR){             /* la flotte pourrit à quai */
             int big=-1, bc=0;
@@ -232,7 +231,7 @@ void navy_tick(NavyState *ns, const World *w, WorldEconomy *econ, struct DiploSt
                 int crew=navy_hull_crew((HullType)big);   /* les marins DÉBARQUENT et rentrent */
                 n->crew-=crew; if (n->crew<0) n->crew=0;
                 if (n->home_port>=0 && n->home_port<econ->n_regions)
-                    econ->region[n->home_port].strata[CLASS_LABORER].pop += (float)crew;
+                    econ_region_pop_add(econ, n->home_port, CLASS_LABORER, (float)crew);   /* RE-KEY : rentrent aux provinces */
             }
             n->starve_days-=365.f;
         }

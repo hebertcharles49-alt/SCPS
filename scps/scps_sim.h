@@ -73,6 +73,10 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        CMD_COLONIZE,
        /* BRASSAGE — le joueur PROPOSE un pacte migratoire (le vis-à-vis ÉVALUE via ai_consider_offer) */
        CMD_OFFER_MIGRATION,
+       /* PANNEAU B — le joueur pose une MANUFACTURE civile (a[0]=région, a[1]=BuildingType).
+        * Le §NF exclut le joueur (« il construit à la main ») : voici la main. Gates au
+        * drain = miroir d'ai_build_civmanuf (staffage/tier/intrant/slot libre/or). */
+       CMD_BUILD_MANUF,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

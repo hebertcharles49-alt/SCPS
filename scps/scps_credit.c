@@ -102,6 +102,7 @@ void credit_year_tick(WorldEconomy *e, const WorldLegitimacy *wl, const World *w
         double interest=idebt*(double)rate;
         int hr=home_reg(w,c);
         if(hr>=0&&hr<e->n_regions){ int hp=econ_region_rep_province(e,hr); if(hp>=0&&hp<e->n_prov) e->prov[hp].treasury-=interest; }
+        econ_flux_add(c, FX_CREDIT, -(float)interest);   /* I0 : la ligne intérêts */
         int Cr=g_creditor[c];
         if(Cr>=0&&Cr<w->n_countries){ int hc=home_reg(w,Cr);
             if(hc>=0&&hc<e->n_regions){ int cp=econ_region_rep_province(e,hc); if(cp>=0&&cp<e->n_prov) e->prov[cp].treasury+=interest; } }

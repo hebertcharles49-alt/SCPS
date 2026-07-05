@@ -1320,6 +1320,38 @@ int scps_player_offer_migration(ScpsSim *s, int target){   /* BRASSAGE : pacte m
     PlayerCmd c = { CMD_OFFER_MIGRATION, { target, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+int scps_player_build_manuf(ScpsSim *s, int region, int bld){   /* PANNEAU B : poser une manufacture */
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_BUILD_MANUF, { region, bld, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* LÉGALITÉ manufacture (miroir READ-ONLY des gates du drain CMD_BUILD_MANUF) :
+ * région au joueur+peuplée · type civil non-faustien à intrant · slot libre ·
+ * staffage (250/manuf) · tier · intrant nourrissable (ici OU l'empire) · or. */
+int scps_manuf_legal(ScpsSim *s, int region, int bld){
+    if (!s || !s->ready || region<0 || bld<0 || bld>=BLD_TYPE_COUNT) return 0;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    if (p<0 || p>=s->w->n_countries) return 0;
+    const WorldEconomy *e=s->sim.econ;
+    if (region>=e->n_regions) return 0;
+    const RegionEconomy *re=&e->region[region];
+    if (re->owner != p || !re->colonized) return 0;
+    if (bld_is_faustian((BuildingType)bld)) return 0;
+    Resource in1,in2,out; building_recipe((BuildingType)bld,&in1,&in2,&out); (void)in2;
+    if (out==RES_NONE || in1==RES_NONE) return 0;
+    if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
+        || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX) return 0;
+    for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==(BuildingType)bld) return 0;
+    float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+    if (rpop < 250.f*(float)(re->n_bld+1)) return 0;
+    if (capitale_max_tier((long)rpop) < bld_min_tier((BuildingType)bld)) return 0;
+    bool feed = (re->raw_cap[in1] > 0.f);
+    for (int r2=0;r2<e->n_regions && !feed;r2++)
+        if (e->region[r2].owner==p && e->region[r2].raw_cap[in1]>0.f) feed=true;
+    if (!feed) return 0;
+    float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e);
+    return credit_can_spend(e, s->w, p, cost) ? 1 : 0;
+}
 int scps_player_embargo(ScpsSim *s, int target, int on){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_EMBARGO, { target, on?1:0, 0, 0 } };

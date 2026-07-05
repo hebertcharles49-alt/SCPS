@@ -481,6 +481,15 @@ void econ_rebuild_prov_adj(WorldEconomy *e, const World *w);
  * représentative, la fait SURVIVRE (l'agrégation la re-somme/re-reflète au tick d'après).
  * -1 si la région n'a aucune province active. */
 int econ_region_rep_province(const WorldEconomy *e, int region);
+/* RE-KEY — écritures PERSISTANTES au grain RÉGION (stock/trésor/pop) : routent sur
+ * les PROVINCES (représentative d'abord, débit qui déborde sur les sœurs) ET
+ * tiennent la VUE region[] du mois courant. Écrire region[] directement serait
+ * EFFACÉ à la clôture (econ_aggregate_regions reconstruit la vue depuis prov[]).
+ * Rendent le delta réellement appliqué (débit borné au dispo ; trésor : le résidu
+ * passe en dette sur la représentative, philosophie credit_spend). */
+float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta);
+float econ_region_treasury_add(WorldEconomy *e, int region, float delta);
+float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta);
 /* Reconstruit region[] EN ENTIER depuis prov[] (le CŒUR d'econ_tick, exposé nu — PURE
  * fonction de prov[], AUCUN effet de temps/dt). Exposée pour les BANCS : un fixture qui
  * pose l'économie directement sur prov[] (charte : la vérité vit là) doit pouvoir rafraîchir
@@ -655,6 +664,9 @@ typedef enum {
     FX_TAX=0, FX_EXPORT, FX_TOLL_RECV,                /* revenus (+) */
     FX_UPKEEP, FX_COURT, FX_ADMIN, FX_ENCADR,         /* dépenses (−) : édifices/cour/admin/manuf */
     FX_SOLDE, FX_NAVY, FX_AUDIT, FX_TOLL_PAID, FX_INVEST, FX_CONSEIL, FX_IMPORT,
+    FX_BUILD,                                         /* chantiers (agency : or des édifices commandés) */
+    FX_REDEP,                                         /* redépense publique I3bis (le trésor circule le surplus) */
+    FX_CREDIT,                                        /* intérêts de la dette (credit_year_tick) */
     FX_COUNT
 } FluxComp;
 void   econ_flux_add(int cid, FluxComp comp, float amount);   /* incrémente (signé par convention ci-dessus) */

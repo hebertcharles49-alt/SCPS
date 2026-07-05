@@ -356,6 +356,34 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (ai_consider_offer(w, s->econ, s->wp, s->dp, s->sc, p, t, OFFER_MIGRATION))
                 diplo_set_migration_pact(s->dp, p, t, true);
             break; }
+          case CMD_BUILD_MANUF: {      /* PANNEAU B : le joueur pose une manufacture (miroir des gates IA civiles) */
+            int reg=c->a[0], b=c->a[1];
+            if (reg<0 || reg>=s->econ->n_regions) break;
+            if (b<0 || b>=BLD_TYPE_COUNT) break;
+            RegionEconomy *re=&s->econ->region[reg];
+            if (re->owner != p || !re->colonized) break;             /* REVALIDE : à soi, peuplée */
+            if (bld_is_faustian((BuildingType)b)) break;             /* les transmuteurs restent la voie tech/charge */
+            Resource in1,in2,out; building_recipe((BuildingType)b,&in1,&in2,&out); (void)in2;
+            if (out==RES_NONE || in1==RES_NONE) break;               /* pas une manufacture à intrant */
+            if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
+                || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX)
+                break;                                               /* le CIVIL seulement — l'armement/arcane restent doctrinaux */
+            { bool have=false; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==(BuildingType)b){ have=true; break; }
+              if (have) break; }                                     /* un type par région : slot déjà rempli */
+            float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+            if (rpop < 250.f*(float)(re->n_bld+1)) break;            /* = AI_STAFF_PER_MANUF : pas dans le vide */
+            if (capitale_max_tier((long)rpop) < bld_min_tier((BuildingType)b)) break;
+            { bool feed = (re->raw_cap[in1] > 0.f);                  /* intrant nourrissable : ici OU dans l'empire (pool P1) */
+              for (int r2=0;r2<s->econ->n_regions && !feed;r2++)
+                  if (s->econ->region[r2].owner==p && s->econ->region[r2].raw_cap[in1]>0.f) feed=true;
+              if (!feed) break; }
+            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ);
+            if (!credit_can_spend(s->econ, w, p, cost)) break;
+            if (econ_build_manufacture(s->econ, reg, (BuildingType)b)){
+                credit_spend(s->econ, w, p, cost);
+                econ_flux_add(p, FX_BUILD, -cost);                   /* I0 : la ligne chantiers */
+            }
+            break; }
           case CMD_EMBARGO: {
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;

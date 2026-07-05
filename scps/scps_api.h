@@ -338,6 +338,13 @@ int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max);
  * ce prédicat gate la RÉGION + l'OR. region<0 ⇒ capitale. */
 int scps_build_legal(ScpsSim *s, int region, int edifice);
 
+/* PANNEAU B — le joueur pose une MANUFACTURE civile (le §NF l'exclut : voici la main).
+ * bld = BuildingType (l'index que scps_region_alloc nomme déjà). Le verbe ENFILE
+ * (drain revalidé) ; la légalité est le miroir read-only des gates du drain
+ * (à soi · civil · slot libre · staffage · tier · intrant nourrissable · or). */
+int scps_player_build_manuf(ScpsSim *s, int region, int bld);
+int scps_manuf_legal(ScpsSim *s, int region, int bld);
+
 /* ARMÉE d'un pays (sb_panel_armee, read-only) : mobilisation + flotte. L'armée de
  * CAMPAGNE (position/phase/composition) se lit via scps_army_info. */
 typedef struct {
