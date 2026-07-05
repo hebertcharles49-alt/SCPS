@@ -296,9 +296,67 @@ func _draw_conseil(x: float, y: float, me: int) -> void:
 					y += 19
 			y += 4
 		idx += 1
-	if _conseil_flash != "":
+	y += 6
+	y = _draw_decrets(x, y, me)
+	if _decret_flash != "":
+		VKit.text(self, Vector2(x, size.y - 18),
+			(VKit.sense(0.85) if _decret_flash_ok else VKit.sense(0.10)), _decret_flash, VKit.FS_SMALL)
+	elif _conseil_flash != "":
 		VKit.text(self, Vector2(x, size.y - 18),
 			(VKit.sense(0.85) if _conseil_flash_ok else VKit.sense(0.10)), _conseil_flash, VKit.FS_SMALL)
+
+# ── DÉCRETS (sb_panel_decrets) : la flexibilité PROACTIVE du joueur (civics) —
+#    section sous le Conseil (même onglet). Chaque décret DÉPLACE un levier moteur
+#    tant qu'il est actif ; `plateaux` (survol) en donne les DEUX faces. Un ÉDIT se
+#    bascule librement (Activer/Désactiver) ; une RÉFORME activée s'affiche VERROUILLÉE
+#    (irréversible — pas de bouton retour). Grisé si `legal`==0 (condition d'entrée absente).
+var _decret_btns := []   # [{rect, id, on}]
+var _decret_flash := ""
+var _decret_flash_ok := true
+
+func _draw_decrets(x: float, y: float, me: int) -> float:
+	_decret_btns.clear()
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Décrets", VKit.FS_BIG)
+	y += 20
+	if not Sim.world.has_method("decrees_list"):
+		return y
+	for dec in Sim.world.decrees_list(me):
+		var id := int(dec["id"])
+		var active := bool(dec["active"])
+		var legal := bool(dec["legal"])
+		var reforme := bool(dec["reforme"])
+		var nom := String(dec["nom"])
+		var label := nom + (" [RÉFORME]" if reforme else "")
+		VKit.text(self, Vector2(x, y), VKit.COL_PARCH if legal or active else VKit.COL_DIM, label, VKit.FS_SMALL)
+		_hover_zones.append({"rect": Rect2(x, y - 2, VKit.text_w(label, VKit.FS_SMALL), 14), "text": String(dec["plateaux"])})
+		y += 15
+		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, String(dec["flavor"]), VKit.FS_SMALL)
+		y += 16
+		if reforme and active:
+			VKit.text(self, Vector2(x + 8, y), VKit.sense(0.30), "verrouillé (irréversible)", VKit.FS_SMALL)
+			y += 18
+		else:
+			var lab := "Désactiver" if active else "Activer"
+			var enabled := active or legal   # OFF toujours permis ; ON gate sur legal
+			var bw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
+			var r := Rect2(x + 8, y - 1, bw, 16)
+			var col := (VKit.sense(0.12) if active else VKit.sense(0.80)) if enabled else VKit.COL_EDGE
+			VKit.fill(self, r, VKit.COL_PANEL2)
+			VKit.box(self, r, col)
+			VKit.text(self, Vector2(r.position.x + 7, y), col if enabled else VKit.COL_DIM, lab, VKit.FS_SMALL)
+			if enabled:
+				_decret_btns.append({"rect": r, "id": id, "on": not active})
+			y += 20
+	return y
+
+func _decret_act(id: int, on: bool) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	var ok: bool = w.player_decree(id, on)
+	_decret_flash_ok = ok
+	_decret_flash = ("⚑ décret — ordre émis" if ok else "✗ décret — refusé")
+	queue_redraw()
 
 # ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (levée/posture/flotte) ──
 const POSTURE_LABELS := ["Prudente", "Standard", "Agressive"]
@@ -667,6 +725,11 @@ func _gui_input(event: InputEvent) -> void:
 			for b in _conseil_btns:
 				if b.rect.has_point(event.position):
 					_conseil_act(String(b.act), int(b.seat), int(b.get("slot", 0)))
+					accept_event()
+					return
+			for b in _decret_btns:
+				if b.rect.has_point(event.position):
+					_decret_act(int(b.id), bool(b.on))
 					accept_event()
 					return
 

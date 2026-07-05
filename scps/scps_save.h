@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 63u           /* v63 : LES ANNALES DU RÈGNE — EventsState grossit (l'anneau
+#define SAVE_VERSION 64u           /* v64 : DÉCRETS DU JOUEUR (civics) — nouvelle section DCRE
+                                    * (g_decree_mask[SCPS_MAX_COUNTRY], bitmask état par pays).
+                                    * Pas de struct partagée agrandie ⇒ un save v63 est juste
+                                    * INCOMPLET pour v64 (refusé par le contrôle de version, comme
+                                    * toute ère antérieure). <v64 refusé.
+                                    * v63 : LES ANNALES DU RÈGNE — EventsState grossit (l'anneau
                                     * annals[96] + tête + compteur) ⇒ la section EVNT (fwrite BRUT
                                     * de sizeof(*s->ev)) change de taille. <v63 refusé.
                                     * v62 : LA MEMBRANE DE DÉCISION — EventsState grossit (cicatrices

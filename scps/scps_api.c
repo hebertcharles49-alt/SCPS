@@ -851,6 +851,25 @@ int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max)
     return n;
 }
 
+/* DÉCRETS DU JOUEUR (civics) — état + légalité de TOUS les décrets, pour `country`. */
+int scps_decrees_list(ScpsSim *s, int country, ScpsDecree *out, int max){
+    if(!out || max<=0 || !s || !s->ready || country<0 || country>=s->w->n_countries) return 0;
+    int n=0;
+    for (int id=0; id<DECREE_COUNT && n<max; id++){
+        const DecreeDef *d = &DECREES[id];
+        out[n].id       = id;
+        out[n].nom      = sz(d->nom);
+        out[n].flavor   = sz(d->flavor);
+        out[n].plateaux = sz(d->plateaux);
+        out[n].reforme  = (d->type==DCR_REFORME) ? 1 : 0;
+        out[n].active   = decree_active(country, (DecreeId)id) ? 1 : 0;
+        out[n].legal    = decree_legal(s->w, s->sim.econ, s->sim.ts, s->sim.wl, s->sim.sc,
+                                       s->sim.dp, country, (DecreeId)id) ? 1 : 0;
+        n++;
+    }
+    return n;
+}
+
 int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
     if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
     int n=0;
@@ -1392,6 +1411,11 @@ int scps_player_council_dismiss(ScpsSim *s, int seat){
     PlayerCmd c = { CMD_COUNCIL_DISMISS, { seat, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+int scps_player_decree(ScpsSim *s, int id, int on){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_DECREE, { id, on?1:0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
 int scps_player_route(ScpsSim *s, int ra, int rb, int maritime){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_ROUTE, { ra, rb, maritime?1:0, 0 } };
@@ -1624,6 +1648,9 @@ int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out){
     for (int i=0;i<d->n_options && i<4;i++){
         out->labels[i]  = sz(d->options[i].label);
         out->flavors[i] = sz(d->options[i].flavor);
+        /* le VISAGE du choix : la faction du hook parle au conseil (membrane : un mot) */
+        int fac = d->options[i].hook.faction;
+        out->advisors[i] = (fac>=0) ? sz(faction_name(fac)) : "";
     }
     return 1;
 }

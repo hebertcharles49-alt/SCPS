@@ -14,6 +14,21 @@
 #include <math.h>
 #include "scps_math.h"   /* clampf/absf partagés */
 
+/* DÉCRET « Politique de tribut » (scps_decrees.c) : un maître-pays sous ce drapeau
+ * presse ×1.5 tout tribut/contribution vassale. Un simple TABLEAU DE DRAPEAUX (pas
+ * un #include de scps_decrees.h) pour ÉVITER que tout binaire qui lie scps_diplo.o
+ * (une vingtaine de bancs) doive désormais lier scps_decrees.o : decrees.c écrit ce
+ * drapeau via diplo_set_tribute_decree ; scps_diplo.c ne fait que le LIRE, à 0 par
+ * défaut (RAZ par diplo_init) ⇒ les bancs qui n'appellent jamais le setter sont
+ * INCHANGÉS (aucune dépendance nouvelle, aucun symbole manquant à l'édition de liens). */
+static bool g_tribute_decree[SCPS_MAX_COUNTRY];
+void diplo_set_tribute_decree(int cid, bool on){
+    if (cid>=0 && cid<SCPS_MAX_COUNTRY) g_tribute_decree[cid]=on;
+}
+bool diplo_tribute_decree(int cid){
+    return (cid>=0 && cid<SCPS_MAX_COUNTRY) ? g_tribute_decree[cid] : false;
+}
+
 /* ---- Diplomatie d'équilibre — surface d'équilibrage ------------------- */
 #define TRUCE_BASE       (3.f*365.f)   /* trêve de base après une paix (3 ans) */
 #define TRUCE_PER_YEAR   (365.f)       /* + 1 an de trêve par an de guerre menée */
@@ -294,6 +309,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
         if (s>=w->n_countries){ d->suzerain[v]=-1; continue; }
         SuzContrat c=(SuzContrat)d->contrat[v];
         float frac=(c==CONTRAT_SERVAGE)?0.08f:(c==CONTRAT_PROTECTORAT)?0.02f:0.f;
+        if (diplo_tribute_decree(s)) frac *= 1.5f;   /* décret « Politique de tribut » : ×1.5 tout le tribut */
         if (frac>0.f && capreg[s]>=0 && capreg[s]<econ->n_regions){
             /* RE-KEY PROVINCE : treasury/coercion sont PROVINCE-OWNED — le tribut ponctionne
              * chaque région du vassal sur sa province représentative (region[r].treasury est
@@ -327,6 +343,7 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
           if (ev==ETHOS_HONNEUR) g+=0.05f;                       /* l\'Honneur griefe d\'exister en vassal */
           if (suz_credo(w,econ,v)!=suz_credo(w,econ,s)) g+=0.02f;
           if (capreg[s]>=0&&capreg[s]<econ->n_regions&&econ->region[capreg[s]].coercion>0.5f) g+=0.03f;  /* le maître mate/purge : peur ET grief */
+          if (diplo_tribute_decree(s)) g+=0.03f;         /* le tribut pressé pèse en continu (contrepartie de la réforme) */
           if (d->v_loyal[v]>0.f){ g-=0.04f; d->v_loyal[v]-=365.f; }   /* loyauté achetée : décline + bloque la ligue */
           else g-=0.01f;
           d->v_grief[v]=clampf(g,0.f,1.f);
@@ -346,6 +363,10 @@ void diplo_suzerainty_tick(DiploState *d, World *w, WorldEconomy *econ,
             if (d->v_integration[v]>=gate && capreg[s]>=0 && capreg[s]<econ->n_regions){
                 float food=0.f,gold=0.f,mil=0.f; VassalFunction fn=vassal_function(econ,v,&food,&gold,&mil);
                 float base=tune_f("AI_VASSAL_CONTRIB_BASE",0.05f)*appr;
+                /* DÉCRET « Politique de tribut » (réforme joueur, IRRÉVERSIBLE) : le maître qui
+                 * l'a promulguée presse ×1.5 TOUS ses vassaux — la contrepartie est le grief
+                 * (v_grief), qui couve la fronde plus vite (déjà lu ci-dessus §GRIEF). */
+                if (diplo_tribute_decree(s)) base *= 1.5f;
                 /* RE-KEY PROVINCE : mil_stock/treasury sont PROVINCE-OWNED (Σ-agrégés) — route
                  * sur la province représentative. Le GRAIN aussi : le pool P1 est sommé des
                  * PROVINCES — un crédit sur la seule vue region[] s'évaporait à la clôture

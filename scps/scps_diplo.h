@@ -128,6 +128,14 @@ int         diplo_suzerain    (const DiploState *d, int cid);   /* -1 = libre */
 SuzContrat  diplo_contrat     (const DiploState *d, int cid);
 int         diplo_vassal_count(const DiploState *d, int cid);
 const char *diplo_contrat_name(SuzContrat c);
+/* DÉCRET « Politique de tribut » (scps_decrees.c) : drapeau LU par diplo_suzerainty_tick
+ * (×1.5 tribut/contribution + grief continu). PAS un #include de scps_decrees.h — un
+ * simple drapeau par pays pour ne rien devoir à decrees.o dans les ~20 bancs qui lient
+ * scps_diplo.o. RAZ implicite (static, memset 0) — jamais sérialisé ICI (l'état persistant
+ * du décret vit dans g_decree_mask, section DCRE ; ce drapeau est reposé par decrees.c à
+ * chaque decree_toggle ET après un chargement, cf. scps_decrees.c). */
+void        diplo_set_tribute_decree(int cid, bool on);
+bool        diplo_tribute_decree(int cid);
 /* Route GARANTIE (pacte commercial OU cité-état) : ni guerre ni embargo ne coupent ce
  * lien ; le pacte ouvre AUSSI l'accès au marché global du partenaire (M3). */
 bool        diplo_trade_pact  (const DiploState *d, int a, int b);

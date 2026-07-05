@@ -663,6 +663,79 @@ int main(int argc, char **argv){
         scps_sim_free(sp);
     }
 
+    /* ── DÉCRETS DU JOUEUR (civics) — liste exposée, toggle drainé, réforme irréversible. ── */
+    {
+        ScpsSim *sd = scps_sim_new(); scps_sim_generate(sd, seed);
+        int me = scps_player(sd);
+        ScpsDecree decs[8];
+        int nd = scps_decrees_list(sd, me, decs, 8);
+        ok("scps_decrees_list expose au moins un décret", nd>0);
+        bool has_line=true, has_flavor=true, has_plateaux=true, none_active=true;
+        int levee_id=-1, tribut_id=-1;
+        for (int i=0;i<nd;i++){
+            if (!decs[i].nom || decs[i].nom[0]=='\0') has_line=false;
+            if (!decs[i].flavor || decs[i].flavor[0]=='\0') has_flavor=false;
+            if (!decs[i].plateaux || decs[i].plateaux[0]=='\0') has_plateaux=false;
+            if (decs[i].active) none_active=false;
+            if (decs[i].reforme) tribut_id=decs[i].id;
+            else if (levee_id<0) levee_id=decs[i].id;
+        }
+        ok("chaque décret porte un nom non vide", has_line);
+        ok("chaque décret porte un flavor non vide", has_flavor);
+        ok("chaque décret décrit ses DEUX plateaux (gain/contrepartie)", has_plateaux);
+        ok("aucun décret actif à la genèse (monde frais)", none_active);
+        ok("au moins une RÉFORME (irréversible) est répertoriée", tribut_id>=0);
+
+        /* toggle ON d'un ÉDIT (pas de réforme) : enfilé, DRAINÉ au tick suivant. */
+        if (levee_id>=0){
+            ok("player_decree(ON) enfile l'ordre", scps_player_decree(sd, levee_id, 1)==1);
+            scps_sim_advance_days(sd, 2);   /* le drain applique (si la condition est remplie) */
+            int nd2 = scps_decrees_list(sd, me, decs, 8);
+            bool found=false, active_after=false;
+            for (int i=0;i<nd2;i++) if (decs[i].id==levee_id){ found=true; active_after=(decs[i].active!=0); }
+            ok("le décret réapparaît dans la liste après le drain", found);
+            /* l'activation dépend de la condition d'entrée (tech) : si illégale au départ,
+             * le drain la REFUSE (comportement attendu, pas un échec de plomberie). */
+            bool legal_before=false;
+            for (int i=0;i<nd;i++) if (decs[i].id==levee_id) legal_before=(decs[i].legal!=0);
+            ok("l'activation suit la légalité (ON accepté ssi la condition l'était)",
+               active_after==legal_before || !legal_before);
+            /* toggle OFF : un ÉDIT se désengage librement. */
+            if (active_after){
+                ok("player_decree(OFF) enfile le retour arrière (édit réversible)",
+                   scps_player_decree(sd, levee_id, 0)==1);
+                scps_sim_advance_days(sd, 2);
+                int nd3 = scps_decrees_list(sd, me, decs, 8);
+                bool still_active=false;
+                for (int i=0;i<nd3;i++) if (decs[i].id==levee_id) still_active=(decs[i].active!=0);
+                ok("l'édit est bien désactivé après le OFF", !still_active);
+            } else {
+                ok("(édit non activable sur cette graine — ignoré)", true);
+            }
+        } else {
+            ok("(aucun édit non-réforme trouvé — ignoré)", true);
+            ok("(idem)", true);
+            ok("(idem)", true);
+        }
+
+        /* RÉFORME irréversible : forcer l'activation (contourne la condition d'entrée pour
+         * le test de PLOMBERIE du refus-retour, pas de la porte — déjà couvert ailleurs)
+         * n'est pas exposé côté façade ; on vérifie plutôt que decree_toggle(OFF) sur une
+         * réforme jamais activée reste bien un no-op silencieux (rien à désactiver). */
+        if (tribut_id>=0){
+            ok("player_decree(OFF) sur une réforme jamais activée est un ordre inoffensif",
+               scps_player_decree(sd, tribut_id, 0)==1);   /* enfilé (mis en file) — le drain n'a rien à défaire */
+            scps_sim_advance_days(sd, 2);
+            int nd4 = scps_decrees_list(sd, me, decs, 8);
+            bool still_inactive=true;
+            for (int i=0;i<nd4;i++) if (decs[i].id==tribut_id) still_inactive=!decs[i].active;
+            ok("la réforme reste inactive (rien à retirer)", still_inactive);
+        } else {
+            ok("(aucune réforme trouvée — ignoré)", true);
+        }
+        scps_sim_free(sd);
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

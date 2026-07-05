@@ -61,6 +61,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("country_trade", "country"),       &ScpsWorld::country_trade);
     ClassDB::bind_method(D_METHOD("commerce_power", "country"),      &ScpsWorld::commerce_power);
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
+    ClassDB::bind_method(D_METHOD("decrees_list", "country"),        &ScpsWorld::decrees_list);
     ClassDB::bind_method(D_METHOD("unit_roster", "country"),         &ScpsWorld::unit_roster);
     ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
     ClassDB::bind_method(D_METHOD("tech_info"),                      &ScpsWorld::tech_info);
@@ -95,6 +96,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_council_hire", "seat", "slot"), &ScpsWorld::player_council_hire);
     ClassDB::bind_method(D_METHOD("player_council_dismiss", "seat"),    &ScpsWorld::player_council_dismiss);
     ClassDB::bind_method(D_METHOD("council_candidates", "seat"),        &ScpsWorld::council_candidates);
+    ClassDB::bind_method(D_METHOD("player_decree", "id", "on"),         &ScpsWorld::player_decree);
     ClassDB::bind_method(D_METHOD("player_route", "ra", "rb", "maritime"), &ScpsWorld::player_route);
     ClassDB::bind_method(D_METHOD("player_market_buy", "region", "good", "qty", "tier"),  &ScpsWorld::player_market_buy);
     ClassDB::bind_method(D_METHOD("player_market_sell", "region", "good", "qty", "tier"), &ScpsWorld::player_market_sell);
@@ -651,6 +653,27 @@ Array ScpsWorld::council_candidates(int seat) {
     return a;
 }
 
+/* DÉCRETS DU JOUEUR (civics) : nom · flavor · les DEUX plateaux · réforme (irréversible) ·
+ * actif · légal (condition d'entrée remplie MAINTENANT — pour griser le bouton). */
+Array ScpsWorld::decrees_list(int country) {
+    Array a;
+    if (!sim) return a;
+    ScpsDecree d[8];
+    int n = scps_decrees_list(sim, country, d, 8);
+    for (int i = 0; i < n; i++) {
+        Dictionary dd;
+        dd["id"]       = d[i].id;
+        dd["nom"]      = String::utf8(d[i].nom);
+        dd["flavor"]   = String::utf8(d[i].flavor);
+        dd["plateaux"] = String::utf8(d[i].plateaux);
+        dd["reforme"]  = (bool)d[i].reforme;
+        dd["active"]   = (bool)d[i].active;
+        dd["legal"]    = (bool)d[i].legal;
+        a.push_back(dd);
+    }
+    return a;
+}
+
 Array ScpsWorld::unit_roster(int country) {
     Array a;
     if (!sim) return a;
@@ -913,13 +936,15 @@ Dictionary ScpsWorld::pending_event(int slot) {
     d["region"]    = ok ? pe.region : -1;
     d["days_left"] = ok ? pe.days_left : 0;
     d["evid"]      = ok ? pe.evid : -1;   /* clé d'illustration thématique (event_art.gd) */
-    Array labels, flavors;
+    Array labels, flavors, advisors;
     for (int i = 0; i < (ok ? pe.n_options : 0); i++) {
         labels.push_back(String::utf8(pe.labels[i]));
         flavors.push_back(String::utf8(pe.flavors[i]));
+        advisors.push_back(String::utf8(pe.advisors[i]));
     }
-    d["labels"]  = labels;
-    d["flavors"] = flavors;
+    d["labels"]   = labels;
+    d["flavors"]  = flavors;
+    d["advisors"] = advisors;   /* le VISAGE de chaque choix (mot de faction, "" si aucun) */
     return d;
 }
 bool ScpsWorld::player_event_choice(int slot, int option) {
@@ -965,6 +990,7 @@ bool ScpsWorld::player_assimilate(int region, bool creuset) { return sim ? scps_
 bool ScpsWorld::player_purge(int region)                 { return sim ? scps_player_purge(sim, region) != 0 : false; }
 bool ScpsWorld::player_council_hire(int seat, int slot)  { return sim ? scps_player_council_hire(sim, seat, slot) != 0 : false; }
 bool ScpsWorld::player_council_dismiss(int seat)         { return sim ? scps_player_council_dismiss(sim, seat) != 0 : false; }
+bool ScpsWorld::player_decree(int id, bool on)            { return sim ? scps_player_decree(sim, id, on ? 1 : 0) != 0 : false; }
 bool ScpsWorld::player_route(int ra, int rb, bool maritime) { return sim ? scps_player_route(sim, ra, rb, maritime ? 1 : 0) != 0 : false; }
 bool ScpsWorld::player_market_buy(int region, int good, int qty, int tier)  { return sim ? scps_player_market_buy(sim, region, good, (long)qty, tier) != 0 : false; }
 bool ScpsWorld::player_market_sell(int region, int good, int qty, int tier) { return sim ? scps_player_market_sell(sim, region, good, (long)qty, tier) != 0 : false; }

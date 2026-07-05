@@ -97,6 +97,7 @@ public:
     Dictionary commerce_power(int country);           /* §5 : pool commercial mensuel + restant + sources (hover) */
     Array      country_council(int country);          /* conseil : 3 sièges (+age v49) */
     Array      council_candidates(int seat);          /* pool du siège : {slot,nom,tier,age,cost} — embauche éclairée */
+    Array      decrees_list(int country);             /* DÉCRETS (civics) : {id,nom,flavor,plateaux,reforme,active,legal} */
 
     /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */
     Array      unit_roster(int country);              /* unités : nom·classe·coût·éthos·contres·recrutable */
@@ -137,6 +138,7 @@ public:
     bool       player_purge(int region);              /* intérieur : purger (coût SCPS différé) */
     bool       player_council_hire(int seat, int slot);   /* conseil : pourvoir un siège */
     bool       player_council_dismiss(int seat);      /* conseil : renvoyer */
+    bool       player_decree(int id, bool on);        /* DÉCRETS (civics) : bascule on/off */
     bool       player_route(int ra, int rb, bool maritime); /* commerce : tracer une route */
     bool       player_market_buy(int region, int good, int qty, int tier);  /* marché : acheter */
     bool       player_market_sell(int region, int good, int qty, int tier); /* marché : vendre */

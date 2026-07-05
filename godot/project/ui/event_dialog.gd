@@ -114,6 +114,13 @@ func _draw() -> void:
 		VKit.box(self, r, VKit.COL_GOLD if hovered else VKit.COL_DIM)
 		var lbl := String(labels[i]) if i < labels.size() else "—"
 		VKit.text(self, Vector2(r.position.x + 12, r.position.y + 9), VKit.COL_PARCH, lbl)
+		# — le VISAGE du choix : la faction qui le porte au conseil (aligné à droite, discret) —
+		var advisors: Array = _pending.get("advisors", [])
+		var adv := String(advisors[i]) if i < advisors.size() else ""
+		if adv != "":
+			var atxt := "— " + adv
+			VKit.text(self, Vector2(r.position.x + r.size.x - VKit.text_w(atxt, VKit.FS_SMALL) - 10,
+				r.position.y + 11), VKit.COL_DIM, atxt, VKit.FS_SMALL)
 		_btn_rects.append([r, i])
 		y += BTN_H + BTN_GAP
 

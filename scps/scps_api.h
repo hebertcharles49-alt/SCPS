@@ -281,6 +281,23 @@ int scps_country_council(ScpsSim *s, int country, ScpsCouncilSeat *out, int max)
 typedef struct { int slot; const char *nom; int tier; int age; float cost; } ScpsCouncilCand;
 int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max);
 
+/* DÉCRETS DU JOUEUR (civics) — sb_panel_decrets. Chaque décret DÉPLACE un levier
+ * existant tant qu'il est actif ; `plateaux` en donne les DEUX faces (gain/contrepartie).
+ * `legal` = la condition d'entrée est remplie MAINTENANT (pour griser le bouton) — une
+ * réforme DÉJÀ active reste toujours "legal" (affichée verrouillée, pas refusée).
+ * `reforme` = 1 si le type est une RÉFORME (irréversible une fois active). */
+typedef struct {
+    int         id;         /* DecreeId — à repasser à scps_player_decree */
+    const char *nom;
+    const char *flavor;     /* une ligne cynique */
+    const char *plateaux;   /* description des deux faces */
+    int         reforme;    /* 1 = irréversible une fois actif */
+    int         active;     /* 1 = actif pour ce pays */
+    int         legal;      /* 1 = la condition d'entrée est remplie (activable maintenant) */
+} ScpsDecree;
+/* liste TOUS les décrets pour `country` (état + légalité). Retourne le nombre écrit. */
+int scps_decrees_list(ScpsSim *s, int country, ScpsDecree *out, int max);
+
 /* RELATIONS diplomatiques d'un pays (sb_panel_diplo, read-only). */
 typedef struct {
     const char *name;       /* le pays */
@@ -458,6 +475,9 @@ int  scps_player_assimilate    (ScpsSim *s, int region, int creuset);
 int  scps_player_purge         (ScpsSim *s, int region);
 int  scps_player_council_hire  (ScpsSim *s, int seat, int slot);
 int  scps_player_council_dismiss(ScpsSim *s, int seat);
+/* DÉCRETS (civics) : bascule le décret `id` (on=1/0). Revalidé au drain (id borné,
+ * l'activation exige la condition d'entrée, une réforme active refuse le off). */
+int  scps_player_decree        (ScpsSim *s, int id, int on);
 int  scps_player_route         (ScpsSim *s, int ra, int rb, int maritime);
 int  scps_player_market_buy    (ScpsSim *s, int region, int good, long qty, int tier);
 int  scps_player_market_sell   (ScpsSim *s, int region, int good, long qty, int tier);
@@ -523,6 +543,9 @@ typedef struct {
     const char *situation;         /* le NOM de l'évènement (résolu — membrane) */
     const char *labels[4];         /* les choix — jusqu'à 4 (le max de la table) */
     const char *flavors[4];        /* ce que RACONTE chaque choix (tooltip) */
+    const char *advisors[4];       /* QUI porte ce choix au conseil (mot de faction, "" si aucun) —
+                                    * les trois choix ont des VISAGES : trahir une option = trahir
+                                    * quelqu'un qui reste au conseil (hook.faction → faction_name) */
     int n_options;
     int region;                    /* -1 si le sujet est un PAYS (EV_COUNTRY) */
     int days_left;                 /* avant auto-résolution (180 j au total) */

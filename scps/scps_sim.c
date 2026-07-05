@@ -539,6 +539,15 @@ static void sim_cmd_drain(Sim *s, World *w){
             pending_event_resolve(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp,
                                   slot, option, s->ev->ages.days_elapsed, s->human_player);
             break; }
+          /* ── DÉCRETS (civics) : a={DecreeId, on/off}. REVALIDÉ — id borné ; l'activation
+           *    (on!=0) exige la condition d'entrée REMPLIE MAINTENANT ; une réforme déjà
+           *    active refuse le désengagement (decree_toggle le fait déjà, en interne). ── */
+          case CMD_DECREE: {
+            int id=c->a[0]; bool on=(c->a[1]!=0);
+            if (id<0 || id>=DECREE_COUNT) break;
+            if (on && !decree_legal(w, s->econ, s->ts, s->wl, s->sc, s->dp, p, (DecreeId)id)) break;
+            decree_toggle(p, (DecreeId)id, on);
+            break; }
         }
     }
     s->cmd_n = 0;
@@ -595,6 +604,10 @@ void sim_day(Sim *s, World *w) {
     if (s->day % 30 == 29) {
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
         statecraft_council_apply(s->sc, w, s->econ, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or */
+        /* DÉCRETS DU JOUEUR — SEUL rôle humain (chronique human_player=-1 ⇒ jamais appelé,
+         * golden intact par construction). Mensuel, miroir du Conseil. */
+        if (s->human_player>=0)
+            decrees_tick(w, s->econ, s->sc, s->wl, s->host, s->dp, s->human_player, 30);
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */
         PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
@@ -862,6 +875,7 @@ void sim_init(Sim *s, World *w) {
     demography_migration_pact_reset();   /* BRASSAGE : compteur de flux de pacte migratoire */
     demography_refugee_reset();   /* BRASSAGE : compteurs de fuite/retour de réfugiés */
     religion_reset();     /* RELIGION : monde ATHÉE à chaque sim (sinon les foi FUITENT entre sims) */
+    decrees_reset();      /* DÉCRETS : RAZ par sim (sinon un décret FUIT entre sims, comme la religion) */
     { int ne=0; for (int c=0;c<w->n_countries;c++){ int rl=w->country[c].role;
           if (rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) ne++; }
       religion_set_empire_ref(ne); }   /* plafond ⌈N/3⌉ ANCRÉ au compte d'empires de genèse */
