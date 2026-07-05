@@ -49,8 +49,10 @@
 savetest **7/9/11/42 byte-identique** (après sérialisation COLC — seed 11 avait pris la
 divergence) · fuzz-save 7/7 · GDExtension scons 0 warning · sweeps : Laborer 72-78 %,
 zéro famine, pop en croissance, colonisation mesurée ~190 fondations/sim, IPM 1.05-1.19.
-⚠ Accession 360 j désormais TARDIVE (an ~35-78 — la matière est réelle ; l'ancien an-2
-se payait en matière fantôme) : point d'équilibrage ouvert, pas une régression.
+Coûts de bâti RECALÉS dans la foulée (demande joueur « éco Anno ») : recettes EDIFICES
+÷2,5-÷10 selon palier + BUILD_RESERVE_BULK 15 + RAW_WORKS_NEED 25 → accession **360 j
+an 2 · 540 j an 1 · 960 j an 26-48** (l'Académie existe enfin), marine vivante, monde
+sain — golden re-baseliné une seconde fois, savetest 9/11 byte-identique.
 
 ## Pour la prochaine session
 

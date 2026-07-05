@@ -1750,11 +1750,22 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   ⚠ **SAVE BUMP 60→61** (section **COLC**) : le répit de colonisation `g_colony_cd[]` est un
   ACCUMULATEUR inter-ticks — non sérialisé, le --savetest DIVERGEAIT (pris sur seed 11, même classe
   que EMOB v57) ; sérialisé + borné au load, **savetest 7/9/11/42 byte-identique**. Tunables
-  registre J : `AI_COLONY_TEMPO` 3.0. Restes assumés : E3 stockeuse (entrepôts jamais bâtis —
-  gate has_halles/hub à revisiter), prix convergence intertrade (nudge transitoire mort sous le
-  prix national, laissé commenté), accession 360 j désormais TARDIVE (an ~35-78 : la matière est
-  RÉELLE, l'ancien an-2 se payait en matière fantôme dupliquée) et 960 j toujours rare — point
-  d'équilibrage ouvert (dialables : coûts EDIFICES, CS_TRADE_POOL, priorité raw_boost).
+  registre J : `AI_COLONY_TEMPO` 3.0. **COÛTS DE BÂTI RECALÉS (suite immédiate, demande joueur
+  « éco Anno = coûts baissés en conséquence »)** : la matière réelle rendait les recettes
+  EDIFICES[] disproportionnées (des ANNÉES de production — 1er édifice 360 j à l'an 35-78, 960 j
+  JAMAIS). Recettes ÷2,5 à ÷10 selon le palier (Tribunal 40/20→16/8 · Chancellerie 80/40/20→
+  20/10/5 · Académie 75/190/100→7/16/9 · Citadelle 60/220/150→5/19/13 · Cathédrale →8/37/20 ;
+  hiérarchie et caractère préservés — la pierre domine toujours remparts/arches) +
+  `BUILD_RESERVE_BULK` 60→15 + `RAW_WORKS_NEED` 120→25 (l'échelle suit). ⊕ Mesuré (2×200 ans) :
+  accession **360 j an 2 · 540 j an 1 · 960 j an 26-48** (l'Académie EXISTE : made=1, blocked=31 =
+  l'anti-double-commande au travail) ; nomat effondré ; le `nocap` restant est une respiration
+  mensuelle du pool (83 greniers posés malgré 414 refus ponctuels), plus un mur ; marine vivante
+  (1428 coques · 110 routes maritimes · 30 colonies outre-mer — HullCost non touché) ; satisfaction
+  78/86/86, IPM 1.04-1.14. Restes assumés : E3 stockeuse (entrepôts spéculatifs jamais bâtis — gate
+  has_halles/hub à revisiter), famille GARNISON jamais posée par la doctrine IA (H bâtie autrement),
+  prix convergence intertrade (nudge transitoire mort sous le prix national, laissé commenté),
+  chantier-au-fil-de-l'eau (s'approvisionner mois par mois pendant la construction — raffinement
+  Anno optionnel depuis le recalage, plus une nécessité).
 
 ## Disciplines non négociables
 

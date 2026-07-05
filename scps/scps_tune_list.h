@@ -158,7 +158,7 @@
     X(RAW_BOOST_COST,        40.0f) \
     /* le +5% d'extraction doit rembourser le palier en ≤ PAYBACK ans (ROI) */ \
     X(RAW_BOOST_PAYBACK,      8.0f) \
-    X(RAW_WORKS_NEED,       120.0f) \
+    X(RAW_WORKS_NEED,        25.0f) /* recalé avec la 2e passe de coûts (÷3 sur 540/960j) : ≈ le coût du plus gros monument (Académie/Citadelle ~32-37 pierre) */ \
     /* argile/pierre/fer/bois FORCÉS près de la capitale joueur si le biome n'en donne pas */ \
     X(PLAYER_GUARANTEE_RAW,   4.0f) \
     /* CONFORT (poterie+statuaire servies) → bonheur AU-DESSUS du panier (hors-besoin, sans pénalité)
@@ -373,7 +373,7 @@
     X(MANUF_ARMS_MULT,        10.0f) \
     /* Le FOND du TRIO de bâti (bois/pierre/argile, econ_build_reserve) : ce qu'une région GARDE avant
      * d'exporter son surplus — sans quoi l'export auto la vide et le gate de chantier la refuse. */ \
-    X(BUILD_RESERVE_BULK,     60.0f) \
+    X(BUILD_RESERVE_BULK,     15.0f) /* recalé avec la 2e passe de coûts (÷3 sur 540/960j) : le fond de réserve suit l'échelle des chantiers */ \
     /* DETTE (scps_credit, incrément 1) — la ligne de crédit ÉMERGE de la taille éco (capacité à
      * rembourser ∝ pop) ; le taux price le risque (ratio de dette + chute de légitimité). */ \
     X(CREDIT_LINE_BASE,       0.5f) \
