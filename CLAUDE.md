@@ -1687,6 +1687,29 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   fixes sont save-only, zéro changement du fil continu), determinism STABLE, smoke 8/8, fuzztest 8/8, `make test`
   38 runnable verts (3 KO Windows pré-existants). ⚠ **SAVE BUMP 56→58** (sections EMOB + ITRD grandies). Les
   faits robustifient la façade Godot (le save est PARTAGÉ) : une partie chargée reprend AU BIT près.
+- **DÉDOUBLONNAGE + CODE MORT (2026-07-05) — une définition par concept, −129 k lignes** : (1)
+  **`scps_math.h`** (neuf) : `clampf` (NaN→lo) / `absf` / `iclamp` / `xs32` / `frand` PARTAGÉS — les
+  ~32 copies locales tombent (clampf ×15 dont `rclampf`, absf ×9 dont `fabsf_local`, iclamp ×3 dont
+  `clampi`, xs32 ×3, frand ×2) dans ~20 modules. (2) **Friction culturelle UNIFIÉE** (scps_econ.{h,c}) :
+  `econ_content_dist` (D∞ 4 axes — 6 copies : ai ×2 · events · statecraft · revolt · readout) ·
+  `econ_content_dist_faith` (+ plancher de BRANCHE de foi — 2 copies identiques legitimacy/demography)
+  · `econ_ruling_culture` (5 copies : ruling_culture ×3 · crown_of · pc_ruling · dom_ruling_culture) ·
+  `world_capital_region` (2 copies events/statecraft) ; `ai_capital_heritage/ethos` réécrits dessus.
+  ⚠ le commentaire de revolt (« la même friction que la démographie ») était PÉRIMÉ — revolt reste
+  volontairement SANS plancher de foi (la foi y a son canal PROPRE hérésie/zélote : le plancher la
+  double-compterait) ; c'est désormais DIT au point d'appel. Consolidation **byte-identique par
+  construction** (mêmes ops IEEE ; équivalence max PROUVÉE pour la variante foi : max(base, dr_plancher)
+  ≡ l'original) ⇒ **golden IDENTIQUE**. `xs01` (campaign) est un RNG VOLONTAIREMENT distinct — pas touché.
+  (3) **CODE MORT retiré** (orphelins du viewer-strip d558a71) : scps_audio + miniaudio (+ audio_demo) ·
+  dev_overlay + Nuklear (`make dev`) · fx_proof + les **8 .bmp orphelins** (9,1 Mo : 4 planches FX +
+  dressing/settlements/port_orientation/route_cover) · labor_demo.c (cible déjà RETIRÉE) ·
+  scps_map_dressing.h. (4) **VIEWER 100 % SANS SDL** : le dernier vestige (l'entrée SDL_main MinGW)
+  tombe — binaire console pur, lien `-lm` ; le Makefile perd SDL_CFLAGS/SDL_LIBS/HAVE_SDL/WINLIBS/
+  AUDIO_LIBS/le bloc DEV (`make scps` se bâtit PARTOUT sans SDL, plus besoin de `WIN=1` pour les libs).
+  (5) cliquet `lang_baseline` **64→0** (la migration STR_* est verrouillée — tout littéral neuf casse le
+  build). Vérifs : `make test` 37/37 runnable verts (3 KO Windows pré-existants) · **golden IDENTIQUE** ·
+  `determinism` STABLE · savetest 9/11/42 byte-identique · fuzz-save 8/8 · GDExtension scons 0 warning.
+  **SAVE non bumpé** (rien de sérialisé ne change).
 
 ## Disciplines non négociables
 
