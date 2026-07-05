@@ -49,6 +49,22 @@ static float region_pop(const WorldEconomy *e, int r){
     return e->region[r].strata[CLASS_LABORER].pop + e->region[r].strata[CLASS_BOURGEOIS].pop
          + e->region[r].strata[CLASS_ELITE].pop;
 }
+/* MEMBRANE DE DÉCISION (§9) — une région PEUPLÉE, POSSÉDÉE, et dont la province
+ * représentative (region_rep_prov[], peuplé seulement par econ_build_adjacency,
+ * jamais appelée dans ce banc synthétique) pointe VRAIMENT sur elle : sans cette
+ * dernière garantie, écrire sur prov[rp] pourrait toucher une province SANS
+ * RAPPORT avec la région visée (rp reste à sa valeur memset — 0 — hors adjacence
+ * construite). *out_rp reçoit la province représentative COHÉRENTE. */
+static int find_owned_region_with_rp(const WorldEconomy *e, int *out_rp){
+    for (int r=0;r<e->n_regions;r++){
+        if (!e->region[r].culture.settled || e->region[r].owner<0) continue;
+        if (region_pop(e,r)<=10.f) continue;
+        int rp=econ_region_rep_province(e,r);
+        if (rp<0 || rp>=e->n_prov || e->prov[rp].region!=r) continue;
+        *out_rp=rp; return r;
+    }
+    return -1;
+}
 static PopCulture make_fiche(float valeurs, Ethos e, Heritage heritage){
     PopCulture pc; memset(&pc,0,sizeof pc);
     pc.langue=5.f; pc.valeurs=valeurs; pc.subsistance=6.f; pc.parente=5.f; pc.religion=5.f;
@@ -278,7 +294,7 @@ int main(int argc, char **argv){
     /* Intégration : la boucle complète tourne sans incident et FAIT des choses. */
     int fired0=s.ev->n_fired;
     for (int yr=0; yr<40; yr++)
-        world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+        world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
     printf("\n   (boucle 40 ans : %d évènements déclenchés au total)\n", s.ev->n_fired);
     ok("la boucle world_events_tick tourne et déclenche des évènements", s.ev->n_fired>fired0);
 
@@ -291,7 +307,7 @@ int main(int argc, char **argv){
     for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=10.f; s.wp->country[c].fracture=0.f; s.wp->country[c].mode=0; }
     for (int c=0;c<s.wp->n_countries && c<3;c++) s.wp->country[c].L=3.f;   /* Légit < 50 */
     int destab0=s.ev->director.fired_destab, stab_during_cold0=s.ev->director.fired_stab;
-    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
     float T_cold=director_temperature(s.ev);
     int destab_cold=s.ev->director.fired_destab-destab0, stab_cold=s.ev->director.fired_stab-stab_during_cold0;
     printf("   monde froid : T=%.2f → %d déstabilisateur(s), %d stabilisateur(s)\n", T_cold, destab_cold, stab_cold);
@@ -301,7 +317,7 @@ int main(int argc, char **argv){
      *     → T haute → le directeur APAISE (« Le Concile » est toujours éligible). */
     int stab0=s.ev->director.fired_stab, destab_during_hot0=s.ev->director.fired_destab;
     for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=1.5f; s.wp->country[c].fracture=6.f; s.wp->country[c].mode=(c%2)?2:0; }
-    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
     float T_hot=director_temperature(s.ev);
     int stab_hot=s.ev->director.fired_stab-stab0, destab_hot=s.ev->director.fired_destab-destab_during_hot0;
     printf("   monde chaud : T=%.2f → %d stabilisateur(s), %d déstabilisateur(s)\n", T_hot, stab_hot, destab_hot);
@@ -354,7 +370,7 @@ int main(int argc, char **argv){
     events_init(s.ev,s.w,seed);
     for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=1.5f; s.wp->country[c].fracture=6.f; s.wp->country[c].mode=(c%2)?2:0; }
     int omens0=director_omens(s.ev);
-    for (int yr=0; yr<120; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+    for (int yr=0; yr<120; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
     int mem_now=director_memories(s.ev), omens_now=director_omens(s.ev);
     printf("   tale : %d présage(s) émis · %d haut(s) fait(s) encore en mémoire · amplitude vécue pic %.3f\n",
            omens_now-omens0, mem_now, s.ev->director.max_amplitude);
@@ -383,7 +399,7 @@ int main(int argc, char **argv){
     const int MAXSUBJ = SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY;   /* la borne de subject (encodage Amnistie) */
     events_init(s.ev,s.w,seed);
     /* un état réel & sain (60 ans de monde vivant → mémoire peuplée) passe la garde */
-    for (int yr=0; yr<60; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365);
+    for (int yr=0; yr<60; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
     ok("save_sane ACCEPTE un directeur-amplitude SAIN (état réel de sim)",
        director_save_sane(s.ev, MAXSUBJ));
     /* mem_head FOU (déborde l'anneau) → REFUS */
@@ -412,6 +428,118 @@ int main(int argc, char **argv){
     /* après restauration des champs, la garde RE-ACCEPTE (preuve : c'est bien le champ fou) */
     ok("save_sane RE-ACCEPTE après restauration des champs (la garde vise le bon champ)",
        director_save_sane(s.ev, MAXSUBJ));
+
+    /* ═══ 9. LA MEMBRANE DE DÉCISION — cicatrices, cooldown, d_treasury_mois, file joueur ═══ */
+    printf("\n── 9. La membrane de décision (§ boucle) ──\n");
+    events_init(s.ev,s.w,seed);
+
+    /* (a) CICATRICE : push → pas mûre avant son délai → mûre après → consume → disparue. */
+    int rC=0;
+    decision_memory_push(s.ev, rC, SCAR_SABOTAGE_CHANTIER, 10, 10);   /* délai FIXE 10 j (min=max) */
+    ok("une cicatrice fraîchement posée n'est PAS mûre avant son délai",
+       !decision_memory_has_ripe(s.ev, rC, SCAR_SABOTAGE_CHANTIER, s.ev->ages.days_elapsed+5));
+    ok("… et MÛRIT au jour prévu",
+       decision_memory_has_ripe(s.ev, rC, SCAR_SABOTAGE_CHANTIER, s.ev->ages.days_elapsed+10));
+    decision_memory_consume(s.ev, rC, SCAR_SABOTAGE_CHANTIER, s.ev->ages.days_elapsed+10);
+    ok("CONSUME efface la cicatrice (une cicatrice = un tir)",
+       !decision_memory_has_ripe(s.ev, rC, SCAR_SABOTAGE_CHANTIER, s.ev->ages.days_elapsed+10));
+
+    /* (b) COOLDOWN : après un push, l'évènement ne peut PAS retirer sur le même sujet
+     *     avant `until_day` — puis redevient permis. */
+    decision_cooldown_push(s.ev, EVID_MARBRIVE, rC, s.ev->ages.days_elapsed+540);
+    ok("le cooldown BLOQUE le même évènement sur le même sujet",
+       decision_cooldown_active(s.ev, EVID_MARBRIVE, rC, s.ev->ages.days_elapsed+100));
+    ok("… mais PAS un AUTRE sujet",
+       !decision_cooldown_active(s.ev, EVID_MARBRIVE, rC+1, s.ev->ages.days_elapsed+100));
+    ok("… le cooldown EXPIRE au-delà de until_day",
+       !decision_cooldown_active(s.ev, EVID_MARBRIVE, rC, s.ev->ages.days_elapsed+600));
+
+    /* (c) d_treasury_mois : résout un montant NON NUL sur la région-sujet, proportionnel
+     *     au revenu (fraction du mois). On pose un revenu annuel connu via econ_flux_add
+     *     + econ_flux_year_capture, puis on applique un effet -0.5×revenu_mois. */
+    events_init(s.ev,s.w,seed);   /* repart propre : (b) a posé un cooldown MARBRIVE sur rC=0 */
+    { int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+      int cid=(capr>=0)?s.econ->region[capr].owner:-1;
+      if (capr>=0 && rp>=0){
+        econ_flux_reset();                            /* ardoise propre (le setup a déjà taxé 15 mois) */
+        econ_flux_add(cid, FX_TAX, 1200.f);           /* 1200/an → 100/mois */
+        econ_flux_year_capture();
+        float tzero = econ_country_tax_year(cid);
+        ok("econ_country_tax_year capture le revenu annuel posé", tzero>1199.f && tzero<1201.f);
+        /* PROVINCE REPRÉSENTATIVE COHÉRENTE : owner/active alignés sur la région. On lit le
+         * trésor sur region[] (l'AGRÉGAT), pas prov[rp] : econ_aggregate_regions peut réélire
+         * une AUTRE province « représentative » de pop plus forte (ce banc synthétique ne
+         * peuple pas vraiment prov[].strata) — region[].treasury reste la vue STABLE que
+         * econ_region_treasury_add garantit TOUJOURS de bouger (même en mode fixture). */
+        s.econ->prov[rp].owner=(int16_t)cid; s.econ->prov[rp].active=true;
+        float before = s.econ->region[capr].treasury;
+        /* on force le trigger de Marbrive et on le laisse tirer (chronique : human=-1, résolution IA immédiate).
+         * RE-KEY PROVINCE : on écrit sur la province représentative (region[] est un agrégat recalculé).
+         * L'agitation ailleurs est remise à 0 à CHAQUE pas (boucle plus bas) : isole capr comme SEUL
+         * sujet éligible — sans ça, MARBRIVE pourrait tirer sur une AUTRE région du monde généré. */
+        s.econ->prov[rp].build.K_inst=2.0f; s.econ->prov[rp].coercion=0.4f;
+        econ_aggregate_regions(s.econ);
+        /* econ_aggregate_regions ÉLIT l'owner par POP la plus forte parmi les provinces membres
+         * de la région (rp n'a jamais de vraie pop ici) — une AUTRE province de capr pourrait
+         * gagner l'élection et écraser cid. On réaffirme l'agrégat DIRECTEMENT (fixture bornée,
+         * pas un write-path réel) pour garantir que le pays lu par le moteur == celui du test. */
+        s.econ->region[capr].owner=(int16_t)cid;
+        /* boucle courte : au moins un tir de MARBRIVE (spécifiquement) doit survenir — capr est
+         * réaffirmé seul sujet éligible à CHAQUE pas (un évènement pourrait relever l'agitation
+         * ailleurs entretemps). */
+        bool marbrive_fired=false;
+        for (int d=0; d<3650 && !marbrive_fired; d+=30){
+            for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++) s.sc->agitation[r]=0.f;
+            if (capr<SCPS_MAX_REG) s.sc->agitation[capr]=60.f;
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+            if (s.ev->last_id==EVID_MARBRIVE) marbrive_fired=true;
+        }
+        ok("Marbrive finit par TIRER (agitation soutenue + bâti + coercitif)", marbrive_fired);
+        float after = s.econ->region[capr].treasury;
+        ok("d_treasury_mois a bougé le trésor de la province (résolu, non nul)", after!=before);
+      } else ok("(pas de capitale peuplée pour le test treasury_mois — ignoré)", true);
+    }
+
+    /* (d) LA FILE JOUEUR : un évènement à VRAIE décision qui concerne le JOUEUR humain
+     *     s'ENFILE au lieu d'être auto-résolu ; le choix (pending_event_resolve) l'applique
+     *     et le retire ; à expiration (180 j), l'auto-résolution (ai_chance) tranche. */
+    events_init(s.ev,s.w,seed);
+    { int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+      int human=(capr>=0)?s.econ->region[capr].owner:-1;
+      if (capr>=0){
+        /* RE-KEY PROVINCE : region[] est un AGRÉGAT recalculé par econ_aggregate_regions —
+         * on force l'état sur la PROVINCE représentative (comme apply_region_eff), puis on
+         * ragrège pour relire region[] à jour (même motif que la section 1 du banc). */
+        if (rp>=0){ s.econ->prov[rp].build.K_inst=2.0f; s.econ->prov[rp].coercion=0.4f; }
+        econ_aggregate_regions(s.econ);
+        /* cf. note (c) : econ_aggregate_regions peut réélire un AUTRE owner pop-pondéré —
+         * on réaffirme l'agrégat directement (fixture bornée, human doit rester CE pays). */
+        s.econ->region[capr].owner=(int16_t)human;
+        if (capr<SCPS_MAX_REG) s.sc->agitation[capr]=60.f;
+        /* NOTE : d'autres évènements (sur d'autres pays) peuvent tirer et incrémenter n_fired
+         * pendant cette même fenêtre — seul le COMPTE de pendings sur NOTRE sujet fait foi. */
+        int n0=pending_event_count(s.ev);
+        for (int d=0; d<3650 && pending_event_count(s.ev)==n0; d+=30)
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,human);
+        ok("un évènement à VRAIE décision qui concerne le JOUEUR s'ENFILE (pas auto-résolu)",
+           pending_event_count(s.ev)>n0);
+        if (pending_event_count(s.ev)>n0){
+            PendingEvent pe;
+            ok("pending_event_at lit le slot fraîchement enfilé", pending_event_at(s.ev,0,&pe));
+            bool resolved = pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,
+                                                  0, 0, s.ev->ages.days_elapsed);
+            ok("pending_event_resolve APPLIQUE le choix et RETIRE le pending",
+               resolved && pending_event_count(s.ev)==n0);
+        } else ok("(pas d'enfilage observé sur cette graine — ignoré)", true);
+
+        /* expiration : un pending non résolu par le joueur, passé expire_day, s'auto-tranche. */
+        pending_event_push(s.ev, EVID_MARBRIVE, capr, s.ev->ages.days_elapsed);
+        int n1=pending_event_count(s.ev), fired1=s.ev->n_fired;
+        pending_event_tick_expire(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL, s.ev->ages.days_elapsed+181);
+        ok("un pending EXPIRÉ (180 j) s'auto-résout (ai_chance) et se retire",
+           pending_event_count(s.ev)==n1-1 && s.ev->n_fired==fired1+1);
+      } else ok("(pas de capitale pour le test file joueur — ignoré)", true);
+    }
 
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);

@@ -125,7 +125,8 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     warhost_set_human(s->sim.player);   /* la main humaine : l'armée du joueur ne s'auto-mobilise plus */
     econ_set_human(s->sim.player);     /* §NF : la construction autonome SKIPPE le joueur (il construit via le panneau B) */
     feed_set_focus(s->sim.player);     /* le fil d'évènements ne garde que ce qui LE concerne */
-    econ_flux_reset();   /* budget façade : repart d'une ardoise propre (le flux est un état GLOBAL) */
+    econ_flux_reset();   /* budget façade : repart d'une ardoise propre (le flux est un état GLOBAL ;
+                          * econ_init, déjà appelé par sim_init, a RAZ g_tax_lastyear — pas de capture ici) */
     s->ready = true;
     api_centroids(s);   /* centroïdes région (géo figée par worldgen) */
 }
@@ -134,7 +135,7 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
 void scps_sim_advance_days(ScpsSim *s, int ndays){
     if(!s || !s->ready) return;
     for(int i=0; i<ndays; i++){
-        if(s->sim.day % 365 == 0) econ_flux_reset();   /* budget façade : le flux porte sur l'ANNÉE courante */
+        if(s->sim.day % 365 == 0) econ_flux_year_capture();   /* budget façade : le flux ET le revenu annuel (d_treasury_mois) */
         sim_day(&s->sim, s->w);
     }
 }
@@ -1152,6 +1153,9 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
         const TechNode *tn = tech_node((TechId)i);
         int pr = tn ? (int)tn->prereq : (int)TECH_COUNT;
         out[i].prereq = (pr < (int)TECH_COUNT && pr < n) ? pr : -1;
+        /* PACK FLAVOR (display-only) : hover mécanique + ligne cynique, NULL-safe. */
+        out[i].hover   = sz(tech_hover((TechId)i));
+        out[i].flavor  = sz(tech_flavor((TechId)i));
     }
     return n;
 }
@@ -1593,6 +1597,45 @@ int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max){
     }
     return n;
 }
+
+/* ── MEMBRANE DE DÉCISION — LA FILE JOUEUR ──────────────────────────────────────── */
+int scps_pending_count(ScpsSim *s){
+    return (s && s->ready) ? pending_event_count(s->sim.ev) : 0;
+}
+int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out){
+    if (!out) return 0;
+    memset(out, 0, sizeof *out);
+    out->situation=""; out->region=-1;
+    if (!s || !s->ready) return 0;
+    PendingEvent pe;
+    if (!pending_event_at(s->sim.ev, slot, &pe)) return 0;
+    const EventDef *d = event_def(pe.evid);
+    if (!d) return 0;
+    /* TITRE au NOM RÉEL du lieu, composé À LA LECTURE (un pending s'affiche parfois
+     * des mois après son tir) — un buffer STABLE par slot (l'hôte copie aussitôt). */
+    { static char title[8][96];
+      int ti = (slot>=0 && slot<8) ? slot : 0;
+      out->situation = sz(event_title(s->w, pe.evid, pe.subject, title[ti], 96)); }
+    out->n_options = d->n_options;
+    out->region = (d->scope==EV_PROVINCE) ? pe.subject : -1;
+    int left = pe.expire_day - s->sim.ev->ages.days_elapsed;
+    out->days_left = (left>0) ? left : 0;
+    for (int i=0;i<d->n_options && i<4;i++){
+        out->labels[i]  = sz(d->options[i].label);
+        out->flavors[i] = sz(d->options[i].flavor);
+    }
+    return 1;
+}
+int scps_player_event_choice(ScpsSim *s, int slot, int option){
+    if (!s || !s->ready) return 0;
+    PendingEvent pe;
+    if (!pending_event_at(s->sim.ev, slot, &pe)) return 0;
+    const EventDef *d = event_def(pe.evid);
+    if (!d || option<0 || option>=d->n_options) return 0;
+    PlayerCmd c = { CMD_EVENT_CHOICE, { slot, option, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
 /* VOIE CONDITIONS : l'état du joueur scanné EN C (le front n'itère pas 800 régions). */
 void scps_player_alerts(ScpsSim *s, ScpsPlayerAlerts *out){
     if (!out) return;

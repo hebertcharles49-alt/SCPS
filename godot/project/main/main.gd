@@ -196,6 +196,13 @@ func _ready() -> void:
 	popup.goto_region.connect(goto_fn)
 	popup.open_tab.connect(func(i): _sidebar.open_tab(i))
 
+	# MEMBRANE DE DÉCISION : un évènement à VRAIE décision (Marbrive…) qui concerne le
+	# joueur ATTEND son choix — distinct du popup OYEZ OYEZ (notification après coup) :
+	# ici RIEN n'est encore appliqué tant que le joueur n'a pas choisi.
+	var event_dialog = load("res://ui/event_dialog.gd").new()
+	event_dialog.name = "EventDialog"
+	ui.add_child(event_dialog)
+
 	# ⚠ THÈME : la propagation s'arrête au CanvasLayer (ni Control ni Window) — le thème
 	# de la fenêtre n'atteint JAMAIS les panneaux de la couche UI tout seul. On le pose
 	# donc sur CHAQUE Control de premier niveau (leurs enfants en héritent normalement).

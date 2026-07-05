@@ -32,7 +32,14 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 61u           /* v61 : section COLC — le répit de colonisation g_colony_cd[] (F1,
+#define SAVE_VERSION 62u           /* v62 : LA MEMBRANE DE DÉCISION — EventsState grossit (cicatrices
+                                    * scars[128] + cooldowns cds[96] + la file joueur pending[8]) ⇒
+                                    * la section EVNT (fwrite BRUT de sizeof(*s->ev)) change de taille ;
+                                    * + section TXYR (économie : g_tax_lastyear[] — un ACCUMULATEUR
+                                    * inter-ticks, motif COLC v61 : sans lui un reload perdrait le
+                                    * revenu annuel capté, --savetest divergerait sur d_treasury_mois).
+                                    * <v62 refusé.
+                                    * v61 : section COLC — le répit de colonisation g_colony_cd[] (F1,
                                     * cadence ∝ w_expand) est un ACCUMULATEUR inter-ticks : non sérialisé,
                                     * un reload le remettait à 0 → --savetest divergeait (seed 11). <v61 refusé.
                                     * v60 : §5 PUISSANCE COMMERCIALE — la section ITRD grandit (le pool

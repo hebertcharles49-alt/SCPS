@@ -80,6 +80,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("age_state"),                     &ScpsWorld::age_state);
     ClassDB::bind_method(D_METHOD("player_age_engage"),             &ScpsWorld::player_age_engage);
     ClassDB::bind_method(D_METHOD("feed_poll", "after_seq"),        &ScpsWorld::feed_poll);
+    ClassDB::bind_method(D_METHOD("pending_count"),                 &ScpsWorld::pending_count);
+    ClassDB::bind_method(D_METHOD("pending_event", "slot"),         &ScpsWorld::pending_event);
+    ClassDB::bind_method(D_METHOD("player_event_choice", "slot", "option"), &ScpsWorld::player_event_choice);
     ClassDB::bind_method(D_METHOD("player_alerts"),                 &ScpsWorld::player_alerts);
     ClassDB::bind_method(D_METHOD("player_colonize", "prov"),       &ScpsWorld::player_colonize);
     ClassDB::bind_method(D_METHOD("can_colonize", "prov"),          &ScpsWorld::can_colonize);
@@ -763,6 +766,8 @@ Array ScpsWorld::tech_nodes() {
         d["effet"]    = String::utf8(nd[i].effet);
         d["cost"]     = nd[i].cost;
         d["prereq"]   = nd[i].prereq;
+        d["hover"]    = String::utf8(nd[i].hover);
+        d["flavor"]   = String::utf8(nd[i].flavor);
         a.push_back(d);
     }
     return a;
@@ -892,6 +897,33 @@ Array ScpsWorld::feed_poll(int after_seq) {
     }
     return a;
 }
+
+/* MEMBRANE DE DÉCISION — la file joueur (3e voie des alertes). */
+int ScpsWorld::pending_count() {
+    return sim ? scps_pending_count(sim) : 0;
+}
+Dictionary ScpsWorld::pending_event(int slot) {
+    Dictionary d;
+    ScpsPendingEvent pe;
+    int ok = sim ? scps_pending_event(sim, slot, &pe) : 0;
+    d["valid"]     = (bool)ok;
+    d["situation"] = ok ? String::utf8(pe.situation) : String();
+    d["n_options"] = ok ? pe.n_options : 0;
+    d["region"]    = ok ? pe.region : -1;
+    d["days_left"] = ok ? pe.days_left : 0;
+    Array labels, flavors;
+    for (int i = 0; i < (ok ? pe.n_options : 0); i++) {
+        labels.push_back(String::utf8(pe.labels[i]));
+        flavors.push_back(String::utf8(pe.flavors[i]));
+    }
+    d["labels"]  = labels;
+    d["flavors"] = flavors;
+    return d;
+}
+bool ScpsWorld::player_event_choice(int slot, int option) {
+    return sim ? scps_player_event_choice(sim, slot, option) != 0 : false;
+}
+
 Dictionary ScpsWorld::player_alerts() {
     Dictionary d;
     ScpsPlayerAlerts al;

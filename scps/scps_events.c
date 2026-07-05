@@ -12,6 +12,15 @@
 #include "scps_tune.h"
 #include "scps_math.h"      /* clampf/absf/xs32/frand partagés */
 #include "scps_provlog.h"   /* journal provincial : on POUSSE les évènements EV_PROVINCE (display) */
+#include "scps_factions.h"  /* MEMBRANE DE DÉCISION : faction_lever_apply/faction_concede (hooks de choix) */
+
+/* MEMBRANE DE DÉCISION — TÉLÉMÉTRIE (« la télémétrie est la preuve d'équilibre ») : combien
+ * de fois la crise phare (et sa suite conséquente) ont tiré sur l'ensemble d'un run. Statics
+ * de MODULE, RAZ à events_init (par partie/sim, comme g_wild_spawned), PAS sérialisés — la
+ * chronique les lit pour son bilan (résolu par IA OU joueur, les deux passent par resolve_choice). */
+static long g_marbrive_fired=0, g_pont_effondre_fired=0;
+long events_marbrive_fired(void){ return g_marbrive_fired; }
+long events_pont_effondre_fired(void){ return g_pont_effondre_fired; }
 
 /* signe d'un effet pour le journal : +1 fléau · -1 faveur · 0 neutre */
 static int ev_sign(const EvEffect *e){
@@ -43,6 +52,7 @@ struct EventCtx {
     RouteNetwork    *rn;
     const TechState *ts;
     DiploState      *dp;   /* §F : guerres (T) + rancune (Amnistie) ; peut être NULL */
+    int              human_player;   /* MEMBRANE DE DÉCISION : -1 = chronique (jamais enfilé) */
 };
 
 /* §G2 — fwd : un fait NOTABLE inscrit une MÉMOIRE (l'âge en est un, défini plus haut
@@ -79,6 +89,7 @@ void events_init(EventsState *ev, const World *w, uint32_t seed){
      * (gate : an ≥ last_dawn_year + 30, donc last init = 20 − 30 = −10). */
     ev->ages.last_dawn_year = AGE_DAWN_YEARS - AGE_MIN_YEARS;
     ev->last_id = -1; ev->last_name = NULL;
+    g_marbrive_fired=0; g_pont_effondre_fired=0;   /* MEMBRANE DE DÉCISION : télémétrie RAZ par sim */
 
     /* accumulateurs par région */
     double sr_rain[SCPS_MAX_REG]={0}, sr_temp[SCPS_MAX_REG]={0}, sr_relief[SCPS_MAX_REG]={0};
@@ -246,6 +257,27 @@ static bool trig_xenophobe(const EventCtx *cx, int r){
     return metab > 0.75f && re->satisfaction > 0.55f;   /* les peuples conquis fondus en un seul */
 }
 
+/* MARBRIVE (province) : le contremaître réclame — une province AGITÉE (soutenue,
+ * pas un pic), BÂTIE (des institutions à sauvegarder/à perdre) et déjà COERCITIVE
+ * (RELOC_COERCION_BASE=0.25, la ligne de base d'un pic de relocalisation — au-delà,
+ * la corde est déjà tendue). Les trois lecture directes de l'agrégat région (SAFE :
+ * build.K_inst/coercion sont des LECTURES, jamais une écriture hors province-owned). */
+static bool trig_marbrive(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    return statecraft_agitation(cx->sc, r) >= 55
+        && re->build.K_inst >= 1.0f
+        && re->coercion     >= 0.25f;
+}
+/* PONT EFFONDRÉ (province) : la suite CONSÉQUENTE du choix « Envoyer les prévôts »
+ * de Marbrive — le sabotage qu'on n'a pas vu venir mûrit en catastrophe (délai posé
+ * au push, 180-540 j). CONSOMME la cicatrice au tir (une cicatrice = un tir). */
+static bool trig_pont_effondre(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    return decision_memory_has_ripe(cx->ev, r, SCAR_SABOTAGE_CHANTIER, cx->ev->ages.days_elapsed);
+}
+
 /* ===================================================================== */
 /* LA TABLE D'ÉVÈNEMENTS (effets = coordonnées ; textes = mots)           */
 /* ===================================================================== */
@@ -317,9 +349,103 @@ static const EventDef EVENTS[EVID_COUNT] = {
         { "Sceller l'unité", "Les peuples conquis se sont fondus dans le creuset du vainqueur : un seul "
           "sang désormais, une seule loi — la cohésion farouche de qui a tout digéré tient sans effort.",
           { .d_L=1.0f, .d_H_coerc=0.5f, .d_agitation=-15.f, .d_influence=3.f, .unlock_branch=-1 }, 1.f } }, 1 },
+
+    /* ═══════════════════════════════════════════════════════════════════
+     * MEMBRANE DE DÉCISION — MARBRIVE, la crise phare (3 choix imparfaits)
+     * ═══════════════════════════════════════════════════════════════════
+     * ANCRES DE CALIBRAGE (comparées aux 13 événements existants + aux constantes
+     * moteur — tous les deltas sont des NUDGES, pas des tsunamis) :
+     *   - d_agitation : la table va de -40 (« Mater dans le sang », un choc DUR déjà
+     *     en pleine intégration de marche) à -8/-10 (petits apaisements) ; +10/+15
+     *     pour un choix qui LAISSE POURRIR. Marbrive n'est encore qu'à 55 d'agitation
+     *     (pas la révolte) → mes 3 choix visent -12/-8/+4, dans la fourchette basse.
+     *   - d_H_coerc/d_L : la table va de 0.3 à 2.0 (H_coerc) et -1.0 à +1.5 (L) ; je
+     *     reste À 0.2-0.6, un cran sous les chocs d'intégration de marche (Marbrive
+     *     est une crise DOMESTIQUE, pas une marche qui gronde de loin).
+     *   - d_coercion : RELOC_COERCION_BASE=0.25 (scps_econ.c) est le pic de base d'une
+     *     relocalisation — mon +0.22 (Prévôts) reste SOUS cette ligne (un sursaut, pas
+     *     un état d'urgence) ; les événements existants vont 0.3-0.5 pour un choc dur.
+     *   - d_treasury_mois : NOUVEAU (fraction du revenu MENSUEL, SIGNÉ). -0.15/-0.6/-0.25
+     *     = 15 %/60 %/25 % d'un mois de taxes — un mois de solde de garnison, six mois
+     *     de subvention, un quart de mois d'enquête : DES ORDRES DE GRANDEUR d'un budget
+     *     réel, jamais un « bonus » — à comparer aux 20-50 or fixes des chocs existants
+     *     (ceux-là restent inchangés, c'est justement le legs qu'on ne retouche pas).
+     *   - hooks : FAC_MARCHAND (payer double = un vote marchand, cf. AI_LEVER_BUILD=0.035
+     *     à AI_LEVER_WAR=0.05 dans scps_ai.c — mon 0(concède) est une CAPTURE, plus fort
+     *     qu'un simple vote, cohérent avec CAPTURE_LEVER=0.06) ; cooldown=540 j (~1.5 an,
+     *     le temps que Marbrive ne puisse pas retirer immédiatement sur la même province).
+     */
+    [EVID_MARBRIVE] = { EVID_MARBRIVE, EV_PROVINCE, "Les hommes de %s refusent le chantier",
+        trig_marbrive, 540.f, NULL, {
+        { "Envoyer les prévôts",
+          "Le fouet ne débat pas : il conclut.",
+          { .d_H_coerc=0.6f, .d_L=-0.4f, .d_coercion=0.22f, .d_agitation=-12.f, .d_treasury_mois=-0.15f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_CONQUERANT, .faction_strength=0.f, .scar_kind=SCAR_SABOTAGE_CHANTIER, .cooldown_days=540 },
+          "Une garnison de prévôts mate la contestation — l'ordre revient, mais quelqu'un s'en souviendra." },
+        { "Payer double jusqu'aux pluies",
+          "L'or achète ce que la peur n'obtient pas : un peu de patience.",
+          { .d_L=0.3f, .d_coercion=-0.10f, .d_agitation=-8.f, .d_treasury_mois=-0.6f, .unlock_branch=-1 },
+          0.7f, { .faction=FAC_MARCHAND, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=540 },
+          "Une subvention généreuse — les Marchands s'en souviennent, et en tirent une dette d'obéissance." },
+        { "Reporter et ouvrir une enquête",
+          "Gagner du temps, en espérant qu'il joue pour soi.",
+          { .d_K_inst=0.2f, .d_L=0.1f, .d_agitation=4.f, .d_treasury_mois=-0.25f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=540 },
+          "Une commission d'enquête — la contestation continue de couver, mais au moins on l'étudie." } }, 3 },
+
+    /* PONT EFFONDRÉ — la suite CONSÉQUENTE : le sabotage qu'on n'a pas vu venir (« Envoyer
+     * les prévôts » posait la cicatrice SABOTAGE_CHANTIER) mûrit en catastrophe concrète.
+     * ANCRES : les 3 choix restent dans la MÊME fourchette que Marbrive (une crise locale,
+     * pas une guerre) — d_treasury_mois -0.2/-0.7/0 (traquer coûte peu, reconstruire coûte
+     * cher, abandonner ne coûte rien MAIS perd l'institution : d_K_inst négatif au lieu
+     * d'un coût d'or, un delta de coordonnée plutôt qu'un montant, cohérent avec la charte
+     * « on lit des coordonnées, jamais un bonus plat »). */
+    [EVID_PONT_EFFONDRE] = { EVID_PONT_EFFONDRE, EV_PROVINCE, "Le pont de %s s'est effondré une nuit",
+        trig_pont_effondre, 1500.f, NULL, {
+        { "Traquer les saboteurs",
+          "Trouver les coupables avant qu'ils ne recommencent.",
+          { .d_H_coerc=0.4f, .d_coercion=0.15f, .d_agitation=-6.f, .d_treasury_mois=-0.2f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_CONQUERANT, .faction_strength=0.03f, .scar_kind=SCAR_NONE, .cooldown_days=540 },
+          "L'enquête retrouve les responsables — un exemple est fait, la crainte s'installe." },
+        { "Reconstruire, en payant cette fois",
+          "Refaire à neuf, sans lésiner — la leçon a porté.",
+          { .d_K_inst=0.5f, .d_L=0.4f, .d_agitation=-10.f, .d_treasury_mois=-0.7f, .unlock_branch=-1 },
+          0.7f, { .faction=FAC_LEGISTE, .faction_strength=0.03f, .scar_kind=SCAR_NONE, .cooldown_days=540 },
+          "Le chantier renaît, mieux bâti — coûteux, mais la province s'en souvient favorablement." },
+        { "Abandonner la route",
+          "Ce que le sabotage a pris, on ne le redonnera pas.",
+          { .d_K_inst=-0.4f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=540 },
+          "La route reste coupée — un renoncement qui se voit, et qui se paie en institutions perdues." } }, 3 },
 };
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
+
+/* TITRE PRÉSENTÉ (display-only) : le nom de la table est un GABARIT — s'il porte
+ * un « %s », on y coud le NOM RÉEL du sujet (région en EV_PROVINCE, pays en
+ * EV_COUNTRY) au moment de la PRÉSENTATION (« Marbrive » était un placeholder de
+ * registre : le monde a ses propres noms). Assemblage MANUEL (pas de format non
+ * littéral) ; buf est rendu pour chaîner les appels. */
+const char *event_title(const World *w, int evid, int subject, char *buf, int n){
+    const EventDef *d = event_def(evid);
+    if (!buf || n<=0) return "";
+    if (!d){ buf[0]='\0'; return buf; }
+    const char *p = strstr(d->name, "%s");
+    if (!p || !w){ snprintf(buf, (size_t)n, "%s", d->name); return buf; }
+    const char *nom = "?";
+    if (d->scope==EV_PROVINCE  && subject>=0 && subject<w->n_regions)   nom = w->region[subject].name;
+    if (d->scope==EV_COUNTRY   && subject>=0 && subject<w->n_countries) nom = w->country[subject].name;
+    snprintf(buf, (size_t)n, "%.*s%s%s", (int)(p - d->name), d->name, nom, p+2);
+    return buf;
+}
+/* Anneau de titres pour les CONSOMMATEURS À POINTEUR (provlog stocke le pointeur,
+ * pas une copie) : 32 tirs de recyclage — un journal provincial a tourné bien
+ * avant (display-only, jamais lu par le moteur). */
+static const char *event_title_ring(const World *w, int evid, int subject){
+    static char ring[32][96]; static int head = 0;
+    char *b = ring[head]; head = (head+1) & 31;
+    return event_title(w, evid, subject, b, 96);
+}
 
 /* ===================================================================== */
 /* APPLICATION DES EFFETS (déplace des coordonnées/métriques)            */
@@ -345,6 +471,17 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
     if (cx->wl && r<SCPS_MAX_REG) cx->wl->L[r]=clampf(cx->wl->L[r]+e->d_L,0.f,10.f);
     if (cx->sc && r<SCPS_MAX_REG) cx->sc->agitation[r]=clampf(cx->sc->agitation[r]+e->d_agitation,0.f,100.f);
 }
+/* MEMBRANE DE DÉCISION — d_treasury_mois : fraction SIGNÉE du revenu MENSUEL du pays
+ * (Σtaxes de l'an écoulé / 12), déflatée par l'IPM courant (un même choix pèse pareil
+ * en monnaie constante quel que soit l'âge de la partie), routée sur la région-SUJET
+ * (EV_PROVINCE) ou la CAPITALE (EV_COUNTRY) via econ_region_treasury_add (la province
+ * représentative — jamais un écrivain direct sur l'agrégat région). */
+static void resolve_treasury_mois(EventCtx *cx, int cid, int region, const EvEffect *e){
+    if (e->d_treasury_mois==0.f || region<0) return;
+    float revenu_mois = econ_country_tax_year(cid) / 12.f;
+    float montant = e->d_treasury_mois * revenu_mois * econ_world_ipm(cx->econ);
+    econ_region_treasury_add(cx->econ, region, montant);
+}
 static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffect *e){
     if (scope==EV_WORLD){
         if (cx->wp){
@@ -359,11 +496,13 @@ static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffec
     if (scope==EV_PROVINCE){
         apply_region_eff(cx, subject, e);
         int cid = (subject>=0&&subject<cx->econ->n_regions)?cx->econ->region[subject].owner:-1;
+        resolve_treasury_mois(cx, cid, subject, e);
         if (cid>=0 && cx->sc && cid<cx->sc->n_countries)
             cx->sc->influence[cid]=clampf(cx->sc->influence[cid]+e->d_influence,0.f,100.f);
     } else { /* EV_COUNTRY : cœur à la capitale, humeur (L/agitation) au pays entier */
         int cid=subject, capr=world_capital_region(cx->w,cid);
         if (capr>=0) apply_region_eff(cx, capr, e);
+        resolve_treasury_mois(cx, cid, capr, e);
         for (int r=0;r<cx->econ->n_regions;r++) if (r!=capr && cx->econ->region[r].owner==cid){
             if (cx->wl && r<SCPS_MAX_REG) cx->wl->L[r]=clampf(cx->wl->L[r]+e->d_L,0.f,10.f);
             if (cx->sc && r<SCPS_MAX_REG) cx->sc->agitation[r]=clampf(cx->sc->agitation[r]+e->d_agitation,0.f,100.f);
@@ -373,25 +512,197 @@ static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffec
     }
 }
 
-/* Choix de l'option par l'IA (poids ai_chance) puis application + journal. */
-static void fire_event(EventCtx *cx, int evid, int subject){
+/* ===================================================================== */
+/* MÉMOIRE DE DÉCISION — cicatrices (anneau) + cooldowns (anneau)          */
+/* ===================================================================== */
+void decision_memory_push(EventsState *ev, int subject, ScarKind kind,
+                          int delai_min_j, int delai_max_j){
+    if (!ev || kind<0 || kind>=SCAR_KIND_COUNT) return;
+    int lo=delai_min_j, hi=delai_max_j; if (hi<lo) hi=lo;
+    int delai = lo + (int)(frand(&ev->rng) * (float)(hi-lo+1));
+    DecisionScar *s = &ev->scars[ev->scar_head];
+    s->subject = (int16_t)subject; s->kind = (int8_t)kind;
+    s->ripe_day = ev->ages.days_elapsed + delai;
+    ev->scar_head = (ev->scar_head+1) % DECISION_SCAR_CAP;
+}
+bool decision_memory_has_ripe(const EventsState *ev, int subject, ScarKind kind, int today){
+    if (!ev) return false;
+    for (int i=0;i<DECISION_SCAR_CAP;i++){
+        const DecisionScar *s=&ev->scars[i];
+        if (s->subject==(int16_t)subject && s->kind==(int8_t)kind && s->ripe_day<=today && s->ripe_day>0)
+            return true;
+    }
+    return false;
+}
+void decision_memory_consume(EventsState *ev, int subject, ScarKind kind, int today){
+    if (!ev) return;
+    for (int i=0;i<DECISION_SCAR_CAP;i++){
+        DecisionScar *s=&ev->scars[i];
+        if (s->subject==(int16_t)subject && s->kind==(int8_t)kind && s->ripe_day<=today && s->ripe_day>0){
+            s->subject=-1; s->kind=0; s->ripe_day=0;   /* case vide (ripe_day=0 ⇒ jamais mûre) */
+            return;
+        }
+    }
+}
+void decision_cooldown_push(EventsState *ev, int evid, int subject, int until_day){
+    if (!ev || evid<0 || evid>=EVID_COUNT) return;
+    EvCooldown *c = &ev->cds[ev->cd_head];
+    c->subject=(int16_t)subject; c->evid=(uint8_t)evid; c->until_day=until_day;
+    ev->cd_head = (ev->cd_head+1) % DECISION_CD_CAP;
+}
+bool decision_cooldown_active(const EventsState *ev, int evid, int subject, int today){
+    if (!ev) return false;
+    for (int i=0;i<DECISION_CD_CAP;i++){
+        const EvCooldown *c=&ev->cds[i];
+        if (c->subject==(int16_t)subject && c->evid==(uint8_t)evid && c->until_day>today)
+            return true;
+    }
+    return false;
+}
+
+/* ===================================================================== */
+/* HOOKS DE CHOIX — faction (levier/concession) + cicatrice + cooldown     */
+/* ===================================================================== */
+/* `cid` = le pays PROPRIÉTAIRE du sujet (owner de la région / le pays lui-même) —
+ * même convention que faction_lever_apply(a->cid,…) dans scps_ai.c. */
+static void apply_choice_hook(EventCtx *cx, int evid, int subject, int cid,
+                              const EvChoiceHook *h, int today){
+    if (h->faction>=0 && h->faction<FAC_COUNT && cid>=0){
+        if (h->faction_strength>0.f)
+            faction_lever_apply(cid, (EthosFaction)h->faction, h->faction_strength);
+        else
+            faction_concede(cid, (EthosFaction)h->faction);
+    }
+    if (h->scar_kind>SCAR_NONE && h->scar_kind<SCAR_KIND_COUNT)
+        decision_memory_push(cx->ev, subject, (ScarKind)h->scar_kind, 180, 540);
+    if (h->cooldown_days>0)
+        decision_cooldown_push(cx->ev, evid, subject, today + h->cooldown_days);
+}
+
+/* le pays CONCERNÉ par un évènement (owner de la région si provincial, le pays
+ * lui-même sinon) — même calcul que le feed d'alertes ET les hooks de faction. */
+static int event_owner_of(EventCtx *cx, EvScope scope, int subject){
+    if (scope==EV_PROVINCE)
+        return (cx->econ && subject>=0 && subject<cx->econ->n_regions)
+            ? cx->econ->region[subject].owner : -1;
+    return subject;
+}
+
+/* RÉSOUT un choix (option `oi` de l'évènement `evid` sur `subject`) : applique
+ * l'effet + les hooks (faction/cicatrice/cooldown) du choix + le journal +
+ * le fil d'alertes. CHEMIN COMMUN à l'auto-résolution IA (fire_event) et au
+ * choix DRAINÉ du joueur (pending_event_resolve) — un seul acteur, deux voies
+ * d'entrée. `today` = ev->ages.days_elapsed (pour les cicatrices/cooldowns). */
+static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int today){
     const EventDef *d=&EVENTS[evid];
-    int best=0; float bw=-1.f;
-    for (int i=0;i<d->n_options;i++) if (d->options[i].ai_chance>bw){ bw=d->options[i].ai_chance; best=i; }
-    apply_effect(cx, d->scope, subject, &d->options[best].eff);
+    if (oi<0 || oi>=d->n_options) oi=0;
+    const EvOption *opt=&d->options[oi];
+    int cid = event_owner_of(cx, d->scope, subject);
+    apply_effect(cx, d->scope, subject, &opt->eff);
+    apply_choice_hook(cx, evid, subject, cid, &opt->hook, today);
+    /* PONT EFFONDRÉ CONSOMME la cicatrice qui l'a fait mûrir (une cicatrice = un tir —
+     * sinon le trigger la relirait ENCORE mûre au prochain scan et re-déclencherait). */
+    if (evid==EVID_PONT_EFFONDRE) decision_memory_consume(cx->ev, subject, SCAR_SABOTAGE_CHANTIER, today);
+    if (evid==EVID_MARBRIVE) g_marbrive_fired++; else if (evid==EVID_PONT_EFFONDRE) g_pont_effondre_fired++;
     cx->ev->last_id=evid; cx->ev->last_name=d->name; cx->ev->n_fired++;
     if (d->scope==EV_PROVINCE && subject>=0)
-        provlog_push_event(subject, d->name, ev_sign(&d->options[best].eff), ev_effdir(&d->options[best].eff));
+        provlog_push_event(subject, event_title_ring(cx->w, evid, subject),   /* nom RÉEL du lieu */
+                           ev_sign(&opt->eff), ev_effdir(&opt->eff));
     /* FIL D'ÉVÈNEMENTS (alertes/popup du front) : write-only, jamais relu → déterminisme
-     * intact. a = le pays CONCERNÉ (owner de la région si provincial) — le focus du fil
-     * (feed_set_focus) filtre à l'entrée, le front re-filtre en ceinture. */
-    int tgt = subject;
-    if (d->scope==EV_PROVINCE)
-        tgt = (cx->econ && subject>=0 && subject<cx->econ->n_regions)
-            ? cx->econ->region[subject].owner : -1;
-    feed_push(FEED_DIRECTOR, tgt, -1,
-              (d->scope==EV_PROVINCE) ? subject : -1,
-              evid);
+     * intact. Le focus du fil (feed_set_focus) filtre à l'entrée, le front re-filtre en ceinture. */
+    feed_push(FEED_DIRECTOR, cid, -1, (d->scope==EV_PROVINCE) ? subject : -1, evid);
+}
+
+/* true si un pending (evid,subject) est DÉJÀ en attente — anti-doublon : un trigger
+ * dont l'état reste vrai plusieurs jours d'affilée (ex. Marbrive tant que l'agitation
+ * ne redescend pas) ne doit pas empiler la même décision plusieurs fois avant que
+ * le joueur n'ait répondu à la première. */
+static bool pending_event_has(const EventsState *ev, int evid, int subject){
+    for (int i=0;i<ev->pending_n;i++)
+        if (ev->pending[i].evid==(uint8_t)evid && ev->pending[i].subject==(int16_t)subject) return true;
+    return false;
+}
+
+/* Choix de l'option par l'IA (poids ai_chance) puis application + journal —
+ * SAUF si le sujet est le JOUEUR et l'évènement porte une VRAIE décision
+ * (n_options>1) : la membrane l'ENFILE alors pour son choix (§4) au lieu de
+ * trancher à sa place. Les évènements à option UNIQUE (chocs géo, floraisons)
+ * restent auto-résolus même pour le joueur — rien à choisir, pas de décision. */
+static void fire_event(EventCtx *cx, int evid, int subject){
+    const EventDef *d=&EVENTS[evid];
+    /* RÉPIT (hook cooldown_days d'un choix précédent) : cet évènement ne retire pas
+     * sur ce sujet tant qu'il n'a pas expiré — même acteur pour l'IA et le joueur. */
+    if (decision_cooldown_active(cx->ev, evid, subject, cx->ev->ages.days_elapsed)) return;
+    if (d->n_options>1 && cx->human_player>=0){
+        int owner = event_owner_of(cx, d->scope, subject);
+        if (owner==cx->human_player){
+            if (!pending_event_has(cx->ev, evid, subject))
+                pending_event_push(cx->ev, evid, subject, cx->ev->ages.days_elapsed);
+            return;
+        }
+    }
+    int best=0; float bw=-1.f;
+    for (int i=0;i<d->n_options;i++) if (d->options[i].ai_chance>bw){ bw=d->options[i].ai_chance; best=i; }
+    resolve_choice(cx, evid, subject, best, cx->ev->ages.days_elapsed);
+}
+
+/* ===================================================================== */
+/* LA FILE JOUEUR                                                          */
+/* ===================================================================== */
+bool pending_event_push(EventsState *ev, int evid, int subject, int today){
+    if (!ev || evid<0 || evid>=EVID_COUNT) return false;
+    if (ev->pending_n >= PENDING_EVENT_CAP) return false;   /* file pleine : l'évènement se perd (silencieux) */
+    PendingEvent *p = &ev->pending[ev->pending_n++];
+    p->evid=(uint8_t)evid; p->subject=(int16_t)subject;
+    p->fire_day=today; p->expire_day=today+180;
+    return true;
+}
+int pending_event_count(const EventsState *ev){ return ev? ev->pending_n : 0; }
+bool pending_event_at(const EventsState *ev, int slot, PendingEvent *out){
+    if (!ev || !out || slot<0 || slot>=ev->pending_n) return false;
+    *out = ev->pending[slot];
+    return true;
+}
+/* retire le pending au slot `slot` (swap avec le dernier — l'ordre n'est pas garanti,
+ * comme purge_slice/l'idiome des files bornées du dépôt). */
+static void pending_event_remove(EventsState *ev, int slot){
+    if (!ev || slot<0 || slot>=ev->pending_n) return;
+    ev->pending[slot] = ev->pending[ev->pending_n-1];
+    ev->pending_n--;
+}
+bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
+                           WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
+                           RouteNetwork *rn, const TechState ts[], DiploState *dp,
+                           int slot, int option, int today){
+    if (!ev || slot<0 || slot>=ev->pending_n) return false;
+    PendingEvent p = ev->pending[slot];
+    if (p.evid>=EVID_COUNT) { pending_event_remove(ev,slot); return false; }
+    const EventDef *d=&EVENTS[p.evid];
+    if (option<0 || option>=d->n_options) return false;
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,-1};   /* la résolution elle-même n'enfile jamais (déjà tranchée) */
+    resolve_choice(&cx, p.evid, p.subject, option, today);
+    pending_event_remove(ev, slot);
+    return true;
+}
+void pending_event_tick_expire(EventsState *ev, World *w, WorldEconomy *econ,
+                               WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
+                               RouteNetwork *rn, const TechState ts[], DiploState *dp,
+                               int today){
+    if (!ev) return;
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,-1};
+    /* parcours à REBOURS : pending_event_remove swap avec le dernier — reculer évite
+     * de sauter un slot fraîchement déplacé dans la case qu'on vient de traiter. */
+    for (int i=ev->pending_n-1; i>=0; i--){
+        PendingEvent p = ev->pending[i];
+        if (p.expire_day > today) continue;
+        if (p.evid<EVID_COUNT){
+            const EventDef *d=&EVENTS[p.evid];
+            int best=0; float bw=-1.f;
+            for (int k=0;k<d->n_options;k++) if (d->options[k].ai_chance>bw){ bw=d->options[k].ai_chance; best=k; }
+            resolve_choice(&cx, p.evid, p.subject, best, today);
+        }
+        pending_event_remove(ev, i);
+    }
 }
 
 /* NOM d'un évènement de la table (le fil le porte par ID ; la façade résout le MOT). */
@@ -405,7 +716,7 @@ const char *events_name_of(int evid){
 void events_strike(EventsState *ev, World *w, WorldEconomy *econ,
                    WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                    int region, EvId shock){
-    EventCtx cx={ev,w,econ,wl,wp,sc,NULL,NULL,NULL};
+    EventCtx cx={ev,w,econ,wl,wp,sc,NULL,NULL,NULL,-1};
     if (shock<0||shock>=EVID_COUNT) return;
     apply_effect(&cx, EVENTS[shock].scope, region, &EVENTS[shock].options[0].eff);
     ev->last_id=shock; ev->last_name=EVENTS[shock].name; ev->n_fired++;
@@ -436,7 +747,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
         EvEffect e = EVENTS[EVID_PLAGUE].options[0].eff;
         e.pop_mult = mult;
         e.d_agitation = 18.f - 3.f*h;
-        EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL};
+        EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL,-1};
         apply_effect(&cx, EV_PROVINCE, r, &e);
         provlog_push_event(r, EVENTS[EVID_PLAGUE].name, +1, ev_effdir(&e));   /* journal provincial : la peste */
         infected++;
@@ -459,7 +770,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
 /* ===================================================================== */
 int events_match_political(const EventsState *ev, World *w, WorldEconomy *econ,
                            WorldLegitimacy *wl, Statecraft *sc, int region){
-    EventCtx cx={ (EventsState*)ev, w, econ, wl, NULL, sc, NULL, NULL, NULL };
+    EventCtx cx={ (EventsState*)ev, w, econ, wl, NULL, sc, NULL, NULL, NULL, -1 };
     static const int order[4]={ EVID_INTEG_DOMINATEUR, EVID_INTEG_MERCANTILE,
                                 EVID_INTEG_BUREAUCRATE, EVID_INTEG_ANCIEN };
     for (int i=0;i<4;i++){
@@ -590,7 +901,7 @@ static bool age_trig_ordrefer(const EventsState *ev, World *w, WorldProsperity *
 }
 
 static void age_dawn(EventsState *ev, AgeId a, World *w, WorldEconomy *econ, WorldProsperity *wp){
-    EventCtx cx={ev,w,econ,NULL,wp,NULL,NULL,NULL,NULL};
+    EventCtx cx={ev,w,econ,NULL,wp,NULL,NULL,NULL,NULL,-1};
     EvEffect e; memset(&e,0,sizeof e); e.pop_mult=1.f; e.unlock_branch=-1;
     switch(a){
         case AGE_COMMERCE: e.d_C_global=1.0f; e.unlock_branch=THM_SOCIETE; e.unlock_tier=3; break;
@@ -780,6 +1091,31 @@ bool director_save_sane(const EventsState *ev, int max_subject){
         if (D->mem[i].subject < -1 || D->mem[i].subject >= max_subject) return false;
     }
     if (D->omens < 0) return false;
+    return true;
+}
+
+/* MEMBRANE DE DÉCISION — REVALIDATION des trois anneaux désérialisés (motif
+ * director_save_sane) : subject/kind/evid bornés, jamais déréférencés hors-borne. */
+bool decision_memory_save_sane(const EventsState *ev, int max_subject){
+    if (!ev) return false;
+    if (ev->scar_head < 0 || ev->scar_head >= DECISION_SCAR_CAP) return false;
+    for (int i=0;i<DECISION_SCAR_CAP;i++){
+        const DecisionScar *s=&ev->scars[i];
+        if (s->kind < 0 || s->kind >= SCAR_KIND_COUNT) return false;
+        if (s->subject < -1 || s->subject >= max_subject) return false;
+    }
+    if (ev->cd_head < 0 || ev->cd_head >= DECISION_CD_CAP) return false;
+    for (int i=0;i<DECISION_CD_CAP;i++){
+        const EvCooldown *c=&ev->cds[i];
+        if (c->evid >= EVID_COUNT) return false;   /* uint8_t : jamais < 0 */
+        if (c->subject < -1 || c->subject >= max_subject) return false;
+    }
+    if (ev->pending_n < 0 || ev->pending_n > PENDING_EVENT_CAP) return false;
+    for (int i=0;i<ev->pending_n;i++){
+        const PendingEvent *p=&ev->pending[i];
+        if (p->evid >= EVID_COUNT) return false;
+        if (p->subject < -1 || p->subject >= max_subject) return false;
+    }
     return true;
 }
 
@@ -1070,8 +1406,9 @@ static float mtth_p(float mtth_days, int days){
 }
 void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
                        WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
-                       RouteNetwork *rn, const TechState ts[], DiploState *dp, int days){
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp};
+                       RouteNetwork *rn, const TechState ts[], DiploState *dp, int days,
+                       int human_player){
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,human_player};
     ev->ages.days_elapsed += days;          /* horloge de jeu (rythme des âges) */
 
     /* 1. CHOCS GÉO — à risque, par région, sur leur cadence (1/risk accélère). */
@@ -1117,6 +1454,16 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             frand(&ev->rng) < mtth_p(EVENTS[EVID_XENOPHOBE].mtth_days,days)) fire_event(&cx,EVID_XENOPHOBE,r);
     }
 
+    /* 2quater. MEMBRANE DE DÉCISION — MARBRIVE (le contremaître réclame) + sa suite
+     * CONSÉQUENTE (le sabotage mûrit en catastrophe, une cicatrice posée par le choix
+     * « Envoyer les prévôts »). Même court-circuit (trigger && frand) que XENOPHILE. */
+    for (int r=0;r<econ->n_regions;r++){
+        if (EVENTS[EVID_MARBRIVE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_MARBRIVE].mtth_days,days)) fire_event(&cx,EVID_MARBRIVE,r);
+        if (EVENTS[EVID_PONT_EFFONDRE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_PONT_EFFONDRE].mtth_days,days)) fire_event(&cx,EVID_PONT_EFFONDRE,r);
+    }
+
     /* 2bis. LE DIRECTEUR (§F) — lit la TEMPÉRATURE du monde, puis stabilise ou
      * déstabilise (sans jamais s'acharner). Cadence ~annuelle (sa propre échéance). */
     director_tick(&cx, days);
@@ -1135,6 +1482,10 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
         wp->age_H_bonus         -= wp->age_H_bonus         * k;
         wp->age_myth_homogen    -= wp->age_myth_homogen    * k;
     }
+
+    /* MEMBRANE DE DÉCISION — un pending qui a expiré (180 j sans choix du joueur)
+     * s'auto-résout (ai_chance), comme l'IA l'aurait tranché. */
+    pending_event_tick_expire(ev,w,econ,wl,wp,sc,rn,ts,dp, ev->ages.days_elapsed);
 }
 
 /* ===================================================================== */
@@ -1146,7 +1497,10 @@ bool events_text_clean(void){
     const char *texts[256]; int n=0;
     for (int i=0;i<EVID_COUNT;i++){
         texts[n++]=EVENTS[i].name;
-        for (int o=0;o<EVENTS[i].n_options;o++){ texts[n++]=EVENTS[i].options[o].label; texts[n++]=EVENTS[i].options[o].blurb; }
+        for (int o=0;o<EVENTS[i].n_options;o++){
+            texts[n++]=EVENTS[i].options[o].label; texts[n++]=EVENTS[i].options[o].blurb;
+            texts[n++]=EVENTS[i].options[o].flavor;   /* MEMBRANE DE DÉCISION : le tooltip du choix aussi */
+        }
     }
     for (int a=0;a<AGE_COUNT;a++) texts[n++]=AGE_NAMES[a];
     for (int i=0;i<n;i++){

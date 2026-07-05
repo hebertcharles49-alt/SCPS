@@ -642,6 +642,46 @@ void econ_colony_stats(long *founded, long *survival){
     if (survival) *survival = g_colony_survival;
 }
 
+/* MEMBRANE DE DÉCISION — le REVENU ANNUEL par pays (voir scps_econ.h). ACCUMULATEUR
+ * INTER-TICKS : persiste d'une année sur l'autre → SÉRIALISÉ (motif g_colony_cd/v61 :
+ * un reload en garderait sinon la valeur de FIN du run précédent, --savetest diverge).
+ * g_flux_ticks_total est incrémenté par econ_tick (MENSUEL, comme e->tick) — sert de
+ * repli An-1 (aucune capture annuelle encore) à econ_country_tax_year, plus bas. */
+static float    g_tax_lastyear[SCPS_MAX_COUNTRY];
+static bool     g_flux_captured_once=false;   /* An-1 : aucune capture encore → repli extrapolé */
+static uint32_t g_flux_ticks_total=0, g_flux_ticks_at_capture=0;
+void econ_flux_year_capture(void){
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++) g_tax_lastyear[c]=(float)econ_flux_get(c,FX_TAX);
+    econ_flux_reset();
+    g_flux_ticks_at_capture = g_flux_ticks_total;
+    g_flux_captured_once = true;
+}
+float econ_country_tax_year(int cid){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY) return 0.f;
+    /* AN-1 (aucune capture complète encore) : replie sur les taxes CUMULÉES depuis le
+     * dernier reset, extrapolées à l'année pleine (×365/jours écoulés), au-delà de 90
+     * jours (sous 90 j l'extrapolation est trop bruyante — 0, déterministe). Une fois
+     * la 1ère capture faite, g_tax_lastyear porte le VRAI revenu de l'an écoulé. */
+    if (g_flux_captured_once) return g_tax_lastyear[cid];
+    int months = (int)(g_flux_ticks_total - g_flux_ticks_at_capture);   /* econ_tick est MENSUEL */
+    int days = months*30;
+    if (days<=90) return 0.f;
+    double cum = econ_flux_get(cid, FX_TAX);
+    return (float)(cum * (365.0/(double)days));
+}
+void econ_flux_year_save(FILE *f){
+    fwrite(g_tax_lastyear,sizeof g_tax_lastyear,1,f);
+    uint8_t once=g_flux_captured_once?1:0; fwrite(&once,sizeof once,1,f);
+}
+bool econ_flux_year_load(FILE *f){
+    if (fread(g_tax_lastyear,sizeof g_tax_lastyear,1,f)!=1) return false;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)                    /* save_sane : vraisemblance (pas un index) */
+        if (!(g_tax_lastyear[c]>=-1e9f && g_tax_lastyear[c]<=1e9f)) g_tax_lastyear[c]=0.f;
+    uint8_t once=0; if (fread(&once,sizeof once,1,f)!=1) return false;
+    g_flux_captured_once = (once!=0);
+    return true;
+}
+
 /* Adjacence de PROVINCES (charte : la vérité géographique fine — colonisation par-province,
  * garantie joueur, hameaux libres). Allouée dynamiquement (1664² octets ≈ 2.7 Mo — trop pour
  * un tableau statique BSS confortable à côté du reste). Possédée par le module (une seule
@@ -935,6 +975,10 @@ void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
     memset(g_colony_cd,0,sizeof g_colony_cd);   /* F1 : RAZ du répit de colonisation (par partie/sim, non sérialisé) */
     g_colony_founded=0; g_colony_survival=0;    /* E7 : RAZ télémétrie colonisation (par partie/sim, non sérialisé) */
+    econ_flux_reset();                          /* MEMBRANE DE DÉCISION : RAZ le flux courant … */
+    memset(g_tax_lastyear,0,sizeof g_tax_lastyear);   /* … et le revenu annuel capté (par partie/sim,
+                                                        * un chargement RESTAURE ensuite depuis le save) */
+    g_flux_captured_once=false; g_flux_ticks_total=0; g_flux_ticks_at_capture=0;
     memset(e,0,sizeof(*e));
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ e->colony[c].src=-1; e->colony[c].dst=-1; }   /* aucun chantier */
     econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */
@@ -1944,6 +1988,7 @@ double econ_country_gold(const WorldEconomy *e, int c){
 void econ_tick(WorldEconomy *e, float dt) {
     if (dt<=0.f) dt=1.f;
     e->tick++;
+    g_flux_ticks_total++;               /* MEMBRANE DE DÉCISION : mois écoulés (repli du revenu An-1) */
     g_n_friche=0;                      /* E1bis.10 : recompte les provinces en friche ce tick */
 
 #if SCPS_IPM

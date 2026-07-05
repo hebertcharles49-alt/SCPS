@@ -521,6 +521,24 @@ static void sim_cmd_drain(Sim *s, World *w){
             }
             if (src>=0) econ_colonize_province(s->econ, w, src, dst, p);
             break; }
+          /* ── MEMBRANE DE DÉCISION : le joueur CHOISIT parmi les options d'un évènement
+           *    en attente. a={slot, option}. REVALIDÉ : slot occupé, option bornée, ET le
+           *    sujet appartient TOUJOURS au joueur (une région peut avoir changé de mains
+           *    entre l'enfilage et le choix — miroir save_sane, jamais tranché à l'aveugle). */
+          case CMD_EVENT_CHOICE: {
+            int slot=c->a[0], option=c->a[1];
+            PendingEvent pe;
+            if (!pending_event_at(s->ev, slot, &pe)) break;
+            const EventDef *d = event_def(pe.evid);
+            if (!d) break;
+            if (option<0 || option>=d->n_options) break;
+            int owner = (d->scope==EV_PROVINCE)
+                ? ((pe.subject>=0 && pe.subject<s->econ->n_regions) ? s->econ->region[pe.subject].owner : -1)
+                : pe.subject;
+            if (owner!=p) break;   /* la région/le pays a changé de mains : le choix ne s'applique plus */
+            pending_event_resolve(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp,
+                                  slot, option, s->ev->ages.days_elapsed);
+            break; }
         }
     }
     s->cmd_n = 0;
@@ -570,7 +588,7 @@ void sim_day(Sim *s, World *w) {
             }
         }
     }
-    PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1));
+    PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1, s->human_player));
     /* navy_tick (chantier + entretien) est passé MENSUEL (bloc plus bas) : il pesait ~½ du coût/an
      * en quotidien, et il est pleinement dt-scalé (rien ne le veut au jour). */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */

@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b8evdlgaud001"]
+
+[ext_resource type="Script" path="res://event_dialog_audit.gd" id="1_edaudit"]
+
+[node name="EventDialogAudit" type="Node"]
+script = ExtResource("1_edaudit")

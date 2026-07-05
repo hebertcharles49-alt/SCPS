@@ -74,7 +74,8 @@ bool scps_save_slot_info(int slot, SaveHeader *out){
     X(RELG,'R','E','L','G')  /* v37 : registre religion + liens pays */ \
     X(WILD,'W','I','L','D')  /* v48 : compteurs de contact des hameaux libres (ralliement) */ \
     X(EMOB,'E','M','O','B')  /* v57 : mobilité de classe — g_friche[] + g_lowsat_streak[][] (savetest fix) */ \
-    X(COLC,'C','O','L','C')  /* v61 : répit de colonisation g_colony_cd[] (accumulateur F1, savetest fix) */
+    X(COLC,'C','O','L','C')  /* v61 : répit de colonisation g_colony_cd[] (accumulateur F1, savetest fix) */ \
+    X(TXYR,'T','X','Y','R')  /* v62 : MEMBRANE DE DÉCISION — g_tax_lastyear[] (revenu annuel, d_treasury_mois) */
 #define SV_DECL_TAG(name,a,b,c,d) enum { SVT_##name = SV_TAG(a,b,c,d) };
 SV_SECTIONS(SV_DECL_TAG)
 #undef SV_DECL_TAG
@@ -151,6 +152,7 @@ bool scps_save_game(int slot, World *w, Sim *s, const WorldParams *params, int s
     ok&=sv_w(f,SVT_WILD, NULL,0); sim_wild_save(f);        /* v48 : compteurs de ralliement des hameaux */
     ok&=sv_w(f,SVT_EMOB, NULL,0); econ_mobility_save(f);   /* v57 : g_friche[] + g_lowsat_streak[][] */
     ok&=sv_w(f,SVT_COLC, NULL,0); econ_colony_cd_save(f);  /* v61 : répit de colonisation (F1) */
+    ok&=sv_w(f,SVT_TXYR, NULL,0); econ_flux_year_save(f);  /* v62 : MEMBRANE DE DÉCISION — revenu annuel */
     if (ok && fflush(f)!=0) ok=false;
     long psz = ok ? ftell(f) : -1;
     if (!ok || psz<0){ fclose(f); return false; }
@@ -301,6 +303,11 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (eg->merv_progress < 0.0f || eg->merv_progress > 1.0f) return false;
     }
     if (!director_save_sane(s->ev, SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY)) return false;
+    /* MEMBRANE DE DÉCISION (v62) : les cicatrices/cooldowns visent une région OU un pays
+     * selon le scope de l'évènement — la borne large (max des deux) couvre les deux cas,
+     * comme director_save_sane le fait déjà pour l'encodage Amnistie région/pays mêlés. */
+    { int max_subj = s->econ->n_regions > w->n_countries ? s->econ->n_regions : w->n_countries;
+      if (!decision_memory_save_sane(s->ev, max_subj)) return false; }
     return true;
 }
 
@@ -378,6 +385,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     ok&=sv_r(f,SVT_WILD, NULL,0); ok&=sim_wild_load(f);        /* v48 : compteurs de ralliement des hameaux */
     ok&=sv_r(f,SVT_EMOB, NULL,0); ok&=econ_mobility_load(f);   /* v57 : g_friche[] + g_lowsat_streak[][] */
     ok&=sv_r(f,SVT_COLC, NULL,0); ok&=econ_colony_cd_load(f);  /* v61 : répit de colonisation (F1) */
+    ok&=sv_r(f,SVT_TXYR, NULL,0); ok&=econ_flux_year_load(f);  /* v62 : MEMBRANE DE DÉCISION — revenu annuel */
     long p1=ftell(f); fclose(f);
     if (!ok || (uint32_t)(p1-p0)!=h.payload) return 1;
     if (!scps_save_sane(w, s, s->player)) return 1;

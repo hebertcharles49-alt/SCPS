@@ -450,10 +450,15 @@ int main(int argc, char **argv){
          * (un pays né en cours d'année part de 0 : son flux englobe sa dotation). */
         double gold_y0[SCPS_MAX_COUNTRY]={0};
         for (int yr=0; yr<years; yr++){
-            if (yr==years-1){
+            if (yr==years-1)
                 for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++) gold_y0[c]=country_gold(s.econ,c);
-                econ_flux_reset();   /* I0 : la décomposition du flux porte sur la DERNIÈRE année */
-            }
+            /* MEMBRANE DE DÉCISION : capture+RAZ le revenu annuel (g_tax_lastyear) au ROULEMENT
+             * de CHAQUE année (remplace l'ancien reset one-shot de la dernière année — I0 en tire
+             * la MÊME mesure : la décomposition du flux porte toujours sur la DERNIÈRE année, ce
+             * roulement RÉGULIER est simplement ce qui la produit) ; en prime, econ_country_tax_year
+             * (d_treasury_mois des évènements) a désormais un revenu FRAIS chaque an, y compris en
+             * chronique — MARBRIVE doit pouvoir tirer avant l'an-200. */
+            econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
             for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++){
@@ -930,6 +935,11 @@ int main(int argc, char **argv){
           float wgt = tune_f("AI_METAB_RES_W",AI_METAB_RES_W);
           printf("              métabolisation : %d/%d empire(s) creuset (>1%% digéré) · moyenne %.1f%% · max %.1f%% → +%.1f%% recherche au plus métabolisé\n",
                  ncreuset, nm, nm?sm/nm*100.f:0.f, mx*100.f, mx*wgt*100.f); }
+
+        /* MEMBRANE DE DÉCISION — combien de fois la crise phare (et sa suite CONSÉQUENTE)
+         * ont tiré : la preuve que la boucle de décision VIT sur le long cours. */
+        printf("              membrane de décision : %ld Marbrive · %ld Pont(s) effondré(s)\n",
+               events_marbrive_fired(), events_pont_effondre_fired());
 
         /* COMBOS tier-4 (fusion de 2 héritages métabolisés/possédés) : la PREUVE que la matrice
          * de combos s'allume sur le long cours — combien d'empires en tiennent ≥1, et combien de

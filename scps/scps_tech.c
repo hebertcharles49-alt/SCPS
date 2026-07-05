@@ -42,115 +42,205 @@ static float BASE_COST[6] = { 0.f, 40.f, 90.f, 160.f, 260.f, 400.f }; /* par tie
 static const TechNode NODES[TECH_COUNT] = {
 /* ---- SAVOIR · PRODUCTION (spine sûre : vitesse de recherche, +K) ------ */
 [TECH_BIBLIOTHEQUE] = { "Bibliothèque","Bibliothèque", THM_SAVOIR,FN_PRODUCTION,0, NONE, false,false,UNIV,
-    1,0,0, 0,0, 0, 0, 0, 0, 0, false },
+    1,0,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+recherche (le socle du savoir) · +1 capacité narrative (K)",
+    "Un empire commence toujours par une pièce pleine de livres que personne n'a le temps de lire." },
 [TECH_SCRIPTORIUM] = { "Scriptorium","Scriptorium", THM_SAVOIR,FN_PRODUCTION,1, TECH_BIBLIOTHEQUE, false,false,UNIV,
-    1,0,0, 0,0, 0, 0, 0, 0, 0, false },
+    1,0,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+recherche (×0.5 le rendement) · +1 capacité narrative (K)",
+    "On a embauché des scribes pour recopier les livres que personne ne lisait déjà." },
 [TECH_ACADEMIE] = { "Académie","Académie", THM_SAVOIR,FN_PRODUCTION,2, TECH_SCRIPTORIUM, false,false,UNIV,
-    2,0,0, 0,0, 0, 0, 0, 0, 0, false },
+    2,0,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+recherche (vitesse accrue) · +2 capacité narrative (K)",
+    "Désormais les érudits débattent entre eux plutôt qu'avec le peuple — un progrès net." },
 [TECH_UNIVERSITE] = { "Université","Université", THM_SAVOIR,FN_PRODUCTION,3, TECH_ACADEMIE, false,false,UNIV,
-    3,0,0, 0,0, 0, 0, 0, 0, 0, false },
+    3,0,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+recherche (vitesse maximale) · +3 capacité narrative (K)",
+    "On y décerne des diplômes ; personne ne sait encore à quoi ils serviront." },
 /* ---- SAVOIR · ARMÉE (arcane offensif — faustien) --------------------- */
 [TECH_SAVOIR_GUERRE] = { "Savoir de guerre","Collège de guerre", THM_SAVOIR,FN_ARMEE,1, TECH_BIBLIOTHEQUE, false,false,UNIV,
-    0,0,0, 0,1.0f, 0, 0, 0, 0.05f, 0.3f, false },
+    0,0,0, 0,1.0f, 0, 0, 0, 0.05f, 0.3f, false,
+    "+puissance arcane des armées (léger flux vers la Brèche)",
+    "Le collège enseigne comment tuer avec méthode — la méthode est le vrai progrès." },
 [TECH_MAGIE_BATAILLE] = { "Magie de bataille","Tour de mages", THM_SAVOIR,FN_ARMEE,2, TECH_SAVOIR_GUERRE, false,false,UNIV,
-    0,0,0, 0,2.0f, 0, 0, 1.0f, 0.50f, 1.5f, false },
+    0,0,0, 0,2.0f, 0, 0, 1.0f, 0.50f, 1.5f, false,
+    "+puissance arcane des armées · +puissance brute (charge faustienne modérée)",
+    "Les mages de combat promettent la victoire ; ils omettent de préciser pour qui." },
 [TECH_INVOCATION] = { "Invocation","Cercle d'invocation", THM_SAVOIR,FN_ARMEE,3, TECH_MAGIE_BATAILLE, true,true,HERITAGE_ESOTERIQUE,
-    0,0,0, 0,2.0f, 0, 0, 3.0f, 1.50f, 3.0f, false },
+    0,0,0, 0,2.0f, 0, 0, 3.0f, 1.50f, 3.0f, false,
+    "⚠ armée invoquée, sans coût de population · forte charge faustienne — rapproche la Brèche",
+    "On convoque des soldats depuis nulle part ; nulle part se souvient toujours du prix." },
 [TECH_EVEIL] = { "L'Éveil","Le Réveil (armée sans pop)", THM_SAVOIR,FN_ARMEE,4, TECH_MAGIE_BATAILLE, true,true,UNIV,
-    0,0,0, 0,0, 0, 0, 6.0f, 3.00f, 6.0f, true },
+    0,0,0, 0,0, 0, 0, 6.0f, 3.00f, 6.0f, true,
+    "⚠ armée invoquée massive · DÉCLENCHE la crise de fin (charge maximale)",
+    "Réveiller ce qui dort est toujours une bonne idée, jusqu'au réveil." },
 /* ---- SAVOIR · RENFORCEMENT (arcane durable — faustien) --------------- */
 [TECH_WARDS] = { "Gardes runiques","Gardes runiques (Wards)", THM_SAVOIR,FN_RENFORCEMENT,1, TECH_BIBLIOTHEQUE, false,false,UNIV,
-    0,0.5f,1.0f, 0,0, 0, 0, 0, 0, 0.3f, false },
+    0,0.5f,1.0f, 0,0, 0, 0, 0, 0, 0.3f, false,
+    "+légitimité & +fédéralisme (protections runiques)",
+    "Des runes protègent la capitale ; les provinces se contentent de la promesse qu'elles existent." },
 [TECH_SCRYING] = { "Scrying","Bassin de scrying", THM_SAVOIR,FN_RENFORCEMENT,2, TECH_WARDS, false,false,UNIV,
-    0,0,0.5f, 0,0, 0, 0, 0.5f, 0.30f, 1.0f, false },
+    0,0,0.5f, 0,0, 0, 0, 0.5f, 0.30f, 1.0f, false,
+    "+fédéralisme (vision lointaine) · léger flux vers la Brèche",
+    "Voir loin ne rend pas plus sage — mais donne l'air d'être informé." },
 [TECH_COMMUNION] = { "Communion","Bosquet de communion", THM_SAVOIR,FN_RENFORCEMENT,3, TECH_SCRYING, false,false,HERITAGE_ESOTERIQUE,
-    0,1.0f,2.0f, 0,0, 0, -1.0f, 0.5f, 0.10f, 0.5f, false },
+    0,1.0f,2.0f, 0,0, 0, -1.0f, 0.5f, 0.10f, 0.5f, false,
+    "+légitimité & +fédéralisme · −fracture interne (l'harmonie des peuples)",
+    "On appelle « communion » le moment où plus personne n'a la force de se disputer." },
 [TECH_SAVOIR_INTERDIT] = { "Savoir interdit","Crypte interdite", THM_SAVOIR,FN_RENFORCEMENT,4, TECH_SCRYING, true,true,UNIV,
-    0,0,0, 0,0, 0, 0, 4.0f, 2.00f, 4.0f, false },
+    0,0,0, 0,0, 0, 0, 4.0f, 2.00f, 4.0f, false,
+    "⚠ grand pouvoir arcane · charge faustienne élevée — rapproche la Brèche",
+    "C'était scellé pour une raison ; la raison, comme d'habitude, a perdu contre la curiosité." },
 
 /* ---- FORGE · PRODUCTION (sortie — le multiplicateur de rendement) ----- */
 [TECH_COLLECTE_BOIS] = { "Collecte de bois","Camp de bûcherons", THM_FORGE,FN_PRODUCTION,0, NONE, false,false,UNIV,
-    0,0,0, 0.5f,0, 0, 0, 0, 0, 0, false },
+    0,0,0, 0.5f,0, 0, 0, 0, 0, 0, false,
+    "permet la production de bois (+puissance économique)",
+    "La première industrie de toute civilisation consiste à abattre ce qui poussait déjà." },
 [TECH_COLLECTE_ARGILE] = { "Collecte d'argile","Carrière d'argile", THM_FORGE,FN_PRODUCTION,0, NONE, false,false,UNIV,
-    0,0,0, 0.5f,0, 0, 0, 0, 0, 0, false },
+    0,0,0, 0.5f,0, 0, 0, 0, 0, 0, false,
+    "permet la production d'argile (+puissance économique)",
+    "On creuse un trou pour en boucher un autre, plus loin, plus tard, plus cher." },
 [TECH_FONDERIE] = { "Fonderie","Fonderie", THM_FORGE,FN_PRODUCTION,1, TECH_COLLECTE_BOIS, false,false,UNIV,
-    0,0,0, 1.5f,0, 0, 0, 0, 0.05f, 0.3f, false },
+    0,0,0, 1.5f,0, 0, 0, 0, 0.05f, 0.3f, false,
+    "permet la production de métal (fer, acier) · +production (léger flux)",
+    "Le feu qui forge le fer forge aussi, accessoirement, la première arme du voisin." },
 [TECH_OUTILLAGE] = { "Outillage","Atelier d'outillage", THM_FORGE,FN_PRODUCTION,2, TECH_FONDERIE, false,false,UNIV,
-    0,0,0, 2.5f,0, 0, 0, 0, 0.05f, 0.3f, false },
+    0,0,0, 2.5f,0, 0, 0, 0, 0.05f, 0.3f, false,
+    "+production (le multiplicateur de rendement)",
+    "Un bon outil permet de faire deux fois plus de choses inutiles en deux fois moins de temps." },
 [TECH_MANUFACTURE] = { "Manufacture","Manufacture", THM_FORGE,FN_PRODUCTION,3, TECH_OUTILLAGE, false,false,UNIV,
-    0,0,0, 3.0f,0, 0, 1.0f, 0, 0.30f, 1.0f, false },
+    0,0,0, 3.0f,0, 0, 1.0f, 0, 0.30f, 1.0f, false,
+    "+production (+8 à 15 % selon la table) · +puissance brute · légère fracture",
+    "La manufacture regroupe cent artisans sous un seul toit pour qu'aucun ne soit plus fier de son travail." },
 [TECH_INDUSTRIE] = { "Industrie de masse","Complexe industriel", THM_FORGE,FN_PRODUCTION,4, TECH_MANUFACTURE, false,false,UNIV,
-    0,0,0, 4.0f,2.0f, 0, 1.5f, 0, 1.00f, 3.0f, false },
+    0,0,0, 4.0f,2.0f, 0, 1.5f, 0, 1.00f, 3.0f, false,
+    "+production de masse & +armée · fracture notable · charge faustienne significative",
+    "On l'appelle complexe industriel ; le complexe, c'est surtout celui des voisins qui n'en ont pas." },
 /* §B2 — FOREUSE ARCANIQUE (faustien) : transmute l'essence en FER en masse → l'issue à la
  * famine de matière pour l'empire enclavé/affamé — mais forte CHARGE + flux vers la Brèche. */
 [TECH_FOREUSE] = { "Foreuse arcanique","Foreuse arcanique", THM_FORGE,FN_PRODUCTION,4, TECH_INDUSTRIE, true,false,UNIV,
-    0,0,0, 3.0f,0, 0, 0, 1.0f, 1.50f, 4.0f, false },
+    0,0,0, 3.0f,0, 0, 0, 1.0f, 1.50f, 4.0f, false,
+    "⚠ transmute l'essence en fer en masse · forte charge — rapproche la Brèche",
+    "Faute de mines, on fore la réalité elle-même — un raccourci qui se paie toujours en intérêts." },
 /* ---- FORGE · ARMÉE (armes — faustien) -------------------------------- */
 [TECH_ARMURERIE] = { "Armurerie","Armurerie", THM_FORGE,FN_ARMEE,1, TECH_COLLECTE_BOIS, false,false,UNIV,
-    0,0,0, 0,1.5f, 0, 0, 0, 0, 0.3f, false },
+    0,0,0, 0,1.5f, 0, 0, 0, 0, 0.3f, false,
+    "permet la production d'armes · +dégâts (doctrine, léger — premier échelon de l'armement)",
+    "Fabriquer des armes est un métier noble ; les vendre en est un autre, plus lucratif." },
 [TECH_POUDRIERE] = { "Poudrière","Poudrière", THM_FORGE,FN_ARMEE,2, TECH_ARMURERIE, false,false,UNIV,
-    0,0,0, 0,2.5f, 0, 0, 0, 0.20f, 1.0f, false },
+    0,0,0, 0,2.5f, 0, 0, 0, 0.20f, 1.0f, false,
+    "permet la production de poudre à canon · +dégâts (doctrine)",
+    "On a trouvé comment faire exploser les choses à distance — la diplomatie ne s'en remettra jamais." },
 [TECH_FORGE_RUNES] = { "Forge à runes","Forge céleste", THM_FORGE,FN_ARMEE,3, TECH_POUDRIERE, true,false,HERITAGE_METALLURGISTE,
-    0,0,0, 0,3.0f, 0, 0, 3.0f, 1.00f, 2.0f, false },
+    0,0,0, 0,3.0f, 0, 0, 3.0f, 1.00f, 2.0f, false,
+    "⚠ permet les armes enchantées · +dégâts (doctrine) — rapproche la Brèche",
+    "Graver des runes sur une épée ne la rend pas plus tranchante ; elle fait juste plus peur au client." },
 [TECH_OEUVRE_NOIRE] = { "L'Œuvre noire","L'Œuvre noire", THM_FORGE,FN_ARMEE,4, TECH_POUDRIERE, true,false,UNIV,
-    0,0,0, 2.0f,5.0f, 3.0f, 2.0f, 2.0f, 1.50f, 5.0f, false },
+    0,0,0, 2.0f,5.0f, 3.0f, 2.0f, 2.0f, 1.50f, 5.0f, false,
+    "⚠ +armée & +coercition · fracture et charge lourdes — rapproche la Brèche",
+    "On ne nomme jamais « l'Œuvre noire » un projet dont on est fier." },
 /* ---- FORGE · RENFORCEMENT (durabilité / fortification) ---------------- */
 [TECH_ATELIER] = { "Atelier de construction","Atelier de construction", THM_FORGE,FN_RENFORCEMENT,0, NONE, false,false,UNIV,
-    0,0,0.5f, 0,0, 0, 0, 0, 0, 0, false },
+    0,0,0.5f, 0,0, 0, 0, 0, 0, 0, false,
+    "permet de bâtir (chantiers de construction) · +fédéralisme",
+    "Le premier bâtiment qu'un empire construit sert à en construire d'autres — la bureaucratie a déjà gagné." },
 [TECH_QUALITE_MATERIAUX] = { "Qualité des matériaux","Chantier (béton→marbre)", THM_FORGE,FN_RENFORCEMENT,1, TECH_ATELIER, false,false,UNIV,
-    0,0,1.0f, 0.5f,0, 0, 0, 0, 0, 0, false },
+    0,0,1.0f, 0.5f,0, 0, 0, 0, 0, 0, false,
+    "+durabilité des bâtiments (béton → marbre) · +fédéralisme & production",
+    "Le marbre ne dure pas plus longtemps que le béton — il coûte juste plus cher d'avoir l'air éternel." },
 [TECH_FORTIFICATIONS] = { "Fortifications","Forteresse → Citadelle", THM_FORGE,FN_RENFORCEMENT,2, TECH_QUALITE_MATERIAUX, false,false,UNIV,
-    0,0,1.5f, 0,1.0f, 0, 0, 0, 0, 0.2f, false },
+    0,0,1.5f, 0,1.0f, 0, 0, 0, 0, 0.2f, false,
+    "+défense (forteresse → citadelle) · +fédéralisme & armée",
+    "Une citadelle imprenable finit toujours par tomber — mais elle aura d'abord ruiné trois trésoreries." },
 [TECH_AUTOMATES] = { "Automates","Grand Engrenage (Golems)", THM_FORGE,FN_RENFORCEMENT,3, TECH_FORTIFICATIONS, true,false,HERITAGE_MECANISTE,
-    0,0,0, 3.0f,3.0f, 0, 0, 1.0f, 1.00f, 2.0f, false },
+    0,0,0, 3.0f,3.0f, 0, 0, 1.0f, 1.00f, 2.0f, false,
+    "⚠ +défense & production (golems) · charge faustienne — rapproche la Brèche",
+    "Le golem ne se plaint jamais de ses conditions de travail — c'est bien pour cela qu'on l'a inventé." },
 
 /* ---- SOCIÉTÉ · PRODUCTION (croissance / commerce / impôt — sûre) ------ */
 [TECH_COLLECTE_NOURRITURE] = { "Collecte de nourriture","Collecte (liée au biome)", THM_SOCIETE,FN_PRODUCTION,0, NONE, false,false,UNIV,
-    0,0,0, 0.5f,0, 0, 0, 0, 0, 0, false },
+    0,0,0, 0.5f,0, 0, 0, 0, 0, 0, false,
+    "permet la production de nourriture (liée au biome)",
+    "Nourrir le peuple est la première tâche de tout gouvernement — et la première qu'on rogne en cas de crise." },
 [TECH_IRRIGATION] = { "Irrigation & greniers","Greniers communs", THM_SOCIETE,FN_PRODUCTION,1, TECH_COLLECTE_NOURRITURE, false,false,UNIV,
-    0,0,0.5f, 1.0f,0, 0, -0.5f, 0, 0, 0, false },
+    0,0,0.5f, 1.0f,0, 0, -0.5f, 0, 0, 0, false,
+    "+nourriture & +logements (greniers) · +fédéralisme · −fracture",
+    "Le grenier commun appartient à tout le monde, ce qui signifie qu'il appartient surtout à qui le garde." },
 [TECH_COMMERCE] = { "Commerce","Marché → Banque", THM_SOCIETE,FN_PRODUCTION,2, TECH_IRRIGATION, false,false,UNIV,
-    0,0,0, 2.0f,0, 0, 0, 0, 0, 0, false },
+    0,0,0, 2.0f,0, 0, 0, 0, 0, 0, false,
+    "+or (commerce, marché, banque) · +production",
+    "Le marché fixe les prix ; la banque fixe qui a le droit de s'en plaindre." },
 [TECH_CADASTRE] = { "Cadastre","Cadastre (impôt)", THM_SOCIETE,FN_PRODUCTION,3, TECH_COMMERCE, false,false,UNIV,
-    0,0.5f,0, 1.5f,0, 0, 0, 0, 0, 0, false },
+    0,0.5f,0, 1.5f,0, 0, 0, 0, 0, 0, false,
+    "+or (l'impôt) · +légitimité",
+    "Le cadastre ne sert qu'à une chose : savoir exactement combien prendre à qui, et où le trouver." },
 [TECH_ABONDANCE] = { "Abondance","Grenier d'abondance", THM_SOCIETE,FN_PRODUCTION,3, TECH_COMMERCE, false,false,HERITAGE_AGRAIRE,
-    0,1.0f,0, 3.0f,0, 0, -0.5f, 0, 0, 0, false },
+    0,1.0f,0, 3.0f,0, 0, -0.5f, 0, 0, 0, false,
+    "+croissance & +or (l'abondance agraire) · +légitimité · −fracture",
+    "On appelle « abondance » l'année où le grenier déborde juste assez pour ne pas se poser de questions sur l'année suivante." },
 /* E2 §13 — la branche MARCHANDE : le Comptoir branche la province au Centre
  * commercial (marge de transport réduite) ; les Halles ouvrent l'Entrepôt
  * (+500 de cap de stock chacun) — le jeu de marché (stocker bas, vendre haut). */
 [TECH_COMPTOIRS] = { "Comptoirs marchands","Comptoir", THM_SOCIETE,FN_PRODUCTION,1, TECH_COLLECTE_NOURRITURE, false,false,UNIV,
-    0,0,0, 0.8f,0, 0, 0, 0, 0, 0, false },
+    0,0,0, 0.8f,0, 0, 0, 0, 0, 0, false,
+    "branche la province au marché mondial (marge de transport réduite) · +production",
+    "Le comptoir promet de rapprocher les peuples ; il rapproche surtout leurs pièces d'or des nôtres." },
 [TECH_HALLES] = { "Halles & entrepôts","Entrepôt (cap de stock)", THM_SOCIETE,FN_PRODUCTION,2, TECH_COMPTOIRS, false,false,UNIV,
-    0,0,0, 1.2f,0, 0, 0, 0, 0, 0, false },
+    0,0,0, 1.2f,0, 0, 0, 0, 0, 0, false,
+    "+500 de capacité de stock par entrepôt (stocker bas, vendre haut) · +production",
+    "L'entrepôt permet d'attendre que le prix monte — la spéculation, elle, n'attend jamais qu'on l'invente." },
 /* ---- SOCIÉTÉ · ARMÉE (levée — faustien : l'esclavage) ---------------- */
 [TECH_CASERNE] = { "Caserne","Caserne", THM_SOCIETE,FN_ARMEE,0, NONE, false,false,UNIV,
-    0,0,0, 0,0.5f, 0, 0, 0, 0, 0, false },
+    0,0,0, 0,0.5f, 0, 0, 0, 0, 0, false,
+    "permet de recruter de l'infanterie",
+    "La caserne enseigne l'ordre, la discipline et l'art de dormir à quarante dans une pièce prévue pour dix." },
 [TECH_CONSCRIPTION] = { "Conscription","Levée / Conscription", THM_SOCIETE,FN_ARMEE,1, TECH_CASERNE, false,false,UNIV,
-    0,0,0, 0,1.5f, 0, 0, 0, 0, 0, false },
+    0,0,0, 0,1.5f, 0, 0, 0, 0, 0, false,
+    "+armée (la levée en masse)",
+    "La conscription rend le service militaire obligatoire pour tous — sauf, curieusement, pour qui la décrète." },
 [TECH_ORGANISATION] = { "Organisation militaire","État-major", THM_SOCIETE,FN_ARMEE,2, TECH_CONSCRIPTION, false,false,UNIV,
-    0,0,0.5f, 0,2.0f, 0, 0, 0, 0, 0, false },
+    0,0,0.5f, 0,2.0f, 0, 0, 0, 0, 0, false,
+    "+armée (organisation militaire) · +fédéralisme",
+    "L'état-major invente des cartes, des plans et des grades — la victoire, elle, reste à inventer sur le terrain." },
 [TECH_ESCLAVAGE] = { "Économie servile","Marché aux esclaves", THM_SOCIETE,FN_ARMEE,3, TECH_ORGANISATION, true,false,HERITAGE_CLANIQUE,
-    0,0,0, 3.0f,2.0f, 1.0f, 3.0f, 0, 0, 2.0f, false },
+    0,0,0, 3.0f,2.0f, 1.0f, 3.0f, 0, 0, 2.0f, false,
+    "⚠ main-d'œuvre & armées serviles · +coercition · forte fracture interne",
+    "On appelle « économie » ce qui, pour les intéressés, ressemble beaucoup plus à une prison à ciel ouvert." },
 [TECH_CASTE_MARTIALE] = { "Caste martiale","Caste martiale", THM_SOCIETE,FN_ARMEE,4, TECH_ORGANISATION, true,false,UNIV,
-    0,0,0, 0,4.0f, 2.0f, 2.0f, 0, 0, 2.5f, false },
+    0,0,0, 0,4.0f, 2.0f, 2.0f, 0, 0, 2.5f, false,
+    "⚠ +armée (caste guerrière) · +coercition & fracture — rapproche la Brèche",
+    "Naître soldat plutôt que le devenir : la caste martiale règle d'avance la question du mérite." },
 /* ---- SOCIÉTÉ · RENFORCEMENT (K / L / intégration — la spine résiliente) */
 [TECH_CHANCELLERIE] = { "Chancellerie","Tribunal / Chancellerie", THM_SOCIETE,FN_RENFORCEMENT,1, TECH_COLLECTE_NOURRITURE, false,false,UNIV,
-    3.0f,0,0, 0,0, 0, 0, 0, 0, 0, false },
+    3.0f,0,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+services (administration) · +3 capacité narrative (K)",
+    "Le tribunal rend la justice ; la chancellerie rend surtout la paperasse, en trois exemplaires." },
 [TECH_FOI] = { "Foi","Temple → Cathédrale", THM_SOCIETE,FN_RENFORCEMENT,2, TECH_CHANCELLERIE, false,false,UNIV,
-    0,3.0f,0, 0,0, 0, 0, 0, 0, 0, false },
+    0,3.0f,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+légitimité & services idéologiques (temple → cathédrale)",
+    "Le temple console les pauvres de leur pauvreté ; la cathédrale, elle, coûte cher aux riches pour qu'on les remarque." },
 [TECH_INTEGRATION] = { "Droit d'intégration","Creuset (assimilation)", THM_SOCIETE,FN_RENFORCEMENT,3, TECH_FOI, false,false,HERITAGE_ADAPTATIF,
-    0,1.0f,0, 0,0, 0, -3.0f, 0, 0, 0, false },
+    0,1.0f,0, 0,0, 0, -3.0f, 0, 0, 0, false,
+    "+cohésion (l'assimilation des peuples) · forte baisse de fracture",
+    "Le creuset fond toutes les cultures en une seule — la nôtre, comme par hasard." },
 [TECH_CULTE_IMPERIAL] = { "Culte impérial","Mythe homogénéisant", THM_SOCIETE,FN_RENFORCEMENT,4, TECH_FOI, true,false,UNIV,
-    1.0f,2.0f,0, 0,0, 0, -2.0f, 0, 0.50f, 3.0f, false },
+    1.0f,2.0f,0, 0,0, 0, -2.0f, 0, 0.50f, 3.0f, false,
+    "⚠ +cohésion forcée (K & légitimité) · charge faustienne — rapproche la Brèche",
+    "Un bon mythe fondateur n'a pas besoin d'être vrai ; il a juste besoin d'être répété plus fort que les autres." },
 /* F3 — ALCHIMIE (gate de l'Alambic) : la distillation du salpêtre en FLUX + nécessaire
  * d'alchimiste. NON-faustienne — c'est la SUPPLY bénigne ; la charge faustienne vivra sur
  * les TRANSMUTEURS (FAU2) et leur gate dédié (FAU4). Tier 2, peu profonde (atteignable). */
 [TECH_ALCHIMIE] = { "Alchimie","Alambic", THM_SOCIETE,FN_PRODUCTION,2, TECH_COMMERCE, false,false,UNIV,
-    0,0,0, 1.0f,0, 0, 0, 0, 0.10f, 0, false },
+    0,0,0, 1.0f,0, 0, 0, 0, 0.10f, 0, false,
+    "permet l'Alambic (distillation du salpêtre) · +production, non faustienne",
+    "L'alchimiste jure qu'il ne cherche que le salpêtre — l'or viendra bien assez tôt, dit-il, à chaque siècle." },
 /* FAU4 — TRANSMUTATION (FAUSTIENNE, gate du Réplicateur ligneux : flux → bois). Profonde
  * (tier 3, derrière l'Alchimie) → charge de base élevée (paroxysme = pression de Brèche). */
 [TECH_TRANSMUTATION] = { "Transmutation","Réplicateur ligneux", THM_SOCIETE,FN_PRODUCTION,3, TECH_ALCHIMIE, true,false,UNIV,
-    0,0,0, 2.0f,0, 0, 0, 1.0f, 0.30f, 1.2f, false },
+    0,0,0, 2.0f,0, 0, 0, 1.0f, 0.30f, 1.2f, false,
+    "⚠ permet le Réplicateur ligneux (flux → bois) · charge faustienne — rapproche la Brèche",
+    "Transmuter du bois à partir de rien règle la pénurie de charpente et ouvre, discrètement, une autre pénurie." },
 
 /* ====================================================================== */
 /* ÉTOFFE (2026-06-28) — BRANCHES CULTURELLES D'HÉRITAGE (tier 1-2)        */
@@ -164,34 +254,58 @@ static const TechNode NODES[TECH_COUNT] = {
 /* ====================================================================== */
 /* ---- Ésotérique (Savoir·Renforcement → COMMUNION) : +stabilité --------- */
 [TECH_GLYPHES_ETHERES] = { "Glyphes éthérés","Cercle de glyphes", THM_SAVOIR,FN_RENFORCEMENT,1, TECH_BIBLIOTHEQUE, false,false,HERITAGE_ESOTERIQUE,
-    0,0.5f,0, 0,0, 0, 0, 0.3f, 0, 0.10f, false },
+    0,0.5f,0, 0,0, 0, 0, 0.3f, 0, 0.10f, false,
+    "+stabilité (glyphes protecteurs) · légère puissance brute",
+    "Un glyphe bien tracé protège des mauvais esprits ; contre les mauvais impôts, on n'a rien trouvé." },
 [TECH_COMMUNION_ETHEREE] = { "Communion éthérée","Bastion éthéré", THM_SAVOIR,FN_RENFORCEMENT,2, TECH_GLYPHES_ETHERES, false,false,HERITAGE_ESOTERIQUE,
-    0,1.0f,0, 0,0, 0, 0, 0.6f, 0.15f, 0.40f, false },
+    0,1.0f,0, 0,0, 0, 0, 0.6f, 0.15f, 0.40f, false,
+    "+stabilité & +cohésion (l'harmonie éthérée) · puissance brute accrue",
+    "Le bastion éthéré relie toutes les âmes du royaume — pratique, pour savoir qui pense encore de travers." },
 /* ---- Métallurgiste (Forge·Armée → FORGE_RUNES) : +production ----------- */
 [TECH_ALLIAGES_NAINS] = { "Alliages des profondeurs","Fonderie de bronze", THM_FORGE,FN_ARMEE,1, TECH_COLLECTE_ARGILE, false,false,HERITAGE_METALLURGISTE,
-    0,0.3f,0, 0,0, 0, 0, 0, 0, 0, false },
+    0,0.3f,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+dégâts d'armes (doctrine) · légère stabilité — métallurgie de fond",
+    "Les alliages des profondeurs sortent de mines qu'on n'a jamais fini de creuser, ni de vider." },
 [TECH_GRAVURE_RUNES] = { "Gravure runique","Rune-forge", THM_FORGE,FN_ARMEE,2, TECH_ALLIAGES_NAINS, false,false,HERITAGE_METALLURGISTE,
-    0,0.3f,0, 0,0, 0, 0, 0.5f, 0.10f, 0.50f, false },
+    0,0.3f,0, 0,0, 0, 0, 0.5f, 0.10f, 0.50f, false,
+    "+dégâts d'armes & +puissance brute (runes) · flux modéré vers la Brèche",
+    "Graver une rune sur un marteau ne le rend pas magique — mais le forgeron facture comme si c'était le cas." },
 /* ---- Mécaniste (Forge·Prod→Renf → AUTOMATES) : +production/+efficacité - */
 [TECH_MECANISTE_ROUAGES] = { "Rouages de précision","Engrenagerie", THM_FORGE,FN_PRODUCTION,1, TECH_FONDERIE, false,false,HERITAGE_MECANISTE,
-    0.3f,0.5f,0, 0,0, 0, 0, 0, 0.05f, 0.20f, false },
+    0.3f,0.5f,0, 0,0, 0, 0, 0, 0.05f, 0.20f, false,
+    "+production (mécanique de précision) · +capacité narrative & stabilité",
+    "Un rouage de précision tourne exactement comme prévu — le seul rouage du royaume dans ce cas." },
 [TECH_MECANISTE_HORLOGERIE] = { "Mécanisme d'horlogerie","Horloge mécanique", THM_FORGE,FN_RENFORCEMENT,2, TECH_MECANISTE_ROUAGES, false,false,HERITAGE_MECANISTE,
-    0.3f,0.5f,0, 0,0, 0, 0, 0.5f, 0.10f, 0.30f, false },
+    0.3f,0.5f,0, 0,0, 0, 0, 0.5f, 0.10f, 0.30f, false,
+    "+efficacité d'emploi (synchronisation) · +capacité narrative & stabilité",
+    "L'horloge mécanique donne l'heure exacte à tout le royaume — l'heure du prochain impôt, notamment." },
 /* ---- Adaptatif (Société·Renforcement → INTEGRATION) : +cohésion -------- */
 [TECH_DROIT_COUTUMIER] = { "Droit coutumier","Code coutumier", THM_SOCIETE,FN_RENFORCEMENT,1, TECH_CHANCELLERIE, false,false,HERITAGE_ADAPTATIF,
-    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false },
+    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+stabilité (droit coutumier, le compromis codifié)",
+    "Le droit coutumier consiste à écrire noir sur blanc ce que tout le monde faisait déjà de toute façon." },
 [TECH_LANGUE_FRANQUE] = { "Langue franque","Lingua franca", THM_SOCIETE,FN_RENFORCEMENT,2, TECH_DROIT_COUTUMIER, false,false,HERITAGE_ADAPTATIF,
-    1.0f,1.5f,0, 0,0, 0, -1.0f, 0, 0, 0, false },
+    1.0f,1.5f,0, 0,0, 0, -1.0f, 0, 0, 0, false,
+    "+cohésion & +stabilité (langue commune) · +capacité narrative · −fracture",
+    "Une langue commune règle bien des différends — surtout ceux qui portaient uniquement sur des malentendus." },
 /* ---- Agraire (Société·Production → ABONDANCE) : +production agricole --- */
 [TECH_VERGERS_ETAGES] = { "Vergers étagés","Vergers en terrasses", THM_SOCIETE,FN_PRODUCTION,1, TECH_COLLECTE_NOURRITURE, false,false,HERITAGE_AGRAIRE,
-    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },
+    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+production agricole (vergers en terrasses) · légère stabilité",
+    "Étager les vergers sur la colline permet à chaque paysan de voir, d'en haut, celui qui a la meilleure vue." },
 [TECH_PATURAGES_INTEGRES] = { "Pâturages intégrés","Prairies-vergers", THM_SOCIETE,FN_PRODUCTION,2, TECH_VERGERS_ETAGES, false,false,HERITAGE_AGRAIRE,
-    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false },
+    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false,
+    "+production & +croissance (polyculture) · stabilité accrue",
+    "Mélanger bétail et vergers sur la même terre : la polyculture, ou l'art de ne mettre aucun œuf dans le même panier — sauf tous." },
 /* ---- Clanique (Société·Armée → ESCLAVAGE) : +stabilité / +production --- */
 [TECH_RITES_GUERRIERS] = { "Rites guerriers","Sanctuaire des ancêtres", THM_SOCIETE,FN_ARMEE,1, TECH_CASERNE, false,false,HERITAGE_CLANIQUE,
-    0,0.3f,0, 0,0, 0.2f, 0, 0, 0, 0, false },
+    0,0.3f,0, 0,0, 0.2f, 0, 0, 0, 0, false,
+    "+moral des troupes (discipline martiale) · légère coercition",
+    "Honorer les ancêtres au champ de bataille coûte moins cher que de bons soldes, et fonctionne presque aussi bien." },
 [TECH_HORDES_CONQUERANTES] = { "Hordes conquérantes","Camps de rapine", THM_SOCIETE,FN_ARMEE,2, TECH_RITES_GUERRIERS, false,false,HERITAGE_CLANIQUE,
-    0,0.5f,0, 0,0, 0.3f, 0.5f, 0, 0, 0, false },
+    0,0.5f,0, 0,0, 0.3f, 0.5f, 0, 0, 0, false,
+    "+moral des troupes · +coercition · fracture interne en hausse",
+    "Le camp de rapine finance la horde suivante avec le butin de la précédente — un modèle économique étonnamment stable." },
 
 /* ====================================================================== */
 /* COMBOS (2026-06-28) — TIER-4 COMBINATOIRE EXCLUSIF (une paire d'héritages)*/
@@ -202,33 +316,61 @@ static const TechNode NODES[TECH_COUNT] = {
 /* FN_PRODUCTION/RENFORCEMENT → NODE_PROD_PCT/EFF_PCT (plus bas) + prospérité. */
 /* ====================================================================== */
 [TECH_COMBO_POUDRE] = { "Arquebuserie de précision","Manufacture d'armes à feu", THM_FORGE,FN_ARMEE,4, NONE, false,false,HERITAGE_MECANISTE,
-    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Méca×Métal : +dégâts (feu) via doctrine + poudre (prod%) */
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false,           /* Méca×Métal : +dégâts (feu) via doctrine + poudre (prod%) */
+    "exige l'accès plein Mécaniste+Métallurgiste · +dégâts (doctrine, tier 4)",
+    "L'ingénieur et le métallurgiste se sont enfin parlé — le résultat troue l'acier à cent pas." },
 [TECH_COMBO_AUTOMATES_ARC] = { "Automates arcanes","Golems d'essence", THM_FORGE,FN_RENFORCEMENT,4, NONE, false,false,HERITAGE_ESOTERIQUE,
-    0,0,0, 0,0, 0, 0, 1.0f, 0, 0, false },         /* Éso×Méca : +production (prod%) + puissance */
+    0,0,0, 0,0, 0, 0, 1.0f, 0, 0, false,         /* Éso×Méca : +production (prod%) + puissance */
+    "exige l'accès plein Ésotérique+Mécaniste · +10 % de production · +puissance brute",
+    "Un golem animé par de l'essence pure ne demande jamais d'augmentation — c'est là tout son avantage sur le personnel." },
 [TECH_COMBO_ACADEMIE] = { "Académie cosmopolite","Grande académie", THM_SAVOIR,FN_PRODUCTION,4, NONE, false,false,HERITAGE_ESOTERIQUE,
-    1.0f,0,0, 0,0, 0, 0, 0, 0, 0, false },         /* Éso×Adaptatif : +recherche (Savoir·Prod) + efficacité */
+    1.0f,0,0, 0,0, 0, 0, 0, 0, 0, false,         /* Éso×Adaptatif : +recherche (Savoir·Prod) + efficacité */
+    "exige l'accès plein Ésotérique+Adaptatif · +1 capacité narrative & +efficacité",
+    "L'académie cosmopolite accueille tous les savoirs du monde, à condition qu'ils citent nos érudits en premier." },
 [TECH_COMBO_DRUIDE] = { "Abondance druidique","Bosquet nourricier", THM_SOCIETE,FN_PRODUCTION,4, NONE, false,false,HERITAGE_ESOTERIQUE,
-    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Éso×Agraire : +production agricole (prod%) + stabilité */
+    0,1.0f,0, 0,0, 0, 0, 0, 0, 0, false,         /* Éso×Agraire : +production agricole (prod%) + stabilité */
+    "exige l'accès plein Ésotérique+Agraire · +8 % de production agricole · +stabilité",
+    "Le bosquet nourricier fait pousser le blé plus vite que la raison ne pousse chez les prêtres qui l'ont béni." },
 [TECH_COMBO_CHAMAN] = { "Chamanisme de guerre","Cercle des chamans", THM_SAVOIR,FN_ARMEE,4, NONE, false,false,HERITAGE_ESOTERIQUE,
-    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Éso×Clanique : +magie de guerre via doctrine (arcane_power) */
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false,           /* Éso×Clanique : +magie de guerre via doctrine (arcane_power) */
+    "exige l'accès plein Ésotérique+Clanique · +puissance arcane des armées (doctrine, tier 4)",
+    "Le chaman de guerre invoque les esprits des ancêtres ; les ancêtres, eux, n'ont jamais rien demandé." },
 [TECH_COMBO_GUILDES] = { "Guildes maîtresses","Hôtel des guildes", THM_SOCIETE,FN_PRODUCTION,4, NONE, false,false,HERITAGE_METALLURGISTE,
-    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Métal×Adaptatif : +production (prod%) + or/stabilité */
+    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false,         /* Métal×Adaptatif : +production (prod%) + or/stabilité */
+    "exige l'accès plein Métallurgiste+Adaptatif · +8 % de production · +stabilité",
+    "L'hôtel des guildes régule les prix, les métiers et surtout qui a le droit d'en pratiquer un." },
 [TECH_COMBO_CHARRUES] = { "Charrues lourdes","Atelier de charronnage", THM_SOCIETE,FN_PRODUCTION,4, NONE, false,false,HERITAGE_METALLURGISTE,
-    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Métal×Agraire : +production agricole (prod%) */
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false,           /* Métal×Agraire : +production agricole (prod%) */
+    "exige l'accès plein Métallurgiste+Agraire · +8 % de production agricole",
+    "La charrue lourde retourne la terre plus profondément — et enterre un peu plus profondément aussi le paysan qui la tire." },
 [TECH_COMBO_POLIORCETIQUE] = { "Poliorcétique","Forge de guerre", THM_FORGE,FN_ARMEE,4, NONE, false,false,HERITAGE_METALLURGISTE,
-    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Métal×Clanique : +dégâts via doctrine */
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false,           /* Métal×Clanique : +dégâts via doctrine */
+    "exige l'accès plein Métallurgiste+Clanique · +dégâts (doctrine, tier 4)",
+    "La science du siège se résume à une idée simple : le mur le plus haut finit toujours par tomber, juste plus cher." },
 [TECH_COMBO_HORLOGE_MARCH] = { "Horlogerie marchande","Comptoir mécanique", THM_FORGE,FN_RENFORCEMENT,4, NONE, false,false,HERITAGE_MECANISTE,
-    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Méca×Adaptatif : +efficacité (eff%) + or/stabilité */
+    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false,         /* Méca×Adaptatif : +efficacité (eff%) + or/stabilité */
+    "exige l'accès plein Mécaniste+Adaptatif · +10 % d'efficacité · +stabilité",
+    "Le comptoir mécanique calcule les taux de change plus vite qu'un marchand — et sans jamais se sentir coupable." },
 [TECH_COMBO_MACHINES_AGRI] = { "Machines agricoles","Moulins & semoirs", THM_SOCIETE,FN_PRODUCTION,4, NONE, false,false,HERITAGE_MECANISTE,
-    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Méca×Agraire : +production agricole (prod%, fort) */
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false,           /* Méca×Agraire : +production agricole (prod%, fort) */
+    "exige l'accès plein Mécaniste+Agraire · +12 % de production agricole",
+    "Le moulin mécanique fait le travail de vingt paysans — les dix-neuf de trop iront grossir les villes." },
 [TECH_COMBO_SIEGE] = { "Engins de siège","Arsenal de siège", THM_FORGE,FN_ARMEE,4, NONE, false,false,HERITAGE_MECANISTE,
-    0,0,0, 0,0, 0, 0, 0, 0, 0, false },           /* Méca×Clanique : +dégâts via doctrine */
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false,           /* Méca×Clanique : +dégâts via doctrine */
+    "exige l'accès plein Mécaniste+Clanique · +dégâts (doctrine, tier 4)",
+    "L'engin de siège n'a qu'un argument, mais il est très convaincant contre n'importe quel mur." },
 [TECH_COMBO_GRENIER_COLON] = { "Grenier colonial","Comptoir-grenier", THM_SOCIETE,FN_RENFORCEMENT,4, NONE, false,false,HERITAGE_ADAPTATIF,
-    1.0f,1.5f,0, 0,0, 0, 0, 0, 0, 0, false },      /* Adaptatif×Agraire : +stabilité & +croissance (K,L) */
+    1.0f,1.5f,0, 0,0, 0, 0, 0, 0, 0, false,      /* Adaptatif×Agraire : +stabilité & +croissance (K,L) */
+    "exige l'accès plein Adaptatif+Agraire · +capacité narrative & +légitimité",
+    "Le grenier colonial nourrit la métropole d'abord, la colonie ensuite, et le colon jamais en premier." },
 [TECH_COMBO_FOEDERATI] = { "Foederati","Camp fédéré", THM_SOCIETE,FN_ARMEE,4, NONE, false,false,HERITAGE_ADAPTATIF,
-    0,0.5f,0, 0,0, 0, -0.5f, 0, 0, 0, false },     /* Adaptatif×Clanique : +moral via doctrine + cohésion */
+    0,0.5f,0, 0,0, 0, -0.5f, 0, 0, 0, false,     /* Adaptatif×Clanique : +moral via doctrine + cohésion */
+    "exige l'accès plein Adaptatif+Clanique · +moral (doctrine, tier 4) · −fracture",
+    "Les foederati combattent sous notre bannière pour un salaire — leur loyauté, elle, reste facturée à part." },
 [TECH_COMBO_HORDE_ECO] = { "Économie de horde","Halle du butin", THM_SOCIETE,FN_ARMEE,4, NONE, false,false,HERITAGE_AGRAIRE,
-    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false },         /* Agraire×Clanique : +moral via doctrine + production (prod%) */
+    0,0.5f,0, 0,0, 0, 0, 0, 0, 0, false,         /* Agraire×Clanique : +moral via doctrine + production (prod%) */
+    "exige l'accès plein Agraire+Clanique · +moral (doctrine, tier 4) · +6 % de production",
+    "L'économie de horde repose sur un principe agricole simple : on récolte ce que le voisin a semé." },
 
 /* ====================================================================== */
 /* APEX TRIPLES (2026-06-28) — TIER-5 : la fusion de TROIS héritages (accès PLEIN aux 3).   */
@@ -236,11 +378,17 @@ static const TechNode NODES[TECH_COUNT] = {
 /* porte = la triple-métabolisation + le coût tier-5). Effets sur leviers vivants.          */
 /* ====================================================================== */
 [TECH_APEX_ARQUEBUSE] = { "Arquebuse runique","Arsenal runique à feu", THM_FORGE,FN_ARMEE,5, NONE, false,false,HERITAGE_MECANISTE,
-    0,0,0, 0,0, 0, 0, 0, 0, 0, false },            /* Méca×Métal×Éso : +dégâts (doctrine) + ARQUEBUSIERS ciblés (firearm_power) */
+    0,0,0, 0,0, 0, 0, 0, 0, 0, false,            /* Méca×Métal×Éso : +dégâts (doctrine) + ARQUEBUSIERS ciblés (firearm_power) */
+    "exige l'accès plein Mécaniste+Métallurgiste+Ésotérique · +dégâts (doctrine, tier 5) · +50 % de dégâts ARQUEBUSIERS (ciblé)",
+    "Trois peuples ont fusionné leur génie pour ce pinacle : un fusil qui tire des runes. Personne n'a demandé si c'était sage." },
 [TECH_APEX_CONCILE] = { "Concile des savants","Grand concile", THM_SAVOIR,FN_PRODUCTION,5, NONE, false,false,HERITAGE_ESOTERIQUE,
-    1.0f,0,0, 0,0, 0, 0, 0, 0, 0, false },         /* Éso×Adaptatif×Méca : +recherche (Savoir·Prod) + prod% */
+    1.0f,0,0, 0,0, 0, 0, 0, 0, 0, false,         /* Éso×Adaptatif×Méca : +recherche (Savoir·Prod) + prod% */
+    "exige l'accès plein Ésotérique+Adaptatif+Mécaniste · +1 capacité narrative · +12 % d'efficacité",
+    "Le concile réunit les plus grands esprits de trois peuples — pour débattre, surtout, de qui présidera." },
 [TECH_APEX_LEGION] = { "Légion universelle","Camp des nations", THM_SOCIETE,FN_ARMEE,5, NONE, false,false,HERITAGE_ADAPTATIF,
-    0,0.5f,0, 0,0, 0, -0.5f, 0, 0, 0, false },     /* Adaptatif×Métal×Clanique : +moral (doctrine) + cohésion */
+    0,0.5f,0, 0,0, 0, -0.5f, 0, 0, 0, false,     /* Adaptatif×Métal×Clanique : +moral (doctrine) + cohésion */
+    "exige l'accès plein Adaptatif+Métallurgiste+Clanique · +moral (doctrine, tier 5) · +stabilité · −fracture",
+    "La légion universelle accueille tous les peuples sous un même étendard — celui qui paie le mieux, en général." },
 };
 
 /* ====================================================================== */
@@ -369,6 +517,17 @@ TechTheme tech_heritage_affinity(Heritage r){
 const TechNode *tech_node(TechId id){ return (id>=0&&id<TECH_COUNT)?&NODES[id]:NULL; }
 const char *tech_name(TechId id){ return (id>=0&&id<TECH_COUNT)?NODES[id].name:"?"; }
 const char *tech_unlocks(TechId id){ return (id>=0&&id<TECH_COUNT)?NODES[id].unlocks:"?"; }
+/* PACK FLAVOR (display-only) — NULL-safe : hors-borne ou champ vide ⇒ "". */
+const char *tech_hover(TechId id){
+    if (id<0||id>=TECH_COUNT) return "";
+    const char *h = NODES[id].hover;
+    return h ? h : "";
+}
+const char *tech_flavor(TechId id){
+    if (id<0||id>=TECH_COUNT) return "";
+    const char *f = NODES[id].flavor;
+    return f ? f : "";
+}
 const char *tech_theme_name(TechTheme t){
     static const char *N[THM_COUNT]={"Savoir","Forge","Société"};
     return (t>=0&&t<THM_COUNT)?N[t]:"?";

@@ -148,6 +148,17 @@ func _make_atom(nd: Dictionary, target: Vector2):
 	atom.radius = rr
 	atom.size = Vector2(rr * 2.0, rr * 2.0)
 	atom.position = target - Vector2(rr, rr)
+	# PACK FLAVOR — survol (tooltip natif Godot, Atom hérite de Control) : 2 lignes,
+	# le mécanique (hover, ce que le nœud fait vraiment) puis le mot du conseiller (flavor,
+	# cynique à la Civ) — même motif que culture_creator.gd (nom/hover en tooltip_text).
+	var hov := String(nd.get("hover", ""))
+	var fla := String(nd.get("flavor", ""))
+	var tip := String(nd["name"])
+	if hov != "":
+		tip += "\n" + hov
+	if fla != "":
+		tip += "\n— " + fla
+	atom.tooltip_text = tip
 	var st := int(nd["state"])
 	var col := COL_LOCKED
 	if st == 1:

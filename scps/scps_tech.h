@@ -131,6 +131,15 @@ typedef struct {
     float flux;                  /* FLUX PERMANENT que K doit narrer (≥0) */
     float charge;                /* contribution à la charge faustienne */
     bool  triggers_crisis;       /* tire soi-même la gâchette de la fin */
+
+    /* PACK FLAVOR (display-only, 2026-07-05) — le survol Medusa affiche DEUX lignes :
+     * `hover` = l'effet MÉCANIQUE réel (dérivé des champs ci-dessus : dK/dL/dPuissance/
+     * NODE_PROD_PCT/army_doctrine — jamais une promesse que le nœud ne tient pas), et
+     * `flavor` = une ligne CYNIQUE à la Civ (le commentaire du conseiller, jamais un nom
+     * de variable SCPS). Aucun des deux n'est sérialisé ni lu par le moteur : PUR AFFICHAGE.
+     * Défaut NULL (les helpers tech_hover/tech_flavor sont NULL-safe → "" côté appelant). */
+    const char *hover;
+    const char *flavor;
 } TechNode;
 
 /* ---- SYNCRÉTIQUE — profondeur de contact & nœuds de diffusion ---------- *
@@ -213,6 +222,10 @@ void        tech_state_init(TechState *s, bool has_ruins_access);
 const TechNode *tech_node(TechId id);
 const char *tech_name(TechId id);
 const char *tech_unlocks(TechId id);          /* le bâtiment/capacité déverrouillé */
+/* PACK FLAVOR (display-only) — hover MÉCANIQUE (ce que le nœud fait vraiment) et ligne
+ * de FLAVOR cynique (le mot du conseiller). NULL-safe : "" si id hors-borne ou champ NULL. */
+const char *tech_hover(TechId id);
+const char *tech_flavor(TechId id);
 const char *tech_theme_name(TechTheme t);     /* "Savoir"/"Forge"/"Société" */
 const char *tech_function_name(TechFunction f);/* "Production"/"Armée"/"Renforcement" */
 int         tech_quarter(TechTheme t, TechFunction f);  /* 0..8 — l'angle */

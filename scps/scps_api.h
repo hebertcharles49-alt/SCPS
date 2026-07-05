@@ -511,6 +511,30 @@ typedef struct {
     const char *label;             /* FEED_DIRECTOR : le NOM de l'évènement (résolu) ; "" sinon */
 } ScpsFeedEvent;
 int scps_feed_poll(ScpsSim *s, int after_seq, ScpsFeedEvent *out, int max);
+
+/* ── MEMBRANE DE DÉCISION — LA FILE JOUEUR (3e voie des alertes) ────────────────────
+ * Un évènement à VRAIE décision (n_options>1) qui concerne le JOUEUR n'est pas tranché
+ * par l'IA à sa place : il ATTEND dans EventsState.pending[] (EventsState, scps_events.h).
+ * `situation` = le nom de l'évènement (résolu, "Le contremaître réclame"…) ; `labels`/
+ * `flavors` = les 3 choix (label court + ce qu'il raconte, en mots — jamais un nom SCPS,
+ * le même gate events_text_clean les couvre) ; `region` = la province concernée (-1 si
+ * EV_COUNTRY) ; `days_left` = jusqu'à l'auto-résolution (ai_chance), pour l'urgence UI. */
+typedef struct {
+    const char *situation;         /* le NOM de l'évènement (résolu — membrane) */
+    const char *labels[4];         /* les choix — jusqu'à 4 (le max de la table) */
+    const char *flavors[4];        /* ce que RACONTE chaque choix (tooltip) */
+    int n_options;
+    int region;                    /* -1 si le sujet est un PAYS (EV_COUNTRY) */
+    int days_left;                 /* avant auto-résolution (180 j au total) */
+} ScpsPendingEvent;
+/* nombre d'évènements EN ATTENTE du choix du joueur. */
+int scps_pending_count(ScpsSim *s);
+/* lit le pending au slot `slot` (0..scps_pending_count()). 0 = slot invalide (out inchangé). */
+int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out);
+/* CHOISIT l'option `option` du pending au slot `slot` — ENFILE CMD_EVENT_CHOICE
+ * (drain déterministe, revalidé). 1 = mis en file, 0 = refus (slot/option hors-borne). */
+int scps_player_event_choice(ScpsSim *s, int slot, int option);
+
 /* VOIE CONDITIONS : les alertes d'ÉTAT du joueur, calculées en UN appel (C scanne,
  * le front affiche) : révolte qui gronde · famine · siège ennemi sur mon sol ·
  * prix EXORBITANT au marché · bien de conso INTROUVABLE. -1 / "" = pas d'alerte. */
@@ -603,6 +627,11 @@ typedef struct {
     const char *effet;    /* l'utilité concrète */
     int  cost;      /* points de recherche (0 pour une base) */
     int  prereq;    /* INDICE du nœud prérequis dans CE tableau (-1 = aucun : une base) — pour tracer les arêtes */
+    /* PACK FLAVOR (display-only, 2026-07-05) : le survol Medusa (UI Godot) affiche ces deux
+     * lignes sous le nom — hover = l'effet mécanique réel (tech_hover), flavor = le mot
+     * cynique du conseiller (tech_flavor). "" si absent — jamais NULL côté appelant. */
+    const char *hover;
+    const char *flavor;
 } ScpsTechNode;
 int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max);
 

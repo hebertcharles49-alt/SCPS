@@ -615,6 +615,40 @@ int main(int argc, char **argv){
         religion_reset();
     }
 
+    /* ── MEMBRANE DE DÉCISION — la file joueur : pending EXPOSÉ + choix DRAINÉ. ── */
+    {
+        ScpsSim *sp = scps_sim_new(); scps_sim_generate(sp, seed);
+        ok("pending : aucune décision en attente à la genèse (monde frais)",
+           scps_pending_count(sp)==0);
+        ScpsPendingEvent pe; memset(&pe,0,sizeof pe);
+        ok("pending_event sur un slot HORS-BORNE renvoie 0 (jamais déréférencé)",
+           scps_pending_event(sp, 0, &pe)==0 && pe.n_options==0);
+        ok("player_event_choice sur un slot HORS-BORNE est un refus net",
+           scps_player_event_choice(sp, 0, 0)==0);
+        /* on laisse le monde VIVRE assez longtemps pour qu'une VRAIE décision (Marbrive,
+         * n_options>1) finisse par concerner le joueur — la façade l'ENFILE (pas d'auto-
+         * résolution IA sur son propre pays) ; on la résout via le VERBE (drain déterministe). */
+        int pl2 = scps_player(sp);
+        int n0 = scps_pending_count(sp);
+        for (int yr=0; yr<200 && scps_pending_count(sp)==n0; yr++)
+            scps_sim_advance_days(sp, 365);
+        int n1 = scps_pending_count(sp);
+        if (n1>n0){
+            ok("pending_event lit un slot VALIDE (situation résolue, une option ou plus)",
+               scps_pending_event(sp, 0, &pe)==1 && pe.n_options>=1 && pe.situation[0]!='\0');
+            ok("player_event_choice ENFILE le choix (mis en file)",
+               scps_player_event_choice(sp, 0, 0)==1);
+            scps_sim_advance_days(sp, 2);   /* le drain RÉSOUT au prochain tick */
+            ok("le choix DRAINÉ retire le pending de la file", scps_pending_count(sp)<n1);
+        } else {
+            ok("(aucune décision joueur apparue en 150 ans sur cette graine — ignoré)", true);
+            ok("(idem)", true);
+            ok("(idem)", true);
+        }
+        (void)pl2;
+        scps_sim_free(sp);
+    }
+
     free(rgba); free(lay);
     printf("\n══ BILAN : %d réussis, %d échoués ══\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

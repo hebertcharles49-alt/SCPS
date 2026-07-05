@@ -77,6 +77,10 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * Le §NF exclut le joueur (« il construit à la main ») : voici la main. Gates au
         * drain = miroir d'ai_build_civmanuf (staffage/tier/intrant/slot libre/or). */
        CMD_BUILD_MANUF,
+       /* MEMBRANE DE DÉCISION — le joueur CHOISIT parmi les options d'un évènement en
+        * attente (a[0]=slot dans EventsState.pending[], a[1]=option). Revalidé au drain
+        * (slot occupé, option<n_options, sujet toujours au joueur) → pending_event_resolve. */
+       CMD_EVENT_CHOICE,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

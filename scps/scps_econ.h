@@ -677,6 +677,19 @@ void   econ_flux_add(int cid, FluxComp comp, float amount);   /* incrémente (si
 double econ_flux_get(int cid, FluxComp comp);                 /* cumul depuis le dernier reset */
 void   econ_flux_reset(void);                                 /* RAZ (début de fenêtre de mesure) */
 const char *econ_flux_name(FluxComp comp);                    /* libellé court (français, outillage) */
+/* MEMBRANE DE DÉCISION — le REVENU ANNUEL par pays (Σtaxes de la fenêtre écoulée),
+ * capturé PUIS remis à zéro (remplace les sites nus d'econ_flux_reset : chronicle.c
+ * et scps_api.c appellent désormais CETTE fonction au roulement d'année — un SEUL
+ * site fait les deux gestes). `g_tax_lastyear` est un ACCUMULATEUR INTER-TICKS
+ * (persiste d'une année sur l'autre) → SÉRIALISÉ (economy_flux_year_save/load,
+ * section façade v62) pour que --savetest reste byte-identique après un reload. */
+void   econ_flux_year_capture(void);
+/* Le revenu annuel COURANT (dernière capture) d'un pays — 0 hors-borne. Sert de
+ * base à d_treasury_mois (EvEffect) : montant = d_treasury_mois × (tax_year/12). */
+float  econ_country_tax_year(int cid);
+/* sérialisation de g_tax_lastyear[] (section façade, motif econ_colony_cd_save/load). */
+void   econ_flux_year_save(FILE *f);
+bool   econ_flux_year_load(FILE *f);
 /* E3 §16 — le prix d'ANCRE d'un bien (BASE_PRICE) : pour normaliser les indices
  * de prix (télémétrie du lissage par les stocks). 0 si hors borne. */
 float econ_base_price(Resource r);

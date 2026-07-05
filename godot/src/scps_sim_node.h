@@ -119,6 +119,11 @@ public:
     Dictionary research_status();                     /* { target:int(-1=aucune), progress:float[0..1] } */
     Dictionary age_state();                           /* §7 : { age:int(-1=aucun), engaged:bool, name:String } */
     Array      feed_poll(int after_seq);              /* FIL d'évènements joueur : [{seq,year,kind,region,a,b}] */
+    /* MEMBRANE DE DÉCISION — la file joueur : un évènement à VRAIE décision qui concerne
+     * le joueur ATTEND son choix (pas tranché par l'IA à sa place). */
+    int        pending_count();
+    Dictionary pending_event(int slot);               /* {situation,labels:Array,flavors:Array,n_options,region,days_left} */
+    bool       player_event_choice(int slot, int option);
     Dictionary player_alerts();                       /* CONDITIONS : révolte/famine/siège/prix/conso en un appel */
     bool       player_age_engage();                   /* §7 : engager l'âge courant (une fois par âge) */
     bool       player_colonize(int prov);             /* COLONISATION (charte) : fonder sur une province vierge */
