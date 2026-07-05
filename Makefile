@@ -30,58 +30,34 @@ MINIZ_FLAGS := -DMINIZ_NO_STDIO -DMINIZ_NO_TIME -DMINIZ_NO_ARCHIVE_APIS
 OMPFLAG := $(if $(OMP),-fopenmp,)
 CFLAGS  += $(OMPFLAG)
 
-# Overlay de dev (brief build §6) : DEV=1 active -DSCPS_DEV partout (les blocs
-# #ifdef SCPS_DEV du viewer s'allument) + débogage. Construit dans un OBJDIR
-# SÉPARÉ (build_dev) → ne contamine jamais les objets release. La cible `dev`
-# fait le sous-make ; le RELEASE n'embarque pas une once de Nuklear.
-ifeq ($(DEV),1)
-  CFLAGS += -DSCPS_DEV -O0 -g
-endif
-
 # Détection automatique : MSYS2/MinGW expose OS=Windows_NT.
 ifeq ($(OS),Windows_NT)
   WIN := 1
 endif
 
-# SDL n'est requis QUE par le visualiseur (scps_viewer). Les bancs d'essai
-# headless (core_demo, scps_dump, …) se construisent sans SDL. La détection
-# est silencieuse : en l'absence de sdl2-config, SDL_* reste vide.
-# `-Dmain=SDL_main` est FILTRÉ : le sdl2-config MinGW l'émet, mais ce renommage
-# casse le `main` des outils headless (chronicle, bancs → undefined WinMain). Le
-# viewer, lui, n'en a pas besoin — SDL_main.h le fait déjà via #include <SDL.h>.
-SDL_CFLAGS := $(filter-out -Dmain=SDL_main,$(shell sdl2-config --cflags 2>/dev/null))
-SDL_LIBS   := $(shell sdl2-config --libs   2>/dev/null)
-
 ifeq ($(WIN),1)
   EXE     := .exe
-  WINLIBS := -lopengl32 -mwindows -static-libgcc -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 else
   EXE     :=
-  WINLIBS := -lGL
 endif
 
-# Cible par défaut : le moteur vérifié §2, autonome (aucune dépendance SDL).
+# Cible par défaut : le moteur vérifié §2, autonome.
+# (Plus AUCUNE dépendance SDL nulle part : l'UI SDL du viewer est partie avec
+# le front Godot — le viewer est un harnais console pur, cf. scps/viewer.c.)
 all: core_demo
 
 $(OBJDIR):
 	@mkdir -p $(OBJDIR)
 
-# Compilation générique des sources scps/. SDL_CFLAGS n'ajoute que des chemins
-# d'inclusion (inoffensif pour les fichiers headless).
+# Compilation générique des sources scps/.
 $(OBJDIR)/scps_%.o: scps/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) $(SDL_CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # ---- third_party : objets vendorés (single-file, MIT/domaine public) ------
 $(OBJDIR)/tp_miniz.o: third_party/miniz.c | $(OBJDIR)
 	$(CC) $(CFLAGS) $(MINIZ_FLAGS) -c $< -o $@
 $(OBJDIR)/tp_stbiw.o: third_party/stb_image_write_impl.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
-# miniaudio : gros single-header — compilé À PART (sans -Wextra ni -std strict),
-# surface réduite à la lecture de device. Sur Linux il dlopen ses backends →
-# -ldl/-lpthread au lien (déjà tirés par SDL pour le viewer).
-$(OBJDIR)/tp_miniaudio.o: third_party/miniaudio_impl.c | $(OBJDIR)
-	$(CC) -O2 -Ithird_party -c $< -o $@
-AUDIO_LIBS := $(if $(WIN),-lole32 -lwinmm,-lpthread -lm -ldl)
 
 # ---- Moteur SCPS headless (§2 + annexe) — colonne vertébrale VÉRIFIÉE -----
 # Banc d'essai auto-vérifiant (35 contrôles, sortie ≠ 0 si échec).
@@ -128,9 +104,10 @@ RELIGION_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion
 religion_demo: $(RELIGION_DEMO_OBJS)
 	$(CC) $(RELIGION_DEMO_OBJS) -o $@ -lm
 
-# ---- Visualiseur de carte + UI diégétique (SDL2 + SDL_ttf) ---------------
+# ---- Harnais headless du moteur (--savetest/--fuzztest/dumps, sans SDL) ---
 # Le viewer lie toute la chaîne sim (la membrane scps_readout traduit en mots),
-# mais N'inclut PAS scps_core.h (cloison vérifiée par grep).
+# mais N'inclut PAS scps_core.h (cloison vérifiée par grep). Binaire console
+# pur : l'UI SDL est partie avec le front Godot.
 SCPS_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
              $(OBJDIR)/scps_scps_culture.o $(OBJDIR)/scps_scps_econ.o $(OBJDIR)/scps_scps_tune.o \
              $(OBJDIR)/scps_scps_trade.o $(OBJDIR)/scps_scps_tech.o \
@@ -145,32 +122,14 @@ SCPS_OBJS := $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
              $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o \
              $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o $(OBJDIR)/scps_scps_crypt.o \
              $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/tp_miniz.o \
-             $(OBJDIR)/scps_scps_sim.o $(OBJDIR)/scps_scps_save.o \
-             $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_stbiw.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_viewer.o
+             $(OBJDIR)/scps_scps_sim.o $(OBJDIR)/scps_scps_save.o $(OBJDIR)/scps_viewer.o
 SCPS_TARGET := scps_viewer$(EXE)
-# Sous DEV : l'overlay Nuklear rejoint le lien, le binaire change de NOM (le
-# release garde scps_viewer, intact).
-ifeq ($(DEV),1)
-  SCPS_OBJS   += $(OBJDIR)/scps_dev_overlay.o
-  SCPS_TARGET := scps_viewer_dev$(EXE)
-endif
 
-HAVE_SDL := $(shell sdl2-config --version 2>/dev/null)
 scps:
-	@test -n "$(HAVE_SDL)" || { echo "SDL2 dev headers introuvables : installer libsdl2-dev, ou bâtir les cibles non-viewer (make core_demo, chronicle, test, …)"; exit 1; }
 	@$(MAKE) --no-print-directory $(SCPS_TARGET)
 $(SCPS_TARGET): $(SCPS_OBJS)
-	$(CC) $(SCPS_OBJS) -o $@ $(SDL_LIBS) -lSDL2_ttf -lm $(WINLIBS) $(OMPFLAG) $(AUDIO_LIBS)
+	$(CC) $(SCPS_OBJS) -o $@ -lm $(OMPFLAG)
 
-# dev_overlay porte l'implémentation Nuklear (single-header) : compilé À PART,
-# sans -Wextra (la lib est vendorée), toujours -DSCPS_DEV.
-$(OBJDIR)/scps_dev_overlay.o: scps/dev_overlay.c | $(OBJDIR)
-	$(CC) -O0 -g -DSCPS_DEV -Ithird_party $(SDL_CFLAGS) -c $< -o $@
-
-# ---- make dev : le viewer + overlay F3 (-DSCPS_DEV), OBJDIR isolé ---------
-dev:
-	$(MAKE) DEV=1 OBJDIR=build_dev scps
-.PHONY: dev
 run_scps: scps
 	./$(SCPS_TARGET)
 
@@ -435,23 +394,6 @@ API_DEMO_OBJS := $(filter-out $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS)) \
 scps_api_demo: $(API_DEMO_OBJS)
 	$(CC) $(API_DEMO_OBJS) -o $@ -lm $(OMPFLAG)
 
-# ---- fx-proof : PREUVE VISUELLE headless des animations FX (hors test) -------
-# Composite les 4 planches FX (mer/côte/armée/vortex) sur un terrain render_map
-# RÉEL via un renderer LOGICIEL → fx_proof.png. Aucun affichage requis (driver
-# vidéo « dummy »). Requiert SDL2 (comme le viewer). Outil de vérif, pas un banc.
-FX_PROOF_SRCS := $(patsubst $(OBJDIR)/scps_%.o,scps/%.c,\
-                   $(filter-out $(OBJDIR)/tp_miniz.o $(OBJDIR)/scps_chronicle.o,$(CHRONICLE_OBJS))) \
-                 scps/scps_render.c
-fx-proof:
-	@test -n "$(HAVE_SDL)" || { echo "SDL2 introuvable : installer libsdl2-dev"; exit 1; }
-	$(CC) -O2 -std=c99 -Iscps -Ithird_party $(SDL_CFLAGS) tools/fx_proof.c $(FX_PROOF_SRCS) -o fx_proof $(SDL_LIBS) -lm
-.PHONY: fx-proof
-
-# ---- Banc audio : le mixeur procédural sort du son (build §9.6) -----------
-AUDIO_DEMO_OBJS := $(OBJDIR)/scps_scps_audio.o $(OBJDIR)/tp_miniaudio.o $(OBJDIR)/scps_audio_demo.o
-audio_demo: $(AUDIO_DEMO_OBJS)
-	$(CC) $(AUDIO_DEMO_OBJS) -o $@ $(AUDIO_LIBS)
-
 # ---- Banc save_io : compression de bloc + CRC32 round-trip (build §9.5) ---
 SAVE_IO_DEMO_OBJS := $(OBJDIR)/scps_scps_save_io.o $(OBJDIR)/tp_miniz.o $(OBJDIR)/scps_save_io_demo.o
 save_io_demo: $(SAVE_IO_DEMO_OBJS)
@@ -522,10 +464,10 @@ golden-update: chronicle
 
 # ---- make fuzz-save : DURCISSEMENT du save (audit P0-1, bonus) ------------
 # (1) forge chaque COMPTEUR désérialisé hors-borne → save_sane DOIT rejeter (le vecteur d'écriture
-# hors-bornes) ; (2) fuzz d'octets du fichier → game_load ne plante JAMAIS. Headless via SDL dummy.
-# HORS `make test` : le viewer a besoin de SDL ; les bancs, non. (~50 s ; idéal sous un build ASan.)
+# hors-bornes) ; (2) fuzz d'octets du fichier → game_load ne plante JAMAIS.
+# HORS `make test` (~50 s ; idéal sous un build ASan).
 fuzz-save: scps_viewer
-	@out=$$(SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./scps_viewer --fuzztest 9 2>&1); rc=$$?; \
+	@out=$$(./scps_viewer --fuzztest 9 2>&1); rc=$$?; \
 	 printf '%s\n' "$$out" | grep -E "BILAN|✗|flippés"; \
 	 if [ $$rc -eq 0 ]; then echo "fuzz-save OK"; else echo "fuzz-save ÉCHEC (rc=$$rc)"; exit 1; fi
 .PHONY: fuzz-save
@@ -684,13 +626,13 @@ BENCH_BINS := core_demo monde_reel readout_demo heritage_demo tech_demo faith_de
   campaign_demo factions_demo econ_tax_demo econ_culture_demo econ_arcane_demo \
   econ_production_demo missions_demo ai_demo diplo_demo warhost_demo \
   events_demo structural_demo forks_demo prosperity_demo credit_demo cap_demo \
-  endgame_demo audit_eco lang_demo scps_api_demo audio_demo econ_demo culture_demo navy_demo
-TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan fx_proof
+  endgame_demo audit_eco lang_demo scps_api_demo econ_demo culture_demo navy_demo
+TOOL_BINS := scps_viewer scps_dump scps_batch chronicle chronicle_asan econ_scan
 
 clean:
 	rm -rf $(OBJDIR) $(BENCH_BINS) $(TOOL_BINS) \
 	       $(addsuffix .exe,$(BENCH_BINS) $(TOOL_BINS)) \
-	       out_*.ppm montage.bmp fx_proof.png
+	       out_*.ppm montage.bmp
 
 .PHONY: all scps run_scps clean core_demo monde_reel readout_demo lang_demo heritage_demo scps_dump scps_batch asan \
         econ_demo tech_demo culture_demo prosperity_demo agency_demo diplo_demo routes_demo ai_demo statecraft_demo events_demo

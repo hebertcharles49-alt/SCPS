@@ -10,13 +10,11 @@
  * et le save est PARTAGÉ (scps_save) → ces outils restent la preuve headless du
  * moteur (byte-identité save/reload, rejet des saves forgées, tables éditables).
  *
- * On garde le SEUL `#include <SDL.h>` pour la compat d'ENTRÉE MinGW
- * (`-Dmain=SDL_main` via SDL_main.h) — le lien du binaire est inchangé ; AUCUNE
- * fonction SDL n'est appelée (pas d'Init, pas de fenêtre, pas de rendu).
+ * SANS SDL : plus aucun appel ni include — binaire console pur (le dernier
+ * vestige, l'entrée SDL_main MinGW, est tombé avec l'UI).
  *
  * Outils : --savetest · --fuzztest · --dump-lang · --dump-readout · --lang-audit · --dump-fnv
  */
-#include <SDL.h>            /* compat d'entrée MinGW (SDL_main) — AUCUN appel SDL ci-dessous */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
