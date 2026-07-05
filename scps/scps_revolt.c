@@ -15,6 +15,7 @@
 #include "scps_labor.h"     /* capitale_* : la capacité de service (logement/services) de la région */
 #include "scps_religion.h"  /* dimension FOI : religion_of_region/_of_country/set_region (hérésie) */
 #include "scps_campaign.h"  /* Phase 3a : campaign_order — l'armée rebelle sur la carte */
+#include "scps_math.h"      /* clampf/absf partagés */
 #include "scps_army.h"      /* Phase 3a : ArmyState/army_init/army_doctrine_base + U_MILICE/U_CAV_LOURDE */
 #include <stdlib.h>         /* getenv — diagnostic SCPS_REVDIAG */
 #include <string.h>
@@ -178,24 +179,9 @@ static float ethos_coup_boost(const PopGroup *g, EthosFaction alien_fac, float c
 #define REBEL_WARSCORE_LOSE   -1.f      /* dès que le score passe NÉGATIF (une bataille a eu lieu, le rebelle a perdu l'échange) */
 #define REBEL_WAR_MAX_DAYS   (5*365)    /* garde-fou : sans bataille résolue au bout de ~5 ans, la révolte fizzle → écrasée */
 
-static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
-static inline float absf(float v){ return v<0?-v:v; }
-
-/* Distance de CONTENU (valeurs/subsistance/parenté/religion, langue exclue) —
- * la même friction culturelle que la démographie. */
-static float content_dist(const PopCulture *a, const PopCulture *b){
-    if (!a||!b) return 0.f;
-    float dv=absf(a->valeurs-b->valeurs), ds=absf(a->subsistance-b->subsistance);
-    float dp=absf(a->parente-b->parente), dr=absf(a->religion-b->religion);
-    float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
-}
-/* Culture régnante d'un pays = celle de sa région-capitale. */
-static const PopCulture *crown_of(const World *w, const WorldEconomy *econ, int cid){
-    if (cid<0||cid>=w->n_countries) return NULL;
-    int cp=w->country[cid].capital_prov; if(cp<0||cp>=w->n_provinces) return NULL;
-    int cr=w->province[cp].region; if(cr<0||cr>=econ->n_regions) return NULL;
-    return &econ->region[cr].culture;
-}
+/* Friction culturelle : econ_content_dist (BASE, sans plancher de branche de
+ * foi — ici la foi a son PROPRE canal de révolte, hérésie/zélote : le plancher
+ * la double-compterait) + econ_ruling_culture (scps_econ.c). */
 static int find_group(const ProvincePop *pp, int drift_id){
     for (int i=0;i<pp->n_groups;i++) if (pp->groups[i].drift_id==drift_id) return i;
     return -1;
@@ -242,7 +228,7 @@ float revolt_group_deficit(const PopGroup *g, const ModifierStack *drift,
     /* panier : la faim pèse double sur le manque social (un peuple affamé se lève) */
     float basket = clampf(0.70f*(1.f-food_sat) + 0.30f*(1.f-society_sat), 0.f, 1.f);
     PopCulture eff = group_culture_effective(g, drift);
-    float alien = clampf(content_dist(&eff, crown)/ALIEN_NORM, 0.f, 1.f);
+    float alien = clampf(econ_content_dist(&eff, crown)/ALIEN_NORM, 0.f, 1.f);
     float tax   = clampf(tax_pressure, 0.f, 1.f);
     float repr  = clampf(coercion, 0.f, 1.f);
     float unint = clampf(1.f - g->integration, 0.f, 1.f);
@@ -259,7 +245,7 @@ long revolt_mobilized(const PopGroup *g, float deficit){
 
 RebelKind revolt_classify(const PopGroup *g, const ModifierStack *drift, const PopCulture *crown){
     PopCulture eff = group_culture_effective(g, drift);
-    float alien = content_dist(&eff, crown);
+    float alien = econ_content_dist(&eff, crown);
     bool unintegrated = (g->integration < SECEDE_INTEG);
     /* SÉCESSION d'abord : une nation conquise sur SA terre (non-diaspora) mal
      * intégrée veut l'INDÉPENDANCE — la conquête EST le grief, quelle que soit la
@@ -311,7 +297,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
       if (rpop < REVOLT_MIN_POP) return -1; }
     /* un seul soulèvement vif par région (la colère couve déjà ici) */
     for (int i=0;i<rs->count;i++) if (rs->list[i].active && rs->list[i].region==region) return -1;
-    const PopCulture *crown = crown_of(w,econ,owner);
+    const PopCulture *crown = econ_ruling_culture(w,econ,owner);
 
     /* §5 : la tension de coup du pays — une faction forte aliénée porte son élite. */
     float ct=0.f; EthosFaction cf=FAC_COMMUNAUTAIRE;
@@ -445,7 +431,7 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
         if (re->owner<0 || !re->culture.settled || !pe || pe->pop.n_groups<=0){
             rs->desperation_days[r]=0.f; rs->revolt_cooldown[r]=0.f; continue;
         }
-        const PopCulture *crown=crown_of(w,econ,re->owner);
+        const PopCulture *crown=econ_ruling_culture(w,econ,re->owner);
         int o=re->owner; float ct=0.f; EthosFaction cf=FAC_COMMUNAUTAIRE;
         if (o>=0 && o<SCPS_MAX_COUNTRY){
             if (!cdone[o]){ ctens[o]=faction_coup_tension_c(w,econ,o,&cfac[o]); cdone[o]=1; }
@@ -839,13 +825,13 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
              *  · peuple INTÉGRÉ (même culture, foi dissidente) → paix d'Augsbourg :
              *    la province GARDE sa foi (déjà posée) et RESTE ; la L royale s'érode
              *    d'avoir échoué à imposer l'orthodoxie (un Dieu ÉTRANGER humilie plus). */
-            const PopCulture *crown = crown_of(w, econ, rb->owner);
+            const PopCulture *crown = econ_ruling_culture(w, econ, rb->owner);
             /* une DIASPORA (réfugié/migrant) n'a AUCUNE revendication TERRITORIALE : sa
              * victoire de foi = TOLÉRANCE, jamais sécession. Seul un peuple NATIF étranger
              * (nation conquise sur SA terre) sécède en État coreligionnaire (Hollande). */
             int rgi = find_group(&pe->pop, rb->drift_id);
             bool is_dia = (rgi>=0) && pe->pop.groups[rgi].diaspora;
-            bool separatist = crown && !is_dia && (content_dist(&rb->culture, crown) >= SECEDE_D);
+            bool separatist = crown && !is_dia && (econ_content_dist(&rb->culture, crown) >= SECEDE_D);
             if (separatist){
                 int nid;
                 if (rb->rebel_country>=0 && rb->rebel_country<w->n_countries){

@@ -12,6 +12,7 @@
 #include "scps_routes.h"    /* S2 : le contact COMMERCIAL porte la cristallisation culturelle */
 #include "scps_diplo.h"     /* S2 : la guerre coupe le contact */
 #include "scps_tune.h"      /* S2 : le rythme de fusion calibrable */
+#include "scps_math.h"      /* clampf/absf partagés */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -52,32 +53,13 @@ static int g_dyn_drift_id = DYN_DRIFT_BASE;
 #define CONVERT_AXIS       1.5f   /* évangéliste : bascule quand l'axe a quasi convergé */
 #define CONVERT_AXIS_HARD  4.0f   /* purificateur : bascule de force, axe encore distant */
 
-static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
-static inline float absf(float v){ return v<0?-v:v; }
-
-/* Distance de CONTENU (L∞, langue exclue) — la friction. */
-/* La FOI est un axe ACTIF (§1/§3) : une autre BRANCHE de foi est une vraie
- * fracture, au-delà de l'axe religion (même foi → cohésion & assimilation vite ;
- * autre foi → résistance, fracture). */
-#define FAITH_BRANCH_PEN 3.5f
-static float content_dist(const PopCulture *a, const PopCulture *b){
-    float dv=absf(a->valeurs-b->valeurs), ds=absf(a->subsistance-b->subsistance);
-    float dp=absf(a->parente-b->parente), dr=absf(a->religion-b->religion);
-    if (a->rel_branch!=b->rel_branch && dr<FAITH_BRANCH_PEN) dr=FAITH_BRANCH_PEN;
-    float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
-}
+/* Friction culturelle : econ_content_dist_faith (la FOI est ACTIVE — une autre
+ * BRANCHE de foi est une vraie fracture) + econ_ruling_culture (scps_econ.c). */
 static float agit_from_L(float L){ return clampf((6.f - L)*15.f, 0.f, 100.f); }
 
 /* ===================================================================== */
 /* FICHE EFFECTIVE = origine + dérive (recalcul, jamais mutation)         */
 /* ===================================================================== */
-static const PopCulture *dom_ruling_culture(const World *w, const WorldEconomy *econ, int cid){
-    if (cid<0||cid>=w->n_countries) return NULL;
-    int cp=w->country[cid].capital_prov; if(cp<0||cp>=w->n_provinces) return NULL;
-    int cr=w->province[cp].region; if(cr<0||cr>=econ->n_regions) return NULL;
-    return &econ->region[cr].culture;
-}
-
 PopCulture group_culture_effective(const PopGroup *g, const ModifierStack *drift){
     if (!g){ PopCulture z; memset(&z,0,sizeof z); return z; }  /* NULL-safe : cohérent avec le module défensif */
     PopCulture c = g->origin;
@@ -114,7 +96,7 @@ float province_Dbar(const ProvincePop *pp, const ModifierStack *drift){
         for (int j=i+1;j<pp->n_groups;j++){
             PopCulture cj=group_culture_effective(&pp->groups[j],drift);
             double w=(double)pp->groups[i].count*pp->groups[j].count;
-            sd += w*content_dist(&ci,&cj); sw += w;
+            sd += w*econ_content_dist_faith(&ci,&cj); sw += w;
         }
     }
     return sw>0 ? (float)(sd/sw) : 0.f;
@@ -126,7 +108,7 @@ float province_Dinf(const ProvincePop *pp, const ModifierStack *drift){
         PopCulture ci=group_culture_effective(&pp->groups[i],drift);
         for (int j=i+1;j<pp->n_groups;j++){
             PopCulture cj=group_culture_effective(&pp->groups[j],drift);
-            float d=content_dist(&ci,&cj); if(d>m)m=d;
+            float d=econ_content_dist_faith(&ci,&cj); if(d>m)m=d;
         }
     }
     return m;
@@ -151,7 +133,7 @@ float province_agitation(const ProvincePop *pp, const ModifierStack *drift){
 float group_L_target(const PopGroup *g, const ModifierStack *drift, const PopCulture *crown,
                      float satisfaction, float integ, float country_H, float coercion, float build_H){
     PopCulture eff = group_culture_effective(g, drift);
-    float align   = crown ? (10.f - K_ALIGN*content_dist(&eff, crown)) : 5.f;
+    float align   = crown ? (10.f - K_ALIGN*econ_content_dist_faith(&eff, crown)) : 5.f;
     float aisance = clampf(satisfaction*10.f, 0.f, 10.f);
     float ombre   = K_COERC*coercion + K_H*country_H + K_BUILD_H*build_H;
     float Lstar   = (W_ALIGN*align + W_AISANCE*aisance)*integ - ombre;
@@ -203,7 +185,7 @@ int assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, f
         if (i==dom_idx) continue;
         PopGroup *g=&pp->groups[i];
         PopCulture eff=group_culture_effective(g, drift);
-        float d=content_dist(&eff,&target);
+        float d=econ_content_dist_faith(&eff,&target);
         if (d<FUSE_EPS){                                   /* fusion dans le dominant */
             pp->groups[dom_idx].count += g->count;
             int last=pp->n_groups-1;
@@ -263,7 +245,7 @@ bool migration_move(ProvincePop *from, ProvincePop *to, int gi, long amount, int
     /* groupe d'accueil = même heritage ET même culture d'origine ? sinon DIASPORA. */
     int dst=-1;
     for (int i=0;i<to->n_groups;i++)
-        if (to->groups[i].heritage==src->heritage && content_dist(&to->groups[i].origin,&src->origin)<FUSE_EPS){ dst=i; break; }
+        if (to->groups[i].heritage==src->heritage && econ_content_dist_faith(&to->groups[i].origin,&src->origin)<FUSE_EPS){ dst=i; break; }
     if (dst<0){
         if (to->n_groups>=DEMO_MAX_GROUPS) return false;
         PopGroup ng=*src;                    /* garde species/culture → minorité à l'arrivée */
@@ -302,14 +284,14 @@ float country_Dbar(const ProvincePop *provs, int n, const ModifierStack *drift){
     PopCulture c[DEMO_MAX_GROUPS*16]; long w[DEMO_MAX_GROUPS*16];
     int k=collect(provs,n,drift,c,w,DEMO_MAX_GROUPS*16);
     double sw=0,sd=0;
-    for (int i=0;i<k;i++) for (int j=i+1;j<k;j++){ double ww=(double)w[i]*w[j]; sd+=ww*content_dist(&c[i],&c[j]); sw+=ww; }
+    for (int i=0;i<k;i++) for (int j=i+1;j<k;j++){ double ww=(double)w[i]*w[j]; sd+=ww*econ_content_dist_faith(&c[i],&c[j]); sw+=ww; }
     return sw>0?(float)(sd/sw):0.f;
 }
 float country_Dinf(const ProvincePop *provs, int n, const ModifierStack *drift){
     PopCulture c[DEMO_MAX_GROUPS*16]; long w[DEMO_MAX_GROUPS*16];
     int k=collect(provs,n,drift,c,w,DEMO_MAX_GROUPS*16);
     float m=0;
-    for (int i=0;i<k;i++) for (int j=i+1;j<k;j++){ float d=content_dist(&c[i],&c[j]); if(d>m)m=d; }
+    for (int i=0;i<k;i++) for (int j=i+1;j<k;j++){ float d=econ_content_dist_faith(&c[i],&c[j]); if(d>m)m=d; }
     return m;
 }
 float country_L(const ProvincePop *provs, int n){
@@ -362,7 +344,7 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
         } else if (g->diaspora){ r->etat="diaspora"; }
         else if (g==dom){ r->etat="natif"; }
         else {
-            float d=content_dist(&eff, crown?crown:&domc);
+            float d=econ_content_dist_faith(&eff, crown?crown:&domc);
             if (d<0.6f){ r->etat="natif"; }
             else {
                 int yrs=(int)(assimilation_years(d,P,K)+0.5f);
@@ -560,7 +542,7 @@ int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
         Culture ca,cb; pc_to_culture(&a,&ca); pc_to_culture(&b,&cb);
         SyncFeasibility f=culture_can_syncretize(&ca,&cb,P,K);
         if (!f.feasible) continue;                             /* porte fermée : plus de P+K requis */
-        float d=content_dist(&a,&b);
+        float d=econ_content_dist_faith(&a,&b);
         if (d>=inner && d<FUSE_EPS){                           /* FRANCHISSEMENT → l'hybride cristallise */
             Culture h;
             if (culture_syncretize(&ca,&cb,&h)){               /* l'ORIGINE porte la fusion (durable) */
@@ -672,7 +654,7 @@ static long refugee_settle_home(ProvincePop *home, const PopGroup *ref, long amt
     if (amt<=0) return 0;
     for (int i=0;i<home->n_groups;i++)
         if (home->groups[i].heritage==ref->heritage
-            && content_dist(&home->groups[i].origin,&ref->origin)<FUSE_EPS){
+            && econ_content_dist_faith(&home->groups[i].origin,&ref->origin)<FUSE_EPS){
             home->groups[i].count += amt; return amt;      /* rejoint ses gens (fusion) */
         }
     if (home->n_groups>=DEMO_MAX_GROUPS) return 0;          /* foyer plein → renonce (ils restent) */
@@ -771,7 +753,7 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         ProvincePop *pp=&pe->pop;
         if (pp->n_groups<=0 || !pe->culture.settled) continue;
         pp->prosperity = re->prosperity;
-        const PopCulture *crown = (re->owner>=0) ? dom_ruling_culture(w,econ,re->owner) : &pe->culture;
+        const PopCulture *crown = (re->owner>=0) ? econ_ruling_culture(w,econ,re->owner) : &pe->culture;
         for (int i=0;i<pp->n_groups;i++){
             group_L_tick(&pp->groups[i], drift, crown, re->satisfaction, 0.f, re->coercion, re->build.H_coerc);
             pp->groups[i].culture = group_culture_effective(&pp->groups[i], drift);
@@ -844,7 +826,7 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
     if (rp<0 || rp>=econ->n_prov) return;
     ProvincePop *pp=&econ->prov[rp].pop;
     if (pp->n_groups<=0) return;
-    const PopCulture *crown = dom_ruling_culture(w,econ,conqueror);
+    const PopCulture *crown = econ_ruling_culture(w,econ,conqueror);
     Heritage ch = crown ? crown->heritage : HERITAGE_ADAPTATIF;
     /* les conquis deviennent une minorité restive : l'intégration repart de zéro.
      * BRASSAGE — une nation native d'un AUTRE héritage vient d'être ABSORBÉE : elle

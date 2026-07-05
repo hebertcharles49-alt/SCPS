@@ -10,6 +10,7 @@
  * coordonnée de consolidation. Aucune branche « si pays==X ».
  */
 #include "scps_ai.h"
+#include "scps_math.h"       /* clampf/xs32/frand partagés */
 #include "scps_religion.h"   /* P7 : schisme IA + emploi du lettré (gated) */
 #include "scps_tune.h"   /* Arc J : calibrage */
 #include "scps_tech.h"
@@ -106,11 +107,6 @@ static float ai_faustian_appetite(Credo cr, float valeurs){
 #define AI_STAFF_PER_MANUF 250.f  /* §dév : pop MINIMALE par manufacture pour BÂTIR — sinon on pose dans le VIDE
                                    * (la fabrique L5 a 2200 jobs ; sous ce socle, le raw dort, les jobs vides) */
 #define AI_FAITH_FAUSTIAN   3.0f  /* §4 : l'orthodoxie INTERDIT le faustien, le culte le SACRALISE */
-
-/* ---- Utilitaires ------------------------------------------------------ */
-static inline float clampf(float v, float lo, float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
-static uint32_t xs32(uint32_t *s){ uint32_t x=*s; x^=x<<13; x^=x>>17; x^=x<<5; return *s=x?x:1u; }
-static float frand(uint32_t *s){ return (float)(xs32(s)&0xffffffu) / (float)0x1000000u; }
 
 /* ===================================================================== */
 /* PERSONNALITÉ — dérivée de la fiche (aucun code par-faction)            */
@@ -597,11 +593,6 @@ static int ai_pick_ally(const AiActor *a, const World *w, const WorldEconomy *ec
 /* (ai_pick_enemy_region retiré : l'IA ne désigne plus de cible de conquête abstraite —
  * le TERRAIN décide qui occupe quoi ; le règlement §terrain transfère l'occupé.) */
 
-static float content_dist(const PopCulture *a, const PopCulture *b){
-    float dv=fabsf(a->valeurs-b->valeurs),   ds=fabsf(a->subsistance-b->subsistance);
-    float dp=fabsf(a->parente-b->parente),   dr=fabsf(a->religion-b->religion);
-    float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
-}
 /* Partenaire commercial : région étrangère peuplée dont la distance de contenu
  * approche le PIC de la cloche (D̄≈5 : le plus à échanger). On ne déduplique pas
  * — rouvrir la même artère, c'est l'INTENSIFIER (un négociant y revient). */
@@ -618,7 +609,7 @@ static int ai_pick_trade_partner(const WorldEconomy *econ, const RouteNetwork *r
             for (int i=0;i<rn->n;i++){ const TradeRoute *t=&rn->route[i];
                 if ((t->ra==home_region&&t->rb==r)||(t->ra==r&&t->rb==home_region)){ deja=true; break; } }
             if (deja) continue; }
-        float gap = fabsf(content_dist(hc, &re->culture) - 5.f);
+        float gap = fabsf(econ_content_dist(hc, &re->culture) - 5.f);
         /* commerce asym. §5 : les positions d'AVAL valent plus (estuaires,
          * terminus portuaires — là où le vrac converge et où tout s'achète). */
         if (re->estuary)                      gap -= 0.6f;
@@ -654,7 +645,7 @@ static int ai_pick_sea_partner(const WorldEconomy *econ, const RouteNetwork *rn,
             for (int i=0;i<rn->n;i++){ const TradeRoute *t=&rn->route[i];
                 if ((t->ra==myport&&t->rb==r)||(t->ra==r&&t->rb==myport)){ deja=true; break; } }
             if (deja) continue; }
-        float gap=fabsf(content_dist(hc,&econ->region[r].culture)-5.f);
+        float gap=fabsf(econ_content_dist(hc,&econ->region[r].culture)-5.f);
         if (econ->region[r].estuary) gap-=0.6f;          /* l'aval vaut plus */
         if (gap<bestgap){ bestgap=gap; best=r; }
     }
@@ -1575,18 +1566,12 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
 /* RECHERCHE — l'arbre de tech vivant (buts + penchant de heritage + frein)     */
 /* ===================================================================== */
 static Heritage ai_capital_heritage(const World *w, const WorldEconomy *econ, int cid){
-    if (cid<0||cid>=w->n_countries) return HERITAGE_ADAPTATIF;
-    int cp=w->country[cid].capital_prov;
-    if (cp<0||cp>=w->n_provinces) return HERITAGE_ADAPTATIF;
-    int cr=w->province[cp].region;
-    if (cr<0||cr>=econ->n_regions) return HERITAGE_ADAPTATIF;
-    return econ->region[cr].culture.heritage;
+    const PopCulture *pc = econ_ruling_culture(w, econ, cid);
+    return pc ? pc->heritage : HERITAGE_ADAPTATIF;
 }
 static Ethos ai_capital_ethos(const World *w, const WorldEconomy *econ, int cid){
-    if (cid<0||cid>=w->n_countries) return ETHOS_ORDRE;
-    int cp=w->country[cid].capital_prov; if (cp<0||cp>=w->n_provinces) return ETHOS_ORDRE;
-    int cr=w->province[cp].region;       if (cr<0||cr>=econ->n_regions) return ETHOS_ORDRE;
-    return econ->region[cr].culture.ethos;
+    const PopCulture *pc = econ_ruling_culture(w, econ, cid);
+    return pc ? pc->ethos : ETHOS_ORDRE;
 }
 /* §éthos — BIAIS DE COÛT (briefs Savoir/Forge/Société §3 : « biais, jamais mur »).
  * L'éthos rend une FONCTION plus/moins chère à pousser et pèse sur l'attrait du faustien ;
@@ -1651,13 +1636,6 @@ float ai_country_population(const World *w, const WorldEconomy *econ, int cid){
  * tech survit à l'assimilation/disparition de la source. Topologie de l'arbre intacte. */
 #define ARCH_PORTEE_PROFIL 2.5f   /* D∞ max (axes [0..10]) pour « porter » l'archétype — surface d'équilibrage */
 
-/* D∞ sur les axes de CONTENU (valeurs/subsistance/parenté/religion), comme
- * culture_content_distance — mais directement sur PopCulture (struct région). */
-static float pc_content_dist(const PopCulture *a, const PopCulture *b){
-    float dv=fabsf(a->valeurs-b->valeurs),   ds=fabsf(a->subsistance-b->subsistance),
-          dp=fabsf(a->parente-b->parente),   dr=fabsf(a->religion-b->religion);
-    float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
-}
 /* Centroïde culturel (contenu) de chaque heritage-archétype au monde, pondéré population.
  * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir de LA
  * SEULE province représentative (capitale, sinon la plus peuplée), pas un agrégat de toute
@@ -1698,7 +1676,7 @@ static void world_archetype_centroids(const WorldEconomy *econ, PopCulture cen[H
 /* La culture porte-t-elle l'archétype ar ? — distance au centroïde (signatures de heritage,
  * 0..HERITAGE_COUNT-1) ou correspondance d'ÉTHOS (profils d'éthos au-delà : bureaucrate, marchand). */
 static bool culture_bears_arch(const PopCulture *c, int ar, const PopCulture cen[HERITAGE_COUNT], const bool present[HERITAGE_COUNT]){
-    if (ar>=0 && ar<HERITAGE_COUNT) return present[ar] && pc_content_dist(c,&cen[ar])<=ARCH_PORTEE_PROFIL;
+    if (ar>=0 && ar<HERITAGE_COUNT) return present[ar] && econ_content_dist(c,&cen[ar])<=ARCH_PORTEE_PROFIL;
     if (ar==ARCH_BUREAUCRATIQUE) return c->ethos==ETHOS_BUREAUCRATE;
     if (ar==ARCH_MERCANTILE)     return c->ethos==ETHOS_MERCANTILE;
     return false;

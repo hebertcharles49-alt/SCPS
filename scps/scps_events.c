@@ -10,6 +10,7 @@
 #include <string.h>
 #include <math.h>
 #include "scps_tune.h"
+#include "scps_math.h"      /* clampf/absf/xs32/frand partagés */
 #include "scps_provlog.h"   /* journal provincial : on POUSSE les évènements EV_PROVINCE (display) */
 
 /* signe d'un effet pour le journal : +1 fléau · -1 faveur · 0 neutre */
@@ -44,29 +45,9 @@ struct EventCtx {
     DiploState      *dp;   /* §F : guerres (T) + rancune (Amnistie) ; peut être NULL */
 };
 
-/* ---- Utilitaires ------------------------------------------------------ */
-static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
-static inline float absf(float v){ return v<0?-v:v; }
 /* §G2 — fwd : un fait NOTABLE inscrit une MÉMOIRE (l'âge en est un, défini plus haut
  * que le bloc directeur ⇒ on annonce le ressort de mémoire ici). */
 static void dir_remember(Director *D, int day, DirMemKind kind, int subject, float weight);
-static uint32_t xs32(uint32_t *s){ uint32_t x=*s; x^=x<<13; x^=x>>17; x^=x<<5; return *s=x?x:1u; }
-static float frand(uint32_t *s){ return (float)(xs32(s)&0xffffffu)/(float)0x1000000u; }
-
-static float pc_dist(const PopCulture *a, const PopCulture *b){
-    float dv=absf(a->valeurs-b->valeurs), ds=absf(a->subsistance-b->subsistance);
-    float dp=absf(a->parente-b->parente), dr=absf(a->religion-b->religion);
-    float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
-}
-static int cap_region(const World *w, int cid){
-    if (cid<0||cid>=w->n_countries) return -1;
-    int cp=w->country[cid].capital_prov;
-    return (cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
-}
-static const PopCulture *ruling_culture(const World *w, const WorldEconomy *econ, int cid){
-    int cr=cap_region(w,cid);
-    return (cr>=0&&cr<econ->n_regions)?&econ->region[cr].culture:NULL;
-}
 
 /* ===================================================================== */
 /* events_init — RELIRE la géo du worldgen en agrégats par région        */
@@ -182,15 +163,15 @@ static bool integ_base(const EventCtx *cx, int r){
     if (r<0||r>=cx->econ->n_regions) return false;
     const RegionEconomy *re=&cx->econ->region[r];
     if (!re->culture.settled || re->owner<0) return false;
-    const PopCulture *rul=ruling_culture(cx->w,cx->econ,re->owner);
+    const PopCulture *rul=econ_ruling_culture(cx->w,cx->econ,re->owner);
     if (!rul) return false;
-    float dinf = pc_dist(&re->culture, rul);
+    float dinf = econ_content_dist(&re->culture, rul);
     float yh   = (r<SCPS_MAX_REG)?cx->wl->years_held[r]:50.f;
     float agit = (cx->sc && r<SCPS_MAX_REG)?cx->sc->agitation[r]:0.f;
     return dinf > 6.f && yh < 30.f && agit > 40.f;
 }
-static Ethos  owner_ethos (const EventCtx *cx,int r){ const PopCulture*p=ruling_culture(cx->w,cx->econ,cx->econ->region[r].owner); return p?p->ethos:ETHOS_ORDRE; }
-static Sphere owner_sphere(const EventCtx *cx,int r){ const PopCulture*p=ruling_culture(cx->w,cx->econ,cx->econ->region[r].owner); return p?heritage_sphere(p->heritage):SPHERE_HOMMES; }
+static Ethos  owner_ethos (const EventCtx *cx,int r){ const PopCulture*p=econ_ruling_culture(cx->w,cx->econ,cx->econ->region[r].owner); return p?p->ethos:ETHOS_ORDRE; }
+static Sphere owner_sphere(const EventCtx *cx,int r){ const PopCulture*p=econ_ruling_culture(cx->w,cx->econ,cx->econ->region[r].owner); return p?heritage_sphere(p->heritage):SPHERE_HOMMES; }
 
 static bool trig_integ_dom(const EventCtx *cx,int r){
     if (!integ_base(cx,r)) return false;
@@ -217,7 +198,7 @@ static bool trig_succession(const EventCtx *cx,int c){
 }
 /* Schisme (pays) : un credo zélé sur une foi qui diverge. */
 static bool trig_schism(const EventCtx *cx,int c){
-    const PopCulture *rul=ruling_culture(cx->w,cx->econ,c);
+    const PopCulture *rul=econ_ruling_culture(cx->w,cx->econ,c);
     if(!rul) return false;
     if(rul->credo==CREDO_PLURALISTE) return false;
     /* divergence religieuse interne : une région du pays s'écarte de la foi du trône */
@@ -381,7 +362,7 @@ static void apply_effect(EventCtx *cx, EvScope scope, int subject, const EvEffec
         if (cid>=0 && cx->sc && cid<cx->sc->n_countries)
             cx->sc->influence[cid]=clampf(cx->sc->influence[cid]+e->d_influence,0.f,100.f);
     } else { /* EV_COUNTRY : cœur à la capitale, humeur (L/agitation) au pays entier */
-        int cid=subject, capr=cap_region(cx->w,cid);
+        int cid=subject, capr=world_capital_region(cx->w,cid);
         if (capr>=0) apply_region_eff(cx, capr, e);
         for (int r=0;r<cx->econ->n_regions;r++) if (r!=capr && cx->econ->region[r].owner==cid){
             if (cx->wl && r<SCPS_MAX_REG) cx->wl->L[r]=clampf(cx->wl->L[r]+e->d_L,0.f,10.f);
@@ -562,7 +543,7 @@ int events_count_revolutionary(const World *w, const WorldProsperity *wp){
 /* Le mythe homogénéisant se diffuse : la foi du trône devient exclusive. */
 static void spread_credo_purificateur(World *w, WorldEconomy *econ){
     for (int c=0;c<w->n_countries;c++){
-        int cr=cap_region(w,c);
+        int cr=world_capital_region(w,c);
         if (cr>=0 && cr<econ->n_regions && econ->region[cr].culture.settled
             && econ->region[cr].culture.credo==CREDO_PLURALISTE)
             econ->region[cr].culture.credo=CREDO_PURIFICATEUR;
@@ -892,7 +873,7 @@ static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
                                        if (!(wp->country[c].L>6.f || (wp->country[c].K<4.f && rc>=5))) continue; }  /* L haut OU (K bas ET ≥5 rég) */
                 if (id==DIR_PALAIS   && !(wp->country[c].L<5.f)) continue;
                 if (id==DIR_SCHISME  && !EVENTS[EVID_SCHISM].trigger(cx,c)) continue;
-                if (id==DIR_DEBASE){ int cr=cap_region(w,c); if (cr<0||econ->region[cr].treasury>=2000.f) continue; }  /* trésor bas (élargi 200→2000) */
+                if (id==DIR_DEBASE){ int cr=world_capital_region(w,c); if (cr<0||econ->region[cr].treasury>=2000.f) continue; }  /* trésor bas (élargi 200→2000) */
                 if (id==DIR_CADASTRE && !(wp->country[c].K>=6.f)) continue;
                 if (id==DIR_REFORME  && !(wp->country[c].L<5.f)) continue;
                 if (id==DIR_MARCHAND && w->country[c].role!=POLITY_CITY_STATE) continue;
@@ -900,7 +881,7 @@ static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
                  * → il subit AUSSI le repos 15 ans + le plafond 3-négatifs/siècle de
                  * cette province (sinon la même capitale encaissait un coup tous les
                  * 5 ans — le cooldown pays — et dépassait le plafond). */
-                if (neg){ int cr=cap_region(w,c); if (!dir_ok_region(D,day,cr,true)) continue; }
+                if (neg){ int cr=world_capital_region(w,c); if (!dir_ok_region(D,day,cr,true)) continue; }
                 *out=c; return true;
             }
             return false;
@@ -964,10 +945,10 @@ static bool dir_eligible(EventCtx *cx, int id, int day, int *out){
 static void dir_apply(EventCtx *cx, int id, int subject, int day){
     Director *D=&cx->ev->director; World *w=cx->w; WorldEconomy *econ=cx->econ;
     switch(id){
-        case DIR_CHARISMA: dir_country_eff(cx,subject,-2.0f,20.f,0.f,0.f);    dir_touch(D,day,cap_region(w,subject),subject,true); break;
-        case DIR_PALAIS:   dir_country_eff(cx,subject,-1.5f,25.f,0.f,0.f);    dir_touch(D,day,cap_region(w,subject),subject,true); break;
-        case DIR_DEBASE:   dir_country_eff(cx,subject,-1.0f, 5.f,0.f,2000.f); dir_touch(D,day,cap_region(w,subject),subject,true); break;
-        case DIR_SCHISME:  fire_event(cx,EVID_SCHISM,subject);                dir_touch(D,day,cap_region(w,subject),subject,true); break;
+        case DIR_CHARISMA: dir_country_eff(cx,subject,-2.0f,20.f,0.f,0.f);    dir_touch(D,day,world_capital_region(w,subject),subject,true); break;
+        case DIR_PALAIS:   dir_country_eff(cx,subject,-1.5f,25.f,0.f,0.f);    dir_touch(D,day,world_capital_region(w,subject),subject,true); break;
+        case DIR_DEBASE:   dir_country_eff(cx,subject,-1.0f, 5.f,0.f,2000.f); dir_touch(D,day,world_capital_region(w,subject),subject,true); break;
+        case DIR_SCHISME:  fire_event(cx,EVID_SCHISM,subject);                dir_touch(D,day,world_capital_region(w,subject),subject,true); break;
         case DIR_FILON:
             dir_region_eff(cx,subject,0.f,15.f,3000.f,1.f);   /* la ruée : or local + agitation */
             if (econ->region[subject].build.H_coerc<1.f){    /* camps sauvages si la poigne manque */
@@ -997,17 +978,17 @@ static void dir_apply(EventCtx *cx, int id, int subject, int day){
                     econ->region[r].build.food_cap += 1.5f;          /* fertilité ↑ (IPM ↓ émergera en §C) */
                     dir_touch(D,day,r,econ->region[r].owner,false);
                 } } break;
-        case DIR_CONCILE:  dir_country_eff(cx,subject, 1.5f,-8.f,0.f,0.f);  dir_touch(D,day,cap_region(w,subject),subject,false); break;
-        case DIR_REFORME:  dir_country_eff(cx,subject, 1.0f,-10.f,1.5f,0.f);dir_touch(D,day,cap_region(w,subject),subject,false); break;
-        case DIR_CADASTRE: dir_country_eff(cx,subject, 0.5f,-5.f,0.5f,0.f); dir_touch(D,day,cap_region(w,subject),subject,false); break;
+        case DIR_CONCILE:  dir_country_eff(cx,subject, 1.5f,-8.f,0.f,0.f);  dir_touch(D,day,world_capital_region(w,subject),subject,false); break;
+        case DIR_REFORME:  dir_country_eff(cx,subject, 1.0f,-10.f,1.5f,0.f);dir_touch(D,day,world_capital_region(w,subject),subject,false); break;
+        case DIR_CADASTRE: dir_country_eff(cx,subject, 0.5f,-5.f,0.5f,0.f); dir_touch(D,day,world_capital_region(w,subject),subject,false); break;
         case DIR_MARCHAND:
             dir_country_eff(cx,subject, 0.5f,-6.f,0.f,0.f);
             if (cx->wp) cx->wp->age_C_bonus=clampf(cx->wp->age_C_bonus+0.2f,0.f,5.f);   /* le négoce relie (C ↑) */
-            dir_touch(D,day,cap_region(w,subject),subject,false); break;
+            dir_touch(D,day,world_capital_region(w,subject),subject,false); break;
         case DIR_AMNISTIE: { int a=subject/SCPS_MAX_COUNTRY, b=subject%SCPS_MAX_COUNTRY;
             if (cx->dp){ cx->dp->rancor[a][b]*=0.5f; cx->dp->rancor[b][a]*=0.5f; }   /* la rancune ÷2 */
             dir_country_eff(cx,a,1.f,0.f,0.f,0.f); dir_country_eff(cx,b,1.f,0.f,0.f,0.f);
-            dir_touch(D,day,cap_region(w,a),a,false); dir_touch(D,day,cap_region(w,b),b,false); } break;
+            dir_touch(D,day,world_capital_region(w,a),a,false); dir_touch(D,day,world_capital_region(w,b),b,false); } break;
     }
 }
 

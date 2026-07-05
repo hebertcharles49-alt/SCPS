@@ -6,6 +6,7 @@
  * la simulation — l'aléa est dans la génération du monde, pas dans l'éco.
  */
 #include "scps_econ.h"
+#include "scps_math.h"    /* clampf partagé */
 #include "scps_tune.h"    /* Arc J : constantes de calibrage surchargeables (SCPS_TUNE) */
 #include "scps_world.h"   /* resource_name(), subsistance_for_biome() */
 #include "scps_culture.h" /* culture_content_distance() pour la novelty diaspora */
@@ -334,7 +335,39 @@ static inline Resource preferred_luxe(const PopCulture *c){
 #define RELOC_COERCION_BASE 0.25f   /* pic de coercition de base par évènement       */
 #define COERCION_DECAY      0.93f   /* demi-vie ≈ 10 ticks                            */
 
-static inline float clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:(v>hi?hi:v));}
+/* ---- Friction culturelle PARTAGÉE (définition unique, ex-copies locales) ----
+ * D∞ de CONTENU (valeurs/subsistance/parenté/religion — la langue est une
+ * HORLOGE, la friction l'ignore). ai/events/statecraft/revolt/readout en
+ * portaient chacun une copie identique. NULL-safe (0 = aucune friction). */
+float econ_content_dist(const PopCulture *a, const PopCulture *b){
+    if (!a || !b) return 0.f;
+    float dv=absf(a->valeurs-b->valeurs), ds=absf(a->subsistance-b->subsistance);
+    float dp=absf(a->parente-b->parente), dr=absf(a->religion-b->religion);
+    float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
+}
+/* Variante FOI ACTIVE (§1/§3) : régner sur une AUTRE BRANCHE de foi est une
+ * vraie fracture, au-delà de l'axe religion — plancher de friction religieuse.
+ * (legitimacy & demography portaient chacun cette variante, identique.) */
+#define FAITH_BRANCH_PEN 3.5f
+float econ_content_dist_faith(const PopCulture *a, const PopCulture *b){
+    if (!a || !b) return 0.f;
+    float m = econ_content_dist(a, b);
+    if (a->rel_branch != b->rel_branch){
+        float dr = absf(a->religion - b->religion);
+        if (dr < FAITH_BRANCH_PEN) dr = FAITH_BRANCH_PEN;
+        if (dr > m) m = dr;
+    }
+    return m;
+}
+/* Culture régnante d'un pays = celle de sa région-capitale (NULL si invalide).
+ * 5 modules en portaient une copie (ruling_culture/crown_of/pc_ruling/dom_…). */
+const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid){
+    if (cid < 0 || cid >= w->n_countries) return NULL;
+    int cp = w->country[cid].capital_prov;
+    if (cp < 0 || cp >= w->n_provinces) return NULL;
+    int cr = w->province[cp].region;
+    return (cr >= 0 && cr < econ->n_regions) ? &econ->region[cr].culture : NULL;
+}
 
 /* TENSION DE DEMANDE : +10 % de besoins partout (appliqué au facteur `units`) → une
  * demande tendue en permanence, le marché presse toujours sur l'offre. */

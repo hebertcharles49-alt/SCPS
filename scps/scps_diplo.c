@@ -12,9 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-
-static inline float clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:(v>hi?hi:v));}
-static inline float absf(float v){return v<0?-v:v;}
+#include "scps_math.h"   /* clampf/absf partagés */
 
 /* ---- Diplomatie d'équilibre — surface d'équilibrage ------------------- */
 #define TRUCE_BASE       (3.f*365.f)   /* trêve de base après une paix (3 ans) */

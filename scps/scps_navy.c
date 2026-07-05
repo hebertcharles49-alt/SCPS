@@ -13,8 +13,7 @@
 #include "scps_diplo.h"  /* I9 : country_at_war → entretien ×1.5 en guerre */
 #include <string.h>
 #include <math.h>
-
-static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
+#include "scps_math.h"   /* clampf partagé */
 
 /* ── Surface d'équilibrage ──────────────────────────────────────────────── */
 #define NAVY_MIN_PRICE       0.5f     /* plancher de prix (même rôle que BUILD_MIN_PRICE) */

@@ -8,8 +8,7 @@
  */
 #include "scps_core.h"
 #include <math.h>
-
-static inline float absf(float v) { return v < 0.f ? -v : v; }
+#include "scps_math.h"   /* absf partagé */
 
 /* ===================================================================== */
 /* §2.2 — DISTANCE                                                       */

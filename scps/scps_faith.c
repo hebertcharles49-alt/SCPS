@@ -12,8 +12,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
-
-static inline float clampf(float v,float lo,float hi){return v!=v?lo:(v<lo?lo:(v>hi?hi:v));}
+#include "scps_math.h"   /* clampf partagé */
 
 /* ---- bande de l'axe religion (tertile) & clé de foi --------------------- */
 static int religion_band(float religion){ return religion<3.34f?0 : (religion<6.67f?1:2); }

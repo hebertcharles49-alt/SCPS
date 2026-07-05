@@ -8,8 +8,7 @@
 #include "scps_routes.h"
 #include <string.h>
 #include <math.h>
-
-static inline float absf(float v){return v<0?-v:v;}
+#include "scps_math.h"   /* absf partagé */
 
 void routes_init(RouteNetwork *rn){ memset(rn,0,sizeof(*rn)); }
 

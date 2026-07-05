@@ -6,6 +6,7 @@
  * l'ancienneté de tutelle.
  */
 #include "scps_legitimacy.h"
+#include "scps_math.h"   /* clampf/absf partagés */
 #include <stddef.h>   /* NULL */
 
 #define K_ALIGN          1.0f
@@ -19,35 +20,8 @@
 #define K_BUILD_H        0.6f     /* la coercition BÂTIE (garnisons) ronge L */
 #define K_FAITH          0.7f     /* la foi BÂTIE (temples) SOUTIENT L (contre l'ombre) */
 
-static inline float clampf(float v, float lo, float hi) {
-    return v!=v?lo:(v < lo ? lo : (v > hi ? hi : v));
-}
-static inline float absf(float v) { return v < 0.f ? -v : v; }
-
-/* Distance de CONTENU (L∞ sur valeurs/subsistance/parenté/religion) entre deux
- * profils de population — la friction, langue exclue (horloge). */
-/* La FOI est ACTIVE (§3 légitimité sacrée) : régner sur une AUTRE BRANCHE de foi
- * éloigne (alignement ↓ → L ↓), au-delà de l'axe religion. */
-#define FAITH_BRANCH_PEN 3.5f
-static float content_dist(const PopCulture *a, const PopCulture *b) {
-    float dv = absf(a->valeurs     - b->valeurs);
-    float ds = absf(a->subsistance - b->subsistance);
-    float dp = absf(a->parente     - b->parente);
-    float dr = absf(a->religion    - b->religion);
-    if (a->rel_branch!=b->rel_branch && dr<FAITH_BRANCH_PEN) dr=FAITH_BRANCH_PEN;
-    float m = dv; if (ds>m) m=ds; if (dp>m) m=dp; if (dr>m) m=dr;
-    return m;
-}
-
-/* Culture régnante d'un pays = celle de sa région-capitale. */
-static const PopCulture *ruling_culture(const World *w, const WorldEconomy *econ, int cid) {
-    if (cid < 0 || cid >= w->n_countries) return NULL;
-    int cap_prov = w->country[cid].capital_prov;
-    if (cap_prov < 0 || cap_prov >= w->n_provinces) return NULL;
-    int cap_reg = w->province[cap_prov].region;
-    if (cap_reg < 0 || cap_reg >= econ->n_regions) return NULL;
-    return &econ->region[cap_reg].culture;
-}
+/* La friction culturelle vit désormais dans scps_econ.c : econ_content_dist_faith
+ * (la FOI est ACTIVE — §3 légitimité sacrée) + econ_ruling_culture. */
 
 static float region_pop(const WorldEconomy *econ, int r) {
     const RegionEconomy *re = &econ->region[r];
@@ -84,8 +58,8 @@ void legitimacy_tick(WorldLegitimacy *wl, const World *w,
         float integ = clampf(wl->years_held[r] / YEARS_INTEGRATE, 0.f, 1.f);
 
         int cid = re->owner;
-        const PopCulture *R = ruling_culture(w, econ, cid);
-        float align = R ? (10.f - K_ALIGN * content_dist(&re->culture, R)) : 5.f;
+        const PopCulture *R = econ_ruling_culture(w, econ, cid);
+        float align = R ? (10.f - K_ALIGN * econ_content_dist_faith(&re->culture, R)) : 5.f;
 
         /* aisance : la satisfaction des besoins fait foi du « pain » (0..1 → 0..10),
          * lue sur l'éco du tick précédent (anti-circularité L↔prospérité). */

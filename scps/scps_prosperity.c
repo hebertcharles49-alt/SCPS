@@ -18,6 +18,7 @@
 #include "scps_religion.h"    /* P4 : nudge des coordonnées par la religion (gated) */
 #include "scps_core.h"        /* scps_order : le moteur d'ordre interne §2.4 vérifié */
 #include "scps_tune.h"        /* FAU0 : ENTROPY_TERMINAL (seuil terminal calibrable) */
+#include "scps_math.h"        /* clampf/absf partagés */
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -27,12 +28,6 @@
 #define BETA    0.40f
 #define GAMMA   1.5f
 #define DELTA   0.12f
-
-/* ---- Utilitaires ------------------------------------------------------- */
-static inline float clampf(float v, float lo, float hi) {
-    return v!=v?lo:(v < lo ? lo : (v > hi ? hi : v));
-}
-static inline float fabsf_local(float v) { return v < 0.f ? -v : v; }
 
 /* Fonction cloche : f(D̄) = D̄·(10−D̄)/25, pic=1.0 en D̄=5 */
 static float bell_f(float d) {
@@ -97,8 +92,8 @@ static void compute_profile(const WorldEconomy *econ, const World *w, int cid,
     float sum_dist=0.f, max_dist=0.f; int pairs=0;
     for (int i=0;i<n;i++) for (int j=i+1;j<n;j++){
         const PopCulture *a=cs[i], *b=cs[j];
-        float dv=fabsf_local(a->valeurs-b->valeurs), ds=fabsf_local(a->subsistance-b->subsistance);
-        float dp=fabsf_local(a->parente-b->parente), dr=fabsf_local(a->religion-b->religion);
+        float dv=absf(a->valeurs-b->valeurs), ds=absf(a->subsistance-b->subsistance);
+        float dp=absf(a->parente-b->parente), dr=absf(a->religion-b->religion);
         float dinf=dv; if(ds>dinf)dinf=ds; if(dp>dinf)dinf=dp; if(dr>dinf)dinf=dr;
         sum_dist+=dinf; if(dinf>max_dist)max_dist=dinf; pairs++;
     }
@@ -272,10 +267,10 @@ void prosperity_tick(WorldProsperity *wp, const World *w,
             if (!neighbors[cid][nid]) continue;
             const CulturalProfile *np2 = &wp->country[nid].profile;
             /* D̄ et D∞ entre les profils moyens des deux pays */
-            float dv = fabsf_local(cp->profile.valeurs    - np2->valeurs);
-            float ds = fabsf_local(cp->profile.subsistance- np2->subsistance);
-            float dp_a = fabsf_local(cp->profile.parente  - np2->parente);
-            float dr = fabsf_local(cp->profile.religion   - np2->religion);
+            float dv = absf(cp->profile.valeurs    - np2->valeurs);
+            float ds = absf(cp->profile.subsistance- np2->subsistance);
+            float dp_a = absf(cp->profile.parente  - np2->parente);
+            float dr = absf(cp->profile.religion   - np2->religion);
             /* L∞ entre les deux profils-pays (un seul couple → D̄ = D∞),
              * cohérent avec culture_content_distance() et le profil interne. */
             float d_inf_ext = dv;

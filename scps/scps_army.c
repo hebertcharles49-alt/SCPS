@@ -6,6 +6,7 @@
  * (table redondante) et les stats. Le contre prime sur la qualité brute.
  */
 #include "scps_army.h"
+#include "scps_math.h"   /* xs32 partagé */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>     /* MODTOOLS : dump/load fichier */
@@ -260,7 +261,6 @@ long army_recruit(ArmyState *a, const WorldEconomy *econ, int cid, UnitType t, l
 /* ===================================================================== */
 /* LE COMBAT AU DÉ (§4)                                                   */
 /* ===================================================================== */
-static uint32_t xs32(uint32_t *s){ uint32_t x=*s; x^=x<<13; x^=x>>17; x^=x<<5; return *s=x?x:1u; }
 static int roll_d20(uint32_t *s){ return (int)(xs32(s)%20u)+1; }
 
 bool arm_hit(float commandement, int roll){ return roll + (int)commandement >= ARM_THRESHOLD; }

@@ -16,6 +16,7 @@
 #include "scps_agency.h"     /* K2 : Edifice — les noms d'édifices vivent ICI (readout), pas au moteur */
 #include "scps_tune.h"       /* capstone §27 : ENTROPY_FIN (le seuil reste DERRIÈRE la membrane) */
 #include "scps_endgame.h"    /* capstone §27 : la membrane traduit FinType/MervPhase en miroirs */
+#include "scps_math.h"       /* clampf/iclamp partagés */
 #include <stddef.h>   /* NULL */
 #include <string.h>   /* memset */
 #include <math.h>     /* roundf */
@@ -47,13 +48,6 @@ const char *edifice_name(int e){
         [EDI_TRADE_CENTER]=STR_EDI_TRADE_CENTER,
     };
     return (e>=0&&e<EDIFICE_COUNT) ? tr(ID[e]) : "?";
-}
-
-static inline float rclampf(float v, float lo, float hi) {
-    return v!=v?lo:(v < lo ? lo : (v > hi ? hi : v));
-}
-static inline int   iclamp(int v, int lo, int hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
 }
 
 /* ===================================================================== */
@@ -270,30 +264,30 @@ BandFoi band_foi(bool same_branch, float religion_dist, bool schism, bool region
 /* ===================================================================== */
 /* PROJECTIONS — coordonnée [0..10] → métrique [0..100]                   */
 /* ===================================================================== */
-int metric_from_coord(float x) { return iclamp((int)roundf(rclampf(x,0.f,10.f)*10.f), 0, 100); }
+int metric_from_coord(float x) { return iclamp((int)roundf(clampf(x,0.f,10.f)*10.f), 0, 100); }
 
 int metric_stability(float SI, float war_exhaustion) {
     /* Composite légitime : l'usure de guerre RONGE la stabilité apparente. */
-    float s = SI - 2.0f * rclampf(war_exhaustion, 0.f, 1.f);
-    return iclamp((int)roundf(rclampf(s,0.f,10.f)*10.f), 0, 100);
+    float s = SI - 2.0f * clampf(war_exhaustion, 0.f, 1.f);
+    return iclamp((int)roundf(clampf(s,0.f,10.f)*10.f), 0, 100);
 }
 int metric_prosperity(float p)  { return metric_from_coord(p); }
 int metric_legitimacy(float L)  { return metric_from_coord(L); }
-int metric_cohesion(float frac) { return metric_from_coord(10.f - rclampf(frac,0.f,10.f)); }
+int metric_cohesion(float frac) { return metric_from_coord(10.f - clampf(frac,0.f,10.f)); }
 int metric_savoir(float lum)    { return metric_from_coord(lum); }
 
 int metric_agitation(float L_local, float coercion, float diversity_tension,
                      float recent_shock, int country_stability, float garrison_H) {
     /* Ce qui SOULÈVE : un consentement bas, la coercition subie, une culture
      * étrangère sous la couronne, un choc récent (conquête, famine). */
-    float raise = (10.f - rclampf(L_local,0.f,10.f)) * 4.5f      /* L bas : jusqu'à +45 */
-                + rclampf(coercion,0.f,1.f) * 25.f                /* coercition : +25     */
-                + rclampf(diversity_tension,0.f,10.f) * 2.0f      /* lignée étrangère : +20 */
-                + rclampf(recent_shock,0.f,1.f) * 20.f;           /* choc : +20            */
+    float raise = (10.f - clampf(L_local,0.f,10.f)) * 4.5f      /* L bas : jusqu'à +45 */
+                + clampf(coercion,0.f,1.f) * 25.f                /* coercition : +25     */
+                + clampf(diversity_tension,0.f,10.f) * 2.0f      /* lignée étrangère : +20 */
+                + clampf(recent_shock,0.f,1.f) * 20.f;           /* choc : +20            */
     /* Ce qui CALME : la stabilité du royaume, la garnison (H bâti). C'est l'effet
      * EXISTANT de H/SI sur l'ordre, lu ici en abattement d'agitation. */
     float calm = (country_stability/100.f) * 20.f                /* Stabilité 100 : −20   */
-               + rclampf(garrison_H,0.f,8.f) * 4.0f;             /* citadelle : jusqu'à −32 */
+               + clampf(garrison_H,0.f,8.f) * 4.0f;             /* citadelle : jusqu'à −32 */
     return iclamp((int)roundf(raise - calm), 0, 100);
 }
 
@@ -310,9 +304,9 @@ BreakdownReadout metric_agitation_breakdown(float coercion, float diversity_tens
     float conquest = (years_held < 5.f) ? (1.f - years_held/5.f) : 0.f;   /* 1→0 sur 5 ans */
     BreakdownLine all[BREAKDOWN_LINES]; int m=0;
     all[m].cause = tr(STR_AGIT_CAUSE_CHOC);     all[m].delta = +(int)roundf(conquest*20.f);                           all[m].decay = (conquest>0.f)?4:0; m++;
-    all[m].cause = tr(STR_AGIT_CAUSE_CULTURE);  all[m].delta = +(int)roundf(rclampf(diversity_tension,0.f,10.f)*2.0f); all[m].decay = 0; m++;
-    all[m].cause = tr(STR_AGIT_CAUSE_COERCION); all[m].delta = +(int)roundf(rclampf(coercion,0.f,1.f)*25.f);           all[m].decay = 0; m++;
-    all[m].cause = tr(STR_AGIT_CAUSE_GARNISON); all[m].delta = -(int)roundf(rclampf(garrison_H,0.f,8.f)*4.0f);         all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_CULTURE);  all[m].delta = +(int)roundf(clampf(diversity_tension,0.f,10.f)*2.0f); all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_COERCION); all[m].delta = +(int)roundf(clampf(coercion,0.f,1.f)*25.f);           all[m].decay = 0; m++;
+    all[m].cause = tr(STR_AGIT_CAUSE_GARNISON); all[m].delta = -(int)roundf(clampf(garrison_H,0.f,8.f)*4.0f);         all[m].decay = 0; m++;
     /* garder les NON-NULS, triés par |delta| décroissant (le modificateur dominant en tête) */
     int order[BREAKDOWN_LINES], k=0;
     for (int i=0;i<m;i++) if (all[i].delta!=0) order[k++]=i;
@@ -336,7 +330,7 @@ bool  can_enact_reform(int stability)   { return stability >= STAB_REFORM_MIN; }
 float aggression_stability_cost(int stability) {
     /* Un État déjà fragile paie cher l'aventure : surcoût décroissant avec la
      * stabilité (lecture de « la guerre ronge l'ordre tenu »). */
-    return rclampf(1.5f - (stability/100.f)*1.2f, 0.3f, 1.5f);
+    return clampf(1.5f - (stability/100.f)*1.2f, 0.3f, 1.5f);
 }
 float integration_speed(int legitimacy) { return 0.5f + (legitimacy/100.f) * 1.5f; } /* ×0.5..×2 */
 float research_pace(int savoir)         { return 0.6f + (savoir/100.f) * 1.4f; }       /* ×0.6..×2 */
@@ -498,22 +492,6 @@ EndgameReadout endgame_readout(const WorldProsperity *wp, const struct EndgameSt
 /* Miroir des valeurs de ScpsMode (scps_core.h) — non inclus ici (cloison). */
 enum { RD_CONSENTI = 0, RD_COERC_FRAGILE, RD_SUBMERGE_REVOL, RD_SUBMERGE_SECESS };
 
-static float pc_content_dist(const PopCulture *a, const PopCulture *b) {
-    float dv = a->valeurs-b->valeurs;       if (dv<0) dv=-dv;
-    float ds = a->subsistance-b->subsistance; if (ds<0) ds=-ds;
-    float dp = a->parente-b->parente;       if (dp<0) dp=-dp;
-    float dr = a->religion-b->religion;     if (dr<0) dr=-dr;
-    float m = dv; if (ds>m) m=ds; if (dp>m) m=dp; if (dr>m) m=dr;
-    return m;
-}
-static const PopCulture *pc_ruling(const World *w, const WorldEconomy *econ, int cid) {
-    if (cid < 0 || cid >= w->n_countries) return NULL;
-    int cp = w->country[cid].capital_prov;
-    if (cp < 0 || cp >= w->n_provinces) return NULL;
-    int cr = w->province[cp].region;
-    if (cr < 0 || cr >= econ->n_regions) return NULL;
-    return &econ->region[cr].culture;
-}
 static const char *vocation_word(Resource res, bool coastal, Biome b) {
     switch (res) {
         case RES_GRAIN: case RES_COTTON:           return "Grenier";
@@ -540,14 +518,14 @@ CountryReadout country_readout(const WorldProsperity *wp, const TechState *ts,
     r.assise     = band_assise(cp->fragilite);
     r.legitimite = band_legit(cp->L);
     r.concorde   = band_concorde(cp->fracture, cp->mode == RD_SUBMERGE_SECESS);
-    r.prosperite = band_prosp(rclampf(cp->P_realise, 0.f, 10.f));
+    r.prosperite = band_prosp(clampf(cp->P_realise, 0.f, 10.f));
     r.savoir     = band_savoir(cp->Lumiere);
-    float charge = (ts && cid < w->n_countries) ? rclampf(ts[cid].charge, 0.f, 10.f) : 0.f;
+    float charge = (ts && cid < w->n_countries) ? clampf(ts[cid].charge, 0.f, 10.f) : 0.f;
     r.presage    = band_presage(charge);
 
     /* Métriques de jeu (0-100) — la même coordonnée, surfacée en nombre. */
     r.m_stabilite  = mk_metric(metric_stability(cp->SI, 0.f),               label_stab(r.stabilite),   hover_stab());
-    r.m_prosperite = mk_metric(metric_prosperity(rclampf(cp->P_realise,0.f,10.f)), label_prosp(r.prosperite), hover_prosp());
+    r.m_prosperite = mk_metric(metric_prosperity(clampf(cp->P_realise,0.f,10.f)), label_prosp(r.prosperite), hover_prosp());
     r.m_legitimite = mk_metric(metric_legitimacy(cp->L),                    label_legit(r.legitimite), hover_legit());
     r.m_cohesion   = mk_metric(metric_cohesion(cp->fracture),               label_concorde(r.concorde),hover_concorde());
     r.m_savoir     = mk_metric(metric_savoir(cp->Lumiere),                  label_savoir(r.savoir),    hover_savoir());
@@ -721,7 +699,7 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * pays le déchire (le seuil de déréalisation). */
     {
         float hub = colonized ? (pe->build.PE_infra + pe->route_pe
-                          + rclampf(pe->prosperity*2.f, 0.f, 3.f)) : 0.f;
+                          + clampf(pe->prosperity*2.f, 0.f, 3.f)) : 0.f;
         int   cc  = w->province[pid].country;
         bool  overheat = (cc>=0 && cc<wp->n_countries && wp->country[cc].surchauffe > 2.f);
         if      (hub < 1.0f) pr.carrefour = CF_NONE;
@@ -738,11 +716,11 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
     pr.m_humeur = mk_metric(metric_legitimacy(L_local), label_humeur(pr.humeur), hover_humeur());
 
     int cid = colonized ? pe->owner : -1;
-    const PopCulture *ruling = (cid >= 0) ? pc_ruling(w, econ, cid) : NULL;
+    const PopCulture *ruling = (cid >= 0) ? econ_ruling_culture(w, econ, cid) : NULL;
     if (colonized && ruling) {
         const PopCulture *rc = &pe->culture;
         float clock   = rc->langue - ruling->langue; if (clock < 0) clock = -clock;
-        float content = pc_content_dist(rc, ruling);
+        float content = econ_content_dist(rc, ruling);
         bool same_branch  = (rc->rel_branch == ruling->rel_branch);
         bool both_zealous = (rc->credo != CREDO_PLURALISTE && ruling->credo != CREDO_PLURALISTE);
         float dr = rc->religion - ruling->religion; if (dr < 0) dr = -dr;
@@ -758,7 +736,7 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * étrangère) + choc récent (conquête, coercition), ABATTUE par la stabilité
      * du pays et la garnison (H bâti) — révolte au-dessus du seuil. C'est l'effet
      * EXISTANT de L/H sur l'ordre, surfacé en un nombre lisible. */
-    float div_tension = (colonized && ruling) ? pc_content_dist(&pe->culture, ruling) : 0.f;
+    float div_tension = (colonized && ruling) ? econ_content_dist(&pe->culture, ruling) : 0.f;
     float garrison    = colonized ? pe->build.H_coerc : 0.f;
     float coercion    = colonized ? pe->coercion : 0.f;
     float yh          = (wl && reg >= 0 && reg < SCPS_MAX_REG) ? wl->years_held[reg] : 50.f;

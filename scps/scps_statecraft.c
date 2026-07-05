@@ -17,6 +17,7 @@
 #include "scps_tune.h"      /* #26 : tunables OPINION_* */
 #include "scps_intertrade.h"/* #26 : intertrade_embargoed (la mémoire de l'embargo) */
 #include "scps_provlog.h"   /* le JOURNAL diplomatique (trahison/sécession/relations, display) */
+#include "scps_math.h"      /* clampf/iclamp/absf partagés */
 #include <string.h>
 
 /* ---- Calibrage --------------------------------------------------------- */
@@ -26,28 +27,7 @@
 #define SC_AGIT_RATE        0.020f   /* lissage de l'agitation soutenue /jour          */
 #define DIP_PER_INFLUENCE   25       /* +1 diplomate par 25 d'Influence                 */
 
-static inline float clampf(float v,float lo,float hi){ return v!=v?lo:(v<lo?lo:(v>hi?hi:v)); }
-static inline int   iclamp(int v,int lo,int hi){ return v<lo?lo:(v>hi?hi:v); }
 static inline float toward(float cur,float tgt,float k){ return cur + (tgt-cur)*clampf(k,0.f,1.f); }
-static inline float absf(float v){ return v<0?-v:v; }
-
-static float pc_dist(const PopCulture *a, const PopCulture *b){
-    float dv=absf(a->valeurs-b->valeurs), ds=absf(a->subsistance-b->subsistance);
-    float dp=absf(a->parente-b->parente), dr=absf(a->religion-b->religion);
-    float m=dv; if(ds>m)m=ds; if(dp>m)m=dp; if(dr>m)m=dr; return m;
-}
-static const PopCulture *ruling_culture(const World *w, const WorldEconomy *econ, int cid){
-    if (cid<0 || cid>=w->n_countries) return NULL;
-    int cp=w->country[cid].capital_prov;
-    if (cp<0 || cp>=w->n_provinces) return NULL;
-    int cr=w->province[cp].region;
-    return (cr>=0 && cr<econ->n_regions) ? &econ->region[cr].culture : NULL;
-}
-static int cap_region_of(const World *w, int cid){
-    if (cid<0 || cid>=w->n_countries) return -1;
-    int cp=w->country[cid].capital_prov;
-    return (cp>=0 && cp<w->n_provinces) ? w->province[cp].region : -1;
-}
 static int country_size(const WorldEconomy *econ, int cid){
     int n=0;
     for (int r=0;r<econ->n_regions;r++)
@@ -332,7 +312,7 @@ bool statecraft_send(Statecraft *sc, const World *w, const WorldEconomy *econ,
     for (int i=0;i<cap;i++) if (st->agents[i].mission==DIP_IDLE){ slot=i; break; }
     if (slot<0) return false;                  /* vivier saturé : plafond d'Influence */
 
-    int home = cap_region_of(w, cid);
+    int home = world_capital_region(w, cid);
     int days;
     switch (mission){
         case DIP_RELATIONS: days=180; break;
@@ -340,8 +320,8 @@ bool statecraft_send(Statecraft *sc, const World *w, const WorldEconomy *econ,
         case DIP_ROUTE:     days=90;  break;
         case DIP_INTEGRATE: {
             /* ∝ D∞ : avaler du lointain prend des générations. */
-            const PopCulture *rul=ruling_culture(w,econ,cid);
-            float d = rul ? pc_dist(&econ->region[target].culture, rul) : 5.f;
+            const PopCulture *rul=econ_ruling_culture(w,econ,cid);
+            float d = rul ? econ_content_dist(&econ->region[target].culture, rul) : 5.f;
             days = 300 + (int)(d*150.f);
         } break;
         default: return false;
@@ -468,9 +448,9 @@ void statecraft_tick(Statecraft *sc, World *w, WorldEconomy *econ,
         int owner=re->owner;
         if (owner<0 || !re->culture.settled){ sc->agitation[r]=0.f; sc->unrest_days[r]=0.f; continue; }
 
-        const PopCulture *rul=ruling_culture(w,econ,owner);
+        const PopCulture *rul=econ_ruling_culture(w,econ,owner);
         float L_local = (r<SCPS_MAX_REG) ? wl->L[r] : 5.f;
-        float div_tension = rul ? pc_dist(&re->culture, rul) : 0.f;
+        float div_tension = rul ? econ_content_dist(&re->culture, rul) : 0.f;
         float yh = (r<SCPS_MAX_REG) ? wl->years_held[r] : 50.f;
         float shock = (yh<5.f) ? (1.f - yh/5.f) : 0.f;
         if (re->coercion>shock) shock=re->coercion;

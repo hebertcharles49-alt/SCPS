@@ -21,6 +21,7 @@
 #include "scps_culture.h"   /* culture_make(), lifeway_*, ethos_nearest() */
 #include "scps_heritage.h"   /* heritage + leviers (worldgen_seed_peoples, dérive) */
 #include "scps_tune.h"      /* HAMEAUX LIBRES : WILD_PER_PLAYABLE (réserve du slot WILD) */
+#include "scps_math.h"      /* clampf/iclamp partagés */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -43,11 +44,12 @@ static float rng_f(void)       { return (rng_u() & 0xFFFFFFu) * (1.f/0x1000000u)
 /* ========================================================================
  * Utilitaires
  * ====================================================================== */
-static inline float clampf(float v, float lo, float hi) {
-    return v!=v?lo:(v < lo ? lo : v > hi ? hi : v);
-}
-static inline int clampi(int v, int lo, int hi) {
-    return v < lo ? lo : v > hi ? hi : v;
+/* Région-capitale d'un pays (-1 si invalide) : cid → capital_prov → region.
+ * LA définition partagée — events/statecraft en portaient chacun une copie. */
+int world_capital_region(const World *w, int cid){
+    if (cid < 0 || cid >= w->n_countries) return -1;
+    int cp = w->country[cid].capital_prov;
+    return (cp >= 0 && cp < w->n_provinces) ? w->province[cp].region : -1;
 }
 
 static void normalize_f(float *a, int n) {
@@ -549,10 +551,10 @@ static void volcanoes_init(const float *height, float seed_f) {
         }
         if (!ok) continue;
         /* Direction d'écoulement : gradient de hauteur sur un rayon large */
-        float ghx = height[scps_idx(clampi(vx+4,0,SCPS_W-1),vy)]
-                  - height[scps_idx(clampi(vx-4,0,SCPS_W-1),vy)];
-        float ghy = height[scps_idx(vx,clampi(vy+4,0,SCPS_H-1))]
-                  - height[scps_idx(vx,clampi(vy-4,0,SCPS_H-1))];
+        float ghx = height[scps_idx(iclamp(vx+4,0,SCPS_W-1),vy)]
+                  - height[scps_idx(iclamp(vx-4,0,SCPS_W-1),vy)];
+        float ghy = height[scps_idx(vx,iclamp(vy+4,0,SCPS_H-1))]
+                  - height[scps_idx(vx,iclamp(vy-4,0,SCPS_H-1))];
         float glen = sqrtf(ghx*ghx+ghy*ghy);
         if (glen < 1e-4f) { ghx=0.f; ghy=1.f; glen=1.f; }
         g_volc[g_nvolc].cx   = (float)vx;
@@ -1263,7 +1265,7 @@ static void gen_climate(World *w, float *height, float *moisture,
                 humidity += EVAP*(0.4f+0.6f*t)*(HUM_CAP-humidity);
                 if(humidity>HUM_CAP)humidity=HUM_CAP;
             } else {
-                int xu=clampi(x-dir,0,SCPS_W-1);
+                int xu=iclamp(x-dir,0,SCPS_W-1);
                 float rise=h-height[scps_idx(xu,y)];
                 if(rise<0.f)rise=0.f;
                 float oro = humidity*rise*ORO_K;   /* ombre pluviométrique */
@@ -1561,7 +1563,7 @@ static void compute_fertility(float *height, float *moisture, float *temperature
     for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
         float best=0.f;
         for (int dy=-5;dy<=5;dy++) for (int dx=-5;dx<=5;dx++) {
-            int nx2=clampi(x+dx,0,SCPS_W-1), ny2=clampi(y+dy,0,SCPS_H-1);
+            int nx2=iclamp(x+dx,0,SCPS_W-1), ny2=iclamp(y+dy,0,SCPS_H-1);
             float r=cells[scps_idx(nx2,ny2)].river/255.f;   /* débit ∈ [0..1] */
             if (r<0.02f) continue;
             /* La portée d'irrigation s'élargit avec le débit du fleuve */
@@ -1579,7 +1581,7 @@ static void compute_fertility(float *height, float *moisture, float *temperature
         int i=scps_idx(x,y);
         if (height[i]<SEA_LEVEL || cells[i].river<70) continue;
         for (int d=0;d<8;d++){
-            int nx2=clampi(x+DDX[d],0,SCPS_W-1),ny2=clampi(y+DDY[d],0,SCPS_H-1);
+            int nx2=iclamp(x+DDX[d],0,SCPS_W-1),ny2=iclamp(y+DDY[d],0,SCPS_H-1);
             if (height[scps_idx(nx2,ny2)]<SEA_LEVEL){
                 delta[i]=cells[i].river/255.f; break;
             }
@@ -1593,7 +1595,7 @@ static void compute_fertility(float *height, float *moisture, float *temperature
         /* Pente */
         float slope=0.f;
         for (int d=0;d<4;d++) {
-            int nx2=clampi(x+DDX[d*2],0,SCPS_W-1),ny2=clampi(y+DDY[d*2],0,SCPS_H-1);
+            int nx2=iclamp(x+DDX[d*2],0,SCPS_W-1),ny2=iclamp(y+DDY[d*2],0,SCPS_H-1);
             slope+=fabsf(h-height[scps_idx(nx2,ny2)]);
         }
         slope/=4.f;
@@ -1674,10 +1676,10 @@ static void build_cross_cost(const World *w, const float *height,
         if (r>0.06f) cost += 13.0f*powf((r-0.06f)/0.94f,1.15f);  /* rivière/fleuve */
         if (height[i]>MOUNTAIN_H)            cost += 18.0f;        /* crête */
         else if (height[i]>MOUNTAIN_H-0.08f) cost += 7.0f;        /* piémont */
-        float hx=fabsf(height[scps_idx(clampi(x+1,0,SCPS_W-1),y)]
-                      -height[scps_idx(clampi(x-1,0,SCPS_W-1),y)]);
-        float hy=fabsf(height[scps_idx(x,clampi(y+1,0,SCPS_H-1))]
-                      -height[scps_idx(x,clampi(y-1,0,SCPS_H-1))]);
+        float hx=fabsf(height[scps_idx(iclamp(x+1,0,SCPS_W-1),y)]
+                      -height[scps_idx(iclamp(x-1,0,SCPS_W-1),y)]);
+        float hy=fabsf(height[scps_idx(x,iclamp(y+1,0,SCPS_H-1))]
+                      -height[scps_idx(x,iclamp(y-1,0,SCPS_H-1))]);
         cost += (hx+hy)*24.0f;                                    /* pente */
         float nx=(float)x/SCPS_W, ny=(float)y/SCPS_H;
         /* Domain warp sur le bruit de sinuosité des frontières :
@@ -2316,7 +2318,7 @@ static void compute_render_flags(World *w, float *height) {
         c->coast=false;
         if (height[scps_idx(x,y)]<SEA_LEVEL) continue;
         for (int d=0;d<4;d++) {
-            int nx2=clampi(x+DDX[d*2],0,SCPS_W-1),ny2=clampi(y+DDY[d*2],0,SCPS_H-1);
+            int nx2=iclamp(x+DDX[d*2],0,SCPS_W-1),ny2=iclamp(y+DDY[d*2],0,SCPS_H-1);
             if (height[scps_idx(nx2,ny2)]<SEA_LEVEL){c->coast=true;break;}
         }
     }
@@ -2354,10 +2356,10 @@ static void compute_render_flags(World *w, float *height) {
     static const float LLEN=0.9165f;                  /* ||L|| */
     for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++) {
         int i=scps_idx(x,y);
-        float he=height[scps_idx(clampi(x+1,0,SCPS_W-1),y)];
-        float hw=height[scps_idx(clampi(x-1,0,SCPS_W-1),y)];
-        float hs=height[scps_idx(x,clampi(y+1,0,SCPS_H-1))];
-        float hn=height[scps_idx(x,clampi(y-1,0,SCPS_H-1))];
+        float he=height[scps_idx(iclamp(x+1,0,SCPS_W-1),y)];
+        float hw=height[scps_idx(iclamp(x-1,0,SCPS_W-1),y)];
+        float hs=height[scps_idx(x,iclamp(y+1,0,SCPS_H-1))];
+        float hn=height[scps_idx(x,iclamp(y-1,0,SCPS_H-1))];
         float gx=(he-hw)*5.f, gy=(hs-hn)*5.f;
         float nlen=sqrtf(gx*gx+gy*gy+1.f);
         float dot=((-gx)*LX+(-gy)*LY+(1.f/nlen)*LZ)/(nlen*LLEN);
@@ -3115,7 +3117,7 @@ static void step_weathering(World *w, const float *height, float seed_f) {
         bool near_sea=false, near_lake=false;
         float minh=height[i], maxh=height[i];
         for (int d=0;d<8;d++) {
-            int j=scps_idx(clampi(x+DDX[d],0,SCPS_W-1),clampi(y+DDY[d],0,SCPS_H-1));
+            int j=scps_idx(iclamp(x+DDX[d],0,SCPS_W-1),iclamp(y+DDY[d],0,SCPS_H-1));
             float hh=height[j];
             if (hh<SEA_LEVEL) near_sea=true;
             if (c[j].lake)    near_lake=true;
@@ -3853,7 +3855,7 @@ void world_generate(World *w, const WorldParams *P) {
                     if (height[i]<SEA_LEVEL){ sm[i]=moisture[i];st[i]=temp[i];continue; }
                     float wm=0.f,wt=0.f,ws=0.f;
                     for (int dy=-1;dy<=1;dy++) for (int dx=-1;dx<=1;dx++) {
-                        int nx2=clampi(x+dx,0,SCPS_W-1),ny2=clampi(y+dy,0,SCPS_H-1);
+                        int nx2=iclamp(x+dx,0,SCPS_W-1),ny2=iclamp(y+dy,0,SCPS_H-1);
                         int j=scps_idx(nx2,ny2);
                         if (height[j]<SEA_LEVEL) continue;
                         float w2=(dx==0&&dy==0)?4.f:(dx*dy==0)?2.f:1.f; /* Gauss 3×3 */

@@ -449,6 +449,15 @@ typedef struct {
 
 /* ---- API -------------------------------------------------------------- */
 
+/* ---- Friction culturelle (définitions PARTAGÉES, scps_econ.c) ----------- *
+ * econ_content_dist : D∞ sur les 4 axes de CONTENU (langue exclue — horloge).
+ * econ_content_dist_faith : + plancher de friction quand la BRANCHE de foi
+ *   diffère (la FOI est ACTIVE — lu par legitimacy & demography).
+ * econ_ruling_culture : culture régnante d'un pays = sa région-capitale. */
+float econ_content_dist(const PopCulture *a, const PopCulture *b);
+float econ_content_dist_faith(const PopCulture *a, const PopCulture *b);
+const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid);
+
 /* Initialise pops, capacités d'extraction et manufactures à partir de la
  * géographie/ressources du monde déjà généré. */
 void econ_init(WorldEconomy *e, const World *w);

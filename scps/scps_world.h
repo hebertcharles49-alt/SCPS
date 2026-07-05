@@ -24,6 +24,8 @@ void world_generate(World *w, const WorldParams *params);
  * à part via econ_build_adjacency (l'appelant tient le WorldEconomy). */
 void world_sink_cell(Cell *c, float new_height);
 void world_recompute_adjacency(World *w);
+/* Région-capitale d'un pays (-1 si invalide) : cid → capital_prov → region. */
+int  world_capital_region(const World *w, int cid);
 /* Habitabilité [0..1] = f(biome) × f(température) × f(relief). Source unique worldgen
  * + capstone froid. `height` = altitude de la tuile/province : le RELIEF escarpé
  * (hors plateau highlands/hills) écrase l'habitabilité ; un plateau reste un berceau. */
