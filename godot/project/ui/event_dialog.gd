@@ -10,13 +10,16 @@ extends Control
 
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
+const EventArt = preload("res://ui/event_art.gd")   ## illustrations par THÈME (réutilisées)
 
 const W := 460.0
 const BTN_H := 34.0
 const BTN_GAP := 8.0
+const BANNER_H := W / 4.0    ## bannière 4:1 (512×128 → 460×115), sous le bandeau-titre
 
 var _slot := -1              ## slot COURANT en cours de résolution (-1 = aucun affiché)
 var _pending := {}           ## le Dictionary lu de pending_event(slot)
+var _tex: Texture2D = null   ## l'illustration du thème de l'évènement courant
 var _btn_rects := []         ## [[Rect2, option:int]] posés au _draw
 var _hover_option := -1      ## option SURVOLÉE (pour le tooltip de flavor)
 var _prev_speed := -1        ## la vitesse d'avant l'ouverture (restaurée à la fermeture)
@@ -45,6 +48,7 @@ func _open_slot(slot: int) -> void:
 		return
 	_slot = slot
 	_pending = pe
+	_tex = EventArt.texture_for(int(pe.get("evid", -1)))
 	_hover_option = -1
 	if not visible:
 		_prev_speed = Sim.speed_index
@@ -68,7 +72,7 @@ func _body_lines(situation: String) -> PackedStringArray:
 func _height() -> float:
 	var n: int = int(_pending.get("n_options", 0))
 	var body_h: float = _body_lines(String(_pending.get("situation", ""))).size() * 22.0
-	return 78.0 + body_h + 10.0 + n * (BTN_H + BTN_GAP) + 14.0
+	return 78.0 + BANNER_H + 6.0 + body_h + 10.0 + n * (BTN_H + BTN_GAP) + 14.0
 
 func _center() -> void:
 	var vp := get_viewport_rect().size
@@ -87,8 +91,14 @@ func _draw() -> void:
 	VKit.fill(self, Rect2(0, 32, W, 2), VKit.COL_GOLD)
 	var head := "— UNE DÉCISION S'IMPOSE —"
 	VKit.text(self, Vector2((W - VKit.text_w(head, VKit.FS_BIG)) * 0.5, 8), VKit.COL_GOLD, head, VKit.FS_BIG)
+	# — l'ILLUSTRATION du thème (bannière 4:1, réutilisée par famille d'évènements) —
+	if _tex != null:
+		draw_texture_rect(_tex, Rect2(1, 35, W - 2.0, BANNER_H), false)
+	else:
+		VKit.fill(self, Rect2(1, 35, W - 2.0, BANNER_H), Color(0.09, 0.07, 0.05, 0.9))
+	VKit.fill(self, Rect2(0, 35 + BANNER_H, W, 2), VKit.COL_GOLD)
 	# — la SITUATION (le nom de l'évènement, résolu — membrane) —
-	var y := 46.0
+	var y := 46.0 + BANNER_H + 6.0
 	for l in _body_lines(String(_pending.get("situation", ""))):
 		VKit.text(self, Vector2(18, y), VKit.COL_PARCH, l, VKit.FS_BIG)
 		y += 22.0
