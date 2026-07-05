@@ -16,6 +16,7 @@ var _menu: Control
 var _religion: Control
 var _country_actions: Control  # fenêtre diplomatique par pays (liste diplo + clic droit)
 var _devpanel: Control         # MODTOOLS : panneau dev (tunables live, F10)
+var _chronique: Control        # LES ANNALES DU RÈGNE : le récit sélectif (lecture seule, H)
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _sel_prov := -1
 
@@ -196,6 +197,14 @@ func _ready() -> void:
 	popup.goto_region.connect(goto_fn)
 	popup.open_tab.connect(func(i): _sidebar.open_tab(i))
 
+	# LES ANNALES DU RÈGNE (touche H) : le récit sélectif de la partie, lecture seule.
+	# Le clic sur une entrée localisée centre la carte (même motif que les alertes).
+	_chronique = load("res://ui/chronique.gd").new()
+	_chronique.name = "Chronique"
+	_chronique.visible = false
+	ui.add_child(_chronique)
+	_chronique.goto_region.connect(goto_fn)
+
 	# MEMBRANE DE DÉCISION : un évènement à VRAIE décision (Marbrive…) qui concerne le
 	# joueur ATTEND son choix — distinct du popup OYEZ OYEZ (notification après coup) :
 	# ici RIEN n'est encore appliqué tant que le joueur n'a pas choisi.
@@ -229,6 +238,12 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_F10:
 			if _devpanel != null:
 				_devpanel.visible = not _devpanel.visible
+		KEY_H:
+			if _chronique != null:
+				if _chronique.visible:
+					_chronique.hide()
+				else:
+					_chronique.open()
 		KEY_SPACE:
 			Sim.toggle_pause()
 		KEY_EQUAL, KEY_PLUS, KEY_KP_ADD:
@@ -251,7 +266,7 @@ func _on_tick_faith(_year: int) -> void:
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).
 func _close_topmost() -> bool:
-	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions]:
+	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique]:
 		if p != null and p.visible:
 			p.visible = false
 			return true

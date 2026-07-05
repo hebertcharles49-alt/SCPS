@@ -307,7 +307,10 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
      * selon le scope de l'évènement — la borne large (max des deux) couvre les deux cas,
      * comme director_save_sane le fait déjà pour l'encodage Amnistie région/pays mêlés. */
     { int max_subj = s->econ->n_regions > w->n_countries ? s->econ->n_regions : w->n_countries;
-      if (!decision_memory_save_sane(s->ev, max_subj)) return false; }
+      if (!decision_memory_save_sane(s->ev, max_subj)) return false;
+      /* LES ANNALES (v63) : region indexe soit une région soit un pays selon le kind —
+       * même borne large que la garde ci-dessus (le pire des deux couvre les deux cas). */
+      if (!annals_save_sane(s->ev, max_subj)) return false; }
     return true;
 }
 

@@ -527,7 +527,7 @@ int main(int argc, char **argv){
             PendingEvent pe;
             ok("pending_event_at lit le slot fraîchement enfilé", pending_event_at(s.ev,0,&pe));
             bool resolved = pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,
-                                                  0, 0, s.ev->ages.days_elapsed);
+                                                  0, 0, s.ev->ages.days_elapsed, human);
             ok("pending_event_resolve APPLIQUE le choix et RETIRE le pending",
                resolved && pending_event_count(s.ev)==n0);
         } else ok("(pas d'enfilage observé sur cette graine — ignoré)", true);
@@ -539,6 +539,79 @@ int main(int argc, char **argv){
         ok("un pending EXPIRÉ (180 j) s'auto-résout (ai_chance) et se retire",
            pending_event_count(s.ev)==n1-1 && s.ev->n_fired==fired1+1);
       } else ok("(pas de capitale pour le test file joueur — ignoré)", true);
+    }
+
+    /* ═══ 10. LES ANNALES DU RÈGNE — anneau à SÉLECTION PAR POIDS ═══════ */
+    printf("\n── 10. Les Annales : accroche joueur-seulement, sélection par poids ──\n");
+    events_init(s.ev,s.w,seed);
+    /* (a) chronique (human=-1) : rien ne s'accroche jamais, même via resolve_choice
+     * direct (pending_event_resolve force human=-1 en interne — golden intact). */
+    ok("annals vide à l'init", annals_count(s.ev)==0);
+    { int wi = annal_push(s.ev, 10, ANNAL_DILEMME, EVID_MARBRIVE, 0, 3, 40, 1);
+      ok("annal_push (anneau pas plein) écrit round-robin (index renvoyé valide)", wi==0);
+      ok("… et compte une entrée de plus", annals_count(s.ev)==1);
+      AnnalEntry e; ok("annals_at relit l'entrée écrite (kind/année/option)",
+          annals_at(s.ev,0,&e) && e.kind==ANNAL_DILEMME && e.year==10 && e.option==1 && e.a==EVID_MARBRIVE);
+    }
+    /* (b) remplir l'anneau, puis vérifier l'ÉVICTION PAR POIDS : un fait LOURD
+     * (poids 200) posé maintenant doit survivre à un remplissage massif de faits
+     * LÉGERS (poids 1) qui suivent — le panthéon résiste au bruit récent. */
+    events_init(s.ev,s.w,seed);
+    int heavy_idx = annal_push(s.ev, 5, ANNAL_AGE, AGE_COMMERCE, 0, -1, 200, -1);
+    ok("le fait LOURD est bien écrit", heavy_idx>=0);
+    for (int k=0;k<ANNALS_CAP*3;k++)
+        annal_push(s.ev, 20+k, ANNAL_DILEMME, EVID_QUAKE, 0, k%7, 1, 0);   /* rafale de faits légers */
+    ok("l'anneau reste borné à sa capacité", annals_count(s.ev)==ANNALS_CAP);
+    bool heavy_survives=false;
+    for (int i=0;i<annals_count(s.ev);i++){
+        AnnalEntry e; annals_at(s.ev,i,&e);
+        if (e.kind==ANNAL_AGE && e.a==AGE_COMMERCE && e.year==5){ heavy_survives=true; break; }
+    }
+    ok("SÉLECTION PAR POIDS : le fait LOURD (200) survit à une rafale de faits légers (1)",
+       heavy_survives);
+    /* (c) un fait TROP LÉGER (poids 0) face à un anneau plein de faits déjà lourds
+     * ne remplace RIEN (annal_push renvoie -1). */
+    events_init(s.ev,s.w,seed);
+    for (int k=0;k<ANNALS_CAP;k++) annal_push(s.ev, 1+k, ANNAL_AGE, AGE_COMMERCE, 0, -1, 200, -1);
+    ok("anneau plein de faits lourds", annals_count(s.ev)==ANNALS_CAP);
+    int wi_light = annal_push(s.ev, 999, ANNAL_DILEMME, EVID_QUAKE, 0, 0, 0, 0);
+    ok("un fait TROP LÉGER ne déloge rien dans un panthéon plein (push refusé, -1)", wi_light==-1);
+
+    /* (d) ACCROCHAGE VIVANT — pendant une VRAIE partie, un choix résolu par le
+     * JOUEUR (n_options>1) pousse une entrée ANNAL_DILEMME ; le MÊME scénario en
+     * CHRONIQUE (human=-1) n'accroche RIEN — golden intact par construction. */
+    events_init(s.ev,s.w,seed);
+    { int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+      int human=(capr>=0)?s.econ->region[capr].owner:-1;
+      if (capr>=0){
+        if (rp>=0){ s.econ->prov[rp].build.K_inst=2.0f; s.econ->prov[rp].coercion=0.4f; }
+        econ_aggregate_regions(s.econ);
+        s.econ->region[capr].owner=(int16_t)human;
+        if (capr<SCPS_MAX_REG) s.sc->agitation[capr]=60.f;
+        int n0=pending_event_count(s.ev);
+        for (int d=0; d<3650 && pending_event_count(s.ev)==n0; d+=30)
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,human);
+        if (pending_event_count(s.ev)>n0){
+            int a0=annals_count(s.ev);
+            pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL, 0, 0, s.ev->ages.days_elapsed, human);
+            ok("un choix JOUEUR résolu (n_options>1) pousse une ANNAL_DILEMME",
+               annals_count(s.ev)>a0);
+        } else ok("(pas d'enfilage observé sur cette graine — ignoré, comme au §9d)", true);
+      } else ok("(pas de capitale pour le test accrochage — ignoré)", true);
+    }
+    /* même scénario en CHRONIQUE (human=-1) : world_events_tick auto-résout tout
+     * lui-même (fire_event) — aucune entrée ne doit apparaître dans les Annales. */
+    events_init(s.ev,s.w,seed);
+    { int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+      if (capr>=0){
+        if (rp>=0){ s.econ->prov[rp].build.K_inst=2.0f; s.econ->prov[rp].coercion=0.4f; }
+        econ_aggregate_regions(s.econ);
+        if (capr<SCPS_MAX_REG) s.sc->agitation[capr]=60.f;
+        for (int d=0; d<3650; d+=30)
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);   /* human=-1 : chronique */
+        ok("en CHRONIQUE (human=-1), les Annales restent VIDES même après des dilemmes résolus",
+           annals_count(s.ev)==0);
+      } else ok("(pas de capitale pour le test chronique — ignoré)", true);
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

@@ -258,6 +258,41 @@ typedef struct {
     int   cells;
 } RegionGeo;
 
+/* ===================================================================== */
+/* LES ANNALES DU RÈGNE — un récit SÉLECTIF de la partie (§ Annales)       */
+/* ===================================================================== */
+/* La nature d'une entrée des Annales (lue par la façade pour composer une
+ * phrase diégétique ; `a`/`b`/`region`/`option` sont des index BRUTS que la
+ * façade résout en noms — la membrane elle-même ne porte que des faits). */
+typedef enum {
+    ANNAL_DILEMME = 0,      /* un évènement-décision RÉSOLU : a=evid, option=choix, region=sujet */
+    ANNAL_CICATRICE,        /* une cicatrice a MÛRI en évènement : origin=index de l'ANNAL_DILEMME d'origine (-1 si perdu) */
+    ANNAL_AGE,              /* un âge est ADVENU : a=AgeId */
+    ANNAL_GUERRE_GAGNEE,    /* paix signée, score favorable : a=l'autre pays, b=score */
+    ANNAL_GUERRE_PERDUE,    /* paix signée, score défavorable : a=l'autre pays, b=score */
+    ANNAL_SECESSION,        /* un pays est NÉ d'une sécession : a=le nouveau pays */
+    ANNAL_HEGEMON_BRISE,    /* un hégémon s'est effondré (réservé — non accroché en v1) */
+    ANNAL_MONUMENT,         /* le PREMIER édifice du pays (960 j) : a=Edifice */
+    ANNAL_FIN,              /* §27/Merveille : a=EndgameFin ou MERV_ASCENDED */
+    ANNAL_KIND_COUNT
+} AnnalKind;
+
+/* Anneau des ANNALES : SÉLECTION PAR POIDS (jamais un simple FIFO) — les faits
+ * LOURDS et ANCIENS forment le panthéon, le récent tourne. subject/kind/evid
+ * sont revalidés au chargement (save_sane) comme les autres anneaux du module.
+ * `origin` = index (dans l'anneau, au moment du push) de l'entrée ANNAL_DILEMME
+ * qui a posé la cicatrice devenue ANNAL_CICATRICE (-1 = introuvable/non pertinent). */
+#define ANNALS_CAP 96
+typedef struct {
+    int16_t year;        /* l'an du fait (days_elapsed/365) */
+    uint8_t kind;         /* AnnalKind */
+    int16_t a, b;         /* charge utile (evid/pays/age/score…), selon kind */
+    int16_t region;       /* région-sujet (-1 = aucune / pays) */
+    uint8_t weight;       /* poids de sélection (survit si lourd+ancien) */
+    int8_t  option;        /* ANNAL_DILEMME : le choix retenu (-1 sinon) */
+    int16_t origin;        /* ANNAL_CICATRICE : entrée d'origine dans l'anneau (-1 = aucune) */
+} AnnalEntry;
+
 typedef struct {
     RegionGeo   geo[SCPS_MAX_REG];   /* la géo RELUE par région (le worldgen exposé) */
     AgesState   ages;
@@ -273,6 +308,10 @@ typedef struct {
     int          cd_head;
     PendingEvent pending[PENDING_EVENT_CAP];
     int          pending_n;
+    /* LES ANNALES DU RÈGNE (§ Annales) — n'accroche QUE le pays JOUEUR (human_player≥0) */
+    AnnalEntry   annals[ANNALS_CAP];
+    int          annal_head;      /* prochaine case d'écriture (round-robin avant remplissage) */
+    int          annal_n;         /* nombre d'entrées valides (<=ANNALS_CAP) */
 } EventsState;
 
 /* ===================================================================== */
@@ -419,11 +458,15 @@ bool pending_event_at(const EventsState *ev, int slot, PendingEvent *out);
  * fire_event (apply_effect + hooks + cicatrice + cooldown + journal), puis
  * RETIRE le pending de la file (swap avec le dernier). false si slot/option
  * invalide (silencieux — la façade a REVALIDÉ avant d'enfiler CMD_EVENT_CHOICE,
- * mais l'état a pu changer entre-temps ; miroir save_sane : jamais déréférencé). */
+ * mais l'état a pu changer entre-temps ; miroir save_sane : jamais déréférencé).
+ * `human_player` : le sujet du pending appartient TOUJOURS au joueur à ce stade
+ * (revalidé par l'appelant, CMD_EVENT_CHOICE) — passé à resolve_choice pour que
+ * LES ANNALES accrochent CE choix (sans ça, la résolution d'un pending du joueur
+ * paraîtrait venir de la chronique — human=-1 — et n'accrocherait jamais rien). */
 bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
                            WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                            RouteNetwork *rn, const TechState ts[], DiploState *dp,
-                           int slot, int option, int today);
+                           int slot, int option, int today, int human_player);
 /* Auto-résolution (ai_chance) de tout pending EXPIRÉ (expire_day <= today) —
  * appelée par world_events_tick chaque jour (le joueur qui ignore une
  * décision finit par la subir, comme l'IA l'aurait tranchée). */
@@ -438,5 +481,27 @@ void pending_event_tick_expire(EventsState *ev, World *w, WorldEconomy *econ,
 /* les déborderait est REFUSÉ net, jamais déréférencé).                      */
 /* ===================================================================== */
 bool decision_memory_save_sane(const EventsState *ev, int max_subject);
+
+/* ===================================================================== */
+/* LES ANNALES DU RÈGNE — API (§ Annales)                                 */
+/* ===================================================================== */
+/* Pousse une entrée dans l'anneau des Annales. SÉLECTION PAR POIDS : tant que
+ * l'anneau n'est pas plein, écriture round-robin normale (annal_head) ; une
+ * fois plein, on ÉVINCE l'entrée de poids MINIMAL parmi la MOITIÉ la plus
+ * ANCIENNE de l'anneau (balayage d'index croissant, déterministe — départage
+ * par le premier trouvé) : les faits lourds & anciens forment le panthéon, la
+ * moitié récente tourne librement. `weight` mesure l'importance dramatique du
+ * fait (dilemme ∝ amplitude, âge/fin = poids plein). */
+/* Renvoie l'index où l'entrée a été écrite dans l'anneau (-1 = rien écrit — le
+ * fait était trop léger face au panthéon). Utile pour poser `origin` d'une
+ * entrée liée juste après coup (ANNAL_CICATRICE → l'ANNAL_DILEMME qui l'a posée). */
+int  annal_push(EventsState *ev, int year, int kind, int a, int b, int region,
+                int weight, int option);
+/* Lecture brute (la façade compose le texte) : nombre d'entrées valides. */
+int  annals_count(const EventsState *ev);
+/* i=0..annals_count()-1, dans l'ORDRE DE L'ANNEAU (pas trié) ; NULL/false hors-borne. */
+bool annals_at(const EventsState *ev, int i, AnnalEntry *out);
+/* REVALIDATION (save_sane) : year/kind/region/option bornés, jamais déréférencés. */
+bool annals_save_sane(const EventsState *ev, int max_subject);
 
 #endif /* SCPS_EVENTS_H */

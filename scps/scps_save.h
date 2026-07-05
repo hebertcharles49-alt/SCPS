@@ -32,7 +32,10 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 62u           /* v62 : LA MEMBRANE DE DÉCISION — EventsState grossit (cicatrices
+#define SAVE_VERSION 63u           /* v63 : LES ANNALES DU RÈGNE — EventsState grossit (l'anneau
+                                    * annals[96] + tête + compteur) ⇒ la section EVNT (fwrite BRUT
+                                    * de sizeof(*s->ev)) change de taille. <v63 refusé.
+                                    * v62 : LA MEMBRANE DE DÉCISION — EventsState grossit (cicatrices
                                     * scars[128] + cooldowns cds[96] + la file joueur pending[8]) ⇒
                                     * la section EVNT (fwrite BRUT de sizeof(*s->ev)) change de taille ;
                                     * + section TXYR (économie : g_tax_lastyear[] — un ACCUMULATEUR

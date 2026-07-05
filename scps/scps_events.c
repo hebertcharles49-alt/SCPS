@@ -544,6 +544,68 @@ void decision_memory_consume(EventsState *ev, int subject, ScarKind kind, int to
         }
     }
 }
+/* ===================================================================== */
+/* LES ANNALES DU RÈGNE — anneau à SÉLECTION PAR POIDS (§ Annales)         */
+/* ===================================================================== */
+int annal_push(EventsState *ev, int year, int kind, int a, int b, int region,
+              int weight, int option){
+    if (!ev || kind<0 || kind>=ANNAL_KIND_COUNT) return -1;
+    if (weight<0) weight=0; else if (weight>255) weight=255;
+    AnnalEntry e;
+    e.year=(int16_t)year; e.kind=(uint8_t)kind; e.a=(int16_t)a; e.b=(int16_t)b;
+    e.region=(int16_t)region; e.weight=(uint8_t)weight; e.option=(int8_t)option; e.origin=-1;
+    if (ev->annal_n < ANNALS_CAP){
+        /* anneau pas encore plein : écriture round-robin normale */
+        int idx=ev->annal_head;
+        ev->annals[idx]=e;
+        ev->annal_head=(ev->annal_head+1)%ANNALS_CAP;
+        ev->annal_n++;
+        return idx;
+    }
+    /* ANNEAU PLEIN — SÉLECTION PAR POIDS : on évince l'entrée de poids MINIMAL parmi
+     * la MOITIÉ la plus ANCIENNE (les ANALALS_CAP/2 cases qui suivent immédiatement
+     * la tête d'écriture — c'est là que vivent les entrées les plus vieilles d'un
+     * anneau plein). Balayage d'index CROISSANT depuis annal_head → déterministe,
+     * départage par le PREMIER trouvé (poids égal). Si le nouveau fait est plus
+     * léger que TOUT ce qui est éligible à l'éviction, il ne remplace rien (le
+     * panthéon des anciens/lourds gagne) — sauf le cas dégénéré poids 0 partout,
+     * où le round-robin naturel (premier balayé) s'applique quand même. */
+    int half = ANNALS_CAP/2;
+    int worst_idx=-1; int worst_w=256;
+    for (int k=0;k<half;k++){
+        int idx=(ev->annal_head+k)%ANNALS_CAP;
+        int w=ev->annals[idx].weight;
+        if (w<worst_w){ worst_w=w; worst_idx=idx; }
+    }
+    if (worst_idx>=0 && (int)e.weight >= worst_w){
+        ev->annals[worst_idx]=e;
+        /* si l'éviction touche la case de tête, on avance la tête pour ne pas la
+         * réévincer immédiatement au prochain push (round-robin cohérent). */
+        if (worst_idx==ev->annal_head) ev->annal_head=(ev->annal_head+1)%ANNALS_CAP;
+        return worst_idx;
+    }
+    return -1;   /* le nouveau fait est trop léger : rien n'est écrit */
+}
+int annals_count(const EventsState *ev){ return ev? ev->annal_n : 0; }
+bool annals_at(const EventsState *ev, int i, AnnalEntry *out){
+    if (!ev || !out || i<0 || i>=ev->annal_n) return false;
+    *out = ev->annals[i];
+    return true;
+}
+bool annals_save_sane(const EventsState *ev, int max_subject){
+    if (!ev) return false;
+    if (ev->annal_n < 0 || ev->annal_n > ANNALS_CAP) return false;
+    if (ev->annal_head < 0 || ev->annal_head >= ANNALS_CAP) return false;
+    for (int i=0;i<ev->annal_n;i++){
+        const AnnalEntry *e=&ev->annals[i];
+        if (e->kind >= ANNAL_KIND_COUNT) return false;   /* uint8_t : jamais < 0 */
+        if (e->region < -1 || e->region >= max_subject) return false;
+        if (e->origin < -1 || e->origin >= ANNALS_CAP) return false;
+        if (e->option < -1 || e->option > 3) return false;   /* n_options ≤ 4 (0..3) */
+    }
+    return true;
+}
+
 void decision_cooldown_push(EventsState *ev, int evid, int subject, int until_day){
     if (!ev || evid<0 || evid>=EVID_COUNT) return;
     EvCooldown *c = &ev->cds[ev->cd_head];
@@ -593,6 +655,20 @@ static int event_owner_of(EventCtx *cx, EvScope scope, int subject){
  * le fil d'alertes. CHEMIN COMMUN à l'auto-résolution IA (fire_event) et au
  * choix DRAINÉ du joueur (pending_event_resolve) — un seul acteur, deux voies
  * d'entrée. `today` = ev->ages.days_elapsed (pour les cicatrices/cooldowns). */
+/* ANNALES — cherche, dans l'anneau, l'index de la plus RÉCENTE entrée ANNAL_DILEMME
+ * qui a posé la cicatrice `evid_source` (Marbrive) sur `region` : c'est l'origine
+ * CAUSALE d'un ANNAL_CICATRICE (Pont Effondré). -1 si introuvable (anneau tourné,
+ * ou le dilemme d'origine n'a jamais été accroché — le joueur n'était pas le sujet). */
+static int annal_find_dilemme_origin(const EventsState *ev, int evid_source, int region){
+    int best=-1, best_year=-1;
+    for (int i=0;i<ev->annal_n;i++){
+        const AnnalEntry *e=&ev->annals[i];
+        if (e->kind!=ANNAL_DILEMME || e->a!=(int16_t)evid_source || e->region!=(int16_t)region) continue;
+        if (e->year>best_year){ best_year=e->year; best=i; }
+    }
+    return best;
+}
+
 static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int today){
     const EventDef *d=&EVENTS[evid];
     if (oi<0 || oi>=d->n_options) oi=0;
@@ -611,6 +687,24 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
     /* FIL D'ÉVÈNEMENTS (alertes/popup du front) : write-only, jamais relu → déterminisme
      * intact. Le focus du fil (feed_set_focus) filtre à l'entrée, le front re-filtre en ceinture. */
     feed_push(FEED_DIRECTOR, cid, -1, (d->scope==EV_PROVINCE) ? subject : -1, evid);
+    /* LES ANNALES DU RÈGNE — n'accrochent QUE le pays JOUEUR (le récit DU joueur) ; en
+     * chronique (human_player=-1) rien ne s'accroche jamais → golden intact PAR CONSTRUCTION. */
+    if (cx->human_player>=0 && cid==cx->human_player){
+        int year = cx->ev->ages.days_elapsed/365;
+        float w = 30.f + 40.f*director_amplitude(cx->ev);   /* poids ∝ amplitude dramatique du moment */
+        if (evid==EVID_PONT_EFFONDRE){
+            /* ANNAL_CICATRICE : la cicatrice (posée par « Envoyer les prévôts » sur Marbrive)
+             * a MÛRI en cette catastrophe — on retrouve l'entrée d'origine si elle est
+             * ENCORE dans l'anneau (elle a pu tourner entretemps : origin=-1 alors). */
+            int origin = annal_find_dilemme_origin(cx->ev, EVID_MARBRIVE, subject);
+            int wi = annal_push(cx->ev, year, ANNAL_CICATRICE, evid, oi, subject, (int)w+20, oi);
+            if (wi>=0 && origin>=0) cx->ev->annals[wi].origin=(int16_t)origin;
+        } else if (d->n_options>1){
+            /* ANNAL_DILEMME : un VRAI choix (n_options>1) résolu par le joueur — les chocs
+             * géo/floraisons à option unique n'ont rien à raconter (pas un « choix »). */
+            annal_push(cx->ev, year, ANNAL_DILEMME, evid, 0, subject, (int)w, oi);
+        }
+    }
 }
 
 /* true si un pending (evid,subject) est DÉJÀ en attente — anti-doublon : un trigger
@@ -673,13 +767,17 @@ static void pending_event_remove(EventsState *ev, int slot){
 bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
                            WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                            RouteNetwork *rn, const TechState ts[], DiploState *dp,
-                           int slot, int option, int today){
+                           int slot, int option, int today, int human_player){
     if (!ev || slot<0 || slot>=ev->pending_n) return false;
     PendingEvent p = ev->pending[slot];
     if (p.evid>=EVID_COUNT) { pending_event_remove(ev,slot); return false; }
     const EventDef *d=&EVENTS[p.evid];
     if (option<0 || option>=d->n_options) return false;
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,-1};   /* la résolution elle-même n'enfile jamais (déjà tranchée) */
+    /* human_player n'INFLUENCE PAS la résolution elle-même (déjà tranchée, ce choix ne
+     * peut plus ré-enfiler) — il sert UNIQUEMENT à faire accrocher LES ANNALES quand
+     * c'est bien le joueur qui a choisi (fire_event du tick régulier reste la seule
+     * voie d'ENFILAGE ; ceci n'est que le point de sortie du choix DÉJÀ posé). */
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,human_player};
     resolve_choice(&cx, p.evid, p.subject, option, today);
     pending_event_remove(ev, slot);
     return true;
@@ -1469,7 +1567,13 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
     director_tick(&cx, days);
 
     /* 3. ÂGES — scan d'interprétation du monde. */
-    events_check_ages(ev,w,econ,wp,wl,ts);
+    { int last_before = ev->ages.last_dawned;
+      events_check_ages(ev,w,econ,wp,wl,ts);
+      /* ANNALES : un ÂGE est advenu ce tick (last_dawned a changé) → un fait de poids
+       * PLEIN (70), accroché au joueur seulement (le récit DU joueur, monde entier). */
+      if (human_player>=0 && ev->ages.last_dawned!=last_before && ev->ages.last_dawned>=0)
+          annal_push(ev, ev->ages.days_elapsed/365, ANNAL_AGE, ev->ages.last_dawned, 0, -1, 70, -1);
+    }
 
     /* Résorption TRANSITOIRE de l'amplification structurelle : la crise aiguë
      * retombe à mesure que les pays tranchent (réforme / poigne / effondrement)

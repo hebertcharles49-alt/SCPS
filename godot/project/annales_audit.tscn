@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://b8annalesaudit"]
+
+[ext_resource type="Script" path="res://annales_audit.gd" id="1_aaudit"]
+
+[node name="AnnalesAudit" type="Node"]
+script = ExtResource("1_aaudit")

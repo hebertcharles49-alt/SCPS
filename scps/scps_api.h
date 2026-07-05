@@ -526,6 +526,7 @@ typedef struct {
     int n_options;
     int region;                    /* -1 si le sujet est un PAYS (EV_COUNTRY) */
     int days_left;                 /* avant auto-résolution (180 j au total) */
+    int evid;                      /* EvId moteur — clé de l'ILLUSTRATION thématique (event_art.gd) */
 } ScpsPendingEvent;
 /* nombre d'évènements EN ATTENTE du choix du joueur. */
 int scps_pending_count(ScpsSim *s);
@@ -534,6 +535,22 @@ int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out);
 /* CHOISIT l'option `option` du pending au slot `slot` — ENFILE CMD_EVENT_CHOICE
  * (drain déterministe, revalidé). 1 = mis en file, 0 = refus (slot/option hors-borne). */
 int scps_player_event_choice(ScpsSim *s, int slot, int option);
+
+/* ── LES ANNALES DU RÈGNE — un récit SÉLECTIF de la partie (§ Annales) ──────────────
+ * L'anneau EventsState.annals[] n'accroche QUE le pays JOUEUR (scps_events.c,
+ * resolve_choice/world_events_tick/sim_day) : dilemmes résolus, cicatrices mûries,
+ * âges advenus, la Fin du monde. `ligne` est une phrase DIÉGÉTIQUE composée à la
+ * lecture (motif event_title : gabarits + noms RÉELS), buffer STABLE par slot —
+ * l'hôte copie aussitôt (Godot String). Trié par ANNÉE CROISSANTE (la frise). */
+typedef struct {
+    int year;
+    int kind;                 /* AnnalKind (scps_events.h) */
+    const char *ligne;         /* la phrase composée (jamais NULL, "" au pire) */
+    int region;                /* -1 = aucune (pays/monde) */
+} ScpsAnnal;
+/* Remplit `out` (jusqu'à `max` entrées), TRIÉES par année croissante. Renvoie le
+ * nombre écrit. Read-only : ne mute jamais le moteur (pure lecture de l'anneau). */
+int scps_annals(ScpsSim *s, ScpsAnnal *out, int max);
 
 /* VOIE CONDITIONS : les alertes d'ÉTAT du joueur, calculées en UN appel (C scanne,
  * le front affiche) : révolte qui gronde · famine · siège ennemi sur mon sol ·

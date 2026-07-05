@@ -124,6 +124,9 @@ public:
     int        pending_count();
     Dictionary pending_event(int slot);               /* {situation,labels:Array,flavors:Array,n_options,region,days_left} */
     bool       player_event_choice(int slot, int option);
+    /* LES ANNALES DU RÈGNE — récit SÉLECTIF (lecture seule) : [{year,kind,ligne,region}],
+     * TRIÉ par année croissante. N'accroche QUE le pays joueur (scps_events.c). */
+    Array      annals();
     Dictionary player_alerts();                       /* CONDITIONS : révolte/famine/siège/prix/conso en un appel */
     bool       player_age_engage();                   /* §7 : engager l'âge courant (une fois par âge) */
     bool       player_colonize(int prov);             /* COLONISATION (charte) : fonder sur une province vierge */

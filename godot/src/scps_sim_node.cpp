@@ -83,6 +83,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("pending_count"),                 &ScpsWorld::pending_count);
     ClassDB::bind_method(D_METHOD("pending_event", "slot"),         &ScpsWorld::pending_event);
     ClassDB::bind_method(D_METHOD("player_event_choice", "slot", "option"), &ScpsWorld::player_event_choice);
+    ClassDB::bind_method(D_METHOD("annals"),                         &ScpsWorld::annals);
     ClassDB::bind_method(D_METHOD("player_alerts"),                 &ScpsWorld::player_alerts);
     ClassDB::bind_method(D_METHOD("player_colonize", "prov"),       &ScpsWorld::player_colonize);
     ClassDB::bind_method(D_METHOD("can_colonize", "prov"),          &ScpsWorld::can_colonize);
@@ -911,6 +912,7 @@ Dictionary ScpsWorld::pending_event(int slot) {
     d["n_options"] = ok ? pe.n_options : 0;
     d["region"]    = ok ? pe.region : -1;
     d["days_left"] = ok ? pe.days_left : 0;
+    d["evid"]      = ok ? pe.evid : -1;   /* clé d'illustration thématique (event_art.gd) */
     Array labels, flavors;
     for (int i = 0; i < (ok ? pe.n_options : 0); i++) {
         labels.push_back(String::utf8(pe.labels[i]));
@@ -922,6 +924,23 @@ Dictionary ScpsWorld::pending_event(int slot) {
 }
 bool ScpsWorld::player_event_choice(int slot, int option) {
     return sim ? scps_player_event_choice(sim, slot, option) != 0 : false;
+}
+
+/* LES ANNALES DU RÈGNE — récit SÉLECTIF, lecture seule (§ Annales). */
+Array ScpsWorld::annals() {
+    Array a;
+    if (!sim) return a;
+    ScpsAnnal an[96];
+    int n = scps_annals(sim, an, 96);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["year"]   = an[i].year;
+        d["kind"]   = an[i].kind;
+        d["ligne"]  = String::utf8(an[i].ligne);
+        d["region"] = an[i].region;
+        a.push_back(d);
+    }
+    return a;
 }
 
 Dictionary ScpsWorld::player_alerts() {

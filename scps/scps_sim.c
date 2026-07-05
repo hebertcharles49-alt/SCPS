@@ -537,7 +537,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                 : pe.subject;
             if (owner!=p) break;   /* la région/le pays a changé de mains : le choix ne s'applique plus */
             pending_event_resolve(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp,
-                                  slot, option, s->ev->ages.days_elapsed);
+                                  slot, option, s->ev->ages.days_elapsed, s->human_player);
             break; }
         }
     }
@@ -782,7 +782,19 @@ void sim_day(Sim *s, World *w) {
         demography_refugee_tick(w, s->econ, s->dp);        /* BRASSAGE : la guerre fait FUIR, l'apaisement fait RESPIRER (annuel) */
         wild_cultural_tick(s, w);   /* HAMEAUX LIBRES (B4) : ralliement culturel des hameaux WILD au voisin */
         PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));
-        if (s->eg) endgame_tick(s->eg, w, s->econ, s->wp, s->ts, s->rn, s->navy, s->dp, s->camp, s->player, s->year);
+        if (s->eg){
+            FinType fin_before = s->eg->fin; MervPhase merv_before = s->eg->merv;
+            endgame_tick(s->eg, w, s->econ, s->wp, s->ts, s->rn, s->navy, s->dp, s->camp, s->player, s->year);
+            /* ANNALES — LA FIN DU MONDE (§27/Merveille) : n'accroche QUE le joueur (le récit
+             * DU joueur ; en chronique human_player=-1 ⇒ golden intact PAR CONSTRUCTION).
+             * Poids PLEIN (100) : c'est le fait le plus lourd d'une partie. */
+            if (s->human_player>=0){
+                if (s->eg->fin!=fin_before && s->eg->fin!=FIN_AUCUNE)
+                    annal_push(s->ev, s->year, ANNAL_FIN, (int)s->eg->fin, 0, -1, 100, -1);
+                if (s->eg->merv==MERV_ASCENDED && merv_before!=MERV_ASCENDED)
+                    annal_push(s->ev, s->year, ANNAL_FIN, (int)MERV_ASCENDED, 1, -1, 100, -1);
+            }
+        }
         /* DIPLOMATIE annuelle : usure de guerre, FONTE des trêves & du momentum
          * (la guerre peut reprendre après le répit), et le SCORE DE GUERRE (bras-de-fer
          * + attrition qui saigne les armes). */

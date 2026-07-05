@@ -640,8 +640,22 @@ int main(int argc, char **argv){
                scps_player_event_choice(sp, 0, 0)==1);
             scps_sim_advance_days(sp, 2);   /* le drain RÉSOUT au prochain tick */
             ok("le choix DRAINÉ retire le pending de la file", scps_pending_count(sp)<n1);
+            /* LES ANNALES DU RÈGNE : le dilemme qu'on vient de trancher (drain réel, pas
+             * pending_event_resolve directement) doit apparaître, TRIÉ, ligne non vide. */
+            ScpsAnnal an[16];
+            int na = scps_annals(sp, an, 16);
+            ok("scps_annals rend au moins une entrée après un dilemme résolu", na>=1);
+            bool has_line=true, sorted=true;
+            for (int i=0;i<na;i++){
+                if (!an[i].ligne || an[i].ligne[0]=='\0') has_line=false;
+                if (i>0 && an[i].year<an[i-1].year) sorted=false;
+            }
+            ok("chaque entrée porte une LIGNE diégétique non vide", has_line);
+            ok("scps_annals rend les entrées TRIÉES par année croissante", sorted);
         } else {
             ok("(aucune décision joueur apparue en 150 ans sur cette graine — ignoré)", true);
+            ok("(idem)", true);
+            ok("(idem)", true);
             ok("(idem)", true);
             ok("(idem)", true);
         }

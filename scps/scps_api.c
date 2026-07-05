@@ -1618,6 +1618,7 @@ int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out){
       out->situation = sz(event_title(s->w, pe.evid, pe.subject, title[ti], 96)); }
     out->n_options = d->n_options;
     out->region = (d->scope==EV_PROVINCE) ? pe.subject : -1;
+    out->evid = pe.evid;           /* clé d'illustration thématique côté hôte */
     int left = pe.expire_day - s->sim.ev->ages.days_elapsed;
     out->days_left = (left>0) ? left : 0;
     for (int i=0;i<d->n_options && i<4;i++){
@@ -1634,6 +1635,95 @@ int scps_player_event_choice(ScpsSim *s, int slot, int option){
     if (!d || option<0 || option>=d->n_options) return 0;
     PlayerCmd c = { CMD_EVENT_CHOICE, { slot, option, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
+/* ── LES ANNALES DU RÈGNE — la phrase diégétique par kind ──────────────────────── */
+/* Nom d'un pays (membrane) ; "?" hors-borne (comme event_title). */
+static const char *annal_country_name(const World *w, int cid){
+    return (w && cid>=0 && cid<w->n_countries) ? w->country[cid].name : "?";
+}
+/* Compose la LIGNE d'une entrée dans un buffer STABLE (motif event_title_ring) —
+ * `origin_year` = l'année de l'ANNAL_DILEMME d'origine si connue (-1 sinon), pour
+ * la référence causale d'une ANNAL_CICATRICE ("les registres rappellent…"). */
+static const char *annal_line(const World *w, const AnnalEntry *e, int origin_year, char *buf, int n){
+    char title[96];
+    switch ((AnnalKind)e->kind){
+        case ANNAL_DILEMME: {
+            const EventDef *d = event_def(e->a);
+            const char *choix = (d && e->option>=0 && e->option<d->n_options) ? d->options[e->option].label : "?";
+            event_title(w, e->a, e->region, title, sizeof title);
+            snprintf(buf, (size_t)n, "An %d — %s : vous avez %s.", e->year, title, choix);
+            break; }
+        case ANNAL_CICATRICE: {
+            event_title(w, e->a, e->region, title, sizeof title);
+            if (origin_year>=0)
+                snprintf(buf, (size_t)n, "An %d — %s ; les registres rappellent votre décision de l'an %d.",
+                         e->year, title, origin_year);
+            else
+                snprintf(buf, (size_t)n, "An %d — %s.", e->year, title);
+            break; }
+        case ANNAL_AGE:
+            snprintf(buf, (size_t)n, "An %d — %s a commencé.", e->year, age_name((AgeId)e->a));
+            break;
+        case ANNAL_GUERRE_GAGNEE:
+            snprintf(buf, (size_t)n, "An %d — La paix est signée avec %s : la victoire est vôtre (score %d).",
+                     e->year, annal_country_name(w, e->a), (int)e->b);
+            break;
+        case ANNAL_GUERRE_PERDUE:
+            snprintf(buf, (size_t)n, "An %d — La paix est signée avec %s : la défaite se referme sur vous (score %d).",
+                     e->year, annal_country_name(w, e->a), (int)e->b);
+            break;
+        case ANNAL_SECESSION:
+            snprintf(buf, (size_t)n, "An %d — %s est né d'une sécession.", e->year, annal_country_name(w, e->a));
+            break;
+        case ANNAL_HEGEMON_BRISE:
+            snprintf(buf, (size_t)n, "An %d — Un hégémon s'est effondré.", e->year);
+            break;
+        case ANNAL_MONUMENT:
+            snprintf(buf, (size_t)n, "An %d — Le premier grand édifice du règne s'achève.", e->year);
+            break;
+        case ANNAL_FIN: {
+            static const char *FIN_N[]={"","les eaux montantes","le grand hiver","les ronces","l'Ascension"};
+            int idx = (e->a>=0 && e->a<5) ? e->a : 0;
+            if (e->b==1) snprintf(buf, (size_t)n, "An %d — La Merveille s'achève : votre peuple ASCENSIONNE.", e->year);
+            else snprintf(buf, (size_t)n, "An %d — Le monde bascule : %s.", e->year, FIN_N[idx]);
+            break; }
+        default:
+            snprintf(buf, (size_t)n, "An %d — .", e->year);
+            break;
+    }
+    return buf;
+}
+int scps_annals(ScpsSim *s, ScpsAnnal *out, int max){
+    if (!out || max<=0) return 0;
+    if (!s || !s->ready || !s->sim.ev) return 0;
+    int n = annals_count(s->sim.ev);
+    if (n<=0) return 0;
+    /* copie + tri par année croissante (insertion — n≤ANNALS_CAP=96, coût négligeable
+     * pour une lecture UI occasionnelle ; PAS de qsort à comparateur flottant). */
+    AnnalEntry tmp[ANNALS_CAP];
+    for (int i=0;i<n && i<ANNALS_CAP;i++) annals_at(s->sim.ev, i, &tmp[i]);
+    for (int i=1;i<n;i++){
+        AnnalEntry key=tmp[i]; int j=i-1;
+        while (j>=0 && tmp[j].year>key.year){ tmp[j+1]=tmp[j]; j--; }
+        tmp[j+1]=key;
+    }
+    static char ring[32][160]; static int head=0;
+    int m = (n<max)?n:max; if (m>ANNALS_CAP) m=ANNALS_CAP;
+    for (int i=0;i<m;i++){
+        const AnnalEntry *e=&tmp[i];
+        int origin_year=-1;
+        if (e->kind==ANNAL_CICATRICE && e->origin>=0 && e->origin<ANNALS_CAP){
+            /* l'origin index vise l'ANNEAU BRUT (pas la copie triée) — on relit
+             * directement (le tri de tmp[] ne change pas les index de l'anneau). */
+            AnnalEntry o;
+            if (annals_at(s->sim.ev, e->origin, &o) && o.kind==ANNAL_DILEMME) origin_year=o.year;
+        }
+        char *b = ring[head]; head=(head+1)&31;
+        out[i].year=e->year; out[i].kind=(int)e->kind; out[i].region=e->region;
+        out[i].ligne = sz(annal_line(s->w, e, origin_year, b, 160));
+    }
+    return m;
 }
 
 /* VOIE CONDITIONS : l'état du joueur scanné EN C (le front n'itère pas 800 régions). */
