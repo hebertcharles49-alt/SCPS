@@ -13,6 +13,7 @@
 #include "scps_math.h"      /* clampf/absf/xs32/frand partagés */
 #include "scps_provlog.h"   /* journal provincial : on POUSSE les évènements EV_PROVINCE (display) */
 #include "scps_factions.h"  /* MEMBRANE DE DÉCISION : faction_lever_apply/faction_concede (hooks de choix) */
+#include "scps_religion.h"  /* CONTENU W2 (lot 2) §C : religion_schism_eligible (C1) */
 
 /* MEMBRANE DE DÉCISION — TÉLÉMÉTRIE (« la télémétrie est la preuve d'équilibre ») : combien
  * de fois la crise phare (et sa suite conséquente) ont tiré sur l'ensemble d'un run. Statics
@@ -21,6 +22,40 @@
 static long g_marbrive_fired=0, g_pont_effondre_fired=0;
 long events_marbrive_fired(void){ return g_marbrive_fired; }
 long events_pont_effondre_fired(void){ return g_pont_effondre_fired; }
+
+/* CONTENU W1 — même motif (statics de module, RAZ à events_init, PAS sérialisés). */
+static long g_cloches_fired=0, g_entrepots_fermes_fired=0, g_deux_cartes_fired=0,
+            g_eau_noire_fired=0, g_derniere_decision_fired=0, g_salve_runique_fired=0;
+long events_cloches_fired(void){ return g_cloches_fired; }
+long events_entrepots_fermes_fired(void){ return g_entrepots_fermes_fired; }
+long events_deux_cartes_fired(void){ return g_deux_cartes_fired; }
+long events_eau_noire_fired(void){ return g_eau_noire_fired; }
+long events_derniere_decision_fired(void){ return g_derniere_decision_fired; }
+long events_salve_runique_fired(void){ return g_salve_runique_fired; }
+
+/* CONTENU W2 (lot 2) — même motif (statics de module, RAZ à events_init, PAS sérialisés). */
+static long g_chaines_rapportent_fired=0, g_oeuvre_noire_fired=0, g_savoir_interdit_fired=0,
+            g_culte_imperial_fired=0, g_eveil_fired=0, g_foreuse_saigne_fired=0,
+            g_droit_integration_fired=0, g_diaspora_comptoirs_fired=0,
+            g_foi_fendre_fired=0, g_prophete_breche_fired=0, g_relique_douteuse_fired=0,
+            g_remede_morts_fired=0, g_cellule_faubourgs_fired=0, g_fusils_reviennent_fired=0,
+            g_savants_ennemi_fired=0, g_tarif_appris_fired=0;
+long events_chaines_rapportent_fired(void){ return g_chaines_rapportent_fired; }
+long events_oeuvre_noire_fired(void){ return g_oeuvre_noire_fired; }
+long events_savoir_interdit_fired(void){ return g_savoir_interdit_fired; }
+long events_culte_imperial_fired(void){ return g_culte_imperial_fired; }
+long events_eveil_fired(void){ return g_eveil_fired; }
+long events_foreuse_saigne_fired(void){ return g_foreuse_saigne_fired; }
+long events_droit_integration_fired(void){ return g_droit_integration_fired; }
+long events_diaspora_comptoirs_fired(void){ return g_diaspora_comptoirs_fired; }
+long events_foi_fendre_fired(void){ return g_foi_fendre_fired; }
+long events_prophete_breche_fired(void){ return g_prophete_breche_fired; }
+long events_relique_douteuse_fired(void){ return g_relique_douteuse_fired; }
+long events_remede_morts_fired(void){ return g_remede_morts_fired; }
+long events_cellule_faubourgs_fired(void){ return g_cellule_faubourgs_fired; }
+long events_fusils_reviennent_fired(void){ return g_fusils_reviennent_fired; }
+long events_savants_ennemi_fired(void){ return g_savants_ennemi_fired; }
+long events_tarif_appris_fired(void){ return g_tarif_appris_fired; }
 
 /* signe d'un effet pour le journal : +1 fléau · -1 faveur · 0 neutre */
 static int ev_sign(const EvEffect *e){
@@ -90,6 +125,14 @@ void events_init(EventsState *ev, const World *w, uint32_t seed){
     ev->ages.last_dawn_year = AGE_DAWN_YEARS - AGE_MIN_YEARS;
     ev->last_id = -1; ev->last_name = NULL;
     g_marbrive_fired=0; g_pont_effondre_fired=0;   /* MEMBRANE DE DÉCISION : télémétrie RAZ par sim */
+    g_cloches_fired=0; g_entrepots_fermes_fired=0; g_deux_cartes_fired=0;
+    g_eau_noire_fired=0; g_derniere_decision_fired=0; g_salve_runique_fired=0;   /* CONTENU W1 */
+    g_chaines_rapportent_fired=0; g_oeuvre_noire_fired=0; g_savoir_interdit_fired=0;
+    g_culte_imperial_fired=0; g_eveil_fired=0; g_foreuse_saigne_fired=0;
+    g_droit_integration_fired=0; g_diaspora_comptoirs_fired=0;
+    g_foi_fendre_fired=0; g_prophete_breche_fired=0; g_relique_douteuse_fired=0;
+    g_remede_morts_fired=0; g_cellule_faubourgs_fired=0; g_fusils_reviennent_fired=0;
+    g_savants_ennemi_fired=0; g_tarif_appris_fired=0;   /* CONTENU W2 (lot 2) */
 
     /* accumulateurs par région */
     double sr_rain[SCPS_MAX_REG]={0}, sr_temp[SCPS_MAX_REG]={0}, sr_relief[SCPS_MAX_REG]={0};
@@ -278,6 +321,211 @@ static bool trig_pont_effondre(const EventCtx *cx, int r){
     return decision_memory_has_ripe(cx->ev, r, SCAR_SABOTAGE_CHANTIER, cx->ev->ages.days_elapsed);
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+ * CONTENU W1 — six triggers neufs (voir la table EVENTS[] pour les ancres).
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* CLOCHES (province) : la surtaxe fait taire les cloches — une province SURTAXÉE
+ * (ressentie), PEU SATISFAITE, et PEU LÉGITIME (le consentement régional flanche). */
+static bool trig_cloches(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions || r>=SCPS_MAX_REG) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    float L = cx->wl ? cx->wl->L[r] : 10.f;
+    return re->over_tax > 0.15f && re->satisfaction < 0.50f && L < 5.5f;
+}
+/* ENTREPÔTS FERMÉS (province) : un carrefour SATURÉ (route_pe haut) dont le grief
+ * marchand du pays propriétaire déborde — les Marchands ferment boutique. */
+static bool trig_entrepots_fermes(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    if (re->route_pe <= 0.8f) return false;
+    return faction_grievance(re->owner, FAC_MARCHAND) > 0.35f;
+}
+/* DEUX CARTES (province) : une conquête RÉCENTE (peu d'ancienneté de tutelle — le
+ * substitut documenté pour « years_held » : `wl->years_held[r]` EXISTE et porte
+ * exactement cette ancienneté, cf. son usage dans integ_base ci-dessus) sur un
+ * carrefour actif et déjà AGITÉ — la carte de la capitale et celle du terrain ne
+ * s'accordent pas encore, et ça se voit au double péage. */
+static bool trig_deux_cartes(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    float yh = (r<SCPS_MAX_REG) ? cx->wl->years_held[r] : 50.f;
+    float agit = (cx->sc && r<SCPS_MAX_REG) ? cx->sc->agitation[r] : 0.f;
+    return yh < 15.f && re->route_pe > 0.4f && agit >= 35.f;
+}
+/* EAU NOIRE (province) : le présage du directeur-amplitude (le monde « vibre ») se
+ * lit dans le puits — une province NOURRIE (grenier bâti) où l'amplitude dramatique
+ * est déjà haute voit son eau tourner noire. */
+static bool trig_eau_noire(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    return director_amplitude(cx->ev) > 0.45f && re->build.food_cap >= 1.0f;
+}
+/* DERNIÈRE DÉCISION (province) : une cicatrice NON-mûre (posée par un choix passé,
+ * qui n'a pas encore mûri) hante encore cette province COERCITIVE — le passé n'a
+ * pas fini d'arriver. */
+static bool trig_derniere_decision(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    if (!decision_memory_pending(cx->ev, r, cx->ev->ages.days_elapsed)) return false;
+    return re->coercion > 0.30f;
+}
+/* SALVE RUNIQUE (pays) : la première fois que l'apex Arquebuse runique (Méca ×
+ * Métal × Éso, tier-5) est déverrouillé — déclenchement UNIQUE (le cooldown
+ * énorme du hook, 36500 j, fait le reste : un pays qui a déjà répondu à sa
+ * première salve ne re-tire jamais). */
+static bool trig_salve_runique(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries || !cx->ts) return false;
+    return cx->ts[c].unlocked[TECH_APEX_ARQUEBUSE];
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * CONTENU W2 (lot 2) — §A tech (déclenchement unique) · §B culturel ·
+ * §C religieux · §D chaînage de cicatrices. Voir la table EVENTS[] pour les
+ * ancres de calibrage (mêmes fourchettes que W1/Marbrive, comparées à la
+ * même table existante).
+ * ═══════════════════════════════════════════════════════════════════ */
+
+/* Helper commun §A : « la tech `tid` vient d'être déverrouillée quelque part »
+ * (déclenchement UNIQUE, motif SALVE_RUNIQUE) — pays `c` porte `unlocked[tid]`. */
+static bool trig_tech_unique(const EventCtx *cx, int c, int tid){
+    if (c<0 || c>=cx->w->n_countries || !cx->ts) return false;
+    return cx->ts[c].unlocked[tid];
+}
+static bool trig_chaines_rapportent(const EventCtx *cx,int c){ return trig_tech_unique(cx,c,TECH_ESCLAVAGE); }
+static bool trig_oeuvre_noire      (const EventCtx *cx,int c){ return trig_tech_unique(cx,c,TECH_OEUVRE_NOIRE); }
+static bool trig_savoir_interdit   (const EventCtx *cx,int c){ return trig_tech_unique(cx,c,TECH_SAVOIR_INTERDIT); }
+static bool trig_culte_imperial    (const EventCtx *cx,int c){ return trig_tech_unique(cx,c,TECH_CULTE_IMPERIAL); }
+static bool trig_eveil             (const EventCtx *cx,int c){ return trig_tech_unique(cx,c,TECH_EVEIL); }
+
+/* A6 — LA FOREUSE MORD (province) : le pays possède la tech, et CETTE région
+ * porte une foreuse (BLD_FOREUSE) déjà bâtie — la mine saigne, littéralement. */
+static bool trig_foreuse_saigne(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    if (!cx->ts || re->owner<0 || re->owner>=cx->w->n_countries || !cx->ts[re->owner].unlocked[TECH_FOREUSE]) return false;
+    for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==BLD_FOREUSE) return true;
+    return false;
+}
+
+/* B1 — LE DROIT D'INTÉGRATION DIVISE (pays) : tech débloquée + une moyenne
+ * pays (pop-pondérée sur ses régions) d'off-culture > seuil — la fraction
+ * DÉJÀ MINORITAIRE (non digérée) dépasse un quart de la population. */
+static float country_mean_off_culture(const EventCtx *cx, int cid){
+    double num=0.0, den=0.0;
+    for (int r=0;r<cx->econ->n_regions;r++){
+        const RegionEconomy *re=&cx->econ->region[r];
+        if (re->owner!=cid || !re->culture.settled) continue;
+        float pop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        if (pop<=0.f) continue;
+        num += (double)pop * (double)econ_off_culture_fraction(&re->pop);
+        den += (double)pop;
+    }
+    return (den>1.0) ? (float)(num/den) : 0.f;
+}
+static bool trig_droit_integration(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries || !cx->ts) return false;
+    if (!cx->ts[c].unlocked[TECH_INTEGRATION]) return false;
+    return country_mean_off_culture(cx,c) > 0.25f;
+}
+
+/* B4 — LA DIASPORA TIENT LES COMPTOIRS (pays) : fraction diaspora du pays
+ * (Σ groupes diaspora / Σ pop, sur ses régions) > seuil, ET un route_pe moyen
+ * marqué (des comptoirs qui comptent vraiment). */
+static float country_diaspora_fraction(const EventCtx *cx, int cid){
+    double dia=0.0, tot=0.0;
+    for (int r=0;r<cx->econ->n_regions;r++){
+        const RegionEconomy *re=&cx->econ->region[r];
+        if (re->owner!=cid || !re->culture.settled) continue;
+        const ProvincePop *pp=&re->pop;
+        for (int i=0;i<pp->n_groups;i++){
+            tot += (double)pp->groups[i].count;
+            if (pp->groups[i].diaspora) dia += (double)pp->groups[i].count;
+        }
+    }
+    return (tot>1.0) ? (float)(dia/tot) : 0.f;
+}
+static bool trig_diaspora_comptoirs(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    if (country_diaspora_fraction(cx,c) <= 0.15f) return false;
+    double sum_pe=0.0; int n=0;
+    for (int r=0;r<cx->econ->n_regions;r++) if (cx->econ->region[r].owner==c && cx->econ->region[r].culture.settled){
+        sum_pe += (double)cx->econ->region[r].route_pe; n++;
+    }
+    return n>0 && (float)(sum_pe/n) > 0.4f;
+}
+
+/* C1 — LA FOI VA SE FENDRE (pays) : religion_schism_eligible!=RSE_NONE. Le
+ * choix pose des deltas ; l'appel direct au schisme reste la voie normale
+ * (l'éligibilité persiste — voir le commentaire dans la table EVENTS[]). */
+static bool trig_foi_fendre(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    return religion_schism_eligible(cx->w, cx->econ, cx->wl, c) != RSE_NONE;
+}
+
+/* C5 — LA BRÈCHE A TROUVÉ SON PROPHÈTE (pays) : pression faustienne du pays
+ * (Σ faust_charge de ses régions — l'accumulateur EXISTANT, FAU0/FAU1) haute,
+ * ET la faction Transgresseur n'est PAS déjà comblée (grievance basse = elle
+ * n'a pas encore eu gain de cause — le prophète a un terreau). */
+static float country_faust_charge(const EventCtx *cx, int cid){
+    float s=0.f;
+    for (int r=0;r<cx->econ->n_regions;r++)
+        if (cx->econ->region[r].owner==cid) s += cx->econ->region[r].faust_charge;
+    return s;
+}
+static bool trig_prophete_breche(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    if (country_faust_charge(cx,c) <= 3.0f) return false;
+    return faction_grievance(c, FAC_TRANSGRESSEUR) < 0.25f;
+}
+
+/* C6 — LA RELIQUE FAIT DES MIRACLES DOUTEUX (province) : au moins un édifice
+ * de foi bâti ICI (sanctuaire/temple/cathédrale), et le directeur-amplitude
+ * (le monde « vibre ») est déjà haut — le miracle arrive à point nommé. */
+static bool trig_relique_douteuse(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    uint32_t mask=(1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE);
+    if (!(re->edi_built & mask)) return false;
+    return director_amplitude(cx->ev) > 0.30f;
+}
+
+/* ═══ §D — CHAÎNAGE DE CICATRICES : motif EVID_PONT_EFFONDRE (has_ripe, la
+ * résolution CONSOMME). Chaque trigger relit une cicatrice posée ailleurs. ═══ */
+static bool trig_remede_morts     (const EventCtx *cx,int r){ return r>=0 && r<cx->econ->n_regions && decision_memory_has_ripe(cx->ev, r, SCAR_SCANDALE_SANITAIRE, cx->ev->ages.days_elapsed); }
+static bool trig_cellule_faubourgs(const EventCtx *cx,int r){ return r>=0 && r<cx->econ->n_regions && decision_memory_has_ripe(cx->ev, r, SCAR_RADICALISATION,    cx->ev->ages.days_elapsed); }
+/* K5/K6/K7 — la cicatrice est posée sur le `subject` EXACT de l'évènement d'origine
+ * (decision_memory_push(ev, subject, kind, …) dans apply_choice_hook — subject est
+ * celui passé à resolve_choice, JAMAIS remappé sur une capitale). Ça dépend du SCOPE
+ * de l'évènement qui a posé la cicatrice :
+ *  - SCAR_PROLIFERATION_ARME est posée par SALVE_RUNIQUE (EV_COUNTRY, subject=cid) → on
+ *    relit directement sur `c` (le pays).
+ *  - SCAR_FUITE_CERVEAUX est posée par SAVOIR_INTERDIT (EV_COUNTRY, subject=cid, ce lot) →
+ *    idem, relue sur `c`.
+ *  - SCAR_EXEMPTION_ACHETEE est posée par DEUX_CARTES (EV_PROVINCE, subject=région) → K7
+ *    reste donc un évènement PROVINCIAL (pas pays), pour relire la MÊME clé de sujet. */
+static bool trig_fusils_reviennent(const EventCtx *cx,int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    return decision_memory_has_ripe(cx->ev, c, SCAR_PROLIFERATION_ARME, cx->ev->ages.days_elapsed);
+}
+static bool trig_savants_ennemi(const EventCtx *cx,int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    return decision_memory_has_ripe(cx->ev, c, SCAR_FUITE_CERVEAUX, cx->ev->ages.days_elapsed);
+}
+static bool trig_tarif_appris(const EventCtx *cx,int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    return decision_memory_has_ripe(cx->ev, r, SCAR_EXEMPTION_ACHETEE, cx->ev->ages.days_elapsed);
+}
+
 /* ===================================================================== */
 /* LA TABLE D'ÉVÈNEMENTS (effets = coordonnées ; textes = mots)           */
 /* ===================================================================== */
@@ -417,6 +665,148 @@ static const EventDef EVENTS[EVID_COUNT] = {
           { .d_K_inst=-0.4f, .d_agitation=6.f, .unlock_branch=-1 },
           0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=540 },
           "La route reste coupée — un renoncement qui se voit, et qui se paie en institutions perdues." } }, 3 },
+
+    /* ═══════════════════════════════════════════════════════════════════
+     * CONTENU W1 — six évènements neufs. ANCRES DE CALIBRAGE (mêmes fourchettes
+     * que Marbrive/Pont Effondré ci-dessus, comparées à la même table existante) :
+     *   - d_agitation/d_L/d_H_coerc/d_coercion : je reste dans la fourchette basse
+     *     documentée pour Marbrive (±0.1-0.6 sur H_coerc/L, ±4-15 sur agitation,
+     *     ≤0.22 sur coercion) — ce sont des crises DOMESTIQUES, pas des chocs.
+     *   - d_treasury_mois (SIGNÉ, fraction du revenu MENSUEL) : -0.15..-1.0 pour
+     *     un coût (d'un sursaut d'enquête à une charte durable), +0.3..+2.0 pour
+     *     un gain (réquisition, vente d'eau, vente d'un secret) — même ordre de
+     *     grandeur que Marbrive/Pont (-0.15..-0.7) ; la vente du secret runique
+     *     (+2.0, six mois de taxes) est le gain le plus lourd de la table, à la
+     *     mesure d'un secret d'État vendu — mais laisse une PROLIFÉRATION.
+     *   - gamble_p 0.25-0.5 : un pari a plus de chances de tourner que pas (0.5)
+     *     pour les paris « discrets » (la gratitude, le convoi, la vente), moins
+     *     (0.25-0.3) pour les paris qui demandent un concours de circonstances
+     *     (le double péage remarqué, une découverte de savants, un secret qui
+     *     s'ébruite deux fois).
+     *   - cooldown_days=720 (2 ans, cf. le titre EV_PROVINCE) sauf SALVE_RUNIQUE
+     *     (36500 j = jamais deux fois, le déclenchement UNIQUE du mécanisme 2) et
+     *     DERNIÈRE_DÉCISION (360 j, une crise plus resserrée par nature).
+     */
+
+    /* CLOCHES — la surtaxe fait taire les cloches. */
+    [EVID_CLOCHES] = { EVID_CLOCHES, EV_PROVINCE, "Les cloches de %s ne sonnent plus pour l'impôt",
+        trig_cloches, 720.f, NULL, {
+        { "Lever quand même",
+          "L'impôt se lève, cloches ou pas.",
+          { .d_L=-0.4f, .d_H_coerc=0.4f, .d_coercion=0.18f, .d_agitation=10.f, .d_treasury_mois=0.4f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_DETTE_OBEISSANCE, .cooldown_days=720 },
+          "Un impôt qu'on paie en silence se rembourse un jour en cris." },
+        { "Accorder une remise d'une année",
+          "Un an de grâce — le temps que la colère retombe.",
+          { .d_L=0.5f, .d_coercion=-0.15f, .d_agitation=-10.f, .d_treasury_mois=-1.0f, .unlock_branch=-1 },
+          0.7f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Une remise généreuse — et peut-être la gratitude d'un peuple qui s'en souvient.",
+          { .pop_mult=1.004f, .unlock_branch=-1 }, 0.3f },
+        { "Acheter les notables",
+          "Quelques bourses, discrètement, aux bonnes personnes.",
+          { .d_L=0.2f, .d_agitation=-8.f, .d_treasury_mois=-0.6f, .d_influence=-2.f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_LEGISTE, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Les notables se taisent, achetés — la paix a un prix, et il est discret." } }, 3 },
+
+    /* ENTREPÔTS FERMÉS — le grief marchand ferme boutique. */
+    [EVID_ENTREPOTS_FERMES] = { EVID_ENTREPOTS_FERMES, EV_PROVINCE, "Les entrepôts de %s ferment sans édit",
+        trig_entrepots_fermes, 720.f, NULL, {
+        { "Accorder une charte de transit",
+          "Le passage s'ouvre, par écrit et pour de bon.",
+          { .d_L=0.4f, .d_coercion=-0.12f, .d_agitation=-8.f, .d_treasury_mois=-0.45f, .d_C_global=0.05f, .unlock_branch=-1 },
+          0.6f, { .faction=FAC_MARCHAND, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Une charte de transit — les Marchands rouvrent, et n'oublient pas qui l'a signée." },
+        { "Réquisitionner les entrepôts",
+          "L'État prend ce que les marchands referment.",
+          { .d_H_coerc=0.5f, .d_L=-0.3f, .d_coercion=0.2f, .d_agitation=6.f, .d_treasury_mois=0.3f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_RANCUNE_MARCHANDE, .cooldown_days=720 },
+          "L'État réquisitionne — les caisses se remplissent, la rancune marchande aussi." },
+        { "Escorter les convois concurrents",
+          "Une garde d'honneur pour qui ose encore commercer.",
+          { .d_H_coerc=0.3f, .d_agitation=-6.f, .d_treasury_mois=-0.75f, .d_influence=2.f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Une escorte armée rouvre la route — et si la ruse marchande perce, tant mieux.",
+          { .d_C_global=0.08f, .unlock_branch=-1 }, 0.35f } }, 3 },
+
+    /* DEUX CARTES — une conquête récente, deux frontières. */
+    [EVID_DEUX_CARTES] = { EVID_DEUX_CARTES, EV_PROVINCE, "Deux cartes, deux frontières à %s",
+        trig_deux_cartes, 720.f, NULL, {
+        { "Imposer la carte de la capitale",
+          "Une seule frontière compte : celle du trône.",
+          { .d_K_inst=0.3f, .d_L=-0.4f, .d_coercion=0.2f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_CONQUERANT, .faction_strength=0.03f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "La carte de la capitale s'impose — le terrain, lui, gardera sa propre mémoire." },
+        { "Arbitrer sur place",
+          "Un arbitre local tranche, au cas par cas.",
+          { .d_L=0.4f, .d_agitation=-8.f, .d_treasury_mois=-0.5f, .unlock_branch=-1 },
+          0.6f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Un arbitrage patient — les deux cartes finissent, lentement, par se recouper." },
+        { "Laisser l'ambiguïté rapporter",
+          "Deux frontières, deux péages — pourquoi choisir ?",
+          { .d_L=-0.3f, .d_agitation=8.f, .d_treasury_mois=0.35f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_EXEMPTION_ACHETEE, .cooldown_days=720 },
+          "Le double péage rapporte — tant que personne ne le remarque trop fort.",
+          { .d_agitation=8.f, .unlock_branch=-1 }, 0.25f } }, 3 },
+
+    /* EAU NOIRE — le puits vire noir, la Brèche s'invite. */
+    [EVID_EAU_NOIRE] = { EVID_EAU_NOIRE, EV_PROVINCE, "Le puits de %s donne une eau noire",
+        trig_eau_noire, 1095.f, NULL, {
+        { "Fermer le puits",
+          "On mure le puits — la prudence avant tout.",
+          { .d_food_cap=-0.3f, .d_L=0.4f, .d_agitation=-6.f, .d_treasury_mois=-0.3f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1095 },
+          "Le puits muré ne parlera plus — et ce qu'il portait reste, prudemment, sous terre." },
+        { "Laisser les savants prélever",
+          "La curiosité l'emporte sur la prudence.",
+          { .d_L=-0.3f, .d_agitation=6.f, .d_breach=0.08f, .d_treasury_mois=-0.45f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_TRANSGRESSEUR, .faction_strength=0.15f, .scar_kind=SCAR_NONE, .cooldown_days=1095 },
+          "Les savants prélèvent, fascinés — la Brèche s'invite un peu plus dans le grenier.",
+          { .d_breach=-0.04f, .d_influence=1.f, .unlock_branch=-1 }, 0.3f },
+        { "Vendre l'eau comme remède",
+          "Un peu de mystère, beaucoup de bagout, et ça se vend.",
+          { .d_L=-0.3f, .d_agitation=6.f, .d_treasury_mois=0.5f, .d_breach=0.05f, .pop_mult=0.997f, .unlock_branch=-1 },
+          0.6f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_SCANDALE_SANITAIRE, .cooldown_days=1095 },
+          "L'eau noire se vend comme remède — un scandale sanitaire qui couve, pour plus tard." } }, 3 },
+
+    /* DERNIÈRE DÉCISION — le passé n'a pas fini d'arriver. */
+    [EVID_DERNIERE_DECISION] = { EVID_DERNIERE_DECISION, EV_PROVINCE, "À %s, la dernière décision n'a pas fini d'arriver",
+        trig_derniere_decision, 360.f, NULL, {
+        { "Corriger publiquement",
+          "On revient dessus, en public, avant que ça n'empire.",
+          { .d_L=0.4f, .d_coercion=-0.15f, .d_agitation=-8.f, .d_treasury_mois=-0.75f, .unlock_branch=-1 },
+          0.6f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=360 },
+          "Une correction publique — la décision passée n'ira pas plus loin." },
+        { "Laisser les vagues mourir",
+          "On ne touche à rien ; ça finira bien par se tasser.",
+          { .d_L=-0.15f, .d_agitation=5.f, .pop_mult=0.999f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=360 },
+          "On laisse porter — parfois les vagues meurent seules, sans qu'on lève un doigt.",
+          { .d_agitation=-6.f, .unlock_branch=-1 }, 0.4f },
+        { "Achever la décision par la force",
+          "Ce qui couve, on l'écrase avant que ça n'éclate.",
+          { .d_H_coerc=0.4f, .d_L=-0.3f, .d_coercion=0.2f, .d_agitation=-6.f, .d_treasury_mois=-0.3f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_CONQUERANT, .faction_strength=0.03f, .scar_kind=SCAR_NONE, .cooldown_days=360 },
+          "La force achève la décision passée — mais ce qu'elle couvait mûrira plus fort, pas plus doux." } }, 3 },
+
+    /* SALVE RUNIQUE — la première fois que le feu runique parle (pays, unique). */
+    [EVID_SALVE_RUNIQUE] = { EVID_SALVE_RUNIQUE, EV_COUNTRY, "La première salve runique",
+        trig_salve_runique, 3650.f, NULL, {
+        { "Doctriner l'usage",
+          "On encadre l'arme neuve — un usage, pas un désordre.",
+          { .d_K_inst=0.4f, .d_L=0.3f, .d_agitation=-6.f, .d_treasury_mois=-0.6f, .d_breach=-0.02f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_LEGISTE, .faction_strength=0.03f, .scar_kind=SCAR_NONE, .cooldown_days=36500 },
+          "Une doctrine d'emploi — l'arme runique sert l'ordre, encadrée." },
+        { "Armer toutes les légions",
+          "Chaque légion en reçoit — la gloire avant la prudence.",
+          { .d_H_coerc=0.6f, .d_L=-0.4f, .d_agitation=8.f, .d_breach=0.10f, .unlock_branch=-1 },
+          0.35f, { .faction=FAC_CONQUERANT, .faction_strength=0.05f, .scar_kind=SCAR_NONE, .cooldown_days=36500 },
+          "Toutes les légions s'arment de feu runique — la Brèche s'en trouve un peu plus proche." },
+        { "Vendre le secret",
+          "Un secret d'État se monnaie très cher, une seule fois.",
+          { .d_agitation=6.f, .d_treasury_mois=2.0f, .d_influence=-3.f, .d_breach=0.15f, .unlock_branch=-1 },
+          0.15f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_PROLIFERATION_ARME, .cooldown_days=36500 },
+          "Le secret se vend, six mois de taxes d'un coup — mais un secret vendu s'ébruite.",
+          { .d_influence=-2.f, .unlock_branch=-1 }, 0.5f } }, 3 },
 };
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
@@ -543,6 +933,40 @@ void decision_memory_consume(EventsState *ev, int subject, ScarKind kind, int to
             return;
         }
     }
+}
+
+/* CONTENU W1 — EVID_DERNIERE_DECISION : trouve la cicatrice PENDANTE (ripe_day futur,
+ * kind quelconque) la plus proche de mûrir sur `subject`. -1 si aucune. Balayage
+ * d'index croissant, déterministe (départage par la première trouvée à égalité). */
+static int decision_memory_find_pending(const EventsState *ev, int subject, int today){
+    int best=-1, best_day=0x7fffffff;
+    for (int i=0;i<DECISION_SCAR_CAP;i++){
+        const DecisionScar *s=&ev->scars[i];
+        if (s->subject!=(int16_t)subject || s->ripe_day<=today) continue;   /* case vide OU déjà mûre */
+        if (s->ripe_day<best_day){ best_day=s->ripe_day; best=i; }
+    }
+    return best;
+}
+bool decision_memory_pending(const EventsState *ev, int subject, int today){
+    if (!ev) return false;
+    return decision_memory_find_pending(ev, subject, today) >= 0;
+}
+void decision_memory_cancel_next(EventsState *ev, int subject, int today){
+    if (!ev) return;
+    int i = decision_memory_find_pending(ev, subject, today);
+    if (i<0) return;
+    DecisionScar *s=&ev->scars[i];
+    s->subject=-1; s->kind=0; s->ripe_day=0;   /* case vide — la dernière décision n'arrivera jamais */
+}
+void decision_memory_hasten(EventsState *ev, int subject, int today){
+    if (!ev) return;
+    int i = decision_memory_find_pending(ev, subject, today);
+    if (i<0) return;
+    DecisionScar *s=&ev->scars[i];
+    /* rapproche le mûrissement sans le rendre déjà mûr (reste > today) : mi-chemin
+     * entre aujourd'hui et l'échéance prévue, jamais moins que today+1. */
+    int hastened = today + 1 + (s->ripe_day - today) / 2;
+    if (hastened < s->ripe_day) s->ripe_day = hastened;
 }
 /* ===================================================================== */
 /* LES ANNALES DU RÈGNE — anneau à SÉLECTION PAR POIDS (§ Annales)         */
@@ -675,11 +1099,28 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
     const EvOption *opt=&d->options[oi];
     int cid = event_owner_of(cx, d->scope, subject);
     apply_effect(cx, d->scope, subject, &opt->eff);
+    /* LE PARI (§ contenu W1) — APRÈS l'effet principal (CERTAIN), un tirage au rng
+     * D'ÉVÈNEMENTS (déterministe) décide si le pari « tourne » : gamble_p=0 (défaut
+     * des 15 évènements existants) ⇒ jamais de tirage, jamais d'effet — la table
+     * existante est intacte par construction (comparaison stricte < sur un p nul
+     * ne passe jamais, quel que soit frand). */
+    if (opt->gamble_p > 0.f && frand(&cx->ev->rng) < opt->gamble_p){
+        apply_effect(cx, d->scope, subject, &opt->gamble_eff);
+        if (d->scope==EV_PROVINCE && subject>=0)
+            provlog_push_event(subject, "Le pari a tourné.",
+                               ev_sign(&opt->gamble_eff), ev_effdir(&opt->gamble_eff));
+    }
     apply_choice_hook(cx, evid, subject, cid, &opt->hook, today);
     /* PONT EFFONDRÉ CONSOMME la cicatrice qui l'a fait mûrir (une cicatrice = un tir —
      * sinon le trigger la relirait ENCORE mûre au prochain scan et re-déclencherait). */
     if (evid==EVID_PONT_EFFONDRE) decision_memory_consume(cx->ev, subject, SCAR_SABOTAGE_CHANTIER, today);
     if (evid==EVID_MARBRIVE) g_marbrive_fired++; else if (evid==EVID_PONT_EFFONDRE) g_pont_effondre_fired++;
+    else if (evid==EVID_CLOCHES) g_cloches_fired++;
+    else if (evid==EVID_ENTREPOTS_FERMES) g_entrepots_fermes_fired++;
+    else if (evid==EVID_DEUX_CARTES) g_deux_cartes_fired++;
+    else if (evid==EVID_EAU_NOIRE) g_eau_noire_fired++;
+    else if (evid==EVID_DERNIERE_DECISION) g_derniere_decision_fired++;
+    else if (evid==EVID_SALVE_RUNIQUE) g_salve_runique_fired++;
     cx->ev->last_id=evid; cx->ev->last_name=d->name; cx->ev->n_fired++;
     if (d->scope==EV_PROVINCE && subject>=0)
         provlog_push_event(subject, event_title_ring(cx->w, evid, subject),   /* nom RÉEL du lieu */
@@ -1560,6 +2001,28 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             frand(&ev->rng) < mtth_p(EVENTS[EVID_MARBRIVE].mtth_days,days)) fire_event(&cx,EVID_MARBRIVE,r);
         if (EVENTS[EVID_PONT_EFFONDRE].trigger(&cx,r) &&
             frand(&ev->rng) < mtth_p(EVENTS[EVID_PONT_EFFONDRE].mtth_days,days)) fire_event(&cx,EVID_PONT_EFFONDRE,r);
+    }
+
+    /* 2quinquies. CONTENU W1 — six évènements neufs. Même court-circuit (trigger &&
+     * frand) que MARBRIVE/XENOPHILE ; les quatre EV_PROVINCE scannent les régions,
+     * SALVE_RUNIQUE (EV_COUNTRY) scanne les pays (mécanisme « tech just-latched » :
+     * le trigger lit unlocked[TECH_APEX_ARQUEBUSE], le cooldown 36500 j du hook fait
+     * le déclenchement UNIQUE une fois qu'il a tiré). */
+    for (int r=0;r<econ->n_regions;r++){
+        if (EVENTS[EVID_CLOCHES].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_CLOCHES].mtth_days,days)) fire_event(&cx,EVID_CLOCHES,r);
+        if (EVENTS[EVID_ENTREPOTS_FERMES].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_ENTREPOTS_FERMES].mtth_days,days)) fire_event(&cx,EVID_ENTREPOTS_FERMES,r);
+        if (EVENTS[EVID_DEUX_CARTES].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_DEUX_CARTES].mtth_days,days)) fire_event(&cx,EVID_DEUX_CARTES,r);
+        if (EVENTS[EVID_EAU_NOIRE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_EAU_NOIRE].mtth_days,days)) fire_event(&cx,EVID_EAU_NOIRE,r);
+        if (EVENTS[EVID_DERNIERE_DECISION].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_DERNIERE_DECISION].mtth_days,days)) fire_event(&cx,EVID_DERNIERE_DECISION,r);
+    }
+    for (int c=0;c<w->n_countries;c++){
+        if (EVENTS[EVID_SALVE_RUNIQUE].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_SALVE_RUNIQUE].mtth_days,days)) fire_event(&cx,EVID_SALVE_RUNIQUE,c);
     }
 
     /* 2bis. LE DIRECTEUR (§F) — lit la TEMPÉRATURE du monde, puis stabilise ou

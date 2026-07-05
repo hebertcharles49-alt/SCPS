@@ -614,6 +614,116 @@ int main(int argc, char **argv){
       } else ok("(pas de capitale pour le test chronique — ignoré)", true);
     }
 
+    /* ═══ 11. CONTENU W1 — le PARI, la mémoire PENDANTE, un trigger neuf ═══ */
+    printf("\n── 11. Contenu W1 : le pari, la mémoire pendante, un trigger neuf ──\n");
+
+    /* (a) LE PARI : gamble_p=0 (option existante, ex. Marbrive « Envoyer les prévôts »)
+     * n'applique JAMAIS le gamble_eff, quel que soit le rng — comparaison stricte
+     * `gamble_p>0.f` en garde. On le prouve en résolvant directement un choix SANS
+     * pari et en observant qu'aucune ligne provlog « Le pari a tourné » ne peut sortir
+     * (structurellement : gamble_eff est tout-zéro par défaut, donc même s'il
+     * s'appliquait il serait neutre — on vérifie plutôt le comportement OBSERVABLE :
+     * un choix AVEC pari, sur deux graines de rng distinctes, applique gamble_eff sur
+     * l'une et pas l'autre — la preuve que le tirage est bien CONDITIONNEL). */
+    {
+        /* EVID_CLOCHES option 1 ("Accorder une remise d'une année") porte gamble_p=0.3
+         * et gamble_eff={.pop_mult=1.004f}. On résout ce choix depuis deux RNG de
+         * départ différents et on observe la pop_mult appliquée (ou non) — même
+         * effet principal (d_treasury_mois=-1.0) dans les deux cas, seul le pari diffère. */
+        events_init(s.ev,s.w,seed);
+        int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+        ok("(section 11a) une capitale peuplée existe pour le test du pari", capr>=0);
+        if (capr>=0){
+            if (rp>=0){ s.econ->prov[rp].build.K_inst=2.0f; s.econ->prov[rp].coercion=0.4f; }
+            econ_aggregate_regions(s.econ);
+            int cid=s.econ->region[capr].owner;
+            /* on cherche, parmi une poignée de graines de rng, une paire (pari tourne /
+             * pari ne tourne pas) — déterministe (même seed ⇒ même issue à chaque essai). */
+            bool saw_hit=false, saw_miss=false;
+            for (uint32_t trial=1; trial<=40 && !(saw_hit&&saw_miss); trial++){
+                events_init(s.ev,s.w,seed); s.ev->rng = 0x1000u + trial;   /* rng de départ contrôlé */
+                /* RE-KEY PROVINCE : apply_region_eff (pop_mult inclus) route sa mutation sur
+                 * la PROVINCE représentative (prov[rp]) — region[] n'est qu'un AGRÉGAT recalculé
+                 * par econ_aggregate_regions ; on lit/écrit sur prov[rp] directement (même motif
+                 * que §1/§9c du banc), avec une pop CONNUE et non nulle. */
+                s.econ->prov[rp].strata[CLASS_LABORER].pop = 1000.f;
+                econ_aggregate_regions(s.econ);
+                s.econ->region[capr].owner=(int16_t)cid;
+                float mult_before = s.econ->prov[rp].strata[CLASS_LABORER].pop;
+                /* on résout directement le choix 1 (via le chemin commun fire_event→resolve_choice
+                 * n'est pas exposé ; pending_event_resolve EST ce chemin — on enfile puis résout). */
+                pending_event_push(s.ev, EVID_CLOCHES, capr, s.ev->ages.days_elapsed);
+                pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL, 0, 1, s.ev->ages.days_elapsed, cid);
+                float mult_after = s.econ->prov[rp].strata[CLASS_LABORER].pop;
+                bool hit = (mult_before>0.f) && (mult_after > mult_before*1.0035f);
+                if (hit) saw_hit=true; else saw_miss=true;
+            }
+            ok("le pari APPLIQUE son effet supplémentaire sur AU MOINS une graine de rng", saw_hit);
+            ok("le pari N'APPLIQUE PAS son effet sur AU MOINS une autre graine (tirage conditionnel)", saw_miss);
+        } else { ok("(pas de capitale — pari ignoré)", true); ok("(idem)", true); }
+    }
+
+    /* (b) DECISION_MEMORY_PENDING/CANCEL_NEXT/HASTEN : une cicatrice PENDANTE (pas
+     * encore mûre) est visible à decision_memory_pending ; cancel_next l'efface (elle
+     * ne mûrira jamais) ; hasten rapproche son échéance SANS la rendre déjà mûre. */
+    {
+        events_init(s.ev,s.w,seed);
+        int subj=7;
+        ok("aucune cicatrice pendante avant tout push", !decision_memory_pending(s.ev, subj, s.ev->ages.days_elapsed));
+        decision_memory_push(s.ev, subj, SCAR_RADICALISATION, 100, 100);   /* mûrit dans 100 j pile */
+        ok("une cicatrice fraîchement posée (délai futur) est PENDANTE", decision_memory_pending(s.ev, subj, s.ev->ages.days_elapsed));
+        ok("… mais PAS encore MÛRE (has_ripe distincte de pending)", !decision_memory_has_ripe(s.ev, subj, SCAR_RADICALISATION, s.ev->ages.days_elapsed));
+        /* HASTEN : rapproche l'échéance, reste future (pending toujours vrai, has_ripe encore faux) */
+        decision_memory_hasten(s.ev, subj, s.ev->ages.days_elapsed);
+        ok("HASTEN rapproche l'échéance mais elle reste FUTURE (pas encore mûre)",
+           decision_memory_pending(s.ev, subj, s.ev->ages.days_elapsed)
+           && !decision_memory_has_ripe(s.ev, subj, SCAR_RADICALISATION, s.ev->ages.days_elapsed));
+        ok("… et elle mûrit maintenant PLUS TÔT que les 100 j d'origine",
+           decision_memory_has_ripe(s.ev, subj, SCAR_RADICALISATION, s.ev->ages.days_elapsed+55));
+        /* CANCEL_NEXT : efface la cicatrice pendante — elle n'arrivera jamais. */
+        decision_memory_push(s.ev, subj+1, SCAR_FUITE_CERVEAUX, 200, 200);
+        ok("une 2e cicatrice (autre sujet) est pendante", decision_memory_pending(s.ev, subj+1, s.ev->ages.days_elapsed));
+        decision_memory_cancel_next(s.ev, subj+1, s.ev->ages.days_elapsed);
+        ok("CANCEL_NEXT efface la cicatrice pendante (plus rien à mûrir)",
+           !decision_memory_pending(s.ev, subj+1, s.ev->ages.days_elapsed)
+           && !decision_memory_has_ripe(s.ev, subj+1, SCAR_FUITE_CERVEAUX, s.ev->ages.days_elapsed+250));
+    }
+
+    /* (c) UN TRIGGER NEUF S'ARME SUR FIXTURE : EVID_SALVE_RUNIQUE (tech just-latched)
+     * — un pays qui vient de déverrouiller l'apex Arquebuse runique voit le trigger
+     * s'armer (observé via world_events_tick, EventCtx étant opaque hors du module) ;
+     * il ne s'arme PAS avant (tech non déverrouillée). */
+    {
+        events_init(s.ev,s.w,seed);
+        int cid0 = 0;
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].unlocked[TECH_APEX_ARQUEBUSE]=false;
+        long before0 = events_salve_runique_fired();
+        for (int d=0; d<3650; d+=30)
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+        ok("EVID_SALVE_RUNIQUE NE TIRE JAMAIS tant que l'apex n'est déverrouillé nulle part",
+           events_salve_runique_fired()==before0);
+        s.ts[cid0].unlocked[TECH_APEX_ARQUEBUSE]=true;   /* « just-latched » : le pays 0 vient de l'obtenir */
+        long before = events_salve_runique_fired();
+        bool fired=false;
+        /* mtth_days=3650 (≈10 ans) est un temps MOYEN, pas une garantie dans une fenêtre
+         * de 10 ans pile — on laisse une fenêtre large (100 ans) pour observer le tir. */
+        for (int d=0; d<36500 && !fired; d+=30){
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+            if (events_salve_runique_fired()>before) fired=true;
+        }
+        ok("EVID_SALVE_RUNIQUE TIRE dès l'apex déverrouillé (déclenchement 'tech just-latched')", fired);
+        /* le cooldown énorme (36500 j) du hook fait le « une seule fois » : juste après le
+         * tir, un cooldown est bien posé sur (EVID_SALVE_RUNIQUE, cid0) et dure ~100 ans —
+         * vérifié directement (decision_cooldown_active), sans dépendre de la survie de
+         * l'entrée dans l'anneau partagé DECISION_CD_CAP=96 sur une longue fenêtre où
+         * BEAUCOUP d'autres évènements (les six neufs + les 15 existants, sur toutes les
+         * régions) poussent aussi des cooldowns et peuvent légitimement évincer une vieille
+         * entrée — ça n'est pas une régression du mécanisme SALVE_RUNIQUE lui-même. */
+        ok("… un cooldown ÉNORME (36500 j) est posé juste après le tir (déclenchement UNIQUE)",
+           decision_cooldown_active(s.ev, EVID_SALVE_RUNIQUE, cid0, s.ev->ages.days_elapsed+1)
+           && decision_cooldown_active(s.ev, EVID_SALVE_RUNIQUE, cid0, s.ev->ages.days_elapsed+365*90));
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

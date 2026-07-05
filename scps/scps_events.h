@@ -76,6 +76,8 @@ typedef enum {
     SCAR_FLOOD_AMORCE, SCAR_FUITE_CERVEAUX, SCAR_EXEMPTION_ACHETEE,
     SCAR_CAPTURE_NOBLE, SCAR_PROLIFERATION_ARME, SCAR_LEGION_FACTION,
     SCAR_REVOLTE_SERVILE, SCAR_FRACTURE_CULTURELLE,
+    /* ═══ CONTENU W2 (lot 2) — cicatrices neuves (§A tech · §D chaînage) ═══ */
+    SCAR_EVEIL_SOMMEIL,     /* A5 : « Refermer » l'Éveil — ce qui dort se souvient */
     SCAR_KIND_COUNT
 } ScarKind;
 
@@ -98,6 +100,15 @@ typedef struct {
     float       ai_chance;/* poids du choix pour l'IA (la fiche l'a déjà sélectionné) */
     EvChoiceHook hook;    /* faction/cicatrice/cooldown de CE choix (défaut : rien) */
     const char *flavor;   /* ce que RACONTE ce choix (tooltip du bouton) — NULL = aucun */
+    /* LE PARI (§ contenu W1) — un choix à issue INCERTAINE : APRÈS l'effet CERTAIN
+     * (`eff`), un tirage frand(&ev->rng) < gamble_p applique `gamble_eff` EN PLUS
+     * (résolu dans resolve_choice, même rng d'évènements — déterministe) et pousse
+     * une ligne provlog (« Le pari a tourné », scope province). Défauts zéro
+     * (gamble_p=0) : les 15 évènements existants n'initialisent JAMAIS ces deux
+     * champs (initialisation désignée) → gamble_p=0 ⇒ jamais de pari, table
+     * existante intacte. */
+    EvEffect    gamble_eff;
+    float       gamble_p;   /* [0..1] : probabilité que le pari « tourne » (0 = pas de pari) */
 } EvOption;
 
 typedef struct EventCtx EventCtx;   /* fwd : bundle de pointeurs systèmes */
@@ -124,6 +135,33 @@ typedef enum {
      * suite CONSÉQUENTE (une cicatrice posée par le choix « Envoyer les prévôts » mûrit ici). */
     EVID_MARBRIVE,          /* le contremaître réclame — 3 choix imparfaits */
     EVID_PONT_EFFONDRE,     /* le sabotage (cicatrice SABOTAGE_CHANTIER) mûrit en catastrophe */
+    /* ═══ CONTENU W1 — six évènements neufs (le PARI + le déclenchement « tech
+     * just-latched ») : voir la table EVENTS[] pour les ancres de calibrage. ═══ */
+    EVID_CLOCHES,           /* la surtaxe fait taire les cloches — province agitée, peu légitime */
+    EVID_ENTREPOTS_FERMES,  /* le grief marchand ferme les entrepôts d'un carrefour saturé */
+    EVID_DEUX_CARTES,       /* une conquête récente, mal intégrée, double son péage */
+    EVID_EAU_NOIRE,         /* le puits vire noir — la Brèche s'invite dans le grenier */
+    EVID_DERNIERE_DECISION, /* une cicatrice PENDANTE (non mûre) hante encore la province */
+    EVID_SALVE_RUNIQUE,     /* la première salve runique (tech apex, déclenchement UNIQUE) */
+    /* ═══ CONTENU W2 (lot 2) — §A tech (déclenchement unique) · §B culturel ·
+     * §C religieux · §D chaînage de cicatrices. Voir la table EVENTS[] pour les
+     * ancres de calibrage. ═══ */
+    EVID_CHAINES_RAPPORTENT,  /* A1 : Économie servile déverrouillée (déclenchement unique) */
+    EVID_OEUVRE_NOIRE,        /* A2 : L'Œuvre noire ne s'éteint pas la nuit (déclenchement unique) */
+    EVID_SAVOIR_INTERDIT,     /* A3 : le Savoir interdit tient ses promesses (déclenchement unique) */
+    EVID_CULTE_IMPERIAL,      /* A4 : le trône est devenu un autel (déclenchement unique) */
+    EVID_EVEIL,               /* A5 : quelque chose s'est éveillé dans les glyphes (déclenchement unique) */
+    EVID_FOREUSE_SAIGNE,      /* A6 : la foreuse mord dans quelque chose qui saigne (province) */
+    EVID_DROIT_INTEGRATION,   /* B1 : le droit d'intégration divise ceux qu'il unit (pays) */
+    EVID_DIASPORA_COMPTOIRS,  /* B4 : la diaspora tient les comptoirs (pays) */
+    EVID_FOI_FENDRE,          /* C1 : la foi va se fendre (schisme éligible, pays) */
+    EVID_PROPHETE_BRECHE,     /* C5 : la brèche a trouvé son prophète (pays) */
+    EVID_RELIQUE_DOUTEUSE,    /* C6 : la relique fait des miracles douteux (province) */
+    EVID_REMEDE_MORTS,        /* K2 : le remède fait des morts (SCAR_SCANDALE_SANITAIRE mûrit) */
+    EVID_CELLULE_FAUBOURGS,   /* K3 : une cellule dans les faubourgs (SCAR_RADICALISATION mûrit) */
+    EVID_FUSILS_REVIENNENT,   /* K5 : nos propres fusils nous reviennent (SCAR_PROLIFERATION_ARME mûrit) */
+    EVID_SAVANTS_ENNEMI,      /* K6 : les savants sont passés à l'ennemi (SCAR_FUITE_CERVEAUX mûrit) */
+    EVID_TARIF_APPRIS,        /* K7 : les autres villes ont appris le tarif (SCAR_EXEMPTION_ACHETEE mûrit) */
     EVID_COUNT
 } EvId;
 
@@ -417,6 +455,33 @@ int   events_count_revolutionary(const World *w, const WorldProsperity *wp);
 long  events_marbrive_fired(void);
 long  events_pont_effondre_fired(void);
 
+/* CONTENU W1 — télémétrie des six évènements neufs (même motif : RAZ à events_init,
+ * PAS sérialisés — le câblage chronicle viendra après, côté orchestrateur). */
+long  events_cloches_fired(void);
+long  events_entrepots_fermes_fired(void);
+long  events_deux_cartes_fired(void);
+long  events_eau_noire_fired(void);
+long  events_derniere_decision_fired(void);
+long  events_salve_runique_fired(void);
+
+/* CONTENU W2 (lot 2) — même motif (RAZ à events_init, non sérialisés). */
+long  events_chaines_rapportent_fired(void);
+long  events_oeuvre_noire_fired(void);
+long  events_savoir_interdit_fired(void);
+long  events_culte_imperial_fired(void);
+long  events_eveil_fired(void);
+long  events_foreuse_saigne_fired(void);
+long  events_droit_integration_fired(void);
+long  events_diaspora_comptoirs_fired(void);
+long  events_foi_fendre_fired(void);
+long  events_prophete_breche_fired(void);
+long  events_relique_douteuse_fired(void);
+long  events_remede_morts_fired(void);
+long  events_cellule_faubourgs_fired(void);
+long  events_fusils_reviennent_fired(void);
+long  events_savants_ennemi_fired(void);
+long  events_tarif_appris_fired(void);
+
 /* ---- Garde-fou membrane : aucun nom SCPS dans les textes joueur -------- */
 bool  events_text_clean(void);
 
@@ -435,6 +500,20 @@ bool decision_memory_has_ripe(const EventsState *ev, int subject, ScarKind kind,
 /* CONSOMME (efface) la première cicatrice mûre `kind` sur `subject` trouvée
  * (à appeler au tir de l'évènement qui la consulte — une cicatrice = un tir). */
 void decision_memory_consume(EventsState *ev, int subject, ScarKind kind, int today);
+
+/* CONTENU W1 — EVID_DERNIERE_DECISION : une cicatrice PENDANTE (posée mais qui n'a
+ * PAS ENCORE mûri, ripe_day > today) hante encore la province. Toute nature de
+ * cicatrice compte (kind quelconque), au contraire de has_ripe (une kind précise,
+ * déjà mûre). true si au moins une case `subject` a un ripe_day futur. */
+bool decision_memory_pending(const EventsState *ev, int subject, int today);
+/* Choix « Corriger publiquement » : EFFACE la cicatrice PENDANTE la plus proche
+ * (ripe_day minimal encore futur) sur `subject` — la dernière décision n'arrivera
+ * jamais. Ne fait rien si aucune cicatrice pendante. */
+void decision_memory_cancel_next(EventsState *ev, int subject, int today);
+/* Choix « Achever la décision par la force » : la cicatrice PENDANTE la plus proche
+ * MÛRIT PLUS VITE (ripe_day rapproché du présent, mais jamais avant `today`+1 —
+ * elle reste future, juste imminente). Ne fait rien si aucune cicatrice pendante. */
+void decision_memory_hasten(EventsState *ev, int subject, int today);
 
 /* Répit : after ce push, l'évènement `evid` ne peut retirer sur `subject`
  * avant `until_day`. has_cooldown = encore sous répit ? */
