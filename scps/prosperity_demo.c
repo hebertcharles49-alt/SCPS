@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
     printf("=== Simulation : %d ticks ===\n", ticks);
     for (int tick = 0; tick < ticks; tick++) {
         econ_tick(econ, 1.f);
-        econ_colonize_tick(econ, w, -1);
+        econ_colonize_tick(econ, w, -1, NULL, NULL);
         econ_migrate_tick(econ, w);
         world_tick(w, econ, 1.0f);   /* dérive lente de l'horloge linguistique */
         legitimacy_tick(wl, w, econ, ts);   /* L émerge (lit l'éco du tick) AVANT la prospérité */

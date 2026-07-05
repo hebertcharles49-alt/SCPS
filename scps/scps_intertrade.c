@@ -351,14 +351,24 @@ int   intertrade_region_hub(int region){ return (region>=0&&region<SCPS_MAX_REG)
 float intertrade_global_stock(const WorldEconomy *e, int good){
     (void)e; return (good>RES_NONE && good<RES_COUNT)? g_global_cache[good] : 0.f;   /* cache 1×/tick */
 }
-/* Disponibilité d'un bien au marché ATTEIGNABLE depuis `region` : stock propre + Centre le plus
- * proche + réseau mondial des Centres (cache 1×/tick). Lu par le gate de matière (agency) : qty
- * requise > avail ⇒ chantier REFUSÉ. Même découpe own/local/glob que intertrade_buy_cost. */
-float intertrade_market_avail(const WorldEconomy *e, int region, int good){
+/* F4 — TOCTOU chantier × pool commercial §5 : cette fonction est le GATE D'ADMISSION lu par
+ * agency_build_acct (qty requise > avail ⇒ refus), mais elle ignorait le pool MENSUEL de l'empire
+ * (intertrade_commerce_remaining) que intertrade_market_consume APPLIQUE en aval (silencieusement
+ * tronqué) : le devis d'or payait la quantité PLEINE mais la matière livrée pouvait être PARTIELLE
+ * (le chantier passait le gate, payait plein tarif, recevait moins). Fix : la composante IMPORTÉE
+ * (celle qui vient des Centres HORS-EMPIRE, `imp` ci-dessous — le stock EMPIRE `emp` reste GRATUIT
+ * et illimité, comme _consume/_buy_cost le traitent déjà) est bornée par ce qu'il RESTE à acheter
+ * ce mois-ci — le gate reflète alors EXACTEMENT ce qui sera réellement consommable.
+ * `imp_capped_out` (option, NULL ⇒ ignoré) = la part de l'import qui a été COUPÉE par le pool (0 si
+ * non-capé/non-applicable) — sert à agency_build_acct pour distinguer un refus « le pool a mordu »
+ * (g_edi_nocap) d'un refus « la matière est vraiment absente » (g_edi_nomat). */
+float intertrade_market_avail_ex(const WorldEconomy *e, int region, int good, float *imp_capped_out){
+    if (imp_capped_out) *imp_capped_out=0.f;
     if (!e||region<0||region>=e->n_regions||region>=SCPS_MAX_REG||good<=RES_NONE||good>=RES_COUNT) return 0.f;
     int owner=e->region[region].owner, hub=(region<SCPS_MAX_REG)?g_hub_of[region]:-1;
     int n=e->n_regions; if(n>SCPS_MAX_REG)n=SCPS_MAX_REG;
-    /* EMPIRE : toute sa matière est FONGIBLE pour SON chantier (réseau marchés/ports). */
+    /* EMPIRE : toute sa matière est FONGIBLE pour SON chantier (réseau marchés/ports) — GRATUIT,
+     * hors du pool commercial (le pool ne borne QUE l'import de Centres étrangers, cf. _consume). */
     float emp=0.f, owned_centre=0.f;
     if (owner>=0){ for (int r=0;r<n;r++) if (e->region[r].owner==owner){
             emp+=e->region[r].stock[good];
@@ -367,7 +377,21 @@ float intertrade_market_avail(const WorldEconomy *e, int region, int good){
     /* IMPORT : les Centres atteignables NON possédés (cache mondial moins ses propres Centres). */
     float imp=(hub>=0)? g_global_cache[good]-owned_centre : 0.f;
     if (imp<0.f) imp=0.f;
+    /* §5 : borne par le pool MENSUEL restant — le MÊME frein que intertrade_market_consume applique
+     * en aval (g_commerce_active && cid_ok) → le gate ne promet plus ce que la conso tronquera. */
+    if (g_commerce_active && cid_ok(owner)){
+        float rem=intertrade_commerce_remaining(owner);
+        if (imp>rem){ if (imp_capped_out) *imp_capped_out = imp-rem; imp=rem; }
+    }
     return emp+imp;
+}
+/* Disponibilité d'un bien au marché ATTEIGNABLE depuis `region` : stock propre + Centre le plus
+ * proche + réseau mondial des Centres (cache 1×/tick), BORNÉ au pool commercial §5 restant (F4).
+ * Lu par le gate de matière (agency) : qty requise > avail ⇒ chantier REFUSÉ. Même découpe
+ * own/local/glob que intertrade_buy_cost. Enveloppe fine de _ex pour les appelants existants
+ * (bancs compris) qui n'ont pas besoin de savoir SI le pool a mordu. */
+float intertrade_market_avail(const WorldEconomy *e, int region, int good){
+    return intertrade_market_avail_ex(e, region, good, NULL);
 }
 /* LES 3 ÉTAGES D'UN APPROVISIONNEMENT : combien sortira du stock PROPRE (production
  * sur place, marge nue), du marché LOCAL (le Centre le plus proche, marge de base),

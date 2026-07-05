@@ -950,7 +950,12 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
  * verrou du ½→plein, pas la cadence ni le crédit). L'intrant n'a PAS à être extrait sur place : le pool
  * national P1 nourrit la fabrique d'où que tombe la matière. Tier-gatée, staffée (pas dans le vide). Une
  * par tour. C'est ce qui DOUBLE les provinces vers leur plein — la pop suit le bâti. */
-static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
+/* E6 (2026-07-05) — top_flow (AiView, le flux PRIORITAIRE ÉMERGENT — stress×prix×manque, étage 2
+ * du pipeline) était calculé mais jamais lu par aucune décision. Câblage LÉGER : un DÉPARTAGE
+ * (tie-break, une comparaison), pas un nouveau critère — le raw_cap de l'intrant reste le
+ * classement principal (§dev, la nourrissabilité + la richesse locale) : à raw_cap STRICTEMENT
+ * ÉGAL entre deux candidats, on préfère celui dont la SORTIE == top_flow. */
+static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ, Resource top_flow){
     int cap=a->home_region; if (cap<0||cap>=econ->n_regions) return;
     const float house_manuf = tune_f("HOUSE_MANUF", 100.f);
     int br=-1; BuildingType bb=BLD_TYPE_COUNT; float best_deficit=house_manuf;  /* ≥ 1 niveau de logement manquant pour agir */
@@ -982,7 +987,10 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ){
              * pool P1 l'amène). Fin du gate « gisement sur place » qui condamnait les provinces pauvres ;
              * à feedabilité égale on prend la manuf au gisement local le + riche (efficacité conservée). */
             if (re->raw_cap[in1] <= 0.f && !empire_has_raw(econ, a->cid, in1)) continue;
-            if (re->raw_cap[in1] > pick_raw){ pick_raw=re->raw_cap[in1]; pick=(BuildingType)b; }
+            /* E6 : tie-break top_flow — à raw_cap ÉGAL, l'output visé par la motivation éco l'emporte. */
+            bool better = (re->raw_cap[in1] > pick_raw)
+                       || (re->raw_cap[in1] == pick_raw && top_flow!=RES_NONE && out==top_flow);
+            if (better){ pick_raw=re->raw_cap[in1]; pick=(BuildingType)b; }
         }
         if (pick==BLD_TYPE_COUNT) continue;                           /* aucune manuf nourrissable posable ici */
         best_deficit=deficit; br=r; bb=pick;
@@ -1027,14 +1035,39 @@ static int ai_neediest_civic_region(const AiActor *a, const WorldEconomy *econ){
     return found ? best : a->home_region;                      /* aucune région staffée trouvée → repli capitale */
 }
 
+/* F3 — LE GRENIER SUIT LA FAIM, PAS LA CAPITALE. a->home_region est FIGÉ à ai_actor_init (la
+ * capitale) ; le grenier bâti dessus n'aide en rien une périphérie qui crève de faim pendant que
+ * la capitale se goinfre (même défaut que ai_neediest_civic_region documentait pour K/savoir/foi
+ * avant sa propre correction — ici pour la RÉSERVE VIVRIÈRE). On vise la région POSSÉDÉE au PIRE
+ * food_sat (le manque le plus aigu), départage à l'index le plus bas (déterministe, comparaison
+ * stricte < → le premier trouvé l'emporte). Aucune pondération K_inst ici (ai_neediest_civic_region
+ * reste INTACT, il sert un besoin différent — l'institution, pas le grenier). */
+static int ai_hungriest_region(const AiActor *a, const WorldEconomy *econ){
+    int best = a->home_region; float best_sat = 1e30f; bool found = false;
+    for (int r=0; r<econ->n_regions; r++){
+        const RegionEconomy *re = &econ->region[r];
+        if (re->owner!=a->cid || !re->colonized) continue;
+        if (!found || re->food_sat < best_sat){ best_sat = re->food_sat; best = r; found = true; }
+    }
+    return found ? best : a->home_region;                      /* aucune région possédée trouvée → repli capitale */
+}
+
 /* EXPLOITATION PAR LE FORECAST (décision ÉCONOMIQUE, pas un seuil arbitraire) — on améliore une
  * exploitation (+1 palier de boost, +RAW_BOOST_PER_TIER) SSI les DEUX conditions tiennent :
- *   (1) PÉNURIE APPROCHANTE — fc->runway[r] < AI_SAFETY_HORIZON. Le runway est désormais BOOST-AWARE
- *       (le forecast inclut les paliers déjà posés) → il REMONTE à mesure qu'on boost → la décision se
- *       RÉGULE (l'ancien gate shortfall>0.5 était quasi toujours vrai → 500 paliers/sim, prix cassés).
+ *   (1) PÉNURIE — fc->runway[r] < AI_SAFETY_HORIZON (boost-aware : le forecast inclut les paliers
+ *       déjà posés → il REMONTE à mesure qu'on boost → la décision se RÉGULE, l'ancien gate
+ *       shortfall>0.5 était quasi toujours vrai → 500 paliers/sim, prix cassés), OU
+ *       fc->struct_deficit[r] ARMÉ pour le TRIO bois/argile/pierre (E5, 2026-07-05) : leur
+ *       demande est LATENTE (consommée par les chantiers eux-mêmes GATÉS faute de matière —
+ *       cf. econ_country_forecast, scps_econ.c) donc runway[] ne les voit JAMAIS venir (flux
+ *       « inerte », jamais flaggé) — struct_deficit EST le signal dédié qui les capture (le
+ *       « mur nomat » : Port/Académie/Grenier bloqués faute de brut de bâti). PRIORISE ce trio
+ *       (une pénurie STRUCTURELLE — durable, import/plafond — passe devant une pénurie de
+ *       runway ordinaire) : urgence artificiellement abaissée pour gagner le argmin ci-dessous.
  *   (2) ROI — le +5% d'extraction ANNUELLE de la brute, valorisé au prix RÉGIONAL (qui MONTE avec la
  *       rareté → le boost devient rentable PILE quand c'est rare), rembourse le coût en PAYBACK ans.
- * On vise la brute au runway le plus COURT (la plus urgente). Une amélioration par tour. */
+ * On vise la brute au runway le plus COURT (la plus urgente ; le trio bâti prioritaire ci-dessus).
+ * Une amélioration par tour. Ne crée AUCUN nouveau bâtiment — oriente le boost EXISTANT. */
 static bool ai_build_raw_boost(AiActor *a, const World *w, WorldEconomy *econ, const EconForecast *fc){
     int   max_tier = (int)tune_f("RAW_BOOST_MAX_TIER", 8.f);
     float safety   = tune_f("AI_SAFETY_HORIZON", 12.f);
@@ -1043,7 +1076,8 @@ static bool ai_build_raw_boost(AiActor *a, const World *w, WorldEconomy *econ, c
     float cost     = tune_f("RAW_BOOST_COST", 40.f) * econ_world_ipm(econ);
     Resource pick=RES_NONE; float urgent=1e30f; int pick_region=-1;
     for (int r=1;r<RES_PROD_FIRST;r++){
-        if (fc->runway[r] >= safety) continue;                /* (1) pas de pénurie APPROCHANTE (boost-aware) */
+        bool struct_trio = (r==RES_WOOD || r==RES_CLAY || r==RES_STONE) && fc->struct_deficit[r];
+        if (fc->runway[r] >= safety && !struct_trio) continue;   /* (1) ni pénurie de runway, ni déficit STRUCTUREL du bâti */
         int br=-1; float bcap=0.f;
         for (int rr=0;rr<econ->n_regions;rr++){
             RegionEconomy *re=&econ->region[rr];
@@ -1052,11 +1086,21 @@ static bool ai_build_raw_boost(AiActor *a, const World *w, WorldEconomy *econ, c
             if (re->raw_cap[r] > bcap){ bcap=re->raw_cap[r]; br=rr; }              /* la province la + riche */
         }
         if (br<0) continue;
-        /* (2) ROI : +5% de l'extraction ANNUELLE (supply×12) × prix RÉGIONAL (rareté incluse). */
+        /* (2) ROI : +5% de l'extraction ANNUELLE (supply×12) × prix RÉGIONAL (rareté incluse). NB
+         * mesuré (E5) : sur le trio bâti, ce gate REJETTE ~73% des tentatives (matériaux bon
+         * marché → val_year souvent <2 pour un cost≈40) — c'est la MÊME mécanique que l'existant
+         * (demandée telle quelle), donc l'effet du réveil de struct_deficit reste RÉEL mais MODESTE
+         * (nomat Port -13% mesuré, cf. rapport) : seuls les cas où le prix a déjà bien monté
+         * (rareté avérée) passent le seuil — pas un raz-de-marée de paliers. */
         float O_year  = econ->region[br].supply[r]*12.f;
         float val_year= per_tier * O_year * econ->region[br].price[r];
         if (val_year*payback < cost) continue;                /* le palier ne se rembourse pas → on s'abstient */
-        if (fc->runway[r] < urgent){ urgent=fc->runway[r]; pick=(Resource)r; pick_region=br; }
+        /* PRIORITÉ : le déficit STRUCTUREL du bâti (bois/argile/pierre) passe devant toute
+         * pénurie de runway ordinaire — urgence artificiellement sous n'importe quel runway
+         * réel (qui est toujours ≥0) pour gagner le argmin, sans écraser l'ordre ENTRE
+         * plusieurs déficits structurels (le plus urgent des trois l'emporte quand même). */
+        float u = struct_trio ? (fc->runway[r] - 1.0e6f) : fc->runway[r];
+        if (u < urgent){ urgent=u; pick=(Resource)r; pick_region=br; }
     }
     if (pick==RES_NONE || pick_region<0) return false;
     if (!credit_can_spend(econ, w, a->cid, cost)) return false;
@@ -1079,9 +1123,12 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
     /* Famine d'abord : un peuple affamé ne bâtit ni cours ni comptoir. STOCK-SAFE (étage 3b) :
      * on bâtit le GRENIER aussi quand la PRÉVISION voit le mur vivrier (food_alert = food_runway
      * < SAFETY) — proactif, AVANT que la marge ne s'effondre (le grenier relève le plafond de
-     * stock + la capacité nourrie → coussin de réserve). */
+     * stock + la capacité nourrie → coussin de réserve).
+     * F3 — la CIBLE n'est plus a->home_region (la capitale, FIGÉE) mais la région possédée au PIRE
+     * food_sat (ai_hungriest_region) : le grenier va à qui a faim, pas à qui a déjà le plus. */
     if ((v->food < AI_FOOD_FLOOR || v->food_alert) && a->home_region>=0){
-        if (agency_build(ag, econ, w, a->home_region, EDI_GRENIER)) a->stats.builds_other++;
+        int gr = ai_hungriest_region(a, econ);
+        if (agency_build(ag, econ, w, gr, EDI_GRENIER)) a->stats.builds_other++;
         return;
     }
     /* Le chantier (militaire · manufacture civile · bâtiment civil) est PONDÉRÉ PAR LE TEMPÉRAMENT
@@ -1128,7 +1175,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                  * avant toute autre fabrique. Pas de déficit boostable → manufacture civile normale.
                  * Le créneau FOI/SAVOIR/K (ci-dessous) reste INTACT → la foi peut toujours s'ériger. */
                 if (!ai_build_raw_boost(a, w, econ, &v->fc))
-                    ai_build_civmanuf(a, w, econ);            /* la manufacture civile (remplir les slots) */
+                    ai_build_civmanuf(a, w, econ, v->top_flow); /* la manufacture civile (remplir les slots ; E6 : top_flow départage) */
             } else {
             /* le BÂTIMENT CIVIL (la voie existante) : on métabolise (K) ; un trône au consentement bas
              * se SACRALISE d'abord (la foi soutient L) ; institutions mûres → SAVOIR. Dominateur/Honneur

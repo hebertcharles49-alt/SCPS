@@ -83,16 +83,29 @@ static float BASE_PRICE[RES_COUNT] = {
 /* ── REFONTE A1 — RENDEMENT D'EXTRACTION PAR OUVRIER (unités/ouvrier/AN) ──────
  * La brute n'est plus extraite ∝ terrain×√pop : elle suit les BRAS. Chaque ouvrier
  * affecté à une brute en tire EXTRACT_YIELD[r] par AN (à geo_eff=1, effort=1). La
- * valeur EST « production annuelle par 100 ouvriers ÷ 100 » (donc grain 800/100 = 8).
+ * valeur EST « production annuelle par 100 ouvriers ÷ 100 » (donc grain 533/100 ≈ 5.33).
  * Au tick (mensuel) on multiplie par dt (=1/12). Les brutes manufacturées (≥
  * RES_PROD_FIRST) ne s'extraient pas (0). Le ×2 historique bois/fer/or est REPLIÉ ici
  * (bois/fer portent leur poids dans le rendement, plus de multiplicateur ad hoc).
- *   🔒 ancrés : grain 8 · poisson 4 · gibier/élevage 3 · bois 0.5 · pierre/argile 0.25.
+ * E1 (2026-07-05) — ANCRE VIVRIÈRE : le trio nourriture (grain/poisson/fruit) est
+ * divisé ÷1.5 (grain 8→5.33 · poisson 4→2.67 · fruit 4→2.67). Design Anno 1800 : un
+ * ouvrier vivrier nourrissait ~15 âmes (bouche réelle ~0.53/hab/an, rendement 8/an) →
+ * chiffres aberrants (greniers à des milliers d'unités, prix du grain écrasé). Un ÷2
+ * plein (grain 8→4) A ÉTÉ MESURÉ trop violent sur les low seeds (satisfaction Laborer
+ * seed 9 82%→73%, seed 11 76%→66% — sous le plancher 70% visé) : le monde est
+ * BISTABLE (cf. POP_R_BASE dans CLAUDE.md), un coup trop dur sur le vivrier fait
+ * plonger la satisfaction sous le seuil qui alimente la croissance. Le ÷1.5 retenu
+ * (~7-8 nourris/ouvrier au lieu de ~15 avant, ~10.7 après ÷1.5) MESURÉ (seed 9/11,
+ * 200 ans) : satisfaction Laborer 82%→78%/76%→72% — au-dessus du plancher, prix du
+ * grain remonté, aucune famine de masse. Bois/pierre/argile/minerais et le reste de
+ * la table sont INTACTS (le levier ne touche QUE la nourriture, par design demandé).
+ *   🔒 ancrés : grain 5.33 · poisson 2.67 · gibier/élevage 3 · bois 0.5 · pierre/argile 0.25.
  *   ◇ dérivés : métaux 0.25-0.40 · fibres/sucre 0.60 · épices/minéraux 0.30-0.40 ·
  *               or 0.08 · rares (perle/teinture/arcane/céleste) 0.03-0.06. */
 static float EXTRACT_YIELD[RES_COUNT] = {   /* NON-const (MODTOOLS) — surchargeable par SCPS_MODS */
-    /* nourriture (interchangeable : grain/poisson/viande) */
-    [RES_GRAIN]=8.0f, [RES_FISH]=4.0f, [RES_LIVESTOCK]=3.0f,
+    /* nourriture (interchangeable : grain/poisson/viande) — E1 : ÷1.5 (grain/poisson/fruit SEULS ;
+     * ÷2 plein mesuré trop dur sur les low seeds, cf. commentaire ci-dessus). */
+    [RES_GRAIN]=5.333f, [RES_FISH]=2.667f, [RES_LIVESTOCK]=3.0f,
     /* vrac de construction & bois de feu — bois 0.5→1.0 : le FEU est un bien DIRECT (pas de
      * manufacture, donc pas de levier `labor`) → c'est le rendement qui cale « 100 emplois → 1000 hab »
      * (demande feu ≈ 105/1000hab/an, 100 ouvriers × 1.0 = 100 → ~1000 hab). */
@@ -101,10 +114,10 @@ static float EXTRACT_YIELD[RES_COUNT] = {   /* NON-const (MODTOOLS) — surcharg
     [RES_IRON]=0.40f, [RES_COAL]=0.40f, [RES_COPPER]=0.25f,
     /* fibres & douceurs (intrants manufacture) */
     [RES_WOOL]=0.60f, [RES_SUGAR]=0.60f, [RES_COTTON]=0.60f,
-    /* FRUIT = NOURRITURE (supplément) : 4.0 = « 100 emplois → 400 hab » à la TUILE STANDARD
-     * (geo=1) ; les tuiles fruitières ont un raw_cap modeste (≈0.4 plaine, ≈2.6 forêt) → la
-     * contribution RÉELLE est geo-modulée (≈36 plaine, ≈230 forêt par 100 emplois). */
-    [RES_FRUIT]=4.0f,
+    /* FRUIT = NOURRITURE (supplément) : 2.667 (E1 ÷1.5) = « 100 emplois → 267 hab » à la TUILE
+     * STANDARD (geo=1) ; les tuiles fruitières ont un raw_cap modeste (≈0.4 plaine, ≈2.6 forêt)
+     * → la contribution RÉELLE est geo-modulée (≈24 plaine, ≈153 forêt par 100 emplois). */
+    [RES_FRUIT]=2.667f,
     /* épices, minéraux mineurs, fourrure */
     [RES_SALT]=0.30f, [RES_MED_HERBS]=0.30f, [RES_SALTPETER]=0.30f, [RES_SULFUR]=0.30f, [RES_FUR]=0.40f,
     /* précieux & rares (rendement maigre, valeur haute) */
@@ -132,7 +145,11 @@ static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qou
      * direct mineur : on la garde EFFICACE (labor bas) — le puits de bras est sur la TUNIQUE (final). */
     [BLD_TEXTILE]   = { RES_WOOL,  1.5f, RES_NONE,          0.f, RES_CLOTH,          2.8f, 1.0f, RES_COTTON, 1.5f },  /* F4 : laine OU COTON (repli) → étoffe — le coton inerte gagne un débouché */
     [BLD_SAWMILL]   = { RES_WOOD,  2.0f, RES_COPPER,        0.2f, RES_NAVAL_SUPPLIES, 1.0f, 0.8f, RES_NONE, 0.f },  /* M5 : le naval EXIGE du cuivre (clous/doublage) — il ne sort plus sans */
-    [BLD_PAPERMILL] = { RES_WOOD,  1.5f, RES_NONE,          0.f, RES_PAPER,          1.0f, 0.7f, RES_NONE, 0.f },
+    /* E3 (2026-07-05) — LEVIER LABOR jamais recalé (§NF n'a jamais calibré la papeterie à
+     * « 100 emplois ≈ 1000 hab » comme le reste du panier) : demande papier ≈ 5.74/1000hab/an
+     * (bien de LUXE bourgeois/élite, faible) → labor = 1200·1.0/5.74 ≈ 209 (même formule que
+     * bière/vin/tunique/poterie). Ratio intrant:sortie INCHANGÉ (1.5 bois → 1.0 papier). */
+    [BLD_PAPERMILL] = { RES_WOOD,  1.5f, RES_NONE,          0.f, RES_PAPER,          1.0f, 209.f, RES_NONE, 0.f },
     /* EAU-DE-VIE/BIÈRE — BOISSON, le SEUL bien manufacturé actif en EARLY ⇒ le calibrage `labor` qui MORD.
      * LEVIER LABOR (ratios & qout intacts) : labor = 1200·qout/demande_1000 → 100 emplois ≈ 1000 hab.
      * Vin : 1200·1.4/44.7 = 37.6 → labor 38. Bière : 1200·1.0/44.7 = 26.8 → labor 27. */
@@ -191,7 +208,9 @@ static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qou
     [BLD_POTTERY]   = { RES_CLAY,      1.5f, RES_NONE,      0.f,  RES_POTTERY, 1.4f,  46.f, RES_NONE, 0.f },  /* argile → poterie (confort). LEVIER LABOR : 1200·1.4/36.6 = 45.9 → labor 46 */
     [BLD_SCULPTURE] = { RES_STONE,     2.0f, RES_NONE,      0.f,  RES_STATUE,  1.0f,  1.1f, RES_NONE, 0.f },  /* pierre → statuaire (luxe NICHE : demande basse → reste efficace) */
     [BLD_POWDERMILL]= { RES_SALTPETER, 1.0f, RES_COAL, 0.8f, RES_GUNPOWDER, 1.0f, 1.0f, RES_NONE, 0.f },
-    [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 0.8f, RES_NONE, 0.f },
+    /* E3 (2026-07-05) — LEVIER LABOR jamais recalé : demande remède ≈ 2.97/1000hab/an (santé
+     * urbaine, bourgeois seuls, très faible) → labor = 1200·1.0/2.97 ≈ 404. Ratio INCHANGÉ. */
+    [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 404.f, RES_NONE, 0.f },
 };
 
 /* Besoins par tête et par strate (unités/100 hab/tick). Le grain (vivres)
@@ -596,6 +615,27 @@ static void econ_seed_population(ProvinceEconomy *re, float total_pop) {
 /* §11.4 — LIMITEUR DE PRODUCTION joueur : cap par (pays,ressource). -1 = ∞ (désactivé). */
 static float g_prod_cap[SCPS_MAX_COUNTRY][RES_COUNT];
 
+/* F1 — CADENCE DE COLONISATION PAR APPÉTIT (le motif g_wild/g_revolt_grace du dépôt :
+ * un static de MODULE, RAZ à econ_init — PAS sérialisé, cf. econ_colonize_tick). Un pays
+ * saute l'année tant que son compteur n'est pas retombé à 0 ; remis à gate_years(w_expand)
+ * à chaque fondation réussie. ⚠ Non-sérialisé ⇒ un reload le remet à 0 : au pire une
+ * colonie fondée un an plus tôt qu'elle ne l'aurait été — sans conséquence (comme
+ * g_revolt_grace), documenté ici plutôt que caché. */
+static int8_t g_colony_cd[SCPS_MAX_COUNTRY];
+
+/* E7 (2026-07-05) — TÉLÉMÉTRIE COLONISATION : econ_colonize_tick RENVOIE déjà le nb de
+ * fondations, mais la voie de scps_sim.c (le monde JOUEUR/Godot) jetait la valeur — la
+ * chronique n'avait donc aucune vue sur « combien de colonies, et combien nées de la
+ * SURVIE anti-spirale (grenier vide, gate levé) ». Motif g_wild_spawned/g_colony_cd du
+ * dépôt : statics de MODULE, RAZ à econ_init, PAS sérialisés (recomptés en direct, comme
+ * g_n_friche). econ_colony_stats() les EXPOSE (mêmes fondations qu'econ_colonize_tick
+ * retourne déjà — un compteur CUMULATIF en plus, pas un nouveau calcul). */
+static long g_colony_founded=0, g_colony_survival=0;
+void econ_colony_stats(long *founded, long *survival){
+    if (founded)  *founded  = g_colony_founded;
+    if (survival) *survival = g_colony_survival;
+}
+
 /* Adjacence de PROVINCES (charte : la vérité géographique fine — colonisation par-province,
  * garantie joueur, hameaux libres). Allouée dynamiquement (1664² octets ≈ 2.7 Mo — trop pour
  * un tableau statique BSS confortable à côté du reste). Possédée par le module (une seule
@@ -887,6 +927,8 @@ void econ_aggregate_regions(WorldEconomy *e){
 
 void econ_init(WorldEconomy *e, const World *w) {
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) for (int g=0;g<RES_COUNT;g++) g_prod_cap[c][g]=-1.f;
+    memset(g_colony_cd,0,sizeof g_colony_cd);   /* F1 : RAZ du répit de colonisation (par partie/sim, non sérialisé) */
+    g_colony_founded=0; g_colony_survival=0;    /* E7 : RAZ télémétrie colonisation (par partie/sim, non sérialisé) */
     memset(e,0,sizeof(*e));
     for (int c=0;c<SCPS_MAX_COUNTRY;c++){ e->colony[c].src=-1; e->colony[c].dst=-1; }   /* aucun chantier */
     econ_mobility_reset();              /* E0.7 : RAZ mobilité de classe (par partie/sim) */
@@ -1535,21 +1577,34 @@ int econ_region_rep_province(const WorldEconomy *e, int region){
  * Rendent le delta RÉELLEMENT appliqué (un débit est borné au disponible ;
  * le trésor, lui, peut passer négatif = dette, comme credit_spend).
  * Ordre de balayage FIXE (pid croissant) — déterminisme préservé. */
+/* Province-PORTEUSE d'une région : la représentative si elle est bien DE la région
+ * et active, sinon la première province active de la région, sinon -1 — ce dernier
+ * cas = mondes SYNTHÉTIQUES des bancs (régions sans provinces) où la VUE region[]
+ * est le SEUL store : les helpers y retombent sur le comportement d'hier. */
+static int region_carrier_prov(const WorldEconomy *e, int region){
+    int rep=econ_region_rep_province(e,region);
+    if (rep>=0 && rep<e->n_prov && e->prov[rep].region==region && e->prov[rep].active) return rep;
+    for (int p=0;p<e->n_prov;p++)
+        if (e->prov[p].region==region && e->prov[p].active) return p;
+    return -1;
+}
 float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta){
     if (!e || region<0 || region>=e->n_regions || good<=RES_NONE || good>=RES_COUNT || delta==0.f) return 0.f;
     RegionEconomy *rv=&e->region[region];
-    int rep=econ_region_rep_province(e,region);
+    int rep=region_carrier_prov(e,region);
+    if (rep<0){                                   /* FIXTURE (banc) : vue seule */
+        if (delta>0.f){ rv->stock[good]+=delta; return delta; }
+        float t=rv->stock[good]; if(t>-delta)t=-delta; if(t<0.f)t=0.f;
+        rv->stock[good]-=t; return -t;
+    }
     if (delta>0.f){
-        if (rep<0 || rep>=e->n_prov) return 0.f;
         e->prov[rep].stock[good]+=delta;
         rv->stock[good]+=delta;
         return delta;
     }
     float need=-delta, took=0.f;
-    if (rep>=0 && rep<e->n_prov && e->prov[rep].region==region){
-        float t=e->prov[rep].stock[good]; if(t>need)t=need;
-        if (t>0.f){ e->prov[rep].stock[good]-=t; need-=t; took+=t; }
-    }
+    { float t=e->prov[rep].stock[good]; if(t>need)t=need;
+      if (t>0.f){ e->prov[rep].stock[good]-=t; need-=t; took+=t; } }
     for (int p=0; p<e->n_prov && need>1e-6f; p++){
         if (p==rep) continue;
         ProvinceEconomy *pe=&e->prov[p];
@@ -1563,18 +1618,16 @@ float econ_region_stock_add(WorldEconomy *e, int region, int good, float delta){
 float econ_region_treasury_add(WorldEconomy *e, int region, float delta){
     if (!e || region<0 || region>=e->n_regions || delta==0.f) return 0.f;
     RegionEconomy *rv=&e->region[region];
-    int rep=econ_region_rep_province(e,region);
-    if (rep<0 || rep>=e->n_prov) return 0.f;
+    int rep=region_carrier_prov(e,region);
+    if (rep<0){ rv->treasury+=delta; return delta; }   /* FIXTURE (banc) : vue seule */
     if (delta>0.f){
         e->prov[rep].treasury+=delta; rv->treasury+=delta; return delta;
     }
     float need=-delta;
-    /* débit : d'abord le liquide des sœurs (clampé à 0), le RÉSIDU va sur la
-     * représentative (peut passer négatif = dette, philosophie credit_spend). */
-    if (e->prov[rep].region==region){
-        float t=e->prov[rep].treasury; if(t<0.f)t=0.f; if(t>need)t=need;
-        e->prov[rep].treasury-=t; need-=t;
-    }
+    /* débit : d'abord le liquide (clampé à 0), le RÉSIDU va sur la porteuse
+     * (peut passer négatif = dette, philosophie credit_spend). */
+    { float t=e->prov[rep].treasury; if(t<0.f)t=0.f; if(t>need)t=need;
+      e->prov[rep].treasury-=t; need-=t; }
     for (int p=0; p<e->n_prov && need>1e-6f; p++){
         if (p==rep) continue;
         ProvinceEconomy *pe=&e->prov[p];
@@ -1582,25 +1635,27 @@ float econ_region_treasury_add(WorldEconomy *e, int region, float delta){
         float t=pe->treasury; if(t<0.f)t=0.f; if(t>need)t=need;
         if (t>0.f){ pe->treasury-=t; need-=t; }
     }
-    if (need>1e-6f && rep>=0) e->prov[rep].treasury-=need;   /* le reste en dette */
+    if (need>1e-6f) e->prov[rep].treasury-=need;   /* le reste en dette */
     rv->treasury+=delta;
     return delta;
 }
 float econ_region_pop_add(WorldEconomy *e, int region, int cls, float delta){
     if (!e || region<0 || region>=e->n_regions || cls<0 || cls>=CLASS_COUNT || delta==0.f) return 0.f;
     RegionEconomy *rv=&e->region[region];
-    int rep=econ_region_rep_province(e,region);
+    int rep=region_carrier_prov(e,region);
+    if (rep<0){                                   /* FIXTURE (banc) : vue seule */
+        if (delta>0.f){ rv->strata[cls].pop+=delta; return delta; }
+        float t=rv->strata[cls].pop; if(t>-delta)t=-delta; if(t<0.f)t=0.f;
+        rv->strata[cls].pop-=t; return -t;
+    }
     if (delta>0.f){
-        if (rep<0 || rep>=e->n_prov) return 0.f;
         e->prov[rep].strata[cls].pop+=delta;
         rv->strata[cls].pop+=delta;
         return delta;
     }
     float need=-delta, took=0.f;
-    if (rep>=0 && rep<e->n_prov && e->prov[rep].region==region){
-        float t=e->prov[rep].strata[cls].pop; if(t>need)t=need;
-        if (t>0.f){ e->prov[rep].strata[cls].pop-=t; need-=t; took+=t; }
-    }
+    { float t=e->prov[rep].strata[cls].pop; if(t>need)t=need;
+      if (t>0.f){ e->prov[rep].strata[cls].pop-=t; need-=t; took+=t; } }
     for (int p=0; p<e->n_prov && need>1e-6f; p++){
         if (p==rep) continue;
         ProvinceEconomy *pe=&e->prov[p];
@@ -2127,15 +2182,20 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float gq = (rc->in1==RES_GRAIN)?rc->q1:rc->q2;
                 lim = fminf(lim, spare/fmaxf(gq,EPS));
             }
-            /* §gate — ORFÈVRERIE bornée à la DEMANDE EFFECTIVE. NB : l'orfèvrerie n'est PAS
-             * engorgée mais un LUXE de STATUT à variante culturelle — seules les élites
-             * MARTIALES (preferred_luxe) la réclament ; les raffinées prennent l'étoffe
-             * précieuse (voie murex). Le gate borne la sortie à la demande réelle pour ne
-             * pas brûler l'OR rare (désormais nourri, voie or martiale) en biens que nul ne
+            /* §gate — ORFÈVRERIE (+ E3 : STATUAIRE) bornées à la DEMANDE EFFECTIVE. NB :
+             * l'orfèvrerie n'est PAS engorgée mais un LUXE de STATUT à variante culturelle —
+             * seules les élites MARTIALES (preferred_luxe) la réclament ; les raffinées prennent
+             * l'étoffe précieuse (voie murex). Le gate borne la sortie à la demande réelle pour
+             * ne pas brûler l'OR rare (désormais nourri, voie or martiale) en biens que nul ne
              * veut : nul chez les raffinées (demande ~0 → sortie 0), servie chez les martiales.
              * lim est en « lots » → on convertit la sortie voulue par qout·prod_mult. (Les
-             * outils, eux, sont régulés par leur demande passive ∝ main-d'œuvre.) */
-            if (rc->out==RES_PRECIOUS_WARE){
+             * outils, eux, sont régulés par leur demande passive ∝ main-d'œuvre.)
+             * E3 (2026-07-05) — même motif étendu à RES_STATUE : la statuaire est un bien de
+             * CONFORT/PRESTIGE à demande basse (bourgeois 0.12 · élite 0.18/100hab) — sans ce
+             * gate elle tourne au plancher du market_effort et engorge le marché comme
+             * l'orfèvrerie avant elle (même symptôme, même remède ; labor INCHANGÉ — la
+             * statuaire sert aussi le bonus confort-logement, on ne la ralentit pas). */
+            if (rc->out==RES_PRECIOUS_WARE || rc->out==RES_STATUE){
                 float gap = re->demand[rc->out]*GATE_DEMAND_BUFFER - S[rc->out];
                 lim = fminf(lim, fmaxf(0.f,gap)/fmaxf(rc->qout*prod_mult,EPS));
             }
@@ -3078,7 +3138,21 @@ bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     return true;
 }
 
-int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
+/* Nombre d'années de répit entre deux fondations, selon l'appétit d'expansion `we`∈[0,1]
+ * (w_expand de l'éthos) : un Dominateur (we≈0.9) fonde presque chaque année (gate≈1), un
+ * Pacifiste (we≈0.15) attend ~tous les AI_COLONY_TEMPO+1 ans (gate≈3-4). we<0 (appelant
+ * sans tableau, cf. NULL) ⇒ traité comme 1.0 (comportement intégral d'avant : jamais de
+ * frein de cadence). */
+static int colony_gate_years(float we){
+    if (we<0.f) we=1.f;
+    if (we>1.f) we=1.f;
+    float g = 1.f + (1.f-we)*tune_f("AI_COLONY_TEMPO",3.f);
+    int gy=(int)g; if (gy<1) gy=1;
+    return gy;
+}
+
+int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
+                        const float *w_expand, const bool *at_war) {
     int founded=0;
 
     for (int cid=0; cid<w->n_countries; cid++) {
@@ -3087,6 +3161,20 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
         PolityRole role=ct->role;
 
         if (role==POLITY_PLAYER || role==POLITY_ANTAGONIST) {
+            /* F2 — GATE DE GUERRE : un pays EN GUERRE (n'importe laquelle) ne fonde PAS de
+             * colonie cette année — il consolide au lieu de s'étendre sous le feu. at_war[cid]
+             * est PRÉ-CALCULÉ par l'appelant (qui, lui, lie scps_diplo — cf. scps_econ.h) ;
+             * at_war==NULL (ex. bancs) ⇒ pas de gate, comportement d'avant. Le compteur de
+             * cadence g_colony_cd N'EST PAS décrémenté ici (la guerre ne « consomme » pas une
+             * année de répit — elle reporte simplement, la cadence reprend où elle en était dès
+             * la paix revenue). */
+            if (at_war && cid<SCPS_MAX_COUNTRY && at_war[cid]) continue;
+            /* F1 — CADENCE PAR APPÉTIT : le compteur de répit décroît d'1 CHAQUE ANNÉE (que le
+             * pays fonde ou non) ; tant qu'il est >0 le pays SAUTE cette année. w_expand==NULL
+             * (appelant sans tableau, ex. bancs) ⇒ pas de frein (comportement intégral d'avant). */
+            if (w_expand && cid<SCPS_MAX_COUNTRY){
+                if (g_colony_cd[cid]>0){ g_colony_cd[cid]--; continue; }
+            }
             /* COLONISATION NEEDS-AWARE (pipeline IA, étage 3a), GRAIN PROVINCE (charte règle 5) :
              * la cible vaut ce qu'elle COMBLE. score(dst) = Σ_g max(0,shortfall_PROJETÉ[g]) ×
              * dst->raw_cap[g] × prix[g] (la valeur ÉMERGE — aucune hiérarchie codée). Le gate
@@ -3145,10 +3233,17 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
                 }
             }
             int csrc=best_src, cdst=best_dst;
-            if (csrc<0 && food_crit){ csrc=surv_src; cdst=surv_dst; }   /* anti-spirale : SEULEMENT en crise vivrière */
+            bool via_survival=false;
+            if (csrc<0 && food_crit){ csrc=surv_src; cdst=surv_dst; via_survival=true; }   /* anti-spirale : SEULEMENT en crise vivrière */
             if (csrc>=0 && cdst>=0) {
                 colonize_from_prov(e, csrc, cdst, cid);
                 founded++;
+                g_colony_founded++;                              /* E7 : télémétrie cumulative (chronicle) */
+                if (via_survival) g_colony_survival++;            /* E7 : dont fondée par la voie SURVIE (anti-spirale) */
+                /* F1 — la fondation RÉUSSIE relance le répit : le prochain essaimage attendra
+                 * gate_years(w_expand[cid]) de plus. w_expand==NULL ⇒ pas de tableau, rien à
+                 * armer (le frein reste désactivé, comportement d'avant). */
+                if (w_expand && cid<SCPS_MAX_COUNTRY) g_colony_cd[cid]=(int8_t)colony_gate_years(w_expand[cid]);
             }
 
         } else if (role==POLITY_CITY_STATE) {
@@ -3181,6 +3276,7 @@ int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid) {
             if (best_src>=0 && best_dst>=0) {
                 colonize_from_prov(e, best_src, best_dst, cid);
                 founded++;
+                g_colony_founded++;   /* E7 : télémétrie cumulative (cité-état — jamais la voie survie) */
             }
         }
     }

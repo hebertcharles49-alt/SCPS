@@ -331,6 +331,7 @@ int main(int argc, char **argv){
     printf("══════════════════════════════════════════════════════════════════════\n");
 
     /* Agrégats sur toutes les sims */
+    long tot_colony_founded=0, tot_colony_survival=0;   /* E7 : télémétrie colonisation (retour jeté d'econ_colonize_tick) */
     long tot_wars=0, tot_absorbed=0, tot_emerged=0, tot_peakrev=0, tot_ages=0, tot_conq=0;
     long tot_ignited=0, tot_seceded=0, tot_coup=0, tot_concession=0, tot_crushed=0, tot_revdead=0;
     long tot_heresy=0, tot_zelote=0;   /* dimension FOI : schismes intérieurs vs cultes étrangers */
@@ -800,6 +801,11 @@ int main(int argc, char **argv){
         print_building_census(s.econ);
         printf("              expansion : %d prov colonisées · %d prov TRANSFÉRÉES à la paix · armée finale %.0f\n",
                colonized_provinces(w,s.econ), conq_prov, total_army(w,s.econ));
+        /* E7 — le retour d'econ_colonize_tick (fondations réussies) était jeté par scps_sim.c ;
+         * la télémétrie du module (RAZ à econ_init, cumulée sur CETTE sim) le récupère. */
+        { long cf_sim=0, cs_sim=0; econ_colony_stats(&cf_sim,&cs_sim);
+          printf("              colonisation : %ld fondation(s) (dont %ld de survie — grenier vide, gate levé)\n", cf_sim, cs_sim);
+          tot_colony_founded+=cf_sim; tot_colony_survival+=cs_sim; }
         /* E1 §9 — la loi prix/durée se LIT : année du premier édifice par palier. */
         printf("              accession (1er édifice bâti) : 360 j an %d · 540 j an %d · 960 j an %d  (-1 = jamais)\n",
                tier_year[0], tier_year[1], tier_year[2]);
@@ -1272,6 +1278,8 @@ int main(int argc, char **argv){
            tot_hub_all>0? 100.0*tot_hub_cs/tot_hub_all : 0.0);
     printf("   provinces transférées à la paix %ld   (moy. %.1f/sim ; la propriété ne change qu'au RÈGLEMENT)\n", tot_conq, (double)tot_conq/nsims);
     printf("   occupations (terrain) ....... %ld posée(s) · %ld levée(s)   (les sièges tiennent le sol entre deux paix)\n", g_tot_occ_posed, g_tot_occ_lifted);
+    printf("   colonisation ................ %ld fondation(s) (moy. %.1f/sim) dont %ld de survie (grenier vide, gate levé)\n",
+           tot_colony_founded, (double)tot_colony_founded/nsims, tot_colony_survival);
     printf("   pays absorbés (morts) ....... %ld   (moy. %.1f/sim)\n", tot_absorbed, (double)tot_absorbed/nsims);
     printf("   pays émergés (sécession) .... %ld   (moy. %.1f/sim ; la carte politique respire)\n", tot_emerged, (double)tot_emerged/nsims);
     printf("   hameaux libres (WILD) ....... %.1f semés/sim · %ld ralliés culturellement (%.1f/sim · pop moy. %.0f) ; l'absorption MILITAIRE passe par la conquête\n",

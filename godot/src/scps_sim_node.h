@@ -137,6 +137,10 @@ public:
     bool       player_refill();                       /* guerre : recompléter l'armée de campagne */
     bool       player_navy_build(int hull);           /* flotte : mettre une coque en chantier */
     bool       player_disband();                      /* guerre : dissoudre la réserve levée */
+    /* PANNEAU B — poser une MANUFACTURE civile par région (le §NF l'exclut : voici la main). */
+    bool       player_build_manuf(int region, int bld);  /* enfile l'ordre (drain revalidé) */
+    int        manuf_legal(int region, int bld);         /* légalité read-only (griser le bouton) */
+    String     manuf_name(int bld);                      /* nom d'affichage du BuildingType (miroir display-only) */
     int        colonized_total() const;               /* Σ provinces colonisées — signature de souveraineté */
     Dictionary colony_status() const;                 /* v50 : le CHANTIER de colonisation du joueur */
     double     country_food(int c) const;             /* v50 : Σ stock vivrier (topbar) */

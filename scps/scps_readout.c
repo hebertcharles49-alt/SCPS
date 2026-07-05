@@ -755,25 +755,24 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
      * 1 logement et 1 service. On affiche les places ENCORE LIBRES (capacité − pop),
      * pas un score abstrait. Plus deux SLOTS RÉSERVÉS lus de l'état bâti. ──────── */
     {
-        float food_cap = colonized ? pe->build.food_cap : 0.f;
         float K_inst   = colonized ? pe->build.K_inst   : 0.f;
         float savoir   = colonized ? pe->build.savoir   : 0.f;
         float faith    = colonized ? pe->build.faith    : 0.f;
-        float cap_pop  = colonized ? pe->cap_pop        : 0.f;
         float H        = colonized ? pe->build.H_coerc  : 0.f;
-        /* LOGEMENTS (MERGÉ) : miroir EXACT de l'eff_cap moteur (ECON_EFFCAP_BODY).
-         * tier_housing (capital tier × 1000) + manufacture housing + grenier. */
-        float manuf_h=0.f;
-        if (colonized) for (int bi=0;bi<pe->n_bld;bi++) manuf_h += pe->bld[bi].level;
-        manuf_h = fminf(manuf_h*100.f, cap_pop*0.5f);
+        /* LOGEMENTS (MERGÉ) : DÉLÈGUE à econ_prov_effcap() (scps_econ.h) — même grain
+         * (province, pe) que le moteur. E4 (2026-07-05) : l'ancien recalcul codait
+         * tier_housing/manuf_h à la main (×100.f en dur) SANS le bonus CONFORT (poterie/
+         * statuaire → COMFORT_HOUSE_RELIEF, cf. ECON_EFFCAP_BODY) — le joueur voyait une
+         * capacité FAUSSE (trop basse) dès que le confort était servi. tier_h reste calculé
+         * ici pour services_cap (qui n'a pas d'équivalent moteur unifié). */
+        long house_cap = colonized ? (long)econ_prov_effcap(pe) : 0;
+        pr.logements_cap    = house_cap;
+        pr.logements_libres = house_cap - (long)pop;
         int _rtier = 1;
         if (pop>=10000) _rtier=7; else if (pop>=8000) _rtier=6; else if (pop>=5000) _rtier=5;
         else if (pop>=4000) _rtier=4; else if (pop>=3000) _rtier=3; else if (pop>=2000) _rtier=2;
         long _radm = (long)_rtier*100; if (_radm>(long)pop) _radm=((long)pop/100)*100;
         long _rpk = _radm/100; float tier_h = (float)((_rpk<_rtier?_rpk:_rtier)*1000);
-        long house_cap = (long)(cap_pop*0.5f + tier_h + manuf_h + food_cap*250.f);
-        pr.logements_cap    = house_cap;
-        pr.logements_libres = house_cap - (long)pop;
         /* SERVICES (MERGÉ) : tier × 1000 (base) + institutions AJOUTENT. */
         long serv_cap = (long)(tier_h + (K_inst + savoir + faith) * 700.f);
         pr.services_cap    = serv_cap;

@@ -27,6 +27,9 @@ var _alloc_btns := []       # [{rect, act, sink}] boutons de l'onglet Main-d'œu
 var _alloc_cache := {}      # dernier readout region_alloc (pour pousser l'allocation COMPLÈTE)
 var _close_rect := Rect2()
 var _build_btn := Rect2()   # onglet Constructions : « Bâtir… » (ouvre le panneau de construction)
+var _manuf_btns := []       # [{rect, bld}] onglet Constructions : boutons « Bâtir » (manufacture civile)
+var _manuf_flash := ""      # retour du dernier ordre de manufacture
+var _manuf_flash_ok := true
 
 signal build_requested      ## Constructions → ouvrir le panneau de construction (sa maison)
 
@@ -188,13 +191,15 @@ func _draw_peuples(x: float, y: float, w) -> void:
 				VKit.text(self, Vector2(x + 250, py), VKit.COL_DIM, "−%d/an" % dec, VKit.FS_SMALL)
 			py += 16
 
-# ── ONGLET BÂTIMENTS : les manufactures bâties ─────────────────────────────────
+# ── ONGLET BÂTIMENTS : les manufactures bâties + BÂTIR (manufacture civile) ────
 func _draw_batiments(x: float, y: float, w) -> void:
 	# CONSTRUCTIONS : les bâtiments EXISTANTS (slots) + le sous-onglet BÂTIR (le
 	# panneau de construction s'ouvre d'ici — c'est SA maison, plus un raccourci épars).
+	_manuf_btns.clear()
 	_build_btn = Rect2()
 	var info: Dictionary = w.province_info(_pid)
-	if int(info.get("owner", -2)) == int(w.player()):
+	var mine := (int(info.get("owner", -2)) == int(w.player()))
+	if mine:
 		_build_btn = Rect2(PW - 130.0, y - 2.0, 110.0, 24.0)
 		VKit.fill(self, _build_btn, VKit.COL_PANEL2)
 		VKit.box(self, _build_btn, VKit.COL_GOLD)
@@ -203,27 +208,61 @@ func _draw_batiments(x: float, y: float, w) -> void:
 	var blds: Array = w.province_buildings(_pid)
 	if blds.is_empty():
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucune manufacture bâtie (carte nue : l'IA/le joueur élèvent dans le temps)", VKit.FS_SMALL)
+	else:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "manufacture                niveau   ouvriers", VKit.FS_SMALL)
+		y += 18
+		var maxlv := 1
+		for b in blds:
+			maxlv = maxi(maxlv, int(b["niveau"]))
+		for b in blds:
+			if y > PH - 24:
+				break
+			# vignette de manufacture (planche 8) quand elle existe, sinon le marteau
+			var mt: Texture2D = UIKit.manuf_sprite(String(b["nom"]))
+			if mt != null:
+				draw_texture_rect(mt, Rect2(x - 1, y - 2, 16, 16), false)
+			else:
+				UIKit.draw_icon(self, "build_hammer", Vector2(x, y - 1), 14)
+			VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(b["nom"]), VKit.FS_SMALL)
+			var lv := int(b["niveau"])
+			VKit.fill(self, Rect2(x + 230, y + 2, 90.0 * float(lv) / float(maxlv), 10), VKit.COL_GOLD)
+			VKit.text(self, Vector2(x + 326, y), VKit.COL_PARCH, str(lv), VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
+			y += 19
+
+	# — BÂTIR une manufacture civile ICI (région de la province sélectionnée) —
+	if not mine or y > PH - 40:
 		return
-	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "manufacture                niveau   ouvriers", VKit.FS_SMALL)
+	y += 10
+	VKit.fill(self, Rect2(x, y, PW - 32.0, 1), VKit.COL_EDGE)
+	y += 10
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Bâtir une manufacture", VKit.FS_SMALL)
 	y += 18
-	var maxlv := 1
-	for b in blds:
-		maxlv = maxi(maxlv, int(b["niveau"]))
-	for b in blds:
-		if y > PH - 24:
+	var region: int = w.province_region(_pid)
+	var any_legal := false
+	for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only côté binding)
+		if y > PH - 22:
 			break
-		# vignette de manufacture (planche 8) quand elle existe, sinon le marteau
-		var mt: Texture2D = UIKit.manuf_sprite(String(b["nom"]))
-		if mt != null:
-			draw_texture_rect(mt, Rect2(x - 1, y - 2, 16, 16), false)
+		if int(w.manuf_legal(region, bld)) != 1:
+			continue
+		any_legal = true
+		var nom := String(w.manuf_name(bld))
+		var mt2: Texture2D = UIKit.manuf_sprite(nom)
+		if mt2 != null:
+			draw_texture_rect(mt2, Rect2(x - 1, y - 2, 16, 16), false)
 		else:
 			UIKit.draw_icon(self, "build_hammer", Vector2(x, y - 1), 14)
-		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, String(b["nom"]), VKit.FS_SMALL)
-		var lv := int(b["niveau"])
-		VKit.fill(self, Rect2(x + 230, y + 2, 90.0 * float(lv) / float(maxlv), 10), VKit.COL_GOLD)
-		VKit.text(self, Vector2(x + 326, y), VKit.COL_PARCH, str(lv), VKit.FS_SMALL)
-		VKit.text(self, Vector2(x + 380, y), VKit.COL_DIM, _grp(b["ouvriers"]), VKit.FS_SMALL)
-		y += 19
+		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, nom, VKit.FS_SMALL)
+		var br := Rect2(x + 260, y - 2, 74, 18)
+		VKit.fill(self, br, VKit.COL_PANEL2)
+		VKit.box(self, br, VKit.COL_GOLD)
+		VKit.text(self, Vector2(br.position.x + 10, br.position.y + 2), VKit.COL_PARCH, "Bâtir", VKit.FS_SMALL)
+		_manuf_btns.append({"rect": br, "bld": bld})
+		y += 20
+	if not any_legal:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucune manufacture posable ici pour l'instant", VKit.FS_SMALL)
+	if _manuf_flash != "":
+		VKit.text(self, Vector2(x, PH - 18), (VKit.sense(0.85) if _manuf_flash_ok else VKit.sense(0.10)), _manuf_flash, VKit.FS_SMALL)
 
 # ── ONGLET EMPIRE (« à développer ») : les JAUGES d'État — sorties de la barre du haut,
 #    elles vivent ici (savoir en topbar ; le reste = l'état de l'EMPIRE entier). ──
@@ -386,7 +425,9 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	var vals := []
 	var maxv := 1.0
 	for l in inc:
-		var v := float(l["per_day"]) * 365.0
+		# Calibrage « Anno » : les FLUX se lisent en unités/JOUR à 1 décimale (le readout
+		# livre déjà per_day) — plus de ×365 qui gonflait l'échelle en dizaines de milliers.
+		var v := float(l["per_day"])
 		vals.append(v)
 		maxv = maxf(maxv, absf(v))
 	var top := fy + 24.0
@@ -395,7 +436,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	for g in range(0, 3):
 		var gy := base - float(g) / 2.0 * barmax
 		VKit.fill(self, Rect2(fx, gy, fw, 1), VKit.COL_EDGE)
-		VKit.text(self, Vector2(fx + fw - 44.0, gy - 12.0), VKit.COL_DIM, "%.0f" % (float(g) / 2.0 * maxv), VKit.FS_SMALL)
+		VKit.text(self, Vector2(fx + fw - 44.0, gy - 12.0), VKit.COL_DIM, "%.1f" % (float(g) / 2.0 * maxv), VKit.FS_SMALL)
 	var slot := fw / float(n)
 	var bw := minf(36.0, slot * 0.62)
 	for i in range(n):
@@ -405,7 +446,7 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 		var manuf := bool(inc[i]["manufactured"])
 		var col := VKit.SLICE_PAL[7] if manuf else VKit.COL_GOLD
 		VKit.fill(self, Rect2(cx - bw / 2.0, base - bhh, bw, bhh), col)
-		var vs := "+%.0f" % v
+		var vs := "+%.1f/j" % v
 		VKit.text(self, Vector2(cx - VKit.text_w(vs, VKit.FS_SMALL) / 2.0, base - bhh - 13.0), VKit.COL_PARCH, vs, VKit.FS_SMALL)
 		var spr := UIKit.resource_sprite(int(inc[i].get("res_id", -1)), String(inc[i]["source"]))
 		if spr != null:
@@ -440,6 +481,23 @@ func _gui_input(event: InputEvent) -> void:
 			build_requested.emit()
 			accept_event()
 			return
+		# onglet Constructions : « Bâtir » une manufacture civile DANS cette province
+		if _tab == 2:
+			for b in _manuf_btns:
+				if b.rect.has_point(event.position):
+					var w2 = Sim.world
+					if w2 == null:
+						return
+					var region2: int = w2.province_region(_pid)
+					var nom2 := String(w2.manuf_name(int(b.bld)))
+					# Les ordres sont ENFILÉS (journal déterministe) : le retour n'est que
+					# « mis en file », pas le verdict d'application (qui tombe au tick).
+					var ok2: bool = w2.player_build_manuf(region2, int(b.bld))
+					_manuf_flash_ok = ok2
+					_manuf_flash = ("⚒ %s — ordre émis" % nom2) if ok2 else ("✗ %s — refusé" % nom2)
+					queue_redraw()
+					accept_event()
+					return
 		# onglet Main-d'œuvre : boutons d'allocation (poids ± · fermer · intrant · auto)
 		for b in _alloc_btns:
 			if b.rect.has_point(event.position):

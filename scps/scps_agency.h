@@ -106,6 +106,12 @@ bool agency_build(AgencyState *a, WorldEconomy *econ, const World *w, int region
  * (au-delà du trésor → dette, créancier assigné) ; la topbar (econ_country_gold) dit VRAI.
  * Les matériaux sortent toujours du marché régional ; le péage va à la cité-état hôte. */
 bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int region, Edifice e, int owner);
+/* F5 — DOUBLE-COMMANDE : `edifice_build_blocked` ne voit `edi_built` qu'À LA COMPLÉTION (jusqu'à
+ * EDIFICES[e].days, ≤ 960j) ; ce helper scanne la FILE en cours (agency_build_acct l'appelle avant
+ * le devis) pour refuser une 2e commande du MÊME édifice pour la MÊME région tant que la 1re n'est
+ * pas encore livrée — généralise le motif que seul le Sanctuaire pratiquait (faith_pending,
+ * scps_ai.c). a==NULL ⇒ aucune file connue → jamais bloquant (repli sûr). */
+bool agency_pending_build(const AgencyState *a, int region, Edifice e);
 /* DÉPART — pose GRATUITE d'un Marché sur la capitale de chaque empire (joueur/antagoniste)
  * au montage du monde : un marché dès l'an 0 sous la « carte nue ». À semer comme les Centres. */
 void agency_seed_capital_markets(const World *w, WorldEconomy *econ);

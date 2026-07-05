@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
     int total_founded=0, total_mig_flows=0;
     for (int tick=0; tick<ticks; tick++) {
         econ_tick(e, 1.f);
-        total_founded    += econ_colonize_tick(e, w, -1);
+        total_founded    += econ_colonize_tick(e, w, -1, NULL, NULL);
         total_mig_flows  += econ_migrate_tick(e, w);
         world_tick(w, e, 1.0f);   /* dérive lente de l'horloge linguistique */
         trade_tick(e, t, NULL);

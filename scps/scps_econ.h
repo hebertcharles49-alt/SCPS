@@ -770,8 +770,26 @@ float econ_conso_per_capita_year(Resource g);
 /* Pas de colonisation : joueur et antagonistes essaiment vers les régions
  * vierges voisines ; les cités-états colonisent leurs propres territoires
  * non encore peuplés. À appeler après econ_tick(). Renvoie le nb de régions
- * nouvellement colonisées ce tick. */
-int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid);
+ * nouvellement colonisées ce tick.
+ * F1/F2 (implémenteur colonisation/construction IA) — deux entrées OPTIONNELLES
+ * (NULL ⇒ comportement intégral d'avant, les bancs restent inchangés) :
+ *   w_expand[cid] : l'appétit d'expansion de l'éthos (0..~1) — CADENCE la
+ *                   fondation (un Dominateur essaime presque chaque année, un
+ *                   Pacifiste attend) au lieu du même rythme pour tous.
+ *   at_war[cid]   : gate de guerre — un pays EN GUERRE (n'importe laquelle) ne
+ *                   fonde PAS de colonie cette année (il consolide, il ne
+ *                   s'étend pas sous le feu). PRÉ-CALCULÉ par l'appelant (plutôt
+ *                   qu'un `DiploState*` brut) : scps_econ.c/.h reste feuille et
+ *                   ne dépend PAS de scps_diplo (qui inclut DÉJÀ scps_econ.h —
+ *                   un lien direct romprait plusieurs bancs légers qui ne lient
+ *                   pas scps_diplo.o, sans toucher au Makefile). */
+int econ_colonize_tick(WorldEconomy *e, const World *w, int skip_cid,
+                        const float *w_expand, const bool *at_war);
+/* E7 — TÉLÉMÉTRIE colonisation (statics de module, RAZ à econ_init, non sérialisés — motif
+ * econ_friche_count) : cumul depuis la genèse de CETTE sim. `survival` = le sous-ensemble
+ * fondé par la voie SURVIE anti-spirale (grenier vide, gates de pop/food_sat LEVÉS) —
+ * TOUJOURS ⊆ `founded`. Pointeurs NULL ignorés individuellement. */
+void econ_colony_stats(long *founded, long *survival);
 /* L5 — colonie OUTRE-MER : mêmes portes (pop/vivres/cible vierge) mais coût pop ×2.
  * L'appelant (harnais) a vérifié Port + coque + portée de courants. */
 bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid);

@@ -690,13 +690,15 @@ void scps_province_capitale(ScpsSim *s, int pid, ScpsCapitale *out){
     out->tier         = tier;
     out->pop          = pop;
     /* MERGÉ : logement = tier_housing + manuf + grenier (miroir eff_cap moteur) ;
-     * services = tier_housing + institutions. UN SEUL pool chacun. */
+     * services = tier_housing + institutions. UN SEUL pool chacun.
+     * E4 (2026-07-05) — logement_cap DÉLÈGUE désormais à econ_prov_effcap() (scps_econ.h) au
+     * lieu de recalculer à la main : l'ancien recalcul codait tier_h/manuf_h en dur SANS le
+     * bonus CONFORT (poterie/statuaire → COMFORT_HOUSE_RELIEF, cf. ECON_EFFCAP_BODY) — le
+     * joueur voyait une capacité FAUSSE (trop basse) dès que le confort était actif. Même
+     * grain (province, pe) que le helper — aucune sommation nécessaire. tier_h reste utile
+     * pour service_cap (qui n'a pas d'équivalent moteur unifié). */
     float tier_h = (float)capitale_housing(tier, admin);
-    float manuf_h = 0.f;
-    for (int bi=0; bi<pe->n_bld; bi++) manuf_h += pe->bld[bi].level;
-    float cap_half = pe->cap_pop * 0.5f;
-    manuf_h *= 100.f; if (manuf_h > cap_half) manuf_h = cap_half;
-    out->logement_cap = (long)(cap_half + tier_h + manuf_h + pe->build.food_cap * 250.f);
+    out->logement_cap = (long)econ_prov_effcap(pe);
     out->service_cap  = (long)(tier_h + (pe->build.K_inst + pe->build.savoir + pe->build.faith) * 700.f);
     out->prod_pct     = (int)((capitale_prodmult(tier, admin) - 1.f) * 100.f + 0.5f);
 }

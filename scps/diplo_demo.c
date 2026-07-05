@@ -278,8 +278,13 @@ int main(int argc,char**argv){
             diplo_init(dp);
             diplo_declare_war_cb(dp,A,B,CB_TERRITORIAL);   /* A = attaquant */
             float armsA0=0.f;
-            for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==A){
-                econ->region[r].stock[RES_ENCHANTED_ARMS]=1000.f; armsA0+=1000.f; }   /* A surarme */
+            /* RE-KEY : le surarmement se sème PROVINCE-persistant (helper : porteuse+vue) —
+             * écrit sur la seule vue, il serait invisible à l'attrition réelle (deplete_arms
+             * mord désormais les provinces). armsA0 = la vue APRÈS semis (miroir exact). */
+            for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==A)
+                econ_region_stock_add(econ, r, RES_ENCHANTED_ARMS, 1000.f);   /* A surarme */
+            for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==A)
+                armsA0+=econ->region[r].stock[RES_ENCHANTED_ARMS];
             for(int y=0;y<15;y++) diplo_war_tick(dp,w,econ,wp,1.f);
             ok("l'avantage militaire POUSSE le battle_score (l'attaquant gagne les batailles)",
                dp->battle_score[A][B] > 5.f);

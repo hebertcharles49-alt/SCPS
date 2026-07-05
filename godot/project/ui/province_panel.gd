@@ -208,7 +208,8 @@ func _draw() -> void:
 		y += 18
 	else:
 		for l in inc:
-			VKit.text(self, Vector2(x, y), VKit.sense(0.62), "+%.0f/an" % (float(l["per_day"]) * 365.0))
+			# Calibrage « Anno » : flux en unités/JOUR à 1 décimale (per_day du readout, tel quel).
+			VKit.text(self, Vector2(x, y), VKit.sense(0.62), "+%.1f/j" % float(l["per_day"]))
 			VKit.text(self, Vector2(x + 74, y), VKit.COL_DIM, String(l["source"]))
 			y += 18
 	y += 4

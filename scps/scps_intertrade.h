@@ -108,7 +108,11 @@ float intertrade_market_pull   (WorldEconomy *e, int region, int good, float wan
 void  intertrade_seed_citystate_arms(const World *w, WorldEconomy *e);
 int   intertrade_region_hub    (int region);
 float intertrade_global_stock  (const WorldEconomy *e, int good);
-float intertrade_market_avail  (const WorldEconomy *e, int region, int good);   /* dispo au marché atteignable (gate de matière) */
+float intertrade_market_avail  (const WorldEconomy *e, int region, int good);   /* dispo au marché atteignable (gate de matière), BORNÉE au pool commercial §5 (F4) */
+/* F4 — même gate, + `imp_capped_out` (option, NULL ⇒ ignoré) = la part de l'import COUPÉE par le
+ * pool commercial ce mois-ci (0 si le pool n'a pas mordu) : sert à distinguer « matière absente »
+ * (g_edi_nomat) de « le pool est à sec » (g_edi_nocap) au refus d'un chantier. */
+float intertrade_market_avail_ex(const WorldEconomy *e, int region, int good, float *imp_capped_out);
 /* ACTIONNEUR joueur (UI) — achat/vente direct au marché à 2 étages (tier 0 = régional /
  * Centre le plus proche ; tier 1 = mondial / réseau, exige un Centre du pays). L'achat
  * débite le trésor au prix courant×marge (×2 au mondial), crédite le stock, DÉPLÉTÉ le

@@ -226,11 +226,30 @@ bool edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e){
     return false;
 }
 
+/* F5 — DOUBLE-COMMANDE : `edifice_build_blocked` ne voit que `edi_built`, mis à jour SEULEMENT
+ * à la COMPLÉTION du chantier (jusqu'à EDIFICES[e].days, ≤ 960j) — une commande passée aujourd'hui
+ * et une autre demain pour le MÊME édifice PASSENT TOUTES LES DEUX le gate (rien ne les distingue
+ * tant que la 1re n'est pas finie), doublant le coût matière+or pour un seul édifice livré. Seul le
+ * Sanctuaire (ai_econ_turn/faith_pending, scps_ai.c) scannait sa propre file à la main ; ce helper
+ * GÉNÉRALISE le motif à TOUT édifice sans toucher aux appelants existants — un scan de la file
+ * AGY_BUILD (même idiome que faith_pending) : actif, du bon genre (AGY_BUILD), même région, même
+ * édifice (param revêtu en Edifice). O(SCPS_MAX_BUILDS) par appel — la file est petite (512). */
+bool agency_pending_build(const AgencyState *a, int region, Edifice e){
+    if (!a) return false;
+    for (int i=0;i<a->n;i++){
+        const BuildOrder *o=&a->order[i];
+        if (o->active && o->kind==AGY_BUILD && o->region==region && (Edifice)o->param==e) return true;
+    }
+    return false;
+}
+
 /* ---- Coût des bâtiments (§1) : matériaux ACHETÉS au marché en or ------- */
 #define BUILD_MIN_PRICE 0.20f   /* plancher de prix : même un bien abondant n'est jamais gratuit */
 #define IMPORT_TOLL_FRAC 0.30f  /* I6 : part de la marge versée en PÉAGE au hub tiers emprunté */
-/* DIAGNOSTIC G0.3 — pourquoi les paliers ne montent pas : compteurs par édifice. */
-static long g_edi_made[EDIFICE_COUNT], g_edi_blocked[EDIFICE_COUNT], g_edi_nogold[EDIFICE_COUNT], g_edi_nomat[EDIFICE_COUNT];
+/* DIAGNOSTIC G0.3 — pourquoi les paliers ne montent pas : compteurs par édifice.
+ * F4 : g_edi_nocap distingue « le POOL COMMERCIAL §5 est à sec ce mois-ci » (import borné,
+ * cf. intertrade_market_avail_ex) de g_edi_nomat « la matière est VRAIMENT absente partout ». */
+static long g_edi_made[EDIFICE_COUNT], g_edi_blocked[EDIFICE_COUNT], g_edi_nogold[EDIFICE_COUNT], g_edi_nomat[EDIFICE_COUNT], g_edi_nocap[EDIFICE_COUNT];
 
 /* §7 — l'ÉTENDUE du pays RENCHÉRIT ses institutions (le frein tall/wide qui manquait) :
  * facteur ×(1 + 0.15·n_régions du pays) sur le coût matériaux. Un grand empire paie
@@ -278,17 +297,27 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
     if (e==EDI_TRADE_CENTER && !econ->region[region].coastal && !econ->region[region].estuary)
         return false;                                                 /* M2 : un Centre = un débouché (côtier/estuaire) */
     if (edifice_build_blocked(econ, region, e)){ g_edi_blocked[e]++; return false; }  /* E1bis.11 : ↑ exige le palier précédent (pas de doublon) */
+    /* F5 — même refus « pas de doublon », mais vu de la FILE plutôt que du bâti complété :
+     * edifice_build_blocked ne verrait la commande d'hier qu'après ses ≤960j de chantier. Même
+     * compteur g_edi_blocked (même FAMILLE de refus : « déjà en cours/déjà là »). */
+    if (agency_pending_build(a, region, e)){ g_edi_blocked[e]++; return false; }
     /* Gate de MATIÈRE (refus sec) : une seule matière introuvable au marché atteignable
      * (propre + Centre le plus proche + réseau des Centres) → chantier REFUSÉ. Pas de file
-     * d'attente. Scarce = cher (marges) ; absent partout = pas de chantier. */
+     * d'attente. Scarce = cher (marges) ; absent partout = pas de chantier.
+     * F4 : `_ex` reporte AUSSI la part de l'import COUPÉE par le pool commercial §5 restant —
+     * distingue « le pool est à sec ce mois-ci » (g_edi_nocap, ça reviendra) de « la matière est
+     * vraiment absente » (g_edi_nomat) ; le gate lui-même REFLÈTE désormais le pool (comme
+     * intertrade_market_consume l'applique en aval) → plus de TOCTOU or-plein/matière-partielle. */
     { const BuildCost *c=&EDIFICES[e].cost; float ext=agency_extent_mult(econ,region);
       for (int k=0;k<BUILD_RES_MAX;k++){ Resource r=c->res[k];
           if (r<=RES_NONE||r>=RES_COUNT||c->qty[k]<=0.f) continue;
-          float av=intertrade_market_avail(econ,region,r);
+          float capped=0.f;
+          float av=intertrade_market_avail_ex(econ,region,r,&capped);
           if (c->qty[k]*ext > av+1e-3f){
               if (getenv("SCPS_GATEDIAG")) fprintf(stderr,"[GATE] %s rég %d : res %d besoin %.0f (×ext %.1f) > dispo %.0f\n",
                                                    EDIFICES[e].name, region, (int)r, c->qty[k]*ext, ext, av);
-              g_edi_nomat[e]++; return false; }
+              if (capped>1e-3f) g_edi_nocap[e]++; else g_edi_nomat[e]++;
+              return false; }
       } }
     RegionEconomy *re=&econ->region[region];
     float base_gold=0.f;
@@ -383,11 +412,11 @@ bool edifice_unlocked(const TechState *ts, Edifice e){
 static float g_pend_charge[SCPS_MAX_COUNTRY], g_pend_fract[SCPS_MAX_COUNTRY], g_pend_H[SCPS_MAX_COUNTRY];
 static int   g_n_repress, g_n_assim, g_n_purge; static long g_purge_dead;
 void agency_edi_dump(void){
-    fprintf(stderr,"[EDI] par édifice — made / blocked(palier précédent) / nogold :\n");
+    fprintf(stderr,"[EDI] par édifice — made / blocked(palier précédent) / nogold / nomat / nocap(pool §5 à sec) :\n");
     for (int e=0;e<EDIFICE_COUNT;e++)
-        if (g_edi_made[e]||g_edi_blocked[e]||g_edi_nogold[e]||g_edi_nomat[e])
-            fprintf(stderr,"  %-14s %4dj  made=%-5ld blocked=%-6ld nogold=%-6ld nomat=%-6ld\n",
-                    EDIFICES[e].name, EDIFICES[e].days, g_edi_made[e], g_edi_blocked[e], g_edi_nogold[e], g_edi_nomat[e]);
+        if (g_edi_made[e]||g_edi_blocked[e]||g_edi_nogold[e]||g_edi_nomat[e]||g_edi_nocap[e])
+            fprintf(stderr,"  %-14s %4dj  made=%-5ld blocked=%-6ld nogold=%-6ld nomat=%-6ld nocap=%-6ld\n",
+                    EDIFICES[e].name, EDIFICES[e].days, g_edi_made[e], g_edi_blocked[e], g_edi_nogold[e], g_edi_nomat[e], g_edi_nocap[e]);
 }
 
 void agency_init(AgencyState *a){

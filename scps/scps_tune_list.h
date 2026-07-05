@@ -252,6 +252,12 @@
      * URGENT) au-dessus du score d'expansion de CAPACITÉ. La capacité reste le défaut (pop
      * saine) ; le besoin oriente la cible quand ça presse. 0 = colonisation aveugle (capacité). */ \
     X(AI_COLONY_NEEDS_W,      1.5f) \
+    /* F1 (implémenteur colonisation/construction IA) — LA CADENCE SUIT LA PERSONNALITÉ :
+     * gate_years = 1 + (1−w_expand)·AI_COLONY_TEMPO. Un Dominateur (w_expand≈0.9) fonde
+     * quasi chaque année (gate≈1.3→1) ; un Pacifiste (w_expand≈0.15) attend ~1+0.85×3≈3-4
+     * ans entre deux essaimages. 0 = tout le monde fonde chaque année (comportement d'avant,
+     * cadence uniforme) ; plus haut = l'appétit compte davantage. */ \
+    X(AI_COLONY_TEMPO,        3.0f) \
     /* PIPELINE DIPLO — la VALEUR SUBJECTIVE oriente la CIBLE (pas l'éthos, qui décide la
      * MÉTHODE). COVET_W : poids du BESOIN (Σ raw_cap × stress(runway) × prix) dans la valeur
      * d'une province d'autrui → l'IA convoite qui TIENT ce qui lui manque. COMPLEMENT_W :

@@ -99,6 +99,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_refill"),                     &ScpsWorld::player_refill);
     ClassDB::bind_method(D_METHOD("player_navy_build", "hull"),         &ScpsWorld::player_navy_build);
     ClassDB::bind_method(D_METHOD("player_disband"),                    &ScpsWorld::player_disband);
+    ClassDB::bind_method(D_METHOD("player_build_manuf", "region", "bld"), &ScpsWorld::player_build_manuf);
+    ClassDB::bind_method(D_METHOD("manuf_legal", "region", "bld"),        &ScpsWorld::manuf_legal);
+    ClassDB::bind_method(D_METHOD("manuf_name", "bld"),                   &ScpsWorld::manuf_name);
     ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
     ClassDB::bind_method(D_METHOD("colony_status"),                 &ScpsWorld::colony_status);
     ClassDB::bind_method(D_METHOD("country_food", "c"),             &ScpsWorld::country_food);
@@ -919,6 +922,33 @@ bool ScpsWorld::player_posture(int posture)              { return sim ? scps_pla
 bool ScpsWorld::player_refill()                          { return sim ? scps_player_refill(sim) != 0 : false; }
 bool ScpsWorld::player_navy_build(int hull)              { return sim ? scps_player_navy_build(sim, hull) != 0 : false; }
 bool ScpsWorld::player_disband()                         { return sim ? scps_player_disband(sim) != 0 : false; }
+
+/* PANNEAU B — manufacture civile par région : le verbe (enfile) + la légalité (read-only). */
+bool ScpsWorld::player_build_manuf(int region, int bld) {
+    return sim ? scps_player_build_manuf(sim, region, bld) != 0 : false;
+}
+int ScpsWorld::manuf_legal(int region, int bld) {
+    return sim ? scps_manuf_legal(sim, region, bld) : 0;
+}
+/* Nom d'affichage d'un BuildingType — miroir DISPLAY-ONLY de la table FR de
+ * `building_name()` (scps_econ.c). La membrane interdit d'inclure scps_econ.h ici
+ * (le binding ne voit QUE scps_api.h) ; aucun lecteur façade n'expose ce nom pour
+ * un type PAS ENCORE posé (scps_region_alloc ne nomme que les puits EXISTANTS) —
+ * cette petite copie statique est le compromis minimal accepté. Garder EN PHASE
+ * avec l'enum BuildingType de scps_econ.h si de nouveaux types sont ajoutés. */
+String ScpsWorld::manuf_name(int bld) {
+    static const char *NAMES[] = {
+        "Manufacture textile", "Scierie navale", "Papeterie", "Distillerie",
+        "Brasserie", "Joaillerie", "Atelier d'étoffe précieuse", "Atelier de mage",
+        "Forge céleste", "Atelier d'outillage", "Armurerie légère", "Poudrière",
+        "Apothicaire", "Atelier de tunique", "Charbonnière", "Foreuse arcanique",
+        "Alambic", "Réplicateur ligneux", "Corne divine", "Armurerie lourde",
+        "Atelier d'arc", "Arquebuserie", "Poterie", "Atelier de sculpture",
+    };
+    static const int N_NAMES = (int)(sizeof(NAMES) / sizeof(NAMES[0]));
+    if (bld < 0 || bld >= N_NAMES) return String("?");
+    return String::utf8(NAMES[bld]);
+}
 bool ScpsWorld::can_colonize(int prov) {
     return sim ? scps_can_colonize(sim, prov) != 0 : false;
 }

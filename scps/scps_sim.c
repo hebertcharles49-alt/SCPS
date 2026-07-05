@@ -728,7 +728,21 @@ void sim_day(Sim *s, World *w) {
         }
     }
     if (s->day % 365 == 364) {
-        econ_colonize_tick(s->econ, w, s->human_player); econ_migrate_tick(s->econ, w);   /* le JOUEUR essaime à la main (gate IA-off ; human=-1 ⇒ no-op chronique) */
+        /* F1/F2 — la colonisation lit la PERSONNALITÉ (cadence ∝ w_expand) et la GUERRE (gate) :
+         * deux tableaux SCRATCH (rebâtis à CHAQUE appel, rien à sérialiser — econ_colonize_tick
+         * les consomme immédiatement puis les oublie). at_war[cid] est pré-calculé ICI (scps_sim.c
+         * lie déjà scps_diplo) plutôt que de passer le DiploState brut à scps_econ (feuille sans
+         * dépendance diplo — cf. commentaire sur econ_colonize_tick, scps_econ.h). */
+        float wexp[SCPS_MAX_COUNTRY];
+        bool  atwar[SCPS_MAX_COUNTRY];
+        for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            wexp[c]=s->ai[c].w_expand;
+            bool aw=false;
+            for (int k=0;k<w->n_countries && k<SCPS_MAX_COUNTRY;k++)
+                if (k!=c && diplo_status(s->dp,c,k)==DIPLO_WAR){ aw=true; break; }
+            atwar[c]=aw;
+        }
+        econ_colonize_tick(s->econ, w, s->human_player, wexp, atwar); econ_migrate_tick(s->econ, w);   /* le JOUEUR essaime à la main (gate IA-off ; human=-1 ⇒ no-op chronique) */
         world_tick(w, s->econ, 1.0f);
         PROF(PB_LEGIT, legitimacy_tick(s->wl, w, s->econ, s->ts));
         trade_network_build(s->net, w, s->econ);
