@@ -709,7 +709,7 @@ calibrate-smoke: chronicle
 # readout→renderer, ratchet de localisation) sont gardés AVANT les bancs, et
 # leur rc≠0 stoppe `make test` (propagation native).
 test: membrane-check lang-check
-	@bash tools/run_tests.sh full
+	@BANC_TIMEOUT=240 bash tools/run_tests.sh full   # scps_api_demo ≈132 s (170 assertions × sim pluriannuelle) > 120 s défaut
 .PHONY: test
 
 # ---- make smoke : feedback RAPIDE (la colonne vertébrale en quelques secondes) ----
