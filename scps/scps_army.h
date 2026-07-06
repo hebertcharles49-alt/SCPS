@@ -117,6 +117,13 @@ typedef struct {
 /* ===================================================================== */
 const UnitDef     *unit_def(UnitType t);
 const char        *unit_name(UnitType t);
+/* SOLDE PAR TYPE (mission « la solde par type d'unité ») : le régiment de base coûte peu,
+ * le régiment complexe (tier techno élevé, classe ÉLITE, spécialité arcane/à feu) coûte
+ * cher — dérivé du ROSTER (tier de gate, classe, arme), pas 22 nombres arbitraires.
+ * Renvoie un multiplicateur SANS unité (le warhost applique BASE/IPM/guerre/jauge) : la
+ * solde d'un paquet de ce type = REGIMENT_PAY_BASE(tune) × unit_pay_mult(t) × IPM × ... .
+ * `unit_pay_mult(t)==1` pour un régiment de référence (base, non-élite, non-spécialisé). */
+float              unit_pay_mult(UnitType t);
 /* MODTOOLS — surcharge des stats d'unité (discipline/moral/mvt/cmd) par fichier
  * (l'app charge via SCPS_MODS ; sans fichier ⇒ valeurs compilées, golden-safe). */
 void  army_moddata_dump(FILE *f);

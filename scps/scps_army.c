@@ -125,6 +125,44 @@ bool unit_recruitable(const TechState *ts, UnitType t){
     return (g==TECH_COUNT) || (ts && ts->unlocked[g]);
 }
 
+/* ---- SOLDE PAR TYPE (mission « la solde par type d'unité », 2026-07-06) -----------------
+ * Le régiment de BASE (piquier, archer...) coûte peu ; le régiment COMPLEXE (haut tier de
+ * gate techno, classe ÉLITE, spécialité arcane/à feu) coûte cher. Dérivé du ROSTER existant
+ * (unit_tech_gate → tech_node(..)->tier ; UnitDef.from ; unit_res_arm) — PAS 22 nombres
+ * arbitraires. `unit_pay_mult` renvoie un MULTIPLICATEUR sans unité (1.0 = régiment de
+ * référence, base/non-élite/non-spécialisé/armé normalement) ; le warhost applique
+ * REGIMENT_PAY_BASE(tune) × ce multiplicateur × IPM × guerre × jauge (inchangé par ailleurs).
+ * ⚠ Constantes en #define LOCAUX (scps_tune_list est verrouillé par un autre agent en cours
+ * de mission — À MIGRER AU REGISTRE J une fois cette collision levée, cf. TROUVAILLES.md). */
+#define SOLDE_K_TIER   1.3f   /* +130 % par palier de tier de la tech qui débloque l'unité */
+#define SOLDE_K_ELITE  1.4f   /* +140 % si la classe prélevée est LAB_ELITE (cavalerie/mage/garde runique) */
+#define SOLDE_K_SPEC   1.0f   /* +100 % si l'arme est une spécialité rare (feu/arcane) */
+#define SOLDE_FORTUNE_DISC 0.35f  /* -35 % pour les armes de fortune (RES_NONE — la Milice) */
+
+/* Spécialité "rare" au sens de la solde : les armes qui sortent de la filière commune
+ * (fer/bois du forgeron) — le feu (arquebusier) et l'arcane (mage, garde runique, alchimiste
+ * — le nécessaire d'alchimiste est un artisanat de spécialiste, pas une arme de série). */
+static bool unit_is_specialist(UnitType t){
+    Resource arm = unit_res_arm(t);
+    return arm==RES_FIREARM || arm==RES_MAGE_STAFF || arm==RES_ENCHANTED_ARMS || arm==RES_ALCHEMIST_KIT;
+}
+
+float unit_pay_mult(UnitType t){
+    const UnitDef *d = unit_def(t);
+    if (!d) return 1.f;
+    TechId gate = unit_tech_gate(t);
+    int tier = 0;
+    if (gate != TECH_COUNT){
+        const TechNode *n = tech_node(gate);
+        if (n) tier = n->tier;
+    }
+    float mult = 1.f + SOLDE_K_TIER*(float)tier
+                      + SOLDE_K_ELITE*(d->from==LAB_ELITE ? 1.f : 0.f)
+                      + SOLDE_K_SPEC*(unit_is_specialist(t) ? 1.f : 0.f);
+    if (unit_res_arm(t)==RES_NONE) mult *= (1.f - SOLDE_FORTUNE_DISC);  /* la Milice, armes de fortune */
+    return mult;
+}
+
 /* ---- Noms d'armes (§1) ------------------------------------------------- *
  * P-arc : la RECETTE matériau (ex-WEAPONS/weapon_recipe) est ÉRADIQUÉE — le tampon
  * de combat a->weapons[W_*] se remplit désormais des armes MACRO (RES_ARMS_*) à la

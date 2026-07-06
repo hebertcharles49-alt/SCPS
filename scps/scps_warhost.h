@@ -50,6 +50,20 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
 
 long warhost_units (const WarHost *h, int cid);   /* paquets de 100 levés (UI/IA) */
 
+/* L'ANCRE EU4 (mission solde 2026-07-06) : l'entretien mensuel d'UN régiment = son
+ * prix de recrutement / 13 — or (REGIMENT_PRICE × unit_pay_mult × IPM) + armes
+ * consommées à la levée (100 armes macro au prix de `price_region` — passer la
+ * région-capitale du pays : prix NATIONAL P1). Lu par le moteur (warhost_tick),
+ * la chronique (diags) et l'UI — un seul point de vérité du prix payé. */
+float warhost_unit_pay_month(const WorldEconomy *econ, int price_region, UnitType t);
+/* LA LIMITE DE FORCE (lecture EU4) : combien de régiments un pays de `n_regions`
+ * entretient à prix plein — au-delà, l'intendance renchérit chaque régiment. */
+float warhost_force_limit(int n_regions);
+/* AUDIT DU GOULOT D'ARMES (SCPS_ARMSDIAG) : expose les compteurs de levée par
+ * Resource (armes voulues / prises à l'arsenal / paquets ×100 levés après le gate
+ * pop / rendues à la démob). Diagnostic pur — jamais lu par le moteur. */
+void warhost_armsdiag(const long **want, const long **got, const long **levied, const long **returned);
+
 /* Affinité ÉTHOS→unité (0-3) de la table AFF — read-only, pour l'UI de construction
  * (« quel éthos favorise cette unité »). N'influe sur rien : pure lecture. */
 float warhost_unit_affinity(int faction, int unit);

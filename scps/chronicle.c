@@ -277,6 +277,21 @@ static int    g_flux_n;
 /* W-GUERRE-3 — DIAG budget (SCPS_MILDIAG) : part militaire (soldes+marine) du total des
  * dépenses d'État, accumulée sur TOUTE la fenêtre (années × empires vivants × sims). */
 static double g_mil_dep_tot=0.0, g_mil_sol_tot=0.0;
+static double g_mil_army_tot=0.0, g_mil_navy_tot=0.0;   /* SOLDE PAR TYPE : décomposition armée/marine */
+/* SOLDE PAR TYPE (2026-07-06) — DIAG jouabilité précoce (SCPS_EARLYDIAG) : au JOUEUR
+ * PRÉCOCE (an 5-15), le plus petit pays VIVANT (le moins de régions, >0) — proxy du
+ * démarrage joueur — peut-il entretenir 4-6 régiments de BASE (piquier, unit_pay_mult=1)
+ * à ≤ 25-30 % de SON revenu annuel ? Gated : aucun coût hors mesure, lecture seule. */
+static double g_early_income_tot=0.0; static long g_early_n=0;
+static double g_early_ratio4_tot=0.0, g_early_ratio6_tot=0.0;
+/* AUDIT DU GOULOT D'ARMES (SCPS_ARMSDIAG, 2026-07-06) : les 7 armes macro — levée
+ * (voulu/pris/levé/rendu, copiés des compteurs warhost en fin de sim), stock monde
+ * (min/final, échantillon annuel) et production (supply, moy/tick). */
+static const Resource AD_RES[7] = { RES_ARMS_LIGHT, RES_ARMS_HEAVY, RES_ARMS_RANGED,
+                                    RES_FIREARM, RES_MAGE_STAFF, RES_ALCHEMIST_KIT, RES_ENCHANTED_ARMS };
+static const char *AD_NAME[7] = { "légères","lourdes","trait","feu","bâtons","alchimie","runiques" };
+static double g_adw[7],g_adg[7],g_adl[7],g_adr[7];           /* cumul sweep (levée) */
+static double g_adstock_min[7],g_adstock_fin[7],g_adsup_sum[7]; static long g_adsamp=0;
 static int dcmp(const void *a, const void *b){ double x=*(const double*)a-*(const double*)b; return (x<0)?-1:(x>0); }
 static double dmedian(double *v, int n){
     if (n<=0) return -1.0;
@@ -343,6 +358,8 @@ int main(int argc, char **argv){
     long tot_sync=0, tot_sync_distinct=0;   /* §syncrétique : nœuds à porte culturelle + dispersion */
     long tot_relig_roots=0, tot_relig_schisms=0, tot_relig_faith=0, tot_relig_minority=0;   /* RELIGION : foi émergente */
     long tot_min_her=0, tot_min_for=0;   /* DIAG : minorités same-root (hérésie-éligible) vs foreign (zélote) */
+    long tot_council_loyalty_sum=0, tot_council_loyalty_n=0;   /* V2a : Conseil vivant */
+    long tot_council_brink=0, tot_council_ai_replace=0;
     long tot_tree_pct=0; int tot_tree_sims=0;   /* §A : fraction d'arbre déverrouillée (le coût force les choix) */
     long tot_reloc=0;   /* §reloc : ensemencements de pop pour combler une pénurie */
     long tot_repress=0, tot_assim=0, tot_purge=0, tot_purge_dead=0;       /* leviers intérieurs */
@@ -482,10 +499,47 @@ int main(int argc, char **argv){
             if (getenv("SCPS_MILDIAG") && yr>0){   /* an-0 : flux encore vide (rien à mesurer) */
                 for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
                     if (w->country[c].role==POLITY_UNCLAIMED) continue;
-                    double mil = -(econ_flux_get(c,FX_SOLDE)+econ_flux_get(c,FX_NAVY));
+                    double ma = -econ_flux_get(c,FX_SOLDE), mn = -econ_flux_get(c,FX_NAVY);
+                    double mil = ma + mn;
                     double dep = 0.0;
                     for (int k=0;k<FX_COUNT;k++){ double v=econ_flux_get(c,(FluxComp)k); if (v<0.0) dep += -v; }
-                    if (dep>0.0){ g_mil_dep_tot += dep; g_mil_sol_tot += mil; }
+                    if (dep>0.0){ g_mil_dep_tot += dep; g_mil_sol_tot += mil;
+                                  g_mil_army_tot += ma; g_mil_navy_tot += mn; }   /* SOLDE PAR TYPE : décompo armée/marine */
+                }
+            }
+            /* SOLDE PAR TYPE — DIAG jouabilité précoce (SCPS_EARLYDIAG), fenêtre an 5-15 :
+             * le plus petit pays VIVANT (proxy petit empire joueur) — son revenu annuel
+             * (econ_country_tax_year) vs le coût mensuel×12 de 4/6 régiments de piquier
+             * (unit_pay_mult(U_PIQUIER)==1, la référence). */
+            if (getenv("SCPS_EARLYDIAG") && yr>=5 && yr<=15){
+                int best=-1, bn=1<<30;
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    /* EMPIRES JOUABLES seulement (PLAYER/ANTAGONIST) : le proxy du joueur
+                     * précoce — un hameau WILD / une cité-état 1-région est bien plus
+                     * pauvre qu'un empire de départ et fausserait la mesure. */
+                    PolityRole rl=w->country[c].role;
+                    if (rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST) continue;
+                    int nreg=regions_of(s.econ,c);
+                    if (nreg>0 && nreg<bn){ bn=nreg; best=c; }
+                }
+                if (best>=0){
+                    double income = (double)econ_country_tax_year(best);   /* or/an */
+                    if (income>0.0){
+                        /* MIROIR EXACT du moteur (ancre EU4 + limite de force) : la solde
+                         * d'un piquier au prix NATIONAL de ce pays, sizemult à 4/6 rgt vs
+                         * SA limite de force (petit empire ⇒ ×1 en pratique). */
+                        int cpp=w->country[best].capital_prov;
+                        int crp=(cpp>=0&&cpp<w->n_provinces)?w->province[cpp].region:-1;
+                        double pm = (double)warhost_unit_pay_month(s.econ, crp, U_PIQUIER)
+                                  * ((double)tune_f("REGIMENT_PAY",1.5f)/90.0);   /* dial, miroir de warhost_tick */
+                        double fl = (double)warhost_force_limit(bn);
+                        double sm4 = 1.0 + ((4.0/fl-1.0)>0.0 ? (4.0/fl-1.0)*3.0 : 0.0);   /* 3.0 = SOLDE_OVER_K (miroir) */
+                        double sm6 = 1.0 + ((6.0/fl-1.0)>0.0 ? (6.0/fl-1.0)*3.0 : 0.0);
+                        double cost4_year = pm*sm4*4.0*12.0, cost6_year = pm*sm6*6.0*12.0;
+                        g_early_income_tot += income; g_early_n++;
+                        g_early_ratio4_tot += cost4_year/income;
+                        g_early_ratio6_tot += cost6_year/income;
+                    }
                 }
             }
             econ_flux_year_capture();
@@ -495,6 +549,19 @@ int main(int argc, char **argv){
                 int16_t no=s.econ->region[r].owner, po=prev_owner[r];
                 if (po>=0 && no>=0 && no!=po) conq_prov += w->region[r].n_provinces;
                 prev_owner[r]=no;
+            }
+            /* ARMSDIAG — échantillon ANNUEL : stock monde + production (supply/tick)
+             * des 7 armes macro. Gated : aucun coût hors mesure. */
+            if (getenv("SCPS_ARMSDIAG")){
+                for (int k2=0;k2<7;k2++){
+                    double st=0.0, su=0.0;
+                    for (int r=0;r<s.econ->n_regions;r++){ if (s.econ->region[r].owner<0) continue;
+                        st += s.econ->region[r].stock [AD_RES[k2]];
+                        su += s.econ->region[r].supply[AD_RES[k2]]; }
+                    if (g_adsamp==0 || st<g_adstock_min[k2]) g_adstock_min[k2]=st;
+                    g_adstock_fin[k2]=st; g_adsup_sum[k2]+=su;
+                }
+                g_adsamp++;
             }
             /* E3 §16 — échantillon ANNUEL de l'indice de prix (Welford), classé
              * avant/après l'existence du premier Entrepôt (le lissage se mesure). */
@@ -575,6 +642,15 @@ int main(int argc, char **argv){
                        colonized_provinces(w,s.econ), conq_prov, treg, ap, as_, rv);
                 si++;
             }
+        }
+
+        /* ARMSDIAG — copie des compteurs warhost de CETTE sim (RAZ au prochain sim_init). */
+        if (getenv("SCPS_ARMSDIAG")){
+            const long *aw,*ag,*al,*ar;
+            warhost_armsdiag(&aw,&ag,&al,&ar);
+            for (int k2=0;k2<7;k2++){ Resource rr=AD_RES[k2];
+                g_adw[k2]+=(double)aw[rr]; g_adg[k2]+=(double)ag[rr];
+                g_adl[k2]+=(double)al[rr]; g_adr[k2]+=(double)ar[rr]; }
         }
 
         int c1 = living_countries(w, s.econ);
@@ -1286,6 +1362,15 @@ int main(int argc, char **argv){
                   int sf=religion_of_country(o);
                   if (sf>=0 && religion_root_of(rg)==religion_root_of(sf)) tot_min_her++; else tot_min_for++;
               } } }
+        /* V2a — LE CONSEIL VIVANT : loyauté moyenne (sièges pourvus), ministres au
+         * bord (betrayal_ready), remplacements par l'IA (télémétrie fin de sim). */
+        { for (int c=0;c<w->n_countries;c++) for (int st=0;st<SC_COUNCIL_SEATS;st++){
+              if (statecraft_council_seated(s.sc,c,st)<0) continue;
+              tot_council_loyalty_sum += statecraft_council_loyalty(s.sc,c,st);
+              tot_council_loyalty_n++;
+              if (statecraft_council_betrayal_ready(s.sc,c,st)) tot_council_brink++;
+          }
+          tot_council_ai_replace += statecraft_council_ai_replace_count(); }
         if (age_year[AGE_ORDRE_FER]>=0)   worlds_with_ironorder++;
         if (age_year[AGE_SOULEVEMENTS]>=0) worlds_with_uprising++;
         /* A5 — L'HÉGÉMON MORTEL : ce monde a-t-il vu un grand empire (≥10 rég)
@@ -1360,8 +1445,24 @@ int main(int argc, char **argv){
           printf("\n");
       } }
     if (getenv("SCPS_MILDIAG") && g_mil_dep_tot>0.0)   /* W-GUERRE-3 : la part militaire du budget, sur TOUTE la fenêtre (bien moins bruyant que la photo I0 dern.-année) */
-        printf("   budget militaire (SCPS_MILDIAG) .. soldes+marine = %.1f%% des dépenses d'État cumulées (%.0f / %.0f or, années×empires vivants)\n",
-               100.0*g_mil_sol_tot/g_mil_dep_tot, g_mil_sol_tot, g_mil_dep_tot);
+        printf("   budget militaire (SCPS_MILDIAG) .. soldes+marine = %.1f%% des dépenses d'État cumulées (%.0f / %.0f or) · dont ARMÉE %.1f%% / MARINE %.1f%%\n",
+               100.0*g_mil_sol_tot/g_mil_dep_tot, g_mil_sol_tot, g_mil_dep_tot,
+               100.0*g_mil_army_tot/g_mil_dep_tot, 100.0*g_mil_navy_tot/g_mil_dep_tot);
+    if (getenv("SCPS_EARLYDIAG") && g_early_n>0)   /* SOLDE PAR TYPE : le petit empire (an 5-15) peut-il tenir 4/6 régiments de base ? */
+        printf("   jouabilité précoce (SCPS_EARLYDIAG) . revenu moy %.0f or/an (petit pays, an 5-15, n=%ld) · 4 rgt piquier = %.0f%% du revenu · 6 rgt = %.0f%% du revenu\n",
+               g_early_income_tot/g_early_n, g_early_n,
+               100.0*g_early_ratio4_tot/g_early_n, 100.0*g_early_ratio6_tot/g_early_n);
+    if (getenv("SCPS_ARMSDIAG") && g_adsamp>0){    /* AUDIT DU GOULOT D'ARMES : voulu vs pris (levée) · stock monde · production */
+        printf("   goulot d'armes (SCPS_ARMSDIAG, levée warhost · unités d'arme) :\n");
+        for (int k2=0;k2<7;k2++){
+            if (g_adw[k2]<=0.0 && g_adstock_fin[k2]<=0.0) continue;   /* arme jamais demandée ni produite */
+            double served = g_adw[k2]>0.0 ? 100.0*g_adg[k2]/g_adw[k2] : 100.0;
+            double popcut = g_adg[k2]>0.0 ? 100.0*g_adl[k2]/g_adg[k2] : 100.0;
+            printf("      %-9s voulu %10.0f · pris %10.0f (%5.1f%% servi) · levé/pris %5.1f%% · rendu %8.0f | stock monde min %8.0f fin %8.0f · prod moy %6.1f/tick\n",
+                   AD_NAME[k2], g_adw[k2], g_adg[k2], served, popcut, g_adr[k2],
+                   g_adstock_min[k2], g_adstock_fin[k2], g_adsup_sum[k2]/g_adsamp);
+        }
+    }
     if (getenv("EDI_DBG")) agency_edi_dump();   /* G0.3 : pourquoi les paliers ne montent pas */
     printf("   accession (E1 §9) ........... 360 j an %.1f (%d/%d) · 540 j an %.1f (%d/%d) · 960 j an %.1f (%d/%d)  (moy. du 1er bâti)\n",
            tot_tier_n[0]? (double)tot_tier_y[0]/tot_tier_n[0]:-1.0, tot_tier_n[0], nsims,
@@ -1405,6 +1506,10 @@ int main(int argc, char **argv){
            (double)tot_relig_roots/(nsims>0?nsims:1), (double)tot_relig_schisms/(nsims>0?nsims:1),
            (double)tot_relig_faith/(nsims>0?nsims:1), (double)tot_relig_minority/(nsims>0?nsims:1),
            (double)tot_min_her/(nsims>0?nsims:1), (double)tot_min_for/(nsims>0?nsims:1));
+    printf("   conseil (V2a) ............... loyauté moyenne %.0f/100 (%ld siège(s) pourvu(s)) · %.1f ministre(s) au bord/sim · %.1f remplacement(s) IA/sim (faction/loyauté/paie — le pouvoir a un prix)\n",
+           tot_council_loyalty_n>0 ? (double)tot_council_loyalty_sum/(double)tot_council_loyalty_n : 0.0,
+           tot_council_loyalty_n,
+           (double)tot_council_brink/(nsims>0?nsims:1), (double)tot_council_ai_replace/(nsims>0?nsims:1));
     printf("   régions réduites (campagne) . %ld   (moy. %.1f/sim ; armées de terrain, hors conquête abstraite)\n", tot_campaign, (double)tot_campaign/nsims);
     printf("   pillage de siège (LOT 4) .... %.0f or-équiv. cumulé (%.0f/sim) · %ld sac(s) de population (%.1f/sim) — mensuel, ∝ production, distinct du butin final au règlement\n",
            tot_siege_loot, tot_siege_loot/nsims, tot_siege_captures, (double)tot_siege_captures/nsims);
