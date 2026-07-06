@@ -205,11 +205,25 @@ typedef struct {
     int         merv_pct;       /* 0-100 : avancée du palier de merveille */
     int         cold_pct;       /* 0-100 : intensité du refroidissement (FROID) */
     int         sink_pct;       /* 0-100 : intensité de l'engloutissement (EAU) */
+    int         fin_raw;        /* FinType MOTEUR brut (0 aucune·1 EAU·2 FROID·3 RONCES·4 ascension·5 SANG) —
+                                  * distinct de `fin` (miroir RFIN, SANG y retombe sur 0) : c'est CE champ
+                                  * que lit le lavis V3 pour choisir sa teinte (SANG y a sa propre couleur). */
     int         epicenter_reg;  /* région-foyer du cataclysme, -1 si aucune */
 } ScpsEndgameInfo;
 void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out);
 /* état d'engloutissement d'une région (fin EAU) : 0 = non · 1 = programmée · 2 = engloutie. */
 int  scps_region_sunken(const ScpsSim *s, int region);
+
+/* LOT V3 — LAVIS PAR VARIANTE : intensité [0..1] d'une région selon la fin latchée
+ * (EAU/FROID/RONCES/SANG ; 0 si AUCUNE ou ASCENSION). Pur wrapper d'endgame_region_
+ * intensity (déjà écrit, LOT D) — jamais lu par viewer.c. */
+float scps_endgame_region_intensity(const ScpsSim *s, int region);
+/* CARTE DE VARIANTE (une passe C, jamais 512k appels GDScript) : remplit dst
+ * (map_w*map_h octets) avec l'intensité 0-255 de la RÉGION de chaque cellule — la
+ * même intensité qu'endgame_region_intensity, précalculée UNE FOIS par région
+ * (≤832) puis recopiée par cellule (motif scps_map_owner). 0 partout si pas de
+ * fin en cours (fin_raw==FIN_AUCUNE) — le lavis reste inerte, coût nul. */
+void  scps_map_endgame_variant(ScpsSim *s, uint8_t *dst);
 
 /* ---- DÉTAIL DE PROVINCE (port fidèle de viewer.c) --------------------- *
  * Les données que draw_province_panel lit EN PLUS de province_info : la

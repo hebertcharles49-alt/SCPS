@@ -600,11 +600,42 @@ void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out){
     out->cold_pct      = er.cold_pct;
     out->sink_pct      = er.sink_intensity;
     out->epicenter_reg = er.epicenter_reg;
+    out->fin_raw       = (s->sim.eg) ? (int)s->sim.eg->fin : 0;   /* brut, SANG compris (5) */
 }
 
 int scps_region_sunken(const ScpsSim *s, int r){
     if(!s || !s->ready || !s->sim.eg || r<0 || r>=SCPS_MAX_REG) return 0;
     return (int)s->sim.eg->sunken[r];
+}
+
+/* LOT V3 — LAVIS PAR VARIANTE : pur wrapper, aucune mutation. */
+float scps_endgame_region_intensity(const ScpsSim *s, int region){
+    if(!s || !s->ready || !s->sim.eg || !s->w || !s->sim.econ) return 0.f;
+    return endgame_region_intensity(s->sim.eg, s->w, s->sim.econ, region);
+}
+
+/* CARTE DE VARIANTE : intensité précalculée PAR RÉGION (≤ SCPS_MAX_REG, cher pour
+ * RONCES qui scanne toutes les cellules — donc UNE fois, jamais par cellule) puis
+ * recopiée par cellule via c->region (motif scps_map_owner). Repli tout-0 si pas
+ * de fin (fin_raw==FIN_AUCUNE ou moteur pas prêt) — coût nul dans le cas commun. */
+void scps_map_endgame_variant(ScpsSim *s, uint8_t *dst){
+    if(!dst) return;
+    int w = SCPS_W, h = SCPS_H;
+    memset(dst, 0, (size_t)w*h);
+    if(!s || !s->ready || !s->sim.eg || !s->w || !s->sim.econ) return;
+    if(s->sim.eg->fin == FIN_AUCUNE) return;
+    int n_regions = s->sim.econ->n_regions;
+    if(n_regions <= 0 || n_regions > SCPS_MAX_REG) n_regions = SCPS_MAX_REG;
+    static float inten[SCPS_MAX_REG];
+    for(int r=0; r<n_regions; r++)
+        inten[r] = endgame_region_intensity(s->sim.eg, s->w, s->sim.econ, r);
+    for(int y=0;y<h;y++) for(int x=0;x<w;x++){
+        const Cell *c = scps_cellc(s->w, x, y);
+        int r = c->region;
+        float v = (r>=0 && r<n_regions) ? inten[r] : 0.f;
+        if(v < 0.f) v = 0.f; if(v > 1.f) v = 1.f;
+        dst[y*w+x] = (uint8_t)(v * 255.f + 0.5f);
+    }
 }
 
 /* ---- DÉTAIL DE PROVINCE (port fidèle de viewer.c) --------------------- */

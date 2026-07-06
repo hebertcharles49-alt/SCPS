@@ -753,8 +753,16 @@ int main(int argc, char **argv){
 
                 long total_before=0;
                 { ScpsSlavePoolLine lines[HERITAGE_COUNT]; int can_buy=0;
-                  scps_slave_market(sd, lines, HERITAGE_COUNT, &total_before, &can_buy);
-                  ok("scps_slave_market : total du pool ≥ 0 (lecteur borné)", total_before>=0); }
+                  int nln = scps_slave_market(sd, lines, HERITAGE_COUNT, &total_before, &can_buy);
+                  ok("scps_slave_market : total du pool ≥ 0 (lecteur borné)", total_before>=0);
+                  /* V3 — lisibilité du marché (câblage servile) : chaque ligne porte un
+                   * héritage NOMMÉ (jamais NULL) et un compte non-négatif — c'est ce que
+                   * le panneau « Peuple servile » affiche tel quel. */
+                  int market_readable=1;
+                  for(int i=0;i<nln;i++){
+                      if(lines[i].heritage==NULL || lines[i].count<0) market_readable=0;
+                  }
+                  ok("scps_slave_market : marché lisible (héritage nommé, comptes ≥0)", market_readable==1); }
 
                 /* vente : sans esclave à vendre, l'ordre s'ENFILE mais reste sans effet
                  * (drain revalidé, silencieux — comme les offres diplo non consenties). */
@@ -827,6 +835,46 @@ int main(int argc, char **argv){
             ok("l'héritage NATIF compte TOUJOURS pour la Merveille (voie \"natif\")",
                natif_found==1 && natif_metab==1);
             ok("required : requis du palier courant, ou 0 si aucun palier actif", required>=0);
+        }
+
+        /* ── V3 — LE LAVIS PAR VARIANTE : intensité bornée + cohérence avec la fin
+         * courante + la carte L8 (une valeur par cellule) reflète bien 0 tant
+         * qu'aucune fin n'a latché (le cas commun, coût nul). ── */
+        {
+            int nreg = scps_region_count(sd);
+            int intensity_bounded=1;
+            for(int r=0; r<nreg; r++){
+                float in = scps_endgame_region_intensity(sd, r);
+                if(in<0.f || in>1.f) intensity_bounded=0;
+            }
+            ok("scps_endgame_region_intensity : bornée [0,1] sur toutes les régions", intensity_bounded==1);
+
+            ScpsEndgameInfo ei; scps_endgame_info(sd, &ei);
+            ok("fin_raw BORNÉ 0..5 (SANG compris, brut — indépendant du miroir RFIN)",
+               ei.fin_raw>=0 && ei.fin_raw<=5);
+
+            /* la carte L8 (map_w*map_h octets) doit rester COHÉRENTE avec fin_raw : tant
+             * qu'aucune fin n'a latché (cas courant sur un run de 30 ans), tout-0. */
+            int mw = scps_map_w(), mh = scps_map_h();
+            uint8_t *vbuf = (uint8_t*)malloc((size_t)mw*mh);
+            scps_map_endgame_variant(sd, vbuf);
+            int variant_consistent=1;
+            if (ei.fin_raw==0){
+                for(int64_t i=0;i<(int64_t)mw*mh;i++) if(vbuf[i]!=0){ variant_consistent=0; break; }
+            } else {
+                /* une fin en cours : au moins une région intense DOIT apparaître à l'écran
+                 * si au moins une région a une intensité non nulle (cohérence carte↔reader). */
+                int any_engine_intense=0;
+                for(int r=0; r<nreg; r++) if(scps_endgame_region_intensity(sd,r)>0.01f) any_engine_intense=1;
+                if (any_engine_intense){
+                    int any_pixel=0;
+                    for(int64_t i=0;i<(int64_t)mw*mh;i++) if(vbuf[i]>2){ any_pixel=1; break; }
+                    variant_consistent = any_pixel;
+                }
+            }
+            ok("variant_map cohérent avec fin_raw (tout-0 si AUCUNE fin, sinon reflète l'intensité)",
+               variant_consistent==1);
+            free(vbuf);
         }
 
         /* ── W-GUERRE UI (lot A/B) — war_state BORNÉ {0,1,2} + cohérence occupant/belligérant,

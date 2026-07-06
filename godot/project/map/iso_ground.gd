@@ -17,6 +17,21 @@ var _bmap: ImageTexture = null         ## couche biome → texture (R = biome/25
 var _river_map: ImageTexture = null    ## couche DÉBIT (rivières carvées) → texture pour le shader
 var _river_field: Image = null         ## la MÊME couche débit en Image L8 (lue aussi par l'overlay)
 
+## V3 — LE LAVIS PAR VARIANTE : texture L8 (intensité par région, une valeur/cellule,
+## bâtie côté C++ — variant_map_image, jamais une boucle GDScript). Reconstruite
+## SEULEMENT quand l'année change ET qu'une fin est en cours (coût nul au repos ;
+## rebuild 1×/an quand ça compte, pas 1×/frame). Teinte DA par fin (index = fin_raw
+## côté façade, 0 aucune·1 EAU·2 FROID·3 RONCES·4 ASCENSION·5 SANG) — ASCENSION reste
+## hors gate (pas de lavis sombre, cf. _on_tick).
+const VARIANT_COL := {
+	1: Color(0.35, 0.48, 0.62),   # EAU : ardoise profond
+	2: Color(0.75, 0.80, 0.85),   # FROID : ardoise pâle
+	3: Color(0.45, 0.55, 0.35),   # RONCES : olive sombre
+	5: Color(0.60, 0.42, 0.38),   # SANG : terre cuite sombre
+}
+var _variant_map: ImageTexture = null
+var _variant_year := -1
+
 func _ready() -> void:
 	Sim.generated.connect(_on_generated)
 	Sim.ticked.connect(_on_tick)
@@ -59,15 +74,27 @@ func _on_generated() -> void:
 	_bmap = null            # nouveau monde → recharge biome + débit
 	_river_map = null
 	_river_field = null
+	_variant_map = null      # V3 : nouvelle partie → efface le lavis d'une fin antérieure
+	_variant_year = -1
 	queue_redraw()
 
 func _on_tick(_y: int) -> void:
 	var w = Sim.world
 	if w == null:
 		return
+	var eg: Dictionary = w.endgame_info()
 	# les biomes ne bougent qu'en FIN §27 (cataclysme) → recharge + re-dessin alors
-	if int((w.endgame_info() as Dictionary).get("fin", 0)) > 0:
+	if int(eg.get("fin", 0)) > 0:
 		_bmap = null
+		queue_redraw()
+	# V3 — LE LAVIS PAR VARIANTE : rebâti 1×/AN (coût nul au repos, jamais 1×/frame).
+	# `fin_raw` (0..5, SANG compris) gate la teinte — indépendant du `fin` (RFIN, 0..4)
+	# déjà utilisé ci-dessus pour la mutation physique du terrain.
+	var fin_raw := int(eg.get("fin_raw", 0))
+	var yr := int(w.year())
+	if fin_raw > 0 and yr != _variant_year:
+		_variant_year = yr
+		_variant_map = null
 		queue_redraw()
 
 func _draw() -> void:
@@ -98,6 +125,25 @@ func _draw() -> void:
 		# flat_map = 1.0 : mapping cellule TOP-DOWN (biome lu en monde direct). L'INCLINAISON visuelle
 		# est portée par l'échelle Y du nœud IsoGround (map_view.TILT_Y) → sol & overlay restent alignés.
 		mat.set_shader_parameter("flat_map", 1.0)
+		# V3 — LE LAVIS PAR VARIANTE : gate à coût nul si aucune fin en cours (fin_raw==0 ⇒
+		# variant_on=0 côté shader, le tap est sauté). fin==4 (ASCENSION) reste hors gate —
+		# pas de lavis sombre pour une victoire (design : « rien ou un voile or très léger »,
+		# non fait ici — le voile or est laissé à une passe FX ultérieure, pas ce lot).
+		var eg2: Dictionary = w.endgame_info()
+		var fin_raw := int(eg2.get("fin_raw", 0))
+		if fin_raw > 0 and VARIANT_COL.has(fin_raw):
+			if _variant_map == null and w.has_method("variant_map_image"):
+				var vimg: Image = w.variant_map_image()
+				if vimg != null:
+					_variant_map = ImageTexture.create_from_image(vimg)
+			if _variant_map != null:
+				mat.set_shader_parameter("variant_map", _variant_map)
+				mat.set_shader_parameter("variant_col", VARIANT_COL[fin_raw])
+				mat.set_shader_parameter("variant_on", 1.0)
+			else:
+				mat.set_shader_parameter("variant_on", 0.0)
+		else:
+			mat.set_shader_parameter("variant_on", 0.0)
 	# SOL PARCHEMIN : un seul QUAD TOP-DOWN couvrant le monde (+ marge de PAPIER), peint par le shader.
 	draw_rect(Rect2(-ANTIQUE_MARGIN, -ANTIQUE_MARGIN, float(W) + 2.0 * ANTIQUE_MARGIN,
 		float(H) + 2.0 * ANTIQUE_MARGIN), Color(0.0, 0.0, 0.0, 1.0))

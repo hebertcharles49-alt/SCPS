@@ -80,6 +80,11 @@ public:
     Dictionary endgame_info();                        /* entropie · augure · fin · épicentre */
     int        region_sunken(int region) const;       /* 0 non · 1 programmée · 2 engloutie */
 
+    /* V3 — LE LAVIS PAR VARIANTE : intensité 0..1 d'une région (le reader ponctuel)
+     * + la carte L8 complète (1 passe C++/C, jamais 512k appels GDScript). */
+    float      endgame_region_intensity(int region) const;
+    Ref<Image> variant_map_image();
+
     /* DÉTAIL DE PROVINCE (port fidèle viewer.c) */
     Array      province_groups(int province);         /* camemberts culture/idéologie */
     Array      province_income(int province);         /* RESSOURCES / PRODUCTION */
@@ -194,6 +199,13 @@ public:
     bool       player_pop_transfer(int src_region, int dst_region, int klass, int count);
     /* LOT J — L'APERÇU DE MANUMISSION : { souls, n_groups, pct_of_country, friction_after }. */
     Dictionary manumit_preview();
+
+    /* ESCLAVAGE — les 3 verbes + le lecteur de marché (V3, câblage servile). */
+    bool       player_manumit();                       /* affranchit TOUTE la strate esclave du joueur */
+    bool       player_slave_buy(int region, int count); /* achète au pool mondial, livré dans `region` (au joueur) */
+    bool       player_slave_sell(int region, int count);/* vend depuis `region` (au joueur) au pool mondial */
+    /* { total:int, can_buy:bool, lines:[{heritage,count}] } — le pool des Centres par héritage. */
+    Dictionary slave_market();
 
     /* CRÉATEUR DE CULTURE (façon Stellaris) — listes + validation + aperçu + composition.
      * Membrane : des MOTS et des SIGNES (pas de levier brut). Pur (aucun sim) → utilisable

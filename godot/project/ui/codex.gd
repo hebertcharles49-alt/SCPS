@@ -31,8 +31,8 @@ const DOMAINS := [
 		{"nom": "Purger une minorité", "ou": "Panneau province (chip « Purger »)", "regle": "réduit une minorité ciblée ; coût en légitimité, jamais une strate esclave (exemptée)"},
 		{"nom": "Coloniser une province vierge", "ou": "Panneau province (bouton « Coloniser », sur une province colonisable)", "regle": "durée 360-1080 j selon distance à la frontière ; 1 ordre/an (cadence liée à la personnalité IA-like)"},
 		{"nom": "Proposer un pacte migratoire", "ou": "Fenêtre diplomatique par pays (bouton « Migration »)", "regle": "échange passif de population avec un allié d'un autre héritage ; le vis-à-vis évalue via l'opinion"},
-		{"nom": "Affranchir les esclaves du pays", "ou": "**(bientôt)** aucun bouton Godot — verbe façade seul (scps_player_manumit)", "regle": "granularité PAYS (une politique, pas une province) ; bascule klass→Laboureur", "bientot": true},
-		{"nom": "Acheter / vendre au marché servile (Centres)", "ou": "**(bientôt)** aucun bouton Godot — verbe façade seul (scps_player_slave_buy/_sell)", "regle": "achat gaté éthos/tech (miroir de la capture de guerre) ; vente libre (on vend ce qu'on tient déjà)", "bientot": true},
+		{"nom": "Affranchir les esclaves du pays", "ou": "Tiroir Conseil (sidebar), section « Peuple servile » — aperçu (âmes/friction) puis confirmation en 2 clics", "regle": "granularité PAYS (une politique, pas une province) ; bascule klass→Laboureur ; irréversible"},
+		{"nom": "Acheter / vendre au marché servile (Centres)", "ou": "Tiroir Conseil (sidebar), section « Peuple servile » — quantités 50/200", "regle": "achat gaté éthos/tech (miroir de la capture de guerre, grisé avec le mot) ; vente libre (on vend ce qu'on tient déjà)"},
 		{"nom": "Choisir dans un évènement (décision membrane)", "ou": "Boîte de dialogue d'évènement (pause automatique, distincte du popup Oyez Oyez)", "regle": "rien n'est appliqué tant que le choix n'est pas fait ; options bornées par l'évènement"},
 	]],
 	["Diplomatie & Guerre", [

@@ -46,6 +46,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("battle_info", "region"),          &ScpsWorld::battle_info);
     ClassDB::bind_method(D_METHOD("endgame_info"),                   &ScpsWorld::endgame_info);
     ClassDB::bind_method(D_METHOD("region_sunken", "region"),        &ScpsWorld::region_sunken);
+    ClassDB::bind_method(D_METHOD("endgame_region_intensity", "region"), &ScpsWorld::endgame_region_intensity);
+    ClassDB::bind_method(D_METHOD("variant_map_image"),              &ScpsWorld::variant_map_image);
     ClassDB::bind_method(D_METHOD("province_groups", "province"),    &ScpsWorld::province_groups);
     ClassDB::bind_method(D_METHOD("province_income", "province"),    &ScpsWorld::province_income);
     ClassDB::bind_method(D_METHOD("province_agitation", "province"), &ScpsWorld::province_agitation);
@@ -139,6 +141,10 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_alloc_auto", "region"),         &ScpsWorld::player_alloc_auto);
     ClassDB::bind_method(D_METHOD("player_pop_transfer", "src_region", "dst_region", "klass", "count"), &ScpsWorld::player_pop_transfer);
     ClassDB::bind_method(D_METHOD("manumit_preview"),                     &ScpsWorld::manumit_preview);
+    ClassDB::bind_method(D_METHOD("player_manumit"),                      &ScpsWorld::player_manumit);
+    ClassDB::bind_method(D_METHOD("player_slave_buy", "region", "count"), &ScpsWorld::player_slave_buy);
+    ClassDB::bind_method(D_METHOD("player_slave_sell", "region", "count"), &ScpsWorld::player_slave_sell);
+    ClassDB::bind_method(D_METHOD("slave_market"),                        &ScpsWorld::slave_market);
 
     /* CRÉATEUR DE CULTURE */
     ClassDB::bind_method(D_METHOD("heritage_list"),                  &ScpsWorld::heritage_list);
@@ -404,10 +410,25 @@ Dictionary ScpsWorld::endgame_info() {
     d["cold_pct"]      = e.cold_pct;
     d["sink_pct"]      = e.sink_pct;
     d["epicenter_reg"] = e.epicenter_reg;
+    d["fin_raw"]       = e.fin_raw;
     return d;
 }
 
 int ScpsWorld::region_sunken(int region) const { return scps_region_sunken(sim, region); }
+
+/* V3 — LAVIS PAR VARIANTE */
+float ScpsWorld::endgame_region_intensity(int region) const {
+    return sim ? scps_endgame_region_intensity(sim, region) : 0.0f;
+}
+/* Image L8 : une valeur d'intensité par CELLULE (la boucle 512k vit en C, via
+ * scps_map_endgame_variant — jamais en GDScript). Motif layer_image. */
+Ref<Image> ScpsWorld::variant_map_image() {
+    int w = scps_map_w(), h = scps_map_h();
+    PackedByteArray buf; buf.resize((int64_t)w * h);
+    if (sim) scps_map_endgame_variant(sim, buf.ptrw());
+    else memset(buf.ptrw(), 0, (size_t)w * h);
+    return Image::create_from_data(w, h, false, Image::FORMAT_L8, buf);
+}
 
 Array ScpsWorld::province_groups(int province) {
     Array a;
@@ -1257,6 +1278,36 @@ Dictionary ScpsWorld::manumit_preview() {
         out["pct_of_country"] = (double)p.pct_of_country;
         out["friction_after"] = (double)p.friction_after;
     }
+    return out;
+}
+
+/* ── ESCLAVAGE — les 3 verbes orphelins + le lecteur de marché ── */
+bool ScpsWorld::player_manumit() {
+    return sim ? scps_player_manumit(sim) != 0 : false;
+}
+bool ScpsWorld::player_slave_buy(int region, int count) {
+    return sim ? scps_player_slave_buy(sim, region, (long)count) != 0 : false;
+}
+bool ScpsWorld::player_slave_sell(int region, int count) {
+    return sim ? scps_player_slave_sell(sim, region, (long)count) != 0 : false;
+}
+Dictionary ScpsWorld::slave_market() {
+    Dictionary out;
+    Array lines;
+    out["total"] = (int64_t)0; out["can_buy"] = false; out["lines"] = lines;
+    if (!sim) return out;
+    ScpsSlavePoolLine ln[16];
+    long total = 0; int can_buy = 0;
+    int n = scps_slave_market(sim, ln, 16, &total, &can_buy);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["heritage"] = String::utf8(ln[i].heritage);
+        d["count"] = (int64_t)ln[i].count;
+        lines.push_back(d);
+    }
+    out["total"] = (int64_t)total;
+    out["can_buy"] = (can_buy != 0);
+    out["lines"] = lines;
     return out;
 }
 

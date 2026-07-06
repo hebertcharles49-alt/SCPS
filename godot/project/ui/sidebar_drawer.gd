@@ -55,6 +55,7 @@ func _layout() -> void:
 func show_tab(i: int) -> void:
 	_tab = i
 	_hover_text = ""
+	_servile_manumit_armed = false   # jamais une confirmation qui traverse une fermeture d'onglet
 	visible = i >= 0
 	queue_redraw()
 
@@ -324,7 +325,12 @@ func _draw_conseil(x: float, y: float, me: int) -> void:
 		idx += 1
 	y += 6
 	y = _draw_decrets(x, y, me)
-	if _decret_flash != "":
+	y += 6
+	y = _draw_servile(x, y, me)
+	if _servile_flash != "":
+		VKit.text(self, Vector2(x, size.y - 18),
+			(VKit.sense(0.85) if _servile_flash_ok else VKit.sense(0.10)), _servile_flash, VKit.FS_SMALL)
+	elif _decret_flash != "":
 		VKit.text(self, Vector2(x, size.y - 18),
 			(VKit.sense(0.85) if _decret_flash_ok else VKit.sense(0.10)), _decret_flash, VKit.FS_SMALL)
 	elif _conseil_flash != "":
@@ -382,6 +388,129 @@ func _decret_act(id: int, on: bool) -> void:
 	var ok: bool = w.player_decree(id, on)
 	_decret_flash_ok = ok
 	_decret_flash = ("⚑ décret — ordre émis" if ok else "✗ décret — refusé")
+	queue_redraw()
+
+# ── PEUPLE SERVILE (V3, câblage servile) : section sous Décrets (même onglet
+#    Conseil — c'est une politique intérieure, comme un décret). Le compte d'âmes
+#    (scps_manumit_preview), le POOL des Centres par héritage + prix courant
+#    (scps_slave_market), ACHETER/VENDRE (quantités 50/200, gate abolitionniste
+#    grisé AVEC LE MOT), et AFFRANCHIR avec APERÇU AVANT + confirmation 2 clics
+#    (pas de misclick sur un verbe irréversible).
+var _servile_btns := []   # [{rect, act, qty}]  act: "buy"|"sell"|"manumit_arm"|"manumit_confirm"
+var _servile_flash := ""
+var _servile_flash_ok := true
+var _servile_manumit_armed := false   # 1er clic arme la confirmation, 2e clic l'exécute
+
+func _draw_servile(x: float, y: float, me: int) -> float:
+	_servile_btns.clear()
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Peuple servile", VKit.FS_BIG)
+	y += 20
+	if not Sim.world.has_method("manumit_preview"):
+		return y
+	var w = Sim.world
+	var mp: Dictionary = w.manumit_preview()
+	var souls := int(mp.get("souls", 0))
+	VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+		"âmes serviles : %s (%.1f%% du pays)" % [_grp(souls), float(mp.get("pct_of_country", 0.0))], VKit.FS_SMALL)
+	y += 18
+
+	# le POOL des Centres, par héritage, avec le compte courant.
+	if w.has_method("slave_market"):
+		var mk: Dictionary = w.slave_market()
+		var can_buy := bool(mk.get("can_buy", false))
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+			"marché mondial : %s âme(s)" % _grp(int(mk.get("total", 0))), VKit.FS_SMALL)
+		y += 15
+		for ln in mk.get("lines", []):
+			VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM,
+				"%s — %s" % [String(ln.get("heritage", "?")), _grp(int(ln.get("count", 0)))], VKit.FS_SMALL)
+			y += 14
+
+		# ACHETER / VENDRE — quantités 50/200 ; achat grisé + MOT si non-abolitionniste-eligible.
+		var cap_prov: int = w.country_capital_province(me)
+		var cap_region: int = w.province_region(cap_prov) if cap_prov >= 0 else -1
+		for qty in [50, 200]:
+			var lab_b := "Acheter %d" % qty
+			var bw := VKit.text_w(lab_b, VKit.FS_SMALL) + 12.0
+			var rb := Rect2(x, y, bw, 16)
+			var buy_ok := can_buy and cap_region >= 0
+			VKit.fill(self, rb, VKit.COL_PANEL2)
+			VKit.box(self, rb, VKit.sense(0.80) if buy_ok else VKit.COL_EDGE)
+			VKit.text(self, Vector2(rb.position.x + 6, y), VKit.COL_PARCH if buy_ok else VKit.COL_DIM, lab_b, VKit.FS_SMALL)
+			if buy_ok:
+				_servile_btns.append({"rect": rb, "act": "buy", "qty": qty})
+			else:
+				_hover_zones.append({"rect": rb, "text": "gate éthos/tech — un pays abolitionniste ne peut pas acheter"})
+
+			var lab_s := "Vendre %d" % qty
+			var sw := VKit.text_w(lab_s, VKit.FS_SMALL) + 12.0
+			var rs := Rect2(rb.position.x + bw + 6.0, y, sw, 16)
+			var sell_ok := cap_region >= 0 and souls > 0
+			VKit.fill(self, rs, VKit.COL_PANEL2)
+			VKit.box(self, rs, VKit.sense(0.80) if sell_ok else VKit.COL_EDGE)
+			VKit.text(self, Vector2(rs.position.x + 6, y), VKit.COL_PARCH if sell_ok else VKit.COL_DIM, lab_s, VKit.FS_SMALL)
+			if sell_ok:
+				_servile_btns.append({"rect": rs, "act": "sell", "qty": qty})
+			y += 19
+		if not can_buy:
+			VKit.text(self, Vector2(x, y), VKit.sense(0.30), "achat interdit — éthos/tech abolitionniste", VKit.FS_SMALL)
+			y += 16
+
+	y += 4
+	# AFFRANCHIR — l'APERÇU avant + confirmation 2 clics (verbe irréversible).
+	if souls > 0:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+			"aperçu : %d groupe(s) · friction attendue %.0f%%" %
+			[int(mp.get("n_groups", 0)), float(mp.get("friction_after", 0.0)) * 100.0], VKit.FS_SMALL)
+		y += 16
+		var lab := "Confirmer l'affranchissement" if _servile_manumit_armed else "Affranchir les esclaves du pays"
+		var mw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
+		var mr := Rect2(x, y, mw, 17)
+		var mcol := VKit.sense(0.10) if _servile_manumit_armed else VKit.sense(0.80)
+		VKit.fill(self, mr, VKit.COL_PANEL2)
+		VKit.box(self, mr, mcol)
+		VKit.text(self, Vector2(mr.position.x + 7, y + 1), mcol, lab, VKit.FS_SMALL)
+		_servile_btns.append({"rect": mr, "act": "manumit_confirm" if _servile_manumit_armed else "manumit_arm", "qty": 0})
+		y += 20
+		if _servile_manumit_armed:
+			VKit.text(self, Vector2(x, y), VKit.sense(0.30), "irréversible — cliquez de nouveau pour confirmer", VKit.FS_SMALL)
+			y += 16
+	else:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(aucune âme servile à affranchir)", VKit.FS_SMALL)
+		y += 16
+	return y
+
+func _servile_act(act: String, qty: int, me: int) -> void:
+	var w = Sim.world
+	if w == null:
+		return
+	if act == "manumit_arm":
+		_servile_manumit_armed = true
+		_servile_flash = ""
+		queue_redraw()
+		return
+	var ok := false
+	var label := ""
+	if act == "manumit_confirm":
+		ok = bool(w.player_manumit())
+		label = "affranchissement"
+		_servile_manumit_armed = false
+	else:
+		var cap_prov: int = w.country_capital_province(me)
+		var cap_region: int = w.province_region(cap_prov) if cap_prov >= 0 else -1
+		if cap_region < 0:
+			_servile_flash_ok = false
+			_servile_flash = "✗ aucune capitale — refusé"
+			queue_redraw()
+			return
+		if act == "buy":
+			ok = bool(w.player_slave_buy(cap_region, qty))
+			label = "achat"
+		else:
+			ok = bool(w.player_slave_sell(cap_region, qty))
+			label = "vente"
+	_servile_flash_ok = ok
+	_servile_flash = ("⚑ %s — ordre émis" % label) if ok else ("✗ %s — refusé" % label)
 	queue_redraw()
 
 # ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (levée/posture/flotte) ──
@@ -761,6 +890,13 @@ func _gui_input(event: InputEvent) -> void:
 			for b in _decret_btns:
 				if b.rect.has_point(event.position):
 					_decret_act(int(b.id), bool(b.on))
+					accept_event()
+					return
+			for b in _servile_btns:
+				if b.rect.has_point(event.position):
+					var w = Sim.world
+					var me: int = w.player() if w != null else -1
+					_servile_act(String(b.act), int(b.qty), me)
 					accept_event()
 					return
 

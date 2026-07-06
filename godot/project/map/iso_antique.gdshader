@@ -24,6 +24,19 @@ uniform float compass_r : hint_range(8.0, 80.0) = 30.0;
 uniform float rgb_jitter : hint_range(0.0, 16.0) = 3.0;   // variation PERLIN intra-biome : ±N/255 par canal
 uniform float jitter_freq : hint_range(0.02, 0.5) = 0.12; // échelle des taches de couleur
 
+// ── V3 — LE LAVIS PAR VARIANTE : la carte SE COUVRE du visage de la fin. Une
+// texture L8 (1 octet = l'intensité 0..1 de la RÉGION de cette cellule, bâtie
+// côté C++/C — scps_map_endgame_variant — jamais une boucle GDScript). variant_on
+// est un simple gate (0 = coût nul, la texture n'est même pas lue) posé par
+// iso_ground.gd quand fin>0 ; variant_col est la teinte DA de la fin courante
+// (ardoise profond EAU · ardoise pâle FROID · olive sombre RONCES · terre cuite
+// SANG — ASCENSION reste hors gate, pas de lavis sombre). 1 seul tap, coût nul
+// au repos (fin==0 ⇒ variant_on==0 ⇒ la branche entière est sautée).
+uniform sampler2D variant_map : filter_linear;
+uniform vec3 variant_col = vec3(0.35, 0.48, 0.62);
+uniform float variant_on = 0.0;
+uniform float variant_k : hint_range(0.0, 1.0) = 0.55;
+
 varying vec2 iso;
 void vertex() { iso = VERTEX; }
 
@@ -299,6 +312,15 @@ void fragment() {
 
 		// SYMBOLES DESSINÉS (arbres/pics à l'encre) : RETIRÉS — la carte garde les LAVIS de terrain
 		// (vert forêt, tan massif) mais plus aucun glyphe semé ; lecture épurée, rivières en vedette.
+
+		// ── V3 — LE LAVIS PAR VARIANTE : par-dessus le lavis de terrain, sous la rose des
+		// vents/vignette (le drame de la fin teinte la carte, il ne l'efface pas). Gate à coût
+		// nul (fin==0 ⇒ variant_on==0, le tap est sauté). RENFORCE la mutation physique déjà
+		// peinte par le terrain (rebiome/sink/thorns) — il ne la remplace pas.
+		if (variant_on > 0.5) {
+			float vi = texture(variant_map, cw / map_size).r;
+			col = mix(col, variant_col, clamp(vi, 0.0, 1.0) * variant_k);
+		}
 	}
 
 	// ── COMMUN : rose des vents, bords brûlés, vignette, grade chaud ──
