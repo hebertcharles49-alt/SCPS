@@ -95,7 +95,7 @@ func _build_ui() -> void:
 	foot.add_theme_constant_override("separation", 10)
 	col.add_child(foot)
 	var close := Button.new(); close.text = "Fermer"
-	close.pressed.connect(func(): hide(); closed.emit())
+	close.pressed.connect(func(): hide(); Sound.play("ui_parchment_close"); closed.emit())
 	foot.add_child(close)
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(sp)
@@ -206,5 +206,6 @@ func _on_schism() -> void:
 ## ouvre le panneau (touche R en jeu).
 func open() -> void:
 	show()
+	Sound.play("ui_parchment_open")
 	_refresh()
 	queue_redraw()

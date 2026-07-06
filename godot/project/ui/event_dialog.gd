@@ -53,6 +53,7 @@ func _open_slot(slot: int) -> void:
 	if not visible:
 		_prev_speed = Sim.speed_index
 		Sim.set_speed(0)              # la décision mérite le regard : le monde attend
+		Sound.play("ui_quill")
 	visible = true
 	_center()
 	queue_redraw()
@@ -146,6 +147,7 @@ func _gui_input(event: InputEvent) -> void:
 func _choose(option: int) -> void:
 	if Sim.world != null and Sim.world.has_method("player_event_choice"):
 		Sim.world.player_event_choice(_slot, option)   # verbe journalisé (drainé au tick suivant)
+	Sound.play("ui_seal")
 	_slot = -1
 	visible = false
 	if _prev_speed >= 0:

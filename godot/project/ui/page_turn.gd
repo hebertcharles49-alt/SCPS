@@ -71,6 +71,7 @@ func rise(bilan_text: String) -> void:
 		risen.emit()   # repli : le contenu (modal legacy) s'affiche sans page
 		return
 	visible = true
+	Sound.play("moment_page_turn")
 	_text_label.visible = false
 	_text_label.text = bilan_text
 	if _tween != null and _tween.is_valid():
@@ -89,6 +90,7 @@ func turn() -> void:
 		turned.emit()
 		return
 	_text_label.visible = false
+	Sound.play("moment_page_turn")
 	if _tween != null and _tween.is_valid():
 		_tween.kill()
 	_tween = create_tween()

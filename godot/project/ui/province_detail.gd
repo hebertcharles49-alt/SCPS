@@ -652,6 +652,7 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _close_rect.has_point(event.position):
 			visible = false
+			Sound.play("ui_parchment_close")
 			accept_event()
 			return
 	if event is InputEventMouseMotion:
@@ -688,6 +689,8 @@ func _gui_input(event: InputEvent) -> void:
 					var ok2: bool = w2.player_build_manuf(region2, int(b.bld))
 					_manuf_flash_ok = ok2
 					_manuf_flash = ("⚒ %s — ordre émis" % nom2) if ok2 else ("✗ %s — refusé" % nom2)
+					if not ok2:
+						Sound.play("ui_deny")
 					queue_redraw()
 					accept_event()
 					return
@@ -740,11 +743,15 @@ func _gui_input(event: InputEvent) -> void:
 								var ok3: bool = w3.player_pop_transfer(ra, rb, _reinc_klass, _reinc_qty)
 								_reinc_flash_ok = ok3
 								_reinc_flash = ("→ %s — ordre émis" % REINCORP_CLASSES[_reinc_klass]) if ok3 else "✗ refusé"
+								if not ok3:
+									Sound.play("ui_deny")
 					queue_redraw()
 					accept_event()
 					return
 		for t in _tab_rects:
 			if t.rect.has_point(event.position):
+				if _tab != t.idx:
+					Sound.play("ui_scroll_tick")
 				_tab = t.idx
 				_hover_text = ""
 				queue_redraw()

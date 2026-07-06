@@ -53,6 +53,8 @@ func _ready() -> void:
 	ui.add_child(topbar)
 	topbar.tech_requested.connect(func():
 		_tech.visible = not _tech.visible
+		if _tech.visible:
+			Sound.play("ui_parchment_open")
 		_tech.queue_redraw())
 
 	_prov_panel = load("res://ui/province_panel.gd").new()
@@ -63,6 +65,7 @@ func _ready() -> void:
 		if _prov_detail != null and _sel_prov >= 0:
 			_prov_detail.show_province(_sel_prov)            # le DÉTAIL (main-d'œuvre & cie) s'ouvre enfin
 			_prov_detail.visible = true
+			Sound.play("ui_parchment_open")
 			_prov_detail.queue_redraw())
 
 	_country_panel = load("res://ui/country_panel.gd").new()
@@ -133,10 +136,15 @@ func _ready() -> void:
 	# Construction depuis le panneau province → toggle du panneau de construction
 	_prov_panel.build_requested.connect(func():
 		_construct.visible = not _construct.visible
+		if _construct.visible:
+			Sound.play("ui_parchment_open")
 		_construct.queue_redraw())
 	# … et depuis l'onglet CONSTRUCTIONS du détail (sa maison désormais)
 	_prov_detail.build_requested.connect(func():
+		var was_visible := _construct.visible
 		_construct.visible = true
+		if not was_visible:
+			Sound.play("ui_parchment_open")
 		_construct.queue_redraw())
 
 	# EMPIRE SIDEBAR (droite) : résumé d'empire (villes/armées/colonisation/flotte) + LOG
@@ -193,9 +201,13 @@ func _ready() -> void:
 	ui.add_child(alerts)
 	alerts.open_tab.connect(func(i): _sidebar.open_tab(i))
 	alerts.open_tech.connect(func():
+		if not _tech.visible:
+			Sound.play("ui_parchment_open")
 		_tech.visible = true
 		_tech.queue_redraw())
 	alerts.open_construct.connect(func():
+		if not _construct.visible:
+			Sound.play("ui_parchment_open")
 		_construct.visible = true
 		_construct.queue_redraw())
 	alerts.open_religion.connect(func():
@@ -207,6 +219,8 @@ func _ready() -> void:
 	if _tech.has_signal("metab_ready"):
 		_tech.metab_ready.connect(func(nom): alerts.push_metab_ready(nom))
 	alerts.open_tech_metab.connect(func():
+		if not _tech.visible:
+			Sound.play("ui_parchment_open")
 		_tech.visible = true
 		_tech.queue_redraw())
 	var goto_fn := func(r):
@@ -299,6 +313,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			if _chronique != null:
 				if _chronique.visible:
 					_chronique.hide()
+					Sound.play("ui_parchment_close")
 				else:
 					_chronique.open()
 		KEY_SPACE:
@@ -337,6 +352,7 @@ func _close_topmost() -> bool:
 	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel, _codex]:
 		if p != null and p.visible:
 			p.visible = false
+			Sound.play("ui_parchment_close")
 			return true
 	if (_prov_panel != null and _prov_panel.visible) or (_country_panel != null and _country_panel.visible):
 		_clear_selection()

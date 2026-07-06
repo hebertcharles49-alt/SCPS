@@ -105,4 +105,5 @@ func _rebuild() -> void:
 ## rouvre le panneau (touche H en jeu).
 func open() -> void:
 	show()
+	Sound.play("ui_parchment_open")
 	_rebuild()

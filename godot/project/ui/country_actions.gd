@@ -62,7 +62,9 @@ func _build() -> void:
 	hrow.add_child(sp)
 	var closeb := Button.new()
 	closeb.text = "✕"
-	closeb.pressed.connect(func(): visible = false)
+	closeb.pressed.connect(func():
+		visible = false
+		Sound.play("ui_parchment_close"))
 	hrow.add_child(closeb)
 
 	_status = Label.new()
@@ -113,6 +115,7 @@ func open_country(cid: int) -> void:
 		return
 	_cid = cid
 	visible = true
+	Sound.play("ui_parchment_open")
 	_flash.text = ""
 	if _arms_rect != null:
 		_arms_rect.texture = load("res://ui/heraldry.gd").arms(cid)
@@ -222,4 +225,8 @@ func _act(verb: String) -> void:
 		"embargo": ok = bool(w.player_embargo(_cid, 1))
 		"fabricate": ok = bool(w.player_fabricate_cb(_cid))
 	_flash.text = "Ordre émis — l'émissaire part (verdict au drain)." if ok else "Ordre refusé."
+	if ok and verb == "war":
+		Sound.play("moment_war_horn")
+	elif not ok:
+		Sound.play("ui_deny")
 	_refresh()

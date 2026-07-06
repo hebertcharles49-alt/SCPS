@@ -133,6 +133,7 @@ func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		if _close_rect.has_point(e.position):
 			visible = false
+			Sound.play("ui_parchment_close")
 			accept_event()
 			return
 	if e is InputEventMouseMotion:
@@ -170,5 +171,7 @@ func _act(kind: String, type: int, nom: String) -> void:
 		var ok2: bool = Sim.world.player_recruit(type) > 0
 		_flash_ok = ok2
 		_flash = ("⚔ %s — levée ordonnée" % nom) if ok2 else ("✗ %s — file pleine" % nom)
+	if not _flash_ok:
+		Sound.play("ui_deny")
 	build_requested.emit(kind, type)
 	_refresh()

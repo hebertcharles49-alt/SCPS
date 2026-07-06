@@ -111,7 +111,7 @@ func _ready() -> void:
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(sp)
 	var close := Button.new(); close.text = "Fermer"
-	close.pressed.connect(func(): hide())
+	close.pressed.connect(func(): hide(); Sound.play("ui_parchment_close"))
 	foot.add_child(close)
 
 	visibility_changed.connect(func(): if visible: _rebuild())
@@ -119,6 +119,7 @@ func _ready() -> void:
 
 func toggle() -> void:
 	visible = not visible
+	Sound.play("ui_parchment_open" if visible else "ui_parchment_close")
 
 func _rebuild() -> void:
 	if _list == null:

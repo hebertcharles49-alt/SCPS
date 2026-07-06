@@ -30,6 +30,7 @@ func _layout() -> void:
 func open_region(region: int) -> void:
 	_region = region
 	visible = true
+	Sound.play("moment_battle_drums")
 	queue_redraw()
 
 func _on_tick(_year: int) -> void:
@@ -161,4 +162,5 @@ func _gui_input(event: InputEvent) -> void:
 		if _close_rect.has_point(event.position):
 			close_requested.emit()
 			visible = false
+			Sound.play("ui_parchment_close")
 			accept_event()

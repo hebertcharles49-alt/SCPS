@@ -244,6 +244,7 @@ func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 		if _close_rect.has_point(e.position):
 			visible = false
+			Sound.play("ui_parchment_close")
 			accept_event()
 			return
 
