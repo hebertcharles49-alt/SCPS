@@ -2105,6 +2105,18 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
                       const WorldProsperity *wp, int day){
     if (!ts || day < a->next_research_day) return;
     a->next_research_day = day + AI_RESEARCH_CADENCE;
+    /* §4c — le gate de l'esclavage, RAFRAÎCHI AVANT tout early-return (piège pris au
+     * SLAVEDIAG : CINQ returns d'épargne/famine plus bas sautaient ce bloc — un empire
+     * HONNEUR coincé en épargne gardait can_enslave=0 pour toujours, la capture ne
+     * tournait jamais). La TECH (Économie servile) l'INSTITUE ; l'éthos CONQUÉRANT
+     * (Dominateur/Honneur) déporte par COUTUME. Volume faible (SLAVE_FRACTION),
+     * diffusion faible (METAB_DIFFUSE_SLAVE) : présent, jamais massif. */
+    { Ethos eeth = ai_capital_ethos(w, econ, a->cid);
+      a->can_enslave = ts->unlocked[TECH_ESCLAVAGE]
+                    || eeth==ETHOS_DOMINATEUR || eeth==ETHOS_HONNEUR; }
+    if (a->cid>=0 && a->cid<SCPS_MAX_COUNTRY) g_ai_enslave[a->cid]=a->can_enslave;  /* cache pour le règlement d'un TIERS */
+    a->has_creuset = ts->unlocked[TECH_INTEGRATION]; /* §leviers : le Creuset forme mieux */
+    a->has_halles  = ts->unlocked[TECH_HALLES];      /* E3 : l'IA stockeuse exige les Halles */
     float nprov = (float)w->country[a->cid].n_regions;   /* coût des techs ∝ √N (provinces), découplé de la pop */
     /* SAVOIR unifié (la MÊME source que le joueur, econ_country_savoir) : la POP produit la recherche
      * (strates pondérées × bonus BIBLIOTHÈQUE) ; le COÛT monte ∝ √N (provinces), sous-linéaire →
@@ -2230,17 +2242,8 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             }
         }
     }
-    /* §4c : le gate de l'esclavage. La TECH (Économie servile, signature Clanique) l'INSTITUE ;
-     * mais un éthos CONQUÉRANT (Dominateur/Honneur) déporte le vaincu par COUTUME sans l'avoir
-     * recherché — l'esclavage devient la pratique des sociétés belliqueuses (Rome, empires
-     * esclavagistes), pas d'une seule ethnie. Le VOLUME reste faible (SLAVE_FRACTION) et l'apport
-     * de savoir marginal (METAB_DIFFUSE_SLAVE) : présent, jamais massif. */
-    { Ethos eeth = ai_capital_ethos(w, econ, a->cid);
-      a->can_enslave = ts->unlocked[TECH_ESCLAVAGE]
-                    || eeth==ETHOS_DOMINATEUR || eeth==ETHOS_HONNEUR; }
-    if (a->cid>=0 && a->cid<SCPS_MAX_COUNTRY) g_ai_enslave[a->cid]=a->can_enslave;  /* cache pour le règlement d'un TIERS */
-    a->has_creuset = ts->unlocked[TECH_INTEGRATION]; /* §leviers : le Creuset forme mieux */
-    a->has_halles  = ts->unlocked[TECH_HALLES];      /* E3 : l'IA stockeuse exige les Halles */
+    /* (le refresh can_enslave/has_creuset/has_halles vit désormais EN TÊTE de la
+     * fonction — cf. le piège des early-returns d'épargne, TROUVAILLES.md.) */
 }
 
 /* ===================================================================== */

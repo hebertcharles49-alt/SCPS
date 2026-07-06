@@ -106,3 +106,8 @@ localise en 1 run si le coupable est annuel ou mensuel (ici : mensuel, ce qui a 
 (demography_demo §11c/§11d) mais RIEN n'empêche une 10e fuite similaire ailleurs — tout nouveau code
 qui boucle sur `CLASS_COUNT` pour bouger de la pop doit se demander explicitement s'il doit EXCLURE
 CLASS_SLAVE.
+
+## [2026-07-06] IA — le refresh des capacités sautait sous l'épargne (orchestrateur, SLAVEDIAG)
+**Découvertes** : le bloc qui pose `AiActor.can_enslave/has_creuset/has_halles` vivait en FIN d'`ai_research_step` (scps_ai.c) — derrière CINQ early-returns d'épargne/famine (« on ÉPARGNE pour le pas suivant »). Un empire coincé en épargne (fréquent : greffe culturelle, beeline emblème, famine de fer) ne rafraîchissait JAMAIS ses capacités : un HONNEUR restait can_enslave=0 pour toujours (mesuré seed 7 : esclavagistes 1→3 après hoist du bloc en tête de fonction).
+**Pièges** : tout REFRESH D'ÉTAT-CAPACITÉ logé dans une fonction à early-returns doit vivre AVANT le premier return (juste après le gate de cadence). Chercher les autres blocs du même genre avant d'en ajouter un.
+**Restes** : les settles d'esclavagistes capturent encore 0 âme (occ=0 ou tirage interne nul) — en cours de diagnostic.
