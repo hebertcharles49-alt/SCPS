@@ -935,7 +935,10 @@ void sim_init(Sim *s, World *w) {
     revolt_init(s->rs); warhost_free(s->host); warhost_init(s->host); missions_init(s->missions);
     credit_init();
     navy_init(s->navy);
-    if (s->eg) endgame_init(s->eg);                      /* capstone §27 : RAZ du cataclysme */
+    if (s->eg) { endgame_init(s->eg);                     /* capstone §27 : RAZ du cataclysme */
+        /* V1a — pop_ref : posée ICI, le point CANONIQUE (gen_population a déjà tourné
+         * en tête de sim_init — la 1re fois que le monde a une population réelle). */
+        endgame_set_pop_ref(s->eg, s->econ); }
     campaign_init(s->camp, w, s->econ);                  /* armées de campagne : table de terrain + RAZ */
     s->camp_rng = w->seed ^ 0xCA117A11u;                 /* graine de campagne, propre à la sim */
     faction_levers_reset();   /* §4 : stances de factions remises à zéro pour cette sim */

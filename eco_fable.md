@@ -895,3 +895,143 @@ SAVE v68) puis événements (trahisons/successions/inter-conseillers R/A/C, éta
 Construction/Ascension à 3 choix, hooks Communautaire manquants). V3 : lavis par variante (shader
 variant_map + readers façade). Gates par vague : bancs · golden (attendu IDENTIQUE en V1a — rien ne
 mord <an-180) · determinism-deep 200 ans (l'endgame vit au-delà du golden) · savetest.
+
+### 2026-07-06 (suite) — V1a LANDÉ : le Sang, la Merveille-métabolisation (corrigée en session),
+### les réactions de factions, le lecteur d'intensité. SAVE v67.
+
+**A — LA GUERRE NOURRIT L'ENTROPIE + FIN_SANG.** `EndgameState` gagne `war_dead`/`pop_ref` (double,
+sérialisés) + `sang_scar[SCPS_MAX_REG]` (float, PERMANENT). `pop_ref` posé UNE fois par
+`endgame_set_pop_ref` (appelé depuis `sim_init` juste après `endgame_init`, le point CANONIQUE — la
+1re fois que le monde a une pop réelle ; no-op si déjà posé, donc un reload ne le ré-amorce jamais).
+`endgame_entropy_widen` (renommée depuis C1) lit désormais `camp->dead_choc + camp->dead_pursuit`
+(Campaign, RAZ par sim via `campaign_init` — pas besoin d'un accumulateur séparé, le compteur EXISTAIT
+déjà) → `war_dead`, puis ajoute `ENTROPY_BLOOD_W × (war_dead/pop_ref)` à l'entropie, PLUS
+`ENTROPY_BREACH_W × wp->age_breach_flux` (l'entrée des Âges — `age_breach_flux` EXISTAIT déjà, posée
+par `scps_events.c`, jamais lue par l'endgame avant ce lot : la vraie « unification » tenait en une
+ligne). `FIN_SANG` APPENDUE à `FinType` après `FIN_ASCENSION` (valeurs 0-4 stables, save_sane relevé à
+`<= FIN_SANG`). Sélection (décision #1, « une barre, un visage dominant ») : DANS
+`endgame_select_and_fire`, APRÈS le gate temporel+entropie mais AVANT le sélecteur par rare dominant —
+si `war_dead/pop_ref ≥ ENDGAME_BLOOD_FRAC` (0.20), LE SANG L'EMPORTE inconditionnellement (mission :
+« quelle que soit sa nature »), épicentre = la région vivante au `revolt_scar` max (SA PROPRE
+géographie, pas forcément le foyer d'entropie). `sang_seed` snapshotte `revolt_scar` (déjà persisté,
+déjà pop-pondéré) sur toutes les régions > `SANG_SCAR_MIN`(0.15) → `sang_scar[]` — puis NE DÉCROÎT
+JAMAIS (contrairement à `revolt_scar` qui guérit à -0.25/mois) : la plaie de guerre est la thèse de
+cette fin. `sang_step` (annuel) draine `SANG_DRAIN_PER_YEAR`(3%)×scar de la pop de chaque région
+marquée via `econ_region_pop_add` (le même helper que le reste de l'éco, jamais un accès direct à
+`prov[]`), plancher `SANG_POP_FLOOR`(50) — le monde reste FINI, pas de spirale à zéro.
+
+⚠ **MESURE DE CALIBRAGE (rapportée, NON corrigée — la mission l'interdisait explicitement)** : sweep
+`./chronicle 42 2 250 6 12` — le ratio `war_dead/pop_ref` atteint **40-43 %** (seed 42) et **123-961 %**
+(seed 7, où les morts cumulées DÉPASSENT largement pop_ref — un monde très belligérant sur 250 ans où
+les guerres se succèdent), tous deux ≫ `ENDGAME_BLOOD_FRAC=0.20`. Pourtant AUCUNE fin ne s'est
+déclenchée sur ces sweeps (`entropie monde` plafonne à 34-41, sous `ENTROPY_FIN=55`) : le SEUIL SANG
+lui-même est franchi haut la main, mais l'ENTRÉE D'ENTROPIE qu'il nourrit (`ENTROPY_BLOOD_W × ratio`,
+ratio borné [0,1] dans la contribution effective observée puisque le gate de sélection utilise le
+ratio brut mais l'entropie n'ajoute que `1.0 × ratio` par TICK, non cumulatif — chaque année réinjecte
+le même ratio courant, pas un cumul perpétuel) reste modeste comparée à `ts[].charge` (la charge tech
+faustienne, qui elle S'ACCUMULE sans plafond sur des décennies et peut atteindre des dizaines). Le sang
+peut donc franchir SON propre seuil de sélection (`ENDGAME_BLOOD_FRAC`) sans que l'entropie MONDIALE
+n'ait jamais atteint `ENTROPY_FIN` — le gate d'ENTROPIE (commun aux 4 visages) et le gate de SÉLECTION
+SANG (spécifique) sont deux portes INDÉPENDANTES qui doivent TOUTES DEUX s'ouvrir. Sur les sweeps
+observés (seed 42/7, 250 ans), c'est la porte ENTROPIE qui reste fermée — PAS la porte sang. Deux
+lectures possibles, non tranchées ici (la mission demandait de RAPPORTER, pas de choisir) : (a)
+`ENTROPY_BLOOD_W` est sous-calibré pour que le sang PARTICIPE utilement à ouvrir sa propre porte
+d'entropie (aujourd'hui il ne fait quasiment que sélectionner, une fois que la porte est DÉJÀ ouverte
+par autre chose) ; (b) c'est un comportement VOULU (le sang ne devrait fournir qu'un VISAGE, jamais une
+VOIE D'OUVERTURE — la porte reste tech/transmuteurs/Âges, cohérent avec « le savoir/la transgression
+ouvre l'Apocalypse, la guerre en décide juste la FORME si elle est assez massive au moment du
+franchissement »). Le ratio observé (40-961 %) MONTRE que `ENDGAME_BLOOD_FRAC=0.20` n'est probablement
+PAS le goulot — c'est `ENTROPY_FIN` (via les 3 autres nourritures) qui l'est, sur ces graines
+spécifiques et cette fenêtre de 250 ans.
+
+**B — LA MERVEILLE-VICTOIRE (métabolisation 3/4/6) — CORRIGÉE EN SESSION (2 passes) par relecture du
+joueur.** `endgame_metab_count(w, econ, cid)` (public, header) + `endgame_metab_count_ts` (interne,
+avec `TechState`, utilisée par `wonder_tick` pour le gate réel) : compte les héritages « métabolisés »
+— natif TOUJOURS +1, puis pour chaque héritage étranger, le MAX de DEUX VOIES INDÉPENDANTES.
+  - **1re implémentation (FAUSSE, corrigée avant tout commit)** : j'ai d'abord réutilisé
+    `econ_country_heritage_digested` (Temps 2 tech) telle quelle, avec le seuil `METAB_TIER3=0.35`.
+    **LE PIÈGE** : cette fonction normalise CHAQUE `dig[h]` sur la POP TOTALE de l'empire
+    (`scps_econ.c:568`, `out[r]=dig[r]/tot` où `tot` est commun à tous les héritages) — un choix VOULU
+    pour l'accès TECH (« quel % de mon empire est digéré de cet héritage », les héritages se PARTAGENT
+    ce total). Appliqué tel quel à la Merveille, ce dénominateur PARTAGÉ rend « 6 héritages ≥ 0.35
+    simultanément » MATHÉMATIQUEMENT IMPOSSIBLE (6×0.35 = 210 % > 100 % de la même pop — au plus DEUX
+    héritages étrangers peuvent franchir 0.35 EN MÊME TEMPS, quel que soit l'empire). Testé, ça
+    échouait exactement comme prédit (`metab_count` plafonnait à natif+2=3, jamais 4 ni 6) —
+    contournement transitoire par `ts[].arch_depth` forcé (qui, lui, est un signal PAR-HÉRITAGE
+    indépendant, donc non sujet au piège) : les tests passaient mais la voie DIASPORA seule restait
+    cassée.
+  - **2e implémentation (celle qui reste)** : `endgame_heritage_metabolized(w, econ, cid, h)` — un
+    helper qui réplique le PATRON de scan de `econ_country_heritage_digested` (`prov[]` en entier,
+    charte règle 1) mais somme `dig_h`/`tot_h` SUR LES SEULS GROUPES DE L'HÉRITAGE h (dénominateur
+    PAR-HÉRITAGE, pas partagé) : chaque culture jugée sur SA PROPRE communauté, pas celle des 5 autres.
+    Deux gardes : un RATIO (`dig_h/tot_h ≥ METAB_MERV_RATIO`=0.60 — bien digéré RELATIVEMENT à sa
+    propre diaspora) ET un PLANCHER D'ÂMES (`dig_h ≥ METAB_MERV_MIN`=500 — pas de « culture
+    métabolisée » à 30 personnes noyées dans un grand empire, un ratio pourrait sinon flamber à 1.0 sur
+    un groupe minuscule). `metab_diffuse_coeff` (le coefficient par `Arrival` — migrant/soumis/réfugié
+    plein, déporté `METAB_DIFFUSE_SLAVE`=0.30, natif 0) est `static` dans `scps_econ.c` (non exporté) :
+    RÉPLIQUÉ à l'identique sous `endgame_diffuse_coeff` (même switch, même clé tunable) plutôt que
+    dupliqué sous un nom différent ou exposé pour une seule utilisation externe.
+  - **VOIE GOUVERNANCE (conservée, orthogonale)** : `ts[cid].arch_depth[h] >= PROF_PROFOND` — la
+    profondeur de CONTACT (commerce/gouvernance, cache DÉJÀ posé par `ai_sync_refresh`/
+    `tech_sync_tick`, lu ici en LECTURE SEULE via le paramètre `ts[]` déjà présent dans
+    `endgame_tick`/`wonder_tick`, SANS lier `scps_ai.o` — `heritage_access_pack` dans `scps_ai.c` fait
+    EXACTEMENT ce calcul mais n'est pas exportée et son fichier n'est pas dans `ENDGAME_DEMO_OBJS` ;
+    lire directement le champ sérialisé `arch_depth[]` évite d'ajouter une dépendance de lien pour ce
+    lot). Cette voie couvre les CONQUIS administrés en profondeur SANS AUCUNE diaspora (un peuple
+    soumis sur place, jamais un migrant) — orthogonale à la pop, donc jamais sujette au piège du
+    dénominateur partagé.
+  - `endgame_metab_count_ts` = pour chaque héritage étranger, `n++` si `contact_deep` (voie a) OU
+    `endgame_heritage_metabolized` (voie b) — le MAX des deux voies, exactement le motif de
+    `heritage_access_pack` (scps_ai.c) mais REJOUÉ localement pour éviter la dépendance de lien.
+  - Gate des paliers dans `wonder_tick` : `req = endgame_metab_required(eg->merv)` (FORGE=3,
+    SOCIÉTÉ=4, SAVOIR=6, 0 sinon) ; si `endgame_metab_count_ts(...) < req`, le palier NI NE PROGRESSE
+    NI NE CONSOMME sa rare (retour immédiat, testé : la progression ET le stock de rare restent
+    STRICTEMENT gelés tant que le compte est insuffisant). VICTOIRE = SAVOIR_DONE bouclé (palier 3) —
+    les anciennes conditions `endgame_tree_complete`/`endgame_world_assimilated` sont RETIRÉES du
+    verdict (fonctions supprimées, plus aucun appelant) : la thèse SCPS (le contact métabolisé) EST la
+    victoire, remplaçant la conquête totale.
+  - Tunables ajoutés (registre J) : `METAB_MERV_RATIO`(0.60), `METAB_MERV_MIN`(500). Contrôles
+    endgame_demo (C8, 2 nouveaux + garde-fous) : (1) deux diasporas de TAILLES TRÈS DIFFÉRENTES (600 et
+    50 000 âmes), toutes deux bien intégrées → LES DEUX comptent (la preuve directe que l'ancienne math
+    au dénominateur partagé aurait écrasé la petite sous le poids de la grosse — même empire, même
+    `tot` partagé aurait donné `dig_petite/tot ≈ 0.01` malgré une intégration à 100 % DE SA PROPRE
+    communauté) ; (2) un empire VIDÉ de toute diaspora (0 groupe étranger, la voie diaspora ne peut RIEN
+    compter) mais avec 2 héritages en `arch_depth=PROF_PROFOND` → FORGE avance quand même (natif+2
+    contacts = 3, le seuil FORGE) — la voie gouvernance SEULE suffit, sans un seul migrant.
+
+**C — RÉACTIONS DES FACTIONS AU TIR.** `endgame_faction_react(fin, fauteur)`, UN SEUL site par
+déclenchement (jamais par tick) : `faction_lever_apply` est le SEUL point d'entrée public des
+factions — la grief se propage par la table d'OPPOSITION déjà existante (`faction_opposition`), jamais
+un setter direct de grief. Mapping : TOUTE fin avance Transgresseur (`FAC_REACT_UNIVERSAL`=0.15, « ils
+l'ont voulue ») → Gardien s'aigrit automatiquement (opposition G↔T=1.0, maximale dans la table) ; SANG
+avance EN PLUS Conquérant (0.15) → Communautaire s'aigrit (opposition C↔U=1.0) ; EAU avance EN PLUS
+Gardien → Marchand s'aigrit (opposition M↔G=0.9, « les routes noyées ») ; RONCES ne rajoute rien (le
+lever Transgresseur universel suffit déjà, T↔U=0.9 dans la table). Appelé aux 4 sites où `eg->fired`
+passe à `true` (le MERV_ASCENDED-override, la branche FIN_SANG, le MAP[] final EAU/RONCES/FROID, et la
+transition SAVOIR_DONE→ASCENDED dans `wonder_tick`) + un lever `FAC_REACT_START`(0.10, plus léger)
+DÈS `endgame_start_wonder` (le simple DÉMARRAGE du chantier avance déjà les Transgresseurs — pas
+besoin d'attendre la victoire).
+
+**D — READER D'INTENSITÉ PAR RÉGION.** `endgame_region_intensity(eg, w, econ, region)` → [0,1], PUR
+(aucun état muté) : EAU (engloutie=1.0 / programmée=0.6 / adjacente à une engloutie≈0.3, via
+`eg->sunken[]` + `econ->adj`) · FROID (`eg->cold_offset`, la rampe globale — pas de lecture par-cellule,
+le refroidissement est un phénomène MONDIAL, pas régional) · RONCES (fraction de cellules `BIO_THORNS`
+de la région, scan direct — la même vérité que le rendu carte) · SANG (`eg->sang_scar[region]`
+directement, la marque EST l'intensité). 0 pour AUCUNE/ASCENSION (rien à teindre) ou hors-bornes.
+
+**E — GATES.** SAVE v66→67 (`EGAM` grandit : `war_dead`/`pop_ref` doubles + `sang_scar[SCPS_MAX_REG]`
+floats ; `save_sane` borne `war_dead≥0`/`pop_ref≥0`/`sang_scar[r]∈[0,1]` + relève le plafond `fin` à
+`FIN_SANG`). `make endgame_demo`/`chronicle`/`scps` **0 warning**. `endgame_demo` **105/105 vert**
+(C0-C8 : les 4 tests V1a d'origine — pop_ref/war_dead/sélection SANG/dépeuplement borné/cicatrice
+permanente/intensité — PLUS les 2 tests C8 de la correction — individualisation + voie gouvernance).
+`make golden` **IDENTIQUE** (rien ne mord avant l'an-180 : le gate temporel `ENDGAME_YEAR_OPEN` protège
+la fenêtre golden 12 ans par construction — vérifié explicitement, pas supposé). `make determinism`
+**STABLE** (5 graines × 12 ans, hashes inchangés vs avant V1a). `make determinism-deep` **STABLE** (200
+ans × graines 7/9 — la fenêtre où l'endgame VIT réellement). `savetest` (v67) **byte-identique** sur
+seeds 9 ET 11 (`scps_viewer --savetest`). `make test` : **37/37 bancs runnable verts** (les 3 KO restent
+les PRÉ-EXISTANTS Windows documentés ailleurs — `intertrade_demo` build `setenv`, `campaign_demo`/
+`warhost_demo` stack-overflow — confirmés sans rapport avec ce lot). Sweep `./chronicle 9 2 250 6 12`
+SAIN (satisfaction 78/86/82 %, 155 guerres, hégémon mortel 2/2, aucune fin déclenchée dans la fenêtre —
+attendu, l'entropie ne franchit `ENTROPY_FIN` sur AUCUNE des 4 nourritures dans ces 250 ans).
+Sweeps 42/7 : voir le rapport de calibrage SANG ci-dessus (lot A) — ratio sang largement franchi, porte
+entropie fermée. **NON COMMITTÉ** (par consigne).

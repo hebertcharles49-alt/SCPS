@@ -290,7 +290,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     }
     if (s->eg) {
         const EndgameState *eg = s->eg;
-        if ((int)eg->fin < 0 || (int)eg->fin > (int)FIN_ASCENSION) return false;
+        if ((int)eg->fin < 0 || (int)eg->fin > (int)FIN_SANG) return false;   /* V1a : FIN_SANG appendue après FIN_ASCENSION */
         if ((int)eg->merv < 0 || (int)eg->merv > (int)MERV_ASCENDED) return false;
         if (eg->epicenter_reg < -1 || eg->epicenter_reg >= s->econ->n_regions) return false;
         if (eg->fauteur_country < -1 || eg->fauteur_country >= w->n_countries) return false;
@@ -303,6 +303,10 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             if (eg->thorn_front[i] < 0 || eg->thorn_front[i] >= SCPS_N) return false;
         if (eg->cold_offset < 0.0f || eg->cold_offset > 1.0f) return false;
         if (eg->merv_progress < 0.0f || eg->merv_progress > 1.0f) return false;
+        /* V1a : war_dead/pop_ref (le ratio SANG) + sang_scar[] (cicatrice permanente). */
+        if (eg->war_dead < 0.0 || eg->pop_ref < 0.0) return false;
+        for (int r = 0; r < SCPS_MAX_REG; r++)
+            if (eg->sang_scar[r] < 0.0f || eg->sang_scar[r] > 1.0f) return false;
     }
     if (!director_save_sane(s->ev, SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY)) return false;
     /* MEMBRANE DE DÉCISION (v62) : les cicatrices/cooldowns visent une région OU un pays

@@ -575,15 +575,30 @@ int main(int argc, char **argv){
                  (double)s.wp->entropy, s.wp->entropy_terminal?" [TERMINAL]":"",
                  s.wp->faust_consumed[0], s.wp->faust_consumed[1], s.wp->faust_consumed[2],
                  fract, npr?pir/npr:0.0, pmax, (double)econ_base_price(RES_IRON), arms); }
-        /* CAPSTONE §27 — la FIN, si elle s'est déclenchée (la preuve d'émergence). */
+        /* V1a — LE SANG, toujours visible (même hors déclenchement) : le ratio qui
+         * nourrit l'entropie ET sélectionne FIN_SANG (ENDGAME_BLOOD_FRAC) — permet
+         * d'OBSERVER si une graine belliqueuse en approche sans forcer le seuil. */
+        if (s.eg && s.eg->pop_ref>0.0)
+            printf("              sang : morts de guerre cumulées %.0f / pop-réf %.0f = %.2f%% (seuil %.0f%%)\n",
+                   s.eg->war_dead, s.eg->pop_ref, 100.0*s.eg->war_dead/s.eg->pop_ref,
+                   (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)*100.0);
+        /* CAPSTONE §27 — la FIN, si elle s'est déclenchée (la preuve d'émergence).
+         * V1a : SANG rejoint les 4 visages ; « métab X/6 » sur ASCENSION (la barre
+         * de métabolisation du vainqueur, la thèse du contact remplace la conquête). */
         if (s.eg && s.eg->fired){
-            static const char *FN[]={"—","ENGLOUTISSEMENT","GRAND HIVER","RONCES","ASCENSION"};
-            int fin=(int)s.eg->fin; if(fin<0||fin>4)fin=0;
+            static const char *FN[]={"—","ENGLOUTISSEMENT","GRAND HIVER","RONCES","ASCENSION","SANG"};
+            int fin=(int)s.eg->fin; if(fin<0||fin>5)fin=0;
             printf("              §27 FIN : %s (an %d) · épicentre rég %d · fauteur pays %d",
                    FN[fin], s.eg->fin_year, s.eg->epicenter_reg, s.eg->fauteur_country);
             if (s.eg->fin==FIN_EAU)        printf(" · %d région(s) englouties (%d en cours)", s.eg->n_sunken, s.eg->sink_pending);
             else if (s.eg->fin==FIN_FROID) printf(" · refroidissement %.0f%%", (double)s.eg->cold_offset*100.0);
             else if (s.eg->fin==FIN_RONCES)printf(" · front de ronces %d cellule(s)", s.eg->thorn_front_n);
+            else if (s.eg->fin==FIN_SANG)  printf(" · morts de guerre %.0f / pop-réf %.0f (%.1f%%)",
+                                                   s.eg->war_dead, s.eg->pop_ref,
+                                                   s.eg->pop_ref>0.0 ? 100.0*s.eg->war_dead/s.eg->pop_ref : 0.0);
+            else if (s.eg->fin==FIN_ASCENSION && s.eg->merv_country>=0)
+                                            printf(" · métabolisation %d/%d cultures",
+                                                   endgame_metab_count(w, s.econ, s.eg->merv_country), HERITAGE_COUNT);
             printf("\n");
         }
         if (getenv("SCPS_BASKETDIAG")){

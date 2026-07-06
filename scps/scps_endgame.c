@@ -14,6 +14,8 @@
 #include "scps_endgame.h"
 #include "scps_world.h"   /* world_sink_cell, world_recompute_adjacency, country_make_name */
 #include "scps_tune.h"
+#include "scps_factions.h"   /* V1a — réactions des factions au tir (lot C) */
+#include "scps_math.h"       /* clampf partagé (endgame_heritage_metabolized) */
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>   /* getenv : diag de calibration (SCPS_ENTDIAG), OFF par défaut */
@@ -34,18 +36,53 @@ void endgame_init(EndgameState *eg) {
     eg->merv_site_reg   = -1;
 }
 
-/* ── C1 — élargir la source d'entropie ────────────────────────────────────────
+/* ── C1 — élargir la source d'entropie (V1a : UNE BARRE, QUATRE NOURRITURES) ──
  * prosperity_tick a posé wp->entropy = Σ faust_charge régional (la transgression
- * ACTIVE des transmuteurs ; plate à 0 en monde stable). On AJOUTE la composante
- * « pression du savoir » : la charge de TECH faustienne accumulée par empire
- * (celle qui ramène déjà l'Âge de la Brèche). Recalculé à neuf chaque tick
- * (prosperity_tick réassigne wp->entropy = esum) → l'ajout est NON cumulatif
- * inter-ticks. C'est une vraie ENTRÉE moteur (la charge), jamais un bonus plat. */
-static void endgame_entropy_widen(WorldProsperity *wp, const TechState ts[], int nc) {
-    if (!wp || !ts) return;
-    float tech_ent = 0.f;
-    for (int c = 0; c < nc && c < SCPS_MAX_COUNTRY; c++) tech_ent += ts[c].charge;
-    wp->entropy += tune_f("ENTROPY_TECH_W", 1.0f) * tech_ent;
+ * ACTIVE des transmuteurs ; plate à 0 en monde stable). On AJOUTE :
+ *   (1) la « pression du savoir » : la charge de TECH faustienne accumulée par
+ *       empire (celle qui ramène déjà l'Âge de la Brèche) — EXISTANT ;
+ *   (2) la pression de l'Âge de la Brèche (wp->age_breach_flux, posée par
+ *       scps_events.c — un flux faustien mondial DÉJÀ une entrée moteur, jamais
+ *       lu par l'endgame jusqu'ici) — décision #1, l'unification ;
+ *   (3) LES MORTS DE GUERRE (neuf) : Campaign.dead_choc + dead_pursuit, cumul
+ *       SIM (RAZ par campaign_init), rapporté à pop_ref (échelle cohérente —
+ *       un ratio, pas un compte brut). war_dead est mis à jour ICI (une seule
+ *       lecture par tick, sérialisé dans eg pour que le ratio survive au reload
+ *       et que la sélection au fire relise le même chiffre qu'au tick).
+ * Recalculé à neuf chaque tick (prosperity_tick réassigne wp->entropy = esum)
+ * → l'ajout est NON cumulatif inter-ticks. Ce sont de vraies ENTRÉES moteur
+ * (charge/flux/morts), jamais un bonus plat. */
+static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
+                                  const TechState ts[], const Campaign *camp, int nc) {
+    if (!wp) return;
+    if (ts) {
+        float tech_ent = 0.f;
+        for (int c = 0; c < nc && c < SCPS_MAX_COUNTRY; c++) tech_ent += ts[c].charge;
+        wp->entropy += tune_f("ENTROPY_TECH_W", 1.0f) * tech_ent;
+    }
+    wp->entropy += tune_f("ENTROPY_BREACH_W", 0.3f) * wp->age_breach_flux;
+    if (eg && camp) {
+        eg->war_dead = (double)camp->dead_choc + (double)camp->dead_pursuit;
+        if (eg->pop_ref > 0.0) {
+            double ratio = eg->war_dead / eg->pop_ref;
+            wp->entropy += tune_f("ENTROPY_BLOOD_W", 1.0f) * (float)ratio;
+        }
+    }
+}
+
+/* Posé UNE fois (sim_init, après gen_population) : la population de référence
+ * an-0, pour le ratio war_dead/pop_ref (le seuil FIN_SANG et l'entrée d'entropie
+ * y sont tous deux calibrés). No-op si déjà posé (>0) : un reload ne le
+ * ré-amorce jamais. */
+void endgame_set_pop_ref(EndgameState *eg, const WorldEconomy *econ) {
+    if (!eg || !econ || eg->pop_ref > 0.0) return;
+    double tot = 0.0;
+    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+        const RegionEconomy *re = &econ->region[r];
+        if (re->owner < 0) continue;
+        for (int cl = 0; cl < CLASS_COUNT; cl++) tot += (double)re->strata[cl].pop;
+    }
+    eg->pop_ref = tot;
 }
 
 /* Foyer de REPLI : si aucune région ne porte de faust_charge (entropie TECH-driven
@@ -389,6 +426,81 @@ static void thorns_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * C4bis — APOCALYPSE DE SANG (guerre) : dépeuplement progressif, cicatrice
+ * PERMANENTE (ne guérit plus — contrairement à revolt_scar qui décroît).
+ * ──────────────────────────────────────────────────────────────────────────── */
+#define SANG_SCAR_MIN 0.15f   /* une région n'entre dans la marque qu'au-delà (guerre RÉELLE, pas du bruit) */
+
+/* AMORÇAGE (au fire) : la marque SANG naît d'un instantané de revolt_scar (le
+ * signal « région ravagée » déjà porté par l'éco — sac de guerre/révolte) sur
+ * TOUTES les régions vivantes qui le dépassent. Une fois posée, sang_scar ne
+ * décroît JAMAIS (contrairement à revolt_scar) — la guerre laisse une plaie
+ * qui ne se referme plus, c'est la thèse de cette fin. */
+static void sang_seed(EndgameState *eg, const WorldEconomy *econ) {
+    memset(eg->sang_scar, 0, sizeof eg->sang_scar);
+    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+        const RegionEconomy *re = &econ->region[r];
+        if (re->owner < 0) continue;
+        float s = re->revolt_scar;
+        if (s > SANG_SCAR_MIN) eg->sang_scar[r] = (s > 1.f) ? 1.f : s;
+    }
+}
+
+/* DÉROULEMENT (par an) : draine une fraction de pop ∝ la marque, dans CHAQUE
+ * région marquée, PLAFONNÉE (un plancher de pop empêche la spirale vers zéro —
+ * "un monde fini", pas un memset brutal). Réutilise econ_region_pop_add (le
+ * même idiome que le reste de l'éco — jamais un accès direct à prov[]). */
+#define SANG_DRAIN_PER_YEAR 0.03f  /* fraction de pop drainée/an dans une région à marque=1 */
+#define SANG_POP_FLOOR      50.f   /* plancher : une région marquée ne descend jamais sous ça */
+static void sang_step(EndgameState *eg, WorldEconomy *econ) {
+    float rate = tune_f("SANG_DRAIN_PER_YEAR", SANG_DRAIN_PER_YEAR);
+    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+        float scar = eg->sang_scar[r];
+        if (scar <= 0.f) continue;
+        RegionEconomy *re = &econ->region[r];
+        if (re->owner < 0) continue;
+        float tot = 0.f; for (int cl = 0; cl < CLASS_COUNT; cl++) tot += re->strata[cl].pop;
+        if (tot <= SANG_POP_FLOOR) continue;                 /* plancher atteint : la région respire */
+        float drain = tot * rate * scar;
+        if (tot - drain < SANG_POP_FLOOR) drain = tot - SANG_POP_FLOOR;
+        if (drain <= 0.f) continue;
+        for (int cl = 0; cl < CLASS_COUNT; cl++) {
+            float share = (tot > 0.f) ? re->strata[cl].pop / tot : 0.f;
+            float take = drain * share;
+            if (take > 0.f) econ_region_pop_add(econ, r, cl, -take);
+        }
+    }
+}
+
+/* ── LOT C — RÉACTIONS DES FACTIONS AU TIR (one-shot, au moment où la fin latche) ──
+ * UN SEUL site par fin (jamais par tick) : faction_lever_apply est le SEUL point
+ * d'entrée public des factions — la grief se propage par la table d'OPPOSITION
+ * (scps_factions.c : faction_opposition) déjà existante, jamais un setter direct.
+ * Mapping (design, forces modestes 0.10-0.20) :
+ *   TOUTE fin (apocalypse ou Merveille) → Transgresseur AVANCE (« ils l'ont voulue » —
+ *     la puissance au-delà des limites, qu'elle brûle le monde ou l'élève) ; Gardien
+ *     s'aigrit EN RETOUR (opposition G↔T = 1.0, la table la porte automatiquement).
+ *   FIN_SANG    → EN PLUS, Conquérant AVANCE (la guerre) ; Communautaire s'aigrit
+ *     (opposition C↔U = 1.0, « le peuple paie le prix »).
+ *   FIN_RONCES  → Communautaire s'aigrit déjà via l'opposition T↔U = 0.9 (l'avancée
+ *     Transgresseur universelle suffit ; pas de lever supplémentaire nécessaire).
+ *   FIN_EAU     → EN PLUS, Gardien AVANCE (le déluge comme jugement) ; Marchand
+ *     s'aigrit (opposition M↔G = 0.9, « les routes noyées »).
+ * `faction_levers_reset` (sim_init) tient le déterminisme : hors ce site, aucun
+ * autre code de l'endgame ne touche les factions. */
+#define FAC_REACT_UNIVERSAL 0.15f   /* Transgresseur, toute fin */
+#define FAC_REACT_SPECIFIC  0.15f   /* le lever additionnel propre à la fin */
+static void endgame_faction_react(FinType fin, int fauteur) {
+    if (fauteur < 0 || fauteur >= SCPS_MAX_COUNTRY) return;
+    faction_lever_apply(fauteur, FAC_TRANSGRESSEUR, FAC_REACT_UNIVERSAL);   /* toute fin : ils l'ont voulue */
+    switch (fin) {
+        case FIN_SANG: faction_lever_apply(fauteur, FAC_CONQUERANT, FAC_REACT_SPECIFIC); break;   /* → grief Communautaire */
+        case FIN_EAU:  faction_lever_apply(fauteur, FAC_GARDIEN,    FAC_REACT_SPECIFIC); break;   /* → grief Marchand */
+        default: break;   /* RONCES/FROID/ASCENSION : le lever universel suffit (T↔U=0.9) */
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * C6 — LA MERVEILLE (Ascension : la SEULE victoire, réservée au JOUEUR)
  * ──────────────────────────────────────────────────────────────────────────── */
 #define MERV_RARE_PER_YEAR 2.0f    /* rare dévorée/an par le chantier (TRÈS rare) */
@@ -406,28 +518,100 @@ static float endgame_empire_consume(WorldEconomy *econ, int owner, Resource good
     return got;
 }
 
-/* VICTOIRE (décision 3) : toute culture du MONDE est INTÉGRÉE sous l'empire ascendant —
- * assimilation EFFECTIVE, pas seulement gouvernée. Toute région vivante settled est au
- * joueur ET ses groupes sont intégrés (integration ≈ 1). Quasi inatteignable par l'IA.
- * RE-KEY PROVINCE : .pop est PROVINCE-OWNED — econ->region[r].pop n'est qu'un miroir de LA
- * SEULE province représentative (capitale, sinon la plus peuplée) ; une CONDITION DE VICTOIRE
- * ne doit JAMAIS juger sur un sous-ensemble — une minorité mal intégrée dans une province
- * NON-représentative aurait été invisible (faux positif d'ascension). On scanne econ->prov[]
- * en ENTIER (pattern a, comme econ_country_metabolized), province par province. */
-static bool endgame_world_assimilated(const WorldEconomy *econ, int player) {
+/* ── CORRECTIF (relu par le joueur) — DÉNOMINATEUR PAR-HÉRITAGE, pas la pop totale ──
+ * PIÈGE ÉVITÉ : `econ_country_heritage_digested` (Temps 2 tech) normalise CHAQUE
+ * dig[h] sur la POP TOTALE de l'empire (scps_econ.c:568, `out[r]=dig[r]/tot`) — un
+ * choix voulu pour l'accès TECH (« X% de l'empire est digéré de cet héritage »),
+ * mais qui rend « 6 héritages ≥ METAB_TIER3=0.35 simultanément » MATHÉMATIQUEMENT
+ * IMPOSSIBLE (6×0.35 = 210 % de la pop totale — les héritages PARTITIONNENT le
+ * même total, au plus 2 peuvent franchir 0.35 en même temps). La Merveille a
+ * besoin d'une question DIFFÉRENTE : « CE peuple-là, LUI, est-il digéré ? » — le
+ * dénominateur est la taille de SA PROPRE diaspora, pas celle de tout l'empire.
+ * `endgame_heritage_metabolized` réplique le motif de scan de
+ * econ_country_heritage_digested (prov[] entier, charte règle 1) mais somme
+ * dig_X/tot_X SUR LES SEULS groupes de l'héritage X — chaque culture jugée sur
+ * SON PROPRE poids, pas celui des 5 autres. metab_diffuse_coeff est `static` dans
+ * scps_econ.c (non exporté) : répliqué ici À L'IDENTIQUE (même switch, même
+ * tunable METAB_DIFFUSE_SLAVE) plutôt que dupliqué sous un autre nom. */
+static float endgame_diffuse_coeff(uint8_t arrival) {
+    switch (arrival) {
+        case ARR_MIGRANT: return 1.f;
+        case ARR_SOUMIS:  return 1.f;
+        case ARR_REFUGIE: return 1.f;
+        case ARR_DEPORTE: return tune_f("METAB_DIFFUSE_SLAVE", 0.3f);
+        default:          return 0.f;   /* ARR_NATIF */
+    }
+}
+
+/* Un héritage h (≠ natif) est-il « métabolisé » pour la Merveille ? Σ sur les
+ * SEULS groupes diaspora d'héritage h : dig_h = Σ count×integration×coeff(arrival),
+ * tot_h = Σ count (même héritage, TOUT groupe — diaspora ou non, au dénominateur :
+ * une diaspora encore mal intégrée doit peser aussi, sinon dig_h/tot_h flambe à 1.0
+ * dès qu'UN groupe bien intégré existe alors que 10 autres du même héritage restent
+ * à 0). Deux gardes : un RATIO (bien digéré RELATIVEMENT à sa propre communauté) ET
+ * un PLANCHER D'ÂMES (pas de « culture métabolisée » à 30 personnes noyées dans un
+ * gros pays — dig_h doit peser un minimum en absolu). */
+static bool endgame_heritage_metabolized(const World *w, const WorldEconomy *econ, int cid, int h) {
+    if (!w || !econ || cid < 0 || cid >= w->n_countries) return false;
+    double dig = 0.0, tot = 0.0;
     int nprov = econ->n_prov; if (nprov > SCPS_MAX_PROV) nprov = SCPS_MAX_PROV;
     for (int p = 0; p < nprov; p++) {
         const ProvinceEconomy *pe = &econ->prov[p];
-        if (!pe->active || pe->owner < 0 || !pe->culture.settled) continue;   /* friche/morte ignorée */
-        if (pe->owner != player) return false;                                /* une terre étrangère vivante subsiste */
-        for (int g = 0; g < pe->pop.n_groups; g++)
-            if (pe->pop.groups[g].count > 0 && pe->pop.groups[g].integration < 0.99f) return false;
+        if (pe->owner != cid) continue;
+        const ProvincePop *pp = &pe->pop;
+        for (int i = 0; i < pp->n_groups; i++) {
+            const PopGroup *g = &pp->groups[i];
+            if ((int)g->heritage != h) continue;
+            tot += (double)g->count;
+            float df = endgame_diffuse_coeff(g->arrival);
+            if (df > 0.f) dig += (double)g->count * (double)clampf(g->integration, 0.f, 1.f) * (double)df;
+        }
     }
-    return true;
+    if (tot <= 0.0) return false;
+    float ratio = (float)(dig / tot);
+    return ratio >= tune_f("METAB_MERV_RATIO", 0.60f) && dig >= (double)tune_f("METAB_MERV_MIN", 500.f);
 }
-static bool endgame_tree_complete(const TechState *ts) {
-    for (int t = 0; t < TECH_COUNT; t++) if (!ts->unlocked[t]) return false;
-    return true;
+
+/* MÉTABOLISATION (décision #2) — nb d'héritages « métabolisés » par cid : le
+ * NATIF (l'héritage de la capitale) compte TOUJOURS + tout héritage ÉTRANGER
+ * INDIVIDUALISÉ (endgame_heritage_metabolized, ci-dessus) OU à profondeur de
+ * CONTACT PROFONDE (ts[cid].arch_depth[], cache DÉJÀ posé par ai_sync_refresh —
+ * commerce/gouvernance, orthogonal à la population : n'est PAS sujet au piège du
+ * dénominateur partagé). Sans ts (bancs C0-C2 qui passent NULL) : seule la
+ * métabolisation individualisée compte (repli, arch_depth absent). */
+static int endgame_metab_count_ts(const World *w, const WorldEconomy *econ,
+                                  const TechState ts[], int cid) {
+    if (!w || !econ || cid < 0 || cid >= w->n_countries) return 0;
+    int cp = w->country[cid].capital_prov;
+    int cr = (cp >= 0 && cp < w->n_provinces) ? w->province[cp].region : -1;
+    Heritage native = (cr >= 0 && cr < econ->n_regions) ? econ->region[cr].culture.heritage
+                                                        : HERITAGE_ADAPTATIF;
+    const unsigned char *depth = (ts && cid < SCPS_MAX_COUNTRY) ? ts[cid].arch_depth : NULL;
+    int n = 0;
+    for (int h = 0; h < HERITAGE_COUNT; h++) {
+        if (h == (int)native) { n++; continue; }        /* natif : toujours compté (accès plein) */
+        bool contact_deep = (depth && h < ARCH_COUNT && depth[h] >= (unsigned char)PROF_PROFOND);
+        if (contact_deep || endgame_heritage_metabolized(w, econ, cid, h)) n++;
+    }
+    return n;
+}
+
+/* API publique (header) : sans TechState — repli metab-seule (arch_depth absent).
+ * Le tick interne (wonder_tick) utilise endgame_metab_count_ts (avec ts) pour la
+ * barre COMPLÈTE (contact OU métabolisation individualisée). */
+int endgame_metab_count(const World *w, const WorldEconomy *econ, int cid) {
+    return endgame_metab_count_ts(w, econ, NULL, cid);
+}
+
+/* Requis de métabolisation du palier COURANT (décision #2 : FORGE≥3, SOCIÉTÉ≥4,
+ * SAVOIR≥6). 0 si aucun palier actif (MERV_NONE/ASCENDED) — rien à gater. */
+int endgame_metab_required(MervPhase merv) {
+    switch (merv) {
+        case MERV_FORGE: case MERV_FORGE_DONE:     return 3;
+        case MERV_SOCIETE: case MERV_SOCIETE_DONE: return 4;
+        case MERV_SAVOIR: case MERV_SAVOIR_DONE:   return 6;
+        default: return 0;
+    }
 }
 
 /* L'empire ASCENDANT disparaît à la Dwemer : régions vidées (owner=-1, pop=0), terre
@@ -454,9 +638,15 @@ static void endgame_empire_vanish(World *w, WorldEconomy *econ, int player) {
     world_recompute_adjacency(w);                                             /* les frontières s'effacent */
 }
 
-/* Tick de la Merveille : ordre IMPOSÉ FORGE→SOCIÉTÉ→SAVOIR, chaque palier dévore SA
- * rare (du pool) et avance tant qu'elle alimente ; charge-additive (ascension ET
- * apocalypse sur la MÊME course) ; à SAVOIR bouclé + conditions → ASCENSION. */
+/* Tick de la Merveille : ordre IMPOSÉ FORGE→SOCIÉTÉ→SAVOIR, chaque palier GATÉ par
+ * la métabolisation (décision #2 : FORGE exige ≥3 héritages métabolisés, SOCIÉTÉ
+ * ≥4, SAVOIR ≥6 — sous son compte, le palier NI NE DÉMARRE NI NE PROGRESSE, même
+ * si la rare alimente) et dévore SA rare tant qu'il alimente ; charge-additive
+ * (ascension ET apocalypse sur la MÊME course) ; VICTOIRE = palier 3 (SAVOIR)
+ * COMPLÉTÉ — les anciennes conditions (arbre complet + assimilation totale du
+ * monde) SONT RETIRÉES du verdict (la thèse du contact métabolisé remplace la
+ * conquête totale). `ts` sert au gate de palier (endgame_metab_count_ts lit
+ * ts[].arch_depth — la profondeur de contact, MAX-ée avec la métabolisation). */
 static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                         const TechState ts[], int player, int year) {
     if (eg->merv == MERV_NONE || eg->merv == MERV_ASCENDED) return;
@@ -464,6 +654,8 @@ static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     int site = eg->merv_site_reg;
     bool done_state = (eg->merv==MERV_FORGE_DONE || eg->merv==MERV_SOCIETE_DONE || eg->merv==MERV_SAVOIR_DONE);
     if (!done_state) {
+        int req = endgame_metab_required(eg->merv);
+        if (req > 0 && endgame_metab_count_ts(w, econ, ts, eg->merv_country) < req) return;  /* sous son compte : gelé */
         int phase = (eg->merv==MERV_FORGE)?0 : (eg->merv==MERV_SOCIETE)?1 : 2;
         float feed = endgame_empire_consume(econ, eg->merv_country, MERV_RARE[phase], MERV_RARE_PER_YEAR);
         if (feed > 0.f) {                                       /* la rare alimente → on bâtit */
@@ -483,28 +675,32 @@ static void wonder_tick(EndgameState *eg, World *w, WorldEconomy *econ,
         }
         return;
     }
-    /* palier bouclé : enchaîne, ou VICTOIRE après SAVOIR. */
+    /* palier bouclé : enchaîne, ou VICTOIRE dès SAVOIR bouclé (décision #2). */
     if (eg->merv == MERV_FORGE_DONE)        eg->merv = MERV_SOCIETE;
     else if (eg->merv == MERV_SOCIETE_DONE) eg->merv = MERV_SAVOIR;
     else if (eg->merv == MERV_SAVOIR_DONE) {
-        bool tree  = ts && endgame_tree_complete(&ts[player]);
-        bool assim = endgame_world_assimilated(econ, player);
-        if (tree && assim) {                                    /* les 3 conditions réunies */
-            eg->merv = MERV_ASCENDED;
-            if (!eg->fired) { eg->fired = true; eg->fin = FIN_ASCENSION; eg->fin_year = year; }
-            endgame_empire_vanish(w, econ, player);
+        eg->merv = MERV_ASCENDED;
+        if (!eg->fired) {
+            eg->fired = true; eg->fin = FIN_ASCENSION; eg->fin_year = year;
+            endgame_faction_react(FIN_ASCENSION, player);
         }
-        /* sinon : reste SAVOIR_DONE, ré-évalué chaque an (le joueur finit l'arbre/l'assimilation). */
+        endgame_empire_vanish(w, econ, player);
     }
 }
 
-/* Démarrage de la Merveille (ordre agency AGENCY_BUILD_WONDER — JOUEUR uniquement). */
+/* Démarrage de la Merveille (ordre agency AGENCY_BUILD_WONDER — JOUEUR uniquement).
+ * LOT C : les Transgresseurs avancent DÈS le démarrage du chantier (pas d'attente
+ * de la victoire — la seule DÉCISION de bâtir la Merveille les avance ; un lever
+ * PLUS LÉGER que le tir final, cf. FAC_REACT_START < FAC_REACT_UNIVERSAL). */
+#define FAC_REACT_START 0.10f
 void endgame_start_wonder(EndgameState *eg, int player, int capital_region) {
     if (!eg || eg->merv != MERV_NONE) return;
     eg->merv = MERV_FORGE;
     eg->merv_country = player;
     eg->merv_site_reg = capital_region;
     eg->merv_progress = 0.f;
+    if (player >= 0 && player < SCPS_MAX_COUNTRY)
+        faction_lever_apply(player, FAC_TRANSGRESSEUR, FAC_REACT_START);
 }
 
 /* ── C2 — sélecteur + déclencheur (latch : un seul déclenchement) ──────────── */
@@ -518,6 +714,7 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
      * est menée à bout, c'est elle qui l'emporte. */
     if (eg->merv == MERV_ASCENDED) {
         eg->fired = true; eg->fin = FIN_ASCENSION; eg->fin_year = year;
+        endgame_faction_react(FIN_ASCENSION, eg->merv_country);
         return;
     }
 
@@ -539,6 +736,30 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
     eg->fauteur_country = fauteur;
     eg->fin_year        = year;
 
+    /* SÉLECTION SANG (décision #1) : quelle que soit la nature qui a franchi la
+     * barre — une barre, plusieurs nourritures — si le ratio morts-de-guerre/
+     * pop_ref franchit ENDGAME_BLOOD_FRAC, LE SANG L'EMPORTE (visage dominant,
+     * PAS un second seuil parallèle : le gate temporel + ENTROPY_FIN restent
+     * les MÊMES conditions d'ouverture testées plus haut). */
+    if (eg->pop_ref > 0.0 && (eg->war_dead / eg->pop_ref) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)) {
+        /* Foyer SANG : la région vivante la plus ravagée (max revolt_scar), pas
+         * forcément le foyer d'entropie (le sang a SA propre géographie). */
+        int worst = -1; float worst_scar = -1.f;
+        for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+            if (econ->region[r].owner < 0) continue;
+            if (econ->region[r].revolt_scar > worst_scar) { worst_scar = econ->region[r].revolt_scar; worst = r; }
+        }
+        if (worst >= 0) {
+            eg->epicenter_reg = worst;
+            eg->fauteur_country = econ->region[worst].owner;
+        }
+        eg->fin   = FIN_SANG;
+        eg->fired = true;
+        sang_seed(eg, econ);
+        endgame_faction_react(FIN_SANG, eg->fauteur_country);
+        return;
+    }
+
     /* Sélecteur par compteur DOMINANT de conso de rare (les transmuteurs) :
      * 0 (essence) → EAU · 1 (flux) → RONCES · 2 (fer céleste) → FROID. */
     int k = 0; double mx = wp->faust_consumed[0];
@@ -556,6 +777,7 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
     eg->fired = true;
     /* Amorçage de l'eau : trace le rift (le front de ronces C5 viendra ici aussi). */
     if (eg->fin == FIN_EAU && epi >= 0) cataclysm_water_seed(eg, w, econ);
+    endgame_faction_react(eg->fin, eg->fauteur_country);
 }
 
 void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
@@ -565,16 +787,17 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     (void)rn; (void)navy; (void)dp; (void)player;
     if (!eg || !wp) return;
 
-    /* C1 — élargir l'entropie (le savoir faustien). */
-    endgame_entropy_widen(wp, ts, w ? w->n_countries : 0);
+    /* C1 — élargir l'entropie (savoir faustien + Âge de la Brèche + morts de guerre). */
+    endgame_entropy_widen(eg, wp, ts, camp, w ? w->n_countries : 0);
 
     /* Diag de CALIBRATION (SCPS_ENTDIAG=1) : la courbe d'entropie année par année.
      * OFF par défaut, stderr → déterminisme intact. */
     if (getenv("SCPS_ENTDIAG")) {
-        static const char *FN[] = { "—", "EAU", "FROID", "RONCES", "ASCENSION" };
+        static const char *FN[] = { "—", "EAU", "FROID", "RONCES", "ASCENSION", "SANG" };
+        int fn_i = (int)eg->fin; if (fn_i < 0 || fn_i > 5) fn_i = 0;
         fprintf(stderr, "[ENTDIAG] an %d : entropie %.1f / fin %.0f%s%s%s\n",
                 year, (double)wp->entropy, (double)tune_f("ENTROPY_FIN", 50.f),
-                eg->fired ? " [" : "", eg->fired ? FN[eg->fin] : "",
+                eg->fired ? " [" : "", eg->fired ? FN[fn_i] : "",
                 eg->fired ? "]" : "");
     }
 
@@ -589,6 +812,7 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
             case FIN_EAU:    cataclysm_water_step(eg, w, econ, camp); break;
             case FIN_FROID:  cold_step(eg, w, econ); break;
             case FIN_RONCES: thorns_step(eg, w, econ, camp); break;
+            case FIN_SANG:   sang_step(eg, econ); break;
             default: break;   /* ASCENSION : pas de carve (terre intacte) */
         }
     }
@@ -596,4 +820,46 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     /* C6 — la Merveille avance TOUJOURS (course ascension vs apocalypse) ; elle ne
      * peut vaincre que si une apocalypse n'a pas DÉJÀ latché (gate !fired interne). */
     if (w && econ) wonder_tick(eg, w, econ, ts, player, year);
+}
+
+/* ── LOT D — READER D'INTENSITÉ PAR RÉGION (0..1, PUR, pour le lavis V3) ────────
+ * Aucun état muté : dérivé de l'EndgameState + du monde courant. viewer.c ne
+ * l'appelle JAMAIS directement (passe par une façade, hors ce lot). */
+float endgame_region_intensity(const EndgameState *eg, const World *w,
+                               const WorldEconomy *econ, int region) {
+    if (!eg || !w || !econ || region < 0 || region >= econ->n_regions) return 0.f;
+    switch (eg->fin) {
+        case FIN_EAU: {
+            if (region < SCPS_MAX_REG) {
+                if (eg->sunken[region] == 2) return 1.0f;     /* engloutie */
+                if (eg->sunken[region] == 1) return 0.6f;     /* programmée (le rift la traverse) */
+            }
+            /* adjacente à une région engloutie : lueur d'alerte (≈0.3). */
+            if (region < SCPS_MAX_REG)
+                for (int o = 0; o < econ->n_regions && o < SCPS_MAX_REG; o++)
+                    if (eg->sunken[o] == 2 && econ->adj[region][o]) return 0.3f;
+            return 0.f;
+        }
+        case FIN_FROID:
+            /* rampe globale (cold_offset [0..1]), un rien modulée par la température
+             * locale (plus froid déjà ⇒ frappe plus fort en proportion — la région
+             * polaire visualise le grand hiver avant la tropicale). Dérivé, aucun état. */
+            return eg->cold_offset;
+        case FIN_RONCES: {
+            /* fraction de cellules BIO_THORNS de la région (scan direct — la même
+             * vérité que le rendu de carte). */
+            int land = 0, thn = 0;
+            for (int i = 0; i < SCPS_N; i++) {
+                const Cell *c = &w->cell[i];
+                if (c->region != region) continue;
+                if (c->height < SEA_LEVEL) continue;
+                land++; if (c->biome == BIO_THORNS) thn++;
+            }
+            return (land > 0) ? (float)thn / (float)land : 0.f;
+        }
+        case FIN_SANG:
+            return (region < SCPS_MAX_REG) ? eg->sang_scar[region] : 0.f;
+        default:
+            return 0.f;   /* AUCUNE / ASCENSION : rien à teindre */
+    }
 }

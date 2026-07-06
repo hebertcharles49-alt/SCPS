@@ -23,8 +23,12 @@
 #define SCPS_THORN_FRONT_MAX 16384  /* cellules max dans le front BFS des ronces */
 
 /* ---- Enums ------------------------------------------------------------ */
+/* FIN_SANG APPENDUE APRÈS FIN_ASCENSION (2026-07-06, V1a) : les valeurs existantes
+ * (0..4) restent STABLES — un save v66 (fin ≤ FIN_ASCENSION) reste valide ; côté
+ * façade, fin=5 (RFIN_SANG, à ajouter côté membrane hors ce lot) passera sans
+ * toucher scps_api.c. */
 typedef enum {
-    FIN_AUCUNE = 0, FIN_EAU, FIN_FROID, FIN_RONCES, FIN_ASCENSION
+    FIN_AUCUNE = 0, FIN_EAU, FIN_FROID, FIN_RONCES, FIN_ASCENSION, FIN_SANG
 } FinType;
 
 typedef enum {
@@ -60,13 +64,38 @@ typedef struct EndgameState {
     int       merv_country;                   /* empire qui bâtit */
     int       merv_site_reg;                  /* région-chantier */
     float     merv_progress;                  /* progression [0..1] du palier courant */
+
+    /* ── V1a — ENDGAME UNIFIÉ (2026-07-06) ────────────────────────────────
+     * L'entropie a désormais QUATRE nourritures (une seule barre, décision
+     * joueur #1) : la charge de tech faustienne (C1, déjà là), les
+     * transmuteurs (déjà là, via wp->faust_consumed), la pression de l'Âge
+     * de la Brèche (wp->age_breach_flux, déjà là — juste ADDITIONNÉE), et
+     * LES MORTS DE GUERRE (neuf). war_dead/pop_ref sont le ratio qui nourrit
+     * l'entropie ET sélectionne FIN_SANG — sérialisés pour que le ratio soit
+     * stable au reload (la sélection au fire doit relire le MÊME chiffre). */
+    double   war_dead;                        /* Σ morts de guerre monde (choc+poursuite), cumul SIM */
+    double   pop_ref;                         /* Σ pop à la genèse (posée UNE fois par sim_init) */
+
+    /* SANG (FIN_SANG) : dépeuplement progressif des régions marquées par la
+     * guerre — une CICATRICE QUI NE GUÉRIT PLUS (contrairement à revolt_scar
+     * qui décroît). Figée aux régions les plus ravagées au moment du fire
+     * (snapshot de revolt_scar), puis drainée chaque année, bornée (un
+     * plancher de pop empêche la spirale vers zéro). */
+    float    sang_scar[SCPS_MAX_REG];         /* SANG : intensité de la marque [0..1], PERMANENTE */
 } EndgameState;
 
 /* ---- API -------------------------------------------------------------- */
 void endgame_init(EndgameState *eg);
 
+/* Pose pop_ref UNE fois, à la genèse (appelé par sim_init APRÈS gen_population,
+ * juste après endgame_init — le point CANONIQUE : c'est la première fois que le
+ * monde a une population réelle). No-op si déjà posé (>0) — un reload ne le
+ * ré-amorce jamais (le ratio war_dead/pop_ref doit rester stable au reload). */
+void endgame_set_pop_ref(EndgameState *eg, const WorldEconomy *econ);
+
 /* Tick orchestrateur : appelé UNE fois par an (après prosperity_tick) depuis
- * sim_step / chronicle. camp : pour échouer les armées sur sol englouti. */
+ * sim_step / chronicle. camp : pour échouer les armées sur sol englouti (et,
+ * V1a, nourrir l'entropie des morts de guerre + la mutation SANG). */
 void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                   WorldProsperity *wp, const TechState ts[],
                   RouteNetwork *rn, NavyState *navy, DiploState *dp,
@@ -75,5 +104,24 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
 /* Démarre la Merveille d'Ascension (ordre agency JOUEUR uniquement ; l'IA ne la
  * poursuit pas). No-op si déjà en cours. */
 void endgame_start_wonder(EndgameState *eg, int player, int capital_region);
+
+/* MÉTABOLISATION — nb d'héritages (sur HERITAGE_COUNT) « métabolisés » par cid :
+ * natif (l'héritage de la capitale) + tout héritage digéré au tier 3 (même seuil
+ * METAB_TIER3 que la barre d'accès tech — décision joueur #2 : PAS un nouveau
+ * seuil). Gate les paliers de la Merveille (FORGE≥3, SOCIÉTÉ≥4, SAVOIR≥6). */
+int endgame_metab_count(const World *w, const WorldEconomy *econ, int cid);
+
+/* Requis de métabolisation du palier COURANT de la Merveille (3/4/6 ; 0 si
+ * MERV_NONE/ASCENDED — aucun palier actif). Lecteur simple pour le front. */
+int endgame_metab_required(MervPhase merv);
+
+/* INTENSITÉ D'UNE RÉGION [0..1] selon la fin latchée — pur, aucun état muté :
+ * EAU (englouti=1 / programmé=0.6 / adjacent à une engloutie≈0.3), FROID (rampe
+ * globale, un rien modulée par la température locale), RONCES (fraction de
+ * cellules BIO_THORNS de la région), SANG (la marque sang_scar). 0 si aucune fin
+ * ou région hors bornes. Lu par le front (V3, lavis par variante) — jamais par
+ * viewer.c directement (passe par une façade). */
+float endgame_region_intensity(const EndgameState *eg, const World *w,
+                               const WorldEconomy *econ, int region);
 
 #endif /* SCPS_ENDGAME_H */

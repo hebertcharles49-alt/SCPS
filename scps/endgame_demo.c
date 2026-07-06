@@ -379,6 +379,23 @@ int main(void) {
     }
     econ_aggregate_regions(econ);   /* miroir immédiat : ci0/le 1er endgame_tick lisent l'agrégat */
     int capr = -1; { int cap = w->country[pl].capital_prov; if (cap >= 0 && cap < w->n_provinces) capr = w->province[cap].region; }
+    /* MÉTABOLISATION (décision #2) : FORGE≥3 SOCIÉTÉ≥4 SAVOIR≥6, comptés en MAX de
+     * DEUX voies (comme ai_heritage_access) : la métabolisation active (population
+     * digérée — plafonne à natif+2 par construction, la somme des parts d'héritages
+     * NE PEUT PAS dépasser 1.0 : au plus 2 héritages étrangers peuvent chacun tenir
+     * ≥METAB_TIER3=0.35 du total en même temps) ET la profondeur de CONTACT
+     * (ts[].arch_depth[], commerce/gouvernance — INDÉPENDANTE du partage de pop,
+     * peut donner tier3 à TOUS les héritages simultanément). On utilise arch_depth
+     * pour piloter le compte proprement (3 puis 4 puis 6), la métabolisation seule
+     * couvrant déjà le cas natif+2. */
+    Heritage native0 = HERITAGE_ADAPTATIF;
+    { int cp0 = w->country[pl].capital_prov; int cr0 = (cp0>=0&&cp0<w->n_provinces)?w->province[cp0].region:-1;
+      if (cr0>=0 && cr0<econ->n_regions) native0 = econ->region[cr0].culture.heritage; }
+    for (int h = 0; h < ARCH_COUNT; h++) ts[pl].arch_depth[h] = PROF_NONE;
+    /* natif + 2 héritages en accès PROFOND (tier3 par contact) = 3 → assez pour FORGE. */
+    { int put = 0; for (int h = 0; h < HERITAGE_COUNT && put < 2; h++) { if (h == (int)native0) continue;
+        ts[pl].arch_depth[h] = (unsigned char)PROF_PROFOND; put++; } }
+
     endgame_init(&eg);
     endgame_start_wonder(&eg, pl, capr);
     CHECK("merveille démarrée en FORGE", eg.merv == MERV_FORGE);
@@ -387,7 +404,7 @@ int main(void) {
     double ci0 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) ci0 += econ->region[r].stock[RES_CELESTIAL_IRON];
     float site_ch0 = (capr >= 0 && capr < econ->n_regions) ? econ->region[capr].faust_charge : 0.f;
     for (int y = 0; y < 4; y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, y);
-    CHECK("ordre imposé : pas de SAVOIR avant FORGE/SOCIÉTÉ", eg.merv < MERV_SAVOIR);
+    CHECK("FORGE avance (3 héritages en accès plein)", eg.merv >= MERV_FORGE && eg.merv < MERV_SOCIETE);
     double ci1 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) ci1 += econ->region[r].stock[RES_CELESTIAL_IRON];
     CHECK("FORGE dévore le fer céleste", ci1 < ci0);
     /* RE-KEY PROVINCE : wonder_tick route faust_charge sur la province représentative
@@ -397,35 +414,48 @@ int main(void) {
     econ_aggregate_regions(econ);
     float site_ch1 = (capr >= 0 && capr < econ->n_regions) ? econ->region[capr].faust_charge : 0.f;
     CHECK("charge-additive : la Brèche se rapproche pendant le chantier", site_ch1 > site_ch0);
-    /* déroule jusqu'à SAVOIR_DONE — SANS conditions de victoire → pas d'ascension */
-    for (int y = 4; y < 50 && eg.merv != MERV_SAVOIR_DONE; y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, y);
-    CHECK("3 paliers bouclés (SAVOIR_DONE)", eg.merv == MERV_SAVOIR_DONE);
-    CHECK("pas de victoire sans assimilation+arbre", !eg.fired && eg.merv == MERV_SAVOIR_DONE);
+    /* pousse FORGE jusqu'à FORGE_DONE (metab_count==3 suffit), PUIS un tick de plus
+     * pour franchir la transition FORGE_DONE→SOCIÉTÉ (le `done_state` de wonder_tick
+     * n'enchaîne qu'au tick SUIVANT le palier bouclé). */
+    for (int y = 4; y < 60 && eg.merv != MERV_FORGE_DONE; y++)
+        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, y);
+    CHECK("FORGE_DONE atteint (3 héritages suffisent)", eg.merv == MERV_FORGE_DONE);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 60);
+    CHECK("SOCIÉTÉ démarrée mais GELÉE sous 4 héritages (toujours 3)", eg.merv == MERV_SOCIETE);
+    MervPhase frozen_at = eg.merv; float frozen_progress = eg.merv_progress;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 61);
+    CHECK("gelé : la progression ne bouge pas sous le seuil",
+          eg.merv == frozen_at && eg.merv_progress == frozen_progress);
 
-    /* conditions de victoire : tout le monde au joueur + intégré, arbre complet */
+    /* un 3e héritage étranger en accès profond (natif+3=4) : SOCIÉTÉ reprend. */
+    { int put = 0; for (int h = 0; h < HERITAGE_COUNT && put < 3; h++) { if (h == (int)native0) continue;
+        ts[pl].arch_depth[h] = (unsigned char)PROF_PROFOND; put++; } }
+    for (int y = 62; y < 100 && eg.merv != MERV_SOCIETE_DONE; y++)
+        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, y);
+    CHECK("SOCIÉTÉ_DONE atteint (4 héritages suffisent)", eg.merv == MERV_SOCIETE_DONE);
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 100);
+    CHECK("SAVOIR démarré mais GELÉ sous 6 héritages (toujours 4)", eg.merv == MERV_SAVOIR);
+    MervPhase frozen_at2 = eg.merv; float frozen_progress2 = eg.merv_progress;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 101);
+    CHECK("gelé (SAVOIR) : la progression ne bouge pas sous le seuil",
+          eg.merv == frozen_at2 && eg.merv_progress == frozen_progress2);
+
+    /* les 5 héritages étrangers en accès profond (natif+5=6) : SAVOIR reprend. */
+    for (int h = 0; h < HERITAGE_COUNT; h++) if (h != (int)native0) ts[pl].arch_depth[h] = (unsigned char)PROF_PROFOND;
+    for (int y = 102; y < 150 && eg.merv != MERV_SAVOIR_DONE; y++)
+        endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, y);
+    CHECK("3 paliers bouclés (SAVOIR_DONE), 6 héritages suffisent", eg.merv == MERV_SAVOIR_DONE);
+    CHECK("pas encore d'ascension (SAVOIR_DONE attend le tick suivant)", !eg.fired);
+
     int probe_r = -1; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl) { probe_r = r; break; }
     int probe_cell = -1; Biome probe_bio = BIO_PLAINS; float probe_h = 0.f;
     if (probe_r >= 0) for (int i = 0; i < SCPS_N; i++) if (w->cell[i].region == probe_r && w->cell[i].height >= SEA_LEVEL) { probe_cell = i; probe_bio = w->cell[i].biome; probe_h = w->cell[i].height; break; }
-    /* RE-KEY PROVINCE : endgame_world_assimilated lit désormais econ->prov[] EN ENTIER
-     * (la VÉRITÉ, charte règle 1 — un miroir region[].pop ne verrait qu'UNE province par
-     * région et laisserait passer une minorité mal intégrée ailleurs, cf. scps_endgame.c).
-     * On dote donc CHAQUE province active (pas seulement le mirror region[]), même idiome
-     * que l'injection des rares plus haut (l.375-379). */
-    for (int p = 0; p < econ->n_prov; p++) { ProvinceEconomy *pe = &econ->prov[p];
-        if (!pe->active) continue;
-        pe->owner = (int16_t)pl; pe->culture.settled = true;
-        for (int g = 0; g < pe->pop.n_groups; g++) pe->pop.groups[g].integration = 1.f;
-    }
-    econ_aggregate_regions(econ);   /* miroir immédiat : les CHECK ci-dessous lisent region[] */
-    for (int t = 0; t < TECH_COUNT; t++) ts[pl].unlocked[t] = true;
-    /* un tech manquant → PAS de victoire (test négatif d'abord) */
-    ts[pl].unlocked[0] = false;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 51);
-    CHECK("un seul tech manquant ⇒ pas d'ascension", eg.merv == MERV_SAVOIR_DONE && !eg.fired);
-    /* arbre complet → ASCENSION */
-    ts[pl].unlocked[0] = true;
-    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 52);
-    CHECK("conditions réunies → ASCENSION", eg.merv == MERV_ASCENDED && eg.fired && eg.fin == FIN_ASCENSION);
+
+    /* VICTOIRE = palier 3 (SAVOIR) COMPLÉTÉ — plus d'arbre complet ni d'assimilation
+     * totale du monde (décision #2 : ces anciennes conditions sont RETIRÉES du verdict). */
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, pl, 151);
+    CHECK("SAVOIR_DONE + tick suivant → ASCENSION (sans arbre complet ni assimilation)",
+          eg.merv == MERV_ASCENDED && eg.fired && eg.fin == FIN_ASCENSION);
     /* RE-KEY PROVINCE : endgame_empire_vanish route owner=-1 sur CHAQUE province membre
      * (econ->region[r].owner est un DÉRIVÉ, jamais rafraîchi par endgame_tick seul — cf.
      * le rafraîchissement PUR plus haut). */
@@ -435,6 +465,193 @@ int main(void) {
     CHECK("terre INTACTE (biome/height inchangés — pas de carve)",
           probe_cell < 0 || (w->cell[probe_cell].biome == probe_bio && w->cell[probe_cell].height == probe_h));
 
+    /* ---- C7 : V1a — le SANG (morts de guerre → entropie → FIN_SANG) --------- */
+    printf("\nC7 apocalypse de SANG (morts de guerre, entropie unifiée, gate métabolisation)\n");
+    world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+    for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
+    Campaign *camp = (Campaign*)malloc(sizeof(Campaign));
+    if (!camp) { fprintf(stderr,"OOM\n"); return 1; }
+    campaign_init(camp, w, econ);
+
+    /* pop_ref : posé une fois (sim_init réel), no-op si déjà posé. */
+    endgame_init(&eg);
+    CHECK("pop_ref==0 avant endgame_set_pop_ref", eg.pop_ref == 0.0);
+    endgame_set_pop_ref(&eg, econ);
+    double pop_ref0 = eg.pop_ref;
+    CHECK("pop_ref posé (>0, un monde peuplé)", eg.pop_ref > 0.0);
+    endgame_set_pop_ref(&eg, econ);   /* 2e appel : NO-OP (déjà posé) */
+    CHECK("endgame_set_pop_ref est un no-op au 2e appel", eg.pop_ref == pop_ref0);
+
+    /* war_dead s'accumule depuis Campaign.dead_choc/dead_pursuit (C1 widen) et SE
+     * SÉRIALISE (EndgameState est fwrite/fread en un bloc — sizeof suffit à le prouver
+     * : war_dead/pop_ref sont des membres PLATS de la struct, comme sunken[]/cold_offset). */
+    wp->entropy = 0.f; wp->entropy_epicenter = -1;
+    for (int k = 0; k < 3; k++) wp->faust_consumed[k] = 0.0;
+    camp->dead_choc = 0; camp->dead_pursuit = 0;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 10);
+    CHECK("war_dead==0 sans morts de campagne", eg.war_dead == 0.0);
+    float entropy_before_war = wp->entropy;
+    camp->dead_choc = 1000; camp->dead_pursuit = 500;
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 11);
+    CHECK("war_dead reflète Campaign.dead_choc+dead_pursuit", eg.war_dead == 1500.0);
+    CHECK("les morts de guerre NOURRISSENT l'entropie (widen)", wp->entropy > entropy_before_war);
+
+    /* SANG l'emporte au SEUIL, quelle que soit la nature dominante (décision #1) —
+     * même avec un transmuteur essence archi-dominant (qui SANS le ratio sang aurait
+     * donné FIN_EAU), le sang prime dès que le ratio franchit ENDGAME_BLOOD_FRAC. */
+    endgame_init(&eg);
+    endgame_set_pop_ref(&eg, econ);
+    double blood_frac = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+    camp->dead_choc = (long)(eg.pop_ref * (blood_frac + 0.05));  /* nettement au-dessus du seuil */
+    camp->dead_pursuit = 0;
+    wp->entropy = tune_f("ENTROPY_FIN", 55.f) + 10.f;   /* seuil d'entropie déjà franchi */
+    wp->entropy_epicenter = -1;
+    wp->faust_consumed[0] = 100000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;  /* essence archi-dominant */
+    /* SANG a besoin d'une région RAVAGÉE pour se marquer (sang_seed snapshot revolt_scar) —
+     * un monde frais n'a vécu ni guerre ni révolte : on marque une région à la main (le
+     * signal que sac de guerre/révolte aurait posé). */
+    for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner >= 0) { econ->region[r].revolt_scar = 0.9f; break; }
+    endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 200);
+    CHECK("SANG l'emporte au seuil (malgré un transmuteur dominant)", eg.fired && eg.fin == FIN_SANG);
+    CHECK("foyer SANG assigné (épicentre valide)", eg.epicenter_reg >= -1);
+
+    /* dépeuplement BORNÉ : draine une région marquée, ne descend jamais sous le
+     * plancher (le monde reste FINI — pas de spirale vers zéro). */
+    int probe_sang = -1; float scar0 = -1.f;
+    for (int r = 0; r < econ->n_regions; r++) if (eg.sang_scar[r] > scar0) { scar0 = eg.sang_scar[r]; probe_sang = r; }
+    bool sang_marked = (probe_sang >= 0 && scar0 > 0.f);
+    float pop_before = 0.f;
+    if (sang_marked) for (int cl = 0; cl < CLASS_COUNT; cl++) pop_before += econ->region[probe_sang].strata[cl].pop;
+    for (int y = 0; y < 300; y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 201 + y);
+    float pop_after = 0.f;
+    if (sang_marked) for (int cl = 0; cl < CLASS_COUNT; cl++) pop_after += econ->region[probe_sang].strata[cl].pop;
+    CHECK("une région marquée SANG existe", sang_marked);
+    CHECK("la région marquée s'est DÉPEUPLÉE (300 ans)", !sang_marked || pop_after < pop_before);
+    CHECK("le plancher est TENU (le monde reste fini, pas de spirale à 0)",
+          !sang_marked || pop_after >= 49.f);   /* SANG_POP_FLOOR=50, marge d'arrondi */
+    CHECK("la cicatrice sang NE GUÉRIT PAS (contrairement à revolt_scar)",
+          !sang_marked || eg.sang_scar[probe_sang] >= scar0);
+
+    /* INTENSITÉ PAR RÉGION (lot D) : bornée [0..1], cohérente avec la marque. */
+    if (sang_marked) {
+        float inten = endgame_region_intensity(&eg, w, econ, probe_sang);
+        CHECK("intensité SANG == sang_scar (la même marque)", fabsf(inten - eg.sang_scar[probe_sang]) < 1e-6f);
+    }
+    { float bogus = endgame_region_intensity(&eg, w, econ, -1); CHECK("intensité hors-bornes == 0", bogus == 0.f); }
+
+    /* METAB_COUNT public (sans TechState) : natif toujours ≥1, borné [0,HERITAGE_COUNT]. */
+    { int mc = endgame_metab_count(w, econ, 0);
+      CHECK("endgame_metab_count borné [0,HERITAGE_COUNT]", mc >= 0 && mc <= HERITAGE_COUNT); }
+    CHECK("endgame_metab_required(FORGE)==3",   endgame_metab_required(MERV_FORGE) == 3);
+    CHECK("endgame_metab_required(SOCIETE)==4", endgame_metab_required(MERV_SOCIETE) == 4);
+    CHECK("endgame_metab_required(SAVOIR)==6",  endgame_metab_required(MERV_SAVOIR) == 6);
+    CHECK("endgame_metab_required(NONE)==0",    endgame_metab_required(MERV_NONE) == 0);
+
+    /* ---- C8 : CORRECTIF Merveille — MAX(contact, diaspora INDIVIDUALISÉE) ----------
+     * Le piège évité : l'ancien calcul jugeait chaque héritage sur la POP TOTALE de
+     * l'empire (comme econ_country_heritage_digested, fait pour l'accès TECH) — 6
+     * héritages ne peuvent JAMAIS clear 0.35 chacun de la MÊME pop (6×0.35>1). Ici,
+     * chaque héritage est jugé sur SA PROPRE communauté (dig_X/tot_X), ou par la voie
+     * gouvernance (arch_depth) — indépendante de la population, pour les CONQUIS
+     * administrés en profondeur SANS diaspora. */
+    printf("\nC8 correctif Merveille (individualisation par héritage + voie gouvernance)\n");
+    world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);   /* monde FRAIS (C7 a dépeuplé/muté) */
+    for (int c = 0; c < SCPS_MAX_COUNTRY; c++) { for (int h = 0; h < ARCH_COUNT; h++) ts[c].arch_depth[h] = PROF_NONE; ts[c].charge = 0.f; }
+    { int pl2 = -1, provA = -1, provB = -1;
+      /* choisit un empire avec ≥2 provinces ACTIVES (le premier PLAYER/ANTAGONIST
+       * trouvé peut n'en avoir qu'une seule dans ce monde-là — on scanne large). */
+      for (int c = 0; c < w->n_countries && provB < 0; c++) {
+          if (w->country[c].role != POLITY_PLAYER && w->country[c].role != POLITY_ANTAGONIST) continue;
+          int a = -1, b = -1;
+          for (int p = 0; p < econ->n_prov; p++) if (econ->prov[p].owner == c && econ->prov[p].active) {
+              if (a < 0) a = p; else if (b < 0) { b = p; break; }
+          }
+          if (a >= 0 && b >= 0) { pl2 = c; provA = a; provB = b; }
+      }
+      if (pl2 < 0) {
+          /* repli : aucun empire n'a nativement ≥2 provinces actives à la genèse
+           * (mondes petits/4-empires) — on en FORCE une 2e sur le premier empire
+           * trouvé (même idiome que econ_guarantee_player_construction : une
+           * province vierge PASSABLE devient sienne pour le test). */
+          for (int c = 0; c < w->n_countries && pl2 < 0; c++) {
+              if (w->country[c].role != POLITY_PLAYER && w->country[c].role != POLITY_ANTAGONIST) continue;
+              int a = -1, b = -1;
+              for (int p = 0; p < econ->n_prov; p++) {
+                  if (econ->prov[p].owner == c && econ->prov[p].active) { if (a < 0) a = p; }
+                  else if (b < 0 && !econ->prov[p].active && econ->prov[p].owner < 0) b = p;
+              }
+              if (a >= 0 && b >= 0) {
+                  econ->prov[b].owner = (int16_t)c; econ->prov[b].active = true; econ->prov[b].colonized = true;
+                  pl2 = c; provA = a; provB = b;
+              }
+          }
+      }
+      CHECK("un empire existe (C8)", pl2 >= 0);
+      Heritage nat2 = HERITAGE_ADAPTATIF;
+      { int cp2 = w->country[pl2].capital_prov; int cr2 = (cp2>=0&&cp2<w->n_provinces)?w->province[cp2].region:-1;
+        if (cr2>=0 && cr2<econ->n_regions) nat2 = econ->region[cr2].culture.heritage; }
+      /* choisit 2 héritages étrangers ≠ natif pour les diasporas (A petite/bien
+       * intégrée, B grosse/bien intégrée — l'ancienne math, sur la pop TOTALE, aurait
+       * laissé A écrasée sous le seuil dès que B existe ; ici chacun a SON propre
+       * dénominateur, donc les DEUX comptent). */
+      int hA = -1, hB = -1;
+      for (int h = 0; h < HERITAGE_COUNT; h++) { if (h == (int)nat2) continue; if (hA<0) hA=h; else if (hB<0) { hB=h; break; } }
+      CHECK("2 héritages étrangers disponibles (C8)", hA >= 0 && hB >= 0);
+      CHECK("2 provinces du joueur disponibles (C8)", provA >= 0 && provB >= 0);
+      if (provA >= 0 && provB >= 0 && hA >= 0 && hB >= 0) {
+          ProvinceEconomy *peA = &econ->prov[provA], *peB = &econ->prov[provB];
+          peA->pop.n_groups = 0; peB->pop.n_groups = 0;
+          /* natif résiduel (pour que native0 continue d'exister ailleurs — non testé ici). */
+          PopGroup *gA = &peA->pop.groups[peA->pop.n_groups++]; memset(gA, 0, sizeof *gA);
+          gA->heritage = (Heritage)hA; gA->arrival = ARR_MIGRANT; gA->integration = 1.f;
+          gA->count = 600; gA->home_reg = -1; gA->faith = -1;               /* PETITE diaspora, bien intégrée */
+          PopGroup *gB = &peB->pop.groups[peB->pop.n_groups++]; memset(gB, 0, sizeof *gB);
+          gB->heritage = (Heritage)hB; gB->arrival = ARR_MIGRANT; gB->integration = 1.f;
+          gB->count = 50000; gB->home_reg = -1; gB->faith = -1;             /* GROSSE diaspora, bien intégrée */
+          econ_aggregate_regions(econ);
+          for (int h = 0; h < ARCH_COUNT; h++) ts[pl2].arch_depth[h] = PROF_NONE;   /* voie gouvernance OFF ici */
+          int mc2 = endgame_metab_count(w, econ, pl2);
+          CHECK("l'individualisation compte les DEUX diasporas (petite ET grosse)", mc2 >= 3 /* natif+A+B */);
+      }
+      /* VOIE GOUVERNANCE SEULE (via le gate RÉEL de wonder_tick, qui lit ts — la
+       * fonction individualisée endgame_metab_count_ts est privée au module) : un
+       * empire SANS AUCUNE diaspora (0 groupe étranger) mais dont 3 héritages
+       * étrangers sont en accès PROFOND (contact/gouvernance, ts[].arch_depth) doit
+       * pouvoir faire avancer FORGE (natif+3=... ici natif+3 héritages contact =
+       * 4 en tout, ≥ requis FORGE=3) — la preuve que la voie gouvernance SEULE,
+       * sans un seul migrant, compte. */
+      int pl3 = -1;
+      for (int c = pl2+1; c < w->n_countries; c++)
+          if (w->country[c].role == POLITY_PLAYER || w->country[c].role == POLITY_ANTAGONIST) { pl3 = c; break; }
+      if (pl3 < 0) pl3 = pl2;   /* repli : un seul empire majeur dans ce monde-là */
+      Heritage nat3 = HERITAGE_ADAPTATIF;
+      { int cp3 = w->country[pl3].capital_prov; int cr3 = (cp3>=0&&cp3<w->n_provinces)?w->province[cp3].region:-1;
+        if (cr3>=0 && cr3<econ->n_regions) nat3 = econ->region[cr3].culture.heritage; }
+      /* VIDE toute diaspora du joueur pl3 (0 groupe étranger — la voie diaspora ne
+       * peut RIEN compter) puis pose 2 héritages étrangers en accès PROFOND. */
+      for (int p = 0; p < econ->n_prov; p++) if (econ->prov[p].owner == pl3 && econ->prov[p].active)
+          econ->prov[p].pop.n_groups = 0;
+      econ_aggregate_regions(econ);
+      for (int c = 0; c < SCPS_MAX_COUNTRY; c++) for (int h = 0; h < ARCH_COUNT; h++) ts[c].arch_depth[h] = PROF_NONE;
+      { int put = 0; for (int h = 0; h < HERITAGE_COUNT && put < 2; h++) { if (h == (int)nat3) continue;
+          ts[pl3].arch_depth[h] = (unsigned char)PROF_PROFOND; put++; } }
+      EndgameState eg8; endgame_init(&eg8);
+      int capr3 = -1; { int cap3 = w->country[pl3].capital_prov; if (cap3>=0&&cap3<w->n_provinces) capr3 = w->province[cap3].region; }
+      for (int p = 0; p < econ->n_prov; p++) if (econ->prov[p].owner == pl3) {
+          econ->prov[p].stock[RES_CELESTIAL_IRON] += 100.f;
+      }
+      econ_aggregate_regions(econ);
+      endgame_start_wonder(&eg8, pl3, capr3);
+      eg8.merv = MERV_FORGE;   /* re-force au cas où endgame_start_wonder ait été bloqué par un état résiduel */
+      double ci8_0 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl3) ci8_0 += econ->region[r].stock[RES_CELESTIAL_IRON];
+      WorldProsperity wp8; memset(&wp8, 0, sizeof wp8); wp8.entropy = 0.f; wp8.entropy_epicenter = -1;
+      endgame_tick(&eg8, w, econ, &wp8, ts, NULL, NULL, NULL, NULL, pl3, 0);
+      double ci8_1 = 0.0; for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner == pl3) ci8_1 += econ->region[r].stock[RES_CELESTIAL_IRON];
+      CHECK("voie GOUVERNANCE seule (0 diaspora, 2 contacts profonds+natif=3) ⇒ FORGE avance",
+            ci8_1 < ci8_0);
+    }
+
+    free(camp);
     free(ts); free(wp); free(econ); free(w);
 
     /* ---- Récapitulatif ------------------------------------------------- */

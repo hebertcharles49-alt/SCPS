@@ -453,6 +453,27 @@
     X(THORN_RANDOM_FRAC,      0.35f) \
     X(MERV_PHASE_DAYS,     3650.0f) \
     X(MERV_CHARGE_PER_TICK,   0.5f) \
+    /* V1a — ENDGAME UNIFIÉ (2026-07-06) : une barre, quatre nourritures + la Merveille
+     * gatée par métabolisation. ENTROPY_BREACH_W : poids de la pression de l'Âge de la
+     * Brèche (wp->age_breach_flux, EXISTANT — juste additionné, décision #1). ENTROPY_
+     * BLOOD_W : poids du ratio morts-de-guerre/pop_ref dans l'entropie mondiale — calé
+     * pour qu'une guerre mondiale MAJEURE (ratio ~ENDGAME_BLOOD_FRAC) pèse comme une
+     * charge tech soutenue (même ordre que ENTROPY_TECH_W), PAS plus. ENDGAME_BLOOD_
+     * FRAC : au-delà de ce ratio, LE SANG L'EMPORTE quelle que soit la nature dominante
+     * (décision #1 — une barre, un visage dominant). SANG_DRAIN_PER_YEAR : fraction de
+     * pop drainée/an dans une région marquée (cicatrice PERMANENTE, ne guérit plus). */ \
+    X(ENTROPY_BREACH_W,       0.3f) \
+    X(ENTROPY_BLOOD_W,        1.0f) \
+    X(ENDGAME_BLOOD_FRAC,     0.20f) \
+    X(SANG_DRAIN_PER_YEAR,    0.03f) \
+    /* CORRECTIF Merveille (relecture joueur) : la métabolisation-VICTOIRE juge CHAQUE
+     * héritage sur SA PROPRE diaspora (dénominateur par-héritage), pas la pop totale de
+     * l'empire (piège : ce dernier dénominateur rend 6 cultures ≥0.35 simultanément
+     * IMPOSSIBLE, 6×0.35>1). METAB_MERV_RATIO : part digérée DE SA COMMUNAUTÉ propre
+     * (ratio, pas de la pop totale) ; METAB_MERV_MIN : plancher d'âmes digérées (pas de
+     * culture « métabolisée » à 30 personnes noyées dans un grand empire). */ \
+    X(METAB_MERV_RATIO,       0.60f) \
+    X(METAB_MERV_MIN,       500.0f) \
     /* DÉDUP RÉVOLTE (Option B, 2026-07-04) — statecraft ne fait plus fire de révolte lui-même ;
      * scps_revolt.c est le SEUL acteur. Il replie le SIGNAL d'agitation legacy (L/coercion/choc
      * de conquête/stabilité/garnison, statecraft_agitation 0-100) dans son propre `worst` — le
