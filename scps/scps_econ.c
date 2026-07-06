@@ -669,18 +669,8 @@ float econ_country_tax_year(int cid){
     double cum = econ_flux_get(cid, FX_TAX);
     return (float)(cum * (365.0/(double)days));
 }
-void econ_flux_year_save(FILE *f){
-    fwrite(g_tax_lastyear,sizeof g_tax_lastyear,1,f);
-    uint8_t once=g_flux_captured_once?1:0; fwrite(&once,sizeof once,1,f);
-}
-bool econ_flux_year_load(FILE *f){
-    if (fread(g_tax_lastyear,sizeof g_tax_lastyear,1,f)!=1) return false;
-    for (int c=0;c<SCPS_MAX_COUNTRY;c++)                    /* save_sane : vraisemblance (pas un index) */
-        if (!(g_tax_lastyear[c]>=-1e9f && g_tax_lastyear[c]<=1e9f)) g_tax_lastyear[c]=0.f;
-    uint8_t once=0; if (fread(&once,sizeof once,1,f)!=1) return false;
-    g_flux_captured_once = (once!=0);
-    return true;
-}
+/* econ_flux_year_save/load : définis APRÈS g_flux (plus bas dans le fichier) — la
+ * section TXYR (v65) sérialise AUSSI l'instrument de l'année EN COURS. */
 
 /* Adjacence de PROVINCES (charte : la vérité géographique fine — colonisation par-province,
  * garantie joueur, hameaux libres). Allouée dynamiquement (1664² octets ≈ 2.7 Mo — trop pour
@@ -1831,6 +1821,33 @@ double econ_flux_get(int cid, FluxComp comp){
     return (cid>=0&&cid<SCPS_MAX_COUNTRY&&comp>=0&&comp<FX_COUNT) ? g_flux[cid][comp] : 0.0;
 }
 void econ_flux_reset(void){ memset(g_flux,0,sizeof g_flux); }
+
+/* Sérialisation TXYR (v62, ÉTENDUE v65) : g_tax_lastyear + drapeau + L'ANNÉE EN COURS
+ * (g_flux entier + compteurs de mois). Sans l'année en cours, la capture annuelle
+ * suivant un reload lisait un flux TRONQUÉ → d_treasury_mois (dilemmes/décrets) payait
+ * un autre montant → --savetest dérivait sur l'OR SEUL (même classe que EMOB/COLC). */
+void econ_flux_year_save(FILE *f){
+    fwrite(g_tax_lastyear,sizeof g_tax_lastyear,1,f);
+    uint8_t once=g_flux_captured_once?1:0; fwrite(&once,sizeof once,1,f);
+    fwrite(g_flux,sizeof g_flux,1,f);
+    fwrite(&g_flux_ticks_total,sizeof g_flux_ticks_total,1,f);
+    fwrite(&g_flux_ticks_at_capture,sizeof g_flux_ticks_at_capture,1,f);
+}
+bool econ_flux_year_load(FILE *f){
+    if (fread(g_tax_lastyear,sizeof g_tax_lastyear,1,f)!=1) return false;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)                    /* save_sane : vraisemblance (pas un index) */
+        if (!(g_tax_lastyear[c]>=-1e9f && g_tax_lastyear[c]<=1e9f)) g_tax_lastyear[c]=0.f;
+    uint8_t once=0; if (fread(&once,sizeof once,1,f)!=1) return false;
+    g_flux_captured_once = (once!=0);
+    if (fread(g_flux,sizeof g_flux,1,f)!=1) return false;
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++)                    /* save_sane : vraisemblance */
+        for (int k=0;k<FX_COUNT;k++)
+            if (!(g_flux[c][k]>=-1e15 && g_flux[c][k]<=1e15)) g_flux[c][k]=0.0;
+    if (fread(&g_flux_ticks_total,sizeof g_flux_ticks_total,1,f)!=1) return false;
+    if (fread(&g_flux_ticks_at_capture,sizeof g_flux_ticks_at_capture,1,f)!=1) return false;
+    if (g_flux_ticks_at_capture>g_flux_ticks_total) g_flux_ticks_at_capture=g_flux_ticks_total;
+    return true;
+}
 const char *econ_flux_name(FluxComp comp){
     static const char *N[FX_COUNT]={
         "taxes","export","péages+",

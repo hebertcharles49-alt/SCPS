@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 64u           /* v64 : DÉCRETS DU JOUEUR (civics) — nouvelle section DCRE
+#define SAVE_VERSION 65u           /* v65 : TXYR ÉTENDUE — l'instrument I0 de l'année EN COURS
+                                    * (g_flux[][FX_COUNT] + compteurs de mois) rejoint la section :
+                                    * sans lui, la capture annuelle post-reload lisait un flux
+                                    * TRONQUÉ → d_treasury_mois (dilemmes/décrets) divergeait
+                                    * (--savetest : dérive d'or seule). <v65 refusé.
+                                    * v64 : DÉCRETS DU JOUEUR (civics) — nouvelle section DCRE
                                     * (g_decree_mask[SCPS_MAX_COUNTRY], bitmask état par pays).
                                     * Pas de struct partagée agrandie ⇒ un save v63 est juste
                                     * INCOMPLET pour v64 (refusé par le contrôle de version, comme

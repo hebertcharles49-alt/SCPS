@@ -941,6 +941,20 @@ int main(int argc, char **argv){
         printf("              membrane de décision : %ld Marbrive · %ld Pont(s) effondré(s)\n",
                events_marbrive_fired(), events_pont_effondre_fired());
 
+        /* CONTENU W1/W2 — les dilemmes par famille : la preuve que chaque registre VIT
+         * (les latches tech attendent l'arbre ; le chaînage prouve que les cicatrices
+         * mûrissent et REVIENNENT). */
+        { long ew1 = events_cloches_fired()+events_entrepots_fermes_fired()+events_deux_cartes_fired()
+                    +events_eau_noire_fired()+events_derniere_decision_fired()+events_salve_runique_fired();
+          long lat = events_chaines_rapportent_fired()+events_oeuvre_noire_fired()+events_savoir_interdit_fired()
+                    +events_culte_imperial_fired()+events_eveil_fired()+events_foreuse_saigne_fired();
+          long cul = events_droit_integration_fired()+events_diaspora_comptoirs_fired();
+          long rel = events_foi_fendre_fired()+events_prophete_breche_fired()+events_relique_douteuse_fired();
+          long chn = events_remede_morts_fired()+events_cellule_faubourgs_fired()+events_fusils_reviennent_fired()
+                    +events_savants_ennemi_fired()+events_tarif_appris_fired();
+          printf("              dilemmes (lots 1-2) : %ld W1 · %ld latch tech · %ld culturel(s) · %ld religieux · %ld chaînage(s) de cicatrice\n",
+                 ew1, lat, cul, rel, chn); }
+
         /* COMBOS tier-4 (fusion de 2 héritages métabolisés/possédés) : la PREUVE que la matrice
          * de combos s'allume sur le long cours — combien d'empires en tiennent ≥1, et combien de
          * combos au total (Forge runique + les 14 paires). Rare (double accès plein + coût tier-4). */
