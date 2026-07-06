@@ -1815,6 +1815,13 @@ Implement nothing in either delivery — only investigate, ask, and propose.
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
 - **On lit des coordonnées, on n'assigne jamais de modificateur** : un effet passe par les entrées du moteur (K, P, H…), jamais par un bonus plat.
+- **TROUVAILLES.md — la mémoire des agents** : tout agent (éclaireur, implémenteur,
+  réparateur) APPEND en fin de mission une entrée structurée (Découvertes avec
+  fichier:symbole · Pièges · Restes) dans `TROUVAILLES.md` — ce qui a coûté cher à
+  TROUVER, pas ce qui a été écrit (le code et le commit racontent le reste). Le
+  successeur LIT ce fichier avant de fouiller. L'orchestrateur inclut cette consigne
+  dans chaque brief d'agent. (`eco_fable.md` reste le carnet de raisonnement long ;
+  TROUVAILLES.md est l'index structuré.)
 
 ## Langue (brief table de chaînes)
 
