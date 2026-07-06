@@ -387,10 +387,17 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     rb->backing_tried=false;                /* soutien étranger : neuf → pas encore tenté (latch sérialisé v56) */
 
     /* CHOC ÉCONOMIQUE : les mobilisés QUITTENT la main-d'œuvre. La province perd
-     * ses bras (l'atelier tourne au ralenti) — la révolte a un coût immédiat. */
+     * ses bras (l'atelier tourne au ralenti) — la révolte a un coût immédiat.
+     * ESCLAVAGE — FUITE #4 : un groupe TENU (klass==CLASS_SLAVE) mobilisé doit sortir de
+     * SA PROPRE strate (CLASS_SLAVE), jamais de CLASS_LABORER/CLASS_BOURGEOIS — sinon la
+     * strate servile ne bouge pas pendant que le groupe rétrécit (groupes < strates) ET
+     * qu'on ampute à tort le journalier/bourgeois libre d'une région où ce ne sont pas eux
+     * qui se sont soulevés. Miroir exact de demobilize ci-dessous (retour symétrique). */
     g->count -= mob;
     float take=(float)mob;
-    if (pe->strata[CLASS_LABORER].pop>=take) pe->strata[CLASS_LABORER].pop-=take;
+    if (g->klass==CLASS_SLAVE){
+        pe->strata[CLASS_SLAVE].pop = fmaxf(0.f, pe->strata[CLASS_SLAVE].pop - take);
+    } else if (pe->strata[CLASS_LABORER].pop>=take) pe->strata[CLASS_LABORER].pop-=take;
     else { take-=pe->strata[CLASS_LABORER].pop; pe->strata[CLASS_LABORER].pop=0.f;
            pe->strata[CLASS_BOURGEOIS].pop=fmaxf(0.f, pe->strata[CLASS_BOURGEOIS].pop-take); }
 
@@ -546,7 +553,13 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
 /* ===================================================================== */
 /* RÉSOLUTION — la garnison contre les rebelles, puis le verdict           */
 /* ===================================================================== */
-/* Rend les survivants au travail (après échec/concession/coup). */
+/* Rend les survivants au travail (après échec/concession/coup). ESCLAVAGE — FUITE #4
+ * (miroir) : `rb->klass` est figé à l'allumage (revolt_ignite) et NE bouge PAS ici —
+ * SAUF si apply_rebel_victory a DÉJÀ manumité (demography_manumit_region bascule le
+ * groupe survivant en CLASS_LABORER avant tout appel de demobilize sur la voie
+ * victorieuse ; seule la voie CRUSHED garde rb->klass==CLASS_SLAVE). On route donc les
+ * survivants vers LA STRATE QUE PORTE ENCORE LE GROUPE (relu via `gi`, pas rb->klass
+ * figé) : un crush servile rend les survivants à CLASS_SLAVE, jamais à CLASS_LABORER. */
 static void demobilize(WorldEconomy *econ, Rebellion *rb, long survivors){
     if (survivors<=0) return;
     /* RE-KEY PROVINCE : .pop/.strata sont PROVINCE-OWNED — route sur la représentative
@@ -556,7 +569,8 @@ static void demobilize(WorldEconomy *econ, Rebellion *rb, long survivors){
     ProvinceEconomy *pe=&econ->prov[pid];
     int gi=find_group(&pe->pop, rb->drift_id);
     if (gi>=0) pe->pop.groups[gi].count += survivors;
-    pe->strata[CLASS_LABORER].pop += (float)survivors;
+    SocialClass back_to = (gi>=0) ? pe->pop.groups[gi].klass : CLASS_LABORER;
+    pe->strata[back_to].pop += (float)survivors;
 }
 
 /* Un emplacement de pays RÉUTILISABLE : un placeholder vierge (UNCLAIMED) qui ne

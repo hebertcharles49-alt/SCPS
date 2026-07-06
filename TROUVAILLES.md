@@ -59,3 +59,50 @@
 **Découvertes** : TOUT accumulateur inter-ticks DOIT être sérialisé, sinon --savetest diverge : EMOB v57 (friche/lowsat), COLC v61 (répit colonisation), TXYR v65 (g_flux de l'année EN COURS — la capture annuelle post-reload lisait un flux tronqué ⇒ d_treasury_mois divergeait, dérive d'OR SEUL). Signature de cette classe de bug : une seule grandeur dérive, le reste byte-identique.
 **Pièges** : un ordonnanceur (`next_day` statique) non sérialisé est un accumulateur AUSSI — préférer les règles APATRIDES (pur f(day)) appelées des blocs annuels de sim_day.
 **Restes** : —
+
+## [2026-07-06] Esclavage — le couplage strate↔groupe est réel, il n'a jamais été testé (réparateur)
+**Découvertes** : `strata[CLASS_SLAVE].pop` (scps_econ.c) et `Σgroups[i].count where klass==CLASS_SLAVE`
+(scps_demography.c) sont DEUX comptes parallèles maintenus À LA MAIN par 4 fonctions correctes
+(`diplo_enslave_capture`, `intertrade_slave_buy/_sell`, `demography_manumit_*`) — RIEN ne les
+synchronise automatiquement (pas de `strata_from_groups()`). Toute boucle GÉNÉRIQUE `for(c<CLASS_COUNT)`
+qui touche `.pop` sans connaître les `PopGroup` casse l'invariant. `can_enslave` (scps_ai.c:2235) est
+posé dans `ai_research_step` — appelé CHAQUE JOUR depuis `sim_day` (scps_sim.c:601), JUSTE APRÈS
+`ai_step` (pas dedans) ; `ai_step` lit une valeur d'UN JOUR de retard, sans conséquence pratique.
+**Pièges** (les 9 fuites, une par ligne, `fichier:fonction`) :
+- `scps_econ.c` (boucle croissance annuelle) : le plancher générique `if(pop<1)pop=1` RESSUSCITE
+  0→1 âme/mois pour CLASS_SLAVE puis `net_growth` la COMPOSE — 0 groupe requis. Root cause de « strates
+  qui montent tout seules ».
+- `scps_demography.c::assimilation_tick` : fusionne N'IMPORTE QUEL groupe (klass ignoré) dans le
+  dominant si D<FUSE_EPS — la fusion PERD `klass` (seul `.count` survit) : un esclave culturellement
+  proche de son maître voit son groupe FONDU sans que la strate suive.
+- `scps_demography.c::demography_refugee_tick` (fuite de guerre) : itère tous les groupes SANS filtrer
+  klass ; `migration_move` ne synchronise JAMAIS `strata[]` (aucun appelant ne le fait) — un esclave
+  « réfugié » crée un groupe ailleurs sans bouger la strate nulle part.
+- `scps_revolt.c::revolt_ignite`/`demobilize` : la mobilisation/démobilisation d'une révolte SERVILE
+  (LOT H l'autorise) créditait/débitait TOUJOURS CLASS_LABORER, jamais CLASS_SLAVE — `demobilize` doit
+  relire `pe->pop.groups[gi].klass` (l'état ACTUEL, pas `rb->klass` figé à l'allumage, car
+  `apply_rebel_victory` manumit AVANT d'appeler demobilize sur la voie victorieuse).
+- `scps_diplo.c::diplo_enslave_capture` : le groupe recevait `captives` âmes MAIS la strate ne recevait
+  que `moved` (borné au dispo LABORER/BOURGEOIS de la source) — calculer `moved` D'ABORD, l'utiliser pour
+  les DEUX écritures, jamais l'inverse.
+- `scps_econ.c` (3× colonisation : `econ_colonize_province`/`colonize_from_prov`/`_overseas`) : ponction
+  proportionnelle à TOUTES les strates alors que les colons semés sont TOUJOURS `CLASS_SHARE[SLAVE]=0`
+  — exclure CLASS_SLAVE du bassin ponctionnable (`spop_free = spop - strata[CLASS_SLAVE].pop`).
+- **`scps_econ.c::econ_migrate_tick`** — LE PIÈGE DE L'ÉNUM APPENDU : `for(cl=CLASS_BOURGEOIS;
+  cl<CLASS_COUNT; cl++)` présumait implicitement l'ANCIENNE taille de l'enum (BOURGEOIS/ELITE
+  seulement) ; l'ajout de CLASS_SLAVE en fin d'enum a SILENCIEUSEMENT élargi la boucle à un 3e cran.
+  **Tout `for(x; cl<CLASS_COUNT; …)` qui commence après CLASS_LABORER doit être audité au prochain ajout
+  d'enum** — grep `CLASS_.*; .*<CLASS_COUNT` avant de faire grandir `SocialClass`.
+- `scps_agency.c::purge_slice`/`biggest_minority` : la répression politique pouvait cibler un groupe
+  esclave (contresens : on réprime des sujets libres, pas une propriété) ET sa saignée proportionnelle
+  de fin de fonction touchait `strata[CLASS_SLAVE]` même hors-cible.
+- `scps_events.c::apply_region_eff` : `pop_mult` d'un évènement (peste/famine) multiplie TOUTES les
+  strates — ce module ne connaît même pas `PopGroup`.
+**Méthode qui a marché** : quand un drift persiste malgré des fixes plausibles, instrumenter
+TEMPORAIREMENT `sim_day` avec un print du total suspect avant/après CHAQUE appel du bloc annuel —
+localise en 1 run si le coupable est annuel ou mensuel (ici : mensuel, ce qui a fait chercher dans
+`econ_tick`/`demography_tick`/`world_events_tick` plutôt que dans le bloc annuel visible du diag).
+**Restes** : l'invariant `Σstrata[CLASS_SLAVE]==Σgroupes klass==CLASS_SLAVE` est maintenant testé
+(demography_demo §11c/§11d) mais RIEN n'empêche une 10e fuite similaire ailleurs — tout nouveau code
+qui boucle sur `CLASS_COUNT` pour bouger de la pop doit se demander explicitement s'il doit EXCLURE
+CLASS_SLAVE.

@@ -1531,3 +1531,130 @@ recalculés). Tunables ajoutés (registre J) : `SLAVE_REVOLT_SHARE` 0.20 · `SLA
 
 **NE PAS COMMITTER** (mandat explicite) : ces quatre lots restent à l'état de diff non committé
 en fin de session, pour revue.
+
+## 2026-07-06 — RÉPARATION CLASS_SLAVE : les 9 fuites du couplage strate↔groupe (SAVE non bumpé)
+
+**Contexte.** Suite au commit « CLASS_SLAVE — la strate esclave » (v68, entrée ci-dessus), le diag
+`SCPS_SLAVEDIAG` (déjà posé dans `ai_slave_trade_year`) mesurait sur seed 9/100 ans : `strates=54→441 ·
+groupes=0 · esclavagistes=0`. Deux questions à trancher avant de toucher au code : (1) où naissent les
+âmes fantômes (strata[CLASS_SLAVE].pop > 0 sans aucun `PopGroup` klass==CLASS_SLAVE) ? (2) le câblage
+`can_enslave`/capture est-il seulement lent à s'aligner (variance de graine) ou réellement cassé ?
+
+**Point (4) du mandat — RÉFUTÉ par la mesure, pas par la lecture.** Le mandat soupçonnait que
+`ai_step` n'avait pas de `TechState*` pour peupler `can_enslave`. Faux : `ai_research_step(&s->ai[c],
+&s->ts[c], …)` tourne CHAQUE JOUR pour chaque pays IA dans `sim_day` (scps_sim.c:601), juste après
+`ai_step` — et c'est CE point d'appel (pas `ai_step`) qui pose `a->can_enslave` (scps_ai.c:2235-2237).
+Diagnostic ajouté (prints gatés `SCPS_SLAVEDIAG`, gardés) dans `diplo_enslave_capture` (le gate
+`enslaves`, et les deux early-return `gi<0`/`dst n_groups`) + dans `ai_strat_turn` aux 3 sites d'appel
+de `diplo_settle` : a révélé qu'un empire Dominateur pouvait avoir `can_enslave=1` mais ne JAMAIS
+tenir d'occupation au moment du règlement (occ=0), tandis que l'occupant réel était Pacifiste
+(`can_enslave=0`) — pur ALÉA de guerre, PAS un bug de câblage. Confirmé par sweep 20 graines : seed 10
+montre 4 captures RÉUSSIES (`enslaves=1`) en une seule vague de règlement.
+
+**Les 9 fuites bouchées** (chacune un site où une boucle/mult GÉNÉRIQUE `for(c<CLASS_COUNT)` ou
+`province_dominant`/`migration_move` touchait la strate/le groupe servile sans que l'autre bouge —
+la règle : CLASS_SLAVE n'est alimentée QUE par capture/achat/vente/mobilisation-de-révolte-liée, JAMAIS
+par une répartition générique) :
+
+1. `scps_econ.c` (boucle de croissance annuelle, ~ligne 2751) : `st->pop *= 1+net_growth;
+   if(st->pop<1.f) st->pop=1.f;` — le **plancher-1 générique** ressuscitait 0→1 âme/mois pour
+   CLASS_SLAVE puis la COMPOSAIT via `net_growth` (0 groupe backing) → strata=11 en an-1, 441 en
+   an-100. Fix : CLASS_SLAVE exclue à la fois du plancher ET de `net_growth` (elle ne « respire »
+   plus toute seule — cohérent avec « alimentée seulement par capture/achat/vente »).
+2. `scps_demography.c::assimilation_tick` : fusionnait N'IMPORTE QUEL groupe (y compris un esclave)
+   dans le dominant dès D<FUSE_EPS — la fusion PERD `klass`/`pop_by_class` (seul `count` survit sur
+   le dominant), donc un esclave culturellement proche de son maître voyait son groupe disparaître
+   SANS que `strata[CLASS_SLAVE].pop` bouge. Fix : garde `g->klass!=CLASS_SLAVE &&
+   dom->klass!=CLASS_SLAVE` avant la fusion (la dérive culturelle elle-même reste inoffensive et
+   continue de s'accumuler — seule la fusion identity-destructrice est bloquée). Test ajouté
+   (demography_demo §11c : D=0 forcé entre maître et esclave, invariant vérifié après 40 ans).
+3. `demography_refugee_tick` (la fuite de guerre) : « la violence ne trie pas : chaque groupe fuit »
+   itérait TOUS les groupes de la province ravagée, esclave compris, via `migration_move` — qui NE
+   SYNCHRONISE JAMAIS `strata[]` (il ne bouge que la struct `PopGroup`). Un esclave « fuyant » créait
+   un groupe klass=CLASS_SLAVE dans la province d'accueil SANS y ajouter sa part de strate (et sans
+   la retirer de la province source). Fix : `if (groups[i].klass==CLASS_SLAVE) continue;` — une
+   propriété ne fuit pas d'elle-même (cf. `demography_pop_transfer` qui l'exempte déjà de coercition).
+4. `scps_revolt.c::revolt_ignite` (mobilisation) : le choc économique de la mobilisation déduisait
+   TOUJOURS de `strata[CLASS_LABORER]`/`[BOURGEOIS]`, jamais de `strata[CLASS_SLAVE]` — même quand
+   le groupe qui se soulève (`g`) EST un groupe servile (LOT H, la révolte servile structurelle
+   l'autorise explicitement). Fix : `if (g->klass==CLASS_SLAVE)` route la déduction vers
+   `strata[CLASS_SLAVE]`. Miroir exact côté retour : `demobilize()` créditait TOUJOURS
+   `CLASS_LABORER` — sauf que sur la voie VICTORIEUSE, `demography_manumit_region` a déjà basculé
+   le groupe en CLASS_LABORER (l'ordre d'appel dans `apply_rebel_victory` le garantit), donc seule la
+   voie CRUSHED restait fautive. Fix : `demobilize` relit `pe->pop.groups[gi].klass` (l'état ACTUEL du
+   groupe, pas `rb->klass` figé à l'allumage) pour savoir où recréditer.
+5. `diplo_enslave_capture` : le groupe déporté recevait TOUJOURS `captives` âmes (calculé depuis
+   `SLAVE_FRACTION × count` du plus gros groupe de la province prise), mais la strate destination ne
+   recevait que `moved` = ce qui a pu être RÉELLEMENT prélevé de `strata[LABORER]`/`[BOURGEOIS]` de la
+   source (borné au dispo) — un écart net dès que ces deux strates étaient insuffisantes pour fournir
+   `captives` entières (mesuré : `groupes=40` fixe pendant que `strates` dérivait 40→22 SANS aucun
+   évènement visible). Fix : calculer `moved` D'ABORD, l'utiliser pour LES DEUX (le groupe ET la
+   strate) — jamais plus d'âmes dans le groupe qu'on n'en a arraché au bassin libre.
+6. Trois fonctions de colonisation (`econ_colonize_province`, `colonize_from_prov`,
+   `econ_colonize_overseas`, scps_econ.c) : la ponction du convoi de colons était PROPORTIONNELLE à
+   TOUTES les strates (`spop=Σstrata[c]`), CLASS_SLAVE incluse — mais `econ_seed_population`/
+   `colonize_seed_pop_group` n'ensemencent JAMAIS de colons esclaves (`CLASS_SHARE[SLAVE]=0`) : la
+   part prélevée sur la strate servile de la source était détruite en silence, sans qu'aucun groupe
+   ne bouge. Fix : `spop_free = spop - strata[CLASS_SLAVE].pop`, la ponction ne porte que sur le
+   bassin LIBRE (un esclave n'embarque pas dans un convoi colonial).
+7. `econ_migrate_tick` (migration bourgeois/élite vers la prospérité voisine) : `for (int
+   cl=CLASS_BOURGEOIS; cl<CLASS_COUNT; cl++)` — **le vrai piège de l'énum appendu** : avant
+   `CLASS_SLAVE`, `CLASS_COUNT` s'arrêtait à `CLASS_ELITE+1`, la boucle couvrait exactement
+   BOURGEOIS/ELITE. L'ajout de `CLASS_SLAVE` en fin d'énum a silencieusement ÉLARGI la boucle à un
+   3e cran — un pattern `X; cl<ENUM_COUNT; cl++` qui présumait implicitement l'ancienne taille de
+   l'énum. Cette fonction ne bouge AUCUN groupe (aucun site du fichier ne le fait) : bénin pour
+   bourgeois/élite (leur bookkeeping groupes vit ailleurs, découplé), fatal pour l'esclave (seule
+   classe où strates==groupes est un INVARIANT gardé). Fix : borner explicitement `cl<=CLASS_ELITE`
+   (jamais `CLASS_COUNT` pour une plage de strates « libres »). **C'est cette fuite qui a pris le plus
+   de temps à isoler** (bisection avec prints temporaires dans `sim_day` autour de chaque appel annuel
+   — la fenêtre suspecte — avant de réaliser que le drift venait du bloc MENSUEL, pas annuel).
+8. `scps_agency.c::purge_slice` (AGY_PURGE, répression intérieure) : `biggest_minority` ne filtrait
+   pas `klass` — pouvait désigner un groupe esclave comme « minorité à purger » (contresens : on
+   réprime des sujets libres, pas une propriété) — et la saignée proportionnelle de fin de fonction
+   (`for(c<CLASS_COUNT) strata[c].pop*=k`) touchait CLASS_SLAVE même quand ce n'était pas la cible.
+   Fix : `biggest_minority` exclut les groupes CLASS_SLAVE des deux côtés (dominant ET candidat) ;
+   le bassin `tot`/la boucle de saignée excluent CLASS_SLAVE explicitement.
+9. `scps_events.c::apply_region_eff` : `for(k<CLASS_COUNT) strata[k].pop *= e->pop_mult` — un
+   évènement générique (peste/famine/vague migratoire) multipliait TOUTES les strates ; ce module ne
+   connaît même pas la notion de `PopGroup`. Fix : exclusion de CLASS_SLAVE du multiplicateur
+   générique (route de bisection : prints intercalés entre CHAQUE appel du bloc annuel de `sim_day`
+   ont montré que la strate était DÉJÀ dérivée à l'entrée du bloc → la cause vivait dans le tick
+   MENSUEL, ce qui a mené aux fuites #7 et #9).
+
+**Méthode de bisection qui a marché** : quand un drift persiste malgré des fixes « évidents »,
+n'hésite pas à instrumenter TEMPORAIREMENT `sim_day` lui-même avec un print du total
+`Σstrata[CLASS_SLAVE]` avant/après CHAQUE fonction annuelle appelée — ça localise en 1 run si le
+coupable est annuel ou mensuel (ici : mensuel, ce qui a éliminé d'un coup tout le bloc annuel de
+`sim_day` comme suspect et redirigé vers `econ_tick`/`demography_tick`/`world_events_tick`).
+
+**Invariant installé au banc** (`demography_demo.c` §11c/§11d, +2 tests) : (c) l'assimilation ne
+fusionne jamais un groupe TENU même à distance culturelle nulle ; (d) `Σstrata[CLASS_SLAVE] ==
+Σgroupes klass==CLASS_SLAVE` par province, vérifié après un cycle capture-like + affranchissement sur
+un `WorldEconomy` à 2 provinces/2 pays.
+
+**Mesures avant/après** (SCPS_SLAVEDIAG, seed 10, 250 ans) : avant fix — `strates` dérive de la
+séquence des groupes réels (40→34→28→27→26→22) sur 250 ans malgré `groupes` figé à 40 (aucune vente/
+manumission/nouvelle capture visible dans cette fenêtre). Après fix — `strates==groupes` en
+PERMANENCE (0 mismatch sur toute la trajectoire). Sweep de confirmation : 20 graines (1-15, 20, 25, 30,
+42, 99) × 250 ans, **0 mismatch** sur toutes. Télémétrie chronicle (« esclavage ») : seed 7 sim 2
+montre 22 âmes servile en fin de partie, sim 3 montre 160 affranchissements (capture puis abolition),
+sim 4 montre 198 âmes — le système est VIVANT de bout en bout (capture → strate cohérente → vente au
+pool OU affranchissement selon l'éthos). Certaines graines (9, 42) n'ont ZÉRO esclave sur 5 sims ×
+250 ans — pur aléa de guerre (aucun Dominateur/Honneur n'a occupé de territoire au règlement), pas un
+symptôme de bug (vérifié par le diag de câblage point 4).
+
+**Gates** : `make test` 34/37 verts (3 KO Windows pré-existants : `intertrade_demo` build `setenv`,
+`campaign_demo`/`warhost_demo` stack-overflow — confirmés inchangés) + `demography_demo` 44/44 (+2
+nouveaux tests d'invariant). `make determinism` STABLE (5 graines × 12 ans, hashes identiques d'un run
+à l'autre). `make golden` **RE-BASELINÉ** (`make golden-update` exécuté puis `make golden` re-vérifié
+OK) : les 5 hashes CHANGENT dès l'an-0 — les fuites bouchées (surtout #1, le plancher-1 qui ressuscitait
+0→1 âme/mois dès la genèse) touchent immédiatement le monde, comme attendu. `savetest` seeds 9 ET 11
+byte-identiques (`scps_viewer` rebuild sans SDL, conforme à l'entrée « VIEWER 100% SANS SDL »). Sweep
+sain (`./chronicle {9,7,42} 5 250`) : satisfaction pop-pondérée 74-95 % selon strate/graine, hégémon
+mortel 4-5/5 sims. **SAVE non bumpé** (aucune struct sérialisée ne change — les fuites étaient toutes
+des écritures erronées sur des champs DÉJÀ sérialisés, pas de nouveau champ). Diagnostic `SCPS_SLAVEDIAG`
+étendu (gardé, style maison) : `diplo_enslave_capture` trace l'appel + les 2 gates d'échec ; `ai_strat_turn`
+trace les 3 sites de `diplo_settle` avec `can_enslave`/éthos/occ — utile pour la PROCHAINE fois qu'on
+suspectera le câblage capture plutôt que l'aléa de guerre.
+
+**NE PAS COMMITTER** (mandat explicite).

@@ -2751,8 +2751,19 @@ void econ_tick(WorldEconomy *e, float dt) {
         float satsum=0.f, popsum=0.f;
         for (int c=0;c<CLASS_COUNT;c++) {
             PopStratum *st=&re->strata[c];
-            st->pop *= 1.f + net_growth;
-            if (st->pop<1.f) st->pop=1.f;
+            /* ESCLAVAGE — FUITE #1 : la croissance ORGANIQUE (net_growth) et le plancher-1
+             * génériques FABRIQUENT une strate servile FANTÔME (mesuré SLAVEDIAG seed 9 :
+             * strates=11→441 sur 100 ans avec groupes=0 tout du long — le plancher remonte 0→1
+             * chaque mois puis COMPOSE ; même sans plancher, net_growth ferait diverger
+             * strata[CLASS_SLAVE] de Σ pop_by_class[CLASS_SLAVE] des groupes, qui NE croît PAS
+             * organiquement — cf. demography_tick, aucune boucle ne fait ->count *= 1+growth
+             * pour un groupe : les groupes ne bougent QUE par migration/assimilation/mobilisation/
+             * capture/vente/manumission). La strate esclave n'est ALIMENTÉE QUE par la capture
+             * (diplo_enslave_capture), l'achat au pool (intertrade_slave_buy) et — en repli — les
+             * écritures déjà synchronisées avec un groupe réel (manumission, mobilisation de
+             * révolte) : AUCUNE croissance générique, organique ou plancher. */
+            if (c==CLASS_SLAVE){ if (st->pop<0.f) st->pop=0.f; }
+            else { st->pop *= 1.f + net_growth; if (st->pop<1.f) st->pop=1.f; }
             satsum+=st->satisfaction*st->pop; popsum+=st->pop;
         }
         re->satisfaction=(popsum>0.f)?satsum/popsum:0.f;
@@ -3125,10 +3136,20 @@ bool econ_colonize_province(WorldEconomy *e, const World *w, int src_pid, int ds
     days = clampf(days, (float)COLONY_BASE_DAYS, (float)COLONY_MAX_DAYS);
     float yield = 1.f / (1.f + logf(1.f + (float)hops_cap/COLONY_YIELD_HREF));
     yield = clampf(yield, 0.30f, 1.f);
-    /* le convoi PART : ponction immédiate (les colons quittent la mère-patrie) */
-    float take=fminf(COLONY_COST_POP, spop*0.25f);
-    for (int c=0;c<CLASS_COUNT;c++)
-        src->strata[c].pop -= take*(src->strata[c].pop/fmaxf(spop,EPS));
+    /* le convoi PART : ponction immédiate (les colons quittent la mère-patrie).
+     * ESCLAVAGE — FUITE #6 : la ponction ÉTAIT proportionnelle à TOUTES les strates,
+     * CLASS_SLAVE compris — mais aucun groupe esclave n'embarque dans le convoi (les
+     * colons semés à l'arrivée sont TOUJOURS CLASS_SHARE-libres, `econ_seed_population`/
+     * `colonize_seed_pop_group` n'ensemencent jamais CLASS_SLAVE) : la strate servile
+     * était détruite en silence, SANS qu'aucun groupe/PopGroup ne bouge — l'esclave est
+     * TENU par sa province (§II.6, H), pas conscrit dans un convoi colonial. CLASS_SLAVE
+     * est donc EXCLU du bassin ponctionnable (spop_free = tout sauf esclave). */
+    float spop_free=spop-src->strata[CLASS_SLAVE].pop;
+    float take=fminf(COLONY_COST_POP, spop_free*0.25f);
+    for (int c=0;c<CLASS_COUNT;c++){
+        if (c==CLASS_SLAVE) continue;
+        src->strata[c].pop -= take*(src->strata[c].pop/fmaxf(spop_free,EPS));
+    }
     cw->src=(int16_t)src_pid; cw->dst=(int16_t)dst_pid;
     cw->days_left=(int16_t)days; cw->total_days=(int16_t)days;
     cw->cd_days=COLONY_CD_DAYS;
@@ -3205,9 +3226,14 @@ static void colonize_from_prov(WorldEconomy *e, int src_pid, int dst_pid, int ci
     ProvinceEconomy *src=&e->prov[src_pid];
     ProvinceEconomy *dst=&e->prov[dst_pid];
     float spop=0.f; for(int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
-    float take=fminf(COLONY_COST_POP, spop*0.25f);
-    for (int c=0;c<CLASS_COUNT;c++)
-        src->strata[c].pop -= take*(src->strata[c].pop/fmaxf(spop,EPS));
+    /* ESCLAVAGE — FUITE #6 (miroir) : CLASS_SLAVE exclue du bassin ponctionnable — un
+     * esclave ne part pas coloniser, cf. econ_colonize_province plus haut. */
+    float spop_free=spop-src->strata[CLASS_SLAVE].pop;
+    float take=fminf(COLONY_COST_POP, spop_free*0.25f);
+    for (int c=0;c<CLASS_COUNT;c++){
+        if (c==CLASS_SLAVE) continue;
+        src->strata[c].pop -= take*(src->strata[c].pop/fmaxf(spop_free,EPS));
+    }
     /* DISPATCH conservatif (terre) : les colons détachés ARRIVENT — on essaime
      * tout ce qu'on a prélevé (plancher = graine minimale), pas de saignée du
      * convoi → la colonisation REDISTRIBUE la pop sans la détruire (la mer, elle,
@@ -3236,9 +3262,13 @@ bool econ_colonize_overseas(WorldEconomy *e, int src_rid, int dst_rid, int cid){
     if (!src->colonized || src->owner!=cid) return false;
     float spop=0.f; for (int c=0;c<CLASS_COUNT;c++) spop+=src->strata[c].pop;
     if (spop<COLONY_MIN_POP*2.f || src->food_sat<COLONY_FOOD_GATE) return false;  /* ×2 : il faut le double */
-    float extra=fminf(COLONY_COST_POP, spop*0.25f);     /* la 2e ponction (coût ×2) */
-    for (int c=0;c<CLASS_COUNT;c++)
-        src->strata[c].pop -= extra*(src->strata[c].pop/fmaxf(spop,EPS));
+    /* ESCLAVAGE — FUITE #6 (miroir, 2e ponction outre-mer) : CLASS_SLAVE exclue. */
+    float spop_free=spop-src->strata[CLASS_SLAVE].pop;
+    float extra=fminf(COLONY_COST_POP, spop_free*0.25f);     /* la 2e ponction (coût ×2) */
+    for (int c=0;c<CLASS_COUNT;c++){
+        if (c==CLASS_SLAVE) continue;
+        src->strata[c].pop -= extra*(src->strata[c].pop/fmaxf(spop_free,EPS));
+    }
     colonize_from_prov(e, sp, dp, cid);                 /* la 1re ponction + la fondation */
     return true;
 }
@@ -3427,7 +3457,17 @@ int econ_migrate_tick(WorldEconomy *e, const World *w) {
                                 (pros_dst/pros_src - 1.f) * 0.04f);
             float migrated=0.f;
 
-            for (int cl=CLASS_BOURGEOIS; cl<CLASS_COUNT; cl++) {
+            /* ESCLAVAGE — FUITE #7 : cette boucle bougeait SEULE strates (aucun PopGroup
+             * synchronisé, ni ici ni ailleurs dans econ_migrate_tick) — bénin pour bourgeois/
+             * élite (leur bookkeeping groups vit séparément dans scps_demography.c) mais
+             * fatal pour l'esclave : CLASS_SLAVE a été APPENDU en fin d'enum (CLASS_COUNT
+             * grandit) et cette boucle `cl<CLASS_COUNT` l'a silencieusement ABSORBÉ — un
+             * esclave « migrant vers la prospérité voisine » vide sa strate SANS bouger le
+             * groupe qui la porte (mesuré SLAVEDIAG seed 10 : drift constant 40→22 en 250 ans,
+             * malgré groupes figé à 40). Un groupe TENU ne migre jamais de lui-même (§II.6,
+             * H) : borner explicitement à CLASS_ELITE (dernière strate LIBRE), jamais
+             * CLASS_COUNT. */
+            for (int cl=CLASS_BOURGEOIS; cl<=CLASS_ELITE; cl++) {
                 float mv = src->strata[cl].pop * ratio;
                 if (mv < 0.5f) continue;
                 /* Transfert pop + richesse proportionnelle */

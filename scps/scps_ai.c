@@ -1409,8 +1409,10 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
         if (a->credit_consolidate >= 1.f){
             a->credit_consolidate -= 1.f;
             for (int b=0; b<w->n_countries; b++)
-                if (b!=a->cid && diplo_status(diplo, a->cid, b)==DIPLO_WAR)
+                if (b!=a->cid && diplo_status(diplo, a->cid, b)==DIPLO_WAR){
+                    if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(consolidate) a->cid=%d can_enslave=%d ethos=%d\n",a->cid,(int)a->can_enslave,(int)ai_capital_ethos(w,econ,a->cid));
                     diplo_settle(diplo, w, econ, wl, a->cid, b, a->can_enslave);  /* solde : garde l'occupé, relâche le reste */
+                }
             a->peace_lock_until = day + AI_PEACE_LOCK;       /* hystérésis : on digère */
             a->stats.consolidations++;
         }
@@ -1509,6 +1511,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
              * budget enfle d'occupation à mesure qu'il prend → annexion. Sinon on capitule. */
             if (diplo_war_budget(diplo,w,econ,b,a->cid) >= AI_ANNEX_FRAC*diplo_country_value(econ,a->cid)) continue;
             diplo_reparations(diplo, w, econ, a->cid, b);               /* le vaincu indemnise le vainqueur */
+            if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(surrender) winner_b=%d ai_enslaves(b)=%d\n",b,(int)ai_enslaves(b));
             diplo_settle(diplo, w, econ, wl, b, a->cid, ai_enslaves(b)); /* capitulation : b ANNEXE ce qu'il occupe (peut nous TUER) */
         }
     }
@@ -1573,6 +1576,7 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
                 diplo_set_vassal(diplo, a->cid, b, CONTRAT_SERVAGE);  /* la vassalité EST le but */
             else
                 ai_impose_contract(a, w, econ, diplo, b);    /* §leviers : imposer plutôt qu'annexer */
+            if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(main) a->cid=%d can_enslave=%d ethos=%d occ=%d\n",a->cid,(int)a->can_enslave,(int)ai_capital_ethos(w,econ,a->cid),occ);
             int got = diplo_settle(diplo, w, econ, wl, a->cid, b, a->can_enslave);  /* la propriété change ICI */
             a->credit_war -= 1.f; a->stats.conquests += got;
             if (got>0) faction_lever_apply(a->cid, FAC_CONQUERANT, AI_LEVER_WAR);    /* §4 : prendre AVANCE les Conquérants */
@@ -2364,5 +2368,57 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
         ai_refresh_ethos(a, w, econ);   /* §3 : l'éthos effectif GLISSE avec la composition avant d'agir */
         ai_strat_turn(a, w, econ, wp, wl, diplo, sc, &v, brake, day);
         a->next_strat_day = day + AI_STRAT_CADENCE/2 + (int)(frand(&a->rng)*AI_STRAT_CADENCE);
+    }
+}
+
+/* P4 — LE POOL DES CENTRES VIT : l'esclavagiste VEND son surplus servile (la règle
+ * du lot D tombée du découpage des vagues : sans elle le pool restait à 0 sur toutes
+ * les graines et le canal d'ACHAT — la voie de métabolisation des pacifistes — était
+ * mort). Annuel, APATRIDE (aucun ordonnanceur sérialisé — appelé du bloc annuel de
+ * sim_day : le savetest reste byte-identique par construction). Par RÉGION : on garde
+ * SLAVE_AI_KEEP_FRAC de la pop en mains serviles (la main-d'œuvre captive qu'on ne
+ * lâche pas), on vend SLAVE_AI_SELL_FRAC de l'EXCÉDENT par an — le pool se remplit
+ * en décennies, pas d'un coup. Payé au prix du pool (intertrade_slave_sell — matière
+ * réelle, la marge des Centres s'applique). */
+void ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const bool ai_on[]){
+    if (!w || !econ || !ai || !ai_on) return;
+    /* Au niveau PAYS (mesuré SLAVEDIAG seed 9 : la granularité région était de la
+     * POUSSIÈRE — 1-5 âmes sur 40-100 régions, les groupes serviles VOYAGENT avec les
+     * ticks démographiques — et 0 région chez un esclavagiste, l'éthos de capitale
+     * GLISSE). intertrade_slave_sell scanne déjà TOUTES les provinces du vendeur :
+     * le pays est la bonne maille. */
+    if (getenv("SCPS_SLAVEDIAG")){
+        long tstr=0, tgrp=0; int ncan=0;
+        for (int r=0;r<econ->n_regions&&r<SCPS_MAX_REG;r++) tstr+=(long)econ->region[r].strata[CLASS_SLAVE].pop;
+        int np=econ->n_prov; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
+        for (int p=0;p<np;p++){ const ProvinceEconomy *pe=&econ->prov[p];
+            for (int i=0;i<pe->pop.n_groups;i++)
+                if (pe->pop.groups[i].klass==CLASS_SLAVE) tgrp+=pe->pop.groups[i].count; }
+        for (int c=0;c<w->n_countries&&c<SCPS_MAX_COUNTRY;c++) if (ai[c].can_enslave) ncan++;
+        fprintf(stderr,"[SLAVEDIAG] strates=%ld · groupes=%ld · esclavagistes=%d\n",tstr,tgrp,ncan);
+    }
+    for (int cid=0; cid<w->n_countries && cid<SCPS_MAX_COUNTRY; cid++){
+        if (!ai_on[cid] || w->country[cid].n_regions<=0) continue;
+        double pop=0.0, slaves=0.0; int rhome=-1;
+        for (int r=0; r<econ->n_regions && r<SCPS_MAX_REG; r++){
+            const RegionEconomy *re=&econ->region[r];
+            if (re->owner!=cid) continue;
+            for (int k=0;k<CLASS_COUNT;k++) pop+=(double)re->strata[k].pop;
+            if (re->strata[CLASS_SLAVE].pop>0.f && rhome<0) rhome=r;
+            slaves+=(double)re->strata[CLASS_SLAVE].pop;
+        }
+        if (slaves<=0.0 || rhome<0) continue;
+        if (!ai[cid].can_enslave){
+            /* L'ABOLITIONNISTE N'EN GARDE PAS : les âmes serviles échues (conquête d'un
+             * esclavagiste, groupes migrés, éthos qui a glissé) sont AFFRANCHIES — la
+             * coutume ne les tient pas. C'est AUSSI ce qui fait vivre le canal de
+             * métabolisation (l'affranchi diffuse plein). Plancher anti-bruit. */
+            if (slaves >= 10.0) demography_manumit_country(econ, cid);
+            continue;
+        }
+        double excess = slaves - (double)tune_f("SLAVE_AI_KEEP_FRAC",0.02f)*pop;
+        if (excess < 20.0) continue;                    /* poussière : pas de micro-vente */
+        long ask = (long)(excess * (double)tune_f("SLAVE_AI_SELL_FRAC",0.25f));
+        if (ask>0) intertrade_slave_sell(econ, rhome, ask);
     }
 }

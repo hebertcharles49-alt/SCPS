@@ -1208,8 +1208,15 @@ static void apply_region_eff(EventCtx *cx, int r, const EvEffect *e){
     re->build.food_cap= fmaxf(0.f, re->build.food_cap+ e->d_food_cap);
     re->coercion      = clampf(re->coercion + e->d_coercion, 0.f, 1.f);
     re->treasury      = fmaxf(0.f, re->treasury + e->d_treasury);
+    /* ESCLAVAGE — FUITE #9 : un évènement (peste/famine/vague migratoire…) multiplie la pop
+     * de TOUTES les strates — mais aucun évènement ne touche les PopGroup (ce module ne les
+     * connaît même pas). CLASS_SLAVE en sortait donc désynchronisée de Σgroupes klass==
+     * CLASS_SLAVE (mesuré SLAVEDIAG seed 10 : le drop 40→34→28… coïncide avec la fenêtre
+     * mensuelle, pas le bloc annuel — un évènement générique en est la source). La strate
+     * TENUE est exclue du multiplicateur générique (elle ne bouge que par capture/achat/
+     * vente/mobilisation-de-révolte, §II.6, H). */
     if (e->pop_mult>0.f && e->pop_mult!=1.f)
-        for (int k=0;k<CLASS_COUNT;k++) re->strata[k].pop *= e->pop_mult;
+        for (int k=0;k<CLASS_COUNT;k++) if (k!=CLASS_SLAVE) re->strata[k].pop *= e->pop_mult;
     if (cx->wl && r<SCPS_MAX_REG) cx->wl->L[r]=clampf(cx->wl->L[r]+e->d_L,0.f,10.f);
     if (cx->sc && r<SCPS_MAX_REG) cx->sc->agitation[r]=clampf(cx->sc->agitation[r]+e->d_agitation,0.f,100.f);
 }

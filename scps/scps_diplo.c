@@ -10,6 +10,7 @@
 #include "scps_culture.h"
 #include "scps_provlog.h"  /* le JOURNAL diplomatique (display, focus-gaté — la chronique n'écrit rien) */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include "scps_math.h"   /* clampf/absf partagés */
@@ -974,6 +975,7 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
  * passe `enslaves` = l'empire a-t-il l'Économie servile débloquée. La tech circule
  * avec les peuples (orpheline) → ce sont les Claniques et ceux qui les ont absorbés. */
 long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves){
+    if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] enslave_capture appelé conqueror=%d region=%d enslaves=%d\n",conqueror,region,(int)enslaves);
     if (!enslaves) return 0;                                          /* société sans l'Économie servile */
     if (conqueror<0||conqueror>=w->n_countries||region<0||region>=econ->n_regions) return 0;
     int cp=w->country[conqueror].capital_prov;
@@ -988,41 +990,43 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
     /* les captifs sortent du plus GROS groupe de la province prise. */
     int gi=-1; long best=0;
     for (int i=0;i<src->n_groups;i++) if (src->groups[i].count>best){ best=src->groups[i].count; gi=i; }
-    if (gi<0) return 0;                              /* province non groupée → rien à déporter ici */
+    if (gi<0){ if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG]   -> gi<0 (src n_groups=%d)\n",src->n_groups); return 0; }  /* province non groupée → rien à déporter ici */
     long captives=(long)((float)src->groups[gi].count*tune_f("SLAVE_FRACTION", 0.08f));
     if (captives<=0) return 0;
     /* le cœur doit DÉJÀ être représenté en groupes : injecter dans une région
      * mono-groupe (n_groups=0) masquerait sa population native (repli ignoré dès
      * n_groups>0). Pas de place libre non plus → on renonce. */
-    if (dst->n_groups<1 || dst->n_groups>=SCPS_MAX_GROUPS) return 0;
+    if (dst->n_groups<1 || dst->n_groups>=SCPS_MAX_GROUPS){ if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG]   -> dst n_groups=%d (gate n_groups<1 ou plein)\n",dst->n_groups); return 0; }
+    /* ESCLAVAGE — FUITE #5 : le groupe déporté recevait TOUJOURS `captives` âmes, mais la
+     * strate économique ne recevait que `moved` = ce qui a pu RÉELLEMENT être prélevé de
+     * strata[LABORER]/[BOURGEOIS] de la province prise (borné au dispo) — un écart (groupe
+     * > strate captée) dès que ces deux strates étaient insuffisantes. On calcule `moved`
+     * D'ABORD et on l'utilise pour LES DEUX (groupe et strate) : jamais plus d'âmes dans le
+     * groupe qu'on n'en a réellement arraché au bassin libre. */
+    ProvinceEconomy *spe=&econ->prov[spid], *dpe=&econ->prov[dpid];
+    float take=(float)captives;
+    float from_lab = fminf(take, spe->strata[CLASS_LABORER].pop);
+    spe->strata[CLASS_LABORER].pop -= from_lab; take -= from_lab;
+    if (take>0.f){ float from_bg=fminf(take, spe->strata[CLASS_BOURGEOIS].pop);
+        spe->strata[CLASS_BOURGEOIS].pop -= from_bg; take -= from_bg; }
+    long moved=captives-(long)take;                   /* ce qu'on a RÉELLEMENT pu prélever */
+    if (moved<=0) return 0;                           /* rien de prélevable : aucune déportation */
     /* déportation au CŒUR : on crée un cohorte DIASPORA non-intégrée (restive) de
      * culture étrangère → le D̄ du maître monte (la fracture s'installe au centre).
      * Toujours DISTINCTE (jamais fondue dans un groupe libre co-culturel). CLASS_SLAVE
      * (lot esclavage) : le groupe est TENU — klass bascule, entièrement pop_by_class
      * sur la strate servile (demography_emerge_classes le respecte, ne le réémerge plus). */
     PopGroup ng=src->groups[gi];                      /* garde heritage/culture/origine */
-    ng.count=captives; ng.diaspora=true; ng.arrival=ARR_DEPORTE; ng.integration=0.f;   /* déporté : diffuse FAIBLE */
+    ng.count=moved; ng.diaspora=true; ng.arrival=ARR_DEPORTE; ng.integration=0.f;   /* déporté : diffuse FAIBLE */
     ng.klass=CLASS_SLAVE;
-    memset(ng.pop_by_class,0,sizeof ng.pop_by_class); ng.pop_by_class[CLASS_SLAVE]=captives;
+    memset(ng.pop_by_class,0,sizeof ng.pop_by_class); ng.pop_by_class[CLASS_SLAVE]=moved;
     ng.home_reg=-1;                                   /* l'esclave est TENU (pas de retour ; home_reg memset 0 serait région 0) */
     ng.drift_id=SLAVE_DRIFT_BASE + region*SCPS_MAX_GROUPS + dst->n_groups;
     dst->groups[dst->n_groups++]=ng;
-    src->groups[gi].count-=captives;
+    src->groups[gi].count-=moved;
     if (src->groups[gi].count<=0){ src->groups[gi]=src->groups[src->n_groups-1]; src->n_groups--; }
-    /* STRATE ÉCONOMIQUE (le driver réel : strata[] pilote labor_avail/besoins/croissance) —
-     * les captifs sortent du bassin LIBRE de la province prise (journalier d'abord, le
-     * gros de la masse conquise ; borné au dispo) et rejoignent CLASS_SLAVE au cœur. */
-    {
-        ProvinceEconomy *spe=&econ->prov[spid], *dpe=&econ->prov[dpid];
-        float take=(float)captives;
-        float from_lab = fminf(take, spe->strata[CLASS_LABORER].pop);
-        spe->strata[CLASS_LABORER].pop -= from_lab; take -= from_lab;
-        if (take>0.f){ float from_bg=fminf(take, spe->strata[CLASS_BOURGEOIS].pop);
-            spe->strata[CLASS_BOURGEOIS].pop -= from_bg; take -= from_bg; }
-        float moved=(float)captives-take;             /* ce qu'on a RÉELLEMENT pu prélever */
-        dpe->strata[CLASS_SLAVE].pop += moved;
-    }
-    return captives;
+    dpe->strata[CLASS_SLAVE].pop += (float)moved;
+    return moved;
 }
 
 /* ---- guerre : SACCAGE (§4) — dépouiller la province prise -------------- */

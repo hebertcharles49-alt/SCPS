@@ -583,6 +583,19 @@ int main(int argc, char **argv){
                    s.eg->war_dead, (double)tune_f("SANG_MEMORY_HL", 40.f),
                    100.0*endgame_blood_ratio(s.eg, s.econ),
                    (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)*100.0);
+        /* P4 — ATTEIGNABILITÉ DE LA MERVEILLE : le metab_count MAX atteint (et par qui) —
+         * la preuve que la victoire 3/4/6 est à portée (ou pas) d'un monde réel. */
+        if (s.eg && w->n_countries>0){
+            int best=-1, bc=-1;
+            for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                if (w->country[c].n_regions<=0) continue;
+                int m = endgame_metab_count(w, s.econ, c);
+                if (m>best){ best=m; bc=c; }
+            }
+            if (bc>=0)
+                printf("              merveille : métabolisation MAX %d/6 (%s) — paliers 3/4/6\n",
+                       best, w->country[bc].name);
+        }
         /* CAPSTONE §27 — la FIN, si elle s'est déclenchée (la preuve d'émergence).
          * V1a : SANG rejoint les 4 visages ; « métab X/6 » sur ASCENSION (la barre
          * de métabolisation du vainqueur, la thèse du contact remplace la conquête). */

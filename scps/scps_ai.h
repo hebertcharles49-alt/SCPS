@@ -155,6 +155,11 @@ void   ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
                WorldLegitimacy *wl, AgencyState *ag, RouteNetwork *rn,
                DiploState *diplo, const Statecraft *sc, int day);
 
+/* P4 — la vente ANNUELLE du surplus servile aux Centres (le pool VIT — sans elle le
+ * canal d'achat, la voie de métabolisation des pacifistes, restait vide). APATRIDE
+ * (aucun ordonnanceur sérialisé) : appelé du bloc ANNUEL de sim_day. */
+void   ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const bool ai_on[]);
+
 /* #26 — `to` ÉVALUE une OFFRE de `from` (alliance/paix/pacte) et l'ACCEPTE ou la REFUSE.
  * Lue de l'OPINION (±100, mémoire des actes) + la relation structurelle + le score de guerre.
  * Le verbe diplo JOUEUR (§3) et la diplo IA-IA passent par CE chemin → consentement BILATÉRAL.

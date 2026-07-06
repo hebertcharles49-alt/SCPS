@@ -524,13 +524,21 @@ static void pend_costs(int owner, float ch, float fr, float h){
     if (owner<0||owner>=SCPS_MAX_COUNTRY) return;
     g_pend_charge[owner]+=ch; g_pend_fract[owner]+=fr; g_pend_H[owner]+=h;
 }
-/* le plus gros groupe MINORITAIRE d'une province (cible de former/purger) ; -1 si homogène */
+/* le plus gros groupe MINORITAIRE d'une province (cible de former/purger) ; -1 si homogène.
+ * ESCLAVAGE — un groupe TENU (klass==CLASS_SLAVE) n'est ni une minorité politique à FORMER
+ * (assimilation = intégration civique, sans objet pour une propriété) ni une cible de PURGE
+ * (la répression frappe des sujets libres ; l'esclave ne change de statut que par capture/
+ * vente/affranchissement, §II.6, H) : exclu des deux côtés (dominant ET candidat minoritaire). */
 static int biggest_minority(const ProvincePop *pp){
     if (!pp || pp->n_groups<2) return -1;
-    int dom=0; for (int g=1;g<pp->n_groups;g++) if (pp->groups[g].count>pp->groups[dom].count) dom=g;
+    int dom=-1; for (int g=0;g<pp->n_groups;g++){
+        if (pp->groups[g].klass==CLASS_SLAVE) continue;
+        if (dom<0 || pp->groups[g].count>pp->groups[dom].count) dom=g;
+    }
+    if (dom<0) return -1;                               /* province entièrement servile */
     int best=-1; long bc=0;
     for (int g=0;g<pp->n_groups;g++){
-        if (g==dom) continue;
+        if (g==dom || pp->groups[g].klass==CLASS_SLAVE) continue;
         if (pp->groups[g].count>bc){ bc=pp->groups[g].count; best=g; }
     }
     return best;
@@ -554,11 +562,16 @@ static void purge_slice(WorldEconomy *econ, WorldLegitimacy *wl, int reg){
     if (dead<1) dead=pg->count;
     pg->count-=dead; if (pg->count<0) pg->count=0;
     g_purge_dead+=dead;
-    /* la population régionale saigne d'autant (strates au prorata) */
-    float tot=0.f; for (int c=0;c<CLASS_COUNT;c++) tot+=re->strata[c].pop;
+    /* la population régionale saigne d'autant (strates au prorata). ESCLAVAGE — FUITE #8 :
+     * `biggest_minority` exclut désormais CLASS_SLAVE de sa cible, mais ce bleed proportionnel
+     * touchait TOUTE strata[c] (c<CLASS_COUNT) — la strate servile saignait pour une purge qui
+     * ne l'a jamais visée (aucun groupe esclave ne rétrécit ici), rompant l'invariant
+     * Σstrata[CLASS_SLAVE]==Σgroupes servile. La strate TENUE est exclue du bassin `tot`
+     * ET de la boucle de saignée — elle n'est jamais la cible d'une répression politique. */
+    float tot=0.f; for (int c=0;c<CLASS_COUNT;c++) if (c!=CLASS_SLAVE) tot+=re->strata[c].pop;
     if (tot>1.f){
         float k=1.f-(float)dead/tot; if (k<0.f) k=0.f;
-        for (int c=0;c<CLASS_COUNT;c++) re->strata[c].pop*=k;
+        for (int c=0;c<CLASS_COUNT;c++) if (c!=CLASS_SLAVE) re->strata[c].pop*=k;
     }
     re->coercion=1.f;                                   /* l'état d'exception */
     re->revolt_scar=1.f;                                /* la stabilité plonge des années (décroît lentement) */

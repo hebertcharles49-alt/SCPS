@@ -532,6 +532,11 @@
      * de RÉFÉRENCE du pool mondial (âmes, toutes origines confondues) : pool ≪ REF ⇒
      * rare ⇒ CHER (jusqu'à ×2.5) ; pool ≫ REF ⇒ surabondant ⇒ BON MARCHÉ (jusqu'à
      * ×0.5). Borné [0.5, 2.5] (même discipline que les paliers de prix intertrade). */ \
-    X(SLAVE_POOL_REF,           600.0f)
+    X(SLAVE_POOL_REF,           600.0f) \
+    /* P4 — LA VENTE IA DU SURPLUS (le pool VIT) : l'esclavagiste garde KEEP_FRAC de la
+     * pop régionale en mains serviles et vend SELL_FRAC de l'excédent par an. Sans
+     * cette règle le pool restait à 0 (mesuré 5 graines) — le canal d'achat mort. */ \
+    X(SLAVE_AI_KEEP_FRAC,        0.02f) \
+    X(SLAVE_AI_SELL_FRAC,        0.25f)
 
 #endif /* SCPS_TUNE_LIST_H */

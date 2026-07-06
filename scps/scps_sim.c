@@ -819,6 +819,7 @@ void sim_day(Sim *s, World *w) {
         PROF(PB_INTERTRADE, intertrade_tick(s->econ, s->rn, s->dp));   /* grandes routes marchandes (goods inter-pays + embargo) */
         PROF(PB_CONTACT, demography_contact_tick(s->econ, s->drift, s->rn, s->dp, 5.f, 5.f, 1.f));   /* S2 : la cristallisation suit le contact (annuel) */
         demography_migration_pact_tick(s->econ, s->dp);   /* BRASSAGE : échange passif de population entre alliés (annuel) */
+        ai_slave_trade_year(w, s->econ, s->ai, s->ai_on); /* P4 : le pool des Centres se remplit (vente du surplus servile) */
         demography_refugee_tick(w, s->econ, s->dp);        /* BRASSAGE : la guerre fait FUIR, l'apaisement fait RESPIRER (annuel) */
         wild_cultural_tick(s, w);   /* HAMEAUX LIBRES (B4) : ralliement culturel des hameaux WILD au voisin */
         PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));

@@ -355,6 +355,64 @@ int main(int argc, char **argv){
         free(w); free(e);
     }
 
+    /* ═══ 11c. INVARIANT — Σ strata[CLASS_SLAVE] == Σ groupes klass==CLASS_SLAVE ═════════
+     * Le test qui aurait pris tout le lot de fuites d'un coup (strates fantômes v68) : un
+     * groupe TENU cristallisé culturellement dans le dominant PERDRAIT son identité (klass)
+     * en survivant comme un simple `count` fondu — l'invariant DOIT tenir même après une
+     * assimilation à distance nulle (D<FUSE_EPS) entre un esclave et son maître. */
+    printf("\n── 11c. Invariant esclavage : assimilation ne fusionne JAMAIS un groupe TENU ──\n");
+    {
+        ProvincePop sp; memset(&sp,0,sizeof sp);
+        /* le dominant et l'esclave PARTAGENT la même culture d'origine (D=0 < FUSE_EPS) :
+         * sans la garde, assimilation_tick les fusionnerait au premier tick. */
+        sp.groups[0]=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_LABORER, 8000,6.f,1.f,false);
+        PopGroup slv=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_SLAVE, 2000,2.f,0.05f,true);
+        slv.arrival=ARR_DEPORTE; sp.groups[1]=slv; sp.n_groups=2;
+        int n_before=sp.n_groups;
+        for (int yr=0; yr<40; yr++) assimilation_tick(&sp, drift, 5.f, 5.f, 1.f);
+        long slave_groups_count=0; int n_slave_groups=0;
+        for (int i=0;i<sp.n_groups;i++) if (sp.groups[i].klass==CLASS_SLAVE){
+            slave_groups_count+=sp.groups[i].count; n_slave_groups++;
+        }
+        printf("   groupes avant=%d après=%d ; groupe(s) esclave survivant(s)=%d (âmes=%ld)\n",
+               n_before, sp.n_groups, n_slave_groups, slave_groups_count);
+        ok("le groupe TENU N'A PAS fusionné malgré D=0 (identité klass préservée)",
+           n_slave_groups==1 && slave_groups_count==2000);
+    }
+    /* ═══ 11d. INVARIANT GLOBAL — Σ strata[CLASS_SLAVE] == Σ groupes servile, par province,
+     * après capture + vente + affranchissement (le cycle complet) ═══════════════════════ */
+    printf("\n── 11d. Invariant global esclavage : strates==groupes après un cycle complet ──\n");
+    {
+        WorldEconomy *e=calloc(1,sizeof(WorldEconomy));
+        e->n_prov=2; e->n_regions=2;
+        e->region_rep_prov[0]=0; e->region_rep_prov[1]=1;
+        ProvinceEconomy *pa=&e->prov[0], *pb=&e->prov[1];
+        pa->owner=0; pa->active=true; pa->colonized=true; pa->region=0;
+        pb->owner=1; pb->active=true; pb->colonized=true; pb->region=1;
+        pa->strata[CLASS_LABORER].pop=5000.f;
+        pa->pop.groups[0]=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_LABORER, 5000,6.f,1.f,false);
+        pa->pop.n_groups=1;
+        pb->strata[CLASS_LABORER].pop=3000.f;
+        pb->strata[CLASS_SLAVE].pop=1000.f;
+        pb->pop.groups[0]=grp(HERITAGE_AGRAIRE, SPHERE_HOMMES, halfc, CLASS_LABORER, 3000,6.f,1.f,false);
+        PopGroup slv3=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS, cult(8,2,8,7,ETHOS_HONNEUR), CLASS_SLAVE, 1000,2.f,0.05f,true);
+        slv3.arrival=ARR_DEPORTE; pb->pop.groups[1]=slv3; pb->pop.n_groups=2;
+        /* le cycle : affranchissement du pays 1 (pb), et vérification par province. */
+        demography_manumit_country(e,1);
+        bool inv_ok=true;
+        for (int p=0;p<e->n_prov;p++){
+            long strata_slave=(long)e->prov[p].strata[CLASS_SLAVE].pop;
+            long group_slave=0;
+            for (int i=0;i<e->prov[p].pop.n_groups;i++)
+                if (e->prov[p].pop.groups[i].klass==CLASS_SLAVE) group_slave+=e->prov[p].pop.groups[i].count;
+            printf("   province %d : strates=%ld groupes=%ld\n", p, strata_slave, group_slave);
+            if (strata_slave!=group_slave) inv_ok=false;
+        }
+        ok("INVARIANT Σstrata[CLASS_SLAVE]==Σgroupes klass==CLASS_SLAVE tient par province",
+           inv_ok);
+        free(e);
+    }
+
     /* ═══ 12. LOT G — RÉINCORPORATION DE POP (CMD_POP_TRANSFER, granularité RÉGION) ═ */
     printf("\n── 12. Réincorporation de pop : les groupes suivent, le coût frappe la source ──\n");
     {

@@ -186,7 +186,16 @@ int assimilation_tick(ProvincePop *pp, ModifierStack *drift, float P, float K, f
         PopGroup *g=&pp->groups[i];
         PopCulture eff=group_culture_effective(g, drift);
         float d=econ_content_dist_faith(&eff,&target);
-        if (d<FUSE_EPS){                                   /* fusion dans le dominant */
+        /* ESCLAVAGE — FUITE #2 : la fusion cristallise l'IDENTITÉ du groupe fondu dans le
+         * dominant (klass/pop_by_class du groupe disparu sont PERDUS, seul `count` survit).
+         * Un groupe TENU (klass==CLASS_SLAVE, ou le dominant lui-même esclave — cas rare mais
+         * possible si les captifs deviennent le plus gros groupe) ne doit JAMAIS fusionner :
+         * on ne devient/cesse d'être esclave que par capture/vente/affranchissement (§II.6, H),
+         * jamais par assimilation culturelle. Sans cette garde, strata[CLASS_SLAVE].pop survit
+         * au groupe fondu → fantôme (mesuré SLAVEDIAG seed 10 : groupes 40→0 pendant que
+         * strates reste ~80-90). La dérive culturelle elle-même reste inoffensive (un esclave
+         * peut converger culturellement sans changer de statut) — seule la FUSION est bloquée. */
+        if (d<FUSE_EPS && g->klass!=CLASS_SLAVE && pp->groups[dom_idx].klass!=CLASS_SLAVE){    /* fusion dans le dominant */
             pp->groups[dom_idx].count += g->count;
             int last=pp->n_groups-1;
             pp->groups[i]=pp->groups[last]; pp->n_groups--;
@@ -636,15 +645,19 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp){
             int dstBA=pact_border_prov(e,a,rsrcB); if (dstBA<0) dstBA=top_prov[a];  /* b→a : entre à la FRONTIÈRE de a */
             ProvincePop *srcA=&e->prov[top_prov[a]].pop, *dstB=&e->prov[dstAB].pop;
             ProvincePop *srcB=&e->prov[top_prov[b]].pop, *dstA=&e->prov[dstBA].pop;
-            /* a→b : ∝ attractivité de b (b, s'il est plus prospère, reçoit plus). */
+            /* a→b : ∝ attractivité de b (b, s'il est plus prospère, reçoit plus). ESCLAVAGE :
+             * un groupe TENU ne migre jamais de son propre chef (§II.6, H) — province_dominant
+             * est purement par COUNT et pourrait en théorie désigner un groupe esclave devenu
+             * majoritaire ; migration_move ne synchronise pas strata[] (cf. sa définition), donc
+             * le laisser passer romprait l'invariant Σstrata[CLASS_SLAVE]==Σgroupes servile. */
             PopGroup *da=(PopGroup*)province_dominant(srcA);
-            if (da){
+            if (da && da->klass!=CLASS_SLAVE){
                 long amt=(long)((float)da->count*frac*(2.f*sb/tot_attr));
                 if (amt>=fmin && migration_move(srcA,dstB,(int)(da-srcA->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,rsrcA)) flows++;
             }
             /* b→a : ∝ attractivité de a (re-résoudre le dominant : le move a pu compacter). */
             PopGroup *db=(PopGroup*)province_dominant(srcB);
-            if (db){
+            if (db && db->klass!=CLASS_SLAVE){
                 long amt=(long)((float)db->count*frac*(2.f*sa/tot_attr));
                 if (amt>=fmin && migration_move(srcB,dstA,(int)(db-srcB->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,rsrcB)) flows++;
             }
@@ -719,6 +732,14 @@ int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
         int rpb=econ_region_rep_province(e, best);
         if (rpb<0 || rpb>=e->n_prov) continue;
         for (int i=pe->pop.n_groups-1; i>=0; i--){          /* la violence ne trie pas : chaque groupe fuit */
+            /* ESCLAVAGE — FUITE #3 : un groupe TENU (klass==CLASS_SLAVE) ne fuit PAS de
+             * lui-même (il est une propriété déplacée par son maître, pas un déplacé libre —
+             * §II.6, H, cf. demography_pop_transfer qui l'exempte déjà de la coercition à la
+             * source). migration_move ne synchronise PAS strata[]/pop (il ne bouge QUE la
+             * struct PopGroup, cf. la fonction) — laisser un esclave migrer romprait
+             * l'invariant Σstrata[CLASS_SLAVE]==Σgroupes klass==CLASS_SLAVE (la strate source
+             * ne bouge pas, la province d'accueil gagne un groupe SANS que sa strate suive). */
+            if (pe->pop.groups[i].klass==CLASS_SLAVE) continue;
             long amt=(long)((float)pe->pop.groups[i].count*flee_frac);
             if (amt<flee_min) continue;
             if (migration_move(&pe->pop, &e->prov[rpb].pop, i, amt, demography_dyn_id_next(), ARR_REFUGIE, r)) fled++;
@@ -818,6 +839,9 @@ void demography_tick(World *w, WorldEconomy *econ, WorldLegitimacy *wl,
         int rpb=econ_region_rep_province(econ, best);
         if (rpb<0 || rpb>=econ->n_prov) continue;
         PopGroup *dom=(PopGroup*)province_dominant(&pe->pop);
+        /* ESCLAVAGE — un groupe TENU ne migre pas de lui-même vers la prospérité voisine
+         * (§II.6, H) ; comme migration_pact ci-dessus, migration_move ne suit pas strata[]. */
+        if (dom->klass==CLASS_SLAVE) continue;
         /* ÉCHELONNE avec l'attractivité : un AIMANT (ULTRA-bâti + ULTRA-prospère) tire au
          * plafond, un voisin à peine plus attractif tire la base → « migration TRÈS élevée ». */
         float pull=(best_attr-src_attr)/MIG_GRADIENT;
