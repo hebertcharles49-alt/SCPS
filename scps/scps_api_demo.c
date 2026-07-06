@@ -131,17 +131,30 @@ int main(int argc, char **argv){
         int nc2 = scps_country_count(s2);
         ScpsRelation rel[64]; int nr = scps_country_relations(s2, pl, rel, 64);
         int wars0=0; for (int i=0;i<nr;i++) wars0 += rel[i].at_war;
-        /* v50 (le DIPLOMATE) : UN acte / 2 mois — on vise UNE cible dont la déclaration
-         * est LÉGALE (options) et qui paraît dans les relations (pas un hameau libre). */
+        /* W-GUERRE-3 : déclarer la guerre exige désormais un CASUS BELLI. On cherche
+         * d'abord une cible à CB déjà UTILISABLE (gratuit — subjugation/anti-piraterie) ;
+         * à défaut on FABRIQUE une intrigue (2 ans du revenu de la cible) contre une
+         * cible qu'on peut se payer, on la laisse MÛRIR (FAB_MATURE_DAYS ≈ 365 j), puis
+         * on déclare — l'aller-retour complet du NOUVEAU flux (v50 : UN acte / 2 mois ;
+         * jamais un hameau libre role==4). */
         int wt=-1;
         for (int c=0;c<nc2 && wt<0;c++){
             if (c==pl || scps_country_role(s2,c)==4) continue;
             ScpsDiploOptions op;
-            if (scps_diplo_options(s2, c, &op) && op.can_declare_war) wt=c;
+            if (scps_diplo_options(s2, c, &op) && op.can_declare_war) wt=c;   /* CB déjà utilisable */
+        }
+        if (wt<0){                                          /* aucun CB gratuit → FABRIQUER */
+            for (int c=0;c<nc2 && wt<0;c++){
+                if (c==pl || scps_country_role(s2,c)==4) continue;
+                ScpsDiploOptions op;
+                if (scps_diplo_options(s2, c, &op) && op.can_fabricate
+                    && scps_player_fabricate_cb(s2, c)>0) wt=c;   /* l'or PAYÉ, l'intrigue court */
+            }
+            if (wt>=0) scps_sim_advance_days(s2, 400);       /* > FAB_MATURE_DAYS : l'intrigue MÛRIT */
         }
         int enq = (wt>=0) ? scps_player_declare_war(s2, wt) : 0;
-        ok("verbe DÉCLARER LA GUERRE : ordre ENFILÉ (différé, cible légale)", enq>0);
-        scps_sim_advance_days(s2, 1);                       /* le drain applique */
+        ok("verbe DÉCLARER LA GUERRE : ordre ENFILÉ (CB gratuit ou intrigue mûrie)", enq>0);
+        scps_sim_advance_days(s2, 1);                       /* le drain applique (le CB est consommé) */
         nr = scps_country_relations(s2, pl, rel, 64);
         int wars1=0; for (int i=0;i<nr;i++) wars1 += rel[i].at_war;
         printf("   diplo joueur : guerres %d → %d après déclaration au drain\n", wars0, wars1);
