@@ -115,9 +115,11 @@ static bool is_lowland(Biome b){ return b==BIO_PLAINS||b==BIO_FARMLAND||b==BIO_G
 #define AGE_DAWN_YEARS 20   /* l'âge de l'Aube (base) dure les 20 premières années */
 #define AGE_MIN_YEARS  30   /* puis un âge par génération (30 ans) entre avènements */
 
+static void events_fire_caps_seed(EventsState *ev, uint32_t seed);  /* défini avec fire_event */
 void events_init(EventsState *ev, const World *w, uint32_t seed){
     memset(ev,0,sizeof(*ev));
     ev->rng = seed ? seed : 0xA17F23C5u;
+    events_fire_caps_seed(ev, ev->rng);   /* PLAFOND DE TIRS À VIE : 3-5 par évènement plafonné */
     ev->ages.research_mult = 1.f;
     ev->ages.integration_mult = 1.f;
     ev->ages.last_dawned = -1;
@@ -1554,22 +1556,59 @@ static bool pending_event_has(const EventsState *ev, int evid, int subject){
  * (n_options>1) : la membrane l'ENFILE alors pour son choix (§4) au lieu de
  * trancher à sa place. Les évènements à option UNIQUE (chocs géo, floraisons)
  * restent auto-résolus même pour le joueur — rien à choisir, pas de décision. */
+/* PLAFOND DE TIRS À VIE (demande joueur : « 3-5 triggers PAR évènement ») — chaque
+ * dilemme n'arrive que 3-5 fois dans TOUTE LA PARTIE, monde entier (la rareté fait
+ * l'évènement). Les évènements PLAFONNÉS = les dilemmes narratifs (crise phare, W1,
+ * §A latches tech, §B culturel, §C religieux) ; NON plafonnés (0) : les chocs géo/
+ * floraisons (leur anti-acharnement propre) et le chaînage §D — une cicatrice mûrie
+ * DOIT revenir, sinon les choix perdent leur sens (§D reste borné par ses cicatrices
+ * = par les CHOIX). Le plafond effectif (3-5) est tiré à events_init d'un hash
+ * graine×evid — déterministe, sérialisé (fire_cap). */
+static const uint8_t EV_CAPPED[EVID_COUNT] = {
+    [EVID_MARBRIVE]=1,          [EVID_CLOCHES]=1,        [EVID_ENTREPOTS_FERMES]=1,
+    [EVID_DEUX_CARTES]=1,       [EVID_EAU_NOIRE]=1,      [EVID_DERNIERE_DECISION]=1,
+    [EVID_DROIT_INTEGRATION]=1, [EVID_DIASPORA_COMPTOIRS]=1,
+    [EVID_FOI_FENDRE]=1,        [EVID_PROPHETE_BRECHE]=1, [EVID_RELIQUE_DOUTEUSE]=1,
+    [EVID_SALVE_RUNIQUE]=1,     [EVID_CHAINES_RAPPORTENT]=1, [EVID_OEUVRE_NOIRE]=1,
+    [EVID_SAVOIR_INTERDIT]=1,   [EVID_CULTE_IMPERIAL]=1,  [EVID_EVEIL]=1,
+    [EVID_FOREUSE_SAIGNE]=1,
+};
+static void events_fire_caps_seed(EventsState *ev, uint32_t seed){
+    for (int e=0;e<EVID_COUNT;e++)
+        ev->fire_cap[e] = EV_CAPPED[e]
+            ? (uint8_t)(3u + ((seed*2654435761u ^ (unsigned)e*2246822519u) % 3u))
+            : 0u;
+}
+int events_fire_cap(const EventsState *ev, int evid){
+    return (ev && evid>=0 && evid<EVID_COUNT) ? ev->fire_cap[evid] : 0;
+}
+int events_fire_count(const EventsState *ev, int evid){
+    return (ev && evid>=0 && evid<EVID_COUNT) ? ev->fires[evid] : 0;
+}
+static void ev_fire_note(EventsState *ev, int evid){
+    if (ev->fires[evid]<255) ev->fires[evid]++;
+}
+
 static void fire_event(EventCtx *cx, int evid, int subject){
     const EventDef *d=&EVENTS[evid];
     /* RÉPIT (hook cooldown_days d'un choix précédent) : cet évènement ne retire pas
      * sur ce sujet tant qu'il n'a pas expiré — même acteur pour l'IA et le joueur. */
     if (decision_cooldown_active(cx->ev, evid, subject, cx->ev->ages.days_elapsed)) return;
+    /* PLAFOND DE TIRS À VIE : le monde a déjà vécu cet évènement son content. */
+    if (cx->ev->fire_cap[evid]>0 && cx->ev->fires[evid] >= cx->ev->fire_cap[evid]) return;
     if (d->n_options>1 && cx->human_player>=0){
         int owner = event_owner_of(cx, d->scope, subject);
         if (owner==cx->human_player){
-            if (!pending_event_has(cx->ev, evid, subject))
-                pending_event_push(cx->ev, evid, subject, cx->ev->ages.days_elapsed);
+            if (!pending_event_has(cx->ev, evid, subject) &&
+                pending_event_push(cx->ev, evid, subject, cx->ev->ages.days_elapsed))
+                ev_fire_note(cx->ev, evid);   /* compté à l'ENFILAGE (l'évènement a eu lieu) */
             return;
         }
     }
     int best=0; float bw=-1.f;
     for (int i=0;i<d->n_options;i++) if (d->options[i].ai_chance>bw){ bw=d->options[i].ai_chance; best=i; }
     resolve_choice(cx, evid, subject, best, cx->ev->ages.days_elapsed);
+    ev_fire_note(cx->ev, evid);
 }
 
 /* ===================================================================== */

@@ -350,6 +350,14 @@ typedef struct {
     AnnalEntry   annals[ANNALS_CAP];
     int          annal_head;      /* prochaine case d'écriture (round-robin avant remplissage) */
     int          annal_n;         /* nombre d'entrées valides (<=ANNALS_CAP) */
+    /* PLAFOND DE TIRS À VIE (demande joueur : « 3-5 triggers PAR évènement ») :
+     * chaque dilemme n'arrive que 3-5 fois dans TOUTE LA PARTIE, monde entier.
+     * fire_cap[e] est tiré à events_init (3-5, hash déterministe graine×evid ;
+     * 0 = illimité — chocs géo/directeur et chaînage §D, borné par ses cicatrices
+     * = par les CHOIX). fires[e] compte les tirs (saturé 255), incrémenté à
+     * l'ENFILAGE joueur comme à la résolution IA (l'évènement « a eu lieu »). */
+    uint8_t      fires[EVID_COUNT];
+    uint8_t      fire_cap[EVID_COUNT];
 } EventsState;
 
 /* ===================================================================== */
@@ -481,6 +489,12 @@ long  events_cellule_faubourgs_fired(void);
 long  events_fusils_reviennent_fired(void);
 long  events_savants_ennemi_fired(void);
 long  events_tarif_appris_fired(void);
+
+/* PLAFOND DE TIRS À VIE — lecteurs (UI/bancs) : le plafond MONDIAL d'un évènement
+ * (0 = illimité ; sinon 3-5, tiré de la graine à events_init) et le compteur
+ * courant (tous deux état sérialisé EventsState). */
+int   events_fire_cap(const EventsState *ev, int evid);
+int   events_fire_count(const EventsState *ev, int evid);
 
 /* ---- Garde-fou membrane : aucun nom SCPS dans les textes joueur -------- */
 bool  events_text_clean(void);

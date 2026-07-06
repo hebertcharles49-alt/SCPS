@@ -817,6 +817,66 @@ int main(int argc, char **argv){
         } else ok("(pas de capitale peuplée pour le test helper §B1 — ignoré)", true);
     }
 
+    /* ============================================================= */
+    /* 13. PLAFOND DE TIRS À VIE (« 3-5 triggers PAR évènement », monde entier) */
+    /* ============================================================= */
+    printf("\n-- section 13 : plafond de tirs à vie ------------------------\n");
+    {
+        /* (a) les plafonds tirés à events_init : dilemmes ∈ [3,5], DÉTERMINISTES
+         * (même graine → mêmes plafonds), chocs géo / chaînage §D à 0 (illimité). */
+        events_init(s.ev,s.w,seed);
+        bool in_range=true;
+        int capped_ids[]={EVID_MARBRIVE,EVID_CLOCHES,EVID_EAU_NOIRE,EVID_SALVE_RUNIQUE,
+                          EVID_CHAINES_RAPPORTENT,EVID_DROIT_INTEGRATION,EVID_FOI_FENDRE};
+        for (unsigned i=0;i<sizeof capped_ids/sizeof capped_ids[0];i++){
+            int cap=events_fire_cap(s.ev,capped_ids[i]);
+            if (cap<3||cap>5) in_range=false;
+        }
+        ok("plafonds des dilemmes ∈ [3,5] (crise phare, W1, latch tech, §B, §C)", in_range);
+        int cap_clo = events_fire_cap(s.ev,EVID_CLOCHES);
+        events_init(s.ev,s.w,seed);
+        ok("… et DÉTERMINISTES (même graine → même plafond)",
+           events_fire_cap(s.ev,EVID_CLOCHES)==cap_clo);
+        ok("chocs géo / chaînage §D NON plafonnés (0 = illimité — une cicatrice mûrie DOIT revenir)",
+           events_fire_cap(s.ev,EVID_QUAKE)==0 && events_fire_cap(s.ev,EVID_REMEDE_MORTS)==0
+           && events_fire_cap(s.ev,EVID_PONT_EFFONDRE)==0);
+
+        /* (b) comportement : la fixture §B1 (off-culture>25%, tech débloquée) reste
+         * VRAIE en continu — sans plafond l'évènement retirerait indéfiniment ; avec,
+         * le MONDE s'arrête PILE au plafond et n'en retire plus jamais. */
+        events_init(s.ev,s.w,seed);
+        int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+        if (capr>=0 && rp>=0){
+            int cid=s.econ->region[capr].owner;
+            for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].unlocked[TECH_INTEGRATION]=false;
+            if (cid>=0 && cid<SCPS_MAX_COUNTRY) s.ts[cid].unlocked[TECH_INTEGRATION]=true;
+            ProvincePop *pp=&s.econ->prov[rp].pop;
+            memset(pp,0,sizeof(*pp));
+            pp->n_groups=2;
+            pp->groups[0].heritage=HERITAGE_ADAPTATIF; pp->groups[0].count=600; pp->groups[0].diaspora=false;
+            pp->groups[0].origin_sphere=heritage_sphere(HERITAGE_ADAPTATIF);
+            pp->groups[0].integration=1.f; pp->groups[0].faith=-1;
+            pp->groups[0].culture=make_fiche(5.f,ETHOS_BUREAUCRATE,HERITAGE_ADAPTATIF);
+            pp->groups[1].heritage=HERITAGE_CLANIQUE; pp->groups[1].count=400; pp->groups[1].diaspora=true;
+            pp->groups[1].origin_sphere=heritage_sphere(HERITAGE_CLANIQUE);
+            pp->groups[1].integration=0.1f; pp->groups[1].faith=-1;
+            pp->groups[1].culture=make_fiche(0.f,ETHOS_DOMINATEUR,HERITAGE_CLANIQUE);
+            pp->groups[1].culture.religion=10.f;
+            s.econ->prov[rp].strata[CLASS_LABORER].pop=1000.f;
+            econ_aggregate_regions(s.econ);
+            s.econ->region[capr].owner=(int16_t)cid;
+            long base=events_droit_integration_fired();
+            for (int d=0; d<36500*3; d+=30)   /* 300 ans : de quoi épuiser le plafond ET prouver l'arrêt */
+                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+            long tirs = events_droit_integration_fired()-base;
+            int cap = events_fire_cap(s.ev, EVID_DROIT_INTEGRATION);
+            ok("le dilemme s'ARRÊTE PILE au plafond mondial (3-5 tirs en 300 ans de trigger vrai)",
+               tirs==(long)cap);
+            ok("le compteur sérialisé reflète les tirs (events_fire_count == plafond)",
+               events_fire_count(s.ev, EVID_DROIT_INTEGRATION)==cap);
+        } else { ok("(pas de capitale — plafond ignoré)", true); ok("(idem)", true); }
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

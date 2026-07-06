@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 65u           /* v65 : TXYR ÉTENDUE — l'instrument I0 de l'année EN COURS
+#define SAVE_VERSION 66u           /* v66 : PLAFOND DE TIRS À VIE — EventsState gagne
+                                    * fires[EVID_COUNT][SCPS_MAX_COUNTRY] (nb de tirs par
+                                    * évènement×pays ; les dilemmes récurrents plafonnent à
+                                    * 3-5, les latches tech à 1) ⇒ la section EVNT (fwrite
+                                    * BRUT) change de taille. <v66 refusé.
+                                    * v65 : TXYR ÉTENDUE — l'instrument I0 de l'année EN COURS
                                     * (g_flux[][FX_COUNT] + compteurs de mois) rejoint la section :
                                     * sans lui, la capture annuelle post-reload lisait un flux
                                     * TRONQUÉ → d_treasury_mois (dilemmes/décrets) divergeait

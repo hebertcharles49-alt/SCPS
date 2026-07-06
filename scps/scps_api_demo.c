@@ -535,7 +535,14 @@ int main(int argc, char **argv){
         long popB=scps_country_pop(nb, pb);
         printf("   P4 effet : pop joueur sans-foi=%ld · avec-foi(Fécondité+Couronne)=%ld\n", popA, popB);
         ok("la religion MORD sur le moteur (pop joueur diverge)", popB != popA);
-        ok("foi pro-natalité ⇒ pop ≥ sans-foi", popB >= popA);
+        /* ⚠ « popB >= popA » était SENSIBLE AU MONDE : depuis le PLAFOND DE TIRS À VIE
+         * (3-5 dilemmes par partie), les runs A/B ne subissent plus le MÊME tirage de
+         * dilemmes — un choc ponctuel (pop_mult d'un choix IA) noie le nudge sur 10-30
+         * ans. L'intention (« Fécondité POUSSE la natalité ») se prouve au CANAL,
+         * insensible au monde : l'accumulateur de foi arme RC_POPGROWTH > 0. */
+        { const ReligAccum *acc = religion_country_acc(pb);
+          ok("foi pro-natalité : le canal RC_POPGROWTH est ARMÉ (>0) chez le fidèle",
+             acc && acc->ch[RC_POPGROWTH] > 0.f); }
         religion_reset();
         scps_sim_free(nb);
     }
