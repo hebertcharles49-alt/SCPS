@@ -566,6 +566,15 @@ static void sim_cmd_drain(Sim *s, World *w){
             bool can = econ_country_can_enslave(w, s->econ, &s->ts[p], p);
             intertrade_slave_buy(s->econ, r, n, can);
             break; }
+          /* ── LOT G — RÉINCORPORATION DE POP : a={A, B, klass, count}. REVALIDÉ :
+           *    A≠B toutes deux au joueur (les âmes ne quittent que le royaume propre). ── */
+          case CMD_POP_TRANSFER: {
+            int ra=c->a[0], rb=c->a[1], klass=c->a[2]; long n=c->a[3];
+            if (ra<0 || ra>=s->econ->n_regions || rb<0 || rb>=s->econ->n_regions || ra==rb) break;
+            if (s->econ->region[ra].owner!=p || s->econ->region[rb].owner!=p) break;
+            if (klass<0 || klass>=CLASS_COUNT || n<=0) break;
+            demography_pop_transfer(s->econ, ra, rb, klass, n);
+            break; }
         }
     }
     s->cmd_n = 0;

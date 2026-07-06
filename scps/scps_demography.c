@@ -919,3 +919,92 @@ long demography_manumit_country(WorldEconomy *econ, int cid){
     g_manumit_total += freed;
     return freed;
 }
+
+/* LOT H — la révolte SERVILE VICTORIEUSE affranchit DE FORCE, granularité RÉGION.
+ * Même bascule que demography_manumit_country (klass→CLASS_LABORER, DÉPORTÉ→MIGRANT,
+ * intégration GARDÉE), mais bornée à la province représentative de `region` (RE-KEY
+ * PROVINCE, comme tout le module scps_revolt.c qui route dessus). */
+long demography_manumit_region(WorldEconomy *econ, int region){
+    if (!econ || region<0 || region>=econ->n_regions) return 0;
+    int rp=econ_region_rep_province(econ, region);
+    if (rp<0 || rp>=econ->n_prov) return 0;
+    ProvinceEconomy *pe=&econ->prov[rp];
+    ProvincePop *pp=&pe->pop;
+    long freed=0; float moved=0.f;
+    for (int i=0;i<pp->n_groups;i++){
+        PopGroup *g=&pp->groups[i];
+        if (g->klass!=CLASS_SLAVE) continue;
+        g->klass=CLASS_LABORER;
+        if (g->arrival==ARR_DEPORTE) g->arrival=ARR_MIGRANT;
+        g->pop_by_class[CLASS_SLAVE]=0; g->pop_by_class[CLASS_LABORER]=g->count;
+        moved += (float)g->count;
+        freed += g->count;
+    }
+    if (moved>0.f){
+        float take=fminf(moved, pe->strata[CLASS_SLAVE].pop);
+        pe->strata[CLASS_SLAVE].pop -= take;
+        pe->strata[CLASS_LABORER].pop += take;
+    }
+    g_manumit_total += freed;
+    return freed;
+}
+
+/* ---- RÉINCORPORATION DE POP (LOT G — CMD_POP_TRANSFER, granularité RÉGION) --- *
+ * RELOC_COERCION_BASE mirror : la coercition forcée (scps_econ.c, econ_relocate_pop)
+ * frappe la région source proportionnellement à la fraction déplacée — le MÊME prix
+ * pour un déplacement de groupes que pour un déplacement de strates brutes. */
+#define POP_TRANSFER_COERCION_BASE 0.25f
+long demography_pop_transfer(WorldEconomy *econ, int src_region, int dst_region,
+                             int klass, long count){
+    if (!econ || count<=0) return 0;
+    if (src_region<0 || src_region>=econ->n_regions) return 0;
+    if (dst_region<0 || dst_region>=econ->n_regions) return 0;
+    if (src_region==dst_region) return 0;
+    if (klass<0 || klass>=CLASS_COUNT) return 0;
+    int srp=econ_region_rep_province(econ, src_region);
+    int drp=econ_region_rep_province(econ, dst_region);
+    if (srp<0 || srp>=econ->n_prov || drp<0 || drp>=econ->n_prov) return 0;
+    ProvinceEconomy *spe=&econ->prov[srp];
+    ProvinceEconomy *dpe=&econ->prov[drp];
+    if (!spe->colonized || !dpe->colonized) return 0;
+    ProvincePop *pp=&spe->pop;
+    if (pp->n_groups<=0) return 0;
+
+    /* PLANCHER ANTI-VIDAGE : jamais plus de la MOITIÉ de la classe ciblée ici (même
+     * discipline qu'econ_relocate_pop : take <= src_pop*0.5). */
+    long klass_pop=0;
+    for (int i=0;i<pp->n_groups;i++) if (pp->groups[i].klass==(SocialClass)klass) klass_pop+=pp->groups[i].count;
+    if (klass_pop<=0) return 0;
+    long cap=(long)((float)klass_pop*0.5f);
+    long want=count; if (want>cap) want=cap;
+    if (want<=0) return 0;
+
+    /* réparti PROPORTIONNELLEMENT entre les groupes de cette classe (les plus gros
+     * d'abord — comme le marché des Centres — pour vider peu de groupes plutôt que
+     * d'écrémer partout). Parcours à rebours : migration_move peut compacter n_groups. */
+    long remaining=want, moved=0;
+    for (int i=pp->n_groups-1; i>=0 && remaining>0; i--){
+        if (pp->groups[i].klass!=(SocialClass)klass) continue;
+        long share=(long)((float)pp->groups[i].count * (float)want / (float)klass_pop);
+        if (share>remaining) share=remaining;
+        if (share<=0) continue;
+        if (migration_move(pp, &dpe->pop, i, share, demography_dyn_id_next(), pp->groups[i].arrival, src_region)){
+            moved += share; remaining -= share;
+        }
+    }
+    if (moved<=0) return 0;
+
+    /* la strate ÉCONOMIQUE suit (comme demography_manumit_country) : Σ constante. */
+    { float take=fminf((float)moved, spe->strata[klass].pop);
+      spe->strata[klass].pop -= take;
+      dpe->strata[klass].pop += take; }
+
+    /* LE COÛT — coercition forcée à la SOURCE, SAUF pour la strate TENUE (on déplace
+     * une propriété, pas un sujet libre qu'on arrache à sa terre). */
+    if (klass!=CLASS_SLAVE){
+        float frac = (float)moved / (float)klass_pop;
+        spe->coercion = fminf(1.f, spe->coercion + POP_TRANSFER_COERCION_BASE * frac * 4.f);
+        dpe->coercion = fminf(1.f, dpe->coercion + POP_TRANSFER_COERCION_BASE * 0.10f);
+    }
+    return moved;
+}

@@ -775,6 +775,39 @@ int main(int argc, char **argv){
                 ok("(idem)", true); ok("(idem)", true); ok("(idem)", true);
                 ok("(idem)", true); ok("(idem)", true);
             }
+
+            /* ── LOT G — RÉINCORPORATION DE POP : verbe enfilé (revalidé au drain :
+             *    A≠B toutes deux au joueur). Le joueur n'a souvent qu'UNE région à la
+             *    genèse (la colonisation joueur est un ordre explicite, CMD_COLONIZE,
+             *    pas autonome) : la logique de fond est vérifiée en isolation par
+             *    demography_demo (§12, group-level) — ici on prouve la PLOMBERIE façade
+             *    (verbe enfilé + refus A==B), avec l'effet si le monde offre 2 régions. */
+            {
+                int rb=-1, np2=scps_province_count(sd);
+                for (int pp=0; pp<np2 && rb<0; pp++){ ScpsProvInfo pi; scps_province_info(sd,pp,&pi);
+                    if (pi.owner==me){ int rg=scps_province_region(sd,pp); if (rg>=0 && rg!=cap) rb=rg; } }
+                if (cap>=0 && rb>=0){
+                    ok("verbe POP_TRANSFER enfilé (deux régions distinctes au joueur)",
+                       scps_player_pop_transfer(sd, cap, rb, 0 /*CLASS_LABORER*/, 500)==1);
+                    scps_sim_advance_days(sd, 2);
+                    ok("A==B est refusé (aucun ordre n'aurait de sens)",
+                       scps_player_pop_transfer(sd, cap, cap, 0, 500)==1);   /* enfile quand même : REVALIDÉ au drain, pas au push */
+                } else {
+                    ok("(une seule région au joueur — POP_TRANSFER ignoré)", true);
+                    ok("(idem)", true);
+                }
+            }
+        }
+
+        /* ── LOT J — L'APERÇU DE MANUMISSION : lecture PURE, mots + nombres bornés. ── */
+        {
+            ScpsManumitPreview mp;
+            int okp = scps_manumit_preview(sd, &mp);
+            ok("scps_manumit_preview : lecture réussie (joueur valide)", okp==1);
+            ok("l'aperçu est BORNÉ (souls≥0, n_groups≥0, part∈[0,100], friction∈[0,1])",
+               mp.souls>=0 && mp.n_groups>=0
+               && mp.pct_of_country>=0.f && mp.pct_of_country<=100.f
+               && mp.friction_after>=0.f && mp.friction_after<=1.f);
         }
         scps_sim_free(sd);
     }

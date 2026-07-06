@@ -25,6 +25,7 @@
 #include "scps_world.h"     /* culture_make_name (ethnonyme façon Stellaris) */
 #include "scps_save.h"      /* SAUVEGARDE partagée : scps_save_game/load/slot_info */
 #include "scps_religion.h"  /* religion_reset (nouvelle partie) */
+#include "scps_math.h"      /* clampf (LOT J : scps_manumit_preview) */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -1419,6 +1420,59 @@ int scps_slave_market(ScpsSim *s, ScpsSlavePoolLine *out, int max, long *total_o
                         && econ_country_can_enslave(s->w, s->sim.econ, &s->sim.ts[p], p)) ? 1 : 0;
     }
     return n;
+}
+
+/* ── LOT G — RÉINCORPORATION DE POP ──────────────────────────────────────── */
+int scps_player_pop_transfer(ScpsSim *s, int src_region, int dst_region, int klass, long count){
+    if (!s || !s->ready || count<=0) return 0;
+    PlayerCmd c = { CMD_POP_TRANSFER, { src_region, dst_region, klass, (int32_t)count } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+
+/* ── LOT J — L'APERÇU DE MANUMISSION (lecture PURE, aucune mutation) ────────
+ * Balaie les provinces du joueur, compte les âmes/groupes CLASS_SLAVE, et projette
+ * la friction off-culture (économique) qu'elles porteraient une fois LIBRES — le
+ * même calcul qu'econ_off_culture_fraction, mais en incluant les groupes esclaves
+ * COMME S'ILS étaient déjà affranchis (motif des options-readers : un aperçu,
+ * jamais une mutation). Pondéré par province (Σ off × pop) / Σ pop du pays. */
+int scps_manumit_preview(ScpsSim *s, ScpsManumitPreview *out){
+    if (!out) return 0;
+    memset(out, 0, sizeof *out);
+    if (!s || !s->ready) return 0;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    if (p<0 || p>=s->w->n_countries) return 0;
+    WorldEconomy *e = s->sim.econ;
+    long souls=0; int n_groups=0; long total_pop=0;
+    double off_num=0.0, off_den=0.0;
+    for (int q=0;q<e->n_prov;q++){
+        const ProvinceEconomy *pe=&e->prov[q];
+        if (pe->owner!=p || !pe->colonized) continue;
+        const ProvincePop *pp=&pe->pop;
+        long ptot=0;
+        for (int i=0;i<pp->n_groups;i++) ptot += pp->groups[i].count;
+        total_pop += ptot;
+        for (int i=0;i<pp->n_groups;i++)
+            if (pp->groups[i].klass==CLASS_SLAVE){ souls += pp->groups[i].count; n_groups++; }
+        if (pp->n_groups<=1 || ptot<=0) continue;
+        /* projection : le dominant s'élit COMME SI aucun groupe n'était plus esclave
+         * (miroir econ_off_culture_fraction, sans le filtre group_is_slave). */
+        int dom=-1; long best=-1;
+        for (int i=0;i<pp->n_groups;i++) if (pp->groups[i].count>best){ best=pp->groups[i].count; dom=i; }
+        if (dom<0) continue;
+        Sphere doms = pp->groups[dom].origin_sphere;
+        float poff=0.f;
+        for (int i=0;i<pp->n_groups;i++){
+            float sd = sphere_distance(doms, pp->groups[i].origin_sphere)/7.f;
+            float mism = sd * (1.f - clampf(pp->groups[i].integration,0.f,1.f));
+            poff += mism * (float)pp->groups[i].count;
+        }
+        off_num += (double)poff; off_den += (double)ptot;
+    }
+    out->souls = souls;
+    out->n_groups = n_groups;
+    out->pct_of_country = (total_pop>0) ? (float)(100.0*(double)souls/(double)total_pop) : 0.f;
+    out->friction_after = (off_den>0.0) ? (float)(off_num/off_den) : 0.f;
+    return 1;
 }
 
 /* ── §3 — INTÉRIEUR · COMMERCE · GUERRE : plomberie additive (même motif que ci-dessus).

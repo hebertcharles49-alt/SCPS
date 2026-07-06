@@ -50,6 +50,11 @@
  * /100) dans le `worst` — tunable (registre J, scps_tune_list.h), défaut ici. */
 #define W_AGITATION_UNREST 0.20f
 
+/* LOT H — LA RÉVOLTE SERVILE STRUCTURELLE : au-delà de ce seuil de part servile, le
+ * déficit de révolte de la région monte structurellement (tunable, registre J). */
+#define SLAVE_REVOLT_SHARE 0.20f
+#define SLAVE_REVOLT_W     1.20f
+
 /* SUREXTENSION : au-delà d'un seuil de régions, un empire tient mal ses marches —
  * chaque région excédentaire pousse le déficit séparatiste. Les conquêtes mal
  * digérées finissent par se détacher → de NOUVEAUX pays émergent de la démesure.
@@ -316,6 +321,18 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
         int gf=group_carried_faith(econ, gg, region);
         if (gf>=0 && gf!=sfaith0 && !religion_region_stabilized(region))
             d += FAITH_LEAD * (1.f - clampf(gg->integration,0.f,1.f));
+        /* LOT H — la révolte SERVILE STRUCTURELLE : le MÊME terme de PART (revolt_scan)
+         * doit aussi pouvoir ALLUMER, pas seulement accumuler la désespérance — sinon
+         * une région servile mais autrement paisible n'ignite JAMAIS (son groupe esclave
+         * a un déficit ordinaire quasi nul). Porté par le groupe SERVILE lui-même. */
+        if (gg->klass==CLASS_SLAVE){
+            float allpop=0.f; for (int k=0;k<pp->n_groups;k++) allpop+=(float)pp->groups[k].count;
+            if (allpop>0.f){
+                float share=(float)gg->count/allpop;
+                float ref=tune_f("SLAVE_REVOLT_SHARE", SLAVE_REVOLT_SHARE);
+                if (share>ref) d += tune_f("SLAVE_REVOLT_W", SLAVE_REVOLT_W)*(share-ref);
+            }
+        }
         if (d>1.f) d=1.f;
         if (d>wd){ wd=d; worst=i; }
     }
@@ -483,6 +500,20 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
             int sf=(o>=0&&o<SCPS_MAX_COUNTRY)?religion_of_country(o):-1;
             if (rf>=0 && rf!=sf && !religion_region_stabilized(r))
                 worst = clampf(worst + FAITH_UNREST, 0.f, 1.f);
+        }
+        /* LOT H — LA RÉVOLTE SERVILE STRUCTURELLE : le contrepoids du mécanisme H
+         * (sans lui, GARDER ses esclaves est un pur profit). Au-delà de
+         * SLAVE_REVOLT_SHARE (0.20 — Rome tient 30 %, pas 60), la part servile de la
+         * région pousse structurellement le déficit — même FOLD que W_AGITATION_UNREST. */
+        {
+            float allpop = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
+                          + re->strata[CLASS_ELITE].pop + re->strata[CLASS_SLAVE].pop;
+            if (allpop>0.f){
+                float share = re->strata[CLASS_SLAVE].pop / allpop;
+                float ref   = tune_f("SLAVE_REVOLT_SHARE", SLAVE_REVOLT_SHARE);
+                if (share>ref)
+                    worst = clampf(worst + tune_f("SLAVE_REVOLT_W", SLAVE_REVOLT_W)*(share-ref), 0.f, 1.f);
+            }
         }
         /* DÉDUP RÉVOLTE (Option B) : le SIGNAL d'agitation legacy de statecraft
          * (L/coercion/choc de conquête/stabilité/garnison, 0-100 lissé) replié comme
@@ -787,6 +818,12 @@ static void apply_rebel_crush(RevoltState *rs, World *w, WorldEconomy *econ,
  * (pas de slot en fuite) ; sinon on en fait naître un (voie instantanée). */
 static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
                                 ProvinceEconomy *pe, WorldLegitimacy *wl, Rebellion *rb){
+    /* LOT H — la révolte SERVILE VICTORIEUSE affranchit DE FORCE : le groupe qui a
+     * porté le soulèvement était CLASS_SLAVE (revolt_ignite l'a figé dans rb->klass) →
+     * TOUTE la strate esclave de la région bascule LIBRE (même chemin que la
+     * manœuvre pacifiste, granularité région) AVANT le verdict usuel (concession/
+     * sécession/… qui suit toujours la nature — la libération EST le grief comblé). */
+    if (rb->klass==CLASS_SLAVE) demography_manumit_region(econ, rb->region);
     switch (rb->kind){
         case REBEL_SECESSION: {
             int nid;

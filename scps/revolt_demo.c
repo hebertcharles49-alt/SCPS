@@ -267,6 +267,70 @@ int main(int argc, char **argv){
     printf("   cicatrice après écrasement : %.2f\n", e->prov[p4c].revolt_scar);
     ok("une révolte résolue LAISSE une cicatrice de développement", e->prov[p4c].revolt_scar > 0.4f);
 
+    /* ═══ 11. LOT H — LA RÉVOLTE SERVILE STRUCTURELLE (le contrepoids du mécanisme H) ══ */
+    printf("\n── 11. Servilité : sous le seuil rien, au-dessus la pression MONTE avec la part ──\n");
+    {
+        /* région CONTENTE (aucun autre grief — TOUS les groupes loyaux/intégrés/de la
+         * couronne, y compris la strate servile elle-même : on isole le terme
+         * STRUCTUREL de part, pas le déficit ordinaire du groupe esclave lui-même). */
+        revolt_init(&rs);
+        solo_owner(e, 1, OWNER);
+        rig(e, 1, OWNER, 0.95f, 0.90f, 0.0f, 0.f);
+        push(e, 1, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 8000, 7.f, 1.0f, crown, 251));
+        /* SOUS le seuil (0.20) : 1000/9000 ≈ 11 % d'esclaves — aucune pression ajoutée. */
+        PopGroup low_slv = grp(HERITAGE_ADAPTATIF, CLASS_SLAVE, 1000, 7.f, 1.0f, crown, 252);
+        push(e, 1, low_slv);
+        int p1=rep_prov(e,1);
+        e->prov[p1].strata[CLASS_SLAVE].pop=1000.f;
+        for (int mo=0; mo<12; mo++) revolt_scan(&rs, w, e, drift, NULL, NULL, NULL, 30);
+        ok("sous SLAVE_REVOLT_SHARE, une région autrement contente ne se soulève PAS",
+           revolt_active_count(&rs)==0);
+
+        /* AU-DESSUS du seuil : 6500/10000 = 65 % d'esclaves (Rome tient 30%, pas 60% —
+         * même contentement par ailleurs, MÊME groupe loyal/intégré/couronne) — la
+         * pression structurelle finit par soulever la région SEULE (le terme de PART,
+         * pas le déficit ordinaire du groupe). */
+        revolt_init(&rs);
+        solo_owner(e, 2, OWNER);
+        rig(e, 2, OWNER, 0.95f, 0.90f, 0.0f, 0.f);
+        push(e, 2, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 3500, 7.f, 1.0f, crown, 253));
+        PopGroup high_slv = grp(HERITAGE_ADAPTATIF, CLASS_SLAVE, 6500, 7.f, 1.0f, crown, 254);
+        push(e, 2, high_slv);
+        int p2=rep_prov(e,2);
+        e->prov[p2].strata[CLASS_SLAVE].pop=6500.f;
+        int mo2=0;
+        for (; mo2<24 && revolt_active_count(&rs)==0; mo2++) revolt_scan(&rs, w, e, drift, NULL, NULL, NULL, 30);
+        printf("   65%% d'esclaves (groupe autrement loyal/intégré) : soulèvement au bout de %d mois\n", mo2);
+        ok("au-dessus de SLAVE_REVOLT_SHARE, la seule PART SERVILE finit par soulever",
+           revolt_active_count(&rs)>0);
+    }
+
+    /* ═══ 12. LOT H — RÉVOLTE SERVILE VICTORIEUSE : affranchit DE FORCE ═══════════ */
+    printf("\n── 12. Révolte servile victorieuse : les esclaves de la région s'affranchissent DE FORCE ──\n");
+    {
+        revolt_init(&rs);
+        solo_owner(e, 3, OWNER);
+        rig(e, 3, OWNER, 0.02f, 0.05f, 0.5f, 0.f);   /* H=0 → garnison faible : victoire rebelle */
+        push(e, 3, grp(HERITAGE_ADAPTATIF, CLASS_LABORER, 1000, 6.f, 1.0f, crown, 260));
+        PopGroup slave_grp = grp(HERITAGE_CLANIQUE, CLASS_SLAVE, 9000, 2.f, 0.05f, foreign, 261);
+        slave_grp.diaspora=true; slave_grp.arrival=ARR_DEPORTE;
+        push(e, 3, slave_grp);   /* push() rafraîchit l'agrégat region[] (revolt_ignite le lit) */
+        int iw=revolt_ignite(&rs, w, e, drift, NULL, NULL, 3, 0.5f);
+        ok("le soulèvement s'ALLUME sur le groupe SERVILE", iw>=0 && rs.list[iw].klass==CLASS_SLAVE);
+        revolt_tick(&rs, w, e, drift, wl, wp, NULL, NULL, NULL, 120);
+        int p3b=rep_prov(e,3);
+        bool any_slave_left=false, any_free=false;
+        for (int i=0;i<e->prov[p3b].pop.n_groups;i++){
+            if (e->prov[p3b].pop.groups[i].klass==CLASS_SLAVE) any_slave_left=true;
+            if (e->prov[p3b].pop.groups[i].klass!=CLASS_SLAVE && e->prov[p3b].pop.groups[i].heritage==HERITAGE_CLANIQUE)
+                any_free=true;
+        }
+        printf("   verdict : %s | un groupe encore ESCLAVE : %s | un groupe clanique LIBRE : %s\n",
+               iw>=0?revolt_outcome_word(rs.list[iw].outcome):"(rien)", any_slave_left?"oui":"non", any_free?"oui":"non");
+        ok("une révolte SERVILE victorieuse affranchit TOUS les groupes esclaves de la région (klass→LABORER)",
+           !any_slave_left && any_free);
+    }
+
     (void)n_countries_0;
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);

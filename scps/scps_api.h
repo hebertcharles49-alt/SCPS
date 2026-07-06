@@ -378,6 +378,25 @@ int scps_player_slave_buy (ScpsSim *s, int region, long count);
 typedef struct { const char *heritage; long count; } ScpsSlavePoolLine;
 int  scps_slave_market(ScpsSim *s, ScpsSlavePoolLine *out, int max, long *total_out, int *can_buy_out);
 
+/* LOT G — RÉINCORPORATION DE POP : déplace `count` âmes de la classe `klass`
+ * (SocialClass) de `src_region` vers `dst_region` (les deux AU JOUEUR — le verbe
+ * ENFILE, revalidé au drain). Les groupes culturels suivent PROPORTIONNELLEMENT
+ * (migration_move : heritage/arrival/integration/klass conservés). Coût : coercition
+ * à la source pour les strates LIBRES ; CLASS_SLAVE exempt (on déplace une propriété). */
+int scps_player_pop_transfer(ScpsSim *s, int src_region, int dst_region, int klass, long count);
+
+/* LOT J — L'APERÇU DE MANUMISSION : ce que l'affranchissement du JOUEUR libérerait
+ * MAINTENANT (lecture PURE, aucune mutation) — les mots + les nombres, avant le
+ * choix. `friction_after` estime la part off-culture (économique) que ces âmes
+ * représenteront une fois DANS la membrane libre (motif des options-readers). */
+typedef struct {
+    long  souls;            /* âmes qui seraient affranchies */
+    int   n_groups;         /* groupes esclaves concernés */
+    float pct_of_country;   /* part de la pop TOTALE du pays [0..100] */
+    float friction_after;   /* estimation de friction off-culture post-affranchissement [0..1] */
+} ScpsManumitPreview;
+int scps_manumit_preview(ScpsSim *s, ScpsManumitPreview *out);
+
 /* ARMÉE d'un pays (sb_panel_armee, read-only) : mobilisation + flotte. L'armée de
  * CAMPAGNE (position/phase/composition) se lit via scps_army_info. */
 typedef struct {

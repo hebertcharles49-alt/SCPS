@@ -355,6 +355,55 @@ int main(int argc, char **argv){
         free(w); free(e);
     }
 
+    /* ═══ 12. LOT G — RÉINCORPORATION DE POP (CMD_POP_TRANSFER, granularité RÉGION) ═ */
+    printf("\n── 12. Réincorporation de pop : les groupes suivent, le coût frappe la source ──\n");
+    {
+        WorldEconomy *e=calloc(1,sizeof(WorldEconomy));
+        e->n_prov=2; e->n_regions=2;
+        e->region_rep_prov[0]=0; e->region_rep_prov[1]=1;
+        ProvinceEconomy *pa=&e->prov[0], *pb=&e->prov[1];
+        pa->owner=0; pa->active=true; pa->colonized=true; pa->region=0;
+        pb->owner=0; pb->active=true; pb->colonized=true; pb->region=1;
+        pa->strata[CLASS_LABORER].pop=10000.f;
+        pa->pop.groups[0]=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_LABORER, 10000,6.f,0.8f,false);
+        pa->pop.groups[0].arrival=ARR_SOUMIS; pa->pop.n_groups=1;
+        pb->strata[CLASS_LABORER].pop=1000.f;
+        pb->pop.groups[0]=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS, cult(8,2,8,7,ETHOS_HONNEUR), CLASS_LABORER, 1000,6.f,0.5f,false);
+        pb->pop.n_groups=1;
+        float coerc_a_before=pa->coercion;
+        long moved=demography_pop_transfer(e, 0, 1, CLASS_LABORER, 3000);
+        ok("le transfert déplace le compte demandé (sous le plancher anti-vidage)", moved==3000);
+        ok("la strate ÉCONOMIQUE suit (Σ constante)",
+           pa->strata[CLASS_LABORER].pop==7000.f && pb->strata[CLASS_LABORER].pop==4000.f);
+        ok("le groupe déplacé GARDE son arrival (SOUMIS) — migration_move, pas une refonte",
+           pb->pop.groups[pb->pop.n_groups-1].arrival==ARR_SOUMIS);
+        ok("LE COÛT : la coercition MONTE à la SOURCE (strate LIBRE)",
+           pa->coercion>coerc_a_before);
+
+        /* plancher anti-vidage : jamais plus de 50% de la classe ciblée. */
+        long moved2=demography_pop_transfer(e, 0, 1, CLASS_LABORER, 100000);
+        ok("le plancher anti-vidage borne à 50% de la classe ciblée dans la source",
+           moved2<=3500 && moved2>0);
+
+        /* CLASS_SLAVE exempt de coercition (on déplace une propriété). */
+        ProvinceEconomy *pc=&e->prov[0], *pd=&e->prov[1];
+        pc->strata[CLASS_SLAVE].pop=4000.f;
+        PopGroup slv=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS, cult(8,2,8,7,ETHOS_HONNEUR), CLASS_SLAVE, 4000,2.f,0.05f,true);
+        slv.arrival=ARR_DEPORTE;
+        pc->pop.groups[pc->pop.n_groups++]=slv;
+        float coerc_c_before=pc->coercion;
+        long moved3=demography_pop_transfer(e, 0, 1, CLASS_SLAVE, 1000);
+        ok("un transfert d'ESCLAVES déplace bien les âmes", moved3==1000);
+        ok("CLASS_SLAVE est EXEMPT de coercition à la source (on déplace une propriété)",
+           pc->coercion==coerc_c_before);
+        (void)pd;
+
+        /* A==B refusé (même région) */
+        long same=demography_pop_transfer(e, 0, 0, CLASS_LABORER, 100);
+        ok("A==B est refusé (aucune âme ne se déplace vers elle-même)", same==0);
+        free(e);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

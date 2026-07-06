@@ -518,6 +518,20 @@
      * rebelle : des paquets de piquiers disciplinés (≫ la milice paysanne) qui REJOIGNENT
      * la révolte EN PLUS de la masse — ÉPARS mais RÉEL. L'armée rebelle nue (1-2 paquets)
      * se fait anéantir ; ce noyau la rend RÉELLE → ~1 révolte sur 20 bat la couronne. */ \
-    X(REBEL_VET_ADD,              2.0f)
+    X(REBEL_VET_ADD,              2.0f) \
+    /* LOT H — LA RÉVOLTE SERVILE STRUCTURELLE : au-delà de SLAVE_REVOLT_SHARE (0.20 —
+     * Rome tient 30 % d'esclaves, pas 60), la part servile d'une région pousse
+     * STRUCTURELLEMENT le déficit de révolte (revolt_scan, même motif que
+     * W_AGITATION_UNREST : un FOLD sur `worst`, jamais un tirage plat). SLAVE_REVOLT_W :
+     * poids du terme au-delà du seuil (le contrepoids du mécanisme H — sans lui, garder
+     * ses esclaves est pur profit). */ \
+    X(SLAVE_REVOLT_SHARE,         0.20f) \
+    X(SLAVE_REVOLT_W,             1.20f) \
+    /* LOT I — LE PRIX DU POOL RESPIRE : le prix plat (SLAVE_PRICE×ipm) faisait un
+     * pool-poubelle (l'IA vend, peu achète, or gratuit). SLAVE_POOL_REF = profondeur
+     * de RÉFÉRENCE du pool mondial (âmes, toutes origines confondues) : pool ≪ REF ⇒
+     * rare ⇒ CHER (jusqu'à ×2.5) ; pool ≫ REF ⇒ surabondant ⇒ BON MARCHÉ (jusqu'à
+     * ×0.5). Borné [0.5, 2.5] (même discipline que les paliers de prix intertrade). */ \
+    X(SLAVE_POOL_REF,           600.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

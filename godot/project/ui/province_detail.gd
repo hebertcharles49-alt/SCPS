@@ -9,6 +9,7 @@ extends Control
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
+const VKitDropdown = preload("res://ui/vkit_dropdown.gd")
 # taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
 var PW := 648.0
 var PH := 512.0
@@ -31,6 +32,21 @@ var _manuf_btns := []       # [{rect, bld}] onglet Constructions : boutons « B�
 var _manuf_flash := ""      # retour du dernier ordre de manufacture
 var _manuf_flash_ok := true
 
+# ── LOT G — RÉINCORPORATION DE POP : deux menus déroulants (région A/B, mes régions),
+#    un sélecteur de classe, une quantité, un bouton « Déplacer ». ──
+const REINCORP_CLASSES := ["Laboureurs", "Artisans", "Noblesse", "Esclaves"]
+const REINCORP_STEP := 500
+var _reinc_owned := []        # [{region:int, nom:String}] mes régions (rafraîchi par frame)
+var _reinc_a := 0             # index dans _reinc_owned (source)
+var _reinc_b := 0             # index dans _reinc_owned (destination)
+var _reinc_klass := 0
+var _reinc_qty := 1000
+var _reinc_dd_a
+var _reinc_dd_b
+var _reinc_btns := []          # [{rect, act}] classe ±, quantité ±, Déplacer
+var _reinc_flash := ""
+var _reinc_flash_ok := true
+
 signal build_requested      ## Constructions → ouvrir le panneau de construction (sa maison)
 
 func _ready() -> void:
@@ -40,6 +56,20 @@ func _ready() -> void:
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	Sim.ticked.connect(func(_y): if visible: queue_redraw())
+	# LOT G — les deux menus déroulants région A/B (dessinés PAR-DESSUS le contenu
+	# quand ouverts — ordre d'enfant = ordre de dessin, comme economy_panel).
+	_reinc_dd_a = VKitDropdown.new()
+	_reinc_dd_a.custom_minimum_size = Vector2(190, 24)
+	_reinc_dd_a.size = Vector2(190, 24)
+	_reinc_dd_a.visible = false
+	add_child(_reinc_dd_a)
+	_reinc_dd_a.selected.connect(func(i): _reinc_a = i; queue_redraw())
+	_reinc_dd_b = VKitDropdown.new()
+	_reinc_dd_b.custom_minimum_size = Vector2(190, 24)
+	_reinc_dd_b.size = Vector2(190, 24)
+	_reinc_dd_b.visible = false
+	add_child(_reinc_dd_b)
+	_reinc_dd_b.selected.connect(func(i): _reinc_b = i; queue_redraw())
 	hide()
 
 func _layout() -> void:
@@ -92,8 +122,11 @@ func _draw() -> void:
 		tx += tw + 6
 	VKit.fill(self, Rect2(12, BODY - 6, PW - 24, 1), VKit.COL_EDGE)
 
+	if _tab != 0:
+		_reinc_dd_a.visible = false
+		_reinc_dd_b.visible = false
 	match _tab:
-		0: _draw_peuples(x, BODY, w)
+		0: _draw_peuples(x, BODY, w, info)
 		1: _draw_flux(x, BODY + 4.0, PW - 32.0, PH - BODY - 18.0, w)
 		2: _draw_batiments(x, BODY, w)
 		3: _draw_journal(x, BODY, w)
@@ -110,7 +143,7 @@ func _draw() -> void:
 		VKit.text(self, Vector2(tx2 + 7, ty2 + 2), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
 
 # ── ONGLET PEUPLES : camemberts culture/religion + classes + agitation (hover) ──
-func _draw_peuples(x: float, y: float, w) -> void:
+func _draw_peuples(x: float, y: float, w, info: Dictionary) -> void:
 	var groups: Array = w.province_groups(_pid)
 	var cy := y + 44.0
 	if groups.is_empty():
@@ -190,6 +223,95 @@ func _draw_peuples(x: float, y: float, w) -> void:
 			if dec > 0:
 				VKit.text(self, Vector2(x + 250, py), VKit.COL_DIM, "−%d/an" % dec, VKit.FS_SMALL)
 			py += 16
+
+	# ── RÉINCORPORATION DE POP (LOT G) — read-only si la province n'est pas au joueur ──
+	var mine := (int(info.get("owner", -2)) == int(w.player()))
+	if mine and py < PH - 96:
+		py += 8
+		VKit.fill(self, Rect2(x, py, PW - 32.0, 1), VKit.COL_EDGE)
+		py += 10
+		_draw_reincorp(x, py, w)
+	else:
+		_reinc_dd_a.visible = false
+		_reinc_dd_b.visible = false
+
+# ── RÉINCORPORATION DE POP : sélecteur de classe + deux menus déroulants (région
+#    A source / B destination, mes régions) + quantité + « Déplacer ». ──
+func _refresh_reinc_owned(w) -> void:
+	_reinc_owned.clear()
+	var seen := {}
+	var me := int(w.player())
+	for pid in range(w.province_count()):
+		var pi: Dictionary = w.province_info(pid)
+		if int(pi.get("owner", -2)) != me:
+			continue
+		var region: int = w.province_region(pid)
+		if seen.has(region):
+			continue
+		seen[region] = true
+		_reinc_owned.append({"region": region, "nom": String(pi.get("nom", "région %d" % region))})
+
+func _draw_reincorp(x: float, y: float, w) -> void:
+	_reinc_btns.clear()
+	_refresh_reinc_owned(w)
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Réincorporation", VKit.FS_SMALL)
+	y += 18
+	if _reinc_owned.size() < 2:
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "il faut au moins DEUX régions à soi", VKit.FS_SMALL)
+		_reinc_dd_a.visible = false
+		_reinc_dd_b.visible = false
+		return
+	_reinc_a = clampi(_reinc_a, 0, _reinc_owned.size() - 1)
+	_reinc_b = clampi(_reinc_b, 0, _reinc_owned.size() - 1)
+	var names := []
+	for r in _reinc_owned:
+		names.append(String(r["nom"]))
+	# menus déroulants A (source) / B (destination) — positionnés en enfants (dessin par-dessus)
+	_reinc_dd_a.setup(names, _reinc_a)
+	_reinc_dd_a.position = Vector2(x, y)
+	_reinc_dd_a.visible = true
+	_reinc_dd_b.setup(names, _reinc_b)
+	_reinc_dd_b.position = Vector2(x + 220, y)
+	_reinc_dd_b.visible = true
+	VKit.text(self, Vector2(x + 200, y + 4), VKit.COL_DIM, "→", VKit.FS_SMALL)
+	y += 30
+	# classe ciblée (± cycle)
+	var klass_name: String = REINCORP_CLASSES[_reinc_klass]
+	var cx := _reinc_btn(x, y, "◂", "klass_prev")
+	VKit.text(self, Vector2(cx + 4, y), VKit.COL_PARCH, klass_name, VKit.FS_SMALL)
+	cx += VKit.text_w(klass_name, VKit.FS_SMALL) + 14
+	cx = _reinc_btn(cx, y, "▸", "klass_next")
+	y += 24
+	# quantité (± STEP)
+	cx = x
+	cx = _reinc_btn(cx, y, "−", "qty_minus")
+	VKit.text(self, Vector2(cx + 4, y), VKit.COL_PARCH, "%s âmes" % _grp(_reinc_qty), VKit.FS_SMALL)
+	cx += VKit.text_w("%s âmes" % _grp(_reinc_qty), VKit.FS_SMALL) + 14
+	cx = _reinc_btn(cx, y, "+", "qty_plus")
+	y += 26
+	# coût — coercition à la source pour les strates LIBRES ; esclave = aucune (main servile)
+	var a_nom := String(_reinc_owned[_reinc_a]["nom"])
+	var cost_txt := ("aucune — main servile" if _reinc_klass == 3 else "coercition sur %s" % a_nom)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "coût : %s" % cost_txt, VKit.FS_SMALL)
+	y += 22
+	# bouton Déplacer
+	var same := (_reinc_a == _reinc_b)
+	var br := Rect2(x, y, 110, 22)
+	VKit.fill(self, br, VKit.COL_PANEL2 if not same else VKit.COL_PANEL)
+	VKit.box(self, br, VKit.COL_GOLD if not same else VKit.COL_DIM)
+	VKit.text(self, Vector2(br.position.x + 12, br.position.y + 4), VKit.COL_PARCH if not same else VKit.COL_DIM, "Déplacer", VKit.FS_SMALL)
+	if not same:
+		_reinc_btns.append({"rect": br, "act": "move"})
+	if _reinc_flash != "":
+		VKit.text(self, Vector2(x + 122, y + 4), (VKit.sense(0.85) if _reinc_flash_ok else VKit.sense(0.10)), _reinc_flash, VKit.FS_SMALL)
+
+func _reinc_btn(bx: float, by: float, label: String, act: String) -> float:
+	var bw := VKit.text_w(label, VKit.FS_SMALL) + 12.0
+	var r := Rect2(bx, by - 1, bw, 17.0)
+	VKit.fill(self, r, VKit.COL_PANEL2); VKit.box(self, r, VKit.COL_EDGE)
+	VKit.text(self, Vector2(bx + 6, by), VKit.COL_PARCH, label, VKit.FS_SMALL)
+	_reinc_btns.append({"rect": r, "act": act})
+	return bx + bw + 4.0
 
 # ── ONGLET BÂTIMENTS : les manufactures bâties + BÂTIR (manufacture civile) ────
 func _draw_batiments(x: float, y: float, w) -> void:
@@ -526,6 +648,30 @@ func _gui_input(event: InputEvent) -> void:
 				queue_redraw()
 				accept_event()
 				return
+		# onglet Peuples : RÉINCORPORATION DE POP (LOT G)
+		if _tab == 0:
+			for b in _reinc_btns:
+				if b.rect.has_point(event.position):
+					match b.act:
+						"klass_prev":
+							_reinc_klass = (_reinc_klass - 1 + REINCORP_CLASSES.size()) % REINCORP_CLASSES.size()
+						"klass_next":
+							_reinc_klass = (_reinc_klass + 1) % REINCORP_CLASSES.size()
+						"qty_minus":
+							_reinc_qty = maxi(REINCORP_STEP, _reinc_qty - REINCORP_STEP)
+						"qty_plus":
+							_reinc_qty += REINCORP_STEP
+						"move":
+							var w3 = Sim.world
+							if w3 != null and _reinc_a < _reinc_owned.size() and _reinc_b < _reinc_owned.size():
+								var ra: int = _reinc_owned[_reinc_a]["region"]
+								var rb: int = _reinc_owned[_reinc_b]["region"]
+								var ok3: bool = w3.player_pop_transfer(ra, rb, _reinc_klass, _reinc_qty)
+								_reinc_flash_ok = ok3
+								_reinc_flash = ("→ %s — ordre émis" % REINCORP_CLASSES[_reinc_klass]) if ok3 else "✗ refusé"
+					queue_redraw()
+					accept_event()
+					return
 		for t in _tab_rects:
 			if t.rect.has_point(event.position):
 				_tab = t.idx

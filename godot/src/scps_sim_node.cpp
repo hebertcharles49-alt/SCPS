@@ -126,6 +126,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_alloc_bld", "region", "bld_type", "weight"), &ScpsWorld::player_alloc_bld);
     ClassDB::bind_method(D_METHOD("player_alloc_input", "region", "bld_type", "input"), &ScpsWorld::player_alloc_input);
     ClassDB::bind_method(D_METHOD("player_alloc_auto", "region"),         &ScpsWorld::player_alloc_auto);
+    ClassDB::bind_method(D_METHOD("player_pop_transfer", "src_region", "dst_region", "klass", "count"), &ScpsWorld::player_pop_transfer);
+    ClassDB::bind_method(D_METHOD("manumit_preview"),                     &ScpsWorld::manumit_preview);
 
     /* CRÉATEUR DE CULTURE */
     ClassDB::bind_method(D_METHOD("heritage_list"),                  &ScpsWorld::heritage_list);
@@ -1111,6 +1113,25 @@ bool ScpsWorld::player_alloc_input(int region, int bld_type, int input) {
 }
 bool ScpsWorld::player_alloc_auto(int region) {
     return sim ? scps_player_alloc_auto(sim, region) != 0 : false;
+}
+
+/* ── LOT G — RÉINCORPORATION DE POP ── */
+bool ScpsWorld::player_pop_transfer(int src_region, int dst_region, int klass, int count) {
+    return sim ? scps_player_pop_transfer(sim, src_region, dst_region, klass, (long)count) != 0 : false;
+}
+/* ── LOT J — L'APERÇU DE MANUMISSION ── */
+Dictionary ScpsWorld::manumit_preview() {
+    Dictionary out;
+    out["souls"] = 0; out["n_groups"] = 0; out["pct_of_country"] = 0.0; out["friction_after"] = 0.0;
+    if (!sim) return out;
+    ScpsManumitPreview p;
+    if (scps_manumit_preview(sim, &p)) {
+        out["souls"] = (int64_t)p.souls;
+        out["n_groups"] = p.n_groups;
+        out["pct_of_country"] = (double)p.pct_of_country;
+        out["friction_after"] = (double)p.friction_after;
+    }
+    return out;
 }
 
 /* ── CRÉATEUR DE CULTURE — la membrane traverse en Dictionary (mots + signes) ── */

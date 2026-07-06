@@ -174,6 +174,12 @@ public:
     bool       player_alloc_input(int region, int bld_type, int input);
     bool       player_alloc_auto(int region);          /* retour au split AUTO */
 
+    /* LOT G — RÉINCORPORATION DE POP : déplace `count` âmes de la classe (SocialClass)
+     * `klass` de `src_region` vers `dst_region` (toutes deux au joueur). Verbe ENFILE. */
+    bool       player_pop_transfer(int src_region, int dst_region, int klass, int count);
+    /* LOT J — L'APERÇU DE MANUMISSION : { souls, n_groups, pct_of_country, friction_after }. */
+    Dictionary manumit_preview();
+
     /* CRÉATEUR DE CULTURE (façon Stellaris) — listes + validation + aperçu + composition.
      * Membrane : des MOTS et des SIGNES (pas de levier brut). Pur (aucun sim) → utilisable
      * AVANT generate() ; set_player_culture grave la compo À la prochaine generate(). */

@@ -92,6 +92,9 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * ACHAT gaté éthos/tech (miroir diplo_enslave_capture) ; VENTE sans gate (on
         * vend ce qu'on tient déjà). */
        CMD_SLAVE_BUY, CMD_SLAVE_SELL,
+       /* LOT G — RÉINCORPORATION DE POP : a={région A (source), région B (dest),
+        * classe (SocialClass), count}. REVALIDÉ : A≠B toutes deux au joueur. */
+       CMD_POP_TRANSFER,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

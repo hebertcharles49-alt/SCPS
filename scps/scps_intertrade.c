@@ -676,6 +676,18 @@ void intertrade_slave_pool(float out[HERITAGE_COUNT]){
 }
 long intertrade_slave_pool_count(void){ return slave_pool_total(); }
 
+/* LOT I — LE PRIX DU POOL RESPIRE : pool ≪ RÉFÉRENCE ⇒ rare ⇒ cher (jusqu'à ×2.5),
+ * pool ≫ RÉFÉRENCE ⇒ surabondant ⇒ bon marché (jusqu'à ×0.5). Motif des paliers de
+ * prix intertrade (borné), appliqué à la profondeur du pool plutôt qu'à la distance. */
+static float slave_pool_price_mult(void){
+    float ref=tune_f("SLAVE_POOL_REF", 600.f);
+    if (ref<1.f) ref=1.f;
+    float pool=(float)slave_pool_total();
+    float mult=ref/(pool+ref*0.10f);         /* pool=0 ⇒ ~×10 avant clamp (rareté totale) */
+    if (mult<0.5f) mult=0.5f; else if (mult>2.5f) mult=2.5f;
+    return mult;
+}
+
 /* VENTE — `region` (au vendeur `cid`, implicite via re->owner) retire `count` âmes de
  * ses groupes esclaves (les plus nombreux d'abord, à travers toutes ses provinces),
  * les crédite au pool (par héritage), encaisse l'or (prix × ipm, marge Centre incluse
@@ -684,7 +696,7 @@ long intertrade_slave_sell(WorldEconomy *e, int region, long count){
     if (!e || region<0 || region>=e->n_regions || count<=0) return 0;
     RegionEconomy *re=&e->region[region];
     int cid=re->owner; if (!cid_ok(cid)) return 0;
-    float price=tune_f("SLAVE_PRICE",40.f)*econ_world_ipm(e);
+    float price=tune_f("SLAVE_PRICE",40.f)*econ_world_ipm(e)*slave_pool_price_mult();
     long remaining=count, sold=0;
     /* scanne TOUTES les provinces du vendeur (le stock d'esclaves est dispersé) — les plus
      * gros groupes esclaves d'abord, pour vider peu de provinces plutôt qu'écrémer partout. */
@@ -731,7 +743,9 @@ long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_ensl
     long avail=(long)g_slave_pool[h];
     long want=(count<avail)?count:avail;
     if (want<=0) return 0;
-    float price=tune_f("SLAVE_PRICE",40.f)*econ_world_ipm(e)*2.f;   /* ×2 : la double taxe des Centres (motif tier mondial) */
+    /* ×2 : la double taxe des Centres (motif tier mondial) ; LOT I : le pool RESPIRE
+     * (rare ⇒ cher, surabondant ⇒ bon marché — la marge des Centres reste par-dessus). */
+    float price=tune_f("SLAVE_PRICE",40.f)*econ_world_ipm(e)*2.f*slave_pool_price_mult();
     float *buyer_tr=it_treasury(e,region);
     if (!buyer_tr) return 0;
     long can=(long)(*buyer_tr/fmaxf(price,1e-4f));

@@ -1417,3 +1417,117 @@ d'avant cette tentative (diff nul sur cette fonction vs le HEAD pré-Lot-2). `ma
 pour les 3). **La famille GARNISON reste un maillon mort** — le diagnostic est complet et actionnable,
 mais le fix demande plus de soin (cache/cadence) qu'un lot bonus de fin de session ne permet en toute
 sécurité sur un arbre partagé avec golden comme contrat public.
+
+## 2026-07-06 — LOTS G/H/I/J : réincorporation, révolte servile, prix du pool, aperçu de manumission
+
+Les trois messages « REÇUS mais NON EXÉCUTÉS » de l'entrée précédente sont désormais l'objet
+d'un mandat EXPLICITE : les quatre lots complémentaires du mécanisme H, faits dans cette même
+session, fichiers `godot/**` inclus cette fois-ci (autorisation initiale, pas une escalade).
+
+**LOT G — RÉINCORPORATION DE POP (`demography_pop_transfer`, `scps_demography.{h,c}`)**.
+Idiome de déplacement : **`migration_move`** (pas un `econ_relocate_pop` généralisé) — le
+déplacé DOIT garder heritage/arrival/integration/klass (une diaspora suit qui elle est, seul
+le foyer change), exactement le contrat que `migration_move` porte déjà pour réfugiés/migrants/
+pacte. `econ_relocate_pop` (scps_econ.c) ne bouge QUE des strates brutes — insuffisant pour un
+verbe joueur qui doit être visible dans `province_composition`. Répartition PROPORTIONNELLE
+entre les groupes de la classe ciblée dans la région source (les plus gros d'abord, motif du
+marché des Centres) via `migration_move` groupe par groupe. **Plancher anti-vidage** : jamais
+plus de 50 % de la classe ciblée dans la source (même discipline que `econ_relocate_pop` :
+`take<=src_pop*0.5`). **Le coût** : `RELOC_COERCION_BASE` (0.25, scps_econ.c) est MIRORÉ en
+`POP_TRANSFER_COERCION_BASE` local (le module ne peut pas s'accrocher à un `#define` privé
+d'un autre .c) — frappe la SOURCE proportionnellement à la fraction déplacée, SAUF
+`klass==CLASS_SLAVE` (« on déplace une propriété, pas un sujet libre qu'on arrache à sa
+terre »). Verbe `CMD_POP_TRANSFER` (a={A,B,klass,count}) suit exactement le motif diplo/alloc :
+enfilé, revalidé au drain (A≠B, toutes deux au joueur). UI : nouvelle section « Réincorporation »
+dans l'onglet Peuples de `province_detail.gd` (pas un onglet à part — la composition/les
+classes y vivent déjà) : deux `VKitDropdown` (région A/B, mes régions résolues par balayage
+province→région dédupliqué), un sélecteur de classe (◂/▸ cycle), une quantité (±500), un bouton
+Déplacer grisé si A==B, une note de coût lisible (« coercition sur {A} » / « aucune — main
+servile »). Testé en isolation (`demography_demo` §12, 8 assertions, fixture 2 provinces
+`region_rep_prov[]` posé à la main) : transfert exact, strate économique suit (Σ constante),
+arrival conservé (merge évité par culture distincte dans le fixture), coercition monte à la
+source pour les libres, plancher 50 % vérifié, CLASS_SLAVE exempté, A==B refusé. `scps_api_demo`
+prouve la plomberie façade (verbe enfilé + refus A==B) ; l'effet réel n'a PAS pu être exercé sur
+les 3 graines testées (le joueur n'a souvent qu'UNE région à la genèse — la colonisation joueur
+est un ordre EXPLICITE, `CMD_COLONIZE`, jamais autonome en 100 ans de simulation sans qu'on le
+pousse) — logique déjà couverte au niveau moteur par demography_demo, la façade ne fait que
+enfiler/désenfiler.
+
+**LOT H — LA RÉVOLTE SERVILE STRUCTURELLE (`scps_revolt.c`)**. Le terme de part servile est
+FOLDÉ à DEUX endroits, pas un seul — un piège découvert en écrivant le banc : le fold dans
+`revolt_scan`'s `worst` (même motif que `W_AGITATION_UNREST`) fait bien monter la DÉSESPÉRANCE
+(`desperation_days`) jusqu'au seuil de soulèvement (`SCAN_SUSTAIN`), MAIS `revolt_ignite` calcule
+sa PROPRE boucle de déficit par-groupe (`revolt_group_deficit` + FAITH_LEAD), SANS le terme
+servile — une région purement servile (esclaves autrement loyaux/intégrés/de la couronne)
+accumulait la désespérance jusqu'au seuil, appelait `revolt_ignite`, qui refusait faute de
+déficit par-groupe suffisant (`IGNITE_DEFICIT`) : la région ne se soulevait JAMAIS malgré la
+désespérance sustained. Fix : le MÊME terme (part servile au-delà de `SLAVE_REVOLT_SHARE`,
+pondéré `SLAVE_REVOLT_W`) est aussi ajouté au déficit du groupe `CLASS_SLAVE` DANS
+`revolt_ignite` — porté par le groupe servile lui-même (comme FAITH_LEAD porte le grief de foi
+par le groupe qui le subit). Calibrage : `SLAVE_REVOLT_W` visé pour que ~60 % de part servile
+(« Rome tient 30 %, pas 60 % ») suffise SEUL (aucun autre grief) à franchir `SCAN_DEFICIT`
+(0.48) → `W=1.20` (`0.48 = 1.20×(0.60−0.20)`) ; testé à 0.55 d'abord (mathématiquement
+incapable de franchir le seuil même à 100 % de part — `0.55×0.80=0.44<0.48` — donc RELEVÉ).
+**Victoire servile → affranchissement DE FORCE** : `demography_manumit_region` (nouveau,
+granularité RÉGION — jumeau de `demography_manumit_country` borné à la province représentative
+d'UNE région) appelé en TÊTE d'`apply_rebel_victory` quand `rb->klass==CLASS_SLAVE`, AVANT le
+switch sur la nature (coup/sécession/classe/foi) — la libération est le grief comblé, quelle
+que soit l'issue territoriale qui suit. Piège de banc découvert : `revolt_ignite` NE
+décrémente PAS `strata[CLASS_SLAVE].pop` lors de la mobilisation (seul `CLASS_LABORER`/
+`CLASS_BOURGEOIS` sont ponctionnés pour le choc économique — un comportement PRÉEXISTANT,
+hors périmètre de ce lot) → la strate `CLASS_SLAVE` reste gonflée jusqu'à la résolution ;
+`demography_manumit_region` la corrige donc PARTIELLEMENT (bornée au `count` réel du groupe,
+`fminf`), ce qui est correct pour le groupe mais laisse un delta sur `strata[]` déjà présent
+AVANT mon lot — testé sur le GROUPE (`klass` bascule, jamais sur la somme de strate qui porte
+ce biais préexistant). Banc `revolt_demo` +2 (§11 sous/au-dessus du seuil isolé du déficit
+ordinaire du groupe — culture/intégration/loyauté IDENTIQUES, seule la part varie ; §12
+victoire servile affranchit tous les groupes CLASS_SLAVE de la région).
+
+**LOT I — LE PRIX DU POOL RESPIRE (`scps_intertrade.c`)**. `slave_pool_price_mult()` :
+`mult = SLAVE_POOL_REF/(pool + SLAVE_POOL_REF×0.10)`, borné [0.5, 2.5] — pool=0 tend vers ×10
+avant clamp (rareté totale, plafonnée à ×2.5, jamais infini) ; pool≫RÉFÉRENCE tend vers 0
+(surabondance, plafonné à ×0.5 par le bas). `SLAVE_POOL_REF=600` (âmes, toutes origines) choisi
+à l'estimation (pas de mesure de pool typique disponible avant le lot — le sweep confirme un
+pool proche de 0 dans les mondes testés, donc le régime « rare/cher » domine en pratique ;
+`SLAVE_POOL_REF` reste dialable d'une ligne si la télémétrie de production montre un pool
+typique différent). Appliqué au prix de VENTE (`×ipm×mult`) ET d'ACHAT (`×ipm×2×mult` — la
+double taxe des Centres MULTIPLIE le facteur de respiration, pas ne le remplace pas). Validé
+en isolation (`intertrade_demo` ne compile pas sous MinGW — `setenv`, pré-existant — donc
+vérifié via un harnais isolé jetable, mêmes .o, même logique, PUIS retiré) : vente pool à sec
+99.84 or/âme vs pool surabondant 19.84 or/âme ; achat pool rare 198.40 vs pool abondant 38.40 —
+le ratio ×5 correspond exactement au ratio de `mult` (2.5/0.5). Banc `intertrade_demo` +2 (non
+vérifiable ICI — Windows/MinGW, cf. audit ; la logique est prouvée par le harnais isolé
+ci-dessus et sera confirmée au prochain `make test` Linux/cloud).
+
+**LOT J — L'APERÇU DE MANUMISSION (`scps_manumit_preview`, `scps_api.{h,c}`)**. Lecteur PUR
+(aucune mutation, motif des options-readers comme `diplo_options`) : balaie les provinces du
+joueur, compte âmes/groupes `CLASS_SLAVE`, et PROJETTE la friction off-culture qu'elles
+porteraient si elles étaient LIBRES — le même calcul qu'`econ_off_culture_fraction` mais SANS
+le filtre `group_is_slave` (élection du dominant + mismatch pondéré incluant les groupes
+actuellement esclaves). Pas de nouvelle fonction moteur : la projection vit entièrement dans
+la façade (dérivée pure, comme demandé), en réutilisant `sphere_distance`/`clampf` déjà
+publics. Pondéré par province (Σ off×pop / Σ pop) puis rapporté au pays. Pas d'UI dédiée
+ajoutée (aucun panneau Godot n'expose encore MANUMIT — la façade seule, comme prévu si le
+panneau n'existe pas). `scps_api_demo` +2 (lecture réussie, tous les champs bornés).
+
+**Gates** : `make test` 36 verts / 40 (3 KO Windows pré-existants : `campaign_demo`/
+`warhost_demo` stack-overflow, `intertrade_demo` build `setenv` — confirmés sur l'arbre AVANT
+ce lot ; `scps_api_demo` a TIMEOUT (>120s) dans la suite complète mais passe 141/141 en isolé
+en ~2 min de temps RÉEL pour ~0.03 s de temps CPU — la lenteur est de la CONTENTION disque/
+antivirus sur l'arbre partagé, pas un coût introduit par le lot, cf. note de la mission sur le
+build partagé avec l'agent scps_ai.c). `make determinism` STABLE (5 graines × 12 ans, hashes
+inchangés). `make golden` **IDENTIQUE** (G/I/J player-only/prix-borné confirmé golden-neutre ;
+H ne mord pas non plus dans la fenêtre 12 ans — la désespérance met plusieurs mois à s'accumuler
+et les parts serviles ≥60 % sont rares en début de partie). `savetest` seeds 9 ET 11
+byte-identiques. `scons` (godot/) 0 warning (`PROCESSOR_ARCHITECTURE` manquant dans l'environnement
+MSYS — pas une erreur du code, contournement `export PROCESSOR_ARCHITECTURE=AMD64`). Sweep
+`./chronicle 9 1 250 6 12` SAIN (hégémon mortel 1/1, IPM 1.10, 902 morts de révolte sur 18
+soulèvements — pas de runaway ; télémétrie esclavage présente mais pool des Centres à 0 dans
+cette graine, donc LOT I invisible dans CETTE télémétrie précise malgré la logique validée en
+isolation). **SAVE non bumpé** (aucune struct sérialisée ne change — `Rebellion`/`PopGroup`/
+`WorldEconomy` inchangés en taille ; le pool `g_slave_pool` et son prix restent des dérivés
+recalculés). Tunables ajoutés (registre J) : `SLAVE_REVOLT_SHARE` 0.20 · `SLAVE_REVOLT_W` 1.20 ·
+`SLAVE_POOL_REF` 600.0.
+
+**NE PAS COMMITTER** (mandat explicite) : ces quatre lots restent à l'état de diff non committé
+en fin de session, pour revue.

@@ -205,6 +205,70 @@ int main(int argc,char**argv){
         }
     }
 
+    /* ---- 9. LOT I — LE PRIX DU POOL RESPIRE : pool VIDE = cher, pool ABONDANT = bon marché */
+    printf("\n── 9. Le prix du pool esclave respire avec sa profondeur ──\n");
+    {
+        WorldEconomy *e2=calloc(1,sizeof(WorldEconomy));
+        e2->n_prov=1; e2->n_regions=1;
+        e2->region_rep_prov[0]=0;
+        ProvinceEconomy *pe=&e2->prov[0];
+        pe->owner=0; pe->active=true; pe->colonized=true; pe->region=0;
+        pe->treasury=1e9f;
+        intertrade_reset();   /* pool à SEC (0 âme, toutes origines) */
+        pe->pop.groups[0].klass=CLASS_SLAVE; pe->pop.groups[0].count=1000;
+        pe->pop.groups[0].heritage=HERITAGE_CLANIQUE; pe->pop.groups[0].origin_sphere=SPHERE_ETRANGERS;
+        pe->pop.groups[0].arrival=ARR_DEPORTE; pe->pop.groups[0].diaspora=true;
+        pe->pop.n_groups=1;
+        pe->strata[CLASS_SLAVE].pop=1000.f;
+        float treas0=pe->treasury;
+        long sold_empty=intertrade_slave_sell(e2, 0, 100);
+        float gained_empty=(sold_empty>0)?(pe->treasury-treas0)/(float)sold_empty:0.f;
+        ok("la VENTE au pool VIDE réussit (le pool démarre à sec)", sold_empty==100);
+
+        /* on REMPLIT le pool loin au-dessus de SLAVE_POOL_REF (600) → surabondant. */
+        pe->pop.groups[0].count=6000; pe->pop.n_groups=1; pe->strata[CLASS_SLAVE].pop=6000.f;
+        intertrade_slave_sell(e2, 0, 6000);   /* déverse dans le pool : profondeur ≫ RÉFÉRENCE */
+        pe->pop.groups[0].klass=CLASS_SLAVE; pe->pop.groups[0].count=100;
+        pe->pop.groups[0].heritage=HERITAGE_CLANIQUE; pe->pop.groups[0].origin_sphere=SPHERE_ETRANGERS;
+        pe->pop.groups[0].arrival=ARR_DEPORTE; pe->pop.groups[0].diaspora=true;
+        pe->pop.n_groups=1; pe->strata[CLASS_SLAVE].pop=100.f;
+        float treas1=pe->treasury;
+        long sold_full=intertrade_slave_sell(e2, 0, 100);
+        float gained_full=(sold_full>0)?(pe->treasury-treas1)/(float)sold_full:0.f;
+        printf("   prix/âme : pool à SEC %.2f vs pool SURABONDANT %.2f\n", gained_empty, gained_full);
+        ok("le pool VIDE (rare) VEND plus CHER que le pool SURABONDANT",
+           sold_full==100 && gained_empty>gained_full);
+
+        /* ACHAT : même sens — cher quand rare, moins cher quand abondant (marge Centres à part). */
+        intertrade_reset();
+        pe->treasury=1e9f;
+        float buy_empty_cost=0.f;
+        { long avail0=intertrade_slave_pool_count(); (void)avail0; }
+        /* pool à sec ⇒ rien à acheter (avail=0) — on remplit d'abord un pool MODESTE (rare). */
+        pe->pop.groups[0].klass=CLASS_SLAVE; pe->pop.groups[0].count=50;
+        pe->pop.groups[0].heritage=HERITAGE_CLANIQUE; pe->pop.groups[0].origin_sphere=SPHERE_ETRANGERS;
+        pe->pop.groups[0].arrival=ARR_DEPORTE; pe->pop.groups[0].diaspora=true;
+        pe->pop.n_groups=1; pe->strata[CLASS_SLAVE].pop=50.f;
+        intertrade_slave_sell(e2, 0, 50);   /* pool RARE (50 ≪ RÉFÉRENCE 600) */
+        float treas2=pe->treasury;
+        long bought_rare=intertrade_slave_buy(e2, 0, 10, true);
+        buy_empty_cost=(bought_rare>0)?(treas2-pe->treasury)/(float)bought_rare:0.f;
+        intertrade_reset();
+        pe->treasury=1e9f;
+        pe->pop.groups[0].klass=CLASS_SLAVE; pe->pop.groups[0].count=5000;
+        pe->pop.groups[0].heritage=HERITAGE_CLANIQUE; pe->pop.groups[0].origin_sphere=SPHERE_ETRANGERS;
+        pe->pop.groups[0].arrival=ARR_DEPORTE; pe->pop.groups[0].diaspora=true;
+        pe->pop.n_groups=1; pe->strata[CLASS_SLAVE].pop=5000.f;
+        intertrade_slave_sell(e2, 0, 5000);   /* pool SURABONDANT (≫ RÉFÉRENCE) */
+        float treas3=pe->treasury;
+        long bought_full=intertrade_slave_buy(e2, 0, 10, true);
+        float buy_full_cost=(bought_full>0)?(treas3-pe->treasury)/(float)bought_full:0.f;
+        printf("   coût/âme à l'achat : pool RARE %.2f vs pool SURABONDANT %.2f\n", buy_empty_cost, buy_full_cost);
+        ok("l'ACHAT est plus CHER quand le pool est RARE qu'abondant",
+           bought_rare>0 && bought_full>0 && buy_empty_cost>buy_full_cost);
+        free(e2);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);
     printf("══════════════════════════════════════════════════════════════\n");
