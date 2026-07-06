@@ -134,6 +134,26 @@ Ethos ethos_nearest(float value){
     return best;
 }
 
+/* ---- Reader manquant #2 : dérive d'éthos (mission « lecteurs », B6) --------
+ * Ce que ça DIT : à quel point l'éthos DOMINANT d'une région (celui de sa culture
+ * locale, effective — après syncrétisme/dérive) s'écarte de l'éthos de la culture
+ * RÉGNANTE du pays (celle de sa capitale), normalisé [0..1] sur l'étendue de l'ancre
+ * VALEURS (ETHOS_VAL, span ~[1.5,9.0]) — une marche dominatrice sous une couronne
+ * pacifiste dérive fort ; une marche du même éthos que la capitale ne dérive pas.
+ * Ce que ça NE dit PAS : rien sur la légitimité (L) ni l'agitation de la région —
+ * c'est une distance de VALEURS pure, à composer par l'appelant avec d'autres griefs.
+ * ⚠ SIGNATURE : `region_ethos_drift(Ethos local, Ethos ruling)` — pas de World/région
+ * en paramètre : la culture régnante ne se lit QUE via econ_ruling_culture (scps_econ.h,
+ * FICHIER INTERDIT à cette mission) ; le site d'appel (scps_events.c) fournit les DEUX
+ * `Ethos` déjà déballés d'un `PopCulture*` (région) et d'un `econ_ruling_culture(...)`. */
+float region_ethos_drift(Ethos local, Ethos ruling){
+    if (local<0 || local>=ETHOS_COUNT || ruling<0 || ruling>=ETHOS_COUNT) return 0.f;
+    float span = ETHOS_VAL[ETHOS_DOMINATEUR] - ETHOS_VAL[ETHOS_PACIFISTE]; /* 9.0-1.5=7.5 */
+    if (span <= 0.f) return 0.f;
+    float d = absf(ETHOS_VAL[local] - ETHOS_VAL[ruling]) / span;
+    return clampf(d, 0.f, 1.f);
+}
+
 /* Structure cristallisée : attracteur dérivé du mode de vie, infléchi par
  * l'éthos (un éthos très mercantile relâche la parenté ; très martial la
  * resserre en clan). */
@@ -329,17 +349,27 @@ float culture_clock_distance(const Culture *a, const Culture *b){
 #define CLOCK_NEAR   3.0f
 #define CONTENT_NEAR 3.0f
 
-CultureRelation culture_relation(const Culture *a, const Culture *b){
+/* Cœur PARTAGÉ (champs nus) — culture_relation ET culture_relation_of délèguent ICI,
+ * source unique de la classification (byte-identique par construction, cf. discipline
+ * anti-duplication du dépôt : « une définition par concept »). */
+static CultureRelation relation_core(float langue_a, float valeurs_a, float subsistance_a,
+                                     float parente_a, float religion_a,
+                                     Credo credo_a, ReligionBranch branch_a,
+                                     float langue_b, float valeurs_b, float subsistance_b,
+                                     float parente_b, float religion_b,
+                                     Credo credo_b, ReligionBranch branch_b){
     /* Cas religieux prioritaire : narcissisme des petites différences.
      * Branche proche (même arbre) + prosélytisme haut des deux côtés +
      * petit écart de credo → ils se haïssent le plus. */
-    bool same_branch = (a->rel_branch == b->rel_branch);
-    bool both_zealous = (a->credo!=CREDO_PLURALISTE && b->credo!=CREDO_PLURALISTE);
-    if (same_branch && both_zealous && absf(a->religion-b->religion) < 4.0f)
+    bool same_branch = (branch_a == branch_b);
+    bool both_zealous = (credo_a!=CREDO_PLURALISTE && credo_b!=CREDO_PLURALISTE);
+    if (same_branch && both_zealous && absf(religion_a-religion_b) < 4.0f)
         return REL_ENNEMIS_SCHISME;
 
-    float clock   = culture_clock_distance(a,b);
-    float content = culture_content_distance(a,b);
+    float dv=absf(valeurs_a-valeurs_b), ds=absf(subsistance_a-subsistance_b);
+    float dp=absf(parente_a-parente_b), dr=absf(religion_a-religion_b);
+    float content = dv; if(ds>content)content=ds; if(dp>content)content=dp; if(dr>content)content=dr;
+    float clock   = absf(langue_a-langue_b);
     bool clock_near   = (clock   < CLOCK_NEAR);
     bool content_near = (content < CONTENT_NEAR);
 
@@ -347,6 +377,28 @@ CultureRelation culture_relation(const Culture *a, const Culture *b){
     if (clock_near && !content_near) return REL_COUSINS_DERIVES;
     if (!clock_near && content_near) return REL_JUMEAUX_CONVERGENTS;
     return REL_ETRANGERS;
+}
+
+CultureRelation culture_relation(const Culture *a, const Culture *b){
+    return relation_core(a->langue,a->valeurs,a->subsistance,a->parente,a->religion,
+                         a->credo,a->rel_branch,
+                         b->langue,b->valeurs,b->subsistance,b->parente,b->religion,
+                         b->credo,b->rel_branch);
+}
+
+/* ---- Reader manquant #1 : relation par instance, champs nus (mission « lecteurs ») --
+ * Ce que ça DIT : la même classification lisible (parents/cousins/étrangers/jumeaux/
+ * ennemis-schismatiques) qu'on tienne une fiche `Culture` complète ou les champs bruts
+ * d'un `PopCulture` (scps_econ.h) déballés par l'appelant. Ce que ça NE dit PAS : rien
+ * sur l'intégration/l'assimilation en cours (cf. culture_can_syncretize pour la porte). */
+CultureRelation culture_relation_of(float langue_a, float valeurs_a, float subsistance_a,
+                                    float parente_a, float religion_a,
+                                    Credo credo_a, ReligionBranch branch_a,
+                                    float langue_b, float valeurs_b, float subsistance_b,
+                                    float parente_b, float religion_b,
+                                    Credo credo_b, ReligionBranch branch_b){
+    return relation_core(langue_a,valeurs_a,subsistance_a,parente_a,religion_a,credo_a,branch_a,
+                         langue_b,valeurs_b,subsistance_b,parente_b,religion_b,credo_b,branch_b);
 }
 
 /* ===================================================================== */

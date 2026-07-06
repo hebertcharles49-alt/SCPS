@@ -5,6 +5,7 @@
 #include "scps_religion.h"
 #include <string.h>
 #include <assert.h>
+#include "scps_math.h"   /* clampf partagé */
 
 /* magnitudes Civ-tier, calibrables ICI */
 #define M_COORD   1.0f   /* coord 0-10  */
@@ -192,6 +193,31 @@ int religion_scholar_recruit(int cid,int region){
 int religion_scholar_active(int cid){ cr_ensure(); return (cid>=0&&cid<RELIG_MAX_COUNTRY)?g_scholar[cid].active:0; }
 int religion_scholar_role(int cid){ cr_ensure(); return (cid>=0&&cid<RELIG_MAX_COUNTRY&&g_scholar[cid].active)?g_scholar[cid].role:-1; }
 int religion_scholar_region(int cid){ cr_ensure(); return (cid>=0&&cid<RELIG_MAX_COUNTRY&&g_scholar[cid].active)?g_scholar[cid].region:-1; }
+
+/* ---- Reader manquant #4 : dérive/aliénation du LETTRÉ (mission « lecteurs », C3) ----
+ * Ce que ça DIT : `g_scholar[cid]` ne stocke QUE {active, role, region, timer} — un
+ * agent unique, sa face (ScholarRole) et son horloge de mission. La SEULE chose
+ * honnêtement dérivable de cet état est une comparaison face-COURANTE vs face-ATTENDUE
+ * du crédo d'État actuel (scholar_role_from_credo) : si le pays a SCHISMÉ ou changé
+ * de religion depuis le recrutement, le lettré déployé peut porter une face PÉRIMÉE
+ * (un Missionnaire recruté sous un crédo évangéliste qui a depuis basculé pluraliste
+ * "devrait" être un Gourou) — c'est une dérive D'IDENTITÉ, pas de conviction. [0..1] :
+ * 0 = aucun lettré actif (rien à dériver) OU face alignée sur le crédo courant ;
+ * 1 = un lettré actif dont la face ne correspond PLUS au crédo d'État courant.
+ * Ce que ça NE dit PAS : rien sur le TEMPS écoulé sans agir, ni sur une éventuelle
+ * "lassitude" — `timer` ne compte QUE le DÉCOMPTE vers l'expiration de la mission
+ * courante (pas une mesure d'ancienneté depuis le recrutement, qui n'est pas stockée) ;
+ * le module ne permet donc PAS de dériver une notion de lettré « inactif depuis N
+ * années » — seulement actif/inactif à l'instant T. Un pays sans religion ⇒ 0. */
+float religion_scholar_drift(int cid){
+  cr_ensure();
+  if(cid<0 || cid>=RELIG_MAX_COUNTRY || !g_scholar[cid].active) return 0.f;
+  int rid=religion_of_country(cid);
+  if(rid<0 || rid>=g_religion_count) return 0.f;
+  int expected=scholar_role_from_credo(g_religions[rid].credo);
+  if(expected<0) return 0.f;
+  return (g_scholar[cid].role != expected) ? 1.f : 0.f;
+}
 int religion_region_stabilized(int rg){
   cr_ensure();
   for(int c=0;c<RELIG_MAX_COUNTRY;c++)
@@ -326,6 +352,47 @@ ReligSchismMode religion_schism_eligible(const World *w, const WorldEconomy *eco
     }
   }
   return RSE_NONE;
+}
+
+/* ---- Reader manquant #5 : niveau de FRACTURE religieuse (mission « lecteurs », C2) ----
+ * Ce que ça DIT : la part POP-PONDÉRÉE des régions du pays dont le culte DOMINANT
+ * (religion_of_region, le cache dérivé des groupes) DIFFÈRE de la foi d'État
+ * (religion_of_country) — [0..1]. 0 = toutes les régions professent la foi d'État (ou
+ * le pays est athée : rien à fracturer) ; 1 = la foi d'État est minoritaire PARTOUT.
+ * Bâti sur les MÊMES briques que P8 (religion_of_region + le lien pays→religion),
+ * aucun état neuf. Ce que ça NE dit PAS : rien sur l'ÉLIGIBILITÉ au schisme (cf.
+ * religion_schism_eligible pour la porte RUPTURE/DÉRIVE — qui exige EN PLUS la
+ * distance culturelle + L basse) ni sur la PROFONDEUR de la dérive d'une région
+ * donnée (une minorité à 51 % pèse comme une minorité à 99 % : c'est un comptage
+ * de PRÉSENCE, pas d'intensité). Athée (rid<0) ⇒ 0 (rien à fracturer). */
+float religion_fracture_level(const World *w, const WorldEconomy *econ, int cid){
+  if(!w || !econ) return 0.f;
+  int rid=religion_of_country(cid);
+  if(rid<0) return 0.f;
+  float tot=0.f, off=0.f;
+  for(int r=0;r<w->n_regions && r<RELIG_MAX_REGION && r<econ->n_regions;r++){
+    if(w->region[r].country!=cid) continue;
+    float pop=0.f; for(int c=0;c<CLASS_COUNT;c++) pop+=econ->region[r].strata[c].pop;
+    if(pop<=0.f) continue;
+    tot+=pop;
+    if(religion_of_region(r)!=rid) off+=pop;
+  }
+  return (tot>0.f)?clampf(off/tot,0.f,1.f):0.f;
+}
+
+/* ---- Reader manquant #3 : dérive de CRÉDO (mission « lecteurs », C4 + décret tolérance) ----
+ * Ce que ça DIT : reprend EXACTEMENT le signal de religion_fracture_level (part
+ * pop-pondérée de régions hors foi d'État) — « à quel point la PRATIQUE du pays
+ * s'écarte du crédo/de la foi qu'il professe officiellement ». C'est un ALIAS
+ * documenté, pas un doublon caché : le mandat de la mission distinguait C4 (dérive
+ * de CRÉDO) de C2 (niveau de FRACTURE) mais l'audit du module religion ne trouve
+ * qu'UN SEUL signal dérivable sans inventer un canal (les régions minoritaires +
+ * la fracture déjà calculée) — la porte, l'agrégat et l'unité sont identiques.
+ * Ce que ça NE dit PAS : rien sur le CRÉDO lui-même (pluraliste/évangéliste/
+ * purificateur) — ça ne mesure qu'une PRÉSENCE minoritaire, pas une tension de
+ * prosélytisme (cf. culture_relation_of pour ça, entre deux cultures/religions). */
+float religion_credo_drift(const World *w, const WorldEconomy *econ, int cid){
+  return religion_fracture_level(w, econ, cid);
 }
 
 void religion_save(FILE *f){

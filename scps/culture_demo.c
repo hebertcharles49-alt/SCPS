@@ -138,6 +138,37 @@ int main(void){
     CK(gf_hi.time_ticks > sp_hi.time_ticks, "temps de fusion ∝ distance (le gouffre plus lent)");
     CK(fused_ok && fused.is_hybrid,         "la fusion produit un HYBRIDE");
 
+    /* 5. Lecteurs manquants (mission « lecteurs ») ------------------------- */
+    printf("\n── 5. LECTEURS MANQUANTS — culture_relation_of + region_ethos_drift ──\n");
+    /* culture_relation_of : mêmes fiches que §3, déballées en champs nus — DOIT
+     * renvoyer EXACTEMENT le même verdict que culture_relation (source unique). */
+    CultureRelation r_direct = culture_relation(&viking_step, &grenier);
+    CultureRelation r_of = culture_relation_of(
+        viking_step.langue, viking_step.valeurs, viking_step.subsistance,
+        viking_step.parente, viking_step.religion, viking_step.credo, viking_step.rel_branch,
+        grenier.langue, grenier.valeurs, grenier.subsistance,
+        grenier.parente, grenier.religion, grenier.credo, grenier.rel_branch);
+    CK(r_of == r_direct, "culture_relation_of ≡ culture_relation (mêmes champs, même verdict)");
+
+    CultureRelation zeal_direct = culture_relation(&zealA, &zealB);
+    CultureRelation zeal_of = culture_relation_of(
+        zealA.langue, zealA.valeurs, zealA.subsistance, zealA.parente, zealA.religion,
+        zealA.credo, zealA.rel_branch,
+        zealB.langue, zealB.valeurs, zealB.subsistance, zealB.parente, zealB.religion,
+        zealB.credo, zealB.rel_branch);
+    CK(zeal_of == zeal_direct && zeal_of == REL_ENNEMIS_SCHISME,
+       "culture_relation_of : cas schisme identique (ennemis-schismatiques)");
+
+    /* region_ethos_drift : ~0 quand la région PARTAGE l'éthos régnant ; monte
+     * quand une marche dominatrice vit sous une couronne pacifiste. */
+    float drift_same = region_ethos_drift(ETHOS_BUREAUCRATE, ETHOS_BUREAUCRATE);
+    float drift_far   = region_ethos_drift(ETHOS_DOMINATEUR, ETHOS_PACIFISTE);
+    printf("  même éthos que la couronne : drift=%.2f ; marche dominatrice/couronne pacifiste : drift=%.2f\n",
+           drift_same, drift_far);
+    CK(drift_same == 0.f,                          "region_ethos_drift : même éthos que la couronne → 0");
+    CK(drift_far > 0.9f,                            "region_ethos_drift : dominateur/pacifiste → proche du max [0..1]");
+    CK(drift_far >= 0.f && drift_far <= 1.f,        "region_ethos_drift : borné [0..1]");
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" La friction lit D_inf sur le contenu ; le cousinage lit l'horloge.\n");
     printf(" Tout le drame vit dans l'écart entre les deux canaux.\n");

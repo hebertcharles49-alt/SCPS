@@ -98,6 +98,21 @@ typedef enum { RSE_NONE = 0, RSE_RUPTURE, RSE_DERIVE } ReligSchismMode;
 ReligSchismMode religion_schism_eligible(const World *w, const WorldEconomy *econ,
                                         const WorldLegitimacy *wl, int cid);
 
+/* ---- Lecteurs manquants (mission « lecteurs ») — PURS, dérivés, aucun état neuf ------- *
+ * religion_fracture_level : part POP-PONDÉRÉE des régions du pays dont le culte DOMINANT
+ *   (religion_of_region) ≠ la foi d'État (religion_of_country). [0..1], 0 = athée ou
+ *   uniforme. Nécessaire à C2 (décret tolérance). Voir doc complète en tête d'impl. */
+float religion_fracture_level(const World *w, const WorldEconomy *econ, int cid);
+/* religion_credo_drift : ALIAS documenté de religion_fracture_level — le module religion
+ *   ne fournit qu'UN signal dérivable honnêtement pour « dérive de crédo/pratique vs foi
+ *   professée » (pas un canal distinct inventé). Nécessaire à C4. */
+float religion_credo_drift(const World *w, const WorldEconomy *econ, int cid);
+/* religion_scholar_drift : le lettré actif porte-t-il une FACE périmée (≠ celle qu'exige
+ *   le crédo d'État COURANT, scholar_role_from_credo) ? {0,1} — PAS une durée d'inactivité
+ *   (le module ne stocke aucune ancienneté de recrutement, seulement le décompte de la
+ *   mission courante) ; 0 si aucun lettré actif ou pays sans religion. Nécessaire à C3. */
+float religion_scholar_drift(int cid);
+
 /* ===================================================================== */
 /* P8 — religion par RÉGION (granularité du moteur : culture/L/agitation/  */
 /* sécession sont RÉGIONALES) + héritage + fracture. État GLOBAL (RELG).   */

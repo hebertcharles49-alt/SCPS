@@ -164,6 +164,14 @@ float lifeway_val_attr(Lifeway l);   /* éthos « naturel » attiré par ce mode
 float lifeway_subs(Lifeway l);       /* ancre de subsistance du mode de vie [0..10] */
 Ethos ethos_nearest(float value);    /* éthos dont l'ancre VALEURS est la plus proche */
 
+/* ---- Dérive d'éthos régional (helper manquant, mission « lecteurs », B6) --------
+ * Distance [0..1] entre l'éthos DOMINANT local (région) et l'éthos RÉGNANT (capitale
+ * du pays), normalisée sur l'étendue de l'ancre VALEURS. `local`/`ruling` sont déjà
+ * déballés par l'appelant (la culture régnante vit derrière econ_ruling_culture,
+ * scps_econ.h — hors de portée de ce module) ; ne dit rien de L/agitation, une
+ * distance de valeurs pure. Voir la doc complète au-dessus de l'implémentation. */
+float region_ethos_drift(Ethos local, Ethos ruling);
+
 /* ---- Distance & relation (§9) ---------------------------------------- */
 /* D_inf : max des écarts sur les axes de CONTENU (valeurs, subsistance,
  * parenté, religion). C'est la friction. */
@@ -172,6 +180,23 @@ float culture_content_distance(const Culture *a, const Culture *b);
 float culture_clock_distance(const Culture *a, const Culture *b);
 /* Classe la relation en vocabulaire lisible. */
 CultureRelation culture_relation(const Culture *a, const Culture *b);
+
+/* ---- Relation PAR INSTANCE, champs bruts (helper manquant, mission « lecteurs ») --
+ * `culture_relation` prend des fiches `Culture` complètes ; `PopCulture` (scps_econ.h,
+ * la fiche RÉGIONALE réellement peuplée par worldgen/demography) partage le MÊME
+ * préfixe de champs (les 5 axes + les 7 traits, même ordre, même sens) mais vit dans
+ * un module qui INCLUT scps_culture.h — un circular include empêche donc une surcharge
+ * `culture_relation_of(const PopCulture*, const PopCulture*)` ICI. On expose à la place
+ * la version « champs nus » : le site d'appel (scps_events.c, qui voit les deux types)
+ * déballe deux `PopCulture*` dans ces paramètres — zéro état neuf, zéro duplication de
+ * la logique de classement (délègue à la MÊME porte que culture_relation : schisme
+ * prioritaire, puis horloge×contenu). Nécessaire à B2 (rivalité voisine)/B3 (parenté). */
+CultureRelation culture_relation_of(float langue_a, float valeurs_a, float subsistance_a,
+                                    float parente_a, float religion_a,
+                                    Credo credo_a, ReligionBranch branch_a,
+                                    float langue_b, float valeurs_b, float subsistance_b,
+                                    float parente_b, float religion_b,
+                                    Credo credo_b, ReligionBranch branch_b);
 
 /* ---- Syncrétisme (§9 + correction « gouffre » v3) -------------------- *
  * SCPS est NON-ESSENTIALISTE : rien n'est inintégrable. Le gouffre est le
