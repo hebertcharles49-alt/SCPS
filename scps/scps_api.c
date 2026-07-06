@@ -1383,6 +1383,44 @@ int scps_player_embargo(ScpsSim *s, int target, int on){
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 
+/* ── ESCLAVAGE — garder/affranchir/vendre ──────────────────────────────────── */
+int scps_player_manumit(ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_MANUMIT, { 0,0,0,0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_slave_sell(ScpsSim *s, int region, long count){
+    if (!s || !s->ready || count<=0) return 0;
+    PlayerCmd c = { CMD_SLAVE_SELL, { region, (int32_t)count, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_player_slave_buy(ScpsSim *s, int region, long count){
+    if (!s || !s->ready || count<=0) return 0;
+    PlayerCmd c = { CMD_SLAVE_BUY, { region, (int32_t)count, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+int scps_slave_market(ScpsSim *s, ScpsSlavePoolLine *out, int max, long *total_out, int *can_buy_out){
+    if (total_out) *total_out=0;
+    if (can_buy_out) *can_buy_out=0;
+    if (!s || !s->ready || !out || max<=0) return 0;
+    float pool[HERITAGE_COUNT];
+    intertrade_slave_pool(pool);
+    int n=0;
+    for (int h=0;h<HERITAGE_COUNT && n<max;h++){
+        if (pool[h]<1.f) continue;
+        out[n].heritage = sz(heritage_name((Heritage)h));
+        out[n].count = (long)pool[h];
+        n++;
+    }
+    if (total_out) *total_out = intertrade_slave_pool_count();
+    if (can_buy_out){
+        int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+        *can_buy_out = (p>=0 && p<s->w->n_countries
+                        && econ_country_can_enslave(s->w, s->sim.econ, &s->sim.ts[p], p)) ? 1 : 0;
+    }
+    return n;
+}
+
 /* ── §3 — INTÉRIEUR · COMMERCE · GUERRE : plomberie additive (même motif que ci-dessus).
  * Tous ENFILENT (différé) ; chaque verbe est REVALIDÉ au drain (région à soi, indices bornés)
  * puis passé au MÊME actionneur que l'IA (agency/statecraft/intertrade/routes/campaign/navy). */

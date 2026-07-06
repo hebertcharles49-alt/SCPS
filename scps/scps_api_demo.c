@@ -740,6 +740,42 @@ int main(int argc, char **argv){
         } else {
             ok("(aucune réforme trouvée — ignoré)", true);
         }
+
+        /* ── ESCLAVAGE — garder/affranchir/vendre : verbes + conservation des âmes/or ── */
+        {
+            int cap = scps_country_capital_region(sd, me);
+            ok("esclavage : capitale du joueur trouvée", cap>=0);
+            if (cap>=0){
+                /* affranchissement : verbe ENFILÉ (drain no-op sans esclave, mais le verbe
+                 * lui-même doit s'enfiler — la plomberie, pas l'effet, est ce qu'on prouve ici). */
+                ok("verbe MANUMIT enfilé", scps_player_manumit(sd)==1);
+                scps_sim_advance_days(sd, 2);
+
+                long total_before=0;
+                { ScpsSlavePoolLine lines[HERITAGE_COUNT]; int can_buy=0;
+                  scps_slave_market(sd, lines, HERITAGE_COUNT, &total_before, &can_buy);
+                  ok("scps_slave_market : total du pool ≥ 0 (lecteur borné)", total_before>=0); }
+
+                /* vente : sans esclave à vendre, l'ordre s'ENFILE mais reste sans effet
+                 * (drain revalidé, silencieux — comme les offres diplo non consenties). */
+                ok("verbe SLAVE_SELL enfilé (même sans esclave à vendre — le verbe, pas l'effet)",
+                   scps_player_slave_sell(sd, cap, 100)==1);
+                scps_sim_advance_days(sd, 2);
+
+                long total_after=0;
+                { ScpsSlavePoolLine lines[HERITAGE_COUNT]; int can_buy=0;
+                  scps_slave_market(sd, lines, HERITAGE_COUNT, &total_after, &can_buy);
+                  ok("vente SANS esclave : le pool ne bouge PAS (rien à vendre, conservation)",
+                     total_after==total_before); }
+
+                /* achat : enfilé de la même façon (le gate éthos/tech tranche au drain). */
+                ok("verbe SLAVE_BUY enfilé", scps_player_slave_buy(sd, cap, 50)==1);
+                scps_sim_advance_days(sd, 2);
+            } else {
+                ok("(idem)", true); ok("(idem)", true); ok("(idem)", true);
+                ok("(idem)", true); ok("(idem)", true);
+            }
+        }
         scps_sim_free(sd);
     }
 

@@ -120,6 +120,19 @@ float intertrade_market_avail_ex(const WorldEconomy *e, int region, int good, fl
  * marge). Renvoient les unités échangées ; *or = l'or débité (achat) / encaissé (vente). */
 long  intertrade_market_buy (WorldEconomy *e, int region, int good, long want, int tier, long *spent);
 long  intertrade_market_sell(WorldEconomy *e, int region, int good, long want, int tier, long *gained);
+
+/* ---- ESCLAVAGE — LE MARCHÉ DES CENTRES (achat/vente au POOL mondial) --------
+ * Le vendeur retire des âmes de SES groupes esclaves (les plus nombreux d'abord),
+ * les crédite au pool MONDIAL (sérialisé, par héritage — le pool garde QUI ils
+ * sont) ; l'acheteur en tire (le plus nombreux du pool, déterministe), gaté par
+ * `can_enslave` (éthos/tech — miroir diplo_enslave_capture, un abolitionniste ne
+ * peut PAS acheter). Prix = SLAVE_PRICE×ipm (vente), ×2 à l'achat (double taxe des
+ * Centres, motif tier mondial de market_buy). Renvoient les âmes échangées. */
+long  intertrade_slave_sell(WorldEconomy *e, int region, long count);
+long  intertrade_slave_buy (WorldEconomy *e, int region, long count, bool can_enslave);
+void  intertrade_slave_pool(float out[HERITAGE_COUNT]);   /* lecteur (membrane) : âmes au pool par héritage */
+long  intertrade_slave_pool_count(void);                  /* Σ âmes au pool (télémétrie/readout) */
+
 /* sauvegarde (shell §6) : le module possède sa sérialisation — embargos décrétés
  * (les flux du dernier tick se recalculent, eux). */
 void  intertrade_save(FILE *f);

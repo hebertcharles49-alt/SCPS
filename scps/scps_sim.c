@@ -548,6 +548,24 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (on && !decree_legal(w, s->econ, s->ts, s->wl, s->sc, s->dp, p, (DecreeId)id)) break;
             decree_toggle(p, (DecreeId)id, on);
             break; }
+          /* ── ESCLAVAGE — la manœuvre PACIFISTE : l'affranchissement (granularité PAYS,
+           *    une politique). Aucun argument (agit sur p). ── */
+          case CMD_MANUMIT:
+            demography_manumit_country(s->econ, p);
+            break;
+          /* ── ESCLAVAGE — le MARCHÉ des Centres. a={region, count}. REVALIDÉ : région au
+           *    joueur (achat/vente sont des actes du PROPRIÉTAIRE de la région). ── */
+          case CMD_SLAVE_SELL: {
+            int r=c->a[0]; long n=c->a[1];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p || n<=0) break;
+            intertrade_slave_sell(s->econ, r, n);
+            break; }
+          case CMD_SLAVE_BUY: {
+            int r=c->a[0]; long n=c->a[1];
+            if (r<0 || r>=s->econ->n_regions || s->econ->region[r].owner!=p || n<=0) break;
+            bool can = econ_country_can_enslave(w, s->econ, &s->ts[p], p);
+            intertrade_slave_buy(s->econ, r, n, can);
+            break; }
         }
     }
     s->cmd_n = 0;
@@ -874,6 +892,7 @@ void sim_init(Sim *s, World *w) {
     demography_contact_reset();   /* S2 : compteur de cristallisations culturelles par contact */
     demography_migration_pact_reset();   /* BRASSAGE : compteur de flux de pacte migratoire */
     demography_refugee_reset();   /* BRASSAGE : compteurs de fuite/retour de réfugiés */
+    demography_manumit_reset();   /* ESCLAVAGE : compteur d'âmes affranchies (par sim) */
     religion_reset();     /* RELIGION : monde ATHÉE à chaque sim (sinon les foi FUITENT entre sims) */
     decrees_reset();      /* DÉCRETS : RAZ par sim (sinon un décret FUIT entre sims, comme la religion) */
     { int ne=0; for (int c=0;c<w->n_countries;c++){ int rl=w->country[c].role;

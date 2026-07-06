@@ -512,6 +512,7 @@ EVENTS_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $
                     $(OBJDIR)/scps_scps_heritage.o $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
                     $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_events.o $(OBJDIR)/scps_scps_provlog.o \
+                    $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_modifier.o \
                     $(OBJDIR)/scps_events_demo.o
 events_demo: $(EVENTS_DEMO_OBJS)
 	$(CC) $(EVENTS_DEMO_OBJS) -o $@ -lm

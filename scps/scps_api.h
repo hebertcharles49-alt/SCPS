@@ -362,6 +362,22 @@ int scps_build_legal(ScpsSim *s, int region, int edifice);
 int scps_player_build_manuf(ScpsSim *s, int region, int bld);
 int scps_manuf_legal(ScpsSim *s, int region, int bld);
 
+/* ── ESCLAVAGE — la strate CLASS_SLAVE : garder/affranchir/vendre --------------
+ * L'AFFRANCHISSEMENT (granularité PAYS, une politique) : CMD_MANUMIT, aucun
+ * argument (agit sur le joueur). Renvoie 1 si le verbe a pu s'enfiler. */
+int scps_player_manumit(ScpsSim *s);
+/* LE MARCHÉ DES CENTRES : region = une région AU JOUEUR, count = âmes. La vente
+ * retire des groupes esclaves du joueur (crédite le pool mondial + l'or) ; l'achat
+ * est REVALIDÉ au drain contre le gate éthos/tech (un abolitionniste voit son ordre
+ * silencieusement sans effet, comme les offres diplo non consenties). */
+int scps_player_slave_sell(ScpsSim *s, int region, long count);
+int scps_player_slave_buy (ScpsSim *s, int region, long count);
+/* LECTEUR (membrane) : le pool mondial par héritage (noms résolus) + le total, et
+ * si LE JOUEUR peut acheter maintenant (would_accept-like : un aperçu, pas une garantie
+ * — le pool peut se vider avant le drain). */
+typedef struct { const char *heritage; long count; } ScpsSlavePoolLine;
+int  scps_slave_market(ScpsSim *s, ScpsSlavePoolLine *out, int max, long *total_out, int *can_buy_out);
+
 /* ARMÉE d'un pays (sb_panel_armee, read-only) : mobilisation + flotte. L'armée de
  * CAMPAGNE (position/phase/composition) se lit via scps_army_info. */
 typedef struct {

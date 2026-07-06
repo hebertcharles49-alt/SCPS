@@ -15,6 +15,7 @@
  */
 #include "scps_demography.h"
 #include "scps_core.h"   /* le verdict vérifié (banc d'essai seulement) */
+#include "scps_econ.h"   /* ESCLAVAGE : ProvinceEconomy/WorldEconomy (demography_manumit_country) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -312,6 +313,46 @@ int main(int argc, char **argv){
         printf("   gradient d'attraction (vs pauvre) : ULTRA %.1f vs tiède %.1f\n", grad_ultra, grad_mild);
         ok("l'empire ULTRA aimante BIEN plus fort qu'un tiède (le flux échelonne)",
            grad_ultra > grad_mild*2.f);
+    }
+
+    /* ═══ 11. ESCLAVAGE — CLASS_SLAVE : bras sans pression d'intégration, affranchissement ══ */
+    printf("\n── 11. Esclavage : bras/friction/mobilité/affranchissement ──\n");
+    {
+        /* 11a — la strate esclave n'entre PAS dans la friction culturelle (le prix du GARDER). */
+        ProvincePop sp; memset(&sp,0,sizeof sp);
+        sp.groups[0]=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_LABORER, 5000,6.f,1.f,false);
+        PopGroup slv=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS, cult(8,2,8,7,ETHOS_HONNEUR), CLASS_SLAVE, 2000,2.f,0.05f,true);
+        slv.arrival=ARR_DEPORTE; sp.groups[1]=slv; sp.n_groups=2;
+        float off_slave=econ_off_culture_fraction(&sp);
+        sp.groups[1].klass=CLASS_LABORER;   /* même groupe, mais LIBRE : la friction devient réelle */
+        float off_free=econ_off_culture_fraction(&sp);
+        printf("   off-culture : esclave tenu %.4f vs le même groupe LIBRE %.4f\n", off_slave, off_free);
+        ok("un groupe ESCLAVE ne compte PAS dans la friction culturelle (H décompresse)",
+           off_slave==0.f && off_free>0.f);
+
+        /* 11b — l'affranchissement bascule klass+arrival ET la strate économique. */
+        World *w=calloc(1,sizeof(World));
+        WorldEconomy *e=calloc(1,sizeof(WorldEconomy));
+        w->n_countries=1; w->n_provinces=1;
+        w->country[0].capital_prov=0; w->province[0].region=0;
+        e->n_prov=1; e->n_regions=1;
+        ProvinceEconomy *pe=&e->prov[0];
+        pe->owner=0; pe->active=true; pe->colonized=true; pe->region=0;
+        pe->strata[CLASS_LABORER].pop=5000.f;
+        pe->strata[CLASS_SLAVE].pop=2000.f;
+        pe->pop.groups[0]=grp(HERITAGE_ADAPTATIF, SPHERE_HOMMES, humc, CLASS_LABORER, 5000,6.f,1.f,false);
+        PopGroup slv2=grp(HERITAGE_CLANIQUE, SPHERE_ETRANGERS, cult(8,2,8,7,ETHOS_HONNEUR), CLASS_SLAVE, 2000,2.f,0.05f,true);
+        slv2.arrival=ARR_DEPORTE; pe->pop.groups[1]=slv2; pe->pop.n_groups=2;
+        long freed=demography_manumit_country(e,0);
+        ok("l'affranchissement libère TOUTES les âmes esclaves du pays", freed==2000);
+        ok("la strate économique bascule CLASS_SLAVE→CLASS_LABORER (Σ constante)",
+           pe->strata[CLASS_SLAVE].pop==0.f && pe->strata[CLASS_LABORER].pop==7000.f);
+        ok("le groupe affranchi n'est plus CLASS_SLAVE", pe->pop.groups[1].klass==CLASS_LABORER);
+        ok("l'arrival bascule DÉPORTÉ→MIGRANT (diffusion faible→pleine)",
+           pe->pop.groups[1].arrival==ARR_MIGRANT);
+        ok("l'INTÉGRATION est GARDÉE (le prix : la friction devient réelle, pas remise à 1)",
+           pe->pop.groups[1].integration==0.05f);
+        free(w); free(e);
     }
 
     printf("\n══════════════════════════════════════════════════════════════\n");

@@ -224,7 +224,9 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     for (int r=0;r<s->econ->n_regions;r++){ const RegionEconomy *re=&s->econ->region[r];
         if (re->owner < -1 || re->owner >= w->n_countries) return false;
         if (re->pop.n_groups<0 || re->pop.n_groups>SCPS_MAX_GROUPS) return false;
-        if (!(re->annex_scar>=0.f && re->annex_scar<=1.f)) return false; }
+        if (!(re->annex_scar>=0.f && re->annex_scar<=1.f)) return false;
+        for (int c=0;c<CLASS_COUNT;c++)
+            if (!(re->strata[c].pop>=0.f)) return false; }   /* v68 : ESCLAVAGE — mirroir, même garde */
     /* ÉCONOMIE PAR-PROVINCE (v47) : prov[] est LA VÉRITÉ désormais — mêmes bornes que
      * region[] ci-dessus (owner) + region (mirroir de World.province[].region, lu par
      * econ_tick pour agréger SANS World*) doit indexer une région du monde chargé. */
@@ -237,7 +239,10 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             if (pe->pop.groups[g].arrival>=ARR_COUNT) return false;   /* mode d'arrivée borné (coeff de diffusion) */
             if (pe->pop.groups[g].home_reg < -1 || pe->pop.groups[g].home_reg >= w->n_regions) return false;  /* v52 : foyer du déplacé (indexe une région) */
             if (pe->pop.groups[g].faith    < -1 || pe->pop.groups[g].faith    >= RELIG_MAX)     return false;  /* v54 : foi PORTÉE par le groupe (id de religion, borne registre) */
+            if (pe->pop.groups[g].klass    < 0  || pe->pop.groups[g].klass    >= CLASS_COUNT)   return false;  /* v68 : ESCLAVAGE — klass borne la strate */
         }
+        for (int c=0;c<CLASS_COUNT;c++)
+            if (!(pe->strata[c].pop>=0.f)) return false;   /* v68 : ESCLAVAGE — la strate servile ne peut être négative */
         if (!(pe->annex_scar>=0.f && pe->annex_scar<=1.f)) return false; }
     /* v50 — chantiers de colonisation : src/dst indexent prov[] (ou -1), délais/cadence
      * bornés (une forge hors-borne indexerait la fondation ou gèlerait la cadence). */

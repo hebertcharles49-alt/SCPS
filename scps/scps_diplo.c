@@ -997,14 +997,31 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
     if (dst->n_groups<1 || dst->n_groups>=SCPS_MAX_GROUPS) return 0;
     /* déportation au CŒUR : on crée un cohorte DIASPORA non-intégrée (restive) de
      * culture étrangère → le D̄ du maître monte (la fracture s'installe au centre).
-     * Toujours DISTINCTE (jamais fondue dans un groupe libre co-culturel). */
+     * Toujours DISTINCTE (jamais fondue dans un groupe libre co-culturel). CLASS_SLAVE
+     * (lot esclavage) : le groupe est TENU — klass bascule, entièrement pop_by_class
+     * sur la strate servile (demography_emerge_classes le respecte, ne le réémerge plus). */
     PopGroup ng=src->groups[gi];                      /* garde heritage/culture/origine */
     ng.count=captives; ng.diaspora=true; ng.arrival=ARR_DEPORTE; ng.integration=0.f;   /* déporté : diffuse FAIBLE */
+    ng.klass=CLASS_SLAVE;
+    memset(ng.pop_by_class,0,sizeof ng.pop_by_class); ng.pop_by_class[CLASS_SLAVE]=captives;
     ng.home_reg=-1;                                   /* l'esclave est TENU (pas de retour ; home_reg memset 0 serait région 0) */
     ng.drift_id=SLAVE_DRIFT_BASE + region*SCPS_MAX_GROUPS + dst->n_groups;
     dst->groups[dst->n_groups++]=ng;
     src->groups[gi].count-=captives;
     if (src->groups[gi].count<=0){ src->groups[gi]=src->groups[src->n_groups-1]; src->n_groups--; }
+    /* STRATE ÉCONOMIQUE (le driver réel : strata[] pilote labor_avail/besoins/croissance) —
+     * les captifs sortent du bassin LIBRE de la province prise (journalier d'abord, le
+     * gros de la masse conquise ; borné au dispo) et rejoignent CLASS_SLAVE au cœur. */
+    {
+        ProvinceEconomy *spe=&econ->prov[spid], *dpe=&econ->prov[dpid];
+        float take=(float)captives;
+        float from_lab = fminf(take, spe->strata[CLASS_LABORER].pop);
+        spe->strata[CLASS_LABORER].pop -= from_lab; take -= from_lab;
+        if (take>0.f){ float from_bg=fminf(take, spe->strata[CLASS_BOURGEOIS].pop);
+            spe->strata[CLASS_BOURGEOIS].pop -= from_bg; take -= from_bg; }
+        float moved=(float)captives-take;             /* ce qu'on a RÉELLEMENT pu prélever */
+        dpe->strata[CLASS_SLAVE].pop += moved;
+    }
     return captives;
 }
 

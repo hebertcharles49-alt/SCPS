@@ -249,6 +249,13 @@ static const float NEED[CLASS_COUNT][RES_COUNT] = {
         [RES_PRECIOUS_WARE]=0.13f,   /* palier STATUT (orfèvrerie OU étoffe) — confort INCHANGÉ */
         [RES_STATUE]=0.18f,                       /* statuaire de prestige — confort/statut (⇒ demande de pierre) */
     },
+    /* ESCLAVE — le PLANCHER VITAL (mission : « consomme comme un journalier au PLANCHER,
+     * pas de biens de confort ») : le grain seul, à la même ration que le journalier
+     * (interchangeable poisson/fruit via res_is_food), rien d'autre — aucun bois de
+     * feu, aucune boisson, aucun confort. Le panier le plus court de la table. */
+    [CLASS_SLAVE] = {
+        [RES_GRAIN]=3.50f,
+    },
 };
 /* §besoins progressifs — ORDRE de priorité par classe (subsistance → confort → STATUT).
  * Le nombre de besoins COMPTÉS dans la satisfaction = f(niveau de capitale, ∝ pop) : un
@@ -259,6 +266,7 @@ static const Resource NEED_ORDER[CLASS_COUNT][9] = {
     [CLASS_LABORER]   = { RES_GRAIN, RES_EAU_DE_VIE, RES_FISH, RES_WOOD, RES_TUNIQUE, RES_POTTERY, RES_NONE },  /* bière (RES_EAU_DE_VIE→préférée) en palier moral PRÉCOCE ; poisson = nourriture interchangeable (A2) ; poterie = confort TARDIF */
     [CLASS_BOURGEOIS] = { RES_GRAIN, RES_SALT, RES_CLOTH, RES_REMEDE, RES_EAU_DE_VIE, RES_PAPER, RES_POTTERY, RES_STATUE, RES_NONE },
     [CLASS_ELITE]     = { RES_GRAIN, RES_FUR, RES_PAPER, RES_EAU_DE_VIE, RES_PRECIOUS_WARE, RES_STATUE, RES_NONE },
+    [CLASS_SLAVE]     = { RES_GRAIN, RES_NONE },   /* le plancher vital seul : rang 0, toujours débloqué (active_needs>=1) */
 };
 /* rang de priorité d'un besoin (0 = vital) ; 99 = hors panier (jamais débloqué). */
 static int need_rank(int c, Resource r){
@@ -270,8 +278,10 @@ static int need_rank(int c, Resource r){
  * calibre leur demande à l'échelle du monde (la cible 100/100hab borne la géographie). */
 static inline bool res_is_food(Resource r){ return r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK||r==RES_FRUIT; }   /* le FRUIT nourrit aussi (supplément, + en forêt) */
 
-/* Part de chaque strate dans la population à l'initialisation. */
-static const float CLASS_SHARE[CLASS_COUNT] = { 0.80f, 0.15f, 0.05f };
+/* Part de chaque strate dans la population à l'initialisation. CLASS_SLAVE=0 : nul
+ * empire ne naît esclavagiste — la strate n'existe qu'après capture (conquête) ou
+ * achat (marché des Centres). */
+static const float CLASS_SHARE[CLASS_COUNT] = { 0.80f, 0.15f, 0.05f, 0.00f };
 
 /* ---- Le palier MORAL est une VARIANTE culturelle (catalogue des biens) ----
  * Les cultures de basse subsistance (clans, montagnards métallurgistes, sauvages claniques)
@@ -388,6 +398,16 @@ const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, 
     return (cr >= 0 && cr < econ->n_regions) ? &econ->region[cr].culture : NULL;
 }
 
+/* ESCLAVAGE — le gate ACHETEUR (miroir de scps_ai.c: le gate qui institue la capture,
+ * `a->can_enslave`, réévalué ici en LECTURE SEULE pour le VERBE JOUEUR/marché — un
+ * abolitionniste, ni éthos conquérant ni TECH_ESCLAVAGE, ne peut pas acheter au pool). */
+bool econ_country_can_enslave(const World *w, const WorldEconomy *econ, const TechState *ts, int cid){
+    if (ts && ts->unlocked[TECH_ESCLAVAGE]) return true;
+    const PopCulture *crown = econ_ruling_culture(w, econ, cid);
+    if (!crown) return false;
+    return crown->ethos==ETHOS_DOMINATEUR || crown->ethos==ETHOS_HONNEUR;
+}
+
 /* TENSION DE DEMANDE : +10 % de besoins partout (appliqué au facteur `units`) → une
  * demande tendue en permanence, le marché presse toujours sur l'offre. */
 #define DEMAND_TENSION 1.10f
@@ -422,14 +442,27 @@ Resource building_alt_input(BuildingType b){
     return (b>=0 && b<BLD_TYPE_COUNT) ? RECIPE[b].alt1 : RES_NONE;
 }
 
+/* ESCLAVAGE (§II.6, H) — un groupe TENU esclave (klass==CLASS_SLAVE) est présent SANS
+ * appartenance : le mécanisme H décompresse la pression d'intégration AVANT le filtre
+ * (Rome absorbe 30-40 % d'étrangers sans crise). Ses âmes ne comptent DONC PAS dans la
+ * friction culturelle — c'est le PRIX du GARDER (diffusion faible, pas de pression) ;
+ * l'AFFRANCHISSEMENT (bascule CLASS_SLAVE→CLASS_LABORER, arrival→ARR_MIGRANT) les fait
+ * entrer dans la membrane et la friction devient RÉELLE. Site UNIQUE d'exclusion (les
+ * deux appelants prod — society_sat/satisfaction — passent par ici). */
+static inline bool group_is_slave(const PopGroup *g){ return g->klass==CLASS_SLAVE; }
+
 float econ_off_culture_fraction(const ProvincePop *pp){
     if (!pp || pp->n_groups<=1) return 0.f;
     int dom=-1; long best=-1;
-    for (int i=0;i<pp->n_groups;i++) if (pp->groups[i].count>best){ best=pp->groups[i].count; dom=i; }
+    for (int i=0;i<pp->n_groups;i++){
+        if (group_is_slave(&pp->groups[i])) continue;   /* les esclaves n'élisent pas le dominant */
+        if (pp->groups[i].count>best){ best=pp->groups[i].count; dom=i; }
+    }
     if (dom<0) return 0.f;
     Sphere doms = pp->groups[dom].origin_sphere;
     long total=0; float off=0.f;
     for (int i=0;i<pp->n_groups;i++){
+        if (group_is_slave(&pp->groups[i])) continue;   /* EXCLUS : présents sans pression d'intégration (H) */
         total += pp->groups[i].count;
         float sd   = sphere_distance(doms, pp->groups[i].origin_sphere)/7.f; /* normalisé 0..1 */
         float mism = sd * (1.f - clampf(pp->groups[i].integration,0.f,1.f)); /* l'assimilation efface */
@@ -569,7 +602,7 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
 }
 
 const char *social_class_name(SocialClass c) {
-    static const char *N[CLASS_COUNT]={"Laborers","Bourgeois","Élites"};
+    static const char *N[CLASS_COUNT]={"Laborers","Bourgeois","Élites","Esclaves"};
     return (c>=0&&c<CLASS_COUNT)?N[c]:"?";
 }
 const char *building_name(BuildingType b) {
@@ -2077,7 +2110,9 @@ void econ_tick(WorldEconomy *e, float dt) {
         int o=ar->owner; if (o<0||o>=SCPS_MAX_COUNTRY) continue;
         for (int g=0;g<RES_COUNT;g++) pool[o][g]+=ar->stock[g];
         epop[o]+=ar->strata[CLASS_LABORER].pop+ar->strata[CLASS_BOURGEOIS].pop+ar->strata[CLASS_ELITE].pop;
-        elab[o]+=ar->strata[CLASS_LABORER].pop+ar->strata[CLASS_BOURGEOIS].pop;   /* bassin de travail NATIONAL = journaliers + bourgeois */
+        /* bassin de travail NATIONAL = journaliers + bourgeois + ESCLAVES (des bras, sans
+         * pression d'intégration ni mobilité — CLASS_SLAVE compte ici comme le journalier). */
+        elab[o]+=ar->strata[CLASS_LABORER].pop+ar->strata[CLASS_BOURGEOIS].pop+ar->strata[CLASS_SLAVE].pop;
         ecap[o]+=ECON_STOCK_CAP_BASE+ECON_STOCK_CAP_ENTREPOT*(float)ar->n_entrepot;
     }
     /* OUTILS — l'usure du PARC NATIONAL se fait UNE fois/tick (un ×0.97 par-province
@@ -2096,9 +2131,11 @@ void econ_tick(WorldEconomy *e, float dt) {
 
         float supply[RES_COUNT]={0}, demand[RES_COUNT]={0};
         /* « 100 emplois = 100 emplois, qu'ils soient artisans ou bourgeois » : le BASSIN de
-         * main-d'œuvre = JOURNALIERS + BOURGEOIS (l'élite, classe dirigeante, ne travaille pas).
+         * main-d'œuvre = JOURNALIERS + BOURGEOIS (l'élite, classe dirigeante, ne travaille pas)
+         * + ESCLAVES (CLASS_SLAVE — lot esclavage : des bras SANS pression d'intégration).
          * Extraction ET manufacture y puisent. (Re-baseline : le bassin grandit ~+19 %.) */
-        float labor_avail = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop;
+        float labor_avail = re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
+                           + re->strata[CLASS_SLAVE].pop;
         float labor_used  = 0.f;
         float gdp         = 0.f;
         float wage_pool   = 0.f;   /* → laborers */

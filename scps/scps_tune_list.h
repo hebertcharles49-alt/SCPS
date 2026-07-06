@@ -115,6 +115,9 @@
      * (tech Économie servile OU éthos conquérant Dominateur/Honneur). Calé BAS : l'esclavage
      * apporte (savoir arraché) sans jamais dominer — volume faible × diffusion faible. */ \
     X(SLAVE_FRACTION,        0.08f) \
+    /* SLAVE_PRICE — prix de base d'une âme au marché des Centres (×ipm à la vente, ×2
+     * ipm à l'achat — la double taxe du tier mondial, motif de intertrade_market_buy). */ \
+    X(SLAVE_PRICE,           40.0f) \
     /* PACTE MIGRATOIRE (BRASSAGE) — l'échange passif annuel : fraction du groupe dominant qui
      * migre (×0..2 selon l'attractivité relative de la destination) + plancher anti-poussière. */ \
     X(MIG_PACT_FRAC,        0.006f) \

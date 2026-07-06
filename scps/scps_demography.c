@@ -307,7 +307,7 @@ float country_L(const ProvincePop *provs, int n){
 /* ===================================================================== */
 const char *labor_class_word(SocialClass k){
     switch(k){ case CLASS_ELITE: return "Noblesse"; case CLASS_BOURGEOIS: return "Artisans";
-               default: return "Laboureurs"; }
+               case CLASS_SLAVE: return "Esclaves"; default: return "Laboureurs"; }
 }
 int province_composition(const ProvincePop *pp, const ModifierStack *drift,
                          const PopCulture *crown, float P, float K,
@@ -332,7 +332,13 @@ int province_composition(const ProvincePop *pp, const ModifierStack *drift,
          * mais le conquis allophone est « soumis » et le captif « déporté ». Pour ces deux
          * voies coercitives, on SURFACE l'intégration (0-100 %) : c'est la métabolisation en
          * cours — le savoir qu'on digère, le nombre tangible qui compte pour le joueur. */
-        if (g->arrival==ARR_SOUMIS){
+        /* ESCLAVAGE — la strate TENUE (klass==CLASS_SLAVE) prime sur le mode d'arrivée :
+         * « esclave » AVANT « déporté » — un déporté déjà AFFRANCHI (klass→CLASS_LABORER,
+         * cf. demography_manumit_country) retombe sur la branche déporté/diaspora normale. */
+        if (g->klass==CLASS_SLAVE){
+            snprintf(etat_buf[n],sizeof etat_buf[n], "esclave · %d%% intégré", (int)(100.f*g->integration+0.5f));
+            r->etat=etat_buf[n];
+        } else if (g->arrival==ARR_SOUMIS){
             snprintf(etat_buf[n],sizeof etat_buf[n], "soumis · %d%% intégré", (int)(100.f*g->integration+0.5f));
             r->etat=etat_buf[n];
         } else if (g->arrival==ARR_DEPORTE){
@@ -436,9 +442,24 @@ void demography_dyn_id_rebase(const WorldEconomy *econ){
  * groupe. */
 static void demography_emerge_classes(ProvinceEconomy *re){
     ProvincePop *pp=&re->pop;
-    long total=0; for (int i=0;i<pp->n_groups;i++) total+=pp->groups[i].count;
+    /* ESCLAVAGE — un groupe TENU (klass==CLASS_SLAVE) ne participe PAS à l'émergence par
+     * emplois (nobles/artisans) : toutes ses âmes restent dans CLASS_SLAVE jusqu'à
+     * l'affranchissement (qui bascule klass→CLASS_LABORER, cf. demography_manumit_country).
+     * `total`/les jobs élite-bourgeois se calculent sur le reste (les LIBRES) seulement. */
+    long total=0;
+    for (int i=0;i<pp->n_groups;i++){
+        PopGroup *g=&pp->groups[i];
+        if (g->klass==CLASS_SLAVE){
+            g->pop_by_class[CLASS_LABORER]=0; g->pop_by_class[CLASS_BOURGEOIS]=0;
+            g->pop_by_class[CLASS_ELITE]=0;   g->pop_by_class[CLASS_SLAVE]=g->count;
+            continue;
+        }
+        g->pop_by_class[CLASS_SLAVE]=0;
+        total+=g->count;
+    }
     if (total<1){
         for (int i=0;i<pp->n_groups;i++){
+            if (pp->groups[i].klass==CLASS_SLAVE) continue;
             pp->groups[i].pop_by_class[CLASS_LABORER]=pp->groups[i].count;
             pp->groups[i].pop_by_class[CLASS_BOURGEOIS]=0;
             pp->groups[i].pop_by_class[CLASS_ELITE]=0;
@@ -460,6 +481,7 @@ static void demography_emerge_classes(ProvinceEconomy *re){
     if (elite_jobs+artisan_jobs > total) artisan_jobs=((total-elite_jobs)/100)*100;
     for (int i=0;i<pp->n_groups;i++){
         PopGroup *g=&pp->groups[i];
+        if (g->klass==CLASS_SLAVE) continue;                /* déjà posé ci-dessus, jamais réémergé */
         long e=((g->count*elite_jobs/total)/100)*100;       /* part noble de la bande */
         long a=((g->count*artisan_jobs/total)/100)*100;     /* part bourgeoise */
         if (e>g->count) e=(g->count/100)*100;
@@ -853,4 +875,47 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
         g.faith=-1;      /* athée par défaut (memset 0 = religion 0) ; la conversion l'assimile à la foi d'État */
         pp->groups[pp->n_groups++]=g;
     }
+}
+
+/* ---- ESCLAVAGE — L'AFFRANCHISSEMENT (§ manœuvre pacifiste) ------------- *
+ * Bascule TOUS les groupes esclaves du pays hors CLASS_SLAVE : klass→CLASS_LABORER,
+ * arrival ARR_DEPORTE→ARR_MIGRANT (diffusion 0.30→1.0 — le groupe ENTRE dans la
+ * membrane, ce que econ_off_culture_fraction lira désormais RÉELLEMENT : le prix
+ * du choix). `integration` GARDÉE (ils restent peu intégrés — la friction devient
+ * réelle, elle n'est pas remise à 1 par décret). La strate économique suit : Σ
+ * captives libérées passe de strata[CLASS_SLAVE] à strata[CLASS_LABORER] sur la
+ * PROVINCE-hôte de chaque groupe affranchi (même province que le groupe, cf.
+ * pp->prov). */
+static long g_manumit_total = 0;   /* télémétrie : âmes affranchies cumulées (par sim) */
+void demography_manumit_reset(void){ g_manumit_total = 0; }
+long demography_manumit_count(void){ return g_manumit_total; }
+
+long demography_manumit_country(WorldEconomy *econ, int cid){
+    if (!econ || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
+    long freed=0;
+    int nprov=econ->n_prov; if (nprov>SCPS_MAX_PROV) nprov=SCPS_MAX_PROV;
+    for (int p=0;p<nprov;p++){
+        ProvinceEconomy *pe=&econ->prov[p];
+        if (pe->owner!=cid) continue;
+        ProvincePop *pp=&pe->pop;
+        float moved=0.f;
+        for (int i=0;i<pp->n_groups;i++){
+            PopGroup *g=&pp->groups[i];
+            if (g->klass!=CLASS_SLAVE) continue;
+            g->klass=CLASS_LABORER;
+            if (g->arrival==ARR_DEPORTE) g->arrival=ARR_MIGRANT;   /* diffusion FAIBLE→PLEINE */
+            /* pop_by_class : bascule entière (le groupe reste homogène-libre ; l'émergence
+             * par emplois du prochain tick le redistribuera normalement, comme tout groupe). */
+            g->pop_by_class[CLASS_SLAVE]=0; g->pop_by_class[CLASS_LABORER]=g->count;
+            moved += (float)g->count;
+            freed += g->count;
+        }
+        if (moved>0.f){
+            float take=fminf(moved, pe->strata[CLASS_SLAVE].pop);
+            pe->strata[CLASS_SLAVE].pop -= take;
+            pe->strata[CLASS_LABORER].pop += take;
+        }
+    }
+    g_manumit_total += freed;
+    return freed;
 }

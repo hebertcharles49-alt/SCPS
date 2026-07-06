@@ -32,7 +32,15 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 67u           /* v67 : ENDGAME UNIFIÉ (V1a) — EndgameState (section EGAM,
+#define SAVE_VERSION 68u           /* v68 : CLASS_SLAVE — la strate esclave. SocialClass gagne
+                                    * CLASS_SLAVE (APPENDU, valeurs 0-2 stables) ⇒
+                                    * PopStratum strata[CLASS_COUNT] grandit dans TOUTE
+                                    * ProvinceEconomy ET RegionEconomy ⇒ sizeof(WorldEconomy)
+                                    * change (blob ECON, fwrite BRUT). + le pool mondial du
+                                    * marché des Centres (g_slave_pool[HERITAGE_COUNT], PAR
+                                    * héritage) rejoint la section ITRD existante (intertrade_
+                                    * save/load), sans nouveau tag de section. <v68 refusé.
+                                    * v67 : ENDGAME UNIFIÉ (V1a) — EndgameState (section EGAM,
                                     * fwrite BRUT) gagne war_dead (MÉMOIRE des morts, décrue
                                     * SANG_MEMORY_HL) + war_dead_seen (dernier cumul Campaign lu)
                                     * + pop_ref + sang_scar[SCPS_MAX_REG] (cicatrice PERMANENTE)

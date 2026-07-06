@@ -15,6 +15,7 @@
 #include "scps_factions.h"  /* MEMBRANE DE DÉCISION : faction_lever_apply/faction_concede (hooks de choix) */
 #include "scps_religion.h"  /* CONTENU W2 (lot 2) §C : religion_schism_eligible (C1) */
 #include "scps_agency.h"    /* CONTENU W2 (lot 2) §C : Edifice (EDI_SANCTUAIRE/TEMPLE/CATHEDRALE, C6) */
+#include "scps_demography.h" /* ESCLAVAGE (A1) : demography_manumit_country (choix « Abolir ») */
 
 /* MEMBRANE DE DÉCISION — TÉLÉMÉTRIE (« la télémétrie est la preuve d'équilibre ») : combien
  * de fois la crise phare (et sa suite conséquente) ont tiré sur l'ensemble d'un run. Statics
@@ -1481,6 +1482,12 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
                                ev_sign(&opt->gamble_eff), ev_effdir(&opt->gamble_eff));
     }
     apply_choice_hook(cx, evid, subject, cid, &opt->hook, today);
+    /* ESCLAVAGE (A1) — le choix « Abolir » de « Les chaînes rapportent » (option 2, la
+     * vertu avant le profit) appelle le MÊME chemin d'affranchissement que le verbe
+     * joueur CMD_MANUMIT : le canal le plus sobre (pas de nouvel EvEffect, un hook
+     * d'effet) — cid = le pays propriétaire (event_owner_of, déjà résolu ci-dessus). */
+    if (evid==EVID_CHAINES_RAPPORTENT && oi==2 && cid>=0 && cx->econ)
+        demography_manumit_country(cx->econ, cid);
     /* PONT EFFONDRÉ CONSOMME la cicatrice qui l'a fait mûrir (une cicatrice = un tir —
      * sinon le trigger la relirait ENCORE mûre au prochain scan et re-déclencherait). */
     if (evid==EVID_PONT_EFFONDRE) decision_memory_consume(cx->ev, subject, SCAR_SABOTAGE_CHANTIER, today);

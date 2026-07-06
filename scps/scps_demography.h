@@ -148,4 +148,16 @@ void demography_on_conquest(World *w, WorldEconomy *econ, ModifierStack *drift, 
 int  demography_dyn_id_next(void);
 void demography_dyn_id_rebase(const WorldEconomy *econ);
 
+/* ---- ESCLAVAGE — L'AFFRANCHISSEMENT (CMD_MANUMIT, granularité PAYS) --------- *
+ * Bascule TOUS les groupes esclaves (klass==CLASS_SLAVE) du pays `cid` en pop
+ * LIBRE : klass→CLASS_LABORER, arrival ARR_DEPORTE→ARR_MIGRANT (la diffusion du
+ * savoir passe de FAIBLE à PLEINE — la manœuvre pacifiste), `integration` GARDÉE
+ * (ils restent peu intégrés : la friction devient RÉELLE, c'est le prix du choix).
+ * Bascule aussi la strate économique (strata[CLASS_SLAVE]→CLASS_LABORER, sur la
+ * PROVINCE représentative de chaque région où vivent des esclaves de ce pays).
+ * Renvoie le nombre d'âmes affranchies. */
+long demography_manumit_country(WorldEconomy *econ, int cid);
+void demography_manumit_reset(void);   /* RAZ du compteur (par sim) */
+long demography_manumit_count(void);   /* âmes affranchies cumulées (télémétrie) */
+
 #endif /* SCPS_DEMOGRAPHY_H */

@@ -119,6 +119,9 @@ static bool    g_hub_dirty = true;          /* #5 : la carte des hubs ne dépend
 static bool    g_global_access[SCPS_MAX_COUNTRY];  /* M3 : pays ayant accès au marché GLOBAL (Centre propre OU pacte avec un porteur de Centre) — recalculé 1×/tick */
 static float   g_global_cache[RES_COUNT];   /* #5 : profondeur du marché mondial (Σ stocks des Centres), CALCULÉE 1×/tick (le devis d'achat la LIT en O(1), pas de re-somme dans la boucle chaude de l'IA) */
 #define IT_SEA_HOPS 4   /* une région côtière sans hub par terre atteint un marché d'outre-mer à ce coût */
+/* ESCLAVAGE — LE MARCHÉ DES CENTRES : le pool mondial d'âmes, PAR héritage (sérialisé,
+ * cf. intertrade_save/load). Déclaré ICI (avant intertrade_reset qui le RAZ). */
+static float g_slave_pool[HERITAGE_COUNT];
 
 void intertrade_reset(void){
     memset(g_imp,0,sizeof g_imp);   memset(g_expt,0,sizeof g_expt);
@@ -135,6 +138,7 @@ void intertrade_reset(void){
     memset(g_commerce_budget,0,sizeof g_commerce_budget); memset(g_commerce_spent,0,sizeof g_commerce_spent);  /* §5 : pool commercial RAZ */
     g_comm_capped=0; g_comm_drawn=0.0; g_commerce_active=false;   /* §5 : télémétrie RAZ + cap INACTIF tant que sim_day n'a pas fixé le pool */
     g_last_value=0.f;
+    memset(g_slave_pool,0,sizeof g_slave_pool);   /* ESCLAVAGE : pas de FUITE du pool entre parties d'une même session */
 }
 static void flows_clear(void){
     g_vol_down=g_vol_up=0.f; g_bulk_down=g_bulk_up=0.f; g_prec_down=g_prec_up=0.f; g_nprec_up=0;
@@ -643,6 +647,128 @@ long intertrade_market_sell(WorldEconomy *e, int region, int good, long want, in
     return sold;
 }
 
+/* ═══ ESCLAVAGE — LE MARCHÉ DES CENTRES (achat/vente d'esclaves au POOL mondial) ═══
+ * Canal des CENTRES (cités-états), PAS un troc bilatéral : un vendeur retire des âmes
+ * de SES groupes esclaves (les plus nombreux d'abord), les crédite au POOL MONDIAL
+ * (sérialisé, un compteur PAR HÉRITAGE — le pool garde QUI ils sont, la vente ne
+ * blanchit pas l'identité) ; un acheteur en tire (le plus nombreux du pool, choix
+ * déterministe), crée/renforce un groupe ARR_DEPORTE/CLASS_SLAVE de cet héritage.
+ * Prix = SLAVE_PRICE de base × ipm (le même déflateur que le reste du marché). Les
+ * cités-états prennent une marge au même taux que market_buy tier mondial (IT_MARGIN
+ * implicite via le prix de vente < prix d'achat, motif déjà utilisé par market_buy/
+ * sell). matière réelle : les ÂMES sont conservées (Σ pool + Σ groupes = constant),
+ * l'OR suit econ_region_treasury_add (jamais un `+=` direct qui fuirait à la clôture). */
+#define SLAVE_MARKET_DRIFT_BASE 900000   /* plage de drift_id réservée aux groupes achetés au marché (distincte de SLAVE_DRIFT_BASE) */
+
+static long slave_pool_total(void){
+    long t=0; for (int h=0;h<HERITAGE_COUNT;h++) t+=(long)g_slave_pool[h];
+    return t;
+}
+/* l'héritage le plus nombreux du pool (déterministe : départage par index croissant). */
+static int slave_pool_top(void){
+    int best=-1; float bv=0.f;
+    for (int h=0;h<HERITAGE_COUNT;h++) if (g_slave_pool[h]>bv){ bv=g_slave_pool[h]; best=h; }
+    return best;
+}
+void intertrade_slave_pool(float out[HERITAGE_COUNT]){
+    if (!out) return;
+    for (int h=0;h<HERITAGE_COUNT;h++) out[h]=g_slave_pool[h];
+}
+long intertrade_slave_pool_count(void){ return slave_pool_total(); }
+
+/* VENTE — `region` (au vendeur `cid`, implicite via re->owner) retire `count` âmes de
+ * ses groupes esclaves (les plus nombreux d'abord, à travers toutes ses provinces),
+ * les crédite au pool (par héritage), encaisse l'or (prix × ipm, marge Centre incluse
+ * dans l'écart achat/vente comme market_buy/sell). Renvoie les âmes réellement vendues. */
+long intertrade_slave_sell(WorldEconomy *e, int region, long count){
+    if (!e || region<0 || region>=e->n_regions || count<=0) return 0;
+    RegionEconomy *re=&e->region[region];
+    int cid=re->owner; if (!cid_ok(cid)) return 0;
+    float price=tune_f("SLAVE_PRICE",40.f)*econ_world_ipm(e);
+    long remaining=count, sold=0;
+    /* scanne TOUTES les provinces du vendeur (le stock d'esclaves est dispersé) — les plus
+     * gros groupes esclaves d'abord, pour vider peu de provinces plutôt qu'écrémer partout. */
+    int np=e->n_prov; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
+    while (remaining>0){
+        int bp=-1, bg=-1; long best=0;
+        for (int p=0;p<np;p++){
+            ProvinceEconomy *pe=&e->prov[p];
+            if (pe->owner!=cid) continue;
+            ProvincePop *pp=&pe->pop;
+            for (int i=0;i<pp->n_groups;i++)
+                if (pp->groups[i].klass==CLASS_SLAVE && pp->groups[i].count>best){
+                    best=pp->groups[i].count; bp=p; bg=i;
+                }
+        }
+        if (bp<0 || bg<0) break;   /* plus aucun groupe esclave à vendre */
+        ProvinceEconomy *pe=&e->prov[bp];
+        PopGroup *g=&pe->pop.groups[bg];
+        long take=(remaining<g->count)?remaining:g->count;
+        if (take<=0) break;
+        int h=(int)g->heritage; if (h<0||h>=HERITAGE_COUNT) h=0;
+        g_slave_pool[h] += (float)take;
+        g->count -= take;
+        pe->strata[CLASS_SLAVE].pop = fmaxf(0.f, pe->strata[CLASS_SLAVE].pop - (float)take);
+        if (g->count<=0){ pe->pop.groups[bg]=pe->pop.groups[pe->pop.n_groups-1]; pe->pop.n_groups--; }
+        remaining -= take; sold += take;
+    }
+    if (sold<=0) return 0;
+    econ_region_treasury_add(e, region, (float)sold*price);
+    return sold;
+}
+
+/* ACHAT — gate ÉTHOS/TECH (miroir diplo_enslave_capture : `can_enslave` passé par
+ * l'appelant, comme le combat) : un abolitionniste (ni éthos esclavagiste, ni
+ * TECH_ESCLAVAGE) ne peut PAS acheter. Débite l'or (matière réelle : treasury_add
+ * signé), tire l'héritage le PLUS NOMBREUX du pool (déterministe), crée/renforce un
+ * groupe ARR_DEPORTE/CLASS_SLAVE sur la province représentative de `region`. */
+long intertrade_slave_buy(WorldEconomy *e, int region, long count, bool can_enslave){
+    if (!can_enslave) return 0;
+    if (!e || region<0 || region>=e->n_regions || count<=0) return 0;
+    RegionEconomy *re=&e->region[region];
+    int cid=re->owner; if (!cid_ok(cid)) return 0;
+    int h=slave_pool_top(); if (h<0) return 0;
+    long avail=(long)g_slave_pool[h];
+    long want=(count<avail)?count:avail;
+    if (want<=0) return 0;
+    float price=tune_f("SLAVE_PRICE",40.f)*econ_world_ipm(e)*2.f;   /* ×2 : la double taxe des Centres (motif tier mondial) */
+    float *buyer_tr=it_treasury(e,region);
+    if (!buyer_tr) return 0;
+    long can=(long)(*buyer_tr/fmaxf(price,1e-4f));
+    if (want>can) want=can;
+    if (want<=0) return 0;
+    int pid=econ_region_rep_province(e,region);
+    if (pid<0 || pid>=e->n_prov) return 0;
+    ProvinceEconomy *pe=&e->prov[pid];
+    ProvincePop *pp=&pe->pop;
+    /* fusionne dans un groupe DÉPORTÉ existant du même héritage si possible, sinon crée. */
+    int gi=-1;
+    for (int i=0;i<pp->n_groups;i++)
+        if (pp->groups[i].klass==CLASS_SLAVE && pp->groups[i].heritage==(Heritage)h){ gi=i; break; }
+    if (gi<0){
+        if (pp->n_groups>=SCPS_MAX_GROUPS) return 0;
+        PopGroup ng; memset(&ng,0,sizeof ng);
+        ng.heritage=(Heritage)h; ng.origin_sphere=heritage_sphere((Heritage)h);
+        /* le pool est FONGIBLE (l'or blanchit l'origine précise) : la fiche culturelle
+         * exacte du vendeur n'est pas conservée à travers le marché — un substrat neutre
+         * (axes à 0, settled) porte l'héritage/l'arrival, ce que la friction/diffusion lisent. */
+        ng.origin.settled=true; ng.origin.heritage=(Heritage)h;
+        ng.culture=ng.origin;
+        ng.klass=CLASS_SLAVE; ng.count=want; ng.diaspora=true; ng.arrival=ARR_DEPORTE; ng.integration=0.f;
+        ng.home_reg=-1; ng.faith=-1;
+        ng.drift_id=SLAVE_MARKET_DRIFT_BASE + region*SCPS_MAX_GROUPS + pp->n_groups;
+        memset(ng.pop_by_class,0,sizeof ng.pop_by_class); ng.pop_by_class[CLASS_SLAVE]=want;
+        pp->groups[pp->n_groups++]=ng;
+    } else {
+        pp->groups[gi].count += want;
+        pp->groups[gi].pop_by_class[CLASS_SLAVE] += want;
+    }
+    pe->strata[CLASS_SLAVE].pop += (float)want;
+    g_slave_pool[h] -= (float)want;
+    *buyer_tr -= (float)want*price;
+    return want;
+}
+
 void  intertrade_order_embargo(int cid, int target, bool on){
     if (cid_ok(cid) && cid_ok(target) && cid!=target){
         if ((g_embargo[cid][target]!=0)!=on)                  /* journal : au FLIP seulement */
@@ -672,7 +798,8 @@ float intertrade_pair_value (int cid,int other){
 void intertrade_save(FILE *f){ fwrite(g_embargo,sizeof g_embargo,1,f); fwrite(g_centre,sizeof g_centre,1,f);
                                fwrite(g_hub_of,sizeof g_hub_of,1,f);   fwrite(g_hub_dist,sizeof g_hub_dist,1,f);
                                fwrite(&g_hub_dirty,sizeof g_hub_dirty,1,f); fwrite(g_global_cache,sizeof g_global_cache,1,f);
-                               fwrite(g_commerce_budget,sizeof g_commerce_budget,1,f); fwrite(g_commerce_spent,sizeof g_commerce_spent,1,f); }  /* §5 : pool commercial intra-mois */
+                               fwrite(g_commerce_budget,sizeof g_commerce_budget,1,f); fwrite(g_commerce_spent,sizeof g_commerce_spent,1,f);  /* §5 : pool commercial intra-mois */
+                               fwrite(g_slave_pool,sizeof g_slave_pool,1,f); }   /* ESCLAVAGE : pool mondial par héritage */
 bool intertrade_load(FILE *f){ bool ok = fread(g_embargo,sizeof g_embargo,1,f)==1
                                    && fread(g_centre,sizeof g_centre,1,f)==1
                                    && fread(g_hub_of,sizeof g_hub_of,1,f)==1
@@ -680,7 +807,8 @@ bool intertrade_load(FILE *f){ bool ok = fread(g_embargo,sizeof g_embargo,1,f)==
                                    && fread(&g_hub_dirty,sizeof g_hub_dirty,1,f)==1
                                    && fread(g_global_cache,sizeof g_global_cache,1,f)==1
                                    && fread(g_commerce_budget,sizeof g_commerce_budget,1,f)==1
-                                   && fread(g_commerce_spent,sizeof g_commerce_spent,1,f)==1;  /* §5 */
+                                   && fread(g_commerce_spent,sizeof g_commerce_spent,1,f)==1  /* §5 */
+                                   && fread(g_slave_pool,sizeof g_slave_pool,1,f)==1;   /* ESCLAVAGE */
                                g_commerce_active=true;   /* une partie chargée est une sim ACTIVE (le cap agit) */
                                return ok; }
 

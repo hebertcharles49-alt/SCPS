@@ -52,6 +52,15 @@ typedef enum {
     CLASS_LABORER = 0,
     CLASS_BOURGEOIS,
     CLASS_ELITE,
+    /* ESCLAVE — APPENDU en fin d'enum (les valeurs 0-2 restent stables) : la strate
+     * SERVILE. Présente SANS appartenance (§II.6, H) — compte dans labor_avail (les
+     * bras), REPRODUIT en interne (croissance régionale ordinaire, cf. la boucle
+     * for-CLASS_COUNT de la démographie), mais N'ENTRE JAMAIS dans la mobilité de
+     * classe (ni promotion ni démotion — on ne devient/cesse d'être esclave que par
+     * capture/vente/affranchissement) ni dans la friction culturelle (econ_off_
+     * culture_fraction exclut ses âmes : la pression d'intégration ne les touche
+     * pas, c'est le prix du GARDER). Panier au plancher vital (grain seul). */
+    CLASS_SLAVE,
     CLASS_COUNT
 } SocialClass;
 
@@ -457,6 +466,9 @@ typedef struct {
 float econ_content_dist(const PopCulture *a, const PopCulture *b);
 float econ_content_dist_faith(const PopCulture *a, const PopCulture *b);
 const PopCulture *econ_ruling_culture(const World *w, const WorldEconomy *econ, int cid);
+/* ESCLAVAGE — gate ACHETEUR au marché des Centres (miroir du gate de capture IA) :
+ * TECH_ESCLAVAGE débloquée OU éthos conquérant (Dominateur/Honneur) de la couronne. */
+bool econ_country_can_enslave(const World *w, const WorldEconomy *econ, const TechState *ts, int cid);
 
 /* Initialise pops, capacités d'extraction et manufactures à partir de la
  * géographie/ressources du monde déjà généré. */

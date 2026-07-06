@@ -85,6 +85,13 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        /* DÉCRETS DU JOUEUR (civics) — a[0]=DecreeId, a[1]=on/off. Revalidé au drain :
         * id borné, condition d'entrée remplie (ON), une RÉFORME active refuse le OFF. */
        CMD_DECREE,
+       /* ESCLAVAGE — le joueur AFFRANCHIT tout son pays (granularité PAYS, une politique,
+        * pas une province). Pas d'arguments (agit sur p = s->human_player). */
+       CMD_MANUMIT,
+       /* ESCLAVAGE — le MARCHÉ des Centres. a[0]=région (au joueur), a[1]=count.
+        * ACHAT gaté éthos/tech (miroir diplo_enslave_capture) ; VENTE sans gate (on
+        * vend ce qu'on tient déjà). */
+       CMD_SLAVE_BUY, CMD_SLAVE_SELL,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

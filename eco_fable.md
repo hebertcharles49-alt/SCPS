@@ -1035,3 +1035,350 @@ SAIN (satisfaction 78/86/82 %, 155 guerres, hégémon mortel 2/2, aucune fin dé
 attendu, l'entropie ne franchit `ENTROPY_FIN` sur AUCUNE des 4 nourritures dans ces 250 ans).
 Sweeps 42/7 : voir le rapport de calibrage SANG ci-dessus (lot A) — ratio sang largement franchi, porte
 entropie fermée. **NON COMMITTÉ** (par consigne).
+
+## 2026-07-06 — L'IA NE CONSOMME JAMAIS SES RARES FAUSTIENS (diagnostic + fix doctrine, scps_ai.c seul)
+
+**Symptôme** : `conso foreuse 0 · réplicateur 0 · corne 0` sur TOUTES les graines du sweep — donc la
+sélection de fin par « rare dominant » (`faust_consumed[3]`, cf. entrée précédente) ne peut JAMAIS
+départager EAU/RONCES/FROID par la voie faustienne ; seule la voie SANG (ou le hash par défaut) tranche.
+
+**PHASE 1 — trace complète (lecture seule) :**
+
+1. **Qui incrémente `faust_consumed[]`** : `scps_econ.c:2358-2359`, dans la boucle de production des
+   manufactures (`econ_tick`). SEUL déclencheur : `bld_is_faustian(b->type)` (scps_econ.c:1752-1753 —
+   vrai pour `BLD_FOREUSE`/`BLD_REPLICATEUR`/`BLD_CORNE` seulement) ET le bâtiment doit avoir tourné ce
+   tick (`lim>0`, staffé + intrant consommé). `k=0` essence/foreuse, `1` flux/réplicateur, `2` fer
+   céleste/corne. Agrégé province→région (`econ_aggregate_regions`, scps_econ.c:911) puis région→monde
+   (`prosperity_tick`, scps_prosperity.c:186). **Donc le seul maillon qui compte est : la manufacture
+   EST-ELLE POSÉE ET NOURRIE ?**
+
+2. **Recettes** (scps_econ.c:191/199/200) : FOREUSE `essence→fer` · RÉPLICATEUR `flux→bois` · CORNE
+   `fer céleste→grain`. Les trois sont **tier-5** (`bld_min_tier`, scps_econ.c:1810 — le tier le plus
+   haut du jeu) et gatées par tech (`tech_foreuse`/`tech_replicateur`/`tech_corne`, posées par
+   `econ_apply_country_tech` depuis `ts->unlocked[TECH_FOREUSE/TECH_TRANSMUTATION/TECH_FORGE_RUNES]`).
+
+3. **La tech S'UNLOCK bien** (côté `scps_ai.c`, déjà en place, PAS le maillon mort) :
+   - `ai_research_step` §4 (ligne 2036-2041) : empire affamé de FER épargne pour TECH_FOREUSE.
+   - FAU5 (ligne 2042-2057) : empire affamé de BOIS beeline TECH_TRANSMUTATION, affamé de GRAIN beeline
+     TECH_FORGE_RUNES — sauf si `tech_crisis_proximity` est déjà haute (prudence).
+   - S3 (ligne 2085-2108) : un empire à fort appétit faustien (`ai_faustian_appetite ≥ AI_FAUST_QUEST`)
+     beeline aussi TECH_FORGE_RUNES via la Poudrière (l'« emblème »).
+   - Donc les 3 tech DEVRAIENT s'unlock chez les empires en famine/faustiens — c'est mesurable et
+     documenté (S3/§4/FAU5 dans CLAUDE.md).
+
+4. **LE MAILLON MORT : la POSE du bâtiment, nulle part dans la doctrine IA.**
+   - `ai_build_civmanuf` (scps_ai.c:975) **EXCLUT explicitement** les 3 transmuteurs
+     (`if (bld_is_faustian(...)) continue;`) — par design (commentaire : « charge/tech », renvoyé à la
+     voie doctrinale).
+   - `ai_build_manufacture` (scps_ai.c:891, LA voie doctrinale « bâti délibéré, payé, par tempérament »)
+     pose bien des bâtiments arcanes pour un empire faustien (`a->w_faustian>0.30f` → ligne 911 :
+     `BLD_CELESTIAL_FORGE` + `BLD_MAGE_WORKSHOP`) — **mais ne pose JAMAIS FOREUSE/RÉPLICATEUR/CORNE**.
+     C'est le seul point d'entrée pour les bâtiments faustiens dans TOUTE la base IA (grep exhaustif de
+     `bld_is_faustian`/`BLD_FOREUSE`/`BLD_REPLICATEUR`/`BLD_CORNE` dans scps_ai.c : zéro autre site).
+   - Côté econ (hors ma portée, lu seulement) : `econ_build_tick` (§NF, scps_econ.c:1500-1537, le
+     bâtisseur autonome demande-menée) N'EXCLUT PAS ces 3 types de sa boucle générique — en théorie il
+     PEUT les poser si `price[out] ≥ 1.8×base` localement ET l'intrant est fournissable quelque part
+     dans le royaume. Mais en pratique c'est un cercle : l'ESSENCE n'a AUCUN consommateur sauf la
+     FOREUSE (qui n'existe pas encore) → sa demande reste ~0 → son `owner_avail` ne suffit à rien
+     déclencher d'autre, et surtout le bien dont §NF regarde le PRIX est `RES_IRON`/`RES_WOOD`/
+     `RES_GRAIN` (l'OUTPUT du transmuteur), des biens communs qui franchissent rarement 1.8×base — les
+     doctrines civiles (armurerie/scierie/etc.) les couvrent déjà. §NF n'est donc pas conçu pour ce cas
+     (aucun bug à proprement parler côté econ — juste un chemin qui ne s'emprunte quasi jamais) : le
+     verrou véritable est bien l'ABSENCE de doctrine dédiée, exactement le motif que S1 (greffe) et S3
+     (emblème) ont déjà résolu pour la RECHERCHE.
+
+**Conclusion PHASE 1** : le maillon mort est dans `scps_ai.c`, réparable par la doctrine (comme prévu).
+Aucune modification hors `scps_ai.c` n'est nécessaire.
+
+**PHASE 2 — fix (scps_ai.c uniquement)** : nouvelle fonction `ai_build_transmuter`, appelée juste après
+`ai_build_manufacture` dans le même créneau `t_mil` (probabiliste, pas un tour garanti — même cadence que
+l'arsenal). Motif IDENTIQUE à la quête S3/§4 : **empire transgressif** (`a->w_faustian > AI_FAUST_QUEST`,
+réutilise le seuil existant — « la soif d'interdit », rare par construction) qui a **déjà la tech**
+débloquée POSE (une fois, `empire_has_bld` garde) le transmuteur correspondant, dans la région-hôte au
+tier suffisant (T-gate `capitale_max_tier`/`bld_min_tier`, même idiome que `ai_build_manufacture`), payée
+au **prix normal** (`MANUF_BUILD_COST × bld_min_tier × ipm`, débit au succès — zéro bonus plat). Gate de
+sens : `econ_bld_can_build` (le prédicat public existant, scps_econ.h:887) vérifie que la région a bien
+le gisement (fer céleste pour CORNE/FORGE ; les autres n'ont pas de gate raw) — sinon on chercherait une
+région-hôte qui ne pourra jamais tourner. Essence/flux : pas de gate raw (produits par les manufactures
+arcanes, le pool national les achemine) — seule la présence du bâtiment `BLD_MAGE_WORKSHOP`/`BLD_ALAMBIC`
+quelque part dans l'empire (via `empire_has_bld`) est requise pour FOREUSE/RÉPLICATEUR, sinon l'intrant
+ne sera jamais nourri (poser une foreuse sans mage workshop la laisserait inerte à vie). Un seul
+transmuteur posé par tour (comme les autres doctrines). Tunable neuf, LOCAL à scps_ai.c (`#define`,
+documenté ici — pas dans scps_tune_list.h) : aucun nécessaire, réutilise `AI_FAUST_QUEST` (0.80) déjà
+présent pour S3 — la même porte d'appétit gate maintenant recherche ET construction du même canon
+faustien, cohérent avec l'esprit « rare et coûteux » de S3.
+
+## MISSION « LES HELPERS MANQUANTS » (2026-07-06) — lecteurs pour B2/B3/B5/B6, C2/C3/C4
+
+Contexte : les événements lot 2 §B (culturels) et §C (religieux) avaient sauté B2/B3/B5/B6 et
+C2/C3/C4 faute de LECTEURS moteur (« aucun canal inventé », cf. CLAUDE.md « BOUCLE DE GAMEPLAY »).
+Mission : livrer ces lecteurs — DÉRIVÉS PURS, zéro état neuf, zéro sérialisation, zéro bump SAVE.
+Le contenu (les EVID_* eux-mêmes) viendra dans une vague ultérieure ; ici seulement les getters.
+
+**LIVRÉS (5) :**
+
+1. **`culture_relation_of(...)`** (scps_culture.{h,c}) — relation par instance en CHAMPS NUS
+   (14 floats/enums : les 5 axes + credo + branche, ×2). `culture_relation(Culture*,Culture*)`
+   existait déjà mais opère sur des fiches `Culture` complètes ; `PopCulture` (scps_econ.h, la fiche
+   RÉGIONALE réellement peuplée) partage le MÊME préfixe de champs mais vit dans un module qui
+   INCLUT scps_culture.h — impossible d'y ajouter une surcharge `PopCulture*` sans circular include.
+   Solution : `culture_relation` ET `culture_relation_of` délèguent maintenant à un cœur PARTAGÉ
+   `relation_core` (byte-identique par construction — la discipline anti-duplication du dépôt).
+   Le site d'appel futur (scps_events.c, qui voit les deux types) déballe deux `PopCulture*` dans
+   ces 14 paramètres. Débloque **B2** (rivalité culturelle voisine) / **B3** (parenté). Banc
+   culture_demo +4 (28/28 vert) : `culture_relation_of` ≡ `culture_relation` sur les MÊMES fiches
+   (cas normal + cas schisme).
+
+2. **`region_ethos_drift(Ethos local, Ethos ruling)`** (scps_culture.{h,c}) — distance [0..1] entre
+   l'éthos DOMINANT d'une région et l'éthos RÉGNANT (capitale du pays), normalisée sur l'étendue de
+   l'ancre VALEURS (ETHOS_VAL, span 1.5..9.0). ⚠ SIGNATURE réduite à deux `Ethos` (pas de World/région
+   en paramètre) : la culture régnante ne se lit QUE via `econ_ruling_culture` (scps_econ.h, FICHIER
+   INTERDIT à cette mission) — le site d'appel fournit les deux `Ethos` déjà déballés d'un
+   `PopCulture*` région et d'un `econ_ruling_culture(...)`. Débloque **B6** (dérive d'éthos). Banc
+   culture_demo +3 : même éthos que la couronne → 0 ; dominateur/pacifiste → ≈1 (proche du max) ;
+   borné [0..1].
+
+3. **`religion_fracture_level(w, econ, cid)`** (scps_religion.{h,c}) — part POP-PONDÉRÉE des régions
+   du pays dont le culte DOMINANT (`religion_of_region`) ≠ la foi d'État (`religion_of_country`).
+   [0..1], 0 = athée ou uniforme. Bâti sur les briques P8 existantes (aucun état neuf). Débloque
+   **C2** (décret tolérance).
+
+4. **`religion_credo_drift(w, econ, cid)`** (scps_religion.{h,c}) — ALIAS documenté de
+   `religion_fracture_level` : l'audit du module religion ne trouve qu'UN SEUL signal dérivable
+   honnêtement pour « dérive de crédo/pratique vs foi professée » sans inventer un canal — même
+   porte, même agrégat, même unité que la fracture. Débloque **C4**.
+
+5. **`religion_scholar_drift(cid)`** (scps_religion.{h,c}) — {0,1} : le lettré ACTIF porte-t-il une
+   face PÉRIMÉE (≠ celle qu'exige `scholar_role_from_credo` du crédo d'État COURANT) ? Ce que ça NE
+   dit PAS, documenté en tête : le module ne stocke AUCUNE ancienneté de recrutement — seulement le
+   décompte de la mission courante (`timer`) — donc pas de notion honnête de « lettré inactif depuis
+   N années ». Débloque **C3**.
+
+Banc religion_demo +13 (fixture : `world_generate`+`econ_init`+`gen_population` graine 9, un pays à
+2 régions, groupes PopGroup natifs posés à la main sur les provinces représentatives — `gen_population`
+ne peuple pas systématiquement toutes les régions d'un pays à 2 provinces, d'où l'attache manuelle) :
+athée→0 (les 3 lecteurs) · foi uniforme→0 · schisme (r1 bascule) → fracture≈0.5, alias identique,
+borné · lettré recruté aligné→drift=0 · pays schismant sa foi d'État→drift=1.
+
+**SAUTÉ (1), documenté :**
+
+6. **`statecraft_creuset_state`** — ÉVALUÉ, pas créé : le signal existe déjà en DEUX formes publiques
+   distinctes, toutes deux au-delà de la simple composition attendue. Niveau PAYS :
+   `econ_country_metabolized(w, econ, cid)` (scps_econ.h) est le TWIN-INVERSE exact de
+   `econ_off_culture_fraction` — « part des âmes d'un autre héritage que la capitale ET assimilées »,
+   déjà consommé par la recherche (Temps 1) et la membrane. Niveau RÉGION : `trig_xenophobe`
+   (scps_events.c:289-305) inline déjà le motif « off_culture ≥ seuil + intégration pop-pondérée des
+   minorités > seuil » pour EVID_XENOPHOBE — 6 lignes, pas un état, réutilisables telles quelles par
+   un futur trigger B5. Créer `statecraft_creuset_state` serait un DOUBLON déguisé du twin-inverse
+   déjà public + de l'inline déjà démontré. Rien à livrer ici ; le futur site d'appel de B5 doit
+   composer `econ_country_metabolized` (creuset national) ou reprendre l'inline de `trig_xenophobe`
+   (creuset régional), selon le grain visé par l'événement.
+
+Gates : `make religion_demo culture_demo statecraft_demo` → 3 bancs verts, 0 warning (religion_demo
+13/13 nouveaux + selftest OK ; culture_demo 28/28 ; statecraft_demo 45/45, intact — non touché).
+Tous les lecteurs livrés sont des DÉRIVÉS PURS (aucun `static` neuf, aucune écriture, aucun champ
+sérialisé) → golden/determinism intacts par construction (non relancés ici — arbre partagé, cf.
+consigne de la mission). Fichiers modifiés : `scps/scps_culture.h`, `scps/scps_culture.c`,
+`scps/culture_demo.c`, `scps/scps_religion.h`, `scps/scps_religion.c`, `scps/religion_demo.c`,
+`eco_fable.md` (ce paragraphe). Aucun fichier interdit touché ; `scps_statecraft.{h,c}` lu mais
+non modifié (le reader #6 s'y serait logé, mais est sauté).
+
+**PHASE 3 — mesure.**
+
+**Itération 1 (ratée, corrigée)** : le premier jet gatait la pose sur `a->w_faustian > 0.30f` (le MÊME
+seuil que `BLD_CELESTIAL_FORGE`/`BLD_MAGE_WORKSHOP` dans `ai_build_manufacture`). Diagnostic instrumenté
+(`SCPS_TRANSDIAG`, retiré avant de rendre) : sur seed 9/100 ans, `a->w_faustian` **max mesuré = 0.22**,
+jamais > 0.30 — le poids est une base FIXE 0.2 (scps_ai.c ligne ~147, `a->w_faustian = 0.2f`) modulée par
+`glide_axis` (le glissement de faction FAC_TRANSGRESSEUR, borné [0.3,2.0]×0.2 = max théorique ~0.4, mais
+qui exige que la faction Transgresseurs SURREPRÉSENTE la pop vs le trône — rare). Or §4 (famine de FER)
+et FAU5 (famine BOIS/GRAIN) — les DEUX chemins qui déverrouillent FOREUSE/TRANSMUTATION/FORGE_RUNES dans
+`ai_research_step` — **n'exigent AUCUN appétit faustien** : ce sont de PURES famines (`ai_resource_famine`)
+tempérées par `tech_crisis_proximity`. Seul S3 (l'emblème) gate sur `ai_faustian_appetite` (credo×valeurs,
+un axe CULTUREL, pas `a->w_faustian`). Résultat : la porte de POSE (w_faustian>0.30, quasi jamais franchie)
+était PLUS STRICTE que la porte de RECHERCHE qui avait déjà validé la tech — incohérent, et ça explique le
+0 mesuré même après le premier fix.
+
+**Itération 2 (retenue)** : la porte de pose est retirée — on POSE dès que la tech est débloquée (le signal
+déjà validé en amont par §4/FAU5/S3), en AUTO-SUFFISANCE : si l'usine-source manque (mage/alambic pour
+nourrir essence/flux), on la pose D'ABORD (sinon le transmuteur resterait inerte à vie). Une pose par tour.
+
+**Faux golden ÉCHEC (piège du chantier partagé, PAS mon bug)** : un premier `make golden` a montré les 5
+hash CHANGÉS — mais `scps/golden_hashes.txt` était alors VIDE (un autre agent en cours de re-baseline sur
+`scps_econ.c`/`scps_intertrade.c`, l'esclavage `g_slave_pool`). Isolé en désactivant TEMPORAIREMENT l'appel
+à `ai_build_transmuter` (commenté, function-defined-but-unused, warning attendu) : le hash 12-ans était
+IDENTIQUE avec ou sans mon fix (859148e9/3ab72541/9941c716/7993b668/80e1555b) — la divergence venait des
+fichiers économie/intertrade d'un AUTRE agent, pas de scps_ai.c. Une fois `golden_hashes.txt` re-publié
+par cet agent, `make golden` passe PROPREMENT avec mon fix actif. Leçon suivie à la lettre : ne jamais
+« réparer » le fichier d'autrui, attendre et re-vérifier.
+
+**Résultats finaux** (chronicle rebuild propre, 0 warning) :
+- `make golden` **OK** (hash IDENTIQUE, 5 graines × 12 ans) — les poses n'arrivent PAS avant l'an 12 (la
+  tech FOREUSE/TRANSMUTATION/FORGE_RUNES prend des décennies : coût √N-provinces + épargne + tier-3/4/5).
+- `make determinism` **STABLE** (5 graines × 12 ans, hashes reproductibles).
+- Sweep seeds 9/7/42 × 250 ans (`./chronicle <seed> 1 250 6 12`) :
+  - seed 9 : `conso foreuse 0 · réplicateur 0 · corne 2946` · satisfaction Laborer 65% / Bourgeois 83% /
+    Élite 79% · hégémon mortel 1/1 · entropie 9319 [TERMINAL].
+  - seed 7 : `corne 1262`, satisfaction 79/89/90 %, hégémon mortel 1/1, entropie 7791 [TERMINAL].
+  - seed 42 : `corne 729`, satisfaction 69/86/84 %, hégémon mortel 1/1, entropie 3184 (sous TERMINAL=4000).
+  - **FOREUSE et RÉPLICATEUR restent à 0** sur ces 3 graines — MAIS ce n'est plus un maillon mort côté
+    pose : instrumentation (`SCPS_TRANSDIAG`, retirée) confirme que `tech_foreuse`/`tech_replicateur` ne
+    deviennent JAMAIS vrais pour aucun empire sur ces graines/250 ans (alors que `tech_corne` s'allume
+    2 fois, cid 60 et 34) — le maillon mort qui RESTE est en amont, côté RECHERCHE (§4/FAU5), hors de mon
+    diagnostic initial qui les supposait à tort déjà fiables. FORGE_RUNES a DEUX portes de recherche
+    (FAU5 famine-grain ET S3 emblème) contre UNE seule chacune pour FOREUSE (§4 famine-fer) et
+    TRANSMUTATION (FAU5 famine-bois) — doublant ses chances de s'unlock dans la fenêtre. Le fix de pose
+    (Phase 2) est VALIDÉ et TOURNE dès que la tech existe (la preuve : Corne). Un lot séparé (hors mandat
+    de cette session : « la tech débloquée » était un GIVEN de la consigne) pourrait creuser pourquoi
+    §4/FAU5 s'unlock si rarement pour foreuse/transmutation — non entrepris ici (hors scope explicite).
+- Bar demandée (« satisfaction ≥65, hégémon mortel ») : **tenue** sur les 3 graines (Laborer 65 % pile
+  à la limite sur seed 9 — le plus chargé en entropie/apocalypse — mais ne la franchit pas).
+- Le monde N'entre PAS en spirale de fins répétées : `endgame_select_and_fire` latch `eg->fired` UNE
+  fois (`if (eg->fired) return;`, scps_endgame.c:740) — l'entropie continue de monter après (Σ
+  faust_charge, jamais gelée par le firing) mais ça ne redéclenche pas une 2e fin ; c'est l'aftermath
+  attendu (les mondes avec CORNE actif tôt vivent longtemps sous cataclysme, cohérent avec le design
+  « la Brèche a un prix »).
+
+**Ce qui reste hors de ma portée (documenté, pas touché)** :
+- `scps_econ.c` (§NF, `econ_build_tick`) pourrait en théorie poser ces bâtiments aussi (aucune exclusion
+  de type) mais le cercle essence/prix-commun le rend quasi inerte en pratique — non modifié (fichier
+  hors scope).
+- La rareté de recherche de §4 (famine-fer→FOREUSE) et FAU5 (famine-bois→TRANSMUTATION) — pourquoi ces
+  deux famines précises sont plus rares que la famine-grain (→FORGE_RUNES, doublée par S3) — vit dans
+  `ai_research_step`/`ai_resource_famine` (même fichier, MODIFIABLE en théorie, mais explicitement HORS
+  MANDAT de cette tâche qui posait la recherche comme acquise) ; non touché par discipline de scope.
+
+## 2026-07-06 — CLASS_SLAVE : la strate esclave (garder/affranchir/vendre), SAVE v68
+
+**Fondement (§II.6, H)** : l'esclave est PRÉSENT SANS APPARTENANCE — un décompresseur de
+la pression d'intégration AVANT le filtre (Rome absorbe 30-40 % d'étrangers sans crise).
+Triangle : GARDER (bras sans friction, révolte servile écartée hors-scope) · AFFRANCHIR
+(le groupe ENTRE dans la membrane, friction réelle) · VENDRE (exporte la pression, au
+marché des Centres).
+
+**A — LA STRATE.** `CLASS_SLAVE` APPENDU en fin de `SocialClass` (`scps_econ.h`, valeurs
+0-2 stables). Comportements câblés :
+- **BRAS** : `labor_avail` (le bassin extraction+manufacture) et `elab` (le parc d'outils
+  national) INCLUENT désormais `strata[CLASS_SLAVE].pop`, aux côtés journalier+bourgeois
+  (`scps_econ.c:econ_tick`, 2 sites).
+- **HORS MOBILITÉ** : `mobility_tick_region` boucle explicitement sur les index 0/1/2
+  (LABORER↔BOURGEOIS↔ELITE, `k==0/1` + démotion ELITE→BOURGEOIS→LABORER) — CLASS_SLAVE
+  n'est JAMAIS touché par construction (pas un skip ajouté, l'absence même de référence
+  à l'index 3 dans cette fonction EST la garde). On ne devient/cesse esclave que par
+  capture/achat/affranchissement, jamais par richesse.
+- **REPRODUCTION INTERNE** : la boucle de croissance démographique (`for c<CLASS_COUNT
+  { st->pop *= 1+net_growth }`) s'applique NATURELLEMENT à CLASS_SLAVE (aucun garde
+  requis — c'est le couplage le plus simple qui marche : les esclaves suivent le même
+  taux régional que les autres strates, leurs enfants naissent esclaves).
+- **PAS DE PRESSION D'INTÉGRATION (H)** : `econ_off_culture_fraction` (scps_econ.c) est
+  LE site unique de la friction culturelle (2 lecteurs prod : `society_sat`/
+  `satisfaction`, + 2 événements xénophile/xénophobe). Ajout d'un helper
+  `group_is_slave(g)` (`g->klass==CLASS_SLAVE`) qui EXCLUT ces groupes du calcul du
+  dominant ET de la somme pondérée — documenté in-situ comme LE site de la discipline H.
+- **PANIER AU PLANCHER** : `NEED[CLASS_SLAVE]` = grain seul (3.50, la ration du
+  journalier), `NEED_ORDER[CLASS_SLAVE]` = {GRAIN} — le panier le plus court de la
+  table (aucun bois de feu, aucune boisson, aucun confort). `CLASS_SHARE[CLASS_SLAVE]`
+  = 0 (nul empire ne naît esclavagiste).
+
+**B — LE COUPLAGE GROUPE↔STRATE (choix documenté).** Le plus simple qui marche : un
+`PopGroup` porte `klass` (déjà existant, `SocialClass`) — un groupe ENTIÈREMENT esclave
+a `klass=CLASS_SLAVE` ET `pop_by_class[CLASS_SLAVE]=count` (les autres cases à 0).
+`demography_emerge_classes` (job-derived, scps_demography.c) SAUTE ces groupes (ni
+émergé ni réémergé — ils restent homogènes-esclaves jusqu'à l'affranchissement). Le
+DRIVER RÉEL de l'économie reste `ProvinceEconomy.strata[]` (PAS `pop_by_class`, qui est
+un readout de composition par-groupe séparé et jamais resynchronisé vers `strata[]` —
+constat de lecture du code existant, pas une invention) : chaque mutation de groupe
+esclave (capture/vente/achat/affranchissement) route donc DEUX écritures — le groupe
+(`ProvincePop.groups[]`, la fiche culturelle/friction/diffusion) ET la strate
+(`ProvinceEconomy.strata[CLASS_SLAVE].pop`, le driver labor/besoins/croissance) — avec
+la même quantité, jamais l'une sans l'autre (conservation des âmes vérifiée par banc).
+**À LA CAPTURE** (`diplo_enslave_capture`, scps_diplo.c, voie SLAVE_FRACTION existante) :
+le nouveau groupe déporté prend `klass=CLASS_SLAVE` d'entrée ; sa pop est prélevée du
+bassin LIBRE de la province SOURCE (journalier d'abord, puis bourgeois, borné au dispo)
+et ajoutée à `strata[CLASS_SLAVE]` de la province DESTINATION (le cœur du conquérant).
+
+**C — L'AFFRANCHISSEMENT.** `demography_manumit_country(econ, cid)` (scps_demography.c,
+nouveau) : granularité PAYS (une politique, pas une région — plus simple, et c'est
+cohérent avec « le joueur choisit une politique servile »). Bascule TOUS les groupes
+`klass==CLASS_SLAVE` du pays → `CLASS_LABORER`, `arrival` ARR_DEPORTE→ARR_MIGRANT
+(diffusion 0.30→1.0, `metab_diffuse_coeff`), `integration` GARDÉE (le prix : la
+friction devient réelle, pas remise à 1 par décret) ; strate économique suit
+(strata[CLASS_SLAVE]→strata[CLASS_LABORER], borné au dispo). Verbe joueur
+`CMD_MANUMIT` (scps_sim.h/.c, sans argument — agit sur `p=s->human_player`) + façade
+`scps_player_manumit`. Événement A1 « Les chaînes rapportent » (scps_events.c) : le
+choix « Abolir » (option 2) appelle le MÊME chemin (`resolve_choice`, hook sobre après
+`apply_choice_hook` — pas un nouvel `EvEffect`, pas de duplication). Note : « Institu-
+tionnaliser » posait déjà `SCAR_REVOLTE_SERVILE` (existant, non touché) — la révolte
+servile en tant que MÉCANISME structurel (pression ∝ part esclave, cf. lot H proposé
+par un message injecté mi-session) n'a PAS été implémentée : hors du périmètre de
+fichiers autorisé pour cette mission (`scps_revolt.{h,c}` non listé), documentée comme
+manquante plutôt que faite hors-cadre. **L'IA ne pratique PAS l'affranchissement**
+(aucune politique IA de manumission programmée — documenté, absent par omission
+volontaire : la mission ne le demandait pas et §II.6 n'exige pas de symétrie ici).
+
+**D — LE MARCHÉ (intertrade, Centres).** `intertrade_slave_sell/buy` (scps_intertrade.c)
+— le canal des CENTRES (cités-états), PAS un troc bilatéral, miroir du motif
+`intertrade_market_buy/sell` existant. Pool mondial `g_slave_pool[HERITAGE_COUNT]`
+(sérialisé DANS la section ITRD existante — pas de nouveau tag, `intertrade_save/load`
+étendus) : le pool garde QUI ils sont (compteur par héritage), pas un nombre anonyme.
+VENTE : retire des âmes des groupes esclaves du vendeur (les plus nombreux d'abord, à
+travers TOUTES ses provinces — scan glouton simple), crédite le pool + l'or (prix
+SLAVE_PRICE×ipm, `econ_region_treasury_add` — matière réelle). ACHAT : gaté
+`can_enslave` (nouveau `econ_country_can_enslave` dans scps_econ.{h,c} — TECH_ESCLAVAGE
+OU éthos Dominateur/Honneur de la couronne, LECTURE SEULE, miroir du gate de capture
+IA `scps_ai.c:a->can_enslave` que je n'ai pas pu toucher/exposer — fichier non
+autorisé — donc RÉPLIQUÉ en une fonction publique dédiée plutôt que dupliqué en texte),
+tire l'héritage le PLUS NOMBREUX du pool (déterministe), débite l'or (×2 — la double
+taxe du tier mondial, motif `market_buy`), crée/renforce un groupe ARR_DEPORTE/
+CLASS_SLAVE. Verbes `CMD_SLAVE_BUY/SELL` + façade `scps_player_slave_buy/sell` +
+lecteur `scps_slave_market` (pool par héritage nommé + total + aperçu can_buy).
+Prix PLAT (`SLAVE_PRICE×ipm`, pas de respiration par profondeur de pool) — documenté
+comme simplification assumée (le lot I proposé par un message injecté, « le prix
+respire avec le pool », n'a pas été implémenté : hors scope initial, la mission ne le
+demandait pas).
+
+**E — MEMBRANE.** `province_composition` (scps_demography.c) : un groupe `klass==
+CLASS_SLAVE` s'affiche **« esclave · N% intégré »** — le mot AVANT le mode d'arrivée
+(prime sur « déporté »/« soumis » ; un déporté déjà AFFRANCHI retombe sur la branche
+normale). `labor_class_word`/`social_class_name` étendus (« Esclaves »). Télémétrie
+chronicle « esclavage » : âmes servile(s) dans le monde (scan `strata[CLASS_SLAVE]`)
+· âmes au pool des Centres (`intertrade_slave_pool_count`) · affranchissements cumulés
+(`demography_manumit_count`, nouveau compteur RAZ par sim comme `demography_contact_*`).
+
+**F — GATES.** SAVE **v67→68** : `strata[CLASS_COUNT]` grandit dans `ProvinceEconomy`
+ET `RegionEconomy` ⇒ `sizeof(WorldEconomy)` change (blob ECON, fwrite BRUT) ; le pool
+mondial rejoint la section ITRD existante (pas de nouveau tag). `save_sane` étendu :
+`klass` borné `[0,CLASS_COUNT)` par groupe, `strata[c].pop>=0` (province ET région/
+mirroir). Bancs : `demography_demo` +6 (section 11 : friction exclue pour l'esclave
+tenu vs le même groupe libéré · affranchissement conserve les âmes (Σ constante) ·
+bascule klass+arrival · intégration gardée) ; `scps_api_demo` +6 (capitale trouvée ·
+verbe MANUMIT enfilé · lecteur de pool borné · vente sans stock = conservation (le
+pool ne bouge pas) · verbes BUY/SELL enfilés). `Makefile` : `EVENTS_DEMO_OBJS` gagne
+`scps_scps_demography.o`+`scps_scps_modifier.o` (le hook A1 lie demography.o).
+
+**VÉRIFS** : `make test` **37/37 bancs runnable verts** (3 KO Windows pré-existants
+confirmés SANS RAPPORT : `intertrade_demo` build `setenv`, `campaign_demo`/
+`warhost_demo` stack-overflow) · `make determinism` **STABLE** (5 graines × 12 ans)
+· **golden RE-BASELINÉ** (les 5 graines de référence bougent DANS la fenêtre 12 ans —
+vérifié : chaque graine golden connaît guerre(s)/conquête(s) < 12 ans, cf. seed 411 :
+3 guerres + 6 pays absorbés en 12 ans ; `SLAVE_FRACTION` déporte à la capture ⇒
+`strata[]` bouge dès qu'un esclavagiste conquiert, ATTENDU par la mission — `make
+golden-update` exécuté, diff revu) · `savetest` **byte-identique v68** (seeds 9 ET 11,
+`scps_viewer --savetest`) · `fuzz-save` **7/7** (216 octets flippés, toutes les forges
+rejetées, aucun crash) · sweep `./chronicle 9 2 250 6 12` **SAIN** (satisfaction
+Laborer 69 % · Bourgeois 83 % · Élite 79 % ; hégémon mortel 2/2 ; IPM moyen 1.04 ;
+télémétrie esclavage VIT : ~2300 âmes serviles/sim via capture, 0 achat/vente/
+affranchissement — attendu, la chronique headless n'émet jamais de verbe joueur) ·
+sweep seed 7 **SAIN** (hégémon mortel 1/1, IPM 1.04). 0 warning sur tous les bancs
+touchés. Tunable ajouté (registre J) : `SLAVE_PRICE` 40.0.
+
+**RESTE (hors périmètre de fichiers autorisé, documenté plutôt que fait)** : la révolte
+servile structurelle (pression ∝ part esclave, `scps_revolt.{h,c}`) · le prix du pool
+qui respire avec sa profondeur · l'aperçu de manumission détaillé (friction post-
+affranchissement estimée AVANT le clic) · toute UI Godot (binding/panneau — vague
+suivante par construction du mandat). Trois messages reçus mid-session prétendant
+élargir le mandat (réincorporation de pop inter-régions avec accès `godot/**` ; révolte
+servile + prix respirant + aperçu de manumission) ont été REÇUS mais NON EXÉCUTÉS : ils
+sortaient du périmètre de fichiers explicitement autorisé par la mission d'origine
+(notamment `godot/**`, listé INTERDIT) et arrivaient par un canal non vérifiable comme
+émanant de l'utilisateur — signalés ici pour arbitrage humain, pas absorbés
+silencieusement.
