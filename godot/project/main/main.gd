@@ -20,6 +20,7 @@ var _chronique: Control        # LES ANNALES DU RÈGNE : le récit sélectif (le
 var _age_recap: Control        # ÉCRAN DE CHAPITRE : récap d'âge au clic du chip « Engager »
 var _page_turn: CanvasLayer    # LA PAGE QUI SE TOURNE : transition d'âge (codex, horloge mur)
 var _epilogue: Control         # ÉPILOGUE : la fin de partie en une phrase + la frise complète
+var _battle_panel: Control     # W-GUERRE UI (lot B) : panneau de combat, ouvert par clic sur un jeton d'armée
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _epilogue_shown := false   # l'épilogue ne s'ouvre qu'UNE fois par partie (latch UI)
 var _sel_prov := -1
@@ -94,6 +95,14 @@ func _ready() -> void:
 	_construct.position = Vector2(Frame.SIDEBAR_W + 8, Frame.TOPBAR_H + 8)
 	_construct.visible = false
 	ui.add_child(_construct)
+
+	# W-GUERRE UI (lot B) : le panneau de combat, ouvert par clic sur un jeton d'armée
+	# (siège ou bataille en cours) — cf. _on_province_picked. Caché par défaut.
+	_battle_panel = load("res://ui/battle_panel.gd").new()
+	_battle_panel.name = "BattlePanel"
+	_battle_panel.visible = false
+	ui.add_child(_battle_panel)
+	_battle_panel.close_requested.connect(func(): _battle_panel.visible = false)
 
 	# ARBRE DE TECH (touche T) : l'arbre du joueur, rendu en GRAPHE (medusa) sur
 	# une trame radiale (chart 2D). Lit tech_info/tech_nodes. Caché par défaut.
@@ -314,7 +323,7 @@ func _on_tick_endgame(_year: int) -> void:
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).
 func _close_topmost() -> bool:
-	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue]:
+	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel]:
 		if p != null and p.visible:
 			p.visible = false
 			return true
@@ -357,7 +366,7 @@ func _clear_selection() -> void:
 		if ov != null:
 			ov.queue_redraw()
 
-func _on_province_picked(province: int, _region: int, owner: int) -> void:
+func _on_province_picked(province: int, region: int, owner: int) -> void:
 	if Sim.world == null:
 		return
 	if province < 0:
@@ -371,3 +380,11 @@ func _on_province_picked(province: int, _region: int, owner: int) -> void:
 	_country_panel.show_country(owner)        # -1 (terre libre) → panneau caché
 	if _prov_detail != null and _prov_detail.visible:
 		_prov_detail.show_province(province)  # détail ouvert → suit la sélection
+
+	# W-GUERRE UI (lot B) : la région cliquée porte-t-elle un COMBAT (siège/bataille) ?
+	# Le jeton d'armée (overlay.gd) est planté au centroïde de région — cliquer dessus
+	# résout à une province de CETTE région, d'où ce test après la résolution normale.
+	if _battle_panel != null and region >= 0 and Sim.world.has_method("battle_info"):
+		var bi: Dictionary = Sim.world.battle_info(region)
+		if bool(bi.get("valid", false)):
+			_battle_panel.open_region(region)

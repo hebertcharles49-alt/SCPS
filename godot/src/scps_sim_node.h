@@ -72,6 +72,10 @@ public:
     int        region_tier(int region) const;         /* tier de ville 0-5 (-1 si non colonisée) */
     int        region_settle_group(int region) const; /* groupe de sprite settlement 0-5 (-1) */
 
+    /* W-GUERRE UI — lot A (hachures) + lot B (panneau de combat) */
+    Dictionary region_war_state(int region);          /* { state:0/1/2, belligerent:-1/cid } */
+    Dictionary battle_info(int region);               /* { valid, attacker/defender, compo, phase, war_score } */
+
     /* ENDGAME §27 (Phase 4) */
     Dictionary endgame_info();                        /* entropie · augure · fin · épicentre */
     int        region_sunken(int region) const;       /* 0 non · 1 programmée · 2 engloutie */

@@ -177,6 +177,7 @@ var _b_segs := {}         ## entité → PackedVector2Array : segments de fronti
 var _b_norm := {}         ## entité → PackedVector2Array : normale vers l'INTÉRIEUR, 1 par segment
 var _cap_segs := {}       ## pays → PackedVector2Array : contour de sa CAPITALE (liseré pourpre)
 var _cap_norm := {}       ## pays → PackedVector2Array : normale intérieure du contour capitale
+var _war_regions := {}    ## W-GUERRE UI (lot A) : région → {state:1/2, belligerent, poly} — sièges/occupations, recalculé au tick
 # PALETTE de PIGMENTS LIMITÉE (anti-néon) : des encres NATURELLES choisies à la main (terre de Sienne,
 # ocre, ardoise, olive…), pas un échantillonnage de la roue HSV (qui donne des bleus/magentas fluo même
 # désaturés). On reste dans une gamme TERREUSE compatible parchemin → fin de l'effet cyberpunk.
@@ -764,7 +765,30 @@ func _on_tick(_year: int) -> void:
 		_borders_dirty = true
 		_roads_dirty = true
 	_ensure_roads()            # date les chantiers neufs dès maintenant (même non zoomé)
+	_refresh_war_regions()     # W-GUERRE UI (lot A) : sièges/occupations bougent AU TICK, pas aux frontières
 	queue_redraw()
+
+## W-GUERRE UI (lot A) — recense les régions ASSIÉGÉES(1)/OCCUPÉES(2) (rare : quelques
+## régions à la fois) et leur POLYGONE (region_border_segments, comme le liseré capitale)
+## pour clipper les hachures. Recalculé CHAQUE TICK (l'état de siège bouge vite — pas
+## seulement aux frontières de souveraineté) ; le scan est un aller de int, bon marché.
+func _refresh_war_regions() -> void:
+	var w = Sim.world
+	_war_regions.clear()
+	if w == null or not w.has_method("region_war_state"):
+		return
+	for r in range(w.region_count()):
+		var ws: Dictionary = w.region_war_state(r)
+		var st := int(ws.get("state", 0))
+		if st <= 0:
+			continue
+		var polys := []
+		if w.has_method("region_border_segments"):
+			var rc: Dictionary = w.region_border_segments(r)
+			var flat: PackedVector2Array = rc.get("pts", PackedVector2Array())
+			if flat.size() >= 2:
+				polys = _chain_segments(flat)   # segments non ordonnés (bseg) → anneau(x) fermé(s)
+		_war_regions[r] = {"state": st, "belligerent": int(ws.get("belligerent", -1)), "polys": polys}
 
 ## signature de la photo des propriétaires → détecte conquête/colonisation. Le compte de
 ## provinces COLONISÉES y entre : une colonisation INTRA-région ne bouge pas l'owner agrégé
@@ -1354,6 +1378,53 @@ func _draw_cap_lisere(mv: Node2D, segs: PackedVector2Array, norms: PackedVector2
 		draw_multiline(proj, Color(CAP_INK.r, CAP_INK.g, CAP_INK.b, 0.28), 2.2 / zoom, true)  # halo doux
 		draw_multiline(proj, Color(CAP_INK.r, CAP_INK.g, CAP_INK.b, 0.85), 1.1 / zoom, true)  # filet net
 
+const HATCH_STEP := 9.0      ## espacement MONDE entre deux traits de hachure (adaptatif zoom via _w)
+const HATCH_SIEGE_A := 0.30  ## α d'une région ASSIÉGÉE (siège en cours, propriété inchangée)
+const HATCH_OCC_A := 0.42    ## α d'une région OCCUPÉE (le siège a abouti) — un ton plus marqué
+
+## W-GUERRE UI (lot A) — HACHURES à 45° (traits d'encre espacés, teinte du BESIÉGEANT/OCCUPANT,
+## densité selon siège(1)/occupé(2)) clippées au(x) polygone(s) de la région (`info.polys`,
+## world-space, ANNEAUX déjà CHAÎNÉS depuis region_border_segments — même source que le liseré
+## de capitale, chaînage via _chain_segments). Le clip utilise Geometry2D (intersection
+## segment×polygone) : chaque ligne de hachure MONDE, tracée en diagonale sur la boîte englobante
+## du ring, est coupée aux bords réels — pas un rectangle qui déborde de la région.
+func _draw_war_hatch(mv: Node2D, zoom: float, info: Dictionary) -> void:
+	var polys: Array = info.get("polys", [])
+	if polys.is_empty():
+		return
+	var belli: int = int(info.get("belligerent", -1))
+	var st: int = int(info.get("state", 1))
+	var col := _country_color(belli) if belli >= 0 else Color(0.5, 0.1, 0.1)
+	var a: float = HATCH_OCC_A if st == 2 else HATCH_SIEGE_A
+	var w_line := _w(zoom, 0.5, 0.8, 1.6)
+	for poly in polys:
+		var ring: PackedVector2Array = poly
+		if ring.size() < 3:
+			continue
+		# boîte englobante MONDE (les points sont en coordonnées monde/cellule)
+		var minx := ring[0].x
+		var maxx := ring[0].x
+		var miny := ring[0].y
+		var maxy := ring[0].y
+		for p in ring:
+			minx = minf(minx, p.x); maxx = maxf(maxx, p.x)
+			miny = minf(miny, p.y); maxy = maxf(maxy, p.y)
+		var diag := (maxx - minx) + (maxy - miny) + HATCH_STEP
+		# traits à 45° (monde) : x+y = k, k parcourant la diagonale de la boîte, pas HATCH_STEP.
+		var k0 := minx + miny
+		var k1 := maxx + maxy
+		var k := k0 - fmod(k0, HATCH_STEP)
+		while k <= k1:
+			var seg := PackedVector2Array([Vector2(minx - HATCH_STEP, k - (minx - HATCH_STEP)),
+				Vector2(minx - HATCH_STEP + diag, k - (minx - HATCH_STEP + diag))])
+			var clipped: Array = Geometry2D.intersect_polyline_with_polygon(seg, ring)
+			for part in clipped:
+				var pp: PackedVector2Array = part
+				if pp.size() >= 2:
+					draw_line(mv.iso_pos(pp[0].x, pp[0].y), mv.iso_pos(pp[1].x, pp[1].y),
+						Color(col.r, col.g, col.b, a), w_line)
+			k += HATCH_STEP
+
 
 ## TRAIT DE PINCEAU : pile de passes translucides (bave d'encre) du LARGE plumé au cœur dense,
 ## TOUTES antialiasées → feutre le crénelage des arêtes + bord doux = effet brosse. `core_w`/`feather`
@@ -1740,6 +1811,13 @@ func _draw_iso(w, mv: Node2D) -> void:
 		var p0: Vector2 = mv.iso_pos(0, 0)
 		var p1: Vector2 = mv.iso_pos(w.map_w(), w.map_h())
 		draw_texture_rect(_pol_tex, Rect2(p0, p1 - p0), false, Color(1, 1, 1, wash_a))
+
+	# ── W-GUERRE UI (lot A) — HACHURES de siège/occupation : AU-DESSUS du lavis politique
+	#    (sinon noyées), sous le reste (frontières/villes/armées restent lisibles par-dessus).
+	#    α modéré : le lavis reste la lecture dominante, la hachure signale sans l'écraser. ──
+	if not nature_mode and not _war_regions.is_empty():
+		for r in _war_regions:
+			_draw_war_hatch(mv, zoom, _war_regions[r])
 
 	# ── DRESSING DE TERRAIN (lot 2) : marques de biome (relief/végétation/zones), SOUS tout le reste. ──
 	if _dressing_dirty:

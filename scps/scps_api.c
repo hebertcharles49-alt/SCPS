@@ -472,6 +472,77 @@ void scps_army_info(ScpsSim *s, int cid, ScpsArmyInfo *out){
     out->cav = comp.cavalerie;  out->mages = comp.mages;
 }
 
+/* W-GUERRE UI (lot A) — HACHURES de siège/occupation : cf. header. */
+int scps_region_war_state(ScpsSim *s, int r, int *belligerent_out){
+    if(belligerent_out) *belligerent_out = -1;
+    if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return 0;
+    int owner = s->sim.econ->region[r].owner;
+    /* OCCUPÉE domine : le siège a déjà abouti (occupier tient militairement). */
+    int occ = s->sim.dp->occupier[r];
+    if(occ>=0 && occ!=owner){ if(belligerent_out) *belligerent_out = occ; return 2; }
+    /* ASSIÉGÉE : une armée de campagne D'UN AUTRE pays s'y tient en phase FA_SIEGE. */
+    for(int k=0;k<s->w->n_countries && k<SCPS_MAX_COUNTRY;k++){
+        const FieldArmy *a = &s->sim.camp->army[k];
+        if(!a->active || a->phase!=FA_SIEGE || a->loc!=r) continue;
+        if(owner>=0 && k==owner) continue;   /* on ne s'assiège pas soi-même */
+        if(belligerent_out) *belligerent_out = k;
+        return 1;
+    }
+    return 0;
+}
+
+/* W-GUERRE UI (lot B) — LE PANNEAU DE COMBAT : cf. header. */
+void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
+    if(!out) return;
+    memset(out, 0, sizeof *out);
+    out->region=-1; out->attacker=-1; out->defender=-1; out->phase="";
+    if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return;
+    int owner = s->sim.econ->region[r].owner;
+
+    /* 1) une FieldBattle ACTIVE sur cette région ? (chocs/accalmies en cours) */
+    const FieldBattle *bt = NULL;
+    for(int k=0;k<CAMPAIGN_MAX_BATTLES;k++){
+        const FieldBattle *b = &s->sim.camp->battle[k];
+        if(b->active && b->loc==r){ bt = b; break; }
+    }
+    if(bt){
+        out->valid=1; out->region=r;
+        /* a = celui qui a marché jusqu'ici (l'attaquant présumé si ≠ owner du sol) */
+        int A=bt->a, B=bt->b;
+        if(owner>=0 && B==owner){ out->attacker=A; out->defender=B; }
+        else if(owner>=0 && A==owner){ out->attacker=B; out->defender=A; }
+        else { out->attacker=A; out->defender=B; }
+        out->phase_id=(int)FA_BATTLE; out->phase=sz(campaign_phase_name(FA_BATTLE));
+        out->in_battle=1;
+        out->loss_atk = (out->attacker==A)? bt->lossA : bt->lossB;
+        out->loss_def = (out->defender==B)? bt->lossB : bt->lossA;
+    } else {
+        /* 2) sinon, un SIÈGE en cours (une armée ennemie FA_SIEGE ici) */
+        int besieger=-1;
+        for(int k=0;k<s->w->n_countries && k<SCPS_MAX_COUNTRY;k++){
+            const FieldArmy *a=&s->sim.camp->army[k];
+            if(a->active && a->phase==FA_SIEGE && a->loc==r && !(owner>=0 && k==owner)){ besieger=k; break; }
+        }
+        if(besieger<0) return;   /* rien à montrer : out reste invalide */
+        out->valid=1; out->region=r;
+        out->attacker=besieger; out->defender=owner;
+        out->phase_id=(int)FA_SIEGE; out->phase=sz(campaign_phase_name(FA_SIEGE));
+    }
+
+    if(out->attacker>=0 && out->attacker<SCPS_MAX_COUNTRY){
+        ArmyComposition c = campaign_composition(s->sim.camp, out->attacker);
+        out->atk_units=c.total; out->atk_inf=c.infanterie; out->atk_arch=c.archers;
+        out->atk_cav=c.cavalerie; out->atk_mages=c.mages;
+    }
+    if(out->defender>=0 && out->defender<SCPS_MAX_COUNTRY){
+        ArmyComposition c = campaign_composition(s->sim.camp, out->defender);
+        out->def_units=c.total; out->def_inf=c.infanterie; out->def_arch=c.archers;
+        out->def_cav=c.cavalerie; out->def_mages=c.mages;
+    }
+    if(out->attacker>=0 && out->defender>=0)
+        out->war_score = diplo_war_score(s->sim.dp, out->attacker, out->defender);
+}
+
 int scps_region_tier(const ScpsSim *s, int r){
     if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return -1;
     if(!s->sim.econ->region[r].colonized) return -1;

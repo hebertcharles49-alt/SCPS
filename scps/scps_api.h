@@ -148,6 +148,40 @@ typedef struct {
 } ScpsArmyInfo;
 void scps_army_info(ScpsSim *s, int country, ScpsArmyInfo *out);
 
+/* W-GUERRE UI (lot A) — ÉTAT DE GUERRE d'une région (pour les HACHURES de siège/
+ * occupation sur la carte) : 0 = paix (rien à hachurer) · 1 = ASSIÉGÉE (une armée
+ * de campagne ENNEMIE s'y tient en phase FA_SIEGE — le siège n'a pas encore abouti,
+ * `region.owner` n'a PAS changé) · 2 = OCCUPÉE (dp->occupier[r] tient militairement
+ * la région, ≠ owner — le siège a abouti mais la paix n'a pas encore transféré la
+ * propriété). `belligerent_out` reçoit le pays qui assiège/occupe (teinte de la
+ * hachure) ; -1 si état 0. Une région à la fois SIÉGÉE ET occupée par un AUTRE
+ * (rare : ré-invasion) rapporte OCCUPÉE (l'état le plus avancé domine). PUR read
+ * (aucune mutation), golden-safe. */
+int scps_region_war_state(ScpsSim *s, int region, int *belligerent_out);
+
+/* W-GUERRE UI (lot B) — LE PANNEAU DE COMBAT : quand deux forces s'affrontent (une
+ * armée ATTAQUANTE en SIÈGE ou BATAILLE sur une région DÉFENDUE), le clic sur le
+ * jeton doit pouvoir montrer les DEUX camps. `attacker`/`defender` = pays (-1 si
+ * indéterminé — ex. région vierge). Compositions lues via campaign_composition
+ * (déjà exposée par pays, réutilisée telle quelle). `war_score` = point de vue de
+ * l'ATTAQUANT (diplo_war_score(a,d), [-100..+100], la même jauge que la diplomatie).
+ * `in_battle` = 1 si une FieldBattle est ACTIVE sur cette région (chocs/accalmies en
+ * cours) — alors `loss_*` portent les pertes CUMULÉES du combat en cours (paquets de
+ * 100, report fractionnaire inclus) ; sinon 0 (pas de choc à exposer, seulement le
+ * siège). `valid`=0 si `region` ne porte ni siège ni bataille (out mis à zéro). */
+typedef struct {
+    int    valid;
+    int    region;
+    int    attacker, defender;          /* pays ; -1 si indéterminé */
+    int    phase_id;    const char *phase;   /* FA_SIEGE ou FA_BATTLE, mot résolu */
+    long   atk_units, atk_inf, atk_arch, atk_cav, atk_mages;
+    long   def_units, def_inf, def_arch, def_cav, def_mages;
+    int    in_battle;                   /* 1 = FieldBattle active (chocs en cours) */
+    float  loss_atk, loss_def;          /* pertes de choc cumulées (paquets), si in_battle */
+    float  war_score;                   /* [-100..+100], point de vue attaquant */
+} ScpsBattleInfo;
+void scps_battle_info(ScpsSim *s, int region, ScpsBattleInfo *out);
+
 /* TIER de ville d'une région (0-5 selon la pop ; capitale ≥ 4) ; -1 si non
  * colonisée / vide. Pour planter un marqueur de cité dimensionné au centroïde. */
 int scps_region_tier(const ScpsSim *s, int region);

@@ -42,6 +42,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("army_info", "country"),           &ScpsWorld::army_info);
     ClassDB::bind_method(D_METHOD("region_tier", "region"),          &ScpsWorld::region_tier);
     ClassDB::bind_method(D_METHOD("region_settle_group", "region"),  &ScpsWorld::region_settle_group);
+    ClassDB::bind_method(D_METHOD("region_war_state", "region"),     &ScpsWorld::region_war_state);
+    ClassDB::bind_method(D_METHOD("battle_info", "region"),          &ScpsWorld::battle_info);
     ClassDB::bind_method(D_METHOD("endgame_info"),                   &ScpsWorld::endgame_info);
     ClassDB::bind_method(D_METHOD("region_sunken", "region"),        &ScpsWorld::region_sunken);
     ClassDB::bind_method(D_METHOD("province_groups", "province"),    &ScpsWorld::province_groups);
@@ -343,6 +345,43 @@ Dictionary ScpsWorld::army_info(int country) {
 
 int ScpsWorld::region_tier(int region) const { return scps_region_tier(sim, region); }
 int ScpsWorld::region_settle_group(int region) const { return scps_region_settle_group(sim, region); }
+
+Dictionary ScpsWorld::region_war_state(int region) {
+    Dictionary d;
+    int belli = -1;
+    int st = scps_region_war_state(sim, region, &belli);
+    d["state"]       = st;           /* 0 paix · 1 assiégée · 2 occupée */
+    d["belligerent"] = belli;        /* -1 si paix, sinon le pays qui assiège/occupe */
+    return d;
+}
+
+Dictionary ScpsWorld::battle_info(int region) {
+    Dictionary d;
+    ScpsBattleInfo b;
+    scps_battle_info(sim, region, &b);
+    d["valid"] = (bool)b.valid;
+    if (!b.valid) return d;
+    d["region"]    = b.region;
+    d["attacker"]  = b.attacker;
+    d["defender"]  = b.defender;
+    d["phase_id"]  = b.phase_id;
+    d["phase"]     = String::utf8(b.phase);
+    d["atk_units"] = (int64_t)b.atk_units;
+    d["atk_inf"]   = (int64_t)b.atk_inf;
+    d["atk_arch"]  = (int64_t)b.atk_arch;
+    d["atk_cav"]   = (int64_t)b.atk_cav;
+    d["atk_mages"] = (int64_t)b.atk_mages;
+    d["def_units"] = (int64_t)b.def_units;
+    d["def_inf"]   = (int64_t)b.def_inf;
+    d["def_arch"]  = (int64_t)b.def_arch;
+    d["def_cav"]   = (int64_t)b.def_cav;
+    d["def_mages"] = (int64_t)b.def_mages;
+    d["in_battle"] = (bool)b.in_battle;
+    d["loss_atk"]  = (double)b.loss_atk;
+    d["loss_def"]  = (double)b.loss_def;
+    d["war_score"] = (double)b.war_score;
+    return d;
+}
 
 Dictionary ScpsWorld::endgame_info() {
     Dictionary d;

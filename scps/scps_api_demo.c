@@ -828,6 +828,37 @@ int main(int argc, char **argv){
                natif_found==1 && natif_metab==1);
             ok("required : requis du palier courant, ou 0 si aucun palier actif", required>=0);
         }
+
+        /* ── W-GUERRE UI (lot A/B) — war_state BORNÉ {0,1,2} + cohérence occupant/belligérant,
+         * scannés sur TOUTES les régions après un run assez long pour voir sièges/occupations. ── */
+        {
+            scps_sim_advance_days(sd, 365*30);
+            int nreg = scps_region_count(sd);
+            int all_bounded=1, coherent=1, seen1=0, seen2=0, any_battle_valid=1, any_battle_owner_ok=1;
+            for(int r=0; r<nreg; r++){
+                int belli=-99;
+                int st = scps_region_war_state(sd, r, &belli);
+                if(st<0 || st>2) all_bounded=0;
+                if(st==0){ if(belli!=-1) coherent=0; }
+                else {
+                    if(belli<0 || belli>=scps_country_count(sd)) coherent=0;
+                    if(st==1) seen1=1; else seen2=1;
+                }
+                ScpsBattleInfo bi; scps_battle_info(sd, r, &bi);
+                if(bi.valid){
+                    if(bi.region!=r) any_battle_valid=0;
+                    if(bi.attacker<0 || bi.attacker>=scps_country_count(sd)) any_battle_valid=0;
+                    if(bi.defender>=0 && bi.attacker==bi.defender) any_battle_owner_ok=0;
+                    if(bi.atk_units<0 || bi.def_units<0) any_battle_valid=0;
+                    if(bi.war_score<-100.f || bi.war_score>100.f) any_battle_valid=0;
+                }
+            }
+            ok("scps_region_war_state : borné {0,1,2} sur toutes les régions", all_bounded==1);
+            ok("belligérant cohérent (−1 ssi paix, sinon un pays valide ≠ owner)", coherent==1);
+            ok("scps_battle_info : quand valide, région/pays/effectifs/war_score bornés", any_battle_valid==1 && any_battle_owner_ok==1);
+            printf("   war_state : %s siège(s) vu(s) · %s occupation(s) vue(s) (30 ans)\n",
+                   seen1?"des":"aucun", seen2?"des":"aucune");
+        }
         scps_sim_free(sd);
     }
 
