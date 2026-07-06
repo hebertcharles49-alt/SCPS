@@ -6,9 +6,17 @@ extends Control
 ## un bilan en nombres tangibles (country_info), puis « Engager l'âge suivant » (émet
 ## scps_player_age_engage — verbe journalisé, drainé au tick) ou « Plus tard » (referme,
 ## le chip reste). RÈGLE D'OR : zéro logique de sim — on LIT la façade, on ENFILE un verbe.
+##
+## LA PAGE QUI SE TOURNE (V1b) : l'ouverture ne pose plus le modal cash — la page (PageTurn,
+## CanvasLayer horloge-mur) MONTE d'abord depuis le bas et couvre l'écran ; le contenu (ce
+## Control, son voile+panneau) ne s'affiche QU'UNE FOIS la page montée (signal `risen`). Au
+## clic « Engager » : le verbe s'émet PUIS la page TOURNE (révèle le monde muté). « Plus
+## tard » : la page redescend, rien n'est engagé. Repli : si le shader ne charge pas,
+## PageTurn.rise()/turn() sont des no-op immédiats → comportement modal IDENTIQUE à avant.
 
 const VKit = preload("res://ui/vkit.gd")
 const Epithet = preload("res://ui/epithet.gd")
+const PageTurn = preload("res://ui/page_turn.gd")
 
 signal goto_region(region: int)   ## clic sur une annale localisée → main centre la carte
 
@@ -21,6 +29,7 @@ var _empty: Label
 var _prev_speed := -1             ## vitesse d'avant l'ouverture (restaurée à la fermeture)
 var _last_engage_year := -1000000 ## an du dernier engage (état d'UI ; la 1re tranche = tout)
 var _prev_age_name := ""          ## nom de l'âge PRÉCÉDEMMENT engagé ("" = l'aube du règne)
+var _page: CanvasLayer            ## la page qui se tourne (nœud frère, ajouté par main.gd)
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -97,13 +106,18 @@ func _ready() -> void:
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(sp)
 	var later := Button.new(); later.text = "Plus tard"
-	later.pressed.connect(func(): visible = false)   # le chip RESTE (rien d'engagé)
+	later.pressed.connect(_later)     # le chip RESTE (rien d'engagé)
 	foot.add_child(later)
 	var engage := Button.new(); engage.text = "Engager l'âge suivant"
 	engage.pressed.connect(_engage)
 	foot.add_child(engage)
 
-## OUVRE le récap (clic du chip d'âge). Lit la façade, remplit, pause le monde.
+## câble le nœud PageTurn (ajouté par main.gd comme frère, layer au-dessus de tout).
+func set_page(page: CanvasLayer) -> void:
+	_page = page
+
+## OUVRE le récap (clic du chip d'âge). Lit la façade, remplit, pause le monde, PUIS la
+## page MONTE (le contenu n'apparaît qu'une fois montée — cf. `risen`).
 func open() -> void:
 	var w = Sim.world
 	if w == null or not w.has_method("age_state"):
@@ -115,6 +129,16 @@ func open() -> void:
 	if not visible:
 		_prev_speed = Sim.speed_index
 		Sim.set_speed(0)              # le chapitre mérite le regard : le monde attend
+	if _page != null and _page.has_method("rise"):
+		visible = false                # caché tant que la page n'est pas montée
+		var bilan_txt: String = _title.text + "\n\n" + _epithet_line.text
+		if not _page.risen.is_connected(_on_page_risen):
+			_page.risen.connect(_on_page_risen, CONNECT_ONE_SHOT)
+		_page.rise(bilan_txt)
+	else:
+		visible = true                 # pas de page (repli) : modal cash, comme avant
+
+func _on_page_risen() -> void:
 	visible = true
 
 ## remplit titre + épithète + bilan + tranche d'annales de l'âge écoulé.
@@ -155,12 +179,22 @@ func _build(w, next_age_name: String) -> void:
 	# le nom du prochain âge devient « l'âge précédent » au moment de l'ENGAGE seulement
 	set_meta("next_age_name", next_age_name)
 
+## « Plus tard » : la page redescend (aucun verbe émis, le chip reste).
+func _later() -> void:
+	visible = false
+	if _page != null and _page.has_method("lower"):
+		_page.lower()
+
 func _engage() -> void:
 	var w = Sim.world
 	if w != null and w.has_method("player_age_engage") and w.player_age_engage():
 		_last_engage_year = int(w.year())              # la prochaine tranche part d'ici
 		_prev_age_name = String(get_meta("next_age_name", ""))
 	visible = false
+	# le verbe est ENFILÉ (drainé au tick suivant) ; la page TOURNE et révèle le monde MUTÉ —
+	# elle couvre le raccord entre l'ancien âge affiché et le nouveau tick.
+	if _page != null and _page.has_method("turn"):
+		_page.turn()
 
 ## 12345678 → « 12 345 678 » (lisibilité des nombres tangibles)
 static func _fmt(v: int) -> String:

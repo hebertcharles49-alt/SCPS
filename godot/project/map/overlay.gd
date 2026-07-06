@@ -2058,8 +2058,14 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var ec: Vector2 = mv.iso_pos(ew.x, ew.y)
 			var col := _fin_color(fin)
 			var t := Time.get_ticks_msec() / 1000.0
+			# MERVEILLE (fin==4) : le chantier qui GRANDIT — le rayon de base croît avec merv_pct
+			# (0..100) au lieu du pulse fixe des apocalypses (le joueur voit l'ascension AVANCER).
+			var base_rad := 7.0
+			if fin == 4:
+				var mp := float(eg.get("merv_pct", 0))
+				base_rad = lerpf(7.0, 34.0, clampf(mp / 100.0, 0.0, 1.0))
 			for k in range(3):
-				var rad := (7.0 + k * 6.0 + fmod(t * 5.0, 6.0)) / zoom
+				var rad := (base_rad + k * 6.0 + fmod(t * 5.0, 6.0)) / zoom
 				# §27 : l'anneau d'épicentre DOIT se lire au plan large (drame global) ; trait borné, le rayon de pulse reste /zoom.
 				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), _w(zoom, 0.35, 1.2, 2.4), true)
 
@@ -3172,9 +3178,15 @@ func _draw_town(ip: Vector2, tier: int, zoom: float, ink: Color) -> void:
 			var d := Vector2(cos(ang), sin(ang))
 			draw_line(ip + d * (r + 0.6 / zoom), ip + d * (r + 4.0 / zoom), ink, 1.2 / zoom, true)
 
+## palette recalée DA LAVIS (parchemin) — les bleus/verts vifs "néon" détonnaient sur le
+## sépia de la carte ; ces teintes restent dans la même famille de pigments que les
+## frontières/bandes politiques. `_` couvre tout fin INCONNU (ex. une 6e fin future côté
+## moteur) → couleur neutre, jamais un crash sur un enum non prévu.
 func _fin_color(fin: int) -> Color:
 	match fin:
-		1: return Color(0.30, 0.55, 0.95)   # EAU : bleu
-		2: return Color(0.80, 0.92, 1.00)   # FROID : blanc glacé
-		3: return Color(0.35, 0.70, 0.30)   # RONCES : vert
-		_: return Color(0.70, 0.35, 0.85)   # Brèche / indéterminé : violet
+		1: return Color(0.35, 0.48, 0.62)   # EAU : ardoise profond
+		2: return Color(0.75, 0.80, 0.85)   # FROID : ardoise pâle
+		3: return Color(0.45, 0.55, 0.35)   # RONCES : olive sombre
+		4: return SEL_GOLD                  # ASCENSION (Merveille) : or vieilli
+		5: return Color(0.60, 0.42, 0.38)   # SANG : terre cuite sombre
+		_: return Color(0.55, 0.50, 0.45)   # inconnu/indéterminé : neutre (défensif)

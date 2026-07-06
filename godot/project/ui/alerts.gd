@@ -18,6 +18,7 @@ signal open_religion
 signal goto_region(r: int)  ## centre la carte sur la région de l'alerte (siège, famine, révolte)
 signal popup_requested(e: Dictionary)  ## évènement MAJEUR → le popup OYEZ OYEZ (pause + boutons)
 signal age_recap_requested             ## chip d'âge cliqué → l'ÉCRAN DE CHAPITRE (récap, pause)
+signal open_tech_metab                 ## chip « métabolisation prête » cliqué → ouvre l'arbre tech
 
 const COL_ETAT   := Color(0.55, 0.38, 0.66)   ## violet — étatique
 const COL_ARMEE  := Color(0.72, 0.28, 0.24)   ## rouge — armée
@@ -230,6 +231,19 @@ func _collect() -> Array:
 				"tip": "BIEN INTROUVABLE — %s est demandé mais ni produit ni en stock (clic : onglet Marché)" % String(pa["conso_name"])})
 	return out
 
+## VOIE MÉTABOLISATION (V1b) : tech_panel.gd notifie qu'un héritage NON natif vient
+## d'atteindre tier 3 (digestion pleine) — chip transient discret, même motif que le fil
+## moteur (`_events`) mais poussé DIRECTEMENT (ce n'est pas un feed C, c'est un latch
+## GDScript côté tech_panel). Clic = ouvre l'arbre tech sur la bande de métabolisation.
+func push_metab_ready(nom: String) -> void:
+	_seen_seq += 1   # partage la numérotation de seq (clic = acquitté, comme le fil moteur)
+	_events.append({"icon": "knowledge_book", "col": COL_SAVOIR,
+		"tip": "Métabolisation : %s prête (clic : voir l'arbre)" % nom,
+		"seq": _seen_seq, "act": "tech_metab"})
+	while _events.size() > FEED_MAX:
+		_events.pop_front()
+	_refresh()
+
 ## la pile AFFICHÉE : les ÉVÈNEMENTS (récents en tête, transients) puis les CONDITIONS.
 func _stack() -> Array:
 	var st := []
@@ -266,6 +280,10 @@ func _gui_input(event: InputEvent) -> void:
 			if int(_events[i]["seq"]) == int(al["seq"]):
 				_events.remove_at(i)
 				break
+		# certains évènements transients portent une ACTION propre (ex. métabolisation
+		# prête → ouvre l'arbre tech) — routée comme les conditions, en plus de l'acquit.
+		if al.has("act") and String(al["act"]) == "tech_metab":
+			open_tech_metab.emit()
 	else:
 		match String(al.get("act", "")):
 			"council":

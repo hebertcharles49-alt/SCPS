@@ -10,6 +10,13 @@ extends Control
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
+
+## POPUP « métabolisation prête » (V1b) : quand un héritage NON natif atteint tier 3
+## (digestion pleine), on notifie UNE FOIS — le fil de la victoire Merveille (paliers
+## culture) doit se VOIR. Latch LOCAL au nœud (non sérialisé) : un re-lancement re-notifie,
+## acceptable pour un signal purement display-only.
+signal metab_ready(nom: String)
+var _metab_seen := {}   ## nom héritage (natif à part) → true une fois notifié tier==3
 # taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
 var PW := 720.0
 var PH := 560.0
@@ -38,8 +45,27 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_layout)
 	visibility_changed.connect(_on_visibility)
 	Sim.generated.connect(_on_generated)
-	Sim.ticked.connect(func(_y): if visible: queue_redraw())
+	Sim.ticked.connect(func(_y):
+		_check_metab_ready()          # surveille le franchissement de tier — même panneau FERMÉ
+		if visible: queue_redraw())
 	hide()
+
+## surveille `heritage_access()` : un héritage non natif qui vient d'atteindre tier 3
+## (digestion pleine) déclenche `metab_ready` UNE fois (latch `_metab_seen`).
+func _check_metab_ready() -> void:
+	if Sim.world == null or not Sim.world.has_method("heritage_access"):
+		return
+	var acc: Array = Sim.world.heritage_access()
+	for h in acc:
+		var nativ := bool(h.get("native", false))
+		if nativ:
+			continue
+		var nom := String(h.get("nom", ""))
+		if nom == "" or _metab_seen.get(nom, false):
+			continue
+		if int(h.get("tier", 0)) >= 3:
+			_metab_seen[nom] = true
+			metab_ready.emit(nom)
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size
@@ -61,6 +87,7 @@ func _on_visibility() -> void:
 func _on_generated() -> void:
 	_built = false
 	_sel = ""
+	_metab_seen.clear()
 	if visible:
 		_build()
 
@@ -309,8 +336,10 @@ func _draw_metab(info: Dictionary) -> void:
 			nm = nm.substr(0, 8)
 		var nativ := bool(h.get("native", false))
 		var tier := int(h.get("tier", 0))
-		VKit.text(self, Vector2(x, ry), (VKit.COL_GOLD if nativ else VKit.COL_PARCH),
-			("★" if nativ else "") + nm, VKit.FS_SMALL)
+		var ready: bool = _metab_seen.get(nm, false)    # PRÊTE (tier 3 franchi) : marqueur ✓ or
+		var mark := "★" if nativ else ("✓ " if ready else "")
+		VKit.text(self, Vector2(x, ry), (VKit.COL_GOLD if (nativ or ready) else VKit.COL_PARCH),
+			mark + nm, VKit.FS_SMALL)
 		for k in 3:                                   # 3 pips de tier (rempli = accessible)
 			VKit.fill(self, Rect2(x + k * 9.0, ry + 14, 6, 6),
 				(COL_UNLOCKED if tier > k else COL_LOCKED))

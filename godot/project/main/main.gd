@@ -18,6 +18,7 @@ var _country_actions: Control  # fenêtre diplomatique par pays (liste diplo + c
 var _devpanel: Control         # MODTOOLS : panneau dev (tunables live, F10)
 var _chronique: Control        # LES ANNALES DU RÈGNE : le récit sélectif (lecture seule, H)
 var _age_recap: Control        # ÉCRAN DE CHAPITRE : récap d'âge au clic du chip « Engager »
+var _page_turn: CanvasLayer    # LA PAGE QUI SE TOURNE : transition d'âge (codex, horloge mur)
 var _epilogue: Control         # ÉPILOGUE : la fin de partie en une phrase + la frise complète
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _epilogue_shown := false   # l'épilogue ne s'ouvre qu'UNE fois par partie (latch UI)
@@ -183,6 +184,14 @@ func _ready() -> void:
 	alerts.open_religion.connect(func():
 		if _religion != null:
 			_religion.open())
+	# MÉTABOLISATION PRÊTE (V1b) : tech_panel surveille heritage_access() et notifie au
+	# franchissement du tier 3 — la pile d'alertes pousse un chip transient, dont le
+	# clic ROUVRE l'arbre (route déjà existante open_tech).
+	if _tech.has_signal("metab_ready"):
+		_tech.metab_ready.connect(func(nom): alerts.push_metab_ready(nom))
+	alerts.open_tech_metab.connect(func():
+		_tech.visible = true
+		_tech.queue_redraw())
 	var goto_fn := func(r):
 		if r >= 0 and Sim.world != null:
 			var c: Vector2 = Sim.world.region_centroid(r)
@@ -208,11 +217,19 @@ func _ready() -> void:
 	ui.add_child(_chronique)
 	_chronique.goto_region.connect(goto_fn)
 
+	# LA PAGE QUI SE TOURNE : CanvasLayer INDÉPENDANT (layer 60, au-dessus de `ui`) — le
+	# codex qui referme un âge. Ajouté à la racine (pas dans `ui`) pour ne jamais hériter
+	# du thème/anchors de la couche panneau ; son propre layer le place au-dessus de tout.
+	_page_turn = load("res://ui/page_turn.gd").new()
+	_page_turn.name = "PageTurn"
+	add_child(_page_turn)
+
 	# ÉCRAN DE CHAPITRE : le chip d'âge n'engage plus directement — il ouvre CE récap
 	# (monde en pause, tranche d'annales de l'âge écoulé, bilan) ; le verbe s'émet là.
 	_age_recap = load("res://ui/age_recap.gd").new()
 	_age_recap.name = "AgeRecap"
 	ui.add_child(_age_recap)
+	_age_recap.set_page(_page_turn)
 	_age_recap.goto_region.connect(goto_fn)
 	alerts.age_recap_requested.connect(func(): _age_recap.open())
 
