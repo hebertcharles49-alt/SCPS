@@ -289,7 +289,7 @@ WARHOST_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.
                    $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_labor.o \
                    $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_warhost_demo.o
 warhost_demo: $(WARHOST_DEMO_OBJS)
-	$(CC) $(WARHOST_DEMO_OBJS) -o $@ -lm
+	$(CC) $(WARHOST_DEMO_OBJS) -o $@ -lm -Wl,--stack,8388608
 
 # ---- navy_demo : LA FLOTTE (rade · chantier · emport · conversion · invariants save_sane) ----
 NAVY_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
@@ -317,7 +317,7 @@ CAMPAIGN_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion
                    $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_labor.o \
                    $(OBJDIR)/scps_scps_campaign.o $(OBJDIR)/scps_campaign_demo.o
 campaign_demo: $(CAMPAIGN_DEMO_OBJS)
-	$(CC) $(CAMPAIGN_DEMO_OBJS) -o $@ -lm
+	$(CC) $(CAMPAIGN_DEMO_OBJS) -o $@ -lm -Wl,--stack,8388608
 
 # ---- Routes commerciales : la cloche f(D̄) faite action (§7) --------------
 ROUTES_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $(OBJDIR)/scps_scps_render.o \
