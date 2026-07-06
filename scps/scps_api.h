@@ -730,6 +730,24 @@ typedef struct {
 } ScpsHeritageAccess;
 int scps_player_heritage_access(ScpsSim *s, ScpsHeritageAccess *out, int max);  /* retourne HERITAGE_COUNT */
 
+/* MÉTABOLISATION POUR LA VICTOIRE (Merveille §27) — DISTINCT de ScpsHeritageAccess
+ * ci-dessus : celle-ci lit l'accès TECH (pop-share, tier 0..3) ; celle-ci lit ce que
+ * `endgame_metab_count` compte réellement pour faire progresser un palier de la
+ * Merveille (natif toujours · gouvernance = contact profond · diaspora = ratio
+ * individualisé ≥60% + 500 âmes). Un héritage peut être "prêt" côté tech SANS
+ * compter ici, et l'inverse — ne pas fusionner les deux lectures côté UI. */
+typedef struct {
+    const char *nom;
+    int  metabolized;     /* 1 = compte pour la Merveille (gate du palier courant) */
+    const char *voie;     /* "natif" | "gouvernance" | "diaspora" | "" (aucune) */
+    int  progress_pct;    /* 0..100 : progression de la meilleure voie */
+    int  native;          /* 1 = héritage natif de l'empire */
+} ScpsMervHeritage;
+/* out : HERITAGE_COUNT entrées (une par héritage). count/required : le compte
+ * total X/6 actuel et le requis du palier COURANT de la Merveille (0 si aucun
+ * palier actif — rien à gater). Retourne HERITAGE_COUNT (0 si sim non prête). */
+int scps_merv_metab(ScpsSim *s, ScpsMervHeritage *out, int max, int *count, int *required);
+
 /* MODTOOLS — registre des TUNABLES (panneau dev : lister + éditer en direct). GLOBAL (pas
  * par-sim). scps_tune_set_val applique la surcharge LIVE (effet là où tune_f est relu au tick). */
 typedef struct {

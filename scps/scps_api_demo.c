@@ -809,6 +809,25 @@ int main(int argc, char **argv){
                && mp.pct_of_country>=0.f && mp.pct_of_country<=100.f
                && mp.friction_after>=0.f && mp.friction_after<=1.f);
         }
+
+        /* ── P5 — MÉTABOLISATION POUR LA VICTOIRE : deux lectures DISTINCTES, un chip
+         * doit dire LAQUELLE (accès tech pop-share vs compte de la Merveille). ── */
+        {
+            ScpsMervHeritage mh[HERITAGE_COUNT];
+            int count=-1, required=-1;
+            int n = scps_merv_metab(sd, mh, HERITAGE_COUNT, &count, &required);
+            ok("scps_merv_metab : HERITAGE_COUNT entrées lues", n==HERITAGE_COUNT);
+            ok("le compte X/6 est BORNÉ 0..HERITAGE_COUNT", count>=0 && count<=HERITAGE_COUNT);
+            int natif_found=0, natif_metab=0, all_bounded=1;
+            for(int h=0; h<n; h++){
+                if(mh[h].native){ natif_found=1; natif_metab = mh[h].metabolized; }
+                if(mh[h].progress_pct<0 || mh[h].progress_pct>100) all_bounded=0;
+            }
+            ok("progress_pct BORNÉ [0,100] pour tous les héritages", all_bounded==1);
+            ok("l'héritage NATIF compte TOUJOURS pour la Merveille (voie \"natif\")",
+               natif_found==1 && natif_metab==1);
+            ok("required : requis du palier courant, ou 0 si aucun palier actif", required>=0);
+        }
         scps_sim_free(sd);
     }
 

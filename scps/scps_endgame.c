@@ -581,7 +581,12 @@ static float endgame_diffuse_coeff(uint8_t arrival) {
  * à 0). Deux gardes : un RATIO (bien digéré RELATIVEMENT à sa propre communauté) ET
  * un PLANCHER D'ÂMES (pas de « culture métabolisée » à 30 personnes noyées dans un
  * gros pays — dig_h doit peser un minimum en absolu). */
-static bool endgame_heritage_metabolized(const World *w, const WorldEconomy *econ, int cid, int h) {
+/* Variante DÉTAILLÉE (P5 — la façade a besoin du RATIO, pas juste du booléen, pour
+ * afficher une barre de progression honnête). ratio_out/dig_out peuvent être NULL. */
+static bool endgame_heritage_metabolized_detail(const World *w, const WorldEconomy *econ, int cid, int h,
+                                                float *ratio_out, double *dig_out) {
+    if (ratio_out) *ratio_out = 0.f;
+    if (dig_out) *dig_out = 0.0;
     if (!w || !econ || cid < 0 || cid >= w->n_countries) return false;
     double dig = 0.0, tot = 0.0;
     int nprov = econ->n_prov; if (nprov > SCPS_MAX_PROV) nprov = SCPS_MAX_PROV;
@@ -599,7 +604,13 @@ static bool endgame_heritage_metabolized(const World *w, const WorldEconomy *eco
     }
     if (tot <= 0.0) return false;
     float ratio = (float)(dig / tot);
+    if (ratio_out) *ratio_out = ratio;
+    if (dig_out) *dig_out = dig;
     return ratio >= tune_f("METAB_MERV_RATIO", 0.60f) && dig >= (double)tune_f("METAB_MERV_MIN", 500.f);
+}
+
+static bool endgame_heritage_metabolized(const World *w, const WorldEconomy *econ, int cid, int h) {
+    return endgame_heritage_metabolized_detail(w, econ, cid, h, NULL, NULL);
 }
 
 /* MÉTABOLISATION (décision #2) — nb d'héritages « métabolisés » par cid : le
@@ -641,6 +652,52 @@ int endgame_metab_required(MervPhase merv) {
         case MERV_SOCIETE: case MERV_SOCIETE_DONE: return 4;
         case MERV_SAVOIR: case MERV_SAVOIR_DONE:   return 6;
         default: return 0;
+    }
+}
+
+/* DÉTAIL PAR HÉRITAGE (P5 — une seule source de vérité pour la victoire) : la
+ * barre de progression tech (heritage_access, ai_heritage_access) ET le compte de
+ * la Merveille (endgame_metab_count_ts, ci-dessus) lisent DEUX signaux distincts
+ * (pop-share tech-only vs individualisation+contact) — un joueur pouvait voir un
+ * ✓ sur l'un sans que l'autre compte. `endgame_heritage_detail` expose EXACTEMENT
+ * ce que wonder_tick gate, héritage par héritage, pour que l'UI cesse de deviner :
+ * out[h].metabolized = TIENT dans le compte de la Merveille (natif, OU contact
+ * PROFOND via ts[cid].arch_depth, OU individualisation ratio≥0.60+500 âmes) ;
+ * out[h].voie = "natif"/"gouvernance"/"diaspora"/"" (aucune) ; out[h].progress_pct
+ * = 0..100 de la MEILLEURE voie disponible (natif→100 direct ; gouvernance→
+ * profondeur/PROF_PROFOND ; diaspora→ratio/METAB_MERV_RATIO, si des âmes existent). */
+void endgame_heritage_detail(const World *w, const WorldEconomy *econ, const TechState ts[],
+                             int cid, EndgameHeritageDetail out[HERITAGE_COUNT]) {
+    for (int h = 0; h < HERITAGE_COUNT; h++) { out[h].metabolized = false; out[h].voie = ""; out[h].progress_pct = 0; }
+    if (!w || !econ || cid < 0 || cid >= w->n_countries) return;
+    int cp = w->country[cid].capital_prov;
+    int cr = (cp >= 0 && cp < w->n_provinces) ? w->province[cp].region : -1;
+    Heritage native = (cr >= 0 && cr < econ->n_regions) ? econ->region[cr].culture.heritage
+                                                        : HERITAGE_ADAPTATIF;
+    const unsigned char *depth = (ts && cid < SCPS_MAX_COUNTRY) ? ts[cid].arch_depth : NULL;
+    for (int h = 0; h < HERITAGE_COUNT; h++) {
+        if (h == (int)native) {
+            out[h].metabolized = true; out[h].voie = "natif"; out[h].progress_pct = 100;
+            continue;
+        }
+        bool contact_deep = (depth && h < ARCH_COUNT && depth[h] >= (unsigned char)PROF_PROFOND);
+        float ratio = 0.f; double dig = 0.0;
+        bool diaspora_ok = endgame_heritage_metabolized_detail(w, econ, cid, h, &ratio, &dig);
+        int gov_pct = 0;
+        if (depth && h < ARCH_COUNT) {
+            gov_pct = (int)(100.f * (float)depth[h] / (float)PROF_PROFOND + 0.5f);
+            if (gov_pct > 100) gov_pct = 100;
+        }
+        int dia_pct = 0;
+        if (dig > 0.0) {
+            float req = tune_f("METAB_MERV_RATIO", 0.60f);
+            dia_pct = (req > 0.f) ? (int)(100.f * ratio / req + 0.5f) : 0;
+            if (dia_pct > 100) dia_pct = 100;
+        }
+        if (contact_deep || diaspora_ok) out[h].metabolized = true;
+        if (gov_pct >= dia_pct) { out[h].progress_pct = gov_pct; out[h].voie = (gov_pct > 0) ? "gouvernance" : ""; }
+        else                    { out[h].progress_pct = dia_pct; out[h].voie = "diaspora"; }
+        if (out[h].metabolized && !*out[h].voie) out[h].voie = contact_deep ? "gouvernance" : "diaspora";
     }
 }
 

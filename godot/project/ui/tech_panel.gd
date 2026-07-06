@@ -22,7 +22,7 @@ var PW := 720.0
 var PH := 560.0
 const HEAD := 52.0          # hauteur d'en-tête (titre + jauges)
 const FOOT := 22.0          # pied (détail du nœud sélectionné)
-const METAH := 52.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage)
+const METAH := 66.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage + compte Ascension)
 
 # couleurs d'état (sans bibliothèque d'animation Medusa : on teinte le cercle)
 const COL_LOCKED   := Color(0.40, 0.40, 0.46)
@@ -50,20 +50,24 @@ func _ready() -> void:
 		if visible: queue_redraw())
 	hide()
 
-## surveille `heritage_access()` : un héritage non natif qui vient d'atteindre tier 3
-## (digestion pleine) déclenche `metab_ready` UNE fois (latch `_metab_seen`).
+## surveille `merv_metab()` — CE QUI COMPTE POUR LA MERVEILLE (endgame_metab_count),
+## PAS l'accès tech (heritage_access/tier) : un héritage non natif dont `metabolized`
+## bascule à vrai déclenche `metab_ready` UNE fois (latch `_metab_seen`). Avant P5,
+## ce chip lisait heritage_access() (sémantique tech) — un joueur pouvait voir le ✓
+## sans que la culture compte pour l'Ascension, et l'inverse ; corrigé (cf. TROUVAILLES).
 func _check_metab_ready() -> void:
-	if Sim.world == null or not Sim.world.has_method("heritage_access"):
+	if Sim.world == null or not Sim.world.has_method("merv_metab"):
 		return
-	var acc: Array = Sim.world.heritage_access()
-	for h in acc:
+	var mm: Dictionary = Sim.world.merv_metab()
+	var heritages: Array = mm.get("heritages", [])
+	for h in heritages:
 		var nativ := bool(h.get("native", false))
 		if nativ:
 			continue
 		var nom := String(h.get("nom", ""))
 		if nom == "" or _metab_seen.get(nom, false):
 			continue
-		if int(h.get("tier", 0)) >= 3:
+		if bool(h.get("metabolized", false)):
 			_metab_seen[nom] = true
 			metab_ready.emit(nom)
 
@@ -313,6 +317,12 @@ func _draw_tier_rings() -> void:
 		draw_arc(c, r, 0.0, TAU, 64, Color(0.58, 0.52, 0.42, 0.16), 1.0, true)
 		VKit.text(self, Vector2(c.x - 7.0, c.y - r - 11.0), VKit.COL_DIM, "T%d" % t, VKit.FS_SMALL)
 
+## DEUX LECTURES DISTINCTES, séparées visuellement (P5 — une seule source de vérité
+## pour la victoire) :
+##   1) « accès aux signatures » = heritage_access() (tech, pop-share, tier 0-3) —
+##      ouvre les nœuds de l'arbre, ne dit RIEN de la victoire Merveille.
+##   2) « compte pour l'Ascension » = merv_metab() (endgame_metab_count) — ce que
+##      wonder_tick gate réellement (X/N du palier courant), la SEULE jauge de victoire.
 func _draw_metab(info: Dictionary) -> void:
 	var y0 := PH - FOOT - METAH
 	VKit.fill(self, Rect2(12, y0, PW - 24, 1), VKit.COL_EDGE)
@@ -322,27 +332,58 @@ func _draw_metab(info: Dictionary) -> void:
 		"Métabolisation : +%d%% recherche (le creuset digéré)" % mp, VKit.FS_SMALL)
 	if Sim.world == null:
 		return
+
+	# ── Rangée 1 : ACCÈS AUX SIGNATURES (tech, heritage_access — pas la victoire) ──
 	var acc: Array = Sim.world.heritage_access()
 	var n := acc.size()
-	if n == 0:
+	if n > 0:
+		var cw := (PW - 28.0) / float(n)
+		var ry := y0 + 20.0
+		VKit.text(self, Vector2(16, ry - 10), VKit.COL_DIM, "Accès aux signatures (arbre) :", VKit.FS_SMALL)
+		for i in n:
+			var h: Dictionary = acc[i]
+			var x := 16.0 + i * cw
+			var nm := String(h.get("nom", ""))
+			if nm.length() > 8:
+				nm = nm.substr(0, 8)
+			var nativ := bool(h.get("native", false))
+			var tier := int(h.get("tier", 0))
+			var mark := "★ " if nativ else ""
+			VKit.text(self, Vector2(x, ry), (VKit.COL_GOLD if nativ else VKit.COL_PARCH),
+				mark + nm, VKit.FS_SMALL)
+			for k in 3:                                   # 3 pips de tier (rempli = accessible)
+				VKit.fill(self, Rect2(x + k * 9.0, ry + 14, 6, 6),
+					(COL_UNLOCKED if tier > k else COL_LOCKED))
+			var dp := int(h.get("digested_pct", 0))
+			if dp > 0 and not nativ:                       # la digestion EN COURS (dénominateur : pop totale)
+				VKit.text(self, Vector2(x + 32, ry + 13), VKit.COL_DIM, "%d%%" % dp, VKit.FS_SMALL)
+
+	# ── Rangée 2 : COMPTE POUR L'ASCENSION (merv_metab — la seule jauge de victoire) ──
+	if not Sim.world.has_method("merv_metab"):
 		return
-	var cw := (PW - 28.0) / float(n)
-	var ry := y0 + 24.0
-	for i in n:
-		var h: Dictionary = acc[i]
-		var x := 16.0 + i * cw
-		var nm := String(h.get("nom", ""))
-		if nm.length() > 8:
-			nm = nm.substr(0, 8)
-		var nativ := bool(h.get("native", false))
-		var tier := int(h.get("tier", 0))
-		var ready: bool = _metab_seen.get(nm, false)    # PRÊTE (tier 3 franchi) : marqueur ✓ or
-		var mark := "★" if nativ else ("✓ " if ready else "")
-		VKit.text(self, Vector2(x, ry), (VKit.COL_GOLD if (nativ or ready) else VKit.COL_PARCH),
-			mark + nm, VKit.FS_SMALL)
-		for k in 3:                                   # 3 pips de tier (rempli = accessible)
-			VKit.fill(self, Rect2(x + k * 9.0, ry + 14, 6, 6),
-				(COL_UNLOCKED if tier > k else COL_LOCKED))
-		var dp := int(h.get("digested_pct", 0))
-		if dp > 0 and not nativ:                       # la métabolisation EN COURS de ce peuple
-			VKit.text(self, Vector2(x + 32, ry + 13), VKit.COL_DIM, "%d%%" % dp, VKit.FS_SMALL)
+	var mm: Dictionary = Sim.world.merv_metab()
+	var mh: Array = mm.get("heritages", [])
+	var mcount := int(mm.get("count", 0))
+	var mreq := int(mm.get("required", 0))
+	var m := mh.size()
+	if m == 0:
+		return
+	var cw2 := (PW - 28.0) / float(m)
+	var ry2 := y0 + 46.0
+	var req_txt := (" — requis palier : %d" % mreq) if mreq > 0 else ""
+	VKit.text(self, Vector2(16, ry2 - 10), VKit.COL_GOLD,
+		"Compte pour l'Ascension : %d/%d%s" % [mcount, m, req_txt], VKit.FS_SMALL)
+	for i in m:
+		var h2: Dictionary = mh[i]
+		var x2 := 16.0 + i * cw2
+		var nm2 := String(h2.get("nom", ""))
+		if nm2.length() > 8:
+			nm2 = nm2.substr(0, 8)
+		var nativ2 := bool(h2.get("native", false))
+		var metab2: bool = bool(h2.get("metabolized", false))
+		var voie2 := String(h2.get("voie", ""))
+		var mark2 := "★" if nativ2 else ("✓" if metab2 else "·")
+		VKit.text(self, Vector2(x2, ry2), (VKit.COL_GOLD if (nativ2 or metab2) else VKit.COL_PARCH),
+			mark2 + " " + nm2, VKit.FS_SMALL)
+		if not nativ2 and voie2 != "":
+			VKit.text(self, Vector2(x2, ry2 + 13), VKit.COL_DIM, voie2, VKit.FS_SMALL)

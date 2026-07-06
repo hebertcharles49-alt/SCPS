@@ -67,6 +67,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("tech_info"),                      &ScpsWorld::tech_info);
     ClassDB::bind_method(D_METHOD("tech_nodes"),                     &ScpsWorld::tech_nodes);
     ClassDB::bind_method(D_METHOD("heritage_access"),                &ScpsWorld::heritage_access);
+    ClassDB::bind_method(D_METHOD("merv_metab"),                     &ScpsWorld::merv_metab);
     ClassDB::bind_method(D_METHOD("tunables"),                       &ScpsWorld::tunables);
     ClassDB::bind_method(D_METHOD("tune_set", "nom", "value"),       &ScpsWorld::tune_set);
     ClassDB::bind_method(D_METHOD("country_budget", "country"),      &ScpsWorld::country_budget);
@@ -773,6 +774,35 @@ Array ScpsWorld::heritage_access() {
         a.push_back(d);
     }
     return a;
+}
+
+/* MÉTABOLISATION POUR LA VICTOIRE (P5) — DISTINCTE de heritage_access() ci-dessus
+ * (accès TECH, pop-share tier 0-3) : ce qui compte RÉELLEMENT pour un palier de
+ * la Merveille (endgame_metab_count / wonder_tick). Ne PAS fusionner les deux
+ * lectures côté UI — étiqueter clairement laquelle est affichée. */
+Dictionary ScpsWorld::merv_metab() {
+    Dictionary out;
+    Array heritages;
+    out["count"] = 0;
+    out["required"] = 0;
+    out["heritages"] = heritages;
+    if (!sim) return out;
+    ScpsMervHeritage h[8];
+    int count = 0, required = 0;
+    int n = scps_merv_metab(sim, h, 8, &count, &required);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["nom"]          = String::utf8(h[i].nom);
+        d["metabolized"]  = (bool)h[i].metabolized;
+        d["voie"]         = String::utf8(h[i].voie);
+        d["progress_pct"] = h[i].progress_pct;
+        d["native"]       = (bool)h[i].native;
+        heritages.push_back(d);
+    }
+    out["count"] = count;
+    out["required"] = required;
+    out["heritages"] = heritages;
+    return out;
 }
 
 Array ScpsWorld::tech_nodes() {

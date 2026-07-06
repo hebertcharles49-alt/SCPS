@@ -95,6 +95,35 @@ func _audit_seed(sd: int, years: int) -> int:
 	if not has_combo:
 		viol += 1; flags += " ✗no-combo-node"
 
+	# INVARIANT 4 (P5) — merv_metab : SECONDE lecture, DISTINCTE de heritage_access.
+	# count ∈ [0,6], required ∈ {0,3,4,6}, EXACTEMENT 1 natif métabolisé (voie "natif"),
+	# et chaque entrée porte un progress_pct borné [0,100].
+	var mvcount := -1
+	if w.has_method("merv_metab"):
+		var mm: Dictionary = w.merv_metab()
+		var mh: Array = mm.get("heritages", [])
+		mvcount = int(mm.get("count", -1))
+		var mreq := int(mm.get("required", -1))
+		if mh.size() != 6:
+			viol += 1; flags += " ✗merv_count(" + str(mh.size()) + ")"
+		if mvcount < 0 or mvcount > 6:
+			viol += 1; flags += " ✗merv_X(" + str(mvcount) + ")"
+		if mreq != 0 and mreq != 3 and mreq != 4 and mreq != 6:
+			viol += 1; flags += " ✗merv_required(" + str(mreq) + ")"
+		var mv_native := 0
+		for h2 in mh:
+			var pp := int(h2.get("progress_pct", -1))
+			if pp < 0 or pp > 100:
+				viol += 1; flags += " ✗merv_pct(" + str(pp) + ")"
+			if bool(h2.get("native", false)):
+				mv_native += 1
+				if not bool(h2.get("metabolized", false)) or String(h2.get("voie", "")) != "natif":
+					viol += 1; flags += " ✗natif-pas-metab"
+		if mv_native != 1:
+			viol += 1; flags += " ✗mv_native(" + str(mv_native) + ")"
+	else:
+		viol += 1; flags += " ✗no-merv_metab"
+
 	print("seed ", sd, " an ", w.year(), " | nœuds ", nodes.size(), " | métab +", mp, "% | natifs ",
-		n_native, (flags if flags != "" else " | OK"))
+		n_native, " | ascension ", mvcount, "/6", (flags if flags != "" else " | OK"))
 	return viol

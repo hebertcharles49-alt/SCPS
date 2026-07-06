@@ -126,6 +126,20 @@ int endgame_metab_count(const World *w, const WorldEconomy *econ, int cid);
  * MERV_NONE/ASCENDED — aucun palier actif). Lecteur simple pour le front. */
 int endgame_metab_required(MervPhase merv);
 
+/* DÉTAIL PAR HÉRITAGE (P5) — UNE SEULE SOURCE DE VÉRITÉ POUR LA VICTOIRE : ce
+ * qu'un héritage compte-t-il POUR LA MERVEILLE (endgame_metab_count_ts), et par
+ * quelle voie ? Distinct de la barre d'accès TECH (ai_heritage_access / tier
+ * 0..3, pop-share) — un héritage peut être "prêt" côté tech sans compter ici (le
+ * seuil diaspora est individualisé, pas pop-share) et inversement. */
+typedef struct {
+    bool metabolized;      /* compte POUR LA MERVEILLE (gate endgame_metab_count_ts) */
+    const char *voie;      /* "natif" | "gouvernance" | "diaspora" | "" (aucune) */
+    int  progress_pct;     /* 0..100 : progression de la MEILLEURE voie disponible */
+} EndgameHeritageDetail;
+
+void endgame_heritage_detail(const World *w, const WorldEconomy *econ, const TechState ts[],
+                             int cid, EndgameHeritageDetail out[HERITAGE_COUNT]);
+
 /* INTENSITÉ D'UNE RÉGION [0..1] selon la fin latchée — pur, aucun état muté :
  * EAU (englouti=1 / programmé=0.6 / adjacent à une engloutie≈0.3), FROID (rampe
  * globale, un rien modulée par la température locale), RONCES (fraction de

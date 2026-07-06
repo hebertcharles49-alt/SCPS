@@ -1224,6 +1224,33 @@ int scps_player_heritage_access(ScpsSim *s, ScpsHeritageAccess *out, int max){
     return n;
 }
 
+/* MÉTABOLISATION POUR LA VICTOIRE (P5) — la seconde lecture, distincte de
+ * scps_player_heritage_access ci-dessus (accès TECH, pop-share). Ici : ce que
+ * `endgame_metab_count`/wonder_tick comptent RÉELLEMENT pour faire progresser un
+ * palier de la Merveille (endgame_heritage_detail, scps_endgame.c). */
+int scps_merv_metab(ScpsSim *s, ScpsMervHeritage *out, int max, int *count, int *required){
+    if (count) *count = 0;
+    if (required) *required = 0;
+    if(!out || max<=0 || !s || !s->ready) return 0;
+    int p = s->sim.player;
+    if(p<0 || p>=s->w->n_countries) return 0;
+    EndgameHeritageDetail det[HERITAGE_COUNT];
+    endgame_heritage_detail(s->w, s->sim.econ, s->sim.ts, p, det);
+    int n = (HERITAGE_COUNT < max) ? HERITAGE_COUNT : max;
+    int cnt = 0;
+    for(int h=0; h<HERITAGE_COUNT; h++) if(det[h].metabolized) cnt++;
+    for(int r=0;r<n;r++){
+        out[r].nom          = sz(heritage_name((Heritage)r));
+        out[r].metabolized  = det[r].metabolized ? 1 : 0;
+        out[r].voie         = sz(det[r].voie);
+        out[r].progress_pct = det[r].progress_pct;
+        out[r].native       = (det[r].voie && strcmp(det[r].voie,"natif")==0) ? 1 : 0;
+    }
+    if (count) *count = cnt;
+    if (required && s->sim.eg) *required = endgame_metab_required(s->sim.eg->merv);
+    return n;
+}
+
 /* MODTOOLS — registre des tunables (panneau dev). GLOBAL : pas de s->sim. */
 int  scps_tune_count(void){ return tune_count(); }
 void scps_tune_at(int i, ScpsTunable *out){
