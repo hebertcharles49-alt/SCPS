@@ -1658,3 +1658,78 @@ trace les 3 sites de `diplo_settle` avec `can_enslave`/éthos/occ — utile pour
 suspectera le câblage capture plutôt que l'aléa de guerre.
 
 **NE PAS COMMITTER** (mandat explicite).
+
+---
+
+## [021] Esclavage — le maillon manquant n'était PAS `diplo_enslave_capture` : le SIÈGE n'a jamais le
+temps de tomber avant que le frein de guerre plie la paix
+
+**Mission** : le diag SLAVEDIAG (précédent, [020]-ish, TROUVAILLES.md) montrait « capture rend
+toujours 0 » sur seed 7/9 (100-150 ans). Consigne : diagnostiquer la CAPTURE elle-même
+(`diplo_enslave_capture`, l'ordre région-transférée vs re-flag `demography_on_conquest`, la voie
+capitulation `ai_enslaves(b)`).
+
+**Verdict : la capture N'A JAMAIS ÉTÉ CASSÉE.** Instrumentation ajoutée (gated `SCPS_SLAVEDIAG`, style
+maison, dans `diplo_settle` — imprime `n` occupé + budget — et en fin de `diplo_enslave_capture` —
+imprime `moved`/`captives`/`dst_n_groups`) : dès qu'un HONNEUR/DOMINATEUR (`can_enslave=1`) règle une
+guerre avec AU MOINS une région RÉELLEMENT occupée (`diplo_settle`'s `n>0`), la capture délivre des
+âmes RÉELLES (`moved=160` mesuré seed 99, conqueror=78, region=55) — le code de capture, le calcul
+`captives`/`moved`, le groupe déporté (klass=CLASS_SLAVE, arrival=ARR_DEPORTE) sont tous CORRECTS.
+
+**Le vrai goulet, trouvé en traçant TOUS les appels `diplo_settle`** (`scps_ai.c::ai_strat_turn`) :
+il y a TROIS chemins qui appellent `diplo_settle` — `settle(consolidate)` (frein dur, ~63/64 appels
+mesurés sur un run de 200 ans), `settle(main)` (décisif/épuisé, ~4-18/run), `settle(surrender)`
+(capitulation, rare). **Le chemin `consolidate` a `n=0` DANS 100 % DES CAS MESURÉS** (aucune exception
+sur plusieurs centaines d'appels tracés) — il fold TOUTES les guerres en cours dès que
+`credit_consolidate>=1.0`, sans AUCUNE condition sur le terrain occupé ni sur `war_years`. Or
+`ai_consolidation_pressure` (fragilité/surextension/déchirement) SATURE à `brake=1.00` très vite
+(mesuré : `credit_consolidate` franchit 1.0 en 1-2 accumulations de `ai_strat_turn`, cadence ~3 ans)
+— largement AVANT qu'un siège moyen tombe (`siege_days` peut monter à ~730 jours pour une région
+bien défendue, `army_demo.c:315`). `diplo_settle`→`diplo_make_peace` termine la guerre
+(`status=NEUTRAL`) → toute armée en plein siège n'est plus « en guerre » et le siège n'aboutit
+jamais à `diplo_occupy`. **HONNEUR est spécifiquement pénalisé** : ethos flagué « mauvais
+intégrateur » (`scps_ai.c:1731`, coût FN_RENFORCEMENT ×1.20) — conquérir bâtit de la
+fracture/fragilité plus vite que les autres éthos, donc HONNEUR retombe dans le frein dur plus
+souvent, coupant SES sièges plus souvent que ceux des autres.
+
+**Fix appliqué** (`scps_ai.c::ai_strat_turn`, ~15 lignes, une seule fonction touchée) : nouvelle
+constante `AI_CONSOLIDATE_GRACE_Y=2.0` (an) ; dans la boucle de fold du frein dur, une guerre encore
+SANS territoire occupé (`diplo->conquered[a->cid][b]==0`) ET plus jeune que la grâce n'est PAS pliée
+ce tick — elle est SAUTÉE (le `continue` de la boucle), laissant le siège respirer un peu ; le frein
+REVIENDRA au tick suivant (rien n'empêche `credit_consolidate` de re-accumuler, la guerre finira par
+se plier si elle traîne). Seuil délibérément COURT (≪ `AI_WAR_EXHAUST=10` ans du chemin main) : on ne
+retarde qu'un tout jeune conflit qui n'a jamais eu sa chance, jamais une guerre qui s'éternise — pas
+de changement de comportement pour les guerres déjà mûres ou déjà victorieuses en terrain.
+
+**Mesuré (avant/après, SCPS_SLAVEDIAG, chronicle seed×1×250ans)** : avant — 6/8 seeds fraîches
+(4,5,6,8,9,+) à ZÉRO capture ; après — 9/13 seeds ont AU MOINS un `enslave_capture(enslaves=1)`
+(seed 6 : 20 tentatives/7 `moved`>0, 594 âmes en fin de sim ; seed 42 passe de 0 à 1 événement même
+à 150 ans). Seeds 7/9/11 restent à 0 sur CE run précis — confirmé PAR L'ALÉA (aucun Dominateur/
+Honneur n'a occupé de territoire au bon moment sur ces graines-là dans cette fenêtre), pas un
+symptôme — cf. golden qui ne bouge PAS sur seed 209/411 (aucune capture n'est intervenue dans les 12
+premières années sur ces graines, la fenêtre golden est neutre là).
+
+**Gates** : `make test` 37/40 verts (3 KO Windows pré-existants inchangés : `intertrade_demo` build
+`setenv`, `campaign_demo`/`warhost_demo` stack-overflow) ; `demography_demo` 44/44 (invariant
+strate==groupe intact, AUCUN nouveau test requis — le fix ne touche pas la couche démographie) ;
+`ai_demo` 26/26 ; `diplo_demo` 59/59. `make determinism` STABLE (5 graines × 12 ans, hash identique
+d'un run à l'autre). `make golden` **RE-BASELINÉ** : seeds 7/108/310 changent dès la fenêtre 12 ans
+(des guerres qui auraient été pliées prématurément vont maintenant un peu plus loin — plus de temps
+pour occuper avant de régler, donc l'issue de certaines guerres précoces change) ; seeds 209/411
+INCHANGÉS (`make golden-update` exécuté, `make golden` re-vérifié OK après). `savetest` seeds 9 ET 11
+byte-identiques (`scps_viewer` sans SDL). Sweep sain (`./chronicle 9 5 250 6 12`) : satisfaction
+68-91 % selon strate, hégémon « craqué » (comportement documenté existant, pas une régression), §27
+toujours gaté >an-180, guerres/révoltes dans la plage habituelle. Pool des Centres et affranchissements
+restent à 0 dans ces sweeps courts — CE SONT des mécanismes downstream séparés (vente IA `ai_step` gate
+`slaves>=10`, `demography_manumit_country`) qui n'étaient PAS dans le périmètre du bug (la capture
+elle-même) et qui n'ont vu aucune régression ; ils demandent simplement un volume d'âmes serviles plus
+grand/plus de temps pour s'amorcer — pas retouchés ici (hors mandat, pas de symptôme de bug identifié).
+
+**Instrumentation gardée** (gated `SCPS_SLAVEDIAG`, style maison, dans `scps_diplo.c` :
+`diplo_settle` imprime `n`/`budget`/`conq_value` quand `winner_enslaves` ; `diplo_enslave_capture`
+imprime `moved`/`captives`/`dst_n_groups` en sortie réussie) — complète l'instrumentation déjà en
+place (`enslave_capture appelé`, les 2 gates d'échec, les 3 sites `settle(...)` dans `scps_ai.c`).
+Utile pour la PROCHAINE fois qu'on voudra distinguer un vrai défaut de câblage d'un simple aléa de
+guerre rare.
+
+**NE PAS COMMITTER** (mandat explicite — même règle que [020]).

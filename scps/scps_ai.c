@@ -47,6 +47,14 @@
                                    * facile fige le conquérant — il ne prédate jamais) */
 #define AI_FOOD_FLOOR     1.5f   /* sous ce seuil de marge : grenier d'abord */
 #define AI_BRAKE_HARD     0.6f   /* frein dur : consolidation impérative     */
+#define AI_CONSOLIDATE_GRACE_Y 2.0f /* §4c : le frein dur ne FOLDE (settle+trêve) une guerre TOUTE
+                                     * JEUNE que si elle a DÉJÀ du terrain occupé — sinon on la
+                                     * LAISSE VIVRE un peu (le siège en cours n'a pas eu sa chance :
+                                     * SLAVEDIAG a montré le frein saturer à brake=1.0 en ~1-2 ans,
+                                     * bien avant qu'un siège (jusqu'à ~2 ans, army_demo) tombe —
+                                     * `diplo_make_peace` coupe la guerre EN PLEIN SIÈGE, occupier=0
+                                     * pour toujours). Seuil COURT (≪ AI_WAR_EXHAUST=10 ans) : on ne
+                                     * retarde qu'un tout jeune conflit, jamais une guerre qui traîne. */
 #define AI_RANCOR_W       3.0f   /* §6 biais de RECONQUÊTE : on vise qui nous a pris nos terres */
 #define AI_CRUSADE_W      4.0f   /* croisade : l'orthodoxe vise qui développe le faustien (chance ∝ ferveur) */
 #define AI_ANNEX_FRAC     0.6f   /* §5 : un budget ≥ 60 % de la valeur du pays = victoire décisive → annexion */
@@ -1410,7 +1418,13 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             a->credit_consolidate -= 1.f;
             for (int b=0; b<w->n_countries; b++)
                 if (b!=a->cid && diplo_status(diplo, a->cid, b)==DIPLO_WAR){
-                    if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(consolidate) a->cid=%d can_enslave=%d ethos=%d\n",a->cid,(int)a->can_enslave,(int)ai_capital_ethos(w,econ,a->cid));
+                    /* GRÂCE DE SIÈGE : une guerre TOUTE JEUNE (< AI_CONSOLIDATE_GRACE_Y) et SANS
+                     * terrain occupé n'est PAS pliée ici — le frein reviendra (brake reste haut,
+                     * credit_consolidate ré-accumule au tick suivant) ; ça laisse au siège en
+                     * cours le temps de tomber au lieu de le couper net à occupier=0 pour toujours. */
+                    bool occ_any = (b<SCPS_MAX_COUNTRY) && diplo->conquered[a->cid][b]>0;
+                    if (!occ_any && diplo->war_years[a->cid][b] < AI_CONSOLIDATE_GRACE_Y) continue;
+                    if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] settle(consolidate) a->cid=%d can_enslave=%d ethos=%d brake=%.2f war_years=%.1f\n",a->cid,(int)a->can_enslave,(int)ai_capital_ethos(w,econ,a->cid),brake,diplo->war_years[a->cid][b]);
                     diplo_settle(diplo, w, econ, wl, a->cid, b, a->can_enslave);  /* solde : garde l'occupé, relâche le reste */
                 }
             a->peace_lock_until = day + AI_PEACE_LOCK;       /* hystérésis : on digère */

@@ -932,6 +932,9 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
         for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
             if (d->occupier[r]==winner && econ->region[r].owner==loser
                 && econ->region[r].culture.settled) list[n++]=r;
+        if (winner_enslaves && getenv("SCPS_SLAVEDIAG"))
+            fprintf(stderr,"[SLAVEDIAG]   diplo_settle winner=%d loser=%d n=%d budget=%.1f conq_value=%.1f\n",
+                    winner, loser, n, diplo_war_budget(d,w,econ,winner,loser), d->conq_value[winner][loser]);
         /* tri (pipeline diplo, étage 2 — butin NEEDS-DRIVEN) : adjacentes au vainqueur d'abord,
          * puis VALEUR SUBJECTIVE décroissante — l'affamé EXIGE le GRENIER, pas la grande cité.
          * Le BUDGET (prix OBJECTIF, plus bas) borne toujours la prise ; seul l'ORDRE change. */
@@ -1026,6 +1029,7 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
     src->groups[gi].count-=moved;
     if (src->groups[gi].count<=0){ src->groups[gi]=src->groups[src->n_groups-1]; src->n_groups--; }
     dpe->strata[CLASS_SLAVE].pop += (float)moved;
+    if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG]   -> moved=%ld captives=%ld src_gi_count_before=%ld dst_n_groups=%d\n",moved,captives,best,dst->n_groups);
     return moved;
 }
 
