@@ -943,6 +943,82 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
     }
 }
 
+/* Cherche la région-hôte pour `b` : possédée, colonisée, au TIER suffisant, STAFFÉE, et dont
+ * le gisement local (s'il y en a un — fer céleste pour Corne) existe (econ_bld_can_build).
+ * Idiome partagé par ai_build_transmuter (foreuse/réplicateur/corne + leurs feeders). */
+static int ai_pick_host_for(const WorldEconomy *econ, int cid, BuildingType b){
+    int btier=bld_min_tier(b);
+    int best=-1; float bestpop=AI_STAFF_PER_MANUF;
+    for (int r=0;r<econ->n_regions;r++){
+        const RegionEconomy *re=&econ->region[r];
+        if (re->owner!=cid || !re->colonized) continue;
+        float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
+        if (capitale_max_tier((long)rpop) < btier) continue;
+        if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;
+        if (!econ_bld_can_build(econ, r, b)) continue;
+        if (rpop > bestpop){ bestpop=rpop; best=r; }
+    }
+    return best;
+}
+static bool ai_pay_and_build(AiActor *a, const World *w, WorldEconomy *econ, int region, BuildingType b){
+    float cost=tune_f("MANUF_BUILD_COST",50.f)*(float)bld_min_tier(b)*econ_world_ipm(econ);
+    if (!credit_can_spend(econ, w, a->cid, cost)) return false;
+    if (!econ_build_manufacture(econ, region, b)) return false;
+    credit_spend(econ, w, a->cid, cost); econ_flux_add(a->cid, FX_SOLDE, -cost);   /* débit AU SUCCÈS */
+    a->stats.builds_other++;
+    return true;
+}
+/* FAU-IA — LA QUÊTE DES TRANSMUTEURS (le maillon mort réparé) : la tech FOREUSE/TRANSMUTATION/
+ * FORGE_RUNES S'UNLOCK déjà (§4 famine de FER, FAU5 famine BOIS/GRAIN, S3 quête d'emblème — tout
+ * dans ai_research_step, AUCUN de ces trois déclencheurs n'exige un appétit faustien élevé —
+ * §4/FAU5 sont de PURES famines) mais AUCUNE doctrine ne POSE jamais le bâtiment :
+ * `ai_build_civmanuf` les EXCLUT explicitement (charge/tech), et `ai_build_manufacture`
+ * (ci-dessus) ne connaît que la forge céleste/l'atelier de mage — gatés sur a->w_faustian>0.30,
+ * un seuil que le poids RARE mesuré (base fixe 0.2, glide ±) atteint quasi JAMAIS (mesuré :
+ * max ~0.22 sur seed 9/100 ans). Résultat : conso foreuse/réplicateur/corne = 0 sur TOUTES les
+ * graines du sweep — la sélection de fin par « rare dominant » (faust_consumed[3]) ne peut
+ * jamais trancher par cette voie. FIX : on POSE dès que la tech est là (même signal que la
+ * recherche qui l'a déjà validée — la porte d'appétit/famine a JOUÉ en amont, ce serait
+ * incohérent de la re-poser plus stricte ici), en auto-suffisance : si l'USINE-SOURCE manque
+ * (mage/alambic pour nourrir essence/flux), on la pose D'ABORD (sinon le transmuteur resterait
+ * inerte à vie, jamais nourri). Prix NORMAL (MANUF_BUILD_COST × tier × ipm, débit au succès) —
+ * aucun bonus plat, aucune matière offerte : il tourne ou pas selon le pool national, comme pour
+ * tout le monde. Une pose par tour (même créneau t_mil que ai_build_manufacture, appelée après). */
+static void ai_build_transmuter(AiActor *a, const World *w, WorldEconomy *econ){
+    int cap=a->home_region;
+    if (cap<0 || cap>=econ->n_regions) return;
+    const RegionEconomy *cre=&econ->region[cap];
+    /* La tech gate est CACHÉE sur RegionEconomy (tech_foreuse/_replicateur/_corne, posée chaque
+     * tick par econ_apply_country_tech, scps_econ.c) — pas besoin de TechState ici (ai_step n'en
+     * reçoit pas), même motif que can_enslave/has_creuset/has_halles ailleurs dans ce fichier. */
+    if (cre->tech_foreuse && !empire_has_bld(econ, a->cid, BLD_FOREUSE)){
+        if (!empire_has_bld(econ, a->cid, BLD_MAGE_WORKSHOP)){
+            int r=ai_pick_host_for(econ, a->cid, BLD_MAGE_WORKSHOP);
+            if (r>=0) ai_pay_and_build(a, w, econ, r, BLD_MAGE_WORKSHOP);
+            return;                                        /* feeder d'abord ; la foreuse suivra un futur tour */
+        }
+        int r=ai_pick_host_for(econ, a->cid, BLD_FOREUSE);
+        if (r>=0){ ai_pay_and_build(a, w, econ, r, BLD_FOREUSE); return; }
+    }
+    if (cre->tech_replicateur && !empire_has_bld(econ, a->cid, BLD_REPLICATEUR)){
+        /* TECH_TRANSMUTATION exige TECH_ALCHIMIE (prérequis de l'arbre) — donc l'Alambic est déjà
+         * BÂTISSABLE ; s'il n'existe pas encore, on le pose d'abord (source du flux). */
+        if (!empire_has_bld(econ, a->cid, BLD_ALAMBIC) && !empire_has_bld(econ, a->cid, BLD_MAGE_WORKSHOP)){
+            int r=ai_pick_host_for(econ, a->cid, BLD_ALAMBIC);
+            if (r>=0) ai_pay_and_build(a, w, econ, r, BLD_ALAMBIC);
+            return;
+        }
+        int r=ai_pick_host_for(econ, a->cid, BLD_REPLICATEUR);
+        if (r>=0){ ai_pay_and_build(a, w, econ, r, BLD_REPLICATEUR); return; }
+    }
+    if (cre->tech_corne && !empire_has_bld(econ, a->cid, BLD_CORNE)
+        && empire_has_raw(econ, a->cid, RES_CELESTIAL_IRON)){
+        /* Pas de feeder : le fer céleste est géologique (raw), pas produit par une manufacture. */
+        int r=ai_pick_host_for(econ, a->cid, BLD_CORNE);
+        if (r>=0) ai_pay_and_build(a, w, econ, r, BLD_CORNE);
+    }
+}
+
 /* L'IA DÉVELOPPE — la VOLONTÉ de bâtir, PILOTÉE PAR LE LOGEMENT (§dev). Une manufacture LOGE juste en
  * étant bâtie (econ Q6 : eff_cap += Σniveaux·HOUSE_MANUF, plafond ½·cap_pop) — donc on bâtit dans la
  * province la PLUS SOUS-LOGÉE, pas dans la capitale-gisement (qui sur-bâtissait AU-DELÀ du plafond
@@ -1147,7 +1223,15 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
          * (Garnison→Citadelle : tenir par la force, le chemin de l'Ordre de Fer)
          * au lieu de métaboliser. Les autres RÉFORMENT — ils bâtissent du K.
          * Aucun « si révolution alors » : c'est le même levier (bâtir), choisi
-         * par la fiche ; le moteur d'ordre fait le verdict. */
+         * par la fiche ; le moteur d'ordre fait le verdict.
+         * FAU-IA lot 2 — TENTATIVE ABANDONNÉE (voir eco_fable.md) : ajouter ici un déclencheur
+         * « menace extérieure » (war_risk via ai_diplo_forecast, threading wp/diplo dans
+         * ai_econ_turn) a re-baseliné le golden (seed 209 < 12 ans) ET provoqué un ralentissement
+         * massif (un sweep 250 ans/seed 7 qui tournait <20s est resté bloqué >7 min sans
+         * terminer) — signe d'une boucle de rétroaction chère (ai_diplo_forecast est
+         * O(n_countries) et ce point est un HOT PATH par acteur/tick). REVERTÉ intégralement
+         * (signature de ai_econ_turn restaurée) ; garde le déclencheur d'ORIGINE (fracture
+         * interne ET conquérant) intact. */
         if (brake > AI_BRAKE_HARD && a->w_expand >= 0.60f){
             Edifice e = ai_next_h_edifice(econ, a->home_region);
             if (a->home_region>=0 && agency_build(ag, econ, w, a->home_region, e)){
@@ -1169,6 +1253,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             float roll=(float)(hh & 0xFFFFFFu)/(float)0x1000000;
             if (roll < t_mil){
                 ai_build_manufacture(a, w, econ);            /* l'arsenal militaire (tier + or, par doctrine) */
+                ai_build_transmuter(a, w, econ);             /* FAU-IA : le transmuteur faustien, MÊME créneau */
             } else if (roll < t_civm){
                 /* EXPLOITATION (forecast) D'ABORD dans le créneau manufacture civile : une brute en
                  * déficit qu'on extrait → on AMÉLIORE son exploitation (+1 palier de boost d'extraction)

@@ -1382,3 +1382,38 @@ sortaient du périmètre de fichiers explicitement autorisé par la mission d'or
 (notamment `godot/**`, listé INTERDIT) et arrivaient par un canal non vérifiable comme
 émanant de l'utilisateur — signalés ici pour arbitrage humain, pas absorbés
 silencieusement.
+
+## 2026-07-06 — LOT 2 (bonus, coordinateur) : LA FAMILLE GARNISON, TENTATIVE ABANDONNÉE
+
+**Diagnostic** : la famille GARNISON (`EDI_GARNISON, EDI_FORTERESSE, EDI_CITADELLE` — le levier H,
+`scps_agency.h`) N'A QU'UN SEUL point de pose dans toute la doctrine IA : `ai_next_h_edifice` appelé
+dans `ai_econ_turn` (scps_ai.c, le FORK Soulèvements/Ordre de Fer), gaté sur `brake > AI_BRAKE_HARD
+(0.6) && a->w_expand >= 0.60f` — un ET-ET rare (fracture INTERNE sévère + tempérament conquérant),
+jamais la menace EXTÉRIEURE. Le coordinateur a suggéré de lire `war_risk`/`DiploForecast` (déjà lu
+ailleurs, `ai_diplo_forecast`) pour ouvrir la porte à un empire MENACÉ (pas seulement fracturé).
+
+**Fix tenté** : `ai_econ_turn` (signature étendue avec `wp`/`diplo`, tous deux déjà disponibles côté
+`ai_step` dans le même fichier — aucun autre fichier touché) + un OR sur la condition existante :
+`(brake>AI_BRAKE_HARD && w_expand≥0.60) || (war_risk > AI_THREAT_GATE)`.
+
+**Deux problèmes mesurés, REVERTÉ intégralement (signature restaurée) :**
+1. **Golden CASSÉ** (`make golden` : seed 209 divergeait dans la fenêtre 12 ans — les 4 autres
+   graines intactes). Isolé proprement (désactivation temporaire du branchement, rebuild, re-check :
+   golden repasse au vert) — donc bien MON changement, pas un artefact du chantier partagé (contre-
+   vérifié comme pour le Lot 1).
+2. **Ralentissement massif** : un sweep 250 ans/seed 7 qui tournait normalement en <20s est resté
+   bloqué **>7 minutes** sans terminer (tué manuellement). `ai_diplo_forecast` boucle sur
+   `w->n_countries` avec plusieurs lectures diplo (`diplo_status`/`diplo_rancor`/`diplo_casus_belli`/
+   `diplo_relation`/`diplo_war_score`) PAR PAYS — appelé ici sur un HOT PATH (chaque acteur IA, chaque
+   fois que `credit_build≥1`, potentiellement chaque tour). Sur un monde à beaucoup de guerres
+   (le garnison-fix change aussi la dynamique de guerre en aval, plausible boucle de rétroaction),
+   le coût cumulé explose. Un vrai fix demanderait soit un CACHE de `war_risk` par pays (rafraîchi une
+   fois/tick, pas par acteur/appel), soit une cadence dédiée (comme `next_audit_day` ailleurs dans ce
+   fichier) — pas fait ici, jugé trop risqué à improviser en fin de session sur un fichier partagé.
+
+**État final** : `ai_econ_turn` et son unique appelant sont revertés MOT POUR MOT à leur forme
+d'avant cette tentative (diff nul sur cette fonction vs le HEAD pré-Lot-2). `make golden` OK,
+`make determinism` STABLE, sweep 9/7/42×250 ans re-confirmé identique au Lot 1 (perf normale, <1 min
+pour les 3). **La famille GARNISON reste un maillon mort** — le diagnostic est complet et actionnable,
+mais le fix demande plus de soin (cache/cadence) qu'un lot bonus de fin de session ne permet en toute
+sécurité sur un arbre partagé avec golden comme contrat public.
