@@ -513,6 +513,8 @@ EVENTS_DEMO_OBJS := $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_world.o $
                     $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_intertrade.o \
                     $(OBJDIR)/scps_scps_statecraft.o $(OBJDIR)/scps_scps_events.o $(OBJDIR)/scps_scps_provlog.o \
                     $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_modifier.o \
+                    $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_warhost.o $(OBJDIR)/scps_scps_campaign.o \
+                    $(OBJDIR)/scps_scps_navy.o $(OBJDIR)/scps_scps_endgame.o \
                     $(OBJDIR)/scps_events_demo.o
 events_demo: $(EVENTS_DEMO_OBJS)
 	$(CC) $(EVENTS_DEMO_OBJS) -o $@ -lm

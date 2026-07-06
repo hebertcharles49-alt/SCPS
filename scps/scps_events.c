@@ -16,6 +16,8 @@
 #include "scps_religion.h"  /* CONTENU W2 (lot 2) §C : religion_schism_eligible (C1) */
 #include "scps_agency.h"    /* CONTENU W2 (lot 2) §C : Edifice (EDI_SANCTUAIRE/TEMPLE/CATHEDRALE, C6) */
 #include "scps_demography.h" /* ESCLAVAGE (A1) : demography_manumit_country (choix « Abolir ») */
+/* V2b LOT 2 relit statecraft_council_* — déjà visible via scps_statecraft.h (inclus
+ * par scps_events.h) ; LOT 1 relit endgame_* — déjà visible via scps_endgame.h (idem). */
 
 /* MEMBRANE DE DÉCISION — TÉLÉMÉTRIE (« la télémétrie est la preuve d'équilibre ») : combien
  * de fois la crise phare (et sa suite conséquente) ont tiré sur l'ensemble d'un run. Statics
@@ -59,6 +61,33 @@ long events_fusils_reviennent_fired(void){ return g_fusils_reviennent_fired; }
 long events_savants_ennemi_fired(void){ return g_savants_ennemi_fired; }
 long events_tarif_appris_fired(void){ return g_tarif_appris_fired; }
 
+/* V2b — même motif (statics de module, RAZ à events_init, PAS sérialisés). */
+static long g_merv_fondation_fired=0, g_merv_sacrifice_fired=0, g_merv_ascension_fired=0,
+            g_trahison_savoir_fired=0, g_trahison_societe_fired=0, g_trahison_industrie_fired=0,
+            g_conseil_succession_fired=0, g_conseil_r1_fired=0, g_conseil_r2_fired=0,
+            g_conseil_r3_fired=0, g_conseil_a1_fired=0, g_conseil_a2_fired=0, g_conseil_c1_fired=0,
+            g_rivaux_voisins_fired=0, g_parente_lointaine_fired=0, g_marche_ethos_fired=0,
+            g_tolerance_credo_fired=0, g_lettre_perime_fired=0, g_pratique_derive_fired=0;
+long events_merv_fondation_fired(void){ return g_merv_fondation_fired; }
+long events_merv_sacrifice_fired(void){ return g_merv_sacrifice_fired; }
+long events_merv_ascension_fired(void){ return g_merv_ascension_fired; }
+long events_trahison_savoir_fired(void){ return g_trahison_savoir_fired; }
+long events_trahison_societe_fired(void){ return g_trahison_societe_fired; }
+long events_trahison_industrie_fired(void){ return g_trahison_industrie_fired; }
+long events_conseil_succession_fired(void){ return g_conseil_succession_fired; }
+long events_conseil_r1_fired(void){ return g_conseil_r1_fired; }
+long events_conseil_r2_fired(void){ return g_conseil_r2_fired; }
+long events_conseil_r3_fired(void){ return g_conseil_r3_fired; }
+long events_conseil_a1_fired(void){ return g_conseil_a1_fired; }
+long events_conseil_a2_fired(void){ return g_conseil_a2_fired; }
+long events_conseil_c1_fired(void){ return g_conseil_c1_fired; }
+long events_rivaux_voisins_fired(void){ return g_rivaux_voisins_fired; }
+long events_parente_lointaine_fired(void){ return g_parente_lointaine_fired; }
+long events_marche_ethos_fired(void){ return g_marche_ethos_fired; }
+long events_tolerance_credo_fired(void){ return g_tolerance_credo_fired; }
+long events_lettre_perime_fired(void){ return g_lettre_perime_fired; }
+long events_pratique_derive_fired(void){ return g_pratique_derive_fired; }
+
 /* signe d'un effet pour le journal : +1 fléau · -1 faveur · 0 neutre */
 static int ev_sign(const EvEffect *e){
     if (e->d_agitation>0.1f || e->d_L<-0.1f || e->pop_mult<0.999f) return +1;
@@ -89,6 +118,7 @@ struct EventCtx {
     RouteNetwork    *rn;
     const TechState *ts;
     DiploState      *dp;   /* §F : guerres (T) + rancune (Amnistie) ; peut être NULL */
+    EndgameState    *eg;   /* V2b LOT 1 : la Merveille (merv/merv_country/metab_count) ; peut être NULL */
     int              human_player;   /* MEMBRANE DE DÉCISION : -1 = chronique (jamais enfilé) */
 };
 
@@ -137,6 +167,12 @@ void events_init(EventsState *ev, const World *w, uint32_t seed){
     g_foi_fendre_fired=0; g_prophete_breche_fired=0; g_relique_douteuse_fired=0;
     g_remede_morts_fired=0; g_cellule_faubourgs_fired=0; g_fusils_reviennent_fired=0;
     g_savants_ennemi_fired=0; g_tarif_appris_fired=0;   /* CONTENU W2 (lot 2) */
+    g_merv_fondation_fired=0; g_merv_sacrifice_fired=0; g_merv_ascension_fired=0;
+    g_trahison_savoir_fired=0; g_trahison_societe_fired=0; g_trahison_industrie_fired=0;
+    g_conseil_succession_fired=0; g_conseil_r1_fired=0; g_conseil_r2_fired=0; g_conseil_r3_fired=0;
+    g_conseil_a1_fired=0; g_conseil_a2_fired=0; g_conseil_c1_fired=0;
+    g_rivaux_voisins_fired=0; g_parente_lointaine_fired=0; g_marche_ethos_fired=0;
+    g_tolerance_credo_fired=0; g_lettre_perime_fired=0; g_pratique_derive_fired=0;   /* V2b */
 
     /* accumulateurs par région */
     double sr_rain[SCPS_MAX_REG]={0}, sr_temp[SCPS_MAX_REG]={0}, sr_relief[SCPS_MAX_REG]={0};
@@ -530,6 +566,221 @@ static bool trig_tarif_appris(const EventCtx *cx,int r){
     return decision_memory_has_ripe(cx->ev, r, SCAR_EXEMPTION_ACHETEE, cx->ev->ages.days_elapsed);
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+ * V2b LOT 1 — LA MERVEILLE EN 3 ÉTAPES (pays, joueur SEUL — human gate).
+ * FONDATION : tire quand le JOUEUR devient éligible au palier 1
+ * (metab_count≥3 && merv==MERV_NONE). CONSTRUCTION (sacrifice) : récurrent
+ * pendant que merv est actif (ni NONE ni ASCENDED). ASCENSION : une fois, à
+ * MERV_SAVOIR_DONE (juste avant que wonder_tick ne bascule tout seul en
+ * MERV_ASCENDED — le dernier choix intercepte CE palier précis). Les trois
+ * sont HUMAN-ONLY par construction (`cx->eg` n'existe QUE pour la voie
+ * joueur en pratique — la chronique appelle world_events_tick avec eg=NULL,
+ * cf. sim_day) mais on vérifie aussi human_player>=0 explicitement : un banc
+ * qui passerait un eg non-NULL en chronique (human=-1) ne doit jamais fonder
+ * la Merveille à la place de l'IA (elle ne la poursuit pas, cf. scps_endgame.h).
+ * ═══════════════════════════════════════════════════════════════════ */
+static bool trig_merv_fondation(const EventCtx *cx, int c){
+    if (!cx->eg || cx->human_player<0 || c!=cx->human_player) return false;
+    if (cx->eg->merv != MERV_NONE) return false;
+    return endgame_metab_count(cx->w, cx->econ, c) >= 3;
+}
+static bool trig_merv_sacrifice(const EventCtx *cx, int c){
+    if (!cx->eg || cx->human_player<0 || c!=cx->human_player) return false;
+    if (cx->eg->merv_country != c) return false;
+    return cx->eg->merv!=MERV_NONE && cx->eg->merv!=MERV_ASCENDED && cx->eg->merv!=MERV_SAVOIR_DONE;
+}
+static bool trig_merv_ascension(const EventCtx *cx, int c){
+    if (!cx->eg || cx->human_player<0 || c!=cx->human_player) return false;
+    if (cx->eg->merv_country != c) return false;
+    return cx->eg->merv == MERV_SAVOIR_DONE;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * V2b LOT 2 — LE CONSEIL (signaux V2a : statecraft_council_betrayal_ready /
+ * _pair_state). human gate : l'IA remplace déjà son ministre au bord (cf.
+ * statecraft_council_ai_replace_count) — ces évènements sont donc, comme
+ * la Merveille, une décision QUE LE JOUEUR doit prendre lui-même.
+ * ═══════════════════════════════════════════════════════════════════ */
+static bool trig_trahison_seat(const EventCtx *cx, int c, int seat){
+    if (c<0 || c>=cx->w->n_countries || !cx->sc) return false;
+    if (cx->human_player<0 || c!=cx->human_player) return false;
+    return statecraft_council_betrayal_ready(cx->sc, c, seat);
+}
+static bool trig_trahison_savoir   (const EventCtx *cx,int c){ return trig_trahison_seat(cx,c,0); }
+static bool trig_trahison_societe  (const EventCtx *cx,int c){ return trig_trahison_seat(cx,c,1); }
+static bool trig_trahison_industrie(const EventCtx *cx,int c){ return trig_trahison_seat(cx,c,2); }
+
+/* SUCCESSION — un ministre LOYAL (le seuil-miroir de betrayal_ready : PAS à
+ * l'agonie) en poste depuis plus de SC_COUNCIL_GEN_YEARS (20 ans, la longueur
+ * d'une génération de pool — la retraite naturelle documentée en scps_statecraft.h,
+ * "premier départ possible an 16 > fenêtre golden"). Un seul siège au hasard
+ * déterministe (balayage croissant, le premier éligible) — un règne ne voit
+ * pas trois départs le même jour. */
+static bool trig_conseil_succession(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries || !cx->sc) return false;
+    if (cx->human_player<0 || c!=cx->human_player) return false;
+    int year = cx->ev->ages.days_elapsed/365;
+    for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
+        int slot = statecraft_council_seated(cx->sc, c, seat);
+        if (slot<0) continue;
+        if (statecraft_council_betrayal_ready(cx->sc, c, seat)) continue;   /* SUCCESSION = FIN de carrière, pas une trahison */
+        int age = statecraft_council_seated_age(cx->sc, cx->w->seed, c, seat, year);
+        if (age >= 62) return true;
+    }
+    return false;
+}
+/* R1/R2/R3 — INTER-CONSEILLERS EN RIVALITÉ : deux sièges pourvus du MÊME pays
+ * en COUNCIL_PAIR_RIVALITE (factions opposées, tous deux enracinés — cf.
+ * statecraft_council_pair_state). R1=Savoir(0)/Société(1) · R2=Industrie(2)/
+ * Société(1) · R3=Savoir(0)/Industrie(2). */
+static bool trig_conseil_pair(const EventCtx *cx, int c, int a, int b, CouncilPairState want){
+    if (c<0 || c>=cx->w->n_countries || !cx->sc) return false;
+    if (cx->human_player<0 || c!=cx->human_player) return false;
+    if (statecraft_council_seated(cx->sc,c,a)<0 || statecraft_council_seated(cx->sc,c,b)<0) return false;
+    int year = cx->ev->ages.days_elapsed/365;
+    return statecraft_council_pair_state(cx->sc, cx->w, cx->econ, cx->w->seed, c, a, b, year) == want;
+}
+static bool trig_conseil_r1(const EventCtx *cx,int c){ return trig_conseil_pair(cx,c,0,1,COUNCIL_PAIR_RIVALITE); }
+static bool trig_conseil_r2(const EventCtx *cx,int c){ return trig_conseil_pair(cx,c,2,1,COUNCIL_PAIR_RIVALITE); }
+static bool trig_conseil_r3(const EventCtx *cx,int c){ return trig_conseil_pair(cx,c,0,2,COUNCIL_PAIR_RIVALITE); }
+/* A1 — l'ALLIANCE de deux sièges (COUNCIL_PAIR_ALLIANCE, n'importe quelle paire
+ * pourvue — balayage déterministe des 3 paires possibles, la première trouvée). */
+static bool trig_conseil_a1(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries || !cx->sc) return false;
+    if (cx->human_player<0 || c!=cx->human_player) return false;
+    static const int PAIRS[3][2]={{0,1},{1,2},{0,2}};
+    int year = cx->ev->ages.days_elapsed/365;
+    for (int i=0;i<3;i++){
+        int a=PAIRS[i][0], b=PAIRS[i][1];
+        if (statecraft_council_seated(cx->sc,c,a)<0 || statecraft_council_seated(cx->sc,c,b)<0) continue;
+        if (statecraft_council_pair_state(cx->sc, cx->w, cx->econ, cx->w->seed, c, a, b, year) == COUNCIL_PAIR_ALLIANCE)
+            return true;
+    }
+    return false;
+}
+/* A2 — leur candidat au 3e siège : une alliance de sièges (comme A1) EXISTE
+ * déjà (deux sièges pourvus alliés) et le 3e siège restant est VACANT — un
+ * strict sous-cas d'A1 (pas de nouveau signal moteur), sur le siège qui manque. */
+static bool trig_conseil_a2(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries || !cx->sc) return false;
+    if (cx->human_player<0 || c!=cx->human_player) return false;
+    static const int PAIRS[3][2]={{0,1},{1,2},{0,2}};
+    static const int THIRD[3]={2,0,1};
+    int year = cx->ev->ages.days_elapsed/365;
+    for (int i=0;i<3;i++){
+        int a=PAIRS[i][0], b=PAIRS[i][1];
+        if (statecraft_council_seated(cx->sc,c,a)<0 || statecraft_council_seated(cx->sc,c,b)<0) continue;
+        if (statecraft_council_seated(cx->sc,c,THIRD[i])>=0) continue;   /* le 3e doit être VACANT */
+        if (statecraft_council_pair_state(cx->sc, cx->w, cx->econ, cx->w->seed, c, a, b, year) == COUNCIL_PAIR_ALLIANCE)
+            return true;
+    }
+    return false;
+}
+/* C1 — LA CONSPIRATION : une paire en COUNCIL_PAIR_CONSPIRATION (les DEUX
+ * factions aliénées — grief haut des deux côtés). */
+static bool trig_conseil_c1(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries || !cx->sc) return false;
+    if (cx->human_player<0 || c!=cx->human_player) return false;
+    static const int PAIRS[3][2]={{0,1},{1,2},{0,2}};
+    int year = cx->ev->ages.days_elapsed/365;
+    for (int i=0;i<3;i++){
+        int a=PAIRS[i][0], b=PAIRS[i][1];
+        if (statecraft_council_seated(cx->sc,c,a)<0 || statecraft_council_seated(cx->sc,c,b)<0) continue;
+        if (statecraft_council_pair_state(cx->sc, cx->w, cx->econ, cx->w->seed, c, a, b, year) == COUNCIL_PAIR_CONSPIRATION)
+            return true;
+    }
+    return false;
+}
+/* trouve la première paire dans l'état demandé (miroir des triggers pair —
+ * utilisé par resolve_choice pour savoir QUELS sièges renvoyer/rééquilibrer). */
+static bool conseil_pair_find(const EventCtx *cx, int c, CouncilPairState want, int *out_a, int *out_b){
+    static const int PAIRS[3][2]={{0,1},{1,2},{0,2}};
+    int year = cx->ev->ages.days_elapsed/365;
+    for (int i=0;i<3;i++){
+        int a=PAIRS[i][0], b=PAIRS[i][1];
+        if (statecraft_council_seated(cx->sc,c,a)<0 || statecraft_council_seated(cx->sc,c,b)<0) continue;
+        if (statecraft_council_pair_state(cx->sc, cx->w, cx->econ, cx->w->seed, c, a, b, year) == want){
+            *out_a=a; *out_b=b; return true;
+        }
+    }
+    return false;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * V2b LOT 3 — LE CONTENU DÉBLOQUÉ (lecteurs P7a) : B2/B3 (culture_relation_of),
+ * B6 (region_ethos_drift), C2 (religion_fracture_level), C3 (religion_scholar_
+ * drift), C4 (religion_credo_drift). EV_COUNTRY (pays) sauf B6 (province).
+ * ═══════════════════════════════════════════════════════════════════ */
+/* B2 — DEUX CULTURES VOISINES NE S'ACCORDENT PLUS : la capitale du pays et une
+ * région ÉTRANGÈRE voisine (adjacence, un AUTRE owner) sont en relation RIVALE
+ * OU SCHISMATIQUE (culture_relation_of, champs nus — déballés depuis les deux
+ * PopCulture). Rivalité de VOISINAGE (≠ B3, la parenté LOINTAINE ci-dessous). */
+static bool country_has_border_relation(const EventCtx *cx, int cid, CultureRelation want, bool adjacent_only){
+    int capr = world_capital_region(cx->w, cid);
+    if (capr<0 || capr>=cx->econ->n_regions || !cx->econ->region[capr].culture.settled) return false;
+    const PopCulture *home = &cx->econ->region[capr].culture;
+    for (int r=0;r<cx->econ->n_regions;r++){
+        const RegionEconomy *re=&cx->econ->region[r];
+        if (re->owner<0 || re->owner==cid || !re->culture.settled) continue;
+        if (adjacent_only && !(capr<SCPS_MAX_REG && r<SCPS_MAX_REG && cx->econ->adj[capr][r])) continue;
+        const PopCulture *away=&re->culture;
+        CultureRelation rel = culture_relation_of(
+            home->langue, home->valeurs, home->subsistance, home->parente, home->religion, home->credo, home->rel_branch,
+            away->langue, away->valeurs, away->subsistance, away->parente, away->religion, away->credo, away->rel_branch);
+        if (rel==want) return true;
+    }
+    return false;
+}
+static bool trig_rivaux_voisins(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    /* ENNEMIS_SCHISME : branche religieuse proche + prosélytisme haut — le plus
+     * âpre des désaccords de VOISINAGE (deux crédos cousins qui se disputent le
+     * même fidèle, à la frontière). */
+    return country_has_border_relation(cx, c, REL_ENNEMIS_SCHISME, true);
+}
+/* B3 — UNE PARENTÉ LOINTAINE SE SOUVIENT : une région étrangère NON adjacente
+ * (loin, aucune frontière commune) mais culturellement PROCHE (REL_PARENTS —
+ * horloge ET contenu proches, culture_relation_of) — les cousins d'outre-monde
+ * qui n'ont jamais partagé de frontière. */
+static bool trig_parente_lointaine(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    return country_has_border_relation(cx, c, REL_PARENTS, false);
+}
+/* B6 — UNE RÉGION MARCHE LOIN DE L'ÉTHOS RÉGNANT (province) : region_ethos_drift
+ * (l'éthos DOMINANT local vs le régnant de la capitale) au-delà d'un seuil — une
+ * marche qui ne pense plus comme le trône, même sans off-culture (c'est l'ÉTHOS
+ * qui dérive, pas la culture entière — orthogonal à XENOPHILE/XENOPHOBE). */
+static bool trig_marche_ethos(const EventCtx *cx, int r){
+    if (r<0 || r>=cx->econ->n_regions) return false;
+    const RegionEconomy *re=&cx->econ->region[r];
+    if (!re->culture.settled || re->owner<0) return false;
+    Ethos ruling = owner_ethos(cx, r);
+    if (re->culture.ethos == ruling) return false;   /* même éthos que la couronne : rien à raconter */
+    return region_ethos_drift(re->culture.ethos, ruling) > 0.6f;
+}
+/* C2 — LE DÉCRET DE TOLÉRANCE (pays) : religion_fracture_level au-delà d'un
+ * seuil — une part pop-pondérée notable du pays professe un AUTRE culte que
+ * la foi d'État. */
+static bool trig_tolerance_credo(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    return religion_fracture_level(cx->w, cx->econ, c) > 0.25f;
+}
+/* C3 — LE LETTRÉ PÉRIMÉ (pays) : religion_scholar_drift == 1 (le lettré actif
+ * porte une face que le crédo d'État courant ne reconnaît plus). */
+static bool trig_lettre_perime(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    return religion_scholar_drift(c) >= 1.f;
+}
+/* C4 — LA PRATIQUE DÉRIVE (pays) : religion_credo_drift (alias documenté de
+ * fracture_level) au-delà d'un seuil PLUS HAUT que C2 (une dérive PROFONDE,
+ * pas la simple tolérance de C2 — les deux lisent le même signal à deux
+ * hauteurs de crise, comme MARBRIVE/CLOCHES lisent tous deux l'agitation à
+ * des seuils différents). */
+static bool trig_pratique_derive(const EventCtx *cx, int c){
+    if (c<0 || c>=cx->w->n_countries) return false;
+    return religion_credo_drift(cx->w, cx->econ, c) > 0.45f;
+}
+
 /* ===================================================================== */
 /* LA TABLE D'ÉVÈNEMENTS (effets = coordonnées ; textes = mots)           */
 /* ===================================================================== */
@@ -594,7 +845,10 @@ static const EventDef EVENTS[EVID_COUNT] = {
         trig_xenophile, 2400.f, NULL, {
         { "Célébrer la concorde", "Tant de peuples sous un même toit, et la paix tient : les talents affluent, "
           "les comptoirs prospèrent, et le renom de la couronne tolérante porte au loin.",
-          { .d_L=1.2f, .d_food_cap=0.5f, .d_treasury=120.f, .d_influence=4.f, .pop_mult=1.02f, .unlock_branch=-1 }, 1.f } }, 1 },
+          { .d_L=1.2f, .d_food_cap=0.5f, .d_treasury=120.f, .d_influence=4.f, .pop_mult=1.02f, .unlock_branch=-1 }, 1.f,
+          /* V2b LOT 3 (hook Communautaire) : le peuple qu'on épargne — la concorde
+           * COSMOPOLITE célébrée est, par nature, un vote pour le bien-commun. */
+          { .faction=FAC_COMMUNAUTAIRE, .faction_strength=0.08f, .scar_kind=SCAR_NONE, .cooldown_days=0 } } }, 1 },
     /* ---- Miroir xénophobe : la cohésion du creuset DIGÉRÉ (positif pour l'éthos martial) ---- */
     [EVID_XENOPHOBE] = { EVID_XENOPHOBE, EV_PROVINCE, "Le creuset digéré",
         trig_xenophobe, 3000.f, NULL, {
@@ -703,7 +957,9 @@ static const EventDef EVENTS[EVID_COUNT] = {
         { "Accorder une remise d'une année",
           "Un an de grâce — le temps que la colère retombe.",
           { .d_L=0.5f, .d_coercion=-0.15f, .d_agitation=-10.f, .d_treasury_mois=-1.0f, .unlock_branch=-1 },
-          0.7f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          /* V2b LOT 3 (hook Communautaire) : épargner le peuple d'une surtaxe — le vote
+           * évident du bien-commun, cohérent avec l'ai_chance déjà la plus haute (0.7). */
+          0.7f, { .faction=FAC_COMMUNAUTAIRE, .faction_strength=0.06f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
           "Une remise généreuse — et peut-être la gratitude d'un peuple qui s'en souvient.",
           { .pop_mult=1.004f, .unlock_branch=-1 }, 0.3f },
         { "Acheter les notables",
@@ -969,7 +1225,9 @@ static const EventDef EVENTS[EVID_COUNT] = {
         { "Laisser les communautés",
           "Chacun sa loi, sa langue — l'unité viendra, ou pas.",
           { .d_L=0.2f, .d_agitation=-6.f, .d_C_global=0.03f, .unlock_branch=-1 },
-          0.3f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          /* V2b LOT 3 (hook Communautaire) : le pluralisme qui laisse chacun chez soi —
+           * le vote le plus évident du bien-commun de ce dilemme. */
+          0.3f, { .faction=FAC_COMMUNAUTAIRE, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
           "Le pluralisme laisse chacun chez soi — et parfois, ça paie.",
           { .pop_mult=1.004f, .unlock_branch=-1 }, 0.3f } }, 3 },
 
@@ -1089,7 +1347,9 @@ static const EventDef EVENTS[EVID_COUNT] = {
         { "Amnistie et emplois",
           "On offre une sortie plutôt qu'un cachot.",
           { .d_L=0.4f, .d_agitation=-10.f, .d_treasury_mois=-1.0f, .pop_mult=1.004f, .unlock_branch=-1 },
-          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          /* V2b LOT 3 (hook Communautaire) : épargner des gens qu'on aurait pu rafler —
+           * l'amnistie EST le vote du bien-commun de cet évènement. */
+          0.5f, { .faction=FAC_COMMUNAUTAIRE, .faction_strength=0.07f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
           "L'amnistie désarme la colère mieux qu'un cachot ne l'aurait fait." },
         { "Infiltrer",
           "Patience — laisser le réseau se montrer avant de frapper.",
@@ -1159,6 +1419,402 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
           "L'exemple fait grand bruit — et parfois, la leçon porte au-delà de l'espéré.",
           { .d_agitation=-8.f, .unlock_branch=-1 }, 0.4f } }, 3 },
+
+    /* ═══════════════════════════════════════════════════════════════════
+     * V2b LOT 1 — LA MERVEILLE EN 3 ÉTAPES (pays, joueur seul). ANCRES : même
+     * fourchette que le reste du module (d_L/d_H_coerc ≤0.6, d_agitation ≤16,
+     * d_treasury_mois -1.6..0) — le legs ; K/H ancrent la couleur d'étape via
+     * EvEffect DÉJÀ existant (d_K_inst/d_H_coerc/d_L), jamais un bonus plat.
+     * EXEMPTÉS du plafond mondial (EV_CAPPED, cf. plus bas) : personnels au
+     * joueur, leur propre cooldown (1200-36500 j) suffit.
+     * ═══════════════════════════════════════════════════════════════════ */
+
+    /* FONDATION — le monde reconnaît que le joueur a métabolisé les autres :
+     * PAR LA FOI (lever GARDIEN, grief TRANSGRESSEUR) / PAR LA SCIENCE (lever
+     * TRANSGRESSEUR, grief GARDIEN) / PAR LA FORCE (lever CONQUERANT, grief
+     * COMMUNAUTAIRE). Chaque voie colore un bonus léger d'étape (K/H/L). */
+    [EVID_MERV_FONDATION] = { EVID_MERV_FONDATION, EV_COUNTRY, "Le monde reconnaît une civilisation qui a tout digéré",
+        trig_merv_fondation, 1200.f, NULL, {
+        { "Fonder par la foi",
+          "Ce que la conquête a pris, la foi le consacre — un temple à la mesure du monde entier.",
+          { .d_K_inst=0.3f, .d_L=0.5f, .d_agitation=-6.f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_GARDIEN, .faction_strength=0.15f, .scar_kind=SCAR_NONE, .cooldown_days=36500 },
+          "La foi fonde le chantier — les Gardiens s'en réjouissent, les Transgresseurs s'en méfient." },
+        { "Fonder par la science",
+          "Ce que la foi n'explique pas, la raison le mesure — et bâtit dessus.",
+          { .d_K_inst=0.5f, .d_H_coerc=0.2f, .d_agitation=-4.f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_TRANSGRESSEUR, .faction_strength=0.15f, .scar_kind=SCAR_NONE, .cooldown_days=36500 },
+          "La science fonde le chantier — les Transgresseurs y voient leur heure, les Gardiens s'inquiètent." },
+        { "Fonder par la force",
+          "Ce qu'on n'a pas convaincu, on l'a soumis — le chantier se lève sur des fondations conquises.",
+          { .d_H_coerc=0.5f, .d_L=-0.2f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.2f, { .faction=FAC_CONQUERANT, .faction_strength=0.15f, .scar_kind=SCAR_NONE, .cooldown_days=36500 },
+          "La force fonde le chantier — les Conquérants exultent, les Communautaires grondent." } }, 3 },
+
+    /* CONSTRUCTION — LES DILEMMES DE SACRIFICE : le chantier réclame, récurrent
+     * tant que la Merveille est active. Trois voies : le trésor (mois), les
+     * bras (pop+agitation), ou ralentir (petit malus, pas de sacrifice —
+     * L descend un peu : un chantier qu'on freine perd de sa superbe). */
+    [EVID_MERV_SACRIFICE] = { EVID_MERV_SACRIFICE, EV_COUNTRY, "Le chantier de la Merveille réclame",
+        trig_merv_sacrifice, 1200.f, NULL, {
+        { "Saigner le trésor",
+          "L'or coule dans les fondations — le chantier avale sans rendre.",
+          { .d_treasury_mois=-1.5f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_LEGISTE, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1200 },
+          "Le trésor saigne — le chantier, lui, avance sans faiblir." },
+        { "Saigner les bras",
+          "On lève des corvées de plus — le peuple porte la pierre.",
+          { .pop_mult=0.99f, .d_agitation=10.f, .unlock_branch=-1 },
+          0.35f, { .faction=FAC_COMMUNAUTAIRE, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1200 },
+          "Les bras saignent — le chantier avance sur le dos de ceux qui le portent." },
+        { "Ralentir le chantier",
+          "Mieux vaut un monument lent qu'un peuple épuisé.",
+          { .d_L=-0.2f, .unlock_branch=-1 },
+          0.25f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1200 },
+          "Le chantier ralentit — la superbe en pâtit, mais personne n'en meurt." } }, 3 },
+
+    /* ASCENSION — LE DERNIER CHOIX, à MERV_SAVOIR_DONE, une fois (cooldown
+     * énorme, motif SALVE_RUNIQUE). ACTIVER laisse le latch MERV_ASCENDED
+     * suivre son cours (wonder_tick le déroulera au tick d'après — endgame_
+     * select_and_fire lira le MERV_ASCENDED existant, rien à muter ici) ;
+     * REFUSER fige merv (aucun mutateur : le palier reste MERV_SAVOIR_DONE,
+     * gelé — wonder_tick ne le fait progresser QUE depuis les paliers actifs,
+     * jamais depuis _DONE sans franchir ce trigger — un monument qui attend) ;
+     * DÉTRUIRE court-circuite via endgame_start_wonder... non : DÉTRUIRE doit
+     * ANNULER, pas refonder — on écrit directement eg->merv=MERV_NONE (le seul
+     * champ qu'aucune API publique ne remet à zéro ; le module events A DÉJÀ
+     * accès à EndgameState via cx->eg, struct PLATE, écriture directe sûre
+     * comme apply_region_eff écrit re->build.* directement). */
+    [EVID_MERV_ASCENSION] = { EVID_MERV_ASCENSION, EV_COUNTRY, "Le dernier choix : ce que la Merveille achevée mérite",
+        trig_merv_ascension, 720.f, NULL, {
+        { "Activer",
+          "La civilisation transcende — qu'il en soit ainsi.",
+          { .unlock_branch=-1 },
+          0.6f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=36500 },
+          "L'Ascension s'active — le monde ne reverra plus cette civilisation, elle est passée ailleurs." },
+        { "Refuser",
+          "Le monument reste vide — mieux vaut rester mortel que de disparaître en dieu.",
+          { .d_L=-0.6f, .unlock_branch=-1 },
+          0.2f, { .faction=FAC_COMMUNAUTAIRE, .faction_strength=0.20f, .scar_kind=SCAR_NONE, .cooldown_days=36500 },
+          "Le refus laisse le monument achevé, vide — un peuple qui a choisi de rester mortel." },
+        { "Détruire",
+          "Ce sommet-là, on ne le laissera à personne — on le brise soi-même.",
+          { .d_L=-1.0f, .d_agitation=16.f, .unlock_branch=-1 },
+          0.2f, { .faction=FAC_GARDIEN, .faction_strength=0.30f, .scar_kind=SCAR_NONE, .cooldown_days=36500 },
+          "Ils ont touché le sommet et l'ont brisé — la cicatrice restera plus longtemps que le souvenir." } }, 3 },
+
+    /* ═══════════════════════════════════════════════════════════════════
+     * V2b LOT 2 — LE CONSEIL (signaux V2a). human gate (l'IA remplace déjà
+     * son ministre au bord, cf. statecraft_council_ai_replace_count). Sujet =
+     * le PAYS joueur (EV_COUNTRY) ; le siège concerné est retrouvé au moment
+     * de la résolution (resolve_choice) par le même balayage que le trigger.
+     * EXEMPTÉS du plafond mondial (personnels, cooldowns propres 1460-2555 j).
+     * ═══════════════════════════════════════════════════════════════════ */
+
+    /* Trahison — Savoir : le savant publie tes secrets. */
+    [EVID_TRAHISON_SAVOIR] = { EVID_TRAHISON_SAVOIR, EV_COUNTRY, "On ne trahit jamais mieux un roi que par l'esprit qu'il a eu le tort de financer",
+        trig_trahison_savoir, 1825.f, NULL, {
+        { "Le faire taire",
+          "Un procès discret, une plume qu'on brise avant qu'elle n'écrive davantage.",
+          { .d_H_coerc=0.3f, .d_L=-0.2f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_LEGISTE, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Fait taire, le savant se tait — mais ses pairs, eux, retiennent la leçon." },
+        { "Le renvoyer sans bruit",
+          "On referme le dossier — la trahison, elle, court toujours dans les gazettes.",
+          { .d_treasury_mois=-0.4f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Renvoyé sans bruit — le silence coûte, mais évite le scandale d'un procès." },
+        { "Faire un exemple public",
+          "Toute la cour saura ce qu'il en coûte de vendre les secrets du trône.",
+          { .d_L=0.3f, .d_agitation=8.f, .d_influence=-2.f, .unlock_branch=-1 },
+          0.1f, { .faction=FAC_GARDIEN, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "L'exemple fait grand bruit — la cour retient la leçon, le monde retient le scandale." } }, 3 },
+
+    /* Trahison — Société : le notable place ses familles. */
+    [EVID_TRAHISON_SOCIETE] = { EVID_TRAHISON_SOCIETE, EV_COUNTRY, "Le notable a placé ses familles avant le trône",
+        trig_trahison_societe, 1825.f, NULL, {
+        { "Purger les places",
+          "On reprend ce qui a été distribué — la loyauté se remérite.",
+          { .d_H_coerc=0.3f, .d_L=-0.2f, .d_agitation=8.f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_LEGISTE, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La purge reprend les places — et laisse une cour rancunière." },
+        { "Composer",
+          "On laisse faire, contre un service rendu — la cour vit de ces arrangements.",
+          { .d_L=-0.1f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "On compose — la faveur se rembourse un jour, d'une façon ou d'une autre." },
+        { "Laisser faire",
+          "Les familles s'installent — le trône regarde ailleurs.",
+          { .d_agitation=4.f, .unlock_branch=-1 },
+          0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le trône regarde ailleurs — les familles, elles, ne l'oublient pas." } }, 3 },
+
+    /* Trahison — Industrie : le marchand détourne. */
+    [EVID_TRAHISON_INDUSTRIE] = { EVID_TRAHISON_INDUSTRIE, EV_COUNTRY, "Le marchand a détourné plus que sa part",
+        trig_trahison_industrie, 1825.f, NULL, {
+        { "Le poursuivre",
+          "On récupère ce qu'on peut — le reste, la justice le tranchera.",
+          { .d_treasury_mois=0.3f, .d_agitation=4.f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_LEGISTE, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Poursuivi, le marchand rend une part — le reste a déjà changé de mains." },
+        { "Négocier un remboursement",
+          "Un accord discret vaut mieux qu'un procès qui traîne.",
+          { .d_treasury_mois=0.15f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_MARCHAND, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le remboursement discret arrange tout le monde — sauf ceux qui n'ont pas triché." },
+        { "Fermer les yeux",
+          "Le détournement continue — mais les routes, elles, restent ouvertes.",
+          { .d_treasury_mois=-0.2f, .d_C_global=0.03f, .unlock_branch=-1 },
+          0.1f, { .faction=FAC_MARCHAND, .faction_strength=0.15f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Fermer les yeux coûte cher — mais le commerce, lui, ne s'en porte que mieux." } }, 3 },
+
+    /* SUCCESSION — la retraite d'un loyal (>20 ans). Un moment, deux choix légers. */
+    [EVID_CONSEIL_SUCCESSION] = { EVID_CONSEIL_SUCCESSION, EV_COUNTRY, "Un ministre loyal prend sa retraite",
+        trig_conseil_succession, 1460.f, NULL, {
+        { "Le remercier publiquement",
+          "Une cérémonie, une pension — la loyauté se paie de reconnaissance.",
+          { .d_L=0.3f, .d_treasury_mois=-0.3f, .unlock_branch=-1 },
+          0.6f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          "La reconnaissance publique coûte peu — et se rappelle longtemps." },
+        { "Le laisser partir sans bruit",
+          "Une carrière s'achève — pas besoin d'en faire un événement.",
+          { .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          "Il part sans bruit — le siège, lui, attend son successeur." } }, 2 },
+
+    /* R1 — Savoir vs Société en RIVALITÉ : trancher pour l'un/l'autre/renvoyer les deux. */
+    [EVID_CONSEIL_R1] = { EVID_CONSEIL_R1, EV_COUNTRY, "Le Savoir et la Société se disputent l'oreille du trône",
+        trig_conseil_r1, 1825.f, NULL, {
+        { "Trancher pour le Savoir",
+          "L'érudition l'emporte — la Société ravale sa rancœur.",
+          { .d_L=0.1f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_TRANSGRESSEUR, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le Savoir gagne l'arbitrage — la Société retient, un peu plus fort, sa rancœur." },
+        { "Trancher pour la Société",
+          "Les familles l'emportent — le Savoir ravale son orgueil.",
+          { .d_L=0.1f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_CONQUERANT, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La Société gagne l'arbitrage — le Savoir retient, un peu plus fort, son orgueil." },
+        { "Renvoyer les deux",
+          "Si ni l'un ni l'autre ne sait se taire, qu'ils partent ensemble.",
+          { .d_H_coerc=0.3f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Deux sièges vacants d'un coup — le trône a montré qu'il ne penche pour personne." } }, 3 },
+
+    /* R2 — Industrie vs Société : la route. */
+    [EVID_CONSEIL_R2] = { EVID_CONSEIL_R2, EV_COUNTRY, "L'Industrie et la Société se disputent la route",
+        trig_conseil_r2, 1825.f, NULL, {
+        { "Trancher pour l'Industrie",
+          "Le commerce ouvre sa route — la Société encaisse.",
+          { .d_treasury_mois=0.2f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_MARCHAND, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La route s'ouvre au commerce — la Société retient qui l'a emporté." },
+        { "Trancher pour la Société",
+          "La route reste sous la coutume des familles.",
+          { .d_L=0.1f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_CONQUERANT, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La coutume l'emporte — l'Industrie retient qui l'a emporté." },
+        { "Renvoyer les deux",
+          "Ni l'un ni l'autre — la route attendra un arbitre moins intéressé.",
+          { .d_H_coerc=0.3f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Deux sièges vacants — la route, elle, attendra encore un peu." } }, 3 },
+
+    /* R3 — Savoir vs Industrie : le cadastre. */
+    [EVID_CONSEIL_R3] = { EVID_CONSEIL_R3, EV_COUNTRY, "Le Savoir et l'Industrie se disputent le cadastre",
+        trig_conseil_r3, 1825.f, NULL, {
+        { "Trancher pour le Savoir",
+          "Le cadastre sert la mesure exacte — l'Industrie s'incline.",
+          { .d_K_inst=0.2f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_TRANSGRESSEUR, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le cadastre sert la mesure — l'Industrie retient qui l'a emporté." },
+        { "Trancher pour l'Industrie",
+          "Le cadastre sert le commerce — le Savoir s'incline.",
+          { .d_treasury_mois=0.2f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_MARCHAND, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le cadastre sert le commerce — le Savoir retient qui l'a emporté." },
+        { "Renvoyer les deux",
+          "Le cadastre attendra — aucun des deux ne le méritait tel qu'il l'a demandé.",
+          { .d_H_coerc=0.3f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Deux sièges vacants — le cadastre, lui, reste à faire." } }, 3 },
+
+    /* A1 — L'ALLIANCE de deux sièges : laisser la synergie ×rot / contrebalancer / séparer. */
+    [EVID_CONSEIL_A1] = { EVID_CONSEIL_A1, EV_COUNTRY, "Deux sièges du Conseil s'entendent trop bien",
+        trig_conseil_a1, 1825.f, NULL, {
+        { "Laisser faire",
+          "Une alliance de sièges qui tient, tant mieux pour l'efficacité — tant pis pour l'équilibre.",
+          { .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "L'alliance tient — l'efficacité y gagne, l'équilibre du Conseil un peu moins." },
+        { "Contrebalancer",
+          "On pousse discrètement un contrepoids ailleurs dans le Conseil.",
+          { .d_L=0.1f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le contrepoids apaise — sans briser ce qui, pour l'instant, fonctionne." },
+        { "Séparer",
+          "Deux voix trop accordées : on en écarte une, par prudence.",
+          { .d_H_coerc=0.2f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La séparation coûte une efficacité gagnée — et achète une prudence retrouvée." } }, 3 },
+
+    /* A2 — leur candidat au 3e siège. */
+    [EVID_CONSEIL_A2] = { EVID_CONSEIL_A2, EV_COUNTRY, "L'alliance du Conseil propose son candidat au 3e siège",
+        trig_conseil_a2, 1825.f, NULL, {
+        { "Accepter leur candidat",
+          "Le troisième siège complète l'accord — le Conseil parle d'une seule voix, désormais.",
+          { .d_L=0.1f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le troisième siège complète l'accord — au risque d'un Conseil trop uni pour contredire." },
+        { "Imposer son propre choix",
+          "Le trône garde la main sur le dernier siège — l'alliance en prend note.",
+          { .d_H_coerc=0.1f, .d_agitation=4.f, .unlock_branch=-1 },
+          0.3f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le trône impose son choix — l'alliance en prend bonne note, pour plus tard." },
+        { "Laisser le siège vacant",
+          "Ni leur candidat, ni le sien — le siège attendra un jour plus clair.",
+          { .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le siège reste vide — un vide qui, parfois, en dit plus qu'une nomination." } }, 3 },
+
+    /* C1 — LA CONSPIRATION : les renvoyer les deux / en sacrifier un / céder. */
+    [EVID_CONSEIL_C1] = { EVID_CONSEIL_C1, EV_COUNTRY, "Deux sièges aliénés complotent contre le trône",
+        trig_conseil_c1, 2555.f, NULL, {
+        { "Les renvoyer les deux",
+          "On ne prend pas de risque — les deux sièges tombent d'un coup.",
+          { .d_H_coerc=0.5f, .d_L=0.2f, .d_agitation=10.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=2555 },
+          "Le trône plie deux sièges d'un coup — le Conseil, lui, retient la leçon de la peur." },
+        { "En sacrifier un",
+          "Un exemple suffit — l'autre reste, humilié, mais en place.",
+          { .d_H_coerc=0.3f, .d_L=0.1f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=2555 },
+          "Un siège tombe, l'autre reste — humilié, il n'oubliera pas non plus." },
+        { "Céder",
+          "Le trône plie devant la conspiration — pour cette fois.",
+          { .d_L=-0.6f, .d_agitation=-6.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=2555 },
+          "Le trône a plié — la conspiration l'a emporté, et le sait désormais." } }, 3 },
+
+    /* ═══════════════════════════════════════════════════════════════════
+     * V2b LOT 3 — LE CONTENU DÉBLOQUÉ (lecteurs P7a). ANCRES : même fourchette
+     * que le reste du module. human gate (comme LOT 1/2, cf. les triggers).
+     * EXEMPTÉS du plafond mondial (personnels, cooldowns 1460-2555 j).
+     * ═══════════════════════════════════════════════════════════════════ */
+
+    /* B2 — deux cultures voisines ne s'accordent plus (rivalité de voisinage). */
+    [EVID_RIVAUX_VOISINS] = { EVID_RIVAUX_VOISINS, EV_COUNTRY, "Deux peuples voisins ne s'accordent plus sur rien",
+        trig_rivaux_voisins, 1825.f, NULL, {
+        { "Fermer la frontière",
+          "Ce qui ne s'accorde plus, on cesse au moins de le voir.",
+          { .d_H_coerc=0.2f, .d_C_global=-0.05f, .d_agitation=-4.f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_CONQUERANT, .faction_strength=0.05f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La frontière se ferme — la rancune, elle, ne connaît pas de douane." },
+        { "Ouvrir un dialogue",
+          "Un émissaire, une table, et peut-être un peu moins de rancœur.",
+          { .d_L=0.2f, .d_treasury_mois=-0.4f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le dialogue s'ouvre, patient — et parfois, la rancœur s'y use un peu." },
+        { "Attiser la rivalité",
+          "Un ennemi commode à la frontière vaut mieux qu'un allié encombrant.",
+          { .d_agitation=6.f, .d_influence=1.f, .unlock_branch=-1 },
+          0.1f, { .faction=FAC_CONQUERANT, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La rivalité attisée sert le trône — jusqu'au jour où elle se retourne." } }, 3 },
+
+    /* B3 — une parenté lointaine se souvient. */
+    [EVID_PARENTE_LOINTAINE] = { EVID_PARENTE_LOINTAINE, EV_COUNTRY, "Une parenté lointaine se souvient de nous",
+        trig_parente_lointaine, 1825.f, NULL, {
+        { "Renouer",
+          "Des cousins d'outre-monde, jamais rencontrés — et pourtant, du même sang culturel.",
+          { .d_L=0.2f, .d_influence=2.f, .d_treasury_mois=-0.3f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Les cousins renouent — une amitié lointaine, mais réelle." },
+        { "Rester distant",
+          "Le sang culturel ne fait pas une alliance — on garde ses distances.",
+          { .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La distance se maintient — ni chaude, ni froide, simplement lointaine." },
+        { "Exploiter la parenté",
+          "Une parenté commode se monnaie — les cousins ne le savent pas encore.",
+          { .d_treasury_mois=0.3f, .d_influence=-1.f, .unlock_branch=-1 },
+          0.1f, { .faction=FAC_MARCHAND, .faction_strength=0.05f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La parenté exploitée rapporte — et se découvre, tôt ou tard, exploitée." } }, 3 },
+
+    /* B6 — une région marche loin de l'éthos régnant (province). */
+    [EVID_MARCHE_ETHOS] = { EVID_MARCHE_ETHOS, EV_PROVINCE, "À %s, l'éthos ne ressemble plus à celui du trône",
+        trig_marche_ethos, 1825.f, NULL, {
+        { "Ramener dans le rang",
+          "Une marche qui pense trop différemment finit par s'écarter pour de bon.",
+          { .d_H_coerc=0.3f, .d_L=-0.2f, .d_coercion=0.12f, .d_agitation=8.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La marche rentre dans le rang — de force, et ça se sent." },
+        { "Laisser sa différence",
+          "Une marche qui pense autrement n'est pas encore une marche qui trahit.",
+          { .d_L=0.2f, .d_agitation=-4.f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La différence reste — et la marche, curieusement, n'en est pas moins loyale." },
+        { "En faire un exemple d'autonomie",
+          "Ce que la marche pense, on le laisse même s'exprimer un peu.",
+          { .d_K_inst=0.2f, .d_L=0.1f, .unlock_branch=-1 },
+          0.1f, { .faction=FAC_COMMUNAUTAIRE, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "L'autonomie affichée rassure les marches — et inquiète un peu la capitale." } }, 3 },
+
+    /* C2 — le décret de tolérance (fracture religieuse notable). */
+    [EVID_TOLERANCE_CREDO] = { EVID_TOLERANCE_CREDO, EV_COUNTRY, "Le décret de tolérance attend une signature",
+        trig_tolerance_credo, 1825.f, NULL, {
+        { "Signer le décret",
+          "Chaque culte garde son temple — le trône n'impose plus une seule foi.",
+          { .d_L=0.3f, .d_agitation=-8.f, .d_treasury_mois=-0.4f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La tolérance signée apaise les cultes minoritaires — et froisse les zélotes de la foi d'État." },
+        { "Refuser",
+          "Une seule foi, une seule loi — le trône ne transige pas.",
+          { .d_H_coerc=0.2f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_GARDIEN, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le refus tient l'orthodoxie — et laisse la scission religieuse couver." },
+        { "Tolérance limitée",
+          "On tolère, mais on surveille — un compromis qui ne satisfait personne tout à fait.",
+          { .d_L=0.1f, .d_agitation=-3.f, .unlock_branch=-1 },
+          0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le compromis tient, tiède — ni la ferveur ni la scission n'y gagnent grand-chose." } }, 3 },
+
+    /* C3 — le lettré porte une face périmée. */
+    [EVID_LETTRE_PERIME] = { EVID_LETTRE_PERIME, EV_COUNTRY, "Le lettré du trône prêche une foi d'hier",
+        trig_lettre_perime, 1825.f, NULL, {
+        { "Le remplacer",
+          "Un lettré neuf, à jour de la doctrine du trône.",
+          { .d_L=0.2f, .d_treasury_mois=-0.5f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le lettré remplacé prêche enfin la doctrine du jour — l'ancien s'en va, amer." },
+        { "Le laisser prêcher",
+          "Une face périmée n'est pas encore une hérésie — on ferme les yeux.",
+          { .d_agitation=4.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le lettré périmé continue de prêcher — les fidèles, eux, s'y perdent un peu." },
+        { "Le corriger publiquement",
+          "On l'expose, doctrine face à doctrine — et on le laisse en poste, humilié.",
+          { .d_L=0.1f, .d_agitation=-2.f, .unlock_branch=-1 },
+          0.1f, { .faction=FAC_GARDIEN, .faction_strength=0.05f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "La correction publique tient la doctrine — et laisse un lettré humilié à son pupitre." } }, 3 },
+
+    /* C4 — la pratique dérive de la foi professée (crise plus profonde que C2). */
+    [EVID_PRATIQUE_DERIVE] = { EVID_PRATIQUE_DERIVE, EV_COUNTRY, "La pratique du peuple ne ressemble plus à la foi qu'il professe",
+        trig_pratique_derive, 2190.f, NULL, {
+        { "Réaffirmer la doctrine",
+          "On rappelle ce que la foi d'État exige vraiment — par le sermon, sinon par la loi.",
+          { .d_H_coerc=0.3f, .d_L=0.2f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_GARDIEN, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=2190 },
+          "La doctrine réaffirmée retient la lettre — la pratique, elle, a déjà dérivé plus loin." },
+        { "Laisser la pratique dériver",
+          "Une foi qui vit se transforme — on ne la fige pas de force.",
+          { .d_L=-0.1f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=2190 },
+          "La dérive continue, tranquille — la foi d'hier n'est déjà plus tout à fait celle d'aujourd'hui." },
+        { "Codifier la nouvelle pratique",
+          "Ce que le peuple pratique déjà, on l'écrit — la doctrine suit, pour une fois.",
+          { .d_K_inst=0.3f, .d_L=0.3f, .d_agitation=-6.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=2190 },
+          "La nouvelle pratique, codifiée, devient la doctrine — le trône a suivi son peuple, pour une fois." } }, 3 },
 };
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
@@ -1505,6 +2161,66 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
     else if (evid==EVID_FUSILS_REVIENNENT) decision_memory_consume(cx->ev, subject, SCAR_PROLIFERATION_ARME, today);
     else if (evid==EVID_SAVANTS_ENNEMI)    decision_memory_consume(cx->ev, subject, SCAR_FUITE_CERVEAUX,     today);
     else if (evid==EVID_TARIF_APPRIS)      decision_memory_consume(cx->ev, subject, SCAR_EXEMPTION_ACHETEE,  today);
+
+    /* ═══ V2b LOT 1 — LA MERVEILLE : les mutations de eg (struct PLATE, écriture
+     * directe sûre — même idiome qu'apply_region_eff sur RegionEconomy) ; le hook
+     * de faction (lever/grief) est déjà posé par apply_choice_hook ci-dessus, ces
+     * lignes ne posent QUE ce qu'aucune API publique ne fait (endgame_start_wonder
+     * est idempotent — merv!=MERV_NONE ⇒ no-op — donc rappelable sans garde ici). */
+    if (evid==EVID_MERV_FONDATION && cx->eg && cid>=0){
+        int capr = world_capital_region(cx->w, cid);
+        endgame_start_wonder(cx->eg, cid, capr);   /* idempotent : no-op si déjà en cours */
+    }
+    else if (evid==EVID_MERV_ASCENSION && cx->eg && cx->eg->merv_country==cid){
+        if (oi==2)      cx->eg->merv = MERV_NONE;         /* Détruire : le monument brisé, la course s'arrête */
+        /* Activer (oi==0) : rien à faire — MERV_SAVOIR_DONE laissé tel quel,
+         * wonder_tick le fera basculer en MERV_ASCENDED puis endgame_select_and_fire
+         * le lira au tick suivant (override MERVEILLE, déjà câblé, exempt du gate
+         * temporel/entropie). Refuser (oi==1) : rien à faire non plus — le palier
+         * reste MERV_SAVOIR_DONE, GELÉ (wonder_tick ne fait progresser un palier
+         * _DONE QUE via ce trigger, qui ne re-tirera plus — cooldown 36500 j). */
+    }
+
+    /* ═══ V2b LOT 2 — LE CONSEIL : les actions qui MUTENT le Conseil (renvoi/
+     * remplacement) passent par les VERBES existants (statecraft_council_dismiss),
+     * jamais un accès direct aux tableaux — même motif que demography_manumit_
+     * country pour EVID_CHAINES_RAPPORTENT ci-dessus. */
+    if (cx->sc && cx->w){
+        uint32_t seed = cx->w->seed;
+        if (evid==EVID_CONSEIL_SUCCESSION && oi==0 && cid>=0){
+            /* « Le remercier publiquement » ET « le laisser partir » vident TOUS
+             * DEUX le siège (la retraite a lieu quoi qu'on choisisse — seul le
+             * ton diffère, cf. les deltas L/or de la table) — statecraft_council_
+             * age_tick (annuel, appelé par sim_day) videra le siège de toute façon
+             * dès que l'âge dépasse le seuil de retraite ; on ne duplique PAS ce
+             * mécanisme ici (rien à muter côté Conseil, le siège se videra tout
+             * seul au prochain passage annuel — cette option est un TON, pas un acte). */
+        }
+        else if (evid==EVID_CONSEIL_R1 && oi==2 && cid>=0)      { statecraft_council_dismiss(cx->sc,seed,cid,0); statecraft_council_dismiss(cx->sc,seed,cid,1); }
+        else if (evid==EVID_CONSEIL_R2 && oi==2 && cid>=0)      { statecraft_council_dismiss(cx->sc,seed,cid,2); statecraft_council_dismiss(cx->sc,seed,cid,1); }
+        else if (evid==EVID_CONSEIL_R3 && oi==2 && cid>=0)      { statecraft_council_dismiss(cx->sc,seed,cid,0); statecraft_council_dismiss(cx->sc,seed,cid,2); }
+        else if (evid==EVID_CONSEIL_A1 && oi==2 && cid>=0){
+            /* Séparer : renvoie le siège B de la paire alliée retrouvée (le trigger
+             * a déjà prouvé qu'une telle paire existe — même balayage déterministe). */
+            int a=-1,b=-1;
+            if (conseil_pair_find(cx, cid, COUNCIL_PAIR_ALLIANCE, &a, &b)) statecraft_council_dismiss(cx->sc,seed,cid,b);
+        }
+        else if (evid==EVID_TRAHISON_SAVOIR    && oi!=1 && cid>=0) statecraft_council_dismiss(cx->sc,seed,cid,0);
+        else if (evid==EVID_TRAHISON_SOCIETE   && oi==0 && cid>=0) statecraft_council_dismiss(cx->sc,seed,cid,1);
+        else if (evid==EVID_TRAHISON_INDUSTRIE && oi==0 && cid>=0) statecraft_council_dismiss(cx->sc,seed,cid,2);
+        else if (evid==EVID_CONSEIL_C1 && cid>=0){
+            /* La conspiration porte sur une paire ALIÉNÉE (COUNCIL_PAIR_CONSPIRATION) —
+             * « Les renvoyer les deux » vide les deux sièges ; « En sacrifier un » n'en
+             * vide qu'un (le premier de la paire, déterministe) ; « Céder » ne renvoie
+             * personne (le trône a plié — les deux restent, plus forts). */
+            int a=-1,b=-1;
+            if (conseil_pair_find(cx, cid, COUNCIL_PAIR_CONSPIRATION, &a, &b)){
+                if (oi==0){ statecraft_council_dismiss(cx->sc,seed,cid,a); statecraft_council_dismiss(cx->sc,seed,cid,b); }
+                else if (oi==1) statecraft_council_dismiss(cx->sc,seed,cid,a);
+            }
+        }
+    }
+
     if (evid==EVID_MARBRIVE) g_marbrive_fired++; else if (evid==EVID_PONT_EFFONDRE) g_pont_effondre_fired++;
     else if (evid==EVID_CLOCHES) g_cloches_fired++;
     else if (evid==EVID_ENTREPOTS_FERMES) g_entrepots_fermes_fired++;
@@ -1528,6 +2244,25 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
     else if (evid==EVID_FUSILS_REVIENNENT) g_fusils_reviennent_fired++;
     else if (evid==EVID_SAVANTS_ENNEMI) g_savants_ennemi_fired++;
     else if (evid==EVID_TARIF_APPRIS) g_tarif_appris_fired++;
+    else if (evid==EVID_MERV_FONDATION) g_merv_fondation_fired++;
+    else if (evid==EVID_MERV_SACRIFICE) g_merv_sacrifice_fired++;
+    else if (evid==EVID_MERV_ASCENSION) g_merv_ascension_fired++;
+    else if (evid==EVID_TRAHISON_SAVOIR) g_trahison_savoir_fired++;
+    else if (evid==EVID_TRAHISON_SOCIETE) g_trahison_societe_fired++;
+    else if (evid==EVID_TRAHISON_INDUSTRIE) g_trahison_industrie_fired++;
+    else if (evid==EVID_CONSEIL_SUCCESSION) g_conseil_succession_fired++;
+    else if (evid==EVID_CONSEIL_R1) g_conseil_r1_fired++;
+    else if (evid==EVID_CONSEIL_R2) g_conseil_r2_fired++;
+    else if (evid==EVID_CONSEIL_R3) g_conseil_r3_fired++;
+    else if (evid==EVID_CONSEIL_A1) g_conseil_a1_fired++;
+    else if (evid==EVID_CONSEIL_A2) g_conseil_a2_fired++;
+    else if (evid==EVID_CONSEIL_C1) g_conseil_c1_fired++;
+    else if (evid==EVID_RIVAUX_VOISINS) g_rivaux_voisins_fired++;
+    else if (evid==EVID_PARENTE_LOINTAINE) g_parente_lointaine_fired++;
+    else if (evid==EVID_MARCHE_ETHOS) g_marche_ethos_fired++;
+    else if (evid==EVID_TOLERANCE_CREDO) g_tolerance_credo_fired++;
+    else if (evid==EVID_LETTRE_PERIME) g_lettre_perime_fired++;
+    else if (evid==EVID_PRATIQUE_DERIVE) g_pratique_derive_fired++;
     cx->ev->last_id=evid; cx->ev->last_name=d->name; cx->ev->n_fired++;
     if (d->scope==EV_PROVINCE && subject>=0)
         provlog_push_event(subject, event_title_ring(cx->w, evid, subject),   /* nom RÉEL du lieu */
@@ -1547,6 +2282,16 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
             int origin = annal_find_dilemme_origin(cx->ev, EVID_MARBRIVE, subject);
             int wi = annal_push(cx->ev, year, ANNAL_CICATRICE, evid, oi, subject, (int)w+20, oi);
             if (wi>=0 && origin>=0) cx->ev->annals[wi].origin=(int16_t)origin;
+        } else if (evid==EVID_TRAHISON_SAVOIR || evid==EVID_TRAHISON_SOCIETE || evid==EVID_TRAHISON_INDUSTRIE){
+            /* ANNAL_TRAHISON — un grand moment du Conseil : region porte le SIÈGE
+             * concerné (0/1/2, pas une région géographique — la charte membrane
+             * documente déjà region comme "sujet", ici un index de siège). */
+            int seat = (evid==EVID_TRAHISON_SAVOIR)?0:(evid==EVID_TRAHISON_SOCIETE)?1:2;
+            annal_push(cx->ev, year, ANNAL_TRAHISON, evid, 0, seat, (int)w+15, oi);
+        } else if (evid==EVID_MERV_FONDATION || evid==EVID_MERV_ASCENSION){
+            /* ANNAL_MERVEILLE_ETAPE — la Merveille en 3 étapes : poids PLEIN, le
+             * moment le plus lourd de la partie (motif ANNAL_FIN/ANNAL_AGE, ex.). */
+            annal_push(cx->ev, year, ANNAL_MERVEILLE_ETAPE, evid, 0, subject, 90, oi);
         } else if (d->n_options>1){
             /* ANNAL_DILEMME : un VRAI choix (n_options>1) résolu par le joueur — les chocs
              * géo/floraisons à option unique n'ont rien à raconter (pas un « choix »). */
@@ -1652,6 +2397,7 @@ static void pending_event_remove(EventsState *ev, int slot){
 bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
                            WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                            RouteNetwork *rn, const TechState ts[], DiploState *dp,
+                           EndgameState *eg,
                            int slot, int option, int today, int human_player){
     if (!ev || slot<0 || slot>=ev->pending_n) return false;
     PendingEvent p = ev->pending[slot];
@@ -1662,7 +2408,7 @@ bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
      * peut plus ré-enfiler) — il sert UNIQUEMENT à faire accrocher LES ANNALES quand
      * c'est bien le joueur qui a choisi (fire_event du tick régulier reste la seule
      * voie d'ENFILAGE ; ceci n'est que le point de sortie du choix DÉJÀ posé). */
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,human_player};
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player};
     resolve_choice(&cx, p.evid, p.subject, option, today);
     pending_event_remove(ev, slot);
     return true;
@@ -1670,9 +2416,10 @@ bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
 void pending_event_tick_expire(EventsState *ev, World *w, WorldEconomy *econ,
                                WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                                RouteNetwork *rn, const TechState ts[], DiploState *dp,
+                               EndgameState *eg,
                                int today){
     if (!ev) return;
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,-1};
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,-1};
     /* parcours à REBOURS : pending_event_remove swap avec le dernier — reculer évite
      * de sauter un slot fraîchement déplacé dans la case qu'on vient de traiter. */
     for (int i=ev->pending_n-1; i>=0; i--){
@@ -1699,7 +2446,7 @@ const char *events_name_of(int evid){
 void events_strike(EventsState *ev, World *w, WorldEconomy *econ,
                    WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                    int region, EvId shock){
-    EventCtx cx={ev,w,econ,wl,wp,sc,NULL,NULL,NULL,-1};
+    EventCtx cx={ev,w,econ,wl,wp,sc,NULL,NULL,NULL,NULL,-1};
     if (shock<0||shock>=EVID_COUNT) return;
     apply_effect(&cx, EVENTS[shock].scope, region, &EVENTS[shock].options[0].eff);
     ev->last_id=shock; ev->last_name=EVENTS[shock].name; ev->n_fired++;
@@ -1730,7 +2477,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
         EvEffect e = EVENTS[EVID_PLAGUE].options[0].eff;
         e.pop_mult = mult;
         e.d_agitation = 18.f - 3.f*h;
-        EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL,-1};
+        EventCtx cx={ev,w,econ,wl,NULL,sc,rn,NULL,NULL,NULL,-1};
         apply_effect(&cx, EV_PROVINCE, r, &e);
         provlog_push_event(r, EVENTS[EVID_PLAGUE].name, +1, ev_effdir(&e));   /* journal provincial : la peste */
         infected++;
@@ -1753,7 +2500,7 @@ int events_plague_spread(EventsState *ev, World *w, WorldEconomy *econ,
 /* ===================================================================== */
 int events_match_political(const EventsState *ev, World *w, WorldEconomy *econ,
                            WorldLegitimacy *wl, Statecraft *sc, int region){
-    EventCtx cx={ (EventsState*)ev, w, econ, wl, NULL, sc, NULL, NULL, NULL, -1 };
+    EventCtx cx={ (EventsState*)ev, w, econ, wl, NULL, sc, NULL, NULL, NULL, NULL, -1 };
     static const int order[4]={ EVID_INTEG_DOMINATEUR, EVID_INTEG_MERCANTILE,
                                 EVID_INTEG_BUREAUCRATE, EVID_INTEG_ANCIEN };
     for (int i=0;i<4;i++){
@@ -1884,7 +2631,7 @@ static bool age_trig_ordrefer(const EventsState *ev, World *w, WorldProsperity *
 }
 
 static void age_dawn(EventsState *ev, AgeId a, World *w, WorldEconomy *econ, WorldProsperity *wp){
-    EventCtx cx={ev,w,econ,NULL,wp,NULL,NULL,NULL,NULL,-1};
+    EventCtx cx={ev,w,econ,NULL,wp,NULL,NULL,NULL,NULL,NULL,-1};
     EvEffect e; memset(&e,0,sizeof e); e.pop_mult=1.f; e.unlock_branch=-1;
     switch(a){
         case AGE_COMMERCE: e.d_C_global=1.0f; e.unlock_branch=THM_SOCIETE; e.unlock_tier=3; break;
@@ -2389,9 +3136,10 @@ static float mtth_p(float mtth_days, int days){
 }
 void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
                        WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
-                       RouteNetwork *rn, const TechState ts[], DiploState *dp, int days,
+                       RouteNetwork *rn, const TechState ts[], DiploState *dp,
+                       EndgameState *eg, int days,
                        int human_player){
-    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,human_player};
+    EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player};
     ev->ages.days_elapsed += days;          /* horloge de jeu (rythme des âges) */
 
     /* 1. CHOCS GÉO — à risque, par région, sur leur cadence (1/risk accélère). */
@@ -2510,6 +3258,62 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SAVANTS_ENNEMI].mtth_days,days)) fire_event(&cx,EVID_SAVANTS_ENNEMI,c);
     }
 
+    /* 2septies. V2b — Merveille (LOT 1) + Conseil (LOT 2) + contenu débloqué (LOT 3).
+     * TOUS human-only par construction (leur trigger vérifie c==human_player) : sur
+     * human_player=-1 (chronique) le trigger renvoie faux systématiquement — même
+     * court-circuit (trigger && frand) que le reste du module, golden intact PAR
+     * CONSTRUCTION (aucun tirage tant qu'aucun joueur n'existe). ⚠ EXEMPTÉS du
+     * plafond mondial 3-5 (EV_MAX_FIRES=0 dans la table — cf. EV_CAPPED plus bas) :
+     * personnels et récurrents par nature, leurs cooldowns propres (540-2555 j)
+     * suffisent — un plafond mondial n'a pas de sens sur un dilemme qui ne concerne
+     * QUE le joueur (les dilemmes du monde entier, eux, sont plafonnés). */
+    if (EVENTS[EVID_MERV_FONDATION].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_MERV_FONDATION].mtth_days,days)) fire_event(&cx,EVID_MERV_FONDATION,human_player);
+    if (EVENTS[EVID_MERV_SACRIFICE].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_MERV_SACRIFICE].mtth_days,days)) fire_event(&cx,EVID_MERV_SACRIFICE,human_player);
+    if (EVENTS[EVID_MERV_ASCENSION].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_MERV_ASCENSION].mtth_days,days)) fire_event(&cx,EVID_MERV_ASCENSION,human_player);
+
+    if (EVENTS[EVID_TRAHISON_SAVOIR].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_TRAHISON_SAVOIR].mtth_days,days)) fire_event(&cx,EVID_TRAHISON_SAVOIR,human_player);
+    if (EVENTS[EVID_TRAHISON_SOCIETE].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_TRAHISON_SOCIETE].mtth_days,days)) fire_event(&cx,EVID_TRAHISON_SOCIETE,human_player);
+    if (EVENTS[EVID_TRAHISON_INDUSTRIE].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_TRAHISON_INDUSTRIE].mtth_days,days)) fire_event(&cx,EVID_TRAHISON_INDUSTRIE,human_player);
+    if (EVENTS[EVID_CONSEIL_SUCCESSION].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_CONSEIL_SUCCESSION].mtth_days,days)) fire_event(&cx,EVID_CONSEIL_SUCCESSION,human_player);
+    if (EVENTS[EVID_CONSEIL_R1].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_CONSEIL_R1].mtth_days,days)) fire_event(&cx,EVID_CONSEIL_R1,human_player);
+    if (EVENTS[EVID_CONSEIL_R2].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_CONSEIL_R2].mtth_days,days)) fire_event(&cx,EVID_CONSEIL_R2,human_player);
+    if (EVENTS[EVID_CONSEIL_R3].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_CONSEIL_R3].mtth_days,days)) fire_event(&cx,EVID_CONSEIL_R3,human_player);
+    if (EVENTS[EVID_CONSEIL_A1].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_CONSEIL_A1].mtth_days,days)) fire_event(&cx,EVID_CONSEIL_A1,human_player);
+    if (EVENTS[EVID_CONSEIL_A2].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_CONSEIL_A2].mtth_days,days)) fire_event(&cx,EVID_CONSEIL_A2,human_player);
+    if (EVENTS[EVID_CONSEIL_C1].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_CONSEIL_C1].mtth_days,days)) fire_event(&cx,EVID_CONSEIL_C1,human_player);
+
+    if (EVENTS[EVID_RIVAUX_VOISINS].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_RIVAUX_VOISINS].mtth_days,days)) fire_event(&cx,EVID_RIVAUX_VOISINS,human_player);
+    if (EVENTS[EVID_PARENTE_LOINTAINE].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_PARENTE_LOINTAINE].mtth_days,days)) fire_event(&cx,EVID_PARENTE_LOINTAINE,human_player);
+    if (EVENTS[EVID_TOLERANCE_CREDO].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_TOLERANCE_CREDO].mtth_days,days)) fire_event(&cx,EVID_TOLERANCE_CREDO,human_player);
+    if (EVENTS[EVID_LETTRE_PERIME].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_LETTRE_PERIME].mtth_days,days)) fire_event(&cx,EVID_LETTRE_PERIME,human_player);
+    if (EVENTS[EVID_PRATIQUE_DERIVE].trigger(&cx,human_player) &&
+        frand(&ev->rng) < mtth_p(EVENTS[EVID_PRATIQUE_DERIVE].mtth_days,days)) fire_event(&cx,EVID_PRATIQUE_DERIVE,human_player);
+    /* B6 (province) : scanne les régions du JOUEUR seulement (le trigger vérifie
+     * l'owner via owner_ethos ; on filtre ici pour ne pas scanner tout le monde
+     * inutilement sur un évènement qui ne concernera jamais un pays IA). */
+    if (human_player>=0) for (int r=0;r<econ->n_regions;r++){
+        if (econ->region[r].owner!=human_player) continue;
+        if (EVENTS[EVID_MARCHE_ETHOS].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_MARCHE_ETHOS].mtth_days,days)) fire_event(&cx,EVID_MARCHE_ETHOS,r);
+    }
+
     /* 2bis. LE DIRECTEUR (§F) — lit la TEMPÉRATURE du monde, puis stabilise ou
      * déstabilise (sans jamais s'acharner). Cadence ~annuelle (sa propre échéance). */
     director_tick(&cx, days);
@@ -2537,7 +3341,7 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
 
     /* MEMBRANE DE DÉCISION — un pending qui a expiré (180 j sans choix du joueur)
      * s'auto-résout (ai_chance), comme l'IA l'aurait tranché. */
-    pending_event_tick_expire(ev,w,econ,wl,wp,sc,rn,ts,dp, ev->ages.days_elapsed);
+    pending_event_tick_expire(ev,w,econ,wl,wp,sc,rn,ts,dp,eg, ev->ages.days_elapsed);
 }
 
 /* ===================================================================== */

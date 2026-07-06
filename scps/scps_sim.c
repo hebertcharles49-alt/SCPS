@@ -591,7 +591,7 @@ static void sim_cmd_drain(Sim *s, World *w){
                 ? ((pe.subject>=0 && pe.subject<s->econ->n_regions) ? s->econ->region[pe.subject].owner : -1)
                 : pe.subject;
             if (owner!=p) break;   /* la région/le pays a changé de mains : le choix ne s'applique plus */
-            pending_event_resolve(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp,
+            pending_event_resolve(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, s->eg,
                                   slot, option, s->ev->ages.days_elapsed, s->human_player);
             break; }
           /* ── DÉCRETS (civics) : a={DecreeId, on/off}. REVALIDÉ — id borné ; l'activation
@@ -679,7 +679,7 @@ void sim_day(Sim *s, World *w) {
             }
         }
     }
-    PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, 1, s->human_player));
+    PROF(PB_EVENTS, world_events_tick(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, s->eg, 1, s->human_player));
     /* navy_tick (chantier + entretien) est passé MENSUEL (bloc plus bas) : il pesait ~½ du coût/an
      * en quotidien, et il est pleinement dt-scalé (rien ne le veut au jour). */
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */

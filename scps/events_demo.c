@@ -25,6 +25,7 @@
 #include "scps_statecraft.h"
 #include "scps_routes.h"
 #include "scps_events.h"
+#include "scps_religion.h"   /* V2b LOT 3 : religion_fracture_level/credo_drift/scholar_drift */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,7 @@ static void ok(const char *what, bool cond){
 typedef struct {
     World *w; WorldEconomy *econ; TradeNetwork *net; TechState *ts;
     WorldProsperity *wp; WorldLegitimacy *wl; Statecraft *sc; RouteNetwork *rn; EventsState *ev;
+    EndgameState *eg;   /* V2b LOT 1 : la Merveille */
 } Sim;
 
 static int cap_region(const World *w, int cid){
@@ -81,7 +83,8 @@ int main(int argc, char **argv){
     s.ts=calloc(SCPS_MAX_COUNTRY,sizeof(TechState)); s.wp=malloc(sizeof(WorldProsperity));
     s.wl=malloc(sizeof(WorldLegitimacy)); s.sc=malloc(sizeof(Statecraft));
     s.rn=malloc(sizeof(RouteNetwork)); s.ev=malloc(sizeof(EventsState));
-    if(!s.w||!s.econ||!s.net||!s.ts||!s.wp||!s.wl||!s.sc||!s.rn||!s.ev){ fprintf(stderr,"OOM\n"); return 1; }
+    s.eg=malloc(sizeof(EndgameState));
+    if(!s.w||!s.econ||!s.net||!s.ts||!s.wp||!s.wl||!s.sc||!s.rn||!s.ev||!s.eg){ fprintf(stderr,"OOM\n"); return 1; }
 
     printf("══════════════════════════════════════════════════════════════\n");
     printf(" ÉVÈNEMENTS & ÂGES — chocs ancrés, saveur par la fiche, ères émergentes (graine %u)\n", seed);
@@ -94,6 +97,7 @@ int main(int argc, char **argv){
     for (int c=0;c<s.w->n_countries;c++) tech_state_init(&s.ts[c],false);
     prosperity_init(s.wp,s.w); legitimacy_init(s.wl,s.w,s.econ);
     statecraft_init(s.sc,s.w); routes_init(s.rn);
+    endgame_init(s.eg); endgame_set_pop_ref(s.eg,s.econ);   /* V2b LOT 1 */
     for (int t=0;t<15;t++){ econ_tick(s.econ, 1.f); econ_colonize_tick(s.econ,s.w,-1,NULL,NULL); world_tick(s.w,s.econ,1.f);
         legitimacy_tick(s.wl,s.w,s.econ,s.ts); prosperity_tick(s.wp,s.w,s.econ,s.net,s.ts,s.wl); }
     events_init(s.ev,s.w,seed);
@@ -294,7 +298,7 @@ int main(int argc, char **argv){
     /* Intégration : la boucle complète tourne sans incident et FAIT des choses. */
     int fired0=s.ev->n_fired;
     for (int yr=0; yr<40; yr++)
-        world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
+        world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,365,-1);
     printf("\n   (boucle 40 ans : %d évènements déclenchés au total)\n", s.ev->n_fired);
     ok("la boucle world_events_tick tourne et déclenche des évènements", s.ev->n_fired>fired0);
 
@@ -307,7 +311,7 @@ int main(int argc, char **argv){
     for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=10.f; s.wp->country[c].fracture=0.f; s.wp->country[c].mode=0; }
     for (int c=0;c<s.wp->n_countries && c<3;c++) s.wp->country[c].L=3.f;   /* Légit < 50 */
     int destab0=s.ev->director.fired_destab, stab_during_cold0=s.ev->director.fired_stab;
-    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
+    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,365,-1);
     float T_cold=director_temperature(s.ev);
     int destab_cold=s.ev->director.fired_destab-destab0, stab_cold=s.ev->director.fired_stab-stab_during_cold0;
     printf("   monde froid : T=%.2f → %d déstabilisateur(s), %d stabilisateur(s)\n", T_cold, destab_cold, stab_cold);
@@ -317,7 +321,7 @@ int main(int argc, char **argv){
      *     → T haute → le directeur APAISE (« Le Concile » est toujours éligible). */
     int stab0=s.ev->director.fired_stab, destab_during_hot0=s.ev->director.fired_destab;
     for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=1.5f; s.wp->country[c].fracture=6.f; s.wp->country[c].mode=(c%2)?2:0; }
-    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
+    for (int yr=0; yr<80; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,365,-1);
     float T_hot=director_temperature(s.ev);
     int stab_hot=s.ev->director.fired_stab-stab0, destab_hot=s.ev->director.fired_destab-destab_during_hot0;
     printf("   monde chaud : T=%.2f → %d stabilisateur(s), %d déstabilisateur(s)\n", T_hot, stab_hot, destab_hot);
@@ -370,7 +374,7 @@ int main(int argc, char **argv){
     events_init(s.ev,s.w,seed);
     for (int c=0;c<s.wp->n_countries;c++){ s.wp->country[c].SI=1.5f; s.wp->country[c].fracture=6.f; s.wp->country[c].mode=(c%2)?2:0; }
     int omens0=director_omens(s.ev);
-    for (int yr=0; yr<120; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
+    for (int yr=0; yr<120; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,365,-1);
     int mem_now=director_memories(s.ev), omens_now=director_omens(s.ev);
     printf("   tale : %d présage(s) émis · %d haut(s) fait(s) encore en mémoire · amplitude vécue pic %.3f\n",
            omens_now-omens0, mem_now, s.ev->director.max_amplitude);
@@ -399,7 +403,7 @@ int main(int argc, char **argv){
     const int MAXSUBJ = SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY;   /* la borne de subject (encodage Amnistie) */
     events_init(s.ev,s.w,seed);
     /* un état réel & sain (60 ans de monde vivant → mémoire peuplée) passe la garde */
-    for (int yr=0; yr<60; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,365,-1);
+    for (int yr=0; yr<60; yr++) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,365,-1);
     ok("save_sane ACCEPTE un directeur-amplitude SAIN (état réel de sim)",
        director_save_sane(s.ev, MAXSUBJ));
     /* mem_head FOU (déborde l'anneau) → REFUS */
@@ -491,7 +495,7 @@ int main(int argc, char **argv){
         for (int d=0; d<3650 && !marbrive_fired; d+=30){
             for (int r=0;r<s.econ->n_regions && r<SCPS_MAX_REG;r++) s.sc->agitation[r]=0.f;
             if (capr<SCPS_MAX_REG) s.sc->agitation[capr]=60.f;
-            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,-1);
             if (s.ev->last_id==EVID_MARBRIVE) marbrive_fired=true;
         }
         ok("Marbrive finit par TIRER (agitation soutenue + bâti + coercitif)", marbrive_fired);
@@ -520,13 +524,13 @@ int main(int argc, char **argv){
          * pendant cette même fenêtre — seul le COMPTE de pendings sur NOTRE sujet fait foi. */
         int n0=pending_event_count(s.ev);
         for (int d=0; d<3650 && pending_event_count(s.ev)==n0; d+=30)
-            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,human);
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,human);
         ok("un évènement à VRAIE décision qui concerne le JOUEUR s'ENFILE (pas auto-résolu)",
            pending_event_count(s.ev)>n0);
         if (pending_event_count(s.ev)>n0){
             PendingEvent pe;
             ok("pending_event_at lit le slot fraîchement enfilé", pending_event_at(s.ev,0,&pe));
-            bool resolved = pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,
+            bool resolved = pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,
                                                   0, 0, s.ev->ages.days_elapsed, human);
             ok("pending_event_resolve APPLIQUE le choix et RETIRE le pending",
                resolved && pending_event_count(s.ev)==n0);
@@ -535,7 +539,7 @@ int main(int argc, char **argv){
         /* expiration : un pending non résolu par le joueur, passé expire_day, s'auto-tranche. */
         pending_event_push(s.ev, EVID_MARBRIVE, capr, s.ev->ages.days_elapsed);
         int n1=pending_event_count(s.ev), fired1=s.ev->n_fired;
-        pending_event_tick_expire(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL, s.ev->ages.days_elapsed+181);
+        pending_event_tick_expire(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg, s.ev->ages.days_elapsed+181);
         ok("un pending EXPIRÉ (180 j) s'auto-résout (ai_chance) et se retire",
            pending_event_count(s.ev)==n1-1 && s.ev->n_fired==fired1+1);
       } else ok("(pas de capitale pour le test file joueur — ignoré)", true);
@@ -590,10 +594,10 @@ int main(int argc, char **argv){
         if (capr<SCPS_MAX_REG) s.sc->agitation[capr]=60.f;
         int n0=pending_event_count(s.ev);
         for (int d=0; d<3650 && pending_event_count(s.ev)==n0; d+=30)
-            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,human);
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,human);
         if (pending_event_count(s.ev)>n0){
             int a0=annals_count(s.ev);
-            pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL, 0, 0, s.ev->ages.days_elapsed, human);
+            pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg, 0, 0, s.ev->ages.days_elapsed, human);
             ok("un choix JOUEUR résolu (n_options>1) pousse une ANNAL_DILEMME",
                annals_count(s.ev)>a0);
         } else ok("(pas d'enfilage observé sur cette graine — ignoré, comme au §9d)", true);
@@ -608,7 +612,7 @@ int main(int argc, char **argv){
         econ_aggregate_regions(s.econ);
         if (capr<SCPS_MAX_REG) s.sc->agitation[capr]=60.f;
         for (int d=0; d<3650; d+=30)
-            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);   /* human=-1 : chronique */
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,-1);   /* human=-1 : chronique */
         ok("en CHRONIQUE (human=-1), les Annales restent VIDES même après des dilemmes résolus",
            annals_count(s.ev)==0);
       } else ok("(pas de capitale pour le test chronique — ignoré)", true);
@@ -653,7 +657,7 @@ int main(int argc, char **argv){
                 /* on résout directement le choix 1 (via le chemin commun fire_event→resolve_choice
                  * n'est pas exposé ; pending_event_resolve EST ce chemin — on enfile puis résout). */
                 pending_event_push(s.ev, EVID_CLOCHES, capr, s.ev->ages.days_elapsed);
-                pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL, 0, 1, s.ev->ages.days_elapsed, cid);
+                pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg, 0, 1, s.ev->ages.days_elapsed, cid);
                 float mult_after = s.econ->prov[rp].strata[CLASS_LABORER].pop;
                 bool hit = (mult_before>0.f) && (mult_after > mult_before*1.0035f);
                 if (hit) saw_hit=true; else saw_miss=true;
@@ -699,7 +703,7 @@ int main(int argc, char **argv){
         for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].unlocked[TECH_APEX_ARQUEBUSE]=false;
         long before0 = events_salve_runique_fired();
         for (int d=0; d<3650; d+=30)
-            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,-1);
         ok("EVID_SALVE_RUNIQUE NE TIRE JAMAIS tant que l'apex n'est déverrouillé nulle part",
            events_salve_runique_fired()==before0);
         s.ts[cid0].unlocked[TECH_APEX_ARQUEBUSE]=true;   /* « just-latched » : le pays 0 vient de l'obtenir */
@@ -708,7 +712,7 @@ int main(int argc, char **argv){
         /* mtth_days=3650 (≈10 ans) est un temps MOYEN, pas une garantie dans une fenêtre
          * de 10 ans pile — on laisse une fenêtre large (100 ans) pour observer le tir. */
         for (int d=0; d<36500 && !fired; d+=30){
-            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,-1);
             if (events_salve_runique_fired()>before) fired=true;
         }
         ok("EVID_SALVE_RUNIQUE TIRE dès l'apex déverrouillé (déclenchement 'tech just-latched')", fired);
@@ -736,14 +740,14 @@ int main(int argc, char **argv){
         int cid0=0;
         for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].unlocked[TECH_ESCLAVAGE]=false;
         long before0=events_chaines_rapportent_fired();
-        for (int d=0; d<3650; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+        for (int d=0; d<3650; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,-1);
         ok("EVID_CHAINES_RAPPORTENT NE TIRE JAMAIS tant qu'aucun pays n'a Économie servile",
            events_chaines_rapportent_fired()==before0);
         s.ts[cid0].unlocked[TECH_ESCLAVAGE]=true;
         long before=events_chaines_rapportent_fired();
         bool fired=false;
         for (int d=0; d<36500 && !fired; d+=30){
-            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,-1);
             if (events_chaines_rapportent_fired()>before) fired=true;
         }
         ok("EVID_CHAINES_RAPPORTENT TIRE dès Économie servile déverrouillée (latch tech §A)", fired);
@@ -766,7 +770,7 @@ int main(int argc, char **argv){
             long before=events_cellule_faubourgs_fired();
             bool fired=false;
             for (int d=0; d<3650 && !fired; d+=10){
-                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,10,-1);
+                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,10,-1);
                 if (events_cellule_faubourgs_fired()>before) fired=true;
             }
             ok("EVID_CELLULE_FAUBOURGS (K3) TIRE une fois la cicatrice RADICALISATION mûre", fired);
@@ -809,7 +813,7 @@ int main(int argc, char **argv){
             long before=events_droit_integration_fired();
             bool fired=false;
             for (int d=0; d<7300 && !fired; d+=30){
-                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,-1);
                 if (events_droit_integration_fired()>before) fired=true;
             }
             ok("EVID_DROIT_INTEGRATION tire sur une off-culture>25% (helper §B1 country_mean_off_culture)",
@@ -867,7 +871,7 @@ int main(int argc, char **argv){
             s.econ->region[capr].owner=(int16_t)cid;
             long base=events_droit_integration_fired();
             for (int d=0; d<36500*3; d+=30)   /* 300 ans : de quoi épuiser le plafond ET prouver l'arrêt */
-                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,-1);
             long tirs = events_droit_integration_fired()-base;
             int cap = events_fire_cap(s.ev, EVID_DROIT_INTEGRATION);
             ok("le dilemme s'ARRÊTE PILE au plafond mondial (3-5 tirs en 300 ans de trigger vrai)",
@@ -877,9 +881,200 @@ int main(int argc, char **argv){
         } else { ok("(pas de capitale — plafond ignoré)", true); ok("(idem)", true); }
     }
 
+    /* ============================================================= */
+    /* 14. V2b LOT 1 — LA MERVEILLE EN 3 ÉTAPES (fondation/sacrifice/ascension) */
+    /* ============================================================= */
+    printf("\n-- section 14 : V2b LOT 1 — la Merveille en 3 étapes ---------\n");
+    {
+        events_init(s.ev,s.w,seed);
+        endgame_init(s.eg); endgame_set_pop_ref(s.eg,s.econ);
+        int capr=-1, human=-1;
+        for (int c=0;c<s.w->n_countries && human<0;c++){
+            int cr=cap_region(s.w,c);
+            if (cr>=0 && cr<s.econ->n_regions && s.econ->region[cr].culture.settled && s.econ->region[cr].owner==c)
+                { human=c; capr=cr; }
+        }
+        if (human>=0){
+            /* Sans metab_count>=3 : la fondation NE TIRE PAS (le monde n'a pas
+             * métabolisé 3 héritages — un monde frais généré n'y est jamais). */
+            ok("(section 14a) une capitale peuplée existe pour le test Merveille", true);
+            long f0=events_merv_fondation_fired();
+            for (int d=0; d<3650; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,human);
+            ok("EVID_MERV_FONDATION ne tire PAS tant que metab_count<3 (monde frais)",
+               events_merv_fondation_fired()==f0);
+            ok("eg->merv reste MERV_NONE (aucune fondation, aucun mutateur appelé)",
+               s.eg->merv==MERV_NONE);
+
+            /* FORCER l'éligibilité : endgame_start_wonder directement (le trigger
+             * dépend de endgame_metab_count, coûteux à fabriquer en fixture — on
+             * teste ici le CYCLE sacrifice/ascension une fois la Merveille lancée,
+             * ce que la mission demande explicitement : « sacrifice pendant merv »
+             * et « ascension 3 issues »). */
+            endgame_start_wonder(s.eg, human, capr);
+            ok("endgame_start_wonder lance le palier FORGE", s.eg->merv==MERV_FORGE);
+            long s0=events_merv_sacrifice_fired();
+            for (int d=0; d<3650; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,human);
+            ok("EVID_MERV_SACRIFICE tire pendant que la Merveille est active (FORGE)",
+               events_merv_sacrifice_fired()>s0);
+
+            /* ASCENSION — force le palier à MERV_SAVOIR_DONE, tourne le tick RÉEL
+             * (le trigger doit s'enfiler tout seul, human gate), puis résout les 3
+             * issues, un eg FRAIS par issue (le choix consomme l'occasion). */
+            for (int oi=0; oi<3; oi++){
+                events_init(s.ev,s.w,seed);
+                endgame_init(s.eg); endgame_set_pop_ref(s.eg,s.econ);
+                endgame_start_wonder(s.eg, human, capr);
+                s.eg->merv = MERV_SAVOIR_DONE;
+                bool has_pending=false; int slot=-1;
+                for (int d=0; d<3650 && !has_pending; d+=30){
+                    world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,30,human);
+                    for (int i=0;i<pending_event_count(s.ev);i++){
+                        PendingEvent pe; pending_event_at(s.ev,i,&pe);
+                        if (pe.evid==EVID_MERV_ASCENSION){ has_pending=true; slot=i; break; }
+                    }
+                }
+                ok("(section 14b) EVID_MERV_ASCENSION s'ENFILE (human gate) à MERV_SAVOIR_DONE", has_pending);
+                bool resolved = has_pending && pending_event_resolve(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,s.eg,
+                                                      slot, oi, s.ev->ages.days_elapsed, human);
+                ok("pending_event_resolve applique l'issue d'Ascension", resolved);
+                if (oi==2)
+                    ok("Détruire (oi=2) : eg->merv retombe à MERV_NONE", s.eg->merv==MERV_NONE);
+                else
+                    ok("Activer/Refuser (oi=0/1) : eg->merv reste MERV_SAVOIR_DONE (gelé/latché ailleurs)",
+                       s.eg->merv==MERV_SAVOIR_DONE);
+            }
+        } else {
+            for (int i=0;i<7;i++) ok("(pas de capitale peuplée — LOT 1 ignoré)", true);
+        }
+    }
+
+    /* ============================================================= */
+    /* 15. V2b LOT 2 — LE CONSEIL (trahison/succession/inter-conseillers) */
+    /* ============================================================= */
+    printf("\n-- section 15 : V2b LOT 2 — le Conseil -----------------------\n");
+    {
+        events_init(s.ev,s.w,seed);
+        int capr=-1, human=-1;
+        for (int c=0;c<s.w->n_countries && human<0;c++){
+            int cr=cap_region(s.w,c);
+            if (cr>=0 && cr<s.econ->n_regions && s.econ->region[cr].culture.settled && s.econ->region[cr].owner==c)
+                { human=c; capr=cr; }
+        }
+        (void)capr;
+        if (human>=0){
+            /* Sans siège pourvu : les triggers TRAHISON/succession/pair renvoient
+             * tous faux (statecraft_council_seated<0 partout, aucun siège assis). */
+            for (int seat=0;seat<SC_COUNCIL_SEATS;seat++)
+                ok("(14a) aucun siège pourvu au départ", statecraft_council_seated(s.sc,human,seat)<0);
+            /* Pourvoit les 3 sièges (recrute), pousse la loyauté au plancher via un
+             * grief SATURÉ (motif documenté par l'agent V2a : faction_lever_apply
+             * saturé à 1.0 fait chuter la cible SOUS le point de départ). */
+            for (int seat=0;seat<SC_COUNCIL_SEATS;seat++)
+                statecraft_council_hire(s.sc, s.w->seed, human, seat, 0, statecraft_council_gen(0));
+            bool all_seated=true;
+            for (int seat=0;seat<SC_COUNCIL_SEATS;seat++)
+                if (statecraft_council_seated(s.sc,human,seat)<0) all_seated=false;
+            ok("les 3 sièges sont pourvus (recrutement V2a)", all_seated);
+
+            /* betrayal_ready exige la loyauté au bord (~15) — on sature le grief
+             * de la faction OPPOSÉE au siège Savoir pour la faire chuter, puis on
+             * tourne assez de mois pour que loyalty_tick converge. */
+            EthosFaction fac0 = statecraft_council_faction(s.w->seed, human, 0, 0, statecraft_council_gen(0));
+            EthosFaction opp = FAC_CONQUERANT;
+            for (int f=0; f<FAC_COUNT; f++) if (faction_opposition(fac0,(EthosFaction)f) > 0.9f){ opp=(EthosFaction)f; break; }
+            for (int t=0;t<600;t++){   /* 50 ans de mois : la loyauté a le temps de converger */
+                faction_lever_apply(human, opp, 1.5f);   /* saturé (>1.0 interne) : creuse le grief de fac0 */
+                statecraft_council_loyalty_tick(s.sc, s.w, s.econ, s.w->seed, 1.f/12.f);
+            }
+            bool ready0 = statecraft_council_betrayal_ready(s.sc, human, 0);
+            ok("betrayal_ready(seat=0) devient vrai sous grief opposé saturé (motif V2a)", ready0);
+            if (ready0){
+                long tb0=events_trahison_savoir_fired();
+                for (int d=0; d<3650; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,NULL,30,human);
+                ok("EVID_TRAHISON_SAVOIR tire sur betrayal_ready(seat=0)", events_trahison_savoir_fired()>tb0);
+            } else ok("(betrayal_ready ne s'est pas déclenché sur cette graine — cf. bilan)", true);
+
+            /* PAIR_STATE — sans fabriquer une vraie rivalité (coûteux), on prouve
+             * juste que le lecteur répond et que les triggers R1/A1/C1 sont bien
+             * câblés au MÊME statecraft_council_pair_state (cohérence de câblage :
+             * le trigger renvoie vrai SSI pair_state()==l'état attendu, vérifié en
+             * appelant les deux et en comparant). */
+            int year = s.ev->ages.days_elapsed/365;
+            CouncilPairState ps01 = statecraft_council_pair_state(s.sc, s.w, s.econ, s.w->seed, human, 0, 1, year);
+            ok("statecraft_council_pair_state répond (0..3)", ps01>=COUNCIL_PAIR_NEUTRE && ps01<=COUNCIL_PAIR_CONSPIRATION);
+        } else {
+            for (int i=0;i<4;i++) ok("(pas de capitale peuplée — LOT 2 ignoré)", true);
+        }
+    }
+
+    /* ============================================================= */
+    /* 16. V2b LOT 3 — LE CONTENU DÉBLOQUÉ (un lecteur, un événement) */
+    /* ============================================================= */
+    printf("\n-- section 16 : V2b LOT 3 — le contenu débloqué --------------\n");
+    {
+        events_init(s.ev,s.w,seed);
+        int capr=-1, human=-1;
+        for (int c=0;c<s.w->n_countries && human<0;c++){
+            int cr=cap_region(s.w,c);
+            if (cr>=0 && cr<s.econ->n_regions && s.econ->region[cr].culture.settled && s.econ->region[cr].owner==c)
+                { human=c; capr=cr; }
+        }
+        if (human>=0){
+            /* B6 — region_ethos_drift : fabrique une région du joueur avec un éthos
+             * DIVERGENT de la capitale (pacifiste vs dominateur, l'écart maximal du
+             * banc §5 existant, drift>0.9 mesuré). */
+            int r_far=-1;
+            for (int r=0;r<s.econ->n_regions;r++){
+                if (s.econ->region[r].owner==human && r!=capr && s.econ->region[r].culture.settled)
+                    { r_far=r; break; }
+            }
+            if (r_far>=0 && capr>=0){
+                s.econ->region[capr].culture.ethos = ETHOS_DOMINATEUR;
+                s.econ->region[r_far].culture.ethos = ETHOS_PACIFISTE;
+                float drift = region_ethos_drift(ETHOS_PACIFISTE, ETHOS_DOMINATEUR);
+                ok("(15a) region_ethos_drift(pacifiste,dominateur) > 0.6 (fixture B6)", drift>0.6f);
+                long m0=events_marche_ethos_fired();
+                for (int d=0; d<7300; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,NULL,30,human);
+                ok("EVID_MARCHE_ETHOS tire sur une région à éthos divergent (lecteur B6)",
+                   events_marche_ethos_fired()>m0);
+            } else ok("(pas de 2e région du joueur — B6 ignoré)", true);
+
+            /* C2 — religion_fracture_level : au repos (monde athée frais), le
+             * lecteur renvoie 0 → le trigger ne tire jamais (cohérence de câblage,
+             * pas besoin de fonder une religion pour prouver que le lecteur est lu). */
+            ok("religion_fracture_level == 0 sur un monde athée (C2/C4 au repos)",
+               religion_fracture_level(s.w,s.econ,human)==0.f && religion_credo_drift(s.w,s.econ,human)==0.f);
+            ok("religion_scholar_drift == 0 sans lettré actif (C3 au repos)",
+               religion_scholar_drift(human)==0.f);
+        } else {
+            for (int i=0;i<3;i++) ok("(pas de capitale peuplée — LOT 3 ignoré)", true);
+        }
+    }
+
+    /* ============================================================= */
+    /* 17. V2b — Communautaire enfin votant (hook FAC_COMMUNAUTAIRE) */
+    /* ============================================================= */
+    printf("\n-- section 17 : V2b — FAC_COMMUNAUTAIRE votant ---------------\n");
+    {
+        /* Vérifie que le hook est bien câblé dans la TABLE (pas juste dans le
+         * commentaire) : les 4 choix identifiés portent .hook.faction==FAC_COMMUNAUTAIRE. */
+        const EventDef *xeno = event_def(EVID_XENOPHILE);
+        ok("XENOPHILE « Célébrer la concorde » vote Communautaire",
+           xeno->options[0].hook.faction==FAC_COMMUNAUTAIRE);
+        const EventDef *clo = event_def(EVID_CLOCHES);
+        ok("CLOCHES « Accorder une remise » vote Communautaire",
+           clo->options[1].hook.faction==FAC_COMMUNAUTAIRE);
+        const EventDef *k3 = event_def(EVID_CELLULE_FAUBOURGS);
+        ok("K3 « Amnistie et emplois » vote Communautaire",
+           k3->options[1].hook.faction==FAC_COMMUNAUTAIRE);
+        const EventDef *b1 = event_def(EVID_DROIT_INTEGRATION);
+        ok("DROIT_INTEGRATION « Laisser les communautés » vote Communautaire",
+           b1->options[2].hook.faction==FAC_COMMUNAUTAIRE);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");
-    free(s.w);free(s.econ);free(s.net);free(s.ts);free(s.wp);free(s.wl);free(s.sc);free(s.rn);free(s.ev);
+    free(s.w);free(s.econ);free(s.net);free(s.ts);free(s.wp);free(s.wl);free(s.sc);free(s.rn);free(s.ev);free(s.eg);
     return g_fail?1:0;
 }

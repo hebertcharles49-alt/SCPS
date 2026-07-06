@@ -24,6 +24,7 @@
 #include "scps_routes.h"
 #include "scps_tech.h"
 #include "scps_diplo.h"   /* §F : le directeur lit les guerres (T) et l'Amnistie ÉPONGE la rancune */
+#include "scps_endgame.h" /* V2b LOT 1 : la Merveille en 3 étapes (merv/MervPhase/metab_count) */
 
 /* ===================================================================== */
 /* CADRE D'ÉVÈNEMENT (data-driven)                                        */
@@ -162,6 +163,28 @@ typedef enum {
     EVID_FUSILS_REVIENNENT,   /* K5 : nos propres fusils nous reviennent (SCAR_PROLIFERATION_ARME mûrit) */
     EVID_SAVANTS_ENNEMI,      /* K6 : les savants sont passés à l'ennemi (SCAR_FUITE_CERVEAUX mûrit) */
     EVID_TARIF_APPRIS,        /* K7 : les autres villes ont appris le tarif (SCAR_EXEMPTION_ACHETEE mûrit) */
+    /* ═══ V2b LOT 1 — LA MERVEILLE EN 3 ÉTAPES (pays, joueur seul — human gate) ═══ */
+    EVID_MERV_FONDATION,      /* le monde reconnaît le palier 1 (metab_count≥3) : foi/science/force */
+    EVID_MERV_SACRIFICE,      /* le chantier réclame — récurrent tant que merv est actif */
+    EVID_MERV_ASCENSION,      /* le dernier choix, à MERV_SAVOIR_DONE : activer/refuser/détruire */
+    /* ═══ V2b LOT 2 — LE CONSEIL (V2a : betrayal_ready/pair_state) ═══ */
+    EVID_TRAHISON_SAVOIR,     /* le savant publie tes secrets (siège Savoir, betrayal_ready) */
+    EVID_TRAHISON_SOCIETE,    /* le notable place ses familles (siège Société, betrayal_ready) */
+    EVID_TRAHISON_INDUSTRIE,  /* le marchand détourne (siège Industrie, betrayal_ready) */
+    EVID_CONSEIL_SUCCESSION,  /* la retraite d'un loyal (>20 ans en poste) */
+    EVID_CONSEIL_R1,          /* Savoir vs Société : trancher, ou renvoyer les deux */
+    EVID_CONSEIL_R2,          /* Industrie vs Société : la route */
+    EVID_CONSEIL_R3,          /* Savoir vs Industrie : le cadastre */
+    EVID_CONSEIL_A1,          /* l'alliance de sièges : laisser/contrebalancer/séparer */
+    EVID_CONSEIL_A2,          /* leur candidat au 3e siège */
+    EVID_CONSEIL_C1,          /* la conspiration : renvoyer/sacrifier/céder */
+    /* ═══ V2b LOT 3 — LE CONTENU DÉBLOQUÉ (lecteurs P7a) ═══ */
+    EVID_RIVAUX_VOISINS,      /* B2 : deux cultures voisines ne s'accordent plus (culture_relation_of) */
+    EVID_PARENTE_LOINTAINE,   /* B3 : une parenté culturelle lointaine se souvient (culture_relation_of) */
+    EVID_MARCHE_ETHOS,        /* B6 : une région marche loin de l'éthos régnant (region_ethos_drift) */
+    EVID_TOLERANCE_CREDO,     /* C2 : le décret de tolérance (religion_fracture_level) */
+    EVID_LETTRE_PERIME,       /* C3 : le lettré porte une face périmée (religion_scholar_drift) */
+    EVID_PRATIQUE_DERIVE,     /* C4 : la pratique dérive de la foi professée (religion_credo_drift) */
     EVID_COUNT
 } EvId;
 
@@ -312,6 +335,9 @@ typedef enum {
     ANNAL_HEGEMON_BRISE,    /* un hégémon s'est effondré (réservé — non accroché en v1) */
     ANNAL_MONUMENT,         /* le PREMIER édifice du pays (960 j) : a=Edifice */
     ANNAL_FIN,              /* §27/Merveille : a=EndgameFin ou MERV_ASCENDED */
+    /* V2b : les grands moments du Conseil et de la Merveille en 3 étapes. */
+    ANNAL_TRAHISON,         /* un ministre a trahi (ou a été trahi) : a=evid, region=siège */
+    ANNAL_MERVEILLE_ETAPE,  /* un palier de la Merveille est franchi/tranché : a=evid, option=choix */
     ANNAL_KIND_COUNT
 } AnnalKind;
 
@@ -375,11 +401,16 @@ void events_init(EventsState *ev, const World *w, uint32_t seed);
  * décision (n_options>1) qui concerne ce pays est ENFILÉ (pending_event_*) au
  * lieu d'être auto-résolu par l'IA — le joueur choisit, ou l'auto-résolution
  * (ai_chance) tranche à expiration (180 j, pending_event_tick_expire, appelée
- * ici même en fin de tick). */
+ * ici même en fin de tick). `eg` (V2b LOT 1, peut être NULL — les bancs/anciens
+ * appelants qui n'ont pas d'endgame gardent leur comportement : les trois
+ * évènements Merveille ne tirent alors jamais, le reste du tick est inchangé)
+ * porte l'état de la Merveille (merv/merv_country/metab_count) que les triggers
+ * V2b LOT 1 relisent, et que EVID_MERV_FONDATION/EVID_MERV_ASCENSION MUTENT via
+ * endgame_start_wonder (déjà idempotent/public — pas un nouvel état à créer). */
 void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
                        WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
-                       RouteNetwork *rn, const TechState ts[], DiploState *dp, int days,
-                       int human_player);
+                       RouteNetwork *rn, const TechState ts[], DiploState *dp,
+                       EndgameState *eg, int days, int human_player);
 
 /* ---- LE DIRECTEUR (§F) : lecteurs (UI / télémétrie) -------------------- */
 float       director_temperature(const EventsState *ev);          /* dernière T [0..1] (0 ronron, 1 chaos) */
@@ -490,6 +521,27 @@ long  events_fusils_reviennent_fired(void);
 long  events_savants_ennemi_fired(void);
 long  events_tarif_appris_fired(void);
 
+/* V2b — même motif (statics de module, RAZ à events_init, PAS sérialisés). */
+long  events_merv_fondation_fired(void);
+long  events_merv_sacrifice_fired(void);
+long  events_merv_ascension_fired(void);
+long  events_trahison_savoir_fired(void);
+long  events_trahison_societe_fired(void);
+long  events_trahison_industrie_fired(void);
+long  events_conseil_succession_fired(void);
+long  events_conseil_r1_fired(void);
+long  events_conseil_r2_fired(void);
+long  events_conseil_r3_fired(void);
+long  events_conseil_a1_fired(void);
+long  events_conseil_a2_fired(void);
+long  events_conseil_c1_fired(void);
+long  events_rivaux_voisins_fired(void);
+long  events_parente_lointaine_fired(void);
+long  events_marche_ethos_fired(void);
+long  events_tolerance_credo_fired(void);
+long  events_lettre_perime_fired(void);
+long  events_pratique_derive_fired(void);
+
 /* PLAFOND DE TIRS À VIE — lecteurs (UI/bancs) : le plafond MONDIAL d'un évènement
  * (0 = illimité ; sinon 3-5, tiré de la graine à events_init) et le compteur
  * courant (tous deux état sérialisé EventsState). */
@@ -559,6 +611,7 @@ bool pending_event_at(const EventsState *ev, int slot, PendingEvent *out);
 bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
                            WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                            RouteNetwork *rn, const TechState ts[], DiploState *dp,
+                           EndgameState *eg,
                            int slot, int option, int today, int human_player);
 /* Auto-résolution (ai_chance) de tout pending EXPIRÉ (expire_day <= today) —
  * appelée par world_events_tick chaque jour (le joueur qui ignore une
@@ -566,6 +619,7 @@ bool pending_event_resolve(EventsState *ev, World *w, WorldEconomy *econ,
 void pending_event_tick_expire(EventsState *ev, World *w, WorldEconomy *econ,
                                WorldLegitimacy *wl, WorldProsperity *wp, Statecraft *sc,
                                RouteNetwork *rn, const TechState ts[], DiploState *dp,
+                               EndgameState *eg,
                                int today);
 
 /* ===================================================================== */

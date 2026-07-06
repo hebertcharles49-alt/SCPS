@@ -32,7 +32,16 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 70u           /* v70 : V2a — LE CONSEIL VIVANT. Statecraft gagne
+#define SAVE_VERSION 71u           /* v71 : V2b — LES ÉVÉNEMENTS (Merveille 3 étapes · Conseil ·
+                                    * contenu débloqué). EventsState gagne 19 EvId neufs (Merveille
+                                    * fondation/sacrifice/ascension, Conseil trahison/succession/
+                                    * inter-conseillers R1-R3/A1-A2/C1, contenu débloqué B2/B3/B6/
+                                    * C2/C3/C4) ⇒ EVID_COUNT grandit ⇒
+                                    * fires[EVID_COUNT]/fire_cap[EVID_COUNT] (section EVNT, fwrite BRUT
+                                    * du struct entier) changent de taille ; +2 AnnalKind (ANNAL_TRAHISON/
+                                    * ANNAL_MERVEILLE_ETAPE, valeurs d'enum seulement — ne changent PAS
+                                    * sizeof(AnnalEntry), pas de bump à ce titre seul). <v71 refusé.
+                                    * v70 : V2a — LE CONSEIL VIVANT. Statecraft gagne
                                     * loyalty[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS] +
                                     * pay[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS] (float, section
                                     * STAT, fwrite BRUT du struct entier) ⇒ sizeof(Statecraft)
