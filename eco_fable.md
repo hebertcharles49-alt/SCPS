@@ -848,3 +848,50 @@ flag `g_commerce_active` : inactif hors sim ⇒ bancs INCHANGÉS. Mesuré seed 9
 empires ~19 — l'échelle « 18/20 par mois » demandée —, gros ~546), monde SAIN (satisfaction 77/87/89 %,
 hégémon mortel, IPM 1.17). Commits `8ee31de` (moteur) + `56a3b00` (membrane + UI). §5 passe de
 « décoratif » à ÉQUILIBRAGE ACTIF — le seul des 4 « reste » que le design a rouvert et tranché.
+
+## 2026-07-06 — ENDGAME UNIFIÉ : la Brèche (une barre, quatre visages), la Merveille-victoire (métabolisation 3/4/6)
+
+**Vague 0 (3 éclaireurs read-only) — l'écart existant/cible :**
+- Le §27 EST déjà « un seuil, des visages » : `endgame_tick` tire à `entropy ≥ ENTROPY_FIN` (gate an 180),
+  et la sélection par rare dominant `faust_consumed[3]` (scps_endgame.c:542-555 : essence→EAU, flux→RONCES,
+  fer→FROID) implémente DÉJÀ « le visage = la tech consommée » — chaque tech faustienne consomme SON rare
+  (foreuse→essence, réplicateur→flux, Corne=TECH_FORGE_RUNES→fer). AUCUN compteur par-tech à créer.
+- `entropy` ≠ `dereal` ≠ `breach_pressure` : trois compteurs distincts (prosperity/order/ages). Le doc disait
+  « dereal seuil unique » — c'était une confusion de nom, le seuil réel est l'entropie.
+- La fin SANG n'existe pas : Campaign.dead_choc/dead_pursuit existent par campagne mais aucune agrégation
+  monde, aucune pop de référence an-0 sérialisée.
+- La Merveille : paliers FORGE/SOCIÉTÉ/SAVOIR × rares, victoire = arbre COMPLET + assimilation TOTALE
+  (integration ≥0.99 sur tout le monde possédé). La métabolisation (econ_country_metabolized,
+  _by_heritage) est LISIBLE mais n'est PAS une condition.
+- Factions : API complète (opposition table hardcodée, grief AUTO dans lever_apply, coup_tension_c,
+  rot plafonné 0.85) mais l'endgame n'en lit RIEN ; Communautaire n'a AUCUN hook d'event (le peuple ne
+  vote jamais) ; le Conseil n'a ni faction ni loyauté (greffe ~4 Ko dans Statecraft, modèle de dérive =
+  COERCION_DECAY 0.93).
+- Godot : le terrain MUTE déjà physiquement (rebiome/sink/thorns relus par le shader) ; le récap d'âge
+  (pause+bilan+verbe) est le squelette exact du page-turn ; lavis par-province = OPTION SHADER seulement
+  (512k cellules, le vectoriel est rejeté) ; la barre de métabolisation par héritage est DÉJÀ dans le
+  panneau tech (heritage_access()).
+
+**DÉCISIONS (joueur, 2026-07-06) :**
+1. LA BARRE D'ENTROPIE DÉCLENCHE LA BRÈCHE, QUELLE QUE SOIT SA NATURE — une barre, plusieurs
+   nourritures (charge tech faustienne [existant], transmuteurs [existant], breach_pressure des Âges
+   [à câbler], LES MORTS DE GUERRE [à créer]) ; le visage au tir = la signature dominante
+   (essence/flux/fer/sang). FIN_SANG appendue à l'enum (valeurs existantes stables).
+2. LA MERVEILLE EST LA FORME DE VICTOIRE — paliers gatés MÉTABOLISATION : 3 cultures (palier 1) /
+   4 (palier 2) / 6 (palier 3). Les anciennes conditions (assimilation totale + arbre complet)
+   TOMBENT — la thèse SCPS (le contact métabolisé) rendue jouable. « Culture métabolisée » = héritage
+   à accès tier 3 (digéré OU natif — la machinerie de la triade).
+3. ENDGAME JOUEUR : pas de probe headless lourde (difficile et contreproductive) — bancs moteur
+   (endgame_demo) seulement, le flux Godot se vérifie à la main.
+4. UI : popup/bouton dans l'ARBRE DE TECH « métabolisation de X prête » au franchissement du tier
+   (lecture heritage_access existante, GDScript pur).
+5. UNIFIER : pas de mécanique parallèle — le Sang n'est pas un second seuil, c'est une entrée de
+   l'entropie + un visage.
+
+**Plan de vagues :** V1a moteur (Sang + unification entropie + Merveille-métabolisation + réactions
+factions + readers d'intensité par région, SAVE v67) ∥ V1b Godot (page qui se tourne sur le récap
+d'âge, couleurs de fin + or Merveille, popup métabolisation). V2 : Conseil (faction+loyauté+paie,
+SAVE v68) puis événements (trahisons/successions/inter-conseillers R/A/C, étapes Fondation/
+Construction/Ascension à 3 choix, hooks Communautaire manquants). V3 : lavis par variante (shader
+variant_map + readers façade). Gates par vague : bancs · golden (attendu IDENTIQUE en V1a — rien ne
+mord <an-180) · determinism-deep 200 ans (l'endgame vit au-delà du golden) · savetest.
