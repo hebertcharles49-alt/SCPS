@@ -82,6 +82,18 @@ typedef struct EndgameState {
     double   war_dead_seen;                   /* dernier cumul Campaign lu (delta = cum − seen) */
     double   pop_ref;                         /* Σ pop à la genèse (posée UNE fois par sim_init) */
 
+    /* ── #32 (LE SANG SIGNE TON RÈGNE) — JUMEAU joueur (2026-07-06) ───────────
+     * war_dead est MONDIAL : un joueur pacifiste dans un monde sanglant recevait
+     * FIN_SANG sans avoir tiré une flèche. war_dead_player ne compte QUE les morts
+     * des batailles où le joueur humain est un des deux belligérants
+     * (Campaign.dead_choc_player/dead_pursuit_player, cumulés au MÊME site
+     * per-bataille que le global) — même décrue SANG_MEMORY_HL, même
+     * delta-tracking (war_dead_player_seen). En chronique/viewer sans joueur
+     * (human_player=-1), Campaign ne cumule JAMAIS ces compteurs jumeaux ⇒
+     * war_dead_player reste à 0 pour toujours (zéro impact monde IA). */
+    double   war_dead_player;                 /* mémoire à décrue, morts DU joueur seulement */
+    double   war_dead_player_seen;            /* dernier cumul Campaign.*_player lu */
+
     /* SANG (FIN_SANG) : dépeuplement progressif des régions marquées par la
      * guerre — une CICATRICE QUI NE GUÉRIT PLUS (contrairement à revolt_scar
      * qui décroît). Figée aux régions les plus ravagées au moment du fire
@@ -103,6 +115,12 @@ void endgame_set_pop_ref(EndgameState *eg, const WorldEconomy *econ);
  * pop_ref sans econ). Lu par l'entrée d'entropie, la sélection FIN_SANG et la
  * télémétrie chronicle — un seul chiffre partout. */
 double endgame_blood_ratio(const EndgameState *eg, const WorldEconomy *econ);
+
+/* #32 — la PART du joueur dans le sang mondial : war_dead_player / war_dead (mémoires
+ * décrues, même échelle) ∈ [0,1]. 0 si war_dead≤0 (rien à partager) OU eg NULL. Lu par
+ * la sélection FIN_SANG (n'accorde la fin QUE si le joueur y est POUR QUELQUE CHOSE)
+ * et par la membrane (ScpsEndgameInfo.blood_player_pct — le hover « c'est TA guerre »). */
+double endgame_blood_player_share(const EndgameState *eg);
 
 /* Tick orchestrateur : appelé UNE fois par an (après prosperity_tick) depuis
  * sim_step / chronicle. camp : pour échouer les armées sur sol englouti (et,

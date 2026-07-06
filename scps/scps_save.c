@@ -322,6 +322,13 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (eg->merv_progress < 0.0f || eg->merv_progress > 1.0f) return false;
         /* V1a : war_dead/pop_ref (le ratio SANG) + sang_scar[] (cicatrice permanente). */
         if (eg->war_dead < 0.0 || eg->pop_ref < 0.0 || eg->war_dead_seen < 0.0) return false;
+        /* #32 : le JUMEAU joueur ne peut pas dépasser le cumul mondial (le joueur est AU
+         * PLUS un des deux belligérants de chaque bataille comptée deux fois si les DEUX
+         * armées sont siennes — jamais plus que le total). Une petite marge (×1.0 strict
+         * suffit : dead_choc_player+dead_pursuit_player ⊆ dead_choc+dead_pursuit par
+         * construction) — la borne stricte capte toute save forgée/corrompue. */
+        if (eg->war_dead_player < 0.0 || eg->war_dead_player_seen < 0.0) return false;
+        if (eg->war_dead_player > eg->war_dead + 1e-6 || eg->war_dead_player_seen > eg->war_dead_seen + 1e-6) return false;
         for (int r = 0; r < SCPS_MAX_REG; r++)
             if (eg->sang_scar[r] < 0.0f || eg->sang_scar[r] > 1.0f) return false;
     }
@@ -419,6 +426,7 @@ int scps_load_game(int slot, World *w, Sim *s, WorldParams *params, int *out_her
     demography_dyn_id_rebase(s->econ);
     *params=h.params;
     warhost_set_human(s->player);
+    campaign_set_human(s->player);   /* #32 : le compteur de morts DU joueur suit le même contrat que warhost/econ */
     { const char *tstr=tune_active_string();
       if ((uint32_t)scrypt_fnv1a(tstr, strlen(tstr)) != h.tune_ck)
           fprintf(stderr, "[save] AVERTISSEMENT : SCPS_TUNE actif ≠ celui de la sauvegarde — la partie évoluera "

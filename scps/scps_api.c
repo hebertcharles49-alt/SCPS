@@ -125,6 +125,7 @@ void scps_sim_generate(ScpsSim *s, uint32_t seed){
     s->sim.ai_on[s->sim.player] = false;
     warhost_set_human(s->sim.player);   /* la main humaine : l'armée du joueur ne s'auto-mobilise plus */
     econ_set_human(s->sim.player);     /* §NF : la construction autonome SKIPPE le joueur (il construit via le panneau B) */
+    campaign_set_human(s->sim.player); /* #32 : n'isoler QUE les morts de guerre du joueur (endgame_blood_ratio) */
     feed_set_focus(s->sim.player);     /* le fil d'évènements ne garde que ce qui LE concerne */
     econ_flux_reset();   /* budget façade : repart d'une ardoise propre (le flux est un état GLOBAL ;
                           * econ_init, déjà appelé par sim_init, a RAZ g_tax_lastyear — pas de capture ici) */
@@ -601,6 +602,17 @@ void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out){
     out->sink_pct      = er.sink_intensity;
     out->epicenter_reg = er.epicenter_reg;
     out->fin_raw       = (s->sim.eg) ? (int)s->sim.eg->fin : 0;   /* brut, SANG compris (5) */
+    /* #32 — bande de sang : « le monde a saigné, et TOI ? ». Nombres tangibles,
+     * jamais de flottant moteur qui franchit la membrane. */
+    if (s->sim.eg) {
+        double ratio = endgame_blood_ratio(s->sim.eg, s->sim.econ);
+        float frac = tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+        int bp = (frac > 0.f) ? (int)(100.0 * ratio / (double)frac + 0.5) : 0;
+        out->blood_pct = (bp < 0) ? 0 : (bp > 100 ? 100 : bp);
+        double share = endgame_blood_player_share(s->sim.eg);
+        int bpp = (int)(100.0 * share + 0.5);
+        out->blood_player_pct = (bpp < 0) ? 0 : (bpp > 100 ? 100 : bpp);
+    }
 }
 
 int scps_region_sunken(const ScpsSim *s, int r){
@@ -2854,6 +2866,7 @@ int scps_sim_load(ScpsSim *s, int slot){
     s->sim.ai_on[s->sim.player] = false;
     warhost_set_human(s->sim.player);
     econ_set_human(s->sim.player);
+    campaign_set_human(s->sim.player); /* #32 : miroir du load (cf. scps_sim_new) */
     feed_set_focus(s->sim.player);   /* le fil repart, focalisé joueur (RAZ par le load) */
     econ_flux_reset();
     s->ready = true;

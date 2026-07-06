@@ -852,6 +852,10 @@ int main(int argc, char **argv){
             ScpsEndgameInfo ei; scps_endgame_info(sd, &ei);
             ok("fin_raw BORNÉ 0..5 (SANG compris, brut — indépendant du miroir RFIN)",
                ei.fin_raw>=0 && ei.fin_raw<=5);
+            /* #32 — nombres tangibles bornés [0,100] ; un run frais (aucun mort de
+             * guerre encore accumulé) n'a rien à partager côté joueur (0). */
+            ok("blood_pct/blood_player_pct BORNÉS [0,100] (#32)",
+               ei.blood_pct>=0 && ei.blood_pct<=100 && ei.blood_player_pct>=0 && ei.blood_player_pct<=100);
 
             /* la carte L8 (map_w*map_h octets) doit rester COHÉRENTE avec fin_raw : tant
              * qu'aucune fin n'a latché (cas courant sur un run de 30 ans), tout-0. */

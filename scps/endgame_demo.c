@@ -547,6 +547,97 @@ int main(void) {
     CHECK("endgame_metab_required(SAVOIR)==6",  endgame_metab_required(MERV_SAVOIR) == 6);
     CHECK("endgame_metab_required(NONE)==0",    endgame_metab_required(MERV_NONE) == 0);
 
+    /* ---- C9 : #32 (LE SANG SIGNE TON RÈGNE) — le JUMEAU joueur ---------------------
+     * La thèse : « chaque fin est la conséquence de la ressource qu'ON a brûlée ». Un
+     * joueur pacifiste dans un monde IA sanglant ne doit PAS recevoir SANG — seul SON
+     * sang doit compter. Trois garanties : (1) l'accumulateur jumeau ne compte QUE les
+     * batailles où le joueur est belligérant ; (2) la garde retombe au sélecteur normal
+     * (rare dominant/hash) quand la part du joueur est SOUS le seuil ; (3) sans main
+     * humaine (campaign_get_human()==-1, le défaut), rien ne change — golden intact. */
+    printf("\nC9 #32 — LE SANG SIGNE TON RÈGNE (le jumeau joueur)\n");
+
+    /* C9a — l'accumulateur jumeau ne compte QUE les batailles DU joueur. */
+    { int pcid = 3;   /* un pays quelconque, "le joueur" pour ce test */
+      campaign_set_human(pcid);
+      CHECK("campaign_get_human reflète campaign_set_human", campaign_get_human() == pcid);
+      camp->dead_choc = 0; camp->dead_pursuit = 0;
+      camp->dead_choc_player = 0; camp->dead_pursuit_player = 0;
+      /* bataille IMPLIQUANT le joueur (site bt_day/bt_rout — ici simulée directement,
+       * comme le fait déjà endgame_entropy_widen en lisant Campaign) : le joueur
+       * belligérant ⇒ le site per-bataille (scps_campaign.c) cumule le jumeau. */
+      camp->army[pcid].owner = pcid; camp->army[7].owner = 7;   /* deux belligérants distincts */
+      /* Le SITE réel est dans bt_day/bt_rout (scps_campaign.c) ; ce banc ne rejoue pas
+       * une bataille complète (hors périmètre endgame_demo) — il VÉRIFIE le CONTRAT
+       * observable : quand seul le cumul GLOBAL bouge (aucune bataille du joueur),
+       * war_dead_player doit rester à 0 ; quand le jumeau bouge (le joueur a combattu),
+       * le ratio joueur doit suivre. */
+      endgame_init(&eg); endgame_set_pop_ref(&eg, econ);
+      wp->entropy = 0.f; wp->entropy_epicenter = -1;
+      camp->dead_choc = 2000; camp->dead_pursuit = 0;         /* morts MONDIALES (IA vs IA, pas le joueur) */
+      camp->dead_choc_player = 0; camp->dead_pursuit_player = 0;   /* le joueur n'a RIEN combattu */
+      endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 10);
+      CHECK("war_dead MONDIAL reflète le cumul (IA vs IA)", eg.war_dead == 2000.0);
+      CHECK("war_dead_player reste À ZÉRO (le joueur n'était PAS belligérant)", eg.war_dead_player == 0.0);
+      CHECK("blood_player_share == 0 (rien à partager côté joueur)", endgame_blood_player_share(&eg) == 0.0);
+
+      /* maintenant le joueur COMBAT (le jumeau bouge, au MÊME site que le global —
+       * simulé ici par le même delta-tracking que bt_day/bt_rout appliqueraient). */
+      camp->dead_choc = 3000; camp->dead_choc_player = 1000;   /* +1000 mondial, dont +1000 DU joueur */
+      endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 11);
+      CHECK("war_dead_player suit SA propre bataille (delta 1000)", eg.war_dead_player > 0.0);
+      CHECK("war_dead_player ne dépasse JAMAIS war_dead (⊆ par construction)",
+            eg.war_dead_player <= eg.war_dead + 1e-6);
+      campaign_set_human(-1);   /* repos : ne pas fuiter vers les blocs suivants */
+    }
+
+    /* C9b — la garde retombe au sélecteur normal (rare dominant/hash) quand la PART
+     * du joueur est SOUS BLOOD_PLAYER_SHARE, malgré un ratio MONDIAL bien au-dessus
+     * du seuil ENDGAME_BLOOD_FRAC (le monde a saigné — mais pas par lui). */
+    { int pcid = 5;
+      campaign_set_human(pcid);
+      world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+      for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
+      endgame_init(&eg); endgame_set_pop_ref(&eg, econ);
+      double blood_frac2 = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+      double share_thr = (double)tune_f("BLOOD_PLAYER_SHARE", 0.25f);
+      /* ratio MONDIAL largement au-dessus du seuil, mais la part DU joueur (via le
+       * jumeau) reste NULLE — un monde IA sanglant, un joueur qui n'a rien fait. */
+      camp->dead_choc = (long)(eg.pop_ref * (blood_frac2 + 0.05));
+      camp->dead_pursuit = 0;
+      camp->dead_choc_player = 0; camp->dead_pursuit_player = 0;   /* AUCUNE bataille du joueur */
+      wp->entropy = tune_f("ENTROPY_FIN", 55.f) + 10.f;
+      wp->entropy_epicenter = -1;
+      wp->faust_consumed[0] = 100000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;  /* essence dominant → EAU attendu */
+      for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner >= 0) { econ->region[r].revolt_scar = 0.9f; break; }
+      endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 200);
+      double ratio2 = endgame_blood_ratio(&eg, econ);
+      CHECK("ratio MONDIAL bien au-dessus du seuil (le monde A saigné)", ratio2 >= blood_frac2);
+      CHECK("part DU joueur SOUS le seuil (il n'a rien brûlé)", endgame_blood_player_share(&eg) < share_thr);
+      CHECK("SANG N'EST PAS retenue malgré le ratio mondial (retombe au rare dominant)",
+            eg.fired && eg.fin != FIN_SANG);
+      campaign_set_human(-1);
+    }
+
+    /* C9c — human=-1 (chronique/viewer sans main humaine) : comportement STRICTEMENT
+     * INCHANGÉ — le seul test reste ENDGAME_BLOOD_FRAC (comme avant #32). Reproduit
+     * EXACTEMENT le scénario C7 « SANG l'emporte au seuil » ligne ~505 : sans main
+     * humaine, une part-joueur nulle ne doit PAS bloquer SANG. */
+    { CHECK("campaign_get_human()==-1 par défaut (repos post-C9a/b)", campaign_get_human() == -1);
+      world_generate(w, &p); econ_init(econ, w); gen_population(w, econ); prosperity_init(wp, w);
+      for (int c = 0; c < SCPS_MAX_COUNTRY; c++) ts[c].charge = 0.f;
+      endgame_init(&eg); endgame_set_pop_ref(&eg, econ);
+      double blood_frac3 = (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+      camp->dead_choc = (long)(eg.pop_ref * (blood_frac3 + 0.05));
+      camp->dead_pursuit = 0; camp->dead_choc_player = 0; camp->dead_pursuit_player = 0;
+      wp->entropy = tune_f("ENTROPY_FIN", 55.f) + 10.f;
+      wp->entropy_epicenter = -1;
+      wp->faust_consumed[0] = 100000.0; wp->faust_consumed[1] = 0.0; wp->faust_consumed[2] = 0.0;
+      for (int r = 0; r < econ->n_regions; r++) if (econ->region[r].owner >= 0) { econ->region[r].revolt_scar = 0.9f; break; }
+      endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, camp, 0, 200);
+      CHECK("human=-1 : SANG l'emporte au seuil MONDIAL seul (garde INACTIVE, inchangé)",
+            eg.fired && eg.fin == FIN_SANG);
+    }
+
     /* ---- C8 : CORRECTIF Merveille — MAX(contact, diaspora INDIVIDUALISÉE) ----------
      * Le piège évité : l'ancien calcul jugeait chaque héritage sur la POP TOTALE de
      * l'empire (comme econ_country_heritage_digested, fait pour l'accès TECH) — 6

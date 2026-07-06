@@ -98,6 +98,12 @@ typedef struct Campaign {
     int   n_battles, n_routs, n_disengage, n_reinforce, n_stalemate;
     int   n_rallies;                      /* L2 : armées reformées après déroute */
     long  dead_choc, dead_pursuit;        /* LA vérif : la poursuite DOMINE le choc si cavalerie dominante */
+    /* #32 (LE SANG SIGNE TON RÈGNE) — jumeau du couple ci-dessus, ne comptant QUE les
+     * morts des batailles IMPLIQUANT le joueur humain (un des deux belligerents ==
+     * g_campaign_human) : additif au MÊME site que dead_choc/dead_pursuit (bt_day/
+     * bt_rout), jamais un calcul dérivé après coup. g_campaign_human=-1 (chronique,
+     * viewer sans main humaine) ⇒ ce compteur reste à 0 pour toujours. */
+    long  dead_choc_player, dead_pursuit_player;
     long  battle_days;                    /* Σ durées (jours) */
     int   n_sails;                        /* mer §10 : traversées ordonnées */
     float sail_days_sum;                  /* Σ jours de mer des traversées */
@@ -105,6 +111,14 @@ typedef struct Campaign {
 
 /* Bâtit la table de terrain par région et remet les armées à zéro. */
 void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ);
+
+/* #32 — la MAIN HUMAINE (miroir de warhost_set_human/econ_set_human) : quel pays est
+ * le joueur, pour isoler SES morts de guerre du cumul mondial. Global (comme les deux
+ * autres) car campaign_init memset le Campaign entier à chaque régénération/reload —
+ * posé APRÈS, survit à travers les ticks. -1 = aucun humain (défaut ; chronique ne
+ * l'appelle jamais). */
+void campaign_set_human(int cid);
+int  campaign_get_human(void);   /* lecteur : -1 si aucun (chronique/viewer sans main humaine) */
 
 /* Ordonne à la force expéditionnaire de `owner` de partir de `from_region` vers
  * `target_region` (région ennemie à réduire) en TRANSFÉRANT `src_force` (p.ex.

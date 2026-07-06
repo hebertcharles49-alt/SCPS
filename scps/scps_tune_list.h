@@ -497,6 +497,13 @@
      * longue devenait SANG ; à 40 ans le seuil BLOOD_FRAC mesure « une génération qui
      * a perdu un cinquième du monde ». */ \
     X(SANG_MEMORY_HL,         40.f) \
+    /* #32 (LE SANG SIGNE TON RÈGNE, 2026-07-06) — le CORRECTIF joueur : le ratio de sang
+     * ci-dessus est MONDIAL, un pacifiste dans un monde IA sanglant le franchissait sans
+     * avoir combattu. Quand une main humaine existe (campaign_get_human()≥0), SANG
+     * n'est retenue que si SA PART dans ce sang (war_dead_player/war_dead, même mémoire
+     * décrue) atteint BLOOD_PLAYER_SHARE — sinon on retombe au sélecteur normal (rare
+     * dominant/hash). Sans main humaine (chronique/viewer), la garde est INACTIVE. */ \
+    X(BLOOD_PLAYER_SHARE,     0.25f) \
     /* CORRECTIF Merveille (relecture joueur) : la métabolisation-VICTOIRE juge CHAQUE
      * héritage sur SA PROPRE diaspora (dénominateur par-héritage), pas la pop totale de
      * l'empire (piège : ce dernier dénominateur rend 6 cultures ≥0.35 simultanément

@@ -209,6 +209,10 @@ typedef struct {
                                   * distinct de `fin` (miroir RFIN, SANG y retombe sur 0) : c'est CE champ
                                   * que lit le lavis V3 pour choisir sa teinte (SANG y a sa propre couleur). */
     int         epicenter_reg;  /* région-foyer du cataclysme, -1 si aucune */
+    /* #32 (LE SANG SIGNE TON RÈGNE) — nombres TANGIBLES pour le hover de la bande
+     * d'entropie/bandeau SANG : « le monde a saigné, et TOI, à quel point ? ». */
+    int         blood_pct;         /* 0-100 : endgame_blood_ratio / ENDGAME_BLOOD_FRAC, plafonné 100 */
+    int         blood_player_pct;  /* 0-100 : endgame_blood_player_share (la part DU joueur dans ce sang) */
 } ScpsEndgameInfo;
 void scps_endgame_info(ScpsSim *s, ScpsEndgameInfo *out);
 /* état d'engloutissement d'une région (fin EAU) : 0 = non · 1 = programmée · 2 = engloutie. */

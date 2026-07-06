@@ -78,6 +78,16 @@ double endgame_blood_ratio(const EndgameState *eg, const WorldEconomy *econ) {
     return (base > 0.0) ? eg->war_dead / base : 0.0;
 }
 
+/* #32 — part du joueur dans le sang mondial (mémoires décrues, même échelle donc le
+ * ratio est stable indépendamment de pop/pop_ref). 0 si rien à partager (war_dead≤0). */
+double endgame_blood_player_share(const EndgameState *eg) {
+    if (!eg || eg->war_dead <= 0.0) return 0.0;
+    double share = eg->war_dead_player / eg->war_dead;
+    if (share < 0.0) share = 0.0;
+    if (share > 1.0) share = 1.0;
+    return share;
+}
+
 static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
                                   const TechState ts[], const Campaign *camp,
                                   const WorldEconomy *econ, int nc) {
@@ -99,8 +109,20 @@ static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
         double delta = cum - eg->war_dead_seen;
         if (delta < 0.0) delta = 0.0;             /* RAZ de campagne (nouvelle sim) */
         eg->war_dead_seen = cum;
-        eg->war_dead = eg->war_dead * pow(0.5, 1.0 / (double)tune_f("SANG_MEMORY_HL", 40.f))
-                     + delta;
+        double hl_decay = pow(0.5, 1.0 / (double)tune_f("SANG_MEMORY_HL", 40.f));
+        eg->war_dead = eg->war_dead * hl_decay + delta;
+
+        /* #32 — le JUMEAU joueur : MÊME décrue, MÊME delta-tracking, sur le cumul
+         * PARALLÈLE (Campaign.*_player) qui ne grossit qu'aux batailles où le joueur
+         * humain est belligérant (campaign_set_human, gate -1 par défaut ⇒ ce cumul
+         * reste 0 en chronique/viewer sans main humaine — additif, ne nourrit PAS
+         * l'entropie elle-même : seul war_dead (mondial) le fait, comme avant). */
+        double cum_p = (double)camp->dead_choc_player + (double)camp->dead_pursuit_player;
+        double delta_p = cum_p - eg->war_dead_player_seen;
+        if (delta_p < 0.0) delta_p = 0.0;
+        eg->war_dead_player_seen = cum_p;
+        eg->war_dead_player = eg->war_dead_player * hl_decay + delta_p;
+
         wp->entropy += tune_f("ENTROPY_BLOOD_W", 8.0f)
                      * (float)endgame_blood_ratio(eg, econ);
     }
@@ -827,8 +849,22 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
      * barre — une barre, plusieurs nourritures — si le ratio morts-de-guerre/
      * pop_ref franchit ENDGAME_BLOOD_FRAC, LE SANG L'EMPORTE (visage dominant,
      * PAS un second seuil parallèle : le gate temporel + ENTROPY_FIN restent
-     * les MÊMES conditions d'ouverture testées plus haut). */
-    if (endgame_blood_ratio(eg, econ) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)) {
+     * les MÊMES conditions d'ouverture testées plus haut).
+     * #32 — CORRECTIF : le ratio est MONDIAL (un joueur pacifiste dans un monde
+     * IA belliqueux le franchissait sans avoir tiré une flèche — « chaque fin est
+     * la conséquence de la ressource qu'ON a brûlée »). Quand une main humaine
+     * existe (campaign_get_human()≥0 — MÊME gate que l'accumulation jumelle,
+     * posé par campaign_set_human au même site que warhost_set_human/
+     * econ_set_human), SANG n'est retenue que si en PLUS sa PART dans ce sang
+     * (endgame_blood_player_share) atteint BLOOD_PLAYER_SHARE — sinon on RETOMBE
+     * au sélecteur normal (rare dominant / hash), le monde a saigné mais pas par
+     * lui. Aucune main humaine (chronique/viewer, défaut -1) : la garde est
+     * INACTIVE (comportement inchangé, le seul test reste ENDGAME_BLOOD_FRAC
+     * comme avant #32 — golden intact par construction). */
+    bool sang_ok = endgame_blood_ratio(eg, econ) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f);
+    if (sang_ok && campaign_get_human() >= 0)
+        sang_ok = endgame_blood_player_share(eg) >= (double)tune_f("BLOOD_PLAYER_SHARE", 0.25f);
+    if (sang_ok) {
         /* Foyer SANG : la région vivante la plus ravagée (max revolt_scar), pas
          * forcément le foyer d'entropie (le sang a SA propre géographie). */
         int worst = -1; float worst_scar = -1.f;
@@ -871,7 +907,7 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
                   WorldProsperity *wp, const TechState ts[],
                   RouteNetwork *rn, NavyState *navy, DiploState *dp,
                   Campaign *camp, int player, int year) {
-    (void)rn; (void)navy; (void)dp; (void)player;
+    (void)rn; (void)navy; (void)dp;
     if (!eg || !wp) return;
 
     /* C1 — élargir l'entropie (savoir faustien + Âge de la Brèche + morts de guerre). */

@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 71u           /* v71 : V2b — LES ÉVÉNEMENTS (Merveille 3 étapes · Conseil ·
+#define SAVE_VERSION 72u           /* v72 : #32 (LE SANG SIGNE TON RÈGNE) — EndgameState gagne
+                                    * war_dead_player/war_dead_player_seen (2 double, jumeau du ratio
+                                    * de sang MONDIAL ne comptant que les morts DU joueur) ⇒
+                                    * sizeof(EndgameState) change (section EGAM, fwrite BRUT du
+                                    * struct entier). */
+/* v71 : V2b — LES ÉVÉNEMENTS (Merveille 3 étapes · Conseil ·
                                     * contenu débloqué). EventsState gagne 19 EvId neufs (Merveille
                                     * fondation/sacrifice/ascension, Conseil trahison/succession/
                                     * inter-conseillers R1-R3/A1-A2/C1, contenu débloqué B2/B3/B6/

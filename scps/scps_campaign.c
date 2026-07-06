@@ -14,6 +14,13 @@
 #include <math.h>
 #include <string.h>
 
+/* #32 — la MAIN HUMAINE : miroir de g_human_player (scps_warhost.c) / g_econ_human
+ * (scps_econ.c). -1 par défaut (chronique/viewer sans joueur : les 2 sites ci-dessous
+ * ne comptent jamais rien). */
+static int g_campaign_human = -1;
+void campaign_set_human(int cid){ g_campaign_human = cid; }
+int  campaign_get_human(void){ return g_campaign_human; }
+
 /* ---- Calibrage : ce que l'éco régionale dit au siège ------------------ */
 #define DEF_BASE          1.0f   /* défense de base d'une région colonisée */
 #define DEF_PER_BLD       0.25f  /* chaque édifice durcit la place */
@@ -458,6 +465,8 @@ static void bt_rout(Campaign *c, const World *w, const WorldEconomy *e, DiploSta
     if (!L->rally_used && to_kill>=lp) to_kill=lp-1;   /* L2 : le NOYAU survit pour se rallier */
     long pursued=kill_packets(&L->force,to_kill);
     c->dead_pursuit += pursued*100;                                    /* la curée : l'essentiel des morts */
+    if (g_campaign_human>=0 && (L->owner==g_campaign_human || V->owner==g_campaign_human))
+        c->dead_pursuit_player += pursued*100;   /* #32 : le joueur est belligérant ICI */
     c->n_routs++;
     /* L2 — LE RALLIEMENT : les fuyards se reformeront (40-60 % de l'avant-déroute,
      * 30-60 j) — une fois par guerre. Déterministe : dérivé de l'effectif. */
@@ -532,6 +541,8 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
         if (bt->lossB>=1.f){ mB=kill_packets(&B->force,(long)bt->lossB); bt->lossB-=(float)mB; }
         if (bt->lossA>=1.f){ mA=kill_packets(&A->force,(long)bt->lossA); bt->lossA-=(float)mA; }
         c->dead_choc += (mA+mB)*100;
+        if (g_campaign_human>=0 && (A->owner==g_campaign_human || B->owner==g_campaign_human))
+            c->dead_choc_player += (mA+mB)*100;   /* #32 : le joueur est belligérant de CETTE bataille */
         bt_score(dp,(pA>=pB)?A->owner:B->owner,(pA>=pB)?B->owner:A->owner,0.35f);  /* le jour gagné pèse un peu */
         /* L3/H4.2 — LE CHOC TIENT : pas de test de déroute avant CHOC_ROUNDS_BONUS
          * chocs livrés (les batailles durent, le positionnement compte). */
@@ -560,6 +571,8 @@ static void bt_day(Campaign *c, const World *w, const WorldEconomy *e, DiploStat
                 if (dc_kill<1 && lp>=1) dc_kill=1;   /* T5 — même plancher qu'en poursuite (cf. bt_rout) */
                 long pursued=kill_packets(&L->force,dc_kill);
                 c->dead_pursuit+=pursued*100; c->n_disengage++;
+                if (g_campaign_human>=0 && (L->owner==g_campaign_human || V->owner==g_campaign_human))
+                    c->dead_pursuit_player += pursued*100;   /* #32 : le joueur est belligérant ICI */
                 bt_score(dp,V->owner,L->owner,2.f);
                 L->phase=FA_IDLE; L->dest=-1; L->next=-1; L->broken_days=10;
                 bt_end(c,e,dp,bt); return;
