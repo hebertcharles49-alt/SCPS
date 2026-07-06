@@ -14,6 +14,7 @@
 #include "scps_provlog.h"   /* journal provincial : on POUSSE les évènements EV_PROVINCE (display) */
 #include "scps_factions.h"  /* MEMBRANE DE DÉCISION : faction_lever_apply/faction_concede (hooks de choix) */
 #include "scps_religion.h"  /* CONTENU W2 (lot 2) §C : religion_schism_eligible (C1) */
+#include "scps_agency.h"    /* CONTENU W2 (lot 2) §C : Edifice (EDI_SANCTUAIRE/TEMPLE/CATHEDRALE, C6) */
 
 /* MEMBRANE DE DÉCISION — TÉLÉMÉTRIE (« la télémétrie est la preuve d'équilibre ») : combien
  * de fois la crise phare (et sa suite conséquente) ont tiré sur l'ensemble d'un run. Statics
@@ -807,6 +808,354 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.15f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_PROLIFERATION_ARME, .cooldown_days=36500 },
           "Le secret se vend, six mois de taxes d'un coup — mais un secret vendu s'ébruite.",
           { .d_influence=-2.f, .unlock_branch=-1 }, 0.5f } }, 3 },
+
+    /* ═══════════════════════════════════════════════════════════════════
+     * CONTENU W2 (lot 2) — §A tech (déclenchement unique) · §B culturel ·
+     * §C religieux · §D chaînage. ANCRES DE CALIBRAGE (mêmes fourchettes que
+     * W1/Marbrive ci-dessus, comparées à la MÊME table existante) :
+     *   - d_agitation/d_L/d_H_coerc/d_coercion : fourchette basse (±0.1-0.6 sur
+     *     H_coerc/L, ±4-16 sur agitation, ≤0.22 sur coercion) — crises DOMESTIQUES.
+     *   - d_treasury_mois (SIGNÉ, fraction du revenu MENSUEL) : -0.15..-1.6 pour
+     *     un coût, +0.3..+0.8 pour un gain — même ordre de grandeur que W1/Marbrive.
+     *   - gamble_p 0.15-0.5 selon la vraisemblance du pari (discret → probable ;
+     *     concours de circonstances → rare).
+     *   - cooldown_days=1460-1825 (4-5 ans, EV_COUNTRY structurels §A/§B/§C) ou
+     *     360-900 (les chaînages §D, des crises plus resserrées) ; SALVE_RUNIQUE
+     *     avait 36500 (jamais deux fois) — les §A tech sont RE-TIRABLES (une
+     *     institution ne se referme pas nécessairement pour toujours), donc un
+     *     cooldown ORDINAIRE (1825 j) plutôt que le énorme de SALVE_RUNIQUE : la
+     *     tech reste débloquée en permanence, mais l'ÉVÈNEMENT (la première
+     *     décision qu'elle impose) ne doit pas re-tirer chaque année tant que le
+     *     répit tient — c'est la MTTH (720-3650 j) qui fait le gros du travail
+     *     d'espacement, le cooldown n'est qu'un filet après un CHOIX déjà pris.
+     */
+
+    /* A1 — LES CHAÎNES RAPPORTENT (pays, Économie servile). */
+    [EVID_CHAINES_RAPPORTENT] = { EVID_CHAINES_RAPPORTENT, EV_COUNTRY, "Les chaînes rapportent",
+        trig_chaines_rapportent, 1825.f, NULL, {
+        { "Institutionnaliser",
+          "Une économie qui carbure aux chaînes, organisée, sans détour.",
+          { .d_H_coerc=0.5f, .d_L=-0.4f, .d_coercion=0.18f, .d_treasury_mois=0.6f, .pop_mult=1.004f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_REVOLTE_SERVILE, .cooldown_days=1825 },
+          "Institutionnalisée, l'économie servile rapporte — et couve sa propre révolte." },
+        { "Limiter aux vaincus",
+          "Seuls les vaincus d'hier — pas de zèle au-delà.",
+          { .d_L=-0.15f, .d_coercion=0.10f, .d_treasury_mois=0.3f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Une pratique limitée, presque respectable — le trône s'en satisfait." },
+        { "Abolir",
+          "On referme ce que la tech a ouvert — la vertu, avant le profit.",
+          { .d_L=0.5f, .d_agitation=-8.f, .unlock_branch=-1 },
+          0.3f, { .faction=FAC_CONQUERANT, .faction_strength=0.15f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "L'abolition prive les Conquérants d'un levier qu'ils réclamaient.",
+          { .d_influence=2.f, .unlock_branch=-1 }, 0.3f } }, 3 },
+
+    /* A2 — L'ŒUVRE NOIRE NE S'ÉTEINT PAS LA NUIT (pays, L'Œuvre noire). */
+    [EVID_OEUVRE_NOIRE] = { EVID_OEUVRE_NOIRE, EV_COUNTRY, "L'Œuvre noire ne s'éteint pas la nuit",
+        trig_oeuvre_noire, 1825.f, NULL, {
+        { "Sceller",
+          "On scelle l'œuvre — l'effroi tenu sous clé.",
+          { .d_L=0.5f, .d_agitation=-6.f, .d_treasury_mois=-0.6f, .d_breach=-0.05f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Scellée, l'œuvre noire dort — pour l'instant." },
+        { "Déployer aux frontières",
+          "L'effroi tient l'ennemi à distance — un usage stratégique.",
+          { .d_H_coerc=0.5f, .d_L=-0.3f, .d_agitation=6.f, .d_breach=0.10f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Déployée, l'œuvre glace les frontières — et rapproche la Brèche.",
+          { .d_influence=2.f, .unlock_branch=-1 }, 0.4f },
+        { "Disséminer",
+          "Que chaque légion en porte un peu — la peur, partagée.",
+          { .d_agitation=8.f, .d_L=-0.3f, .d_breach=0.16f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_PROLIFERATION_ARME, .cooldown_days=1825 },
+          "Disséminée, l'œuvre noire échappe déjà à qui croyait la tenir." } }, 3 },
+
+    /* A3 — LE SAVOIR INTERDIT TIENT SES PROMESSES (pays, Savoir interdit). */
+    [EVID_SAVOIR_INTERDIT] = { EVID_SAVOIR_INTERDIT, EV_COUNTRY, "Le Savoir interdit tient ses promesses",
+        trig_savoir_interdit, 1825.f, NULL, {
+        { "École close",
+          "Un cercle restreint, des murs épais — le savoir contenu.",
+          { .d_K_inst=0.4f, .d_L=0.2f, .d_treasury_mois=-0.75f, .d_breach=0.04f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Une école close — le savoir interdit sert, discrètement." },
+        { "Exploiter sans le dire",
+          "On s'en sert, en silence — le silence ne tient jamais longtemps.",
+          { .d_L=-0.3f, .d_agitation=6.f, .d_breach=0.12f, .unlock_branch=-1 },
+          0.35f, { .faction=FAC_TRANSGRESSEUR, .faction_strength=0.20f, .scar_kind=SCAR_FUITE_CERVEAUX, .cooldown_days=1825 },
+          "Exploité sans le dire — et le secret fuit, comme toujours.",
+          { .d_agitation=6.f, .unlock_branch=-1 }, 0.35f },
+        { "Bannir et brûler",
+          "Ce savoir-là ne servira personne — pas même nous.",
+          { .d_L=-0.2f, .d_H_coerc=0.3f, .d_coercion=0.15f, .d_agitation=6.f, .d_breach=-0.06f, .unlock_branch=-1 },
+          0.15f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_FUITE_CERVEAUX, .cooldown_days=1825 },
+          "Banni et brûlé — mais des savants ont déjà fui avec ce qu'ils savaient." } }, 3 },
+
+    /* A4 — LE TRÔNE EST DEVENU UN AUTEL (pays, Culte impérial). */
+    [EVID_CULTE_IMPERIAL] = { EVID_CULTE_IMPERIAL, EV_COUNTRY, "Le trône est devenu un autel",
+        trig_culte_imperial, 1825.f, NULL, {
+        { "Imposer le culte",
+          "Le trône ET l'autel, une seule voix — celle du souverain.",
+          { .d_K_inst=0.3f, .d_H_coerc=0.4f, .d_L=0.4f, .d_coercion=0.15f, .d_agitation=-10.f, .unlock_branch=-1 },
+          0.6f, { .faction=FAC_GARDIEN, .faction_strength=0.20f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le culte impérial s'impose — les Gardiens y voient une victoire." },
+        { "Cohabiter",
+          "Le trône et l'autel, côte à côte, sans se fondre.",
+          { .d_L=0.2f, .d_agitation=-6.f, .d_treasury_mois=-0.4f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Une cohabitation prudente — ni victoire, ni défaite pour personne." },
+        { "Y renoncer",
+          "Le trône reste un trône — l'autel, une affaire distincte.",
+          { .d_L=-0.3f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le renoncement surprend — l'humilité, parfois, désarme la critique.",
+          { .d_L=0.3f, .unlock_branch=-1 }, 0.3f } }, 3 },
+
+    /* A5 — QUELQUE CHOSE S'EST ÉVEILLÉ DANS LES GLYPHES (pays, L'Éveil). */
+    [EVID_EVEIL] = { EVID_EVEIL, EV_COUNTRY, "Quelque chose s'est éveillé dans les glyphes",
+        trig_eveil, 1825.f, NULL, {
+        { "L'atteler à la guerre",
+          "Une armée qui ne mange pas, ne dort pas — la tentation est trop grande.",
+          { .d_H_coerc=0.5f, .d_L=-0.3f, .d_agitation=8.f, .d_breach=0.12f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Attelé à la guerre, l'Éveil sert — et la Brèche s'en rapproche." },
+        { "Vase clos",
+          "On l'étudie, on le contient — la curiosité, mesurée.",
+          { .d_K_inst=0.4f, .d_treasury_mois=-0.75f, .d_breach=0.05f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "En vase clos, l'Éveil laisse parfois percer une découverte.",
+          { .d_influence=2.f, .d_breach=-0.02f, .unlock_branch=-1 }, 0.3f },
+        { "Refermer",
+          "On referme ce qu'on n'aurait pas dû ouvrir.",
+          { .d_L=0.3f, .d_agitation=-6.f, .d_treasury_mois=-0.5f, .d_breach=-0.08f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_EVEIL_SOMMEIL, .cooldown_days=1825 },
+          "Refermé — mais ce qui dort se souvient, et remuera un jour." } }, 3 },
+
+    /* A6 — LA FOREUSE MORD DANS QUELQUE CHOSE QUI SAIGNE (province, Foreuse arcanique bâtie ICI). */
+    [EVID_FOREUSE_SAIGNE] = { EVID_FOREUSE_SAIGNE, EV_PROVINCE, "À %s, la foreuse mord dans quelque chose qui saigne",
+        trig_foreuse_saigne, 1825.f, NULL, {
+        { "Plein régime",
+          "On ne s'arrête pas pour si peu — la foreuse continue.",
+          { .d_agitation=10.f, .d_breach=0.12f, .d_treasury_mois=0.8f, .pop_mult=0.998f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_SCANDALE_SANITAIRE, .cooldown_days=1825 },
+          "Plein régime — la foreuse mord, rapporte, et couve un scandale sanitaire." },
+        { "Sous relevés",
+          "On note tout, discrètement — le sang est une donnée, aussi.",
+          { .d_K_inst=0.3f, .d_treasury_mois=0.4f, .d_breach=0.05f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Sous relevés, la foreuse rapporte prudemment — et parfois révèle un filon.",
+          { .d_treasury_mois=0.4f, .unlock_branch=-1 }, 0.35f },
+        { "Reboucher",
+          "On rebouche — ce que ça saignait ne regarde personne d'autre.",
+          { .d_L=0.4f, .d_treasury_mois=-0.6f, .d_breach=-0.04f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Rebouchée, la foreuse se tait — la mine, elle, garde son secret." } }, 3 },
+
+    /* B1 — LE DROIT D'INTÉGRATION DIVISE CEUX QU'IL UNIT (pays, off-culture > 25 %). */
+    [EVID_DROIT_INTEGRATION] = { EVID_DROIT_INTEGRATION, EV_COUNTRY, "Le droit d'intégration divise ceux qu'il unit",
+        trig_droit_integration, 1460.f, NULL, {
+        { "Forcer l'assimilation",
+          "Une langue, une loi, un peuple — de gré ou de force.",
+          { .d_H_coerc=0.5f, .d_L=-0.4f, .d_coercion=0.18f, .d_agitation=8.f, .d_C_global=-0.02f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_FRACTURE_CULTURELLE, .cooldown_days=1460 },
+          "L'assimilation forcée unit sur le papier — et divise en dessous." },
+        { "Langue franque",
+          "Un pont commun, sans effacer personne.",
+          { .d_K_inst=0.4f, .d_L=0.4f, .d_agitation=-8.f, .d_treasury_mois=-0.75f, .d_C_global=0.05f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          "Une langue franque relie sans dissoudre — un pari mesuré." },
+        { "Laisser les communautés",
+          "Chacun sa loi, sa langue — l'unité viendra, ou pas.",
+          { .d_L=0.2f, .d_agitation=-6.f, .d_C_global=0.03f, .unlock_branch=-1 },
+          0.3f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          "Le pluralisme laisse chacun chez soi — et parfois, ça paie.",
+          { .pop_mult=1.004f, .unlock_branch=-1 }, 0.3f } }, 3 },
+
+    /* B4 — LA DIASPORA TIENT LES COMPTOIRS (pays, diaspora > 15 %, comptoirs actifs). */
+    [EVID_DIASPORA_COMPTOIRS] = { EVID_DIASPORA_COMPTOIRS, EV_COUNTRY, "La diaspora tient les comptoirs",
+        trig_diaspora_comptoirs, 1460.f, NULL, {
+        { "Charte de protection",
+          "On protège ceux qui font vivre le commerce.",
+          { .d_L=0.2f, .d_agitation=6.f, .d_treasury_mois=0.3f, .d_C_global=0.05f, .unlock_branch=-1 },
+          0.5f, { .faction=FAC_MARCHAND, .faction_strength=0.15f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          "Une charte de protection — les Marchands savent qui les a couverts." },
+        { "Taxe spéciale",
+          "Ils prospèrent ici : qu'ils paient un peu plus qu'ici.",
+          { .d_L=-0.3f, .d_agitation=-6.f, .d_treasury_mois=0.5f, .pop_mult=0.998f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_RANCUNE_MARCHANDE, .cooldown_days=1460 },
+          "La taxe spéciale remplit les caisses — et sème une rancune marchande." },
+        { "Expulser",
+          "Le comptoir sans le comptoir : plus simple, en apparence.",
+          { .d_L=-0.3f, .d_agitation=-6.f, .d_C_global=-0.10f, .pop_mult=0.985f, .unlock_branch=-1 },
+          0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          "L'expulsion vide les comptoirs — et le commerce, parfois, s'effondre avec eux.",
+          { .d_treasury_mois=-1.0f, .unlock_branch=-1 }, 0.5f } }, 3 },
+
+    /* C1 — LA FOI VA SE FENDRE (pays, schisme éligible : RUPTURE ou DÉRIVE). */
+    [EVID_FOI_FENDRE] = { EVID_FOI_FENDRE, EV_COUNTRY, "La foi va se fendre",
+        trig_foi_fendre, 1825.f, NULL, {
+        { "Forcer l'unité",
+          "Une seule foi, par la contrainte s'il le faut.",
+          { .d_H_coerc=0.4f, .d_L=-0.3f, .d_coercion=0.15f, .d_agitation=8.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "L'unité forcée retient la brisure — pour un temps." },
+        { "Laisser dériver",
+          "Le courant divergent suivra sa pente, sans qu'on s'y oppose.",
+          { .d_L=-0.15f, .d_treasury_mois=-0.4f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "On laisse dériver — la foi, elle, suivra son propre chemin." },
+        { "Concile",
+          "Réunir les doctrines autour d'une même table.",
+          { .d_K_inst=0.4f, .d_L=0.4f, .d_agitation=-8.f, .d_treasury_mois=-0.9f, .unlock_branch=-1 },
+          0.3f, { .faction=FAC_GARDIEN, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          "Le concile cherche l'accord — et accouche parfois d'un dogme vivant.",
+          { .d_L=0.3f, .unlock_branch=-1 }, 0.3f } }, 3 },
+
+    /* C5 — LA BRÈCHE A TROUVÉ SON PROPHÈTE (pays, charge faustienne haute, Transgresseurs pas comblés). */
+    [EVID_PROPHETE_BRECHE] = { EVID_PROPHETE_BRECHE, EV_COUNTRY, "La brèche a trouvé son prophète",
+        trig_prophete_breche, 1460.f, NULL, {
+        { "Livrer aux gardiens",
+          "Le prophète appartient au bûcher, pas à la chaire.",
+          { .d_L=0.2f, .d_H_coerc=0.3f, .d_coercion=0.15f, .d_agitation=8.f, .d_breach=-0.06f, .unlock_branch=-1 },
+          0.4f, { .faction=FAC_GARDIEN, .faction_strength=0.f, .scar_kind=SCAR_RADICALISATION, .cooldown_days=1460 },
+          "Livré, le prophète se tait — mais ses fidèles, eux, se radicalisent." },
+        { "L'écouter",
+          "Ce qu'il dit de la Brèche mérite peut-être d'être entendu.",
+          { .d_L=-0.3f, .d_agitation=8.f, .d_breach=0.14f, .unlock_branch=-1 },
+          0.3f, { .faction=FAC_TRANSGRESSEUR, .faction_strength=0.20f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          "On l'écoute — et la Brèche se rapproche, un peu plus, à chaque mot." },
+        { "Le récupérer",
+          "Un prophète docile vaut mieux qu'un martyr.",
+          { .d_K_inst=0.3f, .d_L=0.2f, .d_agitation=-6.f, .d_breach=0.05f, .d_influence=1.f, .unlock_branch=-1 },
+          0.3f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
+          "Récupéré, le prophète sert le trône — mais parfois déborde son rôle.",
+          { .d_breach=0.06f, .unlock_branch=-1 }, 0.4f } }, 3 },
+
+    /* C6 — LA RELIQUE FAIT DES MIRACLES DOUTEUX (province, édifice de foi + amplitude haute). */
+    [EVID_RELIQUE_DOUTEUSE] = { EVID_RELIQUE_DOUTEUSE, EV_PROVINCE, "La relique de %s fait des miracles douteux",
+        trig_relique_douteuse, 1095.f, NULL, {
+        { "Authentifier",
+          "L'Église tranche : le miracle est vrai, un point c'est tout.",
+          { .d_L=0.4f, .d_agitation=-8.f, .d_treasury_mois=0.4f, .d_breach=0.06f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_SCANDALE_SANITAIRE, .cooldown_days=1095 },
+          "Authentifiée, la relique attire les foules — et couve un scandale sanitaire." },
+        { "Enquêter",
+          "Avant de croire, on vérifie — la prudence d'abord.",
+          { .d_K_inst=0.3f, .d_L=-0.15f, .d_treasury_mois=-0.4f, .d_breach=-0.03f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1095 },
+          "L'enquête avance prudemment — et parfois prouve la fraude, noir sur blanc.",
+          { .d_L=0.3f, .d_breach=-0.03f, .unlock_branch=-1 }, 0.35f },
+        { "Interdire le pèlerinage",
+          "On ferme la route avant que la foule ne s'y presse.",
+          { .d_H_coerc=0.2f, .d_L=-0.3f, .d_coercion=0.12f, .d_agitation=8.f, .d_breach=-0.05f, .unlock_branch=-1 },
+          0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1095 },
+          "Le pèlerinage interdit déçoit — mais la relique cesse, au moins, de faire parler d'elle." } }, 3 },
+
+    /* ═══ §D — CHAÎNAGE DE CICATRICES : les scars posées plus haut (§A/W1) mûrissent ici ═══ */
+
+    /* K2 — LE REMÈDE FAIT DES MORTS (SCAR_SCANDALE_SANITAIRE mûrit — posée par EAU_NOIRE
+     * "Vendre l'eau comme remède" ou RELIQUE_DOUTEUSE "Authentifier", délai 360-720 j
+     * — scar_delay_range, voir apply_choice_hook plus bas dans le fichier). */
+    [EVID_REMEDE_MORTS] = { EVID_REMEDE_MORTS, EV_PROVINCE, "Le remède de %s fait des morts",
+        trig_remede_morts, 900.f, NULL, {
+        { "Sacrifier les vendeurs",
+          "Quelques têtes tombent — l'affaire est close, en apparence.",
+          { .d_L=0.3f, .d_H_coerc=0.3f, .d_coercion=0.12f, .d_agitation=-8.f, .d_influence=-2.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Les vendeurs sacrifiés apaisent la foule — le trône, lui, perd un peu de lustre." },
+        { "Indemniser",
+          "Payer pour le mal fait — la seule réparation qui compte.",
+          { .d_L=0.4f, .d_agitation=-10.f, .d_treasury_mois=-1.4f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "L'indemnisation coûte cher — et apaise, sincèrement, ceux qui restent." },
+        { "Nier en bloc",
+          "Il n'y a pas eu de remède, il n'y a pas eu de morts.",
+          { .d_L=-0.3f, .d_agitation=8.f, .unlock_branch=-1 },
+          0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_RADICALISATION, .cooldown_days=720 },
+          "Le déni tient, parfois — ailleurs, il nourrit une colère qui couve.",
+          { .d_agitation=-6.f, .unlock_branch=-1 }, 0.5f } }, 3 },
+
+    /* K3 — UNE CELLULE DANS LES FAUBOURGS (SCAR_RADICALISATION mûrit — posée par
+     * PROPHETE_BRECHE "Livrer aux gardiens" ou REMEDE_MORTS "Nier en bloc"). */
+    [EVID_CELLULE_FAUBOURGS] = { EVID_CELLULE_FAUBOURGS, EV_PROVINCE, "Une cellule dans les faubourgs de %s",
+        trig_cellule_faubourgs, 900.f, NULL, {
+        { "Rafle générale",
+          "On ratisse large — la cellule tombe, avec du monde autour.",
+          { .d_H_coerc=0.5f, .d_L=-0.4f, .d_coercion=0.20f, .d_agitation=-10.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_RADICALISATION, .cooldown_days=720 },
+          "La rafle frappe fort — et sème, chez les innocents ratissés, une rancœur nouvelle." },
+        { "Amnistie et emplois",
+          "On offre une sortie plutôt qu'un cachot.",
+          { .d_L=0.4f, .d_agitation=-10.f, .d_treasury_mois=-1.0f, .pop_mult=1.004f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "L'amnistie désarme la colère mieux qu'un cachot ne l'aurait fait." },
+        { "Infiltrer",
+          "Patience — laisser le réseau se montrer avant de frapper.",
+          { .d_agitation=4.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "L'infiltration prend son temps — et parfois, le réseau entier tombe d'un coup.",
+          { .d_agitation=-8.f, .unlock_branch=-1 }, 0.4f } }, 3 },
+
+    /* K5 — NOS PROPRES FUSILS NOUS REVIENNENT (SCAR_PROLIFERATION_ARME mûrit — posée par
+     * SALVE_RUNIQUE "Vendre le secret" ou OEUVRE_NOIRE "Disséminer", pays). */
+    [EVID_FUSILS_REVIENNENT] = { EVID_FUSILS_REVIENNENT, EV_COUNTRY, "Nos propres fusils nous reviennent",
+        trig_fusils_reviennent, 1460.f, NULL, {
+        { "Surenchère",
+          "On arme plus fort encore — la course continue.",
+          { .d_agitation=8.f, .d_treasury_mois=-1.6f, .d_breach=0.08f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "La surenchère coûte cher — et rapproche, un peu plus, la Brèche." },
+        { "Négocier le désarmement",
+          "Une table plutôt qu'un champ de bataille.",
+          { .d_L=-0.15f, .d_influence=-2.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Le désarmement négocié tient, parfois, mieux qu'on ne l'espérait.",
+          { .d_influence=2.f, .d_breach=-0.05f, .unlock_branch=-1 }, 0.35f },
+        { "Guerre préventive",
+          "Frapper avant d'être frappé par sa propre arme.",
+          { .d_H_coerc=0.5f, .d_L=-0.4f, .d_agitation=8.f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 } } }, 3 },
+
+    /* K6 — LES SAVANTS SONT PASSÉS À L'ENNEMI (SCAR_FUITE_CERVEAUX mûrit — posée par
+     * SAVOIR_INTERDIT "Exploiter sans le dire" ou "Bannir et brûler", pays). */
+    [EVID_SAVANTS_ENNEMI] = { EVID_SAVANTS_ENNEMI, EV_COUNTRY, "Les savants sont passés à l'ennemi",
+        trig_savants_ennemi, 1095.f, NULL, {
+        { "Rappeler à prix d'or",
+          "L'or ramène ce que la fierté avait laissé filer.",
+          { .d_K_inst=0.3f, .d_L=0.2f, .d_treasury_mois=-1.4f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Rappelés à prix d'or, les savants reviennent — la fierté un peu froissée." },
+        { "Espionner",
+          "Ce qu'on ne peut pas racheter, on le vole.",
+          { .d_agitation=4.f, .d_treasury_mois=-0.6f, .d_breach=0.05f, .unlock_branch=-1 },
+          0.3f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "L'espionnage prend du temps — et parfois, le vol réussit pleinement.",
+          { .d_K_inst=0.3f, .unlock_branch=-1 }, 0.4f },
+        { "Renoncer à la branche",
+          "Ce savoir-là, on ne le poursuivra plus.",
+          { .d_L=0.2f, .d_C_global=-0.03f, .unlock_branch=-1 },
+          0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 } } }, 3 },
+
+    /* K7 — LES AUTRES VILLES ONT APPRIS LE TARIF (SCAR_EXEMPTION_ACHETEE mûrit — posée par
+     * DEUX_CARTES "Laisser l'ambiguïté rapporter", PROVINCE (même clé de sujet que le
+     * poseur — DEUX_CARTES est EV_PROVINCE, cf. note du trigger)). */
+    [EVID_TARIF_APPRIS] = { EVID_TARIF_APPRIS, EV_PROVINCE, "Les autres villes ont appris le tarif de %s",
+        trig_tarif_appris, 720.f, NULL, {
+        { "Refuser toute exemption",
+          "Plus personne ne passera entre les mailles.",
+          { .d_L=0.2f, .d_H_coerc=0.3f, .d_coercion=0.12f, .d_agitation=6.f, .unlock_branch=-1 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "Le refus ferme la faille — au prix d'un peu de grogne marchande." },
+        { "Tarifer officiellement",
+          "Ce qui se pratiquait sous le manteau devient la règle.",
+          { .d_L=-0.3f, .d_agitation=-6.f, .d_treasury_mois=0.8f, .unlock_branch=-1 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_EXEMPTION_ACHETEE, .cooldown_days=720 },
+          "Tarifée, l'exemption devient un revenu régulier — le marché s'auto-entretient." },
+        { "Faire un exemple",
+          "Un tarif exemplaire, appliqué à qui doutait encore.",
+          { .d_H_coerc=0.4f, .d_L=-0.3f, .d_coercion=0.15f, .d_agitation=6.f, .d_treasury_mois=0.6f, .unlock_branch=-1 },
+          0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=720 },
+          "L'exemple fait grand bruit — et parfois, la leçon porte au-delà de l'espéré.",
+          { .d_agitation=-8.f, .unlock_branch=-1 }, 0.4f } }, 3 },
 };
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
@@ -1049,6 +1398,23 @@ bool decision_cooldown_active(const EventsState *ev, int evid, int subject, int 
 /* ===================================================================== */
 /* HOOKS DE CHOIX — faction (levier/concession) + cicatrice + cooldown     */
 /* ===================================================================== */
+/* CONTENU W2 (lot 2) §D : délai de MATURATION par ScarKind — le défaut [180,540] (le
+ * legs W1/Marbrive, INCHANGÉ pour toute cicatrice non listée ici) reste le repli ; les
+ * cicatrices neuves du chaînage (K2/K3/K5/K6/K7) obtiennent la fourchette DEMANDÉE pour
+ * leur poseur (360-1460 j selon la nature de la crise — cf. la mission). Un simple
+ * switch (≤10 lignes) : apply_choice_hook restait sinon UNE fourchette pour tous les
+ * hooks, ce qui aurait forcé K2/K3/K5/K6/K7 sous [180,540] au lieu de leurs bornes
+ * documentées. */
+static void scar_delay_range(ScarKind k, int *lo, int *hi){
+    switch (k){
+        case SCAR_SCANDALE_SANITAIRE:   *lo=360; *hi=720;  break;   /* K2 */
+        case SCAR_RADICALISATION:       *lo=360; *hi=900;  break;   /* K3 */
+        case SCAR_PROLIFERATION_ARME:   *lo=720; *hi=1460; break;   /* K5 */
+        case SCAR_FUITE_CERVEAUX:       *lo=540; *hi=1095; break;   /* K6 */
+        case SCAR_EXEMPTION_ACHETEE:    *lo=360; *hi=900;  break;   /* K7 */
+        default:                        *lo=180; *hi=540;  break;   /* legs W1/Marbrive, inchangé */
+    }
+}
 /* `cid` = le pays PROPRIÉTAIRE du sujet (owner de la région / le pays lui-même) —
  * même convention que faction_lever_apply(a->cid,…) dans scps_ai.c. */
 static void apply_choice_hook(EventCtx *cx, int evid, int subject, int cid,
@@ -1059,8 +1425,10 @@ static void apply_choice_hook(EventCtx *cx, int evid, int subject, int cid,
         else
             faction_concede(cid, (EthosFaction)h->faction);
     }
-    if (h->scar_kind>SCAR_NONE && h->scar_kind<SCAR_KIND_COUNT)
-        decision_memory_push(cx->ev, subject, (ScarKind)h->scar_kind, 180, 540);
+    if (h->scar_kind>SCAR_NONE && h->scar_kind<SCAR_KIND_COUNT){
+        int lo,hi; scar_delay_range((ScarKind)h->scar_kind, &lo, &hi);
+        decision_memory_push(cx->ev, subject, (ScarKind)h->scar_kind, lo, hi);
+    }
     if (h->cooldown_days>0)
         decision_cooldown_push(cx->ev, evid, subject, today + h->cooldown_days);
 }
@@ -1114,6 +1482,13 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
     /* PONT EFFONDRÉ CONSOMME la cicatrice qui l'a fait mûrir (une cicatrice = un tir —
      * sinon le trigger la relirait ENCORE mûre au prochain scan et re-déclencherait). */
     if (evid==EVID_PONT_EFFONDRE) decision_memory_consume(cx->ev, subject, SCAR_SABOTAGE_CHANTIER, today);
+    /* CONTENU W2 (lot 2) §D : même motif — chaque évènement de chaînage CONSOMME la
+     * cicatrice qui l'a fait mûrir (une cicatrice = un tir). */
+    else if (evid==EVID_REMEDE_MORTS)      decision_memory_consume(cx->ev, subject, SCAR_SCANDALE_SANITAIRE, today);
+    else if (evid==EVID_CELLULE_FAUBOURGS) decision_memory_consume(cx->ev, subject, SCAR_RADICALISATION,     today);
+    else if (evid==EVID_FUSILS_REVIENNENT) decision_memory_consume(cx->ev, subject, SCAR_PROLIFERATION_ARME, today);
+    else if (evid==EVID_SAVANTS_ENNEMI)    decision_memory_consume(cx->ev, subject, SCAR_FUITE_CERVEAUX,     today);
+    else if (evid==EVID_TARIF_APPRIS)      decision_memory_consume(cx->ev, subject, SCAR_EXEMPTION_ACHETEE,  today);
     if (evid==EVID_MARBRIVE) g_marbrive_fired++; else if (evid==EVID_PONT_EFFONDRE) g_pont_effondre_fired++;
     else if (evid==EVID_CLOCHES) g_cloches_fired++;
     else if (evid==EVID_ENTREPOTS_FERMES) g_entrepots_fermes_fired++;
@@ -1121,6 +1496,22 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
     else if (evid==EVID_EAU_NOIRE) g_eau_noire_fired++;
     else if (evid==EVID_DERNIERE_DECISION) g_derniere_decision_fired++;
     else if (evid==EVID_SALVE_RUNIQUE) g_salve_runique_fired++;
+    else if (evid==EVID_CHAINES_RAPPORTENT) g_chaines_rapportent_fired++;
+    else if (evid==EVID_OEUVRE_NOIRE) g_oeuvre_noire_fired++;
+    else if (evid==EVID_SAVOIR_INTERDIT) g_savoir_interdit_fired++;
+    else if (evid==EVID_CULTE_IMPERIAL) g_culte_imperial_fired++;
+    else if (evid==EVID_EVEIL) g_eveil_fired++;
+    else if (evid==EVID_FOREUSE_SAIGNE) g_foreuse_saigne_fired++;
+    else if (evid==EVID_DROIT_INTEGRATION) g_droit_integration_fired++;
+    else if (evid==EVID_DIASPORA_COMPTOIRS) g_diaspora_comptoirs_fired++;
+    else if (evid==EVID_FOI_FENDRE) g_foi_fendre_fired++;
+    else if (evid==EVID_PROPHETE_BRECHE) g_prophete_breche_fired++;
+    else if (evid==EVID_RELIQUE_DOUTEUSE) g_relique_douteuse_fired++;
+    else if (evid==EVID_REMEDE_MORTS) g_remede_morts_fired++;
+    else if (evid==EVID_CELLULE_FAUBOURGS) g_cellule_faubourgs_fired++;
+    else if (evid==EVID_FUSILS_REVIENNENT) g_fusils_reviennent_fired++;
+    else if (evid==EVID_SAVANTS_ENNEMI) g_savants_ennemi_fired++;
+    else if (evid==EVID_TARIF_APPRIS) g_tarif_appris_fired++;
     cx->ev->last_id=evid; cx->ev->last_name=d->name; cx->ev->n_fired++;
     if (d->scope==EV_PROVINCE && subject>=0)
         provlog_push_event(subject, event_title_ring(cx->w, evid, subject),   /* nom RÉEL du lieu */
@@ -2025,6 +2416,47 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             frand(&ev->rng) < mtth_p(EVENTS[EVID_SALVE_RUNIQUE].mtth_days,days)) fire_event(&cx,EVID_SALVE_RUNIQUE,c);
     }
 
+    /* 2sexies. CONTENU W2 (lot 2) — §A tech (déclenchement unique, motif SALVE_RUNIQUE) ·
+     * §B culturel · §C religieux · §D chaînage. Même court-circuit (trigger && frand).
+     * EV_PROVINCE (A6/C6/K2/K3/K7) scannent les régions ; EV_COUNTRY (A1-A5/B1/B4/C1/C5/
+     * K5/K6) scannent les pays. */
+    for (int r=0;r<econ->n_regions;r++){
+        if (EVENTS[EVID_FOREUSE_SAIGNE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_FOREUSE_SAIGNE].mtth_days,days)) fire_event(&cx,EVID_FOREUSE_SAIGNE,r);
+        if (EVENTS[EVID_RELIQUE_DOUTEUSE].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_RELIQUE_DOUTEUSE].mtth_days,days)) fire_event(&cx,EVID_RELIQUE_DOUTEUSE,r);
+        if (EVENTS[EVID_REMEDE_MORTS].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_REMEDE_MORTS].mtth_days,days)) fire_event(&cx,EVID_REMEDE_MORTS,r);
+        if (EVENTS[EVID_CELLULE_FAUBOURGS].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_CELLULE_FAUBOURGS].mtth_days,days)) fire_event(&cx,EVID_CELLULE_FAUBOURGS,r);
+        if (EVENTS[EVID_TARIF_APPRIS].trigger(&cx,r) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_TARIF_APPRIS].mtth_days,days)) fire_event(&cx,EVID_TARIF_APPRIS,r);
+    }
+    for (int c=0;c<w->n_countries;c++){
+        if (EVENTS[EVID_CHAINES_RAPPORTENT].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_CHAINES_RAPPORTENT].mtth_days,days)) fire_event(&cx,EVID_CHAINES_RAPPORTENT,c);
+        if (EVENTS[EVID_OEUVRE_NOIRE].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_OEUVRE_NOIRE].mtth_days,days)) fire_event(&cx,EVID_OEUVRE_NOIRE,c);
+        if (EVENTS[EVID_SAVOIR_INTERDIT].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_SAVOIR_INTERDIT].mtth_days,days)) fire_event(&cx,EVID_SAVOIR_INTERDIT,c);
+        if (EVENTS[EVID_CULTE_IMPERIAL].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_CULTE_IMPERIAL].mtth_days,days)) fire_event(&cx,EVID_CULTE_IMPERIAL,c);
+        if (EVENTS[EVID_EVEIL].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_EVEIL].mtth_days,days)) fire_event(&cx,EVID_EVEIL,c);
+        if (EVENTS[EVID_DROIT_INTEGRATION].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_DROIT_INTEGRATION].mtth_days,days)) fire_event(&cx,EVID_DROIT_INTEGRATION,c);
+        if (EVENTS[EVID_DIASPORA_COMPTOIRS].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_DIASPORA_COMPTOIRS].mtth_days,days)) fire_event(&cx,EVID_DIASPORA_COMPTOIRS,c);
+        if (EVENTS[EVID_FOI_FENDRE].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_FOI_FENDRE].mtth_days,days)) fire_event(&cx,EVID_FOI_FENDRE,c);
+        if (EVENTS[EVID_PROPHETE_BRECHE].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_PROPHETE_BRECHE].mtth_days,days)) fire_event(&cx,EVID_PROPHETE_BRECHE,c);
+        if (EVENTS[EVID_FUSILS_REVIENNENT].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_FUSILS_REVIENNENT].mtth_days,days)) fire_event(&cx,EVID_FUSILS_REVIENNENT,c);
+        if (EVENTS[EVID_SAVANTS_ENNEMI].trigger(&cx,c) &&
+            frand(&ev->rng) < mtth_p(EVENTS[EVID_SAVANTS_ENNEMI].mtth_days,days)) fire_event(&cx,EVID_SAVANTS_ENNEMI,c);
+    }
+
     /* 2bis. LE DIRECTEUR (§F) — lit la TEMPÉRATURE du monde, puis stabilise ou
      * déstabilise (sans jamais s'acharner). Cadence ~annuelle (sa propre échéance). */
     director_tick(&cx, days);
@@ -2061,7 +2493,13 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
 bool events_text_clean(void){
     static const char *BANNED[]={ "SCPS","D∞","∞","K_inst","H_coerc","P_realise",
         "fragilit","fractur","flux_faustien","age_C","breach_flux","D_bar", NULL };
-    const char *texts[256]; int n=0;
+    /* CONTENU W2 (lot 2) : buffer DIMENSIONNÉ au pire cas — EVID_COUNT évènements,
+     * chacun jusqu'à 1 nom + 4 options × 3 textes (label/blurb/flavor) + AGE_COUNT
+     * noms d'âge. Le fixe 256 (legs W1) débordait dès EVID_COUNT≈20 (256/13≈19) —
+     * ce lot ajoute 16 évènements de plus (37 au total), largement au-delà : un
+     * dépassement RÉEL de tableau (stack smashing détecté par le canari), pas un
+     * faux positif. */
+    const char *texts[EVID_COUNT*(1+4*3) + AGE_COUNT]; int n=0;
     for (int i=0;i<EVID_COUNT;i++){
         texts[n++]=EVENTS[i].name;
         for (int o=0;o<EVENTS[i].n_options;o++){

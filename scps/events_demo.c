@@ -724,6 +724,99 @@ int main(int argc, char **argv){
            && decision_cooldown_active(s.ev, EVID_SALVE_RUNIQUE, cid0, s.ev->ages.days_elapsed+365*90));
     }
 
+    /* ═══ 12. CONTENU W2 (lot 2) — §A latch tech unique, §D une cicatrice CONSOMMÉE,
+     * helpers diaspora/off-culture (via les triggers §B qui les enveloppent) ═══ */
+    printf("\n── 12. Contenu W2 (lot 2) : latch tech, chaînage consommé, helpers §B ──\n");
+
+    /* (a) §A LATCH TECH UNIQUE : même motif que SALVE_RUNIQUE — EVID_CHAINES_RAPPORTENT
+     * (Économie servile) ne tire JAMAIS tant qu'aucun pays n'a la tech, puis tire dès
+     * qu'un pays vient de la déverrouiller. */
+    {
+        events_init(s.ev,s.w,seed);
+        int cid0=0;
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].unlocked[TECH_ESCLAVAGE]=false;
+        long before0=events_chaines_rapportent_fired();
+        for (int d=0; d<3650; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+        ok("EVID_CHAINES_RAPPORTENT NE TIRE JAMAIS tant qu'aucun pays n'a Économie servile",
+           events_chaines_rapportent_fired()==before0);
+        s.ts[cid0].unlocked[TECH_ESCLAVAGE]=true;
+        long before=events_chaines_rapportent_fired();
+        bool fired=false;
+        for (int d=0; d<36500 && !fired; d+=30){
+            world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+            if (events_chaines_rapportent_fired()>before) fired=true;
+        }
+        ok("EVID_CHAINES_RAPPORTENT TIRE dès Économie servile déverrouillée (latch tech §A)", fired);
+    }
+
+    /* (b) §D UNE CICATRICE EST CONSOMMÉE PAR SON ÉVÈNEMENT DE CHAÎNAGE : on pousse
+     * directement SCAR_RADICALISATION (comme si PROPHETE_BRECHE/REMEDE_MORTS l'avait
+     * posée), on la laisse mûrir, et on vérifie qu'EVID_CELLULE_FAUBOURGS (K3) la
+     * CONSOMME à son tir (has_ripe devient faux après résolution). */
+    {
+        events_init(s.ev,s.w,seed);
+        int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+        ok("(section 12b) une capitale peuplée existe pour le test de chaînage", capr>=0);
+        if (capr>=0){
+            decision_memory_push(s.ev, capr, SCAR_RADICALISATION, 10, 10);   /* mûrit dans 10 j pile */
+            ok("la cicatrice SCAR_RADICALISATION posée n'est pas mûre avant son délai",
+               !decision_memory_has_ripe(s.ev, capr, SCAR_RADICALISATION, s.ev->ages.days_elapsed+5));
+            /* on avance le temps de la simulation JUSQU'À maturité, puis on laisse le
+             * trigger s'armer et tirer (court-circuit trigger&&frand, motif W1/§D). */
+            long before=events_cellule_faubourgs_fired();
+            bool fired=false;
+            for (int d=0; d<3650 && !fired; d+=10){
+                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,10,-1);
+                if (events_cellule_faubourgs_fired()>before) fired=true;
+            }
+            ok("EVID_CELLULE_FAUBOURGS (K3) TIRE une fois la cicatrice RADICALISATION mûre", fired);
+            ok("… et la CONSOMME (has_ripe redevient faux — une cicatrice = un tir)",
+               !decision_memory_has_ripe(s.ev, capr, SCAR_RADICALISATION, s.ev->ages.days_elapsed));
+        } else { ok("(pas de capitale — chaînage K3 ignoré)", true); ok("(idem)", true); }
+    }
+
+    /* (c) HELPERS §B (diaspora/off-culture) : ils sont `static` (internes au module) —
+     * on les éprouve INDIRECTEMENT via les triggers publics qu'ils enveloppent
+     * (events_match_political n'expose pas B1/B4 — mais world_events_tick+les
+     * compteurs fired() le font). On construit une fixture à forte off-culture ET
+     * diaspora sur un pays réel, tech Droit d'intégration débloquée, et on vérifie
+     * que EVID_DROIT_INTEGRATION finit par tirer (le helper country_mean_off_culture
+     * a donc lu >0.25 sur cette fixture — preuve indirecte mais réelle). */
+    {
+        events_init(s.ev,s.w,seed);
+        int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+        if (capr>=0 && rp>=0){
+            int cid=s.econ->region[capr].owner;
+            for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].unlocked[TECH_INTEGRATION]=false;
+            if (cid>=0 && cid<SCPS_MAX_COUNTRY) s.ts[cid].unlocked[TECH_INTEGRATION]=true;
+            /* une forte minorité DIASPORA (off-culture) sur la province représentative :
+             * un 2e groupe majoritaire d'un AUTRE héritage, diaspora=true. */
+            ProvincePop *pp=&s.econ->prov[rp].pop;
+            memset(pp,0,sizeof(*pp));
+            pp->n_groups=2;
+            pp->groups[0].heritage=HERITAGE_ADAPTATIF; pp->groups[0].count=600; pp->groups[0].diaspora=false;
+            pp->groups[0].origin_sphere=heritage_sphere(HERITAGE_ADAPTATIF);
+            pp->groups[0].integration=1.f; pp->groups[0].faith=-1;
+            pp->groups[0].culture=make_fiche(5.f,ETHOS_BUREAUCRATE,HERITAGE_ADAPTATIF);
+            pp->groups[1].heritage=HERITAGE_CLANIQUE; pp->groups[1].count=400; pp->groups[1].diaspora=true;
+            pp->groups[1].origin_sphere=heritage_sphere(HERITAGE_CLANIQUE);
+            pp->groups[1].integration=0.1f; pp->groups[1].faith=-1;
+            pp->groups[1].culture=make_fiche(0.f,ETHOS_DOMINATEUR,HERITAGE_CLANIQUE);
+            pp->groups[1].culture.religion=10.f;
+            s.econ->prov[rp].strata[CLASS_LABORER].pop=1000.f;
+            econ_aggregate_regions(s.econ);
+            s.econ->region[capr].owner=(int16_t)cid;
+            long before=events_droit_integration_fired();
+            bool fired=false;
+            for (int d=0; d<7300 && !fired; d+=30){
+                world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,30,-1);
+                if (events_droit_integration_fired()>before) fired=true;
+            }
+            ok("EVID_DROIT_INTEGRATION tire sur une off-culture>25% (helper §B1 country_mean_off_culture)",
+               fired);
+        } else ok("(pas de capitale peuplée pour le test helper §B1 — ignoré)", true);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");
