@@ -21,6 +21,7 @@ var _age_recap: Control        # ÉCRAN DE CHAPITRE : récap d'âge au clic du c
 var _page_turn: CanvasLayer    # LA PAGE QUI SE TOURNE : transition d'âge (codex, horloge mur)
 var _epilogue: Control         # ÉPILOGUE : la fin de partie en une phrase + la frise complète
 var _battle_panel: Control     # W-GUERRE UI (lot B) : panneau de combat, ouvert par clic sur un jeton d'armée
+var _codex: Control            # LE CODEX DES VERBES (touche F1) : tout ce que le joueur peut faire
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _epilogue_shown := false   # l'épilogue ne s'ouvre qu'UNE fois par partie (latch UI)
 var _sel_prov := -1
@@ -178,6 +179,13 @@ func _ready() -> void:
 	_devpanel.visible = false
 	ui.add_child(_devpanel)
 
+	# LE CODEX DES VERBES (touche F1) : l'enseignement — tout ce que le joueur peut
+	# FAIRE, et où. Lecture seule, zéro logique de sim. Caché par défaut.
+	_codex = load("res://ui/codex.gd").new()
+	_codex.name = "Codex"
+	_codex.visible = false
+	ui.add_child(_codex)
+
 	# ALERTES (façon EU4/CK3) : la pile des « éléments en attente » au bord droit —
 	# code couleur par domaine, clic = le panneau concerné (ou le geste direct).
 	var alerts = load("res://ui/alerts.gd").new()
@@ -284,6 +292,9 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_F10:
 			if _devpanel != null:
 				_devpanel.visible = not _devpanel.visible
+		KEY_F1:
+			if _codex != null:
+				_codex.toggle()
 		KEY_H:
 			if _chronique != null:
 				if _chronique.visible:
@@ -323,7 +334,7 @@ func _on_tick_endgame(_year: int) -> void:
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).
 func _close_topmost() -> bool:
-	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel]:
+	for p in [_construct, _tech, _econ, _religion, _prov_detail, _devpanel, _country_actions, _chronique, _age_recap, _epilogue, _battle_panel, _codex]:
 		if p != null and p.visible:
 			p.visible = false
 			return true
