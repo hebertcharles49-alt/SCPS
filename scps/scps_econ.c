@@ -1792,19 +1792,44 @@ float econ_prod_cap(int c,int g){ return (c>=0&&c<SCPS_MAX_COUNTRY&&g>RES_NONE&&
 long econ_arms_take(WorldEconomy *econ, int cid, Resource arm, long need){
     if (!econ || need<=0 || arm<=RES_NONE || arm>=RES_COUNT) return 0;
     int nown=0; for (int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==cid) nown++;
-    float dshare = nown ? (float)need/(float)nown : 0.f;
     long got=0;
     for (int r=0;r<econ->n_regions;r++){
         if (econ->region[r].owner!=cid) continue;
-        econ->region[r].demand[arm] += dshare;   /* F8 BOOTSTRAP : la DEMANDE (want) — la fabrique bâtit/produit même stock VIDE → consomme le fer */
         if (got>=need) continue;
         /* #5 — POMPE D'ARMES (branchée par l'app via econ_set_arms_pump) : stock PROPRE de la région
          * → Centre de la cité-état la + proche → réseau mondial. Les cités-états (armuriers) fournissent
          * l'arme spécialisée que la région ne fabrique pas. Sans pompe (bancs unitaires) : stock PROPRE
          * seul — le comportement d'origine, sans dépendance au sous-système commerce. */
         if (g_arms_pump) got += (long)g_arms_pump(econ, r, (int)arm, (float)(need-got), econ->region[r].price[arm]);
-        else { long take=(long)fminf((float)(need-got), fmaxf(0.f,econ->region[r].stock[arm]));
-            econ->region[r].stock[arm]-=(float)take; got+=take; }
+        else {
+            /* RE-KEY (2026-07-06, GOULOT D'ARMES) : la levée PUISAIT sur econ->region[r].stock, la
+             * VUE reconstruite chaque clôture (econ_aggregate_regions) — un dead write : la déduction
+             * s'évaporait au tick suivant (les provinces, la vraie source, restaient pleines), l'arme
+             * repoussait de nulle part. econ_region_stock_add route le débit sur les PROVINCES
+             * (représentative d'abord, sœurs en débordement) — symétrique de wh_shed (démob) qui
+             * RENDAIT déjà correctement au pool réel : sans ce fix, la démob dupliquait le fer que
+             * la levée n'avait jamais réellement retiré. */
+            float want  = fmaxf(0.f, (float)(need-got));
+            float taken = -econ_region_stock_add(econ, r, arm, -want);   /* self-clampe au dispo réel (provinces) */
+            got += (long)taken;
+        }
+    }
+    /* F8 BOOTSTRAP — LA DEMANDE : la levée VOULAIT `need` armes de cette catégorie (POP_PER_UNIT
+     * par paquet, déjà inclus dans need par l'appelant) ; ce qu'elle N'A PAS EU (need-got, le
+     * MANQUE réel) doit tirer le PRIX (→ market_effort → §NF construit l'armurerie) exactement
+     * comme la demande d'outils (RES_TOOLS, ligne ~2166) tire le sien — une demande RÉELLE
+     * s'accumule dans le STOCK NATIONAL du tick SUIVANT (pool[cid][arm] descend déjà, ci-dessus,
+     * ce qui SEUL relève le prix via avail↓) ; on route en PLUS le manque explicite par le
+     * canal RE-KEY province (persisté, agrégé par econ_aggregate_regions comme tout le reste)
+     * pour que la télémétrie/readout (region[].demand) reflète la VRAIE tension de levée —
+     * jamais lu comme entrée de pricing (ce module ne lit QUE le stack local `demand[]` du
+     * tick), donc AUCUN risque d'accumulateur inter-ticks non sérialisé : cette écriture est un
+     * simple mirror, écrasé (pas accumulé) au prochain econ_tick comme tout le reste de re->demand. */
+    if (nown>0){
+        float shortfall = fmaxf(0.f, (float)(need-got));
+        float dshare = shortfall/(float)nown;
+        if (dshare>0.f) for (int r=0;r<econ->n_regions;r++)
+            if (econ->region[r].owner==cid) econ->region[r].demand[arm]+=dshare;
     }
     return got;
 }
@@ -2165,6 +2190,22 @@ void econ_tick(WorldEconomy *e, float dt) {
             float tools_target = labor_avail * TOOLS_PER_LABORER;            /* stock-outil VISÉ ∝ bras */
             demand[RES_TOOLS] += fmaxf(0.f, tools_target - S[RES_TOOLS]*pshare);  /* déficit (part régionale du parc) à combler */
         }
+        /* GOULOT D'ARMES (2026-07-06) — L'ARSENAL D'ÉTAT, même motif que les outils : la levée
+         * (warhost, annuel) DRAINE le stock d'armes macro (RE-KEY réel, econ_arms_take) ; le
+         * RÉASSORT est une demande de MARCHÉ ∝ population (l'État vise un arsenal capable de
+         * lever sa force ≈ ARMS_PER_LABORER×bras, réparti par catégorie selon la composition
+         * observée des levées). DÉRIVÉ du tick (aucun accumulateur : le stock drainé EST la
+         * mémoire de la levée) → prix ↑ → market_effort ↑ → §NF bâtit l'armurerie. Le FEU n'est
+         * demandé que la poudre découverte (sinon on gonflerait un prix que nul ne peut servir).
+         * Registre J : ARMS_PER_LABORER (0 = éteint, comportement d'hier). */
+        if (owner_>=0){
+            float arms_target = labor_avail * tune_f("ARMS_PER_LABORER", 0.05f);
+            demand[RES_ARMS_LIGHT]  += fmaxf(0.f, arms_target*0.60f - S[RES_ARMS_LIGHT] *pshare);
+            demand[RES_ARMS_RANGED] += fmaxf(0.f, arms_target*0.25f - S[RES_ARMS_RANGED]*pshare);
+            demand[RES_ARMS_HEAVY]  += fmaxf(0.f, arms_target*0.10f - S[RES_ARMS_HEAVY] *pshare);
+            if (re->tech_arquebus)
+                demand[RES_FIREARM] += fmaxf(0.f, arms_target*0.05f - S[RES_FIREARM]*pshare);
+        }
         /* §C3 : le « rot » de l'État (capture par concession) mine l'efficacité NOBLE —
          * une élite gorgée gouverne mal : moins de productivité de capitale, moins de
          * recherche. Lu à l'écran en Corruption. Source : faction_capture_total. */
@@ -2275,6 +2316,24 @@ void econ_tick(WorldEconomy *e, float dt) {
                 lim=fminf(lim, out_in1);
             }
             if (rc->in2!=RES_NONE) lim=fminf(lim, S[rc->in2]/fmaxf(rc->q2,EPS));
+            /* GOULOT D'ARMES (2026-07-06) — LA DEMANDE D'INTRANT AFFAMÉ (le maillon FEU exact) :
+             * la demande d'un intrant n'était enregistrée QUE sur consommation → une fabrique à
+             * stock d'intrant VIDE (lim=0) ne signalait JAMAIS son besoin → le prix de l'intrant
+             * ne montait pas → le §NF ne bâtissait jamais son producteur (poule-œuf : arquebuserie
+             * sans poudre ⇒ 0 demande de poudre ⇒ pas de poudrière ⇒ FEU=0 pour toujours).
+             * Fix : la fabrique AFFAMÉE signale le manque (cap−possible)×q par intrant — borné à la
+             * CHAÎNE D'ARMES (sortie arme ou poudre) pour ne pas re-calibrer le panier civil. */
+            if (res_is_arm(rc->out) || rc->out==RES_GUNPOWDER){
+                if (e_in1!=RES_NONE){
+                    float can1 = S[e_in1]/fmaxf(e_q1,EPS);
+                    if (e_alt!=RES_NONE) can1 += S[e_alt]/fmaxf(e_altq,EPS);
+                    if (can1 < cap) demand[e_in1] += (cap-can1)*e_q1;
+                }
+                if (rc->in2!=RES_NONE){
+                    float can2 = S[rc->in2]/fmaxf(rc->q2,EPS);
+                    if (can2 < cap) demand[rc->in2] += (cap-can2)*rc->q2;
+                }
+            }
             /* RÉSERVE VIVRIÈRE : le grain NOURRIT avant de se brasser. On ne brasse
              * que le SURPLUS au-delà du besoin alimentaire — du besoin de TOUT l'empire
              * (le grenier est national) : une province ne brasse pas la faim d'une autre. */
@@ -2872,7 +2931,17 @@ void econ_tick(WorldEconomy *e, float dt) {
         if (epop[c]<=0.f) continue;
         for (int g=1;g<RES_COUNT;g++){
             if (pool[c][g]>ecap[c]) pool[c][g]=ecap[c];
-            pool[c][g]*=0.85f;
+            /* GOULOT D'ARMES (2026-07-06) — L'ARSENAL NE POURRIT PAS AU MOIS : le ×0.85
+             * anti-accumulation (pensé pour les périssables) mangeait 15 %/mois d'ÉPÉES —
+             * l'équilibre de stock (inflow/0.15) restait sous ce qu'UNE levée annuelle
+             * demande ⇒ servi plafonné ~34 %. Les armes tiennent l'entrepôt (rouille lente
+             * 1 %/mois, ARSENAL_DECAY) ; l'anti-runaway est la DEMANDE-CIBLE (ARMS_PER_LABORER :
+             * stock ≥ cible ⇒ demande 0 ⇒ prix ↓ ⇒ effort/expansion/§NF se coupent) + le
+             * plafond d'entrepôt (ecap) ci-dessus, qui bornent l'accumulation sans la rendre
+             * impossible. Les armes enchantées gardent la décrue pleine (diplo_mil_power les
+             * lit : les laisser s'empiler emballerait la course aux armements). */
+            pool[c][g] *= (res_is_arm(g) && g!=RES_ENCHANTED_ARMS)
+                        ? tune_f("ARSENAL_DECAY", 0.99f) : 0.85f;
         }
     }
     /* REDISTRIBUTION du pool aux provinces au PRORATA de leur population (post-croissance,

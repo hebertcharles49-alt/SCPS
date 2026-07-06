@@ -9,7 +9,9 @@
 #include <string.h>
 
 #define WH_BATCH_WAR    7.0f   /* paquets fabriqués/levés par an en guerre */
-#define WH_BATCH_PEACE  1.5f   /* cadence d'entretien de la GARNISON en paix */
+#define WH_BATCH_PEACE  3.0f   /* cadence d'entretien de la GARNISON en paix (1.5→3.0 : la garnison
+                                * size-proportionnelle est plus grande, il faut la rejoindre à mesure
+                                * que l'empire croît — bornée au déficit, jamais de sur-levée) */
 #define WH_GARRISON_UNITS 4.0f /* garnison de paix à la jauge GARDE (× LEVY_MULT) */
 #define WH_ARMS_PER_UNIT 8.0f  /* F6 : force d'armée/paquet → mil_stock (calé pour retrouver l'ordre de
                                 * grandeur de l'ancien stock RES_ARMS plafonné, après découplage) */
@@ -34,7 +36,8 @@
 #define SOLDE_ARMS_DIV   26.0f  /* les ARMES : rendues à la démob (pas consommées par l'entretien)
                                  * → leur part est un AMORTISSEMENT/maintenance, moitié moins lourde */
 #define SOLDE_FL_FLOOR    6.0f  /* limite de force plancher (le plus petit pays entretient 6 rgt à prix plein) */
-#define SOLDE_FL_PER_REG  0.5f  /* +0.5 régiment de limite par région tenue */
+#define SOLDE_FL_PER_REG  0.7f  /* +0.7 régiment de limite par région (0.5→0.7 : un empire MOYEN de
+                                 * 10-25 rég vise ~13-24 rgt de limite → la « vingtaine » demandée) */
 #define SOLDE_OVER_K      3.0f  /* au double de la limite : chaque régiment coûte ×4 (1+1×3) */
 #define SOLDE_PAY_ANCHOR 90.0f  /* valeur calibrée de REGIMENT_PAY à laquelle le dial est neutre */
 
@@ -310,6 +313,15 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                * de friche. En paix seulement : on ne désarme pas sous le feu. */
               if (!at_war && pay>0.f && econ->prov[crpp].treasury < pay*0.25f && h->levy[c]>0)
                   h->levy[c] -= 1;
+              /* SYMÉTRIE (2026-07-06) : la jauge REMONTE quand le trésor est confortable —
+               * l'ancien code ne la faisait que DESCENDRE (garde de budget), si bien que TOUT
+               * empire ayant connu un mois serré dérivait vers BASSE et n'en remontait jamais
+               * (→ garnison plancher, jamais la « vingtaine »). Bande d'hystérésis (0.25×
+               * descend · 1.5× remonte) ; plafonnée à GARDE = le plein plafond de PAIX (les
+               * pieds de guerre GUERRE/MASSE restent des choix, pas une escalade auto). */
+              else if (!at_war && h->levy[c] < WH_LEVY_GARDE
+                       && econ->prov[crpp].treasury > pay*1.5f)
+                  h->levy[c] += 1;
           } }
         /* la JAUGE DE LEVÉE module la cadence : basse 0.4× · garde 1× · guerre 1.6× ·
          * masse 2.6× — et la levée en masse FORCE LA MAIN (coercition à la capitale). */
@@ -342,7 +354,15 @@ void warhost_tick(WarHost *h, const World *w, WorldEconomy *econ,
                 wh_levy_batch(&h->army[c], econ, w, ts?&ts[c]:NULL, c, batch, elite);
             }
         } else {
-            long garrison = (long)(WH_GARRISON_UNITS*LEVY_MULT[lv] + 0.5f);
+            /* GARNISON DE PAIX ∝ TAILLE (2026-07-06 : « une vingtaine de rgt pour un empire
+             * moyen ») — l'ancien plancher PLAT (WH_GARRISON_UNITS×LEVY_MULT = 2-4 rgt) était
+             * DÉCOUPLÉ de la taille : un empire de 20 régions et 76k hab tenait les mêmes 2 rgt
+             * qu'un hameau. Désormais l'armée permanente est une part de la LIMITE DE FORCE
+             * (∝ régions, déjà size-proportionnelle) modulée par la JAUGE de levée : GARDE
+             * (défaut de paix) = plein plafond ; la garde de budget (plus bas) fait redescendre
+             * la jauge → la garnison SUIT ce que le trésor porte (démobiliser par le coût). */
+            static const float PEACE_GAR_FRAC[4] = { 0.55f, 1.00f, 1.20f, 1.40f };  /* BASSE·GARDE·GUERRE·MASSE */
+            long garrison = (long)(warhost_force_limit(nreg) * PEACE_GAR_FRAC[lv] + 0.5f);
             if (cur > garrison){
                 wh_shed(&h->army[c], econ, c, (cur - garrison + 1)/2);   /* ~moitié/an vers la garnison */
             } else if (cur < garrison){

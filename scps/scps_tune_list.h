@@ -581,6 +581,13 @@
     X(COUNCIL_LOYAL_RATE,        0.05f) \
     X(COUNCIL_ROT_BOOST,         1.5f) \
     X(COUNCIL_PAY_ADJ,          30.0f) \
-    X(COUNCIL_BETRAYAL_THRESHOLD,15.0f)
+    X(COUNCIL_BETRAYAL_THRESHOLD,15.0f) \
+    /* GOULOT D'ARMES (2026-07-06) — l'arsenal d'État est une demande de MARCHÉ ∝ pop
+     * (comme les outils) : l'État vise un stock d'armes capable de lever sa force
+     * (ARMS_PER_LABORER × bras) → prix ↑ → §NF bâtit l'armurerie. ARSENAL_DECAY : les
+     * armes ne pourrissent pas au mois (rouille lente 1 %, vs 15 % des périssables) —
+     * sinon l'équilibre de stock restait sous ce qu'une levée annuelle demande. 0 = éteint. */ \
+    X(ARMS_PER_LABORER,          0.05f) \
+    X(ARSENAL_DECAY,             0.99f)
 
 #endif /* SCPS_TUNE_LIST_H */

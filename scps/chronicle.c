@@ -292,6 +292,11 @@ static const Resource AD_RES[7] = { RES_ARMS_LIGHT, RES_ARMS_HEAVY, RES_ARMS_RAN
 static const char *AD_NAME[7] = { "légères","lourdes","trait","feu","bâtons","alchimie","runiques" };
 static double g_adw[7],g_adg[7],g_adl[7],g_adr[7];           /* cumul sweep (levée) */
 static double g_adstock_min[7],g_adstock_fin[7],g_adsup_sum[7]; static long g_adsamp=0;
+/* MISSION GOULOT D'ARMES (2026-07-06, Phase 3) — TAILLE D'ARMÉE MIDGAME (SCPS_MIDARMYDIAG) :
+ * échantillon annuel an 100-150, empires MOYENS (10-25 régions, PLAYER/ANTAGONIST) — régiments
+ * réels (warhost_units) vs limite de force (warhost_force_limit). Gated : lecture seule. */
+static double g_mid_rgt_sum=0.0; static long g_mid_n=0;
+static double g_mid_rgt_all[8192]; static int g_mid_rgt_all_n=0;   /* pour la médiane */
 static int dcmp(const void *a, const void *b){ double x=*(const double*)a-*(const double*)b; return (x<0)?-1:(x>0); }
 static double dmedian(double *v, int n){
     if (n<=0) return -1.0;
@@ -540,6 +545,20 @@ int main(int argc, char **argv){
                         g_early_ratio4_tot += cost4_year/income;
                         g_early_ratio6_tot += cost6_year/income;
                     }
+                }
+            }
+            /* MISSION GOULOT D'ARMES (Phase 3, SCPS_MIDARMYDIAG) — taille d'armée des empires
+             * MOYENS (10-25 régions, PLAYER/ANTAGONIST) en MIDGAME (an 100-150) : critère de
+             * réussite joueur = ~20 régiments. Échantillon annuel, lecture seule. */
+            if (getenv("SCPS_MIDARMYDIAG") && yr>=100 && yr<=150){
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    PolityRole rl=w->country[c].role;
+                    if (rl!=POLITY_PLAYER && rl!=POLITY_ANTAGONIST) continue;
+                    int nreg=regions_of(s.econ,c);
+                    if (nreg<10 || nreg>25) continue;
+                    double rgt=(double)warhost_units(s.host,c);
+                    g_mid_rgt_sum += rgt; g_mid_n++;
+                    if (g_mid_rgt_all_n < 8192) g_mid_rgt_all[g_mid_rgt_all_n++]=rgt;
                 }
             }
             econ_flux_year_capture();
@@ -1462,6 +1481,11 @@ int main(int argc, char **argv){
                    AD_NAME[k2], g_adw[k2], g_adg[k2], served, popcut, g_adr[k2],
                    g_adstock_min[k2], g_adstock_fin[k2], g_adsup_sum[k2]/g_adsamp);
         }
+    }
+    if (getenv("SCPS_MIDARMYDIAG") && g_mid_n>0){   /* PHASE 3 : taille d'armée des empires MOYENS, an 100-150 */
+        double med = dmedian(g_mid_rgt_all, g_mid_rgt_all_n);
+        printf("   taille d'armée midgame (SCPS_MIDARMYDIAG) . empires 10-25 rég., an 100-150 : moy %.1f rgt · médiane %.1f rgt (n=%ld échantillons) — cible ~20\n",
+               g_mid_rgt_sum/g_mid_n, med, g_mid_n);
     }
     if (getenv("EDI_DBG")) agency_edi_dump();   /* G0.3 : pourquoi les paliers ne montent pas */
     printf("   accession (E1 §9) ........... 360 j an %.1f (%d/%d) · 540 j an %.1f (%d/%d) · 960 j an %.1f (%d/%d)  (moy. du 1er bâti)\n",

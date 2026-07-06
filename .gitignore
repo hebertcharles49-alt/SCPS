@@ -125,3 +125,4 @@ godot/project/Godot/
 
 # Sorties outils SLP (BMP générés par slp_decode.js)
 tools/clf_out/
+__pycache__/
