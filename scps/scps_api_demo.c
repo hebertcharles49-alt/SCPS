@@ -859,6 +859,49 @@ int main(int argc, char **argv){
             printf("   war_state : %s siège(s) vu(s) · %s occupation(s) vue(s) (30 ans)\n",
                    seen1?"des":"aucun", seen2?"des":"aucune");
         }
+
+        /* ── UI PROVINCE — câblage complet (LOTS 1/3/4/6) : 4 readers additifs, bornés. ── */
+        {
+            int np = scps_province_count(sd);
+            int slave_bounded=1, tax_bounded=1, def_bounded=1, market_bounded=1;
+            long any_slave=0; double any_tax=0.0;
+            for (int p=0; p<np; p++){
+                long sc = scps_province_slave_count(sd, p);
+                if (sc<0) slave_bounded=0;
+                if (sc>0) any_slave += sc;
+
+                double tax = scps_province_tax(sd, p);
+                if (tax<0.0 || !(tax==tax) /* NaN */) tax_bounded=0;
+                if (tax>0.0) any_tax += tax;
+
+                int dp = scps_province_defense_pct(sd, p);
+                if (dp<0 || dp>1000) def_bounded=0;   /* 100=neutre, montagne+relief plafonne largement < 1000 */
+
+                ScpsMarketLine ml[3]; const char *port="";
+                int nm = scps_province_market(sd, p, ml, 3, &port);
+                if (nm<0 || nm>3) market_bounded=0;
+                for (int i=0;i<nm;i++){
+                    if (ml[i].price<0.f || ml[i].stock<0.f) market_bounded=0;
+                    if (!ml[i].name || !ml[i].marche) market_bounded=0;
+                }
+                if (!port) market_bounded=0;
+            }
+            ok("scps_province_slave_count : borné (≥0) sur toutes les provinces", slave_bounded==1);
+            ok("scps_province_tax : borné (≥0, fini) sur toutes les provinces", tax_bounded==1);
+            ok("scps_province_defense_pct : borné [0,1000] sur toutes les provinces", def_bounded==1);
+            ok("scps_province_market : 0..3 lignes bornées (prix/stock≥0, mots non-nuls)", market_bounded==1);
+            printf("   province UI : %ld âme(s) esclave(s) au total · %.0f or/an de taxe cumulée (%d provinces)\n",
+                   any_slave, any_tax, np);
+
+            /* scps_province_seed : déterministe (même province → même seed d'un appel à l'autre). */
+            int seed_stable=1;
+            for (int p=0; p<np && p<50; p++){
+                int a = scps_province_seed(sd, p), b = scps_province_seed(sd, p);
+                if (a!=b || a<0) seed_stable=0;
+            }
+            ok("scps_province_seed : déterministe et non-négatif", seed_stable==1);
+            ok("scps_province_seed : hors-borne → -1", scps_province_seed(sd, -1)==-1 && scps_province_seed(sd, np+999)==-1);
+        }
         scps_sim_free(sd);
     }
 

@@ -53,6 +53,11 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_log", "province"),       &ScpsWorld::province_log);
     ClassDB::bind_method(D_METHOD("province_classes", "province"),   &ScpsWorld::province_classes);
     ClassDB::bind_method(D_METHOD("province_capitale", "province"),  &ScpsWorld::province_capitale);
+    ClassDB::bind_method(D_METHOD("province_slave_count", "province"),   &ScpsWorld::province_slave_count);
+    ClassDB::bind_method(D_METHOD("province_tax", "province"),           &ScpsWorld::province_tax);
+    ClassDB::bind_method(D_METHOD("province_defense_pct", "province"),   &ScpsWorld::province_defense_pct);
+    ClassDB::bind_method(D_METHOD("province_seed", "province"),          &ScpsWorld::province_seed);
+    ClassDB::bind_method(D_METHOD("province_market", "province"),        &ScpsWorld::province_market);
     ClassDB::bind_method(D_METHOD("country_demo", "country"),        &ScpsWorld::country_demo);
     ClassDB::bind_method(D_METHOD("country_stocks", "country"),      &ScpsWorld::country_stocks);
     ClassDB::bind_method(D_METHOD("country_relations", "country"),   &ScpsWorld::country_relations);
@@ -501,6 +506,38 @@ Dictionary ScpsWorld::province_capitale(int province) {
     d["logement_cap"] = (int64_t)c.logement_cap;
     d["service_cap"]  = (int64_t)c.service_cap;
     d["prod_pct"]     = c.prod_pct;
+    return d;
+}
+
+/* UI PROVINCE — câblage complet : 5 readers additifs (tous PURS, cf. scps_api.h). */
+int64_t ScpsWorld::province_slave_count(int province) const {
+    return sim ? (int64_t)scps_province_slave_count(sim, province) : 0;
+}
+double ScpsWorld::province_tax(int province) const {
+    return sim ? scps_province_tax(sim, province) : 0.0;
+}
+int ScpsWorld::province_defense_pct(int province) const {
+    return sim ? scps_province_defense_pct(sim, province) : 100;
+}
+int ScpsWorld::province_seed(int province) const {
+    return sim ? scps_province_seed(sim, province) : -1;
+}
+Dictionary ScpsWorld::province_market(int province) {
+    Dictionary d;
+    ScpsMarketLine ml[3];
+    const char *port = "";
+    int n = sim ? scps_province_market(sim, province, ml, 3, &port) : 0;
+    d["port"] = String::utf8(port ? port : "");
+    Array lines;
+    for (int i = 0; i < n; i++) {
+        Dictionary l;
+        l["name"]   = String::utf8(ml[i].name);
+        l["price"]  = ml[i].price;
+        l["stock"]  = ml[i].stock;
+        l["marche"] = String::utf8(ml[i].marche);
+        lines.push_back(l);
+    }
+    d["lines"] = lines;
     return d;
 }
 

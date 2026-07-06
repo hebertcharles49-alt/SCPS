@@ -53,6 +53,7 @@ static var _pion_cache := {}   # "phase:cid" → ImageTexture
 static func reset() -> void:
 	_arms_cache.clear()
 	_pion_cache.clear()
+	_prov_arms_cache.clear()
 
 static func _img(piece: String) -> Image:
 	if _img_cache.has(piece):
@@ -158,11 +159,22 @@ static func compose_arms(w, cid: int) -> Image:
 	var h := int(fmod(float(cid) * 2654435.7, 65536.0))
 	var ethos := clampi(int(w.country_ethos(cid)), 0, 5)
 	var herit := clampi(int(w.country_heritage(cid)), 0, 5)
+	return compose_arms_generic(h, entity_hue(cid), ethos, herit, role == 2)
+
+## LA COMPOSITION GÉNÉRIQUE — factorisée de compose_arms (pays) pour servir aussi
+## les PROVINCES (heraldry par province, UI Province lot 5) : plus aucune lecture
+## `w.country_*` ici, tout entre en paramètre explicite. `seed_hash` remplace le
+## hash de cid ; `hue` la teinte d'entité (roue commune aux frontières/lavis) ;
+## `cite_etat` = champ d'or fané (rang cité-état) au lieu de la teinte d'entité.
+static func compose_arms_generic(seed_hash: int, hue: float, ethos: int, herit: int, cite_etat: bool = false) -> Image:
+	var h := seed_hash
+	ethos = clampi(ethos, 0, 5)
+	herit = clampi(herit, 0, 5)
 	# teintures : PIGMENTS terreux (anti-néon — même discipline que les frontières) :
 	# champ = teinte d'entité désaturée, 2e = la même en sombre
-	var field := Color.from_hsv(entity_hue(cid), 0.38, 0.60)
-	var second := Color.from_hsv(entity_hue(cid), 0.46, 0.33)
-	if role == 2:
+	var field := Color.from_hsv(hue, 0.38, 0.60)
+	var second := Color.from_hsv(hue, 0.46, 0.33)
+	if cite_etat:
 		field = Color(0.80, 0.67, 0.36)       # cité-état : champ d'or fané
 		second = Color(0.50, 0.40, 0.20)
 	var src := _img(S29 + SHIELDS[h % SHIELDS.size()])
@@ -192,6 +204,37 @@ static func compose_arms(w, cid: int) -> Image:
 	# (le rang cité-état se lit à son CHAMP D'OR — la couronne murale demanderait
 	# un alignement d'art au pixel ; pièce en réserve, cf. rapport)
 	return base
+
+## LES ARMES d'une PROVINCE (UI Province lot 5) — seed déterministe (worldgen,
+## scps_province_seed), teintée à l'éthos/héritage du PAYS PROPRIÉTAIRE (une
+## province n'a pas son propre éthos moteur — elle hérite visuellement de qui la
+## tient ; sans propriétaire, éthos/héritage neutres [0] plutôt qu'un aléa qui
+## dériverait à chaque frame). Cache PAR PROVINCE (distinct du cache pays).
+static var _prov_arms_cache := {}
+static func province_arms(pid: int) -> Texture2D:
+	if pid < 0 or Sim.world == null:
+		return null
+	if _prov_arms_cache.has(pid):
+		return _prov_arms_cache[pid]
+	var w = Sim.world
+	var seed_h: int = int(w.province_seed(pid))
+	if seed_h < 0:
+		return null
+	var info: Dictionary = w.province_info(pid)
+	var owner := int(info.get("owner", -1))
+	var ethos := 0
+	var herit := 0
+	var hue := entity_hue(pid)
+	var cite_etat := false
+	if owner >= 0:
+		ethos = clampi(int(w.country_ethos(owner)), 0, 5)
+		herit = clampi(int(w.country_heritage(owner)), 0, 5)
+		hue = entity_hue(owner)
+		cite_etat = (int(w.country_role(owner)) == 2)
+	var img := compose_arms_generic(seed_h, hue, ethos, herit, cite_etat)
+	var tex: ImageTexture = ImageTexture.create_from_image(img) if img != null else null
+	_prov_arms_cache[pid] = tex
+	return tex
 
 ## LE PION d'armée : la pièce d'étain de la PHASE, drapeau teinté au pays.
 static func pion(phase_id: int, cid: int) -> Texture2D:

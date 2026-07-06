@@ -245,6 +245,49 @@ int scps_province_log(ScpsSim *s, int province, ScpsLogEntry *out, int max);
 /* pop par classe (laboureurs · artisans/bourgeois · noblesse/élite). */
 void scps_province_classes(ScpsSim *s, int province, long *laboureurs, long *artisans, long *noblesse);
 
+/* UI PROVINCE — LOT 1 : le 4e SEGMENT (ESCLAVES) de la barre de proportions.
+ * ⚠ ADDITIF (piège documenté TROUVAILLES.md) : scps_province_classes garde sa
+ * signature 3-classes figée (des appelants en dépendent) — un reader À PART pour
+ * ne rien casser. Somme des groupes CLASS_SLAVE de la province (0 si aucun). */
+long scps_province_slave_count(ScpsSim *s, int province);
+
+/* UI PROVINCE — LOT 3 : IMPÔTS DE LA PROVINCE. Le signal le plus HONNÊTE : la
+ * MÊME formule que la collecte fiscale d'econ_tick (§6-7 : taux visé borné par la
+ * tolérance éthos×classe, évasion au-delà), rejouée en LECTURE PURE sur les
+ * strates DE LA PROVINCE (ProvinceEconomy.strata — pas la région agrégée),
+ * projetée en or/AN (×12, la collecte réelle est mensuelle/dt mais econ_tick(dt)
+ * n'expose pas dt à la façade — dt=1/12 est l'invariant du tick économique dans
+ * tout le moteur, cf. sim_day). PUR read, aucune mutation, jamais désynchronisé
+ * du réel (même econ_tax_tolerance, même STATE_TAX_AMBITION mirroré ici en
+ * commentaire — scps_econ.c ne l'expose pas dans le .h, valeur 0.42f). */
+double scps_province_tax(ScpsSim *s, int province);
+
+/* UI PROVINCE — LOT 4 : le TERRAIN comme % de tenue de siège. DÉRIVE en lisible
+ * ce que le moteur APPLIQUE déjà au siège (terrain_defense_mult(biome,height),
+ * scps_army.c) — ⚠ scps_army.{h,c} sont en cours d'édition PARALLÈLE (agent
+ * W-GUERRE, TROUVAILLES.md) : ne PAS y dépendre (risque de casse de build
+ * partagé). La formule est REPLIQUÉE ici en lecture pure (coefficients par
+ * biome copiés à l'identique, documentés en tête de fonction dans scps_api.c
+ * avec le fichier:ligne source) — 100 = neutre (plaine, altitude nulle) ; >100 =
+ * le terrain PROLONGE le siège d'autant (multiplicateur de DURÉE, pas un bonus
+ * de combat — cf. terrain_combat_bonus, distinct, non répliqué ici). */
+int scps_province_defense_pct(ScpsSim *s, int province);
+
+/* UI PROVINCE — LOT 5 : SEED déterministe pour l'héraldique procédurale PAR
+ * PROVINCE (miroir de compose_arms(cid) côté pays — heraldry.gd factorise en
+ * compose_arms_generic(seed,...), ce seed en est l'entrée). Dérivé du hash
+ * seed_x/seed_y de la province (figé worldgen) — jamais aléatoire, stable d'une
+ * partie à l'autre. -1 si province hors-borne. */
+int scps_province_seed(const ScpsSim *s, int province);
+
+/* UI PROVINCE — LOT 6 : le marché LOCAL — prix/stock/bande des biens de la
+ * province (dérivé pur, ProvinceEconomy.price/stock + le mot de bande de marché
+ * existant, scps_readout.h). Remplit jusqu'à 3 lignes (les biens produits/consommés
+ * les plus significatifs — même tri que province_income, brute+manufacturé),
+ * retourne n. Le PORT (mot) est un extra sorti en *port_out ("" si aucun). */
+typedef struct { const char *name; float price; float stock; const char *marche; } ScpsMarketLine;
+int scps_province_market(ScpsSim *s, int province, ScpsMarketLine *out, int max, const char **port_out);
+
 typedef struct {
     const char *statut;   /* Hameau … Métropole (capitale_status) */
     int  tier;            /* 1..7 */

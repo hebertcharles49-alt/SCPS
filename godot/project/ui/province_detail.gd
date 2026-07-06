@@ -15,7 +15,7 @@ var PW := 648.0
 var PH := 512.0
 const HEAD := 34.0
 const BODY := 92.0          # y de départ du corps d'onglet (sous titre + onglets)
-const TABS := ["Peuples", "Production", "Constructions", "Journal", "Main-d'œuvre", "Empire"]
+const TABS := ["Peuples", "Production", "Constructions", "Journal", "Main-d'œuvre", "Contexte"]
 const ALLOC_STEP := 10      # pas d'ajustement de poids (clic [−]/[+])
 
 var _pid := -1
@@ -94,8 +94,23 @@ func _draw() -> void:
 		return
 	_hover_zones.clear()
 	var x := 16.0
-	UIKit.draw_icon(self, "capital_tower", Vector2(14, 8), 18)
-	VKit.text(self, Vector2(40, 9), VKit.COL_GOLD, "Province — %s" % String(info["nom"]), VKit.FS_BIG)
+	# ── BLASON de la PROVINCE (seed déterministe) + du PAYS PROPRIÉTAIRE, côte à côte ──
+	var Heraldry = load("res://ui/heraldry.gd")
+	var prov_arms: Texture2D = Heraldry.province_arms(_pid)
+	var hx := 6.0
+	if prov_arms != null:
+		draw_texture_rect(prov_arms, Rect2(hx, 6, 22, 22), false)
+		hx += 24.0
+	var powner0 := int(info.get("owner", -1))
+	if powner0 >= 0:
+		var owner_arms: Texture2D = Heraldry.arms(powner0)
+		if owner_arms != null:
+			draw_texture_rect(owner_arms, Rect2(hx, 6, 22, 22), false)
+			hx += 24.0
+	if hx <= 6.0:
+		UIKit.draw_icon(self, "capital_tower", Vector2(14, 8), 18)
+		hx = 40.0
+	VKit.text(self, Vector2(hx + 4.0, 9), VKit.COL_GOLD, "Province — %s" % String(info["nom"]), VKit.FS_BIG)
 
 	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
 	_close_rect = Rect2(PW - 26, 6, 20, 20)
@@ -178,25 +193,51 @@ func _draw_peuples(x: float, y: float, w, info: Dictionary) -> void:
 			"%s %d%% · %s" % [String(groups[i]["culture"]), int(groups[i]["percent"]), String(groups[i]["etat"])], VKit.FS_SMALL)
 		ly += 16
 
-	# classes (barre empilée)
+	# classes (barre empilée) + ESCLAVES (4e segment, si présents)
 	var cls: Dictionary = w.province_classes(_pid)
+	var slaves: int = int(w.province_slave_count(_pid))
 	var ccnt := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
-	var tot: float = maxf(1.0, ccnt[0] + ccnt[1] + ccnt[2])
 	var cc := [VKit.SLICE_PAL[0], VKit.SLICE_PAL[1], VKit.SLICE_PAL[3]]
 	var cnames := ["Laboureurs", "Artisans", "Noblesse"]
+	if slaves > 0:
+		ccnt.append(slaves)
+		cc.append(Color(0.28, 0.26, 0.24))
+		cnames.append("Esclaves")
+	var tot: float = maxf(1.0, ccnt[0] + ccnt[1] + ccnt[2] + (slaves if slaves > 0 else 0))
 	var py := cy + pr + 28.0
 	var rw := PW - 32.0
 	var acc := 0.0
-	for i in range(3):
-		var segw: float = (rw - acc) if i == 2 else float(ccnt[i]) / tot * rw
+	var nseg := ccnt.size()
+	for i in range(nseg):
+		var segw: float = (rw - acc) if i == nseg - 1 else float(ccnt[i]) / tot * rw
 		segw = maxf(0.0, segw)
 		VKit.fill(self, Rect2(x + acc, py, segw, 14), cc[i])
 		acc += segw
 	VKit.box(self, Rect2(x, py, rw, 14), VKit.COL_DIM)
 	py += 19
-	for i in range(3):
+	for i in range(nseg):
 		VKit.fill(self, Rect2(x + i * 200.0, py + 3, 9, 9), cc[i])
-		VKit.text(self, Vector2(x + i * 200.0 + 15, py), VKit.COL_PARCH, "%s %s" % [cnames[i], _grp(ccnt[i])], VKit.FS_SMALL)
+		var lbl: String = String(cnames[i])
+		if i == 3:
+			lbl = "%s (%d%%)" % [cnames[i], int(round(100.0 * float(ccnt[i]) / tot))]
+		VKit.text(self, Vector2(x + i * 200.0 + 15, py), VKit.COL_PARCH, "%s %s" % [lbl, _grp(ccnt[i])], VKit.FS_SMALL)
+
+	# ── FAVEURS & FLÉAUX (ScpsProvInfo.mods — déjà exposé, jamais affiché côté Godot) ──
+	var mods: Array = info.get("mods", [])
+	if not mods.is_empty():
+		py += 14
+		VKit.text(self, Vector2(x, py), VKit.COL_GOLD, "MODIFICATEURS", VKit.FS_SMALL)
+		py += 16
+		for m in mods:
+			var faveur := bool(m.get("faveur", false))
+			var mcol2 := VKit.sense(0.85) if faveur else VKit.sense(0.10)   # vert faveur / rouge fléau
+			var mark2 := "+" if faveur else "−"
+			VKit.text(self, Vector2(x + 8, py), mcol2, mark2, VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 22, py), VKit.COL_PARCH, String(m.get("nom", "")), VKit.FS_SMALL)
+			var heff := String(m.get("effet", ""))
+			if heff != "":
+				_hover_zones.append({"rect": Rect2(x, py - 1, PW - 32.0, 15.0), "text": heff})
+			py += 15
 
 	# ── AGITATION : la jauge + les MODIFICATEURS (nom · apport signé · résorption/an) ──
 	py += 34
@@ -386,8 +427,9 @@ func _draw_batiments(x: float, y: float, w) -> void:
 	if _manuf_flash != "":
 		VKit.text(self, Vector2(x, PH - 18), (VKit.sense(0.85) if _manuf_flash_ok else VKit.sense(0.10)), _manuf_flash, VKit.FS_SMALL)
 
-# ── ONGLET EMPIRE (« à développer ») : les JAUGES d'État — sorties de la barre du haut,
-#    elles vivent ici (savoir en topbar ; le reste = l'état de l'EMPIRE entier). ──
+# ── ONGLET CONTEXTE (ex-« Empire ») : le MARCHÉ LOCAL de cette province (prix/
+#    stock/bande des biens majeurs + le port s'il existe) + les JAUGES d'État de
+#    l'EMPIRE entier (sorties de la barre du haut ; savoir en topbar). ──
 const EMPIRE_BANDS := [
 	["stabilite",  "Stabilité",  "stability_shield"],
 	["prosperite", "Prospérité", "prosperity_sprout"],
@@ -395,6 +437,31 @@ const EMPIRE_BANDS := [
 	["cohesion",   "Cohésion",   "happiness_medallion"],
 ]
 func _draw_empire(x: float, y: float, w) -> void:
+	# ── MARCHÉ LOCAL (LOT 6) : prix/stock des biens de LA PROVINCE + le port ──
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Marché local", VKit.FS_SMALL)
+	y += 18
+	var mk: Dictionary = w.province_market(_pid)
+	var port := String(mk.get("port", ""))
+	if port != "":
+		UIKit.draw_icon(self, "trade_ship", Vector2(x, y - 2), 16)
+		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, port, VKit.FS_SMALL)
+		y += 18
+	var lines: Array = mk.get("lines", [])
+	if lines.is_empty():
+		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucun bien notable ici", VKit.FS_SMALL)
+		y += 18
+	else:
+		for l in lines:
+			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, String(l.get("name", "")), VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 140, y), VKit.COL_DIM, "%.1f or" % float(l.get("price", 0.0)), VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 220, y), VKit.COL_DIM, "stock %s" % _grp(int(l.get("stock", 0))), VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + 340, y), VKit.sense(0.62), String(l.get("marche", "")), VKit.FS_SMALL)
+			y += 17
+	y += 10
+	VKit.fill(self, Rect2(x, y, PW - 32.0, 1), VKit.COL_EDGE)
+	y += 12
+
+	# ── L'ÉTAT DE L'EMPIRE ENTIER (inchangé — la province n'en est qu'une part) ──
 	var me: int = w.player()
 	var ci: Dictionary = w.country_info(me)
 	if not bool(ci.get("valide", false)):
@@ -539,6 +606,10 @@ func _draw_flux(fx: float, fy: float, fw: float, fh: float, w) -> void:
 	VKit.text(self, Vector2(fx + 214.0, fy), VKit.COL_DIM, "ressource brute", VKit.FS_SMALL)
 	VKit.fill(self, Rect2(fx + 330.0, fy + 2.0, 9, 9), VKit.SLICE_PAL[7])
 	VKit.text(self, Vector2(fx + 344.0, fy), VKit.COL_DIM, "sortie d'atelier", VKit.FS_SMALL)
+	var tax := float(w.province_tax(_pid))
+	if tax > 0.5:
+		var tax_txt := "Impôts : ~%s or/an" % _grp(int(round(tax)))
+		VKit.text(self, Vector2(fx + fw - VKit.text_w(tax_txt, VKit.FS_SMALL), fy), VKit.COL_DIM, tax_txt, VKit.FS_SMALL)
 	var inc: Array = w.province_income(_pid)
 	if inc.is_empty():
 		VKit.text(self, Vector2(fx, fy + 24.0), VKit.COL_DIM, "rien de notable", VKit.FS_SMALL)

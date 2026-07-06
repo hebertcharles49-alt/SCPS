@@ -748,6 +748,111 @@ void scps_province_classes(ScpsSim *s, int pid, long *lab, long *bourg, long *el
     if(elite) *elite = cp[2];
 }
 
+/* UI PROVINCE LOT 1 — le 4e segment (ESCLAVES) : Σ groupes CLASS_SLAVE de la
+ * province. ADDITIF (scps_province_classes garde sa signature 3-classes figée —
+ * cf. piège documenté dans scps_api.h). */
+long scps_province_slave_count(ScpsSim *s, int pid){
+    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces || pid>=s->sim.econ->n_prov) return 0;
+    const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+    const ProvincePop *pp = &pe->pop;
+    long souls = 0;
+    for(int i=0;i<pp->n_groups;i++) if(pp->groups[i].klass==CLASS_SLAVE) souls += pp->groups[i].count;
+    return souls;
+}
+
+/* UI PROVINCE LOT 3 — IMPÔTS DE LA PROVINCE, en or/AN. Rejoue EXACTEMENT la
+ * formule de collecte fiscale d'econ_tick (scps_econ.c ~L2390-2406, §6-7) sur les
+ * strates DE LA PROVINCE — PUR read, aucune écriture (contrairement au tick réel
+ * qui débite st->wealth et crédite re->treasury). STATE_TAX_AMBITION est un
+ * #define LOCAL à scps_econ.c (pas dans le .h) : mirorré ici à sa valeur actuelle
+ * (0.42f) — si econ_tick change ce taux, ce reader DOIT suivre (les deux portent
+ * le même commentaire de couplage). */
+double scps_province_tax(ScpsSim *s, int pid){
+    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces || pid>=s->sim.econ->n_prov) return 0.0;
+    const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+    if(!pe->colonized) return 0.0;
+    const float STATE_TAX_AMBITION_MIRROR = 0.42f;   /* cf. scps_econ.c:2401 (le taux visé, non exposé au .h) */
+    double coll_tot = 0.0;
+    for(int c=0;c<CLASS_COUNT;c++){
+        const PopStratum *st = &pe->strata[c];
+        float sat   = clampf(st->satisfaction, 0.f, 1.f);
+        float seuil = econ_tax_tolerance(pe->culture.ethos, (SocialClass)c) * (0.40f + 0.60f*sat);
+        float evasion   = clampf(STATE_TAX_AMBITION_MIRROR - seuil, 0.f, 1.f);
+        float collected_monthly = STATE_TAX_AMBITION_MIRROR * st->wealth * (1.f - evasion);   /* dt=1 mois, *12 plus bas */
+        if(collected_monthly > st->wealth) collected_monthly = st->wealth;
+        coll_tot += (double)collected_monthly;
+    }
+    return coll_tot * 12.0;   /* mensuel → or/an */
+}
+
+/* UI PROVINCE LOT 4 — le TERRAIN comme % de tenue de siège. Réplique
+ * terrain_defense_mult(Biome,float) — scps_army.c:528-540 (fichier EN COURS
+ * D'ÉDITION PARALLÈLE, cf. scps_api.h : coefficients COPIÉS ici, pas partagés,
+ * pour ne dépendre d'aucun symbole en flux). 100 = neutre (plaine, alt. 0) ;
+ * >100 = le siège dure d'autant plus longtemps (multiplicateur de DURÉE — pas un
+ * bonus de combat, cf. terrain_combat_bonus, DISTINCT et non répliqué ici). */
+static float ui_terrain_defense_mult(Biome b, float height){
+    float base;
+    switch (b){
+        case BIO_MOUNTAINS:                              base = 1.8f; break;
+        case BIO_HILLS:  case BIO_HIGHLANDS:             base = 1.4f; break;
+        case BIO_FOREST: case BIO_WOODS: case BIO_JUNGLE:base = 1.3f; break;
+        case BIO_MARSH:  case BIO_BOG: case BIO_MANGROVE:base = 1.3f; break;
+        case BIO_DESERT: case BIO_COASTAL_DESERT:        base = 1.1f; break;
+        default:                                         base = 1.0f; break;
+    }
+    float h = height < 0.f ? 0.f : (height > 1.f ? 1.f : height);
+    return base * (1.f + 0.5f * h);   /* RELIEF_DEFENSE = 0.5f, scps_army.c */
+}
+int scps_province_defense_pct(ScpsSim *s, int pid){
+    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 100;
+    const Province *p = &s->w->province[pid];
+    float mult = ui_terrain_defense_mult(p->biome_dominant, p->height_avg);
+    return (int)(mult * 100.f + 0.5f);
+}
+
+/* UI PROVINCE LOT 5 — SEED déterministe par province (hash figé worldgen :
+ * seed_x/seed_y, jamais aléatoire ; miroir de compose_arms(cid) côté pays, qui
+ * hash cid — ici on hash la position de germe de la province). -1 hors-borne. */
+int scps_province_seed(const ScpsSim *s, int pid){
+    if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces) return -1;
+    const Province *p = &s->w->province[pid];
+    uint32_t h = (uint32_t)((int)p->seed_x * 92821 + (int)p->seed_y * 68917 + pid * 2654435761u);
+    return (int)(h & 0x7fffffffu);
+}
+
+/* UI PROVINCE LOT 6 — le marché LOCAL : prix/stock/bande des biens les plus
+ * significatifs de la province (même tri que province_income : brute d'abord,
+ * puis manufacturé), + le mot de PORT (EDI_PORT bâti ⇒ "Port", sinon ""). Dérivé
+ * pur (ProvinceEconomy.price/stock, band_marche — même primitive que
+ * scps_country_stocks, au grain PROVINCE au lieu du pays agrégé). */
+int scps_province_market(ScpsSim *s, int pid, ScpsMarketLine *out, int max, const char **port_out){
+    if(port_out) *port_out = "";
+    if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces || pid>=s->sim.econ->n_prov) return 0;
+    const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+    if(port_out) *port_out = (pe->edi_built & (1u<<EDI_PORT)) ? "Port" : "";
+    /* trie : d'abord la ressource brute principale de la province (info.ressource),
+     * puis jusqu'à 2 lignes de plus (les biens VIVANTS — stock ou flux non nuls),
+     * même filtre que scps_country_stocks. */
+    int n=0;
+    int g = (int)s->w->province[pid].resource;
+    for(int pass=0; pass<2 && n<max; pass++){
+        for(int gg=(pass==0?g:1); gg<RES_COUNT && n<max; gg++){
+            if(pass==0 && gg!=g) break;                 /* pass 0 : uniquement la ressource dominante */
+            if(pass==1 && gg==g) continue;               /* pass 1 : le reste, pas de doublon */
+            float stk = pe->stock[gg], dem = pe->demand[gg], sup = pe->supply[gg];
+            if(!(stk>0.5f || dem>0.05f || sup>0.05f)) continue;
+            out[n].name   = sz(resource_name((Resource)gg));
+            out[n].price  = pe->price[gg];
+            out[n].stock  = stk;
+            out[n].marche = sz(label_marche(band_marche(dem, sup+stk)));
+            n++;
+        }
+        if(pass==0 && g==RES_NONE) continue;   /* pas de brute dominante : direct pass 1 */
+    }
+    return n;
+}
+
 void scps_province_capitale(ScpsSim *s, int pid, ScpsCapitale *out){
     if(!out) return;
     memset(out, 0, sizeof *out); out->statut = "";

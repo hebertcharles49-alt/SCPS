@@ -89,6 +89,13 @@ public:
     Dictionary province_classes(int province);        /* barre empilée des classes */
     Dictionary province_capitale(int province);       /* ossature de capitale */
 
+    /* UI PROVINCE — câblage complet (5 readers additifs, tous PURS) */
+    int64_t    province_slave_count(int province) const;   /* LOT 1 : le 4e segment (esclaves) */
+    double     province_tax(int province) const;           /* LOT 3 : impôts, or/an */
+    int        province_defense_pct(int province) const;   /* LOT 4 : terrain → % de tenue de siège */
+    int        province_seed(int province) const;           /* LOT 5 : seed héraldique déterministe */
+    Dictionary province_market(int province);               /* LOT 6 : { port:String, lines:[{name,price,stock,marche}] } */
+
     /* SIDEBAR : agrégats PAYS (read-only) */
     Dictionary country_demo(int country);             /* classes + satisfaction */
     Array      country_stocks(int country);           /* biens : stock · net · couverture · marché */

@@ -80,6 +80,13 @@ func _draw() -> void:
 		for i in range(5):
 			draw_rect(Rect2(2, 2 + bh - 10 + i * 2, PW - 4.0, 2),
 				Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.18 + 0.16 * i), true)
+		# HOVER DÉFENSE : le terrain PROLONGE la tenue de siège — % lisible dérivé du moteur.
+		var def_pct := int(w.province_defense_pct(_pid))
+		var def_word := String(info.get("defense", ""))
+		var def_hover := "Terrain : %s — tenue de siège +%d%%" % [String(info.get("relief", "")), def_pct - 100]
+		if def_word != "" and def_word != "aucune":
+			def_hover += " · %s" % def_word
+		_tips.append([Rect2(2.0, 2.0, PW - 4.0, bh), def_hover])
 
 	# ── EN-TÊTE : les ARMES du propriétaire (héraldique dérivée) · nom · prospérité ───
 	var hsz := 30.0
@@ -164,25 +171,34 @@ func _draw() -> void:
 	y = fy + fr + 8
 	_tips.append([Rect2(0.0, hy0, PW, y - hy0), String(TIPS["humeur"])])
 
-	# ── POPULATION : barre empilée des classes + légende ──────────────────────
+	# ── POPULATION : barre empilée des classes (+ ESCLAVES, 4e segment) + légende ──
 	var cls: Dictionary = w.province_classes(_pid)
+	var slaves: int = int(w.province_slave_count(_pid))
 	var cp := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
-	var tot: float = maxf(1.0, cp[0] + cp[1] + cp[2])
 	var cc := [VKit.SLICE_PAL[0], VKit.SLICE_PAL[1], VKit.SLICE_PAL[3]]
 	var cnames := ["Laboureurs", "Artisans", "Noblesse"]
+	if slaves > 0:
+		cp.append(slaves)
+		cc.append(Color(0.28, 0.26, 0.24))   # gris sombre — la strate SERVILE, distincte des classes libres
+		cnames.append("Esclaves")
+	var tot: float = maxf(1.0, cp[0] + cp[1] + cp[2] + (slaves if slaves > 0 else 0))
 	y = VKit.section(self, x, y, "POPULATION")
 	var bh := 12.0
 	var acc := 0.0
-	for i in range(3):
-		var segw: float = (rw - acc) if i == 2 else float(cp[i]) / tot * rw
+	var nseg := cp.size()
+	for i in range(nseg):
+		var segw: float = (rw - acc) if i == nseg - 1 else float(cp[i]) / tot * rw
 		segw = maxf(0.0, segw)
 		VKit.fill(self, Rect2(x + acc, y, segw, bh), cc[i])
 		acc += segw
 	VKit.box(self, Rect2(x, y, rw, bh), VKit.COL_DIM)
 	y += bh + 5
-	for i in range(3):
+	for i in range(nseg):
 		VKit.fill(self, Rect2(x, y + 3, 9, 9), cc[i])
-		VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, "%s %s" % [cnames[i], _grp(cp[i])])
+		var lbl: String = String(cnames[i])
+		if i == 3:
+			lbl = "%s (%d%%)" % [cnames[i], int(round(100.0 * float(cp[i]) / tot))]
+		VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, "%s %s" % [lbl, _grp(cp[i])])
 		_tips.append([Rect2(0.0, y - 1.0, PW, 18.0), String(TIPS.get(cnames[i], ""))])
 		y += 18
 
@@ -201,6 +217,9 @@ func _draw() -> void:
 	if shown == 0:
 		res = String(info["ressource"])
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, res)
+	var tax := float(w.province_tax(_pid))
+	if tax > 0.5:
+		VKit.text(self, Vector2(x + rw - 90.0, y), VKit.COL_DIM, "Impôts ~%s or/an" % _grp(int(round(tax))))
 	y += 22
 	y = VKit.section(self, x, y, "PRODUCTION")
 	if inc.size() == 0:
