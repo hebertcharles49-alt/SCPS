@@ -10,18 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void write_ppm(const char *path, const uint32_t *px, int w, int h){
-    FILE *f=fopen(path,"wb"); if(!f){ fprintf(stderr,"écriture %s impossible\n",path); return; }
-    fprintf(f,"P6\n%d %d\n255\n",w,h);
-    for (int i=0;i<w*h;i++){
-        uint32_t c=px[i];
-        unsigned char rgb[3]={ (unsigned char)((c>>16)&0xFF),
-                               (unsigned char)((c>>8)&0xFF),
-                               (unsigned char)(c&0xFF) };
-        fwrite(rgb,1,3,f);
-    }
-    fclose(f);
-}
+#include "scps_ppm.h"   /* write_ppm partagé (dédoublonné avec dump.c) */
 
 int main(int argc,char**argv){
     uint32_t base=(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):7u;

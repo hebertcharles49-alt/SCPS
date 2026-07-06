@@ -15,20 +15,9 @@
 #include <string.h>
 #include <time.h>
 
-static void write_ppm(const char *path, const uint32_t *px, int w, int h) {
-    FILE *f = fopen(path, "wb");
-    if (!f) { fprintf(stderr, "écriture %s impossible\n", path); return; }
-    fprintf(f, "P6\n%d %d\n255\n", w, h);
-    for (int i = 0; i < w*h; i++) {
-        uint32_t c = px[i];
-        unsigned char rgb[3] = {
-            (unsigned char)((c >> 16) & 0xFF),
-            (unsigned char)((c >>  8) & 0xFF),
-            (unsigned char)((c      ) & 0xFF)
-        };
-        fwrite(rgb, 1, 3, f);
-    }
-    fclose(f);
+#include "scps_ppm.h"   /* write_ppm partagé (dédoublonné avec mapshot.c) */
+static void dump_ppm(const char *path, const uint32_t *px, int w, int h) {
+    write_ppm(path, px, w, h);
     printf("  écrit %s\n", path);
 }
 
@@ -103,7 +92,7 @@ int main(int argc, char **argv) {
     printf("[dump] graine %u → vues %dx%d\n", seed, W, H);
     for (size_t i = 0; i < sizeof(views)/sizeof(views[0]); i++) {
         render_map(w, buf, W, H, &rp, views[i].m);
-        write_ppm(views[i].file, buf, W, H);
+        dump_ppm(views[i].file, buf, W, H);
     }
 
     /* Gros plan : le 1er continent, terrain et frontières, pour vérifier que
@@ -119,7 +108,7 @@ int main(int argc, char **argv) {
         RenderParams zp=rp; zp.cam_scale=zs;
         zp.cam_ox=cx-ZW/(2*zs); zp.cam_oy=cy-ZH/(2*zs);
         render_map(w, zb, ZW, ZH, &zp, VIEW_TERRAIN);
-        write_ppm("out_zoom_terrain.ppm", zb, ZW, ZH);
+        dump_ppm("out_zoom_terrain.ppm", zb, ZW, ZH);
         /* Surimpose UNIQUEMENT les traits de frontière sur le terrain brut :
          * on voit alors si les frontières suivent fleuves et crêtes. */
         for (int sy=0; sy<ZH; sy++) for (int sx=0; sx<ZW; sx++) {
@@ -127,7 +116,7 @@ int main(int argc, char **argv) {
             if (wx<0||wx>=W||wy<0||wy>=H) continue;
             if (w->cell[wy*W+wx].border_prov) zb[sy*ZW+sx]=0xFF101010u; /* trait noir */
         }
-        write_ppm("out_zoom_borders.ppm", zb, ZW, ZH);
+        dump_ppm("out_zoom_borders.ppm", zb, ZW, ZH);
         free(zb);
     }
 
