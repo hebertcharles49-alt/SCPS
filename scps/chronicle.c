@@ -579,8 +579,9 @@ int main(int argc, char **argv){
          * nourrit l'entropie ET sélectionne FIN_SANG (ENDGAME_BLOOD_FRAC) — permet
          * d'OBSERVER si une graine belliqueuse en approche sans forcer le seuil. */
         if (s.eg && s.eg->pop_ref>0.0)
-            printf("              sang : morts de guerre cumulées %.0f / pop-réf %.0f = %.2f%% (seuil %.0f%%)\n",
-                   s.eg->war_dead, s.eg->pop_ref, 100.0*s.eg->war_dead/s.eg->pop_ref,
+            printf("              sang : mémoire des morts %.0f (demi-vie %.0f ans) = %.2f%% de la pop VIVANTE (seuil %.0f%%)\n",
+                   s.eg->war_dead, (double)tune_f("SANG_MEMORY_HL", 40.f),
+                   100.0*endgame_blood_ratio(s.eg, s.econ),
                    (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)*100.0);
         /* CAPSTONE §27 — la FIN, si elle s'est déclenchée (la preuve d'émergence).
          * V1a : SANG rejoint les 4 visages ; « métab X/6 » sur ASCENSION (la barre

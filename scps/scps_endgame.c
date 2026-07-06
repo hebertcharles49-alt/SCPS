@@ -52,8 +52,35 @@ void endgame_init(EndgameState *eg) {
  * Recalculé à neuf chaque tick (prosperity_tick réassigne wp->entropy = esum)
  * → l'ajout est NON cumulatif inter-ticks. Ce sont de vraies ENTRÉES moteur
  * (charge/flux/morts), jamais un bonus plat. */
+/* Σ pop VIVANTE monde (toutes strates, régions possédées) — le dénominateur du
+ * ratio de sang. CALIBRAGE (2e passe, mesuré 5 graines × 250 ans) : rapporté à
+ * pop_ref (l'an-0), le ratio explosait (la pop TRIPLE en 250 ans) et écrasait
+ * toute discrimination ; rapporté à la pop ACTUELLE, les graines s'étalent
+ * (0.05 → 1.5) et le seuil 0.20 sépare NATURELLEMENT les mondes sanglants
+ * (Sang) des mondes calmes (les autres visages). */
+static double endgame_world_pop(const WorldEconomy *econ) {
+    if (!econ) return 0.0;
+    double tot = 0.0;
+    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+        const RegionEconomy *re = &econ->region[r];
+        if (re->owner < 0) continue;
+        for (int cl = 0; cl < CLASS_COUNT; cl++) tot += (double)re->strata[cl].pop;
+    }
+    return tot;
+}
+
+/* Le ratio de sang CANONIQUE (mémoire décrue / pop actuelle, repli pop_ref) —
+ * LU par l'entrée d'entropie ET par la sélection au fire (le même chiffre). */
+double endgame_blood_ratio(const EndgameState *eg, const WorldEconomy *econ) {
+    if (!eg) return 0.0;
+    double base = endgame_world_pop(econ);
+    if (base <= 0.0) base = eg->pop_ref;
+    return (base > 0.0) ? eg->war_dead / base : 0.0;
+}
+
 static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
-                                  const TechState ts[], const Campaign *camp, int nc) {
+                                  const TechState ts[], const Campaign *camp,
+                                  const WorldEconomy *econ, int nc) {
     if (!wp) return;
     if (ts) {
         float tech_ent = 0.f;
@@ -62,27 +89,30 @@ static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
     }
     wp->entropy += tune_f("ENTROPY_BREACH_W", 0.3f) * wp->age_breach_flux;
     if (eg && camp) {
-        eg->war_dead = (double)camp->dead_choc + (double)camp->dead_pursuit;
-        if (eg->pop_ref > 0.0) {
-            double ratio = eg->war_dead / eg->pop_ref;
-            wp->entropy += tune_f("ENTROPY_BLOOD_W", 1.0f) * (float)ratio;
-        }
+        /* MÉMOIRE À DÉCRUE (calibrage post-sweep : le miroir cumulatif atteignait
+         * 40-961 % de pop_ref — toute partie longue devenait SANG). On accumule le
+         * DELTA de morts depuis la dernière lecture, puis la mémoire DÉCROÎT d'une
+         * demi-vie SANG_MEMORY_HL ans par appel (endgame_tick est ANNUEL) : le seuil
+         * ENDGAME_BLOOD_FRAC mesure « une génération qui a perdu un cinquième du
+         * monde », pas l'addition de tous les siècles. */
+        double cum = (double)camp->dead_choc + (double)camp->dead_pursuit;
+        double delta = cum - eg->war_dead_seen;
+        if (delta < 0.0) delta = 0.0;             /* RAZ de campagne (nouvelle sim) */
+        eg->war_dead_seen = cum;
+        eg->war_dead = eg->war_dead * pow(0.5, 1.0 / (double)tune_f("SANG_MEMORY_HL", 40.f))
+                     + delta;
+        wp->entropy += tune_f("ENTROPY_BLOOD_W", 8.0f)
+                     * (float)endgame_blood_ratio(eg, econ);
     }
 }
 
 /* Posé UNE fois (sim_init, après gen_population) : la population de référence
- * an-0, pour le ratio war_dead/pop_ref (le seuil FIN_SANG et l'entrée d'entropie
- * y sont tous deux calibrés). No-op si déjà posé (>0) : un reload ne le
- * ré-amorce jamais. */
+ * an-0 — désormais le REPLI du dénominateur (bancs sans econ vivant) ; le ratio
+ * courant se calcule sur la pop ACTUELLE (endgame_blood_ratio). No-op si déjà
+ * posé (>0) : un reload ne le ré-amorce jamais. */
 void endgame_set_pop_ref(EndgameState *eg, const WorldEconomy *econ) {
     if (!eg || !econ || eg->pop_ref > 0.0) return;
-    double tot = 0.0;
-    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
-        const RegionEconomy *re = &econ->region[r];
-        if (re->owner < 0) continue;
-        for (int cl = 0; cl < CLASS_COUNT; cl++) tot += (double)re->strata[cl].pop;
-    }
-    eg->pop_ref = tot;
+    eg->pop_ref = endgame_world_pop(econ);
 }
 
 /* Foyer de REPLI : si aucune région ne porte de faust_charge (entropie TECH-driven
@@ -741,7 +771,7 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
      * pop_ref franchit ENDGAME_BLOOD_FRAC, LE SANG L'EMPORTE (visage dominant,
      * PAS un second seuil parallèle : le gate temporel + ENTROPY_FIN restent
      * les MÊMES conditions d'ouverture testées plus haut). */
-    if (eg->pop_ref > 0.0 && (eg->war_dead / eg->pop_ref) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)) {
+    if (endgame_blood_ratio(eg, econ) >= (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)) {
         /* Foyer SANG : la région vivante la plus ravagée (max revolt_scar), pas
          * forcément le foyer d'entropie (le sang a SA propre géographie). */
         int worst = -1; float worst_scar = -1.f;
@@ -788,7 +818,7 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     if (!eg || !wp) return;
 
     /* C1 — élargir l'entropie (savoir faustien + Âge de la Brèche + morts de guerre). */
-    endgame_entropy_widen(eg, wp, ts, camp, w ? w->n_countries : 0);
+    endgame_entropy_widen(eg, wp, ts, camp, econ, w ? w->n_countries : 0);
 
     /* Diag de CALIBRATION (SCPS_ENTDIAG=1) : la courbe d'entropie année par année.
      * OFF par défaut, stderr → déterminisme intact. */

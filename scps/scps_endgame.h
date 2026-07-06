@@ -73,7 +73,13 @@ typedef struct EndgameState {
      * LES MORTS DE GUERRE (neuf). war_dead/pop_ref sont le ratio qui nourrit
      * l'entropie ET sélectionne FIN_SANG — sérialisés pour que le ratio soit
      * stable au reload (la sélection au fire doit relire le MÊME chiffre). */
-    double   war_dead;                        /* Σ morts de guerre monde (choc+poursuite), cumul SIM */
+    double   war_dead;                        /* MÉMOIRE des morts de guerre — accumulateur de DELTAS
+                                               * à DÉCRUE annuelle (demi-vie SANG_MEMORY_HL ans : « on
+                                               * compte ceux qui se souviennent des vivants » — le monde
+                                               * OUBLIE ; sans décrue le cumul à vie dépasse la pop qui
+                                               * se renouvelle : 40-961 % mesurés ⇒ toute partie longue
+                                               * serait SANG). */
+    double   war_dead_seen;                   /* dernier cumul Campaign lu (delta = cum − seen) */
     double   pop_ref;                         /* Σ pop à la genèse (posée UNE fois par sim_init) */
 
     /* SANG (FIN_SANG) : dépeuplement progressif des régions marquées par la
@@ -92,6 +98,11 @@ void endgame_init(EndgameState *eg);
  * monde a une population réelle). No-op si déjà posé (>0) — un reload ne le
  * ré-amorce jamais (le ratio war_dead/pop_ref doit rester stable au reload). */
 void endgame_set_pop_ref(EndgameState *eg, const WorldEconomy *econ);
+
+/* Le ratio de sang CANONIQUE : mémoire décrue des morts / pop ACTUELLE (repli
+ * pop_ref sans econ). Lu par l'entrée d'entropie, la sélection FIN_SANG et la
+ * télémétrie chronicle — un seul chiffre partout. */
+double endgame_blood_ratio(const EndgameState *eg, const WorldEconomy *econ);
 
 /* Tick orchestrateur : appelé UNE fois par an (après prosperity_tick) depuis
  * sim_step / chronicle. camp : pour échouer les armées sur sol englouti (et,

@@ -33,10 +33,12 @@
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
 #define SAVE_VERSION 67u           /* v67 : ENDGAME UNIFIÉ (V1a) — EndgameState (section EGAM,
-                                    * fwrite BRUT) gagne war_dead/pop_ref (double, le ratio qui
-                                    * nourrit l'entropie ET sélectionne FIN_SANG) + sang_scar[
-                                    * SCPS_MAX_REG] (la cicatrice PERMANENTE du dépeuplement de
-                                    * guerre) ⇒ sizeof(EndgameState) change. <v67 refusé.
+                                    * fwrite BRUT) gagne war_dead (MÉMOIRE des morts, décrue
+                                    * SANG_MEMORY_HL) + war_dead_seen (dernier cumul Campaign lu)
+                                    * + pop_ref + sang_scar[SCPS_MAX_REG] (cicatrice PERMANENTE)
+                                    * ⇒ sizeof(EndgameState) change. (war_dead_seen ajouté DANS
+                                    * la fenêtre v67, aucune save v67 antérieure n'existe.)
+                                    * <v67 refusé.
                                     * v66 : PLAFOND DE TIRS À VIE — EventsState gagne
                                     * fires[EVID_COUNT][SCPS_MAX_COUNTRY] (nb de tirs par
                                     * évènement×pays ; les dilemmes récurrents plafonnent à

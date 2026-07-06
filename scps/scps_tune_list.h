@@ -446,7 +446,10 @@
      * MERV_CHARGE_PER_TICK : charge faustienne ajoutée par tick de chantier (C6). */ \
     X(ENTROPY_FIN,           55.0f) \
     X(ENDGAME_YEAR_OPEN,    180.0f) \
-    X(ENTROPY_TECH_W,         1.0f) \
+    /* 1.0→1.35 (recalage 2026-07-06, ENTDIAG seed 9) : les refontes éco avaient fait
+     * RECULER le tir de ~80 ans (croisement an ~260, historique ~184-195) — à 1.35 le
+     * tir médian revient ~an 235-270, les mondes sanglants plus tôt (ENTROPY_BLOOD_W). */ \
+    X(ENTROPY_TECH_W,         1.35f) \
     X(SINK_RIFTS_PER_YEAR,    3.0f) \
     X(COLD_RAMP_PER_YEAR,     0.005f) \
     X(THORN_CELLS_PER_YEAR, 200.0f) \
@@ -463,9 +466,17 @@
      * (décision #1 — une barre, un visage dominant). SANG_DRAIN_PER_YEAR : fraction de
      * pop drainée/an dans une région marquée (cicatrice PERMANENTE, ne guérit plus). */ \
     X(ENTROPY_BREACH_W,       0.3f) \
-    X(ENTROPY_BLOOD_W,        1.0f) \
+    /* ENTROPY_BLOOD_W recalé 1→8 (2e passe, mesuré 5 graines) : le ratio passe sur la
+     * pop VIVANTE (0.05-1.5 observé) — à 8, un monde sanglant (ratio ~1) pousse ~8 pts
+     * d'entropie (précipite sa fin), un monde calme ~0.4 (négligeable). */ \
+    X(ENTROPY_BLOOD_W,        8.0f) \
     X(ENDGAME_BLOOD_FRAC,     0.20f) \
     X(SANG_DRAIN_PER_YEAR,    0.03f) \
+    /* SANG_MEMORY_HL : demi-vie (ans) de la MÉMOIRE des morts de guerre — sans décrue,
+     * le cumul à vie dépassait la pop renouvelée (40-961 % en sweep) et toute partie
+     * longue devenait SANG ; à 40 ans le seuil BLOOD_FRAC mesure « une génération qui
+     * a perdu un cinquième du monde ». */ \
+    X(SANG_MEMORY_HL,         40.f) \
     /* CORRECTIF Merveille (relecture joueur) : la métabolisation-VICTOIRE juge CHAQUE
      * héritage sur SA PROPRE diaspora (dénominateur par-héritage), pas la pop totale de
      * l'empire (piège : ce dernier dénominateur rend 6 cultures ≥0.35 simultanément

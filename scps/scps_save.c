@@ -304,7 +304,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (eg->cold_offset < 0.0f || eg->cold_offset > 1.0f) return false;
         if (eg->merv_progress < 0.0f || eg->merv_progress > 1.0f) return false;
         /* V1a : war_dead/pop_ref (le ratio SANG) + sang_scar[] (cicatrice permanente). */
-        if (eg->war_dead < 0.0 || eg->pop_ref < 0.0) return false;
+        if (eg->war_dead < 0.0 || eg->pop_ref < 0.0 || eg->war_dead_seen < 0.0) return false;
         for (int r = 0; r < SCPS_MAX_REG; r++)
             if (eg->sang_scar[r] < 0.0f || eg->sang_scar[r] > 1.0f) return false;
     }
