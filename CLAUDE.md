@@ -1766,6 +1766,50 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   prix convergence intertrade (nudge transitoire mort sous le prix national, laissé commenté),
   chantier-au-fil-de-l'eau (s'approvisionner mois par mois pendant la construction — raffinement
   Anno optionnel depuis le recalage, plus une nécessité).
+- **BOUCLE DE GAMEPLAY §0-§4bis (2026-07-05/06) — LA MEMBRANE DE DÉCISION + 21 dilemmes + DÉCRETS +
+  ANNALES (le jeu devient un JEU)** : la grande vague « boucle » (3 docs de design joueur), en
+  hiérarchie multi-agents. **§0** : recettes EDIFICES[] arrondies aux MULTIPLES DE 5 vers le haut
+  (« 16 semble tricoté, 20 beaucoup moins »). **§1 MEMBRANE** : EvOption{label,blurb,eff,ai_chance,
+  hook,flavor} × 3-4 choix par évènement ; EvChoiceHook{faction,force,cicatrice,cooldown} ;
+  `d_treasury_mois` = fraction SIGNÉE du revenu mensuel RÉEL (`econ_country_tax_year × ipm` — jamais
+  un montant plat) ; ScarKind (⚠ SCAR_NONE=0 en tête — un =0 sur une vraie cicatrice en plantait de
+  FANTÔMES sur chaque évènement non hooké) ; anneaux scars[128]/cds[96]/pending[8]/annals[96] dans
+  EventsState (section EVNT, fwrite brut ⇒ bumps v62/v63) ; `resolve_choice` COMMUN IA/joueur (l'IA
+  tire ai_chance au rng d'état, le joueur enfile CMD_EVENT_CHOICE — graine+journal=replay) ; titres
+  GABARITS « %s » → noms RÉELS de province (« marbrive est un nom fictif ! » — splice manuel
+  anti--Wformat-nonliteral + ring statique pour le provlog). **LE PARI** (gamble_eff/gamble_p par
+  option, résolu au frand d'état — provlog « Le pari a tourné ») : chaque dilemme a une option à
+  issue incertaine. **§2 crise phare** : Marbrive (chantier refusé) → cicatrice K1 → Pont effondré
+  (le chaînage PROUVÉ). **Contenu W1+W2 = 21 dilemmes** : 6 W1 (cloches·entrepôts fermés·deux
+  cartes·eau noire·dernière décision·salve runique — latch tech apex, cooldown 36500 j = une fois
+  par pays) + 16 lot 2 : §A tech-latch (esclavage·Œuvre noire·Savoir interdit·culte impérial·Éveil·
+  foreuse qui saigne — la tech DÉCOUVERTE pose son dilemme moral), §B culturels (droit d'intégration·
+  diaspora aux comptoirs — helpers pop-pondérés), §C religieux (foi qui se fend·prophète de la
+  Brèche·relique douteuse), §D CHAÎNAGE (remède qui tue·cellule des faubourgs·fusils qui reviennent·
+  savants à l'ennemi·tarif appris — chaque K CONSOMME sa cicatrice mûrie, `scar_delay_range` par
+  kind 360-1460 j). Sautés & DOCUMENTÉS : B2/B3/B5/B6, C2/C3/C4 (credo_drift/ethos_drift/
+  creuset_state absents — aucun canal inventé). Bug latent pris : `events_text_clean` débordait sa
+  pile (texts[256] < 273) → dimensionné EVID_COUNT×13+AGE_COUNT. **§3 DÉCRETS** (scps_decrees, neuf,
+  player-only ⇒ golden intact par construction) : 4 édits/réformes sur des LEVIERS EXISTANTS (levée
+  permanente=verrou warhost_levy · mécénat=+prestige contre ponction ∝ tax_year×ipm · ambassades=
+  +influence · politique de tribut=×1.5 contribution vassale contre grief continu, flag-array dans
+  diplo sans include croisé) ; 4 différés documentés (aucun levier : centralisation/tolérance/
+  creuset/isolationnisme). ⚠ SAVE 63→**64** (section DCRE). CMD_DECREE + façade + onglet Conseil.
+  **Conseillers-visages** : chaque option affiche « — {faction} » (trahir une option = trahir
+  quelqu'un). **§4 ANNALES** : ring 96, accrétion joueur seule, éviction pondérée, ANNAL_CICATRICE
+  porte l'INDEX de son dilemme d'origine (causalité affichée) ; frise `chronique.gd` cliquable ;
+  8 bannières thématiques RÉUTILISÉES sur les popups (event_art.gd). **§4bis ANNALES-2** (Godot
+  seul) : récap d'ÂGE (le chip « Engager » ouvre un écran de chapitre — annales de l'âge + bilan +
+  engager/plus tard), ÉPILOGUE (« Votre règne en une phrase » au premier endgame), 12 ÉPITHÈTES
+  émergentes dérivées du comptage des annales (déterministe). **SAVETEST v65** : le --savetest
+  dérivait sur l'OR SEUL — `g_flux[][FX_COUNT]` (l'instrument I0 de l'année EN COURS) non sérialisé
+  ⇒ capture annuelle post-reload TRONQUÉE ⇒ d_treasury_mois payait un autre montant (même classe
+  que EMOB/COLC) → TXYR étendue (g_flux + compteurs de mois), ⚠ SAVE 64→**65**, savetest 7/9/11/42
+  BYTE-IDENTIQUE. **Télémétrie chronicle** « membrane de décision » + « dilemmes (lots 1-2) » par
+  famille — mesuré seed 9 : 666-1172 W1 · 19-43 culturels · 61 religieux · 133-353 chaînages/sim
+  (les registres VIVENT ; les latches tech attendent l'arbre, comme la Salve). ⚠ **RE-BASELINE
+  golden** (les dilemmes mordent < 12 ans) · determinism STABLE · 37 bancs verts (3 KO Windows
+  pré-existants) · events_demo 85/85 · scps_api_demo 131/131 · scons 0 warning.
 
 ## Disciplines non négociables
 

@@ -1,68 +1,58 @@
-# Synthèse de session — 2026-07-05 (ter) : mission éco (matière réelle · IA · calibrage Anno)
+# Synthèse de session — 2026-07-05/06 : la BOUCLE DE GAMEPLAY (membrane de décision · 21 dilemmes · décrets · Annales)
 
-> Handoff. Branche `claude/vibrant-euler-1tgfp3`. **SAVE_VERSION 61** (COLC : le répit de
-> colonisation g_colony_cd est un accumulateur inter-ticks — le savetest seed 11 l'a exigé).
-> Mission utilisateur : « fix l'économie, ses chiffres et la logique de colonisation/
-> construction de l'IA » + « stop aux chiffres aberrants (provinces à ~20 000 nourriture) »,
-> référence design Anno 1800. Orchestration : hiérarchie CLAUDE.md (orchestrateur Fable +
-> 3 agents d'audit + 4 implémenteurs sonnet, relance après une limite de session).
+> Handoff. Branche `claude/vibrant-euler-1tgfp3`. **SAVE_VERSION 65** (v62 EVNT membrane ·
+> v63 annales · v64 DCRE décrets · v65 TXYR étendue — l'instrument I0 de l'année en cours).
+> Mission utilisateur : « Termine tout » — les 3 docs de design (boucle, registres
+> d'événements v4 + lot 2, décisions-leviers, pack flavor tech) implémentés en hiérarchie
+> multi-agents (orchestrateur Fable + implémenteurs sonnet parallèles sur fichiers disjoints).
 
 ---
 
-## Les trois découvertes structurantes (audits croisés)
+## Ce qui a été livré (commits f5bd6c7 → aff0358 + la vague précédente 5d2d168 → bc51fca)
 
-1. **La matière était FANTÔME.** `region[]` est une VUE reconstruite à chaque clôture ;
-   l'or passait par les provinces (`it_treasury`) mais la matière s'écrivait sur la vue →
-   effacée ≤ 30 j. Le marché ne déplétait jamais (acheteur dupliqué), navy gratuite
-   (or/bois/cuivre/ÉQUIPAGE), tribut de vassal évaporé, pillage = robinet d'or, marge
-   d'import morte 11 mois/12. PROVINCE_MODEL.md le notait comme « raffinement futur » —
-   c'était en réalité TOUT le canal physique hors-tick.
-2. **Le « panneau B » n'existait pas.** Le §NF exclut le joueur (« il construit à la
-   main ») mais aucun verbe ne posait de manufacture → le joueur était structurellement
-   privé de logement manufacturier (plafonné ½·cap_pop) pendant que l'IA doublait.
-3. **Les ~20 000 nourriture étaient RÉELS** (pas un bug d'affichage) : un ouvrier-grain
-   nourrissait ~15 personnes (rendement 8/an vs bouche réelle ~0,53/hab/an) ; l'UI
-   affichait en plus le cumul ANNUEL (per_day × 365).
+- **§1 La MEMBRANE DE DÉCISION** : EvOption 3-4 choix (label/blurb/effets/ai_chance/hook/
+  flavor), cicatrices ScarKind à mémoire (delay par kind), cooldowns, file joueur pending[8],
+  `resolve_choice` COMMUN IA/joueur (l'IA tire ai_chance, le joueur enfile CMD_EVENT_CHOICE),
+  `d_treasury_mois` = fraction signée du revenu réel × IPM, titres gabarits « %s » → noms
+  réels de provinces, **LE PARI** (gamble_eff/gamble_p — chaque dilemme a une option
+  incertaine, résolue au rng d'état).
+- **21 dilemmes** : Marbrive + Pont effondré (la crise phare + son chaînage), 6 W1
+  (cloches · entrepôts fermés · deux cartes · eau noire · dernière décision · salve runique),
+  16 lot 2 — §A tech-latch (6 : la tech découverte pose son dilemme moral, une fois par pays),
+  §B culturels (2), §C religieux (3), §D chaînage de cicatrices (5 : chaque K consomme sa
+  cicatrice mûrie). Sautés & documentés : B2/B3/B5/B6, C2/C3/C4 (helpers moteur absents).
+- **§3 DÉCRETS** (`scps_decrees`, player-only ⇒ golden intact) : levée permanente · mécénat ·
+  ambassades · politique de tribut — tous sur des leviers EXISTANTS, le coût EST la
+  contrepartie. 4 différés documentés (aucun levier propre).
+- **§4 ANNALES + §4bis** : frise cliquable, causalité affichée (la cicatrice pointe son
+  dilemme d'origine), récap d'ÂGE au chip « Engager » (écran de chapitre), ÉPILOGUE
+  (« Votre règne en une phrase »), 12 épithètes émergentes. 8 bannières thématiques sur les
+  popups, conseillers-visages (« — {faction} » par option).
+- **SAVETEST v65** : la dérive d'or post-reload venait de `g_flux[][]` (I0, année en cours)
+  non sérialisé → TXYR étendue. Savetest 7/9/11/42 **byte-identique**.
+- **Télémétrie chronicle** « dilemmes (lots 1-2) » : 666-1172 W1 · 19-43 culturels ·
+  61 religieux · 133-353 chaînages/sim — les registres VIVENT.
+- Bug latent pris : débordement de pile `events_text_clean` (texts[256] < besoins réels).
 
-## Livré (commits `3ed69d9` + `b0964fe` + docs)
+## Vérifs finales
 
-- **Lot B — matière réelle** : helpers `econ_region_{stock,treasury,pop}_add` (porteuse →
-  sœurs, delta réel rendu, repli fixture pour bancs synthétiques) ; ~20 sites convertis
-  (intertrade/trade/navy/warhost/diplo/spéculateur/péage). On FACTURE le réel pris.
-- **Lot A — I0 complet** : FX_BUILD / FX_REDEP / FX_CREDIT (le trou de ~1500 or/mois).
-- **Lot C1 — panneau B** : `CMD_BUILD_MANUF` + façade + binding + UI « Bâtir une
-  manufacture » (légalité grisée, flash). `scps_api_demo` 111/111.
-- **Lots F1-F5 — IA** : colonisation cadencée par `w_expand` (AI_COLONY_TEMPO 3.0) et
-  gelée en guerre ; grenier sur la région affamée ; gate chantier borné au pool commercial
-  (compteur `nocap` dans EDI_DBG) ; anti-double-commande d'édifice (fenêtre 960 j fermée).
-- **Lots E1-E7 — calibrage Anno** : vivrier **÷1.5** (÷2 mesuré/rejeté : seed 11 < 70 %),
-  papier 209 / remède 404 (labor), statuaire gatée, readouts logement → `econ_prov_effcap`,
-  `struct_deficit`→raw_boost (nomat Port −13 %), top_flow en tie-break, télémétrie
-  colonisation (fondations/survie). Plafond E2 vérifié SAIN (fausse alerte : artefact
-  d'agrégation des régions partagées).
-- **Affichage** : flux province en « +N,N/j » (style Anno), fin du ×365.
-
-## Vérifs (fin de mission)
-
-`make test` 37/40 runnable verts (3 KO Windows pré-existants) · **golden RE-BASELINÉ**
-(matière réelle + rendements mordent dès l'an-0 — documenté) · determinism STABLE ·
-savetest **7/9/11/42 byte-identique** (après sérialisation COLC — seed 11 avait pris la
-divergence) · fuzz-save 7/7 · GDExtension scons 0 warning · sweeps : Laborer 72-78 %,
-zéro famine, pop en croissance, colonisation mesurée ~190 fondations/sim, IPM 1.05-1.19.
-Coûts de bâti RECALÉS dans la foulée (demande joueur « éco Anno ») : recettes EDIFICES
-÷2,5-÷10 selon palier + BUILD_RESERVE_BULK 15 + RAW_WORKS_NEED 25 → accession **360 j
-an 2 · 540 j an 1 · 960 j an 26-48** (l'Académie existe enfin), marine vivante, monde
-sain — golden re-baseliné une seconde fois, savetest 9/11 byte-identique.
+37 bancs verts (3 KO Windows pré-existants : intertrade setenv, campaign/warhost stack) ·
+events_demo 85/85 · scps_api_demo 131/131 · determinism STABLE · golden RE-BASELINÉ
+(les dilemmes mordent < 12 ans) puis confirmé IDENTIQUE · fuzztest 7/7 · scons 0 warning ·
+probes headless ANNALES-2/age/diplo OK · sweeps seed 9/11 200 ans SAINS (Laborer 75-77 %,
+IPM 1.05-1.12, hégémon mortel).
 
 ## Pour la prochaine session
 
-- **E3 stockeuse** toujours morte (l'IA ne bâtit jamais d'Entrepôt : gate has_halles +
-  hub + trésor≥400 jamais réuni) — one-liner possible mais à MESURER (post-matière-réelle
-  la spéculation a enfin un sens physique).
-- **Accession 960 j** : le mur nomat baisse (E5) mais l'Académie/Citadelle restent rares —
-  si voulu, passer la priorité raw_boost trio du tie-break au forcing mesuré.
-- **Prix convergence intertrade** : nudge transitoire mort sous le prix national (commenté
-  en place) — retirer ou re-router si le différentiel régional doit revivre.
-- Doublons d'outillage assumés (avg_price chronicle/econ_scan, write_ppm dump/mapshot).
-- Env : `make scps` sans SDL ni WIN=1 ; scons : jonction godot/godot-cpp +
-  PROCESSOR_ARCHITECTURE=AMD64 (cf. mémoire scps-build-windows).
+- **Latches tech silencieux en sweep** : les §A + salve exigent l'arbre profond (~15 %
+  d'arbre/empire en 200 ans) — prouvés au banc, jamais vus en chronique. Si on veut les
+  VOIR : sweep 400 ans ou seed à grand empire.
+- **Volume W1** : ~3-6 dilemmes/an monde entier (IA auto-résout). Pour le JOUEUR le popup
+  n'arrive que sur SES provinces — à jouer pour sentir si le rythme est bon ; sinon serrer
+  les cooldowns/triggers de cloches (le plus bavard, 1172/sim).
+- **Décrets différés** (centralisation, tolérance, creuset, isolationnisme) : exigent des
+  leviers moteur neufs (setter de crédo, ouverture commerciale par pays…).
+- **Événements lot 2 sautés** : B2/B3/B5/B6, C2/C3/C4 attendent credo_drift/ethos_drift/
+  creuset_state/fracture-tracking.
+- Env : `make scps` sans SDL ; scons : jonction godot/godot-cpp + PROCESSOR_ARCHITECTURE=
+  AMD64 (cf. mémoire scps-build-windows).
