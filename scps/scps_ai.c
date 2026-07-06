@@ -466,7 +466,13 @@ static int ai_pick_rival(const AiActor *a, const World *w, const WorldEconomy *e
         if (!land_adj && !sea_adj) continue;
         if (diplo_status(diplo, a->cid, b)==DIPLO_ALLIED) continue;  /* on ne frappe pas un allié */
         if (!diplo_can_declare(diplo, a->cid, b)) continue;          /* TRÊVE : on n'enchaîne pas */
-        if (diplo_casus_belli(w,econ,wp,diplo,a->cid,b,want)==CB_NONE) continue;  /* PAS DE CB → pas de guerre */
+        { CasusBelli cbb = diplo_casus_belli(w,econ,wp,diplo,a->cid,b,want);
+          if (cbb==CB_NONE) continue;                                /* PAS DE CB → pas de guerre */
+          /* W-GUERRE-3 — un CB OFFENSIF (territorial/économique/religieux) exige une
+           * intrigue FABRIQUÉE et MÛRE contre CETTE cible (symétrique au joueur : l'IA
+           * paie depuis SON trésor, ai_strat_turn fabrique en amont — cf. plus bas). */
+          if (diplo_cb_needs_fabrication(cbb) && diplo_fab_ready_cb(diplo,a->cid,b)!=cbb) continue;
+        }
         float their_army = diplo_mil_power(w, econ, b);
         if (my_army < AI_ARMY_MARGIN*their_army) continue;     /* on n'attaque pas plus fort */
         Relation rel = diplo_relation(w, econ, wp, diplo, a->cid, b);
@@ -1629,6 +1635,34 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
             diplo_make_peace(diplo, a->cid, b);          /* ALLIED→NEUTRAL : le slot se libère → réalignement */
     }
 
+    /* (0-bis) W-GUERRE-3 — FABRIQUER LE CASUS BELLI : symétrique au joueur, l'IA paie DEPUIS
+     * SON TRÉSOR (diplo_can_fabricate lit econ_country_gold, pas un budget arbitraire) — sans
+     * les moyens, elle ne fabrique pas et n'attaque donc jamais par un CB offensif (c'est le
+     * POINT). On fabrique contre le meilleur voisin CONVOITÉ dont le CB naturel est offensif
+     * et qui n'a PAS déjà d'intrigue en cours (une seule à la fois par cible, aucune limite
+     * inter-cibles — l'IA peut financer plusieurs intrigues en parallèle si elle a l'or).
+     * Gate : appétit de conquête réel (w_expand) — un pacifiste ne dépense pas en corruption. */
+    if (a->w_expand > 0.15f){
+        EconForecast fabfc; econ_country_forecast(econ, a->cid, tune_f("AI_PROJ_HORIZON",25.f), &fabfc);
+        int best_fab=-1; float best_fab_v=0.f;
+        for (int b=0;b<w->n_countries && b<SCPS_MAX_COUNTRY;b++){
+            if (b==a->cid || w->country[b].role==POLITY_UNCLAIMED) continue;
+            if (diplo_status(diplo,a->cid,b)!=DIPLO_NEUTRAL) continue;
+            if (!countries_adjacent(econ,a->cid,b)) continue;   /* on ne fabrique QUE contre un voisin (portée du besoin) */
+            CasusBelli cbn = diplo_casus_belli(w,econ,wp,diplo,a->cid,b,ai_war_want(v));
+            if (cbn==CB_NONE || !diplo_cb_needs_fabrication(cbn)) continue;   /* gratuit ou aucun motif : rien à fabriquer */
+            if (!diplo_can_fabricate(w,econ,diplo,a->cid,b)) continue;        /* déjà en cours OU or insuffisant */
+            float val=0.f;
+            for (int r=0;r<econ->n_regions;r++) if (econ->region[r].owner==b){
+                float pv=ai_province_value(econ,a->cid,r,&fabfc); if (pv>val) val=pv; }
+            if (val>best_fab_v){ best_fab_v=val; best_fab=b; }
+        }
+        if (best_fab>=0){
+            CasusBelli cbn = diplo_casus_belli(w,econ,wp,diplo,a->cid,best_fab,ai_war_want(v));
+            diplo_fabricate_cb(w, econ, diplo, a->cid, best_fab, cbn);
+        }
+    }
+
     /* (1) COALITION — se liguer contre l'HÉGÉMON perçu (anti-runaway, émergent des
      * menaces sommées). On se joint si l'hégémon GUERROIE déjà (pile-on) et que
      * notre camp (soi + alliés) pèse assez. Le frein gouverne : un fragile n'ose pas. */
@@ -1636,6 +1670,9 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
         && diplo_can_declare(diplo,a->cid,heg) && country_at_war(w,diplo,heg)){
         float my_side = v->armee + allied_power(w,econ,diplo,a->cid);
         CasusBelli cb = diplo_casus_belli(w,econ,wp,diplo,a->cid,heg, ai_war_want(v));
+        /* W-GUERRE-3 : un CB offensif exige l'intrigue mûre — sinon la ligue attend (aucune
+         * fabrication d'urgence ici : la ligue est réactive, pas planifiée des années à l'avance). */
+        if (cb!=CB_NONE && diplo_cb_needs_fabrication(cb) && diplo_fab_ready_cb(diplo,a->cid,heg)!=cb) cb=CB_NONE;
         if (cb!=CB_NONE && my_side >= AI_ARMY_MARGIN*diplo_mil_power(w,econ,heg)){
             diplo_declare_war_cb(diplo, a->cid, heg, cb);   /* la ligue a une raison (souvent territoriale) */
             a->credit_war -= 1.f; a->stats.wars++;

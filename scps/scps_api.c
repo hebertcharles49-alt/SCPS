@@ -1086,7 +1086,13 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     int at_war = (st==DIPLO_WAR);
     int slot   = (diplo_ally_count(d,p) < DIPLO_ALLY_SLOTS) && (diplo_ally_count(d,t) < DIPLO_ALLY_SLOTS);
     int emb    = intertrade_embargoed(p, t) ? 1:0;
-    out->can_declare_war    = (!at_war && diplo_truce_days(d,p,t)<=0.f) ? 1:0;
+    /* W-GUERRE-3 — can_declare_war exige désormais un CB RÉELLEMENT UTILISABLE (miroir exact
+     * du gate au drain, CMD_DECLARE_WAR) : un motif GRATUIT (subjugation/anti-piraterie, lu
+     * de diplo_casus_belli) OU une intrigue FABRIQUÉE et MÛRE contre CETTE cible. Sans ça le
+     * bouton serait actif mais la déclaration un no-op silencieux — griser franchement. */
+    { CasusBelli cbn = diplo_casus_belli(s->w, s->sim.econ, s->sim.wp, d, p, t, RES_NONE);
+      bool has_cb = (cbn!=CB_NONE && !diplo_cb_needs_fabrication(cbn)) || diplo_fab_ready_cb(d,p,t)!=CB_NONE;
+      out->can_declare_war = (!at_war && diplo_truce_days(d,p,t)<=0.f && has_cb) ? 1:0; }
     out->can_make_peace     = at_war ? 1:0;
     out->can_offer_alliance = (!at_war && st!=DIPLO_ALLIED && slot) ? 1:0;
     out->can_offer_pact     = (!at_war && !diplo_trade_pact(d,p,t)) ? 1:0;
@@ -1097,6 +1103,14 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     out->would_accept_pact     = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_TRADE_PACT) ? 1:0;
     out->would_accept_migration = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_MIGRATION) ? 1:0;  /* BRASSAGE */
     out->would_accept_peace    = ai_consider_offer(s->w, s->sim.econ, s->sim.wp, d, s->sim.sc, p, t, OFFER_PEACE) ? 1:0;
+    /* W-GUERRE-3 — l'état de l'intrigue (fabrication payante du CB offensif). */
+    out->can_fabricate         = diplo_can_fabricate(s->w, s->sim.econ, d, p, t) ? 1:0;
+    out->fabricate_cost        = diplo_fabricate_cost(s->sim.econ, t);
+    FabState fst = diplo_fab_state(d, p, t);
+    out->fabricating           = (fst==FAB_MATURING) ? 1:0;
+    out->fabricating_days_left = (fst==FAB_MATURING) ? diplo_fab_days_left(d, p, t) : 0.f;
+    out->cb_ready              = (fst==FAB_READY) ? 1:0;
+    out->cb_ready_years_left   = (fst==FAB_READY) ? diplo_fab_days_left(d, p, t)/365.f : 0.f;
     return 1;
 }
 
@@ -1547,6 +1561,13 @@ int scps_player_offer_pact(ScpsSim *s, int target){
 int scps_player_offer_migration(ScpsSim *s, int target){   /* BRASSAGE : pacte migratoire */
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_OFFER_MIGRATION, { target, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* W-GUERRE-3 — FABRIQUER une revendication (payante) contre `target` : enfile l'ordre,
+ * revalidé au drain (diplo_can_fabricate : cible valide, or suffisant, pas déjà en cours). */
+int scps_player_fabricate_cb(ScpsSim *s, int target){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_FABRICATE_CB, { target, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 int scps_player_build_manuf(ScpsSim *s, int region, int bld){   /* PANNEAU B : poser une manufacture */

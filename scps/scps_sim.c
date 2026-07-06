@@ -317,7 +317,8 @@ static void sim_cmd_drain(Sim *s, World *w){
          * Un ordre INVALIDE (cible hors-borne, soi-même, pays mort) ne le fait pas partir ;
          * un ordre arrivé pendant sa tournée est IGNORÉ (l'UI lit scps_diplo_cd et grise). */
         if (c->verb==CMD_DECLARE_WAR || c->verb==CMD_MAKE_PEACE || c->verb==CMD_OFFER_ALLIANCE
-         || c->verb==CMD_OFFER_PACT  || c->verb==CMD_OFFER_MIGRATION || c->verb==CMD_EMBARGO){
+         || c->verb==CMD_OFFER_PACT  || c->verb==CMD_OFFER_MIGRATION || c->verb==CMD_EMBARGO
+         || c->verb==CMD_FABRICATE_CB){
             int t = c->a[0];
             if (t<0 || t>=w->n_countries || t==p || regions_of(s->econ, t)<=0) continue;
             if (s->day < s->diplo_ready_day) continue;
@@ -355,9 +356,29 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
             if (diplo_status(s->dp,p,t)==DIPLO_WAR) break;             /* déjà en guerre */
             if (diplo_truce_days(s->dp,p,t) > 0.f) break;             /* trêve en cours → interdit */
+            /* W-GUERRE-3 — le CB se FABRIQUE : un motif « gratuit » (subjugation/anti-piraterie,
+             * lu de diplo_casus_belli) passe direct ; un motif OFFENSIF (territorial/économique/
+             * religieux) exige une intrigue MÛRE contre CETTE cible — sinon PAS DE GUERRE
+             * (miroir exact du gate IA : « PAS DE CB → pas de guerre »). */
             CasusBelli cb = diplo_casus_belli(w, s->econ, s->wp, s->dp, p, t, RES_NONE);
-            if (cb==CB_NONE) cb = CB_TERRITORIAL;                     /* le joueur DÉCLARE : CB par défaut */
+            if (cb!=CB_NONE && diplo_cb_needs_fabrication(cb)){
+                CasusBelli ready = diplo_fab_ready_cb(s->dp, p, t);
+                cb = (ready!=CB_NONE) ? ready : CB_NONE;
+            }
+            if (cb==CB_NONE){
+                CasusBelli ready = diplo_fab_ready_cb(s->dp, p, t);   /* une intrigue mûre peut fournir SON PROPRE motif */
+                if (ready!=CB_NONE) cb = ready;
+            }
+            if (cb==CB_NONE) break;   /* aucun motif gratuit, aucune intrigue mûre → pas de guerre */
             diplo_declare_war_cb(s->dp, p, t, cb);
+            break; }
+          case CMD_FABRICATE_CB: {   /* W-GUERRE-3 : fabriquer une revendication (payante) contre a[0] */
+            int t = c->a[0];
+            if (t<0 || t>=w->n_countries || t==p || w->country[t].role==POLITY_UNCLAIMED) break;
+            if (!diplo_can_fabricate(w, s->econ, s->dp, p, t)) break;   /* déjà une intrigue en cours OU or insuffisant */
+            CasusBelli cb = diplo_casus_belli(w, s->econ, s->wp, s->dp, p, t, RES_NONE);
+            if (!diplo_cb_needs_fabrication(cb)) cb = CB_TERRITORIAL;  /* pas de motif offensif lu → revendication territoriale par défaut */
+            diplo_fabricate_cb(w, s->econ, s->dp, p, t, cb);
             break; }
           case CMD_MAKE_PEACE: {
             int t = c->a[0];

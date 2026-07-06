@@ -567,16 +567,103 @@ static void set_sym(DiploState *d, int a, int b, DiploStatus s){
     if (a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY||a==b) return;
     d->status[a][b]=d->status[b][a]=s;
 }
+
+/* ── W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ (payant) ──────────────────────────────────
+ * CB « gratuits » (jamais de fabrication) : la guerre DÉFENSIVE n'est gatée NULLE PART
+ * (diplo_declare_war_cb accepte n'importe quel appelant — se défendre est toujours
+ * libre) ; CB_ANTIPIRATERIE (on SUBIT la course, on ne la choisit pas) ; CB_SUBJUGATION
+ * (projection de puissance sur un faible/hameau — la menace EST le prix payé, pas l'or).
+ * CB « payants » : CB_TERRITORIAL/CB_ECONOMIC/CB_RELIGIOUS quand ILS SONT LE MOTIF
+ * D'UNE DÉCLARATION OFFENSIVE (prendre, pas rendre) — l'intrigue doit être fabriquée
+ * et mûre contre CETTE cible précise. */
+bool diplo_cb_needs_fabrication(CasusBelli cb){
+    switch (cb){
+        case CB_TERRITORIAL: case CB_ECONOMIC: case CB_RELIGIOUS: return true;
+        case CB_SUBJUGATION: case CB_ANTIPIRATERIE: case CB_NONE:  default: return false;
+    }
+}
+/* PRIX : 2 ans du revenu ANNUEL de la CIBLE (corrompre des élites riches coûte cher). */
+float diplo_fabricate_cost(const WorldEconomy *econ, int target){
+    (void)econ;
+    if (target<0 || target>=SCPS_MAX_COUNTRY) return 0.f;
+    float rev = econ_country_tax_year(target);
+    if (rev<=0.f) return 0.f;   /* une cible sans revenu capturé encore (an-1) : rien à corrompre — repli gratuit-ish, l'appelant a l'or de toute façon */
+    return rev * tune_f("FAB_CB_COST_YEARS", 2.0f);
+}
+bool diplo_can_fabricate(const World *w, const WorldEconomy *econ, const DiploState *d, int a, int b){
+    if (!w || !econ || !d) return false;
+    if (a<0||a>=w->n_countries||b<0||b>=w->n_countries||a==b) return false;
+    if (a>=SCPS_MAX_COUNTRY||b>=SCPS_MAX_COUNTRY) return false;
+    if (d->fab_state[a][b]!=FAB_NONE) return false;   /* une intrigue à la fois PAR CIBLE (pas de doublon) */
+    float cost = diplo_fabricate_cost(econ, b);
+    return econ_country_gold(econ, a) >= (double)cost;
+}
+bool diplo_fabricate_cb(World *w, WorldEconomy *econ, DiploState *d, int a, int b, CasusBelli cb){
+    if (!diplo_can_fabricate(w, econ, d, a, b)) return false;
+    float cost = diplo_fabricate_cost(econ, b);
+    int cr = world_capital_region(w, a);
+    if (cr>=0 && cr<econ->n_regions) econ_region_treasury_add(econ, cr, -cost);  /* l'or SORT et disparaît (corruption) */
+    econ_flux_add(a, FX_INTRIGUE, -cost);   /* I0 : la ligne dédiée intrigue — distincte de l'admin courante */
+    d->fab_state[a][b] = FAB_MATURING;
+    d->fab_days [a][b] = tune_f("FAB_MATURE_DAYS", 365.f);
+    d->fab_cb   [a][b] = (int8_t)cb;
+    return true;
+}
+FabState diplo_fab_state(const DiploState *d, int a, int b){
+    if (!d||a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY) return FAB_NONE;
+    return (FabState)d->fab_state[a][b];
+}
+float diplo_fab_days_left(const DiploState *d, int a, int b){
+    if (!d||a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY) return 0.f;
+    return d->fab_days[a][b];
+}
+CasusBelli diplo_fab_ready_cb(const DiploState *d, int a, int b){
+    if (!d||a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY) return CB_NONE;
+    return (d->fab_state[a][b]==FAB_READY) ? (CasusBelli)d->fab_cb[a][b] : CB_NONE;
+}
+/* Consomme l'intrigue mûre contre `b` — appelée par le point de déclaration UNE FOIS la
+ * guerre effectivement déclarée avec ce CB (le grief est dépensé, pas ré-utilisable). */
+static void diplo_fab_consume(DiploState *d, int a, int b){
+    if (!d||a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY) return;
+    d->fab_state[a][b]=FAB_NONE; d->fab_days[a][b]=0.f; d->fab_cb[a][b]=CB_NONE;
+}
+void diplo_fab_tick(DiploState *d, float dt_days){
+    if (!d) return;
+    for (int a=0;a<SCPS_MAX_COUNTRY;a++) for (int b=0;b<SCPS_MAX_COUNTRY;b++){
+        if (a==b) continue;
+        if (d->fab_state[a][b]==FAB_MATURING){
+            d->fab_days[a][b] -= dt_days;
+            if (d->fab_days[a][b] <= 0.f){
+                d->fab_state[a][b] = FAB_READY;
+                d->fab_days[a][b]  = tune_f("FAB_VALID_DAYS", 1825.f);
+            }
+        } else if (d->fab_state[a][b]==FAB_READY){
+            d->fab_days[a][b] -= dt_days;
+            if (d->fab_days[a][b] <= 0.f) diplo_fab_consume(d, a, b);   /* le grief s'est éventé */
+        }
+    }
+}
+
 void diplo_declare_war  (DiploState *d,int a,int b){
     set_sym(d,a,b,DIPLO_WAR);
     diplog_push(DACT_WAR_DECLARED, a, b, 0.f);   /* journal display (focus gate — chronique muette) */
 }
+/* diplo_declare_war_cb : le CHOKE POINT unique de toute déclaration (IA, joueur, révolte,
+ * ligue). Si le CB est PAYANT (territorial/économique/religieux) ET qu'une intrigue MÛRE
+ * existe contre `b` avec CE MÊME CB, elle est CONSOMMÉE (le grief acheté est dépensé, pas
+ * réutilisable). Un CB gratuit (défensif implicite/subjugation/anti-piraterie) passe sans
+ * toucher aux intrigues. Note : cette fonction ne REFUSE jamais la guerre — la validation
+ * (« a-t-il une intrigue mûre pour CE CB ? ») est la responsabilité de l'APPELANT (IA/joueur/
+ * révolte), qui ne doit appeler ceci qu'après avoir vérifié diplo_fab_ready_cb. */
 void diplo_declare_war_cb(DiploState *d,int a,int b,CasusBelli cb){
     set_sym(d,a,b,DIPLO_WAR);
     diplog_push(DACT_WAR_DECLARED, a, b, 0.f);
     if (a>=0&&a<SCPS_MAX_COUNTRY&&b>=0&&b<SCPS_MAX_COUNTRY){ d->cb[a][b]=(int8_t)cb;  /* le but de l'AGRESSEUR */
         if (cb==CB_ANTIPIRATERIE) d->n_war_antipirate++;
-        if (cb>=0 && cb<=CB_ANTIPIRATERIE) g_war_cb[cb]++; }   /* télémétrie : guerre motivée par son CB */
+        if (cb>=0 && cb<=CB_ANTIPIRATERIE) g_war_cb[cb]++;   /* télémétrie : guerre motivée par son CB */
+        if (diplo_cb_needs_fabrication(cb) && d->fab_state[a][b]==FAB_READY && (CasusBelli)d->fab_cb[a][b]==cb)
+            diplo_fab_consume(d, a, b);
+    }
 }
 CasusBelli diplo_war_goal(const DiploState *d,int a,int b){
     if (a<0||a>=SCPS_MAX_COUNTRY||b<0||b>=SCPS_MAX_COUNTRY) return CB_NONE;
@@ -1382,4 +1469,5 @@ void diplo_tick(DiploState *d, float dt){
             }
         }
     }
+    diplo_fab_tick(d, dt);   /* W-GUERRE-3 : maturation/expiration des intrigues fabriquées */
 }

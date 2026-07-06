@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 68u           /* v68 : CLASS_SLAVE — la strate esclave. SocialClass gagne
+#define SAVE_VERSION 69u           /* v69 : W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ. DiploState
+                                    * gagne fab_state/fab_days/fab_cb[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY]
+                                    * (l'état des intrigues fabriquées par (fabricant,cible),
+                                    * section DIPL, fwrite BRUT du struct entier) ⇒ sizeof(DiploState)
+                                    * change. <v69 refusé.
+                                    * v68 : CLASS_SLAVE — la strate esclave. SocialClass gagne
                                     * CLASS_SLAVE (APPENDU, valeurs 0-2 stables) ⇒
                                     * PopStratum strata[CLASS_COUNT] grandit dans TOUTE
                                     * ProvinceEconomy ET RegionEconomy ⇒ sizeof(WorldEconomy)

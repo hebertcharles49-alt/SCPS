@@ -115,7 +115,23 @@ typedef struct DiploState {
     float    v_integration[SCPS_MAX_COUNTRY];   /* [0..1] intégration du vassal vers son maître */
     float    v_annex       [SCPS_MAX_COUNTRY];  /* [0..1] avancement de l'annexion-processus */
     int      n_annex;                            /* chronique : annexions PAR DIGESTION abouties */
+    /* ── W-GUERRE-3 — LE CASUS BELLI SE FABRIQUE ET SE PAIE ────────────────────────────
+     * Un CB « offensif » (territorial/économique/religieux, hors défensif/anti-piraterie/
+     * subjugation-de-hameau) n'est plus GRATUIT : le fabricant PAIE (2 ans de revenu de la
+     * CIBLE, corrompre ses élites), attend 1 an que l'intrigue MÛRISSE, puis dispose de 5 ans
+     * de fenêtre pour déclarer contre CETTE cible avant que le grief acheté ne s'évente.
+     * fab_state[a][b] : 0=aucune intrigue · 1=en cours de maturation (fab_days décompte) ·
+     * 2=mûre/valide (fab_days = jours restants avant expiration). AUCUN cooldown entre cibles
+     * DIFFÉRENTES — a peut financer plusieurs intrigues en parallèle (chacune paie son prix). */
+    int8_t   fab_state[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];
+    float    fab_days [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];  /* jours restants (maturation OU validité) */
+    int8_t   fab_cb   [SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY];  /* le CB acheté (CasusBelli), figé à la fabrication */
 } DiploState;
+
+/* Une intrigue fabriquée, par cible : NONE (rien), MATURING (payée, patiente), READY (valide,
+ * expire si non utilisée). Miroir enum de fab_state[][] (int8_t sérialisé — la sémantique
+ * vit ici, pas un magic number nu). */
+typedef enum { FAB_NONE=0, FAB_MATURING, FAB_READY } FabState;
 
 /* Les QUATRE contrats de suzeraineté — quatre logiques (cf. brief §3). */
 typedef enum { CONTRAT_NONE=0, CONTRAT_SERVAGE, CONTRAT_PROTECTORAT,
@@ -189,6 +205,40 @@ const char *diplo_cb_name      (CasusBelli cb);
 /* TÉLÉMÉTRIE (chronicle) — déclarations de guerre PAR MOTIF (casus belli) sur la sim courante.
  * out[CB_*] ; statique remis à plat par diplo_init, jamais sérialisé (hors déterminisme/SAVE). */
 void        diplo_war_cb_counts(int out[CB_ANTIPIRATERIE+1]);
+
+/* ---- W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ (payant) --------------------------------
+ * Certains CB restent GRATUITS (aucune fabrication requise) : la guerre DÉFENSIVE (se
+ * défendre n'exige jamais de CB — rien ne gate le défenseur qui riposte, diplo_declare_war_cb
+ * accepte n'importe quel appelant), CB_ANTIPIRATERIE (subie, pas choisie) et CB_SUBJUGATION
+ * (projection de puissance sur un hameau/faible — cf. tableau au carnet TROUVAILLES.md).
+ * CB_TERRITORIAL/CB_ECONOMIC/CB_RELIGIOUS « offensifs » (choisis pour PRENDRE, pas pour se
+ * défendre) exigent désormais une intrigue FABRIQUÉE et MÛRE contre CETTE cible précise.
+ *
+ * diplo_can_fabricate  : `a` a-t-il assez d'or pour fabriquer contre `b` maintenant (et
+ *                        aucune intrigue déjà EN COURS contre b — une seule à la fois PAR
+ *                        CIBLE, mais aucune limite inter-cibles) ?
+ * diplo_fabricate_cost : le PRIX (2× le revenu annuel de la CIBLE, econ_country_tax_year).
+ * diplo_fabricate_cb   : FABRIQUE l'intrigue (débite `a`, fige le CB choisi, POSE le minuteur
+ *                        de maturation). `a` doit avoir l'or (l'appelant vérifie can_fabricate
+ *                        — sinon no-op, false). Le CB est choisi par l'appelant (IA : le même
+ *                        calcul que diplo_casus_belli déciderait naturellement ; joueur :
+ *                        déduit par diplo_casus_belli au moment de fabriquer).
+ * diplo_fab_state/_days_left : lecteurs (façade/UI) — état + jours restants (maturation OU
+ *                        validité selon l'état).
+ * diplo_fab_ready_cb   : le CB PRÊT (mûr, non expiré) contre `b`, CB_NONE si aucun. C'est CE
+ *                        CB qu'une déclaration de guerre offensive doit consommer. */
+bool        diplo_can_fabricate  (const World *w, const WorldEconomy *econ, const DiploState *d, int a, int b);
+float       diplo_fabricate_cost (const WorldEconomy *econ, int target);
+bool        diplo_fabricate_cb   (World *w, WorldEconomy *econ, DiploState *d, int a, int b, CasusBelli cb);
+FabState    diplo_fab_state      (const DiploState *d, int a, int b);
+float       diplo_fab_days_left  (const DiploState *d, int a, int b);
+CasusBelli  diplo_fab_ready_cb   (const DiploState *d, int a, int b);
+/* CB « gratuit » (pas de fabrication requise) : défensif (implicite, jamais gaté),
+ * anti-piraterie, subjugation. Un CB EXIGE la fabrication ssi ce prédicat est faux. */
+bool        diplo_cb_needs_fabrication(CasusBelli cb);
+/* Tick ANNUEL des intrigues (appelé depuis diplo_tick) : la maturation descend vers READY,
+ * la validité descend vers l'expiration (→ FAB_NONE, le grief acheté s'est éventé). */
+void        diplo_fab_tick(DiploState *d, float dt_days);
 void        diplo_form_alliance(DiploState *d, int a, int b);
 void        diplo_make_peace  (DiploState *d, int a, int b);
 DiploStatus diplo_status      (const DiploState *d, int a, int b);

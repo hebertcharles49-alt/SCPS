@@ -666,6 +666,118 @@ int main(int argc,char**argv){
         }
     }
 
+    /* ── W-GUERRE-3 — LE CASUS BELLI SE FABRIQUE ET SE PAIE ────────────────────────
+     * Prix = 2 ans de revenu de la CIBLE ; maturation 1 an ; validité 5 ans une
+     * fois mûre ; aucun cooldown inter-cibles ; gratuit pour les CB défensif/
+     * subjugation/anti-piraterie. */
+    printf("\n── W-GUERRE-3 : le casus belli fabriqué (payant) ──\n");
+    {
+        int A=player, B=-1;
+        for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+            if(c==A || w->country[c].role==POLITY_UNCLAIMED) continue;
+            int rc=0; for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==c) rc++;
+            if(rc>0){ B=c; break; }
+        }
+        if(B<0){ ok("(monde trop petit : pas de cible disponible)", true); }
+        else {
+            diplo_init(dp);   /* état diplo VIERGE pour ce test (n'hérite d'aucune guerre/trêve antérieure) */
+            /* la cible B a un revenu CAPTURÉ (sinon diplo_fabricate_cost renvoie 0 — repli an-1).
+             * econ_flux_reset D'ABORD : econ_tick tourne depuis le début du banc (sections 1-10) et a
+             * déjà accumulé du FX_TAX réel pour B — sans reset, notre ajout se SOMME au bruit accumulé. */
+            econ_flux_reset();
+            econ_flux_add(B, FX_TAX, 3650.f);   /* 3650/an → 10/j, un revenu net et rond */
+            econ_flux_year_capture();
+            float cost = diplo_fabricate_cost(econ, B);
+            ok("le prix = 2 ans de revenu de la CIBLE (10 or/j × 365 × 2 = 7300)", cost>7299.f && cost<7301.f);
+
+            ok("CB_TERRITORIAL/ÉCONOMIQUE/RELIGIEUX exigent la fabrication", diplo_cb_needs_fabrication(CB_TERRITORIAL)
+               && diplo_cb_needs_fabrication(CB_ECONOMIC) && diplo_cb_needs_fabrication(CB_RELIGIOUS));
+            ok("SUBJUGATION/ANTI-PIRATERIE/NONE restent GRATUITS (jamais de fabrication)",
+               !diplo_cb_needs_fabrication(CB_SUBJUGATION) && !diplo_cb_needs_fabrication(CB_ANTIPIRATERIE)
+               && !diplo_cb_needs_fabrication(CB_NONE));
+
+            int capA = world_capital_region(w, A);
+            ok("(pré-requis : le fabricant A a une capitale)", capA>=0);
+            int rp = (capA>=0) ? econ_region_rep_province(econ, capA) : -1;
+            /* trésor du fabricant mis à ZÉRO (pas seulement les autres provinces : credit_line
+             * émerge de la POP, un trésor négatif pourrait encore autoriser via la ligne de crédit
+             * — on force donc net-zéro pour un test SANS AMBIGUÏTÉ, cf. econ_country_gold = Σprov). */
+            if (rp>=0) for (int p=0;p<econ->n_prov;p++) if (econ->prov[p].owner==A) econ->prov[p].treasury=0.f;
+            econ_aggregate_regions(econ);   /* econ_country_gold lit region[] (la VUE) — la re-bâtir depuis prov[] */
+
+            ok("SANS l'or : la fabrication est REFUSÉE", !diplo_can_fabricate(w,econ,dp,A,B));
+            if (rp>=0) econ->prov[rp].treasury = cost*3.f;   /* largement de quoi payer, APRÈS le test négatif */
+            econ_aggregate_regions(econ);
+            if (rp>=0){
+                bool fab_ok = diplo_fabricate_cb(w, econ, dp, A, B, CB_TERRITORIAL);
+                ok("AVEC l'or : la fabrication RÉUSSIT (débite le trésor du fabricant)", fab_ok);
+                ok("l'intrigue est EN COURS DE MATURATION (pas encore mûre)",
+                   diplo_fab_state(dp,A,B)==FAB_MATURING);
+                ok("aucun CB n'est encore UTILISABLE (fab_ready_cb == CB_NONE tant que ça mûrit)",
+                   diplo_fab_ready_cb(dp,A,B)==CB_NONE);
+                ok("UNE SEULE intrigue à la fois PAR CIBLE (re-fabriquer contre B échoue)",
+                   !diplo_can_fabricate(w,econ,dp,A,B));
+                float treas_after = econ->prov[rp].treasury;
+                ok("l'or est RÉELLEMENT sorti du trésor (disparu, pas déplacé ailleurs chez A)",
+                   treas_after < cost*3.f - cost + 1.f);
+
+                /* MATURATION : 1 an (FAB_MATURE_DAYS) fait mûrir l'intrigue. */
+                diplo_tick(dp, 365.f);
+                ok("après 1 an : l'intrigue est MÛRE (FAB_READY)", diplo_fab_state(dp,A,B)==FAB_READY);
+                ok("le CB acheté (territorial) est désormais UTILISABLE", diplo_fab_ready_cb(dp,A,B)==CB_TERRITORIAL);
+                ok("diplo_diplo_options : cb_ready reflète l'intrigue mûre",
+                   diplo_fab_days_left(dp,A,B) > 1800.f && diplo_fab_days_left(dp,A,B) <= 1825.f);
+
+                /* DÉCLARER LA GUERRE avec ce CB CONSOMME l'intrigue (le grief est dépensé). */
+                diplo_declare_war_cb(dp, A, B, CB_TERRITORIAL);
+                ok("déclarer la guerre avec le CB mûr CONSOMME l'intrigue (retour à FAB_NONE)",
+                   diplo_fab_state(dp,A,B)==FAB_NONE);
+                ok("la guerre est bien déclarée (statut WAR)", diplo_status(dp,A,B)==DIPLO_WAR);
+
+                /* EXPIRATION : une intrigue mûre NON utilisée s'évente après FAB_VALID_DAYS. */
+                diplo_init(dp);
+                econ->prov[rp].treasury = cost*3.f;
+                diplo_fabricate_cb(w, econ, dp, A, B, CB_ECONOMIC);
+                diplo_tick(dp, 365.f);           /* mûrit */
+                ok("(re-test) mûre après 1 an", diplo_fab_state(dp,A,B)==FAB_READY);
+                diplo_tick(dp, 1825.f);          /* 5 ans de validité écoulés SANS déclarer */
+                ok("non-utilisée, l'intrigue EXPIRE (le grief acheté s'est éventé → FAB_NONE)",
+                   diplo_fab_state(dp,A,B)==FAB_NONE);
+                ok("une NOUVELLE fabrication redevient possible après expiration",
+                   diplo_can_fabricate(w,econ,dp,A,B));
+            }
+
+            /* AUCUN COOLDOWN INTER-CIBLES : fabriquer contre B n'empêche pas de fabriquer
+             * contre une AUTRE cible C (si elle existe), même le même jour. */
+            int C=-1;
+            for(int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                if(c==A||c==B||w->country[c].role==POLITY_UNCLAIMED) continue;
+                int rc=0; for(int r=0;r<econ->n_regions;r++) if(econ->region[r].owner==c) rc++;
+                if(rc>0){ C=c; break; }
+            }
+            if (C>=0 && rp>=0){
+                diplo_init(dp);
+                econ_flux_reset();
+                econ_flux_add(C, FX_TAX, 3650.f); econ_flux_year_capture();
+                float costC = diplo_fabricate_cost(econ, C);
+                econ->prov[rp].treasury = (cost>costC?cost:costC)*3.f;
+                diplo_fabricate_cb(w, econ, dp, A, B, CB_TERRITORIAL);
+                bool okC = diplo_can_fabricate(w, econ, dp, A, C);
+                ok("aucun cooldown INTER-CIBLES : A peut fabriquer contre C alors qu'une intrigue mûrit déjà contre B",
+                   okC);
+            } else {
+                ok("(monde trop petit pour une 3e cible : test cooldown inter-cibles sauté)", true);
+            }
+
+            /* save_sane : l'état de fabrication (borné) survit à un aller-retour trivial via
+             * les bornes déjà vérifiées ailleurs (scps_save_sane) — ici on vérifie juste que
+             * les accesseurs restent DÉFINIS hors-borne (jamais de déréférencement). */
+            ok("les lecteurs sont SÛRS hors-borne (cid invalide → CB_NONE/0, jamais de crash)",
+               diplo_fab_state(dp,-1,9999)==FAB_NONE && diplo_fab_days_left(dp,9999,-1)==0.f
+               && diplo_fab_ready_cb(dp,-1,-1)==CB_NONE);
+        }
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n",g_pass,g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

@@ -67,7 +67,12 @@
     X(BT_RUPTURE,             0.20f) \
     X(CHOC_ROUNDS_BONUS,      2.0f) \
     /* §B3 — le palier 540 (l'accession) */ \
-    X(REGIMENT_PAY,           1.5f) \
+    /* W-GUERRE-3 — L'ARMÉE À SON VRAI PRIX : mesuré (audit de guerre) à 1-1.5 % des
+     * DÉPENSES d'État (soldes+marine / Σdépenses, DIAG SCPS_MILDIAG) — un budget militaire
+     * FANTÔME. Relevé ×60 (1.5→90) : 10.3 %/6-10.2 % selon graine sur 200 ans (dans la cible
+     * 10-15 %), guerres/sim EN HAUSSE (22.7→44/sim seed 9 — l'armée payée reste viable plus
+     * longtemps), hégémon mortel INCHANGÉ, aucune spirale de dette (credit_demo 16/16). */ \
+    X(REGIMENT_PAY,          90.0f) \
     X(REGIMENT_PRICE,        12.0f) \
     /* LOT 3 (audit de guerre) — le SIÈGE LIT LA GARNISON : chaque point de H_coerc
      * (Garnison/Forteresse/Citadelle bâties, re->build.H_coerc) durcit la place en
@@ -80,7 +85,8 @@
      * Distinct du butin final (PILLAGE_GOLD_FRAC/PILLAGE_STOCK_FRAC, au règlement) ;
      * gaté par le MÊME cooldown anti-re-saccage (pillage_cd). */ \
     X(SIEGE_LOOT_FRAC,        0.25f) \
-    X(NAVY_UPKEEP_GOLD,       1.5f) \
+    /* W-GUERRE-3 : relevé de concert avec REGIMENT_PAY (même ×60) */ \
+    X(NAVY_UPKEEP_GOLD,      90.0f) \
     X(AI_SAVOIR_K,            2.5f) \
     /* RELIGION — seuil de zèle : w_faith ≥ ce seuil ⇒ crédo prosélyte FONDE sa foi proactivement */ \
     X(AI_FAITH_ZEAL,          0.5f) \
@@ -548,6 +554,15 @@
      * pop régionale en mains serviles et vend SELL_FRAC de l'excédent par an. Sans
      * cette règle le pool restait à 0 (mesuré 5 graines) — le canal d'achat mort. */ \
     X(SLAVE_AI_KEEP_FRAC,        0.02f) \
-    X(SLAVE_AI_SELL_FRAC,        0.25f)
+    X(SLAVE_AI_SELL_FRAC,        0.25f) \
+    /* W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ (payant) : fabriquer une revendication contre
+     * une cible coûte FAB_CB_COST_YEARS années de SON revenu (corrompre des élites riches
+     * coûte cher — l'or SORT du trésor du fabricant et disparaît, la corruption quitte
+     * l'État). FAB_MATURE_DAYS = maturation (l'intrigue mûrit avant d'être exploitable) ;
+     * FAB_VALID_DAYS = fenêtre de validité une fois mûre (le grief acheté s'évente, pas
+     * de cooldown sur les AUTRES cibles). */ \
+    X(FAB_CB_COST_YEARS,         2.0f) \
+    X(FAB_MATURE_DAYS,         365.0f) \
+    X(FAB_VALID_DAYS,          1825.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

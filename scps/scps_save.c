@@ -272,6 +272,13 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (s->dp->suzerain[c] < -1 || s->dp->suzerain[c] >= w->n_countries) return false;
         if (!(s->dp->v_integration[c]>=0.f && s->dp->v_integration[c]<=1.f)) return false;
         if (!(s->dp->v_annex[c]      >=0.f && s->dp->v_annex[c]      <=1.f)) return false; }
+    /* W-GUERRE-3 — intrigues fabriquées : état borné {NONE,MATURING,READY}, jours non
+     * négatifs (le tick les décompte à 0 puis change d'état — jamais durablement négatif),
+     * CB acheté borné à l'enum CasusBelli (indexe diplo_cb_name/le motif d'une déclaration). */
+    for (int a=0;a<SCPS_MAX_COUNTRY;a++) for (int b=0;b<SCPS_MAX_COUNTRY;b++){
+        if (s->dp->fab_state[a][b] < FAB_NONE || s->dp->fab_state[a][b] > FAB_READY) return false;
+        if (s->dp->fab_days[a][b] < 0.f) return false;
+        if (s->dp->fab_cb[a][b] < CB_NONE || s->dp->fab_cb[a][b] > CB_ANTIPIRATERIE) return false; }
     for (int i=0;i<SCPS_MAX_COUNTRY;i++)
         if (s->camp->army[i].taken_region < -1 || s->camp->army[i].taken_region >= s->econ->n_regions) return false;
     if (s->ag){

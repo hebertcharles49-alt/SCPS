@@ -127,6 +127,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_offer_pact", "target"),     &ScpsWorld::player_offer_pact);
     ClassDB::bind_method(D_METHOD("player_offer_migration", "target"),&ScpsWorld::player_offer_migration);
     ClassDB::bind_method(D_METHOD("player_embargo", "target", "on"),  &ScpsWorld::player_embargo);
+    ClassDB::bind_method(D_METHOD("player_fabricate_cb", "target"),   &ScpsWorld::player_fabricate_cb);
 
     /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) */
     ClassDB::bind_method(D_METHOD("region_alloc", "region"),              &ScpsWorld::region_alloc);
@@ -612,6 +613,13 @@ Dictionary ScpsWorld::diplo_options(int target) {
     d["would_accept_pact"]    = (bool)(ok && o.would_accept_pact);
     d["would_accept_migration"]= (bool)(ok && o.would_accept_migration);
     d["would_accept_peace"]   = (bool)(ok && o.would_accept_peace);
+    /* W-GUERRE-3 — l'état de l'intrigue fabriquée (CB payant) contre `target`. */
+    d["can_fabricate"]          = (bool)(ok && o.can_fabricate);
+    d["fabricate_cost"]         = ok ? (double)o.fabricate_cost : 0.0;
+    d["fabricating"]            = (bool)(ok && o.fabricating);
+    d["fabricating_days_left"]  = ok ? (double)o.fabricating_days_left : 0.0;
+    d["cb_ready"]                = (bool)(ok && o.cb_ready);
+    d["cb_ready_years_left"]    = ok ? (double)o.cb_ready_years_left : 0.0;
     return d;
 }
 
@@ -1177,6 +1185,10 @@ bool ScpsWorld::player_offer_migration(int target) {
 }
 bool ScpsWorld::player_embargo(int target, bool on) {
     return sim ? scps_player_embargo(sim, target, on ? 1 : 0) != 0 : false;
+}
+/* W-GUERRE-3 — FABRIQUER une revendication (payante) contre `target`. */
+bool ScpsWorld::player_fabricate_cb(int target) {
+    return sim ? scps_player_fabricate_cb(sim, target) != 0 : false;
 }
 
 /* ── ALLOCATION DE MAIN-D'ŒUVRE — la membrane traverse en Dictionary (mots + poids) ── */

@@ -176,6 +176,7 @@ public:
     bool       player_offer_pact(int target);         /* proposer un pacte de commerce */
     bool       player_offer_migration(int target);    /* BRASSAGE : proposer un pacte migratoire */
     bool       player_embargo(int target, bool on);   /* poser/lever un embargo */
+    bool       player_fabricate_cb(int target);       /* W-GUERRE-3 : fabriquer une revendication (payante) */
 
     /* ALLOCATION DE MAIN-D'ŒUVRE (onglet province) — lire les puits + régler les poids.
      * region_alloc renvoie { region, on:bool, pool:float, sinks:[{kind,id,name,output,in_name,

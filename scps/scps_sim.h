@@ -95,6 +95,9 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        /* LOT G — RÉINCORPORATION DE POP : a={région A (source), région B (dest),
         * classe (SocialClass), count}. REVALIDÉ : A≠B toutes deux au joueur. */
        CMD_POP_TRANSFER,
+       /* W-GUERRE-3 — FABRIQUER un casus belli PAYANT contre a[0] (cible). Revalidé au
+        * drain : cible valide, or suffisant (diplo_can_fabricate) → sinon silencieux. */
+       CMD_FABRICATE_CB,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;

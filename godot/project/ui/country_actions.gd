@@ -21,6 +21,7 @@ var _status: Label
 var _opinion_bar: Rect2
 var _sum_lbl: Label
 var _cd_lbl: Label
+var _cb_lbl: Label   ## W-GUERRE-3 : état de l'intrigue fabriquée (en cours / prête / coût)
 var _flash: Label
 
 func _ready() -> void:
@@ -79,12 +80,16 @@ func _build() -> void:
 	_cd_lbl.add_theme_color_override("font_color", Color(0.85, 0.65, 0.30))
 	col.add_child(_cd_lbl)
 
+	_cb_lbl = Label.new()
+	_cb_lbl.add_theme_color_override("font_color", Color(0.70, 0.55, 0.75))
+	col.add_child(_cb_lbl)
+
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	col.add_child(grid)
-	for v in [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"], ["pact", "Pacte"], ["migration", "Migration"], ["embargo", "Embargo"]]:
+	for v in [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"], ["pact", "Pacte"], ["migration", "Migration"], ["embargo", "Embargo"], ["fabricate", "Fabriquer une revendication"]]:
 		var b := Button.new()
 		b.text = v[1]
 		var verb: String = v[0]
@@ -162,6 +167,7 @@ func _refresh() -> void:
 		"pact": bool(op2.get("can_offer_pact", false)),
 		"migration": bool(op2.get("can_offer_migration", false)),
 		"embargo": bool(op2.get("can_embargo", false)) or bool(op2.get("can_lift_embargo", false)),
+		"fabricate": bool(op2.get("can_fabricate", false)),
 	}
 	var would := {
 		"ally": bool(op2.get("would_accept_alliance", true)),
@@ -176,6 +182,31 @@ func _refresh() -> void:
 		var amber: bool = (not b.disabled) and would.has(verb) and not bool(would[verb])
 		b.modulate = Color(1.0, 0.82, 0.5) if amber else Color(1, 1, 1)
 		b.tooltip_text = "il refusera (opinion trop basse)" if amber else ""
+	# W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ : « Guerre » reste grisé sans motif gratuit NI
+	# intrigue mûre (can_declare_war le dit déjà côté moteur) ; « Fabriquer » porte l'état
+	# de l'intrigue en cours/mûre/coût — un bouton de CORRUPTION, distinct de la déclaration.
+	var fabricating: bool = bool(op2.get("fabricating", false))
+	var cb_ready: bool = bool(op2.get("cb_ready", false))
+	var cost := float(op2.get("fabricate_cost", 0.0))
+	var fab_btn: Button = _btns.get("fabricate")
+	if fab_btn != null:
+		if fabricating:
+			var dleft := int(ceili(float(op2.get("fabricating_days_left", 0.0))))
+			fab_btn.text = "Intrigue en cours (%d j)" % dleft
+			fab_btn.disabled = true
+		elif cb_ready:
+			var yleft := float(op2.get("cb_ready_years_left", 0.0))
+			fab_btn.text = "Revendication prête (expire dans %.1f an)" % yleft
+			fab_btn.disabled = true   # rien à refaire tant qu'elle est valide — déclarez la guerre
+		else:
+			fab_btn.text = "Fabriquer une revendication (%d or)" % int(round(cost))
+			fab_btn.disabled = cd > 0 or not bool(can.get("fabricate", false))
+	if fabricating:
+		_cb_lbl.text = "Une intrigue mûrit contre ce pays."
+	elif cb_ready:
+		_cb_lbl.text = "Une revendication est prête : déclarez la guerre avant qu'elle ne s'évente."
+	else:
+		_cb_lbl.text = ""
 
 func _act(verb: String) -> void:
 	var w = Sim.world
@@ -189,5 +220,6 @@ func _act(verb: String) -> void:
 		"pact": ok = bool(w.player_offer_pact(_cid))
 		"migration": ok = bool(w.player_offer_migration(_cid))
 		"embargo": ok = bool(w.player_embargo(_cid, 1))
+		"fabricate": ok = bool(w.player_fabricate_cb(_cid))
 	_flash.text = "Ordre émis — l'émissaire part (verdict au drain)." if ok else "Ordre refusé."
 	_refresh()

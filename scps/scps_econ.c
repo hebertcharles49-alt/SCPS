@@ -1886,7 +1886,7 @@ const char *econ_flux_name(FluxComp comp){
         "taxes","export","péages+",
         "entretien","cour","admin","encadr.",
         "soldes","marine","audits","péages−","invest.","conseil","import",
-        "chantiers","redépense","intérêts" };
+        "chantiers","redépense","intérêts","intrigue" };
     return (comp>=0&&comp<FX_COUNT)?N[comp]:"?";
 }
 float econ_base_price(Resource r){ return (r>RES_NONE && r<RES_COUNT)? BASE_PRICE[r] : 0.f; }

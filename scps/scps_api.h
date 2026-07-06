@@ -402,6 +402,16 @@ typedef struct {
     int would_accept_pact;      /* idem (opinion + complémentarité) */
     int would_accept_migration; /* BRASSAGE : le vis-à-vis CONSENTIRAIT au pacte migratoire */
     int would_accept_peace;     /* le vis-à-vis CÉDERAIT (score de guerre / épuisement) */
+    /* W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ : can_declare_war reste la légalité STRUCTURELLE
+     * (pas déjà en guerre, pas de trêve) ; ces trois champs disent si une déclaration
+     * OFFENSIVE (territorial/économique/religieux) est actuellement ARMÉE. Un CB « gratuit »
+     * (défensif/subjugation/anti-piraterie) n'a besoin d'AUCUN de ces trois. */
+    int   can_fabricate;           /* peut fabriquer MAINTENANT (or suffisant, pas déjà en cours) */
+    float fabricate_cost;          /* le prix (2 ans de revenu de la cible), pour l'affichage */
+    int   fabricating;             /* une intrigue est EN COURS de maturation contre cette cible */
+    float fabricating_days_left;   /* jours avant maturité (fabricating==1) */
+    int   cb_ready;                 /* une intrigue MÛRE (utilisable) existe contre cette cible */
+    float cb_ready_years_left;     /* années avant expiration (cb_ready==1) */
 } ScpsDiploOptions;
 int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out);
 
@@ -579,6 +589,10 @@ int  scps_player_offer_alliance(ScpsSim *s, int target);
 int  scps_player_offer_pact    (ScpsSim *s, int target);
 int  scps_player_offer_migration(ScpsSim *s, int target); /* BRASSAGE : pacte migratoire (échange passif de pop) */
 int  scps_player_embargo       (ScpsSim *s, int target, int on);
+/* W-GUERRE-3 — FABRIQUER une revendication (payante, 2 ans de revenu de la cible) contre
+ * `target` : mûrit 1 an, valide 5 ans une fois mûre. Un CB offensif (territorial/économique/
+ * religieux) n'est déclarable qu'avec une intrigue MÛRE — cf. scps_diplo_options pour l'état. */
+int  scps_player_fabricate_cb  (ScpsSim *s, int target);
 /* §3 — INTÉRIEUR · COMMERCE · GUERRE (plomberie additive ; ENFILENT, revalidé au drain).
  * `region` = index de région À SOI ; `seat` ∈ [0,3) ; `good` ∈ Resource ; `hull` ∈ HullType ;
  * `posture` 0 prudente/1 standard/2 agressive. Retour = mis-en-file (1) / refus (0). */

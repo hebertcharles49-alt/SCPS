@@ -274,6 +274,9 @@ static uint32_t chronicle_sim_hash(uint32_t seed, const Sim *s, const World *w){
 /* Arc J2 — collecte pour les MÉDIANES (flux d'or, trésor) sur tout le balayage. */
 static double g_flux_all[8192], g_treas_all[8192];
 static int    g_flux_n;
+/* W-GUERRE-3 — DIAG budget (SCPS_MILDIAG) : part militaire (soldes+marine) du total des
+ * dépenses d'État, accumulée sur TOUTE la fenêtre (années × empires vivants × sims). */
+static double g_mil_dep_tot=0.0, g_mil_sol_tot=0.0;
 static int dcmp(const void *a, const void *b){ double x=*(const double*)a-*(const double*)b; return (x<0)?-1:(x>0); }
 static double dmedian(double *v, int n){
     if (n<=0) return -1.0;
@@ -472,6 +475,19 @@ int main(int argc, char **argv){
              * roulement RÉGULIER est simplement ce qui la produit) ; en prime, econ_country_tax_year
              * (d_treasury_mois des évènements) a désormais un revenu FRAIS chaque an, y compris en
              * chronique — MARBRIVE doit pouvoir tirer avant l'an-200. */
+            /* W-GUERRE-3 — DIAG budget (SCPS_MILDIAG) : la part militaire (soldes+marine) du
+             * TOTAL des dépenses d'État, lue JUSTE AVANT le reset annuel (econ_flux_year_capture
+             * RAZ tout de suite après) — accumulée sur TOUTE la fenêtre (années × empires vivants),
+             * bien moins bruyant que la photo-dern.-année d'I0. Gated : aucun coût hors mesure. */
+            if (getenv("SCPS_MILDIAG") && yr>0){   /* an-0 : flux encore vide (rien à mesurer) */
+                for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+                    if (w->country[c].role==POLITY_UNCLAIMED) continue;
+                    double mil = -(econ_flux_get(c,FX_SOLDE)+econ_flux_get(c,FX_NAVY));
+                    double dep = 0.0;
+                    for (int k=0;k<FX_COUNT;k++){ double v=econ_flux_get(c,(FluxComp)k); if (v<0.0) dep += -v; }
+                    if (dep>0.0){ g_mil_dep_tot += dep; g_mil_sol_tot += mil; }
+                }
+            }
             econ_flux_year_capture();
             for (int d=0; d<365; d++) sim_day(&s, w);
             /* conquêtes de l'année : régions passées d'un PAYS à un autre (de force) */
@@ -1343,6 +1359,9 @@ int main(int argc, char **argv){
           for (int k=0;k<FX_COUNT;k++) printf(" %s %+.1f", econ_flux_name((FluxComp)k), comp[k]/ne/12.0);
           printf("\n");
       } }
+    if (getenv("SCPS_MILDIAG") && g_mil_dep_tot>0.0)   /* W-GUERRE-3 : la part militaire du budget, sur TOUTE la fenêtre (bien moins bruyant que la photo I0 dern.-année) */
+        printf("   budget militaire (SCPS_MILDIAG) .. soldes+marine = %.1f%% des dépenses d'État cumulées (%.0f / %.0f or, années×empires vivants)\n",
+               100.0*g_mil_sol_tot/g_mil_dep_tot, g_mil_sol_tot, g_mil_dep_tot);
     if (getenv("EDI_DBG")) agency_edi_dump();   /* G0.3 : pourquoi les paliers ne montent pas */
     printf("   accession (E1 §9) ........... 360 j an %.1f (%d/%d) · 540 j an %.1f (%d/%d) · 960 j an %.1f (%d/%d)  (moy. du 1er bâti)\n",
            tot_tier_n[0]? (double)tot_tier_y[0]/tot_tier_n[0]:-1.0, tot_tier_n[0], nsims,

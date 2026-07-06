@@ -692,6 +692,7 @@ typedef enum {
     FX_BUILD,                                         /* chantiers (agency : or des édifices commandés) */
     FX_REDEP,                                         /* redépense publique I3bis (le trésor circule le surplus) */
     FX_CREDIT,                                        /* intérêts de la dette (credit_year_tick) */
+    FX_INTRIGUE,                                       /* W-GUERRE-3 : fabrication d'un casus belli (corruption, disparaît) */
     FX_COUNT
 } FluxComp;
 void   econ_flux_add(int cid, FluxComp comp, float amount);   /* incrémente (signé par convention ci-dessus) */
