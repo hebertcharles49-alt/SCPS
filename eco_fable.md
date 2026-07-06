@@ -1733,3 +1733,66 @@ Utile pour la PROCHAINE fois qu'on voudra distinguer un vrai défaut de câblage
 guerre rare.
 
 **NE PAS COMMITTER** (mandat explicite — même règle que [020]).
+
+## 2026-07-06 (suite) — V2a LANDÉ : LE CONSEIL VIVANT (faction, loyauté, paie). SAVE v69→70.
+
+**Le design** (verrouillé, `scps_ages_factions §3bis`) : chaque conseiller PENCHE vers une faction-éthos
+(attribution DÉTERMINISTE par (siège, maison), rien à sérialiser) ; RECRUTER pousse SA faction, RENVOYER
+froisse l'opposée ; une barre de LOYAUTÉ (0-100, par siège pourvu) CONVERGE (jamais un saut) vers une
+cible dérivée de la satisfaction de SA faction (1−grief) et de la PAIE, le ROT (capture d'État) accélérant
+la CHUTE mais JAMAIS la remontée (motif `COERCION_DECAY`) ; des lecteurs de SIGNAL (`betrayal_ready`,
+`pair_state` rivalité/alliance/conspiration) posent l'état pour V2b (les événements de trahison/rivalité
+ne sont PAS ce lot — V2a pose l'ÉTAT, V2b branchera le narratif dessus).
+
+**Implémentation** : `statecraft_council_faction(seed,cid,seat,slot,gen)` — table `SEAT_A`/`SEAT_B` (Savoir→
+Transgresseur/Légiste · Société→Conquérant/Communautaire · Industrie→Marchand seul) + hash de maison
+(`sc_hash` réutilisé) qui tranche entre les deux candidats. `Statecraft` gagne `loyalty[][]`/`pay[][]`
+(float, SAVE **69→70**, blob plat `fwrite BRUT`) — bornées par `save_sane` ([0,100]/[0,2]). `statecraft_
+council_hire` applique `faction_lever_apply(cid,fac,COUNCIL_HIRE_LEVER)` (un vote pour SA faction, motif
+§4 EXISTANT) ; `statecraft_council_dismiss` cherche la faction la PLUS OPPOSÉE à celle du congédié
+(`faction_opposition`) et lui applique le grief (`COUNCIL_DISMISS_GRIEF`) — le canal le plus honnête de
+l'API existante (documenté : « pousser l'opposée EST froisser celle qu'on renvoie »). La RETRAITE (âge)
+reste un reset DIRECT (pas un « renvoi » — aucun grief joueur pour un départ naturel). `statecraft_council_
+loyalty_tick` (mensuel, appelé depuis `sim_day` juste après `statecraft_council_ai`) : cible =
+`(1−faction_grievance(cid,fac))·100 + (pay−1)·COUNCIL_PAY_ADJ`, taux = `COUNCIL_LOYAL_RATE·(1+
+COUNCIL_ROT_BOOST·rot)` SEULEMENT quand la cible est SOUS la valeur courante (`tgt<cur` — la chute), le
+rot ne touchant JAMAIS le taux de remontée. `statecraft_council_pair_state` : CONSPIRATION (griefA>0.6 ET
+griefB>0.6) prioritaire sur RIVALITÉ (opposition≥0.6 + tenure>10 ans chacun) prioritaire sur ALLIANCE
+(opposition<0.3 + grief bas des deux) sinon NEUTRE. `statecraft_council_ai` : l'IA paie 1.0 par défaut
+(posé à l'embauche) et REMPLACE (dismiss+re-hire dans le même tick) un ministre `betrayal_ready` au lieu
+de le garder — « elle ne subit pas la trahison narrative, c'est le lot du joueur ». Verbe `CMD_COUNCIL_PAY`
+(a[0]=seat, a[1]=paie×100) + façade `scps_player_council_pay` (clampe [0,2] à l'enfilage ET revalidé au
+drain) + `scps_council_pair_state` (lecteur, borné). `ScpsCouncilSeat` gagne `faction`/`loyalty`/`pay`/
+`mood` (readout `council_mood_word`, 5 mots — dévoué/loyal/tiède/aigri/AU BORD DE LA TRAHISON, seuil ≤15
+MIROIR de `betrayal_ready`). Godot : `country_council()` binding étendu, `player_council_pay`/`council_
+pair_state` bindés, `sidebar_drawer.gd` onglet Conseil affiche la faction (mot), la BARRE (VKit.gauge,
+rouge→vert), le mot d'ambiance, et 4 boutons de paie (0.5×/1×/1.5×/2×, verbe journalisé).
+
+**Tunables registre J** (6) : `COUNCIL_HIRE_LEVER` 0.10 · `COUNCIL_DISMISS_GRIEF` 0.10 ·
+`COUNCIL_LOYAL_RATE` 0.05 · `COUNCIL_ROT_BOOST` 1.5 · `COUNCIL_PAY_ADJ` 30.0 · `COUNCIL_BETRAYAL_
+THRESHOLD` 15.0.
+
+**Télémétrie chronicle** neuve « conseil (V2a) » : loyauté moyenne (sièges pourvus) · ministres au bord/sim
+· remplacements IA/sim — compteur `statecraft_council_ai_replace_count()` (module-static, RAZ par
+`statecraft_init`, même motif que `revolt_civilwar_count`). Mesuré (seeds 9/7 × 2 sims × 200 ans) :
+loyauté moyenne 90-92/100 sur 12-13 sièges pourvus, 0 ministre au bord, 0 remplacement IA — un monde SAIN
+ne stresse pas ses ministres par défaut (le rot/grief restent rares hors levier actif soutenu) ; le
+mécanisme MORD quand testé isolément (statecraft_demo : grief saturé + rot élevé → loyauté <15 en
+quelques mois).
+
+⚠ **RE-BASELINE golden DÉLIBÉRÉE** (seed 7 INCHANGÉ ; seeds 108/209/310/411 changent — l'IA embauche/paie
+tôt et la loyauté/les leviers de faction mordent dans la fenêtre 12 ans ; `golden_hashes.txt` mis à jour,
+`make golden` re-vérifié OK). `determinism` **STABLE** (5 graines × 12 ans, hash identique — la loyauté est
+état sérialisé pur, aucun flottant hors-sérialisation n'influence le tick). `savetest` seeds 9/11 **byte-
+identiques** (v70). `fuzz-save` : 216 octets flippés, `save_sane` rejette chaque forge (loyalty/pay bornés),
+0 crash. `make test` **39/40** (seul `intertrade_demo` KO, pré-existant Windows `setenv` — `campaign_demo`/
+`warhost_demo` VERTS). `statecraft_demo` **+21 tests** (attribution déterministe · spectre par siège ·
+convergence sans saut · asymétrie du rot chute/remontée · betrayal_ready vrai/faux/vacant · pair_state
+3 états · la paie coûte et clampe). `scps_api_demo` **+8 tests** (lecture bornée, recruter→loyauté humaine,
+paie posée/clampée, pair_state borné/hors-borne). Godot `scons` **0 warning**. Probe headless neuve
+`council_audit.{gd,tscn}` (seeds 9/11/42, round-trip complet lecture→recrutement→paie→clamp→pair_state,
+**CONSEIL AUDIT OK**). ⚠ **Piège de perf évité** : le premier jet de `scps_api_demo` créait un `ScpsSim`
+NEUF (genèse complète, ~800 provinces) rien que pour les 8 tests V2a → +2 min de runtime (timeout du
+harnais 120s dépassé). Fix : réutiliser le `sd` déjà généré par le bloc DÉCRETS précédent (même scope) —
+zéro genèse supplémentaire. **SAVE non bumpé pour le reste** (rien d'autre ne change). **NE PAS COMMITTER**
+(même règle que les entrées précédentes — mission d'implémentation, pas de commit).

@@ -256,7 +256,7 @@ int main(int argc, char **argv){
            statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f);
         int best=0, bt=0;                               /* nomme le candidat de plus haut tier (pool gen 0) */
         for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seat,sl,0); if(t>bt){bt=t;best=sl;} }
-        statecraft_council_hire(s.sc, cid, seat, best, 0);
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
         ok("Conseil : NOMMER monte le multiplicateur (>1) et pourvoit le siège",
            statecraft_council_seat_mult(s.sc,seed,cid,seat)>1.f && statecraft_council_seated(s.sc,cid,seat)==best);
         ok("Conseil : le conseiller a un COÛT mensuel (>0, ×IPM)",
@@ -288,10 +288,170 @@ int main(int argc, char **argv){
                 if (t<1||t>3||ag<30||ag>51) pool_ok=false;
             }
         ok("Conseil : la pool est DISPO à toute génération (tiers 1-3, âges 30-51 au début de gen)", pool_ok);
-        statecraft_council_dismiss(s.sc, cid, seat);
+        statecraft_council_dismiss(s.sc, seed, cid, seat);
         ok("Conseil : RENVOYER rétablit le neutre (1.0) sans coût",
            statecraft_council_seat_mult(s.sc,seed,cid,seat)==1.f
            && statecraft_council_seated(s.sc,cid,seat)<0 && statecraft_council_cost(s.sc,seed,cid,1.f)==0.f);
+    }
+
+    /* ── V2a — LE CONSEIL VIVANT : faction, loyauté, paie ──────────────────── */
+    printf("\n── V2a : le Conseil vivant (faction, loyauté, paie) ──\n");
+    {
+        /* (1) ATTRIBUTION DÉTERMINISTE — même seed → même faction ; dans le SPECTRE
+         * privilégié du siège (Savoir : Transgresseur/Légiste · Société : Conquérant/
+         * Communautaire · Industrie : Marchand seul). */
+        int cid=0;
+        bool det_ok=true, in_spectrum=true;
+        for (int seat=0; seat<SC_COUNCIL_SEATS; seat++)
+            for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
+                EthosFaction f1=statecraft_council_faction(seed,cid,seat,sl,0);
+                EthosFaction f2=statecraft_council_faction(seed,cid,seat,sl,0);
+                if (f1!=f2) det_ok=false;
+                bool valid = (seat==0 && (f1==FAC_TRANSGRESSEUR||f1==FAC_LEGISTE))
+                          || (seat==1 && (f1==FAC_CONQUERANT   ||f1==FAC_COMMUNAUTAIRE))
+                          || (seat==2 && f1==FAC_MARCHAND);
+                if (!valid) in_spectrum=false;
+            }
+        ok("Conseil vivant : attribution DÉTERMINISTE (même seed → même faction)", det_ok);
+        ok("Conseil vivant : chaque siège reste dans SON spectre (Savoir/Société/Industrie)", in_spectrum);
+        ok("Conseil vivant : Industrie n'a qu'UN visage (Marchand, les deux candidats du siège coïncident)",
+           statecraft_council_faction(seed,cid,2,0,0)==FAC_MARCHAND &&
+           statecraft_council_faction(seed,cid,2,1,0)==FAC_MARCHAND);
+
+        /* (2) CONVERGENCE SANS SAUT — la loyauté se déplace PROGRESSIVEMENT vers sa
+         * cible, jamais un bond en un seul mois. */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        int seat=0, best=0, bt=0;
+        for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seat,sl,0); if(t>bt){bt=t;best=sl;} }
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
+        /* Une politique FAVORISE l'opposé de la faction du ministre (l'aigrit fort). */
+        EthosFaction minf = statecraft_council_faction(seed,cid,seat,best,0);
+        EthosFaction opp_f = FAC_CONQUERANT; float opp_v=-1.f;
+        for (int f=0; f<FAC_COUNT; f++){ float o=faction_opposition(minf,(EthosFaction)f); if (o>opp_v){opp_v=o; opp_f=(EthosFaction)f;} }
+        bool no_jump=true; int prev=statecraft_council_loyalty(s.sc,cid,seat);
+        for (int m=0;m<36;m++){
+            faction_lever_apply(cid, opp_f, 0.02f);     /* aigrit le ministre mois après mois */
+            statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
+            int cur=statecraft_council_loyalty(s.sc,cid,seat);
+            if (prev-cur > 15) no_jump=false;           /* jamais un saut brutal en un mois */
+            prev=cur;
+        }
+        int loy_after_grief=statecraft_council_loyalty(s.sc,cid,seat);
+        printf("   Loyauté après 36 mois de grief opposé : %d (jamais de saut)\n", loy_after_grief);
+        ok("Conseil vivant : la loyauté CONVERGE progressivement (jamais un saut brutal)", no_jump);
+        ok("Conseil vivant : un grief soutenu envers SA faction FAIT BAISSER la loyauté",
+           loy_after_grief < 60);
+
+        /* (3) L'ASYMÉTRIE DU ROT — le rot (capture d'État) ACCÉLÈRE la chute,
+         * jamais la remontée (motif COERCION_DECAY). Grief SATURÉ (≥1.0) pour que
+         * la cible tombe SOUS la loyauté de départ (45-65) — une vraie CHUTE. */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
+        faction_lever_apply(cid, opp_f, 1.5f);           /* un grief fixe, SATURÉ (cap 1.0) */
+        for (int m=0;m<3;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
+        int loy_baseline=statecraft_council_loyalty(s.sc,cid,seat);
+        /* Même scénario, mais avec du ROT (capture d'État) accumulé au pays. */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
+        faction_lever_apply(cid, opp_f, 1.5f);
+        for (int k=0;k<20;k++) faction_concede(cid, minf);      /* gorge la faction du ministre : ROT */
+        float rot = faction_capture_total(cid);
+        for (int m=0;m<3;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
+        int loy_rot=statecraft_council_loyalty(s.sc,cid,seat);
+        printf("   Chute sur 3 mois : sans rot %d, avec rot(%.2f) %d\n", loy_baseline, rot, loy_rot);
+        ok("Conseil vivant : le ROT accélère la CHUTE de loyauté (rot>0)", rot>0.f);
+        ok("Conseil vivant : à grief égal, PLUS de rot ⇒ chute PLUS rapide", loy_rot < loy_baseline);
+        /* Remontée : le rot ne doit RIEN accélérer côté hausse. */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
+        statecraft_council_set_pay(s.sc, cid, seat, 2.f);         /* paie double : cible haute, ministre REMONTE */
+        for (int m=0;m<3;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
+        int rise_no_rot=statecraft_council_loyalty(s.sc,cid,seat);
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
+        statecraft_council_set_pay(s.sc, cid, seat, 2.f);
+        for (int k=0;k<20;k++) faction_concede(cid, minf);
+        for (int m=0;m<3;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
+        int rise_with_rot=statecraft_council_loyalty(s.sc,cid,seat);
+        printf("   Remontée sur 3 mois (paie ×2) : sans rot %d, avec rot %d\n", rise_no_rot, rise_with_rot);
+        ok("Conseil vivant : le rot n'ACCÉLÈRE PAS la remontée (le rot n'aide jamais à se refaire une vertu)",
+           rise_with_rot <= rise_no_rot);
+
+        /* (4) BETRAYAL_READY — un ministre au bord (loyauté ≤ seuil) est signalé ; un
+         * ministre choyé ne l'est jamais. */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
+        statecraft_council_set_pay(s.sc, cid, seat, 0.f);         /* on ne PAIE plus : la cible plonge */
+        faction_lever_apply(cid, opp_f, 1.5f);                    /* grief SATURÉ d'entrée (cap 1.0) */
+        for (int m=0;m<30;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);   /* 30 mois : converge bien sous le seuil */
+        bool bad_ready = statecraft_council_betrayal_ready(s.sc,cid,seat);
+        printf("   Ministre non payé + grief soutenu : loyauté %d, au bord=%s\n",
+               statecraft_council_loyalty(s.sc,cid,seat), bad_ready?"OUI":"non");
+        ok("Conseil vivant : un ministre à loyauté basse est BETRAYAL_READY", bad_ready);
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
+        statecraft_council_set_pay(s.sc, cid, seat, 1.5f);
+        for (int m=0;m<24;m++) statecraft_council_loyalty_tick(s.sc, s.w, s.econ, seed, 1.f/12.f);
+        bool good_ready = statecraft_council_betrayal_ready(s.sc,cid,seat);
+        ok("Conseil vivant : un ministre choyé (bien payé, aucun grief) N'EST JAMAIS betrayal_ready", !good_ready);
+        ok("Conseil vivant : un siège VACANT n'est jamais betrayal_ready",
+           !statecraft_council_betrayal_ready(s.sc,cid,1));
+
+        /* (5) PAIR_STATE — 3 états lisibles : NEUTRE par défaut, RIVALITÉ (factions
+         * opposées, tous deux en poste longtemps), CONSPIRATION (les deux aliénés). */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        int seatA=0, seatB=1;                            /* Savoir vs Société : spectres disjoints, peuvent s'opposer */
+        int bestA=0, btA=0, bestB=0, btB=0;
+        for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seatA,sl,0); if(t>btA){btA=t;bestA=sl;} }
+        for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seatB,sl,0); if(t>btB){btB=t;bestB=sl;} }
+        statecraft_council_hire(s.sc, seed, cid, seatA, bestA, 0);
+        statecraft_council_hire(s.sc, seed, cid, seatB, bestB, 0);
+        CouncilPairState st_fresh = statecraft_council_pair_state(s.sc, s.w, s.econ, seed, cid, seatA, seatB, 0);
+        ok("Conseil vivant : deux ministres FRAIS (pas d'ancienneté) → NEUTRE",
+           st_fresh==COUNCIL_PAIR_NEUTRE || st_fresh==COUNCIL_PAIR_ALLIANCE);
+        /* En poste depuis longtemps (an 15 > 10 ans de tenure) : si leurs factions
+         * s'opposent fort, la paire bascule en RIVALITÉ. */
+        EthosFaction fA=statecraft_council_faction(seed,cid,seatA,bestA,0);
+        EthosFaction fB=statecraft_council_faction(seed,cid,seatB,bestB,0);
+        float oppAB = faction_opposition(fA,fB);
+        CouncilPairState st_old = statecraft_council_pair_state(s.sc, s.w, s.econ, seed, cid, seatA, seatB, 15);
+        printf("   Paire (%d,%d) opposition=%.2f, ancienne (an15) → état %d\n", seatA, seatB, oppAB, (int)st_old);
+        if (oppAB>=0.6f)
+            ok("Conseil vivant : factions opposées + ancienneté → RIVALITÉ", st_old==COUNCIL_PAIR_RIVALITE);
+        else
+            ok("Conseil vivant : factions proches + grief bas → ALLIANCE possible",
+               st_old==COUNCIL_PAIR_ALLIANCE || st_old==COUNCIL_PAIR_NEUTRE);
+        /* CONSPIRATION : les deux factions ALIÉNÉES (grief>0.6 chacune) — on
+         * favorise une TROISIÈME faction dont l'opposition somme le plus haut
+         * contre fA ET fB, pour aigrir les deux à la fois. */
+        EthosFaction other=FAC_CONQUERANT; float bv=-1.f;
+        for (int f=0; f<FAC_COUNT; f++) if (f!=(int)fA && f!=(int)fB){
+            float o=faction_opposition(fA,(EthosFaction)f)+faction_opposition(fB,(EthosFaction)f);
+            if (o>bv){ bv=o; other=(EthosFaction)f; }
+        }
+        for (int k=0;k<60;k++) faction_lever_apply(cid, other, 0.02f);
+        CouncilPairState st_consp = statecraft_council_pair_state(s.sc, s.w, s.econ, seed, cid, seatA, seatB, 15);
+        printf("   Grief fA=%.2f fB=%.2f → état %d\n", faction_grievance(cid,fA), faction_grievance(cid,fB), (int)st_consp);
+        if (faction_grievance(cid,fA)>0.6f && faction_grievance(cid,fB)>0.6f)
+            ok("Conseil vivant : les DEUX factions aliénées → CONSPIRATION", st_consp==COUNCIL_PAIR_CONSPIRATION);
+        else
+            ok("Conseil vivant : pair_state reste un lecteur cohérent (0-3 valeurs bornées)",
+               st_consp>=COUNCIL_PAIR_NEUTRE && st_consp<=COUNCIL_PAIR_CONSPIRATION);
+
+        /* (6) LA PAIE COÛTE — le curseur multiplie le coût mensuel. */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        statecraft_council_hire(s.sc, seed, cid, seat, best, 0);
+        float cost_1x = statecraft_council_cost(s.sc, seed, cid, 1.f);
+        statecraft_council_set_pay(s.sc, cid, seat, 2.f);
+        float cost_2x = statecraft_council_cost(s.sc, seed, cid, 1.f);
+        statecraft_council_set_pay(s.sc, cid, seat, 0.5f);
+        float cost_half = statecraft_council_cost(s.sc, seed, cid, 1.f);
+        printf("   Coût mensuel : ×0.5 %.1f, ×1 %.1f, ×2 %.1f\n", cost_half, cost_1x, cost_2x);
+        ok("Conseil vivant : payer DOUBLE coûte le double", near_f(cost_2x, cost_1x*2.f, 0.01f));
+        ok("Conseil vivant : payer MOINS coûte moins", near_f(cost_half, cost_1x*0.5f, 0.01f));
+        ok("Conseil vivant : le curseur de paie est BORNÉ [0,2]",
+           statecraft_council_pay(s.sc,cid,seat)==0.5f &&
+           (statecraft_council_set_pay(s.sc,cid,seat,9.f), statecraft_council_pay(s.sc,cid,seat)==2.f));
     }
 
     /* ── #26 — L'OPINION À MÉMOIRE : modificateurs TEMPORAIRES + mémoire DURABLE, tout TEND VERS 0 ──

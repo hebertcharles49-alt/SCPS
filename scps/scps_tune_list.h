@@ -563,6 +563,17 @@
      * de cooldown sur les AUTRES cibles). */ \
     X(FAB_CB_COST_YEARS,         2.0f) \
     X(FAB_MATURE_DAYS,         365.0f) \
-    X(FAB_VALID_DAYS,          1825.0f)
+    X(FAB_VALID_DAYS,          1825.0f) \
+    /* V2a — LE CONSEIL VIVANT : faction, loyauté, paie. RECRUTER pousse SA
+     * faction (HIRE_LEVER) ; RENVOYER froisse l'opposée (DISMISS_GRIEF). La
+     * loyauté CONVERGE (LOYAL_RATE/mois) vers une cible (grief de SA faction ×
+     * PAY_ADJ de la paie) ; le rot (capture d'État) ACCÉLÈRE la chute
+     * (ROT_BOOST), jamais la remontée. BETRAYAL_THRESHOLD = « au bord ». */ \
+    X(COUNCIL_HIRE_LEVER,        0.10f) \
+    X(COUNCIL_DISMISS_GRIEF,     0.10f) \
+    X(COUNCIL_LOYAL_RATE,        0.05f) \
+    X(COUNCIL_ROT_BOOST,         1.5f) \
+    X(COUNCIL_PAY_ADJ,          30.0f) \
+    X(COUNCIL_BETRAYAL_THRESHOLD,15.0f)
 
 #endif /* SCPS_TUNE_LIST_H */

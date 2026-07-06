@@ -458,12 +458,18 @@ static void sim_cmd_drain(Sim *s, World *w){
           case CMD_COUNCIL_HIRE: {
             int seat=c->a[0], slot=c->a[1];
             if (seat<0 || seat>=SC_COUNCIL_SEATS || slot<0 || slot>=SC_COUNCIL_CANDS) break;
-            statecraft_council_hire(s->sc, p, seat, slot, statecraft_council_gen(s->year));
+            statecraft_council_hire(s->sc, w->seed, p, seat, slot, statecraft_council_gen(s->year));
             break; }
           case CMD_COUNCIL_DISMISS: {
             int seat=c->a[0];
             if (seat<0 || seat>=SC_COUNCIL_SEATS) break;
-            statecraft_council_dismiss(s->sc, p, seat);
+            statecraft_council_dismiss(s->sc, w->seed, p, seat);
+            break; }
+          case CMD_COUNCIL_PAY: {
+            int seat=c->a[0]; float pay=(float)c->a[1]/100.f;             /* a[1] = paie ×100 (0..200) */
+            if (seat<0 || seat>=SC_COUNCIL_SEATS) break;
+            if (statecraft_council_seated(s->sc,p,seat)<0) break;         /* siège vacant : rien à payer */
+            statecraft_council_set_pay(s->sc, p, seat, pay);
             break; }
           /* ── §3 — COMMERCE ── */
           case CMD_ROUTE: {
@@ -686,6 +692,7 @@ void sim_day(Sim *s, World *w) {
             decrees_tick(w, s->econ, s->sc, s->wl, s->host, s->dp, s->human_player, 30);
         for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
             if (s->ai_on[c]) statecraft_council_ai(s->sc, w, s->econ, w->seed, c, s->year);   /* Q1 : l'IA pourvoit son siège d'éthos (pool de la génération courante) */
+        statecraft_council_loyalty_tick(s->sc, w, s->econ, w->seed, 1.f/12.f);   /* V2a : la loyauté CONVERGE (jamais un saut) */
         PROF(PB_ECON, econ_tick(s->econ, 1.f/12.f));
         statecraft_tick(s->sc, w, s->econ, s->wp, s->wl, s->dp, s->rn, 30);
         PROF(PB_DEMO, demography_tick(w, s->econ, s->wl, s->drift, 5.f, 5.f, 1.f/12.f));

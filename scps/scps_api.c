@@ -995,12 +995,18 @@ int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
         int slot = statecraft_council_seated(s->sim.sc, me, seat);
         if(slot>=0){
             int sgen = statecraft_council_seated_gen(s->sim.sc, me, seat);   /* identité ÉPINGLÉE à l'embauche */
+            int loy  = statecraft_council_loyalty(s->sim.sc, me, seat);
             out[n].filled    = 1;
             out[n].councilor = sz(tr((StrId)statecraft_council_cand_name(seed, me, seat, slot, sgen)));
             out[n].tier      = statecraft_council_cand_tier(seed, me, seat, slot, sgen);
             out[n].age       = statecraft_council_seated_age(s->sim.sc, seed, me, seat, s->sim.year);
+            out[n].faction   = sz(faction_name((int)statecraft_council_faction(seed, me, seat, slot, sgen)));
+            out[n].loyalty   = loy;
+            out[n].pay       = statecraft_council_pay(s->sim.sc, me, seat);
+            out[n].mood      = sz(council_mood_word(loy));
         } else {
             out[n].filled = 0; out[n].councilor = ""; out[n].tier = 0; out[n].age = 0;
+            out[n].faction = ""; out[n].loyalty = 0; out[n].pay = 1.f; out[n].mood = "";
         }
         n++;
     }
@@ -1026,6 +1032,15 @@ int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max)
         n++;
     }
     return n;
+}
+
+/* V2a — l'état de la PAIRE (a,b) de sièges du pays du JOUEUR (signal pour V2b :
+ * rivalité/alliance/conspiration entre deux ministres). */
+int scps_council_pair_state(ScpsSim *s, int seat_a, int seat_b){
+    if (!s || !s->ready) return 0;
+    int me = s->sim.player;
+    if (me<0 || me>=s->w->n_countries) return 0;
+    return (int)statecraft_council_pair_state(s->sim.sc, s->w, s->sim.econ, s->w->seed, me, seat_a, seat_b, s->sim.year);
 }
 
 /* DÉCRETS DU JOUEUR (civics) — état + légalité de TOUS les décrets, pour `country`. */
@@ -1725,6 +1740,13 @@ int scps_player_council_hire(ScpsSim *s, int seat, int slot){
 int scps_player_council_dismiss(ScpsSim *s, int seat){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_COUNCIL_DISMISS, { seat, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* V2a — le curseur de PAIE (0..2) : encodé ×100 pour tenir dans l'entier du journal. */
+int scps_player_council_pay(ScpsSim *s, int seat, float pay){
+    if (!s || !s->ready) return 0;
+    if (pay<0.f) pay=0.f; else if (pay>2.f) pay=2.f;
+    PlayerCmd c = { CMD_COUNCIL_PAY, { seat, (int32_t)(pay*100.f+0.5f), 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
 int scps_player_decree(ScpsSim *s, int id, int on){

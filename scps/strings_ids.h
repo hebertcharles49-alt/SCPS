@@ -334,6 +334,13 @@
     X(STR_COUNCIL_NAME_5, "Cercle Velmor") \
     X(STR_COUNCIL_NAME_6, "Loge Brask") \
     X(STR_COUNCIL_NAME_7, "Syndic Dovric") \
+    /* V2a — LE CONSEIL VIVANT : l'ambiance du ministre (mot dérivé de la loyauté 0-100). */ \
+    X(STR_COUNCIL_MOOD_DEVOUE, "dévoué") \
+    X(STR_COUNCIL_MOOD_LOYAL, "loyal") \
+    X(STR_COUNCIL_MOOD_TIEDE, "tiède") \
+    X(STR_COUNCIL_MOOD_AIGRI, "aigri") \
+    X(STR_COUNCIL_MOOD_TRAHISON, "AU BORD DE LA TRAHISON") \
+    X(STR_COUNCIL_PAY_LABEL, "Paie") \
     /* CAPSTONE §27 — Entropie mondiale (destin partagé, pas par-pays). */ \
     X(STR_BANDE_ENTROPIE_0, "Stable") \
     X(STR_BANDE_ENTROPIE_1, "Frémissante") \

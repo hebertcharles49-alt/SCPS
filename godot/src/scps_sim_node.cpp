@@ -103,6 +103,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_purge", "region"),            &ScpsWorld::player_purge);
     ClassDB::bind_method(D_METHOD("player_council_hire", "seat", "slot"), &ScpsWorld::player_council_hire);
     ClassDB::bind_method(D_METHOD("player_council_dismiss", "seat"),    &ScpsWorld::player_council_dismiss);
+    ClassDB::bind_method(D_METHOD("player_council_pay", "seat", "pay"), &ScpsWorld::player_council_pay);
+    ClassDB::bind_method(D_METHOD("council_pair_state", "seat_a", "seat_b"), &ScpsWorld::council_pair_state);
     ClassDB::bind_method(D_METHOD("council_candidates", "seat"),        &ScpsWorld::council_candidates);
     ClassDB::bind_method(D_METHOD("player_decree", "id", "on"),         &ScpsWorld::player_decree);
     ClassDB::bind_method(D_METHOD("player_route", "ra", "rb", "maritime"), &ScpsWorld::player_route);
@@ -716,6 +718,10 @@ Array ScpsWorld::country_council(int country) {
         d["councilor"] = String::utf8(seats[i].councilor);
         d["tier"]      = seats[i].tier;
         d["age"]       = seats[i].age;   /* v49 : le ministre VIEILLIT (retraite 66-73) */
+        d["faction"]   = String::utf8(seats[i].faction);   /* V2a : sa faction-éthos (mot) */
+        d["loyalty"]   = seats[i].loyalty;                 /* V2a : 0..100 */
+        d["pay"]       = seats[i].pay;                     /* V2a : 0..2 (curseur) */
+        d["mood"]      = String::utf8(seats[i].mood);      /* V2a : dévoué…AU BORD DE LA TRAHISON */
         a.push_back(d);
     }
     return a;
@@ -1106,6 +1112,8 @@ bool ScpsWorld::player_assimilate(int region, bool creuset) { return sim ? scps_
 bool ScpsWorld::player_purge(int region)                 { return sim ? scps_player_purge(sim, region) != 0 : false; }
 bool ScpsWorld::player_council_hire(int seat, int slot)  { return sim ? scps_player_council_hire(sim, seat, slot) != 0 : false; }
 bool ScpsWorld::player_council_dismiss(int seat)         { return sim ? scps_player_council_dismiss(sim, seat) != 0 : false; }
+bool ScpsWorld::player_council_pay(int seat, float pay)  { return sim ? scps_player_council_pay(sim, seat, pay) != 0 : false; }
+int  ScpsWorld::council_pair_state(int seat_a, int seat_b) { return sim ? scps_council_pair_state(sim, seat_a, seat_b) : 0; }
 bool ScpsWorld::player_decree(int id, bool on)            { return sim ? scps_player_decree(sim, id, on ? 1 : 0) != 0 : false; }
 bool ScpsWorld::player_route(int ra, int rb, bool maritime) { return sim ? scps_player_route(sim, ra, rb, maritime ? 1 : 0) != 0 : false; }
 bool ScpsWorld::player_market_buy(int region, int good, int qty, int tier)  { return sim ? scps_player_market_buy(sim, region, good, (long)qty, tier) != 0 : false; }

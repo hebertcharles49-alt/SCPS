@@ -29,6 +29,9 @@
  * enum) pour ne PAS tirer scps_factions.h/scps_agency.h dans ce header (cycle BandHumeur). */
 const char *faction_name(int ethos_faction);   /* EthosFaction → mot diégétique (tr) */
 const char *edifice_name(int edifice);          /* Edifice → mot diégétique (tr) */
+/* V2a — LE CONSEIL VIVANT : loyauté 0-100 → mot d'ambiance (dévoué…AU BORD DE LA
+ * TRAHISON), même seuil que statecraft_council_betrayal_ready (≤15 → trahison). */
+const char *council_mood_word(int loyalty_0_100);
 
 /* ===================================================================== */
 /* BANDES QUALITATIVES — jamais un nombre                                 */

@@ -350,8 +350,19 @@ typedef struct {
     const char *councilor;  /* nom du conseiller (tr) si pourvu, "" sinon */
     int   tier;             /* 1-3 (effet ×1/×1.5/×2) si pourvu */
     int   age;              /* ÂGE du ministre assis (grandit avec l'année ; retraite 66-73) ; 0 si vacant */
+    /* V2a — LE CONSEIL VIVANT : */
+    const char *faction;    /* mot de SA faction-éthos (tr, faction_name) ; "" si vacant */
+    int   loyalty;          /* 0..100 (0 si vacant) */
+    float pay;              /* 0..2, curseur de paie (1.0 si vacant) */
+    const char *mood;       /* mot d'ambiance (« dévoué »…« AU BORD DE LA TRAHISON ») ; "" si vacant */
 } ScpsCouncilSeat;
 int scps_country_council(ScpsSim *s, int country, ScpsCouncilSeat *out, int max);
+/* Le curseur de PAIE du joueur (a[1]=paie ×100, 0..200) — verbe journalisé, revalidé
+ * au drain (siège pourvu, borné [0,2]). */
+int scps_player_council_pay(ScpsSim *s, int seat, float pay);
+/* L'état de la PAIRE (a,b) de sièges du pays courant — 0=neutre 1=rivalité
+ * 2=alliance 3=conspiration (V2b y branchera les événements). */
+int scps_council_pair_state(ScpsSim *s, int seat_a, int seat_b);
 /* CANDIDATS d'un siège (la pool de la génération COURANTE — se renouvelle tous les
  * SC_COUNCIL_GEN_YEARS, toujours pleine) : nom résolu + tier + ÂGE + coût/mois (×IPM).
  * Pour l'embauche ÉCLAIRÉE du joueur (player_council_hire(seat, slot)). */

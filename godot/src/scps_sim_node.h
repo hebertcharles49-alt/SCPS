@@ -150,6 +150,8 @@ public:
     bool       player_purge(int region);              /* intérieur : purger (coût SCPS différé) */
     bool       player_council_hire(int seat, int slot);   /* conseil : pourvoir un siège */
     bool       player_council_dismiss(int seat);      /* conseil : renvoyer */
+    bool       player_council_pay(int seat, float pay);   /* V2a : le curseur de paie (0..2) */
+    int        council_pair_state(int seat_a, int seat_b); /* V2a : 0 neutre·1 rivalité·2 alliance·3 conspiration */
     bool       player_decree(int id, bool on);        /* DÉCRETS (civics) : bascule on/off */
     bool       player_route(int ra, int rb, bool maritime); /* commerce : tracer une route */
     bool       player_market_buy(int region, int good, int qty, int tier);  /* marché : acheter */

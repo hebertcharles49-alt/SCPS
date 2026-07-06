@@ -279,6 +279,32 @@ func _draw_conseil(x: float, y: float, me: int) -> void:
 			VKit.text(self, Vector2(r.position.x + 7, y), VKit.sense(0.12), "Renvoyer", VKit.FS_SMALL)
 			_conseil_btns.append({"rect": r, "act": "dismiss", "seat": idx, "slot": -1})
 			y += 22
+			# V2a — LE CONSEIL VIVANT : faction (mot) + barre de LOYAUTÉ (rouge→vert) + mot d'ambiance
+			var faction := String(seat.get("faction", ""))
+			var loyalty := int(seat.get("loyalty", 0))
+			var mood := String(seat.get("mood", ""))
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "Faction : %s" % faction, VKit.FS_SMALL)
+			y += 15
+			VKit.gauge(self, x + 16, y, DW - 32.0, 8.0, loyalty)
+			y += 13
+			VKit.text(self, Vector2(x + 16, y), VKit.sense(float(loyalty) / 100.0),
+				"Loyauté %d — %s" % [loyalty, mood], VKit.FS_SMALL)
+			y += 18
+			# le curseur de PAIE (0.5×/1×/1.5×/2×) — verbe CMD_COUNCIL_PAY, journalisé
+			var pay := float(seat.get("pay", 1.0))
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "Paie", VKit.FS_SMALL)
+			var px := x + 60.0
+			for mult in [0.5, 1.0, 1.5, 2.0]:
+				var lab := "%.1f×" % mult
+				var lw := VKit.text_w(lab, VKit.FS_SMALL) + 10.0
+				var pr := Rect2(px, y - 1, lw, 16)
+				var on := absf(pay - mult) < 0.05
+				VKit.fill(self, pr, VKit.COL_PANEL2 if not on else VKit.sense(0.80))
+				VKit.box(self, pr, VKit.sense(0.80) if on else VKit.COL_EDGE)
+				VKit.text(self, Vector2(pr.position.x + 5, y), VKit.COL_PARCH if on else VKit.COL_DIM, lab, VKit.FS_SMALL)
+				_conseil_btns.append({"rect": pr, "act": "pay", "seat": idx, "slot": 0, "pay": mult})
+				px += lw + 4.0
+			y += 22
 		else:
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant — la pool se renouvelle par génération)", VKit.FS_SMALL)
 			y += 18
@@ -644,19 +670,24 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 		else ("✗ %s — refusé" % ("achat" if act == "buy" else "vente"))
 	queue_redraw()
 
-## Conseil : recruter (siège vacant, slot 0) / renvoyer (siège pourvu) — verbe journalisé.
-func _conseil_act(act: String, seat: int, slot: int) -> void:
+## Conseil : recruter (siège vacant, slot 0) / renvoyer (siège pourvu) / payer
+## (curseur 0.5×..2×, V2a) — verbes journalisés.
+func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	var w = Sim.world
 	if w == null:
 		return
 	var ok := false
+	var label := "recrutement"
 	if act == "hire":
 		ok = w.player_council_hire(seat, slot)   # le CANDIDAT choisi (embauche éclairée)
+	elif act == "pay":
+		ok = w.player_council_pay(seat, pay)
+		label = "paie"
 	else:
 		ok = w.player_council_dismiss(seat)
+		label = "renvoi"
 	_conseil_flash_ok = ok
-	_conseil_flash = ("⚑ %s — ordre émis" % ("recrutement" if act == "hire" else "renvoi")) if ok \
-		else ("✗ %s — refusé" % ("recrutement" if act == "hire" else "renvoi"))
+	_conseil_flash = ("⚑ %s — ordre émis" % label) if ok else ("✗ %s — refusé" % label)
 	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
@@ -724,7 +755,7 @@ func _gui_input(event: InputEvent) -> void:
 		if _tab == 7:
 			for b in _conseil_btns:
 				if b.rect.has_point(event.position):
-					_conseil_act(String(b.act), int(b.seat), int(b.get("slot", 0)))
+					_conseil_act(String(b.act), int(b.seat), int(b.get("slot", 0)), float(b.get("pay", 1.0)))
 					accept_event()
 					return
 			for b in _decret_btns:

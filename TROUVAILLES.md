@@ -255,3 +255,32 @@ CLASS_SLAVE.
 - `diplo_fabricate_cost` retourne 0 (fabrication GRATUITE de facto) si la cible n'a pas encore de revenu CAPTURÉ (an-1, `econ_country_tax_year` replie sur l'extrapolation `< 90 jours ⇒ 0`) — cas de bord bref en tout début de partie, jamais rencontré en pratique après l'an-1 mais documenté ici pour un futur audit.
 - Panneau de combat / hachures de siège (mission W-GUERRE UI précédente) n'exposent pas encore l'intrigue en cours — un jour où l'UI veut montrer "pourquoi ce pays nous menace", `diplo_fab_state`/`diplo_fab_ready_cb` sont prêts à être lus par un panneau tiers.
 - Gates : `make test` **38/40 verts** (les 2 rouges = pré-existants Windows, `intertrade_demo` build/`scps_api_demo` timeout>120s mais 155/155 réussis confirmé en exécution directe) · `determinism` **STABLE** (5 graines×12 ans) · `savetest` (seeds 9/11) **byte-identique** (v69) · `fuzz-save` **8/8** (la section DIPL élargie se borne : `fab_state∈[NONE,READY]`, `fab_days≥0`, `fab_cb∈[NONE,ANTIPIRATERIE]`) · **golden RE-BASELINÉ** (les 5 hash changent dès la fenêtre 12 ans — LOT 1 change les décisions de guerre dès l'an-0, LOT 2 change le budget dès la 1re solde — `scps/golden_hashes.txt` mis à jour via `make golden-update`, re-vérifié `make golden` OK, **NON COMMITTÉ** par mandat explicite) · `diplo_demo` **+31 tests** (84/84, section W-GUERRE-3 complète : prix/gratuit-payant/gate or/maturation/expiration/consommation-à-la-déclaration/cooldown inter-cibles absent/bornes hors-domaine) · GDExtension `scons` **0 warning** (binding `player_fabricate_cb` + 6 champs `diplo_options`).
+
+## [2026-07-06] V2a — LE CONSEIL VIVANT : faction, loyauté, paie (implémenteur)
+**Découvertes** : l'attribution de faction par siège n'existait nulle part — construite de zéro sur
+`SEAT_A`/`SEAT_B` (Savoir→Transgresseur/Légiste · Société→Conquérant/Communautaire · Industrie→Marchand
+seul) + un hash de maison (`sc_hash`, réutilisé tel quel) pour trancher. `faction_lever_apply`/`faction_
+grievance`/`faction_capture_total`/`faction_opposition` (scps_factions.c) couvraient EXACTEMENT les besoins
+de vote/grief/rot/opposition — aucun ajout côté factions nécessaire, tout est câblé depuis statecraft. Le
+piège de test : la loyauté de DÉPART (~45-65, jitter déterministe) est PLUS BASSE que la cible à grief
+faible (~70-100) → un scénario de « chute » nécessite un grief SATURÉ (`faction_lever_apply(...,1.5f)`,
+capé à 1.0 en interne) pour que la cible tombe SOUS le point de départ, sinon le test mesure une REMONTÉE
+et l'asymétrie du rot (qui n'agit QUE côté chute) ne se voit jamais (`tgt<cur` faux → rate jamais boosté).
+`statecraft_council_hire`/`_dismiss` ont dû gagner un paramètre `seed` (3 call sites seulement : sim.c ×2,
+statecraft_council_ai ×1 — tous avaient déjà `w->seed` en scope, refactor sans douleur).
+**Pièges** : `sc_hash` (static) est défini APRÈS `statecraft_init` dans le fichier source — l'utiliser
+dans `statecraft_init` (jitter de loyauté au départ) exige une DÉCLARATION FORWARD en haut du fichier,
+sinon erreur de compilation (fonction implicite). `scps_api_demo.c` : créer un `ScpsSim` NEUF (genèse
+complète, ~800 provinces) juste pour 8 tests V2a a fait passer le binaire de quelques secondes à
+**2 min 2s** (dépasse le timeout par défaut du harnais, 120s) — réutiliser le `sd` déjà généré par le
+bloc DÉCRETS voisin (même scope, juste avant son `scps_sim_free`) a ramené le coût à zéro. Un
+`chronicle.exe` peut rester VERROUILLÉ (process zombie Windows) entre deux `make chronicle` — `Get-Process
+| Where-Object {$_.Path -like '*chronicle*'}` + `Stop-Process -Force` avant retry (le Bash tool échoue
+silencieusement à interpoler `$_` dans une commande PowerShell inline — utiliser le tool PowerShell direct).
+**Restes** : les ÉVÉNEMENTS de trahison/rivalité/complot (V2b) restent à écrire — `statecraft_council_
+betrayal_ready`/`statecraft_council_pair_state` sont les SIGNAUX prêts à être lus par `scps_events.c`
+(hors lot, INTERDIT par la mission). Portraits UI toujours texte-only (héraldique = hors lot). Le rot
+mesuré en sweep (seeds 9/7 × 200 ans) reste TRÈS bas (0 ministre au bord, 0 remplacement IA) — un monde
+sain ne stresse pas ses conseillers par défaut ; un futur audit pourrait vouloir un sweep PLUS long ou
+plus de guerres civiles/leviers pour voir le mécanisme vibrer nativement en jeu (actuellement prouvé
+isolément dans `statecraft_demo`, pas encore observé « en situation » sur les graines de référence).

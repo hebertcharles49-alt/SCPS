@@ -325,6 +325,13 @@
     X(STR_COUNCIL_NAME_5, "Velmor Circle") \
     X(STR_COUNCIL_NAME_6, "Brask Lodge") \
     X(STR_COUNCIL_NAME_7, "Dovric Syndic") \
+    /* V2a — THE LIVING COUNCIL: the minister's mood (word derived from 0-100 loyalty). */ \
+    X(STR_COUNCIL_MOOD_DEVOUE, "devoted") \
+    X(STR_COUNCIL_MOOD_LOYAL, "loyal") \
+    X(STR_COUNCIL_MOOD_TIEDE, "lukewarm") \
+    X(STR_COUNCIL_MOOD_AIGRI, "embittered") \
+    X(STR_COUNCIL_MOOD_TRAHISON, "ON THE VERGE OF BETRAYAL") \
+    X(STR_COUNCIL_PAY_LABEL, "Pay") \
     /* CAPSTONE §27 — world Entropy (shared fate, not per-country). */ \
     X(STR_BANDE_ENTROPIE_0, "Stable") \
     X(STR_BANDE_ENTROPIE_1, "Stirring") \

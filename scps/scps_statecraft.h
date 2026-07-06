@@ -42,6 +42,7 @@
 #include "scps_legitimacy.h"
 #include "scps_diplo.h"
 #include "scps_routes.h"
+#include "scps_factions.h"   /* V2a : EthosFaction — la faction de chaque siège du Conseil */
 
 /* ---- Diplomates -------------------------------------------------------- */
 #define SC_MAX_DIPLOMATS   12
@@ -93,6 +94,10 @@ typedef struct {
     int8_t          council_gen[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS]; /* GÉNÉRATION du ministre ASSIS (identité
                                                                       * épinglée : la pool tourne, lui vieillit ;
                                                                       * -1 = vacant). v49. */
+    /* V2a — LE CONSEIL VIVANT : par siège POURVU, une LOYAUTÉ (0-100, CONVERGE vers
+     * une cible — jamais un saut) et un curseur de PAIE (0-2, multiplie le coût). v70. */
+    float           loyalty[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS];   /* 0..100 */
+    float           pay    [SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS];   /* 0..2, défaut 1.0 */
     int             n_countries;
 } Statecraft;
 
@@ -112,8 +117,12 @@ int   statecraft_council_cand_age (uint32_t seed, int cid, int seat, int slot, i
 int   statecraft_council_seated   (const Statecraft *sc, int cid, int seat);      /* slot pourvu, -1 sinon */
 int   statecraft_council_seated_gen(const Statecraft *sc, int cid, int seat);     /* génération du ministre assis (0 si legacy) */
 int   statecraft_council_seated_age(const Statecraft *sc, uint32_t seed, int cid, int seat, int year); /* -1 si vacant */
-void  statecraft_council_hire     (Statecraft *sc, int cid, int seat, int slot, int gen);
-void  statecraft_council_dismiss  (Statecraft *sc, int cid, int seat);
+/* V2a : `seed` sert à dériver la FACTION du candidat pourvu/renvoyé — RECRUTER
+ * pousse SA faction (faction_lever_apply, ~0.10) ; RENVOYER froisse (grief sur
+ * les factions qui S'OPPOSENT à la sienne — même canal que la concession/le
+ * levier, jamais un canal parallèle). */
+void  statecraft_council_hire     (Statecraft *sc, uint32_t seed, int cid, int seat, int slot, int gen);
+void  statecraft_council_dismiss  (Statecraft *sc, uint32_t seed, int cid, int seat);
 /* LES ANNÉES PASSENT (annuel) : tout ministre à l'âge de la retraite VIDE son siège —
  * l'IA repourvoit au mois suivant (statecraft_council_ai), le joueur par l'UI. */
 void  statecraft_council_age_tick (Statecraft *sc, uint32_t seed, int year);
@@ -127,6 +136,46 @@ void  statecraft_council_apply    (const Statecraft *sc, const World *w, WorldEc
 /* L'IA pourvoit le siège que son éthos privilégie, dans la garde de budget (no-op sinon).
  * `year` : la pool évaluée est celle de la génération COURANTE. */
 void  statecraft_council_ai       (Statecraft *sc, const World *w, const WorldEconomy *e, uint32_t seed, int cid, int year);
+/* Télémétrie (chronique) : combien de fois l'IA a REMPLACÉ un ministre au bord
+ * (betrayal_ready) — compteur GLOBAL du module, RAZ par statecraft_init (comme
+ * les autres compteurs de sim, ex. revolt_civilwar_count). */
+long  statecraft_council_ai_replace_count(void);
+
+/* ═══ V2a — LE CONSEIL VIVANT : faction, loyauté, paie ════════════════════════
+ * Chaque conseiller PENCHE vers une faction-éthos (attribution DÉTERMINISTE par
+ * (siège, maison) — rien à sérialiser). Sa LOYAUTÉ (0-100, par siège POURVU)
+ * CONVERGE vers une cible dérivée de la satisfaction de SA faction (1−grief) et de
+ * la PAIE ; jamais de saut. Le « rot » (faction_capture_total) accélère la CHUTE,
+ * jamais la remontée (la corruption aide à tomber, pas à se refaire une vertu). */
+
+/* La FACTION d'un candidat : le siège privilégie deux factions candidates
+ * (Savoir→Transgresseur/Légiste · Société→Conquérant/Communautaire · Industrie→
+ * Marchand seul), la MAISON (hash du nom) tranche entre les deux quand il y en a
+ * deux. Dérivée du seed comme le tier/l'âge — RIEN à sérialiser. */
+EthosFaction statecraft_council_faction(uint32_t seed, int cid, int seat, int slot, int gen);
+
+/* Lecteurs — loyauté (0..100) et curseur de paie (0..2, 1.0 = normal) du siège
+ * POURVU (0/1.0 par défaut si vacant — lu par convention, jamais accédé nu). */
+int   statecraft_council_loyalty  (const Statecraft *sc, int cid, int seat);       /* 0..100 */
+float statecraft_council_pay      (const Statecraft *sc, int cid, int seat);       /* 0..2 */
+void  statecraft_council_set_pay  (Statecraft *sc, int cid, int seat, float pay);  /* verbe : le curseur de paie */
+
+/* SIGNAUX pour V2b (pas les événements eux-mêmes) : */
+/* Le ministre est-il À L'AGONIE (loyauté ≤ seuil ~15) depuis au moins N mois ? —
+ * un booléen dérivé de la loyauté COURANTE (rien à sérialiser de plus qu'elle). */
+bool  statecraft_council_betrayal_ready(const Statecraft *sc, int cid, int seat);
+typedef enum { COUNCIL_PAIR_NEUTRE=0, COUNCIL_PAIR_RIVALITE, COUNCIL_PAIR_ALLIANCE, COUNCIL_PAIR_CONSPIRATION } CouncilPairState;
+/* L'état d'une PAIRE de sièges pourvus (a,b) du même pays : RIVALITÉ (factions
+ * opposées, tous deux en poste depuis longtemps) · ALLIANCE (factions proches,
+ * grief bas) · CONSPIRATION (les DEUX factions aliénées — grief haut). V2b
+ * branchera les événements dessus (trahisons, complots). */
+CouncilPairState statecraft_council_pair_state(const Statecraft *sc, const World *w, const WorldEconomy *econ,
+                                               uint32_t seed, int cid, int a, int b, int year);
+
+/* Un pas de LOYAUTÉ (mensuel, appelé depuis statecraft_council_apply) : fait
+ * converger chaque siège pourvu vers sa cible, taux asymétrique par le rot. */
+void  statecraft_council_loyalty_tick(Statecraft *sc, const World *w, const WorldEconomy *econ,
+                                      uint32_t seed, float dt_year);
 
 void statecraft_init(Statecraft *sc, const World *w);
 

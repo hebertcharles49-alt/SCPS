@@ -902,6 +902,55 @@ int main(int argc, char **argv){
             ok("scps_province_seed : déterministe et non-négatif", seed_stable==1);
             ok("scps_province_seed : hors-borne → -1", scps_province_seed(sd, -1)==-1 && scps_province_seed(sd, np+999)==-1);
         }
+
+        /* ── V2a — LE CONSEIL VIVANT : faction/loyauté/paie exposées, verbe de paie ──
+         * (réutilise `sd`/`me` déjà générés ci-dessus — pas de genèse supplémentaire.) */
+        {
+            ScpsCouncilSeat seats[3];
+            int ns = scps_country_council(sd, me, seats, 3);
+            ok("scps_country_council : 3 sièges exposés", ns==3);
+            bool bounds_ok=true;
+            for (int i=0;i<ns;i++){
+                if (seats[i].loyalty<0 || seats[i].loyalty>100) bounds_ok=false;
+                if (seats[i].pay<0.f || seats[i].pay>2.f) bounds_ok=false;
+                if (!seats[i].faction || !seats[i].mood) bounds_ok=false;
+                if (!seats[i].filled && (seats[i].loyalty!=0 || seats[i].faction[0]!='\0')) bounds_ok=false;
+            }
+            ok("chaque siège : loyauté [0,100], paie [0,2], faction/mood non-null (vacant → 0/\"\")", bounds_ok);
+
+            /* Recruter un ministre au premier siège vacant (ou déjà pourvu — no-op sinon utile) */
+            ScpsCouncilCand cands[8];
+            int nc2 = scps_council_candidates(sd, 0, cands, 8);
+            ok("scps_council_candidates expose la pool du siège Savoir", nc2>0);
+            if (nc2>0 && !seats[0].filled){
+                scps_player_council_hire(sd, 0, cands[0].slot);
+                scps_sim_advance_days(sd, 5);
+                ScpsCouncilSeat after[3]; scps_country_council(sd, me, after, 3);
+                ok("après RECRUTER : le siège est pourvu, loyauté de départ humaine (>0)",
+                   after[0].filled==1 && after[0].loyalty>0);
+            } else {
+                ok("(siège déjà pourvu par l'IA sur cette graine — recrutement sauté)", true);
+            }
+
+            /* Le verbe de PAIE : monte, puis clampe à 2.0 même hors-borne. */
+            bool pay_ok = scps_player_council_pay(sd, 0, 1.6f) != 0;
+            scps_sim_advance_days(sd, 32);
+            ScpsCouncilSeat p1[3]; scps_country_council(sd, me, p1, 3);
+            ok("scps_player_council_pay : verbe accepté", pay_ok);
+            ok("après paie : le curseur reflète la valeur posée (~1.6, si le siège reste pourvu)",
+               !p1[0].filled || (p1[0].pay>1.4f && p1[0].pay<=2.f));
+            scps_player_council_pay(sd, 0, 99.f);   /* hors-borne : DOIT clamper à 2.0 */
+            scps_sim_advance_days(sd, 32);
+            ScpsCouncilSeat p2[3]; scps_country_council(sd, me, p2, 3);
+            ok("le verbe de paie CLAMPE au drain (une valeur folle → 2.0, jamais un crash)",
+               !p2[0].filled || p2[0].pay<=2.f);
+
+            /* L'état de paire : borné aux 4 valeurs (0..3), lisible pour n'importe quels sièges. */
+            int pst = scps_council_pair_state(sd, 0, 1);
+            ok("scps_council_pair_state : borné {neutre,rivalité,alliance,conspiration}", pst>=0 && pst<=3);
+            ok("scps_council_pair_state : hors-borne → neutre (0), jamais de crash",
+               scps_council_pair_state(sd, -1, 99)==0);
+        }
         scps_sim_free(sd);
     }
 

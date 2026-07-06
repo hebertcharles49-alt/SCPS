@@ -49,6 +49,16 @@ const char *edifice_name(int e){
     };
     return (e>=0&&e<EDIFICE_COUNT) ? tr(ID[e]) : "?";
 }
+/* V2a — LE CONSEIL VIVANT : loyauté 0-100 → mot d'ambiance. Le seuil « au bord »
+ * (≤15) MIROIR de statecraft_council_betrayal_ready — le mot et le signal restent
+ * synchrones (le joueur voit le mot exact qui déclenche l'alerte). */
+const char *council_mood_word(int loyalty){
+    if (loyalty <= 15)  return tr(STR_COUNCIL_MOOD_TRAHISON);
+    if (loyalty <= 35)  return tr(STR_COUNCIL_MOOD_AIGRI);
+    if (loyalty <= 60)  return tr(STR_COUNCIL_MOOD_TIEDE);
+    if (loyalty <= 85)  return tr(STR_COUNCIL_MOOD_LOYAL);
+    return tr(STR_COUNCIL_MOOD_DEVOUE);
+}
 
 /* ===================================================================== */
 /* SEUILLAGE                                                              */

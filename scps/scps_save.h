@@ -32,7 +32,12 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 69u           /* v69 : W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ. DiploState
+#define SAVE_VERSION 70u           /* v70 : V2a — LE CONSEIL VIVANT. Statecraft gagne
+                                    * loyalty[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS] +
+                                    * pay[SCPS_MAX_COUNTRY][SC_COUNCIL_SEATS] (float, section
+                                    * STAT, fwrite BRUT du struct entier) ⇒ sizeof(Statecraft)
+                                    * change. <v70 refusé.
+                                    * v69 : W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ. DiploState
                                     * gagne fab_state/fab_days/fab_cb[SCPS_MAX_COUNTRY][SCPS_MAX_COUNTRY]
                                     * (l'état des intrigues fabriquées par (fabricant,cible),
                                     * section DIPL, fwrite BRUT du struct entier) ⇒ sizeof(DiploState)

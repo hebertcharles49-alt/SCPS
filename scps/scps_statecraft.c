@@ -27,6 +27,8 @@
 #define SC_AGIT_RATE        0.020f   /* lissage de l'agitation soutenue /jour          */
 #define DIP_PER_INFLUENCE   25       /* +1 diplomate par 25 d'Influence                 */
 
+static uint32_t sc_hash(uint32_t a, uint32_t b, uint32_t c, uint32_t d);   /* fwd : utilisé par statecraft_init (jitter de loyauté) */
+
 static inline float toward(float cur,float tgt,float k){ return cur + (tgt-cur)*clampf(k,0.f,1.f); }
 static int country_size(const WorldEconomy *econ, int cid){
     int n=0;
@@ -45,12 +47,26 @@ const char *dip_mission_name(DipMission m){
     }
 }
 
+/* V2a — télémétrie (chronique) : combien de fois l'IA a REMPLACÉ un ministre au
+ * bord (betrayal_ready). Compteur GLOBAL du module, RAZ par statecraft_init
+ * (comme g_civilwars/g_rebel_victories de scps_revolt.c). */
+static long g_council_ai_replace = 0;
+long statecraft_council_ai_replace_count(void){ return g_council_ai_replace; }
+
 /* ======================================================================= */
 void statecraft_init(Statecraft *sc, const World *w){
     memset(sc, 0, sizeof(*sc));
+    g_council_ai_replace = 0;
     sc->n_countries = w->n_countries;
     for (int c=0;c<SCPS_MAX_COUNTRY;c++)                /* Q1 : memset→0 = slot 0 valide : tous VACANTS (-1) */
-        for (int s=0;s<SC_COUNCIL_SEATS;s++){ sc->council[c][s]=-1; sc->council_gen[c][s]=-1; }
+        for (int s=0;s<SC_COUNCIL_SEATS;s++){
+            sc->council[c][s]=-1; sc->council_gen[c][s]=-1;
+            sc->pay[c][s]=1.f;                          /* V2a : paie NORMALE par défaut */
+            /* Loyauté de DÉPART ~50 + jitter DÉTERMINISTE (siège, pays) — jamais un
+             * ministre tout neuf parfaitement identique d'un pays à l'autre. */
+            uint32_t h = sc_hash((uint32_t)(w?w->seed:0u)^0x10AD17Bu, (uint32_t)c, (uint32_t)s, 0x50u);
+            sc->loyalty[c][s] = 45.f + (float)(h % 21u);   /* 45..65 */
+        }
     for (int c=0;c<w->n_countries;c++){
         sc->influence[c]   = 35.f;             /* une réputation initiale modeste */
         sc->prestige[c]    = 8.f;
@@ -93,6 +109,20 @@ int statecraft_council_cand_name(uint32_t seed, int cid, int seat, int slot, int
     uint32_t h = sc_hash(sc_genseed(seed,gen)^0x5EAB011u, (uint32_t)cid, (uint32_t)(seat*7+slot), 0x9E37u);
     return (int)STR_COUNCIL_NAME_0 + (int)(h % (uint32_t)SC_COUNCIL_NAMES);
 }
+/* V2a — LA FACTION D'UN CANDIDAT : le SIÈGE privilégie deux factions candidates
+ * (Savoir→Transgresseur/Légiste : le savoir défend l'orthodoxie OU perce l'interdit ;
+ * Société→Conquérant/Communautaire : l'ordre social se dispute entre la poigne et le
+ * peuple ; Industrie→Marchand seul : le négoce n'a qu'un visage ici). La MAISON (le
+ * hash du nom, § déjà déterministe) TRANCHE entre les deux quand il y en a deux —
+ * aucun état à sérialiser, dérivée comme le tier/l'âge. */
+EthosFaction statecraft_council_faction(uint32_t seed, int cid, int seat, int slot, int gen){
+    static const EthosFaction SEAT_A[SC_COUNCIL_SEATS] = { FAC_TRANSGRESSEUR, FAC_CONQUERANT,   FAC_MARCHAND };
+    static const EthosFaction SEAT_B[SC_COUNCIL_SEATS] = { FAC_LEGISTE,       FAC_COMMUNAUTAIRE, FAC_MARCHAND };
+    if (seat<0||seat>=SC_COUNCIL_SEATS) return FAC_COMMUNAUTAIRE;
+    if (SEAT_A[seat]==SEAT_B[seat]) return SEAT_A[seat];             /* Industrie : un seul visage */
+    uint32_t h = sc_hash(sc_genseed(seed,gen)^0xFAC7104u, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot);
+    return (h & 1u) ? SEAT_B[seat] : SEAT_A[seat];
+}
 int statecraft_council_cand_age(uint32_t seed, int cid, int seat, int slot, int gen, int year){
     int base = 30 + (int)(sc_hash(sc_genseed(seed,gen)^0xA6E11u, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot) % 22u);
     int el = year - (gen>0?gen:0)*SC_COUNCIL_GEN_YEARS;
@@ -116,16 +146,45 @@ int statecraft_council_seated_age(const Statecraft *sc, uint32_t seed, int cid, 
     if (slot<0) return -1;
     return statecraft_council_cand_age(seed,cid,seat,slot,statecraft_council_seated_gen(sc,cid,seat),year);
 }
-void statecraft_council_hire(Statecraft *sc, int cid, int seat, int slot, int gen){
+void statecraft_council_hire(Statecraft *sc, uint32_t seed, int cid, int seat, int slot, int gen){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
     if (slot<0||slot>=SC_COUNCIL_CANDS) return;
     sc->council[cid][seat]=(int8_t)slot;
     sc->council_gen[cid][seat]=(int8_t)((gen>=0 && gen<=120) ? gen : 0);   /* identité ÉPINGLÉE au moment de l'embauche */
+    /* V2a : loyauté de DÉPART ~50 + jitter (même motif que statecraft_init), le
+     * ministre n'entre pas en poste déjà aimé ou détesté. */
+    uint32_t h = sc_hash(seed^0x10AD17Bu, (uint32_t)cid, (uint32_t)seat, (uint32_t)(slot*13+gen));
+    sc->loyalty[cid][seat] = 45.f + (float)(h % 21u);
+    sc->pay[cid][seat] = 1.f;                                              /* paie NORMALE au départ */
+    /* RECRUTER = un vote pour SA faction (le motif des leviers, §4) : elle gagne
+     * du poids effectif, ses opposées s'aigrissent (faction_lever_apply le fait
+     * déjà, table d'opposition hardcodée). */
+    EthosFaction fac = statecraft_council_faction(seed, cid, seat, slot, gen);
+    faction_lever_apply(cid, fac, tune_f("COUNCIL_HIRE_LEVER",0.10f));
 }
-void statecraft_council_dismiss(Statecraft *sc, int cid, int seat){
+void statecraft_council_dismiss(Statecraft *sc, uint32_t seed, int cid, int seat){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
+    /* RENVOYER froisse : la faction du ministre CONGÉDIÉ perd la voix qu'elle
+     * tenait — on le traduit en un vote pour la faction la plus OPPOSÉE à la
+     * sienne (elle gagne le siège vacant en pratique) : le canal le plus honnête
+     * de l'API existante, cohérent avec la table d'opposition de faction_lever_apply
+     * (pousser l'opposée EST froisser celle qu'on renvoie, symétriquement). */
+    int slot = statecraft_council_seated(sc, cid, seat);
+    if (slot>=0){
+        int gen = statecraft_council_seated_gen(sc, cid, seat);
+        EthosFaction fac = statecraft_council_faction(seed, cid, seat, slot, gen);
+        int worst=-1; float wv=-1.f;
+        for (int f=0; f<FAC_COUNT; f++){
+            if (f==(int)fac) continue;
+            float o = faction_opposition(fac, (EthosFaction)f);
+            if (o>wv){ wv=o; worst=f; }
+        }
+        if (worst>=0) faction_lever_apply(cid, (EthosFaction)worst, tune_f("COUNCIL_DISMISS_GRIEF",0.10f));
+    }
     sc->council[cid][seat]=-1;
     sc->council_gen[cid][seat]=-1;
+    sc->loyalty[cid][seat]=0.f;      /* le siège est vacant : la loyauté n'a plus de sens (repose au prochain hire) */
+    sc->pay[cid][seat]=1.f;
 }
 /* LES ANNÉES PASSENT (annuel) : la retraite VIDE le siège — l'IA repourvoit au
  * mois suivant (statecraft_council_ai), le joueur par l'UI. */
@@ -137,8 +196,11 @@ void statecraft_council_age_tick(Statecraft *sc, uint32_t seed, int year){
             if (slot<0) continue;
             int gen=statecraft_council_seated_gen(sc,c,seat);
             if (statecraft_council_cand_age(seed,c,seat,slot,gen,year)
-                >= sc_retire_age(seed,c,seat,slot,gen))
-                statecraft_council_dismiss(sc,c,seat);
+                >= sc_retire_age(seed,c,seat,slot,gen)){
+                /* La RETRAITE n'est pas un RENVOI (pas de grief joueur) : reset direct. */
+                sc->council[c][seat]=-1; sc->council_gen[c][seat]=-1;
+                sc->loyalty[c][seat]=0.f; sc->pay[c][seat]=1.f;
+            }
         }
 }
 float statecraft_council_seat_mult(const Statecraft *sc, uint32_t seed, int cid, int seat){
@@ -153,7 +215,8 @@ float statecraft_council_cost(const Statecraft *sc, uint32_t seed, int cid, floa
     for (int s=0;s<SC_COUNCIL_SEATS;s++){
         int slot=statecraft_council_seated(sc,cid,s);
         if (slot<0) continue;
-        tot += SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,s,slot,statecraft_council_seated_gen(sc,cid,s)) ] * ipm;
+        float pay = statecraft_council_pay(sc,cid,s);                     /* V2a : le curseur multiplie le coût */
+        tot += SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,s,slot,statecraft_council_seated_gen(sc,cid,s)) ] * ipm * pay;
     }
     return tot;
 }
@@ -162,6 +225,94 @@ float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, i
     if (cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS||slot<0||slot>=SC_COUNCIL_CANDS) return 0.f;
     return SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,seat,slot,gen) ] * ipm;
 }
+/* ═══ V2a — LE CONSEIL VIVANT : la LOYAUTÉ (le cœur) ══════════════════════════
+ * Chaque siège pourvu porte une loyauté 0-100 qui CONVERGE (jamais un saut) vers
+ * une cible dérivée de la satisfaction de SA faction (1−grief), de la PAIE et du
+ * ROT (la capture d'État — faction_capture_total). L'asymétrie du motif
+ * COERCION_DECAY : le taux de convergence est PLUS RAPIDE quand la loyauté
+ * CHUTE (le rot y aide), plus LENT quand elle REMONTE (le rot ne restaure rien —
+ * la corruption aide à tomber, jamais à se refaire une vertu). */
+int statecraft_council_loyalty(const Statecraft *sc, int cid, int seat){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return 0;
+    if (statecraft_council_seated(sc,cid,seat)<0) return 0;
+    return iclamp((int)(sc->loyalty[cid][seat]+0.5f), 0, 100);
+}
+float statecraft_council_pay(const Statecraft *sc, int cid, int seat){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return 1.f;
+    float p = sc->pay[cid][seat];
+    return (p>0.f) ? clampf(p, 0.f, 2.f) : 1.f;                            /* legacy (0 = jamais posé) → normal */
+}
+void statecraft_council_set_pay(Statecraft *sc, int cid, int seat, float pay){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
+    sc->pay[cid][seat] = clampf(pay, 0.f, 2.f);
+}
+/* « au bord de la trahison » : loyauté ≤ seuil — un simple lecteur de l'état
+ * COURANT (la loyauté converge lentement, demi-vie de plusieurs mois : par
+ * construction, si elle EST sous le seuil elle y est depuis un moment — pas
+ * besoin d'un compteur de mois séparé à sérialiser). */
+bool statecraft_council_betrayal_ready(const Statecraft *sc, int cid, int seat){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return false;
+    if (statecraft_council_seated(sc,cid,seat)<0) return false;
+    return sc->loyalty[cid][seat] <= tune_f("COUNCIL_BETRAYAL_THRESHOLD",15.f);
+}
+/* La CIBLE de loyauté d'un siège pourvu : satisfaction de SA faction (1−grief,
+ * dans [0,1]) × 100, modulée par la PAIE (payer plus achète de la loyauté,
+ * payer moins en coûte) — jamais un +X plat, toujours ancré sur le grief réel. */
+static float council_loyalty_target(const Statecraft *sc, int cid, int seat, uint32_t seed){
+    int slot=statecraft_council_seated(sc,cid,seat);
+    if (slot<0) return 50.f;
+    int gen=statecraft_council_seated_gen(sc,cid,seat);
+    EthosFaction fac = statecraft_council_faction(seed,cid,seat,slot,gen);
+    float grief = faction_grievance(cid, fac);                            /* 0..1 : la rancœur de SA faction */
+    float base  = (1.f - grief) * 100.f;                                  /* satisfaite → loyale */
+    float pay   = statecraft_council_pay(sc,cid,seat);
+    float pay_adj = (pay-1.f) * tune_f("COUNCIL_PAY_ADJ",30.f);           /* 0×→ -30 · 1×→ 0 · 2×→ +30 */
+    return clampf(base + pay_adj, 0.f, 100.f);
+}
+void statecraft_council_loyalty_tick(Statecraft *sc, const World *w, const WorldEconomy *econ,
+                                     uint32_t seed, float dt_year){
+    if (!sc||!w) return;
+    (void)econ;
+    float base_rate = tune_f("COUNCIL_LOYAL_RATE",0.05f);                 /* vitesse de convergence de base /mois */
+    float rot_boost = tune_f("COUNCIL_ROT_BOOST",1.5f);                   /* le rot ACCÉLÈRE la chute (× additionnel) */
+    for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
+        float rot = faction_capture_total(c);                             /* 0..CAPTURE_MAX(0.85) */
+        for (int s=0;s<SC_COUNCIL_SEATS;s++){
+            if (statecraft_council_seated(sc,c,s)<0) continue;            /* vacant : rien à faire converger */
+            float tgt = council_loyalty_target(sc,c,s,seed);
+            float cur = sc->loyalty[c][s];
+            /* Asymétrie du rot (motif COERCION_DECAY) : le rot ACCÉLÈRE la chute,
+             * jamais la remontée — la corruption aide à tomber, pas à se refaire. */
+            float rate = base_rate * (1.f + ((tgt<cur) ? rot_boost*rot : 0.f));
+            sc->loyalty[c][s] = clampf(toward(cur, tgt, rate*dt_year*12.f), 0.f, 100.f);
+        }
+    }
+}
+/* L'état d'une PAIRE de sièges (V2b s'en sert pour les événements) : RIVALITÉ
+ * (factions opposées ≥0.6, tous deux en poste >10 ans) · ALLIANCE (opposition
+ * <0.3, grief bas des deux côtés) · CONSPIRATION (les DEUX factions aliénées,
+ * grief>0.6 chacune) · NEUTRE sinon. */
+CouncilPairState statecraft_council_pair_state(const Statecraft *sc, const World *w, const WorldEconomy *econ,
+                                               uint32_t seed, int cid, int a, int b, int year){
+    (void)econ;
+    if (!sc||!w||cid<0||cid>=SCPS_MAX_COUNTRY||a<0||a>=SC_COUNCIL_SEATS||b<0||b>=SC_COUNCIL_SEATS||a==b)
+        return COUNCIL_PAIR_NEUTRE;
+    int slotA=statecraft_council_seated(sc,cid,a), slotB=statecraft_council_seated(sc,cid,b);
+    if (slotA<0||slotB<0) return COUNCIL_PAIR_NEUTRE;
+    int genA=statecraft_council_seated_gen(sc,cid,a), genB=statecraft_council_seated_gen(sc,cid,b);
+    EthosFaction facA=statecraft_council_faction(seed,cid,a,slotA,genA);
+    EthosFaction facB=statecraft_council_faction(seed,cid,b,slotB,genB);
+    float opp = faction_opposition(facA, facB);
+    float griefA = faction_grievance(cid, facA), griefB = faction_grievance(cid, facB);
+    int ageA=statecraft_council_seated_age(sc,seed,cid,a,year), ageB=statecraft_council_seated_age(sc,seed,cid,b,year);
+    int tenureA = ageA - statecraft_council_cand_age(seed,cid,a,slotA,genA,genA*SC_COUNCIL_GEN_YEARS);
+    int tenureB = ageB - statecraft_council_cand_age(seed,cid,b,slotB,genB,genB*SC_COUNCIL_GEN_YEARS);
+    if (griefA>0.6f && griefB>0.6f) return COUNCIL_PAIR_CONSPIRATION;
+    if (opp>=0.6f && tenureA>10 && tenureB>10) return COUNCIL_PAIR_RIVALITE;
+    if (opp<0.3f && griefA<0.3f && griefB<0.3f) return COUNCIL_PAIR_ALLIANCE;
+    return COUNCIL_PAIR_NEUTRE;
+}
+
 void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy *e, uint32_t seed, float dt_year){
     if (!sc||!w||!e) return;
     float ipm = econ_world_ipm(e);
@@ -195,16 +346,26 @@ void statecraft_council_ai(Statecraft *sc, const World *w, const WorldEconomy *e
     int cr =(cap>=0&&cap<w->n_provinces)?w->province[cap].region:-1;
     if (cr<0||cr>=e->n_regions || !e->region[cr].culture.settled) return;
     int seat=sc_ethos_seat((int)e->region[cr].culture.ethos);
-    if (statecraft_council_seated(sc,cid,seat)>=0) return;                 /* déjà pourvu */
     float tres=e->region[cr].treasury, ipm=econ_world_ipm(e);
     int gen=statecraft_council_gen(year);                                  /* la pool COURANTE (toujours 3 candidats) */
+    /* V2a — l'IA PAIE la paie par défaut (1.0, posé à l'embauche) et ne subit
+     * pas la trahison narrative (réservée au joueur, V2b) : un ministre AU BORD
+     * (loyauté ≤ seuil depuis longtemps) est REMPLACÉ plutôt que gardé jusqu'au
+     * bout. Renvoi PUIS re-nomination au même siège dans le même tick. */
+    if (statecraft_council_seated(sc,cid,seat)>=0){
+        if (statecraft_council_betrayal_ready(sc,cid,seat)){
+            statecraft_council_dismiss(sc,seed,cid,seat);
+            g_council_ai_replace++;
+        } else
+            return;                                                       /* déjà pourvu et loyal : rien à faire */
+    }
     int best=-1, bestt=0;
     for (int slot=0; slot<SC_COUNCIL_CANDS; slot++){
         int t=statecraft_council_cand_tier(seed,cid,seat,slot,gen);
         if (SC_TIER_COST[t]*ipm*6.f > tres) continue;                     /* hors garde de budget (6 mois) */
         if (t>bestt){ bestt=t; best=slot; }
     }
-    if (best>=0) statecraft_council_hire(sc,cid,seat,best,gen);
+    if (best>=0) statecraft_council_hire(sc,seed,cid,seat,best,gen);
 }
 
 /* ---- Lecteurs ---------------------------------------------------------- */

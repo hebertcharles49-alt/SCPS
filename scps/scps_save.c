@@ -194,6 +194,11 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         for (int st=0;st<SC_COUNCIL_SEATS;st++){
             if (s->sc->council[c][st] < -1 || s->sc->council[c][st] >= SC_COUNCIL_CANDS) return false;
             if (s->sc->council_gen[c][st] < -1 || s->sc->council_gen[c][st] > 120) return false;
+            /* v70 — V2a : loyauté ∈ [0,100], paie ∈ [0,2] (désérialisées, lues nues par
+             * council_loyalty/pay sans re-clamp systématique côté lecteur pour la paie
+             * legacy=0 — mais un fichier FORGÉ ne doit pas passer une valeur folle). */
+            if (s->sc->loyalty[c][st] < 0.f || s->sc->loyalty[c][st] > 100.f) return false;
+            if (s->sc->pay[c][st] < 0.f || s->sc->pay[c][st] > 2.f) return false;
         }
     if (w->n_countries <0 || w->n_countries >SCPS_MAX_COUNTRY)   return false;
     if (w->n_continents<0 || w->n_continents>SCPS_MAX_CONTINENT) return false;

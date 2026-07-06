@@ -98,6 +98,10 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
        /* W-GUERRE-3 — FABRIQUER un casus belli PAYANT contre a[0] (cible). Revalidé au
         * drain : cible valide, or suffisant (diplo_can_fabricate) → sinon silencieux. */
        CMD_FABRICATE_CB,
+       /* V2a — LE CONSEIL VIVANT : le curseur de PAIE d'un siège pourvu.
+        * a[0]=seat, a[1]=paie ×100 (0..200 → 0×..2×). Revalidé au drain : siège
+        * pourvu (sinon rien à payer), clampé [0,2]. */
+       CMD_COUNCIL_PAY,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
