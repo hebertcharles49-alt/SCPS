@@ -1822,6 +1822,14 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   successeur LIT ce fichier avant de fouiller. L'orchestrateur inclut cette consigne
   dans chaque brief d'agent. (`eco_fable.md` reste le carnet de raisonnement long ;
   TROUVAILLES.md est l'index structuré.)
+- **RÉSUMÉ DE HANDOFF AVANT COMPACTION (demande joueur)** : le contexte se comprime
+  quand la session s'allonge. Pour NE PAS PERDRE LE FIL, tenir `SYNTHESE_SESSION.md`
+  à jour comme un handoff ROULANT : l'état courant (branche, SAVE_VERSION, ce qui
+  tourne en agents), ce qui vient d'être livré, ce qui RESTE, et le prochain pas
+  attendu. Le rafraîchir aux jalons (fin de vague, avant de lancer une grosse
+  orchestration) et **dès qu'on sent la session longue** — c'est le filet qui permet
+  au « moi » d'après-compaction de reprendre sans re-fouiller. Une session = un
+  fichier vivant, pas un rapport de fin.
 
 ## Langue (brief table de chaînes)
 
