@@ -973,6 +973,12 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
     return transferred;
 }
 
+/* PILLAGE_COOLDOWN_Y (anti-re-saccage) est utilisé par diplo_enslave_capture ET
+ * diplo_pillage_region (plus bas) — défini ICI pour être visible des deux (LOT 4 : le
+ * SAC — capture ou pillage — partage désormais le même cooldown, quel que soit celui
+ * des deux qui frappe en premier). */
+#define PILLAGE_COOLDOWN_Y 5.0f    /* 1 saccage / 5 ans / province (note utilisateur) */
+
 /* ---- guerre : ESCLAVAGE (§4c) — déporter la population prise ----------- *
  * GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Clanique) : l'appelant
  * passe `enslaves` = l'empire a-t-il l'Économie servile débloquée. La tech circule
@@ -989,6 +995,15 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
      * provinces représentatives source (prise) et destination (cœur du conquérant). */
     int spid=econ_region_rep_province(econ, region), dpid=econ_region_rep_province(econ, crr);
     if (spid<0||spid>=econ->n_prov||dpid<0||dpid>=econ->n_prov) return 0;
+    /* LOT 4 — ANTI-DOUBLE-SAC : le SAC (capture d'esclaves) peut désormais être
+     * déclenché À LA CHUTE (scps_sim.c, siège réussi) EN PLUS du règlement de paix
+     * (settle_transfer, appel historique) — la MÊME région pourrait tomber puis se
+     * régler dans la même guerre. `pillage_cd` (posé par diplo_pillage_region, le
+     * butin final au règlement) sert de GARDE PARTAGÉE : une province déjà sac(c)agée
+     * récemment (fall OU règlement) ne l'est pas deux fois. Le repli existant
+     * (diplo_demo §9 : province fraîche, pillage_cd=0 par défaut) est INCHANGÉ. */
+    { int gpid=econ_region_rep_province(econ, region);
+      if (gpid>=0 && gpid<econ->n_prov && econ->prov[gpid].pillage_cd > 0.f) return 0; }
     ProvincePop *src=&econ->prov[spid].pop, *dst=&econ->prov[dpid].pop;
     /* les captifs sortent du plus GROS groupe de la province prise. */
     int gi=-1; long best=0;
@@ -1029,12 +1044,21 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
     src->groups[gi].count-=moved;
     if (src->groups[gi].count<=0){ src->groups[gi]=src->groups[src->n_groups-1]; src->n_groups--; }
     dpe->strata[CLASS_SLAVE].pop += (float)moved;
+    /* LOT 4 — la CAPTURE compte comme un SAC : pose le MÊME cooldown que
+     * diplo_pillage_region (pillage_cd) pour que le duo fall→règlement, dans la
+     * même guerre, ne déporte/ne pille pas deux fois la même récolte de population.
+     * `settle_transfer` appelle pillage AVANT enslave (l'ordre existant) donc si
+     * pillage_region a déjà posé le cooldown, on n'arrive même plus ici (guardé plus
+     * haut) — ce set couvre le cas symétrique : capture d'abord (à la chute), pillage
+     * final ensuite (au règlement) SAUTE alors sagement (déjà sac(c)agée). */
+    { int spid2=econ_region_rep_province(econ, region);
+      if (spid2>=0 && spid2<econ->n_prov) econ->prov[spid2].pillage_cd = PILLAGE_COOLDOWN_Y; }
     if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG]   -> moved=%ld captives=%ld src_gi_count_before=%ld dst_n_groups=%d\n",moved,captives,best,dst->n_groups);
     return moved;
 }
 
 /* ---- guerre : SACCAGE (§4) — dépouiller la province prise -------------- */
-#define PILLAGE_COOLDOWN_Y 5.0f    /* 1 saccage / 5 ans / province (note utilisateur) */
+/* PILLAGE_COOLDOWN_Y est désormais défini plus haut (partagé avec diplo_enslave_capture). */
 #define PILLAGE_GOLD_FRAC  0.6f    /* part du trésor provincial raflée d'un coup */
 #define PILLAGE_STOCK_FRAC 0.5f    /* ~6 mois de production en entrepôt, fondus en or */
 float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region){
@@ -1061,6 +1085,41 @@ float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region){
     if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
         int dpid=econ_region_rep_province(econ, dst_region);
         if (dpid>=0 && dpid<econ->n_prov) econ->prov[dpid].treasury += loot;  /* fondu dans le trésor de l'occupant */
+    }
+    return loot;
+}
+
+/* ---- guerre : LOT 4 — LE PILLAGE DE SIÈGE (mensuel, PENDANT le siège) --
+ * `diplo_pillage_region` (ci-dessus) reste le BUTIN FINAL — 60 % trésor + 50 % stock,
+ * UNE fois, au RÈGLEMENT DE PAIX (settle_transfer). Ici : une force en phase
+ * siège/occupation DÉTOURNE chaque MOIS une fraction de ce que la province produit
+ * (supply[], le flux du tick — pas le stock accumulé, déjà la cible du butin final)
+ * vers le trésor/stock du besiégeur — matière RÉELLEMENT PRISE (economy re-key : on
+ * décrémente le stock équivalent, jamais un or dupliqué sur du vide). Gaté par le
+ * MÊME cooldown anti-re-saccage que le butin final (pillage_cd) : un siège qui dure
+ * après un règlement récent (ou une chute suivie d'un nouveau siège) ne peut pas
+ * doubler-piller la même récolte deux fois dans la fenêtre. */
+#define SIEGE_LOOT_FRAC 0.25f   /* part de la PRODUCTION mensuelle détournée pendant le siège (registre J) */
+float diplo_siege_loot(WorldEconomy *econ, int region, int dst_region){
+    if (!econ || region<0 || region>=econ->n_regions) return 0.f;
+    RegionEconomy *re=&econ->region[region];
+    int pid=econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return 0.f;
+    ProvinceEconomy *pp=&econ->prov[pid];
+    if (pp->pillage_cd > 0.f) return 0.f;             /* déjà dépouillée (règlement récent) → rien de plus */
+    float frac = tune_f("SIEGE_LOOT_FRAC", SIEGE_LOOT_FRAC);
+    float loot=0.f;
+    for (int g=1; g<RES_COUNT; g++){
+        float want = frac * re->supply[g];            /* la PART de production de ce mois */
+        if (want<=0.f) continue;
+        /* on ne peut prendre que ce qui est RÉELLEMENT au stock (la production a pu
+         * être déjà consommée localement dans le même tick) — jamais négatif. */
+        float take = -econ_region_stock_add(econ, region, g, -fminf(want, re->stock[g]));
+        loot += take * re->price[g];
+    }
+    if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
+        int dpid=econ_region_rep_province(econ, dst_region);
+        if (dpid>=0 && dpid<econ->n_prov) econ->prov[dpid].treasury += loot;  /* fondu dans le trésor du besiégeur */
     }
     return loot;
 }

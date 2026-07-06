@@ -53,6 +53,8 @@ float warhost_unit_affinity(int f, int u){
 static int g_human_player = -1;
 void warhost_set_human(int cid){ g_human_player = cid; }
 
+static void wh_shed(ArmyState *a, WorldEconomy *econ, int cid, long n);   /* déclarée plus bas, utilisée par warhost_disband (LOT 2) */
+
 /* unit_res_arm (la catégorie d'arme macro d'une unité) vit dans scps_army.c — un seul point de
  * vérité, partagé entre le warhost (levée/démob) et le campaign (renfort). */
 /* F6 (Option B) — CONSOMME les armes MACRO (RES_ARMS_*, le marché économique où vit le prix du fer)
@@ -101,10 +103,15 @@ long warhost_units(const WarHost *h, int cid){
     long n=0; for (int u=0;u<h->army[cid].n_units;u++) n += h->army[cid].units[u].count;
     return n;
 }
-long warhost_disband(WarHost *h, int cid){
+long warhost_disband(WarHost *h, WorldEconomy *econ, int cid){
     if (!h || cid<0 || cid>=SCPS_MAX_COUNTRY) return 0;
     long n=warhost_units(h,cid);
-    army_init(&h->army[cid]);          /* la réserve levée se dissout */
+    /* LOT 2 — ALIGNÉ SUR wh_shed (le downsizing naturel de paix) : on fond TOUTE la
+     * réserve par le MÊME mécanisme (armes rendues au stock macro, pop libérée du
+     * pool_by_class_in_army) plutôt qu'un memset qui perdait le fer déjà dépensé à
+     * la levée. `wh_shed(...,n)` fond exactement `n` paquets = toute l'armée. */
+    if (n>0) wh_shed(&h->army[cid], econ, cid, n);
+    army_init(&h->army[cid]);          /* purge le reliquat (arrondis/unités vides) */
     h->levy[cid]=WH_LEVY_GARDE;        /* on relâche la jauge (sinon re-levée immédiate) */
     return n;
 }

@@ -64,7 +64,12 @@ long warhost_player_recruit(WarHost *h, const World *w, WorldEconomy *econ,
                             const TechState *ts, int cid, UnitType t, long packs);
 
 /* DÉMOBILISER la réserve levée (§4) : l'armée du pays se dissout, la jauge retombe
- * à GARDE (sinon le pied de guerre re-lève aussitôt). Renvoie les paquets dissous. */
-long warhost_disband(WarHost *h, int cid);
+ * à GARDE (sinon le pied de guerre re-lève aussitôt). LOT 2 — aligné sur wh_shed (le
+ * downsizing NATUREL de paix) : les ARMES (chaque RES_ARMS macro consommé à la levée)
+ * sont RENDUES au stock macro de l'empire (econ_region_stock_add), pas perdues — le
+ * disband joueur n'est plus un puits d'or silencieux. econ peut être NULL (repli :
+ * armes perdues, ancien comportement — utile aux bancs qui n'ont pas d'économie sous
+ * la main). Renvoie les paquets dissous. */
+long warhost_disband(WarHost *h, WorldEconomy *econ, int cid);
 
 #endif /* SCPS_WARHOST_H */

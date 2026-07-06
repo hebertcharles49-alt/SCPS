@@ -145,6 +145,10 @@ bool sim_wild_load(FILE *f);
 
 /* télémétrie partagée (la chronique les lit pour ses bilans) */
 extern long g_tot_occ_posed, g_tot_occ_lifted;   /* occupations posées / levées */
+/* LOT 4 (audit de guerre) — pillage de siège : or-équivalent détourné cumulé,
+ * captures de sac (déportations à la CHUTE, avant règlement). */
+extern double g_siege_loot_total;
+extern long   g_siege_sack_captures;
 extern long g_peak_u[U_COUNT];                    /* FORGEDIAG : pic d'effectif par type */
 extern long g_wild_spawned, g_wild_defected;     /* HAMEAUX LIBRES : semés · ralliés culturellement */
 extern double g_wild_absorb_pop;                  /* pop CUMULÉE ralliée (÷ g_wild_defected = moyenne) */

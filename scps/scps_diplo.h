@@ -242,6 +242,16 @@ int  diplo_settle   (DiploState *d, World *w, WorldEconomy *econ, WorldLegitimac
  * Appelé automatiquement par diplo_conquer_region ; exposé pour le banc d'essai. */
 float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region);
 
+/* LOT 4 — LE PILLAGE DE SIÈGE (mensuel, PENDANT le siège/l'occupation, distinct du
+ * butin final ci-dessus) : détourne une FRACTION (SIEGE_LOOT_FRAC, registre J) de la
+ * PRODUCTION du mois (supply[], pas le stock accumulé) de `region` vers le trésor de
+ * `dst_region` (la capitale du besiégeur). Matière RÉELLEMENT prise (le stock
+ * équivalent est décrémenté). Gaté par le MÊME cooldown anti-re-saccage
+ * (pillage_cd) qu'un butin final récent. Renvoie la valeur détournée ce mois (0 si
+ * rien à prendre / cooldown actif). À appeler CHAQUE MOIS pendant qu'une force
+ * assiège/occupe (cf. scps_sim.c, sim_campaign_year). */
+float diplo_siege_loot(WorldEconomy *econ, int region, int dst_region);
+
 /* ESCLAVAGE (§4c) — une société ASSERVISSANTE déporte une part de la population
  * prise vers son CŒUR (capitale) : un groupe DIASPORA non-intégré (restif) de
  * culture étrangère → le D̄ du maître monte, la fracture s'installe au centre.

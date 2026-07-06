@@ -41,6 +41,10 @@ static void prof_flush(int year){ if(g_prof_on<=0) return;
 
 /* télémétrie partagée (la chronique les lit ; déclarées extern dans le header) */
 long g_tot_occ_posed=0, g_tot_occ_lifted=0;
+/* LOT 4 (audit de guerre) — le PILLAGE DE SIÈGE : détourné cumulé (or-équivalent) ·
+ * captures de sac (déportations déclenchées à la CHUTE, avant règlement). */
+double g_siege_loot_total=0.0;
+long   g_siege_sack_captures=0;
 long g_peak_u[U_COUNT];   /* FORGEDIAG : pic d'effectif debout par type d'unité (sur tout le siècle, pas le seul snapshot) */
 /* HAMEAUX LIBRES (POLITY_WILD) — télémétrie : hameaux semés · ralliés CULTURELLEMENT · pop
  * moyenne ralliée (l'absorption MILITAIRE passe par les mécanismes de conquête existants). */
@@ -218,6 +222,21 @@ static void sim_campaign_year(Sim *s, World *w) {
             if (s->camp->army[hp_fb].active) fb_prev_loc = s->camp->army[hp_fb].loc;
         }
         campaign_release_transports(s->camp, s->navy);       /* les transports rentrent à la rade */
+        /* LOT 4 — LE PILLAGE DE SIÈGE : chaque force EN SIÈGE (occupe/assiège une
+         * région qui n'est pas la sienne) détourne CE MOIS une fraction de la
+         * production locale vers SA capitale (diplo_siege_loot, distinct du butin
+         * final au règlement — cf. scps_diplo.c). Lecture seule sur la propriété :
+         * la conquête abstraite (diplo_settle) reste la SEULE à faire basculer un
+         * territoire. */
+        for (int i=0; i<w->n_countries && i<SCPS_MAX_COUNTRY; i++){
+            const FieldArmy *a=&s->camp->army[i];
+            if (!a->active || a->phase!=FA_SIEGE) continue;
+            if (a->loc<0 || a->loc>=s->econ->n_regions) continue;
+            if (s->econ->region[a->loc].owner==a->owner) continue;   /* on assiège CHEZ SOI (libération) : pas de pillage */
+            int cp=w->country[a->owner].capital_prov;
+            int crr=(cp>=0&&cp<w->n_provinces)?w->province[cp].region:-1;
+            g_siege_loot_total += (double)diplo_siege_loot(s->econ, a->loc, crr);
+        }
         /* RÉCOLTE (couche sim) : chaque siège mené à terme (taken_region) pose une
          * OCCUPATION réelle (région ennemie tenue) ou LIBÈRE (notre région reprise). La
          * propriété ne bascule qu'à la paix (diplo_settle) ; la campagne est restée lectrice. */
@@ -235,6 +254,15 @@ static void sim_campaign_year(Sim *s, World *w) {
                 int prev_owner=s->econ->region[reg].owner;
                 if (diplo_occupy(s->dp, s->econ, a->owner, reg)){
                     g_tot_occ_posed++;
+                    /* LOT 4 — LE SAC (capture d'esclaves) : à la CHUTE de la province
+                     * (pas chaque mois du siège — un sac de pop est un choc, pas un
+                     * prélèvement continu), un besiégeur ESCLAVAGISTE (l'Économie
+                     * servile débloquée) déporte une part des vaincus. Réutilise
+                     * l'idiome existant (diplo_enslave_capture, déjà employé au
+                     * règlement de paix par ai_strat_turn) — même gate, même mécanique,
+                     * juste déclenché plus TÔT (la chute, pas seulement la paix). */
+                    if (a->owner>=0 && a->owner<SCPS_MAX_COUNTRY && s->ai[a->owner].can_enslave)
+                        if (diplo_enslave_capture(w, s->econ, a->owner, reg, true) > 0) g_siege_sack_captures++;
                     if (s->human_player>=0 && (a->owner==s->human_player || prev_owner==s->human_player))
                         feed_push(FEED_SIEGE_FALLEN, a->owner, prev_owner, reg, 0);  /* victoire de siège / place perdue */
                 }
@@ -457,7 +485,7 @@ static void sim_cmd_drain(Sim *s, World *w){
             navy_order_build(s->navy, w, s->econ, p, (HullType)h);
             break; }
           case CMD_DISBAND:
-            warhost_disband(s->host, p);                             /* dissout la réserve levée */
+            warhost_disband(s->host, s->econ, p);                     /* dissout la réserve levée ; LOT 2 : les armes RENTRENT au stock */
             break;
           /* ── ALLOCATION de main-d'œuvre (onglet province). Tout REVALIDÉ : région ∈ [0,n) ET au
            *    joueur ; poids clampé ; res/bld bornés. Poser un poids ACTIVE l'override (alloc_on=1).

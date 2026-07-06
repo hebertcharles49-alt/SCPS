@@ -127,6 +127,10 @@ bool               unit_recruitable(const TechState *ts, UnitType t);  /* F7 : r
 Resource           unit_res_arm(UnitType t);                   /* F5/F6 : la catégorie d'arme MACRO (RES_*) de l'unité */
 
 void army_init(ArmyState *a);
+/* LOT 1 — TRANSFERT (pas une copie) : fusionne `src` dans `dst` (unités par type,
+ * armes, pop affectée s'additionnent) puis VIDE `src`. Sert le débit (host→détachement)
+ * ET le crédit (survivants→host) avec la MÊME primitive. */
+void army_merge_into(ArmyState *dst, ArmyState *src);
 
 /* Peut-on lever `count` unités de ce type ? (pop libre de la bonne CLASSE +
  * armes en stock). Renvoie false sinon — ce n'est pas un bouton. */

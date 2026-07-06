@@ -107,22 +107,28 @@ typedef struct Campaign {
 void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ);
 
 /* Ordonne à la force expéditionnaire de `owner` de partir de `from_region` vers
- * `target_region` (région ennemie à réduire) en portant une COPIE de `src_force`
- * (p.ex. l'armée mobilisée du warhost). Calcule l'itinéraire (BFS sur l'adjacence
- * des régions praticables). Renvoie false si la cible est injoignable par terre
- * ou la force vide. */
+ * `target_region` (région ennemie à réduire) en TRANSFÉRANT `src_force` (p.ex.
+ * l'armée mobilisée du warhost) — LOT 1 : ce n'est plus une COPIE, `src_force` est
+ * VIDÉ au succès (army_merge_into) : les mêmes âmes existent SOIT en garnison SOIT
+ * en campagne, jamais les deux (warhost_units reflète enfin la réserve NON déployée).
+ * Si une force est DÉJÀ active pour `owner`, son reliquat est d'abord RENDU à
+ * `src_force` (donc à l'appelant, typiquement host->army[owner]) avant que le
+ * nouveau détachement parte — un réordonnancement ne perd ni ne double personne.
+ * Calcule l'itinéraire (BFS sur l'adjacence des régions praticables). Renvoie false
+ * si la cible est injoignable par terre ou la force vide (src_force INCHANGÉ alors). */
 bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
-                    int from_region, int target_region, const ArmyState *src_force);
+                    int from_region, int target_region, ArmyState *src_force);
 
 /* L'EMBARQUEMENT (mer §6) : ordonne la traversée depuis `from_region` (un port
  * RÉEL du pays) vers `target_region` (région CÔTIÈRE). Exige assez de capacité
  * d'emport libre (10 paquets/transport) ; les transports sont RÉSERVÉS jusqu'au
- * débarquement. `navy` mutable (réservation). false si pas de port / pas de
- * flotte / mer infranchissable / force vide. */
+ * débarquement. `navy` mutable (réservation). `src_force` TRANSFÉRÉ (LOT 1, même
+ * contrat que campaign_order). false si pas de port / pas de flotte / mer
+ * infranchissable / force vide (src_force INCHANGÉ alors). */
 struct NavyState;
 bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
                         struct NavyState *navy, int owner,
-                        int from_region, int target_region, const ArmyState *src_force);
+                        int from_region, int target_region, ArmyState *src_force);
 
 /* Avance toutes les armées de `dt_days` jours : la marche (§1) étape par étape,
  * le siège à l'arrivée, la bataille (§2/§3) quand deux forces hostiles (en
@@ -158,11 +164,14 @@ const char *campaign_posture_name (int posture);
 FieldPhase  campaign_phase        (const Campaign *c, int owner);
 long        campaign_units        (const Campaign *c, int owner);  /* paquets de 100 */
 int         campaign_taken        (const Campaign *c, int owner);  /* régions réduites */
-/* DÉMOBILISER (§4 sidebar) : dissout l'armée de campagne — elle quitte la carte,
- * ses hommes rentrent (la restitution à la pop est faite par l'appelant, qui tient
- * la comptabilité de main-d'œuvre). Renvoie les paquets de 100 dissous (0 si rien).
- * La POSTURE (réglage joueur) est préservée. */
-long        campaign_disband      (Campaign *c, int owner);
+/* DÉMOBILISER (§4 sidebar) : dissout l'armée de campagne — elle quitte la carte.
+ * LOT 1 — si `dst_host_army` est fourni (p.ex. &host->army[owner]), les SURVIVANTS
+ * (unités, armes, pop affectée) y sont TRANSFÉRÉS (army_merge_into) : le host
+ * retrouve ce qui revient du front, rien n'est perdu ni dupliqué. NULL = ancien
+ * comportement (le détachement s'évapore, cf. warhost_disband pour la réserve).
+ * Renvoie les paquets de 100 dissous (0 si rien). La POSTURE (réglage joueur) est
+ * préservée. */
+long        campaign_disband      (Campaign *c, int owner, ArmyState *dst_host_army);
 const char *campaign_phase_name   (FieldPhase ph);
 
 /* Composition d'une armée par GRAND TYPE d'arme (paquets de 100) — pour le survol

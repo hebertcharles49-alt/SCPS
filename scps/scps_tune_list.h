@@ -69,6 +69,17 @@
     /* §B3 — le palier 540 (l'accession) */ \
     X(REGIMENT_PAY,           1.5f) \
     X(REGIMENT_PRICE,        12.0f) \
+    /* LOT 3 (audit de guerre) — le SIÈGE LIT LA GARNISON : chaque point de H_coerc
+     * (Garnison/Forteresse/Citadelle bâties, re->build.H_coerc) durcit la place en
+     * plus du simple compte de bâtiments — poids modeste (~5-10 % sur la durée
+     * finale du siège pour une garnison consistante), jamais l'immortalité. */ \
+    X(DEF_PER_H,              0.05f) \
+    /* LOT 4 (audit de guerre) — LE PILLAGE DE SIÈGE : fraction de la PRODUCTION
+     * mensuelle (supply[], pas le stock accumulé) détournée par une force EN SIÈGE
+     * vers le trésor du besiégeur — matière RÉELLEMENT prise (stock décrémenté).
+     * Distinct du butin final (PILLAGE_GOLD_FRAC/PILLAGE_STOCK_FRAC, au règlement) ;
+     * gaté par le MÊME cooldown anti-re-saccage (pillage_cd). */ \
+    X(SIEGE_LOOT_FRAC,        0.25f) \
     X(NAVY_UPKEEP_GOLD,       1.5f) \
     X(AI_SAVOIR_K,            2.5f) \
     /* RELIGION — seuil de zèle : w_faith ≥ ce seuil ⇒ crédo prosélyte FONDE sa foi proactivement */ \

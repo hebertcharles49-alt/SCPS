@@ -128,7 +128,12 @@ int main(int argc,char**argv){
     /* ═══ 3b. L1 — L'INTERCEPTION : l'assiégeant se fait surprendre ═════ */
     printf("\n── 3b. L1 : un assiégeant se fait INTERCEPTER par le défenseur ──\n");
     campaign_init(camp2, w, econ);
-    campaign_order(camp2, econ, A, frontier, target, &invader);     /* A marche, puis ASSIÈGE */
+    /* LOT 1 — campaign_order TRANSFÈRE désormais `src_force` (vidé au succès) : on
+     * refait des forces fraîches pour cette 2e manche (invader/defender ont déjà été
+     * consommées §3 ci-dessus). */
+    ArmyState invader2  = make_force(22,16,9);
+    ArmyState defender2 = make_force(10,8,3);
+    campaign_order(camp2, econ, A, frontier, target, &invader2);     /* A marche, puis ASSIÈGE */
     { int guard=0;
       while (campaign_phase(camp2,A)!=FA_SIEGE && ++guard<800){
           uint32_t rng=0xC0FFEEu+(uint32_t)guard*2654435761u;
@@ -137,7 +142,7 @@ int main(int argc,char**argv){
     ok("l'assaillant est EN SIÈGE sur la région du défenseur (interceptable)",
        campaign_phase(camp2,A)==FA_SIEGE && camp2->army[A].loc==target);
     /* la garnison de B fait une SORTIE sur sa propre place assiégée (le verbe L1). */
-    bool sortie = campaign_order(camp2, econ, B, target, target, &defender);
+    bool sortie = campaign_order(camp2, econ, B, target, target, &defender2);
     int intercepted=0;
     for (int it=0; it<200 && !intercepted; it++){
         uint32_t rng=0xBADBEEFu+(uint32_t)it*40503u;
@@ -184,6 +189,71 @@ int main(int argc,char**argv){
       long cap60=(long)(0.6f*(float)u_pre)+1, cap_eff=(after_rout>cap60)?after_rout:cap60;
       ok("le CAP est respecté : reformé ≥ le noyau, et le ralliement ne pousse pas au-dessus de 60 %",
          RT>=0 && reformed>=after_rout && reformed<=cap_eff);
+    }
+
+    /* ═══ 3d. LOT 3 — LE SIÈGE LIT LA GARNISON (H_coerc) ═══════════════ */
+    printf("\n── 3d. LOT 3 : une garnison BÂTIE (H_coerc) allonge le siège (modéré, jamais l'immortalité) ──\n");
+    {
+        /* region_defense() est static (scps_campaign.c) : on l'éprouve PAR LE SIÈGE
+         * réel, sur une cible qu'on CONTRÔLE entièrement (pop nulle → pas de cap_def
+         * de capitale qui sature le plafond 2 ans, cf. le piège mesuré sur `target`
+         * du monde généré : cap_def d'une grosse capitale y sature souvent 727-730j
+         * à lui seul, masquant tout delta H_coerc). On choisit une région LIBRE
+         * (non colonisée) du monde, on la peuple/colonise à la main avec UN SEUL
+         * bâtiment (n_bld=1, pop modeste), pour isoler H_coerc. */
+        int rfree=-1;
+        for (int r=0;r<econ->n_regions;r++)
+            if (econ->region[r].owner<0 && !econ->region[r].impassable && econ->adj[frontier][r]){ rfree=r; break; }
+        if (rfree<0)
+            for (int r=0;r<econ->n_regions;r++)
+                if (!econ->region[r].impassable && r!=frontier){ rfree=r; break; }
+        if (rfree<0 || !econ->adj[frontier][rfree]){
+            ok("(aucune région voisine de la frontière disponible pour ce test isolé sur cette graine)", true);
+        } else {
+            econ->region[rfree].owner=B; econ->region[rfree].colonized=true;
+            econ->region[rfree].n_bld=1;
+            econ->region[rfree].strata[CLASS_LABORER].pop=50.f;
+            econ->region[rfree].strata[CLASS_BOURGEOIS].pop=0.f;
+            econ->region[rfree].strata[CLASS_ELITE].pop=0.f;
+            econ->region[rfree].food_sat=0.5f;
+            econ->region[rfree].build.H_coerc=0.f;
+
+            campaign_init(camp2, w, econ);
+            ArmyState atk1 = make_force(22,16,9);
+            campaign_order(camp2, econ, A, frontier, rfree, &atk1);
+            float siege0=0.f;
+            { int guard=0;
+              while (campaign_phase(camp2,A)!=FA_SIEGE && ++guard<800){
+                  uint32_t rng=0x1234u+(uint32_t)guard*2654435761u;
+                  campaign_tick(camp2, w, econ, &dp, &rng, 5.f);
+              }
+              if (campaign_phase(camp2,A)==FA_SIEGE) siege0=camp2->army[A].days_left;
+            }
+            /* MÊME cible, GARNISON BÂTIE en plus (H_coerc, comme une Forteresse) —
+             * rien d'autre ne bouge (même n_bld, même pop, même terrain). */
+            econ->region[rfree].build.H_coerc=6.f;
+            campaign_init(camp2, w, econ);
+            ArmyState atk2 = make_force(22,16,9);
+            campaign_order(camp2, econ, A, frontier, rfree, &atk2);
+            float siege1=0.f;
+            { int guard=0;
+              while (campaign_phase(camp2,A)!=FA_SIEGE && ++guard<800){
+                  uint32_t rng=0x1234u+(uint32_t)guard*2654435761u;
+                  campaign_tick(camp2, w, econ, &dp, &rng, 5.f);
+              }
+              if (campaign_phase(camp2,A)==FA_SIEGE) siege1=camp2->army[A].days_left;
+            }
+            printf("   région témoin %d : H_coerc 0→6 · siège initial %.0f j → %.0f j (+%.0f%%)\n",
+                   rfree, siege0, siege1, (siege0>0.f)?100.f*(siege1-siege0)/siege0:0.f);
+            ok("une garnison BÂTIE (H_coerc) allonge RÉELLEMENT le siège (entrée moteur, pas un bonus plat)",
+               siege0>0.f && siege1>siege0);
+            ok("l'allongement reste MODÉRÉ (~20-40 %%), jamais l'immortalité (toujours < 2 ans plafond)",
+               siege1 < 730.f && siege1 <= siege0*1.6f);
+            /* on remet la région comme trouvée (les tests suivants ne doivent pas hériter d'un monde altéré) */
+            econ->region[rfree].owner=-1; econ->region[rfree].colonized=false; econ->region[rfree].n_bld=0;
+            econ->region[rfree].build.H_coerc=0.f;
+            econ->region[rfree].strata[CLASS_LABORER].pop=0.f;
+        }
     }
 
     /* ═══ 4. LECTEURS (membrane : tangibles) ═══════════════════════════ */

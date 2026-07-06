@@ -17,6 +17,16 @@
 /* ---- Calibrage : ce que l'éco régionale dit au siège ------------------ */
 #define DEF_BASE          1.0f   /* défense de base d'une région colonisée */
 #define DEF_PER_BLD       0.25f  /* chaque édifice durcit la place */
+/* LOT 3 — LE SIÈGE LIT LA GARNISON : H_coerc (Garnison/Forteresse/Citadelle,
+ * re->build.H_coerc — la COERCITION BÂTIE, cf. scps_econ.h ProvBuild) n'était lu par
+ * AUCUN mécanisme militaire — seul le COMPTE de bâtiments (n_bld, sans distinguer un
+ * marché d'une caserne) comptait. Poids MODESTE (registre J) : une garnison courante
+ * (Garnison+Forteresse ≈ H_coerc 4-6) ajoute ~+20-30 % à defense_level LUI-MÊME — mais
+ * siege_days() dilue ce ratio par sa constante additive (SIEGE_BASE) et le terrain, si
+ * bien que la durée FINALE observée bouge plus modestement (~5-10 % mesuré en pratique,
+ * cf. campaign_demo §3d) — jamais l'immortalité (siege_days reste plafonné à
+ * SIEGE_MAX_DAYS=730j quel que soit defense_level). */
+#define DEF_PER_H         0.05f  /* la garnison BÂTIE durcit la place (entrée moteur H_coerc, pas un bonus plat) */
 #define FOOD_MONTHS_FULL  12.f   /* food_sat 1.0 → un an de vivres en magasin */
 #define RIVER_BATTLE_MIN  40     /* débit (0..255) au-delà duquel la région a une ligne d'eau */
 #define RIVER_COMBAT_EDGE 1.25f  /* franchir sous le feu : le défenseur ×1.25 (annulé par un pont) */
@@ -68,7 +78,12 @@ static float region_defense(const WorldEconomy *e, int r){
      * — elle allonge le siège comme un rempart (mais sans bonus défenseur au combat). */
     long pop = (long)(R->strata[CLASS_LABORER].pop + R->strata[CLASS_BOURGEOIS].pop + R->strata[CLASS_ELITE].pop);
     float cap_def = (float)capitale_defense(capitale_max_tier(pop));
-    return DEF_BASE + DEF_PER_BLD * (float)R->n_bld + cap_def;
+    /* LOT 3 — la GARNISON BÂTIE (H_coerc : Garnison/Forteresse/Citadelle/Arsenal/
+     * Amirauté/Bibliothèque militaire) durcit la place, en PLUS du simple compte de
+     * bâtiments — une province de casernes tient mieux qu'une province de marchés à
+     * n_bld égal. Poids modeste (DEF_PER_H, registre J) : ~20-30 % de tenue en plus
+     * pour une garnison consistante, jamais l'immortalité (siege_days plafonne). */
+    return DEF_BASE + DEF_PER_BLD * (float)R->n_bld + cap_def + tune_f("DEF_PER_H", DEF_PER_H) * R->build.H_coerc;
 }
 static float region_food_months(const WorldEconomy *e, int r){
     float f=e->region[r].food_sat;
@@ -114,8 +129,13 @@ void campaign_init(Campaign *c, const World *w, const WorldEconomy *econ){
 }
 
 /* ---- Ordre de campagne ------------------------------------------------ */
+/* LOT 1 — RECRUTEMENT↔JETON RÉCONCILIÉ : `src_force` est TRANSFÉRÉ (pas copié).
+ * Si `owner` a DÉJÀ une force active (réordonnancement), son reliquat retourne
+ * D'ABORD dans `src_force` (donc chez l'appelant — typiquement host->army[owner])
+ * avant que le nouveau détachement en soit prélevé : jamais de double-compte, jamais
+ * de perte silencieuse d'un reliquat remplacé. */
 bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
-                    int from_region, int target_region, const ArmyState *src_force){
+                    int from_region, int target_region, ArmyState *src_force){
     if (owner<0 || owner>=SCPS_MAX_COUNTRY || !src_force) return false;
     if (from_region<0 || from_region>=econ->n_regions) return false;
     if (target_region<0 || target_region>=econ->n_regions) return false;
@@ -124,8 +144,10 @@ bool campaign_order(Campaign *c, const WorldEconomy *econ, int owner,
     if (hop<0) return false;                              /* injoignable par terre */
 
     FieldArmy *a=&c->army[owner];
+    if (a->active && force_units(&a->force)>0)
+        army_merge_into(src_force, &a->force);            /* le reliquat rentre (et VIDE a->force) AVANT le nouveau départ */
     a->active=true; a->owner=owner; a->loc=from_region; a->dest=target_region;
-    a->force=*src_force;                                  /* copie du détachement */
+    army_merge_into(&a->force, src_force);                /* TRANSFERT (pas copie) : src_force est vidé */
     a->taken=0; a->legs=0; a->battles=0; a->taken_region=-1;
     if (from_region==target_region){                     /* déjà sur place */
         a->phase=FA_IDLE; a->next=-1; a->days_left=0.f; a->leg_days=0.f; return true;
@@ -168,9 +190,11 @@ bool campaign_redirect(Campaign *c, const WorldEconomy *econ, const DiploState *
 }
 
 /* ── L'EMBARQUEMENT (mer §6) : port → mer → côte, tout en jours ─────────── */
+/* LOT 1 — même contrat de TRANSFERT que campaign_order (src_force vidé au succès ;
+ * un reliquat déjà actif rentre d'abord dans src_force). */
 bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
                         struct NavyState *navy, int owner,
-                        int from_region, int target_region, const ArmyState *src_force){
+                        int from_region, int target_region, ArmyState *src_force){
     if (owner<0 || owner>=SCPS_MAX_COUNTRY || !src_force || !navy || !w) return false;
     if (from_region<0 || from_region>=econ->n_regions) return false;
     if (target_region<0 || target_region>=econ->n_regions || from_region==target_region) return false;
@@ -190,8 +214,10 @@ bool campaign_order_sea(Campaign *c, const World *w, const WorldEconomy *econ,
         if (navy->n[e].mission==NAVY_BLOCUS && navy->n[e].mission_target==owner
             && navy->n[e].hull[HULL_WAR]>0) return false;
     FieldArmy *a=&c->army[owner];
+    if (a->active && force_units(&a->force)>0)
+        army_merge_into(src_force, &a->force);            /* le reliquat rentre (et VIDE a->force) AVANT l'embarquement */
     a->active=true; a->owner=owner; a->loc=from_region; a->dest=target_region; a->next=-1;
-    a->force=*src_force;
+    army_merge_into(&a->force, src_force);                /* TRANSFERT (pas copie) : src_force est vidé */
     a->taken=0; a->legs=0; a->battles=0; a->taken_region=-1;
     a->phase=FA_EMBARK;
     a->leg_days = 4.f + (float)packets/15.f;            /* charger 1 000 hommes prend des jours */
@@ -731,12 +757,15 @@ long campaign_units(const Campaign *c, int o){
 int campaign_taken(const Campaign *c, int o){
     return (o>=0 && o<SCPS_MAX_COUNTRY) ? c->army[o].taken : 0;
 }
-long campaign_disband(Campaign *c, int o){
+long campaign_disband(Campaign *c, int o, ArmyState *dst_host_army){
     if (!c || o<0 || o>=SCPS_MAX_COUNTRY) return 0;
     FieldArmy *a=&c->army[o];
     long packets = force_units(&a->force);            /* ce qu'on dissout (UI / restitution) */
     int posture = a->posture;                          /* on garde le réglage joueur */
-    army_init(&a->force);                              /* la composition s'évapore */
+    /* LOT 1 — les SURVIVANTS rentrent (host reflète enfin ce qui revient du front) ;
+     * NULL = ancien comportement (le détachement s'évapore). */
+    if (dst_host_army) army_merge_into(dst_host_army, &a->force);
+    else               army_init(&a->force);           /* la composition s'évapore */
     a->active=false; a->loc=-1; a->dest=-1; a->next=-1; a->phase=FA_IDLE;
     a->days_left=0.f; a->leg_days=0.f; a->taken=0; a->taken_region=-1;
     a->legs=0; a->battles=0; a->broken_days=0;

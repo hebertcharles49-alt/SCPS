@@ -336,6 +336,7 @@ int main(int argc, char **argv){
     long tot_civilwars=0, tot_rebel_vict=0;   /* Phase 3a : guerres civiles engagées vs remportées par les rebelles */
     long tot_backing_wars=0, tot_backing_mat=0;   /* Phase 3a suite : seconds fronts + renforts matériels étrangers */
     long tot_techs=0, tot_faustian=0, tot_campaign=0, tot_alliances=0;   /* §D : pactes actifs */
+    double tot_siege_loot=0.0; long tot_siege_captures=0;   /* LOT 4 : pillage de siège */
     long tot_sync=0, tot_sync_distinct=0;   /* §syncrétique : nœuds à porte culturelle + dispersion */
     long tot_relig_roots=0, tot_relig_schisms=0, tot_relig_faith=0, tot_relig_minority=0;   /* RELIGION : foi émergente */
     long tot_min_her=0, tot_min_for=0;   /* DIAG : minorités same-root (hérésie-éligible) vs foreign (zélote) */
@@ -383,6 +384,21 @@ int main(int argc, char **argv){
         world_generate(w, &p);
         /* silence le bruit de génération : on a déjà tout imprimé par sim plus bas */
         sim_init(&s, w);
+        /* LOT 6a — le compteur « régions réduites (campagne) » sous-comptait ×9 :
+         * campaign_taken(FieldArmy.taken) est RAZ à CHAQUE nouvel ordre/redirection
+         * (campaign_order/campaign_redirect), alors que l'IA réordonne dès qu'une
+         * armée est idle (annuel) et que les sorties défensives redirigent en
+         * continu — sommer ce compteur en fin de sim ne lit qu'un SNAPSHOT du
+         * dernier segment ininterrompu, pas le cumul réel. `g_tot_occ_posed`
+         * (scps_sim.c) EST le cumul vrai (une occupation posée = un siège mené à
+         * terme), mais c'est un accumulateur GLOBAL sur toute la chronique (jamais
+         * remis à 0 entre sims) — on snapshote sa valeur ICI (avant le sim) pour
+         * calculer le DELTA propre à CE sim plus bas. */
+        long occ_posed_before_sim = g_tot_occ_posed;
+        /* LOT 4 — pillage de siège : mêmes accumulateurs GLOBAUX (jamais remis à 0
+         * entre sims), snapshot avant/delta après (même motif que g_tot_occ_posed). */
+        double siege_loot_before_sim = g_siege_loot_total;
+        long   siege_captures_before_sim = g_siege_sack_captures;
 
         /* LA VOLTA, mesurée (mer §10) : entre deux côtes éloignées, l'aller ne vaut
          * pas le retour — l'asymétrie du champ de courants, en jours. */
@@ -1117,15 +1133,23 @@ int main(int argc, char **argv){
         }
 
         /* CAMPAGNE : les armées ont-elles VÉCU sur la carte (marche/siège/bataille) ?
-         * Réductions = sièges menés à terme (enregistrés, PAS appliqués à econ). */
-        { int reduced=0, moving=0;
-          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++){
-              reduced += campaign_taken(s.camp,c);
+         * LOT 6a — « réduites » = le DELTA de g_tot_occ_posed sur ce sim (le cumul
+         * VRAI d'occupations posées, cf. la note au snapshot ci-dessus) — plus le
+         * compteur trompeur `campaign_taken` (RAZ à chaque réordonnancement). */
+        { int moving=0;
+          for (int c=0;c<w->n_countries && c<SCPS_MAX_COUNTRY;c++)
               if (campaign_active(s.camp,c) && campaign_phase(s.camp,c)!=FA_IDLE) moving++;
-          }
-          printf("              campagne : %d région(s) réduite(s) par les armées de terrain · %d en mouvement (non-invasif)\n",
+          long reduced = g_tot_occ_posed - occ_posed_before_sim;
+          printf("              campagne : %ld région(s) réduite(s) par les armées de terrain · %d en mouvement (non-invasif)\n",
                  reduced, moving);
           tot_campaign += reduced; }
+        /* LOT 4 — le pillage de siège VIT : détourné ce sim + captures de sac (à
+         * la chute, avant règlement) — delta des accumulateurs globaux. */
+        { double loot = g_siege_loot_total - siege_loot_before_sim;
+          long   caps = g_siege_sack_captures - siege_captures_before_sim;
+          printf("              pillage de siège : %.0f or-équiv. détourné (mensuel, ∝ production) · %ld sac(s) de population (à la chute)\n",
+                 loot, caps);
+          tot_siege_loot += loot; tot_siege_captures += caps; }
         { long hulls=0; double sup=0;   /* mer §10 : la chaîne navale TIRE */
           for (int c=0;c<SCPS_MAX_COUNTRY;c++){ hulls+=s.navy->n[c].built_total; sup+=s.navy->n[c].supplies_eaten; }
           int searoutes=0;
@@ -1363,6 +1387,8 @@ int main(int argc, char **argv){
            (double)tot_relig_faith/(nsims>0?nsims:1), (double)tot_relig_minority/(nsims>0?nsims:1),
            (double)tot_min_her/(nsims>0?nsims:1), (double)tot_min_for/(nsims>0?nsims:1));
     printf("   régions réduites (campagne) . %ld   (moy. %.1f/sim ; armées de terrain, hors conquête abstraite)\n", tot_campaign, (double)tot_campaign/nsims);
+    printf("   pillage de siège (LOT 4) .... %.0f or-équiv. cumulé (%.0f/sim) · %ld sac(s) de population (%.1f/sim) — mensuel, ∝ production, distinct du butin final au règlement\n",
+           tot_siege_loot, tot_siege_loot/nsims, tot_siege_captures, (double)tot_siege_captures/nsims);
     printf("   la mer ...................... %ld coque(s) · %.0f fournitures consommées (NE doit plus être zéro) · %ld traversée(s) (%.0f j moy.) · %ld route(s) maritime(s) · %ld colonie(s) outre-mer\n",
            tot_hulls, tot_supplies, tot_sails, (tot_sails>0)?tot_saildays/(double)tot_sails:0.0, tot_searoutes, tot_colonies_om);
     printf("   détroits (WG) ............... %.1f goulet(s)/sim · %.1f tenu(s)/sim · %ld route(s) taxée(s) · péage CUMULÉ moy. %.0f or/sim · %d/%d sim(s) avec péage ENCAISSÉ (le verrou rapporte à qui le tient)\n",

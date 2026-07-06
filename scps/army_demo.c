@@ -337,6 +337,60 @@ int main(int argc, char **argv){
     printf("   à épéistes égaux, le défenseur de MONTAGNE gagne %d/%d\n", defw, defN);
     ok("le terrain DÉCIDE : à forces égales, le défenseur de montagne l'emporte", defw>=18);
 
+    /* ═══ 12. LOT 6b — LES 13 UNITÉS JAMAIS TESTÉES INDIVIDUELLEMENT ═══
+     * (audit de guerre §war : seul Hallebardier avait un winrate ciblé parmi les
+     * unités appendues F5/Roster-22 ; Arquebusier/Alchimiste/Garde runique/
+     * Arbalète lourde/Berserker/Lancier de choc/Milice/Harceleur/Traqueur/Lame
+     * franche/Garde d'escorte/Cav cuirassée/Cav de raid n'avaient AUCUNE assertion
+     * dédiée — seulement exercées statistiquement en sweep, jamais assertées).
+     * Pour chacune : (a) ses stats se LISENT (unit_def non-NULL, cohérentes avec
+     * la table), (b) un power sanity — elle bat un adversaire NEUTRE et FAIBLE en
+     * nombre (prouve qu'elle porte un minimum de puissance de combat réelle, pas
+     * une coquille vide), (c) au moins UN contre de sa ligne dans MATRIX (le
+     * réseau pierre-feuille-ciseaux la concerne, pas seulement les 12 historiques). */
+    printf("\n── 12. LOT 6b : les 13 unités jamais testées individuellement (stats + contre + power) ──\n");
+    {
+        struct { UnitType t; const char *name; UnitType beats; } U13[] = {
+            { U_ARQUEBUSIER,    "Arquebusier",      U_CAV_LOURDE },
+            { U_ALCHIMISTE,     "Alchimiste",       U_PIQUIER },
+            { U_GARDE_RUNIQUE,  "Garde runique",    U_EPEISTE },
+            { U_ARBALETE_LOURDE,"Arbalète lourde",  U_CAV_LOURDE },
+            { U_BERSERKER,      "Berserker",        U_PIQUIER },
+            { U_LANCIER_CHOC,   "Lancier de choc",  U_CAV_LEGERE },
+            { U_MILICE,         "Milice",           U_COUNT },        /* le plancher : AUCUN contre propre */
+            { U_HARCELEUR,      "Harceleur",        U_MAGE },
+            { U_TRAQUEUR,       "Traqueur",         U_PIQUIER },
+            { U_LAME_FRANCHE,   "Lame franche",     U_COUNT },        /* mercenaire versatile : aucun contre propre */
+            { U_GARDE_ESCORTE,  "Garde d'escorte",  U_COUNT },        /* l'ancre : aucun contre propre (pure tenue) */
+            { U_CAV_CUIRASSEE,  "Cav. cuirassée",   U_PIQUIER },
+            { U_CAV_RAID,       "Cav. de raid",     U_ARCHER },
+        };
+        int n13=(int)(sizeof(U13)/sizeof(U13[0]));
+        int all_ok=1;
+        for (int i=0;i<n13;i++){
+            const UnitDef *d = unit_def(U13[i].t);
+            bool stats_ok = d && d->name && d->name[0] && d->moral>0.f && d->discipline>=0.f
+                          && d->mouvement>0.f && d->commandement>0.f;
+            /* power sanity : 3 paquets de l'unité vs 1 paquet de PIQUIER (adversaire de base,
+             * faible en nombre) — même l'unité la plus chétive du roster (Milice, disc=0.12)
+             * doit l'emporter avec un avantage numérique de 3:1 sur plusieurs tirages. */
+            int w=0, Np=11;
+            for (int k=0;k<Np;k++){
+                ArmyState A=one(U13[i].t,3), B=one(U_PIQUIER,1);
+                uint32_t rng=seed+(uint32_t)(i*131+k)*2654435761u+3u;
+                if (resolve_battle(&A,&B,1.f,&rng).winner==-1) w++;
+            }
+            bool power_ok = w >= (Np/2+1);   /* majorité des tirages, malgré le dé */
+            /* contre : si la ligne déclare un adversaire battu, vérifier MATRIX (>1 = contre). */
+            bool counter_ok = (U13[i].beats==U_COUNT) || (matchup(U13[i].t, U13[i].beats) > 1.f);
+            printf("   %-16s stats=%s power(3:1 vs piquier)=%d/%d=%s contre=%s\n",
+                   U13[i].name, stats_ok?"ok":"KO", w,Np, power_ok?"ok":"KO", counter_ok?"ok":"KO");
+            if (!stats_ok || !power_ok || !counter_ok) all_ok=0;
+        }
+        ok("les 13 unités du Roster-22 jamais testées ont des stats lisibles, un power réel (3:1 l'emporte), et leur contre annoncé tient dans MATRIX",
+           all_ok);
+    }
+
     printf("\n══════════════════════════════════════════════════════════════\n");
     printf(" BILAN : %d réussis, %d échoués\n", g_pass, g_fail);
     printf("══════════════════════════════════════════════════════════════\n");

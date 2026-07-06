@@ -63,7 +63,27 @@ const char    *unit_name(UnitType t){ return (t>=0&&t<U_COUNT)?UNITS[t].name:"?"
 
 /* F7 — LA TECH QUI DÉBLOQUE UNE UNITÉ (fabrique ET unité gatées) : arquebusier ← Poudrière,
  * garde runique ← Forge à runes, mage ← Magie de bataille, alchimiste ← Alchimie, hallebardier
- * ← Caserne (infanterie de base). Les 8 unités v13 restent SANS gate (TECH_COUNT = toujours). */
+ * ← Caserne (infanterie de base).
+ * LOT 5 (audit de guerre §war) — CALCUL D'EFFICACITÉ (power=(1+discipline)·moral, largeur du
+ * réseau de contres dans MATRIX) sur les 15 unités jusque-là LIBRES du Roster-22 : Piquier/
+ * Lancier/Épéiste/Archer/Arbalétrier/Cav légère/Cav lourde restent la base (day-1, la défense
+ * doit rester possible). Parmi les 10 appendues, 4 se détachent nettement de la « piétaille de
+ * fortune » et sont désormais GATÉES (les 6 autres — Milice/Harceleur/Traqueur : bas power, 0-3
+ * contres, appui local ; les gardés de côté du brief) :
+ *   - Berserker (power≈73, 4 contres dont hallebardier/milice) → CONSCRIPTION (tier-1 martial,
+ *     « la levée en masse » : le franc-tireur qui se jette dans la mêlée, pas une élite).
+ *   - Lancier de choc (power≈176, 5 contres — brise TOUTE cavalerie y compris l'élite cuirassée/
+ *     raid + l'épéiste) → ORGANISATION (tier-2 martial, « état-major » : une formation
+ *     spécialisée anti-cav drillée, pas un ramassis).
+ *   - Garde d'escorte (power≈201, LE PLUS HAUT moral du roster entier — hors matrice de contre,
+ *     « incassable » — supérieur au Cav. cuirassée déjà gaté 194) → ORGANISATION (même tier-2 :
+ *     l'ancre défensive professionnelle mérite le même palier que la cavalerie d'élite).
+ *   - Lame franche (mercenaire soldé en OR, aucun contre propre mais versatile) → COMPTOIRS
+ *     (tier-1 commerce, « branche au marché mondial » : le mercenaire se recrute où le commerce
+ *     circule, pas au hasard).
+ *   - Cav de raid (LAB_ELITE déjà — pop d'élite requise — ET raid/pillage à la Lame franche)
+ *     → COMPTOIRS aussi, même logique mercantile (double-gate élite+tech, comme Cav. cuirassée).
+ * Table complète au carnet (TROUVAILLES.md, LOT 5). */
 TechId unit_tech_gate(UnitType t){
     switch(t){
         case U_ARQUEBUSIER:   return TECH_POUDRIERE;
@@ -73,6 +93,11 @@ TechId unit_tech_gate(UnitType t){
         case U_HALLEBARDIER:  return TECH_CASERNE;
         case U_CAV_CUIRASSEE: return TECH_CASTE_MARTIALE;   /* apex monté : palier tardif (spec) */
         case U_ARBALETE_LOURDE:return TECH_QUALITE_MATERIAUX;/* arbalète à pavois : manufacture fine */
+        case U_BERSERKER:     return TECH_CONSCRIPTION;     /* LOT 5 : martial tier-1 */
+        case U_LANCIER_CHOC:  return TECH_ORGANISATION;     /* LOT 5 : martial tier-2 (efficacité haute) */
+        case U_GARDE_ESCORTE: return TECH_ORGANISATION;     /* LOT 5 : martial tier-2 (moral le + haut du roster) */
+        case U_LAME_FRANCHE:  return TECH_COMPTOIRS;        /* LOT 5 : commerce tier-1 (mercenariat) */
+        case U_CAV_RAID:      return TECH_COMPTOIRS;        /* LOT 5 : commerce tier-1 (raid/pillage, élite déjà gatée) */
         default:              return TECH_COUNT;          /* base : toujours recrutable */
     }
 }
@@ -189,6 +214,32 @@ float matchup(UnitType a, UnitType b){
 /* ARMES & RECRUTEMENT (§0, §1)                                           */
 /* ===================================================================== */
 void army_init(ArmyState *a){ memset(a,0,sizeof(*a)); a->doctrine = army_doctrine_base(); }
+
+/* LOT 1 — RECRUTEMENT↔JETON RÉCONCILIÉ : fusionne `src` DANS `dst` (les mêmes âmes,
+ * jamais dupliquées) puis VIDE `src` (army_init) — un TRANSFERT, pas une copie. Sert
+ * à la fois le DÉBIT (host → détachement de campagne, campaign_order/_sea) et le
+ * CRÉDIT (survivants → host, campaign_disband/réordonnancement) : même primitive,
+ * les deux sens. Fusionne unité par type (pas de doublon de ligne), armes et pop
+ * affectée s'additionnent ; la doctrine du DESTINATAIRE prime (elle reflète SA tech,
+ * pas celle d'une force qui n'existe plus après fusion). */
+void army_merge_into(ArmyState *dst, ArmyState *src){
+    if (!dst || !src) return;
+    for (int i=0;i<src->n_units;i++){
+        if (src->units[i].count<=0) continue;
+        int found=-1;
+        for (int j=0;j<dst->n_units;j++) if (dst->units[j].type==src->units[i].type){ found=j; break; }
+        if (found>=0) dst->units[found].count += src->units[i].count;
+        else if (dst->n_units<ARMY_MAX_UNITS){
+            dst->units[dst->n_units].type=src->units[i].type;
+            dst->units[dst->n_units].count=src->units[i].count;
+            dst->units[dst->n_units].moral_courant=0.f;
+            dst->n_units++;
+        }
+    }
+    for (int wpn=0; wpn<W_COUNT; wpn++) dst->weapons[wpn] += src->weapons[wpn];
+    for (int cl=0; cl<LAB_CLASS_COUNT; cl++) dst->pop_by_class_in_army[cl] += src->pop_by_class_in_army[cl];
+    army_init(src);   /* le transfert VIDE la source : plus jamais un double-compte */
+}
 
 /* ---- §3 : la doctrine lue depuis l'arbre ------------------------------- */
 #ifndef APEX_FIREARM

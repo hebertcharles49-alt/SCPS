@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static int g_pass=0,g_fail=0;
 static void ok(const char*w,bool c){ printf("   %s %s\n",c?"✓":"✗",w); if(c)g_pass++; else g_fail++; }
@@ -326,6 +327,35 @@ int main(int argc,char**argv){
         for(int t=0;t<6;t++) econ_tick(econ,1.f);   /* 6 ans s'écoulent (cd décroît par an) */
         ok("après ~5 ans, la province REDEVIENT saccageable", econ->prov[vic_pid].pillage_cd <= 0.f);
     } else ok("(monde trop petit pour le test de saccage)", true);
+
+    /* ---- 6b. LOT 4 — LE PILLAGE DE SIÈGE (mensuel, ∝ production, PENDANT le siège) ---- */
+    printf("\n── 6b. LOT 4 : le siège détourne CHAQUE MOIS une fraction de la PRODUCTION (matière RÉELLEMENT prise) ──\n");
+    if(econ->n_regions>=2){
+        int vic=0, occ=1;
+        int vic_pid=econ_region_rep_province(econ,vic), occ_pid=econ_region_rep_province(econ,occ);
+        RegionEconomy *rvr=&econ->region[vic];
+        ProvinceEconomy *rv=&econ->prov[vic_pid], *ro=&econ->prov[occ_pid];
+        rv->pillage_cd=0.f;                                  /* province FRAÎCHE (pas déjà sac(c)agée) */
+        for(int g=1;g<RES_COUNT;g++){ rvr->stock[g]=100.f; rvr->supply[g]=40.f; rvr->price[g]=1.f; }
+        float vic_stock_before=0.f, occ_treas_before=ro->treasury;
+        for(int g=1;g<RES_COUNT;g++) vic_stock_before += rvr->stock[g];
+        float loot=diplo_siege_loot(econ,vic,occ);
+        printf("   siège de la région %d → capitale de %d : détourné ce mois = %.0f or-équiv.\n",vic,occ,loot);
+        ok("le siège détourne ∝ la PRODUCTION du mois (supply·SIEGE_LOOT_FRAC), pas un or plat",
+           loot > 0.f && loot < 40.f*(float)(RES_COUNT-1));   /* borné par 25% de Σ supply valorisée à prix 1 */
+        ok("le trésor du BESIÉGEUR enfle du détourné", ro->treasury > occ_treas_before);
+        float vic_stock_after=0.f; for(int g=1;g<RES_COUNT;g++) vic_stock_after+=rvr->stock[g];
+        ok("la MATIÈRE est RÉELLEMENT PRISE (le stock régional DIMINUE d'autant, pas dupliquée)",
+           vic_stock_after < vic_stock_before && (vic_stock_before-vic_stock_after) > 0.f);
+        ok("Σ CONSERVÉE : ce que le besiégé perd égale (or-équivalent) ce que le besiégeur gagne",
+           fabsf((vic_stock_before-vic_stock_after) - loot) < 0.01f);   /* prix=1 partout : stock perdu == or gagné */
+        /* le MÊME cooldown que le butin final (anti-double-sac, LOT 4) : une province
+         * déjà pillée/capturée récemment ne se fait plus détourner sa production. */
+        rv->pillage_cd = 3.0f;
+        ok("sous le cooldown anti-re-saccage (partagé avec le butin final), le siège NE détourne PLUS",
+           diplo_siege_loot(econ,vic,occ)==0.f);
+        rv->pillage_cd = 0.f;   /* on remet comme trouvé pour la suite du banc */
+    } else ok("(monde trop petit pour le test de pillage de siège)", true);
 
     /* ---- 7. Paix proportionnelle (§5) : revendication ∝ domination · surexpansion → coalition ---- */
     printf("\n── 7. Paix proportionnelle (revendication ∝ domination · indemnité · surexpansion) ──\n");
