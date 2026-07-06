@@ -108,6 +108,7 @@ static float ai_faustian_appetite(Credo cr, float valeurs){
                                    * Transgresseur/culte (×1.4 + bénédiction) peut enfin RENCONTRER le
                                    * frein ; la charge → Brèche garde le franchissement RARE et coûteux */
 #define AI_FOREUSE_HUNGER   5.0f  /* §4 : la FAMINE DE FER rend la foreuse arcanique irrésistible (surpasse le frein faustien) */
+#define AI_HALLES_HUNGER    3.0f  /* E3 (réparations) : le seau commerce PLEIN (credit_trade≥1) rend Halles & entrepôts pressant — sans quoi elle perd toujours contre Irrigation/Comptoirs (0/… mesuré) */
 #define AI_RELOC_SEED      300.f  /* §reloc : ensemencement type (~EXTRACT_POP_REF) — pousse la cible d'une bande d'intensité */
 #define AI_RELOC_FLOOR     100.f  /* pop minimale pour qualifier source/cible (jamais peupler le vide) */
 #define AI_RELOC_COOLDOWN  1300   /* ~3.5 ans entre deux ensemencements (ENSEMENCER, pas pomper) */
@@ -1347,6 +1348,17 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
          * (une fois — le jeu de stock s'ouvre, puis le négoce reprend son cours). */
         int hub = intertrade_country_centre(econ, a->cid);
         if (hub<0 || hub>=econ->n_regions || econ->region[hub].owner!=a->cid) hub=a->home_region;
+#ifdef SCPS_E3DIAG
+        if (getenv("SCPS_E3DIAG") && a->cid>=0 && a->cid<SCPS_MAX_COUNTRY){
+            bool hub_ok  = (hub>=0 && hub<econ->n_regions);
+            bool slot_ok = hub_ok && econ->region[hub].n_entrepot<1;
+            bool gold_ok = hub_ok && econ->region[hub].treasury>400.f;
+            fprintf(stderr,"[E3DIAG] day=%d cid=%d halles=%d hub_ok=%d slot_ok=%d gold_ok=%d treasury=%.0f n_entrepot=%d\n",
+                    day, a->cid, a->has_halles, hub_ok, slot_ok, gold_ok,
+                    hub_ok?econ->region[hub].treasury:-1.f,
+                    hub_ok?econ->region[hub].n_entrepot:-1);
+        }
+#endif
         if (a->has_halles && hub>=0 && hub<econ->n_regions
             && econ->region[hub].n_entrepot<1
             && econ->region[hub].treasury>400.f
@@ -2077,6 +2089,16 @@ static TechId ai_pick_tech(const AiActor *a, const TechState *ts, const World *w
         }
         if (id==TECH_FOREUSE && v.chain_gap==RES_IRON)      /* §4 COUPLAGE : l'empire affamé de fer COURT à la foreuse */
             score += AI_FOREUSE_HUNGER;
+        /* E3 COUPLAGE (réparations 2026-07-06, mesuré SCPS_E3DIAG) : Halles & entrepôts
+         * (FN_PRODUCTION, native=UNIV) n'a NI signature ni gap_acuity qui la distingue
+         * d'Irrigation/Comptoirs — sur seed 9 × 200 ans elle n'était JAMAIS choisie (0/…),
+         * donc jamais débloquée, donc l'IA stockeuse (ai_econ_turn, has_halles) restait
+         * morte alors que hub et trésor (>400 systématiquement atteint) étaient prêts.
+         * Le VRAI besoin est déjà mesuré ailleurs : credit_trade (le seau commerce plein,
+         * même signal que la branche E3) — un mercantile qui accumule ce crédit a un
+         * usage réel pour l'Entrepôt, pas une lubie. */
+        if (id==TECH_HALLES && a->credit_trade>=1.f)
+            score += AI_HALLES_HUNGER;
         score -= 0.002f*cost;      /* à score égal : le plus proche (le moins cher) d'abord */
         if (score>bestscore){ bestscore=score; best=id; }
     }
@@ -2148,6 +2170,22 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
     float metab[HERITAGE_COUNT]; econ_country_heritage_digested(w, econ, a->cid, metab);
     unsigned access = heritage_access_pack(ts->arch_depth, metab, ai_capital_heritage(w, econ, a->cid));
     TechId pick = ai_pick_tech(a, ts, w, econ, wp, access, nprov);
+#ifdef SCPS_E3DIAG
+    if (getenv("SCPS_E3DIAG") && a->cid>=0 && a->cid<SCPS_MAX_COUNTRY){
+        static bool told_comptoirs[SCPS_MAX_COUNTRY], told_halles[SCPS_MAX_COUNTRY];
+        if (ts->unlocked[TECH_COMPTOIRS] && !told_comptoirs[a->cid]){
+            told_comptoirs[a->cid]=true;
+            fprintf(stderr,"[E3DIAG-TECH] day=%d cid=%d COMPTOIRS unlocked\n", day, a->cid);
+        }
+        if (ts->unlocked[TECH_HALLES] && !told_halles[a->cid]){
+            told_halles[a->cid]=true;
+            fprintf(stderr,"[E3DIAG-TECH] day=%d cid=%d HALLES unlocked\n", day, a->cid);
+        }
+        if (pick==TECH_HALLES)
+            fprintf(stderr,"[E3DIAG-TECH] day=%d cid=%d PICKED halles (research_points=%.1f cost=%.1f)\n",
+                    day, a->cid, ts->research_points, ai_effective_cost(TECH_HALLES, nprov, ai_capital_ethos(w,econ,a->cid)));
+    }
+#endif
     /* §4 COUPLAGE : une fois l'Industrie en poche, l'empire AFFAMÉ DE FER ÉPARGNE pour la
      * foreuse (chère, faustienne) plutôt que d'éparpiller — l'issue tentante précipite sa Brèche. */
     if (pick!=TECH_FOREUSE && tech_can_research(ts, TECH_FOREUSE, access)){

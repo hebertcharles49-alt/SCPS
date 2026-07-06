@@ -11,11 +11,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static float avg_price(const WorldEconomy *e, Resource res){
-    double s=0.0; int n=0;
-    for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized){ s+=e->region[r].price[res]; n++; }
-    return n? (float)(s/n):0.f;
-}
+/* dédoublonné vers scps_econ.h:econ_avg_price (chronicle.c ET econ_scan.c portaient
+ * chacun une copie IDENTIQUE de ce corps — même ops, byte-identique). */
+static float avg_price(const WorldEconomy *e, Resource res){ return econ_avg_price(e,res); }
 
 int main(int argc,char**argv){
     uint32_t base =(argc>1)?(uint32_t)strtoul(argv[1],NULL,10):7u;

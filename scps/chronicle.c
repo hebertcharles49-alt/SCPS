@@ -195,11 +195,9 @@ static void country_stocks(const WorldEconomy *e, int c, double out[RES_COUNT]){
     for (int r=0;r<e->n_regions;r++) if (e->region[r].owner==c)
         for (int g=0;g<RES_COUNT;g++) out[g]+=e->region[r].stock[g];
 }
-static float avg_price(const WorldEconomy *e, Resource res){
-    double s=0.0; int n=0;
-    for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized){ s+=e->region[r].price[res]; n++; }
-    return n? (float)(s/n):0.f;
-}
+/* dédoublonné vers scps_econ.h:econ_avg_price (chronicle.c ET econ_scan.c portaient
+ * chacun une copie IDENTIQUE de ce corps — même ops, byte-identique). */
+static float avg_price(const WorldEconomy *e, Resource res){ return econ_avg_price(e,res); }
 typedef struct {
     int    year;                                 /* -1 = âge pas (encore) avéné */
     double gold_total, gdp_total, pop_total;

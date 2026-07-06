@@ -641,6 +641,15 @@ static inline int provmod_collect(const RegionEconomy *re, ProvModHit out[], int
 }
 #undef ECON_PROVMOD_BODY
 
+/* OUTILLAGE (télémétrie/diagnostic uniquement, jamais lu par le moteur) : prix moyen
+ * d'un bien sur toutes les régions colonisées. Dédoublonné (chronicle.c ET econ_scan.c
+ * portaient chacun une copie IDENTIQUE) — même corps, byte-identique par construction. */
+static inline float econ_avg_price(const WorldEconomy *e, Resource res){
+    double s=0.0; int n=0;
+    for (int r=0;r<e->n_regions;r++) if (e->region[r].colonized){ s+=e->region[r].price[res]; n++; }
+    return n? (float)(s/n):0.f;
+}
+
 /* Avance la simulation d'un pas. dt = années/tick (1 en annuel, 1/12 en mensuel) :
  * les processus cumulatifs (croissance, tech, impôt→trésor) suivent dt, les flux
  * production/consommation s'équilibrent par tick (satisfaction préservée). */

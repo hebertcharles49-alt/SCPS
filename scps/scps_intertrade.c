@@ -19,7 +19,11 @@
 #define IT_FLUV_UP     2.50f   /* remontée : le halage — cher, JAMAIS infini (plancher, pas mur)   */
 #define IT_VOL_FLOOR   0.40f   /* la capacité à contre-courant : divisée, jamais nulle             */
 #define IT_EXPORT_FRAC 0.25f   /* part du surplus que l'exportateur lâche par tick */
-#define IT_PRICE_CONV  0.20f   /* convergence partielle des prix (lissage) */
+/* IT_PRICE_CONV RETIRÉ (LOT 2, réparations 2026-07-06) : nudge de convergence de prix
+ * mort sous le régime de PRIX NATIONAL (2026-06-28) — il écrivait region[].price, la vue
+ * TRANSIENTE rebâtie chaque mois par econ_aggregate_regions depuis prov[].price (jamais
+ * touché ici), puis re-projetée par la formule nationale (pure fonction demand_nat/pool/
+ * supply_nat, sans mémoire du nudge). Voir CLAUDE.md « MISSION ÉCO — restes assumés ». */
 #define IT_MARGIN_TO_GOLD 0.50f/* part de la valeur transportée qui devient de l'OR pour l'exportateur */
 #define IT_CHOKE_TOLL  0.12f   /* WG : part de la valeur transportée que SKIME le tenant d'un détroit (transfert exportateur→tenant, modulée par l'étroitesse du goulet) */
 
@@ -986,9 +990,16 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
                   if (vol>g_expt_best[cs][g]){ g_expt_best[cs][g]=vol; g_expt_to [cs][g]=(int16_t)cd; }
                   if (vol>g_imp_best [cd][g]){ g_imp_best [cd][g]=vol; g_imp_from[cd][g]=(int16_t)cs; }
               } }
-            float mid=(pa+pb)*0.5f;                              /* les prix convergent partiellement */
-            A->price[g]+=(mid-A->price[g])*IT_PRICE_CONV;
-            B->price[g]+=(mid-B->price[g])*IT_PRICE_CONV;
+            /* RETIRÉ (LOT 2, réparations) : le nudge de convergence de prix écrivait
+             * A->price[g]/B->price[g] — pointeurs dans e->region[], la VUE TRANSIENTE
+             * rebâtie CHAQUE mois par econ_aggregate_regions (depuis prov[].price, le
+             * store RÉEL — jamais touché ici). Le mois suivant, econ_tick écrase aussi
+             * prov[].price via la formule « PRIX NATIONAL » (pure fonction demand_nat/
+             * pool/supply_nat, sans mémoire de ce nudge). Le nudge ne pouvait donc
+             * jamais survivre au-delà du jour où il s'écrivait : mort par construction
+             * sous le régime de prix national (2026-06-28). Preuve : econ_aggregate_regions
+             * (scps_econ.c) recopie ag->price[]=pe->price[] à chaque appel ; aucun site
+             * n'écrit prov[].price depuis intertrade. Voir CLAUDE.md « MISSION ÉCO ». */
         }
         if (choke_tax_route) g_n_choke_routes++;   /* WG : cette route a payé le verrou ce tick */
     }
@@ -1019,9 +1030,11 @@ void intertrade_tick(WorldEconomy *e, const RouteNetwork *rn, const DiploState *
             float profit=vol*(lp-sp)*cap;                        /* le CE encaisse une PART BORNÉE du spread */
             { float *h_tr=it_treasury(e,h); if (h_tr) *h_tr += profit; } g_centre_val[h]+=profit;
             if (H->owner>=0) econ_flux_add(H->owner, FX_EXPORT, profit);
-            float mid=(lp+sp)*0.5f;                               /* les prix CONVERGENT (local baisse, source monte) */
-            H->price[g]            += (mid-lp)*IT_PRICE_CONV;
-            e->region[src].price[g]+= (mid-sp)*IT_PRICE_CONV;
+            /* RETIRÉ (LOT 2, réparations) : même nudge mort que le bloc route ci-dessus —
+             * H->price[g]/e->region[src].price[g] sont la vue transiente, écrasée au
+             * prochain econ_aggregate_regions puis re-projetée depuis le PRIX NATIONAL.
+             * L'arbitrage réel (stock/trésor déplacés, borné par vcap/minsp) reste INTACT :
+             * seul le nudge de prix, sans effet observable, disparaît. */
         }
       }
     }
