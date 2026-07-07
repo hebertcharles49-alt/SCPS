@@ -2226,6 +2226,27 @@ func _water_at(x: int, y: int) -> bool:
 			return true
 	return _in_river_water(_rf_img, x, y)
 
+## RETIRE un point d'EAU vers `target` (déjà sec — le siège du bourg, `_find_seat`) par petits pas.
+## Le PLAN DE VILLE (`_build_town`) ne vérifie l'eau qu'à l'ANCRAGE ; ses éléments PÉRIPHÉRIQUES
+## (rang arrière de maisons, lanière de champ, arbre isolé) sont posés à une DISTANCE géométrique de
+## cet ancrage — sur une côte étroite/île (archipel, mers intérieures), cette distance peut suffire à
+## sortir en mer/lac. On re-teste donc chaque position FINALE, jamais seulement le point d'ancrage.
+func _pull_dry(p: Vector2, target: Vector2) -> Vector2:
+	if not _water_at(int(round(p.x)), int(round(p.y))):
+		return p
+	var dir := target - p
+	var dist := dir.length()
+	if dist < 0.01:
+		return p                              # l'ancrage lui-même en eau (ne devrait pas arriver, _find_seat le garantit sec)
+	dir /= dist
+	var steps := int(ceil(dist / 0.4))
+	var q := p
+	for _s in range(steps):
+		q += dir * 0.4
+		if not _water_at(int(round(q.x)), int(round(q.y))):
+			return q
+	return target                             # replié sur le centre (garanti sec) si tout le trajet est mouillé
+
 ## point de ROUTE le plus proche du siège + TANGENTE locale (espace monde).
 ## Retourne {d2, p, t} ; d2 = 1e30 si aucune route.
 func _seat_road(ctr: Vector2) -> Dictionary:
@@ -2354,6 +2375,12 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 					var push := dv.normalized() * (sep - d) * 0.5
 					houses[i]["w"] = pi - push
 					houses[j]["w"] = pj + push
+	# ── GARDE-FOU EAU : le plan (rangs arrière, ruelles, spirale, landmark) ÉLOIGNE les maisons
+	#    du siège par pure géométrie — sur une côte étroite/île, ça peut déborder en mer/lac (jamais
+	#    vérifié jusqu'ici, seul le SIÈGE `ctr` est garanti sec par `_find_seat`). Chaque maison est
+	#    donc retirée vers `ctr` si sa position FINALE tombe dans l'eau, avant tout calcul qui en dérive. ──
+	for hdw in houses:
+		hdw["w"] = _pull_dry(hdw["w"], ctr)
 	# ── le CENTRE BÂTI : muraille & clairière suivent la VILLE réelle (pas le siège abstrait
 	#    — le mur ne coupe plus le bâti quand la route passe loin du centroïde de région). ──
 	var bc := Vector2.ZERO
@@ -2385,6 +2412,7 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 			# ville MURÉE : les lanières partent AU-DELÀ de l'enceinte (sinon elles la chevauchent)
 			var fbase := (extent + 2.3) if ring_rad > 0.0 else (extent + 0.9)
 			var fc: Vector2 = org + axis * endd * (fbase + 1.5 * fh) + side * (fh2 - 0.5) * 2.6
+			fc = _pull_dry(fc, org)   # GARDE-FOU EAU : la lanière part loin du bourg — peut sortir en mer/lac
 			var fl := axis.rotated(0.12 * (fh - 0.5))            # lanière ~perpendiculaire à la rue
 			var fp := Vector2(-fl.y, fl.x)
 			var hl := 0.75 + 0.45 * fh2                          # demi-longueur
@@ -2439,9 +2467,11 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 				if absf(angle_difference(ta, float(g4))) < 0.30:
 					skip = true
 			if not skip:
-				towers.append(bc + Vector2(cos(ta), sin(ta)) * wrad)
+				# GARDE-FOU EAU : la tour est au rayon d'enceinte, qui peut déborder en mer sur
+				# une presqu'île étroite (le mur/arc lui-même reste un résidu connu, cf. TROUVAILLES).
+				towers.append(_pull_dry(bc + Vector2(cos(ta), sin(ta)) * wrad, bc))
 		for g5 in gates:                           # les PORTES : un point monde par angle (sprite gatehouse)
-			gate_pts.append(bc + Vector2(cos(float(g5)), sin(float(g5))) * wrad)
+			gate_pts.append(_pull_dry(bc + Vector2(cos(float(g5)), sin(float(g5))) * wrad, bc))
 	# ── les QUAIS : si le bourg touche l'EAU (mer ou rivière carvée) à ≤ 3 cellules —
 	#    une ou deux jetées de bois perpendiculaires au rivage ; une barque amarrée (t3+). ──
 	var quays := []
@@ -2486,8 +2516,9 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 		var f0: Dictionary = fields[0]
 		houses.append({"w": (f0["c"] as Vector2).lerp(bc, 0.35), "s": 0.42, "k": 4, "v": 0})        # GRANGE
 		if quays.is_empty() and tier >= 2:
-			houses.append({"w": (f0["c"] as Vector2) + (f0["d"] as Vector2) * (float(f0["hl"]) + 0.9),
-				"s": 0.44, "k": 3, "v": 0})                   # MOULIN À VENT
+			var fc0: Vector2 = f0["c"]
+			var wmw: Vector2 = _pull_dry(fc0 + (f0["d"] as Vector2) * (float(f0["hl"]) + 0.9), fc0)  # GARDE-FOU EAU
+			houses.append({"w": wmw, "s": 0.44, "k": 3, "v": 0})                   # MOULIN À VENT
 	if tier >= 3 or ring_rad > 0.0:
 		var fi := int(_h1(float(r) * 44.1) * float(n))        # la FORGE : une maison de rue qui fume
 		if fi < houses.size() and int(houses[fi]["k"]) == 0:
@@ -2504,7 +2535,8 @@ func _build_town(r: int, ctr: Vector2, n: int, landmark: int, ring_rad: float, t
 		var vr := (brad * (0.35 + 0.30 * _h1(float(r) * 6.7 + float(k)))) if inner \
 			else (brad + 0.35 + 0.65 * _h1(float(r) * 9.7 + float(k) * 2.1))
 		var vid: String = ["lot6_broadleaf_02", "lot6_broadleaf_06", "lot6_ground_01"][int(_h1(float(r) * 3.9 + float(k) * 1.7) * 3.0) % 3]
-		houses.append({"w": bc + Vector2(cos(va), sin(va) * 0.85) * vr, "s": 0.30, "k": 6,
+		var vw: Vector2 = _pull_dry(bc + Vector2(cos(va), sin(va) * 0.85) * vr, bc)   # GARDE-FOU EAU
+		houses.append({"w": vw, "s": 0.30, "k": 6,
 			"v": 0, "id": vid, "sc": 0.8 + 0.5 * _h1(float(r) * 12.3 + float(k))})
 	# ── les SPRITES (lot front32) : l'essence de chaque bâtiment est choisie AU PLAN — un
 	#    pool de maisons par palette du bourg (un village = une matière), les landmarks
@@ -2822,7 +2854,12 @@ func _build_dressing() -> void:
 					hits += 1
 					if bhit < 0:
 						bhit = b3
-			if bhit >= 0 and not _near_river(rf, px, py):
+			# GARDE-FOU EAU : le VOTE DE VOISINAGE regarde jusqu'à ±3 cellules (il lisse les bords
+			# de biome BRUITÉS) — mais un hit qui ne vient QUE d'un échantillon décalé peut retomber
+			# sur une ANCRE (px,py) déjà dans l'eau (île étroite/presqu'île). La position RÉELLE
+			# de pose (fx,fy, quasi = px,py) doit donc être testée à SON PROPRE compte, pas seulement
+			# via le vote — sinon un arbre pousse dans la mer/le lac (archipel, mers intérieures).
+			if bhit >= 0 and not _near_river(rf, px, py) and not _water_at(px, py):
 				var skip := false
 				for cl in _dress_clear:            # la clairière des bourgs vaut aussi en forêt
 					if (cl[0] as Vector2).distance_squared_to(Vector2(px, py)) < float(cl[1]):
@@ -2854,7 +2891,10 @@ func _build_dressing() -> void:
 							if (cl2[0] as Vector2).distance_squared_to(Vector2(qfx, qfy)) < float(cl2[1]):
 								qskip = true
 								break
-						if not qskip and not _near_river(rf, int(qfx), int(qfy)):
+						# l'offset ±3.5 cellules est testé à SA POSITION FINALE (qfx,qfy), pas à
+						# l'ancrage : sur une côte proche (île/presqu'île), l'extra peut sinon
+						# déborder en pleine mer/lac — jamais vérifié jusqu'ici.
+						if not qskip and not _near_river(rf, int(qfx), int(qfy)) and not _water_at(int(qfx), int(qfy)):
 							var cid2: String = cids[int(_h1(eb * 1.9) * float(cids.size())) % cids.size()]
 							var vj2 := 0.90 + 0.20 * _h1(eb * 2.3)
 							if not buckets.has(cid2):
