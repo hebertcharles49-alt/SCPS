@@ -1510,6 +1510,15 @@ void scps_tune_at(int i, ScpsTunable *out){
 }
 void scps_tune_set_val(const char *nom, double value){ tune_set(nom, (float)value); }
 
+/* LANGUE — bascule la table compilée que tr() résout (GLOBAL, display-only).
+ * Hors bornes : ignoré (la langue courante reste). La surcharge scps_lang.txt
+ * reste au-dessus — tr() lit g_override avant la table. */
+void scps_lang_set(int lang){
+    if (lang == 0) lang_set(LANG_FR);
+    else if (lang == 1) lang_set(LANG_EN);
+}
+int scps_lang_get(void){ return (lang_get() == LANG_EN) ? 1 : 0; }
+
 int scps_country_budget(ScpsSim *s, int cid, ScpsFluxLine *out, int max){
     if(!out || max<=0 || !s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
     int n=0;

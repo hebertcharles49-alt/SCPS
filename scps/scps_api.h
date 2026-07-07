@@ -879,6 +879,15 @@ typedef struct {
 int  scps_tune_count(void);
 void scps_tune_at(int i, ScpsTunable *out);
 void scps_tune_set_val(const char *nom, double value);
+
+/* ---- LANGUE (i18n moteur) --------------------------------------------- *
+ * Bascule la TABLE COMPILÉE que tr() résout (scps_lang.h : FR de référence /
+ * EN jumelle) — à CHAUD, GLOBAL (pas par-sim), display-only : les readouts
+ * traversants (province_info, bandes, conseils…) rendent la langue courante
+ * au PROCHAIN appel — aucune chaîne n'est cachée dans un état persistant.
+ * La surcharge fichier scps_lang.txt reste AU-DESSUS (tr() la lit d'abord). */
+void scps_lang_set(int lang);   /* 0 = FR · 1 = EN (autre valeur : ignorée) */
+int  scps_lang_get(void);       /* la langue active (0/1) */
 void scps_tech_info(ScpsSim *s, ScpsTechInfo *out);
 
 /* ---- BUDGET / FISCAL (econ_flux_get × FluxComp + crédit) -------------- *
