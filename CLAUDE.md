@@ -1974,6 +1974,28 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   (biome, symbole cartographique légitime). Preuve : seed 11 avant/après (≈15 arbres flottants
   disparus du lac, diff 20k px alignés sur le pourtour). Aucun fichier C ⇒ golden/déterminisme/SAVE
   intacts.
+- **LOT T — DOUBLE GATE (tier=POP unifié · bâtiments⇐TECH de palier) + RELIGION Temple/⌈N/2⌉
+  (2026-07-08)** : règles joueur verbatim. **(1) TIER DE PROVINCE = POP, source UNIQUE** :
+  `capitale_max_tier` (scps_labor.c) portait DÉJÀ les seuils exacts (T2 2000 · T3 3000 · T4 4000 ·
+  T5 5000 · T6 8000 · T7 10000) — le vrai bug était QUATRE barèmes divergents (façade
+  `scps_region_tier` ad hoc, stature readout, tier_h recopié) : tous délèguent désormais à la source
+  unique (seuils au registre J `TIER2_POP…TIER7_POP`, cachés au 1er appel — hot path, pas de F10
+  live). Grain PROVINCE pour la construction : les T-gates manuf de l'IA lisaient l'agrégat
+  region[].strata alors que la pose va sur la province représentative — `host_province_tier` gate
+  CETTE province. **(2) BÂTIMENT tier N ⇐ ≥1 TECH tier N** : `edifice_tier` (position dans la famille
+  via `edifice_prev` : Sanctuaire→Temple(2)→Cathédrale(3) ; singleton=1) ; le gate vit dans
+  `agency_build_acct` — la voie UNIQUE payée (IA + joueur CMD_BUILD) ; exception colonisation PAR
+  CONSTRUCTION (les poses gratuites n'y passent jamais). Miroir lot M tenu : `build_legal_ex` raison 4
+  « tech de palier manquante » + mot au survol + membrane_audit borné 0..4. Compteur `g_edi_notech`
+  (EDI_DBG) ; télémétrie chronicle « tiers de province » + « refusés faute de tech » (~50-90/sim — le
+  gate MORD). **(3) RELIGION** : cap `⌈N/3⌉→⌈N/2⌉` ; fondation au **Temple T2 bâti** (masque
+  TEMPLE|CATHEDRALE, joueur + IA ; zèle persiste jusqu'au Temple `faith<3.0`). ⚠ **MESURÉ : le Temple
+  ÉTRANGLE la fondation** (seed 9 : 1.3→0.3 foi/sim ; seed 11 : 0.5→0.5) — cause PRÉ-EXISTANTE : le
+  Sanctuaire ne se bâtit pas (nocap pool §5), l'ancienne fondation roulait en fait sur le MONASTÈRE
+  (dans l'ancien masque) ; le verrou n'est NI la tech T2 NI le prix du Temple — signalé, décision de
+  calibrage à part (retry nocap sur chantiers de foi vs Monastère site de fondation). golden
+  **IDENTIQUE** (rien <12 ans) · determinism STABLE · savetest byte-identique · api_demo 174/174 ·
+  MEMBRANE AUDIT OK · scons 0 warning · **SAVE non bumpé** (gates dérivés, cache transitoire).
 
 ## Disciplines non négociables
 
