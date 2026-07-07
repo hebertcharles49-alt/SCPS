@@ -11,6 +11,8 @@
 #include "scps_api.h"
 #include "scps_religion.h"   /* P3 : test de persistance religion */
 #include "scps_provlog.h"    /* DACT_* : le journal d'actes diplomatique */
+#include "scps_agency.h"     /* LOT T : edifice_tier (le palier de famille) */
+#include "scps_tech.h"       /* LOT T : tech_has_tier (la preuve de tier de recherche) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -216,6 +218,30 @@ int main(int argc, char **argv){
             dop.can_offer_alliance|dop.can_offer_pact|dop.can_offer_migration|dop.can_embargo|dop.can_lift_embargo) <= 1);
         ok("scps_build_legal : réponse bornée {0,1} (région · or)",
            (scps_build_legal(s2,-1,0) & ~1)==0);
+        /* ── LOT T — la GATE TECH PAR PALIER (edifice_tier ⇐ tech_has_tier) ── */
+        ok("LOT T edifice_tier : bases T1 (Sanctuaire · Tribunal · Marché · Grenier)",
+           edifice_tier(EDI_SANCTUAIRE)==1 && edifice_tier(EDI_TRIBUNAL)==1
+           && edifice_tier(EDI_MARCHE)==1 && edifice_tier(EDI_GRENIER)==1);
+        ok("LOT T edifice_tier : paliers ↑ (Temple 2 · Cathédrale 3 · Chancellerie 2 · Académie 3 · Arsenal 2)",
+           edifice_tier(EDI_TEMPLE)==2 && edifice_tier(EDI_CATHEDRALE)==3
+           && edifice_tier(EDI_CHANCELLERIE)==2 && edifice_tier(EDI_ACADEMIE)==3
+           && edifice_tier(EDI_ARSENAL)==2);
+        {   /* tech_has_tier PUR : état frais = tier 0 seul ; poser un nœud tier-2 l'ouvre. */
+            TechState lt; tech_state_init(&lt, false);
+            int found2=-1; for (int t=0;t<TECH_COUNT;t++){ const TechNode *nd=tech_node((TechId)t);
+                if (nd && nd->tier==2){ found2=t; break; } }
+            bool fresh_ok = tech_has_tier(&lt,0) && tech_has_tier(NULL,2) && !tech_has_tier(&lt,2);
+            if (found2>=0){ lt.unlocked[found2]=true; }
+            ok("LOT T tech_has_tier : frais=T0 seul · NULL permissif · nœud tier-2 posé ⇒ T2 ouvert",
+               fresh_ok && found2>=0 && tech_has_tier(&lt,2));
+        }
+        {   /* le MIROIR rapporte une raison BORNÉE 0..4 sur un édifice de palier ≥2 (Temple) —
+             * illégal à l'an ~0 (base de famille non bâtie → 1, ou tech de palier → 4, ou
+             * matière/or) : on prouve la borne + la cohérence, pas un monde précis. */
+            int r4=-9; int lg=scps_build_legal_ex(s2,-1,(int)EDI_TEMPLE,&r4);
+            ok("LOT T build_legal_ex(Temple) : raison bornée 0..4, cohérente avec legal",
+               r4>=0 && r4<=4 && ((lg==1)==(r4==0)));
+        }
     }
 
     /* ── ALLOCATION DE MAIN-D'ŒUVRE (onglet province) : lire les puits, poser un poids

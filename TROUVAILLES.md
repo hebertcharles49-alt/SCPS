@@ -521,3 +521,63 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - Le commentaire menteur (`scps_diplo.c:1153/1157`, `diplo_pillage_region`) reste à corriger — code déjà bon, texte à jour uniquement.
 - Site 2 (Merveille) n'a aucune exercice en chronique (player-only) : la seule preuve vivante est le banc `endgame_demo` C6 (`ci1 < ci0` après tick) — si un futur agent câble un chemin IA/chronique vers `endgame_start_wonder`, revérifier que la consommation réelle ne cale pas le chantier plus souvent que voulu (le rare peut manquer, c'est le coût VOULU, mais mesurer avant de juger).
 - Aucune borne/cooldown proposée sur le raid pirate (site 4) : la mission demandait de signaler seulement si le raid réel déséquilibre le monde ; mesuré SAIN sur seed 9/200 ans, pas de spirale de famine côtière observée — à re-vérifier sur un sweep plus large si un futur agent en doute.
+## 2026-07-07 — Lot T double gate + religion
+**Découvertes** :
+- Le « tier » vivait en QUATRE barèmes divergents : `capitale_max_tier` (scps_labor.c:18,
+  la vraie table T2 2000…T7 10000 — déjà les seuils joueur, pré-existants au lot) ·
+  `scps_region_tier` (scps_api.c, ad hoc 4000/1500/500/150/50 sur 0-5, « miroir viewer ») ·
+  la stature du readout (50/500/2000/6000) · le tier_h du readout (recopie littérale de la
+  table labor). E0.4 avait enterré `labor_region_cap_tier` (le registre « payé ») mais PAS
+  unifié les lecteurs. Lot T : tout délègue à `capitale_max_tier` ; seuils dialables
+  (`TIER2_POP…TIER7_POP`, registre J) mais mis en CACHE au 1er appel (hot path par-province
+  par-tick — un lookup registre linéaire par appel serait cher) ⇒ pas de F10 live sur ces 6.
+- GRAIN du T-gate : le moteur ÉCONOMIQUE est à la province (charte), mais les 3 T-gates
+  manuf de l'IA lisaient `region[].strata` (Σ toutes provinces) alors qu'`econ_build_manufacture`
+  pose sur la province REPRÉSENTATIVE — une région à 3 provinces de 1500 passait un gate T2
+  qu'AUCUNE province ne tient. `host_province_tier` (scps_ai.c, via econ_region_rep_province)
+  corrige ; repli tier 1 si pas de rep (fixtures). ⚠ D'AUTRES lecteurs région-grain restent
+  VOLONTAIREMENT hors périmètre (revolt:502, campaign:87, demography:485, econ:2218/2562 —
+  service/défense/besoins, pas de la construction) : à unifier un jour en conscience, pas en
+  passant. GOLDEN : le gate province-grain n'a PAS bougé le hash 12 ans (mono-province tôt).
+- La gate tech par palier : `edifice_tier` (position dans la famille via edifice_prev —
+  AUCUN champ table à ajouter) ⇐ `econ_country_has_tier` ⇐ `tech_has_tier`. Le fil TechState
+  → agency_build_acct passe par un CACHE TRANSITOIRE (pointeur posé par econ_apply_country_tech,
+  scps_econ.c) parce que changer la signature d'agency_build_acct casserait scps_sim.c:CMD_BUILD
+  (possédé par P ce jour-là). Jour-1 permissif (ai_step:655 précède econ_apply_country_tech:687
+  dans sim_day) — même classe de décalage que tech_arquebus. Bancs isolés (jamais de cache) =
+  permissif par construction (agency_demo passe sans rien toucher).
+- MIROIR lot M tenu : scps_build_legal_ex gagne la raison 4 (« tech de palier manquante »),
+  INSÉRÉE ENTRE la file F5 et la matière (même ordre que le drain). membrane_audit.gd étendu
+  (borne 0..4 + bucket histogramme). construction_panel.gd : le mot au survol.
+- RELIGION ⌈N/3⌉→⌈N/2⌉ : une ligne (religion_cap) + commentaires ; le schisme (RELIG_SCHISM_MAX 5
+  par racine) INTACT. api_demo recalibré (⌈4/2⌉=2 garde le même scénario de rallier-au-plafond).
+**Pièges** :
+- ⚠ **LE TEMPLE ÉTRANGLE LA FONDATION — MESURÉ, PAS CONTOURNÉ** (la mission demandait de
+  signaler) : seed 9 (3×250 ans) religion 1.3→0.3 foi/sim (baseline cda797f vs lot T) ;
+  seed 11 : 0.5→0.5 (inchangé). Cause EDI_DBG : le SANCTUAIRE lui-même ne se bâtit pas
+  (made=0 · nocap=59-71 — le pool commercial §5 n'a pas le bois/l'argile au moment de l'ordre,
+  PRÉ-EXISTANT, identique baseline) ⇒ l'échelle Sanctuaire→Temple ne DÉMARRE jamais ⇒ le
+  Temple n'est JAMAIS ordonné (aucun compteur). L'ancienne fondation (1.3/sim) roulait en
+  fait sur le MONASTÈRE (made=1, voie savoir, dans l'ancien masque tout-édifice-religieux) —
+  pas sur le Sanctuaire. Le vrai verrou n'est NI la tech T2 NI le prix du Temple : c'est
+  l'approvisionnement du Sanctuaire (nocap) + le masque restreint. Pistes si on veut r'ouvrir
+  (décision d'équilibrage, PAS prise ici) : autel humble bis (retry/file d'attente sur nocap),
+  ou compter le Monastère comme site de fondation, ou zèle qui ré-essaie plus souvent.
+- La baseline de religion avait DÉJÀ décru (2.0/sim documenté → 1.3 seed 9 / 0.5 seed 11
+  mesurés sur cda797f) — les re-baselines récents (Lot W worldgen) avaient déjà resserré ;
+  ne pas comparer au chiffre du CLAUDE.md sans re-mesurer le parent.
+- `golden` IDENTIQUE malgré tout (aucun re-baseline nécessaire) : dans la fenêtre 12 ans,
+  aucun empire ne pose d'édifice palier ≥2 sans tech T2, aucune fondation <12 ans sur les
+  5 graines golden, et le grain province==région tôt (mono-province). Vérifié `make golden`.
+- Mesurer le parent : `git checkout <sha>` DÉTACHÉ dans SON worktree + rebuild fonctionne
+  bien (pas besoin d'un worktree de plus) ; ne pas oublier de re-checkout la branche ET de
+  rebuilder avant le savetest.
+**Restes** :
+- Le compteur `g_edi_notech` n'est pas sérialisé (télémétrie pure, RAZ agency_init — même
+  classe que g_edi_made : jamais lu par le moteur). RAS pour le savetest (vérifié seed 9
+  byte-identique) mais un futur --savetest qui comparerait la TÉLÉMÉTRIE verrait un écart.
+- Les seuils TIER2_POP…TIER7_POP sont surchargeables au LANCEMENT (SCPS_TUNE) mais pas au
+  panneau F10 en direct (cache statique scps_labor.c) — documenté dans le fichier ; si un
+  jour on veut le live, invalider le cache depuis tune_set (hook à ajouter).
+- Fondation religion : cible « ≈ cap 3-4/sim » PAS atteinte (0.3-0.5/sim) — cf. Pièges ;
+  la décision (assouplir quoi) appartient à l'orchestrateur/joueur.
