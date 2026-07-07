@@ -559,13 +559,22 @@ static void endgame_faction_react(FinType fin, int fauteur) {
 /* FORGE ← fer céleste · SOCIÉTÉ ← flux · SAVOIR ← essence */
 static const Resource MERV_RARE[3] = { RES_CELESTIAL_IRON, RES_FLUX, RES_ESSENCE };
 
-/* Consomme jusqu'à `amount` de `good` dans le POOL de l'empire (P1) ; renvoie le pris. */
+/* Consomme jusqu'à `amount` de `good` dans le POOL de l'empire (P1) ; renvoie le pris.
+ * RE-KEY (Lot B, 2026-07-07) : region[].stock[] est un REFLET reconstruit EN ENTIER
+ * depuis prov[] à chaque econ_aggregate_regions — décrémenter la vue directement
+ * s'évapore (≤ 30 j) : la Merveille avançait GRATIS en matière (le fer céleste/flux/
+ * essence n'était jamais réellement retiré). Route par econ_region_stock_add
+ * (province représentative d'abord, sœurs en débordement) ; le `got` reflète
+ * désormais le PRIS RÉEL — le chantier peut caler si l'empire manque de rares,
+ * ce qui est le coût VOULU. */
 static float endgame_empire_consume(WorldEconomy *econ, int owner, Resource good, float amount) {
     float got = 0.f;
     for (int r = 0; r < econ->n_regions && got < amount; r++) {
         if (econ->region[r].owner != owner) continue;
-        float take = fminf(amount - got, econ->region[r].stock[good]);
-        if (take > 0.f) { econ->region[r].stock[good] -= take; got += take; }
+        float want = amount - got;
+        if (want <= 0.f) continue;
+        float taken = -econ_region_stock_add(econ, r, good, -want);   /* self-clampe au dispo réel (provinces) */
+        got += taken;
     }
     return got;
 }

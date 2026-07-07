@@ -1304,7 +1304,16 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                 float price=cre->price[RES_ARMS]; if (price<0.2f) price=0.2f;
                 float cost =20.f*price*(cre->import_margin>0.f?cre->import_margin:1.f);
                 if (credit_can_spend(econ, w, a->cid, cost)){
-                    credit_spend(econ, w, a->cid, cost); cre->stock[RES_ARMS]+=20.f;
+                    /* RE-KEY (Lot B, 2026-07-07) : region[hr].stock[] est un REFLET reconstruit
+                     * EN ENTIER depuis prov[] à chaque econ_aggregate_regions — une écriture
+                     * directe s'y évapore (≤ 30 j) alors que l'or, lui, était réellement débité
+                     * (credit_spend). Route par econ_region_stock_add (province représentative
+                     * d'abord, sœurs en débordement). RES_ARMS *est* RES_ARMS_LIGHT (alias F1,
+                     * scps_types.h:209) — la catégorie que la levée consomme réellement pour le
+                     * roster léger (Piquier/Lancier/Épéiste/Cav légère/Lame franche/Cav de raid,
+                     * cf. unit_res_arm, scps_army.c:109) : c'est déjà LE bon bien, pas besoin
+                     * d'en changer, seulement de le déposer pour de vrai. */
+                    credit_spend(econ, w, a->cid, cost); econ_region_stock_add(econ, hr, RES_ARMS_LIGHT, 20.f);
                     econ_flux_add(a->cid, FX_SOLDE, -cost);          /* I0 : la ligne militaire */
                     a->stats.builds_h++;                             /* l'arsenal = sa largeur martiale */
                     faction_lever_apply(a->cid, FAC_CONQUERANT, AI_LEVER_BUILD);

@@ -1150,11 +1150,13 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
 #define PILLAGE_STOCK_FRAC 0.5f    /* ~6 mois de production en entrepôt, fondus en or */
 float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region){
     if (!econ || region<0 || region>=econ->n_regions) return 0.f;
-    RegionEconomy *re=&econ->region[region];        /* stock[]/price[] = MARCHÉ (charte : grain région, INTACT) */
+    RegionEconomy *re=&econ->region[region];        /* stock[]/price[] : LECTURE d'agrégat seulement */
     /* RE-KEY PROVINCE : treasury/revolt_scar/pillage_cd sont PROVINCE-OWNED (charte règle 1) —
      * region[region].<champ> est un DÉRIVÉ écrasé au prochain econ_tick ; route sur la province
      * représentative (le GATE anti-re-saccage aussi, sinon un 2e appel dans le MÊME tick lirait
-     * l'ancien re->pillage_cd, jamais rafraîchi). stock[]/price[] restent au grain RÉGION (marché, intact). */
+     * l'ancien re->pillage_cd, jamais rafraîchi). ⚠ region[].stock N'EST PAS un store « resté au
+     * grain région » : c'est un REFLET reconstruit depuis prov[] — ici on ne fait que le LIRE
+     * (valorisation du butin) ; toute ÉCRITURE de stock passe par econ_region_stock_add. */
     int pid=econ_region_rep_province(econ, region);
     if (pid<0 || pid>=econ->n_prov) return 0.f;
     ProvinceEconomy *pp=&econ->prov[pid];

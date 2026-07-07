@@ -96,11 +96,15 @@ static void mission_grant(const World *w, WorldEconomy *econ, int cid, const Mis
     int cr=capital_region(w,econ,cid);
     if (cr<0) return;
     /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative.
-     * stock[] reste au grain RÉGION (le marché, charte, INTACT). */
+     * region[].stock[] est un REFLET reconstruit EN ENTIER depuis prov[] à chaque
+     * econ_aggregate_regions — PAS « le marché, resté au grain région, intact » (le
+     * faux mantra qui a produit ce trou, Lot B 2026-07-07) : une écriture directe s'y
+     * évapore (≤ 30 j). Route par econ_region_stock_add (province représentative
+     * d'abord, sœurs en débordement) comme le trésor ci-dessus. */
     int crp=econ_region_rep_province(econ,cr);
     if (crp>=0 && crp<econ->n_prov) econ->prov[crp].treasury += m->reward_gold;   /* or au trésor */
     if (m->reward_mat>RES_NONE && m->reward_mat<RES_COUNT)
-        econ->region[cr].stock[m->reward_mat] += m->reward_qty;  /* matières au marché */
+        econ_region_stock_add(econ, cr, m->reward_mat, m->reward_qty);  /* matières au marché */
 }
 
 void missions_tick(MissionsState *ms, const World *w, WorldEconomy *econ,

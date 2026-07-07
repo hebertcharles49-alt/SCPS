@@ -1946,6 +1946,22 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   mono-région) ; determinism STABLE · savetest seed 9 byte-identique · test 39/40 (KO setenv
   pré-existant) · scons 0 warning. Restes (TROUVAILLES) : archétypes à âge bas = masses fusionnées
   (dérive couplée à l'âge) · SEA_LEVEL non paramétrable · hachures dialables shader-only.
+- **LOT B — LES 4 ÉCRITURES FANTÔMES routées provinces (2026-07-07)** : la doctrine joueur actée —
+  « rien ne doit appeler les régions : la PROVINCE habite/bâtit/produit/lève ; la région n'est que
+  l'AGRÉGAT politique (résumé UI) ». Les 4 sites de l'addendum d'audit routés par
+  `econ_region_stock_add` : (1) dépôt d'armes IA (scps_ai.c — ⚠ `RES_ARMS_LIGHT` est un ALIAS
+  save-safe de `RES_ARMS`, scps_types.h:209 : le « doublement mort » de l'audit était faux, seul le
+  canal d'écriture était cassé) ; (2) `endgame_empire_consume` — **la Merveille consomme enfin ses
+  rares POUR DE VRAI** (peut caler faute de matière — voulu ; player-only ⇒ golden-neutre) ;
+  (3) récompense matière de mission ; (4) dîme du raid pirate — le butin-or se calcule sur le PRIS
+  RÉEL (delta du helper). Les commentaires-mantras « stock au grain RÉGION, intact » RÉÉCRITS
+  (3 copies : missions, navy, diplo). Mesuré (seed 9, 3×200 ans apparié) : arsenal IA **+64 %**
+  (5856→9614), course pirate 7 raids/277 or → **20 raids/763 or**, monde SAIN (hégémon mortel 3/3,
+  satisfaction ~80/88/87, IPM ~1.2). ⚠ re-baseline golden : **seed 411 seul** (les 3 autres sites
+  mordent tard/joueur-only). ⚠ TROUVAILLE de fond : les bancs endgame/missions passaient AVANT le
+  fix — ils ne roulent jamais un tick complet entre l'écriture et le CHECK ⇒ AVEUGLES à cette classe
+  (un banc « écriture fantôme » exigerait write → econ_tick → re-read). savetest 9/7/11/42
+  byte-identique · fuzz 9/9 · determinism STABLE · test 39/40 · 0 warning. **SAVE non bumpé**.
 
 ## Disciplines non négociables
 

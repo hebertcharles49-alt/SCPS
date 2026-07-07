@@ -489,12 +489,20 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                 } else identified=(crs_f(rng)<0.35f);
                 if (success && n->hull[HULL_PIRATE]>0){
                     /* RE-KEY PROVINCE : balafre_days/raid_cd_days/treasury sont PROVINCE-OWNED
-                     * (charte règle 1, max/Σ-agrégés) — stock[]/price[] restent au grain
-                     * RÉGION (le marché, INTACT). */
+                     * (charte règle 1, max/Σ-agrégés). stock[] N'EST PAS « resté au grain région,
+                     * intact » (le faux mantra qui a produit ce trou, Lot B 2026-07-07) : c'est un
+                     * REFLET reconstruit EN ENTIER depuis prov[] à chaque econ_aggregate_regions —
+                     * une écriture directe s'y évapore (≤ 30 j), la victime ne perdait RIEN
+                     * durablement et le butin-or se calculait sur cette matière fantôme (or créé
+                     * ex nihilo). Route par econ_region_stock_add (province représentative
+                     * d'abord, sœurs en débordement) ; loot se calcule sur le PRIS RÉEL (le delta
+                     * rendu par le helper), price[] reste une LECTURE agrégée légitime. */
                     float loot=0.f;
                     for (int g=1;g<RES_COUNT;g++){
-                        loot += re->stock[g]*COURSE_RAID_TITHE*re->price[g];
-                        re->stock[g]*=(1.f-COURSE_RAID_TITHE);
+                        float want = re->stock[g]*COURSE_RAID_TITHE;
+                        if (want<=0.f) continue;
+                        float taken = -econ_region_stock_add(econ, best, g, -want);
+                        loot += taken*re->price[g];
                     }
                     int bpid=econ_region_rep_province(econ,best);
                     if (bpid>=0 && bpid<econ->n_prov){
