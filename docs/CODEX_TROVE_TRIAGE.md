@@ -57,6 +57,24 @@ Tampons/tuiles de carte, inutilisés depuis le passage au shader parchemin :
 - `2026-06-16/Jeu1-SCPS.zip`, `SCPS-claude-…-2.zip` → **snapshots du dépôt** (code), pas
   des assets. Ignorer.
 
+## 🧠 NON-ASSETS — analyses & propositions de code (dossiers 07-01 → 07-05)
+Ces dossiers ne sont PAS des packs d'assets — ce sont des sorties de travail Codex :
+- `2026-07-01/tu/outputs/scps_code*.txt` → dump du code source (avec/sans commentaires).
+  Redondant avec le repo. Ignorer.
+- `2026-07-02`, `2026-07-03`, `2026-07-04` → dossiers `work/` (llama.cpp, outillage Codex).
+  Rien pour le jeu. Ignorer.
+- `2026-07-05/ana/outputs/audit-scps-lecture-seule.md` (221 lignes) → **AUDIT read-only
+  utile**. P1 : `research_target` + la file `cmd_n` ne sont PAS dans le save → au chargement
+  d'une partie joueur, la cible de recherche courante retombe à -1 et une commande en attente
+  pourrait s'appliquer au monde chargé. ⚠ Les classes d'ACCUMULATEURS qu'il craint (caches
+  globaux, routes) ont DÉJÀ été traitées (EMOB v57 · COLC v61 · TXYR v65 · hub intertrade) —
+  reste ce trou `research_target`/`cmd_n` (QoL joueur mineur, pas une corruption). À trancher
+  à part (sérialiser research_target, décider du sort de cmd_n au load).
+- `2026-07-05/ana/outputs/scps_event_batch_pattern_code.md` → **proposition de contenu** :
+  un lot d'évènements au motif « situation → 3 choix imparfaits → rareté → conséquence ». À
+  évaluer vs le pipeline events existant si on veut plus de contenu.
+- `2026-07-05/…/scps_propositions_release_design.xlsx` → tableur de design de release. À lire.
+
 ## Ordre d'action recommandé
 1. **MAINTENANT** : écrans de fin + bordures (fait/en cours ce tour).
 2. **QUAND LES AGENTS REPASSENT** (limite de session ~3h40) : la RE-DÉCOUPE des 4 masters
