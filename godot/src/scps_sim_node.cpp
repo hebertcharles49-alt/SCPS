@@ -119,6 +119,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_refill"),                     &ScpsWorld::player_refill);
     ClassDB::bind_method(D_METHOD("player_navy_build", "hull"),         &ScpsWorld::player_navy_build);
     ClassDB::bind_method(D_METHOD("player_disband"),                    &ScpsWorld::player_disband);
+    ClassDB::bind_method(D_METHOD("player_raid_coast", "prov"),         &ScpsWorld::player_raid_coast);
+    ClassDB::bind_method(D_METHOD("can_raid_coast", "prov"),            &ScpsWorld::can_raid_coast);
     ClassDB::bind_method(D_METHOD("player_build_manuf", "region", "bld"), &ScpsWorld::player_build_manuf);
     ClassDB::bind_method(D_METHOD("manuf_legal", "region", "bld"),        &ScpsWorld::manuf_legal);
     ClassDB::bind_method(D_METHOD("manuf_cost"),                          &ScpsWorld::manuf_cost);
@@ -1244,6 +1246,23 @@ bool ScpsWorld::player_embargo(int target, bool on) {
 /* W-GUERRE-3 — FABRIQUER une revendication (payante) contre `target`. */
 bool ScpsWorld::player_fabricate_cb(int target) {
     return sim ? scps_player_fabricate_cb(sim, target) != 0 : false;
+}
+
+/* LOT P — PILLER LA CÔTE : verbe (enfile) + légalité/CD (griser + « côte balafrée — X j »). */
+bool ScpsWorld::player_raid_coast(int prov) {
+    return sim ? scps_player_raid_coast(sim, prov) != 0 : false;
+}
+Dictionary ScpsWorld::can_raid_coast(int prov) {
+    Dictionary d;
+    int reason = 1, legal = 0, cd = 0;
+    if (sim) {
+        legal = scps_can_raid_coast(sim, prov, &reason);
+        cd    = scps_raid_cd_days(sim, prov);
+    }
+    d["legal"]   = (bool)legal;
+    d["reason"]  = reason;
+    d["cd_days"] = cd;
+    return d;
 }
 
 /* ── ALLOCATION DE MAIN-D'ŒUVRE — la membrane traverse en Dictionary (mots + poids) ── */

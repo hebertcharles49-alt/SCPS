@@ -168,6 +168,11 @@ public:
     bool       player_refill();                       /* guerre : recompléter l'armée de campagne */
     bool       player_navy_build(int hull);           /* flotte : mettre une coque en chantier */
     bool       player_disband();                      /* guerre : dissoudre la réserve levée */
+    /* LOT P — PILLER LA CÔTE (pillage unifié : 20% du revenu annuel + esclavage si gate).
+     * can_raid_coast → { legal:bool, reason:int (0 OK·1 pas côtière·2 allié/pacte·3 CD·4
+     * pas de coque pirate), cd_days:int (« côte balafrée — X j ») }. */
+    bool       player_raid_coast(int prov);
+    Dictionary can_raid_coast(int prov);
     /* PANNEAU B — poser une MANUFACTURE civile par région (le §NF l'exclut : voici la main). */
     bool       player_build_manuf(int region, int bld);  /* enfile l'ordre (drain revalidé) */
     int        manuf_legal(int region, int bld);         /* légalité read-only (griser le bouton) */

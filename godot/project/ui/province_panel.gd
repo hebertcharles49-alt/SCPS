@@ -286,6 +286,21 @@ func _draw() -> void:
 		else:
 			# en paix → tenter une ROUTE commerciale depuis ma capitale (le moteur gate ports/pactes)
 			_act_chips(x, y, [["Route terre", "route_land"], ["Route mer", "route_sea"]])
+		# LOT P — PILLER LA CÔTE (pillage unifié : 20% du revenu annuel de la victime +
+		# razzia si gate esclavagiste). Acte GRIS (pas de guerre requise — miroir de la
+		# course pirate IA) ; gaté côtier/ni-allié-ni-pacte/CD/coque par can_raid_coast.
+		if w.has_method("can_raid_coast"):
+			var rd: Dictionary = w.can_raid_coast(_pid)
+			var rr := int(rd.get("reason", 1))
+			if bool(rd.get("legal", false)):
+				_act_chips(x, y + 26, [["Piller la côte", "raid_coast"]])
+			elif rr == 3:
+				# le rappel de la scar : la vache est traite, l'immunité court encore
+				VKit.text(self, Vector2(x, y + 29), VKit.COL_DIM,
+					"Côte balafrée — %d j" % int(rd.get("cd_days", 0)), VKit.FS_SMALL)
+			elif rr == 4:
+				VKit.text(self, Vector2(x, y + 29), VKit.COL_DIM,
+					"Piller la côte : aucune coque pirate", VKit.FS_SMALL)
 
 ## une rangée de CHIPS d'action (petits boutons) — les rects sont mémorisés dans _acts
 ## avec leur verbe, hit-testés au clic. Retourne rien (le layout suit x fixe).
@@ -325,6 +340,10 @@ func _act_fire(verb: String) -> void:
 			var capr2: int = w.province_region(w.country_capital_province(w.player()))
 			if capr2 >= 0 and reg >= 0:
 				w.player_route(capr2, reg, verb == "route_sea")
+		"raid_coast":
+			# LOT P — enfilé (drain revalidé) ; au tick suivant le chip devient
+			# « Côte balafrée — X j » (le CD posé par le pillage réussi).
+			w.player_raid_coast(_pid)
 	queue_redraw()
 
 # milliers lisibles : 12345 → "12 345"

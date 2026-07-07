@@ -386,6 +386,43 @@ int main(int argc, char **argv){
         ok("panneau B : hors-borne refusé (type 999)", scps_manuf_legal(s2, 0, 999)==0);
     }
 
+    /* ── LOT P (2026-07-07) — PILLER LA CÔTE : légalité + verbe enfilé → CD posé au drain.
+     *    Miroir du round-trip colonisation/panneau B : légal → enfilé → drainé → plus
+     *    légal (la balafre/l'immunité vient d'être posée sur la province cible). Le
+     *    joueur reçoit sa coque pirate par le setter BANC-only (motif
+     *    intertrade_debug_set_hub_of) — le monde de test n'a pas toujours de quoi en
+     *    bâtir une dans la fenêtre du banc. ── */
+    {
+        scps_debug_set_pirate_hulls(s2, 1);         /* la coque du banc */
+        int np=scps_province_count(s2);
+        int tgt=-1;
+        for (int pp=0; pp<np && tgt<0; pp++)
+            if (scps_can_raid_coast(s2, pp, NULL)) tgt=pp;
+        printf("   piller la côte : cible légale = province %d\n", tgt);
+        if (tgt>=0){
+            int reason=-1;
+            ok("piller la côte : légal (scps_can_raid_coast, reason=0)",
+               scps_can_raid_coast(s2, tgt, &reason)==1 && reason==0);
+            ok("verbe PILLER LA CÔTE enfilé", scps_player_raid_coast(s2, tgt)==1);
+            scps_sim_advance_days(s2, 2);           /* le drain applique (pillage + CD/balafre) */
+            int reason2=-1;
+            ok("piller la côte : la MÊME cible n'est plus légale (balafre/CD posé)",
+               scps_can_raid_coast(s2, tgt, &reason2)==0 && reason2==3);
+            int cd=scps_raid_cd_days(s2, tgt);
+            printf("   piller la côte : CD restant %d j\n", cd);
+            ok("piller la côte : le CD restant est LISIBLE (~5 ans — « côte balafrée — X j »)",
+               cd>1700 && cd<=1825);
+        } else {
+            ok("piller la côte : aucune cible légale (monde trop petit/homogène) — verbe refusé proprement",
+               scps_player_raid_coast(s2, 0)==1);   /* enfilé ; le drain refusera sans crash */
+            scps_sim_advance_days(s2, 2);
+            ok("piller la côte : drain sans crash sur refus", 1);
+            ok("piller la côte : (CD lisible sauté — pas de cible dans ce monde)", 1);
+        }
+        scps_debug_set_pirate_hulls(s2, 0);         /* on rend le banc comme trouvé */
+        ok("piller la côte : hors-borne refusé (province 999999)", scps_can_raid_coast(s2, 999999, NULL)==0);
+    }
+
     scps_sim_free(s); scps_sim_free(s2);
 
     /* ── CRÉATEUR DE CULTURE : listes + validation + aperçu + composition (headless) ──

@@ -300,33 +300,51 @@ int main(int argc,char**argv){
         }
     }
 
-    /* ---- 6. Saccage (§4) : la prise DÉPOUILLE la province (1×/5 ans) ---- */
-    printf("\n── 6. Saccage (or + production → trésor de l'occupant · 1×/5 ans) ──\n");
-    if(econ->n_regions>=2){
-        int vic=0, occ=1;
-        /* RE-KEY PROVINCE : treasury/revolt_scar/pillage_cd sont PROVINCE-OWNED (routés par
-         * diplo_pillage_region sur econ_region_rep_province) — stock[]/price[] restent au
-         * grain RÉGION (le marché, charte). On pose/lit donc sur la province représentative
-         * pour treasury/scar/cd, et sur la région pour stock/price. */
-        int vic_pid=econ_region_rep_province(econ,vic), occ_pid=econ_region_rep_province(econ,occ);
-        RegionEconomy *rvr=&econ->region[vic];
-        ProvinceEconomy *rv=&econ->prov[vic_pid], *ro=&econ->prov[occ_pid];
-        rv->pillage_cd=0.f; rv->revolt_scar=0.f; rv->treasury=1000.f;
-        for(int g=1;g<RES_COUNT;g++){ rvr->stock[g]=10.f; rvr->price[g]=1.f; }
-        float occ0=ro->treasury, vic0=rv->treasury;
-        float loot=diplo_pillage_region(econ,vic,occ);
-        printf("   sac de la région %d → %d : butin = %.0f or-équiv.\n",vic,occ,loot);
-        ok("le saccage rapporte un butin (or des coffres + entrepôt valorisé)", loot>600.f);
-        ok("le trésor de l'OCCUPANT enfle du butin entier",
-           ro->treasury > occ0+loot-1.f && ro->treasury < occ0+loot+1.f);
-        ok("la province pillée est VIDÉE de son or", rv->treasury < vic0);
-        ok("le sac CONVULSE la province (cicatrice au plancher → gel)", rv->revolt_scar > 0.99f);
-        float loot2=diplo_pillage_region(econ,vic,occ);
-        ok("on ne RE-saccage pas avant 5 ans (plus rien à prendre)", loot2==0.f);
-        ok("le compteur anti-saccage est armé (~5 ans)", rv->pillage_cd > 4.5f);
-        for(int t=0;t<6;t++) econ_tick(econ,1.f);   /* 6 ans s'écoulent (cd décroît par an) */
-        ok("après ~5 ans, la province REDEVIENT saccageable", econ->prov[vic_pid].pillage_cd <= 0.f);
-    } else ok("(monde trop petit pour le test de saccage)", true);
+    /* ---- 6. Saccage (§4 → LOT P 2026-07-07) : valeur = 20% du revenu ANNUEL de la victime ---- */
+    printf("\n── 6. Saccage (or + production → trésor de l'occupant · valeur = 20%% du revenu annuel · 1×/5 ans) ──\n");
+    {
+        int vic=-1, occ=-1;
+        for(int r=0;r<econ->n_regions && vic<0;r++) if(econ->region[r].owner>=0) vic=r;
+        for(int r=0;r<econ->n_regions && occ<0;r++) if(r!=vic) occ=r;
+        if(vic>=0 && occ>=0){
+            int vic_cid = econ->region[vic].owner;
+            /* RE-KEY PROVINCE : treasury/revolt_scar/pillage_cd sont PROVINCE-OWNED (routés par
+             * diplo_pillage_region sur econ_region_rep_province) — stock[]/price[] restent au
+             * grain RÉGION (le marché, charte). On pose/lit donc sur la province représentative
+             * pour treasury/scar/cd, et sur la région pour stock/price. */
+            int vic_pid=econ_region_rep_province(econ,vic), occ_pid=econ_region_rep_province(econ,occ);
+            RegionEconomy *rvr=&econ->region[vic];
+            ProvinceEconomy *rv=&econ->prov[vic_pid], *ro=&econ->prov[occ_pid];
+            rv->pillage_cd=0.f; rv->revolt_scar=0.f; rv->treasury=1000.f;
+            for(int g=1;g<RES_COUNT;g++){ rvr->stock[g]=10.f; rvr->price[g]=1.f; }
+            /* revenu ANNUEL de la victime SEMÉ à une valeur CONNUE (3650/an) — le pillage
+             * doit valoir EXACTEMENT 20% de ce revenu (730), borné par ce qui existe (ici
+             * largement couvert : 1000 or + ~9000 de stock valorisé). */
+            econ_flux_reset();
+            econ_flux_add(vic_cid, FX_TAX, 3650.f);
+            econ_flux_year_capture();
+            float occ0=ro->treasury, vic0=rv->treasury;
+            float loot=diplo_pillage_region(econ,vic,occ,vic_cid);
+            printf("   sac de la région %d → %d : butin = %.0f or-équiv. (cible 20%% de 3650 = 730)\n",vic,occ,loot);
+            ok("le saccage vaut PRÉCISÉMENT 20% du revenu annuel de la victime", loot>729.f && loot<731.f);
+            ok("le trésor de l'OCCUPANT enfle du butin entier",
+               ro->treasury > occ0+loot-1.f && ro->treasury < occ0+loot+1.f);
+            ok("la province pillée est VIDÉE d'autant (or RÉELLEMENT PRIS)", rv->treasury < vic0);
+            ok("le sac CONVULSE la province (cicatrice au plancher → gel)", rv->revolt_scar > 0.99f);
+            float loot2=diplo_pillage_region(econ,vic,occ,vic_cid);
+            ok("on ne RE-saccage pas avant 5 ans (plus rien à prendre)", loot2==0.f);
+            ok("le compteur anti-saccage est armé (~5 ans)", rv->pillage_cd > 4.5f);
+            for(int t=0;t<6;t++) econ_tick(econ,1.f);   /* 6 ans s'écoulent (cd décroît par an) */
+            ok("après ~5 ans, la province REDEVIENT saccageable", econ->prov[vic_pid].pillage_cd <= 0.f);
+
+            /* BORNE : une victime PAUVRE (presque rien à donner) ne rend QUE ce qu'elle a —
+             * jamais d'or/matière fantôme, même si la cible (20% du revenu) est bien plus haute. */
+            rv->pillage_cd=0.f; rv->treasury=5.f;
+            for(int g=1;g<RES_COUNT;g++) rvr->stock[g]=0.f;
+            float loot3=diplo_pillage_region(econ,vic,occ,vic_cid);
+            ok("une victime PAUVRE ne rend QUE ce qu'elle a (borné, pas de fantôme)", loot3<=5.01f);
+        } else ok("(monde trop petit pour le test de saccage)", true);
+    }
 
     /* ---- 6b. LOT 4 — LE PILLAGE DE SIÈGE (mensuel, ∝ production, PENDANT le siège) ---- */
     printf("\n── 6b. LOT 4 : le siège détourne CHAQUE MOIS une fraction de la PRODUCTION (matière RÉELLEMENT prise) ──\n");
@@ -534,12 +552,12 @@ int main(int argc,char**argv){
             econ->prov[srcP].pop.n_groups=1; econ->prov[srcP].pop.groups[0]=foe;
 
             /* GATE = esclavagiste (TECH_ESCLAVAGE OU éthos conquérant, résolu par l'appelant) : booléen.
-             * BRASSAGE : SLAVE_FRACTION calé BAS (0.08 « taux très faible ») — la déportation apporte
-             * (savoir arraché, diffusion faible) sans jamais dominer. */
+             * LOT P (2026-07-07) : SLAVE_FRACTION calée à 5% (règle joueur verbatim, ex-0.08) —
+             * la déportation apporte (savoir arraché, diffusion faible) sans jamais dominer. */
             long captives=diplo_enslave_capture(w,econ,A,srcR,/*enslaves*/true);
-            printf("   captifs déportés au cœur : %ld (sur 4000, ~8%%)\n",captives);
-            ok("un esclavagiste DÉPORTE une FRACTION FAIBLE (~8 %) de la population prise",
-               captives>0 && captives<=500);
+            printf("   captifs déportés au cœur : %ld (sur 4000, ~5%%)\n",captives);
+            ok("un esclavagiste DÉPORTE une FRACTION FAIBLE (~5 %) de la population prise",
+               captives>0 && captives<=300);
             ok("la capitale gagne un GROUPE de plus — les captifs au cœur",
                econ->prov[capP].pop.n_groups==2);
             PopGroup *g=&econ->prov[capP].pop.groups[econ->prov[capP].pop.n_groups-1];

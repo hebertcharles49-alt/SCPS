@@ -102,6 +102,14 @@ enum { CMD_NONE=0, CMD_BUILD, CMD_RECRUIT, CMD_SET_LEVY, CMD_RESEARCH,
         * a[0]=seat, a[1]=paie ×100 (0..200 → 0×..2×). Revalidé au drain : siège
         * pourvu (sinon rien à payer), clampé [0,2]. */
        CMD_COUNCIL_PAY,
+       /* LOT P — PILLER LA CÔTE (règle joueur : « piraterie, raids, tout type
+        * d'occupation = pillage »). a[0]=province CIBLE (côtière, à un AUTRE pays,
+        * ni allié ni pacte — miroir de la course pirate IA). Revalidé au drain :
+        * province valide/peuplée/côtière, pas à soi/allié/pacte, pas de balafre
+        * active (raid_cd_days), le joueur tient ≥1 coque PIRATE. Exécution = le
+        * MÊME chemin de pillage unifié (20% du revenu annuel + esclavage 5% si
+        * gate) que le sac de siège/l'occupation, + pose du CD/balafre. */
+       CMD_RAID_COAST,
        CMD_COUNT };
 #define SCPS_CMDQ_MAX 64
 typedef struct { uint8_t verb; int32_t a[4]; } PlayerCmd;
@@ -156,6 +164,9 @@ extern long g_tot_occ_posed, g_tot_occ_lifted;   /* occupations posées / levée
  * captures de sac (déportations à la CHUTE, avant règlement). */
 extern double g_siege_loot_total;
 extern long   g_siege_sack_captures;
+/* LOT P (2026-07-07) — pillage unifié : valeur pillée cumulée à l'occupation-capture
+ * (la chute d'un siège) — 20% du revenu annuel de la victime, cf. scps_diplo.h. */
+extern double g_occ_pillage_total;
 extern long g_peak_u[U_COUNT];                    /* FORGEDIAG : pic d'effectif par type */
 extern long g_wild_spawned, g_wild_defected;     /* HAMEAUX LIBRES : semés · ralliés culturellement */
 extern double g_wild_absorb_pop;                  /* pop CUMULÉE ralliée (÷ g_wild_defected = moyenne) */

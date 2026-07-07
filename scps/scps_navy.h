@@ -107,14 +107,28 @@ float navy_sea_days_regions(const World *w, int reg_a, int reg_b);
 
 /* LA COURSE (coques) : doctrine par éthos (Honneur/Dominateur convertissent,
  * Mercantile protège puis escorte, Ordre patrouille/bloque), nids en eaux
- * mortes, raids (1/10 - balafre 1 an - immunité 5 ans), saignée des routes
- * (marchands plafond 50 %, escorte sans plafond), blocus, et le VERDICT
- * anti-piraterie (désarmement). `player` est exclu de la doctrine auto.
- * Cadence : mensuelle (dt_days=30). */
+ * mortes, raids — LOT P (2026-07-07, règle joueur unifiée) : la valeur pillée
+ * = 20% du revenu ANNUEL de la victime (diplo_pillage_value), balafre 1 an,
+ * immunité 5 ans (raid_cd_days) ; RAZZIA = 5% de la pop de la province razziée
+ * si le pirate a le gate esclavagiste (`ts` : tech OU éthos conquérant,
+ * econ_country_can_enslave) — saignée des routes (marchands plafond 50 %,
+ * escorte sans plafond), blocus, et le VERDICT anti-piraterie (désarmement).
+ * `player` est exclu de la doctrine auto. Cadence : mensuelle (dt_days=30). */
 struct DiploState;
 void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                       struct DiploState *dp, RouteNetwork *rn, uint32_t *rng,
-                      int player, float dt_days);
+                      const TechState *ts, int player, float dt_days);
+
+/* LOT P (2026-07-07) — télémétrie : âmes RAZZIÉES cumulées (course pirate, gate
+ * esclavagiste), en plus de n->loot_gold (or pillé, déjà par-pays sur Navy). */
+extern long g_navy_raid_slaves;
+
+/* LOT P (2026-07-07) — pose la balafre (1 an) + l'immunité au raid (5 ans) sur la
+ * province REPRÉSENTATIVE de `region`, comme un raid réussi — RÉUTILISÉ par la
+ * course pirate IA (ci-dessus) ET le verbe joueur CMD_RAID_COAST (scps_sim.c), pour
+ * ne pas dupliquer les constantes COURSE_BALAFRE_J/COURSE_IMMUNITE_J (privées à
+ * scps_navy.c). */
+void navy_mark_raided(WorldEconomy *econ, int region);
 
 /* L'INTERCEPTION (coques §3, le job FINI) : les navires de combat en mission
  * INTERCEPTION forcent la bataille aux CONVOIS hostiles qui traversent — un

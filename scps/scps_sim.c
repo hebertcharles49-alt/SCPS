@@ -45,6 +45,10 @@ long g_tot_occ_posed=0, g_tot_occ_lifted=0;
  * captures de sac (déportations déclenchées à la CHUTE, avant règlement). */
 double g_siege_loot_total=0.0;
 long   g_siege_sack_captures=0;
+/* LOT P (2026-07-07) — PILLAGE UNIFIÉ : valeur pillée cumulée (or-équivalent) à
+ * l'OCCUPATION-CAPTURE (la chute d'un siège, distincte du butin final au règlement
+ * qui reste dans le trésor local sans compteur cumulatif dédié — cf. TROUVAILLES). */
+double g_occ_pillage_total=0.0;
 long g_peak_u[U_COUNT];   /* FORGEDIAG : pic d'effectif debout par type d'unité (sur tout le siècle, pas le seul snapshot) */
 /* HAMEAUX LIBRES (POLITY_WILD) — télémétrie : hameaux semés · ralliés CULTURELLEMENT · pop
  * moyenne ralliée (l'absorption MILITAIRE passe par les mécanismes de conquête existants). */
@@ -254,15 +258,26 @@ static void sim_campaign_year(Sim *s, World *w) {
                 int prev_owner=s->econ->region[reg].owner;
                 if (diplo_occupy(s->dp, s->econ, a->owner, reg)){
                     g_tot_occ_posed++;
-                    /* LOT 4 — LE SAC (capture d'esclaves) : à la CHUTE de la province
-                     * (pas chaque mois du siège — un sac de pop est un choc, pas un
-                     * prélèvement continu), un besiégeur ESCLAVAGISTE (l'Économie
-                     * servile débloquée) déporte une part des vaincus. Réutilise
-                     * l'idiome existant (diplo_enslave_capture, déjà employé au
-                     * règlement de paix par ai_strat_turn) — même gate, même mécanique,
-                     * juste déclenché plus TÔT (la chute, pas seulement la paix). */
-                    if (a->owner>=0 && a->owner<SCPS_MAX_COUNTRY && s->ai[a->owner].can_enslave)
-                        if (diplo_enslave_capture(w, s->econ, a->owner, reg, true) > 0) g_siege_sack_captures++;
+                    /* LOT 4/LOT P — LE SAC : à la CHUTE de la province (pas chaque mois
+                     * du siège — un sac est un choc, pas un prélèvement continu), la
+                     * fraîcheur cross-temps (diplo_pillage_fresh) gate ENSEMBLE les DEUX
+                     * effets d'un même sac : (1) l'ESCLAVAGE (gate can_enslave, réutilise
+                     * l'idiome existant diplo_enslave_capture) et (2) le PILLAGE-VALEUR
+                     * (règle joueur unifiée : toute occupation vaut 20% du revenu annuel
+                     * de la victime, cf. diplo_pillage_region — quel que soit can_enslave).
+                     * L'esclavage ne pose PLUS son propre pillage_cd (LOT P) : c'est
+                     * pillage_region, appelé juste après, qui pose le marqueur partagé —
+                     * l'ordre des deux appels ne bloque donc plus l'un l'autre. */
+                    if (a->owner>=0 && a->owner<SCPS_MAX_COUNTRY){
+                        bool fresh = diplo_pillage_fresh(s->econ, reg);
+                        if (fresh && s->ai[a->owner].can_enslave)
+                            if (diplo_enslave_capture(w, s->econ, a->owner, reg, true) > 0) g_siege_sack_captures++;
+                        if (fresh){
+                            int cp2=w->country[a->owner].capital_prov;
+                            int crr2=(cp2>=0&&cp2<w->n_provinces)? w->province[cp2].region : -1;
+                            g_occ_pillage_total += (double)diplo_pillage_region(s->econ, reg, crr2, prev_owner);
+                        }
+                    }
                     if (s->human_player>=0 && (a->owner==s->human_player || prev_owner==s->human_player))
                         feed_push(FEED_SIEGE_FALLEN, a->owner, prev_owner, reg, 0);  /* victoire de siège / place perdue */
                 }
@@ -514,6 +529,32 @@ static void sim_cmd_drain(Sim *s, World *w){
           case CMD_DISBAND:
             warhost_disband(s->host, s->econ, p);                     /* dissout la réserve levée ; LOT 2 : les armes RENTRENT au stock */
             break;
+          case CMD_RAID_COAST: {   /* LOT P — PILLER LA CÔTE (a[0]=province CIBLE, côtière, ennemie) */
+            int prov=c->a[0];
+            if (prov<0 || prov>=s->econ->n_prov) break;
+            ProvinceEconomy *pv=&s->econ->prov[prov];
+            if (!pv->colonized || !pv->coastal) break;                /* miroir scps_can_raid_coast */
+            int victim=pv->owner;
+            if (victim<0 || victim==p) break;
+            if (diplo_status(s->dp,p,victim)==DIPLO_ALLIED) break;     /* la course IA exclut déjà l'allié */
+            if (diplo_trade_pact(s->dp,p,victim)) break;               /* + le pacte (règle joueur : « pas d'allié/pacte ») */
+            int region=(prov<w->n_provinces)? w->province[prov].region : -1;
+            if (region<0 || region>=s->econ->n_regions) break;
+            /* CD lu sur la PROVINCE REPRÉSENTATIVE (celle que navy_mark_raided écrit) — pas la
+             * vue region[] (rafraîchie au MOIS : une re-lecture même-mois y verrait l'ancien
+             * état, le piège documenté au gate de diplo_pillage_region). */
+            { int rp=econ_region_rep_province(s->econ, region);
+              if (rp>=0 && rp<s->econ->n_prov && s->econ->prov[rp].raid_cd_days > 0.f) break; }
+            if (p<0 || p>=SCPS_MAX_COUNTRY || s->navy->n[p].hull[HULL_PIRATE]<=0) break;   /* exige ≥1 coque pirate */
+            /* MÊME chemin que la course IA/le sac de siège : diplo_pillage_value (20% du
+             * revenu annuel de la victime, sans guerre requise — la piraterie reste un
+             * acte GRIS, miroir de navy_course_tick §4) + esclavage 5% si le joueur a le
+             * gate (tech OU éthos conquérant) + balafre/CD partagés (navy_mark_raided). */
+            diplo_pillage_value(s->econ, region, navy_best_port(w,s->econ,p), victim);
+            if (econ_country_can_enslave(w, s->econ, &s->ts[p], p))
+                diplo_enslave_capture(w, s->econ, p, region, true);
+            navy_mark_raided(s->econ, region);
+            break; }
           /* ── ALLOCATION de main-d'œuvre (onglet province). Tout REVALIDÉ : région ∈ [0,n) ET au
            *    joueur ; poids clampé ; res/bld bornés. Poser un poids ACTIVE l'override (alloc_on=1).
            *    RE-KEY PROVINCE : alloc_* sont PROVINCE-OWNED (miroir, cf. econ_aggregate_regions) —
@@ -715,7 +756,7 @@ void sim_day(Sim *s, World *w) {
          *   Un pays NÉ d'une sécession prend vie. */
         PROF(PB_NAVY_M, { navy_tick(s->navy, w, s->econ, s->dp, 30.f);   /* chantier + entretien : MENSUEL (ex-quotidien) */
         navy_colonize_tick(s->navy, w, s->econ, 30.f, s->human_player);   /* mer §8 : on découvre ce que la volta touche (le JOUEUR colonise à la main) */
-        navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng,
+        navy_course_tick(s->navy, w, s->econ, s->dp, s->rn, &s->camp_rng, s->ts,
                          -1, 30.f);   /* coques : la course (raids - saignee - blocus - verdicts) */
         navy_interception_tick(s->navy, s->camp, w, s->econ, s->dp, &s->camp_rng); });   /* les convois se chassent */
         /* IA navale FRUGALE (mer §5/§8) : un pays côtier prospère bâtit son port,
