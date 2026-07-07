@@ -80,6 +80,7 @@ static func _wire(b: BaseButton) -> void:
 		return
 	b.set_meta("_scps_fb", true)
 	b.button_down.connect(func():
+		Sound.play("ui_click")   # LE clic universel (façon iPhone) — chaque bouton tape
 		var tw := b.create_tween()
 		b.modulate = Color(1.35, 1.28, 1.05)
 		tw.tween_property(b, "modulate", Color(1, 1, 1), 0.22).set_trans(Tween.TRANS_QUAD))

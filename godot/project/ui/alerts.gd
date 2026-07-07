@@ -118,6 +118,8 @@ func _poll_feed() -> void:
 			# GUERRE CIVILE INCARNÉE (scps_revolt.c spawn_rebel_polity) : {a} porte déjà le
 			# nom du rebelle ("Rebelles de <héritage>") — le fil le NOMME au lieu du générique.
 			tip += " — %s" % String(ev["a"])
+		if kind == 1:
+			Sound.play("moment_war_horn")   # le COR : une guerre nous est déclarée
 		if kind in POPUP_KINDS:
 			popup_requested.emit(_popup_of(kind, ev, tip))   # MAJEUR → OYEZ OYEZ (pause)
 			continue

@@ -62,6 +62,8 @@ var _last_tick_ms := 0
 var _last_year := -1
 var _last_age := -1
 var _last_fin := 0
+var _last_research_target := -1   ## suivi de la cible de recherche (détecte la complétion)
+var _last_research_prog := 0.0
 var _hint_sea := false            ## poussé par main.gd (lecture display du viewport)
 var _hint_crowd := false
 
@@ -265,6 +267,8 @@ func _on_generated() -> void:
 	_last_year = -1
 	_last_age = -1
 	_last_fin = 0
+	_last_research_target = -1
+	_last_research_prog = 0.0
 	_entropy_pct = 0
 	if _entropy.playing:
 		_entropy.stop()
@@ -279,10 +283,7 @@ func _on_tick(year: int) -> void:
 	var now := Time.get_ticks_msec()
 	if now - _last_tick_ms >= TICK_MIN_MS:
 		_last_tick_ms = now
-		if year != _last_year and _last_year >= 0:
-			play("ui_tick_year")
-		else:
-			play("ui_tick")
+		play("ui_tick")   # le month-tick à CHAQUE tock (pas de year-tick distinct)
 	_last_year = year
 	var w = Sim.world
 	if w == null:
@@ -295,6 +296,15 @@ func _on_tick(year: int) -> void:
 			if _last_age >= 0:
 				play("moment_age_bell")
 			_last_age = age
+	# — RECHERCHE TERMINÉE → notif : la cible passe de PRESQUE PLEINE à autre/-1 (une tech
+	#   vient d'être débloquée). Annuler/switcher à bas % ne sonne pas (garde progress ≥ 0.85).
+	if w.has_method("research_status"):
+		var rs: Dictionary = w.research_status()
+		var rt := int(rs.get("target", -1))
+		if _last_research_target >= 0 and rt != _last_research_target and _last_research_prog >= 0.85:
+			play("tech_notif")
+		_last_research_target = rt
+		_last_research_prog = float(rs.get("progress", 0.0))
 	# — L'ENDGAME : couche entropie + drone de fin + ascension —
 	if w.has_method("endgame_info"):
 		var e: Dictionary = w.endgame_info()

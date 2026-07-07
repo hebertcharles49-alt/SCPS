@@ -751,7 +751,7 @@ func _gui_input(event: InputEvent) -> void:
 		for t in _tab_rects:
 			if t.rect.has_point(event.position):
 				if _tab != t.idx:
-					Sound.play("ui_scroll_tick")
+					Sound.play("ui_click")
 				_tab = t.idx
 				_hover_text = ""
 				queue_redraw()

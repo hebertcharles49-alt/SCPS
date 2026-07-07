@@ -1856,6 +1856,13 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   moment_ascension/treason, amb_wind/sea/entropy, drone_*. `gen_sounds.py` gagne un garde
   `REAL_RECORDINGS` (ne régénère plus ces noms → ne clobbe pas les vrais). `.import` gitignoré (Godot
   ré-importe à l'ouverture). Horloge MUR, aucune incidence moteur ⇒ déterminisme/SAVE intacts.
+  **Affinage (lot 2)** : `clic_feedback`→**ui_click UNIVERSEL** (façon iPhone) — branché dans
+  `ui_theme.attach_feedback._wire` (`button_down` de CHAQUE BaseButton présent+futur) + les sites de
+  clic CUSTOM non-boutons (onglets `province_detail`, rects `_gui_input`). `war_notif.mp3`→**moment_war_horn**
+  (le COR, remplace Bam) joué sur la déclaration du joueur ET à la déclaration ENTRANTE (feed kind 1,
+  `alerts._poll_feed`). `tech_notif.mp3` : notif de **recherche terminée** — `sound.gd._on_tick` suit
+  `research_status()` et sonne quand la cible passe de ≥85 % à autre/-1 (annuler/switcher à bas % ne
+  sonne pas). **Plus de year-tick** (juste le month_tick à chaque tock). `Bam.mp3` désormais LIBRE.
 
 ## Disciplines non négociables
 
