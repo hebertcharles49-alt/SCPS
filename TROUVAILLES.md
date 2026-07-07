@@ -377,3 +377,26 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - sidebar.gd (rail d'onglets gauche, `_on_tab`) — PAS câblé en `ui_scroll_tick` : la mission demandait explicitement "province_detail TABS" ; le rail sidebar ouvre un TIROIR complet (pas un simple changement d'onglet dans un panneau déjà ouvert), jugé hors du geste "léger" visé — à revoir si un futur agent veut l'étendre.
 - province_panel.gd/country_panel.gd (panneaux de sélection carte, `show_province`/`show_country`) — PAS câblés en `ui_parchment_open/_close` : ils s'ouvrent/ferment à CHAQUE clic de province sur la carte (potentiellement plusieurs fois par seconde en explorant) — un son à chaque clic aurait été du bruit, pas un hook UI "majeur" ; la mission listait explicitement une liste de panneaux majeurs qui NE LES INCLUAIT PAS.
 **Gates** : boot headless `Main.tscn --quit-after 30` (Godot_v4.6.3-stable_mono_win64_console.exe, via MSYS2 bash) → **EXIT 0, 0 SCRIPT ERROR / Parse Error** (seuls des warnings PNG-as-resource + RID-leak pré-existants, sans rapport avec ce lot — vérifié qu'aucun ne référence un des fichiers modifiés). `grep -rn "Sound\." godot/project --include=*.gd` liste désormais 36 lignes (32 sites d'appel + 4 dans sound.gd lui-même). Aucun fichier C touché. **AUCUN COMMIT** (mandat).
+
+## 2026-07-07 — Audit complet (5 voies + vérif adversariale) → docs/AUDIT_2026-07-06.md
+
+**Découvertes** :
+- Couverture verbe→UI **38/38 câblés** bout-en-bout (enum→drain→façade→binding→bouton) ; le trou CODEX servile/council_pay est FERMÉ (`godot/project/ui/sidebar_drawer.gd:_servile_act/_conseil_act`).
+- **HIGH — cooldowns de révolte non sérialisés** : `scps_revolt.c:g_revolt_grace/g_coup_grace/g_concede_cd` gatent révolte/coup/concession, RAZ seulement par `revolt_init` → save/reload ≠ continuation (classe EMOB/COLC/TXYR, invisible au --savetest same-process).
+- **HIGH — bouton Construction NO-OP** : `construction_panel.gd:167` flashe « ordre émis » alors que `agency_build_acct` refuse en silence (or/matière) ; `scps_api.c:scps_build_legal` existe mais n'est ni bindé ni consommé (et ne teste pas la matière).
+- **MED — FIN_SANG invisible au readout** : `scps_readout.c:endgame_readout` rabat SANG→RFIN_AUCUNE ⇒ bandeau muet ET l'épilogue ne s'ouvre JAMAIS (main.gd:343 latche `fin>0`) ; seul le lavis (fin_raw) marche.
+- **MED — dead-write armes IA** : `scps_ai.c:1307` écrit +20 RES_ARMS dans la vue region[] (écrasée) ; doublement mort — la levée consomme les macros RES_ARMS_*, pas la base.
+- **MED — g_hub_of/g_hub_dist non revalidés** : `scps_intertrade.c:816-831` sérialise brut, `save_sane` ne borne pas ⇒ OOB read sur save forgée via `intertrade_buy_cost` (sans dirty-check, atteint au 1er tick post-load).
+- **MED — 6 tune_f hors registre** (BT_ATK_RATIO/BT_DECROCHE/BT_DEF_EDGE/BT_RELIEF_FALL/RELIG_MINORITY_SAT/SEED_PROV_CAP_MULT) : SCPS_TUNE=… → exit(2) prouvé, invisibles F10.
+- **MED — lettré religieux injouable** : `scps_religion_scholar_role`/`recruit_scholar` bindés, mécanique P6 réelle, 0 bouton (religion_panel.gd ne fait que fonder/schismer).
+- **MED — cliquet lang-check aveugle** : `Makefile:658` greppe des primitives SDL retirées ⇒ 0 match trivial ; 25 littéraux FR en `return "…"` dans `scps_readout.c` atteignent le panneau province.
+- **MED — marché servile sans prix** (spread ×2/×1 débité, jamais affiché — `scps_intertrade.c:752/703`) · **E3 stockeuse inerte** (0 entrepôt sur 4 seeds ×200 ans, `scps_ai.c:1368`) · **noms de ministre absents** des 3 events de trahison (`scps_events.c:event_title` = 1 seul %s).
+- Mécaniques mortes-en-pratique mesurées : `TechState.eco/.mil` écrits+sérialisés jamais lus ; interception de convoi 0 partout ; péage de détroit quasi-mort (58 or seed 42 seulement) ; pool servile/affranchissement 0 ; foreuse/réplicateur 0 (Corne vit).
+
+**Pièges** :
+- La lane « mécaniques mortes » d'origine est morte en rendant un **stub** — son vérificateur adversarial a refait la dimension entière lui-même (12 items mesurés chronicle). Toujours vérifier qu'un résultat d'agent n'est pas un placeholder.
+- **8 verdicts REFUTED** prouvent que TROUVAILLES/CLAUDE.md se PÉRIMENT : « council_pay sans curseur » (câblé depuis), « T8 aucun match code » (spécifié + code compacité), « H_coerc jamais lu », « garnison jamais posée », « chaîne feu jamais » (vivante seed 42), « disband perd le fer » (fixé), « goulot d'armes 7.8 % » (mesure fraîche 73-95 %) — **re-grep/re-mesurer avant de citer une vieille entrée**.
+- « Mort sur seed 9 » ≠ « mort partout » : les mécaniques émergentes (feu, péage, foreuse) exigent 4-5 graines pour trancher.
+- Fraîcheur post-snapshot : moment_treason.wav SUPPRIMÉ le 07 (090d4dd, un-clic-un-son) — l'item audio est résolu-par-suppression ; re-découpe planches + écrans de fin/bordures faits (58514fd, a400f80).
+
+**Restes** : le rapport complet est `docs/AUDIT_2026-07-06.md`. 3 chantiers prioritaires : (1) **contrat de save** — sérialiser les 3 grâces de révolte + clamper g_hub_of + fuzztest étendu + fix dead-write armes ; (2) **membrane honnête** — binder scps_build_legal (avec gate matière) + RFIN_SANG/latch épilogue + prix affichés (servile/manuf) + nom de ministre + codex.gd:47 + UI lettré ; (3) **outillage** — ré-armer lang-check (25 littéraux readout → STR_*) + 6 tunables au registre J, puis recalibrer E3/interception/péage.
