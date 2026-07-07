@@ -320,6 +320,7 @@ func _act_fire(verb: String) -> void:
 			var capr: int = w.province_region(w.country_capital_province(w.player()))
 			if capr >= 0 and reg >= 0:
 				w.player_campaign(capr, reg)
+				Sound.play("moment_army_march")   # feedback : l'ost se met en marche
 		"route_land", "route_sea":
 			var capr2: int = w.province_region(w.country_capital_province(w.player()))
 			if capr2 >= 0 and reg >= 0:

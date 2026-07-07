@@ -1842,6 +1842,20 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   fond damier (icônes/médaillons/blasons/pions recentrés, la rose des vents perd sa bavure de fleuron
   voisin, les tuiles de biome intactes). Aucun fichier C/`.import` touché ⇒ golden/déterminisme/SAVE
   INTACTS. Le script est committé pour reproductibilité (la re-découpe se rejoue d'une commande).
+- **SONS RÉELS (banque du joueur, remplacent le synthé, 2026-07-07, DISPLAY-ONLY)** : 10 enregistrements
+  (lasonotheque.org, re-coupés par le joueur) posés sur les noms du jeu, en remplacement des SFX
+  synthétisés (« trop procéduraux »). Mapping : `month_tick`→**ui_tick** (le tock qui annonce le mois —
+  la demande explicite) · `bell`→ui_tick_year + moment_age_bell · `clic_feedback`→ui_scroll_tick ·
+  `paper_rip`→ui_parchment_open + _close · `feedback_sign`→ui_seal + ui_quill · `page_turn`→
+  moment_page_turn · `crowd`→amb_crowd (ambiance bouclée) · `swing_fight`→moment_battle_drums ·
+  `Bam.mp3`→moment_war_horn · `army_walk_feedback`→**moment_army_march** (hook NEUF sur l'ordre de
+  campagne, `province_panel.gd`). Chaque son fréquent posé en `nom_1.wav` (garde le jitter pitch/gain
+  par lecture — l'anti-robotique) ; les variantes synthé surnuméraires (nom_2/3/4) SUPPRIMÉES (sinon
+  round-robin mêlait réel et synthé). `sound.gd._stream` gagne un **repli `.mp3`** (Godot importe
+  AudioStreamMP3 nativement) pour le war-horn. Restent synthé (aucun réel fourni) : ui_coin, ui_deny,
+  moment_ascension/treason, amb_wind/sea/entropy, drone_*. `gen_sounds.py` gagne un garde
+  `REAL_RECORDINGS` (ne régénère plus ces noms → ne clobbe pas les vrais). `.import` gitignoré (Godot
+  ré-importe à l'ouverture). Horloge MUR, aucune incidence moteur ⇒ déterminisme/SAVE intacts.
 
 ## Disciplines non négociables
 

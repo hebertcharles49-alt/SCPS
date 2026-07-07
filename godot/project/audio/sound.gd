@@ -110,6 +110,8 @@ func _stream(nom: String) -> AudioStream:
 		return _streams[nom]
 	var path := DIR + nom + ".wav"
 	if not ResourceLoader.exists(path):
+		path = DIR + nom + ".mp3"            # repli MP3 (un one-shot livré en mp3, ex. moment_war_horn)
+	if not ResourceLoader.exists(path):
 		_streams[nom] = null
 		return null
 	var s: AudioStream = load(path)

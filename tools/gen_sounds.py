@@ -1295,11 +1295,24 @@ def _variant_names(base):
     return ["%s_%d.wav" % (stem, k + 1) for k in range(n)]
 
 
+# Sons désormais fournis en VRAIS ENREGISTREMENTS (banque son du joueur, cf. audio/) :
+# le générateur NE LES ÉCRASE PLUS — il ne synthétise que ce qui n'a pas d'équivalent réel.
+# (Retirer un nom d'ici le rend de nouveau générable si on repasse au synthé.)
+REAL_RECORDINGS = {
+    "ui_tick.wav", "ui_tick_year.wav", "ui_parchment_open.wav", "ui_parchment_close.wav",
+    "ui_quill.wav", "ui_seal.wav", "ui_scroll_tick.wav",
+    "moment_page_turn.wav", "moment_age_bell.wav", "moment_war_horn.wav",
+    "moment_battle_drums.wav", "amb_crowd.wav",
+}
+
+
 def gen_all(out_dir, base_seed, names=None):
     os.makedirs(out_dir, exist_ok=True)
     todo = names if names else list(RECIPES.keys())
     results = {}
     for name in todo:
+        if name in REAL_RECORDINGS:
+            continue   # un vrai son occupe déjà ce nom — ne pas l'écraser
         fn = RECIPES[name]
         outputs = _variant_names(name)
         for vi, outname in enumerate(outputs):
