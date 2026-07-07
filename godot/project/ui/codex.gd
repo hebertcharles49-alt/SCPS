@@ -44,7 +44,7 @@ const DOMAINS := [
 		{"nom": "Imposer / lever un embargo", "ou": "Fenêtre diplomatique par pays (bouton « Embargo »)", "regle": "unilatéral (pas de consentement) ; pèse sur l'opinion à la baisse"},
 		{"nom": "Engager conseillers du Conseil (recrutement de siège)", "ou": "Tiroir Conseil (sidebar), un candidat par siège", "regle": "le choix éclairé — chaque candidat a ses propres multiplicateurs"},
 		{"nom": "Démettre un conseiller", "ou": "Tiroir Conseil (sidebar)", "regle": "libère le siège, perd les multiplicateurs du titulaire"},
-		{"nom": "Régler la paie d'un siège du Conseil", "ou": "**(bientôt)** aucun curseur Godot — verbe façade seul (scps_player_council_pay)", "regle": "curseur 0×-2× ; un siège mal payé perd en efficacité/loyauté", "bientot": true},
+		{"nom": "Régler la paie d'un siège du Conseil", "ou": "Tiroir Conseil (sidebar), curseur 0.5×/1×/1.5×/2× sous chaque siège", "regle": "un siège mal payé perd en efficacité/loyauté"},
 		{"nom": "Activer / désactiver un décret (civics)", "ou": "Tiroir Conseil ou Économie (section Décrets)", "regle": "une réforme active refuse le retrait ; condition d'entrée vérifiée à l'activation"},
 		{"nom": "Engager l'âge courant", "ou": "Chip topbar « Engager : <âge> » → écran de récap d'âge", "regle": "l'IA s'engage automatiquement ; le joueur choisit son moment — une fois par âge"},
 	]],

@@ -421,6 +421,13 @@ func _draw_servile(x: float, y: float, me: int) -> float:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
 			"marché mondial : %s âme(s)" % _grp(int(mk.get("total", 0))), VKit.FS_SMALL)
 		y += 15
+		# lot M — le SPREAD que le drain débite (achat ×2 double taxe / vente ×1), jamais montré
+		var pb := int(mk.get("price_buy", 0))
+		var ps := int(mk.get("price_sell", 0))
+		if pb > 0 or ps > 0:
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+				"prix courant : achat %d or/âme · vente %d or/âme" % [pb, ps], VKit.FS_SMALL)
+			y += 15
 		for ln in mk.get("lines", []):
 			VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM,
 				"%s — %s" % [String(ln.get("heritage", "?")), _grp(int(ln.get("count", 0)))], VKit.FS_SMALL)

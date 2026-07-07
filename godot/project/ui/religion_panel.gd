@@ -2,8 +2,10 @@ extends Control
 ## ReligionPanel — le CRÉATEUR DE FOI : s'ouvre quand le joueur bâtit son PREMIER édifice
 ## religieux (sanctuaire/temple…) — avant, le monde est ATHÉE. Le joueur compose un CRÉDO +
 ## 3 traditions (pôles) sur 3 axes DISTINCTS ; si le centre de sa foi est conquis (RUPTURE),
-## un bouton SCHISME apparaît. Aussi rouvrable à la touche R. RÈGLE D'OR : zéro logique de
-## sim — on LIT la façade (Sim.world.*) et on émet des verbes (religion_found / religion_schism).
+## un bouton SCHISME apparaît. Aussi rouvrable à la touche R. Une section LETTRÉ (P6)
+## recrute le Missionnaire/Gourou/Moine du crédo (lot M). RÈGLE D'OR : zéro logique de
+## sim — on LIT la façade (Sim.world.*) et on émet des verbes (religion_found / religion_schism
+## / religion_recruit_scholar).
 
 signal closed   ## le panneau se ferme → le jeu reprend (main.gd)
 
@@ -26,6 +28,8 @@ var _state_lbl: Label
 var _title_lbl: Label
 var _found_btn: Button
 var _schism_btn: Button
+var _scholar_lbl: Label     # lot M — le LETTRÉ (P6) : état courant (rôle résolu)
+var _scholar_btn: Button    # « Recruter » / « Renouveler », gaté par la foi + le crédo
 
 
 func _ready() -> void:
@@ -89,6 +93,23 @@ func _build_ui() -> void:
 
 	_valid_lbl = Label.new()
 	col.add_child(_valid_lbl)
+
+	# lot M — le LETTRÉ (P6, Missionnaire/Gourou/Moine selon crédo) : état + recrutement.
+	# Il agit à la CAPITALE (CONVERT répand · STABILIZE exempte du malus · RESIST bloque).
+	col.add_child(HSeparator.new())
+	var sl := Label.new(); sl.text = "Lettré"; sl.add_theme_color_override("font_color", C_EDGE)
+	col.add_child(sl)
+	var srow := HBoxContainer.new()
+	srow.add_theme_constant_override("separation", 10)
+	col.add_child(srow)
+	_scholar_lbl = Label.new()
+	_scholar_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scholar_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_scholar_lbl.add_theme_color_override("font_color", C_DIM)
+	srow.add_child(_scholar_lbl)
+	_scholar_btn = Button.new(); _scholar_btn.text = "Recruter"
+	_scholar_btn.pressed.connect(_on_recruit_scholar)
+	srow.add_child(_scholar_btn)
 
 	col.add_child(HSeparator.new())
 	var foot := HBoxContainer.new()
@@ -184,6 +205,50 @@ func _refresh() -> void:
 	else:
 		_valid_lbl.text = "✗ Choisissez trois pôles sur trois axes DIFFÉRENTS."
 		_valid_lbl.add_theme_color_override("font_color", C_BAD)
+	_refresh_scholar(me, has)
+
+## lot M — le LETTRÉ : rôle ACTIF (religion_scholar_role) vs rôle qu'un recrutement
+## DONNERAIT (religion_scholar_expected, résolu du crédo). Sans foi ⇒ section grisée.
+func _refresh_scholar(me: int, has: bool) -> void:
+	if _scholar_lbl == null or _scholar_btn == null:
+		return
+	if not Sim.world.has_method("religion_scholar_expected"):
+		_scholar_lbl.text = "(recompiler libscps — lecteur lettré absent)"
+		_scholar_btn.disabled = true
+		return
+	if not has:
+		_scholar_lbl.text = "Une foi d'État d'abord — le lettré la sert."
+		_scholar_btn.disabled = true
+		_scholar_btn.text = "Recruter"
+		return
+	var active := int(Sim.world.religion_scholar_role(me))
+	var expected := int(Sim.world.religion_scholar_expected(me))
+	if active >= 0:
+		_scholar_lbl.text = "%s en mission (%s, ~5 ans), à la capitale." % [
+			String(Sim.world.scholar_role_name(active)), String(Sim.world.scholar_role_ability(active))]
+		_scholar_btn.text = "Renouveler"
+		_scholar_btn.disabled = (expected < 0)
+	elif expected >= 0:
+		_scholar_lbl.text = "Aucun lettré en mission — votre crédo forme un %s (%s)." % [
+			String(Sim.world.scholar_role_name(expected)), String(Sim.world.scholar_role_ability(expected))]
+		_scholar_btn.text = "Recruter"
+		_scholar_btn.disabled = false
+	else:
+		_scholar_lbl.text = "Votre crédo ne forme pas de lettré."
+		_scholar_btn.disabled = true
+
+## recrute/renouvelle le lettré À LA CAPITALE (la région où sa face agit).
+func _on_recruit_scholar() -> void:
+	if Sim.world == null:
+		return
+	var me: int = Sim.world.player()
+	var region: int = int(Sim.world.country_capital_region(me))
+	if region < 0:
+		return
+	var role: int = int(Sim.world.religion_recruit_scholar(me, region))
+	Sound.play("ui_click")
+	if role >= 0:
+		_refresh()
 
 
 func _on_found() -> void:

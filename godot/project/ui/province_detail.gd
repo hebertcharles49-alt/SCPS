@@ -402,6 +402,8 @@ func _draw_batiments(x: float, y: float, w) -> void:
 	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Bâtir une manufacture", VKit.FS_SMALL)
 	y += 18
 	var region: int = w.province_region(_pid)
+	# lot M — le PRIX du chantier (le montant que le drain débite : MANUF_BUILD_COST×ipm)
+	var mcost: int = int(w.manuf_cost()) if w.has_method("manuf_cost") else 0
 	var any_legal := false
 	for bld in range(24):   # BLD_TYPE_COUNT (miroir display-only côté binding)
 		if y > PH - 22:
@@ -416,10 +418,12 @@ func _draw_batiments(x: float, y: float, w) -> void:
 		else:
 			UIKit.draw_icon(self, "build_hammer", Vector2(x, y - 1), 14)
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, nom, VKit.FS_SMALL)
-		var br := Rect2(x + 260, y - 2, 74, 18)
+		var blab := ("Bâtir · %d or" % mcost) if mcost > 0 else "Bâtir"
+		var bw := VKit.text_w(blab, VKit.FS_SMALL) + 20.0
+		var br := Rect2(x + 334.0 - bw, y - 2, bw, 18)
 		VKit.fill(self, br, VKit.COL_PANEL2)
 		VKit.box(self, br, VKit.COL_GOLD)
-		VKit.text(self, Vector2(br.position.x + 10, br.position.y + 2), VKit.COL_PARCH, "Bâtir", VKit.FS_SMALL)
+		VKit.text(self, Vector2(br.position.x + 10, br.position.y + 2), VKit.COL_PARCH, blab, VKit.FS_SMALL)
 		_manuf_btns.append({"rect": br, "bld": bld})
 		y += 20
 	if not any_legal:

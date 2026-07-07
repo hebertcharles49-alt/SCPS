@@ -16,6 +16,7 @@
 #include "scps_religion.h"  /* CONTENU W2 (lot 2) §C : religion_schism_eligible (C1) */
 #include "scps_agency.h"    /* CONTENU W2 (lot 2) §C : Edifice (EDI_SANCTUAIRE/TEMPLE/CATHEDRALE, C6) */
 #include "scps_demography.h" /* ESCLAVAGE (A1) : demography_manumit_country (choix « Abolir ») */
+#include "scps_lang.h"      /* lot M : tr() — le NOM du ministre (maison V2a) dans les titres de trahison */
 /* V2b LOT 2 relit statecraft_council_* — déjà visible via scps_statecraft.h (inclus
  * par scps_events.h) ; LOT 1 relit endgame_* — déjà visible via scps_endgame.h (idem). */
 
@@ -1511,8 +1512,9 @@ static const EventDef EVENTS[EVID_COUNT] = {
      * EXEMPTÉS du plafond mondial (personnels, cooldowns propres 1460-2555 j).
      * ═══════════════════════════════════════════════════════════════════ */
 
-    /* Trahison — Savoir : le savant publie tes secrets. */
-    [EVID_TRAHISON_SAVOIR] = { EVID_TRAHISON_SAVOIR, EV_COUNTRY, "On ne trahit jamais mieux un roi que par l'esprit qu'il a eu le tort de financer",
+    /* Trahison — Savoir : le savant publie tes secrets. lot M : le %s de ces trois
+     * gabarits = le MINISTRE assis (maison V2a, résolu par event_title — pas le pays). */
+    [EVID_TRAHISON_SAVOIR] = { EVID_TRAHISON_SAVOIR, EV_COUNTRY, "%s publie les secrets du trône",
         trig_trahison_savoir, 1825.f, NULL, {
         { "Le faire taire",
           "Un procès discret, une plume qu'on brise avant qu'elle n'écrive davantage.",
@@ -1531,7 +1533,7 @@ static const EventDef EVENTS[EVID_COUNT] = {
           "L'exemple fait grand bruit — la cour retient la leçon, le monde retient le scandale." } }, 3 },
 
     /* Trahison — Société : le notable place ses familles. */
-    [EVID_TRAHISON_SOCIETE] = { EVID_TRAHISON_SOCIETE, EV_COUNTRY, "Le notable a placé ses familles avant le trône",
+    [EVID_TRAHISON_SOCIETE] = { EVID_TRAHISON_SOCIETE, EV_COUNTRY, "%s a placé ses familles avant le trône",
         trig_trahison_societe, 1825.f, NULL, {
         { "Purger les places",
           "On reprend ce qui a été distribué — la loyauté se remérite.",
@@ -1550,7 +1552,7 @@ static const EventDef EVENTS[EVID_COUNT] = {
           "Le trône regarde ailleurs — les familles, elles, ne l'oublient pas." } }, 3 },
 
     /* Trahison — Industrie : le marchand détourne. */
-    [EVID_TRAHISON_INDUSTRIE] = { EVID_TRAHISON_INDUSTRIE, EV_COUNTRY, "Le marchand a détourné plus que sa part",
+    [EVID_TRAHISON_INDUSTRIE] = { EVID_TRAHISON_INDUSTRIE, EV_COUNTRY, "%s a détourné plus que sa part",
         trig_trahison_industrie, 1825.f, NULL, {
         { "Le poursuivre",
           "On récupère ce qu'on peut — le reste, la justice le tranchera.",
@@ -1819,11 +1821,28 @@ static const EventDef EVENTS[EVID_COUNT] = {
 
 const EventDef *event_def(int evid){ return (evid>=0&&evid<EVID_COUNT)?&EVENTS[evid]:NULL; }
 
+/* lot M — NOMS DE MINISTRE dans les trahisons du Conseil : le %s de ces trois
+ * gabarits désigne le MINISTRE assis (la maison V2a), pas le pays. event_title
+ * garde sa signature publique (scps_events.h appartient à un autre lot) : le
+ * Statecraft courant est LATCHÉ par world_events_tick — DISPLAY-ONLY, jamais
+ * sérialisé ni lu par un chemin moteur ; NULL (avant le 1er tick / bancs) ou
+ * siège vacant (ministre déjà renvoyé) ⇒ repli sur le mot de classe. */
+static const Statecraft *g_title_sc = NULL;
+static int treason_seat_of(int evid){
+    switch (evid){
+        case EVID_TRAHISON_SAVOIR:    return 0;
+        case EVID_TRAHISON_SOCIETE:   return 1;
+        case EVID_TRAHISON_INDUSTRIE: return 2;
+        default:                      return -1;
+    }
+}
+static const char *TREASON_FALLBACK[3] = { "Le savant", "Le notable", "Le marchand" };
+
 /* TITRE PRÉSENTÉ (display-only) : le nom de la table est un GABARIT — s'il porte
  * un « %s », on y coud le NOM RÉEL du sujet (région en EV_PROVINCE, pays en
- * EV_COUNTRY) au moment de la PRÉSENTATION (« Marbrive » était un placeholder de
- * registre : le monde a ses propres noms). Assemblage MANUEL (pas de format non
- * littéral) ; buf est rendu pour chaîner les appels. */
+ * EV_COUNTRY, MINISTRE pour les trahisons du Conseil) au moment de la PRÉSENTATION
+ * (« Marbrive » était un placeholder de registre : le monde a ses propres noms).
+ * Assemblage MANUEL (pas de format non littéral) ; buf est rendu pour chaîner les appels. */
 const char *event_title(const World *w, int evid, int subject, char *buf, int n){
     const EventDef *d = event_def(evid);
     if (!buf || n<=0) return "";
@@ -1831,8 +1850,20 @@ const char *event_title(const World *w, int evid, int subject, char *buf, int n)
     const char *p = strstr(d->name, "%s");
     if (!p || !w){ snprintf(buf, (size_t)n, "%s", d->name); return buf; }
     const char *nom = "?";
-    if (d->scope==EV_PROVINCE  && subject>=0 && subject<w->n_regions)   nom = w->region[subject].name;
-    if (d->scope==EV_COUNTRY   && subject>=0 && subject<w->n_countries) nom = w->country[subject].name;
+    int seat = treason_seat_of(evid);
+    if (seat >= 0){
+        nom = TREASON_FALLBACK[seat];
+        if (g_title_sc && subject>=0 && subject<w->n_countries){
+            int slot = statecraft_council_seated(g_title_sc, subject, seat);
+            if (slot >= 0){
+                int gen = statecraft_council_seated_gen(g_title_sc, subject, seat);
+                nom = tr((StrId)statecraft_council_cand_name(w->seed, subject, seat, slot, gen));
+            }
+        }
+    } else {
+        if (d->scope==EV_PROVINCE  && subject>=0 && subject<w->n_regions)   nom = w->region[subject].name;
+        if (d->scope==EV_COUNTRY   && subject>=0 && subject<w->n_countries) nom = w->country[subject].name;
+    }
     snprintf(buf, (size_t)n, "%.*s%s%s", (int)(p - d->name), d->name, nom, p+2);
     return buf;
 }
@@ -3140,6 +3171,7 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
                        EndgameState *eg, int days,
                        int human_player){
     EventCtx cx={ev,w,econ,wl,wp,sc,rn,ts,dp,eg,human_player};
+    g_title_sc = sc;   /* lot M : latch display-only pour event_title (noms de ministre) */
     ev->ages.days_elapsed += days;          /* horloge de jeu (rythme des âges) */
 
     /* 1. CHOCS GÉO — à risque, par région, sur leur cadence (1/risk accélère). */
