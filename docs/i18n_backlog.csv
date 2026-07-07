@@ -1,0 +1,630 @@
+fichier,ligne,chaine,cle_suggeree
+autoload/sim.gd,20,▶ lent,T_SIM_LENT
+autoload/sim.gd,20,▶▶ normal,T_SIM_NORMAL
+autoload/sim.gd,20,▶▶▶ rapide,T_SIM_RAPIDE
+ui/age_recap.gd,108,Plus tard,T_AGE_RECAP_PLUS_TARD
+ui/age_recap.gd,111,Engager l'âge suivant,T_AGE_RECAP_ENGAGER_L_AGE_SUIVANT
+ui/age_recap.gd,146,l'aube du règne,T_AGE_RECAP_L_AUBE_DU_REGNE
+ui/age_recap.gd,148,L'âge de %s s'achève,T_AGE_RECAP_L_AGE_DE_S
+ui/age_recap.gd,150,L'aube du règne s'achève,T_AGE_RECAP_L_AUBE_DU_REGNE
+ui/age_recap.gd,157,"Ainsi passa %s pour %s, dit %s. L'âge de %s se lève.",T_AGE_RECAP_AINSI_PASSA_S_POUR
+ui/age_recap.gd,159,Bilan : %s âmes · %s or · %d province(s) · savoir %d,T_AGE_RECAP_BILAN_S_AMES_S
+ui/age_recap.gd,166,Cet âge n'a rien laissé aux Annales. Les chroniqueurs ont dormi.,T_AGE_RECAP_CET_AGE_N_A
+ui/alerts.gd,38,GUERRE — {a} entre en guerre contre nous (an {y}),T_ALERTS_GUERRE_A_ENTRE_EN
+ui/alerts.gd,39,PAIX signée avec {a} (an {y}),T_ALERTS_PAIX_SIGNEE_AVEC_A
+ui/alerts.gd,40,Une place est TOMBÉE — {a} occupe la région {r} (an {y}),T_ALERTS_UNE_PLACE_EST_TOMBEE
+ui/alerts.gd,41,Région {r} REPRISE par nos armes (an {y}),T_ALERTS_REGION_R_REPRISE_PAR
+ui/alerts.gd,42,PILLAGE — la région {r} a été mise à sac (an {y}),T_ALERTS_PILLAGE_LA_REGION_R
+ui/alerts.gd,43,RÉVOLTE — un soulèvement éclate en région {r} (an {y}),T_ALERTS_REVOLTE_UN_SOULEVEMENT_ECLATE
+ui/alerts.gd,43,Rebelles de X,T_ALERTS_REBELLES_DE_X
+ui/alerts.gd,44,SÉCESSION — {a} proclame son indépendance (an {y}),T_ALERTS_SECESSION_A_PROCLAME_SON
+ui/alerts.gd,45,BATAILLE GAGNÉE contre {b} en région {r} (an {y}),T_ALERTS_BATAILLE_GAGNEE_CONTRE_B
+ui/alerts.gd,46,"BATAILLE PERDUE contre {b} — l'ost est brisé (région {r}, an {y})",T_ALERTS_BATAILLE_PERDUE_CONTRE_B
+ui/alerts.gd,47,{label} — région {r} (an {y}),T_ALERTS_LABEL_REGION_R_AN
+ui/alerts.gd,115,guerre GAGNÉE,T_ALERTS_GUERRE_GAGNEE
+ui/alerts.gd,115,guerre PERDUE,T_ALERTS_GUERRE_PERDUE
+ui/alerts.gd,115,paix blanche,T_ALERTS_PAIX_BLANCHE
+ui/alerts.gd,116, — %s (score %+d),T_ALERTS_S_SCORE_D
+ui/alerts.gd,126,  (clic : acquitter),T_ALERTS_CLIC_ACQUITTER
+ui/alerts.gd,137,LA GUERRE !,T_ALERTS_LA_GUERRE
+ui/alerts.gd,138,Voir la diplomatie,T_ALERTS_VOIR_LA_DIPLOMATIE
+ui/alerts.gd,139,Lever l'ost,T_ALERTS_LEVER_L_OST
+ui/alerts.gd,141,LA PAIX EST SIGNÉE,T_ALERTS_LA_PAIX_EST_SIGNEE
+ui/alerts.gd,145,RÉVOLTE !,T_ALERTS_REVOLTE
+ui/alerts.gd,146,Y aller,T_ALERTS_Y_ALLER
+ui/alerts.gd,147,Réprimer,T_ALERTS_REPRIMER
+ui/alerts.gd,149,SÉCESSION !,T_ALERTS_SECESSION
+ui/alerts.gd,152,Évènement,T_ALERTS_EVENEMENT
+ui/alerts.gd,154,Y aller,T_ALERTS_Y_ALLER
+ui/alerts.gd,175,%d siège(s) du conseil VACANT(S) — recruter un candidat (clic : onglet Conseil),T_ALERTS_D_SIEGE_S_DU
+ui/alerts.gd,181,Un âge s'est levé : %s — clic pour l'ENGAGER (une fois par âge),T_ALERTS_UN_AGE_S_EST
+ui/alerts.gd,186,Aucune RECHERCHE en cours — clic : choisir une cible dans l'arbre,T_ALERTS_AUCUNE_RECHERCHE_EN_COURS
+ui/alerts.gd,193,"Un ÉDIFICE est constructible (ex. %s, %d or) — clic : panneau Construction",T_ALERTS_UN_EDIFICE_EST_CONSTRUCTIBLE
+ui/alerts.gd,205,EN GUERRE et levée à ZÉRO — clic : monter la levée (onglet Armée),T_ALERTS_EN_GUERRE_ET_LEVEE
+ui/alerts.gd,208,EN GUERRE sans armée de campagne — clic : onglet Armée (puis « Attaquer ici » sur la cible),T_ALERTS_EN_GUERRE_SANS_ARMEE
+ui/alerts.gd,212,Votre peuple a bâti son premier sanctuaire — clic : FONDER la foi,T_ALERTS_VOTRE_PEUPLE_A_BATI
+ui/alerts.gd,219,"La région %d GRONDE (agitation %d) — réprimer, assimiler ou apaiser (clic : y aller)",T_ALERTS_LA_REGION_D_GRONDE
+ui/alerts.gd,223,"FAMINE — la région %d ne mange qu'à %d %% (greniers, import, colonie vivrière) (clic : y aller)",T_ALERTS_FAMINE_LA_REGION_D
+ui/alerts.gd,227,SIÈGE — %s assiège notre région %d ! Lever l'ost (clic : y aller),T_ALERTS_SIEGE_S_ASSIEGE_NOTRE
+ui/alerts.gd,230,PRIX EXORBITANT — %s à ×%.1f de l'ancre au marché (clic : onglet Marché),T_ALERTS_PRIX_EXORBITANT_S_A
+ui/alerts.gd,233,BIEN INTROUVABLE — %s est demandé mais ni produit ni en stock (clic : onglet Marché),T_ALERTS_BIEN_INTROUVABLE_S_EST
+ui/alerts.gd,243,Métabolisation : %s prête (clic : voir l'arbre),T_ALERTS_METABOLISATION_S_PRETE_CLIC
+ui/battle_panel.gd,102,%s hommes,T_BATTLE_S_HOMMES
+ui/battle_panel.gd,109,DÉFENSEUR,T_BATTLE_DEFENSEUR
+ui/battle_panel.gd,113,%s hommes,T_BATTLE_S_HOMMES
+ui/battle_panel.gd,121,PERTES DE CHOC,T_BATTLE_PERTES_DE_CHOC
+ui/battle_panel.gd,124,%s hommes,T_BATTLE_S_HOMMES
+ui/battle_panel.gd,125,Défenseur,T_BATTLE_DEFENSEUR
+ui/battle_panel.gd,125,%s hommes,T_BATTLE_S_HOMMES
+ui/battle_panel.gd,129,SCORE DE GUERRE,T_BATTLE_SCORE_DE_GUERRE
+ui/battle_panel.gd,133,%+.0f (%s),T_BATTLE_0F_S
+ui/chronique.gd,38,Les Annales du Règne,T_CHRONIQUE_LES_ANNALES_DU_REGNE
+ui/chronique.gd,78,(moteur des Annales absent),T_CHRONIQUE_MOTEUR_DES_ANNALES_ABSENT
+ui/chronique.gd,85,"Règne de %s, dit %s",T_CHRONIQUE_REGNE_DE_S_DIT
+ui/chronique.gd,89,Le règne n'a encore rien à raconter.,T_CHRONIQUE_LE_REGNE_N_A
+ui/chronique.gd,91,%d fait(s) retenu(s) — le panthéon du règne.,T_CHRONIQUE_D_FAIT_S_RETENU
+ui/codex.gd,13,Empire & Économie,T_CODEX_EMPIRE_ECONOMIE
+ui/codex.gd,14,Bâtir un édifice,T_CODEX_BATIR_UN_EDIFICE
+ui/codex.gd,14,Panneau Construction (bouton depuis la province ou l'onglet Constructions) · touche via le panneau province,T_CODEX_PANNEAU_CONSTRUCTION_BOUTON_DEPUIS
+ui/codex.gd,14,"coûts en matières + or, réels (roster scps_building_roster) ; grisé si illégal (tech/région/or)",T_CODEX_COUTS_EN_MATIERES_OR
+ui/codex.gd,15,Bâtir une manufacture (Panneau B),T_CODEX_BATIR_UNE_MANUFACTURE_PANNEAU
+ui/codex.gd,15,"Détail province · onglet Main-d'œuvre, section « Bâtir une manufacture »",T_CODEX_DETAIL_PROVINCE_ONGLET_MAIN
+ui/codex.gd,15,gate miroir de l'IA civile : staffage/tier/intrant/slot libre/or ; un seul chantier du même type à la fois,T_CODEX_GATE_MIROIR_DE_L
+ui/codex.gd,16,Recruter une unité,T_CODEX_RECRUTER_UNE_UNITE
+ui/codex.gd,16,Panneau Construction (bouton depuis la province),T_CODEX_PANNEAU_CONSTRUCTION_BOUTON_DEPUIS
+ui/codex.gd,16,"roster 22 unités, gate technologique (7/22 gatées, 15 libres day-1) + or + armes en stock",T_CODEX_ROSTER_22_UNITES_GATE
+ui/codex.gd,17,Régler la levée (postes vacants),T_CODEX_REGLER_LA_LEVEE_POSTES
+ui/codex.gd,17,Tiroir Armée (sidebar),T_CODEX_TIROIR_ARMEE_SIDEBAR
+ui/codex.gd,17,curseur de niveau de levée — influence le rythme de recrutement IA-like du joueur,T_CODEX_CURSEUR_DE_NIVEAU_DE
+ui/codex.gd,18,Rechercher une technologie,T_CODEX_RECHERCHER_UNE_TECHNOLOGIE
+ui/codex.gd,18,"Arbre de tech Medusa (bouton Tech, topbar)",T_CODEX_ARBRE_DE_TECH_MEDUSA
+ui/codex.gd,18,coût ∝ √N-provinces × biais d'éthos ÷ remise de diffusion (le prix affiché = le prix payé),T_CODEX_COUT_N_PROVINCES_BIAIS
+ui/codex.gd,19,Allouer la main-d'œuvre (puits par région),T_CODEX_ALLOUER_LA_MAIN_D
+ui/codex.gd,19,Détail province · onglet Main-d'œuvre,T_CODEX_DETAIL_PROVINCE_ONGLET_MAIN
+ui/codex.gd,19,"override du split AUTO : poids par ressource/bâtiment, fermeture, choix d'intrant, retour Auto",T_CODEX_OVERRIDE_DU_SPLIT_AUTO
+ui/codex.gd,20,Réincorporer de la population (transfert entre régions),T_CODEX_REINCORPORER_DE_LA_POPULATION
+ui/codex.gd,20,"Détail province · onglet Peuples, section Réincorporation",T_CODEX_DETAIL_PROVINCE_ONGLET_PEUPLES
+ui/codex.gd,20,"classe choisie, coercition à la source pour les libres ; les esclaves sont exemptés (propriété déplacée, pas réprimée)",T_CODEX_CLASSE_CHOISIE_COERCITION_A
+ui/codex.gd,21,Acheter / vendre sur le marché (Centres),T_CODEX_ACHETER_VENDRE_SUR_LE
+ui/codex.gd,21,"Tiroir Marché (sidebar), depuis la capitale",T_CODEX_TIROIR_MARCHE_SIDEBAR_DEPUIS
+ui/codex.gd,21,"prix national réel, marge de distance au Centre le plus proche",T_CODEX_PRIX_NATIONAL_REEL_MARGE
+ui/codex.gd,22,Ouvrir / router une route commerciale,T_CODEX_OUVRIR_ROUTER_UNE_ROUTE
+ui/codex.gd,22,Panneau province (chips « Route terre » / « Route mer »),T_CODEX_PANNEAU_PROVINCE_CHIPS_ROUTE
+ui/codex.gd,22,"gate : deux ports + deux marchés + (pacte ou même empire) ; le rendement décroît avec la distance, jamais nul",T_CODEX_GATE_DEUX_PORTS_DEUX
+ui/codex.gd,23,Recompléter l'armée / Dissoudre l'armée,T_CODEX_RECOMPLETER_L_ARMEE_DISSOUDRE
+ui/codex.gd,23,Tiroir Armée (sidebar),T_CODEX_TIROIR_ARMEE_SIDEBAR
+ui/codex.gd,23,"recompléter paie or+matière ; dissoudre libère la pop MAIS ne rend PAS les armes (asymétrie connue, cf. rapport)",T_CODEX_RECOMPLETER_PAIE_OR_MATIERE
+ui/codex.gd,24,Mettre une coque en chantier (marine),T_CODEX_METTRE_UNE_COQUE_EN
+ui/codex.gd,24,"Tiroir Armée (sidebar), section Flotte",T_CODEX_TIROIR_ARMEE_SIDEBAR_SECTION
+ui/codex.gd,24,coût en cuivre (depuis le retrait du métal) ; nécessite un port,T_CODEX_COUT_EN_CUIVRE_DEPUIS
+ui/codex.gd,25,Changer de posture militaire,T_CODEX_CHANGER_DE_POSTURE_MILITAIRE
+ui/codex.gd,25,Tiroir Armée (sidebar),T_CODEX_TIROIR_ARMEE_SIDEBAR
+ui/codex.gd,25,3 chips (défensive/neutre/offensive) — pèse sur l'agressivité/les gates IA miroir,T_CODEX_3_CHIPS_DEFENSIVE_NEUTRE
+ui/codex.gd,26,Lancer une campagne (attaquer une région),T_CODEX_LANCER_UNE_CAMPAGNE_ATTAQUER
+ui/codex.gd,26,"Panneau province (chip « Attaquer ici », depuis une région ennemie voisine)",T_CODEX_PANNEAU_PROVINCE_CHIP_ATTAQUER
+ui/codex.gd,26,"revalidé au drain : région à soi comme origine, chemin BFS existant — silencieux si échoue",T_CODEX_REVALIDE_AU_DRAIN_REGION
+ui/codex.gd,29,Réprimer une région (agitation),T_CODEX_REPRIMER_UNE_REGION_AGITATION
+ui/codex.gd,29,Panneau province (chip « Réprimer »),T_CODEX_PANNEAU_PROVINCE_CHIP_REPRIMER
+ui/codex.gd,29,fait baisser l'agitation au prix de la légitimité/coercition,T_CODEX_FAIT_BAISSER_L_AGITATION
+ui/codex.gd,30,Assimiler (creuset culturel),T_CODEX_ASSIMILER_CREUSET_CULTUREL
+ui/codex.gd,30,Panneau province (chip « Assimiler »),T_CODEX_PANNEAU_PROVINCE_CHIP_ASSIMILER
+ui/codex.gd,30,pousse la région vers la culture dominante de l'empire,T_CODEX_POUSSE_LA_REGION_VERS
+ui/codex.gd,31,Purger une minorité,T_CODEX_PURGER_UNE_MINORITE
+ui/codex.gd,31,Panneau province (chip « Purger »),T_CODEX_PANNEAU_PROVINCE_CHIP_PURGER
+ui/codex.gd,31,"réduit une minorité ciblée ; coût en légitimité, jamais une strate esclave (exemptée)",T_CODEX_REDUIT_UNE_MINORITE_CIBLEE
+ui/codex.gd,32,Coloniser une province vierge,T_CODEX_COLONISER_UNE_PROVINCE_VIERGE
+ui/codex.gd,32,"Panneau province (bouton « Coloniser », sur une province colonisable)",T_CODEX_PANNEAU_PROVINCE_BOUTON_COLONISER
+ui/codex.gd,32,durée 360-1080 j selon distance à la frontière ; 1 ordre/an (cadence liée à la personnalité IA-like),T_CODEX_DUREE_360_1080_J
+ui/codex.gd,33,Proposer un pacte migratoire,T_CODEX_PROPOSER_UN_PACTE_MIGRATOIRE
+ui/codex.gd,33,Fenêtre diplomatique par pays (bouton « Migration »),T_CODEX_FENETRE_DIPLOMATIQUE_PAR_PAYS
+ui/codex.gd,33,échange passif de population avec un allié d'un autre héritage ; le vis-à-vis évalue via l'opinion,T_CODEX_ECHANGE_PASSIF_DE_POPULATION
+ui/codex.gd,34,Affranchir les esclaves du pays,T_CODEX_AFFRANCHIR_LES_ESCLAVES_DU
+ui/codex.gd,34,"Tiroir Conseil (sidebar), section « Peuple servile » — aperçu (âmes/friction) puis confirmation en 2 clics",T_CODEX_TIROIR_CONSEIL_SIDEBAR_SECTION
+ui/codex.gd,34,"granularité PAYS (une politique, pas une province) ; bascule klass→Laboureur ; irréversible",T_CODEX_GRANULARITE_PAYS_UNE_POLITIQUE
+ui/codex.gd,35,Acheter / vendre au marché servile (Centres),T_CODEX_ACHETER_VENDRE_AU_MARCHE
+ui/codex.gd,35,"Tiroir Conseil (sidebar), section « Peuple servile » — quantités 50/200",T_CODEX_TIROIR_CONSEIL_SIDEBAR_SECTION
+ui/codex.gd,35,"achat gaté éthos/tech (miroir de la capture de guerre, grisé avec le mot) ; vente libre (on vend ce qu'on tient déjà)",T_CODEX_ACHAT_GATE_ETHOS_TECH
+ui/codex.gd,36,Choisir dans un évènement (décision membrane),T_CODEX_CHOISIR_DANS_UN_EVENEMENT
+ui/codex.gd,36,"Boîte de dialogue d'évènement (pause automatique, distincte du popup Oyez Oyez)",T_CODEX_BOITE_DE_DIALOGUE_D
+ui/codex.gd,36,rien n'est appliqué tant que le choix n'est pas fait ; options bornées par l'évènement,T_CODEX_RIEN_N_EST_APPLIQUE
+ui/codex.gd,38,Diplomatie & Guerre,T_CODEX_DIPLOMATIE_GUERRE
+ui/codex.gd,39,Déclarer la guerre,T_CODEX_DECLARER_LA_GUERRE
+ui/codex.gd,39,Fenêtre diplomatique par pays (bouton « Guerre »),T_CODEX_FENETRE_DIPLOMATIQUE_PAR_PAYS
+ui/codex.gd,39,exige un casus belli utilisable : gratuit (défense/anti-piraterie/subjugation) ou une revendication payante MÛRIE,T_CODEX_EXIGE_UN_CASUS_BELLI
+ui/codex.gd,40,Fabriquer une revendication (CB payant),T_CODEX_FABRIQUER_UNE_REVENDICATION_CB
+ui/codex.gd,40,Fenêtre diplomatique par pays (bouton « Fabriquer une revendication »),T_CODEX_FENETRE_DIPLOMATIQUE_PAR_PAYS
+ui/codex.gd,40,coûte 2 ans de revenu de la cible ; mûrit en 1 an ; reste valable 5 ans une fois prête,T_CODEX_COUTE_2_ANS_DE
+ui/codex.gd,41,Proposer la paix (blanche),T_CODEX_PROPOSER_LA_PAIX_BLANCHE
+ui/codex.gd,41,Fenêtre diplomatique par pays (bouton « Paix »),T_CODEX_FENETRE_DIPLOMATIQUE_PAR_PAYS
+ui/codex.gd,41,le vis-à-vis évalue l'offre (opinion + score de guerre) — peut refuser,T_CODEX_LE_VIS_A_VIS
+ui/codex.gd,42,Proposer une alliance,T_CODEX_PROPOSER_UNE_ALLIANCE
+ui/codex.gd,42,Fenêtre diplomatique par pays (bouton « Allier »),T_CODEX_FENETRE_DIPLOMATIQUE_PAR_PAYS
+ui/codex.gd,42,"consentement bilatéral requis (ai_consider_offer, opinion ±100)",T_CODEX_CONSENTEMENT_BILATERAL_REQUIS_AI
+ui/codex.gd,43,Proposer un pacte (non-agression),T_CODEX_PROPOSER_UN_PACTE_NON
+ui/codex.gd,43,Fenêtre diplomatique par pays (bouton « Pacte »),T_CODEX_FENETRE_DIPLOMATIQUE_PAR_PAYS
+ui/codex.gd,43,"consentement requis, coût d'opinion plus faible que l'alliance",T_CODEX_CONSENTEMENT_REQUIS_COUT_D
+ui/codex.gd,44,Imposer / lever un embargo,T_CODEX_IMPOSER_LEVER_UN_EMBARGO
+ui/codex.gd,44,Fenêtre diplomatique par pays (bouton « Embargo »),T_CODEX_FENETRE_DIPLOMATIQUE_PAR_PAYS
+ui/codex.gd,44,unilatéral (pas de consentement) ; pèse sur l'opinion à la baisse,T_CODEX_UNILATERAL_PAS_DE_CONSENTEMENT
+ui/codex.gd,45,Engager conseillers du Conseil (recrutement de siège),T_CODEX_ENGAGER_CONSEILLERS_DU_CONSEIL
+ui/codex.gd,45,"Tiroir Conseil (sidebar), un candidat par siège",T_CODEX_TIROIR_CONSEIL_SIDEBAR_UN
+ui/codex.gd,45,le choix éclairé — chaque candidat a ses propres multiplicateurs,T_CODEX_LE_CHOIX_ECLAIRE_CHAQUE
+ui/codex.gd,46,Démettre un conseiller,T_CODEX_DEMETTRE_UN_CONSEILLER
+ui/codex.gd,46,Tiroir Conseil (sidebar),T_CODEX_TIROIR_CONSEIL_SIDEBAR
+ui/codex.gd,46,"libère le siège, perd les multiplicateurs du titulaire",T_CODEX_LIBERE_LE_SIEGE_PERD
+ui/codex.gd,47,Régler la paie d'un siège du Conseil,T_CODEX_REGLER_LA_PAIE_D
+ui/codex.gd,47,**(bientôt)** aucun curseur Godot — verbe façade seul (scps_player_council_pay),T_CODEX_BIENTOT_AUCUN_CURSEUR_GODOT
+ui/codex.gd,47,curseur 0×-2× ; un siège mal payé perd en efficacité/loyauté,T_CODEX_CURSEUR_0_2_UN
+ui/codex.gd,48,Activer / désactiver un décret (civics),T_CODEX_ACTIVER_DESACTIVER_UN_DECRET
+ui/codex.gd,48,Tiroir Conseil ou Économie (section Décrets),T_CODEX_TIROIR_CONSEIL_OU_ECONOMIE
+ui/codex.gd,48,une réforme active refuse le retrait ; condition d'entrée vérifiée à l'activation,T_CODEX_UNE_REFORME_ACTIVE_REFUSE
+ui/codex.gd,49,Engager l'âge courant,T_CODEX_ENGAGER_L_AGE_COURANT
+ui/codex.gd,49,Chip topbar « Engager : <âge> » → écran de récap d'âge,T_CODEX_CHIP_TOPBAR_ENGAGER_AGE
+ui/codex.gd,49,l'IA s'engage automatiquement ; le joueur choisit son moment — une fois par âge,T_CODEX_L_IA_S_ENGAGE
+ui/codex.gd,51,Foi & Savoir,T_CODEX_FOI_SAVOIR
+ui/codex.gd,52,Fonder / rallier une religion,T_CODEX_FONDER_RALLIER_UNE_RELIGION
+ui/codex.gd,52,Créateur de foi (s'ouvre seul au 1er édifice religieux bâti),T_CODEX_CREATEUR_DE_FOI_S
+ui/codex.gd,52,"sous le plafond mondial (⌈empires/3⌉ racines) : au-delà, on RALLIE une foi existante au lieu d'en fonder une",T_CODEX_SOUS_LE_PLAFOND_MONDIAL
+ui/codex.gd,53,Provoquer un schisme,T_CODEX_PROVOQUER_UN_SCHISME
+ui/codex.gd,53,Panneau Religion (si rouvert),T_CODEX_PANNEAU_RELIGION_SI_ROUVERT
+ui/codex.gd,53,plafonné à 2 sectes par racine ; grisé au plafond,T_CODEX_PLAFONNE_A_2_SECTES
+ui/codex.gd,54,Composer sa culture (héritage/éthos/traditions),T_CODEX_COMPOSER_SA_CULTURE_HERITAGE
+ui/codex.gd,54,"Créateur de culture, écran Nouvelle Partie SEULEMENT (avant la genèse)",T_CODEX_CREATEUR_DE_CULTURE_ECRAN
+ui/codex.gd,54,1 héritage + 1 éthos + 3 traditions (une par axe) ; fige le pays du joueur à la régénération,T_CODEX_1_HERITAGE_1_ETHOS
+ui/codex.gd,56,Fin de partie,T_CODEX_FIN_DE_PARTIE
+ui/codex.gd,57,Consulter l'état de l'Entropie / la Merveille,T_CODEX_CONSULTER_L_ETAT_DE
+ui/codex.gd,57,"Bandeau d'endgame (haut-centre, toujours visible) + arbre de tech (jauge de métabolisation « Compte pour l'Ascension »)",T_CODEX_BANDEAU_D_ENDGAME_HAUT
+ui/codex.gd,57,lecture seule — la victoire Merveille est un compte séparé de l'accès aux signatures tech,T_CODEX_LECTURE_SEULE_LA_VICTOIRE
+ui/codex.gd,58,Consulter le combat en cours (siège/bataille),T_CODEX_CONSULTER_LE_COMBAT_EN
+ui/codex.gd,58,Panneau de combat (clic sur une région en guerre/un jeton d'armée),T_CODEX_PANNEAU_DE_COMBAT_CLIC
+ui/codex.gd,58,"lecture seule — force, pertes, score de guerre des deux camps",T_CODEX_LECTURE_SEULE_FORCE_PERTES
+ui/codex.gd,89,Le Codex des Verbes,T_CODEX_LE_CODEX_DES_VERBES
+ui/codex.gd,95,Tout ce que vous pouvez faire — et où le faire. (F1 pour fermer),T_CODEX_TOUT_CE_QUE_VOUS
+ui/codex.gd,148,• %s (bientôt),T_CODEX_S_BIENTOT
+ui/codex.gd,155,  Où : ,T_CODEX_OU
+ui/codex.gd,162,  Règle : ,T_CODEX_REGLE
+ui/construction_panel.gd,63,UNITÉS,T_CONSTRUCTION_UNITES
+ui/construction_panel.gd,71,Coût : %s,T_CONSTRUCTION_COUT_S
+ui/construction_panel.gd,72,Éthos : %s,T_CONSTRUCTION_ETHOS_S
+ui/construction_panel.gd,73,Entretien : %.1f or · %d vivre /100,T_CONSTRUCTION_ENTRETIEN_1F_OR_D
+ui/construction_panel.gd,74,Efficace contre ▸ %s,T_CONSTRUCTION_EFFICACE_CONTRE_S
+ui/construction_panel.gd,75,Faible contre ▸ %s,T_CONSTRUCTION_FAIBLE_CONTRE_S
+ui/construction_panel.gd,83,ÉDIFICES,T_CONSTRUCTION_EDIFICES
+ui/construction_panel.gd,92,Or : %d   ·   %d jours,T_CONSTRUCTION_OR_D_D_JOURS
+ui/construction_panel.gd,169,⚒ %s — ordre émis,T_CONSTRUCTION_S_ORDRE_EMIS
+ui/construction_panel.gd,169,✗ %s — file pleine,T_CONSTRUCTION_S_FILE_PLEINE
+ui/construction_panel.gd,173,⚔ %s — levée ordonnée,T_CONSTRUCTION_S_LEVEE_ORDONNEE
+ui/construction_panel.gd,173,✗ %s — file pleine,T_CONSTRUCTION_S_FILE_PLEINE
+ui/controls.gd,25,Stabilité,T_CONTROLS_STABILITE
+ui/controls.gd,27,occupé,T_CONTROLS_OCCUPE
+ui/controls.gd,27,belligérant,T_CONTROLS_BELLIGERANT
+ui/controls.gd,28,allié,T_CONTROLS_ALLIE
+ui/country_actions.gd,94,Fabriquer une revendication,T_COUNTRY_ACTIONS_FABRIQUER_UNE_REVENDICATION
+ui/country_actions.gd,137,Statut : %s · Opinion : %+d,T_COUNTRY_ACTIONS_STATUT_S_OPINION_D
+ui/country_actions.gd,142,Vassalité,T_COUNTRY_ACTIONS_VASSALITE
+ui/country_actions.gd,143,Mémoire,T_COUNTRY_ACTIONS_MEMOIRE
+ui/country_actions.gd,160,Pourquoi : ,T_COUNTRY_ACTIONS_POURQUOI
+ui/country_actions.gd,160,\n,T_COUNTRY_ACTIONS_N
+ui/country_actions.gd,161,Mémoire : ,T_COUNTRY_ACTIONS_MEMOIRE
+ui/country_actions.gd,161,Mémoire : aucun acte notable,T_COUNTRY_ACTIONS_MEMOIRE_AUCUN_ACTE_NOTABLE
+ui/country_actions.gd,164,Émissaire en tournée — de retour dans %d j,T_COUNTRY_ACTIONS_EMISSAIRE_EN_TOURNEE_DE
+ui/country_actions.gd,164,Émissaire disponible,T_COUNTRY_ACTIONS_EMISSAIRE_DISPONIBLE
+ui/country_actions.gd,187,il refusera (opinion trop basse),T_COUNTRY_ACTIONS_IL_REFUSERA_OPINION_TROP
+ui/country_actions.gd,198,Intrigue en cours (%d j),T_COUNTRY_ACTIONS_INTRIGUE_EN_COURS_D
+ui/country_actions.gd,202,Revendication prête (expire dans %.1f an),T_COUNTRY_ACTIONS_REVENDICATION_PRETE_EXPIRE_DAN
+ui/country_actions.gd,205,Fabriquer une revendication (%d or),T_COUNTRY_ACTIONS_FABRIQUER_UNE_REVENDICATION_D
+ui/country_actions.gd,208,Une intrigue mûrit contre ce pays.,T_COUNTRY_ACTIONS_UNE_INTRIGUE_MURIT_CONTRE
+ui/country_actions.gd,210,Une revendication est prête : déclarez la guerre avant qu'elle ne s'évente.,T_COUNTRY_ACTIONS_UNE_REVENDICATION_EST_PRETE
+ui/country_actions.gd,227,Ordre émis — l'émissaire part (verdict au drain).,T_COUNTRY_ACTIONS_ORDRE_EMIS_L_EMISSAIRE
+ui/country_actions.gd,227,Ordre refusé.,T_COUNTRY_ACTIONS_ORDRE_REFUSE
+ui/country_panel.gd,14,Stabilité,T_COUNTRY_STABILITE
+ui/country_panel.gd,15,Prospérité,T_COUNTRY_PROSPERITE
+ui/country_panel.gd,16,Légitimité,T_COUNTRY_LEGITIMITE
+ui/country_panel.gd,17,Cohésion,T_COUNTRY_COHESION
+ui/country_panel.gd,23,Solidité du régime : haute = ordre tenu ; basse = risque de coup d'État ou de révolte. Nourrie par la légitimité et la prospérité.,T_COUNTRY_SOLIDITE_DU_REGIME_HAUTE
+ui/country_panel.gd,24,Richesse par tête de l'empire (biens produits et consommés). Haute = population comblée.,T_COUNTRY_RICHESSE_PAR_TETE_DE
+ui/country_panel.gd,25,"Consentement des gouvernés envers la couronne. Basse = agitation, puis sécession.",T_COUNTRY_CONSENTEMENT_DES_GOUVERNES_ENVERS
+ui/country_panel.gd,26,"Unité culturelle de l'empire. Basse = fractures, minorités frondeuses.",T_COUNTRY_UNITE_CULTURELLE_DE_L
+ui/country_panel.gd,27,Avancée de la recherche : c'est elle qui ouvre les technologies.,T_COUNTRY_AVANCEE_DE_LA_RECHERCHE
+ui/country_panel.gd,76,%s · %d régions,T_COUNTRY_S_D_REGIONS
+ui/country_panel.gd,92,Influence %d,T_COUNTRY_INFLUENCE_D
+ui/country_panel.gd,103,✦ Mission,T_COUNTRY_MISSION
+ui/country_panel.gd,110,prime : ,T_COUNTRY_PRIME
+ui/culture_creator.gd,108,Créateur d'empire,T_CULTURE_CREATOR_CREATEUR_D_EMPIRE
+ui/culture_creator.gd,114,"Composez votre peuple — héritage, éthos et trois traditions.",T_CULTURE_CREATOR_COMPOSEZ_VOTRE_PEUPLE_HERITAGE
+ui/culture_creator.gd,121,Héritage  (votre lignée — donne ses noms à votre empire),T_CULTURE_CREATOR_HERITAGE_VOTRE_LIGNEE_DONNE
+ui/culture_creator.gd,130,Éthos  (l'âme de l'État — son épithète et ses factions),T_CULTURE_CREATOR_ETHOS_L_AME_DE
+ui/culture_creator.gd,139,Traditions  (une par axe : 1 majeur +2 · 1 mineur +1 · 1 défaut −1),T_CULTURE_CREATOR_TRADITIONS_UNE_PAR_AXE
+ui/culture_creator.gd,179,Graine du monde,T_CULTURE_CREATOR_GRAINE_DU_MONDE
+ui/culture_creator.gd,194,Aléatoire,T_CULTURE_CREATOR_ALEATOIRE
+ui/culture_creator.gd,204,Commencer l'empire,T_CULTURE_CREATOR_COMMENCER_L_EMPIRE
+ui/culture_creator.gd,231,Moteur (libscps) absent — bâtir : cd godot && scons.,T_CULTURE_CREATOR_MOTEUR_LIBSCPS_ABSENT_BATIR
+ui/culture_creator.gd,236,libscps obsolète (créateur absent) — recompiler : cd godot && scons.,T_CULTURE_CREATOR_LIBSCPS_OBSOLETE_CREATEUR_ABSE
+ui/culture_creator.gd,269,+2 majeur,T_CULTURE_CREATOR_2_MAJEUR
+ui/culture_creator.gd,270,+1 mineur,T_CULTURE_CREATOR_1_MINEUR
+ui/culture_creator.gd,271,−1 défaut,T_CULTURE_CREATOR_1_DEFAUT
+ui/culture_creator.gd,278,défaut,T_CULTURE_CREATOR_DEFAUT
+ui/culture_creator.gd,369,Sphère %s · ex. « %s »,T_CULTURE_CREATOR_SPHERE_S_EX_S
+ui/culture_creator.gd,382,%s\n%s\nRang : %s,T_CULTURE_CREATOR_S_N_S_NRANG
+ui/culture_creator.gd,386,Votre peuple : les %s,T_CULTURE_CREATOR_VOTRE_PEUPLE_LES_S
+ui/culture_creator.gd,403,Effets : ,T_CULTURE_CREATOR_EFFETS
+ui/culture_creator.gd,403,Effets : —,T_CULTURE_CREATOR_EFFETS
+ui/culture_creator.gd,405,\n,T_CULTURE_CREATOR_N
+ui/culture_creator.gd,411,✓ Composition valide.,T_CULTURE_CREATOR_COMPOSITION_VALIDE
+ui/culture_creator.gd,414,"✗ Il faut EXACTEMENT 1 majeur (+2), 1 mineur (+1) et 1 défaut (−1).",T_CULTURE_CREATOR_IL_FAUT_EXACTEMENT_1
+ui/culture_creator.gd,473,Valider la culture,T_CULTURE_CREATOR_VALIDER_LA_CULTURE
+ui/devpanel.gd,24,MODTOOLS — Tunables (édition LIVE · F10 pour fermer),T_DEVPANEL_MODTOOLS_TUNABLES_EDITION_LIVE
+ui/devpanel.gd,27,filtrer par nom…,T_DEVPANEL_FILTRER_PAR_NOM
+ui/devpanel.gd,47,(pas de monde),T_DEVPANEL_PAS_DE_MONDE
+ui/devpanel.gd,67,%d tunable(s) — Entrée pour appliquer (live). * = surchargé.,T_DEVPANEL_D_TUNABLE_S_ENTREE
+ui/economy_panel.gd,20,âmes,T_ECONOMY_AMES
+ui/economy_panel.gd,21,Trésor,T_ECONOMY_TRESOR
+ui/economy_panel.gd,22,Prospérité,T_ECONOMY_PROSPERITE
+ui/economy_panel.gd,117,année,T_ECONOMY_ANNEE
+ui/economy_panel.gd,141,Économie dans le temps,T_ECONOMY_ECONOMIE_DANS_LE_TEMPS
+ui/economy_panel.gd,151,Collecte des données… (laissez le temps avancer),T_ECONOMY_COLLECTE_DES_DONNEES_LAISSEZ
+ui/empire_sidebar.gd,54,évènement,T_EMPIRE_SIDEBAR_EVENEMENT
+ui/empire_sidebar.gd,124,… et %d autres,T_EMPIRE_SIDEBAR_ET_D_AUTRES
+ui/empire_sidebar.gd,127,aucune ville,T_EMPIRE_SIDEBAR_AUCUNE_VILLE
+ui/empire_sidebar.gd,132,ARMÉES,T_EMPIRE_SIDEBAR_ARMEES
+ui/empire_sidebar.gd,137,En campagne : %s (%s),T_EMPIRE_SIDEBAR_EN_CAMPAGNE_S_S
+ui/empire_sidebar.gd,141,Réserve : %s · levée %s,T_EMPIRE_SIDEBAR_RESERVE_S_LEVEE_S
+ui/empire_sidebar.gd,150,Flotte : %d coque(s) disponibles,T_EMPIRE_SIDEBAR_FLOTTE_D_COQUE_S
+ui/empire_sidebar.gd,163,Vers %s,T_EMPIRE_SIDEBAR_VERS_S
+ui/empire_sidebar.gd,168,%d j restants · rendement %d %%,T_EMPIRE_SIDEBAR_D_J_RESTANTS_RENDEMENT
+ui/empire_sidebar.gd,173,prochain ordre dans %d j,T_EMPIRE_SIDEBAR_PROCHAIN_ORDRE_DANS_D
+ui/empire_sidebar.gd,173,aucun chantier (ordre possible),T_EMPIRE_SIDEBAR_AUCUN_CHANTIER_ORDRE_POSSIBLE
+ui/empire_sidebar.gd,178,COUR & FACTIONS,T_EMPIRE_SIDEBAR_COUR_FACTIONS
+ui/empire_sidebar.gd,182,Influence %d,T_EMPIRE_SIDEBAR_INFLUENCE_D
+ui/empire_sidebar.gd,195,Bonheur %d %%,T_EMPIRE_SIDEBAR_BONHEUR_D
+ui/empire_sidebar.gd,227,tension de coup %d · corruption %d,T_EMPIRE_SIDEBAR_TENSION_DE_COUP_D
+ui/empire_sidebar.gd,253,récompense : %d or,T_EMPIRE_SIDEBAR_RECOMPENSE_D_OR
+ui/empire_sidebar.gd,257, (an %d),T_EMPIRE_SIDEBAR_AN_D
+ui/empire_sidebar.gd,263,rien à signaler,T_EMPIRE_SIDEBAR_RIEN_A_SIGNALER
+ui/endgame_banner.gd,21,Le Grand Engloutissement,T_ENDGAME_BANNER_LE_GRAND_ENGLOUTISSEMENT
+ui/endgame_banner.gd,22,Le Grand Hiver,T_ENDGAME_BANNER_LE_GRAND_HIVER
+ui/endgame_banner.gd,23,L'Étreinte des Ronces,T_ENDGAME_BANNER_L_ETREINTE_DES_RONCES
+ui/endgame_banner.gd,25,Le Règne de Sang,T_ENDGAME_BANNER_LE_REGNE_DE_SANG
+ui/endgame_banner.gd,121,Entropie  100  —  %s,T_ENDGAME_BANNER_ENTROPIE_100_S
+ui/endgame_banner.gd,121,Fin du monde,T_ENDGAME_BANNER_FIN_DU_MONDE
+ui/endgame_banner.gd,129,Entropie  %d,T_ENDGAME_BANNER_ENTROPIE_D
+ui/epilogue.gd,16,vit les flots engloutir le monde,T_EPILOGUE_VIT_LES_FLOTS_ENGLOUTIR
+ui/epilogue.gd,17,vit le Grand Hiver éteindre les feux,T_EPILOGUE_VIT_LE_GRAND_HIVER
+ui/epilogue.gd,18,vit les Ronces dévorer le monde,T_EPILOGUE_VIT_LES_RONCES_DEVORER
+ui/epilogue.gd,19,s'éleva au-delà du monde — la Merveille accomplie,T_EPILOGUE_S_ELEVA_AU_DELA
+ui/epilogue.gd,20,noya son règne dans le sang — la Main ne s'arrêta plus,T_EPILOGUE_NOYA_SON_REGNE_DANS
+ui/epilogue.gd,84,Épilogue,T_EPILOGUE_EPILOGUE
+ui/epilogue.gd,97,"Les Annales, en entier — ce que les chroniqueurs ont daigné retenir :",T_EPILOGUE_LES_ANNALES_EN_ENTIER
+ui/epilogue.gd,135,"Rien. Un règne entier, et rien à raconter.",T_EPILOGUE_RIEN_UN_REGNE_ENTIER
+ui/epilogue.gd,159,Un royaume oublié,T_EPILOGUE_UN_ROYAUME_OUBLIE
+ui/epilogue.gd,170,ne fit trembler personne,T_EPILOGUE_NE_FIT_TREMBLER_PERSONNE
+ui/epilogue.gd,172,fit trembler %d empires,T_EPILOGUE_FIT_TREMBLER_D_EMPIRES
+ui/epilogue.gd,174,fit plier %d rival(aux),T_EPILOGUE_FIT_PLIER_D_RIVAL
+ui/epilogue.gd,176,éleva %d monuments,T_EPILOGUE_ELEVA_D_MONUMENTS
+ui/epilogue.gd,178,trancha %d querelles,T_EPILOGUE_TRANCHA_D_QUERELLES
+ui/epilogue.gd,180,encaissa %d défaites,T_EPILOGUE_ENCAISSA_D_DEFAITES
+ui/epilogue.gd,181,vit son histoire s'arrêter là,T_EPILOGUE_VIT_SON_HISTOIRE_S
+ui/epilogue.gd,182,"%s, dit %s, régna %d ans, %s, et %s.",T_EPILOGUE_S_DIT_S_REGNA
+ui/epithet.gd,22,le Discret,T_EPITHET_LE_DISCRET
+ui/epithet.gd,44,le Visionnaire,T_EPITHET_LE_VISIONNAIRE
+ui/epithet.gd,47,le Sanglant,T_EPITHET_LE_SANGLANT
+ui/epithet.gd,49,le Conquérant,T_EPITHET_LE_CONQUERANT
+ui/epithet.gd,51,l'Assiégé,T_EPITHET_L_ASSIEGE
+ui/epithet.gd,53,le Fragmenté,T_EPITHET_LE_FRAGMENTE
+ui/epithet.gd,55,le Bâtisseur,T_EPITHET_LE_BATISSEUR
+ui/epithet.gd,57,le Prudent,T_EPITHET_LE_PRUDENT
+ui/epithet.gd,61,le Marqué,T_EPITHET_LE_MARQUE
+ui/epithet.gd,63,le Belliqueux,T_EPITHET_LE_BELLIQUEUX
+ui/epithet.gd,65,le Discret,T_EPITHET_LE_DISCRET
+ui/epithet.gd,66,le Chroniqué,T_EPITHET_LE_CHRONIQUE
+ui/event_dialog.gd,93,— UNE DÉCISION S'IMPOSE —,T_EVENT_DIALOG_UNE_DECISION_S_IMPOSE
+ui/event_popup.gd,90,— OYEZ  OYEZ —,T_EVENT_POPUP_OYEZ_OYEZ
+ui/options_panel.gd,28,Français,T_OPTIONS_FRANCAIS
+ui/province_detail.gd,93,(aucune province sélectionnée),T_PROVINCE_AUCUNE_PROVINCE_SELECTIONNEE
+ui/province_detail.gd,113,Province — %s,T_PROVINCE_PROVINCE_S
+ui/province_detail.gd,122,%s habitants · %s · %s,T_PROVINCE_S_HABITANTS_S_S
+ui/province_detail.gd,165,province inhabitée,T_PROVINCE_PROVINCE_INHABITEE
+ui/province_detail.gd,254,province paisible,T_PROVINCE_PROVINCE_PAISIBLE
+ui/province_detail.gd,263,%+d,T_PROVINCE_D
+ui/province_detail.gd,265,−%d/an,T_PROVINCE_D_AN
+ui/province_detail.gd,293,région %d,T_PROVINCE_REGION_D
+ui/province_detail.gd,298,Réincorporation,T_PROVINCE_REINCORPORATION
+ui/province_detail.gd,301,il faut au moins DEUX régions à soi,T_PROVINCE_IL_FAUT_AU_MOINS
+ui/province_detail.gd,329,%s âmes,T_PROVINCE_S_AMES
+ui/province_detail.gd,330,%s âmes,T_PROVINCE_S_AMES
+ui/province_detail.gd,335,aucune — main servile,T_PROVINCE_AUCUNE_MAIN_SERVILE
+ui/province_detail.gd,335,coercition sur %s,T_PROVINCE_COERCITION_SUR_S
+ui/province_detail.gd,336,coût : %s,T_PROVINCE_COUT_S
+ui/province_detail.gd,343,Déplacer,T_PROVINCE_DEPLACER
+ui/province_detail.gd,370,Bâtir…,T_PROVINCE_BATIR
+ui/province_detail.gd,373,aucune manufacture bâtie (carte nue : l'IA/le joueur élèvent dans le temps),T_PROVINCE_AUCUNE_MANUFACTURE_BATIE_CARTE
+ui/province_detail.gd,375,manufacture                niveau   ouvriers,T_PROVINCE_MANUFACTURE_NIVEAU_OUVRIERS
+ui/province_detail.gd,402,Bâtir une manufacture,T_PROVINCE_BATIR_UNE_MANUFACTURE
+ui/province_detail.gd,422,Bâtir,T_PROVINCE_BATIR
+ui/province_detail.gd,426,aucune manufacture posable ici pour l'instant,T_PROVINCE_AUCUNE_MANUFACTURE_POSABLE_ICI
+ui/province_detail.gd,434,Stabilité,T_PROVINCE_STABILITE
+ui/province_detail.gd,435,Prospérité,T_PROVINCE_PROSPERITE
+ui/province_detail.gd,436,Légitimité,T_PROVINCE_LEGITIMITE
+ui/province_detail.gd,437,Cohésion,T_PROVINCE_COHESION
+ui/province_detail.gd,441,Marché local,T_PROVINCE_MARCHE_LOCAL
+ui/province_detail.gd,451,aucun bien notable ici,T_PROVINCE_AUCUN_BIEN_NOTABLE_ICI
+ui/province_detail.gd,456,%.1f or,T_PROVINCE_1F_OR
+ui/province_detail.gd,457,stock %s,T_PROVINCE_STOCK_S
+ui/province_detail.gd,468,(pays invalide),T_PROVINCE_PAYS_INVALIDE
+ui/province_detail.gd,473,L'état de l'EMPIRE entier (la province n'en est qu'une part).,T_PROVINCE_L_ETAT_DE_L
+ui/province_detail.gd,485,Savoir : %d (affiché en barre du haut),T_PROVINCE_SAVOIR_D_AFFICHE_EN
+ui/province_detail.gd,500,Bassin : %s bras (journaliers + bourgeois),T_PROVINCE_BASSIN_S_BRAS_JOURNALIERS
+ui/province_detail.gd,501,RÉPARTI (manuel),T_PROVINCE_REPARTI_MANUEL
+ui/province_detail.gd,501,AUTO (réparti par le marché),T_PROVINCE_AUTO_REPARTI_PAR_LE
+ui/province_detail.gd,502,mode : %s,T_PROVINCE_MODE_S
+ui/province_detail.gd,506,↻ Auto,T_PROVINCE_AUTO
+ui/province_detail.gd,509,(province non gouvernée — lecture seule),T_PROVINCE_PROVINCE_NON_GOUVERNEE_LECTURE
+ui/province_detail.gd,511,aucun puits de main-d'œuvre ici,T_PROVINCE_AUCUN_PUITS_DE_MAIN
+ui/province_detail.gd,553,Intr.: %s,T_PROVINCE_INTR_S
+ui/province_detail.gd,585,aucun évènement notable jusqu'ici,T_PROVINCE_AUCUN_EVENEMENT_NOTABLE_JUSQU
+ui/province_detail.gd,587,an      évènement  (survol → effets),T_PROVINCE_AN_EVENEMENT_SURVOL_EFFETS
+ui/province_detail.gd,595,an %d,T_PROVINCE_AN_D
+ui/province_detail.gd,604,Production en direct (par an),T_PROVINCE_PRODUCTION_EN_DIRECT_PAR
+ui/province_detail.gd,606,ressource brute,T_PROVINCE_RESSOURCE_BRUTE
+ui/province_detail.gd,608,sortie d'atelier,T_PROVINCE_SORTIE_D_ATELIER
+ui/province_detail.gd,611,Impôts : ~%s or/an,T_PROVINCE_IMPOTS_S_OR_AN
+ui/province_detail.gd,615,rien de notable,T_PROVINCE_RIEN_DE_NOTABLE
+ui/province_detail.gd,691,⚒ %s — ordre émis,T_PROVINCE_S_ORDRE_EMIS
+ui/province_detail.gd,691,✗ %s — refusé,T_PROVINCE_S_REFUSE
+ui/province_detail.gd,745,→ %s — ordre émis,T_PROVINCE_S_ORDRE_EMIS
+ui/province_detail.gd,745,✗ refusé,T_PROVINCE_REFUSE
+ui/province_panel.gd,16,"La masse : fournit le travail (extraction + manufactures) et demande les biens de base (vivres, étoffe, bois de feu).",T_PROVINCE_LA_MASSE_FOURNIT_LE
+ui/province_panel.gd,17,"Marchands & artisans : possèdent les manufactures, captent le profit, demandent les biens manufacturés.",T_PROVINCE_MARCHANDS_ARTISANS_POSSEDENT_LES
+ui/province_panel.gd,18,"L'aristocratie : vit de la taxe et de la rente, produit la recherche, exige le luxe (joaillerie, étoffe précieuse).",T_PROVINCE_L_ARISTOCRATIE_VIT_DE
+ui/province_panel.gd,19,"L'humeur locale (légitimité de la province) : monte avec l'ordre et les besoins comblés ; chute sous la surtaxe, la coercition et les cicatrices de révolte.",T_PROVINCE_L_HUMEUR_LOCALE_LEGITIMITE
+ui/province_panel.gd,86,Terrain : %s — tenue de siège +%d%%,T_PROVINCE_TERRAIN_S_TENUE_DE
+ui/province_panel.gd,114,Prospérité,T_PROVINCE_PROSPERITE
+ui/province_panel.gd,124,%s habitants,T_PROVINCE_S_HABITANTS
+ui/province_panel.gd,153,Idéologie,T_PROVINCE_IDEOLOGIE
+ui/province_panel.gd,157,Héritage,T_PROVINCE_HERITAGE
+ui/province_panel.gd,222,Impôts ~%s or/an,T_PROVINCE_IMPOTS_S_OR_AN
+ui/province_panel.gd,226,rien de notable,T_PROVINCE_RIEN_DE_NOTABLE
+ui/province_panel.gd,231,+%.1f/j,T_PROVINCE_1F_J
+ui/province_panel.gd,240,Au bord de la révolte (agitation %d),T_PROVINCE_AU_BORD_DE_LA
+ui/province_panel.gd,245,%s · tier %d,T_PROVINCE_S_TIER_D
+ui/province_panel.gd,251,Productivité,T_PROVINCE_PRODUCTIVITE
+ui/province_panel.gd,271,Réprimer,T_PROVINCE_REPRIMER
+ui/province_panel.gd,272,Détail,T_PROVINCE_DETAIL
+ui/province_panel.gd,285,Attaquer ici,T_PROVINCE_ATTAQUER_ICI
+ui/province_panel.gd,288,Route terre,T_PROVINCE_ROUTE_TERRE
+ui/province_panel.gd,288,Route mer,T_PROVINCE_ROUTE_MER
+ui/religion_panel.gd,58,Créateur de foi,T_RELIGION_CREATEUR_DE_FOI
+ui/religion_panel.gd,70,Crédo,T_RELIGION_CREDO
+ui/religion_panel.gd,76,Trois traditions (axes distincts),T_RELIGION_TROIS_TRADITIONS_AXES_DISTINCTS
+ui/religion_panel.gd,112,Moteur religion absent (recompiler libscps).,T_RELIGION_MOTEUR_RELIGION_ABSENT_RECOMPILER
+ui/religion_panel.gd,152,Créateur de foi,T_RELIGION_CREATEUR_DE_FOI
+ui/religion_panel.gd,156, — SCHISME possible (RUPTURE),T_RELIGION_SCHISME_POSSIBLE_RUPTURE
+ui/religion_panel.gd,156, — SCHISME possible (DÉRIVE),T_RELIGION_SCHISME_POSSIBLE_DERIVE
+ui/religion_panel.gd,157,Foi d'État : %s%s,T_RELIGION_FOI_D_ETAT_S
+ui/religion_panel.gd,165,Aucune foi fondée. Composez un crédo + 3 traditions.,T_RELIGION_AUCUNE_FOI_FONDEE_COMPOSEZ
+ui/religion_panel.gd,168,Le monde a atteint son nombre de religions (⌈empires/3⌉) — vous RALLIEZ une foi existante.,T_RELIGION_LE_MONDE_A_ATTEINT
+ui/religion_panel.gd,169,Rallier une foi,T_RELIGION_RALLIER_UNE_FOI
+ui/religion_panel.gd,182,✓ Trois axes distincts.,T_RELIGION_TROIS_AXES_DISTINCTS
+ui/religion_panel.gd,185,✗ Choisissez trois pôles sur trois axes DIFFÉRENTS.,T_RELIGION_CHOISISSEZ_TROIS_POLES_SUR
+ui/sidebar.gd,13,Économie,T_SIDEBAR_ECONOMIE
+ui/sidebar.gd,14,Démographie,T_SIDEBAR_DEMOGRAPHIE
+ui/sidebar.gd,16,Marché,T_SIDEBAR_MARCHE
+ui/sidebar.gd,17,Armée,T_SIDEBAR_ARMEE
+ui/sidebar_drawer.gd,16,Économie,T_SIDEBAR_ECONOMIE
+ui/sidebar_drawer.gd,16,Démographie,T_SIDEBAR_DEMOGRAPHIE
+ui/sidebar_drawer.gd,16,Marché,T_SIDEBAR_MARCHE
+ui/sidebar_drawer.gd,17,Armée,T_SIDEBAR_ARMEE
+ui/sidebar_drawer.gd,22,Souveraineté,T_SIDEBAR_SOUVERAINETE
+ui/sidebar_drawer.gd,22,Régions,T_SIDEBAR_REGIONS
+ui/sidebar_drawer.gd,23,Stabilité,T_SIDEBAR_STABILITE
+ui/sidebar_drawer.gd,24,Fertilité,T_SIDEBAR_FERTILITE
+ui/sidebar_drawer.gd,24,Humidité,T_SIDEBAR_HUMIDITE
+ui/sidebar_drawer.gd,25,Température,T_SIDEBAR_TEMPERATURE
+ui/sidebar_drawer.gd,25,Habitabilité,T_SIDEBAR_HABITABILITE
+ui/sidebar_drawer.gd,87,(panneau à venir — port viewer.c),T_SIDEBAR_PANNEAU_A_VENIR_PORT
+ui/sidebar_drawer.gd,103,population : %s · %d région(s),T_SIDEBAR_POPULATION_S_D_REGION
+ui/sidebar_drawer.gd,115,bien          stock   net/j   couv.,T_SIDEBAR_BIEN_STOCK_NET_J
+ui/sidebar_drawer.gd,124,%+.1f,T_SIDEBAR_1F
+ui/sidebar_drawer.gd,147,Courbes dans le temps  ▸,T_SIDEBAR_COURBES_DANS_LE_TEMPS
+ui/sidebar_drawer.gd,152,Trésor : %s or,T_SIDEBAR_TRESOR_S_OR
+ui/sidebar_drawer.gd,156,Budget (an),T_SIDEBAR_BUDGET_AN
+ui/sidebar_drawer.gd,159,net %s%s,T_SIDEBAR_NET_S_S
+ui/sidebar_drawer.gd,161,crédit : %s or,T_SIDEBAR_CREDIT_S_OR
+ui/sidebar_drawer.gd,163,dette → %s,T_SIDEBAR_DETTE_S
+ui/sidebar_drawer.gd,183,%d route(s) · export %d or/an,T_SIDEBAR_D_ROUTE_S_EXPORT
+ui/sidebar_drawer.gd,187,(aucun partenaire),T_SIDEBAR_AUCUN_PARTENAIRE
+ui/sidebar_drawer.gd,194,%d or/an,T_SIDEBAR_D_OR_AN
+ui/sidebar_drawer.gd,217,Puissance comm. : %d / %d ce mois,T_SIDEBAR_PUISSANCE_COMM_D_D
+ui/sidebar_drawer.gd,219,  (+%d%% édifices),T_SIDEBAR_D_EDIFICES
+ui/sidebar_drawer.gd,222,Volume de biens achetable au marché ce mois-ci (0.04/bourgeois + 0.01/élite × la chaîne commerciale) — évite de rafler tout le stock d'un coup ; pèse aussi dans ta puissance éco diplomatique.,T_SIDEBAR_VOLUME_DE_BIENS_ACHETABLE
+ui/sidebar_drawer.gd,224,bien          prix(or)   marché,T_SIDEBAR_BIEN_PRIX_OR_MARCHE
+ui/sidebar_drawer.gd,275,%s — tier %d · %d ans,T_SIDEBAR_S_TIER_D_D
+ui/sidebar_drawer.gd,287,Faction : %s,T_SIDEBAR_FACTION_S
+ui/sidebar_drawer.gd,292,Loyauté %d — %s,T_SIDEBAR_LOYAUTE_D_S
+ui/sidebar_drawer.gd,310,(siège vacant — la pool se renouvelle par génération),T_SIDEBAR_SIEGE_VACANT_LA_POOL
+ui/sidebar_drawer.gd,315,%s · %d ans · ×%d · %.0f or/mois,T_SIDEBAR_S_D_ANS_D
+ui/sidebar_drawer.gd,351,Décrets,T_SIDEBAR_DECRETS
+ui/sidebar_drawer.gd,361, [RÉFORME],T_SIDEBAR_REFORME
+ui/sidebar_drawer.gd,368,verrouillé (irréversible),T_SIDEBAR_VERROUILLE_IRREVERSIBLE
+ui/sidebar_drawer.gd,371,Désactiver,T_SIDEBAR_DESACTIVER
+ui/sidebar_drawer.gd,390,⚑ décret — ordre émis,T_SIDEBAR_DECRET_ORDRE_EMIS
+ui/sidebar_drawer.gd,390,✗ décret — refusé,T_SIDEBAR_DECRET_REFUSE
+ui/sidebar_drawer.gd,406,Peuple servile,T_SIDEBAR_PEUPLE_SERVILE
+ui/sidebar_drawer.gd,414,âmes serviles : %s (%.1f%% du pays),T_SIDEBAR_AMES_SERVILES_S_1F
+ui/sidebar_drawer.gd,422,marché mondial : %s âme(s),T_SIDEBAR_MARCHE_MONDIAL_S_AME
+ui/sidebar_drawer.gd,433,Acheter %d,T_SIDEBAR_ACHETER_D
+ui/sidebar_drawer.gd,443,gate éthos/tech — un pays abolitionniste ne peut pas acheter,T_SIDEBAR_GATE_ETHOS_TECH_UN
+ui/sidebar_drawer.gd,445,Vendre %d,T_SIDEBAR_VENDRE_D
+ui/sidebar_drawer.gd,456,achat interdit — éthos/tech abolitionniste,T_SIDEBAR_ACHAT_INTERDIT_ETHOS_TECH
+ui/sidebar_drawer.gd,463,aperçu : %d groupe(s) · friction attendue %.0f%%,T_SIDEBAR_APERCU_D_GROUPE_S
+ui/sidebar_drawer.gd,466,Confirmer l'affranchissement,T_SIDEBAR_CONFIRMER_L_AFFRANCHISSEMENT
+ui/sidebar_drawer.gd,466,Affranchir les esclaves du pays,T_SIDEBAR_AFFRANCHIR_LES_ESCLAVES_DU
+ui/sidebar_drawer.gd,476,irréversible — cliquez de nouveau pour confirmer,T_SIDEBAR_IRREVERSIBLE_CLIQUEZ_DE_NOUVEAU
+ui/sidebar_drawer.gd,479,(aucune âme servile à affranchir),T_SIDEBAR_AUCUNE_AME_SERVILE_A
+ui/sidebar_drawer.gd,504,✗ aucune capitale — refusé,T_SIDEBAR_AUCUNE_CAPITALE_REFUSE
+ui/sidebar_drawer.gd,516,⚑ %s — ordre émis,T_SIDEBAR_S_ORDRE_EMIS
+ui/sidebar_drawer.gd,516,✗ %s — refusé,T_SIDEBAR_S_REFUSE
+ui/sidebar_drawer.gd,537,force mobilisée : %d régiments,T_SIDEBAR_FORCE_MOBILISEE_D_REGIMENTS
+ui/sidebar_drawer.gd,541,levée :,T_SIDEBAR_LEVEE
+ui/sidebar_drawer.gd,561,armée de campagne — région %d · %s,T_SIDEBAR_ARMEE_DE_CAMPAGNE_REGION
+ui/sidebar_drawer.gd,564,inf %d · arch %d · cav %d · mages %d  (Σ %d),T_SIDEBAR_INF_D_ARCH_D
+ui/sidebar_drawer.gd,568,(pas d'armée de campagne déployée),T_SIDEBAR_PAS_D_ARMEE_DE
+ui/sidebar_drawer.gd,571,posture :,T_SIDEBAR_POSTURE
+ui/sidebar_drawer.gd,587,Recompléter,T_SIDEBAR_RECOMPLETER
+ui/sidebar_drawer.gd,590,Recompléter,T_SIDEBAR_RECOMPLETER
+ui/sidebar_drawer.gd,600,Flotte : %d coque(s),T_SIDEBAR_FLOTTE_D_COQUE_S
+ui/sidebar_drawer.gd,659,nous a déclaré la GUERRE,T_SIDEBAR_NOUS_A_DECLARE_LA
+ui/sidebar_drawer.gd,659,guerre déclarée par nous,T_SIDEBAR_GUERRE_DECLAREE_PAR_NOUS
+ui/sidebar_drawer.gd,660,paix signée,T_SIDEBAR_PAIX_SIGNEE
+ui/sidebar_drawer.gd,660,paix signée,T_SIDEBAR_PAIX_SIGNEE
+ui/sidebar_drawer.gd,661,alliance nouée,T_SIDEBAR_ALLIANCE_NOUEE
+ui/sidebar_drawer.gd,661,alliance nouée,T_SIDEBAR_ALLIANCE_NOUEE
+ui/sidebar_drawer.gd,662,pacte commercial scellé,T_SIDEBAR_PACTE_COMMERCIAL_SCELLE
+ui/sidebar_drawer.gd,662,pacte commercial scellé,T_SIDEBAR_PACTE_COMMERCIAL_SCELLE
+ui/sidebar_drawer.gd,663,pacte commercial rompu,T_SIDEBAR_PACTE_COMMERCIAL_ROMPU
+ui/sidebar_drawer.gd,663,pacte rompu par nous,T_SIDEBAR_PACTE_ROMPU_PAR_NOUS
+ui/sidebar_drawer.gd,664,nous a mis sous EMBARGO,T_SIDEBAR_NOUS_A_MIS_SOUS
+ui/sidebar_drawer.gd,664,embargo décrété par nous,T_SIDEBAR_EMBARGO_DECRETE_PAR_NOUS
+ui/sidebar_drawer.gd,665,a levé son embargo,T_SIDEBAR_A_LEVE_SON_EMBARGO
+ui/sidebar_drawer.gd,665,embargo levé par nous,T_SIDEBAR_EMBARGO_LEVE_PAR_NOUS
+ui/sidebar_drawer.gd,666,a TRAHI sa parole,T_SIDEBAR_A_TRAHI_SA_PAROLE
+ui/sidebar_drawer.gd,666,notre parole rompue,T_SIDEBAR_NOTRE_PAROLE_ROMPUE
+ui/sidebar_drawer.gd,667,né d'une SÉCESSION de notre couronne,T_SIDEBAR_NE_D_UNE_SECESSION
+ui/sidebar_drawer.gd,667,sécession,T_SIDEBAR_SECESSION
+ui/sidebar_drawer.gd,668,a soigné les relations,T_SIDEBAR_A_SOIGNE_LES_RELATIONS
+ui/sidebar_drawer.gd,668,relations soignées par nous,T_SIDEBAR_RELATIONS_SOIGNEES_PAR_NOUS
+ui/sidebar_drawer.gd,688,%+d,T_SIDEBAR_D
+ui/sidebar_drawer.gd,697,Vassalité,T_SIDEBAR_VASSALITE
+ui/sidebar_drawer.gd,698,Mémoire,T_SIDEBAR_MEMOIRE
+ui/sidebar_drawer.gd,726,"  (%+d, s'estompe)",T_SIDEBAR_D_S_ESTOMPE
+ui/sidebar_drawer.gd,734,▸ cliquer : actions diplomatiques,T_SIDEBAR_CLIQUER_ACTIONS_DIPLOMATIQUES
+ui/sidebar_drawer.gd,767,⚑ levée réglée — ordre émis,T_SIDEBAR_LEVEE_REGLEE_ORDRE_EMIS
+ui/sidebar_drawer.gd,772,⚑ posture %s — ordre émis,T_SIDEBAR_POSTURE_S_ORDRE_EMIS
+ui/sidebar_drawer.gd,772,✗ posture — refusé,T_SIDEBAR_POSTURE_REFUSE
+ui/sidebar_drawer.gd,776,⚑ recomplètement — ordre émis,T_SIDEBAR_RECOMPLETEMENT_ORDRE_EMIS
+ui/sidebar_drawer.gd,776,✗ recomplètement — refusé,T_SIDEBAR_RECOMPLETEMENT_REFUSE
+ui/sidebar_drawer.gd,780,⚑ dissolution — ordre émis,T_SIDEBAR_DISSOLUTION_ORDRE_EMIS
+ui/sidebar_drawer.gd,780,✗ dissolution — refusé,T_SIDEBAR_DISSOLUTION_REFUSE
+ui/sidebar_drawer.gd,784,⚑ coque en chantier — ordre émis,T_SIDEBAR_COQUE_EN_CHANTIER_ORDRE
+ui/sidebar_drawer.gd,784,✗ chantier naval — refusé,T_SIDEBAR_CHANTIER_NAVAL_REFUSE
+ui/sidebar_drawer.gd,796,✗ aucune capitale — refusé,T_SIDEBAR_AUCUNE_CAPITALE_REFUSE
+ui/sidebar_drawer.gd,806,⚑ %s — ordre émis,T_SIDEBAR_S_ORDRE_EMIS
+ui/sidebar_drawer.gd,807,✗ %s — refusé,T_SIDEBAR_S_REFUSE
+ui/sidebar_drawer.gd,828,⚑ %s — ordre émis,T_SIDEBAR_S_ORDRE_EMIS
+ui/sidebar_drawer.gd,828,✗ %s — refusé,T_SIDEBAR_S_REFUSE
+ui/tech_panel.gd,230,verrouillé,T_TECH_VERROUILLE
+ui/tech_panel.gd,234, (%d pts),T_TECH_D_PTS
+ui/tech_panel.gd,240,   → recherche lancée,T_TECH_RECHERCHE_LANCEE
+ui/tech_panel.gd,260,Arbre de technologie,T_TECH_ARBRE_DE_TECHNOLOGIE
+ui/tech_panel.gd,268,Points : %d,T_TECH_POINTS_D
+ui/tech_panel.gd,272,Présage : %s (crise %d%%),T_TECH_PRESAGE_S_CRISE_D
+ui/tech_panel.gd,279,Recherche : %s,T_TECH_RECHERCHE_S
+ui/tech_panel.gd,286,Recherche : (cliquez un nœud recherchable),T_TECH_RECHERCHE_CLIQUEZ_UN_N
+ui/tech_panel.gd,288,● acquis,T_TECH_ACQUIS
+ui/tech_panel.gd,289,● recherchable,T_TECH_RECHERCHABLE
+ui/tech_panel.gd,290,● verrouillé,T_TECH_VERROUILLE
+ui/tech_panel.gd,291,● faustien,T_TECH_FAUSTIEN
+ui/tech_panel.gd,300,Cliquez un nœud pour son détail.,T_TECH_CLIQUEZ_UN_N_UD
+ui/tech_panel.gd,319,T%d,T_TECH_T_D
+ui/tech_panel.gd,333,Métabolisation : +%d%% recherche (le creuset digéré),T_TECH_METABOLISATION_D_RECHERCHE_LE
+ui/tech_panel.gd,343,Accès aux signatures (arbre) :,T_TECH_ACCES_AUX_SIGNATURES_ARBRE
+ui/tech_panel.gd,374, — requis palier : %d,T_TECH_REQUIS_PALIER_D
+ui/tech_panel.gd,376,Compte pour l'Ascension : %d/%d%s,T_TECH_COMPTE_POUR_L_ASCENSION
+ui/topbar.gd,44,(libscps absente — voir README),T_TOPBAR_LIBSCPS_ABSENTE_VOIR_README
+ui/topbar.gd,48,⚠ libscps OBSOLÈTE — rebâtir : scons platform=windows use_mingw=yes,T_TOPBAR_LIBSCPS_OBSOLETE_REBATIR_SCONS
+ui/topbar.gd,54,An %d,T_TOPBAR_AN_D
+ui/topbar.gd,76,%d provinces,T_TOPBAR_D_PROVINCES
+ui/topbar.gd,94,Colonie %d %%,T_TOPBAR_COLONIE_D
+ui/topbar.gd,107,Engager : %s,T_TOPBAR_ENGAGER_S
+ui/uikit.gd,68,Conquérants,T_UIKIT_CONQUERANTS
+ui/uikit.gd,70,Légistes,T_UIKIT_LEGISTES
+ui/uikit.gd,115,Manufacture textile,T_UIKIT_MANUFACTURE_TEXTILE
+ui/uikit.gd,116,Atelier d'outillage,T_UIKIT_ATELIER_D_OUTILLAGE
+ui/uikit.gd,117,Armurerie lourde,T_UIKIT_ARMURERIE_LOURDE
+ui/uikit.gd,119,Poudrière,T_UIKIT_POUDRIERE
+ui/uikit.gd,121,Foreuse arcanique,T_UIKIT_FOREUSE_ARCANIQUE
+ui/uikit.gd,122,Réplicateur ligneux,T_UIKIT_REPLICATEUR_LIGNEUX
+ui/uikit.gd,123,Corne divine,T_UIKIT_CORNE_DIVINE
+ui/uikit.gd,124,Forge céleste,T_UIKIT_FORGE_CELESTE
+ui/uikit.gd,126,Armurerie légère,T_UIKIT_ARMURERIE_LEGERE
+ui/uikit.gd,127,Atelier d'arc,T_UIKIT_ATELIER_D_ARC
+ui/uikit.gd,128,Charbonnière,T_UIKIT_CHARBONNIERE
+ui/uikit.gd,130,Scierie navale,T_UIKIT_SCIERIE_NAVALE
+ui/uikit.gd,132,Atelier d'étoffe précieuse,T_UIKIT_ATELIER_D_ETOFFE_PRECIEUSE
+ui/uikit.gd,134,Atelier de tunique,T_UIKIT_ATELIER_DE_TUNIQUE
+ui/uikit.gd,135,Atelier de mage,T_UIKIT_ATELIER_DE_MAGE
+ui/uikit.gd,137,Atelier de sculpture,T_UIKIT_ATELIER_DE_SCULPTURE
+ui/uikit.gd,162,taïga,T_UIKIT_TAIGA
+ui/uikit.gd,162,forêt,T_UIKIT_FORET
+ui/uikit.gd,168,désert,T_UIKIT_DESERT
+ui/uikit.gd,178,côt,T_UIKIT_COT
+ui/uikit.gd,180,forêt,T_UIKIT_FORET
+ui/uikit.gd,189,Rouages de précision,T_UIKIT_ROUAGES_DE_PRECISION
+ui/uikit.gd,190,Mécanisme d'horlogerie,T_UIKIT_MECANISME_D_HORLOGERIE
+ui/uikit.gd,191,Alliages des profondeurs,T_UIKIT_ALLIAGES_DES_PROFONDEURS
+ui/uikit.gd,192,Gravure runique,T_UIKIT_GRAVURE_RUNIQUE
+ui/uikit.gd,193,Glyphes éthérés,T_UIKIT_GLYPHES_ETHERES
+ui/uikit.gd,194,Communion éthérée,T_UIKIT_COMMUNION_ETHEREE
+ui/uikit.gd,195,Droit coutumier,T_UIKIT_DROIT_COUTUMIER
+ui/uikit.gd,196,Langue franque,T_UIKIT_LANGUE_FRANQUE
+ui/uikit.gd,197,Vergers étagés,T_UIKIT_VERGERS_ETAGES
+ui/uikit.gd,198,Pâturages intégrés,T_UIKIT_PATURAGES_INTEGRES
+ui/uikit.gd,199,Rites guerriers,T_UIKIT_RITES_GUERRIERS
+ui/uikit.gd,200,Hordes conquérantes,T_UIKIT_HORDES_CONQUERANTES
+ui/uikit.gd,202,Poudrière,T_UIKIT_POUDRIERE
+ui/uikit.gd,205,Comptoirs marchands,T_UIKIT_COMPTOIRS_MARCHANDS
+ui/uikit.gd,209,Université,T_UIKIT_UNIVERSITE
+ui/uikit.gd,211,Atelier de construction,T_UIKIT_ATELIER_DE_CONSTRUCTION
+ui/uikit.gd,214,Forge à runes,T_UIKIT_FORGE_A_RUNES
+ui/uikit.gd,217,Droit d'intégration,T_UIKIT_DROIT_D_INTEGRATION
+ui/uikit.gd,218,Irrigation & greniers,T_UIKIT_IRRIGATION_GRENIERS
+ui/uikit.gd,222,Savoir de guerre,T_UIKIT_SAVOIR_DE_GUERRE
+ui/uikit.gd,223,Organisation militaire,T_UIKIT_ORGANISATION_MILITAIRE
+ui/uikit.gd,225,Halles & entrepôts,T_UIKIT_HALLES_ENTREPOTS
+ui/uikit.gd,226,Collecte de nourriture,T_UIKIT_COLLECTE_DE_NOURRITURE
+ui/uikit.gd,228,Arquebuserie de précision,T_UIKIT_ARQUEBUSERIE_DE_PRECISION
+ui/uikit.gd,229,Poliorcétique,T_UIKIT_POLIORCETIQUE
+ui/uikit.gd,230,Engins de siège,T_UIKIT_ENGINS_DE_SIEGE
+ui/uikit.gd,231,Chamanisme de guerre,T_UIKIT_CHAMANISME_DE_GUERRE
+ui/uikit.gd,233,Économie de horde,T_UIKIT_ECONOMIE_DE_HORDE
+ui/uikit.gd,234,Automates arcanes,T_UIKIT_AUTOMATES_ARCANES
+ui/uikit.gd,235,Abondance druidique,T_UIKIT_ABONDANCE_DRUIDIQUE
+ui/uikit.gd,236,Guildes maîtresses,T_UIKIT_GUILDES_MAITRESSES
+ui/uikit.gd,237,Charrues lourdes,T_UIKIT_CHARRUES_LOURDES
+ui/uikit.gd,238,Machines agricoles,T_UIKIT_MACHINES_AGRICOLES
+ui/uikit.gd,239,Horlogerie marchande,T_UIKIT_HORLOGERIE_MARCHANDE
+ui/uikit.gd,240,Académie cosmopolite,T_UIKIT_ACADEMIE_COSMOPOLITE
+ui/uikit.gd,241,Grenier colonial,T_UIKIT_GRENIER_COLONIAL
+ui/uikit.gd,243,Arquebuse runique,T_UIKIT_ARQUEBUSE_RUNIQUE
+ui/uikit.gd,244,Concile des savants,T_UIKIT_CONCILE_DES_SAVANTS
+ui/uikit.gd,245,Légion universelle,T_UIKIT_LEGION_UNIVERSELLE
+ui/uikit.gd,247,Bibliothèque,T_UIKIT_BIBLIOTHEQUE
+ui/uikit.gd,248,Académie,T_UIKIT_ACADEMIE
+ui/uikit.gd,249,Magie de bataille,T_UIKIT_MAGIE_DE_BATAILLE
+ui/uikit.gd,251,L'Éveil,T_UIKIT_L_EVEIL
+ui/uikit.gd,252,Gardes runiques,T_UIKIT_GARDES_RUNIQUES
+ui/uikit.gd,253,Savoir interdit,T_UIKIT_SAVOIR_INTERDIT
+ui/uikit.gd,254,Collecte de bois,T_UIKIT_COLLECTE_DE_BOIS
+ui/uikit.gd,255,Collecte d'argile,T_UIKIT_COLLECTE_D_ARGILE
+ui/uikit.gd,257,Industrie de masse,T_UIKIT_INDUSTRIE_DE_MASSE
+ui/uikit.gd,258,Foreuse arcanique,T_UIKIT_FOREUSE_ARCANIQUE
+ui/uikit.gd,259,L'Œuvre noire,T_UIKIT_L_UVRE_NOIRE
+ui/uikit.gd,260,Qualité des matériaux,T_UIKIT_QUALITE_DES_MATERIAUX
+ui/uikit.gd,262,Économie servile,T_UIKIT_ECONOMIE_SERVILE
+ui/uikit.gd,263,Caste martiale,T_UIKIT_CASTE_MARTIALE
+ui/uikit.gd,266,Culte impérial,T_UIKIT_CULTE_IMPERIAL
+ui/uikit.gd,753,é,T_UIKIT_E
+ui/uikit.gd,753,è,T_UIKIT_E
+ui/uikit.gd,753,ê,T_UIKIT_E
+ui/uikit.gd,753,ë,T_UIKIT_E
+ui/uikit.gd,753,à,T_UIKIT_A
+ui/uikit.gd,753,â,T_UIKIT_A
+ui/uikit.gd,753,ä,T_UIKIT_A
+ui/uikit.gd,753,î,T_UIKIT_I
+ui/uikit.gd,753,ï,T_UIKIT_I
+ui/uikit.gd,754,ô,T_UIKIT_O
+ui/uikit.gd,754,ö,T_UIKIT_O
+ui/uikit.gd,754,û,T_UIKIT_U
+ui/uikit.gd,754,ù,T_UIKIT_U
+ui/uikit.gd,754,ü,T_UIKIT_U
+ui/uikit.gd,754,ç,T_UIKIT_C
