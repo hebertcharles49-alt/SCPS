@@ -657,9 +657,39 @@ static void compute_hardness(float seed_f) {
     }
 }
 
+/* ── FALAISES MARITIMES (dureté différentielle → l'à-pic ÉMERGE) ─────────────
+ * Le problème joueur : « il n'y a jamais de falaises maritimes » — l'érosion
+ * (thermique + gouttelettes #1) adoucissait TOUTES les côtes au même taux, et
+ * la rampe côtière du socle était UNIFORME. Trois gestes, tous lus de la
+ * LITHOLOGIE réelle (g_hardness = convergence de plaques #2 + litho noise) :
+ *   (1) la rampe côtière du socle se RESSERRE ∝ dureté — la roche dure tient
+ *       son altitude jusqu'à l'eau (caps, à-pics) ; la tendre garde le profil
+ *       doux (plages, estuaires) ;
+ *   (2) l'érosion THERMIQUE (éboulis) mord moins la roche dure (l'angle de
+ *       talus d'un granite n'est pas celui d'une marne) ;
+ *   (3) les GOUTTELETTES hydrauliques idem (érosion différentielle).
+ * Le drapeau `cliff` n'est PAS stocké : il se DÉRIVE de la hauteur au moment
+ * de la lecture (world_cliff_intensity) — rien de sérialisé (SAVE non bumpé),
+ * jamais lu par le sim (display-only via scps_map_layer). */
+#define CLIFF_HARD_T      0.60f   /* seuil : en-dessous, la roche est « tendre » */
+#define CLIFF_RAMP_K      0.55f   /* resserrement max de la rampe côtière (0 = off) */
+#define HARD_THERM_FLOOR  0.35f   /* la roche dure ne s'éboule qu'à 35 % du taux */
+#define HARD_HYD_FLOOR    0.30f   /* les gouttes n'érodent la roche dure qu'à 30 % */
+#define CLIFF_SCAN_R      2       /* bande côtière du drapeau dérivé (cellules) */
+/* Seuils à l'échelle POST-gamma : la courbe « vallées » (lf^1.6, world_generate)
+ * compresse tout le bas-pays — un dénivelé côtier PRÉ-gamma de 0.028/0.065
+ * devient ~0.0045/0.018. Transformation MONOTONE : l'ordre falaise > plage est
+ * préservé (plage post-gamma ~0.001-0.003, bien sous le seuil). Mesuré au
+ * SCPS_CLIFFDIAG (probe par étape, graine 9). */
+#define CLIFF_H_MIN       0.0045f /* dénivelé (h − mer) où la falaise commence */
+#define CLIFF_H_MAX       0.018f  /* dénivelé d'à-pic plein (intensité 255) */
+
 static void step_geology(float *height, float seed_f, const WorldParams *P) {
     plates_init(seed_f, P->world_age);
     continents_init(P->n_continents, seed_f);
+    compute_hardness(seed_f);   /* AVANT le socle : la rampe côtière lit la dureté
+                                 * (falaises §ci-dessus). Pure f(x,y,plaques) — ne
+                                 * dépend pas de height, l'appel précoce est sûr. */
 
     /* land_bias : décale la mer (0.5 neutre). mountains : amplitude. */
     float land_bias = (P->land_amount-0.5f)*0.5f;
@@ -689,8 +719,12 @@ static void step_geology(float *height, float seed_f, const WorldParams *P) {
         float mask    = continental_mask(x,y,seed_f);
         /* Mer profonde hors masque ; terre détaillée dans le masque.
          * Plateau interne (smoothstep du masque) → continents pleins, peu de
-         * mer intérieure, tout en laissant l'océan entre les masses. */
-        float plat = clampf((mask-0.18f)/0.34f,0.f,1.f);
+         * mer intérieure, tout en laissant l'océan entre les masses.
+         * FALAISES (1) : la rampe côtière se RESSERRE ∝ dureté — la roche dure
+         * (arcs de convergence) monte au plateau plus vite depuis le rivage →
+         * caps qui avancent en mer et côtes hautes jusqu'à l'eau. */
+        float steep = clampf((g_hardness[scps_idx(x,y)]-CLIFF_HARD_T)/(1.f-CLIFF_HARD_T),0.f,1.f);
+        float plat = clampf((mask-0.18f)/(0.34f*(1.f-CLIFF_RAMP_K*steep)),0.f,1.f);
         plat = plat*plat*(3.f-2.f*plat);
         /* sqrt(mask) au lieu de mask : le détail de relief ne s'annule plus
          * brutalement à la côte → littoraux moins convexes, plus découpés. */
@@ -745,7 +779,8 @@ static void step_geology(float *height, float seed_f, const WorldParams *P) {
     step_ocean_features(height, seed_f);
     /* Volcans tectoniques : placés le long des zones de subduction */
     volcanoes_init(height, seed_f);
-    compute_hardness(seed_f);   /* dureté lithologique (érosion différentielle) */
+    /* (compute_hardness désormais appelée en TÊTE de step_geology — la rampe
+     * côtière du socle la lit ; cf. bloc FALAISES.) */
 }
 
 /* ========================================================================
@@ -887,15 +922,20 @@ static void step_hydraulic_erosion(float *height, uint32_t seed) {
                 height[i01]+=dep*(1-fx)*fy;
                 height[i11]+=dep*fx*fy;
             } else {
-                /* ÉROSION (bornée à la pente -dh → ne rabote pas les crêtes), étalée au pinceau */
+                /* ÉROSION (bornée à la pente -dh → ne rabote pas les crêtes), étalée au pinceau.
+                 * FALAISES (3) : chaque cellule du pinceau résiste ∝ SA dureté
+                 * (érosion différentielle — les gouttes creusent le tendre,
+                 * la roche dure tient ; le sédiment suit ce qui est PRIS). */
                 float ero=fminf((cap-sed)*HYD_ERODE, -dh);
                 int b=0;
                 for (int ddy=-br;ddy<=br;ddy++) for (int ddx=-br;ddx<=br;ddx++){
                     float wv=bweight[b++]; if (wv<=0.f) continue;
                     int bx=gx+ddx, by=gy+ddy;
                     if (bx<0||bx>=SCPS_W||by<0||by>=SCPS_H) continue;
-                    float take=ero*wv;
-                    height[scps_idx(bx,by)]-=take; sed+=take;
+                    int bi=scps_idx(bx,by);
+                    float bsoft=1.f-g_hardness[bi];
+                    float take=ero*wv*(HARD_HYD_FLOOR+(1.f-HARD_HYD_FLOOR)*bsoft);
+                    height[bi]-=take; sed+=take;
                 }
             }
             vel=sqrtf(fmaxf(vel*vel + (-dh)*HYD_GRAVITY, 0.f));
@@ -2484,6 +2524,34 @@ void world_recompute_adjacency(World *w) {
     }
 }
 
+/* FALAISES — le drapeau DÉRIVÉ (jamais stocké, jamais sérialisé, jamais lu par
+ * le sim). Une cellule de TERRE dans la bande côtière (MER à ≤ CLIFF_SCAN_R)
+ * dont le dénivelé vers la mer (h − SEA_LEVEL) est fort = falaise ; intensité
+ * graduée 0..255 pour le rendu (hachures ∝ à-pic). Pure fonction de l'état
+ * sérialisé (height) → valide aussi après un LOAD.
+ * ⚠ MARITIME seulement : l'eau = height < SEA_LEVEL (l'océan). Ni cell.lake
+ * (drapeau d'ACCÈS : marque des bassins alimentés INVISIBLES en plein relief —
+ * mesuré ×6 de fausses falaises), ni les mers intérieures PERCHÉES
+ * (BIO_SHALLOW aplani au niveau de DÉBORDEMENT : leur rive mesurée contre
+ * SEA_LEVEL flaguait tout mur de cuvette en « à-pic » — le pic parasite du
+ * godet 39 de l'histogramme CLIFFDIAG). */
+uint8_t world_cliff_intensity(const World *w, int x, int y){
+    if (x<0||x>=SCPS_W||y<0||y>=SCPS_H) return 0;
+    const Cell *c=&w->cell[scps_idx(x,y)];
+    if (c->height < SEA_LEVEL || c->biome==BIO_SHALLOW) return 0;   /* eau visible : jamais falaise */
+    bool near_sea=false;
+    for (int dy=-CLIFF_SCAN_R; dy<=CLIFF_SCAN_R && !near_sea; dy++)
+        for (int dx=-CLIFF_SCAN_R; dx<=CLIFF_SCAN_R; dx++){
+            int nx=x+dx, ny=y+dy;
+            if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+            if (w->cell[scps_idx(nx,ny)].height < SEA_LEVEL){ near_sea=true; break; }
+        }
+    if (!near_sea) return 0;
+    float t=(c->height - SEA_LEVEL - CLIFF_H_MIN)/(CLIFF_H_MAX-CLIFF_H_MIN);
+    t=clampf(t,0.f,1.f);
+    return (uint8_t)(t*255.f+0.5f);
+}
+
 /* ========================================================================
  * GÉOGRAPHIE — noms de provinces (la culture vit ailleurs : gen_population)
  * ====================================================================== */
@@ -3073,7 +3141,12 @@ static void step_thermal_erosion(float *height, int iters) {
                 if (diff>bd){bd=diff;bj=scps_idx(nx2,ny2);}
             }
             if (bj>=0 && bd>TALUS) {
-                float move=(bd-TALUS)*RATE*0.5f;
+                /* FALAISES (2) : la roche DURE s'éboule moins — l'angle de talus
+                 * d'un granite n'est pas celui d'une marne. Les crêtes et côtes
+                 * dures gardent leur raideur ; le tendre s'adoucit comme avant. */
+                float soft=1.f-g_hardness[i];
+                float move=(bd-TALUS)*RATE*0.5f
+                          *(HARD_THERM_FLOOR+(1.f-HARD_THERM_FLOOR)*soft);
                 delta[i]-=move; delta[bj]+=move;
             }
         }
@@ -3458,6 +3531,51 @@ static void refine_capitals(World *w) {
 /* ========================================================================
  * POINT D'ENTRÉE
  * ====================================================================== */
+/* ── VARIÉTÉ DE MONDES : ARCHÉTYPES DÉRIVÉS DE LA GRAINE ────────────────────
+ * Le problème joueur : « les maps se ressemblent toutes » — TOUS les seeds
+ * partaient des MÊMES macro-paramètres (6 continents · terres 0.5 · âge 0.7 ·
+ * relief 0.5 · climat neutre) : même SQUELETTE de monde, seul le bruit
+ * changeait. worldparams_default TIRE désormais un ARCHÉTYPE (hash avalanche
+ * de la graine — DÉTERMINISTE : même graine ⇒ même archétype ⇒ même monde)
+ * + un JITTER BORNÉ des paramètres continus (deux graines du même archétype
+ * ne sont pas jumelles). Les OVERRIDES des appelants PRIMENT toujours : les
+ * sliders du menu (scps_worldgen_set, façade) et chronicle [empires] [cités]
+ * [continents] (argv) assignent leurs champs APRÈS cet appel — la dérivation
+ * ne vaut que pour les champs restés « défaut ». Graine 0 = monde de
+ * RÉFÉRENCE (défauts historiques figés — le chemin world_generate(w,NULL)).
+ * n_empires/n_city_states restent au défaut Q6 (6+12) : la variété est
+ * GÉOGRAPHIQUE, la genèse politique (L4 : ≥15 % habitable ⇒ ≥1 empire par
+ * continent, hameaux WILD, garanties joueur) garde ses règles inchangées. */
+typedef struct { const char *name; int n_cont;
+                 float land, age, erosion, mtn, tempr, humid; } WorldArchetype;
+static const WorldArchetype WG_ARCH[8] = {
+    /*  nom                 cont terres  âge    éros   mont   temp   humid */
+    { "pangée",               1, 0.60f, 0.50f, 0.50f, 0.50f, 0.50f, 0.50f },  /* une masse massive (dérive douce : elle ne se fend pas) */
+    { "continents",           3, 0.50f, 0.70f, 0.50f, 0.50f, 0.50f, 0.50f },  /* le monde « classique » 2-3 masses (proche de l'ex-défaut) */
+    { "archipel",             8, 0.40f, 0.75f, 0.50f, 0.45f, 0.55f, 0.58f },  /* éclaté : mers vivantes, commerce maritime roi */
+    { "mer intérieure",       2, 0.60f, 0.65f, 0.50f, 0.45f, 0.52f, 0.55f },  /* deux masses lourdes, bassin central fermé */
+    { "monde froid",          4, 0.50f, 0.70f, 0.50f, 0.55f, 0.36f, 0.50f },  /* taïga, calottes étendues */
+    { "monde aride",          3, 0.54f, 0.72f, 0.50f, 0.50f, 0.60f, 0.34f },  /* déserts et steppes, les fleuves comptent */
+    { "jeune-montagneux",     4, 0.48f, 0.30f, 0.65f, 0.78f, 0.48f, 0.54f },  /* relief vif, vallées creusées (âge bas = peu d'usure) */
+    { "vieux-érodé",          5, 0.52f, 0.92f, 0.60f, 0.32f, 0.52f, 0.52f },  /* pénéplaine usée, larges plaines */
+};
+/* avalanche 32 bits (splitmix-like) — brasse une graine séquentielle (7, 108,
+ * 209…) en index/jitter décorrélés. Pur : aucun état, aucun rand. */
+static uint32_t wg_mix(uint32_t x){
+    x += 0x9E3779B9u;
+    x ^= x >> 16; x *= 0x21F0AAADu;
+    x ^= x >> 15; x *= 0x735A2D97u;
+    x ^= x >> 15;
+    return x;
+}
+/* 8 bits → ±amp (jitter borné, centré) */
+static float wg_jit(uint32_t bits, float amp){
+    return ((float)(bits & 0xFFu)/127.5f - 1.f) * amp;
+}
+const char *worldgen_archetype_name(uint32_t seed){
+    if (!seed) return "référence";
+    return WG_ARCH[wg_mix(seed) & 7u].name;
+}
 WorldParams worldparams_default(uint32_t seed) {
     WorldParams p;
     p.seed         = seed;
@@ -3472,6 +3590,22 @@ WorldParams worldparams_default(uint32_t seed) {
     p.humidity     = 0.5f;
     p.n_empires    = 6;      /* Q6 re-baseline : 6 empires + 12 cités-états sur les continents séparés */
     p.n_city_states= 12;
+    if (!seed) return p;     /* graine 0 = référence figée (chemin NULL-params) */
+
+    /* ARCHÉTYPE + jitter (cf. bloc doc ci-dessus). Les CLAMPS sont les rails de
+     * JOUABILITÉ : jamais un monde sans terres, gelé ou hyperaride au point que
+     * la genèse (L4/garanties) ne trouve plus d'habitable. */
+    const WorldArchetype *a = &WG_ARCH[wg_mix(seed) & 7u];
+    uint32_t j = wg_mix(seed ^ 0xA5A5A5A5u);
+    p.n_continents = a->n_cont;
+    if (a->n_cont >= 3 && (j & 0x40000000u))    /* ±0/+1 masse — jamais sur pangée/mer int. (le compte EST l'identité) */
+        p.n_continents = a->n_cont < 8 ? a->n_cont + 1 : 7;
+    p.land_amount  = clampf(a->land   + wg_jit(j,       0.05f), 0.30f, 0.72f);
+    p.world_age    = clampf(a->age    + wg_jit(j >>  4, 0.08f), 0.15f, 0.95f);
+    p.erosion      = clampf(a->erosion+ wg_jit(j >>  8, 0.08f), 0.20f, 0.80f);
+    p.mountains    = clampf(a->mtn    + wg_jit(j >> 12, 0.08f), 0.15f, 0.85f);
+    p.temperature  = clampf(a->tempr  + wg_jit(j >> 16, 0.05f), 0.30f, 0.68f);
+    p.humidity     = clampf(a->humid  + wg_jit(j >> 20, 0.05f), 0.28f, 0.72f);
     return p;
 }
 
@@ -3762,6 +3896,24 @@ static void compute_chokepoints(World *w){
     g_choke_seed=w->seed;
 }
 
+/* SONDE TEMPORAIRE (calibrage falaises) : max de dénivelé côtier à une étape. */
+static void probe_coast(const float *height, const char *tag){
+    if (!getenv("SCPS_CLIFFDIAG")) return;
+    float dmax=0.f; int n=0, n28=0;
+    for (int y=1;y<SCPS_H-1;y++) for (int x=1;x<SCPS_W-1;x++){
+        int i=scps_idx(x,y);
+        if (height[i]<SEA_LEVEL) continue;
+        bool sea = height[scps_idx(x+1,y)]<SEA_LEVEL || height[scps_idx(x-1,y)]<SEA_LEVEL
+                || height[scps_idx(x,y+1)]<SEA_LEVEL || height[scps_idx(x,y-1)]<SEA_LEVEL;
+        if (!sea) continue;
+        n++;
+        float d=height[i]-SEA_LEVEL;
+        if (d>dmax) dmax=d;
+        if (d>0.028f) n28++;
+    }
+    printf("[probe %s] côte %d · dmax %.3f · >0.028 : %d\n", tag, n, dmax, n28);
+}
+
 void world_generate(World *w, const WorldParams *P) {
     WorldParams def;
     if (!P){ def=worldparams_default((uint32_t)0); P=&def; }
@@ -3769,6 +3921,13 @@ void world_generate(World *w, const WorldParams *P) {
     w->seed=P->seed;
     rng_seed(P->seed);
     float seed_f=(float)(P->seed&0xFFFF)/(float)0x10000;
+
+    /* VARIÉTÉ : trace l'archétype DE GRAINE + les paramètres RÉELS (qui peuvent
+     * différer si l'appelant a surchargé — sliders/argv priment toujours). */
+    printf("[scps] graine %u — archétype « %s » : %d continents · terres %.2f · âge %.2f · "
+           "érosion %.2f · relief %.2f · temp %.2f · humidité %.2f\n",
+           P->seed, worldgen_archetype_name(P->seed), P->n_continents, P->land_amount,
+           P->world_age, P->erosion, P->mountains, P->temperature, P->humidity);
 
     /* world_age → nombre d'itérations d'érosion thermique (vieux = usé) */
     int thermal_iters = 2 + (int)(P->world_age*14.f);
@@ -3780,40 +3939,40 @@ void world_generate(World *w, const WorldParams *P) {
     if (!height||!moisture||!temp||!odist){fprintf(stderr,"scps: OOM\n");goto end;}
 
     printf("[scps] géologie...     "); fflush(stdout);
-    step_geology(height,seed_f,P);        printf("ok\n");
+    step_geology(height,seed_f,P);        printf("ok\n"); probe_coast(height,"geol");
 
     printf("[scps] architecture... "); fflush(stdout);
-    step_architecture(height,seed_f);     printf("ok\n");
+    step_architecture(height,seed_f);     printf("ok\n"); probe_coast(height,"arch");
 
     printf("[scps] altération...   "); fflush(stdout);
-    step_thermal_erosion(height,thermal_iters); printf("ok\n");
+    step_thermal_erosion(height,thermal_iters); printf("ok\n"); probe_coast(height,"therm");
 
     printf("[scps] érosion hydro... "); fflush(stdout);
     /* KEYSTONE : des gouttelettes creusent les chenaux (réseau dendritique,
      * vallées, plaines alluviales) AVANT l'accumulation de flux → cell.river
      * suit les chenaux réels, le relief perd son aspect « bruit mou ». */
-    step_hydraulic_erosion(height,w->seed); printf("ok\n");
+    step_hydraulic_erosion(height,w->seed); printf("ok\n"); probe_coast(height,"hydro");
 
     printf("[scps] érosion...      "); fflush(stdout);
-    step_erosion(height,w->cell,P->erosion); printf("ok\n");
+    step_erosion(height,w->cell,P->erosion); printf("ok\n"); probe_coast(height,"eros");
 
     printf("[scps] côtes fract...  "); fflush(stdout);
-    step_coastline(height,seed_f);        printf("ok\n");
+    step_coastline(height,seed_f);        printf("ok\n"); probe_coast(height,"coastl");
 
     printf("[scps] carte fantôme.. "); fflush(stdout);
     step_ghost_layer(height,seed_f);      printf("ok\n");
 
     printf("[scps] fantôme négat.. "); fflush(stdout);
-    step_ghost_negative(height,seed_f);   printf("ok\n");
+    step_ghost_negative(height,seed_f);   printf("ok\n"); probe_coast(height,"ghostn");
 
     printf("[scps] lissage océan... "); fflush(stdout);
-    step_smooth_ocean(height,4);          printf("ok\n");
+    step_smooth_ocean(height,4);          printf("ok\n"); probe_coast(height,"smooth");
 
     printf("[scps] continentalité..."); fflush(stdout);
     compute_ocean_distance(height,odist);  printf("ok\n");
 
     printf("[scps] climat (vent)... "); fflush(stdout);
-    gen_climate(w,height,moisture,temp,odist,seed_f,P); printf("ok\n");
+    gen_climate(w,height,moisture,temp,odist,seed_f,P); printf("ok\n"); probe_coast(height,"climat");
 
     printf("[scps] vallées...      "); fflush(stdout);
     /* COURBE DE RELIEF (γ>1) : APRÈS le climat (les montagnes ont déjà fait la pluie
@@ -3826,7 +3985,7 @@ void world_generate(World *w, const WorldParams *P) {
         lf=powf(lf,1.6f);
         height[i]=SEA_LEVEL+lf*(1.f-SEA_LEVEL);
     }
-    printf("ok\n");
+    printf("ok\n"); probe_coast(height,"gamma");
 
     /* Atténuation des rivières en zones arides : le débit D8 est purement
      * topographique ; on corrige après le climat pour effacer les « fleuves »
@@ -4007,6 +4166,39 @@ void world_generate(World *w, const WorldParams *P) {
     carve_oxbows(w,height);               /* bras morts (2e voie de lac) le long des cours inférieurs */
     printf("ok (%d riv. ; écartées : %d cap · %d courtes · %d longues)\n",
            w->n_rivers, g_river_drop_cap, g_river_drop_short, g_river_drop_long);
+
+    /* Diag FALAISES (gated, style SCPS_*DIAG) : compte les cellules de la bande
+     * côtière qui portent le drapeau dérivé + HISTOGRAMME des dénivelés au
+     * rivage (rayon 1, 8-voisins, eau VISIBLE) — calibrage de CLIFF_H_MIN/MAX. */
+    if (getenv("SCPS_CLIFFDIAG")){
+        int n_coast=0, n_cliff=0, n_apic=0, bx=-1, by=-1; uint8_t bv=0;
+        enum { NB=40 };
+        int hist[NB]; memset(hist,0,sizeof hist);
+        const float HB=0.0005f;   /* godet : 0.5 millième de hauteur */
+        for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+            const Cell *c=&w->cell[scps_idx(x,y)];
+            if (c->height>=SEA_LEVEL && c->biome!=BIO_SHALLOW){
+                bool sea1=false;
+                for (int d=0;d<8;d++){
+                    int nx=x+DDX[d], ny=y+DDY[d];
+                    if (nx<0||nx>=SCPS_W||ny<0||ny>=SCPS_H) continue;
+                    if (w->cell[scps_idx(nx,ny)].height<SEA_LEVEL){ sea1=true; break; }
+                }
+                if (sea1){
+                    n_coast++;
+                    int b=(int)((c->height-SEA_LEVEL)/HB); if(b>=NB)b=NB-1; if(b<0)b=0;
+                    hist[b]++;
+                }
+            }
+            uint8_t v=world_cliff_intensity(w,x,y);
+            if (v>0){ n_cliff++; if (v>128) n_apic++; if (v>bv){ bv=v; bx=x; by=y; } }
+        }
+        printf("[scps] CLIFFDIAG : rivage %d cell · flag %d · à-pic %d · max %d à (%d,%d)\n",
+               n_coast, n_cliff, n_apic, (int)bv, bx, by);
+        printf("[scps] CLIFFDIAG hist (dénivelé rivage, godets de %.4f) :", HB);
+        for (int b=0;b<NB;b++) if (hist[b]) printf(" %d:%d", b, hist[b]);
+        printf("\n");
+    }
 
 end:
     free(height); free(moisture); free(temp); free(odist);

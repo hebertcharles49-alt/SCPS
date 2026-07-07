@@ -10,12 +10,14 @@ extends Node2D
 
 const LAYER_HEIGHT := 0
 const LAYER_BIOME := 2
+const LAYER_CLIFF := 6                 ## intensité de FALAISE maritime (dérivée façade, hachures shader)
 const ANTIQUE_MARGIN := 48.0           ## marge de PAPIER (unités monde) autour de la carte
 
 var _active := false
 var _bmap: ImageTexture = null         ## couche biome → texture (R = biome/255) pour le shader
 var _river_map: ImageTexture = null    ## couche DÉBIT (rivières carvées) → texture pour le shader
 var _river_field: Image = null         ## la MÊME couche débit en Image L8 (lue aussi par l'overlay)
+var _cliff_map: ImageTexture = null    ## couche FALAISE (L8) → hachures d'atlas ancien (shader)
 
 ## V3 — LE LAVIS PAR VARIANTE : texture L8 (intensité par région, une valeur/cellule,
 ## bâtie côté C++ — variant_map_image, jamais une boucle GDScript). Reconstruite
@@ -74,6 +76,7 @@ func _on_generated() -> void:
 	_bmap = null            # nouveau monde → recharge biome + débit
 	_river_map = null
 	_river_field = null
+	_cliff_map = null        # falaises : recalculées pour le monde neuf
 	_variant_map = null      # V3 : nouvelle partie → efface le lavis d'une fin antérieure
 	_variant_year = -1
 	queue_redraw()
@@ -86,6 +89,7 @@ func _on_tick(_y: int) -> void:
 	# les biomes ne bougent qu'en FIN §27 (cataclysme) → recharge + re-dessin alors
 	if int(eg.get("fin", 0)) > 0:
 		_bmap = null
+		_cliff_map = null    # la terre engloutie (EAU) redessine aussi le trait de falaise
 		queue_redraw()
 	# V3 — LE LAVIS PAR VARIANTE : rebâti 1×/AN (coût nul au repos, jamais 1×/frame).
 	# `fin_raw` (0..5, SANG compris) gate la teinte — indépendant du `fin` (RFIN, 0..4)
@@ -121,6 +125,13 @@ func _draw() -> void:
 		mat.set_shader_parameter("biome_map", _bmap)
 		if _river_map != null:
 			mat.set_shader_parameter("river_map", _river_map)
+		# FALAISES : couche dérivée façade (L8) → hachures d'atlas ancien dans le shader
+		if _cliff_map == null:
+			var cimg: Image = w.layer_image(LAYER_CLIFF)
+			if cimg != null:
+				_cliff_map = ImageTexture.create_from_image(cimg)
+		if _cliff_map != null:
+			mat.set_shader_parameter("cliff_map", _cliff_map)
 		mat.set_shader_parameter("map_size", Vector2(W, H))
 		# flat_map = 1.0 : mapping cellule TOP-DOWN (biome lu en monde direct). L'INCLINAISON visuelle
 		# est portée par l'échelle Y du nœud IsoGround (map_view.TILT_Y) → sol & overlay restent alignés.

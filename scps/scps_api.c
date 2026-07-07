@@ -225,6 +225,7 @@ void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer){
              * La couche SEA (c->sea) seule laissait des bourgs sur des cellules peintes en eau. */
             case SCPS_LAYER_WATER:  v = (c->height < SEA_LEVEL || c->lake) ? 255 : 0; break;
             case SCPS_LAYER_RIVER:  v = c->river; break;   /* débit accumulé (worldgen) → carve par l'hôte */
+            case SCPS_LAYER_CLIFF:  v = world_cliff_intensity(s->w, x, y); break;   /* falaises (dérivé) */
             default: v = 0;
         }
         dst[i] = v;

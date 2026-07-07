@@ -49,8 +49,11 @@ void scps_map_rgba(ScpsSim *s, uint8_t *dst, int mode, int selected_prov);
  * L'overlay lit WATER pour TOUS ses tests d'assise (snap-terre, débord, poussée vers l'intérieur).
  * SCPS_LAYER_RIVER : DÉBIT accumulé par cellule (c->river, 0-255) — le worldgen. L'hôte CARVE les
  * cellules à fort débit comme de l'EAU dans la carte des biomes → le shader de terrain rend la
- * rivière comme la mer (carvée DANS le relief, pas un asset par-dessus). Seuil haut = fleuves majeurs. */
-enum { SCPS_LAYER_HEIGHT = 0, SCPS_LAYER_SEA, SCPS_LAYER_BIOME, SCPS_LAYER_COAST, SCPS_LAYER_WATER, SCPS_LAYER_RIVER };
+ * rivière comme la mer (carvée DANS le relief, pas un asset par-dessus). Seuil haut = fleuves majeurs.
+ * SCPS_LAYER_CLIFF : intensité de FALAISE maritime (0-255) — dérivée à la lecture (dénivelé côtier,
+ * world_cliff_intensity ; l'à-pic ÉMERGE de la dureté au worldgen). Le shader y pose des hachures
+ * d'atlas ancien. Jamais sérialisée, jamais lue par le sim. */
+enum { SCPS_LAYER_HEIGHT = 0, SCPS_LAYER_SEA, SCPS_LAYER_BIOME, SCPS_LAYER_COAST, SCPS_LAYER_WATER, SCPS_LAYER_RIVER, SCPS_LAYER_CLIFF };
 void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer);
 
 /* ---- nombres TANGIBLES (membrane) ------------------------------------ */

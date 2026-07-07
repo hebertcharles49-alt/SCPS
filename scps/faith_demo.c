@@ -68,10 +68,22 @@ int main(int argc,char**argv){
         PopCulture uni=*c1; uni.langue=(c1->langue<5.f?9.f:1.f); uni.valeurs=(c1->valeurs<5.f?9.f:1.f);
         ok("une foi UNIVERSELLE lie des cultures différentes (même foi → distance 0)",
            faith_distance(&fs,c1,&uni)==0.f);
-        /* SCHISME : même branche, autre bande de l'axe religion → fracture interne. */
-        PopCulture sch=*c1; sch.religion=(c1->religion<5.f? c1->religion+5.f : c1->religion-5.f);
-        ok("un SCHISME (autre bande de la même branche) FRACTURE (distance > 0)",
-           faith_distance(&fs,c1,&sch) > 0.f);
+        /* SCHISME : même branche, autre bande de l'axe religion → fracture interne.
+         * RECALIBRAGE (archétypes worldgen) : la 1re culture peuplée n'est plus
+         * garantie d'avoir une DEUXIÈME foi dans sa bande jumelle (faith_of replie
+         * sur la plus PROCHE → même foi ⇒ distance 0 : le contrôle testait le
+         * TIRAGE du monde, pas le mécanisme). On CHERCHE une culture dont la
+         * jumelle schismatique résout vers une AUTRE foi — l'INTENTION (le schisme
+         * fracture) est inchangée ; monde sans paire schismatique ⇒ constat, même
+         * idiome que le cas mono-branche ci-dessous. */
+        const PopCulture *cs=NULL; PopCulture sch;
+        for(int r=0;r<econ->n_regions && !cs;r++){ const PopCulture*pc=&econ->region[r].culture;
+            if(!pc->settled) continue;
+            PopCulture tw=*pc; tw.religion=(pc->religion<5.f? pc->religion+5.f : pc->religion-5.f);
+            if(faith_of(&fs,pc)>=0 && faith_of(&fs,&tw)!=faith_of(&fs,pc)){ cs=pc; sch=tw; } }
+        if(cs) ok("un SCHISME (autre bande de la même branche) FRACTURE (distance > 0)",
+                  faith_distance(&fs,cs,&sch) > 0.f);
+        else   ok("(monde sans paire schismatique : pas de schisme à tester)", true);
         if(c2) ok("une AUTRE BRANCHE de foi → fracture forte (distance ≥ 6)",
                   faith_distance(&fs,c1,c2) >= 6.f);
         else   ok("(monde mono-branche : pas de fracture inter-branche à tester)", true);

@@ -67,6 +67,26 @@ static int find_owned_region_with_rp(const WorldEconomy *e, int *out_rp){
     }
     return -1;
 }
+/* Variante MONO-RÉGION (RECALIBRAGE archétypes worldgen) : pour les fixtures
+ * pays-wide (§B1 off-culture moyenne POP-PONDÉRÉE sur TOUTES les régions du
+ * pays), la 1re région venue peut appartenir à un GRAND empire — les régions
+ * sœurs DILUENT la minorité forgée sous le seuil 0.25 et le trigger ne tire
+ * jamais (le banc testait le TIRAGE du monde). Un pays à UNE seule région
+ * peuplée ⇒ la moyenne pays == la fixture, par construction. */
+static int find_mono_owned_region_with_rp(const WorldEconomy *e, int *out_rp){
+    for (int r=0;r<e->n_regions;r++){
+        if (!e->region[r].culture.settled || e->region[r].owner<0) continue;
+        if (region_pop(e,r)<=10.f) continue;
+        int cid=e->region[r].owner, n_settled=0;
+        for (int q=0;q<e->n_regions;q++)
+            if (e->region[q].owner==cid && e->region[q].culture.settled && region_pop(e,q)>0.f) n_settled++;
+        if (n_settled!=1) continue;
+        int rp=econ_region_rep_province(e,r);
+        if (rp<0 || rp>=e->n_prov || e->prov[rp].region!=r) continue;
+        *out_rp=rp; return r;
+    }
+    return -1;
+}
 static PopCulture make_fiche(float valeurs, Ethos e, Heritage heritage){
     PopCulture pc; memset(&pc,0,sizeof pc);
     pc.langue=5.f; pc.valeurs=valeurs; pc.subsistance=6.f; pc.parente=5.f; pc.religion=5.f;
@@ -788,7 +808,8 @@ int main(int argc, char **argv){
      * a donc lu >0.25 sur cette fixture — preuve indirecte mais réelle). */
     {
         events_init(s.ev,s.w,seed);
-        int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+        int rp=-1, capr=find_mono_owned_region_with_rp(s.econ,&rp);
+        if (capr<0) capr=find_owned_region_with_rp(s.econ,&rp);
         if (capr>=0 && rp>=0){
             int cid=s.econ->region[capr].owner;
             for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].unlocked[TECH_INTEGRATION]=false;
@@ -849,7 +870,8 @@ int main(int argc, char **argv){
          * VRAIE en continu — sans plafond l'évènement retirerait indéfiniment ; avec,
          * le MONDE s'arrête PILE au plafond et n'en retire plus jamais. */
         events_init(s.ev,s.w,seed);
-        int rp=-1, capr=find_owned_region_with_rp(s.econ,&rp);
+        int rp=-1, capr=find_mono_owned_region_with_rp(s.econ,&rp);
+        if (capr<0) capr=find_owned_region_with_rp(s.econ,&rp);
         if (capr>=0 && rp>=0){
             int cid=s.econ->region[capr].owner;
             for (int c=0;c<SCPS_MAX_COUNTRY;c++) s.ts[c].unlocked[TECH_INTEGRATION]=false;
@@ -990,7 +1012,12 @@ int main(int argc, char **argv){
             ok("betrayal_ready(seat=0) devient vrai sous grief opposé saturé (motif V2a)", ready0);
             if (ready0){
                 long tb0=events_trahison_savoir_fired();
-                for (int d=0; d<3650; d+=30) world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,NULL,30,human);
+                /* RECALIBRAGE (archétypes worldgen) : mtth 1825 j ⇒ sur 10 ans de
+                 * tirages 30 j, P(jamais) ≈ 13 % — le contrôle dépendait du chemin
+                 * RNG du monde. 30 ans ⇒ P(jamais) ≈ 0.25 % : l'intention (l'évènement
+                 * TIRE quand betrayal_ready tient) est testée, plus la chance. */
+                for (int d=0; d<10950 && events_trahison_savoir_fired()==tb0; d+=30)
+                    world_events_tick(s.ev,s.w,s.econ,s.wl,s.wp,s.sc,s.rn,s.ts,NULL,NULL,30,human);
                 ok("EVID_TRAHISON_SAVOIR tire sur betrayal_ready(seat=0)", events_trahison_savoir_fired()>tb0);
             } else ok("(betrayal_ready ne s'est pas déclenché sur cette graine — cf. bilan)", true);
 

@@ -63,8 +63,20 @@ int main(int argc, char **argv){
      * CHAQUE tick par econ_aggregate_regions — poker region[].raw_cap directement serait
      * écrasé au 1er econ_tick), pour isoler le fil arcane même si la graine n'a pas placé
      * de nœud chez lui. */
+    /* RECALIBRAGE (archétypes worldgen) : la « 1re région colonisée » du balayage
+     * n'est plus garantie d'appartenir à un EMPIRE peuplé — sur les nouveaux
+     * mondes elle peut échoir à un hameau WILD (~750 âmes : pas de bras pour
+     * l'atelier ⇒ essence 0, le banc mesurait le TIRAGE, pas le fil arcane).
+     * On prend la CAPITALE du premier EMPIRE (joueur/antagoniste) — l'intention
+     * (isoler cristal→essence→Brèche sur une région qui a de la main-d'œuvre)
+     * est inchangée. */
     int rid=-1, cid=-1;
-    for (int r=0;r<e->n_regions;r++) if (e->region[r].owner>=0 && e->region[r].colonized){ rid=r; cid=e->region[r].owner; break; }
+    for (int c=0;c<w->n_countries && rid<0;c++){
+        if (w->country[c].role!=POLITY_PLAYER && w->country[c].role!=POLITY_ANTAGONIST) continue;
+        int cr=world_capital_region(w,c);
+        if (cr>=0 && e->region[cr].owner==c && e->region[cr].colonized){ rid=cr; cid=c; }
+    }
+    if (rid<0){ for (int r=0;r<e->n_regions;r++) if (e->region[r].owner>=0 && e->region[r].colonized){ rid=r; cid=e->region[r].owner; break; } }
     if (rid<0){ rid=0; cid=e->region[0].owner; }
     int pid=e->region_rep_prov[rid];
     if (pid<0){ for (int p=0;p<e->n_prov;p++) if (e->prov[p].region==rid){ pid=p; break; } }

@@ -9,6 +9,7 @@ shader_type canvas_item;
 // 19 pic · 20 glacier · 21 MANGROVE · 22 TOURBIÈRE · 23 volcan · 24 ronces.
 uniform sampler2D biome_map : filter_nearest;
 uniform sampler2D river_map : filter_linear;
+uniform sampler2D cliff_map : filter_linear;   // FALAISES : intensité 0..1 (façade, dérivée du dénivelé côtier)
 uniform sampler2D noise_tex : repeat_enable, filter_linear;
 uniform vec2 map_size = vec2(1024.0, 512.0);
 uniform float flat_map = 1.0;                           // 1 = TOP-DOWN (carte) ; 0 = projection iso 2:1
@@ -232,6 +233,29 @@ void fragment() {
 			if (shoreink > 0.02) {
 				float sg = texture(noise_tex, cell * 0.7 + vec2(3.3, 6.1)).r;
 				col = mix(col, vec3(0.34, 0.32, 0.27), shoreink * (0.16 + 0.10 * sg));
+			}
+
+			// ── FALAISES MARITIMES : hachures d'atlas ancien — petits traits d'encre
+			// PERPENDICULAIRES à la côte, espacés le long du rivage, sobres et
+			// translucides (GLAZE : un lavis d'encre, jamais un aplat opaque). La
+			// tangente vient du GRADIENT du champ falaise (bande fine ⊥ rivage) ;
+			// les lignes constantes-t courent donc LE LONG de la normale. Intensité
+			// ∝ dénivelé (cliff_map, façade) — la falaise ÉMERGE du moteur, ici on
+			// ne fait que l'encrer.
+			float cf = texture(cliff_map, cw / map_size).r;
+			if (cf > 0.05) {
+				vec2 ce1 = vec2(1.4, 0.0);
+				vec2 ce2 = vec2(0.0, 1.4);
+				vec2 cgr = vec2(texture(cliff_map, (cw + ce1) / map_size).r - texture(cliff_map, (cw - ce1) / map_size).r,
+				                texture(cliff_map, (cw + ce2) / map_size).r - texture(cliff_map, (cw - ce2) / map_size).r);
+				float cgl = length(cgr);
+				if (cgl > 1e-4) {
+					vec2 ctan = vec2(-cgr.y, cgr.x) / cgl;                 // tangente à la côte
+					float ct = dot(cell, ctan);                            // abscisse LE LONG du rivage
+					float cph = texture(noise_tex, cell * 0.07 + vec2(4.2, 8.8)).r * 5.0;   // phase jittée (casse la régularité)
+					float tick = smoothstep(0.60, 0.92, sin(ct * 2.3 + cph));               // traits espacés ~2.7 cellules
+					col = mix(col, vec3(0.32, 0.28, 0.22), tick * cf * 0.34);               // encre brune translucide
+				}
 			}
 		}
 
