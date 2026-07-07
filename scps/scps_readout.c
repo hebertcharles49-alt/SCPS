@@ -14,6 +14,7 @@
 #include "scps_lang.h"   /* la table de chaînes : les MOTS vivent dans les tables compilées */
 #include "scps_factions.h"   /* EthosFaction (la balance des factions-éthos, §9) */
 #include "scps_agency.h"     /* K2 : Edifice — les noms d'édifices vivent ICI (readout), pas au moteur */
+#include "scps_labor.h"      /* LOT T : capitale_max_tier — SOURCE UNIQUE du tier par pop */
 #include "scps_tune.h"       /* capstone §27 : ENTROPY_FIN (le seuil reste DERRIÈRE la membrane) */
 #include "scps_endgame.h"    /* capstone §27 : la membrane traduit FinType/MervPhase en miroirs */
 #include "scps_math.h"       /* clampf/iclamp partagés */
@@ -683,11 +684,15 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
                         + pe->strata[CLASS_ELITE].pop;
     pr.ames = (long)pop;
 
+    /* LOT T (2026-07-07) — UNIFIÉ sur capitale_max_tier (T2 2000 · T3 3000 · T4 4000 ·
+     * T5 5000…) au lieu d'un barème INDÉPENDANT (50/500/2000/6000) qui divergeait du
+     * reste du moteur. STA_DESERT reste le cas <50 (case vide/quasi-vide, sous le T1 de
+     * fondation) ; les tiers 1..7 se replient sur les 4 bandes d'affichage restantes. */
     if      (pop <   50.f) pr.stature = STA_DESERT;
-    else if (pop <  500.f) pr.stature = STA_HAMEAU;
-    else if (pop < 2000.f) pr.stature = STA_BOURG;
-    else if (pop < 6000.f) pr.stature = STA_CITE;
-    else                   pr.stature = STA_METROPOLE;
+    else {
+        int _st = capitale_max_tier((long)pop);
+        pr.stature = (_st<=1) ? STA_HAMEAU : (_st<=3) ? STA_BOURG : (_st<=5) ? STA_CITE : STA_METROPOLE;
+    }
 
     float sat = colonized ? pe->satisfaction : 0.5f;
     if      (sat < 0.30f) pr.aisance = AI_MISERE;
@@ -779,11 +784,12 @@ ProvinceReadout province_readout(const World *w, const WorldEconomy *econ,
         long house_cap = colonized ? (long)econ_prov_effcap(pe) : 0;
         pr.logements_cap    = house_cap;
         pr.logements_libres = house_cap - (long)pop;
-        int _rtier = 1;
-        if (pop>=10000) _rtier=7; else if (pop>=8000) _rtier=6; else if (pop>=5000) _rtier=5;
-        else if (pop>=4000) _rtier=4; else if (pop>=3000) _rtier=3; else if (pop>=2000) _rtier=2;
-        long _radm = (long)_rtier*100; if (_radm>(long)pop) _radm=((long)pop/100)*100;
-        long _rpk = _radm/100; float tier_h = (float)((_rpk<_rtier?_rpk:_rtier)*1000);
+        /* LOT T (2026-07-07) — ex-barème DUPLIQUÉ à la main (mêmes valeurs que
+         * capitale_max_tier, mais recopiées — un vrai risque de divergence silencieuse
+         * si scps_labor.c changeait un jour) : délègue aux fonctions PARTAGÉES. */
+        int _rtier = capitale_max_tier((long)pop);
+        long _radm = capitale_admin_pop(_rtier); if (_radm>(long)pop) _radm=((long)pop/100)*100;
+        float tier_h = (float)capitale_housing(_rtier, _radm);
         /* SERVICES (MERGÉ) : tier × 1000 (base) + institutions AJOUTENT. */
         long serv_cap = (long)(tier_h + (K_inst + savoir + faith) * 700.f);
         pr.services_cap    = serv_cap;

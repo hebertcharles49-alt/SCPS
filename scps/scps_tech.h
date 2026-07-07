@@ -230,6 +230,12 @@ const char *tech_theme_name(TechTheme t);     /* "Savoir"/"Forge"/"Société" */
 const char *tech_function_name(TechFunction f);/* "Production"/"Armée"/"Renforcement" */
 int         tech_quarter(TechTheme t, TechFunction f);  /* 0..8 — l'angle */
 bool        tech_is_base(TechId id);          /* tier 0 = bâtiment de base (centre) */
+/* LOT T (2026-07-07) — le pays a-t-il DÉJÀ recherché ≥1 tech du TIER demandé (n'importe
+ * lequel des 3 thèmes) ? Gate générique des ÉDIFICES par palier (edifice_tier,
+ * scps_agency.c : un édifice de palier N exige la PREUVE que la recherche du pays a
+ * atteint cette profondeur, pas une tech précise). tier<=0 : toujours vrai (T1/base,
+ * libre d'entrée). s==NULL : vrai (repli permissif, comme edifice_unlocked). */
+bool        tech_has_tier(const TechState *s, int tier);
 
 /* Masque de RACES accessibles à un empire (sa propre heritage + héritages conquises/
  * migrées). Une tech native d'une heritage n'est recherchable qu'avec l'accès. */

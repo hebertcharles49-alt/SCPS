@@ -57,11 +57,12 @@ func _refresh() -> void:
 				_blegal[t] = Sim.world.build_legal(-1, t)
 	queue_redraw()
 
-## la raison du refus, en mot (reason de build_legal : 2 or · 3 matière · 1 structurel)
+## la raison du refus, en mot (reason de build_legal : 2 or · 3 matière · 4 tech de palier · 1 structurel)
 func _reason_word(reason: int) -> String:
 	match reason:
 		2: return "or insuffisant"
 		3: return "matière manquante"
+		4: return "tech de palier manquante"
 		_: return "indisponible ici (palier/déjà bâti)"
 
 func _draw() -> void:

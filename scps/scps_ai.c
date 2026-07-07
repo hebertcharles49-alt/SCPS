@@ -896,6 +896,21 @@ static bool empire_has_bld(const WorldEconomy *econ, int cid, BuildingType b){
     }
     return false;
 }
+/* LOT T (2026-07-07) — GRAIN du T-gate : la province qui va RÉELLEMENT héberger le
+ * bâtiment (charte PROVINCE_MODEL.md : l'économie — pop, strates — vit à la PROVINCE),
+ * PAS l'agrégat de région (Σ toutes ses provinces, qui peut gonfler le tier au-delà de
+ * ce qu'AUCUNE province n'atteint seule). `econ_build_manufacture` résout toujours
+ * « region » vers sa province REPRÉSENTATIVE (econ_region_rep_province, scps_econ.c) —
+ * c'est CETTE province qu'on gate ici, au lieu du Σ region[].strata d'avant. Repli
+ * tier 1 (libre) si aucune province représentative n'existe (fixtures de bancs sans
+ * provinces peuplées — même repli sûr que region_carrier_prov). */
+static int host_province_tier(const WorldEconomy *econ, int region){
+    int pid = econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return 1;
+    const ProvinceEconomy *pe=&econ->prov[pid];
+    long pop=(long)(pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop);
+    return capitale_max_tier(pop);
+}
 
 /* F-arc — POSER LES MANUFACTURES MILITAIRES PAR DOCTRINE (bâti DÉLIBÉRÉ, gaté par le TIER de la
  * RÉGION-HÔTE + la PUISSANCE ÉCONOMIQUE = l'or). « Combien puis-je poser ? » = ce que le trésor paie ;
@@ -938,7 +953,7 @@ static void ai_build_manufacture(AiActor *a, const World *w, WorldEconomy *econ)
             bool have=false; for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==b){ have=true; break; }
             if (have) continue;
             float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
-            if (capitale_max_tier((long)rpop) < btier) continue;          /* T-gate PAR RÉGION-HÔTE : la province doit pouvoir héberger ce tier */
+            if (host_province_tier(econ, r) < btier) continue;          /* T-gate PAR PROVINCE-HÔTE (LOT T : plus le Σ région) */
             if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;  /* SOUS-STAFFÉ : pas dans le vide */
             if (re->raw_cap[in] > bestcap){ bestcap=re->raw_cap[in]; best=r; }
         }
@@ -968,7 +983,7 @@ static int ai_pick_host_for(const WorldEconomy *econ, int cid, BuildingType b){
         const RegionEconomy *re=&econ->region[r];
         if (re->owner!=cid || !re->colonized) continue;
         float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
-        if (capitale_max_tier((long)rpop) < btier) continue;
+        if (host_province_tier(econ, r) < btier) continue;   /* LOT T : T-gate par PROVINCE-hôte */
         if (rpop < AI_STAFF_PER_MANUF*(float)(re->n_bld+1)) continue;
         if (!econ_bld_can_build(econ, r, b)) continue;
         if (rpop > bestpop){ bestpop=rpop; best=r; }
@@ -1060,7 +1075,7 @@ static void ai_build_civmanuf(AiActor *a, const World *w, WorldEconomy *econ, Re
         float manuf_h=0.f; for (int i=0;i<re->n_bld;i++) manuf_h += re->bld[i].level;
         float deficit = re->cap_pop*0.5f - manuf_h*house_manuf;
         if (deficit <= best_deficit) continue;                        /* déjà (presque) plein, ou moins sous-logé qu'un candidat */
-        int rtier=capitale_max_tier((long)rpop);
+        int rtier=host_province_tier(econ, r);   /* LOT T : T-gate par PROVINCE-hôte (plus le Σ région) */
         BuildingType pick=BLD_TYPE_COUNT; float pick_raw=-1.f;
         for (int b=0;b<BLD_TYPE_COUNT;b++){
             if (bld_is_faustian((BuildingType)b)) continue;          /* pas les transmuteurs (charge/tech) */
@@ -1285,18 +1300,27 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             int hr = a->home_region;
             const ProvBuild *bd = (hr>=0&&hr<econ->n_regions)?&econ->region[hr].build:NULL;
             bool faith_crisis = (bd && v->L < AI_FAITH_L && bd->faith < 5.0f);
-            /* ZÈLE PROACTIF — un crédo prosélyte (w_faith haut) qui n'a PAS encore de foi bâtit son
-             * PREMIER sanctuaire DE LUI-MÊME → la foi se FONDE (bloc RELIGION ci-dessous, sous le
-             * plafond ⌈N/3⌉) au lieu de n'émerger qu'en crise de légitimité. On LIT w_faith (l'entrée
-             * moteur dérivée du crédo), pas un bonus plat ; borné à UN chantier : athée + faith<1 +
-             * aucun chantier de foi déjà en file (anti-spam — agency_build est asynchrone). */
+            /* ZÈLE PROACTIF — un crédo prosélyte (w_faith haut) qui n'a PAS encore de foi bâtit
+             * DE LUI-MÊME sa chaîne de foi → la foi se FONDE (bloc RELIGION ci-dessous, sous le
+             * plafond ⌈N/2⌉) au lieu de n'émerger qu'en crise de légitimité. On LIT w_faith (l'entrée
+             * moteur dérivée du crédo), pas un bonus plat ; borné à UN chantier à la fois : athée +
+             * aucun chantier de foi déjà en file (anti-spam — agency_build est asynchrone).
+             * LOT T (2026-07-07) — la fondation exige désormais le TEMPLE (T2) bâti, pas le seul
+             * Sanctuaire (T1) : le seuil de zèle passe de faith<1.0 (s'arrêtait au 1er édifice) à
+             * faith<3.0 (le zèle PERSISTE après le Sanctuaire — ai_next_faith_edifice enchaîne
+             * naturellement Sanctuaire→Temple selon le même seuil de densité — et s'éteint une fois
+             * le Temple posé, faith≥3.0 ; il ne pousse PAS jusqu'à la Cathédrale, réservée à
+             * faith_crisis). Le Temple (T2) est lui-même derrière la gate tech T2 (agency_build_acct,
+             * edifice_tier) : la chaîne complète est tech T2 → Temple bâtissable → Temple bâti →
+             * fondation — mesurée en sweep (cf. TROUVAILLES) pour vérifier qu'elle n'étrangle pas
+             * la fondation (dans l'esprit de l'autel humble N1). */
             bool faith_pending = false;
             if (ag && hr>=0) for (int oi=0; oi<ag->n; oi++)
                 if (ag->order[oi].active && ag->order[oi].kind==AGY_BUILD && ag->order[oi].region==hr){
                     Edifice pe=(Edifice)ag->order[oi].param;
                     if (pe==EDI_SANCTUAIRE||pe==EDI_TEMPLE||pe==EDI_CATHEDRALE||pe==EDI_MONASTERE){ faith_pending=true; break; }
                 }
-            bool faith_zeal = (bd && hr>=0 && !faith_pending && bd->faith < 1.0f
+            bool faith_zeal = (bd && hr>=0 && !faith_pending && bd->faith < 3.0f
                                && religion_of_country(a->cid) < 0
                                && a->w_faith >= tune_f("AI_FAITH_ZEAL",AI_FAITH_ZEAL));
             if (!faith_crisis && !faith_zeal && (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && hr>=0){
@@ -1460,16 +1484,18 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
         return;
     }
 
-    /* RELIGION — le PLAFOND mondial ⌈N/3⌉ borne le TOTAL des religions (fondation ET schisme).
-     * N = empires de GENÈSE (religion_empire_ref, stable) : « 6 empires ⇒ 2 religions » même quand
-     * les sécessions multiplient les polities. */
+    /* RELIGION — le PLAFOND mondial ⌈N/2⌉ (LOT T, relâché de ⌈N/3⌉) borne le TOTAL des religions
+     * (fondation ET schisme). N = empires de GENÈSE (religion_empire_ref, stable) : « 7 empires ⇒
+     * 4 religions » même quand les sécessions multiplient les polities. */
     int n_emp = religion_empire_ref();
 
-    /* FONDER au 1er édifice religieux (comme le joueur) : si le pays a bâti un sanctuaire/temple/…
-     * et n'a pas de foi, il en FONDE une (aléatoire) tant que le TOTAL est sous le plafond ; au-delà,
-     * il RALLIE une foi existante (les empires se PARTAGENT les religions). GATED : aucun édifice ⇒ no-op. */
+    /* FONDER au TEMPLE (T2) bâti (comme le joueur, LOT T — plus le 1er édifice religieux
+     * quelconque) : si le pays a bâti un temple/cathédrale et n'a pas de foi, il en FONDE une
+     * (aléatoire) tant que le TOTAL est sous le plafond ; au-delà, il RALLIE une foi existante
+     * (les empires se PARTAGENT les religions). GATED : aucun Temple ⇒ no-op (le zèle proactif
+     * ci-dessus, plus haut dans ai_strat_turn, pousse le Sanctuaire PUIS le Temple). */
     if (religion_of_country(a->cid) < 0){
-        uint32_t emask=(1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE)|(1u<<EDI_MONASTERE);
+        uint32_t emask=(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE);
         int has_edi=0;
         for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG;r++)
             if (econ->region[r].owner==a->cid && (econ->region[r].edi_built & emask)){ has_edi=1; break; }

@@ -68,6 +68,15 @@ Edifice edifice_prev(Edifice e);
 Edifice edifice_succ(Edifice e);   /* palier suivant (EDIFICE_COUNT = sommet/singleton) */
 Edifice edifice_next_buildable(const WorldEconomy *econ, int region, Edifice base);  /* le ↑ à poser */
 bool    edifice_build_blocked(const WorldEconomy *econ, int region, Edifice e);
+/* LOT T (2026-07-07) — le TIER d'un édifice = sa position dans SA FAMILLE (1 = base,
+ * « T1 libre d'entrée » — sanctuaire/tribunal/garnison/marché/… ; 2, 3 = paliers ↑
+ * successifs via edifice_prev, ex. Sanctuaire→Temple(T2)→Cathédrale(T3)). Un singleton
+ * ou une base de fourche (Marché, Grenier, Port, Comptoir, Bibliothèque militaire…) vaut
+ * toujours 1 (rien au-dessus). Gate les édifices de palier ≥2 derrière ≥1 tech du MÊME
+ * tier (agency_build_acct, econ_country_has_tier) — EXCEPTÉ les bâtiments auto-posés à
+ * la colonisation (agency_seed_capital_markets, intertrade_seed_centres…) qui n'appellent
+ * JAMAIS agency_build_acct et échappent donc à ce gate par construction. */
+int     edifice_tier(Edifice e);
 
 /* Le PRIX en OR de la recette au marché de la région (Σ qty × prix courant) — un
  * nombre de jeu (affichable). Sert au garde de construction ET à l'UI. */
@@ -169,6 +178,9 @@ void agency_save(FILE *f);
 bool agency_load(FILE *f);
 /* DIAGNOSTIC G0.3 — dump par édifice (bâtis / bloqués au palier / sans or) sur stderr. */
 void agency_edi_dump(void);
+/* LOT T — télémétrie : combien de refus « tech de palier manquante » pour cet édifice
+ * (cumul sim, RAZ par agency_init — même patron que les autres compteurs g_edi_*). */
+long agency_edi_notech_count(int e);
 
 /* ── M3 (forks §8) — LA SUCCESSION CONTEXTUELLE + L'HYSTÉRÉSIS ──────────────
  * edifice_fork_successor : la variante de `base` sous un pôle (EDIFICE_COUNT si

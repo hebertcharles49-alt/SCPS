@@ -35,7 +35,7 @@ func _run() -> void:
 		var bl: Dictionary = w.build_legal(-1, int(b.get("type", -1)))
 		var legal: bool = bool(bl.get("legal", false))
 		var reason := int(bl.get("reason", -9))
-		if reason < 0 or reason > 3:
+		if reason < 0 or reason > 4:   # LOT T : 4 = tech de palier manquante
 			viol += 1; push_error("build_legal: reason hors-bornes (%d)" % reason)
 		if legal and reason != 0:
 			viol += 1; push_error("build_legal: legal=true mais reason=%d" % reason)
@@ -97,17 +97,17 @@ func _run() -> void:
 	# histogramme des raisons + cohérence re-vérifiée ; on n'asserte pas un compte
 	# (dépendant du monde), seulement que chaque refus reste MOTIVÉ.
 	w.advance_days(60)
-	var hist := {0: 0, 1: 0, 2: 0, 3: 0}
+	var hist := {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}   # LOT T : 4 = tech de palier
 	for b in roster:
 		var bl2: Dictionary = w.build_legal(-1, int(b.get("type", -1)))
 		var r2 := int(bl2.get("reason", -9))
-		if r2 < 0 or r2 > 3:
+		if r2 < 0 or r2 > 4:
 			viol += 1; push_error("build_legal (j+60): reason hors-bornes"); continue
 		if bool(bl2.get("legal", false)) != (r2 == 0):
 			viol += 1; push_error("build_legal (j+60): legal incohérent avec reason")
 		hist[r2] += 1
 	print("  build_legal (j+60) : OK=", hist[0], " · structurel=", hist[1],
-		" · or=", hist[2], " · matière=", hist[3])
+		" · or=", hist[2], " · matière=", hist[3], " · tech de palier=", hist[4])
 
 	print("")
 	print("MEMBRANE AUDIT OK" if viol == 0 else ("MEMBRANE AUDIT : " + str(viol) + " VIOLATION(S)"))

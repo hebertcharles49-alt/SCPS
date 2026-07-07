@@ -723,6 +723,17 @@ float econ_build_reserve(Resource r);
  * propriétaire vers chaque région (re->tech_prod), lu par econ_tick pour abonder prod_mult.
  * À appeler par le harnais avant econ_tick (la recherche pays → la prod région). */
 void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts);
+/* LOT T (2026-07-07) — LECTURE : le pays `cid` a-t-il ≥1 tech du TIER demandé (tech_has_tier) ?
+ * Sert le gate ÉDIFICE-PAR-PALIER d'agency_build_acct (scps_agency.c) SANS threader TechState*
+ * dans sa signature (appelée directement par scps_sim.c:CMD_BUILD — hors périmètre de ce lot,
+ * changer sa signature casserait ce site). Lit un cache TRANSITOIRE (le pointeur `ts` posé par
+ * le DERNIER appel à econ_apply_country_tech, déjà fait chaque jour par sim_day AVANT le drain
+ * suivant — même léger décalage d'un jour que tech_arquebus/tech_foreuse, cf. leurs commentaires) ;
+ * NON sérialisé (juste un pointeur vers le TechState[] du harnais, lui-même sérialisé ailleurs).
+ * Repli PERMISSIF (comme edifice_unlocked : `!ts ⇒ true`) si le cache n'a JAMAIS été posé — les
+ * bancs isolés qui appellent agency_build_acct sans jamais appeler econ_apply_country_tech ne
+ * sont donc PAS gatés (le gate reste inerte hors sim vive). */
+bool econ_country_has_tier(int cid, int tier);
 
 /* Tolérance fiscale [0..1] par ÉTHOS × classe (§7) : le seuil (×satisfaction)
  * au-delà duquel on fuit l'impôt et l'on gronde. Exposé pour les bancs d'essai. */

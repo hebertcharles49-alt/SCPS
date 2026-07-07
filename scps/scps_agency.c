@@ -114,6 +114,14 @@ Edifice edifice_prev(Edifice e){
         default:               return EDIFICE_COUNT;
     }
 }
+/* LOT T — voir scps_agency.h. Chaîne de profondeur via edifice_prev (bornée à 8, la
+ * plus longue famille existante en fait 3 — la borne n'est qu'un garde-fou anti-cycle). */
+int edifice_tier(Edifice e){
+    int t=1;
+    Edifice p=edifice_prev(e);
+    while (p<EDIFICE_COUNT && t<8){ t++; p=edifice_prev(p); }
+    return t;
+}
 Edifice edifice_succ(Edifice e){   /* palier SUIVANT (EDIFICE_COUNT = sommet/singleton) */
     switch(e){
         case EDI_TRIBUNAL:    return EDI_CHANCELLERIE;
@@ -267,6 +275,10 @@ bool agency_pending_build(const AgencyState *a, int region, Edifice e){
  * F4 : g_edi_nocap distingue « le POOL COMMERCIAL §5 est à sec ce mois-ci » (import borné,
  * cf. intertrade_market_avail_ex) de g_edi_nomat « la matière est VRAIMENT absente partout ». */
 static long g_edi_made[EDIFICE_COUNT], g_edi_blocked[EDIFICE_COUNT], g_edi_nogold[EDIFICE_COUNT], g_edi_nomat[EDIFICE_COUNT], g_edi_nocap[EDIFICE_COUNT];
+/* LOT T — refusé pour manque de TECH de palier (edifice_tier vs econ_country_has_tier),
+ * compteur SÉPARÉ (pas g_edi_blocked : « déjà bâti/en file » est une raison DIFFÉRENTE). */
+static long g_edi_notech[EDIFICE_COUNT];
+long agency_edi_notech_count(int e){ return (e>=0&&e<EDIFICE_COUNT)?g_edi_notech[e]:0; }
 
 /* §7 — l'ÉTENDUE du pays RENCHÉRIT ses institutions (le frein tall/wide qui manquait) :
  * facteur ×(1 + 0.15·n_régions du pays) sur le coût matériaux. Un grand empire paie
@@ -318,6 +330,15 @@ bool agency_build_acct(AgencyState *a, WorldEconomy *econ, const World *w, int r
      * edifice_build_blocked ne verrait la commande d'hier qu'après ses ≤960j de chantier. Même
      * compteur g_edi_blocked (même FAMILLE de refus : « déjà en cours/déjà là »). */
     if (agency_pending_build(a, region, e)){ g_edi_blocked[e]++; return false; }
+    /* LOT T (2026-07-07) — GATE TECH PAR PALIER : un édifice de tier N (≥2, edifice_tier)
+     * exige que le pays ait DÉJÀ recherché ≥1 tech du MÊME tier N (n'importe quel thème —
+     * econ_country_has_tier). T1 (base de chaque famille) reste libre d'entrée. EXCEPTION
+     * ABSOLUE : les bâtiments auto-posés à la colonisation (agency_seed_capital_markets,
+     * intertrade_seed_centres) n'appellent JAMAIS agency_build_acct — ils échappent à ce
+     * gate par construction, pas par un `if` ajouté ici. Repli permissif (cf.
+     * econ_country_has_tier) si le cache tech n'a jamais été posé (bancs isolés). */
+    { int et = edifice_tier(e);
+      if (et>1 && !econ_country_has_tier(owner, et)){ g_edi_notech[e]++; return false; } }
     /* Gate de MATIÈRE (refus sec) : une seule matière introuvable au marché atteignable
      * (propre + Centre le plus proche + réseau des Centres) → chantier REFUSÉ. Pas de file
      * d'attente. Scarce = cher (marges) ; absent partout = pas de chantier.
@@ -429,11 +450,11 @@ bool edifice_unlocked(const TechState *ts, Edifice e){
 static float g_pend_charge[SCPS_MAX_COUNTRY], g_pend_fract[SCPS_MAX_COUNTRY], g_pend_H[SCPS_MAX_COUNTRY];
 static int   g_n_repress, g_n_assim, g_n_purge; static long g_purge_dead;
 void agency_edi_dump(void){
-    fprintf(stderr,"[EDI] par édifice — made / blocked(palier précédent) / nogold / nomat / nocap(pool §5 à sec) :\n");
+    fprintf(stderr,"[EDI] par édifice — made / blocked(palier précédent) / nogold / nomat / nocap(pool §5 à sec) / notech(LOT T) :\n");
     for (int e=0;e<EDIFICE_COUNT;e++)
-        if (g_edi_made[e]||g_edi_blocked[e]||g_edi_nogold[e]||g_edi_nomat[e]||g_edi_nocap[e])
-            fprintf(stderr,"  %-14s %4dj  made=%-5ld blocked=%-6ld nogold=%-6ld nomat=%-6ld nocap=%-6ld\n",
-                    EDIFICES[e].name, EDIFICES[e].days, g_edi_made[e], g_edi_blocked[e], g_edi_nogold[e], g_edi_nomat[e], g_edi_nocap[e]);
+        if (g_edi_made[e]||g_edi_blocked[e]||g_edi_nogold[e]||g_edi_nomat[e]||g_edi_nocap[e]||g_edi_notech[e])
+            fprintf(stderr,"  %-14s %4dj  made=%-5ld blocked=%-6ld nogold=%-6ld nomat=%-6ld nocap=%-6ld notech=%-6ld\n",
+                    EDIFICES[e].name, EDIFICES[e].days, g_edi_made[e], g_edi_blocked[e], g_edi_nogold[e], g_edi_nomat[e], g_edi_nocap[e], g_edi_notech[e]);
 }
 
 void agency_init(AgencyState *a){
@@ -445,6 +466,7 @@ void agency_init(AgencyState *a){
     g_n_repress=g_n_assim=g_n_purge=0; g_purge_dead=0;
     memset(g_edi_made,0,sizeof g_edi_made); memset(g_edi_blocked,0,sizeof g_edi_blocked);
     memset(g_edi_nogold,0,sizeof g_edi_nogold); memset(g_edi_nomat,0,sizeof g_edi_nomat);
+    memset(g_edi_notech,0,sizeof g_edi_notech);   /* LOT T */
 }
 
 void agency_save(FILE *f){

@@ -1549,7 +1549,18 @@ static void econ_build_tick(WorldEconomy *e){
 /* §B1 — pousse le bonus de PRODUCTION du pays propriétaire vers SES PROVINCES. prod_pct
  * (production) et eff_pct (efficacité d'emploi) se cumulent dans un seul multiplicateur
  * sur prod_mult — gain modeste, partout, NON faustien. Appelé avant econ_tick. */
+/* LOT T — cache TRANSITOIRE (non sérialisé) du dernier TechState[] posé ici, pour
+ * econ_country_has_tier (voir scps_econ.h). Un simple pointeur : aucune propriété,
+ * aucune allocation — le tableau vit chez l'appelant (sim/façade), déjà sérialisé là. */
+static const TechState *g_tech_cache = NULL;
+static int g_tech_cache_n = 0;
+bool econ_country_has_tier(int cid, int tier){
+    if (tier<=0) return true;
+    if (!g_tech_cache || cid<0 || cid>=g_tech_cache_n) return true;   /* repli permissif : cache jamais posé */
+    return tech_has_tier(&g_tech_cache[cid], tier);
+}
 void econ_apply_country_tech(WorldEconomy *e, const TechState *ts, int n_ts){
+    g_tech_cache = ts; g_tech_cache_n = ts ? n_ts : 0;
     if (!e) return;
     for (int p=0;p<e->n_prov;p++){
         ProvinceEconomy *pe=&e->prov[p];
