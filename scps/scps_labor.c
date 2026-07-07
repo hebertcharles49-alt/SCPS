@@ -8,20 +8,45 @@
  * demography/econ. Aucune structure sérialisée (section save LABO retirée).
  */
 #include "scps_labor.h"
+#include "scps_tune.h"   /* LOT T — seuils T2-T7 dialables (registre J) */
 
 #define CAP_ADMIN_PER_TIER 100    /* pop de Nobles à l'administration, par tier */
 #define CAP_PROD_PER_TIER  0.05f  /* +5 % de productivité par tier SERVI */
 #define SOLDE_GOLD_PER100  0.5f   /* solde d'armée : ½ or / 100 enrôlés / jour */
 #define SOLDE_FOOD_PER100  1L     /* ration de campagne : 1 nourriture / 100 / jour */
 
+/* LOT T (2026-07-07) — SOURCE UNIQUE du tier par POP (doctrine joueur : « T2 2000, T3
+ * 3000, T4 4000, T5 5000 et ainsi de suite » — CE barème existait déjà, à l'identique,
+ * depuis avant ce lot ; ce qui manquait était que TOUS les lecteurs (readout, façade,
+ * viewer, T-gate ai.c) s'y réfèrent au lieu de barèmes ad hoc dupliqués ailleurs — cf.
+ * TROUVAILLES). Seuils dialables (registre J), mais mis en cache à la PREMIÈRE lecture
+ * (pas un tune_f() par appel) : cette fonction est appelée dans des boucles PAR-PROVINCE
+ * PAR-TICK (scps_econ.c, jusqu'à SCPS_MAX_PROV fois/jour) — un lookup registre (linéaire,
+ * ~200 noms) par appel coûterait cher sur tout un chronicle. Conséquence ASSUMÉE : une
+ * surcharge SCPS_TUNE au lancement s'applique (lue au 1er appel) ; le panneau F10 EN
+ * DIRECT ne rafraîchit PAS ces 6 seuils précis sans relancer (documenté, cf. TROUVAILLES).
+ */
+static long g_tier_pop[6];    /* [0]=T2 … [5]=T7 */
+static int  g_tier_pop_init = 0;
+static void tier_pop_init(void){
+    if (g_tier_pop_init) return;
+    g_tier_pop_init = 1;
+    g_tier_pop[0] = (long)tune_f("TIER2_POP",  2000.f);
+    g_tier_pop[1] = (long)tune_f("TIER3_POP",  3000.f);
+    g_tier_pop[2] = (long)tune_f("TIER4_POP",  4000.f);
+    g_tier_pop[3] = (long)tune_f("TIER5_POP",  5000.f);
+    g_tier_pop[4] = (long)tune_f("TIER6_POP",  8000.f);
+    g_tier_pop[5] = (long)tune_f("TIER7_POP", 10000.f);
+}
 /* Tier que la POPULATION débloque (plafond) — la pop OUVRE, la recette PAIE. */
 int capitale_max_tier(long pop){
-    if (pop>=10000) return 7;
-    if (pop>= 8000) return 6;
-    if (pop>= 5000) return 5;
-    if (pop>= 4000) return 4;
-    if (pop>= 3000) return 3;
-    if (pop>= 2000) return 2;
+    tier_pop_init();
+    if (pop>=g_tier_pop[5]) return 7;
+    if (pop>=g_tier_pop[4]) return 6;
+    if (pop>=g_tier_pop[3]) return 5;
+    if (pop>=g_tier_pop[2]) return 4;
+    if (pop>=g_tier_pop[1]) return 3;
+    if (pop>=g_tier_pop[0]) return 2;
     return 1;                       /* toute province : tier 1 dès la fondation */
 }
 /* Le STATUT d'urbanisation VIENT DU TIER. */

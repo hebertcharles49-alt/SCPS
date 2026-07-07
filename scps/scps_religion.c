@@ -59,7 +59,7 @@ static const ReligDelta* const RELIG_CREDO[CREDO_COUNT] = {
 
 Religion g_religions[RELIG_MAX];
 int      g_religion_count = 0;
-static int g_relig_n_emp_ref = 0;   /* compte d'empires de GENÈSE → ancre le plafond ⌈N/3⌉ (stable) */
+static int g_relig_n_emp_ref = 0;   /* compte d'empires de GENÈSE → ancre le plafond ⌈N/2⌉ (stable) */
 
 /* lien pays→religion (P3) + cache d'accumulateur (P4) + religion par région (P8). */
 static int        g_country_religion[RELIG_MAX_COUNTRY];
@@ -230,12 +230,16 @@ int religion_region_resisted(int rg){
     if(g_scholar[c].active && g_scholar[c].role==SCHOLAR_RESIST && g_scholar[c].region==rg) return 1;
   return 0;
 }
-/* ── PLAFOND mondial : ⌈n_empires/3⌉ religions FONDÉES (racines) ────────── */
+/* ── PLAFOND mondial : ⌈n_empires/2⌉ religions FONDÉES (racines) ────────── */
 int religion_root_count(void){
   int n=0; for(int i=0;i<g_religion_count;i++) if(g_religions[i].parent<0) n++; return n;
 }
-int religion_cap(int n_empires){ return (n_empires<=0)?1:((n_empires+2)/3); }   /* ceil(n/3) */
-/* FONDER une RACINE : le plafond ⌈N/3⌉ borne les foi FONDATRICES (racines, parent<0). Les schismes
+/* LOT T (2026-07-07) — plafond RELÂCHÉ ⌈N/3⌉ → ⌈N/2⌉ (demande joueur : « 7 empires → 4
+ * religions » au lieu de 3) — même geste que le RELIG_SCHISM_MAX 2→5 de la Réforme :
+ * la fondation reste bornée un jamais infinie, juste moins étranglée. RIEN d'autre ne
+ * bouge (religion_can_schism, RELIG_SCHISM_MAX INCHANGÉS). */
+int religion_cap(int n_empires){ return (n_empires<=0)?1:((n_empires+1)/2); }   /* ceil(n/2) */
+/* FONDER une RACINE : le plafond ⌈N/2⌉ borne les foi FONDATRICES (racines, parent<0). Les schismes
  * (sectes) ne comptent PAS ici — ils ont leur propre plafond PAR RACINE (religion_can_schism). */
 int religion_can_found(int n_empires){ return religion_root_count() < religion_cap(n_empires); }
 /* la RACINE-ANCÊTRE d'une foi (remonte la chaîne parent ; borne anti-cycle = RELIG_MAX). */

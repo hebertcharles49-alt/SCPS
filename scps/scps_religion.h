@@ -148,10 +148,12 @@ void religion_scholar_tick(const World *w, WorldEconomy *econ);  /* CONVERT agit
 int  religion_region_stabilized(int rg);              /* un Moine y calme l'agitation ? (1/0) */
 int  religion_region_resisted(int rg);                /* un Gourou y bloque la conversion ? (1/0) */
 
-/* ── PLAFOND mondial de religions = ⌈n_empires/3⌉ sur le TOTAL (racines + schismes) ─────── */
+/* ── PLAFOND mondial de religions FONDATRICES = ⌈n_empires/2⌉ sur les RACINES (LOT T,
+ * 2026-07-07 : relâché de ⌈N/3⌉) ; les schismes ont leur PROPRE plafond PAR RACINE
+ * (religion_can_schism, RELIG_SCHISM_MAX) ────────────────────────────────────────── */
 int  religion_root_count(void);                       /* nb de religions racines (parent==-1) */
-int  religion_cap(int n_empires);                     /* ⌈n_empires/3⌉, ≥1 */
-int  religion_can_found(int n_empires);               /* RACINES < ⌈N/3⌉ ? (gate FONDATION) */
+int  religion_cap(int n_empires);                     /* ⌈n_empires/2⌉, ≥1 */
+int  religion_can_found(int n_empires);               /* RACINES < ⌈N/2⌉ ? (gate FONDATION) */
 int  religion_root_of(int rid);                       /* racine-ancêtre (remonte parent) */
 int  religion_can_schism(int parent_rid);             /* < RELIG_SCHISM_MAX schismes sous la racine ? */
 void religion_set_empire_ref(int n);                  /* ancre le plafond au compte d'empires de GENÈSE */

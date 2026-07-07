@@ -23,7 +23,16 @@
  * ARTISAN≡BOURGEOIS=1, ELITE=2) : la levée mappe UnitDef.from sur strata[]. */
 typedef enum { LAB_LABORER=0, LAB_ARTISAN, LAB_ELITE, LAB_CLASS_COUNT } LaborClass;
 
-/* ---- La CAPITALE : la POP débloque le TIER (plafond), le barème en découle. ---- */
+/* ---- La CAPITALE : la POP débloque le TIER (plafond), le barème en découle. ----
+ * LOT T (2026-07-07) — SOURCE UNIQUE du tier par POP pour TOUT le moteur (readout,
+ * façade/viewer, T-gate ai.c, agency) : T1 <2000 (libre, hameau de colonisation) ·
+ * T2 ≥2000 · T3 ≥3000 · T4 ≥4000 · T5 ≥5000 · T6 ≥8000 · T7 ≥10000 (seuils T2-T7
+ * dialables, registre J : TIER2_POP…TIER7_POP). ⚠ GRAIN : cette fonction ne sait
+ * PAS elle-même si `pop` est une province ou une région — chaque appelant choisit
+ * (cf. commentaires aux sites d'appel : les T-gates de construction (ai.c, agency)
+ * lisent la PROVINCE-hôte, charte PROVINCE_MODEL.md ; quelques lecteurs historiques
+ * région-grain — revolt/campaign/demography, hors périmètre de ce lot — restent au
+ * grain RÉGION par choix de conception antérieur, documenté à part). */
 int         capitale_max_tier (long pop);            /* tier autorisé : <2000→1 … 10000→7 */
 const char *capitale_status   (int tier);            /* Hameau … Mégapole */
 int         capitale_defense  (int tier);            /* défense passive (siège) : 1 par tier */

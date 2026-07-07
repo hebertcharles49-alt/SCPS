@@ -363,6 +363,8 @@ int main(int argc, char **argv){
     long tot_sync=0, tot_sync_distinct=0;   /* §syncrétique : nœuds à porte culturelle + dispersion */
     long tot_relig_roots=0, tot_relig_schisms=0, tot_relig_faith=0, tot_relig_minority=0;   /* RELIGION : foi émergente */
     long tot_min_her=0, tot_min_for=0;   /* DIAG : minorités same-root (hérésie-éligible) vs foreign (zélote) */
+    long tot_tier[8]={0};   /* LOT T : histogramme des PROVINCES colonisées par tier (1..7), sommé sur les sims */
+    long tot_edi_notech=0;  /* LOT T : refus « tech de palier manquante » cumulés (agency_edi_notech_count) */
     long tot_council_loyalty_sum=0, tot_council_loyalty_n=0;   /* V2a : Conseil vivant */
     long tot_council_brink=0, tot_council_ai_replace=0;
     long tot_tree_pct=0; int tot_tree_sims=0;   /* §A : fraction d'arbre déverrouillée (le coût force les choix) */
@@ -1371,6 +1373,16 @@ int main(int argc, char **argv){
         tot_heresy += s.rs->n_heresy; tot_zelote += s.rs->n_zelote;   /* dimension foi */
         tot_civilwars += revolt_civilwar_count(); tot_rebel_vict += revolt_rebel_victory_count();   /* Phase 3a */
         tot_backing_wars += revolt_backing_war_count(); tot_backing_mat += revolt_backing_materiel_count();   /* Phase 3a suite */
+        /* LOT T — histogramme des tiers de PROVINCE (grain réel, econ->prov) + refus tech-de-palier. */
+        { for (int pid=0; pid<s.econ->n_prov; pid++){
+              const ProvinceEconomy *pe=&s.econ->prov[pid];
+              if (!pe->colonized) continue;
+              long pop=(long)(pe->strata[CLASS_LABORER].pop+pe->strata[CLASS_BOURGEOIS].pop+pe->strata[CLASS_ELITE].pop);
+              int t=capitale_max_tier(pop); if (t<1) t=1; if (t>7) t=7;
+              tot_tier[t]++;
+          }
+          for (int ei=0; ei<EDIFICE_COUNT; ei++) tot_edi_notech += agency_edi_notech_count(ei);
+        }
         /* RELIGION : foi(s) fondée(s) (racines) + schismes + pays fidèles + régions minoritaires. */
         { int rr_roots = religion_root_count();
           tot_relig_roots   += rr_roots;
@@ -1526,10 +1538,16 @@ int main(int argc, char **argv){
            tot_mchoc, tot_mpour, tot_mchoc? (double)tot_mpour/tot_mchoc:0.0);
     printf("   syncrétisme culturel ........ %.1f nœud(s)/sim · %.1f archétype(s) distincts/sim (porte = CULTURE, plus heritage ; la diffusion par contact DIVERGE)\n",
            (double)tot_sync/(nsims>0?nsims:1), (double)tot_sync_distinct/(nsims>0?nsims:1));
-    printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (dont same-root/hérésie %.1f · foreign/zélote %.1f) (monde ATHÉE au départ ; racines ≤ ⌈empires/3⌉ genèse · ≤ 2 schismes/racine)\n",
+    printf("   religion .................... %.1f foi(s) fondée(s)/sim · %.1f schisme(s)/sim · %.1f pays fidèle(s)/sim · %.1f région(s) minoritaire(s)/sim (dont same-root/hérésie %.1f · foreign/zélote %.1f) (monde ATHÉE au départ ; fonde au TEMPLE T2 bâti — LOT T ; racines ≤ ⌈empires/2⌉ genèse · ≤ %d schisme(s)/racine)\n",
            (double)tot_relig_roots/(nsims>0?nsims:1), (double)tot_relig_schisms/(nsims>0?nsims:1),
            (double)tot_relig_faith/(nsims>0?nsims:1), (double)tot_relig_minority/(nsims>0?nsims:1),
-           (double)tot_min_her/(nsims>0?nsims:1), (double)tot_min_for/(nsims>0?nsims:1));
+           (double)tot_min_her/(nsims>0?nsims:1), (double)tot_min_for/(nsims>0?nsims:1), RELIG_SCHISM_MAX);
+    { long tsum=0; for(int t=1;t<=7;t++) tsum+=tot_tier[t];
+      printf("   tiers de province (LOT T) ... T1 %.0f%% · T2 %.0f%% · T3 %.0f%% · T4 %.0f%% · T5 %.0f%% · T6 %.0f%% · T7 %.0f%% (pop→tier : T2 2000 · T3 3000 · T4 4000 · T5 5000 · T6 8000 · T7 10000 ; %ld édifice(s) refusé(s) faute de tech de palier/sim)\n",
+             tsum? 100.0*(double)tot_tier[1]/(double)tsum:0.0, tsum? 100.0*(double)tot_tier[2]/(double)tsum:0.0,
+             tsum? 100.0*(double)tot_tier[3]/(double)tsum:0.0, tsum? 100.0*(double)tot_tier[4]/(double)tsum:0.0,
+             tsum? 100.0*(double)tot_tier[5]/(double)tsum:0.0, tsum? 100.0*(double)tot_tier[6]/(double)tsum:0.0,
+             tsum? 100.0*(double)tot_tier[7]/(double)tsum:0.0, tot_edi_notech/(nsims>0?nsims:1)); }
     printf("   conseil (V2a) ............... loyauté moyenne %.0f/100 (%ld siège(s) pourvu(s)) · %.1f ministre(s) au bord/sim · %.1f remplacement(s) IA/sim (faction/loyauté/paie — le pouvoir a un prix)\n",
            tot_council_loyalty_n>0 ? (double)tot_council_loyalty_sum/(double)tot_council_loyalty_n : 0.0,
            tot_council_loyalty_n,

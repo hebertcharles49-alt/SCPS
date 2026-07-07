@@ -470,9 +470,13 @@ typedef struct { int year, act, a_id, b_id, delta_now; } ScpsDiploAct;
 int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max);
 /* §3 — LÉGALITÉ de CONSTRUCTION par RÉGION : 1 si le joueur peut bâtir `edifice` dans `region`
  * MAINTENANT. Miroir READ-ONLY des gates du drain CMD_BUILD (agency_build_acct, même ordre) :
- * région à soi · géo (port/Centre) · palier · file F5 · MATIÈRE au marché atteignable · OR.
- * Le roster (debloque) gate la TECH ; ce prédicat gate le reste. region<0 ⇒ capitale.
- * `_ex` rapporte la RAISON du refus : 0 OK · 1 structurel · 2 or insuffisant · 3 matière manquante. */
+ * région à soi · géo (port/Centre) · palier de FAMILLE · file F5 · TECH DE PALIER (LOT T :
+ * edifice_tier ⇐ econ_country_has_tier, T1 libre) · MATIÈRE au marché atteignable · OR.
+ * Le roster (debloque) gate la tech SPÉCIFIQUE de quelques édifices (Comptoir/Entrepôt,
+ * edifice_unlocked) ; ce prédicat gate en plus, pour TOUT édifice de palier ≥2, la PREUVE
+ * générique que le pays a atteint ce tier de recherche. region<0 ⇒ capitale.
+ * `_ex` rapporte la RAISON du refus : 0 OK · 1 structurel · 2 or insuffisant · 3 matière
+ * manquante · 4 tech de palier manquante. */
 int scps_build_legal(ScpsSim *s, int region, int edifice);
 int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out);
 

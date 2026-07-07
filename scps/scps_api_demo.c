@@ -606,11 +606,11 @@ int main(int argc, char **argv){
         religion_reset();
     }
 
-    /* ── RELIGION : PLAFOND ⌈n_emp/3⌉ — fonder sous le cap, RALLIER au-delà ── */
+    /* ── RELIGION : PLAFOND ⌈n_emp/2⌉ (LOT T, relâché de ⌈N/3⌉) — fonder sous le cap, RALLIER au-delà ── */
     {
         religion_reset();
-        ok("cap : ⌈4/3⌉=2 · ⌈3/3⌉=1 · ⌈6/3⌉=2 · ⌈7/3⌉=3",
-           religion_cap(4)==2 && religion_cap(3)==1 && religion_cap(6)==2 && religion_cap(7)==3);
+        ok("cap : ⌈4/2⌉=2 · ⌈3/2⌉=2 · ⌈6/2⌉=3 · ⌈7/2⌉=4",
+           religion_cap(4)==2 && religion_cap(3)==2 && religion_cap(6)==3 && religion_cap(7)==4);
         int r0=religion_found_random(0, 10, 111u);
         int r1=religion_found_random(1, 20, 222u);
         ok("2 racines fondées (cap 4 emp = 2)", r0>=0 && r1>=0 && religion_root_count()==2);

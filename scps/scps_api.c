@@ -545,16 +545,26 @@ void scps_battle_info(ScpsSim *s, int r, ScpsBattleInfo *out){
         out->war_score = diplo_war_score(s->sim.dp, out->attacker, out->defender);
 }
 
+/* LOT T (2026-07-07) — UNIFIÉ sur capitale_max_tier (scps_labor.c : T2 2000 · T3 3000 ·
+ * T4 4000 · T5 5000…), au lieu d'un barème ad hoc DISTINCT (4000/1500/500/150/50) qui
+ * divergeait silencieusement du reste du moteur (readout, T-gate ai.c). Décalé -1 pour
+ * garder le contrat d'affichage 0-5 existant (Godot : ce n'est qu'un GATE d'affichage +
+ * un multiplicateur de taille grossier — le VRAI étalement de sprites t1..t7 vient de
+ * `_pop_tier()` côté GDScript, indépendant, cf. overlay.gd). Grain RÉGION conservé (lecteur
+ * historique façade/viewer) — la province, elle, est gatée à son propre grain ailleurs
+ * (scps_province_capitale, scps_manuf_legal via host_province_tier côté ai.c). */
 int scps_region_tier(const ScpsSim *s, int r){
     if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return -1;
     if(!s->sim.econ->region[r].colonized) return -1;
     long pop = region_pop_i(s, r);
-    int tier = pop>=4000?5 : pop>=1500?4 : pop>=500?3 : pop>=150?2 : pop>=50?1 : 0;
-    /* la capitale domine : cité a minima (miroir du viewer) */
+    int tier = capitale_max_tier(pop) - 1;
+    if (tier > 5) tier = 5;
+    /* la capitale domine : plancher modeste (EMPIRE_SEED=4000 aligne déjà nativement sur
+     * T4→tier 3 ; le plancher couvre les captures/dérives post-guerre où la pop retombe). */
     for(int c=0;c<s->w->n_countries;c++){
         int cp = s->w->country[c].capital_prov;
         if(cp>=0 && cp<s->w->n_provinces && s->w->province[cp].region==r){
-            if(tier<4) tier=4;
+            if(tier<3) tier=3;
             break;
         }
     }
@@ -1224,7 +1234,8 @@ int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max){
  * rapporté = le premier refus que le drain opposerait. AUCUNE mutation (le drain
  * refuse en silence : ce reader est ce qui rend le bouton honnête).
  * `reason_out` (option) : 0 OK · 1 structurel (région/palier/file/côte) ·
- * 2 or insuffisant · 3 matière manquante (marché atteignable à sec). */
+ * 2 or insuffisant · 3 matière manquante (marché atteignable à sec) ·
+ * 4 tech de palier manquante (LOT T : edifice_tier ⇐ econ_country_has_tier). */
 int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out){
     if (reason_out) *reason_out = 1;
     if (!s || !s->ready || edifice<0 || edifice>=EDIFICE_COUNT) return 0;
@@ -1239,6 +1250,9 @@ int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out){
     if (edifice==EDI_TRADE_CENTER && !e->region[reg].coastal && !e->region[reg].estuary) return 0;
     if (edifice_build_blocked(e, reg, (Edifice)edifice)) return 0;
     if (agency_pending_build(s->sim.ag, reg, (Edifice)edifice)) return 0;   /* F5 : déjà en file */
+    /* LOT T — même ordre que agency_build_acct : la tech de palier avant la matière/l'or. */
+    { int et = edifice_tier((Edifice)edifice);
+      if (et>1 && !econ_country_has_tier(p, et)){ if (reason_out) *reason_out=4; return 0; } }
     /* gate MATIÈRE (miroir) : chaque composante × étendue doit être trouvable au marché
      * atteignable (propre + Centre + réseau). L'étendue ×(1+0.15·n_régions) recompose
      * agency_extent_mult (static côté agency — même formule §7, documentée là-bas). */
@@ -2795,8 +2809,8 @@ int scps_religion_can_found(ScpsSim *s){
 int scps_religion_found(ScpsSim *s, int cid, int credo, int t0, int t1, int t2){
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
     if(!religion_picks_valid(t0,t1,t2)) return -1;
-    /* PLAFOND ⌈n_emp/3⌉ sur les RACINES : au-delà, le joueur RALLIE une foi existante (les empires
-     * se PARTAGENT les religions) au lieu d'en fonder une nouvelle. */
+    /* PLAFOND ⌈n_emp/2⌉ sur les RACINES (LOT T) : au-delà, le joueur RALLIE une foi existante (les
+     * empires se PARTAGENT les religions) au lieu d'en fonder une nouvelle. */
     if(!religion_can_found(api_count_empires(s))){
         int rid=religion_adopt_existing(cid, (uint32_t)(cid+1));
         if(rid>=0) religion_inherit_regions(s->w, s->sim.econ, cid);
@@ -2864,10 +2878,15 @@ int scps_credo_list(ScpsCredoDef *out, int max){
     return n;
 }
 int scps_religion_picks_valid(int p0, int p1, int p2){ return religion_picks_valid(p0,p1,p2); }
+/* LOT T (2026-07-07) — la fondation exigeait le 1er édifice religieux QUELCONQUE (Sanctuaire
+ * T1 suffisait) ; elle exige désormais le TEMPLE (T2, cf. mission joueur) — le Sanctuaire
+ * seul (T1) ne suffit plus, le Monastère (savoir, foi seulement en à-côté) n'a jamais été
+ * le bon signal non plus. Chaîne complète : tech T2 → Temple bâtissable (edifice_tier,
+ * agency_build_acct) → Temple BÂTI → fondation. */
 int scps_religion_founding_ready(ScpsSim *s, int cid){
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return 0;
     if(religion_of_country(cid) >= 0) return 0;   /* a déjà une foi */
-    uint32_t mask = (1u<<EDI_SANCTUAIRE)|(1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE)|(1u<<EDI_MONASTERE);
+    uint32_t mask = (1u<<EDI_TEMPLE)|(1u<<EDI_CATHEDRALE);
     for(int r=0;r<s->sim.econ->n_regions;r++)
         if(s->sim.econ->region[r].owner==cid && (s->sim.econ->region[r].edi_built & mask)) return 1;
     return 0;

@@ -538,6 +538,14 @@ const char *tech_function_name(TechFunction f){
 }
 int  tech_quarter(TechTheme t, TechFunction f){ return (int)t*FN_COUNT + (int)f; }
 bool tech_is_base(TechId id){ return (id>=0&&id<TECH_COUNT)&&NODES[id].tier==0; }
+/* LOT T — voir scps_tech.h. Balaie les TECH_COUNT nœuds (petite table, appel peu
+ * fréquent — au tick de cache d'econ_apply_country_tech, pas par-province). */
+bool tech_has_tier(const TechState *s, int tier){
+    if (tier<=0) return true;
+    if (!s) return true;
+    for (int i=0;i<TECH_COUNT;i++) if (s->unlocked[i] && NODES[i].tier==tier) return true;
+    return false;
+}
 
 /* ACCÈS D'HÉRITAGE GRADUÉ (Temps 2) — le masque `heritage_access` n'est plus binaire : il
  * encode, par héritage, le TIER d'accès atteint (0..3) sur 2 bits → tier·(1<<2r). Une tech

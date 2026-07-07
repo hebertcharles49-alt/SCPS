@@ -588,6 +588,16 @@
      * armes ne pourrissent pas au mois (rouille lente 1 %, vs 15 % des périssables) —
      * sinon l'équilibre de stock restait sous ce qu'une levée annuelle demande. 0 = éteint. */ \
     X(ARMS_PER_LABORER,          0.05f) \
-    X(ARSENAL_DECAY,             0.99f)
+    X(ARSENAL_DECAY,             0.99f) \
+    /* LOT T (2026-07-07) — le TIER par POP (doctrine joueur), SOURCE UNIQUE
+     * (capitale_max_tier, scps_labor.c) : T2 2000 · T3 3000 · T4 4000 · T5 5000 ·
+     * T6/T7 au-delà (non spécifiés par le joueur, conservés à leur valeur d'origine).
+     * Lus UNE fois (cache statique, cf. scps_labor.c) — pas de F10 live sur ces 6-là. */ \
+    X(TIER2_POP,              2000.0f) \
+    X(TIER3_POP,              3000.0f) \
+    X(TIER4_POP,              4000.0f) \
+    X(TIER5_POP,              5000.0f) \
+    X(TIER6_POP,              8000.0f) \
+    X(TIER7_POP,             10000.0f)
 
 #endif /* SCPS_TUNE_LIST_H */
