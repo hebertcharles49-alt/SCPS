@@ -1,58 +1,51 @@
-# Synthèse de session — 2026-07-05/06 : la BOUCLE DE GAMEPLAY (membrane de décision · 21 dilemmes · décrets · Annales)
+# SYNTHÈSE DE SESSION — handoff roulant (2026-07-07, soir)
 
-> Handoff. Branche `claude/vibrant-euler-1tgfp3`. **SAVE_VERSION 65** (v62 EVNT membrane ·
-> v63 annales · v64 DCRE décrets · v65 TXYR étendue — l'instrument I0 de l'année en cours).
-> Mission utilisateur : « Termine tout » — les 3 docs de design (boucle, registres
-> d'événements v4 + lot 2, décisions-leviers, pack flavor tech) implémentés en hiérarchie
-> multi-agents (orchestrateur Fable + implémenteurs sonnet parallèles sur fichiers disjoints).
+> Branche `claude/vibrant-euler-1tgfp3` · **SAVE_VERSION 73** (<v73 refusé) · HEAD `2a6530b`+.
+> Golden re-baseliné par le lot W (archétypes de graine), tenu vert post-merge A+E+M+W.
+> Vague du jour : audit adversarial → 4 lots de fixes en hiérarchie multi-agents
+> (orchestrateur Fable + implémenteurs sonnet en worktrees, merges séquencés).
 
----
+## En vol
+- **Lot B « écritures fantômes »** (agent sonnet, arbre principal) : 4 sites — armes IA
+  `scps_ai.c:1307` · rares Merveille `scps_endgame.c:568` · récompense mission
+  `scps_missions.c:103` · dîme raid `scps_navy.c:497` — + commentaires menteurs « stock au
+  grain RÉGION ». RE-BASELINE golden attendue. → revue diff + commit orchestrateur au retour.
+- **Worktree SCPS-wt-W** encore monté (captures shot_w*.png) — retirer après le bilan.
+  M/E retirés (mergés). DLL GDExtension rebâtie (bindings E+M+W).
 
-## Ce qui a été livré (commits f5bd6c7 → aff0358 + la vague précédente 5d2d168 → bc51fca)
+## Livré aujourd'hui (2026-07-07)
+1. **Assets** : écrans de fin + barre entropie + 13 bordures enluminées câblés (a400f80) ·
+   re-découpe recentrée 431 cellules (58514fd, tools/recut_parch.ps1) · triage du trove
+   Codex (docs/CODEX_TROVE_TRIAGE.md).
+2. **Sons réels** (3 lots) : un clic = un son (modèle Paradox), ui_click universel, cor de
+   guerre, tech_notif, month_tick seul ; TOUT le synthé purgé (14 fichiers), sound.gd minimal.
+3. **AUDIT complet** 5 voies + vérif adversariale → **docs/AUDIT_2026-07-06.md** : 38/38
+   verbes câblés · 2 HIGH + 9 MED confirmés · 9 faux positifs écartés · ADDENDUM balayage
+   region[] (4 écritures fantômes).
+4. **Lot A** (v72→73) : 3 grâces de révolte sérialisées (⚠ borne basse **-31** — le repos
+   post-expiration est SOUS zéro) + g_hub_of borné (refus net, pas de dirty-rebuild) + cas
+   fuzztest prouvé par test négatif.
+5. **Lot E English** : switch FR/EN moteur (passe-plat `scps_lang_set`) + Options (langue +
+   plein écran, persistés) + shell migré tr() (55 clés) + `tools/extract_gd_literals.py` →
+   backlog **629 littéraux / 28 .gd**. ⚠ `strings_en.h` encore ~46 % copie FR.
+6. **Lot M membrane honnête** : FIN_SANG visible + épilogue · Construction grisée
+   (`build_legal_ex` or+matière — ⚠ MIROIR des gates du drain, à re-synchroniser si
+   agency/intertrade changent) · prix manufacture/servile affichés · noms de ministre
+   (trahisons) · codex corrigé · lettré religieux jouable · probe membrane_audit.
+7. **Lot W worldgen** : **8 archétypes de graine** (7 graines → 7 mondes distincts ; overrides
+   sliders/argv priment) + **falaises maritimes émergentes** (lithologie ; le tueur était la
+   gamma vallées lf^1.6 ; piège cell.lake) ; encre musclée post-merge (lisible fit + zoom).
+   5 bancs recalibrés intention préservée.
 
-- **§1 La MEMBRANE DE DÉCISION** : EvOption 3-4 choix (label/blurb/effets/ai_chance/hook/
-  flavor), cicatrices ScarKind à mémoire (delay par kind), cooldowns, file joueur pending[8],
-  `resolve_choice` COMMUN IA/joueur (l'IA tire ai_chance, le joueur enfile CMD_EVENT_CHOICE),
-  `d_treasury_mois` = fraction signée du revenu réel × IPM, titres gabarits « %s » → noms
-  réels de provinces, **LE PARI** (gamble_eff/gamble_p — chaque dilemme a une option
-  incertaine, résolue au rng d'état).
-- **21 dilemmes** : Marbrive + Pont effondré (la crise phare + son chaînage), 6 W1
-  (cloches · entrepôts fermés · deux cartes · eau noire · dernière décision · salve runique),
-  16 lot 2 — §A tech-latch (6 : la tech découverte pose son dilemme moral, une fois par pays),
-  §B culturels (2), §C religieux (3), §D chaînage de cicatrices (5 : chaque K consomme sa
-  cicatrice mûrie). Sautés & documentés : B2/B3/B5/B6, C2/C3/C4 (helpers moteur absents).
-- **§3 DÉCRETS** (`scps_decrees`, player-only ⇒ golden intact) : levée permanente · mécénat ·
-  ambassades · politique de tribut — tous sur des leviers EXISTANTS, le coût EST la
-  contrepartie. 4 différés documentés (aucun levier propre).
-- **§4 ANNALES + §4bis** : frise cliquable, causalité affichée (la cicatrice pointe son
-  dilemme d'origine), récap d'ÂGE au chip « Engager » (écran de chapitre), ÉPILOGUE
-  (« Votre règne en une phrase »), 12 épithètes émergentes. 8 bannières thématiques sur les
-  popups, conseillers-visages (« — {faction} » par option).
-- **SAVETEST v65** : la dérive d'or post-reload venait de `g_flux[][]` (I0, année en cours)
-  non sérialisé → TXYR étendue. Savetest 7/9/11/42 **byte-identique**.
-- **Télémétrie chronicle** « dilemmes (lots 1-2) » : 666-1172 W1 · 19-43 culturels ·
-  61 religieux · 133-353 chaînages/sim — les registres VIVENT.
-- Bug latent pris : débordement de pile `events_text_clean` (texts[256] < besoins réels).
-
-## Vérifs finales
-
-37 bancs verts (3 KO Windows pré-existants : intertrade setenv, campaign/warhost stack) ·
-events_demo 85/85 · scps_api_demo 131/131 · determinism STABLE · golden RE-BASELINÉ
-(les dilemmes mordent < 12 ans) puis confirmé IDENTIQUE · fuzztest 7/7 · scons 0 warning ·
-probes headless ANNALES-2/age/diplo OK · sweeps seed 9/11 200 ans SAINS (Laborer 75-77 %,
-IPM 1.05-1.12, hégémon mortel).
-
-## Pour la prochaine session
-
-- **Latches tech silencieux en sweep** : les §A + salve exigent l'arbre profond (~15 %
-  d'arbre/empire en 200 ans) — prouvés au banc, jamais vus en chronique. Si on veut les
-  VOIR : sweep 400 ans ou seed à grand empire.
-- **Volume W1** : ~3-6 dilemmes/an monde entier (IA auto-résout). Pour le JOUEUR le popup
-  n'arrive que sur SES provinces — à jouer pour sentir si le rythme est bon ; sinon serrer
-  les cooldowns/triggers de cloches (le plus bavard, 1172/sim).
-- **Décrets différés** (centralisation, tolérance, creuset, isolationnisme) : exigent des
-  leviers moteur neufs (setter de crédo, ouverture commerciale par pays…).
-- **Événements lot 2 sautés** : B2/B3/B5/B6, C2/C3/C4 attendent credo_drift/ethos_drift/
-  creuset_state/fracture-tracking.
-- Env : `make scps` sans SDL ; scons : jonction godot/godot-cpp + PROCESSOR_ARCHITECTURE=
-  AMD64 (cf. mémoire scps-build-windows).
+## Reste / prochains pas
+- **Retour lot B** → revue, commit ; re-mesurer raid/Merveille (coûts redevenus réels).
+- **Chantier 3 audit** (outillage) : lang-check ré-armé + 25 littéraux readout → STR_* ·
+  6 tune_f au registre J · recalibrage E3/interception/péage.
+- **Publiable** (analyse du 07) : packaging Windows (export preset, DLL, saves → user://),
+  soak test front 200 ans, onboarding guidé, musique (externe — lasonotheque pour les SFX
+  déjà fait), autosave, research_target/cmd_n dans la save (prochain bump), page Steam.
+- **i18n** : traduire ~165 entrées strings_en.h + migrer le backlog CSV par lots
+  (⚠ uikit.gd = clés de correspondance sprites, ne pas traduire naïvement).
+- **Env (pièges payés 2×)** : make = login shell MSYS2 + `TMP=/tmp` + script .sh (le cd
+  inline se fait MANGER) ; Godot exe dans `Godot_v4.6.3-stable_mono_win64/` ; shot_parch
+  FENÊTRÉ (--headless = noir) ; PS 5.1 sans ternaire ; scripts .ps1 en ASCII pur.
