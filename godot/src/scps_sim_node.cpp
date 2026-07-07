@@ -119,7 +119,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_disband"),                    &ScpsWorld::player_disband);
     ClassDB::bind_method(D_METHOD("player_build_manuf", "region", "bld"), &ScpsWorld::player_build_manuf);
     ClassDB::bind_method(D_METHOD("manuf_legal", "region", "bld"),        &ScpsWorld::manuf_legal);
+    ClassDB::bind_method(D_METHOD("manuf_cost"),                          &ScpsWorld::manuf_cost);
     ClassDB::bind_method(D_METHOD("manuf_name", "bld"),                   &ScpsWorld::manuf_name);
+    ClassDB::bind_method(D_METHOD("build_legal", "region", "edifice"),    &ScpsWorld::build_legal);
     ClassDB::bind_method(D_METHOD("colonized_total"),               &ScpsWorld::colonized_total);
     ClassDB::bind_method(D_METHOD("colony_status"),                 &ScpsWorld::colony_status);
     ClassDB::bind_method(D_METHOD("country_food", "c"),             &ScpsWorld::country_food);
@@ -171,6 +173,9 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("religion_of_region", "region"),  &ScpsWorld::religion_of_region);
     ClassDB::bind_method(D_METHOD("religion_recruit_scholar", "cid", "region"), &ScpsWorld::religion_recruit_scholar);
     ClassDB::bind_method(D_METHOD("religion_scholar_role", "cid"),  &ScpsWorld::religion_scholar_role);
+    ClassDB::bind_method(D_METHOD("religion_scholar_expected", "cid"), &ScpsWorld::religion_scholar_expected);
+    ClassDB::bind_method(D_METHOD("scholar_role_name", "role"),     &ScpsWorld::scholar_role_name);
+    ClassDB::bind_method(D_METHOD("scholar_role_ability", "role"),  &ScpsWorld::scholar_role_ability);
     ClassDB::bind_method(D_METHOD("religion_name", "cid"),          &ScpsWorld::religion_name);
     ClassDB::bind_method(D_METHOD("religion_founding_ready", "cid"), &ScpsWorld::religion_founding_ready);
     ClassDB::bind_method(D_METHOD("religion_cap"),                  &ScpsWorld::religion_cap);
@@ -1152,6 +1157,19 @@ bool ScpsWorld::player_build_manuf(int region, int bld) {
 int ScpsWorld::manuf_legal(int region, int bld) {
     return sim ? scps_manuf_legal(sim, region, bld) : 0;
 }
+int ScpsWorld::manuf_cost() const {
+    return sim ? scps_manuf_cost(sim) : 0;
+}
+/* LÉGALITÉ de construction (lot M, membrane honnête) : miroir read-only des gates du
+ * drain CMD_BUILD — legal + la RAISON du refus (0 OK · 1 structurel · 2 or · 3 matière). */
+Dictionary ScpsWorld::build_legal(int region, int edifice) {
+    Dictionary d;
+    int reason = 1;
+    int legal = sim ? scps_build_legal_ex(sim, region, edifice, &reason) : 0;
+    d["legal"]  = (legal != 0);
+    d["reason"] = reason;
+    return d;
+}
 /* Nom d'affichage d'un BuildingType — miroir DISPLAY-ONLY de la table FR de
  * `building_name()` (scps_econ.c). La membrane interdit d'inclure scps_econ.h ici
  * (le binding ne voit QUE scps_api.h) ; aucun lecteur façade n'expose ce nom pour
@@ -1308,6 +1326,12 @@ Dictionary ScpsWorld::slave_market() {
     out["total"] = (int64_t)total;
     out["can_buy"] = (can_buy != 0);
     out["lines"] = lines;
+    /* lot M — le SPREAD affiché (achat ×2 / vente ×1, or par âme) : la membrane cesse
+     * de taire le prix que le drain débite. */
+    int pb = 0, ps = 0;
+    scps_slave_prices(sim, &pb, &ps);
+    out["price_buy"]  = pb;
+    out["price_sell"] = ps;
     return out;
 }
 
@@ -1478,6 +1502,9 @@ int ScpsWorld::religion_recruit_scholar(int cid, int region) {
     return sim ? scps_religion_recruit_scholar(sim, cid, region) : -1;
 }
 int ScpsWorld::religion_scholar_role(int cid){ return sim ? scps_religion_scholar_role(sim, cid) : -1; }
+int ScpsWorld::religion_scholar_expected(int cid){ return sim ? scps_religion_scholar_expected(sim, cid) : -1; }
+String ScpsWorld::scholar_role_name(int role) const { return String::utf8(scps_scholar_role_name(role)); }
+String ScpsWorld::scholar_role_ability(int role) const { return String::utf8(scps_scholar_role_ability(role)); }
 String ScpsWorld::religion_name(int cid) {
     return sim ? String::utf8(scps_religion_name(sim, cid)) : String();
 }

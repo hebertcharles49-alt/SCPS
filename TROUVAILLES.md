@@ -400,3 +400,54 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - Fraîcheur post-snapshot : moment_treason.wav SUPPRIMÉ le 07 (090d4dd, un-clic-un-son) — l'item audio est résolu-par-suppression ; re-découpe planches + écrans de fin/bordures faits (58514fd, a400f80).
 
 **Restes** : le rapport complet est `docs/AUDIT_2026-07-06.md`. 3 chantiers prioritaires : (1) **contrat de save** — sérialiser les 3 grâces de révolte + clamper g_hub_of + fuzztest étendu + fix dead-write armes ; (2) **membrane honnête** — binder scps_build_legal (avec gate matière) + RFIN_SANG/latch épilogue + prix affichés (servile/manuf) + nom de ministre + codex.gd:47 + UI lettré ; (3) **outillage** — ré-armer lang-check (25 littéraux readout → STR_*) + 6 tunables au registre J, puis recalibrer E3/interception/péage.
+
+## 2026-07-07 — Lot M membrane honnête (implémenteur, chantier 2 de l'audit)
+**Découvertes** :
+- `scps_readout.h:FinReadout` — le miroir de FinType s'APPEND sans risque (enum jamais sérialisé,
+  scps_api.c fait `(int)er.fin` ⇒ RFIN_SANG=5 traverse tout seul jusqu'à `endgame_info["fin"]`) ;
+  le côté Godot (endgame_banner FIN_NAMES/FIN_TINT · epilogue FIN_PHRASE/FIN_SCREEN · border_art
+  FIN_KEYS) portait DÉJÀ la clé 5 — seule la case du switch readout manquait. `fin_raw` est
+  désormais redondant avec `fin` (même échelle 0..5) mais GARDÉ pour compat (lavis V3 le lit).
+- `event_title` (scps_events.c) : pour nommer le MINISTRE des 3 trahisons sans changer la
+  signature publique (scps_events.h possédé par un autre lot), un LATCH module-static
+  `g_title_sc` posé par `world_events_tick` suffit — display-only, jamais sérialisé, repli
+  « Le savant/notable/marchand » si NULL (avant 1er tick / bancs) ou siège vacant. Le nom
+  se résout par `statecraft_council_seated(+_gen)` → `statecraft_council_cand_name` → `tr()`
+  (motif scps_country_council, scps_api.c:1032).
+- `scps_build_legal_ex` (scps_api.c) : le miroir COMPLET des gates d'`agency_build_acct`
+  (géo port/Centre · palier · file F5 `agency_pending_build` · MATIÈRE `intertrade_market_avail_ex`
+  · OR) dans le MÊME ORDRE ⇒ la raison rapportée = le premier refus du drain.
+  ⚠ `agency_extent_mult` est STATIC côté agency — la formule ×(1+0.15·n_régions) est
+  RECOMPOSÉE dans le miroir (§7) : à re-synchroniser si agency la change.
+- Prix serviles : `slave_pool_price_mult` est STATIC dans scps_intertrade.c (module interdit
+  ce lot) — recomposé dans `scps_slave_prices` depuis les lecteurs PUBLICS
+  (`intertrade_slave_pool_count` + tune_f SLAVE_POOL_REF/SLAVE_PRICE + ipm) : formule
+  ref/(pool+ref·0.10) bornée [0.5,2.5], achat ×2 / vente ×1. À re-synchroniser si intertrade change.
+- Lettré (P6) : `religion_scholar_role` ne rend le rôle QUE si un lettré est ACTIF ; le rôle
+  qu'un recrutement DONNERAIT (pour l'UI avant-clic) = `scholar_role_from_credo(g_religions[rid].credo)`
+  — g_religions/g_religion_count sont extern ⇒ reader façade `scps_religion_scholar_expected` pur.
+  `religion_scholar_recruit` re-recrute librement (timer remis) ⇒ bouton « Renouveler » légitime.
+- Worktree + GDExtension : la jonction godot-cpp cassée se recrée (PowerShell New-Item Junction),
+  MAIS un sconsign FRAIS fait REBÂTIR godot-cpp entier → échec (`array.hpp` vit dans gen/include,
+  pas include/). Le fix : COPIER `.sconsign.dblite` depuis SCPS-main/godot → scons ne relinke
+  que nos objets contre le .a prébâti.
+- Probes headless en worktree frais : lancer UNE FOIS `--import` (sinon « Failed to instantiate
+  an autoload » + libscps « absente » — c'est le cache .godot/ qui manque, pas la DLL).
+**Pièges** :
+- scps_api_demo asserte `scps_build_legal ∈ {0,1}` (scps_api_demo.c:217) — NE PAS changer le
+  contrat de retour ; la raison passe par le paramètre `_ex(…, int *reason_out)`.
+- `-Wmisleading-indentation` : `if (x) a; return 0;` sur UNE ligne = warning gcc 16. Un
+  warning PRÉ-EXISTANT du même type vit à scps_api.c:648 (commit 9fa1b7cf, lot variant-map,
+  pas à moi — laissé).
+- Au jour 0 (avant le 1er econ_tick), `intertrade_market_avail_ex` ne voit pas le pool des
+  Centres (hub map pas bâtie) ⇒ build_legal = 0 partout — VRAI (le drain refuserait pareil),
+  pas un bug de miroir ; à j+60 l'histogramme respire (probe membrane_audit : structurel/or/matière).
+**Restes** :
+- verbs_audit « coloniser n'a pas mordu » : PRÉ-EXISTANT (échoue à l'identique sur SCPS-main,
+  DLL du 06) — hors lot M, à diagnostiquer (revalidation du drain colonize ou monde de la seed vitrine).
+- Le CORPS des options de trahison reste générique (« Le faire taire ») : les blurbs sont des
+  tables statiques — seul le TITRE porte le nom du ministre (le splice presentation-time n'existe
+  que pour event_title). Injecter le nom dans les blurbs = un ring de composition par option (différé).
+- Les prix serviles/`build_legal` affichés sont des MIROIRS de lecture : si un autre lot touche
+  agency_build_acct/intertrade_slave_buy, re-synchroniser scps_build_legal_ex/scps_slave_prices
+  (grep « lot M » dans scps_api.c).

@@ -1217,16 +1217,47 @@ int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max){
     return n;
 }
 
-/* §3 — LÉGALITÉ de construction PAR RÉGION (le roster `debloque` gate la TECH ; ici la RÉGION+l'OR). */
-int scps_build_legal(ScpsSim *s, int region, int edifice){
+/* §3 — LÉGALITÉ de construction PAR RÉGION : MIROIR EN LECTURE des gates du drain
+ * CMD_BUILD → agency_build_acct (scps_agency.c), dans le MÊME ORDRE — le refus
+ * rapporté = le premier refus que le drain opposerait. AUCUNE mutation (le drain
+ * refuse en silence : ce reader est ce qui rend le bouton honnête).
+ * `reason_out` (option) : 0 OK · 1 structurel (région/palier/file/côte) ·
+ * 2 or insuffisant · 3 matière manquante (marché atteignable à sec). */
+int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out){
+    if (reason_out) *reason_out = 1;
     if (!s || !s->ready || edifice<0 || edifice>=EDIFICE_COUNT) return 0;
     int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
     if (p<0 || p>=s->w->n_countries) return 0;
     int reg = region;
     if (reg<0){ int cp=s->w->country[p].capital_prov; reg = (cp>=0&&cp<s->w->n_provinces)? s->w->province[cp].region : -1; }
-    if (reg<0 || reg>=s->sim.econ->n_regions || s->sim.econ->region[reg].owner != p) return 0;
-    if (edifice_build_blocked(s->sim.econ, reg, (Edifice)edifice)) return 0;
-    return credit_can_spend(s->sim.econ, s->w, p, agency_build_gold(s->sim.econ, reg, (Edifice)edifice)) ? 1:0;
+    WorldEconomy *e = s->sim.econ;
+    if (reg<0 || reg>=e->n_regions || e->region[reg].owner != p) return 0;
+    /* gates GÉO (miroir agency_build_acct) : port SUR la côte, Centre = débouché */
+    if (edifice==EDI_PORT && !e->region[reg].coastal) return 0;
+    if (edifice==EDI_TRADE_CENTER && !e->region[reg].coastal && !e->region[reg].estuary) return 0;
+    if (edifice_build_blocked(e, reg, (Edifice)edifice)) return 0;
+    if (agency_pending_build(s->sim.ag, reg, (Edifice)edifice)) return 0;   /* F5 : déjà en file */
+    /* gate MATIÈRE (miroir) : chaque composante × étendue doit être trouvable au marché
+     * atteignable (propre + Centre + réseau). L'étendue ×(1+0.15·n_régions) recompose
+     * agency_extent_mult (static côté agency — même formule §7, documentée là-bas). */
+    { const EdificeDef *d = edifice_def((Edifice)edifice);
+      int nreg=0; for (int r2=0;r2<e->n_regions;r2++) if (e->region[r2].owner==p) nreg++;
+      float ext = 1.f + 0.15f*(float)nreg;
+      for (int k=0; d && k<BUILD_RES_MAX; k++){
+          Resource r = d->cost.res[k];
+          if (r<=RES_NONE || r>=RES_COUNT || d->cost.qty[k]<=0.f) continue;
+          float av = intertrade_market_avail_ex(e, reg, r, NULL);
+          if (d->cost.qty[k]*ext > av+1e-3f){ if (reason_out) *reason_out=3; return 0; }
+      } }
+    if (!credit_can_spend(e, s->w, p, agency_build_gold(e, reg, (Edifice)edifice))){
+        if (reason_out) *reason_out=2;
+        return 0;
+    }
+    if (reason_out) *reason_out = 0;
+    return 1;
+}
+int scps_build_legal(ScpsSim *s, int region, int edifice){
+    return scps_build_legal_ex(s, region, edifice, NULL);
 }
 
 void scps_country_army(ScpsSim *s, int cid, ScpsArmy *out){
@@ -1660,6 +1691,12 @@ int scps_manuf_legal(ScpsSim *s, int region, int bld){
     float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e);
     return credit_can_spend(e, s->w, p, cost) ? 1 : 0;
 }
+/* le PRIX affiché = le prix payé (même formule que le drain CMD_BUILD_MANUF). */
+int scps_manuf_cost(ScpsSim *s){
+    if (!s || !s->ready) return 0;
+    float cost = tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->sim.econ);
+    return (int)(cost + 0.5f);
+}
 int scps_player_embargo(ScpsSim *s, int target, int on){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_EMBARGO, { target, on?1:0, 0, 0 } };
@@ -1702,6 +1739,23 @@ int scps_slave_market(ScpsSim *s, ScpsSlavePoolLine *out, int max, long *total_o
                         && econ_country_can_enslave(s->w, s->sim.econ, &s->sim.ts[p], p)) ? 1 : 0;
     }
     return n;
+}
+/* PRIX du marché servile — miroir READ-ONLY d'intertrade_slave_buy/_sell (le SPREAD
+ * ×2 achat / ×1 vente débité au drain, jamais montré jusqu'ici). slave_pool_price_mult
+ * est static côté intertrade (module possédé par un autre lot) : la respiration du pool
+ * (ref/(pool+ref·0.10), bornée [0.5,2.5]) est RECOMPOSÉE depuis les lecteurs PUBLICS
+ * pool_count + tune_f — même formule, à re-synchroniser si intertrade la change. */
+void scps_slave_prices(ScpsSim *s, int *buy_out, int *sell_out){
+    if (buy_out) *buy_out = 0;
+    if (sell_out) *sell_out = 0;
+    if (!s || !s->ready) return;
+    float ref = tune_f("SLAVE_POOL_REF", 600.f); if (ref < 1.f) ref = 1.f;
+    float pool = (float)intertrade_slave_pool_count();
+    float mult = ref/(pool + ref*0.10f);
+    if (mult < 0.5f) mult = 0.5f; else if (mult > 2.5f) mult = 2.5f;
+    float base = tune_f("SLAVE_PRICE",40.f)*econ_world_ipm(s->sim.econ)*mult;
+    if (sell_out) *sell_out = (int)(base + 0.5f);
+    if (buy_out)  *buy_out  = (int)(base*2.f + 0.5f);
 }
 
 /* ── LOT G — RÉINCORPORATION DE POP ──────────────────────────────────────── */
@@ -2772,6 +2826,16 @@ int scps_religion_recruit_scholar(ScpsSim *s, int cid, int region){
     return religion_scholar_recruit(cid, region);
 }
 int scps_religion_scholar_role(ScpsSim *s, int cid){ (void)s; return religion_scholar_role(cid); }
+/* lot M — le rôle ATTENDU d'un recrutement (miroir READ-ONLY de religion_scholar_recruit :
+ * foi d'État → crédo → scholar_role_from_credo), sans rien muter. -1 = pas de foi. */
+int scps_religion_scholar_expected(ScpsSim *s, int cid){
+    if (!s || !s->ready || cid<0 || cid>=s->w->n_countries) return -1;
+    int rid = religion_of_country(cid);
+    if (rid<0 || rid>=g_religion_count) return -1;
+    return scholar_role_from_credo(g_religions[rid].credo);
+}
+const char *scps_scholar_role_name(int role){ return sz(scholar_role_name(role)); }
+const char *scps_scholar_role_ability(int role){ return sz(scholar_role_ability(role)); }
 
 int scps_religion_pole_list(ScpsReligPole *out, int max){
     int n=0;

@@ -169,7 +169,11 @@ public:
     /* PANNEAU B — poser une MANUFACTURE civile par région (le §NF l'exclut : voici la main). */
     bool       player_build_manuf(int region, int bld);  /* enfile l'ordre (drain revalidé) */
     int        manuf_legal(int region, int bld);         /* légalité read-only (griser le bouton) */
+    int        manuf_cost() const;                       /* le PRIX du chantier (or — même formule que le drain) */
     String     manuf_name(int bld);                      /* nom d'affichage du BuildingType (miroir display-only) */
+    /* lot M — LÉGALITÉ d'ÉDIFICE (miroir read-only du drain CMD_BUILD) :
+     * { legal:bool, reason:int } — reason 0 OK · 1 structurel · 2 or · 3 matière. */
+    Dictionary build_legal(int region, int edifice);
     int        colonized_total() const;               /* Σ provinces colonisées — signature de souveraineté */
     Dictionary colony_status() const;                 /* v50 : le CHANTIER de colonisation du joueur */
     double     country_food(int c) const;             /* v50 : Σ stock vivrier (topbar) */
@@ -204,7 +208,8 @@ public:
     bool       player_manumit();                       /* affranchit TOUTE la strate esclave du joueur */
     bool       player_slave_buy(int region, int count); /* achète au pool mondial, livré dans `region` (au joueur) */
     bool       player_slave_sell(int region, int count);/* vend depuis `region` (au joueur) au pool mondial */
-    /* { total:int, can_buy:bool, lines:[{heritage,count}] } — le pool des Centres par héritage. */
+    /* { total:int, can_buy:bool, lines:[{heritage,count}], price_buy:int, price_sell:int }
+     * — le pool des Centres par héritage + le SPREAD courant (achat ×2 / vente ×1, lot M). */
     Dictionary slave_market();
 
     /* CRÉATEUR DE CULTURE (façon Stellaris) — listes + validation + aperçu + composition.
@@ -236,6 +241,9 @@ public:
     int        religion_of_region(int region);
     int        religion_recruit_scholar(int cid, int region);   /* ScholarRole / -1 */
     int        religion_scholar_role(int cid);
+    int        religion_scholar_expected(int cid);       /* lot M : rôle qu'un recrutement donnerait / -1 sans foi */
+    String     scholar_role_name(int role) const;        /* Missionnaire/Gourou/Moine */
+    String     scholar_role_ability(int role) const;     /* Conversion/Résistance/Stabilisation */
     String     religion_name(int cid);
     int        religion_founding_ready(int cid);   /* 1 = édifice religieux bâti + pas de foi → créateur */
     int        religion_cap();                      /* ⌈n_empires/3⌉ */

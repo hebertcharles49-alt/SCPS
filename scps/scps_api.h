@@ -200,14 +200,13 @@ typedef struct {
     int         entropie_pct;   /* 0-100 : ratio entropy/seuil projeté */
     const char *entropie;       /* mot de bande (Stable/Frémissante/Instable/Au bord) */
     const char *augure;         /* ligne d'ambiance, ou "" */
-    int         fin;            /* 0 aucune · 1 EAU · 2 FROID · 3 RONCES · 4 ascension */
+    int         fin;            /* 0 aucune · 1 EAU · 2 FROID · 3 RONCES · 4 ascension · 5 SANG */
     int         merv;           /* phase de merveille (0 aucune … 4 ascensionné) */
     int         merv_pct;       /* 0-100 : avancée du palier de merveille */
     int         cold_pct;       /* 0-100 : intensité du refroidissement (FROID) */
     int         sink_pct;       /* 0-100 : intensité de l'engloutissement (EAU) */
-    int         fin_raw;        /* FinType MOTEUR brut (0 aucune·1 EAU·2 FROID·3 RONCES·4 ascension·5 SANG) —
-                                  * distinct de `fin` (miroir RFIN, SANG y retombe sur 0) : c'est CE champ
-                                  * que lit le lavis V3 pour choisir sa teinte (SANG y a sa propre couleur). */
+    int         fin_raw;        /* FinType MOTEUR brut — même échelle que `fin` depuis que le
+                                  * miroir RFIN porte SANG (5) ; gardé pour compat (lavis V3). */
     int         epicenter_reg;  /* région-foyer du cataclysme, -1 si aucune */
     /* #32 (LE SANG SIGNE TON RÈGNE) — nombres TANGIBLES pour le hover de la bande
      * d'entropie/bandeau SANG : « le monde a saigné, et TOI, à quel point ? ». */
@@ -467,9 +466,12 @@ int scps_opinion_summary(ScpsSim *s, int country, ScpsOpinionParts *out);
 typedef struct { int year, act, a_id, b_id, delta_now; } ScpsDiploAct;
 int scps_diplo_journal(ScpsSim *s, int country, ScpsDiploAct *out, int max);
 /* §3 — LÉGALITÉ de CONSTRUCTION par RÉGION : 1 si le joueur peut bâtir `edifice` dans `region`
- * MAINTENANT (non bloqué par le palier ET payable au crédit). Le roster (debloque) gate la TECH ;
- * ce prédicat gate la RÉGION + l'OR. region<0 ⇒ capitale. */
+ * MAINTENANT. Miroir READ-ONLY des gates du drain CMD_BUILD (agency_build_acct, même ordre) :
+ * région à soi · géo (port/Centre) · palier · file F5 · MATIÈRE au marché atteignable · OR.
+ * Le roster (debloque) gate la TECH ; ce prédicat gate le reste. region<0 ⇒ capitale.
+ * `_ex` rapporte la RAISON du refus : 0 OK · 1 structurel · 2 or insuffisant · 3 matière manquante. */
 int scps_build_legal(ScpsSim *s, int region, int edifice);
+int scps_build_legal_ex(ScpsSim *s, int region, int edifice, int *reason_out);
 
 /* PANNEAU B — le joueur pose une MANUFACTURE civile (le §NF l'exclut : voici la main).
  * bld = BuildingType (l'index que scps_region_alloc nomme déjà). Le verbe ENFILE
@@ -477,6 +479,9 @@ int scps_build_legal(ScpsSim *s, int region, int edifice);
  * (à soi · civil · slot libre · staffage · tier · intrant nourrissable · or). */
 int scps_player_build_manuf(ScpsSim *s, int region, int bld);
 int scps_manuf_legal(ScpsSim *s, int region, int bld);
+/* le PRIX du chantier de manufacture — LE montant que le drain débite (MANUF_BUILD_COST
+ * × ipm, même formule que scps_manuf_legal/CMD_BUILD_MANUF) : or, arrondi (tangible). */
+int scps_manuf_cost(ScpsSim *s);
 
 /* ── ESCLAVAGE — la strate CLASS_SLAVE : garder/affranchir/vendre --------------
  * L'AFFRANCHISSEMENT (granularité PAYS, une politique) : CMD_MANUMIT, aucun
@@ -493,6 +498,11 @@ int scps_player_slave_buy (ScpsSim *s, int region, long count);
  * — le pool peut se vider avant le drain). */
 typedef struct { const char *heritage; long count; } ScpsSlavePoolLine;
 int  scps_slave_market(ScpsSim *s, ScpsSlavePoolLine *out, int max, long *total_out, int *can_buy_out);
+/* PRIX COURANTS du marché servile (or par âme, arrondis) : le SPREAD que le drain débite —
+ * achat = ×2 (double taxe des Centres), vente = ×1, tous deux × ipm × respiration du pool
+ * (rare ⇒ cher). Miroir READ-ONLY d'intertrade_slave_buy/_sell (la formule du pool y est
+ * static : recomposée ici depuis les lecteurs publics — cf. TROUVAILLES lot M). */
+void scps_slave_prices(ScpsSim *s, int *buy_out, int *sell_out);
 
 /* LOT G — RÉINCORPORATION DE POP : déplace `count` âmes de la classe `klass`
  * (SocialClass) de `src_region` vers `dst_region` (les deux AU JOUEUR — le verbe
@@ -999,6 +1009,12 @@ int scps_religion_of_region (ScpsSim *s, int region);
  * Moine) ; retourne le ScholarRole (>=0) ou -1 si le pays n'a pas de foi. */
 int scps_religion_recruit_scholar(ScpsSim *s, int cid, int region);
 int scps_religion_scholar_role(ScpsSim *s, int cid);   /* ScholarRole courant / -1 */
+/* lot M — le LETTRÉ jouable : le rôle qu'un recrutement DONNERAIT maintenant (résolu
+ * du crédo de la foi d'État), -1 si pays sans foi — distinct du rôle ACTIF ci-dessus.
+ * scps_scholar_role_name : le mot résolu (Missionnaire/Gourou/Moine), "" hors-borne. */
+int scps_religion_scholar_expected(ScpsSim *s, int cid);
+const char *scps_scholar_role_name(int role);      /* Missionnaire/Gourou/Moine, "?" hors-borne */
+const char *scps_scholar_role_ability(int role);   /* Conversion/Résistance/Stabilisation */
 
 /* LISTES pour l'UI religion (membrane : mots résolus). */
 typedef struct { int id; const char *nom; int axe; const char *axe_nom; const char *tip; } ScpsReligPole;
