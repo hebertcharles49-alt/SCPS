@@ -11,8 +11,20 @@
 #include "scps_types.h"
 #include "scps_econ.h"   /* gen_population/world_tick écrivent RegionEconomy.culture */
 
-/* Réglages par défaut (monde « standard ») pour une graine donnée. */
+/* Réglages par défaut pour une graine donnée. VARIÉTÉ : les macro-paramètres
+ * (continents, terres, âge, relief, climat) sont DÉRIVÉS de la graine par une
+ * table d'ARCHÉTYPES (pangée/archipel/froid/aride/…, hash déterministe) + un
+ * jitter borné. Les surcharges des appelants (sliders façade, argv chronicle)
+ * s'appliquent APRÈS cet appel et priment donc toujours. Graine 0 = défauts
+ * historiques figés (référence). n_empires/n_city_states restent Q6 (6+12). */
 WorldParams worldparams_default(uint32_t seed);
+/* Nom de l'archétype tiré par une graine (télémétrie/probes — display-only). */
+const char *worldgen_archetype_name(uint32_t seed);
+
+/* FALAISES — intensité de falaise DÉRIVÉE [0..255] d'une cellule : terre en
+ * bande côtière (eau ≤ 2 cellules) à fort dénivelé (h − mer). Jamais stockée,
+ * jamais sérialisée, jamais lue par le sim — display-only (scps_map_layer). */
+uint8_t world_cliff_intensity(const World *w, int x, int y);
 
 /* Génère un monde complet (géographie seule) selon les paramètres. ~200ms. */
 void world_generate(World *w, const WorldParams *params);

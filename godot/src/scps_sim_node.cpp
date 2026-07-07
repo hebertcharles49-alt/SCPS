@@ -198,13 +198,14 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("road_paths"),                     &ScpsWorld::road_paths);
 
     /* couches brutes (scps_map_layer) — int en clair côté GDScript :
-     * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST · 4 = WATER · 5 = RIVER */
+     * 0 = HEIGHT · 1 = SEA · 2 = BIOME · 3 = COAST · 4 = WATER · 5 = RIVER · 6 = CLIFF */
     BIND_CONSTANT(SCPS_LAYER_HEIGHT);
     BIND_CONSTANT(SCPS_LAYER_SEA);
     BIND_CONSTANT(SCPS_LAYER_BIOME);
     BIND_CONSTANT(SCPS_LAYER_COAST);
     BIND_CONSTANT(SCPS_LAYER_WATER);
     BIND_CONSTANT(SCPS_LAYER_RIVER);
+    BIND_CONSTANT(SCPS_LAYER_CLIFF);
 }
 
 ScpsWorld::ScpsWorld()  { sim = scps_sim_new(); }

@@ -28,12 +28,18 @@ int main(void){
     WorldParams p=worldparams_default(9u);
     world_generate(w,&p); econ_init(e,w); gen_population(w,e);
 
-    /* Trouve un pays avec ≥2 régions à lui pour fabriquer une fracture. */
+    /* Trouve un pays avec EXACTEMENT 2 régions à lui pour fabriquer une fracture.
+     * RECALIBRAGE (archétypes worldgen) : l'ancien scan prenait les 2 PREMIÈRES
+     * régions d'un pays qui pouvait en avoir PLUS — les régions surnuméraires
+     * (peuplées, jamais converties) comptaient « hors foi d'État » dans
+     * religion_fracture_level (pop-pondéré sur TOUTES les régions du pays) ⇒
+     * les attendus 0 et ≈0.5 dépendaient du TIRAGE du monde. Exactement 2
+     * régions ⇒ la moitié convertie = 0.5 PAR CONSTRUCTION (l'intention). */
     int cid=-1, r0=-1, r1=-1;
     for (int c=0;c<w->n_countries && cid<0;c++){
         int found[2]={-1,-1}, n=0;
-        for (int r=0;r<w->n_regions && n<2;r++)
-            if (w->region[r].country==c) found[n++]=r;
+        for (int r=0;r<w->n_regions;r++)
+            if (w->region[r].country==c){ if (n<2) found[n]=r; n++; }
         if (n==2){ cid=c; r0=found[0]; r1=found[1]; }
     }
     if (cid<0){ fprintf(stderr,"aucun pays à 2 régions (graine 9) — banc inapplicable\n"); return 1; }
@@ -41,7 +47,8 @@ int main(void){
     /* Pop non-nulle sur les deux régions (pop-pondération du lecteur) + un groupe NATIF
      * explicite sur la province représentative (religion_set_region convertit les NATIFS
      * de souche — sans groupe attaché, rien à convertir : religion_of_region resterait -1). */
-    e->region[r0].strata[0].pop = 1000.f;
+    for (int c=0;c<CLASS_COUNT;c++){ e->region[r0].strata[c].pop = 0.f; e->region[r1].strata[c].pop = 0.f; }
+    e->region[r0].strata[0].pop = 1000.f;   /* pop STRICTEMENT égale (le 0.5 attendu est pop-pondéré) */
     e->region[r1].strata[0].pop = 1000.f;
     for (int i=0;i<2;i++){
         int rg = i?r1:r0;

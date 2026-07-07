@@ -323,10 +323,17 @@ int main(void) {
     long thn_after_fire=0; for(int i=0;i<SCPS_N;i++) if(w->cell[i].biome==BIO_THORNS) thn_after_fire++;
     CHECK("éruption : des cellules deviennent ronces", thn_after_fire > 0);
     int epi_b = eg.epicenter_reg;
-    CHECK("la région-foyer est tombée (owner=-1)", epi_b<0 || econ->region[epi_b].owner == -1);
     for (int y=0;y<80;y++) endgame_tick(&eg, w, econ, wp, ts, NULL, NULL, NULL, NULL, 0, 181+y);
     long thn_late=0; for(int i=0;i<SCPS_N;i++) if(w->cell[i].biome==BIO_THORNS) thn_late++;
     CHECK("le front s'étend (ronces ↑ après 80 ans)", thn_late > thn_after_fire);
+    /* RECALIBRAGE (archétypes worldgen) : la chute du foyer se juge APRÈS le
+     * déroulé, plus au tick de feu — sur un monde archipel la région-épicentre
+     * peut être une ÎLE (voisins = mer) : aucun voisin corrompu à l'éruption ⇒
+     * `corrupted==0` ⇒ le flip est différé au 1er an où le front mord une terre
+     * voisine. L'INTENTION (le foyer 100 % ronces finit par TOMBER, owner=-1)
+     * est inchangée — le front s'étend (contrôle ci-dessus) ⇒ le flip a eu lieu. */
+    econ_aggregate_regions(econ);   /* RE-KEY : region[] n'est qu'un MIROIR de prov[] — même idiome que C3/C4/C6 */
+    CHECK("la région-foyer est tombée (owner=-1)", epi_b<0 || econ->region[epi_b].owner == -1);
     CHECK("n_regions inchangé (indices figés)", econ->n_regions == n_reg_b);
     THORNS_HASH(w, thn_n_a, thn_h_a);
 
