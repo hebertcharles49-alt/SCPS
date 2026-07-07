@@ -32,7 +32,20 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 72u           /* v72 : #32 (LE SANG SIGNE TON RÈGNE) — EndgameState gagne
+#define SAVE_VERSION 73u           /* v73 : CONTRAT DE SAVE (défaut #1, audit 2026-07-06) — LES
+                                    * TROIS GRÂCES DE RÉVOLTE rapatriées SUR RevoltState :
+                                    * revolt_grace/coup_grace/concede_cd[SCPS_MAX_COUNTRY] (ex-
+                                    * `static float` module-hors-struct dans scps_revolt.c) GATENT
+                                    * une décision moteur (allumage empire-wide/coup/concession),
+                                    * RAZ seulement par revolt_init (sim_init) et JAMAIS restaurées
+                                    * au chargement ⇒ save/reload ≠ continuation (classe EMOB(v57)/
+                                    * COLC(v61)/TXYR(v65) — invisible au --savetest same-process,
+                                    * capté par l'audit correctness/save). Section RVLT existante
+                                    * (fwrite BRUT de *s->rs) ⇒ sizeof(RevoltState) change ; les
+                                    * trois tableaux sont revalidés au load (save_sane, ∈[-31,40×365]
+                                    * jours — le repos post-expiration est UN pas de scan sous zéro ;
+                                    * hors-borne refusé net). <v73 refusé.
+                                    * v72 : #32 (LE SANG SIGNE TON RÈGNE) — EndgameState gagne
                                     * war_dead_player/war_dead_player_seen (2 double, jumeau du ratio
                                     * de sang MONDIAL ne comptant que les morts DU joueur) ⇒
                                     * sizeof(EndgameState) change (section EGAM, fwrite BRUT du

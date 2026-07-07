@@ -356,6 +356,13 @@ static void global_cache_refresh(const WorldEconomy *e){
  * resynchroniser, le réseau LUI-MÊME est le marché global ; un VRAI stock, drainé par
  * les achats, alimenté par la production qui converge vers les hubs). */
 int   intertrade_region_hub(int region){ return (region>=0&&region<SCPS_MAX_REG)?g_hub_of[region]:-1; }
+/* FUZZTEST HOOK (défaut #5, viewer.c --fuzztest) — g_hub_of est un static de MODULE, pas
+ * un champ Sim-visible (contrairement à AgencyState/RevoltState) : c'est la SEULE façon
+ * de le forger hors-borne pour exercer intertrade_save_sane sur un état FORGÉ, du même
+ * motif que les autres cas FZ(...) (poke direct → save_sane → restauration). */
+void  intertrade_debug_set_hub_of(int region, int value){
+    if (region>=0 && region<SCPS_MAX_REG) g_hub_of[region] = (int16_t)value;
+}
 float intertrade_global_stock(const WorldEconomy *e, int good){
     (void)e; return (good>RES_NONE && good<RES_COUNT)? g_global_cache[good] : 0.f;   /* cache 1×/tick */
 }
@@ -829,6 +836,27 @@ bool intertrade_load(FILE *f){ bool ok = fread(g_embargo,sizeof g_embargo,1,f)==
                                    && fread(g_slave_pool,sizeof g_slave_pool,1,f)==1;   /* ESCLAVAGE */
                                g_commerce_active=true;   /* une partie chargée est une sim ACTIVE (le cap agit) */
                                return ok; }
+/* OOB FIX (défaut #5, 2026-07-07) — g_hub_of/g_hub_dist sont désérialisés BRUT ci-dessus
+ * (int16_t, plage jusqu'à 32767) mais lus SANS borne haute par les devis de marché
+ * (intertrade_buy_cost:426 `e->region[hub]`, entre autres) — e->region[] est un tableau
+ * FIXE de taille SCPS_MAX_REG : un save FORGÉ y écrivant une valeur ≥ n_regions cause une
+ * lecture hors-bornes dès le 1er tick de bâti post-load (agency_build_gold, AUCUN dirty-
+ * rebuild sur ce chemin). Le tableau ENTIER (SCPS_MAX_REG slots) est toujours validé —
+ * pas seulement [0,n_regions) — car c'est ainsi qu'il est POPULÉ en jeu légitime
+ * (hub_map_build memset -1 sur TOUT SCPS_MAX_REG puis ne remplit que r<n, cf. ligne
+ * ~318) : un jeu sain n'a JAMAIS de garbage au-delà de n_regions, donc valider le plein
+ * tableau ne rejette aucune save légitime tout en couvrant une forge n'importe où.
+ * g_hub_dist n'est jamais utilisé comme INDEX (juste plafonné à 8 en lecture) — bornage
+ * en profondeur de défense seulement, sur la portée BFS + le forfait de traversée mer. */
+bool intertrade_save_sane(int n_regions){
+    if (n_regions<0) n_regions=0;
+    if (n_regions>SCPS_MAX_REG) n_regions=SCPS_MAX_REG;
+    for (int r=0;r<SCPS_MAX_REG;r++){
+        if (g_hub_of[r] < -1 || g_hub_of[r] >= n_regions) return false;
+        if (g_hub_dist[r] < 0 || g_hub_dist[r] > SCPS_MAX_REG + IT_SEA_HOPS) return false;
+    }
+    return true;
+}
 
 static bool pair_at_peace(const DiploState *dp, int ca, int cb){
     return !dp || diplo_status(dp, ca, cb) != DIPLO_WAR;

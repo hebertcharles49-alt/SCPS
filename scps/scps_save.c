@@ -300,11 +300,30 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
             /* Phase 3a — le pays rebelle incarné (-1 = aucun) indexe w->country[] : borne. */
             if (s->rs->list[i].rebel_country < -1 || s->rs->list[i].rebel_country >= w->n_countries) return false;
         }
+        /* CONTRAT DE SAVE (défaut #1, 2026-07-07) — LES TROIS GRÂCES/COOLDOWNS PAR PAYS
+         * (revolt_grace/coup_grace/concede_cd) GATENT une décision moteur (allumage
+         * empire-wide/coup/concession) : un compteur de jours forgé hors plausibilité
+         * est REFUSÉ net, jamais clampé en silence — la règle maison pour ce qui borne
+         * une décision. ⚠ Borne BASSE à -31, pas 0 : le décrément de revolt_scan
+         * (`if (x>0) x -= days`, cadence 30 j) laisse le compteur EXPIRÉ reposer UN pas
+         * sous zéro (∈ (-30, 0], état de repos NORMAL — les lecteurs ne testent que >0) ;
+         * un 0 strict rejetterait toute save légitime post-grâce. Le haut (40 ans) couvre
+         * largement REVOLT/COUP_GRACE_DAYS (5 ans) et CONCEDE_CD_DAYS (10 ans). */
+        for (int c=0;c<SCPS_MAX_COUNTRY;c++){
+            if (s->rs->revolt_grace[c] < -31.f || s->rs->revolt_grace[c] > 40.f*365.f) return false;
+            if (s->rs->coup_grace[c]   < -31.f || s->rs->coup_grace[c]   > 40.f*365.f) return false;
+            if (s->rs->concede_cd[c]   < -31.f || s->rs->concede_cd[c]   > 40.f*365.f) return false;
+        }
     }
     for (int i=0;i<SCPS_MAX_COUNTRY;i++){
         if (s->camp->army[i].force.n_units < 0 || s->camp->army[i].force.n_units > ARMY_MAX_UNITS) return false;
         if (s->host && (s->host->army[i].n_units < 0 || s->host->army[i].n_units > ARMY_MAX_UNITS)) return false;
     }
+    /* défaut #5 (audit 2026-07-06) : la carte des hubs intertrade (section ITRD, sérialisée
+     * BRUTE — g_hub_of/g_hub_dist) indexe e->region[] sans borne haute côté lecteur ; une
+     * save forgée y écrivant un index ≥ n_regions cause une lecture hors-bornes au premier
+     * devis de marché post-load. Refus net ici, comme tout autre index désérialisé. */
+    if (!intertrade_save_sane(s->econ->n_regions)) return false;
     if (s->eg) {
         const EndgameState *eg = s->eg;
         if ((int)eg->fin < 0 || (int)eg->fin > (int)FIN_SANG) return false;   /* V1a : FIN_SANG appendue après FIN_ASCENSION */

@@ -1875,6 +1875,19 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   moment_battle_drums, moment_army_march, ui_parchment_open/close, ui_seal, ui_quill. Seuls stings AUTO :
   le cor (guerre kind 1) + la notif de recherche ; tout le reste est un clic. `gen_sounds.py` DÉPRÉCIÉ
   (skip = tous les noms). Bus Ambiance gardé (curseur d'options), sans player.
+- **CONTRAT DE SAVE lot A (2026-07-07, SAVE v72→73) — les 3 grâces de révolte sérialisées + hub
+  intertrade borné (défauts #1 HIGH et #5 MED de l'audit)** : (1) `g_revolt_grace`/`g_coup_grace`/
+  `g_concede_cd` (statics module, gates de décision moteur : allumage empire-wide/coup/concession —
+  classe EMOB/COLC/TXYR) RAPATRIÉS sur `RevoltState` (section RVLT existante, fwrite brut ⇒ le sizeof
+  change ⇒ **bump v73**) ; revalidés par save_sane ∈ **[-31, 40×365] jours** — ⚠ borne basse à -31 et
+  PAS 0 : le décrément `if(x>0) x-=30` laisse un compteur expiré reposer UN pas SOUS zéro (état de
+  repos normal ; un plancher 0 rejetterait toute save post-grâce — le piège pris en vérification).
+  (2) `intertrade_save_sane(n_regions)` : g_hub_of ∈ [-1, n_regions) sur le tableau ENTIER
+  (hub_map_build memset -1 partout ⇒ aucun rejet de save légitime), g_hub_dist borné en défense —
+  refus NET, pas de dirty-rebuild (jurisprudence v58). (3) fuzztest + cas « hub_of hors-borne
+  REJETÉ » via un setter fuzz-only (`intertrade_debug_set_hub_of`), prouvé par test négatif (guard
+  off ⇒ 7/8). Gates : golden IDENTIQUE · determinism STABLE · savetest 7/9/11/42 byte-identique ·
+  fuzz-save 8/8 · test 39/40 (KO pré-existant setenv seul) · 0 warning. **<v73 refusé.**
 
 ## Disciplines non négociables
 

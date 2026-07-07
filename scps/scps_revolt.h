@@ -105,6 +105,19 @@ typedef struct {
     float     revanchism_days[SCPS_MAX_REG];   /* SÉPARATISME post-conquête (≈10 ans) :
                                                 * une province fraîchement soumise peut se
                                                 * soulever pour l'indépendance « quoi qu'il arrive » */
+    /* CONTRAT DE SAVE (défaut #1, 2026-07-07) — LES TROIS GRÂCES, PAR PAYS : des
+     * ACCUMULATEURS inter-ticks qui GATENT une décision moteur (allumage empire-wide,
+     * coup, concession). Ils vivaient en `static float [SCPS_MAX_COUNTRY]` hors-struct
+     * (scps_revolt.c), RAZ seulement par revolt_init (sim_init) — jamais restaurés au
+     * chargement : save/reload ≠ continuation (une révolte/un coup/une concession pouvait
+     * survenir juste après un reload là où le fil continu serait resté silencieux). Même
+     * classe que EMOB(v57)/COLC(v61)/TXYR(v65) : « tout accumulateur inter-ticks doit être
+     * sérialisé ». Rapatriés ICI (la struct est déjà sérialisée en UN blob, section RVLT,
+     * comme revolt_cooldown/rebel_country/war_days/backing_tried l'ont déjà été) — pas de
+     * nouvelle section, juste sizeof(RevoltState) qui grandit ⇒ bump SAVE_VERSION. */
+    float     revolt_grace[SCPS_MAX_COUNTRY];  /* PHASE 1 : répit empire-wide post-révolte (jours restants) */
+    float     coup_grace[SCPS_MAX_COUNTRY];    /* §C2 : répit post-coup (jours restants) */
+    float     concede_cd[SCPS_MAX_COUNTRY];    /* G0.2 : cooldown avant nouvelle concession (jours restants) */
     /* compteurs de chronique (cumul sur la partie) */
     int       n_ignited, n_crushed, n_seceded, n_concession, n_coup, n_heresy, n_zelote;
     long      pop_lost;          /* morts au total */

@@ -137,5 +137,15 @@ long  intertrade_slave_pool_count(void);                  /* Σ âmes au pool (t
  * (les flux du dernier tick se recalculent, eux). */
 void  intertrade_save(FILE *f);
 bool  intertrade_load(FILE *f);
+/* garde-fou post-chargement (défaut #5, audit 2026-07-06) : g_hub_of/g_hub_dist sont
+ * sérialisés BRUT (v58) mais jamais revalidés — un save FORGÉ peut y écrire n'importe
+ * quel int16_t alors qu'ils indexent e->region[] (taille fixe SCPS_MAX_REG) sans borne
+ * haute côté lecteur (intertrade_buy_cost etc.) ⇒ lecture hors-bornes. Appelé depuis
+ * scps_save_sane (motif director_save_sane/annals_save_sane) avec n_regions du monde
+ * chargé ; false ⇒ load refusé net. */
+bool  intertrade_save_sane(int n_regions);
+/* fuzztest UNIQUEMENT (viewer.c --fuzztest) : forge g_hub_of[region] — la seule façon de
+ * l'exercer hors-borne depuis l'extérieur (static de module). Ne pas appeler ailleurs. */
+void  intertrade_debug_set_hub_of(int region, int value);
 
 #endif /* SCPS_INTERTRADE_H */

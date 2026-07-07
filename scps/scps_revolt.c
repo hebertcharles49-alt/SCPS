@@ -115,13 +115,16 @@
  * se consolide) avant qu'un autre coup ne puisse partir — même si l'affamement persiste.
  * Casse la BOUCLE de fréquence (un empire qui re-coupait via une autre province). */
 #define COUP_GRACE_DAYS 1825.f    /* ~5 ans de répit post-coup, par pays */
-static float g_coup_grace[SCPS_MAX_COUNTRY];   /* jours de répit restants, par PAYS */
+/* rs->coup_grace[SCPS_MAX_COUNTRY] (scps_revolt.h) — jours de répit restants, par PAYS.
+ * SUR LA STRUCT (sérialisée, section RVLT) depuis le fix contrat-de-save défaut #1 : un
+ * static hors-struct perdait sa valeur au reload (save/reload ≠ continuation). */
 /* PHASE 1 — CD EMPIRE-WIDE DE RÉVOLTE : après TOUT soulèvement (n'importe quel type, n'importe
  * quelle région), l'empire ENTIER se tait ~5 ans. « On ne peut pas encaisser un printemps arabe
  * par jour » : une révolte à la fois par empire → fin du spam par-région ET du runaway de récursion.
- * Généralise le patron coup-only (g_coup_grace) à TOUS les types de révolte. */
+ * Généralise le patron coup-only (rs->coup_grace) à TOUS les types de révolte. */
 #define REVOLT_GRACE_DAYS 1825.f  /* ~5 ans de répit post-révolte, sur TOUT l'empire */
-static float g_revolt_grace[SCPS_MAX_COUNTRY];   /* jours de répit empire-wide restants, par PAYS */
+/* rs->revolt_grace[SCPS_MAX_COUNTRY] (scps_revolt.h) — jours de répit empire-wide restants,
+ * par PAYS. SUR LA STRUCT depuis le fix contrat-de-save défaut #1 (idem coup_grace ci-dessus). */
 /* TÉLÉMÉTRIE guerre civile (Phase 3a) : compteurs de chronique STATIQUES (hors RevoltState ⇒
  * NON sérialisés, aucun bump save ; RAZ par sim dans revolt_init, lus par chronicle.c). */
 static long g_civilwars = 0;         /* soulèvements devenus une VRAIE guerre (armée rebelle déployée) */
@@ -130,9 +133,11 @@ long revolt_civilwar_count(void){ return g_civilwars; }
 long revolt_rebel_victory_count(void){ return g_rebel_victories; }
 /* PHASE 3a suite — SOUTIEN ÉTRANGER : une fois par guerre civile INCARNÉE, on tente UNE fois de
  * trouver un bailleur (rate-limit dur, pas un nag à chaque tick de 30 j). Clé = rebel_country
- * (identité stable de la guerre civile pour toute sa durée) — STATIQUE, NON sérialisé (même
- * patron que g_coup_grace/g_revolt_grace) : un reload peut ré-offrir une fois, sans conséquence.
- * RAZ par sim dans revolt_init. */
+ * (identité stable de la guerre civile pour toute sa durée) — pure TÉLÉMÉTRIE (compteur de
+ * chronique, ne gate AUCUNE décision moteur, ≠ rs->coup_grace/revolt_grace ci-dessus qui EUX
+ * gatent et sont désormais sérialisés) : STATIQUE, NON sérialisé, un reload peut ré-offrir
+ * une fois, sans conséquence (le vrai rate-limit anti-double-renfort vit sur rb->backing_tried,
+ * SUR la struct Rebellion, sérialisé — cf. son commentaire). RAZ par sim dans revolt_init. */
 static long g_backing_wars = 0;      /* télémétrie : seconds fronts ouverts par un bailleur étranger */
 static long g_backing_materiel = 0;  /* … dont un renfort matériel a été envoyé à l'armée rebelle */
 long revolt_backing_war_count(void){ return g_backing_wars; }
@@ -203,12 +208,15 @@ static void deploy_rebel_army (DiploState *dp, struct Campaign *camp,
 #define CONCEDE_TREAS_FLOOR  200.f   /* … et il faut DE QUOI céder : trésor … */
 #define CONCEDE_L_FLOOR        3.f   /* … OU légitimité au-dessus du plancher */
 #define CONCEDE_GOLD         150.f   /* prix de l'apaisement (acheter la paix) */
-static float g_concede_cd[SCPS_MAX_COUNTRY];   /* jours avant qu'une nouvelle concession soit possible, par pays */
+/* rs->concede_cd[SCPS_MAX_COUNTRY] (scps_revolt.h) — jours avant qu'une nouvelle concession
+ * soit possible, par pays. SUR LA STRUCT depuis le fix contrat-de-save défaut #1 (idem
+ * coup_grace/revolt_grace ci-dessus). */
 
 void revolt_init(RevoltState *rs){ memset(rs,0,sizeof *rs); rs->last_spawned=-1;
-    memset(g_coup_grace,0,sizeof g_coup_grace);   /* §C2 : répit pays remis à zéro par sim */
-    memset(g_concede_cd,0,sizeof g_concede_cd);   /* G0.2 : cooldown de concession par sim */
-    memset(g_revolt_grace,0,sizeof g_revolt_grace);  /* PHASE 1 : CD empire-wide remis à zéro par sim */
+    /* rs->coup_grace/concede_cd/revolt_grace sont DÉJÀ à zéro par le memset ci-dessus
+     * (ce sont des champs de la struct, plus des statics hors-struct) — un DÉMARRAGE
+     * FRAIS les remet à plat comme avant ; un LOAD les restaure désormais À L'IDENTIQUE
+     * (section RVLT), ce qui est tout le point du fix. */
     g_civilwars=0; g_rebel_victories=0;              /* télémétrie guerre civile RAZ par sim */
     g_backing_wars=0; g_backing_materiel=0;   /* soutien étranger : télémétrie RAZ par sim (le latch vit sur la Rebellion, sérialisé) */
 }
@@ -287,7 +295,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     /* PHASE 1 — CD EMPIRE-WIDE : un empire qui vient de connaître une révolte (n'importe où) se
      * tait ~5 ans → UNE révolte à la fois par empire, fin du spam par-région ET de tout runaway
      * de récursion (une région écrasée ne peut plus rallumer une voisine le mois d'après). */
-    if (owner<SCPS_MAX_COUNTRY && g_revolt_grace[owner]>0.f) return -1;
+    if (owner<SCPS_MAX_COUNTRY && rs->revolt_grace[owner]>0.f) return -1;
     /* RE-KEY PROVINCE : re->pop est un MIROIR (copie de la province représentative) — muter
      * un groupe à travers `pp` ne toucherait QUE cette copie, effacée au prochain econ_tick.
      * On route la MUTATION (count/strata) sur la vraie province ; les LECTURES via `re`
@@ -341,7 +349,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
     /* §C2 : ce soulèvement serait-il un COUP ? Si oui ET le pays est en RÉPIT post-coup,
      * on l'étouffe (le régime fraîchement installé n'est pas renversé l'année d'après). */
     bool would_coup = (ethos_coup_boost(g, cf, ct) >= COUP_ETHOS_TRIGGER);
-    if (would_coup && owner>=0 && owner<SCPS_MAX_COUNTRY && g_coup_grace[owner]>0.f) return -1;
+    if (would_coup && owner>=0 && owner<SCPS_MAX_COUNTRY && rs->coup_grace[owner]>0.f) return -1;
     long mob=revolt_mobilized(g, wd);
     { float rf=revanchism_factor(rs,region);   /* la rage grossit les rangs, ∝ fraîcheur de la conquête */
       if (rf>0.f) mob=(long)((float)mob*(1.f + (REVANCHISM_MOBIL-1.f)*rf)); }
@@ -403,7 +411,7 @@ int revolt_ignite(RevoltState *rs, World *w, WorldEconomy *econ,
 
     /* PHASE 1 — la révolte APPARAÎT ⇒ l'empire entre en CD empire-wide (~5 ans) : plus aucune
      * autre révolte dans ce pays avant l'expiration (une à la fois, fin du spam). */
-    if (owner<SCPS_MAX_COUNTRY) g_revolt_grace[owner] = REVOLT_GRACE_DAYS;
+    if (owner<SCPS_MAX_COUNTRY) rs->revolt_grace[owner] = REVOLT_GRACE_DAYS;
     rs->n_ignited++;
     if (rb->kind==REBEL_HERESIE)      rs->n_heresy++;   /* dimension foi : schisme intérieur */
     else if (rb->kind==REBEL_ZELOTE)  rs->n_zelote++;   /* dimension foi : culte étranger */
@@ -435,9 +443,9 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
     float ctens[SCPS_MAX_COUNTRY]; EthosFaction cfac[SCPS_MAX_COUNTRY];
     char  cdone[SCPS_MAX_COUNTRY]; memset(cdone,0,sizeof cdone);
     /* §C2 : le répit post-coup s'écoule (par pays). */
-    for (int c=0;c<SCPS_MAX_COUNTRY;c++){ if (g_coup_grace[c]>0.f) g_coup_grace[c]-=(float)days;
-                                          if (g_concede_cd[c]>0.f) g_concede_cd[c]-=(float)days;      /* G0.2 */
-                                          if (g_revolt_grace[c]>0.f) g_revolt_grace[c]-=(float)days; } /* PHASE 1 : CD empire-wide */
+    for (int c=0;c<SCPS_MAX_COUNTRY;c++){ if (rs->coup_grace[c]>0.f) rs->coup_grace[c]-=(float)days;
+                                          if (rs->concede_cd[c]>0.f) rs->concede_cd[c]-=(float)days;      /* G0.2 */
+                                          if (rs->revolt_grace[c]>0.f) rs->revolt_grace[c]-=(float)days; } /* PHASE 1 : CD empire-wide */
     /* SUREXTENSION : on compte les régions par pays UNE fois (cache O(n)). */
     int owned[SCPS_MAX_COUNTRY]; memset(owned,0,sizeof owned);
     for (int r=0;r<econ->n_regions;r++){ int o=econ->region[r].owner;
@@ -864,7 +872,7 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
             demobilize(econ, rb, rb->mobilized);
             faction_levers_on_coup(rb->owner);   /* §4 : le coup purge la rancœur (plus de spirale) */
             if (rb->owner>=0 && rb->owner<SCPS_MAX_COUNTRY)
-                g_coup_grace[rb->owner]=COUP_GRACE_DAYS;   /* §C2 : répit du nouveau régime */
+                rs->coup_grace[rb->owner]=COUP_GRACE_DAYS;   /* §C2 : répit du nouveau régime */
             rs->n_coup++; rb->outcome=OUT_COUP;
             break; }
         case REBEL_HERESIE:
@@ -910,7 +918,7 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
             int caprp=(capr>=0&&capr<econ->n_regions)?econ_region_rep_province(econ,capr):-1;
             float treas=(caprp>=0&&caprp<econ->n_prov)?econ->prov[caprp].treasury:0.f;
             float capL =(capr>=0&&capr<SCPS_MAX_REG)?wl->L[capr]:0.f;
-            bool can_concede = (cid<0||cid>=SCPS_MAX_COUNTRY||g_concede_cd[cid]<=0.f)  /* pas déjà concédé ce décennie */
+            bool can_concede = (cid<0||cid>=SCPS_MAX_COUNTRY||rs->concede_cd[cid]<=0.f)  /* pas déjà concédé ce décennie */
                             && (treas>CONCEDE_TREAS_FLOOR || capL>CONCEDE_L_FLOOR);     /* … et de quoi céder */
             if (!can_concede){
                 /* REFUS : la couronne RÉPRIME plutôt que de céder encore (l'écrasement tranche). */
@@ -927,7 +935,7 @@ static void apply_rebel_victory(RevoltState *rs, World *w, WorldEconomy *econ,
             }
             if (caprp>=0&&caprp<econ->n_prov && treas>CONCEDE_TREAS_FLOOR)
                 econ->prov[caprp].treasury=fmaxf(0.f, econ->prov[caprp].treasury-tune_f("CONCEDE_GOLD",CONCEDE_GOLD));  /* acheter la paix */
-            if (cid>=0&&cid<SCPS_MAX_COUNTRY) g_concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
+            if (cid>=0&&cid<SCPS_MAX_COUNTRY) rs->concede_cd[cid]=CONCEDE_CD_DAYS;                    /* 10 ans avant de re-céder */
             pe->satisfaction=clampf(pe->satisfaction+0.20f,0.f,1.f);
             pe->coercion=fmaxf(0.f, pe->coercion-0.4f);
             int gi=find_group(&pe->pop, rb->drift_id);

@@ -249,6 +249,8 @@ int main(int argc, char **argv) {
             FZ(!save_sane(world,&sim,sim.player), "camp army.n_units hors-borne REJETÉ"); sim.camp->army[0].force.n_units=v; }
         { int v=sim.host->army[0].n_units; sim.host->army[0].n_units=ARMY_MAX_UNITS+13;
             FZ(!save_sane(world,&sim,sim.player), "host army.n_units hors-borne REJETÉ"); sim.host->army[0].n_units=v; }
+        { int v=intertrade_region_hub(0); intertrade_debug_set_hub_of(0, 20000);   /* défaut #5 : au-delà de n_regions ET de SCPS_MAX_REG */
+            FZ(!save_sane(world,&sim,sim.player), "intertrade hub_of hors-borne REJETÉ"); intertrade_debug_set_hub_of(0, v); }
         long flips=0;
         if (game_save(3, world, &sim, &params)){
             const char *fp=save_slot_path(3);
