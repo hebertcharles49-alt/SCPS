@@ -79,6 +79,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("merv_metab"),                     &ScpsWorld::merv_metab);
     ClassDB::bind_method(D_METHOD("tunables"),                       &ScpsWorld::tunables);
     ClassDB::bind_method(D_METHOD("tune_set", "nom", "value"),       &ScpsWorld::tune_set);
+    ClassDB::bind_method(D_METHOD("lang_set", "lang"),               &ScpsWorld::lang_set);
+    ClassDB::bind_method(D_METHOD("lang_get"),                       &ScpsWorld::lang_get);
     ClassDB::bind_method(D_METHOD("country_budget", "country"),      &ScpsWorld::country_budget);
     ClassDB::bind_method(D_METHOD("budget_summary", "country"),      &ScpsWorld::budget_summary);
     ClassDB::bind_method(D_METHOD("mission_info", "country"),        &ScpsWorld::mission_info);
@@ -869,6 +871,11 @@ Array ScpsWorld::tunables() {
 void ScpsWorld::tune_set(const String &nom, double value) {
     scps_tune_set_val(nom.utf8().get_data(), value);
 }
+
+/* I18N — bascule la TABLE moteur (0=FR 1=EN). GLOBAL, à chaud, display-only :
+ * les readouts traversants rendent la langue courante au prochain appel. */
+void ScpsWorld::lang_set(int lang) { scps_lang_set(lang); }
+int  ScpsWorld::lang_get() const { return scps_lang_get(); }
 
 /* ACCÈS D'HÉRITAGE (barre de métabolisation) : par héritage, tier 0..3 + part digérée. */
 Array ScpsWorld::heritage_access() {

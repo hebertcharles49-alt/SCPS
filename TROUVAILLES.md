@@ -419,3 +419,21 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - Le dead-write d'armes IA (`scps_ai.c:1307`, défaut #4 MED de l'audit — mentionné par le chantier n°1 « au passage ») n'est PAS dans ce lot (fichier hors périmètre autorisé) : toujours ouvert.
 - Aucun cas fuzztest ne forge les 3 grâces (hors mission ; la borne save_sane est triviale par inspection et le motif FZ existant s'y étendrait en 3 lignes si voulu).
 - Les savetests n'exercent jamais un monde POST-révolte (600 j < premier allumage) : la préservation d'une grâce mi-course au reload est garantie par le fwrite/fread du blob RVLT, pas prouvée par un gate dédié.
+## 2026-07-07 — Lot E English (switch + infra + extraction)
+
+**Découvertes** :
+- **Comment tr() résout VRAIMENT** (`scps/scps_lang.c:70-75`) : `g_override[id]` (la surcharge `scps_lang.txt`) D'ABORD, puis `g_lang==LANG_EN ? TABLE_EN : TABLE_FR`. Les DEUX langues sont COMPILÉES dans le binaire (`strings_ids.h` X-macro FR + `strings_en.h` jumelle, asserts de taille) et `lang_set()` bascule à CHAUD (« aucune chaîne cachée dans un état persistant »). Le switch ne demandait qu'un PASSE-PLAT : façade `scps_lang_set/get` (scps_api.{h,c}) + binding `Sim.world.lang_set/lang_get` (scps_sim_node). La voie « générer scps_lang_en.txt et le charger en override » REJETÉE : elle confisquerait le canal de surcharge (qui appartient au joueur/mod), et `lang_dump_file` écrit la langue COURANTE (poule-œuf).
+- **`strings_en.h` est encore ~46 % copie du FR** : ~165 des 364 entrées identiques au FR (~197 déjà traduites — diplo, agitation, slots, menu). Le switch moteur est BRANCHÉ mais l'anglais moteur réel reste une session de pur remplissage.
+- **Import CSV Godot 4.6** : les `.translation` naissent À CÔTÉ du CSV (`godot/project/i18n/ui.{fr,en}.translation`), committables (seul `*.import` est gitignoré) ; `--headless --import` les régénère ; référencés dans `project.godot [internationalization]` + `locale/fallback="fr"`.
+- **Le chrome affiche par DEUX idiomes** : `.text =` (shell, containers) et surtout `VKit.text/section/row` en mode immédiat (**277 appels**) — un extracteur qui ne regarde que `.text=` sous-compte ~10× (67 vs 629).
+
+**Pièges** :
+- **`load("x.gd") != null` ne prouve PAS que le script compile** : un Parse Error rend quand même la ressource (menu_audit passait vert), c'est `.new()` qui explose (« Nonexistent function 'new' in base GDScript »). Le probe `lang_audit` INSTANCIE MenuRoot pour prouver le rendu de bout en bout.
+- **python.exe (MSYS2) sur console Windows = cp1252** : un `print()` avec « → » crashe UnicodeEncodeError — sorties console en ASCII pur, le CSV reste UTF-8.
+- **L'ordre de boot compte** : `options.boot()` (locale + table moteur + plein écran, lus de user://options.cfg) doit précéder le PREMIER tr() — `menu_root._ready` crée le panneau Options avant `_build_main`. Les tr() étant posés à la CONSTRUCTION, le changement de langue REBÂTIT le shell (signal `language_changed`).
+- **uikit.gd : des chaînes FR sont des CLÉS de correspondance moteur** (« Manufacture textile » → sprite par nom rendu par la façade) — les traduire naïvement casserait le mapping ; passer par un ID ou ne traduire que l'affichage.
+
+**Restes** :
+- **Backlog chiffré : 629 littéraux face-joueur probables dans 28 fichiers .gd** (`docs/i18n_backlog.csv` — fichier:ligne, chaîne, clé suggérée ; top : codex 120 · sidebar_drawer 102 · uikit 92 · province_detail 53 · alerts 39). Outil : `tools/extract_gd_literals.py` (stdlib pur ; lancer avec D:/MSYS2/mingw64/bin/python.exe).
+- **~165 entrées `strings_en.h` à traduire** (remplissage diffable, zéro logique).
+- Les panneaux hors-shell (province/sidebar/religion/codex/culture_creator) appartiennent à d'autres lots — migrer AVEC leur propriétaire ; le patron est le shell : `tr("T_*")` + entrées CSV + rebuild au changement de langue.

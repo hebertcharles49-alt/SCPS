@@ -1,0 +1,55 @@
+keys,fr,en
+T_MENU_SUBTITLE,Simulateur de civilisations,A civilization simulator
+T_MENU_PLAY,Jouer,Play
+T_MENU_LOAD,Charger,Load
+T_MENU_OPTIONS,Options,Options
+T_MENU_QUIT,Quitter,Quit
+T_BACK,Retour,Back
+T_LOADSAVE_TITLE,Charger / Sauvegarder,Load / Save
+T_ENGINE_MISSING,Moteur indisponible (libscps).,Engine unavailable (libscps).
+T_SLOT_LINE,Emplacement %d — %s,Slot %d — %s
+T_SLOT_EMPTY,Emplacement %d — vide,Slot %d — empty
+T_SAVE,Sauvegarder,Save
+T_LOAD,Charger,Load
+T_SAVED_OK,Partie sauvegardée (emplacement %d).,Game saved (slot %d).
+T_SAVE_FAIL,Échec de la sauvegarde.,Save failed.
+T_LOAD_FAIL,Chargement impossible (emplacement vide ou version différente).,Cannot load (empty slot or different version).
+T_OPT_TITLE,Options,Options
+T_OPT_LANG,Langue,Language
+T_OPT_FULLSCREEN,Plein écran,Fullscreen
+T_OPT_HINT,La langue s'applique au menu et aux textes du moteur ; les panneaux en jeu suivront à mesure de la migration.,Applies to the menu and engine texts; in-game panels will follow as the migration proceeds.
+T_NG_TITLE,Nouvelle partie,New game
+T_NG_WORLD,Monde,World
+T_NG_SIZE,Taille,Size
+T_NG_AGE,Âge du monde,World age
+T_NG_LAND,Terres / mer,Land / sea
+T_NG_MOUNTAINS,Montagnes,Mountains
+T_NG_EROSION,Érosion,Erosion
+T_NG_TEMP,Température,Temperature
+T_NG_HUMID,Humidité,Humidity
+T_NG_CONTINENTS,Continents,Continents
+T_NG_SEED,Graine,Seed
+T_NG_EMPIRES,Empires (composez votre peuple et ceux des IA),Empires (compose your people and the AIs')
+T_NG_EMPIRE_YOU,Empire %d — Vous,Empire %d — You
+T_NG_EMPIRE_AI,Empire %d — IA,Empire %d — AI
+T_NG_COMPOSE,Composer,Compose
+T_NG_RANDOM,Aléatoire,Random
+T_NG_LAUNCH,Lancer la partie,Start the game
+T_SIZE_0,Minuscule (2),Tiny (2)
+T_SIZE_1,Petit (4),Small (4)
+T_SIZE_2,Normal (6),Normal (6)
+T_SIZE_3,Grand (8),Large (8)
+T_SIZE_4,Énorme (10),Huge (10)
+T_SIZE_5,Gigantesque (12),Gigantic (12)
+T_HERITAGE_0,Ésotérique,Esoteric
+T_HERITAGE_1,Métallurgiste,Metallurgist
+T_HERITAGE_2,Mécaniste,Mechanist
+T_HERITAGE_3,Adaptatif,Adaptive
+T_HERITAGE_4,Agraire,Agrarian
+T_HERITAGE_5,Clanique,Clannish
+T_ETHOS_0,Dominateur,Dominator
+T_ETHOS_1,Honneur,Honor
+T_ETHOS_2,Ordre,Order
+T_ETHOS_3,Bureaucrate,Bureaucrat
+T_ETHOS_4,Mercantile,Mercantile
+T_ETHOS_5,Pacifiste,Pacifist

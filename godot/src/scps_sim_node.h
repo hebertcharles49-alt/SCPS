@@ -124,6 +124,8 @@ public:
     Dictionary merv_metab();                            /* MERVEILLE : ce qui compte VRAIMENT pour la victoire — {count,required,heritages[]} */
     Array      tunables();                             /* MODTOOLS : registre des tunables (nom·valeur·défaut·surchargé) */
     void       tune_set(const godot::String &nom, double value);  /* MODTOOLS : surcharge LIVE d'un tunable */
+    void       lang_set(int lang);                     /* I18N : table moteur 0=FR · 1=EN (GLOBAL, à chaud) */
+    int        lang_get() const;                       /* I18N : langue moteur active (0/1) */
     Array      country_budget(int country);            /* budget : postes de flux de l'année (signés) */
     Dictionary budget_summary(int country);            /* budget : or · revenus · dépenses · net · crédit · prêteur */
     Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année */
