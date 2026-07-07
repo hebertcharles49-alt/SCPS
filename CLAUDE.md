@@ -1962,6 +1962,18 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   fix — ils ne roulent jamais un tick complet entre l'écriture et le CHECK ⇒ AVEUGLES à cette classe
   (un banc « écriture fantôme » exigerait write → econ_tick → re-read). savetest 9/7/11/42
   byte-identique · fuzz 9/9 · determinism STABLE · test 39/40 · 0 warning. **SAVE non bumpé**.
+- **LOT V — ASSETS DANS L'EAU (2026-07-07, DISPLAY-ONLY, overlay.gd seul)** : les nouveaux archétypes
+  (archipels, mers intérieures) exposaient deux fuites de placement : (1) la CANOPÉE — les « extras »
+  (jusqu'à 39/point, offsets ±3.5 cellules) n'étaient JAMAIS testés contre mer/lac (rivière+clairière
+  seulement), et le vote de voisinage pouvait valider une ANCRE en eau ; (2) l'URBANISTE — seul le
+  SIÈGE était garanti sec (`_find_seat`), tout le plan relatif (rangs arrière, ruelles, champs,
+  moulin, enceinte) se posait par géométrie pure sans re-test à la position FINALE. Fix : `_water_at`
+  au placement canopée (primaire + extras) + `_pull_dry(p,target)` (toute position mouillée tirée
+  vers un point sec) sur maisons/champs/tours/portes/moulin/arbres du plan. Routes/ponts/dressing
+  étaient DÉJÀ corrects. ⚠ FAUX POSITIF écarté : le « lac plein d'assets » de seed 9 est un MARAIS
+  (biome, symbole cartographique légitime). Preuve : seed 11 avant/après (≈15 arbres flottants
+  disparus du lac, diff 20k px alignés sur le pourtour). Aucun fichier C ⇒ golden/déterminisme/SAVE
+  intacts.
 
 ## Disciplines non négociables
 
