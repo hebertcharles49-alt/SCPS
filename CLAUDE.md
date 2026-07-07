@@ -1827,6 +1827,21 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   golden/déterminisme/SAVE INTACTS, façade/DLL non touchées. Triage complet du trove Codex (77 zips) dans
   `docs/CODEX_TROVE_TRIAGE.md` ; reste (agents bloqués par la limite de session) : RE-DÉCOUPE des 4
   planches master (« la plupart des découpages sont foirés »).
+- **RE-DÉCOUPE RECENTRÉE des planches parchemin (2026-07-07, DISPLAY-ONLY, `tools/recut_parch.ps1`)** :
+  diagnostic joueur — « elles ont toutes un problème de centrage : ça déborde chez le voisin, un petit
+  peu ». Cause : la grille rigide 256 était LÉGÈREMENT décalée → chaque cellule mordait un sliver du
+  voisin (et rognait son propre bord opposé). Le keying était DÉJÀ bon (fuite magenta ≈ 0), la botch
+  était géométrique. Fix scripté (PowerShell + System.Drawing, ré-emploi de la clé prouvée `rekey.ps1`) :
+  clé magenta sur le master ENTIER, puis par cellule — fenêtre élargie (±44 px) → **composantes connexes**
+  → on garde celle(s) dont le CENTROÏDE tombe dans la cellule nominale (le sliver voisin, centroïde dans
+  la marge, TOMBE) → trim → **RECENTRÉ** sur 256. **Garde-fou tuile/cadre** : contenu touchant fortement
+  les 4 bords (biome plein, 9-slice) → coupe rigide, pas de recentrage (les tuiles de biome 20-22 restent
+  byte-identiques, vérifié). **431 cellules recentrées** ; **sheet01 (panel_chrome 9-slice) + sheet04
+  (jauges pleine largeur) EXCLUS** (recentrer un cadre étirable laisserait un vide au bord du panneau).
+  Noms de cellules INCHANGÉS → zéro changement de code GDScript. Vérifié par montages avant/après sur
+  fond damier (icônes/médaillons/blasons/pions recentrés, la rose des vents perd sa bavure de fleuron
+  voisin, les tuiles de biome intactes). Aucun fichier C/`.import` touché ⇒ golden/déterminisme/SAVE
+  INTACTS. Le script est committé pour reproductibilité (la re-découpe se rejoue d'une commande).
 
 ## Disciplines non négociables
 
