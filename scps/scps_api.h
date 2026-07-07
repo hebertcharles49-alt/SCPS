@@ -654,6 +654,21 @@ int  scps_player_posture       (ScpsSim *s, int posture);
 int  scps_player_refill        (ScpsSim *s);
 int  scps_player_navy_build    (ScpsSim *s, int hull);
 int  scps_player_disband       (ScpsSim *s);
+/* LOT P (2026-07-07) — PILLER LA CÔTE : une province CÔTIÈRE d'un AUTRE pays (ni allié,
+ * ni pacte), la piraterie restant un acte GRIS (miroir de la course pirate IA : la
+ * guerre n'est PAS requise). Exige ≥1 coque PIRATE. ENFILE (drain revalidé) : le MÊME
+ * chemin de pillage unifié (20% du revenu annuel de la victime + esclavage 5% si le
+ * gate — tech OU éthos conquérant) que le sac de siège/l'occupation, + pose la balafre/
+ * l'immunité (5 ans, comme un raid pirate réussi). `scps_can_raid_coast` = lecture PURE
+ * pour GRISER le bouton ; `reason_out` optionnel : 0 OK · 1 pas côtière/peuplée · 2 à
+ * soi/allié/pacte · 3 balafre active (CD) · 4 pas de coque pirate. */
+int  scps_can_raid_coast       (ScpsSim *s, int prov, int *reason_out);
+int  scps_player_raid_coast    (ScpsSim *s, int prov);
+/* le CD restant (jours) de la balafre/immunité de la province — « côte balafrée — X j ». */
+int  scps_raid_cd_days         (ScpsSim *s, int prov);
+/* BANC SEULEMENT (motif intertrade_debug_set_hub_of, lot A) : pose N coques pirate au
+ * joueur — le round-trip de scps_api_demo exige une coque. Jamais appelé par le jeu. */
+void scps_debug_set_pirate_hulls(ScpsSim *s, int n);
 /* ALLOCATION (onglet province) — ENFILENT, revalidé au drain (région à soi ; res/bld bornés).
  * Poser un poids ACTIVE l'override de la région ; weight 0 sur un bâtiment = FERMÉ. */
 int  scps_player_alloc_raw     (ScpsSim *s, int region, int resource, int weight);

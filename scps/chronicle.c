@@ -360,6 +360,8 @@ int main(int argc, char **argv){
     long tot_backing_wars=0, tot_backing_mat=0;   /* Phase 3a suite : seconds fronts + renforts matériels étrangers */
     long tot_techs=0, tot_faustian=0, tot_campaign=0, tot_alliances=0;   /* §D : pactes actifs */
     double tot_siege_loot=0.0; long tot_siege_captures=0;   /* LOT 4 : pillage de siège */
+    long tot_pil_events=0, tot_pil_souls=0, tot_raid_slaves=0;   /* LOT P : pillage réel unifié */
+    double tot_pil_value=0.0, tot_pil_target=0.0, tot_occ_pillage=0.0;
     long tot_sync=0, tot_sync_distinct=0;   /* §syncrétique : nœuds à porte culturelle + dispersion */
     long tot_relig_roots=0, tot_relig_schisms=0, tot_relig_faith=0, tot_relig_minority=0;   /* RELIGION : foi émergente */
     long tot_min_her=0, tot_min_for=0;   /* DIAG : minorités same-root (hérésie-éligible) vs foreign (zélote) */
@@ -424,6 +426,10 @@ int main(int argc, char **argv){
          * entre sims), snapshot avant/delta après (même motif que g_tot_occ_posed). */
         double siege_loot_before_sim = g_siege_loot_total;
         long   siege_captures_before_sim = g_siege_sack_captures;
+        /* LOT P — pillage unifié : g_occ_pillage_total/g_navy_raid_slaves sont GLOBAUX
+         * (delta par sim) ; diplo_pillage_stats est RAZ par diplo_init (sim_init). */
+        double occ_pillage_before_sim = g_occ_pillage_total;
+        long   raid_slaves_before_sim = g_navy_raid_slaves;
 
         /* LA VOLTA, mesurée (mer §10) : entre deux côtes éloignées, l'aller ne vaut
          * pas le retour — l'asymétrie du champ de courants, en jours. */
@@ -1261,6 +1267,17 @@ int main(int argc, char **argv){
           printf("              pillage de siège : %.0f or-équiv. détourné (mensuel, ∝ production) · %ld sac(s) de population (à la chute)\n",
                  loot, caps);
           tot_siege_loot += loot; tot_siege_captures += caps; }
+        /* LOT P — le PILLAGE RÉEL unifié (20 % du revenu annuel de la victime, borné
+         * par ce qui existe) : events/value/target/souls depuis diplo (RAZ par sim) ;
+         * l'occupation-capture et la razzia pirate en deltas de globaux. */
+        { long pev=0, psouls=0; double pval=0, ptgt=0;
+          diplo_pillage_stats(&pev, &pval, &ptgt, &psouls);
+          double occ_loot = g_occ_pillage_total - occ_pillage_before_sim;
+          long   rslaves  = g_navy_raid_slaves - raid_slaves_before_sim;
+          printf("              pillage réel : %ld pillage(s) · %.0f or-équiv. pris sur %.0f visés (%.0f %% de la cible 20 %%·revenu) · %ld âme(s) déportée(s) · dont occupation-capture %.0f or-équiv. · %ld razzia(s) pirate esclavagiste\n",
+                 pev, pval, ptgt, (ptgt>0.0)?100.0*pval/ptgt:0.0, psouls, occ_loot, rslaves);
+          tot_pil_events+=pev; tot_pil_value+=pval; tot_pil_target+=ptgt; tot_pil_souls+=psouls;
+          tot_occ_pillage+=occ_loot; tot_raid_slaves+=rslaves; }
         { long hulls=0; double sup=0;   /* mer §10 : la chaîne navale TIRE */
           for (int c=0;c<SCPS_MAX_COUNTRY;c++){ hulls+=s.navy->n[c].built_total; sup+=s.navy->n[c].supplies_eaten; }
           int searoutes=0;
@@ -1537,6 +1554,10 @@ int main(int argc, char **argv){
     printf("   régions réduites (campagne) . %ld   (moy. %.1f/sim ; armées de terrain, hors conquête abstraite)\n", tot_campaign, (double)tot_campaign/nsims);
     printf("   pillage de siège (LOT 4) .... %.0f or-équiv. cumulé (%.0f/sim) · %ld sac(s) de population (%.1f/sim) — mensuel, ∝ production, distinct du butin final au règlement\n",
            tot_siege_loot, tot_siege_loot/nsims, tot_siege_captures, (double)tot_siege_captures/nsims);
+    printf("   pillage réel (LOT P) ........ %ld pillage(s) (%.1f/sim) · %.0f or-équiv. pris sur %.0f visés (%.0f %% de la cible 20 %%·revenu annuel) · %ld âme(s) déportée(s) (%.0f/sim) · occupation-capture %.0f or-équiv. · %ld razzia(s) pirate\n",
+           tot_pil_events, (double)tot_pil_events/nsims, tot_pil_value, tot_pil_target,
+           (tot_pil_target>0.0)?100.0*tot_pil_value/tot_pil_target:0.0,
+           tot_pil_souls, (double)tot_pil_souls/nsims, tot_occ_pillage, tot_raid_slaves);
     printf("   la mer ...................... %ld coque(s) · %.0f fournitures consommées (NE doit plus être zéro) · %ld traversée(s) (%.0f j moy.) · %ld route(s) maritime(s) · %ld colonie(s) outre-mer\n",
            tot_hulls, tot_supplies, tot_sails, (tot_sails>0)?tot_saildays/(double)tot_sails:0.0, tot_searoutes, tot_colonies_om);
     printf("   détroits (WG) ............... %.1f goulet(s)/sim · %.1f tenu(s)/sim · %ld route(s) taxée(s) · péage CUMULÉ moy. %.0f or/sim · %d/%d sim(s) avec péage ENCAISSÉ (le verrou rapporte à qui le tient)\n",

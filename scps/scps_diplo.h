@@ -284,13 +284,36 @@ void diplo_liberate (DiploState *d, const WorldEconomy *econ, int region);
 int  diplo_settle   (DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *wl,
                      int winner, int loser, bool winner_enslaves);
 
-/* SACCAGE (§4) — une province PRISE est DÉPOUILLÉE une fois : l'or de ses coffres
- * et ~6 mois de production (entrepôt valorisé) sont fondus dans le trésor de
- * l'occupant (région `dst_region`, sa capitale) ; 1×/5 ans/province (plus rien à
- * prendre avant). Le sac convulse la province (cicatrice au plancher → gel du
- * développement). Renvoie la valeur pillée (or-équivalent) ; 0 si encore à vif.
- * Appelé automatiquement par diplo_conquer_region ; exposé pour le banc d'essai. */
-float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region);
+/* SACCAGE (§4 → LOT P 2026-07-07) — une province PRISE est DÉPOUILLÉE une fois : la
+ * VALEUR pillée = 20 % du revenu ANNUEL de la VICTIME (`victim_cid`, econ_country_
+ * tax_year — règle joueur unifiée : « piraterie, raids, tout type d'occupation =
+ * pillage »), transférée RÉELLEMENT (trésor d'abord, puis stock valorisé pour
+ * combler), BORNÉE par ce qui existe vraiment ; fondue dans le trésor de l'occupant
+ * (région `dst_region`, sa capitale) ; 1×/5 ans/province (plus rien à prendre avant).
+ * Le sac convulse la province (cicatrice au plancher → gel du développement).
+ * Renvoie la valeur pillée (or-équivalent) ; 0 si encore à vif/victime sans revenu.
+ * Appelé par settle_transfer ET l'occupation-capture (scps_sim.c) ; exposé pour le
+ * banc d'essai. */
+float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region, int victim_cid);
+
+/* diplo_pillage_value — le MOVER NU derrière diplo_pillage_region : transfère la
+ * valeur (20 % du revenu annuel de `victim_cid`) SANS poser de cooldown — pour les
+ * appelants qui gèrent LEUR PROPRE marqueur anti-répétition (la course pirate :
+ * raid_cd_days/balafre). Exposé pour scps_navy.c et le banc d'essai. */
+float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int victim_cid);
+
+/* diplo_pillage_fresh — la province (grain agrégat région→province représentative)
+ * a-t-elle échappé à un sac RÉCENT (pillage_cd épuisé) ? Lecture PARTAGÉE par
+ * l'appelant pour gater ENSEMBLE l'esclavage et le pillage-valeur d'un MÊME
+ * évènement (cf. diplo_enslave_capture, plus bas). */
+bool diplo_pillage_fresh(const WorldEconomy *econ, int region);
+
+/* TÉLÉMÉTRIE « pillage réel » (LOT P, chronicle) — motif diplo_war_cb_counts :
+ * statiques RAZ par diplo_init, jamais sérialisés/lus par le moteur. events = nb de
+ * pillages-valeur exécutés · value = or-équivalent RÉELLEMENT transféré · target =
+ * Σ des cibles (20% du revenu annuel) — le ratio value/target dit si la borne
+ * « ce qui existe vraiment » mord · souls = âmes DÉPORTÉES (enslave_capture). */
+void diplo_pillage_stats(long *events, double *value, double *target, long *souls);
 
 /* LOT 4 — LE PILLAGE DE SIÈGE (mensuel, PENDANT le siège/l'occupation, distinct du
  * butin final ci-dessus) : détourne une FRACTION (SIEGE_LOOT_FRAC, registre J) de la
@@ -299,16 +322,20 @@ float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region);
  * équivalent est décrémenté). Gaté par le MÊME cooldown anti-re-saccage
  * (pillage_cd) qu'un butin final récent. Renvoie la valeur détournée ce mois (0 si
  * rien à prendre / cooldown actif). À appeler CHAQUE MOIS pendant qu'une force
- * assiège/occupe (cf. scps_sim.c, sim_campaign_year). */
+ * assiège/occupe (cf. scps_sim.c, sim_campaign_year). Mécanique DISTINCTE du pillage
+ * unifié (LOT P) — hors scope, non touchée. */
 float diplo_siege_loot(WorldEconomy *econ, int region, int dst_region);
 
-/* ESCLAVAGE (§4c) — une société ASSERVISSANTE déporte une part de la population
- * prise vers son CŒUR (capitale) : un groupe DIASPORA non-intégré (restif) de
- * culture étrangère → le D̄ du maître monte, la fracture s'installe au centre.
- * Renvoie le nombre de captifs ; 0 si `enslaves` est faux. GATE = la TECH
- * d'asservissement (TECH_ESCLAVAGE, signature Clanique) ; l'appelant passe le booléen.
- * Appelé par diplo_conquer_region ; exposé pour le banc d'essai. */
-long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves);
+/* ESCLAVAGE (§4c → LOT P 2026-07-07) — une société ASSERVISSANTE (TECH_ESCLAVAGE OU
+ * éthos conquérant Dominateur/Honneur, `can_enslave` résolu par l'appelant) déporte
+ * SLAVE_FRACTION (registre J, 5 %) de la population prise vers son CŒUR (capitale) :
+ * un groupe DIASPORA non-intégré (restif) de culture étrangère → le D̄ du maître
+ * monte, la fracture s'installe au centre. Renvoie le nombre de captifs ; 0 si
+ * `enslaves` est faux. Ne pose PLUS son propre pillage_cd (LOT P : toujours appelée
+ * aux côtés de diplo_pillage_region, gatée UNE FOIS par diplo_pillage_fresh).
+ * Appelée par settle_transfer, l'occupation-capture (scps_sim.c) et la course
+ * pirate (scps_navy.c) ; exposée pour le banc d'essai. */
+long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves);
 
 void diplo_tick(DiploState *d, float dt);   /* usure de guerre (war_years++) + trêve/momentum */
 

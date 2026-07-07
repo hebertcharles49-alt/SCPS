@@ -82,9 +82,16 @@
     /* LOT 4 (audit de guerre) — LE PILLAGE DE SIÈGE : fraction de la PRODUCTION
      * mensuelle (supply[], pas le stock accumulé) détournée par une force EN SIÈGE
      * vers le trésor du besiégeur — matière RÉELLEMENT prise (stock décrémenté).
-     * Distinct du butin final (PILLAGE_GOLD_FRAC/PILLAGE_STOCK_FRAC, au règlement) ;
-     * gaté par le MÊME cooldown anti-re-saccage (pillage_cd). */ \
+     * Distinct du butin final (LOT P : PILLAGE_INCOME_FRAC, au règlement) ; gaté par
+     * le MÊME cooldown anti-re-saccage (pillage_cd). */ \
     X(SIEGE_LOOT_FRAC,        0.25f) \
+    /* LOT P (2026-07-07) — PILLAGE UNIFIÉ (règle joueur verbatim : « Piraterie, raids,
+     * tout type d'occupation = pillage »). La VALEUR d'un pillage (sac de siège,
+     * occupation-capture, raid côtier) = cette fraction du revenu ANNUEL de la
+     * VICTIME (econ_country_tax_year), transférée RÉELLEMENT et BORNÉE par ce qui
+     * existe. Remplace l'ancien PILLAGE_GOLD_FRAC/PILLAGE_STOCK_FRAC (fraction plate
+     * du trésor/stock local, non tunable). */ \
+    X(PILLAGE_INCOME_FRAC,    0.20f) \
     /* W-GUERRE-3 : relevé de concert avec REGIMENT_PAY (même ×60) */ \
     X(NAVY_UPKEEP_GOLD,      90.0f) \
     X(AI_SAVOIR_K,            2.5f) \
@@ -128,10 +135,12 @@
      * soumis diffusent PLEIN (1.0, câblé) ; le DÉPORTÉ (esclave) diffuse FAIBLE — savoir
      * arraché, fragmenté, réprimé (janissaire/forge/créole : réel mais mineur). */ \
     X(METAB_DIFFUSE_SLAVE,   0.30f) \
-    /* SLAVE_FRACTION — part de la population prise déportée à chaque conquête d'un esclavagiste
-     * (tech Économie servile OU éthos conquérant Dominateur/Honneur). Calé BAS : l'esclavage
-     * apporte (savoir arraché) sans jamais dominer — volume faible × diffusion faible. */ \
-    X(SLAVE_FRACTION,        0.08f) \
+    /* SLAVE_FRACTION — part de la population prise déportée à chaque pillage/razzia/occupation
+     * d'un esclavagiste (tech Économie servile OU éthos conquérant Dominateur/Honneur). LOT P
+     * (2026-07-07, règle joueur verbatim « 5% de la pop locale ») : calé à 5% — l'esclavage
+     * apporte (savoir arraché) sans jamais dominer — volume faible × diffusion faible
+     * (METAB_DIFFUSE_SLAVE). Ex-0.08 (brassage 2026-07-03) ; le joueur a fixé la valeur EXACTE. */ \
+    X(SLAVE_FRACTION,        0.05f) \
     /* SLAVE_PRICE — prix de base d'une âme au marché des Centres (×ipm à la vente, ×2
      * ipm à l'achat — la double taxe du tier mondial, motif de intertrade_market_buy). */ \
     X(SLAVE_PRICE,           40.0f) \

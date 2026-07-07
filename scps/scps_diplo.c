@@ -82,12 +82,27 @@ static int g_war_cb[CB_ANTIPIRATERIE+1];
 void diplo_war_cb_counts(int out[CB_ANTIPIRATERIE+1]){
     for (int i=0;i<=CB_ANTIPIRATERIE;i++) out[i]=g_war_cb[i];
 }
+/* TÉLÉMÉTRIE « pillage réel » (LOT P, chronicle) — même motif que g_war_cb (statiques,
+ * RAZ par diplo_init, JAMAIS sérialisés/lus par le moteur) : nb de pillages-VALEUR
+ * exécutés (diplo_pillage_value avec cible > 0) · valeur RÉELLEMENT transférée ·
+ * cible cumulée (Σ 20% du revenu annuel) — le ratio réel/cible dit si la borne
+ * « ce qui existe vraiment » mord ; + âmes DÉPORTÉES cumulées (enslave_capture). */
+static long   g_pil_events=0;
+static double g_pil_value=0.0, g_pil_target=0.0;
+static long   g_enslaved_souls=0;
+void diplo_pillage_stats(long *events, double *value, double *target, long *souls){
+    if (events) *events=g_pil_events;
+    if (value)  *value =g_pil_value;
+    if (target) *target=g_pil_target;
+    if (souls)  *souls =g_enslaved_souls;
+}
 void diplo_save_statics(FILE *f){ fwrite(g_intim_cd,sizeof g_intim_cd,1,f); }
 bool diplo_load_statics(FILE *f){ return fread(g_intim_cd,sizeof g_intim_cd,1,f)==1; }
 void diplo_init(DiploState *d){
     memset(d,0,sizeof(*d));
     memset(g_intim_cd,0,sizeof g_intim_cd);
     memset(g_war_cb,0,sizeof g_war_cb);   /* télémétrie « guerres motivées » : RAZ par sim */
+    g_pil_events=0; g_pil_value=0.0; g_pil_target=0.0; g_enslaved_souls=0;   /* télémétrie « pillage réel » (LOT P) : RAZ par sim */
     for (int c=0;c<SCPS_MAX_COUNTRY;c++) d->suzerain[c]=-1;   /* tous libres au départ */
     for (int r=0;r<SCPS_MAX_REG;r++)     d->occupier[r]=-1;   /* aucune région occupée */
     d->fronde_suz=-1; d->fronde_lead=-1; d->fronde_rng=0x9E3779B9u;
@@ -953,8 +968,16 @@ static void settle_transfer(DiploState *d, World *w, WorldEconomy *econ, WorldLe
     legitimacy_on_conquest(wl, region);                 /* L au plancher, intégration à zéro */
     int dst=-1, cp=w->country[winner].capital_prov;
     if (cp>=0 && cp<w->n_provinces) dst=w->province[cp].region;
-    diplo_pillage_region(econ, region, dst);            /* saccage : or+production → capitale */
-    diplo_enslave_capture(w, econ, winner, region, winner_enslaves);  /* §4c : gate = TECH_ESCLAVAGE */
+    /* LOT P (2026-07-07) — PILLAGE UNIFIÉ : les DEUX effets d'un sac (esclavage +
+     * pillage-valeur) accompagnent ENSEMBLE l'événement, gatés UNE FOIS par la
+     * fraîcheur cross-temps (diplo_pillage_fresh) — l'esclavage ne pose plus SON
+     * PROPRE pillage_cd (retiré de diplo_enslave_capture), donc l'ordre des deux
+     * appels ne bloque plus l'un par l'autre. `loser` = la victime, passée
+     * EXPLICITEMENT à diplo_pillage_region (region[].owner a DÉJÀ basculé au
+     * gagnant quelques lignes plus haut). */
+    if (diplo_pillage_fresh(econ, region))
+        diplo_enslave_capture(w, econ, winner, region, winner_enslaves);  /* §4c : gate = TECH_ESCLAVAGE/éthos */
+    diplo_pillage_region(econ, region, dst, loser);     /* saccage : 20% du revenu annuel → capitale */
     d->occupier[region] = -1;                           /* possédée : ce n'est plus une occupation */
 }
 /* territoire PEUPLÉ possédé par cid — compté à la PROVINCE (la vérité de propriété
@@ -1066,13 +1089,37 @@ int diplo_settle(DiploState *d, World *w, WorldEconomy *econ, WorldLegitimacy *w
  * des deux qui frappe en premier). */
 #define PILLAGE_COOLDOWN_Y 5.0f    /* 1 saccage / 5 ans / province (note utilisateur) */
 
+/* LOT P (2026-07-07) — PILLAGE UNIFIÉ (règle joueur : « Piraterie, raids, tout type
+ * d'occupation = pillage »). `diplo_pillage_fresh` : lecture PARTAGÉE — la province
+ * (grain agrégat région→province représentative) a-t-elle échappé à un sac RÉCENT
+ * (pillage_cd épuisé) ? L'APPELANT s'en sert pour gater ENSEMBLE l'esclavage et le
+ * pillage-valeur d'un MÊME évènement (settle_transfer, occupation-capture scps_sim.c) —
+ * avant LOT P, les deux fonctions posaient/lisaient le MÊME pillage_cd chacune en
+ * interne : appelées à la suite (même tick), la PREMIÈRE posait le cooldown et la
+ * SECONDE se voyait bloquée par lui — un « sac » ne rendait donc JAMAIS les deux
+ * effets (or/matière ET captifs), seulement celui qui s'exécutait en premier. La
+ * fraîcheur cross-TEMPS (province déjà sac(c)agée il y a <5 ans, guerre qui dure)
+ * reste vérifiée UNE SEULE FOIS, avant les deux sous-appels. */
+bool diplo_pillage_fresh(const WorldEconomy *econ, int region){
+    if (!econ || region<0 || region>=econ->n_regions) return false;
+    int pid=econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return false;
+    return econ->prov[pid].pillage_cd <= 0.f;
+}
+
 /* ---- guerre : ESCLAVAGE (§4c) — déporter la population prise ----------- *
- * GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Clanique) : l'appelant
- * passe `enslaves` = l'empire a-t-il l'Économie servile débloquée. La tech circule
- * avec les peuples (orpheline) → ce sont les Claniques et ceux qui les ont absorbés. */
-long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves){
+ * GATE = la TECH d'asservissement (TECH_ESCLAVAGE, signature Clanique) OU l'éthos
+ * conquérant (Dominateur/Honneur — `can_enslave` résolu par l'appelant, cf.
+ * econ_country_can_enslave) : l'appelant passe `enslaves`. LOT P (2026-07-07) : le
+ * gate `pillage_cd` INTERNE (LOT 4) est RETIRÉ d'ici — il empêchait un double-sac
+ * fall→règlement dans LA MÊME guerre, mais bloquait aussi mutuellement
+ * diplo_pillage_region quand les deux tombent dans LE MÊME appel (règle joueur : les
+ * DEUX doivent désormais toujours accompagner un même évènement de sac). La
+ * fraîcheur cross-temps est vérifiée par l'APPELANT via diplo_pillage_fresh, UNE FOIS,
+ * avant d'invoquer enslave_capture ET pillage_region ensemble. */
+long diplo_enslave_capture(const World *w, WorldEconomy *econ, int conqueror, int region, bool enslaves){
     if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG] enslave_capture appelé conqueror=%d region=%d enslaves=%d\n",conqueror,region,(int)enslaves);
-    if (!enslaves) return 0;                                          /* société sans l'Économie servile */
+    if (!enslaves) return 0;                                          /* société sans l'Économie servile/éthos conquérant */
     if (conqueror<0||conqueror>=w->n_countries||region<0||region>=econ->n_regions) return 0;
     int cp=w->country[conqueror].capital_prov;
     int crr=(cp>=0&&cp<w->n_provinces)? w->province[cp].region : -1;
@@ -1082,21 +1129,12 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
      * provinces représentatives source (prise) et destination (cœur du conquérant). */
     int spid=econ_region_rep_province(econ, region), dpid=econ_region_rep_province(econ, crr);
     if (spid<0||spid>=econ->n_prov||dpid<0||dpid>=econ->n_prov) return 0;
-    /* LOT 4 — ANTI-DOUBLE-SAC : le SAC (capture d'esclaves) peut désormais être
-     * déclenché À LA CHUTE (scps_sim.c, siège réussi) EN PLUS du règlement de paix
-     * (settle_transfer, appel historique) — la MÊME région pourrait tomber puis se
-     * régler dans la même guerre. `pillage_cd` (posé par diplo_pillage_region, le
-     * butin final au règlement) sert de GARDE PARTAGÉE : une province déjà sac(c)agée
-     * récemment (fall OU règlement) ne l'est pas deux fois. Le repli existant
-     * (diplo_demo §9 : province fraîche, pillage_cd=0 par défaut) est INCHANGÉ. */
-    { int gpid=econ_region_rep_province(econ, region);
-      if (gpid>=0 && gpid<econ->n_prov && econ->prov[gpid].pillage_cd > 0.f) return 0; }
     ProvincePop *src=&econ->prov[spid].pop, *dst=&econ->prov[dpid].pop;
     /* les captifs sortent du plus GROS groupe de la province prise. */
     int gi=-1; long best=0;
     for (int i=0;i<src->n_groups;i++) if (src->groups[i].count>best){ best=src->groups[i].count; gi=i; }
     if (gi<0){ if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG]   -> gi<0 (src n_groups=%d)\n",src->n_groups); return 0; }  /* province non groupée → rien à déporter ici */
-    long captives=(long)((float)src->groups[gi].count*tune_f("SLAVE_FRACTION", 0.08f));
+    long captives=(long)((float)src->groups[gi].count*tune_f("SLAVE_FRACTION", 0.05f));
     if (captives<=0) return 0;
     /* le cœur doit DÉJÀ être représenté en groupes : injecter dans une région
      * mono-groupe (n_groups=0) masquerait sa population native (repli ignoré dès
@@ -1131,50 +1169,78 @@ long diplo_enslave_capture(World *w, WorldEconomy *econ, int conqueror, int regi
     src->groups[gi].count-=moved;
     if (src->groups[gi].count<=0){ src->groups[gi]=src->groups[src->n_groups-1]; src->n_groups--; }
     dpe->strata[CLASS_SLAVE].pop += (float)moved;
-    /* LOT 4 — la CAPTURE compte comme un SAC : pose le MÊME cooldown que
-     * diplo_pillage_region (pillage_cd) pour que le duo fall→règlement, dans la
-     * même guerre, ne déporte/ne pille pas deux fois la même récolte de population.
-     * `settle_transfer` appelle pillage AVANT enslave (l'ordre existant) donc si
-     * pillage_region a déjà posé le cooldown, on n'arrive même plus ici (guardé plus
-     * haut) — ce set couvre le cas symétrique : capture d'abord (à la chute), pillage
-     * final ensuite (au règlement) SAUTE alors sagement (déjà sac(c)agée). */
-    { int spid2=econ_region_rep_province(econ, region);
-      if (spid2>=0 && spid2<econ->n_prov) econ->prov[spid2].pillage_cd = PILLAGE_COOLDOWN_Y; }
+    g_enslaved_souls += moved;   /* télémétrie « pillage réel » (LOT P) : âmes déportées */
+    /* LOT P (2026-07-07) : le pillage_cd n'est plus posé ICI — c'est désormais TOUJOURS
+     * diplo_pillage_region (accompagnant systématiquement ce sac, cf. settle_transfer et
+     * scps_sim.c) qui pose le marqueur anti-double-sac, une fois pour les deux effets. */
     if (getenv("SCPS_SLAVEDIAG")) fprintf(stderr,"[SLAVEDIAG]   -> moved=%ld captives=%ld src_gi_count_before=%ld dst_n_groups=%d\n",moved,captives,best,dst->n_groups);
     return moved;
 }
 
-/* ---- guerre : SACCAGE (§4) — dépouiller la province prise -------------- */
-/* PILLAGE_COOLDOWN_Y est désormais défini plus haut (partagé avec diplo_enslave_capture). */
-#define PILLAGE_GOLD_FRAC  0.6f    /* part du trésor provincial raflée d'un coup */
-#define PILLAGE_STOCK_FRAC 0.5f    /* ~6 mois de production en entrepôt, fondus en or */
-float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region){
+/* ---- guerre : SACCAGE (§4 → LOT P 2026-07-07) — dépouiller la province prise ---- *
+ * PILLAGE_COOLDOWN_Y est désormais défini plus haut (partagé avec diplo_enslave_capture).
+ * RÈGLE JOUEUR UNIFIÉE (verbatim) : « Piraterie, raids, tout type d'occupation = pillage » —
+ * la VALEUR d'un pillage est désormais 20 % du revenu ANNUEL de la victime
+ * (econ_country_tax_year — la MÊME référence que la membrane de décision, d_treasury_mois),
+ * jamais une fraction plate du stock/trésor local. L'ancien PILLAGE_GOLD_FRAC/
+ * PILLAGE_STOCK_FRAC (0.6 trésor + 0.5 stock, « fondu en or ») est RETIRÉ : un pays pauvre
+ * mais qui a beaucoup accumulé localement ne rendait pas ce qu'il DEVRAIT (son revenu),
+ * un pays riche à la province modeste rendait trop peu. */
+#define PILLAGE_INCOME_FRAC 0.20f   /* valeur du pillage = 20 % du revenu ANNUEL de la victime */
+
+/* diplo_pillage_value — le MOVER NU : transfère RÉELLEMENT (province→province) une
+ * valeur = PILLAGE_INCOME_FRAC × econ_country_tax_year(victim_cid), BORNÉE par ce qui
+ * existe VRAIMENT dans la province représentative de `region` (trésor d'abord — liquide
+ * — puis stock valorisé au prix courant pour COMBLER le reste) — zéro or/matière
+ * fantôme, « si possible » = jamais plus que ce qui est réellement là. Ne pose AUCUN
+ * cooldown : chaque appelant gère SON marqueur anti-répétition existant (pillage_cd
+ * pour le sac de siège/l'occupation ; raid_cd_days/balafre pour la course pirate —
+ * les mécanismes EXISTENT déjà, pas de 3e système). Partagée par TOUS les types
+ * d'agression (siège, occupation, raid côtier). */
+float diplo_pillage_value(WorldEconomy *econ, int region, int dst_region, int victim_cid){
     if (!econ || region<0 || region>=econ->n_regions) return 0.f;
-    RegionEconomy *re=&econ->region[region];        /* stock[]/price[] : LECTURE d'agrégat seulement */
-    /* RE-KEY PROVINCE : treasury/revolt_scar/pillage_cd sont PROVINCE-OWNED (charte règle 1) —
-     * region[region].<champ> est un DÉRIVÉ écrasé au prochain econ_tick ; route sur la province
-     * représentative (le GATE anti-re-saccage aussi, sinon un 2e appel dans le MÊME tick lirait
-     * l'ancien re->pillage_cd, jamais rafraîchi). ⚠ region[].stock N'EST PAS un store « resté au
-     * grain région » : c'est un REFLET reconstruit depuis prov[] — ici on ne fait que le LIRE
-     * (valorisation du butin) ; toute ÉCRITURE de stock passe par econ_region_stock_add. */
     int pid=econ_region_rep_province(econ, region);
     if (pid<0 || pid>=econ->n_prov) return 0.f;
     ProvinceEconomy *pp=&econ->prov[pid];
-    if (pp->pillage_cd > 0.f) return 0.f;          /* déjà dépouillée → plus rien à prendre */
-    float loot = PILLAGE_GOLD_FRAC * pp->treasury; /* l'or des coffres */
-    pp->treasury *= (1.f - PILLAGE_GOLD_FRAC);
-    for (int g=1; g<RES_COUNT; g++){               /* l'entrepôt RÉGIONAL, valorisé au prix courant */
-        /* RE-KEY : pris pour de VRAI (provinces) — l'or du butin suit le RÉEL, fin du
-         * robinet d'or sur stock fantôme (la vue seule se restaurait au mois suivant). */
-        float take = -econ_region_stock_add(econ, region, g, -(PILLAGE_STOCK_FRAC * re->stock[g]));
-        loot += take * re->price[g];
+    RegionEconomy   *re=&econ->region[region];      /* price[] : LECTURE d'agrégat seulement */
+    float target = tune_f("PILLAGE_INCOME_FRAC", PILLAGE_INCOME_FRAC)
+                 * fmaxf(0.f, econ_country_tax_year(victim_cid));
+    if (target<=0.f) return 0.f;                    /* victime sans revenu capturé (An-1 court) → rien */
+    float loot=0.f;
+    float gold = fminf(pp->treasury, target);        /* le trésor d'abord (le plus liquide) */
+    pp->treasury -= gold; loot += gold;
+    float remain = target - loot;
+    for (int g=1; g<RES_COUNT && remain>0.01f; g++){  /* puis le stock, valorisé, pour COMBLER */
+        float price=re->price[g]; if (price<=0.f) continue;
+        float want_qty = remain/price;
+        /* RE-KEY : pris pour de VRAI (provinces) — jamais plus que ce qui existe. */
+        float taken = -econ_region_stock_add(econ, region, g, -fminf(want_qty, re->stock[g]));
+        float val = taken*price;
+        loot += val; remain -= val;
     }
-    pp->revolt_scar = 1.0f;                         /* le sac CONVULSE : gel du développement */
-    pp->pillage_cd  = PILLAGE_COOLDOWN_Y;           /* ne pourra être re-saccagée avant ~5 ans */
     if (dst_region>=0 && dst_region<econ->n_regions && dst_region!=region){
         int dpid=econ_region_rep_province(econ, dst_region);
         if (dpid>=0 && dpid<econ->n_prov) econ->prov[dpid].treasury += loot;  /* fondu dans le trésor de l'occupant */
     }
+    g_pil_events++; g_pil_value+=(double)loot; g_pil_target+=(double)target;   /* télémétrie « pillage réel » */
+    return loot;
+}
+
+/* diplo_pillage_region — LE SAC (gate + CD) : wrapper de diplo_pillage_value au
+ * règlement de paix (settle_transfer) ET à l'occupation-capture (scps_sim.c) — 1×/5 ans/
+ * province (pillage_cd), convulse la province (revolt_scar au plancher : gel du
+ * développement). `victim_cid` = le pays DÉPOSSÉDÉ, résolu par l'APPELANT : au
+ * règlement, l'ownership a DÉJÀ basculé au vainqueur (econ_region_set_owner tourne
+ * avant), donc region[].owner ne le donne plus — on le passe explicitement (`loser`). */
+float diplo_pillage_region(WorldEconomy *econ, int region, int dst_region, int victim_cid){
+    if (!econ || region<0 || region>=econ->n_regions) return 0.f;
+    int pid=econ_region_rep_province(econ, region);
+    if (pid<0 || pid>=econ->n_prov) return 0.f;
+    ProvinceEconomy *pp=&econ->prov[pid];
+    if (pp->pillage_cd > 0.f) return 0.f;          /* déjà dépouillée → plus rien à prendre */
+    float loot = diplo_pillage_value(econ, region, dst_region, victim_cid);
+    pp->revolt_scar = 1.0f;                         /* le sac CONVULSE : gel du développement */
+    pp->pillage_cd  = PILLAGE_COOLDOWN_Y;           /* ne pourra être re-saccagée avant ~5 ans */
     return loot;
 }
 

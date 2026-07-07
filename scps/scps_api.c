@@ -1902,6 +1902,61 @@ int scps_player_disband(ScpsSim *s){
     PlayerCmd c = { CMD_DISBAND, { 0, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
 }
+/* LOT P (2026-07-07) — PILLER LA CÔTE : lecture PURE, miroir EXACT du gate au drain
+ * (CMD_RAID_COAST, scps_sim.c) — la piraterie reste un acte GRIS (pas de guerre
+ * exigée, comme la course pirate IA existante ; « pas d'allié/pacte » est le garde-
+ * fou explicite du joueur). */
+int scps_can_raid_coast(ScpsSim *s, int prov, int *reason_out){
+    if (reason_out) *reason_out = 1;
+    if (!s || !s->ready) return 0;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    WorldEconomy *econ = s->sim.econ;
+    if (prov<0 || prov>=econ->n_prov) return 0;
+    const ProvinceEconomy *pv = &econ->prov[prov];
+    if (!pv->colonized || !pv->coastal) { if (reason_out) *reason_out=1; return 0; }
+    int victim = pv->owner;
+    if (victim<0 || victim==p) { if (reason_out) *reason_out=2; return 0; }
+    if (diplo_status(s->sim.dp, p, victim)==DIPLO_ALLIED) { if (reason_out) *reason_out=2; return 0; }
+    if (diplo_trade_pact(s->sim.dp, p, victim)) { if (reason_out) *reason_out=2; return 0; }
+    int region = (prov<s->w->n_provinces) ? s->w->province[prov].region : -1;
+    if (region<0 || region>=econ->n_regions) { if (reason_out) *reason_out=1; return 0; }
+    /* CD lu sur la PROVINCE REPRÉSENTATIVE (celle que navy_mark_raided écrit) — la vue
+     * region[] n'est rafraîchie qu'au MOIS (piège de re-lecture périmée, cf. drain). */
+    { int rp=econ_region_rep_province(econ, region);
+      if (rp>=0 && rp<econ->n_prov && econ->prov[rp].raid_cd_days > 0.f) { if (reason_out) *reason_out=3; return 0; } }
+    if (p<0 || p>=SCPS_MAX_COUNTRY || s->sim.navy->n[p].hull[HULL_PIRATE]<=0) { if (reason_out) *reason_out=4; return 0; }
+    if (reason_out) *reason_out = 0;
+    return 1;
+}
+/* le CD RESTANT (jours, arrondi) de la province — pour afficher « côte balafrée — X j »
+ * (le rappel de la scar) sur le bouton grisé. 0 si raidable/hors-borne. */
+int scps_raid_cd_days(ScpsSim *s, int prov){
+    if (!s || !s->ready) return 0;
+    WorldEconomy *econ = s->sim.econ;
+    if (prov<0 || prov>=econ->n_prov) return 0;
+    int region = (prov<s->w->n_provinces) ? s->w->province[prov].region : -1;
+    if (region<0 || region>=econ->n_regions) return 0;
+    int rp=econ_region_rep_province(econ, region);
+    if (rp<0 || rp>=econ->n_prov) return 0;
+    float d = econ->prov[rp].raid_cd_days;
+    return (d>0.f) ? (int)(d+0.5f) : 0;
+}
+int scps_player_raid_coast(ScpsSim *s, int prov){
+    if (!s || !s->ready) return 0;
+    PlayerCmd c = { CMD_RAID_COAST, { prov, 0, 0, 0 } };
+    return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* BANC SEULEMENT (motif intertrade_debug_set_hub_of, lot A) : accorde des coques
+ * PIRATE au joueur sans passer par le chantier — le round-trip scps_api_demo
+ * (légal → enfilé → drainé → CD posé) exige une coque, or le monde de test n'a pas
+ * toujours un port assez riche pour en bâtir une dans la fenêtre du banc. Jamais
+ * appelé par le jeu/le binding. */
+void scps_debug_set_pirate_hulls(ScpsSim *s, int n){
+    if (!s || !s->ready) return;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    if (p<0 || p>=SCPS_MAX_COUNTRY) return;
+    s->sim.navy->n[p].hull[HULL_PIRATE] = (n<0)?0:n;
+}
 int scps_player_alloc_raw(ScpsSim *s, int region, int resource, int weight){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_ALLOC_RAW, { region, resource, weight, 0 } };

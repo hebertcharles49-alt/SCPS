@@ -290,17 +290,19 @@ int navy_colonize_tick(NavyState *ns, const World *w, WorldEconomy *econ, float 
 
 /* ════════════════════════════════════════════════════════════════════════
  * LA COURSE (brief coques) — le marchand recyclé en pirate chez les éthos
- * de razzia ; les eaux mortes deviennent des NIDS ; le raid prélève 1/10,
- * balafre 1 an, immunise 5 ans ; la saignée pèse sur les routes (marchands
- * +5 %/coque plafond 50 %, l'escorte chasse SANS plafond) ; la rancune
- * s'arme en CB. Le combat naval réutilise les OS des batailles-phases :
- * choc (2 j) · accalmie (1 j) · déroute · poursuite (prises).
+ * de razzia ; les eaux mortes deviennent des NIDS ; le raid pille — LOT P
+ * (2026-07-07, règle joueur unifiée) : 20% du revenu ANNUEL de la victime
+ * (diplo_pillage_value), RAZZIE 5% de sa pop si le pirate a le gate
+ * esclavagiste (tech OU éthos conquérant) — balafre 1 an, immunise 5 ans ;
+ * la saignée pèse sur les routes (marchands +5 %/coque plafond 50 %,
+ * l'escorte chasse SANS plafond) ; la rancune s'arme en CB. Le combat naval
+ * réutilise les OS des batailles-phases : choc (2 j) · accalmie (1 j) ·
+ * déroute · poursuite (prises).
  * ════════════════════════════════════════════════════════════════════════ */
 #include "scps_diplo.h"
 #include "scps_routes.h"
 #include "scps_culture.h"
 
-#define COURSE_RAID_TITHE   0.10f        /* 1/10 des stocks                   */
 #define COURSE_BALAFRE_J    365.f        /* la balafre : 1 an                 */
 #define COURSE_IMMUNITE_J   (5.f*365.f)  /* l'immunité : 5 ans (par PROVINCE) */
 #define COURSE_RAID_CD_J    240.f        /* cadence d'un commanditaire        */
@@ -347,9 +349,22 @@ static Ethos navy_ethos(const World *w, const WorldEconomy *econ, int cid){
     return (cr>=0&&cr<econ->n_regions)?econ->region[cr].culture.ethos:(Ethos)0;
 }
 
+long g_navy_raid_slaves=0;   /* LOT P (2026-07-07) : âmes razziées cumulées (course pirate) */
+
+/* LOT P (2026-07-07) — pose balafre+CD sur la province représentative de `region`,
+ * RÉUTILISÉ par la course IA (ci-dessous) et CMD_RAID_COAST (scps_sim.c). */
+void navy_mark_raided(WorldEconomy *econ, int region){
+    if (!econ || region<0 || region>=econ->n_regions) return;
+    int bpid=econ_region_rep_province(econ, region);
+    if (bpid>=0 && bpid<econ->n_prov){
+        econ->prov[bpid].balafre_days=COURSE_BALAFRE_J;   /* « côte balafrée » */
+        econ->prov[bpid].raid_cd_days=COURSE_IMMUNITE_J;
+    }
+}
+
 void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                       DiploState *dp, RouteNetwork *rn, uint32_t *rng,
-                      int player, float dt_days){
+                      const TechState *ts, int player, float dt_days){
     /* 0. la pression des routes se REPOSE chaque passe (re-mesurée ci-dessous) */
     for (int i=0;i<rn->n;i++) rn->route[i].pirate_press=0.f;
 
@@ -488,32 +503,23 @@ void navy_course_tick(NavyState *ns, const World *w, WorldEconomy *econ,
                     else { success=false; identified=(crs_f(rng)<0.85f); }   /* capturé, il DÉSIGNE */
                 } else identified=(crs_f(rng)<0.35f);
                 if (success && n->hull[HULL_PIRATE]>0){
-                    /* RE-KEY PROVINCE : balafre_days/raid_cd_days/treasury sont PROVINCE-OWNED
-                     * (charte règle 1, max/Σ-agrégés). stock[] N'EST PAS « resté au grain région,
-                     * intact » (le faux mantra qui a produit ce trou, Lot B 2026-07-07) : c'est un
-                     * REFLET reconstruit EN ENTIER depuis prov[] à chaque econ_aggregate_regions —
-                     * une écriture directe s'y évapore (≤ 30 j), la victime ne perdait RIEN
-                     * durablement et le butin-or se calculait sur cette matière fantôme (or créé
-                     * ex nihilo). Route par econ_region_stock_add (province représentative
-                     * d'abord, sœurs en débordement) ; loot se calcule sur le PRIS RÉEL (le delta
-                     * rendu par le helper), price[] reste une LECTURE agrégée légitime. */
-                    float loot=0.f;
-                    for (int g=1;g<RES_COUNT;g++){
-                        float want = re->stock[g]*COURSE_RAID_TITHE;
-                        if (want<=0.f) continue;
-                        float taken = -econ_region_stock_add(econ, best, g, -want);
-                        loot += taken*re->price[g];
-                    }
-                    int bpid=econ_region_rep_province(econ,best);
-                    if (bpid>=0 && bpid<econ->n_prov){
-                        econ->prov[bpid].balafre_days=COURSE_BALAFRE_J;   /* « côte balafrée » */
-                        econ->prov[bpid].raid_cd_days=COURSE_IMMUNITE_J;
-                    }
+                    /* LOT P (2026-07-07) — PILLAGE UNIFIÉ (règle joueur : « Piraterie,
+                     * raids, tout type d'occupation = pillage ») : la dîme COURSE_RAID_TITHE
+                     * (1/10 des stocks, une fraction PLATE) est REMPLACÉE par
+                     * diplo_pillage_value — 20% du revenu ANNUEL de la victime, transféré
+                     * RÉELLEMENT (province représentative, jamais de fantôme), BORNÉ par
+                     * ce qui existe. Le MOVER NU ne pose aucun cooldown : la course garde
+                     * SON PROPRE marqueur (raid_cd_days/balafre, posé juste après) — pas de
+                     * 3e système (cf. diplo_pillage_fresh au sac de siège/occupation).
+                     * dst_region = le meilleur port du pirate (le butin y est crédité). */
                     int hp=navy_best_port(w,econ,c);
-                    if (hp>=0){
-                        int hpp=econ_region_rep_province(econ,hp);
-                        if (hpp>=0 && hpp<econ->n_prov) econ->prov[hpp].treasury+=loot;   /* la course est un revenu d'ÉTAT */
-                    }
+                    float loot = diplo_pillage_value(econ, best, hp, victim);
+                    /* RAZZIA (esclavage §4c) — 5% de la pop de la province razziée
+                     * (SLAVE_FRACTION), SI le pirate a le gate esclavagiste (tech OU éthos
+                     * conquérant — miroir econ_country_can_enslave, comme le sac de siège). */
+                    if (ts && econ_country_can_enslave(w, econ, &ts[c], c))
+                        if (diplo_enslave_capture(w, econ, c, best, true) > 0) g_navy_raid_slaves++;
+                    navy_mark_raided(econ, best);   /* balafre+CD (partagé avec CMD_RAID_COAST) */
                     n->raids_done++; n->loot_gold+=loot;
                     if (identified && victim>=0) diplo_pirate_grief(dp,victim,c,COURSE_GRIEF_RAID);
                 } else if (identified && victim>=0)
