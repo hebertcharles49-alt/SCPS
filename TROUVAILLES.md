@@ -521,3 +521,82 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - Le commentaire menteur (`scps_diplo.c:1153/1157`, `diplo_pillage_region`) reste à corriger — code déjà bon, texte à jour uniquement.
 - Site 2 (Merveille) n'a aucune exercice en chronique (player-only) : la seule preuve vivante est le banc `endgame_demo` C6 (`ci1 < ci0` après tick) — si un futur agent câble un chemin IA/chronique vers `endgame_start_wonder`, revérifier que la consommation réelle ne cale pas le chantier plus souvent que voulu (le rare peut manquer, c'est le coût VOULU, mais mesurer avant de juger).
 - Aucune borne/cooldown proposée sur le raid pirate (site 4) : la mission demandait de signaler seulement si le raid réel déséquilibre le monde ; mesuré SAIN sur seed 9/200 ans, pas de spirale de famine côtière observée — à re-vérifier sur un sweep plus large si un futur agent en doute.
+## 2026-07-07 — Lot V assets dans l'eau
+**Découvertes** :
+- **CANOPÉE — les "extras" du cœur de peuplement ne testaient AUCUNE eau** (`overlay.gd:_build_dressing`,
+  bloc `for e in range(extra)`) : le VOTE DE VOISINAGE (3 échantillons à ±3 cellules, `hits`) sert à
+  lisser les bords de biome bruités et décide combien d'individus EN PLUS planter (jusqu'à 39 au cœur),
+  chacun offsetté de `(_h1(eb)-0.5)*7.0` (±3.5 cellules) depuis l'ancre — cet offset n'était vérifié QUE
+  contre la clairière des bourgs et la rivière (`_near_river`), JAMAIS contre la mer/le lac
+  (`LAYER_WATER`). Sur une côte/île étroite (fréquent depuis lot W : archipels, mers intérieures), un
+  arbre du cœur forestier plante donc ses "extras" en pleine mer. Preuve visuelle nette : seed 11 (mer
+  intérieure), une forêt bordant un lac laissait ~15-20 arbres flotter SUR l'eau (`v_seed11_lake_before.png`
+  vs `v_seed11_lake_after.png`, diff 20k px `v_seed11_lake_diff.png` — tous alignés sur le pourtour du lac).
+  **Second trou, plus subtil** : le PLACEMENT PRIMAIRE lui-même n'était pas à l'abri — `bhit` (le biome
+  "voté") peut être établi par un SEUL des 3 échantillons décalés (offsets fixes `[3,1]`/`[-2,3]`), même
+  si l'ANCRE (px,py) — où l'arbre est réellement planté (fx,fy ≈ px,py) — est déjà de l'eau. Le vote
+  prouve qu'UN point à ≤4.24 cellules est forêt, jamais que le point de pose l'est.
+- **URBANISTE (`_build_town`) — le PLAN ne vérifiait l'eau qu'à l'ANCRE (`ctr`, garanti sec par
+  `_find_seat`)** : tout le reste du plan (rangs arrière de maisons ∝ `sd` jusqu'à ~1.4, ruelles, spirale
+  dorée pour les hameaux, landmark, LANIÈRES DE CHAMPS à `fbase+1.5*fh` — pouvant atteindre 9-10 cellules
+  du centre pour un gros bourg —, tours/portes d'enceinte au rayon `wrad`, moulin à vent au-delà du champ,
+  arbres isolés "la VIE") est posé par pure GÉOMÉTRIE relative à `ctr`/`bc`/`org`, sans jamais retester
+  l'eau à la position FINALE. `SEAT_SEA_INLAND`=4 cellules de retrait ne suffit pas à couvrir un rayon de
+  bourg de tier 4-7 ou une lanière de champ — sur une presqu'île/île étroite, ces éléments périphériques
+  débordent en mer. `_region_citymax`/`_max_dry_size`/`_nearest_sea_dir` (calculés dans `_build_anchors`)
+  ne sont PAS lus par `_build_town` — c'est un mécanisme MORT pour l'urbaniste actuel (seul
+  `_region_anchor`, pas `_region_citymax`, sert encore, pour les routes).
+- **Roads/bridges/dressing simple : DÉJÀ CORRECTS** — `_chaikin_safe`/`_smooth_resample_road` testent déjà
+  `LAYER_WATER` (mer+lac, pas seulement mer) + rivière à CHAQUE point lissé ; `_try_place_dress` (marque de
+  terrain simple, sans clones) resample le biome À la position jittée finale (auto-cohérent) ; les easter
+  eggs (serpent/épave/lapin) testent le biome à leur propre point de pose. Aucun changement nécessaire là.
+- **Le "faux positif" qui a coûté le plus de temps** : un immense aplat vert-bleuté avec une grille RÉGULIÈRE
+  de taches sombres (seed 9, région capitale) ressemblait à s'y méprendre à des assets plantés en pleine
+  mer intérieure. Diagnostic par élimination (désactiver canopée+dressing → persiste ; désactiver le lavis
+  politique → persiste ; visualiser `river_map` brut → ~0 ; visualiser `biome_at(cell)` brut → **BLEU PUR
+  = MARAIS (is_wetland), pas de l'eau (is_water) !**) : ce n'est PAS un lac, c'est un immense MARAIS
+  (biome 15), et la grille observée est le SYMBOLE CARTOGRAPHIQUE de marais du shader
+  (`iso_antique.gdshader` : `rows = sin(iso.y*0.9+...)` × `dash = sin(iso.x*1.7+...)`, tirets décalés
+  rangée/rangée) — qui fonctionne exactement comme conçu, juste inhabituellement visible parce que ce
+  marais-ci est démesurément grand (nouvel archétype worldgen). AUCUN fix nécessaire ici, et surtout
+  aucun fichier C/shader à toucher pour cette fausse piste — reconnu et abandonné après ~6 tests A/B ciblés.
+**Pièges** :
+- **Le worktree n'a pas de godot-cpp ni de DLL** : `robocopy` depuis un autre worktree DÉJÀ construit
+  (`SCPS-wt-W`, 176 Mo, `.a` + `.dll` inclus) est bien plus rapide que rebuild from scratch ; scons
+  ensuite recompile SEULEMENT les objets moteur (`scps_*.c`) + le binding (`src/*.cpp`), pas godot-cpp.
+  Invocation : `MSYSTEM=MINGW64 bash -lc 'cd .../godot && export PROCESSOR_ARCHITECTURE=AMD64 && scons
+  platform=windows use_mingw=yes target=template_debug -j4'`.
+- **`.godot/` gitigné** : sans passe d'import (`Godot --headless --path godot/project --import`), le
+  binding GDExtension n'est pas résolu même DLL en place. Import produit des warnings BÉNINS
+  ("Condition p_position > length", seek sur des PNG sheet) — ignorer, `[ DONE ] reimport` suffit.
+- **`shot_parch` ne prend PAS `cx=`/`cy=` en plus de `cap=1`** : passer les deux fait IGNORER `cap=1`
+  (l'arg explicite écrase le défaut capitale). Pour retrouver des coordonnées MONDE à partir d'un repère
+  visuel sur un fit, il faut soit cross-référencer un autre zoom déjà capturé, soit accepter le
+  tâtonnement — pas de moyen direct de lire `cx,cy` de la capitale sans une sonde dédiée.
+- **Godot/Sim NE se relance PAS proprement d'un run à l'autre du même process, mais chaque invocation
+  CLI est un process FRAIS** — donc pas de souci de fuite intersim ici (contrairement au moteur C
+  headless) ; en revanche `_town_cache`/`_dressing`/`_canopy_batches` sont des caches PAR-WORLD
+  (rebâtis au `generated` signal) — un simple redraw ne suffit pas à re-tester une correction, il faut
+  bien régénérer (`Sim.regenerate`) pour que `_build_dressing`/`_build_town` retournent.
+- **`git stash`/`git stash pop` marche bien pour A/B rapide** sur un seul fichier modifié, plus rapide
+  qu'un deuxième worktree, pour comparer avant/après sans dupliquer l'environnement Godot+DLL.
+**Restes** :
+- **Le MUR D'ENCEINTE des cité-états (`arcs`, la polyligne continue du rempart)** reste NON gardé — j'ai
+  gardé tours/portes (`_pull_dry` individuel) mais PAS l'arc lui-même (le retirer point-par-point
+  déformerait le cercle en un contour incohérent avec des tours qui ne seraient plus DESSUS). Risque
+  résiduel : sur une presqu'île très étroite avec un GROS cité-état (`wrad` large), le rempart peut encore
+  mordre un peu d'eau. Non observé dans les 4 graines testées (les cité-états rencontrées avaient assez
+  de terre), mais pas prouvé absent en général.
+- **Le MOULIN À EAU / l'ENTREPÔT / le PHARE (près des quais)** sont volontairement LAISSÉS TELS QUELS —
+  ils sont censés toucher/longer l'eau (quai, roue à aube, rivage) ; les distinguer d'un vrai débordement
+  demanderait une marge fine (garder à 0-1 cellule du bord, pas au milieu) — non fait, jugé hors du
+  problème rapporté (aucun cas observé de ces bâtiments franchement DANS l'eau, seulement à son bord,
+  ce qui est le design).
+- **`_region_citymax`/`_max_dry_size`/`_nearest_sea_dir`** restent un mécanisme à moitié mort (calculé,
+  jamais lu par l'urbaniste) — pourrait servir à borner `wrad`/`n` (taille du bourg) À LA SOURCE plutôt
+  que de rattraper après coup ; pas touché ici (`_pull_dry` suffit au problème rapporté, refactor plus
+  profond laissé en réserve).
+- Captures avant/après dans `godot/project/*.png` (gitignorées, non committées) : `v_seed11_lake_before/
+  after/diff.png` (preuve la plus nette), `v_seed9_z3_before/after/diff.png` (canopée close-in, seed 9),
+  `v_seed3_pond_before/after/diff.png` (canopée + léger ajustement de plan de ville), `v_seed{9,11,42,3}_
+  fit_before/after.png` (balayage 4 graines demandé).
