@@ -244,17 +244,22 @@ void fragment() {
 			// ne fait que l'encrer.
 			float cf = texture(cliff_map, cw / map_size).r;
 			if (cf > 0.05) {
+				// (1) lavis ROCHEUX léger sur toute la bande — la lèvre de roche se lit
+				//     même au plan large (et sous une canopée clairsemée) sans aplat dur.
+				col = mix(col, vec3(0.55, 0.50, 0.44), cf * 0.26);
 				vec2 ce1 = vec2(1.4, 0.0);
 				vec2 ce2 = vec2(0.0, 1.4);
 				vec2 cgr = vec2(texture(cliff_map, (cw + ce1) / map_size).r - texture(cliff_map, (cw - ce1) / map_size).r,
 				                texture(cliff_map, (cw + ce2) / map_size).r - texture(cliff_map, (cw - ce2) / map_size).r);
 				float cgl = length(cgr);
 				if (cgl > 1e-4) {
+					// (2) hachures d'encre ⊥ côte (traits le long de la normale, espacés le
+					//     long du rivage) — translucides, jamais un aplat saturé.
 					vec2 ctan = vec2(-cgr.y, cgr.x) / cgl;                 // tangente à la côte
 					float ct = dot(cell, ctan);                            // abscisse LE LONG du rivage
 					float cph = texture(noise_tex, cell * 0.07 + vec2(4.2, 8.8)).r * 5.0;   // phase jittée (casse la régularité)
-					float tick = smoothstep(0.60, 0.92, sin(ct * 2.3 + cph));               // traits espacés ~2.7 cellules
-					col = mix(col, vec3(0.32, 0.28, 0.22), tick * cf * 0.34);               // encre brune translucide
+					float tick = smoothstep(0.45, 0.85, sin(ct * 2.3 + cph));               // traits espacés ~2.7 cellules
+					col = mix(col, vec3(0.30, 0.26, 0.20), tick * cf * 0.60);               // encre brune translucide
 				}
 			}
 		}
