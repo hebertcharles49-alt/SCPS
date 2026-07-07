@@ -19,17 +19,18 @@ const C_TEXT  := Color(0.88, 0.86, 0.82)
 const C_DIM   := Color(0.62, 0.60, 0.58)
 const C_TITLE := Color(0.86, 0.70, 0.42)
 
-# presets de TAILLE : nom → [n_empires, n_city_states]
+# presets de TAILLE : clé tr() (i18n/ui.csv) → [n_empires, n_city_states]
 const SIZES := [
-	["Minuscule (2)", 2, 4],
-	["Petit (4)",     4, 8],
-	["Normal (6)",    6, 12],
-	["Grand (8)",     8, 16],
-	["Énorme (10)",   10, 20],
-	["Gigantesque (12)", 12, 24],
+	["T_SIZE_0", 2, 4],
+	["T_SIZE_1", 4, 8],
+	["T_SIZE_2", 6, 12],
+	["T_SIZE_3", 8, 16],
+	["T_SIZE_4", 10, 20],
+	["T_SIZE_5", 12, 24],
 ]
-const HERITAGE_NAMES := ["Ésotérique", "Métallurgiste", "Mécaniste", "Adaptatif", "Agraire", "Clanique"]
-const ETHOS_NAMES := ["Dominateur", "Honneur", "Ordre", "Bureaucrate", "Mercantile", "Pacifiste"]
+# clés tr() — les noms rendus suivent la langue choisie aux Options
+const HERITAGE_KEYS := ["T_HERITAGE_0", "T_HERITAGE_1", "T_HERITAGE_2", "T_HERITAGE_3", "T_HERITAGE_4", "T_HERITAGE_5"]
+const ETHOS_KEYS := ["T_ETHOS_0", "T_ETHOS_1", "T_ETHOS_2", "T_ETHOS_3", "T_ETHOS_4", "T_ETHOS_5"]
 
 var _size_opt: OptionButton
 var _seed_spin: SpinBox
@@ -70,7 +71,7 @@ func _build_ui() -> void:
 	panel.add_child(root)
 
 	var title := Label.new()
-	title.text = "Nouvelle partie"
+	title.text = tr("T_NG_TITLE")
 	title.add_theme_font_size_override("font_size", 24)
 	title.add_theme_color_override("font_color", C_TITLE)
 	root.add_child(title)
@@ -86,37 +87,37 @@ func _build_ui() -> void:
 	world.add_theme_constant_override("separation", 6)
 	world.custom_minimum_size = Vector2(400, 0)
 	cols.add_child(world)
-	world.add_child(_section("Monde"))
+	world.add_child(_section(tr("T_NG_WORLD")))
 
 	var size_row := HBoxContainer.new()
-	var size_lab := Label.new(); size_lab.text = "Taille"; size_lab.custom_minimum_size = Vector2(150, 0)
+	var size_lab := Label.new(); size_lab.text = tr("T_NG_SIZE"); size_lab.custom_minimum_size = Vector2(150, 0)
 	size_lab.add_theme_color_override("font_color", C_TEXT)
 	size_row.add_child(size_lab)
 	_size_opt = OptionButton.new()
 	for s in SIZES:
-		_size_opt.add_item(String(s[0]))
+		_size_opt.add_item(tr(String(s[0])))
 	_size_opt.selected = 2   # Normal
 	_size_opt.item_selected.connect(func(_i): _rebuild_empire_list())
 	_size_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	size_row.add_child(_size_opt)
 	world.add_child(size_row)
 
-	# sliders 0..1 (clé, libellé)
+	# sliders 0..1 (clé worldgen, clé tr())
 	var SL := [
-		["world_age", "Âge du monde"],
-		["land_amount", "Terres / mer"],
-		["mountains", "Montagnes"],
-		["erosion", "Érosion"],
-		["temperature", "Température"],
-		["humidity", "Humidité"],
+		["world_age", "T_NG_AGE"],
+		["land_amount", "T_NG_LAND"],
+		["mountains", "T_NG_MOUNTAINS"],
+		["erosion", "T_NG_EROSION"],
+		["temperature", "T_NG_TEMP"],
+		["humidity", "T_NG_HUMID"],
 	]
 	for e in SL:
-		world.add_child(_make_slider(String(e[0]), String(e[1]), 0.0, 1.0, 0.5, 0.05))
+		world.add_child(_make_slider(String(e[0]), tr(String(e[1])), 0.0, 1.0, 0.5, 0.05))
 	# continents 1..8 (entier)
-	world.add_child(_make_slider("n_continents", "Continents", 1.0, 8.0, 6.0, 1.0))
+	world.add_child(_make_slider("n_continents", tr("T_NG_CONTINENTS"), 1.0, 8.0, 6.0, 1.0))
 
 	var seed_row := HBoxContainer.new()
-	var seed_lab := Label.new(); seed_lab.text = "Graine"; seed_lab.custom_minimum_size = Vector2(150, 0)
+	var seed_lab := Label.new(); seed_lab.text = tr("T_NG_SEED"); seed_lab.custom_minimum_size = Vector2(150, 0)
 	seed_lab.add_theme_color_override("font_color", C_TEXT)
 	seed_row.add_child(seed_lab)
 	_seed_spin = SpinBox.new(); _seed_spin.min_value = 0; _seed_spin.max_value = 999999; _seed_spin.value = 9
@@ -132,7 +133,7 @@ func _build_ui() -> void:
 	emp.add_theme_constant_override("separation", 6)
 	emp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(emp)
-	emp.add_child(_section("Empires (composez votre peuple et ceux des IA)"))
+	emp.add_child(_section(tr("T_NG_EMPIRES")))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.custom_minimum_size = Vector2(380, 380)
@@ -146,12 +147,12 @@ func _build_ui() -> void:
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 10)
 	root.add_child(foot)
-	var back_btn := Button.new(); back_btn.text = "Retour"
+	var back_btn := Button.new(); back_btn.text = tr("T_BACK")
 	back_btn.pressed.connect(func(): back.emit())
 	foot.add_child(back_btn)
 	var spacer := Control.new(); spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(spacer)
-	var go := Button.new(); go.text = "Lancer la partie"
+	var go := Button.new(); go.text = tr("T_NG_LAUNCH")
 	go.add_theme_font_size_override("font_size", 16)
 	go.pressed.connect(_on_lancer)
 	foot.add_child(go)
@@ -213,7 +214,7 @@ func _rebuild_empire_list() -> void:
 		var hb := HBoxContainer.new()
 		row.add_child(hb)
 		var name_lab := Label.new()
-		name_lab.text = ("Empire %d — Vous" % (slot + 1)) if slot == 0 else ("Empire %d — IA" % (slot + 1))
+		name_lab.text = (tr("T_NG_EMPIRE_YOU") % (slot + 1)) if slot == 0 else (tr("T_NG_EMPIRE_AI") % (slot + 1))
 		name_lab.add_theme_color_override("font_color", C_TITLE if slot == 0 else C_TEXT)
 		name_lab.custom_minimum_size = Vector2(120, 0)
 		hb.add_child(name_lab)
@@ -221,7 +222,7 @@ func _rebuild_empire_list() -> void:
 		summary.add_theme_color_override("font_color", C_DIM)
 		summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		hb.add_child(summary)
-		var btn := Button.new(); btn.text = "Composer"
+		var btn := Button.new(); btn.text = tr("T_NG_COMPOSE")
 		var s := slot
 		btn.pressed.connect(func(): _on_compose(s))
 		hb.add_child(btn)
@@ -236,10 +237,10 @@ func _refresh_row(slot: int) -> void:
 	if _compos.has(slot):
 		var c = _compos[slot]
 		var h: int = int(c["heritage"]); var e: int = int(c["ethos"])
-		summary.text = "%s · %s" % [HERITAGE_NAMES[h] if h < 6 else "?", ETHOS_NAMES[e] if e < 6 else "?"]
+		summary.text = "%s · %s" % [tr(HERITAGE_KEYS[h]) if h < 6 else "?", tr(ETHOS_KEYS[e]) if e < 6 else "?"]
 		summary.add_theme_color_override("font_color", C_TEXT)
 	else:
-		summary.text = "Aléatoire"
+		summary.text = tr("T_NG_RANDOM")
 		summary.add_theme_color_override("font_color", C_DIM)
 
 

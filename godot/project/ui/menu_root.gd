@@ -6,6 +6,7 @@ extends Control
 signal game_started   ## une partie vient d'être lancée → le shell se referme
 
 const NewGame = preload("res://ui/new_game_panel.gd")
+const Options = preload("res://ui/options_panel.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const VKit = preload("res://ui/vkit.gd")
 
@@ -28,19 +29,42 @@ var _load_msg: Label = null
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	# Options D'ABORD : boot() applique la config sauvée (locale + table moteur +
+	# plein écran) AVANT que le moindre tr() ne pose un texte.
+	_options = Options.new()
+	_options.name = "OptionsPanel"
+	_options.boot()
 	_build_bg()
+	add_child(_options); _options.hide()
+	_options.back.connect(func(): _show(_main))
+	_options.language_changed.connect(_on_language_changed)
 	_build_main()
+	_spawn_new_game()
+	_load = _build_load()
+	add_child(_load); _load.hide()
+	_show(_main)
+
+func _spawn_new_game() -> void:
 	_new_game = NewGame.new()
 	_new_game.name = "NewGamePanel"
 	add_child(_new_game)
 	_new_game.hide()
 	_new_game.back.connect(func(): _show(_main))
 	_new_game.launched.connect(_on_launched)
-	_options = _build_simple("Options", "Réglages à venir (langue, vitesse par défaut…).\nLa surcharge de langue se fait déjà via scps_lang.txt.")
-	add_child(_options); _options.hide()
+
+## Les textes tr() sont posés à la CONSTRUCTION : au changement de langue on
+## rebâtit le shell (le panneau Options se retraduit lui-même ; les panneaux en
+## jeu suivent à leur prochain rafraîchissement).
+func _on_language_changed() -> void:
+	for p in [_main, _new_game, _load]:
+		if p != null:
+			p.visible = false
+			p.queue_free()
+	_build_main()
+	_spawn_new_game()
 	_load = _build_load()
 	add_child(_load); _load.hide()
-	_show(_main)
+	_show(_options)   # on reste sur l'écran Options
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), C_BG, true)
@@ -98,7 +122,7 @@ func _build_main() -> void:
 	col.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "Simulateur de civilisations"
+	sub.text = tr("T_MENU_SUBTITLE")
 	sub.add_theme_color_override("font_color", C_DIM)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(sub)
@@ -119,10 +143,10 @@ func _build_main() -> void:
 
 	col.add_child(_spacer(20))
 
-	col.add_child(_menu_button("Jouer", func(): _show(_new_game)))
-	col.add_child(_menu_button("Charger", func(): _show(_load)))
-	col.add_child(_menu_button("Options", func(): _show(_options)))
-	col.add_child(_menu_button("Quitter", func(): get_tree().quit()))
+	col.add_child(_menu_button(tr("T_MENU_PLAY"), func(): _show(_new_game)))
+	col.add_child(_menu_button(tr("T_MENU_LOAD"), func(): _show(_load)))
+	col.add_child(_menu_button(tr("T_MENU_OPTIONS"), func(): _show(_options)))
+	col.add_child(_menu_button(tr("T_MENU_QUIT"), func(): get_tree().quit()))
 
 
 func _menu_button(txt: String, cb: Callable) -> Button:
@@ -135,37 +159,6 @@ func _menu_button(txt: String, cb: Callable) -> Button:
 
 func _spacer(h: int) -> Control:
 	var c := Control.new(); c.custom_minimum_size = Vector2(0, h); return c
-
-
-func _build_simple(title_txt: String, body: String) -> Control:
-	var panel := Control.new()
-	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.add_child(center)
-	var box := PanelContainer.new()
-	box.custom_minimum_size = Vector2(520, 0)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = C_PANEL; sb.border_color = C_EDGE; sb.set_border_width_all(2)
-	sb.set_corner_radius_all(6); sb.set_content_margin_all(20)
-	box.add_theme_stylebox_override("panel", sb)
-	center.add_child(box)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 12)
-	box.add_child(col)
-	var t := Label.new(); t.text = title_txt
-	t.add_theme_font_size_override("font_size", 24); t.add_theme_color_override("font_color", C_TITLE)
-	col.add_child(t)
-	var l := Label.new(); l.text = body
-	l.add_theme_color_override("font_color", C_TEXT); l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(480, 0)
-	col.add_child(l)
-	var back := Button.new(); back.text = "Retour"
-	back.pressed.connect(func(): _show(_main))
-	col.add_child(back)
-	return panel
 
 
 ## ── CHARGER / SAUVEGARDER ──────────────────────────────────────────────────
@@ -187,7 +180,7 @@ func _build_load() -> Control:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 10)
 	box.add_child(col)
-	var t := Label.new(); t.text = "Charger / Sauvegarder"
+	var t := Label.new(); t.text = tr("T_LOADSAVE_TITLE")
 	t.add_theme_font_size_override("font_size", 24); t.add_theme_color_override("font_color", C_TITLE)
 	col.add_child(t)
 	_load_box = VBoxContainer.new()
@@ -195,7 +188,7 @@ func _build_load() -> Control:
 	col.add_child(_load_box)
 	_load_msg = Label.new(); _load_msg.add_theme_color_override("font_color", C_DIM)
 	col.add_child(_load_msg)
-	var back := Button.new(); back.text = "Retour"
+	var back := Button.new(); back.text = tr("T_BACK")
 	back.pressed.connect(func(): _show(_main))
 	col.add_child(back)
 	return panel
@@ -206,7 +199,7 @@ func _refresh_load() -> void:
 	for c in _load_box.get_children():
 		c.queue_free()
 	if Sim.world == null or not Sim.world.has_method("save_slots"):
-		var l := Label.new(); l.text = "Moteur indisponible (libscps)."
+		var l := Label.new(); l.text = tr("T_ENGINE_MISSING")
 		l.add_theme_color_override("font_color", C_DIM)
 		_load_box.add_child(l)
 		return
@@ -216,15 +209,15 @@ func _refresh_load() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 		var lab := Label.new()
-		lab.text = ("Emplacement %d — %s" % [slot, String(info["line"])]) if used else ("Emplacement %d — vide" % slot)
+		lab.text = (tr("T_SLOT_LINE") % [slot, String(info["line"])]) if used else (tr("T_SLOT_EMPTY") % slot)
 		lab.add_theme_color_override("font_color", C_TEXT if used else C_DIM)
 		lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(lab)
-		var save_btn := Button.new(); save_btn.text = "Sauvegarder"
+		var save_btn := Button.new(); save_btn.text = tr("T_SAVE")
 		var s1 := slot
 		save_btn.pressed.connect(func(): _on_save(s1))
 		row.add_child(save_btn)
-		var load_btn := Button.new(); load_btn.text = "Charger"; load_btn.disabled = not used
+		var load_btn := Button.new(); load_btn.text = tr("T_LOAD"); load_btn.disabled = not used
 		var s2 := slot
 		load_btn.pressed.connect(func(): _on_load(s2))
 		row.add_child(load_btn)
@@ -233,7 +226,7 @@ func _refresh_load() -> void:
 func _on_save(slot: int) -> void:
 	if Sim.world == null: return
 	var ok: bool = Sim.save_game(slot)
-	_load_msg.text = ("Partie sauvegardée (emplacement %d)." % slot) if ok else "Échec de la sauvegarde."
+	_load_msg.text = (tr("T_SAVED_OK") % slot) if ok else tr("T_SAVE_FAIL")
 	_refresh_load()
 
 func _on_load(slot: int) -> void:
@@ -245,7 +238,7 @@ func _on_load(slot: int) -> void:
 		Sim.game_on = true  # la partie EST commencée : alertes & popups s'éveillent
 		game_started.emit()
 	else:
-		_load_msg.text = "Chargement impossible (emplacement vide ou version différente)."
+		_load_msg.text = tr("T_LOAD_FAIL")
 
 
 func _show(which: Control) -> void:

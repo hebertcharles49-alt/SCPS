@@ -38,6 +38,11 @@ ECUtilities="*uid://cip7vyqyn45sf"
 
 enabled=PackedStringArray("res://addons/easy_charts/plugin.cfg", "res://addons/medusa/plugin.cfg")
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://i18n/ui.fr.translation", "res://i18n/ui.en.translation")
+locale/fallback="fr"
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
