@@ -645,7 +645,8 @@ void scps_map_endgame_variant(ScpsSim *s, uint8_t *dst){
         const Cell *c = scps_cellc(s->w, x, y);
         int r = c->region;
         float v = (r>=0 && r<n_regions) ? inten[r] : 0.f;
-        if(v < 0.f) v = 0.f; if(v > 1.f) v = 1.f;
+        if(v < 0.f) v = 0.f;
+        if(v > 1.f) v = 1.f;
         dst[y*w+x] = (uint8_t)(v * 255.f + 0.5f);
     }
 }

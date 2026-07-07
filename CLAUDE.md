@@ -1904,6 +1904,26 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   copie du FR** (~165/364 entrées) — le switch est branché, l'anglais moteur réel reste une session de
   remplissage. Doc : `docs/I18N.md`. Gates : lang-check inchangé · golden IDENTIQUE · scons 0 warning ·
   menu_audit OK · probe neuf `lang_audit` (round-trip 0→1→0, menu rend « Play » sous options en).
+- **MEMBRANE HONNÊTE lot M (2026-07-07) — chantier 2 de l'audit, 6 fixes display/read-only** :
+  (1) **FIN_SANG visible** : `RFIN_SANG` appendu à FinReadout + case dans `endgame_readout` → le
+  bandeau nomme la 5e fin et l'ÉPILOGUE s'ouvre enfin dessus (le Godot portait déjà la clé 5 partout).
+  (2) **Construction honnête** (défaut HIGH #2) : `scps_build_legal_ex(region,edifice,*reason)` =
+  miroir en LECTURE des gates d'agency_build_acct dans le MÊME ordre (géo · palier · file F5 ·
+  MATIÈRE via intertrade_market_avail_ex · or) → bindé → construction_panel grise (✦ réservé au
+  verrou tech), raison au survol, et le flash re-vérifie AU CLIC — « ordre émis » ne peut plus mentir.
+  ⚠ deux MIROIRS à re-synchroniser si agency/intertrade changent (documenté TROUVAILLES). (3) **Prix
+  affichés** : `scps_manuf_cost` (MANUF_BUILD_COST×ipm) sur les boutons Bâtir ; `scps_slave_prices`
+  (spread achat ×2 / vente ×1 recomposé des lecteurs publics — scps_intertrade.c NON touché, possédé
+  par le lot A) dans le tiroir servile. (4) **Noms de MINISTRE** dans les 3 events de trahison :
+  gabarits « %s » + latch display-only `g_title_sc` (pointeur re-posé chaque world_events_tick,
+  JAMAIS sérialisé) → cand_name du siège ; repli « Le savant/notable/marchand » si vacant. (5)
+  codex.gd:47 corrigé (le curseur de paie EXISTE). (6) **LETTRÉ RELIGIEUX jouable** : readers neufs
+  `scps_religion_scholar_expected` + `_role_name/_ability` (mots résolus) + section Lettré dans
+  religion_panel (état, rôle prévu par crédo, Recruter gaté). Gates : golden IDENTIQUE · determinism
+  STABLE · smoke 7/7 · readout 27/27 · events 119/119 · scps_api_demo 170/170 · religion 13/13 ·
+  scons 0 warning · probe neuf **membrane_audit** (MEMBRANE AUDIT OK : build_legal cohérent j0/j+60,
+  manuf_cost, spread, lettré bout-en-bout, fin==fin_raw). Au passage : le warning pré-existant
+  scps_api.c:648 (-Wmisleading-indentation) corrigé — 0 warning redevient VRAI.
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
 - **On lit des coordonnées, on n'assigne jamais de modificateur** : un effet passe par les entrées du moteur (K, P, H…), jamais par un bonus plat.
