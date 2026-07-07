@@ -228,5 +228,5 @@ func _act(verb: String) -> void:
 	if ok and verb == "war":
 		Sound.play("moment_war_horn")
 	elif not ok:
-		Sound.play("ui_deny")
+		Sound.play("ui_click")
 	_refresh()

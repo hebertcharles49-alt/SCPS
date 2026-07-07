@@ -275,6 +275,7 @@ func _gui_input(event: InputEvent) -> void:
 	if idx < 0 or idx >= st.size():
 		return
 	accept_event()
+	Sound.play("ui_click")   # le son du CLIC sur la notification (comme tout clic)
 	var al: Dictionary = st[idx]
 	if al.has("seq"):
 		# ÉVÈNEMENT : le clic ACQUITTE (et centre la carte si localisé)

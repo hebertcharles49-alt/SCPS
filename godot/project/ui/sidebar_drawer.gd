@@ -502,7 +502,7 @@ func _servile_act(act: String, qty: int, me: int) -> void:
 		if cap_region < 0:
 			_servile_flash_ok = false
 			_servile_flash = "✗ aucune capitale — refusé"
-			Sound.play("ui_deny")
+			Sound.play("ui_click")
 			queue_redraw()
 			return
 		is_trade = true
@@ -515,9 +515,9 @@ func _servile_act(act: String, qty: int, me: int) -> void:
 	_servile_flash_ok = ok
 	_servile_flash = ("⚑ %s — ordre émis" % label) if ok else ("✗ %s — refusé" % label)
 	if is_trade:
-		Sound.play("ui_coin" if ok else "ui_deny")
+		Sound.play("ui_click")
 	elif not ok:
-		Sound.play("ui_deny")
+		Sound.play("ui_click")
 	queue_redraw()
 
 # ── ARMÉE (sb_panel_armee) : readouts + VERBES joueur (levée/posture/flotte) ──
@@ -794,7 +794,7 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 	if cap_region < 0:
 		_marche_flash_ok = false
 		_marche_flash = "✗ aucune capitale — refusé"
-		Sound.play("ui_deny")
+		Sound.play("ui_click")
 		queue_redraw()
 		return
 	var ok := false
@@ -805,7 +805,7 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 	_marche_flash_ok = ok
 	_marche_flash = ("⚑ %s — ordre émis" % ("achat" if act == "buy" else "vente")) if ok \
 		else ("✗ %s — refusé" % ("achat" if act == "buy" else "vente"))
-	Sound.play("ui_coin" if ok else "ui_deny")
+	Sound.play("ui_click")
 	queue_redraw()
 
 ## Conseil : recruter (siège vacant, slot 0) / renvoyer (siège pourvu) / payer

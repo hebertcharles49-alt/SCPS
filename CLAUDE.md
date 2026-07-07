@@ -1863,6 +1863,18 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   `alerts._poll_feed`). `tech_notif.mp3` : notif de **recherche terminée** — `sound.gd._on_tick` suit
   `research_status()` et sonne quand la cible passe de ≥85 % à autre/-1 (annuler/switcher à bas % ne
   sonne pas). **Plus de year-tick** (juste le month_tick à chaque tock). `Bam.mp3` désormais LIBRE.
+  **Affinage (lot 3) — PURGE du procédural, modèle Paradox « un clic = un son »** : le joueur tranche
+  « pas un son pour tout ; le son de notif = le CLIC dessus ; vire TOUS les anciens sons procéduraux
+  (drones/entropie moches) ». `sound.gd` RÉÉCRIT minimal (351→~200 l) : plus d'ambiance/crossfade/
+  ducking/couche-entropie/drones-de-fin (⚠ `set_scene_hint` n'avait AUCUN appelant — l'ambiance crowd
+  était morte de toute façon). **14 fichiers synthé SUPPRIMÉS** : amb_wind/sea/crowd/entropy, drone_×4,
+  moment_ascension/treason, ui_coin_×3, ui_deny (dont `amb_crowd` = 50 Mo mort). Tous les `ui_deny`/
+  `ui_coin` (7 sites) → **ui_click** (l'or/l'income = déjà le month-tick, dixit le joueur) ; le clic sur
+  une notification (`alerts._gui_input`) sonne ui_click. Le jeu ne garde QUE des VRAIS sons : ui_click
+  (universel), ui_tick, moment_war_horn (cor), tech_notif, moment_age_bell, moment_page_turn,
+  moment_battle_drums, moment_army_march, ui_parchment_open/close, ui_seal, ui_quill. Seuls stings AUTO :
+  le cor (guerre kind 1) + la notif de recherche ; tout le reste est un clic. `gen_sounds.py` DÉPRÉCIÉ
+  (skip = tous les noms). Bus Ambiance gardé (curseur d'options), sans player.
 
 ## Disciplines non négociables
 

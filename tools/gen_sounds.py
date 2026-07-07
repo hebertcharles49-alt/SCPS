@@ -1295,14 +1295,22 @@ def _variant_names(base):
     return ["%s_%d.wav" % (stem, k + 1) for k in range(n)]
 
 
-# Sons désormais fournis en VRAIS ENREGISTREMENTS (banque son du joueur, cf. audio/) :
-# le générateur NE LES ÉCRASE PLUS — il ne synthétise que ce qui n'a pas d'équivalent réel.
-# (Retirer un nom d'ici le rend de nouveau générable si on repasse au synthé.)
+# Le jeu est passé à 100 % de VRAIS ENREGISTREMENTS (façon Paradox : un clic = un son,
+# aucune nappe synthé). Ce générateur est DÉPRÉCIÉ : chaque nom ci-dessous est soit un
+# son réel (audio/), soit un son RETIRÉ (drones/entropie/ambiances/coin/deny — jugés
+# « moches »). gen_all() les saute TOUS → il ne régénère rien qui clobberait ou
+# ré-encombrerait le dossier. (Retirer un nom le rend de nouveau générable en synthé.)
 REAL_RECORDINGS = {
-    "ui_tick.wav", "ui_tick_year.wav", "ui_parchment_open.wav", "ui_parchment_close.wav",
-    "ui_quill.wav", "ui_seal.wav", "ui_scroll_tick.wav",
+    # réels, en place
+    "ui_tick.wav", "ui_parchment_open.wav", "ui_parchment_close.wav",
+    "ui_quill.wav", "ui_seal.wav",
     "moment_page_turn.wav", "moment_age_bell.wav", "moment_war_horn.wav",
-    "moment_battle_drums.wav", "amb_crowd.wav",
+    "moment_battle_drums.wav",
+    # retirés (procéduraux — ne PAS régénérer)
+    "ui_tick_year.wav", "ui_scroll_tick.wav", "ui_coin.wav", "ui_deny.wav",
+    "moment_ascension.wav", "moment_treason.wav",
+    "amb_wind.wav", "amb_sea.wav", "amb_crowd.wav", "amb_entropy.wav",
+    "drone_eau.wav", "drone_hiver.wav", "drone_ronces.wav", "drone_sang.wav",
 }
 
 

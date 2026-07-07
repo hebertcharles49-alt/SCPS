@@ -172,6 +172,6 @@ func _act(kind: String, type: int, nom: String) -> void:
 		_flash_ok = ok2
 		_flash = ("⚔ %s — levée ordonnée" % nom) if ok2 else ("✗ %s — file pleine" % nom)
 	if not _flash_ok:
-		Sound.play("ui_deny")
+		Sound.play("ui_click")
 	build_requested.emit(kind, type)
 	_refresh()

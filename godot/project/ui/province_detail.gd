@@ -690,7 +690,7 @@ func _gui_input(event: InputEvent) -> void:
 					_manuf_flash_ok = ok2
 					_manuf_flash = ("⚒ %s — ordre émis" % nom2) if ok2 else ("✗ %s — refusé" % nom2)
 					if not ok2:
-						Sound.play("ui_deny")
+						Sound.play("ui_click")
 					queue_redraw()
 					accept_event()
 					return
@@ -744,7 +744,7 @@ func _gui_input(event: InputEvent) -> void:
 								_reinc_flash_ok = ok3
 								_reinc_flash = ("→ %s — ordre émis" % REINCORP_CLASSES[_reinc_klass]) if ok3 else "✗ refusé"
 								if not ok3:
-									Sound.play("ui_deny")
+									Sound.play("ui_click")
 					queue_redraw()
 					accept_event()
 					return
