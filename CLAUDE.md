@@ -1888,8 +1888,22 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   REJETÉ » via un setter fuzz-only (`intertrade_debug_set_hub_of`), prouvé par test négatif (guard
   off ⇒ 7/8). Gates : golden IDENTIQUE · determinism STABLE · savetest 7/9/11/42 byte-identique ·
   fuzz-save 8/8 · test 39/40 (KO pré-existant setenv seul) · 0 warning. **<v73 refusé.**
-
-## Disciplines non négociables
+- **ENGLISH lot E (2026-07-07) — le switch FR/EN + l'infra de traduction (préparé, à finir plus tard)** :
+  (1) MOTEUR : `tr()` résolvait DÉJÀ `g_override[]` (scps_lang.txt) puis TABLE_EN/TABLE_FR selon
+  `g_lang` — les deux langues sont COMPILÉES, `lang_set()` bascule à CHAUD ; il ne manquait que le
+  passe-plat façade `scps_lang_set/get` + binding `Sim.world.lang_set/lang_get`. La voie « générer
+  scps_lang_en.txt en override » REJETÉE (elle confisquerait le canal de surcharge du joueur/mod).
+  (2) GODOT : `ui/options_panel.gd` (neuf) — Langue FR/EN (TranslationServer + table moteur) + PLEIN
+  ÉCRAN, persistés `user://options.cfg`, `boot()` appliqué avant le premier tr() ; **55 clés** FR+EN
+  dans `godot/project/i18n/ui.csv` (+ .translation committés, enregistrés dans project.godot) ; le
+  SHELL complet migré `tr("T_*")` (menu, Nouvelle partie, Options, Charger) ; le changement de langue
+  rebâtit le shell (signal `language_changed`) — c'est le PATRON des migrations futures. (3) LA SUITE
+  CHIFFRÉE : `tools/extract_gd_literals.py` → `docs/i18n_backlog.csv` = **629 littéraux face-joueur
+  dans 28 .gd** (top : codex 120 · sidebar_drawer 102 · uikit 92) ; ⚠ les chaînes d'`uikit.gd` servent
+  de CLÉS de correspondance sprites (ne pas traduire naïvement) ; ⚠ **strings_en.h est encore ~46 %
+  copie du FR** (~165/364 entrées) — le switch est branché, l'anglais moteur réel reste une session de
+  remplissage. Doc : `docs/I18N.md`. Gates : lang-check inchangé · golden IDENTIQUE · scons 0 warning ·
+  menu_audit OK · probe neuf `lang_audit` (round-trip 0→1→0, menu rend « Play » sous options en).
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
 - **On lit des coordonnées, on n'assigne jamais de modificateur** : un effet passe par les entrées du moteur (K, P, H…), jamais par un bonus plat.
