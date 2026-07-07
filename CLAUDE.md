@@ -1924,6 +1924,30 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   scons 0 warning · probe neuf **membrane_audit** (MEMBRANE AUDIT OK : build_legal cohérent j0/j+60,
   manuf_cost, spread, lettré bout-en-bout, fin==fin_raw). Au passage : le warning pré-existant
   scps_api.c:648 (-Wmisleading-indentation) corrigé — 0 warning redevient VRAI.
+- **WORLDGEN lot W (2026-07-07) — ARCHÉTYPES DE GRAINE (variété) + FALAISES MARITIMES émergentes** :
+  réponse au « les maps se ressemblent toutes, jamais de falaises ». **(1) VARIÉTÉ** :
+  `worldparams_default` renvoyait des défauts FIGÉS — table `WG_ARCH` de **8 archétypes** tirée par
+  hash avalanche (splitmix32) + jitter borné : pangée · continents (ex-défaut) · archipel · mer
+  intérieure · froid · aride · jeune-montagneux · vieux-érodé. Les OVERRIDES priment PAR CONSTRUCTION
+  (sliders façade + argv chronicle assignent APRÈS) ; graine 0 = référence figée ; genèse politique
+  INCHANGÉE (6+12). Sweep : 7 graines → 7 archétypes distincts, 7/7 EXIT 0, hégémon mortel 7/7.
+  **(2) FALAISES** : émergent de la LITHOLOGIE (`g_hardness` = convergence #2 + litho noise) — rampe
+  côtière resserrée ∝ dureté, érosions thermique/gouttelettes mordant la roche dure à 35 %/30 % ; ⚠ le
+  tueur de falaises était la courbe GAMMA « vallées » (lf^1.6, dénivelé ÷3.6) → seuils calibrés
+  POST-gamma (`CLIFF_H_MIN/MAX`). Drapeau `world_cliff_intensity` **DÉRIVÉ à la lecture** (pur
+  f(height/biome) ⇒ valide post-load, **SAVE non bumpé**, jamais lu par le sim). ⚠ piège : `cell.lake`
+  = accès INVISIBLE (cuvettes en plein relief) → ×6 fausses falaises ; falaise maritime = `height <
+  SEA_LEVEL` seul. Chaîne : `SCPS_LAYER_CLIFF` (façade) → binding → texture L8 (iso_ground) →
+  **hachures ⊥ côte + lavis rocheux** (shader). L'orchestrateur a MUSCLÉ l'encre post-merge (réponse
+  `smoothstep(0.05,0.55,cf)`, lavis 0.44, encre 0.85 — le TERRAIN a droit à plus de présence que le
+  chrome GLAZE) : falaises lisibles au fit ET au zoom (vérifié captures seed 9). ⚠ **RE-BASELINE
+  golden** (mondes changés an-0) ; 5 bancs recalibrés intention préservée (endgame île-épicentre ·
+  faith paire schismatique · econ_arcane capitale d'EMPIRE · religion pays 2-régions · events fixture
+  mono-région) ; determinism STABLE · savetest seed 9 byte-identique · test 39/40 (KO setenv
+  pré-existant) · scons 0 warning. Restes (TROUVAILLES) : archétypes à âge bas = masses fusionnées
+  (dérive couplée à l'âge) · SEA_LEVEL non paramétrable · hachures dialables shader-only.
+
+## Disciplines non négociables
 
 - **La membrane** : `viewer.c` n'inclut jamais `scps_core.h` et ne lit aucun flottant SCPS — des MOTS (readout) et des nombres tangibles seulement.
 - **On lit des coordonnées, on n'assigne jamais de modificateur** : un effet passe par les entrées du moteur (K, P, H…), jamais par un bonus plat.
