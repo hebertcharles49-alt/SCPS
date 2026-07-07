@@ -30,12 +30,23 @@ const XFADE_S := 1.5              ## crossfade d'ambiance
 const DUCK_DB := -9.0             ## atténuation de l'Ambiance sous un Moment
 const ENTROPY_FROM := 25          ## % d'entropie où la couche d'inquiétude s'éveille
 
+## ── ORGANIQUE : round-robin de variantes + jitter par lecture (technique 1) ──
+## Un son fréquent joué 100×/session à l'IDENTIQUE sonne robotique quoi qu'il arrive.
+## gen_sounds.py livre 3-4 VARIANTES de chaque son fréquent (ui_tick_1/2/3…) ; ici
+## `play()` en tire une au hasard (horloge MUR, randi()) et applique un léger pitch et
+## gain aléatoires À CHAQUE lecture — le « machine » devient « matière ». Compat : un
+## nom SANS variante joue son fichier unique, sans jitter de pitch destructeur.
+const VARIANT_MAX := 6            ## on sonde nom_1 … nom_VARIANT_MAX au 1er usage
+const PITCH_JITTER := 0.04        ## ±4 % de hauteur par lecture (sons à variantes)
+const GAIN_JITTER_DB := 1.5       ## ±1.5 dB de gain par lecture
+
 ## fin (§27 endgame_info) → drone de fin. 1 EAU · 2 FROID · 3 RONCES · 4 ascension
 ## (le drone "sang" habille la 4e fin faute d'un drone dédié — le MOMENT ascension
 ## sonne la transition, le drone n'est que le lit de fond).
 const FIN_DRONE := {1: "drone_eau", 2: "drone_hiver", 3: "drone_ronces", 4: "drone_sang"}
 
 var _streams := {}                ## nom → AudioStream (chargés paresseusement)
+var _variants := {}               ## nom de base → Array[String] de variantes (cache)
 var _ui_pool: Array = []          ## AudioStreamPlayer (bus UI)
 var _mom_pool: Array = []         ## AudioStreamPlayer (bus Moments)
 var _amb_a: AudioStreamPlayer
@@ -112,12 +123,41 @@ func _stream(nom: String) -> AudioStream:
 	return s
 
 
+## découvre (et met en cache) les variantes d'un son : nom_1, nom_2, … tant que le
+## fichier existe (jusqu'à VARIANT_MAX). Renvoie [] si aucune variante (le fichier
+## unique `nom` est alors utilisé tel quel). Sondé UNE fois par nom.
+func _variant_list(nom: String) -> Array:
+	if _variants.has(nom):
+		return _variants[nom]
+	var found: Array = []
+	for k in range(1, VARIANT_MAX + 1):
+		if ResourceLoader.exists(DIR + nom + "_" + str(k) + ".wav"):
+			found.append(nom + "_" + str(k))
+		else:
+			break
+	_variants[nom] = found
+	return found
+
+
 ## ── ONE-SHOTS ────────────────────────────────────────────────────────────────
 ## joue `nom` (sans .wav) sur le bus déduit du préfixe. Silencieux si absent.
+## Si `nom` a des VARIANTES (nom_1…nom_N), en tire une au hasard + pitch/gain jitter
+## par lecture (l'organique — technique 1). Un nom sans variante joue son fichier unique.
 func play(nom: String) -> void:
-	var s := _stream(nom)
+	var has_var := true
+	var vs := _variant_list(nom)
+	var pick := nom
+	if vs.is_empty():
+		has_var = false
+	else:
+		pick = vs[randi() % vs.size()]
+	var s := _stream(pick)
 	if s == null:
-		return
+		# repli : si aucune variante n'a pu charger, tenter le fichier de base
+		if has_var:
+			s = _stream(nom)
+		if s == null:
+			return
 	var pool := _mom_pool if nom.begins_with("moment_") else _ui_pool
 	var player: AudioStreamPlayer = null
 	for p in pool:
@@ -127,6 +167,14 @@ func play(nom: String) -> void:
 	if player == null:
 		player = pool[0]   # tout occupé : on vole le plus ancien
 	player.stream = s
+	# jitter par lecture : hauteur ±PITCH_JITTER, gain ±GAIN_JITTER_DB — RÉINITIALISÉS
+	# systématiquement (un player réutilisé pourrait porter un pitch/gain périmé).
+	if has_var:
+		player.pitch_scale = 1.0 + randf_range(-PITCH_JITTER, PITCH_JITTER)
+		player.volume_db = randf_range(-GAIN_JITTER_DB, GAIN_JITTER_DB)
+	else:
+		player.pitch_scale = 1.0
+		player.volume_db = 0.0
 	player.play()
 	if nom.begins_with("moment_"):
 		_duck_for(s.get_length())
