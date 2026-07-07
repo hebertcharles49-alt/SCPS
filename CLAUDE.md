@@ -1810,6 +1810,23 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   (les registres VIVENT ; les latches tech attendent l'arbre, comme la Salve). ⚠ **RE-BASELINE
   golden** (les dilemmes mordent < 12 ans) · determinism STABLE · 37 bancs verts (3 KO Windows
   pré-existants) · events_demo 85/85 · scps_api_demo 131/131 · scons 0 warning.
+- **ASSETS FIN + BORDURES ENLUMINÉES (2026-07-07, DISPLAY-ONLY, livraison Codex)** : intégration des
+  deux packs Codex du 06-07. **(1) 5 fonds de fin** 1920×1080 (`assets/scps/ui/endgame/`) — mappés par
+  `endgame_info["fin"]` (1 EAU→submersion_arcane · 2 FROID→cold_copper · 3 RONCES→thorns_green · 4
+  ASCENSION→ascension_brass · 5 SANG→blood_hand) : `epilogue.gd` pose le fond correspondant derrière un
+  voile allégé (0.72→0.52) à l'ouverture de l'épilogue ; phrase de fin SANG ajoutée (l'enum FinType va
+  jusqu'à 5, l'UI ne couvrait que 4). **(2) Barre d'entropie** (rail 640×96 + vortex tintable blanc) dans
+  `endgame_banner.gd` : curseur à x = entropie_pct/100, teinté blanc→cuivre→rouge en montée puis à la
+  COULEUR de la fin latchée (EAU bleu · FROID blanc gelé · RONCES olive · ASCENSION cuivre-or · SANG
+  bordeaux). **(3) 13 bordures enluminées** 2048² NinePatch centre transparent (`art/borders/`) — neuf
+  nœud `border_art.gd` (NinePatchRect plein écran, 1er enfant de l'UI = au-dessus de la carte, derrière
+  les panneaux, mouse_filter IGNORE) qui swappe le motif selon `age_state["age"]` (-1 aube · 0-6 AgeId :
+  commerce/raison/empires/breche/lumieres/soulevements/ordrefer) et bascule sur la bordure de fin quand
+  `fin>0`. Asset absent ⇒ garde le cadre courant (jamais de flash vide). **RÈGLE D'OR tenue** : lecture
+  seule de la façade (age_state/endgame_info déjà bindés), zéro logique sim, aucune texture au moteur ⇒
+  golden/déterminisme/SAVE INTACTS, façade/DLL non touchées. Triage complet du trove Codex (77 zips) dans
+  `docs/CODEX_TROVE_TRIAGE.md` ; reste (agents bloqués par la limite de session) : RE-DÉCOUPE des 4
+  planches master (« la plupart des découpages sont foirés »).
 
 ## Disciplines non négociables
 

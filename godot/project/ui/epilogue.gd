@@ -11,14 +11,26 @@ const Epithet = preload("res://ui/epithet.gd")
 
 signal goto_region(region: int)
 
-## la nature de la fin, en queue de phrase (fin de endgame_info ; 4 = ascension)
+## la nature de la fin, en queue de phrase (fin de endgame_info ; 4 = ascension, 5 = sang)
 const FIN_PHRASE := {
 	1: "vit les flots engloutir le monde",
 	2: "vit le Grand Hiver éteindre les feux",
 	3: "vit les Ronces dévorer le monde",
 	4: "s'éleva au-delà du monde — la Merveille accomplie",
+	5: "noya son règne dans le sang — la Main ne s'arrêta plus",
 }
 
+## fond de fin (écrans Codex 1920×1080) — indexé par endgame_info["fin"]
+const FIN_SCREEN_DIR := "res://assets/scps/ui/endgame/"
+const FIN_SCREEN := {
+	1: "end_submersion_arcane_1920x1080.png",
+	2: "end_cold_copper_1920x1080.png",
+	3: "end_thorns_green_1920x1080.png",
+	4: "end_ascension_brass_1920x1080.png",
+	5: "end_blood_hand_1920x1080.png",
+}
+
+var _bg: TextureRect
 var _phrase: Label
 var _list: VBoxContainer
 var _prev_speed := -1
@@ -34,8 +46,17 @@ func _ready() -> void:
 			Sim.set_speed(_prev_speed)
 			_prev_speed = -1)
 
+	# le FOND DE FIN (écran d'apocalypse/ascension) sous un voile plus léger pour garder
+	# le panneau lisible. Texture posée à l'ouverture (open) ; absente ⇒ juste le voile.
+	_bg = TextureRect.new()
+	_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_bg)
+
 	var veil := ColorRect.new()
-	veil.color = Color(0.03, 0.02, 0.01, 0.72)
+	veil.color = Color(0.03, 0.02, 0.01, 0.52)
 	veil.set_anchors_preset(Control.PRESET_FULL_RECT)
 	veil.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(veil)
@@ -99,6 +120,12 @@ func open(fin: int) -> void:
 	var w = Sim.world
 	if w == null:
 		return
+	# le fond d'apocalypse/ascension correspondant à la fin
+	var scr: String = FIN_SCREEN.get(fin, "")
+	if scr != "" and ResourceLoader.exists(FIN_SCREEN_DIR + scr):
+		_bg.texture = load(FIN_SCREEN_DIR + scr)
+	else:
+		_bg.texture = null
 	var entries: Array = w.annals() if w.has_method("annals") else []
 	_phrase.text = _compose(w, entries, fin)
 	for c in _list.get_children():

@@ -47,6 +47,13 @@ func _ready() -> void:
 	ui.name = "UI"
 	add_child(ui)
 
+	# la BORDURE ENLUMINÉE (cadre plein écran, centre transparent) — PREMIER enfant de
+	# l'UI : dessinée au-dessus de la carte, DERRIÈRE les panneaux (elle n'obscurcit rien
+	# de fonctionnel). Change de motif selon l'âge / la fin. DISPLAY-ONLY.
+	var border = load("res://ui/border_art.gd").new()
+	border.name = "BorderArt"
+	ui.add_child(border)
+
 	var topbar_script := load("res://ui/topbar.gd")
 	var topbar: Control = topbar_script.new()
 	topbar.name = "Topbar"
