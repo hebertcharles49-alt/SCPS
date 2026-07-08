@@ -1067,3 +1067,77 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
   d'épargne — l'ordre reste : income×W → métabolisation → (returns d'épargne). Le ×W faustien vit
   dans `ai_effective_cost`, donc TOUS les blocs d'épargne (foreuse/S1/S3/S4/palier/savoir) voient
   déjà le coût faustien gonflé (cohérent, pas de site oublié).
+
+## [2026-07-08] Polish façade+Godot — stock négatif borné · rose des vents ronde · frémissement (implémenteur solo, worktree SCPS-polish)
+**Découvertes** :
+- **A1 — `scps_province_market` (scps_api.c:898-908)** : la ligne est admise dès `dem>0.05`
+  (ou `sup>0.05`) SANS regarder le signe de `stk` — un déficit transitoire
+  (`ProvinceEconomy.stock[g]<0`, non clampé côté moteur, cf. entrée du 2026-07-08 ci-dessus)
+  publiait donc un `out[n].stock` NÉGATIF. Fix MEMBRANE (pas moteur) : `out[n].stock = stk>0.f
+  ? stk : 0.f` + même clamp défensif sur `price` — `band_marche(dem, sup+stk)` continue de lire
+  le `stk` BRUT (un stock très négatif reste une PÉNURIE cohérente, aucun changement de
+  sémantique de bande). Preuve avant/après isolée par `git stash push -- scps/scps_api.c` :
+  `SCPS_TUNE=AI_RESEARCH_INCOME_W=6 ./scps_api_demo` = **178/179 (✗ province_market)** avant,
+  **179/179** après. `scps_api.c` n'est lié dans AUCUNE cible `CHRONICLE_OBJS` (vérifié par grep)
+  ⇒ golden/determinism structurellement hors d'atteinte, reconfirmé en pratique (hash 12 ans
+  IDENTIQUE au golden commité après le fix).
+- **A2.1 — surbrillance de province sélectionnée** : la régression documentée dans CLAUDE.md
+  (« CARTE PARCHEMIN UNIQUE », 2026-06-28 — bavait sur le sol) était **DÉJÀ RÉSOLUE** par le
+  commit `84b6598` (« carte JOUABLE », 2026-07-02, cf. aussi CLAUDE.md « VIEWER DÉDOUBLONNÉ… CARTE
+  JOUABLE ») : `overlay.gd:1628-1647` dessine déjà un contour d'encre (halo sombre + or net, via
+  `w.province_border_segments(selp)` → `_chain_segments` → `_smooth_poly` → `draw_multiline`),
+  exactement le pattern que le brief demandait de restaurer. Vérifié par `git log -S "contour
+  DORÉ de la province choisie"` (une seule occurrence, déjà en place) — **rien à faire, non
+  touché**. Le CLAUDE.md/brief citait une note pré-fix périmée.
+- **A2.2 — rose des vents ovale** : root cause CONFIRMÉE par dérivation géométrique complète
+  (pas une intuition) — `iso_ground.gd` pose `scale=Vector2(1.0,TILT_Y=0.80)` sur le nœud
+  IsoGround ; `iso_antique.gdshader::compass(ip,ci,R)` calcule `length(ip-ci)`/`atan` en espace
+  LOCAL (pré-transform, `iso=VERTEX`), qui est ISOTROPE — mais ce même espace est comprimé en Y
+  par le nœud AU RENDU. Un cercle géométrique en local (`d.x²+d.y²<R²`) devient donc une ELLIPSE
+  écran d'axe Y = R·tilt_y (aplatie ~20 %). Dérivation du fix (vérifiée par les deux bouts,
+  cf. TROUVAILLES ne PAS confondre `d.y *= tilt_y` avec `d.y /= tilt_y` — le premier est correct) :
+  `screen_delta = (d.x, d.y·tilt_y)` ⇒ pré-multiplier `d.y` par `tilt_y` AVANT `length()`/`atan()`
+  rend `cd`/`a` déjà "écran-équivalents", donc isotropes → cercle vrai + tick marks bien orientés.
+  Implémenté : uniform `tilt_y` (shader, hint_range 0.5-1.0, défaut 0.80) posé par
+  `iso_ground.gd::_draw` via `mat.set_shader_parameter("tilt_y", scale.y)` — **lit `scale.y` du
+  nœud directement, aucune constante dupliquée** (si `map_view.TILT_Y` change un jour, aucune
+  resynchro nécessaire). `compass()` gagne un 4e paramètre `y_fix`, `d.y *= y_fix` juste après
+  `d=ip-ci`.
+- **C — animation** : `overlay.gd` a une discipline de redraw DÉLIBÉRÉE (queue_redraw() continu
+  SEULEMENT si `_cataclysm` ; sinon poll `_sig_poll` à 0.25s sur un changement de souveraineté
+  réel, cf. `overlay.gd:1475-1494`) — animer un jeton GDScript (ville/capitale) demanderait de
+  réintroduire un redraw continu (tout l'overlay se redessine, pas juste le jeton), contraire à
+  cette discipline pour un gain purement décoratif. **Épicentre §27 vérifié DÉJÀ correct**
+  (`overlay.gd:1884-1904` : 3 anneaux expansifs, horloge murale `Time.get_ticks_msec()`, alpha
+  dégressif — respire bien, non touché). Choix : un **frémissement d'encre shader** sur la rose
+  des vents (`TIME` built-in canvas_item — le GPU ré-exécute le shader chaque frame rendue SANS
+  appel `queue_redraw()`, zéro coût ajouté, ne touche PAS la discipline de redraw GDScript) :
+  `breath = 1.0 + 0.04*sin(TIME*0.5)` multiplié sur l'alpha finale de la rose (~12.6 s/cycle,
+  ±4 % — imperceptible en soi, juste "vivant").
+**Pièges** :
+- Ne pas confondre `d.y *= tilt_y` (correct) et `d.y /= tilt_y` (aggrave l'ovalisation) — la
+  dérivation complète est ci-dessus ; un raisonnement hâtif sur "compenser l'échelle" mène
+  facilement au signe inverse. Vérifier par les deux bouts (screen_delta = node_scale∘local_delta,
+  jamais l'inverse implicite) avant d'coder un fix d'aspect-ratio shader.
+- `git stash push -- <fichier>` (jamais `git stash` nu) pour obtenir un binaire BEFORE propre et
+  PROUVER qu'un test échouait avant le fix — fait ici pour A1, confirmé 178/179→179/179.
+- Process `chronicle.exe`/`*_demo.exe` d'AUTRES agents visibles dans `Get-Process` sur cette
+  machine partagée (PID/CPU qui montent sans rapport avec mon run) — ne jamais `taskkill` par nom
+  d'image (tuerait le run d'un autre agent) ; le fichier de sortie de SON PROPRE `make test`
+  (task-output) reste la seule source de vérité sur la progression.
+- `make CC=gcc test` sur cette worktree ne montre plus que **1 KO** (intertrade_demo, BUILD
+  ÉCHEC `setenv` POSIX) — campaign_demo/warhost_demo (jadis 2 des « 3 KO Windows ») passent VERTS
+  ici (49/49, 21/21, 6/6) : soit le fix stack `-Wl,--stack,8388608` documenté ailleurs est déjà
+  dans ce Makefile, soit l'environnement a changé. À noter pour un futur agent qui s'attendrait
+  encore à « 3 KO ».
+**Restes** :
+- `scps_tune_list.h:123-125` (commentaire `AI_RESEARCH_INCOME_W`) documente EXPLICITEMENT que
+  ce fix membrane débloquerait `W≥6` (~53 % d'arbre médian au lieu de ~50 % à W=4.5) — HORS
+  PÉRIMÈTRE ici (mandat façade-only, l'agent arbre/foreuse est sur `scps_ai.c`/le tuning) : à
+  relayer à l'orchestrateur/agent arbre pour décider s'il monte `AI_RESEARCH_INCOME_W` 4.5→6
+  maintenant que l'edge est fixé.
+- Aucune 2e animation ajoutée (item C explicitement optionnel, 1 suffisait) — si un futur agent
+  veut animer le jeton de capitale, il devra soit payer un redraw continu ciblé (ex. gate sur
+  "capitale visible à l'écran ET zoom≥X", LOD existant `fine_a`/`ROAD_ZOOM_MIN` comme modèle),
+  soit isoler les traits de capitale (`_draw_cap_lisere`) dans un CanvasItem séparé avec son
+  propre ShaderMaterial pour un frémissement à coût nul façon rose des vents.
