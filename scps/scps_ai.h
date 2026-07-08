@@ -156,9 +156,15 @@ void   ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
                DiploState *diplo, const Statecraft *sc, int day);
 
 /* P4 — la vente ANNUELLE du surplus servile aux Centres (le pool VIT — sans elle le
- * canal d'achat, la voie de métabolisation des pacifistes, restait vide). APATRIDE
- * (aucun ordonnanceur sérialisé) : appelé du bloc ANNUEL de sim_day. */
+ * canal d'achat, la voie de métabolisation des pacifistes, restait vide). LOT G
+ * (2026-07-08) : la MÊME fonction fait désormais tourner AUSSI l'ACHAT (un
+ * esclavagiste en pénurie de bras rachète au pool) — sans quoi les âmes s'y
+ * entassaient sans jamais repartir. APATRIDE (aucun ordonnanceur sérialisé) :
+ * appelé du bloc ANNUEL de sim_day. */
 void   ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const bool ai_on[]);
+/* LOT G — télémétrie des rachats IA au pool (RAZ/sim, jamais lue par une décision). */
+void   ai_slave_buy_reset(void);
+long   ai_slave_buy_count(void);
 
 /* #26 — `to` ÉVALUE une OFFRE de `from` (alliance/paix/pacte) et l'ACCEPTE ou la REFUSE.
  * Lue de l'OPINION (±100, mémoire des actes) + la relation structurelle + le score de guerre.

@@ -437,6 +437,12 @@ void building_recipe(BuildingType b, Resource *in1, Resource *in2, Resource *out
     if (in2) *in2=RECIPE[b].in2;
     if (out) *out=RECIPE[b].out;
 }
+/* LOT G — besoin de main-d'œuvre PAR NIVEAU d'un bâtiment (`RECIPE[b].labor`, la même
+ * coordonnée qui borne `want_labor=rc->labor*cap` dans le tick) — exposé pour la
+ * pression de main-d'œuvre lue par l'IA (achat servile, cf. ai_slave_trade_year). */
+float building_recipe_labor(BuildingType b){
+    return (b>=0 && b<BLD_TYPE_COUNT) ? RECIPE[b].labor : 0.f;
+}
 /* Intrant ALTERNATIF (repli) d'un bâtiment — exposé pour l'UI d'allocation (choix d'intrant). */
 Resource building_alt_input(BuildingType b){
     return (b>=0 && b<BLD_TYPE_COUNT) ? RECIPE[b].alt1 : RES_NONE;

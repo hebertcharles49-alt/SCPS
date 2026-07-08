@@ -616,9 +616,18 @@ static int pact_border_prov(const WorldEconomy *e, int host, int src_region){
  * ATTRACTIF (prospère) reçoit NET (« à l'avantage de celui qui a le plus à
  * offrir »). Les migrants portent leur héritage → diaspora ARR_MIGRANT chez
  * l'hôte → métabolisation (le savoir DIFFUSE — l'inverse de l'isolement de Song). */
-int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp){
+int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int day){
     if (!e || !dp) return 0;
-    float frac = tune_f("MIG_PACT_FRAC", 0.006f);       /* ~0.6 %/an du dominant, modulé par l'attractivité */
+    /* LOT G (2026-07-08) — la porte s'est OUVERTE au pacte commercial (scps_ai.c §2c) ET
+     * une alliance peut, en pratique, se former plus tôt que le canal d'origine ne le
+     * supposait (mesuré : bumper FRAC — même réservé à l'ALLIANCE — cassait `make golden`
+     * sur les seeds 7/209, l'alliance s'y formant AVANT l'an-12). Le taux ÉLEVÉ (×3,
+     * FRAC_ALLY) n'entre donc en vigueur qu'APRÈS `MIG_PACT_ALLY_GATE_DAYS` (12 ans, la
+     * fenêtre golden) — avant ce cap, TOUS les pactes (alliés ou commerciaux) utilisent
+     * le taux DE BASE, golden-safe par construction (comportement D'ORIGINE inchangé). */
+    bool  post_golden = day >= (int)tune_f("MIG_PACT_ALLY_GATE_DAYS", 4380.f);
+    float frac_ally = tune_f("MIG_PACT_FRAC_ALLY", 0.018f);
+    float frac_base = tune_f("MIG_PACT_FRAC", 0.006f);       /* ~0.6 %/an du dominant, modulé par l'attractivité */
     long  fmin = (long)tune_f("MIG_PACT_MIN", 30.f);
     int np = e->n_prov; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
     /* province la plus peuplée + sa prospérité (proxy d'attractivité), par pays. */
@@ -638,7 +647,9 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp){
         if (top_prov[a]<0) continue;
         for (int b=a+1;b<SCPS_MAX_COUNTRY;b++){
             if (!dp->migration_pact[a][b] || top_prov[b]<0) continue;
-            if (diplo_status(dp,a,b)==DIPLO_WAR) continue;   /* la guerre suspend l'échange */
+            DiploStatus dab = diplo_status(dp,a,b);
+            if (dab==DIPLO_WAR) continue;   /* la guerre suspend l'échange */
+            float frac = (post_golden && dab==DIPLO_ALLIED) ? frac_ally : frac_base;
             float sa=attract[a], sb=attract[b], tot_attr=sa+sb+1e-3f;
             int rsrcA=e->prov[top_prov[a]].region, rsrcB=e->prov[top_prov[b]].region;
             int dstAB=pact_border_prov(e,b,rsrcA); if (dstAB<0) dstAB=top_prov[b];  /* a→b : entre à la FRONTIÈRE de b */

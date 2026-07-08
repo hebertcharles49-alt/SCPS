@@ -887,6 +887,7 @@ const char *building_name(BuildingType b);
 /* Recette d'un bâtiment (intrants → extrant) — pour la perception IA. */
 void        building_recipe(BuildingType b, Resource *in1, Resource *in2, Resource *out);
 Resource    building_alt_input(BuildingType b);   /* intrant alternatif (repli) — UI d'allocation */
+float       building_recipe_labor(BuildingType b);   /* main-d'œuvre/niveau — pression IA (lot G) */
 /* M6 (forks §14) — le DELTA DE FLUX d'une manufacture arcane : Forge Céleste +1.2 ·
  * Atelier du Mage +0.8 · Alambic −0.3 (le puits) · 0 sinon. Table de design, lue par
  * le banc ; le PUITS est branché dans econ_tick (l'essence purifiée neutralise la charge). */

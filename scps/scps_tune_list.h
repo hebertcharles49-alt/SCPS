@@ -145,9 +145,22 @@
      * ipm à l'achat — la double taxe du tier mondial, motif de intertrade_market_buy). */ \
     X(SLAVE_PRICE,           40.0f) \
     /* PACTE MIGRATOIRE (BRASSAGE) — l'échange passif annuel : fraction du groupe dominant qui
-     * migre (×0..2 selon l'attractivité relative de la destination) + plancher anti-poussière. */ \
+     * migre (×0..2 selon l'attractivité relative de la destination) + plancher anti-poussière.
+     * LOT G (2026-07-08) — DEUX taux (`demography_migration_pact_tick`) : FRAC (canal ouvert
+     * par le pacte COMMERCIAL seul, scps_ai.c §2c élargi) reste au calibrage D'ORIGINE — un
+     * pacte commercial peut se former BIEN avant l'an-12 (contrairement à l'alliance),
+     * bumper ce taux fait franchir MIN dans la fenêtre golden (mesuré : casse seeds 7/209).
+     * FRAC_ALLY (×3, NOUVEAU) : le canal ALLIÉ, dont l'invariant « aucune alliance avant
+     * l'an-12 » (golden) tient par construction (déjà vrai avant ce lot) — le taux élevé
+     * n'y risque rien. MIN inchangé (30, golden-safe, vérifié). */ \
     X(MIG_PACT_FRAC,        0.006f) \
+    X(MIG_PACT_FRAC_ALLY,   0.018f) \
     X(MIG_PACT_MIN,          30.0f) \
+    /* MIG_PACT_ALLY_GATE_DAYS — le taux ÉLEVÉ (FRAC_ALLY) n'entre en vigueur qu'APRÈS ce
+     * jour (12 ans, la fenêtre golden) : un pacte (même allié) peut en pratique se former
+     * plus tôt que « prévu » sur certaines graines — golden cassait sinon (mesuré, seeds
+     * 7/209). Avant le cap, TOUS les pactes utilisent FRAC (comportement D'ORIGINE). */ \
+    X(MIG_PACT_ALLY_GATE_DAYS, 4380.0f) \
     /* RÉFUGIÉS (BRASSAGE) — la guerre fait FUIR, l'apaisement fait RESPIRER. FLEE : une région
      * ravagée (revolt_scar > SCAR : sac/révolte) déverse FRAC/an de chaque groupe (≥ MIN) vers la
      * voisine la moins ravagée. HOME_CALM : foyer sous ce seuil ⇒ retour possible. RETURN_PULL :
@@ -571,6 +584,13 @@
      * cette règle le pool restait à 0 (mesuré 5 graines) — le canal d'achat mort. */ \
     X(SLAVE_AI_KEEP_FRAC,        0.02f) \
     X(SLAVE_AI_SELL_FRAC,        0.25f) \
+    /* LOT G (2026-07-08) — L'AUTRE SENS DU CANAL : un esclavagiste EN PÉNURIE DE BRAS
+     * (Σ level×labor demandé par son bâti > son bassin labor_avail) achète au pool des
+     * Centres — sans quoi les âmes s'y entassaient (sweep giga : rachats/sim ≈ 0 malgré
+     * un pool profond). BUY_FRAC : part du DÉFICIT comblée/an (le pool se vide en
+     * décennies, pas d'un coup — miroir de SELL_FRAC). intertrade_slave_buy borne déjà
+     * le budget (trésor de la province) et le pool disponible : aucun aspirateur possible. */ \
+    X(SLAVE_AI_BUY_FRAC,         0.20f) \
     /* W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ (payant) : fabriquer une revendication contre
      * une cible coûte FAB_CB_COST_YEARS années de SON revenu (corrompre des élites riches
      * coûte cher — l'or SORT du trésor du fabricant et disparaît, la corruption quitte

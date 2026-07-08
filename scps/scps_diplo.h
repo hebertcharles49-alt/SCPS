@@ -162,8 +162,13 @@ bool        diplo_migration_pact(const DiploState *d, int a, int b);
 void        diplo_set_migration_pact(DiploState *d, int a, int b, bool on);
 /* Tick ANNUEL : entre pays sous pacte migratoire et à la PAIX, un flux passif de population
  * s'échange — le plus ATTRACTIF (prospère) reçoit net ; les migrants portent leur héritage
- * → diaspora chez l'hôte → métabolisation (diffusion du savoir). Renvoie le nb de flux. */
-int         demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp);
+ * → diaspora chez l'hôte → métabolisation (diffusion du savoir). Renvoie le nb de flux.
+ * `day` (LOT G, 2026-07-08) : le taux ÉLEVÉ (MIG_PACT_FRAC_ALLY) n'entre en vigueur
+ * qu'après la fenêtre golden (12 ans) — un pacte (même ALLIÉ) peut en pratique se former
+ * plus tôt que prévu sur certaines graines (mesuré : golden cassait sinon) ; avant ce
+ * cap, TOUS les pactes utilisent le taux de base MIG_PACT_FRAC, golden-safe par
+ * construction (comportement inchangé du canal d'origine). */
+int         demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int day);
 /* Tick ANNUEL : TRIBUTS (servage lourd 8 %/an + coercition chez le serf ; protectorat
  * léger 2 %), APPEL du protecteur (les guerres du protégé l'appellent), DÉFECTION
  * (ratio de force < ~1.15 → dénonciation ; le serf part en guerre), ACCEPTATION par

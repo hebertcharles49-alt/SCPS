@@ -1245,8 +1245,8 @@ int main(int argc, char **argv){
                      demography_refugee_fled(), demography_refugee_returned());
               { long slaves=0; long poolc=intertrade_slave_pool_count();
                 for (int r=0;r<s.econ->n_regions;r++) slaves+=(long)s.econ->region[r].strata[CLASS_SLAVE].pop;
-                printf("              esclavage : %ld âme(s) servile(s) dans le monde · %ld au pool des Centres · %ld affranchissement(s)\n",
-                       slaves, poolc, demography_manumit_count()); }
+                printf("              esclavage : %ld âme(s) servile(s) dans le monde · %ld au pool des Centres · %ld affranchissement(s) · %ld rachat(s) IA (pénurie de bras)\n",
+                       slaves, poolc, demography_manumit_count(), ai_slave_buy_count()); }
               tot_sync += sync_total; tot_sync_distinct += distinct;
           }
         }

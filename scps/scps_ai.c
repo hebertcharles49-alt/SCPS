@@ -1806,15 +1806,22 @@ static void ai_strat_turn(AiActor *a, World *w, WorldEconomy *econ, WorldProsper
         }
     }
 
-    /* (2c) BRASSAGE — LE PACTE MIGRATOIRE avec un ALLIÉ d'un AUTRE héritage : la
-     * population échangée diffuse son savoir (métabolisation). Un cran de confiance
-     * au-dessus du commercial ⇒ réservé aux ALLIÉS ; l'autre héritage = l'intérêt à
-     * digérer (rien à apprendre d'un clone). Une proposition/tour, consentement
-     * bilatéral. Ne PASSE PAS avant l'an-12 (les alliances ne se forment pas si tôt →
-     * golden intact ; le brassage vit au-delà). */
+    /* (2c) BRASSAGE — LE PACTE MIGRATOIRE avec un partenaire de CONFIANCE d'un AUTRE
+     * héritage : la population échangée diffuse son savoir (métabolisation). LOT G
+     * (2026-07-08, élargi) : la porte n'est plus réservée à l'ALLIÉ — un pacte
+     * COMMERCIAL (trade_pact) déjà signé, hors guerre, ouvre AUSSI la proposition ;
+     * l'acceptation reste gardée par `ai_consider_offer` (ALLIÉ → oui direct ; sinon
+     * opinion ≥ AI_OFFER_MIG_OPINION — le même garde-fou de confiance qu'avant, la
+     * seule chose qui change est QUI a le droit de PROPOSER). L'autre héritage =
+     * l'intérêt à digérer (rien à apprendre d'un clone). Une proposition/tour,
+     * consentement bilatéral. Ne PASSE PAS avant l'an-12 sur les golden (ni alliance
+     * ni pacte commercial ne s'y forment si tôt → golden intact ; le brassage vit
+     * au-delà). */
     { Heritage myh = ai_capital_heritage(w, econ, a->cid);
       for (int b=0; b<w->n_countries && b<SCPS_MAX_COUNTRY; b++){
-          if (b==a->cid || diplo_status(diplo,a->cid,b)!=DIPLO_ALLIED) continue;
+          if (b==a->cid || diplo_status(diplo,a->cid,b)==DIPLO_WAR) continue;
+          bool trusted = diplo_status(diplo,a->cid,b)==DIPLO_ALLIED || diplo_trade_pact(diplo,a->cid,b);
+          if (!trusted) continue;                                        /* ni allié ni pacte commercial → pas de proposition */
           if (diplo_migration_pact(diplo,a->cid,b)) continue;              /* déjà lié */
           if (ai_capital_heritage(w,econ,b)==myh) continue;               /* même héritage → rien à digérer */
           if (ai_consider_offer(w,econ,wp,diplo,sc, a->cid, b, OFFER_MIGRATION)){
@@ -2589,6 +2596,48 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
     }
 }
 
+/* LOT G (2026-07-08) — télémétrie des rachats IA au pool (compteur APATRIDE, RAZ par
+ * sim comme g_migration_pact_flows/g_refugee_fled — jamais sérialisé, jamais lu par
+ * une décision). */
+static long g_slave_ai_bought = 0;
+void ai_slave_buy_reset(void){ g_slave_ai_bought = 0; }
+long ai_slave_buy_count(void){ return g_slave_ai_bought; }
+
+/* LOT G — L'AUTRE SENS DU CANAL : un esclavagiste (can_enslave) EN PÉNURIE DE BRAS
+ * achète au pool des Centres. Le signal est LU des coordonnées déjà moteur — Σ
+ * (level×labor demandé) par le bâti (RECIPE[type].labor via building_recipe_labor,
+ * la MÊME borne que want_labor dans econ_tick) VS le bassin national labor_avail
+ * (journaliers+bourgeois+esclaves, la même définition que econ_tick) — PAS un bonus
+ * plat : c'est le déficit RÉEL de bras que le bâti réclame et que la démographie ne
+ * fournit pas. Borné : BUY_FRAC du déficit/an (le pool se vide en décennies, comme la
+ * vente), et intertrade_slave_buy borne DÉJÀ le budget (trésor de la province) et le
+ * pool disponible — aucun aspirateur possible même à FRAC haut. */
+static void ai_slave_buy_pass(WorldEconomy *econ, int cid, int rhome){
+    if (rhome<0 || rhome>=econ->n_regions) return;
+    double avail=0.0;
+    for (int r=0;r<econ->n_regions && r<SCPS_MAX_REG; r++){
+        const RegionEconomy *re=&econ->region[r];
+        if (re->owner!=cid) continue;
+        avail += (double)re->strata[CLASS_LABORER].pop + (double)re->strata[CLASS_BOURGEOIS].pop
+               + (double)re->strata[CLASS_SLAVE].pop;
+    }
+    if (avail<=0.0) return;                                   /* pas encore de province établie */
+    double want=0.0;
+    int np=econ->n_prov; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
+    for (int p=0;p<np;p++){
+        const ProvinceEconomy *pe=&econ->prov[p];
+        if (pe->owner!=cid) continue;
+        for (int i=0;i<pe->n_bld;i++)
+            want += (double)pe->bld[i].level * (double)building_recipe_labor(pe->bld[i].type);
+    }
+    double deficit = want - avail;
+    if (deficit < 20.0) return;                               /* pas de pénurie mesurable : rien à acheter */
+    long ask = (long)(deficit * (double)tune_f("SLAVE_AI_BUY_FRAC",0.20f));
+    if (ask<=0) return;
+    long got = intertrade_slave_buy(econ, rhome, ask, true);
+    if (got>0) g_slave_ai_bought += got;
+}
+
 /* P4 — LE POOL DES CENTRES VIT : l'esclavagiste VEND son surplus servile (la règle
  * du lot D tombée du découpage des vagues : sans elle le pool restait à 0 sur toutes
  * les graines et le canal d'ACHAT — la voie de métabolisation des pacifistes — était
@@ -2597,7 +2646,9 @@ void ai_step(AiActor *a, World *w, WorldEconomy *econ, WorldProsperity *wp,
  * SLAVE_AI_KEEP_FRAC de la pop en mains serviles (la main-d'œuvre captive qu'on ne
  * lâche pas), on vend SLAVE_AI_SELL_FRAC de l'EXCÉDENT par an — le pool se remplit
  * en décennies, pas d'un coup. Payé au prix du pool (intertrade_slave_sell — matière
- * réelle, la marge des Centres s'applique). */
+ * réelle, la marge des Centres s'applique). LOT G : l'ACHAT tourne AVANT la vente
+ * (rhome peut être une région SANS esclave encore — le tout premier achat d'un
+ * esclavagiste — d'où le scan de `rany` séparé de `rhome`). */
 void ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const bool ai_on[]){
     if (!w || !econ || !ai || !ai_on) return;
     /* Au niveau PAYS (mesuré SLAVEDIAG seed 9 : la granularité région était de la
@@ -2617,14 +2668,19 @@ void ai_slave_trade_year(World *w, WorldEconomy *econ, const AiActor ai[], const
     }
     for (int cid=0; cid<w->n_countries && cid<SCPS_MAX_COUNTRY; cid++){
         if (!ai_on[cid] || w->country[cid].n_regions<=0) continue;
-        double pop=0.0, slaves=0.0; int rhome=-1;
+        double pop=0.0, slaves=0.0; int rhome=-1, rany=-1;
         for (int r=0; r<econ->n_regions && r<SCPS_MAX_REG; r++){
             const RegionEconomy *re=&econ->region[r];
             if (re->owner!=cid) continue;
+            if (rany<0) rany=r;
             for (int k=0;k<CLASS_COUNT;k++) pop+=(double)re->strata[k].pop;
             if (re->strata[CLASS_SLAVE].pop>0.f && rhome<0) rhome=r;
             slaves+=(double)re->strata[CLASS_SLAVE].pop;
         }
+        if (rany<0) continue;                             /* pays mort (aucune région) */
+        /* ACHAT (LOT G) — tourne AVANT la vente, même sans un seul esclave encore
+         * (rhome<0 possible pour le tout premier achat : on dépose sur `rany`). */
+        if (ai[cid].can_enslave) ai_slave_buy_pass(econ, cid, (rhome>=0)?rhome:rany);
         if (slaves<=0.0 || rhome<0) continue;
         if (!ai[cid].can_enslave){
             /* L'ABOLITIONNISTE N'EN GARDE PAS : les âmes serviles échues (conquête d'un
