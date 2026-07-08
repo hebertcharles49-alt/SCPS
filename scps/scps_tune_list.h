@@ -117,6 +117,10 @@
     X(SAVOIR_W_LABORER,       0.001f) \
     X(SAVOIR_LIB_PER,         0.067f) \
     X(SAVOIR_LIB_MAX,         0.33f) \
+    /* LOT I — CATCH-UP DE SAVOIR : un pays sous CATCHUP_FRAC × médiane mondiale (savoir/tête)
+     * bâtit sa Bibliothèque/Monastère quel que soit son éthos (Dominateur/Mercantile/Bureaucrate
+     * compris) — la panne mesurée était la FRÉQUENCE de pose (éthos-gated 2/6), pas le revenu. */ \
+    X(AI_SAVOIR_CATCHUP_FRAC, 0.45f) \
     /* PUISSANCE COMMERCIALE — la POP MARCHANDE produit le volume échangeable au marché (0.04·bourgeois
      * + 0.01·élite /mois) ; la CHAÎNE COMMERCIALE (Σ build.PE_infra) module en % (BLD_PER/point, plafond
      * BLD_MAX) ; ECO_W = son poids dans la puissance éco diplo. Pool MENSUEL, drainé par les achats. */ \

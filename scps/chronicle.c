@@ -1230,6 +1230,29 @@ int main(int argc, char **argv){
           }
         }
 
+        /* LOT I — SCPS_SAVOIRDIAG : où le savoir se perd. Par empire : bibliothèques bâties
+         * (Σ build.savoir, la coordonnée QUE l'IA fait monter), savoir/tête annuel (la même
+         * base que econ_country_savoir), banque de recherche courante (research_points, le
+         * porte-monnaie que ai_pick_tech compare au coût). */
+        if (getenv("SCPS_SAVOIRDIAG")){
+            double sum_lib=0, sum_pc=0, sum_bank=0; int nn=0;
+            for (int c=0;c<w->n_countries;c++){
+                if (!s.ai_on[c] || regions_of(s.econ,c)==0) continue;
+                double pop=0.0, lib=0.0;
+                for (int r=0;r<s.econ->n_regions;r++){
+                    const RegionEconomy *re=&s.econ->region[r];
+                    if (re->owner!=c) continue;
+                    pop += re->strata[CLASS_ELITE].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_LABORER].pop;
+                    lib += re->build.savoir;
+                }
+                double pc = (pop>1.0) ? econ_country_savoir(s.econ,c)/pop : 0.0;
+                sum_lib+=lib; sum_pc+=pc; sum_bank+=s.ts[c].research_points; nn++;
+            }
+            if (nn>0)
+                printf("   [SAVOIRDIAG] Sigma-savoir-bati/empire moy %.2f . savoir/tete/an moy %.4f . banque recherche moy %.0f (n=%d)\n",
+                       sum_lib/nn, sum_pc/nn, sum_bank/nn, nn);
+        }
+
         /* SYNCRÉTISME (§tech culturelle) : les nœuds à PORTE D'ARCHÉTYPE (ex-signatures de
          * heritage, désormais ouvertes par la CULTURE gouvernée — soi ou contact) — combien
          * acquis, et la DISPERSION entre empires : deux contacts différents → arbres différents. */

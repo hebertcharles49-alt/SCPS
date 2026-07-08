@@ -841,3 +841,118 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
   peu de tirages pour un ratio statistiquement solide (le fix est prouvé MATHÉMATIQUEMENT par ailleurs,
   cf. Découvertes) ; un sweep BEAUCOUP plus large (50+ sims) donnerait une mesure de terrain plus
   ferme si une session future veut re-vérifier.
+## 2026-07-08 — Lot I moteurs d'innovation
+**Découvertes** :
+- **Le goulot RÉEL n'était PAS le revenu (econ_country_savoir) mais la SÉLECTION** (deux niveaux
+  distincts, tous deux mesurés avant tout code) :
+  1. **La brique bâtie (Bibliothèque/Monastère) n'est structurellement joignable que par 2 éthos
+     sur 6** — dans `ai_econ_turn` (scps_ai.c ~1375-1465), Dominateur/Honneur vont TOUJOURS à
+     l'arsenal (branche inconditionnelle hors crise, AVANT le bloc civil), Mercantile va TOUJOURS
+     au Marché, Bureaucrate en est EXPLICITEMENT exclu (« ne quitte jamais K »). Seuls Ordre et
+     Pacifiste atteignent le sélecteur savoir. Diag EDI_DBG (3x250 ans seed 9, 18 empires-instances) :
+     Bibliothèque made=7, Monastère made=5, Académie made=1 — cohérent avec « environ un tiers des
+     empires seulement peuvent essayer ».
+  2. **Bug de grain région** : le gate d'entrée (`bd->K_inst>=AI_SAVOIR_K && bd->savoir<2.5`) lisait
+     la CAPITALE (`bd`, figée à `hr=a->home_region`) alors que le bâtiment se pose sur `cr`
+     (`ai_neediest_civic_region`, qui dérive vers la périphérie). Une fois la capitale ELLE-MÊME
+     accumulait savoir>=2.5 (environ 2 bâtiments), le gate se refermait POUR TOUJOURS sur TOUT
+     l'empire, même si la périphérie n'avait RIEN — même famille de bug que le Lot T (province vs
+     région).
+  3. **Même en réparant 1+2, l'arbre% ne bouge quasi pas — preuve DIRECTE** (SCPS_SAVOIRDIAG, ajouté
+     dans chronicle.c) : Σsavoir-bâti/empire reste 0.0-0.7 sur 250 ans MÊME avec le fix (seeds
+     9/42/145, 1 sim chacune). Cause : `SAVOIR_LIB_MAX` plafonne le bonus de bibliothèque à +33%,
+     un plafond QUASI JAMAIS approché (il faudrait environ 5 bâtiments, jamais atteint sur 250 ans
+     même en forçant tous les éthos à essayer). Test décisif : `SCPS_TUNE="SAVOIR_LIB_MAX=3.0"`
+     (dix fois le plafond) sur le code BASELINE (aucune bibliothèque jamais bâtie) donne un arbre%
+     STRICTEMENT IDENTIQUE (zéro bâti fois n'importe quel plafond = zéro bonus). Ceci PROUVE que la
+     brique bâtie est un levier structurellement FAIBLE (capé, jamais atteint), quel que soit
+     l'effort mis sur la fréquence de pose.
+  4. **Le VRAI moteur d'innovation était ailleurs dans l'arbre lui-même** : la chaîne
+     Scriptorium→Académie→Université (`scps_tech.c` : THM_SAVOIR·FN_PRODUCTION, tier 1→2→3,
+     prereq=TECH_BIBLIOTHEQUE gratuite) alimente `tech_research_yield` DIRECTEMENT (+0.5/nœud,
+     scps_tech.c:465) — un multiplicateur qui COMPOSE (chaque maillon accélère TOUS les suivants
+     sur 250 ans), contrairement au plafond additif de la brique bâtie. `ai_pick_tech` (le glutton)
+     ne la préfère pas aux 15 autres nœuds tier-1 en concurrence (aucune notion de « rendement
+     futur » dans son score) → le multiplicateur reste à x1 toute la partie, indépendamment du
+     nombre de bibliothèques bâties ou du plafond SAVOIR_LIB_MAX.
+- **Fix retenu (le levier qui MARCHE, mesuré)** : « SOIF DE SAVOIR » dans `ai_research_step` (motif
+  IDENTIQUE à SOIF DE PALIER/S1/S3/S4 déjà dans le fichier — épargne ciblée pour le PROCHAIN maillon
+  non acquis de la chaîne Scriptorium→Académie→Université, via `ai_step_toward`, jamais au-delà).
+  Placé AVANT la soif de palier (tier1, bon marché, prime la composition) ; pose `palier_hold=true`
+  pour que S1/S3/S4 s'inclinent pareil (même contrat que le reste du fichier).
+- **Fix secondaire retenu (bug corrigé, indépendamment utile)** : le gate savoir de `ai_econ_turn`
+  lit désormais `crd` (build de `cr`, le site RÉEL) au lieu de `bd` (capitale figée) — corrige le
+  verrou permanent-empire-entier. Ajout d'un catch-up « savoir/tête < 45% médiane mondiale »
+  (`AI_SAVOIR_CATCHUP_FRAC`, registre J) qui traverse TOUS les gardes d'éthos (Dominateur délaisse
+  UN tour d'arsenal, Mercantile délaisse SON marché, Bureaucrate sort de K) — rafraîchi UNE FOIS/JOUR
+  (`ai_savoir_refresh`, cache statique day-gated dans scps_ai.c, PAS dans scps_sim.c — motif
+  `tech_diffusion_refresh` : `ai_step` est appelé PAR-ACTEUR chaque jour, le 1er appel de la journée
+  calcule, les suivants lisent, coût O(n_pays x n_régions) UNE fois/jour, jamais dans le hot path
+  par-acteur — la tentative FAU-IA lot 2 avait re-baseliné + explosé le temps de sim pour avoir mis
+  un calcul O(n_pays) DANS ce hot path, cf. commentaire existant scps_ai.c ~1225).
+- **Leviers ÉVALUÉS et REJETÉS** : (a) inflation directe de SAVOIR_LIB_PER/MAX — interdit par la
+  mission ET inutile (prouvé ci-dessus, un plafond plus haut sur un compteur à zéro ne change rien) ;
+  (b) FRAC de catch-up à 1.0 (tout empire sous la médiane, pas seulement les extrêmes) — testé,
+  Bibliothèque made 6→25 / Monastère 5→16 sur le même 3x250-ans, mais arbre% n'a PAS clairement
+  progressé (28%/17%/34% vs baseline 32%/17%/30%, un sim a même RÉGRESSÉ) et `nomat` a explosé
+  (21-70 refus matière) — la contention sur bois/argile détourne l'économie sans bénéfice net ;
+  gardé à 0.45 (l'extrême laggard seulement, un vrai filet de sécurité, pas une politique agressive).
+- **Résultat mesuré** (1 sim/graine, 250 ans, 6 empires/12 cités, seeds 9/42/145 — échantillon
+  modeste, la variance inter-sim est réelle) :
+
+  | graine | baseline (parent 7f3ade0) | +fix bâtiment seul | +fix bâtiment +soif de savoir |
+  |---|---|---|---|
+  | 9   | 32% (min8 max72) | 32% (catch-up n'a pas tiré) | 30% |
+  | 42  | 19% (min8 max39) | 21% | 26% |
+  | 145 | 27% (min8 max56) | 26% | 29% |
+  | moyenne | 26.0% | 26.3% | 28.3% |
+
+  Amélioration RÉELLE mais MODESTE (+2.3pp de moyenne sur 3 graines à 1 sim — bruit inter-sim
+  significatif, seed 9 a même légèrement régressé). La cible mission (35-45% médian) n'est PAS
+  atteinte par ces leviers seuls sur cet échantillon ; un sweep plus large (comme le GIGA SWEEP
+  200 sims) serait nécessaire pour juger la médiane avec confiance — non fait ici (budget de
+  session). Religion/esclavage restent dans la plage saine observée par le GIGA SWEEP (religion
+  2-5 foi/schismes selon graine, esclavage 0-650 âmes) — pas de dérive systémique détectée.
+- **Cascade mesurée** : religion et esclavage restent stables run à run (variations dans la plage
+  normale de bruit inter-sim, aucune régression de monde) ; satisfaction/hégémon inchangés dans
+  leur plage saine (hégémon mortel maintenu, satisfaction 74-91% selon classe/graine).
+**Pièges** :
+- Le CPU/temps-réel sur cette machine est TRÈS variable selon l'archétype de graine (Lot W, 8
+  archétypes) : un monde « archipel » avec beaucoup de petites masses peut prendre PLUSIEURS
+  MINUTES juste pour `trace_rivers`/l'érosion, quand un monde « continents » fait le même travail en
+  quelques secondes (`chronicle --hash 7 5 12` : environ 3s ; `chronicle 9 1 250 6 12` : environ
+  100s ; `chronicle 9 3 250 6 12` peut dépasser 5-10 min). Lancer PLUSIEURS `chronicle` en
+  arrière-plan sans attendre la fin du précédent (même sur des graines DIFFÉRENTES) empile des
+  process réels qui se contentionnent le CPU (vérifié : la charge globale machine restait basse
+  pendant qu'un seul chronicle.exe consommait tout son cœur pendant >100s sur la seule étape
+  rivières — PAS un hang, juste lent sur cette graine). Ne PAS lancer un nouveau `./chronicle` tant
+  que le précédent n'a pas produit sa ligne finale ; `taskkill //F //IM chronicle.exe //T` nettoie
+  un backlog avant de relancer proprement.
+- Le Bash tool a un timeout DUR de 2 min par défaut même si on passe `timeout 200` DANS le script —
+  il faut passer le paramètre `timeout` (ms) du TOOL lui-même (jusqu'à 600000) pour les runs de plus
+  de 2 minutes.
+- `ai_pick_tech`/`ai_research_step` : `pick` part du choix du glutton (score multiplicatif) puis se
+  fait RÉASSIGNER par une CASCADE de blocs d'épargne (échappatoire famine, SOIF DE SAVOIR (neuf),
+  soif de palier, S1 greffe, S3 quête faustienne, S4 doctrine militaire), chacun avec un
+  early-`return` si `research_points < coût` (on ÉPARGNE plutôt que de dépenser sur le glouton). Le
+  `bool palier_hold` DOIT être déclaré UNE SEULE FOIS (avant le premier bloc qui l'utilise) — un
+  2e `bool palier_hold = false;` plus bas écraserait silencieusement un `true` déjà posé.
+- La chaîne Scriptorium/Académie/Université est un TECH NODE (scps_tech.h `TechId`), à NE PAS
+  CONFONDRE avec l'ÉDIFICE Bibliothèque/Monastère/Académie (`scps_agency.c` `Edifice` — différent
+  enum, différent système : l'un se PAIE en or+matière et se BÂTIT dans une région, l'autre se PAIE
+  en points de recherche et se DÉBLOQUE pour tout l'empire). Les deux ont des noms qui SE
+  RESSEMBLENT (Académie existe des DEUX côtés) — vérifier le type avant de lire un diff.
+**Restes** :
+- Le seuil `AI_SAVOIR_CATCHUP_FRAC=0.45` est un filet de sécurité DÉLIBÉRÉMENT conservateur (seul
+  l'extrême laggard catch-up) — un futur calibrage pourrait le remonter (0.6-0.7) SI un sweep large
+  montre que ça ne dégrade pas la satisfaction/l'économie (testé seulement à 1.0 ici, où la
+  contention matière apparaît — la vraie fenêtre utile est probablement entre les deux, non
+  explorée faute de budget).
+- Un sweep plus large (10+ graines x plusieurs sims x 250 ans, comme le GIGA SWEEP existant) serait
+  nécessaire pour confirmer/infirmer la cible 35-45% médian avec une variance maîtrisée — cette
+  session s'est limitée à 3 graines x 1 sim (bruit inter-sim non moyenné).
+- `SCPS_SAVOIRDIAG` (chronicle.c, gated `getenv`) reste dans l'arbre — motif standard, jamais lu
+  par le moteur (télémétrie pure, comme les autres `SCPS_*DIAG`).
+- La cascade `ai_research_step` a maintenant 6 blocs d'épargne séquentiels (échappatoire, soif de
+  savoir, soif de palier, S1, S3, S4) — si un 7e est ajouté un jour, vérifier l'ORDRE de priorité
+  voulu (post-hoc, pas de registre central des priorités, juste l'ordre du code).
