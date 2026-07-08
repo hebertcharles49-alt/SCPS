@@ -692,6 +692,26 @@ static Edifice ai_next_faith_edifice(const WorldEconomy *econ, int region){
     if (f < 3.0f) return EDI_TEMPLE;
     return EDI_CATHEDRALE;
 }
+/* LE SITE DE LA CHAÎNE DE FOI (calibrage post-LOT T) — le zèle échouait en BOUCLE
+ * (Sanctuaire made=0, nocap 59-71/sim) parce qu'il posait dans la région civique « la
+ * plus démunie » (le choix Phase-1, pensé pour K/savoir) : la plus démunie en SERVICE
+ * est aussi la plus démunie en BOIS AU MARCHÉ, et l'échelle Sanctuaire→Temple se
+ * fragmentait entre régions (le Temple exige le Sanctuaire de la MÊME région, familles
+ * par edifice_prev). Ici : (1) si l'échelle est COMMENCÉE quelque part (0<faith<3), on
+ * y RESTE ; sinon (2) on fonde là où la matière EST (max bois dispo au marché §5) —
+ * diégétique : on élève le sanctuaire où le bois se trouve, pas dans le désert. */
+static int ai_faith_site_region(const WorldEconomy *econ, int cid){
+    int ladder=-1; float ladderf=-1.f;
+    int best=-1;   float bestw=-1.f;
+    for (int r=0;r<econ->n_regions;r++){
+        if (econ->region[r].owner!=cid || !econ->region[r].colonized) continue;
+        float f = econ->region[r].build.faith;
+        if (f>0.f && f<3.0f && f>ladderf){ ladder=r; ladderf=f; }
+        float wv = intertrade_market_avail(econ, r, RES_WOOD);
+        if (wv>bestw){ bestw=wv; best=r; }
+    }
+    return (ladder>=0) ? ladder : best;
+}
 /* Progression du savoir : Bibliothèque → Monastère (recherche ; le monastère aussi foi). */
 static Edifice ai_next_savoir_edifice(const WorldEconomy *econ, int region){
     if (region<0 || region>=econ->n_regions) return EDI_BIBLIOTHEQUE;
@@ -1237,6 +1257,29 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
         if (agency_build(ag, econ, w, gr, EDI_GRENIER)) a->stats.builds_other++;
         return;
     }
+    /* CALIBRAGE post-LOT T (2026-07-08) — LA FOI EN FONDATION PASSE EN TÊTE DE TOUR : le
+     * zèle échouait 70/70 (nocap) parce que sa tentative arrivait en QUEUE de tour éco —
+     * les consommateurs du pool d'import mensuel §5 (routes, manufactures, arsenal…)
+     * étaient servis AVANT, et le sanctuaire trouvait le pool à sec. Même ordre à chaque
+     * tour ⇒ échec DÉTERMINISTE (pendant que le grenier, servi tôt, réussissait 83×).
+     * Une foi en fondation (zèle prosélyte, pays encore athée) tente donc SA commande
+     * ICI, avant eux — après la famine (un peuple affamé ne bâtit pas de sanctuaire).
+     * L'anti-spam tient : si l'ordre passe, faith_pending sera vrai au bloc civique plus
+     * bas → la chaîne y choisit autre chose (pas de double-foi) ; s'il échoue, le bloc
+     * civique retente en queue comme avant (deux échantillons du pool par tour). */
+    if (a->w_faith >= tune_f("AI_FAITH_ZEAL",AI_FAITH_ZEAL) && religion_of_country(a->cid) < 0){
+        bool fpend = false;
+        if (ag) for (int oi=0; oi<ag->n; oi++)
+            if (ag->order[oi].active && ag->order[oi].kind==AGY_BUILD){
+                Edifice pe=(Edifice)ag->order[oi].param;
+                if (pe==EDI_SANCTUAIRE||pe==EDI_TEMPLE||pe==EDI_CATHEDRALE||pe==EDI_MONASTERE){ fpend=true; break; }
+            }
+        int fs = fpend ? -1 : ai_faith_site_region(econ, a->cid);
+        if (fs>=0 && econ->region[fs].build.faith < 3.0f){
+            Edifice fe = ai_next_faith_edifice(econ, fs);
+            if (agency_build(ag, econ, w, fs, fe)) a->stats.builds_k++;
+        }
+    }
     /* Le chantier (militaire · manufacture civile · bâtiment civil) est PONDÉRÉ PAR LE TEMPÉRAMENT
      * dans le seau « bâtir » plus bas — plus de fabrique INCONDITIONNELLE chaque tour. */
     a->credit_trade += a->w_trade * (1.f - 0.5f*brake);
@@ -1314,13 +1357,19 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
              * edifice_tier) : la chaîne complète est tech T2 → Temple bâtissable → Temple bâti →
              * fondation — mesurée en sweep (cf. TROUVAILLES) pour vérifier qu'elle n'étrangle pas
              * la fondation (dans l'esprit de l'autel humble N1). */
+            /* calibrage post-LOT T : le chantier de foi pendant se cherche sur TOUTES les
+             * régions (l'ordre part sur le SITE de foi, plus forcément hr — l'ancien scan
+             * region==hr ne voyait jamais l'ordre ⇒ l'anti-spam était mort) ; et le zèle se
+             * gate sur la faith du SITE (l'échelle réelle), pas celle de la capitale. */
             bool faith_pending = false;
-            if (ag && hr>=0) for (int oi=0; oi<ag->n; oi++)
-                if (ag->order[oi].active && ag->order[oi].kind==AGY_BUILD && ag->order[oi].region==hr){
+            if (ag) for (int oi=0; oi<ag->n; oi++)
+                if (ag->order[oi].active && ag->order[oi].kind==AGY_BUILD){
                     Edifice pe=(Edifice)ag->order[oi].param;
                     if (pe==EDI_SANCTUAIRE||pe==EDI_TEMPLE||pe==EDI_CATHEDRALE||pe==EDI_MONASTERE){ faith_pending=true; break; }
                 }
-            bool faith_zeal = (bd && hr>=0 && !faith_pending && bd->faith < 3.0f
+            int   faith_site = ai_faith_site_region(econ, a->cid);
+            float site_faith = (faith_site>=0) ? econ->region[faith_site].build.faith : 99.f;
+            bool faith_zeal = (bd && faith_site>=0 && !faith_pending && site_faith < 3.0f
                                && religion_of_country(a->cid) < 0
                                && a->w_faith >= tune_f("AI_FAITH_ZEAL",AI_FAITH_ZEAL));
             if (!faith_crisis && !faith_zeal && (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && hr>=0){
@@ -1352,6 +1401,9 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                  * d'arsenal Dominateur/Honneur ci-dessus restent à la capitale (hr) : hors sujet. */
                 int cr = ai_neediest_civic_region(a, econ);
                 if (faith_crisis || faith_zeal){
+                    /* la FOI se pose sur SON site (échelle en cours, sinon bois au marché) —
+                     * pas sur la région civique la plus démunie (calibrage post-LOT T). */
+                    if (faith_site>=0) cr = faith_site;
                     e = ai_next_faith_edifice(econ, cr);   /* crise de consentement OU zèle prosélyte → foi */
                 } else if (eth==ETHOS_MERCANTILE){
                     e = EDI_MARCHE; kind = 2; cr = hr;     /* la largeur du marchand : le RÉSEAU, toujours à la capitale */
@@ -2280,6 +2332,45 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             }
         }
     }
+    /* SOIF DE PALIER (calibrage post-LOT T, 2026-07-08) — le LOT T gate les BÂTIMENTS de
+     * tier N sur ≥1 tech de tier N ; or l'arbre offre 6 nœuds tier-0 + 16 tier-1 = 22
+     * techs bon marché, et un empire n'en complète que ~20-25 en 250 ans : le glouton
+     * (toujours le moins cher) ne SORT JAMAIS des tiers 0-1 ⇒ Temple/Banque/Aqueduc…
+     * notech à VIE (mesuré : Temple notech=109, made=0, seed 9×250). Même jurisprudence
+     * que S1/S3/S4 (« l'IA gloutonne ne paie jamais le tier profond » → ÉPARGNE ciblée) :
+     * un empire déjà installé (≥6 techs) qui n'a AUCUNE tech tier-2 épargne pour la
+     * MOINS CHÈRE accessible (tout thème, non-faustienne) — la porte des bâtiments T2
+     * s'ouvre en milieu de partie pour TOUS, pas seulement les investisseurs. Les tiers
+     * 3+ restent aux ressorts existants (greffe/beeline/doctrine) — qui S'INCLINENT
+     * (palier_hold) tant que le palier 2 n'est pas acquis : sans ce verrou, la greffe
+     * S1 (return-épargne pour une signature tier-3 CHÈRE) écrasait le pick du palier
+     * et l'empire épargnait à vide pendant des décennies. */
+    bool palier_hold = false;
+    if (!tech_has_tier(ts, 2)){
+        int done=0; for (int id=0; id<TECH_COUNT; id++) if (ts->unlocked[id]) done++;
+        if (done >= 6){
+            /* la moins chère dont la CHAÎNE EST VIABLE : directement accessible, sinon
+             * ai_step_toward (motif S3) donne le prochain pas — un tier-2 dont l'accès
+             * d'héritage est hors de portée rend TECH_COUNT et TOMBE (sans ça la soif
+             * no-opait en silence sur un nœud à jamais inaccessible). */
+            float t2cost=1e30f; TechId t2step=TECH_COUNT;
+            for (int id=0; id<TECH_COUNT; id++){
+                const TechNode *tn=tech_node((TechId)id);
+                if (tn->tier!=2 || tn->faustian || ts->unlocked[id]) continue;
+                TechId st = tech_can_research(ts,(TechId)id,access) ? (TechId)id
+                                                                    : ai_step_toward(ts,(TechId)id,access);
+                if (st==TECH_COUNT) continue;               /* chaîne non viable (accès) */
+                float cc=ai_effective_cost((TechId)id, nprov, ai_capital_ethos(w,econ,a->cid));
+                if (cc<t2cost){ t2cost=cc; t2step=st; }     /* on retient le PAS de la moins chère */
+            }
+            if (t2step!=TECH_COUNT){
+                float sc=ai_effective_cost(t2step, nprov, ai_capital_ethos(w,econ,a->cid));
+                if (ts->research_points < sc) return;       /* pas les moyens : on ÉPARGNE (et TIENT) */
+                pick = t2step;                              /* on AVANCE vers le palier */
+                palier_hold = true;                         /* PRIORITÉ : les épargnes S1/S3/S4 s'inclinent */
+            }
+        }
+    }
     /* S1 — LA GREFFE CULTURELLE (la cristallisation de Venise) : un empire INVESTISSEUR
      * (mercantile/bâtisseur) ÉPARGNE pour acquérir le métier-signature d'un archétype qu'il a
      * ATTEINT — par le COMMERCE (ma route maritime, S1) ou la gouvernance —, au lieu d'éparpiller.
@@ -2287,7 +2378,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
      * toujours le moins cher) : c'est le MÊME mécanisme que la foreuse. Il TIENT les points jusqu'à
      * l'acquérir (pas de fuite). Borné : NON-faustien (le faustien = S3) et ≤ 2 greffes (le 2e
      * archétype) — la guerre n'INTERROMPT pas (l'investisseur, peu belliqueux, finit sa greffe). */
-    if (a->w_trade > 0.5f || a->w_build > 0.5f){
+    if (!palier_hold && (a->w_trade > 0.5f || a->w_build > 0.5f)){
         int got=0;
         for (int id=0; id<TECH_COUNT; id++)
             if (ts->unlocked[id] && tech_node((TechId)id)->native!=HERITAGE_COUNT) got++;
@@ -2315,7 +2406,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
      * BEELINE la chaîne (Poudrière → Forge à runes) en épargnant à chaque pas. RARE (la porte
      * d'appétit) et COÛTEUX (la charge → Brèche borne les conséquences) ; on NE touche PAS la
      * foreuse. Le frein AI_TECH_FAUSTIAN abaissé (2.5→1.2) scelle la rencontre appétit/frein. */
-    if (!ts->unlocked[TECH_FORGE_RUNES]
+    if (!palier_hold && !ts->unlocked[TECH_FORGE_RUNES]
         && tech_heritage_access_tier(access, HERITAGE_METALLURGISTE)>=3
         && tech_heritage_access_tier(access, HERITAGE_ESOTERIQUE)>=3){
         Credo cr=CREDO_PLURALISTE; float val=5.f;
@@ -2348,7 +2439,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
               else if (!ts->unlocked[TECH_ALCHIMIE])       tgt=TECH_ALCHIMIE;
           }
       }
-      if (tgt!=TECH_COUNT){
+      if (tgt!=TECH_COUNT && !palier_hold){                      /* le palier 2 (soif) prime */
           TechId step=ai_step_toward(ts, tgt, access);
           if (step!=TECH_COUNT){
               float sc=ai_effective_cost(step, nprov, eth);

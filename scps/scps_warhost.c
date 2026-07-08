@@ -50,8 +50,10 @@ static long g_ad_got [RES_COUNT];     /* armes réellement prises (arsenal) */
 static long g_ad_levied[RES_COUNT];   /* paquets ×100 réellement levés (gate pop après armes) */
 static long g_ad_returned[RES_COUNT]; /* armes RENDUES à la démob (wh_shed) */
 void warhost_armsdiag(const long **want, const long **got, const long **levied, const long **returned){
-    if (want) *want=g_ad_want; if (got) *got=g_ad_got;
-    if (levied) *levied=g_ad_levied; if (returned) *returned=g_ad_returned;
+    if (want)     *want=g_ad_want;
+    if (got)      *got=g_ad_got;
+    if (levied)   *levied=g_ad_levied;
+    if (returned) *returned=g_ad_returned;
 }
 
 /* ───────────────────────────────────────────────────────────────────────────

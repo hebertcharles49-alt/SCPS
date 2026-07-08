@@ -62,7 +62,13 @@ static const EdificeDef EDIFICES[EDIFICE_COUNT] = {
     [EDI_IRRIGATION]   = { "Irrigation",    360, { .food_cap=1.5f }, {{RES_WOOD,RES_STONE,RES_CLAY},{25,10,5}} },  /* canaux : bois, ÷2 */
     [EDI_AQUEDUC]      = { "Aqueduc",       540, { .food_cap=1.2f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,25,10}} },  /* arches : pierre dominante, ÷3 */
     /* Foi → SOUTIENT L (sacraliser le trône apaise sans réprimer — §4 du catalogue). */
-    [EDI_SANCTUAIRE]   = { "Sanctuaire",    180, { .faith=1.0f }, {{RES_WOOD,RES_CLAY},{15,10}} },  /* −12 % (humble) */
+    /* L'AUTEL HUMBLE (re-restauré 2026-07-08) : la dispo bois FONGIBLE d'un empire zélé
+     * PLAFONNE ~14 en régime (conso feu + décrue — mesuré GATEDIAG seed 9 : 70/70 refus,
+     * besoin 17 vs dispo 0-14). {bois 12} avait été choisi EXPRÈS pour passer sous ce
+     * plafond (cf. § RELIGION « autel humble ») ; l'arrondi §0 l'a remonté à {15+argile 10}
+     * en le re-étranglant en silence. 10 (multiple de 5) repasse dessous ; l'argile
+     * (l'AUTRE étrangleur du monde nu) reste dehors — la progression appartient au Temple. */
+    [EDI_SANCTUAIRE]   = { "Sanctuaire",    180, { .faith=1.0f }, {{RES_WOOD},{10}} },
     [EDI_TEMPLE]       = { "Temple",        540, { .faith=3.0f }, {{RES_WOOD,RES_STONE,RES_CLAY},{5,20,10}} },  /* pierre dominante, ÷3 */
     [EDI_CATHEDRALE]   = { "Cathédrale",    960, { .faith=6.5f },
                            {{RES_WOOD,RES_STONE,RES_CLAY},{10,40,20}} },  /* l'éclat de pierre, ÷3 */

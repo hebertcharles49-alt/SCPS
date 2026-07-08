@@ -1996,6 +1996,27 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   calibrage à part (retry nocap sur chantiers de foi vs Monastère site de fondation). golden
   **IDENTIQUE** (rien <12 ans) · determinism STABLE · savetest byte-identique · api_demo 174/174 ·
   MEMBRANE AUDIT OK · scons 0 warning · **SAVE non bumpé** (gates dérivés, cache transitoire).
+- **CALIBRAGE RELIGION post-LOT T (2026-07-08, orchestrateur) — l'échelle Sanctuaire→Temple→fondation
+  débouchée bout à bout (0.3 → 0.7 foi/sim seed 9)** : quatre verrous successifs démontés au diag.
+  (1) **site de foi** : le zèle posait dans la région civique « la plus démunie » (choix Phase-1 pensé
+  pour K/savoir) — `ai_faith_site_region` : l'échelle EN COURS d'abord (le Temple exige le Sanctuaire
+  de la MÊME région), sinon max bois au marché. (2) **tête de tour** : la tentative de foi arrivait en
+  QUEUE de tour éco, le pool d'import mensuel §5 déjà épuisé par grenier/routes/manufactures — échec
+  DÉTERMINISTE 70/70 ; elle passe désormais APRÈS la famine mais AVANT les consommateurs du pool.
+  (3) **L'AUTEL HUMBLE re-restauré** : la dispo bois FONGIBLE d'un empire plafonne ~14 en régime
+  (GATEDIAG : besoin 17 vs dispo 0-14) — {bois 12} avait été choisi EXPRÈS sous ce plafond, l'arrondi
+  §0 l'avait remonté à {15+argile 10} en le re-étranglant en silence → **{bois 10}**, l'argile dehors.
+  (4) **SOIF DE PALIER** (`ai_research_step`) : l'arbre offre 6 nœuds tier-0 + 16 tier-1 = 22 techs
+  bon marché et un empire n'en complète que ~20-25 en 250 ans → le glouton ne SORT JAMAIS des tiers
+  0-1 ⇒ Temple/Banque/Aqueduc notech À VIE (Temple notech=109, made=0). Même jurisprudence que
+  S1/S3/S4 : un empire installé (≥6 techs) sans tech tier-2 ÉPARGNE pour la moins chère à CHAÎNE
+  VIABLE (ai_step_toward pour les prérequis) — avec **priorité** (`palier_hold`) sur les épargnes
+  S1/S3/S4 qui sinon écrasaient le pick (la greffe épargnait à vide pour un tier-3 cher). Mesuré :
+  Temple notech 109→12, Sanctuaire made 0→1-4, l'échelle VIT (le 0.7 restant = rareté choisie — peu
+  de prosélytes/monde, Temple 540 j, ralliements en cours de route ; le giga sweep juge sur 20
+  graines). + warning warhost pré-existant corrigé (double if). ⚠ RE-BASELINE golden (avec lot P,
+  une seule fois). ⊕ **GEL MOTEUR déclaré** — plus de modification moteur ; le giga sweep
+  20 graines × 10 sims × 250 ans est l'arbitre.
 
 ## Disciplines non négociables
 
