@@ -370,6 +370,9 @@ int main(int argc, char **argv){
     long tot_council_loyalty_sum=0, tot_council_loyalty_n=0;   /* V2a : Conseil vivant */
     long tot_council_brink=0, tot_council_ai_replace=0;
     long tot_tree_pct=0; int tot_tree_sims=0;   /* §A : fraction d'arbre déverrouillée (le coût force les choix) */
+    long tot_fin[6]={0,0,0,0,0,0};   /* LOT F : distribution des fins (index = FinType, 0=AUCUNE) */
+    long tot_exodus=0;         /* LOT F : âmes évacuées cumulées (endgame_exodus_count, sommé sim par sim) */
+    long tot_calm_shocks=0;    /* LOT F : catastrophes tirées sur un monde jugé CALME (events_calm_shocks_fired) */
     long tot_reloc=0;   /* §reloc : ensemencements de pop pour combler une pénurie */
     long tot_repress=0, tot_assim=0, tot_purge=0, tot_purge_dead=0;       /* leviers intérieurs */
     long tot_serv=0, tot_prot=0, tot_conc=0, tot_cite=0, tot_defect=0, tot_annex=0;    /* suzeraineté */
@@ -748,6 +751,12 @@ int main(int argc, char **argv){
                                                    endgame_metab_count(w, s.econ, s.eg->merv_country), HERITAGE_COUNT);
             printf("\n");
         }
+        /* LOT F (2026-07-08) — DISTRIBUTION DES FINS + L'EXODE : la preuve que le
+         * dispatch du défaut ne penche plus FROID (cible ≤2:1 EAU/RONCES/FROID) et
+         * que l'exode (réfugiés fuyant une fin AVANT de mourir) VIT. */
+        if (s.eg) tot_fin[(s.eg->fired && (int)s.eg->fin>=0 && (int)s.eg->fin<=5) ? (int)s.eg->fin : 0]++;
+        tot_exodus += endgame_exodus_count();
+        tot_calm_shocks += events_calm_shocks_fired();
         if (getenv("SCPS_BASKETDIAG")){
             /* CONSO (demande agrégée) vs OUTPUT RÉEL (offre) par ressource — pour voir QUELLE brute/bien
              * le panier ne couvre pas (couv < 100 % = pénurie réelle). demande/offre sont mensuelles. */
@@ -1559,6 +1568,17 @@ int main(int argc, char **argv){
            (double)tot_relig_roots/(nsims>0?nsims:1), (double)tot_relig_schisms/(nsims>0?nsims:1),
            (double)tot_relig_faith/(nsims>0?nsims:1), (double)tot_relig_minority/(nsims>0?nsims:1),
            (double)tot_min_her/(nsims>0?nsims:1), (double)tot_min_for/(nsims>0?nsims:1), RELIG_SCHISM_MAX);
+    /* LOT F (2026-07-08) — DISPATCH DES FINS + CATASTROPHES + L'EXODE : la preuve
+     * que le dispatch du défaut ne penche plus FROID (cible ≤2:1 entre les trois
+     * fins élémentaires), que les mondes calmes reçoivent une pression, et que
+     * l'exode (réfugiés fuyant une fin AVANT de mourir) VIT. */
+    { long fmax=tot_fin[1]; if(tot_fin[2]>fmax)fmax=tot_fin[2]; if(tot_fin[3]>fmax)fmax=tot_fin[3];
+      long fmin=tot_fin[1]; if(tot_fin[2]<fmin && tot_fin[2]>0)fmin=tot_fin[2]; if(tot_fin[3]<fmin && tot_fin[3]>0)fmin=tot_fin[3];
+      printf("   fins (§27) .................. %ld EAU · %ld RONCES · %ld GRAND HIVER · %ld ASCENSION · %ld SANG · %ld aucune  (ratio max/min dispatch %.1f:1, cible ≤2:1)\n",
+             tot_fin[FIN_EAU], tot_fin[FIN_RONCES], tot_fin[FIN_FROID], tot_fin[FIN_ASCENSION], tot_fin[FIN_SANG], tot_fin[FIN_AUCUNE],
+             fmin>0 ? (double)fmax/(double)fmin : (fmax>0 ? 99.9 : 0.0));
+      printf("   catastrophes du monde calme . %ld choc(s) tiré(s) sous pression (monde sans fin en vue, an > %.0f) · exode : %ld âme(s) évacuée(s) (réfugiés fuyant EAU/FROID/RONCES/SANG)\n",
+             tot_calm_shocks, (double)tune_f("CALM_DISASTER_YEAR",200.f), tot_exodus); }
     { long tsum=0; for(int t=1;t<=7;t++) tsum+=tot_tier[t];
       printf("   tiers de province (LOT T) ... T1 %.0f%% · T2 %.0f%% · T3 %.0f%% · T4 %.0f%% · T5 %.0f%% · T6 %.0f%% · T7 %.0f%% (pop→tier : T2 2000 · T3 3000 · T4 4000 · T5 5000 · T6 8000 · T7 10000 ; %ld édifice(s) refusé(s) faute de tech de palier/sim)\n",
              tsum? 100.0*(double)tot_tier[1]/(double)tsum:0.0, tsum? 100.0*(double)tot_tier[2]/(double)tsum:0.0,

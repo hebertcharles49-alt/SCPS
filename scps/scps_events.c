@@ -28,6 +28,13 @@ static long g_marbrive_fired=0, g_pont_effondre_fired=0;
 long events_marbrive_fired(void){ return g_marbrive_fired; }
 long events_pont_effondre_fired(void){ return g_pont_effondre_fired; }
 
+/* LOT F (2026-07-08) — CATASTROPHES DU MONDE CALME : combien de chocs géo (quake/
+ * flood/drought/fire/plague, EVENTS[] existant) ont tiré alors que le monde était
+ * jugé CALME (aucune fin en vue, cf. world_events_tick) — la preuve que la pression
+ * mord sur les mondes qui, sinon, sommeilleraient un siècle sans réaction IA. */
+static long g_calm_shocks_fired=0;
+long events_calm_shocks_fired(void){ return g_calm_shocks_fired; }
+
 /* CONTENU W1 — même motif (statics de module, RAZ à events_init, PAS sérialisés). */
 static long g_cloches_fired=0, g_entrepots_fermes_fired=0, g_deux_cartes_fired=0,
             g_eau_noire_fired=0, g_derniere_decision_fired=0, g_salve_runique_fired=0;
@@ -160,6 +167,7 @@ void events_init(EventsState *ev, const World *w, uint32_t seed){
     ev->ages.last_dawn_year = AGE_DAWN_YEARS - AGE_MIN_YEARS;
     ev->last_id = -1; ev->last_name = NULL;
     g_marbrive_fired=0; g_pont_effondre_fired=0;   /* MEMBRANE DE DÉCISION : télémétrie RAZ par sim */
+    g_calm_shocks_fired=0;   /* LOT F : catastrophes du monde calme, RAZ par sim */
     g_cloches_fired=0; g_entrepots_fermes_fired=0; g_deux_cartes_fired=0;
     g_eau_noire_fired=0; g_derniere_decision_fired=0; g_salve_runique_fired=0;   /* CONTENU W1 */
     g_chaines_rapportent_fired=0; g_oeuvre_noire_fired=0; g_savoir_interdit_fired=0;
@@ -3174,6 +3182,22 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
     g_title_sc = sc;   /* lot M : latch display-only pour event_title (noms de ministre) */
     ev->ages.days_elapsed += days;          /* horloge de jeu (rythme des âges) */
 
+    /* LOT F (2026-07-08) — CATASTROPHES DU MONDE CALME : « si pas de fin, forcer des
+     * catastrophes naturelles, ça devrait motiver l'IA à faire des trucs » (demande
+     * joueur). Un monde SANS fin en vue — aucune fin latchée, passé un an-butoir,
+     * entropie loin du seuil (le monde n'est pas simplement en train de charger une
+     * fin qui va bientôt éclore) — reçoit une pression accrue de catastrophes GÉO,
+     * réutilisant le motif EVENTS[] EXISTANT (quake/flood/drought/fire/peste) au lieu
+     * d'un système neuf : `calm_mult` divise leur mtth (plus fréquent), jamais une
+     * fin en soi — une PRESSION, pas un forçage narratif. */
+    float calm_mult = 1.f;
+    if (eg && wp && !eg->fired) {
+        int yr = ev->ages.days_elapsed / 365;
+        if (yr > (int)tune_f("CALM_DISASTER_YEAR", 200.f)
+            && wp->entropy < tune_f("ENTROPY_FIN", 55.f) * tune_f("CALM_DISASTER_ENTFRAC", 0.5f))
+            calm_mult = tune_f("CALM_DISASTER_MULT", 2.5f);
+    }
+
     /* 1. CHOCS GÉO — à risque, par région, sur leur cadence (1/risk accélère). */
     static const int SHOCKS[4]={EVID_QUAKE,EVID_FLOOD,EVID_DROUGHT,EVID_FIRE};
     for (int r=0;r<econ->n_regions;r++){
@@ -3182,16 +3206,21 @@ void world_events_tick(EventsState *ev, World *w, WorldEconomy *econ,
             int s=SHOCKS[si];
             float risk=shock_risk(ev,r,s);
             if (risk<0.06f) continue;                       /* la géo l'interdit ici */
-            float mtth=EVENTS[s].mtth_days / risk;          /* fréquent là où le risque est haut */
-            if (frand(&ev->rng) < mtth_p(mtth,days)) events_strike(ev,w,econ,wl,wp,sc,r,s);
+            float mtth=EVENTS[s].mtth_days / risk / calm_mult;  /* fréquent là où le risque est haut — et sur un monde calme */
+            if (frand(&ev->rng) < mtth_p(mtth,days)){
+                events_strike(ev,w,econ,wl,wp,sc,r,s);
+                if (calm_mult>1.f) g_calm_shocks_fired++;
+            }
         }
     }
     /* Peste : foyer rare sur le plus grand carrefour ouvert, puis diffusion. */
     {
         int hub=-1; float best=NODE_VALUE_Y;
         for (int r=0;r<econ->n_regions;r++) if (econ->region[r].route_pe>best){ best=econ->region[r].route_pe; hub=r; }
-        if (hub>=0 && frand(&ev->rng) < mtth_p(EVENTS[EVID_PLAGUE].mtth_days, days))
+        if (hub>=0 && frand(&ev->rng) < mtth_p(EVENTS[EVID_PLAGUE].mtth_days / calm_mult, days)){
             events_plague_spread(ev,w,econ,wl,sc,rn,hub);
+            if (calm_mult>1.f) g_calm_shocks_fired++;
+        }
     }
 
     /* 2. ÉVÈNEMENTS POLITIQUES/CULTURELS — la fiche sélectionne la variante. */

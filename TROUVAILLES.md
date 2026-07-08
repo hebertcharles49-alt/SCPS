@@ -769,3 +769,75 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
   confirmera à l'échelle.
 - L'affranchissement reste rare (méd 0) — le chemin existe (statecraft), non poussé par l'IA ;
   à re-mesurer après le sweep.
+## 2026-07-08 — Lot F fins dispatchées + catastrophes + exode
+**Découvertes** :
+- **La cause du biais FROID (mesuré 97 GRAND HIVER · 29 RONCES · 17 EAU sur 200 sims)** :
+  `endgame_select_and_fire` (scps_endgame.c), quand aucun transmuteur ne domine (`mx<1.0`, le
+  cas COURANT — TROUVAILLES « chaîne morte des rares faustiens »), hashait `fauteur`/`epicentre`
+  via DEUX multiplications XORées (`h = (f+1)*2654435761 ^ (epi+1)*40503`). Testé isolément (paires
+  non corrélées) ce hash est PRESQUE uniforme — le vrai coupable est que `epi` et `fauteur` sont
+  CORRÉLÉS PAR CONSTRUCTION (`endgame_pick_fauteur` : epi = capitale DU fauteur) ; pour des paires
+  linéairement corrélées (`e=f*mul+c`), la faible diffusion de ce hash biaise fortement `%3` selon
+  `mul` (vérifié en C standalone : jusqu'à 12/2/6 sur 20 échantillons pour certains `mul`). Fix :
+  `fin_mix32` (avalanche 2-rounds fmix32-like, comme `wg_mix` dans scps_world.c) sur la paire
+  combinée + année + graine du monde → testé sur 3600 paires corrélées (36 `mul` × 20 `f` × 5 graines
+  monde), donne 33.2/33.0/33.8 % (quasi 1:1:1). Poids diégétiques ±35 % (monde déjà froid → pénalise
+  FROID ; monde aride → gonfle RONCES) gardés MODESTES (testé pire cas t=0.2/m=0.2 → ratio max 1.53:1,
+  toujours ≤2:1).
+- **`endgame_region_intensity` FIN_FROID était FLAT (bug latent PRÉ-EXISTANT, découvert en
+  débogant l'exode à 0)** : le commentaire promettait « un rien modulée par la température locale »
+  mais le code renvoyait `eg->cold_offset` BRUT, IDENTIQUE sur TOUTES les régions — l'exode générique
+  ne peut JAMAIS trouver de voisine « moins touchée » si toutes portent la MÊME valeur (`oi < best_i`
+  jamais vrai). Fix : scan de température locale (même motif que RONCES juste en dessous), modulation
+  ±50 % (région déjà froide pèse plus). Câblé aux DEUX endroits (le reader public `endgame_region_
+  intensity` ET le cache batché `endgame_compute_all_intensities` de l'exode) pour garder UNE seule
+  vérité (charte LOT D).
+- **`biome_habitability` n'avait AUCUN cas pour `BIO_THORNS`** (RONCES) → tombait dans le
+  `default=0.55` (habitabilité ORDINAIRE, MEILLEURE que STEPPE !). Le front de ronces avançait des
+  ANNÉES sans qu'aucune tuile ne perde de grain avant le flip 50 % qui efface la région d'un coup —
+  exactement le défaut signalé en mission (« si RONCES ne mord qu'à la purge, ajoute la dégradation
+  progressive »). Fix d'une ligne (`case BIO_THORNS: hab_base=0.05f;`) + `econ_cold_refresh` (déjà
+  écrit pour C4, RÉUTILISÉ tel quel — pas de code neuf) appelé depuis `thorns_step` dès qu'une
+  cellule corrompt → la famine émerge PROGRESSIVEMENT, des années avant le flip.
+- **Perf : ne JAMAIS appeler `endgame_region_intensity` en boucle O(régions²)** — RONCES/FROID
+  scannent SCPS_N cellules par appel (comme le faisait déjà le code EXISTANT pour RONCES, un motif
+  accepté côté viewer/façade où c'est un appel isolé). Mon 1er jet de l'exode appelait cette fonction
+  UNE FOIS PAR RÉGION ET PAR VOISINE chaque année → O(n_régions × degré × SCPS_N), qui a
+  probablement contribué aux runs qui semblaient « bloqués » pendant le développement (en plus d'une
+  contention RÉELLE avec d'autres agents parallèles — `ps -W` a montré jusqu'à 5 `chronicle.exe`
+  simultanés d'autres worktrees). Fix : `endgame_compute_all_intensities` calcule TOUTES les régions
+  en UN SEUL balayage (cas par cas, vérifié IDENTIQUE au reader public), l'exode ne lit plus que des
+  O(1) dans ce tableau.
+- **SANG peut fire SANS AUCUNE région marquée** (`sang_seed` ne marque que `revolt_scar >
+  SANG_SCAR_MIN` — une cicatrice de RÉVOLTE, pas de guerre inter-états) : sur seed 5 (SANG déclenché
+  par le ratio morts-de-guerre/pop GLOBAL, causé par des guerres ORDINAIRES entre pays, pas des
+  révoltes), `sang_seed` a marqué **0 région** (`[EXODIAG] sang_seed : 0 région(s) marquée(s)`) →
+  `sang_step` ne draine NI ne fait fuir PERSONNE cette partie (le mécanisme entier est un no-op, pas
+  juste mon exode). C'est un gap PRÉ-EXISTANT du design #32 (le drain SANG est gaté sur `revolt_scar`,
+  qui ne capture qu'une partie des « ravages de guerre » — pas dans mon mandat de le refaire, mais à
+  savoir pour qui reprend SANG).
+- **`ps -W` (MSYS2) liste les process Windows tous worktrees confondus** — utile pour distinguer
+  « mon process est lent » de « mon process est mort », et repérer la contention CPU d'agents
+  parallèles (lot G/I tournaient leurs propres `chronicle.exe` en même temps).
+**Pièges** :
+- Après un `rm -f build/*.o` + rebuild propre, un lien `chronicle.exe`/`scps_viewer.exe` peut échouer
+  en « Permission denied » si un ANCIEN process de CE worktree tourne encore (un run précédent lancé
+  en arrière-plan, pas forcément visible dans le terminal courant) — `ps -W | grep chronicle` +
+  `kill -9` avant de relier.
+- `SCPS_EXODIAG=1` (gardé, gate `getenv`, coût nul par défaut, comme `SCPS_ENTDIAG`) imprime le
+  détail SANG (régions marquées au fire + par-région dst/évacués au tick) — utile si quelqu'un
+  reprend le calibrage SANG.
+**Restes** :
+- **SANG : le mécanisme de marquage (`sang_seed`/`revolt_scar`) peut laisser le drain ET l'exode
+  totalement INERTES** quand la guerre qui a fait monter le ratio mondial était inter-états (pas des
+  révoltes) — hors mandat Lot F (le drain lui-même, pas juste son routage vers l'exode), mais à noter
+  pour une session qui recalibre #32/SANG : peut-être un second signal (dégâts de siège/occupation
+  par région, déjà suivi ailleurs — cf. LOT 4 pillage de siège) en plus de `revolt_scar`.
+- **EXODUS_INTENSITY_MIN=0.15 calé sur peu de runway** (le gate `ENDGAME_YEAR_OPEN=180` laisse souvent
+  20-70 ans avant la fin du sim) — un run BEAUCOUP plus long (400-500 ans) donnerait plus de marge et
+  pourrait justifier de remonter le seuil ; dialable d'une ligne (`SCPS_TUNE=EXODUS_INTENSITY_MIN=…`).
+- Distribution des fins mesurée sur l'échantillon MANDATÉ (graines 3/5/9/42/145/777 × 3 sims × 250 ans,
+  18 sims) : seulement 5 fins déclenchées (13 « aucune ») — RONCES 1 · FROID 3 · SANG 1 · EAU 0. Trop
+  peu de tirages pour un ratio statistiquement solide (le fix est prouvé MATHÉMATIQUEMENT par ailleurs,
+  cf. Découvertes) ; un sweep BEAUCOUP plus large (50+ sims) donnerait une mesure de terrain plus
+  ferme si une session future veut re-vérifier.
