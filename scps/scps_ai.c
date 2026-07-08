@@ -726,6 +726,56 @@ static Edifice ai_next_savoir_edifice(const WorldEconomy *econ, int region){
                            * Sinon le métabolisme K SAUTE le palier 540 (360→960) — la chronique
                            * montrait le 960 bâti sans jamais toucher le 540. */
 
+/* LOT I (2026-07-08) — LE CATCH-UP DE SAVOIR : « où sont les moteurs d'innovation ? ».
+ * DIAGNOSTIC (EDI_DBG, 3×250 ans seed 9, 18 empires-instances) : Bibliothèque made=7 ·
+ * Monastère made=5 · Académie made=1 — la branche savoir de ai_econ_turn (le seau
+ * bâtiment civil) n'est structurellement JOIGNABLE que par 2 des 6 éthos : Dominateur/
+ * Honneur vont TOUJOURS à l'arsenal (branche du dessus, inconditionnelle hors crise) ;
+ * Mercantile va TOUJOURS au Marché ; Bureaucrate en est EXPLICITEMENT exclu
+ * (« ne quitte JAMAIS K ») — seuls Ordre et Pacifiste atteignent jamais ce sélecteur.
+ * Le revenu de recherche (econ_country_savoir) n'est PAS le goulot mesuré (base pop
+ * suffit à ~26-33% du bonus bibliothèque même à 2 bâtiments) : c'est la FRÉQUENCE DE
+ * POSE qui l'est. Fix par COORDONNÉE (jamais un bonus plat) : un empire dont le savoir
+ * PAR TÊTE tombe loin sous la MÉDIANE MONDIALE (les pairs innovent, lui non) déclenche
+ * un catch-up qui traverse tous les gardes d'éthos — un Dominateur exsangue en tech
+ * délaisse UN tour d'arsenal pour la Bibliothèque, un Mercantile délaisse SON marché,
+ * un Bureaucrate sort de K. Rafraîchi UNE FOIS/JOUR (ai_step est appelé par-ACTEUR —
+ * le premier appel de la journée calcule, les suivants lisent ; même patron que
+ * tech_diffusion_refresh mais sans toucher scps_sim.c) : coût O(n_pays×n_régions) UNE
+ * fois/jour, pas par-acteur (la tentative FAU-IA lot 2 avait re-baseliné + explosé le
+ * temps de sim pour avoir mis un calcul O(n_pays) DANS le hot path par-acteur). */
+#define AI_SAVOIR_CATCHUP_FRAC 0.45f  /* sous 45% de la médiane mondiale (savoir/tête) → catch-up */
+static float   g_savoir_pc[SCPS_MAX_COUNTRY];
+static float   g_savoir_pc_median = 0.f;
+static int     g_savoir_pc_day = -1;
+
+static void ai_savoir_refresh(const World *w, const WorldEconomy *econ, int day){
+    if (day == g_savoir_pc_day || !w || !econ) return;
+    g_savoir_pc_day = day;
+    float vals[SCPS_MAX_COUNTRY]; int n=0;
+    for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++){
+        g_savoir_pc[c] = 0.f;
+        if (w->country[c].n_regions<=0) continue;
+        double pop=0.0;
+        for (int r=0; r<econ->n_regions; r++){
+            const RegionEconomy *re=&econ->region[r];
+            if (re->owner!=c) continue;
+            pop += re->strata[CLASS_ELITE].pop + re->strata[CLASS_BOURGEOIS].pop + re->strata[CLASS_LABORER].pop;
+        }
+        if (pop < 1.0) continue;
+        float pc = (float)(econ_country_savoir(econ, c)/pop);
+        g_savoir_pc[c] = pc;
+        vals[n++] = pc;
+    }
+    for (int i=1;i<n;i++){ float k=vals[i]; int j=i-1; while(j>=0 && vals[j]>k){ vals[j+1]=vals[j]; j--; } vals[j+1]=k; }
+    g_savoir_pc_median = (n>0) ? vals[n/2] : 0.f;
+}
+/* vrai si CE pays est loin sous ses pairs (assez de monde vivant pour qu'une médiane ait un sens). */
+static bool ai_savoir_behind(int cid){
+    if (cid<0 || cid>=SCPS_MAX_COUNTRY || g_savoir_pc_median<=0.f) return false;
+    return g_savoir_pc[cid] < g_savoir_pc_median * tune_f("AI_SAVOIR_CATCHUP_FRAC",AI_SAVOIR_CATCHUP_FRAC);
+}
+
 /* ===================================================================== */
 /* TOURS DE DÉCISION                                                       */
 /* ===================================================================== */
@@ -1343,6 +1393,10 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             int hr = a->home_region;
             const ProvBuild *bd = (hr>=0&&hr<econ->n_regions)?&econ->region[hr].build:NULL;
             bool faith_crisis = (bd && v->L < AI_FAITH_L && bd->faith < 5.0f);
+            /* LOT I — catch-up de savoir (voir la note au-dessus de ai_savoir_refresh) :
+             * loin sous la médiane mondiale (savoir/tête) → traverse TOUT garde d'éthos. */
+            ai_savoir_refresh(w, econ, day);
+            bool savoir_behind = ai_savoir_behind(a->cid);
             /* ZÈLE PROACTIF — un crédo prosélyte (w_faith haut) qui n'a PAS encore de foi bâtit
              * DE LUI-MÊME sa chaîne de foi → la foi se FONDE (bloc RELIGION ci-dessous, sous le
              * plafond ⌈N/2⌉) au lieu de n'émerger qu'en crise de légitimité. On LIT w_faith (l'entrée
@@ -1372,7 +1426,7 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
             bool faith_zeal = (bd && faith_site>=0 && !faith_pending && site_faith < 3.0f
                                && religion_of_country(a->cid) < 0
                                && a->w_faith >= tune_f("AI_FAITH_ZEAL",AI_FAITH_ZEAL));
-            if (!faith_crisis && !faith_zeal && (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && hr>=0){
+            if (!faith_crisis && !faith_zeal && !savoir_behind && (eth==ETHOS_DOMINATEUR || eth==ETHOS_HONNEUR) && hr>=0){
                 RegionEconomy *cre=&econ->region[hr];
                 float price=cre->price[RES_ARMS]; if (price<0.2f) price=0.2f;
                 float cost =20.f*price*(cre->import_margin>0.f?cre->import_margin:1.f);
@@ -1400,15 +1454,31 @@ static void ai_econ_turn(AiActor *a, const World *w, WorldEconomy *econ, const A
                  * qu'elles grossissent. Le Marché (kind=2, PE_infra — hors du trio) et l'achat
                  * d'arsenal Dominateur/Honneur ci-dessus restent à la capitale (hr) : hors sujet. */
                 int cr = ai_neediest_civic_region(a, econ);
+                /* LOT I — le gate savoir lit désormais LE SITE (cr) qui va réellement recevoir
+                 * le bâtiment, pas la capitale (bd) figée : l'ancien gate fermait l'empire ENTIER
+                 * dès que la capitale seule dépassait savoir<2.5 (~2 bâtiments, pour toujours),
+                 * même si toute la périphérie restait sans bibliothèque — mesuré (EDI_DBG) comme
+                 * une des causes de la rareté. */
+                const ProvBuild *crd = (cr>=0 && cr<econ->n_regions) ? &econ->region[cr].build : NULL;
                 if (faith_crisis || faith_zeal){
                     /* la FOI se pose sur SON site (échelle en cours, sinon bois au marché) —
                      * pas sur la région civique la plus démunie (calibrage post-LOT T). */
                     if (faith_site>=0) cr = faith_site;
                     e = ai_next_faith_edifice(econ, cr);   /* crise de consentement OU zèle prosélyte → foi */
+                } else if (savoir_behind && crd && crd->savoir < 2.5f){
+                    /* CATCH-UP — traverse Mercantile/Bureaucrate/le seuil AI_SAVOIR_K normal :
+                     * l'empire est en RETARD STRUCTUREL, pas en position d'attendre son tour. */
+                    e = ai_next_savoir_edifice(econ, cr);
+                    if (e==EDI_BIBLIOTHEQUE){
+                        TechPole p = edifice_region_pole(w, econ, cr, day);
+                        if      (p==POLE_MARTIAL) e=EDI_BIBLIO_MIL;
+                        else if (p==POLE_FLUIDE)  e=EDI_OBSERVATOIRE;
+                    }
+                    if (cr>=0 && edifice_build_blocked(econ,cr,e)) e=ai_next_k_edifice(econ,cr);
                 } else if (eth==ETHOS_MERCANTILE){
                     e = EDI_MARCHE; kind = 2; cr = hr;     /* la largeur du marchand : le RÉSEAU, toujours à la capitale */
-                } else if (bd && eth!=ETHOS_BUREAUCRATE
-                           && bd->K_inst >= tune_f("AI_SAVOIR_K",AI_SAVOIR_K) && bd->savoir < 2.5f){
+                } else if (crd && eth!=ETHOS_BUREAUCRATE
+                           && crd->K_inst >= tune_f("AI_SAVOIR_K",AI_SAVOIR_K) && crd->savoir < 2.5f){
                     e = ai_next_savoir_edifice(econ, cr);  /* institutions mûres → savoir (pas le Bureaucrate : K pur) */
                     /* M5 — le savoir FORK à la BASE sur le pôle de la région (hystérésé) :
                      * martial → Bibliothèque militaire · fluide → Observatoire · l'Ordre
@@ -2332,6 +2402,34 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
             }
         }
     }
+    /* SOIF DE SAVOIR (LOT I, 2026-07-08) — LE VRAI moteur d'innovation. La brique bâtie
+     * (Bibliothèque/Monastère, scps_agency.c) plafonne le bonus de savoir à +33%
+     * (SAVOIR_LIB_MAX) et se heurte à un plancher d'éthos (mesuré : Σsavoir-bâti/empire
+     * moy 0.0-0.7 sur 250 ans MÊME après avoir ouvert la brique à tous les éthos —
+     * cf. TROUVAILLES). La chaîne Scriptorium→Académie→Université (THM_SAVOIR·
+     * FN_PRODUCTION, tech_research_yield += 0.5/nœud, DIRECT sur le rendement — voir
+     * scps_tech.c:465) COMPOSE au lieu de plafonner : chaque maillon acquis accélère
+     * TOUS les maillons suivants (et toute autre tech), sur 250 ans l'effet snowball.
+     * Sans épargne dédiée l'IA gloutonne ne la préfère pas aux 15 autres nœuds tier-1
+     * (ai_pick_tech ne connaît pas la notion de « rendement futur ») → le multiplicateur
+     * reste à ×1 toute la partie, quel que soit le nombre de bibliothèques bâties (testé :
+     * SAVOIR_LIB_MAX ×10 ne bouge PAS l'arbre si aucune bibliothèque n'est jamais bâtie —
+     * la preuve que le vrai verrou était la SÉLECTION, pas le plafond). Motif S3/foreuse :
+     * épargne ciblée pour le PROCHAIN maillon non acquis, jamais au-delà (borné à la
+     * chaîne — pas de beeline sur tout l'arbre). Priorité AVANT la soif de palier (tier1,
+     * bon marché, prime la composition) ; les branches S1/S3/S4 s'inclinent pareil. */
+    bool palier_hold = false;
+    { TechId savoir_chain[3] = { TECH_SCRIPTORIUM, TECH_ACADEMIE, TECH_UNIVERSITE };
+      for (int k=0;k<3;k++){
+          if (ts->unlocked[savoir_chain[k]]) continue;
+          TechId step = tech_can_research(ts,savoir_chain[k],access) ? savoir_chain[k]
+                                                                      : ai_step_toward(ts,savoir_chain[k],access);
+          if (step==TECH_COUNT) break;                        /* chaîne non viable (accès) — n'insiste pas */
+          float sc = ai_effective_cost(step, nprov, ai_capital_ethos(w,econ,a->cid));
+          if (ts->research_points < sc) return;                /* on ÉPARGNE pour le maillon suivant */
+          pick = step; palier_hold = true;                     /* AVANCE ; les branches suivantes s'inclinent */
+          break;
+      } }
     /* SOIF DE PALIER (calibrage post-LOT T, 2026-07-08) — le LOT T gate les BÂTIMENTS de
      * tier N sur ≥1 tech de tier N ; or l'arbre offre 6 nœuds tier-0 + 16 tier-1 = 22
      * techs bon marché, et un empire n'en complète que ~20-25 en 250 ans : le glouton
@@ -2345,8 +2443,7 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
      * (palier_hold) tant que le palier 2 n'est pas acquis : sans ce verrou, la greffe
      * S1 (return-épargne pour une signature tier-3 CHÈRE) écrasait le pick du palier
      * et l'empire épargnait à vide pendant des décennies. */
-    bool palier_hold = false;
-    if (!tech_has_tier(ts, 2)){
+    if (!palier_hold && !tech_has_tier(ts, 2)){
         int done=0; for (int id=0; id<TECH_COUNT; id++) if (ts->unlocked[id]) done++;
         if (done >= 6){
             /* la moins chère dont la CHAÎNE EST VIABLE : directement accessible, sinon
