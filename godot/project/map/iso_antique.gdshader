@@ -22,6 +22,12 @@ uniform float burn : hint_range(0.0, 0.8) = 0.42;
 uniform float compass_on = 1.0;
 uniform vec2 compass_uv = vec2(0.13, 0.27);
 uniform float compass_r : hint_range(8.0, 80.0) = 30.0;
+// TILT_Y (map_view.gd) : le nœud IsoGround comprime l'écran en Y (scale.y du nœud, posé
+// depuis iso_ground.gd::_draw ⇒ TOUJOURS synchro avec l'inclinaison réelle). `iso`/`ci` sont en
+// espace LOCAL (pré-transform) — sans correction, un cercle géométrique en local s'aplatit en
+// ovale à l'ÉCRAN (la régression documentée). `compass()` pré-corrige d.y pour rester un vrai
+// cercle malgré l'inclinaison.
+uniform float tilt_y : hint_range(0.5, 1.0) = 0.80;
 uniform float rgb_jitter : hint_range(0.0, 16.0) = 3.0;   // variation PERLIN intra-biome : ±N/255 par canal
 uniform float jitter_freq : hint_range(0.02, 0.5) = 0.12; // échelle des taches de couleur
 
@@ -123,9 +129,12 @@ float ring_sea(vec2 cell, float r) {
 	return n / 6.0;
 }
 
-// ROSE DES VENTS — ancrée à un point carte mais dessinée en espace ÉCRAN (`ci` = centre projeté) → cercles.
-float compass(vec2 ip, vec2 ci, float R) {
+// ROSE DES VENTS — ancrée à un point carte, calcul CORRIGÉ pour rester un vrai cercle à l'ÉCRAN
+// malgré l'inclinaison (`y_fix` = tilt_y du nœud IsoGround : le nœud comprime Y de ce facteur au
+// rendu, donc d.y*y_fix = l'écart ÉCRAN réel — sans ça la rose s'ovalise).
+float compass(vec2 ip, vec2 ci, float R, float y_fix) {
 	vec2 d = ip - ci;
+	d.y *= y_fix;
 	float cd = length(d);
 	if (cd > R * 1.25) return 0.0;
 	float a = atan(d.y, d.x);
@@ -360,7 +369,11 @@ void fragment() {
 	if (compass_on > 0.5) {
 		vec2 cwld = map_size * compass_uv;
 		vec2 ci = (flat_map > 0.5) ? cwld : vec2(cwld.x - cwld.y, (cwld.x + cwld.y) * 0.5);
-		col = mix(col, vec3(0.20, 0.14, 0.09), compass(iso, ci, compass_r) * 0.72);
+		// FRÉMISSEMENT D'ENCRE — souffle TRÈS doux (±4 %, ~12.6 s/cycle) sur l'horloge GPU (TIME,
+		// jamais le moteur/déterminisme) : la rose respire sans jamais "clignoter". Coût nul (déjà
+		// dans la branche compass_on, le shader tourne 1×/frame que la carte redessine ou non).
+		float breath = 1.0 + 0.04 * sin(TIME * 0.5);
+		col = mix(col, vec3(0.20, 0.14, 0.09), compass(iso, ci, compass_r, tilt_y) * 0.72 * breath);
 	}
 	float edge = pow(clamp(length(SCREEN_UV - 0.5) * 1.42, 0.0, 1.0), 2.4);
 	float bn = texture(noise_tex, SCREEN_UV * 3.3 + vec2(0.5, 0.2)).r;
