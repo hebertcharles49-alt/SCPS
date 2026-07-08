@@ -1068,7 +1068,6 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
   dans `ai_effective_cost`, donc TOUS les blocs d'épargne (foreuse/S1/S3/S4/palier/savoir) voient
   déjà le coût faustien gonflé (cohérent, pas de site oublié).
 
-<<<<<<< HEAD
 ## 2026-07-08 — Lot E suite : remplissage strings_en.h (142/165 entrées traduites)
 
 **Découvertes** :
@@ -1134,7 +1133,6 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - `STR_EDI_TRADE_CENTER` = "Trade Center" (US) vs "Trade Centre" (BR) dans `STR_PACT_HOV`/
   `STR_BTN_CENTER_FMT`/`STR_CENTER_HOV` : incohérence PRÉ-EXISTANTE (session Lot E), pas introduite
   ni corrigée ici (hors périmètre — ces 4 entrées étaient déjà traduites, pas dans mes 142).
-=======
 ## [2026-07-08] Polish façade+Godot — stock négatif borné · rose des vents ronde · frémissement (implémenteur solo, worktree SCPS-polish)
 **Découvertes** :
 - **A1 — `scps_province_market` (scps_api.c:898-908)** : la ligne est admise dès `dem>0.05`
@@ -1208,4 +1206,94 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
   "capitale visible à l'écran ET zoom≥X", LOD existant `fine_a`/`ROAD_ZOOM_MIN` comme modèle),
   soit isoler les traits de capitale (`_draw_cap_lisere`) dans un CanvasItem séparé avec son
   propre ShaderMaterial pour un frémissement à coût nul façon rose des vents.
->>>>>>> wt/polish
+## [2026-07-08] Éco — LA FOREUSE RANIMÉE : panier de minéraux + audit essence (implémenteur solo, wt/foreuse)
+**Découvertes** :
+- **Pourquoi elle était morte** : `RECIPE[BLD_FOREUSE]` (scps_econ.c) transmutait 0.5 essence → 8 fer
+  SEUL. Depuis « MÉTAL SUPPRIMÉ »/« PRIX NATIONAL » (le fer n'est plus rare : chaîne directe fer+bois→
+  outils, extraction labor-bound), 8 fer/lot ne vaut plus grand-chose — la RECETTE était devenue
+  creuse, indépendamment de si le bâtiment se pose. `bld_min_tier(BLD_FOREUSE)=5` (scps_econ.c:1904,
+  province-hôte ≥5000 hab) + `TECH_FOREUSE` tier-4 avec prérequis `TECH_INDUSTRIE` LUI-MÊME tier-4
+  (scps_tech.c:116,122) = DEUX nœuds tier-4 à chaîner ; le seul assist (`AI_FOREUSE_HUNGER`,
+  scps_ai.c:2299) ne pousse le score QUE si `chain_gap==RES_IRON` (l'empire n'a NULLE PART de fer —
+  rawcap ET stock ET supply < seuil) au moment où `TECH_FOREUSE` est DÉJÀ directement recherchable —
+  contrairement à CORNE (gatée par `TECH_FORGE_RUNES`, S3) qui a un VRAI beeline (`ai_step_toward`
+  sur toute la chaîne de prérequis, scps_ai.c ~2526) : c'est pourquoi corne tire alors que
+  foreuse/réplicateur restent quasi-morts (asymétrie structurelle scps_ai.c, HORS PÉRIMÈTRE de cette
+  mission — fichiers autorisés = econ/types/tune_list seulement).
+- **Audit essence** (`grep -rn "RES_ESSENCE"`) : AVANT et APRÈS mon changement, l'essence n'a QU'UN
+  seul consommateur régulier — `BLD_FOREUSE` (in1). Son seul producteur : `BLD_MAGE_WORKSHOP`
+  (cristal arcanique → essence 1:1, scps_econ.c:178), lui-même gaté par un gisement de cristal
+  géologique (`econ_bld_can_build`, scps_econ.c:1812) — le plus rare de toutes les brutes
+  (`EXTRACT_YIELD[RES_ARCANE_CRYSTAL]=0.04`). Un 2e consommateur EXISTE mais HORS économie : la
+  Merveille (`MERV_RARE[3]`, scps_endgame.c:918) consomme essence/flux/fer céleste DIRECTEMENT en
+  fin de partie (joueur seul, `endgame_empire_consume`) — sans rapport avec la Foreuse.
+- **Le graft** : `RECIPE[BLD_FOREUSE]` passe à `{RES_ESSENCE, 0.7f, ..., RES_IRON, 2.0f, ...}` (q1
+  0.5→0.7, qout fer 8→2 — le fer reste l'ANCRE du recipe, self-throttlée par son propre prix comme
+  toute manufacture) + un panier `FOREUSE_BASKET[6]` (nouvelle table statique, scps_econ.c ~227)
+  appliqué dans `econ_tick` §2 MANUFACTURE (`if (b->type==BLD_FOREUSE)`, juste après le bloc out2,
+  scps_econ.c ~2507) : cuivre 2.0 · charbon 3.0 · soufre 1.5 · salpêtre 1.5 · or 0.5 · métal précieux
+  0.3 — la liste EXACTE des « brutes minérales » de `BASE_PRICE` (le commentaire de la table le dit
+  déjà littéralement, scps_econ.c:43). Motif **out2/F3** repris à l'identique : le panier ne compte
+  PAS au PIB/salaires (bonus de transmutation, pas de la valeur « travaillée »).
+- **Vérifié MÉCANIQUEMENT** (harnais forcé scratchpad, technique d'`econ_arcane_demo.c` : cristal+
+  mage workshop+foreuse posés à la main sur une province, hors AI/tech) : les 7 minéraux montent
+  TOUS, `faust_consumed[0]` (essence) grimpe 3.85→48.70 sur 23 mois, et le marché s'auto-régule
+  (prix fer/cuivre/etc. plongent vers un PLANCHER ~20% base dans ce scénario mono-région forcé —
+  du jamais-vu ailleurs — mais NE DIVERGENT PAS : `market_effort` throttle la prod, stock stable en
+  régime). PASS.
+- **Vérifié EN JEU RÉEL** (2 graines × 5 sims × 250 ans, seeds 7 et 9, chronicle non modifié ailleurs) :
+  `conso foreuse` **NON-NUL dans 3/10 sims** (174, 118, 585) contre le **0/200 documenté**
+  (`docs/SWEEP_REVALID_2026-07-08.md`, mesuré AVANT VOLUMES DE POP). ⚠ **Attribution prudente** :
+  mon changement ne touche NI la recherche NI la construction (scps_ai.c/scps_tech.c hors périmètre)
+  — cette hausse de fréquence est très probablement un EFFET DE BORD des calibrages économiques/tech
+  qui ont atterri dans ce worktree le même jour (VOLUMES DE POP, et l'entrée juste au-dessus dans ce
+  fichier sur `AI_RESEARCH_INCOME_W`/`ENTROPY_TECH_W` qui accélère la pousse de l'arbre) — PAS une
+  conséquence de mon graft. Ce que mon changement EXPLIQUE en revanche : QUAND foreuse tire, elle
+  produit désormais un vrai panier et consomme PLUS d'essence par lot (0.7 vs 0.5 avant) qu'avant.
+- **EAU (essence) toujours 0/10 dans mon échantillon** : dans les 2 sims (seed 9) où foreuse ET corne
+  tiraient ensemble, CORNE dominait TOUJOURS (1503>174, 929>118) → GRAND HIVER l'emporte, pas
+  ENGLOUTISSEMENT. Raison structurelle : corne consomme du fer céleste DIRECTEMENT (brute→bâtiment,
+  1 saut) alors que l'essence traverse DEUX sauts (cristal→atelier de mage→essence→foreuse) — un
+  goulot d'étranglement supplémentaire indépendant de mon graft (déjà présent avant, je n'ai touché
+  ni le mage workshop ni le cristal). Confirme le « curseur restant » de SWEEP_REVALID
+  (« diversifier la conso de la corne ou la lecture des compteurs par la fin »).
+- **Golden INCHANGÉ par construction** : `./chronicle --hash 7 5 12` ×2 = IDENTIQUE aux 2 runs ET
+  identique à `scps/golden_hashes.txt` (fe7c00f3/370aed28/b2550b67/79330612/9ad2b632, les 5 graines).
+  Aucune re-baseline — bld_min_tier=5 + tech tier-4 derrière un AUTRE tier-4 rend le bâtiment
+  structurellement inatteignable en 12 ans (même jurisprudence que les apex triples/LOT T).
+- **SAVE non bumpé** : `RECIPE`/`FOREUSE_BASKET` sont des tables statiques NON sérialisées (même
+  catégorie que `BASE_PRICE`/`EXTRACT_YIELD`, déjà « NON-const MODTOOLS »). Aucun enum RES_/BLD_
+  neuf, aucun champ de struct ajouté. SAVE_VERSION reste 74.
+**Pièges** :
+- Le scratchpad de ce worktree est PARTAGÉ avec d'autres sessions/agents (des dizaines de fichiers
+  `*.sh`/`*.c` d'autres missions du même jour y vivent) — écrire un script via le Bash-tool `/tmp`
+  puis l'exécuter via `MSYSTEM=MINGW64 .../bash.exe` ÉCHOUE silencieusement en "No such file"
+  (racines de filesystem différentes entre Git-Bash et MSYS2) : TOUJOURS écrire les scripts de build
+  dans le dossier scratchpad (chemin Windows complet) via l'outil Write, jamais dans `/tmp` du Bash
+  tool, si l'exécution doit passer par `bash.exe` MSYS2.
+- Confondre les DEUX compteurs faustiens du même bâtiment : `arcane_charge`/`faust_charge` (fuel de
+  Brèche IMMÉDIAT, ∝ `out` = la sortie de l'ANCRE fer, scps_econ.c ~2508) vs `faust_consumed[0]`
+  (volume d'ESSENCE consommée, ∝ `q1`, seul lu par le sélecteur de fin §27). Réduire le qout de
+  l'ancre (8→2) réduit LÉGÈREMENT la contribution de charge immédiate de CE bâtiment (négligeable :
+  il était déjà quasi-inactif) ; augmenter q1 (0.5→0.7) augmente `faust_consumed[0]` — les deux
+  leviers sont INDÉPENDANTS, ne pas supposer qu'ils bougent ensemble.
+- `diff` n'existe pas dans ce MSYS2 bash (coreutils minimal) — comparer des hash à l'œil ou avec
+  `cmp`/un grep, pas `diff`.
+**Restes** :
+- **Le vrai verrou reste scps_ai.c** (hors périmètre ici) : pour que la Foreuse cesse d'être un
+  événement rare/de chance, il faudrait un beeline dédié vers `TECH_FOREUSE` (motif CORNE/S3 :
+  `ai_step_toward` sur toute la chaîne `TECH_MANUFACTURE→TECH_INDUSTRIE→TECH_FOREUSE`, déclenché par
+  une famine de fer OU un appétit faustien, PAS seulement le score ponctuel actuel). Fix d'une ligne
+  NON applicable ici (fichier hors périmètre) — à confier à un agent scps_ai.c dédié si l'objectif
+  est « la Foreuse doit se voir souvent », pas seulement « utile quand elle sort ».
+- **L'asymétrie de chaîne essence (2 sauts) vs fer céleste (1 saut, corne)** fait que même une
+  Foreuse ranimée perd souvent la course au « rare dominant » contre Corne dans les mondes où les
+  deux tirent. Deux pistes NON prises (hors périmètre/à trancher par le joueur) : raccourcir la
+  chaîne essence (fusionner mage-workshop+foreuse, ou booster `EXTRACT_YIELD[RES_ARCANE_CRYSTAL]`),
+  ou rebalancer `endgame_select_and_fire` (scps_endgame.c:1357) pour ne pas juger au seul MAX brut.
+- `FOREUSE_BASKET` n'est PAS branchée à `econ_moddata_dump/load` (le canal fichier `SCPS_MODS` ne
+  couvre aujourd'hui que labor/qout de `RECIPE`, scps_econ.c ~3786) — un modder ne peut pas encore
+  retoucher le panier sans recompiler. Petit ajout si demandé (suivre le motif `recipe\t%s\t...`).
+- Sweep MESURÉ volontairement PETIT (2 graines × 5 sims, contrainte CPU partagé) : la fréquence
+  réelle de `conso_foreuse>0` sur un grand échantillon (type giga sweep 200 sims) reste à confirmer
+  par l'orchestrateur — mes 3/10 sont un signal encourageant, pas une statistique définitive.

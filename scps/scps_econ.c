@@ -186,9 +186,20 @@ static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qou
      * avec le fer (gate de la fonderie) ; la charbonnière le PRODUIT du bois (abondant)
      * → la fonderie tourne partout où il y a du fer, et la chaîne métal/outils respire. */
     [BLD_CHARCOAL]  = { RES_WOOD,  2.0f, RES_NONE, 0.f, RES_COAL,  1.0f, 0.8f, RES_NONE, 0.f },
-    /* §B2 FOREUSE ARCANIQUE : transmute l'ESSENCE en FER en masse (0.5 essence → 8 fer).
-     * L'issue faustienne à la famine de fer ; gatée par la tech (charge) + l'essence (rare). */
-    [BLD_FOREUSE]   = { RES_ESSENCE, 0.5f, RES_NONE, 0.f, RES_IRON, 8.0f, 1.4f, RES_NONE, 0.f },
+    /* §B2 FOREUSE ARCANIQUE (RANIMÉE 2026-07-08) : transmute l'ESSENCE en TOUTE LA PALETTE des
+     * « brutes minérales » — plus le seul fer (mort en pratique : le fer n'est plus rare depuis la
+     * refonte éco, cf. CLAUDE.md « REFONTE ÉCO »/« MÉTAL SUPPRIMÉ » — 8 fer/lot ne valait plus
+     * grand-chose). Un foreur qui perce le sous-sol en tire TOUT le gisement, pas seulement le fer.
+     * Le FER reste l'ANCRE du recipe (rc->out — self-throttlée par SON propre prix, comme toute
+     * manufacture, `cap = niveau·market_effort(prix fer)`) ; les 6 AUTRES minéraux (cuivre/charbon/
+     * soufre/salpêtre/or/métal précieux — la liste EXACTE « brutes minérales » de BASE_PRICE
+     * ci-dessus, fer inclus) sortent en PANIER BONUS (FOREUSE_BASKET ci-dessous, appliqué dans
+     * econ_tick §2 MANUFACTURE — même motif que out2/F3 : ne compte pas au PIB/salaires, un
+     * supplément de transmutation). q1 essence RELEVÉ 0.5→0.7 (le panier vaut ~1.7× la valeur
+     * d'avant en sortie — le garde-fou reste le COÛT en essence, rare et chère : chaque lot est
+     * borné par l'essence dispo ET compté dans faust_consumed[0], le compteur qui décide la fin
+     * EAU au capstone §27). */
+    [BLD_FOREUSE]   = { RES_ESSENCE, 0.7f, RES_NONE, 0.f, RES_IRON, 2.0f, 1.4f, RES_NONE, 0.f },
     /* F3 — L'ALAMBIC (GATE TECH_ALCHIMIE) : le salpêtre DISTILLÉ donne le FLUX (primaire,
      * intrant du Réplicateur ligneux) + le nécessaire d'ALCHIMISTE (secondaire, débloque le
      * soldat alchimiste). NE QUENCHE PLUS la charge (RETRAIT F-arc). Le salpêtre nourrit DÉJÀ
@@ -211,6 +222,23 @@ static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qou
     /* E3 (2026-07-05) — LEVIER LABOR jamais recalé : demande remède ≈ 2.97/1000hab/an (santé
      * urbaine, bourgeois seuls, très faible) → labor = 1200·1.0/2.97 ≈ 404. Ratio INCHANGÉ. */
     [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 404.f, RES_NONE, 0.f },
+};
+
+/* §B2bis — LE PANIER DE LA FOREUSE (2026-07-08) : les 6 minéraux AUTRES que le fer (déjà ancré
+ * dans RECIPE[BLD_FOREUSE] ci-dessus), dans la catégorie EXACTE « brutes minérales » de BASE_PRICE
+ * (cuivre/fer/charbon/soufre/salpêtre/or/métal précieux — 7 au total, fer compté à part). Quantités
+ * DÉCROISSANTES avec la rareté/le prix (l'or et le métal précieux restent un FILET, pas un déluge —
+ * cuivre/charbon proches du fer, soufre/salpêtre modérés) ; appliquées dans econ_tick (§2
+ * MANUFACTURE, `if (b->type==BLD_FOREUSE)`) ∝ `lim` — le MÊME niveau de production que le fer,
+ * donc borné par la MÊME rareté (essence dispo + main-d'œuvre). Table locale (pas RES_COUNT-large,
+ * pas encore branchée à SCPS_MODS — cf. Restes en fin de mission dans TROUVAILLES.md). */
+static const struct { Resource r; float qty; } FOREUSE_BASKET[6] = {
+    { RES_COPPER,         2.0f },
+    { RES_COAL,           3.0f },
+    { RES_SULFUR,         1.5f },
+    { RES_SALTPETER,      1.5f },
+    { RES_GOLD,           0.5f },
+    { RES_PRECIOUS_METAL, 0.3f },
 };
 
 /* Besoins par tête et par strate (unités/100 hab/tick). Le grain (vivres)
@@ -2476,6 +2504,16 @@ void econ_tick(WorldEconomy *e, float dt) {
             if (rc->out2!=RES_NONE){ float o2=lim*rc->qout2*prod_mult*(1.f-0.5f*re->revolt_scar);
                 float m2 = (res_is_arm(rc->out2) && rc->out2!=RES_ENCHANTED_ARMS) ? tune_f("MANUF_ARMS_MULT", 10.f) : 1.f;
                 S[rc->out2]+=o2*m2; supply[rc->out2]+=o2; }
+            /* §B2bis — LE PANIER DE LA FOREUSE : les 6 AUTRES minéraux, ∝ le MÊME `lim` que le fer
+             * (même niveau de production, même borne d'essence/main-d'œuvre) — motif out2 (bonus de
+             * transmutation, hors PIB/salaires, comme le bâton de mage/kit d'alchimiste ci-dessus). */
+            if (b->type==BLD_FOREUSE){
+                float scar_mult=(1.f-0.5f*re->revolt_scar);
+                for (int fi=0; fi<6; fi++){
+                    Resource fr=FOREUSE_BASKET[fi].r; float fq=lim*FOREUSE_BASKET[fi].qty*prod_mult*scar_mult;
+                    S[fr]+=fq; supply[fr]+=fq;
+                }
+            }
             b->workers=rc->labor*lim;
             labor_used+=b->workers;
             /* FAU0/FAU2 — LA CHARGE FAUSTIENNE (hook UNIQUE faust_charge_add) : le mage (essence)
