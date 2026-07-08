@@ -1297,3 +1297,30 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - Sweep MESURÉ volontairement PETIT (2 graines × 5 sims, contrainte CPU partagé) : la fréquence
   réelle de `conso_foreuse>0` sur un grand échantillon (type giga sweep 200 sims) reste à confirmer
   par l'orchestrateur — mes 3/10 sont un signal encourageant, pas une statistique définitive.
+
+## [2026-07-09] Audit équilibrage read-only + finding #1 NON-RETENU (orchestrateur)
+**Découvertes** (audit des vagues VOLUMES/ARBRE/RÉCHAUFFEMENT, aucun code modifié) :
+- **Finding #1 (le piège)** : le « découplage §27 » du push arbre gate le surcoût ×W sur
+  `tech_node(id)->faustian` (`scps_ai.c` ai_effective_cost, miroir `scps_sim.c`). L'audit a
+  RAISON que `tech_research` (scps_tech.c) accumule `->charge` SANS regarder `faustian`, donc des
+  techs mainline non-faustiennes à charge (Industrie 3.0, Magie de bataille 1.5…) nourrissent
+  l'entropie sans frein. MAIS le fix proposé (`charge>0` au lieu de `faustian`) a été MESURÉ
+  CONTRE-PRODUCTIF : arbre méd 51→45 %, et l'entropie explose PAREIL (accumulateur monotone :
+  `wp->entropy += tech_w·Σcharge` chaque an, sans decay → ~3900 à l'an 180 avec OU sans le fix).
+  ⇒ **NON retenu, reverté**. Le découplage reste sur `faustian` (partiel mais l'arbre est meilleur).
+- **Le tassement au gate 180 est un NON-PROBLÈME** : l'entropie franchit 55 vers l'an 130-150 → la
+  fin fire au gate 180 (voulu). Ce n'est PAS « des fins avant 180 » (le gate tient à 100 %). Le
+  TYPE de fin reste VARIÉ (baseline 3g×5s : 5 HIVER · 4 RONCES · 4 RÉCHAUFFEMENT) — seul le TIMING
+  est proche de 180. Sans conséquence de gameplay (un joueur voit une fin ; la bande d'entropie est
+  bornée à l'affichage). L'entropie qui « déborde » à 3900 est cosmétique interne.
+**Piège** : NE PAS « corriger » l'entropie-qui-déborde ni le tassement au gate sans mesure appariée —
+c'est un accumulateur monotone VOULU (compte à rebours §27), pas un bug. Le calibrage se fait sur
+`ENTROPY_TECH_W` (amplitude) SEULEMENT si on veut vraiment décaler le franchissement, mais à W=4.5 la
+distribution est déjà saine.
+**Restes CONFIRMÉS par l'audit (pré-existants, non traités — cosmétiques/edge)** : #3 le repli
+RÉCHAUFFEMENT ne re-teste plus `mx<FUEL_DEAD_EPS` (un monde à corne immature à l'an 240 + fuel≥4
+POURRAIT être préempté — suspect, non observé) · #5 `sang_seed` peut marquer 0 région (fin SANG sans
+effet mécanique quand le sang vient de guerres inter-états) · #7 empilement possible réfugiés-de-guerre
+(12 %/an) × exode-de-fin (10 %/an) sur une même région (~21 % évacués/an, non vérifié comme problème).
+**CE QUI VA BIEN** (audit + 5 runs live) : 0 crash/NaN, satisfaction 71-92 %, hégémon craqué 5/5,
+IPM 1.09-1.30, gate 180 tenu 100 %, arbre 40-53 %, démographie robuste (bornes/invariant esclave OK).
