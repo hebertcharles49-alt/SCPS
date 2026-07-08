@@ -26,44 +26,49 @@ Principe cardinal : **« on lit des coordonnées, on n'assigne jamais un modific
 bâtiments ») ne sont qu'UNE porte d'entrée. Les autres coordonnées :
 
 ### Le cœur du modèle (par pays, `WorldProsperity`)
+**Toute la couche pays est normalisée `[0..10]`** — l'échelle canonique du modèle (0 = néant, 10 =
+saturation), clampée au tick. Seules exceptions : les *taux* (0-1) et les *flux* (dérivés, sans borne fixe).
+
 | Coord. | Plage | Sens |
 |---|---|---|
-| **K** | — | capacité effective (tech + héritage + bâti) — ce qui métabolise la distance |
-| **L** | — | légitimité agrégée (l'ordre consenti) |
+| **K** | 0-10 | capacité effective (tech + héritage + bâti) — ce qui métabolise la distance |
+| **L** | 0-10 | légitimité agrégée (l'ordre consenti ; un ordre tenu par H haut y perd plus) |
+| **H** | 0-10 | coercition agrégée (l'ordre par la contrainte) |
 | **C** | 0-10 | connectivité |
-| **P_potentiel / P_realise** | — | perméabilité (ce qui pourrait circuler / ce qui circule) |
-| **PE_interne / PE_externe** | — | prospérité émergente (**PE = D × P × C**, le cœur du papier) |
+| **P_potentiel / P_realise** | 0-10 | perméabilité (ce qui pourrait circuler / ce qui circule) |
+| **PE_interne / PE_externe** | 0-10 | prospérité émergente (**PE = D × P × C**, le cœur du papier) |
 | **SI** | 0-10 | stabilité interne |
-| **Lumiere** | — | lumière/savoir accumulé (nourrit l'Âge de la Raison/Lumières) |
-| **D̄_int / D∞_int** | — | distance culturelle interne (moyenne / max) sur les 4 axes |
-| valeurs · subsistance · parente · religion | — | les 4 **axes de culture** (moyennes) dont se déduit D |
-| rendement · tresor_tick · croissance_tick | — | les flux dérivés |
+| **D̄_int / D∞_int** | 0-10 | distance culturelle interne (moyenne / max) sur les 5 axes |
+| valeurs · subsistance · parenté · religion · langue | 0-10 | les 5 **axes de culture** dont se déduit D |
+| **rendement** | 0-1 | efficacité de conversion (SI × fragilité) |
+| **Lumiere** | flux dérivé | ∝ P_potentiel × (K/10) — nourrit l'Âge de la Raison/Lumières |
+| tresor_tick · croissance_tick | flux dérivés | or/an · pop/an (∝ P_realise × L) |
 
 ### Les variables de CRISE
-| Coord. | Sens |
-|---|---|
-| **surchauffe** | `max(0, (P/10)·C + flux_faustien − K)` — l'ordre débordé par sa propre complexité |
-| **fragilite** [0-10] | part de l'ordre tenue par la seule contrainte (H, pas L) |
-| **fracture** | sécession latente : une province diverse **ET** non consentie |
-| **dereal** | déréalisation (§2.3 faustien) — lue par les Âges |
+| Coord. | Plage | Sens |
+|---|---|---|
+| **surchauffe** | ≥ 0 | `max(0, (P/10)·C + flux_faustien − K)` — l'ordre débordé par sa propre complexité |
+| **fragilite** | 0-10 | part de l'ordre tenue par la seule contrainte (H, pas L) |
+| **fracture** | 0-10 | sécession latente : une province diverse **ET** non consentie |
+| **dereal** | 0-10 | déréalisation (§2.3 faustien) — lue par les Âges |
 
 ### Faustien & entropie (§27)
-| Coord. | Sens |
-|---|---|
-| **entropy** | Σ des charges faustiennes régionales — la barre §27 (accumulateur monotone) |
-| **faust_consumed[3]** | conso cumulée des 3 rares (0 essence→EAU · 1 flux→RONCES · 2 fer céleste→FROID) |
-| entropy_terminal · entropy_epicenter | seuil franchi ? · région à l'entropie max (foyer des fins) |
-
-### Les leviers d'ÂGE (`age_*` — entrées globales que les 7 Âges déplacent)
-| Coord. | Âge | Effet |
+| Coord. | Plage | Sens |
 |---|---|---|
-| **age_C_bonus** | Commerce | + connectivité mondiale [0-5] |
-| **age_I_bonus** | Lumières | + Idées (I surgit) |
-| **age_lumiere_solvent** | Lumières | − L coercitive (∝ H) : la poigne se dissout |
-| **age_L_penalty** | Soulèvements | − L partout (contagion révolutionnaire) |
-| **age_H_bonus** | Ordre de Fer | + H (la poigne) |
-| **age_myth_homogen** | Ordre de Fer | − D̄ effectif (le mythe nie la diversité) |
-| **age_breach_flux** | Brèche | + flux faustien mondial → déréalisation |
+| **entropy** | 0 → ∞ | la barre §27 : Σ charges faustiennes + tech/sang/combustible. Seuils : **`ENTROPY_FIN` 55** (déclenche une fin) · `ENTROPY_TERMINAL` 4000 (signal terminal de prospérité) |
+| **faust_consumed[3]** | 0 → ∞ | conso cumulée des 3 rares (0 essence→EAU · 1 flux→RONCES · 2 fer céleste→FROID) |
+| entropy_terminal · entropy_epicenter | bool · idx | seuil franchi ? · région à l'entropie max (foyer des fins) |
+
+### Les leviers d'ÂGE (`age_*` — deltas ADDITIFS sur les coordonnées [0..10])
+| Coord. | Plage | Âge | Effet |
+|---|---|---|---|
+| **age_C_bonus** | 0-5 | Commerce | + connectivité mondiale |
+| **age_I_bonus** | delta + | Lumières | + Idées (I surgit) |
+| **age_lumiere_solvent** | delta − | Lumières | − L coercitive (∝ H) : la poigne se dissout |
+| **age_L_penalty** | delta − | Soulèvements | − L partout (contagion révolutionnaire) |
+| **age_H_bonus** | delta + | Ordre de Fer | + H (la poigne) |
+| **age_myth_homogen** | delta − | Ordre de Fer | − D̄ effectif (le mythe nie la diversité) |
+| **age_breach_flux** | delta + | Brèche | + flux faustien mondial → déréalisation |
 
 ### L'état LOCAL (par province/région)
 | Coord. | Plage | Sens |
