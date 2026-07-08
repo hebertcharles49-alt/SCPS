@@ -136,10 +136,6 @@ func _draw() -> void:
 		# flat_map = 1.0 : mapping cellule TOP-DOWN (biome lu en monde direct). L'INCLINAISON visuelle
 		# est portée par l'échelle Y du nœud IsoGround (map_view.TILT_Y) → sol & overlay restent alignés.
 		mat.set_shader_parameter("flat_map", 1.0)
-		# ROSE DES VENTS — corrige l'ovalisation sous l'inclinaison : `scale.y` du nœud EST
-		# TILT_Y (posé par map_view.gd à la création) — se lit directement, aucune constante
-		# dupliquée. Le shader pré-corrige d.y de compass() avec cette valeur (cf. compass()).
-		mat.set_shader_parameter("tilt_y", scale.y)
 		# V3 — LE LAVIS PAR VARIANTE : gate à coût nul si aucune fin en cours (fin_raw==0 ⇒
 		# variant_on=0 côté shader, le tap est sauté). fin==4 (ASCENSION) reste hors gate —
 		# pas de lavis sombre pour une victoire (design : « rien ou un voile or très léger »,
