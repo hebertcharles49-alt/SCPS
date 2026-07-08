@@ -2042,6 +2042,21 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   échantillon réduit — la cible 35-45 % non atteinte, le sweep de re-validation juge à l'échelle.
   Gates de vague : golden RE-BASELINÉ (une fois, post-merge) · determinism STABLE · savetest
   byte-identique · test 39/40 (KO setenv pré-existant) · 0 warning · SAVE non bumpé (G/F/I dérivés).
+- **VOLUMES DE POP (2026-07-08) — « c'est pas 100 pélos qui vont déstabiliser un pays »** : les flux
+  humains comptaient des ÉVÉNEMENTS (fuites 28, brassage 17/sim) mais chaque mouvement ne déplaçait
+  que des dizaines d'âmes — invisible dans des mondes à 450k. Deux gestes : **(1) TÉLÉMÉTRIE EN ÂMES**
+  (compteurs `*_souls` sur pacte/fuite/retour, chronicle imprime « (N âmes) ») — on pilote au volume,
+  plus à l'événement. **(2) MAGNITUDES ×3-5** : `REFUGEE_FLEE_FRAC` 0.04→**0.12** (un sac de 3-4 ans
+  vide ~1/3 de la province — l'exode historique ; l'ancien 0.03-0.04 datait de la spirale de révolte
+  TUÉE en Phase 1, la déstabilisation de l'hôte est désormais un TRAIT, plus un runaway) ;
+  `MIG_PACT_FRAC_ALLY` 0.018→**0.05** ; **`MIG_PACT_FRAC_LATE`** (neuf, 0.02) = le taux de BASE monte
+  aussi APRÈS la porte an-12 existante (`MIG_PACT_ALLY_GATE_DAYS`) — golden-safe par construction sur
+  le canal pacte. ⊕ Mesuré (3 graines × 3 × 200 ans) : pacte **8-29k âmes/sim**, fuites **1.4-19k**,
+  retours en milliers — 5-15 % de la pop mondiale bouge en cumul ; et l'afflux DÉSTABILISE (seed 11 :
+  35 soulèvements, 2 sécessions ; seed 9 : 20) SANS effondrement (satisfaction 73-93 %, pire cas 2665
+  morts = turbulence, pas la spirale). ⚠ **RE-BASELINE golden** (seeds 209/411 — la fuite 0.12 mord
+  sur les graines belliqueuses qui saccagent < an-12 ; 7/108/310 INCHANGÉES) · determinism STABLE ·
+  **SAVE non bumpé** (compteurs de télémétrie RAZ par sim, jamais sérialisés). Tunables registre J.
 
 ## Disciplines non négociables
 

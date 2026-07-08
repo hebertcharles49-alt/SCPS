@@ -527,8 +527,10 @@ static long g_contact_cryst = 0;   /* cristallisations par contact, cumul de la 
 void demography_contact_reset(void){ g_contact_cryst = 0; }
 long demography_contact_count(void){ return g_contact_cryst; }
 static long g_migration_pact_flows = 0;   /* flux de pacte migratoire, cumul de la sim (télémétrie) */
-void demography_migration_pact_reset(void){ g_migration_pact_flows = 0; }
+static long g_migration_pact_souls = 0;   /* ÂMES déplacées par pacte, cumul (les flux ne disent pas le volume) */
+void demography_migration_pact_reset(void){ g_migration_pact_flows = 0; g_migration_pact_souls = 0; }
 long demography_migration_pact_count(void){ return g_migration_pact_flows; }
+long demography_migration_pact_souls(void){ return g_migration_pact_souls; }
 int demography_contact_tick(WorldEconomy *e, ModifierStack *drift,
                             const RouteNetwork *rn, const DiploState *dp,
                             float P, float K, float ypt){
@@ -626,8 +628,13 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int da
      * fenêtre golden) — avant ce cap, TOUS les pactes (alliés ou commerciaux) utilisent
      * le taux DE BASE, golden-safe par construction (comportement D'ORIGINE inchangé). */
     bool  post_golden = day >= (int)tune_f("MIG_PACT_ALLY_GATE_DAYS", 4380.f);
-    float frac_ally = tune_f("MIG_PACT_FRAC_ALLY", 0.018f);
+    float frac_ally = tune_f("MIG_PACT_FRAC_ALLY", 0.05f);
     float frac_base = tune_f("MIG_PACT_FRAC", 0.006f);       /* ~0.6 %/an du dominant, modulé par l'attractivité */
+    /* VOLUME (2026-07-08, « c'est pas 100 pélos qui vont déstabiliser un pays ») : le taux
+     * de BASE lui-même monte APRÈS la fenêtre golden (même porte que FRAC_ALLY) — un pacte
+     * commercial tenu déplace ~2 %/an du dominant, un pacte d'alliés ~5 %/an. Sur des
+     * décennies : des MILLIERS d'âmes, un flux démographiquement visible. */
+    if (post_golden){ float late = tune_f("MIG_PACT_FRAC_LATE", 0.02f); if (late > frac_base) frac_base = late; }
     long  fmin = (long)tune_f("MIG_PACT_MIN", 30.f);
     int np = e->n_prov; if (np>SCPS_MAX_PROV) np=SCPS_MAX_PROV;
     /* province la plus peuplée + sa prospérité (proxy d'attractivité), par pays. */
@@ -664,13 +671,13 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int da
             PopGroup *da=(PopGroup*)province_dominant(srcA);
             if (da && da->klass!=CLASS_SLAVE){
                 long amt=(long)((float)da->count*frac*(2.f*sb/tot_attr));
-                if (amt>=fmin && migration_move(srcA,dstB,(int)(da-srcA->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,rsrcA)) flows++;
+                if (amt>=fmin && migration_move(srcA,dstB,(int)(da-srcA->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,rsrcA)){ flows++; g_migration_pact_souls+=amt; }
             }
             /* b→a : ∝ attractivité de a (re-résoudre le dominant : le move a pu compacter). */
             PopGroup *db=(PopGroup*)province_dominant(srcB);
             if (db && db->klass!=CLASS_SLAVE){
                 long amt=(long)((float)db->count*frac*(2.f*sa/tot_attr));
-                if (amt>=fmin && migration_move(srcB,dstA,(int)(db-srcB->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,rsrcB)) flows++;
+                if (amt>=fmin && migration_move(srcB,dstA,(int)(db-srcB->groups),amt,demography_dyn_id_next(),ARR_MIGRANT,rsrcB)){ flows++; g_migration_pact_souls+=amt; }
             }
         }
     }
@@ -689,9 +696,13 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int da
  * devenu prussien). AUCUN déplacé n'est définitif : même le migrant économique a un foyer
  * (retour ténu). Un réfugié pleinement intégré cesse d'être réfugié (il s'est fixé). */
 static long g_refugee_fled = 0, g_refugee_returned = 0;
-void demography_refugee_reset(void){ g_refugee_fled = 0; g_refugee_returned = 0; }
+static long g_refugee_fled_souls = 0, g_refugee_returned_souls = 0;   /* les ÂMES, pas les événements */
+void demography_refugee_reset(void){ g_refugee_fled = 0; g_refugee_returned = 0;
+                                     g_refugee_fled_souls = 0; g_refugee_returned_souls = 0; }
 long demography_refugee_fled(void){ return g_refugee_fled; }
 long demography_refugee_returned(void){ return g_refugee_returned; }
+long demography_refugee_fled_souls(void){ return g_refugee_fled_souls; }
+long demography_refugee_returned_souls(void){ return g_refugee_returned_souls; }
 
 /* de retour au FOYER : fondre dans le groupe co-culturel s'il existe (il rejoint SES gens),
  * sinon recréer un natif dé-diasporisé & intégré (il est chez lui). Retourne la part réellement
@@ -753,7 +764,7 @@ int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
             if (pe->pop.groups[i].klass==CLASS_SLAVE) continue;
             long amt=(long)((float)pe->pop.groups[i].count*flee_frac);
             if (amt<flee_min) continue;
-            if (migration_move(&pe->pop, &e->prov[rpb].pop, i, amt, demography_dyn_id_next(), ARR_REFUGIE, r)) fled++;
+            if (migration_move(&pe->pop, &e->prov[rpb].pop, i, amt, demography_dyn_id_next(), ARR_REFUGIE, r)){ fled++; g_refugee_fled_souls+=amt; }
         }
     }
 
@@ -779,7 +790,7 @@ int demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp){
             if (got>0){
                 g->count -= got;
                 if (g->count<=0){ pp->groups[i]=pp->groups[pp->n_groups-1]; pp->n_groups--; }
-                returned++;
+                returned++; g_refugee_returned_souls+=got;
             }
         }
     }

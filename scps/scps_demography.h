@@ -126,6 +126,7 @@ void demography_contact_reset(void);   /* RAZ du compteur de cristallisations (p
 long demography_contact_count(void);   /* cristallisations par contact cumulées (télémétrie) */
 void demography_migration_pact_reset(void);
 long demography_migration_pact_count(void);   /* flux de pacte migratoire cumulés (télémétrie) */
+long demography_migration_pact_souls(void);   /* ÂMES déplacées par pacte cumulées (le volume, pas l'événement) */
 
 /* RÉFUGIÉS (BRASSAGE) — la violence (revolt_scar haut : sac/révolte) fait FUIR vers une région
  * voisine SÛRE (si possible), diaspora ARR_REFUGIE au FOYER inscrit ; puis, foyer apaisé, une
@@ -135,6 +136,8 @@ int  demography_refugee_tick(World *w, WorldEconomy *e, const DiploState *dp);
 void demography_refugee_reset(void);           /* RAZ des compteurs (par sim) */
 long demography_refugee_fled(void);            /* réfugiés partis cumulés (télémétrie) */
 long demography_refugee_returned(void);        /* rentrés au foyer cumulés (télémétrie) */
+long demography_refugee_fled_souls(void);      /* ÂMES en fuite cumulées */
+long demography_refugee_returned_souls(void);  /* ÂMES rentrées cumulées */
 
 /* Dépose `amount` du groupe dominant du pays `cid` (sa culture régnante) dans la
  * région conquise `region` → minorité de colons sous une couronne étrangère, OU

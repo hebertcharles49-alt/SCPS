@@ -1271,10 +1271,11 @@ int main(int argc, char **argv){
           if (nemp>0){
               printf("              syncrétisme : %d nœud(s) profond(s) (gouvernance) · %d diffusion(s) (commerce/frontière/foi) · %d/%d archétype(s) · dispersion %d–%d/empire · %d ont la COMBINAISON forge runique × arcane · %ld cristallisation(s) culturelle(s) par contact (S2)\n",
                      sync_total, diff_total, distinct, (int)HERITAGE_COUNT, nmin, nmax, combo, demography_contact_count());
-              printf("              brassage : %ld flux de pacte migratoire (échange passif de population entre alliés → diaspora à métaboliser)\n",
-                     demography_migration_pact_count());
-              printf("              réfugiés : %ld fuite(s) de guerre → voisine sûre · %ld retour(s) au foyer apaisé (la pop RESPIRE ; aucune migration définitive)\n",
-                     demography_refugee_fled(), demography_refugee_returned());
+              printf("              brassage : %ld flux de pacte migratoire (%ld âmes déplacées — échange passif entre partenaires → diaspora à métaboliser)\n",
+                     demography_migration_pact_count(), demography_migration_pact_souls());
+              printf("              réfugiés : %ld fuite(s) de guerre (%ld âmes) → voisine sûre · %ld retour(s) (%ld âmes) au foyer apaisé (la pop RESPIRE ; aucune migration définitive)\n",
+                     demography_refugee_fled(), demography_refugee_fled_souls(),
+                     demography_refugee_returned(), demography_refugee_returned_souls());
               { long slaves=0; long poolc=intertrade_slave_pool_count();
                 for (int r=0;r<s.econ->n_regions;r++) slaves+=(long)s.econ->region[r].strata[CLASS_SLAVE].pop;
                 printf("              esclavage : %ld âme(s) servile(s) dans le monde · %ld au pool des Centres · %ld affranchissement(s) · %ld rachat(s) IA (pénurie de bras)\n",

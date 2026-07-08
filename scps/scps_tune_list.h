@@ -158,7 +158,12 @@
      * l'an-12 » (golden) tient par construction (déjà vrai avant ce lot) — le taux élevé
      * n'y risque rien. MIN inchangé (30, golden-safe, vérifié). */ \
     X(MIG_PACT_FRAC,        0.006f) \
-    X(MIG_PACT_FRAC_ALLY,   0.018f) \
+    X(MIG_PACT_FRAC_ALLY,   0.05f) \
+    /* MIG_PACT_FRAC_LATE (VOLUME, 2026-07-08) — le taux de BASE monte lui aussi après la
+     * fenêtre golden (même porte GATE_DAYS) : « c'est pas 100 pélos qui vont déstabiliser
+     * un pays » — un pacte tenu déplace ~2 %/an du dominant (allié : 5 %), des MILLIERS
+     * d'âmes sur des décennies. Avant l'an-12 : FRAC d'origine (golden-safe). */ \
+    X(MIG_PACT_FRAC_LATE,   0.02f) \
     X(MIG_PACT_MIN,          30.0f) \
     /* MIG_PACT_ALLY_GATE_DAYS — le taux ÉLEVÉ (FRAC_ALLY) n'entre en vigueur qu'APRÈS ce
      * jour (12 ans, la fenêtre golden) : un pacte (même allié) peut en pratique se former
@@ -170,13 +175,14 @@
      * voisine la moins ravagée. HOME_CALM : foyer sous ce seuil ⇒ retour possible. RETURN_PULL :
      * part du réfugié qui rentre/an (× (1−intégration) : le fixé reste) ; MIGRANT_RETURN ténu (le
      * migrant économique respire aussi). SETTLE_INTEG : intégré au-delà ⇒ le réfugié se FIXE.
-     * FLEE_FRAC (0.03) : la fuite déplace cette part/an d'un groupe d'une région ravagée. Calé BAS —
-     * les réfugiés IGNORENT la capacité d'accueil (migration_move n'a pas de plafond eff_cap), donc un
-     * volume élevé sous stress SOUTENU (cataclysme : toutes régions ravagées longtemps) fait ENFLER une
-     * destination au-delà du soutenable → révolte massive → runaway (millions de morts). 0.03 = respire
-     * sans emballer ; l'instabilité conditionnelle vient de l'ABSORPTION (distance × institutions). */ \
+     * FLEE_FRAC (0.12, VOLUME 2026-07-08) : la fuite déplace cette part/an d'un groupe d'une région
+     * ravagée — un sac qui dure 3-4 ans vide ~1/3 de la province (l'exode HISTORIQUE, des milliers
+     * d'âmes, « c'est pas 100 pélos qui vont déstabiliser un pays »). L'ancien 0.03-0.04 datait du
+     * runaway de révolte (spirale d'écrasement, morts en millions) TUÉ depuis par la Phase 1
+     * (grâce empire-wide + cooldown sérialisé) — la déstabilisation de l'hôte par l'afflux est
+     * désormais un TRAIT (minorité restive, satisfaction), plus une spirale. Mesuré apparié. */ \
     X(REFUGEE_FLEE_SCAR,     0.40f) \
-    X(REFUGEE_FLEE_FRAC,     0.04f) \
+    X(REFUGEE_FLEE_FRAC,     0.12f) \
     X(REFUGEE_FLEE_MIN,      30.0f) \
     X(REFUGEE_HOME_CALM,     0.25f) \
     X(REFUGEE_RETURN_PULL,   0.12f) \
