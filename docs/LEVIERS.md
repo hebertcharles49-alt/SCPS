@@ -192,7 +192,7 @@ de tier N** (LOT T).
 
 | Tunable | Défaut | Effet |
 |---|---|---|
-| **`POP_R_BASE`** | 0.01733 | **LE levier de vitalité** (ln2/40) : le monde est bistable — plus haut = plus plein & contesté, plus bas = « mou » figé au bassin ½·cap. Dialer vers /35 (0.0198) ou /30 (0.0231). |
+| **`POP_R_BASE`** | 0.0198 | **LE levier de vitalité** (ln2/35) : le monde est bistable — plus haut = plus plein & contesté, plus bas = « mou » figé au bassin ½·cap. Dialer vers /40 (0.01733, plus sobre) ou /30 (0.0231, plus plein). |
 | `POP_PROSP_MID` / `_SPAN` / `_W` | 0.2 / 1.8 / 0.15 | normalisation & poids de la prospérité (PIB/tête) dans le bonus de fertilité |
 | `POP_NEEDS_W` | 0.85 | poids des besoins satisfaits dans la fertilité |
 | `POP_SAT_W` | 0.20 | surcroît de croissance d'une province contente (asymétrique : la basse ne punit pas) |

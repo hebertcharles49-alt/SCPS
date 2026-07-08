@@ -459,7 +459,7 @@
      *   mais DIFFÉRENCIÉ (riche=plein, pauvre=modeste, pas truqué) ; /40 retenu pour le RÉALISME —
      *   le doublement réalisé ≈20-40 ans encadre la cible ~30 ans. Dialable d'UNE ligne (ou
      *   SCPS_TUNE=POP_R_BASE=…) vers /35 ou /30 (plus plein, turbulence comparable). */ \
-    X(POP_R_BASE,             0.01733f) \
+    X(POP_R_BASE,             0.0198f) \
     X(POP_PROSP_MID,          0.2f) \
     X(POP_PROSP_SPAN,         1.8f) \
     X(POP_PROSP_W,            0.15f) \
