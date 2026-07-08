@@ -454,6 +454,15 @@ typedef struct {
         float   seed_base;       /* colons embarqués (ponction déjà faite) */
         float   yield;           /* rendement à l'arrivée (0..1) */
     } colony[SCPS_MAX_COUNTRY];
+
+    /* ── FIN_CHAUD (§27, 2026-07-08) — CUMULS SIM du combustible RÉELLEMENT brûlé
+     * (l'offre SERVIE, jamais la demande) : bois de FEU consommé au panier des
+     * journaliers (econ_tick, branche générique du marché) + CHARBON consommé en
+     * intrant de manufacture (poudrière, forge céleste, …). Monotones croissants,
+     * lus en DELTA par l'endgame (motif Campaign.dead_choc → war_dead_seen).
+     * Sérialisés dans le blob ECON (fwrite brut ⇒ SAVE_VERSION 74). ── */
+    double        fuel_wood_cum;
+    double        fuel_coal_cum;
 } WorldEconomy;
 
 /* ---- API -------------------------------------------------------------- */
@@ -516,6 +525,11 @@ void econ_guarantee_player_construction(WorldEconomy *e, const World *w, int pla
 /* Capstone §27 FROID : re-dérive la fertilité vivrière (raw_cap[RES_GRAIN]) de
  * l'habitabilité COURANTE (carte refroidie) → la famine émerge sous le gel. */
 void econ_cold_refresh(WorldEconomy *e, const World *w);
+/* CAPSTONE §27 CHAUD — le pendant du froid : habitabilité re-dérivée d'une carte
+ * RÉCHAUFFÉE + HYPERTHERMIE HUMIDE (bulbe-humide ∝ heat, cellules chaudes ET
+ * humides — la bande tropicale meurt la première). heat = EndgameState.heat_offset
+ * [0..1] ; jamais appelée hors FIN_CHAUD ⇒ la genèse/le jeu normal sont INTACTS. */
+void econ_heat_refresh(WorldEconomy *e, const World *w, float heat);
 
 /* ---- MODIFICATEURS PROVINCIAUX (diégétiques) -------------------------- *
  * Un effet NOMMÉ, DÉRIVÉ de l'état réel de la région (remplissage, nourriture,

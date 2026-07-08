@@ -550,6 +550,37 @@
     X(EXODUS_INTENSITY_MIN,  0.15f) \
     X(EXODUS_FRAC_PER_YEAR,  0.10f) \
     X(SANG_FLEE_FRAC,        0.35f) \
+    /* FIN_CHAUD (2026-07-08) — LE RÉCHAUFFEMENT, la fin des MONDES CALMES : le
+     * combustible RÉELLEMENT brûlé (bois de feu SERVI au panier + charbon consommé
+     * en intrant de manufacture — l'offre servie ∝ pop prospère, jamais un bonus
+     * plat) charge le ciel. ENTROPY_FUEL_W : poids du ratio per-capita (mémoire
+     * décrue / pop vivante, ~8-11 en monde prospère à l'an 180+) — calé pour qu'un
+     * monde calme qui plafonnait à 20-50 d'entropie franchisse ENTROPY_FIN dans la
+     * fenêtre 180-250. FUEL_COAL_W : le charbon pèse plus lourd que le bois (~×3 —
+     * l'industrie fossile : poudrière/forge céleste — vs l'âtre). FUEL_MEMORY_HL :
+     * demi-vie (ans) de la mémoire de combustible — plus LONGUE que celle du sang
+     * (le CO2 persiste plus qu'un souvenir de guerre). FIN_CHAUD_SHARE : part de la
+     * barre d'entropie tenue par le terme combustible au fire pour que CHAUD
+     * l'emporte sur le dispatch pondéré. FUEL_DEAD_EPS : sous cette conso de rare
+     * (le MAX des faust_consumed) les transmuteurs sont jugés ~MORTS ⇒ CHAUD éligible ;
+     * au-dessus (une corne même IMMATURE) le monde RETOMBE au dispatch pondéré (son
+     * comportement existant sous mx<1.0) — c'est ce qui « garde FROID aux mondes à
+     * corne » (mesuré : le seul gate mx<1.0 volait une corne naissante à W élevé).
+     * HEAT_RAMP_PER_YEAR : décalage de température annuel (miroir COLD_RAMP).
+     * SEA_RISE_CELLS_PER_YEAR : montée des eaux passive — N cellules de terre
+     * côtière les plus BASSES noyées/an (tri à clé entière, déterministe).
+     * CALIBRAGE (sweep 2026-07-08) : W=15 fait basculer une bonne part des mondes
+     * sans-fin en RÉCHAUFFEMENT dans 180-250 (leur fuel_ratio ~2.5-5.6 × 15 franchit
+     * ENTROPY_FIN sur ~85 % de la barre) sans voler les mondes à corne (seed 9 :
+     * fuel share 1 %, garde HIVER) ni SANG (checké avant). */ \
+    X(ENTROPY_FUEL_W,         15.0f) \
+    X(FUEL_COAL_W,             3.0f) \
+    X(FUEL_MEMORY_HL,         60.0f) \
+    X(FIN_CHAUD_SHARE,         0.45f) \
+    X(FUEL_DEAD_EPS,           0.5f) \
+    X(HEAT_RAMP_PER_YEAR,      0.010f) \
+    X(HEAT_DROUGHT,            0.6f) \
+    X(SEA_RISE_CELLS_PER_YEAR, 140.0f) \
     /* LOT F — CATASTROPHES DU MONDE CALME : un monde SANS fin en vue (aucune fin
      * latchée, entropie loin du seuil, passé un an-butoir) reçoit une pression accrue
      * de catastrophes GÉO (quake/flood/drought/fire/plague, EVENTS[] existant — motif

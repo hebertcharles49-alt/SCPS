@@ -326,7 +326,7 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
     if (!intertrade_save_sane(s->econ->n_regions)) return false;
     if (s->eg) {
         const EndgameState *eg = s->eg;
-        if ((int)eg->fin < 0 || (int)eg->fin > (int)FIN_SANG) return false;   /* V1a : FIN_SANG appendue après FIN_ASCENSION */
+        if ((int)eg->fin < 0 || (int)eg->fin > (int)FIN_CHAUD) return false;   /* v74 : FIN_CHAUD appendue après FIN_SANG */
         if ((int)eg->merv < 0 || (int)eg->merv > (int)MERV_ASCENDED) return false;
         if (eg->epicenter_reg < -1 || eg->epicenter_reg >= s->econ->n_regions) return false;
         if (eg->fauteur_country < -1 || eg->fauteur_country >= w->n_countries) return false;
@@ -350,6 +350,12 @@ bool scps_save_sane(const World *w, const Sim *s, int player){
         if (eg->war_dead_player > eg->war_dead + 1e-6 || eg->war_dead_player_seen > eg->war_dead_seen + 1e-6) return false;
         for (int r = 0; r < SCPS_MAX_REG; r++)
             if (eg->sang_scar[r] < 0.0f || eg->sang_scar[r] > 1.0f) return false;
+        /* v74 : FIN_CHAUD — cumuls/mémoire de combustible ≥0 et FINIS (le style !(x>=0)
+         * capte aussi le NaN), rampe de chaleur bornée [0,1] comme cold_offset. */
+        if (!(eg->fuel_seen_wood >= 0.0) || !(eg->fuel_seen_coal >= 0.0)) return false;
+        if (!(eg->fuel_charge >= 0.0) || eg->fuel_charge > 1e18) return false;
+        if (!(eg->heat_offset >= 0.0f) || eg->heat_offset > 1.0f) return false;
+        if (!(s->econ->fuel_wood_cum >= 0.0) || !(s->econ->fuel_coal_cum >= 0.0)) return false;
     }
     if (!director_save_sane(s->ev, SCPS_MAX_COUNTRY*SCPS_MAX_COUNTRY)) return false;
     /* MEMBRANE DE DÉCISION (v62) : les cicatrices/cooldowns visent une région OU un pays

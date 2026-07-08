@@ -32,7 +32,14 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 73u           /* v73 : CONTRAT DE SAVE (défaut #1, audit 2026-07-06) — LES
+#define SAVE_VERSION 74u           /* v74 : FIN_CHAUD (réchauffement §27, 2026-07-08) — le combustible
+                                    * brûlé (bois de feu servi + charbon consommé) est un ACCUMULATEUR
+                                    * inter-ticks : cumuls WorldEconomy.fuel_wood_cum/fuel_coal_cum
+                                    * (blob ECON grandit) + EndgameState.fuel_seen_wood/fuel_seen_coal/
+                                    * fuel_charge/heat_offset (section EGAM grandit) — jurisprudence
+                                    * EMOB/COLC/TXYR : non sérialisé ⇒ --savetest diverge. FIN_CHAUD
+                                    * appendue à FinType (valeurs existantes stables). <v74 refusé. */
+                                   /* v73 : CONTRAT DE SAVE (défaut #1, audit 2026-07-06) — LES
                                     * TROIS GRÂCES DE RÉVOLTE rapatriées SUR RevoltState :
                                     * revolt_grace/coup_grace/concede_cd[SCPS_MAX_COUNTRY] (ex-
                                     * `static float` module-hors-struct dans scps_revolt.c) GATENT

@@ -27,8 +27,12 @@
  * (0..4) restent STABLES — un save v66 (fin ≤ FIN_ASCENSION) reste valide ; côté
  * façade, fin=5 (RFIN_SANG, à ajouter côté membrane hors ce lot) passera sans
  * toucher scps_api.c. */
+/* FIN_CHAUD APPENDUE APRÈS FIN_SANG (2026-07-08) : même motif que l'ajout de SANG —
+ * valeurs existantes (0..5) STABLES ; côté façade, fin=6 (RFIN_CHAUD) passe tel quel.
+ * Le RÉCHAUFFEMENT : la fin des mondes CALMES — leur feu domestique (bois de feu servi
+ * au panier + charbon industriel) charge le ciel (fuel_charge, ci-dessous). */
 typedef enum {
-    FIN_AUCUNE = 0, FIN_EAU, FIN_FROID, FIN_RONCES, FIN_ASCENSION, FIN_SANG
+    FIN_AUCUNE = 0, FIN_EAU, FIN_FROID, FIN_RONCES, FIN_ASCENSION, FIN_SANG, FIN_CHAUD
 } FinType;
 
 typedef enum {
@@ -100,6 +104,20 @@ typedef struct EndgameState {
      * (snapshot de revolt_scar), puis drainée chaque année, bornée (un
      * plancher de pop empêche la spirale vers zéro). */
     float    sang_scar[SCPS_MAX_REG];         /* SANG : intensité de la marque [0..1], PERMANENTE */
+
+    /* ── FIN_CHAUD (2026-07-08) — LE RÉCHAUFFEMENT, la fin des mondes calmes ─────
+     * Le combustible RÉELLEMENT brûlé (bois de feu SERVI au panier des journaliers +
+     * charbon CONSOMMÉ en intrant de manufacture — l'offre servie, jamais la demande)
+     * est cumulé côté éco (WorldEconomy.fuel_wood_cum/fuel_coal_cum, sérialisés dans
+     * le blob ECON) et lu ICI en DELTA — le MÊME motif que war_dead/Campaign.dead_choc :
+     * *_seen = dernier cumul lu, fuel_charge = mémoire pondérée (FUEL_COAL_W ×charbon)
+     * à décrue lente (FUEL_MEMORY_HL — le CO2 persiste plus longtemps que le souvenir
+     * des morts). Sérialisés (jurisprudence EMOB/COLC/TXYR : tout accumulateur
+     * inter-ticks non sérialisé fait diverger --savetest). */
+    double   fuel_seen_wood;                  /* dernier cumul bois-de-feu lu (delta-tracking) */
+    double   fuel_seen_coal;                  /* dernier cumul charbon lu (delta-tracking) */
+    double   fuel_charge;                     /* mémoire pondérée à décrue (bois + FUEL_COAL_W·charbon) */
+    float    heat_offset;                     /* CHAUD : décalage de température cumulé (miroir de cold_offset) */
 } EndgameState;
 
 /* ---- API -------------------------------------------------------------- */
@@ -115,6 +133,12 @@ void endgame_set_pop_ref(EndgameState *eg, const WorldEconomy *econ);
  * pop_ref sans econ). Lu par l'entrée d'entropie, la sélection FIN_SANG et la
  * télémétrie chronicle — un seul chiffre partout. */
 double endgame_blood_ratio(const EndgameState *eg, const WorldEconomy *econ);
+
+/* FIN_CHAUD — le ratio de combustible CANONIQUE : mémoire décrue du feu brûlé /
+ * pop ACTUELLE (repli pop_ref sans econ) — le per-capita de la civilisation qui
+ * charge son ciel. Lu par l'entrée d'entropie, la sélection FIN_CHAUD et la
+ * télémétrie chronicle — un seul chiffre partout (miroir d'endgame_blood_ratio). */
+double endgame_fuel_ratio(const EndgameState *eg, const WorldEconomy *econ);
 
 /* #32 — la PART du joueur dans le sang mondial : war_dead_player / war_dead (mémoires
  * décrues, même échelle) ∈ [0,1]. 0 si war_dead≤0 (rien à partager) OU eg NULL. Lu par

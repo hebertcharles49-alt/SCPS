@@ -83,6 +83,19 @@ double endgame_blood_ratio(const EndgameState *eg, const WorldEconomy *econ) {
     return (base > 0.0) ? eg->war_dead / base : 0.0;
 }
 
+/* FIN_CHAUD — le ratio de combustible CANONIQUE (mémoire décrue du feu brûlé / pop
+ * actuelle, repli pop_ref) — LU par l'entrée d'entropie ET par la sélection au fire
+ * (le même chiffre) — miroir exact d'endgame_blood_ratio. Ordre de grandeur : un
+ * monde prospère sert ~0.13 bois de feu/tête/an (NEED laborer 1.0/100hab/tick ×12
+ * ×tension) ⇒ à FUEL_MEMORY_HL=60 ans la mémoire per-capita plafonne ~11 (charbon
+ * en sus, pondéré FUEL_COAL_W — l'industrie fossile pèse plus lourd que l'âtre). */
+double endgame_fuel_ratio(const EndgameState *eg, const WorldEconomy *econ) {
+    if (!eg) return 0.0;
+    double base = endgame_world_pop(econ);
+    if (base <= 0.0) base = eg->pop_ref;
+    return (base > 0.0) ? eg->fuel_charge / base : 0.0;
+}
+
 /* #32 — part du joueur dans le sang mondial (mémoires décrues, même échelle donc le
  * ratio est stable indépendamment de pop/pop_ref). 0 si rien à partager (war_dead≤0). */
 double endgame_blood_player_share(const EndgameState *eg) {
@@ -130,6 +143,27 @@ static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
 
         wp->entropy += tune_f("ENTROPY_BLOOD_W", 8.0f)
                      * (float)endgame_blood_ratio(eg, econ);
+    }
+
+    /* ── FIN_CHAUD (5e nourriture, 2026-07-08) — LE FEU DOMESTIQUE/INDUSTRIEL ────
+     * Le combustible RÉELLEMENT brûlé (bois de feu servi au panier + charbon consommé
+     * en intrant, cumulé par econ_tick — jamais la demande) charge le ciel : delta-
+     * tracking sur les cumuls sérialisés du blob ECON (motif Campaign.dead_choc →
+     * war_dead_seen), mémoire pondérée à décrue LENTE (FUEL_MEMORY_HL — le CO2
+     * persiste plus longtemps qu'un souvenir de guerre), normalisée par la pop
+     * VIVANTE (endgame_fuel_ratio). C'est la conso RÉELLE ∝ pop : les mondes CALMES
+     * et prospères — ceux qui servent le panier à plein — sont les plus chargés,
+     * PAR CONSTRUCTION (jamais un bonus plat). */
+    if (eg && econ) {
+        double cw = econ->fuel_wood_cum, cc = econ->fuel_coal_cum;
+        double dw = cw - eg->fuel_seen_wood; if (dw < 0.0) dw = 0.0;   /* RAZ d'éco (nouvelle sim) */
+        double dc = cc - eg->fuel_seen_coal; if (dc < 0.0) dc = 0.0;
+        eg->fuel_seen_wood = cw; eg->fuel_seen_coal = cc;
+        double fhl = pow(0.5, 1.0 / (double)tune_f("FUEL_MEMORY_HL", 60.f));
+        eg->fuel_charge = eg->fuel_charge * fhl
+                        + dw + (double)tune_f("FUEL_COAL_W", 3.f) * dc;
+        wp->entropy += tune_f("ENTROPY_FUEL_W", 2.2f)
+                     * (float)endgame_fuel_ratio(eg, econ);
     }
 }
 
@@ -404,6 +438,100 @@ static void cold_step(EndgameState *eg, World *w, WorldEconomy *econ) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * C4ter — APOCALYPSE DE CHALEUR (FIN_CHAUD, 2026-07-08) : le RÉCHAUFFEMENT.
+ * ──────────────────────────────────────────────────────────────────────────── */
+/* Miroir de cold_step, DEUX effets : (a) BANDE TROPICALE — la température des
+ * cellules de terre MONTE (delta annuel, borné ; la cellule déjà à 1.0 sature),
+ * world_rebiome_cell assèche les biomes tempérés, puis econ_heat_refresh applique
+ * l'HYPERTHERMIE HUMIDE (bulbe-humide ∝ heat_offset sur les cellules chaudes ET
+ * humides — l'habitabilité tropicale PLONGE par les canaux existants, la famine et
+ * l'exode ÉMERGENT). (b) MONTÉE DES EAUX PASSIVE — chaque année, les N cellules de
+ * terre CÔTIÈRE les plus BASSES passent à la mer (tri à clé ENTIÈRE, jurisprudence
+ * priority-flood : hauteur quantifiée <<32 | index ⇒ ordre TOTAL, zéro flottant
+ * dans le comparateur) ; une région entièrement noyée est STRIPPÉE (partagé C3) et
+ * marquée sunken[]=2 (la même vérité que l'EAU pour le lavis/l'intensité) ; les
+ * empires scindés se refragmentent (miroir cataclysm_water_step). */
+static int chaud_key_cmp(const void *a, const void *b) {
+    uint64_t ka = *(const uint64_t*)a, kb = *(const uint64_t*)b;
+    return (ka < kb) ? -1 : (ka > kb) ? 1 : 0;
+}
+#define CHAUD_COAST_MAX (SCPS_N/4)   /* capacité du tri annuel (les côtes d'une carte 1024×512 ≪) */
+static void chaud_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign *camp) {
+    /* (a) la rampe de chaleur — delta RÉELLEMENT appliqué (borné, comme le froid). */
+    float ramp = tune_f("HEAT_RAMP_PER_YEAR", 0.006f);
+    float prev = eg->heat_offset;
+    eg->heat_offset += ramp;
+    if (eg->heat_offset > 1.0f) eg->heat_offset = 1.0f;   /* plafond : monde étuve */
+    float delta = eg->heat_offset - prev;
+    if (delta > 0.f) {
+        /* La chaleur ASSÈCHE (évaporation accrue = la SÉCHERESSE, l'autre visage du
+         * réchauffement) : la température monte ET l'humidité baisse ⇒ les biomes
+         * dérivent vers drylands/désert (habitabilité 0.08-0.28), pas vers la jungle
+         * humide. Sans ce couple, un monde tempéré-humide se réchauffait en JUNGLE
+         * (habitabilité 0.65 — pas d'effondrement) ; avec, la famine émerge partout
+         * (le grain suit l'habitabilité via econ_heat_refresh). Le bulbe-humide
+         * (econ_heat_refresh) reste le kick SUPPLÉMENTAIRE des tropiques qui, eux,
+         * restent trop humides pour sécher — l'étuve les tue quand même. */
+        float dry = delta * tune_f("HEAT_DROUGHT", 0.6f);
+        for (int i = 0; i < SCPS_N; i++) {
+            Cell *c = &w->cell[i];
+            if (c->height < SEA_LEVEL) continue;          /* la mer reste mer */
+            c->temperature += delta;
+            if (c->temperature > 1.f) c->temperature = 1.f;
+            c->moisture -= dry;
+            if (c->moisture < 0.f) c->moisture = 0.f;
+            world_rebiome_cell(c);                        /* chaud + sec → drylands/désert */
+        }
+    }
+
+    /* (b) montée des eaux passive : les N cellules côtières les plus basses sombrent. */
+    int budget = (int)(tune_f("SEA_RISE_CELLS_PER_YEAR", 140.f) + 0.5f);
+    int sunk_now = 0;
+    if (budget > 0) {
+        static uint64_t keys[CHAUD_COAST_MAX]; int nk = 0;
+        for (int i = 0; i < SCPS_N && nk < CHAUD_COAST_MAX; i++) {
+            const Cell *c = &w->cell[i];
+            if (c->height < SEA_LEVEL || !c->coast) continue;      /* terre côtière seule */
+            uint32_t qh = (uint32_t)(c->height * 1.0e6f);          /* quantifié : clé ENTIÈRE */
+            keys[nk++] = ((uint64_t)qh << 32) | (uint32_t)i;
+        }
+        qsort(keys, (size_t)nk, sizeof keys[0], chaud_key_cmp);
+        int take = (budget < nk) ? budget : nk;
+        for (int k = 0; k < take; k++) {
+            Cell *c = &w->cell[(uint32_t)(keys[k] & 0xFFFFFFFFu)];
+            world_sink_cell(c, SEA_LEVEL - 0.02f);
+            sunk_now++;
+        }
+    }
+    if (sunk_now > 0) {
+        world_recompute_adjacency(w);                     /* côtes neuves (le littoral remonte) */
+        econ_build_adjacency(econ, w);
+        /* régions entièrement NOYÉES → strip partagé C3 + marque sunken (lavis/intensité). */
+        static int land[SCPS_MAX_REG];
+        memset(land, 0, sizeof land);
+        for (int i = 0; i < SCPS_N; i++) {
+            const Cell *c = &w->cell[i];
+            if (c->height < SEA_LEVEL) continue;
+            int r = c->region; if (r < 0 || r >= SCPS_MAX_REG) continue;
+            land[r]++;
+        }
+        int drowned = 0;
+        for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+            if (land[r] > 0 || econ->region[r].owner < 0) continue;
+            cataclysm_strip_region_econ(w, econ, camp, r);
+            if (eg->sunken[r] != 2) { eg->sunken[r] = 2; eg->n_sunken++; }
+            drowned++;
+        }
+        int nc0 = w->n_countries, born = 0;               /* refragmentation (miroir EAU) */
+        for (int c = 0; c < nc0; c++) born += cataclysm_resplit_empire(w, econ, c);
+        if (born > 0 || drowned > 0) world_recompute_adjacency(w);
+    }
+
+    /* l'hyperthermie mord le grain (même chaîne aval que le froid/les ronces). */
+    econ_heat_refresh(econ, w, eg->heat_offset);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * LOT F (2026-07-08) — L'EXODE AVANT LA MORT
  * ──────────────────────────────────────────────────────────────────────────── *
  * Constat joueur : chaque fin BAISSE l'habitabilité d'une région (EAU l'engloutit,
@@ -527,6 +655,37 @@ static void endgame_compute_all_intensities(const EndgameState *eg, const World 
         case FIN_SANG:
             for (int r = 0; r < nr; r++) out[r] = eg->sang_scar[r];
             break;
+        case FIN_CHAUD: {
+            /* ∝ TROPICALITÉ (cellules chaudes ET humides — mêmes seuils que
+             * econ_heat_refresh : l'étuve) + BASSE ALTITUDE (la montée des eaux
+             * menace le littoral bas), le tout × la rampe heat_offset. Une région
+             * déjà noyée (sunken=2) est à 1. MÊME formule que le cas miroir
+             * d'endgame_region_intensity (vérité partagée, piège FROID évité). */
+            static int land[SCPS_MAX_REG], trop[SCPS_MAX_REG], low[SCPS_MAX_REG];
+            for (int r = 0; r < nr; r++) { land[r] = 0; trop[r] = 0; low[r] = 0; }
+            for (int i = 0; i < SCPS_N; i++) {
+                const Cell *c = &w->cell[i];
+                if (c->height < SEA_LEVEL) continue;
+                int r = c->region; if (r < 0 || r >= nr) continue;
+                land[r]++;
+                if (c->temperature >= 0.68f && c->moisture >= 0.55f) trop[r]++;
+                if (c->height < SEA_LEVEL + 0.03f) low[r]++;
+            }
+            for (int r = 0; r < nr; r++) {
+                if (eg->sunken[r] == 2) { out[r] = 1.0f; continue; }
+                if (land[r] <= 0) continue;
+                float ft = (float)trop[r] / (float)land[r];
+                float fl = (float)low[r]  / (float)land[r];
+                /* base WARMING (la sécheresse frappe TOUT) + gradient tropical/bas
+                 * (les tropiques bas souffrent PLUS → ils fuient vers les régions
+                 * tempérées, moins touchées : la direction de l'exode). */
+                float spat = 0.4f + 0.6f*(0.7f*ft + 0.5f*fl);
+                if (spat > 1.f) spat = 1.f;
+                float v = eg->heat_offset * spat;
+                out[r] = (v > 1.f) ? 1.f : v;
+            }
+            break;
+        }
         default: break;
     }
 }
@@ -1153,11 +1312,35 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
     int k = 0; double mx = wp->faust_consumed[0];
     for (int i = 1; i < 3; i++) if (wp->faust_consumed[i] > mx) { mx = wp->faust_consumed[i]; k = i; }
     if (mx < 1.0) {
+        /* FIN_CHAUD (2026-07-08) — LA FIN DES MONDES CALMES : aucun transmuteur ne
+         * domine ET la signature COMBUSTIBLE tient une part franche de la barre
+         * (fuel_term/entropy ≥ FIN_CHAUD_SHARE) ⇒ le ciel chargé par le feu
+         * domestique/industriel EST la nature de l'apocalypse. Les mondes calmes
+         * prospères — qui ne franchissaient JAMAIS le seuil avant la 5e nourriture —
+         * sont ceux dont la barre est fuel-fed par construction ; les mondes
+         * guerriers/faustiens (tech/sang dominants) retombent au dispatch pondéré.
+         * (Les mondes à corne — mx≥1.0 — gardent leur fin mappée, branche else.) */
+        /* PROTECTION DES MONDES À TRANSMUTEUR (mission : « les mondes à corne gardent
+         * FROID ») : CHAUD n'est retenue que si les transmuteurs sont ESSENTIELLEMENT
+         * MORTS (mx < FUEL_DEAD_EPS — pas seulement « pas dominant » : mx<1.0 laisse
+         * passer un monde à corne NAISSANTE, mesuré volé à W élevé). Un monde à corne
+         * même immature (mx ≥ EPS) RETOMBE au dispatch pondéré (son comportement
+         * EXISTANT sous mx<1.0 — inchangé), qui peut donner FROID. Seul le monde
+         * VRAIMENT calme (transmuteurs à ~0) dont le FEU domine la barre bascule. */
+        float fuel_term = tune_f("ENTROPY_FUEL_W", 2.2f)
+                        * (float)endgame_fuel_ratio(eg, econ);
+        bool transmut_dead = (mx < (double)tune_f("FUEL_DEAD_EPS", 0.5f));
+        if (transmut_dead && wp->entropy > 0.f
+            && fuel_term / wp->entropy >= tune_f("FIN_CHAUD_SHARE", 0.45f)) {
+            eg->fin   = FIN_CHAUD;
+            eg->fired = true;
+        } else {
         /* Aucun transmuteur (le cas COURANT) : le SAVOIR faustien seul a mené à la
          * Brèche → la FORME de l'apocalypse suit le DISPATCH pondéré (LOT F,
          * ci-dessus) — avalanche + poids diégétiques, ≤2:1 mesuré sur sweep. */
         eg->fin   = endgame_pick_default_fin(w, eg->fauteur_country, eg->epicenter_reg, year);
         eg->fired = true;
+        }
     } else {
         static const FinType MAP[3] = { FIN_EAU, FIN_RONCES, FIN_FROID };
         eg->fin   = MAP[k];
@@ -1181,10 +1364,12 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     /* Diag de CALIBRATION (SCPS_ENTDIAG=1) : la courbe d'entropie année par année.
      * OFF par défaut, stderr → déterminisme intact. */
     if (getenv("SCPS_ENTDIAG")) {
-        static const char *FN[] = { "—", "EAU", "FROID", "RONCES", "ASCENSION", "SANG" };
-        int fn_i = (int)eg->fin; if (fn_i < 0 || fn_i > 5) fn_i = 0;
-        fprintf(stderr, "[ENTDIAG] an %d : entropie %.1f / fin %.0f%s%s%s\n",
+        static const char *FN[] = { "—", "EAU", "FROID", "RONCES", "ASCENSION", "SANG", "CHAUD" };
+        int fn_i = (int)eg->fin; if (fn_i < 0 || fn_i > 6) fn_i = 0;
+        fprintf(stderr, "[ENTDIAG] an %d : entropie %.1f / fin %.0f · fuel_ratio %.2f (terme %.1f)%s%s%s\n",
                 year, (double)wp->entropy, (double)tune_f("ENTROPY_FIN", 50.f),
+                endgame_fuel_ratio(eg, econ),
+                (double)(tune_f("ENTROPY_FUEL_W", 2.2f) * (float)endgame_fuel_ratio(eg, econ)),
                 eg->fired ? " [" : "", eg->fired ? FN[fn_i] : "",
                 eg->fired ? "]" : "");
     }
@@ -1201,13 +1386,15 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
             case FIN_FROID:  cold_step(eg, w, econ); break;
             case FIN_RONCES: thorns_step(eg, w, econ, camp); break;
             case FIN_SANG:   sang_step(eg, w, econ); break;   /* route DÉJÀ une part en fuite (LOT F) */
+            case FIN_CHAUD:  chaud_step(eg, w, econ, camp); break;   /* réchauffement : étuve + montée des eaux */
             default: break;   /* ASCENSION : pas de carve (terre intacte) */
         }
-        /* LOT F — L'EXODE (générique) : EAU/FROID/RONCES routent une part de leur
-         * pression via la machinerie de réfugiés. SANG le fait déjà EN INTERNE
+        /* LOT F — L'EXODE (générique) : EAU/FROID/RONCES/CHAUD routent une part de
+         * leur pression via la machinerie de réfugiés. SANG le fait déjà EN INTERNE
          * (sang_step, ci-dessus — sa marque EST déjà un drain/an, on y greffe la
          * fuite directement plutôt qu'un passage générique redondant). */
-        if (eg->fin == FIN_EAU || eg->fin == FIN_FROID || eg->fin == FIN_RONCES)
+        if (eg->fin == FIN_EAU || eg->fin == FIN_FROID || eg->fin == FIN_RONCES
+            || eg->fin == FIN_CHAUD)
             endgame_exodus_step(eg, w, econ);
     }
 
@@ -1270,6 +1457,26 @@ float endgame_region_intensity(const EndgameState *eg, const World *w,
         }
         case FIN_SANG:
             return (region < SCPS_MAX_REG) ? eg->sang_scar[region] : 0.f;
+        case FIN_CHAUD: {
+            /* ∝ tropicalité + basse altitude × heat_offset — MÊME formule que le cas
+             * FIN_CHAUD d'endgame_compute_all_intensities (vérité partagée ; le piège
+             * documenté du FROID — intensité PLATE qui bloquait tout exode — évité :
+             * la tropicalité et l'altitude DIFFÉRENCIENT les régions dès le fire). */
+            if (region < SCPS_MAX_REG && eg->sunken[region] == 2) return 1.0f;
+            int land = 0, trop = 0, low = 0;
+            for (int i = 0; i < SCPS_N; i++) {
+                const Cell *c = &w->cell[i];
+                if (c->region != region || c->height < SEA_LEVEL) continue;
+                land++;
+                if (c->temperature >= 0.68f && c->moisture >= 0.55f) trop++;
+                if (c->height < SEA_LEVEL + 0.03f) low++;
+            }
+            if (land <= 0) return 0.f;
+            float spat = 0.4f + 0.6f*(0.7f*(float)trop/(float)land + 0.5f*(float)low/(float)land);
+            if (spat > 1.f) spat = 1.f;
+            float v = eg->heat_offset * spat;
+            return (v > 1.f) ? 1.f : v;
+        }
         default:
             return 0.f;   /* AUCUNE / ASCENSION : rien à teindre */
     }

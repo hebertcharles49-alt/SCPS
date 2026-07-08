@@ -862,6 +862,48 @@ void econ_cold_refresh(WorldEconomy *e, const World *w) {
     }
 }
 
+/* CAPSTONE §27 CHAUD (2026-07-08) — le pendant du froid, MÊME chaîne aval.
+ * biome_habitability pénalise déjà le chaud (t_comfort→0 au-delà de 0.72) mais son
+ * plancher structurel (0.45×base + rebiome qui ne mène jamais à un biome mort côté
+ * chaud-HUMIDE : la jungle reste jungle) laisse la bande tropicale VIVABLE à tmp=1.0.
+ * Or « 40° et 100 % d'humidité » TUE (hyperthermie : le corps ne refroidit plus par
+ * sudation — le bulbe humide). On applique donc, EN PLUS de l'habitabilité standard,
+ * un facteur BULBE-HUMIDE ∝ heat (l'intensité de la fin, jamais >0 hors FIN_CHAUD ⇒
+ * genèse et jeu normal INTACTS — la fonction n'est appelée que par chaud_step) : les
+ * cellules CHAUDES (t≥0.68) ET HUMIDES (m≥0.55) voient leur habitabilité plonger
+ * vers 0. Appliqué APRÈS le plancher côtier (une côte tropicale saturée meurt aussi —
+ * c'est la montée des eaux + l'étuve, pas le Chili). Même aval que le froid : grain
+ * min-borné → l'extraction vivrière s'effondre → famine/exode ÉMERGENT de la chaîne. */
+void econ_heat_refresh(WorldEconomy *e, const World *w, float heat) {
+    static float hab_sum[SCPS_MAX_PROV]; static int cnt[SCPS_MAX_PROV];
+    memset(hab_sum, 0, sizeof hab_sum); memset(cnt, 0, sizeof cnt);
+    if (heat < 0.f) heat = 0.f;
+    if (heat > 1.f) heat = 1.f;
+    for (int i=0;i<SCPS_N;i++){
+        const Cell *c=&w->cell[i];
+        if (c->height < SEA_LEVEL) continue;            /* terre seule */
+        int p=c->province; if (p<0 || p>=e->n_prov || p>=SCPS_MAX_PROV) continue;
+        float hcell = biome_habitability(c->biome, c->temperature, c->height);
+        if (c->coast && hcell < 0.32f) hcell = 0.32f;   /* plancher côtier (comme le froid)… */
+        float wet = clampf((c->temperature-0.68f)/0.20f, 0.f, 1.f)
+                  * clampf((c->moisture   -0.55f)/0.25f, 0.f, 1.f);
+        hcell *= clampf(1.f - 1.5f*heat*wet, 0.f, 1.f); /* …puis l'étuve frappe TOUT, côte comprise */
+        hab_sum[p] += hcell;
+        cnt[p]++;
+    }
+    for (int p=0;p<e->n_prov && p<SCPS_MAX_PROV;p++){
+        if (cnt[p]==0) continue;
+        ProvinceEconomy *pe=&e->prov[p];
+        if (pe->owner<0 || pe->impassable) continue;
+        float hab = hab_sum[p]/(float)cnt[p];
+        pe->habitability = hab;
+        float fac = (hab >= 0.30f) ? (1.15f + 0.70f*hab)                  /* même loi que le froid */
+                                   : (1.15f + 0.70f*hab) * (hab/0.30f);   /* étuve : plonge vers 0 */
+        float heat_grain = (pe->cap_pop/100.f) * fac;
+        if (heat_grain < pe->raw_cap[RES_GRAIN]) pe->raw_cap[RES_GRAIN] = heat_grain;
+    }
+}
+
 /* Agrège prov[] → region[] (charte règle 2 : « la RÉGION AGRÈGE. Prospérité,
  * satisfaction, marché, légitimité, agitation = sommant/pondérant les provinces
  * de la région »). Appelée en clôture d'econ_init ET à chaque econ_tick (après
@@ -2408,13 +2450,16 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float out1=fminf(lim, S[e_in1]/fmaxf(e_q1,EPS));   /* part faite avec l'intrant primaire (pool) */
                 float g1=out1*e_q1;
                 S[e_in1]-=g1; demand[e_in1]+=g1; val_in+=g1*re->price[e_in1];
+                if (e_in1==RES_COAL) e->fuel_coal_cum += (double)g1;   /* FIN_CHAUD : charbon BRÛLÉ (intrant consommé) */
                 float rem=lim-out1;
                 if (rem>0.f && e_alt!=RES_NONE){
                     float ga=rem*e_altq;
                     S[e_alt]-=ga; demand[e_alt]+=ga; val_in+=ga*re->price[e_alt];
+                    if (e_alt==RES_COAL) e->fuel_coal_cum += (double)ga;   /* FIN_CHAUD : idem (repli) */
                 }
             }
-            if (rc->in2!=RES_NONE){ S[rc->in2]-=lim*rc->q2; demand[rc->in2]+=lim*rc->q2; val_in+=lim*rc->q2*re->price[rc->in2]; }
+            if (rc->in2!=RES_NONE){ S[rc->in2]-=lim*rc->q2; demand[rc->in2]+=lim*rc->q2; val_in+=lim*rc->q2*re->price[rc->in2];
+                if (rc->in2==RES_COAL) e->fuel_coal_cum += (double)(lim*rc->q2); }   /* FIN_CHAUD : poudrière/forge céleste */
             float out=lim*rc->qout*prod_mult;   /* outils → productivité */
             out *= (1.f - 0.5f*re->revolt_scar); /* la cicatrice de révolte ronge la production */
             /* F-arc ARSENAL — la manufacture d'ARMES verse ×MANUF_ARMS_MULT au STOCK (l'arsenal que
@@ -2713,6 +2758,10 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (got>=tau) nsat++;
                 /* consomme stock & budget (pool national) */
                 S[r]-=need*got;
+                /* FIN_CHAUD (§27) : le BOIS DE FEU réellement SERVI charge le ciel —
+                 * l'offre servie (need×got), jamais la demande. Cumul SIM monotone,
+                 * lu en delta par l'endgame (motif Campaign.dead_choc). */
+                if (r==RES_WOOD) e->fuel_wood_cum += (double)(need*got);
                 budget-=need*got*re->price[r];
                 met_w+=w*got;
                 /* couverture par palier : les vivres VS le reste */
