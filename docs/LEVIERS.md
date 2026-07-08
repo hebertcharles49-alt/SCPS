@@ -454,6 +454,100 @@ satisfaction). Le seuil d'accession journalier→bourgeois = `PROMOTE_BASKET_MUL
 
 ---
 
+## L'arbre technologique (`NODES[]`, 85 nœuds)
+
+L'arbre est un disque : **9 quartiers** = 3 thèmes (**Savoir · Forge · Société**) × 3 fonctions
+(**Production · Armée · Renforcement**), en **tiers 0→5** (le rayon). ⚠ = **faustien** (monte la
+charge/flux → la Brèche → nourrit l'entropie §27). Coût ∝ √N-provinces × tier ; l'accès aux hauts tiers
+passe par la métabolisation/le commerce.
+
+> **Ce qui MORD vraiment** : le déblocage (bâtiment/unité/ressource), **K** (→ prospérité), **prod%/eff%**
+> (`NODE_PROD_PCT`/`EFF_PCT`), la **doctrine d'armée** (dégâts/moral/magie, `army_doctrine`), la **charge/flux**
+> (→ Brèche). ⚠ Les mentions « +puissance économique / +armée / +fédéralisme » dans les libellés sont des
+> champs `dEco`/`dMil`/`dF` **affichés mais non lus** par le moteur (reste connu de l'audit) — saveur, pas levier.
+
+### Savoir · Production — la spine de recherche
+- **Bibliothèque** (t0) — +recherche · +1 K
+- **Scriptorium** (t1) — +recherche (×0.5) · +1 K
+- **Académie** (t2) — +recherche · +2 K
+- **Université** (t3) — +recherche (max) · +3 K
+
+### Savoir · Armée — l'arcane offensif
+- **Savoir de guerre** (t1) — +puissance arcane des armées (léger flux)
+- **Magie de bataille** (t2) — +arcane · +puissance brute (charge modérée)
+- **Invocation** ⚠ (t3, Ésotérique) — armée invoquée sans coût de pop · forte charge
+- **L'Éveil** ⚠ — armée invoquée massive · **DÉCLENCHE la crise de fin** (charge max)
+
+### Savoir · Renforcement
+- **Gardes runiques** — +légitimité & fédéralisme
+- **Scrying** — vision lointaine · léger flux
+- **Communion** — +légitimité · −fracture interne (l'harmonie des peuples)
+- **Savoir interdit** ⚠ — grand pouvoir arcane · charge élevée
+
+### Forge · Production — la colonne industrielle
+- **Collecte de bois** / **Collecte d'argile** — débloquent ces brutes
+- **Fonderie** — débloque le métal (fer/acier) · +production
+- **Outillage** — +production (le multiplicateur de rendement)
+- **Manufacture** — +production (+8-15 %) · +puissance brute · légère fracture
+- **Industrie de masse** — +production de masse & armée · fracture notable · charge significative
+- **Foreuse arcanique** ⚠ — transmute l'essence en fer en masse · forte charge
+
+### Forge · Armée — l'armement
+- **Armurerie** — débloque les armes · +dégâts (doctrine)
+- **Poudrière** — débloque la poudre à canon · +dégâts
+- **Forge à runes** ⚠ — armes enchantées · +dégâts
+- **L'Œuvre noire** ⚠ — +armée & coercition · fracture et charge lourdes
+
+### Forge · Renforcement — le bâti
+- **Atelier de construction** — débloque les chantiers · +fédéralisme
+- **Qualité des matériaux** — +durabilité des bâtiments · +production
+- **Fortifications** — +défense (forteresse → citadelle)
+- **Automates** ⚠ — +défense & production (golems) · charge
+
+### Société · Production — la richesse
+- **Collecte de nourriture** — débloque la nourriture (liée au biome)
+- **Irrigation & greniers** — +nourriture & logements · −fracture
+- **Commerce** — +or (marché, banque) · +production
+- **Cadastre** — +or (l'impôt) · +légitimité
+- **Abondance** — +croissance & or (agraire) · −fracture
+- **Comptoirs marchands** — branche la province au marché mondial (marge réduite)
+- **Halles & entrepôts** — +500 capacité de stock/entrepôt (stocker bas, vendre haut)
+
+### Société · Armée — la levée
+- **Caserne** — débloque l'infanterie
+- **Conscription** — +armée (levée en masse)
+- **Organisation militaire** — +armée · +fédéralisme
+- **Économie servile** ⚠ — main-d'œuvre & armées serviles · +coercition · forte fracture
+- **Caste martiale** ⚠ — +armée (caste guerrière) · +coercition & fracture
+
+### Société · Renforcement — l'institution
+- **Chancellerie** — +services · +3 K
+- **Foi** — +légitimité (temple → cathédrale)
+- **Droit d'intégration** — +cohésion · forte baisse de fracture
+- **Culte impérial** ⚠ — cohésion forcée (K & légitimité) · charge
+- **Alchimie** — débloque l'Alambic (salpêtre) · +production (non faustienne)
+- **Transmutation** ⚠ — débloque le Réplicateur ligneux (flux → bois) · charge
+
+### Branches d'ÉTOFFE (signatures d'héritage, tiers 1-2)
+Glyphes éthérés / Communion éthérée (**Éso** : +stabilité) · Alliages des profondeurs / Gravure runique
+(**Métallurgiste** : +dégâts doctrine) · Rouages de précision / Mécanisme d'horlogerie (**Mécaniste** :
++prod / +efficacité) · Droit coutumier / Langue franque (**Adaptatif** : +stabilité & cohésion) · Vergers
+étagés / Pâturages intégrés (**Agraire** : +prod agricole) · Rites guerriers / Hordes conquérantes
+(**Clanique** : +moral doctrine).
+
+### Combos tier-4 (paires d'héritages — accès plein aux DEUX, natif ou métabolisé)
+Arquebuserie de précision (Méca×Métal, +dégâts) · Automates arcanes (Éso×Méca, +10 % prod) · Académie
+cosmopolite (Éso×Adapt, +K & efficacité) · Abondance druidique (Éso×Agraire, +8 % agri) · Chamanisme de
+guerre (Éso×Clan, +arcane) · Guildes maîtresses (Métal×Adapt, +8 % prod) · Charrues lourdes (Métal×Agraire)
+· Poliorcétique (Métal×Clan, +dégâts) · Horlogerie marchande (Méca×Adapt, +10 % eff) · Machines agricoles
+(Méca×Agraire, +12 % agri) · Engins de siège (Méca×Clan) · Grenier colonial (Adapt×Agraire) · Foederati
+(Adapt×Clan, +moral, −fracture) · Économie de horde (Agraire×Clan, +moral & +6 % prod).
+
+### Apex tier-5 (triples d'héritages)
+- **Arquebuse runique** (Méca×Métal×Éso) — +dégâts doctrine · **+50 % dégâts arquebusiers** (hook ciblé)
+- **Concile des savants** (Éso×Adapt×Méca) — +K · +12 % efficacité
+- **Légion universelle** (Adapt×Métal×Clan) — +moral doctrine · +stabilité · −fracture
+
 ## Leviers NON-runtime (pas dans `SCPS_TUNE`)
 
 - **Seuils des Âges** (`scps_events.c`, `#define`) : `X_NODES` 4 (Commerce) · `LUM_TOTAL_Y` 25 (Raison) ·
