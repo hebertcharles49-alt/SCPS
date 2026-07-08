@@ -145,15 +145,22 @@ static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
                      * (float)endgame_blood_ratio(eg, econ);
     }
 
-    /* ── FIN_CHAUD (5e nourriture, 2026-07-08) — LE FEU DOMESTIQUE/INDUSTRIEL ────
-     * Le combustible RÉELLEMENT brûlé (bois de feu servi au panier + charbon consommé
-     * en intrant, cumulé par econ_tick — jamais la demande) charge le ciel : delta-
-     * tracking sur les cumuls sérialisés du blob ECON (motif Campaign.dead_choc →
-     * war_dead_seen), mémoire pondérée à décrue LENTE (FUEL_MEMORY_HL — le CO2
-     * persiste plus longtemps qu'un souvenir de guerre), normalisée par la pop
-     * VIVANTE (endgame_fuel_ratio). C'est la conso RÉELLE ∝ pop : les mondes CALMES
-     * et prospères — ceux qui servent le panier à plein — sont les plus chargés,
-     * PAR CONSTRUCTION (jamais un bonus plat). */
+    /* ── FIN_CHAUD (5e nourriture, 2026-07-08 ; REPLI 2026-07-08b) — LE FEU ───────
+     * DOMESTIQUE/INDUSTRIEL. Le combustible RÉELLEMENT brûlé (bois de feu servi au
+     * panier + charbon consommé en intrant, cumulé par econ_tick — jamais la demande)
+     * s'ACCUMULE ici : delta-tracking sur les cumuls sérialisés du blob ECON (motif
+     * Campaign.dead_choc → war_dead_seen), mémoire pondérée à décrue LENTE
+     * (FUEL_MEMORY_HL — le CO2 persiste plus longtemps qu'un souvenir de guerre),
+     * normalisée par la pop VIVANTE (endgame_fuel_ratio). C'est la conso RÉELLE ∝ pop :
+     * les mondes CALMES et prospères — ceux qui servent le panier à plein — sont les
+     * plus chargés, PAR CONSTRUCTION (jamais un bonus plat).
+     *   ⚠ Le combustible NE charge PLUS `wp->entropy` (design REPLI, demande joueur :
+     * « fin pour fill le gap, seconde position derrière celle prévue à la base »).
+     * S'il poussait l'entropie mondiale, il PRÉCIPITAIT le seuil terminal et VOLAIT
+     * la fin naturelle (mesuré : RÉCHAUFFEMENT 48 % des fins au sweep combiné, rabotant
+     * HIVER/RONCES/EAU de moitié). Le RÉCHAUFFEMENT est désormais un DÉCLENCHEUR SÉPARÉ
+     * (endgame_select_and_fire, branche « sous le seuil ») : il ne s'active QUE sur les
+     * mondes qui, sans lui, seraient restés SANS FIN — il ne peut rien voler. */
     if (eg && econ) {
         double cw = econ->fuel_wood_cum, cc = econ->fuel_coal_cum;
         double dw = cw - eg->fuel_seen_wood; if (dw < 0.0) dw = 0.0;   /* RAZ d'éco (nouvelle sim) */
@@ -162,8 +169,6 @@ static void endgame_entropy_widen(EndgameState *eg, WorldProsperity *wp,
         double fhl = pow(0.5, 1.0 / (double)tune_f("FUEL_MEMORY_HL", 60.f));
         eg->fuel_charge = eg->fuel_charge * fhl
                         + dw + (double)tune_f("FUEL_COAL_W", 3.f) * dc;
-        wp->entropy += tune_f("ENTROPY_FUEL_W", 2.2f)
-                     * (float)endgame_fuel_ratio(eg, econ);
     }
 }
 
@@ -1248,7 +1253,47 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
     /* Gate temporel : les 3 apocalypses ne peuvent éclore avant ENDGAME_YEAR_OPEN. */
     if (year < (int)tune_f("ENDGAME_YEAR_OPEN", 180.f)) return;
 
-    if (wp->entropy < tune_f("ENTROPY_FIN", 50.f)) return;
+    if (wp->entropy < tune_f("ENTROPY_FIN", 50.f)) {
+        /* ── REPLI COMBUSTIBLE (FIN_CHAUD, seconde position) ────────────────────
+         * Demande joueur : « fin pour fill le gap, elle entre en seconde position
+         * derrière celle prévue à la base — solution de repli. » Le monde est SOUS
+         * le seuil terminal : il n'a PAS de fin naturelle (et n'en aura pas — un
+         * monde calme plafonne son entropie bien sous FIN). Si (a) l'endgame est
+         * ouvert depuis assez longtemps (FALLBACK_DELAY — la fin naturelle a eu tout
+         * le temps de sortir chez ceux qui en avaient une) et (b) le monde a assez
+         * BRÛLÉ (fuel_ratio ≥ FALLBACK_MIN — un monde calme ET sobre reste sans fin,
+         * cohérent), le ciel chargé finit par le rattraper. Par CONSTRUCTION ce repli
+         * ne touche que les mondes déjà sous le seuil → il ne peut RIEN voler à une
+         * fin naturelle (qui, elle, a franchi le seuil et fire dans le bloc suivant). */
+        /* Repli SIMPLE (« if no end, réchauffement ») : le monde n'a PAS déclenché de
+         * fin naturelle depuis FUEL_FALLBACK_DELAY ans après l'ouverture de l'endgame
+         * (la fin naturelle, elle, se déclenche dès que l'entropie franchit le seuil —
+         * BIEN avant ce délai chez ceux qui en ont une → la priorité est structurelle,
+         * pas un garde). Passé ce délai sans fin, si le monde a assez BRÛLÉ, le ciel le
+         * rattrape. Le délai est LONG (les fins naturelles sortent jusqu'à ~l'an 240) →
+         * le réchauffement ne prend, en pratique, que les mondes restés sans fin. */
+        int delay = (int)tune_f("FUEL_FALLBACK_DELAY", 60.f);
+        if (year >= (int)tune_f("ENDGAME_YEAR_OPEN", 180.f) + delay
+            && endgame_fuel_ratio(eg, econ) >= (double)tune_f("FUEL_FALLBACK_MIN", 4.0f)) {
+            /* Foyer = le grand brasier : la région vivante la plus saturée d'entropie
+             * si connue, sinon l'empire le plus faustien (pattern du sélecteur normal ;
+             * l'épicentre du réchauffement est symbolique — chaud_step agit globalement). */
+            int epi = wp->entropy_epicenter;
+            int fauteur = (epi >= 0 && epi < econ->n_regions) ? econ->region[epi].owner : -1;
+            if (epi < 0 || fauteur < 0) {
+                int fr = -1; int f = endgame_pick_fauteur(w, ts, &fr);
+                if (epi < 0)     epi = fr;
+                if (fauteur < 0) fauteur = f;
+            }
+            eg->epicenter_reg   = epi;
+            eg->fauteur_country = fauteur;
+            eg->fin_year        = year;
+            eg->fin   = FIN_CHAUD;
+            eg->fired = true;
+            endgame_faction_react(FIN_CHAUD, fauteur);
+        }
+        return;
+    }
 
     /* Foyer FIGÉ : l'épicentre régional (région la plus saturée), sinon — entropie
      * tech-driven pure — l'empire le plus faustien et sa capitale. */
@@ -1312,35 +1357,14 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
     int k = 0; double mx = wp->faust_consumed[0];
     for (int i = 1; i < 3; i++) if (wp->faust_consumed[i] > mx) { mx = wp->faust_consumed[i]; k = i; }
     if (mx < 1.0) {
-        /* FIN_CHAUD (2026-07-08) — LA FIN DES MONDES CALMES : aucun transmuteur ne
-         * domine ET la signature COMBUSTIBLE tient une part franche de la barre
-         * (fuel_term/entropy ≥ FIN_CHAUD_SHARE) ⇒ le ciel chargé par le feu
-         * domestique/industriel EST la nature de l'apocalypse. Les mondes calmes
-         * prospères — qui ne franchissaient JAMAIS le seuil avant la 5e nourriture —
-         * sont ceux dont la barre est fuel-fed par construction ; les mondes
-         * guerriers/faustiens (tech/sang dominants) retombent au dispatch pondéré.
-         * (Les mondes à corne — mx≥1.0 — gardent leur fin mappée, branche else.) */
-        /* PROTECTION DES MONDES À TRANSMUTEUR (mission : « les mondes à corne gardent
-         * FROID ») : CHAUD n'est retenue que si les transmuteurs sont ESSENTIELLEMENT
-         * MORTS (mx < FUEL_DEAD_EPS — pas seulement « pas dominant » : mx<1.0 laisse
-         * passer un monde à corne NAISSANTE, mesuré volé à W élevé). Un monde à corne
-         * même immature (mx ≥ EPS) RETOMBE au dispatch pondéré (son comportement
-         * EXISTANT sous mx<1.0 — inchangé), qui peut donner FROID. Seul le monde
-         * VRAIMENT calme (transmuteurs à ~0) dont le FEU domine la barre bascule. */
-        float fuel_term = tune_f("ENTROPY_FUEL_W", 2.2f)
-                        * (float)endgame_fuel_ratio(eg, econ);
-        bool transmut_dead = (mx < (double)tune_f("FUEL_DEAD_EPS", 0.5f));
-        if (transmut_dead && wp->entropy > 0.f
-            && fuel_term / wp->entropy >= tune_f("FIN_CHAUD_SHARE", 0.45f)) {
-            eg->fin   = FIN_CHAUD;
-            eg->fired = true;
-        } else {
         /* Aucun transmuteur (le cas COURANT) : le SAVOIR faustien seul a mené à la
-         * Brèche → la FORME de l'apocalypse suit le DISPATCH pondéré (LOT F,
-         * ci-dessus) — avalanche + poids diégétiques, ≤2:1 mesuré sur sweep. */
+         * Brèche → la FORME de l'apocalypse suit le DISPATCH pondéré (LOT F) —
+         * avalanche + poids diégétiques, ≤2:1 mesuré sur sweep. Le RÉCHAUFFEMENT
+         * (FIN_CHAUD) N'EST PLUS ici (design REPLI) : un monde qui a franchi le seuil
+         * a une fin NATURELLE — le réchauffement ne peut la remplacer. Il n'agit qu'en
+         * repli sur les mondes RESTÉS sous le seuil (branche « sous le seuil » plus haut). */
         eg->fin   = endgame_pick_default_fin(w, eg->fauteur_country, eg->epicenter_reg, year);
         eg->fired = true;
-        }
     } else {
         static const FinType MAP[3] = { FIN_EAU, FIN_RONCES, FIN_FROID };
         eg->fin   = MAP[k];
@@ -1366,10 +1390,10 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
     if (getenv("SCPS_ENTDIAG")) {
         static const char *FN[] = { "—", "EAU", "FROID", "RONCES", "ASCENSION", "SANG", "CHAUD" };
         int fn_i = (int)eg->fin; if (fn_i < 0 || fn_i > 6) fn_i = 0;
-        fprintf(stderr, "[ENTDIAG] an %d : entropie %.1f / fin %.0f · fuel_ratio %.2f (terme %.1f)%s%s%s\n",
+        fprintf(stderr, "[ENTDIAG] an %d : entropie %.1f / fin %.0f · fuel_ratio %.2f (repli seuil %.1f)%s%s%s\n",
                 year, (double)wp->entropy, (double)tune_f("ENTROPY_FIN", 50.f),
                 endgame_fuel_ratio(eg, econ),
-                (double)(tune_f("ENTROPY_FUEL_W", 2.2f) * (float)endgame_fuel_ratio(eg, econ)),
+                (double)tune_f("FUEL_FALLBACK_MIN", 4.f),
                 eg->fired ? " [" : "", eg->fired ? FN[fn_i] : "",
                 eg->fired ? "]" : "");
     }

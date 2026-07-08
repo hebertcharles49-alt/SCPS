@@ -719,16 +719,16 @@ int main(int argc, char **argv){
                    s.eg->war_dead, (double)tune_f("SANG_MEMORY_HL", 40.f),
                    100.0*endgame_blood_ratio(s.eg, s.econ),
                    (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)*100.0);
-        /* FIN_CHAUD (v74) — LE FEU, toujours visible : la mémoire de combustible per-capita
-         * qui nourrit l'entropie ET sélectionne le RÉCHAUFFEMENT (part ≥ FIN_CHAUD_SHARE au
-         * fire) — permet d'OBSERVER si un monde calme en approche. */
+        /* FIN_CHAUD (v74 ; REPLI) — LE FEU, toujours visible : la mémoire de combustible
+         * per-capita qui ARME le RÉCHAUFFEMENT de repli (seuil FUEL_FALLBACK_MIN, après
+         * FUEL_FALLBACK_DELAY ans) — permet d'OBSERVER si un monde calme est éligible au
+         * repli. Le combustible NE charge PLUS l'entropie (design REPLI, seconde position). */
         if (s.eg && s.eg->pop_ref>0.0){
             double fr = endgame_fuel_ratio(s.eg, s.econ);
-            double ft = (double)tune_f("ENTROPY_FUEL_W", 2.2f)*fr;
-            printf("              feu : combustible/tête %.1f (demi-vie %.0f ans · charbon ×%.0f) → terme entropie %.1f = %.0f%% de la barre (sélection CHAUD ≥ %.0f%%)\n",
+            double mn = (double)tune_f("FUEL_FALLBACK_MIN", 4.f);
+            printf("              feu : combustible/tête %.1f (demi-vie %.0f ans · charbon ×%.0f) → repli RÉCHAUFFEMENT %s (seuil %.1f, après +%.0f ans)\n",
                    fr, (double)tune_f("FUEL_MEMORY_HL", 60.f), (double)tune_f("FUEL_COAL_W", 3.f),
-                   ft, s.wp->entropy>0.f ? 100.0*ft/(double)s.wp->entropy : 0.0,
-                   (double)tune_f("FIN_CHAUD_SHARE", 0.45f)*100.0);
+                   fr>=mn ? "ARMÉ" : "sous seuil", mn, (double)tune_f("FUEL_FALLBACK_DELAY", 60.f));
         }
         /* P4 — ATTEIGNABILITÉ DE LA MERVEILLE : le metab_count MAX atteint (et par qui) —
          * la preuve que la victoire 3/4/6 est à portée (ou pas) d'un monde réel. */
