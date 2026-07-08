@@ -7,123 +7,123 @@
  * traduite, et les emplacements {k} sont POSITIONNELS — une langue peut
  * écrire "{1} … {0}" sans toucher l'appelant. */
 #define SCPS_STRINGS_EN(X) \
-    X(STR_BANDE_STAB_0, "Submergée") \
-    X(STR_BANDE_STAB_1, "Vacillante") \
-    X(STR_BANDE_STAB_2, "Tenue") \
-    X(STR_BANDE_STAB_3, "Assurée") \
-    X(STR_BANDE_STAB_4, "Inébranlable") \
-    X(STR_BANDE_ASSISE_0, "Consentie") \
-    X(STR_BANDE_ASSISE_1, "Partagée") \
-    X(STR_BANDE_ASSISE_2, "Contrainte") \
-    X(STR_BANDE_ASSISE_3, "Tyrannique") \
-    X(STR_BANDE_LEGIT_0, "Usurpée") \
-    X(STR_BANDE_LEGIT_1, "Contestée") \
-    X(STR_BANDE_LEGIT_2, "Tolérée") \
-    X(STR_BANDE_LEGIT_3, "Reconnue") \
-    X(STR_BANDE_LEGIT_4, "Sacrée") \
-    X(STR_BANDE_CONCORDE_0, "Unie") \
-    X(STR_BANDE_CONCORDE_1, "Murmurante") \
-    X(STR_BANDE_CONCORDE_2, "Fracturée") \
-    X(STR_BANDE_CONCORDE_3, "Sécession") \
-    X(STR_BANDE_PROSP_0, "Misère") \
-    X(STR_BANDE_PROSP_1, "Disette") \
-    X(STR_BANDE_PROSP_2, "Suffisance") \
-    X(STR_BANDE_PROSP_3, "Aisance") \
+    X(STR_BANDE_STAB_0, "Submerged") \
+    X(STR_BANDE_STAB_1, "Faltering") \
+    X(STR_BANDE_STAB_2, "Holding") \
+    X(STR_BANDE_STAB_3, "Secure") \
+    X(STR_BANDE_STAB_4, "Unshakable") \
+    X(STR_BANDE_ASSISE_0, "Consensual") \
+    X(STR_BANDE_ASSISE_1, "Shared") \
+    X(STR_BANDE_ASSISE_2, "Coerced") \
+    X(STR_BANDE_ASSISE_3, "Tyrannical") \
+    X(STR_BANDE_LEGIT_0, "Usurped") \
+    X(STR_BANDE_LEGIT_1, "Contested") \
+    X(STR_BANDE_LEGIT_2, "Tolerated") \
+    X(STR_BANDE_LEGIT_3, "Recognised") \
+    X(STR_BANDE_LEGIT_4, "Sacred") \
+    X(STR_BANDE_CONCORDE_0, "United") \
+    X(STR_BANDE_CONCORDE_1, "Murmuring") \
+    X(STR_BANDE_CONCORDE_2, "Fractured") \
+    X(STR_BANDE_CONCORDE_3, "Secession") \
+    X(STR_BANDE_PROSP_0, "Misery") \
+    X(STR_BANDE_PROSP_1, "Dearth") \
+    X(STR_BANDE_PROSP_2, "Sufficiency") \
+    X(STR_BANDE_PROSP_3, "Affluence") \
     X(STR_BANDE_PROSP_4, "Opulence") \
-    X(STR_BANDE_SAVOIR_0, "Obscurité") \
-    X(STR_BANDE_SAVOIR_1, "Lueur") \
-    X(STR_BANDE_SAVOIR_2, "Foyer") \
-    X(STR_BANDE_SAVOIR_3, "Phare") \
-    X(STR_BANDE_PRESAGE_0, "Calme") \
-    X(STR_BANDE_PRESAGE_1, "Frémissement") \
-    X(STR_BANDE_PRESAGE_2, "Ombre grandissante") \
-    X(STR_BANDE_PRESAGE_3, "Le seuil") \
-    X(STR_BANDE_STATURE_0, "Désert") \
-    X(STR_BANDE_STATURE_1, "Hameau") \
-    X(STR_BANDE_STATURE_2, "Bourg") \
-    X(STR_BANDE_STATURE_3, "Cité") \
-    X(STR_BANDE_STATURE_4, "Métropole") \
-    X(STR_BANDE_FLUX_0, "Exode") \
-    X(STR_BANDE_FLUX_1, "Saignée") \
+    X(STR_BANDE_SAVOIR_0, "Darkness") \
+    X(STR_BANDE_SAVOIR_1, "Glimmer") \
+    X(STR_BANDE_SAVOIR_2, "Hearth") \
+    X(STR_BANDE_SAVOIR_3, "Beacon") \
+    X(STR_BANDE_PRESAGE_0, "Calm") \
+    X(STR_BANDE_PRESAGE_1, "Stirring") \
+    X(STR_BANDE_PRESAGE_2, "Growing Shadow") \
+    X(STR_BANDE_PRESAGE_3, "The Threshold") \
+    X(STR_BANDE_STATURE_0, "Wilderness") \
+    X(STR_BANDE_STATURE_1, "Hamlet") \
+    X(STR_BANDE_STATURE_2, "Town") \
+    X(STR_BANDE_STATURE_3, "City") \
+    X(STR_BANDE_STATURE_4, "Metropolis") \
+    X(STR_BANDE_FLUX_0, "Exodus") \
+    X(STR_BANDE_FLUX_1, "Drain") \
     X(STR_BANDE_FLUX_2, "Stable") \
-    X(STR_BANDE_FLUX_3, "Afflux") \
-    X(STR_BANDE_FLUX_4, "Ruée") \
-    X(STR_BANDE_AISANCE_0, "Misère") \
-    X(STR_BANDE_AISANCE_1, "Suffisance") \
-    X(STR_BANDE_AISANCE_2, "Aisance") \
-    X(STR_BANDE_AISANCE_3, "Faste") \
+    X(STR_BANDE_FLUX_3, "Inflow") \
+    X(STR_BANDE_FLUX_4, "Rush") \
+    X(STR_BANDE_AISANCE_0, "Misery") \
+    X(STR_BANDE_AISANCE_1, "Sufficiency") \
+    X(STR_BANDE_AISANCE_2, "Affluence") \
+    X(STR_BANDE_AISANCE_3, "Splendour") \
     X(STR_BANDE_CARREFOUR_0, "—") \
-    X(STR_BANDE_CARREFOUR_1, "Florissante") \
-    X(STR_BANDE_CARREFOUR_2, "Bouillonnante") \
-    X(STR_BANDE_CARREFOUR_3, "En surchauffe") \
-    X(STR_BANDE_HUMEUR_0, "Révoltée") \
-    X(STR_BANDE_HUMEUR_1, "Frondeuse") \
-    X(STR_BANDE_HUMEUR_2, "Tiède") \
-    X(STR_BANDE_HUMEUR_3, "Loyale") \
-    X(STR_BANDE_HUMEUR_4, "Dévouée") \
-    X(STR_BANDE_LIGNEE_0, "Du même sang") \
-    X(STR_BANDE_LIGNEE_1, "Cousine") \
-    X(STR_BANDE_LIGNEE_2, "Sœur lointaine") \
-    X(STR_BANDE_LIGNEE_3, "Étrangère") \
-    X(STR_BANDE_LIGNEE_4, "Hérétique proche") \
-    X(STR_BANDE_LIGNEE_5, "Inassimilable") \
-    X(STR_BANDE_AGITATION_0, "Calme") \
-    X(STR_BANDE_AGITATION_1, "Frémissante") \
-    X(STR_BANDE_AGITATION_2, "Agitée") \
-    X(STR_BANDE_AGITATION_3, "Insurgée") \
-    X(STR_BANDE_FOI_0, "Dévote") \
-    X(STR_BANDE_FOI_1, "Tiède") \
-    X(STR_BANDE_FOI_2, "Hérétique") \
-    X(STR_BANDE_SEDITION_0, "Concorde") \
-    X(STR_BANDE_SEDITION_1, "Murmures") \
-    X(STR_BANDE_SEDITION_2, "Tendue") \
-    X(STR_BANDE_SEDITION_3, "Séditieuse") \
-    X(STR_FORGE_0, "Forge rudimentaire") \
-    X(STR_FORGE_1, "Forge artisanale") \
-    X(STR_FORGE_2, "Manufacture") \
-    X(STR_FORGE_3, "Industrie") \
-    X(STR_PROF_0, "hors de portée") \
-    X(STR_PROF_1, "savoir de surface") \
-    X(STR_PROF_2, "savoir-faire d'atelier") \
-    X(STR_PROF_3, "art profond") \
-    X(STR_PROF_4, "secret jalousement gardé") \
-    X(STR_ACCES_0, "lointain") \
-    X(STR_ACCES_1, "à portée") \
+    X(STR_BANDE_CARREFOUR_1, "Flourishing") \
+    X(STR_BANDE_CARREFOUR_2, "Bustling") \
+    X(STR_BANDE_CARREFOUR_3, "Overheating") \
+    X(STR_BANDE_HUMEUR_0, "Rebellious") \
+    X(STR_BANDE_HUMEUR_1, "Defiant") \
+    X(STR_BANDE_HUMEUR_2, "Lukewarm") \
+    X(STR_BANDE_HUMEUR_3, "Loyal") \
+    X(STR_BANDE_HUMEUR_4, "Devoted") \
+    X(STR_BANDE_LIGNEE_0, "Kindred Blood") \
+    X(STR_BANDE_LIGNEE_1, "Cousin") \
+    X(STR_BANDE_LIGNEE_2, "Distant Sister") \
+    X(STR_BANDE_LIGNEE_3, "Foreign") \
+    X(STR_BANDE_LIGNEE_4, "Near-Heretic") \
+    X(STR_BANDE_LIGNEE_5, "Unassimilable") \
+    X(STR_BANDE_AGITATION_0, "Calm") \
+    X(STR_BANDE_AGITATION_1, "Stirring") \
+    X(STR_BANDE_AGITATION_2, "Agitated") \
+    X(STR_BANDE_AGITATION_3, "Insurgent") \
+    X(STR_BANDE_FOI_0, "Devout") \
+    X(STR_BANDE_FOI_1, "Lukewarm") \
+    X(STR_BANDE_FOI_2, "Heretical") \
+    X(STR_BANDE_SEDITION_0, "Concord") \
+    X(STR_BANDE_SEDITION_1, "Murmurs") \
+    X(STR_BANDE_SEDITION_2, "Tense") \
+    X(STR_BANDE_SEDITION_3, "Seditious") \
+    X(STR_FORGE_0, "Rudimentary Forge") \
+    X(STR_FORGE_1, "Artisan Forge") \
+    X(STR_FORGE_2, "Manufactory") \
+    X(STR_FORGE_3, "Industry") \
+    X(STR_PROF_0, "out of reach") \
+    X(STR_PROF_1, "surface knowledge") \
+    X(STR_PROF_2, "workshop know-how") \
+    X(STR_PROF_3, "deep mastery") \
+    X(STR_PROF_4, "jealously guarded secret") \
+    X(STR_ACCES_0, "distant") \
+    X(STR_ACCES_1, "within reach") \
     X(STR_ACCES_2, "imminent") \
-    X(STR_ACCES_3, "acquis") \
-    X(STR_MORAL_0, "ferme") \
-    X(STR_MORAL_1, "éprouvé") \
-    X(STR_MORAL_2, "vacillant") \
-    X(STR_MORAL_3, "rompu") \
-    X(STR_FIDELITE_0, "fidèle") \
-    X(STR_FIDELITE_1, "tiède") \
-    X(STR_FIDELITE_2, "frondeur") \
-    X(STR_FIDELITE_3, "ligueur") \
-    X(STR_MARCHE_0, "marché mort") \
-    X(STR_MARCHE_1, "pénurie sévère") \
-    X(STR_MARCHE_2, "tendu") \
-    X(STR_MARCHE_3, "sain") \
-    X(STR_MARCHE_4, "engorgé") \
+    X(STR_ACCES_3, "attained") \
+    X(STR_MORAL_0, "steady") \
+    X(STR_MORAL_1, "strained") \
+    X(STR_MORAL_2, "wavering") \
+    X(STR_MORAL_3, "broken") \
+    X(STR_FIDELITE_0, "faithful") \
+    X(STR_FIDELITE_1, "lukewarm") \
+    X(STR_FIDELITE_2, "defiant") \
+    X(STR_FIDELITE_3, "rebel") \
+    X(STR_MARCHE_0, "dead market") \
+    X(STR_MARCHE_1, "severe shortage") \
+    X(STR_MARCHE_2, "tight") \
+    X(STR_MARCHE_3, "healthy") \
+    X(STR_MARCHE_4, "glutted") \
     X(STR_LENS_0, "—") \
-    X(STR_LENS_1, "Prospérité") \
-    X(STR_LENS_2, "Humeur") \
-    X(STR_LENS_3, "Marché") \
-    X(STR_HOVER_STAB, "La solidité de l'ordre : un royaume assuré encaisse les chocs, un royaume vacillant cède au premier vent.") \
-    X(STR_HOVER_ASSISE, "Sur quoi repose l'obéissance : l'adhésion des cœurs, ou le seul poids des armes.") \
-    X(STR_HOVER_LEGIT, "Le droit reconnu au trône de régner ; sacrée, nul ne la conteste — usurpée, chacun guette la chute.") \
-    X(STR_HOVER_CONCORDE, "L'unité des peuples sous une même couronne ; quand les coutures lâchent, les marges rêvent d'indépendance.") \
-    X(STR_HOVER_PROSP, "La richesse qui circule et qu'on parvient à lever ; un royaume opulent rayonne, une disette le vide.") \
-    X(STR_HOVER_SAVOIR, "Le savoir né aux carrefours des cultures ; il nourrit les arts et les arcanes.") \
-    X(STR_HOVER_PRESAGE, "Ce que la quête de puissance attire ; plus on force l'arcane, plus l'ombre s'épaissit.") \
-    X(STR_HOVER_STATURE, "L'ampleur de l'établissement humain, du hameau perdu à la cité grouillante.") \
-    X(STR_HOVER_FLUX, "Le mouvement des âmes : un afflux gonfle la province, un exode la vide.") \
-    X(STR_HOVER_AISANCE, "La richesse qui circule ici ; les carrefours prospèrent, les culs-de-sac s'étiolent.") \
-    X(STR_HOVER_CARREFOUR, "Quand des cultures se croisent ici, la richesse afflue — jusqu'à ce que le flux déborde et que la ville-monde se déchire.") \
-    X(STR_HOVER_HUMEUR, "Le cœur de la province envers la couronne ; loyale, elle paie sans broncher — frondeuse, elle attend l'étincelle.") \
-    X(STR_HOVER_LIGNEE, "Ce qui la lie à la culture du trône ; le même sang se gouverne aisément, l'inassimilable jamais sans la force.") \
-    X(STR_HOVER_AGITATION, "La colère qui monte dans la province ; soutenue, elle vire à la révolte — qu'apaisent la stabilité du royaume, la garnison et la légitimité.") \
+    X(STR_LENS_1, "Prosperity") \
+    X(STR_LENS_2, "Mood") \
+    X(STR_LENS_3, "Market") \
+    X(STR_HOVER_STAB, "The solidity of order: a secure realm absorbs the shocks, a faltering realm gives way at the first gust.") \
+    X(STR_HOVER_ASSISE, "What obedience rests on: the consent of hearts, or the weight of arms alone.") \
+    X(STR_HOVER_LEGIT, "The throne's recognised right to rule; sacred, none dispute it — usurped, everyone watches for the fall.") \
+    X(STR_HOVER_CONCORDE, "The unity of peoples under one crown; when the seams give way, the borderlands dream of independence.") \
+    X(STR_HOVER_PROSP, "The wealth that circulates and can be levied; an opulent realm shines, a dearth empties it.") \
+    X(STR_HOVER_SAVOIR, "Knowledge born at the crossroads of cultures; it feeds the arts and the arcane.") \
+    X(STR_HOVER_PRESAGE, "What the quest for power draws in; the harder the arcane is forced, the thicker the shadow grows.") \
+    X(STR_HOVER_STATURE, "The scale of human settlement, from the lost hamlet to the teeming city.") \
+    X(STR_HOVER_FLUX, "The movement of souls: an inflow swells the province, an exodus empties it.") \
+    X(STR_HOVER_AISANCE, "The wealth that circulates here; crossroads flourish, dead ends wither.") \
+    X(STR_HOVER_CARREFOUR, "When cultures cross paths here, wealth pours in — until the flow overflows and the world-city tears itself apart.") \
+    X(STR_HOVER_HUMEUR, "The province's heart toward the crown; loyal, it pays without flinching — defiant, it waits for the spark.") \
+    X(STR_HOVER_LIGNEE, "What binds it to the throne's culture; the same blood is governed with ease, the unassimilable never without force.") \
+    X(STR_HOVER_AGITATION, "The anger rising in the province; sustained, it turns to revolt — eased by the realm's stability, its garrison, and its legitimacy.") \
     X(STR_HOVER_FOI, "The province's adherence to the throne's ideology; convinced, it feeds legitimacy — dissident, it breeds schism.") \
-    X(STR_HOVER_SEDITION, "La tension d'une faction forte dont les valeurs s'opposent à la direction du régime ; séditieuse, elle complote le coup d'État pour imposer son éthos.") \
+    X(STR_HOVER_SEDITION, "The tension of a powerful faction whose values oppose the regime's direction; seditious, it plots a coup to impose its ethos.") \
     X(STR_AGIT_CAUSE_COERCION,  "Coercion") \
     X(STR_AGIT_CAUSE_CULTURE,   "Foreign culture") \
     X(STR_AGIT_CAUSE_CHOC,      "Recent conquest") \
@@ -132,40 +132,40 @@
     X(STR_JLOG_POP,    "Population") \
     X(STR_JLOG_PROD,   "Production") \
     X(STR_JLOG_TRESOR, "Treasury") \
-    X(STR_TUTO_TITLE_0, "1 · Ce monde se lit.") \
-    X(STR_TUTO_TITLE_1, "2 · Le temps coule en jours.") \
-    X(STR_TUTO_TITLE_2, "3 · Ton empire.") \
-    X(STR_TUTO_TITLE_3, "4 · Décider coûte.") \
-    X(STR_TUTO_TITLE_4, "5 · Les autres.") \
-    X(STR_TUTO_TITLE_5, "6 · Le savoir voyage.") \
-    X(STR_TUTO_TITLE_6, "7 · La Brèche.") \
-    X(STR_TUTO_PAGE_0, "Ici, pas de pourcentages cachés : l'état des choses se dit en MOTS.\nUne province est Unie ou Fracturée, un peuple Loyal ou Frondeur,\nun marché Sain ou En pénurie. Survole : tout se définit en bas d'écran.") \
-    X(STR_TUTO_PAGE_1, "En haut à droite : la date, l'âge du monde, la vitesse.\nESPACE met en pause — et en pause, tu peux tout consulter,\ntout ordonner. Rien ne presse jamais que toi.") \
-    X(STR_TUTO_PAGE_2, "En haut : ton or, tes vivres, tes matériaux, et la santé de ta couronne —\nStabilité, Légitimité, Cohésion, Prospérité. Clique une province pour la voir\nde près ; ouvre la BARRE DE GAUCHE pour l'empire entier :\nÉconomie, Démographie, Stocks, Armée, Filtres.") \
-    X(STR_TUTO_PAGE_3, "Tout ordre — bâtir, exploiter, déplacer, lever — entre dans une FILE\net prend des JOURS. Le prix s'affiche AVANT. Certains leviers rapportent\nvite et coûtent longtemps : mater une révolte tait la rue, pas la colère.") \
-    X(STR_TUTO_PAGE_4, "Tes voisins vivent : ils commercent, s'allient, jalousent.\nOn peut les lier — l'allié, le protégé, le serf, la cité marchande —\net chaque lien a son prix. Un embargo est une arme ; une guerre se gagne\nsur le champ, au MORAL, pas au nombre.") \
-    X(STR_TUTO_PAGE_5, "Ton arbre a un cœur et un cercle : le cœur se recherche,\nle CERCLE se gagne par le contact — commerce, frontières, peuples gouvernés.\nUne culture qu'on assimile est un savoir qu'on tarit.\nChoisis ce que tu fonds et ce que tu gardes distinct.") \
-    X(STR_TUTO_PAGE_6, "Certaines voies sont plus que puissantes — elles sont AVIDES.\nChaque pacte sombre, chaque forge interdite, chaque culte imposé CHARGE le monde.\nLa Brèche n'interdit rien : elle attend. Ton empire tombera — ils tombent tous.\nLa seule question est COMMENT, et ce que tu laisseras debout.") \
-    X(STR_MENU_SOUS_TITRE, "un monde qui ne vous attend pas — et qui se lit") \
-    X(STR_MENU_JOUER, "Jouer") \
-    X(STR_MENU_CHARGER, "Charger") \
-    X(STR_MENU_TUTORIEL, "Tutoriel") \
-    X(STR_MENU_QUITTER, "Quitter") \
+    X(STR_TUTO_TITLE_0, "1 · This world can be read.") \
+    X(STR_TUTO_TITLE_1, "2 · Time flows in days.") \
+    X(STR_TUTO_TITLE_2, "3 · Your empire.") \
+    X(STR_TUTO_TITLE_3, "4 · Deciding costs.") \
+    X(STR_TUTO_TITLE_4, "5 · The others.") \
+    X(STR_TUTO_TITLE_5, "6 · Knowledge travels.") \
+    X(STR_TUTO_TITLE_6, "7 · The Breach.") \
+    X(STR_TUTO_PAGE_0, "Here, no hidden percentages: the state of things is told in WORDS.\nA province is United or Fractured, a people Loyal or Defiant,\na market Healthy or In Shortage. Hover: everything is defined at the bottom of the screen.") \
+    X(STR_TUTO_PAGE_1, "Top right: the date, the age of the world, the speed.\nSPACE pauses — and while paused, you can review everything,\norder everything. Nothing is ever urgent — except you.") \
+    X(STR_TUTO_PAGE_2, "Top bar: your gold, your food, your materials, and the health of your crown —\nStability, Legitimacy, Cohesion, Prosperity. Click a province to see it\nup close; open the LEFT SIDEBAR for the whole empire:\nEconomy, Demography, Stocks, Army, Filters.") \
+    X(STR_TUTO_PAGE_3, "Every order — build, harvest, move, levy — enters a QUEUE\nand takes DAYS. The cost shows BEFORE you commit. Some levers pay off\nfast but cost long: crushing a revolt silences the street, not the anger.") \
+    X(STR_TUTO_PAGE_4, "Your neighbours are alive: they trade, ally, and grow jealous.\nYou can bind them — the ally, the protectorate, the vassal, the merchant city —\nand every bond has its price. An embargo is a weapon; a war is won\non the field, on MORALE, not numbers.") \
+    X(STR_TUTO_PAGE_5, "Your tree has a core and a ring: the core is researched,\nthe RING is earned through contact — trade, borders, ruled peoples.\nA culture you assimilate is knowledge you dry up.\nChoose what you merge and what you keep distinct.") \
+    X(STR_TUTO_PAGE_6, "Some paths are more than powerful — they are HUNGRY.\nEvery dark pact, every forbidden forge, every imposed cult CHARGES the world.\nThe Breach forbids nothing: it waits. Your empire will fall — they all do.\nThe only question is HOW, and what you will leave standing.") \
+    X(STR_MENU_SOUS_TITRE, "a world that won't wait for you — and can be read") \
+    X(STR_MENU_JOUER, "Play") \
+    X(STR_MENU_CHARGER, "Load") \
+    X(STR_MENU_TUTORIEL, "Tutorial") \
+    X(STR_MENU_QUITTER, "Quit") \
     X(STR_MENU_LANGUE, "Language: {0}") \
-    X(STR_SETUP_TITRE, "FORGER UN MONDE") \
+    X(STR_SETUP_TITRE, "FORGE A WORLD") \
     X(STR_PAUSE_TITRE, "PAUSE") \
-    X(STR_PM_REPRENDRE, "Reprendre") \
-    X(STR_PM_SAUVER, "Sauver") \
-    X(STR_PM_TUTORIEL, "Tutoriel") \
-    X(STR_PM_MENU, "Menu principal") \
-    X(STR_PM_QUITTER, "Quitter") \
-    X(STR_PICK_SAUVER, "SAUVER — choisir un slot") \
-    X(STR_PICK_CHARGER, "CHARGER — choisir un slot") \
+    X(STR_PM_REPRENDRE, "Resume") \
+    X(STR_PM_SAUVER, "Save") \
+    X(STR_PM_TUTORIEL, "Tutorial") \
+    X(STR_PM_MENU, "Main Menu") \
+    X(STR_PM_QUITTER, "Quit") \
+    X(STR_PICK_SAUVER, "SAVE — choose a slot") \
+    X(STR_PICK_CHARGER, "LOAD — choose a slot") \
     X(STR_SLOT_LINE, "Slot {0} — {1}") \
     X(STR_SLOT_ANCIEN, "Slot {0} — a save from an earlier era") \
-    X(STR_SLOT_VIDE, "Slot {0} — vide") \
-    X(STR_TUTO_PREC, "◀ préc.") \
-    X(STR_TUTO_SUIV, "suiv. ▶") \
+    X(STR_SLOT_VIDE, "Slot {0} — empty") \
+    X(STR_TUTO_PREC, "◀ prev.") \
+    X(STR_TUTO_SUIV, "next ▶") \
     X(STR_TUTO_PAGEFMT, "{0} / 7") \
     X(STR_OCCUPEE_PAR, "Occupied by {0}") \
     X(STR_RAIL_DIPLO, "Diplomacy (G) — living realms · wars · casus belli") \
@@ -310,7 +310,7 @@
     X(STR_COUNCIL_SEAT_2, "Industry") \
     X(STR_COUNCIL_EFF_0, "research") \
     X(STR_COUNCIL_EFF_1, "promotion") \
-    X(STR_COUNCIL_EFF_2, "manufactures") \
+    X(STR_COUNCIL_EFF_2, "manufacturing") \
     X(STR_COUNCIL_VACANT, "— seat vacant —") \
     X(STR_COUNCIL_NOMMER, "Appoint") \
     X(STR_COUNCIL_RENVOYER, "Dismiss") \

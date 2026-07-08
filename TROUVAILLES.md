@@ -1067,3 +1067,69 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
   d'épargne — l'ordre reste : income×W → métabolisation → (returns d'épargne). Le ×W faustien vit
   dans `ai_effective_cost`, donc TOUS les blocs d'épargne (foreuse/S1/S3/S4/palier/savoir) voient
   déjà le coût faustien gonflé (cohérent, pas de site oublié).
+
+## 2026-07-08 — Lot E suite : remplissage strings_en.h (142/165 entrées traduites)
+
+**Découvertes** :
+- Comparer `strings_ids.h`/`strings_en.h` PAR ID (pas par numéro de ligne) est indispensable : les
+  deux fichiers ont des blocs de commentaires de longueur différente (l'en-tête, les commentaires
+  M7/§capstone…), donc les lignes X(...) ne s'alignent PAS 1-pour-1 par numéro malgré le même ORDRE
+  de macros. Un petit parseur Python (extraction par regex `X\(\s*IDENT\s*,\s*"..."\s*\)` en ignorant
+  les blocs `/* */`) donne une table id→valeur fiable des deux côtés et un diff exact.
+- Sur les 165 entrées identiques FR/EN repérées par Lot E (session précédente), **23 n'avaient EN
+  FAIT rien à traduire** : cognats orthographiquement identiques dans les deux langues (Vassal,
+  Suzerain, Port, Temple, Arsenal, Irrigation, Reconstruction, Population, Production, Opulence,
+  Stable, imminent, promotion, loyal, PAUSE) ou chaînes 100 % format sans mot français
+  (`STR_SLOT_LINE`, `STR_TUTO_PAGEFMT`, `STR_DIPLO_SCORE_FMT`, `STR_MER_DIR_FMT`,
+  `STR_COUNCIL_SEAT_FMT`) ou le symbole `—` seul (`STR_BANDE_CARREFOUR_0`, `STR_LENS_0`). Donc
+  **142 traductions réelles**, pas 165 — le compte "~165 à traduire" de la session Lot E était une
+  approximation côté diff brut, pas le nombre de vraies traductions nécessaires.
+- **La cohérence terminologique paie mieux que la traduction ligne-à-ligne isolée** : plusieurs mots
+  FR reviennent dans PLUSIEURS bandes indépendantes (ex. "Frémissante"/"Frémissement" apparaît dans
+  `STR_BANDE_PRESAGE_1`, `STR_BANDE_AGITATION_1` ET `STR_BANDE_ENTROPIE_1` — cette dernière DÉJÀ
+  traduite "Stirring" par la session précédente). Repérer ces récurrences (grep `strings_ids.h` pour
+  la même chaîne FR ailleurs) et reprendre la traduction déjà choisie ailleurs (au lieu d'improviser
+  un synonyme) évite un vocabulaire incohérent entre bandes sœurs — ici "Stirring" a été repris pour
+  les 2 occurrences restantes plutôt que "Tremor"/"Restless" initialement envisagés.
+- **Repérer la convention orthographique déjà engagée** avant de traduire en masse : grep sur les
+  199 entrées déjà traduites a trouvé "labour" (BR) et "Trade Centre" (BR, dans le corps de texte,
+  mais "Trade Center" US dans le nom de bâtiment lui-même — incohérence PRÉ-EXISTANTE, hors périmètre,
+  non touchée) → convention penchant britannique adoptée pour les 142 nouvelles entrées
+  ("Recognised", "Splendour").
+- Le banc `lang_demo` (cible Makefile, PAS dans `run_tests.sh`) exerce le moteur tr_fmt/FNV/glossaire
+  mais ne relit AUCUNE des 364 valeurs individuelles — les lignes "ID MANQUANT (non surchargé)" dans
+  sa sortie sont un test délibéré de `lang_audit` contre un fichier de surcharge-test épars (pas un
+  signal sur strings_en.h). Le vrai gate de parité FR/EN est l'assert de taille à la COMPILATION
+  (`scps_lang.c`) : un build vert prouve déjà 0 ligne ajoutée/retirée.
+
+**Pièges** :
+- Ne PAS traduire "or" en pensant à un reliquat français : c'est la conjonction anglaise correcte
+  dans "Loyal or Defiant", "Buy or sell" etc. — mon script de résidu Unicode-aware (`residual_check.py`,
+  liste de stop-words FR) l'a signalé 5× en faux positifs ; il fallait relire le CONTEXTE (anglais
+  valide) avant de convertir un hit en vraie anomalie.
+- `grep` en Git Bash sur Windows fait du matching BYTE-LEVEL, pas Unicode-aware : une classe
+  `[éèàçêù]` matche le PREMIER OCTET UTF-8 (souvent `0xC3`), qui est PARTAGÉ par des caractères
+  n'ayant rien de français (`×` U+00D7 et `÷` U+00F7 encodent aussi en `0xC3 ..`) → faux positifs sur
+  `STR_MER_MORTE`/`STR_MER_COURANT`/`STR_ENTREPOT_CAP_FMT` (déjà traduits, intacts). Pour un vrai
+  résidu FR, écrire un check Python qui compare des CODEPOINTS unicode décodés, pas un grep shell sur
+  les octets bruts.
+- Un remplacement id-ancré doit vérifier la valeur FR ATTENDUE avant d'écrire (mon script
+  `apply_translations.py` refuse silencieusement — reporte un MISMATCH — si le contenu actuel diffère
+  de ce qui était attendu) : ça aurait intercepté toute dérive entre le diff initial et l'état réel du
+  fichier (aucune dérive ici, 142/142 appliqués sans mismatch, mais le garde-fou est peu coûteux et
+  évite d'écraser une traduction déjà faite entre-temps par un autre agent).
+- Les entrées `STR_TUTO_PAGE_*` contiennent des `\n` LITTÉRAUX (2 caractères backslash+n dans le
+  fichier source, PAS un vrai saut de ligne) — les construire en Python avec des chaînes brutes
+  `r"...\n..."` (pas des chaînes normales où `\n` deviendrait un vrai saut de ligne à l'écriture).
+
+**Restes** :
+- Le résidu FR est nul (0 mot français authentique restant dans `strings_en.h` ; les 23 entrées
+  encore texto-identiques au FR sont des cognats/formats, vérifié terme à terme).
+- Le header-comment de `strings_en.h` (lignes 1-8, comment de style X-macro) reste en français à
+  dessein — c'est de la doc d'ingénieur (« l'outillage, pas le jeu », cf. CLAUDE.md §langue), pas une
+  chaîne face-joueur ; non touché, cohérent avec `strings_ids.h` qui a le même en-tête FR.
+- Backlog i18n Godot (629 littéraux .gd, `docs/i18n_backlog.csv`) toujours en attente — hors
+  périmètre de cette mission (uniquement `strings_en.h` C).
+- `STR_EDI_TRADE_CENTER` = "Trade Center" (US) vs "Trade Centre" (BR) dans `STR_PACT_HOV`/
+  `STR_BTN_CENTER_FMT`/`STR_CENTER_HOV` : incohérence PRÉ-EXISTANTE (session Lot E), pas introduite
+  ni corrigée ici (hors périmètre — ces 4 entrées étaient déjà traduites, pas dans mes 142).
