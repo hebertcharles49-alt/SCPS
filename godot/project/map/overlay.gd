@@ -18,10 +18,6 @@ const LAYER_WATER := 4       ## SCPS_LAYER_WATER : masque mer OU LAC (≥1 = eau
 const LAYER_SEA := 1         ## SCPS_LAYER_SEA : mer SALÉE seule (≥1) — pour distinguer LAC (eau douce) de MER
 # SIÈGE du tampon — les humains habitent près de l'EAU DOUCE (rivière/lac), sinon le RIVAGE (mer), décalé
 # vers l'INTÉRIEUR. Rayons de recherche (cellules) depuis le centroïde + décalage inland du siège.
-const SEAT_FRESH_R := 11     ## cherche une eau DOUCE (lac/rivière) à ≤ ce rayon → ville au bord
-const SEAT_FRESH_INLAND := 2 ## siège à ~2 cellules en retrait de l'eau douce (pas dans l'eau)
-const SEAT_SEA_R := 13       ## sinon, cherche la MER à ≤ ce rayon → ville côtière
-const SEAT_SEA_INLAND := 4   ## siège plus en retrait du rivage marin (vers l'intérieur/centre)
 ## Seuils de zoom ISO (px/unité-monde de la Camera2D). L'ISO est la surface de JEU : on y montre
 ## ROUTES & ASSETS (bourg). L'entrée en ISO est à zoom ≈ ISO_FAR (4.0) → assets déjà lisibles.
 const CITY_ZOOM_MIN := 3.5   ## villes + bourg
@@ -96,13 +92,13 @@ const EGG_RABBITS := ["apoc_rabbit_banner_01", "apoc_rabbit_horn_01", "apoc_rabb
 # tracées une à une) ; seuls les QUAIS/barque restent composés (le rivage dépend du monde).
 const BOURG_DIR := "res://assets/scps/pack/bourgs"
 const BOURG_VARIANTS := 16   ## variantes par famille — hash STABLE de la région → _01.._16
-const BOURG_ALPHA := 0.90    ## glacis : la vignette se fond dans le parchemin sans perdre la gravure
+const BOURG_ALPHA := 0.76    ## glacis ENCRAGE (retour joueur 2026-07-08 : 0.90 trop opaque — le parchemin doit transparaître)
 ## largeur MONDE (cellules) du CONTENU de la vignette : T1 discret (~4.6) → T7 dominant (~11) ;
 ## la cité-état et le hameau sauvage sont calés dans la même gamme. Ancrage au PIED (socle bas).
-const BOURG_W_T1 := 4.6
-const BOURG_W_T7 := 11.0
-const BOURG_W_CS := 8.6      ## cité-état : une fière cité à dôme (entre t5 et t6)
-const BOURG_W_WILD := 4.0    ## hameau sauvage : discret (tour de guet)
+const BOURG_W_T1 := 3.2
+const BOURG_W_T7 := 7.5
+const BOURG_W_CS := 6.0      ## cité-état : une fière cité à dôme (entre t5 et t6)
+const BOURG_W_WILD := 2.8    ## hameau sauvage : discret (tour de guet)
 var _bourg_tex := {}         ## id de vignette → {tex, foot, cw} (cache paresseux ; {} si l'asset manque)
 var _top_cap_region := -1    ## région-capitale la PLUS PEUPLÉE du monde → la vignette t7 (unique)
 
@@ -382,7 +378,7 @@ func _draw_resources(w, mv: Node2D, is_iso: bool) -> void:
 
 ## ANCRE (routes) + SIÈGE (vignette de bourg) de chaque région habitée. L'ancre est poussée
 ## vers l'intérieur sur les côtes (les ROUTES y aboutissent — le réseau ne change pas) ; le
-## siège, lui, reste près de l'eau douce/du rivage (_find_seat) — c'est là que la vignette pose.
+## siège, lui, est le CENTROÏDE ancré au sec (recentrage 2026-07-08 — le chercheur d'eau déportait la vignette) — c'est là qu'elle pose.
 func _build_anchors() -> void:
 	_region_anchor.clear()
 	_region_seat.clear()
@@ -401,7 +397,7 @@ func _build_anchors() -> void:
 		if ctr.x < 0:
 			continue
 		var land := _snap_to_land(sea, ctr)
-		var want := 16.0 + t * 6.0                         # assise VOULUE (∝ tier)
+		var want := 10.0 + t * 4.0                         # assise VOULUE (∝ tier — réduite avec le scaling 2026-07-08)
 		var best := land
 		var best_sz := _max_dry_size(sea, land)
 		# si l'assise ne tient pas (côte), POUSSE vers l'intérieur (à l'opposé de la mer)
@@ -418,7 +414,7 @@ func _build_anchors() -> void:
 				if best_sz >= want:
 					break
 		_region_anchor[r] = best
-		_region_seat[r] = _find_seat(w, sea, seaonly, rf, r, ctr)  # SIÈGE : près de l'eau douce → rivage, ≠ jonction
+		_region_seat[r] = best  # RECENTRAGE (retour joueur 2026-07-08) : le siège = le CENTROÏDE ancré au sec (le chercheur d'eau douce/rivage déportait la vignette hors du cœur de sa province)
 
 ## la CAPITALE LA PLUS PEUPLÉE du monde (unique) → la vignette t7 (cité impériale). Recalculée
 ## au tick (une boucle pays, bon marché) ; le cache de bourg suit tout seul — la clé `sid`
@@ -463,130 +459,6 @@ func _snap_to_land(sea: Image, c: Vector2) -> Vector2:
 					return Vector2(nx, ny)
 	return c
 
-## SIÈGE du tampon — où les HUMAINS habiteraient : au bord de l'EAU DOUCE (rivière/lac) si elle est proche,
-## sinon sur le RIVAGE marin, décalé vers l'INTÉRIEUR ; à défaut, au cœur intérieur de la région. Toujours
-## sur TERRE, dans la région r, de préférence INTÉRIEUR de province (≠ jonction). Le centroïde ne sert que
-## d'ORIGINE de recherche / dernier repli (sa position brute tombe pile sur une jonction).
-func _find_seat(w, water: Image, seaonly: Image, rf: Image, r: int, c0: Vector2) -> Vector2:
-	if water == null:
-		return c0
-	var cx := int(round(c0.x))
-	var cy := int(round(c0.y))
-	# 1) EAU DOUCE (lac ou rivière) proche → ville au bord, léger retrait (jamais SUR l'eau).
-	var fresh := _nearest_water(water, seaonly, rf, cx, cy, SEAT_FRESH_R, true)
-	if fresh.x >= 0:
-		var s1 := _seat_inland(w, water, rf, r, fresh, c0, SEAT_FRESH_INLAND)
-		if s1.x >= 0:
-			return s1
-	# 2) sinon MER → ville côtière, retrait plus marqué vers l'intérieur.
-	var salt := _nearest_water(water, seaonly, rf, cx, cy, SEAT_SEA_R, false)
-	if salt.x >= 0:
-		var s2 := _seat_inland(w, water, rf, r, salt, c0, SEAT_SEA_INLAND)
-		if s2.x >= 0:
-			return s2
-	# 3) intérieur : cellule de r, intérieure de province, la plus proche du centroïde.
-	return _interior_seat(w, water, rf, r, c0)
-
-## VRAI si (x,y) est de l'EAU DOUCE (lac = eau mais pas mer, OU rivière) quand `fresh`, sinon de la MER.
-func _water_match(water: Image, seaonly: Image, rf: Image, x: int, y: int, fresh: bool) -> bool:
-	var is_water := int(water.get_pixel(x, y).r * 255.0 + 0.5) >= 1
-	var is_sea := seaonly != null and int(seaonly.get_pixel(x, y).r * 255.0 + 0.5) >= 1
-	if fresh:
-		var is_lake := is_water and not is_sea
-		var is_river := rf != null and x < rf.get_width() and y < rf.get_height() and rf.get_pixel(x, y).r >= RIVER_WATER_MIN
-		return is_lake or is_river
-	return is_sea
-
-## cellule d'eau la plus proche de (cx,cy) (≤ maxrad) qui matche eau-douce/mer ; (-1,-1) si aucune.
-func _nearest_water(water: Image, seaonly: Image, rf: Image, cx: int, cy: int, maxrad: int, fresh: bool) -> Vector2:
-	var sw := water.get_width()
-	var sh := water.get_height()
-	for R in range(1, maxrad + 1):
-		for dy in range(-R, R + 1):
-			for dx in range(-R, R + 1):
-				if absi(dx) != R and absi(dy) != R:
-					continue                            # bord d'anneau seulement (du plus proche au plus loin)
-				var x := cx + dx
-				var y := cy + dy
-				if x < 0 or y < 0 or x >= sw or y >= sh:
-					continue
-				if _water_match(water, seaonly, rf, x, y, fresh):
-					return Vector2(x, y)
-	return Vector2(-1, -1)
-
-## pose le siège sur TERRE SÈCHE de la région r, à ~`inland` cellules de l'eau, vers le centroïde.
-func _seat_inland(w, water: Image, rf: Image, r: int, water_pt: Vector2, c0: Vector2, inland: float) -> Vector2:
-	var dir := c0 - water_pt
-	if dir.length() < 0.5:
-		dir = Vector2(0, -1)
-	dir = dir.normalized()
-	var target := water_pt + dir * inland
-	return _snap_region_land(w, water, rf, r, target)
-
-## VRAI si (x,y) est de la TERRE SÈCHE : ni mer/lac (LAYER_WATER), ni RIVIÈRE (champ rf). ⚠ les rivières
-## ne sont PAS dans LAYER_WATER → sans ce test on poserait le tampon EN PLEIN MILIEU du fleuve.
-func _is_dry_land(water: Image, rf: Image, x: int, y: int) -> bool:
-	if int(water.get_pixel(x, y).r * 255.0 + 0.5) >= 1:
-		return false                                    # mer ou lac
-	return not _in_river_water(rf, x, y)                # ni rivière
-
-## cellule de TERRE SÈCHE de r la plus proche de `target`, de préférence INTÉRIEURE de province ; (-1,-1) sinon.
-func _snap_region_land(w, water: Image, rf: Image, r: int, target: Vector2) -> Vector2:
-	var sw := water.get_width()
-	var sh := water.get_height()
-	var tx := int(round(target.x))
-	var ty := int(round(target.y))
-	var fallback := Vector2(-1, -1)
-	for R in range(0, 10):
-		for dy in range(-R, R + 1):
-			for dx in range(-R, R + 1):
-				if R > 0 and absi(dx) != R and absi(dy) != R:
-					continue
-				var x := tx + dx
-				var y := ty + dy
-				if x < 1 or y < 1 or x >= sw - 1 or y >= sh - 1:
-					continue
-				if not _is_dry_land(water, rf, x, y):
-					continue                            # eau (mer/lac/rivière)
-				var pv: int = w.province_at(x, y)
-				if pv < 0 or w.province_region(pv) != r:
-					continue                            # hors région r
-				if w.province_at(x - 1, y) == pv and w.province_at(x + 1, y) == pv \
-				   and w.province_at(x, y - 1) == pv and w.province_at(x, y + 1) == pv:
-					return Vector2(x, y)                # intérieur de province
-				if fallback.x < 0:
-					fallback = Vector2(x, y)
-	return fallback
-
-## cœur INTÉRIEUR de la région (cellule SÈCHE de r, intérieure de province, la + proche du centroïde). Dernier repli.
-func _interior_seat(w, water: Image, rf: Image, r: int, c0: Vector2) -> Vector2:
-	var sw := water.get_width()
-	var sh := water.get_height()
-	var cx := int(round(c0.x))
-	var cy := int(round(c0.y))
-	var fallback := Vector2(-1, -1)
-	for R in range(0, 14):
-		for dy in range(-R, R + 1):
-			for dx in range(-R, R + 1):
-				if R > 0 and absi(dx) != R and absi(dy) != R:
-					continue
-				var x := cx + dx
-				var y := cy + dy
-				if x < 1 or y < 1 or x >= sw - 1 or y >= sh - 1:
-					continue
-				if not _is_dry_land(water, rf, x, y):
-					continue
-				var pv: int = w.province_at(x, y)
-				if pv < 0 or w.province_region(pv) != r:
-					continue
-				if w.province_at(x - 1, y) == pv and w.province_at(x + 1, y) == pv \
-				   and w.province_at(x, y - 1) == pv and w.province_at(x, y + 1) == pv:
-					return Vector2(x, y)
-				if fallback.x < 0:
-					fallback = Vector2(x, y)
-	if fallback.x >= 0:
-		return fallback
-	return _snap_to_land(water, c0)
 
 ## direction NORMALISÉE vers la mer la plus proche (≤ maxrad), Vector2.ZERO si aucune.
 func _nearest_sea_dir(sea: Image, c: Vector2, maxrad: int) -> Vector2:
@@ -2421,7 +2293,7 @@ func _build_easter_eggs(bio: Image, rf: Image, sw: int, sh: int) -> void:
 ##   · la CAPITALE d'un pays monte d'UN cran (la façade la force déjà ≥ 4 ⇒ t5/t6) ;
 ##   · t7 est UNIQUE : la capitale la plus peuplée du monde (la cité impériale).
 ## Variante = hash STABLE de la région (_01.._16 — deux voisines diffèrent, stable au redraw).
-## Ancrée au PIED sur le siège (sec — _find_seat) ; taille MONDE ∝ tier, rails px par _w.
+## Ancrée au PIED sur le siège (sec — centroïde ancré) ; taille MONDE ∝ tier, rails px par _w.
 ## OMBRE SE = la silhouette du sprite modulée sombre (le motif front32) ; GLAZE = valeur
 ## jittée par région, jamais la teinte. Quais/barque gardés. Repli : glyphe d'encre.
 func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: float, mv) -> void:
@@ -2495,7 +2367,7 @@ func _draw_settlement(w, r: int, role: int, ctr: Vector2, ip: Vector2, zoom: flo
 		cwld = BOURG_W_CS
 	elif is_wild:
 		cwld = BOURG_W_WILD
-	var wpx := _w(zoom, cwld, 15.0 + 2.5 * float(rt), 96.0 + 24.0 * float(rt))
+	var wpx := _w(zoom, cwld, 10.0 + 1.7 * float(rt), 65.0 + 16.0 * float(rt))
 	var fw := wpx / maxf(float(bg["cw"]), 0.4)            # cadre 256² tel que le CONTENU couvre cwld
 	var rect := Rect2(ip - Vector2(fw * 0.5, fw * float(bg["foot"])), Vector2(fw, fw))
 	var tex: Texture2D = bg["tex"]
