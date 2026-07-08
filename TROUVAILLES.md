@@ -956,3 +956,53 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - La cascade `ai_research_step` a maintenant 6 blocs d'épargne séquentiels (échappatoire, soif de
   savoir, soif de palier, S1, S3, S4) — si un 7e est ajouté un jour, vérifier l'ORDRE de priorité
   voulu (post-hoc, pas de registre central des priorités, juste l'ordre du code).
+
+## [2026-07-08] Endgame §27 — FIN_CHAUD, le RÉCHAUFFEMENT (implémenteur wt/chaud)
+**Découvertes** :
+- Le combustible du panier EST déjà dans le moteur : `NEED[CLASS_LABORER][RES_WOOD]=1.0`
+  (bois de feu annuel, scps_econ.c:236) — l'offre servie se lit à `S[r]-=need*got` dans la
+  branche générique du marché (scps_econ.c ~ligne 2716, PAS les branches boisson/luxe qui ont
+  leur propre conso). Le charbon se consomme en INTRANT de manuf (poudrière/forge céleste,
+  RES_COAL) aux 3 sites `S[e_in1]-=g1` / `S[e_alt]-=ga` / `S[rc->in2]-=lim*rc->q2`.
+- `biome_habitability` (scps_world.c:2417) pénalise le chaud via `t_comfort` (→0 au-delà de
+  0.72) MAIS son plancher structurel (0.45×base) + le rebiome qui mène un tempéré-HUMIDE vers
+  la JUNGLE (hab 0.65) fait qu'un monde tempéré se RÉCHAUFFE sans mourir. Le vrai levier hors
+  tropiques = la SÉCHERESSE : baisser `cell.moisture` en même temps que monter la température
+  → drylands/désert (hab 0.08-0.28). Sans ça, seed 7 CHAUD = 0 exode ; avec (HEAT_DROUGHT
+  0.6×delta), 9480 âmes évacuées. Le bulbe-humide (hot+wet, econ_heat_refresh) reste le kick
+  SUPPLÉMENTAIRE des tropiques (trop humides pour sécher — l'étuve les tue quand même).
+- Le gate `mx<1.0` (aucun transmuteur DOMINANT) ne suffit PAS à « garder FROID aux mondes à
+  corne » : une corne NAISSANTE (mx∈[0.3,1.0)) crossait 55 tôt via le fuel et fire CHAUD
+  (seed 301 volé à W=20, mesuré). Fix = `FUEL_DEAD_EPS` (0.5) : CHAUD éligible seulement si
+  mx<EPS (transmuteurs ~MORTS) ; sinon RETOMBE au dispatch existant. Vérifié : seeds 9/11/446
+  (corne mature, fuel share 1%) gardent GRAND HIVER, seeds 5/99 (sang) gardent SANG.
+- Ordre de grandeur : fuel_ratio (mémoire décrue/pop vivante) ~2.5-5.6 en monde calme prospère
+  an 180-250. Pour franchir ENTROPY_FIN=55, il faut `ENTROPY_FUEL_W≈15` (le terme fait ~85% de
+  la barre) — bien plus haut que ENTROPY_TECH_W (1.35) car la barre est calée pour la charge
+  tech, pas un ratio per-capita. golden reste IDENTIQUE (rien ne lit wp->entropy <12 ans ;
+  chronicle_sim_hash ne hashe pas l'entropie ; fin gatée >180) → PAS de re-baseline.
+**Pièges** :
+- `chronicle.exe` reste LOCKÉ par des process fantômes entre deux sweeps (link `Permission
+  denied` sur `chronicle.exe`) → `taskkill //F //IM chronicle.exe //T` AVANT chaque rebuild.
+  Le Bash tool AUTO-BACKGROUNDE les commandes longues même en un seul appel — les process
+  empilés lockent le binaire. Toujours tuer avant de relier.
+- Cumuls fuel = ACCUMULATEURS inter-ticks → jurisprudence EMOB/COLC/TXYR : sérialiser SINON
+  --savetest diverge. Logés dans le blob ECON (fuel_wood_cum/coal_cum) + section EGAM
+  (fuel_seen_*/fuel_charge/heat_offset) → SAVE_VERSION 73→74, save_sane borne ≥0/fini.
+- `econ_heat_refresh`/`_cold_refresh` ne posent le grain QUE si `cold_grain < raw_cap[GRAIN]`
+  (borne par le bas — le froid/chaud RÉDUIT, n'ajoute jamais) : cohérent avec la carte nue
+  géologique (N1). Ne jamais overwrite inconditionnel (planterait du grain partout).
+- `endgame_region_intensity(CHAUD)` DOIT différencier les régions (piège FROID documenté au
+  lot F : intensité PLATE = 0 exode) → base warming 0.4 + gradient tropical/bas (les tropiques
+  fuient vers le tempéré). Formule DUPLIQUÉE en 2 sites (compute_all_intensities + le reader
+  single-région) — garder identiques.
+**Restes** :
+- W=15 fait fire 3/12 mondes calmes à EXACTEMENT l'an 180 (le fuel franchit 55 avant la
+  gate) — acceptable (180 in-window) mais peu organique ; baisser W étale mais convertit moins.
+- La montée des eaux noie ~0 RÉGION entière (140 cells/an ≪ taille région) — les cellules
+  côtières sombrent (visible carte) mais `n_sunken` reste ~0. « Passive » assumé ; bumper
+  SEA_RISE_CELLS_PER_YEAR si on veut des régions perdues.
+- Théorie du vol résiduel : une corne mûrissant TARD (mx atteint 1.0 vers l'an 230) et dont
+  mx<0.5 à l'an 180 peut fire CHAUD tôt au lieu de FROID tard — borné (le sweep giga jugera).
+- Calibrage validé sur 12 graines seulement (7 CHAUD / 3 HIVER / 2 SANG) ; le giga sweep
+  20×10 tranche la distribution agrégée + confirme « guerriers ~inchangés ».
