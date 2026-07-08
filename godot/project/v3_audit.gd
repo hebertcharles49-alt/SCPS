@@ -57,7 +57,7 @@ func _audit_seed(sd: int, years: int) -> int:
 	# ── LOT 1 — LE LAVIS PAR VARIANTE ──────────────────────────────────────
 	var eg: Dictionary = w.endgame_info()
 	var fin_raw := int(eg.get("fin_raw", 0))
-	if fin_raw < 0 or fin_raw > 5:
+	if fin_raw < 0 or fin_raw > 6:
 		viol += 1; flags += " ✗fin_raw(" + str(fin_raw) + ")"
 	var nreg: int = w.region_count()
 	var any_intense := false

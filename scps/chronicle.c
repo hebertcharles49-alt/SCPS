@@ -370,7 +370,7 @@ int main(int argc, char **argv){
     long tot_council_loyalty_sum=0, tot_council_loyalty_n=0;   /* V2a : Conseil vivant */
     long tot_council_brink=0, tot_council_ai_replace=0;
     long tot_tree_pct=0; int tot_tree_sims=0;   /* §A : fraction d'arbre déverrouillée (le coût force les choix) */
-    long tot_fin[6]={0,0,0,0,0,0};   /* LOT F : distribution des fins (index = FinType, 0=AUCUNE) */
+    long tot_fin[7]={0,0,0,0,0,0,0};   /* LOT F : distribution des fins (index = FinType, 0=AUCUNE ; 6=CHAUD v74) */
     long tot_exodus=0;         /* LOT F : âmes évacuées cumulées (endgame_exodus_count, sommé sim par sim) */
     long tot_calm_shocks=0;    /* LOT F : catastrophes tirées sur un monde jugé CALME (events_calm_shocks_fired) */
     long tot_reloc=0;   /* §reloc : ensemencements de pop pour combler une pénurie */
@@ -719,6 +719,17 @@ int main(int argc, char **argv){
                    s.eg->war_dead, (double)tune_f("SANG_MEMORY_HL", 40.f),
                    100.0*endgame_blood_ratio(s.eg, s.econ),
                    (double)tune_f("ENDGAME_BLOOD_FRAC", 0.20f)*100.0);
+        /* FIN_CHAUD (v74) — LE FEU, toujours visible : la mémoire de combustible per-capita
+         * qui nourrit l'entropie ET sélectionne le RÉCHAUFFEMENT (part ≥ FIN_CHAUD_SHARE au
+         * fire) — permet d'OBSERVER si un monde calme en approche. */
+        if (s.eg && s.eg->pop_ref>0.0){
+            double fr = endgame_fuel_ratio(s.eg, s.econ);
+            double ft = (double)tune_f("ENTROPY_FUEL_W", 2.2f)*fr;
+            printf("              feu : combustible/tête %.1f (demi-vie %.0f ans · charbon ×%.0f) → terme entropie %.1f = %.0f%% de la barre (sélection CHAUD ≥ %.0f%%)\n",
+                   fr, (double)tune_f("FUEL_MEMORY_HL", 60.f), (double)tune_f("FUEL_COAL_W", 3.f),
+                   ft, s.wp->entropy>0.f ? 100.0*ft/(double)s.wp->entropy : 0.0,
+                   (double)tune_f("FIN_CHAUD_SHARE", 0.45f)*100.0);
+        }
         /* P4 — ATTEIGNABILITÉ DE LA MERVEILLE : le metab_count MAX atteint (et par qui) —
          * la preuve que la victoire 3/4/6 est à portée (ou pas) d'un monde réel. */
         if (s.eg && w->n_countries>0){
@@ -736,8 +747,8 @@ int main(int argc, char **argv){
          * V1a : SANG rejoint les 4 visages ; « métab X/6 » sur ASCENSION (la barre
          * de métabolisation du vainqueur, la thèse du contact remplace la conquête). */
         if (s.eg && s.eg->fired){
-            static const char *FN[]={"—","ENGLOUTISSEMENT","GRAND HIVER","RONCES","ASCENSION","SANG"};
-            int fin=(int)s.eg->fin; if(fin<0||fin>5)fin=0;
+            static const char *FN[]={"—","ENGLOUTISSEMENT","GRAND HIVER","RONCES","ASCENSION","SANG","RÉCHAUFFEMENT"};
+            int fin=(int)s.eg->fin; if(fin<0||fin>6)fin=0;
             printf("              §27 FIN : %s (an %d) · épicentre rég %d · fauteur pays %d",
                    FN[fin], s.eg->fin_year, s.eg->epicenter_reg, s.eg->fauteur_country);
             if (s.eg->fin==FIN_EAU)        printf(" · %d région(s) englouties (%d en cours)", s.eg->n_sunken, s.eg->sink_pending);
@@ -746,6 +757,9 @@ int main(int argc, char **argv){
             else if (s.eg->fin==FIN_SANG)  printf(" · morts de guerre %.0f / pop-réf %.0f (%.1f%%)",
                                                    s.eg->war_dead, s.eg->pop_ref,
                                                    s.eg->pop_ref>0.0 ? 100.0*s.eg->war_dead/s.eg->pop_ref : 0.0);
+            else if (s.eg->fin==FIN_CHAUD) printf(" · réchauffement %.0f%% · combustible/tête %.1f · %d région(s) noyée(s)",
+                                                   (double)s.eg->heat_offset*100.0,
+                                                   endgame_fuel_ratio(s.eg, s.econ), s.eg->n_sunken);
             else if (s.eg->fin==FIN_ASCENSION && s.eg->merv_country>=0)
                                             printf(" · métabolisation %d/%d cultures",
                                                    endgame_metab_count(w, s.econ, s.eg->merv_country), HERITAGE_COUNT);
@@ -754,7 +768,7 @@ int main(int argc, char **argv){
         /* LOT F (2026-07-08) — DISTRIBUTION DES FINS + L'EXODE : la preuve que le
          * dispatch du défaut ne penche plus FROID (cible ≤2:1 EAU/RONCES/FROID) et
          * que l'exode (réfugiés fuyant une fin AVANT de mourir) VIT. */
-        if (s.eg) tot_fin[(s.eg->fired && (int)s.eg->fin>=0 && (int)s.eg->fin<=5) ? (int)s.eg->fin : 0]++;
+        if (s.eg) tot_fin[(s.eg->fired && (int)s.eg->fin>=0 && (int)s.eg->fin<=6) ? (int)s.eg->fin : 0]++;
         tot_exodus += endgame_exodus_count();
         tot_calm_shocks += events_calm_shocks_fired();
         if (getenv("SCPS_BASKETDIAG")){
@@ -1598,10 +1612,10 @@ int main(int argc, char **argv){
      * l'exode (réfugiés fuyant une fin AVANT de mourir) VIT. */
     { long fmax=tot_fin[1]; if(tot_fin[2]>fmax)fmax=tot_fin[2]; if(tot_fin[3]>fmax)fmax=tot_fin[3];
       long fmin=tot_fin[1]; if(tot_fin[2]<fmin && tot_fin[2]>0)fmin=tot_fin[2]; if(tot_fin[3]<fmin && tot_fin[3]>0)fmin=tot_fin[3];
-      printf("   fins (§27) .................. %ld EAU · %ld RONCES · %ld GRAND HIVER · %ld ASCENSION · %ld SANG · %ld aucune  (ratio max/min dispatch %.1f:1, cible ≤2:1)\n",
-             tot_fin[FIN_EAU], tot_fin[FIN_RONCES], tot_fin[FIN_FROID], tot_fin[FIN_ASCENSION], tot_fin[FIN_SANG], tot_fin[FIN_AUCUNE],
+      printf("   fins (§27) .................. %ld EAU · %ld RONCES · %ld GRAND HIVER · %ld RÉCHAUFFEMENT · %ld ASCENSION · %ld SANG · %ld aucune  (ratio max/min dispatch %.1f:1, cible ≤2:1)\n",
+             tot_fin[FIN_EAU], tot_fin[FIN_RONCES], tot_fin[FIN_FROID], tot_fin[FIN_CHAUD], tot_fin[FIN_ASCENSION], tot_fin[FIN_SANG], tot_fin[FIN_AUCUNE],
              fmin>0 ? (double)fmax/(double)fmin : (fmax>0 ? 99.9 : 0.0));
-      printf("   catastrophes du monde calme . %ld choc(s) tiré(s) sous pression (monde sans fin en vue, an > %.0f) · exode : %ld âme(s) évacuée(s) (réfugiés fuyant EAU/FROID/RONCES/SANG)\n",
+      printf("   catastrophes du monde calme . %ld choc(s) tiré(s) sous pression (monde sans fin en vue, an > %.0f) · exode : %ld âme(s) évacuée(s) (réfugiés fuyant EAU/FROID/RONCES/SANG/CHAUD)\n",
              tot_calm_shocks, (double)tune_f("CALM_DISASTER_YEAR",200.f), tot_exodus); }
     { long tsum=0; for(int t=1;t<=7;t++) tsum+=tot_tier[t];
       printf("   tiers de province (LOT T) ... T1 %.0f%% · T2 %.0f%% · T3 %.0f%% · T4 %.0f%% · T5 %.0f%% · T6 %.0f%% · T7 %.0f%% (pop→tier : T2 2000 · T3 3000 · T4 4000 · T5 5000 · T6 8000 · T7 10000 ; %ld édifice(s) refusé(s) faute de tech de palier/sim)\n",

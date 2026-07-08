@@ -203,7 +203,7 @@ typedef struct {
     int         entropie_pct;   /* 0-100 : ratio entropy/seuil projeté */
     const char *entropie;       /* mot de bande (Stable/Frémissante/Instable/Au bord) */
     const char *augure;         /* ligne d'ambiance, ou "" */
-    int         fin;            /* 0 aucune · 1 EAU · 2 FROID · 3 RONCES · 4 ascension · 5 SANG */
+    int         fin;            /* 0 aucune · 1 EAU · 2 FROID · 3 RONCES · 4 ascension · 5 SANG · 6 CHAUD */
     int         merv;           /* phase de merveille (0 aucune … 4 ascensionné) */
     int         merv_pct;       /* 0-100 : avancée du palier de merveille */
     int         cold_pct;       /* 0-100 : intensité du refroidissement (FROID) */

@@ -16,13 +16,14 @@ const RAIL_W := 360.0
 const RAIL_H := 54.0
 const CUR := 46.0
 
-## noms de fin (chrome GDScript ; i18n Phase 5). 1 EAU · 2 FROID · 3 RONCES · 4 ascension · 5 sang
+## noms de fin (chrome GDScript ; i18n Phase 5). 1 EAU · 2 FROID · 3 RONCES · 4 ascension · 5 sang · 6 CHAUD
 const FIN_NAMES := {
 	1: "Le Grand Engloutissement",
 	2: "Le Grand Hiver",
 	3: "L'Étreinte des Ronces",
 	4: "L'Ascension",
 	5: "Le Règne de Sang",
+	6: "L'Étuve du Monde",
 }
 ## teinte du curseur par fin (fallback avant fin = dégradé blanc→cuivre→rouge)
 const FIN_TINT := {
@@ -31,6 +32,7 @@ const FIN_TINT := {
 	3: Color(0.48, 0.60, 0.22),   # RONCES — olive
 	4: Color(0.88, 0.72, 0.32),   # ASCENSION — cuivre-or
 	5: Color(0.62, 0.06, 0.12),   # SANG — bordeaux
+	6: Color(0.92, 0.42, 0.12),   # CHAUD — orange-rouge cuivré (réchauffement)
 }
 
 var _line: Label

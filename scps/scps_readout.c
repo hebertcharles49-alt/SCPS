@@ -477,6 +477,7 @@ EndgameReadout endgame_readout(const WorldProsperity *wp, const struct EndgameSt
             case FIN_RONCES:    r.fin = RFIN_RONCES;    break;
             case FIN_ASCENSION: r.fin = RFIN_ASCENSION; break;
             case FIN_SANG:      r.fin = RFIN_SANG;       break;
+            case FIN_CHAUD:     r.fin = RFIN_CHAUD;      break;   /* v74 : réchauffement */
             default:            r.fin = RFIN_AUCUNE;    break;
         }
         switch (eg->merv) {                     /* MervPhase → miroir (_DONE fond dans son palier) */

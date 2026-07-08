@@ -282,7 +282,7 @@ SyncReadout sync_node_readout(const TechState *ts, int sync_idx);
  * bitmap d'indices (sunken) et des enums miroirs — aucun flottant moteur. */
 struct EndgameState;                 /* défini dans scps_endgame.h (moteur) */
 /* Miroirs de FinType / MervPhase — le viewer ne connaît QUE ces formes. */
-typedef enum { RFIN_AUCUNE=0, RFIN_EAU, RFIN_FROID, RFIN_RONCES, RFIN_ASCENSION, RFIN_SANG } FinReadout;
+typedef enum { RFIN_AUCUNE=0, RFIN_EAU, RFIN_FROID, RFIN_RONCES, RFIN_ASCENSION, RFIN_SANG, RFIN_CHAUD } FinReadout;
 typedef enum { RMERV_NONE=0, RMERV_FORGE, RMERV_SOCIETE, RMERV_SAVOIR, RMERV_ASCENDED } MervReadout;
 typedef struct {
     BandEntropie    entropie;          /* la bande (mot) */

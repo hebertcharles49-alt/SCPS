@@ -12,7 +12,7 @@ const MARGIN := 256
 ## age_state["age"] : -1 = l'aube du règne, 0..6 = AgeId (Commerce → Ordre de Fer)
 const AGE_KEYS := ["commerce", "raison", "empires", "breche", "lumieres", "soulevements", "ordrefer"]
 ## endgame_info["fin"] : 1 EAU · 2 FROID · 3 RONCES · 4 ASCENSION · 5 SANG
-const FIN_KEYS := { 1: "fin_eau", 2: "fin_froid", 3: "fin_ronces", 4: "fin_ascension", 5: "fin_sang" }
+const FIN_KEYS := { 1: "fin_eau", 2: "fin_froid", 3: "fin_ronces", 4: "fin_ascension", 5: "fin_sang", 6: "fin_chaud" }
 
 var _cache := {}          ## clé → Texture2D (chargée à la demande)
 var _cur := ""            ## clé affichée (évite de recharger chaque tick)

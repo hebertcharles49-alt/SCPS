@@ -11,13 +11,14 @@ const Epithet = preload("res://ui/epithet.gd")
 
 signal goto_region(region: int)
 
-## la nature de la fin, en queue de phrase (fin de endgame_info ; 4 = ascension, 5 = sang)
+## la nature de la fin, en queue de phrase (fin de endgame_info ; 4 = ascension, 5 = sang, 6 = chaud)
 const FIN_PHRASE := {
 	1: "vit les flots engloutir le monde",
 	2: "vit le Grand Hiver éteindre les feux",
 	3: "vit les Ronces dévorer le monde",
 	4: "s'éleva au-delà du monde — la Merveille accomplie",
 	5: "noya son règne dans le sang — la Main ne s'arrêta plus",
+	6: "vit l'Étuve monter des mille feux — les tropiques moururent, la mer avala les rivages",
 }
 
 ## fond de fin (écrans Codex 1920×1080) — indexé par endgame_info["fin"]
