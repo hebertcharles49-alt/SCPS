@@ -743,3 +743,29 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - Captures (gitignorées, `godot/project/`) : `u_seed{9,42}_{fit,mid_cap,deep_cap}_{before,after}.png` +
   `u_seed9_cs_{before,after}.png` + `u_seed9_cs_deep_after.png` + `u_seed9_wild_{before,after}.png`
   (years=5, zoom=10).
+
+## 2026-07-08 — Lot G flux humains (pacte élargi · réfugiés · achat servile IA)
+
+**Découvertes** :
+- `demography_migration_pact_tick` : DEUX taux désormais — `MIG_PACT_FRAC` (canal pacte COMMERCIAL,
+  gardé au calibrage d'origine : un pacte commercial peut se former AVANT l'an-12, bumper ce taux
+  casse le golden — mesuré seeds 7/209) et `MIG_PACT_FRAC_ALLY` ×3 (canal ALLIÉ : l'invariant
+  « aucune alliance < an-12 » tient par construction, le taux haut est golden-safe).
+- Marché servile : les âmes s'entassaient au pool des Centres (vendues par les pillards) SANS
+  acheteur — l'IA n'avait AUCUN chemin d'achat. Ajouté : un empire can_enslave en PÉNURIE DE BRAS
+  (signal forecast existant) achète au pool, borné budget/cadence (scps_ai.c section servile).
+- Réfugiés : A/B apparié (seeds 9+11 × 3 sims) — SCAR 0.50→0.40 + FRAC 0.03→0.04 : fuites ↑
+  (6/27/25 → 9/58/8) et retours ↑ (55/407/414 → 96/490/436) à satisfaction STABLE OU MEILLEURE
+  (Laborer 81/76/74 → 83/77/76 seed 9) — le bassin de bistabilité n'a PAS mordu à 0.04.
+
+**Pièges** :
+- La leçon de bistabilité (CLAUDE.md § RÉFUGIÉS) TIENT : 0.04 est la borne testée, pas un plancher —
+  ne pas pousser au-delà sans A/B apparié avec la satisfaction en garde-fou.
+- Les sweeps de mesure en arrière-plan verrouillent chronicle.exe (le build/determinism échoue
+  « Permission denied ») — tuer LA BOUCLE parente, pas les chronicle enfants (ils re-spawnent).
+
+**Restes** :
+- L'A/B réfugiés n'a couvert que 2 graines (9/11) — la re-validation à 20 graines (sweep post-merge)
+  confirmera à l'échelle.
+- L'affranchissement reste rare (méd 0) — le chemin existe (statecraft), non poussé par l'IA ;
+  à re-mesurer après le sweep.

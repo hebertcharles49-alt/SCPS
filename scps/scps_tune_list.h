@@ -171,8 +171,8 @@
      * volume élevé sous stress SOUTENU (cataclysme : toutes régions ravagées longtemps) fait ENFLER une
      * destination au-delà du soutenable → révolte massive → runaway (millions de morts). 0.03 = respire
      * sans emballer ; l'instabilité conditionnelle vient de l'ABSORPTION (distance × institutions). */ \
-    X(REFUGEE_FLEE_SCAR,     0.50f) \
-    X(REFUGEE_FLEE_FRAC,     0.03f) \
+    X(REFUGEE_FLEE_SCAR,     0.40f) \
+    X(REFUGEE_FLEE_FRAC,     0.04f) \
     X(REFUGEE_FLEE_MIN,      30.0f) \
     X(REFUGEE_HOME_CALM,     0.25f) \
     X(REFUGEE_RETURN_PULL,   0.12f) \
