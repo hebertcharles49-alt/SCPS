@@ -898,8 +898,13 @@ int scps_province_market(ScpsSim *s, int pid, ScpsMarketLine *out, int max, cons
             float stk = pe->stock[gg], dem = pe->demand[gg], sup = pe->supply[gg];
             if(!(stk>0.5f || dem>0.05f || sup>0.05f)) continue;
             out[n].name   = sz(resource_name((Resource)gg));
-            out[n].price  = pe->price[gg];
-            out[n].stock  = stk;
+            /* MEMBRANE : un déficit transitoire (ProvinceEconomy.stock<0, non clampé
+             * côté moteur — cf. TROUVAILLES 2026-07-08) reste un signal VALIDE pour la
+             * bande (band_marche lit le stk BRUT : très négatif ⇒ PENURIE, cohérent) mais
+             * ne doit JAMAIS être publié tel quel — un stock/prix négatif est un nombre
+             * tangible FAUX pour le joueur. On clampe seulement à la SORTIE. */
+            out[n].price  = pe->price[gg] > 0.f ? pe->price[gg] : 0.f;
+            out[n].stock  = stk > 0.f ? stk : 0.f;
             out[n].marche = sz(label_marche(band_marche(dem, sup+stk)));
             n++;
         }

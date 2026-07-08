@@ -19,9 +19,6 @@ uniform float hatch_str : hint_range(0.0, 0.6) = 0.26;
 uniform float hatch_freq : hint_range(0.3, 3.0) = 1.6;
 uniform float vignette : hint_range(0.0, 0.6) = 0.20;
 uniform float burn : hint_range(0.0, 0.8) = 0.42;
-uniform float compass_on = 1.0;
-uniform vec2 compass_uv = vec2(0.13, 0.27);
-uniform float compass_r : hint_range(8.0, 80.0) = 30.0;
 uniform float rgb_jitter : hint_range(0.0, 16.0) = 3.0;   // variation PERLIN intra-biome : ±N/255 par canal
 uniform float jitter_freq : hint_range(0.02, 0.5) = 0.12; // échelle des taches de couleur
 
@@ -121,25 +118,6 @@ float ring_sea(vec2 cell, float r) {
 	for (float a = 0.0; a < 6.2831; a += 1.0472)
 		if (is_water(biome_at(cell + vec2(cos(a), sin(a)) * r))) n += 1.0;
 	return n / 6.0;
-}
-
-// ROSE DES VENTS — ancrée à un point carte mais dessinée en espace ÉCRAN (`ci` = centre projeté) → cercles.
-float compass(vec2 ip, vec2 ci, float R) {
-	vec2 d = ip - ci;
-	float cd = length(d);
-	if (cd > R * 1.25) return 0.0;
-	float a = atan(d.y, d.x);
-	float v = 0.0;
-	for (int k = 0; k < 8; k++) {
-		float ka = float(k) * 0.78539816;
-		float da = abs(mod(a - ka + PI, TAU) - PI);
-		float len = (k % 2 == 0) ? R : R * 0.52;
-		if (cd < len && da < 0.12 * (1.0 - cd / max(len, 0.001))) v = 1.0;
-	}
-	v = max(v, smoothstep(0.8, 0.0, abs(cd - R)) * 0.75);
-	v = max(v, smoothstep(0.6, 0.0, abs(cd - R * 0.60)) * 0.6);
-	if (cd < R * 0.06) v = 1.0;
-	return v;
 }
 
 // bruit de VALEUR lissé (perlin-like) : hash de coin + interpolation smoothstep → taches DOUCES.
@@ -346,22 +324,17 @@ void fragment() {
 		// SYMBOLES DESSINÉS (arbres/pics à l'encre) : RETIRÉS — la carte garde les LAVIS de terrain
 		// (vert forêt, tan massif) mais plus aucun glyphe semé ; lecture épurée, rivières en vedette.
 
-		// ── V3 — LE LAVIS PAR VARIANTE : par-dessus le lavis de terrain, sous la rose des
-		// vents/vignette (le drame de la fin teinte la carte, il ne l'efface pas). Gate à coût
-		// nul (fin==0 ⇒ variant_on==0, le tap est sauté). RENFORCE la mutation physique déjà
-		// peinte par le terrain (rebiome/sink/thorns) — il ne la remplace pas.
+		// ── V3 — LE LAVIS PAR VARIANTE : par-dessus le lavis de terrain, sous la vignette (le
+		// drame de la fin teinte la carte, il ne l'efface pas). Gate à coût nul (fin==0 ⇒
+		// variant_on==0, le tap est sauté). RENFORCE la mutation physique déjà peinte par le
+		// terrain (rebiome/sink/thorns) — il ne la remplace pas.
 		if (variant_on > 0.5) {
 			float vi = texture(variant_map, cw / map_size).r;
 			col = mix(col, variant_col, clamp(vi, 0.0, 1.0) * variant_k);
 		}
 	}
 
-	// ── COMMUN : rose des vents, bords brûlés, vignette, grade chaud ──
-	if (compass_on > 0.5) {
-		vec2 cwld = map_size * compass_uv;
-		vec2 ci = (flat_map > 0.5) ? cwld : vec2(cwld.x - cwld.y, (cwld.x + cwld.y) * 0.5);
-		col = mix(col, vec3(0.20, 0.14, 0.09), compass(iso, ci, compass_r) * 0.72);
-	}
+	// ── COMMUN : bords brûlés, vignette, grade chaud (rose des vents RETIRÉE) ──
 	float edge = pow(clamp(length(SCREEN_UV - 0.5) * 1.42, 0.0, 1.0), 2.4);
 	float bn = texture(noise_tex, SCREEN_UV * 3.3 + vec2(0.5, 0.2)).r;
 	col = mix(col, vec3(0.26, 0.18, 0.10), clamp(edge * (0.55 + 0.6 * bn) * burn, 0.0, 0.72));
