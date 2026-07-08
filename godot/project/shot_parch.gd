@@ -46,6 +46,19 @@ func _run() -> void:
 					def_cx = str(c2.x)
 					def_cy = str(c2.y)
 					break
+	if _arg("wild=", "0") == "1":   # centre sur le 1er HAMEAU LIBRE (rôle 4 — vignette bourg_wild)
+		for c in range(Sim.world.country_count()):
+			if int(Sim.world.country_role(c)) == 4:
+				var wr := -1
+				for r in range(Sim.world.region_count()):
+					if int(Sim.world.region_owner(r)) == c:
+						wr = r
+						break
+				if wr >= 0:
+					var c3: Vector2 = Sim.world.region_centroid(wr)
+					def_cx = str(c3.x)
+					def_cy = str(c3.y)
+					break
 	var cx := float(_arg("cx=", def_cx))
 	var cy := float(_arg("cy=", def_cy))
 	if zoom > 0.0:

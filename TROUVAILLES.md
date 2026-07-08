@@ -678,3 +678,68 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - La razzia pirate IA est gatée par l'éthos/tech du COMMANDITAIRE de la course — si un futur lot veut « tout pirate razzie » (la piraterie historique asservissait sans doctrine d'État), retirer le gate econ_country_can_enslave du site scps_navy.c et ne garder que le flag.
 - Le pillage à l'occupation-capture n'a pas de ligne feed dédiée (FEED_SIEGE_FALLEN existe déjà pour la chute) — si le joueur veut VOIR « pillée : X or », ajouter un champ au feed.
 - `g_navy_raid_slaves`/`g_occ_pillage_total` sont des GLOBAUX de télémétrie jamais RAZ entre sims (delta-snapshotés par chronicle, motif g_tot_occ_posed) — un futur --savetest qui comparerait ces compteurs entre A et B les verrait diverger : ils sont HORS moteur, ne jamais les sérialiser ni les lire en décision.
+
+## 2026-07-07 — Lot U bourgs T1-T7 (remplacement urbaniste)
+**Découvertes** :
+- **Le tier de vignette vient du reader façade** (`Sim.world.region_tier`, 0-5, capitale forcée ≥4) —
+  PAS de `_pop_tier`/`CITY_POP_BANDS` (l'ancien étalement par pop, supprimé). Mapping retenu : 0-1→t1 ·
+  2→t2 · 3→t3 · 4→t4 · 5→t5 ; capitale +1 cran (⇒ t5/t6 vu le forçage façade) ; **t7 UNIQUE** = la
+  capitale la plus peuplée du monde (`_update_top_cap`, une boucle pays au tick ; cité-état/hameau
+  exclus de la course). Cité-état → `bourg_cs`, hameau libre (rôle 4) → `bourg_wild`. Le cache
+  `_town_cache[r]` est keyé sur le `sid` complet → il se rebâtit seul quand le tier monte OU quand le
+  titre t7 change de mains.
+- **Les vignettes recentrées n'ont PAS le socle au bord du cadre** : le pipeline recut (58514f) recentre
+  le CONTENU sur 256² → le pied vit au bas du bbox opaque (t1 : y 82..172 ; t7 : y 36..218). L'ancrage
+  au pied et l'échelle du CONTENU sont donc MESURÉS à la 1re charge (`Image.get_used_rect()` →
+  `foot`/`cw` cachés par id dans `_bourg_tex`) — un ancrage fixe 0.94 aurait fait flotter les petites
+  vignettes de ~7 cellules au-dessus de leur siège.
+- **Volume retiré : −738 lignes nettes dans overlay.gd** (892 supprimées / 154 ajoutées, commit
+  f9090e5) : `_build_town` (~305 l, tout le plan composé : rangs/ruelles/spirale/relaxation/champs/
+  enceinte/portes/plaza/puits/halle/forge/fumée/perspective) + `_seat_road` + les 5 renderers
+  vectoriels (`_ink_house`/`_ink_landmark`/`_house_pts`/`_house_shadow`/`_f32_h`) + ~40 constantes/vars
+  fossiles vérifiées ORPHELINES une à une (grep \b par symbole AVANT suppression) : F32_POOL/
+  F32_LANDMARK/ROOF_PAL/TOWN_WALL/TOWN_GROUND/FIELD_*/PLAZA_FILL/SMOKE_SOFT/STAMP_*/SZ_*/EDI_RING/
+  CLUTTER_SIZE/_clutter/FOUND_*/_found_tex/SHADOW_COL/SHADOW_DIR/LIGHT_WORLD/SHADE_K/GROUND_TINT_*/
+  BIOME_CITY/FOREST_TREES/DRESS_OPEN..DRESS_BOG/ROADSIDE/ROAD_DRESS_OFF/MAIN_ST_LEN/DRAW_ROAD_DRESS/
+  _road_dress/_road_cells/_main_streets/_road_placed/_town_streets/_region_variant/_region_centre/_bk/
+  _clear_set/_region_citymax/_footprint_clear/_has_any/_rh/_struct_dirty/_pull_dry.
+**Gardé (et pourquoi)** :
+- **Quais/jetées/barque** (`_build_quays`, extrait verbatim du plan) : le rivage dépend du MONDE, la
+  vignette ne peut pas le porter ; l'ancre de jetée = la DERNIÈRE terre avant l'eau (sèche par
+  construction — l'esprit du lot V tenu sans `_pull_dry`). Pas de quai pour le hameau sauvage.
+- **Ponts d'encre** (`_ink_bridges`), **clairière** (`_dress_clear`, rayon ∝ tier inchangé — couvre la
+  demi-largeur des vignettes à ±0.5 cellule près), **bannière de lieu**, **liseré pourpre de capitale**
+  (= le marqueur de capitale, sobre — aucun fanion ajouté sur la vignette), **repli glyphe d'encre**
+  (`_draw_town`) si l'asset manque.
+- **`_decor`/`_structures`** (fossiles JAMAIS peuplés) : gardés parce que **`viewer_audit.gd` les
+  itère/mesure** — les purger casserait la probe (fichier hors périmètre du lot) ; à retirer AVEC elle.
+- **Le push-inland de `_region_anchor`** (via `_max_dry_size`/`_nearest_sea_dir`/`_sea_clear_rect`) :
+  l'ancre sert d'ABOUTISSEMENT AUX ROUTES — le garder = réseau routier strictement inchangé ;
+  `_region_citymax` (le produit dérivé write-only) est, lui, tombé.
+- **Tri peintre** : les vignettes sont GRANDES (jusqu'à ~11 cellules) → collecte puis tri fond→avant
+  (y écran) + bannières en 2e passe PAR-DESSUS tout ; marge de cull élargie 40→160 px (une vignette au
+  bord ne pope plus).
+**Pièges** :
+- **`--check-only -s res://map/overlay.gd` échoue TOUJOURS** (« Identifier not found: Sim ») : `-s`
+  tourne sans autoloads — ce n'est PAS une erreur de syntaxe. Le vrai gate est le boot headless
+  `Main.tscn --quit-after 30` (0 SCRIPT ERROR) + un run shot_parch (exerce generate+draw).
+- **seed 9 : TOUS les hameaux WILD sont ralliés entre l'an 5 et l'an 15** — une capture `wild=1` à
+  years=120 (voire 15) tombe en repli silencieux sur le centre de carte (= la mer, 20 min perdues à
+  chercher un bug de caméra). Capturer le sauvage à **years=5**. L'arg `wild=1` (miroir de cs=1) est
+  commité dans shot_parch (09b73c1).
+- **Ne pas confondre** : un aplat sombre à bords doux près d'un bourg peut être un LAC (eau douce du
+  parchemin), pas une ombre orpheline — vérifier sur le shot AVANT de chasser un bug d'ombre.
+- `git stash push -- godot/project/map/overlay.gd` (fichier SEUL) pour le BEFORE du hameau : le probe
+  modifié (wild=1) reste en place pendant que l'overlay revient à l'ancien monde — A/B propre.
+**Restes** :
+- **La famille route-tiles/ponts-sprites** (`USE_ROAD_TILES`/`ROUTE_*`/`_road_tex`/`_road_tiles`/
+  `_route_meshes`/`_bridge_tex`/`_bridges`/`ROADS_IN_SHADER` + les 2 sets `_road_tiles_dirty`/
+  `_bridges_dirty` de _on_tick/_on_generated) est un OSSUAIRE décl-seul du même genre — non purgée ici
+  (hors sujet bourgs, ~20 lignes) ; candidate à la prochaine passe de code mort.
+- **`viewer_audit.gd` lit `_decor`/`_structures`** (toujours vides) — la purge conjointe probe+vars
+  reste à faire.
+- Les rails px de vignette (`15+2.5·rt` / `96+24·rt`) et les largeurs monde (`BOURG_W_*`) sont dialables
+  en tête d'overlay.gd si la DA veut plus gros/petit ; le GLAZE est `0.93+0.10·hash` α 0.90.
+- Captures (gitignorées, `godot/project/`) : `u_seed{9,42}_{fit,mid_cap,deep_cap}_{before,after}.png` +
+  `u_seed9_cs_{before,after}.png` + `u_seed9_cs_deep_after.png` + `u_seed9_wild_{before,after}.png`
+  (years=5, zoom=10).
