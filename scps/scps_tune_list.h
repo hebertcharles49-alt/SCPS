@@ -110,6 +110,20 @@
      * income ×= 1 + W·métabolisé. Le signal est ~0 tôt (l'assimilation prend des décennies)
      * ⇒ golden-safe. W=1 ⇒ « métabolisation X% = +X% recherche » (lisible au hover) */ \
     X(AI_METAB_RES_W,         1.0f) \
+    /* REVENU DE RECHERCHE — multiplicateur GLOBAL du revenu de savoir (IA + joueur), le levier
+     * « même les mauvaises IA font 60 % de l'arbre » (Civ). Le revenu de base est LABOR/POP-bound
+     * et sous-alimenté sur 250 ans → à défaut, l'arbre plafonne ~28 % médian. Ce W relève le débit
+     * SANS cheapener le coût des nœuds : l'expansion faustienne (charge → Brèche) reste au plein tarif
+     * ⇒ l'arbre gonfle par les nœuds NON-faustiens (savoir/société/production, charge nulle), la
+     * fenêtre des fins §27 ne s'effondre PAS vers le gate an-180 (contrairement à une coupe de coût,
+     * mesuré). Appliqué au revenu de la POP, AVANT la métabolisation (elle module ce débit relevé).
+     * DÉCOUPLAGE : le coût des nœuds FAUSTIENS est ×W (ai_effective_cost) → le boost s'y annule,
+     * leur cadence reste ≈ baseline, la charge §27 ne s'emballe pas (l'arbre gonfle par le NON-faustien).
+     * Calé à 4.5 (arbre méd ~28 % → ~50 %, « les mauvaises IA font 60 % » ; ENTROPY_TECH_W abaissé
+     * en regard pour tenir la fenêtre des fins). Au-delà (≥5), un edge LATENT de scps_province_market
+     * (stock de province transitoirement négatif émis par la membrane, data-dependent) fait rougir
+     * scps_api_demo — laissé à l'orchestrateur (fix membrane + W≥6 pour ~53 %). 1.0 = neutre (golden-safe). */ \
+    X(AI_RESEARCH_INCOME_W,   4.5f) \
     /* SAVOIR — la POP produit la recherche (0.01·élite + 0.005·bourgeois + 0.001·journalier /an) ;
      * la branche BIBLIOTHÈQUE module en % (Σ build.savoir · PER, plafonné MAX). Unifié joueur+IA. */ \
     X(SAVOIR_W_ELITE,         0.01f) \
@@ -500,8 +514,13 @@
     X(ENDGAME_YEAR_OPEN,    180.0f) \
     /* 1.0→1.35 (recalage 2026-07-06, ENTDIAG seed 9) : les refontes éco avaient fait
      * RECULER le tir de ~80 ans (croisement an ~260, historique ~184-195) — à 1.35 le
-     * tir médian revient ~an 235-270, les mondes sanglants plus tôt (ENTROPY_BLOOD_W). */ \
-    X(ENTROPY_TECH_W,         1.35f) \
+     * tir médian revient ~an 235-270, les mondes sanglants plus tôt (ENTROPY_BLOOD_W).
+     * 1.35→0.20 (push arbre 2026-07-08) : AI_RESEARCH_INCOME_W=6 ~double l'arbre ⇒ ~6× de
+     * charge faustienne (Σ tech charge) ⇒ l'entropie franchissait 55 vers l'an 130 et TOUTES
+     * les fins s'effondraient sur le gate an-180 (MESURÉ, ENTDIAG). À 0.20, chaque nœud faustien
+     * pèse moins mais l'arbre en porte plus ⇒ le tir médian revient ~an 200-235 (spread baseline,
+     * gate respecté), au prix d'une rareté accrue sur les mondes bas-charge (fragmentés). */ \
+    X(ENTROPY_TECH_W,         0.20f) \
     X(SINK_RIFTS_PER_YEAR,    3.0f) \
     X(COLD_RAMP_PER_YEAR,     0.005f) \
     X(THORN_CELLS_PER_YEAR, 200.0f) \

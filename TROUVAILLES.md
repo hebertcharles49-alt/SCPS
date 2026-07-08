@@ -956,3 +956,65 @@ isolément dans `statecraft_demo`, pas encore observé « en situation » sur le
 - La cascade `ai_research_step` a maintenant 6 blocs d'épargne séquentiels (échappatoire, soif de
   savoir, soif de palier, S1, S3, S4) — si un 7e est ajouté un jour, vérifier l'ORDRE de priorité
   voulu (post-hoc, pas de registre central des priorités, juste l'ordre du code).
+
+## 2026-07-08 — Push arbre tech 28 % → ~50 % (revenu de recherche + découplage §27)
+**Découvertes** :
+- **Le VRAI goulot de l'arbre méd était le REVENU, pas la sélection** (contre l'hypothèse du Lot I
+  qui misait sur SOIF DE SAVOIR — mesuré +2 pts seulement). Un probe à revenu absurde
+  (`SCPS_TUNE=AI_RESEARCH_INCOME_W=5`, seed 9) monte l'arbre méd à 65 % (max 95 %) → l'access ceiling
+  n'est PAS le mur (les combos/apex tier-4/5 restent hors de portée IA, mais le NON-combo va
+  jusqu'à ~65 %). Le levier propre : un multiplicateur GLOBAL de `income` dans `ai_research_step`
+  (scps_ai.c ~2361) ET la voie joueur (scps_sim.c ~715) — tunable neuf `AI_RESEARCH_INCOME_W`
+  (registre J + `#define` fallback scps_econ.h). Réponse ~linéaire : W=1→29 %, W=3→~45 %, W=4.5→~50 %,
+  W=6→~53 %.
+- **L'arbre et §27 sont COUPLÉS par la charge faustienne — mesuré à l'ENTDIAG** : `wp->entropy` =
+  `esum` (Σ `region.faust_charge`, régional/arcane) `+ ENTROPY_TECH_W·Σ ts[c].charge` (charge des
+  nœuds tech FAUSTIENS). ⚠ Dans les mondes de chronique `esum` ≈ **0.6** (aucun transmuteur bâti) →
+  **toute l'entropie vient de la charge TECH**. Un arbre ×W → ~6× de charge tech → l'entropie
+  franchit `ENTROPY_FIN=55` vers l'an **130** (vs ~200 baseline) → TOUTES les fins §27 s'effondrent
+  sur le gate `ENDGAME_YEAR_OPEN=180` (violation du garde-fou « pas partout à 180 »). Courbe seed 9 :
+  baseline an180=48.3 · W=3 an180=163.8 · W=4.5 an180≈290. `SCPS_ENTDIAG=1` imprime la courbe
+  année/année (scps_endgame.c:1183).
+- **Le DÉCOUPLAGE qui tient la fenêtre** (`ai_effective_cost`, scps_ai.c ~2234 + miroir joueur
+  scps_sim.c) : le coût des nœuds **FAUSTIENS** est ×`AI_RESEARCH_INCOME_W` → le boost de revenu
+  s'y **ANNULE**, leur cadence d'acquisition reste ≈ baseline (charge §27 non emballée), l'arbre
+  gonfle par les nœuds NON-faustiens (charge nulle). Découplage IMPARFAIT (le yield-chain grimpé
+  ré-amplifie l'income → un reste de charge), donc `ENTROPY_TECH_W` abaissé **1.35→0.20** en regard
+  (baseline-matching : reproduit l'entropie-à-180 de référence → tir médian ~an 200-235, spread
+  180-245, gate respecté). Bénéfice mesuré du découplage : à W=4.5 le tir garde un VRAI spread
+  (P : 180-245, 2/8 au gate) là où l'income seul couplé s'effondrait (N W=3.6 : 8/8 à 180).
+- **La rareté est le prix** : les mondes BAS-charge (fragmentés, seed 11-type) peuvent ne PAS
+  atteindre 55 d'entropie en 250 ans à `ENTROPY_TECH_W=0.20` → ~1/8 des sims ne déclenchent AUCUNE
+  fin (vs baseline qui tirait toujours ~an 230). Acceptable/documenté (mild), dialable via
+  `ENTROPY_TECH_W` (↑ = moins de no-fire mais plus de collapse-180).
+**Pièges** :
+- **`scps_province_market` (façade) peut émettre un STOCK de province NÉGATIF** : la ligne est
+  admise dès `demand>0.05` (scps_api.c ~1012) SANS regarder le signe du stock ; une province en
+  déficit transitoire (`ProvinceEconomy.stock[g]<0`, non clampé côté moteur) fait rougir
+  `scps_api_demo` (« scps_province_market : 0..3 lignes bornées »). Edge LATENT **data-dependent**
+  (pas causé par le push : W=4.5/5.5 passent, W=5.0/6.0 rougissent sur seed 9 — c'est l'état éco au
+  tick de probe, pas un seuil de revenu). Ceci a **borné le ship à W=4.5** (arbre ~50 % au lieu de
+  ~53 % à W=6). Un fix dédié (clamp membrane `out[].stock/price ≥ 0` OU clamp moteur
+  `ProvinceEconomy.stock`) débloquerait W≥6 → ~53-55 % — laissé HORS PÉRIMÈTRE (touche l'éco/membrane,
+  pas l'arbre ; à décider par l'orchestrateur).
+- Le séparateur de `SCPS_TUNE` est **la virgule** (`strtok(buf,",")`, scps_tune.c:38), PAS le
+  point-virgule (échec silencieux « valeur invalide » qui vide le log).
+- **`taskkill //F //IM chronicle.exe` tue les runs de l'AUTRE agent** (image-name, pas per-worktree)
+  et réciproquement → sur machine partagée, des sweeps se font tronquer en plein sim (log coupé à
+  « [scps] rivières... »). Ne JAMAIS kill par image name ; grep la complétude (`grep -c 'arbre :'`)
+  et re-run les seeds tronqués.
+- Golden au ship W=4.5 : seeds **108/209/411 BOUGENT**, **7 et 310 INCHANGÉS** (leurs empires ne
+  paient aucune tech avant l'an 12 → hash 12-ans identique). À W=6 les 5 bougeaient. NE PAS
+  re-baseliner (orchestrateur post-merge).
+**Restes** :
+- Cible 55-60 % NON atteinte proprement (ship ~50 % méd). Les ~5 pts manquants exigent soit le fix
+  de l'edge `scps_province_market` (→ W≥6, ~53 %), soit d'accepter une compression §27 (diffuse 0.55
+  → méd 54.5 mais fins 6/8 à 180), soit d'ouvrir l'access barrier (METAB_TIER, Temps 2a, hors levier
+  autorisé). Trade-off documenté ci-dessus pour décision orchestrateur.
+- `AI_TECH_DIFFUSE_MAX` laissé à 0.40 (défaut) : testé à 0.55 → +~1-2 pts de méd mais recharge la
+  fenêtre §27 (le découplage mute son impact faustien mais pas totalement) ET ne sauve pas le `min`
+  (~9 %, un empire nain/en-guerre insauvable par la remise). Pas retenu.
+- La cascade `ai_research_step` a un 7e site d'échelle possible (income global) AVANT les 6 blocs
+  d'épargne — l'ordre reste : income×W → métabolisation → (returns d'épargne). Le ×W faustien vit
+  dans `ai_effective_cost`, donc TOUS les blocs d'épargne (foreuse/S1/S3/S4/palier/savoir) voient
+  déjà le coût faustien gonflé (cohérent, pas de site oublié).

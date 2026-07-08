@@ -760,6 +760,13 @@ void econ_country_heritage_digested(const World *w, const WorldEconomy *econ, in
 #ifndef AI_METAB_RES_W
 #define AI_METAB_RES_W 1.0f
 #endif
+/* Multiplicateur GLOBAL du revenu de recherche (IA + joueur) — fallback compilé du tunable
+ * AI_RESEARCH_INCOME_W. Relève le débit de savoir sans cheapener le coût : le boost est ANNULÉ
+ * sur les nœuds faustiens (coût ×W dans ai_effective_cost) ⇒ leur cadence reste baseline et la
+ * fenêtre des fins §27 tient. Calé 4.5 (arbre méd 28 %→~50 %). 1.0 = neutre (golden-safe). */
+#ifndef AI_RESEARCH_INCOME_W
+#define AI_RESEARCH_INCOME_W 4.5f
+#endif
 /* SAVOIR — fallbacks compilés (registre scps_tune_list.h) : la POP produit la recherche
  * (0.01·élite + 0.005·bourgeois + 0.001·journalier /an), la bibliothèque module en % (PER, plafond MAX). */
 #ifndef SAVOIR_W_ELITE
