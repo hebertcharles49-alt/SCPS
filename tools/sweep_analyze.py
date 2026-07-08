@@ -61,6 +61,26 @@ EX = [
     ("dilemmes_relig", re.compile(r"(\d+) religieux")),
     ("indep",          re.compile(r"→ (\d+) indépendance")),
     ("renversements",  re.compile(r"(\d+) RENVERSEMENT")),
+    # ── COMMERCE / ÉCONOMIE (deepdive 2) ──
+    ("pool_moy",       re.compile(r"puissance commerciale : pool moy (\d+\.?\d*)/mois")),
+    ("volume_marche",  re.compile(r"(\d+) volume tiré du marché")),
+    ("asym_aval",      re.compile(r"commerce asym\. : aval (\d+\.?\d*)")),
+    ("asym_amont",     re.compile(r"vs amont (\d+\.?\d*)")),
+    ("hubs_pct",       re.compile(r"hubs : (\d+)% du commerce mondial")),
+    ("prov_colonisees",re.compile(r"expansion : (\d+) prov colonisées")),
+    ("prov_transferees",re.compile(r"(\d+) prov TRANSFÉRÉES")),
+    ("alliances",      re.compile(r"diplomatie : (\d+) pacte\(s\) d'alliance")),
+    ("colon_fondations",re.compile(r"colonisation : (\d+) fondation")),
+    ("colon_survie",   re.compile(r"dont (\d+) de survie")),
+    ("peage_or",       re.compile(r"péage CUMULÉ (\d+) or")),
+    ("entropie",       re.compile(r"faustien : entropie monde (\d+)")),
+    ("conso_foreuse",  re.compile(r"conso foreuse (\d+)")),
+    ("conso_corne",    re.compile(r"corne (\d+)")),
+    ("esclaves_pool",  re.compile(r"(\d+) au pool des Centres")),
+    ("affranchis2",    re.compile(r"pool des Centres · (\d+) affranchissement")),
+    ("brassage_flux",  re.compile(r"brassage : (\d+) flux de pacte")),
+    ("interceptions",  re.compile(r"marine : \d+ marin\(s\) embarqués - (\d+) interception")),
+    ("debiteurs",      re.compile(r"dette : (\d+) débiteur")),
 ]
 
 def parse_log(path):
@@ -126,7 +146,11 @@ def main():
               "batailles","soulev_allumes","secessions","coups","morts_soulev","pillages_n",
               "pillage_pris","pillage_pct","ames_deportees","ames_serviles","raids","raids_or",
               "coques","routes_mer","hegemon_reg","stab_plancher","ipm","arbre_pct","metab_max",
-              "refugies_fuites","refugies_retours","recherche_n","dilemmes_w1","indep","renversements"]:
+              "refugies_fuites","refugies_retours","recherche_n","dilemmes_w1","indep","renversements",
+              "pool_moy","volume_marche","asym_aval","asym_amont","hubs_pct","prov_colonisees",
+              "prov_transferees","alliances","colon_fondations","colon_survie","peage_or","entropie",
+              "conso_foreuse","conso_corne","esclaves_pool","affranchis2","brassage_flux",
+              "interceptions","debiteurs"]:
         print(f"  {c:16s} {dist([r.get(c) for r in rows])}")
     print("\n── FINS §27 (type × an) ──")
     fins = {}
