@@ -622,6 +622,7 @@ ENDGAME_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_religion.
                      $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_readout.o $(OBJDIR)/scps_scps_lang.o \
                      $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_navy.o \
                      $(OBJDIR)/scps_scps_army.o $(OBJDIR)/scps_scps_campaign.o \
+                     $(OBJDIR)/scps_scps_demography.o $(OBJDIR)/scps_scps_modifier.o \
                      $(OBJDIR)/scps_scps_endgame.o $(OBJDIR)/scps_endgame_demo.o
 endgame_demo: $(ENDGAME_DEMO_OBJS)
 	$(CC) $(ENDGAME_DEMO_OBJS) -o $@ -lm

@@ -16,6 +16,8 @@
 #include "scps_tune.h"
 #include "scps_factions.h"   /* V1a — réactions des factions au tir (lot C) */
 #include "scps_math.h"       /* clampf partagé (endgame_heritage_metabolized) */
+#include "scps_demography.h" /* LOT F — migration_move/demography_dyn_id_next (l'EXODE, API PUBLIQUE
+                              * SEULEMENT : scps_demography.c appartient au lot G, on n'y touche pas) */
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>   /* getenv : diag de calibration (SCPS_ENTDIAG), OFF par défaut */
@@ -34,6 +36,9 @@ void endgame_init(EndgameState *eg) {
     eg->fin_year        = -1;
     eg->merv_country    = -1;
     eg->merv_site_reg   = -1;
+    endgame_exodus_reset();   /* LOT F — compteur télémétrie de l'exode : RAZ par sim (module-static,
+                               * pas de hook scps_sim.c propre à ce lot — endgame_init EST le point de
+                               * reset canonique du module, cf. demography_*_reset appelés ailleurs). */
 }
 
 /* ── C1 — élargir la source d'entropie (V1a : UNE BARRE, QUATRE NOURRITURES) ──
@@ -399,6 +404,170 @@ static void cold_step(EndgameState *eg, World *w, WorldEconomy *econ) {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * LOT F (2026-07-08) — L'EXODE AVANT LA MORT
+ * ──────────────────────────────────────────────────────────────────────────── *
+ * Constat joueur : chaque fin BAISSE l'habitabilité d'une région (EAU l'engloutit,
+ * FROID/RONCES effondrent son grain — biome_habitability, ci-dessus, RONCES vient
+ * d'y être branché) mais la pop MOURAIT SUR PLACE — aucun exode visible. Ici on
+ * route une PART de la pression vers la machinerie de RÉFUGIÉS déjà existante
+ * (scps_demography.h, migration_move/ARR_REFUGIE — API PUBLIQUE SEULEMENT, ce
+ * module appartient au lot G, on n'y touche jamais) : la pop FUIT vers la région
+ * voisine la MOINS touchée (habitable, owner≥0) plutôt que d'attendre le pire.
+ * `endgame_region_intensity` (LOT D, déjà là) est la même vérité que le lavis de
+ * carte — EAU (programmée/engloutie), FROID (rampe globale), RONCES (fraction de
+ * cellules corrompues), SANG (la marque) : un signal PARTAGÉ, pas un système neuf. */
+static long g_exodus_total = 0;
+void endgame_exodus_reset(void) { g_exodus_total = 0; }
+long endgame_exodus_count(void) { return g_exodus_total; }
+
+/* Voisine HABITABLE (adjacence éco, owner≥0) la MOINS touchée par LA MÊME fin ;
+ * -1 si personne n'est mieux loti (piégé — comme les réfugiés de guerre : « si
+ * possible »). Ne fuit JAMAIS vers une région PLUS touchée que la sienne. */
+static int endgame_flee_target(const EndgameState *eg, const World *w, const WorldEconomy *econ, int r) {
+    float my_i = endgame_region_intensity(eg, w, econ, r);
+    int best = -1; float best_i = my_i;
+    for (int o = 0; o < econ->n_regions && o < SCPS_MAX_REG; o++) {
+        if (o == r || !econ->adj[r][o]) continue;
+        if (econ->region[o].owner < 0) continue;
+        float oi = endgame_region_intensity(eg, w, econ, o);
+        if (oi < best_i) { best_i = oi; best = o; }
+    }
+    return best;
+}
+
+/* Évacue `frac` de CHAQUE groupe des provinces de la région `r` vers la province
+ * REPRÉSENTATIVE de `dst` (mode ARR_REFUGIE, home_reg=r — l'exode se souvient
+ * d'où il vient ; si ce foyer disparaît — englouti/ronces —, demography_refugee_tick
+ * ne ramène de toute façon jamais personne vers une région owner<0, donc aucun
+ * retour fantôme). Renvoie les âmes réellement évacuées (0 si rien de possible). */
+static long endgame_evacuate_region(WorldEconomy *econ, const World *w, int r, int dst, float frac) {
+    if (dst < 0 || dst >= econ->n_regions || r < 0 || r >= w->n_regions) return 0;
+    if (frac <= 0.f) return 0;
+    int drp = econ_region_rep_province(econ, dst);
+    if (drp < 0 || drp >= econ->n_prov) return 0;
+    ProvinceEconomy *dpe = &econ->prov[drp];
+    if (!dpe->colonized) return 0;
+    const Region *rg = &w->region[r];
+    long moved_tot = 0;
+    for (int k = 0; k < rg->n_provinces; k++) {
+        int pid = rg->province_ids[k];
+        if (pid < 0 || pid >= econ->n_prov || pid == drp) continue;
+        ProvinceEconomy *spe = &econ->prov[pid];
+        if (!spe->colonized || spe->pop.n_groups <= 0) continue;
+        /* à REBOURS : migration_move compacte n_groups (swap avec le dernier). */
+        for (int i = spe->pop.n_groups - 1; i >= 0; i--) {
+            PopGroup *g = &spe->pop.groups[i];
+            long amt = (long)((float)g->count * frac);
+            if (amt <= 0) continue;
+            SocialClass kl = g->klass;
+            if (migration_move(&spe->pop, &dpe->pop, i, amt, demography_dyn_id_next(), ARR_REFUGIE, r)) {
+                float take = fminf((float)amt, spe->strata[kl].pop);
+                spe->strata[kl].pop -= take;
+                dpe->strata[kl].pop += take;
+                moved_tot += amt;
+            }
+        }
+    }
+    if (moved_tot > 0) g_exodus_total += moved_tot;
+    return moved_tot;
+}
+
+/* Intensité de TOUTES les régions en UN SEUL passage — endgame_region_intensity
+ * (LOT D) recalcule tout DEPUIS ZÉRO à CHAQUE appel (un scan SCPS_N complet pour
+ * RONCES/FROID) ; l'appeler une fois par région ET par voisine (endgame_flee_
+ * target) chaque année ferait un O(n_régions² × SCPS_N) — le pas annuel de tout
+ * un continent. On calcule la MÊME vérité (cas par cas, vérifié identique) en un
+ * balayage AMORTI, puis l'exode compare des lectures O(1) dans ce tableau. */
+static void endgame_compute_all_intensities(const EndgameState *eg, const World *w,
+                                            const WorldEconomy *econ, float out[SCPS_MAX_REG]) {
+    int nr = econ->n_regions; if (nr > SCPS_MAX_REG) nr = SCPS_MAX_REG;
+    for (int r = 0; r < nr; r++) out[r] = 0.f;
+    switch (eg->fin) {
+        case FIN_EAU:
+            for (int r = 0; r < nr; r++) {
+                if (eg->sunken[r] == 2) out[r] = 1.0f;
+                else if (eg->sunken[r] == 1) out[r] = 0.6f;
+            }
+            for (int r = 0; r < nr; r++) {
+                if (out[r] > 0.f) continue;
+                for (int o = 0; o < nr; o++) if (eg->sunken[o] == 2 && econ->adj[r][o]) { out[r] = 0.3f; break; }
+            }
+            break;
+        case FIN_FROID: {
+            static double st[SCPS_MAX_REG]; static long n[SCPS_MAX_REG];
+            for (int r = 0; r < nr; r++) { st[r] = 0.0; n[r] = 0; }
+            for (int i = 0; i < SCPS_N; i++) {
+                const Cell *c = &w->cell[i];
+                if (c->height < SEA_LEVEL) continue;
+                int r = c->region; if (r < 0 || r >= nr) continue;
+                st[r] += (double)c->temperature; n[r]++;
+            }
+            for (int r = 0; r < nr; r++) {
+                float avg_t = (n[r] > 0) ? (float)(st[r] / (double)n[r]) : 0.5f;
+                float mod = 1.f + (0.5f - avg_t);
+                if (mod < 0.5f) mod = 0.5f;
+                if (mod > 1.5f) mod = 1.5f;
+                float v = eg->cold_offset * mod;
+                out[r] = (v > 1.f) ? 1.f : v;
+            }
+            break;
+        }
+        case FIN_RONCES: {
+            static int land[SCPS_MAX_REG], thn[SCPS_MAX_REG];
+            for (int r = 0; r < nr; r++) { land[r] = 0; thn[r] = 0; }
+            for (int i = 0; i < SCPS_N; i++) {
+                const Cell *c = &w->cell[i];
+                if (c->height < SEA_LEVEL) continue;
+                int r = c->region; if (r < 0 || r >= nr) continue;
+                land[r]++; if (c->biome == BIO_THORNS) thn[r]++;
+            }
+            for (int r = 0; r < nr; r++) out[r] = (land[r] > 0) ? (float)thn[r] / (float)land[r] : 0.f;
+            break;
+        }
+        case FIN_SANG:
+            for (int r = 0; r < nr; r++) out[r] = eg->sang_scar[r];
+            break;
+        default: break;
+    }
+}
+
+/* Voisine HABITABLE (adjacence éco, owner≥0) la MOINS touchée, lue dans le
+ * tableau PRÉCALCULÉ (endgame_compute_all_intensities) — le pendant O(1)
+ * d'endgame_flee_target pour la boucle annuelle sur TOUTES les régions. */
+static int endgame_flee_target_arr(const WorldEconomy *econ, const float inten[], int r) {
+    float best_i = inten[r]; int best = -1;
+    for (int o = 0; o < econ->n_regions && o < SCPS_MAX_REG; o++) {
+        if (o == r || !econ->adj[r][o]) continue;
+        if (econ->region[o].owner < 0) continue;
+        if (inten[o] < best_i) { best_i = inten[o]; best = o; }
+    }
+    return best;
+}
+
+/* Appelé UNE fois par an (après le carve/déroulement EAU/FROID/RONCES) : toute
+ * région dont l'intensité de fin dépasse EXODUS_INTENSITY_MIN évacue une fraction
+ * de sa pop vers la voisine la moins touchée. Silencieux si personne n'est mieux
+ * loti (le monde entier brûle également — nul refuge). SANG a SON propre appel
+ * (sang_step, plus bas — la marque est déjà une fraction DRAINÉE/an, on y route
+ * directement une part en fuite plutôt qu'un passage générique redondant). */
+#define EXODUS_INTENSITY_MIN 0.15f   /* calé bas : peu de runway entre le fire et la fin de sim */
+#define EXODUS_FRAC_PER_YEAR 0.10f   /* part de la pop d'une région en fuite, évacuée/an */
+static void endgame_exodus_step(EndgameState *eg, World *w, WorldEconomy *econ) {
+    if (!eg || !w || !econ || eg->fin == FIN_AUCUNE) return;
+    float minI = tune_f("EXODUS_INTENSITY_MIN", EXODUS_INTENSITY_MIN);
+    float frac = tune_f("EXODUS_FRAC_PER_YEAR", EXODUS_FRAC_PER_YEAR);
+    static float inten[SCPS_MAX_REG];
+    endgame_compute_all_intensities(eg, w, econ, inten);
+    for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
+        if (econ->region[r].owner < 0) continue;
+        if (inten[r] < minI) continue;
+        int dst = endgame_flee_target_arr(econ, inten, r);
+        if (dst < 0) continue;
+        endgame_evacuate_region(econ, w, r, dst, frac);
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * C5 — APOCALYPSE DES RONCES (flux) : BFS-CELLULES erratique
  * ──────────────────────────────────────────────────────────────────────────── */
 #define THORN_FLIP_FRAC 0.5f    /* ≥ 50 % des cellules de terre en ronces ⇒ la région tombe */
@@ -450,6 +619,13 @@ static void thorns_step(EndgameState *eg, World *w, WorldEconomy *econ, Campaign
     memcpy(eg->thorn_front, next, sizeof(int) * (size_t)nn);
     eg->thorn_front_n = nn;
     if (corrupted == 0) return;                                                /* rien corrompu : carte stable */
+
+    /* LOT F (2026-07-08) — LA MALADIE AVANT LA MORT : biome_habitability(BIO_THORNS)
+     * vient d'être branchée (quasi-nulle) ; econ_cold_refresh (déjà écrit pour C4,
+     * réutilisé TEL QUEL — même chaîne biome→habitabilité→grain) fait ÉMERGER la
+     * famine dans CHAQUE province touchée dès que ses cellules corrompent, des
+     * ANNÉES avant que la région n'atteigne le seuil de 50 % qui la fait tomber. */
+    econ_cold_refresh(econ, w);
 
     /* régions majoritairement ronces → TOMBENT (convertit + détache + strip éco partagé). */
     static int land[SCPS_MAX_REG], thn[SCPS_MAX_REG];
@@ -504,8 +680,9 @@ static void sang_seed(EndgameState *eg, const WorldEconomy *econ) {
  * même idiome que le reste de l'éco — jamais un accès direct à prov[]). */
 #define SANG_DRAIN_PER_YEAR 0.03f  /* fraction de pop drainée/an dans une région à marque=1 */
 #define SANG_POP_FLOOR      50.f   /* plancher : une région marquée ne descend jamais sous ça */
-static void sang_step(EndgameState *eg, WorldEconomy *econ) {
+static void sang_step(EndgameState *eg, World *w, WorldEconomy *econ) {
     float rate = tune_f("SANG_DRAIN_PER_YEAR", SANG_DRAIN_PER_YEAR);
+    float flee_frac = tune_f("SANG_FLEE_FRAC", 0.35f);
     for (int r = 0; r < econ->n_regions && r < SCPS_MAX_REG; r++) {
         float scar = eg->sang_scar[r];
         if (scar <= 0.f) continue;
@@ -516,6 +693,23 @@ static void sang_step(EndgameState *eg, WorldEconomy *econ) {
         float drain = tot * rate * scar;
         if (tot - drain < SANG_POP_FLOOR) drain = tot - SANG_POP_FLOOR;
         if (drain <= 0.f) continue;
+
+        /* LOT F — L'EXODE AVANT LA MORT : une PART de ce qui aurait péri FUIT vers
+         * la voisine la moins marquée au lieu de mourir sur place ; le reste
+         * (1-flee_frac) demeure une perte RÉELLE — la guerre tue aussi, tout le
+         * monde ne s'échappe pas (ratio mort/fuite tunable). */
+        int dst = endgame_flee_target(eg, w, econ, r);
+        if (getenv("SCPS_EXODIAG"))
+            fprintf(stderr, "[EXODIAG SANG] reg=%d scar=%.2f dst=%d tot=%.0f drain=%.0f\n", r, (double)scar, dst, (double)tot, (double)drain);
+        if (dst >= 0 && tot > 0.f) {
+            float want = drain * flee_frac;
+            long evac = endgame_evacuate_region(econ, w, r, dst, want / tot);
+            if (getenv("SCPS_EXODIAG"))
+                fprintf(stderr, "[EXODIAG SANG]   evac=%ld want=%.0f\n", evac, (double)want);
+            drain -= (float)evac;
+            if (drain < 0.f) drain = 0.f;
+        }
+
         for (int cl = 0; cl < CLASS_COUNT; cl++) {
             float share = (tot > 0.f) ? re->strata[cl].pop / tot : 0.f;
             float take = drain * share;
@@ -821,6 +1015,62 @@ void endgame_start_wonder(EndgameState *eg, int player, int capital_region) {
         faction_lever_apply(player, FAC_TRANSGRESSEUR, FAC_REACT_START);
 }
 
+/* ── LOT F (2026-07-08) — DISPATCH DU DÉFAUT (EAU/RONCES/FROID) ─────────────
+ * Constat mesuré (sweep 200 sims) : quand aucun transmuteur ne domine (mx<1.0 —
+ * le cas COURANT, TROUVAILLES « la chaîne morte des rares faustiens »), l'ancien
+ * sélecteur hashait `fauteur`/`epicentre` par DEUX multiplications XORées à
+ * faible diffusion — pour des paires CORRÉLÉES (l'épicentre EST quasi toujours
+ * la capitale du fauteur, cf. endgame_pick_fauteur : epi=f(fauteur) PAR
+ * CONSTRUCTION du monde) cette faible diffusion PENCHE : 97 GRAND HIVER · 29
+ * RONCES · 17 EAU mesurés (≈4:1 FROID:EAU). Fix : un mélange AVALANCHE complet
+ * (fin_mix32, 2 rounds fmix32-like — testé sur des paires corrélées, ≈33/33/33 %)
+ * sur (fauteur, épicentre, année, graine du monde), puis SÉLECTION PONDÉRÉE —
+ * poids modestes (±35 %, jamais dominants sur le hasard) qui PÈSENT selon l'état
+ * RÉEL du monde (température/humidité moyennes des terres) : un monde DÉJÀ froid
+ * pénalise FROID (pas de redondance — geler un monde déjà gelé n'ajoute rien de
+ * dramatique) et gonfle EAU/RONCES ; un monde ARIDE gonfle RONCES. */
+static uint32_t fin_mix32(uint32_t x) {
+    x ^= x >> 16; x *= 0x7FEB352Du;
+    x ^= x >> 15; x *= 0x846CA68Bu;
+    x ^= x >> 16;
+    return x;
+}
+
+/* Moyennes climat MONDE (terre seulement) — mesurées au FOYER (une fois, au fire),
+ * donc l'état RÉEL du monde (pas son génome figé). */
+static void world_avg_climate(const World *w, float *out_temp, float *out_moist) {
+    double st = 0.0, sm = 0.0; long n = 0;
+    for (int i = 0; i < SCPS_N; i++) {
+        const Cell *c = &w->cell[i];
+        if (c->height < SEA_LEVEL) continue;
+        st += (double)c->temperature; sm += (double)c->moisture; n++;
+    }
+    *out_temp  = (n > 0) ? (float)(st / (double)n) : 0.5f;
+    *out_moist = (n > 0) ? (float)(sm / (double)n) : 0.5f;
+}
+
+static FinType endgame_pick_default_fin(const World *w, int fauteur, int epi, int year) {
+    float t = 0.5f, m = 0.5f;
+    world_avg_climate(w, &t, &m);
+    float w_eau    = 1.0f;
+    float w_froid  = 1.0f + 0.7f * (t - 0.5f);   /* déjà froid → pèse moins (anti-redondance) */
+    float w_ronces = 1.0f + 0.7f * (0.5f - m);   /* déjà aride → pèse plus */
+    if (w_froid  < 0.3f) w_froid  = 0.3f;
+    if (w_ronces < 0.3f) w_ronces = 0.3f;
+    float total = w_eau + w_froid + w_ronces;
+
+    uint32_t seed = fin_mix32((uint32_t)(fauteur + 1) * 2654435761u)
+                  ^ fin_mix32((uint32_t)(epi + 1) * 0x9E3779B9u)
+                  ^ fin_mix32((uint32_t)year * 0x85EBCA6Bu ^ w->seed);
+    uint32_t h = fin_mix32(seed);
+    float roll = ((float)(h & 0xFFFFFFu) / (float)0x1000000) * total;
+
+    if (roll < w_eau) return FIN_EAU;
+    roll -= w_eau;
+    if (roll < w_ronces) return FIN_RONCES;
+    return FIN_FROID;
+}
+
 /* ── C2 — sélecteur + déclencheur (latch : un seul déclenchement) ──────────── */
 static void endgame_select_and_fire(EndgameState *eg, const World *w,
                                      WorldEconomy *econ, const WorldProsperity *wp,
@@ -888,6 +1138,12 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
         eg->fin   = FIN_SANG;
         eg->fired = true;
         sang_seed(eg, econ);
+        if (getenv("SCPS_EXODIAG")) {
+            int nmarked = 0; float sum = 0.f;
+            for (int r2 = 0; r2 < econ->n_regions && r2 < SCPS_MAX_REG; r2++)
+                if (eg->sang_scar[r2] > 0.f) { nmarked++; sum += eg->sang_scar[r2]; }
+            fprintf(stderr, "[EXODIAG] sang_seed : %d région(s) marquée(s), somme scar %.2f\n", nmarked, (double)sum);
+        }
         endgame_faction_react(FIN_SANG, eg->fauteur_country);
         return;
     }
@@ -897,16 +1153,16 @@ static void endgame_select_and_fire(EndgameState *eg, const World *w,
     int k = 0; double mx = wp->faust_consumed[0];
     for (int i = 1; i < 3; i++) if (wp->faust_consumed[i] > mx) { mx = wp->faust_consumed[i]; k = i; }
     if (mx < 1.0) {
-        /* Aucun transmuteur : le SAVOIR faustien seul a mené à la Brèche → la FORME
-         * de l'apocalypse suit la signature (déterministe) de l'empire fauteur, pour
-         * ne pas figer le monde sur une seule fin. */
-        uint32_t h = (uint32_t)((eg->fauteur_country + 1) * 2654435761u)
-                   ^ (uint32_t)((eg->epicenter_reg + 1) * 40503u);
-        k = (int)(h % 3u);
+        /* Aucun transmuteur (le cas COURANT) : le SAVOIR faustien seul a mené à la
+         * Brèche → la FORME de l'apocalypse suit le DISPATCH pondéré (LOT F,
+         * ci-dessus) — avalanche + poids diégétiques, ≤2:1 mesuré sur sweep. */
+        eg->fin   = endgame_pick_default_fin(w, eg->fauteur_country, eg->epicenter_reg, year);
+        eg->fired = true;
+    } else {
+        static const FinType MAP[3] = { FIN_EAU, FIN_RONCES, FIN_FROID };
+        eg->fin   = MAP[k];
+        eg->fired = true;
     }
-    static const FinType MAP[3] = { FIN_EAU, FIN_RONCES, FIN_FROID };
-    eg->fin   = MAP[k];
-    eg->fired = true;
     /* Amorçage de l'eau : trace le rift (le front de ronces C5 viendra ici aussi). */
     if (eg->fin == FIN_EAU && epi >= 0) cataclysm_water_seed(eg, w, econ);
     endgame_faction_react(eg->fin, eg->fauteur_country);
@@ -944,9 +1200,15 @@ void endgame_tick(EndgameState *eg, World *w, WorldEconomy *econ,
             case FIN_EAU:    cataclysm_water_step(eg, w, econ, camp); break;
             case FIN_FROID:  cold_step(eg, w, econ); break;
             case FIN_RONCES: thorns_step(eg, w, econ, camp); break;
-            case FIN_SANG:   sang_step(eg, econ); break;
+            case FIN_SANG:   sang_step(eg, w, econ); break;   /* route DÉJÀ une part en fuite (LOT F) */
             default: break;   /* ASCENSION : pas de carve (terre intacte) */
         }
+        /* LOT F — L'EXODE (générique) : EAU/FROID/RONCES routent une part de leur
+         * pression via la machinerie de réfugiés. SANG le fait déjà EN INTERNE
+         * (sang_step, ci-dessus — sa marque EST déjà un drain/an, on y greffe la
+         * fuite directement plutôt qu'un passage générique redondant). */
+        if (eg->fin == FIN_EAU || eg->fin == FIN_FROID || eg->fin == FIN_RONCES)
+            endgame_exodus_step(eg, w, econ);
     }
 
     /* C6 — la Merveille avance TOUJOURS (course ascension vs apocalypse) ; elle ne
@@ -972,11 +1234,28 @@ float endgame_region_intensity(const EndgameState *eg, const World *w,
                     if (eg->sunken[o] == 2 && econ->adj[region][o]) return 0.3f;
             return 0.f;
         }
-        case FIN_FROID:
-            /* rampe globale (cold_offset [0..1]), un rien modulée par la température
-             * locale (plus froid déjà ⇒ frappe plus fort en proportion — la région
-             * polaire visualise le grand hiver avant la tropicale). Dérivé, aucun état. */
-            return eg->cold_offset;
+        case FIN_FROID: {
+            /* rampe globale (cold_offset [0..1]) MODULÉE par la température locale
+             * (plus froid déjà ⇒ frappe plus fort en proportion — la région polaire
+             * visualise le grand hiver avant la tropicale). LOT F (2026-07-08) : le
+             * commentaire promettait cette modulation mais le code renvoyait
+             * `cold_offset` BRUT (IDENTIQUE sur TOUTES les régions) — un défaut qui
+             * cassait silencieusement l'EXODE (aucune région n'est jamais « moins
+             * touchée » qu'une autre si toutes portent la MÊME valeur). Scan direct
+             * (même motif que RONCES ci-dessous — la vérité du rendu de carte). */
+            double st = 0.0; long n = 0;
+            for (int i = 0; i < SCPS_N; i++) {
+                const Cell *c = &w->cell[i];
+                if (c->region != region || c->height < SEA_LEVEL) continue;
+                st += (double)c->temperature; n++;
+            }
+            float avg_t = (n > 0) ? (float)(st / (double)n) : 0.5f;
+            float mod = 1.f + (0.5f - avg_t);           /* déjà froid (avg_t bas) → mod > 1 */
+            if (mod < 0.5f) mod = 0.5f;
+            if (mod > 1.5f) mod = 1.5f;
+            float v = eg->cold_offset * mod;
+            return (v > 1.f) ? 1.f : v;
+        }
         case FIN_RONCES: {
             /* fraction de cellules BIO_THORNS de la région (scan direct — la même
              * vérité que le rendu de carte). */

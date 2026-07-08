@@ -513,6 +513,31 @@
      * décrue) atteint BLOOD_PLAYER_SHARE — sinon on retombe au sélecteur normal (rare
      * dominant/hash). Sans main humaine (chronique/viewer), la garde est INACTIVE. */ \
     X(BLOOD_PLAYER_SHARE,     0.25f) \
+    /* LOT F (2026-07-08) — L'EXODE AVANT LA MORT : EAU/FROID/RONCES/SANG routent une
+     * PART de leur pression (habitabilité effondrée / drain de guerre) vers la
+     * machinerie de réfugiés au lieu de tuer sur place. EXODUS_INTENSITY_MIN : la fin
+     * doit mordre franchement (endgame_region_intensity) avant qu'on fuie — calé BAS
+     * (mesuré : le gate temporel ENDGAME_YEAR_OPEN=180 laisse souvent peu de RUNWAY
+     * — une fin qui latche à l'an 217-246 n'a que 4-33 ans pour monter ; à 0.30 la
+     * plupart des fins n'auraient JAMAIS le temps de déclencher l'exode). EXODUS_
+     * FRAC_PER_YEAR : part de la pop d'une région en fuite, évacuée/an (EAU/FROID/
+     * RONCES). SANG_FLEE_FRAC : part du drain annuel de la marque SANG routée en
+     * fuite plutôt qu'au tombeau (le reste demeure une perte réelle — la guerre tue
+     * aussi, tout le monde ne s'échappe pas). */ \
+    X(EXODUS_INTENSITY_MIN,  0.15f) \
+    X(EXODUS_FRAC_PER_YEAR,  0.10f) \
+    X(SANG_FLEE_FRAC,        0.35f) \
+    /* LOT F — CATASTROPHES DU MONDE CALME : un monde SANS fin en vue (aucune fin
+     * latchée, entropie loin du seuil, passé un an-butoir) reçoit une pression accrue
+     * de catastrophes GÉO (quake/flood/drought/fire/plague, EVENTS[] existant — motif
+     * data-driven réutilisé, aucun système neuf) — motive l'IA à réagir (greniers/
+     * relocalisations) au lieu de sommeiller un siècle. CALM_DISASTER_YEAR : an-butoir
+     * (le monde a eu le temps de se stabiliser). CALM_DISASTER_ENTFRAC : fraction du
+     * seuil ENTROPY_FIN sous laquelle le monde est jugé « calme » (loin de toute fin).
+     * CALM_DISASTER_MULT : multiplicateur de fréquence des chocs (divise leur mtth). */ \
+    X(CALM_DISASTER_YEAR,   200.0f) \
+    X(CALM_DISASTER_ENTFRAC,  0.5f) \
+    X(CALM_DISASTER_MULT,     2.5f) \
     /* CORRECTIF Merveille (relecture joueur) : la métabolisation-VICTOIRE juge CHAQUE
      * héritage sur SA PROPRE diaspora (dénominateur par-héritage), pas la pop totale de
      * l'empire (piège : ce dernier dénominateur rend 6 cultures ≥0.35 simultanément

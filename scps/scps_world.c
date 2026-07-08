@@ -2439,6 +2439,15 @@ float biome_habitability(Biome B, float tmp, float height) {
         case BIO_SHALLOW:        hab_base=0.78f; break;
         case BIO_PLAINS:         hab_base=0.88f; break;
         case BIO_FARMLAND:       hab_base=0.95f; break;
+        /* LOT F (2026-07-08) : la bramble §27 RONCES était INVISIBLE à l'éco — sans
+         * ce cas, BIO_THORNS tombait dans le `default=0.55` (une habitabilité
+         * ORDINAIRE, meilleure que STEPPE !) et le front de ronces avançait des
+         * ANNÉES sans qu'aucune tuile ne perde de grain avant le flip 50% qui efface
+         * la région d'un coup. hab_base quasi-nul (terre maudite, pire que Désert)
+         * fait ÉMERGER la famine PROGRESSIVE via la même chaîne que le froid
+         * (biome_habitability → econ_cold_refresh, réutilisé par thorns_step) —
+         * « le front qui avance rend malade avant de tuer ». */
+        case BIO_THORNS:         hab_base=0.05f; break;
         default:                 hab_base=0.55f; break;
     }
     /* Confort thermique : [0.30..0.72] = confort total ; sous (froid) et au-dessus

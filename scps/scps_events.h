@@ -494,6 +494,10 @@ int   events_count_revolutionary(const World *w, const WorldProsperity *wp);
 long  events_marbrive_fired(void);
 long  events_pont_effondre_fired(void);
 
+/* LOT F (2026-07-08) — CATASTROPHES DU MONDE CALME : combien de chocs géo ont tiré
+ * alors que le monde était jugé CALME (aucune fin en vue). RAZ à events_init. */
+long  events_calm_shocks_fired(void);
+
 /* CONTENU W1 — télémétrie des six évènements neufs (même motif : RAZ à events_init,
  * PAS sérialisés — le câblage chronicle viendra après, côté orchestrateur). */
 long  events_cloches_fired(void);

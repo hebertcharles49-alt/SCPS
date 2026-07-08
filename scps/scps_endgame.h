@@ -167,4 +167,9 @@ void endgame_heritage_detail(const World *w, const WorldEconomy *econ, const Tec
 float endgame_region_intensity(const EndgameState *eg, const World *w,
                                const WorldEconomy *econ, int region);
 
+/* LOT F (2026-07-08) — L'EXODE AVANT LA MORT : télémétrie (RAZ par sim dans
+ * endgame_init, module-static, non sérialisée — comme demography_refugee_*). */
+void endgame_exodus_reset(void);
+long endgame_exodus_count(void);   /* âmes évacuées cumulées (EAU/FROID/RONCES/SANG) */
+
 #endif /* SCPS_ENDGAME_H */
