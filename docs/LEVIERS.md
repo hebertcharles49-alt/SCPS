@@ -89,6 +89,40 @@ avertit au reload). Sans surcharge = valeurs compilées = golden-safe.
 | `NEEDS_MET_TAU` | 0.5 | seuil de couverture (got ≥ τ) comptant une catégorie comme satisfaite |
 | `HAB_MALUS_K` | 0.20 | malus de terre rude sur prod ET croissance ((1−hab)·K ; exempte la région-siège) |
 
+## Consommation individuelle par classe (le panier de besoins)
+
+Table `NEED[CLASS][RES]` (`scps_econ.c`), **par 100 hab / tick mensuel** (×12/an). La nourriture
+(grain/poisson, interchangeables via `food_sat`) est annualisée (A2) et modulée par le tunable
+`FOOD_NEED`. Le reste (confort/statut) garde ses valeurs. ⚠ Table `const` compilée — le seul levier
+runtime est `FOOD_NEED` (nourriture) ; le reste demande une recompilation (ou un futur canal `SCPS_MODS`).
+
+| Bien | Journalier | Bourgeois | Élite | Esclave |
+|---|---|---|---|---|
+| **Grain** (nourriture) | 3.50 | 4.00 | 4.00 | 3.50 |
+| **Poisson** (nourriture, interchangeable) | 1.00 | — | — | — |
+| **Bois de feu** | 1.00 | — | — | — |
+| **Eau-de-vie / bière** | 0.35 | 0.30 | 0.28 | — |
+| **Tunique** (drap grossier) | 0.40 | — | — | — |
+| **Drap** (cloth) | — | 0.34 | — | — |
+| **Fourrure** | — | — | 0.12 | — |
+| **Papier** | — | 0.25 | 0.12 | — |
+| **Sel** | — | 0.20 | — | — |
+| **Remède** (santé urbaine) | — | 0.15 | — | — |
+| **Poterie** (confort) | 0.30 | 0.25 | — | — |
+| **Statuaire** (ornement/statut) | — | 0.12 | 0.18 | — |
+| **Orfèvrerie** (`PRECIOUS_WARE`, statut) | — | — | 0.13 | — |
+
+**Ordre de déblocage** (`NEED_ORDER`) — le nombre de besoins *comptés dans la satisfaction* croît
+avec le niveau de la capitale (∝ pop) : un bourg n'aspire qu'aux bases, une grande capitale à tout le
+panier (le luxe se **mérite**). Le palier STATUT vient toujours en dernier.
+- **Journalier** : grain → bière → poisson → bois de feu → tunique → poterie
+- **Bourgeois** : grain → sel → drap → remède → bière → papier → poterie → statuaire
+- **Élite** : grain → fourrure → papier → bière → orfèvrerie → statuaire
+- **Esclave** : grain **seul** (le plancher vital, toujours débloqué, aucun confort — §II.6/H)
+
+Notes : l'**outil** n'est PAS dans le panier (il ne touche que la productivité, jamais la
+satisfaction). Le seuil d'accession journalier→bourgeois = `PROMOTE_BASKET_MULT` **1.4×** le panier.
+
 ## Modificateurs provinciaux (le slot « MODIFICATEURS », entrée DÉMO)
 
 | Tunable | Défaut | Effet |
