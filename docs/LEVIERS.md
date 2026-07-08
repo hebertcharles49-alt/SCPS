@@ -17,6 +17,65 @@ avertit au reload). Sans surcharge = valeurs compilées = golden-safe.
 
 ---
 
+## Les coordonnées du moteur (le vocabulaire du modèle)
+
+Principe cardinal : **« on lit des coordonnées, on n'assigne jamais un modificateur plat »**. Les leviers
+(bâtiments, âges, événements, modificateurs provinciaux) poussent ces variables d'état ; le verdict
+(satisfaction, croissance, révolte, prospérité, fin §27) en **découle**. Les 8 deltas de bâtiment
+(`ProvBuild` : K_inst, H_coerc, P_open, PE_infra, food_cap, faith, savoir, port — cf. « Prix des
+bâtiments ») ne sont qu'UNE porte d'entrée. Les autres coordonnées :
+
+### Le cœur du modèle (par pays, `WorldProsperity`)
+| Coord. | Plage | Sens |
+|---|---|---|
+| **K** | — | capacité effective (tech + héritage + bâti) — ce qui métabolise la distance |
+| **L** | — | légitimité agrégée (l'ordre consenti) |
+| **C** | 0-10 | connectivité |
+| **P_potentiel / P_realise** | — | perméabilité (ce qui pourrait circuler / ce qui circule) |
+| **PE_interne / PE_externe** | — | prospérité émergente (**PE = D × P × C**, le cœur du papier) |
+| **SI** | 0-10 | stabilité interne |
+| **Lumiere** | — | lumière/savoir accumulé (nourrit l'Âge de la Raison/Lumières) |
+| **D̄_int / D∞_int** | — | distance culturelle interne (moyenne / max) sur les 4 axes |
+| valeurs · subsistance · parente · religion | — | les 4 **axes de culture** (moyennes) dont se déduit D |
+| rendement · tresor_tick · croissance_tick | — | les flux dérivés |
+
+### Les variables de CRISE
+| Coord. | Sens |
+|---|---|
+| **surchauffe** | `max(0, (P/10)·C + flux_faustien − K)` — l'ordre débordé par sa propre complexité |
+| **fragilite** [0-10] | part de l'ordre tenue par la seule contrainte (H, pas L) |
+| **fracture** | sécession latente : une province diverse **ET** non consentie |
+| **dereal** | déréalisation (§2.3 faustien) — lue par les Âges |
+
+### Faustien & entropie (§27)
+| Coord. | Sens |
+|---|---|
+| **entropy** | Σ des charges faustiennes régionales — la barre §27 (accumulateur monotone) |
+| **faust_consumed[3]** | conso cumulée des 3 rares (0 essence→EAU · 1 flux→RONCES · 2 fer céleste→FROID) |
+| entropy_terminal · entropy_epicenter | seuil franchi ? · région à l'entropie max (foyer des fins) |
+
+### Les leviers d'ÂGE (`age_*` — entrées globales que les 7 Âges déplacent)
+| Coord. | Âge | Effet |
+|---|---|---|
+| **age_C_bonus** | Commerce | + connectivité mondiale [0-5] |
+| **age_I_bonus** | Lumières | + Idées (I surgit) |
+| **age_lumiere_solvent** | Lumières | − L coercitive (∝ H) : la poigne se dissout |
+| **age_L_penalty** | Soulèvements | − L partout (contagion révolutionnaire) |
+| **age_H_bonus** | Ordre de Fer | + H (la poigne) |
+| **age_myth_homogen** | Ordre de Fer | − D̄ effectif (le mythe nie la diversité) |
+| **age_breach_flux** | Brèche | + flux faustien mondial → déréalisation |
+
+### L'état LOCAL (par province/région)
+| Coord. | Plage | Sens |
+|---|---|---|
+| **satisfaction** | 0-1 | fraction des besoins couverts au dernier tick |
+| **prosperity** | 0-10 | PIB/tête normalisé (gradient de migration) |
+| **coercion** | 0-1 | 0 = libre, 1 = état d'urgence |
+| **revolt_scar** | 0-1 | cicatrice de sac/révolte (nourrit la fuite des réfugiés) |
+| annex_scar · ferveur · reconstruction · estuary… | — | faveurs/plaies à état (cf. « Modificateurs provinciaux ») |
+
+---
+
 ## Économie — le robinet d'or (flux d'État)
 
 | Tunable | Défaut | Effet |
