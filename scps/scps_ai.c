@@ -2230,9 +2230,17 @@ float tech_diffusion_mult(TechId id){
     if (frac>1.f) frac=1.f;
     return 1.f - tune_f("AI_TECH_DIFFUSE_MAX",AI_TECH_DIFFUSE_MAX) * frac;
 }
-/* coût EFFECTIF d'une tech pour l'IA : géologie (√N) × biais d'éthos × remise de diffusion. */
+/* coût EFFECTIF d'une tech pour l'IA : géologie (√N) × biais d'éthos × remise de diffusion.
+ * DÉCOUPLAGE §27 (2026-07-08) : le boost de REVENU (AI_RESEARCH_INCOME_W) accélère l'arbre
+ * ×W, mais l'entropie mondiale = ENTROPY_TECH_W·Σ(charge des nœuds FAUSTIENS) — un arbre ×W
+ * over-chargerait la Brèche et effondrerait la fenêtre des fins §27 vers le gate an-180
+ * (MESURÉ). Contre-mesure : le coût des nœuds FAUSTIENS est ×W lui aussi → le boost de revenu
+ * s'y ANNULE, leur cadence d'acquisition reste ≈ baseline (charge §27 inchangée), l'arbre gonfle
+ * par les nœuds NON-faustiens (charge nulle). W=1 (défaut) ⇒ ×1 ⇒ golden-safe. */
 static float ai_effective_cost(TechId id, float nprov, Ethos eth){
-    return tech_cost(id, nprov) * ai_tech_cost_mult(eth, tech_node(id)) * tech_diffusion_mult(id);
+    float c = tech_cost(id, nprov) * ai_tech_cost_mult(eth, tech_node(id)) * tech_diffusion_mult(id);
+    if (tech_node(id)->faustian) c *= tune_f("AI_RESEARCH_INCOME_W", AI_RESEARCH_INCOME_W);
+    return c;
 }
 
 /* Le nœud à déverrouiller : score = BUTS (la fonction répond au besoin lu) +
@@ -2360,6 +2368,11 @@ void ai_research_step(AiActor *a, TechState *ts, const World *w,
      * l'expansion (wide) est récompensée (coût marginal < apport), sans snowball. */
     float income = (econ_country_savoir(econ, a->cid)/365.f)*AI_RESEARCH_CADENCE
                  * tech_research_yield(ts);
+    /* REVENU DE RECHERCHE (levier « 60 % de l'arbre », 2026-07-08) — relève le débit de savoir
+     * SANS cheapener le coût des nœuds : la charge faustienne (→ Brèche §27) reste au plein tarif,
+     * l'arbre gonfle par les nœuds NON-faustiens (charge nulle) ⇒ la fenêtre des fins §27 ne
+     * s'effondre pas vers le gate an-180 (contrairement à une coupe de coût, MESURÉ). 1.0 = neutre. */
+    income *= tune_f("AI_RESEARCH_INCOME_W", AI_RESEARCH_INCOME_W);
     /* MÉTABOLISATION (Temps 1) — un empire CREUSET (qui a digéré des âmes d'un autre
      * héritage) cherche plus vite : « incorporer d'autres gens dans sa culture fonctionne ».
      * Signal ~0 tôt (l'assimilation prend des décennies) ⇒ la fenêtre golden ne bouge pas. */
