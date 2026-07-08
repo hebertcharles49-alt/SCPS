@@ -71,6 +71,52 @@ avertit au reload). Sans surcharge = valeurs compilées = golden-safe.
 | `BUILD_RESERVE_BULK` | 15 | fond de trio (bois/pierre/argile) qu'une région garde avant d'exporter |
 | `HOUSE_MANUF` | 100 | logements bâtis par niveau de manufacture (le doublement Q6 : ½·cap → plein) |
 
+## Prix des bâtiments (édifices civils, `EDIFICES[]`)
+
+Chaque édifice a **une durée** (jours de chantier, 4 paliers : 180 j / 6 mois · 360 j / 12 mois · 540 j /
+18 mois · 960 j / 32 mois) et **une recette en matières** (le trio bois/pierre/argile, accumulable). L'**or
+payé** n'est PAS fixe : = Σ(quantité × prix de marché courant) × multiplicateurs géo/étendue
+(`agency_build_gold`). Recettes `const` compilées, arrondies au multiple de 5 (recompilation pour changer ;
+les durées ne bougent jamais — elles tiennent l'arc 250 ans).
+
+| Édifice | Durée | Bois | Pierre | Argile | Effet (delta) |
+|---|---|---|---|---|---|
+| **Sanctuaire** | 180 j | 10 | — | — | foi +1.0 (l'autel humble) |
+| Tribunal | 180 j | 20 | — | 10 | K_inst +1.0 |
+| Caravansérail | 180 j | 20 | — | 10 | P_open +0.7 |
+| Marché | 180 j | 20 | — | 10 | PE +1.0 |
+| Entrepôt | 180 j | 20 | — | 10 | PE +0.7 |
+| Comptoir | 180 j | 20 | — | 10 | PE +0.8 |
+| Grenier | 180 j | 20 | 5 | 10 | food_cap +1.0 |
+| Chancellerie | 360 j | 20 | 10 | 5 | K_inst +2.5 |
+| Garnison | 360 j | 20 | 10 | 5 | H_coerc +1.0 |
+| Port | 360 j | 25 | 10 | 10 | P_open +1.0 · port |
+| Irrigation | 360 j | 25 | 10 | 5 | food_cap +1.5 |
+| Bibliothèque | 360 j | 20 | 10 | 5 | savoir +1.5 |
+| Bibliothèque militaire | 360 j | 20 | 10 | 5 | savoir +1.2 · H +0.4 |
+| Observatoire | 360 j | 20 | 10 | 5 | savoir +1.5 · P +0.3 |
+| Forteresse | 540 j | 5 | 20 | 10 | H_coerc +3.0 |
+| Aqueduc | 540 j | 5 | 25 | 10 | food_cap +1.2 |
+| Temple | 540 j | 5 | 20 | 10 | foi +3.0 |
+| Monastère | 540 j | 5 | 15 | 10 | savoir +2.5 · foi +1.0 |
+| Banque | 540 j | 5 | 20 | 10 | PE +1.4 |
+| Arsenal | 540 j | 5 | 20 | 15 | port · H +1.2 |
+| Amirauté | 540 j | 5 | 20 | 10 | port · K +0.8 · H +0.4 |
+| Port marchand | 540 j | 5 | 15 | 10 | port · PE +1.5 |
+| Centre commercial | 540 j | 10 | 30 | 15 | PE +2.0 · P +0.5 (le hub mondial) |
+| **Académie** | 960 j | 10 | 20 | 10 | K_inst +4.0 · P +0.5 (le monument) |
+| **Citadelle** | 960 j | 5 | 20 | 15 | H_coerc +6.0 |
+| **Cathédrale** | 960 j | 10 | 40 | 20 | foi +6.5 (l'éclat de pierre) |
+
+Familles à paliers (le tier N exige le N−1 bâti) : Tribunal→Chancellerie→**Académie** ·
+Garnison→Forteresse→**Citadelle** · Sanctuaire→Temple→**Cathédrale** · Bibliothèque→Monastère ·
+Port→{Arsenal, Amirauté, Port marchand} (les forks maritimes). Un bâtiment de tier N exige aussi ≥1 **tech
+de tier N** (LOT T).
+
+**Manufactures** (BLD_*, distinctes des édifices) : pas de recette de matières — coût d'or
+`MANUF_BUILD_COST` (50) × tier × ipm. Leurs recettes de PRODUCTION (labor/sortie) sont dans `RECIPE[]`
+(moddable via `SCPS_MODS`).
+
 ## Population — capacité & genèse
 
 | Tunable | Défaut | Effet |
