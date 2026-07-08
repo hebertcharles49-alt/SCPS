@@ -2057,6 +2057,41 @@ Implement nothing in either delivery — only investigate, ask, and propose.
   morts = turbulence, pas la spirale). ⚠ **RE-BASELINE golden** (seeds 209/411 — la fuite 0.12 mord
   sur les graines belliqueuses qui saccagent < an-12 ; 7/108/310 INCHANGÉES) · determinism STABLE ·
   **SAVE non bumpé** (compteurs de télémétrie RAZ par sim, jamais sérialisés). Tunables registre J.
+- **ARBRE ×4.5 + FIN RÉCHAUFFEMENT (repli) (2026-07-08, SAVE v73→74, 2 agents worktree + merge)** :
+  deux chantiers moteur orchestrés en parallèle puis fusionnés, avec re-calibrage de leur INTERACTION.
+  **(1) PUSH DE L'ARBRE** (méd 28 %→~50 %) : le goulot mesuré n'était NI la sélection NI le plafond
+  d'accès mais le **revenu de recherche** — `AI_RESEARCH_INCOME_W` (neuf, 4.5) multiplie l'income de
+  `ai_research_step` (IA) + la voie joueur, réponse ~linéaire (W=1→29 % · 3→45 % · 4.5→50 % · 6→53 %).
+  **Découplage §27** : le coût des nœuds FAUSTIENS est ×W dans `ai_effective_cost` (+ miroir joueur) →
+  le boost s'y ANNULE, l'arbre gonfle par le non-faustien (charge nulle) → l'apocalypse n'est pas tirée
+  en avant. `ENTROPY_TECH_W` **1.35→0.20** (baseline-matching : l'arbre ×4.5 sinon franchit FIN vers
+  l'an 130). ⚠ borné à W=4.5 par un edge LATENT de `scps_province_market` (stock de province NÉGATIF au-
+  delà de W≈5 — data-dependent, PAS causé par le push ; un clamp membrane `≥0` débloquerait ~53 %,
+  laissé en Restes). **(2) FIN RÉCHAUFFEMENT (`FIN_CHAUD`)** — la fin de REPLI des mondes calmes (44/200
+  finissaient sans fin). Le **combustible RÉELLEMENT brûlé** (bois de feu servi au panier + charbon
+  consommé, cumulé par econ_tick, ∝ pop prospère, jamais un bonus plat) s'ACCUMULE (`endgame_fuel_ratio`,
+  mémoire décrue `FUEL_MEMORY_HL`, charbon ×3 `FUEL_COAL_W`). `chaud_step` (miroir de `cold_step`) : rampe
+  de température sur la bande tropicale (hyperthermie chaud+humide → habitabilité↓) + **SÉCHERESSE**
+  (`HEAT_DROUGHT` — sans elle un monde tempéré se réchauffe en jungle HABITABLE → 0 exode) + montée des
+  eaux passive (`SEA_RISE_CELLS_PER_YEAR`, tri à clé entière). ⚠ **DESIGN REPLI (demande joueur : « seconde
+  position, ne vole pas la fin prévue »)** : le combustible NE charge PLUS `wp->entropy` (première version
+  le poussait ⇒ RÉCHAUFFEMENT 48 % des fins, HIVER/RONCES/EAU rabotés de moitié — mesuré) ; FIN_CHAUD est
+  un DÉCLENCHEUR SÉPARÉ dans la branche « entropy < ENTROPY_FIN » (le monde serait sans fin) :
+  `if !fired && year >= ENDGAME_YEAR_OPEN+FUEL_FALLBACK_DELAY && fuel_ratio >= FUEL_FALLBACK_MIN → CHAUD`.
+  **DELAY=60** (repli à l'an 240) laisse les fins naturelles (180-240) sortir d'abord → par construction le
+  repli ne touche QUE les mondes restés sans fin. ⚠ PIÈGE écarté : un garde « stagnation » (pente d'entropie
+  an-1) était INOPÉRANT — `endgame_tick` est annuel (`day%365==364`) donc la « pente » comparait jour-à-jour
+  ≈0, toujours « stagnant » ; le DÉLAI est le vrai levier, pas un garde (retiré, KISS). Mesuré (20×2×250,
+  DELAY=60) : naturelles HIVER 11·RONCES 7·EAU 2 RESTAURÉES, RÉCHAUFFEMENT 14 (les sans-fin), sans-fin 6.
+  **SAVE 73→74** (CHAUD : cumuls combustible `WorldEconomy.fuel_*_cum` blob ECON + `EndgameState.fuel_*`
+  section EGAM ; le repli n'ajoute AUCUN champ — un 1er essai `prev_entropy`/v75 a été RETIRÉ avec le garde).
+  Membrane `RFIN_CHAUD` + chrome Godot (banner « L'Étuve du Monde », épilogue, border_art). ⚠ **RE-BASELINE
+  golden** (l'arbre ×4.5 mord dès l'an-12 : 108/209/411 bougent, 7/310 intacts ; CHAUD/repli est >an-180 →
+  n'entre pas dans le hash 12 ans) · determinism STABLE · savetest v74 byte-identique · test 39/39 (KO
+  Windows `setenv` seul) · 0 warning. Tunables registre J : `AI_RESEARCH_INCOME_W` 4.5 · `ENTROPY_TECH_W`
+  0.20 · `FUEL_FALLBACK_DELAY` 60 · `_MIN` 4 · `FUEL_COAL_W` 3 · `FUEL_MEMORY_HL` 60 · `HEAT_RAMP_PER_YEAR`
+  0.010 · `HEAT_DROUGHT` 0.6 · `SEA_RISE_CELLS_PER_YEAR` 140. Docs : `SWEEP_REVALID_2026-07-08.md`. RESTES :
+  arbre 50<60 (clamp stock négatif membrane) · EAU rare (foreuse morte 0/200 — curseur transmuteur).
 
 ## Disciplines non négociables
 
