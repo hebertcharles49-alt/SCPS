@@ -381,12 +381,13 @@ static const float ETHOS_LUXURY_NEED[CLASS_COUNT] = {
     [CLASS_ELITE]   = 0.18f,
 };
 /* Position TARDIVE (précaution anti-famine, cf. mission) : ne compte qu'à un tier de
- * capitale avancé — ETHOS_LUXURY_MIN_TIER=6 ⇒ active_needs=1+capitale_max_tier(pop)>=6
- * ⇒ tier>=5 (T5 « Cité », 5000 hab) — le MÊME seuil que la statuaire d'Élite (rang 5).
- * Hors panier (comfort_joy, cf. econ_tick) : de toute façon SANS pénalité si absent —
- * cette borne n'existe que pour ne pas générer de DEMANDE de marché avant que quiconque
- * n'ait de manufacture signature ni d'import (bootstrap propre). Dialable (registre J). */
-#define ETHOS_LUXURY_MIN_TIER 6
+ * capitale développé — ETHOS_LUXURY_MIN_TIER=4 ⇒ active_needs=1+capitale_max_tier(pop)>=4
+ * ⇒ tier>=3 (T3 « Bourg », 3000 hab), une capitale MOYENNE. Calibré (mesuré) : le désir
+ * MORD (6 ateliers posés abondamment, commerce culturel vivant) et la satisfaction MONTE
+ * (le luxe est un comfort_joy hors-panier). Hors panier : SANS pénalité si absent —
+ * cette borne évite juste une DEMANDE avant que quiconque ne produise/importe (bootstrap
+ * propre). Ce #define n'est que le repli de tune_f ; la vraie valeur vit au registre J. */
+#define ETHOS_LUXURY_MIN_TIER 4
 
 #define TAX_RATE     0.38f   /* RENTE d'élite — visée : équilibre de satisfaction ~60 % (re-dotée) */
 #define WAGE_SHARE   0.42f   /* salaires (laborers) — abaissé pour la rente ; profit bourgeois = 0.20 */

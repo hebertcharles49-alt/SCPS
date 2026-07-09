@@ -231,6 +231,14 @@
      * + −15 % de besoin de logement (densité tolérée) */ \
     X(COMFORT_JOY,            0.08f) \
     X(COMFORT_HOUSE_RELIEF,   0.15f) \
+    /* MANUFACTURES D'ÉTHOS (désir croisé) — le bien de luxe de l'éthos OPPOSÉ ne devient un
+     * besoin (Laborer+Élite) qu'à une capitale AVANCÉE : active_needs (=1+capitale_max_tier(pop))
+     * ≥ ce seuil. Calé à 4 (capitale MOYENNEMENT développée) : le désir MORD vraiment — les 6
+     * ateliers se posent abondamment (commerce culturel vivant) et la satisfaction MONTE (82 % vs
+     * 78 % à gate 6 : le luxe est un CONFORT hors-panier `comfort_joy`, servi = bonheur en plus,
+     * jamais d'affamage — mesuré). Un gate plus haut (6) laisse le système à moitié endormi ;
+     * plus bas (2-3) saturerait le monde d'ateliers de luxe trop tôt. */ \
+    X(ETHOS_LUXURY_MIN_TIER,  4.0f) \
     /* §spéculation (E3) — les bandes du stockeur IA */ \
     X(SPEC_BUY_BAND,          0.80f) \
     X(SPEC_SELL_BAND,         1.25f) \
