@@ -25,6 +25,10 @@ GODOT="${GODOT:-/e/JEUX/SCPS/Godot_v4.6.3-stable_win64.exe}"
 PROJECT="$ROOT/godot/project"
 DIST="$HERE/dist_godot"
 export TMP=/tmp TEMP=/tmp TMPDIR=/tmp PROCESSOR_ARCHITECTURE=AMD64
+# Godot lit les export templates dans %APPDATA%\Godot ; un shell MSYS2 login ne propage pas
+# toujours APPDATA → Godot chercherait un ./Godot LOCAL vide et l'export ÉCHOUERAIT
+# (« aucun modèle d'exportation trouvé »). On le restaure depuis cmd.exe si besoin.
+[ -z "${APPDATA:-}" ] && export APPDATA="$(cmd /c 'echo %APPDATA%' 2>/dev/null | tr -d '\r')"
 
 echo "→ 1/4  DLL du moteur (libscps, release)"
 ( cd "$ROOT/godot" && scons platform=windows use_mingw=yes target=template_release )
