@@ -923,6 +923,7 @@ void sim_day(Sim *s, World *w) {
         demography_migration_pact_tick(s->econ, s->dp, s->day);   /* BRASSAGE : échange passif de population entre alliés (annuel) */
         ai_slave_trade_year(w, s->econ, s->ai, s->ai_on); /* P4 : le pool des Centres se remplit (vente du surplus servile) */
         demography_refugee_tick(w, s->econ, s->dp);        /* BRASSAGE : la guerre fait FUIR, l'apaisement fait RESPIRER (annuel) */
+        fog_update(w, s->econ);   /* BROUILLARD DE GUERRE : connaissance des empires (radius 2, cumulative — étape 1/2, VISUEL seulement) */
         wild_cultural_tick(s, w);   /* HAMEAUX LIBRES (B4) : ralliement culturel des hameaux WILD au voisin */
         PROF(PB_PROSP, prosperity_tick(s->wp, w, s->econ, s->net, s->ts, s->wl));
         if (s->eg){
@@ -1008,6 +1009,7 @@ void sim_init(Sim *s, World *w) {
     ai_slave_buy_reset();  /* LOT G : compteur d'âmes rachetées au pool par l'IA (par sim) */
     religion_reset();     /* RELIGION : monde ATHÉE à chaque sim (sinon les foi FUITENT entre sims) */
     decrees_reset();      /* DÉCRETS : RAZ par sim (sinon un décret FUIT entre sims, comme la religion) */
+    fog_reset();           /* BROUILLARD DE GUERRE : connaissance des empires RAZ par sim */
     { int ne=0; for (int c=0;c<w->n_countries;c++){ int rl=w->country[c].role;
           if (rl==POLITY_PLAYER||rl==POLITY_ANTAGONIST) ne++; }
       religion_set_empire_ref(ne); }   /* plafond ⌈N/3⌉ ANCRÉ au compte d'empires de genèse */
@@ -1078,6 +1080,11 @@ void sim_init(Sim *s, World *w) {
     for (int r=0;r<SCPS_MAX_REG;r++)
         s->prev_owner_mo[r] = (r<s->econ->n_regions)? s->econ->region[r].owner : -1;
     events_init(s->ev, w, w->seed);
+    /* BROUILLARD DE GUERRE : la découverte « au 1er tick » n'est PAS un cas spécial
+     * an-0 — on appelle simplement la MÊME fog_update qu'au tick annuel, une fois de
+     * plus ici (genèse), pour que chaque empire connaisse déjà ses voisins à radius 2
+     * dès le jour 0 (sinon le joueur resterait aveugle une année entière). */
+    fog_update(w, s->econ);
     s->day=0; s->year=0;
 }
 

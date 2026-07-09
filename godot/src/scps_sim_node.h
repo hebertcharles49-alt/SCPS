@@ -11,6 +11,7 @@
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_color_array.hpp>   /* political_image(pal) */
+#include <godot_cpp/variant/packed_byte_array.hpp>     /* fog_region_mask() */
 
 extern "C" {
 #include "scps_api.h"
@@ -42,6 +43,8 @@ public:
     Ref<Image> map_image(int mode, int selected_prov);  /* render_map → Image RGBA8 (sel. surlignée) */
     Ref<Image> layer_image(int layer);  /* couche brute → Image L8 (shaders) */
     Ref<Image> political_image(PackedColorArray pal);   /* LAVIS : owner/cellule teinté par pal[pays] (RGBA, transparent hors territoire) */
+    Ref<Image> fog_image();               /* BROUILLARD (étape 1/2) : voile RGBA (encre estompée = voilé, transparent = visible) */
+    PackedByteArray fog_region_mask();    /* même connaissance, par RÉGION (0/1) — pour griser/cacher les acteurs overlay */
 
     /* nombres tangibles (membrane) */
     int     year() const;

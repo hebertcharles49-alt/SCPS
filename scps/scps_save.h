@@ -32,7 +32,16 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 74u           /* v74 : FIN_CHAUD (réchauffement §27, 2026-07-08) — le combustible
+#define SAVE_VERSION 75u           /* v75 : BROUILLARD DE GUERRE (étape 1/2, 2026-07-09) — nouvelle
+                                    * section FOGV (fog_save/load, motif WILD/DCRE) : known[SCPS_MAX_
+                                    * COUNTRY][SCPS_MAX_COUNTRY] (la connaissance CUMULATIVE qu'un
+                                    * empire a d'un autre, radius 2, découverte sur le terrain). Pas de
+                                    * struct existante agrandie ⇒ un save v74 est juste INCOMPLET pour
+                                    * v75 (refusé par le contrôle de version, comme toute ère
+                                    * antérieure). VISUEL seulement : rien dans la sim ne LIT encore
+                                    * cette connaissance (câblage IA/diplo = mission séparée) ⇒ golden/
+                                    * déterminisme intacts par construction. <v75 refusé.
+                                    * v74 : FIN_CHAUD (réchauffement §27, 2026-07-08) — le combustible
                                     * brûlé (bois de feu servi + charbon consommé) est un ACCUMULATEUR
                                     * inter-ticks : cumuls WorldEconomy.fuel_wood_cum/fuel_coal_cum
                                     * (blob ECON grandit) + EndgameState.fuel_seen_wood/fuel_seen_coal/

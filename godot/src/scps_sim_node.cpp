@@ -20,6 +20,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("map_image", "mode", "selected_prov"), &ScpsWorld::map_image, DEFVAL(-1));
     ClassDB::bind_method(D_METHOD("layer_image", "layer"),    &ScpsWorld::layer_image);
     ClassDB::bind_method(D_METHOD("political_image", "pal"),  &ScpsWorld::political_image);
+    ClassDB::bind_method(D_METHOD("fog_image"),                &ScpsWorld::fog_image);
+    ClassDB::bind_method(D_METHOD("fog_region_mask"),          &ScpsWorld::fog_region_mask);
     ClassDB::bind_method(D_METHOD("year"),                    &ScpsWorld::year);
     ClassDB::bind_method(D_METHOD("player"),                  &ScpsWorld::player);
     ClassDB::bind_method(D_METHOD("country_count"),           &ScpsWorld::country_count);
@@ -256,6 +258,41 @@ Ref<Image> ScpsWorld::political_image(PackedColorArray pal) {
         }
     }
     return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);
+}
+
+/* BROUILLARD DE GUERRE (étape 1/2 — le VOILE visuel, cf. scps_fog.h/scps_api.h) : la
+ * façade rend le masque par-CELLULE (motif political_image) — ici on le teinte d'une
+ * encre sépia sombre ESTOMPÉE (esprit parchemin, jamais du noir pur) sur les cellules
+ * voilées, transparent sur les visibles. Une simple Sprite plein-écran sans shader
+ * (composée directement, comme le lavis politique). */
+Ref<Image> ScpsWorld::fog_image() {
+    int w = scps_map_w(), h = scps_map_h();
+    PackedByteArray buf; buf.resize((int64_t)w * h * 4);
+    uint8_t *dst = buf.ptrw();
+    memset(dst, 0, (size_t)w * h * 4);
+    if (sim) {
+        std::vector<uint8_t> vis((size_t)w * h);
+        scps_fog_visible(sim, vis.data());
+        for (int64_t i = 0; i < (int64_t)w * h; i++) {
+            if (vis[(size_t)i]) continue;              /* visible : transparent, rien à peindre */
+            dst[i*4+0] = 26; dst[i*4+1] = 20; dst[i*4+2] = 15;   /* encre sépia sombre (#1a140f) */
+            dst[i*4+3] = 150;                                    /* estompé — PAS opaque */
+        }
+    }
+    return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);
+}
+/* même connaissance, grain RÉGION (motif map_state_tint : UNE passe, consommée en
+ * boucle) — pour que l'overlay grise/cache villes, armées et noms ennemis tombant
+ * dans le voile SANS ressonder l'image cellule par cellule pour chaque acteur.
+ * Dimensionné sur region_count() (PAS un cap moteur interne : SCPS_MAX_REG n'est
+ * jamais exposé à ce binding, motif region_owner/region_tier). */
+PackedByteArray ScpsWorld::fog_region_mask() {
+    PackedByteArray out;
+    int nr = sim ? scps_region_count(sim) : 0;
+    if (nr < 0) nr = 0;
+    out.resize(nr);
+    if (sim && nr > 0) scps_fog_region_mask(sim, out.ptrw());
+    return out;
 }
 
 int     ScpsWorld::year()          const { return scps_year(sim); }

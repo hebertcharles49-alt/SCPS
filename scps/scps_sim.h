@@ -46,6 +46,7 @@
 #include "scps_ai.h"
 #include "scps_heritage.h"
 #include "scps_decrees.h"
+#include "scps_fog.h"      /* BROUILLARD DE GUERRE : connaissance des empires (étape 1/2, VISUEL seulement) */
 #include <stdbool.h>
 #include <stdio.h>   /* FILE : sim_wild_save/load (section WILD du save partagé) */
 
