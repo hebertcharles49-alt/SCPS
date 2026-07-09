@@ -25,6 +25,7 @@
 #include "scps_world.h"     /* culture_make_name (ethnonyme façon Stellaris) */
 #include "scps_save.h"      /* SAUVEGARDE partagée : scps_save_game/load/slot_info */
 #include "scps_religion.h"  /* religion_reset (nouvelle partie) */
+#include "scps_fog.h"       /* BROUILLARD DE GUERRE : fog_visible_regions (le voile — étape 1/2) */
 #include "scps_math.h"      /* clampf (LOT J : scps_manumit_preview) */
 #include <stdlib.h>
 #include <string.h>
@@ -369,6 +370,34 @@ void scps_map_owner(ScpsSim *s, int16_t *out){
         const Cell *c = scps_cellc(s->w, x, y);
         out[y*SCPS_W+x] = (int16_t)((c->sea||c->lake) ? -1 : border_owner_of(s, c));
     }
+}
+
+/* BROUILLARD DE GUERRE (étape 1/2, VISUEL SEULEMENT — cf. scps_fog.h) : le masque par
+ * région est calculé UNE fois (fog_visible_regions, motif map_state_tint) puis recopié
+ * par cellule via c->region (motif scps_map_owner) — jamais l'inverse (une BFS par
+ * cellule serait absurde). human_player<0 (chronique/viewer sans joueur) : fog_visible_
+ * regions renvoie déjà « tout visible » — la cellule hors-région (mer, r<0) suit la même
+ * règle (jamais voilée : il n'y a rien à cacher sur l'eau/les bords). */
+void scps_fog_visible(ScpsSim *s, uint8_t *out){
+    if (!out) return;
+    if (!s || !s->ready){ memset(out, 1, (size_t)SCPS_W*SCPS_H); return; }
+    uint8_t rv[SCPS_MAX_REG];
+    fog_visible_regions(s->w, s->sim.econ, s->sim.human_player, rv);
+    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+        int r = scps_cellc(s->w, x, y)->region;
+        out[y*SCPS_W+x] = (r>=0 && r<SCPS_MAX_REG) ? rv[r] : 1;
+    }
+}
+/* ⚠ `out` doit pointer ≥ scps_region_count(s) octets — PAS SCPS_MAX_REG, ce
+ * plafond interne n'est jamais exposé à l'hôte (motif region_owner/region_tier :
+ * l'hôte dimensionne SES tampons sur scps_region_count, jamais sur un cap moteur). */
+void scps_fog_region_mask(ScpsSim *s, uint8_t *out){
+    if (!out) return;
+    if (!s || !s->ready) return;   /* rien à écrire : scps_region_count(s) vaut déjà 0 */
+    uint8_t rv[SCPS_MAX_REG];
+    fog_visible_regions(s->w, s->sim.econ, s->sim.human_player, rv);
+    int n = s->sim.econ->n_regions; if (n<0) n=0; if (n>SCPS_MAX_REG) n=SCPS_MAX_REG;
+    memcpy(out, rv, (size_t)n);
 }
 
 /* ---- PICKING & READOUTS (la membrane traverse le binding) ------------- */

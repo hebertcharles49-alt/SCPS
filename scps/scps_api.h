@@ -818,6 +818,20 @@ int scps_province_border_segments(ScpsSim *s, int prov, ScpsSegC *out, int max);
  * mer, terre vierge). `out` = SCPS_W×SCPS_H int16. Le front en teinte un wash de territoire. */
 void scps_map_owner(ScpsSim *s, int16_t *out);
 
+/* BROUILLARD DE GUERRE (étape 1/2 — le VOILE visuel du joueur ; aucune décision de
+ * simulation n'en dépend ici, cf. scps_fog.h). Régions visibles pour human_player
+ * MAINTENANT : {ses régions} ∪ {BFS radius 2} ∪ {tout empire CONNU, cumulatif}.
+ * human_player<0 (chronique/viewer sans joueur humain) ⇒ tout visible.
+ * `scps_fog_visible` : masque par CELLULE (out ≥ scps_map_w()×scps_map_h() octets,
+ * motif scps_map_owner) — 1=visible, 0=voilé ; pour un lavis d'encre estompé sur
+ * la carte.
+ * `scps_fog_region_mask` : même connaissance par RÉGION (out ≥ scps_region_count(s)
+ * octets — PAS un cap moteur interne, motif region_owner/region_tier ; calculé UNE
+ * fois, consommé en boucle) — pour griser/cacher les acteurs overlay (villes/
+ * armées/noms) sans re-sonder l'image cellule par cellule. */
+void scps_fog_visible(ScpsSim *s, uint8_t *out);
+void scps_fog_region_mask(ScpsSim *s, uint8_t *out);
+
 /* ROUTES TERRAIN-AWARE (port de viewer.c, en RÉSEAU à JONCTIONS) : A* sur la grille
  * (coût = relief + biome ; mer/lac contournés, fleuve = pont), reliant les régions des
  * routes commerciales TERRESTRES majeures. « Les routes attirent les routes » : une
