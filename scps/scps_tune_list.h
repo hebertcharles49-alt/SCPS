@@ -239,6 +239,11 @@
      * jamais d'affamage — mesuré). Un gate plus haut (6) laisse le système à moitié endormi ;
      * plus bas (2-3) saturerait le monde d'ateliers de luxe trop tôt. */ \
     X(ETHOS_LUXURY_MIN_TIER,  4.0f) \
+    /* ETHOS_LUXURY_WEIGHT — le POIDS du luxe d'éthos dans le panier (× BASE_PRICE·need). C'est
+     * le LEVIER : plus haut = le luxe non servi pèse plus lourd → satisfaction tombe plus au début
+     * (avant que le commerce culturel s'établisse), remonte plus une fois servi. 1.0 = poids nominal
+     * (~8 % du panier). Baisser pour adoucir la chute de démarrage, monter pour un levier plus mordant. */ \
+    X(ETHOS_LUXURY_WEIGHT,    1.0f) \
     /* §spéculation (E3) — les bandes du stockeur IA */ \
     X(SPEC_BUY_BAND,          0.80f) \
     X(SPEC_SELL_BAND,         1.25f) \

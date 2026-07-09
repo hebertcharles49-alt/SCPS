@@ -2875,21 +2875,29 @@ void econ_tick(WorldEconomy *e, float dt) {
                 if (r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK){ r_food_need+=need; r_food_got+=need*got; }
                 else                                            { r_soc_need +=need; r_soc_got +=need*got; }
             }
-            /* ── DÉSIR CROISÉ (manufactures signature d'éthos) : CONFORT-BONUS HORS PANIER,
-             * même motif que poterie/statuaire ci-dessus — Laborer+Élite SEULEMENT, gaté à
-             * la même position tardive (ETHOS_LUXURY_MIN_TIER). Le bien dépend de l'éthos
-             * DOMINANT de la province (re->culture.ethos) : un désir CONDITIONNEL (l'éthos
-             * opposé au producteur), pas un besoin universel — cf. ethos_desired_luxury. */
+            /* ── DÉSIR CROISÉ (manufactures signature d'éthos) : un VRAI BESOIN DU PANIER
+             * (demande joueur : « un levier réel sur la satisfaction, quitte à ce qu'elle tombe
+             * un peu en début de partie »). Contrairement à poterie/statuaire (confort-bonus
+             * hors-panier), le luxe de l'éthos OPPOSÉ PÈSE dans le panier (need_w/met_w) : NON
+             * servi ⇒ basket BAISSE ⇒ satisfaction TOMBE (au début, quand personne ne le produit
+             * ni ne l'importe) ; SERVI ⇒ elle remonte. C'est le LEVIER : la pression qui pousse à
+             * produire/commercer le luxe. Laborer+Élite, gaté position tardive (MIN_TIER), bien
+             * conditionnel à l'éthos DOMINANT de la province (ethos_desired_luxury). Poids MODÉRÉ
+             * (BASE_PRICE·need — comme la statuaire, ~8 % du panier) pour « un peu », pas un choc. */
             if ((c==CLASS_LABORER || c==CLASS_ELITE) && active_needs>=(int)tune_f("ETHOS_LUXURY_MIN_TIER",ETHOS_LUXURY_MIN_TIER)){
                 Resource desired = ethos_desired_luxury(re->culture.ethos);
                 float need = ETHOS_LUXURY_NEED[c]*units;
                 if (desired!=RES_NONE && need>0.f){
+                    float w = BASE_PRICE[desired]*need*tune_f("ETHOS_LUXURY_WEIGHT",1.0f);  /* le luxe PÈSE dans le panier */
+                    need_w += w;
                     float can_stock=clampf(S[desired]/(need+EPS),0.f,1.f);
                     float cost=need*can_stock*re->price[desired];
                     float can_buy=(cost>0.f)?clampf(budget/cost,0.f,1.f):1.f;
                     float got=can_stock*can_buy;
                     S[desired]-=need*got; budget-=need*got*re->price[desired];
-                    comfort_joy += tune_f("ETHOS_LUXURY_JOY",0.08f) * got;   /* luxe étranger SERVI → bonheur */
+                    met_w += w*got;                                    /* servi → couvert ; absent → pénalité (need_w monté, met_w non) */
+                    nbasket++; if (got>=tau) nsat++;                   /* une catégorie de panier de plus */
+                    r_soc_need += need; r_soc_got += need*got;         /* c'est un besoin SOCIAL (confort de statut) */
                 }
             }
             re->strata[c].wealth=fmaxf(0.f,budget);
