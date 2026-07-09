@@ -192,6 +192,20 @@ const WASH_A_FAR  := 0.72  ## aplat politique au plan large (EU4 : on lit un atl
 const WASH_A_NEAR := 0.06  ## ... au plan rapproché (KCD : le parchemin terrain reprend tout)
 const WASH_FADE_LO := 1.8  ## zoom où l'aplat commence à céder
 const WASH_FADE_HI := 4.5  ## zoom où le terrain a (presque) tout repris
+# ── BROUILLARD DE GUERRE (étape 1/2, VISUEL SEULEMENT — aucune décision de sim n'en
+# dépend côté moteur) : un voile d'encre sombre ESTOMPÉ (jamais noir pur, esprit
+# parchemin) sur ce que le joueur ne connaît pas encore ; grain RÉGION (_fog_mask,
+# 0/1) pour griser/cacher villes, armées et noms ENNEMIS tombant dans le voile — les
+# tiens (owner==player) restent TOUJOURS visibles. Rebâti à la MÊME cadence que le
+# lavis politique (_rebuild_borders) : la connaissance ne peut changer que si la
+# souveraineté a bougé (_owner_signature couvre déjà ce cas). ──
+var _fog_tex: ImageTexture = null
+var _fog_mask: PackedByteArray = PackedByteArray()   ## région → 0 voilée / 1 visible (vide = pas encore bâti → fail-open)
+## VRAI si la région `r` est visible (fail-open tant que _fog_mask n'a pas encore été bâti).
+func _fog_visible_region(r: int) -> bool:
+	if _fog_mask.is_empty() or r < 0 or r >= _fog_mask.size():
+		return true
+	return _fog_mask[r] != 0
 # ── SÉLECTION : contour DORÉ de la province choisie (le grain de panneau, charte EU4) ──
 var _sel_prov_cache := -2
 var _sel_segs := PackedVector2Array()
@@ -670,6 +684,19 @@ func _rebuild_borders() -> void:
 				_pol_tex = ImageTexture.create_from_image(pimg)
 			else:
 				_pol_tex.update(pimg)
+	# BROUILLARD DE GUERRE (etape 1/2) : meme cadence que le lavis politique - la
+	# connaissance ne peut changer que si la souverainete a bouge (fog_update est
+	# annuel, pure fonction d'econ->adj + ownership, tous deux couverts par
+	# _owner_signature ci-dessus).
+	if w.has_method("fog_image"):
+		var fimg: Image = w.fog_image()
+		if fimg != null:
+			if _fog_tex == null or _fog_tex.get_size() != Vector2(fimg.get_size()):
+				_fog_tex = ImageTexture.create_from_image(fimg)
+			else:
+				_fog_tex.update(fimg)
+	if w.has_method("fog_region_mask"):
+		_fog_mask = w.fog_region_mask()
 	_sel_prov_cache = -2                                 # la géographie/souveraineté a bougé → recache la sélection
 	_owner_sig = _owner_signature(w)
 	_borders_dirty = false
@@ -1549,6 +1576,7 @@ func _draw_iso(w, mv: Node2D) -> void:
 	var vt := get_viewport_transform()
 	var vp := get_viewport_rect().size
 	var INK := Color(0.20, 0.14, 0.09, 0.95)         # encre brun-sépia (le trait de plume)
+	var human_idx := int(w.player())   # BROUILLARD : les tiens (owner==human_idx) restent TOUJOURS visibles
 
 	# ── LAVIS POLITIQUE (aquarelle) : le territoire teinté SOUS tout — la carte DIT qui tient
 	#    quoi d'un regard au plan large ; le lavis s'efface vers le zoom profond (le terrain parle). ──
@@ -1746,6 +1774,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 			# fantômes sur la terre vide ; cité-état (2) & hameau libre (4) toujours tracés.
 			if (tier < 0 or owner < 0 or int(w.region_pop(r)) < 150) and role != 2 and role != 4:
 				continue
+			# BROUILLARD DE GUERRE (étape 1/2) : un bourg ENNEMI tombant dans le voile ne se
+			# dessine pas — les tiens (owner==human_idx) restent TOUJOURS visibles.
+			if owner != human_idx and not _fog_visible_region(r):
+				continue
 			var ctr: Vector2 = _region_seat.get(r, w.region_centroid(r))
 			if ctr.x < 0:
 				continue
@@ -1772,6 +1804,10 @@ func _draw_iso(w, mv: Node2D) -> void:
 			continue
 		var reg: int = a.get("region", -1)
 		if reg < 0:
+			continue
+		# BROUILLARD DE GUERRE (étape 1/2) : une armée ENNEMIE tombant dans le voile ne se
+		# dessine pas — les tiennes (c==human_idx) restent TOUJOURS visibles.
+		if c != human_idx and not _fog_visible_region(reg):
 			continue
 		var rctr: Vector2 = w.region_centroid(reg)
 		if rctr.x < 0:
@@ -1816,6 +1852,11 @@ func _draw_iso(w, mv: Node2D) -> void:
 		var ps := PackedVector2Array()
 		for r in range(w.region_count()):
 			if w.region_owner(r) == c:
+				# BROUILLARD DE GUERRE (étape 1/2) : une région ENNEMIE voilée n'entre pas dans
+				# l'ancre — un pays SANS aucune région visible ne pose plus aucun nom du tout
+				# (ps reste vide → le "continue" existant juste dessous s'en charge).
+				if c != human_idx and not _fog_visible_region(r):
+					continue
 				var rc: Vector2 = w.region_centroid(r)
 				if rc.x >= 0:
 					ps.push_back(mv.iso_pos(rc.x, rc.y))
@@ -1902,6 +1943,14 @@ func _draw_iso(w, mv: Node2D) -> void:
 				var rad := (base_rad + k * 6.0 + fmod(t * 5.0, 6.0)) / zoom
 				# §27 : l'anneau d'épicentre DOIT se lire au plan large (drame global) ; trait borné, le rayon de pulse reste /zoom.
 				draw_arc(ec, rad, 0.0, TAU, 40, Color(col, 0.7 - k * 0.18), _w(zoom, 0.35, 1.2, 2.4), true)
+
+	# ── BROUILLARD DE GUERRE (étape 1/2) : le VOILE — AU-DESSUS de tout (terrain, routes,
+	#    villes, armées, noms, épicentre) pour qu'il obscurcisse vraiment ce qu'il couvre.
+	#    Encre estompée (esprit parchemin, jamais noir pur) — cf. fog_image() (scps_sim_node). ──
+	if not nature_mode and _fog_tex != null:
+		var fp0: Vector2 = mv.iso_pos(0, 0)
+		var fp1: Vector2 = mv.iso_pos(w.map_w(), w.map_h())
+		draw_texture_rect(_fog_tex, Rect2(fp0, fp1 - fp0), false)
 
 ## ── LE BOURG (lot U) : la ville est une VIGNETTE (pack bourgs/) — voir le bloc BOURG_* en
 ## tête de fichier. Il ne reste ici que l'ENCRE partagée (ponts/quais/barque, les seuls
