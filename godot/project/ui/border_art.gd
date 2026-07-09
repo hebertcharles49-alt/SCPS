@@ -8,6 +8,7 @@ extends NinePatchRect
 
 const DIR := "res://art/borders/"
 const MARGIN := 256
+const Frame = preload("res://ui/frame.gd")   # borde la ZONE DE CARTE (pas l'écran entier)
 
 ## age_state["age"] : -1 = l'aube du règne, 0..6 = AgeId (Commerce → Ordre de Fer)
 const AGE_KEYS := ["commerce", "raison", "empires", "breche", "lumieres", "soulevements", "ordrefer"]
@@ -18,9 +19,12 @@ var _cache := {}          ## clé → Texture2D (chargée à la demande)
 var _cur := ""            ## clé affichée (évite de recharger chaque tick)
 
 func _ready() -> void:
-	# ancres ET offsets à 0 → le cadre REMPLIT l'écran (set_anchors_preset seul laissait
-	# les offsets → un petit cadre bloqué en haut-gauche). Suit le redimensionnement.
+	# Le cadre borde la ZONE DE CARTE, pas l'écran : ancré aux 4 bords, puis rentré sous la
+	# topbar, à droite du rail et au-dessus de la barre du bas. Suit le redimensionnement.
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	offset_top = Frame.TOPBAR_H
+	offset_left = Frame.SIDEBAR_W
+	offset_bottom = -Frame.BOTTOMBAR_H
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	patch_margin_left = MARGIN
 	patch_margin_top = MARGIN

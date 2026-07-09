@@ -18,6 +18,35 @@ static func _box(bg: Color, border: Color, bw: int = 1, shift_down := false) -> 
 	sb.content_margin_bottom = 5.0 - (2.0 if shift_down else 0.0)
 	return sb
 
+## MÊME géométrie 9-slice que `ref` (région + marges) mais la TEXTURE de `piece` : les états de
+## bouton (survol/appui/désactivé) ne changent que d'APPARENCE, JAMAIS de découpage — fini le
+## saut au survol. Repli sur `ref` si l'asset manque. (Les cellules 01-04 = même bouton, 4 teintes.)
+static func _band_like(ref: StyleBox, piece: String, scale: float) -> StyleBox:
+	if not (ref is StyleBoxTexture):
+		return ref
+	var UIKit := preload("res://ui/uikit.gd")
+	var img := UIKit.load_img(UIKit.PARCH + piece + ".png")
+	if img == null:
+		return ref
+	if img.get_format() != Image.FORMAT_RGBA8:
+		img.convert(Image.FORMAT_RGBA8)
+	if scale != 1.0:
+		img.resize(int(img.get_width() * scale), int(img.get_height() * scale), Image.INTERPOLATE_LANCZOS)
+	img.generate_mipmaps()
+	var r: StyleBoxTexture = ref
+	var st := StyleBoxTexture.new()
+	st.texture = ImageTexture.create_from_image(img)
+	st.region_rect = r.region_rect
+	st.texture_margin_left = r.texture_margin_left
+	st.texture_margin_right = r.texture_margin_right
+	st.texture_margin_top = r.texture_margin_top
+	st.texture_margin_bottom = r.texture_margin_bottom
+	st.content_margin_left = r.content_margin_left
+	st.content_margin_right = r.content_margin_right
+	st.content_margin_top = r.content_margin_top
+	st.content_margin_bottom = r.content_margin_bottom
+	return st
+
 static func build() -> Theme:
 	var th := Theme.new()
 	# POLICE DE BASE : Alegreya Sans (humaniste, calligraphique mais lisible) — toute
@@ -31,10 +60,12 @@ static func build() -> Theme:
 	#    PARCHEMIN (planche 2 : cuir/or, survol clair, pressé sombre, gris fané) en
 	#    9-slice quand elles sont là ; repli = les StyleBoxFlat.
 	var UIKit := preload("res://ui/uikit.gd")
+	# NORMAL mesure la bande 9-slice ; les 3 autres CLONENT sa géométrie (même région + marges)
+	# avec leur propre texture → le bouton ne SAUTE plus au survol/appui (§correctif découpage).
 	var normal: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_01", 7, 12.0, 5.0, 0.5)
-	var hover: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_02", 7, 12.0, 5.0, 0.5)
-	var press: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_03", 7, 12.0, 5.0, 0.5)
-	var disab: StyleBox = UIKit.parch_band_box("sheet02_buttons_controls_04", 7, 12.0, 5.0, 0.5)
+	var hover: StyleBox = _band_like(normal, "sheet02_buttons_controls_02", 0.5)
+	var press: StyleBox = _band_like(normal, "sheet02_buttons_controls_03", 0.5)
+	var disab: StyleBox = _band_like(normal, "sheet02_buttons_controls_04", 0.5)
 	if normal == null or hover == null or press == null or disab == null:
 		normal = _box(Color(0.23, 0.19, 0.14), Color(0.42, 0.35, 0.24))
 		hover = _box(Color(0.32, 0.27, 0.19), Color(0.68, 0.56, 0.34))

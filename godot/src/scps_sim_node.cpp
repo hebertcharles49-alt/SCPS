@@ -275,8 +275,8 @@ Ref<Image> ScpsWorld::fog_image() {
         scps_fog_visible(sim, vis.data());
         for (int64_t i = 0; i < (int64_t)w * h; i++) {
             if (vis[(size_t)i]) continue;              /* visible : transparent, rien à peindre */
-            dst[i*4+0] = 26; dst[i*4+1] = 20; dst[i*4+2] = 15;   /* encre sépia sombre (#1a140f) */
-            dst[i*4+3] = 150;                                    /* estompé — PAS opaque */
+            dst[i*4+0] = 24; dst[i*4+1] = 19; dst[i*4+2] = 14;   /* encre sépia sombre (#18130e) */
+            dst[i*4+3] = 236;                                    /* OPAQUE : un vrai fog cache le terrain (on ne voit plus à travers) */
         }
     }
     return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);

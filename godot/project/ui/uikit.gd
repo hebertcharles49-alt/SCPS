@@ -872,10 +872,28 @@ static func draw_icon(ci: CanvasItem, name: String, pos: Vector2, sizepx: float,
 		ci.draw_texture_rect(t, Rect2(pos, Vector2(sizepx, sizepx)), false, mod)
 
 ## dessine une pièce de chrome étirée dans `rect`. No-op si absente.
+static var _chrome_sb := {}
 static func draw_chrome(ci: CanvasItem, name: String, rect: Rect2, mod: Color = Color.WHITE) -> void:
-	var t := chrome(name)
-	if t != null:
-		ci.draw_texture_rect(t, rect, false, mod)
+	# 9-SLICE au lieu d'un ÉTIREMENT pur (draw_texture_rect déformait la texture « à l'infini »
+	# sur les grands panneaux) : coins & bords NETS, seul le centre s'étire. StyleBoxTexture
+	# caché par nom (pas d'allocation par frame ; le modulate est posé juste avant chaque dessin).
+	if not _chrome_sb.has(name):
+		var t := chrome(name)
+		if t == null:
+			_chrome_sb[name] = null
+		else:
+			var m: float = minf(t.get_size().x, t.get_size().y) * 0.33
+			var sb := StyleBoxTexture.new()
+			sb.texture = t
+			sb.texture_margin_left = m
+			sb.texture_margin_right = m
+			sb.texture_margin_top = m
+			sb.texture_margin_bottom = m
+			_chrome_sb[name] = sb
+	var sb2 = _chrome_sb[name]
+	if sb2 != null:
+		sb2.modulate_color = mod
+		ci.draw_style_box(sb2, rect)
 
 ## JAUGE TEXTURÉE : cadre vide + remplissage (région clippée à `value` 0-100).
 ## La couleur du remplissage suit le sens : vert (haut) · or (moyen) · rouge (bas).

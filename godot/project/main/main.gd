@@ -387,12 +387,13 @@ func _setup_cursor() -> void:
 	if used.size.x < 4:
 		return
 	img = img.get_region(used)
-	img.rotate_180()
 	var h := 38
 	var wpx := int(round(float(img.get_width()) * float(h) / float(img.get_height())))
 	img.resize(wpx, h, Image.INTERPOLATE_LANCZOS)
+	# la plume garde son sens NATUREL (barbes en haut-gauche, bec en bas-droite) ; le HOTSPOT
+	# est au BEC — la pointe qui écrit —, pas aux barbes : « la tige pointe », pas le bout.
 	Input.set_custom_mouse_cursor(ImageTexture.create_from_image(img),
-		Input.CURSOR_ARROW, Vector2(2, 2))
+		Input.CURSOR_ARROW, Vector2(wpx - 3, h - 3))
 
 ## désélection PLEINE : panneaux de sélection refermés + le contour doré s'éteint.
 func _clear_selection() -> void:
