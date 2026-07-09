@@ -48,6 +48,7 @@ func _ready() -> void:
 	_music = _make_player(BUS_AMB)   # la musique de menu route sur Ambiance (le bus de fond)
 	_load_volumes()
 	Sim.ticked.connect(_on_tick)
+	Sim.month_ticked.connect(_on_month)   # UN tock sonore par MOIS simulé (pas par seconde réelle)
 	Sim.generated.connect(_on_generated)
 
 
@@ -178,12 +179,7 @@ func _on_tick(year: int) -> void:
 	if not Sim.game_on:
 		_last_year = year
 		return   # le monde-vitrine du menu ne sonne pas
-	# — LE TOCK (rate-limité) : le month-tick à CHAQUE tock (pas de year-tick distinct) —
-	var now := Time.get_ticks_msec()
-	if now - _last_tick_ms >= TICK_MIN_MS:
-		_last_tick_ms = now
-		play("ui_tick")
-	_last_year = year
+	_last_year = year   # le TOCK sonore est passé sur month_ticked (_on_month) : un par MOIS
 	var w = Sim.world
 	if w == null:
 		return
@@ -204,6 +200,13 @@ func _on_tick(year: int) -> void:
 			play("tech_notif")
 		_last_research_target = rt
 		_last_research_prog = float(rs.get("progress", 0.0))
+
+
+## LE TOCK sonore : UN « clic » par MOIS simulé (le mois est l'unité du joueur), pas un son par
+## seconde réelle. Muet au menu (le monde-vitrine ne sonne pas).
+func _on_month(_year: int) -> void:
+	if Sim.game_on:
+		play("ui_tick")
 
 
 ## ── VOLUMES (options) ────────────────────────────────────────────────────────
