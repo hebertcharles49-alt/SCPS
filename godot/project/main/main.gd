@@ -287,6 +287,13 @@ func _ready() -> void:
 	event_dialog.name = "EventDialog"
 	ui.add_child(event_dialog)
 
+	# RETOUR JOUEUR : bouton « Signaler un bug » (toujours visible en jeu) + détection de
+	# crash au redémarrage + export LOCAL d'un rapport (remarque · log · screenshot ·
+	# contexte). CanvasLayer propre à la RACINE (layer 80, au-dessus de tout, menu compris).
+	var feedback = load("res://ui/feedback.gd").new()
+	feedback.name = "Feedback"
+	add_child(feedback)
+
 	# ⚠ THÈME : la propagation s'arrête au CanvasLayer (ni Control ni Window) — le thème
 	# de la fenêtre n'atteint JAMAIS les panneaux de la couche UI tout seul. On le pose
 	# donc sur CHAQUE Control de premier niveau (leurs enfants en héritent normalement).

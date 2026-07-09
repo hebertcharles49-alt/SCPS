@@ -32,6 +32,7 @@ var day_count := 0              ## jours simulés CETTE SESSION (display-only : 
                                 ## routes & co à grain fin — seuls les DELTAS comptent)
 var game_on := false            ## la PARTIE a commencé (Lancer/Charger) — avant : le monde de
                                 ## fond tourne en vitrine, alertes & popups restent muets
+var current_seed := SEED_DEFAULT ## graine du monde courant (contexte pour le rapport de bug)
 
 func _ready() -> void:
 	if not ClassDB.class_exists("ScpsWorld"):
@@ -43,6 +44,7 @@ func _ready() -> void:
 func regenerate(seed_value: int) -> void:
 	if world == null:
 		return
+	current_seed = seed_value
 	world.generate(seed_value)
 	generated.emit()
 
