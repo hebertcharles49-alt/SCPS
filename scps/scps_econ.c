@@ -78,6 +78,13 @@ static float BASE_PRICE[RES_COUNT] = {
     [RES_REMEDE]        = 7.0f,    /* remèdes — santé/confort */
     [RES_POTTERY]       = 3.0f,    /* poterie — confort du commun (vaisselle/tuiles), argile façonnée */
     [RES_STATUE]        = 9.0f,    /* statuaire — confort de prestige (bourgeois/élite), pierre ouvrée */
+    /* MANUFACTURES SIGNATURE D'ÉTHOS — luxe de prestige, calqué sur la statuaire (9.0). */
+    [RES_HEAUMES]       = 9.0f,    /* heaumes de guerre (Dominateur) */
+    [RES_PARURES]       = 9.0f,    /* parures de gloire (Honneur) */
+    [RES_HORLOGES]      = 9.0f,    /* horloges réglées (Ordre) */
+    [RES_REGISTRES]     = 9.0f,    /* registres scellés (Bureaucrate) */
+    [RES_COLIFICHETS]   = 9.0f,    /* colifichets exotiques (Mercantile) */
+    [RES_OUVRAGES]      = 9.0f,    /* ouvrages d'agrément (Pacifiste) */
 };
 
 /* ── REFONTE A1 — RENDEMENT D'EXTRACTION PAR OUVRIER (unités/ouvrier/AN) ──────
@@ -222,6 +229,15 @@ static Recipe RECIPE[BLD_TYPE_COUNT] = {   /* NON-const (MODTOOLS) — labor/qou
     /* E3 (2026-07-05) — LEVIER LABOR jamais recalé : demande remède ≈ 2.97/1000hab/an (santé
      * urbaine, bourgeois seuls, très faible) → labor = 1200·1.0/2.97 ≈ 404. Ratio INCHANGÉ. */
     [BLD_APOTHECARY]= { RES_MED_HERBS, 1.0f, RES_NONE, 0.f, RES_REMEDE,    1.0f, 404.f, RES_NONE, 0.f },
+    /* MANUFACTURES SIGNATURE D'ÉTHOS (désir croisé) — même gabarit que la statuaire (2
+     * intrants de base, labor bas 1.1 : luxe de NICHE, la demande étant conditionnelle à
+     * l'éthos du CONSOMMATEUR — cf. ethos_desired_luxury/econ_tick §confort ci-dessous). */
+    [BLD_HEAUMERIE]        = { RES_IRON,   1.0f, RES_COAL,  1.0f, RES_HEAUMES,     1.0f, 1.1f, RES_NONE, 0.f },  /* Dominateur : fer + charbon → heaumes de guerre */
+    [BLD_PARURIER]         = { RES_GOLD,   1.0f, RES_FUR,   1.0f, RES_PARURES,     1.0f, 1.1f, RES_NONE, 0.f },  /* Honneur : or + fourrure → parures de gloire */
+    [BLD_HORLOGER]         = { RES_IRON,   1.0f, RES_COPPER,1.0f, RES_HORLOGES,    1.0f, 1.1f, RES_NONE, 0.f },  /* Ordre : fer + cuivre → horloges réglées */
+    [BLD_CHANCELLERIE_LUX] = { RES_WOOD,   1.0f, RES_CLAY,  1.0f, RES_REGISTRES,   1.0f, 1.1f, RES_NONE, 0.f },  /* Bureaucrate : bois + argile → registres scellés */
+    [BLD_COMPTOIR_ARTISAN] = { RES_COPPER, 1.0f, RES_SALT,  1.0f, RES_COLIFICHETS, 1.0f, 1.1f, RES_NONE, 0.f },  /* Mercantile : cuivre + sel → colifichets exotiques */
+    [BLD_ATELIER_SEREIN]   = { RES_WOOD,   1.0f, RES_WOOL,  1.0f, RES_OUVRAGES,    1.0f, 1.1f, RES_NONE, 0.f },  /* Pacifiste : bois + laine → ouvrages d'agrément */
 };
 
 /* §B2bis — LE PANIER DE LA FOREUSE (2026-07-08) : les 6 minéraux AUTRES que le fer (déjà ancré
@@ -330,6 +346,47 @@ static inline Resource preferred_drink(const PopCulture *c){
 static inline Resource preferred_luxe(const PopCulture *c){
     return (c->subsistance < 5.f) ? RES_PRECIOUS_WARE : RES_PRECIOUS_CLOTH;
 }
+
+/* ---- DÉSIR CROISÉ — manufactures signature d'éthos (docs/DESIGN_manufactures_ethos.md) ----
+ * Chaque éthos fabrique un bien de luxe UNIQUE, désiré par les pops dont l'éthos est
+ * l'OPPOSÉ sur l'axe ordre↔chaos (scps_culture.h : ETHOS_DOMINATEUR=0 (9) … ETHOS_
+ * PACIFISTE=5 (1.5), ancré symétriquement) — DOMINATEUR↔PACIFISTE, HONNEUR↔MERCANTILE,
+ * ORDRE↔BUREAUCRATE. Le miroir d'INDEX (ETHOS_COUNT-1-e) donne exactement ces trois
+ * paires (vérifié contre l'ancrage ETHOS_VAL de scps_culture.c). */
+static inline Ethos ethos_opposite(Ethos e){
+    return (e>=0 && e<ETHOS_COUNT) ? (Ethos)(ETHOS_COUNT-1-(int)e) : ETHOS_COUNT;
+}
+/* Le bien-SIGNATURE que chaque éthos fabrique (l'atelier qui lui correspond). */
+static const Resource ETHOS_LUXURY_GOOD[ETHOS_COUNT] = {
+    [ETHOS_DOMINATEUR]  = RES_HEAUMES,
+    [ETHOS_HONNEUR]     = RES_PARURES,
+    [ETHOS_ORDRE]       = RES_HORLOGES,
+    [ETHOS_BUREAUCRATE] = RES_REGISTRES,
+    [ETHOS_MERCANTILE]  = RES_COLIFICHETS,
+    [ETHOS_PACIFISTE]   = RES_OUVRAGES,
+};
+/* Le bien DÉSIRÉ par une pop d'éthos e = la signature de l'éthos OPPOSÉ. RES_NONE si
+ * éthos hors-table (défensif — ne devrait pas arriver, PopCulture.ethos est toujours
+ * valide, mais on ne déréférence jamais sur un index non vérifié). */
+static inline Resource ethos_desired_luxury(Ethos e){
+    Ethos opp = ethos_opposite(e);
+    return (opp>=0 && opp<ETHOS_COUNT) ? ETHOS_LUXURY_GOOD[opp] : RES_NONE;
+}
+/* Quantité désirée (unités/100hab/tick) — calquée sur poterie/statuaire : un CONFORT,
+ * jamais vital. Laborer + Élite seulement (le désir croisé mission, pas de palier
+ * Bourgeois). Indexée CLASS_COUNT pour un accès direct par `c` (Bourgeois/Esclave à 0
+ * ⇒ ignorés automatiquement par le gate `need>0.f`). */
+static const float ETHOS_LUXURY_NEED[CLASS_COUNT] = {
+    [CLASS_LABORER] = 0.30f,
+    [CLASS_ELITE]   = 0.18f,
+};
+/* Position TARDIVE (précaution anti-famine, cf. mission) : ne compte qu'à un tier de
+ * capitale avancé — ETHOS_LUXURY_MIN_TIER=6 ⇒ active_needs=1+capitale_max_tier(pop)>=6
+ * ⇒ tier>=5 (T5 « Cité », 5000 hab) — le MÊME seuil que la statuaire d'Élite (rang 5).
+ * Hors panier (comfort_joy, cf. econ_tick) : de toute façon SANS pénalité si absent —
+ * cette borne n'existe que pour ne pas générer de DEMANDE de marché avant que quiconque
+ * n'ait de manufacture signature ni d'import (bootstrap propre). Dialable (registre J). */
+#define ETHOS_LUXURY_MIN_TIER 6
 
 #define TAX_RATE     0.38f   /* RENTE d'élite — visée : équilibre de satisfaction ~60 % (re-dotée) */
 #define WAGE_SHARE   0.42f   /* salaires (laborers) — abaissé pour la rente ; profit bourgeois = 0.20 */
@@ -650,6 +707,9 @@ const char *building_name(BuildingType b) {
         [BLD_REPLICATEUR]="Réplicateur ligneux",[BLD_CORNE]="Corne divine",
         [BLD_ARMORY_HEAVY]="Armurerie lourde",[BLD_BOWYER]="Atelier d'arc",[BLD_ARQUEBUS]="Arquebuserie",
         [BLD_POTTERY]="Poterie",[BLD_SCULPTURE]="Atelier de sculpture",
+        [BLD_HEAUMERIE]="Heaumerie",[BLD_PARURIER]="Atelier de parurier",[BLD_HORLOGER]="Atelier d'horloger",
+        [BLD_CHANCELLERIE_LUX]="Chancellerie de luxe",[BLD_COMPTOIR_ARTISAN]="Comptoir d'artisan",
+        [BLD_ATELIER_SEREIN]="Atelier serein",
     };
     return (b>=0&&b<BLD_TYPE_COUNT&&N[b])?N[b]:"?";
 }
@@ -2682,6 +2742,14 @@ void econ_tick(WorldEconomy *e, float dt) {
                 else if (r==RES_PRECIOUS_WARE) tgt=preferred_luxe(&re->culture);
                 demand[tgt]+=need*units;
             }
+            /* DÉSIR CROISÉ (manufactures signature d'éthos) — Laborer+Élite demandent le
+             * bien-signature de l'éthos OPPOSÉ à celui de la province (re->culture.ethos),
+             * PAS dans la table NEED (le bien varie selon l'éthos, NEED est statique par
+             * classe) — même position tardive que le confort statuaire ci-dessus. */
+            if ((c==CLASS_LABORER || c==CLASS_ELITE) && active_needs>=(int)tune_f("ETHOS_LUXURY_MIN_TIER",ETHOS_LUXURY_MIN_TIER)) {
+                Resource desired = ethos_desired_luxury(re->culture.ethos);
+                if (desired != RES_NONE) demand[desired] += ETHOS_LUXURY_NEED[c]*units;
+            }
         }
 
         /* ---- 5. MARCHÉ : prix puis allocation au budget ---------------- */
@@ -2805,6 +2873,23 @@ void econ_tick(WorldEconomy *e, float dt) {
                 /* couverture par palier : les vivres VS le reste */
                 if (r==RES_GRAIN||r==RES_FISH||r==RES_LIVESTOCK){ r_food_need+=need; r_food_got+=need*got; }
                 else                                            { r_soc_need +=need; r_soc_got +=need*got; }
+            }
+            /* ── DÉSIR CROISÉ (manufactures signature d'éthos) : CONFORT-BONUS HORS PANIER,
+             * même motif que poterie/statuaire ci-dessus — Laborer+Élite SEULEMENT, gaté à
+             * la même position tardive (ETHOS_LUXURY_MIN_TIER). Le bien dépend de l'éthos
+             * DOMINANT de la province (re->culture.ethos) : un désir CONDITIONNEL (l'éthos
+             * opposé au producteur), pas un besoin universel — cf. ethos_desired_luxury. */
+            if ((c==CLASS_LABORER || c==CLASS_ELITE) && active_needs>=(int)tune_f("ETHOS_LUXURY_MIN_TIER",ETHOS_LUXURY_MIN_TIER)){
+                Resource desired = ethos_desired_luxury(re->culture.ethos);
+                float need = ETHOS_LUXURY_NEED[c]*units;
+                if (desired!=RES_NONE && need>0.f){
+                    float can_stock=clampf(S[desired]/(need+EPS),0.f,1.f);
+                    float cost=need*can_stock*re->price[desired];
+                    float can_buy=(cost>0.f)?clampf(budget/cost,0.f,1.f):1.f;
+                    float got=can_stock*can_buy;
+                    S[desired]-=need*got; budget-=need*got*re->price[desired];
+                    comfort_joy += tune_f("ETHOS_LUXURY_JOY",0.08f) * got;   /* luxe étranger SERVI → bonheur */
+                }
             }
             re->strata[c].wealth=fmaxf(0.f,budget);
             float basket=(need_w>0.f)?met_w/need_w:0.5f;

@@ -4281,6 +4281,9 @@ const char *resource_name(Resource r) {
         [RES_ARMS_HEAVY]="Armes lourdes",[RES_ARMS_RANGED]="Armes de trait",[RES_FIREARM]="Armes à feu",
         [RES_MAGE_STAFF]="Bâton de mage",
         [RES_POTTERY]="Poterie",[RES_STATUE]="Statuaire",   /* confort de bâti (argile/pierre) */
+        /* manufactures signature d'éthos (désir croisé) */
+        [RES_HEAUMES]="Heaumes de guerre",[RES_PARURES]="Parures de gloire",[RES_HORLOGES]="Horloges réglées",
+        [RES_REGISTRES]="Registres scellés",[RES_COLIFICHETS]="Colifichets exotiques",[RES_OUVRAGES]="Ouvrages d'agrément",
     };
     return (r>=0&&r<RES_COUNT)?(N[(int)r]?N[(int)r]:"?"):"?";
 }
@@ -4305,6 +4308,13 @@ uint32_t resource_color(Resource r) {
         [RES_FLUX]=0xFF50C0E0u,[RES_ALCHEMIST_KIT]=0xFF9070C0u,
         [RES_ARMS_HEAVY]=0xFF606070u,[RES_ARMS_RANGED]=0xFF90A060u,[RES_FIREARM]=0xFF404048u,[RES_MAGE_STAFF]=0xFF70D0B0u,
         [RES_POTTERY]=0xFFC07850u,[RES_STATUE]=0xFFC8C0B0u,
+        /* manufactures signature d'éthos (désir croisé) */
+        [RES_HEAUMES]=0xFF8A6050u,     /* heaume — acier bruni, teinte guerrière (Dominateur) */
+        [RES_PARURES]=0xFFD4A430u,     /* parure — or et fourrure (Honneur) */
+        [RES_HORLOGES]=0xFFB08840u,    /* horloge — bronze/laiton (Ordre) */
+        [RES_REGISTRES]=0xFFC8B888u,   /* registre — parchemin scellé (Bureaucrate) */
+        [RES_COLIFICHETS]=0xFF50A0A0u, /* colifichet — exotique, turquoise (Mercantile) */
+        [RES_OUVRAGES]=0xFF80A060u,    /* ouvrage — bois travaillé, sauge (Pacifiste) */
     };
     return (r>=0&&r<RES_COUNT)?C[(int)r]:0xFFFF00FFu;
 }

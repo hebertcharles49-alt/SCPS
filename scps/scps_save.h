@@ -32,7 +32,16 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 75u           /* v75 : BROUILLARD DE GUERRE (étape 1/2, 2026-07-09) — nouvelle
+#define SAVE_VERSION 76u           /* v76 : MANUFACTURES SIGNATURE D'ÉTHOS (2026-07-09) — les 6
+                                    * biens/6 ateliers du désir croisé (docs/DESIGN_manufactures_
+                                    * ethos.md) appendent RES_HEAUMES…RES_OUVRAGES à Resource et
+                                    * BLD_HEAUMERIE…BLD_ATELIER_SEREIN à BuildingType ⇒ les tableaux
+                                    * [RES_COUNT]/[BLD_TYPE_COUNT] de ProvinceEconomy ET RegionEconomy
+                                    * grandissent ⇒ sizeof(WorldEconomy) change (section ECON, fwrite
+                                    * BRUT de *s->econ) — un save v75 est INCOMPLET pour v76 (refusé
+                                    * par le contrôle de version). Aucune section neuve, aucune
+                                    * sémantique de champ existant touchée. <v76 refusé. */
+                                   /* v75 : BROUILLARD DE GUERRE (étape 1/2, 2026-07-09) — nouvelle
                                     * section FOGV (fog_save/load, motif WILD/DCRE) : known[SCPS_MAX_
                                     * COUNTRY][SCPS_MAX_COUNTRY] (la connaissance CUMULATIVE qu'un
                                     * empire a d'un autre, radius 2, découverte sur le terrain). Pas de
