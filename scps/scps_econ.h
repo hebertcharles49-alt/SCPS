@@ -100,6 +100,15 @@ typedef enum {
     /* === CONFORT du brut de bâti : la DEMANDE qui tire l'extraction d'argile/pierre (manuf normale) === */
     BLD_POTTERY,       /* poterie            : argile → poterie (confort journalier/bourgeois → bonheur) */
     BLD_SCULPTURE,     /* atelier de sculpture : pierre → statuaire (confort bourgeois/élite → bonheur) */
+    /* === MANUFACTURES SIGNATURE D'ÉTHOS (désir croisé, docs/DESIGN_manufactures_ethos.md) ===
+     * Un bâtiment par éthos, produisant SON bien de luxe (RES_HEAUMES…RES_OUVRAGES, cf.
+     * scps_types.h) — désiré par les pops de l'éthos OPPOSÉ (cf. econ_tick §confort). */
+    BLD_HEAUMERIE,         /* Dominateur : fer + charbon → heaumes de guerre */
+    BLD_PARURIER,          /* Honneur : or + fourrure → parures de gloire */
+    BLD_HORLOGER,          /* Ordre : fer + cuivre → horloges réglées */
+    BLD_CHANCELLERIE_LUX,  /* Bureaucrate : bois + argile → registres scellés (≠ EDI_CHANCELLERIE, l'édifice civique — préfixé pour éviter la confusion) */
+    BLD_COMPTOIR_ARTISAN,  /* Mercantile : cuivre + sel → colifichets exotiques */
+    BLD_ATELIER_SEREIN,    /* Pacifiste : bois + laine → ouvrages d'agrément */
     BLD_TYPE_COUNT
 } BuildingType;
 

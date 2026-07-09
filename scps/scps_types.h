@@ -204,6 +204,16 @@ typedef enum {
     /* === BIENS DE CONFORT issus du brut de construction (la DEMANDE qui entretient les RAW-WORKS) === */
     RES_POTTERY,                /* poterie : argile → vaisselle/tuiles (confort journalier/bourgeois) → bonheur */
     RES_STATUE,                 /* statuaire : pierre → statues/ornements (confort bourgeois/élite) → bonheur */
+    /* === MANUFACTURES SIGNATURE D'ÉTHOS (désir croisé, docs/DESIGN_manufactures_ethos.md) ===
+     * Un bien de luxe UNIQUE par éthos ; désiré par les pops dont l'éthos est l'OPPOSÉ (axe
+     * ordre↔chaos, scps_culture.h — miroir d'index sur l'enum Ethos). Appendues en FIN
+     * (SAVE-safe, index stables). */
+    RES_HEAUMES,                /* Dominateur : heaumes de guerre — désirés par le Pacifiste */
+    RES_PARURES,                /* Honneur : parures de gloire — désirées par le Mercantile */
+    RES_HORLOGES,               /* Ordre : horloges réglées — désirées par le Bureaucrate */
+    RES_REGISTRES,              /* Bureaucrate : registres scellés — désirés par l'Ordre */
+    RES_COLIFICHETS,            /* Mercantile : colifichets exotiques — désirés par l'Honneur */
+    RES_OUVRAGES,               /* Pacifiste : ouvrages d'agrément — désirés par le Dominateur */
     RES_COUNT
 } Resource;
 #define RES_ARMS_LIGHT RES_ARMS   /* F1 : alias SAVE-safe — RES_ARMS EST l'arme légère (slot préservé) */

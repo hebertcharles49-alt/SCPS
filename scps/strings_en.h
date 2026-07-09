@@ -376,4 +376,18 @@
     X(STR_GLOSS_AGITATION, "Unrest") \
     X(STR_GLOSS_SAVOIR,    "Knowledge") \
     X(STR_GLOSS_PRESAGE,   "Omen") \
+    /* ETHOS-SIGNATURE MANUFACTURES (cross-desire, docs/DESIGN_manufactures_ethos.md) —
+     * 6 goods + 6 workshops, one per ethos. */ \
+    X(STR_RES_HEAUMES,       "War Helms") \
+    X(STR_RES_PARURES,       "Adornments of Glory") \
+    X(STR_RES_HORLOGES,      "Tuned Clocks") \
+    X(STR_RES_REGISTRES,     "Sealed Ledgers") \
+    X(STR_RES_COLIFICHETS,   "Exotic Trinkets") \
+    X(STR_RES_OUVRAGES,      "Leisure Works") \
+    X(STR_BLD_HEAUMERIE,         "Helm Forge") \
+    X(STR_BLD_PARURIER,          "Adornment Workshop") \
+    X(STR_BLD_HORLOGER,          "Clockmaker's Workshop") \
+    X(STR_BLD_CHANCELLERIE_LUX,  "Fine Chancery") \
+    X(STR_BLD_COMPTOIR_ARTISAN,  "Artisan Trading Post") \
+    X(STR_BLD_ATELIER_SEREIN,    "Serene Workshop") \
 

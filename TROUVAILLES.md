@@ -1418,3 +1418,109 @@ IPM 1.09-1.30, gate 180 tenu 100 %, arbre 40-53 %, démographie robuste (bornes/
   SCRATCHPAD (non committée, comme demandé) — à reproduire si un futur agent veut re-vérifier la logique
   BFS sans relire tout `scps_fog.c` : synthétiser un monde en CHAÎNE de 5 régions, 3 pays espacés de 2,
   ça donne une asymétrie de découverte en UN seul `fog_update` (bon test de non-régression rapide).
+
+## [2026-07-09] Éco — MANUFACTURES SIGNATURE D'ÉTHOS + désir croisé (implémenteur solo, wt/manuf, SAVE v76)
+**Découvertes** :
+- **Le miroir d'index EST la formule de paire opposée demandée** : `Ethos` (scps_culture.h) est ordonné
+  DOMINATEUR(9)·HONNEUR(7.5)·ORDRE(6)·BUREAUCRATE(4.5)·MERCANTILE(3)·PACIFISTE(1.5) — `ethos_opposite(e)
+  = ETHOS_COUNT-1-e` (scps_econ.c) donne EXACTEMENT les 3 paires mission (Dominateur↔Pacifiste,
+  Honneur↔Mercantile, Ordre↔Bureaucrate), vérifié par un mini-programme autonome ET par lecture de
+  `ETHOS_VAL[]` (scps_culture.c:20, DOMINATEUR=9.0/PACIFISTE=1.5 confirmant l'ancrage symétrique).
+  `culture_pair_for_biome`/`biome_ethos_pair` (scps_culture.c:295) sont un concept DIFFÉRENT (les DEUX
+  éthos qui cohabitent dans UN biome à la génération, pas l'opposé sur l'axe) — ne pas confondre, ne
+  PAS réutiliser pour ce besoin.
+- **Le §NF générique (`econ_build_tick`, scps_econ.c:1586) construit N'IMPORTE QUEL `BLD_*` avec un
+  `RECIPE[b].out` valide + `BASE_PRICE[out]>0`, SANS aucun hook IA/doctrine** — confirmé par précédent
+  (BLD_POTTERY/BLD_SCULPTURE n'apparaissent NULLE PART dans `scps_ai.c`, grep 0 résultat) ET par mesure
+  directe (les 6 nouveaux bâtiments se posent tout seuls, seed 9×150 ans : 6×Heaumerie·1×Parurier·
+  2×Horloger·2×ChancellerieLux·2×ComptoirArtisan·2×AtelierSerein). Le seul déclencheur nécessaire est
+  la DEMANDE (prix ≥ NF_SHORTAGE×base) — donc juste bien peupler `RECIPE[]`+`BASE_PRICE[]`+le mécanisme
+  de désir suffit, aucun ajout à `ai_build_civmanuf`/`ai_build_manufacture` n'est requis pour un bâtiment
+  « manufacture civile » standard (≠ transmuteurs/foreuse/arquebuserie qui ont un gate TECH explicite
+  dans la MÊME boucle, scps_econ.c:1607-1611 — mes 6 n'en ont PAS besoin, aucune tech associée).
+- **`CMD_BUILD_MANUF` (verbe joueur, scps_sim.c:423) et `bld_min_tier()` (scps_econ.c:1927) ont tous
+  deux un `default:`/repli générique** (civil non-militaire admis, tier 1 par défaut) — les 6 nouveaux
+  `BLD_*` sont donc immédiatement constructibles par le PANNEAU B joueur aussi, sans code additionnel
+  (seul le filtre `out==RES_ARMS||...` en exclurait un bâtiment MILITAIRE — mes biens de luxe n'y
+  tombent pas, à raison : Heaumes de guerre est un bien de PRESTIGE/confort, pas un `RES_ARMS*` réel).
+- **Le mécanisme de désir croisé est HORS de la table statique `NEED[CLASS][RES]`** (le bien varie
+  selon `re->culture.ethos`, table statique ne peut pas exprimer ça) — câblé en DEUX blocs séparés
+  À CÔTÉ du panier (jamais dedans) : génération de demande (fin de la boucle `for c` §4, juste après le
+  `for r` qui lit `NEED[][]`) + consommation/comfort_joy (fin du `for r` §5, avant `wealth=budget`),
+  gatés `c==CLASS_LABORER||c==CLASS_ELITE` + `active_needs>=tune_f("ETHOS_LUXURY_MIN_TIER",6)`. Motif
+  calqué EXACTEMENT sur le bloc `if(r==RES_POTTERY||r==RES_STATUE)` (comfort_joy hors panier, jamais de
+  pénalité si absent) — mais PAS dans le `for r` lui-même (impossible, resource dynamique) : un bloc
+  autonome après, qui relit `S[]`/`budget`/`re->price[]` du MÊME scope.
+- **`resource_name()`/`building_name()` (scps_world.c/scps_econ.c) sont des tables C littérales NON
+  câblées à `tr()`** — confirmé par grep : AUCUN des ~110 `RES_*`/`BLD_*` existants n'y passe (la façade
+  `scps_api.c` les appelle DIRECTEMENT, toujours en français, même avec le switch EN actif). Il existe
+  DÉJÀ un précédent d'entrées STR_* orphelines (STR_RES_BOIS/ARGILE/PIERRE/OUTILS, strings_ids.h:246-249,
+  0 référence dans tout `*.c` — vestiges de l'ancien viewer.c topbar SDL) : ajouter des STR_RES_*/
+  STR_BLD_* SANS les câbler est donc un état TOLÉRÉ du codebase, pas une régression introduite ici.
+  Câbler `resource_name()`/`building_name()` en entier au switch de langue serait un chantier séparé
+  (~116 entrées), hors périmètre de cette mission.
+- **`it_is_precious()`/`it_is_bulk()` (scps_intertrade.c:38-45, télémétrie directionnelle SEULEMENT,
+  n'affecte PAS l'éligibilité au commerce) n'incluent PAS POTTERY/STATUE** — précédent suivi, les 6
+  nouveaux biens n'y sont pas non plus (cohérent, pas une omission). Le commerce inter-empire des 6
+  biens fonctionne quand même via les boucles GÉNÉRIQUES `for g<RES_COUNT` d'intertrade (aucun
+  changement nécessaire) — vérifié par la présence de "commerce inter-pays/an" non-nul dans les sims.
+- **`vocation_word()` (scps_readout.c:508) ne lit QUE `Province.resource` (une BRUTE, jamais une
+  production)** — mes 6 `RES_*` (tous ≥ `RES_PROD_FIRST`) ne peuvent JAMAIS y arriver ; `default: break`
+  de toute façon. Non-issue confirmé, aucune modif nécessaire.
+- **`Recipe` (scps_econ.c) est positionnel sur 11 champs** `{in1,q1,in2,q2,out,qout,labor,alt1,alt1_q,
+  out2,qout2}` — un initialisateur à 9 valeurs (comme celui de la mission/statuaire) laisse `out2`/
+  `qout2` à zéro (RES_NONE/0.f) par défaut C, AUCUN warning (`-Wmissing-field-initializers` n'est pas
+  dans `-Wall -Wextra` pour les designated/positional partiels de ce genre sur ce gcc 16.1).
+- **Golden INCHANGÉ pour les 5 graines de référence** (7/108/209/310/411, `./chronicle --hash 7 5 12`
+  identique BYTE PRÈS au `scps/golden_hashes.txt` committé) — CONTRAIREMENT à l'attente de la mission
+  (« le désir mord dès l'an-0 »). Cause : `ETHOS_LUXURY_MIN_TIER=6` ⇒ `active_needs=1+capitale_max_tier
+  (pop)>=6` ⇒ tier≥5 (T5 « Cité », 5000 hab/PROVINCE) — AUCUNE province n'atteint 5000 hab en 12 ans à
+  la démographie actuelle (`POP_R_BASE`, doublement ~20-40 ans). La précaution « position tardive »
+  demandée par la mission a été appliquée assez fort pour repousser tout mordant hors de la fenêtre
+  golden — vérifié PUIS confirmé (2 runs consécutifs identiques + diff contre le fichier committé).
+  Si l'orchestrateur veut que le mécanisme morde plus tôt (pour le calibrage/visibilité), le seul levier
+  est `SCPS_TUNE=ETHOS_LUXURY_MIN_TIER=<N>` (déjà dialable, pas de recompile) — abaisser à 4-5 ferait
+  mordre bien avant l'an-12 et RE-BASELINERAIT le golden (à faire consciemment, pas par accident).
+- **Mesuré en sim longue** (seed 9×150 ans + seed 7×3×200 ans) : les 6 ateliers apparaissent (pas
+  systématiquement TOUS dans CHAQUE sim individuelle — variance stochastique normale, même motif que
+  Alambic/Réplicateur/Forge céleste qui n'apparaissent pas non plus dans 100 % des sims), satisfaction
+  reste 75-91 % (Laborer/Bourgeois/Élite), aucun NaN/Inf, `EXIT=0` partout.
+**Pièges** :
+- **`make test`/`make <banc>` via MSYS2 bash (D:\MSYS2\usr\bin\make, GNU Make 4.4.1) STRIPE `TMP`/`TEMP`
+  avant d'invoquer le shell de la recette** — même quand ils sont `export`és dans LE MÊME appel Bash
+  juste avant `make`, et INDÉPENDAMMENT du format (backslash `C:\Users\...` OU slash `C:/Users/...`) :
+  vérifié en écrivant un Makefile-sonde qui `@echo "TMP=[$$TMP]"` → toujours VIDE dans la recette, alors
+  que `cc -c fichier.c -o build/x.o` tapé À LA MAIN dans le MÊME shell juste avant réussit. Ce n'est donc
+  PAS résolu par le fix documenté dans l'entrée « chaîne militaire — audit 13 points » (« préfixer
+  CHAQUE invocation make/gcc ») — ce fix marche pour un appel `gcc` DIRECT, pas pour `make` qui relance
+  ses propres recettes dans un sous-shell qui a perdu ces 2 variables précises. **Le fix qui marche à
+  coup sûr : invoquer `make` via l'outil PowerShell (natif Windows, TMP/TEMP déjà corrects, pas de
+  couche de traduction MSYS2)** — `$env:Path = "D:\MSYS2\mingw64\bin;D:\MSYS2\usr\bin;" + $env:Path` puis
+  `make ...` directement, AUCUN export TMP/TEMP nécessaire. Symptôme si on se fait avoir : TOUS les
+  bancs échouent en `BUILD ÉCHEC` d'un coup (0 VERTS/0 ROUGES/N BUILD ÉCHEC) avec dans `/tmp/k3_build.log`
+  (ou en direct) : `Cannot create temporary file in C:\Windows\: Permission denied` — panique inutile,
+  ce n'est PAS le code qui casse (vérifié : compile standalone `gcc -Wall -Wextra -c` propre sur les 5
+  fichiers touchés AVANT même de comprendre le problème make/TMP).
+- Le mécanisme de désir croisé ne peut PAS être exprimé comme une entrée de plus dans `NEED[CLASS][RES]`
+  (piège en apparence tentant, « juste ajouter une ligne ») — la table est indexée `[classe][ressource
+  FIXE]`, or le bien dépend de `re->culture.ethos` (dynamique par province) : il faut un bloc de code
+  séparé, pas une entrée de table, sous peine de se retrouver à devoir soit dupliquer le bloc ×6 (un par
+  éthos, avec un `if` sur chaque ressource candidate) soit inventer un système de table à niveau
+  supplémentaire — le détour par `ethos_desired_luxury()` (une fonction, pas une table 2D de plus) est
+  le plus sobre.
+**Restes** (hors périmètre, listés explicitement par la mission) :
+- **Métabolisation-déblocage** : la mission NE demande PAS de gate de PRODUCTION par éthos (qui pourrait
+  produire quoi) — actuellement TOUT pays peut bâtir LES 6 ateliers (le §NF générique ne fait aucune
+  distinction d'éthos producteur). Le design doc (§3, non implémenté) prévoyait un déblocage par palier
+  de métabolisation (`METAB_TIER1`/`_TIER3`, analogue à `econ_country_heritage_digested` mais sur l'axe
+  ÉTHOS des groupes plutôt que l'héritage) — nécessiterait un nouveau helper `econ_country_ethos_digested`
+  (le pont éthos, PopGroup.culture.ethos existe déjà, juste jamais agrégé par éthos) + un gate dans le
+  §NF (`if (b==BLD_HEAUMERIE && ethos_digested<TIER) continue;`, motif IDENTIQUE aux gates tech_foreuse/
+  tech_alchimie déjà dans la boucle) — mais volontairement PAS fait ici (mission explicite).
+- **Assets Godot** (icônes des 6 ateliers/6 biens, `pack/buildings`/`pack/resources`) — hors périmètre,
+  intégrés par l'orchestrateur après.
+- **Verbe « Financer les expéditions »** (§4 du design doc, dépend du fog déjà livré) — PAS commencé,
+  séquencé APRÈS ce système selon le design doc lui-même.
+- **Calibrage fin** — délibérément non fait (mission : « NE CALIBRE PAS finement »). Le gate
+  `ETHOS_LUXURY_MIN_TIER=6` et le poids `ETHOS_LUXURY_JOY=0.08` sont posés par PRÉCAUTION/analogie avec
+  poterie-statuaire, pas mesurés/optimisés — l'orchestrateur a la main via `SCPS_TUNE` sans recompiler.
