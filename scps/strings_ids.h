@@ -387,5 +387,19 @@
     X(STR_GLOSS_AGITATION, "Agitation") \
     X(STR_GLOSS_SAVOIR,    "Savoir") \
     X(STR_GLOSS_PRESAGE,   "Présage") \
+    /* MANUFACTURES SIGNATURE D'ÉTHOS (désir croisé, docs/DESIGN_manufactures_ethos.md) —
+     * 6 biens + 6 ateliers, un par éthos. */ \
+    X(STR_RES_HEAUMES,       "Heaumes de guerre") \
+    X(STR_RES_PARURES,       "Parures de gloire") \
+    X(STR_RES_HORLOGES,      "Horloges réglées") \
+    X(STR_RES_REGISTRES,     "Registres scellés") \
+    X(STR_RES_COLIFICHETS,   "Colifichets exotiques") \
+    X(STR_RES_OUVRAGES,      "Ouvrages d'agrément") \
+    X(STR_BLD_HEAUMERIE,         "Heaumerie") \
+    X(STR_BLD_PARURIER,          "Atelier de parurier") \
+    X(STR_BLD_HORLOGER,          "Atelier d'horloger") \
+    X(STR_BLD_CHANCELLERIE_LUX,  "Chancellerie de luxe") \
+    X(STR_BLD_COMPTOIR_ARTISAN,  "Comptoir d'artisan") \
+    X(STR_BLD_ATELIER_SEREIN,    "Atelier serein") \
 
 #endif /* SCPS_STRINGS_IDS_H */
