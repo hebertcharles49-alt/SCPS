@@ -43,6 +43,7 @@ func _ready() -> void:
 	_load = _build_load()
 	add_child(_load); _load.hide()
 	_show(_main)
+	Sound.play_music("main_menu")   # le thème du menu, en boucle (bus Ambiance)
 
 func _spawn_new_game() -> void:
 	_new_game = NewGame.new()
@@ -234,6 +235,7 @@ func _on_load(slot: int) -> void:
 	var rc: int = Sim.load_game(slot)
 	if rc == 0:
 		hide()              # partie chargée : on referme le menu (monde en pause)
+		Sound.stop_music()  # la musique de menu s'éteint
 		Sim.set_speed(0)
 		Sim.game_on = true  # la partie EST commencée : alertes & popups s'éveillent
 		game_started.emit()
@@ -253,6 +255,7 @@ func _show(which: Control) -> void:
 
 func _on_launched() -> void:
 	hide()                 # le shell se referme : la carte (en pause an 0) apparaît
+	Sound.stop_music()     # la musique de menu s'éteint : la partie commence
 	Sim.game_on = true     # la partie EST commencée : alertes & popups s'éveillent
 	game_started.emit()
 
@@ -261,3 +264,4 @@ func open() -> void:
 	Sim.set_speed(0)
 	show()
 	_show(_main)
+	Sound.play_music("main_menu")   # le thème du menu reprend

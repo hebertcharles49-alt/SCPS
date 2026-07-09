@@ -26,6 +26,8 @@ var _streams := {}                ## nom → AudioStream (chargés paresseusemen
 var _variants := {}               ## nom de base → Array[String] de variantes (cache)
 var _ui_pool: Array = []          ## AudioStreamPlayer (bus UI)
 var _mom_pool: Array = []         ## AudioStreamPlayer (bus Moments)
+var _music: AudioStreamPlayer = null   ## la SEULE nappe continue : le thème de menu (bus Ambiance)
+var _music_name := ""             ## thème en cours (anti-redémarrage)
 
 var _last_tick_ms := 0
 var _last_year := -1
@@ -43,6 +45,7 @@ func _ready() -> void:
 		_ui_pool.append(_make_player(BUS_UI))
 	for i in 2:
 		_mom_pool.append(_make_player(BUS_MOM))
+	_music = _make_player(BUS_AMB)   # la musique de menu route sur Ambiance (le bus de fond)
 	_load_volumes()
 	Sim.ticked.connect(_on_tick)
 	Sim.generated.connect(_on_generated)
@@ -127,6 +130,36 @@ func play(nom: String) -> void:
 		player.pitch_scale = 1.0
 		player.volume_db = 0.0
 	player.play()
+
+
+## ── MUSIQUE DE FOND (menu) ────────────────────────────────────────────────────
+## La SEULE nappe continue du jeu (le reste = clics façon Paradox) : le thème de menu,
+## en boucle, sur le bus Ambiance (déjà exposé au volume). OGG chargé paresseusement
+## (importé par Godot) ; loop forcé en code. Absent / non importé → no-op silencieux.
+func play_music(nom: String) -> void:
+	if _music == null:
+		return
+	if _music_name == nom and _music.playing:
+		return                        # déjà en train de jouer ce thème
+	var path := DIR + nom + ".ogg"
+	if not ResourceLoader.exists(path):
+		return
+	var s: AudioStream = load(path)
+	if s == null:
+		return
+	if s is AudioStreamOggVorbis:
+		s.loop = true                 # boucle garantie quel que soit le réglage d'import
+	_music.stream = s
+	_music.pitch_scale = 1.0
+	_music.volume_db = 0.0
+	_music.play()
+	_music_name = nom
+
+
+func stop_music() -> void:
+	if _music != null:
+		_music.stop()
+	_music_name = ""
 
 
 ## ── LE TICK & LES LECTURES DE FAÇADE (âge, recherche) ───────────────────────
