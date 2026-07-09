@@ -1,78 +1,52 @@
-SCPS — Moteur de grande stratégie (Sphères Culturelles & Perméabilité Systémique)
+SCPS — Grande stratégie déterministe (Sphères Culturelles & Perméabilité Systémique)
 ================================================================================
-Version 1.2.0
 
-Un monde généré PAR le modèle : culture, prospérité, stabilité et guerre sont
-calculées par les équations SCPS, pas par des règles ad hoc. La guerre se gagne
-sur le terrain (sièges → occupation), la conquête se règle à la table de paix,
-et les royaumes peuvent mourir. Un DIRECTEUR d'événements lit la « température »
-du monde et le remue ou l'apaise (peste, schisme, filon, concile, moissons…)
-sans jamais s'acharner sur la même province.
-
-NOUVEAUTÉS v1.2.0
------------------
-  FOURCHES TECHNOLOGIQUES : l'arbre de tech se ramifie au fil des forks culturels
-    (15 gabarits, 3 variantes par embranchement). Chaque civilisation suit sa propre
-    trajectoire — il n'y a plus qu'un seul arbre universel.
-  MARINE & COLONISATION : les empires côtiers bâtissent des ports, des coques de
-    transport et colonisent les rivages accessibles. La course (piraterie) arme les
-    griefs et forge les casus belli.
-  GUERRE OUTRE-MER : l'IA déclare la guerre à travers les océans une fois ports et
-    casus belli réunis (CB économique, subjugation, anti-piraterie…).
-  BÂTIMENTS AVANCÉS : Alambic (distillation d'essence purifiée), le Puits de mana
-    (charge arcane), nouvelles merveilles de faction.
-  SCORE MULTIPLICATIF : la progression technologique combine souche × éthos × credo
-    × matière ; chaque civilisation a une vitesse de recherche unique.
-  NOTE DE SAUVEGARDE : les fichiers de sauvegarde v1.1.x (format SAVE v13-v15) ne
-    sont PAS compatibles avec v1.2.0 (SAVE v16). Commencez une nouvelle partie.
+Un monde généré PAR le modèle : culture, prospérité, stabilité, technologie et
+guerre sont CALCULÉES par les équations SCPS, pas par des règles ad hoc. Compose
+ta culture (héritage · éthos · traditions), regarde un monde vivant émerger, et
+gouverne : diplomatie, construction, recherche, foi, guerre. Les royaumes peuvent
+mourir ; une fin du monde peut tout emporter. Un DIRECTEUR d'événements lit la
+« température » du monde et le remue ou l'apaise, sans s'acharner.
 
 CONTENU
 -------
-  scps_viewer.exe   Le visualiseur interactif (carte vivante + interface d'empire).
-  chronicle.exe     Balayage headless : la télémétrie d'équilibre (console).
-  core_demo.exe     Banc du cœur vérifié (35 contrôles).
-  scps_lang.txt     TOUT le texte du jeu, éditable (et traduisible) — voir plus bas.
-  scps_sprites.bmp  Planche d'icônes (512×512) — chargée au lancement ; absente → glyphes vectoriels.
-  SDL2.dll          \
-  SDL2_ttf.dll       > requis par le visualiseur (déjà présents — ne rien faire).
-  DejaVuSans.ttf    /
+  scps.exe          Le jeu. Double-clic pour lancer.
+  libscps.*.dll     Le moteur déterministe — DOIT rester dans le même dossier
+                    que scps.exe (ne pas séparer / renommer).
 
 LANCER
 ------
-  Double-clic sur SCPS (menu Démarrer / bureau), ou scps_viewer.exe.
-  Le jeu démarre au menu ; « Jouer » forge un monde et l'OUVRE en pause.
+  Double-clic sur scps.exe. Le jeu démarre au MENU. « Jouer » ouvre le créateur
+  de partie (taille du monde, graine, cultures d'empire), forge le monde et
+  l'OUVRE en pause à l'an 0. « Charger » reprend une partie sauvegardée.
 
-COMMANDES (visualiseur)
+COMMANDES (principales)
 -----------------------
-  Espace            pause / reprise
-  + / -             accélérer / ralentir le temps
-  Molette           zoom carte ; clic-droit/milieu glissé : déplacer
-  Onglets (rail gauche) :
-    E  Économie     D  Démographie   S  Stocks   A  Armée
-    F  Filtres (vues de carte & lentilles)       G  Diplomatie
-  Diplomatie (G)    déclarer la guerre (si un casus belli tient), négocier la
-                    paix sur une guerre active ; les régions OCCUPÉES sont
-                    hachurées de la couleur de l'occupant sur la carte politique.
-  F4                recharger scps_lang.txt à chaud (édition de texte en direct)
-  F12               capture d'écran (PNG, dossier screenshots\)
+  Espace         pause / reprise
+  + / -          accélérer / ralentir le temps
+  Molette        zoom de la carte ; clic-droit glissé : déplacer la vue
+  Clic gauche    sélectionner une province / un pays (ouvre les panneaux)
+  Clic droit     fenêtre diplomatique d'un pays
+  Échap          ouvre le menu (et referme d'abord le panneau visible)
+  F1             CODEX — la référence COMPLÈTE : tout ce que tu peux faire, et où
+  B              construction (levées & bâtiments)
+  T              arbre technologique
+  H              annales du règne (le récit de ta partie)
+  R              religion (créateur de foi)     C   créateur de culture
+  F10            panneau dev (réglages en direct)
 
-TEXTE ÉDITABLE & TRADUCTION (scps_lang.txt)
--------------------------------------------
-  Tout le texte lisible par le joueur vit dans scps_lang.txt, une ligne par
-  libellé : « IDENTIFIANT <tabulation> texte ». Édite le texte après la
-  tabulation, sauvegarde, et appuie sur F4 dans le jeu — le changement est
-  immédiat. Le jeu fonctionne SANS ce fichier (libellés par défaut compilés) ;
-  un identifiant supprimé ou inconnu retombe simplement sur le défaut.
-  TRADUIRE : copie le fichier, traduis la colonne de texte, garde-le à côté de
-  scps_viewer.exe. (Régénérer la liste complète : scps_viewer.exe --dump-lang.)
+SIGNALER UN BUG
+---------------
+  Bouton « ⚑ Signaler un bug » en bas de l'écran (et, après un plantage, un
+  message au redémarrage) : il crée un dossier de rapport dans tes données de
+  jeu, avec ta remarque, le journal et une capture d'écran. Clique « Ouvrir le
+  dossier » et envoie-le — c'est ce qui permet de corriger.
 
-OUTILS HEADLESS (invite de commandes)
--------------------------------------
-  chronicle.exe <graine> <sims> <années> [empires] [cités] [continents]
-      ex. : chronicle.exe 7 5 200 8 16
-      ex. : chronicle.exe 42 1 100 6 10 2   (bi-continental, 16 pays)
-  core_demo.exe       (doit afficher « 35 réussis, 0 échoués »)
-  scps_viewer.exe --dump-lang   (réécrit scps_lang.txt : tous les libellés)
+SAUVEGARDE
+----------
+  Menu > Charger : 3 emplacements, sauvegarde/chargement à chaud. Une sauvegarde
+  d'une version antérieure (format plus ancien) est refusée proprement — commence
+  une nouvelle partie.
 
-CONFIGURATION REQUISE : Windows 10/11 64 bits. Aucune installation de
-runtime tierce (SDL2 fourni, dépendances C statiques).
+CONFIGURATION REQUISE : Windows 10/11 64 bits. Aucun runtime tiers à installer
+(le moteur est fourni). Carte graphique compatible OpenGL / GL Compatibility.

@@ -7,9 +7,17 @@ build/
 *.ilk
 .vs/
 
+# Audio de travail : soundfont (~142 Mo), rendus MIDI→WAV/OGG, scripts de rendu
+# (le .ogg intégré au jeu vit dans godot/project/audio/, lui EST suivi)
+soundfonts/
+audio_render/
+/render.sh
+/raw.sh
+
 # Packaging Windows : caches de build + artefacts (le script les régénère)
 packaging/windows/.work/
 packaging/windows/dist/
+packaging/windows/dist_godot/
 packaging/windows/out/
 
 # Binaires des bancs d'essai et du visualiseur
