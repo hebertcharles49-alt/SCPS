@@ -4,6 +4,7 @@ extends Node
 ## relier la sélection de carte aux panneaux de lecture (la membrane → UI).
 
 const Frame = preload("res://ui/frame.gd")
+const UIKit = preload("res://ui/uikit.gd")   # load_img() export-safe (curseur, etc.)
 
 var _prov_panel: Control
 var _country_panel: Control
@@ -377,9 +378,9 @@ func _close_topmost() -> bool:
 ## pour poser le bec en HAUT-GAUCHE (hotspot 2,2). Absente → curseur système.
 func _setup_cursor() -> void:
 	var path := "res://assets/scps/ui/parch/sheet28_end_rituals_loading_cursors_09.png"
-	if not FileAccess.file_exists(path):
+	if not UIKit.has(path):
 		return
-	var img := Image.load_from_file(path)
+	var img := UIKit.load_img(path)
 	if img == null:
 		return
 	var used := img.get_used_rect()

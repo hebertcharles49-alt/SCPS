@@ -1,8 +1,8 @@
 extends RefCounted
 ## UIKit — HABILLAGE : le pack d'assets (chrome + icônes) appliqué à l'UI Godot.
-## Charge les PNG en RUNTIME (Image.load_from_file → ImageTexture : robuste en
-## headless ET en dev, comme le viewer SDL charge ses BMP ; pas de dépendance au
-## système d'import de l'éditeur). Cache par chemin. Display-only.
+## Charge les PNG via load_img() — EXPORT-SAFE : la RESSOURCE importée (lisible dans le PCK
+## du .exe) puis get_image(), avec un fallback Image.load_from_file en dev. Cache par chemin.
+## (Image.load_from_file seul lit le disque réel → INVISIBLE en export : le bug corrigé.) Display-only.
 ##
 ## Consommé via `const UIKit = preload("res://ui/uikit.gd")`.
 
@@ -282,14 +282,36 @@ static func tech_medallion(nom: String, faustian: bool, tier: int, quarter: int)
 
 ## pièce parch : texture + BBOX opaque (les cellules 256² ont de larges marges vides —
 ## on ne dessine que la matière). Cache {tex, rect}.
+## Un ASSET existe-t-il ? — en RESSOURCE importée (lisible dans le PCK du .exe) OU en fichier
+## réel sur disque (dev). FileAccess.file_exists SEUL est FAUX en export (le .png source n'est
+## PAS dans le PCK, seule sa ressource importée l'est) — la cause des planches invisibles.
+static func has(path: String) -> bool:
+	return ResourceLoader.exists(path) or FileAccess.file_exists(path)
+
+## EXPORT-SAFE : charge un PNG comme IMAGE exploitable. En EXPORT, res:// vit dans le PCK →
+## Image.load_from_file ÉCHOUE (elle lit le disque réel) ; on charge la RESSOURCE importée
+## (load) puis get_image() — les planches sont importées lossless RGBA8, donc get_used_rect /
+## convert / resize marchent. Fallback DEV (PNG présent, .import pas encore généré) :
+## Image.load_from_file. NULL si l'asset est absent.
+static func load_img(path: String) -> Image:
+	if ResourceLoader.exists(path):
+		var t = load(path)
+		if t is Texture2D:
+			var im: Image = t.get_image()
+			if im != null:
+				return im
+	if has(path):
+		return Image.load_from_file(path)
+	return null
+
 static var _parch_cache := {}
 static func parch_piece(piece: String) -> Dictionary:
 	if _parch_cache.has(piece):
 		return _parch_cache[piece]
 	var out := {}
 	var path := PARCH + piece + ".png"
-	if FileAccess.file_exists(path):
-		var img := Image.load_from_file(path)
+	if has(path):
+		var img := load_img(path)
 		if img != null:
 			var used := img.get_used_rect()
 			img.generate_mipmaps()
@@ -308,8 +330,8 @@ static func parch_band_box(piece: String, tm: int, cmh: float = -1.0, cmv: float
 		return _parch_band[key]
 	var sb: StyleBox = null
 	var path := PARCH + piece + ".png"
-	if FileAccess.file_exists(path):
-		var img := Image.load_from_file(path)
+	if has(path):
+		var img := load_img(path)
 		if img != null:
 			if img.get_format() != Image.FORMAT_RGBA8:
 				img.convert(Image.FORMAT_RGBA8)
@@ -444,12 +466,12 @@ static func _settlements() -> Texture2D:
 	# aucun keying) ; à défaut, repli LEGACY sur un BMP magenta-keyé. Tant qu'aucun
 	# des deux n'est présent → null → l'overlay retombe sur ses marqueurs (pas de bave).
 	var img: Image = null
-	if FileAccess.file_exists(MAP + "settlements.png"):
-		img = Image.load_from_file(MAP + "settlements.png")
+	if has(MAP +"settlements.png"):
+		img = load_img(MAP +"settlements.png")
 		if img != null:
 			_settle_tex = ImageTexture.create_from_image(img)
-	elif FileAccess.file_exists(MAP + "settlements.bmp"):
-		img = Image.load_from_file(MAP + "settlements.bmp")
+	elif has(MAP +"settlements.bmp"):
+		img = load_img(MAP +"settlements.bmp")
 		if img != null:
 			_settle_tex = _key_magenta(img)
 	return _settle_tex
@@ -464,12 +486,12 @@ static func _dressing() -> Texture2D:
 	_dress_tried = true
 	# Même règle : PNG à alpha d'abord (dressing.png), BMP magenta-keyé en repli legacy.
 	var img: Image = null
-	if FileAccess.file_exists(MAP + "dressing.png"):
-		img = Image.load_from_file(MAP + "dressing.png")
+	if has(MAP +"dressing.png"):
+		img = load_img(MAP +"dressing.png")
 		if img != null:
 			_dress_tex = ImageTexture.create_from_image(img)
-	elif FileAccess.file_exists(MAP + "dressing.bmp"):
-		img = Image.load_from_file(MAP + "dressing.bmp")
+	elif has(MAP +"dressing.bmp"):
+		img = load_img(MAP +"dressing.bmp")
 		if img != null:
 			_dress_tex = _key_magenta(img)
 	return _dress_tex
@@ -538,8 +560,8 @@ static func _tile(dir: String, key: String) -> Texture2D:
 	if _tile_cache.has(path):
 		return _tile_cache[path]
 	var tex: Texture2D = null
-	if FileAccess.file_exists(path):
-		var img := Image.load_from_file(path)
+	if has(path):
+		var img := load_img(path)
 		if img != null:
 			tex = _key_black(img)
 	_tile_cache[path] = tex
@@ -799,8 +821,8 @@ static func _tex(path: String) -> Texture2D:
 	if _cache.has(path):
 		return _cache[path]
 	var tex: Texture2D = null
-	if FileAccess.file_exists(path):        # garde : pas d'erreur console si l'asset manque
-		var img := Image.load_from_file(path)
+	if has(path):        # garde : pas d'erreur console si l'asset manque
+		var img := load_img(path)
 		if img != null:
 			img.generate_mipmaps()          # anti-aliasing au DÉZOOM (sol échantillonné en monde continu)
 			tex = ImageTexture.create_from_image(img)
@@ -826,8 +848,8 @@ static func _tex_lift(path: String, f: float) -> Texture2D:
 	if _lift_cache.has(key):
 		return _lift_cache[key]
 	var tex: Texture2D = null
-	if FileAccess.file_exists(path):
-		var img := Image.load_from_file(path)
+	if has(path):
+		var img := load_img(path)
 		if img != null:
 			if img.get_format() != Image.FORMAT_RGBA8:
 				img.convert(Image.FORMAT_RGBA8)

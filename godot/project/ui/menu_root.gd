@@ -75,8 +75,8 @@ func _draw() -> void:
 ## pour la lisibilité — le _draw() sombre reste en repli si l'image manque.
 func _build_bg() -> void:
 	var tex: Texture2D = null
-	if FileAccess.file_exists("res://assets/scps/ui/menu_main_background.png"):
-		var img := Image.load_from_file("res://assets/scps/ui/menu_main_background.png")
+	if UIKit.has("res://assets/scps/ui/menu_main_background.png"):
+		var img := UIKit.load_img("res://assets/scps/ui/menu_main_background.png")
 		if img != null:
 			tex = ImageTexture.create_from_image(img)
 	if tex == null:

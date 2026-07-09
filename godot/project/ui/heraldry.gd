@@ -8,6 +8,7 @@ extends RefCounted
 ## sérialisation — le SAVE ne bouge pas. Cache par pays, vidé via reset().
 
 const PARCH := "res://assets/scps/ui/parch/"
+const UIKit = preload("res://ui/uikit.gd")   # load_img() export-safe (charge via le PCK)
 const S29 := "sheet29_heraldry_shields_structure_"
 const S30 := "sheet30_heraldry_charges_martial_order_"
 const S31 := "sheet31_heraldry_charges_faith_nature_arcane_"
@@ -58,14 +59,11 @@ static func reset() -> void:
 static func _img(piece: String) -> Image:
 	if _img_cache.has(piece):
 		return _img_cache[piece]
-	var img: Image = null
-	var path := PARCH + piece + ".png"
-	if FileAccess.file_exists(path):
-		img = Image.load_from_file(path)
-		if img != null:
-			if img.get_format() != Image.FORMAT_RGBA8:
-				img.convert(Image.FORMAT_RGBA8)
-			img.resize(WORK, WORK, Image.INTERPOLATE_LANCZOS)
+	var img: Image = UIKit.load_img(PARCH + piece + ".png")
+	if img != null:
+		if img.get_format() != Image.FORMAT_RGBA8:
+			img.convert(Image.FORMAT_RGBA8)
+		img.resize(WORK, WORK, Image.INTERPOLATE_LANCZOS)
 	_img_cache[piece] = img
 	return img
 
