@@ -1324,3 +1324,97 @@ effet mécanique quand le sang vient de guerres inter-états) · #7 empilement p
 (12 %/an) × exode-de-fin (10 %/an) sur une même région (~21 % évacués/an, non vérifié comme problème).
 **CE QUI VA BIEN** (audit + 5 runs live) : 0 crash/NaN, satisfaction 71-92 %, hégémon craqué 5/5,
 IPM 1.09-1.30, gate 180 tenu 100 %, arbre 40-53 %, démographie robuste (bornes/invariant esclave OK).
+
+## [2026-07-09] Brouillard de guerre (étape 1/2) — infrastructure + voile visuel (implémenteur solo, worktree wt/fog)
+**Découvertes** :
+- **Le motif du module** est un décalque exact de `scps_decrees.c` (état GLOBAL, pas dans une struct
+  partagée ; `_reset`/`_save`/`_load` au format `fwrite/fread` brut, tag `NULL,0` + appel dédié dans
+  `scps_save.c`) — même verbatim pour un module NEUF sans rien de compliqué (pas de sub-état, pas de
+  table de définitions).
+- **`WorldEconomy.adj[SCPS_MAX_REG][SCPS_MAX_REG]`** (scps_econ.h:434) est LA matrice d'adjacence de
+  région (booléenne, terre 4-connexe), déjà utilisée par `hub_map_build` (scps_intertrade.c:315-326,
+  BFS multi-source sur `adj[r][s]`, scratch `static int16_t q[SCPS_MAX_REG]`) — motif COPIÉ tel quel
+  pour la BFS radius-2 par-empire. `regions_of(econ,c)` (scps_sim.c:120, `owner==c` scanné à chaque
+  appel — PAS un cache) est LE check canonique « un pays a-t-il des régions » ; je m'en suis abstenu
+  et ai juste laissé la boucle de seed trouver 0 région pour un pays mort (aucun `continue` explicite
+  nécessaire, le queue reste vide et la BFS ne fait rien — plus simple que d'appeler `regions_of`).
+- **`Sim.human_player`** (scps_sim.h:133) est mis à -1 par `sim_init` INCONDITIONNELLEMENT
+  (scps_sim.c:1043, « la chronique reste 100% IA ») — la façade (`scps_sim_generate`/`_load`,
+  scps_api.c:124,3019) le réaligne sur `s->sim.player` APRÈS coup. C'est DIFFÉRENT du motif dominant
+  `(human_player>=0)?human_player:player` vu dans ~15 autres fonctions façade (pour les READOUTS, où
+  on veut toujours « un » pays même sans joueur engagé) — pour le brouillard, `human_player` PUR est
+  le bon champ (le voile n'a de sens QUE pour un joueur réellement engagé ; `<0` ⇒ tout visible est le
+  comportement VOULU pour chronique/tout contexte sans joueur, cf. scps_fog.c).
+- **La façade NE DOIT JAMAIS exposer `SCPS_MAX_REG`/`SCPS_MAX_COUNTRY` au binding C++** — `scps_api.h`
+  n'inclut PAS `scps_types.h` (façade opaque). Un premier jet de `scps_fog_region_mask` écrivait
+  aveuglément `SCPS_MAX_REG` (832) octets dans le buffer fourni par l'appelant ; le binding C++ n'a
+  AUCUN moyen de connaître cette constante (elle n'existe nulle part côté C++) et aurait dimensionné
+  son `PackedByteArray` sur `scps_region_count(sim)` (≤832, souvent 100-450) → **débordement mémoire
+  silencieux** côté C++. Fix : la façade récrit dans un buffer LOCAL `uint8_t rv[SCPS_MAX_REG]` puis
+  `memcpy` seulement `n_regions` octets vers le buffer de l'appelant — motif à réutiliser pour TOUT
+  futur reader « par région » exposé au binding (dimensionner sur `scps_region_count()`, jamais sur un
+  cap moteur interne). Repéré en RELISANT mon propre code après un premier build réussi — le compilateur
+  ne l'aurait jamais signalé (aucun warning, juste un memcpy avec la mauvaise taille source vs. dest).
+- **Le motif image-par-cellule + masque-par-région EN UN SEUL PASSAGE BFS** : `fog_visible_regions`
+  (scps_fog.c) réutilise le tableau de SORTIE `out_region[]` lui-même comme marqueur "visited" pendant
+  la BFS (au lieu d'un `visited[]` séparé comme dans `fog_update`) — plus simple car la sémantique
+  "atteint par le radius-2" ET "visible" coïncident exactement pour ce cas d'usage (contrairement à
+  `fog_update` où le "visited" de la BFS est local à CHAQUE empire mais le résultat écrit va dans
+  `g_known[a][owner_of(r)]`, deux choses différentes).
+- **`make`/MSYS2 sur cette machine : TMP/TEMP ne traversent PAS l'exec de `D:/MSYS2/usr/bin/make.exe`
+  même exportés dans le MÊME appel Bash** (contrairement à un `gcc` direct dans le même shell, qui
+  fonctionne). Diagnostiqué en faisant imprimer `env` DEPUIS une recette make (Makefile jetable,
+  PAS dans /tmp — `/tmp` de Git Bash ≠ `/tmp` de MSYS2, deux runtimes MSYS DIFFÉRENTS avec des montages
+  différents, un fichier écrit par l'un est invisible pour l'autre malgré le même chemin apparent) :
+  TMP/TEMP/USERPROFILE sont ABSENTS de l'environnement reçu par la recette, peu importe `export` avant
+  l'appel. **Fix qui marche** : passer TMP/TEMP comme VARIABLES DE COMMANDE MAKE (`make TMP=... TEMP=...
+  cible`, PAS `TMP=... TEMP=... make cible`) — GNU Make exporte automatiquement les variables définies
+  sur sa ligne de commande vers l'environnement de ses recettes ; c'est un mécanisme DIFFÉRENT de
+  l'héritage normal de processus et il CONTOURNE le problème de propagation. Sans ce fix : `gcc` échoue
+  avec « Cannot create temporary file in C:\Windows\: Permission denied » (TMP/TEMP absents → repli
+  Win32 sur le dossier Windows, en dernier recours après USERPROFILE lui aussi absent).
+- **`godot/godot-cpp` est un JUNCTION gitignored** (pas un submodule) — chaque worktree doit le
+  recréer localement : `New-Item -ItemType Junction -Path godot/godot-cpp -Target E:\JEUX\SCPS\godot\
+  godot-cpp` (PowerShell ; `mklink /J` en cmd). Un `ls godot-cpp` qui répond juste « No such file or
+  directory » (pas « broken symlink ») dans un worktree NEUF signifie qu'il n'a jamais été créé ICI —
+  chaque worktree est une arborescence disque séparée, la jonction d'un AUTRE worktree ne traverse pas.
+- **`scons` sans `platform=windows use_mingw=yes` bascule sur MSVC (`cl.exe`)** sur cette machine (PATH
+  a `D:\MSYS2\mingw64\bin\scons` mais SCons détecte/préfère MSVC comme toolchain windows par défaut) —
+  échoue sur `CLOCK_MONOTONIC` (POSIX/MinGW seulement, scps_sim.c:31) inconnu de MSVC. Le flag explicite
+  est OBLIGATOIRE ici, contrairement à ce que le SConstruct laisse penser (le commentaire mentionne
+  `use_mingw` mais ne dit pas qu'il faut le passer explicitement en ligne de commande à CHAQUE fois).
+- **Godot headless boot (`--headless --path . res://main/Main.tscn --quit-after 60`) affiche des
+  SCRIPT ERROR pré-existants** (`ui/tech_panel.gd` : `Graph`/`Atom`/`GraphSoftLine` non déclarés) sur
+  un worktree FRAIS — cause : `project/.godot/` (cache editeur, incl. `global_script_class_cache.cfg`
+  qui enregistre les `class_name` globaux) est gitignored et n'existe pas tant que l'éditeur n'a jamais
+  ouvert CE worktree. **Vérifié NON causé par mes changements** : `git stash` (retour au HEAD propre) →
+  MÊMES erreurs, `diff` des deux logs = IDENTIQUE au caractère près. Toute vérification headless sur un
+  worktree neuf doit faire ce contrôle A/B (stash/pop) avant de conclure qu'une erreur est réelle.
+**Pièges** :
+- Le champ `Sim.player` (≠ `human_player`) est TOUJOURS défini (0 par défaut ou le POLITY_PLAYER trouvé
+  à la genèse) — NE PAS le confondre avec `human_player` pour une fonctionnalité qui doit rester INERTE
+  tant qu'aucun humain n'est engagé (golden/déterminisme). Le motif fallback `(human_player>=0)?
+  human_player:player` est correct pour un READOUT (toujours montrer QUELQUE CHOSE) mais FAUX pour un
+  gate comportemental qui doit distinguer « chronique/aucun joueur » de « joueur engagé ».
+- BFS sur une matrice D'ADJACENCE DENSE (pas une liste) coûte O(n) par nœud déqueué même si son degré
+  réel est petit (4-8 voisins géographiques) — `fog_update` fait ceci n_countries FOIS (une BFS par
+  empire vivant). MESURÉ pour lever le doute (pas supposé) : `determinism-deep` (200 ans × 2 graines ×
+  2 runs) = 82.6 s total (~20.6 s/run de 200 ans) — AUCUN ralentissement perceptible vs. l'historique
+  documenté ailleurs pour des sweeps comparables. Le monde réel (n_regions typiquement 100-450, PAS le
+  cap SCPS_MAX_REG=832 ; n_countries réel bien sous SCPS_MAX_COUNTRY=320) reste largement sous le pire
+  cas théorique. Pas d'optimisation en liste d'adjacence nécessaire à ce stade.
+**Restes** :
+- Le CÂBLAGE des décisions (IA/diplo qui LISENT `country_knows()` pour restreindre guerre/diplomatie
+  aux empires connus) est HORS PÉRIMÈTRE de cette mission — `country_knows()` est prêt, appelé nulle
+  part dans `scps_ai.c`/`scps_diplo.c` (vérifié par grep, 0 résultat). C'est la mission « étape 2/2 ».
+- v1 du voile est BINAIRE (visible/voilé) — pas de dégradé « connu mais pas vu actuellement » (un
+  empire découvert puis dont on perd le contact reste visible EN ENTIER pour toujours, cf. le design
+  demandé : « A connaît B pour toujours »). Si un jour on veut un troisième état (« connu mais hors de
+  vue, dernière position mémorisée type Civ »), `country_knows` + `fog_visible_regions` sont le bon
+  point d'extension (ajouter un état intermédiaire dans le masque au lieu d'un bool).
+- Pas de télémétrie chronicle ajoutée (la mission ne la demandait pas ; le module est VISUEL-only donc
+  rien à mesurer côté équilibrage — contrairement aux modules qui touchent une décision de sim).
+- Sonde de vérification `fog_probe.c` (radius-2, asymétrie, cumulativité, reset — 19/19) écrite en
+  SCRATCHPAD (non committée, comme demandé) — à reproduire si un futur agent veut re-vérifier la logique
+  BFS sans relire tout `scps_fog.c` : synthétiser un monde en CHAÎNE de 5 régions, 3 pays espacés de 2,
+  ça donne une asymétrie de découverte en UN seul `fog_update` (bon test de non-régression rapide).
