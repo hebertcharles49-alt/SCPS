@@ -1185,6 +1185,10 @@ int scps_diplo_options(ScpsSim *s, int target, ScpsDiploOptions *out){
     int t = target;
     if (p<0 || p>=s->w->n_countries || t<0 || t>=s->w->n_countries || t==p) return 0;
     if (s->w->country[t].role==POLITY_UNCLAIMED || regions_of(s->sim.econ, t)<=0) return 0;
+    /* BROUILLARD DE GUERRE (étape 2) : un empire NON DÉCOUVERT n'existe pas pour le joueur —
+     * aucune option diplo (guerre/paix/alliance/pacte/embargo) tant qu'il n'est pas rencontré
+     * (radius 2). L'UI grise tout ; retour 0 = « cible inconnue ». */
+    if (!country_knows(p, t)) return 0;
     DiploState *d = s->sim.dp;
     DiploStatus st = diplo_status(d, p, t);
     int at_war = (st==DIPLO_WAR);

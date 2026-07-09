@@ -19,6 +19,7 @@
 #include "scps_intertrade.h" /* §leviers : l'embargo — la guerre commerciale du Mercantile */
 #include "scps_labor.h"      /* F-arc : capitale_max_tier (le tier de capitale qui gate les manufactures) */
 #include "scps_credit.h"     /* dette : les gardes « can't afford » deviennent « tu t'endettes » */
+#include "scps_fog.h"        /* BROUILLARD : country_knows — l'IA ne CRAINT que ce qu'elle a rencontré */
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -388,6 +389,13 @@ static DiploForecast ai_diplo_forecast(const World *w, const WorldEconomy *econ,
     float allied = 0.f;
     for (int b=0;b<w->n_countries;b++){
         if (b==cid) continue;
+        /* BROUILLARD DE GUERRE (étape 2) : l'IA ne perçoit la MENACE que des empires qu'elle a
+         * DÉCOUVERTS (radius 2, terrain) — un empire jamais rencontré n'existe pas pour son
+         * calcul de risque. Cohérent : ses actions (guerre/alliance) étant déjà bornées à
+         * l'adjacence ⊂ radius 2, seuls les NEUTRES lointains hostiles (rancune/CB abstrait)
+         * sont retirés ici ; un allié/ennemi ACTIF est forcément déjà connu. gaté par nature :
+         * en chronique/headless tous les empires se découvrent (fog_update tourne pour tous). */
+        if (!country_knows(cid, b)) continue;
         DiploStatus st = diplo_status(d,cid,b);
         if (st==DIPLO_ALLIED){ allied += diplo_mil_power(w,econ,b)+diplo_eco_power(wp,econ,b); continue; }
         /* ENNEMI POTENTIEL : déjà en guerre, OU rancune contre moi, OU casus belli (b → moi). */
