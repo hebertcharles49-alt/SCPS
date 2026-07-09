@@ -55,7 +55,7 @@ func _ready() -> void:
 	size = Vector2(PW, PH)
 	_layout()
 	get_viewport().size_changed.connect(_layout)
-	Sim.ticked.connect(func(_y): if visible: queue_redraw())
+	Sim.month_ticked.connect(func(_y): if visible: queue_redraw())   # flux/stocks : cadence mensuelle
 	# LOT G — les deux menus déroulants région A/B (dessinés PAR-DESSUS le contenu
 	# quand ouverts — ordre d'enfant = ordre de dessin, comme economy_panel).
 	_reinc_dd_a = VKitDropdown.new()
@@ -690,7 +690,7 @@ func _gui_input(event: InputEvent) -> void:
 					var nom2 := String(w2.manuf_name(int(b.bld)))
 					# Les ordres sont ENFILÉS (journal déterministe) : le retour n'est que
 					# « mis en file », pas le verdict d'application (qui tombe au tick).
-					var ok2: bool = w2.player_build_manuf(region2, int(b.bld))
+					var ok2: bool = w2.player_build_manuf(region2, int(b.bld)); Sim.notify_action()  # → refresh au drain (live)
 					_manuf_flash_ok = ok2
 					_manuf_flash = ("⚒ %s — ordre émis" % nom2) if ok2 else ("✗ %s — refusé" % nom2)
 					if not ok2:

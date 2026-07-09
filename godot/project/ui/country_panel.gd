@@ -37,7 +37,7 @@ func _ready() -> void:
 	size = Vector2(PW, PH)
 	_layout()
 	get_viewport().size_changed.connect(_layout)
-	Sim.ticked.connect(_on_tick)
+	Sim.month_ticked.connect(_on_tick)   # chiffres du pays : cadence mensuelle
 	hide()
 
 func _layout() -> void:

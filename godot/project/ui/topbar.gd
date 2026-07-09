@@ -20,7 +20,7 @@ func _ready() -> void:
 	_resize()
 	get_viewport().size_changed.connect(_resize)
 	Sim.generated.connect(_on_change)
-	Sim.ticked.connect(_on_tick)
+	Sim.month_ticked.connect(_on_tick)   # les chiffres (or·pop·savoir·food) s'updatent au MOIS
 
 func _resize() -> void:
 	position = Vector2.ZERO

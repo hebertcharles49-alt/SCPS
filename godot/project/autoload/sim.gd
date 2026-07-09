@@ -6,7 +6,8 @@ extends Node
 ## Enregistré comme autoload "Sim" dans project.godot.
 
 signal generated()              ## le monde vient d'être (re)généré
-signal ticked(year: int)        ## un pas de simulation vient d'avancer
+signal ticked(year: int)        ## un pas de simulation vient d'avancer (chaque JOUR — carte/anim)
+signal month_ticked(year: int)  ## un MOIS simulé (~30 j) a passé — la CADENCE des chiffres joueur
 
 const SEED_DEFAULT := 9
 
@@ -19,6 +20,7 @@ const SEED_DEFAULT := 9
 const SPEED_RATE := [0.0, 3.65, 8.1, 18.25]   ## pause · v1 · v2 · v3 (jours/seconde)
 const SPEED_LABELS := ["❙❙", "▶ lent", "▶▶ normal", "▶▶▶ rapide"]
 const CATCHUP_MAX := 30         ## jours max rattrapés d'un coup (lag spike → pas de rafale)
+const DAYS_PER_MONTH := 30.0    ## cadence du tick mensuel (les chiffres joueur s'updatent au mois)
 
 # `world` est UNTYPED à dessein : référencer le type `ScpsWorld` à la compilation
 # ferait échouer l'OUVERTURE du projet si la GDExtension n'est pas encore bâtie.
@@ -28,6 +30,8 @@ var world = null                ## le handle moteur (GDExtension) ; null si libs
 var speed_index := 2            ## « normal » par défaut
 var _last_speed := 2            ## dernière vitesse non-pause (pour la bascule Espace)
 var _accum := 0.0
+var _month_accum := 0.0         ## jours cumulés vers le prochain tick mensuel (display-only)
+var _acted := false             ## une action joueur attend son drain → refresh au prochain pas
 var day_count := 0              ## jours simulés CETTE SESSION (display-only : croissance des
                                 ## routes & co à grain fin — seuls les DELTAS comptent)
 var game_on := false            ## la PARTIE a commencé (Lancer/Charger) — avant : le monde de
@@ -82,6 +86,16 @@ func _process(delta: float) -> void:
 	world.advance_days(nd)
 	day_count += nd
 	ticked.emit(world.year())
+	# CADENCE MENSUELLE (chiffres joueur) : le moteur avance en JOURS (déterminisme) mais les
+	# ressources ne se rafraîchissent qu'au MOIS — sinon les chiffres dansent chaque jour. Une
+	# action joueur vient d'être DRAINÉE par advance_days (_acted) ? on rafraîchit aussi (live).
+	_month_accum += float(nd)
+	var month_due := _month_accum >= DAYS_PER_MONTH
+	if month_due:
+		_month_accum = fmod(_month_accum, DAYS_PER_MONTH)
+	if month_due or _acted:
+		_acted = false
+		month_ticked.emit(world.year())
 
 func set_speed(i: int) -> void:
 	speed_index = clampi(i, 0, SPEED_RATE.size() - 1)
@@ -104,3 +118,12 @@ func slower() -> void:
 
 func speed_label() -> String:
 	return SPEED_LABELS[speed_index]
+
+## À appeler par l'UI juste après un VERBE joueur (construire, ponctionner, allouer…). Le verbe
+## est enfilé puis drainé au PROCHAIN pas de simulation ; on ne rafraîchit les chiffres qu'APRÈS
+## ce drain (sinon on afficherait l'état d'AVANT l'effet). En PAUSE le drain ne tourne pas — on
+## redessine quand même (l'effet réel s'appliquera à la reprise ; au moins l'UI réagit au clic).
+func notify_action() -> void:
+	_acted = true
+	if speed_index == 0 and world != null:
+		month_ticked.emit(world.year())

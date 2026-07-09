@@ -34,7 +34,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP   # le panneau capte ses propres clics
 	_layout()
 	get_viewport().size_changed.connect(_layout)
-	Sim.ticked.connect(_on_tick)
+	Sim.month_ticked.connect(_on_tick)   # chiffres de province : cadence mensuelle
 	hide()
 
 func _layout() -> void:
@@ -368,7 +368,7 @@ func _gui_input(event: InputEvent) -> void:
 			build_requested.emit()
 		elif _colonize_rect.size.x > 0 and _colonize_rect.has_point(event.position):
 			if Sim.world != null and Sim.world.has_method("player_colonize"):
-				Sim.world.player_colonize(_pid)   # enfilé ; fondé au drain → le bouton s'éteint
+				Sim.world.player_colonize(_pid); Sim.notify_action()   # enfilé ; refresh au drain (live)
 				queue_redraw()
 		else:
 			for a in _acts:

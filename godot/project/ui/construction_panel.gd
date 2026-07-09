@@ -37,7 +37,7 @@ func _ready() -> void:
 	custom_minimum_size = size
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	Sim.generated.connect(_refresh)
-	Sim.ticked.connect(func(_y): _refresh())
+	Sim.month_ticked.connect(func(_y): _refresh())   # ressources dispo : cadence mensuelle
 	if Sim.world != null:
 		_refresh()
 
@@ -210,3 +210,4 @@ func _act(kind: String, type: int, nom: String) -> void:
 		Sound.play("ui_click")
 	build_requested.emit(kind, type)
 	_refresh()
+	Sim.notify_action()   # verbe joueur (bâtir / lever) → refresh des chiffres au drain (live)

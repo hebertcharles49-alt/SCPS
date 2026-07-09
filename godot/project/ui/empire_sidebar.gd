@@ -26,7 +26,7 @@ func _ready() -> void:
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	Sim.generated.connect(func(): _log.clear(); _city_names.clear(); _seen_seq = 0; queue_redraw())
-	Sim.ticked.connect(func(_y): _poll(); queue_redraw())
+	Sim.month_ticked.connect(func(_y): _poll(); queue_redraw())   # résumé d'empire : cadence mensuelle
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size

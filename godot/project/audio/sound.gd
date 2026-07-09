@@ -101,6 +101,10 @@ func _variant_list(nom: String) -> Array:
 ## Variantes (nom_1…nom_N) → une au hasard + jitter pitch/gain par lecture (l'organique) ;
 ## un nom sans variante joue son fichier unique, sans jitter destructeur. Silencieux si absent.
 func play(nom: String) -> void:
+	# Le son de FERMETURE de fenêtre est volontairement MUET (demande joueur) : ouvrir une
+	# fenêtre sonne (ui_parchment_open), la refermer non. Point de contrôle unique.
+	if nom == "ui_parchment_close":
+		return
 	var has_var := true
 	var vs := _variant_list(nom)
 	var pick := nom

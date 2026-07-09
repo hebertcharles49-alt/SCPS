@@ -18,7 +18,9 @@ var _cache := {}          ## clé → Texture2D (chargée à la demande)
 var _cur := ""            ## clé affichée (évite de recharger chaque tick)
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# ancres ET offsets à 0 → le cadre REMPLIT l'écran (set_anchors_preset seul laissait
+	# les offsets → un petit cadre bloqué en haut-gauche). Suit le redimensionnement.
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	patch_margin_left = MARGIN
 	patch_margin_top = MARGIN
