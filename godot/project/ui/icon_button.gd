@@ -48,12 +48,24 @@ func _draw() -> void:
 		if selected: mod = Color(1.15, 1.05, 0.8)
 		elif _hover: mod = Color(1.12, 1.12, 1.12)
 		else: mod = Color(0.92, 0.92, 0.92)
+	else:
+		# icône d'encre sombre sur chrome cuir sombre : un LIFT rend le glyphe lisible
+		# (les onglets du rail étaient des taches illisibles — capture 2026-07-09)
+		if selected: mod = Color(1.45, 1.35, 1.05)
+		elif _hover: mod = Color(1.40, 1.40, 1.35)
+		else: mod = Color(1.28, 1.26, 1.20)
 	if fg != "":
 		if fg_is_chrome:
 			UIKit.draw_chrome(self, fg, r, mod)
 		else:
 			var p := size.x * pad_frac
 			UIKit.draw_icon(self, fg, Vector2(p, p), size.x - 2 * p, mod)
+	# icône NUE (sans chrome) : l'état sélectionné se dit par un soulignement or
+	if bg == "" and not fg_is_chrome:
+		if selected:
+			draw_rect(Rect2(3, size.y - 3, size.x - 6, 2), Color(0.86, 0.68, 0.26))
+		elif _hover:
+			draw_rect(Rect2(3, size.y - 3, size.x - 6, 2), Color(0.86, 0.68, 0.26, 0.4))
 
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:

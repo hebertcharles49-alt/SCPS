@@ -4,6 +4,7 @@ extends Control
 ## démarrage (monde en pause). Zéro logique de sim : il NAVIGUE et délègue à la façade.
 
 signal game_started   ## une partie vient d'être lancée → le shell se referme
+signal codex_requested ## bouton Codex (F1 est parti aux onglets du rail, 2026-07-10)
 
 const NewGame = preload("res://ui/new_game_panel.gd")
 const Options = preload("res://ui/options_panel.gd")
@@ -124,7 +125,12 @@ func _build_main() -> void:
 
 	var sub := Label.new()
 	sub.text = tr("T_MENU_SUBTITLE")
-	sub.add_theme_color_override("font_color", C_DIM)
+	# lisible sur le fond photo (il se perdait dans le parchemin sombre) : encre claire
+	# + fin liséré sombre, corps un cran au-dessus du défaut.
+	sub.add_theme_color_override("font_color", Color(0.86, 0.80, 0.66))
+	sub.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.03, 0.7))
+	sub.add_theme_constant_override("outline_size", 4)
+	sub.add_theme_font_size_override("font_size", 18)
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(sub)
 
@@ -147,6 +153,7 @@ func _build_main() -> void:
 	col.add_child(_menu_button(tr("T_MENU_PLAY"), func(): _show(_new_game)))
 	col.add_child(_menu_button(tr("T_MENU_LOAD"), func(): _show(_load)))
 	col.add_child(_menu_button(tr("T_MENU_OPTIONS"), func(): _show(_options)))
+	col.add_child(_menu_button("Codex", func(): codex_requested.emit()))
 	col.add_child(_menu_button(tr("T_MENU_QUIT"), func(): get_tree().quit()))
 
 

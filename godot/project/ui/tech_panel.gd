@@ -10,6 +10,7 @@ extends Control
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
+const Frame = preload("res://ui/frame.gd")
 
 ## POPUP « métabolisation prête » (V1b) : quand un héritage NON natif atteint tier 3
 ## (digestion pleine), on notifie UNE FOIS — le fil de la victoire Merveille (paliers
@@ -22,7 +23,7 @@ var PW := 720.0
 var PH := 560.0
 const HEAD := 52.0          # hauteur d'en-tête (titre + jauges)
 const FOOT := 22.0          # pied (détail du nœud sélectionné)
-const METAH := 66.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage + compte Ascension)
+const METAH := 92.0         # bande de MÉTABOLISATION (le +% recherche + accès par héritage + compte Ascension)
 
 # couleurs d'état (sans bibliothèque d'animation Medusa : on teinte le cercle)
 const COL_LOCKED   := Color(0.40, 0.40, 0.46)
@@ -75,10 +76,15 @@ func _layout() -> void:
 	var vp := get_viewport_rect().size
 	var pw0 := PW
 	var ph0 := PH
-	PW = clampf(vp.x * 0.52, 720.0, 1150.0)
-	PH = clampf(vp.y * 0.64, 560.0, 900.0)
+	# TRÈS grand format (retour joueur 2026-07-10 : « agrandis sérieusement ») — la
+	# géométrie des nœuds est FIXE et généreuse, la hauteur SCROLLE (barre latérale).
+	# Centré ENTRE le rail gauche et le ledger droit (il passait sous le ledger).
+	var free_x0 := Frame.SIDEBAR_W + 8.0
+	var free_x1 := vp.x - 274.0 - 8.0
+	PW = clampf((free_x1 - free_x0) * 0.98, 900.0, 1780.0)
+	PH = clampf(vp.y * 0.92, 620.0, 1200.0)
 	size = Vector2(PW, PH)
-	position = Vector2((vp.x - PW) * 0.5, (vp.y - PH) * 0.5)
+	position = Vector2(free_x0 + (free_x1 - free_x0 - PW) * 0.5, (vp.y - PH) * 0.5)
 	if _built and (absf(PW - pw0) > 1.0 or absf(PH - ph0) > 1.0):
 		_built = false                       # le graphe se rebâtit à la nouvelle taille
 		if visible:
@@ -99,8 +105,8 @@ func _on_generated() -> void:
 func _build() -> void:
 	if Sim.world == null:
 		return
-	if _graph != null and is_instance_valid(_graph):
-		_graph.queue_free()
+	if _scroll != null and is_instance_valid(_scroll):
+		_scroll.queue_free()
 	_atoms.clear()
 	_info.clear()
 
@@ -110,8 +116,52 @@ func _build() -> void:
 		_built = true
 		return
 
-	# un Graph configuré EN CODE : pas de physique (disposition radiale figée), une
-	# ligne douce grise pour les arêtes, pas de fondu d'amorçage.
+	# ── COULOIRS THÉMATIQUES à géométrie FIXE et GÉNÉREUSE (retour joueur 2026-07-10 :
+	# « agrandis sérieusement, barre de scroll latérale, qu'on puisse lire les icônes ») :
+	# rangée 64 px · médaillon ~53 px. La hauteur totale déborde → ScrollContainer. ──
+	var cnt := {}
+	var tiers_set := {}
+	for i in nodes.size():
+		var t := int(nodes[i]["tier"])
+		var l := int(float(int(nodes[i]["quarter"])) / 3.0)
+		tiers_set[t] = true
+		var key := l * 16 + t
+		cnt[key] = int(cnt.get(key, 0)) + 1
+	var tiers: Array = tiers_set.keys()
+	tiers.sort()
+	_ncol = tiers.size()
+	_rowh = 64.0
+	var rr := 28.0
+	_lane_rows = [0, 0, 0]
+	for l in range(3):
+		for t in tiers:
+			_lane_rows[l] = maxi(int(_lane_rows[l]), int(cnt.get(l * 16 + int(t), 0)))
+	var total_rows: int = int(_lane_rows[0]) + int(_lane_rows[1]) + int(_lane_rows[2])
+	_lane_y = [26.0, 0.0, 0.0]
+	_lane_y[1] = float(_lane_y[0]) + float(_lane_rows[0]) * _rowh + 16.0
+	_lane_y[2] = float(_lane_y[1]) + float(_lane_rows[1]) * _rowh + 16.0
+	var content_h: float = float(_lane_y[2]) + float(_lane_rows[2]) * _rowh + 26.0
+	var view_w := PW - 24.0
+	var content_w := view_w - 14.0            # place de la barre latérale
+	var colw: float = (content_w - 116.0) / maxf(1.0, float(_ncol))
+
+	# le SCROLL (barre latérale) : fenêtre fixe, contenu haut — fond de couloirs + graphe
+	_scroll = ScrollContainer.new()
+	_scroll.position = Vector2(12, HEAD)
+	_scroll.size = Vector2(view_w, PH - HEAD - FOOT - METAH)
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	add_child(_scroll)
+	var content := Control.new()
+	content.custom_minimum_size = Vector2(content_w, content_h)
+	_scroll.add_child(content)
+	_bg = Control.new()
+	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bg.size = Vector2(content_w, content_h)
+	content.add_child(_bg)
+	_bg.draw.connect(_draw_rings)
+
+	# un Graph configuré EN CODE : pas de physique (disposition figée), une ligne
+	# douce grise pour les arêtes, pas de fondu d'amorçage.
 	_graph = Graph.new()
 	_graph.physics_enabled = false
 	_graph.enable_start_up_modulation = false
@@ -120,43 +170,42 @@ func _build() -> void:
 	line.connection_color = Color(0.70, 0.66, 0.58, 0.85)
 	line.connection_width = 2.0
 	_graph.graph_lines = line
-	_graph.position = Vector2(0, HEAD)
-	_graph.size = Vector2(PW, PH - HEAD - FOOT - METAH)
-
-	var center: Vector2 = _graph.size * 0.5
-	var max_r: float = minf(_graph.size.x, _graph.size.y) * 0.5 - 36.0
-	var ring := max_r / 6.0
-
-	# anti-chevauchement : on regroupe par (quadrant, tier) et on évente tangentiellement
-	var bucket := {}
-	for i in nodes.size():
-		var key := Vector2i(int(nodes[i]["quarter"]), int(nodes[i]["tier"]))
-		if not bucket.has(key):
-			bucket[key] = []
-		bucket[key].append(i)
-
-	# créer les Atomes (AVANT d'attacher le Graph → son _ready les recensera)
+	_graph.position = Vector2.ZERO
+	_graph.size = Vector2(content_w, content_h)
+	# ⚠ le Graph n'entre dans l'arbre QU'APRÈS la pose des Atomes (son _ready les recense)
+	_pending_graph_parent = content
+	# placement ANTI-CROISEMENT : colonne par colonne (gauche→droite), chaque nœud d'une
+	# pile (couloir, tier) est trié par la HAUTEUR de son PRÉREQUIS déjà placé (barycentre)
+	# — l'arête coule tout droit au lieu de croiser (l'ancien tri était ALPHABÉTIQUE).
 	_atoms.resize(nodes.size())
-	for key in bucket:
-		var members: Array = bucket[key]
-		var q: int = key.x
-		var tier: int = key.y
-		var base_ang := (float(q) + 0.5) / 9.0 * TAU - PI * 0.5
-		var r := (float(tier) + 0.7) * ring
-		var m := members.size()
-		for j in m:
-			var idx: int = members[j]
-			var nd: Dictionary = nodes[idx]
-			var rad := Vector2(cos(base_ang), sin(base_ang))
-			var tan := Vector2(-rad.y, rad.x)
-			var off := (float(j) - float(m - 1) * 0.5) * 26.0
-			var target: Vector2 = center + rad * r + tan * off
-			var atom = _make_atom(nd, target)
-			_graph.add_child(atom)
-			_atoms[idx] = atom
-			_info[atom] = nd
+	var rowpos := {}   # idx nœud → yy posé (lu par les colonnes suivantes)
+	for tcol in range(tiers.size()):
+		var t2 := int(tiers[tcol])
+		for l2 in range(3):
+			var col_idx := []
+			for i in nodes.size():
+				if int(nodes[i]["tier"]) == t2 and int(float(int(nodes[i]["quarter"])) / 3.0) == l2:
+					col_idx.append(i)
+			if col_idx.is_empty():
+				continue
+			col_idx.sort_custom(func(a, b):
+				var ka: float = rowpos.get(int(nodes[a].get("prereq", -1)), 1e9)
+				var kb: float = rowpos.get(int(nodes[b].get("prereq", -1)), 1e9)
+				if absf(ka - kb) > 0.01:
+					return ka < kb
+				return String(nodes[a]["name"]) < String(nodes[b]["name"]))
+			var k := col_idx.size()
+			var xx: float = 100.0 + colw * float(tcol) + colw * 0.5
+			for j in range(k):
+				var idx: int = col_idx[j]
+				var yy: float = float(_lane_y[l2]) + (float(int(_lane_rows[l2]) - k) * 0.5 + float(j) + 0.5) * _rowh
+				rowpos[idx] = yy
+				var atom = _make_atom(nodes[idx], Vector2(xx, yy), rr)
+				_graph.add_child(atom)
+				_atoms[idx] = atom
+				_info[atom] = nodes[idx]
 
-	add_child(_graph)                       # → _ready du Graph : il recense les Atomes
+	_pending_graph_parent.add_child(_graph) # → _ready du Graph : il recense les Atomes
 	# arêtes : chaque nœud relié à son prérequis (indice dans CE tableau)
 	for i in nodes.size():
 		var pr := int(nodes[i].get("prereq", -1))
@@ -167,7 +216,16 @@ func _build() -> void:
 	_built = true
 	queue_redraw()
 
-func _make_atom(nd: Dictionary, target: Vector2):
+## géométrie des COULOIRS (posée par _build, lue par _draw_rings — fonds/étiquettes)
+var _lane_rows: Array = [0, 0, 0]
+var _lane_y: Array = [0.0, 0.0, 0.0]
+var _rowh := 64.0
+var _ncol := 6
+var _scroll: ScrollContainer = null       ## la fenêtre scrollable (barre latérale)
+var _bg: Control = null                   ## fond de couloirs/tiers, DANS le scroll
+var _pending_graph_parent: Control = null ## le parent du Graph (posé après les Atomes)
+
+func _make_atom(nd: Dictionary, target: Vector2, rr: float = 13.0):
 	var atom = Atom.new()
 	var d = AtomData.new()
 	d.id = StringName("tech_%s" % String(nd["name"]))
@@ -175,7 +233,6 @@ func _make_atom(nd: Dictionary, target: Vector2):
 	atom.data = d
 	atom.is_static = true
 	atom.drag_input = false
-	var rr := 13.0
 	atom.radius = rr
 	atom.size = Vector2(rr * 2.0, rr * 2.0)
 	atom.position = target - Vector2(rr, rr)
@@ -212,7 +269,7 @@ func _make_atom(nd: Dictionary, target: Vector2):
 		mr.texture = md
 		mr.stretch_mode = TextureRect.STRETCH_SCALE
 		mr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE   # sinon min-size = 256² (texture)
-		var ms := rr * 1.5
+		var ms := rr * 1.9   # le médaillon domine FRANCHEMENT le disque (retour joueur ×2)
 		mr.size = Vector2(ms, ms)
 		mr.position = Vector2(rr - ms * 0.5, rr - ms * 0.5)
 		mr.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -254,7 +311,7 @@ func _draw() -> void:
 	if w == null:
 		return
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
-	_draw_tier_rings()          # guides de TIER (rayon = profondeur) sous le graphe — lisibilité
+	# (les couloirs/tiers se dessinent sur le FOND scrollable — cf. _draw_rings)
 	var info: Dictionary = w.tech_info()
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, 12), 20)
 	VKit.text(self, Vector2(42, 13), VKit.COL_GOLD, "Arbre de technologie", VKit.FS_BIG)
@@ -305,18 +362,27 @@ func _draw() -> void:
 # digérer un peuple OUVRE ses signatures (tier 1 commerce → tier 3 plein/métabolisé).
 # Anneaux de TIER (rayon = profondeur 1-5) — rend la structure en tiers LISIBLE sous le graphe
 # Medusa (l'« arbre cohérent par tier » voulu, sans toucher aux prix/équilibre). Display-only.
-func _draw_tier_rings() -> void:
-	if _graph == null or not is_instance_valid(_graph):
+func _draw_rings() -> void:
+	# COULOIRS THÉMATIQUES (miroir du _build), dessinés sur le FOND scrollable (_bg,
+	# coordonnées CONTENU) : fond alterné + ruban de thème + étiquette + tiers.
+	if _bg == null or not is_instance_valid(_bg):
 		return
-	var c: Vector2 = _graph.position + _graph.size * 0.5
-	var max_r: float = minf(_graph.size.x, _graph.size.y) * 0.5 - 36.0
-	if max_r <= 0.0:
-		return
-	var ring := max_r / 6.0
-	for t in range(1, 6):
-		var r := (float(t) + 0.7) * ring
-		draw_arc(c, r, 0.0, TAU, 64, Color(0.58, 0.52, 0.42, 0.16), 1.0, true)
-		VKit.text(self, Vector2(c.x - 7.0, c.y - r - 11.0), VKit.COL_DIM, "T%d" % t, VKit.FS_SMALL)
+	var gs: Vector2 = _bg.size
+	var lane_names := ["Savoir", "Forge", "Société"]          # ordre THM_* (scps_tech.h)
+	var lane_ink := [Color(0.35, 0.45, 0.62, 0.75), Color(0.66, 0.34, 0.22, 0.75), Color(0.45, 0.55, 0.30, 0.75)]
+	for l in range(3):
+		var y0: float = float(_lane_y[l]) - 6.0
+		var lh: float = float(_lane_rows[l]) * _rowh + 12.0
+		if l % 2 == 1:
+			VKit.fill(_bg, Rect2(8.0, y0, gs.x - 16.0, lh), Color(0.32, 0.27, 0.20, 0.10))
+		VKit.fill(_bg, Rect2(8.0, y0, 3.0, lh), lane_ink[l])
+		VKit.text(_bg, Vector2(18.0, y0 + lh * 0.5 - 9.0), VKit.COL_GOLD, lane_names[l], VKit.FS_SMALL)
+	var colw: float = (gs.x - 116.0) / float(maxi(1, _ncol))
+	for t in range(_ncol):
+		var cx: float = 100.0 + colw * float(t)
+		if t > 0:
+			VKit.fill(_bg, Rect2(cx, 8.0, 1.0, gs.y - 16.0), Color(0.58, 0.52, 0.42, 0.14))
+		VKit.text(_bg, Vector2(cx + colw * 0.5 - 8.0, 2.0), VKit.COL_DIM, "T%d" % t, VKit.FS_SMALL)
 
 ## DEUX LECTURES DISTINCTES, séparées visuellement (P5 — une seule source de vérité
 ## pour la victoire) :
@@ -330,34 +396,49 @@ func _draw_metab(info: Dictionary) -> void:
 	var mp := int(info.get("metab_pct", 0))
 	UIKit.draw_icon(self, "knowledge_book", Vector2(14, y0 + 4), 14)
 	VKit.text(self, Vector2(36, y0 + 5), VKit.COL_GOLD,
-		"Métabolisation : +%d%% recherche (le creuset digéré)" % mp, VKit.FS_SMALL)
+		"Peuples intégrés : +%d%% de recherche" % mp, VKit.FS_SMALL)
 	if Sim.world == null:
 		return
 
 	# ── Rangée 1 : ACCÈS AUX SIGNATURES (tech, heritage_access — pas la victoire) ──
+	# Chaque héritage = une CELLULE CENTRÉE dans sa colonne : nom, puis BARRE de %
+	# de digestion (retour joueur : « centre mieux, donne une barre de % ») + 3 pips
+	# de tier à droite de la barre.
 	var acc: Array = Sim.world.heritage_access()
 	var n := acc.size()
 	if n > 0:
 		var cw := (PW - 28.0) / float(n)
-		var ry := y0 + 20.0
-		VKit.text(self, Vector2(16, ry - 10), VKit.COL_DIM, "Accès aux signatures (arbre) :", VKit.FS_SMALL)
+		var ry := y0 + 30.0
+		VKit.text(self, Vector2(16, ry - 12), VKit.COL_DIM, "Accès aux signatures (arbre) :", VKit.FS_SMALL)
 		for i in n:
 			var h: Dictionary = acc[i]
 			var x := 16.0 + i * cw
 			var nm := String(h.get("nom", ""))
-			if nm.length() > 8:
-				nm = nm.substr(0, 8)
+			if nm.length() > 14:
+				nm = nm.substr(0, 14)
 			var nativ := bool(h.get("native", false))
 			var tier := int(h.get("tier", 0))
 			var mark := "★ " if nativ else ""
-			VKit.text(self, Vector2(x, ry), (VKit.COL_GOLD if nativ else VKit.COL_PARCH),
-				mark + nm, VKit.FS_SMALL)
-			for k in 3:                                   # 3 pips de tier (rempli = accessible)
-				VKit.fill(self, Rect2(x + k * 9.0, ry + 14, 6, 6),
-					(COL_UNLOCKED if tier > k else COL_LOCKED))
+			var lbl := mark + nm
+			var lw := VKit.text_w(lbl, VKit.FS_SMALL)
+			VKit.text(self, Vector2(x + (cw - lw) * 0.5, ry), (VKit.COL_GOLD if nativ else VKit.COL_PARCH),
+				lbl, VKit.FS_SMALL)
+			# la BARRE de digestion (native = pleine, or) + les pips de tier à sa droite
 			var dp := int(h.get("digested_pct", 0))
-			if dp > 0 and not nativ:                       # la digestion EN COURS (dénominateur : pop totale)
-				VKit.text(self, Vector2(x + 32, ry + 13), VKit.COL_DIM, "%d%%" % dp, VKit.FS_SMALL)
+			var bw := cw - 58.0
+			var bx := x + (cw - bw - 34.0) * 0.5
+			var by := ry + 16.0
+			VKit.fill(self, Rect2(bx, by, bw, 7), VKit.COL_PANEL2)
+			VKit.box(self, Rect2(bx, by, bw, 7), VKit.COL_EDGE)
+			if nativ:
+				VKit.fill(self, Rect2(bx + 1, by + 1, bw - 2, 5), VKit.COL_GOLD)
+			elif dp > 0:
+				VKit.fill(self, Rect2(bx + 1, by + 1, (bw - 2) * clampf(dp / 100.0, 0.0, 1.0), 5), COL_UNLOCKED)
+			var ptxt := "★" if nativ else "%d%%" % dp
+			VKit.text(self, Vector2(bx + bw + 5, by - 4), VKit.COL_DIM, ptxt, VKit.FS_SMALL)
+			for k in 3:                                   # 3 pips de tier (rempli = accessible)
+				VKit.fill(self, Rect2(bx + bw + 5 + 24.0 + k * 8.0, by, 6, 6),
+					(COL_UNLOCKED if tier > k else COL_LOCKED))
 
 	# ── Rangée 2 : COMPTE POUR L'ASCENSION (merv_metab — la seule jauge de victoire) ──
 	if not Sim.world.has_method("merv_metab"):
@@ -370,21 +451,23 @@ func _draw_metab(info: Dictionary) -> void:
 	if m == 0:
 		return
 	var cw2 := (PW - 28.0) / float(m)
-	var ry2 := y0 + 46.0
+	var ry2 := y0 + 68.0
 	var req_txt := (" — requis palier : %d" % mreq) if mreq > 0 else ""
-	VKit.text(self, Vector2(16, ry2 - 10), VKit.COL_GOLD,
+	VKit.text(self, Vector2(16, ry2 - 12), VKit.COL_GOLD,
 		"Compte pour l'Ascension : %d/%d%s" % [mcount, m, req_txt], VKit.FS_SMALL)
 	for i in m:
 		var h2: Dictionary = mh[i]
 		var x2 := 16.0 + i * cw2
 		var nm2 := String(h2.get("nom", ""))
-		if nm2.length() > 8:
-			nm2 = nm2.substr(0, 8)
+		if nm2.length() > 14:
+			nm2 = nm2.substr(0, 14)
 		var nativ2 := bool(h2.get("native", false))
 		var metab2: bool = bool(h2.get("metabolized", false))
 		var voie2 := String(h2.get("voie", ""))
-		var mark2 := "★" if nativ2 else ("✓" if metab2 else "·")
-		VKit.text(self, Vector2(x2, ry2), (VKit.COL_GOLD if (nativ2 or metab2) else VKit.COL_PARCH),
-			mark2 + " " + nm2, VKit.FS_SMALL)
+		var lbl2 := ("★" if nativ2 else ("✓" if metab2 else "·")) + " " + nm2
+		var lw2 := VKit.text_w(lbl2, VKit.FS_SMALL)
+		VKit.text(self, Vector2(x2 + (cw2 - lw2) * 0.5, ry2), (VKit.COL_GOLD if (nativ2 or metab2) else VKit.COL_PARCH),
+			lbl2, VKit.FS_SMALL)
 		if not nativ2 and voie2 != "":
-			VKit.text(self, Vector2(x2, ry2 + 13), VKit.COL_DIM, voie2, VKit.FS_SMALL)
+			var vw2 := VKit.text_w(voie2, VKit.FS_SMALL)
+			VKit.text(self, Vector2(x2 + (cw2 - vw2) * 0.5, ry2 + 13), VKit.COL_DIM, voie2, VKit.FS_SMALL)

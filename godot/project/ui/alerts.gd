@@ -29,6 +29,7 @@ const COL_ECO    := Color(0.78, 0.52, 0.22)   ## orange — économie/commerce
 
 const CHIP := 30.0
 const GAP := 6.0
+const LABELW := 184.0  ## la colonne du LABEL visible (« letters » RimWorld : lisible sans hover)
 const FEED_MAX := 8   ## évènements gardés à l'écran (les plus récents ; clic = acquitté)
 
 ## LA TABLE DU FIL (FeedKind → présentation) — AJOUTER UN ÉVÈNEMENT = une ligne ici
@@ -78,9 +79,10 @@ func _refresh() -> void:
 	_poll_feed()
 	var n := _events.size() + _alerts.size()
 	var vw := get_viewport_rect().size.x
-	# décalé à GAUCHE de l'empire-sidebar (bande droite permanente en jeu)
-	position = Vector2(vw - CHIP - 10.0 - (274.0 if Sim.game_on else 0.0), Frame.TOPBAR_H + 10.0)
-	size = Vector2(CHIP, maxf(1.0, n * (CHIP + GAP)))
+	# décalé à GAUCHE de l'empire-sidebar (bande droite permanente en jeu) ; la colonne
+	# porte désormais le LABEL visible (façon « letters » RimWorld) + le chip
+	position = Vector2(vw - CHIP - LABELW - 10.0 - (274.0 if Sim.game_on else 0.0), Frame.TOPBAR_H + 10.0)
+	size = Vector2(CHIP + LABELW, maxf(1.0, n * (CHIP + GAP)))
 	visible = n > 0
 	queue_redraw()
 
@@ -254,25 +256,64 @@ func _stack() -> Array:
 	st.append_array(_alerts)
 	return st
 
+## label COURT dérivé du tip (coupé au tiret/parenthèse, tronqué) — le texte VISIBLE
+## de la « letter » (façon RimWorld : la notification se lit sans survol).
+func _short(tip: String) -> String:
+	var s := tip
+	var cut := s.find(" — ")
+	if cut < 0:
+		cut = s.find(" (")
+	if cut < 0:
+		cut = s.find(" : ")
+	if cut > 0:
+		s = s.substr(0, cut)
+	if s.length() > 26:
+		s = s.substr(0, 25) + "…"
+	return s
+
 func _draw() -> void:
 	var y := 0.0
 	for al in _stack():
-		var r := Rect2(0, y, CHIP, CHIP)
-		VKit.fill(self, r, VKit.COL_PANEL)
 		var c: Color = al["col"]
+		# LE CARTOUCHE-LABEL (letters RimWorld) : texte lisible sans hover, aligné à
+		# droite contre le chip, fond sombre translucide + liseré au domaine.
+		var lab := _short(String(al.get("tip", "")))
+		if lab != "":
+			var lw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
+			var lr := Rect2(LABELW - lw, y + 3, lw, CHIP - 6)
+			VKit.fill(self, lr, Color(0.07, 0.055, 0.04, 0.88))
+			VKit.box(self, lr, Color(c, 0.75))
+			VKit.text(self, Vector2(lr.position.x + 7, y + 7), VKit.COL_PARCH, lab, VKit.FS_SMALL)
+		var r := Rect2(LABELW, y, CHIP, CHIP)
+		VKit.fill(self, r, VKit.COL_PANEL)
 		draw_rect(r, c, false, 2.0)                       # le CODE COULEUR : liseré épais du domaine
-		draw_rect(Rect2(0, y + CHIP - 4, CHIP, 4), c)     # + socle plein (lisible même en périphérie)
-		UIKit.draw_icon(self, String(al["icon"]), Vector2(5, y + 3), 20)
+		draw_rect(Rect2(LABELW, y + CHIP - 4, CHIP, 4), c)  # + socle plein (lisible en périphérie)
+		UIKit.draw_icon(self, String(al["icon"]), Vector2(LABELW + 5, y + 3), 20)
 		if al.has("seq"):                                  # ÉVÈNEMENT : pastille « neuf » en coin
-			draw_circle(Vector2(CHIP - 4, y + 4), 3.0, Color(0.95, 0.90, 0.75))
+			draw_circle(Vector2(LABELW + CHIP - 4, y + 4), 3.0, Color(0.95, 0.90, 0.75))
 		y += CHIP + GAP
 
 func _gui_input(event: InputEvent) -> void:
-	if not (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+	if not (event is InputEventMouseButton and event.pressed):
 		return
 	var st := _stack()
 	var idx := int(event.position.y / (CHIP + GAP))
 	if idx < 0 or idx >= st.size():
+		return
+	# CLIC DROIT = BALAYER (letters RimWorld) : un évènement transient se dismisse sans
+	# agir ; les CONDITIONS persistantes (alerte de fond) restent — elles disent un état.
+	if event.button_index == MOUSE_BUTTON_RIGHT:
+		var ald: Dictionary = st[idx]
+		if ald.has("seq"):
+			for i in range(_events.size()):
+				if int(_events[i]["seq"]) == int(ald["seq"]):
+					_events.remove_at(i)
+					break
+			Sound.play("ui_click")
+			_refresh()
+		accept_event()
+		return
+	if event.button_index != MOUSE_BUTTON_LEFT:
 		return
 	accept_event()
 	Sound.play("ui_click")   # le son du CLIC sur la notification (comme tout clic)

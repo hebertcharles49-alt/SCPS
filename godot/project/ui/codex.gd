@@ -1,5 +1,6 @@
 extends Control
-## Codex — LE CODEX DES VERBES (touche F1) : l'enseignement de tout ce que le joueur
+## Codex — LE CODEX DES VERBES (menu Échap · ex-F1, parti aux onglets du rail) :
+## l'enseignement de tout ce que le joueur
 ## PEUT FAIRE. Motif chronique.gd (Control statique scrollable, visible/hide) : zéro
 ## logique de sim ici, on affiche une liste EN DUR (rédigée depuis un scan du moteur —
 ## enum CMD_* de scps_sim.h + scps_player_* de scps_api.h + leur câblage UI réel au
@@ -92,7 +93,7 @@ func _ready() -> void:
 	col.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "Tout ce que vous pouvez faire — et où le faire. (F1 pour fermer)"
+	subtitle.text = "Tout ce que vous pouvez faire, et où le faire. (Échap pour fermer · menu Échap pour rouvrir)"
 	subtitle.add_theme_color_override("font_color", Color(0.62, 0.60, 0.58))
 	col.add_child(subtitle)
 	col.add_child(HSeparator.new())
@@ -126,6 +127,31 @@ func _rebuild() -> void:
 		return
 	for c in _list.get_children():
 		c.queue_free()
+	# domaine « CONCEPTS & JAUGES » : généré du registre ui/concepts.gd — la MÊME
+	# source que les mots turquoise des tooltips (retour joueur 2026-07-10 : le
+	# codex est branché sur les concepts).
+	var Concepts = load("res://ui/concepts.gd")
+	var chead := Label.new()
+	chead.text = "Concepts & jauges"
+	chead.add_theme_font_size_override("font_size", 17)
+	chead.add_theme_color_override("font_color", Color(0.35, 0.78, 0.76))
+	_list.add_child(chead)
+	_list.add_child(HSeparator.new())
+	var ckeys: Array = Concepts.DEFS.keys()
+	ckeys.sort()
+	for ck in ckeys:
+		# chaque concept avec SON ICÔNE (retour joueur 2026-07-10) — RichText [img]
+		var cl := RichTextLabel.new()
+		cl.bbcode_enabled = true
+		cl.fit_content = true
+		cl.autowrap_mode = TextServer.AUTOWRAP_WORD
+		cl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var ic: String = Concepts.icon_of(String(ck))
+		var pre := ("[img=16x16]%s[/img] " % ic) if ic != "" and ResourceLoader.exists(ic) else ""
+		cl.text = "%s[color=#%s]%s[/color] [color=#8f877a]: %s[/color]" % [
+			pre, Concepts.COL, String(ck), Concepts.def_of(String(ck))]
+		cl.add_theme_font_size_override("normal_font_size", 13)
+		_list.add_child(cl)
 	for domain in DOMAINS:
 		var dname: String = String(domain[0])
 		var entries: Array = domain[1]

@@ -24,10 +24,12 @@ const SLICE_PAL := [
 	Color(0xa8/255.0,0x5a/255.0,0x5a/255.0), Color(0x6f/255.0,0x9a/255.0,0x5a/255.0),
 ]
 
-# tailles de police (g_font / g_font_small / g_font_big)
-const FS := 14
-const FS_SMALL := 11
-const FS_BIG := 18
+# tailles de police (g_font / g_font_small / g_font_big) — montées d'un cran
+# (retour joueur 2026-07-10 : « agrandis la police ») ; les layouts en pas de
+# 14-16 px encaissent +1/+2 (le texte se dessine depuis le HAUT, pas de clip).
+const FS := 15
+const FS_SMALL := 12
+const FS_BIG := 20
 
 # ── POLICES (DA parchemin) : Alegreya Sans = l'UI (humaniste, lisible en bouton/panneau/
 #    tooltip) ; IM Fell English SC = la CARTE (cartouches, noms de lieux — le vieux livre
@@ -104,37 +106,35 @@ static func box(ci: CanvasItem, r: Rect2, c: Color) -> void:
 static func fill(ci: CanvasItem, r: Rect2, c: Color) -> void:
 	ci.draw_rect(r, c, true)
 
-## panel_bg : le cadre CUIR riveté (planche 1) en 9-slice ; repli = aplat cuir + liseré or
-static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
-	var UIKit := load("res://ui/uikit.gd")
-	var psb: StyleBox = UIKit.parch_box("sheet01_panel_chrome_01", 26)
-	if psb != null:
-		var sh := StyleBoxFlat.new()
-		sh.bg_color = COL_SHADOW; sh.set_corner_radius_all(10)
-		ci.draw_style_box(sh, Rect2(r.position + Vector2(4, 6), r.size))
-		ci.draw_style_box(psb, r)
-		return
-	var sb_shadow := StyleBoxFlat.new()
-	sb_shadow.bg_color = COL_SHADOW; sb_shadow.set_corner_radius_all(10)
-	ci.draw_style_box(sb_shadow, Rect2(r.position + Vector2(4, 6), r.size))
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = COL_PANEL; sb.set_corner_radius_all(8)
-	sb.border_color = COL_GOLD; sb.set_border_width_all(2)
-	ci.draw_style_box(sb, r)
-	var sheen := StyleBoxFlat.new()
-	sheen.bg_color = COL_PANEL_HI; sheen.set_corner_radius_all(7)
-	ci.draw_style_box(sheen, Rect2(r.position + Vector2(2, 2), Vector2(r.size.x - 4, r.size.y / 5.0)))
+## panel_bg : fond de panneau PLAT (retour joueur 2026-07-10 : « débarrasse-toi des
+## assets de panneau — les joueurs pardonnent le cheap quand c'est lisible », RimWorld).
+## Ombre douce + cuir plat + liseré fin — plus AUCUN 9-slice de chrome (le cadre
+## parchemin étiré/riveté disparaît ; les icônes de RESSOURCE restent, elles).
+static var _pb_shadow: StyleBoxFlat = null
+static var _pb_body: StyleBoxFlat = null
 
-## jauge 0-100 : dégradé rouge→vert (strips) + bord + curseur clair à la valeur
+static func panel_bg(ci: CanvasItem, r: Rect2) -> void:
+	if _pb_shadow == null:
+		_pb_shadow = StyleBoxFlat.new()
+		_pb_shadow.bg_color = COL_SHADOW
+		_pb_shadow.set_corner_radius_all(8)
+		_pb_body = StyleBoxFlat.new()
+		_pb_body.bg_color = COL_PANEL
+		_pb_body.set_corner_radius_all(6)
+		_pb_body.border_color = Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.55)
+		_pb_body.set_border_width_all(1)
+	ci.draw_style_box(_pb_shadow, Rect2(r.position + Vector2(3, 5), r.size))
+	ci.draw_style_box(_pb_body, r)
+
+## jauge 0-100 : piste sombre + REMPLISSAGE proportionnel teinté par le sens (l'ancien
+## arc-en-ciel plein + curseur lisait comme une palette, pas comme une valeur).
 static func gauge(ci: CanvasItem, x: float, y: float, w: float, h: float, value: int) -> void:
 	value = clampi(value, 0, 100)
-	var strips := 40
-	for i in range(strips):
-		var t := float(i) / (strips - 1)
-		fill(ci, Rect2(x + t * (w - 1), y, w / float(strips) + 1.0, h), sense(t))
+	fill(ci, Rect2(x, y, w, h), COL_PANEL2)
 	box(ci, Rect2(x - 1, y - 1, w + 2, h + 2), COL_EDGE)
-	var mx := x + value / 100.0 * (w - 1)
-	fill(ci, Rect2(mx - 1, y - 2, 3, h + 4), COL_PARCH)
+	var fw := (w - 2.0) * float(value) / 100.0
+	if fw > 0.5:
+		fill(ci, Rect2(x + 1, y + 1, fw, h - 2), sense(float(value) / 100.0))
 
 ## camembert : parts (percent[]) en couleurs (cols[]) — 0 en haut, sens horaire
 static func pie(ci: CanvasItem, center: Vector2, radius: float, percents: Array, cols: Array) -> void:
@@ -171,12 +171,36 @@ static func face(ci: CanvasItem, center: Vector2, r: float, mood: float, lit: bo
 			ci.draw_line(prev, p, c, 1.0)
 		prev = p
 
+## HEADER DE FENÊTRE (discipline Stellaris minée 2026-07-10 : bande de titre 36 px ·
+## titre en grand corps · filet séparateur sous la bande · close en HAUT-DROITE).
+## Renvoie le rect du bouton ✕ (à tester dans _gui_input du panneau). Le contenu
+## démarre à HDR_H + ~8. Remplace les titres nus posés à des y variables.
+const HDR_H := 36.0
+static func header(ci: CanvasItem, w: float, title: String) -> Rect2:
+	fill(ci, Rect2(0, 0, w, HDR_H), Color(0.055, 0.042, 0.028, 0.92))
+	text(ci, Vector2(12, 7), COL_PARCH, title, FS_BIG)
+	fill(ci, Rect2(0, HDR_H - 1.0, w, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.6))
+	var cr := Rect2(w - 30.0, 8.0, 20.0, 20.0)
+	fill(ci, cr, COL_PANEL2)
+	box(ci, cr, COL_GOLD)
+	text(ci, Vector2(cr.position.x + 6, cr.position.y + 2), COL_PARCH, "x")
+	return cr
+
 # ── sections & rangées (ui_section / ui_row). y est un [valeur] muté → on
 #    renvoie le nouveau y (GDScript n'a pas de int*). ─────────────────────────
+## HEADER DE SECTION en BANDEAU (rendu attendu Paradox 2026-07-09) : bande sombre +
+## filets or haut/bas, titre or — remplace le texte nu, même consommation verticale
+## (30 px) donc AUCUN layout appelant ne bouge. La largeur suit le Control porteur.
 static func section(ci: CanvasItem, x: float, y: float, title: String) -> float:
-	y += 9
-	text(ci, Vector2(x, y), COL_GOLD, title)
-	return y + 21
+	y += 6
+	var bw := 220.0
+	if ci is Control:
+		bw = maxf(80.0, (ci as Control).size.x - 2.0 * x)
+	fill(ci, Rect2(x - 4, y - 3, bw + 8, 20), Color(0.085, 0.066, 0.048, 0.88))
+	fill(ci, Rect2(x - 4, y - 3, bw + 8, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.55))
+	fill(ci, Rect2(x - 4, y + 16, bw + 8, 1), Color(COL_GOLD.r, COL_GOLD.g, COL_GOLD.b, 0.55))
+	text(ci, Vector2(x + 2, y - 1), COL_GOLD, title)
+	return y + 24
 
 static func row(ci: CanvasItem, x: float, y: float, cat: String, word: String, wc: Color) -> float:
 	text(ci, Vector2(x, y), COL_DIM, cat)

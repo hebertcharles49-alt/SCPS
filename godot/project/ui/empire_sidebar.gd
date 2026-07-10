@@ -12,13 +12,17 @@ const AlertsK = preload("res://ui/alerts.gd")   # la TABLE DU FIL (FEED_KINDS) p
 
 const W := 268.0
 const HANDLE_W := 14.0      ## bande réduite quand la sidebar est REPLIÉE (rabat)
-const LOG_MAX := 14
+const LOG_MAX := 18         ## (les factions parties en topbar, le journal respire)
 
 var _seen_seq := 0
 var _log := []              ## [{txt, y(an)}] — fil accumulé (le plus récent en tête)
 var _city_names := {}       ## region → nom (cache, résolu via province_at(siège))
 var _collapsed := false     ## rabat (pièces planche 23 : 01 replier · 02 déplier)
 var _handle_rect := Rect2()
+var _refill_rect := Rect2() ## chip RECOMPLÉTER (déménagé du tiroir Armée — retour joueur)
+var _fold := {}             ## titre de section → replié (retour joueur 2026-07-10 :
+                            ## « tous les menus de droite doivent pouvoir se collapser »)
+var _sec_rects := []        ## [{rect, title}] bandeaux cliquables (reconstruit au _draw)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE   # lecture seule : la carte reste cliquable au travers ? Non — bande opaque
@@ -27,6 +31,15 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_layout)
 	Sim.generated.connect(func(): _log.clear(); _city_names.clear(); _seen_seq = 0; queue_redraw())
 	Sim.month_ticked.connect(func(_y): _poll(); queue_redraw())   # résumé d'empire : cadence mensuelle
+
+## ⚠ la visibilité vivait DANS _draw (`visible = Sim.game_on`) : un Control caché ne
+## redessine JAMAIS → masqué une fois au menu, le ledger ne se remontrait jamais (il
+## n'apparaissait dans AUCUNE capture). Pilotée ici, à la frame — trivial et robuste.
+func _process(_d: float) -> void:
+	if visible != Sim.game_on:
+		visible = Sim.game_on
+		if visible:
+			queue_redraw()
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size
@@ -41,6 +54,25 @@ func _gui_input(e: InputEvent) -> void:
 			_layout()
 			queue_redraw()
 			accept_event()
+			return
+		if not _collapsed and _refill_rect.size.x > 0 and _refill_rect.has_point(e.position):
+			if Sim.world != null and Sim.world.has_method("player_refill"):
+				Sim.world.player_refill()
+				Sound.play("ui_click")
+				Sim.notify_action()
+				queue_redraw()
+			accept_event()
+			return
+		# PLIAGE PAR SECTION : clic sur un bandeau → replie/déplie son contenu
+		if not _collapsed:
+			for sr in _sec_rects:
+				if (sr["rect"] as Rect2).has_point(e.position):
+					var t := String(sr["title"])
+					_fold[t] = not bool(_fold.get(t, false))
+					Sound.play("ui_click")
+					queue_redraw()
+					accept_event()
+					return
 
 func _poll() -> void:
 	var w = Sim.world
@@ -75,8 +107,7 @@ func _region_name(r: int) -> String:
 	return nm
 
 func _draw() -> void:
-	visible = Sim.game_on
-	if not visible or Sim.world == null:
+	if Sim.world == null:
 		return
 	var w = Sim.world
 	var me: int = w.player()
@@ -100,9 +131,9 @@ func _draw() -> void:
 			_handle_rect.size + Vector2(4, 0)), false, Color(1, 1, 1, 0.70))
 	var x := 12.0
 	var y := 10.0
+	_sec_rects.clear()
 
 	# ── VILLES : régions habitées du joueur, triées par âmes ──
-	y = VKit.section(self, x, y, "VILLES")
 	var cities := []
 	for r in range(w.region_count()):
 		if int(w.region_owner(r)) != me:
@@ -111,128 +142,93 @@ func _draw() -> void:
 		if p >= 150:
 			cities.append([p, r])
 	cities.sort_custom(func(a, b): return a[0] > b[0])
-	var shown := 0
-	for cd in cities:
-		if shown >= 8:
-			break
-		VKit.text(self, Vector2(x, y), VKit.COL_PARCH, _region_name(cd[1]))
-		var pg := _grp(cd[0])
-		VKit.text(self, Vector2(W - 14.0 - VKit.text_w(pg), y), VKit.COL_DIM, pg)
-		y += 16
-		shown += 1
-	if cities.size() > shown:
-		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "… et %d autres" % (cities.size() - shown))
-		y += 16
-	if cities.is_empty():
-		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucune ville")
-		y += 16
+	y = _lsection(x, y, "VILLES", Color(0.78, 0.62, 0.30), str(cities.size()))
+	if not _folded("VILLES"):
+		var shown := 0
+		for cd in cities:
+			if shown >= 10:
+				break
+			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, _region_name(cd[1]))
+			var pg := _grp(cd[0])
+			VKit.text(self, Vector2(W - 14.0 - VKit.text_w(pg), y), VKit.COL_DIM, pg)
+			y += 18
+			shown += 1
+		if cities.size() > shown:
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "… et %d autres" % (cities.size() - shown))
+			y += 18
+		if cities.is_empty():
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "aucune ville")
+			y += 18
 	y += 6
 
 	# ── ARMÉES : l'ost de campagne + la réserve levée ──
-	y = VKit.section(self, x, y, "ARMÉES")
-	var ca: Dictionary = w.country_army(me) if w.has_method("country_army") else {}
-	var ai: Dictionary = w.army_info(me)
-	if bool(ai.get("active", false)):
-		VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
-			"En campagne : %s (%s)" % [_grp(int(ai.get("units", 0))), String(ai.get("phase", ""))])
-		y += 16
-	var res_n := int(ca.get("regiments", 0))
-	VKit.text(self, Vector2(x, y), VKit.COL_PARCH if res_n > 0 else VKit.COL_DIM,
-		"Réserve : %s · levée %s" % [_grp(res_n), String(ca.get("levy_name", "—"))])
-	y += 16
-	var fl := int(ca.get("fleet", 0))
-	if fl > 0:
-		# nef de guerre gravée (planche 24) devant la ligne de flotte
-		var bt: Texture2D = UIKit.parch_tex("sheet24_topbar_boats_menu_11")
-		if bt != null:
-			draw_texture_rect(bt, Rect2(x - 2, y - 3, 18, 18), false)
-		VKit.text(self, Vector2(x + (20 if bt != null else 0), y), VKit.COL_PARCH,
-			"Flotte : %d coque(s) disponibles" % fl)
-		y += 16
+	y = _lsection(x, y, "ARMÉES", Color(0.66, 0.22, 0.18), "")
+	_refill_rect = Rect2()   # zone morte quand la section est repliée
+	if not _folded("ARMÉES"):
+		var ca: Dictionary = w.country_army(me) if w.has_method("country_army") else {}
+		var ai: Dictionary = w.army_info(me)
+		if bool(ai.get("active", false)):
+			VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
+				"En campagne : %s (%s)" % [_grp(int(ai.get("units", 0))), String(ai.get("phase", ""))])
+			y += 18
+		var res_n := int(ca.get("regiments", 0))
+		VKit.text(self, Vector2(x, y), VKit.COL_PARCH if res_n > 0 else VKit.COL_DIM,
+			"Réserve : %s · levée %s" % [_grp(res_n), String(ca.get("levy_name", "—"))])
+		y += 18
+		# RECOMPLÉTER (retour joueur : « doit être dans la side bar droite ») — verbe journalisé
+		_refill_rect = Rect2(x, y, 104, 20)
+		VKit.fill(self, _refill_rect, VKit.COL_PANEL2)
+		VKit.box(self, _refill_rect, VKit.COL_GOLD)
+		VKit.text(self, Vector2(x + 8, y + 3), VKit.COL_PARCH, "Recompléter", VKit.FS_SMALL)
+		y += 26
+		var fl := int(ca.get("fleet", 0))
+		if fl > 0:
+			# nef de guerre gravée (planche 24) devant la ligne de flotte
+			var bt: Texture2D = UIKit.parch_tex("sheet24_topbar_boats_menu_11")
+			if bt != null:
+				draw_texture_rect(bt, Rect2(x - 2, y - 3, 18, 18), false)
+			VKit.text(self, Vector2(x + (20 if bt != null else 0), y), VKit.COL_PARCH,
+				"Flotte : %d coque(s) disponibles" % fl)
+			y += 16
 	y += 6
 
 	# ── COLONISATION : le chantier qui mûrit / la cadence ──
 	if w.has_method("colony_status"):
-		y = VKit.section(self, x, y, "COLONISATION")
-		var cs: Dictionary = w.colony_status()
-		if bool(cs.get("active", false)):
-			var dstp := int(cs.get("dst", -1))
-			var nm := String(w.province_info(dstp).get("nom", "—")) if dstp >= 0 else "—"
-			var tot := maxi(1, int(cs.get("total_days", 1)))
-			var left := int(cs.get("days_left", 0))
-			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "Vers %s" % nm)
-			y += 16
-			UIKit.bar(self, Rect2(x, y + 2, W - 28.0, 10), int(round(100.0 * float(tot - left) / float(tot))))
-			y += 16
-			VKit.text(self, Vector2(x, y), VKit.COL_DIM,
-				"%d j restants · rendement %d %%" % [left, int(cs.get("yield_pct", 0))])
-			y += 16
-		else:
-			var cd := int(cs.get("cd_days", 0))
-			VKit.text(self, Vector2(x, y), VKit.COL_DIM,
-				("prochain ordre dans %d j" % cd) if cd > 0 else "aucun chantier (ordre possible)")
-			y += 16
+		y = _lsection(x, y, "COLONISATION", Color(0.45, 0.62, 0.32), "")
+		if not _folded("COLONISATION"):
+			var cs: Dictionary = w.colony_status()
+			if bool(cs.get("active", false)):
+				var dstp := int(cs.get("dst", -1))
+				var nm := String(w.province_info(dstp).get("nom", "—")) if dstp >= 0 else "—"
+				var tot := maxi(1, int(cs.get("total_days", 1)))
+				var left := int(cs.get("days_left", 0))
+				VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "Vers %s" % nm)
+				y += 16
+				UIKit.bar(self, Rect2(x, y + 2, W - 28.0, 10), int(round(100.0 * float(tot - left) / float(tot))))
+				y += 16
+				VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+					"%d j restants · rendement %d %%" % [left, int(cs.get("yield_pct", 0))])
+				y += 16
+			else:
+				var cd := int(cs.get("cd_days", 0))
+				VKit.text(self, Vector2(x, y), VKit.COL_DIM,
+					("prochain ordre dans %d j" % cd) if cd > 0 else "aucun chantier (ordre possible)")
+				y += 16
 		y += 6
 
-	# ── COUR & FACTIONS : influence · bonheur par classe · le spectre d'éthos interne ──
-	y = VKit.section(self, x, y, "COUR & FACTIONS")
-	var ci: Dictionary = w.country_info(me)
-	var dm: Dictionary = w.country_demo(me) if w.has_method("country_demo") else {}
-	UIKit.draw_icon(self, "politics_crown", Vector2(x, y - 2), 14)
-	VKit.text(self, Vector2(x + 18, y), VKit.COL_PARCH, "Influence %d" % int(ci.get("influence", 0)), VKit.FS_SMALL)
-	# BONHEUR : la satisfaction des trois classes (J·B·N)
-	var cls: Array = dm.get("classes", [])
-	if cls.size() >= 3:
-		var sat_avg := 0.0
-		var wsum := 0.0
-		for cl in cls:
-			var p := float(cl.get("pop", 0))
-			sat_avg += float(cl.get("satisfaction", 0)) * p
-			wsum += p
-		sat_avg = sat_avg / maxf(wsum, 1.0)
-		UIKit.draw_icon(self, "happiness_medallion", Vector2(x + 128, y - 2), 14)
-		VKit.text(self, Vector2(x + 146, y), VKit.sense(clampf(sat_avg / 100.0, 0.0, 1.0)),
-			"Bonheur %d %%" % int(round(sat_avg)), VKit.FS_SMALL)
-		y += 15
-		VKit.text(self, Vector2(x, y), VKit.COL_DIM,
-			"J %d · B %d · N %d" % [int(cls[0].get("satisfaction", 0)),
-				int(cls[1].get("satisfaction", 0)), int(cls[2].get("satisfaction", 0))], VKit.FS_SMALL)
-	y += 17
-	if w.has_method("country_factions"):
-		var fx: Dictionary = w.country_factions(me)
-		for fe in fx.get("list", []):
-			var part := int(fe.get("part", 0))
-			if part <= 2 and not bool(fe.get("dominant", false)):
-				continue                          # les factions marginales n'encombrent pas
-			var nm2 := String(fe.get("name", ""))
-			var dom := bool(fe.get("dominant", false))
-			var g := int(fe.get("grief", 0))
-			# blason de faction (planche 14) — la variante EN COLÈRE quand la rancœur couve
-			var bl: Texture2D = UIKit.faction_blason(nm2, g >= 25)
-			var tx := x
-			if bl != null:
-				draw_texture_rect(bl, Rect2(x, y - 3, 15, 15), false)
-				tx = x + 19
-			VKit.text(self, Vector2(tx, y), VKit.COL_GOLD if dom else VKit.COL_PARCH,
-				("★ " if dom else "") + nm2, VKit.FS_SMALL)
-			UIKit.bar(self, Rect2(x + 132, y + 2, 80, 8), part)
-			if g >= 25:
-				VKit.text(self, Vector2(x + 218, y), VKit.sense(0.15), "⚑%d" % g, VKit.FS_SMALL)
-			y += 16
-		var coup := int(fx.get("coup", 0))
-		var cor := int(fx.get("corruption", 0))
-		if coup >= 20 or cor > 0:
-			VKit.text(self, Vector2(x, y),
-				VKit.sense(0.15) if coup >= 45 else VKit.COL_DIM,
-				"tension de coup %d · corruption %d" % [coup, cor], VKit.FS_SMALL)
-			y += 15
-	y += 5
+	# (COUR & FACTIONS a DÉMÉNAGÉ en TOPBAR — retour joueur 2026-07-10 : « les factions
+	#  doivent être en top bar », doctrine national = topbar. Bonheur/classes/blasons/
+	#  tension de coup y vivent en cellules + hovers ; l'influence y était déjà.)
 
 	# ── MISSION décennale : le texte + la récompense promise ──
 	if w.has_method("mission_info"):
 		var mi: Dictionary = w.mission_info(me)
 		if bool(mi.get("active", false)):
-			y = VKit.section(self, x, y, "MISSION")
+			y = _lsection(x, y, "MISSION", Color(0.38, 0.52, 0.66), "")
+			if _folded("MISSION"):
+				y += 2
+				mi = {}   # court-circuite le corps (le bloc suivant lit mi vide)
+		if bool(mi.get("active", false)):
 			var mtxt := String(mi.get("text", ""))
 			# coupe en 2 lignes max à la largeur de la bande
 			while VKit.text_w(mtxt, VKit.FS_SMALL) > (W - 26.0) * 2.0 and mtxt.length() > 10:
@@ -258,18 +254,19 @@ func _draw() -> void:
 			y += 17
 
 	# ── LE LOG : le fil de notifications (persistant, le plus récent en tête) ──
-	y = VKit.section(self, x, y, "JOURNAL")
-	if _log.is_empty():
-		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "rien à signaler")
-	for e in _log:
-		if y > size.y - 20.0:
-			break
-		var line := "an %d · %s" % [int(e["y"]), String(e["txt"])]
-		# tronqué à la largeur (les détails vivent dans les alertes/panneaux)
-		while VKit.text_w(line) > W - 26.0 and line.length() > 8:
-			line = line.substr(0, line.length() - 4) + "…"
-		VKit.text(self, Vector2(x, y), VKit.COL_DIM, line, VKit.FS_SMALL)
-		y += 14
+	y = _lsection(x, y, "JOURNAL", Color(0.45, 0.45, 0.42), str(_log.size()) if not _log.is_empty() else "")
+	if not _folded("JOURNAL"):
+		if _log.is_empty():
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, "rien à signaler")
+		for e in _log:
+			if y > size.y - 20.0:
+				break
+			var line := "an %d · %s" % [int(e["y"]), String(e["txt"])]
+			# tronqué à la largeur (les détails vivent dans les alertes/panneaux)
+			while VKit.text_w(line) > W - 26.0 and line.length() > 8:
+				line = line.substr(0, line.length() - 4) + "…"
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, line, VKit.FS_SMALL)
+			y += 16
 
 func _grp(n) -> String:
 	var s := str(absi(int(n)))
@@ -281,3 +278,40 @@ func _grp(n) -> String:
 		if c % 3 == 0 and i > 0:
 			out = " " + out
 	return ("-" if int(n) < 0 else "") + out
+
+## SECTION DU LEDGER (motif outliner EU5, outliner.gui:184) : le bandeau VKit + un
+## RUBAN de catégorie coloré à gauche + le COMPTE à droite + un CHEVRON de pliage —
+## le bandeau entier est CLIQUABLE (replie/déplie, cf. _gui_input/_fold).
+func _lsection(x: float, y: float, title: String, rib: Color, count: String) -> float:
+	var y2 := VKit.section(self, x, y, title)
+	VKit.fill(self, Rect2(x - 8.0, y + 3.0, 4.0, 20.0), rib)
+	var chev := "▸" if bool(_fold.get(title, false)) else "▾"
+	var cx := W - 16.0 - VKit.text_w(chev, VKit.FS_SMALL)
+	VKit.text(self, Vector2(cx, y + 5.0), VKit.COL_DIM, chev, VKit.FS_SMALL)
+	if count != "":
+		VKit.text(self, Vector2(cx - 8.0 - VKit.text_w(count, VKit.FS_SMALL), y + 5.0),
+			VKit.COL_DIM, count, VKit.FS_SMALL)
+	_sec_rects.append({"rect": Rect2(0.0, y, W, 26.0), "title": title})
+	return y2
+
+## la section est-elle repliée ? (helper de lisibilité des blocs de _draw)
+func _folded(title: String) -> bool:
+	return bool(_fold.get(title, false))
+
+## HOVER des bandeaux (→ TooltipServer : mots-concepts + définitions). Chaque section
+## du ledger dit son métier — « un explicatif sur chaque display » (doctrine joueur).
+const SEC_TIPS := {
+	"VILLES": "Vos régions habitées, triées par âmes. La démographie les fait croître vers leur logement.",
+	"ARMÉES": "La réserve (votre levée, en régiments) et l'ost de campagne s'il est déployé. Recompléter paie or et matière.",
+	"COLONISATION": "Le chantier de colonisation en cours : la colonne mûrit selon la distance, puis la ferveur fondatrice porte la jeune province.",
+	"MISSION": "La mission décennale : un objectif proposé par le siècle, sa récompense promise en or et matière.",
+	"JOURNAL": "Le fil des évènements passés (guerres, révoltes, sécessions). Clic sur un bandeau : replier la section.",
+}
+
+func _get_tooltip(at_position: Vector2) -> String:
+	if _collapsed:
+		return ""
+	for sr in _sec_rects:
+		if (sr["rect"] as Rect2).has_point(at_position):
+			return String(SEC_TIPS.get(String(sr["title"]), ""))
+	return ""

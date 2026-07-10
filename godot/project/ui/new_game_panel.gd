@@ -1,10 +1,13 @@
 extends Control
-## NewGamePanel — l'écran « Nouvelle partie » : sliders MONDE (taille tiny→huge, âge,
-## continents, relief, climat) + liste des EMPIRES (chacun composable façon Stellaris :
-## slot 0 = Vous, 1..N = IA) + graine + « Lancer la partie ».
+## NewGamePanel — l'écran « Nouvelle partie » (retour joueur 2026-07-10 : UN SEUL réglage
+## monde pour l'instant — la TAILLE en slider Tiny→Huge ; le reste du monde vient de
+## l'ARCHÉTYPE de la graine, et la graine se tire au DÉ) + liste des EMPIRES (chacun
+## composable façon Stellaris : slot 0 = Vous, 1..N = IA) + « Lancer la partie ».
 ##
 ## RÈGLE D'OR : zéro logique de sim. On LIT/ÉCRIT la façade C (Sim.world.*) : worldgen_set
-## (les sliders), set_empire_culture (les compos), puis Sim.regenerate. Le monde naît en PAUSE.
+## (défauts d'archétype worldparams_default(graine) + la taille choisie — passer un dict
+## PARTIEL écraserait l'archétype par des constantes), set_empire_culture (les compos),
+## puis Sim.regenerate. Le monde naît en PAUSE.
 
 signal launched   ## la partie est lancée (le monde régénéré, en pause an 0)
 signal back       ## retour au menu principal
@@ -32,10 +35,10 @@ const SIZES := [
 const HERITAGE_KEYS := ["T_HERITAGE_0", "T_HERITAGE_1", "T_HERITAGE_2", "T_HERITAGE_3", "T_HERITAGE_4", "T_HERITAGE_5"]
 const ETHOS_KEYS := ["T_ETHOS_0", "T_ETHOS_1", "T_ETHOS_2", "T_ETHOS_3", "T_ETHOS_4", "T_ETHOS_5"]
 
-var _size_opt: OptionButton
-var _seed_spin: SpinBox
-var _sliders := {}          # clé → HSlider
-var _slider_vals := {}      # clé → Label (valeur)
+var _size_sld: HSlider      # TAILLE Tiny→Huge — le seul réglage monde exposé pour l'instant
+var _size_val: Label
+var _seed_edit: LineEdit
+var _rng := RandomNumberGenerator.new()
 var _empire_box: VBoxContainer
 var _empire_rows := []      # [{summary:Label, btn:Button}]
 var _compos := {}           # slot:int → {heritage,ethos,t0,t1,t2}
@@ -45,6 +48,7 @@ var _creator: Control = null
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_rng.randomize()
 	_build_ui()
 	_rebuild_empire_list()
 
@@ -89,44 +93,50 @@ func _build_ui() -> void:
 	cols.add_child(world)
 	world.add_child(_section(tr("T_NG_WORLD")))
 
+	# TAILLE : un SLIDER Tiny→Huge (retour joueur : « réglage autorisé pour l'instant :
+	# taille du monde ») — les autres traits du monde viennent de l'ARCHÉTYPE de la graine.
 	var size_row := HBoxContainer.new()
 	var size_lab := Label.new(); size_lab.text = tr("T_NG_SIZE"); size_lab.custom_minimum_size = Vector2(150, 0)
 	size_lab.add_theme_color_override("font_color", C_TEXT)
 	size_row.add_child(size_lab)
-	_size_opt = OptionButton.new()
-	for s in SIZES:
-		_size_opt.add_item(tr(String(s[0])))
-	_size_opt.selected = 2   # Normal
-	_size_opt.item_selected.connect(func(_i): _rebuild_empire_list())
-	_size_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	size_row.add_child(_size_opt)
+	_size_sld = HSlider.new()
+	_size_sld.min_value = 0; _size_sld.max_value = SIZES.size() - 1; _size_sld.step = 1
+	_size_sld.value = 2   # Normal
+	_size_sld.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_size_sld.custom_minimum_size = Vector2(180, 0)
+	size_row.add_child(_size_sld)
+	_size_val = Label.new(); _size_val.custom_minimum_size = Vector2(96, 0)
+	_size_val.add_theme_color_override("font_color", C_DIM)
+	size_row.add_child(_size_val)
+	_size_sld.value_changed.connect(func(_v):
+		_size_val.text = tr(String(_cur_size()[0]))
+		_rebuild_empire_list())
 	world.add_child(size_row)
 
-	# sliders 0..1 (clé worldgen, clé tr())
-	var SL := [
-		["world_age", "T_NG_AGE"],
-		["land_amount", "T_NG_LAND"],
-		["mountains", "T_NG_MOUNTAINS"],
-		["erosion", "T_NG_EROSION"],
-		["temperature", "T_NG_TEMP"],
-		["humidity", "T_NG_HUMID"],
-	]
-	for e in SL:
-		world.add_child(_make_slider(String(e[0]), tr(String(e[1])), 0.0, 1.0, 0.5, 0.05))
-	# continents 1..8 (entier)
-	world.add_child(_make_slider("n_continents", tr("T_NG_CONTINENTS"), 1.0, 8.0, 6.0, 1.0))
+	var hint := Label.new()
+	hint.text = tr("T_NG_ARCH_HINT") if tr("T_NG_ARCH_HINT") != "T_NG_ARCH_HINT" \
+		else "Le relief, le climat et les continents suivent le caractère de la graine."
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_color_override("font_color", C_DIM)
+	hint.add_theme_font_size_override("font_size", 12)
+	world.add_child(hint)
 
+	# GRAINE : champ + DÉ (retour joueur : « un randomiseur plutôt qu'un up/down »)
 	var seed_row := HBoxContainer.new()
 	var seed_lab := Label.new(); seed_lab.text = tr("T_NG_SEED"); seed_lab.custom_minimum_size = Vector2(150, 0)
 	seed_lab.add_theme_color_override("font_color", C_TEXT)
 	seed_row.add_child(seed_lab)
-	_seed_spin = SpinBox.new(); _seed_spin.min_value = 0; _seed_spin.max_value = 999999; _seed_spin.value = 9
-	_seed_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	seed_row.add_child(_seed_spin)
+	_seed_edit = LineEdit.new()
+	_seed_edit.text = "9"
+	_seed_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	seed_row.add_child(_seed_edit)
+	var dice := Button.new()
+	dice.text = "🎲"
+	dice.tooltip_text = "Tirer une graine au hasard"
+	dice.pressed.connect(func(): _seed_edit.text = str(_rng.randi_range(0, 999999)))
+	seed_row.add_child(dice)
 	world.add_child(seed_row)
-
-	# pré-remplir les sliders avec les défauts moteur (worldparams_default)
-	_load_defaults()
+	_size_val.text = tr(String(_cur_size()[0]))
 
 	# ── colonne EMPIRES ──
 	var emp := VBoxContainer.new()
@@ -163,42 +173,11 @@ func _section(txt: String) -> Label:
 	l.add_theme_color_override("font_color", C_EDGE)
 	return l
 
-func _make_slider(key: String, label: String, lo: float, hi: float, val: float, step: float) -> Control:
-	var row := HBoxContainer.new()
-	var lab := Label.new(); lab.text = label; lab.custom_minimum_size = Vector2(150, 0)
-	lab.add_theme_color_override("font_color", C_TEXT)
-	row.add_child(lab)
-	var sld := HSlider.new()
-	sld.min_value = lo; sld.max_value = hi; sld.step = step; sld.value = val
-	sld.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sld.custom_minimum_size = Vector2(160, 0)
-	row.add_child(sld)
-	var vlab := Label.new(); vlab.custom_minimum_size = Vector2(46, 0)
-	vlab.add_theme_color_override("font_color", C_DIM)
-	row.add_child(vlab)
-	var is_int := step >= 1.0
-	var upd := func(v):
-		vlab.text = (str(int(v)) if is_int else ("%.2f" % v))
-	sld.value_changed.connect(upd)
-	upd.call(val)
-	_sliders[key] = sld
-	_slider_vals[key] = vlab
-	return row
-
-
-func _load_defaults() -> void:
-	if Sim.world == null or not Sim.world.has_method("worldparams_default"):
-		return
-	var d: Dictionary = Sim.world.worldparams_default(int(_seed_spin.value))
-	for k in ["world_age", "land_amount", "mountains", "erosion", "temperature", "humidity"]:
-		if _sliders.has(k):
-			_sliders[k].value = float(d.get(k, 0.5))
-	if _sliders.has("n_continents"):
-		_sliders["n_continents"].value = float(int(d.get("n_continents", 6)))
-
+func _cur_seed() -> int:
+	return maxi(0, int(_seed_edit.text)) if _seed_edit != null else 9
 
 func _cur_size() -> Array:
-	var i: int = clampi(_size_opt.selected, 0, SIZES.size() - 1)
+	var i: int = clampi(int(_size_sld.value), 0, SIZES.size() - 1)
 	return SIZES[i]
 
 func _rebuild_empire_list() -> void:
@@ -260,35 +239,38 @@ func _on_compose(slot: int) -> void:
 	_creator.open_for_slot(slot)
 
 func _on_composed(slot: int, heritage: int, ethos: int, t0: int, t1: int, t2: int) -> void:
-	_compos[slot] = {"heritage": heritage, "ethos": ethos, "t0": t0, "t1": t1, "t2": t2}
+	_compos[slot] = {"heritage": heritage, "ethos": ethos, "t0": t0, "t1": t1, "t2": t2,
+		"name": String(_creator.custom_name()) if _creator != null else ""}
 	_refresh_row(slot)
 
 
-func _gather_params() -> Dictionary:
+## les params de genèse : l'ARCHÉTYPE de la graine (worldparams_default) + la TAILLE
+## choisie. ⚠ worldgen_set remplit les clés ABSENTES par des constantes fixes — passer
+## un dict partiel écraserait l'archétype (les cartes redeviendraient toutes pareilles).
+func _gather_params(seed_v: int) -> Dictionary:
 	var sz := _cur_size()
-	var d := {
-		"n_empires": int(sz[1]),
-		"n_city_states": int(sz[2]),
-		"n_continents": int(_sliders["n_continents"].value),
-		"world_age": _sliders["world_age"].value,
-		"land_amount": _sliders["land_amount"].value,
-		"mountains": _sliders["mountains"].value,
-		"erosion": _sliders["erosion"].value,
-		"temperature": _sliders["temperature"].value,
-		"humidity": _sliders["humidity"].value,
-	}
+	var d := {}
+	if Sim.world != null and Sim.world.has_method("worldparams_default"):
+		d = Sim.world.worldparams_default(seed_v)
+	d["n_empires"] = int(sz[1])
+	d["n_city_states"] = int(sz[2])
 	return d
 
 func _on_lancer() -> void:
 	if Sim.world == null:
 		return
+	var seed_v := _cur_seed()
 	Sim.world.clear_player_culture()              # repart d'une ardoise propre (tous slots)
-	Sim.world.worldgen_set(_gather_params())      # les sliders pilotent la genèse
+	Sim.world.worldgen_set(_gather_params(seed_v))  # archétype de graine + taille choisie
 	for slot in _compos.keys():
 		var c = _compos[slot]
 		Sim.world.set_empire_culture(int(slot), int(c["heritage"]), int(c["ethos"]),
 			int(c["t0"]), int(c["t1"]), int(c["t2"]))
-	Sim.regenerate(int(_seed_spin.value))         # == chargement == → monde neuf
+	Sim.regenerate(seed_v)                        # == chargement == → monde neuf
+	# le NOM personnalisé du joueur (slot 0) s'applique APRÈS la genèse (elle nomme d'office)
+	var nm := String(_compos.get(0, {}).get("name", ""))
+	if nm != "" and Sim.world.has_method("set_country_name"):
+		Sim.world.set_country_name(int(Sim.world.player()), nm)
 	Sim.set_speed(0)                              # Pause — année 0
 	hide()
 	launched.emit()

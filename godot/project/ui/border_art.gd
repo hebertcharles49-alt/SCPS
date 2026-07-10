@@ -24,7 +24,9 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	offset_top = Frame.TOPBAR_H
 	offset_left = Frame.SIDEBAR_W
-	offset_bottom = -Frame.BOTTOMBAR_H
+	# le bas descend jusqu'au bord : la bande du bas n'existe plus (les commandes de
+	# carte FLOTTENT sur la carte — le cadre enluminé ferme l'écran).
+	offset_bottom = 0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	patch_margin_left = MARGIN
 	patch_margin_top = MARGIN

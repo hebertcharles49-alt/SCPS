@@ -122,9 +122,13 @@ typedef struct {
     bool            needs_ruins; /* porte arcane : accès ruine/relique */
     Heritage native;     /* heritage signature ; HERITAGE_COUNT = universelle */
 
-    /* Écriture SCPS (deltas appliqués au TechState). */
-    float dK, dL, dF;            /* socle : capacité narrative, ordre, fédéralisme */
-    float dEco, dMil;            /* puissance économique / militaire */
+    /* Écriture SCPS (deltas appliqués au TechState).
+     * ⚠ LEVIERS VIVANTS vs MORTS (audit 2026-06-28) : dK → PROSPÉRITÉ, dL → STABILITÉ
+     * & croissance (δ·P·L/10), dH → coercition, dPuissance/dFracture/flux/charge →
+     * Brèche/entropie. dF, dEco, dMil ne sont JAMAIS lus par le moteur (morts) —
+     * aucun texte joueur ne doit les promettre. */
+    float dK, dL, dF;            /* dK = prospérité · dL = stabilité · dF = MORT */
+    float dEco, dMil;            /* MORTS (jamais lus) */
     float dH;                    /* coercition / dureté */
     float dFracture;             /* tension interne (peuples tenus de force) */
     float dPuissance;            /* puissance brute (surtout arcane) */
@@ -173,9 +177,9 @@ typedef struct {
 /* ---- État techno d'un empire (axes SCPS écrits par l'arbre) ----------- */
 typedef struct {
     /* Socle résilient */
-    float K;          /* capacité de métabolisation narrative */
-    float L;          /* légitimité / ordre consenti */
-    float F;          /* plafond de fédéralisme (diversité praticable) */
+    float K;          /* → prospérité (jeu) ; « capacité narrative » du modèle SCPS */
+    float L;          /* → stabilité & croissance (jeu) ; ordre consenti */
+    float F;          /* MORT (jamais lu par le moteur — accumulé, jamais consommé) */
     /* Puissance */
     float eco, mil;
     float puissance;  /* puissance brute (P dans la formule de dereal) */
@@ -281,6 +285,9 @@ float tech_research_yield(const TechState *s);
  * dispatchés thématiquement (Forge/Société·Prod → prod ; Savoir·Prod → eff). */
 float tech_prod_bonus(const TechState *s);   /* Σ prod_pct (fraction, ex. 0.30 = +30 %) */
 float tech_eff_bonus(const TechState *s);    /* Σ eff_pct */
+/* le bonus PAR NŒUD (hover chiffré côté façade — « il faut spécifier combien ») */
+float tech_node_prod_pct(TechId id);
+float tech_node_eff_pct(TechId id);
 /* Le PENCHANT d'une heritage : le thème vers lequel sa signature la porte (biais IA,
  * jamais un « si heritage==X » : c'est une lecture de la table). */
 TechTheme tech_heritage_affinity(Heritage r);

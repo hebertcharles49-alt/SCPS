@@ -340,7 +340,7 @@ AI_DEMO_OBJS := $(OBJDIR)/scps_scps_provlog.o $(OBJDIR)/scps_scps_world.o $(OBJD
                 $(OBJDIR)/scps_scps_routes.o $(OBJDIR)/scps_scps_diplo.o $(OBJDIR)/scps_scps_intertrade.o \
                 $(OBJDIR)/scps_scps_statecraft.o \
                 $(OBJDIR)/scps_scps_factions.o $(OBJDIR)/scps_scps_ai.o $(OBJDIR)/scps_scps_credit.o \
-                $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_ai_demo.o
+                $(OBJDIR)/scps_scps_religion.o $(OBJDIR)/scps_scps_fog.o $(OBJDIR)/scps_ai_demo.o
 ai_demo: $(AI_DEMO_OBJS)
 	$(CC) $(AI_DEMO_OBJS) -o $@ -lm
 

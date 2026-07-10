@@ -407,7 +407,10 @@ func _build_anchors() -> void:
 		var rl: int = int(w.country_role(w.region_owner(r))) if w.region_owner(r) >= 0 else -1
 		if t < 0 and rl != 2 and rl != 4:
 			continue                              # wilderness sans ville (mais on garde cité-état/hameau libre)
-		var ctr: Vector2 = w.region_centroid(r)
+		# SIÈGE = centroïde de la PROVINCE REPRÉSENTATIVE (retour joueur 2026-07-09 : le
+		# barycentre de la RÉGION entière tombait au bord sur les formes concaves — Bois
+		# Blanc collé au coin NW de sa région). Repli centroïde région (vieille DLL).
+		var ctr: Vector2 = w.region_seat(r) if w.has_method("region_seat") else w.region_centroid(r)
 		if ctr.x < 0:
 			continue
 		var land := _snap_to_land(sea, ctr)
@@ -893,7 +896,39 @@ func _smooth_poly(poly: PackedVector2Array) -> PackedVector2Array:
 				any_pin = true
 	p = _taubin_pinned(p, SMOOTH_TAUBIN, closed, pins) if any_pin else _taubin(p, SMOOTH_TAUBIN, closed)
 	p = _chaikin(p, SMOOTH_CHAIKIN)   # arrondi local ≤ ¼ de segment : ne saute pas un fleuve
-	return p
+	return _deloop(p)
+
+## CULLING DES MICRO-BOUCLES (retour joueur : « certaines provinces font du hulahoop ») —
+## quand la chaîne repasse près d'un point antérieur PROCHE (nœud en 8 né d'une jonction
+## mal recousue), on EXCISE la boucle : deux points non voisins à ≤ 1.6 cellule, séparés
+## de 3..18 indices → le tronçon entre eux saute. Un seul balayage suffit (les nœuds sont
+## rares) ; les vraies formes (péninsules) sont bien plus larges que 18 points resamplés.
+func _deloop(p: PackedVector2Array) -> PackedVector2Array:
+	var n := p.size()
+	if n < 12:
+		return p
+	var out := PackedVector2Array()
+	var i := 0
+	while i < n:
+		var cut := -1
+		var jmax := mini(i + 40, n - 1)          # fenêtre large : les gros nœuds (capture #2)
+		for j in range(i + 6, jmax + 1):
+			if p[i].distance_to(p[j]) <= 1.5:
+				# ⚠ une ligne DROITE resamplée a aussi des points proches à 6 indices — on
+				# n'excise que si le tronçon S'ÉLOIGNE vraiment (la boucle sort et revient),
+				# et PAS TROP loin (bulge < 7 : une vraie péninsule fine est bien plus longue)
+				var bulge := 0.0
+				for k in range(i + 1, j):
+					bulge = maxf(bulge, p[i].distance_to(p[k]))
+				if bulge > 2.4 and bulge < 7.0:
+					cut = j
+		if cut > 0:
+			out.append(p[i])
+			i = cut          # la boucle i..cut est excisée (on ressort au point de retour)
+		else:
+			out.append(p[i])
+			i += 1
+	return out
 
 ## Taubin à ÉPINGLES DOUCES : un point de rivière est LISSÉ à 30 % (l'escalier fond quand
 ## même) puis RAPPELÉ élastiquement vers sa position d'origine (la frontière reste SUR le
@@ -1078,7 +1113,9 @@ func _entity_wash(e: int) -> Color:
 		return Color(0.55, 0.50, 0.40)
 	if int(Sim.world.country_role(e)) == 2:
 		return Color(0.82, 0.68, 0.34)               # cité-état : or clair
-	return Color.from_hsv(_entity_hue(e), 0.60, 0.82)
+	# saturation calée sur les couleurs pays d'EU5 (named_colors : hsv S≈70-90 V≈85-95) —
+	# le lavis à 0.60 lisait « pastel délavé » là où l'atlas Paradox assume la couleur.
+	return Color.from_hsv(_entity_hue(e), 0.72, 0.88)
 
 ## ÉPAISSEUR ADAPTATIVE (CK) : rend une largeur en unités MONDE à passer DIRECTEMENT à draw_* (le /zoom est
 ## déjà fait). `base·zoom` = px ÉCRAN voulu à taille monde constante, borné aux rails [min,max] de lisibilité.
@@ -1839,6 +1876,27 @@ func _draw_iso(w, mv: Node2D) -> void:
 			var diamond := PackedVector2Array([
 				ctr + Vector2(0, -sv), ctr + Vector2(sv, 0), ctr + Vector2(0, sv), ctr + Vector2(-sv, 0)])
 			draw_colored_polygon(diamond, col)
+		# COMPTEUR D'EFFECTIF (rendu attendu EU4) : strip à la couleur du pays + « N k »,
+		# taille ÉCRAN constante, posé SOUS le pion — la force se lit sans cliquer.
+		var un := int(a.get("units", 0))
+		if un > 0:
+			var scc := 1.0 / maxf(zoom, 0.0001)
+			var ut := str(un)
+			if un >= 1000:
+				ut = "%.1fk" % (un / 1000.0)
+			if un >= 9500:
+				ut = "%dk" % int(round(un / 1000.0))
+			var utw := VKit.text_map_w(ut, VKit.FS_SMALL) * scc
+			var ubh := 13.0 * scc
+			var ubw := utw + 10.0 * scc
+			var urc := Rect2(Vector2(ctr.x - ubw * 0.5, ctr.y + 6.0 * scc), Vector2(ubw, ubh))
+			draw_rect(Rect2(urc.position + Vector2(1.0, 1.2) * scc, urc.size), Color(0.05, 0.03, 0.02, 0.40))
+			draw_rect(urc, Color(_country_color(c), 0.92))
+			draw_rect(urc, Color(0.10, 0.07, 0.04, 0.90), false, 1.0 * scc)
+			draw_set_transform(Vector2(urc.position.x + 5.0 * scc, urc.position.y + 0.5 * scc), 0.0, Vector2(scc, scc))
+			VKit.text_map(self, Vector2.ZERO, ut, VKit.FS_SMALL,
+				Color(0.97, 0.94, 0.85, 0.98), 2, Color(0.08, 0.05, 0.03, 0.75))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ── NOMS D'EMPIRE : SUIVENT LA FORME du pays (axe principal par ACP des centroïdes projetés →
 	#    Chili vertical, Russie en travers de la Sibérie), à l'encre, taille ÉCRAN constante. ──
@@ -1950,6 +2008,23 @@ func _draw_iso(w, mv: Node2D) -> void:
 	if not nature_mode and _fog_tex != null:
 		var fp0: Vector2 = mv.iso_pos(0, 0)
 		var fp1: Vector2 = mv.iso_pos(w.map_w(), w.map_h())
+		# LA PAGE HORS-MONDE voilée AUSSI : le voile ne couvrait que le rect carte — en zoom
+		# serré, la marge de parchemin (au-delà des bords du monde) restait NUE : la « bande
+		# beige » pleine largeur en bas d'écran (capture 2026-07-09). Quatre bandes sépia
+		# bouchent le tour du monde. Gaté game_on : la vitrine du menu reste nue.
+		if Sim.game_on:
+			var inv := vt.affine_inverse()
+			var s0: Vector2 = inv * Vector2.ZERO
+			var s1: Vector2 = inv * vp
+			var page := Color(24.0 / 255.0, 19.0 / 255.0, 14.0 / 255.0, 252.0 / 255.0)
+			if fp0.y > s0.y:
+				draw_rect(Rect2(s0, Vector2(s1.x - s0.x, fp0.y - s0.y)), page, true)
+			if fp1.y < s1.y:
+				draw_rect(Rect2(Vector2(s0.x, fp1.y), Vector2(s1.x - s0.x, s1.y - fp1.y)), page, true)
+			if fp0.x > s0.x:
+				draw_rect(Rect2(Vector2(s0.x, fp0.y), Vector2(fp0.x - s0.x, fp1.y - fp0.y)), page, true)
+			if fp1.x < s1.x:
+				draw_rect(Rect2(Vector2(fp1.x, fp0.y), Vector2(s1.x - fp1.x, fp1.y - fp0.y)), page, true)
 		draw_texture_rect(_fog_tex, Rect2(fp0, fp1 - fp0), false)
 
 ## ── LE BOURG (lot U) : la ville est une VIGNETTE (pack bourgs/) — voir le bloc BOURG_* en

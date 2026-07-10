@@ -9,14 +9,15 @@ extends Control
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
-const PW := 312.0
+const PW := 348.0   ## élargi (retour joueur 2026-07-10 : « adapte le menu de gauche
+                    ## en taille » — la police +1 mordait les jauges à 312)
 
 # HOVERS (point : « je ne sais pas ce qu'est un laborer, ni pourquoi l'humeur varie »).
 const TIPS := {
-	"Laboureurs": "La masse : fournit le travail (extraction + manufactures) et demande les biens de base (vivres, étoffe, bois de feu).",
-	"Artisans":   "Marchands & artisans : possèdent les manufactures, captent le profit, demandent les biens manufacturés.",
-	"Noblesse":   "L'aristocratie : vit de la taxe et de la rente, produit la recherche, exige le luxe (joaillerie, étoffe précieuse).",
-	"humeur":     "L'humeur locale (légitimité de la province) : monte avec l'ordre et les besoins comblés ; chute sous la surtaxe, la coercition et les cicatrices de révolte.",
+	"Laboureurs": "La masse : fournit le travail (extraction, manufactures). Son panier est simple (vivres, étoffe, bois de feu) et sa satisfaction fait la paix sociale.",
+	"Artisans":   "Marchands et artisans : possèdent les manufactures, captent le profit. Leur panier demande les biens manufacturés.",
+	"Noblesse":   "L'aristocratie : vit de la taxe et de la rente, produit le savoir. Son panier exige le luxe.",
+	"humeur":     "La loyauté de la province : monte avec l'ordre et la satisfaction ; chute sous la surtaxe, la coercition et les cicatrices.",
 }
 var _tips: Array = []
 
@@ -27,7 +28,10 @@ signal detail_requested  ## « Détail » — ouvre province_detail (main-d'œuv
 var _pid := -1
 var _build_rect := Rect2()
 var _colonize_rect := Rect2()   ## bouton COLONISER (province vierge légale — scps_can_colonize)
+var _colonize_ms := -100000     ## horloge MUR du dernier ordre (feedback « ordre émis », 3 s)
 var _close_rect := Rect2()
+var _collapsed := false         ## REPLIÉ : bande-paysage + nom seuls (retour joueur « rétractable »)
+var _collapse_rect := Rect2()
 var _acts := []                 ## [[Rect2, verbe:String], …] — chips d'action contextuels (posés au _draw)
 
 func _ready() -> void:
@@ -37,11 +41,15 @@ func _ready() -> void:
 	Sim.month_ticked.connect(_on_tick)   # chiffres de province : cadence mensuelle
 	hide()
 
+var _ph := 480.0                ## hauteur AU CONTENU (latchée au _draw — le panneau plein-colonne
+                                ## laissait un grand vide sous les boutons, retour joueur)
+
 func _layout() -> void:
-	# entre les bandeaux : à droite du rail, sous le haut, au-dessus du bas
-	position = Vector2(Frame.SIDEBAR_W, Frame.TOPBAR_H + 4.0)
-	var h := get_viewport_rect().size.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 8.0
-	size = Vector2(PW, maxf(80.0, h))
+	# FLOTTANTE façon EU4 (retour joueur 2026-07-10 : « délocke la fenêtre Province ») :
+	# décalée à DROITE du rail + sous le haut, avec une marge — plus une colonne collée.
+	position = Vector2(Frame.SIDEBAR_W + 14.0, Frame.TOPBAR_H + 12.0)
+	var hmax := get_viewport_rect().size.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 24.0
+	size = Vector2(PW, clampf(_ph, 80.0, hmax))
 
 func show_province(pid: int) -> void:
 	_pid = pid
@@ -61,34 +69,50 @@ func _draw() -> void:
 		return
 	var ph := size.y
 	var rw := PW - 30.0
+	# fenêtre FLOTTANTE : le panel_bg porte son propre cadre (le liseré or « collé au
+	# rail » de l'ancienne colonne est retiré)
 	VKit.panel_bg(self, Rect2(0, 0, PW, ph))
-	VKit.fill(self, Rect2(PW - 2, 0, 2, ph), VKit.COL_GOLD)
 	_tips.clear()
 	var x := 16.0
 	var y := 14.0
 
-	# ── FOND DE BIOME (planches 20-22) : le paysage enluminé derrière l'en-tête ──
+	# ── BANDE DE BIOME (planches 20-22), GRANDE et NUE (retour joueur : « le biome doit
+	#    être plus visible, le display suit ») : le paysage plein cadre, le texte DESSOUS.
 	var bio: Texture2D = UIKit.biome_painting(String(info.get("relief", "")), String(info.get("climat", "")))
+	var bioh := 40.0 if _collapsed else 96.0   # ⚠ pas « bh » : redéclaré plus bas (POPULATION)
 	if bio != null:
-		var bh := 58.0
 		var tw := float(bio.get_width())
-		var reg_h := tw * bh / (PW - 4.0)
-		draw_texture_rect_region(bio, Rect2(2, 2, PW - 4.0, bh),
-			Rect2(0, tw * 0.16, tw, reg_h), Color(0.88, 0.84, 0.78))
-		draw_rect(Rect2(2, 2, PW - 4.0, bh), Color(0.05, 0.04, 0.03, 0.30), true)
+		var reg_h := tw * bioh / (PW - 4.0)
+		draw_texture_rect_region(bio, Rect2(2, 2, PW - 4.0, bioh),
+			Rect2(0, tw * 0.10, tw, reg_h), Color(0.98, 0.95, 0.90))
+		draw_rect(Rect2(2, 2, PW - 4.0, bioh), Color(0.05, 0.04, 0.03, 0.10), true)
 		# fondu bas → le paysage se dissout dans le panneau
 		for i in range(5):
-			draw_rect(Rect2(2, 2 + bh - 10 + i * 2, PW - 4.0, 2),
+			draw_rect(Rect2(2, 2 + bioh - 10 + i * 2, PW - 4.0, 2),
 				Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.18 + 0.16 * i), true)
 		# HOVER DÉFENSE : le terrain PROLONGE la tenue de siège — % lisible dérivé du moteur.
 		var def_pct := int(w.province_defense_pct(_pid))
 		var def_word := String(info.get("defense", ""))
-		var def_hover := "Terrain : %s — tenue de siège +%d%%" % [String(info.get("relief", "")), def_pct - 100]
+		var def_hover := "Le paysage de la province — terrain : %s · climat : %s. Tenue de siège +%d%%" \
+			% [String(info.get("relief", "")), String(info.get("climat", "")), def_pct - 100]
 		if def_word != "" and def_word != "aucune":
 			def_hover += " · %s" % def_word
-		_tips.append([Rect2(2.0, 2.0, PW - 4.0, bh), def_hover])
+		_tips.append([Rect2(2.0, 2.0, PW - 4.0, bioh), def_hover])
+		y = bioh + 10.0
 
-	# ── EN-TÊTE : les ARMES du propriétaire (héraldique dérivée) · nom · prospérité ───
+	# ✕ (fermer) + chevron (REPLIER — retour joueur : « barre gauche à adapter/rétractable »)
+	_close_rect = Rect2(PW - 20, 3, 16, 16)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
+	VKit.box(self, _close_rect, VKit.COL_GOLD)
+	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
+	_collapse_rect = Rect2(PW - 40, 3, 16, 16)
+	VKit.fill(self, _collapse_rect, VKit.COL_PANEL2)
+	VKit.box(self, _collapse_rect, VKit.COL_GOLD)
+	VKit.text(self, Vector2(_collapse_rect.position.x + 4, _collapse_rect.position.y + 1),
+		VKit.COL_PARCH, "+" if _collapsed else "–")
+	_tips.append([_collapse_rect, "Déplier le panneau" if _collapsed else "Replier le panneau (la carte respire)"])
+
+	# ── EN-TÊTE (SOUS la peinture) : armes du propriétaire · nom · climat/relief/statut ──
 	var hsz := 30.0
 	var owner_arms: Texture2D = null
 	if int(info.get("owner", -1)) >= 0:
@@ -100,28 +124,26 @@ func _draw() -> void:
 		VKit.fill(self, Rect2(x + 1, y + 3, hsz - 2, hsz - 2), VKit.COL_PANEL2)
 		UIKit.draw_icon(self, "capital_tower", Vector2(x + 3, y + 5), hsz - 6)
 	VKit.text(self, Vector2(x + hsz + 8, y), VKit.COL_GOLD, String(info["nom"]), VKit.FS_BIG)
-	var gw := 64.0
-	var gx := PW - 16.0 - gw
-	UIKit.bar(self, Rect2(gx, y + 2, gw, 14), int(info["aisance_val"]))
-	var nb := str(info["aisance_val"])
-	VKit.text(self, Vector2(gx - VKit.text_w(nb) - 6, y), VKit.COL_PARCH, nb)
-	# ✕ — tout panneau se ferme (Échap aussi, via la pile de main) ; ferme = DÉSÉLECTIONNE
-	_close_rect = Rect2(PW - 20, 3, 16, 16)
-	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_GOLD)
-	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
-	# labelle la jauge (c'était un « 9 » nu — le joueur ne savait pas ce que c'était)
-	VKit.text(self, Vector2(gx, y + 17), VKit.COL_DIM, "Prospérité", VKit.FS_SMALL)
-	# climat · relief · statut de capitale
 	var cap: Dictionary = w.province_capitale(_pid)
 	VKit.text(self, Vector2(x + hsz + 8, y + 18), VKit.COL_PARCH,
 		"%s · %s · %s" % [info["climat"], info["relief"], cap.get("statut", "")])
-	y += hsz + 8
-	if bio != null:
-		y = maxf(y, 70.0)   # le contenu reprend SOUS la bande-paysage (fondu compris)
+	y += hsz + 12
 
-	# ── HABITANTS ─────────────────────────────────────────────────────────────
+	# REPLIÉ : la bande-paysage + le nom suffisent — la carte respire.
+	if _collapsed:
+		var wantc := y + 4.0
+		if absf(_ph - wantc) > 3.0:
+			_ph = wantc
+			set_deferred("size", Vector2(PW, _ph))
+			queue_redraw()
+		return
+
+	# ── HABITANTS + PROSPÉRITÉ (sortie du header : elle y chevauchait paysage & ✕) ──
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "%s habitants" % _grp(info["ames"]))
+	var gw := 64.0
+	VKit.gauge(self, x + rw - gw, y + 4, gw, 10, int(info["aisance_val"]))
+	var plab := "Prospérité %d" % int(info["aisance_val"])
+	VKit.text(self, Vector2(x + rw - gw - VKit.text_w(plab, VKit.FS_SMALL) - 10, y + 1), VKit.COL_DIM, plab, VKit.FS_SMALL)
 	y += 22
 
 	# ── CAMEMBERTS culture / idéologie (ou repli PEUPLE) ──────────────────────
@@ -149,27 +171,48 @@ func _draw() -> void:
 		var cx2 := x + rw / 2.0 + pr + 2
 		VKit.pie(self, Vector2(cx1, cyc), pr, cper, ccol)
 		VKit.pie(self, Vector2(cx2, cyc), pr, rper, rcol)
-		VKit.text(self, Vector2(cx1 - pr, cyc + pr + 3), VKit.COL_DIM, "Culture", VKit.FS_SMALL)
-		VKit.text(self, Vector2(cx2 - pr, cyc + pr + 3), VKit.COL_DIM, "Idéologie", VKit.FS_SMALL)
+		# cerne d'encre (une culture à 100 % rendait un disque plat « cassé ») + le NOM
+		# dominant sous chaque disque — le joueur lit QUI, pas juste une couleur.
+		draw_arc(Vector2(cx1, cyc), pr + 0.5, 0.0, TAU, 48, VKit.COL_DIM, 1.2, true)
+		draw_arc(Vector2(cx2, cyc), pr + 0.5, 0.0, TAU, 48, VKit.COL_DIM, 1.2, true)
+		var relig_dom := 0
+		for i in range(rper.size()):
+			if rper[i] > rper[relig_dom]:
+				relig_dom = i
+		VKit.text(self, Vector2(cx1 - pr, cyc + pr + 3), VKit.COL_DIM,
+			"Culture · %s" % String(groups[0].get("culture", "")), VKit.FS_SMALL)
+		VKit.text(self, Vector2(cx2 - pr, cyc + pr + 3), VKit.COL_DIM,
+			"Idéologie · %s" % String(rnames[relig_dom]), VKit.FS_SMALL)
 		y = cyc + pr + 16
 	else:
 		y = VKit.section(self, x, y, "PEUPLE")
 		y = VKit.row(self, x, y, "Héritage", String(info["heritage"]), VKit.COL_PARCH)
 
-	# ── HUMEUR : rangée de visages + chiffre ──────────────────────────────────
+	# ── SATISFACTION par CLASSE (retour joueur : « humeur » → satisfaction, une barre
+	#    par pop, la strate SERVILE visible même vide) + la LOYAUTÉ (l'ex-humeur =
+	#    légitimité locale, un AUTRE concept — gardée en ligne compacte, tip dédié). ──
 	var hy0 := y
-	y = VKit.section(self, x, y, "HUMEUR")
-	var nf := 5
-	var fr := 9.0
-	var gap := 8.0
-	var fy := y + fr
+	y = VKit.section(self, x, y, "SATISFACTION")
+	if w.has_method("province_class_sat"):
+		var csat: Dictionary = w.province_class_sat(_pid)
+		for srow in [["Laboureurs", "laboureurs"], ["Artisans", "artisans"],
+			["Noblesse", "noblesse"], ["Esclaves", "esclaves"]]:
+			var sv2 := int(csat.get(srow[1], -1))
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, srow[0], VKit.FS_SMALL)
+			if sv2 >= 0:
+				VKit.gauge(self, x + 92, y + 3, rw - 136, 9, sv2)
+				VKit.text(self, Vector2(x + rw - 30, y), VKit.sense(sv2 / 100.0), str(sv2), VKit.FS_SMALL)
+			else:
+				VKit.text(self, Vector2(x + 92, y), VKit.COL_DIM, "—", VKit.FS_SMALL)
+			y += 17
+		_tips.append([Rect2(0.0, hy0, PW, y - hy0),
+			"La part des BESOINS couverts par classe (vivres, biens, confort — le panier). Basse chez les laboureurs = misère → agitation, révolte."])
 	var moodv := float(info["humeur_val"]) / 100.0
-	var lit := int(moodv * (nf - 1) + 0.5)
-	for i in range(nf):
-		VKit.face(self, Vector2(x + fr + i * (2 * fr + gap), fy), fr, float(i) / (nf - 1), i == lit)
-	VKit.text(self, Vector2(x + nf * (2 * fr + gap) + 6, y), VKit.sense(moodv), str(info["humeur_val"]))
-	y = fy + fr + 8
-	_tips.append([Rect2(0.0, hy0, PW, y - hy0), String(TIPS["humeur"])])
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "Loyauté", VKit.FS_SMALL)
+	VKit.gauge(self, x + 92, y + 3, rw - 136, 9, int(info["humeur_val"]))
+	VKit.text(self, Vector2(x + rw - 30, y), VKit.sense(moodv), str(info["humeur_val"]), VKit.FS_SMALL)
+	_tips.append([Rect2(0.0, y - 1.0, PW, 17.0), String(TIPS["humeur"])])
+	y += 20
 
 	# ── POPULATION : barre empilée des classes (+ ESCLAVES, 4e segment) + légende ──
 	var cls: Dictionary = w.province_classes(_pid)
@@ -177,11 +220,11 @@ func _draw() -> void:
 	var cp := [int(cls["laboureurs"]), int(cls["artisans"]), int(cls["noblesse"])]
 	var cc := [VKit.SLICE_PAL[0], VKit.SLICE_PAL[1], VKit.SLICE_PAL[3]]
 	var cnames := ["Laboureurs", "Artisans", "Noblesse"]
-	if slaves > 0:
-		cp.append(slaves)
-		cc.append(Color(0.28, 0.26, 0.24))   # gris sombre — la strate SERVILE, distincte des classes libres
-		cnames.append("Esclaves")
-	var tot: float = maxf(1.0, cp[0] + cp[1] + cp[2] + (slaves if slaves > 0 else 0))
+	# la strate SERVILE est TOUJOURS listée (retour joueur : « visible même si aucun »)
+	cp.append(slaves)
+	cc.append(Color(0.28, 0.26, 0.24))   # gris sombre — distincte des classes libres
+	cnames.append("Esclaves")
+	var tot: float = maxf(1.0, cp[0] + cp[1] + cp[2] + slaves)
 	y = VKit.section(self, x, y, "POPULATION")
 	var bh := 12.0
 	var acc := 0.0
@@ -204,32 +247,59 @@ func _draw() -> void:
 
 	# ── RESSOURCES + PRODUCTION ───────────────────────────────────────────────
 	var inc: Array = w.province_income(_pid)
+	var yres := y
 	y = VKit.section(self, x, y, "RESSOURCES")
-	var res := ""
+	_tips.append([Rect2(0.0, yres, PW, 30.0),
+		"Ce que la terre DONNE ici (les deux gisements majeurs). La province les extrait selon ses bras et les prix."])
+	# chaque ressource porte son ICÔNE (retour joueur) — sprite du pack + nom
+	var rx := x
 	var shown := 0
+	var rlim := x + rw - 128.0   # borne : le libellé Impôts vit à droite (plus de chevauchement)
 	for l in inc:
 		if bool(l["manufactured"]):
 			continue
-		if shown >= 2:
+		if shown >= 3:
 			break
-		res += ("" if shown == 0 else " · ") + String(l["source"])
+		var rw2 := 22.0 + VKit.text_w(String(l["source"])) + 14.0
+		if rx + rw2 > rlim:
+			break
+		var rspr: Texture2D = UIKit.resource_sprite(int(l.get("res_id", -1)), String(l["source"]))
+		if rspr != null:
+			draw_texture_rect(rspr, Rect2(rx, y - 2, 18, 18), false)
+			rx += 22
+		VKit.text(self, Vector2(rx, y), VKit.COL_PARCH, String(l["source"]))
+		rx += VKit.text_w(String(l["source"])) + 14
 		shown += 1
 	if shown == 0:
-		res = String(info["ressource"])
-	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, res)
+		var rnom := String(info["ressource"])
+		var rspr0: Texture2D = UIKit.resource_icon(rnom)
+		if rspr0 != null:
+			draw_texture_rect(rspr0, Rect2(x, y - 2, 18, 18), false)
+			VKit.text(self, Vector2(x + 22, y), VKit.COL_PARCH, rnom)
+		else:
+			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, rnom)
 	var tax := float(w.province_tax(_pid))
 	if tax > 0.5:
-		VKit.text(self, Vector2(x + rw - 90.0, y), VKit.COL_DIM, "Impôts ~%s or/an" % _grp(int(round(tax))))
+		var taxtxt := "Impôts ~%s or/an" % _grp(int(round(tax)))
+		VKit.text(self, Vector2(x + rw - VKit.text_w(taxtxt) - 8.0, y), VKit.COL_DIM, taxtxt)
+		_tips.append([Rect2(x + rw - VKit.text_w(taxtxt) - 12.0, y - 2.0, VKit.text_w(taxtxt) + 12.0, 20.0),
+			"Ce que la couronne LÈVE ici par an : ~42 % de la richesse des classes, rogné par l'évasion quand la satisfaction baisse ou que l'éthos tolère mal l'impôt."])
 	y += 22
+	var yprod := y
 	y = VKit.section(self, x, y, "PRODUCTION")
+	_tips.append([Rect2(0.0, yprod, PW, 30.0),
+		"Les flux RÉALISÉS, en unités par JOUR : extraction des gisements + sortie des ateliers. Suit les bras disponibles et les prix du marché."])
 	if inc.size() == 0:
 		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "rien de notable")
 		y += 18
 	else:
 		for l in inc:
-			# Calibrage « Anno » : flux en unités/JOUR à 1 décimale (per_day du readout, tel quel).
+			# Calibrage « Anno » : flux en unités/JOUR à 1 décimale + l'ICÔNE du bien.
 			VKit.text(self, Vector2(x, y), VKit.sense(0.62), "+%.1f/j" % float(l["per_day"]))
-			VKit.text(self, Vector2(x + 74, y), VKit.COL_DIM, String(l["source"]))
+			var pspr: Texture2D = UIKit.resource_sprite(int(l.get("res_id", -1)), String(l["source"]))
+			if pspr != null:
+				draw_texture_rect(pspr, Rect2(x + 66, y - 2, 16, 16), false)
+			VKit.text(self, Vector2(x + 86, y), VKit.COL_DIM, String(l["source"]))
 			y += 18
 	y += 4
 
@@ -240,14 +310,22 @@ func _draw() -> void:
 			"Au bord de la révolte (agitation %d)" % int(info["agitation"]))
 		y += 22
 
-	# ── CAPITALE ──────────────────────────────────────────────────────────────
+	# ── CAPITALE — chaque ligne porte son POURQUOI au survol (retour joueur) ──
 	y = VKit.section(self, x, y, "CAPITALE")
+	_tips.append([Rect2(0.0, y, PW, 20.0),
+		"Le rang du bourg : il monte avec la POPULATION (2 000 âmes = tier 2 … 10 000 = tier 7) et ouvre des bâtiments de palier."])
 	y = VKit.row(self, x, y, "Statut", "%s · tier %d" % [cap.get("statut", ""), int(cap.get("tier", 0))], VKit.COL_GOLD)
 	var libres: int = int(cap.get("logement_cap", 0)) - int(cap.get("pop", 0))
+	_tips.append([Rect2(0.0, y, PW, 20.0),
+		"Âmes logées / capacité : ½ vient de la terre nue, le reste du BÂTI (manufactures-logements, confort). Plein = la croissance s'étouffe."])
 	y = VKit.row(self, x, y, "Logement", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("logement_cap", 0))],
 		VKit.COL_PARCH if libres >= 0 else VKit.sense(0.12))
+	_tips.append([Rect2(0.0, y, PW, 20.0),
+		"Âmes servies / capacité de SERVICES (échoppes, bains, cultes) : au-delà, le confort décroche."])
 	y = VKit.row(self, x, y, "Services", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("service_cap", 0))], VKit.COL_PARCH)
 	if int(cap.get("prod_pct", 0)) > 0:
+		_tips.append([Rect2(0.0, y, PW, 20.0),
+			"Le bonus de production du bourg : OUTILS en circulation + édifices de savoir-faire + tier — il multiplie extraction et ateliers de la province."])
 		y = VKit.row(self, x, y, "Productivité", "+%d%%" % int(cap["prod_pct"]), VKit.sense(0.7))
 
 	# ── ACTIONS CONTEXTUELLES (selon la propriété ; chaque verbe est journalisé,
@@ -261,13 +339,57 @@ func _draw() -> void:
 	_acts.clear()
 	var me: int = w.player()
 	var powner := int(info.get("owner", -2))
+	# ── BÂTIMENTS façon CK3 (retour joueur) : les carrés du BÂTI (icône + hover
+	#    nom·niveau·ouvriers) + la case « + » = construire (remplace le gros bouton). ──
+	var blds: Array = w.province_buildings(_pid)
+	var edis: Array = w.province_edifices(_pid) if w.has_method("province_edifices") else []
+	if blds.size() > 0 or edis.size() > 0 or powner == me:
+		var ybld := y
+		y = VKit.section(self, x, y, "BÂTIMENTS")
+		_tips.append([Rect2(0.0, ybld, PW, 30.0),
+			"Les édifices et manufactures ÉLEVÉS ici. Le palier suit le TIER du bourg (population) et les techs."])
+		var bs := 28.0
+		var bx := x
+		# d'abord les ÉDIFICES DE BASE (grenier, marché, temple… — retour joueur :
+		# « on ne voit pas les bâtiments de base »), puis les manufactures.
+		for e in edis:
+			if bx + bs > x + rw - 4.0:
+				bx = x
+				y += bs + 4.0
+			var er := Rect2(bx, y, bs, bs)
+			VKit.fill(self, er, VKit.COL_PANEL2)
+			VKit.box(self, er, VKit.COL_GOLD)
+			var et: Texture2D = UIKit.building_sprite(int(e.get("type", -1)))
+			if et != null:
+				draw_texture_rect(et, Rect2(er.position + Vector2(3, 3), Vector2(bs - 6, bs - 6)), false)
+			else:
+				UIKit.draw_icon(self, "capital_tower", er.position + Vector2(6, 6), bs - 12)
+			_tips.append([er, String(e["nom"])])
+			bx += bs + 4.0
+		for b in blds:
+			if bx + bs > x + rw - 4.0:
+				bx = x
+				y += bs + 4.0
+			var br := Rect2(bx, y, bs, bs)
+			VKit.fill(self, br, VKit.COL_PANEL2)
+			VKit.box(self, br, VKit.COL_GOLD)
+			var mt: Texture2D = UIKit.manuf_sprite(String(b["nom"]))
+			if mt != null:
+				draw_texture_rect(mt, Rect2(br.position + Vector2(3, 3), Vector2(bs - 6, bs - 6)), false)
+			else:
+				UIKit.draw_icon(self, "build_hammer", br.position + Vector2(6, 6), bs - 12)
+			_tips.append([br, "%s — niveau %d · %d ouvriers" % [String(b["nom"]), int(b["niveau"]), int(b["ouvriers"])]])
+			bx += bs + 4.0
+		_build_rect = Rect2()
+		if powner == me:
+			# la case « + » : bâtir (pointillé or, hover explicite)
+			_build_rect = Rect2(bx, y, bs, bs)
+			VKit.fill(self, _build_rect, Color(VKit.COL_PANEL2.r, VKit.COL_PANEL2.g, VKit.COL_PANEL2.b, 0.55))
+			VKit.box(self, _build_rect, VKit.COL_GOLD)
+			VKit.text(self, Vector2(bx + bs * 0.5 - 5.0, y + 3.0), VKit.COL_GOLD, "+", VKit.FS_BIG)
+			_tips.append([_build_rect, "Construire — ouvrir le panneau de bâti (unités & édifices)"])
+		y += bs + 10.0
 	if powner == me:
-		_build_rect = Rect2(x, y, bw, bbh)
-		VKit.fill(self, _build_rect, VKit.COL_PANEL2)
-		VKit.box(self, _build_rect, VKit.COL_GOLD)
-		UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
-		VKit.text(self, Vector2(x + 28, y + 5), VKit.COL_GOLD, "Construire")
-		y += bbh + 6
 		_act_chips(x, y, [["Réprimer", "repress"], ["Assimiler", "assimilate"],
 			["Purger", "purge"], ["Détail", "detail"]])
 	elif w.has_method("can_colonize") and w.can_colonize(_pid):
@@ -278,6 +400,11 @@ func _draw() -> void:
 		VKit.box(self, _colonize_rect, Color(0.55, 0.62, 0.38))
 		UIKit.draw_icon(self, "action_build", Vector2(x + 6, y + 5), 18)
 		VKit.text(self, Vector2(x + 28, y + 5), Color(0.62, 0.70, 0.42), "Coloniser")
+		# FEEDBACK (retour joueur) : l'ordre vient d'être émis → on le DIT sous le bouton
+		if Time.get_ticks_msec() - _colonize_ms < 3000:
+			VKit.box(self, _colonize_rect, Color(0.75, 0.85, 0.55))
+			VKit.text(self, Vector2(x, y + bbh + 4), Color(0.62, 0.78, 0.52),
+				"Ordre émis — la colonne part sous peu", VKit.FS_SMALL)
 	elif powner >= 0 and powner != me:
 		var dop: Dictionary = w.diplo_options(powner) if w.has_method("diplo_options") else {}
 		if bool(dop.get("can_make_peace", false)):
@@ -301,6 +428,16 @@ func _draw() -> void:
 			elif rr == 4:
 				VKit.text(self, Vector2(x, y + 29), VKit.COL_DIM,
 					"Piller la côte : aucune coque pirate", VKit.FS_SMALL)
+
+	# ── HAUTEUR AU CONTENU : latch (1 frame de convergence) — plus de colonne vide.
+	#    ⚠ set_deferred : poser `size` PENDANT _draw() est ignoré par Godot (le cadre
+	#    restait court, le contenu débordait dessous — capture itération 1). ──
+	var want := clampf(y + 60.0, 220.0,
+		get_viewport_rect().size.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 24.0)
+	if absf(_ph - want) > 3.0:
+		_ph = want
+		set_deferred("size", Vector2(PW, _ph))
+		queue_redraw()
 
 ## une rangée de CHIPS d'action (petits boutons) — les rects sont mémorisés dans _acts
 ## avec leur verbe, hit-testés au clic. Retourne rien (le layout suit x fixe).
@@ -344,6 +481,7 @@ func _act_fire(verb: String) -> void:
 			# LOT P — enfilé (drain revalidé) ; au tick suivant le chip devient
 			# « Côte balafrée — X j » (le CD posé par le pillage réussi).
 			w.player_raid_coast(_pid)
+	Sim.notify_action()   # pause : les panneaux se rafraîchissent au clic
 	queue_redraw()
 
 # milliers lisibles : 12345 → "12 345"
@@ -364,11 +502,18 @@ func _gui_input(event: InputEvent) -> void:
 			close_requested.emit()             # main désélectionne (panneau + contour doré)
 			accept_event()
 			return
+		if _collapse_rect.has_point(event.position):
+			_collapsed = not _collapsed
+			queue_redraw()
+			accept_event()
+			return
 		if _build_rect.size.x > 0 and _build_rect.has_point(event.position):
 			build_requested.emit()
 		elif _colonize_rect.size.x > 0 and _colonize_rect.has_point(event.position):
 			if Sim.world != null and Sim.world.has_method("player_colonize"):
 				Sim.world.player_colonize(_pid); Sim.notify_action()   # enfilé ; refresh au drain (live)
+				_colonize_ms = Time.get_ticks_msec()   # feedback : « ordre émis » 3 s
+				Sound.play("ui_click")
 				queue_redraw()
 		else:
 			for a in _acts:

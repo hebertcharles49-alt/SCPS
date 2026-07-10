@@ -428,7 +428,10 @@ static void sim_cmd_drain(Sim *s, World *w){
             if (re->owner != p || !re->colonized) break;             /* REVALIDE : à soi, peuplée */
             if (bld_is_faustian((BuildingType)b)) break;             /* les transmuteurs restent la voie tech/charge */
             Resource in1,in2,out; building_recipe((BuildingType)b,&in1,&in2,&out); (void)in2;
-            if (out==RES_NONE || in1==RES_NONE) break;               /* pas une manufacture à intrant */
+            /* in1==RES_NONE ≠ dégénéré : les RAW-WORKS (four à brique·carrière·scierie,
+             * hors-sol N1 — elles BOOSTENT l'output de brut) sont LÉGALES pour le joueur
+             * (retour 2026-07-09 ; miroir scps_manuf_legal tenu). Seul out==NONE rejette. */
+            if (out==RES_NONE) break;
             if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
                 || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX)
                 break;                                               /* le CIVIL seulement — l'armement/arcane restent doctrinaux */
@@ -437,7 +440,7 @@ static void sim_cmd_drain(Sim *s, World *w){
             float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
             if (rpop < 250.f*(float)(re->n_bld+1)) break;            /* = AI_STAFF_PER_MANUF : pas dans le vide */
             if (capitale_max_tier((long)rpop) < bld_min_tier((BuildingType)b)) break;
-            { bool feed = (re->raw_cap[in1] > 0.f);                  /* intrant nourrissable : ici OU dans l'empire (pool P1) */
+            { bool feed = (in1==RES_NONE) || (re->raw_cap[in1] > 0.f);   /* hors-sol ⇒ rien à nourrir */
               for (int r2=0;r2<s->econ->n_regions && !feed;r2++)
                   if (s->econ->region[r2].owner==p && s->econ->region[r2].raw_cap[in1]>0.f) feed=true;
               if (!feed) break; }

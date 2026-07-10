@@ -33,6 +33,15 @@ func _ready() -> void:
 	var UiTheme := load("res://ui/ui_theme.gd")
 	get_window().theme = UiTheme.build()
 	UiTheme.attach_feedback(get_tree())
+	# TOOLTIPS À CONCEPTS (retour joueur 2026-07-10) : le tooltip natif est neutralisé
+	# (délai énorme) — le TooltipServer le remplace partout (mots-concepts turquoise +
+	# définitions, registre ui/concepts.gd, relié au codex).
+	ProjectSettings.set_setting("gui/timers/tooltip_delay_sec", 100000.0)
+	var tts := CanvasLayer.new()
+	tts.name = "TooltipLayer"
+	tts.layer = 120
+	add_child(tts)
+	tts.add_child(load("res://ui/tooltip_server.gd").new())
 	_setup_cursor()
 	# les ARMOIRIES dérivent des faits du monde → le cache se vide à chaque genèse
 	Sim.generated.connect(func(): load("res://ui/heraldry.gd").reset())
@@ -99,7 +108,9 @@ func _ready() -> void:
 	# (roster 22 unités + édifices, prix réels). Caché par défaut, bascule au clavier.
 	_construct = load("res://ui/construction_panel.gd").new()
 	_construct.name = "ConstructionPanel"
-	_construct.position = Vector2(Frame.SIDEBAR_W + 8, Frame.TOPBAR_H + 8)
+	# à DROITE du panneau province FLOTTANT (SIDEBAR_W+14, 348 de large) : ouvert
+	# depuis lui, il le recouvrait
+	_construct.position = Vector2(Frame.SIDEBAR_W + 14 + 348 + 12, Frame.TOPBAR_H + 12)
 	_construct.visible = false
 	ui.add_child(_construct)
 
@@ -137,13 +148,16 @@ func _ready() -> void:
 	ui.add_child(_prov_detail)
 
 	# Construction depuis le panneau province → toggle du panneau de construction
+	# (target_pid = la province visée : les MANUFACTURES s'y élèvent — lot 5)
 	_prov_panel.build_requested.connect(func():
+		_construct.target_pid = _sel_prov
 		_construct.visible = not _construct.visible
 		if _construct.visible:
 			Sound.play("ui_parchment_open")
 		_construct.queue_redraw())
 	# … et depuis l'onglet CONSTRUCTIONS du détail (sa maison désormais)
 	_prov_detail.build_requested.connect(func():
+		_construct.target_pid = _sel_prov
 		var was_visible := _construct.visible
 		_construct.visible = true
 		if not was_visible:
@@ -175,6 +189,12 @@ func _ready() -> void:
 	_menu = load("res://ui/menu_root.gd").new()
 	_menu.name = "MenuRoot"
 	ui.add_child(_menu)
+	# CODEX depuis le menu Échap (F1 est parti aux onglets du rail, 2026-07-10)
+	if _menu.has_signal("codex_requested"):
+		_menu.codex_requested.connect(func():
+			_menu.hide()
+			if _codex != null:
+				_codex.toggle())
 
 	# RELIGION — le CRÉATEUR DE FOI : s'ouvre quand le joueur bâtit son 1er édifice religieux
 	# (avant, le monde est ATHÉE). Rouvrable à la touche R. Caché par défaut.
@@ -316,9 +336,12 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_F10:
 			if _devpanel != null:
 				_devpanel.visible = not _devpanel.visible
-		KEY_F1:
-			if _codex != null:
-				_codex.toggle()
+		# F1-F8 = les onglets du RAIL GAUCHE dans l'ordre de leur emplacement (retour
+		# joueur 2026-07-10) : Économie · Démographie · Stocks · Marché · Armée ·
+		# Filtres · Diplomatie · Conseil. Le CODEX (ex-F1) vit au menu Échap.
+		KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8:
+			if _sidebar != null and Sim.game_on:
+				_sidebar.toggle_tab(e.keycode - KEY_F1)
 		KEY_H:
 			if _chronique != null:
 				if _chronique.visible:

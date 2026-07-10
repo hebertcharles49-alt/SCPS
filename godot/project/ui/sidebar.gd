@@ -7,7 +7,7 @@ extends Control
 const VKit = preload("res://ui/vkit.gd")
 const Frame = preload("res://ui/frame.gd")
 const IconButton = preload("res://ui/icon_button.gd")
-const BTN := 38.0
+const BTN := 52.0   ## onglets du rail agrandis (retour joueur : « très très petits »)
 
 const TABS := [
 	["menu_economy",   "Économie"],
@@ -35,10 +35,12 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
-	# rail de fond PLEINE HAUTEUR : cuir sombre + liseré or à droite (capte ses clics)
+	# rail de fond PLEINE HAUTEUR : cuir sombre UNI + liseré or à droite (capte ses
+	# clics). ⚠ alpha 1.0 (COL_PANEL est translucide — le rail laissait transparaître
+	# la carte, « pas uni », retour joueur 2026-07-10).
 	_rail = Panel.new()
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = VKit.COL_PANEL
+	sb.bg_color = Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 1.0)
 	sb.border_color = VKit.COL_GOLD
 	sb.set_border_width(SIDE_RIGHT, 2)
 	_rail.add_theme_stylebox_override("panel", sb)
@@ -51,7 +53,7 @@ func _ready() -> void:
 	for i in range(TABS.size()):
 		var b = IconButton.new()
 		_vb.add_child(b)
-		b.setup_icon(String(TABS[i][0]), BTN)
+		b.setup_icon(String(TABS[i][0]), BTN, "")   # SANS fond de chrome (retour joueur : icône nue sur le rail)
 		b.pad_frac = 0.16
 		b.pressed.connect(_on_tab.bind(i))
 		b.tooltip_text = String(TABS[i][1])
@@ -71,7 +73,9 @@ func _ready() -> void:
 func _resize() -> void:
 	var vp := get_viewport_rect().size
 	_rail.position = Vector2(0, Frame.TOPBAR_H)
-	_rail.size = Vector2(Frame.SIDEBAR_W, maxf(40.0, vp.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H))
+	# PLEINE HAUTEUR jusqu'au bord BAS : la bottom bar n'existe plus (icônes flottantes)
+	# — le rail « disparaissait » 66 px avant le bord (retour joueur 2026-07-10).
+	_rail.size = Vector2(Frame.SIDEBAR_W, maxf(40.0, vp.y - Frame.TOPBAR_H))
 	_vb.position = Vector2((Frame.SIDEBAR_W - BTN) * 0.5, Frame.TOPBAR_H + 8.0)
 
 ## la carte (pour le tiroir Filtres → set_mode)
@@ -96,4 +100,9 @@ func close() -> void:
 ## OUVRE un onglet donné (les ALERTES y envoient) — no-op s'il est déjà ouvert.
 func open_tab(i: int) -> void:
 	if i >= 0 and _sel != i:
+		_on_tab(i)
+
+## BASCULE un onglet (raccourcis F1-F8 : ouvre, re-presser replie) — borné au roster.
+func toggle_tab(i: int) -> void:
+	if i >= 0 and i < TABS.size():
 		_on_tab(i)

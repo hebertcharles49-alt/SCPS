@@ -86,18 +86,28 @@ func _build() -> void:
 	_cb_lbl.add_theme_color_override("font_color", Color(0.70, 0.55, 0.75))
 	col.add_child(_cb_lbl)
 
+	# 6 verbes en grille 3×2 à largeur ÉGALE (le long libellé « Fabriquer… » déformait
+	# la grille : Guerre géant, Paix minuscule — capture 2026-07-09) ; « Fabriquer une
+	# revendication » vit sur SA ligne, pleine largeur.
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	col.add_child(grid)
-	for v in [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"], ["pact", "Pacte"], ["migration", "Migration"], ["embargo", "Embargo"], ["fabricate", "Fabriquer une revendication"]]:
+	for v in [["war", "Guerre"], ["peace", "Paix"], ["ally", "Allier"], ["pact", "Pacte"], ["migration", "Migration"], ["embargo", "Embargo"]]:
 		var b := Button.new()
 		b.text = v[1]
+		b.custom_minimum_size = Vector2(104, 0)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var verb: String = v[0]
 		b.pressed.connect(func(): _act(verb))
 		grid.add_child(b)
 		_btns[verb] = b
+	var fb := Button.new()
+	fb.text = "Fabriquer une revendication"
+	fb.pressed.connect(func(): _act("fabricate"))
+	col.add_child(fb)
+	_btns["fabricate"] = fb
 
 	_flash = Label.new()
 	_flash.add_theme_color_override("font_color", Color(0.46, 0.74, 0.42))
@@ -112,6 +122,9 @@ func _layout() -> void:
 
 func open_country(cid: int) -> void:
 	if Sim.world == null or cid < 0 or cid == int(Sim.world.player()):
+		return
+	# BROUILLARD : un pays jamais découvert ne se laisse pas approcher (retour joueur)
+	if Sim.world.has_method("country_known") and int(Sim.world.country_known(cid)) == 0:
 		return
 	_cid = cid
 	visible = true
@@ -178,13 +191,24 @@ func _refresh() -> void:
 		"migration": bool(op2.get("would_accept_migration", true)),
 		"peace": bool(op2.get("would_accept_peace", true)),
 	}
+	# état de relation (langue-indépendant, via opinion_summary) pour NOMMER la raison d'un verbe grisé
+	var psr: Dictionary = w.opinion_summary(_cid) if w.has_method("opinion_summary") else {}
+	var at_war: bool = int(psr.get("war", 0)) != 0
+	var allied: bool = int(psr.get("ally", 0)) != 0
+	var has_pact: bool = int(psr.get("pact", 0)) != 0
 	for verb in _btns:
 		var b: Button = _btns[verb]
 		b.disabled = cd > 0 or not bool(can.get(verb, false))
 		# AMBRE : permis mais l'offre serait REFUSÉE (l'opinion #26 prévisualisée)
 		var amber: bool = (not b.disabled) and would.has(verb) and not bool(would[verb])
 		b.modulate = Color(1.0, 0.82, 0.5) if amber else Color(1, 1, 1)
-		b.tooltip_text = "il refusera (opinion trop basse)" if amber else ""
+		# RETOUR JOUEUR : chaque verbe GRISÉ nomme sa raison au survol (« pourquoi je peux pas ? »)
+		if b.disabled and verb != "fabricate":
+			b.tooltip_text = _why_disabled(verb, cd, at_war, allied, has_pact)
+		elif amber:
+			b.tooltip_text = "il refusera (opinion trop basse)"
+		else:
+			b.tooltip_text = ""
 	# W-GUERRE-3 — LE CASUS BELLI FABRIQUÉ : « Guerre » reste grisé sans motif gratuit NI
 	# intrigue mûre (can_declare_war le dit déjà côté moteur) ; « Fabriquer » porte l'état
 	# de l'intrigue en cours/mûre/coût — un bouton de CORRUPTION, distinct de la déclaration.
@@ -230,3 +254,28 @@ func _act(verb: String) -> void:
 	elif not ok:
 		Sound.play("ui_click")
 	_refresh()
+
+## la RAISON explicite d'un verbe GRISÉ (retour joueur : « chaque chose grisée doit être nommée »).
+## Dérivée des flags diplo_options + de l'état de relation (opinion_summary), langue-indépendante.
+func _why_disabled(verb: String, cd: int, at_war: bool, allied: bool, has_pact: bool) -> String:
+	if cd > 0:
+		return "émissaire en tournée — de retour dans %d j" % cd
+	match verb:
+		"war":
+			return "déjà en guerre avec ce pays" if at_war else "trêve en cours (paix trop récente)"
+		"peace":
+			return "vous n'êtes pas en guerre avec ce pays"
+		"ally":
+			if at_war: return "impossible : vous êtes en guerre"
+			if allied: return "vous êtes déjà alliés"
+			return "aucun créneau d'alliance libre (de part ou d'autre)"
+		"pact":
+			if at_war: return "impossible : vous êtes en guerre"
+			if has_pact: return "un pacte commercial existe déjà"
+			return "pacte impossible pour l'instant"
+		"migration":
+			if at_war: return "impossible : vous êtes en guerre"
+			return "un pacte migratoire existe déjà"
+		"embargo":
+			return "embargo indisponible pour l'instant"
+	return "indisponible pour l'instant"

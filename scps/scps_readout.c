@@ -878,7 +878,7 @@ static const char *const TECH_UTILITY[TECH_COUNT] = {
     /* Forge · Production — extraction & rendement */
     [TECH_COLLECTE_BOIS]     = "permet la production de bois",
     [TECH_COLLECTE_ARGILE]   = "permet la production d'argile",
-    [TECH_FONDERIE]          = "permet la production de métal (fer, acier)",
+    [TECH_FONDERIE]          = "+production (le travail du fer s'organise)",
     [TECH_OUTILLAGE]         = "+production (multiplicateur de rendement)",
     [TECH_MANUFACTURE]       = "+production (biens manufacturés)",
     [TECH_INDUSTRIE]         = "+production de masse",
@@ -889,7 +889,7 @@ static const char *const TECH_UTILITY[TECH_COUNT] = {
     [TECH_OEUVRE_NOIRE]      = "⚠ armes terribles — rapproche la Brèche",
     /* Forge · Renforcement — construction & défense */
     [TECH_ATELIER]           = "permet de bâtir (chantiers de construction)",
-    [TECH_QUALITE_MATERIAUX] = "+durabilité des bâtiments (béton → marbre)",
+    [TECH_QUALITE_MATERIAUX] = "permet l'arbalète à pavois (la taille fine des matériaux)",
     [TECH_FORTIFICATIONS]    = "+défense (forteresse → citadelle)",
     [TECH_AUTOMATES]         = "+défense & production (golems) ⚠ rapproche la Brèche",
     /* Société · Production — vivres, commerce, impôt */

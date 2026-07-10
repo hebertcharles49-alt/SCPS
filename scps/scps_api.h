@@ -58,6 +58,7 @@ void scps_map_layer(ScpsSim *s, uint8_t *dst, int layer);
 
 /* ---- nombres TANGIBLES (membrane) ------------------------------------ */
 int    scps_year         (const ScpsSim *s);
+int    scps_day_of_year  (const ScpsSim *s);   /* jour dans l'année 0-364 (date d'affichage) */
 int    scps_player       (const ScpsSim *s);
 int    scps_country_count(const ScpsSim *s);
 int    scps_region_count (const ScpsSim *s);
@@ -70,6 +71,9 @@ long   scps_country_pop  (const ScpsSim *s, int country);
 double scps_country_gold (const ScpsSim *s, int country);
 /* RÔLE de polité (PolityRole) : 0 joueur · 1 antagoniste(IA) · 2 cité-état · 3 vierge · 4 libre ; -1 hors-borne. */
 int    scps_country_role (const ScpsSim *s, int country);
+/* BROUILLARD : le JOUEUR a-t-il DÉCOUVERT ce pays ? (country_knows — la liste diplo ne
+ * montre pas ce que le voile cache). Sans joueur engagé : tout est connu. */
+int    scps_country_known(const ScpsSim *s, int country);
 
 /* ---- par RÉGION (overlays / sprites côté hôte) ----------------------- */
 int   scps_region_owner    (const ScpsSim *s, int region);
@@ -77,6 +81,9 @@ long  scps_region_pop      (const ScpsSim *s, int region);
 bool  scps_region_colonized(const ScpsSim *s, int region);
 /* centroïde MONDE (cellules) d'une région ; false si vide. Figé par worldgen. */
 bool  scps_region_centroid (const ScpsSim *s, int region, float *x, float *y);
+/* SIÈGE de ville : centroïde de la PROVINCE REPRÉSENTATIVE de la région (le bourg vit
+ * dans une province, pas au barycentre de la région) ; repli centroïde région. */
+bool  scps_region_seat     (const ScpsSim *s, int region, float *x, float *y);
 
 /* ---- PICKING : cellule MONDE (x,y) → province · -1 hors-monde / mer ---- *
  * La province est l'entité de panneau (province_readout) ; chaque cellule de
@@ -254,6 +261,9 @@ int scps_province_agitation(ScpsSim *s, int province, int *out_value, ScpsBreakd
 /* les MANUFACTURES bâties dans la province : nom + niveau + ouvriers. Retourne n. */
 typedef struct { const char *nom; int niveau; int ouvriers; } ScpsProvBld;
 int scps_province_buildings(ScpsSim *s, int province, ScpsProvBld *out, int max);
+/* les ÉDIFICES de BASE bâtis (grenier, marché, temple, remparts…) — lus du masque
+ * edi_built de la province. niveau/ouvriers = 0 (un édifice n'a pas d'équipe). */
+int scps_province_edifices(ScpsSim *s, int province, ScpsProvBld *out, int max);
 
 /* le JOURNAL d'évènements de la province : an + libellé résolu + signe
  * (+1 fléau · -1 faveur · 0 neutre) + HOVER « complet » (effets : production ↓,
@@ -264,6 +274,8 @@ int scps_province_log(ScpsSim *s, int province, ScpsLogEntry *out, int max);
 
 /* pop par classe (laboureurs · artisans/bourgeois · noblesse/élite). */
 void scps_province_classes(ScpsSim *s, int province, long *laboureurs, long *artisans, long *noblesse);
+/* SATISFACTION 0-100 par classe (−1 = classe vide), grain PROVINCE — incl. serviles. */
+void scps_province_class_sat(ScpsSim *s, int province, int *lab, int *art, int *nob, int *slv);
 
 /* UI PROVINCE — LOT 1 : le 4e SEGMENT (ESCLAVES) de la barre de proportions.
  * ⚠ ADDITIF (piège documenté TROUVAILLES.md) : scps_province_classes garde sa
@@ -576,6 +588,12 @@ typedef struct {
     int           gold;        /* prix OR de la recette au marché de la capitale (agency_build_gold) */
     int           days;        /* durée de chantier */
     int           debloque;    /* 1 si la tech du pays l'ouvre */
+    int           tier;        /* palier familial (edifice_tier : Sanctuaire 1 → Temple 2 → …) */
+    int           prev;        /* Edifice précédent de la famille (-1 = base de famille) */
+    int           prev_built;  /* 1 si le précédent est bâti QUELQUE PART dans l'empire
+                                * (l'UI ne MONTRE un palier que si le précédent existe) */
+    const char   *effet;       /* l'effet RÉEL chiffré, composé du delta ProvBuild (membrane) */
+    const char   *flavor;      /* la ligne CYNIQUE du conseiller (display-only) */
 } ScpsEdificeDef;
 int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max);
 
@@ -733,6 +751,9 @@ typedef struct {
     const char *advisors[4];       /* QUI porte ce choix au conseil (mot de faction, "" si aucun) —
                                     * les trois choix ont des VISAGES : trahir une option = trahir
                                     * quelqu'un qui reste au conseil (hook.faction → faction_name) */
+    const char *effets[4];         /* l'EFFET MÉCANIQUE en mots+signes (« Ça veut dire quoi ? ») :
+                                    * trésor ±N % du revenu mensuel · légitimité ↑/↓ · agitation ↑/↓ ·
+                                    * population ±N % · cicatrice durable · pari (N %). "" si neutre. */
     int n_options;
     int region;                    /* -1 si le sujet est un PAYS (EV_COUNTRY) */
     int days_left;                 /* avant auto-résolution (180 j au total) */
@@ -1032,6 +1053,9 @@ int  scps_set_empire_culture(int slot, int heritage, int ethos, int t0, int t1, 
 int  scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2);
 /* EFFACE TOUTES les compositions (retour au tirage IA + héritage ADAPTATIF + éthos émergent). */
 void scps_clear_player_culture(void);
+/* NOM PERSONNALISÉ : le joueur (re)nomme un État — champ d'affichage (jamais hashé),
+ * sérialisé avec le pays (survit aux saves). Vide/hors-borne = no-op. */
+void scps_set_country_name(ScpsSim *s, int cid, const char *name);
 
 /* ====================================================================== */
 /* RELIGION (façade) — fonder · schismer · lire. Le moteur tient le registre */

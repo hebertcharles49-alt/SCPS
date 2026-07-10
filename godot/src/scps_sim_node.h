@@ -63,11 +63,13 @@ public:
     int64_t region_pop(int region) const;
     bool    region_colonized(int region) const;
     Vector2 region_centroid(int region) const;   /* (-1,-1) si vide */
+    Vector2 region_seat(int region) const;       /* siège de ville : centroïde de la province rep */
 
     /* PICKING & READOUTS (la membrane → panneaux) */
     int        province_at(int x, int y) const;       /* cellule monde → province (-1) */
     int        province_region(int province) const;   /* province → région (-1) */
     Dictionary province_info(int province);           /* mots + nombres (la membrane) */
+    Dictionary province_class_sat(int province);      /* satisfaction 0-100 par classe (−1 = vide) */
     Dictionary country_info(int country);             /* mots + nombres (la membrane) */
 
     /* ACTEURS SUR LA CARTE (Phase 3) */
@@ -93,6 +95,9 @@ public:
     Array      province_income(int province);         /* RESSOURCES / PRODUCTION */
     Dictionary province_agitation(int province);      /* MODIFICATEURS : { value:int, causes:[{cause,delta,decay}] } */
     Array      province_buildings(int province);      /* MANUFACTURES : [{nom, niveau, ouvriers}] */
+    Array      province_edifices(int province);       /* ÉDIFICES de base bâtis : [{nom}] */
+    int        day_of_year() const;                   /* jour 0-364 (date d'affichage) */
+    int        country_known(int country) const;      /* BROUILLARD : pays découvert par le joueur ? */
     Array      province_log(int province);            /* JOURNAL : [{year, label, sign}] (récent en tête) */
     Dictionary province_classes(int province);        /* barre empilée des classes */
     Dictionary province_capitale(int province);       /* ossature de capitale */
@@ -234,6 +239,7 @@ public:
     bool       set_empire_culture(int slot, int heritage, int ethos, int t0, int t1, int t2); /* slot 0=joueur, 1..N IA */
     bool       set_player_culture(int heritage, int ethos, int t0, int t1, int t2);  /* raccourci slot 0 */
     void       clear_player_culture();                      /* efface TOUS les slots */
+    void       set_country_name(int cid, const String &name); /* nom personnalisé (affichage, sérialisé) */
 
     /* PARAMÈTRES DE GÉNÉRATION (sliders « Nouvelle partie ») — POD WorldParams en Dictionary. */
     Dictionary worldparams_default(int seed);               /* défauts pour pré-remplir les sliders */

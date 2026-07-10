@@ -44,9 +44,10 @@ func _ready() -> void:
 	_chart.custom_minimum_size = _chart.size
 	_chart.visible = false
 	add_child(_chart)
-	# … le menu déroulant APRÈS (il se dessine PAR-DESSUS le graphe quand il s'ouvre)
+	# … le menu déroulant APRÈS (il se dessine PAR-DESSUS le graphe quand il s'ouvre) —
+	# ancré à DROITE du header (il TRONQUAIT le titre à x=210, capture 2026-07-10)
 	_dropdown = VKitDropdown.new()
-	_dropdown.position = Vector2(210, 8)
+	_dropdown.position = Vector2(PW - 30.0 - 176.0, 6.0)
 	_dropdown.size = Vector2(170, 24)
 	_dropdown.custom_minimum_size = Vector2(170, 24)
 	add_child(_dropdown)
@@ -68,6 +69,8 @@ func _layout() -> void:
 	if _chart != null and is_instance_valid(_chart):
 		_chart.size = Vector2(PW - 32, PH - HEAD - 24)
 		_chart.custom_minimum_size = _chart.size
+	if _dropdown != null and is_instance_valid(_dropdown):
+		_dropdown.position = Vector2(PW - 30.0 - 176.0, 6.0)
 
 func _gui_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
@@ -137,14 +140,7 @@ func _notification(what: int) -> void:
 
 func _draw() -> void:
 	VKit.panel_bg(self, Rect2(0, 0, PW, PH))
-	UIKit.draw_icon(self, "menu_economy", Vector2(14, 10), 18)
-	VKit.text(self, Vector2(40, 11), VKit.COL_GOLD, "Économie dans le temps", VKit.FS_BIG)
-
-	# ✕ — tout panneau se ferme (Échap le ferme aussi via main)
-	_close_rect = Rect2(PW - 26, 6, 20, 20)
-	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_GOLD)
-	VKit.text(self, Vector2(_close_rect.position.x + 6, _close_rect.position.y + 3), VKit.COL_PARCH, "x")
+	_close_rect = VKit.header(self, PW, "Économie dans le temps")
 
 	if _years.size() < 2:
 		VKit.text(self, Vector2(16, HEAD + 24), VKit.COL_DIM,

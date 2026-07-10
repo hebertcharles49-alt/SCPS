@@ -38,6 +38,8 @@ struct ScpsSim {
     uint32_t   *px;        /* SCPS_N : tampon de travail pour render_map */
     float      *cx, *cy;   /* centroïdes région (figés par worldgen) */
     int         n_cent;
+    float      *ppx, *ppy; /* centroïdes PROVINCE (siège de ville : la province rep, pas la région) */
+    int         n_pcent;
     bool        ready;
 };
 
@@ -59,28 +61,44 @@ ScpsSim *scps_sim_new(void){
 void scps_sim_free(ScpsSim *s){
     if(!s) return;
     sim_free_members(&s->sim);
-    free(s->w); free(s->px); free(s->cx); free(s->cy); free(s);
+    free(s->w); free(s->px); free(s->cx); free(s->cy); free(s->ppx); free(s->ppy); free(s);
 }
 
-/* centroïdes région (la géo est figée par worldgen/chargement ; seul l'OWNER changera). */
+/* centroïdes région + PROVINCE (la géo est figée par worldgen/chargement ; seul l'OWNER
+ * changera). Les centroïdes de province servent au SIÈGE de ville (scps_region_seat) :
+ * le bourg vit dans la province REPRÉSENTATIVE de sa région, pas au barycentre de la
+ * région entière (qui peut tomber à son bord, voire hors d'elle sur une forme concave). */
 static void api_centroids(ScpsSim *s){
     int nr = s->sim.econ->n_regions; s->n_cent = nr;
-    s->cx = (float*)realloc(s->cx, (size_t)nr*sizeof(float));
-    s->cy = (float*)realloc(s->cy, (size_t)nr*sizeof(float));
+    int np = s->w->n_provinces;      s->n_pcent = np;
+    s->cx  = (float*)realloc(s->cx,  (size_t)nr*sizeof(float));
+    s->cy  = (float*)realloc(s->cy,  (size_t)nr*sizeof(float));
+    s->ppx = (float*)realloc(s->ppx, (size_t)np*sizeof(float));
+    s->ppy = (float*)realloc(s->ppy, (size_t)np*sizeof(float));
     double *ax = (double*)calloc((size_t)nr, sizeof(double));
     double *ay = (double*)calloc((size_t)nr, sizeof(double));
     long   *cn = (long*)  calloc((size_t)nr, sizeof(long));
-    if(s->cx && s->cy && ax && ay && cn){
+    double *pax = (double*)calloc((size_t)np, sizeof(double));
+    double *pay = (double*)calloc((size_t)np, sizeof(double));
+    long   *pcn = (long*)  calloc((size_t)np, sizeof(long));
+    if(s->cx && s->cy && s->ppx && s->ppy && ax && ay && cn && pax && pay && pcn){
         for(int y=0; y<SCPS_H; y++) for(int x=0; x<SCPS_W; x++){
-            int r = scps_cellc(s->w, x, y)->region;
+            const Cell *c = scps_cellc(s->w, x, y);
+            int r = c->region;
             if(r>=0 && r<nr){ ax[r]+=x; ay[r]+=y; cn[r]++; }
+            int p = c->province;
+            if(p>=0 && p<np){ pax[p]+=x; pay[p]+=y; pcn[p]++; }
         }
         for(int r=0; r<nr; r++){
             if(cn[r]){ s->cx[r]=(float)(ax[r]/(double)cn[r]); s->cy[r]=(float)(ay[r]/(double)cn[r]); }
             else     { s->cx[r]=-1.f; s->cy[r]=-1.f; }
         }
+        for(int p=0; p<np; p++){
+            if(pcn[p]){ s->ppx[p]=(float)(pax[p]/(double)pcn[p]); s->ppy[p]=(float)(pay[p]/(double)pcn[p]); }
+            else      { s->ppx[p]=-1.f; s->ppy[p]=-1.f; }
+        }
     }
-    free(ax); free(ay); free(cn);
+    free(ax); free(ay); free(cn); free(pax); free(pay); free(pcn);
 }
 
 void scps_sim_generate(ScpsSim *s, uint32_t seed){
@@ -239,6 +257,13 @@ static long region_pop_i(const ScpsSim *s, int r){
 }
 
 int  scps_year         (const ScpsSim *s){ return s ? s->sim.year : 0; }
+int  scps_day_of_year  (const ScpsSim *s){ int d = s ? s->sim.day : 0; return ((d % 365) + 365) % 365; }
+int  scps_country_known(const ScpsSim *s, int c){
+    if(!s || !s->ready || c<0 || c>=s->w->n_countries) return 0;
+    if(s->sim.human_player < 0) return 1;          /* pas de joueur : rien n'est voilé */
+    if(c == s->sim.human_player) return 1;
+    return country_knows(s->sim.human_player, c) ? 1 : 0;
+}
 int  scps_player       (const ScpsSim *s){ return s ? s->sim.player : 0; }
 int  scps_country_count(const ScpsSim *s){ return (s && s->ready) ? s->w->n_countries : 0; }
 int  scps_region_count (const ScpsSim *s){ return (s && s->ready) ? s->sim.econ->n_regions : 0; }
@@ -271,6 +296,21 @@ bool scps_region_centroid(const ScpsSim *s, int r, float *x, float *y){
     if(x) *x = s->cx[r];
     if(y) *y = s->cy[r];
     return true;
+}
+/* SIÈGE DE VILLE d'une région : le centroïde de sa PROVINCE REPRÉSENTATIVE (celle qui
+ * porte le bourg — econ_region_rep_province, sérialisée depuis la genèse), PAS celui de
+ * la région entière (retour joueur : « les villes ne sont pas centrées sur leurs
+ * provinces » — sur une région concave le barycentre tombe au bord). Repli : centroïde
+ * région. Coordonnées MONDE (cellules) ; false si vide. */
+bool scps_region_seat(const ScpsSim *s, int r, float *x, float *y){
+    if(!s || !s->ready || r<0 || r>=s->sim.econ->n_regions) return false;
+    int rp = econ_region_rep_province(s->sim.econ, r);
+    if(rp>=0 && rp<s->n_pcent && s->ppx[rp]>=0.f){
+        if(x) *x = s->ppx[rp];
+        if(y) *y = s->ppy[rp];
+        return true;
+    }
+    return scps_region_centroid(s, r, x, y);
 }
 
 long scps_world_pop(const ScpsSim *s){
@@ -374,18 +414,47 @@ void scps_map_owner(ScpsSim *s, int16_t *out){
 
 /* BROUILLARD DE GUERRE (étape 1/2, VISUEL SEULEMENT — cf. scps_fog.h) : le masque par
  * région est calculé UNE fois (fog_visible_regions, motif map_state_tint) puis recopié
- * par cellule via c->region (motif scps_map_owner) — jamais l'inverse (une BFS par
- * cellule serait absurde). human_player<0 (chronique/viewer sans joueur) : fog_visible_
- * regions renvoie déjà « tout visible » — la cellule hors-région (mer, r<0) suit la même
- * règle (jamais voilée : il n'y a rien à cacher sur l'eau/les bords). */
+ * par cellule via c->region (motif scps_map_owner). Une cellule SANS région (mer, lac,
+ * basse-terre non revendiquée) part VOILÉE (fail-closed) — sinon on « voit à travers »
+ * la mer/les lacs (plainte joueur). Une DILATATION bornée révèle ensuite l'eau qui
+ * TOUCHE le territoire découvert (lacs enclavés, frange côtière du joueur) tout en
+ * gardant l'océan ouvert et les côtes étrangères sous le voile — on n'étale JAMAIS
+ * dans une terre étrangère (r>=0 voilée reste voilée). human_player<0 (chronique/
+ * viewer/vitrine du menu sans joueur engagé) : aucun voile, toute la carte est nue. */
+#define FOG_SEA_HALO 8   /* cellules d'eau/basse-terre révélées autour du connu (dialable) */
 void scps_fog_visible(ScpsSim *s, uint8_t *out){
     if (!out) return;
-    if (!s || !s->ready){ memset(out, 1, (size_t)SCPS_W*SCPS_H); return; }
+    if (!s || !s->ready || s->sim.human_player < 0){
+        memset(out, 1, (size_t)SCPS_W*SCPS_H); return;   /* pas de joueur : rien à cacher */
+    }
     uint8_t rv[SCPS_MAX_REG];
     fog_visible_regions(s->w, s->sim.econ, s->sim.human_player, rv);
-    for (int y=0;y<SCPS_H;y++) for (int x=0;x<SCPS_W;x++){
+    const int W = SCPS_W, H = SCPS_H;
+    /* base : visible ⇔ sa région est vue ; eau/sans-région VOILÉE. */
+    for (int y=0;y<H;y++) for (int x=0;x<W;x++){
         int r = scps_cellc(s->w, x, y)->region;
-        out[y*SCPS_W+x] = (r>=0 && r<SCPS_MAX_REG) ? rv[r] : 1;
+        out[y*W+x] = (r>=0 && r<SCPS_MAX_REG) ? rv[r] : 0;
+    }
+    /* dilatation multi-source (statique, motif fog_visible_regions : pas de malloc
+     * répété) — n'étale QUE dans les cellules sans région (r<0). */
+    static int32_t q[SCPS_W*SCPS_H];
+    static uint8_t dist[SCPS_W*SCPS_H];
+    int qh=0, qt=0;
+    memset(dist, 0, (size_t)W*H);
+    for (int i=0;i<W*H;i++) if (out[i]) q[qt++]=i;   /* sources = tout le visible (dist 0) */
+    while (qh<qt){
+        int i=q[qh++]; int d=dist[i];
+        if (d>=FOG_SEA_HALO) continue;
+        int x=i%W, y=i/W;
+        for (int dy=-1;dy<=1;dy++) for (int dx=-1;dx<=1;dx++){
+            if (!dx && !dy) continue;
+            int nx=x+dx, ny=y+dy;
+            if (nx<0||nx>=W||ny<0||ny>=H) continue;       /* pas de wrap (KISS : la couture est rare) */
+            int j=ny*W+nx;
+            if (out[j]) continue;                          /* déjà visible */
+            if (scps_cellc(s->w,nx,ny)->region>=0) continue;/* terre étrangère : jamais révélée par dilatation */
+            out[j]=1; dist[j]=(uint8_t)(d+1); q[qt++]=j;
+        }
     }
 }
 /* ⚠ `out` doit pointer ≥ scps_region_count(s) octets — PAS SCPS_MAX_REG, ce
@@ -778,6 +847,25 @@ int scps_province_buildings(ScpsSim *s, int pid, ScpsProvBld *out, int max){
     return n;
 }
 
+/* les ÉDIFICES de BASE bâtis (grenier, marché, temple, remparts…) — le masque
+ * edi_built de la province (retour joueur 2026-07-09 : « on ne voit pas les
+ * bâtiments de base » — province_buildings ne rend que les MANUFACTURES). */
+int scps_province_edifices(ScpsSim *s, int pid, ScpsProvBld *out, int max){
+    if(!out || max<=0 || !s || !s->ready || pid<0 || pid>=s->w->n_provinces) return 0;
+    if(pid>=s->sim.econ->n_prov) return 0;
+    uint32_t m = s->sim.econ->prov[pid].edi_built;
+    int n=0;
+    for(int e=0; e<EDIFICE_COUNT && e<32 && n<max; e++){
+        if(m & (1u<<e)){
+            out[n].nom = sz(edifice_name(e));
+            out[n].niveau = e;    /* ⚠ porte le TYPE Edifice (pour la vignette côté hôte) */
+            out[n].ouvriers = 0;
+            n++;
+        }
+    }
+    return n;
+}
+
 /* le JOURNAL d'évènements de la province : les dernières entrées (an + libellé +
  * signe), la PLUS RÉCENTE en tête. Lecture pure du tampon provlog. Retourne n. */
 /* le mot de chaque stat touchée par un évènement (cf. JEFF_*) */
@@ -832,6 +920,26 @@ void scps_province_classes(ScpsSim *s, int pid, long *lab, long *bourg, long *el
     if(elite) *elite = cp[2];
 }
 
+/* SATISFACTION par CLASSE au grain PROVINCE (0-100 ; -1 si la classe est VIDE) — les
+ * barres du panneau (retour joueur 2026-07-09 : « satisfaction » par pop + la strate
+ * servile visible). ADDITIF (province_classes garde sa signature figée). Lecture
+ * directe de strata[c].satisfaction — la vérité province, tenue par econ_tick. */
+void scps_province_class_sat(ScpsSim *s, int pid, int *lab, int *bourg, int *elite, int *slave){
+    int v[4] = {-1,-1,-1,-1};
+    if(s && s->ready && pid>=0 && pid<s->w->n_provinces && pid<s->sim.econ->n_prov){
+        const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
+        const int cls[4] = { CLASS_LABORER, CLASS_BOURGEOIS, CLASS_ELITE, CLASS_SLAVE };
+        for(int i=0;i<4;i++){
+            const PopStratum *st = &pe->strata[cls[i]];
+            if(st->pop >= 1.f) v[i] = (int)(clampf(st->satisfaction, 0.f, 1.f) * 100.f + 0.5f);
+        }
+    }
+    if(lab)   *lab   = v[0];
+    if(bourg) *bourg = v[1];
+    if(elite) *elite = v[2];
+    if(slave) *slave = v[3];
+}
+
 /* UI PROVINCE LOT 1 — le 4e segment (ESCLAVES) : Σ groupes CLASS_SLAVE de la
  * province. ADDITIF (scps_province_classes garde sa signature 3-classes figée —
  * cf. piège documenté dans scps_api.h). */
@@ -855,18 +963,22 @@ double scps_province_tax(ScpsSim *s, int pid){
     if(!s || !s->ready || pid<0 || pid>=s->w->n_provinces || pid>=s->sim.econ->n_prov) return 0.0;
     const ProvinceEconomy *pe = &s->sim.econ->prov[pid];
     if(!pe->colonized) return 0.0;
-    const float STATE_TAX_AMBITION_MIRROR = 0.42f;   /* cf. scps_econ.c:2401 (le taux visé, non exposé au .h) */
+    const float STATE_TAX_AMBITION_MIRROR = 0.42f;   /* cf. scps_econ.c:1624 (le taux visé, non exposé au .h) */
     double coll_tot = 0.0;
     for(int c=0;c<CLASS_COUNT;c++){
         const PopStratum *st = &pe->strata[c];
         float sat   = clampf(st->satisfaction, 0.f, 1.f);
         float seuil = econ_tax_tolerance(pe->culture.ethos, (SocialClass)c) * (0.40f + 0.60f*sat);
         float evasion   = clampf(STATE_TAX_AMBITION_MIRROR - seuil, 0.f, 1.f);
-        float collected_monthly = STATE_TAX_AMBITION_MIRROR * st->wealth * (1.f - evasion);   /* dt=1 mois, *12 plus bas */
-        if(collected_monthly > st->wealth) collected_monthly = st->wealth;
-        coll_tot += (double)collected_monthly;
+        /* Miroir de scps_econ.c:2621 : collected = 0.42·wealth·(1−évasion)·dt où dt est en
+         * ANNÉES par tick (cf. « ×365×dt » ligne 2652) — le taux est donc déjà ANNUEL.
+         * (L'ancien miroir le prenait pour un mensuel et ×12 ⇒ affichait 12× le réel —
+         * les « 6300 or/an » d'un hameau de 750 âmes.) Borné à la richesse de la classe. */
+        float collected_yearly = STATE_TAX_AMBITION_MIRROR * st->wealth * (1.f - evasion);
+        if(collected_yearly > st->wealth) collected_yearly = st->wealth;
+        coll_tot += (double)collected_yearly;
     }
-    return coll_tot * 12.0;   /* mensuel → or/an */
+    return coll_tot;   /* or/an */
 }
 
 /* UI PROVINCE LOT 4 — le TERRAIN comme % de tenue de siège. Réplique
@@ -1378,6 +1490,64 @@ int scps_unit_roster(ScpsSim *s, int country, ScpsUnitDef *out, int max){
     return n;
 }
 
+/* FLAVOR CYNIQUE par édifice (display-only — le mot du conseiller, jamais un levier).
+ * Indexé par l'enum Edifice (scps_agency.h). */
+static const char *const EDI_FLAVOR[EDIFICE_COUNT] = {
+    [EDI_TRIBUNAL]      = "La justice est aveugle ; ses greffiers, eux, voient très bien qui paie.",
+    [EDI_CHANCELLERIE]  = "Cent scribes pour écrire ce que le roi a dit, mille pour expliquer ce qu'il a voulu dire.",
+    [EDI_ACADEMIE]      = "On y apprend tout, sauf d'où vient l'argent qui la finance.",
+    [EDI_GARNISON]      = "Des murs pour protéger le peuple. Les portes ferment de l'intérieur, remarquez.",
+    [EDI_FORTERESSE]    = "Assez solide pour tenir un siège ; assez visible pour en attirer.",
+    [EDI_CITADELLE]     = "Quand la citadelle domine la ville, on ne sait plus qui surveille qui.",
+    [EDI_PORT]          = "La mer rapporte tout : marchandises, nouvelles, et les ennuis des autres.",
+    [EDI_CARAVANSERAIL] = "L'étranger y dort une nuit et y laisse dix ans de rumeurs.",
+    [EDI_MARCHE]        = "Tout s'y achète, surtout ce qui n'a pas de prix.",
+    [EDI_ENTREPOT]      = "La richesse d'un royaume se mesure à ce qu'il peut se permettre de laisser dormir.",
+    [EDI_GRENIER]       = "Le grain d'hiver achète plus de loyauté que dix discours d'été.",
+    [EDI_IRRIGATION]    = "L'eau va où on la mène. Les paysans aussi, en général.",
+    [EDI_AQUEDUC]       = "Des arches jusqu'à l'horizon, pour que la ville oublie qu'elle boit une rivière.",
+    [EDI_SANCTUAIRE]    = "Quatre murs de bois entre l'homme et l'infini. Ça suffit, curieusement.",
+    [EDI_TEMPLE]        = "Plus le plafond est haut, plus les fidèles se sentent petits. C'est le but.",
+    [EDI_CATHEDRALE]    = "Trois générations de tailleurs de pierre pour prouver que la foi dure plus qu'eux.",
+    [EDI_BIBLIOTHEQUE]  = "Mille livres, dont neuf cents recopient les cent premiers.",
+    [EDI_MONASTERE]     = "Ils ont fait vœu de silence ; leurs registres, eux, disent tout.",
+    [EDI_COMPTOIR]      = "L'or n'a pas d'odeur, mais le comptoir tient les registres de qui a senti quoi.",
+    [EDI_BANQUE]        = "Elle prête un parapluie quand il fait beau et le réclame quand il pleut.",
+    [EDI_ARSENAL]       = "La paix se négocie toujours mieux avec un arsenal plein derrière soi.",
+    [EDI_AMIRAUTE]      = "Des amiraux à terre qui décident où les marins mourront en mer.",
+    [EDI_PORT_MARCHAND] = "Chaque quai supplémentaire raccourcit la distance entre votre or et celui des autres.",
+    [EDI_BIBLIO_MIL]    = "On y étudie les défaites des autres, avec l'espoir d'être étudié plus tard.",
+    [EDI_OBSERVATOIRE]  = "Les étoiles ne mentent jamais ; les astronomes compensent.",
+    [EDI_TRADE_CENTER]  = "Le centre du monde, d'après les registres du centre du monde.",
+};
+
+/* l'EFFET RÉEL d'un édifice, composé de son delta ProvBuild (membrane : les MOTS
+ * du jeu + les chiffres du moteur, jamais une promesse). Buffer statique par type. */
+static const char *api_edifice_effet(Edifice e){
+    static char eb[EDIFICE_COUNT][176];
+    const EdificeDef *d = edifice_def(e);
+    if (!d) return "";
+    char *b = eb[e]; b[0]=0;
+    int len=0, first=1;
+    #define EF_ADD(fmt, val, label) do{ if((val)>0.001f){ \
+        len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s" fmt, first?"":" · ", (double)(val)); \
+        len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%s", (label)); first=0; } }while(0)
+    EF_ADD("institutions +%.1f", d->delta.K_inst,  " (stabilité, capacité)");
+    EF_ADD("coercition +%.1f",   d->delta.H_coerc, " (tient la province, ronge la loyauté)");
+    EF_ADD("ouverture +%.1f",    d->delta.P_open,  " (perméabilité, routes)");
+    EF_ADD("prospérité +%.1f",   d->delta.PE_infra," (capte l'échange local)");
+    EF_ADD("vivres +%.1f",       d->delta.food_cap," (rendement & réserve, démographie)");
+    EF_ADD("foi +%.1f",          d->delta.faith,   " (apaise l'agitation, soutient la loyauté)");
+    EF_ADD("savoir +%.1f",       d->delta.savoir,  " (recherche locale)");
+    #undef EF_ADD
+    if (d->delta.port > 0.001f){
+        len += snprintf(b+len, sizeof eb[e]-(size_t)len, "%sport (rade réelle : routes de mer, flotte)", first?"":" · ");
+        first=0;
+    }
+    if (first) snprintf(b, sizeof eb[e], "structurel (voir sa famille)");
+    return b;
+}
+
 int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
     if (!s || !s->ready || !out || max<=0) return 0;
     const TechState *ts = (country>=0 && country<SCPS_MAX_COUNTRY) ? &s->sim.ts[country] : NULL;
@@ -1404,6 +1574,23 @@ int scps_building_roster(ScpsSim *s, int country, ScpsEdificeDef *out, int max){
         o->n_cost   = nc;
         o->gold     = (cap_reg>=0) ? (int)(agency_build_gold(s->sim.econ, cap_reg, (Edifice)e)+0.5f) : 0;
         o->debloque = edifice_unlocked(ts,(Edifice)e) ? 1 : 0;
+        /* PALIER FAMILIAL (2026-07-10, « une ligne, un bâtiment ») : l'UI masque un
+         * tier tant que le PRÉCÉDENT de la famille n'est bâti nulle part chez nous. */
+        o->tier = edifice_tier((Edifice)e);
+        Edifice pv = edifice_prev((Edifice)e);   /* EDIFICE_COUNT = base/singleton */
+        o->prev = (pv>=0 && pv<EDIFICE_COUNT && pv!=(Edifice)e) ? (int)pv : -1;
+        o->effet  = sz(api_edifice_effet((Edifice)e));
+        o->flavor = sz(EDI_FLAVOR[e]);
+        o->prev_built = 0;
+        if (o->prev >= 0 && country>=0){
+            for (int pid=0; pid<s->sim.econ->n_prov; pid++){
+                if (s->sim.econ->prov[pid].owner==country
+                    && (s->sim.econ->prov[pid].edi_built & (1u<<o->prev))){
+                    o->prev_built = 1;
+                    break;
+                }
+            }
+        }
         n++;
     }
     return n;
@@ -1506,8 +1693,36 @@ int scps_tech_nodes(ScpsSim *s, ScpsTechNode *out, int max){
         const TechNode *tn = tech_node((TechId)i);
         int pr = tn ? (int)tn->prereq : (int)TECH_COUNT;
         out[i].prereq = (pr < (int)TECH_COUNT && pr < n) ? pr : -1;
-        /* PACK FLAVOR (display-only) : hover mécanique + ligne cynique, NULL-safe. */
-        out[i].hover   = sz(tech_hover((TechId)i));
+        /* HOVER CHIFFRÉ (retour joueur : « il faut spécifier COMBIEN ») : le mot mécanique
+         * + les NOMBRES réels du nœud — les seuls leviers VIVANTS (dK/dL/dH/dPuissance/
+         * fracture/charge/flux + prod%/eff% ; dEco/dMil/dF sont MORTS, jamais affichés).
+         * Buffers statiques : la membrane rend des mots+nombres, l'hôte copie. */
+        {
+            static char hb[TECH_COUNT][176];
+            int pos = snprintf(hb[i], sizeof hb[i], "%s", sz(tech_hover((TechId)i)));
+            #define HB_ADD(...) do{ if(pos < (int)sizeof hb[i]) \
+                pos += snprintf(hb[i]+pos, sizeof hb[i]-pos, __VA_ARGS__); }while(0)
+            if(tn){
+                const char *sep = (pos>0) ? " — " : "";
+                int first = 1;
+                #define HB_NUM(v, lbl) do{ if((v)!=0.f){ \
+                    HB_ADD("%s%s %+g", first?sep:" · ", lbl, (double)(v)); first=0; } }while(0)
+                HB_NUM(tn->dK,         "prospérité");
+                HB_NUM(tn->dL,         "stabilité");
+                HB_NUM(tn->dH,         "coercition");
+                HB_NUM(tn->dPuissance, "puissance");
+                HB_NUM(tn->dFracture,  "fracture");
+                float pp = tech_node_prod_pct((TechId)i);
+                float ep = tech_node_eff_pct((TechId)i);
+                if(pp!=0.f){ HB_ADD("%sproduction %+d %%", first?sep:" · ", (int)(pp*100.f+0.5f)); first=0; }
+                if(ep!=0.f){ HB_ADD("%sefficacité %+d %%", first?sep:" · ", (int)(ep*100.f+0.5f)); first=0; }
+                HB_NUM(tn->charge,     "charge faustienne");
+                HB_NUM(tn->flux,       "flux");
+                #undef HB_NUM
+            }
+            #undef HB_ADD
+            out[i].hover = hb[i];
+        }
         out[i].flavor  = sz(tech_flavor((TechId)i));
     }
     return n;
@@ -1740,14 +1955,17 @@ int scps_manuf_legal(ScpsSim *s, int region, int bld){
     if (re->owner != p || !re->colonized) return 0;
     if (bld_is_faustian((BuildingType)bld)) return 0;
     Resource in1,in2,out; building_recipe((BuildingType)bld,&in1,&in2,&out); (void)in2;
-    if (out==RES_NONE || in1==RES_NONE) return 0;
+    /* in1==RES_NONE ≠ dégénéré : les RAW-WORKS (four à brique·carrière·scierie) sont
+     * HORS-SOL par conception (N1) — elles boostent l'output de brut. Retour joueur
+     * 2026-07-09 : elles étaient verrouillées hors du panneau. Seul out==NONE rejette. */
+    if (out==RES_NONE) return 0;
     if (out==RES_ARMS || out==RES_ARMS_HEAVY || out==RES_ARMS_RANGED || out==RES_FIREARM
         || out==RES_GUNPOWDER || out==RES_ENCHANTED_ARMS || out==RES_ESSENCE || out==RES_FLUX) return 0;
     for (int i=0;i<re->n_bld;i++) if (re->bld[i].type==(BuildingType)bld) return 0;
     float rpop=re->strata[CLASS_LABORER].pop+re->strata[CLASS_BOURGEOIS].pop+re->strata[CLASS_ELITE].pop;
     if (rpop < 250.f*(float)(re->n_bld+1)) return 0;
     if (capitale_max_tier((long)rpop) < bld_min_tier((BuildingType)bld)) return 0;
-    bool feed = (re->raw_cap[in1] > 0.f);
+    bool feed = (in1==RES_NONE) || (re->raw_cap[in1] > 0.f);   /* hors-sol ⇒ rien à nourrir */
     for (int r2=0;r2<e->n_regions && !feed;r2++)
         if (e->region[r2].owner==p && e->region[r2].raw_cap[in1]>0.f) feed=true;
     if (!feed) return 0;
@@ -2204,6 +2422,42 @@ int scps_pending_event(ScpsSim *s, int slot, ScpsPendingEvent *out){
         /* le VISAGE du choix : la faction du hook parle au conseil (membrane : un mot) */
         int fac = d->options[i].hook.faction;
         out->advisors[i] = (fac>=0) ? sz(faction_name(fac)) : "";
+        /* l'EFFET MÉCANIQUE en clair (retour joueur : « Ça veut dire quoi ? ») — mots +
+         * signes pour les leviers abstraits, CHIFFRES pour le tangible (trésor, pop).
+         * Buffers statiques par slot×option (l'hôte copie aussitôt — membrane). */
+        {
+            static char eb[8][4][144];
+            int si = (slot>=0 && slot<8) ? slot : 0;
+            char *b = eb[si][i];
+            const EvOption *o = &d->options[i];
+            int pos = 0, first = 1;
+            #define EB_ADD(...) do{ if(pos < 144) \
+                pos += snprintf(b+pos, 144-pos, __VA_ARGS__); }while(0)
+            #define EB_SEP (first ? (first=0, "") : " · ")
+            if (o->eff.d_treasury_mois != 0.f)
+                EB_ADD("%strésor %+d %% du revenu mensuel", EB_SEP, (int)(o->eff.d_treasury_mois*100.f + (o->eff.d_treasury_mois>0?0.5f:-0.5f)));
+            if (o->eff.d_treasury != 0.f)
+                EB_ADD("%strésor %+d or", EB_SEP, (int)o->eff.d_treasury);
+            if (o->eff.pop_mult != 0.f && o->eff.pop_mult != 1.f)
+                EB_ADD("%spopulation %+d %%", EB_SEP, (int)((o->eff.pop_mult-1.f)*100.f + (o->eff.pop_mult>1.f?0.5f:-0.5f)));
+            if (o->eff.d_L > 0.f)         EB_ADD("%slégitimité ↑", EB_SEP);
+            else if (o->eff.d_L < 0.f)    EB_ADD("%slégitimité ↓", EB_SEP);
+            if (o->eff.d_agitation > 0.f)      EB_ADD("%sagitation ↑", EB_SEP);
+            else if (o->eff.d_agitation < 0.f) EB_ADD("%sagitation ↓", EB_SEP);
+            if (o->eff.d_K_inst > 0.f)    EB_ADD("%sinstitutions ↑", EB_SEP);
+            if (o->eff.d_H_coerc > 0.f)   EB_ADD("%scoercition bâtie ↑", EB_SEP);
+            if (o->eff.d_food_cap > 0.f)       EB_ADD("%sfertilité ↑", EB_SEP);
+            else if (o->eff.d_food_cap < 0.f)  EB_ADD("%sfertilité ↓", EB_SEP);
+            if (o->eff.d_coercion > 0.f)  EB_ADD("%scoercition ↑", EB_SEP);
+            if (o->eff.d_influence > 0.f)      EB_ADD("%sinfluence ↑", EB_SEP);
+            else if (o->eff.d_influence < 0.f) EB_ADD("%sinfluence ↓", EB_SEP);
+            if (o->hook.scar_kind != 0)   EB_ADD("%scicatrice durable", EB_SEP);
+            if (o->gamble_p > 0.f)        EB_ADD("%spari (%d %%)", EB_SEP, (int)(o->gamble_p*100.f+0.5f));
+            #undef EB_SEP
+            #undef EB_ADD
+            if (pos == 0) b[0] = '\0';
+            out->effets[i] = b;
+        }
     }
     return 1;
 }
@@ -2873,6 +3127,16 @@ int scps_set_player_culture(int heritage, int ethos, int t0, int t1, int t2){
 }
 
 void scps_clear_player_culture(void){ culture_player_clear(); }
+
+/* NOM PERSONNALISÉ (créateur d'empire, 2026-07-10) : le joueur nomme son État.
+ * Champ d'AFFICHAGE (les noms ne sont jamais hashés — même statut que les noms
+ * tribaux WILD) ; Country.name est sérialisé avec le monde, donc le nom choisi
+ * SURVIT aux saves. La chronique n'appelle jamais ceci : golden intact. */
+void scps_set_country_name(ScpsSim *s, int cid, const char *name){
+    if(!s || !s->w || !name || !name[0]) return;
+    if(cid < 0 || cid >= s->w->n_countries) return;
+    snprintf(s->w->country[cid].name, sizeof s->w->country[cid].name, "%s", name);
+}
 
 /* ====================================================================== */
 /* RELIGION (façade) — voir scps_api.h                                      */

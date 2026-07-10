@@ -6,7 +6,7 @@ const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const PW := 322.0
-const PH := 296.0
+const PH := 240.0   ## raccourci : les jauges internes d'un royaume ÉTRANGER ne s'affichent plus
 const MARGIN := 8.0
 
 # métrique → (libellé, nom d'icône du pack)
@@ -24,7 +24,7 @@ const TIPS := {
 	"prosperite": "Richesse par tête de l'empire (biens produits et consommés). Haute = population comblée.",
 	"legitimite": "Consentement des gouvernés envers la couronne. Basse = agitation, puis sécession.",
 	"cohesion":   "Unité culturelle de l'empire. Basse = fractures, minorités frondeuses.",
-	"savoir":     "Avancée de la recherche : c'est elle qui ouvre les technologies.",
+	"savoir":     "Le savoir : la production de recherche de l'empire. C'est lui qui paie les technologies.",
 }
 var _tips: Array = []   ## [ [Rect2, texte], … ] reconstruit à chaque _draw, hit-testé au survol
 
@@ -41,11 +41,18 @@ func _ready() -> void:
 	hide()
 
 func _layout() -> void:
-	position = Vector2(get_viewport_rect().size.x - PW - MARGIN, Frame.TOPBAR_H + MARGIN)
+	# à GAUCHE du ledger (empire_sidebar, 268 px) en partie — il était CACHÉ dessous
+	var off := 272.0 if Sim.game_on else 0.0
+	position = Vector2(get_viewport_rect().size.x - PW - MARGIN - off, Frame.TOPBAR_H + MARGIN)
 
 func show_country(cid: int) -> void:
+	# doctrine joueur « national = topbar » : SON royaume vit dans la barre haute — ce
+	# panneau ne s'ouvre que pour un pays ÉTRANGER (le clic chez soi garde la province).
+	if cid >= 0 and Sim.world != null and cid == int(Sim.world.player()):
+		cid = -1
 	_cid = cid
 	visible = cid >= 0
+	_layout()
 	queue_redraw()
 
 func _on_tick(_year: int) -> void:
@@ -75,24 +82,19 @@ func _draw() -> void:
 	y += 24
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "%s · %d régions" % [info["ethos"], int(info["regions"])])
 	y += 22
-	# pop + or, chacun avec son icône
+	# pop, avec son icône (l'ESTIMATION extérieure — ce qui se voit d'un royaume)
 	UIKit.draw_icon(self, "population_group", Vector2(x, y - 1), 16)
 	VKit.text(self, Vector2(x + 20, y), VKit.COL_PARCH, _grp(info["pop"]))
-	UIKit.draw_icon(self, "gold_coin", Vector2(x + 150, y - 1), 16)
-	VKit.text(self, Vector2(x + 170, y), VKit.COL_PARCH, _grp(info["or"]))
 	y += 26
 
-	for r in ROWS:
-		_gauge_row(x, y, String(r[1]), String(r[2]), int(info[r[0]]))
-		_tips.append([Rect2(0.0, y - 2.0, PW, 22.0), String(TIPS.get(r[0], ""))])
-		y += 24
-
-	y += 2
+	# ON NE LIT PAS DANS LE ROYAUME D'AUTRUI (retour joueur : « pourquoi je vois les
+	# métriques des autres entités ? ») — ce panneau est ÉTRANGER-seul depuis la
+	# doctrine « national = topbar » : ni trésor, ni jauges internes. Ce qui se SAIT :
+	# l'éthos, la taille, les âmes (estimées), l'influence (réputation PUBLIQUE).
 	UIKit.draw_icon(self, "influence_compass", Vector2(x, y - 1), 16)
 	VKit.text(self, Vector2(x + 20, y), VKit.COL_DIM, "Influence %d" % int(info["influence"]))
-	if int(info.get("corruption", 0)) > 0:
-		UIKit.draw_icon(self, "corruption_coin", Vector2(x + 150, y - 1), 16)
-		VKit.text(self, Vector2(x + 170, y), VKit.COL_DIM, "%d" % int(info["corruption"]))
+	_tips.append([Rect2(0.0, y - 2.0, PW, 20.0), "Réputation diplomatique — la seule mesure PUBLIQUE d'un royaume étranger."])
+	y += 4
 
 	# mission décennale (l'objectif courant du pays — mission_of via la façade)
 	var mis: Dictionary = w.mission_info(_cid)

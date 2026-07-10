@@ -1,14 +1,14 @@
 extends Control
-## MapControls — le BANDEAU BAS, pleine largeur (cadre d'écran). Porte le sélecteur
-## de MODE (terrain · politique · régions · pays) à gauche et le ZOOM (in/out/fit) à
-## droite. La barre capte ses clics (la carte dessous n'est pas sélectionnée). Câblé
-## à MapView. Suit la largeur de la fenêtre (size_changed).
+## MapControls — les COMMANDES DE CARTE du bas d'écran : sélecteur de MODE (terrain ·
+## politique · régions · pays) à gauche, ZOOM (in/out/fit) à droite. Les icônes
+## FLOTTENT sur la carte (façon Stellaris — plus de bande pleine largeur) : le parent
+## laisse passer les clics, chaque bouton capte les siens. Câblé à MapView.
 
 const VKit = preload("res://ui/vkit.gd")
 const IconButton = preload("res://ui/icon_button.gd")
 const Frame = preload("res://ui/frame.gd")
 const H := Frame.BOTTOMBAR_H
-const BTN := 38.0
+const BTN := 52.0   ## boutons de mode/zoom agrandis (retour joueur : « très très petits »)
 
 # mode render_map → icône du pack
 const MODES := [
@@ -41,7 +41,9 @@ func setup(map) -> void:
 		map.mode_changed.connect(func(_m): queue_redraw())   # la légende suit le mode (clic carte OU sidebar)
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_STOP   # la barre capte ses clics
+	# les icônes flottent : le parent NE capte RIEN (la carte reste cliquable entre
+	# les boutons) — chaque IconButton enfant capte ses propres clics.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	_mb = HBoxContainer.new()
 	_mb.add_theme_constant_override("separation", 4)
@@ -49,7 +51,7 @@ func _ready() -> void:
 	for m in MODES:
 		var b = IconButton.new()
 		_mb.add_child(b)
-		b.setup_icon(String(m[1]), BTN)
+		b.setup_icon(String(m[1]), BTN, "")   # SANS fond de chrome (retour joueur)
 		b.selected = (int(m[0]) == _mode)
 		b.pressed.connect(_on_mode.bind(int(m[0])))
 		_mode_btns.append(b)
@@ -57,7 +59,7 @@ func _ready() -> void:
 	# NATURE : toggle indépendant des modes de carte (bascule la carte vierge — terrain seul)
 	_nature_btn = IconButton.new()
 	_mb.add_child(_nature_btn)
-	_nature_btn.setup_icon("layer_forest", BTN)
+	_nature_btn.setup_icon("layer_forest", BTN, "")
 	_nature_btn.pressed.connect(_on_nature)
 
 	_zb = HBoxContainer.new()
@@ -78,13 +80,15 @@ func _resize() -> void:
 	size = Vector2(vp.x, H)
 	var by := (H - BTN) * 0.5                    # centrage vertical des boutons
 	_mb.position = Vector2(Frame.SIDEBAR_W + 10, by)   # à droite du rail
-	_zb.position = Vector2(vp.x - _zb.size.x - 12, by)
+	# largeur EXPLICITE : au 1er _resize le HBox n'est pas layouté (_zb.size.x = 0)
+	# → les boutons partaient coupés au bord droit (capture 2026-07-09)
+	var zw := 3.0 * BTN + 2.0 * 4.0
+	_zb.position = Vector2(vp.x - zw - 12, by)
 	queue_redraw()
 
 func _draw() -> void:
-	# barre PLEINE LARGEUR : cuir sombre + liseré or en haut
-	VKit.fill(self, Rect2(0, 0, size.x, H), VKit.COL_PANEL)
-	VKit.fill(self, Rect2(0, 0, size.x, 2), VKit.COL_GOLD)
+	# plus de bande pleine largeur (retour joueur : les icônes FLOTTENT) —
+	# seule la légende du mode d'état garde sa box propre.
 	_draw_legend()
 
 ## la LÉGENDE du mode courant, en BOX au-dessus des boutons de mode (y négatif = au-dessus

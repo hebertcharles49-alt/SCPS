@@ -48,9 +48,12 @@ func _ready() -> void:
 	Sim.ticked.connect(func(_y): if visible: queue_redraw())
 	hide()
 
+var _hmax := 600.0   ## hauteur MAX (viewport) — la hauteur réelle épouse le contenu (latch _draw)
+
 func _layout() -> void:
 	position = Vector2(DX, DY)
-	size = Vector2(DW, maxf(80.0, get_viewport_rect().size.y - DY - 26.0))
+	_hmax = maxf(80.0, get_viewport_rect().size.y - DY - 26.0)
+	size = Vector2(DW, minf(size.y, _hmax))
 
 func show_tab(i: int) -> void:
 	_tab = i
@@ -63,40 +66,47 @@ func _draw() -> void:
 	if _tab < 0:
 		return
 	_hover_zones.clear()
+	_tips.clear()
 	VKit.panel_bg(self, Rect2(0, 0, DW, size.y))
 	VKit.fill(self, Rect2(DW - 2, 0, 2, size.y), VKit.COL_GOLD)
 	var x := 14.0
 	var y := 10.0
-	UIKit.draw_chrome(self, "panel_title_plaque", Rect2(8, 6, DW - 16, 30))
-	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x, y + 1), 22)
-	VKit.text(self, Vector2(x + 28, y + 3), VKit.COL_GOLD, TAB_NAME[_tab], VKit.FS_BIG)
-	y += 42
+	# titre PLAT (la plaque de chrome ornée est retirée — lisibilité d'abord)
+	VKit.fill(self, Rect2(0, 0, DW, 36), Color(0.055, 0.042, 0.028, 0.92))
+	VKit.fill(self, Rect2(0, 35, DW, 1), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.6))
+	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x, y - 2), 22)
+	VKit.text(self, Vector2(x + 28, y - 3), VKit.COL_GOLD, TAB_NAME[_tab], VKit.FS_BIG)
+	y += 36
 	var w = Sim.world
 	if w == null:
 		return
 	var me: int = w.player()
+	var yend := y
 	match _tab:
-		0: _draw_eco(x, y, me)
-		1: _draw_demo(x, y, me)
-		2: _draw_stocks(x, y, me)
-		3: _draw_marche(x, y, me)
-		4: _draw_armee(x, y, me)
-		5: _draw_filtres(x, y)
-		6: _draw_diplo(x, y, me)
-		7: _draw_conseil(x, y, me)
+		0: yend = _draw_eco(x, y, me)
+		1: yend = _draw_demo(x, y, me)
+		2: yend = _draw_stocks(x, y, me)
+		3: yend = _draw_marche(x, y, me)
+		4: yend = _draw_armee(x, y, me)
+		5: yend = _draw_filtres(x, y)
+		6: yend = _draw_diplo(x, y, me)
+		7: yend = _draw_conseil(x, y, me)
 		_: VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(panneau à venir — port viewer.c)")
 
-	# tooltip de survol (sprite de ressource → son nom)
-	if _hover_text != "":
-		var tw := VKit.text_w(_hover_text, VKit.FS_SMALL) + 12.0
-		var tx := minf(_hover_pos.x + 12.0, DW - tw - 4.0)
-		var ty := maxf(2.0, _hover_pos.y - 20.0)
-		VKit.fill(self, Rect2(tx, ty, tw, 17), VKit.COL_PANEL2)
-		VKit.box(self, Rect2(tx, ty, tw, 17), VKit.COL_GOLD)
-		VKit.text(self, Vector2(tx + 6, ty + 1), VKit.COL_PARCH, _hover_text, VKit.FS_SMALL)
+	# HAUTEUR AU CONTENU (règle Stellaris : la fenêtre épouse ce qu'elle montre —
+	# fini la colonne pleine hauteur aux trois quarts vide). Latch différé, borné
+	# au viewport ; le panel_bg de CE frame garde l'ancienne taille (1 frame de retard).
+	var want := clampf(yend + 12.0, 120.0, _hmax)
+	if absf(want - size.y) > 0.5:
+		set_deferred("size", Vector2(DW, want))
+
+	# les zones de survol passent par le TOOLTIP NATIF (→ TooltipServer : mots-concepts
+	# turquoise + définitions) — le petit encart dessiné à la main est retiré (2026-07-10)
+	for z in _hover_zones:
+		_tips.append([z["rect"], z["text"]])
 
 # ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
-func _draw_demo(x: float, y: float, me: int) -> void:
+func _draw_demo(x: float, y: float, me: int) -> float:
 	var d: Dictionary = Sim.world.country_demo(me)
 	var total: int = int(d["pop_total"])
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH,
@@ -109,13 +119,14 @@ func _draw_demo(x: float, y: float, me: int) -> void:
 		VKit.text(self, Vector2(x + 110, y), VKit.COL_PARCH, "%s (%d%%)" % [_grp(cl["pop"]), pct], VKit.FS_SMALL)
 		UIKit.bar(self, Rect2(x + 200, y, 84, 12), int(cl["satisfaction"]))
 		y += 20
+	return y
 
 # ── STOCKS (sb_panel_stocks, read-only) ────────────────────────────────────
-func _draw_stocks(x: float, y: float, me: int) -> void:
+func _draw_stocks(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          stock   net/j   couv.", VKit.FS_SMALL)
 	y += 16
 	for st in Sim.world.country_stocks(me):
-		if y > size.y - 18:
+		if y > _hmax - 18:
 			break
 		var col := _marche_col(int(st["market_band"]))
 		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
@@ -126,6 +137,7 @@ func _draw_stocks(x: float, y: float, me: int) -> void:
 		var covs := ("" if cov < 0 else (">1 an" if cov >= 366 else "%d j" % cov))
 		VKit.text(self, Vector2(x + 225, y), col, covs, VKit.FS_SMALL)
 		y += 18
+	return y
 
 ## cellule d'identité d'une ressource : le SPRITE (assets/scps/pack/resources, par
 ## id), sinon le nom en texte ; survol → le nom dans tous les cas.
@@ -138,7 +150,7 @@ func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> voi
 	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 104, 18), "text": name})
 
 # ── ÉCONOMIE : Budget (econ_flux) + Commerce (intertrade), read-only ───────
-func _draw_eco(x: float, y: float, me: int) -> void:
+func _draw_eco(x: float, y: float, me: int) -> float:
 	# bouton : les COURBES dans le temps sont DERRIÈRE ce sous-menu (pas affichées d'office)
 	_chart_btn = Rect2(x, y, DW - 2.0 * x, 20.0)
 	VKit.fill(self, _chart_btn, VKit.COL_PANEL2)
@@ -165,7 +177,7 @@ func _draw_eco(x: float, y: float, me: int) -> void:
 	# postes de flux (signés : revenu vert / dépense rouge) — quelques-uns
 	var shown := 0
 	for p in Sim.world.country_budget(me):
-		if shown >= 5 or y > size.y - 96:
+		if shown >= 5 or y > _hmax - 96:
 			break
 		var amt: float = p["amount"]
 		var pcol := VKit.sense(0.78) if amt >= 0 else VKit.sense(0.18)
@@ -185,15 +197,16 @@ func _draw_eco(x: float, y: float, me: int) -> void:
 	var partners: Array = t["partners"]
 	if partners.is_empty():
 		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, "(aucun partenaire)", VKit.FS_SMALL)
-		return
+		return y + 16.0
 	for p in partners:
-		if y > size.y - 18:
+		if y > _hmax - 18:
 			break
 		var col := VKit.sense(0.12) if bool(p["at_war"]) else (VKit.COL_GOLD if bool(p["embargo"]) else VKit.COL_PARCH)
 		VKit.text(self, Vector2(x + 8, y), col, String(p["name"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, "%d or/an" % int(p["value"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 228, y), col, String(p["status"]), VKit.FS_SMALL)
 		y += 15
+	return y
 
 # ── MARCHÉ (sb_panel_marche, table des prix) : [A]cheter/[V]endre 10 sur la
 #    région-capitale (verbes : player_market_buy/_sell, journalisés) ──────────
@@ -202,7 +215,7 @@ var _marche_flash := ""
 var _marche_flash_ok := true
 const MARCHE_QTY := 10
 
-func _draw_marche(x: float, y: float, me: int) -> void:
+func _draw_marche(x: float, y: float, me: int) -> float:
 	_marche_btns.clear()
 	var cap_region := -1
 	var cap_prov: int = Sim.world.country_capital_province(me)
@@ -214,17 +227,18 @@ func _draw_marche(x: float, y: float, me: int) -> void:
 	var cp_rem := float(cpow.get("remaining", 0.0))
 	var cp_bonus := int(cpow.get("bonus_pct", 0))
 	var cp_col := VKit.sense(clampf(cp_rem / maxf(cp_pool, 1.0), 0.0, 1.0))   # vert plein → rouge à sec
+	# le « +X % édifices » vit au SURVOL (retour joueur : le chiffre inline sans contexte)
 	var cp_lbl := "Puissance comm. : %d / %d ce mois" % [int(round(cp_rem)), int(round(cp_pool))]
-	if cp_bonus > 0:
-		cp_lbl += "  (+%d%% édifices)" % cp_bonus
 	VKit.text(self, Vector2(x, y), cp_col, cp_lbl, VKit.FS_SMALL)
-	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 264, 16),
-		"text": "Volume de biens achetable au marché ce mois-ci (0.04/bourgeois + 0.01/élite × la chaîne commerciale) — évite de rafler tout le stock d'un coup ; pèse aussi dans ta puissance éco diplomatique."})
+	var cp_tip := "Volume de biens achetable au marché ce mois-ci (0.04/bourgeois + 0.01/élite × la chaîne commerciale)."
+	if cp_bonus > 0:
+		cp_tip += "\nDont +%d %% apportés par vos édifices de commerce." % cp_bonus
+	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 264, 16), "text": cp_tip})
 	y += 18
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          prix(or)   marché", VKit.FS_SMALL)
 	y += 16
 	for st in Sim.world.country_stocks(me):
-		if y > size.y - 18:
+		if y > _hmax - 36:
 			break
 		var col := _marche_col(int(st["market_band"]))
 		var res_id := int(st["res_id"])
@@ -242,17 +256,50 @@ func _draw_marche(x: float, y: float, me: int) -> void:
 			_marche_btns.append({"rect": rv, "act": "sell", "res_id": res_id})
 		y += 18
 	if _marche_flash != "":
-		VKit.text(self, Vector2(x, size.y - 18),
+		y += 4
+		VKit.text(self, Vector2(x, y),
 			(VKit.sense(0.85) if _marche_flash_ok else VKit.sense(0.10)), _marche_flash, VKit.FS_SMALL)
+		y += 16
+	return y
 
 # ── CONSEIL (sb_panel_conseil) : [Recruter]/[Renvoyer] par siège (verbes :
 #    player_council_hire/_dismiss, journalisés — drainés au tick) ─────────────
 var _conseil_btns := []   # [{rect, act, seat}] boutons Recruter/Renvoyer
 var _conseil_flash := ""
 var _conseil_flash_ok := true
+var _conseil_tab := 0   ## 0 = Gouvernement (sièges) · 1 = Politiques (décrets + servile)
+var _ctab_btns := []
 
-func _draw_conseil(x: float, y: float, me: int) -> void:
+func _draw_conseil(x: float, y: float, me: int) -> float:
 	_conseil_btns.clear()
+	# SOUS-ONGLETS (retour joueur : « diviser l'UI statecraft pour sa lisibilité ») :
+	# GOUVERNEMENT (les sièges du Conseil) / POLITIQUES (décrets + peuple servile).
+	_ctab_btns.clear()
+	var cxx := x
+	for ti in range(2):
+		var lbl: String = ["Gouvernement", "Politiques"][ti]
+		var tww := VKit.text_w(lbl, VKit.FS_SMALL) + 16.0
+		var tr := Rect2(cxx, y, tww, 20)
+		VKit.fill(self, tr, VKit.COL_GOLD if _conseil_tab == ti else VKit.COL_PANEL2)
+		VKit.box(self, tr, VKit.COL_EDGE)
+		VKit.text(self, Vector2(cxx + 8, y + 2),
+			VKit.COL_PANEL if _conseil_tab == ti else VKit.COL_PARCH, lbl, VKit.FS_SMALL)
+		_ctab_btns.append({"rect": tr, "t": ti})
+		cxx += tww + 6
+	y += 28
+	if _conseil_tab == 1:
+		y = _draw_decrets(x, y, me)
+		y += 6
+		y = _draw_servile(x, y, me)
+		if _servile_flash != "":
+			VKit.text(self, Vector2(x, y),
+				(VKit.sense(0.85) if _servile_flash_ok else VKit.sense(0.10)), _servile_flash, VKit.FS_SMALL)
+			y += 16
+		elif _decret_flash != "":
+			VKit.text(self, Vector2(x, y),
+				(VKit.sense(0.85) if _decret_flash_ok else VKit.sense(0.10)), _decret_flash, VKit.FS_SMALL)
+			y += 16
+		return y
 	var idx := 0
 	for seat in Sim.world.country_council(me):
 		var filled := bool(seat["filled"])
@@ -323,19 +370,12 @@ func _draw_conseil(x: float, y: float, me: int) -> void:
 					y += 19
 			y += 4
 		idx += 1
-	y += 6
-	y = _draw_decrets(x, y, me)
-	y += 6
-	y = _draw_servile(x, y, me)
-	if _servile_flash != "":
-		VKit.text(self, Vector2(x, size.y - 18),
-			(VKit.sense(0.85) if _servile_flash_ok else VKit.sense(0.10)), _servile_flash, VKit.FS_SMALL)
-	elif _decret_flash != "":
-		VKit.text(self, Vector2(x, size.y - 18),
-			(VKit.sense(0.85) if _decret_flash_ok else VKit.sense(0.10)), _decret_flash, VKit.FS_SMALL)
-	elif _conseil_flash != "":
-		VKit.text(self, Vector2(x, size.y - 18),
+	# (Décrets + Peuple servile vivent dans le sous-onglet POLITIQUES — lot 5)
+	if _conseil_flash != "":
+		VKit.text(self, Vector2(x, y),
 			(VKit.sense(0.85) if _conseil_flash_ok else VKit.sense(0.10)), _conseil_flash, VKit.FS_SMALL)
+		y += 16
+	return y
 
 # ── DÉCRETS (sb_panel_decrets) : la flexibilité PROACTIVE du joueur (civics) —
 #    section sous le Conseil (même onglet). Chaque décret DÉPLACE un levier moteur
@@ -537,7 +577,7 @@ var _army_btns := []      # [{rect, act}] Recompléter / Dissoudre
 var _navy_btns := []      # [{rect, hull}] +Guerre / +Transport / +Marchand
 var _posture_sel := 1     # dernier clic (affichage seul — aucun lecteur de posture actuelle)
 
-func _draw_armee(x: float, y: float, me: int) -> void:
+func _draw_armee(x: float, y: float, me: int) -> float:
 	_levy_btns.clear(); _posture_btns.clear(); _army_btns.clear(); _navy_btns.clear()
 	var a: Dictionary = Sim.world.country_army(me)
 	UIKit.draw_icon(self, "menu_army", Vector2(x, y - 1), 18)
@@ -625,15 +665,55 @@ func _draw_armee(x: float, y: float, me: int) -> void:
 		VKit.text(self, Vector2(cx + 6 + iw, y + 1), VKit.COL_GOLD, label, VKit.FS_SMALL)
 		_navy_btns.append({"rect": r, "hull": hull})
 		cx += tw + 4
+	y += 26
+
+	# ── COMPOSER L'ARMÉE (retour joueur : le RECRUTEMENT vit ICI, pas dans l'UI
+	#    province — l'armée est NATIONALE). Grille de tuiles du roster ; tuile grisée
+	#    = verrouillée (tech/éthos) ; clic = player_recruit (journalisé). ──
+	_unit_btns.clear()
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Composer l'armée", VKit.FS_SMALL)
+	y += 18
+	var units: Array = Sim.world.unit_roster(me)
+	var ucell := 40.0
+	var ucols := int((DW - 2.0 * x) / ucell)
+	for i in range(units.size()):
+		var u: Dictionary = units[i]
+		var on: bool = bool(u.get("recrutable", false))
+		var ur := Rect2(x + (i % ucols) * ucell, y + (i / ucols) * ucell, ucell - 4.0, ucell - 4.0)
+		var ut: Texture2D = UIKit.unit_sprite(int(u.get("type", -1)))
+		if ut != null:
+			draw_texture_rect(ut, ur, false, Color.WHITE if on else Color(0.5, 0.5, 0.55, 0.6))
+		else:
+			VKit.fill(self, ur, VKit.COL_PANEL2)
+			VKit.text(self, ur.position + Vector2(2, 10), VKit.COL_DIM, String(u.get("nom", "")).substr(0, 5), VKit.FS_SMALL)
+		VKit.box(self, ur, VKit.COL_GOLD if on else VKit.COL_EDGE)
+		if not on:
+			VKit.text(self, ur.position + Vector2(ur.size.x - 12, 0), VKit.COL_GOLD, "✦", VKit.FS_SMALL)
+		_unit_btns.append({"rect": ur, "type": int(u.get("type", -1)), "nom": String(u.get("nom", "")), "on": on})
+		_tips.append([ur, "%s — %s · %s\nCoût : %s · Entretien : %.1f or/100" % [
+			String(u.get("nom", "")), String(u.get("classe", "")), String(u.get("arme", "")),
+			String(u.get("cout", "")), float(u.get("entretien_or10", 5)) / 10.0]])
+	y += ceilf(units.size() / float(ucols)) * ucell + 4.0
+
 	if _armee_flash != "":
-		VKit.text(self, Vector2(x, size.y - 18),
+		VKit.text(self, Vector2(x, y),
 			(VKit.sense(0.85) if _armee_flash_ok else VKit.sense(0.10)), _armee_flash, VKit.FS_SMALL)
+		y += 16
+	return y
 
 var _armee_flash := ""
 var _armee_flash_ok := true
+var _unit_btns := []   ## composeur d'armée : [{rect, type, nom, on}]
+var _tips: Array = []  ## [[Rect2, texte], …] — hover générique du tiroir (reconstruit au _draw)
+
+func _get_tooltip(at_position: Vector2) -> String:
+	for t in _tips:
+		if (t[0] as Rect2).has_point(at_position) and String(t[1]) != "":
+			return String(t[1])
+	return ""
 
 # ── FILTRES (sb_panel_filtres) : sélecteur de mode carte, FONCTIONNEL ──────
-func _draw_filtres(x: float, y: float) -> void:
+func _draw_filtres(x: float, y: float) -> float:
 	_chips.clear()
 	if _map != null:
 		_active_mode = _map.mode
@@ -655,6 +735,7 @@ func _draw_filtres(x: float, y: float) -> void:
 			_chips.append({"rect": r, "mode": mode})
 			cx += tw + 4
 		y += 26
+	return y
 
 # ── DIPLOMATIE (sb_panel_diplo) : la LISTE-RÉSUMÉ, SANS boutons — chaque pays connu :
 # nom + statut, BARRE D'OPINION (±100), le POURQUOI (composantes) et la MÉMOIRE datée.
@@ -675,13 +756,20 @@ const DACT_LABEL := {
 	10: ["a soigné les relations", "relations soignées par nous", false],
 }
 
-func _draw_diplo(x: float, y: float, me: int) -> void:
+func _draw_diplo(x: float, y: float, me: int) -> float:
 	_diplo_btns.clear()
+	# UN SEUL hint en tête (il était répété sous CHAQUE pays — bruit, capture 2026-07-09)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "▸ cliquer une fiche : actions diplomatiques", VKit.FS_SMALL)
+	y += 18
 	for rel in Sim.world.country_relations(me):
-		if y > size.y - 58:
+		if y > _hmax - 58:
 			break
-		var row_y0 := y
 		var target: int = int(rel["country"])
+		# BROUILLARD (retour joueur : « vision diplomatique complète alors qu'on a un
+		# fog ») : un pays JAMAIS DÉCOUVERT n'existe pas dans la liste.
+		if Sim.world.has_method("country_known") and int(Sim.world.country_known(target)) == 0:
+			continue
+		var row_y0 := y
 		var at_war: bool = bool(rel["at_war"])
 		var allied: bool = bool(rel["allied"])
 		var col := VKit.sense(0.12) if at_war else (VKit.sense(0.78) if allied else VKit.COL_PARCH)
@@ -738,9 +826,9 @@ func _draw_diplo(x: float, y: float, me: int) -> void:
 		# PAS de boutons ici : toute la FICHE est cliquable → la fenêtre d'actions du pays
 		var row_rect := Rect2(x - 4.0, row_y0 - 2.0, DW - 2.0 * x + 8.0, (y - row_y0) + 4.0)
 		_diplo_btns.append({"rect": row_rect, "act": "open", "target": target, "nom": String(rel["name"])})
-		VKit.text(self, Vector2(x, y), VKit.COL_DIM, "▸ cliquer : actions diplomatiques", VKit.FS_SMALL)
-		y += 16
-		VKit.fill(self, Rect2(x, y - 6, DW - 2.0 * x, 1), VKit.COL_EDGE)
+		y += 6
+		VKit.fill(self, Rect2(x, y - 3, DW - 2.0 * x, 1), VKit.COL_EDGE)
+	return y
 
 ## barre d'opinion ±100 : repère central (zéro), remplissage vert (favorable) ou
 ## rouge (hostile) depuis le centre.
@@ -767,6 +855,7 @@ func _armee_act(kind: String, val: int) -> void:
 	var w = Sim.world
 	if w == null:
 		return
+	Sim.notify_action()   # pause : l'UI se rafraîchit au clic (le drain suit à la reprise)
 	match kind:
 		"levy":
 			w.player_set_levy(val)
@@ -796,6 +885,7 @@ func _marche_act(act: String, res_id: int, me: int) -> void:
 	var w = Sim.world
 	if w == null:
 		return
+	Sim.notify_action()   # pause : l'UI se rafraîchit au clic
 	var cap_prov: int = w.country_capital_province(me)
 	var cap_region: int = w.province_region(cap_prov) if cap_prov >= 0 else -1
 	if cap_region < 0:
@@ -836,17 +926,6 @@ func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion:
-		var h := ""
-		for z in _hover_zones:
-			if z.rect.has_point(event.position):
-				h = z.text
-				break
-		if h != _hover_text:
-			_hover_text = h
-			_hover_pos = event.position
-			queue_redraw()
-		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _tab == 0 and _chart_btn.has_point(event.position):   # Économie → ouvre les courbes
 			charts_requested.emit()
@@ -882,6 +961,18 @@ func _gui_input(event: InputEvent) -> void:
 					_armee_act("navy", int(b.hull))
 					accept_event()
 					return
+			# COMPOSEUR D'ARMÉE : clic tuile = levée (journalisée) — lot 5
+			for ub in _unit_btns:
+				if (ub.rect as Rect2).has_point(event.position):
+					if bool(ub.on) and Sim.world != null:
+						var okr: bool = int(Sim.world.player_recruit(int(ub.type))) > 0
+						_armee_flash_ok = okr
+						_armee_flash = ("⚔ %s — levée ordonnée" % String(ub.nom)) if okr else ("✗ %s — file pleine" % String(ub.nom))
+						Sound.play("ui_click")
+						Sim.notify_action()
+						queue_redraw()
+					accept_event()
+					return
 		if _tab == 5:
 			for ch in _chips:
 				if ch.rect.has_point(event.position):
@@ -898,6 +989,13 @@ func _gui_input(event: InputEvent) -> void:
 					accept_event()
 					return
 		if _tab == 7:
+			for tb in _ctab_btns:
+				if (tb.rect as Rect2).has_point(event.position):
+					_conseil_tab = int(tb.t)
+					Sound.play("ui_click")
+					queue_redraw()
+					accept_event()
+					return
 			for b in _conseil_btns:
 				if b.rect.has_point(event.position):
 					_conseil_act(String(b.act), int(b.seat), int(b.get("slot", 0)), float(b.get("pay", 1.0)))

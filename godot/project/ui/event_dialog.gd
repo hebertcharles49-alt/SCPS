@@ -157,11 +157,17 @@ func _choose(option: int) -> void:
 	# MÊME pending est encore compté par pending_count() jusqu'au prochain tick (Sim.ticked),
 	# qui rappellera _poll() naturellement. Un poll immédiat rouvrirait CE pending à l'instant.
 
-## HOVER natif : ce que RACONTE le choix survolé (flavor — jamais un nom SCPS).
+## HOVER natif : l'EFFET MÉCANIQUE d'abord (retour joueur : « Ça veut dire quoi ? »),
+## puis ce que RACONTE le choix (flavor — jamais un nom SCPS).
 func _get_tooltip(at_position: Vector2) -> String:
 	for br in _btn_rects:
 		if (br[0] as Rect2).has_point(at_position):
-			var flavors: Array = _pending.get("flavors", [])
 			var i: int = int(br[1])
-			return String(flavors[i]) if i < flavors.size() else ""
+			var effets: Array = _pending.get("effets", [])
+			var flavors: Array = _pending.get("flavors", [])
+			var eff := String(effets[i]) if i < effets.size() else ""
+			var fla := String(flavors[i]) if i < flavors.size() else ""
+			if eff != "" and fla != "":
+				return eff + "\n" + fla
+			return eff if eff != "" else fla
 	return ""

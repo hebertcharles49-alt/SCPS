@@ -50,6 +50,14 @@ const WORK := 128
 static var _img_cache := {}    # chemin → Image 128² RGBA8 (source, jamais mutée)
 static var _arms_cache := {}   # cid → ImageTexture
 static var _pion_cache := {}   # "phase:cid" → ImageTexture
+## VARIANTE D'ARMES CHOISIE par le joueur (créateur d'empire, 2026-07-10) : hash de
+## composition qui REMPLACE le hash dérivé du cid pour le pays HUMAIN. −1 = dérivée
+## (défaut). Display-only, session (non sérialisé) — poser via set_player_arms().
+static var player_hash := -1
+
+static func set_player_arms(h: int) -> void:
+	player_hash = h
+	reset()   # les caches par cid portent l'ancienne variante
 
 static func reset() -> void:
 	_arms_cache.clear()
@@ -155,6 +163,8 @@ static func compose_arms(w, cid: int) -> Image:
 		var t := _img(S29 + "08_totem_wild")
 		return (t.duplicate() as Image) if t != null else null
 	var h := int(fmod(float(cid) * 2654435.7, 65536.0))
+	if player_hash >= 0 and cid == int(w.player()):
+		h = player_hash   # la variante CHOISIE au créateur (le blason du joueur lui appartient)
 	var ethos := clampi(int(w.country_ethos(cid)), 0, 5)
 	var herit := clampi(int(w.country_heritage(cid)), 0, 5)
 	return compose_arms_generic(h, entity_hue(cid), ethos, herit, role == 2)

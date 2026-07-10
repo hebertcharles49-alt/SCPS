@@ -36,6 +36,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("region_pop", "region"),       &ScpsWorld::region_pop);
     ClassDB::bind_method(D_METHOD("region_colonized", "region"), &ScpsWorld::region_colonized);
     ClassDB::bind_method(D_METHOD("region_centroid", "region"),  &ScpsWorld::region_centroid);
+    ClassDB::bind_method(D_METHOD("region_seat", "region"),      &ScpsWorld::region_seat);
 
     ClassDB::bind_method(D_METHOD("province_at", "x", "y"),          &ScpsWorld::province_at);
     ClassDB::bind_method(D_METHOD("province_region", "province"),    &ScpsWorld::province_region);
@@ -54,8 +55,12 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("province_income", "province"),    &ScpsWorld::province_income);
     ClassDB::bind_method(D_METHOD("province_agitation", "province"), &ScpsWorld::province_agitation);
     ClassDB::bind_method(D_METHOD("province_buildings", "province"), &ScpsWorld::province_buildings);
+    ClassDB::bind_method(D_METHOD("province_edifices", "province"),  &ScpsWorld::province_edifices);
+    ClassDB::bind_method(D_METHOD("day_of_year"),                    &ScpsWorld::day_of_year);
+    ClassDB::bind_method(D_METHOD("country_known", "country"),       &ScpsWorld::country_known);
     ClassDB::bind_method(D_METHOD("province_log", "province"),       &ScpsWorld::province_log);
     ClassDB::bind_method(D_METHOD("province_classes", "province"),   &ScpsWorld::province_classes);
+    ClassDB::bind_method(D_METHOD("province_class_sat", "province"), &ScpsWorld::province_class_sat);
     ClassDB::bind_method(D_METHOD("province_capitale", "province"),  &ScpsWorld::province_capitale);
     ClassDB::bind_method(D_METHOD("province_slave_count", "province"),   &ScpsWorld::province_slave_count);
     ClassDB::bind_method(D_METHOD("province_tax", "province"),           &ScpsWorld::province_tax);
@@ -164,6 +169,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_empire_culture", "slot", "heritage", "ethos", "t0", "t1", "t2"), &ScpsWorld::set_empire_culture);
     ClassDB::bind_method(D_METHOD("set_player_culture", "heritage", "ethos", "t0", "t1", "t2"), &ScpsWorld::set_player_culture);
     ClassDB::bind_method(D_METHOD("clear_player_culture"),          &ScpsWorld::clear_player_culture);
+    ClassDB::bind_method(D_METHOD("set_country_name", "cid", "name"), &ScpsWorld::set_country_name);
     ClassDB::bind_method(D_METHOD("worldparams_default", "seed"),   &ScpsWorld::worldparams_default);
     ClassDB::bind_method(D_METHOD("worldgen_set", "p"),             &ScpsWorld::worldgen_set);
     ClassDB::bind_method(D_METHOD("worldgen_clear"),                &ScpsWorld::worldgen_clear);
@@ -273,10 +279,40 @@ Ref<Image> ScpsWorld::fog_image() {
     if (sim) {
         std::vector<uint8_t> vis((size_t)w * h);
         scps_fog_visible(sim, vis.data());
+        /* ADOUCISSEMENT DU FRONT (display-only) : le masque binaire donne un saut 0→opaque
+         * qui suit les fronts carrés de la BFS (blocs crénelés sur la mer, capture joueur
+         * 2026-07-09). BFS bornée depuis le visible → l'alpha monte en RAMPE sur FOG_RAMP
+         * cellules (halo doux, esprit parchemin). La CONNAISSANCE reste celle du moteur. */
+        const int FOG_RAMP = 6;
+        std::vector<uint8_t> dist((size_t)w * h, 255);   /* 255 = loin (opaque plein) */
+        std::vector<int32_t> q((size_t)w * h);
+        int64_t qh = 0, qt = 0;
+        for (int64_t i = 0; i < (int64_t)w * h; i++)
+            if (vis[(size_t)i]) { dist[(size_t)i] = 0; q[(size_t)qt++] = (int32_t)i; }
+        while (qh < qt) {
+            int32_t i = q[(size_t)qh++];
+            int d = dist[(size_t)i];
+            if (d >= FOG_RAMP) continue;
+            int x = i % w, y = i / w;
+            for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+                if (!dx && !dy) continue;
+                int nx = x + dx, ny = y + dy;
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                int32_t j = ny * w + nx;
+                if (dist[(size_t)j] != 255) continue;
+                dist[(size_t)j] = (uint8_t)(d + 1);
+                q[(size_t)qt++] = j;
+            }
+        }
         for (int64_t i = 0; i < (int64_t)w * h; i++) {
             if (vis[(size_t)i]) continue;              /* visible : transparent, rien à peindre */
+            int d = dist[(size_t)i];
+            /* cœur à 252/255 (retour joueur : « ce n'est pas un brouillard de guerre » —
+             * à 236 le lavis politique et les bandes d'empire transparaissaient encore) */
+            uint8_t a = (d >= FOG_RAMP || d == 255) ? 252
+                      : (uint8_t)(252.0f * (0.30f + 0.70f * (float)d / (float)FOG_RAMP));
             dst[i*4+0] = 24; dst[i*4+1] = 19; dst[i*4+2] = 14;   /* encre sépia sombre (#18130e) */
-            dst[i*4+3] = 236;                                    /* OPAQUE : un vrai fog cache le terrain (on ne voit plus à travers) */
+            dst[i*4+3] = a;                                      /* opaque au cœur, rampe au front */
         }
     }
     return Image::create_from_data(w, h, false, Image::FORMAT_RGBA8, buf);
@@ -313,6 +349,12 @@ bool    ScpsWorld::region_colonized(int r) const { return scps_region_colonized(
 Vector2 ScpsWorld::region_centroid(int r) const {
     float x = -1.f, y = -1.f;
     scps_region_centroid(sim, r, &x, &y);
+    return Vector2(x, y);
+}
+
+Vector2 ScpsWorld::region_seat(int r) const {
+    float x = -1.f, y = -1.f;
+    scps_region_seat(sim, r, &x, &y);
     return Vector2(x, y);
 }
 
@@ -542,6 +584,23 @@ Array ScpsWorld::province_buildings(int province) {
     return a;
 }
 
+/* les ÉDIFICES de BASE bâtis (masque edi_built — grenier, marché, temple…). */
+Array ScpsWorld::province_edifices(int province) {
+    Array a;
+    ScpsProvBld b[32];
+    int n = sim ? scps_province_edifices(sim, province, b, 32) : 0;
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["nom"]  = String::utf8(b[i].nom);
+        d["type"] = b[i].niveau;   /* le TYPE Edifice (vignette UIKit.building_sprite) */
+        a.push_back(d);
+    }
+    return a;
+}
+
+int ScpsWorld::day_of_year() const { return scps_day_of_year(sim); }
+int ScpsWorld::country_known(int country) const { return scps_country_known(sim, country); }
+
 Array ScpsWorld::province_log(int province) {
     Array a;
     ScpsLogEntry e[12];
@@ -564,6 +623,18 @@ Dictionary ScpsWorld::province_classes(int province) {
     d["laboureurs"] = (int64_t)lab;
     d["artisans"]   = (int64_t)bourg;
     d["noblesse"]   = (int64_t)elite;
+    return d;
+}
+
+/* SATISFACTION 0-100 par classe (−1 = classe vide), grain province — incl. serviles. */
+Dictionary ScpsWorld::province_class_sat(int province) {
+    int lab = -1, art = -1, nob = -1, slv = -1;
+    scps_province_class_sat(sim, province, &lab, &art, &nob, &slv);
+    Dictionary d;
+    d["laboureurs"] = lab;
+    d["artisans"]   = art;
+    d["noblesse"]   = nob;
+    d["esclaves"]   = slv;
     return d;
 }
 
@@ -870,6 +941,11 @@ Array ScpsWorld::building_roster(int country) {
         d["gold"]     = b[i].gold;
         d["days"]     = b[i].days;
         d["debloque"] = (bool)b[i].debloque;
+        d["tier"]       = b[i].tier;
+        d["prev"]       = b[i].prev;
+        d["prev_built"] = (bool)b[i].prev_built;
+        d["effet"]      = String::utf8(b[i].effet);
+        d["flavor"]     = String::utf8(b[i].flavor);
         Array costs;
         for (int k = 0; k < b[i].n_cost; k++) {
             Dictionary c;
@@ -1131,15 +1207,17 @@ Dictionary ScpsWorld::pending_event(int slot) {
     d["region"]    = ok ? pe.region : -1;
     d["days_left"] = ok ? pe.days_left : 0;
     d["evid"]      = ok ? pe.evid : -1;   /* clé d'illustration thématique (event_art.gd) */
-    Array labels, flavors, advisors;
+    Array labels, flavors, advisors, effets;
     for (int i = 0; i < (ok ? pe.n_options : 0); i++) {
         labels.push_back(String::utf8(pe.labels[i]));
         flavors.push_back(String::utf8(pe.flavors[i]));
         advisors.push_back(String::utf8(pe.advisors[i]));
+        effets.push_back(String::utf8(pe.effets[i]));
     }
     d["labels"]   = labels;
     d["flavors"]  = flavors;
     d["advisors"] = advisors;   /* le VISAGE de chaque choix (mot de faction, "" si aucun) */
+    d["effets"]   = effets;     /* l'EFFET MÉCANIQUE en clair (« Ça veut dire quoi ? ») */
     return d;
 }
 bool ScpsWorld::player_event_choice(int slot, int option) {
@@ -1479,6 +1557,10 @@ bool ScpsWorld::set_player_culture(int heritage, int ethos, int t0, int t1, int 
 
 void ScpsWorld::clear_player_culture() {
     scps_clear_player_culture();
+}
+
+void ScpsWorld::set_country_name(int cid, const String &name) {
+    if (sim) scps_set_country_name(sim, cid, name.utf8().get_data());
 }
 
 Dictionary ScpsWorld::worldparams_default(int seed) {

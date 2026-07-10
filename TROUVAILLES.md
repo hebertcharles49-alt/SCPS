@@ -1524,3 +1524,245 @@ IPM 1.09-1.30, gate 180 tenu 100 %, arbre 40-53 %, démographie robuste (bornes/
 - **Calibrage fin** — délibérément non fait (mission : « NE CALIBRE PAS finement »). Le gate
   `ETHOS_LUXURY_MIN_TIER=6` et le poids `ETHOS_LUXURY_JOY=0.08` sont posés par PRÉCAUTION/analogie avec
   poterie-statuaire, pas mesurés/optimisés — l'orchestrateur a la main via `SCPS_TUNE` sans recompiler.
+
+## 2026-07-09 — Vague UI globale (audit visuel par probe + convergence « rendu attendu » EU4)
+- **Découvertes** : la « bande beige » bas d'écran = la MARGE DE PAGE hors-monde (le voile fog
+  ne couvrait que le rect carte — overlay.gd:~1953 dessine désormais 4 bandes sépia autour,
+  gaté `Sim.game_on`) · `scps_fog_visible` (scps_api.c:381) était FAIL-OPEN sur les cellules
+  sans région (mer/lacs visibles à travers le fog) → fail-closed + halo `FOG_SEA_HALO 8` +
+  rampe d'alpha display-only dans `fog_image` (scps_sim_node.cpp) · `scps_province_tax`
+  affichait **12× le réel** (le taux moteur 0.42·wealth·dt est ANNUEL — dt en années, preuve
+  scps_econ.c:2652 « ×365×dt » — le miroir le croyait mensuel et ×12) · le siège de ville =
+  désormais `scps_region_seat` (centroïde de la PROVINCE REP via econ_region_rep_province,
+  cache ppx/ppy dans api_centroids) — le barycentre de RÉGION tombait au bord des formes concaves.
+- **Pièges** : poser `size` PENDANT `_draw()` est IGNORÉ par Godot → `set_deferred("size", …)`
+  (province_panel hauteur-au-contenu) · `var x := expr` sur une expression NON TYPÉE
+  (`_graph.size.x…` où _graph est untyped) = PARSE ERROR qui fait tomber TOUT le script → le
+  `load().new()` de main.gd échoue en cascade (« Nonexistent function 'new' in base GDScript ») ·
+  la probe shot_ui écrit ses PNG AU FIL de la tournée → PURGER le dossier avant de relire
+  (diagnostic rendu sur des captures STALE une fois) · scons manuel exige
+  `PROCESSOR_ARCHITECTURE=AMD64` + `TMP=/tmp` (KeyError intelc sinon) et ne JAMAIS masquer
+  l'exit code par `| tail`.
+- **Restes** : deltas topbar (or/pop) ne vivent qu'en jeu (month_ticked) — invisibles en pause ·
+  icônes du rail gauche encore ternes malgré le lift ×1.28 (les sprites eux-mêmes sont sombres) ·
+  « An N » encore serré contre l'ornement de capsule · panneau détail province (réincorporation
+  brute, vide bas) non repris · roadmap EU4 restante dans SYNTHESE_SESSION.md (ledger droite,
+  compteurs d'armée, bannières de section, minimap, question carte parchemin vs saturé).
+
+## 2026-07-09 — Vague « inspire-toi » CK3/EU5 (.gui minés par 2 éclaireurs)
+- **Découvertes** : les .gui Paradox sont du TEXTE minable (game/gui/ CK3 · game/in_game/gui/
+  EU5) — synthèses complètes dans SYNTHESE_SESSION.md § « INSPIRE-TOI » (cellule ressource
+  CK3, outliner EU5 405×31 + rubans 39px, tooltips 420/10px, gradient de zoom du lavis EU5).
+  Transposé : topbar cellules (valeur/delta empilés, `_cell`, TOPBAR_H 38→48), rubans de
+  catégorie du ledger (`_lsection`), saturation lavis 0.60→0.72, compteurs d'armée strips.
+- **Pièges** : ⚠ BUG LATENT — `visible = Sim.game_on` posé DANS `_draw()` (empire_sidebar) :
+  un Control caché ne redessine JAMAIS → masqué une fois (menu), il ne se remontrait jamais.
+  L'empire_sidebar (le ledger entier !) n'était apparu dans AUCUNE partie depuis sa création.
+  Visibilité pilotée en `_process`. Règle : jamais de self-visibility dans _draw.
+- **Restes** : lignes outliner 31px + jauges verticales fines 5×22 (patterns EU5 en réserve) ·
+  minimap · question carte (saturation portée à 0.72 — valider à l'œil joueur).
+
+## 2026-07-09 — Raw-works verrouillées hors du jeu joueur (lot 5, fix moteur golden-neutre)
+- **Découverte** : `in1==RES_NONE` traité comme « recette dégénérée » dans les DEUX miroirs
+  du bâti joueur (scps_api.c `scps_manuf_legal` ET scps_sim.c drain CMD_BUILD_MANUF) →
+  les 3 RAW-WORKS (four à brique→argile · carrière→pierre · scierie→bois, hors-sol N1,
+  qui boostent l'output de brut) étaient INVISIBLES et IMPOSABLES pour le joueur — seule
+  l'IA les bâtissait (ai_build_rawworks). Fix : seul `out==RES_NONE` rejette ; le gate
+  d'intrant (`feed`) saute quand in1==NONE. `make golden` IDENTIQUE (le drain n'est touché
+  que par des commandes joueur — la chronique n'en enfile jamais).
+- **Piège (payé 5×)** : le `cd` inline dans `bash.exe -lc '...'` se fait MANGER de façon
+  répétée à la régénération de la commande → passer par un SCRIPT .sh committé
+  (packaging/windows/golden_dll.sh) — c'était DÉJÀ documenté dans SYNTHESE (« le cd inline
+  se fait manger ») et je l'ai re-payé quand même. Lire le handoff AVANT de forger la commande.
+- **Restes** : `raw_boost` (paliers d'EXPLOITATION par brute) n'a AUCUN verbe joueur —
+  écrit par la seule IA (scps_ai.c:1292). Si le joueur doit y accéder : CMD_* + façade à créer.
+
+---
+
+## 2026-07-10 — Minage UI Stellaris
+
+Objectif : extraire des règles de design chiffrées des `.gui`/`.gfx` de Stellaris
+(`D:\Steam\steamapps\common\Stellaris\interface\`) pour corriger une UI Godot 2D « patate ».
+Tout en px, résolution de référence Stellaris = 1920×1080 (offset natif show_position x=35 y=40).
+
+### Découvertes (fichier : valeurs)
+
+**1. Dimensions de fenêtres (windowType)**
+- empire_view.gui:17 — `empire_view` = 1272×620 ; show_position {35,40} ; hide {-1272,40} (slide depuis la gauche) ; animation_time=200.
+- planet_view.gui:225 — `planet_view` = 1162×680 ; side-panel `planet_view` secondaire (l.181) = 360×630.
+- diplomacy_view.gui:49 — `diplomacy_view` = 1280×635 ; panneau gauche 990×635, colonne droite ~290.
+- Contenu interne empire : empire_list à position {11,140}, size 1250×489 (marge latérale ~11px, top ~140px sous header+tri).
+- RATIOS : largeur ≈ 1272/1920 = 66 % ; 1162/1920 = 60 % ; hauteur ≈ 620–680/1080 = 57–63 %. Fenêtre « large » standard = ~2/3 de l'écran en largeur, ~60 % en hauteur.
+- Marge intérieure standard : bord→contenu = 11–14px lat., listbox interne démarrée à y=138 sous les boutons de tri.
+
+**2. Headers de fenêtre**
+- Barre du titre : hauteur effective ~34–40px (topbar HUD = 36px exactement, main.gui:161).
+- Titre : font = "malgun_goth_24" (police header 24px ; le corps = cg_16b = 16px bold). empire_view.gui:59, planet_view.gui:191.
+- Position titre : empire {x=35 y=5}, planet {x=12 y=12} → marge header ~12px.
+- Bouton close : orientation UPPER_RIGHT, position {x=-45 y=16} (empire_view.gui:50) ou {x=-40 y=2} (planet_view.gui:205) ; sprite GFX_close / GFX_close_button_planet ; shortcut ESCAPE.
+- Ligne séparatrice header : GFX_line_long à y=21 (empire_view.gui:44) → trait sous le titre, contenu commence ~y=140.
+
+**3. Bottom bar / boutons flottants**
+- main.gui:158 `topbar` = 100%×36 avec background ; cellules ressources `tb_*_group` = 70×36 chacune (main.gui:230+), séparateur vertical `basic_resources_divider` = 8×75% (green_vertical_delimiters).
+- main_bottom.gui : panneau système bas-centre `leave_system_window`/`leave_galaxy_window` = 166×114, slide vertical (show_position y=-95). Boutons carte `map_button_bg` = GFX_bottombar_button_bg posés en absolu {x=194 y=33}, PAS de plaque de fond continue — chaque icône a son propre petit bg (GFX_bottombar_button_bg) → icônes « flottantes ».
+- control_groups (main_bottom.gui:17) : grille 700×13, spacing=2.
+- Confirmation : les boutons du bas sont positionnés en coordonnées absolues autour du centre, chacun avec son sprite bg individuel → pas de barre-plaque unique.
+
+**4. Sections internes (listes / grilles)**
+- smoothListboxType empire (empire_view.gui:155) : 1230×475, spacing=4, scrollbar "standardlistbox_slider".
+- Hauteurs de rangées récurrentes : outliner entries 20 / 27 / 38 / 40 / 41px (outliner.gui) ; advisor 290×34 ; diplomacy rows 148×48, 200×40.
+- gridBoxType slotSize icônes : 31×31, 39×39, 40×40 (grilles d'icônes) ; vignettes 93×130 (portraits), 125×85, 275×190 (cartes council).
+- Séparateurs : sprites "green_vertical_delimiters" (vertical 8px de large) et GFX_line_long (horizontal header).
+- Scrollbars (core.gui:162) : 12×12px, track/slider standardisés.
+
+**5. Tooltips**
+- core.gui:40 ToolTipWindow : bg GFX_tooltip_bg, texte font cg_16b, borderSize {x=35 y=15} (padding interne 35 lat / 15 vert), maxWidth 400–500.
+- ToolTipConceptWindow (core.gui:76) : icône à {8,8}, texte offset {10,0}, maxWidth 400.
+- Delay : PAS dans defines/*.txt ni interface (c'est un réglage utilisateur runtime) → non chiffrable ici. Piège noté.
+
+**6. Palette (fonts.gfx:9 textcolors, format R G B 0-255)**
+- Base : T/W blanc {255,255,255} ; t gris clair {198,198,198} ; g gris {128,128,128}.
+- Accents : G vert-positif {41,225,38} ; R rouge-négatif {252,86,70} ; H highlight orange {251,170,41} ; C cyan concept {31,224,202} ; B bleu {51,167,255} ; Y jaune {247,252,52}.
+- Prose/event : E vert doux {135,255,207} ; V vert foncé {76,138,113} ; L lore beige {195,176,145}.
+- Rareté : M magenta {163,53,238}, mauve {204,179,255}, doré {255,221,122}.
+- Gamme dominante Stellaris = fond sombre bleu-vert + texte blanc/gris + accents saturés (vert/orange/cyan). Pour un look PARCHEMIN il faut INVERSER la logique de contraste (fond clair, texte sombre) mais garder la discipline : 1 couleur = 1 sémantique.
+
+**7. Grille / alignement**
+- Pas récurrent : header 36, cellules ressource 70, corner 9-slice borderSize=12 (core.gfx GFX_button_* corneredTileSprite tous en borderSize {12,12}).
+- Spacings de listes quasi tous ∈ {1,2,4} (jamais aléatoires).
+- Largeurs de colonnes récurrentes : outliner 260/248, panneaux 318/320, side-panels 290/360.
+- Multiples fréquents de 5 et 10 pour les positions ; rangées collent à des paliers 20/27/38/40.
+
+### Synthèse — 10 règles Stellaris transposables
+1. Fenêtre large = ~66 % largeur écran × ~60 % hauteur (jamais plein écran ; laisse respirer les bords).
+2. Header = bande 34–36px ; titre 24px ; contenu 12px sous le trait séparateur.
+3. Close = coin haut-droit, ancré en orientation UPPER_RIGHT à ~-40px, ESCAPE branché.
+4. Marge intérieure fenêtre = 11–14px sur les côtés ; premier bloc de contenu ~140px du haut si header+barre d'outils.
+5. Bottom bar = icônes FLOTTANTES : chaque bouton porte son propre petit fond (68–70px), pas de plaque continue.
+6. Rangée de liste = 27–41px selon densité (défaut ~38–40) ; spacing entre entrées 2 ou 4, jamais plus.
+7. Icône de grille = 31–40px carré ; portrait/vignette = ratio ~2:3 (93×130).
+8. 9-slice partout : coins de 12px pour cadres et boutons (bords nets qui ne bavent pas au resize).
+9. Scrollbar fine 12px, tooltip padding 35×15 avec maxWidth ~400.
+10. Palette = 1 couleur = 1 sens (vert+/rouge−/orange highlight/cyan lien) sur fond neutre ; texte corps 16px, contraste fort.
+
+### Pièges
+- Coordonnées négatives = ancrage au bord opposé selon `orientation` (ex. close x=-45 UPPER_RIGHT) ; ne pas lire comme du absolu top-left.
+- `%%` dans les .gui (ex. width=100%%) = échappement Clausewitz, vaut 100 %.
+- Les tailles de fenêtre sont pensées pour 1920×1080 avec `if_scaled_resolution` qui override en jeu → transposer en % plutôt qu'en px bruts.
+- Tooltip delay INTROUVABLE dans les fichiers (réglage runtime, pas data-driven).
+
+### Restes
+- Pas ouvert : situation_log.gui / council_view.gui en détail (headers seulement survolés) ; icons/ et resource_groups/ non minés.
+- Pas trouvé : valeur numérique du tooltip delay (chercher côté settings.txt utilisateur, hors interface/).
+- À faire : croiser avec les sprites GFX (dimensions des .dds tiles) pour caler le 9-slice parchemin.
+
+## 2026-07-10 — Vague Stellaris (fenêtres + bottom bar flottante)
+**Découvertes**
+- `controls.gd` : la « barre du bas » n'était qu'une bande dessinée + MOUSE_FILTER_STOP plein écran — la retirer exige de passer le parent en MOUSE_FILTER_IGNORE (sinon une bande invisible mange les clics carte) ; les IconButton enfants captent seuls.
+- Hauteur-au-contenu d'un panneau immediate-mode : le pattern latch `set_deferred("size", …)` depuis `_draw` (déjà payé sur province_panel) se généralise — chaque `_draw_<tab>` du tiroir renvoie son y final ; les clips internes doivent lire `_hmax` (viewport), PAS `size.y` (sinon le clip suit la taille latchée et la liste ne regrandit jamais).
+- `VKit.header(ci, w, title) -> Rect2` : header standard Stellaris (bande 36 px, titre FS_BIG, filet or, ✕ haut-droite) — le close-rect renvoyé remplace les `_close_rect = Rect2(PW-26, …)` ad hoc.
+**Pièges**
+- Export scps.exe : le Godot **mono** (racine du repo, `Godot_v4.6.3-stable_mono_win64_console.exe`) REFUSE l'export sans .NET SDK 10.0.6 (« .NET Sdk not found ») — l'export officiel passe par le binaire NON-mono `/e/JEUX/SCPS/Godot_v4.6.3-stable_win64.exe` (cf. build_godot.sh GODOT=). Le mono sert aux probes ; le non-mono aux exports.
+- `grep -c` sans correspondance ⇒ exit 1 : un chain `…; grep -c X log` en fin de commande fait « échouer » la tâche de fond alors que la probe est verte — lire le contenu, pas le code retour.
+**Restes**
+- Header standard à propager (tech_panel en-tête dense laissé tel quel, battle/country/province_panel petits headers ad hoc).
+- Drawer : la plaque de titre `panel_title_plaque` déborde légèrement du cadre à droite (cosmétique).
+
+## 2026-07-10 — Setup en onglets + panneaux plats
+**Découvertes**
+- `worldgen_set` (binding scps_sim_node.cpp:1572) remplit les clés ABSENTES du Dictionary par des CONSTANTES (0.7/0.5/6…) — un dict partiel ÉCRASE l'archétype de graine (lot W) et les cartes redeviennent toutes pareilles. Pour n'exposer qu'un réglage : fusionner `worldparams_default(graine)` + le réglage, jamais un dict partiel.
+- `Sim.current_seed` (autoload sim.gd) porte la graine du monde courant — le créateur autonome n'a plus besoin de son propre champ.
+- Sélection exclusive par boutons-toggle (traditions) : `set_pressed_no_signal` pour refléter l'état sans re-déclencher `pressed` (sinon boucle).
+**Pièges**
+- Les probes existantes (menu_audit/culture_audit) testent le BINDING, pas le layout — l'UI refaite se vérifie par shot_ui (3 captures setup ajoutées : 01b/01c/01d).
+**Restes**
+- « Quitte à léguer un petit modificateur sur chacun, gamey » (éthos) : l'affichage dit désormais ce que l'éthos pilote (armée/factions/évents) — un VRAI petit modificateur par éthos serait un geste MOTEUR (registre J), non fait ici.
+- Sliders monde retirés mais le motif `_make_slider` a disparu avec — si on ré-expose des réglages plus tard, reprendre l'historique git (new_game_panel.gd pré-2026-07-10).
+
+## 2026-07-10 — Réécriture des textes de tech (agent sonnet + finition orchestrateur)
+**Découvertes**
+- Le jargon « capacité narrative / ordre / fédéralisme » (scps_tech.h) vient du MODÈLE THÉORIQUE de l'auteur — en jeu : dK=prospérité, dL=stabilité&croissance, dF=MORT (jamais lu, comme .eco/.mil). Les textes joueur promettaient des leviers morts ; commentaires de scps_tech.h réécrits pour le dire.
+- « béton→marbre » (TECH_QUALITE_MATERIAUX) : hors-monde ET hors-effet — le nœud gate en réalité l'Arbalétrier lourd. Textes réalignés sur l'effet réel dans scps_tech.c ET la table miroir TECH_UTILITY de scps_readout.c (⚠ DEUX tables à tenir synchrones).
+- Le composeur hover (scps_api.c, hb[]) appose déjà les chiffres LIVE (prospérité/stabilité/production %/efficacité %/charge/flux) — les utility strings disent l'effet en MOTS, les chiffres suivent seuls ; exception : doctrine d'armée (+dégâts/+moral) et firearm_power, hors composeur → chiffre réel dans le texte.
+- RÈGLE 3 : les nœuds sans AUCUN levier vivant ont reçu un petit levier réel (ex. Fortifications dF mort → dL 1.5) — golden resté IDENTIQUE (aucun de ces nœuds n'est recherché <12 ans sur les 5 graines).
+**Pièges**
+- ⚠ LIEN LATENT : `make` ne re-lie un banc que si un objet change — `scps_ai.o` (committé) référençait `country_knows` (scps_fog.c, lot diplo-fog) sans que AI_DEMO_OBJS porte scps_fog.o ; le banc restait « vert » sur binaire PÉRIMÉ jusqu'au premier re-lien (déclenché ici par scps_tech.o). Fix : scps_fog.o ajouté à AI_DEMO_OBJS. Leçon : un lot qui ajoute une dépendance inter-module doit greper les *_OBJS des bancs.
+- Le « cd mangé » MSYS2 re-payé encore : `bash -lc 'cd … && make …'` perd son cd à la régénération → TOUJOURS un script committé (packaging/windows/gates_tech.sh).
+- Agent coupé par la limite de session en pleine table NODES[] (Savoir+Forge faits, Société aux 3/4) — l'orchestrateur a fini les 3 dernières chaînes + readout + tech.h à la main, dans le style de l'agent.
+**Restes**
+- scps_readout.c TECH_UTILITY : synchronisée sur les 2 entrées qui mentaient (béton, métal supprimé) — une passe de cohérence COMPLÈTE des 71 entrées vs les nouveaux textes tech.c serait du polish (elles étaient déjà majoritairement justes).
+
+## 2026-07-10 — Factions en topbar + ledger pliable
+**Découvertes**
+- Topbar : la rangée de blasons de faction (20 px + mini-barre d'adhésion 5 px dessous, ★ dominante, ⚑ tension) tient à 1920 entre la colonie et le chip d'âge — sur écran étroit, prévoir le repli en un chip « Factions » unique (noté, non fait).
+- Ledger : pliage PAR SECTION via `_fold{}` + `_sec_rects` (le bandeau entier cliquable, chevron ▾/▸ dans la bande) — le pattern immediate-mode : chaque corps de section gardé par `if not _folded("TITRE"):`, les zones cliquables du corps (Recompléter) REMISES À ZÉRO quand replié (sinon un clic fantôme sur zone invisible).
+**Pièges**
+- MISSION : le corps était DANS le `if active:` — plier exige un court-circuit (`mi = {}` après le bandeau) plutôt qu'une ré-indentation de 25 lignes ; documenté sur place.
+**Restes**
+- Persister `_fold` (user://options.cfg) si le joueur veut retrouver ses replis entre sessions.
+
+## 2026-07-10 — Rail uni + Province flottante EU4
+**Découvertes**
+- Le rail gauche « disparaissait » : (1) il s'arrêtait à vp.y − BOTTOMBAR_H (la bande n'existe plus — icônes flottantes) ; (2) COL_PANEL est TRANSLUCIDE (a=0xf6) → la carte transparaissait. Fix : pleine hauteur + alpha 1.0.
+- Province flottante : position SIDEBAR_W+14 / TOPBAR_H+12, liseré « collé » retiré (panel_bg porte son cadre) — ⚠ le panneau Construction était posé à SIDEBAR_W+320 (l'ancienne largeur 312) → recalé à SIDEBAR_W+374 (main.gd), à resynchroniser si PW bouge encore.
+- Les « barres en lignes dorées » du screenshot joueur = la texture de jauge sheet04 étirée à 9-12 px de haut (les enluminures des extrémités bavent) → VKit.gauge (piste + remplissage) pour les rangées fines (Prospérité/Satisfaction/Loyauté) ; UIKit.bar reste pour les barres larges (colonisation).
+**Restes**
+- PW de province_panel est copié en dur dans main.gd (position du panneau Construction) — une const partagée serait plus sûre.
+
+## 2026-07-10 — Tooltips à concepts + le « paquet de 8-9 jours »
+**Découvertes**
+- MOTS-CONCEPTS (retour joueur) : registre unique `ui/concepts.gd` (~30 définitions honnêtes) consommé par (1) `ui/tooltip_server.gd` — tooltip global RichText qui REMPLACE le natif (neutralisé par `gui/timers/tooltip_delay_sec` énorme, posé au runtime dans main._ready) : il lit `Control.get_tooltip(pos)` du contrôle survolé (couvre tooltip_text ET les _get_tooltip custom : topbar, province, alertes, atomes Medusa), colore chaque concept en turquoise et appose les définitions dessous ; (2) le CODEX — domaine « Concepts & jauges » GÉNÉRÉ du registre (F1).
+- « Les jours s'écoulent par paquets de 8-9 » : MESURÉ FAUX côté sim (perf_probe.tscn : 97 j en 12 s = les 8.1 j/s exacts, 1 j/frame, moteur 0.15 ms/jour). C'était la DATE AFFICHÉE : le topbar se rafraîchit au MOIS ou au CLIC (cadence anti-danse voulue) → entre deux redraws le compteur saute de ~1 s × 8.1 = 8-9 j. Fix : `ui/date_chip.gd` — la date est un contrôle ENFANT à cadence QUOTIDIENNE (Sim.ticked), le topbar garde sa cadence mensuelle ; sa place est réservée par une largeur MAX fixe (l'ancre du chip d'âge ne dépend plus du texte vivant).
+- Perf mesurée en fenêtré probe : fps ≈ 16 sur monde an-10 — pas bloquant (la promesse de vitesse est tenue) mais l'overlay reste le budget dominant ; un chantier perf dédié (profiler _draw) est le prochain levier si ça gêne en vrai jeu.
+**Pièges**
+- `RichTextLabel` dans un tooltip maison : poser la position APRÈS une frame (le layout PanelContainer n'a pas encore sa taille) — `await process_frame` puis clamp viewport.
+- BBCode : échapper `[` du texte source (`[lb]`) avant décoration.
+**Restes**
+- Les tooltips IMMÉDIATS custom (construction_panel/_draw_tooltip, sidebar_drawer._hover_text) ne passent pas par le serveur — à migrer vers tooltip_text/_get_tooltip pour hériter des concepts.
+- Cliquer un concept dans le tooltip → ouvrir le codex À la ligne (v1 : hint « F1 » seulement).
+
+## 2026-07-10 — Concepts v2 : icônes + passe TOUS-PANNEAUX
+**Découvertes**
+- Registre ~55 concepts avec ICÔNE chacun (concepts.gd : {d: définition, i: icône du pack}) — consommé par le TooltipServer ([img=16x16] dans les définitions), le CODEX (domaine « Concepts & jauges », RichTextLabel iconé, vérifié en capture) et implicitement par TOUT hover du jeu.
+- CONVERSION des tooltips « maison » vers la voie native (pour hériter des concepts) : sidebar_drawer (_hover_zones fusionnées dans _tips, encart dessiné à la main retiré) · construction_panel (_draw_tooltip → _get_tooltip head+lines ; le surlignage doré au survol reste) · empire_sidebar (SEC_TIPS neufs par bandeau — le ledger n'avait AUCUN hover).
+- Matcher : pluriel toléré (alternatives + "s?" ; _key_of retombe sur la clé canonique) — « cicatrices », « fractures » s'éclairent.
+- RichTextLabel accepte [img]res://…png[/img] en export (les PNG d'icônes sont des ressources importées) — pas besoin d'atlas.
+**Pièges**
+- Les mots trop communs sont EXCLUS à dessein (« Or », « Guerre », « Conseil » nus) : ils coloreraient tout ; le registre ne prend que les mots qui portent une jauge/mécanique.
+**Restes**
+- Hovers restants à « conceptualiser » au fil de l'eau : province_detail (onglets), religion_panel, battle_panel, chronique — la plomberie est en place, c'est du wording.
+- Clic sur un concept → scroller le codex à SA ligne (v1 : hint F1).
+
+## 2026-07-10 — Espace fiable + F1-F8 = onglets du rail
+**Découvertes**
+- Espace « ne marchait plus » APRÈS un clic : le bouton cliqué GARDAIT le focus clavier et mangeait Espace/Entrée avant _unhandled_input. Fix global : `focus_mode = FOCUS_NONE` posé par ui_theme._wire sur chaque BaseButton (présent + futur) — style Paradox, la navigation Tab est sacrifiée sciemment.
+- F1-F8 = les 8 onglets du rail gauche PAR EMPLACEMENT (toggle_tab borné) ; F10 devpanel gardé (pas de conflit). Le CODEX (ex-F1) migre au MENU ÉCHAP (bouton + signal codex_requested) — « si conflit, placer les options dans le menu » (consigne joueur). Textes « F1 » mis à jour (header codex, hint du TooltipServer).
+**Restes**
+- i18n : le bouton « Codex » du menu est un littéral (à passer T_* avec la vague EN).
+
+## 2026-07-10 — Le « double hover » : tooltips verrouillables en cascade (CK3)
+**Découvertes**
+- tooltip_server réécrit en MACHINE À ÉTAGES : survol 0.45 s → tooltip · 1 s → VERROU (liseré turquoise 2 px, mouse_filter STOP, hitbox élargie grow(16)) · survol d'un mot turquoise 0.3 s → tooltip-ENFANT du concept (né verrouillé) — récursif (chaque définition en appelle d'autres), MAXDEPTH 6, grâce 0.3 s hors hitbox, fermeture du plus profond au plus proche (remonter à un étage N ferme au-delà ; revenir à la SOURCE ne garde que la racine).
+- `Concepts.decorate` émet DIRECTEMENT des liens `[url=CLÉ]` (le remplacement après coup ratait pluriels/minuscule : le mot affiché ≠ la clé canonique) — inertes tant que le RichTextLabel ignore la souris, actifs au verrou.
+- `RichTextLabel.meta_hover_started/ended` = le mécanisme de cascade (pas de clic requis).
+**Pièges**
+- Lambda GDScript : `func(x): if c: a; b` met TOUT dans la branche du if — lambdas multilignes obligatoires pour les connects.
+- `gui_get_hovered_control` renvoie NOS panneaux une fois STOP : le suivi de la source racine doit les ignorer (`is_ancestor_of`).
+**Restes**
+- La probe ne survole pas : la cascade est vérifiée en parse + design, l'œil joueur juge le feel (délais DELAY/LOCK_AT/SUB_DELAY faciles à retoucher en tête de fichier).
+
+## 2026-07-10 — Arbre GÉANT scrollable + Construction en liste à paliers
+**Découvertes**
+- Arbre tech : géométrie FIXE généreuse (rangée 64 px, médaillon ~53 px — enfin lisibles) dans un ScrollContainer (barre latérale) ; le panneau se centre ENTRE le rail (SIDEBAR_W) et le ledger (274) — centré sur l'écran entier il passait SOUS le ledger (capture). Les couloirs/tiers se dessinent sur un FOND enfant du scroll (`_bg.draw.connect`) : ils défilent avec le contenu.
+- ⚠ MEDUSA : le Graph recense ses Atomes dans SON _ready → il ne doit entrer dans l'arbre de scène QU'APRÈS la pose des atomes (`_pending_graph_parent`, add_child en dernier). L'ajouter d'abord = graphe vide.
+- Construction : « une ligne, un bâtiment » (ROWH 30, icône 24 + nom + « N or · N j », survol doré, ✦ tech) ; les PALIERS familiaux se MASQUENT tant que le précédent n'est pas bâti — façade `ScpsEdificeDef` +{tier, prev, prev_built} (edifice_tier/edifice_prev + scan prov.edi_built de l'empire ; `edifice_prev` renvoie EDIFICE_COUNT pour une base). Défaut SÛR avant rebuild DLL : prev=-1 ⇒ rien de masqué.
+**Restes**
+- Après rebuild DLL : vérifier en capture que Temple/Cathédrale/Forteresse/Citadelle disparaissent bien an-0 (aucun précédent bâti).
+
+## 2026-07-10 — Construction : onglets + lignes descriptives (recette/effet/flavor)
+**Découvertes**
+- Façade `ScpsEdificeDef` +{effet, flavor} : l'EFFET est COMPOSÉ du delta ProvBuild réel (K_inst→institutions · H_coerc→coercition · P_open→ouverture · PE_infra→prospérité · food_cap→vivres · faith→foi · savoir · port) — membrane stricte, chiffres du moteur ; le FLAVOR = table EDI_FLAVOR[27] cynique (display-only, scps_api.c).
+- Panneau : 2 onglets (Édifices RH 76 : nom+coût / recette en ICÔNES ×qty / effet chiffré / « flavor ») · Manufactures RH 42 ; molette = défilement PAR LIGNE (une rangée partielle repeindrait les onglets : clip au panneau, pas à la liste) ; barre latérale piste+pouce maison.
+**Restes**
+- Manufactures : pas d'effet/flavor (pas de reader façade des recettes qout/labor) — même motif à étendre si voulu.
+- effet/flavor/masquage de palier VISIBLES après rebuild DLL (défauts sûrs d'ici là).

@@ -26,7 +26,7 @@ static func build() -> Theme:
 	var fui: Font = VKit.font()
 	if fui != null:
 		th.default_font = fui
-		th.default_font_size = 15
+		th.default_font_size = 16   # +1 cran (retour joueur 2026-07-10 : « agrandis la police »)
 	# ── BOUTONS : cadre CUIR + bordure OR (StyleBoxFlat), 4 états nettement distincts.
 	# Les planches sheet02 ont des fleurons AU MILIEU des bords → AUCUN 9-slice ne peut les
 	# étirer sans les déformer (le « découpage » raté) ; le cadre plat s'étire NET à toute
@@ -55,6 +55,17 @@ static func build() -> Theme:
 	th.set_stylebox("normal", "LineEdit", le)
 	th.set_stylebox("focus", "LineEdit", _box(Color(0.14, 0.12, 0.09), Color(0.86, 0.68, 0.26)))
 	th.set_color("font_color", "LineEdit", Color(0.92, 0.88, 0.76))
+	# TOOLTIP façon EU4 (rendu attendu 2026-07-09) : encart SOMBRE quasi opaque, liseré
+	# OR — le tooltip système gris cassait la charte partout (chaque bouton en a un).
+	var tip := StyleBoxFlat.new()
+	tip.bg_color = Color(0.075, 0.06, 0.045, 0.97)
+	tip.border_color = Color(0.78, 0.62, 0.30)
+	tip.set_border_width_all(1)
+	tip.set_corner_radius_all(3)
+	tip.set_content_margin_all(8)
+	th.set_stylebox("panel", "TooltipPanel", tip)
+	th.set_color("font_color", "TooltipLabel", Color(0.92, 0.88, 0.76))
+	th.set_font_size("font_size", "TooltipLabel", 14)
 	return th
 
 ## FLASH DE CLIC universel : chaque BaseButton (présent + futur) pulse à l'appui.
@@ -74,8 +85,12 @@ static func _wire(b: BaseButton) -> void:
 	if b.has_meta("_scps_fb"):
 		return
 	b.set_meta("_scps_fb", true)
+	# AUCUN focus clavier (style Paradox) : un bouton focusé MANGEAIT Espace/Entrée —
+	# la pause ne répondait plus après un clic (retour joueur 2026-07-10).
+	b.focus_mode = Control.FOCUS_NONE
 	b.button_down.connect(func():
 		Sound.play("ui_click")   # LE clic universel (façon iPhone) — chaque bouton tape
+		Sim.notify_action()      # PAUSE : l'UI se rafraîchit au clic (retour joueur 2026-07-09)
 		var tw := b.create_tween()
 		b.modulate = Color(1.35, 1.28, 1.05)
 		tw.tween_property(b, "modulate", Color(1, 1, 1), 0.22).set_trans(Tween.TRANS_QUAD))
