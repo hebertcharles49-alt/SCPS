@@ -119,8 +119,12 @@ public:
     Dictionary country_army(int country);             /* mobilisation + flotte */
     Dictionary country_trade(int country);            /* commerce : routes · or · partenaires */
     Dictionary commerce_power(int country);           /* §5 : pool commercial mensuel + restant + sources (hover) */
-    Array      country_council(int country);          /* conseil : 3 sièges (+age v49) */
-    Array      council_candidates(int seat);          /* pool du siège : {slot,nom,tier,age,cost} — embauche éclairée */
+    Array      country_council(int country);          /* conseil : 3 sièges (+age v49 · +identite/portrait_id/id_flavor, narratif pur ·
+                                                        * +CARTE 2026-07-10 : firstname/house/domain/rank_bonus_pct/efficiency_pct/
+                                                        * final_bonus_pct/cost_rate_pct/cost_year/retire_lo/retire_hi/k_admin/corruption_pct) */
+    Array      council_candidates(int seat);          /* pool du siège : {slot,nom,tier,age,cost,identite,portrait_id,id_flavor} — embauche éclairée
+                                                        * (+CARTE : firstname/house/faction/domain/rank_bonus_pct/efficiency_pct[PRÉVUE]/
+                                                        * final_bonus_pct/cost_rate_pct/cost_year/retire_lo/retire_hi) */
     Array      decrees_list(int country);             /* DÉCRETS (civics) : {id,nom,flavor,plateaux,reforme,active,legal} */
 
     /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */
@@ -136,7 +140,9 @@ public:
     int        lang_get() const;                       /* I18N : langue moteur active (0/1) */
     Array      country_budget(int country);            /* budget : postes de flux de l'année (signés) */
     Dictionary budget_summary(int country);            /* budget : or · revenus · dépenses · net · crédit · prêteur */
-    Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année */
+    Dictionary mission_info(int country);              /* mission décennale : texte · récompense · année ·
+                                                        * +CARTE 2026-07-10 : resp_seat/resp_name/resp_tier/resp_bonus_pct/
+                                                        * reward_gold_adj/reward_qty_adj (récompense PRÉVUE) */
     Dictionary country_factions(int country);          /* spectre de factions : parts/griefs/dominante + coup/corruption */
 
     /* ACTIONS du joueur (la main humaine — mêmes actionneurs que l'IA) */
@@ -163,6 +169,11 @@ public:
     bool       player_repress(int region);            /* intérieur : réprimer l'agitation */
     bool       player_assimilate(int region, bool creuset); /* intérieur : assimiler (creuset = TECH_INTEGRATION) */
     bool       player_purge(int region);              /* intérieur : purger (coût SCPS différé) */
+    /* APERÇU D'ACTION (UI-4, 2026-07-10) — { cost_gold, duration_days, pop_delta,
+     * satisfaction_delta, agitation_delta, coercition_delta, risque } sur `region`
+     * MAINTENANT, pour les 3 leviers intérieurs (lecture pure, aucune mutation).
+     * verb : 0=MATER 1=FORMER 2=PURGER. */
+    Dictionary action_preview(int region, int verb);
     bool       player_council_hire(int seat, int slot);   /* conseil : pourvoir un siège */
     bool       player_council_dismiss(int seat);      /* conseil : renvoyer */
     bool       player_council_pay(int seat, float pay);   /* V2a : le curseur de paie (0..2) */
@@ -218,6 +229,9 @@ public:
     bool       player_pop_transfer(int src_region, int dst_region, int klass, int count);
     /* LOT J — L'APERÇU DE MANUMISSION : { souls, n_groups, pct_of_country, friction_after }. */
     Dictionary manumit_preview();
+    /* PÉNURIES (UI-2, topbar) — [{nom, res_id, runway_days, structurel}], trié urgence
+     * croissante. runway_days = -1.0 si aucun mur en vue. */
+    Array      country_shortages(int country);
 
     /* ESCLAVAGE — les 3 verbes + le lecteur de marché (V3, câblage servile). */
     bool       player_manumit();                       /* affranchit TOUTE la strate esclave du joueur */

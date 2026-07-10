@@ -30,6 +30,8 @@ var _build_rect := Rect2()
 var _colonize_rect := Rect2()   ## bouton COLONISER (province vierge légale — scps_can_colonize)
 var _colonize_ms := -100000     ## horloge MUR du dernier ordre (feedback « ordre émis », 3 s)
 var _close_rect := Rect2()
+var _purge_armed := false       ## UI-4 : Purger EXIGE 2 clics (motif _servile_manumit_armed) — armé par le 1er
+var _purge_armed_ms := -100000  ## horloge MUR de l'armement — retombe après 4 s sans confirmation
 var _collapsed := false         ## REPLIÉ : bande-paysage + nom seuls (retour joueur « rétractable »)
 var _collapse_rect := Rect2()
 var _acts := []                 ## [[Rect2, verbe:String], …] — chips d'action contextuels (posés au _draw)
@@ -52,12 +54,21 @@ func _layout() -> void:
 	size = Vector2(PW, clampf(_ph, 80.0, hmax))
 
 func show_province(pid: int) -> void:
+	if pid != _pid:
+		_purge_armed = false          # changer de province désarme une confirmation en attente
 	_pid = pid
 	visible = pid >= 0
 	queue_redraw()
 
 func _on_tick(_year: int) -> void:
 	if visible:
+		queue_redraw()
+
+## la fenêtre de confirmation (4 s) retombe même hors tick/clic — indépendant de la
+## pause du jeu (Sim.ticked ne tourne pas en pause ; ce Control, si).
+func _process(_dt: float) -> void:
+	if _purge_armed and Time.get_ticks_msec() - _purge_armed_ms > 4000:
+		_purge_armed = false
 		queue_redraw()
 
 func _draw() -> void:
@@ -318,8 +329,12 @@ func _draw() -> void:
 	var libres: int = int(cap.get("logement_cap", 0)) - int(cap.get("pop", 0))
 	_tips.append([Rect2(0.0, y, PW, 20.0),
 		"Âmes logées / capacité : ½ vient de la terre nue, le reste du BÂTI (manufactures-logements, confort). Plein = la croissance s'étouffe."])
-	y = VKit.row(self, x, y, "Logement", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("logement_cap", 0))],
-		VKit.COL_PARCH if libres >= 0 else VKit.sense(0.12))
+	# UI-5 (retour joueur : « la couleur seule ne suffit pas ») : la saturation ne se lit
+	# plus qu'à la teinte rouge — un « ⚠ » double le canal pour les daltoniens/le survol rapide.
+	var housing_txt := "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("logement_cap", 0))]
+	if libres < 0:
+		housing_txt = "⚠ " + housing_txt
+	y = VKit.row(self, x, y, "Logement", housing_txt, VKit.COL_PARCH if libres >= 0 else VKit.sense(0.12))
 	_tips.append([Rect2(0.0, y, PW, 20.0),
 		"Âmes servies / capacité de SERVICES (échoppes, bains, cultes) : au-delà, le confort décroche."])
 	y = VKit.row(self, x, y, "Services", "%s/%s" % [_grp(cap.get("pop", 0)), _grp(cap.get("service_cap", 0))], VKit.COL_PARCH)
@@ -390,8 +405,7 @@ func _draw() -> void:
 			_tips.append([_build_rect, "Construire — ouvrir le panneau de bâti (unités & édifices)"])
 		y += bs + 10.0
 	if powner == me:
-		_act_chips(x, y, [["Réprimer", "repress"], ["Assimiler", "assimilate"],
-			["Purger", "purge"], ["Détail", "detail"]])
+		_draw_gov_actions(x, y, w)
 	elif w.has_method("can_colonize") and w.can_colonize(_pid):
 		# le verbe d'EXPANSION du joueur (charte : « le joueur colonise n'importe quelle
 		# province ») — visible seulement si LÉGAL (cible vierge + une source aux portes).
@@ -452,6 +466,93 @@ func _act_chips(x: float, y: float, items: Array) -> void:
 		VKit.text(self, Vector2(cx + 7, y + 3), VKit.COL_PARCH, label, VKit.FS_SMALL)
 		_acts.append([r, String(it[1])])
 		cx += cw + 6.0
+
+## UI-4 (retour joueur 2026-07-10) : Réprimer/Assimiler/Purger/Détail n'ont PLUS le même
+## traitement — leur portée diffère radicalement (Purger est une punition de masse,
+## irréversible ; Détail n'est qu'une navigation). Rendu à la main (pas _act_chips) :
+##   · Réprimer/Assimiler : secondaires neutres (chip standard, comme avant).
+##   · Purger : DESTRUCTIF rouge sombre, CONFIRMATION 2 clics (motif _servile_manumit_armed
+##     de sidebar_drawer.gd), armé 4 s (cf. _process).
+##   · Détail : navigation légère — texte seul, sans cadre, dans le ton discret.
+## Chaque chip porte son HOVER de conséquences (façade action_preview si présente, sinon
+## un texte factuel SANS chiffre inventé — discipline membrane).
+func _draw_gov_actions(x: float, y: float, w) -> void:
+	var reg: int = w.province_region(_pid)
+	var cx := x
+	for it in [["Réprimer", "repress"], ["Assimiler", "assimilate"]]:
+		var label: String = it[0]
+		var verb: String = it[1]
+		var cw := VKit.text_w(label, VKit.FS_SMALL) + 14.0
+		var r := Rect2(cx, y, cw, 20.0)
+		VKit.fill(self, r, VKit.COL_PANEL2)
+		VKit.box(self, r, VKit.COL_GOLD)
+		VKit.text(self, Vector2(cx + 7, y + 3), VKit.COL_PARCH, label, VKit.FS_SMALL)
+		_acts.append([r, verb])
+		_tips.append([r, _action_hover(verb, w, reg)])
+		cx += cw + 6.0
+	# ── PURGER : rouge sombre, destructif, 2 clics ──
+	var plabel := "Confirmer la purge ?" if _purge_armed else "Purger"
+	var pcw := VKit.text_w(plabel, VKit.FS_SMALL) + 14.0
+	var pr := Rect2(cx, y, pcw, 20.0)
+	var pcol := Color(0.86, 0.32, 0.22) if _purge_armed else Color(0.58, 0.17, 0.13)
+	VKit.fill(self, pr, Color(0.18, 0.05, 0.04))
+	VKit.box(self, pr, pcol)
+	VKit.text(self, Vector2(cx + 7, y + 3), pcol, plabel, VKit.FS_SMALL)
+	_acts.append([pr, "purge"])
+	_tips.append([pr, "IRRÉVERSIBLE — cliquez de nouveau pour confirmer (4 s)" if _purge_armed
+		else _action_hover("purge", w, reg)])
+	cx += pcw + 12.0
+	# ── DÉTAIL : navigation légère, pas un acte — pas de cadre ──
+	var dlabel := "Détail"
+	var dw := VKit.text_w(dlabel, VKit.FS_SMALL)
+	var dr := Rect2(cx, y + 3, dw, 15.0)
+	VKit.text(self, Vector2(cx, y + 4), VKit.COL_DIM, dlabel, VKit.FS_SMALL)
+	_acts.append([dr, "detail"])
+	_tips.append([dr, "Ouvrir le détail complet de la province (peuples, production, bâti, journal, main-d'œuvre)."])
+
+## conséquences AVANT décision (retour joueur UI-4) : lit action_preview si la façade
+## l'expose (verbe 0=RÉPRIMER 1=ASSIMILER 2=PURGER ; clés EXACTES du binding
+## scps_sim_node.cpp:1276 — cost_gold · duration_days · pop_delta · satisfaction_delta ·
+## agitation_delta · coercition_delta · risque), sinon un texte factuel SANS chiffre
+## inventé — la membrane ne promet jamais un nombre que le moteur ne donne pas.
+const _ACT_VERB_ID := {"repress": 0, "assimilate": 1, "purge": 2}
+const _ACT_FALLBACK := {
+	"repress": "Réprimer — mate l'agitation par la force. Baisse l'agitation ; hausse la coercition et le ressentiment.",
+	"assimilate": "Assimiler — pousse la culture dominante sur les minorités. Réduit la friction culturelle ; prend du temps.",
+	"purge": "Purger — réprime dans le sang la minorité la plus agitée. Pertes de population, chute de satisfaction, risque diplomatique. IRRÉVERSIBLE.",
+}
+func _action_hover(verb: String, w, reg: int) -> String:
+	var fallback := String(_ACT_FALLBACK.get(verb, ""))
+	if not w.has_method("action_preview") or not _ACT_VERB_ID.has(verb):
+		return fallback
+	var pv: Dictionary = w.action_preview(reg, int(_ACT_VERB_ID[verb]))
+	var parts := PackedStringArray()
+	var pop_d := int(pv.get("pop_delta", 0))
+	if pop_d != 0:
+		parts.append("%+d habitants" % pop_d)
+	var sat_d := int(pv.get("satisfaction_delta", 0))
+	if sat_d != 0:
+		parts.append("satisfaction %+d" % sat_d)
+	var agit_d := int(pv.get("agitation_delta", 0))
+	if agit_d != 0:
+		parts.append("agitation %+d" % agit_d)
+	var coerc_d := int(pv.get("coercition_delta", 0))
+	if coerc_d != 0:
+		parts.append("coercition %+d" % coerc_d)
+	var gold_d := int(round(float(pv.get("cost_gold", 0.0))))
+	if gold_d != 0:
+		parts.append("%d or" % gold_d)
+	var days_d := int(pv.get("duration_days", 0))
+	if days_d != 0:
+		parts.append("%d j" % days_d)
+	var risk := String(pv.get("risque", ""))
+	# tout à zéro ET pas de risque nommé ⇒ la façade n'a rien à dire ici : texte factuel
+	if parts.is_empty() and risk == "":
+		return fallback
+	var txt := (" · ".join(parts)) if not parts.is_empty() else fallback
+	if risk != "":
+		txt += (" · " if not parts.is_empty() else " ") + "risque : %s" % risk
+	return txt
 
 ## dispatch d'un chip d'action → le VERBE journalisé (drainé au tick, revalidé là-bas).
 func _act_fire(verb: String) -> void:
@@ -518,7 +619,17 @@ func _gui_input(event: InputEvent) -> void:
 		else:
 			for a in _acts:
 				if (a[0] as Rect2).has_point(event.position):
-					_act_fire(String(a[1]))
+					var verb := String(a[1])
+					if verb == "purge" and not _purge_armed:
+						# UI-4 : 1er clic ARME la confirmation (irréversible) — n'exécute rien
+						_purge_armed = true
+						_purge_armed_ms = Time.get_ticks_msec()
+						Sound.play("ui_click")
+						queue_redraw()
+					else:
+						if verb == "purge":
+							_purge_armed = false
+						_act_fire(verb)
 					break
 
 ## HOVER natif : Godot appelle ceci au survol → texte de la zone touchée (classe / humeur).

@@ -10,6 +10,7 @@ extends Control
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const VKitDropdown = preload("res://ui/vkit_dropdown.gd")
+const Frame = preload("res://ui/frame.gd")
 # taille ADAPTATIVE à la fenêtre (recalculée dans _layout ; plancher = l'ancienne taille fixe)
 var PW := 648.0
 var PH := 512.0
@@ -73,11 +74,14 @@ func _ready() -> void:
 	hide()
 
 func _layout() -> void:
+	# ZONE CONTEXTUELLE UNIQUE (UI-3, retour joueur 2026-07-10) : le détail REMPLACE le
+	# panneau province — il s'ancre à la MÊME position (au lieu du centre) pour que le
+	# regard reste au même endroit quand l'un cède la place à l'autre.
 	var vp := get_viewport_rect().size
 	PW = clampf(vp.x * 0.44, 648.0, 1000.0)
 	PH = clampf(vp.y * 0.58, 512.0, 840.0)
 	size = Vector2(PW, PH)
-	position = Vector2((vp.x - PW) * 0.5, (vp.y - PH) * 0.5)
+	position = Vector2(Frame.SIDEBAR_W + 14.0, Frame.TOPBAR_H + 12.0)
 
 func show_province(pid: int) -> void:
 	_pid = pid

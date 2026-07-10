@@ -26,6 +26,7 @@ var _codex: Control            # LE CODEX DES VERBES (touche F1) : tout ce que l
 var _faith_prompted := false   # le créateur de foi ne s'ouvre qu'UNE fois (1er édifice religieux)
 var _epilogue_shown := false   # l'épilogue ne s'ouvre qu'UNE fois par partie (latch UI)
 var _sel_prov := -1
+var _sel_owner := -1           # dernier propriétaire vu (restaure CountryPanel à la fermeture d'un écran profond)
 
 func _ready() -> void:
 	# THÈME GLOBAL + feedback de clic : états de bouton visibles (hover/pressed/disabled)
@@ -179,6 +180,22 @@ func _ready() -> void:
 	_sidebar.open_country.connect(func(cid):
 		_sidebar.close()
 		_country_actions.open_country(cid))
+
+	# ZONE CONTEXTUELLE UNIQUE (retour joueur 2026-07-10, UI-3) : un écran profond
+	# REMPLACE le panneau contextuel qu'il détaille, il ne s'y ajoute jamais — le regard
+	# reste sur 3-4 zones, pas 5. Hooké sur le SIGNAL (visibility_changed) plutôt que sur
+	# chaque site d'ouverture : couvre la pile Échap (_close_topmost), les ouvertures ET
+	# la probe shot_ui (qui pose `.visible` en direct, hors des signaux dédiés).
+	_prov_detail.visibility_changed.connect(func():
+		if _prov_detail.visible:
+			_prov_panel.visible = false             # le détail REMPLACE le panneau province
+		elif _sel_prov >= 0:
+			_prov_panel.show_province(_sel_prov))    # fermeture du détail → le panneau REVIENT
+	_country_actions.visibility_changed.connect(func():
+		if _country_actions.visible:
+			_country_panel.visible = false           # la fenêtre diplo REMPLACE le panneau pays
+		elif _sel_owner >= 0:
+			_country_panel.show_country(_sel_owner))
 
 	# la carte SÉLECTIONNE → on remplit les panneaux (lecture seule de la membrane)
 	map.province_picked.connect(_on_province_picked)
@@ -425,6 +442,7 @@ func _setup_cursor() -> void:
 ## désélection PLEINE : panneaux de sélection refermés + le contour doré s'éteint.
 func _clear_selection() -> void:
 	_sel_prov = -1
+	_sel_owner = -1
 	if _prov_panel != null:
 		_prov_panel.show_province(-1)
 	if _country_panel != null:
@@ -446,8 +464,13 @@ func _on_province_picked(province: int, region: int, owner: int) -> void:
 	if _sidebar != null:
 		_sidebar.close()                      # un clic province referme le tiroir (exclusifs)
 	_sel_prov = province                      # mémorisé pour le détail (touche V)
-	_prov_panel.show_province(province)
-	_country_panel.show_country(owner)        # -1 (terre libre) → panneau caché
+	_sel_owner = owner                        # mémorisé pour restaurer CountryPanel à la fermeture d'un écran profond
+	# ZONE CONTEXTUELLE UNIQUE (UI-3) : un écran profond déjà ouvert garde la main —
+	# on ne réaffiche pas le panneau qu'il a remplacé par-dessus lui.
+	if _prov_detail == null or not _prov_detail.visible:
+		_prov_panel.show_province(province)
+	if _country_actions == null or not _country_actions.visible:
+		_country_panel.show_country(owner)        # -1 (terre libre) → panneau caché
 	if _prov_detail != null and _prov_detail.visible:
 		_prov_detail.show_province(province)  # détail ouvert → suit la sélection
 

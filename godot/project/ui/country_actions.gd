@@ -24,12 +24,32 @@ var _cd_lbl: Label
 var _cb_lbl: Label   ## W-GUERRE-3 : état de l'intrigue fabriquée (en cours / prête / coût)
 var _flash: Label
 
+# UI-4 (retour joueur 2026-07-10) : hiérarchie d'actions — Guerre est DESTRUCTIF (rouge
+# sombre + confirmation 2 clics, motif _servile_manumit_armed/province_panel _purge_armed) ;
+# Paix/Allier/Pacte/Migration/Embargo restent SECONDAIRES (thème neutre inchangé).
+const BTN_LABELS := {"war": "Guerre", "peace": "Paix", "ally": "Allier", "pact": "Pacte",
+	"migration": "Migration", "embargo": "Embargo"}
+var _war_armed := false
+var _war_armed_ms := -100000
+var _war_sb_idle: StyleBoxFlat
+var _war_sb_hover: StyleBoxFlat
+var _war_sb_press: StyleBoxFlat
+var _war_sb_armed: StyleBoxFlat
+
 func _ready() -> void:
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_build()
 	get_viewport().size_changed.connect(_layout)
 	Sim.ticked.connect(func(_y): if visible: _refresh())
+
+## la fenêtre de confirmation « Guerre » (4 s) retombe même en pause (Sim.ticked ne
+## tourne pas si le jeu est arrêté ; ce Control, si — miroir province_panel._process).
+func _process(_dt: float) -> void:
+	if _war_armed and Time.get_ticks_msec() - _war_armed_ms > 4000:
+		_war_armed = false
+		if visible:
+			_refresh()
 
 func _build() -> void:
 	_panel = PanelContainer.new()
@@ -86,6 +106,13 @@ func _build() -> void:
 	_cb_lbl.add_theme_color_override("font_color", Color(0.70, 0.55, 0.75))
 	col.add_child(_cb_lbl)
 
+	# UI-4 : les styleboxes DESTRUCTIFS de « Guerre » (rouge sombre — distinct du chrome
+	# cuir/or par défaut des verbes secondaires) — précalculés une fois.
+	_war_sb_idle = _mkbox(Color(0.22, 0.06, 0.05), Color(0.58, 0.18, 0.13), 2)
+	_war_sb_hover = _mkbox(Color(0.30, 0.09, 0.07), Color(0.80, 0.26, 0.18), 2)
+	_war_sb_press = _mkbox(Color(0.14, 0.04, 0.03), Color(0.46, 0.13, 0.10), 2, true)
+	_war_sb_armed = _mkbox(Color(0.48, 0.12, 0.09), Color(0.95, 0.36, 0.25), 2)
+
 	# 6 verbes en grille 3×2 à largeur ÉGALE (le long libellé « Fabriquer… » déformait
 	# la grille : Guerre géant, Paix minuscule — capture 2026-07-09) ; « Fabriquer une
 	# revendication » vit sur SA ligne, pleine largeur.
@@ -100,7 +127,17 @@ func _build() -> void:
 		b.custom_minimum_size = Vector2(104, 0)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var verb: String = v[0]
-		b.pressed.connect(func(): _act(verb))
+		if verb == "war":
+			# DESTRUCTIF : rouge sombre + CONFIRMATION 2 clics (motif _servile_manumit_armed/
+			# province_panel._purge_armed) — jamais exécuté directement au 1er clic.
+			b.add_theme_stylebox_override("normal", _war_sb_idle)
+			b.add_theme_stylebox_override("hover", _war_sb_hover)
+			b.add_theme_stylebox_override("pressed", _war_sb_press)
+			b.add_theme_color_override("font_color", Color(0.94, 0.82, 0.78))
+			b.add_theme_color_override("font_hover_color", Color(1.0, 0.90, 0.86))
+			b.pressed.connect(func(): _war_press())
+		else:
+			b.pressed.connect(func(): _act(verb))
 		grid.add_child(b)
 		_btns[verb] = b
 	var fb := Button.new()
@@ -113,6 +150,32 @@ func _build() -> void:
 	_flash.add_theme_color_override("font_color", Color(0.46, 0.74, 0.42))
 	col.add_child(_flash)
 	_layout()
+
+## petit StyleBoxFlat cuir/bordure (miroir ui_theme._box, dupliqué ici : country_actions
+## n'a pas licence d'éditer ui_theme.gd, et une couleur DESTRUCTIVE n'a pas sa place dans
+## le thème global neutre).
+static func _mkbox(bg: Color, border: Color, bw: int = 2, shift_down := false) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.set_border_width_all(bw)
+	sb.set_corner_radius_all(3)
+	sb.content_margin_left = 10.0
+	sb.content_margin_right = 10.0
+	sb.content_margin_top = 5.0 + (2.0 if shift_down else 0.0)
+	sb.content_margin_bottom = 5.0 - (2.0 if shift_down else 0.0)
+	return sb
+
+## UI-4 : « Guerre » exige 2 clics — le 1er ARME la confirmation (rien n'est déclaré), le
+## 2e (dans les 4 s, cf. _process) déclare pour de vrai. Jamais de popup modal.
+func _war_press() -> void:
+	if not _war_armed:
+		_war_armed = true
+		_war_armed_ms = Time.get_ticks_msec()
+		_refresh()
+		return
+	_war_armed = false
+	_act("war")
 
 func _layout() -> void:
 	var vp := get_viewport_rect().size
@@ -197,14 +260,32 @@ func _refresh() -> void:
 	var allied: bool = int(psr.get("ally", 0)) != 0
 	var has_pact: bool = int(psr.get("pact", 0)) != 0
 	for verb in _btns:
+		if verb == "fabricate":
+			continue   # géré à part plus bas (texte/état dynamiques)
 		var b: Button = _btns[verb]
 		b.disabled = cd > 0 or not bool(can.get(verb, false))
+		if verb == "war" and b.disabled:
+			_war_armed = false          # plus légal ⇒ la confirmation en attente retombe
 		# AMBRE : permis mais l'offre serait REFUSÉE (l'opinion #26 prévisualisée)
 		var amber: bool = (not b.disabled) and would.has(verb) and not bool(would[verb])
-		b.modulate = Color(1.0, 0.82, 0.5) if amber else Color(1, 1, 1)
+		# UI-5 (retour joueur : « la couleur seule ne suffit pas ») : l'ambre « il
+		# refusera » ne se voyait qu'à la teinte du bouton (invisible avant le survol) —
+		# un « ⚠ » sur le LIBELLÉ double le canal, visible sans survoler.
+		var base_label: String = String(BTN_LABELS.get(verb, verb))
+		if verb == "war":
+			# DESTRUCTIF : le libellé PORTE la confirmation (« Confirmer la guerre ? »),
+			# le fond bascule à un rouge plus vif tant que l'armement tient (4 s).
+			b.text = "Confirmer la guerre ?" if _war_armed else "⚔ %s" % base_label
+			b.add_theme_stylebox_override("normal", _war_sb_armed if _war_armed else _war_sb_idle)
+			b.modulate = Color(1, 1, 1)
+		else:
+			b.text = ("%s ⚠" % base_label) if amber else base_label
+			b.modulate = Color(1.0, 0.82, 0.5) if amber else Color(1, 1, 1)
 		# RETOUR JOUEUR : chaque verbe GRISÉ nomme sa raison au survol (« pourquoi je peux pas ? »)
-		if b.disabled and verb != "fabricate":
+		if b.disabled:
 			b.tooltip_text = _why_disabled(verb, cd, at_war, allied, has_pact)
+		elif verb == "war" and _war_armed:
+			b.tooltip_text = "irréversible — cliquez de nouveau pour confirmer (4 s)"
 		elif amber:
 			b.tooltip_text = "il refusera (opinion trop basse)"
 		else:

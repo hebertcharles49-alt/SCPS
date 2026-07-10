@@ -150,7 +150,29 @@ func _res_cell(x: float, y: float, res_id: int, name: String, col: Color) -> voi
 	_hover_zones.append({"rect": Rect2(x - 2, y - 3, 104, 18), "text": name})
 
 # ── ÉCONOMIE : Budget (econ_flux) + Commerce (intertrade), read-only ───────
+## MATIÈRES (retour joueur UI-2 : les 5 cellules de brut SORTENT de la topbar) —
+## ligne compacte en tête, même source que l'ancienne topbar (country_stocks) ; le
+## détail complet (net/j, couverture) vit déjà plus bas dans l'onglet STOCKS.
+const _MAT_RAWS := [9, 24, 25, 13, 36]   # RES_WOOD · RES_CLAY · RES_STONE · RES_IRON · RES_ARMS
+const _MAT_NAMES := {9: "bois", 24: "argile", 25: "pierre", 13: "fer", 36: "armes"}
+
+func _draw_mat_line(x: float, y: float, me: int) -> float:
+	if not Sim.world.has_method("country_stocks"):
+		return y
+	var smap := {}
+	for st in Sim.world.country_stocks(me):
+		smap[int(st["res_id"])] = int(st["stock"])
+	var parts := []
+	for rid in _MAT_RAWS:
+		parts.append("%s %s" % [String(_MAT_NAMES[rid]), _grp(smap.get(rid, 0))])
+	var line := "Matières : " + " · ".join(parts)
+	VKit.text(self, Vector2(x, y), VKit.COL_DIM, line, VKit.FS_SMALL)
+	_hover_zones.append({"rect": Rect2(x - 2, y - 3, VKit.text_w(line, VKit.FS_SMALL) + 8, 16),
+		"text": "Stocks nationaux de matières brutes — détail (net/jour, couverture) dans l'onglet Stocks"})
+	return y + 18.0
+
 func _draw_eco(x: float, y: float, me: int) -> float:
+	y = _draw_mat_line(x, y, me)
 	# bouton : les COURBES dans le temps sont DERRIÈRE ce sous-menu (pas affichées d'office)
 	_chart_btn = Rect2(x, y, DW - 2.0 * x, 20.0)
 	VKit.fill(self, _chart_btn, VKit.COL_PANEL2)
@@ -317,16 +339,28 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_GOLD, String(seat["seat"]))
 		y += 18
 		if filled:
-			# le ministre ASSIS : nom · tier · ÂGE (il vieillit ; la retraite vide le siège vers 66-73)
-			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH,
-				"%s · tier %d · %d ans" % [seat["councilor"], int(seat["tier"]), int(seat.get("age", 0))], VKit.FS_SMALL)
+			# CARTE CANDIDAT/SIÈGE (docs/CONSEIL_ORIENTATIONS_2026-07-10.md § Interface) —
+			# personne + maison (fallback sur le nom legacy si le binding n'a pas encore
+			# le champ, DLL pas rebâtie).
+			var fname := String(seat.get("firstname", ""))
+			var house := String(seat.get("house", ""))
+			var pname := (fname + " " + house).strip_edges() if fname != "" else String(seat["councilor"])
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, pname, VKit.FS_SMALL)
+			var idflav := String(seat.get("id_flavor", ""))
+			var idnom := String(seat.get("identite", ""))
+			if idflav != "":
+				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(pname, VKit.FS_SMALL) + 6, 16),
+					"text": "%s — %s" % [idnom, idflav]})
 			var bw := VKit.text_w("Renvoyer", VKit.FS_SMALL) + 14.0
 			var r := Rect2(DW - 14.0 - bw, y - 1, bw, 16)
 			VKit.fill(self, r, VKit.COL_PANEL2)
 			VKit.box(self, r, VKit.sense(0.12))
 			VKit.text(self, Vector2(r.position.x + 7, y), VKit.sense(0.12), "Renvoyer", VKit.FS_SMALL)
 			_conseil_btns.append({"rect": r, "act": "dismiss", "seat": idx, "slot": -1})
-			y += 22
+			y += 15
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM,
+				"%s, rang %d, %d ans" % [String(seat["seat"]), int(seat["tier"]), int(seat.get("age", 0))], VKit.FS_SMALL)
+			y += 18
 			# V2a — LE CONSEIL VIVANT : faction (mot) + barre de LOYAUTÉ (rouge→vert) + mot d'ambiance
 			var faction := String(seat.get("faction", ""))
 			var loyalty := int(seat.get("loyalty", 0))
@@ -353,23 +387,120 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				_conseil_btns.append({"rect": pr, "act": "pay", "seat": idx, "slot": 0, "pay": mult})
 				px += lw + 4.0
 			y += 22
+			# BONUS FINAL (rang × efficacité) — décomposition au survol (rang/K/loyauté/Corruption/efficacité).
+			if seat.has("rank_bonus_pct"):
+				var domain := String(seat.get("domain", ""))
+				var rankp := float(seat["rank_bonus_pct"])
+				var effp := float(seat["efficiency_pct"])
+				var finalp := float(seat["final_bonus_pct"])
+				var bline := "%s +%.1f %% net (rang +%.1f %% × %.1f %% efficace)" % [domain, finalp, rankp, effp]
+				VKit.text(self, Vector2(x + 16, y), VKit.COL_GOLD, bline, VKit.FS_SMALL)
+				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(bline, VKit.FS_SMALL) + 6, 16),
+					"text": "Bonus de rang %+.1f %% · K %.1f · Loyauté %d · Corruption %d · Efficacité %.1f %%" % [
+						rankp, float(seat.get("k_admin", 0.0)), loyalty, int(seat.get("corruption_pct", 0)), effp]})
+				y += 16
+				var rate := float(seat.get("cost_rate_pct", 0.0))
+				var cyear := float(seat.get("cost_year", 0.0))
+				VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM,
+					"Coût : %.1f %% du revenu annuel × IPM" % rate, VKit.FS_SMALL)
+				y += 15
+				VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM,
+					"Actuellement : %.0f or cette année" % cyear, VKit.FS_SMALL)
+				y += 15
+				var rlo := int(seat.get("retire_lo", -1))
+				var rhi := int(seat.get("retire_hi", -1))
+				if rlo >= 0:
+					VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM,
+						"Retraite estimée : %d à %d ans" % [rlo, rhi], VKit.FS_SMALL)
+					y += 15
+			y += 6
 		else:
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant : la pool se renouvelle par génération)", VKit.FS_SMALL)
 			y += 20
-			# l'embauche ÉCLAIRÉE : les CANDIDATS de la pool courante (nom · âge · ×tier · coût/mois)
+			# l'embauche ÉCLAIRÉE : les CANDIDATS de la pool courante — CARTE (personne+maison,
+			# faction, bonus de rang → efficacité PRÉVUE → bonus final, coût, retraite estimée).
 			if Sim.world.has_method("council_candidates"):
 				for cand in Sim.world.council_candidates(idx):
-					var lab := "%s · %d ans · ×%d · %.0f or/mois" % [
-						String(cand["nom"]), int(cand["age"]), int(cand["tier"]), float(cand["cost"])]
-					var cw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
-					var cr := Rect2(x + 16, y - 1, cw, 16)
-					VKit.fill(self, cr, VKit.COL_PANEL2)
-					VKit.box(self, cr, VKit.sense(0.80))
-					VKit.text(self, Vector2(cr.position.x + 7, y), VKit.COL_PARCH, lab, VKit.FS_SMALL)
-					_conseil_btns.append({"rect": cr, "act": "hire", "seat": idx, "slot": int(cand["slot"])})
+					var cx := x + 16
+					var cy0 := y
+					var cfname := String(cand.get("firstname", ""))
+					var chouse := String(cand.get("house", ""))
+					var cpname := (cfname + " " + chouse).strip_edges() if cfname != "" else String(cand["nom"])
+					VKit.text(self, Vector2(cx, y), VKit.COL_PARCH, cpname, VKit.FS_SMALL)
+					var cidflav := String(cand.get("id_flavor", ""))
+					if cidflav != "":
+						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cpname, VKit.FS_SMALL) + 6, 16),
+							"text": "%s — %s" % [String(cand.get("identite", "")), cidflav]})
+					y += 15
+					VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
+						"Faction : %s · rang %d · %d ans" % [String(cand.get("faction", "")), int(cand["tier"]), int(cand["age"])],
+						VKit.FS_SMALL)
+					y += 15
+					if cand.has("rank_bonus_pct"):
+						var cdomain := String(cand.get("domain", ""))
+						var crankp := float(cand["rank_bonus_pct"])
+						var ceffp := float(cand["efficiency_pct"])
+						var cfinalp := float(cand["final_bonus_pct"])
+						VKit.text(self, Vector2(cx, y), VKit.sense(0.70),
+							"%s +%.1f %% net (rang +%.1f %% × %.1f %% prévu)" % [cdomain, cfinalp, crankp, ceffp], VKit.FS_SMALL)
+						y += 15
+						VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
+							"Coût : %.1f %% du revenu × IPM — actuellement %.0f or cette année" % [
+								float(cand.get("cost_rate_pct", 0.0)), float(cand.get("cost_year", 0.0))], VKit.FS_SMALL)
+						y += 15
+						var crlo := int(cand.get("retire_lo", -1))
+						if crlo >= 0:
+							VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
+								"Retraite estimée : %d à %d ans" % [crlo, int(cand.get("retire_hi", -1))], VKit.FS_SMALL)
+							y += 15
+					else:
+						VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
+							"%d ans · ×%d · %.0f or/mois" % [int(cand["age"]), int(cand["tier"]), float(cand["cost"])], VKit.FS_SMALL)
+						y += 15
+					var cw := DW - 32.0
+					var lab := "Recruter"
+					var lw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
+					var hr := Rect2(x + 16 + cw - 10.0 - lw, y, lw, 16)
+					VKit.fill(self, hr, VKit.COL_PANEL2)
+					VKit.box(self, hr, VKit.sense(0.80))
+					VKit.text(self, Vector2(hr.position.x + 7, y + 1), VKit.sense(0.80), lab, VKit.FS_SMALL)
+					_conseil_btns.append({"rect": hr, "act": "hire", "seat": idx, "slot": int(cand["slot"])})
 					y += 22
+					var cardh := y - cy0
+					var cr := Rect2(x + 12, cy0 - 3, cw, cardh)
+					VKit.box(self, cr, VKit.COL_EDGE)
 			y += 8
 		idx += 1
+	# ── MISSION DÉCENNALE (§ Interface (cartes) « MISSION ») : le siège responsable
+	#    (mission_responsible_seat, moteur — successeur repris à chaque lecture) +
+	#    son bonus + la récompense PRÉVUE (base × rang×efficacité). ──
+	if Sim.world.has_method("mission_info"):
+		var mi: Dictionary = Sim.world.mission_info(me)
+		if bool(mi.get("active", false)):
+			y += 4
+			VKit.fill(self, Rect2(x, y, DW - 28.0, 1), VKit.COL_EDGE)
+			y += 8
+			VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "✦ Mission décennale", VKit.FS_SMALL)
+			y += 16
+			VKit.text(self, Vector2(x, y), VKit.COL_PARCH, String(mi.get("text", "")), VKit.FS_SMALL)
+			y += 16
+			var rname := String(mi.get("resp_name", ""))
+			var rseat := String(mi.get("resp_seat", ""))
+			if rseat != "":
+				var rtxt := ("Responsable : %s, %s, rang %d" % [rname, rseat, int(mi.get("resp_tier", 0))]) \
+					if rname != "" else ("Responsable : %s — siège vacant" % rseat)
+				VKit.text(self, Vector2(x, y), VKit.COL_DIM, rtxt, VKit.FS_SMALL)
+				y += 15
+				if rname != "":
+					VKit.text(self, Vector2(x, y), VKit.sense(0.70),
+						"Bonus du responsable : +%.1f %%" % float(mi.get("resp_bonus_pct", 0.0)), VKit.FS_SMALL)
+					y += 15
+			var rw := "Récompense prévue : %.0f or" % float(mi.get("reward_gold_adj", mi.get("reward_gold", 0)))
+			var mat := String(mi.get("reward_mat", ""))
+			if mat != "" and float(mi.get("reward_qty_adj", mi.get("reward_qty", 0))) > 0.0:
+				rw += " + %.0f %s" % [float(mi.get("reward_qty_adj", mi.get("reward_qty", 0))), mat]
+			VKit.text(self, Vector2(x, y), VKit.COL_DIM, rw, VKit.FS_SMALL)
+			y += 16
 	# (Décrets + Peuple servile vivent dans le sous-onglet POLITIQUES — lot 5)
 	if _conseil_flash != "":
 		VKit.text(self, Vector2(x, y),

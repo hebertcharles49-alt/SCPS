@@ -789,7 +789,12 @@ int main(int argc, char **argv){
         ok("chaque décret porte un flavor non vide", has_flavor);
         ok("chaque décret décrit ses DEUX plateaux (gain/contrepartie)", has_plateaux);
         ok("aucun décret actif à la genèse (monde frais)", none_active);
-        ok("au moins une RÉFORME (irréversible) est répertoriée", tribut_id>=0);
+        /* REFONTE 2026-07-10 (docs/CONSEIL_ORIENTATIONS_2026-07-10.md) : les 9 orientations
+         * légères REMPLACENT les 4 anciens grands décrets — TOUTES réversibles (DCR_EDIT),
+         * plus aucune RÉFORME irréversible au catalogue (Politique de tribut retirée). Le
+         * sous-test réforme ci-dessous (ligne ~830) reste correctement SAUTÉ via son propre
+         * `else` (tribut_id<0) — intention préservée, rien à recâbler côté drain/plomberie. */
+        ok("plus aucune réforme irréversible au catalogue (les orientations sont toutes réversibles)", tribut_id<0);
 
         /* toggle ON d'un ÉDIT (pas de réforme) : enfilé, DRAINÉ au tick suivant. */
         if (levee_id>=0){

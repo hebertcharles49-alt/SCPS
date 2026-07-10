@@ -25,6 +25,7 @@
 #include "scps_diplo.h"
 #include "scps_routes.h"
 #include "scps_statecraft.h"
+#include "scps_tune.h"      /* P1-1/P3 : COUNCIL_* (registre J) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -297,26 +298,42 @@ int main(int argc, char **argv){
     /* ── V2a — LE CONSEIL VIVANT : faction, loyauté, paie ──────────────────── */
     printf("\n── V2a : le Conseil vivant (faction, loyauté, paie) ──\n");
     {
-        /* (1) ATTRIBUTION DÉTERMINISTE — même seed → même faction ; dans le SPECTRE
-         * privilégié du siège (Savoir : Transgresseur/Légiste · Société : Conquérant/
-         * Communautaire · Industrie : Marchand seul). */
+        /* (1) P0-1 — SIX FACTIONS SUR TROIS SIÈGES : plus de spectre par siège — un
+         * mélange DÉTERMINISTE des 6 factions par (siège, génération) ; les 3
+         * candidats d'UN siège sont TOUJOURS 3 factions DISTINCTES (préfixe d'une
+         * permutation) ; re-tirage à chaque génération. */
         int cid=0;
-        bool det_ok=true, in_spectrum=true;
-        for (int seat=0; seat<SC_COUNCIL_SEATS; seat++)
+        bool det_ok=true, distinct_ok=true;
+        for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
+            EthosFaction seen[SC_COUNCIL_CANDS];
             for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){
                 EthosFaction f1=statecraft_council_faction(seed,cid,seat,sl,0);
                 EthosFaction f2=statecraft_council_faction(seed,cid,seat,sl,0);
                 if (f1!=f2) det_ok=false;
-                bool valid = (seat==0 && (f1==FAC_TRANSGRESSEUR||f1==FAC_LEGISTE))
-                          || (seat==1 && (f1==FAC_CONQUERANT   ||f1==FAC_COMMUNAUTAIRE))
-                          || (seat==2 && f1==FAC_MARCHAND);
-                if (!valid) in_spectrum=false;
+                seen[sl]=f1;
             }
+            for (int a=0;a<SC_COUNCIL_CANDS;a++) for (int bb=a+1;bb<SC_COUNCIL_CANDS;bb++)
+                if (seen[a]==seen[bb]) distinct_ok=false;
+        }
         ok("Conseil vivant : attribution DÉTERMINISTE (même seed → même faction)", det_ok);
-        ok("Conseil vivant : chaque siège reste dans SON spectre (Savoir/Société/Industrie)", in_spectrum);
-        ok("Conseil vivant : Industrie n'a qu'UN visage (Marchand, les deux candidats du siège coïncident)",
-           statecraft_council_faction(seed,cid,2,0,0)==FAC_MARCHAND &&
-           statecraft_council_faction(seed,cid,2,1,0)==FAC_MARCHAND);
+        ok("Conseil vivant : les 3 candidats d'un siège sont 3 factions DISTINCTES (P0-1, plus de spectre)", distinct_ok);
+        /* Preuve que la restriction a VRAIMENT disparu : sur un échantillon de pays/
+         * générations, chaque siège voit AU MOINS 4 factions différentes apparaître
+         * (l'ancien code en plafonnait 2 par siège). */
+        { int seen_mask[SC_COUNCIL_SEATS]={0,0,0};
+          for (int seat=0; seat<SC_COUNCIL_SEATS; seat++)
+              for (int c2=0;c2<12;c2++) for (int g2=0;g2<6;g2++) for (int sl=0; sl<SC_COUNCIL_CANDS; sl++)
+                  seen_mask[seat] |= 1<<(int)statecraft_council_faction(seed,c2,seat,sl,g2);
+          int popcount[SC_COUNCIL_SEATS];
+          for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
+              int n=0; for (int f=0;f<FAC_COUNT;f++) if (seen_mask[seat]&(1<<f)) n++;
+              popcount[seat]=n;
+          }
+          printf("   Factions vues par siège (échantillon) : Savoir %d, Royaume %d, Ouvrages %d (sur 6)\n",
+                 popcount[0], popcount[1], popcount[2]);
+          ok("P0-1 : chaque siège accède à BIEN PLUS que son ancien spectre (≥4/6 factions vues)",
+             popcount[0]>=4 && popcount[1]>=4 && popcount[2]>=4);
+        }
 
         /* (2) CONVERGENCE SANS SAUT — la loyauté se déplace PROGRESSIVEMENT vers sa
          * cible, jamais un bond en un seul mois. */
@@ -452,6 +469,99 @@ int main(int argc, char **argv){
         ok("Conseil vivant : le curseur de paie est BORNÉ [0,2]",
            statecraft_council_pay(s.sc,cid,seat)==0.5f &&
            (statecraft_council_set_pay(s.sc,cid,seat,9.f), statecraft_council_pay(s.sc,cid,seat)==2.f));
+
+        /* (7) P0-4 — PERSONNE + MAISON : tirages déterministes et VIVANTS (varient
+         * avec le candidat) — la maison ne « suit » pas le prénom (tables séparées,
+         * salts distincts). */
+        { const char *fn1 = statecraft_council_cand_firstname(seed,cid,0,0,0);
+          const char *hs1 = statecraft_council_cand_house(seed,cid,0,0,0);
+          ok("Conseil : prénom/maison DÉTERMINISTES (même clés → même valeur)",
+             strcmp(fn1, statecraft_council_cand_firstname(seed,cid,0,0,0))==0 &&
+             strcmp(hs1, statecraft_council_cand_house(seed,cid,0,0,0))==0);
+          ok("Conseil : prénom et maison ne sont jamais vides", fn1[0]!=0 && hs1[0]!=0);
+          bool firstname_varies=false, house_varies=false;
+          for (int sl=1; sl<SC_COUNCIL_CANDS; sl++){
+              if (strcmp(statecraft_council_cand_firstname(seed,cid,0,sl,0), fn1)!=0) firstname_varies=true;
+              if (strcmp(statecraft_council_cand_house(seed,cid,0,sl,0), hs1)!=0)     house_varies=true;
+          }
+          ok("Conseil : le prénom varie avec le candidat (tirage vivant)", firstname_varies);
+          ok("Conseil : la maison varie avec le candidat (tirage vivant, indépendant du prénom)", house_varies);
+          printf("   Personne + maison, exemple : « %s %s » (siège Savoir, slot 0, gen 0)\n", fn1, hs1);
+        }
+
+        /* (8) P1-1 — EFFICACITÉ POLITIQUE : clamp(BASE + K_PER·K + LOY_W·loyauté/100
+         * − CORRUPTION_PER_POINT·Corruption, MIN, MAX) — la formule VERBATIM de la
+         * spec, et son rôle : bonus final du siège = bonus de RANG × efficacité (voir
+         * statecraft_council_apply — seat_mult, LUI, reste le rang SEUL). */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        { int seatE=0, bestE=0, btE=0;
+          for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seatE,sl,0); if(t>btE){btE=t;bestE=sl;} }
+          statecraft_council_hire(s.sc, seed, cid, seatE, bestE, 0);
+          s.sc->loyalty[cid][seatE] = 70.f;                    /* accès struct direct : fixe une loyauté EXACTE pour le test */
+          float Ksave = s.wp->country[cid].K;
+          s.wp->country[cid].K = 6.f;
+          for (int k=0;k<5;k++) faction_concede(cid, FAC_MARCHAND);   /* de la Corruption (peu importe la valeur exacte) */
+          int corr = faction_corruption_0_100(cid);
+          float eff_k6 = statecraft_council_efficiency(s.sc, s.wp, cid, seatE);
+          float expect = tune_f("COUNCIL_EFF_BASE",0.70f) + tune_f("COUNCIL_EFF_K_PER",0.03f)*6.f
+                       + tune_f("COUNCIL_EFF_LOY_W",0.15f)*0.70f - tune_f("COUNCIL_EFF_CORRUPTION_PER_POINT",0.0035f)*(float)corr;
+          if (expect<tune_f("COUNCIL_EFF_MIN",0.50f)) expect=tune_f("COUNCIL_EFF_MIN",0.50f);
+          if (expect>tune_f("COUNCIL_EFF_MAX",1.15f)) expect=tune_f("COUNCIL_EFF_MAX",1.15f);
+          printf("   Efficacité (K=6, loy=70, Corr=%d) = %.3f (attendu %.3f, formule verbatim spec)\n", corr, eff_k6, expect);
+          ok("P1-1 : l'efficacité SUIT exactement clamp(BASE+K_PER*K+LOY_W*loy/100-CORR*Corruption, MIN, MAX)",
+             near_f(eff_k6, expect, 0.005f));
+          s.wp->country[cid].K = 10.f;
+          float eff_k10 = statecraft_council_efficiency(s.sc, s.wp, cid, seatE);
+          ok("P1-1 : l'efficacité CROÎT avec K (monotone)", eff_k10 > eff_k6);
+          s.wp->country[cid].K = 1000.f;
+          ok("P1-1 : l'efficacité est BORNÉE au plafond COUNCIL_EFF_MAX",
+             near_f(statecraft_council_efficiency(s.sc,s.wp,cid,seatE), tune_f("COUNCIL_EFF_MAX",1.15f), 0.001f));
+          s.wp->country[cid].K = 0.f;
+          s.sc->loyalty[cid][seatE] = 0.f;   /* ⚠ la Corruption PLAFONNE à 85 (spec) : à loy 70
+                                              * l'eff vaut 0.5075 > plancher — il faut AUSSI
+                                              * une loyauté nulle pour passer sous 0.50 */
+          for (int k=0;k<200;k++) faction_concede(cid, FAC_MARCHAND);
+          ok("P1-1 : l'efficacité est BORNÉE au plancher COUNCIL_EFF_MIN",
+             near_f(statecraft_council_efficiency(s.sc,s.wp,cid,seatE), tune_f("COUNCIL_EFF_MIN",0.50f), 0.001f));
+          statecraft_council_dismiss(s.sc, seed, cid, seatE);
+          ok("P1-1 : un siège VACANT a une efficacité neutre (1.0, rien à multiplier)",
+             statecraft_council_efficiency(s.sc,s.wp,cid,seatE)==1.f);
+          s.wp->country[cid].K = Ksave;
+        }
+
+        /* (9) P1-3 — RENVOYER aigrit DIRECTEMENT la faction CONGÉDIÉE (plus de push
+         * artificiel sur la faction la plus opposée à elle). */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        { int seatD=0, bestD=0, btD=0;
+          for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seatD,sl,0); if(t>btD){btD=t;bestD=sl;} }
+          statecraft_council_hire(s.sc, seed, cid, seatD, bestD, 0);
+          EthosFaction facD = statecraft_council_faction(seed,cid,seatD,bestD,0);
+          float griefD_before = faction_grievance(cid, facD);
+          statecraft_council_dismiss(s.sc, seed, cid, seatD);
+          float griefD_after = faction_grievance(cid, facD);
+          printf("   Renvoi : rancœur de SA propre faction %.3f → %.3f (+%.2f attendu)\n",
+                 griefD_before, griefD_after, tune_f("COUNCIL_DISMISS_GRIEF",0.10f));
+          ok("P1-3 : RENVOYER aigrit DIRECTEMENT la faction congédiée (pas un push vers l'opposée)",
+             near_f(griefD_after, griefD_before + tune_f("COUNCIL_DISMISS_GRIEF",0.10f), 0.01f));
+        }
+
+        /* (10) P1-4 — une NOMINATION n'écrase JAMAIS un titulaire sans renvoi
+         * explicite : le siège doit être vacant. */
+        statecraft_init(s.sc, s.w); faction_levers_reset();
+        { int seatG=0, s0=0, t0=0;
+          for (int sl=0; sl<SC_COUNCIL_CANDS; sl++){ int t=statecraft_council_cand_tier(seed,cid,seatG,sl,0); if(t>t0){t0=t;s0=sl;} }
+          statecraft_council_hire(s.sc, seed, cid, seatG, s0, 0);
+          int seated_before = statecraft_council_seated(s.sc,cid,seatG);
+          int other = (s0+1)%SC_COUNCIL_CANDS;
+          statecraft_council_hire(s.sc, seed, cid, seatG, other, 0);   /* tente de nommer SANS renvoyer d'abord */
+          int seated_after = statecraft_council_seated(s.sc,cid,seatG);
+          ok("P1-4 : une nomination sur un siège déjà POURVU est un NO-OP (le titulaire tient)",
+             seated_after==seated_before);
+          statecraft_council_dismiss(s.sc, seed, cid, seatG);
+          statecraft_council_hire(s.sc, seed, cid, seatG, other, 0);
+          ok("P1-4 : après un RENVOI explicite, la nomination réussit",
+             statecraft_council_seated(s.sc,cid,seatG)==other);
+        }
     }
 
     /* ── #26 — L'OPINION À MÉMOIRE : modificateurs TEMPORAIRES + mémoire DURABLE, tout TEND VERS 0 ──

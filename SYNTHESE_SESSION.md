@@ -1,5 +1,26 @@
 # SYNTHÈSE DE SESSION — handoff roulant (2026-07-10, MID-VAGUE multi-agents)
 
+## MISE À JOUR fin d'après-midi — VAGUE CONSEIL + UI-2/3/4 EN VOL
+- COMMITÉ/MERGÉ/EXPORTÉ à 3c7e8b0 : toute la vague du matin (traditions↔registre J,
+  équilibrage culture/foi, éditorial tech+events, kit, UI-1/5, fixes probes). scps.exe 15:34.
+- SPEC NEUVE : docs/CONSEIL_ORIENTATIONS_2026-07-10.md (Conseil 3 sièges × 6 factions,
+  efficacité K/loyauté/Corruption, coûts % revenu×IPM, mission décennale au siège, hooks
+  d'événements dynamiques, 9 orientations légères, Affranchissement + Audit). ⚠ Elle TRANCHE :
+  identités de conseiller = NARRATIVES PURES (effet 0) — corrigé dans le brief de l'agent façade.
+- AGENTS EN VOL (4) : façade (action_preview + country_shortages + identités narratives —
+  repris post-limite avec correction) · UI-2 topbar 4 blocs (repris) · UI-3/4 zone contextuelle
+  + hiérarchie d'actions (repris, autorisé à réparer la sélection foe de shot_ui) ·
+  CONSEIL-MOTEUR C1 (P0+P1+P3 : 6 factions × 3 sièges, personne+maison, efficacité, coûts
+  % revenu, renvoi=rancœur congédiée, mission décennale au siège — statecraft/factions/
+  missions/tune_list, INTERDIT api.c/events.c/godot).
+- CHAÎNE APRÈS C1 : task #74 P2 hooks événements (events.c) · #75 P4 orientations légères
+  (decrees + lecteurs par-pays « tune_f × mult du pays », JAMAIS tune_set global) · #76 cartes
+  UI Conseil (après façade + UI-2 qui tient sidebar_drawer + C1). Puis gates complets,
+  re-baseline golden (le conseil IA mord), probe FENÊTRÉE, commit, export.
+- ⚠ Session limit API frappe par vagues (2 fois aujourd'hui, reset horaire) : les agents morts
+  se RESSUSCITENT par SendMessage (transcript conservé), le travail partiel reste dans l'arbre.
+
+
 > Branche `claude/vibrant-euler-1tgfp3` (== main, sync au commit 4798331/a7a2c21) ·
 > **SAVE_VERSION 73** · Thread du jour : DEUX GROS DOCUMENTS JOUEUR (audit UI +
 > passe éditoriale tech/events + équilibrage culture/foi) exécutés en hiérarchie

@@ -10,6 +10,9 @@ extends Control
 const VKit = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
+## worst_shortage() — même dérivation que la cellule « déficit » du bloc ÉCONOMIE
+## de la topbar (UI-2) : un seul calcul, préchargé statiquement (DRY).
+const Topbar = preload("res://ui/topbar.gd")
 
 signal open_tab(i: int)     ## onglet de la sidebar (3 = Marché · 4 = Armée · 7 = Conseil)
 signal open_tech
@@ -233,6 +236,14 @@ func _collect() -> Array:
 		if int(pa.get("conso_good", -1)) >= 0:
 			out.append({"icon": "alert_shortage", "col": COL_ECO, "act": "market",
 				"tip": "BIEN INTROUVABLE — %s est demandé mais ni produit ni en stock (clic : onglet Marché)" % String(pa["conso_name"])})
+	# ÉCONOMIE — PÉNURIE CRITIQUE (retour joueur UI-2 : « Fer : rupture dans 12 jours »
+	# remonte en alerte explicite) : moins de 30 jours de couverture au rythme actuel,
+	# même dérivation que la cellule « déficit » de la topbar (Topbar.worst_shortage).
+	var short := Topbar.worst_shortage(w, me)
+	if not short.is_empty() and int(short["days"]) < 30:
+		out.append({"icon": "alert_shortage", "col": COL_ECO, "act": "market",
+			"tip": "%s : rupture dans %d jours au rythme actuel (clic : onglet Marché)" % [
+				String(short["name"]), int(short["days"])]})
 	return out
 
 ## VOIE MÉTABOLISATION (V1b) : tech_panel.gd notifie qu'un héritage NON natif vient

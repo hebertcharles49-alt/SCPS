@@ -1187,27 +1187,163 @@ void scps_commerce_power(ScpsSim *s, int me, ScpsCommerce *out){
     out->bonus_pct=(int)(pct*100.f+0.5f);
 }
 
+/* ── CADRES DU CONSEIL — IDENTITÉ DE MINISTRE (2026-07-10, spec docs/CONSEIL_
+ * ORIENTATIONS_2026-07-10.md § « Noms, maisons, identités ») ────────────────────────
+ * Un ministre (candidat OU assis) porte une IDENTITÉ DÉTERMINISTE dérivée des MÊMES
+ * clés que son nom/tier/âge/faction (seed,cid,seat,slot,gen — statecraft_council_cand_*,
+ * scps_statecraft.c:105-131) : même candidat ⇒ même identité, RIEN À SÉRIALISER (dérivée,
+ * comme tier/âge/faction le sont déjà — recalculée au vol). L'algorithme de hash MIROIRE
+ * sc_hash (scps_statecraft.c:88-92, `static` donc non exportée — réimplémenté ici à
+ * l'identique) avec un salt DISTINCT (0x1DE47170) des salts déjà pris par ce module (tier
+ * 0xC0FFEE · nom 0x5EAB011 · âge 0xA6E11 · faction 0xFAC7104 · retraite 0x0DDA6E) — identité
+ * ⊥ faction ⊥ siège ⊥ rang (tirages indépendants, comme la spec l'exige des maisons).
+ *
+ * ⚠ IDENTITÉS = PUREMENT NARRATIVES, EFFET MÉCANIQUE 0 (décision joueur, spec : « ne pas
+ * afficher de faux modificateurs », pas de boucle d'équilibrage relancée). AUCUN
+ * coefficient, AUCUN site de lecture moteur — le mot + la flavor sont du CHROME que l'UI
+ * affiche tel quel. Golden intact par construction (scps_api.c n'est pas dans chronicle ;
+ * rien ne mord le tick). `portrait_id` 0..7 = index stable dans UIKit.advisor_portrait. */
+#define CONS_ID_N 8
+typedef struct { const char *nom; int portrait_id; const char *flavor; } ConsIdentity;
+static const ConsIdentity CONS_IDENTITES[CONS_ID_N] = {   /* les 8 de la spec, flavors VERBATIM */
+    { "Rigoriste",   0, "Chaque exception lui paraît être la première pierre d'une ruine." },
+    { "Courtisan",   1, "Il sait qui doit être salué, qui doit être payé et qui doit croire que les deux gestes se valent." },
+    { "Austère",     2, "Son train de maison tient dans deux coffres. Sa reconnaissance aussi." },
+    { "Réformateur", 3, "Aucune institution ne lui semble achevée tant qu'il reste possible de la démonter." },
+    { "Vétéran",     4, "Il a servi trois règnes et appris à ne confondre aucun d'eux avec l'État." },
+    { "Ambitieux",   5, "Il appelle service la distance qui le sépare encore du pouvoir." },
+    { "Loyaliste",   6, "Il sert la couronne avec assez de ferveur pour inquiéter celui qui la porte." },
+    { "Vénal",       7, "Il connaît le prix de chaque secret, sauf celui du dernier." },
+};
+static uint32_t cons_hash(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
+    uint32_t h = a*2654435761u ^ b*40503u ^ c*2246822519u ^ d*3266489917u;
+    h ^= h>>16; h *= 2246822519u; h ^= h>>13; h *= 3266489917u; h ^= h>>16;
+    return h;
+}
+static int cons_identity_index(uint32_t seed, int cid, int seat, int slot, int gen){
+    uint32_t genseed = seed ^ ((uint32_t)(gen>0?gen:0) * 0x9E3779B9u);   /* miroir sc_genseed, scps_statecraft.c:99 */
+    uint32_t h = cons_hash(genseed ^ 0x1DE47170u, (uint32_t)cid, (uint32_t)(seat*7+slot), 0x9E37u);
+    return (int)(h % (uint32_t)CONS_ID_N);
+}
+
+/* ── CARTE CONSEIL — bonus/coût/retraite (2026-07-10, § « Rangs et coûts »,
+ * « Efficacité politique », « Interface (cartes) ») ──────────────────────────
+ * Les lecteurs statecraft_council_seat_mult/_efficiency/_cand_cost sont déjà
+ * exportés et lus TELS QUELS pour un siège POURVU (aucune réimplémentation :
+ * l'état réel — loyauté vécue, K du pays — existe déjà). Pour un CANDIDAT
+ * (pas encore embauché), deux formules sont mirées à l'identique depuis leurs
+ * `static` d'origine (même discipline que cons_hash ci-dessus) car elles
+ * calculent une PRÉVISION que rien d'exporté ne donne :
+ *  - cons_predicted_loyalty MIROIRE la loyauté de DÉPART que statecraft_
+ *    council_hire assignerait RÉELLEMENT (scps_statecraft.c:225-226, salt
+ *    0x10AD17Bu) — la prévision EST donc exacte, pas une estimation.
+ *  - cons_rank_mult/cons_tier_revenue_rate MIRORENT sc_seat_base/sc_tier_mult/
+ *    sc_tier_revenue_rate (scps_statecraft.c:87-116, `static`) : simples
+ *    lectures de tune_f sur les clés EXACTES de la spec — aucune valeur inventée.
+ *  - cons_efficiency_calc MIROIRE le corps de statecraft_council_efficiency
+ *    (scps_statecraft.c:326-336) pour l'appliquer à la loyauté PRÉVUE plutôt
+ *    qu'à un siège réellement pourvu (l'exportée renverrait 1.0, vacant). */
+static float cons_predicted_loyalty(uint32_t seed, int cid, int seat, int slot, int gen){
+    uint32_t h = cons_hash(seed^0x10AD17Bu, (uint32_t)cid, (uint32_t)seat, (uint32_t)(slot*13+gen));
+    return 45.f + (float)(h % 21u);
+}
+static float cons_seat_base(int seat){
+    switch (seat){
+        case 0:  return tune_f("COUNCIL_SAVOIR_BASE",   0.12f);
+        case 1:  return tune_f("COUNCIL_ROYAUME_BASE",  0.15f);
+        default: return tune_f("COUNCIL_OUVRAGES_BASE", 0.20f);
+    }
+}
+static float cons_tier_mult_of(int tier){
+    switch (tier){
+        case 1:  return 1.f;
+        case 2:  return tune_f("COUNCIL_TIER2_MULT", 1.50f);
+        case 3:  return tune_f("COUNCIL_TIER3_MULT", 2.00f);
+        default: return 0.f;
+    }
+}
+static float cons_rank_mult(int seat, int tier){ return 1.f + cons_seat_base(seat)*cons_tier_mult_of(tier); }
+static float cons_tier_revenue_rate(int tier){
+    switch (tier){
+        case 1:  return tune_f("COUNCIL_TIER1_REVENUE_RATE", 0.015f);
+        case 2:  return tune_f("COUNCIL_TIER2_REVENUE_RATE", 0.030f);
+        case 3:  return tune_f("COUNCIL_TIER3_REVENUE_RATE", 0.050f);
+        default: return 0.f;
+    }
+}
+static float cons_efficiency_calc(float K, float loy, float corr){
+    float eff = tune_f("COUNCIL_EFF_BASE", 0.70f)
+              + tune_f("COUNCIL_EFF_K_PER", 0.03f) * K
+              + tune_f("COUNCIL_EFF_LOY_W", 0.15f) * (loy/100.f)
+              - tune_f("COUNCIL_EFF_CORRUPTION_PER_POINT", 0.0035f) * corr;
+    return clampf(eff, tune_f("COUNCIL_EFF_MIN",0.50f), tune_f("COUNCIL_EFF_MAX",1.15f));
+}
+static float cons_pct100(float x){ return x*100.f; }   /* fraction → pourcentage (décimales gardées, l'UI arrondit à l'affichage) */
+/* Mission décennale — le bonus du siège responsable (miroir de mission_reward_mult,
+ * scps_missions.c:120-131, `static` — même formule, aucune valeur inventée). */
+static float cons_mission_reward_mult(const Statecraft *sc, const WorldProsperity *wp,
+                                      uint32_t seed, int cid, const Mission *m){
+    if (!sc) return 1.f;
+    int seat = mission_responsible_seat(m);
+    if (seat<0) return 1.f;
+    int slot = statecraft_council_seated(sc,cid,seat);
+    if (slot<0) return 1.f;
+    int gen  = statecraft_council_seated_gen(sc,cid,seat);
+    int tier = statecraft_council_cand_tier(seed,cid,seat,slot,gen);
+    float eff = statecraft_council_efficiency(sc,wp,cid,seat);
+    return 1.f + tune_f("COUNCIL_MISSION_REWARD_PER_RANK",0.05f) * (float)(tier-1) * eff;
+}
+
 int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
     if(!out || max<=0 || !s || !s->ready || me<0 || me>=s->w->n_countries) return 0;
     uint32_t seed = s->w->seed;
+    float ipm = econ_world_ipm(s->sim.econ);
+    const WorldProsperity *wp = s->sim.wp;
+    float K = (wp && me<wp->n_countries) ? wp->country[me].K : 0.f;
+    int corr = faction_corruption_0_100(me);
     int n=0;
     for(int seat=0; seat<SC_COUNCIL_SEATS && n<max; seat++){
-        out[n].seat = sz(tr((StrId)(STR_COUNCIL_SEAT_0+seat)));
+        out[n].seat   = sz(tr((StrId)(STR_COUNCIL_SEAT_0+seat)));
+        out[n].domain = sz(tr((StrId)(STR_COUNCIL_EFF_0+seat)));
+        out[n].k_admin = K; out[n].corruption_pct = corr;
         int slot = statecraft_council_seated(s->sim.sc, me, seat);
         if(slot>=0){
             int sgen = statecraft_council_seated_gen(s->sim.sc, me, seat);   /* identité ÉPINGLÉE à l'embauche */
             int loy  = statecraft_council_loyalty(s->sim.sc, me, seat);
+            int tier = statecraft_council_cand_tier(seed, me, seat, slot, sgen);
             out[n].filled    = 1;
             out[n].councilor = sz(tr((StrId)statecraft_council_cand_name(seed, me, seat, slot, sgen)));
-            out[n].tier      = statecraft_council_cand_tier(seed, me, seat, slot, sgen);
+            out[n].tier      = tier;
             out[n].age       = statecraft_council_seated_age(s->sim.sc, seed, me, seat, s->sim.year);
             out[n].faction   = sz(faction_name((int)statecraft_council_faction(seed, me, seat, slot, sgen)));
             out[n].loyalty   = loy;
             out[n].pay       = statecraft_council_pay(s->sim.sc, me, seat);
             out[n].mood      = sz(council_mood_word(loy));
+            out[n].firstname = sz(statecraft_council_cand_firstname(seed, me, seat, slot, sgen));
+            out[n].house     = sz(statecraft_council_cand_house(seed, me, seat, slot, sgen));
+            /* CARTE — bonus de rang (lecteur réel) / efficacité (lecteur réel, loyauté vécue)
+             * / bonus final = rang×efficacité (statecraft_council_apply, même composition). */
+            float rank_mult = statecraft_council_seat_mult(s->sim.sc, seed, me, seat);
+            float eff        = statecraft_council_efficiency(s->sim.sc, wp, me, seat);
+            out[n].rank_bonus_pct  = cons_pct100(rank_mult - 1.f);
+            out[n].efficiency_pct  = cons_pct100(eff);
+            out[n].final_bonus_pct = cons_pct100((rank_mult-1.f)*eff);
+            out[n].cost_rate_pct   = cons_tier_revenue_rate(tier) * 100.f;
+            out[n].cost_year       = (double)statecraft_council_cand_cost(seed, me, seat, slot, sgen, ipm) * 12.0;
+            int rlo = 66 - out[n].age, rhi = 73 - out[n].age;
+            out[n].retire_lo = (rlo>0)?rlo:0; out[n].retire_hi = (rhi>0)?rhi:0;
+            { int ci = cons_identity_index(seed, me, seat, slot, sgen);
+              out[n].identite    = CONS_IDENTITES[ci].nom;
+              out[n].portrait_id = CONS_IDENTITES[ci].portrait_id;
+              out[n].id_flavor   = CONS_IDENTITES[ci].flavor; }
         } else {
             out[n].filled = 0; out[n].councilor = ""; out[n].tier = 0; out[n].age = 0;
             out[n].faction = ""; out[n].loyalty = 0; out[n].pay = 1.f; out[n].mood = "";
+            out[n].identite = ""; out[n].portrait_id = -1; out[n].id_flavor = "";
+            out[n].firstname = ""; out[n].house = "";
+            out[n].rank_bonus_pct = 0; out[n].efficiency_pct = 0; out[n].final_bonus_pct = 0;
+            out[n].cost_rate_pct = 0.f; out[n].cost_year = 0.0;
+            out[n].retire_lo = -1; out[n].retire_hi = -1;
         }
         n++;
     }
@@ -1215,7 +1351,9 @@ int scps_country_council(ScpsSim *s, int me, ScpsCouncilSeat *out, int max){
 }
 
 /* CANDIDATS du siège (pool de la génération COURANTE — toujours pleine) : l'embauche
- * ÉCLAIRÉE — nom · tier · ÂGE (grandit avec l'année) · coût/mois (×IPM). */
+ * ÉCLAIRÉE — nom · tier · ÂGE (grandit avec l'année) · coût/mois (×IPM) · la CARTE
+ * complète (personne+maison, bonus de rang, efficacité PRÉVUE, bonus final, coût
+ * annuel, retraite estimée) — § « Interface (cartes) ». */
 int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max){
     if(!out || max<=0 || !s || !s->ready || seat<0 || seat>=SC_COUNCIL_SEATS) return 0;
     int me = s->sim.player;
@@ -1223,13 +1361,36 @@ int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max)
     uint32_t seed = s->w->seed;
     int gen = statecraft_council_gen(s->sim.year);
     float ipm = econ_world_ipm(s->sim.econ);
+    const WorldProsperity *wp = s->sim.wp;
+    float K = (wp && me<wp->n_countries) ? wp->country[me].K : 0.f;
+    int corr = faction_corruption_0_100(me);
+    const char *domain = sz(tr((StrId)(STR_COUNCIL_EFF_0+seat)));
     int n=0;
     for (int slot=0; slot<SC_COUNCIL_CANDS && n<max; slot++){
+        int tier = statecraft_council_cand_tier(seed, me, seat, slot, gen);
         out[n].slot = slot;
         out[n].nom  = sz(tr((StrId)statecraft_council_cand_name(seed, me, seat, slot, gen)));
-        out[n].tier = statecraft_council_cand_tier(seed, me, seat, slot, gen);
+        out[n].tier = tier;
         out[n].age  = statecraft_council_cand_age(seed, me, seat, slot, gen, s->sim.year);
         out[n].cost = statecraft_council_cand_cost(seed, me, seat, slot, gen, ipm);
+        out[n].firstname = sz(statecraft_council_cand_firstname(seed, me, seat, slot, gen));
+        out[n].house     = sz(statecraft_council_cand_house(seed, me, seat, slot, gen));
+        out[n].faction   = sz(faction_name((int)statecraft_council_faction(seed, me, seat, slot, gen)));
+        out[n].domain    = domain;
+        float rank_mult = cons_rank_mult(seat, tier);
+        float pred_loy  = cons_predicted_loyalty(seed, me, seat, slot, gen);
+        float pred_eff  = cons_efficiency_calc(K, pred_loy, (float)corr);
+        out[n].rank_bonus_pct  = cons_pct100(rank_mult - 1.f);
+        out[n].efficiency_pct  = cons_pct100(pred_eff);
+        out[n].final_bonus_pct = cons_pct100((rank_mult-1.f)*pred_eff);
+        out[n].cost_rate_pct   = cons_tier_revenue_rate(tier) * 100.f;
+        out[n].cost_year       = (double)out[n].cost * 12.0;
+        int rlo = 66 - out[n].age, rhi = 73 - out[n].age;
+        out[n].retire_lo = (rlo>0)?rlo:0; out[n].retire_hi = (rhi>0)?rhi:0;
+        { int ci = cons_identity_index(seed, me, seat, slot, gen);
+          out[n].identite    = CONS_IDENTITES[ci].nom;
+          out[n].portrait_id = CONS_IDENTITES[ci].portrait_id;
+          out[n].id_flavor   = CONS_IDENTITES[ci].flavor; }
         n++;
     }
     return n;
@@ -1857,7 +2018,7 @@ void scps_budget_summary(ScpsSim *s, int cid, ScpsBudget *out){
 void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out){
     if(!out) return;
     memset(out, 0, sizeof *out);
-    out->text=""; out->reward_mat="";
+    out->text=""; out->reward_mat=""; out->resp_seat=""; out->resp_name="";
     if(!s || !s->ready || cid<0 || cid>=s->w->n_countries) return;
     const Mission *m = mission_of(s->sim.missions, cid);
     if(!m) return;
@@ -1868,6 +2029,23 @@ void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out){
     if(m->reward_qty > 0.f) out->reward_mat = sz(resource_name(m->reward_mat));
     out->issued_year = m->issued_year;
     out->done        = m->done?1:0;
+    /* CARTE MISSION — le siège RESPONSABLE (mission_responsible_seat, déduit du type,
+     * aucun état neuf) + son bonus (mult ∝ rang×efficacité, miroir de mission_reward_mult)
+     * + la récompense PRÉVUE (base × mult). */
+    int seat = mission_responsible_seat(m);
+    if (seat>=0){
+        out->resp_seat = sz(tr((StrId)(STR_COUNCIL_SEAT_0+seat)));
+        int slot = statecraft_council_seated(s->sim.sc, cid, seat);
+        if (slot>=0){
+            int gen = statecraft_council_seated_gen(s->sim.sc, cid, seat);
+            out->resp_tier = statecraft_council_cand_tier(s->w->seed, cid, seat, slot, gen);
+            out->resp_name = sz(tr((StrId)statecraft_council_cand_name(s->w->seed, cid, seat, slot, gen)));
+        }
+    }
+    float mult = cons_mission_reward_mult(s->sim.sc, s->sim.wp, s->w->seed, cid, m);
+    out->resp_bonus_pct  = cons_pct100(mult - 1.f);
+    out->reward_gold_adj = (double)m->reward_gold * (double)mult;
+    out->reward_qty_adj  = (double)m->reward_qty  * (double)mult;
 }
 
 /* ====================================================================== */
@@ -2094,6 +2272,38 @@ int scps_manumit_preview(ScpsSim *s, ScpsManumitPreview *out){
     return 1;
 }
 
+/* PÉNURIES (UI-2) — voir scps_api.h. Miroir DIRECT d'econ_country_forecast (lecture
+ * pure) : le seuil « runway court » est AI_SAFETY_HORIZON — le MÊME que l'IA lit pour
+ * son propre food_alert (scps_ai.c:319/scps_ai.h:62) : ce n'est pas un chiffre inventé
+ * pour l'UI, c'est le seuil réel de « le mur approche » côté moteur. */
+int scps_country_shortages(ScpsSim *s, int country, ScpsShortage *out, int max){
+    if (!out || max<=0) return 0;
+    if (!s || !s->ready || country<0 || country>=s->w->n_countries) return 0;
+    EconForecast fc;
+    econ_country_forecast(s->sim.econ, country, tune_f("AI_PROJ_HORIZON",25.f), &fc);
+    float safety = tune_f("AI_SAFETY_HORIZON",12.f);
+    int idx[RES_COUNT]; int ni=0;
+    for (int g=1; g<RES_COUNT; g++){
+        int structurel = fc.struct_deficit[g] ? 1 : 0;
+        if (!structurel && fc.runway[g]>=safety) continue;   /* sain : ni structurel ni court */
+        idx[ni++]=g;
+    }
+    /* tri à bulles (ni ≤ RES_COUNT, petit) par runway croissant — le plus urgent d'abord */
+    for (int i=0;i<ni;i++)
+        for (int j=i+1;j<ni;j++)
+            if (fc.runway[idx[j]] < fc.runway[idx[i]]){ int t=idx[i]; idx[i]=idx[j]; idx[j]=t; }
+    int n=0;
+    for (int i=0;i<ni && n<max;i++){
+        int g = idx[i];
+        out[n].nom = sz(resource_name((Resource)g));
+        out[n].res_id = g;
+        out[n].runway_days = (fc.runway[g]>=1.0e8f) ? -1.f : fc.runway[g]*365.f;
+        out[n].structurel = fc.struct_deficit[g] ? 1 : 0;
+        n++;
+    }
+    return n;
+}
+
 /* ── §3 — INTÉRIEUR · COMMERCE · GUERRE : plomberie additive (même motif que ci-dessus).
  * Tous ENFILENT (différé) ; chaque verbe est REVALIDÉ au drain (région à soi, indices bornés)
  * puis passé au MÊME actionneur que l'IA (agency/statecraft/intertrade/routes/campaign/navy). */
@@ -2111,6 +2321,110 @@ int scps_player_purge(ScpsSim *s, int region){
     if (!s || !s->ready) return 0;
     PlayerCmd c = { CMD_PURGE, { region, 0, 0, 0 } };
     return sim_cmd_push(&s->sim, c) ? 1 : 0;
+}
+/* miroir de biggest_minority (scps_agency.c:560-573, `static` non-exportée) : le plus
+ * gros groupe MINORITAIRE d'une province (cible d'AGY_ASSIMILATE/AGY_PURGE), hors
+ * dominant et hors CLASS_SLAVE (l'esclavage n'est ni une cible d'assimilation civique
+ * ni de purge politique, §II.6) ; -1 si homogène/entièrement servile. */
+static int ap_biggest_minority(const ProvincePop *pp){
+    if (!pp || pp->n_groups<2) return -1;
+    int dom=-1;
+    for (int g=0; g<pp->n_groups; g++){
+        if (pp->groups[g].klass==CLASS_SLAVE) continue;
+        if (dom<0 || pp->groups[g].count>pp->groups[dom].count) dom=g;
+    }
+    if (dom<0) return -1;
+    int best=-1; long bc=0;
+    for (int g=0; g<pp->n_groups; g++){
+        if (g==dom || pp->groups[g].klass==CLASS_SLAVE) continue;
+        if (pp->groups[g].count>bc){ bc=pp->groups[g].count; best=g; }
+    }
+    return best;
+}
+/* APERÇU D'ACTION (UI-4) — voir scps_api.h. Miroir EXACT des trois leviers intérieurs
+ * (scps_agency.c) : jamais de mutation du monde réel (copie jetable de ProvincePop +
+ * ModifierStack scratch pour REPRESS, motif malloc de demography_demo.c/revolt_demo.c —
+ * ModifierStack pèse ~112 Ko, sur le TAS, pas la pile — cf. TROUVAILLES stack-overflow
+ * Windows). */
+int scps_action_preview(ScpsSim *s, int region, int verb, ScpsActionPreview *out){
+    if (!out) return 0;
+    memset(out, 0, sizeof *out);
+    if (!s || !s->ready || verb<0 || verb>2) return 0;
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    if (p<0 || p>=s->w->n_countries) return 0;
+    WorldEconomy *e = s->sim.econ;
+    if (region<0 || region>=e->n_regions || e->region[region].owner!=p) return 0;
+    int pid = econ_region_rep_province(e, region);
+    if (pid<0 || pid>=e->n_prov) return 0;
+    ProvinceEconomy *re = &e->prov[pid];
+    switch (verb){
+      case 0: { /* MATER — AGY_REPRESS, scps_agency.c:670-677 */
+        out->cost_gold = 0.f;
+        out->duration_days = 30;   /* miroir REPRESS_DAYS, scps_agency.c:523 */
+        float H = 4.f + re->build.H_coerc;   /* miroir scps_agency.c:673 */
+        ProvincePop tmp = re->pop;           /* copie jetable : AUCUNE mutation du monde réel */
+        ModifierStack *scratch = (ModifierStack*)calloc(1, sizeof(ModifierStack));
+        if (!scratch) return 0;
+        CoercionEffect ce = province_apply_coercion(&tmp, scratch, H);   /* la SORTIE réelle de la formule */
+        free(scratch);
+        out->pop_delta = 0;                  /* on mate, on ne tue pas */
+        out->satisfaction_delta = 0;         /* aucune formule de MATER ne touche `satisfaction` */
+        out->agitation_delta = -(int)lroundf(ce.agitation_drop);
+        { float dcoerc = fminf(1.f, re->coercion+0.5f) - re->coercion;   /* miroir scps_agency.c:674 */
+          out->coercition_delta = (int)lroundf(dcoerc*100.f); }
+        snprintf(out->risque, sizeof out->risque, "%s",
+            "Masque l'agitation, ne la résout pas : elle resurgira amplifiée à la levée de la coercition.");
+      } break;
+      case 1: { /* FORMER — AGY_ASSIMILATE, scps_agency.c:678-690 */
+        out->cost_gold = 0.f;
+        out->duration_days = 365;   /* miroir ASSIM_DAYS, scps_agency.c:524 */
+        int gi = ap_biggest_minority(&re->pop);
+        if (gi>=0){
+            const PopGroup *pg = &re->pop.groups[gi];
+            /* creuset = TECH_INTEGRATION débloquée pour ce pays (ce qu'une UI éclairée
+             * passerait en a[1] de CMD_ASSIMILATE, scps_sim.c:469) */
+            int creuset = (s->sim.ts && s->sim.ts[p].unlocked[TECH_INTEGRATION]) ? 1 : 0;
+            float Lafter = fmaxf(0.f, pg->L-0.5f);   /* miroir scps_agency.c:686 */
+            /* agit_from_L (scps_demography.c:59, formule PUBLIQUE) mirée à l'identique :
+             * clampf((6-L)*15,0,100). */
+            float agit_now   = clampf((6.f-pg->L)*15.f,  0.f, 100.f);
+            float agit_after = clampf((6.f-Lafter)*15.f, 0.f, 100.f);
+            out->pop_delta = 0;                    /* aucune mort : une conversion */
+            out->satisfaction_delta = 0;            /* aucune formule de FORMER ne touche `satisfaction` */
+            out->agitation_delta = (int)lroundf(agit_after-agit_now);   /* le frottement : monte */
+            { float dcoerc = fminf(1.f, re->coercion+0.10f) - re->coercion;   /* miroir scps_agency.c:687 */
+              out->coercition_delta = (int)lroundf(dcoerc*100.f); }
+            snprintf(out->risque, sizeof out->risque,
+                creuset ? "Le Creuset accélère l'intégration (+50%%) au prix d'un frottement immédiat (la légitimité du groupe chute)."
+                        : "Intégration lente (+25%% sans Creuset) : le groupe reste restif le temps de la conversion.");
+        } else {
+            snprintf(out->risque, sizeof out->risque, "%s",
+                "Province homogène ou entièrement servile : aucune minorité à former.");
+        }
+      } break;
+      case 2: { /* PURGER — AGY_PURGE, scps_agency.c:691-696 + purge_slice:575-608 */
+        out->cost_gold = 0.f;
+        out->duration_days = AGY_PURGE_YEARS*365;   /* scps_agency.h:169, exportée */
+        int gi = ap_biggest_minority(&re->pop);
+        if (gi>=0){
+            const PopGroup *pg = &re->pop.groups[gi];
+            long dead = (long)((float)pg->count*0.12f);   /* miroir PURGE_FRAC_AN, scps_agency.c:525 */
+            if (dead<1) dead = pg->count;
+            out->pop_delta = -(int)dead;   /* la 1re tranche annuelle — les suivantes dépendent d'un monde futur */
+        } else {
+            out->pop_delta = 0;
+        }
+        out->satisfaction_delta = 0;   /* purge_slice ne touche aucun champ satisfaction */
+        out->agitation_delta = 0;      /* purge_slice ne mate aucune agitation — elle tue */
+        { float dcoerc = 1.f - re->coercion;   /* miroir scps_agency.c:604 : coercion → PLAFOND 1.0 */
+          out->coercition_delta = (int)lroundf(dcoerc*100.f); }
+        snprintf(out->risque, sizeof out->risque,
+            "Tranches ANNUELLES sur %d ans (annulable en cours, le gâchis reste) : légitimité au plancher, stabilité plombée pour des années.",
+            AGY_PURGE_YEARS);
+      } break;
+      default: return 0;
+    }
+    return 1;
 }
 int scps_player_council_hire(ScpsSim *s, int seat, int slot){
     if (!s || !s->ready) return 0;

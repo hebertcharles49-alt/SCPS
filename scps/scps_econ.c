@@ -13,6 +13,7 @@
 #include "scps_religion.h"/* P4 : nudge démographie/coordonnées par la religion (gated) */
 #include "scps_labor.h"   /* capitale_* : la productivité de la capitale booste la prod réelle */
 #include "scps_factions.h"/* §C3 : faction_capture_total → le « rot » qui mine l'efficacité noble */
+#include "scps_decrees.h" /* ORIENTATIONS DU JOUEUR (2026-07-10) : decree_*_mult(cid) — 1.0 si inactif/IA */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -596,9 +597,10 @@ static float metab_diffuse_coeff(uint8_t arrival){
  * joueur et IA : c'est la pop qui produit, l'édifice qui module « quoi ». */
 float econ_country_savoir(const WorldEconomy *econ, int cid){
     if (!econ || cid<0) return 0.f;
-    float we=tune_f("SAVOIR_W_ELITE",SAVOIR_W_ELITE),
-          wb=tune_f("SAVOIR_W_BOURGEOIS",SAVOIR_W_BOURGEOIS),
-          wl=tune_f("SAVOIR_W_LABORER",SAVOIR_W_LABORER);
+    float decree_w = decree_savoir_w_mult(cid);   /* orientation ÉCOLES SOUTENUES */
+    float we=tune_f("SAVOIR_W_ELITE",SAVOIR_W_ELITE)*decree_w,
+          wb=tune_f("SAVOIR_W_BOURGEOIS",SAVOIR_W_BOURGEOIS)*decree_w,
+          wl=tune_f("SAVOIR_W_LABORER",SAVOIR_W_LABORER)*decree_w;
     double base=0.0, lib=0.0;
     for (int r=0;r<econ->n_regions;r++){
         const RegionEconomy *re=&econ->region[r];   /* strata & build : l'AGRÉGAT RÉGION est la vue fiable (cf. puissance commerciale / trade) */
@@ -623,8 +625,9 @@ float econ_country_savoir(const WorldEconomy *econ, int cid){
  * éco de la diplo (diplo_eco_power). */
 float econ_country_commerce(const WorldEconomy *econ, int cid){
     if (!econ || cid<0) return 0.f;
-    float wb=tune_f("COMMERCE_W_BOURGEOIS",COMMERCE_W_BOURGEOIS),
-          we=tune_f("COMMERCE_W_ELITE",COMMERCE_W_ELITE);
+    float decree_w = decree_commerce_w_mult(cid);   /* orientations COMPTOIRS SOUTENUS / FRONTIÈRES FERMÉES */
+    float wb=tune_f("COMMERCE_W_BOURGEOIS",COMMERCE_W_BOURGEOIS)*decree_w,
+          we=tune_f("COMMERCE_W_ELITE",COMMERCE_W_ELITE)*decree_w;
     double base=0.0, infra=0.0;
     for (int r=0;r<econ->n_regions;r++){
         const RegionEconomy *re=&econ->region[r];
@@ -2558,7 +2561,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float pop = (owner_>=0 && owner_<SCPS_MAX_COUNTRY) ? epop[owner_]
                           : re->strata[CLASS_LABORER].pop + re->strata[CLASS_BOURGEOIS].pop
                           + re->strata[CLASS_ELITE].pop;
-                float reserve = pop/100.f * 5.0f * food_need;   /* REFONTE A2 : on protège le besoin VIVRIER (≈4/100hab × calibrage) + marge — on ne brasse QUE le surplus */
+                float reserve = pop/100.f * 5.0f * food_need*decree_food_need_mult(owner_);   /* REFONTE A2 : on protège le besoin VIVRIER (≈4/100hab × calibrage) + marge — on ne brasse QUE le surplus (orientations RATIONS/FOYERS) */
                 float spare   = fmaxf(0.f, S[RES_GRAIN] - reserve);
                 float gq = (rc->in1==RES_GRAIN)?rc->q1:rc->q2;
                 lim = fminf(lim, spare/fmaxf(gq,EPS));
@@ -2806,7 +2809,7 @@ void econ_tick(WorldEconomy *e, float dt) {
                 float need=NEED[c][r];
                 if (need<=0.f) continue;
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* besoin pas encore débloqué */
-                if (res_is_food((Resource)r)) need*=food_need;            /* A2 : calibrage de la bouche */
+                if (res_is_food((Resource)r)) need*=food_need*decree_food_need_mult(owner_);            /* A2 : calibrage de la bouche + orientations RATIONS/FOYERS */
                 Resource tgt=(Resource)r;
                 if      (r==RES_EAU_DE_VIE)          tgt=preferred_drink(&re->culture);
                 else if (r==RES_PRECIOUS_WARE) tgt=preferred_luxe(&re->culture);
@@ -2862,7 +2865,7 @@ void econ_tick(WorldEconomy *e, float dt) {
             for (int rr=0;rr<RES_COUNT;rr++)
                 if (NEED[c][rr]>0.f && rr!=RES_POTTERY && rr!=RES_STATUE) nbasket++;   /* panier COMPLET hors confort-bonus */
             for (int r=0;r<RES_COUNT;r++) {
-                float need=NEED[c][r]*units*(res_is_food((Resource)r)?food_need:1.f);   /* A2 : calibrage de la bouche */
+                float need=NEED[c][r]*units*(res_is_food((Resource)r)?food_need*decree_food_need_mult(owner_):1.f);   /* A2 : calibrage de la bouche + orientations RATIONS/FOYERS */
                 if (need<=0.f) continue;
                 if (need_rank(c,(Resource)r) >= active_needs) continue;   /* §progressif : besoin pas encore débloqué → ne pèse pas */
                 /* ── CONFORT-BONUS (poterie/statuaire) : un LUXE qui ÉLÈVE le bonheur quand SERVI,
@@ -3040,7 +3043,7 @@ void econ_tick(WorldEconomy *e, float dt) {
          * via la MÊME entrée DÉMO. GATED → aucun effet sans religion (golden intact). */
         if (re->owner>=0 && religion_of_country(re->owner) >= 0)
             demo += religion_country_acc(re->owner)->ch[RC_POPGROWTH];
-        float r_base  = tune_f("POP_R_BASE", 0.01733f);   /* ln2/40 = ×2/40ans plancher (vitalité) */
+        float r_base  = tune_f("POP_R_BASE", 0.01733f)*decree_pop_r_base_mult(re->owner);   /* ln2/40 = ×2/40ans plancher (vitalité) + orientations RATIONS/FOYERS */
         float prosp_n = clampf((re->prosperity - tune_f("POP_PROSP_MID",0.2f))
                               / tune_f("POP_PROSP_SPAN",1.8f), 0.f, 1.f);   /* PIB/tête → [0,1] (bande haute ≈2.0) */
         float bonus   = tune_f("POP_PROSP_W",0.15f)*prosp_n
@@ -3303,7 +3306,7 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
     if (P0<1.0) return;
     out->pop=(float)P0; out->eff_cap=(float)effcap;
     float nm=(float)(nm_w/P0);
-    float r=tune_f("POP_R_BASE",0.01733f)*(1.f+0.85f*nm);   /* taux annualisé approx (la fertilité moteur) */
+    float r=tune_f("POP_R_BASE",0.01733f)*decree_pop_r_base_mult(cid)*(1.f+0.85f*nm);   /* taux annualisé approx (la fertilité moteur) + orientations RATIONS/FOYERS */
     if (effcap <= P0*1.05) r*=0.2f;                          /* proche du plafond → la croissance s'éteint */
     out->growth_r=r;
     double lnr=log(1.0+(r>1e-4f?r:1e-4f));
@@ -3330,7 +3333,8 @@ void econ_country_forecast(const WorldEconomy *e, int cid, float horizon, EconFo
         if (out->runway[g]<0.f) out->runway[g]=0.f;
         if (out->runway[g]>1.0e9f) out->runway[g]=1.0e9f;
         if (g<RES_PROD_FIRST){                               /* STRUCTUREL : potentiel < conso au plein eff_cap */
-            double need_full=(double)econ_conso_per_capita_year((Resource)g)*effcap;
+            double need_full=(double)econ_conso_per_capita_year((Resource)g)
+                            * (res_is_food((Resource)g)?(double)decree_food_need_mult(cid):1.0) * effcap;   /* orientations RATIONS/FOYERS */
             out->struct_deficit[g]=(pot[g] < need_full*0.95) ? 1 : 0;
         }
     }

@@ -112,6 +112,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_repress", "region"),          &ScpsWorld::player_repress);
     ClassDB::bind_method(D_METHOD("player_assimilate", "region", "creuset"), &ScpsWorld::player_assimilate);
     ClassDB::bind_method(D_METHOD("player_purge", "region"),            &ScpsWorld::player_purge);
+    ClassDB::bind_method(D_METHOD("action_preview", "region", "verb"),  &ScpsWorld::action_preview);
     ClassDB::bind_method(D_METHOD("player_council_hire", "seat", "slot"), &ScpsWorld::player_council_hire);
     ClassDB::bind_method(D_METHOD("player_council_dismiss", "seat"),    &ScpsWorld::player_council_dismiss);
     ClassDB::bind_method(D_METHOD("player_council_pay", "seat", "pay"), &ScpsWorld::player_council_pay);
@@ -154,6 +155,7 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("player_alloc_auto", "region"),         &ScpsWorld::player_alloc_auto);
     ClassDB::bind_method(D_METHOD("player_pop_transfer", "src_region", "dst_region", "klass", "count"), &ScpsWorld::player_pop_transfer);
     ClassDB::bind_method(D_METHOD("manumit_preview"),                     &ScpsWorld::manumit_preview);
+    ClassDB::bind_method(D_METHOD("country_shortages", "country"),        &ScpsWorld::country_shortages);
     ClassDB::bind_method(D_METHOD("player_manumit"),                      &ScpsWorld::player_manumit);
     ClassDB::bind_method(D_METHOD("player_slave_buy", "region", "count"), &ScpsWorld::player_slave_buy);
     ClassDB::bind_method(D_METHOD("player_slave_sell", "region", "count"), &ScpsWorld::player_slave_sell);
@@ -861,13 +863,34 @@ Array ScpsWorld::country_council(int country) {
         d["loyalty"]   = seats[i].loyalty;                 /* V2a : 0..100 */
         d["pay"]       = seats[i].pay;                     /* V2a : 0..2 (curseur) */
         d["mood"]      = String::utf8(seats[i].mood);      /* V2a : dévoué…AU BORD DE LA TRAHISON */
+        /* CADRES DU CONSEIL (2026-07-10) : identité déterministe PUREMENT NARRATIVE
+         * (effet mécanique 0 — cf. scps_api.h ScpsCouncilSeat + la spec). */
+        d["identite"]    = String::utf8(seats[i].identite);
+        d["portrait_id"] = seats[i].portrait_id;
+        d["id_flavor"]   = String::utf8(seats[i].id_flavor);
+        /* CARTE CONSEIL (2026-07-10, § « Interface (cartes) ») — personne+maison,
+         * bonus de rang/efficacité/final, coût {taux,montant courant}, retraite,
+         * décomposition (K/Corruption) pour le hover. "" / 0 si vacant. */
+        d["firstname"]       = String::utf8(seats[i].firstname);
+        d["house"]           = String::utf8(seats[i].house);
+        d["domain"]          = String::utf8(seats[i].domain);
+        d["rank_bonus_pct"]  = seats[i].rank_bonus_pct;
+        d["efficiency_pct"]  = seats[i].efficiency_pct;
+        d["final_bonus_pct"] = seats[i].final_bonus_pct;
+        d["cost_rate_pct"]   = seats[i].cost_rate_pct;
+        d["cost_year"]       = seats[i].cost_year;
+        d["retire_lo"]       = seats[i].retire_lo;
+        d["retire_hi"]       = seats[i].retire_hi;
+        d["k_admin"]         = seats[i].k_admin;
+        d["corruption_pct"]  = seats[i].corruption_pct;
         a.push_back(d);
     }
     return a;
 }
 
 /* CANDIDATS d'un siège (pool de la génération courante — toujours pleine) :
- * nom · tier · ÂGE · coût/mois — l'embauche ÉCLAIRÉE du joueur. */
+ * nom · tier · ÂGE · coût/mois — l'embauche ÉCLAIRÉE du joueur, + la CARTE
+ * complète (personne+maison, bonus/efficacité PRÉVUE/coût annuel/retraite). */
 Array ScpsWorld::council_candidates(int seat) {
     Array a;
     if (!sim) return a;
@@ -880,6 +903,20 @@ Array ScpsWorld::council_candidates(int seat) {
         d["tier"] = c[i].tier;
         d["age"]  = c[i].age;
         d["cost"] = c[i].cost;
+        d["identite"]    = String::utf8(c[i].identite);
+        d["portrait_id"] = c[i].portrait_id;
+        d["id_flavor"]   = String::utf8(c[i].id_flavor);
+        d["firstname"]       = String::utf8(c[i].firstname);
+        d["house"]           = String::utf8(c[i].house);
+        d["faction"]         = String::utf8(c[i].faction);
+        d["domain"]          = String::utf8(c[i].domain);
+        d["rank_bonus_pct"]  = c[i].rank_bonus_pct;
+        d["efficiency_pct"]  = c[i].efficiency_pct;
+        d["final_bonus_pct"] = c[i].final_bonus_pct;
+        d["cost_rate_pct"]   = c[i].cost_rate_pct;
+        d["cost_year"]       = c[i].cost_year;
+        d["retire_lo"]       = c[i].retire_lo;
+        d["retire_hi"]       = c[i].retire_hi;
         a.push_back(d);
     }
     return a;
@@ -1106,6 +1143,14 @@ Dictionary ScpsWorld::mission_info(int country) {
     d["reward_qty"]  = m.reward_qty;
     d["issued_year"] = m.issued_year;
     d["done"]        = (bool)m.done;
+    /* CARTE MISSION (2026-07-10) : le siège RESPONSABLE + son bonus + la récompense
+     * PRÉVUE (base × bonus, or ET matière) — § « Interface (cartes) ». */
+    d["resp_seat"]       = String::utf8(m.resp_seat);
+    d["resp_name"]       = String::utf8(m.resp_name);
+    d["resp_tier"]       = m.resp_tier;
+    d["resp_bonus_pct"]  = m.resp_bonus_pct;
+    d["reward_gold_adj"] = m.reward_gold_adj;
+    d["reward_qty_adj"]  = m.reward_qty_adj;
     return d;
 }
 
@@ -1261,6 +1306,26 @@ bool ScpsWorld::player_colonize(int prov) {
 bool ScpsWorld::player_repress(int region)               { return sim ? scps_player_repress(sim, region) != 0 : false; }
 bool ScpsWorld::player_assimilate(int region, bool creuset) { return sim ? scps_player_assimilate(sim, region, creuset ? 1 : 0) != 0 : false; }
 bool ScpsWorld::player_purge(int region)                 { return sim ? scps_player_purge(sim, region) != 0 : false; }
+/* APERÇU D'ACTION (UI-4) : { cost_gold, duration_days, pop_delta, satisfaction_delta,
+ * agitation_delta, coercition_delta, risque } — lecture pure, aucune mutation. */
+Dictionary ScpsWorld::action_preview(int region, int verb) {
+    Dictionary out;
+    out["cost_gold"] = 0.0; out["duration_days"] = 0; out["pop_delta"] = 0;
+    out["satisfaction_delta"] = 0; out["agitation_delta"] = 0; out["coercition_delta"] = 0;
+    out["risque"] = String();
+    if (!sim) return out;
+    ScpsActionPreview p;
+    if (scps_action_preview(sim, region, verb, &p)) {
+        out["cost_gold"]          = (double)p.cost_gold;
+        out["duration_days"]      = p.duration_days;
+        out["pop_delta"]          = p.pop_delta;
+        out["satisfaction_delta"] = p.satisfaction_delta;
+        out["agitation_delta"]    = p.agitation_delta;
+        out["coercition_delta"]   = p.coercition_delta;
+        out["risque"]             = String::utf8(p.risque);
+    }
+    return out;
+}
 bool ScpsWorld::player_council_hire(int seat, int slot)  { return sim ? scps_player_council_hire(sim, seat, slot) != 0 : false; }
 bool ScpsWorld::player_council_dismiss(int seat)         { return sim ? scps_player_council_dismiss(sim, seat) != 0 : false; }
 bool ScpsWorld::player_council_pay(int seat, float pay)  { return sim ? scps_player_council_pay(sim, seat, pay) != 0 : false; }
@@ -1439,6 +1504,22 @@ Dictionary ScpsWorld::manumit_preview() {
         out["friction_after"] = (double)p.friction_after;
     }
     return out;
+}
+/* PÉNURIES (UI-2, topbar) — [{nom, res_id, runway_days, structurel}], trié urgence croissante. */
+Array ScpsWorld::country_shortages(int country) {
+    Array a;
+    if (!sim) return a;
+    ScpsShortage sh[64];   /* RES_COUNT ~57 aujourd'hui ; scps_api.h reste opaque (pas de RES_COUNT côté hôte) */
+    int n = scps_country_shortages(sim, country, sh, 64);
+    for (int i = 0; i < n; i++) {
+        Dictionary d;
+        d["nom"]         = String::utf8(sh[i].nom);
+        d["res_id"]       = sh[i].res_id;
+        d["runway_days"] = (double)sh[i].runway_days;
+        d["structurel"]  = (bool)sh[i].structurel;
+        a.push_back(d);
+    }
+    return a;
 }
 
 /* ── ESCLAVAGE — les 3 verbes orphelins + le lecteur de marché ── */

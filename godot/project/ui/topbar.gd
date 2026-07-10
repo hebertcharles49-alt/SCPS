@@ -3,17 +3,23 @@ extends Control
 ## roll-up du PAYS JOUÉ (nom · or · pop empire · régions · savoir) à gauche, contrôle
 ## de VITESSE cliquable à DROITE. Suit la largeur de la fenêtre (size_changed).
 ## Display-only sauf le verbe vitesse. Lit Sim.
+##
+## RETOUR JOUEUR UI-2 (2026-07-10, docs/RETOURS_2026-07-10.md point 2 « TOPBAR
+## SURCHARGÉ ») : le contenu se lit désormais en 4 BLOCS visuellement séparés (barre
+## verticale épaisse, cf. _block_sep) — ROYAUME · ÉCONOMIE · POLITIQUE · TEMPS. Les 5
+## cellules de matières brutes (bois/argile/pierre/fer/armes) SORTENT d'ici vers le
+## tiroir Économie/Stocks ; seule la PIRE PÉNURIE remonte, en alerte explicite.
 
 const VKit  = preload("res://ui/vkit.gd")
 const UIKit = preload("res://ui/uikit.gd")
 const Frame = preload("res://ui/frame.gd")
 const H := Frame.TOPBAR_H
 
-## RESSOURCES RAW DE BASE affichées dans le bandeau (retour joueur) — indices d'enum
-## Resource MIROIR de scps_types.h : bois · argile · pierre · fer · armes (la nourriture
-## a déjà son propre chip via country_food). Ordre d'affichage = ordre du panier de bâti.
-const TOPBAR_RAWS := [9, 24, 25, 13, 36]   # RES_WOOD · RES_CLAY · RES_STONE · RES_IRON · RES_ARMS
-const RAW_NAMES := {9: "Bois", 24: "Argile", 25: "Pierre", 13: "Fer", 36: "Armes"}   # hover : le NOM même à stock 0
+## (les 5 cellules de MATIÈRES BRUTES bois·argile·pierre·fer·armes, posées le 07-09,
+## SORTENT de la topbar — retour joueur UI-2 « TOPBAR SURCHARGÉ » : elles vivent
+## désormais dans le tiroir Économie/Stocks, cf. sidebar_drawer.gd. Seule reste ici la
+## PIRE pénurie, dérivée dans worst_shortage() ci-dessous — consommée aussi par
+## alerts.gd (préchargement statique du script, même donnée, un seul calcul).
 
 signal tech_requested
 
@@ -33,6 +39,74 @@ func _delta_txt(d: float) -> String:
 	if absf(d) < 0.5:
 		return ""
 	return "%+d" % int(round(d))
+
+## LA PIRE PÉNURIE du pays (retour joueur UI-2 point 2/3 : « Fer : rupture dans 12
+## jours » remonte en alerte explicite au lieu de noyer 5 chips de stock brut dans la
+## barre). Voie 1 : `country_shortages` si la façade l'expose (câblage en cours par un
+## agent parallèle — testé via has_method, jamais supposé présent). Voie 2 (repli
+## TOUJOURS disponible) : dérivée de `country_stocks()` — LA MÊME donnée que la barre
+## lisait déjà pour les 5 raws — dont `coverage_days` EST déjà stock/|net_day| côté
+## façade (scps_api.c:1133, plafonné à 366 = « >1 an »/pas de pénurie=-1) : pas besoin
+## de recalculer, juste de prendre le pire (le plus petit ≥0) sur TOUTES les ressources
+## (pas seulement les 5 raws — la nourriture a son propre chip mais un déficit de
+## nourriture DOIT aussi remonter ici s'il est pire que tout le reste).
+## Static : consommée aussi par alerts.gd (preload de ce script, même calcul, DRY).
+static func worst_shortage(w, me: int) -> Dictionary:
+	if w == null or me < 0:
+		return {}
+	if w.has_method("country_shortages"):
+		# binding scps_sim_node.cpp:1474 — [{nom, res_id, runway_days, structurel}],
+		# trié urgence croissante ; runway_days = jours avant rupture (double).
+		var sh = w.country_shortages(me)
+		if sh is Array:
+			var worst := {}
+			var worst_days := 1 << 30
+			for s in sh:
+				var dj := int(s.get("runway_days", s.get("days", -1)))
+				# > 1 an = pas une pénurie à AFFICHER (même sentinel que coverage_days)
+				if dj >= 0 and dj <= 366 and dj < worst_days:
+					worst_days = dj
+					worst = {"name": String(s.get("nom", s.get("name", "Ressource"))), "days": dj}
+			return worst
+		return {}
+	if w.has_method("country_stocks"):
+		var worst_name := ""
+		var worst_days := 1 << 30
+		for st in w.country_stocks(me):
+			var cov := int(st.get("coverage_days", -1))
+			if cov >= 0 and cov <= 366 and cov < worst_days:
+				worst_days = cov
+				worst_name = String(st.get("name", "Ressource"))
+		if worst_name != "":
+			return {"name": worst_name, "days": worst_days}
+	return {}
+
+## SÉPARATEUR DE BLOC (audit UI-2 : « regrouper en 4 blocs ») — barre verticale ÉPAISSE
+## et opaque, à distinguer du filet fin (alpha 0.22) que chaque _cell pose déjà entre
+## ses propres cellules internes. Pas de micro-label textuel : la barre ne fait que
+## 48 px de haut (Frame.TOPBAR_H, hors fichiers autorisés) — une 3e ligne de texte y
+## serait illisible (< 10 px), ce que l'audit lisibilité (point 1) proscrit justement ;
+## on prend l'alternative offerte par la mission (« OU séparateur simple »).
+func _block_sep(px: float) -> float:
+	px += 8.0
+	VKit.fill(self, Rect2(px, 5.0, 2.0, H - 10.0),
+		Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.55))
+	return px + 2.0 + 14.0
+
+## une jauge nationale 0-100 (stabilité/prospérité/légitimité/cohésion) — factorisé
+## pour être posée dans des blocs différents (ROYAUME/ÉCONOMIE/POLITIQUE) sans dupliquer
+## le corps de la cellule. UI-5 : la couleur sense() ne porte JAMAIS seule l'état — un
+## signe la double aux EXTRÊMES (▲ haute/▼ basse) ; le milieu n'a pas besoin d'alarme,
+## on ne sur-décore pas une valeur médiane.
+func _gauge_cell(px: float, ci: Dictionary, cptips: Dictionary, key: String, icon: String) -> float:
+	var gv := int(ci.get(key, 0))
+	var glyph := ""
+	if gv >= 66:
+		glyph = " ▲"
+	elif gv <= 33:
+		glyph = " ▼"
+	return _cell(px, icon, "", str(gv) + glyph, "", true,
+		String(cptips.get(key, "")), VKit.sense(clampf(gv / 100.0, 0.0, 1.0)))
 
 ## CELLULE DE RESSOURCE façon CK3 (hud.gui:6148-6207) : icône 22 px à gauche, VALEUR
 ## empilée sur son DELTA (vert si ≥0, rouge sinon), séparateur vertical léger. `icon` =
@@ -134,6 +208,7 @@ func _draw() -> void:
 	var me: int = w.player()
 	var ci: Dictionary = w.country_info(me)
 	var px := 16.0   # (la capsule de chrome qui occupait x=10..102 est retirée)
+	var content_end := px   # où finit le contenu à gauche — ancre le BLOC TEMPS (age chip)
 	if bool(ci.get("valide", false)):
 		# les ARMES du joueur (héraldique dérivée) — repli couronne si pièces absentes
 		var parms: Texture2D = load("res://ui/heraldry.gd").arms(me)
@@ -142,6 +217,10 @@ func _draw() -> void:
 		else:
 			UIKit.draw_icon(self, "politics_crown", Vector2(px, cy - 2), 18)
 		px += 30
+		var CPTips: Dictionary = load("res://ui/country_panel.gd").TIPS
+
+		# ═══ BLOC ROYAUME : nom · or · pop · N provinces · stabilité (audit UI-2 :
+		#     « regrouper en 4 blocs » — royaume/économie/politique/temps) ═══
 		var nom := String(ci["nom"])
 		VKit.text(self, Vector2(px, cy), VKit.COL_GOLD, nom); px += VKit.text_w(nom) + 18
 		px = _cell(px, "fine_coin", "", _grp(ci["or"]), _delta_txt(_d_gold), _d_gold >= 0.0,
@@ -152,40 +231,34 @@ func _draw() -> void:
 		var rt := "%d prov." % w.country_province_count(me)
 		_tips.append([Rect2(px - 4.0, 0.0, VKit.text_w(rt) + 8.0, H), "Provinces colonisées"])
 		VKit.text(self, Vector2(px, cy), VKit.COL_DIM, rt); px += VKit.text_w(rt) + 14
-		var CPTips: Dictionary = load("res://ui/country_panel.gd").TIPS
+		px = _gauge_cell(px, ci, CPTips, "stabilite", "stability_shield")
+		px = _block_sep(px)
+
+		# ═══ BLOC ÉCONOMIE : nourriture · pénurie/prod critique · prospérité · savoir ·
+		#     colonisation en chantier. Les 5 cellules de MATIÈRES BRUTES bois/argile/
+		#     pierre/fer/armes SORTENT d'ici (retour joueur « TOPBAR SURCHARGÉ ») → le
+		#     tiroir Économie/Stocks (sidebar_drawer.gd) ; seule la PIRE PÉNURIE
+		#     remonte, en alerte explicite (« Fer : rupture dans 12 jours »). ═══
+		if w.has_method("country_food"):
+			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), "", true,
+				"Réserve vivrière (rations)")
+		var short := worst_shortage(w, me)
+		if not short.is_empty():
+			var djs := int(short["days"])
+			var slbl := "%s : rupture %d j" % [String(short["name"]), djs]
+			# UI-5 : la couleur (rouge) ne porte JAMAIS seule l'état — le texte chiffré
+			# ET le symbole ▼ portent le même sens en second canal.
+			px = _cell(px, "alert_shortage", "", slbl, "▼", false,
+				"Pénurie au rythme actuel — surveillez ce bien (marché, colonies vivrières, chantiers)",
+				VKit.sense(0.10))
+		else:
+			px = _cell(px, "alert_shortage", "", "production stable", "", true,
+				"Aucune ressource nationale en rupture prévisible", VKit.COL_DIM)
+		px = _gauge_cell(px, ci, CPTips, "prosperite", "prosperity_sprout")
 		var sx0 := px
 		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]), "", true,
 			String(CPTips.get("savoir", "")) + " (clic : l'arbre de technologie)")
 		_savoir_rect = Rect2(sx0 - 4, 0, px - sx0, H)
-		# NOURRITURE (v50) : Σ stock vivrier de l'empire — la réserve en rations
-		if w.has_method("country_food"):
-			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), "", true,
-				"Réserve vivrière (rations)")
-		# RESSOURCES RAW DE BASE : bois · argile · pierre · fer · armes — stock + net/jour
-		if w.has_method("country_stocks"):
-			var smap := {}
-			var nmap := {}
-			var rnames := {}
-			for st in w.country_stocks(me):
-				smap[int(st["res_id"])] = int(st["stock"])
-				nmap[int(st["res_id"])] = float(st.get("net_day", 0.0))
-				rnames[int(st["res_id"])] = String(st.get("name", ""))
-			for rid in TOPBAR_RAWS:
-				var net := float(nmap.get(rid, 0.0))
-				var dtx := ("%+.1f" % net) if absf(net) >= 0.05 else ""
-				var rnm := String(rnames.get(rid, RAW_NAMES.get(rid, "Ressource")))
-				px = _cell(px, "", rid, _grp(smap.get(rid, 0)), dtx, net >= 0.0,
-					"%s — stock national" % rnm)
-		# ── JAUGES NATIONALES (doctrine joueur : « national = topbar ») : l'état du royaume
-		#    en un coup d'œil, valeur 0-100 colorée par sens ; le POURQUOI vit au survol.
-		for gk in [["stabilite", "stability_shield"], ["prosperite", "prosperity_sprout"],
-			["legitimite", "politics_crown"], ["cohesion", "happiness_medallion"]]:
-			var gv := int(ci.get(gk[0], 0))
-			px = _cell(px, gk[1], "", str(gv), "", true,
-				String(CPTips.get(gk[0], "")), VKit.sense(clampf(gv / 100.0, 0.0, 1.0)))
-		var infl := int(ci.get("influence", 0))
-		px = _cell(px, "politics_law", "", str(infl), "", true,
-			"Influence — réputation diplomatique (offres, alliances, ligues)")
 		# CHANTIER DE COLONISATION (v50) : la colonie qui mûrit
 		if w.has_method("colony_status"):
 			var cs: Dictionary = w.colony_status()
@@ -195,11 +268,19 @@ func _draw() -> void:
 				var ctxt := "Colonie %d %%" % pct
 				UIKit.draw_icon(self, "settlement_cluster", Vector2(px, cy - 2), 16); px += 20
 				VKit.text(self, Vector2(px, cy), Color(0.62, 0.78, 0.52), ctxt); px += VKit.text_w(ctxt) + 20
+		px = _block_sep(px)
 
-		# ── BONHEUR + FACTIONS (retour joueur 2026-07-10 : « les factions doivent être
-		#    en top bar » — doctrine national = topbar). Bonheur = satisfaction pondérée
-		#    des classes (détail au survol) ; puis un BLASON par faction, mini-barre
-		#    d'ADHÉSION dessous, ★ dominante, rancœur en liseré rouge — détail au survol.
+		# ═══ BLOC POLITIQUE : légitimité · influence · cohésion · bonheur · factions
+		#     (blasons existants) · tension de coup (retour joueur : « les factions
+		#     doivent être en top bar » — doctrine national = topbar). Bonheur = satis-
+		#     faction pondérée des classes (détail au survol) ; puis un BLASON par
+		#     faction, mini-barre d'ADHÉSION dessous, ★ dominante, rancœur en liseré
+		#     rouge — détail au survol. ═══
+		px = _gauge_cell(px, ci, CPTips, "legitimite", "politics_crown")
+		var infl := int(ci.get("influence", 0))
+		px = _cell(px, "politics_law", "", str(infl), "", true,
+			"Influence — réputation diplomatique (offres, alliances, ligues)")
+		px = _gauge_cell(px, ci, CPTips, "cohesion", "happiness_medallion")
 		var dmt: Dictionary = w.country_demo(me) if w.has_method("country_demo") else {}
 		var clst: Array = dmt.get("classes", [])
 		if clst.size() >= 3:
@@ -210,7 +291,14 @@ func _draw() -> void:
 				sat_avg += float(cl.get("satisfaction", 0)) * p
 				wsum += p
 			sat_avg = sat_avg / maxf(wsum, 1.0)
-			px = _cell(px, "happiness_medallion", "", "%d %%" % int(round(sat_avg)), "", true,
+			# UI-5 : même doublage aux extrêmes que les jauges (▲/▼) — la couleur seule
+			# ne dit pas si 72 % est un bon ou un mauvais bonheur.
+			var bglyph := ""
+			if sat_avg >= 66.0:
+				bglyph = " ▲"
+			elif sat_avg <= 33.0:
+				bglyph = " ▼"
+			px = _cell(px, "happiness_medallion", "", "%d %%%s" % [int(round(sat_avg)), bglyph], "", true,
 				"Bonheur — satisfaction pondérée du peuple\nLaboureurs %d · Artisans %d · Noblesse %d" % [
 					int(clst[0].get("satisfaction", 0)), int(clst[1].get("satisfaction", 0)),
 					int(clst[2].get("satisfaction", 0))],
@@ -249,7 +337,16 @@ func _draw() -> void:
 				VKit.text(self, Vector2(px + 2, cy), VKit.sense(0.10) if coup >= 45 else VKit.sense(0.35), wtxt)
 				_tips.append([Rect2(px - 2.0, 0.0, VKit.text_w(wtxt) + 10.0, H), court])
 				px += VKit.text_w(wtxt) + 12.0
+		content_end = px
 
+	# séparateur visuel avant le BLOC TEMPS — ANCRÉ au contenu RÉELLEMENT dessiné (pas
+	# une position fixe) : un contenu politique long (pays à beaucoup de factions, longue
+	# pénurie nommée) ne doit JAMAIS chevaucher le chip Engager ci-dessous (capturé en
+	# capture d'écran — le repli `_age_rect` en tient compte aussi, cf. plus bas).
+	if content_end > 16.0:
+		content_end = _block_sep(content_end)
+
+	# ═══ BLOC TEMPS : âge/chip Engager · date (date_chip) · vitesse (audit UI-2) ═══
 	# LA DATE vit dans son PROPRE contrôle (_date, rafraîchi CHAQUE JOUR — le topbar,
 	# lui, reste à la cadence mensuelle anti-danse : sans ça le compteur sautait par
 	# paquets de 8-9 jours entre deux redraws, retour joueur 2026-07-10). On ne fait
@@ -266,11 +363,28 @@ func _draw() -> void:
 		if int(ag.get("age", -1)) >= 0 and not bool(ag.get("engaged", true)):
 			var lab := "Engager : %s" % String(ag.get("name", ""))
 			var aw := VKit.text_w(lab) + 34.0
+			# GARDE ANTI-CHEVAUCHEMENT (audit UI-2) : le chip reste ANCRÉ à gauche de
+			# la date (jamais poussé DESSUS — 1re tentative fautive, capturée) ; quand
+			# le bloc POLITIQUE arrive trop près, c'est le LABEL qui se TRONQUE
+			# (« Engager : Âge du Comm… ») — le nom complet vit au survol (tip).
+			var avail := dtx0 - 14.0 - content_end
+			if aw > avail:
+				# tronque jusqu'au minimum « Engager… » (~105 px) — un léger recouvrement
+				# résiduel du dernier blason reste possible en cas extrême (le chip est
+				# opaque et dessiné PAR-DESSUS : lisible et cliquable, jamais l'inverse).
+				while lab.length() > 7 and VKit.text_w(lab + "…") + 34.0 > avail:
+					lab = lab.substr(0, lab.length() - 1)
+				lab += "…"
+				aw = VKit.text_w(lab) + 34.0
 			_age_rect = Rect2(dtx0 - aw - 14.0, 6, aw, H - 12)
 			VKit.fill(self, _age_rect, Color(0.24, 0.17, 0.07, 0.95))
 			VKit.box(self, _age_rect, Color(0.90, 0.72, 0.34))
 			UIKit.draw_icon(self, "fine_age", Vector2(_age_rect.position.x + 6, cy - 2), 16)
 			VKit.text(self, Vector2(_age_rect.position.x + 26, cy), Color(0.90, 0.72, 0.34), lab)
+			# push_front : le chip est dessiné PAR-DESSUS le contenu → son tip doit GAGNER
+			# le hit-test (sinon un blason recouvert répondrait au survol du chip).
+			_tips.push_front([_age_rect,
+				"Un âge s'est levé : %s — clic pour l'ENGAGER (une fois par âge)" % String(ag.get("name", ""))])
 
 	# RUBAN PAUSE (rendu attendu EU4) : le monde figé se DIT, pas juste un glyphe dans
 	# le coin. ANCRÉ sous les contrôles de vitesse (bord droit) — c'est là que l'œil
@@ -287,8 +401,10 @@ func _draw() -> void:
 
 	# CONTRÔLE DE VITESSE façon RimWorld (TimeControls) : 4 boutons DISCRETS — l'état se
 	# VOIT et on clique CE qu'on veut, plus de cycle aveugle. Espace bascule toujours.
+	# Cibles ÉLARGIES à 34 px (audit lisibilité point 1 : « boutons de vitesse trop
+	# petits », cible ≥32 px) — la hauteur H-12=36 px l'était déjà.
 	_speed_btns.clear()
-	var sbw := 27.0
+	var sbw := 34.0
 	var sx := ww - 8.0 - 4.0 * sbw
 	_speed_rect = Rect2(sx, 6, 4.0 * sbw, H - 12)   # (gardé : zone de hit globale)
 	var glyphs := ["❙❙", "▶", "▶▶", "▶▶▶"]

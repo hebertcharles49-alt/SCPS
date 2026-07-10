@@ -32,7 +32,17 @@
 #include <stdint.h>
 
 #define SAVE_MAGIC   0x53504353u   /* "SCPS" */
-#define SAVE_VERSION 76u           /* v76 : MANUFACTURES SIGNATURE D'ÉTHOS (2026-07-09) — les 6
+#define SAVE_VERSION 77u           /* v77 : ORIENTATIONS POLITIQUES (2026-07-10, scps_decrees.{h,
+                                    * c}) — la DÉCISION « Audit des offices » ajoute un cooldown
+                                    * PAR PAYS (g_audit_cd[SCPS_MAX_COUNTRY], accumulateur inter-
+                                    * ticks — jurisprudence EMOB/COLC/TXYR/RVLT) à la section DCRE
+                                    * (fwrite propre au module, pas une struct partagée). Le
+                                    * catalogue des 9 orientations légères RENUMÉROTE l'enum
+                                    * DecreeId (DECREE_TRIBUT retiré) : g_decree_mask garde la
+                                    * MÊME taille mais un save <v77 y lirait des bits au mauvais
+                                    * sens ⇒ refusé par le contrôle de version, comme toute ère
+                                    * antérieure. <v77 refusé. */
+                                   /* v76 : MANUFACTURES SIGNATURE D'ÉTHOS (2026-07-09) — les 6
                                     * biens/6 ateliers du désir croisé (docs/DESIGN_manufactures_
                                     * ethos.md) appendent RES_HEAUMES…RES_OUVRAGES à Resource et
                                     * BLD_HEAUMERIE…BLD_ATELIER_SEREIN à BuildingType ⇒ les tableaux

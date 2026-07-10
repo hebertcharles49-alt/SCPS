@@ -115,16 +115,26 @@ func _run() -> void:
 	_reset()
 
 	# ── 5. PROVINCE ÉTRANGÈRE (celle d'une IA) ──
+	# Sélection ROBUSTIFIÉE (2026-07-10) : les anciens critères tombaient sur un PAYS
+	# REBELLE transitoire (Phase 3a : slot « Rebelles de X », panneau quasi vide) et/ou
+	# un pays JAMAIS DÉCOUVERT — country_actions.open_country a un gate de brouillard
+	# (country_known==0 → return silencieux) ⇒ 06_diplo capturait une fenêtre ABSENTE.
+	# Critères : ≠ joueur · possède des provinces · CONNU (fog) · pas un rebelle.
 	var foe := -1
-	for c in range(w.country_count()):
-		if c != me and int(w.country_role(c)) == 1 and w.country_province_count(c) > 0:
+	for pass_role in [true, false]:   # 1er passage : rôle 1 (empire IA) ; 2e : n'importe qui
+		if foe >= 0:
+			break
+		for c in range(w.country_count()):
+			if c == me or w.country_province_count(c) <= 0:
+				continue
+			if pass_role and int(w.country_role(c)) != 1:
+				continue
+			if String(w.country_info(c).get("nom", "")).begins_with("Rebelles"):
+				continue   # rebelle transitoire (guerre civile) — pas une cible diplo stable
+			if w.has_method("country_known") and int(w.country_known(c)) == 0:
+				continue   # jamais découvert : open_country refuserait (gate de brouillard)
 			foe = c
 			break
-	if foe < 0:
-		for c in range(w.country_count()):
-			if c != me and w.country_province_count(c) > 0:
-				foe = c
-				break
 	if foe >= 0:
 		var fprov: int = w.country_capital_province(foe)
 		var freg: int = w.province_region(fprov)

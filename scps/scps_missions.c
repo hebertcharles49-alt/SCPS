@@ -7,27 +7,52 @@
  */
 #include "scps_missions.h"
 #include "scps_factions.h"   /* la faction dominante oriente la mission de bâti */
+#include "scps_tune.h"       /* P3 : COUNCIL_MISSION_* (registre J) */
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
 
-/* Les six coordonnées bâties adressables (cf. ProvBuild) + le mot de la cible. */
-enum { CB_K=0, CB_PE, CB_FAITH, CB_SAVOIR, CB_H, CB_FOOD };
+/* Les six coordonnées bâties adressables (MIS_COORD_*, cf. scps_missions.h) + le
+ * mot de la cible. */
 static float build_coord(const ProvBuild *b, int c){
-    switch (c){ case CB_K: return b->K_inst; case CB_PE: return b->PE_infra;
-                case CB_FAITH: return b->faith; case CB_SAVOIR: return b->savoir;
-                case CB_H: return b->H_coerc;  default: return b->food_cap; }
+    switch (c){ case MIS_COORD_K: return b->K_inst; case MIS_COORD_PE: return b->PE_infra;
+                case MIS_COORD_FAITH: return b->faith; case MIS_COORD_SAVOIR: return b->savoir;
+                case MIS_COORD_H: return b->H_coerc;  default: return b->food_cap; }
 }
 static const char *coord_word(int c){
-    switch (c){ case CB_K: return "les institutions"; case CB_PE: return "le commerce";
-                case CB_FAITH: return "la foi"; case CB_SAVOIR: return "le savoir";
-                case CB_H: return "la garde";  default: return "les vivres"; }
+    switch (c){ case MIS_COORD_K: return "les institutions"; case MIS_COORD_PE: return "le commerce";
+                case MIS_COORD_FAITH: return "la foi"; case MIS_COORD_SAVOIR: return "le savoir";
+                case MIS_COORD_H: return "la garde";  default: return "les vivres"; }
 }
 /* L'éthos dominant choisit la coordonnée à ériger (ce que la faction veut de l'État). */
 static int coord_for_faction(EthosFaction f){
-    switch (f){ case FAC_CONQUERANT: return CB_H;   case FAC_MARCHAND: return CB_PE;
-                case FAC_LEGISTE:    return CB_K;   case FAC_GARDIEN:  return CB_FAITH;
-                case FAC_TRANSGRESSEUR: return CB_SAVOIR; default: return CB_FOOD; }
+    switch (f){ case FAC_CONQUERANT: return MIS_COORD_H;   case FAC_MARCHAND: return MIS_COORD_PE;
+                case FAC_LEGISTE:    return MIS_COORD_K;   case FAC_GARDIEN:  return MIS_COORD_FAITH;
+                case FAC_TRANSGRESSEUR: return MIS_COORD_SAVOIR; default: return MIS_COORD_FOOD; }
+}
+/* P3 — le SIÈGE responsable, déduit du type (docs/CONSEIL_ORIENTATIONS_2026-07-10.md) :
+ * MIS_TECH→Savoir(0) · MIS_CHAIN→Ouvrages(2) · MIS_BUILD savoir/foi→Savoir(0) ·
+ * institutions/garde/vivres→Royaume(1) · commerce→Ouvrages(2). */
+int mission_responsible_seat(const Mission *m){
+    if (!m) return -1;
+    if (m->kind==MIS_TECH)  return 0;
+    if (m->kind==MIS_CHAIN) return 2;
+    if (m->kind==MIS_BUILD){
+        switch (m->coord){
+            case MIS_COORD_SAVOIR: case MIS_COORD_FAITH: return 0;   /* Savoir */
+            case MIS_COORD_PE:                            return 2;   /* Ouvrages (commerce) */
+            default:                                      return 1;   /* Royaume (institutions/garde/vivres) */
+        }
+    }
+    return -1;
+}
+/* P3 — pénalise/récompense la LOYAUTÉ du titulaire du siège responsable (le
+ * SUCCESSEUR reprend : on relit le siège pourvu MAINTENANT, aucun id figé). */
+static void mission_seat_loyalty(Statecraft *sc, int cid, const Mission *m, float delta){
+    if (!sc || !m) return;
+    int seat = mission_responsible_seat(m);
+    if (seat<0) return;
+    statecraft_council_loyalty_add(sc, cid, seat, delta);   /* no-op si vacant */
 }
 
 static int capital_region(const World *w, const WorldEconomy *econ, int cid){
@@ -89,12 +114,30 @@ static bool mission_check(const World *w, WorldEconomy *econ, const TechState *t
     }
 }
 
-static void mission_grant(const World *w, WorldEconomy *econ, int cid, const Mission *m){
+/* P3 — le bonus de récompense du siège responsable : PER_RANK × (rang−1) × efficacité
+ * (I×0 · II×1×PER_RANK · III×2×PER_RANK), 1.0 (aucun bonus) si le siège est VACANT —
+ * pas de titulaire à créditer. `sc`/`wp` NULL ⇒ mult=1 (mission neutre). */
+static float mission_reward_mult(const Statecraft *sc, const WorldProsperity *wp,
+                                 uint32_t seed, int cid, const Mission *m){
+    if (!sc) return 1.f;
+    int seat = mission_responsible_seat(m);
+    if (seat<0) return 1.f;
+    int slot = statecraft_council_seated(sc,cid,seat);
+    if (slot<0) return 1.f;
+    int gen  = statecraft_council_seated_gen(sc,cid,seat);
+    int tier = statecraft_council_cand_tier(seed,cid,seat,slot,gen);
+    float eff = statecraft_council_efficiency(sc,wp,cid,seat);
+    return 1.f + tune_f("COUNCIL_MISSION_REWARD_PER_RANK",0.05f) * (float)(tier-1) * eff;
+}
+
+static void mission_grant(const World *w, WorldEconomy *econ, Statecraft *sc, const WorldProsperity *wp,
+                          uint32_t seed, int cid, const Mission *m){
     /* récompense versée à la CAPITALE (le siège) — cohérent avec mission_check, qui VÉRIFIE le bâti sur
      * capital_region(). L'ancien « 1re région possédée » (plus bas index) coïncidait avec la capitale sur
      * les anciens mondes ; un monde re-baseliné peut les dissocier → la récompense tombait à côté. */
     int cr=capital_region(w,econ,cid);
     if (cr<0) return;
+    float mult = mission_reward_mult(sc,wp,seed,cid,m);            /* P3 : bonus ∝ rang×efficacité du siège responsable */
     /* RE-KEY PROVINCE : treasury province-owned — route sur la représentative.
      * region[].stock[] est un REFLET reconstruit EN ENTIER depuis prov[] à chaque
      * econ_aggregate_regions — PAS « le marché, resté au grain région, intact » (le
@@ -102,20 +145,28 @@ static void mission_grant(const World *w, WorldEconomy *econ, int cid, const Mis
      * évapore (≤ 30 j). Route par econ_region_stock_add (province représentative
      * d'abord, sœurs en débordement) comme le trésor ci-dessus. */
     int crp=econ_region_rep_province(econ,cr);
-    if (crp>=0 && crp<econ->n_prov) econ->prov[crp].treasury += m->reward_gold;   /* or au trésor */
+    if (crp>=0 && crp<econ->n_prov) econ->prov[crp].treasury += m->reward_gold * mult;   /* or au trésor */
     if (m->reward_mat>RES_NONE && m->reward_mat<RES_COUNT)
-        econ_region_stock_add(econ, cr, m->reward_mat, m->reward_qty);  /* matières au marché */
+        econ_region_stock_add(econ, cr, m->reward_mat, m->reward_qty * mult);  /* matières au marché */
+    mission_seat_loyalty(sc, cid, m, tune_f("COUNCIL_MISSION_SUCCESS_LOYALTY",5.f));   /* P3 : réussite → +loyauté */
 }
 
 void missions_tick(MissionsState *ms, const World *w, WorldEconomy *econ,
-                   const TechState *ts, int year){
+                   const TechState *ts, Statecraft *sc, const WorldProsperity *wp,
+                   uint32_t seed, int year){
     for (int c=0;c<w->n_countries && c<SCPS_MISSIONS_MAX;c++){
         if (w->country[c].role==POLITY_UNCLAIMED || !has_regions(econ,c)) continue;
         Mission *m=&ms->m[c];
-        if (year%10==0 && (!m->active || m->issued_year!=year))   /* nouvelle décennie : mission fraîche */
+        if (year%10==0 && (!m->active || m->issued_year!=year)){  /* nouvelle décennie : mission fraîche */
+            /* P3 — l'ÉCHEC est RÉSOLU ICI, AVANT l'émission de la suivante (fin du
+             * remplacement silencieux) : une mission ACTIVE et INACHEVÉE au moment
+             * de la décennie suivante est un échec pour le siège responsable. */
+            if (m->active && !m->done)
+                mission_seat_loyalty(sc, c, m, -tune_f("COUNCIL_MISSION_FAILURE_LOYALTY",10.f));
             *m = mission_roll(w,econ,ts,c,year);
+        }
         if (m->active && !m->done && mission_check(w,econ,ts,c,m)){
-            m->done=true; mission_grant(w,econ,c,m);              /* accomplie → récompense (au siège) */
+            m->done=true; mission_grant(w,econ,sc,wp,seed,c,m);   /* accomplie → récompense (au siège) + loyauté */
         }
     }
 }

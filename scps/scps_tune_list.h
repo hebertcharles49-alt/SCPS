@@ -752,6 +752,77 @@
     X(TRAD_PERM_W,               3.0f) \
     X(TRAD_ARCANE_W,             0.25f) \
     X(TRAD_DERIVE_W,             1.0f) \
-    X(TRAD_FRACT_W,              0.06f)
+    X(TRAD_FRACT_W,              0.06f) \
+    /* CONSEIL — RANGS & COÛTS (2026-07-10, docs/CONSEIL_ORIENTATIONS_2026-07-10.md) :
+     * bonus de rang I = BASE (par siège, Savoir/Royaume/Ouvrages) ; II ×TIER2_MULT,
+     * III ×TIER3_MULT. Coût = econ_country_tax_year(cid) × TIERn_REVENUE_RATE × IPM,
+     * prélevé /12 (mensuel) — REMPLACE l'ancien prix nominal (SC_TIER_COST). */ \
+    X(COUNCIL_SAVOIR_BASE,       0.12f) \
+    X(COUNCIL_ROYAUME_BASE,      0.15f) \
+    X(COUNCIL_OUVRAGES_BASE,     0.20f) \
+    X(COUNCIL_TIER2_MULT,        1.50f) \
+    X(COUNCIL_TIER3_MULT,        2.00f) \
+    X(COUNCIL_TIER1_REVENUE_RATE,0.015f) \
+    X(COUNCIL_TIER2_REVENUE_RATE,0.030f) \
+    X(COUNCIL_TIER3_REVENUE_RATE,0.050f) \
+    /* CONSEIL — EFFICACITÉ POLITIQUE : clamp(BASE + K_PER·K + LOY_W·loyauté/100 −
+     * CORRUPTION_PER_POINT·Corruption, MIN, MAX). Multiplie SEULEMENT la part
+     * conseiller (bonus final du siège = bonus de rang × efficacité). */ \
+    X(COUNCIL_EFF_BASE,          0.70f) \
+    X(COUNCIL_EFF_K_PER,         0.03f) \
+    X(COUNCIL_EFF_LOY_W,         0.15f) \
+    X(COUNCIL_EFF_CORRUPTION_PER_POINT, 0.0035f) \
+    X(COUNCIL_EFF_MIN,           0.50f) \
+    X(COUNCIL_EFF_MAX,           1.15f) \
+    /* CONSEIL — MISSION DÉCENNALE au siège responsable (P3) : bonus de récompense
+     * (or ET matières) = PER_RANK × (rang−1) × efficacité ; réussite/échec bougent
+     * la loyauté du titulaire du siège responsable (déduit du type, aucun état neuf). */ \
+    X(COUNCIL_MISSION_REWARD_PER_RANK,  0.05f) \
+    X(COUNCIL_MISSION_SUCCESS_LOYALTY,  5.0f) \
+    X(COUNCIL_MISSION_FAILURE_LOYALTY, 10.0f) \
+    /* ORIENTATIONS POLITIQUES DU JOUEUR (2026-07-10, docs/CONSEIL_ORIENTATIONS_2026-07-10.md)
+     * — REMPLACENT les 4 anciens grands décrets (scps_decrees.{h,c}). RÈGLE : jamais
+     * tune_set — chaque site de lecture applique tune_f("CLÉ") × decree_mult(cid,
+     * DECREE_X, mult) (1.0 si inactif/impayé ce mois). Coût = econ_country_tax_year(cid)
+     * × REVENUE_RATE × IPM, prélevé /12. RATIONS⊥FOYERS et CIRCULATION⊥FRONTIÈRES
+     * (radio-boutons, decree_toggle). LA POLITIQUE DE TRIBUT SORT du catalogue (retirée
+     * de l'enum DecreeId ; son levier diplo scps_diplo.c reste intact, désexposé). */ \
+    X(DECREE_RATIONS_REVENUE_RATE,        0.005f) \
+    X(DECREE_RATIONS_FOOD_NEED_MULT,      0.95f) \
+    X(DECREE_RATIONS_POP_R_BASE_MULT,     0.97f) \
+    X(DECREE_FOYERS_REVENUE_RATE,         0.015f) \
+    X(DECREE_FOYERS_POP_R_BASE_MULT,      1.05f) \
+    X(DECREE_FOYERS_FOOD_NEED_MULT,       1.04f) \
+    X(DECREE_ECOLES_REVENUE_RATE,         0.02f) \
+    X(DECREE_ECOLES_SAVOIR_W_MULT,        1.05f) \
+    X(DECREE_ATELIERS_REVENUE_RATE,       0.02f) \
+    X(DECREE_ATELIERS_MANUF_COST_MULT,    0.95f) \
+    X(DECREE_COMPTOIRS_REVENUE_RATE,      0.015f) \
+    X(DECREE_COMPTOIRS_COMMERCE_W_MULT,   1.05f) \
+    X(DECREE_CIRCULATION_REVENUE_RATE,    0.0075f) \
+    X(DECREE_CIRCULATION_MIG_PACT_MULT,   1.10f) \
+    X(DECREE_FRONTIERES_REVENUE_RATE,     0.0f) \
+    X(DECREE_FRONTIERES_MIG_PACT_MULT,    0.0f) \
+    X(DECREE_FRONTIERES_COMMERCE_W_MULT,  0.95f) \
+    /* ex-DECREE_MECENAT (bit RÉUTILISÉ — spec : « aucun enum/état/save neuf ») : le nom/
+     * flavor affichés sont « Fêtes publiques », les clés gardent le nom de code MECENAT. */ \
+    X(DECREE_MECENAT_REVENUE_RATE,        0.015f) \
+    X(DECREE_MECENAT_UNREST_MULT,         0.95f) \
+    X(DECREE_LEGATIONS_REVENUE_RATE,      0.015f) \
+    X(DECREE_LEGATIONS_INFLUENCE_PER_MONTH, 0.25f) \
+    X(DECREE_LEVEE_REVENUE_RATE,          0.0f) \
+    X(DECREE_LEVEE_MIN_LEVEL,             2.0f) \
+    /* DÉCISIONS PONCTUELLES — AFFRANCHISSEMENT (verbe CMD_MANUMIT existant, scps_sim.c) +
+     * AUDIT DES OFFICES (DECISION_AUDIT_OFFICES, scps_decrees.c : condition + coût
+     * ponctuel + cooldown SÉRIALISÉ + effet immédiat faction_audit/L capitale). Le
+     * delta de Corruption de l'audit (-20 pts) est DÉJÀ hardcodé dans faction_audit
+     * (scps_factions.c, hors périmètre de cette mission) — non dupliqué ici en
+     * registre décoratif (règle du fichier : uniquement des constantes RÉELLEMENT
+     * lues au runtime). */ \
+    X(DECISION_MANUMIT_COMMUNAUTAIRE_BIAS, 0.10f) \
+    X(DECISION_AUDIT_CORRUPTION_MIN,      20.0f) \
+    X(DECISION_AUDIT_REVENUE_RATE,        0.25f) \
+    X(DECISION_AUDIT_COOLDOWN_YEARS,       5.0f) \
+    X(DECISION_AUDIT_L_DELTA,              0.3f)
 
 #endif /* SCPS_TUNE_LIST_H */

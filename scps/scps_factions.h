@@ -101,6 +101,10 @@ float faction_cohesion(const float weights[FAC_COUNT]);   /* = 1 − fracture */
  * imposée), Légistes↔Transgresseurs (ordre/raccourci), Gardiens↔Transgresseurs
  * (l'orthodoxie interdit / le culte sacralise le faustien — l'épine dorsale). */
 float faction_opposition(EthosFaction a, EthosFaction b);
+/* P2 (docs/CONSEIL_ORIENTATIONS_2026-07-10.md) — Opp(F) : la faction dont l'éthos
+ * S'OPPOSE le plus à F (premier maximum en balayage croissant 0..FAC_COUNT-1,
+ * déterministe — même convention que faction_coup_tension). -1 si f invalide. */
+EthosFaction faction_most_opposed(EthosFaction f);
 
 /* La TENSION DE COUP d'un pays : la faction la plus FORTE dont l'éthos S'OPPOSE à
  * la direction effective (la dominante), pondérée par sa part. Élevée = une faction
@@ -123,6 +127,10 @@ void faction_lever_apply(int cid, EthosFaction advanced, float strength);  /* un
 void faction_levers_decay(float rate);                            /* la stance non tenue s'efface */
 void faction_levers_on_coup(int cid);                             /* un coup DÉCHARGE la rancœur du pays */
 float faction_grievance(int cid, EthosFaction f);                 /* 0-1 : la rancœur d'une faction (UI) */
+/* Lecteur-écrivain DIRECT de la rancœur (0-1, borné) — pour un acte qui aigrit UNE
+ * faction précise sans passer par le motif « lever une opposée » (ex. Conseil P1-3 :
+ * RENVOYER un ministre aigrit SA PROPRE faction, pas la plus opposée à elle). */
+void  faction_grievance_add(int cid, EthosFaction f, float amount);
 /* §C3 — la concession a un prix : capture de l'État, lue à l'écran en Corruption. */
 void         faction_concede(int cid, EthosFaction winner);       /* une concession gorge la faction gagnante */
 float        faction_capture_total(int cid);                      /* le « rot » 0..1 (malus noble, K creusé) */

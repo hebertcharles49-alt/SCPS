@@ -77,13 +77,44 @@ void statecraft_init(Statecraft *sc, const World *w){
 }
 
 /* ═══ Q1 — LE CONSEIL (I7) ═══════════════════════════════════════════════════
- * 3 sièges (Savoir/Société/Industrie). Chaque siège propose SC_COUNCIL_CANDS
+ * 3 sièges (Savoir/Royaume/Ouvrages). Chaque siège propose SC_COUNCIL_CANDS
  * candidats DÉTERMINISTES (tier + nom dérivés du seed) ; le joueur/IA en NOMME un
  * (council[cid][seat] = slot) ou RENVOIE (-1). L'effet est un MULTIPLICATEUR lecteur
  * (×savoir / ×promo / ×manuf), le coût une ponction mensuelle (×IPM). Rien d'autre. */
-static const float SC_SEAT_BASE[SC_COUNCIL_SEATS] = { 0.20f, 0.12f, 0.15f }; /* +20/+12/+15 % à tier-effet 1 */
-static const float SC_TIER_EFFET[4] = { 0.f, 1.0f, 1.5f, 2.0f };            /* index = tier 1..3 */
-static const float SC_TIER_COST [4] = { 0.f, 8.f, 16.f, 28.f };             /* or/mois, ×IPM */
+/* P1 — RANGS : bonus de rang I = BASE(siège), II ×TIER2_MULT, III ×TIER3_MULT
+ * (registre J, scps_tune_list.h). base_of() lit le tune_f par SIÈGE (Savoir/
+ * Royaume/Ouvrages) — jamais un tableau statique, pour rester F10-dialable. */
+static float sc_seat_base(int seat){
+    switch (seat){
+        case 0:  return tune_f("COUNCIL_SAVOIR_BASE",   0.12f);
+        case 1:  return tune_f("COUNCIL_ROYAUME_BASE",  0.15f);
+        default: return tune_f("COUNCIL_OUVRAGES_BASE", 0.20f);
+    }
+}
+static float sc_tier_mult(int tier){
+    switch (tier){
+        case 1:  return 1.f;
+        case 2:  return tune_f("COUNCIL_TIER2_MULT", 1.50f);
+        case 3:  return tune_f("COUNCIL_TIER3_MULT", 2.00f);
+        default: return 0.f;
+    }
+}
+/* P1 — COÛTS : assiette = econ_country_tax_year(cid) (le revenu ANNUEL RÉEL, pas
+ * une approximation) × taux par rang × IPM, PRÉLEVÉ /12 (mensuel) — remplace
+ * l'ancien prix nominal plat (SC_TIER_COST). */
+static float sc_tier_revenue_rate(int tier){
+    switch (tier){
+        case 1:  return tune_f("COUNCIL_TIER1_REVENUE_RATE", 0.015f);
+        case 2:  return tune_f("COUNCIL_TIER2_REVENUE_RATE", 0.030f);
+        case 3:  return tune_f("COUNCIL_TIER3_REVENUE_RATE", 0.050f);
+        default: return 0.f;
+    }
+}
+static float sc_tier_monthly_cost(int cid, int tier, float ipm){
+    if (tier<1||tier>3) return 0.f;
+    if (ipm<=0.f) ipm=1.f;
+    return econ_country_tax_year(cid) * sc_tier_revenue_rate(tier) * ipm / 12.f;
+}
 
 static uint32_t sc_hash(uint32_t a, uint32_t b, uint32_t c, uint32_t d){
     uint32_t h = a*2654435761u ^ b*40503u ^ c*2246822519u ^ d*3266489917u;
@@ -110,19 +141,53 @@ int statecraft_council_cand_name(uint32_t seed, int cid, int seat, int slot, int
     uint32_t h = sc_hash(sc_genseed(seed,gen)^0x5EAB011u, (uint32_t)cid, (uint32_t)(seat*7+slot), 0x9E37u);
     return (int)STR_COUNCIL_NAME_0 + (int)(h % (uint32_t)SC_COUNCIL_NAMES);
 }
-/* V2a — LA FACTION D'UN CANDIDAT : le SIÈGE privilégie deux factions candidates
- * (Savoir→Transgresseur/Légiste : le savoir défend l'orthodoxie OU perce l'interdit ;
- * Société→Conquérant/Communautaire : l'ordre social se dispute entre la poigne et le
- * peuple ; Industrie→Marchand seul : le négoce n'a qu'un visage ici). La MAISON (le
- * hash du nom, § déjà déterministe) TRANCHE entre les deux quand il y en a deux —
- * aucun état à sérialiser, dérivée comme le tier/l'âge. */
+/* P0-4 — PERSONNE + MAISON (docs/CONSEIL_ORIENTATIONS_2026-07-10.md). Les 24
+ * prénoms et les 12 maisons de la spec, VERBATIM ; tirages INDÉPENDANTS (salts
+ * propres) — ni la maison ni le prénom ne dépendent l'un de l'autre, du tier,
+ * de l'âge ou de la faction. Tables LOCALES (pas de STR_* : strings_ids.h est
+ * hors périmètre de cette mission — cf. TROUVAILLES.md). */
+static const char *const SC_FIRSTNAMES[SC_COUNCIL_FIRSTNAMES] = {
+    "Aldren","Corven","Edras","Isarn","Maëlor","Odran","Orsan","Séverac",
+    "Solvar","Tévran","Vaudric","Ysarn","Althéa","Aveline","Ilyne","Isolde",
+    "Maëra","Mirenne","Néris","Oriane","Téliane","Ysilde","Zélie","Vésane",
+};
+static const char *const SC_HOUSES[SC_COUNCIL_HOUSES] = {
+    "Vœrn","Aldric","Harmel","Orlec","Tessari","Velmor","Brask","Dovric",
+    "Sarnel","Corvane","Istrane","Vaulserre",
+};
+const char *statecraft_council_cand_firstname(uint32_t seed, int cid, int seat, int slot, int gen){
+    if (seat<0||seat>=SC_COUNCIL_SEATS) return SC_FIRSTNAMES[0];
+    uint32_t h = sc_hash(sc_genseed(seed,gen)^0x91A2E3u, (uint32_t)cid, (uint32_t)(seat*7+slot), 0xB4C1u);
+    return SC_FIRSTNAMES[h % (uint32_t)SC_COUNCIL_FIRSTNAMES];
+}
+const char *statecraft_council_cand_house(uint32_t seed, int cid, int seat, int slot, int gen){
+    if (seat<0||seat>=SC_COUNCIL_SEATS) return SC_HOUSES[0];
+    uint32_t h = sc_hash(sc_genseed(seed,gen)^0x40C51Eu, (uint32_t)cid, (uint32_t)(seat*7+slot), 0xD00D5Eu);
+    return SC_HOUSES[h % (uint32_t)SC_COUNCIL_HOUSES];
+}
+/* P0-1 — LA FACTION D'UN CANDIDAT : plus de spectre par siège — un mélange
+ * DÉTERMINISTE des 6 factions (Fisher-Yates, xs32 amorcé par un hash de
+ * seed×pays×siège×GÉNÉRATION) ; les SC_COUNCIL_CANDS premières du mélange sont
+ * les factions des 3 candidats du siège — TOUJOURS distinctes (préfixe d'une
+ * permutation), et le mélange change à chaque génération (re-tirage). Rien à
+ * sérialiser (dérivée, comme le tier/l'âge). */
+static void sc_faction_shuffle(uint32_t seed, int cid, int seat, int gen, EthosFaction out[FAC_COUNT]){
+    for (int f=0; f<FAC_COUNT; f++) out[f]=(EthosFaction)f;
+    uint32_t rng = sc_hash(sc_genseed(seed,gen)^0xFAC7104u, (uint32_t)cid, (uint32_t)seat, 0x51AFu);
+    if (!rng) rng = 1u;
+    for (int i=FAC_COUNT-1; i>0; i--){
+        uint32_t r = xs32(&rng);
+        int j = (int)(r % (uint32_t)(i+1));
+        EthosFaction t=out[i]; out[i]=out[j]; out[j]=t;
+    }
+}
 EthosFaction statecraft_council_faction(uint32_t seed, int cid, int seat, int slot, int gen){
-    static const EthosFaction SEAT_A[SC_COUNCIL_SEATS] = { FAC_TRANSGRESSEUR, FAC_CONQUERANT,   FAC_MARCHAND };
-    static const EthosFaction SEAT_B[SC_COUNCIL_SEATS] = { FAC_LEGISTE,       FAC_COMMUNAUTAIRE, FAC_MARCHAND };
     if (seat<0||seat>=SC_COUNCIL_SEATS) return FAC_COMMUNAUTAIRE;
-    if (SEAT_A[seat]==SEAT_B[seat]) return SEAT_A[seat];             /* Industrie : un seul visage */
-    uint32_t h = sc_hash(sc_genseed(seed,gen)^0xFAC7104u, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot);
-    return (h & 1u) ? SEAT_B[seat] : SEAT_A[seat];
+    if (slot<0) slot=0;
+    if (slot>=FAC_COUNT) slot=FAC_COUNT-1;
+    EthosFaction perm[FAC_COUNT];
+    sc_faction_shuffle(seed,cid,seat,gen,perm);
+    return perm[slot];
 }
 int statecraft_council_cand_age(uint32_t seed, int cid, int seat, int slot, int gen, int year){
     int base = 30 + (int)(sc_hash(sc_genseed(seed,gen)^0xA6E11u, (uint32_t)cid, (uint32_t)seat, (uint32_t)slot) % 22u);
@@ -147,9 +212,23 @@ int statecraft_council_seated_age(const Statecraft *sc, uint32_t seed, int cid, 
     if (slot<0) return -1;
     return statecraft_council_cand_age(seed,cid,seat,slot,statecraft_council_seated_gen(sc,cid,seat),year);
 }
+/* P2 — LA FACTION RÉELLE DU TITULAIRE D'UN SIÈGE (docs/CONSEIL_ORIENTATIONS_2026-07-10.md
+ * §« Événements Conseil : hooks DYNAMIQUES ») : compose seated+seated_gen+council_faction —
+ * -1 si le siège est VACANT (jamais une faction par défaut qui laisserait croire à un
+ * titulaire fictif — statecraft_council_faction, elle, renvoie toujours une faction valide
+ * même hors-borne : ce lecteur est le SEUL qui sache dire "personne n'est assis là"). */
+int statecraft_council_seat_faction(const Statecraft *sc, uint32_t seed, int cid, int seat){
+    int slot = statecraft_council_seated(sc, cid, seat);
+    if (slot<0) return -1;
+    int gen = statecraft_council_seated_gen(sc, cid, seat);
+    return (int)statecraft_council_faction(seed, cid, seat, slot, gen);
+}
 void statecraft_council_hire(Statecraft *sc, uint32_t seed, int cid, int seat, int slot, int gen){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
     if (slot<0||slot>=SC_COUNCIL_CANDS) return;
+    /* P1-4 — une NOMINATION n'écrase JAMAIS un titulaire sans renvoi explicite :
+     * le siège doit être vacant (RENVOYER d'abord, statecraft_council_dismiss). */
+    if (statecraft_council_seated(sc,cid,seat)>=0) return;
     sc->council[cid][seat]=(int8_t)slot;
     sc->council_gen[cid][seat]=(int8_t)((gen>=0 && gen<=120) ? gen : 0);   /* identité ÉPINGLÉE au moment de l'embauche */
     /* V2a : loyauté de DÉPART ~50 + jitter (même motif que statecraft_init), le
@@ -165,22 +244,15 @@ void statecraft_council_hire(Statecraft *sc, uint32_t seed, int cid, int seat, i
 }
 void statecraft_council_dismiss(Statecraft *sc, uint32_t seed, int cid, int seat){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
-    /* RENVOYER froisse : la faction du ministre CONGÉDIÉ perd la voix qu'elle
-     * tenait — on le traduit en un vote pour la faction la plus OPPOSÉE à la
-     * sienne (elle gagne le siège vacant en pratique) : le canal le plus honnête
-     * de l'API existante, cohérent avec la table d'opposition de faction_lever_apply
-     * (pousser l'opposée EST froisser celle qu'on renvoie, symétriquement). */
+    /* P1-3 — RENVOYER aigrit DIRECTEMENT la faction CONGÉDIÉE (elle perd son
+     * siège) : plus de push artificiel sur la faction la plus opposée à elle
+     * (l'ancien motif « pousser l'opposée » gagnait un pouvoir qu'un renvoi ne
+     * devrait pas donner à un tiers). */
     int slot = statecraft_council_seated(sc, cid, seat);
     if (slot>=0){
         int gen = statecraft_council_seated_gen(sc, cid, seat);
         EthosFaction fac = statecraft_council_faction(seed, cid, seat, slot, gen);
-        int worst=-1; float wv=-1.f;
-        for (int f=0; f<FAC_COUNT; f++){
-            if (f==(int)fac) continue;
-            float o = faction_opposition(fac, (EthosFaction)f);
-            if (o>wv){ wv=o; worst=f; }
-        }
-        if (worst>=0) faction_lever_apply(cid, (EthosFaction)worst, tune_f("COUNCIL_DISMISS_GRIEF",0.10f));
+        faction_grievance_add(cid, fac, tune_f("COUNCIL_DISMISS_GRIEF",0.10f));
     }
     sc->council[cid][seat]=-1;
     sc->council_gen[cid][seat]=-1;
@@ -204,27 +276,31 @@ void statecraft_council_age_tick(Statecraft *sc, uint32_t seed, int year){
             }
         }
 }
+/* P1 — bonus de RANG (1 + base(siège)·tier_mult) — SEUL, jamais l'efficacité (elle
+ * multiplie l'INCRÉMENT, pas ce lecteur : voir statecraft_council_apply). */
 float statecraft_council_seat_mult(const Statecraft *sc, uint32_t seed, int cid, int seat){
     int slot=statecraft_council_seated(sc,cid,seat);
     if (slot<0) return 1.f;
     int tier=statecraft_council_cand_tier(seed,cid,seat,slot,statecraft_council_seated_gen(sc,cid,seat));
-    return 1.f + SC_SEAT_BASE[seat]*SC_TIER_EFFET[tier];
+    return 1.f + sc_seat_base(seat)*sc_tier_mult(tier);
 }
+/* P1 — COÛT MENSUEL total (×IPM, ×paie) — assiette = revenu ANNUEL RÉEL du pays. */
 float statecraft_council_cost(const Statecraft *sc, uint32_t seed, int cid, float ipm){
-    if (ipm<=0.f) ipm=1.f;
     float tot=0.f;
     for (int s=0;s<SC_COUNCIL_SEATS;s++){
         int slot=statecraft_council_seated(sc,cid,s);
         if (slot<0) continue;
         float pay = statecraft_council_pay(sc,cid,s);                     /* V2a : le curseur multiplie le coût */
-        tot += SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,s,slot,statecraft_council_seated_gen(sc,cid,s)) ] * ipm * pay;
+        int tier  = statecraft_council_cand_tier(seed,cid,s,slot,statecraft_council_seated_gen(sc,cid,s));
+        tot += sc_tier_monthly_cost(cid, tier, ipm) * pay;
     }
     return tot;
 }
+/* P1 — coût MENSUEL d'UN candidat (×IPM), pour l'UI (preview avant nomination). */
 float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, int gen, float ipm){
-    if (ipm<=0.f) ipm=1.f;
     if (cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS||slot<0||slot>=SC_COUNCIL_CANDS) return 0.f;
-    return SC_TIER_COST[ statecraft_council_cand_tier(seed,cid,seat,slot,gen) ] * ipm;
+    int tier = statecraft_council_cand_tier(seed,cid,seat,slot,gen);
+    return sc_tier_monthly_cost(cid, tier, ipm);
 }
 /* ═══ V2a — LE CONSEIL VIVANT : la LOYAUTÉ (le cœur) ══════════════════════════
  * Chaque siège pourvu porte une loyauté 0-100 qui CONVERGE (jamais un saut) vers
@@ -246,6 +322,28 @@ float statecraft_council_pay(const Statecraft *sc, int cid, int seat){
 void statecraft_council_set_pay(Statecraft *sc, int cid, int seat, float pay){
     if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
     sc->pay[cid][seat] = clampf(pay, 0.f, 2.f);
+}
+/* P3 — écrivain DIRECT de loyauté (mission décennale : réussite/échec du siège
+ * responsable). No-op si le siège est VACANT (personne à créditer/blâmer). */
+void statecraft_council_loyalty_add(Statecraft *sc, int cid, int seat, float delta){
+    if (!sc||cid<0||cid>=SCPS_MAX_COUNTRY||seat<0||seat>=SC_COUNCIL_SEATS) return;
+    if (statecraft_council_seated(sc,cid,seat)<0) return;
+    sc->loyalty[cid][seat] = clampf(sc->loyalty[cid][seat] + delta, 0.f, 100.f);
+}
+/* P1-1 — EFFICACITÉ POLITIQUE : clamp(BASE + K_PER·K + LOY_W·loyauté/100 −
+ * CORRUPTION_PER_POINT·Corruption, MIN, MAX). LIT wp->country[cid].K (jamais une
+ * approximation depuis les bâtiments) ; 1.0 si le siège est VACANT (rien à
+ * multiplier) ; `wp` NULL ou hors-borne ⇒ K=0 (dégrade proprement). */
+float statecraft_council_efficiency(const Statecraft *sc, const WorldProsperity *wp, int cid, int seat){
+    if (statecraft_council_seated(sc,cid,seat)<0) return 1.f;
+    float K = (wp && cid>=0 && cid<wp->n_countries) ? wp->country[cid].K : 0.f;
+    float loy  = (float)statecraft_council_loyalty(sc,cid,seat);
+    float corr = (float)faction_corruption_0_100(cid);
+    float eff = tune_f("COUNCIL_EFF_BASE", 0.70f)
+              + tune_f("COUNCIL_EFF_K_PER", 0.03f) * K
+              + tune_f("COUNCIL_EFF_LOY_W", 0.15f) * (loy/100.f)
+              - tune_f("COUNCIL_EFF_CORRUPTION_PER_POINT", 0.0035f) * corr;
+    return clampf(eff, tune_f("COUNCIL_EFF_MIN",0.50f), tune_f("COUNCIL_EFF_MAX",1.15f));
 }
 /* « au bord de la trahison » : loyauté ≤ seuil — un simple lecteur de l'état
  * COURANT (la loyauté converge lentement, demi-vie de plusieurs mois : par
@@ -314,12 +412,19 @@ CouncilPairState statecraft_council_pair_state(const Statecraft *sc, const World
     return COUNCIL_PAIR_NEUTRE;
 }
 
-void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy *e, uint32_t seed, float dt_year){
+void statecraft_council_apply(const Statecraft *sc, const World *w, WorldEconomy *e,
+                              const WorldProsperity *wp, uint32_t seed, float dt_year){
     if (!sc||!w||!e) return;
     float ipm = econ_world_ipm(e);
     for (int c=0; c<w->n_countries && c<SCPS_MAX_COUNTRY; c++){
-        for (int s=0;s<SC_COUNCIL_SEATS;s++)
-            econ_set_council_mult(c, s, statecraft_council_seat_mult(sc,seed,c,s));   /* LECTEUR : ×savoir/×promo/×manuf */
+        for (int s=0;s<SC_COUNCIL_SEATS;s++){
+            /* P1-1 — bonus final du siège = bonus de RANG × EFFICACITÉ (l'efficacité
+             * multiplie SEULEMENT la part conseiller, jamais un multiplicateur brut). */
+            float rank_mult = statecraft_council_seat_mult(sc,seed,c,s);
+            float eff       = statecraft_council_efficiency(sc,wp,c,s);
+            float final_mult = 1.f + (rank_mult - 1.f) * eff;
+            econ_set_council_mult(c, s, final_mult);   /* LECTEUR : ×savoir/×promo/×manuf */
+        }
         float cost = statecraft_council_cost(sc,seed,c,ipm) * dt_year * 12.f;          /* or/mois × mois écoulés */
         if (cost<=0.f) continue;
         int cap=w->country[c].capital_prov;                                            /* ponction au trésor de la couronne */
@@ -363,7 +468,7 @@ void statecraft_council_ai(Statecraft *sc, const World *w, const WorldEconomy *e
     int best=-1, bestt=0;
     for (int slot=0; slot<SC_COUNCIL_CANDS; slot++){
         int t=statecraft_council_cand_tier(seed,cid,seat,slot,gen);
-        if (SC_TIER_COST[t]*ipm*6.f > tres) continue;                     /* hors garde de budget (6 mois) */
+        if (sc_tier_monthly_cost(cid,t,ipm)*6.f > tres) continue;         /* hors garde de budget (6 mois) */
         if (t>bestt){ bestt=t; best=slot; }
     }
     if (best>=0) statecraft_council_hire(sc,seed,cid,seat,best,gen);

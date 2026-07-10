@@ -137,3 +137,4 @@ __pycache__/
 # sweeps de balance (locaux, jamais committés) + binaire de mesure hors-lock
 sweep_*/
 chronicle_pop.exe
+a-*.d

@@ -444,7 +444,7 @@ static void sim_cmd_drain(Sim *s, World *w){
               for (int r2=0;r2<s->econ->n_regions && !feed;r2++)
                   if (s->econ->region[r2].owner==p && s->econ->region[r2].raw_cap[in1]>0.f) feed=true;
               if (!feed) break; }
-            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ);
+            float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*decree_manuf_cost_mult(p);   /* orientation ATELIERS */
             if (!credit_can_spend(s->econ, w, p, cost)) break;
             if (econ_build_manufacture(s->econ, reg, (BuildingType)b)){
                 credit_spend(s->econ, w, p, cost);
@@ -638,20 +638,36 @@ static void sim_cmd_drain(Sim *s, World *w){
             pending_event_resolve(s->ev, w, s->econ, s->wl, s->wp, s->sc, s->rn, s->ts, s->dp, s->eg,
                                   slot, option, s->ev->ages.days_elapsed, s->human_player);
             break; }
-          /* ── DÉCRETS (civics) : a={DecreeId, on/off}. REVALIDÉ — id borné ; l'activation
-           *    (on!=0) exige la condition d'entrée REMPLIE MAINTENANT ; une réforme déjà
-           *    active refuse le désengagement (decree_toggle le fait déjà, en interne). ── */
+          /* ── ORIENTATIONS/DÉCISIONS (civics, scps_decrees) : a={DecreeId, on/off}.
+           *    REVALIDÉ — id borné. DCR_DECISION (Audit des offices) : "on" TIRE la
+           *    décision immédiatement (condition + cooldown revalidés au tir par
+           *    decree_fire_decision) — jamais un toggle persistant, decree_toggle la
+           *    refuse en interne. Sinon (ÉDIT, les 9 orientations légères) : l'activation
+           *    exige la condition d'entrée REMPLIE MAINTENANT ; decree_toggle applique
+           *    lui-même l'exclusion mutuelle (RATIONS⊥FOYERS, CIRCULATION⊥FRONTIÈRES). ── */
           case CMD_DECREE: {
             int id=c->a[0]; bool on=(c->a[1]!=0);
             if (id<0 || id>=DECREE_COUNT) break;
+            if (DECREES[id].type==DCR_DECISION){
+                if (on && decree_legal(w, s->econ, s->ts, s->wl, s->sc, s->dp, p, (DecreeId)id))
+                    decree_fire_decision(w, s->econ, s->wl, p, (DecreeId)id);
+                break;
+            }
             if (on && !decree_legal(w, s->econ, s->ts, s->wl, s->sc, s->dp, p, (DecreeId)id)) break;
             decree_toggle(p, (DecreeId)id, on);
             break; }
           /* ── ESCLAVAGE — la manœuvre PACIFISTE : l'affranchissement (granularité PAYS,
-           *    une politique). Aucun argument (agit sur p). ── */
-          case CMD_MANUMIT:
-            demography_manumit_country(s->econ, p);
-            break;
+           *    une politique). Aucun argument (agit sur p). DÉCISION PONCTUELLE (spec
+           *    2026-07-10) : un affranchissement qui LIBÈRE réellement des âmes fait
+           *    pencher l'État vers le Communautaire (faction_lever_apply — un VOTE, pas
+           *    une concession : aucune capture/Corruption, cf. faction_grievance vs
+           *    faction_concede). Un pays sans esclave (freed==0) ne déclenche rien. ── */
+          case CMD_MANUMIT: {
+            long freed = demography_manumit_country(s->econ, p);
+            if (freed>0)
+                faction_lever_apply(p, FAC_COMMUNAUTAIRE,
+                                    tune_f("DECISION_MANUMIT_COMMUNAUTAIRE_BIAS", 0.10f));
+            break; }
           /* ── ESCLAVAGE — le MARCHÉ des Centres. a={region, count}. REVALIDÉ : région au
            *    joueur (achat/vente sont des actes du PROPRIÉTAIRE de la région). ── */
           case CMD_SLAVE_SELL: {
@@ -736,7 +752,7 @@ void sim_day(Sim *s, World *w) {
     /* — mensuel : économie + réputation diplomatique (O(n²)) + démographie — */
     if (s->day % 30 == 29) {
         econ_apply_country_tech(s->econ, s->ts, SCPS_MAX_COUNTRY);  /* §B1 : techs de prod du pays → prod_mult région */
-        statecraft_council_apply(s->sc, w, s->econ, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or */
+        statecraft_council_apply(s->sc, w, s->econ, s->wp, w->seed, 1.f/12.f);  /* Q1 : le Conseil pousse ses ×, paie son or (P1-1 : × efficacité) */
         /* DÉCRETS DU JOUEUR — SEUL rôle humain (chronique human_player=-1 ⇒ jamais appelé,
          * golden intact par construction). Mensuel, miroir du Conseil. */
         if (s->human_player>=0)
@@ -962,7 +978,7 @@ void sim_day(Sim *s, World *w) {
         credit_year_tick(s->econ, s->wl, w);               /* dette : intérêt annuel (creuse le débiteur, crédite le prêteur) */
         diplo_suzerainty_tick(s->dp, w, s->econ, s->wp);   /* suzeraineté + FRONDE : tributs, ligues, défections */
         diplo_war_tick(s->dp, w, s->econ, s->wp, 1.0f);
-        missions_tick(s->missions, w, s->econ, s->ts, s->year);  /* missions décennales : rythme + récompense */
+        missions_tick(s->missions, w, s->econ, s->ts, s->sc, s->wp, w->seed, s->year);  /* missions décennales : rythme + récompense (P3 : siège responsable) */
         statecraft_council_age_tick(s->sc, w->seed, s->year);    /* LES ANNÉES PASSENT : les conseillers vieillissent, la retraite vide le siège */
         faction_levers_decay(0.07f);   /* §4 : une stance non entretenue s'efface (~15 ans) */
         if (s->ev->ages.last_dawned != s->prev_dawned){          /* §7 : un âge se lève → engagement */

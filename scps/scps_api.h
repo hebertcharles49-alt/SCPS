@@ -379,7 +379,7 @@ void scps_commerce_power(ScpsSim *s, int country, ScpsCommerce *out);
 typedef struct {
     const char *seat;       /* nom du siège */
     int   filled;           /* 1 si pourvu */
-    const char *councilor;  /* nom du conseiller (tr) si pourvu, "" sinon */
+    const char *councilor;  /* nom du conseiller (tr) si pourvu, "" sinon (legacy : "Maison X") */
     int   tier;             /* 1-3 (effet ×1/×1.5/×2) si pourvu */
     int   age;              /* ÂGE du ministre assis (grandit avec l'année ; retraite 66-73) ; 0 si vacant */
     /* V2a — LE CONSEIL VIVANT : */
@@ -387,6 +387,29 @@ typedef struct {
     int   loyalty;          /* 0..100 (0 si vacant) */
     float pay;              /* 0..2, curseur de paie (1.0 si vacant) */
     const char *mood;       /* mot d'ambiance (« dévoué »…« AU BORD DE LA TRAHISON ») ; "" si vacant */
+    /* CADRES DU CONSEIL (2026-07-10, spec docs/CONSEIL_ORIENTATIONS_2026-07-10.md) —
+     * IDENTITÉ dérivée déterministe (même candidat ⇒ même identité, hash sur
+     * seed/cid/seat/slot/gen — rien à sérialiser). ⚠ PUREMENT NARRATIVE, effet
+     * mécanique 0 (décision joueur : pas de faux modificateurs affichés, aucun site
+     * de lecture moteur). "" et -1 si vacant. */
+    const char *identite;   /* mot (« Rigoriste »…« Vénal ») ; "" si vacant */
+    int   portrait_id;      /* 0..7, stable (index UIKit.advisor_portrait) ; -1 si vacant */
+    const char *id_flavor;  /* la phrase d'identité de la spec (chrome UI) ; "" si vacant */
+    /* CARTE CONSEIL (2026-07-10, § « Interface (cartes) ») — personne+maison séparées,
+     * bonus de rang / efficacité prévue / bonus final, coût = taux+montant courant,
+     * retraite estimée, et la décomposition (K/Corruption) pour le hover du siège
+     * pourvu. Tout "" / 0 / -1 si vacant (rien à décomposer). */
+    const char *firstname;  /* prénom (statecraft_council_cand_firstname) ; "" si vacant */
+    const char *house;      /* maison (statecraft_council_cand_house) ; "" si vacant */
+    const char *domain;     /* mot du domaine d'effet (« recherche »…« manufactures ») */
+    float rank_bonus_pct;   /* bonus de RANG seul, en % (statecraft_council_seat_mult−1)×100 */
+    float efficiency_pct;   /* efficacité politique COURANTE, en % (statecraft_council_efficiency×100) */
+    float final_bonus_pct;  /* BONUS FINAL = rank_bonus × efficacité, en % */
+    float cost_rate_pct;    /* taux du coût, en % du revenu annuel (1.5/3/5 selon le rang) */
+    double cost_year;       /* montant COURANT, or CETTE ANNÉE (assiette × taux × IPM) */
+    int   retire_lo, retire_hi; /* retraite estimée, années restantes [66−âge, 73−âge] ; -1 si vacant */
+    float k_admin;          /* K administratif du pays (pour la décomposition du hover) */
+    int   corruption_pct;   /* Corruption du pays, 0..100 (pour la décomposition du hover) */
 } ScpsCouncilSeat;
 int scps_country_council(ScpsSim *s, int country, ScpsCouncilSeat *out, int max);
 /* Le curseur de PAIE du joueur (a[1]=paie ×100, 0..200) — verbe journalisé, revalidé
@@ -398,7 +421,22 @@ int scps_council_pair_state(ScpsSim *s, int seat_a, int seat_b);
 /* CANDIDATS d'un siège (la pool de la génération COURANTE — se renouvelle tous les
  * SC_COUNCIL_GEN_YEARS, toujours pleine) : nom résolu + tier + ÂGE + coût/mois (×IPM).
  * Pour l'embauche ÉCLAIRÉE du joueur (player_council_hire(seat, slot)). */
-typedef struct { int slot; const char *nom; int tier; int age; float cost; } ScpsCouncilCand;
+typedef struct {
+    int slot; const char *nom; int tier; int age; float cost;
+    /* CADRES DU CONSEIL (2026-07-10) — voir ScpsCouncilSeat ci-dessus (même dérivation,
+     * PUREMENT NARRATIF, effet mécanique 0). */
+    const char *identite; int portrait_id; const char *id_flavor;
+    /* CARTE CANDIDAT (2026-07-10, § « Interface (cartes) ») — mêmes champs que
+     * ScpsCouncilSeat (personne+maison, bonus/coût/retraite) ; `efficiency_pct` et
+     * `final_bonus_pct` sont ici une PRÉVISION (loyauté de départ que l'embauche
+     * assignerait réellement, formule identique à statecraft_council_hire — voir
+     * cons_predicted_loyalty dans scps_api.c). */
+    const char *firstname, *house, *faction, *domain;
+    float rank_bonus_pct, efficiency_pct, final_bonus_pct;
+    float cost_rate_pct;
+    double cost_year;
+    int   retire_lo, retire_hi;
+} ScpsCouncilCand;
 int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max);
 
 /* DÉCRETS DU JOUEUR (civics) — sb_panel_decrets. Chaque décret DÉPLACE un levier
@@ -542,6 +580,20 @@ typedef struct {
 } ScpsManumitPreview;
 int scps_manumit_preview(ScpsSim *s, ScpsManumitPreview *out);
 
+/* PÉNURIES (UI-2, topbar : « Fer — rupture dans N jours ») — miroir DIRECT
+ * d'econ_country_forecast (scps_econ.c:3268, lecture pure) : une entrée par flux en
+ * DÉFICIT STRUCTUREL (struct_deficit) ou à runway COURT (< AI_SAFETY_HORIZON — le
+ * MÊME seuil que l'IA lit pour son propre food_alert, scps_ai.c:319). Trié runway
+ * croissant (le plus urgent d'abord). Aucune formule réinventée : le forecast
+ * calcule en ANNÉES, cette façade projette juste en JOURS pour l'affichage. */
+typedef struct {
+    const char *nom;      /* mot (resource_name) */
+    int   res_id;         /* Resource — pour l'icône côté UI */
+    float runway_days;    /* jours avant rupture ; -1.f = pas de mur en vue (runway ≥ 1e8 ans) */
+    int   structurel;      /* 1 = déficit STRUCTUREL (potentiel géo < conso au plein eff_cap) */
+} ScpsShortage;
+int scps_country_shortages(ScpsSim *s, int country, ScpsShortage *out, int max);
+
 /* ARMÉE d'un pays (sb_panel_armee, read-only) : mobilisation + flotte. L'armée de
  * CAMPAGNE (position/phase/composition) se lit via scps_army_info. */
 typedef struct {
@@ -663,6 +715,23 @@ int  scps_player_fabricate_cb  (ScpsSim *s, int target);
 int  scps_player_repress       (ScpsSim *s, int region);
 int  scps_player_assimilate    (ScpsSim *s, int region, int creuset);
 int  scps_player_purge         (ScpsSim *s, int region);
+/* APERÇU D'ACTION (UI-4, 2026-07-10) — coût · durée · effets · conséquences des TROIS leviers
+ * intérieurs, calculés MAINTENANT sur `region` (lecture PURE, aucune mutation — motif de
+ * ScpsManumitPreview/scps_build_legal_ex). verb : 0=MATER(AGY_REPRESS) 1=FORMER(AGY_ASSIMILATE)
+ * 2=PURGER(AGY_PURGE). Miroir EXACT des formules d'agency_advance/apply_action (scps_agency.c) —
+ * les trois sont GRATUITES en or et DÉTERMINISTES (aucun rand() dans scps_agency.c/
+ * scps_demography.c) : `risque` porte la conséquence DIFFÉRÉE (masquage/frottement/plancher),
+ * pas une chance. Retour 0 si region/verb invalide ou hors du joueur. */
+typedef struct {
+    float cost_gold;            /* toujours 0.f — les trois leviers sont gratuits en or */
+    int   duration_days;        /* durée de l'ordre (30/365/1460) */
+    int   pop_delta;            /* morts immédiats (PURGE : 1re tranche annuelle) ; 0 sinon */
+    int   satisfaction_delta;   /* toujours 0 : aucune des trois formules ne touche `satisfaction` */
+    int   agitation_delta;      /* points d'agitation [0..100] (MATER : baisse masquée ; FORMER : frottement, monte) */
+    int   coercition_delta;     /* points de `re->coercion` [0..100] (province) */
+    char  risque[96];           /* la conséquence DIFFÉRÉE, en mots (aucune des trois n'est probabiliste) */
+} ScpsActionPreview;
+int  scps_action_preview       (ScpsSim *s, int region, int verb, ScpsActionPreview *out);
 int  scps_player_council_hire  (ScpsSim *s, int seat, int slot);
 int  scps_player_council_dismiss(ScpsSim *s, int seat);
 /* DÉCRETS (civics) : bascule le décret `id` (on=1/0). Revalidé au drain (id borné,
@@ -982,15 +1051,26 @@ void scps_budget_summary(ScpsSim *s, int cid, ScpsBudget *out);
 /* ---- MISSION DÉCENNALE (mission_of) ----------------------------------- *
  * L'objectif courant du pays (au plus un actif) : texte (membrane moteur),
  * récompense (or + matière), année d'émission. La progression n'est pas
- * stockée (le moteur la re-dérive) → on surface l'objectif et sa prime. */
+ * stockée (le moteur la re-dérive) → on surface l'objectif et sa prime.
+ * CARTE MISSION (2026-07-10, § « Interface (cartes) ») : le SIÈGE responsable
+ * (mission_responsible_seat, scps_missions.h — déduit du type, aucun état neuf)
+ * + son bonus (rang×efficacité, miroir de mission_reward_mult) + la récompense
+ * PRÉVUE (base × bonus, or ET matière). "" / 0 si aucun siège responsable
+ * (mission inactive) ou siège VACANT (personne à créditer). */
 typedef struct {
     int    active;          /* 0/1 : une mission est-elle en cours ? */
     const char *text;       /* texte de la mission (FR, membrane moteur) */
-    double reward_gold;     /* prime en or à l'accomplissement */
+    double reward_gold;     /* prime en or DE BASE à l'accomplissement */
     const char *reward_mat; /* matière de prime (resource_name ; vide si reward_qty=0) */
-    double reward_qty;      /* quantité de la matière */
+    double reward_qty;      /* quantité de la matière DE BASE */
     int    issued_year;     /* année d'émission */
     int    done;            /* 1 = accomplie (récompense versée ce tour) */
+    const char *resp_seat;  /* nom du siège responsable (STR_COUNCIL_SEAT_*) ; "" si aucun */
+    const char *resp_name;  /* nom du ministre responsable, si le siège est POURVU ; "" sinon */
+    int    resp_tier;       /* rang (1-3) du responsable ; 0 si vacant/aucun siège */
+    float  resp_bonus_pct;  /* bonus du responsable, en % (mission_reward_mult−1)×100 */
+    double reward_gold_adj; /* récompense PRÉVUE = reward_gold × mult */
+    double reward_qty_adj;  /* récompense PRÉVUE = reward_qty × mult */
 } ScpsMission;
 void scps_mission_info(ScpsSim *s, int cid, ScpsMission *out);
 

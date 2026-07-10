@@ -65,7 +65,7 @@ const DEFS := {
 	"Rancœur": {"d": "Le grief d'une faction envers la couronne. Haute, sa barre vire au rouge : elle conspire.", "i": "alert_revolt"},
 	"Faction": {"d": "Un parti de la cour (l'éthos les compose). Son adhésion la rend puissante, sa rancœur la rend dangereuse.", "i": "menu_council"},
 	"Tension de coup": {"d": "Le risque de coup d'État porté par la cour : il monte avec les factions aigries et la corruption.", "i": "action_spy"},
-	"Corruption": {"d": "Le détournement dans l'appareil d'État : il ponctionne le trésor et pourrit la cour.", "i": "corruption_coin"},
+	"Corruption": {"d": "Part de l'appareil d'État capturée par les factions. Elle réduit la recherche, le rendement de la capitale et la capacité des services, puis accélère les chutes de loyauté.", "i": "corruption_coin"},
 	"Levée": {"d": "La réserve mobilisable du royaume, en régiments. Elle se règle au tiroir Armée.", "i": "action_recruit"},
 	"Ost": {"d": "L'armée de campagne déployée sur la carte, avec sa phase (marche, siège, bataille).", "i": "menu_army"},
 	"Siège": {"d": "L'investissement d'une région : le terrain prolonge sa tenue, la chute donne l'occupation et le score.", "i": "alert_siege"},

@@ -185,6 +185,20 @@ float faction_opposition(EthosFaction a, EthosFaction b){
     return O[a][b];
 }
 
+/* P2 — Opp(F) : la faction la plus opposée à F dans la matrice (§5). Même
+ * convention de départage que faction_coup_tension : premier maximum en
+ * balayage croissant 0..FAC_COUNT-1 (déterministe). */
+EthosFaction faction_most_opposed(EthosFaction f){
+    if (f<0||f>=FAC_COUNT) return (EthosFaction)(-1);
+    int best=-1; float bv=-1.f;
+    for (int x=0; x<FAC_COUNT; x++){
+        if (x==(int)f) continue;
+        float o = faction_opposition(f, (EthosFaction)x);
+        if (o>bv){ bv=o; best=x; }
+    }
+    return (EthosFaction)best;
+}
+
 float faction_coup_tension(const float w[FAC_COUNT], EthosFaction *out){
     int dom=0; for (int f=1; f<FAC_COUNT; f++) if (w[f]>w[dom]) dom=f;   /* la direction effective */
     float best=0.f; int bf=dom;
@@ -286,6 +300,11 @@ void faction_levers_decay(float rate){
 float faction_grievance(int cid, EthosFaction f){
     if (cid<0||cid>=SCPS_MAX_COUNTRY||f<0||f>=FAC_COUNT) return 0.f;
     return g_lever_grief[cid][f];
+}
+void faction_grievance_add(int cid, EthosFaction f, float amount){
+    if (cid<0||cid>=SCPS_MAX_COUNTRY||f<0||f>=FAC_COUNT) return;
+    float g = g_lever_grief[cid][f] + amount;
+    g_lever_grief[cid][f] = g<0.f?0.f:(g>1.f?1.f:g);
 }
 /* ---- Engagement d'âge (§7) -------------------------------------------- */
 #define ENGAGE_LEVER 0.10f   /* la pledge tenue RENFORCE le patron (un vote) */

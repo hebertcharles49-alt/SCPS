@@ -14,6 +14,7 @@
 #include "scps_tune.h"      /* S2 : le rythme de fusion calibrable */
 #include "scps_heritage.h"  /* TRADITIONS : perméabilité → P d'assimilation ; dérive → contact */
 #include "scps_math.h"      /* clampf/absf partagés */
+#include "scps_decrees.h"   /* orientations CIRCULATION/FRONTIÈRES (2026-07-10) : decree_mig_pact_mult(cid) */
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -666,6 +667,7 @@ int demography_migration_pact_tick(WorldEconomy *e, const DiploState *dp, int da
             DiploStatus dab = diplo_status(dp,a,b);
             if (dab==DIPLO_WAR) continue;   /* la guerre suspend l'échange */
             float frac = (post_golden && dab==DIPLO_ALLIED) ? frac_ally : frac_base;
+            frac *= decree_mig_pact_mult(a) * decree_mig_pact_mult(b);   /* orientations CIRCULATION/FRONTIÈRES — ne touche QUE ce pacte, jamais les réfugiés */
             float sa=attract[a], sb=attract[b], tot_attr=sa+sb+1e-3f;
             int rsrcA=e->prov[top_prov[a]].region, rsrcB=e->prov[top_prov[b]].region;
             int dstAB=pact_border_prov(e,b,rsrcA); if (dstAB<0) dstAB=top_prov[b];  /* a→b : entre à la FRONTIÈRE de b */

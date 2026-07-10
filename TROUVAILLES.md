@@ -2114,3 +2114,687 @@ Tout en px, résolution de référence Stellaris = 1920×1080 (offset natif show
   dans event_dialog (attention aux %s du blurb au moment du rendu).
 - 2 stashs parqués (vague-complete dupliqué, heritage orphelin d'agent) — à droper après
   vérif que le commit de vague contient tout.
+- **LECTEURS #68/#69/#70 — aperçu d'action + pénuries + cadres d'identité conseil (2026-07-10)** :
+  trois readers additifs PURS dans scps_api.{h,c} (aucune mutation moteur), pour docs/RETOURS_2026-07-10.md
+  points 2/4/7. Fichiers touchés : scps/scps_api.{h,c}, godot/src/scps_sim_node.{cpp,h} seulement.
+  **(1) `scps_action_preview(s,region,verb,out)`** (scps_api.c, juste après scps_player_purge) — verb
+  0=MATER/1=FORMER/2=PURGER. Miroir EXACT de scps_agency.c : REPRESS_DAYS=30 (scps_agency.c:523),
+  ASSIM_DAYS=365 (:524), PURGE_FRAC_AN=0.12f (:525) — ces trois `#define` sont `static`/non-exportés,
+  donc RE-DÉCLARÉS (valeurs recopiées, commentées file:ligne) faute de pouvoir toucher scps_agency.{h,c}
+  (hors périmètre de cette mission) ; AGY_PURGE_YEARS EST exporté (scps_agency.h:169), utilisé directement.
+  `biggest_minority` (scps_agency.c:560-573) est `static` → réimplémentée à l'identique en `ap_biggest_minority`
+  (même exclusion CLASS_SLAVE — l'esclavage n'est ni cible d'assimilation ni de purge). MATER appelle la VRAIE
+  `province_apply_coercion` (scps_demography.c:154) sur une COPIE jetable de ProvincePop + un ModifierStack
+  SCRATCH `calloc`'d (motif demography_demo.c/revolt_demo.c — ModifierStack pèse ~112 Ko, JAMAIS sur la pile,
+  cf. le piège STACK_OVERFLOW Windows déjà documenté ailleurs dans ce fichier) : la sortie CoercionEffect
+  est la sortie RÉELLE de la formule, aucune réimplémentation de son calcul interne. FORMER/PURGER mirent
+  directement les lignes d'apply_action/purge_slice (agitation via `agit_from_L`, scps_demography.c:59,
+  formule publique commentée — mirée à l'identique : `clampf((6-L)*15,0,100)`). LES TROIS sont GRATUITES en
+  or (aucun coût gold dans agency_order_*/apply_action, vérifié) et 100 % DÉTERMINISTES (0 rand()/frand() dans
+  scps_agency.c ET scps_demography.c) — `risque` porte donc la conséquence DIFFÉRÉE (masquage/frottement/
+  plancher), jamais une chance. `satisfaction_delta` reste 0 pour LES TROIS (honnête : aucune des trois
+  formules ne touche `ProvinceEconomy.satisfaction`, scps_econ.h:289 — pas d'invention).
+  **(2) `scps_country_shortages(s,country,out,max)`** — miroir DIRECT d'`econ_country_forecast`
+  (scps_econ.c:3268, signature `(const WorldEconomy*,int cid,float horizon,EconForecast*)`, scps_econ.h:846).
+  Seuil « runway court » = `tune_f("AI_SAFETY_HORIZON",12.f)` — LE MÊME seuil que l'IA lit pour son
+  `food_alert` (scps_ai.c:319) : pas un chiffre inventé pour l'UI. `runway[g]` est en ANNÉES côté moteur
+  (commenté scps_econ.h:833) → converti en jours (×365) SEULEMENT à l'affichage ; sentinel -1.f si
+  runway≥1e8 (le moteur clampe à 1e9f, scps_econ.c:3331).
+  **(3) CADRES DU CONSEIL** — `identite`/`portrait_id`/`id_flavor` ajoutés en FIN de ScpsCouncilSeat/
+  ScpsCouncilCand (append-only, rien ne casse). ⚠ SPEC CORRIGÉE EN COURS DE LOT (docs/CONSEIL_
+  ORIENTATIONS_2026-07-10.md § « Noms, maisons, identités ») : les identités sont **PUREMENT
+  NARRATIVES, EFFET MÉCANIQUE 0** — le joueur a tranché « pas de faux modificateurs affichés, pas de
+  boucle d'équilibrage relancée ». La 1re version de ce lot exposait un champ `modif` (coefficient
+  CONS_ID_* réservé, jamais câblé au tick) : RETIRÉ (struct + Dictionary) et remplacé par `id_flavor`
+  (la phrase d'identité de la spec, VERBATIM). Il n'existe AUCUN coefficient ni site de lecture moteur —
+  du chrome. Identité = hash DÉTERMINISTE sur les MÊMES clés que nom/tier/âge/faction (seed,cid,seat,
+  slot,gen — statecraft_council_cand_*, scps_statecraft.c:105-131) : `sc_hash` (scps_statecraft.c:88-92)
+  est `static` → réimplémentée à l'identique (`cons_hash`) avec un salt NEUF (0x1DE47170, distinct des
+  5 déjà pris par le module : tier 0xC0FFEE/nom 0x5EAB011/âge 0xA6E11/faction 0xFAC7104/retraite
+  0x0DDA6E) → identité ⊥ faction ⊥ siège ⊥ rang, comme la spec l'exige des maisons. Les 8 identités DE
+  LA SPEC (Rigoriste/Courtisan/Austère/Réformateur/Vétéran/Ambitieux/Loyaliste/Vénal) avec leurs
+  flavors verbatim ; `portrait_id` 0..7 = index DIRECT dans `UIKit.advisor_portrait` (8 bustes planche
+  13, déjà exploités par sidebar_drawer.gd:311-312). Golden : hors de portée par construction
+  (scps_api.c n'est pas dans chronicle ; rien ne mord le tick).
+  **Pièges** : `RES_COUNT` n'est PAS visible côté binding Godot (scps_sim_node.cpp n'inclut QUE scps_api.h,
+  volontairement opaque — pas de scps_types.h) → le binding `country_shortages` utilise un buffer fixe [64]
+  (RES_COUNT≈57 compté à la main dans scps_types.h) au lieu de `ScpsShortage sh[RES_COUNT]` (aurait cassé la
+  compilation C++, symbole inconnu). `modstack_accumulate_drift` DÉRÉFÉRENCE son 1er argument SANS garde NULL
+  (scps_modifier.c:42-55) → `province_apply_coercion(&tmp, NULL, H)` aurait planté ; le scratch ModifierStack
+  DOIT être alloué (même vide, n=0 via calloc) avant l'appel — jamais NULL.
+  **Restes** : les panneaux GDScript (province_detail pour action_preview, topbar pour
+  country_shortages, sb_panel_conseil pour identite/portrait_id/id_flavor) ne sont PAS câblés (hors
+  scope explicite de cette mission — « le joueur peaufinera le panneau lui-même »). La spec Conseil
+  contient d'autres chantiers NON couverts ici (PERSONNE+MAISON séparées, missions décennales
+  raccordées au siège, hooks d'événements dynamiques, orientations politiques) — ce lot ne livre que
+  les identités narratives. Les identités sont des littéraux FR dans scps_api.c (comme les statuts
+  « florissant »/« modeste » existants de la même façade — la migration STR_* de ce fichier est un
+  chantier à part). Gates vérifiées : `gcc -fsyntax-only -std=c99 -Wall -Wextra` 0 warning sur
+  scps_api.c ET scps_api_demo.c (le header modifié ne casse pas les bancs existants) ; binding C++
+  relu (pas de godot-cpp dispo pour `g++ -fsyntax-only` sur ce poste, cf. consigne).
+
+## 2026-07-10 — UI-3/UI-4/UI-5 : zone contextuelle unique + hiérarchie d'actions (main/province_panel/country_panel/province_detail/country_actions)
+
+**Découvertes**
+- **UI-3 « remplace, pas s'ajoute » : le hook robuste est `visibility_changed`, pas les sites d'ouverture.**
+  main.gd câble désormais `_prov_detail.visibility_changed` (détail visible ⇒ `_prov_panel.visible=false` ;
+  détail fermé + `_sel_prov>=0` ⇒ `show_province(_sel_prov)` — le panneau REVIENT) et le miroir
+  `_country_actions.visibility_changed` ↔ `_country_panel` (via `_sel_owner`, var neuve). Un hook par
+  SIGNAL couvre d'un coup : la pile Échap (`_close_topmost` pose `.visible=false` en direct), les
+  ouvertures par signaux (detail_requested/open_country), ET la probe shot_ui (qui pose `.visible`
+  brut). Câbler chaque site d'ouverture aurait laissé des trous.
+- **`_close_topmost` n'a pas eu besoin de changer** : il hide le détail → visibility_changed restaure le
+  panneau → l'Échap suivant tombe sur le panneau restauré → `_clear_selection`. La boucle `while
+  _close_topmost()` de shot_ui._reset() TERMINE (le panneau restauré est fermé par la branche sélection).
+- **province_detail ancré à la place du panneau** : `_layout()` pose `position = (Frame.SIDEBAR_W+14,
+  TOPBAR_H+12)` (l'ancre exacte de province_panel._layout) au lieu du centre — le regard ne saute plus.
+  Import Frame ajouté au fichier.
+- **province_panel / country_panel : PAS mutuellement exclusifs au sens strict, et c'est VOULU** — ils
+  sont nourris par la MÊME sélection (`_on_province_picked` met à jour les deux), vivent sur des bords
+  OPPOSÉS (province à gauche = zone contextuelle ; pays à droite = carte d'info compacte étranger-seul,
+  `show_country` se cache pour le joueur). Jamais d'état stale (chaque pick réécrit les deux) ; les
+  rendre exclusifs tuerait le seul chemin d'affichage de country_panel. Vérifié, pas corrigé.
+- **UI-4 hiérarchie d'actions (province_panel `_draw_gov_actions`, remplace le `_act_chips` uniforme)** :
+  Réprimer/Assimiler = chips neutres (inchangés) · Purger = ROUGE SOMBRE (fond 0.18/0.05/0.04, liseré
+  0.58/0.17/0.13) à CONFIRMATION 2 clics — 1er clic arme (« Confirmer la purge ? », liseré vif), 2e clic
+  exécute ; fenêtre 4 s par `_process` (⚠ PAS `Sim.ticked` : en PAUSE le tick ne tourne pas, la confirmation
+  ne retomberait jamais) ; motif copié de `_servile_manumit_armed` (sidebar_drawer) · Détail = texte nu
+  COL_DIM sans cadre (navigation). Changer de province désarme (`show_province`).
+- **country_actions : « Guerre » destructif** — styleboxes rouge sombre locaux (`_mkbox`, miroir de
+  ui_theme._box — dupliqué car ui_theme.gd est HORS périmètre et une teinte destructive n'a pas sa place
+  dans le thème global) + libellé « ⚔ Guerre » → « Confirmer la guerre ? » armé 4 s (`_war_press`), fond
+  `_war_sb_armed` plus vif via override du stylebox "normal" à chaque `_refresh`. Le bouton DISABLED garde
+  le stylebox "disabled" du thème (fané neutre) — un destructif grisé ne doit pas crier. `_refresh`
+  désarme si la guerre cesse d'être légale.
+- **UI-5 (couleur seule doublée)** : l'ambre « il refusera » (country_actions) porte désormais « ⚠ » dans
+  le LIBELLÉ (visible sans survol — le modulate seul était invisible avant hover) ; le Logement saturé
+  (province_panel) gagne « ⚠ » devant le ratio (le rouge sense(0.12) seul ne se lisait pas). Les autres
+  sites sense() des fichiers du lot portaient déjà leur second canal (chiffre, ▲▼·, +/−, mots).
+- **Conséquences avant décision** : hover des 3 verbes intérieurs via `w.action_preview(reg, verb)` si la
+  méthode existe (clés EXACTES du binding scps_sim_node.cpp:1276 : cost_gold · duration_days · pop_delta ·
+  satisfaction_delta · agitation_delta · coercition_delta · risque) ; sinon FALLBACK factuel sans AUCUN
+  chiffre (discipline membrane). ⚠ le Dictionary du binding n'est JAMAIS vide (préchargé de zéros) — le
+  gate du fallback est « tout à zéro ET risque vide », pas `is_empty()`.
+- **Probe shot_ui (extension de périmètre accordée)** : la sélection de « foe » (captures 05/06) tombait
+  sur (a) un PAYS REBELLE transitoire Phase 3a (« Rebelles de X », slot POLITY_ANTAGONIST quasi sans terre
+  ⇒ panneau vide) puis (b) un pays JAMAIS DÉCOUVERT — `country_actions.open_country` a un gate de
+  brouillard (`country_known==0` → return SILENCIEUX) ⇒ 06_diplo capturait une fenêtre ABSENTE (défaut
+  PRÉ-EXISTANT, toutes les vieilles captures 06 étaient vides). Critères robustes : ≠ joueur · provinces>0
+  · pas « Rebelles » · `country_known!=0`, en 2 passes (rôle 1 d'abord).
+
+**Pièges**
+- Le binding `action_preview` est dans scps_sim_node.cpp (19:02) mais la DLL bin/ date de 15:27 → au
+  runtime `has_method("action_preview")` est FAUX tant que scons n'a pas retourné : les hovers roulent
+  le fallback. Dès la DLL rebâtie, les chiffres réels s'allument SANS retouche GDScript (clés alignées).
+- Fenêtres de confirmation : `Sim.ticked`/`month_ticked` NE TOURNENT PAS en pause — tout délai
+  d'UI (désarmement 4 s) doit vivre dans `_process` du Control, comme les horloges MUR existantes.
+- L'indentation d'un Edit : la boucle `for verb in _btns:` de country_actions est à UN tab (niveau
+  fonction) — un old_string recopié à deux tabs ne matche pas ; vérifier `cat -A` avant de re-tenter.
+
+**Restes**
+- La confirmation « Purger »/« Guerre » n'est PAS capturable par shot_ui (exige un clic réel) — vérifiée
+  par code (miroir exact du motif manumit prouvé) ; un futur harnais de clics pourrait l'exercer.
+- L'état ARMÉ rouge vif de « Guerre » (bouton actif) n'apparaît sur aucune capture : sur seed 42/an 60 le
+  verbe est grisé (trêve/CB) — le stylebox destructif « normal » est visible dès qu'une cible attaquable
+  existe.
+- Le panneau province plein (capitale riche) déborde toujours légèrement sous son cadre clampé à la
+  hauteur du viewport (chips d'action dessinés sous le liseré) — PRÉ-EXISTANT (même y que l'ancien
+  _act_chips), hors périmètre de ce lot.
+
+## 2026-07-10 — UI-2 : topbar en 4 BLOCS + pénurie explicite (topbar/sidebar_drawer/alerts)
+**Découvertes**
+- Topbar restructuré en 4 blocs séparés par une barre or épaisse (`_block_sep`, 2 px α 0.55 — distincte
+  du filet fin α 0.22 que `_cell` pose déjà entre cellules) : ROYAUME (blason·nom·or·pop·prov·stabilité)
+  · ÉCONOMIE (nourriture·pénurie·prospérité·savoir·colonie) · POLITIQUE (légitimité·influence·cohésion·
+  bonheur·factions·⚑) · TEMPS (chip Engager·date·vitesse). Pas de micro-label de bloc : à TOPBAR_H=48,
+  une 3e ligne de texte serait <10 px — contraire à l'audit lisibilité ; le séparateur simple suffit.
+- Les 5 cellules de matières brutes (bois·argile·pierre·fer·armes, 07-09) SORTIES de la barre → onglet
+  STOCKS les montrait déjà toutes (stock·net/j·couv.) ; ajouté seulement une ligne compacte « Matières :
+  bois X · argile X · … » en tête de l'onglet ÉCONOMIE (`_draw_mat_line`, même source country_stocks).
+- PÉNURIE : `Topbar.worst_shortage(w, me)` STATIC — voie 1 `country_shortages` si le binding l'expose
+  (clés RÉELLES du binding scps_sim_node.cpp:1474 : `nom`/`res_id`/`runway_days`/`structurel` — PAS
+  « days » ; vérifié dans le .cpp, le reader du lot #68 parallèle) ; voie 2 (repli toujours présent,
+  celle PROUVÉE en capture — le DLL du poste n'a pas encore le binding) : `coverage_days` de
+  country_stocks, déjà stock/|net_day| côté façade (scps_api.c:1133, sentinel 366=« >1 an » à EXCLURE
+  sinon « rupture 366 j » absurde). Consommée AUSSI par alerts.gd (preload topbar.gd, DRY) : chip
+  COL_ECO → Marché quand < 30 j.
+- UI-5 sur ces fichiers : pénurie = texte chiffré + ▼ + rouge (3 canaux) ; jauges nationales et bonheur
+  doublés ▲/▼ aux EXTRÊMES seulement (≥66/≤33 — une valeur médiane n'a pas besoin d'alarme, ne pas
+  sur-décorer). Boutons de vitesse 27→34 px de large (audit point 1, hauteur 36 déjà conforme).
+**Pièges**
+- Chip « Engager : <âge> » vs bloc POLITIQUE élargi : à 1920 avec 6 factions + nom d'âge long, TOUT ne
+  tient pas. 1re tentative (clamper le chip à droite du contenu) le poussait SUR la date et les boutons
+  de vitesse — capturé. La bonne réponse : chip ANCRÉ à gauche de la date, LABEL tronqué (« Engager… »)
+  jusqu'à tenir dans `avail = dtx0 − content_end` ; nom complet au survol ; `_tips.push_front` pour que
+  le tip du chip GAGNE le hit-test sur les blasons qu'il recouvre en cas extrême (le scan `_get_tooltip`
+  prend le premier rect touché).
+- `content_end` doit être mesuré au CONTENU RÉELLEMENT dessiné (fin du dernier bloc), jamais une
+  position fixe — le bloc POLITIQUE varie de ~300 px selon le nombre de factions.
+- Éditer topbar.gd par Edit(old_string) échouait mystérieusement sur les gros blocs (mismatch
+  d'espaces insaisissable) → réécrit via Write complet ; les petits Edits ciblés passaient.
+- Les alertes sont INVISIBLES dans shot_ui : `Sim.generated.emit()` part AVANT `Sim.game_on = true`
+  puis pause → `alerts._refresh` gaté puis plus jamais rappelé (aucun tick). Artefact de probe
+  pré-existant, pas un bug d'alerte — le chip pénurie ne se vérifie qu'en code/en jeu réel.
+- Le stdout de la probe est FULLY BUFFERED : le log s'arrête à « rivières... » et ne montre que 6-7
+  « SHOT » alors que les 24 PNG sont écrits — juger aux TIMESTAMPS des fichiers, pas au log.
+**Restes**
+- Quand la DLL sera rebâtie avec le binding `country_shortages` (lot #68), la voie 1 prendra le relais
+  automatiquement (has_method) — re-vérifier alors qu'un runway STRUCTUREL long (>366 j) ne pollue pas
+  la cellule (déjà filtré ≤366, mais non testé en live).
+- Repli « chip Factions unique » sur écran étroit (déjà noté au lot factions-topbar) : toujours pas
+  fait ; la troncature du chip d'âge réduit l'urgence à 1920.
+
+## 2026-07-10 — CONSEIL : coeur moteur (P0/P1/P3, docs/CONSEIL_ORIENTATIONS_2026-07-10.md)
+
+Perimetre : scps_statecraft.{c,h}, scps_factions.{c,h}, scps_missions.{c,h},
+scps_tune_list.h, scps_sim.c (ripple : 2 call sites), + statecraft_demo.c/missions_demo.c
+(recalibrage des bancs demande explicitement par le brief -- hors scps_api.c/scps_events.c/
+godot/, touches en parallele par d'autres agents, jamais lus ni modifies ici).
+
+**Decouvertes**
+- L'ancien spectre de faction par siege vivait dans deux tableaux statiques locaux
+  SEAT_A/SEAT_B (scps_statecraft.c, statecraft_council_faction) -- remplaces par un
+  Fisher-Yates deterministe (sc_faction_shuffle, xs32 de scps_math.h amorce par
+  sc_hash(...^0xFAC7104u,...)) : les SC_COUNCIL_CANDS(3) premieres valeurs du melange
+  des 6 factions sont TOUJOURS distinctes (prefixe d'une permutation -- pas besoin de
+  retirage-si-collision).
+- statecraft_council_cost/_cand_cost lisaient une table plate SC_TIER_COST[4]={0,8,16,28}
+  (or/mois fige) -- remplacee par econ_country_tax_year(cid) (scps_econ.h:734, borne en
+  interne, pas besoin de passer WorldEconomy* en plus de cid) x taux par rang x IPM / 12.
+  statecraft_council_ai's garde de budget (6 mois de loyer) utilisait la MEME table --
+  recablee sur le meme helper sc_tier_monthly_cost.
+- statecraft_council_seat_mult (bonus de RANG seul, jamais l'efficacite) est reste
+  INCHANGE de signature -- c'est statecraft_council_apply qui compose
+  final_mult = 1 + (rank_mult-1)*eff et pousse ca a econ_set_council_mult. Ce decouplage
+  a evite de casser les 3 tests existants de statecraft_demo.c qui appellent seat_mult
+  SANS WorldProsperity.
+- Mission.coord (0..5) etait un enum ANONYME et LOCAL a scps_missions.c (CB_K...) --
+  invisible aux bancs. Deplace/renomme en MIS_COORD_* dans scps_missions.h (P3 en a
+  besoin pour mission_responsible_seat ET pour que missions_demo.c construise des
+  Mission a la main sans deviner des entiers magiques).
+- faction_grievance (lecteur seul) existait deja cote scps_factions.{c,h} ; AUCUN
+  ecrivain direct n'existait avant P1-3 (seul faction_lever_apply ecrivait -- mais lui
+  aigrit les OPPOSEES d'une faction avancee, jamais la faction elle-meme). Ajout minimal
+  faction_grievance_add(cid,f,amount) (clamp [0,1]) -- 5 lignes, aucune autre dependance.
+- econ_country_tax_year est un accumulateur annuel serialise (section TXYR, v65+) --
+  dans statecraft_demo.c/missions_demo.c, un monde frais (25 ans de warmup via
+  econ_tick(dt=1.f) ou 0 tick) donne un revenu NON-NUL des que g_flux_ticks_total depasse
+  90 jours simules (le repli An-1 extrapole, scps_econ.c:789-801) -- verifie
+  compilateur-only (aucun run reel possible ici, cf. contrainte "NE COMPILE PAS avec
+  make") ; le test ">0.f" du cout mensuel dans statecraft_demo.c REPOSE sur ce repli et
+  n'a pas pu etre verifie a l'execution.
+
+**Pieges**
+- 0xD00Ru n'est PAS un litteral hexadecimal valide en C (R hors [0-9A-Fa-f]) -- gcc le
+  lit comme 0xD00 suivi d'un suffixe Ru inconnu -> erreur immediate. Renomme 0xD00D5Eu.
+  Verifier chaque nouveau salt hex AVANT de le poser (le lire, pas juste grep).
+- if (a) x; if (b) y; sur UNE ligne declenche -Wmisleading-indentation des que
+  l'indentation suggere (a tort) un bloc commun -- gcc -Wall -Wextra le catch, make test
+  aussi (0-warning gate). Toujours une instruction par ligne pour deux if independants
+  consecutifs.
+- statecraft_council_hire gagne un gate P1-4 (seat deja pourvu => no-op) -- verifie
+  qu'AUCUN site interne (statecraft_council_ai, les 3 bancs, events_demo.c ~ligne 995)
+  n'appelle hire sur un siege deja pourvu SANS dismiss prealable dans le meme flot ;
+  events_demo.c (hors scope, NON modifie) lu en lecture seule pour s'en assurer -- les 3
+  hires y ciblent 3 sieges DIFFERENTS, tous vacants au depart.
+- Les tunables COUNCIL_MISSION_* etc. doivent etre declares dans scps_tune_list.h AVANT
+  tout usage de tune_f avec ce nom -- tune_f ne PLANTE PAS sur un nom absent (retombe sur
+  le defaut passe en argument), donc l'omission serait un bug SILENCIEUX (F10/SCPS_TUNE
+  resterait aveugle a la cle). Verifie : les 17 cles neuves sont TOUTES dans le registre
+  avant tout usage.
+
+**Choix documentes (demandes explicitement par le brief)**
+- P0-4 (personne + maison) : ScpsCouncilCand/ScpsCouncilSeat (scps_api.h) ne sont PAS
+  serialises (candidats deterministes, recalcules au vol) donc aucune contrainte de save
+  n'empechait d'ajouter un champ "maison" -- mais scps_api.h/scps_api.c sont explicitement
+  HORS PERIMETRE (un autre agent y travaillait EN CE MOMENT). Choix : deux fonctions
+  ENGINE additives et independantes -- statecraft_council_cand_firstname (24 prenoms) et
+  statecraft_council_cand_house (12 maisons, verbatim spec), tirages independants (salts
+  distincts 0x91A2E3/0x40C51E vs 0xC0FFEE tier/0x5EAB011 nom-legacy/0xA6E11 age/0xFAC7104
+  faction/0x0DDA6E retraite/0x1DE47170 identite-scps_api.c) -- de simples const char*
+  locaux (pas de StrId/scps_lang.txt : strings_ids.h est hors perimetre).
+  statecraft_council_cand_name (StrId legacy, 8 "maisons" historiques deja consomme par
+  scps_api.c:1240/1273 via tr()) reste BYTE-IDENTIQUE. Un futur agent facade devra soit
+  composer "prenom + maison" directement depuis ces deux fonctions, soit migrer les 36
+  chaines vers strings_ids.h/strings_en.h -- note : make lang-check ne scanne QUE
+  viewer.c/scps_readout.c (Makefile:656), cette derogation ne casse AUCUN gate existant.
+- P1-1 (efficacite) : statecraft_council_apply recoit desormais const WorldProsperity*
+  (ripple : scps_sim.c:739, SEUL appelant hors bancs -- viewer.c ne l'appelle jamais,
+  il partage scps_sim.c depuis le dedoublonnage 2026-07-02). statecraft_council_seat_mult
+  N'A PAS change de signature (reste le bonus de RANG seul) ; l'efficacite est composee
+  SEULEMENT dans apply.
+- P1 (couts) : le curseur de paie existant (statecraft_council_pay, 0-2x) est deja cable
+  comme multiplicateur du cout ET de la cible de loyaute -- conserve TEL QUEL, le brief
+  demandait explicitement de le garder "s'il est cable ainsi".
+- P3 (mission decennale) : mission_responsible_seat est une fonction PURE sur (kind,
+  coord) -- AUCUN etat neuf, AUCUN id de ministre stocke : le "successeur reprend" est
+  satisfait PAR CONSTRUCTION (on relit statecraft_council_seated a CHAQUE grant/penalite).
+
+**SAVE** : rien de serialise ne change. Statecraft/Mission/MissionsState gardent
+exactement leurs champs (aucun ajout de struct) -- tout le nouveau calcul est DERIVE
+(fonctions pures ou lecteurs/ecrivains sur des champs deja serialises : loyalty[][] via
+statecraft_council_loyalty_add, g_lever_grief via faction_grievance_add). AUCUN bump
+SAVE_VERSION.
+
+**Gates verifiees** : gcc -fsyntax-only -std=c99 -Wall -Wextra -Ithird_party (PATH MSYS2
+en tete) SANS AVERTISSEMENT sur les 13 fichiers touches ou en aval (scps_statecraft.c/.h,
+scps_factions.c/.h, scps_missions.c/.h, scps_tune_list.h, scps_sim.c, statecraft_demo.c,
+missions_demo.c, scps_api.c, scps_api_demo.c, chronicle.c, viewer.c, events_demo.c,
+scps_decrees.c, scps_tune.c, factions_demo.c -- ce dernier n'avait RIEN a recalibrer,
+aucune reference au Conseil). AUCUN make/run reel -- conforme a la consigne explicite ;
+les nouveaux tests de bancs (P0-1 distinctness, P0-4 tirages, P1-1 formule verbatim spec
+K=6/loy=70, P1-3 rancoeur directe, P1-4 gate de nomination, P3 siege responsable + bonus +
+loyaute +5/-10) sont donc PROUVES par lecture attentive et compilation propre, PAS par
+execution -- un agent disposant de make statecraft_demo missions_demo devrait les faire
+tourner en premier.
+
+**Restes**
+- Golden 12 ans va bouger (tirage de faction 6-way, couts revenue-based, efficacite qui
+  multiplie le bonus de siege) -- PAS re-baseline ici, consigne explicite ("l'IA a un
+  conseil -- ATTENDU").
+- P0-4 : la migration des 36 chaines vers strings_ids.h/strings_en.h + le cablage facade
+  (ScpsCouncilCand/ScpsCouncilSeat -> "maison") restent a faire par l'agent qui possede
+  scps_api.{h,c} -- cf. "Choix documentes" ci-dessus pour le contrat exact des deux
+  fonctions engine pretes a consommer.
+- P2 (hooks dynamiques evenements existants) et P4 (orientations legeres/decrets) sont
+  HORS PERIMETRE de cette mission (priorites P0/P1/P3 seulement) -- scps_events.c intouche.
+- statecraft_council_cand_cost/statecraft_council_cost retournent tous deux un montant
+  MENSUEL (coherent avec STR_COUNCIL_SEATED_FMT = "... or/mois") -- un futur agent facade
+  qui veut afficher "N or CETTE ANNEE" doit multiplier par 12 (ou appeler directement
+  econ_country_tax_year(cid)*rate*ipm sans le /12) cote scps_api.c, PAS changer la
+  semantique de ces deux lecteurs engine.
+
+## 2026-07-10 -- CONSEIL P2 : hooks de faction DYNAMIQUES sur les evenements existants
+
+Perimetre : scps/scps_events.c (le gros du travail) + 2 lecteurs additifs dans
+scps_statecraft.{c,h}/scps_factions.{c,h} -- scps_api.c/scps_decrees.c/godot/ non
+touches (d'autres agents y travaillaient en parallele, jamais lus ni modifies ici).
+
+**Decouvertes**
+- Le mecanisme EvChoiceHook{faction,...} (une SEULE faction, statique dans la table
+  EVENTS[]) ne peut PAS exprimer "F = titulaire reel du siege" ni "double concession a
+  a ET b" (C1 Ceder) -- le plus petit diff coherent avec le motif data-driven etait de
+  garder EvChoiceHook generique pour les evenements NON-conseil, et d'ajouter un bloc
+  RESOLU DYNAMIQUEMENT (a la resolution, pas au tirage) dans resolve_choice, juste apres
+  le bloc existant qui mute deja le Conseil (dismiss/hire, if (cx->sc && cx->w){...},
+  scps_events.c ~ligne 2312). Les hooks STATIQUES de la table pour tous les choix conseil
+  concernes sont neutralises (.faction=-1) -- jamais un sentinel -2/-3 : plus simple, et
+  coherent avec les tables A1/A2/C1/SUCCESSION qui avaient deja faction=-1 avant cette
+  mission.
+- BUG TROUVE ET CORRIGE : EVID_TRAHISON_SAVOIR ne renvoyait le ministre QUE sur oi=0/oi=2
+  (condition oi!=1) -- l'option n2, litteralement intitulee "Le renvoyer sans bruit", NE
+  renvoyait PAS. Le hook statique de oi=0 appelait meme faction_concede(cid,FAC_LEGISTE)
+  (strength=0.f tombe dans la branche ELSE de apply_choice_hook) -- une concession non
+  documentee par la spec. Les 3 tables TRAHISON avaient ce meme defaut (hooks statiques
+  FAC_LEGISTE/FAC_GARDIEN/FAC_MARCHAND avec strength=0.f qui declenchaient silencieusement
+  des faction_concede). Tout neutralise et remplace par le calcul dynamique F/Opp(F).
+- statecraft_council_dismiss grief DEJA (+COUNCIL_DISMISS_GRIEF~0.10) la faction PROPRE du
+  renvoye, et statecraft_council_hire leve DEJA (+COUNCIL_HIRE_LEVER~0.10) la faction du
+  candidat -- ces deux automatismes couvrent, SANS AUCUN code additionnel : R1/R2/R3
+  "renvoyer les deux" (rancoeur directe aux deux, aucune capture) et C1 "renvoyer les
+  deux"/"en sacrifier un" (meme motif). Seuls les cas ou la spec demande un effet EN PLUS
+  de ce que dismiss/hire font deja (Opp(F), F+0.05, concession, double concession, biais
+  aux allies/3e siege) demandaient du code neuf.
+- faction_lever_apply(cid,F,strength) grief DEJA automatiquement TOUTES les factions
+  opposees a F (proportionnellement a faction_opposition) -- c'est EXACTEMENT le "rancoeur
+  de l'autre par la matrice" que R1/R2/R3 "Trancher" demandaient : aucun code separe requis
+  pour ce volet, juste appeler faction_lever_apply sur F=titulaire reel du siege choisi.
+- SUCCESSION voulait un retrait SANS le grief de dismiss() -- impossible via le verbe
+  public (il grief inconditionnellement des qu'un slot etait assis). Solution : ecriture
+  DIRECTE des 4 champs sc->council[][]/council_gen[][]/loyalty[][]/pay[][] (miroir EXACT
+  de ce que fait statecraft_council_dismiss MOINS l'appel a faction_grievance_add) --
+  motif DEJA precedente dans ce meme fichier (agitation/influence sont deja ecrits
+  directement depuis scps_events.c, lignes ~1937/1965/1973/1975) : Statecraft a des champs
+  publics, ce module y ecrit deja en dehors des verbes quand le verbe ne peut pas exprimer
+  le geste voulu. Pas besoin de toucher scps_statecraft.c pour ca (respecte la restriction
+  "lecture seule" du perimetre).
+- Les 7 triggers conseil (trig_trahison_seat, trig_conseil_succession, trig_conseil_pair/
+  r1/r2/r3, trig_conseil_a1, trig_conseil_a2, trig_conseil_c1) ont TOUS
+  "if (cx->human_player<0 || c!=cx->human_player) return false;" -- ces evenements sont
+  HUMAN-ONLY par construction, jamais tires en chronique (human_player=-1) ni pour un pays
+  IA. Reponse directe a la question du brief : le golden ne bouge PAS a cause de ce lot P2
+  (contrairement au lot P0/P1/P3 deja merge, qui lui touche statecraft_council_ai -- non
+  gate humain -- et a donc DEJA bouge le golden avant cette mission).
+- A2 "Accepter leur candidat" n'existait dans AUCUNE branche de resolve_choice avant ce lot
+  (grep confirme : aucun evid==EVID_CONSEIL_A2 nulle part) -- pas une regression a
+  corriger, un manque total a combler.
+
+**Pieges**
+- statecraft_council_faction renvoie TOUJOURS une faction valide (jamais -1, y compris
+  hors-borne : replie sur FAC_COMMUNAUTAIRE) -- un lecteur "titulaire reel, -1 si vacant"
+  ne pouvait donc PAS etre ce lecteur-la tel quel : statecraft_council_seat_faction
+  (nouveau, scps_statecraft.c) compose seated (qui, lui, renvoie -1 si vacant) AVANT
+  d'appeler statecraft_council_faction -- sans ce garde, un siege vacant aurait affiche un
+  titulaire fantome de faction FAC_COMMUNAUTAIRE.
+- L'ordre d'appel compte : F doit etre LU (statecraft_council_seat_faction) AVANT tout
+  statecraft_council_dismiss sur le meme siege (dismiss vide council[][], donc seated()
+  renvoie -1 apres -- relire F apres dismiss donnerait toujours -1).
+- conseil_pair_find/trig_conseil_a1/a2/c1 re-scannent le monde A LA RESOLUTION (pas de
+  cache de ce que le trigger a trouve) -- un event conseil a n_options>1 est ENFILE
+  (pending_event_push) et peut se resoudre jusqu'a 180 jours plus tard
+  (pending_event_tick_expire) ou via le choix joueur : le monde a pu bouger.
+  conseil_a2_find et conseil_succession_seat_find (neufs) suivent la MEME discipline
+  (miroir du trigger, re-scanne, jamais un etat capture au tir) -- coherent avec
+  conseil_pair_find deja la.
+- Les events conseil sont ENFILES pour le joueur (n_options>1 && owner==human_player) --
+  world_events_tick seul ne les resout PAS immediatement ; ils attendent le choix joueur
+  OU l'expiration (180 j, pending_event_tick_expire, resout au choix de plus haut
+  ai_chance). Le banc existant (events_demo.c section 15, TRAHISON_SAVOIR) boucle sur
+  30 ans de tics de 30 j precisement pour laisser l'expiration jouer -- comportement
+  INCHANGE par ce lot (aucun trigger ni la file pending n'a ete touche).
+
+**Choix documentes**
+- Les biais 0.10/0.05 de la spec ("+0,10 biais", "+0,05 biais") sont poses en #define
+  LOCAUX dans scps_events.c (COUNCIL_HOOK_OPPOSED_BIAS/_KEEP_BIAS/_ALLY_BIAS/_RETIRE_BIAS),
+  PAS au registre scps_tune_list.h -- la spec ne les liste PAS sous ses bullets "Cles :"
+  (contrairement aux couts/efficacite/missions du lot P0/P1/P3), et scps_tune_list.h
+  n'etait pas dans le perimetre autorise de cette mission.
+- Le fallback de nom TREASON_FALLBACK[3] (event_title, ~ligne 1917) est passe de
+  {"Le savant","Le notable","Le marchand"} a {"Le conseiller du Savoir","Le conseiller du
+  Royaume","Le conseiller des Ouvrages"} -- demande explicitement par le brief ("jamais Le
+  marchand") : "Le marchand" suggerait la faction FAC_MARCHAND a tort quel que soit le
+  titulaire reel, incoherent avec tout le reste du lot (F = faction REELLE, jamais un mot
+  de classe qui presume une faction).
+- A2 "Imposer son propre choix" (oi=1) et "Laisser le siege vacant" (oi=2) restent des
+  no-op mecaniques (seuls les deltas EvEffect de la table s'appliquent) -- la spec dit
+  "ouvrir la liste normale"/"rien", aucun etat neuf a modeliser.
+
+**SAVE** : rien de serialise ne change. Aucune struct touchee (Statecraft/EventsState
+gardent leurs champs). Les 2 lecteurs additifs (statecraft_council_seat_faction,
+faction_most_opposed) sont des fonctions PURES sans etat. AUCUN bump SAVE_VERSION.
+
+**Gates verifiees** : gcc -fsyntax-only -O2 -Wall -Wextra -std=c99 -Ithird_party (PATH
+MSYS2 mingw64 en tete) SANS AVERTISSEMENT sur scps_events.c, scps_statecraft.c/.h,
+scps_factions.c/.h, statecraft_demo.c, events_demo.c, chronicle.c, viewer.c, scps_api.c,
+scps_decrees.c, missions_demo.c, scps_api_demo.c, factions_demo.c. AUCUN make/run reel
+(consigne explicite -- pas de build binaire sur ce poste pour cette mission). Les bancs
+events_demo/statecraft_demo n'ont PAS eu besoin de recalibrage : aucune assertion
+existante ne teste le contenu des hooks des 9 evenements conseil touches (grep confirme),
+seul events_demo.c section 15/17 teste TRAHISON_SAVOIR (fire count) et 4 AUTRES
+evenements non-conseil (XENOPHILE/CLOCHES/K3/DROIT_INTEGRATION, hook FAC_COMMUNAUTAIRE,
+intouches) -- ces bancs devraient rester verts, a confirmer par make events_demo
+statecraft_demo sur un poste qui build.
+
+**Restes**
+- make test/make golden non executes ici (pas de build sur ce poste pour cette mission) --
+  un agent disposant de make devrait lancer events_demo/statecraft_demo en premier pour
+  confirmer a l'execution ce que la lecture+compilation ont prouve.
+- Golden 12 ans : ne devrait PAS bouger a cause de CE lot (tous les triggers conseil sont
+  human-only, jamais tires en chronique) -- mais golden a DEJA bouge avant cette mission a
+  cause du lot P0/P1/P3 (statecraft_council_ai n'est pas gate humain) ; pas de re-baseline
+  faite ici (hors perimetre, consigne explicite).
+- L'UI (godot/) ne consomme pas encore ces hooks dynamiques -- rien a cabler cote facade
+  pour CE lot (les deltas EvEffect/le flux de choix restent inchanges, seul ce qui se passe
+  EN INTERNE au Conseil a change).
+- P4 (orientations legeres / remplacement des grands decrets) reste HORS PERIMETRE de
+  cette mission (scps_decrees.c/scps_api.c non touches, un autre agent y travaillait).
+
+## 2026-07-10 — CONSEIL : les CARTES façade+UI (§ « Interface (cartes) », docs/CONSEIL_ORIENTATIONS_2026-07-10.md)
+
+Périmètre : scps/scps_api.{h,c}, godot/src/scps_sim_node.{cpp,h}, godot/project/ui/sidebar_drawer.gd
+(onglet Conseil → Gouvernement SEULEMENT), + 1 ligne dans godot/project/ui/concepts.gd (fuite
+« rot », voir Choix documentés) — scps_statecraft/factions/missions/events/decrees/econ
+INTOUCHÉS (deux autres agents y travaillaient EN PARALLÈLE ; git diff vérifié avant/après
+chaque édition, aucun de leurs fichiers ne figure dans mon diff).
+
+**Découvertes**
+- Les lecteurs engine dont j'avais besoin (statecraft_council_efficiency/_seat_mult/
+  _cand_cost/_cand_firstname/_cand_house/_faction, mission_responsible_seat) étaient TOUS
+  déjà exportés par le lot « coeur moteur » du jour — zéro besoin de toucher scps_statecraft.c/
+  scps_missions.c. Seuls DEUX calculs n'ont AUCUN lecteur exporté (ils calculent une PRÉVISION
+  pour un candidat pas encore embauché, ou mirent un `static` du moteur) : la loyauté de
+  DÉPART qu'une embauche donnerait réellement (`statecraft_council_hire`, scps_statecraft.c:
+  225-226, salt `0x10AD17Bu`) et le bonus de rang « nu » pour un candidat non-seatés
+  (`sc_seat_base`/`sc_tier_mult`, scps_statecraft.c:87-101, `static`). Les DEUX sont mirés à
+  l'IDENTIQUE dans scps_api.c (`cons_predicted_loyalty`/`cons_rank_mult`/`cons_tier_revenue_rate`/
+  `cons_efficiency_calc`/`cons_mission_reward_mult`) — MÊME discipline que `cons_hash` qui
+  mirait déjà `sc_hash` dans ce fichier (précédent posé par le lot #68/#69/#70 du matin) :
+  aucune valeur inventée, chaque constante lue via `tune_f` sur la clé EXACTE de la spec.
+  Résultat : « Efficacité politique prévue » d'un CANDIDAT est une prévision EXACTE (pas une
+  estimation) — si le joueur recrute CE candidat MAINTENANT, la loyauté de départ que
+  `statecraft_council_hire` posera est CELLE calculée par le hover, au bit près.
+- Vérifié EN DIRECT (probe fenêtrée, seed 9, 3 sièges vacants) : le bonus de rang affiché
+  colle exactement à la spec pour les 3 tiers × 3 sièges — Savoir (base 0.12) rang1/2/3 =
+  12.0/18.0/24.0 % ; Société=Royaume (base 0.15) = 15.0/22.5/30.0 % ; les taux de coût
+  1.5/3.0/5.0 % aussi. La formule d'efficacité composée (`bonus final = rang × efficacité`)
+  a produit des valeurs dans la fourchette attendue (~87-89 % pour une loyauté prévue
+  45-65, K et Corruption constants du pays) — la carte candidat rendue à l'écran EST la
+  carte de la spec (nom+maison / faction·rang·âge / bonus net avec décomposition rang×
+  efficacité / coût taux+montant courant / retraite estimée), boutons Recruter fonctionnels.
+- `mission_responsible_seat`/`statecraft_council_seated`/`_cand_tier`/`_efficiency` suffisent
+  à recomposer EXACTEMENT `mission_reward_mult` (scps_missions.c:120-131, `static`) côté
+  façade — le bloc Mission (siège responsable, bonus, récompense PRÉVUE = base×mult) est
+  câblé dans l'onglet Gouvernement (sous les 3 sièges), lu sans jamais toucher scps_missions.c.
+
+**Choix documentés**
+- **Les 2 fuites « rot »** — l'identité « Corrompu » N'EXISTE PAS dans `CONS_IDENTITES`
+  (8 identités, exactement celles de la spec : Rigoriste/Courtisan/Austère/Réformateur/
+  Vétéran/Ambitieux/Loyaliste/Vénal — déjà conforme, posé par le lot #68/#69/#70 du matin ;
+  grep large sur tout le dépôt confirme AUCUNE occurrence de « Corrompu » ni « capté par le
+  rot » côté joueur). La SEULE fuite réelle trouvée : `godot/project/ui/concepts.gd:68`
+  (glossaire de tooltips génériques) affirmait « il ponctionne le trésor » — AUCUN site
+  moteur ne prélève le trésor sur la Corruption (grep `faction_capture`/`faction_corruption`
+  confirme : la capture ne fait QUE réduire l'efficacité du Conseil et alimenter la tension
+  de coup — jamais un débit direct). Corrigée avec le texte VERBATIM recommandé par la spec.
+  ⚠ **Déviation du périmètre déclaré** : concepts.gd n'est PAS dans la liste de fichiers
+  autorisés du brief — mais c'est la SEULE localisation possible de cette fuite explicitement
+  nommée par la mission, c'est un fichier glossaire UI générique (aucun rapport avec les 2
+  agents parallèles sur scps_events.c/statecraft/factions et scps_decrees/econ), et le
+  changement est un remplacement de chaîne d'UNE ligne, zéro risque de collision. Documenté
+  ici plutôt que fait en silence.
+- **`efficiency_pct`/`rank_bonus_pct`/`final_bonus_pct`/`resp_bonus_pct` en `float`, pas
+  `int`** : la spec donne des exemples à UNE décimale (« 91,5 % », « 16,5 % ») — un
+  arrondi entier aurait perdu la fidélité que le worked-example de la spec démontre
+  explicitement. `cons_pct100(x) = x*100.f` (pas d'arrondi côté C) ; l'arrondi d'affichage
+  (`%.1f`) est laissé à l'UI, comme le reste de la façade (aucun autre champ pourcentage
+  n'arrondit côté C dans ce fichier).
+- **Coût affiché SANS le multiplicateur de paie** (curseur 0.5×-2× déjà câblé, V2a) : la
+  spec § « Rangs et coûts » ne mentionne QUE le taux par rang (1.5/3/5 %) — le curseur de
+  paie est une fonctionnalité EXISTANTE, orthogonale, déjà visible juste au-dessus dans la
+  carte (les boutons Paie). Mélanger les deux aurait fait mentir soit la carte soit les
+  boutons dès que le joueur bouge le curseur.
+- **Pas de touche à `strings_ids.h`/`strings_en.h`** (hors périmètre déclaré du brief) :
+  `firstname`/`house`/`identite`/`id_flavor`/le mot de domaine restent des `const char*`
+  bruts (comme les tables locales `CONS_IDENTITES`/`SC_FIRSTNAMES`/`SC_HOUSES` posées par
+  les lots du matin) — `make lang-check` ne scanne QUE viewer.c/scps_readout.c
+  (confirmé au Makefile par le lot précédent), donc aucun gate cassé.
+- **Mission décennale ajoutée SEULEMENT dans l'onglet Conseil→Gouvernement** (pas dans
+  empire_sidebar.gd/country_panel.gd, qui l'affichent déjà en plus léger) — la spec la
+  place explicitement au Conseil ; dupliquer l'info sur 2 panneaux avec un niveau de détail
+  différent est voulu (un est le résumé toujours visible, l'autre la carte détaillée).
+
+**Pièges**
+- `packaging/windows/rebuild_dll.sh` a ÉCHOUÉ une 1re fois sur `build/scps_decrees.os`
+  (Error 1) — PAS causé par mon code : c'est une COLLISION avec l'agent parallèle qui
+  éditait `scps_decrees.c` AU MÊME INSTANT (fichier lu par scons en cours d'écriture).
+  Relancer immédiatement APRÈS a réussi PROPREMENT (0 recompilation de scps_decrees.os —
+  déjà à jour depuis leur run précédent ; seul `scps_sim_node.cpp`/`scps_api.os`/
+  `scps_statecraft.os`/`scps_missions.os`/`scps_factions.os` ont été refaits, cohérent
+  avec ce que MOI j'avais changé + ce qu'EUX avaient déjà committé-sur-disque). Leçon :
+  un échec scons en environnement multi-agent peut être une COLLISION transitoire, pas
+  une vraie erreur de compilation — relancer une fois avant de creuser.
+- Le tiroir `sidebar_drawer.gd` N'A PAS de `ScrollContainer` — la hauteur est bornée au
+  viewport (`_hmax`) et tout excédent est simplement CLIPPÉ (pas de scroll), un
+  comportement PRÉEXISTANT de tout l'onglet (pas introduit par ce lot). Avec 3 sièges
+  VACANTS simultanément × 3 candidats/siège × la carte enrichie (5-6 lignes/candidat), le
+  contenu déborde largement en début de partie (capturé en 14_drawer_conseil.png : le
+  3e siège « Industrie » est coupé à mi-hauteur). Vérifié : c'est un DÉBORDEMENT visuel
+  (clip), pas un crash — le code derrière continue de s'exécuter sans erreur (le bloc
+  Mission, plus bas, s'exécute aussi sans erreur malgré d'être hors-écran, confirmé par
+  `--` absence totale de SCRIPT ERROR dans les logs).
+
+**Vérifié** : `gcc -fsyntax-only -std=c99 -Wall -Wextra -Ithird_party` propre sur
+scps_api.c ET scps_api_demo.c (0 warning) ; binding C++ relu (godot-cpp indisponible sur
+ce poste pour un `-fsyntax-only`, cf. consigne) ; DLL debug+release REBÂTIES avec succès
+(`packaging/windows/rebuild_dll.sh`, 2e tentative) ; probe FENÊTRÉE
+(`Godot_..._console.exe --path godot/project res://shot_ui.tscn`) EXIT=0, **0 SCRIPT
+ERROR** sur les 19 captures, `14_drawer_conseil.png` RELUE — carte candidat conforme à la
+spec, formules vérifiées à la main (bonus de rang exact pour les 3 sièges × 3 rangs, taux
+de coût exact, retraite = fenêtre 66-73 moins l'âge). La branche SIÈGE POURVU (ministre
+déjà en poste) n'a PAS été exercée par cette capture (les 3 sièges du pays joueur étaient
+vacants à l'an 24 de ce monde) — relue attentivement (symétrique de la branche candidat,
+mêmes lecteurs RÉELS non mirés cette fois), non vérifiée à l'exécution.
+
+**SAVE** : rien de sérialisé ne change (tous les champs neufs sont dérivés, recalculés au
+vol depuis des lecteurs déjà sérialisés/déterministes). AUCUN bump SAVE_VERSION.
+
+**Restes**
+- Débordement visuel du tiroir Conseil quand plusieurs sièges sont vacants en même temps
+  (voir Pièges) — un futur lot pourrait ajouter un ScrollContainer au tiroir entier (tous
+  les onglets en profiteraient), hors scope de cette mission.
+- Branche SIÈGE POURVU non vérifiée à l'exécution (voir Vérifié) — à confirmer par un
+  agent disposant d'une save avec un Conseil déjà installé, ou en avançant assez le monde
+  de la probe pour qu'une embauche IA se produise.
+- Sous-onglet Politiques (décrets/orientations légères, servile) INTOUCHÉ comme demandé —
+  le P4 (remplacement des grands décrets par les orientations légères) reste HORS PÉRIMÈTRE
+  de cette mission ; ses futurs readers (taux/montant courant par orientation) suivront le
+  MÊME motif `cons_tier_revenue_rate`/`cost_year` posé ici pour le Conseil.
+- Les 36 chaînes prénoms/maisons/identités restent des `const char*` bruts (pas de
+  migration STR_*), comme documenté par le lot P0/P1/P3 du matin — inchangé par ce lot.
+
+## P4 — ORIENTATIONS POLITIQUES (2026-07-10, docs/CONSEIL_ORIENTATIONS_2026-07-10.md,
+scps_decrees.{h,c} refondu, SAVE v76→77)
+
+**Mission** : REMPLACER les 4 anciens grands décrets (levée permanente/mécénat/ambassades/
+politique de tribut) par les 9-10 orientations légères + 2 décisions ponctuelles de la
+spec. Règle absolue : jamais `tune_set` — chaque site de lecture applique
+`tune_f("CLÉ") × decree_mult(cid, DECREE_X, mult)`.
+
+**Découvertes**
+- **`DecreeId` a 10 membres nommés, pas 9** — le brief disait « les 9 » mais le doc compte
+  RATIONS/FOYERS/ÉCOLES/ATELIERS/COMPTOIRS/CIRCULATION/FRONTIÈRES/FÊTES/LÉGATIONS/LEVÉE =
+  10 noms distincts (2 paires ⊥ + 6 solos). Vérifié contre « Total payant max 10,75% » du
+  doc : max(RATIONS,FOYERS)=1.5 + ÉCOLES 2 + ATELIERS 2 + COMPTOIRS 1.5 +
+  max(CIRCULATION,FRONTIÈRES)=0.75 + FÊTES 1.5 + LÉGATIONS 1.5 = **10.75% exact** → 7
+  slots « payants » simultanés, 10 orientations nommées. Le « 9 » du brief est un
+  arrondi/lapsus de comptage (probablement RATIONS+FOYERS vus comme « un seul axe ») —
+  implémenté LES 10, fidèle au doc (source de vérité citée par le brief lui-même).
+- **`faction_audit(cid)`** (scps_factions.c, posé par l'agent Conseil PARALLÈLE le même
+  jour) fait DÉJÀ exactement « −20 pts de Corruption, renvoie la valeur AVANT » — pas
+  besoin de créer de helper, juste l'appeler. `DECISION_AUDIT_CORRUPTION_DELTA` n'est PAS
+  au registre J (le −20 est hardcodé DANS faction_audit, hors périmètre scps_factions.c de
+  cette mission) — l'ajouter en registre l'aurait rendu DÉCORATIF (jamais lu), violant la
+  règle propre du fichier (« uniquement des constantes RÉELLEMENT lues au runtime »).
+- **MANUF_BUILD_COST a 6 sites** (scps_ai.c ×3, scps_api.c ×2, scps_sim.c ×1) mais le
+  brief ne listait QUE scps_econ.c/demography.c/statecraft.c/revolt.c/warhost.c comme
+  fichiers-lecture autorisés — AUCUN de ces 5 ne lit MANUF_BUILD_COST. Résolu : câblé
+  UNIQUEMENT à `scps_sim.c:CMD_BUILD_MANUF` (le chemin de construction DU JOUEUR, seul
+  site pertinent puisque decree_mult(cid,…) est TOUJOURS 1.0 pour un pays IA — cid IA
+  n'a jamais de bit actif). scps_ai.c/scps_api.c non touchés (hors périmètre) ⇒ le
+  panneau de PRÉVISUALISATION du coût (façade, `scps_manuf_cost`) n'affichera PAS le
+  rabais ATELIERS tant qu'un agent façade ne le raccorde pas — mécanique correcte,
+  affichage en retard (gap documenté, pas un bug).
+- **`econ_conso_per_capita_year(Resource g)`** (scps_econ.c) N'A PAS de paramètre `cid` —
+  seul appelant : `econ_country_forecast` (qui, lui, a `cid`). Évité de changer la
+  signature (fonction pure, 1 seul call site) : le multiplicateur RATIONS/FOYERS est
+  appliqué AU CALL SITE (`need_full = …*decree_food_need_mult(cid)*effcap`), pas dans la
+  fonction elle-même.
+- **`food_need` est une `const float` calculée UNE FOIS avant la boucle par-province**
+  dans `econ_tick` (scps_econ.c) puis réutilisée à 3 sites DANS la boucle (`owner_` en
+  scope à chacun) — pas de refactor de la constante en soi : chaque SITE d'usage
+  (`reserve`, la demande, le besoin par strate) multiplie localement par
+  `decree_food_need_mult(owner_)`.
+- **`Politique de tribut` (DECREE_TRIBUT)** : juste RETIRÉE de l'enum (renumérotation
+  complète de toute façon, à cause du SAVE bump). Son levier diplo
+  (`diplo_set_tribute_decree`/`diplo_tribute_decree`, `g_tribute_decree[]` statique dans
+  scps_diplo.c, jamais touché) reste intact mais **plus jamais atteint** (aucun appelant
+  ne reste) → `g_tribute_decree[cid]` = `false` pour toujours, comportement voulu
+  (« désexposé, pas supprimé »), scps_diplo.{h,c} INTOUCHÉS.
+- **FÊTES PUBLIQUES réutilise LITTÉRALEMENT l'identifiant C `DECREE_MECENAT`** (brief :
+  « aucun enum/état/save neuf ») — le nom affiché/flavor change (« Fêtes publiques »),
+  l'effet change ENTIÈREMENT (prestige→W_AGITATION_UNREST×0.95), mais l'enum reste
+  `DECREE_MECENAT` dans le code. Ne PAS renommer en `DECREE_FETES` par cohérence
+  cosmétique avec les autres — c'est une consigne EXPLICITE du brief, pas un oubli.
+- **Le cooldown de l'Audit (`g_audit_cd[SCPS_MAX_COUNTRY]`) est un ACCUMULATEUR
+  INTER-TICKS** — même classe que EMOB/COLC/TXYR/RVLT (cf. CLAUDE.md) : DOIT être
+  sérialisé (section DCRE) ou `--savetest` divergerait après un reload mi-cooldown. Bump
+  SAVE_VERSION 76→77 (le vrai déclencheur du bump n'est PAS le renommage de l'enum — la
+  section DCRE aurait pu rester `NULL,0`-opaque sans bump si aucun champ neuf n'était
+  sérialisé — mais l'ARRAY neuve grossit le blob fwrite, donc bump nécessaire).
+- **`ScpsDecree.reforme`** (scps_api.c/h, façade, NON touchée) ne flague QUE
+  `DCR_REFORME` — mon nouveau type `DCR_DECISION` (Audit) n'est PAS distingué par ce champ
+  (reste 0, comme un ÉDIT normal). `scps_api_demo.c` avait UNE assertion cassée par le
+  retrait total de DCR_REFORME (« au moins une réforme… ») → recalibrée pour affirmer le
+  CONTRAIRE (`tribut_id<0`, plus aucune réforme) ; le reste du banc (toggle ON/OFF d'un
+  ÉDIT, sous-test réforme sauté via son `else` existant) passe TEL QUEL — la plomberie
+  drain/CMD_DECREE n'a pas eu besoin de recalibrage, seule l'assertion de catalogue.
+
+**Pièges**
+- `demography_manumit_country` (scps_demography.c) est appelée par TROIS chemins : le
+  joueur (`CMD_MANUMIT`), l'IA (`scps_ai.c:2828`, `slaves>=10.0`), et un évènement
+  (`scps_events.c:2213`, choix « Abolir »). Le biais Communautaire +0.10 (spec « décision
+  ponctuelle ») a été posé UNIQUEMENT au call site `CMD_MANUMIT` de `scps_sim.c` (chemin
+  JOUEUR), PAS dans `demography_manumit_country` elle-même — sinon l'IA et l'évènement
+  auraient AUSSI déclenché le biais politique à chaque appel, cassant `make golden` (le
+  biais n'est PAS gaté par human_player si posé dans la fonction partagée).
+- Un décret ÉDIT au coût NUL (FRONTIÈRES, LEVÉE_ENTRETENUE) passe par le MÊME
+  `decree_afford_capital` que les autres (pas de branche spéciale) : `cost<=0.f` y
+  retourne `true` d'emblée SANS toucher au trésor — la table `decree_revenue_rate()`
+  renvoie 0 pour ces deux-là, uniforme, aucun `if(id==…)` séparé nécessaire.
+- `decree_spend_capital` (DÉCISIONS ponctuelles, prend ce qui est dispo — jamais en
+  négatif) et `decree_afford_capital` (ORIENTATIONS mensuelles, TOUT ou RIEN — nouvelle
+  fonction) sont DEUX fonctions distinctes avec des sémantiques opposées ; les confondre
+  romprait soit « l'audit peut partiellement s'offrir » soit « trésor insuffisant ⇒
+  aucun effet ce mois » (l'un ou l'autre, jamais les deux au même site).
+
+**Vérifié** : `gcc -O2 -Wall -Wextra -std=c99 -Ithird_party -Iscps -c` (compilation
+RÉELLE, pas juste `-fsyntax-only`) propre — **0 warning, 0 erreur** — sur
+scps_decrees.c, scps_econ.c, scps_demography.c, scps_revolt.c, scps_sim.c,
+scps_api_demo.c (les 6 fichiers touchés). `make chronicle` PAS tenté jusqu'au bout : le
+driver `cc`/`make` de cet environnement Bash pointe vers un `/mingw64/bin` dont le
+`TMPDIR` résout vers `C:\Windows\` (permission refusée dès `scps_world.c`, fichier
+JAMAIS touché par cette mission) — limite d'ENVIRONNEMENT confirmée pré-existante,
+pas un bug de ce lot (chaque fichier compile seul avec le gcc MSYS2 direct). `make
+golden`/`determinism`/`smoke` NON relancés (pas de toolchain make fonctionnelle dans
+CETTE session) — à faire par le prochain agent/à la prochaine fenêtre de vérification.
+
+**SAVE** : **BUMP 76→77**. Cause : `g_audit_cd[SCPS_MAX_COUNTRY]` (accumulateur
+inter-ticks du cooldown Audit) s'ajoute à la section DCRE — jurisprudence EMOB/COLC/
+TXYR/RVLT. Le renumérotage complet de l'enum `DecreeId` (DECREE_TRIBUT retiré, les bits
+de `g_decree_mask` changent de SENS) rendrait de toute façon un save <v77 dangereux à
+relire tel quel (bits au mauvais décret) — le bump couvre les deux causes à la fois.
+
+**Golden/déterminisme** : le module reste **golden-neutre PAR CONSTRUCTION** — TOUS les
+sites de lecture appellent `decree_mult(cid, …)` qui renvoie 1.0 tant que
+`g_decree_mask[cid]==0` ; ce bit n'est JAMAIS écrit que par `decree_toggle`, appelé
+UNIQUEMENT depuis `CMD_DECREE` (scps_sim.c), qui n'existe QUE dans le journal du JOUEUR
+(`s->cmdq`, jamais peuplé par la chronique headless, `human_player=-1`). Un pays IA ne
+peut donc STRUCTURELLEMENT jamais avoir une orientation active — `make golden`/
+`determinism` doivent rester IDENTIQUES (non re-vérifié dans cette session, cf. Vérifié
+— À CONFIRMER par la prochaine passe outillée). La seule décision ponctuelle
+JOUEUR-UNIQUEMENT (AFFRANCISSEMENT, biais Communautaire) est elle aussi posée au call
+site `CMD_MANUMIT`, jamais dans la fonction partagée (cf. Pièges) — même garantie.
+
+**Restes**
+- Façade (`scps_api.c`/`.h`, `scps_manumit_preview`) et Godot (panneau Politiques) :
+  HORS PÉRIMÈTRE de cette mission (fichiers explicitement interdits). Le prochain agent
+  façade doit : exposer les 10 orientations + 1 décision via `scps_decrees_list`
+  (générique, DÉJÀ compatible sans modif — vérifié par lecture), ajouter un flag
+  « ponctuelle » distinct de `reforme` pour `DCR_DECISION` (Audit) côté `ScpsDecree` s'il
+  veut le distinguer visuellement d'un ÉDIT, et écrire `scps_manumit_preview` (âmes
+  esclaves actuelles + friction projetée — lecture pure, aucun état neuf requis).
+- `scps_ai.c` (coût MANUF_BUILD_COST pour l'IA) et `scps_api.c` (prévisualisation de coût)
+  NE reflètent PAS le rabais ATELIERS — sans conséquence mécanique (IA n'a jamais de
+  décret actif) mais un futur agent façade pourrait vouloir appliquer
+  `decree_manuf_cost_mult(cid)` à la prévisualisation pour que l'affichage corresponde
+  exactement à ce que `CMD_BUILD_MANUF` facturera réellement.
+- `make golden`/`determinism`/`smoke`/`fuzz-save` non relancés dans cette session (limite
+  d'environnement, cf. Vérifié) — le raisonnement de neutralité golden est design-level
+  (chaque site gate sur `human_player`/`g_decree_mask`), pas machine-vérifié ICI.
+
+## 2026-07-10 — clôture vague Conseil : la plus grosse cascade de lien du repo
+**Pièges**
+- scps_econ.c consomme désormais decree_*_mult → 30 bancs BUILD ÉCHEC d'un coup. La cascade
+  complète : decrees → warhost (levée) → army + diplo → provlog + legitimacy + statecraft →
+  intertrade + routes + missions → readout (metric_agitation vit dans READOUT, pas statecraft).
+  Résolu par passes python sur les *_OBJS du Makefile (~120 ajouts d'objets). La règle
+  documentée « un lot qui ajoute une dépendance inter-module doit greper les *_OBJS » vaut
+  DOUBLE pour un module carrefour comme decrees.
+- Test de plancher d'efficacité (statecraft_demo) : la Corruption PLAFONNE à 85 (spec) — à
+  loyauté 70 l'efficacité vaut 0,5075 > plancher 0,50 ; le test devait AUSSI écraser la
+  loyauté à 0. Un agent qui « raisonne ses asserts sans les exécuter » rate ce genre de cap.
+**Restes**
+- ScpsDecree.reforme ne distingue pas DCR_DECISION · scps_manumit_preview absent · remise
+  ATELIERS non reflétée dans le prix affiché façade (gaps P4 documentés par son agent).
+- Sous-onglet Politiques du drawer : à recâbler sur le nouveau catalogue d'orientations
+  (readers P4) — l'ancien affichage décrets pointe sur des ids renumérotés.

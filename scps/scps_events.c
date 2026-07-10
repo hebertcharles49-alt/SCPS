@@ -714,6 +714,51 @@ static bool conseil_pair_find(const EventCtx *cx, int c, CouncilPairState want, 
     }
     return false;
 }
+/* P2 (docs/CONSEIL_ORIENTATIONS_2026-07-10.md §« Événements Conseil ») — les biais
+ * DYNAMIQUES appliqués EN PLUS de ce que statecraft_council_dismiss/_hire appliquent
+ * déjà eux-mêmes (dismiss grief +COUNCIL_DISMISS_GRIEF≈0.10 sur SA PROPRE faction ;
+ * hire lève +COUNCIL_HIRE_LEVER≈0.10 sur la faction du candidat) — ces deux-là ne sont
+ * JAMAIS redupliqués ici. */
+#define COUNCIL_HOOK_OPPOSED_BIAS 0.10f   /* renvoi "dur" (Trahison) / rivalité tranchée (R1-R3) : Opp(F) ou F avance */
+#define COUNCIL_HOOK_KEEP_BIAS    0.05f   /* Trahison "composer"/"négocier" : F avance un peu (gardé, pas renvoyé) */
+#define COUNCIL_HOOK_ALLY_BIAS    0.05f   /* A1 "laisser faire" (aux deux alliées) / "contrebalancer" (au 3e siège) */
+#define COUNCIL_HOOK_RETIRE_BIAS  0.05f   /* Succession "remercier publiquement" */
+/* miroir de trig_conseil_a2 : la paire alliée + le 3e siège VACANT (celui que
+ * "Accepter leur candidat" va pourvoir). Re-scanné à la résolution (le monde a pu
+ * bouger depuis le trigger — même discipline que conseil_pair_find). */
+static bool conseil_a2_find(const EventCtx *cx, int c, int *out_a, int *out_b, int *out_third){
+    static const int PAIRS[3][2]={{0,1},{1,2},{0,2}};
+    static const int THIRD[3]={2,0,1};
+    int year = cx->ev->ages.days_elapsed/365;
+    for (int i=0;i<3;i++){
+        int a=PAIRS[i][0], b=PAIRS[i][1];
+        if (statecraft_council_seated(cx->sc,c,a)<0 || statecraft_council_seated(cx->sc,c,b)<0) continue;
+        if (statecraft_council_seated(cx->sc,c,THIRD[i])>=0) continue;
+        if (statecraft_council_pair_state(cx->sc, cx->w, cx->econ, cx->w->seed, c, a, b, year) == COUNCIL_PAIR_ALLIANCE){
+            *out_a=a; *out_b=b; *out_third=THIRD[i]; return true;
+        }
+    }
+    return false;
+}
+/* miroir de trig_conseil_succession : le premier siège pourvu, PAS à l'agonie
+ * (betrayal_ready), dont le titulaire a ≥62 ans — celui que la SUCCESSION retire. */
+static int conseil_succession_seat_find(const EventCtx *cx, int c){
+    int year = cx->ev->ages.days_elapsed/365;
+    for (int seat=0; seat<SC_COUNCIL_SEATS; seat++){
+        if (statecraft_council_seated(cx->sc, c, seat)<0) continue;
+        if (statecraft_council_betrayal_ready(cx->sc, c, seat)) continue;
+        if (statecraft_council_seated_age(cx->sc, cx->w->seed, c, seat, year) >= 62) return seat;
+    }
+    return -1;
+}
+/* P2 (docs/CONSEIL_ORIENTATIONS_2026-07-10.md) — biaise la faction RÉELLE du
+ * titulaire de `seat` (no-op si vacant : jamais un biais fantôme). Le pas commun
+ * de « Trancher pour X » (R1/R2/R3), « Laisser faire »/« Contrebalancer » (A1) et
+ * « Remercier publiquement » (Succession, appelé APRÈS lecture — cf. le bloc). */
+static void council_lever_seat(const EventCtx *cx, int cid, int seat, float strength){
+    int fac = statecraft_council_seat_faction(cx->sc, cx->w->seed, cid, seat);
+    if (fac>=0) faction_lever_apply(cid, (EthosFaction)fac, strength);
+}
 
 /* ═══════════════════════════════════════════════════════════════════
  * V2b LOT 3 — LE CONTENU DÉBLOQUÉ (lecteurs P7a) : B2/B3 (culture_relation_of),
@@ -1542,13 +1587,17 @@ static const EventDef EVENTS[EVID_COUNT] = {
      * ═══════════════════════════════════════════════════════════════════ */
 
     /* Trahison — Savoir : le savant publie tes secrets. lot M : le %s de ces trois
-     * gabarits = le MINISTRE assis (maison V2a, résolu par event_title — pas le pays). */
+     * gabarits = le MINISTRE assis (maison V2a, résolu par event_title — pas le pays).
+     * P2 (docs/CONSEIL_ORIENTATIONS_2026-07-10.md) — le hook de faction de ces trois
+     * options est RÉSOLU DYNAMIQUEMENT (F = faction réelle du titulaire du siège,
+     * Opp(F) = sa plus opposée) dans le bloc conseil dédié de resolve_choice — le
+     * hook STATIQUE ci-dessous reste NEUTRE (faction=-1) par construction. */
     [EVID_TRAHISON_SAVOIR] = { EVID_TRAHISON_SAVOIR, EV_COUNTRY, "%s publie les secrets du trône",
         trig_trahison_savoir, 1825.f, NULL, {
         { "Le faire taire",
           "%s a livré aux gazettes des documents que seuls le trône et le Conseil devaient connaître. La cour lit désormais ses propres secrets chez les colporteurs.",
           { .d_H_coerc=0.3f, .d_L=-0.2f, .d_agitation=6.f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_LEGISTE, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Un procès bref, une cellule profonde et plus aucune plume entre ses doigts." },
         { "Le renvoyer sans bruit",
           "%s a livré aux gazettes des documents que seuls le trône et le Conseil devaient connaître. La cour lit désormais ses propres secrets chez les colporteurs.",
@@ -1558,16 +1607,16 @@ static const EventDef EVENTS[EVID_COUNT] = {
         { "Faire un exemple public",
           "%s a livré aux gazettes des documents que seuls le trône et le Conseil devaient connaître. La cour lit désormais ses propres secrets chez les colporteurs.",
           { .d_L=0.3f, .d_agitation=8.f, .d_influence=-2.f, .unlock_branch=-1 },
-          0.1f, { .faction=FAC_GARDIEN, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Jugez-le devant toute la cour. Que chaque conseiller voie combien de marches séparent encore son siège de l'échafaud." } }, 3 },
 
-    /* Trahison — Société : le notable place ses familles. */
+    /* Trahison — Société : le notable place ses familles. P2 : hook dynamique (cf. Savoir ci-dessus). */
     [EVID_TRAHISON_SOCIETE] = { EVID_TRAHISON_SOCIETE, EV_COUNTRY, "%s a placé ses familles avant le trône",
         trig_trahison_societe, 1825.f, NULL, {
         { "Purger les places",
           "%s a rempli les charges de cousins, d'alliés et de débiteurs. Dans certaines provinces, servir sa famille est devenu la seule manière de servir l'État.",
           { .d_H_coerc=0.3f, .d_L=-0.2f, .d_agitation=8.f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_LEGISTE, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Videz les bureaux et recommencez les nominations. Une place donnée par faveur peut être reprise par nécessité." },
         { "Composer",
           "%s a rempli les charges de cousins, d'alliés et de débiteurs. Dans certaines provinces, servir sa famille est devenu la seule manière de servir l'État.",
@@ -1580,26 +1629,28 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Laissons-les s'enraciner. Peut-être découvrirons-nous si la loyauté familiale peut, par accident, profiter au trône." } }, 3 },
 
-    /* Trahison — Industrie : le marchand détourne. */
+    /* Trahison — Industrie : le marchand détourne. P2 : hook dynamique (cf. Savoir ci-dessus). */
     [EVID_TRAHISON_INDUSTRIE] = { EVID_TRAHISON_INDUSTRIE, EV_COUNTRY, "%s a détourné plus que sa part",
         trig_trahison_industrie, 1825.f, NULL, {
         { "Le poursuivre",
           "%s a prélevé sur les péages, les marchés et jusqu'aux pierres des routes. Les comptes sont faux, mais les caravanes continuent d'arriver à l'heure.",
           { .d_treasury_mois=0.3f, .d_agitation=4.f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_LEGISTE, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Saisissez ses livres et ses biens. Ce que la justice ne récupérera pas, elle le fera au moins regretter." },
         { "Négocier un remboursement",
           "%s a prélevé sur les péages, les marchés et jusqu'aux pierres des routes. Les comptes sont faux, mais les caravanes continuent d'arriver à l'heure.",
           { .d_treasury_mois=0.15f, .unlock_branch=-1 },
-          0.5f, { .faction=FAC_MARCHAND, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Exigez un remboursement discret et complet. Un procès nourrit la rumeur ; un accord peut encore nourrir le trésor." },
         { "Fermer les yeux",
           "%s a prélevé sur les péages, les marchés et jusqu'aux pierres des routes. Les comptes sont faux, mais les caravanes continuent d'arriver à l'heure.",
           { .d_treasury_mois=-0.2f, .d_C_global=0.03f, .unlock_branch=-1 },
-          0.1f, { .faction=FAC_MARCHAND, .faction_strength=0.15f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.1f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Fermez les yeux tant que les routes restent ouvertes. Certains voleurs coûtent moins cher en fonction qu'en cellule." } }, 3 },
 
-    /* SUCCESSION — la retraite d'un loyal (>20 ans). Un moment, deux choix légers. */
+    /* SUCCESSION — la retraite d'un loyal (>20 ans). Un moment, deux choix légers.
+     * P2 : les DEUX options retirent IMMÉDIATEMENT le titulaire, SANS le grief de
+     * renvoi (bypass COUNCIL_DISMISS_GRIEF — résolu dans le bloc conseil dédié). */
     [EVID_CONSEIL_SUCCESSION] = { EVID_CONSEIL_SUCCESSION, EV_COUNTRY, "Le dernier jour d'un serviteur loyal",
         trig_conseil_succession, 1460.f, NULL, {
         { "Le remercier publiquement",
@@ -1613,18 +1664,20 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1460 },
           "Acceptez sa lettre et laissez-le partir. Tous les services n'ont pas besoin d'une cérémonie pour avoir compté." } }, 2 },
 
-    /* R1 — Savoir vs Société en RIVALITÉ : trancher pour l'un/l'autre/renvoyer les deux. */
+    /* R1 — Savoir vs Société en RIVALITÉ : trancher pour l'un/l'autre/renvoyer les deux.
+     * P2 : « Trancher » biaise la faction RÉELLE du titulaire choisi (résolu dans le
+     * bloc conseil dédié de resolve_choice) — le hook statique reste NEUTRE. */
     [EVID_CONSEIL_R1] = { EVID_CONSEIL_R1, EV_COUNTRY, "Le Savoir et la Société se disputent l'oreille du trône",
         trig_conseil_r1, 1825.f, NULL, {
         { "Trancher pour le Savoir",
           "Le ministre du Savoir accuse les grandes familles d'étouffer le mérite. Leur représentant répond que les savants veulent gouverner un peuple qu'ils ne fréquentent jamais.",
           { .d_L=0.1f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_TRANSGRESSEUR, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Le royaume a besoin de compétences avant d'avoir besoin de susceptibilités. Le Savoir aura notre oreille." },
         { "Trancher pour la Société",
           "Le ministre du Savoir accuse les grandes familles d'étouffer le mérite. Leur représentant répond que les savants veulent gouverner un peuple qu'ils ne fréquentent jamais.",
           { .d_L=0.1f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_CONQUERANT, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Une idée brillante ne tient pas une province sans les familles qui y vivent. La Société l'emportera." },
         { "Renvoyer les deux",
           "Le ministre du Savoir accuse les grandes familles d'étouffer le mérite. Leur représentant répond que les savants veulent gouverner un peuple qu'ils ne fréquentent jamais.",
@@ -1632,18 +1685,18 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Ils confondent conseil et querelle. Qu'ils poursuivent la seconde loin du premier." } }, 3 },
 
-    /* R2 — Industrie vs Société : la route. */
+    /* R2 — Industrie vs Société : la route. P2 : hook dynamique (cf. R1 ci-dessus). */
     [EVID_CONSEIL_R2] = { EVID_CONSEIL_R2, EV_COUNTRY, "L'Industrie et la Société se disputent la route",
         trig_conseil_r2, 1825.f, NULL, {
         { "Trancher pour l'Industrie",
           "L'Industrie veut ouvrir une route à travers les terres ancestrales ; la Société jure qu'aucun pavé ne sera posé sans l'accord des familles.",
           { .d_treasury_mois=0.2f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_MARCHAND, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Ouvrez la route. Une coutume qui interdit tout passage finit seulement par contourner ceux qu'elle protège." },
         { "Trancher pour la Société",
           "L'Industrie veut ouvrir une route à travers les terres ancestrales ; la Société jure qu'aucun pavé ne sera posé sans l'accord des familles.",
           { .d_L=0.1f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_CONQUERANT, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Respectez les terres des familles. Le commerce trouvera un détour plus facilement que le trône ne réparera une offense." },
         { "Renvoyer les deux",
           "L'Industrie veut ouvrir une route à travers les terres ancestrales ; la Société jure qu'aucun pavé ne sera posé sans l'accord des familles.",
@@ -1651,18 +1704,18 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Ni privilège marchand ni veto familial. Le projet attendra des défenseurs moins intéressés." } }, 3 },
 
-    /* R3 — Savoir vs Industrie : le cadastre. */
+    /* R3 — Savoir vs Industrie : le cadastre. P2 : hook dynamique (cf. R1 ci-dessus). */
     [EVID_CONSEIL_R3] = { EVID_CONSEIL_R3, EV_COUNTRY, "Le Savoir et l'Industrie se disputent le cadastre",
         trig_conseil_r3, 1825.f, NULL, {
         { "Trancher pour le Savoir",
           "Le Savoir réclame un cadastre exact ; l'Industrie, un cadastre utile. Depuis trois séances, ils déplacent les mêmes frontières avec des règles différentes.",
           { .d_K_inst=0.2f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_TRANSGRESSEUR, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Mesurez d'abord, exploitez ensuite. Une carte fausse reste fausse même lorsqu'elle rapporte." },
         { "Trancher pour l'Industrie",
           "Le Savoir réclame un cadastre exact ; l'Industrie, un cadastre utile. Depuis trois séances, ils déplacent les mêmes frontières avec des règles différentes.",
           { .d_treasury_mois=0.2f, .unlock_branch=-1 },
-          0.4f, { .faction=FAC_MARCHAND, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.4f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Que la carte serve les routes et les marchés. La perfection qui retarde tout n'est qu'une autre erreur." },
         { "Renvoyer les deux",
           "Le Savoir réclame un cadastre exact ; l'Industrie, un cadastre utile. Depuis trois séances, ils déplacent les mêmes frontières avec des règles différentes.",
@@ -1670,7 +1723,10 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Reprenez les cartes et les sceaux. Le royaume peut attendre une semaine ; leur vanité, davantage." } }, 3 },
 
-    /* A1 — L'ALLIANCE de deux sièges : laisser la synergie ×rot / contrebalancer / séparer. */
+    /* A1 — L'ALLIANCE de deux sièges : laisser la synergie ×rot / contrebalancer / séparer.
+     * P2 : Laisser faire = +0,05 biais aux DEUX alliées (factions réelles) · Contrebalancer
+     * = +0,05 au 3e siège (vacant ⇒ aucun hook) · Séparer = renvoi du 2e (dismiss(), qui
+     * grief déjà SA faction +0,10) — tout résolu dans le bloc conseil dédié. */
     [EVID_CONSEIL_A1] = { EVID_CONSEIL_A1, EV_COUNTRY, "Deux sièges du Conseil s'entendent trop bien",
         trig_conseil_a1, 1825.f, NULL, {
         { "Laisser faire",
@@ -1689,13 +1745,15 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Éloignez l'un des deux. Deux serviteurs trop unis peuvent finir par oublier qui ils servent." } }, 3 },
 
-    /* A2 — leur candidat au 3e siège. */
+    /* A2 — leur candidat au 3e siège. P2 : « Accepter leur candidat » NOMME RÉELLEMENT
+     * (le bloc conseil dédié de resolve_choice choisit + statecraft_council_hire, qui
+     * pousse DÉJÀ la faction du candidat ~0.10 — pas de hook statique redondant ici). */
     [EVID_CONSEIL_A2] = { EVID_CONSEIL_A2, EV_COUNTRY, "L'alliance du Conseil propose son candidat au 3e siège",
         trig_conseil_a2, 1825.f, NULL, {
         { "Accepter leur candidat",
           "Les deux ministres alliés proposent d'une seule voix leur candidat au siège vacant. Ils promettent l'harmonie avec un empressement qui ressemble à une condition.",
           { .d_L=0.1f, .unlock_branch=-1 },
-          0.5f, { .faction=-1, .faction_strength=0.10f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
+          0.5f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Acceptons leur candidat. Un Conseil uni agira vite, et portera ensemble la responsabilité de ses erreurs." },
         { "Imposer son propre choix",
           "Les deux ministres alliés proposent d'une seule voix leur candidat au siège vacant. Ils promettent l'harmonie avec un empressement qui ressemble à une condition.",
@@ -1708,7 +1766,13 @@ static const EventDef EVENTS[EVID_COUNT] = {
           0.2f, { .faction=-1, .faction_strength=0.f, .scar_kind=SCAR_NONE, .cooldown_days=1825 },
           "Laissez le fauteuil vide. Un silence au Conseil peut être préférable à une majorité déjà écrite." } }, 3 },
 
-    /* C1 — LA CONSPIRATION : les renvoyer les deux / en sacrifier un / céder. */
+    /* C1 — LA CONSPIRATION : les renvoyer les deux / en sacrifier un / céder.
+     * P2 : « Renvoyer les deux »/« En sacrifier un » n'ont RIEN à ajouter — dismiss()
+     * grief DÉJÀ (+0,10) la faction propre de chaque renvoyé, SANS capture (aucun appel
+     * à faction_concede) — exactement la rancœur demandée. « Céder » (SEUL choix qui
+     * abandonne une part durable de l'État) appelle une DOUBLE concession (+9 Corr,
+     * +0,06 biais chacune) dans le bloc conseil dédié — impossible via le hook générique
+     * à UNE faction. */
     [EVID_CONSEIL_C1] = { EVID_CONSEIL_C1, EV_COUNTRY, "Deux sièges aliénés complotent contre le trône",
         trig_conseil_c1, 2555.f, NULL, {
         { "Les renvoyer les deux",
@@ -1865,7 +1929,10 @@ static int treason_seat_of(int evid){
         default:                      return -1;
     }
 }
-static const char *TREASON_FALLBACK[3] = { "Le savant", "Le notable", "Le marchand" };
+/* P2 (docs/CONSEIL_ORIENTATIONS_2026-07-10.md) — fallback de nom PAR SIÈGE (le mot
+ * de la charge, jamais un mot de classe fixe qui trahirait la faction assise —
+ * « Le marchand » suggérait FAC_MARCHAND à tort quel que soit le titulaire réel). */
+static const char *TREASON_FALLBACK[3] = { "Le conseiller du Savoir", "Le conseiller du Royaume", "Le conseiller des Ouvrages" };
 
 /* TITRE PRÉSENTÉ (display-only) : le nom de la table est un GABARIT — s'il porte
  * un « %s », on y coud le NOM RÉEL du sujet (région en EV_PROVINCE, pays en
@@ -2241,42 +2308,160 @@ static void resolve_choice(EventCtx *cx, int evid, int subject, int oi, int toda
          * _DONE QUE via ce trigger, qui ne re-tirera plus — cooldown 36500 j). */
     }
 
-    /* ═══ V2b LOT 2 — LE CONSEIL : les actions qui MUTENT le Conseil (renvoi/
-     * remplacement) passent par les VERBES existants (statecraft_council_dismiss),
-     * jamais un accès direct aux tableaux — même motif que demography_manumit_
-     * country pour EVID_CHAINES_RAPPORTENT ci-dessus. */
+    /* ═══ V2b LOT 2 / P2 — LE CONSEIL : les actions qui MUTENT le Conseil (renvoi/
+     * nomination/retraite) passent par les VERBES existants (statecraft_council_
+     * dismiss/_hire), jamais un accès direct aux tableaux — même motif que
+     * demography_manumit_country pour EVID_CHAINES_RAPPORTENT ci-dessus. SEULE
+     * exception : la SUCCESSION (bypass explicite du grief de renvoi, cf. son bloc).
+     *
+     * P2 (docs/CONSEIL_ORIENTATIONS_2026-07-10.md) — LE HOOK DYNAMIQUE : chaque
+     * branche calcule F = la faction RÉELLE du titulaire concerné (statecraft_
+     * council_seat_faction, lue AVANT tout renvoi) et/ou Opp(F) = sa plus opposée
+     * (faction_most_opposed, matrice de scps_factions), puis pousse le biais/la
+     * rancœur/la concession voulue par la spec — jamais la faction hardcodée que
+     * portait l'ancienne table statique (EVENTS[].options[].hook reste neutre,
+     * faction=-1, pour tous ces choix : cf. les commentaires sur la table). Les
+     * deltas que statecraft_council_dismiss (grief SA faction, COUNCIL_DISMISS_
+     * GRIEF) et statecraft_council_hire (lève SA faction, COUNCIL_HIRE_LEVER)
+     * appliquent DÉJÀ eux-mêmes ne sont jamais reproduits ici. */
     if (cx->sc && cx->w){
         uint32_t seed = cx->w->seed;
-        if (evid==EVID_CONSEIL_SUCCESSION && oi==0 && cid>=0){
-            /* « Le remercier publiquement » ET « le laisser partir » vident TOUS
-             * DEUX le siège (la retraite a lieu quoi qu'on choisisse — seul le
-             * ton diffère, cf. les deltas L/or de la table) — statecraft_council_
-             * age_tick (annuel, appelé par sim_day) videra le siège de toute façon
-             * dès que l'âge dépasse le seuil de retraite ; on ne duplique PAS ce
-             * mécanisme ici (rien à muter côté Conseil, le siège se videra tout
-             * seul au prochain passage annuel — cette option est un TON, pas un acte). */
+
+        if (evid==EVID_CONSEIL_SUCCESSION && cid>=0){
+            /* Les DEUX options retirent IMMÉDIATEMENT le titulaire, SANS le grief de
+             * renvoi (bypass COUNCIL_DISMISS_GRIEF — une retraite n'est pas une
+             * disgrâce) : écriture DIRECTE des champs, miroir EXACT de statecraft_
+             * council_dismiss MOINS l'appel à faction_grievance_add (même motif que
+             * les écritures directes agitation/influence plus haut dans cette
+             * fonction — Statecraft est un état SIM aux champs publics, ce module y
+             * écrit déjà directement). Le siège retiré = celui désigné par le MÊME
+             * balayage déterministe que le trigger. */
+            int seat = conseil_succession_seat_find(cx, cid);
+            if (seat>=0){
+                int fac = statecraft_council_seat_faction(cx->sc, seed, cid, seat);
+                cx->sc->council[cid][seat]     = -1;
+                cx->sc->council_gen[cid][seat] = -1;
+                cx->sc->loyalty[cid][seat]     = 0.f;
+                cx->sc->pay[cid][seat]         = 1.f;
+                if (oi==0 && fac>=0)   /* Le remercier publiquement : sa faction avance un peu */
+                    faction_lever_apply(cid, (EthosFaction)fac, COUNCIL_HOOK_RETIRE_BIAS);
+                /* oi==1 "Le laisser partir sans bruit" : rien de plus. */
+            }
         }
-        else if (evid==EVID_CONSEIL_R1 && oi==2 && cid>=0)      { statecraft_council_dismiss(cx->sc,seed,cid,0); statecraft_council_dismiss(cx->sc,seed,cid,1); }
-        else if (evid==EVID_CONSEIL_R2 && oi==2 && cid>=0)      { statecraft_council_dismiss(cx->sc,seed,cid,2); statecraft_council_dismiss(cx->sc,seed,cid,1); }
-        else if (evid==EVID_CONSEIL_R3 && oi==2 && cid>=0)      { statecraft_council_dismiss(cx->sc,seed,cid,0); statecraft_council_dismiss(cx->sc,seed,cid,2); }
-        else if (evid==EVID_CONSEIL_A1 && oi==2 && cid>=0){
-            /* Séparer : renvoie le siège B de la paire alliée retrouvée (le trigger
-             * a déjà prouvé qu'une telle paire existe — même balayage déterministe). */
+        else if (evid==EVID_CONSEIL_R1 && cid>=0){
+            if      (oi==0) council_lever_seat(cx, cid, 0, COUNCIL_HOOK_OPPOSED_BIAS);  /* Trancher pour le Savoir  */
+            else if (oi==1) council_lever_seat(cx, cid, 1, COUNCIL_HOOK_OPPOSED_BIAS);  /* Trancher pour la Société */
+            else if (oi==2) { statecraft_council_dismiss(cx->sc,seed,cid,0); statecraft_council_dismiss(cx->sc,seed,cid,1); }
+        }
+        else if (evid==EVID_CONSEIL_R2 && cid>=0){
+            if      (oi==0) council_lever_seat(cx, cid, 2, COUNCIL_HOOK_OPPOSED_BIAS);  /* Trancher pour l'Industrie */
+            else if (oi==1) council_lever_seat(cx, cid, 1, COUNCIL_HOOK_OPPOSED_BIAS);  /* Trancher pour la Société  */
+            else if (oi==2) { statecraft_council_dismiss(cx->sc,seed,cid,2); statecraft_council_dismiss(cx->sc,seed,cid,1); }
+        }
+        else if (evid==EVID_CONSEIL_R3 && cid>=0){
+            if      (oi==0) council_lever_seat(cx, cid, 0, COUNCIL_HOOK_OPPOSED_BIAS);  /* Trancher pour le Savoir   */
+            else if (oi==1) council_lever_seat(cx, cid, 2, COUNCIL_HOOK_OPPOSED_BIAS);  /* Trancher pour l'Industrie */
+            else if (oi==2) { statecraft_council_dismiss(cx->sc,seed,cid,0); statecraft_council_dismiss(cx->sc,seed,cid,2); }
+        }
+        else if (evid==EVID_CONSEIL_A1 && cid>=0){
+            /* Le trigger a déjà prouvé qu'une paire alliée existe — même balayage
+             * déterministe (conseil_pair_find), re-scanné à la résolution. */
             int a=-1,b=-1;
-            if (conseil_pair_find(cx, cid, COUNCIL_PAIR_ALLIANCE, &a, &b)) statecraft_council_dismiss(cx->sc,seed,cid,b);
+            if (conseil_pair_find(cx, cid, COUNCIL_PAIR_ALLIANCE, &a, &b)){
+                if (oi==0){                                     /* Laisser faire : +0,05 aux DEUX alliées */
+                    council_lever_seat(cx, cid, a, COUNCIL_HOOK_ALLY_BIAS);
+                    council_lever_seat(cx, cid, b, COUNCIL_HOOK_ALLY_BIAS);
+                } else if (oi==1){                               /* Contrebalancer : +0,05 au 3e siège (vacant ⇒ rien) */
+                    council_lever_seat(cx, cid, 3-a-b, COUNCIL_HOOK_ALLY_BIAS);
+                } else if (oi==2){                               /* Séparer : renvoi du 2e (dismiss grief déjà SA faction) */
+                    statecraft_council_dismiss(cx->sc,seed,cid,b);
+                }
+            }
         }
-        else if (evid==EVID_TRAHISON_SAVOIR    && oi!=1 && cid>=0) statecraft_council_dismiss(cx->sc,seed,cid,0);
-        else if (evid==EVID_TRAHISON_SOCIETE   && oi==0 && cid>=0) statecraft_council_dismiss(cx->sc,seed,cid,1);
-        else if (evid==EVID_TRAHISON_INDUSTRIE && oi==0 && cid>=0) statecraft_council_dismiss(cx->sc,seed,cid,2);
+        else if (evid==EVID_CONSEIL_A2 && oi==0 && cid>=0){
+            /* « Accepter leur candidat » NOMME RÉELLEMENT : parmi les candidats du
+             * siège vacant (génération COURANTE), on choisit celui qui MINIMISE la
+             * somme des oppositions aux deux factions alliées (départage : premier
+             * minimum, balayage croissant des slots — déterministe), puis on
+             * l'embauche pour de vrai. statecraft_council_hire lève DÉJÀ sa faction
+             * (COUNCIL_HIRE_LEVER) : aucun hook de plus ici. */
+            int a=-1,b=-1,third=-1;
+            if (conseil_a2_find(cx, cid, &a, &b, &third)){
+                int fa   = statecraft_council_seat_faction(cx->sc, seed, cid, a);
+                int fb   = statecraft_council_seat_faction(cx->sc, seed, cid, b);
+                int year = cx->ev->ages.days_elapsed/365;
+                int gen  = statecraft_council_gen(year);
+                int best_slot=0; float best_score=1e9f;
+                for (int slot=0; slot<SC_COUNCIL_CANDS; slot++){
+                    EthosFaction cf = statecraft_council_faction(seed, cid, third, slot, gen);
+                    float score = 0.f;
+                    if (fa>=0) score += faction_opposition(cf, (EthosFaction)fa);
+                    if (fb>=0) score += faction_opposition(cf, (EthosFaction)fb);
+                    if (score < best_score){ best_score=score; best_slot=slot; }
+                }
+                statecraft_council_hire(cx->sc, seed, cid, third, best_slot, gen);
+            }
+            /* oi==1 "Imposer son propre choix" : rien de plus (la liste normale).
+             * oi==2 "Laisser le siège vacant" : rien. */
+        }
+        else if (evid==EVID_TRAHISON_SAVOIR && cid>=0){
+            /* Les TROIS options renvoient (même « sans bruit » reste un renvoi,
+             * juste discret — aucune ne GARDE le ministre) : F lu AVANT le renvoi. */
+            int fac = statecraft_council_seat_faction(cx->sc, seed, cid, 0);
+            statecraft_council_dismiss(cx->sc,seed,cid,0);            /* grief déjà SA faction (+0,10) */
+            if ((oi==0 || oi==2) && fac>=0){                          /* Taire / Exemple public : Opp(F) +0,10 */
+                EthosFaction opp = faction_most_opposed((EthosFaction)fac);
+                if (opp>=0) faction_lever_apply(cid, opp, COUNCIL_HOOK_OPPOSED_BIAS);
+            }
+            /* oi==1 "Le renvoyer sans bruit" : renvoi seul, rien de plus. */
+        }
+        else if (evid==EVID_TRAHISON_SOCIETE && cid>=0){
+            int fac = statecraft_council_seat_faction(cx->sc, seed, cid, 1);
+            if (oi==0){                                               /* Purger les places : renvoi + Opp(F) */
+                statecraft_council_dismiss(cx->sc,seed,cid,1);
+                if (fac>=0){
+                    EthosFaction opp = faction_most_opposed((EthosFaction)fac);
+                    if (opp>=0) faction_lever_apply(cid, opp, COUNCIL_HOOK_OPPOSED_BIAS);
+                }
+            } else if (oi==1 && fac>=0){                              /* Composer : gardé, F +0,05 */
+                faction_lever_apply(cid, (EthosFaction)fac, COUNCIL_HOOK_KEEP_BIAS);
+            } else if (oi==2 && fac>=0){                              /* Laisser faire : gardé, CONCESSION à F */
+                faction_concede(cid, (EthosFaction)fac);
+            }
+        }
+        else if (evid==EVID_TRAHISON_INDUSTRIE && cid>=0){
+            int fac = statecraft_council_seat_faction(cx->sc, seed, cid, 2);
+            if (oi==0){                                               /* Le poursuivre : renvoi + Opp(F) */
+                statecraft_council_dismiss(cx->sc,seed,cid,2);
+                if (fac>=0){
+                    EthosFaction opp = faction_most_opposed((EthosFaction)fac);
+                    if (opp>=0) faction_lever_apply(cid, opp, COUNCIL_HOOK_OPPOSED_BIAS);
+                }
+            } else if (oi==1 && fac>=0){                              /* Négocier un remboursement : gardé, F +0,05 */
+                faction_lever_apply(cid, (EthosFaction)fac, COUNCIL_HOOK_KEEP_BIAS);
+            } else if (oi==2 && fac>=0){                              /* Fermer les yeux : gardé, CONCESSION à F */
+                faction_concede(cid, (EthosFaction)fac);
+            }
+        }
         else if (evid==EVID_CONSEIL_C1 && cid>=0){
             /* La conspiration porte sur une paire ALIÉNÉE (COUNCIL_PAIR_CONSPIRATION) —
-             * « Les renvoyer les deux » vide les deux sièges ; « En sacrifier un » n'en
-             * vide qu'un (le premier de la paire, déterministe) ; « Céder » ne renvoie
-             * personne (le trône a plié — les deux restent, plus forts). */
+             * « Les renvoyer les deux »/« En sacrifier un » n'ont RIEN à ajouter :
+             * dismiss() grief DÉJÀ (+0,10) la faction propre de chaque renvoyé, SANS
+             * capture (aucun appel à faction_concede) — exactement la rancœur voulue.
+             * « Céder » (le SEUL choix Conseil qui abandonne une part durable de
+             * l'État) ne renvoie personne : DOUBLE concession (+0,045 capture chacune
+             * = +9 Corr, +0,06 biais chacune) — impossible via le hook générique à
+             * UNE faction, donc résolu ici. */
             int a=-1,b=-1;
             if (conseil_pair_find(cx, cid, COUNCIL_PAIR_CONSPIRATION, &a, &b)){
                 if (oi==0){ statecraft_council_dismiss(cx->sc,seed,cid,a); statecraft_council_dismiss(cx->sc,seed,cid,b); }
                 else if (oi==1) statecraft_council_dismiss(cx->sc,seed,cid,a);
+                else if (oi==2){
+                    int fa = statecraft_council_seat_faction(cx->sc, seed, cid, a);
+                    int fb = statecraft_council_seat_faction(cx->sc, seed, cid, b);
+                    if (fa>=0) faction_concede(cid, (EthosFaction)fa);
+                    if (fb>=0) faction_concede(cid, (EthosFaction)fb);
+                }
             }
         }
     }

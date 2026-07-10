@@ -17,6 +17,7 @@
 #include "scps_campaign.h"  /* Phase 3a : campaign_order — l'armée rebelle sur la carte */
 #include "scps_math.h"      /* clampf/absf partagés */
 #include "scps_army.h"      /* Phase 3a : ArmyState/army_init/army_doctrine_base + U_MILICE/U_CAV_LOURDE */
+#include "scps_decrees.h"   /* orientation FÊTES PUBLIQUES (2026-07-10) : decree_unrest_mult(cid) */
 #include <stdlib.h>         /* getenv — diagnostic SCPS_REVDIAG */
 #include <string.h>
 #include <math.h>
@@ -538,7 +539,7 @@ void revolt_scan(RevoltState *rs, World *w, WorldEconomy *econ,
          * son signal atteint encore une révolte réelle. sc peut être NULL (bancs). */
         if (sc){
             float ag = (float)statecraft_agitation(sc, r) / 100.f;
-            worst = clampf(worst + tune_f("W_AGITATION_UNREST", W_AGITATION_UNREST) * ag, 0.f, 1.f);
+            worst = clampf(worst + tune_f("W_AGITATION_UNREST", W_AGITATION_UNREST) * decree_unrest_mult(o) * ag, 0.f, 1.f);   /* orientation FÊTES PUBLIQUES */
         }
         /* TRADITIONS — le levier FRACTURE (Soudé/Factieux) : la cohésion sociale du
          * peuple AMORTIT ou AGGRAVE le grief — même FOLD que W_AGITATION_UNREST (le

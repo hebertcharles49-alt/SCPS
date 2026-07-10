@@ -49,9 +49,15 @@
 #define SC_BASE_DIPLOMATS  3      /* vivier de départ (avant bonus d'Influence) */
 
 /* ---- Q1 — LE CONSEIL (I7) : 3 sièges, conseillers tier 1-3 ------------- */
-#define SC_COUNCIL_SEATS  3    /* 0 = Savoir (+20 % savoir) · 1 = Société (+12 % promo) · 2 = Industrie (+15 % manuf) */
+#define SC_COUNCIL_SEATS  3    /* 0 = Savoir (+12 % recherche) · 1 = Royaume/Société (+15 % promo) · 2 = Ouvrages/Industrie (+20 % manuf) */
 #define SC_COUNCIL_CANDS  3    /* candidats tirés au seed par siège (licenciables) */
-#define SC_COUNCIL_NAMES  8    /* taille de la bande STR_COUNCIL_NAME_* (maisons) */
+#define SC_COUNCIL_NAMES  8    /* taille de la bande STR_COUNCIL_NAME_* (maisons, ancien format) */
+/* P0-4 — PERSONNE + MAISON (docs/CONSEIL_ORIENTATIONS_2026-07-10.md). Tirages
+ * INDÉPENDANTS (salts distincts de tier/nom/âge/faction), tables LOCALES en
+ * C brut (pas de STR_* : strings_ids.h/strings_en.h sont hors du périmètre de
+ * cette mission — cf. TROUVAILLES.md, un futur agent façade migrera si besoin). */
+#define SC_COUNCIL_FIRSTNAMES 24
+#define SC_COUNCIL_HOUSES     12
 
 typedef enum {
     DIP_IDLE = 0,
@@ -117,6 +123,9 @@ int   statecraft_council_cand_age (uint32_t seed, int cid, int seat, int slot, i
 int   statecraft_council_seated   (const Statecraft *sc, int cid, int seat);      /* slot pourvu, -1 sinon */
 int   statecraft_council_seated_gen(const Statecraft *sc, int cid, int seat);     /* génération du ministre assis (0 si legacy) */
 int   statecraft_council_seated_age(const Statecraft *sc, uint32_t seed, int cid, int seat, int year); /* -1 si vacant */
+/* P2 — LA FACTION RÉELLE DU TITULAIRE D'UN SIÈGE (EthosFaction en int, -1 = vacant) —
+ * pour les hooks DYNAMIQUES des évènements du Conseil (docs/CONSEIL_ORIENTATIONS_2026-07-10.md). */
+int   statecraft_council_seat_faction(const Statecraft *sc, uint32_t seed, int cid, int seat);
 /* V2a : `seed` sert à dériver la FACTION du candidat pourvu/renvoyé — RECRUTER
  * pousse SA faction (faction_lever_apply, ~0.10) ; RENVOYER froisse (grief sur
  * les factions qui S'OPPOSENT à la sienne — même canal que la concession/le
@@ -130,9 +139,12 @@ float statecraft_council_seat_mult(const Statecraft *sc, uint32_t seed, int cid,
 float statecraft_council_cost     (const Statecraft *sc, uint32_t seed, int cid, float ipm); /* or/mois total (×IPM) */
 float statecraft_council_cand_cost(uint32_t seed, int cid, int seat, int slot, int gen, float ipm); /* coût d'UN candidat (×IPM), pour l'UI */
 /* Applique le conseil à l'éco pour le tick (mensuel) : pousse les multiplicateurs LECTEURS
- * et ponctionne le coût (×IPM) sur le trésor de la capitale, ligne FX_CONSEIL. Appelé
- * IDENTIQUEMENT par viewer ET chronicle (mêmes décisions de monde). dt_year = 1/12. */
-void  statecraft_council_apply    (const Statecraft *sc, const World *w, WorldEconomy *e, uint32_t seed, float dt_year);
+ * (bonus final = bonus de rang × efficacité — P1-1, LIT wp->country[cid].K, jamais une
+ * approximation depuis les bâtiments) et ponctionne le coût (×IPM) sur le trésor de la
+ * capitale, ligne FX_CONSEIL. Appelé IDENTIQUEMENT par viewer ET chronicle (mêmes
+ * décisions de monde). dt_year = 1/12. `wp` peut être NULL (K=0, dégrade proprement). */
+void  statecraft_council_apply    (const Statecraft *sc, const World *w, WorldEconomy *e,
+                                   const WorldProsperity *wp, uint32_t seed, float dt_year);
 /* L'IA pourvoit le siège que son éthos privilégie, dans la garde de budget (no-op sinon).
  * `year` : la pool évaluée est celle de la génération COURANTE. */
 void  statecraft_council_ai       (Statecraft *sc, const World *w, const WorldEconomy *e, uint32_t seed, int cid, int year);
@@ -148,17 +160,34 @@ long  statecraft_council_ai_replace_count(void);
  * la PAIE ; jamais de saut. Le « rot » (faction_capture_total) accélère la CHUTE,
  * jamais la remontée (la corruption aide à tomber, pas à se refaire une vertu). */
 
-/* La FACTION d'un candidat : le siège privilégie deux factions candidates
- * (Savoir→Transgresseur/Légiste · Société→Conquérant/Communautaire · Industrie→
- * Marchand seul), la MAISON (hash du nom) tranche entre les deux quand il y en a
- * deux. Dérivée du seed comme le tier/l'âge — RIEN à sérialiser. */
+/* P0-1 — LA FACTION D'UN CANDIDAT : plus de spectre par siège (les 6 factions sont
+ * candidates sur les 3 sièges). Par (siège, génération) : un mélange DÉTERMINISTE
+ * des 6 factions (seed×pays×siège×génération) — les SC_COUNCIL_CANDS premières du
+ * mélange sont les 3 candidates du siège, TOUJOURS distinctes (préfixe d'une
+ * permutation). Re-tirage à chaque génération (le mélange dépend de `gen`). */
 EthosFaction statecraft_council_faction(uint32_t seed, int cid, int seat, int slot, int gen);
+
+/* P0-4 — PERSONNE + MAISON : deux tirages INDÉPENDANTS (salts distincts l'un de
+ * l'autre ET de tier/âge/faction) — le prénom et la maison d'un candidat ne se
+ * déduisent d'aucun autre trait. `statecraft_council_cand_name` (StrId, 8 maisons
+ * historiques) reste INCHANGÉE pour compat façade ; ces deux lecteurs ADDITIFS
+ * donnent la paire complète (« Aveline » + « Vœrn » → « Aveline Vœrn »). */
+const char *statecraft_council_cand_firstname(uint32_t seed, int cid, int seat, int slot, int gen);
+const char *statecraft_council_cand_house    (uint32_t seed, int cid, int seat, int slot, int gen);
 
 /* Lecteurs — loyauté (0..100) et curseur de paie (0..2, 1.0 = normal) du siège
  * POURVU (0/1.0 par défaut si vacant — lu par convention, jamais accédé nu). */
 int   statecraft_council_loyalty  (const Statecraft *sc, int cid, int seat);       /* 0..100 */
 float statecraft_council_pay      (const Statecraft *sc, int cid, int seat);       /* 0..2 */
 void  statecraft_council_set_pay  (Statecraft *sc, int cid, int seat, float pay);  /* verbe : le curseur de paie */
+/* P3 — écrivain DIRECT de loyauté (borné 0-100), pour la mission décennale
+ * (réussite/échec) — n'affecte QUE le siège pourvu (no-op si vacant). */
+void  statecraft_council_loyalty_add(Statecraft *sc, int cid, int seat, float delta);
+
+/* P1-1 — EFFICACITÉ POLITIQUE (0.50-1.15) : clamp(BASE + K_PER·K + LOY_W·loyauté/100
+ * − CORRUPTION_PER_POINT·Corruption(faction_corruption_0_100), MIN, MAX). 1.0 (base
+ * neutre) si le siège est VACANT — rien à multiplier. `wp` peut être NULL (K=0). */
+float statecraft_council_efficiency(const Statecraft *sc, const WorldProsperity *wp, int cid, int seat);
 
 /* SIGNAUX pour V2b (pas les événements eux-mêmes) : */
 /* Le ministre est-il À L'AGONIE (loyauté ≤ seuil ~15) depuis au moins N mois ? —
