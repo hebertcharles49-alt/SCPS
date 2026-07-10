@@ -27,8 +27,15 @@ DIST="$HERE/dist_godot"
 export TMP=/tmp TEMP=/tmp TMPDIR=/tmp PROCESSOR_ARCHITECTURE=AMD64
 # Godot lit les export templates dans %APPDATA%\Godot ; un shell MSYS2 login ne propage pas
 # toujours APPDATA → Godot chercherait un ./Godot LOCAL vide et l'export ÉCHOUERAIT
-# (« aucun modèle d'exportation trouvé »). On le restaure depuis cmd.exe si besoin.
+# (« aucun modèle d'exportation trouvé »). On le restaure depuis cmd.exe si besoin ;
+# et si l'env est ENTIÈREMENT scrubé (Git Bash → bash MSYS2 : cmd introuvable aussi),
+# on retrouve le profil par la PRÉSENCE des templates sous /c/Users/*/AppData/Roaming.
 [ -z "${APPDATA:-}" ] && export APPDATA="$(cmd /c 'echo %APPDATA%' 2>/dev/null | tr -d '\r')"
+if [ -z "${APPDATA:-}" ] || [ ! -d "$(cygpath "$APPDATA" 2>/dev/null)/Godot/export_templates" ]; then
+  for d in /c/Users/*/AppData/Roaming; do
+    if [ -d "$d/Godot/export_templates" ]; then export APPDATA="$(cygpath -w "$d")"; break; fi
+  done
+fi
 
 echo "→ 1/4  DLL du moteur (libscps, release)"
 ( cd "$ROOT/godot" && scons platform=windows use_mingw=yes target=template_release )

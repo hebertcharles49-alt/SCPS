@@ -1766,3 +1766,8 @@ Tout en px, résolution de référence Stellaris = 1920×1080 (offset natif show
 **Restes**
 - Manufactures : pas d'effet/flavor (pas de reader façade des recettes qout/labor) — même motif à étendre si voulu.
 - effet/flavor/masquage de palier VISIBLES après rebuild DLL (défauts sûrs d'ici là).
+
+## 2026-07-10 — export Godot : l'env Windows SCRUBÉ (Git Bash → bash MSYS2)
+**Pièges**
+- Lancer `D:/MSYS2/usr/bin/bash.exe -l` DEPUIS Git Bash scrubbe l'environnement Windows EN ENTIER : `APPDATA` vide (même passé explicitement sur la ligne de commande), `cmd` introuvable → le repli `cmd /c echo %APPDATA%` de build_godot.sh échouait en silence → « aucun modèle d'exportation trouvé ». Depuis un vrai terminal MSYS2 ça marchait, d'où la latence de découverte.
+- Fix durable dans build_godot.sh : si APPDATA est vide OU ne contient pas `Godot/export_templates`, on balaie `/c/Users/*/AppData/Roaming` et on prend le profil qui PORTE les templates (détection par présence, pas par env).
