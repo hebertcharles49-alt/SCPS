@@ -43,6 +43,7 @@ func setup(map) -> void:
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	clip_contents = true   # SCROLL générique : le contenu défilé se coupe au bord du tiroir
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	Sim.ticked.connect(func(_y): if visible: queue_redraw())
@@ -62,6 +63,22 @@ func show_tab(i: int) -> void:
 	visible = i >= 0
 	queue_redraw()
 
+const CONTENT_Y := 46.0   ## haut du CONTENU (sous l'en-tête fixe de 36 px + marge)
+
+## SCROLL GÉNÉRIQUE du tiroir (motif construction_panel) : offset PAR ONGLET,
+## molette, clamp au contenu, clip (clip_contents), barre piste+pouce, EN-TÊTE
+## FIXE redessiné par-dessus le contenu défilé.
+var _scroll := {}         ## {tab: offset px}
+var _maxscroll := 0.0     ## du DERNIER _draw (pour la molette)
+
+func _draw_header(x: float) -> void:
+	# titre PLAT (la plaque de chrome ornée est retirée — lisibilité d'abord) —
+	# dessiné EN DERNIER (fixe, par-dessus le contenu défilé).
+	VKit.fill(self, Rect2(0, 0, DW, 36), Color(0.055, 0.042, 0.028, 0.92))
+	VKit.fill(self, Rect2(0, 35, DW, 1), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.6))
+	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x, 8), 22)
+	VKit.text(self, Vector2(x + 28, 7), VKit.COL_GOLD, TAB_NAME[_tab], VKit.FS_BIG)
+
 func _draw() -> void:
 	if _tab < 0:
 		return
@@ -70,17 +87,13 @@ func _draw() -> void:
 	VKit.panel_bg(self, Rect2(0, 0, DW, size.y))
 	VKit.fill(self, Rect2(DW - 2, 0, 2, size.y), VKit.COL_GOLD)
 	var x := 14.0
-	var y := 10.0
-	# titre PLAT (la plaque de chrome ornée est retirée — lisibilité d'abord)
-	VKit.fill(self, Rect2(0, 0, DW, 36), Color(0.055, 0.042, 0.028, 0.92))
-	VKit.fill(self, Rect2(0, 35, DW, 1), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.6))
-	UIKit.draw_icon(self, TAB_ICON[_tab], Vector2(x, y - 2), 22)
-	VKit.text(self, Vector2(x + 28, y - 3), VKit.COL_GOLD, TAB_NAME[_tab], VKit.FS_BIG)
-	y += 36
 	var w = Sim.world
 	if w == null:
+		_draw_header(x)
 		return
 	var me: int = w.player()
+	var off := float(_scroll.get(_tab, 0.0))
+	var y := CONTENT_Y - off
 	var yend := y
 	match _tab:
 		0: yend = _draw_eco(x, y, me)
@@ -92,17 +105,35 @@ func _draw() -> void:
 		6: yend = _draw_diplo(x, y, me)
 		7: yend = _draw_conseil(x, y, me)
 		_: VKit.text(self, Vector2(x, y), VKit.COL_DIM, "(panneau à venir — port viewer.c)")
+	var content_h := yend - y   # hauteur RÉELLE du contenu (indépendante de l'offset)
 
 	# HAUTEUR AU CONTENU (règle Stellaris : la fenêtre épouse ce qu'elle montre —
 	# fini la colonne pleine hauteur aux trois quarts vide). Latch différé, borné
-	# au viewport ; le panel_bg de CE frame garde l'ancienne taille (1 frame de retard).
-	var want := clampf(yend + 12.0, 120.0, _hmax)
+	# au viewport ; AU-DELÀ, le surplus DÉFILE (molette + barre).
+	var want := clampf(CONTENT_Y + content_h + 12.0, 120.0, _hmax)
 	if absf(want - size.y) > 0.5:
 		set_deferred("size", Vector2(DW, want))
+	var visible_h := want - CONTENT_Y - 12.0
+	_maxscroll = maxf(0.0, content_h - visible_h)
+	if off > _maxscroll:   # le contenu a rétréci sous l'offset mémorisé : re-clamp
+		_scroll[_tab] = _maxscroll
+		queue_redraw()
+
+	# EN-TÊTE FIXE par-dessus le contenu défilé, puis la BARRE (piste + pouce ∝ fenêtre/contenu).
+	_draw_header(x)
+	if _maxscroll > 0.0:
+		var track := Rect2(DW - 9.0, CONTENT_Y, 4.0, size.y - CONTENT_Y - 10.0)
+		VKit.fill(self, track, VKit.COL_PANEL2)
+		var thumb_h := maxf(24.0, track.size.y * visible_h / maxf(content_h, 1.0))
+		var thumb_y := track.position.y + (minf(off, _maxscroll) / _maxscroll) * (track.size.y - thumb_h)
+		VKit.fill(self, Rect2(track.position.x, thumb_y, 4.0, thumb_h), VKit.COL_GOLD)
 
 	# les zones de survol passent par le TOOLTIP NATIF (→ TooltipServer : mots-concepts
-	# turquoise + définitions) — le petit encart dessiné à la main est retiré (2026-07-10)
+	# turquoise + définitions) — les zones DÉFILÉES sous l'en-tête fixe sont écartées
+	# (sinon un fantôme invisible répondrait au survol dans le bandeau de titre).
 	for z in _hover_zones:
+		if (z["rect"] as Rect2).get_center().y < 36.0:
+			continue
 		_tips.append([z["rect"], z["text"]])
 
 # ── DÉMOGRAPHIE (sb_panel_demo, read-only) ─────────────────────────────────
@@ -126,8 +157,6 @@ func _draw_stocks(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          stock   net/j   couv.", VKit.FS_SMALL)
 	y += 16
 	for st in Sim.world.country_stocks(me):
-		if y > _hmax - 18:
-			break
 		var col := _marche_col(int(st["market_band"]))
 		_res_cell(x, y, int(st["res_id"]), String(st["name"]), col)
 		VKit.text(self, Vector2(x + 110, y), col, _grp(st["stock"]), VKit.FS_SMALL)
@@ -199,7 +228,7 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 	# postes de flux (signés : revenu vert / dépense rouge) — quelques-uns
 	var shown := 0
 	for p in Sim.world.country_budget(me):
-		if shown >= 5 or y > _hmax - 96:
+		if shown >= 5:   # limite de COMPTE (résumé) — le scroll gère la hauteur désormais
 			break
 		var amt: float = p["amount"]
 		var pcol := VKit.sense(0.78) if amt >= 0 else VKit.sense(0.18)
@@ -221,8 +250,6 @@ func _draw_eco(x: float, y: float, me: int) -> float:
 		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, "(aucun partenaire)", VKit.FS_SMALL)
 		return y + 16.0
 	for p in partners:
-		if y > _hmax - 18:
-			break
 		var col := VKit.sense(0.12) if bool(p["at_war"]) else (VKit.COL_GOLD if bool(p["embargo"]) else VKit.COL_PARCH)
 		VKit.text(self, Vector2(x + 8, y), col, String(p["name"]), VKit.FS_SMALL)
 		VKit.text(self, Vector2(x + 150, y), VKit.COL_DIM, "%d or/an" % int(p["value"]), VKit.FS_SMALL)
@@ -260,8 +287,6 @@ func _draw_marche(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "bien          prix(or)   marché", VKit.FS_SMALL)
 	y += 16
 	for st in Sim.world.country_stocks(me):
-		if y > _hmax - 36:
-			break
 		var col := _marche_col(int(st["market_band"]))
 		var res_id := int(st["res_id"])
 		_res_cell(x, y, res_id, String(st["name"]), col)
@@ -291,9 +316,16 @@ var _conseil_flash := ""
 var _conseil_flash_ok := true
 var _conseil_tab := 0   ## 0 = Gouvernement (sièges) · 1 = Politiques (décrets + servile)
 var _ctab_btns := []
+## l'ASSIETTE des coûts % (hovers quantitatifs — « 3 % du revenu (2033 or) × IPM 1,12
+## = 68 or/an ») : revenu fiscal annuel + IPM, rafraîchis à chaque _draw_conseil.
+var _cons_rev := 0.0
+var _cons_ipm := 1.0
 
 func _draw_conseil(x: float, y: float, me: int) -> float:
 	_conseil_btns.clear()
+	if Sim.world.has_method("country_revenue_year"):
+		_cons_rev = float(Sim.world.country_revenue_year(me))
+		_cons_ipm = float(Sim.world.world_ipm())
 	# SOUS-ONGLETS (retour joueur : « diviser l'UI statecraft pour sa lisibilité ») :
 	# GOUVERNEMENT (les sièges du Conseil) / POLITIQUES (décrets + peuple servile).
 	_ctab_btns.clear()
@@ -339,42 +371,56 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		VKit.text(self, Vector2(x + 20, y), VKit.COL_GOLD, String(seat["seat"]))
 		y += 18
 		if filled:
-			# CARTE CANDIDAT/SIÈGE (docs/CONSEIL_ORIENTATIONS_2026-07-10.md § Interface) —
-			# personne + maison (fallback sur le nom legacy si le binding n'a pas encore
-			# le champ, DLL pas rebâtie).
+			# CARTE SIÈGE — TERSE (retour joueur 2026-07-10, prime sur la spec doc) :
+			# nom · identité (MOT seul, phrase au survol) · siège rang âge · faction ·
+			# loyauté (jauge) · paie · bonus final · N or par an · retraite. CHAQUE
+			# élément a un hover factuel ; les formules/taux vivent AU SURVOL seulement.
 			var fname := String(seat.get("firstname", ""))
 			var house := String(seat.get("house", ""))
 			var pname := (fname + " " + house).strip_edges() if fname != "" else String(seat["councilor"])
-			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, pname, VKit.FS_SMALL)
-			var idflav := String(seat.get("id_flavor", ""))
 			var idnom := String(seat.get("identite", ""))
+			var idflav := String(seat.get("id_flavor", ""))
+			var pdisp := pname + (" · " + idnom if idnom != "" else "")
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_PARCH, pdisp, VKit.FS_SMALL)
 			if idflav != "":
-				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(pname, VKit.FS_SMALL) + 6, 16),
+				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(pdisp, VKit.FS_SMALL) + 6, 16),
 					"text": "%s — %s" % [idnom, idflav]})
 			var bw := VKit.text_w("Renvoyer", VKit.FS_SMALL) + 14.0
 			var r := Rect2(DW - 14.0 - bw, y - 1, bw, 16)
 			VKit.fill(self, r, VKit.COL_PANEL2)
 			VKit.box(self, r, VKit.sense(0.12))
 			VKit.text(self, Vector2(r.position.x + 7, y), VKit.sense(0.12), "Renvoyer", VKit.FS_SMALL)
+			_hover_zones.append({"rect": r, "text": "Renvoyer : rancœur +0,10 à sa faction."})
 			_conseil_btns.append({"rect": r, "act": "dismiss", "seat": idx, "slot": -1})
 			y += 15
-			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM,
-				"%s, rang %d, %d ans" % [String(seat["seat"]), int(seat["tier"]), int(seat.get("age", 0))], VKit.FS_SMALL)
+			var sline := "%s · rang %d · %d ans" % [String(seat["seat"]), int(seat["tier"]), int(seat.get("age", 0))]
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, sline, VKit.FS_SMALL)
+			_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(sline, VKit.FS_SMALL) + 6, 16),
+				"text": "Rang %d : base du siège ×%s (I ×1 · II ×1,5 · III ×2) = bonus de rang +%.1f %%." % [
+					int(seat["tier"]), ["1", "1,5", "2"][clampi(int(seat["tier"]), 1, 3) - 1], float(seat.get("rank_bonus_pct", 0.0))]})
 			y += 18
 			# V2a — LE CONSEIL VIVANT : faction (mot) + barre de LOYAUTÉ (rouge→vert) + mot d'ambiance
 			var faction := String(seat.get("faction", ""))
 			var loyalty := int(seat.get("loyalty", 0))
 			var mood := String(seat.get("mood", ""))
-			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "Faction : %s" % faction, VKit.FS_SMALL)
+			var fline := "Faction : %s" % faction
+			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, fline, VKit.FS_SMALL)
+			_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(fline, VKit.FS_SMALL) + 6, 16),
+				"text": "Sa faction gagne du pouvoir tant qu'il siège ; loyauté et Corruption décident de combien le bonus est réellement délivré."})
 			y += 15
 			VKit.gauge(self, x + 16, y, DW - 32.0, 8.0, loyalty)
 			y += 13
-			VKit.text(self, Vector2(x + 16, y), VKit.sense(float(loyalty) / 100.0),
-				"Loyauté %d — %s" % [loyalty, mood], VKit.FS_SMALL)
+			var lline := "Loyauté %d — %s" % [loyalty, mood]
+			VKit.text(self, Vector2(x + 16, y), VKit.sense(float(loyalty) / 100.0), lline, VKit.FS_SMALL)
+			_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(lline, VKit.FS_SMALL) + 6, 16),
+				"text": "Loyauté %d/100 → +%.1f pts d'efficacité (15 pts à 100). Paie ×0,5 → cible −15 pts · ×2 → +30 pts." % [
+					loyalty, float(loyalty) * 0.15]})
 			y += 18
 			# le curseur de PAIE (0.5×/1×/1.5×/2×) — verbe CMD_COUNCIL_PAY, journalisé
 			var pay := float(seat.get("pay", 1.0))
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "Paie", VKit.FS_SMALL)
+			_hover_zones.append({"rect": Rect2(x + 14, y - 2, 40, 16),
+				"text": "Traitement ×%.1f → loyauté cible %+d pts (30 × (paie − 1))." % [pay, int(round((pay - 1.0) * 30.0))]})
 			var px := x + 60.0
 			for mult in [0.5, 1.0, 1.5, 2.0]:
 				var lab := "%.1f×" % mult
@@ -387,38 +433,48 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 				_conseil_btns.append({"rect": pr, "act": "pay", "seat": idx, "slot": 0, "pay": mult})
 				px += lw + 4.0
 			y += 22
-			# BONUS FINAL (rang × efficacité) — décomposition au survol (rang/K/loyauté/Corruption/efficacité).
+			# BONUS FINAL (rang × efficacité) — la DÉCOMPOSITION vit AU SURVOL, jamais à
+			# l'écran (retour joueur) ; membrane : « Administration », jamais « K ».
 			if seat.has("rank_bonus_pct"):
 				var domain := String(seat.get("domain", ""))
 				var rankp := float(seat["rank_bonus_pct"])
 				var effp := float(seat["efficiency_pct"])
 				var finalp := float(seat["final_bonus_pct"])
-				var bline := "%s +%.1f %% net (rang +%.1f %% × %.1f %% efficace)" % [domain, finalp, rankp, effp]
+				var kpts := float(seat.get("k_admin", 0.0)) * 3.0
+				var lpts := float(loyalty) * 0.15
+				var cpts := float(int(seat.get("corruption_pct", 0))) * 0.35
+				var bline := "%s +%.1f %%" % [domain, finalp]
 				VKit.text(self, Vector2(x + 16, y), VKit.COL_GOLD, bline, VKit.FS_SMALL)
 				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(bline, VKit.FS_SMALL) + 6, 16),
-					"text": "Bonus de rang %+.1f %% · K %.1f · Loyauté %d · Corruption %d · Efficacité %.1f %%" % [
-						rankp, float(seat.get("k_admin", 0.0)), loyalty, int(seat.get("corruption_pct", 0)), effp]})
+					"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté : +%.1f pts · Corruption : −%.1f pts · Efficacité : %.1f %% ⇒ +%.1f %% net." % [
+						rankp, kpts, lpts, cpts, effp, finalp]})
 				y += 16
+				# PRIX FUSIONNÉ : une seule ligne « N or par an » ; la formule au survol,
+				# en MONTANTS (« 3 % du revenu (2033 or) × IPM 1,12 = 68 or/an »).
 				var rate := float(seat.get("cost_rate_pct", 0.0))
 				var cyear := float(seat.get("cost_year", 0.0))
-				VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM,
-					"Coût : %.1f %% du revenu annuel × IPM" % rate, VKit.FS_SMALL)
-				y += 15
-				VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM,
-					"Actuellement : %.0f or cette année" % cyear, VKit.FS_SMALL)
+				var cline := "%s or par an" % _grp(int(round(cyear)))
+				VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, cline, VKit.FS_SMALL)
+				_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
+					"text": "%.1f %% du revenu (%s or) × IPM %.2f = %s or par an — prélevé chaque mois (/12)." % [
+						rate, _grp(int(round(_cons_rev))), _cons_ipm, _grp(int(round(cyear)))]})
 				y += 15
 				var rlo := int(seat.get("retire_lo", -1))
 				var rhi := int(seat.get("retire_hi", -1))
 				if rlo >= 0:
-					VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM,
-						"Retraite estimée : %d à %d ans" % [rlo, rhi], VKit.FS_SMALL)
+					var rline := "Retraite : %d à %d ans" % [rlo, rhi]
+					VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, rline, VKit.FS_SMALL)
+					_hover_zones.append({"rect": Rect2(x + 14, y - 2, VKit.text_w(rline, VKit.FS_SMALL) + 6, 16),
+						"text": "Départ entre 66 et 73 ans — il en a %d : le siège se libère dans %d à %d ans." % [
+							int(seat.get("age", 0)), rlo, rhi]})
 					y += 15
 			y += 6
 		else:
 			VKit.text(self, Vector2(x + 16, y), VKit.COL_DIM, "(siège vacant : la pool se renouvelle par génération)", VKit.FS_SMALL)
 			y += 20
-			# l'embauche ÉCLAIRÉE : les CANDIDATS de la pool courante — CARTE (personne+maison,
-			# faction, bonus de rang → efficacité PRÉVUE → bonus final, coût, retraite estimée).
+			# l'embauche ÉCLAIRÉE : les CANDIDATS de la pool courante — CARTE TERSE
+			# (retour joueur 2026-07-10) : nom+identité · faction rang âge · bonus final ·
+			# N or par an · retraite. Tout le reste (phrases, taux, décomposition) au SURVOL.
 			if Sim.world.has_method("council_candidates"):
 				for cand in Sim.world.council_candidates(idx):
 					var cx := x + 16
@@ -426,36 +482,58 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 					var cfname := String(cand.get("firstname", ""))
 					var chouse := String(cand.get("house", ""))
 					var cpname := (cfname + " " + chouse).strip_edges() if cfname != "" else String(cand["nom"])
-					VKit.text(self, Vector2(cx, y), VKit.COL_PARCH, cpname, VKit.FS_SMALL)
+					var cidnom := String(cand.get("identite", ""))
 					var cidflav := String(cand.get("id_flavor", ""))
+					var cpdisp := cpname + (" · " + cidnom if cidnom != "" else "")
+					VKit.text(self, Vector2(cx, y), VKit.COL_PARCH, cpdisp, VKit.FS_SMALL)
 					if cidflav != "":
-						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cpname, VKit.FS_SMALL) + 6, 16),
-							"text": "%s — %s" % [String(cand.get("identite", "")), cidflav]})
+						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cpdisp, VKit.FS_SMALL) + 6, 16),
+							"text": "%s — %s" % [cidnom, cidflav]})
 					y += 15
-					VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
-						"Faction : %s · rang %d · %d ans" % [String(cand.get("faction", "")), int(cand["tier"]), int(cand["age"])],
-						VKit.FS_SMALL)
+					var cfline := "Faction : %s · rang %d · %d ans" % [String(cand.get("faction", "")), int(cand["tier"]), int(cand["age"])]
+					VKit.text(self, Vector2(cx, y), VKit.COL_DIM, cfline, VKit.FS_SMALL)
+					_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cfline, VKit.FS_SMALL) + 6, 16),
+						"text": "Rang %d : base du siège ×%s (I ×1 · II ×1,5 · III ×2). Sa faction gagnera du pouvoir s'il siège." % [
+							int(cand["tier"]), ["1", "1,5", "2"][clampi(int(cand["tier"]), 1, 3) - 1]]})
 					y += 15
 					if cand.has("rank_bonus_pct"):
 						var cdomain := String(cand.get("domain", ""))
 						var crankp := float(cand["rank_bonus_pct"])
 						var ceffp := float(cand["efficiency_pct"])
 						var cfinalp := float(cand["final_bonus_pct"])
-						VKit.text(self, Vector2(cx, y), VKit.sense(0.70),
-							"%s +%.1f %% net (rang +%.1f %% × %.1f %% prévu)" % [cdomain, cfinalp, crankp, ceffp], VKit.FS_SMALL)
+						# décomposition membrane-safe : Administration/Corruption depuis le SEAT
+						# (mêmes valeurs pays, remplies même vacant) ; loyauté de DÉPART déduite
+						# (efficacité − base 70 − Administration + Corruption — arithmétique sur
+						# les lecteurs réels, aucun chiffre inventé).
+						var ckpts := float(seat.get("k_admin", 0.0)) * 3.0
+						var ccpts := float(int(seat.get("corruption_pct", 0))) * 0.35
+						var clpts := ceffp - 70.0 - ckpts + ccpts
+						var cbline := "%s +%.1f %%" % [cdomain, cfinalp]
+						VKit.text(self, Vector2(cx, y), VKit.sense(0.70), cbline, VKit.FS_SMALL)
+						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(cbline, VKit.FS_SMALL) + 6, 16),
+							"text": "Rang : +%.1f %% · Administration : +%.1f pts · Loyauté de départ : +%.1f pts · Corruption : −%.1f pts · Efficacité prévue : %.1f %% ⇒ +%.1f %% net." % [
+								crankp, ckpts, clpts, ccpts, ceffp, cfinalp]})
 						y += 15
-						VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
-							"Coût : %.1f %% du revenu × IPM — actuellement %.0f or cette année" % [
-								float(cand.get("cost_rate_pct", 0.0)), float(cand.get("cost_year", 0.0))], VKit.FS_SMALL)
+						# PRIX FUSIONNÉ : « N or par an » ; la formule au survol, en MONTANTS.
+						var ccyear := float(cand.get("cost_year", 0.0))
+						var ccline := "%s or par an" % _grp(int(round(ccyear)))
+						VKit.text(self, Vector2(cx, y), VKit.COL_DIM, ccline, VKit.FS_SMALL)
+						_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(ccline, VKit.FS_SMALL) + 6, 16),
+							"text": "%.1f %% du revenu (%s or) × IPM %.2f = %s or par an — prélevé chaque mois (/12)." % [
+								float(cand.get("cost_rate_pct", 0.0)), _grp(int(round(_cons_rev))), _cons_ipm, _grp(int(round(ccyear)))]})
 						y += 15
 						var crlo := int(cand.get("retire_lo", -1))
 						if crlo >= 0:
-							VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
-								"Retraite estimée : %d à %d ans" % [crlo, int(cand.get("retire_hi", -1))], VKit.FS_SMALL)
+							var crline := "Retraite : %d à %d ans" % [crlo, int(cand.get("retire_hi", -1))]
+							VKit.text(self, Vector2(cx, y), VKit.COL_DIM, crline, VKit.FS_SMALL)
+							_hover_zones.append({"rect": Rect2(cx - 2, y - 2, VKit.text_w(crline, VKit.FS_SMALL) + 6, 16),
+								"text": "Départ entre 66 et 73 ans — il en a %d : le siège se libérerait dans %d à %d ans." % [
+									int(cand["age"]), crlo, int(cand.get("retire_hi", -1))]})
 							y += 15
 					else:
+						# repli binding sans les champs carte : annualisé quand même (prix fusionné).
 						VKit.text(self, Vector2(cx, y), VKit.COL_DIM,
-							"%d ans · ×%d · %.0f or/mois" % [int(cand["age"]), int(cand["tier"]), float(cand["cost"])], VKit.FS_SMALL)
+							"%d ans · rang %d · %.0f or par an" % [int(cand["age"]), int(cand["tier"]), float(cand["cost"]) * 12.0], VKit.FS_SMALL)
 						y += 15
 					var cw := DW - 32.0
 					var lab := "Recruter"
@@ -508,48 +586,159 @@ func _draw_conseil(x: float, y: float, me: int) -> float:
 		y += 16
 	return y
 
-# ── DÉCRETS (sb_panel_decrets) : la flexibilité PROACTIVE du joueur (civics) —
-#    section sous le Conseil (même onglet). Chaque décret DÉPLACE un levier moteur
-#    tant qu'il est actif ; `plateaux` (survol) en donne les DEUX faces. Un ÉDIT se
-#    bascule librement (Activer/Désactiver) ; une RÉFORME activée s'affiche VERROUILLÉE
-#    (irréversible — pas de bouton retour). Grisé si `legal`==0 (condition d'entrée absente).
-var _decret_btns := []   # [{rect, id, on}]
+# ── DÉCRETS (sb_panel_decrets) — recâblé 2026-07-10 sur le catalogue orientations/
+#    décisions (docs/CONSEIL_ORIENTATIONS_2026-07-10.md, scps_decrees.h refondu).
+#    Section sous le Conseil (même onglet, sous-onglet Politiques). Chaque ORIENTATION
+#    (type DCR_EDIT/REFORME/POSTURE) DÉPLACE un levier moteur tant qu'elle est active ;
+#    `plateaux` (survol) donne DÉJÀ effet + clé tunable + multiplicateur en mots
+#    (carte orientation). Un ÉDIT se bascule librement (Activer/Désactiver) ; une
+#    RÉFORME activée s'affiche VERROUILLÉE (irréversible). Une DÉCISION (type
+#    DCR_DECISION, ex. Audit des offices) est PONCTUELLE — bouton « Décréter » gaté
+#    par condition d'entrée + cooldown (raison au survol), jamais de toggle on/off.
+#    Grisé si `legal`==0.
+const DCR_EDIT := 0
+const DCR_REFORME := 1
+const DCR_POSTURE := 2
+const DCR_DECISION := 3
+
+var _decret_btns := []   # [{rect, id, on}] — on=true active un ÉDIT / tire une DÉCISION
 var _decret_flash := ""
 var _decret_flash_ok := true
 
 func _draw_decrets(x: float, y: float, me: int) -> float:
 	_decret_btns.clear()
-	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Décrets", VKit.FS_BIG)
+	VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Orientations politiques", VKit.FS_BIG)
 	y += 20
 	if not Sim.world.has_method("decrees_list"):
 		return y
-	for dec in Sim.world.decrees_list(me):
-		var id := int(dec["id"])
-		var active := bool(dec["active"])
-		var legal := bool(dec["legal"])
-		var reforme := bool(dec["reforme"])
-		var nom := String(dec["nom"])
-		var label := nom + (" [RÉFORME]" if reforme else "")
-		VKit.text(self, Vector2(x, y), VKit.COL_PARCH if legal or active else VKit.COL_DIM, label, VKit.FS_SMALL)
-		_hover_zones.append({"rect": Rect2(x, y - 2, VKit.text_w(label, VKit.FS_SMALL), 14), "text": String(dec["plateaux"])})
+	var decs: Array = Sim.world.decrees_list(me)
+	# nom par id — pour la note d'exclusivité (« ⊥ exclusif avec : X »), spec §
+	# « Orientations LÉGÈRES » (RATIONS⊥FOYERS · CIRCULATION⊥FRONTIÈRES).
+	var names_by_id := {}
+	for dd in decs:
+		names_by_id[int(dd["id"])] = String(dd["nom"])
+	var decisions := []
+	for dec in decs:
+		if int(dec.get("type", DCR_EDIT)) == DCR_DECISION:
+			decisions.append(dec)
+			continue
+		y = _draw_decree_card(x, y, dec, names_by_id)
+	if decisions.size() > 0:
+		y += 6
+		VKit.text(self, Vector2(x, y), VKit.COL_GOLD, "Décisions ponctuelles", VKit.FS_BIG)
+		y += 20
+		for dec in decisions:
+			y = _draw_decision_card(x, y, dec, me)
+	return y
+
+# CARTE ORIENTATION — TERSE (retour joueur 2026-07-10) : nom [+RÉFORME] · prix
+# fusionné « N or par an » · exclusivité · bouton. L'effet (plateaux, avec clé+mult)
+# ET le flavor vivent au SURVOL du nom ; la formule du prix au SURVOL du prix.
+func _draw_decree_card(x: float, y: float, dec: Dictionary, names_by_id: Dictionary) -> float:
+	var id := int(dec["id"])
+	var active := bool(dec["active"])
+	var legal := bool(dec["legal"])
+	var reforme := bool(dec["reforme"])
+	var nom := String(dec["nom"])
+	var label := nom + (" [RÉFORME]" if reforme else "") + (" — actif" if active else "")
+	VKit.text(self, Vector2(x, y), (VKit.sense(0.80) if active else (VKit.COL_PARCH if legal else VKit.COL_DIM)), label, VKit.FS_SMALL)
+	_hover_zones.append({"rect": Rect2(x, y - 2, VKit.text_w(label, VKit.FS_SMALL), 14),
+		"text": String(dec["plateaux"]) + "\n" + String(dec["flavor"])})
+	y += 15
+	# PRIX FUSIONNÉ : « N or par an » seul ; la formule (taux × revenu × IPM) au survol.
+	var rate := float(dec.get("cost_rate_pct", 0.0))
+	var cyear := float(dec.get("cost_year", 0.0))
+	var cline := ("%s or par an" % _grp(int(round(cyear)))) if rate > 0.0 else "0 or par an"
+	VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, cline, VKit.FS_SMALL)
+	if rate > 0.0:
+		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
+			"text": "%.2f %% du revenu (%s or) × IPM %.2f = %s or par an — prélevé chaque mois (/12) ; mois impayé ⇒ sans effet ce mois-là." % [
+				rate, _grp(int(round(_cons_rev))), _cons_ipm, _grp(int(round(cyear)))]})
+	else:
+		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
+			"text": "Aucun prélèvement d'or — la contrepartie est dans l'effet (survolez le nom)."})
+	y += 15
+	var excl := int(dec.get("exclusive_id", -1))
+	if excl >= 0 and names_by_id.has(excl):
+		var eline := "⊥ exclusif avec : %s" % String(names_by_id[excl])
+		VKit.text(self, Vector2(x + 8, y), VKit.sense(0.35), eline, VKit.FS_SMALL)
+		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(eline, VKit.FS_SMALL) + 6, 16),
+			"text": "Paire radio : activer celle-ci désactive automatiquement l'autre."})
 		y += 15
-		VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, String(dec["flavor"]), VKit.FS_SMALL)
-		y += 16
-		if reforme and active:
-			VKit.text(self, Vector2(x + 8, y), VKit.sense(0.30), "verrouillé (irréversible)", VKit.FS_SMALL)
-			y += 18
-		else:
-			var lab := "Désactiver" if active else "Activer"
-			var enabled := active or legal   # OFF toujours permis ; ON gate sur legal
-			var bw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
-			var r := Rect2(x + 8, y - 1, bw, 16)
-			var col := (VKit.sense(0.12) if active else VKit.sense(0.80)) if enabled else VKit.COL_EDGE
-			VKit.fill(self, r, VKit.COL_PANEL2)
-			VKit.box(self, r, col)
-			VKit.text(self, Vector2(r.position.x + 7, y), col if enabled else VKit.COL_DIM, lab, VKit.FS_SMALL)
-			if enabled:
-				_decret_btns.append({"rect": r, "id": id, "on": not active})
-			y += 20
+	if reforme and active:
+		VKit.text(self, Vector2(x + 8, y), VKit.sense(0.30), "verrouillé (irréversible)", VKit.FS_SMALL)
+		y += 18
+	else:
+		var lab := "Désactiver" if active else "Activer"
+		var enabled := active or legal   # OFF toujours permis ; ON gate sur legal
+		var bw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
+		var r := Rect2(x + 8, y - 1, bw, 16)
+		var col := (VKit.sense(0.12) if active else VKit.sense(0.80)) if enabled else VKit.COL_EDGE
+		VKit.fill(self, r, VKit.COL_PANEL2)
+		VKit.box(self, r, col)
+		VKit.text(self, Vector2(r.position.x + 7, y), col if enabled else VKit.COL_DIM, lab, VKit.FS_SMALL)
+		if enabled:
+			_decret_btns.append({"rect": r, "id": id, "on": not active})
+		elif not legal:
+			_hover_zones.append({"rect": r, "text": "condition d'entrée non remplie"})
+		y += 20
+	y += 4
+	return y
+
+# CARTE DÉCISION (ponctuelle) — TERSE : nom · condition · cooldown éventuel ·
+# « N or (une fois) » · bouton « Décréter ». Effet+flavor au survol du nom ;
+# la formule du coût au survol du prix ; jamais de toggle.
+func _draw_decision_card(x: float, y: float, dec: Dictionary, me: int) -> float:
+	var id := int(dec["id"])
+	var legal := bool(dec["legal"])
+	var cond_met := bool(dec.get("cond_met", legal))
+	var cooldown := bool(dec.get("cooldown_active", false))
+	var nom := String(dec["nom"])
+	VKit.text(self, Vector2(x, y), VKit.COL_PARCH if legal else VKit.COL_DIM, nom, VKit.FS_SMALL)
+	_hover_zones.append({"rect": Rect2(x, y - 2, VKit.text_w(nom, VKit.FS_SMALL), 14),
+		"text": String(dec["plateaux"]) + "\n" + String(dec["flavor"])})
+	y += 15
+	var cnd := "Condition : %s" % ("remplie" if cond_met else "non remplie")
+	VKit.text(self, Vector2(x + 8, y), VKit.sense(0.70 if cond_met else 0.15), cnd, VKit.FS_SMALL)
+	# hover QUANTITATIF : la Corruption courante contre le seuil (Audit — seule décision
+	# du catalogue ; lecteur country_factions déjà bindé, aucun chiffre inventé).
+	var corr_now := -1
+	if Sim.world.has_method("country_factions"):
+		corr_now = int(Sim.world.country_factions(me).get("corruption", -1))
+	if corr_now >= 0:
+		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cnd, VKit.FS_SMALL) + 6, 16),
+			"text": "Corruption %d/100 — exige ≥ 20." % corr_now})
+	y += 15
+	if cooldown:
+		# le nombre EXACT de jours restants n'est pas exposé par la façade (accumulateur
+		# privé à scps_decrees.c) — on affiche l'état SANS fabriquer de compte à rebours.
+		var cdl := "Cooldown : en cours"
+		VKit.text(self, Vector2(x + 8, y), VKit.sense(0.30), cdl, VKit.FS_SMALL)
+		_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cdl, VKit.FS_SMALL) + 6, 16),
+			"text": "5 ans entre deux audits — réutilisable à la fin du délai."})
+		y += 15
+	# PRIX FUSIONNÉ : « N or (une fois) » ; la formule au survol, en MONTANTS.
+	var rate := float(dec.get("cost_rate_pct", 0.0))
+	var cyear := float(dec.get("cost_year", 0.0))
+	var cline := "%s or (une fois)" % _grp(int(round(cyear)))
+	VKit.text(self, Vector2(x + 8, y), VKit.COL_DIM, cline, VKit.FS_SMALL)
+	_hover_zones.append({"rect": Rect2(x + 6, y - 2, VKit.text_w(cline, VKit.FS_SMALL) + 6, 16),
+		"text": "%.0f %% du revenu (%s or) × IPM %.2f = %s or, prélevé au tir." % [
+			rate, _grp(int(round(_cons_rev))), _cons_ipm, _grp(int(round(cyear)))]})
+	y += 16
+	var lab := "Décréter"
+	var bw := VKit.text_w(lab, VKit.FS_SMALL) + 14.0
+	var r := Rect2(x + 8, y - 1, bw, 16)
+	var col := VKit.sense(0.80) if legal else VKit.COL_EDGE
+	VKit.fill(self, r, VKit.COL_PANEL2)
+	VKit.box(self, r, col)
+	VKit.text(self, Vector2(r.position.x + 7, y), col if legal else VKit.COL_DIM, lab, VKit.FS_SMALL)
+	if legal:
+		_decret_btns.append({"rect": r, "id": id, "on": true})
+	else:
+		var reason := "condition non remplie" if not cond_met else ("cooldown en cours" if cooldown else "indisponible")
+		_hover_zones.append({"rect": r, "text": reason})
+	y += 22
 	return y
 
 func _decret_act(id: int, on: bool) -> void:
@@ -893,8 +1082,6 @@ func _draw_diplo(x: float, y: float, me: int) -> float:
 	VKit.text(self, Vector2(x, y), VKit.COL_DIM, "▸ cliquer une fiche : actions diplomatiques", VKit.FS_SMALL)
 	y += 18
 	for rel in Sim.world.country_relations(me):
-		if y > _hmax - 58:
-			break
 		var target: int = int(rel["country"])
 		# BROUILLARD (retour joueur : « vision diplomatique complète alors qu'on a un
 		# fog ») : un pays JAMAIS DÉCOUVERT n'existe pas dans la liste.
@@ -1057,7 +1244,18 @@ func _conseil_act(act: String, seat: int, slot: int, pay: float = 1.0) -> void:
 	queue_redraw()
 
 func _gui_input(event: InputEvent) -> void:
+	# SCROLL générique : molette = défilement de l'onglet courant (clampé au contenu).
+	if event is InputEventMouseButton and event.pressed \
+		and (event.button_index == MOUSE_BUTTON_WHEEL_DOWN or event.button_index == MOUSE_BUTTON_WHEEL_UP):
+		var off := float(_scroll.get(_tab, 0.0))
+		var step := 40.0 if event.button_index == MOUSE_BUTTON_WHEEL_DOWN else -40.0
+		_scroll[_tab] = clampf(off + step, 0.0, _maxscroll)
+		queue_redraw()
+		accept_event()
+		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.position.y < 36.0:
+			return   # en-tête fixe : jamais un clic vers un bouton DÉFILÉ dessous
 		if _tab == 0 and _chart_btn.has_point(event.position):   # Économie → ouvre les courbes
 			charts_requested.emit()
 			accept_event()
@@ -1123,6 +1321,7 @@ func _gui_input(event: InputEvent) -> void:
 			for tb in _ctab_btns:
 				if (tb.rect as Rect2).has_point(event.position):
 					_conseil_tab = int(tb.t)
+					_scroll[7] = 0.0   # changer de sous-onglet remet le défilement en haut
 					Sound.play("ui_click")
 					queue_redraw()
 					accept_event()

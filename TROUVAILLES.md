@@ -2798,3 +2798,472 @@ site `CMD_MANUMIT`, jamais dans la fonction partagée (cf. Pièges) — même ga
   ATELIERS non reflétée dans le prix affiché façade (gaps P4 documentés par son agent).
 - Sous-onglet Politiques du drawer : à recâbler sur le nouveau catalogue d'orientations
   (readers P4) — l'ancien affichage décrets pointe sur des ids renumérotés.
+
+## [2026-07-10] Politiques — recâblage façade+UI sur le nouveau catalogue (les 4 restes ci-dessus)
+**Mission** : fermer les 4 gaps P4 (ci-dessus) — carte orientation/décision complète dans le
+drawer, `scps_manumit_preview`, remise ATELIERS symétrique, `ScpsDecree.type` propre. Fichiers
+autorisés : scps_api.{h,c}, scps_sim_node.{cpp,h}, sidebar_drawer.gd (Politiques seulement).
+
+**Découvertes**
+- **`scps_manumit_preview` EXISTAIT DÉJÀ** (scps_api.c:2235, « LOT J ») et était DÉJÀ câblé dans
+  la carte Affranchissement du drawer (`_draw_servile`, sidebar_drawer.gd, DÉJÀ dans le
+  sous-onglet Politiques) — le Reste du lot précédent était PÉRIMÉ (un agent postérieur l'avait
+  fait sans mettre à jour cette ligne de TROUVAILLES). Formules RÉELLES vérifiées :
+  `demography_manumit_country` (scps_demography.c:959) bascule CLASS_SLAVE→CLASS_LABORER +
+  ARR_DEPORTE→ARR_MIGRANT (souls comptées, groupes conservés — AUCUNE formule de « friction »
+  n'y existe) ; `friction_after` de la preview est un TWIN dérivé d'`econ_off_culture_fraction`
+  (même sd/mismatch pondéré par pop, projeté COMME SI les groupes esclaves étaient déjà libres)
+  — une projection GROUNDÉE dans une formule réelle déjà utilisée ailleurs pour le même usage
+  (friction off-culture), pas une invention. Rien à faire ici : vérifié conforme, non retouché.
+- **BUG RÉEL trouvé et corrigé — tampon `ScpsDecree` trop petit dans le binding Godot** :
+  `scps_sim_node.cpp` allouait `ScpsDecree d[8]` pour `decrees_list()`, mais `DECREE_COUNT`=11
+  (10 orientations + 1 décision) depuis la refonte P4 — les 3 derniers (LÉGATIONS, LEVÉE
+  ENTRETENUE, ET **DECISION_AUDIT_OFFICES elle-même**) étaient SILENCIEUSEMENT tronqués côté
+  UI : la carte décision était INVISIBLE avant ce lot, sans aucune erreur. Le même bug existe
+  dans `scps_api_demo.c:775` (`ScpsDecree decs[8]`) — HORS scope (fichier non autorisé),
+  documenté ici pour le prochain agent (les tests ne couvrent donc pas la décision Audit).
+- **Formule `cost_year` = lecture DESIGN-LEVEL, pas une reconstruction du charge réel** :
+  `decrees_tick` (scps_decrees.c:242) calcule `revenue*rate*ipm*dt_year*12` avec `dt_year=
+  days/365` et `days=30` fixe (scps_sim.c:759) → `dt_year*12 ≈ 0.986`, donc la charge PAR APPEL
+  MENSUEL (12×/an) est déjà ≈ le montant "annuel" — ce qui, sur 12 mois, prélèverait ≈12×
+  le taux annoncé (ex. 2 % annoncé ⇒ ~24 % réellement prélevé sur l'année). Un possible bug de
+  calibrage MOTEUR (scps_decrees.c, HORS scope de cette mission). J'ai implémenté `cost_year`
+  selon la formule LITTÉRALE de la spec (`tax_year(cid) × taux × IPM`, cf. docs §Rangs et coûts,
+  IDENTIQUE au motif déjà en place pour les cartes Conseil `cons_tier_revenue_rate`/`cost_year`)
+  — l'affichage suit la spec, pas la charge empirique de decrees_tick ; à réconcilier par un
+  futur agent qui A ACCÈS à scps_decrees.c (mesurer sur plusieurs mois si le trésor baisse de
+  ~12× le taux annoncé, et si oui corriger `dt_year*12`→`dt_year` ou équivalent).
+- **`decree_toggle`/`decree_fire_decision` exigent de franchir `day%30==29`** avant que
+  `decree_effective` (active ET FINANCÉ) devienne vrai — un simple `advance_days(1-2)` après
+  `player_decree(id,true)` NE SUFFIT PAS pour observer l'effet (mult reste 1.0 tant que le
+  mois n'a pas tourné). Vérifié empiriquement (diagnostic temporaire, retiré) : `manuf_cost()`
+  ATELIERS actif+non financé = ratio 1.0000 ; après `advance_days(31)` (franchit le palier) =
+  ratio 0.9412 (51→48, soit ×0.95 exact, rounding compris) — la symétrie prix affiché/prix payé
+  (task 3) est donc CONFIRMÉE EMPIRIQUEMENT, pas seulement par lecture de code.
+
+**Pièges**
+- GDScript **PARSE ERROR silencieux au chargement** : `var _c0 := w.manuf_cost()` où
+  `manuf_cost()` est une méthode GDExtension (retour Variant non typé côté binding) ⇒
+  « Cannot infer the type… » — le process Godot ne CRASHE PAS, il reste chargé mais IMMOBILE
+  (CPU quasi nul, `Responding=True`, aucune ligne imprimée) : ressemble à un HANG, pas à une
+  erreur. Typer EXPLICITEMENT (`var _c0: int = …`) — déjà documenté ailleurs (S3, overlay.gd)
+  mais reconfirmé ici sur un pattern différent (méthode `int`, pas `Dictionary.get`).
+- **Deux instances Godot simultanées** peuvent rester en tasklist après un run précédent
+  interrompu — `taskkill`/`Stop-Process -Force` AVANT de relancer un probe, sinon un second
+  process peut contendre le contexte GL et paraître lui aussi bloqué.
+- La `plateaux` (DecreeDef) contient DÉJÀ effet+clé+multiplicateur en mots pour chaque
+  orientation (ex. « + SAVOIR_W_{élite,bourgeois,laboureur}×1.05 (recherche) / - ponction
+  mensuelle… ») — je l'ai gardée TELLE QUELLE comme hover/description plutôt que de la
+  re-décomposer en 3 champs séparés (cohérent avec le motif Conseil qui montre `plateaux`
+  en survol, pas en clair).
+- Le nombre EXACT de jours de cooldown restant (Audit) vit dans `g_audit_cd[]`, `static` à
+  `scps_decrees.c` — **aucun getter exposé**, et ce fichier est HORS des fichiers autorisés
+  de cette mission. `cooldown_active` (booléen) est DÉRIVÉ honnêtement (`cond_met && !legal`
+  ⟺ cooldown>0, car `decree_legal` d'une DÉCISION == `audit_ready` == cooldown≤0 ET
+  cond_met — preuve par lecture de `cond_audit`/`audit_ready`, scps_decrees.c:34-44) SANS
+  fabriquer de compte à rebours. Un futur agent AVEC accès à scps_decrees.{h,c} pourrait
+  ajouter `int decree_cooldown_days(int cid, DecreeId id)` pour l'exact.
+
+**Vérifié**
+- `gcc -fsyntax-only -std=c99 -Wall -Wextra` propre (0 warning) sur scps_api.c ET
+  scps_api_demo.c (via `PATH="/d/MSYS2/mingw64/bin:$PATH"` — le `bash -l` par défaut de cet
+  environnement pointe vers un `/mingw64/bin` DIFFÉRENT et INCOMPLET, sans gcc/scons : `export
+  PATH` explicite requis avant `scons`, PAS juste `bash -l` seul, contrairement à ce que
+  suggérait l'instruction de mission — `bash -l packaging/windows/rebuild_dll.sh` échoue seul
+  avec « scons: command not found »).
+- DLL debug+release REBÂTIES avec succès par un `scons` direct (PATH exporté), 0 erreur, 0
+  warning visible au link.
+- Probe FENÊTRÉE (`Godot_..._console.exe --path godot/project res://shot_ui.tscn`) EXIT=0,
+  **0 SCRIPT ERROR** sur 24 captures. Nouvelles captures ajoutées à `shot_ui.gd` (autorisé par
+  la mission) : `14b_drawer_politiques` (taille d'écran normale — état représentatif) et
+  `14c_drawer_politiques_full` (fenêtre temporairement agrandie à 1920×3400, pour voir Légations/
+  Levée/Décisions/Peuple servile qui débordent hors du viewport normal — limite ScrollContainer
+  PRÉEXISTANTE et documentée, non touchée). Les deux RELUES : les 10 cartes ORIENTATION (nom,
+  effet+clé+mult via plateaux, coût %, montant courant, note d'exclusivité, bouton Activer/
+  Désactiver) + la carte DÉCISION « Audit des offices » (condition d'entrée, coût ponctuel avec
+  montant courant, bouton « Décréter » grisé+raison au survol) + la carte Affranchissement
+  (préexistante, inchangée) rendent TOUTES conformes à la spec § Interface (cartes).
+- Symétrie prix ATELIERS confirmée EMPIRIQUEMENT (cf. Découvertes) : 51→48 or (×0.95 exact).
+
+**SAVE** : rien de sérialisé ne change — `ScpsDecree` est une struct FAÇADE (jamais
+sérialisée, recalculée à chaque appel `scps_decrees_list`), les 3 fonctions miroir ajoutées
+dans scps_api.c (`decree_revenue_rate_mirror`/`decree_exclusive_id_mirror`/
+`decree_cond_met_mirror`) sont PURES (aucun état). **AUCUN bump SAVE_VERSION**.
+
+**Restes**
+- Le nombre exact de jours de cooldown restant (décisions) n'est pas exposé — cf. Pièges,
+  nécessite un getter dans scps_decrees.c (hors scope ici).
+- `scps_api_demo.c:775` a le MÊME bug de tampon `ScpsDecree decs[8]` que celui corrigé dans
+  scps_sim_node.cpp (DECREE_COUNT=11) — les tests ne voient jamais LEGATIONS/LEVEE/la décision
+  Audit. Fichier non autorisé pour cette mission ; à corriger par un futur agent (bump à 16,
+  comme le binding Godot).
+- ~~Possible calibrage moteur ≈12× dans `decrees_tick`~~ — CONFIRMÉ ET CORRIGÉ le 2026-07-11
+  par l'agent parallèle possédant scps_decrees.c (`dt_year*12` → `dt_year`, le ×12 venait du
+  motif Légations où la valeur est PAR-MOIS) : le `cost_year` affiché par la façade (formule
+  littérale de la spec) correspond désormais EXACTEMENT à la charge annuelle réelle.
+- ~~Débordement visuel du sous-onglet Politiques (pas de ScrollContainer)~~ — RÉSOLU par
+  l'addendum ci-dessous (scroll générique du tiroir).
+- `make golden`/`determinism`/`smoke` non relancés (façade pure, aucun état moteur touché — le
+  raisonnement golden-neutre est le même que les lots précédents : `g_decree_mask`/
+  `g_audit_cd` ne bougent QUE via `CMD_DECREE`, jamais peuplé par la chronique headless).
+
+### Addendum (2026-07-11) — cartes TERSES + hovers quantitatifs + SCROLL générique du tiroir
+Trois directives joueur arrivées en cours de mission (elles PRIMENT sur la spec doc pour
+l'affichage), appliquées à Gouvernement ET Politiques (sidebar_drawer.gd) :
+
+**(1) CARTES TERSES.** Les flavor texts sortent de l'écran (l'identité reste un MOT à côté du
+nom — « Oriane Istrane · Courtisan » ; sa phrase vit au survol du nom). PRIX FUSIONNÉ : une
+seule ligne « N or par an » (« N or (une fois) » pour une décision) — plus jamais « Coût : X %
+du revenu annuel × IPM » ni « Actuellement : … » à l'écran. Carte siège/candidat = nom·identité
+/ faction·rang·âge / bonus final / N or par an / retraite (~6 lignes sobres, vérifié en
+capture). Carte orientation = nom / N or par an / ⊥ exclusivité / bouton (l'effet+clé+mult —
+`plateaux` — et le flavor vivent au survol du nom). La décomposition d'efficacité vit AU SURVOL
+du bonus final.
+
+**(2) HOVERS QUANTITATIFS, MEMBRANE TENUE.** Règle : un hover ne définit pas « quoi », il donne
+« combien » — et JAMAIS une coordonnée du modèle (« K » se dit « Administration »). Prix au
+survol : « 5,0 % du revenu (4 014 or) × IPM 1,01 = 203 or par an — prélevé chaque mois (/12) ».
+Bonus final au survol : « Rang : +18 % · Administration : +18 pts · Loyauté : +10,5 pts ·
+Corruption : −7 pts · Efficacité : 91,5 % ⇒ +16,5 % net » (pts = valeur×coefficient de la
+formule d'efficacité : Adm×3 · loyauté×0,15 · Corruption×0,35). Pour les CANDIDATS, la part
+« Loyauté de départ » est DÉDUITE (efficacité prévue − 70 − Adm×3 + Corr×0,35 — arithmétique
+sur les lecteurs réels, rien d'inventé) car la loyauté prévue n'est pas dans le Dictionary
+candidat ; Administration/Corruption sont lues du dict SIÈGE (remplies même vacant,
+scps_api.c:1308). Hover paie : « ×N → loyauté cible ±pts (30×(paie−1)) » (vérifié
+COUNCIL_PAY_ADJ=30, scps_statecraft.c:368). Condition Audit : « Corruption N/100 — exige
+≥ 20 » (lecteur country_factions existant). **Façade neuve pour l'assiette** (les hovers ont
+besoin du revenu et de l'IPM SÉPARÉS, pas du seul produit) : `scps_country_revenue_year(s,cid)`
+(= econ_country_tax_year) + `scps_world_ipm_now(s)` (= econ_world_ipm), bindées
+`country_revenue_year(country)` / `world_ipm()`. Lectures PURES, DLL rebâtie et vérifiée LIVE
+(ipm=1.01, rev=4014 or, seed 9 an 24).
+
+**(3) SCROLL GÉNÉRIQUE du tiroir** (motif construction_panel) : offset PAR ONGLET
+(`_scroll:{tab:px}`), molette (pas de 40 px, clampé au contenu), clip (`clip_contents=true`),
+barre piste+pouce ∝ fenêtre/contenu, EN-TÊTE FIXE redessiné PAR-DESSUS le contenu défilé
+(`_draw_header` déplacé en FIN de `_draw`). Les 4 gardes `if y > _hmax: break` (stocks, marché,
+partenaires commerce, relations diplo) SUPPRIMÉES — elles tronquaient le contenu que le scroll
+doit maintenant révéler (la limite de COMPTE `shown >= 5` du budget est GARDÉE : résumé voulu,
+pas une troncature de viewport). Clic gauche < 36 px (bandeau) ignoré (jamais un clic vers un
+bouton défilé caché dessous) ; zones de survol dont le centre est sous l'en-tête écartées de
+_tips (pas de tooltip fantôme dans le bandeau). Changer de sous-onglet Conseil remet l'offset
+à 0.
+
+**Pièges (addendum)**
+- **Capturer un état défilé = TRANSITOIRE à stabiliser** : le 1er `_draw` après un offset forcé
+  hors-borne RE-CLAMPE et re-queue un redraw — capturer trop tôt fige un tiroir VIDE (payé :
+  14c vide au 1er essai). 2 frames de stabilisation avec queue_redraw avant `_shot` (commenté
+  dans shot_ui.gd). `queue_redraw()` DANS `_draw()` fonctionne (le flag se re-pose pour le
+  frame suivant) — c'est le mécanisme du re-clamp.
+- Un `scons` qui dit « is up to date » APRÈS avoir recompilé des .o modifiés est suspect
+  (content-signature + build/ partagé entre debug/release) : `rm` du .dll avant `scons` force
+  le relink — le geste sûr quand la fraîcheur de la DLL importe.
+- Le probe shot_ui gagne `14c_drawer_politiques_scrolled` (offset poussé à 10000 → clampé au
+  max réel) : scroll + en-tête fixe + barre vérifiés en UNE capture. L'ancienne capture
+  « fenêtre 3400 px » est retirée (le scroll rend le contournement inutile).
+
+**Vérifié (2e passe)** : gcc -fsyntax-only 0 warning (scps_api.c + scps_api_demo.c) · DLL
+debug+release re-liées · probe fenêtrée EXIT=0, 24 captures, **0 SCRIPT ERROR** · 14/14b/14c
+RELUES (cartes terses conformes, prix fusionné, hovers posés, scroll fonctionnel, en-tête
+fixe). **SAVE toujours non bumpé** (les 2 readers assiette sont purs).
+
+## 2026-07-11 — Colmatage de la fuite de membrane « Je vois de la perméabilité, du K… »
+(scps_heritage.c hovers · scps_religion.c tips · concepts.gd · culture_creator.gd)
+**Découvertes**
+- Périmètre RÉEL plus étroit que redouté : `scps_heritage.c` avait le gros du texte déjà en
+  prose (« +10 % de Démographie », « Perméabilité (P — …) », « Capacité (K, … pénalité de
+  diversité) », « Influence d'État », « fracture interne D̄ », « (H, puissance militaire) ») —
+  36 hovers, TOUS retouchés (lettres retirées, chiffres CONSERVÉS comme exigé). `scps_religion.c`
+  était presque propre : `scps_religion.h:169` documente `relig_pole_tip` comme « descripteur
+  diégétique court (SANS CHIFFRE) » — DESIGN INTENTIONNEL, pas un oubli — donc PAS d'ajout de
+  magnitudes malgré l'exemple générique du brief (« K +1 · L −0,6 → capacité de l'État +1 ·
+  Stabilité −0,6 ») ; la SEULE fuite réelle grep-confirmée était 5× le littéral `(K)` dans
+  `gestion (K)` (Fécondité/Transe/Silence/Gnose/Orthodoxie) → `capacité de l'État` (accord
+  féminin conservé sans casse, « gestion »→« capacité » restent tous deux féminins singuliers).
+  Les crédos (`g_credo_*`) ne fuient QUE dans leurs commentaires C (`/* vivant : P +1 · H −1 */`)
+  — libres par charte, non touchés ; aucune fonction ne les expose au joueur avec lettre.
+- La VRAIE fuite visible en jeu venait de `scps_api.c:3506 scps_culture_preview` (NM[9] =
+  « Capacité (diversité) », « Perméabilité (assimilation) », « Affinité arcane », « Coercition
+  (militaire) », « Influence » nus) — EXACTEMENT les exemples cités par le brief comme « NOM DE
+  STAT » interdit — mais ce fichier est HORS scope (tenu par un autre agent en parallèle). Fix
+  posé côté GDScript SEUL (`culture_creator.gd`, dict `NOM_LEVIER_JOUEUR`, table de traduction
+  nom-façade→mot-de-jeu appliquée juste avant l'affichage dans `_refresh()`), conforme à la
+  consigne explicite de la mission (« pose côté GDScript une table de TRADUCTION locale »).
+  Les clés du dict restent les chaînes BRUTES de la façade (jamais affichées, juste matchées) —
+  aucune fuite dans le dict lui-même, ni dans son commentaire (libre).
+**Pièges**
+- Casser le lien de décoration `concepts.gd`/TooltipServer était un risque de la traduction : le
+  regex de `concepts.gd._regex()` matche par MOT-CLÉ EXACT (bornes `\b`) sur les clés de `DEFS`.
+  En renommant « Capacité (diversité) »→« Capacité de l'État », le mot « Capacité » reste en TÊTE
+  de la nouvelle chaîne suivi d'un espace → continue de matcher la clé `DEFS["Capacité"]` et de se
+  faire décorer/lier automatiquement (vérifié par relecture du regex, pas testé en jeu — Godot
+  absent de cet environnement). En revanche « Assimilation des minorités » (ex-Perméabilité) et
+  « Magie faustienne » (ex-Affinité arcane) NE contiennent PLUS le mot-clé d'origine → perdent le
+  lien cliquable/tooltip-cascade sur CET écran précis (les autres écrans qui appellent encore
+  `trait_hover()`/`relig_pole_tip()` directement, eux, gardent « Perméabilité »/« Affinité arcane »
+  intacts dans leurs propres textes SI ces mots y apparaissent ailleurs — seul CE label de preview
+  est retraduit). Documenté en commentaire au point d'appel + ici : un futur agent AVEC accès à
+  `concepts.gd` pourrait ajouter des clés `"Assimilation des minorités"`/`"Magie faustienne"` (ou
+  des alias) à `DEFS` s'il veut restaurer la cascade sur ces deux labels précis.
+- Les 36 hovers de `scps_heritage.c` sont dans une TABLE DÉSIGNÉE (`[T_X] = {...}`) très dense —
+  édité par BLOCS (Physique/Social/Intellectuel) via `Edit` avec le texte AVANT+APRÈS complet de
+  chaque bloc plutôt que ligne par ligne, pour éviter un `old_string` non-unique (plusieurs hovers
+  partagent des fragments comme « +10 % de Démographie »).
+- Échelle `assimilation des minorités ~±N %` pour `permeabilite` : AUCUNE conversion officielle
+  n'existe dans le moteur (TROUVAILLES 2026-07-10 « Traditions branchées » : « permeabilite laissé
+  qualitatif… l'échelle P interne n'est pas documentée en unités lisibles joueur ») — le brief de
+  CETTE mission fournit néanmoins un point d'ancrage explicite (0,5 → ~8 %) ; j'ai extrapolé
+  LINÉAIREMENT (16 %/unité) pour les autres magnitudes du roster (0,25→~4 %) faute de mieux, et
+  documenté l'hypothèse ici plutôt que de l'implémenter silencieusement. Si un futur agent câble
+  un jour `permeabilite` sur une vraie échelle-jeu lisible (comme `capacite`→pénalité minoritaire
+  ou `arcane`→coût de branche l'ont été le 2026-07-10), ces pourcentages devront être recalés sur
+  la formule réelle plutôt que sur cette extrapolation.
+**Vérifié**
+- `gcc -fsyntax-only -std=c99 -Wall -Wextra -Ithird_party scps/scps_heritage.c
+  scps/scps_religion.c` (`PATH="/d/MSYS2/mingw64/bin:$PATH"` explicite, sinon `gcc` absent du
+  PATH par défaut de ce Git Bash) : **0 warning, 0 erreur**.
+- Grep final (les 4 fichiers) : aucune occurrence de `(K)`/`(K,`/`(L)`/`(L,`/`(H)`/`(H,`/`(P)`/
+  `(P,`/`D̄`/« Perméabilité »/« Capacité (diversité) »/« Affinité arcane »/« Influence d'État »/
+  « Dérive culturelle » [ancienne forme avec chiffre nu] dans du texte face-joueur — les seuls
+  résidus sont des commentaires C (`/* P +1 · H −1 */`, libres) et des contractions françaises
+  (« L'hiver », « L'étranger », faux positifs du grep `\b(K|L|H|P)\b` sur l'apostrophe).
+- GDScript non testé en jeu (pas de Godot/scons dans cet environnement) — relu à l'œil pour la
+  syntaxe (accolades/dict équilibrés, indentation par tabulations cohérente avec le reste du
+  fichier), le fichier n'a subi qu'un ajout de const + 3 lignes dans une boucle existante.
+**Restes**
+- Le rename `NM[]` dans `scps_api.c:3514-3517` (façade `scps_culture_preview`) reste la fuite
+  RACINE — la traduction GDScript de cette mission est un correctif d'AFFICHAGE en aval, pas la
+  guérison de la source. À faire quand `scps_api.c` se libère : remplacer `NM[9]` directement par
+  les mots de jeu (`"Croissance de la population"`, `"Production"`, `"Rayonnement diplomatique"`,
+  `"Coercition"`, `"Capacité de l'État"`, `"Assimilation des minorités"`, `"Magie faustienne"`,
+  `"Dérive culturelle"`, `"Fracture"`) — à ce moment, retirer aussi le dict `NOM_LEVIER_JOUEUR`
+  de `culture_creator.gd` (devenu un no-op) et vérifier si d'autres appelants de
+  `scps_culture_preview` existent (grep `culture_preview(` côté Godot) qui bénéficieraient aussi.
+  Si le rename se fait, envisager d'ajouter les alias `"Assimilation des minorités"`/`"Magie
+  faustienne"` à `concepts.gd:DEFS` pour restaurer la cascade CODEX perdue (cf. Pièges).
+- Pas de `make`/`golden`/`determinism` relancés : les 2 fichiers C ne touchent QUE des littéraux
+  `.hover`/`.flavor` et des tips display-only (aucun `.lev`/`.pts`/`.antonym`/canal RC_* changé) —
+  strictement display-only, comme la passe éditoriale TECH du même jour ; le golden ne peut pas
+  bouger par construction (aucune formule/donnée consommée par le moteur n'a changé).
+
+## [2026-07-11] UI topbar/country_panel — hovers « quoi + combien » (I0 déjà câblé, metab_pct mort)
+
+**Découvertes**
+- Le lecteur de décomposition du Trésor demandé par la mission **EXISTAIT DÉJÀ** — pas besoin
+  d'ajouter `scps_country_flux` : `scps_country_budget(ScpsSim*, int cid, ScpsFluxLine*, int max)`
+  (`scps/scps_api.c:2045`) parcourt DÉJÀ tout `FluxComp` (`econ_flux_get`/`FX_COUNT`,
+  `scps_econ.h:711-724`) et ne retourne que les postes non-nuls (nom `econ_flux_name` + montant
+  signé). `scps_budget_summary` (`scps_api.c:2058`) donne `gold/income/expense/net/credit_line/
+  creditor`. Les DEUX sont déjà bindés côté Godot : `ScpsWorld::country_budget(country)` →
+  `Array[{name,amount}]` et `::budget_summary(country)` → `Dictionary` (`scps_sim_node.cpp:1121,
+  1134`), et même DÉJÀ consommés ailleurs (`sidebar_drawer.gd:184-209`, tiroir Économie). `g_flux`
+  est l'ANNÉE EN COURS (RAZ à chaque `econ_flux_year_capture`, `scps_econ.c:786` — 365 j, câblé côté
+  façade dans `scps_api.c:149-159`), pas un solde « mensuel » : l'ancien libellé topbar "Trésor
+  royal (solde mensuel)" était donc FAUX (c'était en fait annuel-glissant) — corrigé en "cette année".
+- **`metab_pct` était un champ MORT côté binding** : `ScpsCountryInfo.metab_pct` est bien REMPLI par
+  `scps_country_info` (`scps_api.c:550`, `AI_METAB_RES_W × econ_country_metabolized`) mais
+  `ScpsWorld::country_info()` (`scps_sim_node.cpp:413-431`) ne le copiait JAMAIS dans le
+  `Dictionary` retourné — invisible côté GDScript malgré le calcul moteur déjà fait. Ajouté
+  `d["metab_pct"] = c.metab_pct;` (une ligne). Aucun autre champ de `ScpsCountryInfo` n'est dans ce
+  cas (vérifié : les 10 autres sont tous copiés).
+- Aucune décomposition moteur (style `BreakdownReadout`/`metric_agitation_breakdown`,
+  `scps_readout.c:311`) n'existe au grain PAYS pour stabilité/prospérité/légitimité/cohésion — SEULE
+  l'agitation de PROVINCE en a une (`ProvinceReadout.agitation_why`, exposée
+  `scps_province_agitation`). Confirmé par grep exhaustif (`grep -n "BreakdownReadout\|_breakdown("`)
+  → un seul site. Pas de decomposition inventée : les 5 TIPS (stabilite/prosperite/legitimite/
+  cohesion/savoir) réduites au NOM SEUL (le mot est déjà une clé `Concepts.DEFS` — `ui/concepts.gd` —
+  décoré turquoise et cliquable par le TooltipServer, `ui/tooltip_server.gd:_decorated`) ; c'est
+  exactement l'architecture à deux étages déjà en place (hover court → clic sur le mot → définition
+  en cascade), découverte en lisant `tooltip_server.gd`/`concepts.gd` (pas mentionnés dans le brief).
+- `country_stocks(cid)` (déjà bindé) porte `net_day` PAR BIEN — utilisé pour bâtir le hover Grenier
+  à partir des 4 biens vivriers (`Céréales`/`Poisson`/`Bétail`/`Fruits`, filtrage par `name` — pas de
+  Resource enum côté GDScript). Filtré par NOM plutôt que `res_id` (pas de constantes RES_* exposées
+  côté binding, cf. `sidebar_drawer.gd:156-157` qui utilise déjà des ID bruts en commentaire mais le
+  filtrage par nom est plus lisible ici et suffisant : 4 noms fixes, jamais renommés par langue FR).
+
+**Pièges**
+- `country_panel.gd::TIPS` n'a qu'UN SEUL consommateur (`topbar.gd:265`, `load(...).TIPS`) — vérifié
+  par grep AVANT d'y toucher (`_gauge_row`/`ROWS` dans `country_panel.gd` sont du code MORT, jamais
+  appelés dans `_draw()`, préexistant, hors scope, non touché).
+- Directive tardive du coordinateur (reçue en cours de mission) : **jamais de coordonnée brute du
+  modèle dans un hover** (K/P/H/L/Perméabilité…) — vérifié après coup qu'aucun des textes posés ici
+  n'en contient (tous des noms FR déjà face-joueur : `econ_flux_name` retourne des noms de postes
+  budgétaires réels, jamais un identifiant de variable).
+- Le premier `scons` du rebuild a échoué avec « le fichier spécifié introuvable » sur
+  `godot.windows.template_debug.x86_64.o` (2 tentatives identiques) puis a réussi tel quel à la 3e —
+  transitoire (verrou de fichier concurrent probable, un agent parallèle buildait aussi la même DLL
+  au même moment cf. consigne de mission sur `sidebar_drawer.gd`) ; PAS un vrai échec de build. Si ça
+  se reproduit : retenter avant de creuser plus loin.
+- `shot_ui.gd` sur seed 9/25 ans **n'a pas exercé `05_prov_foreign`/`06_diplo`** (aucun pays IA
+  CONNU+non-rebelle trouvé à ce point de la partie — condition documentée dans le script lui-même,
+  `shot_ui.gd:117-137`) : `country_panel.gd` n'a donc été vérifié QUE par son `_ready()`/dict-load
+  (Main.tscn l'instancie toujours, `main.gd`) et par lecture de code, pas par un `_draw()` réel en
+  probe. 0 SCRIPT ERROR au global reste le signal le plus fort disponible ici.
+
+**Vérifié**
+- `gcc -fsyntax-only -std=c99 -Wall -Wextra` propre sur `scps_api.c` (aucun changement C dans cette
+  mission — le lecteur existait déjà — vérifié quand même par prudence, 0 warning).
+- DLL debug+release rebâties (`scons platform=windows use_mingw=yes target=…`, PATH MSYS2 exporté
+  explicitement — `bash -l` seul ne suffit pas, cf. entrées précédentes), 0 warning au compil/link des
+  deux fichiers touchés (`scps_sim_node.cpp`, `topbar.gd`/`country_panel.gd` ne sont pas compilés).
+- Probe fenêtrée `shot_ui.tscn` (seed=9 years=25) EXIT normal, **0 SCRIPT ERROR** sur les 19 captures
+  (01_menu → 19_chronique) ; `02_hud.png` relu — topbar rend TOUTES les cellules (Trésor 10 883,
+  pop 7 889, pénurie « Poisson : rupture 0 j », jauges, Bonheur 48 %) avec la mise en page INCHANGÉE
+  (seul le hover — invisible en capture statique — a changé) ; le code de `_treasury_tip`/`_food_tip`/
+  `_pop_tip` a bien EXÉCUTÉ sans erreur runtime dans `_draw()` (les valeurs affichées prouvent que le
+  chemin complet a tourné, tip compris, puisque ces lignes sont dans le même bloc `if valide`).
+- Exemples avant → après (hovers, pas le texte affiché à l'écran qui est inchangé) :
+  - Trésor : `"Trésor royal (solde mensuel)"` → `"Trésor — taxes +1234 · entretien −320 · admin −150
+    · … (net +644 cette année)"` (postes RÉELS `country_budget`, jamais 0 filtrés en amont).
+  - Population : `"Âmes de l'empire"` → `"Population"` (+ `" — +45 ce mois"` si delta ≥ 0.5).
+  - Nourriture : `"Réserve vivrière (rations)"` → `"Grenier — Céréales +2.1/j · Poisson −0.4/j ·
+    Bétail +0.0/j · Fruits +1.2/j"` (net_day RÉEL par bien, `country_stocks`).
+  - Pénurie : `"Pénurie au rythme actuel — surveillez ce bien (marché, colonies vivrières,
+    chantiers)"` (conseil générique, aucun chiffre) → `"Pénurie — Poisson : rupture prévue dans 0
+    jour(s) au rythme actuel"` (le chiffre déjà connu, répété honnêtement, pas de conseil inventé).
+  - Savoir : longue définition (« Le savoir : la production de recherche… ») → `"Savoir — 
+    métabolisation +12% recherche (clic : l'arbre de technologie)"` (ou juste `"Savoir (clic…)"` si
+    metab_pct=0 — champ maintenant vivant grâce au fix binding ci-dessus).
+  - Stabilité/Prospérité/Légitimité/Cohésion (`country_panel.gd::TIPS`) : longues définitions
+    mécaniques (« Solidité du régime : haute = ordre tenu… ») → le NOM SEUL (« Stabilité », etc.) —
+    aucune décomposition moteur disponible à ce grain, donc pas de lecture inventée non plus ; la
+    définition reste accessible via clic (mot déjà turquoise dans `concepts.gd`).
+  - Influence (topbar + country_panel) : deux lectures différentes (« réputation diplomatique
+    (offres, alliances, ligues) » / « la seule mesure PUBLIQUE d'un royaume étranger ») → `"Influence"`
+    dans les deux cas (même raisonnement : pas de breakdown, le mot cascade déjà).
+  - Bonheur : `"Bonheur — satisfaction pondérée du peuple\nLaboureurs %d · Artisans %d · Noblesse
+    %d"` → `"Bonheur — Laboureurs %d · Artisans %d · Noblesse %d"` (retire la clause définitionnelle,
+    garde exactement les nombres qui existaient déjà).
+
+**Ce qui n'avait PAS de décomposition moteur** (listé honnêtement, aucune n'a été inventée) :
+- Stabilité, Prospérité, Légitimité, Cohésion — aucun `BreakdownReadout` au grain pays.
+- Influence, Corruption — aucune formule de composition exposée par la façade.
+- Population — aucun compteur naissances/morts par pays (seul `pop_delta` existe et c'est un concept
+  DIFFÉRENT : « morts immédiats PURGE » d'un chargement de save invalide, `scps_api.h:757`, sans
+  rapport avec la démographie normale).
+
+**Restes**
+- `country_panel.gd::_gauge_row`/`ROWS` restent du code mort (préexistant, hors scope) — un futur
+  agent pourrait les brancher ou les retirer.
+- Si un jour un `BreakdownReadout` pays existe pour stabilité/légitimité (ex. dérivé de `L`/`SI` —
+  ATTENTION à ne JAMAIS nommer ces lettres dans le hover, toujours traduire en mots déjà établis
+  comme le fait `metric_agitation_breakdown` avec `Coercition`/`Cicatrice`), les TIPS courts posés
+  ici pourront regagner un `" — …"` de montants, sur le même patron que Trésor/Grenier.
+
+## 2026-07-11 — LOT 1 UI (1.2/1.3/1.4) : texte enveloppé + pied fixe de province + compteur d'alertes
+
+**Périmètre** : `godot/project/ui/vkit.gd` (helper), `godot/project/ui/province_panel.gd` (1.2+1.3),
+`godot/project/ui/alerts.gd` + `godot/project/main/main.gd` (1.4). docs/UI_RECO_2026-07-10.md §LOT 1.
+
+**Découvertes**
+- **1.2 — `VKit.text_wrapped(ci,pos,col,texte,largeur_max,max_lignes,fs)`** (vkit.gd, après `text_w`) :
+  enveloppe aux mots, casse un mot SEUL trop long caractère par caractère (sinon un identifiant sans
+  espace déborde quand même), ellipse sur la dernière ligne si tronqué, renvoie la hauteur consommée.
+  Appliqué dans `province_panel.gd` en `max_lignes=1` partout (nom de province généré, ligne climat/
+  relief/statut, labels Culture/Idéologie sous les camemberts, la phrase de seuil de révolte) — PAS en
+  multi-lignes : ces zones vivent dans un layout à Y FIXE (le header a un pas de 42 px, les labels sous
+  pie ont +16 px fixe avant la section suivante) ; wrapper à 2+ lignes aurait fait chevaucher la section
+  d'après SANS reflow. `max_lignes=1` réduit le helper à « clip + ellipse », ce qui est exactement ce
+  qu'il fallait ici. Le texte COMPLET va en `_tips` (infobulle) SEULEMENT quand `VKit.text_w(full) >
+  largeur` (pas d'infobulle superflue sur du texte qui rentrait déjà).
+- **1.3 — PIED FIXE + scroll, motif repris de `sidebar_drawer.gd` (PAS `construction_panel.gd`)** : le
+  panneau province a des sections de nature TRÈS différente (pies, jauges, barres empilées, grille
+  d'icônes qui wrap) — un skip-par-ligne façon `construction_panel` (`if yrow>_ph: continue`) aurait
+  demandé de garder cette borne à CHAQUE site de dessin (des dizaines). Repris à la place le motif
+  `sidebar_drawer._draw_header` : le header (biome+nom+✕/repli) est un helper `_draw_header(w,info,cap,
+  record)` appelé DEUX FOIS — 1re fois AVANT le contenu (établit `content_y0`, pose les tips/rects,
+  `record=true`), 2e fois APRÈS tout le contenu scrollé (`record=false`, PUR REDESSIN qui masque tout
+  ce qui aurait glissé dans sa bande). Le PIED (Réprimer/Assimiler/Purger/Détail, `_draw_gov_actions`
+  INCHANGÉE — seul son SITE D'APPEL bouge, de la fin du flux de contenu à un point fixe
+  `footer_y0+10`) suit le même principe : fond OPAQUE + filet or dessiné APRÈS le contenu, puis
+  `_draw_gov_actions` par-dessus. Un seul offset `y := content_y0 - _scrolloff` au départ du contenu
+  fait « couler » TOUT le reste du flux existant (SATISFACTION→POPULATION→RESSOURCES→PRODUCTION→
+  revolte→CAPITALE→BÂTIMENTS→branche non-propriétaire) SANS toucher un seul site de dessin individuel —
+  seule la ligne de départ change.
+- **`clip_contents=true` clippe BIEN le `_draw()` immédiat du Control lui-même** (pas seulement les
+  enfants, contrairement à un doute initial) — vérifié sur `sidebar_drawer.gd` (le drawer Conseil, très
+  chargé, coupe proprement « Industrie » à son bord bas, aucune fuite) ET sur `province_panel.gd` une
+  fois le vrai bug (ci-dessous) corrigé : tout ce qui dépasse `_ph` (`size.y`) disparaît sans code
+  supplémentaire. `construction_panel.gd`'s skip-par-ligne manuel EN PLUS de `clip_contents` est donc
+  une ceinture-bretelles pour son cas (limiter le TRAVAIL de dessin, pas une nécessité de correction).
+- **Masquage des ZONES INTERACTIVES scrollées hors champ** : `_tips`/`_acts`/`_build_rect`/
+  `_colonize_rect` du CONTENU (pas du header, dont les tips précèdent le snapshot `tips_before`) sont
+  filtrés en fin de `_draw()` — retire tout rect ENTIÈREMENT hors de `[content_y0, footer_y0]` (un
+  rect à CHEVAL est volontairement GARDÉ : sa portion visible doit rester cliquable/survolable, motif
+  plus précis que le test « centre < 36 » de `sidebar_drawer._draw()`).
+- **1.4 — `main.major_open()` + `alerts.major_open_fn: Callable`** : alerts.gd n'a pas de référence à
+  Main → `main.gd` pose `alerts.major_open_fn = Callable(self, "major_open")` juste après avoir
+  instancié le panneau (tous les champs `_tech`/`_econ`/… existent déjà à ce point de `_ready()`,
+  vérifié par grep des sites d'assignation). `_rows()` (alerts.gd) construit la liste de LIGNES
+  réellement affichées : fenêtre majeure fermée = 1 ligne/alerte (INCHANGÉ) ; ouverte = les items
+  `critical:true` restent un par un + UNE ligne « N ⚠ » (`_draw_compact`) résume le reste. **Aucune
+  alerte n'est typée critique aujourd'hui** — vérifié par lecture : les décisions VRAIMENT urgentes
+  (guerre/paix/révolte/sécession/directeur, `POPUP_KINDS` dans `_poll_feed`) sont déjà routées vers
+  `event_popup.gd` (OYEZ OYEZ) et n'entrent JAMAIS dans `_alerts`/`_events` — et les dilemmes à vrai
+  choix (`event_dialog.gd`, `pending_event`) sont un système SÉPARÉ, toujours par-dessus tout,
+  indépendant de `major_open` par construction (il ouvre son propre modal dès `pending_count()>0`,
+  sans jamais consulter l'état des autres panneaux). Le mécanisme `critical` est donc du câblage prêt-
+  à-l'emploi mais actuellement à vide — documenté en tête de `_rows()` pour qu'un futur type d'alerte
+  sache s'y raccrocher sans relire cette investigation.
+- **`_process(_dt)` (pas un signal) pour suivre `major_open`** : rien ne PRÉVIENT alerts.gd quand un
+  panneau bascule `.visible` (des dizaines de sites différents : ✕, Échap, toggle direct…) — `_process`
+  compare `major_open_fn.call()` au dernier état connu CHAQUE FRAME et ne redéclenche `_refresh()` (et
+  donc `queue_redraw()` + retaille) QUE sur un changement effectif (pas de redraw-spam). `_draw()`
+  relit AUSSI `major_open_fn` en tout début (au pied de la lettre du brief : « lu chaque _draw ») —
+  redondant avec `_process` mais un `Callable.call()` est trivial, et ça garantit que `_draw()` ne
+  dépend jamais d'un état caché potentiellement périmé.
+- **Effet de bord utile (documenté, pas visé)** : `alerts._refresh()` était déjà cassée en probe
+  (`shot_ui.gd`) — `Sim.generated.emit()` part AVANT `Sim.game_on=true`, et rien ne rappelle `_refresh`
+  ensuite (aucun tick, le monde est en pause) ⇒ `_alerts` restait VIDE tout du long dans les anciennes
+  captures (entrée TROUVAILLES du 2026-07-10, « pénurie ne se vérifie qu'en code »). Mon `_process` de
+  1.4 se déclenche dès qu'un PREMIER panneau majeur bascule visible (ex. `_prov_detail` à l'étape 4) →
+  ce changement force un `_refresh()`, qui tombe CETTE fois avec `game_on=true` ⇒ `_alerts` se peuple
+  enfin. Les alertes sont donc désormais VISIBLES dans `shots_ui/` à partir de l'étape 4 (7 alertes,
+  seed 9/25 ans) — `02_hud.png`/`03_prov_own.png` (avant ce déclenchement) restent vides, C'EST LE
+  MÊME ARTEFACT DE PROBE PRÉ-EXISTANT, pas une régression de ce lot.
+
+**Pièges**
+- **Le VRAI bug du pied (payé cher, 3 itérations)** : le fond du pied n'était PAS opaque à 100 %.
+  1re tentative : `Color(0.20,0.16,0.10,0.55)` (une simple teinte) — laissait « BÂTIMENTS » complètement
+  LISIBLE en dessous (55 % d'opacité = quasi transparent). 2e tentative : `VKit.COL_PANEL` tel quel —
+  MEILLEUR mais PAS parfait, un fantôme du texte restait visible : `COL_PANEL` a `alpha=0xf6/255≈0.965`,
+  PAS 1.0 (défini ainsi dans vkit.gd pour un effet de cuir légèrement translucide sur le panneau
+  PRINCIPAL, où rien ne se dessine PAR-DESSOUS) — pour un masque anti-bleed, il FAUT forcer `alpha=1.0`
+  explicitement (`Color(COL_PANEL.r,g,b,1.0)`), jamais réutiliser une constante de palette « presque
+  opaque » sans vérifier sa VRAIE valeur alpha. Diagnostiqué en ajoutant un `print()` temporaire des
+  variables (`content_y0`/`content_h`/`footer_y0`/`_ph`/`maxscroll`/`size.y`/`y` du cursor final) dans
+  `_draw()`, relancé la probe, lu le stdout — a confirmé `_maxscroll=93` (donc bien du VRAI contenu
+  scrollé, pas un bug de calcul de hauteur) et que le texte fantôme tombait DANS la bande du pied
+  ([footer_y0, _ph], pas au-delà) — orientant directement vers l'opacité plutôt que vers la géométrie.
+  Le MÊME correctif appliqué au fond de masquage du header (`_draw_header`, bande nom/sous-titre) par
+  précaution symétrique (pas encore observé en capture, le scroll vers le HAUT n'est exercé par aucune
+  étape de la probe, mais le mécanisme est identique).
+- `_draw_gov_actions(x,y,w)` prend `y` PAR VALEUR et NE RETOURNE RIEN — dans l'ancien code, l'appeler
+  n'avançait donc JAMAIS le curseur `y` extérieur (le `+60` de marge finale couvrait implicitement sa
+  hauteur). En migrant son appel au pied, `content_h`/`want` n'ont PAS besoin d'un terme correctif pour
+  « l'ancien espace occupé par les actions » — il n'y en avait jamais eu dans le calcul de toute façon.
+- `Callable(self,"nom_méthode")` (chaîne, pas `self.nom_méthode` lié) est LE motif déjà utilisé dans ce
+  repo (`ui/controls.gd:72`) — suivi pour cohérence plutôt que le sucre syntaxique plus récent.
+- La probe `shot_ui.gd` a tourné aux CÔTÉS d'agents parallèles qui modifiaient RÉELLEMENT
+  `sidebar_drawer.gd`/`country_panel.gd`/`culture_creator.gd`/`concepts.gd`/`shot_ui.gd` lui-même
+  pendant cette mission (`git status` les montre modifiés, AUCUN par moi — vérifié par `git diff
+  --stat` restreint à mes 4 fichiers autorisés + TROUVAILLES.md avant d'écrire cette entrée). Les
+  captures régénérées reflètent donc un ÉTAT MIXTE (mon lot + leur travail en cours) — sans
+  conséquence pour la vérification de CE lot puisque les 3 captures demandées (03/15/02) sont dominées
+  par mes fichiers, mais un futur agent ne doit pas s'étonner de diffs non attribuables dans
+  `shots_ui/*.png` au moment de committer.
+
+**Restes**
+- La sélection « province étrangère » (05/06) n'a pas été trouvée sur ce run (seed 9/25 ans, comme
+  documenté 2026-07-10 : dépend du monde) — la branche `elif powner>=0 and powner!=me:` (colonize/
+  attaque/route/pillage, SANS pied fixe, restée dans le flux scrollable comme demandé par le brief qui
+  ne nommait que Réprimer/Assimiler/Purger/Détail) n'a donc pas été vérifiée EN CAPTURE cette session —
+  relue par code, structurellement identique au chemin `powner==me` (même masquage générique).
+- Le scroll MANUEL (molette, `_scrolloff>0`) et le masquage du HEADER en particulier (redessiné
+  par-dessus un contenu remonté) ne sont vérifiés QUE par lecture de code + le fix d'opacité symétrique
+  — la probe ne pousse jamais `_scrolloff` par la molette (contrairement à `14c_drawer_politiques_
+  scrolled` qui le fait pour le tiroir). Un futur agent pourrait ajouter une étape shot_ui similaire
+  pour province_panel si un doute survient.
+- Le chip compact « N ⚠ » chevauche légèrement le bouton ✕ de la fenêtre majeure ouverte à 1920×1080
+  (visible sur `15_tech.png`/`04_prov_detail.png`) — MÊME ancrage que l'ancienne pile pleine (donc pas
+  une régression : la pile pleine aurait chevauché BEAUCOUP PLUS), mais un ajustement de position
+  serait cosmétiquement bienvenu (hors scope de ce lot, non demandé).

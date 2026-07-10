@@ -239,7 +239,11 @@ void decrees_tick(World *w, WorldEconomy *econ, Statecraft *sc, WorldLegitimacy 
     for (int id=0; id<DECREE_COUNT; id++){
         if (DECREES[id].type==DCR_DECISION) continue;
         if (!decree_active(cid, (DecreeId)id)) continue;
-        float cost = revenue * decree_revenue_rate((DecreeId)id) * ipm * dt_year * 12.f;
+        /* ⚠ le TAUX est ANNUEL (spec : « coût annuel = tax_year × taux × IPM ») —
+         * la part du tick = × dt_year SEUL. Le « ×12 » initial (copié du motif
+         * Légations ligne ~249, où la valeur est PAR-MOIS) faisait payer 12× trop :
+         * une orientation à 2 % prélevait 24 %/an. Pris par l'agent P4, vérifié ici. */
+        float cost = revenue * decree_revenue_rate((DecreeId)id) * ipm * dt_year;
         if (decree_afford_capital(w, econ, cid, cost))
             g_decree_funded[cid] |= (1u<<(unsigned)id);
     }

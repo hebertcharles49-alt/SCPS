@@ -37,9 +37,9 @@ const DEFS := {
 	"Héritage": {"d": "La lignée d'un peuple : elle donne ses noms et ouvre nativement sa branche de l'arbre des techs.", "i": "culture_lyre"},
 	"Éthos": {"d": "L'âme d'un État : elle compose son armée, ses factions de cour, son épithète et ses évènements.", "i": "prestige_laurel"},
 	"Tradition": {"d": "Un trait de peuple (physique, social ou intellectuel) : un levier chiffré, en atout ou en défaut.", "i": "action_upgrade"},
-	"Perméabilité": {"d": "La vitesse à laquelle une culture assimile et se laisse assimiler au contact.", "i": "alert_migration"},
+	"Perméabilité": {"d": "L'ouverture d'un peuple : à quelle vitesse il assimile les minorités et se laisse lui-même assimiler au contact.", "i": "alert_migration"},
 	"Dérive culturelle": {"d": "La vitesse de changement d'une culture : haute, elle épouse le lieu ; basse, elle se transmet intacte.", "i": "culture_lyre"},
-	"Capacité": {"d": "L'aptitude d'un État à tenir la diversité (institutions, administration).", "i": "tax_ledger"},
+	"Capacité": {"d": "L'aptitude d'un État à tenir la diversité et la distance (institutions, administration) : les services suivent, la pénalité minoritaire s'allège.", "i": "tax_ledger"},
 	"Métabolisation": {"d": "La digestion d'un peuple étranger arrivé chez vous : elle déverrouille ses techs, accélère votre recherche et compte pour l'Ascension.", "i": "menu_demography"},
 	"Productivité": {"d": "Le rendement du travail : extraction, ateliers et recherche.", "i": "development_tools"},
 	# ── foi ──

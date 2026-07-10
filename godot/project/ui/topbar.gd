@@ -81,6 +81,51 @@ static func worst_shortage(w, me: int) -> Dictionary:
 			return {"name": worst_name, "days": worst_days}
 	return {}
 
+## RETOUR JOUEUR (2026-07-10, « quoi + combien ») : un hover ne DÉFINIT plus un
+## concept (« l'or c'est... ») — le mot lui-même (Trésor, Population, Grenier…) est
+## déjà décoré turquoise et cliquable par le TooltipServer (tooltip_server.gd lit
+## ui/concepts.gd) ; SA définition vit derrière ce clic, jamais répétée ici. Le
+## hover donne le NOM puis les MONTANTS RÉELS qui l'expliquent — jamais un calcul
+## inventé : uniquement des lignes déjà exposées par la façade (country_budget/
+## country_stocks/country_info), telles quelles.
+
+## LE TRÉSOR EN QUOI+COMBIEN : les postes RÉELS de l'instrument I0 (l'or, ligne à
+## ligne — country_budget → econ_flux_get/FX_*, scps_api.c:2045) au lieu de
+## raconter ce qu'est l'argent. `budget_summary` donne le net de l'année en cours
+## (le flux RAZ à chaque roulement d'année, scps_api.c:149-159 — ce n'est pas un
+## solde "mensuel", contrairement à l'ancien libellé).
+func _treasury_tip(w, me: int) -> String:
+	if not w.has_method("country_budget"):
+		return "Trésor"
+	var parts := []
+	for p in w.country_budget(me):
+		var amt: float = float(p.get("amount", 0.0))
+		if absf(amt) < 0.5:
+			continue
+		parts.append("%s %+d" % [String(p.get("name", "")), int(round(amt))])
+	var tip := "Trésor"
+	if not parts.is_empty():
+		tip += " — " + " · ".join(parts)
+	if w.has_method("budget_summary"):
+		var net := float((w.budget_summary(me) as Dictionary).get("net", 0.0))
+		tip += " (net %+d cette année)" % int(round(net))
+	return tip
+
+## LA NOURRITURE EN QUOI+COMBIEN : production vs consommation, bien par bien
+## (country_stocks → net_day, le flux RÉEL du jour) — pas une leçon sur le Grenier.
+const _FOOD_NAMES := ["Céréales", "Poisson", "Bétail", "Fruits"]
+func _food_tip(w, me: int) -> String:
+	if not w.has_method("country_stocks"):
+		return "Grenier"
+	var parts := []
+	for st in w.country_stocks(me):
+		var nm := String(st.get("name", ""))
+		if _FOOD_NAMES.has(nm):
+			parts.append("%s %+.1f/j" % [nm, float(st.get("net_day", 0.0))])
+	if parts.is_empty():
+		return "Grenier"
+	return "Grenier — " + " · ".join(parts)
+
 ## SÉPARATEUR DE BLOC (audit UI-2 : « regrouper en 4 blocs ») — barre verticale ÉPAISSE
 ## et opaque, à distinguer du filet fin (alpha 0.22) que chaque _cell pose déjà entre
 ## ses propres cellules internes. Pas de micro-label textuel : la barre ne fait que
@@ -224,9 +269,13 @@ func _draw() -> void:
 		var nom := String(ci["nom"])
 		VKit.text(self, Vector2(px, cy), VKit.COL_GOLD, nom); px += VKit.text_w(nom) + 18
 		px = _cell(px, "fine_coin", "", _grp(ci["or"]), _delta_txt(_d_gold), _d_gold >= 0.0,
-			"Trésor royal (solde mensuel)")
+			_treasury_tip(w, me))
+		var _pop_tip := "Population"
+		var _dp_txt := _delta_txt(float(_d_pop))
+		if _dp_txt != "":
+			_pop_tip += " — %s ce mois" % _dp_txt
 		px = _cell(px, "population_group", "", _grp(ci["pop"]), _delta_txt(float(_d_pop)), _d_pop >= 0,
-			"Âmes de l'empire")
+			_pop_tip)
 		# modèle province (EU4) : le pays compte ses PROVINCES (pas ses régions)
 		var rt := "%d prov." % w.country_province_count(me)
 		_tips.append([Rect2(px - 4.0, 0.0, VKit.text_w(rt) + 8.0, H), "Provinces colonisées"])
@@ -241,7 +290,7 @@ func _draw() -> void:
 		#     remonte, en alerte explicite (« Fer : rupture dans 12 jours »). ═══
 		if w.has_method("country_food"):
 			px = _cell(px, "fine_grain", "", _grp(int(w.country_food(me))), "", true,
-				"Réserve vivrière (rations)")
+				_food_tip(w, me))
 		var short := worst_shortage(w, me)
 		if not short.is_empty():
 			var djs := int(short["days"])
@@ -249,15 +298,19 @@ func _draw() -> void:
 			# UI-5 : la couleur (rouge) ne porte JAMAIS seule l'état — le texte chiffré
 			# ET le symbole ▼ portent le même sens en second canal.
 			px = _cell(px, "alert_shortage", "", slbl, "▼", false,
-				"Pénurie au rythme actuel — surveillez ce bien (marché, colonies vivrières, chantiers)",
+				"Pénurie — %s : rupture prévue dans %d jour(s) au rythme actuel" % [String(short["name"]), djs],
 				VKit.sense(0.10))
 		else:
 			px = _cell(px, "alert_shortage", "", "production stable", "", true,
 				"Aucune ressource nationale en rupture prévisible", VKit.COL_DIM)
 		px = _gauge_cell(px, ci, CPTips, "prosperite", "prosperity_sprout")
 		var sx0 := px
-		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]), "", true,
-			String(CPTips.get("savoir", "")) + " (clic : l'arbre de technologie)")
+		var _savoir_tip := String(CPTips.get("savoir", "Savoir"))
+		var _metab := int(ci.get("metab_pct", 0))
+		if _metab > 0:
+			_savoir_tip += " — métabolisation +%d%% recherche" % _metab
+		_savoir_tip += " (clic : l'arbre de technologie)"
+		px = _cell(px, "fine_knowledge", "", "%d" % int(ci["savoir"]), "", true, _savoir_tip)
 		_savoir_rect = Rect2(sx0 - 4, 0, px - sx0, H)
 		# CHANTIER DE COLONISATION (v50) : la colonie qui mûrit
 		if w.has_method("colony_status"):
@@ -278,8 +331,7 @@ func _draw() -> void:
 		#     rouge — détail au survol. ═══
 		px = _gauge_cell(px, ci, CPTips, "legitimite", "politics_crown")
 		var infl := int(ci.get("influence", 0))
-		px = _cell(px, "politics_law", "", str(infl), "", true,
-			"Influence — réputation diplomatique (offres, alliances, ligues)")
+		px = _cell(px, "politics_law", "", str(infl), "", true, "Influence")
 		px = _gauge_cell(px, ci, CPTips, "cohesion", "happiness_medallion")
 		var dmt: Dictionary = w.country_demo(me) if w.has_method("country_demo") else {}
 		var clst: Array = dmt.get("classes", [])
@@ -299,7 +351,7 @@ func _draw() -> void:
 			elif sat_avg <= 33.0:
 				bglyph = " ▼"
 			px = _cell(px, "happiness_medallion", "", "%d %%%s" % [int(round(sat_avg)), bglyph], "", true,
-				"Bonheur — satisfaction pondérée du peuple\nLaboureurs %d · Artisans %d · Noblesse %d" % [
+				"Bonheur — Laboureurs %d · Artisans %d · Noblesse %d" % [
 					int(clst[0].get("satisfaction", 0)), int(clst[1].get("satisfaction", 0)),
 					int(clst[2].get("satisfaction", 0))],
 				VKit.sense(clampf(sat_avg / 100.0, 0.0, 1.0)))

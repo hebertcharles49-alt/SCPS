@@ -239,6 +239,9 @@ func _ready() -> void:
 	var alerts = load("res://ui/alerts.gd").new()
 	alerts.name = "Alerts"
 	ui.add_child(alerts)
+	# AUDIT UI 1.4 : alerts n'a pas de référence à Main → un Callable lu chaque frame
+	# (major_open() n'existe qu'ICI, sur Main, où vivent tous les panneaux majeurs).
+	alerts.major_open_fn = Callable(self, "major_open")
 	alerts.open_tab.connect(func(i): _sidebar.open_tab(i))
 	alerts.open_tech.connect(func():
 		if not _tech.visible:
@@ -405,6 +408,18 @@ func _on_tick_endgame(_year: int) -> void:
 	if fin > 0:
 		_epilogue_shown = true
 		_epilogue.open(fin)
+
+## AUDIT UI 1.4 (« alertes vs fenêtres majeures ») : vrai si l'une des FENÊTRES MAJEURES
+## de lecture/décision joueur est ouverte — le même sous-ensemble de `_close_topmost`
+## (moins `_devpanel` outil de MOD et `_battle_panel` déjà son propre panneau de combat,
+## non nommés par l'audit). alerts.gd lit ceci à CHAQUE frame (via un Callable, il n'a
+## pas de référence à Main) pour masquer sa pile ordinaire derrière un compteur compact.
+func major_open() -> bool:
+	for p in [_tech, _econ, _codex, _construct, _prov_detail, _country_actions,
+			_chronique, _age_recap, _epilogue, _religion]:
+		if p != null and p.visible:
+			return true
+	return false
 
 ## ferme le PANNEAU FLOTTANT visible le plus haut (un par pression d'Échap), puis la
 ## sélection. true = quelque chose a été fermé (Échap consommé avant le menu).

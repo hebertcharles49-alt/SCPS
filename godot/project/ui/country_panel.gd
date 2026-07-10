@@ -18,13 +18,19 @@ const ROWS := [
 	["savoir",     "Savoir",     "knowledge_book"],
 ]
 
-# HOVERS (point : « je ne sais pas ce qu'est la stabilité ») — explications au survol.
+# HOVERS (retour joueur 2026-07-10, « quoi + combien ») : le hover ne DÉFINIT
+# plus le concept (c'était une redite du codex) — il donne juste son NOM. Le mot
+# lui-même est déjà décoré turquoise et cliquable par le TooltipServer (lit
+# ui/concepts.gd) : SA définition vit derrière ce clic, jamais répétée ici.
+# Aucune décomposition moteur n'existe pour ces 4 jauges au grain PAYS (seule
+# l'agitation de PROVINCE a un breakdown, scps_readout.c:metric_agitation_
+# breakdown) — pas de « combien » à ajouter, donc pas de leçon non plus.
 const TIPS := {
-	"stabilite":  "Solidité du régime : haute = ordre tenu ; basse = risque de coup d'État ou de révolte. Nourrie par la légitimité et la prospérité.",
-	"prosperite": "Richesse par tête de l'empire (biens produits et consommés). Haute = population comblée.",
-	"legitimite": "Consentement des gouvernés envers la couronne. Basse = agitation, puis sécession.",
-	"cohesion":   "Unité culturelle de l'empire. Basse = fractures, minorités frondeuses.",
-	"savoir":     "Le savoir : la production de recherche de l'empire. C'est lui qui paie les technologies.",
+	"stabilite":  "Stabilité",
+	"prosperite": "Prospérité",
+	"legitimite": "Légitimité",
+	"cohesion":   "Cohésion",
+	"savoir":     "Savoir",
 }
 var _tips: Array = []   ## [ [Rect2, texte], … ] reconstruit à chaque _draw, hit-testé au survol
 
@@ -93,7 +99,7 @@ func _draw() -> void:
 	# l'éthos, la taille, les âmes (estimées), l'influence (réputation PUBLIQUE).
 	UIKit.draw_icon(self, "influence_compass", Vector2(x, y - 1), 16)
 	VKit.text(self, Vector2(x + 20, y), VKit.COL_DIM, "Influence %d" % int(info["influence"]))
-	_tips.append([Rect2(0.0, y - 2.0, PW, 20.0), "Réputation diplomatique — la seule mesure PUBLIQUE d'un royaume étranger."])
+	_tips.append([Rect2(0.0, y - 2.0, PW, 20.0), "Influence"])
 	y += 4
 
 	# mission décennale (l'objectif courant du pays — mission_of via la façade)

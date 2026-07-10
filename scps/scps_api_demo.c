@@ -772,8 +772,10 @@ int main(int argc, char **argv){
     {
         ScpsSim *sd = scps_sim_new(); scps_sim_generate(sd, seed);
         int me = scps_player(sd);
-        ScpsDecree decs[8];
-        int nd = scps_decrees_list(sd, me, decs, 8);
+        /* ⚠ [16] et pas [8] : DECREE_COUNT=11 — le buffer court tronquait en silence
+         * Légations, Levée entretenue et l'Audit (même bug pris dans le binding). */
+        ScpsDecree decs[16];
+        int nd = scps_decrees_list(sd, me, decs, 16);
         ok("scps_decrees_list expose au moins un décret", nd>0);
         bool has_line=true, has_flavor=true, has_plateaux=true, none_active=true;
         int levee_id=-1, tribut_id=-1;

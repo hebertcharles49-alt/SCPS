@@ -85,6 +85,53 @@ static func text(ci: CanvasItem, pos: Vector2, col: Color, s: String, size: int 
 static func text_w(s: String, size: int = FS) -> float:
 	return font().get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 
+## texte ENVELOPPÉ aux mots, borné à `largeur_max` et `max_lignes` — AUDIT UI 1.2
+## (« ENFERMER les textes ») : ne dessine JAMAIS un caractère au-delà de `largeur_max`,
+## quitte à casser un mot trop long lettre par lettre. La DERNIÈRE ligne porte une
+## ellipse si le texte a dû être coupé (lignes en trop OU mot cassé). Le texte COMPLET
+## reste la responsabilité de l'appelant pour l'infobulle — ce helper ne tronque QUE
+## visuellement. Renvoie la hauteur consommée (px).
+static func text_wrapped(ci: CanvasItem, pos: Vector2, col: Color, texte: String,
+		largeur_max: float, max_lignes: int, fs: int = FS) -> float:
+	var lines := PackedStringArray()
+	var cur := ""
+	for word in texte.split(" ", false):
+		if text_w(word, fs) > largeur_max:
+			# un mot seul déborde déjà : on le casse caractère par caractère (jamais
+			# hors du rect, même sans espace pour couper proprement).
+			if cur != "":
+				lines.append(cur)
+				cur = ""
+			var chunk := ""
+			for ch in word:
+				if chunk != "" and text_w(chunk + ch, fs) > largeur_max:
+					lines.append(chunk)
+					chunk = ch
+				else:
+					chunk += ch
+			cur = chunk
+			continue
+		var cand := word if cur == "" else cur + " " + word
+		if cur != "" and text_w(cand, fs) > largeur_max:
+			lines.append(cur)
+			cur = word
+		else:
+			cur = cand
+	if cur != "":
+		lines.append(cur)
+	var truncated := lines.size() > max_lignes
+	if truncated:
+		lines = lines.slice(0, max_lignes)
+	var lh := float(fs) + 4.0
+	for i in range(lines.size()):
+		var s := String(lines[i])
+		if truncated and i == lines.size() - 1:
+			while s.length() > 1 and text_w(s + "…", fs) > largeur_max:
+				s = s.substr(0, s.length() - 1)
+			s += "…"
+		text(ci, Vector2(pos.x, pos.y + float(i) * lh), col, s, fs)
+	return float(lines.size()) * lh
+
 ## texte de CARTE (IM Fell) : encre #2a2419 + HALO brun clair doux (contour) — pour les
 ## cartouches, noms de lieux et noms d'empire. Renvoie la largeur.
 static func text_map(ci: CanvasItem, pos: Vector2, s: String, size: int = FS,

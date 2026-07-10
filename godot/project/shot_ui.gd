@@ -155,6 +155,31 @@ func _run() -> void:
 	for i in range(8):
 		_main._sidebar.open_tab(i)
 		await _shot("%02d_drawer_%s" % [7 + i, noms[i]])
+	# ── 14b. Sous-onglet POLITIQUES du tiroir Conseil (orientations + décisions +
+	#    peuple servile) — recâblage 2026-07-10 sur docs/CONSEIL_ORIENTATIONS_2026-07-10.md.
+	#    Le tiroir Conseil est encore ouvert (dernière itération ci-dessus) ; on bascule
+	#    juste le sous-onglet (var script `_conseil_tab`, cf. sidebar_drawer.gd) avant
+	#    de fermer, pour voir le nouveau catalogue rendu réellement.
+	var _drawer = _main._sidebar.get("_drawer")   # sidebar_drawer.gd (le contenu réel du tiroir)
+	if _drawer != null and "_conseil_tab" in _drawer:
+		_drawer._conseil_tab = 1
+		_drawer.queue_redraw()
+		await _shot("14b_drawer_politiques")
+		# ── 14c. le SCROLL GÉNÉRIQUE du tiroir (2026-07-11) : offset poussé au max
+		#    (le _draw clampe au contenu) — vérifie que le bas (décision Audit +
+		#    Peuple servile) se révèle, que l'en-tête reste FIXE et que la barre
+		#    piste+pouce suit. ──
+		if "_scroll" in _drawer:
+			_drawer._scroll[7] = 10000.0   # le _draw clampe au contenu (offset max réel)
+			_drawer.queue_redraw()
+			# 2 frames de STABILISATION : le 1er _draw re-clampe l'offset et re-queue —
+			# capturer trop tôt fige le transitoire (payé : capture vide, 2026-07-11).
+			for _k2 in range(2):
+				await get_tree().process_frame
+				_drawer.queue_redraw()
+			await _shot("14c_drawer_politiques_scrolled")
+			_drawer._scroll[7] = 0.0
+			_drawer.queue_redraw()
 	_main._sidebar.close()
 
 	# ── 15. ARBRE DE TECH (touche T) ──

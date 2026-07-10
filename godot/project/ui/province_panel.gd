@@ -35,9 +35,14 @@ var _purge_armed_ms := -100000  ## horloge MUR de l'armement — retombe après 
 var _collapsed := false         ## REPLIÉ : bande-paysage + nom seuls (retour joueur « rétractable »)
 var _collapse_rect := Rect2()
 var _acts := []                 ## [[Rect2, verbe:String], …] — chips d'action contextuels (posés au _draw)
+var _scrolloff := 0.0           ## AUDIT UI 1.3 : offset de défilement du CONTENU (entre en-tête et pied)
+var _maxscroll := 0.0           ## du dernier _draw (pour la molette et la barre)
+const WHEEL_STEP := 48.0
+const FOOTER_H := 40.0          ## hauteur du PIED FIXE (actions gouvernementales), quand applicable
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP   # le panneau capte ses propres clics
+	clip_contents = true   # AUDIT 1.3 : rien ne déborde du panneau (motif construction_panel)
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	Sim.month_ticked.connect(_on_tick)   # chiffres de province : cadence mensuelle
@@ -56,6 +61,7 @@ func _layout() -> void:
 func show_province(pid: int) -> void:
 	if pid != _pid:
 		_purge_armed = false          # changer de province désarme une confirmation en attente
+		_scrolloff = 0.0               # … et remonte le contenu en haut (audit UI 1.3)
 	_pid = pid
 	visible = pid >= 0
 	queue_redraw()
@@ -85,69 +91,26 @@ func _draw() -> void:
 	VKit.panel_bg(self, Rect2(0, 0, PW, ph))
 	_tips.clear()
 	var x := 16.0
-	var y := 14.0
-
-	# ── BANDE DE BIOME (planches 20-22), GRANDE et NUE (retour joueur : « le biome doit
-	#    être plus visible, le display suit ») : le paysage plein cadre, le texte DESSOUS.
-	var bio: Texture2D = UIKit.biome_painting(String(info.get("relief", "")), String(info.get("climat", "")))
-	var bioh := 40.0 if _collapsed else 96.0   # ⚠ pas « bh » : redéclaré plus bas (POPULATION)
-	if bio != null:
-		var tw := float(bio.get_width())
-		var reg_h := tw * bioh / (PW - 4.0)
-		draw_texture_rect_region(bio, Rect2(2, 2, PW - 4.0, bioh),
-			Rect2(0, tw * 0.10, tw, reg_h), Color(0.98, 0.95, 0.90))
-		draw_rect(Rect2(2, 2, PW - 4.0, bioh), Color(0.05, 0.04, 0.03, 0.10), true)
-		# fondu bas → le paysage se dissout dans le panneau
-		for i in range(5):
-			draw_rect(Rect2(2, 2 + bioh - 10 + i * 2, PW - 4.0, 2),
-				Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.18 + 0.16 * i), true)
-		# HOVER DÉFENSE : le terrain PROLONGE la tenue de siège — % lisible dérivé du moteur.
-		var def_pct := int(w.province_defense_pct(_pid))
-		var def_word := String(info.get("defense", ""))
-		var def_hover := "Le paysage de la province — terrain : %s · climat : %s. Tenue de siège +%d%%" \
-			% [String(info.get("relief", "")), String(info.get("climat", "")), def_pct - 100]
-		if def_word != "" and def_word != "aucune":
-			def_hover += " · %s" % def_word
-		_tips.append([Rect2(2.0, 2.0, PW - 4.0, bioh), def_hover])
-		y = bioh + 10.0
-
-	# ✕ (fermer) + chevron (REPLIER — retour joueur : « barre gauche à adapter/rétractable »)
-	_close_rect = Rect2(PW - 20, 3, 16, 16)
-	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
-	VKit.box(self, _close_rect, VKit.COL_GOLD)
-	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
-	_collapse_rect = Rect2(PW - 40, 3, 16, 16)
-	VKit.fill(self, _collapse_rect, VKit.COL_PANEL2)
-	VKit.box(self, _collapse_rect, VKit.COL_GOLD)
-	VKit.text(self, Vector2(_collapse_rect.position.x + 4, _collapse_rect.position.y + 1),
-		VKit.COL_PARCH, "+" if _collapsed else "–")
-	_tips.append([_collapse_rect, "Déplier le panneau" if _collapsed else "Replier le panneau (la carte respire)"])
-
-	# ── EN-TÊTE (SOUS la peinture) : armes du propriétaire · nom · climat/relief/statut ──
-	var hsz := 30.0
-	var owner_arms: Texture2D = null
-	if int(info.get("owner", -1)) >= 0:
-		owner_arms = load("res://ui/heraldry.gd").arms(int(info["owner"]))
-	if owner_arms != null:
-		draw_texture_rect(owner_arms, Rect2(x - 2, y - 1, hsz + 6, hsz + 6), false)
-	else:
-		VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_GOLD)
-		VKit.fill(self, Rect2(x + 1, y + 3, hsz - 2, hsz - 2), VKit.COL_PANEL2)
-		UIKit.draw_icon(self, "capital_tower", Vector2(x + 3, y + 5), hsz - 6)
-	VKit.text(self, Vector2(x + hsz + 8, y), VKit.COL_GOLD, String(info["nom"]), VKit.FS_BIG)
+	var me: int = w.player()
+	var powner := int(info.get("owner", -2))
 	var cap: Dictionary = w.province_capitale(_pid)
-	VKit.text(self, Vector2(x + hsz + 8, y + 18), VKit.COL_PARCH,
-		"%s · %s · %s" % [info["climat"], info["relief"], cap.get("statut", "")])
-	y += hsz + 12
+
+	var content_y0 := _draw_header(w, info, cap, true)
 
 	# REPLIÉ : la bande-paysage + le nom suffisent — la carte respire.
 	if _collapsed:
-		var wantc := y + 4.0
+		var wantc := content_y0 + 4.0
 		if absf(_ph - wantc) > 3.0:
 			_ph = wantc
 			set_deferred("size", Vector2(PW, _ph))
 			queue_redraw()
 		return
+
+	var tips_before := _tips.size()   ## AUDIT 1.3 : tout ce qui suit vit dans le CONTENU
+	_acts.clear()                     ## défilable — les tips DU HEADER (au-dessus) restent.
+	_build_rect = Rect2()
+	_colonize_rect = Rect2()
+	var y := content_y0 - _scrolloff
 
 	# ── HABITANTS + PROSPÉRITÉ (sortie du header : elle y chevauchait paysage & ✕) ──
 	VKit.text(self, Vector2(x, y), VKit.COL_PARCH, "%s habitants" % _grp(info["ames"]))
@@ -190,10 +153,18 @@ func _draw() -> void:
 		for i in range(rper.size()):
 			if rper[i] > rper[relig_dom]:
 				relig_dom = i
-		VKit.text(self, Vector2(cx1 - pr, cyc + pr + 3), VKit.COL_DIM,
-			"Culture · %s" % String(groups[0].get("culture", "")), VKit.FS_SMALL)
-		VKit.text(self, Vector2(cx2 - pr, cyc + pr + 3), VKit.COL_DIM,
-			"Idéologie · %s" % String(rnames[relig_dom]), VKit.FS_SMALL)
+		# AUDIT 1.2 : les noms de culture/idéologie sont GÉNÉRÉS (parfois longs) — enveloppés/
+		# ellipsés dans leur demi-colonne, jamais hors du panneau ; complets en infobulle.
+		var cul_txt := "Culture · %s" % String(groups[0].get("culture", ""))
+		var cul_w := (cx2 - pr) - (cx1 - pr) - 6.0
+		VKit.text_wrapped(self, Vector2(cx1 - pr, cyc + pr + 3), VKit.COL_DIM, cul_txt, cul_w, 1, VKit.FS_SMALL)
+		if VKit.text_w(cul_txt, VKit.FS_SMALL) > cul_w:
+			_tips.append([Rect2(cx1 - pr, cyc + pr + 3, cul_w, 16.0), cul_txt])
+		var rel_txt := "Idéologie · %s" % String(rnames[relig_dom])
+		var rel_w := (x + rw) - (cx2 - pr) - 4.0
+		VKit.text_wrapped(self, Vector2(cx2 - pr, cyc + pr + 3), VKit.COL_DIM, rel_txt, rel_w, 1, VKit.FS_SMALL)
+		if VKit.text_w(rel_txt, VKit.FS_SMALL) > rel_w:
+			_tips.append([Rect2(cx2 - pr, cyc + pr + 3, rel_w, 16.0), rel_txt])
 		y = cyc + pr + 16
 	else:
 		y = VKit.section(self, x, y, "PEUPLE")
@@ -314,11 +285,15 @@ func _draw() -> void:
 			y += 18
 	y += 4
 
-	# ── seuil de révolte ──────────────────────────────────────────────────────
+	# ── seuil de révolte (AUDIT 1.2 : enveloppé — la phrase + le nombre débordait déjà
+	#    à l'occasion, à la police par défaut, sur un panneau de 348 px). ──────────────
 	if bool(info.get("seuil_revolte", false)):
 		UIKit.draw_icon(self, "alert_revolt", Vector2(x, y - 2), 18)
-		VKit.text(self, Vector2(x + 22, y), VKit.sense(0.06),
-			"Au bord de la révolte (agitation %d)" % int(info["agitation"]))
+		var revolt_txt := "Au bord de la révolte (agitation %d)" % int(info["agitation"])
+		var revolt_w := (x + rw) - (x + 22.0)
+		VKit.text_wrapped(self, Vector2(x + 22, y), VKit.sense(0.06), revolt_txt, revolt_w, 1)
+		if VKit.text_w(revolt_txt) > revolt_w:
+			_tips.append([Rect2(x + 22, y, revolt_w, 18.0), revolt_txt])
 		y += 22
 
 	# ── CAPITALE — chaque ligne porte son POURQUOI au survol (retour joueur) ──
@@ -349,11 +324,6 @@ func _draw() -> void:
 	y += 8
 	var bw := 120.0
 	var bbh := 28.0
-	_build_rect = Rect2()
-	_colonize_rect = Rect2()
-	_acts.clear()
-	var me: int = w.player()
-	var powner := int(info.get("owner", -2))
 	# ── BÂTIMENTS façon CK3 (retour joueur) : les carrés du BÂTI (icône + hover
 	#    nom·niveau·ouvriers) + la case « + » = construire (remplace le gros bouton). ──
 	var blds: Array = w.province_buildings(_pid)
@@ -405,7 +375,7 @@ func _draw() -> void:
 			_tips.append([_build_rect, "Construire — ouvrir le panneau de bâti (unités & édifices)"])
 		y += bs + 10.0
 	if powner == me:
-		_draw_gov_actions(x, y, w)
+		pass   # AUDIT 1.3 : Réprimer/Assimiler/Purger/Détail migrent au PIED FIXE (dessiné après)
 	elif w.has_method("can_colonize") and w.can_colonize(_pid):
 		# le verbe d'EXPANSION du joueur (charte : « le joueur colonise n'importe quelle
 		# province ») — visible seulement si LÉGAL (cible vierge + une source aux portes).
@@ -446,12 +416,136 @@ func _draw() -> void:
 	# ── HAUTEUR AU CONTENU : latch (1 frame de convergence) — plus de colonne vide.
 	#    ⚠ set_deferred : poser `size` PENDANT _draw() est ignoré par Godot (le cadre
 	#    restait court, le contenu débordait dessous — capture itération 1). ──
-	var want := clampf(y + 60.0, 220.0,
-		get_viewport_rect().size.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 24.0)
+	var content_h := y - (content_y0 - _scrolloff)   # hauteur RÉELLE, indépendante du scroll
+	var footer_h := FOOTER_H if powner == me else 0.0
+	var hmax := get_viewport_rect().size.y - Frame.TOPBAR_H - Frame.BOTTOMBAR_H - 24.0
+	var want := clampf(content_y0 + content_h + footer_h + 24.0, 220.0, hmax)
 	if absf(_ph - want) > 3.0:
 		_ph = want
 		set_deferred("size", Vector2(PW, _ph))
 		queue_redraw()
+	var footer_y0 := _ph - footer_h
+	var visible_h := footer_y0 - content_y0
+	_maxscroll = maxf(0.0, content_h - visible_h)
+	_scrolloff = clampf(_scrolloff, 0.0, _maxscroll)
+
+	# ── AUDIT 1.3 : masque les tips/actions du CONTENU entièrement scrollés hors de la
+	#    fenêtre visible (motif sidebar_drawer._draw_header) — sinon un clic/survol
+	#    pourrait toucher une ligne invisible sous l'en-tête ou le pied. ──
+	for i in range(_tips.size() - 1, tips_before - 1, -1):
+		var tr: Rect2 = _tips[i][0]
+		if tr.position.y + tr.size.y <= content_y0 or tr.position.y >= footer_y0:
+			_tips.remove_at(i)
+	for i in range(_acts.size() - 1, -1, -1):
+		var ar: Rect2 = _acts[i][0]
+		if ar.position.y + ar.size.y <= content_y0 or ar.position.y >= footer_y0:
+			_acts.remove_at(i)
+	if _build_rect.size.x > 0 and (_build_rect.position.y + _build_rect.size.y <= content_y0 or _build_rect.position.y >= footer_y0):
+		_build_rect = Rect2()
+	if _colonize_rect.size.x > 0 and (_colonize_rect.position.y + _colonize_rect.size.y <= content_y0 or _colonize_rect.position.y >= footer_y0):
+		_colonize_rect = Rect2()
+
+	# EN-TÊTE redessiné PAR-DESSUS le contenu défilé (motif sidebar_drawer._draw_header) :
+	# masque tout ce qui aurait glissé dans sa bande quand on scrolle vers le bas.
+	_draw_header(w, info, cap, false)
+
+	if footer_h > 0.0:
+		# ── PIED FIXE (audit 1.3) : fond légèrement distinct + filet or au-dessus, JAMAIS
+		#    scrollé — les actions gouvernementales restent atteignables quel que soit le
+		#    défilement du contenu informatif au-dessus. ⚠ le fond doit être TOTALEMENT
+		#    opaque (alpha=1, PAS `VKit.COL_PANEL` dont l'alpha ≈0.965 laissait un fantôme
+		#    du contenu défilé transparaître, capturé sur 03_prov_own.png) : un panneau à
+		#    contenu long (BÂTIMENTS avec beaucoup de manufactures) scrolle sous ce pied.
+		VKit.fill(self, Rect2(0, footer_y0, PW, footer_h), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 1.0))
+		VKit.fill(self, Rect2(0, footer_y0, PW, footer_h), Color(0.20, 0.16, 0.10, 0.35))   # teinte distincte
+		VKit.fill(self, Rect2(0, footer_y0, PW, 1.0), Color(VKit.COL_GOLD.r, VKit.COL_GOLD.g, VKit.COL_GOLD.b, 0.6))
+		_draw_gov_actions(x, footer_y0 + 10.0, w)
+
+	if _maxscroll > 0.0:
+		# BARRE LATÉRALE : piste + pouce ∝ fenêtre/contenu (motif construction_panel)
+		var track := Rect2(PW - 10.0, content_y0, 5.0, visible_h)
+		VKit.fill(self, track, VKit.COL_PANEL2)
+		var frac := track.size.y / maxf(content_h, 1.0)
+		var thumb_h := maxf(24.0, track.size.y * frac)
+		var thumb_y := track.position.y + (_scrolloff / _maxscroll) * (track.size.y - thumb_h)
+		VKit.fill(self, Rect2(track.position.x, thumb_y, 5.0, thumb_h), VKit.COL_GOLD)
+
+## EN-TÊTE (biome + nom + ✕/repli) — FIXE, non affecté par le scroll du contenu. Appelé
+## DEUX FOIS par _draw() (motif sidebar_drawer.gd « en-tête fixe redessiné par-dessus le
+## contenu défilé ») : la 1re fois (record=true) établit content_y0 ET les rects/tips ;
+## la 2e (record=false, APRÈS le contenu) REDESSINE par-dessus tout ce qui aurait défilé
+## dans cette bande — sans ce 2e passage, un panneau scrollé peindrait des lignes de
+## POPULATION/RESSOURCES par-dessus le paysage et le nom.
+func _draw_header(w, info: Dictionary, cap: Dictionary, record: bool) -> float:
+	var x := 16.0
+	var y := 14.0
+	var bio: Texture2D = UIKit.biome_painting(String(info.get("relief", "")), String(info.get("climat", "")))
+	var bioh := 40.0 if _collapsed else 96.0   # ⚠ pas « bh » : redéclaré plus bas (POPULATION)
+	if bio != null:
+		var tw := float(bio.get_width())
+		var reg_h := tw * bioh / (PW - 4.0)
+		draw_texture_rect_region(bio, Rect2(2, 2, PW - 4.0, bioh),
+			Rect2(0, tw * 0.10, tw, reg_h), Color(0.98, 0.95, 0.90))
+		draw_rect(Rect2(2, 2, PW - 4.0, bioh), Color(0.05, 0.04, 0.03, 0.10), true)
+		# fondu bas → le paysage se dissout dans le panneau
+		for i in range(5):
+			draw_rect(Rect2(2, 2 + bioh - 10 + i * 2, PW - 4.0, 2),
+				Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 0.18 + 0.16 * i), true)
+		if record:
+			# HOVER DÉFENSE : le terrain PROLONGE la tenue de siège — % lisible dérivé du moteur.
+			var def_pct := int(w.province_defense_pct(_pid))
+			var def_word := String(info.get("defense", ""))
+			var def_hover := "Le paysage de la province — terrain : %s · climat : %s. Tenue de siège +%d%%" \
+				% [String(info.get("relief", "")), String(info.get("climat", "")), def_pct - 100]
+			if def_word != "" and def_word != "aucune":
+				def_hover += " · %s" % def_word
+			_tips.append([Rect2(2.0, 2.0, PW - 4.0, bioh), def_hover])
+		y = bioh + 10.0
+
+	# ✕ (fermer) + chevron (REPLIER — retour joueur : « barre gauche à adapter/rétractable »)
+	_close_rect = Rect2(PW - 20, 3, 16, 16)
+	VKit.fill(self, _close_rect, VKit.COL_PANEL2)
+	VKit.box(self, _close_rect, VKit.COL_GOLD)
+	VKit.text(self, Vector2(_close_rect.position.x + 4, _close_rect.position.y + 1), VKit.COL_PARCH, "x")
+	_collapse_rect = Rect2(PW - 40, 3, 16, 16)
+	VKit.fill(self, _collapse_rect, VKit.COL_PANEL2)
+	VKit.box(self, _collapse_rect, VKit.COL_GOLD)
+	VKit.text(self, Vector2(_collapse_rect.position.x + 4, _collapse_rect.position.y + 1),
+		VKit.COL_PARCH, "+" if _collapsed else "–")
+	if record:
+		_tips.append([_collapse_rect, "Déplier le panneau" if _collapsed else "Replier le panneau (la carte respire)"])
+
+	# ── EN-TÊTE (SOUS la peinture) : armes du propriétaire · nom · climat/relief/statut ──
+	var hsz := 30.0
+	# fond TOTALEMENT OPAQUE (alpha=1, pas `VKit.COL_PANEL` ≈0.965 — cf. le pied plus bas,
+	# même piège) sous nom/sous-titre (audit 1.3) : un contenu scrollé au maximum peut
+	# amener une ligne jusque sous cette bande ; sans ce fond plein, seul le TEXTE (traits
+	# fins) la recouvrirait, laissant le contenu défilé transparaître autour des lettres.
+	VKit.fill(self, Rect2(0, bioh + 8.0, PW, hsz + 14.0), Color(VKit.COL_PANEL.r, VKit.COL_PANEL.g, VKit.COL_PANEL.b, 1.0))
+	var owner_arms: Texture2D = null
+	if int(info.get("owner", -1)) >= 0:
+		owner_arms = load("res://ui/heraldry.gd").arms(int(info["owner"]))
+	if owner_arms != null:
+		draw_texture_rect(owner_arms, Rect2(x - 2, y - 1, hsz + 6, hsz + 6), false)
+	else:
+		VKit.box(self, Rect2(x, y + 2, hsz, hsz), VKit.COL_GOLD)
+		VKit.fill(self, Rect2(x + 1, y + 3, hsz - 2, hsz - 2), VKit.COL_PANEL2)
+		UIKit.draw_icon(self, "capital_tower", Vector2(x + 3, y + 5), hsz - 6)
+	# AUDIT 1.2 (ENFERMER les textes) : le nom (généré, parfois long) et la ligne
+	# climat/relief/statut sont ENVELOPPÉS/ellipsés — jamais un caractère hors du panneau,
+	# le texte complet reste en INFOBULLE quand tronqué.
+	var name_x := x + hsz + 8.0
+	var name_full := String(info["nom"])
+	var name_w := (PW - 44.0) - name_x   # borne AVANT le chevron replier (PW-40)
+	VKit.text_wrapped(self, Vector2(name_x, y), VKit.COL_GOLD, name_full, name_w, 1, VKit.FS_BIG)
+	if record and VKit.text_w(name_full, VKit.FS_BIG) > name_w:
+		_tips.append([Rect2(name_x, y, name_w, 20.0), name_full])
+	var sub_txt := "%s · %s · %s" % [info["climat"], info["relief"], cap.get("statut", "")]
+	var sub_w := (x + (PW - 30.0)) - name_x
+	VKit.text_wrapped(self, Vector2(name_x, y + 18.0), VKit.COL_PARCH, sub_txt, sub_w, 1)
+	if record and VKit.text_w(sub_txt) > sub_w:
+		_tips.append([Rect2(name_x, y + 18.0, sub_w, 18.0), sub_txt])
+	return y + hsz + 12.0
 
 ## une rangée de CHIPS d'action (petits boutons) — les rects sont mémorisés dans _acts
 ## avec leur verbe, hit-testés au clic. Retourne rien (le layout suit x fixe).
@@ -598,6 +692,19 @@ func _grp(n) -> String:
 	return ("-" if int(n) < 0 else "") + out
 
 func _gui_input(event: InputEvent) -> void:
+	# AUDIT 1.3 : MOLETTE = défilement du CONTENU (motif construction_panel/sidebar_drawer) —
+	# le header/pied restent fixes, seule la zone informative bouge.
+	if event is InputEventMouseButton and event.pressed and not _collapsed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_scrolloff = clampf(_scrolloff + WHEEL_STEP, 0.0, _maxscroll)
+			queue_redraw()
+			accept_event()
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_scrolloff = clampf(_scrolloff - WHEEL_STEP, 0.0, _maxscroll)
+			queue_redraw()
+			accept_event()
+			return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if _close_rect.has_point(event.position):
 			close_requested.emit()             # main désélectionne (panneau + contour doré)
@@ -605,6 +712,7 @@ func _gui_input(event: InputEvent) -> void:
 			return
 		if _collapse_rect.has_point(event.position):
 			_collapsed = not _collapsed
+			_scrolloff = 0.0                    # replier/déplier remonte le contenu en haut
 			queue_redraw()
 			accept_event()
 			return

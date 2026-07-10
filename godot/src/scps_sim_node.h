@@ -125,7 +125,10 @@ public:
     Array      council_candidates(int seat);          /* pool du siège : {slot,nom,tier,age,cost,identite,portrait_id,id_flavor} — embauche éclairée
                                                         * (+CARTE : firstname/house/faction/domain/rank_bonus_pct/efficiency_pct[PRÉVUE]/
                                                         * final_bonus_pct/cost_rate_pct/cost_year/retire_lo/retire_hi) */
-    Array      decrees_list(int country);             /* DÉCRETS (civics) : {id,nom,flavor,plateaux,reforme,active,legal} */
+    Array      decrees_list(int country);             /* DÉCRETS (civics) : {id,nom,flavor,plateaux,reforme,active,legal,
+                                                        * +2026-07-10 : type/exclusive_id/cost_rate_pct/cost_year/cond_met/cooldown_active} */
+    double     country_revenue_year(int country);     /* assiette des coûts % : revenu fiscal annuel (hovers quantitatifs) */
+    double     world_ipm();                            /* IPM courant (Indice des Prix Mondiaux — le « × IPM » des coûts) */
 
     /* CONSTRUCTION : roster militaire (22 unités) + édifices (boutons + survol) */
     Array      unit_roster(int country);              /* unités : nom·classe·coût·éthos·contres·recrutable */

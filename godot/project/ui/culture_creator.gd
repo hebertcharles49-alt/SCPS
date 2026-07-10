@@ -31,6 +31,24 @@ var _target_slot := 0
 
 const AXES := ["Physique", "Social", "Intellectuel"]
 
+## TRADUCTION LOCALE des noms de leviers renvoyés par la façade (scps_api.c
+## scps_culture_preview / NM[]) — retour joueur (fuite de membrane repérée en jeu :
+## « Je vois de la perméabilité, du K… ») : la façade renvoie encore des noms de
+## levier interne (« Capacité (diversité) », « Perméabilité (assimilation) », « Affinité
+## arcane ») — du modèle-speak brut. En attendant que NM[] soit lui-même renommé côté
+## façade (fichier scps_api.c non modifiable par cette mission, tenu par un autre
+## agent), on retraduit ICI, à l'affichage, vers les mots de jeu établis. Les noms déjà
+## propres (Coercition, Fracture, Dérive culturelle) passent inchangés.
+const NOM_LEVIER_JOUEUR := {
+	"Démographie": "Croissance de la population",
+	"Productivité": "Production",
+	"Influence": "Rayonnement diplomatique",
+	"Coercition (militaire)": "Coercition",
+	"Capacité (diversité)": "Capacité de l'État",
+	"Perméabilité (assimilation)": "Assimilation des minorités",
+	"Affinité arcane": "Magie faustienne",
+}
+
 ## LORE EXPLICATIVE (« verbose explicative autorisée », retour joueur 2026-07-10) —
 ## chaque ligne est ANCRÉE sur un mécanisme moteur RÉEL (jamais une promesse) :
 ## esclavage par coutume = gate can_enslave (Dominateur/Honneur) · annexion-digestion =
@@ -520,11 +538,15 @@ func _refresh() -> void:
 			num = "%+d %%" % int(round(val * 100.0))
 		else:
 			num = "%+.2f" % val
-		tips.append("%s %s" % [String(lv["nom"]), num])
+		var nm_raw := String(lv["nom"])
+		var nm: String = NOM_LEVIER_JOUEUR.get(nm_raw, nm_raw)   # noms de jeu, jamais de modèle-speak
+		tips.append("%s %s" % [nm, num])
 	_preview_lbl.text = ("Effets : " + " · ".join(tips)) if tips.size() > 0 else "Effets : aucun"
-	# le TooltipServer global décore les mots-concepts (Affinité arcane, Fracture,
-	# Coercition, Perméabilité, Capacité, Dérive culturelle…) — pas besoin de les
-	# expliquer ici, leur définition apparaît en cascade au survol.
+	# le TooltipServer global décore les mots-concepts qui survivent tels quels
+	# (Fracture, Coercition, Dérive culturelle, « Capacité » en tête de « Capacité de
+	# l'État ») — les noms bruts déjà retraduits ci-dessus (« Assimilation des
+	# minorités », « Magie faustienne »…) n'ont plus de fiche CODEX dédiée ; à ajouter
+	# à concepts.gd si un futur agent veut restaurer le lien cliquable sur ces deux-là.
 	_preview_lbl.tooltip_text = _preview_lbl.text
 	_update_arms()
 

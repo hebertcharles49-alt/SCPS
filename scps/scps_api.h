@@ -439,22 +439,61 @@ typedef struct {
 } ScpsCouncilCand;
 int scps_council_candidates(ScpsSim *s, int seat, ScpsCouncilCand *out, int max);
 
-/* DÉCRETS DU JOUEUR (civics) — sb_panel_decrets. Chaque décret DÉPLACE un levier
- * existant tant qu'il est actif ; `plateaux` en donne les DEUX faces (gain/contrepartie).
+/* DÉCRETS DU JOUEUR (civics) — sb_panel_decrets, recâblé sur le catalogue
+ * docs/CONSEIL_ORIENTATIONS_2026-07-10.md (orientations légères + décisions
+ * ponctuelles). Chaque décret DÉPLACE un levier existant tant qu'il est actif ;
+ * `plateaux` en donne les DEUX faces (gain/contrepartie, la CLÉ tunable et le
+ * multiplicateur y sont déjà en mots — carte orientation « effet · clé · mult »).
  * `legal` = la condition d'entrée est remplie MAINTENANT (pour griser le bouton) — une
  * réforme DÉJÀ active reste toujours "legal" (affichée verrouillée, pas refusée).
- * `reforme` = 1 si le type est une RÉFORME (irréversible une fois active). */
+ * `reforme` = 1 si le type est une RÉFORME (irréversible une fois active) — champ
+ * HISTORIQUE conservé pour compat ; `type` (ci-dessous) est la lecture propre.
+ *
+ * Champs 2026-07-10 (façade PURE, non sérialisés — recalculés à chaque appel) :
+ *  - `type` = DecreeType (DCR_EDIT=0 orientation légère réversible · DCR_REFORME=1 ·
+ *    DCR_POSTURE=2 · DCR_DECISION=3 ponctuelle, cf. scps_decrees.h).
+ *  - `exclusive_id` = l'id du décret que L'ACTIVATION de celui-ci désactiverait
+ *    (radio-bouton, ex. RATIONS↔FOYERS) ; -1 si aucune paire.
+ *  - `cost_rate_pct`/`cost_year` = MIROIR du coût réel (mêmes clés tune_f que
+ *    scps_decrees.c, valeurs par défaut identiques — cf. scps_api.c) : taux annuel
+ *    en % (0 pour les décrets à contrepartie non-monétaire) et le montant COURANT
+ *    (or) = econ_country_tax_year(cid) × taux × IPM, spec « Actuellement : N or
+ *    cette année ». Pour DCR_DECISION, `cost_year` est le coût PONCTUEL si
+ *    déclenché maintenant (pas un montant annuel mensualisé).
+ *  - `cond_met` = la condition d'entrée est remplie, HORS cooldown (édits :
+ *    identique à `legal`, pas de notion de cooldown ; décisions : ex. Audit —
+ *    Corruption ≥ seuil, indépendamment du cooldown).
+ *  - `cooldown_active` = une décision est en repos (dérivé, honnête : le nombre
+ *    EXACT de jours restants vit dans un accumulateur PRIVÉ à scps_decrees.c —
+ *    aucun getter exposé ; ce booléen dit seulement "en cours" sans fabriquer de
+ *    compte à rebours, cf. TROUVAILLES.md). Toujours 0 pour un ÉDIT. */
 typedef struct {
     int         id;         /* DecreeId — à repasser à scps_player_decree */
     const char *nom;
     const char *flavor;     /* une ligne cynique */
-    const char *plateaux;   /* description des deux faces */
-    int         reforme;    /* 1 = irréversible une fois actif */
+    const char *plateaux;   /* description des deux faces (effet + clé + mult, en mots) */
+    int         reforme;    /* 1 = irréversible une fois actif (historique, cf. `type`) */
     int         active;     /* 1 = actif pour ce pays */
     int         legal;      /* 1 = la condition d'entrée est remplie (activable maintenant) */
+    int         type;           /* DecreeType : 0 EDIT · 1 REFORME · 2 POSTURE · 3 DECISION */
+    int         exclusive_id;   /* id désactivé par l'activation de celui-ci ; -1 = aucun */
+    float       cost_rate_pct;  /* taux % du revenu annuel × IPM (miroir de decree_revenue_rate) */
+    double      cost_year;      /* montant courant (or) — cf. commentaire ci-dessus */
+    int         cond_met;       /* condition d'entrée remplie, hors cooldown */
+    int         cooldown_active;/* décisions seulement : un cooldown est en cours (dérivé, sans compte exact) */
 } ScpsDecree;
 /* liste TOUS les décrets pour `country` (état + légalité). Retourne le nombre écrit. */
 int scps_decrees_list(ScpsSim *s, int country, ScpsDecree *out, int max);
+
+/* ── L'ASSIETTE des coûts en % (hovers QUANTITATIFS, règle joueur 2026-07-10 :
+ * un survol donne les MONTANTS qui composent la valeur — « 3 % du revenu
+ * (2033 or) × IPM 1,12 = 68 or/an », jamais une définition). Deux lectures
+ * PURES : le revenu fiscal ANNUEL du pays (econ_country_tax_year, la même
+ * assiette que le Conseil et les orientations) et l'IPM courant
+ * (econ_world_ipm — l'Indice des Prix Mondiaux, le déflateur de tous les
+ * coûts « × IPM »). ------------------------------------------------------ */
+double scps_country_revenue_year(ScpsSim *s, int country);
+double scps_world_ipm_now(ScpsSim *s);
 
 /* RELATIONS diplomatiques d'un pays (sb_panel_diplo, read-only). */
 typedef struct {

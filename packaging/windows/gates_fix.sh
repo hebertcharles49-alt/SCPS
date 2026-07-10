@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-export TMP=/tmp TEMP=/tmp TMPDIR=/tmp PROCESSOR_ARCHITECTURE=AMD64
+export TMP=/tmp TEMP=/tmp PATH="/d/MSYS2/mingw64/bin:$PATH"
 cd /c/Users/Charl/Desktop/SCPS-main
-echo "== econ_tax_demo =="
-make econ_tax_demo 2>&1 | grep -oE "undefined reference to .[a-z_]+" | sort -u | head -6
-echo "== statecraft_demo (rouge) =="
-make statecraft_demo >/dev/null 2>&1; ./statecraft_demo 2>&1 | grep -B1 "✗" | head -8
+gcc -fsyntax-only -std=c99 -Wall -Wextra -Ithird_party scps/scps_api.c scps/scps_decrees.c && echo SYNTAX_OK

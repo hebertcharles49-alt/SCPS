@@ -78,6 +78,8 @@ void ScpsWorld::_bind_methods() {
     ClassDB::bind_method(D_METHOD("commerce_power", "country"),      &ScpsWorld::commerce_power);
     ClassDB::bind_method(D_METHOD("country_council", "country"),     &ScpsWorld::country_council);
     ClassDB::bind_method(D_METHOD("decrees_list", "country"),        &ScpsWorld::decrees_list);
+    ClassDB::bind_method(D_METHOD("country_revenue_year", "country"), &ScpsWorld::country_revenue_year);
+    ClassDB::bind_method(D_METHOD("world_ipm"),                       &ScpsWorld::world_ipm);
     ClassDB::bind_method(D_METHOD("unit_roster", "country"),         &ScpsWorld::unit_roster);
     ClassDB::bind_method(D_METHOD("building_roster", "country"),     &ScpsWorld::building_roster);
     ClassDB::bind_method(D_METHOD("tech_info"),                      &ScpsWorld::tech_info);
@@ -426,6 +428,12 @@ Dictionary ScpsWorld::country_info(int country) {
     d["savoir"]         = c.savoir;      d["savoir_mot"]     = String::utf8(c.savoir_mot);
     d["influence"]      = c.influence;
     d["corruption"]     = c.corruption;
+    /* MEMBRANE HONNÊTE (topbar « quoi + combien ») : la façade calcule DÉJÀ
+     * c.metab_pct (scps_api.c : econ_country_metabolized × AI_METAB_RES_W) mais
+     * le binding ne le copiait jamais dans le Dictionary — champ mort côté GD.
+     * Nécessaire pour le hover Savoir (source de bonus chiffrée : « métabolisation
+     * +X% recherche »), cf. TROUVAILLES.md. */
+    d["metab_pct"]      = c.metab_pct;
     return d;
 }
 
@@ -923,24 +931,45 @@ Array ScpsWorld::council_candidates(int seat) {
 }
 
 /* DÉCRETS DU JOUEUR (civics) : nom · flavor · les DEUX plateaux · réforme (irréversible) ·
- * actif · légal (condition d'entrée remplie MAINTENANT — pour griser le bouton). */
+ * actif · légal (condition d'entrée remplie MAINTENANT — pour griser le bouton) ·
+ * type/exclusive_id/cost_rate_pct/cost_year/cond_met/cooldown_active (2026-07-10,
+ * recâblage Politiques — carte orientation, cf. scps_api.h ScpsDecree). ⚠ le tampon
+ * DOIT couvrir DECREE_COUNT (11 aujourd'hui : 10 orientations + 1 décision) — un
+ * tampon de 8 tronquait silencieusement les 3 derniers décrets (Légations, Levée
+ * entretenue, ET la décision Audit des offices elle-même : la carte décision était
+ * invisible). 16 = headroom, comme les autres tampons de ce fichier (unit_roster
+ * u[64], etc.). */
 Array ScpsWorld::decrees_list(int country) {
     Array a;
     if (!sim) return a;
-    ScpsDecree d[8];
-    int n = scps_decrees_list(sim, country, d, 8);
+    ScpsDecree d[16];
+    int n = scps_decrees_list(sim, country, d, 16);
     for (int i = 0; i < n; i++) {
         Dictionary dd;
-        dd["id"]       = d[i].id;
-        dd["nom"]      = String::utf8(d[i].nom);
-        dd["flavor"]   = String::utf8(d[i].flavor);
-        dd["plateaux"] = String::utf8(d[i].plateaux);
-        dd["reforme"]  = (bool)d[i].reforme;
-        dd["active"]   = (bool)d[i].active;
-        dd["legal"]    = (bool)d[i].legal;
+        dd["id"]              = d[i].id;
+        dd["nom"]             = String::utf8(d[i].nom);
+        dd["flavor"]          = String::utf8(d[i].flavor);
+        dd["plateaux"]        = String::utf8(d[i].plateaux);
+        dd["reforme"]         = (bool)d[i].reforme;
+        dd["active"]          = (bool)d[i].active;
+        dd["legal"]           = (bool)d[i].legal;
+        dd["type"]            = d[i].type;
+        dd["exclusive_id"]    = d[i].exclusive_id;
+        dd["cost_rate_pct"]   = (double)d[i].cost_rate_pct;
+        dd["cost_year"]       = d[i].cost_year;
+        dd["cond_met"]        = (bool)d[i].cond_met;
+        dd["cooldown_active"] = (bool)d[i].cooldown_active;
         a.push_back(dd);
     }
     return a;
+}
+
+/* Assiette des coûts % — hovers quantitatifs (« 3 % du revenu (2033 or) × IPM 1,12 = 68 or/an »). */
+double ScpsWorld::country_revenue_year(int country) {
+    return sim ? scps_country_revenue_year(sim, country) : 0.0;
+}
+double ScpsWorld::world_ipm() {
+    return sim ? scps_world_ipm_now(sim) : 1.0;
 }
 
 Array ScpsWorld::unit_roster(int country) {

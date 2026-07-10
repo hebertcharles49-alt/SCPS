@@ -1405,9 +1405,58 @@ int scps_council_pair_state(ScpsSim *s, int seat_a, int seat_b){
     return (int)statecraft_council_pair_state(s->sim.sc, s->w, s->sim.econ, s->w->seed, me, seat_a, seat_b, s->sim.year);
 }
 
+/* ── Recâblage Politiques 2026-07-10 : miroirs READ-ONLY du catalogue de
+ * scps_decrees.c (fichier possédé par un autre lot — HORS scope de cette
+ * façade) — même discipline que cons_tier_revenue_rate/cons_rank_mult
+ * ci-dessus (LOT Conseil) et scps_slave_prices (LOT M) : mêmes clés tune_f,
+ * mêmes valeurs par défaut, aucun chiffre inventé, à re-synchroniser si
+ * scps_decrees.c change ses clés/défauts. ────────────────────────────────── */
+/* Taux annuel (fraction, PAS %) de chaque décret — miroir de decree_revenue_rate
+ * (scps_decrees.c, `static`). Pour DECISION_AUDIT_OFFICES : le taux du coût
+ * PONCTUEL (DECISION_AUDIT_REVENUE_RATE), pas une mensualisation. */
+static float decree_revenue_rate_mirror(int id){
+    switch ((DecreeId)id){
+        case DECREE_RATIONS:          return tune_f("DECREE_RATIONS_REVENUE_RATE",      0.005f);
+        case DECREE_FOYERS:           return tune_f("DECREE_FOYERS_REVENUE_RATE",       0.015f);
+        case DECREE_ECOLES:           return tune_f("DECREE_ECOLES_REVENUE_RATE",       0.02f);
+        case DECREE_ATELIERS:         return tune_f("DECREE_ATELIERS_REVENUE_RATE",     0.02f);
+        case DECREE_COMPTOIRS:        return tune_f("DECREE_COMPTOIRS_REVENUE_RATE",    0.015f);
+        case DECREE_CIRCULATION:      return tune_f("DECREE_CIRCULATION_REVENUE_RATE",  0.0075f);
+        case DECREE_FRONTIERES:       return tune_f("DECREE_FRONTIERES_REVENUE_RATE",   0.0f);
+        case DECREE_MECENAT:          return tune_f("DECREE_MECENAT_REVENUE_RATE",      0.015f);
+        case DECREE_LEGATIONS:        return tune_f("DECREE_LEGATIONS_REVENUE_RATE",    0.015f);
+        case DECREE_LEVEE_ENTRETENUE: return tune_f("DECREE_LEVEE_REVENUE_RATE",        0.0f);
+        case DECISION_AUDIT_OFFICES:  return tune_f("DECISION_AUDIT_REVENUE_RATE",      0.25f);
+        default: return 0.f;
+    }
+}
+/* La paire mutuellement exclusive (radio-boutons) — miroir de decree_exclusive_of
+ * (scps_decrees.c, `static`) : RATIONS⊥FOYERS · CIRCULATION⊥FRONTIÈRES, spec
+ * « Orientations politiques LÉGÈRES ». -1 = aucune paire. */
+static int decree_exclusive_id_mirror(int id){
+    switch ((DecreeId)id){
+        case DECREE_RATIONS:     return (int)DECREE_FOYERS;
+        case DECREE_FOYERS:      return (int)DECREE_RATIONS;
+        case DECREE_CIRCULATION: return (int)DECREE_FRONTIERES;
+        case DECREE_FRONTIERES:  return (int)DECREE_CIRCULATION;
+        default:                 return -1;
+    }
+}
+/* AUDIT DES OFFICES : condition d'entrée SEULE (hors cooldown) — miroir de
+ * audit_ready (scps_decrees.c, `static`), moitié corruption de la condition
+ * combinée. `faction_corruption_0_100` est l'API PUBLIQUE déjà lue par le
+ * Conseil (scps_factions.h) ; DECISION_AUDIT_CORRUPTION_MIN est la MÊME clé. */
+static int decree_cond_met_mirror(int id, int cid){
+    if ((DecreeId)id==DECISION_AUDIT_OFFICES)
+        return faction_corruption_0_100(cid) >= (int)tune_f("DECISION_AUDIT_CORRUPTION_MIN", 20.f);
+    return 1;   /* ÉDITs : la condition d'entrée EST `legal` (pas de cooldown séparé) */
+}
+
 /* DÉCRETS DU JOUEUR (civics) — état + légalité de TOUS les décrets, pour `country`. */
 int scps_decrees_list(ScpsSim *s, int country, ScpsDecree *out, int max){
     if(!out || max<=0 || !s || !s->ready || country<0 || country>=s->w->n_countries) return 0;
+    float ipm = econ_world_ipm(s->sim.econ);
+    float revenue = econ_country_tax_year(country);
     int n=0;
     for (int id=0; id<DECREE_COUNT && n<max; id++){
         const DecreeDef *d = &DECREES[id];
@@ -1419,9 +1468,30 @@ int scps_decrees_list(ScpsSim *s, int country, ScpsDecree *out, int max){
         out[n].active   = decree_active(country, (DecreeId)id) ? 1 : 0;
         out[n].legal    = decree_legal(s->w, s->sim.econ, s->sim.ts, s->sim.wl, s->sim.sc,
                                        s->sim.dp, country, (DecreeId)id) ? 1 : 0;
+        out[n].type          = (int)d->type;
+        out[n].exclusive_id  = decree_exclusive_id_mirror(id);
+        float rate            = decree_revenue_rate_mirror(id);
+        out[n].cost_rate_pct = rate * 100.f;
+        out[n].cost_year     = (double)(revenue * rate * ipm);
+        out[n].cond_met       = decree_cond_met_mirror(id, country);
+        /* DÉCISION seulement : `legal` == (cond_met ET cooldown==0) par construction
+         * (decree_legal appelle EXACTEMENT audit_ready = cooldown<=0 && corruption>=min,
+         * cf. scps_decrees.c cond_audit) — donc cond_met&&!legal ⟺ cooldown>0, une
+         * DÉDUCTION, pas une invention (aucun accès direct à g_audit_cd, privé au module). */
+        out[n].cooldown_active = (d->type==DCR_DECISION && out[n].cond_met && !out[n].legal) ? 1 : 0;
         n++;
     }
     return n;
+}
+
+/* L'ASSIETTE des coûts en % (cf. .h) — lectures PURES pour les hovers quantitatifs. */
+double scps_country_revenue_year(ScpsSim *s, int country){
+    if (!s || !s->ready || country<0 || country>=s->w->n_countries) return 0.0;
+    return (double)econ_country_tax_year(country);
+}
+double scps_world_ipm_now(ScpsSim *s){
+    if (!s || !s->ready) return 1.0;
+    return (double)econ_world_ipm(s->sim.econ);
 }
 
 int scps_country_relations(ScpsSim *s, int me, ScpsRelation *out, int max){
@@ -2152,10 +2222,15 @@ int scps_manuf_legal(ScpsSim *s, int region, int bld){
     float cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(e);
     return credit_can_spend(e, s->w, p, cost) ? 1 : 0;
 }
-/* le PRIX affiché = le prix payé (même formule que le drain CMD_BUILD_MANUF). */
+/* le PRIX affiché = le prix payé — MÊME formule EXACTE que le drain CMD_BUILD_MANUF
+ * (scps_sim.c: cost=tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->econ)*
+ * decree_manuf_cost_mult(p)), y compris la remise ATELIERS (2026-07-10 : le prix
+ * montré ignorait la remise, cf. TROUVAILLES.md « remise ATELIERS non reflétée »). */
 int scps_manuf_cost(ScpsSim *s){
     if (!s || !s->ready) return 0;
-    float cost = tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->sim.econ);
+    int p = (s->sim.human_player>=0) ? s->sim.human_player : s->sim.player;
+    float mult = (p>=0 && p<s->w->n_countries) ? decree_manuf_cost_mult(p) : 1.f;
+    float cost = tune_f("MANUF_BUILD_COST",50.f)*econ_world_ipm(s->sim.econ)*mult;
     return (int)(cost + 0.5f);
 }
 int scps_player_embargo(ScpsSim *s, int target, int on){
@@ -3436,10 +3511,13 @@ int scps_culture_preview(int t0, int t1, int t2, ScpsLevierLine *out, int max){
     /* les 9 leviers du moteur, dans l'ordre de la struct → un MOT par axe touché. */
     float v[9] = { L.demographie, L.rendement, L.influence, L.coercition,
                    L.capacite, L.permeabilite, L.arcane, L.derive, L.fracture };
+    /* MEMBRANE (retour joueur 2026-07-10 « je vois de la perméabilité, du K ») : les
+     * noms rendus sont des MOTS DE JEU, jamais les leviers du modèle — le créateur
+     * garde une table de retraduction locale pour les ANCIENS noms (compat). */
     static const char *NM[9] = {
-        "Démographie", "Productivité", "Influence", "Coercition (militaire)",
-        "Capacité (diversité)", "Perméabilité (assimilation)", "Affinité arcane",
-        "Dérive culturelle", "Fracture" };
+        "Croissance de la population", "Production", "Rayonnement diplomatique",
+        "Coercition", "Capacité de l'État", "Assimilation des minorités",
+        "Magie faustienne", "Dérive culturelle", "Fracture" };
     /* RELATIFS (1+x → affichés en %) : demographie(0), rendement(1), derive(7).
      * Les autres sont ABSOLUS (additifs échelle 0..10). Cf. HeritageLeviers (scps_heritage.h). */
     int n=0;

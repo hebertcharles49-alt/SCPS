@@ -553,18 +553,18 @@ const char *relig_pole_name(ReligPole p){
  * les .flavor de scps_events.c (pas de canal RC_* promis qui ne soit pas consommé). */
 const char *relig_pole_tip(ReligPole p){
   static const char *T[RP_COUNT]={
-    "Croissance plus rapide, gestion (K) alourdie. « Chaque naissance est une prière exaucée, même lorsque les greniers n'avaient rien demandé. »",                    /* Fécondité  */
+    "Croissance plus rapide, capacité de l'État alourdie. « Chaque naissance est une prière exaucée, même lorsque les greniers n'avaient rien demandé. »",                    /* Fécondité  */
     "Légitimité par le sang versé, croissance ralentie. « Le sang versé ne rachète pas les morts. Il rappelle seulement aux vivants le prix de leur survie. »",         /* Offrande   */
-    "Cohésion ardente, gestion (K) dispersée. « Quand les tambours s'arrêtent, personne ne sait plus qui a parlé. Tous se souviennent pourtant d'avoir répondu ensemble. »", /* Transe */
-    "Gestion (K) disciplinée, cohésion refroidie. « Le silence enseigne la maîtrise. Il enseigne aussi à ceux qui souffrent que personne ne souhaite les entendre. »",  /* Silence    */
+    "Cohésion ardente, capacité de l'État dispersée. « Quand les tambours s'arrêtent, personne ne sait plus qui a parlé. Tous se souviennent pourtant d'avoir répondu ensemble. »", /* Transe */
+    "Capacité de l'État disciplinée, cohésion refroidie. « Le silence enseigne la maîtrise. Il enseigne aussi à ceux qui souffrent que personne ne souhaite les entendre. »",  /* Silence    */
     "Prospérité ouverte, tolérance mise à l'épreuve. « Toute porte ouverte laisse entrer un hôte, une idée et parfois l'homme qui contestera demain le maître de maison. »", /* Accueil */
     "Tolérance affermie, prospérité bridée. « Un mur protège la communauté de ce qui rôde dehors, puis lui apprend à redouter tout ce qu'elle ne voit plus. »",         /* Mur        */
     "Légitimité centralisée, prospérité rognée. « Le souverain porte la couronne devant les hommes. Devant le ciel, c'est la couronne qui porte le souverain. »",       /* Couronne   */
     "Prospérité distribuée, légitimité contestée. « Quand tous peuvent parler, nul ne peut prétendre n'avoir pas été entendu. Cela ne signifie pas que quelqu'un ait obéi. »", /* Assemblée */
     "Légitimité enracinée, prospérité engourdie. « Les morts ne gouvernent pas, assurent les prêtres. Ils se contentent de rendre chaque changement honteux. »",        /* Ancêtres   */
     "Prospérité renouvelée, légitimité fragilisée. « Nous avons brûlé les anciens noms pour que chacun puisse en choisir un nouveau. L'odeur de fumée, elle, demeure. »", /* Cendre    */
-    "Gestion (K) éclairée, légitimité suspecte. « Le divin se cache dans les questions que les prêtres interdisent. Les réponses, malheureusement, savent aussi se cacher. »", /* Gnose */
-    "Légitimité fixée, gestion (K) rigidifiée. « La vérité a été fixée une fois pour toutes. Toute nouvelle question devient donc une faute de mémoire. »",             /* Orthodoxie */
+    "Capacité de l'État éclairée, légitimité suspecte. « Le divin se cache dans les questions que les prêtres interdisent. Les réponses, malheureusement, savent aussi se cacher. »", /* Gnose */
+    "Légitimité fixée, capacité de l'État rigidifiée. « La vérité a été fixée une fois pour toutes. Toute nouvelle question devient donc une faute de mémoire. »",             /* Orthodoxie */
     "Légitimité par la sobriété, prospérité comprimée. « Le bol vide rapproche les fidèles, surtout lorsque le prélat chargé de l'expliquer mange dans une autre pièce. »", /* Frugalité */
     "Prospérité éclatante, légitimité jalousée. « L'or sur l'autel prouve la grandeur de la foi. Les pauvres demandent parfois pourquoi elle exige autant de preuves. »", /* Faste     */
     "Tolérance martiale, légitimité risquée. « Mourir sans peur est une grâce. Envoyer sans peur les autres mourir en est une que les chefs reçoivent plus souvent. »", /* Courage    */
